@@ -1,0 +1,546 @@
+#!/usr/bin/env python3
+"""Rewrite Hammerhead/Karoo FIT device metadata to Garmin proxy metadata.
+
+This PoC intentionally does not download activities or upload to Garmin. It
+rewrites only FIT metadata records and validates that ride data stays stable.
+"""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import json
+import shutil
+import struct
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from fitparse import FitFile
+
+
+FILE_ID = 0
+DEVICE_INFO = 23
+
+GARMIN_MANUFACTURER = 89
+GARMIN_PROXY_PRODUCT = 30046
+GARMIN_PROXY_SOFTWARE_VERSION = 400
+KAROO_PRODUCT = 3
+
+BASE_TYPE_SIZES = {
+    0x00: 1,
+    0x01: 1,
+    0x02: 1,
+    0x83: 2,
+    0x84: 2,
+    0x85: 4,
+    0x86: 4,
+    0x07: 1,
+    0x88: 4,
+    0x89: 8,
+    0x0A: 1,
+    0x8B: 2,
+    0x8C: 4,
+    0x0D: 1,
+    0x8E: 8,
+    0x8F: 8,
+    0x90: 8,
+}
+
+NUMERIC_FORMATS = {
+    0x00: "B",
+    0x01: "b",
+    0x02: "B",
+    0x83: "h",
+    0x84: "H",
+    0x85: "i",
+    0x86: "I",
+    0x0A: "B",
+    0x8B: "H",
+    0x8C: "I",
+    0x88: "f",
+    0x89: "d",
+    0x8E: "q",
+    0x8F: "Q",
+    0x90: "Q",
+}
+
+PROFILE_FIELD_NAMES = {
+    FILE_ID: {
+        1: "manufacturer",
+        2: "product",
+        3: "serial_number",
+        8: "product_name",
+    },
+    DEVICE_INFO: {
+        0: "device_index",
+        2: "manufacturer",
+        3: "serial_number",
+        4: "product",
+        5: "software_version",
+        27: "product_name",
+    },
+}
+
+
+def definition_key(definition: LocalDef) -> tuple[Any, ...]:
+    return (
+        definition.reserved,
+        definition.arch,
+        definition.global_msg_num,
+        tuple((field.num, field.size, field.base_type) for field in definition.fields),
+        tuple((field.num, field.size, field.dev_data_index) for field in definition.dev_fields),
+    )
+
+
+@dataclass
+class FieldDef:
+    num: int
+    size: int
+    base_type: int
+
+
+@dataclass
+class DevFieldDef:
+    num: int
+    size: int
+    dev_data_index: int
+
+
+@dataclass
+class LocalDef:
+    header: int
+    reserved: int
+    arch: int
+    global_msg_num: int
+    fields: list[FieldDef]
+    dev_fields: list[DevFieldDef]
+
+    @property
+    def endian(self) -> str:
+        return ">" if self.arch else "<"
+
+    @property
+    def data_size(self) -> int:
+        return sum(f.size for f in self.fields) + sum(f.size for f in self.dev_fields)
+
+
+def fit_crc(data: bytes) -> int:
+    crc_table = [
+        0x0000,
+        0xCC01,
+        0xD801,
+        0x1400,
+        0xF001,
+        0x3C00,
+        0x2800,
+        0xE401,
+        0xA001,
+        0x6C00,
+        0x7800,
+        0xB401,
+        0x5000,
+        0x9C01,
+        0x8801,
+        0x4400,
+    ]
+    crc = 0
+    for byte in data:
+        tmp = crc_table[crc & 0xF]
+        crc = (crc >> 4) & 0x0FFF
+        crc = crc ^ tmp ^ crc_table[byte & 0xF]
+        tmp = crc_table[crc & 0xF]
+        crc = (crc >> 4) & 0x0FFF
+        crc = crc ^ tmp ^ crc_table[(byte >> 4) & 0xF]
+    return crc & 0xFFFF
+
+
+def parse_header(blob: bytes) -> tuple[bytes, int, int]:
+    header_size = blob[0]
+    if header_size not in (12, 14):
+        raise ValueError(f"unsupported FIT header size: {header_size}")
+    if blob[8:12] != b".FIT":
+        raise ValueError("input does not look like a FIT file")
+    data_size = struct.unpack_from("<I", blob, 4)[0]
+    data_start = header_size
+    data_end = data_start + data_size
+    if len(blob) < data_end + 2:
+        raise ValueError("FIT file is truncated")
+    if header_size == 14:
+        expected = struct.unpack_from("<H", blob, 12)[0]
+        actual = fit_crc(blob[:12])
+        if expected != actual:
+            raise ValueError(f"invalid FIT header CRC: expected {expected:#x}, got {actual:#x}")
+    expected = struct.unpack_from("<H", blob, data_end)[0]
+    actual = fit_crc(blob[:data_end])
+    if expected != actual:
+        raise ValueError(f"invalid FIT file CRC: expected {expected:#x}, got {actual:#x}")
+    return blob[:header_size], data_start, data_end
+
+
+def read_definition(data: bytes, offset: int, header: int) -> tuple[LocalDef, int]:
+    dev_flag = bool(header & 0x20)
+    reserved = data[offset]
+    arch = data[offset + 1]
+    endian = ">" if arch else "<"
+    global_msg_num = struct.unpack_from(endian + "H", data, offset + 2)[0]
+    count = data[offset + 4]
+    cursor = offset + 5
+    fields = []
+    for _ in range(count):
+        fields.append(FieldDef(data[cursor], data[cursor + 1], data[cursor + 2]))
+        cursor += 3
+    dev_fields = []
+    if dev_flag:
+        dev_count = data[cursor]
+        cursor += 1
+        for _ in range(dev_count):
+            dev_fields.append(DevFieldDef(data[cursor], data[cursor + 1], data[cursor + 2]))
+            cursor += 3
+    return LocalDef(header, reserved, arch, global_msg_num, fields, dev_fields), cursor
+
+
+def encode_definition(local_num: int, definition: LocalDef) -> bytes:
+    header = 0x40 | local_num
+    if definition.dev_fields:
+        header |= 0x20
+    out = bytearray([header, definition.reserved, definition.arch])
+    out += struct.pack(definition.endian + "H", definition.global_msg_num)
+    out.append(len(definition.fields))
+    for field in definition.fields:
+        out += bytes([field.num, field.size, field.base_type])
+    if definition.dev_fields:
+        out.append(len(definition.dev_fields))
+        for field in definition.dev_fields:
+            out += bytes([field.num, field.size, field.dev_data_index])
+    return bytes(out)
+
+
+def split_payload(definition: LocalDef, payload: bytes) -> tuple[dict[int, bytes], bytes]:
+    cursor = 0
+    values = {}
+    for field in definition.fields:
+        values[field.num] = payload[cursor : cursor + field.size]
+        cursor += field.size
+    dev_payload = payload[cursor:]
+    return values, dev_payload
+
+
+def raw_int(value: bytes, field: FieldDef, endian: str) -> int | None:
+    base = field.base_type
+    if base == 0x0D:
+        return int.from_bytes(value, "little")
+    fmt = NUMERIC_FORMATS.get(base)
+    if not fmt:
+        return None
+    size = struct.calcsize(fmt)
+    if len(value) < size:
+        return None
+    return struct.unpack(endian + fmt, value[:size])[0]
+
+
+def raw_string(value: bytes) -> str:
+    return value.split(b"\x00", 1)[0].decode("utf-8", "ignore")
+
+
+def encode_int(value: int, field: FieldDef, endian: str) -> bytes:
+    base = field.base_type
+    fmt = NUMERIC_FORMATS.get(base)
+    if not fmt:
+        raise ValueError(f"cannot encode base type {base:#x}")
+    packed = struct.pack(endian + fmt, value)
+    if len(packed) > field.size:
+        raise ValueError(f"value {value} does not fit field {field.num}")
+    pad = b"\x00" if base in (0x0A, 0x8B, 0x8C, 0x90) else b"\xff"
+    return packed + pad * (field.size - len(packed))
+
+
+def upsert_field(definition: LocalDef, values: dict[int, bytes], field_num: int, value: int, base_type: int) -> bool:
+    field = next((f for f in definition.fields if f.num == field_num), None)
+    if field is None:
+        field = FieldDef(field_num, BASE_TYPE_SIZES[base_type], base_type)
+        definition.fields.append(field)
+    encoded = encode_int(value, field, definition.endian)
+    changed = values.get(field_num) != encoded
+    values[field_num] = encoded
+    return changed
+
+
+def should_remove_karoo_serial(values: dict[int, bytes], fields: dict[int, FieldDef], definition: LocalDef) -> bool:
+    manufacturer = raw_int(values.get(2, b""), fields[2], definition.endian) if 2 in values and 2 in fields else None
+    product = raw_int(values.get(4, b""), fields[4], definition.endian) if 4 in values and 4 in fields else None
+    product_name = raw_string(values.get(27, b""))
+    return product == KAROO_PRODUCT or "karoo" in product_name.lower() or manufacturer not in (None, GARMIN_MANUFACTURER)
+
+
+def rewrite_payload(definition: LocalDef, payload: bytes) -> tuple[bytes, LocalDef, list[str]]:
+    values, dev_payload = split_payload(definition, payload)
+    new_def = copy.deepcopy(definition)
+    fields = {field.num: field for field in new_def.fields}
+    changes = []
+
+    if new_def.global_msg_num == FILE_ID:
+        product_name = raw_string(values.get(8, b""))
+        product = raw_int(values.get(2, b""), fields[2], new_def.endian) if 2 in values and 2 in fields else None
+        if upsert_field(new_def, values, 1, GARMIN_MANUFACTURER, 0x84):
+            changes.append("file_id.manufacturer=89")
+        remove = {8}
+        if product == KAROO_PRODUCT:
+            remove.add(2)
+        if "karoo" in product_name.lower() or product == KAROO_PRODUCT:
+            remove.add(3)
+        if 2 in remove:
+            changes.append("file_id.product removed")
+        if 3 in values and 3 in remove:
+            changes.append("file_id.serial_number removed")
+        if 8 in values:
+            changes.append("file_id.product_name removed")
+        new_def.fields = [field for field in new_def.fields if field.num not in remove]
+
+    if new_def.global_msg_num == DEVICE_INFO:
+        device_index = raw_int(values.get(0, b""), fields[0], new_def.endian) if 0 in values and 0 in fields else None
+        if device_index == 0:
+            if upsert_field(new_def, values, 0, 0, 0x02):
+                changes.append("device_info[0].device_index=0")
+            if upsert_field(new_def, values, 2, GARMIN_MANUFACTURER, 0x84):
+                changes.append("device_info[0].manufacturer=89")
+            if upsert_field(new_def, values, 4, GARMIN_PROXY_PRODUCT, 0x84):
+                changes.append("device_info[0].garmin_product=30046")
+            if upsert_field(new_def, values, 5, GARMIN_PROXY_SOFTWARE_VERSION, 0x84):
+                changes.append("device_info[0].software_version=4.0")
+            remove = {27}
+            if should_remove_karoo_serial(values, fields, new_def):
+                remove.add(3)
+            if 3 in values and 3 in remove:
+                changes.append("device_info[0].serial_number removed")
+            if 27 in values:
+                changes.append("device_info[0].product_name removed")
+            new_def.fields = [field for field in new_def.fields if field.num not in remove]
+
+    field_nums = {field.num for field in new_def.fields}
+    new_payload = bytearray()
+    for field in new_def.fields:
+        if field.num not in values:
+            raise ValueError(f"field {field.num} is missing after rewrite")
+        new_payload += values[field.num]
+    for field_num in list(values):
+        if field_num not in field_nums:
+            values.pop(field_num, None)
+    new_payload += dev_payload
+    return bytes(new_payload), new_def, changes
+
+
+def rewrite_fit(input_path: Path, output_path: Path) -> list[str]:
+    blob = input_path.read_bytes()
+    header, data_start, data_end = parse_header(blob)
+    data = blob[data_start:data_end]
+
+    out_data = bytearray()
+    local_defs: dict[int, LocalDef] = {}
+    output_defs: dict[int, tuple[Any, ...]] = {}
+    cursor = 0
+    changes = []
+
+    while cursor < len(data):
+        header_byte = data[cursor]
+        cursor += 1
+        if header_byte & 0x80:
+            local_num = (header_byte >> 5) & 0x03
+            definition = local_defs[local_num]
+            size = definition.data_size
+            key = definition_key(definition)
+            if output_defs.get(local_num) != key:
+                out_data += encode_definition(local_num, definition)
+                output_defs[local_num] = key
+            out_data.append(header_byte)
+            out_data += data[cursor : cursor + size]
+            cursor += size
+            continue
+
+        local_num = header_byte & 0x0F
+        if header_byte & 0x40:
+            definition, cursor = read_definition(data, cursor, header_byte)
+            local_defs[local_num] = definition
+            out_data += encode_definition(local_num, definition)
+            output_defs[local_num] = definition_key(definition)
+            continue
+
+        definition = local_defs[local_num]
+        size = definition.data_size
+        payload = data[cursor : cursor + size]
+        cursor += size
+
+        if definition.global_msg_num in (FILE_ID, DEVICE_INFO):
+            new_payload, new_def, record_changes = rewrite_payload(definition, payload)
+            if record_changes:
+                new_key = definition_key(new_def)
+                if output_defs.get(local_num) != new_key:
+                    out_data += encode_definition(local_num, new_def)
+                    output_defs[local_num] = new_key
+                definition = new_def
+                payload = new_payload
+                changes.extend(record_changes)
+            else:
+                key = definition_key(definition)
+                if output_defs.get(local_num) != key:
+                    out_data += encode_definition(local_num, definition)
+                    output_defs[local_num] = key
+        else:
+            key = definition_key(definition)
+            if output_defs.get(local_num) != key:
+                out_data += encode_definition(local_num, definition)
+                output_defs[local_num] = key
+
+        out_data.append(header_byte)
+        out_data += payload
+
+    new_header = bytearray(header)
+    struct.pack_into("<I", new_header, 4, len(out_data))
+    if len(new_header) == 14:
+        struct.pack_into("<H", new_header, 12, fit_crc(bytes(new_header[:12])))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    without_crc = bytes(new_header) + bytes(out_data)
+    output_path.write_bytes(without_crc + struct.pack("<H", fit_crc(without_crc)))
+    return changes
+
+
+def msg_fields(message: Any) -> dict[str, Any]:
+    return {field.name: field.value for field in message}
+
+
+def load_messages(path: Path) -> dict[str, list[dict[str, Any]]]:
+    fit = FitFile(str(path))
+    result: dict[str, list[dict[str, Any]]] = {}
+    for msg in fit.get_messages():
+        result.setdefault(msg.name, []).append(msg_fields(msg))
+    return result
+
+
+def scalar(value: Any) -> Any:
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value
+
+
+def comparable(value: Any) -> str:
+    return json.dumps(scalar(value), sort_keys=True, default=str)
+
+
+def session_summary(messages: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    session = messages.get("session", [{}])[0]
+    return {
+        "total_distance": scalar(session.get("total_distance")),
+        "total_timer_time": scalar(session.get("total_timer_time")),
+        "avg_power": scalar(session.get("avg_power")),
+        "avg_heart_rate": scalar(session.get("avg_heart_rate", session.get("avg_hr"))),
+        "avg_cadence": scalar(session.get("avg_cadence")),
+    }
+
+
+def validate(input_path: Path, output_path: Path) -> list[str]:
+    before = load_messages(input_path)
+    after = load_messages(output_path)
+    lines = []
+
+    before_records = len(before.get("record", []))
+    after_records = len(after.get("record", []))
+    if before_records != after_records:
+        raise AssertionError(f"record count changed: {before_records} -> {after_records}")
+    lines.append(f"record count unchanged: {before_records}")
+
+    before_session = session_summary(before)
+    after_session = session_summary(after)
+    if before_session != after_session:
+        raise AssertionError(f"session summary changed: {before_session} -> {after_session}")
+    lines.append(f"session summary unchanged: {before_session}")
+
+    protected = ["record", "lap", "session", "activity", "event"]
+    for name in protected:
+        if [json.dumps({k: scalar(v) for k, v in row.items()}, sort_keys=True, default=str) for row in before.get(name, [])] != [
+            json.dumps({k: scalar(v) for k, v in row.items()}, sort_keys=True, default=str) for row in after.get(name, [])
+        ]:
+            raise AssertionError(f"protected message changed: {name}")
+    lines.append("protected messages unchanged: record, lap, session, activity, event")
+
+    changed_names = []
+    for name in sorted(set(before) | set(after)):
+        b_rows = before.get(name, [])
+        a_rows = after.get(name, [])
+        if len(b_rows) != len(a_rows):
+            changed_names.append(name)
+            continue
+        for b_row, a_row in zip(b_rows, a_rows):
+            if {k: comparable(v) for k, v in b_row.items()} != {k: comparable(v) for k, v in a_row.items()}:
+                changed_names.append(name)
+                break
+    allowed = {"file_id", "device_info"}
+    unexpected = sorted(set(changed_names) - allowed)
+    if unexpected:
+        raise AssertionError(f"unexpected message differences: {unexpected}")
+    lines.append(f"changed message types: {sorted(set(changed_names))}")
+    return lines
+
+
+def write_csv(path: Path, messages: dict[str, list[dict[str, Any]]]) -> None:
+    with path.open("w", encoding="utf-8") as handle:
+        for name, rows in messages.items():
+            for row in rows:
+                payload = {key: scalar(value) for key, value in row.items()}
+                handle.write(f"{name},{json.dumps(payload, sort_keys=True, default=str)}\n")
+
+
+def fitcsvtool(input_path: Path, csv_path: Path, diff_lines: list[str]) -> None:
+    candidates = [
+        shutil.which("FitCSVTool"),
+        shutil.which("FitCSVTool.jar"),
+        "/opt/FitCSVTool.jar",
+        "/opt/fit/FitCSVTool.jar",
+        "/opt/qbot/app/FitCSVTool.jar",
+    ]
+    tool = next((Path(c) for c in candidates if c and Path(c).exists()), None)
+    if tool is None:
+        diff_lines.append("FitCSVTool: unavailable locally; fitparse read validation was used instead")
+        diff_lines.append(
+            f"Mac FitCSVTool command: java -jar /path/to/FitCSVTool.jar -b {input_path} {csv_path}"
+        )
+        return
+    if tool.suffix == ".jar":
+        cmd = ["java", "-jar", str(tool), "-b", str(input_path), str(csv_path)]
+    else:
+        cmd = [str(tool), "-b", str(input_path), str(csv_path)]
+    completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if completed.returncode != 0:
+        raise AssertionError(f"FitCSVTool failed: {completed.stderr.strip() or completed.stdout.strip()}")
+    diff_lines.append(f"FitCSVTool: ok via {tool}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Rewrite FIT device metadata to Garmin proxy profile")
+    parser.add_argument("input_fit", type=Path)
+    parser.add_argument("output_fit", type=Path)
+    parser.add_argument("--csv", type=Path, default=Path("qbot_garmin_proxy.csv"))
+    parser.add_argument("--diff", type=Path, default=Path("fit_rewrite_diff.txt"))
+    args = parser.parse_args()
+
+    changes = rewrite_fit(args.input_fit, args.output_fit)
+    messages = load_messages(args.output_fit)
+    write_csv(args.csv, messages)
+    diff_lines = [
+        f"input: {args.input_fit}",
+        f"output: {args.output_fit}",
+        "rewrite changes:",
+        *([f"- {change}" for change in changes] if changes else ["- none; input metadata already matched requested proxy values"]),
+        "",
+        "validation:",
+    ]
+    diff_lines.extend(validate(args.input_fit, args.output_fit))
+    fitcsvtool(args.output_fit, args.csv, diff_lines)
+    args.diff.write_text("\n".join(diff_lines) + "\n", encoding="utf-8")
+    print(json.dumps({"ok": True, "output": str(args.output_fit), "csv": str(args.csv), "diff": str(args.diff)}, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

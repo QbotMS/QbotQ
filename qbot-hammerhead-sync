@@ -1,0 +1,649 @@
+#!/usr/bin/env python3
+"""Download latest Hammerhead ride FIT and rewrite it to Garmin proxy metadata."""
+
+from __future__ import annotations
+
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import sys
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import requests
+from dotenv import load_dotenv
+
+from hammerhead_auth import HammerheadAuthError, HammerheadTokenStore
+
+
+APP_DIR = Path("/opt/qbot/app")
+PROFILE_DIR = APP_DIR / "config/profiles"
+DEFAULT_USER_ID = "44954"
+DEFAULT_INPUT_DIR = APP_DIR / "outgoing/hammerhead_originals"
+DEFAULT_PROXY_DIR = APP_DIR / "outgoing/garmin_proxy"
+DEFAULT_REPORT_DIR = APP_DIR / "outgoing/reports"
+DEFAULT_PROCESSED = APP_DIR / "state/processed_hammerhead_activities.json"
+DEFAULT_HTTP_LOG = APP_DIR / "logs/hammerhead_sync_http.log"
+ACTIVITIES_URL = "https://dashboard.hammerhead.io/v1/users/{user_id}/activities"
+FIT_URL = "https://dashboard.hammerhead.io/v1/users/{user_id}/activities/{activity_id}/file?format=fit"
+
+
+class NoUnprocessedActivity(RuntimeError):
+    pass
+
+
+def profile_env_path(profile: str) -> Path:
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", profile):
+        raise RuntimeError(f"Invalid profile name: {profile!r}")
+    return PROFILE_DIR / f"{profile}.env"
+
+
+def load_profile_env(*, profile: str | None, profile_env: Path | None) -> Path | None:
+    if profile and profile_env:
+        raise RuntimeError("--profile and --profile-env are mutually exclusive")
+    if profile:
+        profile_env = profile_env_path(profile)
+    if profile_env:
+        if not profile_env.is_file():
+            raise RuntimeError(f"Profile env missing: {profile_env}")
+        load_dotenv(profile_env, override=True)
+        return profile_env
+
+    legacy_env = APP_DIR / ".env.hammerhead-garmin-sync"
+    if legacy_env.is_file():
+        load_dotenv(legacy_env, override=False)
+        return legacy_env
+    return None
+
+
+def path_from_env(name: str, default: Path) -> Path:
+    value = os.environ.get(name, "").strip()
+    return Path(value) if value else default
+
+
+def load_fit_rewrite() -> Any:
+    path = APP_DIR / "qbot-fit-rewrite"
+    loader = importlib.machinery.SourceFileLoader("qbot_fit_rewrite", str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load FIT rewriter from {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@dataclass
+class HammerheadSession:
+    token: str
+    tokenstore: HammerheadTokenStore | None = None
+
+    @classmethod
+    def from_env(cls) -> "HammerheadSession":
+        store = HammerheadTokenStore.from_env()
+        return cls(token=store.access_token(), tokenstore=store)
+
+    def headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.token}",
+            "Accept": "application/json, application/octet-stream;q=0.9, */*;q=0.8",
+            "User-Agent": "qbot-hammerhead-sync/0.1",
+        }
+
+    def refresh(self) -> None:
+        if self.tokenstore is None:
+            raise RuntimeError("Hammerhead auth failed and no tokenstore configured")
+        self.token = self.tokenstore.refresh_after_401()
+
+
+class HammerheadClient:
+    def __init__(self, session: HammerheadSession, user_id: str, http_log: Path):
+        self.session = session
+        self.user_id = user_id
+        self.http_log = http_log
+
+    def log_http(self, method: str, url: str, status: int | None, response: requests.Response | None = None) -> None:
+        self.http_log.parent.mkdir(parents=True, exist_ok=True)
+        entry: dict[str, Any] = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "method": method,
+            "url": redact_url(url),
+            "status": status,
+        }
+        if response is not None:
+            entry["content_type"] = response.headers.get("content-type")
+            text = response.text if is_text_response(response) else f"<binary {len(response.content)} bytes>"
+            entry["response_preview"] = text[:4000]
+        with self.http_log.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+
+    def get(self, url: str, *, expect_json: bool) -> requests.Response:
+        response = requests.get(url, headers=self.session.headers(), timeout=60)
+        self.log_http("GET", url, response.status_code, response)
+        if response.status_code in (401, 403):
+            if response.status_code == 401:
+                try:
+                    self.session.refresh()
+                except HammerheadAuthError as exc:
+                    raise RuntimeError(f"{exc}; see {self.http_log}") from exc
+                response = requests.get(url, headers=self.session.headers(), timeout=60)
+                self.log_http("GET", url, response.status_code, response)
+                if response.status_code < 400:
+                    return response
+            raise RuntimeError(f"Hammerhead auth failed: HTTP {response.status_code}; see {self.http_log}")
+        if response.status_code >= 400:
+            raise RuntimeError(f"Hammerhead API request failed: GET {url} -> HTTP {response.status_code}; see {self.http_log}")
+        if expect_json:
+            content_type = response.headers.get("content-type", "")
+            if "json" not in content_type.lower():
+                raise RuntimeError(f"Hammerhead API returned non-JSON activity list; see {self.http_log}")
+        return response
+
+    def list_activities(self) -> Any:
+        url = ACTIVITIES_URL.format(user_id=self.user_id)
+        response = self.get(url, expect_json=True)
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise RuntimeError(f"Hammerhead API returned invalid JSON; see {self.http_log}") from exc
+
+    def download_fit(self, activity_id: str) -> bytes:
+        url = FIT_URL.format(user_id=self.user_id, activity_id=activity_id)
+        response = self.get(url, expect_json=False)
+        if not response.content.startswith((b"\x0e", b"\x0c")) or b".FIT" not in response.content[:14]:
+            raise RuntimeError(f"Hammerhead FIT download did not return a FIT file; see {self.http_log}")
+        return response.content
+
+
+def redact_url(url: str) -> str:
+    return re.sub(r"([?&](?:access_token|token)=)[^&]+", r"\1<redacted>", url)
+
+
+def is_text_response(response: requests.Response) -> bool:
+    content_type = response.headers.get("content-type", "").lower()
+    return "json" in content_type or "text" in content_type or "xml" in content_type
+
+
+def parse_timestamp(value: Any) -> datetime:
+    if value is None:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    if isinstance(value, (int, float)):
+        if value > 10_000_000_000:
+            value = value / 1000
+        return datetime.fromtimestamp(value, tz=timezone.utc)
+    text = str(value).strip()
+    if not text:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
+def unwrap_activities(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if not isinstance(payload, dict):
+        raise RuntimeError("Hammerhead activity list has unexpected shape; see HTTP log")
+    for key in ("activities", "data", "results", "items"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    raise RuntimeError("Hammerhead activity list JSON has no recognized activities array; see HTTP log")
+
+
+def activity_id(activity: dict[str, Any]) -> str | None:
+    for key in ("id", "activityId", "activity_id", "uuid"):
+        value = activity.get(key)
+        if value is not None and str(value).strip():
+            return str(value)
+    return None
+
+
+def activity_kind(activity: dict[str, Any]) -> str:
+    values = []
+    for key in ("type", "sport", "sportType", "activityType", "workout_type", "discipline", "name", "title"):
+        value = activity.get(key)
+        if value is not None:
+            values.append(str(value).lower())
+    return " ".join(values)
+
+
+def is_ride(activity: dict[str, Any]) -> bool:
+    kind = activity_kind(activity)
+    return any(token in kind for token in ("ride", "cycling", "bike", "bicycle"))
+
+
+def activity_time(activity: dict[str, Any]) -> datetime:
+    duration = activity.get("duration")
+    if isinstance(duration, dict):
+        for key in ("startTime", "start_time", "started_at", "startDate"):
+            if key in duration:
+                parsed = parse_timestamp(duration.get(key))
+                if parsed != datetime.min.replace(tzinfo=timezone.utc):
+                    return parsed
+    for key in ("start_time", "startTime", "started_at", "startDate", "date", "created_at", "createdAt", "updated_at", "updatedAt"):
+        if key in activity:
+            parsed = parse_timestamp(activity.get(key))
+            if parsed != datetime.min.replace(tzinfo=timezone.utc):
+                return parsed
+    return datetime.min.replace(tzinfo=timezone.utc)
+
+
+def select_latest_ride(payload: Any) -> dict[str, Any]:
+    activities = unwrap_activities(payload)
+    rides = [activity for activity in activities if activity_id(activity) and is_ride(activity)]
+    if not rides:
+        raise RuntimeError("No ride/cycling activity found in Hammerhead response; see HTTP log")
+    return max(rides, key=activity_time)
+
+
+def sorted_rides(payload: Any) -> list[dict[str, Any]]:
+    activities = unwrap_activities(payload)
+    rides = [activity for activity in activities if activity_id(activity) and is_ride(activity)]
+    return sorted(rides, key=activity_time, reverse=True)
+
+
+def find_activity(payload: Any, wanted_id: str) -> dict[str, Any]:
+    for activity in unwrap_activities(payload):
+        if activity_id(activity) == wanted_id:
+            return activity
+    return {"id": wanted_id}
+
+
+def load_processed(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"processed": []}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {"processed": []}
+    if isinstance(payload, list):
+        return {"processed": payload}
+    if isinstance(payload, dict) and isinstance(payload.get("processed"), list):
+        return payload
+    return {"processed": []}
+
+
+def update_activity_state(
+    path: Path,
+    *,
+    activity: dict[str, Any],
+    status: str,
+    original_fit: Path | None = None,
+    proxy_fit: Path | None = None,
+    report: Path | None = None,
+    garmin: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> None:
+    payload = load_processed(path)
+    processed = [item for item in payload.get("processed", []) if isinstance(item, dict)]
+    aid = activity_id(activity)
+    existing = next((item for item in processed if str(item.get("activityId")) == aid), {})
+    processed = [item for item in processed if str(item.get("activityId")) != aid]
+    entry = {
+        **existing,
+        "activityId": aid,
+        "status": status,
+        "updatedAt": datetime.now(timezone.utc).isoformat(),
+        "activityTime": activity_time(activity).isoformat(),
+    }
+    if original_fit is not None:
+        entry["originalFit"] = str(original_fit)
+    if proxy_fit is not None:
+        entry["proxyFit"] = str(proxy_fit)
+    if report is not None:
+        entry["report"] = str(report)
+    if garmin is not None:
+        entry["garmin"] = garmin
+    if error is not None:
+        entry["error"] = error
+    processed.append(entry)
+    payload["processed"] = processed
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def already_processed(path: Path, aid: str) -> bool:
+    payload = load_processed(path)
+    return any(
+        str(item.get("activityId")) == aid and item.get("status") == "uploaded"
+        for item in payload.get("processed", [])
+        if isinstance(item, dict)
+    )
+
+
+def select_activity_for_run(payload: Any, processed_path: Path, *, force_activity_id: str | None, no_dedup: bool) -> dict[str, Any]:
+    if force_activity_id:
+        return find_activity(payload, force_activity_id)
+    for activity in sorted_rides(payload):
+        aid = activity_id(activity)
+        if aid and (no_dedup or not already_processed(processed_path, aid)):
+            return activity
+    raise NoUnprocessedActivity("No unprocessed ride/cycling activity found in Hammerhead response")
+
+
+def safe_filename(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_") or "activity"
+
+
+def unique_preserve_order(values: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for value in values:
+        if value not in seen:
+            result.append(value)
+            seen.add(value)
+    return result
+
+
+def paths_for_activity(aid: str, input_dir: Path, proxy_dir: Path, report_dir: Path) -> tuple[Path, Path, Path, Path]:
+    stem = safe_filename(aid)
+    return (
+        input_dir / f"hammerhead_{stem}.fit",
+        proxy_dir / f"hammerhead_{stem}_garmin_proxy.fit",
+        proxy_dir / f"hammerhead_{stem}_garmin_proxy.csv",
+        report_dir / f"hammerhead_{stem}_report.json",
+    )
+
+
+def metadata(messages: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    file_id = messages.get("file_id", [{}])[0]
+    device_infos = messages.get("device_info", [])
+    creator = None
+    sensors = []
+    for row in device_infos:
+        index = row.get("device_index")
+        if str(index).lower() in ("0", "creator"):
+            creator = row
+        else:
+            sensors.append(row)
+    return {
+        "file_id": file_id,
+        "device_info_device_index_0": creator,
+        "sensor_device_info_count": len(sensors),
+    }
+
+
+def report_payload(
+    *,
+    activity: dict[str, Any],
+    downloaded_filename: str,
+    input_fit: Path,
+    output_fit: Path,
+    csv_path: Path,
+    changes: list[str],
+    fit_mod: Any,
+    garmin_upload: dict[str, Any],
+    dry_run: bool,
+) -> dict[str, Any]:
+    input_decode_error = output_decode_error = validation_error = strict_validation_error = None
+    try:
+        input_messages = fit_mod.load_messages(input_fit)
+    except Exception as exc:
+        input_messages = {}
+        input_decode_error = str(exc)
+    try:
+        output_messages = fit_mod.load_messages(output_fit)
+    except Exception as exc:
+        output_messages = {}
+        output_decode_error = str(exc)
+    try:
+        validation_lines = fit_mod.validate(input_fit, output_fit)
+    except Exception as exc:
+        validation_lines = []
+        validation_error = str(exc)
+    try:
+        validation_summary = strict_validation_summary(fit_mod, input_fit, output_fit)
+    except Exception as exc:
+        validation_summary = {
+            "fitparseDecode": "failed",
+            "error": str(exc),
+            "outputFitSizeBytes": output_fit.stat().st_size if output_fit.exists() else None,
+        }
+        strict_validation_error = str(exc)
+    return {
+        "ok": True,
+        "activityId": activity_id(activity),
+        "activityTime": activity_time(activity).isoformat(),
+        "downloadedFilename": downloaded_filename,
+        "inputFit": str(input_fit),
+        "outputFit": str(output_fit),
+        "csv": str(csv_path),
+        "dryRun": dry_run,
+        "rewriteChanges": unique_preserve_order(changes),
+        "garminUpload": garmin_upload,
+        "inputMetadata": metadata(input_messages),
+        "outputMetadata": metadata(output_messages),
+        "recordCount": {
+            "input": len(input_messages.get("record", [])),
+            "output": len(output_messages.get("record", [])),
+        },
+        "sessionMetrics": {
+            "input": fit_mod.session_summary(input_messages),
+            "output": fit_mod.session_summary(output_messages),
+        },
+        "validation": validation_lines,
+        "validationSummary": validation_summary,
+        "warnings": {
+            "inputDecodeError": input_decode_error,
+            "outputDecodeError": output_decode_error,
+            "validationError": validation_error,
+            "strictValidationError": strict_validation_error,
+        },
+    }
+
+
+def comparable_rows(fit_mod: Any, rows: list[dict[str, Any]]) -> list[str]:
+    return [
+        json.dumps({k: fit_mod.scalar(v) for k, v in row.items()}, sort_keys=True, default=str)
+        for row in rows
+    ]
+
+
+def is_creator_device_info(row: dict[str, Any]) -> bool:
+    return str(row.get("device_index")).lower() in ("0", "creator")
+
+
+def strict_validation_summary(fit_mod: Any, input_fit: Path, output_fit: Path) -> dict[str, Any]:
+    input_messages = fit_mod.load_messages(input_fit)
+    output_messages = fit_mod.load_messages(output_fit)
+    fit_mod.validate(input_fit, output_fit)
+    output_size = output_fit.stat().st_size
+    if output_size <= 10 * 1024:
+        raise AssertionError(f"output FIT too small: {output_size} bytes")
+
+    input_sensor_rows = [row for row in input_messages.get("device_info", []) if not is_creator_device_info(row)]
+    output_sensor_rows = [row for row in output_messages.get("device_info", []) if not is_creator_device_info(row)]
+    if comparable_rows(fit_mod, input_sensor_rows) != comparable_rows(fit_mod, output_sensor_rows):
+        raise AssertionError("sensor device_info rows changed")
+
+    changed_names = []
+    for name in sorted(set(input_messages) | set(output_messages)):
+        if name == "device_info":
+            input_creator = [row for row in input_messages.get(name, []) if is_creator_device_info(row)]
+            output_creator = [row for row in output_messages.get(name, []) if is_creator_device_info(row)]
+            if comparable_rows(fit_mod, input_creator) != comparable_rows(fit_mod, output_creator):
+                changed_names.append("device_info[0]")
+            continue
+        if comparable_rows(fit_mod, input_messages.get(name, [])) != comparable_rows(fit_mod, output_messages.get(name, [])):
+            changed_names.append(name)
+
+    allowed = {"file_id", "device_info[0]"}
+    unexpected = sorted(set(changed_names) - allowed)
+    if unexpected:
+        raise AssertionError(f"unexpected changed messages: {unexpected}")
+
+    return {
+        "fitparseDecode": "ok",
+        "recordCount": {
+            "input": len(input_messages.get("record", [])),
+            "output": len(output_messages.get("record", [])),
+        },
+        "sessionMetrics": {
+            "input": fit_mod.session_summary(input_messages),
+            "output": fit_mod.session_summary(output_messages),
+        },
+        "changedOnly": sorted(set(changed_names)),
+        "sensorDeviceInfoUnchanged": True,
+        "outputFitSizeBytes": output_size,
+    }
+
+
+def write_csv_if_possible(fit_mod: Any, output_fit: Path, csv_path: Path) -> None:
+    try:
+        messages = fit_mod.load_messages(output_fit)
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        fit_mod.write_csv(csv_path, messages)
+    except Exception as exc:
+        print(f"warning: CSV export skipped: {exc}")
+
+
+def main() -> int:
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--profile", default=None)
+    pre_parser.add_argument("--profile-env", type=Path, default=None)
+    pre_args, _ = pre_parser.parse_known_args()
+    loaded_env = load_profile_env(profile=pre_args.profile, profile_env=pre_args.profile_env)
+
+    outgoing_dir = path_from_env("OUTGOING_DIR", APP_DIR / "outgoing")
+    default_input_dir = outgoing_dir / "hammerhead_originals"
+    default_proxy_dir = outgoing_dir / "garmin_proxy"
+    default_report_dir = outgoing_dir / "reports"
+    profile_name = os.environ.get("PROFILE_NAME", pre_args.profile or "")
+    default_http_log = (
+        APP_DIR / f"logs/hammerhead_sync_http_{profile_name}.log"
+        if profile_name
+        else DEFAULT_HTTP_LOG
+    )
+
+    parser = argparse.ArgumentParser(description="Download latest Hammerhead FIT and rewrite it to Garmin proxy metadata")
+    parser.add_argument("--profile", default=None, help="Load /opt/qbot/app/config/profiles/PROFILE.env")
+    parser.add_argument("--profile-env", type=Path, default=None, help="Load an explicit profile env file")
+    parser.add_argument("--user-id", default=os.environ.get("HAMMERHEAD_USER_ID", DEFAULT_USER_ID))
+    parser.add_argument("--input-dir", type=Path, default=default_input_dir)
+    parser.add_argument("--proxy-dir", type=Path, default=default_proxy_dir)
+    parser.add_argument("--report-dir", type=Path, default=default_report_dir)
+    parser.add_argument("--processed", type=Path, default=path_from_env("PROCESSED_STATE", DEFAULT_PROCESSED))
+    parser.add_argument("--http-log", type=Path, default=path_from_env("HAMMERHEAD_HTTP_LOG", default_http_log))
+    parser.add_argument("--dry-run", action="store_true", help="Download and rewrite, but do not upload to Garmin")
+    parser.add_argument("--upload", action="store_true", help="Upload rewritten FIT to Garmin Connect")
+    parser.add_argument("--force-activity-id", default=None)
+    parser.add_argument("--no-dedup", action="store_true")
+    parser.add_argument("--garmin-upload-method", choices=["upload", "import"], default=os.environ.get("GARMIN_UPLOAD_METHOD", "upload"))
+    args = parser.parse_args()
+
+    if args.dry_run and args.upload:
+        parser.error("--dry-run and --upload are mutually exclusive")
+    dry_run = not args.upload
+    args.input_dir.mkdir(parents=True, exist_ok=True)
+    args.proxy_dir.mkdir(parents=True, exist_ok=True)
+    args.report_dir.mkdir(parents=True, exist_ok=True)
+
+    if loaded_env:
+        print(f"profile_env={loaded_env}")
+    if profile_name:
+        print(f"profile={profile_name}")
+
+    session = HammerheadSession.from_env()
+    client = HammerheadClient(session, args.user_id, args.http_log)
+    fit_mod = load_fit_rewrite()
+
+    activity = select_activity_for_run(
+        client.list_activities(),
+        args.processed,
+        force_activity_id=args.force_activity_id,
+        no_dedup=args.no_dedup,
+    )
+    aid = activity_id(activity)
+    if aid is None:
+        raise RuntimeError("Hammerhead activity has no activityId; see HTTP log")
+
+    if not args.no_dedup and already_processed(args.processed, aid):
+        result = {
+            "ok": True,
+            "skipped": True,
+            "reason": "latest activity already processed",
+            "activityId": aid,
+            "processedState": str(args.processed),
+        }
+        _, _, _, report_path = paths_for_activity(aid, args.input_dir, args.proxy_dir, args.report_dir)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
+
+    input_fit, output_fit, csv_path, report_path = paths_for_activity(aid, args.input_dir, args.proxy_dir, args.report_dir)
+    garmin_upload = {"status": "skipped", "reason": "dry-run"}
+    fit_bytes = client.download_fit(aid)
+    args.input_dir.mkdir(parents=True, exist_ok=True)
+    input_fit.write_bytes(fit_bytes)
+    if not args.no_dedup:
+        update_activity_state(args.processed, activity=activity, status="downloaded", original_fit=input_fit)
+
+    output_fit.parent.mkdir(parents=True, exist_ok=True)
+    changes = fit_mod.rewrite_fit(input_fit, output_fit)
+    write_csv_if_possible(fit_mod, output_fit, csv_path)
+    try:
+        strict_validation_summary(fit_mod, input_fit, output_fit)
+    except Exception as exc:
+        print(f"warning: strict FIT validation skipped: {exc}")
+    if not args.no_dedup:
+        update_activity_state(args.processed, activity=activity, status="rewritten", original_fit=input_fit, proxy_fit=output_fit)
+
+    exit_code = 0
+    if args.upload:
+        try:
+            from garmin_auth import upload_activity
+
+            garmin_upload = upload_activity(output_fit, method=args.garmin_upload_method)
+        except Exception as exc:
+            garmin_upload = {"status": "failed", "error": str(exc), "method": args.garmin_upload_method}
+            exit_code = 1
+
+    report = report_payload(
+        activity=activity,
+        downloaded_filename=input_fit.name,
+        input_fit=input_fit,
+        output_fit=output_fit,
+        csv_path=csv_path,
+        changes=changes,
+        fit_mod=fit_mod,
+        garmin_upload=garmin_upload,
+        dry_run=dry_run,
+    )
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report["report"] = str(report_path)
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
+    if args.upload and not args.no_dedup:
+        update_activity_state(
+            args.processed,
+            activity=activity,
+            status="uploaded" if garmin_upload.get("status") == "success" else "failed",
+            original_fit=input_fit,
+            proxy_fit=output_fit,
+            report=report_path,
+            garmin=garmin_upload,
+            error=garmin_upload.get("error"),
+        )
+    print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True, default=str))
+    return exit_code
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except NoUnprocessedActivity as exc:
+        print(str(exc))
+        raise SystemExit(0)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1)

@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec /opt/qbot/app/.venv/bin/python /opt/qbot/app/qbot_qlab_server.py "$@"

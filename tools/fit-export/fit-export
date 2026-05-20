@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -euo pipefail
+exec /opt/qbot/app/.venv/bin/python /opt/qbot/app/tools/fit-export/fit_export.py "$@"

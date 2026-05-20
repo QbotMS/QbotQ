@@ -1,0 +1,39 @@
+# Secrets and local credentials
+.env
+.env.*
+!.env.example
+.garmin_session.pkl
+.garmin_tokens/
+.garmin_tokens.json
+.garmin_profile.json
+.hammerhead_tokens/
+config/profiles/*.env
+!config/profiles/template.env
+
+# Python/runtime
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Logs and mutable state
+logs/
+data/
+state/
+outgoing/
+qlab_exports/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated training files and large artifacts
+*.fit
+*.tcx
+*.gpx
+qbot_garmin_proxy.csv
+fit_rewrite_diff.txt
+
+# Local assistant/editor state
+.claude/
+.DS_Store
