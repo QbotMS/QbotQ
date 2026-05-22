@@ -24,6 +24,20 @@ XERT_EMAIL    = os.getenv("XERT_EMAIL", "")
 XERT_PASSWORD = os.getenv("XERT_PASSWORD", "")
 GARMIN_EMAIL    = os.getenv("GARMIN_EMAIL", "")
 GARMIN_PASSWORD = os.getenv("GARMIN_PASSWORD", "")
+
+def _env_int(name: str):
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+        return value if value > 0 else None
+    except ValueError:
+        print(f"⚠️ Invalid integer env {name}={raw!r}", flush=True)
+        return None
+
+RIDER_MAX_HR_BPM = _env_int("RIDER_MAX_HR_BPM")
+RIDER_MAX_HR_SOURCE = os.getenv("RIDER_MAX_HR_SOURCE", "").strip() or None
 ROUTE_SURFACE_CACHE = Path("/opt/qbot/app/data/route_surface_cache.json")
 
 
@@ -1377,6 +1391,8 @@ async def ride_readiness(request):
         "baroMultiplier":     _baro_multiplier(pressure_now, pressure_change),
         "restingHrToday":     rhr_today,
         "restingHrBaseline":  rhr_baseline,
+        "maxHrBpm":           RIDER_MAX_HR_BPM,
+        "maxHrSource":        RIDER_MAX_HR_SOURCE if RIDER_MAX_HR_BPM else None,
         "ctl":                round(ctl, 1) if ctl is not None else None,
         "atl":                round(atl, 1) if atl is not None else None,
         "signals": {
@@ -1392,6 +1408,8 @@ async def ride_readiness(request):
             "sleepDaysNull":     sleep_days_null,
             "sleepDev":          sleep_dev,
             "recoverySource":    recovery_source,
+            "maxHrBpm":         RIDER_MAX_HR_BPM,
+            "maxHrSource":      RIDER_MAX_HR_SOURCE if RIDER_MAX_HR_BPM else None,
             "formScore":       form_score,
             "xertStatus":      xert_status,
         },
