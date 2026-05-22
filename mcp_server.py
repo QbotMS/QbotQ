@@ -1,6 +1,6 @@
 import os, json, base64
 from datetime import date
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from dotenv import load_dotenv
 import httpx
 import db
@@ -39,6 +39,8 @@ def _env_int(name: str):
 RIDER_MAX_HR_BPM = _env_int("RIDER_MAX_HR_BPM")
 RIDER_MAX_HR_SOURCE = os.getenv("RIDER_MAX_HR_SOURCE", "").strip() or None
 ROUTE_SURFACE_CACHE = Path("/opt/qbot/app/data/route_surface_cache.json")
+ARTIFACT_ROOT = Path("/opt/qbot/artifacts")
+ALLOWED_ARTIFACT_PREFIXES = ("routes/", "reports/", "imports/", "exports/", "qexp/", "inbox/")
 
 
 def _load_route_surface_cache() -> dict:
@@ -76,6 +78,36 @@ def _route_surface_error(activity_id: str, message: str) -> str:
     if cached:
         return cached
     return json.dumps({"error": message}, ensure_ascii=False)
+
+
+def validate_artifact_relative_path(relative_path: str) -> str:
+    if not isinstance(relative_path, str):
+        raise ValueError("relative_path must be a string")
+    raw = relative_path.strip()
+    if not raw:
+        raise ValueError("relative_path must not be empty")
+
+    path = PurePosixPath(raw)
+    if path.is_absolute():
+        raise ValueError("relative_path must be relative")
+    if any(part == ".." for part in path.parts):
+        raise ValueError("relative_path must not contain ..")
+
+    normalized_parts = [part for part in path.parts if part not in ("", ".")]
+    if not normalized_parts:
+        raise ValueError("relative_path must not be empty")
+
+    normalized = PurePosixPath(*normalized_parts).as_posix()
+    if normalized in ("", "."):
+        raise ValueError("relative_path must not be empty")
+    if not any(normalized.startswith(prefix) for prefix in ALLOWED_ARTIFACT_PREFIXES):
+        allowed = ", ".join(ALLOWED_ARTIFACT_PREFIXES)
+        raise ValueError(f"relative_path must start with one of: {allowed}")
+    return normalized
+
+
+def artifact_absolute_path(relative_path: str) -> Path:
+    return ARTIFACT_ROOT / validate_artifact_relative_path(relative_path)
 
 _b64 = base64.b64encode(f"API_KEY:{API_KEY}".encode()).decode()
 HDR  = {"Authorization": f"Basic {_b64}"}
@@ -642,6 +674,60 @@ def save_gear(category: str, brand: str = None, model: str = None,
 def save_memory(topic: str, content: str) -> str:
     """Dopisz notatkę do garażu bez dublowania dokładnie tej samej treści."""
     return json.dumps(db.save_memory_append(topic, content), ensure_ascii=False)
+
+
+@mcp.tool()
+def save_qbot_artifact(relative_path: str, content: str, overwrite: bool = False) -> str:
+    """Zapisz wygenerowany artefakt QBot do kontrolowanego katalogu /opt/qbot/artifacts."""
+    try:
+        normalized_relative_path = validate_artifact_relative_path(relative_path)
+        absolute_path = artifact_absolute_path(normalized_relative_path)
+        artifacts_root = ARTIFACT_ROOT.resolve(strict=False)
+        resolved_target = absolute_path.resolve(strict=False)
+        if not resolved_target.is_relative_to(artifacts_root):
+            raise ValueError("resolved path escapes artifacts root")
+        if not isinstance(content, str):
+            raise ValueError("content must be a string")
+
+        absolute_path.parent.mkdir(parents=True, exist_ok=True)
+        existed = absolute_path.exists()
+        if existed and not overwrite:
+            return json.dumps({
+                "status": "rejected",
+                "absolute_path": str(absolute_path),
+                "relative_path": normalized_relative_path,
+                "bytes_written": 0,
+                "overwritten": False,
+                "error": "file exists and overwrite is false",
+            }, ensure_ascii=False)
+
+        absolute_path.write_text(content, encoding="utf-8")
+        return json.dumps({
+            "status": "ok",
+            "absolute_path": str(absolute_path),
+            "relative_path": normalized_relative_path,
+            "bytes_written": len(content.encode("utf-8")),
+            "overwritten": existed,
+        }, ensure_ascii=False)
+    except ValueError as exc:
+        return json.dumps({
+            "status": "rejected",
+            "absolute_path": None,
+            "relative_path": relative_path,
+            "bytes_written": 0,
+            "overwritten": False,
+            "error": str(exc),
+        }, ensure_ascii=False)
+    except Exception as exc:
+        return json.dumps({
+            "status": "error",
+            "absolute_path": str(absolute_path) if "absolute_path" in locals() else None,
+            "relative_path": relative_path,
+            "bytes_written": 0,
+            "overwritten": False,
+            "error": str(exc),
+        }, ensure_ascii=False)
+
 
 @mcp.tool()
 def replace_memory(topic: str, content: str) -> str:

@@ -2,11 +2,19 @@
 """Local smoke tests for critical QBot paths."""
 from __future__ import annotations
 
+import os
 import json
 import sys
 import tempfile
 from pathlib import Path
 
+os.environ.setdefault("PYTHON_DOTENV_DISABLED", "1")
+try:
+    from pydantic_settings.sources.providers import dotenv as pydantic_dotenv
+
+    pydantic_dotenv.DotEnvSettingsSource._read_env_files = lambda self: {}
+except Exception:
+    pass
 sys.path.insert(0, "/opt/qbot/app")
 
 import db
@@ -289,6 +297,54 @@ def test_route_surface_cache_helpers():
     mcp_server.ROUTE_SURFACE_CACHE = original
 
 
+def test_qbot_artifact_helpers_and_save_tool():
+    original_root = mcp_server.ARTIFACT_ROOT
+    with tempfile.TemporaryDirectory() as tmp:
+        mcp_server.ARTIFACT_ROOT = Path(tmp)
+
+        assert_equal(
+            mcp_server.validate_artifact_relative_path("routes/tuscany/test.md"),
+            "routes/tuscany/test.md",
+            "artifact path normalization",
+        )
+        assert_equal(
+            mcp_server.artifact_absolute_path("routes/tuscany/test.md"),
+            Path(tmp) / "routes" / "tuscany" / "test.md",
+            "artifact absolute path",
+        )
+
+        rejected_cases = [
+            ("../x", "relative_path must not contain .."),
+            ("/tmp/x", "relative_path must be relative"),
+            ("", "relative_path must not be empty"),
+        ]
+        for relative_path, error_text in rejected_cases:
+            result = json.loads(mcp_server.save_qbot_artifact(relative_path, "x"))
+            assert_equal(result["status"], "rejected", f"artifact reject {relative_path!r} status")
+            if error_text not in result["error"]:
+                raise AssertionError(f"artifact reject {relative_path!r}: missing error text")
+
+        ok = json.loads(mcp_server.save_qbot_artifact("routes/tuscany/test.md", "# note"))
+        assert_equal(ok["status"], "ok", "artifact create status")
+        assert_equal(ok["overwritten"], False, "artifact create overwritten flag")
+        assert_equal(ok["bytes_written"], len("# note".encode("utf-8")), "artifact bytes written")
+        if (Path(tmp) / "routes" / "tuscany" / "test.md").read_text(encoding="utf-8") != "# note":
+            raise AssertionError("artifact file content mismatch after create")
+
+        reject_existing = json.loads(mcp_server.save_qbot_artifact("routes/tuscany/test.md", "new"))
+        assert_equal(reject_existing["status"], "rejected", "existing artifact reject status")
+        assert_equal(reject_existing["overwritten"], False, "existing artifact reject overwritten")
+
+        overwrite = json.loads(
+            mcp_server.save_qbot_artifact("routes/tuscany/test.md", "updated", overwrite=True)
+        )
+        assert_equal(overwrite["status"], "ok", "artifact overwrite status")
+        assert_equal(overwrite["overwritten"], True, "artifact overwrite overwritten flag")
+        if (Path(tmp) / "routes" / "tuscany" / "test.md").read_text(encoding="utf-8") != "updated":
+            raise AssertionError("artifact file content mismatch after overwrite")
+    mcp_server.ARTIFACT_ROOT = original_root
+
+
 def test_telegram_failed_message_dead_letter():
     original = tg_reply.FAILED_MESSAGES_FILE
     with tempfile.TemporaryDirectory() as tmp:
@@ -363,6 +419,7 @@ def main() -> int:
         test_recovery_latest_end_time_wins,
         test_recovery_no_records,
         test_route_surface_cache_helpers,
+        test_qbot_artifact_helpers_and_save_tool,
         test_telegram_failed_message_dead_letter,
         test_email_failed_reply_dead_letter,
         test_cached_call_uses_last_good_value,
