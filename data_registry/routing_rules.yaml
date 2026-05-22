@@ -5,6 +5,11 @@
 routing_rules:
 
   - match:
+      categories: [bike hardware, components, bike parts, accessories, purchases, service, wear tracking, mechanical setup]
+    route_to: garage
+    notes: Only bike hardware and bike-maintenance records belong in Garage.
+
+  - match:
       keywords: [bike, bicycle, frame, fork]
     route_to: garage
     table: bikes
@@ -23,27 +28,35 @@ routing_rules:
     table: gear
 
   - match:
+      forbidden_categories: [rider physiology, route planning, activities, FIT exports,
+                             replay logs, QEXT/QExp configs, color palettes,
+                             advisor models, clothing, nutrition, lab experiments,
+                             general notes]
+    route_to: no_garage
+    notes: These categories must be classified into another module or reported as missing.
+
+  - match:
       keywords: [FTP, CP, W'bal, HRmax, body mass, weight kg, cadence preference,
                  fit profile, physiology, vo2max]
     route_to: rider_profile
 
   - match:
       keywords: [route, RWGPS, Komoot, GPX, track, surface, gravel, paved, elevation,
-                 waypoint, segment]
+                 waypoint, segment, route copy, surface analysis]
     route_to: routes
 
   - match:
-      keywords: [activity, ride, FIT, replay, summary, post-ride]
+      keywords: [activity, ride, FIT, replay, summary, post-ride, replay log, FIT export]
     route_to: rides
 
   - match:
-      keywords: [QEXT, Karoo, field config, palette, advisor model, diagnostic, fixture]
+      keywords: [QEXT, QExp, Karoo, field config, palette, advisor model, diagnostic, fixture]
     route_to: qext
 
   - match:
-      keywords: [experiment, assumption, model test, validation, hypothesis]
+      keywords: [experiment, assumption, model test, validation, hypothesis, lab]
     route_to: lab
 
   - match:
-      keywords: [schema, routing, audit, import, task spec]
+      keywords: [schema, routing, audit, import, task spec, import queue]
     route_to: system

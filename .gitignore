@@ -37,3 +37,4 @@ fit_rewrite_diff.txt
 # Local assistant/editor state
 .claude/
 .DS_Store
+.aider*

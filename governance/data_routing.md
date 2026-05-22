@@ -40,6 +40,11 @@ Garage must not store:
 - Nutrition data
 - Lab experiments
 - General notes free-form (use `rider_profile` or `system`)
+- Route copies, route audits, or route planning notes
+- Completed activity archives or replay artifacts
+- UI or device configuration data
+- Validation results, assumptions, or experiment notes
+- General task metadata, schemas, routing rules, or import queue state
 
 ## Available data modules
 
@@ -52,6 +57,15 @@ Garage must not store:
 | qext          | Karoo/QEXT field configs, palettes, advisor models, diagnostics, fixtures |
 | lab           | Experiments, assumptions, model tests, validation reports |
 | system        | Schemas, routing rules, audit logs, import queue, task specs |
+
+## Classification rule
+
+1. Classify the data into one of the modules above before saving anything.
+2. If the data clearly belongs to `garage`, it may be written to `data/garage.db`.
+3. If the data belongs to any other module, do not write it to Garage.
+4. If the target module or storage location does not exist yet, stop and report
+   the missing module instead of inventing a path or schema.
+5. If the data does not clearly fit a module, report it for a QBot Task Spec.
 
 ## Routing decision flow
 

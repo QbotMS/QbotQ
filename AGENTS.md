@@ -10,6 +10,10 @@ General rules:
 - Do not guess project architecture. Inspect files first.
 - Do not use Google/web unless explicitly requested.
 - Do not print secrets or tokens.
+- Do not write non-garage data into Garage.
+- Use QBot Task Specs for non-trivial changes.
+- If required data, source material, or a target module is missing, report it
+  instead of inventing a location or schema.
 
 RWGPS Route Lab rules:
 - Work with any RWGPS route provided by the user or discovered from current state.

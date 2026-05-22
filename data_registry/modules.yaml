@@ -4,19 +4,34 @@
 
 modules:
   garage:
-    purpose:
-      - Bike hardware
-      - Parts
+    purpose: Bike hardware, parts, service records, wear tracking, mechanical bike setup
+    allowed_data:
+      - Bikes
+      - Components
+      - Bike parts and accessories
+      - Purchases of bike parts and accessories
       - Service records
       - Wear tracking
       - Mechanical bike setup
+    forbidden_data:
+      - Rider physiology
+      - Route planning
+      - Activities
+      - FIT/replay logs
+      - QEXT/QExp field configs
+      - Color palettes
+      - Advisor models
+      - Clothing
+      - Nutrition data
+      - Lab experiments
+      - General notes
     storage: data/garage.db
     schema_ref: garage.db tables (bikes, components, fitting, gear, memories, trips, packing_lists, packing_items)
     routing: See governance/data_routing.md
 
   rider_profile:
-    purpose:
-      - Rider physiology
+    purpose: Rider physiology and fit profile
+    allowed_data:
       - FTP
       - CP
       - W'bal
@@ -24,60 +39,88 @@ modules:
       - Body mass
       - Cadence preferences
       - Fit profile
+    forbidden_data:
+      - Route planning
+      - Activities
+      - Bike hardware records
     storage: not yet implemented
     schema_ref: data_registry/schemas/rider_profile_schema.yaml
     routing: See governance/data_routing.md
 
   routes:
-    purpose:
+    purpose: Planned routes and route analysis
+    allowed_data:
       - Planned routes
       - RWGPS route copies
       - Komoot routes
       - QBot route copies
       - Surface analysis
+      - Route audits
+    forbidden_data:
+      - Bike hardware records
+      - Rider physiology
+      - Completed activities
     storage: RWGPS API + local manifest
     schema_ref: tools/rwgps/README_RWGPS.md
     routing: See governance/data_routing.md
 
   rides:
-    purpose:
+    purpose: Completed activities and post-ride artifacts
+    allowed_data:
       - Completed activities
       - FIT exports
       - Replay logs
       - Ride summaries
       - Post-ride notes
+    forbidden_data:
+      - Planned routes
+      - Rider physiology
+      - Bike hardware records
     storage: not yet implemented
     schema_ref: data_registry/schemas/rides_schema.yaml
     routing: See governance/data_routing.md
 
   qext:
-    purpose:
+    purpose: Karoo/QEXT configuration, diagnostics, and fixtures
+    allowed_data:
       - Karoo/QEXT field configs
       - Color palettes
       - Advisor models
       - Diagnostics
       - Fixtures
+    forbidden_data:
+      - Bike hardware records
+      - Rider physiology
+      - Completed activities
     storage: not yet implemented
     schema_ref: data_registry/schemas/qext_schema.yaml
     routing: See governance/data_routing.md
 
   lab:
-    purpose:
+    purpose: Experiments, assumptions, model tests, and validation reports
+    allowed_data:
       - Experiments
       - Assumptions
       - Model tests
       - Validation reports
+    forbidden_data:
+      - Production route storage
+      - Garage records
+      - Runtime behavior changes
     storage: not yet implemented
     schema_ref: data_registry/schemas/lab_schema.yaml
     routing: See governance/data_routing.md
 
   system:
-    purpose:
+    purpose: Schemas, routing rules, audit logs, import queue, and task specs
+    allowed_data:
       - Schemas
       - Routing rules
       - Audit logs
       - Import queue
       - Task specs
+    forbidden_data:
+      - Domain content that belongs in garage, rider_profile, routes, rides, qext, or lab
     storage: file system under data_registry/ and task_specs/
     schema_ref: data_registry/schemas/
     routing: See governance/data_routing.md

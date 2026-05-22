@@ -23,6 +23,10 @@ when executing a QBot task spec.
 - Change public behavior (APIs, MCP tools, user-facing output) without
   matching acceptance criteria in the task spec.
 - Commit, push, or deploy unless the task spec explicitly requests it.
+- Change runtime behavior unless the task spec includes acceptance criteria
+  that require it.
+- Invent a storage path, schema, or module when the registry does not define
+  one.
 
 ## Before any write operation
 
@@ -33,6 +37,7 @@ when executing a QBot task spec.
 
 ## Task spec as source of truth
 
-Every Claude session working on QBot must reference a task spec from
-`task_specs/generated/`. If no task spec exists for the work, Claude must
-ask for one to be created before implementing changes.
+Every Claude session working on QBot must reference a QBot task spec.
+If a generated task spec exists for the work, use it.
+If no task spec exists, Claude must report that and wait for one to be created
+before implementing changes.

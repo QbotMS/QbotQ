@@ -1,48 +1,48 @@
 # QBot Task Spec
 
 ## Task ID
-<!-- e.g. TS-2026-05-22-001 -->
+<!-- Required. Example: TS-2026-05-22-001 -->
 
 ## Context
-<!-- What situation led to this task being created? -->
+<!-- Why this task exists and what triggered it. -->
 
 ## Goal
-<!-- What does success look like? One paragraph. -->
+<!-- What success looks like in one concise paragraph. -->
 
 ## Scope
-<!-- What is included in this task? -->
+<!-- In scope: what Claude is expected to inspect or change. -->
 
 ## Out of scope
-<!-- What must NOT be done as part of this task? -->
+<!-- Explicitly excluded work. -->
 
 ## Files to inspect
-<!-- List specific files Claude must read before starting. -->
+<!-- List the exact files Claude must read before starting. -->
 
 ## Required data
-<!-- Data sources or API calls Claude needs. -->
+<!-- Data sources, generated artifacts, or local reads required for the task. -->
 
 ## Allowed changes
-<!-- What Claude is permitted to modify. -->
+<!-- Files, modules, or artifacts Claude may modify. -->
 
 ## Forbidden changes
-<!-- What Claude must NOT touch. -->
+<!-- Files, runtime behavior, or data areas Claude must not touch. -->
 
 ## Implementation steps
-<!-- Step-by-step instructions for Claude. -->
-1.
-2.
-3.
+<!-- Step-by-step instructions for Claude. Keep this concrete. -->
+1. Inspect the listed files and classify the problem.
+2. Implement only the approved changes.
+3. Validate locally and report any missing data or blocked assumptions.
 
 ## Tests
-<!-- How to verify the work. -->
+<!-- Exact validation commands or checks to run. -->
 
 ## Acceptance criteria
-<!-- Checklist of conditions that must be met. -->
+<!-- Checklist of required outcomes. -->
 - [ ]
 - [ ]
 
 ## Final report format
-<!-- What the final report must contain. -->
-1.
-2.
-3.
+<!-- Required final report sections. -->
+1. Files changed
+2. Validation performed
+3. Outstanding risks or missing data
