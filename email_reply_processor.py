@@ -29,7 +29,7 @@ ICU_HDR = cfg.intervals_headers()
 
 PROCESSED_FILE = Path("/opt/qbot/app/data/processed_replies.json")
 FAILED_REPLIES_FILE = Path("/opt/qbot/app/data/email_failed_replies.json")
-PROCESSED_FILE.parent.mkdir(exist_ok=True)
+PROCESSED_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 # ── Deduplikacja ──────────────────────────────────────────────────────────────
 
