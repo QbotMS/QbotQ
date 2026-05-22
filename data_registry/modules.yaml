@@ -1,0 +1,83 @@
+# QBot Data Registry — Module Definitions
+# This file is the authoritative registry of QBot data modules.
+# Before creating any new data module, it must be registered here first.
+
+modules:
+  garage:
+    purpose:
+      - Bike hardware
+      - Parts
+      - Service records
+      - Wear tracking
+      - Mechanical bike setup
+    storage: data/garage.db
+    schema_ref: garage.db tables (bikes, components, fitting, gear, memories, trips, packing_lists, packing_items)
+    routing: See governance/data_routing.md
+
+  rider_profile:
+    purpose:
+      - Rider physiology
+      - FTP
+      - CP
+      - W'bal
+      - HRmax
+      - Body mass
+      - Cadence preferences
+      - Fit profile
+    storage: not yet implemented
+    schema_ref: data_registry/schemas/rider_profile_schema.yaml
+    routing: See governance/data_routing.md
+
+  routes:
+    purpose:
+      - Planned routes
+      - RWGPS route copies
+      - Komoot routes
+      - QBot route copies
+      - Surface analysis
+    storage: RWGPS API + local manifest
+    schema_ref: tools/rwgps/README_RWGPS.md
+    routing: See governance/data_routing.md
+
+  rides:
+    purpose:
+      - Completed activities
+      - FIT exports
+      - Replay logs
+      - Ride summaries
+      - Post-ride notes
+    storage: not yet implemented
+    schema_ref: data_registry/schemas/rides_schema.yaml
+    routing: See governance/data_routing.md
+
+  qext:
+    purpose:
+      - Karoo/QEXT field configs
+      - Color palettes
+      - Advisor models
+      - Diagnostics
+      - Fixtures
+    storage: not yet implemented
+    schema_ref: data_registry/schemas/qext_schema.yaml
+    routing: See governance/data_routing.md
+
+  lab:
+    purpose:
+      - Experiments
+      - Assumptions
+      - Model tests
+      - Validation reports
+    storage: not yet implemented
+    schema_ref: data_registry/schemas/lab_schema.yaml
+    routing: See governance/data_routing.md
+
+  system:
+    purpose:
+      - Schemas
+      - Routing rules
+      - Audit logs
+      - Import queue
+      - Task specs
+    storage: file system under data_registry/ and task_specs/
+    schema_ref: data_registry/schemas/
+    routing: See governance/data_routing.md

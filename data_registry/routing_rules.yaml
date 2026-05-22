@@ -1,0 +1,49 @@
+# QBot Data Registry — Routing Rules
+# Machine-readable rules for classifying data into modules.
+# Used by task spec generator and audit tools.
+
+routing_rules:
+
+  - match:
+      keywords: [bike, bicycle, frame, fork]
+    route_to: garage
+    table: bikes
+
+  - match:
+      keywords: [chain, cassette, tire, tyre, brake, rotor, wheel, saddle, seatpost,
+                 handlebar, stem, pedal, groupset, derailleur, crankset, bottom bracket,
+                 headset, fork, shock, suspension, dropper]
+    route_to: garage
+    table: components
+
+  - match:
+      keywords: [helmet, shoes, jersey, bib, shorts, jacket, vest, gloves, socks,
+                 arm warmer, leg warmer, base layer, glasses, cap, buff, bag]
+    route_to: garage
+    table: gear
+
+  - match:
+      keywords: [FTP, CP, W'bal, HRmax, body mass, weight kg, cadence preference,
+                 fit profile, physiology, vo2max]
+    route_to: rider_profile
+
+  - match:
+      keywords: [route, RWGPS, Komoot, GPX, track, surface, gravel, paved, elevation,
+                 waypoint, segment]
+    route_to: routes
+
+  - match:
+      keywords: [activity, ride, FIT, replay, summary, post-ride]
+    route_to: rides
+
+  - match:
+      keywords: [QEXT, Karoo, field config, palette, advisor model, diagnostic, fixture]
+    route_to: qext
+
+  - match:
+      keywords: [experiment, assumption, model test, validation, hypothesis]
+    route_to: lab
+
+  - match:
+      keywords: [schema, routing, audit, import, task spec]
+    route_to: system
