@@ -28,6 +28,16 @@ from qbot_operator_tools import (
     _tool_qbot_tool_usage_summary,
 )
 
+from qbot_ops_tools import (
+    _tool_qbot_backup_plan,
+    _tool_qbot_backup_status,
+    _tool_qbot_create_backup_script_preview,
+    _tool_qbot_logs_overview,
+    _tool_qbot_maintenance_report,
+    _tool_qbot_service_logs,
+    _tool_qbot_test_error_classification,
+)
+
 TOOLS_META: dict[str, dict[str, Any]] = {
     "qbot_status": {
         "description": "Podstawowe informacje o serwerze API (hostname, python, pid)",
@@ -143,6 +153,48 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {"name": "safe_to_work", "execute": False},
     },
+    "qbot_service_logs": {
+        "description": "Bezpieczny odczyt ostatnich logów wybranej usługi z journalctl (allowlista)",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {"service": "qbot-api.service", "lines": 80},
+    },
+    "qbot_logs_overview": {
+        "description": "Szybki przegląd logów wszystkich dozwolonych usług — błędy, ostrzeżenia, próbki",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {"lines": 40},
+    },
+    "qbot_backup_status": {
+        "description": "Sprawdza setup backupów: katalogi, pliki, pg_dump, wiek ostatniego backupu",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_backup_plan": {
+        "description": "Bezpieczny plan backupu — komendy do ręcznego wykonania, NIE wykonuje backupu",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_create_backup_script_preview": {
+        "description": "Podgląd skryptu backupu do ręcznego zapisania — NIE zapisuje pliku",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_test_error_classification": {
+        "description": "Klasyfikacja błędów tool_calls na testowe vs realne problemy",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {"limit": 200},
+    },
+    "qbot_maintenance_report": {
+        "description": "Zbiorczy raport operatorski — readiness, backup, logi, błędy, guard",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -165,4 +217,11 @@ TOOLS: dict[str, Any] = {
     "qbot_readiness_report": _tool_qbot_readiness_report,
     "qbot_operator_snapshot": _tool_qbot_operator_snapshot,
     "qbot_operator_runbook": _tool_qbot_operator_runbook,
+    "qbot_service_logs": _tool_qbot_service_logs,
+    "qbot_logs_overview": _tool_qbot_logs_overview,
+    "qbot_backup_status": _tool_qbot_backup_status,
+    "qbot_backup_plan": _tool_qbot_backup_plan,
+    "qbot_create_backup_script_preview": _tool_qbot_create_backup_script_preview,
+    "qbot_test_error_classification": _tool_qbot_test_error_classification,
+    "qbot_maintenance_report": _tool_qbot_maintenance_report,
 }

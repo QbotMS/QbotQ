@@ -206,6 +206,30 @@ def _tool_qbot_readiness_report(_args: dict | None = None) -> dict[str, Any]:
     elif error_rate > 0:
         warnings.append(f"Errors detected: {error_rate}% ({error_count} errors)")
 
+    try:
+        from qbot_ops_tools import _tool_qbot_test_error_classification
+        test_cls = _tool_qbot_test_error_classification({"limit": 200})
+    except Exception:
+        test_cls = {"status": "error"}
+    real_cand = test_cls.get("real_error_candidates", 0)
+    checks.append({"name": "test_error_classification",
+                   "status": "WARN" if real_cand > 0 else "OK",
+                   "detail": {"real_error_candidates": real_cand}})
+    if real_cand == 0 and error_count > 0:
+        warnings.append(f"All {error_count} errors are expected test errors — no real issues")
+
+    try:
+        from qbot_ops_tools import _tool_qbot_backup_status
+        backup = _tool_qbot_backup_status()
+    except Exception:
+        backup = {"status": "ERROR", "error": "backup check failed"}
+    checks.append({"name": "backup_status", "status": backup.get("status", "UNKNOWN"),
+                   "detail": backup})
+    if backup.get("status") == "ERROR":
+        blockers.append("Backup status check failed")
+    elif backup.get("status") == "WARN":
+        warnings.append("Backup not fully configured")
+
     svc_check = _tool_qbot_services_status()
     checks.append({"name": "services_status", "status": "OK", "detail": svc_check})
     for svc in svc_check.get("services", []):
@@ -237,6 +261,12 @@ def _tool_qbot_operator_snapshot(args: dict | None = None) -> dict[str, Any]:
     include_calls = (args or {}).get("include_recent_calls", True)
     if not isinstance(include_calls, bool):
         include_calls = bool(include_calls)
+    include_logs = (args or {}).get("include_logs", False)
+    if not isinstance(include_logs, bool):
+        include_logs = bool(include_logs)
+    include_backup = (args or {}).get("include_backup", True)
+    if not isinstance(include_backup, bool):
+        include_backup = bool(include_backup)
 
     recent_limit_raw = (args or {}).get("recent_limit", 20)
     try:
@@ -294,6 +324,26 @@ def _tool_qbot_operator_snapshot(args: dict | None = None) -> dict[str, Any]:
         except Exception as exc:
             snapshot["recent_tool_calls"] = {"error": str(exc)}
 
+    try:
+        from qbot_ops_tools import _tool_qbot_test_error_classification
+        snapshot["test_error_classification"] = _tool_qbot_test_error_classification({"limit": 200})
+    except Exception as exc:
+        snapshot["test_error_classification"] = {"error": str(exc)}
+
+    if include_backup:
+        try:
+            from qbot_ops_tools import _tool_qbot_backup_status
+            snapshot["backup_status"] = _tool_qbot_backup_status()
+        except Exception as exc:
+            snapshot["backup_status"] = {"error": str(exc)}
+
+    if include_logs:
+        try:
+            from qbot_ops_tools import _tool_qbot_logs_overview
+            snapshot["logs_overview"] = _tool_qbot_logs_overview({"lines": 30})
+        except Exception as exc:
+            snapshot["logs_overview"] = {"error": str(exc)}
+
     return snapshot
 
 
@@ -303,6 +353,9 @@ _OPERATOR_RUNBOOK_TOOLS: dict[str, list[str]] = {
     "error_review": ["qbot_error_summary", "qbot_tool_usage_summary", "qbot_recent_tool_calls"],
     "project_review": ["qbot_git_status", "qbot_project_diff_summary", "qbot_project_recent_commits", "qbot_project_guard_check"],
     "api_review": ["qbot_api_self_check", "qbot_services_status", "qbot_db_overview", "qbot_tool_usage_summary"],
+    "logs_review": ["qbot_logs_overview", "qbot_error_summary", "qbot_test_error_classification"],
+    "backup_review": ["qbot_backup_status", "qbot_backup_plan", "qbot_create_backup_script_preview"],
+    "maintenance": ["qbot_maintenance_report", "qbot_readiness_report", "qbot_project_guard_check"],
 }
 
 _ALLOWED_RUNBOOK_NAMES: set[str] = set(_OPERATOR_RUNBOOK_TOOLS.keys())
@@ -323,7 +376,14 @@ def _operator_dispatch(tool_name: str):
         "qbot_db_overview": _tool_qbot_db_overview,
         "qbot_recent_tool_calls": _tool_qbot_recent_tool_calls,
     }
-    return mapping.get(tool_name)
+    func = mapping.get(tool_name)
+    if func:
+        return func
+    try:
+        from qbot_ops_tools import _get_ops_tool
+        return _get_ops_tool(tool_name)
+    except ImportError:
+        return None
 
 
 def _tool_qbot_operator_runbook(args: dict | None = None) -> dict[str, Any]:

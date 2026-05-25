@@ -247,6 +247,55 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "required_data": ["API health", "system resources", "PostgreSQL", "git repository", "guard rules"],
         "limitations": ["Read-only snapshot", "Large response — use with caution", "No persistent storage"],
     },
+    {
+        "keywords": ["pokaż logi", "logi api", "journal", "systemd logs",
+                      "przegląd logów"],
+        "tool": "qbot_logs_overview",
+        "args": {"lines": 40},
+        "confidence": "high",
+        "required_data": ["journalctl access for allowed services"],
+        "limitations": ["Allowed services only", "Max 300 lines per service", "Lines truncated to 1000 chars"],
+    },
+    {
+        "keywords": ["backup", "status backupu", "czy backup działa"],
+        "tool": "qbot_backup_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Filesystem: /opt/qbot/backups, /var/backups/qbot"],
+        "limitations": ["Read-only check", "Does not execute backup", "Limited to allowed directories"],
+    },
+    {
+        "keywords": ["plan backupu", "jak zrobić backup", "backup plan"],
+        "tool": "qbot_backup_plan",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["None"],
+        "limitations": ["Returns plan text only", "Does not execute any commands"],
+    },
+    {
+        "keywords": ["skrypt backupu", "backup script"],
+        "tool": "qbot_create_backup_script_preview",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["None"],
+        "limitations": ["Preview only", "Does not write files", "Does not execute backup"],
+    },
+    {
+        "keywords": ["testowe błędy", "czy błędy są z testów"],
+        "tool": "qbot_test_error_classification",
+        "args": {"limit": 200},
+        "confidence": "high",
+        "required_data": ["PostgreSQL tool_calls table"],
+        "limitations": ["Based on pattern matching — may misclassify", "Requires database connection"],
+    },
+    {
+        "keywords": ["maintenance", "raport utrzymania", "raport operatorski"],
+        "tool": "qbot_maintenance_report",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["API health", "PostgreSQL", "git", "guard", "backup", "logs"],
+        "limitations": ["Read-only composite report", "Large response", "Aggregates multiple tools"],
+    },
 ]
 
 _EXAMPLES = [
@@ -270,6 +319,12 @@ _EXAMPLES = [
     "użycie narzędzi",
     "snapshot",
     "pełna diagnostyka operatora",
+    "pokaż logi",
+    "status backupu",
+    "plan backupu",
+    "skrypt backupu",
+    "testowe błędy",
+    "raport utrzymania",
 ]
 
 _MULTI_TOOL_SETS: dict[str, list[str]] = {
