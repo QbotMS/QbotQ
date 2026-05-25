@@ -57,6 +57,34 @@ configuration.
   `qgpt_client.py`.
 - Daily report Telegram send now rejects empty message bodies.
 
+## Public MCP
+
+- Public ChatGPT connector URL stays `https://qbot.cytr.us/mcp/`.
+- Public `/mcp/` is routed through nginx to `qbot-api.service` on `127.0.0.1:8001`.
+- Public `/q` and `/health` remain blocked with `404`.
+- Adapter file: `qbot_mcp_adapter.py`.
+- Exposed MCP tools:
+  - `qbot.status`
+  - `qbot.readiness`
+  - `qbot.ask`
+  - `qbot.runbook`
+  - `qbot.context_bundle`
+  - `qbot.artifact_create` requires MCP token and is disabled without one
+  - `qbot.artifact_list`
+  - `qbot.artifact_get`
+  - `qbot.tool_policy`
+  - `qbot.telegram_status`
+- Diagnostics added:
+  - `qbot_mcp_status`
+  - `qbot_mcp_tools_list`
+  - `qbot_mcp_call_preview`
+- Added query/runbook support:
+  - `mcp status` / `czy mcp działa`
+  - `mcp tools` / `lista narzędzi mcp`
+  - `mcp_connector_review`
+- Current adapter status: `WARN` because no MCP token is configured, but read-only
+  MCP routes are live and `/mcp/health` and `/mcp/tools` work locally and through nginx.
+
 ## Email
 
 - Gmail credentials are configured in `.env` as `GMAIL_USER`,
