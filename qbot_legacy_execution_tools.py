@@ -8,9 +8,7 @@ from typing import Any
 from qbot_tools import _tool_qbot_project_guard_check
 
 _QLAB_ENDPOINTS: list[str] = [
-    "http://127.0.0.1:8000/health",
-    "http://127.0.0.1:8000/",
-    "http://127.0.0.1:8000/status",
+    "http://127.0.0.1:8899/health",
 ]
 
 

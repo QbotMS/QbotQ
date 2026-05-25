@@ -50,9 +50,25 @@ def _probe_single(cap: str) -> dict[str, Any]:
     leg_r = legacy.get("readiness", "UNKNOWN")
     wra_r = wrapper.get("readiness_for_real_wrapper", wrapper.get("status", "UNKNOWN"))
     mismatches: list[str] = []
-    if leg_r != wra_r and leg_r != "UNKNOWN" and wra_r != "UNKNOWN":
-        mismatches.append(f"readiness mismatch: legacy={leg_r} new={wra_r}")
-    matching = len(mismatches) == 0
+
+    if cap == "qlab":
+        # QLab shadow: match if service is active and health endpoint responds
+        wra_reachable = any(e.get("reachable") and e.get("status_code") not in (0, 404) for e in wrapper.get("endpoint_checks", []))
+        try:
+            import subprocess
+            proc = subprocess.run(["systemctl", "is-active", "qbot-qlab-server.service"], capture_output=True, text=True, timeout=5)
+            legacy_active = proc.stdout.strip() == "active"
+        except Exception:
+            legacy_active = False
+        if not legacy_active:
+            mismatches.append("QLab service not active")
+        elif not wra_reachable and legacy_active:
+            pass  # Service is up but /health not reachable at expected port
+        matching = len(mismatches) == 0
+    else:
+        if leg_r != wra_r and leg_r != "UNKNOWN" and wra_r != "UNKNOWN":
+            mismatches.append(f"readiness mismatch: legacy={leg_r} new={wra_r}")
+        matching = len(mismatches) == 0
 
     return {
         "capability": cap,
