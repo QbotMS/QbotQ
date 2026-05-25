@@ -113,6 +113,15 @@ from qbot_artifact_tools import (
     _tool_qbot_workspace_write_file_preview,
 )
 
+from qbot_external_llm_tools import (
+    _tool_qbot_chatgpt_decision_record_create,
+    _tool_qbot_chatgpt_prompt_pack,
+    _tool_qbot_external_context_bundle,
+    _tool_qbot_external_llm_policy,
+    _tool_qbot_external_llm_status,
+    _tool_qbot_external_llm_workflow_guide,
+)
+
 from qbot_ops_tools import (
     _tool_qbot_backup_plan,
     _tool_qbot_backup_status,
@@ -593,6 +602,42 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {"relative_path": "reports/test.md", "content": "# test"},
     },
+    "qbot_external_llm_status": {
+        "description": "Status trybu External LLM — ChatGPT Plus zewnętrzny, API disabled",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_external_llm_policy": {
+        "description": "Polityka modeli — ChatGPT external primary, DeepSeek dev-only",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_external_context_bundle": {
+        "description": "Przygotowuje zsanitizowany kontekst dla zewnętrznej sesji ChatGPT Plus",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {"topic": "operational_status", "max_chars": 12000},
+    },
+    "qbot_chatgpt_prompt_pack": {
+        "description": "Generuje gotowy prompt do wklejenia w ChatGPT Plus — rola, kontekst, ograniczenia",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {"topic": "operational_status", "task": "...", "style": "concise"},
+    },
+    "qbot_chatgpt_decision_record_create": {
+        "description": "Zapisuje decyzję z ChatGPT jako decision_record w PostgreSQL",
+        "category": "artifact",
+        "safe": True,
+        "args_schema": {"title": "...", "decision": "...", "rationale": "...", "tags": []},
+    },
+    "qbot_external_llm_workflow_guide": {
+        "description": "Instrukcja workflow: context bundle → prompt pack → ChatGPT → decision record",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -673,4 +718,10 @@ TOOLS: dict[str, Any] = {
     "qbot_artifact_list": _tool_qbot_artifact_list,
     "qbot_artifact_get": _tool_qbot_artifact_get,
     "qbot_workspace_write_file_preview": _tool_qbot_workspace_write_file_preview,
+    "qbot_external_llm_status": _tool_qbot_external_llm_status,
+    "qbot_external_llm_policy": _tool_qbot_external_llm_policy,
+    "qbot_external_context_bundle": _tool_qbot_external_context_bundle,
+    "qbot_chatgpt_prompt_pack": _tool_qbot_chatgpt_prompt_pack,
+    "qbot_chatgpt_decision_record_create": _tool_qbot_chatgpt_decision_record_create,
+    "qbot_external_llm_workflow_guide": _tool_qbot_external_llm_workflow_guide,
 }

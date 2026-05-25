@@ -626,6 +626,46 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "required_data": ["Tool registry"],
         "limitations": ["Static listing"],
     },
+    {
+        "keywords": ["tryb external llm", "status llm external", "czy chatgpt jest główny"],
+        "tool": "qbot_external_llm_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["None"],
+        "limitations": ["Static status", "No secrets exposed"],
+    },
+    {
+        "keywords": ["polityka modeli", "hierarchia modeli", "model hierarchy"],
+        "tool": "qbot_external_llm_policy",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["None"],
+        "limitations": ["Static policy document"],
+    },
+    {
+        "keywords": ["przygotuj kontekst dla chatgpt", "context bundle", "pakiet kontekstu"],
+        "tool": "qbot_external_context_bundle",
+        "args": {"topic": "operational_status"},
+        "confidence": "high",
+        "required_data": ["Qbot operational tools"],
+        "limitations": ["Sanitized output", "No secrets", "Truncated to max_chars"],
+    },
+    {
+        "keywords": ["prompt dla chatgpt", "chatgpt prompt pack", "przygotuj prompt"],
+        "tool": "qbot_chatgpt_prompt_pack",
+        "args": {"topic": "operational_status", "task": "Summarize status", "style": "concise"},
+        "confidence": "high",
+        "required_data": ["Qbot context bundle"],
+        "limitations": ["Ready-to-paste prompt", "No secrets", "ChatGPT Plus external only"],
+    },
+    {
+        "keywords": ["workflow chatgpt", "jak używać chatgpt z qbot"],
+        "tool": "qbot_external_llm_workflow_guide",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["None"],
+        "limitations": ["Instructional only", "Step-by-step guide"],
+    },
 ]
 
 _EXAMPLES = [

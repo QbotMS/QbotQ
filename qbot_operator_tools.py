@@ -476,6 +476,8 @@ _OPERATOR_RUNBOOK_TOOLS: dict[str, list[str]] = {
     "legacy_post_cutover_check": ["qbot_legacy_cutover_status", "qbot_operator_final_smoke_test", "qbot_readiness_report", "qbot_legacy_rollback_plan"],
     "llm_planner_review": ["qbot_llm_provider_status", "qbot_tool_policy_list", "qbot_llm_boundary_policy", "qbot_llm_plan_query"],
     "smart_query_demo": ["qbot_llm_run_query", "qbot_policy_validate_plan"],
+    "external_llm_review": ["qbot_external_llm_status", "qbot_external_llm_policy", "qbot_tool_policy_list", "qbot_llm_boundary_policy"],
+    "chatgpt_context_review": ["qbot_external_context_bundle", "qbot_chatgpt_prompt_pack", "qbot_external_llm_workflow_guide"],
 }
 
 _ALLOWED_RUNBOOK_NAMES: set[str] = set(_OPERATOR_RUNBOOK_TOOLS.keys())
@@ -543,7 +545,14 @@ def _operator_dispatch(tool_name: str):
         pass
     try:
         from qbot_legacy_cutover_tools import _get_legacy_cutover_tool
-        return _get_legacy_cutover_tool(tool_name)
+        func = _get_legacy_cutover_tool(tool_name)
+        if func:
+            return func
+    except ImportError:
+        pass
+    try:
+        from qbot_external_llm_tools import _get_external_llm_tool
+        return _get_external_llm_tool(tool_name)
     except ImportError:
         return None
 
