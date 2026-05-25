@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 import smtplib, sys
 from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
 from email.mime.text import MIMEText
 sys.path.insert(0, '/opt/qbot/app')
 import db
@@ -72,12 +73,23 @@ def send_telegram(msg):
 
 # ═══════════════════════════════════════════════════════ NOWE FUNKCJE v2 ══════
 
-def send_email(subject, html):
-    msg = MIMEMultipart('alternative')
+def send_email(subject, html, inline_image_path=None, inline_image_cid=None):
+    if inline_image_path and inline_image_cid:
+        msg = MIMEMultipart('related')
+        alt = MIMEMultipart('alternative')
+        alt.attach(MIMEText(html, 'html', 'utf-8'))
+        msg.attach(alt)
+        image_bytes = Path(inline_image_path).read_bytes()
+        image = MIMEImage(image_bytes)
+        image.add_header('Content-ID', f'<{inline_image_cid}>')
+        image.add_header('Content-Disposition', 'inline', filename=Path(inline_image_path).name)
+        msg.attach(image)
+    else:
+        msg = MIMEMultipart('alternative')
+        msg.attach(MIMEText(html, 'html', 'utf-8'))
     msg['Subject'] = subject
     msg['From']    = GMAIL_USER
     msg['To']      = EMAIL_TO
-    msg.attach(MIMEText(html, 'html', 'utf-8'))
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as s:
         s.login(GMAIL_USER, GMAIL_PASS)
         s.send_message(msg)
@@ -309,10 +321,14 @@ except:
 
 # Garmin
 garmin = mcp_call("get_garmin_wellness", {"date": today.isoformat()}) or {}
+_garmin_sleep = garmin.get("sen") or {}
+_intervals_sleep_secs = w_today.get("sleepSecs")
+_intervals_sleep_h = round(_intervals_sleep_secs / 3600, 1) if _intervals_sleep_secs is not None else None
+_now_hour = datetime.now().hour
 
 # Guard: dane snu
-_sleep_ok = bool(w_today.get("sleepSecs") or (garmin.get("hrv") or {}).get("srednia_noc"))
-_now_hour = datetime.now().hour
+# Garmin jest źródłem priorytetowym po przebudzeniu; Intervals jest fallbackiem.
+_sleep_ok = _garmin_sleep.get("czas_h") is not None or (_now_hour >= 9 and _intervals_sleep_h is not None)
 if not _sleep_ok:
     if _now_hour < 9:
         print(f"⏳ Brak danych snu, czekam (teraz {_now_hour}:xx, deadline 9:00).")
@@ -375,11 +391,22 @@ _data = {
         "godzinowa": pogoda_godzinowa,
     },
     "sen": {
-        "czas_h": round(w_today.get("sleepSecs", 0) / 3600, 1),
-        "score": w_today.get("sleepScore"),
-        "ocena": (garmin.get("sen") or {}).get("ocena"),
-        "gleboki_min": (garmin.get("sen") or {}).get("gleboki_min"),
-        "rem_min": (garmin.get("sen") or {}).get("rem_min"),
+        "czas_h": round(
+            (
+                _garmin_sleep.get("czas_h")
+                if _garmin_sleep.get("czas_h") is not None
+                else (_intervals_sleep_h or 0)
+            ),
+            1,
+        ),
+        "score": (
+            _garmin_sleep.get("score")
+            if _garmin_sleep.get("score") is not None
+            else w_today.get("sleepScore")
+        ),
+        "ocena": _garmin_sleep.get("ocena") if _garmin_sleep.get("ocena") is not None else None,
+        "gleboki_min": _garmin_sleep.get("gleboki_min") if _garmin_sleep.get("gleboki_min") is not None else None,
+        "rem_min": _garmin_sleep.get("rem_min") if _garmin_sleep.get("rem_min") is not None else None,
     },
     "regeneracja": {
         "hrv": w_today.get("hrv"),
@@ -570,7 +597,9 @@ def _fallback_ai(prompt):
 _tg = _fallback_telegram()
 
 # ── Email: pe\u0142na wersja HTML ─────────────────────────────────────────────────
-_email_html = _et.render(_data, _ai)
+_banner_path = Path("/opt/qbot/app/outgoing/banners/tuscany_gravel_banner.png")
+_banner_cid = "tuscany-gravel-banner"
+_email_html = _et.render(_data, _ai, banner_cid=_banner_cid if _banner_path.exists() else None)
 
 # ── Wysy\u0142ka ─────────────────────────────────────────────────────────────────
 _sent_state = sent_state_today()
@@ -589,7 +618,12 @@ if _channels.get("email") == "sent":
 else:
     print("\U0001f4e7 Wysy\u0142am email...")
     try:
-        send_email(f"\U0001f6b4 Q-raport {today:%d.%m.%Y}", _email_html)
+        send_email(
+            f"\U0001f6b4 Q-raport {today:%d.%m.%Y}",
+            _email_html,
+            inline_image_path=_banner_path if _banner_path.exists() else None,
+            inline_image_cid=_banner_cid if _banner_path.exists() else None,
+        )
         _channels["email"] = "sent"
         mark_sent(_channels)
         print("\u2705 Email wys\u0142any!")
