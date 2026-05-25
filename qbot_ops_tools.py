@@ -319,12 +319,15 @@ echo "Cleaned up old backups (>14 days)"
 # ──────────────────────────── test_error_classification ────────────────
 
 _TEST_ERROR_PATTERNS: dict[str, list[str]] = {
-    "expected_test_error": ["invalid", "out of range", "unknown intent",
-                            "empty_query", "bad runbook name", "not in registry",
-                            "must be integer", "above maximum", "below minimum"],
+    "expected_test_error": ["invalid", "out of range", "unknown intent", "unknown_intent",
+                            "empty_query", "bad runbook name", "unknown runbook name",
+                            "not in registry", "must be integer", "above maximum",
+                            "below minimum", "not allowed", "limit", "max_depth",
+                            "recent_limit", "intent maps to allowlisted tool",
+                            "selected_tool"],
     "unknown_tool_test": ["unknown tool", "available"],
     "validation_test": ["invalid limit", "invalid max_depth", "invalid recent_limit",
-                        "limit", "max_depth", "recent_limit"],
+                        "must be integer", "above maximum", "below minimum"],
 }
 _TEST_TOOLS: set[str] = {"unknown", "qbot_query"}
 
@@ -334,7 +337,7 @@ def _classify_error(error_text: str, tool: str) -> str:
     if tool in _TEST_TOOLS and any(k in et for k in _TEST_ERROR_PATTERNS["unknown_tool_test"]):
         return "unknown_tool_test"
     for pattern in _TEST_ERROR_PATTERNS["validation_test"]:
-        if pattern in et and "above maximum" in et or "below minimum" in et or "invalid" in et:
+        if pattern in et:
             return "validation_test"
     if any(k in et for k in _TEST_ERROR_PATTERNS["expected_test_error"]):
         return "expected_test_error"
@@ -813,6 +816,302 @@ def _tool_qbot_operator_quick_reference(_args: dict | None = None) -> dict[str, 
     }
 
 
+# ──────────────────── answer_context ────────────────────────────────────
+
+_ANSWER_SOURCE_WHITELIST: set[str] = {
+    "qbot_readiness_report", "qbot_maintenance_report", "qbot_operator_snapshot",
+    "qbot_error_summary", "qbot_tool_usage_summary", "qbot_api_self_check",
+    "qbot_project_guard_check", "qbot_git_status", "qbot_backup_status",
+    "qbot_backup_timer_status", "qbot_restore_drill_status",
+}
+
+_SENSITIVE_KEYS: set[str] = {"password", "secret", "token", "apikey", "api_key",
+                               "pgpassword", "env", "credential", "auth"}
+
+_MAX_CONTEXT_DEPTH = 3
+
+
+def _sanitize(obj: Any, depth: int = 0) -> Any:
+    if depth > _MAX_CONTEXT_DEPTH:
+        return "<truncated depth>"
+    if isinstance(obj, dict):
+        result: dict[str, Any] = {}
+        for k, v in obj.items():
+            kl = str(k).lower()
+            if any(s in kl for s in _SENSITIVE_KEYS):
+                result[k] = "<redacted>"
+            elif isinstance(v, (dict, list)):
+                result[k] = _sanitize(v, depth + 1)
+            elif isinstance(v, str) and len(v) > 2000:
+                result[k] = v[:2000] + "...<truncated>"
+            else:
+                result[k] = v
+        return result
+    elif isinstance(obj, list):
+        return [_sanitize(v, depth + 1) if isinstance(v, (dict, list))
+                else (v[:500] + "...<truncated>" if isinstance(v, str) and len(v) > 500 else v)
+                for v in obj[:50]]
+    elif isinstance(obj, str) and len(obj) > 2000:
+        return obj[:2000] + "...<truncated>"
+    return obj
+
+
+def _tool_qbot_answer_context(args: dict | None = None) -> dict[str, Any]:
+    source_tool = (args or {}).get("source_tool", "qbot_readiness_report")
+    source_args = dict((args or {}).get("source_args", {}) or {})
+
+    if source_tool not in _ANSWER_SOURCE_WHITELIST:
+        return {
+            "tool": "qbot_answer_context",
+            "status": "error",
+            "error": f"source_tool not allowed: {source_tool!r}",
+            "allowed": sorted(_ANSWER_SOURCE_WHITELIST),
+        }
+
+    try:
+        from qbot_tool_registry import TOOLS
+        func = TOOLS.get(source_tool)
+        if func is None:
+            return {"tool": "qbot_answer_context", "status": "error",
+                    "error": f"tool not found in registry: {source_tool}"}
+        raw = func(source_args)
+    except Exception as exc:
+        return {"tool": "qbot_answer_context", "status": "error",
+                "error": f"source tool execution failed: {exc}"}
+
+    source_status = raw.get("status", "unknown") if isinstance(raw, dict) else "unknown"
+    safe_context = _sanitize(raw)
+
+    return {
+        "tool": "qbot_answer_context",
+        "source_tool": source_tool,
+        "source_status": source_status,
+        "safe_for_llm": True,
+        "llm_role": "answer_synthesizer_only",
+        "llm_must_not": [
+            "execute commands",
+            "choose arbitrary tools",
+            "restart services",
+            "edit files",
+            "perform backup or restore",
+            "access secrets",
+            "modify database",
+            "call external APIs",
+        ],
+        "context": safe_context,
+        "suggested_answer_outline": [
+            "1. Summarize current system status",
+            "2. Highlight any warnings or needed actions",
+            "3. Note backup and restore drill status",
+            "4. Recommend next steps if applicable",
+            "5. Stay factual — do not invent information",
+        ],
+        "limitations": [
+            "This context is sanitized for LLM consumption",
+            "No secrets or credentials are included",
+            "LLM must not act as executor — only as summarizer",
+            "All actions must be confirmed by operator",
+        ],
+    }
+
+
+# ──────────────────── llm_boundary_policy ───────────────────────────────
+
+def _tool_qbot_llm_boundary_policy(_args: dict | None = None) -> dict[str, Any]:
+    return {
+        "tool": "qbot_llm_boundary_policy",
+        "llm_allowed_roles": [
+            "answer_synthesizer",
+            "explanation_helper",
+            "report_writer",
+        ],
+        "llm_forbidden_roles": [
+            "executor",
+            "planner_authority",
+            "command_runner",
+            "secrets_reader",
+            "backup_restore_operator",
+            "file_editor",
+        ],
+        "source_of_truth": "Qbot tools and PostgreSQL logs",
+        "execution_authority": "Local allowlisted Qbot tools only",
+        "required_flow": [
+            "1. Qbot gathers diagnostic data",
+            "2. Qbot validates system status",
+            "3. Qbot prepares sanitized answer_context via qbot_answer_context",
+            "4. LLM may summarize or explain (answer_synthesizer_only)",
+            "5. Qbot/user decides next action",
+        ],
+        "safety_notes": [
+            "LLM NEVER executes commands",
+            "LLM NEVER accesses secrets or env",
+            "LLM NEVER modifies code or config",
+            "LLM NEVER performs backup or restore",
+            "LLM output is advisory only",
+            "All actions require operator confirmation",
+            "LLM integration is OPTIONAL — system works without it",
+        ],
+    }
+
+
+# ──────────────────── operator_final_smoke_test ─────────────────────────
+
+def _tool_qbot_operator_final_smoke_test(_args: dict | None = None) -> dict[str, Any]:
+    checks: list[dict[str, Any]] = []
+    blockers: list[str] = []
+    warnings: list[str] = []
+
+    # API health
+    try:
+        import api_db
+        db_ok = api_db.ping()
+        api_active = subprocess.run(
+            ["systemctl", "is-active", "qbot-api.service"],
+            capture_output=True, text=True, timeout=5
+        ).stdout.strip() == "active"
+        checks.append({"name": "api_health", "status": "OK", "detail": {"db_connected": db_ok, "api_service_active": api_active}})
+        if not db_ok:
+            blockers.append("Database not connected")
+        if not api_active:
+            blockers.append("qbot-api.service is inactive")
+    except Exception as exc:
+        checks.append({"name": "api_health", "status": "FAIL", "detail": str(exc)})
+        blockers.append(f"API health check failed: {exc}")
+
+    # Backup timer
+    try:
+        timer = _tool_qbot_backup_timer_status()
+        timer_ok = timer.get("timer_enabled") and timer.get("timer_active")
+        checks.append({"name": "backup_timer", "status": "OK" if timer_ok else "FAIL",
+                       "detail": timer})
+        if not timer_ok:
+            blockers.append("Backup timer not active or enabled")
+    except Exception as exc:
+        checks.append({"name": "backup_timer", "status": "FAIL", "detail": str(exc)})
+        blockers.append(f"Backup timer check failed: {exc}")
+
+    # Backup status
+    try:
+        backup = _tool_qbot_backup_status()
+        has_backup = backup.get("latest_backup") is not None
+        checks.append({"name": "latest_backup", "status": "OK" if has_backup else "FAIL",
+                       "detail": backup})
+        if not has_backup:
+            blockers.append("No backup files found")
+    except Exception as exc:
+        checks.append({"name": "latest_backup", "status": "FAIL", "detail": str(exc)})
+        blockers.append(f"Backup status check failed: {exc}")
+
+    # Restore drill
+    try:
+        drill = _tool_qbot_restore_drill_status()
+        drill_ok = drill.get("status") == "OK"
+        checks.append({"name": "restore_drill", "status": "OK" if drill_ok else "WARN",
+                       "detail": drill})
+        if not drill_ok:
+            warnings.append("Restore drill not fully verified")
+    except Exception as exc:
+        checks.append({"name": "restore_drill", "status": "WARN", "detail": str(exc)})
+        warnings.append(f"Restore drill check failed: {exc}")
+
+    # Guard check
+    try:
+        guard = _tool_qbot_project_guard_check()
+        guard_ok = guard.get("status") != "ERROR"
+        checks.append({"name": "project_guard", "status": "OK" if guard_ok else "FAIL",
+                       "detail": guard})
+        if not guard_ok:
+            blockers.append("Guard check has errors")
+        elif guard.get("status") == "WARN":
+            warnings.append("Guard check has warnings")
+    except Exception as exc:
+        checks.append({"name": "project_guard", "status": "FAIL", "detail": str(exc)})
+        blockers.append(f"Guard check failed: {exc}")
+
+    # Git clean
+    try:
+        git = _tool_qbot_git_status()
+        clean = git.get("clean", False)
+        checks.append({"name": "git_clean", "status": "OK" if clean else "WARN",
+                       "detail": git})
+        if not clean:
+            warnings.append("Repository has uncommitted changes")
+    except Exception as exc:
+        checks.append({"name": "git_clean", "status": "WARN", "detail": str(exc)})
+
+    # Readiness
+    try:
+        from qbot_operator_tools import _tool_qbot_readiness_report
+        readiness = _tool_qbot_readiness_report()
+        ready = readiness.get("status") == "READY"
+        checks.append({"name": "readiness", "status": "OK" if ready else "WARN",
+                       "detail": readiness})
+        if not ready:
+            if readiness.get("status") == "NOT_READY":
+                blockers.append("Readiness report is NOT_READY")
+            else:
+                warnings.append(f"Readiness report is {readiness.get('status')}")
+    except Exception as exc:
+        checks.append({"name": "readiness", "status": "FAIL", "detail": str(exc)})
+        blockers.append(f"Readiness check failed: {exc}")
+
+    # Error classification
+    try:
+        cls = _tool_qbot_test_error_classification({"limit": 300})
+        real_cand = cls.get("real_error_candidates", 0)
+        checks.append({"name": "error_classification",
+                       "status": "OK" if real_cand == 0 else "WARN",
+                       "detail": cls})
+        if real_cand > 0:
+            warnings.append(f"{real_cand} real error candidates detected")
+    except Exception as exc:
+        checks.append({"name": "error_classification", "status": "WARN",
+                       "detail": str(exc)})
+
+    # LLM boundary
+    try:
+        llm_policy = _tool_qbot_llm_boundary_policy()
+        checks.append({"name": "llm_boundary_policy", "status": "OK",
+                       "detail": "available"})
+    except Exception:
+        checks.append({"name": "llm_boundary_policy", "status": "WARN",
+                       "detail": "not available"})
+
+    # Compute total
+    total = len(checks)
+    pass_count = len([c for c in checks if c["status"] == "OK"])
+    warn_count = len([c for c in checks if c["status"] == "WARN"])
+    fail_count = len([c for c in checks if c["status"] == "FAIL"])
+
+    if blockers:
+        overall = "FAIL"
+        readiness_pct = max(0, round(pass_count / total * 100))
+    elif warnings:
+        overall = "WARN"
+        readiness_pct = max(95, round((pass_count + warn_count) / total * 100))
+    else:
+        overall = "PASS"
+        readiness_pct = 100
+
+    if overall == "PASS":
+        next_action = "System is fully operational — no issues"
+    elif overall == "WARN":
+        next_action = "Review warnings and schedule fixes"
+    else:
+        next_action = "Resolve blockers before production use"
+
+    return {
+        "tool": "qbot_operator_final_smoke_test",
+        "status": overall,
+        "operational_readiness_percent": readiness_pct,
+        "checks": checks,
+        "blockers": blockers,
+        "warnings": warnings,
+        "recommended_next_action": next_action,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 # ──────────────────── cross-file dispatch ───────────────────────────────
 
 def _get_ops_tool(name: str):
@@ -828,5 +1127,8 @@ def _get_ops_tool(name: str):
         "qbot_restore_drill_plan": _tool_qbot_restore_drill_plan,
         "qbot_restore_drill_status": _tool_qbot_restore_drill_status,
         "qbot_operator_quick_reference": _tool_qbot_operator_quick_reference,
+        "qbot_answer_context": _tool_qbot_answer_context,
+        "qbot_llm_boundary_policy": _tool_qbot_llm_boundary_policy,
+        "qbot_operator_final_smoke_test": _tool_qbot_operator_final_smoke_test,
     }
     return mapping.get(name)

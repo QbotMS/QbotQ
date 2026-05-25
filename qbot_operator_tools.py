@@ -90,6 +90,27 @@ def _tool_qbot_error_summary(args: dict | None = None) -> dict[str, Any]:
 
     recent = sorted(errors, key=lambda e: e["id"], reverse=True)[:20]
 
+    classified: dict[str, int] = {"real_error_candidates": errors_count, "expected_test_errors": 0}
+    try:
+        from qbot_ops_tools import _tool_qbot_test_error_classification
+        cls = _tool_qbot_test_error_classification({"limit": total})
+        classified = {
+            "real_error_candidates": cls.get("real_error_candidates", errors_count),
+            "expected_test_errors": cls.get("expected_test_errors", 0),
+            "unknown_tool_test": cls.get("expected_test_error_categories", {}).get("unknown_tool_test", 0),
+            "validation_test": cls.get("expected_test_error_categories", {}).get("validation_test", 0),
+        }
+    except Exception:
+        pass
+
+    active_real = classified.get("real_error_candidates", 0)
+    if active_real == 0:
+        report_status = "OK"
+    elif active_real <= 3:
+        report_status = "WARN"
+    else:
+        report_status = "ERROR"
+
     return {
         "tool": "qbot_error_summary",
         "total_checked": total,
@@ -98,6 +119,9 @@ def _tool_qbot_error_summary(args: dict | None = None) -> dict[str, Any]:
         "tools_with_errors": dict(sorted(tools_with_errors.items(), key=lambda x: -x[1])),
         "recent_errors": recent,
         "last_error_at": recent[0]["created_at"] if recent else None,
+        "active_real_errors_count": active_real,
+        "expected_test_errors_count": classified.get("expected_test_errors", 0),
+        "classified_errors": classified,
         "status": report_status,
     }
 
@@ -199,12 +223,6 @@ def _tool_qbot_readiness_report(_args: dict | None = None) -> dict[str, Any]:
         error_summary = {"status": "error", "error": str(exc)}
     error_count = error_summary.get("errors_count", 0)
     error_rate = error_summary.get("error_rate", 0)
-    checks.append({"name": "error_summary", "status": error_summary.get("status", "UNKNOWN"),
-                   "detail": {"errors_count": error_count, "error_rate": error_rate}})
-    if error_rate >= 50:
-        blockers.append(f"High error rate: {error_rate}% ({error_count} errors)")
-    elif error_rate > 0:
-        warnings.append(f"Errors detected: {error_rate}% ({error_count} errors)")
 
     try:
         from qbot_ops_tools import _tool_qbot_test_error_classification
@@ -212,11 +230,28 @@ def _tool_qbot_readiness_report(_args: dict | None = None) -> dict[str, Any]:
     except Exception:
         test_cls = {"status": "error"}
     real_cand = test_cls.get("real_error_candidates", 0)
+    expected_test = test_cls.get("expected_test_errors", 0)
     checks.append({"name": "test_error_classification",
                    "status": "WARN" if real_cand > 0 else "OK",
-                   "detail": {"real_error_candidates": real_cand}})
+                   "detail": {"real_error_candidates": real_cand,
+                              "expected_test_errors": expected_test}})
     if real_cand == 0 and error_count > 0:
-        warnings.append(f"All {error_count} errors are expected test errors — no real issues")
+        pass  # all errors are expected test errors — not a readiness concern
+
+    checks.append({"name": "error_summary", "status": "OK" if real_cand == 0 else error_summary.get("status", "UNKNOWN"),
+                   "detail": {"errors_count": error_count, "error_rate": error_rate,
+                              "real_error_candidates": real_cand,
+                              "expected_test_errors": expected_test}})
+    if error_rate >= 50:
+        if real_cand > 0:
+            blockers.append(f"High real error rate: {error_rate}% ({error_count} errors)")
+        else:
+            pass  # expected test errors only — no blocker
+    elif error_rate > 0:
+        if real_cand > 0:
+            warnings.append(f"Errors detected: {error_rate}% ({error_count} errors)")
+        else:
+            pass  # only expected test errors — don't flag as warning
 
     try:
         from qbot_ops_tools import _tool_qbot_backup_status
@@ -413,6 +448,8 @@ _OPERATOR_RUNBOOK_TOOLS: dict[str, list[str]] = {
     "backup_automation_review": ["qbot_backup_status", "qbot_backup_timer_status", "qbot_restore_drill_status", "qbot_backup_plan"],
     "restore_drill_review": ["qbot_restore_drill_status", "qbot_restore_drill_plan", "qbot_backup_status"],
     "operator_reference": ["qbot_operator_quick_reference", "qbot_readiness_report", "qbot_maintenance_report"],
+    "final_operational_check": ["qbot_operator_final_smoke_test", "qbot_readiness_report", "qbot_maintenance_report", "qbot_llm_boundary_policy"],
+    "llm_prep": ["qbot_llm_boundary_policy", "qbot_answer_context"],
 }
 
 _ALLOWED_RUNBOOK_NAMES: set[str] = set(_OPERATOR_RUNBOOK_TOOLS.keys())

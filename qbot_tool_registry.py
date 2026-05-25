@@ -40,6 +40,9 @@ from qbot_ops_tools import (
     _tool_qbot_restore_drill_status,
     _tool_qbot_service_logs,
     _tool_qbot_test_error_classification,
+    _tool_qbot_answer_context,
+    _tool_qbot_llm_boundary_policy,
+    _tool_qbot_operator_final_smoke_test,
 )
 
 TOOLS_META: dict[str, dict[str, Any]] = {
@@ -223,6 +226,24 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_answer_context": {
+        "description": "Przygotowuje bezpieczny, zsanitizowany kontekst dla przyszłego LLM answer synthesizer",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {"source_tool": "qbot_readiness_report", "source_args": {}},
+    },
+    "qbot_llm_boundary_policy": {
+        "description": "Statyczna polityka granicy LLM — role, ograniczenia, flow",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_operator_final_smoke_test": {
+        "description": "Zbiorczy test finalny sprawdzający full operational readiness",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -256,4 +277,7 @@ TOOLS: dict[str, Any] = {
     "qbot_restore_drill_plan": _tool_qbot_restore_drill_plan,
     "qbot_restore_drill_status": _tool_qbot_restore_drill_status,
     "qbot_operator_quick_reference": _tool_qbot_operator_quick_reference,
+    "qbot_answer_context": _tool_qbot_answer_context,
+    "qbot_llm_boundary_policy": _tool_qbot_llm_boundary_policy,
+    "qbot_operator_final_smoke_test": _tool_qbot_operator_final_smoke_test,
 }

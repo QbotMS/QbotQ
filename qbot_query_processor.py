@@ -336,6 +336,31 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "required_data": ["API health", "systemd services", "PostgreSQL", "git", "guard", "backup"],
         "limitations": ["Local checks only", "Does not verify external dependencies"],
     },
+    {
+        "keywords": ["czy qbot jest gotowy finalnie", "final smoke test",
+                      "pełny test końcowy"],
+        "tool": "qbot_operator_final_smoke_test",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["All operator subsystems"],
+        "limitations": ["Read-only final check", "Reports operational readiness %", "No actions taken"],
+    },
+    {
+        "keywords": ["kontekst dla llm", "answer context", "przygotuj odpowiedź"],
+        "tool": "qbot_answer_context",
+        "args": {"source_tool": "qbot_readiness_report", "source_args": {}},
+        "confidence": "high",
+        "required_data": ["Readiness report data"],
+        "limitations": ["Sanitizes data for LLM", "Removes secrets", "No LLM call", "Truncates large fields"],
+    },
+    {
+        "keywords": ["polityka llm", "llm boundary", "zasady llm"],
+        "tool": "qbot_llm_boundary_policy",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["None"],
+        "limitations": ["Static policy document", "Educational only"],
+    },
 ]
 
 _EXAMPLES = [
@@ -370,6 +395,9 @@ _EXAMPLES = [
     "plan restore",
     "ściąga operatora",
     "czy qbot jest w pełni gotowy",
+    "czy qbot jest gotowy finalnie",
+    "polityka llm",
+    "kontekst dla llm",
 ]
 
 _MULTI_TOOL_SETS: dict[str, list[str]] = {
