@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Qbot PostgreSQL backup
+Requires=qbot-backup.service
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
