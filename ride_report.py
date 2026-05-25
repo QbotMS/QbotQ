@@ -85,7 +85,8 @@ def _safe_float(value, default=None):
     if value in (None, ""):
         return default
     try:
-        return float(value)
+        text = str(value).strip().replace("%", "").replace(",", ".")
+        return float(text)
     except (TypeError, ValueError):
         return default
 
@@ -122,6 +123,100 @@ def _format_metric(value, suffix="", digits=0):
         return f"{round(f, digits)}{suffix}"
     except (TypeError, ValueError):
         return f"{value}{suffix}"
+
+def _surface_label(label):
+    if not label:
+        return "nieznana"
+    raw = str(label).strip().lower()
+    return {
+        "asphalt": "asfalt",
+        "paved": "asfalt",
+        "concrete": "beton",
+        "concrete:plates": "płyty betonowe",
+        "cobblestone": "kostka brukowa",
+        "sett": "kostka brukowa",
+        "paving_stones": "kostka brukowa",
+        "gravel": "gravel/żwir",
+        "fine_gravel": "gravel drobny",
+        "compacted": "ubita nawierzchnia",
+        "dirt": "ziemia/grunt",
+        "ground": "grunt",
+        "earth": "grunt",
+        "grass": "trawa",
+        "sand": "piasek",
+        "unpaved": "nieutwardzona",
+        "unhewn_cobblestone": "surowa kostka",
+    }.get(raw, raw.replace("_", " "))
+
+def _surface_percent(value):
+    if value in (None, ""):
+        return None
+    text = str(value).strip().replace("%", "")
+    try:
+        return int(round(float(text)))
+    except (TypeError, ValueError):
+        return None
+
+def _surface_summary(surface):
+    if not isinstance(surface, dict) or surface.get("error"):
+        return {
+            "available": False,
+            "summary": None,
+            "detail": None,
+            "context": None,
+        }
+
+    counts = surface.get("nawierzchnia") or {}
+    ranked = []
+    unknown_pct = 0
+    for label, pct_text in counts.items():
+        pct = _surface_percent(pct_text)
+        if pct is None:
+            continue
+        nice = _surface_label(label)
+        if nice == "nieznana":
+            unknown_pct += pct
+            continue
+        ranked.append((nice, pct))
+
+    ranked.sort(key=lambda item: (-item[1], item[0]))
+    dominant = _surface_label(surface.get("dominujaca"))
+    dominant_pct = next((pct for label, pct in ranked if label == dominant), None)
+    if dominant_pct is None and ranked:
+        dominant, dominant_pct = ranked[0]
+
+    if not ranked and unknown_pct <= 0:
+        return {
+            "available": False,
+            "summary": None,
+            "detail": None,
+            "context": None,
+        }
+
+    if not ranked:
+        return {
+            "available": True,
+            "summary": "nawierzchnia nieznana",
+            "detail": None,
+            "context": surface.get("kontekst_kadencji"),
+        }
+
+    if len(ranked) == 1 and (unknown_pct < 15):
+        summary = f"{ranked[0][0]} {ranked[0][1]}%"
+    else:
+        summary = f"mieszana, przewaga {dominant} {dominant_pct}%" if dominant_pct is not None else "mieszana"
+
+    detail_parts = [f"{label} {pct}%" for label, pct in ranked[:3]]
+    if unknown_pct >= 25:
+        detail_parts.append(f"nieznana {unknown_pct}%")
+    detail = ", ".join(detail_parts) if detail_parts else None
+
+    return {
+        "available": True,
+        "summary": summary,
+        "detail": detail,
+        "context": surface.get("kontekst_kadencji"),
+    }
 
 def _healthy_activity(activity, wellness_map):
     day = str(activity.get("start_date_local", ""))[:10]
@@ -232,7 +327,7 @@ def build_ride_protocol(d):
         resting_hr=resting_hr,
     )
 
-    nav = surface.get("nawierzchnia") if isinstance(surface, dict) else {}
+    surface_summary = _surface_summary(surface)
     route_ok = bool(surface and not surface.get("error"))
     recording_stops = act.get("recording_stops") or act.get("icu_recording_stops")
     avg_watts = act.get("icu_average_watts") or act.get("avg_power")
@@ -256,7 +351,7 @@ def build_ride_protocol(d):
     if route_ok:
         cadence_rule = "Kadencja oceniana po sprawdzeniu nawierzchni i typu roweru."
     else:
-        cadence_rule = "Niepełna ocena kadencji: get_route_surface nie zwróciło użytecznych danych."
+        cadence_rule = "Nie oceniam kadencji względem terenu bez danych o nawierzchni."
 
     return {
         "health": {
@@ -274,7 +369,8 @@ def build_ride_protocol(d):
         "route": {
             "available": route_ok,
             "location": surface.get("lokalizacja") if isinstance(surface, dict) else None,
-            "surface": nav if isinstance(nav, dict) else {},
+            "surface": surface_summary,
+            "surface_counts": surface.get("nawierzchnia") if isinstance(surface, dict) else {},
             "dominant": surface.get("dominujaca") if isinstance(surface, dict) else None,
             "recording_stops": recording_stops,
             "cadence_rule": cadence_rule,
@@ -299,9 +395,8 @@ def build_ride_protocol(d):
             "current_is_long": is_long,
             "previous": d.get("ostatnie_dlugie_jazdy", []),
             "split": split,
-            "note": "Analiza pierwszej i drugiej połowy oparta na próbkach FIT co 30 s." if is_long and split.get("available") else ("Brak danych splitów pierwsza/druga połowa; power fade i cardiac drift dla połówek wymagają danych okrążeń/streamów." if is_long else ""),
+            "note": "Analiza pierwszej i drugiej połowy oparta na próbkach FIT co 30 s." if is_long and split.get("available") else "",
         },
-        "lesson": {},
     }
 
 def fetch_activity_data(activity_id):
@@ -420,20 +515,21 @@ def fetch_activity_data(activity_id):
 
 def interpret_decoupling(raw_value):
     """
-    Intervals.icu: wartość ujemna = cardiac drift (HR rośnie względem mocy)
+    Intervals.icu: dodatnia wartość oznacza większy dryf/decoupling.
     Zwraca: (wartość_do_wyswietlenia_str, opis, jest_zly)
     """
-    if raw_value is None:
+    value = _safe_float(raw_value)
+    if value is None:
         return "—", "brak danych", False
-    # Odwróć znak — Intervals.icu: neg = drift (bad), pos = poprawa (good)
-    drift = round(-raw_value, 1)  # neg=drift
-    is_bad = drift > 5  # powyżej 5% = problem
-    sign = "+" if drift > 0 else ""
-    return f"{sign}{round(drift, 1)}%", (
-        "cardiac drift — HR rosło względem mocy" if drift > 5
-        else "lekki drift — w normie" if drift > 0
-        else "brak dryfu — HR stabilne lub malejące"
-    ), is_bad
+    drift = round(value, 1)
+    is_bad = drift > 5
+    if drift > 5:
+        note = "cardiac drift — HR rosło szybciej niż moc"
+    elif drift > 0:
+        note = "lekki drift — jeszcze w granicy akceptacji"
+    else:
+        note = "brak dryfu — HR stabilne względem mocy"
+    return f"{drift:.1f}%", note, is_bad
 
 BG      = "#0f1117"
 BG2     = "#1a1d27"
@@ -514,6 +610,8 @@ def _concise_recommendation(protocol):
     h = protocol.get("health", {})
     coach = protocol.get("coach", {})
     route = protocol.get("route", {})
+    long_rides = protocol.get("long_rides", {})
+    split = long_rides.get("split", {}) or {}
     rec = []
     readiness = h.get("readiness")
     if readiness == "czerwona":
@@ -524,13 +622,68 @@ def _concise_recommendation(protocol):
         rec.append("Możesz kontynuować plan, o ile poranne HRV i samopoczucie nie spadną.")
 
     if coach.get("decoupling_bad"):
-        rec.append("Dryf HR jest podwyższony, więc nie dokładaj intensywności następnego dnia.")
+        rec.append("Dryf HR przekroczył 5%, więc kolejną jazdę zacznij spokojniej i pilnuj jedzenia od początku.")
+    elif split.get("available") and _safe_float(split.get("power_fade_pct")) is not None and _safe_float(split.get("power_fade_pct")) < -8:
+        rec.append("W drugiej połowie moc spadła, więc przy dłuższych jazdach jedz wcześniej.")
     if route.get("available") is False:
         rec.append("Brak danych nawierzchni, więc nie wyciągam wniosku o kadencji względem terenu.")
     elif coach.get("cadence") not in (None, "") and coach.get("bike_type"):
         rec.append(f"Kadencję oceniaj w kontekście roweru: {coach.get('bike_type')}, średnio {_format_metric(coach.get('cadence'), ' rpm')}.")
 
     return " ".join(rec[:3])
+
+def _trainer_analysis(protocol):
+    h = protocol.get("health", {})
+    route = protocol.get("route", {})
+    coach = protocol.get("coach", {})
+    long_rides = protocol.get("long_rides", {})
+    split = long_rides.get("split", {}) or {}
+    surface_counts = route.get("surface_counts") or {}
+    surface_line = ", ".join(f"{k}: {v}" for k, v in surface_counts.items()) if surface_counts else "brak danych"
+    loc = route.get("location")
+    if isinstance(loc, dict):
+        loc_txt = ", ".join(str(v) for v in (loc.get("miasto"), loc.get("gmina")) if v)
+    else:
+        loc_txt = loc or "—"
+
+    context = (
+        "Start był z obniżoną gotowością, więc wynik trzeba czytać ostrożnie: organizm dowiózł jazdę, ale nie była to baza pod kolejny mocny dzień."
+        if h.get("readiness") != "zielona"
+        else "Start był z dobrą gotowością, więc jazda jest wiarygodna jako bodziec treningowy."
+    )
+    if long_rides.get("current_is_long"):
+        context += " To była długa jednostka, więc najważniejsze są stabilność drugiej połowy, paliwo i koszt narastający po kilku godzinach."
+    else:
+        context += " To była krótsza jednostka, więc ważniejsze są równość mocy i koszt tlenowy niż sam czas spędzony na siodle."
+
+    avg_watts = _format_metric(coach.get("avg_watts"), " W")
+    np_watts = _format_metric(coach.get("np_watts"), " W")
+    vi = _format_metric(coach.get("vi"), "", 2)
+    if_txt = _format_metric(coach.get("if"), "", 2)
+    execution = f"NP było dużo wyżej niż średnia moc ({np_watts} vs {avg_watts}), czyli jazda kosztowała więcej niż sugeruje sama średnia. VI {vi} wskazuje na bardzo nierówne obciążenie: teren, postoje albo krótkie podjazdy podbijały koszt mimo spokojniejszej średniej. IF {if_txt} mieści jazdę w spokojniejszym zakresie, ale długość robi z niej istotne obciążenie."
+
+    hr_avg = _format_metric(coach.get("avg_hr"), " bpm")
+    decoupling = coach.get("decoupling")
+    cadence = _format_metric(coach.get("cadence"), " rpm")
+    physiology = f"Średnie HR {hr_avg} sugeruje kontrolowany koszt tlenowy, ale trzeba je zestawiać z długością i zmiennością mocy. {coach.get('decoupling_note') or 'Dryft HR pozostaje w granicach akceptacji.'} Kadencja {cadence} na {coach.get('bike_type') or 'rower'} wymaga oceny przez teren: sama liczba nie wystarcza bez nawierzchni i podjazdów."
+    if split.get("available") and _safe_float(split.get("power_fade_pct")) is not None:
+        physiology = (
+            f"Średnie HR {hr_avg} sugeruje kontrolowany koszt tlenowy, ale trzeba je zestawiać z długością i zmiennością mocy. "
+            f"Dryft HR między połowami był mały, więc limiterem bardziej wygląda spadek mocy/paliwa niż narastające tętno. "
+            f"Power fade { _format_metric(split.get('power_fade_pct'), '%', 1)} mówi, że druga połowa siadła; na podobnej trasie trzeba zacząć spokojniej albo jeść wcześniej. "
+            f"Kadencja {cadence} na {coach.get('bike_type') or 'rower'} wymaga oceny przez teren: sama liczba nie wystarcza bez nawierzchni i podjazdów."
+        )
+
+    route_text = f"Trasa była mieszana mimo największego udziału asfaltu: {surface_line}. To tłumaczy część zmienności mocy i niższą kadencję. Dużo pauz/rejestracji ({_stop_summary(route.get('recording_stops'))}) może zaniżać płynność jazdy i utrudniać porównanie do treningu ciągłego."
+    if loc_txt and loc_txt != "—":
+        route_text = f"Trasa przebiegała w okolicach {loc_txt}, na terenie podmiejskim z bardzo zróżnicowaną nawierzchnią. {route_text}"
+
+    return [
+        ("Kontekst", context),
+        ("Wykonanie", execution),
+        ("Fizjologia", physiology),
+        ("Trasa", route_text),
+    ]
 
 def protocol_html(protocol):
     h = protocol["health"]
@@ -544,9 +697,17 @@ def protocol_html(protocol):
     else:
         loc_txt = loc or "—"
     surf = route.get("surface") or {}
-    surf_txt = ", ".join(f"{k}: {v}" for k, v in surf.items()) if surf else "—"
+    surf_counts = route.get("surface_counts") or {}
+    surf_txt = ", ".join(f"{k}: {v}" for k, v in surf_counts.items()) if surf_counts else "—"
+    route_rows = [
+        ("Status get_route_surface", "OK" if route.get("available") else "brak danych / błąd"),
+        ("Lokalizacja", loc_txt),
+        ("Nawierzchnia", surf_txt),
+        ("Recording stops", _stop_summary(route.get("recording_stops"))),
+        ("Reguła kadencji", route.get("cadence_rule") or "—"),
+    ]
     cmp_rows = [
-        [r.get("date"), r.get("np"), r.get("avg_hr"), _format_metric(r.get("ef"), "", 2), _format_metric(r.get("cadence"), " rpm")]
+        [r.get("date"), r.get("name"), r.get("distance_km"), r.get("np"), r.get("avg_hr"), _format_metric(r.get("ef"), "", 2)]
         for r in protocol.get("comparison", [])
         if _has_any_metric(r, ("np", "avg_hr", "ef", "cadence"))
     ]
@@ -582,6 +743,14 @@ def protocol_html(protocol):
         )
 
     return (
+        '<svg width="640" height="80" viewBox="0 0 640 80" xmlns="http://www.w3.org/2000/svg" style="display:block;border-radius:12px;margin-bottom:18px;max-width:100%;"><defs><linearGradient id="hg" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#0d1e35"/><stop offset="100%" stop-color="#0f1117"/></linearGradient></defs><rect width="640" height="80" fill="url(#hg)"/><polygon points="260,6 400,72 120,72" fill="#1a3050" opacity="0.7"/><polygon points="390,14 510,72 270,72" fill="#122540" opacity="0.85"/><polygon points="490,18 590,72 390,72" fill="#0c1c30" opacity="0.9"/><path d="M0,74 Q160,62 320,67 Q480,72 640,60" stroke="#1e3a5f" stroke-width="3" fill="none"/><circle cx="70" cy="22" r="17" fill="#e8a840" opacity="0.9"/><circle cx="70" cy="22" r="23" fill="none" stroke="#e8a840" stroke-width="1" opacity="0.25"/><g transform="translate(582,42)" fill="none" stroke="#5dba7a" stroke-width="2" opacity="0.75"><circle cx="-20" cy="16" r="11"/><circle cx="20" cy="16" r="11"/><polyline points="-20,16 -10,4 4,4 20,16" /><polyline points="4,4 -5,16 -20,16"/><polyline points="4,4 4,-3 10,-3"/><circle cx="4" cy="-3" r="2" fill="#5dba7a" stroke="none"/></g><text x="320" y="42" text-anchor="middle" fill="#ffffff" font-family="Arial,sans-serif" font-size="13" letter-spacing="3" opacity="0.55">Q · RAPORT KOLARZA</text></svg>' +
+        section("Podsumowanie", txt_block(
+            f"{_format_metric(protocol.get('summary_distance_km'), ' km', 1) if protocol.get('summary_distance_km') is not None else '—'} / "
+            f"{protocol.get('summary_duration') or '—'}; "
+            f"moc śr./NP {protocol.get('summary_avg_power') or '—'} / {protocol.get('summary_np_power') or '—'}; "
+            f"HR śr./max {protocol.get('summary_avg_hr') or '—'} / {protocol.get('summary_max_hr') or '—'}; "
+            f"TSS/IF {protocol.get('summary_tss') or '—'} / {protocol.get('summary_if') or '—'}."
+        )) +
         section("Protokół 1 — kontekst zdrowotny",
             card3([
                 ("HRV vs norma", f'{_format_metric(h.get("hrv_today"), " ms")} / {_format_metric(h.get("hrv_norm"), " ms")}', readiness_color),
@@ -591,14 +760,12 @@ def protocol_html(protocol):
             txt_block(h.get("note", ""))
         ) +
         sep() +
+        section("Analiza trenera",
+            _kv_rows(_trainer_analysis(protocol))
+        ) +
+        sep() +
         section("Trasa i dane pomocnicze",
-            _kv_rows([
-                ("Status get_route_surface", "OK" if route.get("available") else "brak danych / błąd"),
-                ("Lokalizacja", loc_txt),
-                ("Nawierzchnia", surf_txt),
-                ("Recording stops", _stop_summary(route.get("recording_stops"))),
-                ("Reguła kadencji", route.get("cadence_rule") or "—"),
-            ])
+            _kv_rows(route_rows)
         ) +
         sep() +
         section("Moc, HR, kadencja",
@@ -614,7 +781,7 @@ def protocol_html(protocol):
         ) +
         sep() +
         section("Porównanie z podobnymi jazdami",
-            _small_table(["Data", "NP", "HR śr.", "EF", "Kadencja"], cmp_rows)
+            _small_table(["Data", "Jazda", "km", "NP", "HR śr.", "EF"], cmp_rows)
         ) +
         sep() +
         section("Rekomendacja", txt_block(_concise_recommendation(protocol))) +
@@ -630,8 +797,6 @@ def protocol_html(protocol):
     )
 
 def generate_html(d, activity_name):
-    d["protokol_oceny"] = build_ride_protocol(d)
-    d["protokol_oceny"]["lesson"] = build_ride_lesson(d["protokol_oceny"], d)
     act = d.get("aktywnosc", {})
     today_str = d.get("dzisiaj", date.today().isoformat())
     dt = date.fromisoformat(today_str)
@@ -656,6 +821,17 @@ def generate_html(d, activity_name):
         f"HR śr./max {_format_metric(hr_avg, ' bpm')} / {_format_metric(hr_max, ' bpm')}; "
         f"TSS/IF {_format_metric(tss)} / {_format_metric(act_if, '', 2)}."
     )
+
+    d["protokol_oceny"] = build_ride_protocol(d)
+    d["protokol_oceny"]["lesson"] = build_ride_lesson(d["protokol_oceny"], d)
+    d["protokol_oceny"]["summary_distance_km"] = dystans
+    d["protokol_oceny"]["summary_duration"] = czas_s
+    d["protokol_oceny"]["summary_avg_power"] = _format_metric(avg_watts, " W")
+    d["protokol_oceny"]["summary_np_power"] = _format_metric(np_watts, " W")
+    d["protokol_oceny"]["summary_avg_hr"] = _format_metric(hr_avg, " bpm")
+    d["protokol_oceny"]["summary_max_hr"] = _format_metric(hr_max, " bpm")
+    d["protokol_oceny"]["summary_tss"] = _format_metric(tss)
+    d["protokol_oceny"]["summary_if"] = _format_metric(act_if, "", 2)
 
     html = f"""<!DOCTYPE html>
 <html lang="pl">
@@ -682,6 +858,8 @@ def generate_html(d, activity_name):
     <div style="font-size:16px;color:{TXT2};">{escape(activity_name)}</div>
   </div>
 
+  <table width="100%" cellpadding="16" cellspacing="0" bgcolor="{BG_WARN}" style="border-radius:10px;border:1px solid {BORDER};"><tr><td style="font-size:21px;color:{WARN};line-height:1.8;text-align:justify;">{escape(_concise_recommendation(d["protokol_oceny"]))}</td></tr></table>
+  <div style="height:14px"></div>
   {section("Podsumowanie", txt_block(summary))}
   {sep()}
   {protocol_html(d["protokol_oceny"])}
