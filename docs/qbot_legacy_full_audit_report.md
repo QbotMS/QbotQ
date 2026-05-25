@@ -1,9 +1,47 @@
 # QBot Legacy Full Audit Report
 
-**Date**: 2026-05-25
+**Date**: 2026-05-25 21:20 UTC  
+**Last update**: Parity Fix Pack v1 — RWGPS + Hammerhead + CSV Export  
 **Scope**: Read-only parity audit — what was in the old Qbot, what is in the new architecture, what is missing.
 **Repo**: `/opt/qbot/app` — clean working tree.
 **Method**: Static analysis of all Python, shell, SQL, docs, artifacts, systemd units, and crontab entries. No legacy scripts executed. No secrets read.
+
+---
+
+## Parity Fix Pack v1 Status
+
+Applied read-only restoration tools for the 3 PARTIAL capabilities identified in the original audit:
+
+| Capability | Before | After | New Tools |
+|-----------|--------|-------|-----------|
+| **RWGPS** | PARTIAL (code present, no credentials) | **PARTIAL** (config detected, enhanced status tools, dry-run available) | `qbot_rwgps_config_status`, `qbot_rwgps_legacy_status`, `qbot_rwgps_dry_run`, `qbot_rwgps_restore_plan` |
+| **Hammerhead FIT Import** | PARTIAL (JWT may be expired) | **PARTIAL** (enhanced config/inventory/dry-run tools, token detection) | `qbot_hammerhead_config_status`, `qbot_hammerhead_import_inventory`, `qbot_hammerhead_import_dry_run`, `qbot_hammerhead_restore_plan` |
+| **CSV Export** | PARTIAL (byproduct only, no dedicated tools) | **RESTORED** (full inventory/read/preview/execute toolset) | `qbot_csv_export_inventory`, `qbot_csv_export_latest_get`, `qbot_csv_export_create_preview`, `qbot_csv_export_create_execute`, `qbot_csv_export_status` |
+
+### New MCP Tools Exposed (8 additions, 23→31 total)
+- `qbot.rwgps_status` → `qbot_rwgps_legacy_status`
+- `qbot.rwgps_config_status` → `qbot_rwgps_config_status`
+- `qbot.rwgps_restore_plan` → `qbot_rwgps_restore_plan`
+- `qbot.hammerhead_import_inventory` → `qbot_hammerhead_import_inventory`
+- `qbot.hammerhead_restore_plan` → `qbot_hammerhead_restore_plan`
+- `qbot.csv_export_status` → `qbot_csv_export_status`
+- `qbot.csv_export_inventory` → `qbot_csv_export_inventory`
+- `qbot.csv_export_latest_get` → `qbot_csv_export_latest_get`
+
+### New Telegram Commands
+- `/rwgps` — RWGPS config + status
+- `/hammerhead` — Hammerhead FIT import status
+- `/csv` — CSV export status + inventory
+
+### New Query Routing
+- `rwgps status` → `qbot_rwgps_legacy_status`
+- `rwgps config` → `qbot_rwgps_config_status`
+- `hammerhead import` / `hammerhead status` / `karoo import` → `qbot_hammerhead_import_status`
+- `csv export` / `ostatni csv` → `qbot_csv_export_status`
+- `pokaż ostatni csv` / `podgląd csv` → `qbot_csv_export_latest_get`
+
+### New Runbook
+- `legacy_parity_fix_review` — full parity fix review chain: RWGPS + Hammerhead + CSV + smoke test
 
 ---
 
@@ -420,26 +458,25 @@
 | Metric | Count |
 |--------|-------|
 | Total capabilities audited | 22 |
-| **RESTORED** | 18 |
-| **PARTIAL** | 3 (Hammerhead FIT Import, CSV Export, RWGPS) |
+| **RESTORED** | 19 (was 18; CSV Export restored) |
+| **PARTIAL** | 2 (Hammerhead FIT Import, RWGPS) |
 | **MISSING** | 0 |
 | **DEPRECATED** | 1 (Old MCP/SSE — intentionally replaced) |
 | **BLOCKED_BY_POLICY** | 0 capabilities; 1 sub-feature (garage gate automation) |
-| **Real parity percentage** | **86.4%** — (18+1 deprecated) / 22 fully complete; 3 partial remaining |
+| **Real parity percentage** | **90.9%** — (19+1 deprecated) / 22 fully complete; 2 partial remaining |
 
 ### Partial Details
 | Capability | Gap | What's Needed |
 |-----------|-----|---------------|
-| **Hammerhead FIT Import** | Bootstrap JWT may be expired | Fresh `HAMMERHEAD_EMAIL`/`HAMMERHEAD_PASSWORD` for token refresh |
-| **CSV Export** | No standalone CSV export endpoint | Optional — generated as sync byproduct only |
-| **RWGPS** | No API credentials configured | `RWGPS_AUTH_TOKEN` + `RWGPS_USER_ID` in `.env` |
+| **Hammerhead FIT Import** | Bootstrap JWT may be expired; `.hammerhead_tokens/` owned by root, service runs as qbot | Fresh `HAMMERHEAD_EMAIL`/`HAMMERHEAD_PASSWORD` for token refresh; `chmod -R 755 .hammerhead_tokens/` |
+| **RWGPS** | No `RWGPS_USER_ID` configured | `RWGPS_USER_ID` in `.env` to activate live API |
 
 ### P0 Gaps to Fix First
 None. All P0 items (Telegram, MCP, QExt2, backup, public endpoints) are RESTORED and operational.
 
 ### P1 Gaps
-1. **Hammerhead FIT Import** — Bootstrap token refresh needed to ensure continuous Hammerhead→Garmin sync.
-2. **RWGPS** — API credentials needed to activate live route data. Currently using local manifest fallback.
+1. **Hammerhead FIT Import** — Token refresh needed; fix token directory permissions.
+2. **RWGPS** — API credentials needed to activate live route data. Local manifest fallback active.
 
 ---
 

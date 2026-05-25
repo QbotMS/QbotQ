@@ -177,6 +177,22 @@ from qbot_ops_tools import (
     _tool_qbot_test_error_classification,
 )
 
+from qbot_route_tools import (
+    _tool_qbot_csv_export_create_execute,
+    _tool_qbot_csv_export_create_preview,
+    _tool_qbot_csv_export_inventory,
+    _tool_qbot_csv_export_latest_get,
+    _tool_qbot_csv_export_status,
+    _tool_qbot_hammerhead_config_status,
+    _tool_qbot_hammerhead_import_dry_run,
+    _tool_qbot_hammerhead_import_inventory,
+    _tool_qbot_hammerhead_restore_plan,
+    _tool_qbot_rwgps_config_status,
+    _tool_qbot_rwgps_dry_run,
+    _tool_qbot_rwgps_legacy_status,
+    _tool_qbot_rwgps_restore_plan,
+)
+
 TOOLS_META: dict[str, dict[str, Any]] = {
     "qbot_status": {
         "description": "Podstawowe informacje o serwerze API (hostname, python, pid)",
@@ -850,6 +866,84 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_rwgps_config_status": {
+        "description": "Sprawdza konfigurację RWGPS bez wypisywania sekretów",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_rwgps_legacy_status": {
+        "description": "Kompleksowy status legacy RWGPS — kod, konfiguracja, artefakty",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_rwgps_dry_run": {
+        "description": "Bezpieczny dry-run RWGPS — tylko read-only, brak uploadu/syncu",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"operation": "list_routes"},
+    },
+    "qbot_rwgps_restore_plan": {
+        "description": "Plan przywrócenia RWGPS z brakującymi krokami",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_hammerhead_config_status": {
+        "description": "Sprawdza konfigurację Hammerhead — tokeny, JWT, tokenstore",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_hammerhead_import_inventory": {
+        "description": "Listuje pliki FIT z Hammerhead originals w outgoing",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"limit": 20},
+    },
+    "qbot_hammerhead_import_dry_run": {
+        "description": "Bezpieczny dry-run importu Hammerhead — bez pobierania/syncu",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"source": "latest"},
+    },
+    "qbot_hammerhead_restore_plan": {
+        "description": "Plan przywrócenia Hammerhead FIT importu",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_csv_export_inventory": {
+        "description": "Listuje pliki CSV w outgoing — read-only",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"limit": 20},
+    },
+    "qbot_csv_export_latest_get": {
+        "description": "Odczyt ostatniego CSV — read-only, max limit_rows 200",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"source": "garmin_proxy_latest", "limit_rows": 20},
+    },
+    "qbot_csv_export_create_preview": {
+        "description": "Podgląd co zostałoby wygenerowane do CSV — bez zapisu",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"source_report": "latest", "output_name": "preview"},
+    },
+    "qbot_csv_export_create_execute": {
+        "description": "Wykonaj eksport CSV do outgoing/exports/ — dry_run domyślnie true",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"source_report": "latest", "output_name": "qbot_export_latest.csv", "dry_run": True},
+    },
+    "qbot_csv_export_status": {
+        "description": "Zbiorczy status CSV export — inventory + latest + preview",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -965,4 +1059,17 @@ TOOLS: dict[str, Any] = {
     "qbot_telegram_send_test": _tool_qbot_telegram_send_test,
     "qbot_telegram_command_help": _tool_qbot_telegram_command_help,
     "qbot_telegram_answer_context": _tool_qbot_telegram_answer_context,
+    "qbot_rwgps_config_status": _tool_qbot_rwgps_config_status,
+    "qbot_rwgps_legacy_status": _tool_qbot_rwgps_legacy_status,
+    "qbot_rwgps_dry_run": _tool_qbot_rwgps_dry_run,
+    "qbot_rwgps_restore_plan": _tool_qbot_rwgps_restore_plan,
+    "qbot_hammerhead_config_status": _tool_qbot_hammerhead_config_status,
+    "qbot_hammerhead_import_inventory": _tool_qbot_hammerhead_import_inventory,
+    "qbot_hammerhead_import_dry_run": _tool_qbot_hammerhead_import_dry_run,
+    "qbot_hammerhead_restore_plan": _tool_qbot_hammerhead_restore_plan,
+    "qbot_csv_export_inventory": _tool_qbot_csv_export_inventory,
+    "qbot_csv_export_latest_get": _tool_qbot_csv_export_latest_get,
+    "qbot_csv_export_create_preview": _tool_qbot_csv_export_create_preview,
+    "qbot_csv_export_create_execute": _tool_qbot_csv_export_create_execute,
+    "qbot_csv_export_status": _tool_qbot_csv_export_status,
 }

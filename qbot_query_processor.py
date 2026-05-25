@@ -18,6 +18,13 @@ _SAFE_MULTI_EXECUTE_TOOLS: set[str] = {
     "qbot_recent_tool_calls",
     "qbot_api_tools_list",
     "qbot_operator_runbook",
+    "qbot_rwgps_legacy_status",
+    "qbot_rwgps_config_status",
+    "qbot_hammerhead_import_status",
+    "qbot_hammerhead_import_inventory",
+    "qbot_csv_export_status",
+    "qbot_csv_export_inventory",
+    "qbot_csv_export_latest_get",
 }
 
 _RUNBOOKS: list[dict[str, Any]] = [
@@ -116,6 +123,21 @@ _RUNBOOKS: list[dict[str, Any]] = [
         "description": "Legacy full parity review — broad audit across all historical QBot capabilities",
         "required_data": ["legacy parity audit", "parity matrix", "weather", "garage/gate", "artifacts", "telegram/mcp", "backup", "routes"],
         "limitations": ["Delegates to qbot_operator_runbook", "Preview only by default"],
+    },
+    {
+        "name": "legacy_parity_fix_review",
+        "keywords": ["parity fix review", "przegląd parity", "sprawdź rwgps hammerhead csv", "legacy parity fix"],
+        "tools": [
+            ("qbot_rwgps_legacy_status", {}),
+            ("qbot_rwgps_restore_plan", {}),
+            ("qbot_hammerhead_import_status", {}),
+            ("qbot_hammerhead_restore_plan", {}),
+            ("qbot_csv_export_status", {}),
+            ("qbot_operator_final_smoke_test", {}),
+        ],
+        "description": "Legacy parity fix review — RWGPS, Hammerhead, CSV Export status",
+        "required_data": ["RWGPS config", "Hammerhead config", "CSV inventory", "operational smoke test"],
+        "limitations": ["Read-only review", "No secrets exposed"],
     },
 ]
 
@@ -881,6 +903,46 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "confidence": "high",
         "required_data": ["Filesystem at /opt/qbot/app"],
         "limitations": ["Read-only scan", "No token display"],
+    },
+    {
+        "keywords": ["rwgps", "ridewithgps", "rwgps status", "sprawdź rwgps"],
+        "tool": "qbot_rwgps_legacy_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["RWGPS API token", "RWGPS route data"],
+        "limitations": ["Read-only status check", "No route modification", "No secrets"],
+    },
+    {
+        "keywords": ["rwgps config", "ridewithgps config", "konfiguracja rwgps"],
+        "tool": "qbot_rwgps_config_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": [".env.local"],
+        "limitations": ["Config presence only", "No secret values"],
+    },
+    {
+        "keywords": ["hammerhead import", "hammerhead status", "karoo import", "sprawdź hammerhead"],
+        "tool": "qbot_hammerhead_import_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Hammerhead auth", "FIT files", "Tokenstore"],
+        "limitations": ["Read-only status", "No import execution"],
+    },
+    {
+        "keywords": ["csv export", "ostatni csv", "export csv"],
+        "tool": "qbot_csv_export_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["CSV filesystem", "Outgoing directory"],
+        "limitations": ["Read-only status", "No file writes by default"],
+    },
+    {
+        "keywords": ["pokaż ostatni csv", "pokaż csv", "csv preview", "podgląd csv"],
+        "tool": "qbot_csv_export_latest_get",
+        "args": {"source": "garmin_proxy_latest", "limit_rows": 20},
+        "confidence": "high",
+        "required_data": ["outgoing/qbot_garmin_proxy_latest.csv"],
+        "limitations": ["Read-only", "Max 200 rows", "No write"],
     },
 ]
 

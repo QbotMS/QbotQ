@@ -280,6 +280,77 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+    "qbot.hammerhead_import_inventory": {
+        "qbot_tool": "qbot_hammerhead_import_inventory",
+        "description": "List Hammerhead original FIT files in outgoing.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}},
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.hammerhead_restore_plan": {
+        "qbot_tool": "qbot_hammerhead_restore_plan",
+        "description": "Restore plan for Hammerhead FIT import capability.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.rwgps_status": {
+        "qbot_tool": "qbot_rwgps_legacy_status",
+        "description": "Read-only RWGPS legacy parity status.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.rwgps_config_status": {
+        "qbot_tool": "qbot_rwgps_config_status",
+        "description": "Check RWGPS configuration without exposing secrets.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.rwgps_restore_plan": {
+        "qbot_tool": "qbot_rwgps_restore_plan",
+        "description": "Restore plan for RWGPS capability.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.csv_export_status": {
+        "qbot_tool": "qbot_csv_export_status",
+        "description": "Comprehensive CSV export status — inventory, latest, preview readiness.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.csv_export_inventory": {
+        "qbot_tool": "qbot_csv_export_inventory",
+        "description": "List CSV files in outgoing directory.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}},
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.csv_export_latest_get": {
+        "qbot_tool": "qbot_csv_export_latest_get",
+        "description": "Read latest CSV file — preview rows only.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "source": {"type": "string", "enum": ["garmin_proxy_latest", "latest_any"], "default": "garmin_proxy_latest"},
+                "limit_rows": {"type": "integer", "minimum": 1, "maximum": 200, "default": 20},
+            },
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
 }
 
 

@@ -31,7 +31,7 @@ def _telegram_response_text(command: str, result: dict) -> str | None:
         text = response.get("summary_text")
         if text:
             return str(text)
-    if command in {"/weather_status", "/garage_status", "/artifacts", "/integrations"} and isinstance(response, dict):
+    if command in {"/weather_status", "/garage_status", "/artifacts", "/integrations", "/rwgps", "/hammerhead", "/csv"} and isinstance(response, dict):
         text = result.get("text") or response.get("summary_text") or response.get("text")
         if text:
             return str(text)
@@ -522,6 +522,44 @@ async def telegram_webhook(webhook_secret: str, request: Request):
             "command": "/integrations",
             "response": response,
             "text": response.get("summary_text") or "External integrations report unavailable",
+        }
+    elif command == "/rwgps":
+        from qbot_route_tools import _tool_qbot_rwgps_legacy_status, _tool_qbot_rwgps_config_status
+        status = _tool_qbot_rwgps_legacy_status()
+        config = _tool_qbot_rwgps_config_status()
+        result = {
+            "command": "/rwgps",
+            "response": status,
+            "text": "RWGPS:\n"
+                    f"ℹ️ status: {status.get('restored_status', 'UNKNOWN')}\n"
+                    f"ℹ️ configured: {'yes' if config.get('auth_token_present') else 'no'}\n"
+                    f"ℹ️ code: {'detected' if status.get('code_detected') else 'missing'}\n"
+                    f"ℹ️ missing: {', '.join(config.get('missing', [])) or 'none'}",
+        }
+    elif command == "/hammerhead":
+        from qbot_legacy_parity_tools import _tool_qbot_hammerhead_import_status
+        from qbot_route_tools import _tool_qbot_hammerhead_config_status
+        status = _tool_qbot_hammerhead_import_status()
+        config = _tool_qbot_hammerhead_config_status()
+        result = {
+            "command": "/hammerhead",
+            "response": status,
+            "text": "Hammerhead:\n"
+                    f"ℹ️ status: {status.get('restored_status', status.get('status', 'UNKNOWN'))}\n"
+                    f"ℹ️ JWT: {'present' if config.get('jwt_present') else 'missing'}\n"
+                    f"ℹ️ token expired: {config.get('possible_expired_token', 'unknown')}\n"
+                    f"ℹ️ import: {'ready' if config.get('status') == 'OK' else 'blocked/' + config.get('status', 'unknown')}",
+        }
+    elif command == "/csv":
+        from qbot_route_tools import _tool_qbot_csv_export_status
+        status = _tool_qbot_csv_export_status()
+        result = {
+            "command": "/csv",
+            "response": status,
+            "text": "CSV Export:\n"
+                    f"ℹ️ status: {status.get('restored_status', 'UNKNOWN')}\n"
+                    f"ℹ️ csv count: {status.get('inventory', {}).get('csv_count', 0)}\n"
+                    f"ℹ️ latest available: {'yes' if status.get('latest_available') else 'no'}",
         }
     elif command == "/ask":
         if not query:

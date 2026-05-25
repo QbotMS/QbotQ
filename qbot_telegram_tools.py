@@ -371,6 +371,9 @@ def _tool_qbot_telegram_command_help(_args: dict | None = None) -> dict[str, Any
             {"command": "/garage_status", "description": "Legacy garage / gate / home automation status"},
             {"command": "/artifacts", "description": "Artifacts container status"},
             {"command": "/integrations", "description": "External integrations overview"},
+            {"command": "/rwgps", "description": "RWGPS/RideWithGPS status and config check"},
+            {"command": "/hammerhead", "description": "Hammerhead FIT import status"},
+            {"command": "/csv", "description": "CSV export status and inventory"},
             {"command": "/ask <query>", "description": "Natural language query via Qbot policy engine"},
         ],
         "security_notes": [
