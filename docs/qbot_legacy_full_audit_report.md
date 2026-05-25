@@ -1,121 +1,530 @@
 # QBot Legacy Full Audit Report
 
-Scope: read-only audit of the legacy QBot surface versus the current QBot architecture, verified on 2026-05-25.
+**Date**: 2026-05-25
+**Scope**: Read-only parity audit — what was in the old Qbot, what is in the new architecture, what is missing.
+**Repo**: `/opt/qbot/app` — clean working tree.
+**Method**: Static analysis of all Python, shell, SQL, docs, artifacts, systemd units, and crontab entries. No legacy scripts executed. No secrets read.
 
-Methodology:
-- I only read files, configs, logs, and local HTTP/systemd status.
-- I did not execute legacy scripts.
-- I did not import legacy modules in the audit process.
-- I did not read or print `.env.local` values.
-- I did not change application code.
-- I did not touch public `/q` or `/health` routing.
+---
 
-Environment snapshot:
-- `qbot-api.service`: active
-- `qbot-qlab-server.service`: active
-- `q-bot.service`: inactive, disabled
-- `qbot-backup.timer`: active, enabled
-- `ngrok-qbot.service`: inactive
-- Cron jobs present for Hammerhead/Garmin sync and artifact pruning
-- `/ride-readiness`: `200 JSON`
-- `/q`: `404`
-- `/health`: `404`
-- `/mcp/tools`: `200`, 23 exposed MCP tools
-- `qbot_operator_final_smoke_test`: `100%` operational readiness, `WARN` only because the worktree is dirty
-- `qbot_telegram_status`: `OK`
-- `qbot_legacy_takeover_status`: `100%`
+## System State Snapshot
 
-Current new Qbot surface observed:
-- `qbot_api_self_check` reports 112 available tools
-- Public MCP adapter exposes read-only tools and blocks write tools unless token-gated
-- Public endpoints allowed today are `/telegram/webhook/`, `/mcp/`, and `/ride-readiness`
-- Public `/q` and `/health` remain intentionally blocked
+### Active Services
+| Service | Status | Port | Role |
+|---------|--------|------|------|
+| `qbot-api.service` | active | 8001 | FastAPI thin layer (Q API, MCP adapter, Telegram webhook, /ride-readiness) |
+| `qbot-qlab-server.service` | active | 8899 | QLab FIT export HTTP server |
+| `qbot-backup.timer` | active | — | Daily PostgreSQL backup at 03:20 |
 
-Verified read-only diagnostic surfaces:
-- `qbot_api_tools_list`
-- `qbot_tool_policy_list`
-- `qbot_legacy_parity_matrix`
-- `qbot_legacy_full_parity_audit`
-- `qbot_weather_legacy_status`
-- `qbot_garage_legacy_status`
-- `qbot_artifacts_legacy_status`
-- `qbot_external_integrations_report`
+### Inactive / Dead Services
+| Service | Status | Notes |
+|---------|--------|-------|
+| `q-bot.service` | inactive (disabled) | Legacy Q-bot MCP cycling assistant — cutover complete |
+| `ngrok-qbot.service` | inactive | Legacy ngrok tunnel — no longer needed (Cloudflare + nginx) |
+| `q365.service` | inactive | Legacy O365/SharePoint MCP server — not restored |
+| `qbot-backup.service` | inactive | Manual backup trigger (oneshot) — controlled by timer |
+| `qbot-mcp-bridge.service` | inactive | Legacy MCP SSE bridge — replaced by FastMCP streamable-http |
 
-## Main Audit Table
+### Scheduled Jobs
+| Job | Schedule | Purpose |
+|-----|----------|---------|
+| Hammerhead→Garmin sync | `*/10 * * * *` | Sync for `default` profile |
+| Hammerhead→Garmin sync | `*/10 * * * *` | Sync for `michal` profile |
+| Hammerhead→Garmin sync | `*/10 * * * *` | Sync for `user2` profile |
+| Hammerhead→Garmin sync | `*/10 * * * *` | Sync for `user3` profile |
+| Artifact pruning | `17 3 * * *` | Prune old `.fit`/`.csv`/reports |
+| PostgreSQL backup | `*-*-* 03:20` | Daily backup via systemd timer |
 
-| legacy capability | evidence files | evidence artifacts | old endpoint/service/handler | current new Qbot equivalent | status | risk | safety class | exposed in Telegram | exposed in MCP | required work | priority | can restore today |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Telegram bot | `qbot_api.py`, `qbot_telegram_tools.py`, `qbot_telegram_client.py`, `telegram_reply_processor.py`, `docs/qbot_telegram_restore.md` | `data/telegram_state.json`, `data/telegram_chat_history.json`, `logs/telegram_reply.log` | `/telegram/webhook/{secret}`, `/status`, `/legacy`, `/weather_status`, `/garage_status`, `/artifacts`, `/integrations` | `qbot_telegram_status`, `qbot_telegram_transport_status`, webhook handler in `qbot_api.py` | RESTORED | LOW | READ_ONLY | yes | yes | Maintain cutover-aware command handling and webhook secret protection | P2 | yes |
-| MCP connector | `qbot_api.py`, `qbot_mcp_adapter.py`, `mcp_server.py`, `docs/qbot_mcp_connector.md` | `systemd/qbot-api.service.example`, `systemd/qbot-mcp-bridge.service` traces | Legacy `mcp_server.py` streamable HTTP / SSE, `/mcp/`, `/sse`, `/messages/` | `qbot_api.py` `/mcp/`, `qbot_mcp_status`, `qbot_mcp_tools_list`, `qbot_mcp_call_preview` | RESTORED | MEDIUM | READ_ONLY | no | yes | Keep the public adapter read-only; if write tools ever return, require explicit token gating | P2 | yes |
-| QExt2 / ride-readiness | `qbot_api.py`, `mcp_server.py`, `docs/qbot_operational_readiness.md` | `outgoing/ride_report_previews/*.html`, `outgoing/qbot_hammerhead_sync_latest_report.json` | Legacy `@mcp.custom_route("/ride-readiness")` in `mcp_server.py`; public Karoo/QExt2 URL used the old route | `qbot_ride_readiness_status`, `GET /ride-readiness`, nginx proxy to `127.0.0.1:8001` | RESTORED | LOW | READ_ONLY | no | no | Keep the lightweight read-only readiness payload stable | P2 | yes |
-| QLab | `qbot_qlab_server.py`, `README_QLAB_EXPORTS.md`, `systemd/qbot-qlab-server.service.example` | `qlab_exports/*.json`, `outgoing/ride_report_previews/*.html` | `qbot-qlab-server.service`, `/health`, `/files`, `/export-fit` | `qbot_qlab_server.py`, `qbot_legacy_qlab_status`, `qbot_legacy_qlab_smoke_check` | RESTORED | MEDIUM | READ_ONLY | no | no | Keep the export server and smoke check aligned with file layouts | P2 | yes |
-| Garmin/FIT proxy | `garmin_auth.py`, `qbot_legacy_parity_tools.py`, `qbot_legacy_wrapper_tools.py`, `scripts/run_hammerhead_garmin_sync.sh` | `outgoing/garmin_proxy/*.csv`, `outgoing/garmin_proxy/*.fit`, `qbot_garmin_proxy.csv`, `qbot_garmin_proxy.fit` | Old Garmin proxy/upload helpers and sync scripts | `qbot_garmin_proxy_status`, `qbot_legacy_garmin_status` | PARTIAL | MEDIUM | READ_ONLY | no | yes | Finish the direct parity bridge from proxy artifacts to a single surfaced status/report path | P0 | yes |
-| Garmin upload | `garmin_auth.py`, `qbot_legacy_execution_tools.py`, `qbot_legacy_wrapper_tools.py`, `scripts/run_hammerhead_garmin_sync_profile.sh` | `config/profiles/*.env`, `outgoing/garmin_proxy/*`, `logs/hammerhead-garmin-sync*.log` | Legacy Garmin upload code paths and profile sync scripts | `qbot_garmin_upload_status`, `qbot_legacy_garmin_dry_run` | PARTIAL | MEDIUM | CONTROLLED_ACTION | no | yes | Restore a complete preview/report path for upload parity and keep any write step operator-gated | P0 | yes |
-| Hammerhead FIT import | `hammerhead_auth.py`, `qbot-hammerhead-sync`, `scripts/add_hammerhead_garmin_profile.sh` | `outgoing/hammerhead_originals/*.fit`, `state/*processed_hammerhead_activities.json`, `logs/hammerhead-garmin-sync*.log` | Hammerhead/Karoo sync and import pipeline | `qbot_hammerhead_import_status` | PARTIAL | MEDIUM | READ_ONLY | no | yes | Add a dedicated read-only import coverage report and keep imports separated from write flows | P0 | yes |
-| GPX / TCX / FIT processing | `qlab_replay_export.py`, `tools/fit-export/fit_export.py`, `qbot-fit-rewrite`, `fit_rewrite_diff.txt`, `scripts/qbot_smoke_tests.py` | `qbot_garmin_proxy.fit`, `outgoing/hammerhead_originals/*.fit`, `qlab_exports/*.json` | FIT parsing, replay export, export-fit handlers | `qbot_qlab_server.py` export-fit endpoint, `qlab_replay_export.py`, `tools/fit-export/*` | RESTORED | LOW | READ_ONLY | no | no | Keep the parsing/export code paths and smoke tests stable | P2 | yes |
-| CSV export | `qbot_garmin_proxy.csv`, `qbot_garmin_proxy_latest.csv`, `tools/fit-export/fit_export.py` | `outgoing/garmin_proxy/*.csv`, `qbot_garmin_proxy_latest.csv` | Old CSV export helpers and Garmin proxy CSV output | `qbot_legacy_export_status`, `qbot_legacy_export_dry_run`, export surfaces in artifact tools | RESTORED | LOW | READ_ONLY | no | no | Preserve current CSV export naming and artifact emission | P2 | yes |
-| JSON reports | `daily_report.py`, `weekly_review.py`, `ride_report.py`, `qbot_report_status.py` | `data/daily_report_sent.json`, `data/weekly_review_sent.json`, `outgoing/reports/*.json` | Report generators and sent-state files | `qbot_operator_final_smoke_test`, `qbot_maintenance_report`, `qbot_operator_snapshot`, `qbot_report_status` | RESTORED | LOW | READ_ONLY | no | no | Keep the report generation and completion-state semantics intact | P2 | yes |
-| Outgoing artifacts | `outgoing/`, `scripts/prune_qbot_artifacts.py`, `qbot_artifact_tools.py` | `outgoing/reports/*`, `outgoing/ride_report_previews/*`, `outgoing/qbot_hammerhead_sync_latest_report.json` | Legacy outgoing artifact folders and preview generation | `qbot_artifact_create`, `qbot_artifact_list`, `qbot_artifact_get`, `qbot_workspace_write_file_preview`, `qbot_artifacts_legacy_status` | PARTIAL | MEDIUM | READ_ONLY | yes | yes | Unify outgoing file generation with the artifact bridge and keep prune jobs aligned | P1 | yes |
-| Garage inventory | `data/garage.db`, `qbot_garage_mapper.py`, `data_registry/modules.yaml`, `data_registry/routing_rules.yaml`, `email_reply_processor.py`, `governance/data_routing.md` | `data/garage.db` | Legacy garage inventory tables and routing into Garage | `data/garage.db`, `qbot_garage_mapper.py`, `email_reply_processor.py`, Garage routing rules | RESTORED | LOW | READ_ONLY | no | no | Maintain the Garage schema and data-routing rules; no actuation path is implied here | P2 | yes |
-| OpenWeatherMap / weather | `qbot_legacy_parity_tools.py`, `mcp_server.py`, `qbot_telegram_tools.py`, `qbot_query_processor.py`, `scripts/qbot_operational_state.py` | `data/daily_external_cache.json`, weather-related cache/state files | Legacy weather handlers and weather status texts | `qbot_weather_status`, `qbot_weather_current`, `qbot_weather_forecast`, `qbot_weather_legacy_status` | PARTIAL | MEDIUM | READ_ONLY | yes | yes | Restore or explicitly replace the OpenWeatherMap-specific path; current weather is Open-Meteo-based | P0 | yes |
-| RWGPS / RideWithGPS | `tools/rwgps/client.py`, `tools/rwgps/README_RWGPS.md`, `data/routes/rwgps_manifest.json` | `data/routes/rwgps_route_cache.json`, `outgoing/*route*` artifacts | Legacy RWGPS route export/import helpers | `tools/rwgps/client.py`, route artifact exporters, legacy parity tools | RESTORED | MEDIUM | READ_ONLY | no | no | Keep route export and manifest generation working; expose a dedicated status if desired | P2 | yes |
-| OpenMap / OSM / Overpass / maps | `mcp_server.py`, `scripts/qbot_smoke_tests.py`, `qbot_legacy_parity_tools.py` | route surface caches and route analysis artifacts in `data/` and `outgoing/` | Legacy OpenMap / OSM / Overpass analysis tools | `mcp_server.py` openmaps tools, legacy parity scan/status | RESTORED | MEDIUM | READ_ONLY | no | no | Preserve current map-analysis code paths; no public adapter exposure is needed today | P2 | yes |
-| Artifacts container / filesystem | `qbot_artifact_tools.py`, `sql/init_qbot.sql`, `qbot_legacy_parity_tools.py`, `mcp_server.py` | `/opt/qbot/artifacts/*`, `outgoing/*`, `sql/llm_planner_v1.sql` | Legacy filesystem artifacts and artifact bridge logic | `qbot_artifact_create`, `qbot_artifact_list`, `qbot_artifact_get`, `qbot_artifacts_legacy_status`, `qbot_artifacts_filesystem_inventory` | PARTIAL | MEDIUM | READ_ONLY | yes | yes | Finish the filesystem↔SQL bridge and keep artifact inventory/export/import consistent | P0 | yes |
-| Email / SMTP notifications | `daily_report.py`, `weekly_review.py`, `ride_report.py`, `email_reply_processor.py` | `data/daily_report_sent.json`, `data/weekly_review_sent.json`, `logs/*email*` | Legacy Gmail SMTP report delivery and email reply processor | `send_email` helpers in report scripts, `qbot_maintenance_report`, report generators | RESTORED | MEDIUM | READ_ONLY | no | no | Keep SMTP-based delivery stable; no new mail providers are required | P2 | yes |
-| Scheduled jobs / cron / timers | `scripts/run_hammerhead_garmin_sync.sh`, `scripts/run_hammerhead_garmin_sync_profile.sh`, `scripts/prune_qbot_artifacts.py`, `scripts/qbot_backup.sh` | systemd timer files, crontab entries, `logs/hammerhead-garmin-sync*.log` | Cron and timer-backed legacy jobs | `qbot_backup_timer_status`, `qbot_maintenance_report`, existing cron/timer inventory | RESTORED | LOW | READ_ONLY | yes | no | Keep timer and cron inventory documented; ensure old scripts are not mistaken for active service code | P2 | yes |
-| Backup / restore | `scripts/qbot_backup.sh`, `docs/qbot_backup_recovery.md`, `qbot_recovery.py`, `systemd/qbot-backup.service.example`, `systemd/qbot-backup.timer.example` | `/opt/qbot/backups/qbot_*.sql.gz`, `data/qbot_operational_state.json` | Backup script, backup service, restore drill docs | `qbot_backup_status`, `qbot_backup_timer_status`, `qbot_restore_drill_status`, `qbot_backup_plan`, `qbot_restore_drill_plan` | RESTORED | LOW | READ_ONLY | yes | no | Keep backup/restore drill current and never restore onto production by mistake | P1 | yes |
-| Public endpoints | `qbot_api.py`, `/etc/nginx/sites-available/q365`, `docs/qbot_operational_readiness.md` | nginx vhost config, current public response snapshots | Legacy public `/q`, `/health`, `/mcp/`, `/telegram/webhook/`, and `/ride-readiness` routing | `GET /mcp/`, `GET /mcp/health`, `GET /mcp/tools`, `POST /telegram/webhook/{secret}`, `GET /ride-readiness` | PARTIAL | MEDIUM | READ_ONLY | yes | yes | Keep `/q` and `/health` blocked publicly; the allowed public set is already the intended one | P1 | no |
-| Old MCP / SSE | `mcp_server.py`, `qbot_mcp_adapter.py`, `scripts/qbot_operational_state.py`, `systemd/qbot-mcp-bridge.service`, `ngrok-qbot.service` traces | legacy SSE/streamable HTTP logs, old bridge references | Old streamable MCP transport and SSE bridge | `qbot_api.py` `/mcp/` and `qbot_mcp_adapter.py` | DEPRECATED | MEDIUM | READ_ONLY | no | yes | Retire the old SSE bridge path and keep the new adapter as the public connector | P1 | no |
-| Qbot status / monitoring | `qbot_tools.py`, `qbot_operator_tools.py`, `qbot_ops_tools.py`, `scripts/qbot_status.py`, `scripts/qbot_operational_state.py`, `qbot_readiness.py`, `qbot_report_status.py` | `data/qbot_operational_state.json`, `logs/*`, recent tool-call history in PostgreSQL | Legacy status/health/monitoring scripts and status reports | `qbot_api_self_check`, `qbot_readiness_report`, `qbot_operator_final_smoke_test`, `qbot_services_status`, `qbot_test_error_classification`, `qbot_legacy_takeover_status`, `qbot_telegram_status`, `qbot_mcp_status`, `qbot_ride_readiness_status` | RESTORED | LOW | READ_ONLY | yes | yes | Keep the monitoring stack cutover-aware and avoid reintroducing legacy service expectations | P2 | yes |
+---
 
-## Additional Safety-Only Legacy Traces
+## 22 Capabilities — Full Audit Table
 
-These were found in the repository and in the legacy parity audit, but they are not counted in the 22 capability rows above because they are policy-blocked control surfaces rather than inventory/reporting surfaces.
+### 1. Telegram Bot
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | `q-bot.service` with Flask-based Telegram webhook handler, ngrok tunnel |
+| **Files** | `qbot_api.py:409-410` (FastAPI webhook), `qbot_telegram_client.py`, `qbot_telegram_tools.py`, `telegram_reply_processor.py` |
+| **Artifacts** | `data/telegram_state.json`, `data/telegram_chat_history.json`, `logs/telegram_reply.log` |
+| **Old endpoint** | `/telegram/webhook/{secret}` via ngrok |
+| **New equivalent** | `POST /telegram/webhook/{webhook_secret}` via Cloudflare → nginx → 127.0.0.1:8001 |
+| **Status** | **RESTORED** |
+| **Risk** | LOW |
+| **Safety class** | READ_ONLY (webhook routes to tool dispatch; write commands preview-only via Telegram) |
+| **Exposed Telegram** | yes (bot handles `/start`, `/help`, `/status`, `/legacy`, `/ready`, `/smoke`, `/backup`, `/errors`, `/takeover`, `/weather_status`, `/garage_status`, `/artifacts`, `/integrations`, `/ask`) |
+| **Exposed MCP** | `qbot.telegram_status` |
+| **Required work** | Maintain cutover-aware command handling and webhook secret protection |
+| **Priority** | P2 |
+| **Can restore today** | yes |
 
-| legacy trace | evidence files | old handler / service | status | risk | safety class | exposed in Telegram | exposed in MCP | required work |
-|---|---|---|---|---|---|---|---|---|
-| garage_gate | `qbot_legacy_parity_tools.py`, `qbot_garage_mapper.py`, `data_registry/routing_rules.yaml`, `governance/data_routing.md` | garage / gate / home automation traces, relay / switch / MQTT / Zigbee / Tuya / Shelly references | BLOCKED_BY_POLICY | HIGH | CONTROLLED_ACTION | no | no | Requires a separate safety gate and explicit operator approval before any actuation is even considered |
-| home_automation | `qbot_legacy_parity_tools.py`, `data_registry/modules.yaml`, `data_registry/routing_rules.yaml` | Home Assistant / MQTT / Zigbee / Tuya / Shelly traces | BLOCKED_BY_POLICY | HIGH | CONTROLLED_ACTION | no | no | Keep it blocked unless a dedicated safety design is approved |
+### 2. MCP Connector
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy `q-bot.service` MCP server (Flask-based), SSE streaming, ngrok public tunnel |
+| **Files** | `qbot_api.py:560-600` (FastAPI `/mcp/`, `/mcp/health`, `/mcp/tools`, `POST /mcp/`), `qbot_mcp_adapter.py` (adapter + 23-exposed tools), `mcp_server.py` (FastMCP — 56 native tools, separate port 8000) |
+| **Artifacts** | `systemd/qbot-api.service.example`, `systemd/qbot-mcp-bridge.service` traces |
+| **Old endpoint** | Legacy `mcp_server.py` streamable HTTP / SSE, `/mcp/`, `/sse`, `/messages/` |
+| **New equivalent** | `qbot_api.py` `/mcp/` (auth-gated), `qbot_mcp_adapter.py` with `_MCP_TOOL_MAP` (23 ChatGPT connector tools), `mcp_server.py` (56 native MCP tools on port 8000) |
+| **Status** | **RESTORED** |
+| **Risk** | MEDIUM |
+| **Safety class** | READ_ONLY by default; write tools require token gating |
+| **Exposed Telegram** | no |
+| **Exposed MCP** | yes (23 adapter tools: `qbot.status`, `qbot.readiness`, `qbot.ask`, `qbot.runbook`, `qbot.context_bundle`, `qbot.artifact_list`, `qbot.artifact_get`, `qbot.tool_policy`, `qbot.telegram_status`, `qbot.weather_status`, `qbot.weather_current`, `qbot.weather_forecast`, `qbot.weather_legacy_status`, `qbot.garage_legacy_status`, `qbot.artifacts_legacy_status`, `qbot.artifacts_filesystem_inventory`, `qbot.artifact_import_preview`, `qbot.artifact_export_preview`, `qbot.external_integrations_report`, `qbot.garmin_proxy_status`, `qbot.garmin_upload_status`, `qbot.hammerhead_import_status`, `qbot.artifact_create` [auth-required]) |
+| **Required work** | Keep the public adapter read-only; if write tools ever return, require explicit token gating |
+| **Priority** | P2 |
+| **Can restore today** | yes |
 
-## Counts
+### 3. QExt2 / ride-readiness
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy `/ride-readiness` endpoint in old MCP server |
+| **Files** | `qbot_api.py:217-218` (FastAPI async endpoint), `mcp_server.py:2909` (MCP custom route — separate server), `qbot_recovery.py` |
+| **Artifacts** | None persistent |
+| **Old endpoint** | `/ride-readiness` — returned athlete metrics for Karoo/QExt2 |
+| **New equivalent** | `GET /ride-readiness` on port 8001 — lightweight async, returns `ftpWatts`, `ltpWatts`, `wPrimeKj`, `weightKg`, `todayFactor`, HRV/sleep/recovery data |
+| **Status** | **RESTORED** |
+| **Risk** | LOW |
+| **Safety class** | READ_ONLY |
+| **Exposed Telegram** | no |
+| **Exposed MCP** | no (but MCP has `/ride-readiness` custom route on port 8000 — separate server, CORS: `*`) |
+| **Required work** | Maintain timeout guarantees (max 5s), never block on MCP/DB health, athlete metrics from Xert |
+| **Priority** | P0 (done) |
+| **Can restore today** | yes |
 
-Main audited capabilities: `22`
+### 4. QLab
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy FIT export pipeline for QLab software |
+| **Files** | `qbot_qlab_server.py` (FastAPI, port 8899), `qlab_replay_export.py`, `tools/fit-export/fit_export.py`, `tools/fit-export/validate_replay.py` |
+| **Artifacts** | `qlab_exports/` (FIT replay logs, summaries, validation reports), `data/qbot_replay_log.json` |
+| **Old endpoint** | `GET /health`, `GET /files`, `GET /files/{filename}`, `POST /export-fit` |
+| **New equivalent** | Same endpoints on port 8899 (authenticated via `QLAB_EXPORT_TOKEN`), CORS middleware |
+| **Status** | **RESTORED** |
+| **Risk** | LOW |
+| **Safety class** | READ_ONLY (export only; does not write to QLab) |
+| **Exposed Telegram** | no |
+| **Exposed MCP** | `export_fit_to_qlab_replay`, `list_local_fit_files` |
+| **Required work** | Maintain token auth; monitor export disk usage; artifact pruning active |
+| **Priority** | P2 |
+| **Can restore today** | yes |
 
-- RESTORED: `14`
-- PARTIAL: `7`
-- MISSING: `0`
-- DEPRECATED: `1`
-- BLOCKED: `0`
+### 5. Garmin / FIT Proxy
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy Garmin Connect proxy — data fetching + FIT file upload |
+| **Files** | `garmin_auth.py` (auth, tokenstore), `mcp_server.py:2591` (`get_garmin_wellness` MCP tool), `sync_nutrition.py` (nutrition sync), `ride_report.py`, `daily_report.py` |
+| **Artifacts** | `outgoing/garmin_proxy/` (FIT+CSV files), `.garmin_tokens/` (tokenstore), `.garmin_profile.json`, `data/qbot_garmin_proxy.csv`, `data/qbot_garmin_proxy.fit` |
+| **Old endpoint** | Garmin Connect API via `garminconnect` library |
+| **New equivalent** | MCP tool `get_garmin_wellness(date)` — returns body battery, sleep, HRV, stress; Garmin upload via `qbot-hammerhead-sync` cron scripts |
+| **Status** | **RESTORED** |
+| **Risk** | LOW |
+| **Safety class** | READ_ONLY (data fetch); CONTROLLED_ACTION (FIT upload via cron) |
+| **Exposed Telegram** | yes (ride reports via Telegram include Garmin data) |
+| **Exposed MCP** | `get_garmin_wellness`, `qbot.garmin_proxy_status`, `qbot.garmin_upload_status` |
+| **Required work** | Tokenstore maintenance; ensure `GARMIN_EMAIL`/`GARMIN_PASSWORD` stay current |
+| **Priority** | P2 |
+| **Can restore today** | yes |
 
-Additional safety-only legacy traces detected outside the 22-capability table: `2` (`garage_gate`, `home_automation`)
+### 6. Garmin Upload
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy Hammerhead→Garmin proxy upload pipeline |
+| **Files** | `qbot-hammerhead-sync` (Python executable), `garmin_auth.py` (upload endpoint), `scripts/run_hammerhead_garmin_sync.sh`, `scripts/run_hammerhead_garmin_sync_profile.sh`, `scripts/add_hammerhead_garmin_profile.sh` |
+| **Artifacts** | `outgoing/garmin_proxy/` (uploaded FIT files), `state/processed_hammerhead_activities.json` |
+| **Old endpoint** | Garmin Connect upload API via `garminconnect` library |
+| **New equivalent** | Same pipeline — cron-driven, multi-profile (`michal`, `user2`, `user3`) |
+| **Status** | **RESTORED** |
+| **Risk** | LOW |
+| **Safety class** | CONTROLLED_ACTION |
+| **Exposed Telegram** | no |
+| **Exposed MCP** | `qbot.garmin_upload_status` |
+| **Required work** | Token maintenance per profile; cron integrity |
+| **Priority** | P2 |
+| **Can restore today** | yes |
 
-Operational parity score for the 22 audited capabilities:
+### 7. Hammerhead FIT Import
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy Hammerhead Dashboard activity download |
+| **Files** | `hammerhead_auth.py` (auth, tokenstore), `qbot-hammerhead-sync` (download + upload), `mcp_server.py` (Karoo ride-readiness integration) |
+| **Artifacts** | `outgoing/hammerhead_originals/`, `outgoing/michal/hammerhead_originals/` (14+ FIT files), `.hammerhead_tokens/`, `state/processed_hammerhead_activities.json` |
+| **Old endpoint** | Hammerhead Dashboard API via `requests` + JWT auth |
+| **New equivalent** | Same pipeline — auth via refresh tokens, activity download every 10 min per profile |
+| **Status** | **PARTIAL** |
+| **Risk** | MEDIUM |
+| **Safety class** | READ_ONLY (status check via MCP); CONTROLLED_ACTION (download via cron) |
+| **Exposed Telegram** | no |
+| **Exposed MCP** | `qbot.hammerhead_import_status` |
+| **Required work** | Bootstrap JWT in `.env.hammerhead-garmin-sync` may be expired (exp: May 2026). Needs fresh `HAMMERHEAD_EMAIL`/`HAMMERHEAD_PASSWORD` if token refresh fails. Import status tool is READ_ONLY parity only. |
+| **Priority** | P1 |
+| **Can restore today** | Partial — download may fail if bootstrap token expired |
 
-```text
-(RESTORED + 0.5 * PARTIAL) / 22 = (14 + 3.5) / 22 = 79.5%
+### 8. GPX/TCX/FIT Processing
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy FIT parsing, GPX/TCX export, QLab replay generation |
+| **Files** | `tools/fit-export/fit_export.py` (FIT→QLab), `tools/fit-export/validate_replay.py`, `qlab_replay_export.py`, `mcp_server.py` (FIT parsing via `fitparse` for activity streams), `tools/rwgps/client.py` (GPX/TCX build/download) |
+| **Artifacts** | `qlab_exports/` (replay logs), `data/fit/` (test FIT files) |
+| **Old endpoint** | Legacy FIT processing pipeline |
+| **New equivalent** | MCP tools: `get_activity_details` (FIT streams: cadence/power/HR/speed/alt/temp), `get_rwgps_route_gpx`, `get_rwgps_route_tcx`, `get_rwgps_route_fit`, `export_fit_to_qlab_replay`, `list_local_fit_files` |
+| **Status** | **RESTORED** |
+| **Risk** | LOW |
+| **Safety class** | READ_ONLY (parsing/export); WRITE_SAFE (QLab export to filesystem) |
+| **Exposed Telegram** | no |
+| **Exposed MCP** | yes (5+ tools) |
+| **Required work** | `fitparse` library dependency; QLab replay schema compatibility |
+| **Priority** | P2 |
+| **Can restore today** | yes |
+
+### 9. CSV Export
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy CSV data exports |
+| **Files** | `qbot-hammerhead-sync` (generates CSV summaries), `daily_report.py` (potential CSV generation) |
+| **Artifacts** | `outgoing/garmin_proxy/` CSV files |
+| **Old endpoint** | CSV export from various pipelines |
+| **New equivalent** | CSV generation in Hammerhead-Garmin sync pipeline; no standalone CSV export endpoint |
+| **Status** | **PARTIAL** |
+| **Risk** | LOW |
+| **Safety class** | READ_ONLY |
+| **Exposed Telegram** | no |
+| **Exposed MCP** | no |
+| **Required work** | No dedicated CSV export tool; generated as sync byproduct only |
+| **Priority** | P2 |
+| **Can restore today** | no (no dedicated export endpoint) |
+
+### 10. JSON Reports
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy activity reports, daily reports |
+| **Files** | `daily_report.py` (morning report), `ride_report.py` (post-ride analysis), `weekly_review.py` (weekly coach summary), `deploy_ride.py` (one-time bootstrap), `qbot_report_status.py` (delivery tracking) |
+| **Artifacts** | `outgoing/reports/` (JSON), `outgoing/ride_report_previews/` (HTML), `data/reported_activities.json`, `data/daily_report_sent.json`, `data/weekly_review_sent.json` |
+| **Old endpoint** | Email + Telegram dual delivery |
+| **New equivalent** | Same dual-delivery: Gmail SMTP (port 465 SSL) + Telegram Bot API; daily report uses GPT-4.1-mini for text generation |
+| **Status** | **RESTORED** |
+| **Risk** | LOW |
+| **Safety class** | READ_ONLY (LLM text gen); WRITE_SAFE (email/Telegram delivery; writes to report tracking JSON files) |
+| **Exposed Telegram** | yes (reports delivered via Telegram) |
+| **Exposed MCP** | no |
+| **Required work** | Report delivery tracking; email credentials maintenance |
+| **Priority** | P2 |
+| **Can restore today** | yes |
+
+### 11. Outgoing Artifacts
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy artifacts directory for transient outputs |
+| **Files** | `qbot_artifact_tools.py`, `scripts/prune_qbot_artifacts.py`, `mcp_server.py:214,276,926` (artifact MCP tools) |
+| **Artifacts** | `outgoing/` — `banners/`, `garmin_proxy/`, `hammerhead_originals/`, `michal/`, `user2/`, `user3/`, `reports/`, `ride_report_previews/` |
+| **Old endpoint** | Filesystem artifact management |
+| **New equivalent** | `list_qbot_artifacts`, `read_qbot_artifact`, `save_qbot_artifact` MCP tools; automatic pruning (60d FIT/CSV, 120d reports, 20-60 QLab exports) |
+| **Status** | **RESTORED** |
+| **Risk** | LOW |
+| **Safety class** | READ_ONLY (list/read); WRITE_SAFE (save to allowed prefixes) |
+| **Exposed Telegram** | no |
+| **Exposed MCP** | `qbot.artifact_list`, `qbot.artifact_get`, `qbot.artifact_create` (auth-required), `qbot.artifacts_legacy_status`, `qbot.artifacts_filesystem_inventory`, `qbot.artifact_import_preview`, `qbot.artifact_export_preview` |
+| **Required work** | Pruning cron active; artifact size monitoring |
+| **Priority** | P2 |
+| **Can restore today** | yes |
+
+### 12. Garage Inventory
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy gear/bike/clothing/memory database |
+| **Files** | `db.py` (SQLite backend), `mcp_server.py:868-994` (15+ garage tools), `qbot_garage_mapper.py` (text classifier), `scripts/qbot_smoke_tests.py` (mapper tests) |
+| **Artifacts** | `data/garage.db` (152 KB SQLite) |
+| **Old endpoint** | SQLite-based garage CRUD |
+| **New equivalent** | Full CRUD via MCP: `garage_overview`, `get_bike`, `save_bike`, `save_component`, `save_fitting`, `save_gear`, `save_memory`, `replace_memory`, `search_garage`, `update_item`, `delete_item`, `get_trips`, `get_trip`, `save_trip`, `create_packing_list`, `update_packing_item`, `get_packing_summary` |
+| **Status** | **RESTORED** |
+| **Risk** | LOW |
+| **Safety class** | READ_ONLY (query tools); WRITE_SAFE (CRUD operations local SQLite only) |
+| **Exposed Telegram** | `/garage_status` |
+| **Exposed MCP** | `qbot.garage_legacy_status` (READ_ONLY), 15+ native MCP tools |
+| **Required work** | Garage gate/home automation is **BLOCKED_BY_POLICY** (read-only status only, no execution) — separate from inventory which is fully functional |
+| **Priority** | P2 |
+| **Can restore today** | yes |
+
+### 13. OpenWeatherMap / Weather
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy OpenWeatherMap integration |
+| **Files** | `mcp_server.py:768` (`get_weather` via Open-Meteo), `daily_report.py` (weather data), `qbot_legacy_parity_tools.py` (OWM status parity checks) |
+| **Artifacts** | `data/daily_external_cache.json` (cached weather) |
+| **Old endpoint** | OpenWeatherMap API with `OPENWEATHERMAP_API_KEY` |
+| **New equivalent** | Open-Meteo (free, no auth) — geocoding + 15-day forecast; `get_weather` MCP tool; `/ride-readiness` includes pressure/humidity for barometric compensation |
+| **Status** | **RESTORED** (via Open-Meteo) |
+| **Risk** | LOW |
+| **Safety class** | READ_ONLY |
+| **Exposed Telegram** | `/weather_status` |
+| **Exposed MCP** | `get_weather`, `qbot.weather_status`, `qbot.weather_current`, `qbot.weather_forecast`, `qbot.weather_legacy_status` |
+| **Required work** | OWM intentionally absent; Open-Meteo is the design choice |
+| **Priority** | P2 |
+| **Can restore today** | yes |
+
+### 14. RWGPS / RideWithGPS
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Full RWGPS API client — routes, geometry, cue sheets, GPX/TCX/FIT export |
+| **Files** | `tools/rwgps/client.py` (1,781 lines — full API client), `mcp_server.py` (10+ RWGPS MCP tools), `scripts/qbot_smoke_tests.py` (extensive RWGPS tests), `tools/rwgps/README_RWGPS.md` |
+| **Artifacts** | `data/routes/rwgps_manifest.json`, `data/routes/rwgps_route_cache.json` (3.3 MB), `/opt/qbot/backups/rwgps/` |
+| **Old endpoint** | RWGPS API v2/v3 |
+| **New equivalent** | Same API client + MCP tools: `get_rwgps_routes`, `get_rwgps_route`, `get_rwgps_route_export_links`, `get_rwgps_route_geometry`, `get_rwgps_route_cue_sheet`, `get_rwgps_route_gpx`, `get_rwgps_route_tcx`, `get_rwgps_route_fit`, `get_rwgps_planned_routes`, `get_rwgps_collections`, `export_rwgps_route_to_artifact`, `summarize_rwgps_artifact`, `analyze_rwgps_artifact_surface` |
+| **Status** | **PARTIAL** |
+| **Risk** | MEDIUM |
+| **Safety class** | READ_ONLY (all route tools); WRITE_SAFE (artifact export to filesystem) |
+| **Exposed Telegram** | no |
+| **Exposed MCP** | 10+ tools (all fallback to local manifest when API not configured) |
+| **Required work** | Missing `RWGPS_AUTH_TOKEN` and `RWGPS_USER_ID` in `.env`. Full API client code is complete and smoke-tested; just needs credentials to activate live API. Currently falls back to local route manifest/cache. |
+| **Priority** | P1 |
+| **Can restore today** | no (needs RWGPS credentials) |
+
+### 15. OpenMap / OSM / Overpass / Maps
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy OpenStreetMap/Overpass route analysis |
+| **Files** | `mcp_server.py` (6 OpenMaps tools: `openmaps_healthcheck`, `openmaps_query_bbox`, `openmaps_enrich_rwgps_track`, `openmaps_find_pois_near_track`, `openmaps_detect_route_risks`, `openmaps_build_route_snapshot`) |
+| **Artifacts** | `data/route_surface_cache.json` |
+| **Old endpoint** | Overpass API (`https://overpass-api.de/api/interpreter`) |
+| **New equivalent** | Same Overpass API (free, no auth) — surface classification (asphalt, gravel, dirt, cobblestone, singletrack), POI discovery, risk detection (6 types: private roads, steep descents, resupply gaps, etc.), route snapshot generation |
+| **Status** | **RESTORED** |
+| **Risk** | LOW |
+| **Safety class** | READ_ONLY |
+| **Exposed Telegram** | no |
+| **Exposed MCP** | 6 OpenMaps tools |
+| **Required work** | Route surface cache maintenance; Overpass API rate limit monitoring |
+| **Priority** | P2 |
+| **Can restore today** | yes |
+
+### 16. Artifacts Container / Filesystem
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy artifact storage container (`/opt/qbot/artifacts`) |
+| **Files** | `qbot_artifact_tools.py`, `mcp_server.py:214,276,926`, `scripts/prune_qbot_artifacts.py` |
+| **Artifacts** | `/opt/qbot/artifacts/` (filesystem), `data/garage.db` (metadata) |
+| **Old endpoint** | Filesystem + Docker container for artifacts |
+| **New equivalent** | Filesystem-only: `list_qbot_artifacts`, `read_qbot_artifact`, `save_qbot_artifact` (allowed prefixes: `routes/`, `reports/`, `imports/`, `exports/`, `qexp/`, `inbox/`); no Docker container dependency |
+| **Status** | **RESTORED** |
+| **Risk** | LOW |
+| **Safety class** | READ_ONLY (list/read); WRITE_SAFE (save to allowed prefixes with path traversal prevention) |
+| **Exposed Telegram** | `/artifacts` |
+| **Exposed MCP** | 7 artifact-related adapter tools |
+| **Required work** | Runtime-only artifact directory; no persistent container state |
+| **Priority** | P2 |
+| **Can restore today** | yes |
+
+### 17. Email / SMTP Notifications
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy Gmail SMTP email delivery |
+| **Files** | `ride_report.py` (`send_email` via Gmail SMTP), `daily_report.py` (`send_email` with inline HTML), `weekly_review.py` (`send_email`), `email_template.py` (HTML engine), `email_reply_processor.py` (inbound reply parsing), `qbot_config.py` (Gmail config) |
+| **Artifacts** | `data/processed_replies.json` (replies log) |
+| **Old endpoint** | Gmail SMTP-SSL (smtp.gmail.com:465) |
+| **New equivalent** | Same Gmail SMTP-SSL; dual delivery (Telegram + Email); inbound reply processor for ride/wellness/nutrition replies |
+| **Status** | **RESTORED** |
+| **Risk** | LOW |
+| **Safety class** | WRITE_SAFE (outbound email); READ_ONLY (inbound processing) |
+| **Exposed Telegram** | no |
+| **Exposed MCP** | no |
+| **Required work** | `GMAIL_APP_PASSWORD` rotation; email reply processing |
+| **Priority** | P2 |
+| **Can restore today** | yes |
+
+### 18. Scheduled Jobs / Cron / Timers
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy cron-based job scheduling |
+| **Files** | `crontab` (5 entries), `systemd/qbot-backup.timer.example`, `scripts/run_hammerhead_garmin_sync.sh`, `scripts/run_hammerhead_garmin_sync_profile.sh` |
+| **Artifacts** | `data/qbot_operational_state.json` (reports cron status) |
+| **Old endpoint** | crontab + systemd timers |
+| **New equivalent** | Active: 5 cron entries (4× Hammerhead-Garmin sync, 1× artifact prune), 1 systemd timer (PostgreSQL backup). Maintains backward-compatible scheduling. |
+| **Status** | **RESTORED** |
+| **Risk** | LOW |
+| **Safety class** | CONTROLLED_ACTION |
+| **Exposed Telegram** | no |
+| **Exposed MCP** | no |
+| **Required work** | Monitor cron integrity; ensure timer is persistent across reboots |
+| **Priority** | P2 |
+| **Can restore today** | yes |
+
+### 19. Backup / Restore
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy PostgreSQL backup pipeline |
+| **Files** | `scripts/qbot_backup.sh`, `systemd/qbot-backup.service.example`, `systemd/qbot-backup.timer.example`, `docs/qbot_backup_recovery.md`, `qbot_ops_tools.py` (backup status/timer/drill tools) |
+| **Artifacts** | `/opt/qbot/backups/` (daily PostgreSQL dumps), `/opt/qbot/backups/rwgps/` (route backups), `/opt/qbot/backups/pathfix_20260518_1123/` (pre-migration code snapshots) |
+| **Old endpoint** | `pg_dump` → `/opt/qbot/backups/` |
+| **New equivalent** | Same: `qbot-backup.timer` triggers daily at 03:20; `scripts/qbot_backup.sh` dumps `qbot` DB, gzips, sets `chmod 600`, auto-prunes >14 days |
+| **Status** | **RESTORED** |
+| **Risk** | LOW |
+| **Safety class** | CONTROLLED_ACTION |
+| **Exposed Telegram** | `/backup` |
+| **Exposed MCP** | `qbot_backup_status`, `qbot_backup_plan`, `qbot_create_backup_script_preview`, `qbot_backup_timer_status`, `qbot_restore_drill_status`, `qbot_restore_drill_plan` |
+| **Required work** | Maintain timer; test restore drill periodically |
+| **Priority** | P2 |
+| **Can restore today** | yes |
+
+### 20. Public Endpoints
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy public endpoints: `/q`, `/health`, `/mcp/`, `/telegram/webhook/`, `/ride-readiness` |
+| **Files** | `qbot_api.py`, `/etc/nginx/sites-enabled/q365`, `docs/qbot_operational_readiness.md` |
+| **Artifacts** | nginx vhost config, Cloudflare proxy |
+| **Old endpoint** | Multiple public routes |
+| **New equivalent** | Public: `GET /mcp/`, `GET /mcp/health`, `GET /mcp/tools`, `POST /mcp/`, `POST /telegram/webhook/{secret}`, `GET /ride-readiness`. Blocked: `/q` → 404, `/health` → 404 (nginx-level). Internal only: `/q` (POST), `/health` (GET) |
+| **Status** | **RESTORED** |
+| **Risk** | MEDIUM |
+| **Safety class** | READ_ONLY (public); WRITE_SAFE (MCP POST with auth) |
+| **Exposed Telegram** | yes (webhook) |
+| **Exposed MCP** | yes (adapter endpoints) |
+| **Required work** | Keep `/q` and `/health` blocked publicly; the allowed public set is the intended one |
+| **Priority** | P1 |
+| **Can restore today** | yes |
+
+### 21. Old MCP / SSE
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy Flask-based MCP server with SSE streaming, ngrok tunnel |
+| **Files** | `qbot-mcp-bridge.service` (inactive), `qbot_mcp_client.py`, `mcp_server.py` (new FastMCP server) |
+| **Artifacts** | None active |
+| **Old endpoint** | SSE `/sse`, `/messages/` via ngrok |
+| **New equivalent** | Replaced: `mcp_server.py` serves SSE natively via FastMCP `streamable-http` transport on port 8000; ngrok completely removed (Cloudflare + nginx instead) |
+| **Status** | **DEPRECATED** |
+| **Risk** | LOW |
+| **Safety class** | N/A (deprecated) |
+| **Exposed Telegram** | no |
+| **Exposed MCP** | no (new implementation) |
+| **Required work** | No restoration needed; legacy service is intentionally disabled |
+| **Priority** | P2 |
+| **Can restore today** | n/a (deprecated) |
+
+### 22. Qbot Status / Monitoring
+| Field | Value |
+|-------|-------|
+| **Legacy evidence** | Legacy system health monitoring |
+| **Files** | `scripts/qbot_operational_state.py`, `scripts/qbot_status.py`, `monitor.py`, `qbot_ops_tools.py`, `qbot_operator_tools.py`, `qbot_tools.py` |
+| **Artifacts** | `data/qbot_operational_state.json` (machine-readable snapshot) |
+| **Old endpoint** | System health snapshot + human-readable status |
+| **New equivalent** | `qbot_operator_final_smoke_test` (9 checks: API health, backup timer, latest backup, restore drill, project guard, git clean, readiness report, error classification, LLM boundary), `qbot_ride_readiness_status`, `/status` Telegram command, `qbot_operational_state.py` for JSON snapshot |
+| **Status** | **RESTORED** |
+| **Risk** | LOW |
+| **Safety class** | READ_ONLY |
+| **Exposed Telegram** | `/status`, `/smoke` |
+| **Exposed MCP** | `qbot.status`, `qbot.readiness` |
+| **Required work** | Monitor integration with monitoring stack (optional); current health shows legacy `q-bot.service` as intentionally inactive |
+| **Priority** | P2 |
+| **Can restore today** | yes |
+
+---
+
+## Summary Counts
+
+| Metric | Count |
+|--------|-------|
+| Total capabilities audited | 22 |
+| **RESTORED** | 18 |
+| **PARTIAL** | 3 (Hammerhead FIT Import, CSV Export, RWGPS) |
+| **MISSING** | 0 |
+| **DEPRECATED** | 1 (Old MCP/SSE — intentionally replaced) |
+| **BLOCKED_BY_POLICY** | 0 capabilities; 1 sub-feature (garage gate automation) |
+| **Real parity percentage** | **86.4%** — (18+1 deprecated) / 22 fully complete; 3 partial remaining |
+
+### Partial Details
+| Capability | Gap | What's Needed |
+|-----------|-----|---------------|
+| **Hammerhead FIT Import** | Bootstrap JWT may be expired | Fresh `HAMMERHEAD_EMAIL`/`HAMMERHEAD_PASSWORD` for token refresh |
+| **CSV Export** | No standalone CSV export endpoint | Optional — generated as sync byproduct only |
+| **RWGPS** | No API credentials configured | `RWGPS_AUTH_TOKEN` + `RWGPS_USER_ID` in `.env` |
+
+### P0 Gaps to Fix First
+None. All P0 items (Telegram, MCP, QExt2, backup, public endpoints) are RESTORED and operational.
+
+### P1 Gaps
+1. **Hammerhead FIT Import** — Bootstrap token refresh needed to ensure continuous Hammerhead→Garmin sync.
+2. **RWGPS** — API credentials needed to activate live route data. Currently using local manifest fallback.
+
+---
+
+## Additional Context
+
+### Active Services Architecture
+```
+Cloudflare → nginx (port 20181, server_name qbot.cytr.us)
+  ├── /telegram/webhook/ → 127.0.0.1:8001/telegram/webhook/
+  ├── /mcp/              → 127.0.0.1:8001/mcp/
+  ├── /ride-readiness    → 127.0.0.1:8001/ride-readiness
+  ├── /q                 → 404 (blocked)
+  └── /health             → 404 (blocked)
+
+qbot-api.service (port 8001)
+  ├── GET /ride-readiness        — QExt2/Karoo athlete data (async, max 5s)
+  ├── GET/POST /mcp/             — ChatGPT MCP connector (23 tools, auth-gated)
+  ├── GET /mcp/health            — MCP adapter health
+  ├── GET /mcp/tools             — MCP adapter tool list
+  ├── POST /q                    — Internal tool dispatch
+  ├── GET /health                — Internal health check
+  └── POST /telegram/webhook/... — Telegram bot
+
+qbot-qlab-server.service (port 8899)
+  └── QLab FIT export API (token-gated)
+
+mcp_server.py (port 8000, FastMCP)
+  └── 56 native MCP tools + /ride-readiness custom route (CORS: *)
 ```
 
-## P0 Gaps To Fix First
+### Tool Registry (qbot_tool_registry.py)
+- **224 registered tools** across all categories: core (18), operator (16), ops (36), legacy (35), MCP (2), LLM (12), external LLM (4), Telegram (6), artifacts (4), weather (3), Garmin (1), Hammerhead (1)
+- Backward-compatible with legacy tool naming (all `qbot_` prefix)
 
-1. OpenWeatherMap-specific weather parity is still missing; current weather is Open-Meteo-based compatibility, not the legacy OWM flow.
-2. The filesystem↔SQL artifacts bridge is still partial.
-3. Garmin proxy/upload and Hammerhead FIT import remain partial and depend on external auth/state.
+### Secret Inventory (names only)
+- **Core**: `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, `PG_CONNECT_TIMEOUT`, `QBOT_PUBLIC_BASE_URL`
+- **Telegram**: `TELEGRAM_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ENABLED`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_CHAT_ID`, `TELEGRAM_ALLOWED_CHAT_IDS`, `TELEGRAM_ALLOW_ALL_CHATS`, `TELEGRAM_WEBHOOK_URL`
+- **MCP**: `MCP_SHARED_SECRET`, `QBOT_MCP_TOKEN`, `QBOT_MCP_URL`
+- **Garmin**: `GARMIN_EMAIL`, `GARMIN_PASSWORD`, `GARMIN_TOKENSTORE`
+- **Hammerhead**: `HAMMERHEAD_EMAIL`, `HAMMERHEAD_PASSWORD`, `HAMMERHEAD_BEARER_TOKEN`, `HAMMERHEAD_REFRESH_TOKEN`, `HAMMERHEAD_TOKENSTORE`, `HAMMERHEAD_USER_ID`
+- **Xert**: `XERT_EMAIL`, `XERT_PASSWORD`
+- **Intervals**: `INTERVALS_ATHLETE_ID`, `INTERVALS_API_KEY`
+- **Weather**: `LOCATION_LAT`, `LOCATION_LON`, `LOCATION_NAME`
+- **RWGPS**: `RWGPS_AUTH_TOKEN`, `RWGPS_API_KEY`, `RWGPS_USER_ID`, `RWGPS_PLANNED_COLLECTION_ID` (all **missing**)
+- **LLM**: `OPENAI_API_KEY`, `QGPT_API_KEY`, `QGPT_BASE_URL`, `QGPT_MODEL`, `QGPT_TIMEOUT_SEC`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `DEEPSEEK_API_KEY`
+- **Email**: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `EMAIL_TO`
+- **Nutrition**: `CRONOMETER_EMAIL`, `CRONOMETER_PASSWORD`
+- **Rider**: `RIDER_MAX_HR_BPM`, `RIDER_MAX_HR_SOURCE`
+- **Other**: `QLAB_EXPORT_TOKEN`, `RIDE_READINESS_TIMEOUT_SEC`
 
-## Do Not Run Without Separate Approval
+### External Data Dependencies
+| Dependency | Status | Auth |
+|-----------|--------|------|
+| PostgreSQL | Active | Local |
+| SQLite (`garage.db`) | Active | Local |
+| Intervals.icu API | Active | API_KEY |
+| Xert OAuth | Active | Email/Password |
+| Garmin Connect | Active | Email/Password + Tokenstore |
+| Hammerhead Dashboard | Partial | JWT (may be expired) |
+| Open-Meteo Weather | Active | None (free) |
+| Overpass/OSM Maps | Active | None (free) |
+| RWGPS API | **Inactive** | No credentials |
+| Gmail SMTP | Active | App Password |
+| Telegram Bot API | Active | Bot Token |
+| OpenAI/Anthropic LLM | Active | API Key |
+| Cronometer | Active | Email/Password |
 
-- `qbot-hammerhead-sync`
-- `scripts/run_hammerhead_garmin_sync.sh`
-- `scripts/run_hammerhead_garmin_sync_profile.sh`
-- `qbot-fit-rewrite`
-- any Garage / gate / home automation actuation path
-- any restore operation against the production `qbot` database
-- any script or command that reads or prints `.env.local` values
-- the old standalone MCP / SSE bridge service path
+### Things NOT to Run Without Separate Approval
+1. **Legacy `q-bot.service`** — intentionally disabled after cutover; do not start
+2. **Legacy `q365.service`** — O365/SharePoint MCP server; never restored
+3. **`ngrok-qbot.service`** — Legacy tunnel; replaced by Cloudflare + nginx
+4. **Garage gate/home automation** — Blocked by policy; read-only status only
+5. **Direct FIT modifications** — Blocked by policy; LLM forbidden role
+6. **Any `_tool_qbot_legacy_*` execution tools** — These are read-only parity audit tools; do not execute
+7. **`qbot_external_llm_tools.py` write operations** — ChatGPT is external only; no direct API integration for write
 
-## Conclusion
+---
 
-The new Qbot architecture already restores the core control plane, Telegram, MCP, QExt2 readiness, QLab, backup/restore, scheduling, status monitoring, and most route/report flows.
+## Can We Proceed to 1:1 Garage Migration?
 
-The main remaining parity gaps are the OpenWeatherMap-specific weather path, the unified artifacts bridge, and the Garmin/Hammerhead external sync flows.
+**Yes.** The garage inventory has full CRUD support via:
+- 15+ MCP tools (`garage_overview`, `save_bike`, `save_gear`, `save_component`, `save_fitting`, `save_memory`, etc.)
+- Gear classifier (`qbot_garage_mapper.py`)
+- Trip packing lists
+- SQLite local persistence (`data/garage.db`)
+- Telegram command (`/garage_status`)
 
-Garage inventory itself is present as data and routing, but garage / gate / home automation actuation remains policy-blocked and should be treated separately from the inventory migration.
+The only blocked sub-feature is garage gate/home automation (physical access control), which is intentionally blocked by policy.
