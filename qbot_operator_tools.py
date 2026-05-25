@@ -478,6 +478,8 @@ _OPERATOR_RUNBOOK_TOOLS: dict[str, list[str]] = {
     "smart_query_demo": ["qbot_llm_run_query", "qbot_policy_validate_plan"],
     "external_llm_review": ["qbot_external_llm_status", "qbot_external_llm_policy", "qbot_tool_policy_list", "qbot_llm_boundary_policy"],
     "chatgpt_context_review": ["qbot_external_context_bundle", "qbot_chatgpt_prompt_pack", "qbot_external_llm_workflow_guide"],
+    "telegram_restore_review": ["qbot_telegram_legacy_audit", "qbot_telegram_config_status", "qbot_public_endpoint_status", "qbot_telegram_webhook_plan", "qbot_telegram_command_help"],
+    "telegram_activation_check": ["qbot_telegram_status", "qbot_public_endpoint_status", "qbot_telegram_webhook_plan", "qbot_operator_final_smoke_test"],
 }
 
 _ALLOWED_RUNBOOK_NAMES: set[str] = set(_OPERATOR_RUNBOOK_TOOLS.keys())
@@ -552,9 +554,19 @@ def _operator_dispatch(tool_name: str):
         pass
     try:
         from qbot_external_llm_tools import _get_external_llm_tool
-        return _get_external_llm_tool(tool_name)
+        func = _get_external_llm_tool(tool_name)
+        if func:
+            return func
     except ImportError:
-        return None
+        pass
+    try:
+        from qbot_telegram_tools import _get_telegram_tool
+        func = _get_telegram_tool(tool_name)
+        if func:
+            return func
+    except ImportError:
+        pass
+    return None
 
 
 def _tool_qbot_operator_runbook(args: dict | None = None) -> dict[str, Any]:

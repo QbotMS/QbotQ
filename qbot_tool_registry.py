@@ -122,21 +122,34 @@ from qbot_external_llm_tools import (
     _tool_qbot_external_llm_workflow_guide,
 )
 
+from qbot_telegram_tools import (
+    _tool_qbot_public_endpoint_status,
+    _tool_qbot_telegram_answer_context,
+    _tool_qbot_telegram_command_help,
+    _tool_qbot_telegram_config_status,
+    _tool_qbot_telegram_delete_webhook,
+    _tool_qbot_telegram_legacy_audit,
+    _tool_qbot_telegram_send_test,
+    _tool_qbot_telegram_set_webhook,
+    _tool_qbot_telegram_status,
+    _tool_qbot_telegram_webhook_plan,
+)
+
 from qbot_ops_tools import (
+    _tool_qbot_answer_context,
     _tool_qbot_backup_plan,
     _tool_qbot_backup_status,
     _tool_qbot_backup_timer_status,
     _tool_qbot_create_backup_script_preview,
+    _tool_qbot_llm_boundary_policy,
     _tool_qbot_logs_overview,
     _tool_qbot_maintenance_report,
+    _tool_qbot_operator_final_smoke_test,
     _tool_qbot_operator_quick_reference,
     _tool_qbot_restore_drill_plan,
     _tool_qbot_restore_drill_status,
     _tool_qbot_service_logs,
     _tool_qbot_test_error_classification,
-    _tool_qbot_answer_context,
-    _tool_qbot_llm_boundary_policy,
-    _tool_qbot_operator_final_smoke_test,
 )
 
 TOOLS_META: dict[str, dict[str, Any]] = {
@@ -638,6 +651,66 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_telegram_legacy_audit": {
+        "description": "audyT starej konfiguracji Telegram/ngrok — read-only, bez tokenów",
+        "category": "telegram",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_telegram_config_status": {
+        "description": "Sprawdza obecność zmiennych TELEGRAM_* w .env bez ujawniania wartości",
+        "category": "telegram",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_public_endpoint_status": {
+        "description": "Sprawdza publiczny endpoint — QBOT_PUBLIC_BASE_URL, HTTPS, reverse proxy",
+        "category": "telegram",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_telegram_status": {
+        "description": "Zbiorczy status Telegram bota — config, webhook, reachable",
+        "category": "telegram",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_telegram_webhook_plan": {
+        "description": "Plan webhooka Telegram — expected URL, manual commands, verification steps",
+        "category": "telegram",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_telegram_set_webhook": {
+        "description": "Ustawia Telegram webhook — preview lub execute, wymaga https://",
+        "category": "telegram",
+        "safe": True,
+        "args_schema": {"execute": False},
+    },
+    "qbot_telegram_delete_webhook": {
+        "description": "Usuwa Telegram webhook — preview by default, rollback option",
+        "category": "telegram",
+        "safe": True,
+        "args_schema": {"execute": False},
+    },
+    "qbot_telegram_send_test": {
+        "description": "Wysyła testową wiadomość do allowed chat_id (max 1000 znaków)",
+        "category": "telegram",
+        "safe": True,
+        "args_schema": {"chat_id": None, "text": "Qbot Telegram test"},
+    },
+    "qbot_telegram_command_help": {
+        "description": "Lista dostępnych komend Telegram bota",
+        "category": "telegram",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_telegram_answer_context": {
+        "description": "Bezpieczny zsanitizowany kontekst Telegram dla LLM — bez sekretów",
+        "category": "telegram",
+        "safe": True,
+        "args_schema": {},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -724,4 +797,14 @@ TOOLS: dict[str, Any] = {
     "qbot_chatgpt_prompt_pack": _tool_qbot_chatgpt_prompt_pack,
     "qbot_chatgpt_decision_record_create": _tool_qbot_chatgpt_decision_record_create,
     "qbot_external_llm_workflow_guide": _tool_qbot_external_llm_workflow_guide,
+    "qbot_telegram_legacy_audit": _tool_qbot_telegram_legacy_audit,
+    "qbot_telegram_config_status": _tool_qbot_telegram_config_status,
+    "qbot_public_endpoint_status": _tool_qbot_public_endpoint_status,
+    "qbot_telegram_status": _tool_qbot_telegram_status,
+    "qbot_telegram_webhook_plan": _tool_qbot_telegram_webhook_plan,
+    "qbot_telegram_set_webhook": _tool_qbot_telegram_set_webhook,
+    "qbot_telegram_delete_webhook": _tool_qbot_telegram_delete_webhook,
+    "qbot_telegram_send_test": _tool_qbot_telegram_send_test,
+    "qbot_telegram_command_help": _tool_qbot_telegram_command_help,
+    "qbot_telegram_answer_context": _tool_qbot_telegram_answer_context,
 }
