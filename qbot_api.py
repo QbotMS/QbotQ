@@ -31,7 +31,7 @@ def _telegram_response_text(command: str, result: dict) -> str | None:
         text = response.get("summary_text")
         if text:
             return str(text)
-    if command in {"/weather_status", "/garage_status", "/artifacts", "/integrations", "/rwgps", "/hammerhead", "/csv"} and isinstance(response, dict):
+    if command in {"/weather_status", "/garage_status", "/artifacts", "/integrations", "/rwgps", "/hammerhead", "/csv", "/xert", "/intervals", "/garmin", "/cronometer", "/weather", "/maps", "/garage", "/daily_report", "/daily", "/ride_report", "/reports"} and isinstance(response, dict):
         text = result.get("text") or response.get("summary_text") or response.get("text")
         if text:
             return str(text)
@@ -563,6 +563,105 @@ async def telegram_webhook(webhook_secret: str, request: Request):
                     f"ℹ️ status: {status.get('restored_status', 'UNKNOWN')}\n"
                     f"ℹ️ csv count: {status.get('inventory', {}).get('csv_count', 0)}\n"
                     f"ℹ️ latest available: {'yes' if status.get('latest_available') else 'no'}",
+        }
+    elif command == "/xert":
+        from qbot_integration_tools import _tool_qbot_xert_readiness_status, _tool_qbot_xert_config_status
+        config = _tool_qbot_xert_config_status()
+        status = _tool_qbot_xert_readiness_status()
+        result = {
+            "command": "/xert",
+            "response": status,
+            "text": "Xert:\n"
+                    f"ℹ️ configured: {'yes' if config.get('configured') else 'no'}\n"
+                    f"ℹ️ status: {status.get('status', 'UNKNOWN')}\n"
+                    f"ℹ️ FTP: {status.get('ftp_watts', 'N/A')}W\n"
+                    f"ℹ️ forma: {status.get('form_status', 'N/A')}",
+        }
+    elif command == "/intervals":
+        from qbot_integration_tools import _tool_qbot_intervals_wellness_status, _tool_qbot_intervals_config_status
+        config = _tool_qbot_intervals_config_status()
+        status = _tool_qbot_intervals_wellness_status()
+        result = {
+            "command": "/intervals",
+            "response": status,
+            "text": "Intervals.icu:\n"
+                    f"ℹ️ configured: {'yes' if config.get('configured') else 'no'}\n"
+                    f"ℹ️ status: {status.get('status', 'UNKNOWN')}\n"
+                    f"ℹ️ weight: {status.get('latest_weight', 'N/A')}kg",
+        }
+    elif command == "/garmin":
+        from qbot_integration_tools import _tool_qbot_garmin_config_status, _tool_qbot_garmin_upload_dry_run
+        config = _tool_qbot_garmin_config_status()
+        dry_run = _tool_qbot_garmin_upload_dry_run()
+        result = {
+            "command": "/garmin",
+            "response": config,
+            "text": "Garmin:\n"
+                    f"ℹ️ configured: {'yes' if config.get('configured') else 'no'}\n"
+                    f"ℹ️ tokenstore: {'active' if config.get('tokenstore_active') else 'inactive'}\n"
+                    f"ℹ️ latest FIT: {'available' if dry_run.get('latest_fit_available') else 'none'}",
+        }
+    elif command == "/cronometer":
+        from qbot_integration_tools import _tool_qbot_cronometer_legacy_status
+        status = _tool_qbot_cronometer_legacy_status()
+        result = {
+            "command": "/cronometer",
+            "response": status,
+            "text": "Cronometer:\n"
+                    f"ℹ️ status: {status.get('status', 'UNKNOWN')}\n"
+                    f"ℹ️ restored: {status.get('restored_status', 'UNKNOWN')}",
+        }
+    elif command == "/weather":
+        from qbot_integration_tools import _tool_qbot_weather_config_status
+        status = _tool_qbot_weather_config_status()
+        result = {
+            "command": "/weather",
+            "response": status,
+            "text": "Weather:\n"
+                    f"ℹ️ status: {status.get('status', 'UNKNOWN')}\n"
+                    f"ℹ️ API configured: {'yes' if status.get('api_configured') else 'no'}\n"
+                    f"ℹ️ location: {'set' if status.get('location_configured') else 'missing'}",
+        }
+    elif command == "/maps":
+        from qbot_integration_tools import _tool_qbot_openmaps_legacy_status
+        status = _tool_qbot_openmaps_legacy_status()
+        result = {
+            "command": "/maps",
+            "response": status,
+            "text": "OpenMaps:\n"
+                    f"ℹ️ status: {status.get('status', 'UNKNOWN')}\n"
+                    f"ℹ️ code: {'detected' if status.get('code_detected') else 'missing'}",
+        }
+    elif command == "/garage":
+        from qbot_garage_tools import _tool_qbot_garage_raw_status
+        status = _tool_qbot_garage_raw_status()
+        result = {
+            "command": "/garage",
+            "response": status,
+            "text": "Garage:\n"
+                    f"ℹ️ status: {status.get('status', 'UNKNOWN')}\n"
+                    f"ℹ️ records: {status.get('total_records', 0)}",
+        }
+    elif command == "/daily_report" or command == "/daily":
+        from qbot_report_tools import _tool_qbot_daily_report_status
+        status = _tool_qbot_daily_report_status()
+        result = {
+            "command": command,
+            "response": status,
+            "text": "Daily Report:\n"
+                    f"ℹ️ status: {status.get('status', 'UNKNOWN')}\n"
+                    f"ℹ️ last sent: {status.get('last_sent_date', 'never')}\n"
+                    f"ℹ️ channels: {', '.join(status.get('channels', [])) or 'none'}",
+        }
+    elif command == "/ride_report" or command == "/reports":
+        from qbot_report_tools import _tool_qbot_ride_report_status
+        status = _tool_qbot_ride_report_status()
+        result = {
+            "command": command,
+            "response": status,
+            "text": "Ride Report:\n"
+                    f"ℹ️ status: {status.get('status', 'UNKNOWN')}\n"
+                    f"ℹ️ activities reported: {status.get('reported_count', 0)}",
         }
     elif command == "/ask":
         if not query:
