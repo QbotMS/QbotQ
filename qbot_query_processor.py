@@ -16,6 +16,7 @@ _SAFE_MULTI_EXECUTE_TOOLS: set[str] = {
     "qbot_project_recent_commits",
     "qbot_recent_tool_calls",
     "qbot_api_tools_list",
+    "qbot_operator_runbook",
 }
 
 _RUNBOOKS: list[dict[str, Any]] = [
@@ -47,7 +48,7 @@ _RUNBOOKS: list[dict[str, Any]] = [
     },
     {
         "name": "qbot_recent_errors",
-        "keywords": ["ostatnie błędy", "pokaż błędy", "recent errors", "co się wywaliło"],
+        "keywords": ["pokaż błędy", "recent errors"],
         "tools": [
             ("qbot_recent_tool_calls", {"limit": 20}),
             ("qbot_db_overview", {}),
@@ -84,6 +85,16 @@ _RUNBOOKS: list[dict[str, Any]] = [
         "description": "API status overview — self-check, services, database, recent tool calls",
         "required_data": ["API health", "systemd services", "PostgreSQL"],
         "limitations": ["Internal diagnostics only", "No load metrics", "No external API validation"],
+    },
+    {
+        "name": "qbot_operator_full_diagnostic",
+        "keywords": ["pełna diagnostyka operatora", "operator full diagnostic"],
+        "tools": [
+            ("qbot_operator_runbook", {"name": "full_diagnostic", "execute": False}),
+        ],
+        "description": "Full operator diagnostic — runs full_diagnostic operator runbook",
+        "required_data": ["API health", "systemd services", "PostgreSQL", "git repository", "guard rules"],
+        "limitations": ["Delegates to qbot_operator_runbook", "Preview only by default"],
     },
 ]
 
@@ -202,6 +213,40 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "required_data": ["Git repository state", "systemd service config", "ss listening ports"],
         "limitations": ["Only checks predefined rules", "Does not scan for CVEs or vulnerabilities"],
     },
+    {
+        "keywords": ["ostatnie błędy", "error summary", "co się wywaliło"],
+        "tool": "qbot_error_summary",
+        "args": {"limit": 50},
+        "confidence": "high",
+        "required_data": ["PostgreSQL tool_calls table"],
+        "limitations": ["Recent errors inferred from tool_calls; dedicated error filter not implemented yet", "Requires database connection"],
+    },
+    {
+        "keywords": ["użycie narzędzi", "statystyki tools", "tool usage",
+                      "użycie tools"],
+        "tool": "qbot_tool_usage_summary",
+        "args": {"limit": 200},
+        "confidence": "high",
+        "required_data": ["PostgreSQL tool_calls table"],
+        "limitations": ["Statistical summary only", "Requires database connection"],
+    },
+    {
+        "keywords": ["czy qbot jest gotowy", "readiness", "gotowość"],
+        "tool": "qbot_readiness_report",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["API health", "systemd services", "PostgreSQL", "git repository", "guard rules"],
+        "limitations": ["Local checks only", "Does not verify external dependencies"],
+    },
+    {
+        "keywords": ["snapshot", "zrzut diagnostyczny", "operator snapshot",
+                      "diagnostic snapshot"],
+        "tool": "qbot_operator_snapshot",
+        "args": {"include_recent_calls": True, "recent_limit": 20},
+        "confidence": "high",
+        "required_data": ["API health", "system resources", "PostgreSQL", "git repository", "guard rules"],
+        "limitations": ["Read-only snapshot", "Large response — use with caution", "No persistent storage"],
+    },
 ]
 
 _EXAMPLES = [
@@ -221,6 +266,10 @@ _EXAMPLES = [
     "ostatnie błędy",
     "stan projektu",
     "stan api",
+    "czy qbot jest gotowy",
+    "użycie narzędzi",
+    "snapshot",
+    "pełna diagnostyka operatora",
 ]
 
 _MULTI_TOOL_SETS: dict[str, list[str]] = {
@@ -452,8 +501,11 @@ def _build_multi_preview(query: str, tool_args_list: list[tuple[str, dict[str, A
 
     step_num = 3
     for tool_name, tool_args in safe_valid:
+        t_args = dict(tool_args)
+        if tool_name == "qbot_operator_runbook":
+            t_args["execute"] = True
         try:
-            result = TOOLS[tool_name](tool_args)
+            result = TOOLS[tool_name](t_args)
             if isinstance(result, dict) and result.get("status") == "error":
                 has_error = True
                 execute_steps.append({

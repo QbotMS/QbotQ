@@ -20,6 +20,14 @@ from qbot_tools import (
     _tool_qbot_system_overview,
 )
 
+from qbot_operator_tools import (
+    _tool_qbot_error_summary,
+    _tool_qbot_operator_runbook,
+    _tool_qbot_operator_snapshot,
+    _tool_qbot_readiness_report,
+    _tool_qbot_tool_usage_summary,
+)
+
 TOOLS_META: dict[str, dict[str, Any]] = {
     "qbot_status": {
         "description": "Podstawowe informacje o serwerze API (hostname, python, pid)",
@@ -105,6 +113,36 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {"query": "sprawdź stan Q"},
     },
+    "qbot_error_summary": {
+        "description": "Podsumowanie ostatnich błędów z historii tool_calls",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {"limit": 50},
+    },
+    "qbot_tool_usage_summary": {
+        "description": "Statystyka użycia narzędzi: liczba wywołań, statusy, najczęściej używane",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {"limit": 200},
+    },
+    "qbot_readiness_report": {
+        "description": "Ocena gotowości Qbot do pracy: READY, READY_WITH_WARNINGS, NOT_READY",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_operator_snapshot": {
+        "description": "Zbiorczy snapshot diagnostyczny — API, system, DB, git, guard, błędy",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {"include_recent_calls": True, "recent_limit": 20},
+    },
+    "qbot_operator_runbook": {
+        "description": "Gotowe operacyjne scenariusze (safe_to_work, full_diagnostic, error_review, project_review, api_review)",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {"name": "safe_to_work", "execute": False},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -122,4 +160,9 @@ TOOLS: dict[str, Any] = {
     "qbot_project_diff_summary": _tool_qbot_project_diff_summary,
     "qbot_project_guard_check": _tool_qbot_project_guard_check,
     "qbot_query": _tool_qbot_query,
+    "qbot_error_summary": _tool_qbot_error_summary,
+    "qbot_tool_usage_summary": _tool_qbot_tool_usage_summary,
+    "qbot_readiness_report": _tool_qbot_readiness_report,
+    "qbot_operator_snapshot": _tool_qbot_operator_snapshot,
+    "qbot_operator_runbook": _tool_qbot_operator_runbook,
 }
