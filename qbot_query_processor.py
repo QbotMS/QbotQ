@@ -18,6 +18,75 @@ _SAFE_MULTI_EXECUTE_TOOLS: set[str] = {
     "qbot_api_tools_list",
 }
 
+_RUNBOOKS: list[dict[str, Any]] = [
+    {
+        "name": "qbot_full_overview",
+        "keywords": ["pełny przegląd", "full overview", "sprawdź wszystko", "kompletny status"],
+        "tools": [
+            ("qbot_api_self_check", {}),
+            ("qbot_system_overview", {}),
+            ("qbot_db_overview", {}),
+            ("qbot_git_status", {}),
+            ("qbot_project_guard_check", {}),
+        ],
+        "description": "Full system overview — API self-check, system resources, database status, git state, guard violations",
+        "required_data": ["API health", "systemd services", "PostgreSQL connection", "git repository", "guard rules"],
+        "limitations": ["Read-only diagnostic", "Local services only", "No external API checks"],
+    },
+    {
+        "name": "qbot_safe_to_work",
+        "keywords": ["czy można działać", "czy bezpiecznie działać", "safe to work", "czy repo jest gotowe"],
+        "tools": [
+            ("qbot_project_guard_check", {}),
+            ("qbot_git_status", {}),
+            ("qbot_api_self_check", {}),
+        ],
+        "description": "Check if environment is safe to work — guard rules, git state, API health",
+        "required_data": ["guard rules", "git repository", "API health"],
+        "limitations": ["Checks local state only", "Does not verify remote branches", "No resource usage check"],
+    },
+    {
+        "name": "qbot_recent_errors",
+        "keywords": ["ostatnie błędy", "pokaż błędy", "recent errors", "co się wywaliło"],
+        "tools": [
+            ("qbot_recent_tool_calls", {"limit": 20}),
+            ("qbot_db_overview", {}),
+        ],
+        "description": "Show recent errors — recent tool calls with error inference, database overview",
+        "required_data": ["PostgreSQL tool_calls table"],
+        "limitations": [
+            "Recent errors are inferred from recent tool_calls; dedicated error filter not implemented yet",
+            "Requires database connection",
+        ],
+    },
+    {
+        "name": "qbot_project_status",
+        "keywords": ["stan projektu", "project status", "co w projekcie", "status projektu"],
+        "tools": [
+            ("qbot_git_status", {}),
+            ("qbot_project_diff_summary", {}),
+            ("qbot_project_recent_commits", {}),
+            ("qbot_project_guard_check", {}),
+        ],
+        "description": "Project status overview — git state, working changes, recent commits, guard check",
+        "required_data": ["git repository at /opt/qbot/app"],
+        "limitations": ["Local repo only", "Summary diffs", "Max 30 commits"],
+    },
+    {
+        "name": "qbot_api_status",
+        "keywords": ["stan api", "api status", "czy api działa", "status qbot api"],
+        "tools": [
+            ("qbot_api_self_check", {}),
+            ("qbot_services_status", {}),
+            ("qbot_db_overview", {}),
+            ("qbot_recent_tool_calls", {}),
+        ],
+        "description": "API status overview — self-check, services, database, recent tool calls",
+        "required_data": ["API health", "systemd services", "PostgreSQL"],
+        "limitations": ["Internal diagnostics only", "No load metrics", "No external API validation"],
+    },
+]
+
 _INTENT_MAP: list[dict[str, Any]] = [
     {
         "keywords": ["stan q", "status q", "self check", "czy działa", "sprawdź wszystko",
@@ -148,6 +217,10 @@ _EXAMPLES = [
     "sprawdź bezpieczeństwo",
     "sprawdź stan Q, repo i guard",
     "pełny przegląd",
+    "czy można działać",
+    "ostatnie błędy",
+    "stan projektu",
+    "stan api",
 ]
 
 _MULTI_TOOL_SETS: dict[str, list[str]] = {
@@ -248,6 +321,16 @@ def process_query(query: str, execute: bool = False) -> dict[str, Any]:
     if not q:
         return _unknown_plan(query, "empty_query")
 
+    for runbook in _RUNBOOKS:
+        matched_kws: list[str] = [kw for kw in runbook["keywords"] if kw in q]
+        if matched_kws:
+            tool_args_list = list(runbook["tools"])
+            return _build_multi_preview(
+                query, tool_args_list,
+                f"runbook:{runbook['name']} matched keywords: {matched_kws}",
+                execute, runbook=runbook,
+            )
+
     for mt_key, mt_tools in _MULTI_TOOL_SETS.items():
         if mt_key in q:
             tool_args_list: list[tuple[str, dict[str, Any]]] = [
@@ -291,24 +374,36 @@ def process_query(query: str, execute: bool = False) -> dict[str, Any]:
 
 
 def _build_multi_preview(query: str, tool_args_list: list[tuple[str, dict[str, Any]]],
-                          reason: str, execute: bool = False) -> dict[str, Any]:
+                          reason: str, execute: bool = False,
+                          runbook: dict[str, Any] | None = None) -> dict[str, Any]:
     valid = [(t, a) for t, a in tool_args_list if t in TOOLS]
     if len(valid) > _MULTI_TOOL_LIMIT:
         valid = valid[:_MULTI_TOOL_LIMIT]
 
     tool_names = [t for t, _ in valid]
 
+    if runbook:
+        intent = runbook["name"]
+        required_data = list(runbook.get("required_data", []))
+        runbook_limitations = list(runbook.get("limitations", []))
+    else:
+        intent = "multi_tool_preview" if not execute else "multi_tool_execution"
+        required_data = []
+        runbook_limitations = []
+
     if not execute:
         steps: list[dict[str, Any]] = [
-            {"step": 1, "action": "classify_intent", "status": "ok",
-             "reason": reason},
+            {"step": 1, "action": "select_runbook", "status": "ok",
+             "runbook": runbook["name"], "reason": reason} if runbook
+            else {"step": 1, "action": "classify_intent", "status": "ok",
+                  "reason": reason},
             {"step": 2, "action": "build_multi_tool_plan", "status": "ok",
              "tools": tool_names, "reason": f"{len(valid)} allowlisted tools selected"},
             {"step": 3, "action": "preview_tools", "status": "skipped",
              "reason": "preview only — tools were not executed"},
         ]
 
-        limitations: list[str] = [
+        limitations: list[str] = [] + runbook_limitations + [
             "Preview only; tools were not executed",
             "No arbitrary command execution",
             "Only allowlisted tools can appear in plan",
@@ -319,7 +414,7 @@ def _build_multi_preview(query: str, tool_args_list: list[tuple[str, dict[str, A
         return {
             "status": "ok",
             "original_query": query,
-            "intent": "multi_tool_preview",
+            "intent": intent,
             "selected_tool": None,
             "confidence": "medium",
             "execution_mode": "preview_only",
@@ -332,16 +427,19 @@ def _build_multi_preview(query: str, tool_args_list: list[tuple[str, dict[str, A
             "tool_result": None,
             "executed_tools": [],
             "tool_results": None,
-            "required_data": [],
+            "required_data": required_data,
             "limitations": limitations,
-            "notes": "multi-tool preview — no tools executed",
+            "notes": f"runbook preview — no tools executed" if runbook
+                     else "multi-tool preview — no tools executed",
         }
 
     safe_valid = [(t, a) for t, a in valid if t in _SAFE_MULTI_EXECUTE_TOOLS]
 
     execute_steps: list[dict[str, Any]] = [
-        {"step": 1, "action": "classify_intent", "status": "ok",
-         "reason": reason},
+        {"step": 1, "action": "select_runbook", "status": "ok",
+         "runbook": runbook["name"], "reason": reason} if runbook
+        else {"step": 1, "action": "classify_intent", "status": "ok",
+              "reason": reason},
         {"step": 2, "action": "build_multi_tool_plan", "status": "ok",
          "tools": [t for t, _ in safe_valid],
          "reason": f"{len(safe_valid)} allowlisted tools selected for execution"},
@@ -396,7 +494,7 @@ def _build_multi_preview(query: str, tool_args_list: list[tuple[str, dict[str, A
     else:
         status = "ok"
 
-    limitations = [
+    limitations = [] + runbook_limitations + [
         "Controlled multi-tool execution",
         "Only allowlisted tools were executed",
         "No arbitrary command execution",
@@ -405,7 +503,7 @@ def _build_multi_preview(query: str, tool_args_list: list[tuple[str, dict[str, A
     return {
         "status": status,
         "original_query": query,
-        "intent": "multi_tool_execution",
+        "intent": intent,
         "selected_tool": None,
         "confidence": "medium",
         "execution_mode": "multi_tool_execute",
@@ -418,7 +516,8 @@ def _build_multi_preview(query: str, tool_args_list: list[tuple[str, dict[str, A
         "tool_result": None,
         "executed_tools": executed_tools,
         "tool_results": tool_results,
-        "required_data": [],
+        "required_data": required_data,
         "limitations": limitations,
-        "notes": "multi-tool execution — tools were executed from allowlist",
+        "notes": f"runbook execution — tools were executed from allowlist" if runbook
+                 else "multi-tool execution — tools were executed from allowlist",
     }
