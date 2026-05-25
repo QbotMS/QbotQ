@@ -156,6 +156,47 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+    "qbot.weather_status": {
+        "qbot_tool": "qbot_weather_status",
+        "description": "Read-only current weather status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "location": {"type": "string", "default": "Marki"},
+                "days": {"type": "integer", "minimum": 1, "maximum": 7, "default": 1},
+            },
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.weather_current": {
+        "qbot_tool": "qbot_weather_current",
+        "description": "Read-only current weather snapshot.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "location": {"type": "string", "default": "Marki"},
+            },
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.weather_forecast": {
+        "qbot_tool": "qbot_weather_forecast",
+        "description": "Read-only weather forecast summary.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "location": {"type": "string", "default": "Marki"},
+                "days": {"type": "integer", "minimum": 1, "maximum": 7, "default": 7},
+            },
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
     "qbot.garage_legacy_status": {
         "qbot_tool": "qbot_garage_legacy_status",
         "description": "Read-only garage / gate / home automation legacy status.",
@@ -170,9 +211,71 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+    "qbot.artifacts_filesystem_inventory": {
+        "qbot_tool": "qbot_artifacts_filesystem_inventory",
+        "description": "Read-only inventory of /opt/qbot/artifacts.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prefix": {"type": "string", "default": ""},
+            },
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.artifact_import_preview": {
+        "qbot_tool": "qbot_artifact_import_from_file_preview",
+        "description": "Preview-only artifact import mapping from a filesystem file.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "relative_path": {"type": "string"},
+            },
+            "required": ["relative_path"],
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.artifact_export_preview": {
+        "qbot_tool": "qbot_artifact_export_preview",
+        "description": "Preview-only artifact export plan.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "artifact_id": {"type": "integer"},
+            },
+            "required": ["artifact_id"],
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
     "qbot.external_integrations_report": {
         "qbot_tool": "qbot_external_integrations_report",
         "description": "Read-only combined report for external integrations.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.garmin_proxy_status": {
+        "qbot_tool": "qbot_garmin_proxy_status",
+        "description": "Read-only legacy Garmin proxy status.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.garmin_upload_status": {
+        "qbot_tool": "qbot_garmin_upload_status",
+        "description": "Read-only legacy Garmin upload status.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.hammerhead_import_status": {
+        "qbot_tool": "qbot_hammerhead_import_status",
+        "description": "Read-only legacy Hammerhead import status.",
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
         "safety_class": "READ_ONLY",
         "auth_required": False,

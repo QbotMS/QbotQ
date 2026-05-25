@@ -231,15 +231,18 @@ async def telegram_webhook(webhook_secret: str, request: Request):
         from qbot_legacy_cutover_tools import _tool_qbot_legacy_takeover_status
         result = {"command": "/takeover", "response": _tool_qbot_legacy_takeover_status()}
     elif command == "/weather_status":
-        from qbot_legacy_parity_tools import _tool_qbot_weather_legacy_status
-        response = _tool_qbot_weather_legacy_status()
+        from qbot_legacy_parity_tools import _tool_qbot_weather_legacy_status, _tool_qbot_weather_status
+        current = _tool_qbot_weather_status()
+        legacy = _tool_qbot_weather_legacy_status()
+        response = {"current": current, "legacy": legacy}
         result = {
             "command": "/weather_status",
             "response": response,
-            "text": "Weather legacy:\n"
-                    f"ℹ️ status: {response.get('status', 'UNKNOWN')}\n"
-                    f"ℹ️ current: {response.get('current_new_qbot_status', 'unknown')}\n"
-                    f"ℹ️ proposed tools: {', '.join(response.get('proposed_tools', []))}",
+            "text": "Weather status:\n"
+                    f"ℹ️ current status: {current.get('status', 'UNKNOWN')}\n"
+                    f"ℹ️ current path: {current.get('current_weather_path', 'unknown')}\n"
+                    f"ℹ️ OWM legacy: {legacy.get('status', 'UNKNOWN')}\n"
+                    f"ℹ️ OWM note: {legacy.get('current_new_qbot_status', 'unknown')}",
         }
     elif command == "/garage_status":
         from qbot_legacy_parity_tools import _tool_qbot_garage_legacy_status

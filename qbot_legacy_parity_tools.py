@@ -1,6 +1,8 @@
 """Legacy parity audit tools — read-only scope expansion across all QBot services."""
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import re
 import subprocess
@@ -32,6 +34,47 @@ _MAX_EVIDENCE_PER_CAP = 6
 _MAX_EXCERPTS_PER_FILE = 3
 
 _SENSITIVE_KEYS: set[str] = {"password", "secret", "token", "apikey", "api_key", "pgpassword", "env", "credential", "auth"}
+
+
+def _artifact_root_entries(root: Path) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    if not root.exists():
+        return entries
+    try:
+        for path in sorted(root.rglob("*")):
+            if any(skip in path.parts for skip in _SKIP_DIRS):
+                continue
+            if path.name in _SKIP_FILES or path.name.startswith(".aider") or path.name.startswith(".claude"):
+                continue
+            if not path.is_file():
+                continue
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            entries.append(
+                {
+                    "path": path.relative_to(root).as_posix() if path.is_relative_to(root) else str(path),
+                    "size_bytes": stat.st_size,
+                    "modified_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+                }
+            )
+            if len(entries) >= 200:
+                break
+    except Exception:
+        return entries
+    return entries
+
+
+def _weather_json(location: str = "Marki", days: int = 1) -> dict[str, Any]:
+    try:
+        from mcp_server import get_weather
+        raw = asyncio.run(get_weather(days=days, location=location))
+        if isinstance(raw, str):
+            return json.loads(raw)
+        return {"error": "unexpected weather payload"}
+    except Exception as exc:
+        return {"error": str(exc)}
 
 
 def _safe_read_text(path: Path) -> str:
@@ -233,10 +276,12 @@ def _tool_qbot_weather_legacy_status(_args: dict | None = None) -> dict[str, Any
         ]
     )
     env_presence = _env_presence(["OPENWEATHERMAP_API_KEY", "WEATHER_API_KEY", "OWM_API_KEY"])
+    weather_now = _weather_json(days=1)
+    current_weather_ok = isinstance(weather_now, dict) and "error" not in weather_now and isinstance(weather_now.get("teraz"), dict)
     current_status = "weather available via MCP get_weather (Open-Meteo); OpenWeatherMap integration is not present"
-    status = "MISSING"
+    status = "PARTIAL" if current_weather_ok else "MISSING"
     if evidence and any("openweathermap" in kw for item in evidence for kw in item.get("keywords_matched", [])):
-        status = "PARTIAL"
+        status = "RESTORED"
     return {
         "tool": "qbot_weather_legacy_status",
         "capability": "weather_openweathermap",
@@ -249,6 +294,70 @@ def _tool_qbot_weather_legacy_status(_args: dict | None = None) -> dict[str, Any
         "can_restore_today": True,
         "risk": "medium",
         "notes": "Legacy OpenWeatherMap is not directly present; current weather path is read-only Open-Meteo via MCP.",
+    }
+
+
+def _tool_qbot_weather_status(_args: dict | None = None) -> dict[str, Any]:
+    location = str((_args or {}).get("location", "Marki")).strip() or "Marki"
+    days_raw = (_args or {}).get("days", 1)
+    try:
+        days = int(days_raw)
+    except (ValueError, TypeError):
+        days = 1
+    days = max(1, min(days, 7))
+
+    env_presence = _env_presence(["OPENWEATHERMAP_API_KEY", "WEATHER_API_KEY", "OWM_API_KEY"])
+    weather = _weather_json(location=location, days=days)
+    current = weather.get("teraz") if isinstance(weather, dict) else None
+    forecast = weather.get("prognoza") if isinstance(weather, dict) else None
+    path_ok = isinstance(current, dict) and isinstance(forecast, list)
+
+    return {
+        "tool": "qbot_weather_status",
+        "capability": "weather",
+        "status": "PARTIAL" if path_ok else "MISSING",
+        "env_presence": env_presence,
+        "legacy_owm_config_present": any(env_presence.values()),
+        "current_weather_path": "mcp_server.get_weather(Open-Meteo)",
+        "location": location,
+        "days": days,
+        "current": current,
+        "forecast_sample": forecast[:3] if isinstance(forecast, list) else [],
+        "notes": "Read-only weather compatibility status; OpenWeatherMap-specific integration remains absent.",
+    }
+
+
+def _tool_qbot_weather_current(args: dict | None = None) -> dict[str, Any]:
+    location = str((args or {}).get("location", "Marki")).strip() or "Marki"
+    result = _weather_json(location=location, days=1)
+    if "error" in result:
+        return {"tool": "qbot_weather_current", "status": "error", "error": result["error"], "location": location}
+    return {
+        "tool": "qbot_weather_current",
+        "status": "OK",
+        "location": result.get("lokalizacja", location),
+        "teraz": result.get("teraz", {}),
+        "hourly_forecast": result.get("hourly_forecast", [])[:6],
+    }
+
+
+def _tool_qbot_weather_forecast(args: dict | None = None) -> dict[str, Any]:
+    location = str((args or {}).get("location", "Marki")).strip() or "Marki"
+    days_raw = (args or {}).get("days", 7)
+    try:
+        days = int(days_raw)
+    except (ValueError, TypeError):
+        days = 7
+    days = max(1, min(days, 7))
+    result = _weather_json(location=location, days=days)
+    if "error" in result:
+        return {"tool": "qbot_weather_forecast", "status": "error", "error": result["error"], "location": location, "days": days}
+    return {
+        "tool": "qbot_weather_forecast",
+        "status": "OK",
+        "location": result.get("lokalizacja", location),
+        "days": days,
+        "prognoza": result.get("prognoza", []),
     }
 
 
@@ -359,24 +468,249 @@ def _tool_qbot_artifacts_legacy_status(_args: dict | None = None) -> dict[str, A
     }
 
 
+def _tool_qbot_artifacts_filesystem_inventory(_args: dict | None = None) -> dict[str, Any]:
+    prefix = str((_args or {}).get("prefix", "")).strip().lstrip("/")
+    root = _ARTIFACT_ROOT
+    entries = _artifact_root_entries(root)
+    if prefix:
+        entries = [entry for entry in entries if str(entry.get("path", "")).startswith(prefix)]
+    directories: set[str] = set()
+    for entry in entries:
+        path = str(entry.get("path", ""))
+        parts = Path(path).parts
+        if parts:
+            directories.add(parts[0])
+    return {
+        "tool": "qbot_artifacts_filesystem_inventory",
+        "status": "OK" if root.exists() else "MISSING",
+        "root": str(root),
+        "prefix": prefix or None,
+        "file_count": len(entries),
+        "directories": sorted(directories),
+        "sample_files": entries[:50],
+    }
+
+
+def _tool_qbot_artifact_import_from_file_preview(args: dict | None = None) -> dict[str, Any]:
+    rel = str((args or {}).get("relative_path", "")).strip()
+    if not rel:
+        return {"tool": "qbot_artifact_import_from_file_preview", "status": "error", "error": "relative_path required"}
+    rel = rel.lstrip("/")
+    path = _ARTIFACT_ROOT / rel
+    if not path.exists() or not path.is_file():
+        return {
+            "tool": "qbot_artifact_import_from_file_preview",
+            "status": "error",
+            "error": f"artifact file not found: {rel}",
+        }
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        return {"tool": "qbot_artifact_import_from_file_preview", "status": "error", "error": str(exc)}
+    suffix = path.suffix.lower()
+    artifact_type = "report"
+    if suffix in (".gpx", ".fit", ".tcx"):
+        artifact_type = suffix.lstrip(".")
+    elif suffix in (".json",):
+        artifact_type = "json"
+    title = path.stem.replace("_", " ").strip()[:120] or path.name
+    return {
+        "tool": "qbot_artifact_import_from_file_preview",
+        "status": "PREVIEW",
+        "would_import": True,
+        "source_path": str(path),
+        "artifact_type": artifact_type,
+        "title": title,
+        "size_bytes": size,
+        "policy_notes": [
+            "Preview only",
+            "No file is written",
+            "Import would go through qbot_artifact_create if approved",
+        ],
+    }
+
+
+def _tool_qbot_artifact_export_preview(args: dict | None = None) -> dict[str, Any]:
+    artifact_id_raw = (args or {}).get("artifact_id")
+    if artifact_id_raw is None:
+        return {"tool": "qbot_artifact_export_preview", "status": "error", "error": "artifact_id required"}
+    try:
+        artifact_id = int(artifact_id_raw)
+    except (ValueError, TypeError):
+        return {"tool": "qbot_artifact_export_preview", "status": "error", "error": f"invalid artifact_id: {artifact_id_raw!r}"}
+
+    try:
+        from qbot_artifact_tools import _tool_qbot_artifact_get
+        artifact = _tool_qbot_artifact_get({"id": artifact_id})
+    except Exception as exc:
+        return {"tool": "qbot_artifact_export_preview", "status": "error", "error": str(exc)}
+
+    if artifact.get("status") == "error":
+        return {"tool": "qbot_artifact_export_preview", "status": "error", "error": artifact.get("error", "unknown error")}
+
+    title = str(artifact.get("title", f"artifact-{artifact_id}"))
+    slug = re.sub(r"[^a-zA-Z0-9._-]+", "_", title).strip("_") or f"artifact_{artifact_id}"
+    artifact_type = str(artifact.get("artifact_type", "report"))
+    suggested_name = f"{artifact_id}_{slug}.{artifact_type if artifact_type in ('json', 'gpx', 'fit', 'tcx', 'md', 'txt') else 'md'}"
+    return {
+        "tool": "qbot_artifact_export_preview",
+        "status": "PREVIEW",
+        "would_export": True,
+        "artifact_id": artifact_id,
+        "title": title,
+        "artifact_type": artifact_type,
+        "suggested_filename": suggested_name,
+        "target_root": str(_ARTIFACT_ROOT / "exports"),
+        "policy_notes": [
+            "Preview only",
+            "No file is written",
+            "Export would stay inside the artifact root",
+        ],
+    }
+
+
+def _tool_qbot_garmin_proxy_status(_args: dict | None = None) -> dict[str, Any]:
+    evidence = _scan_files(
+        [
+            "garmin_proxy",
+            "garminconnect",
+            "garmin_auth",
+            "fit_export",
+            "qbot-hammerhead-sync",
+            "proxy_dir",
+            "outgoing/garmin_proxy",
+        ],
+        roots=[_PROJECT_ROOT, _ARTIFACT_ROOT, _WORKSPACE_ROOT],
+    )
+    env_presence = _env_presence([
+        "GARMIN_TOKENSTORE",
+        "GARMIN_PROFILE",
+        "GARMIN_USERNAME",
+        "GARMIN_PASSWORD",
+        "GARMIN_ACCESS_TOKEN",
+    ])
+    proxy_visible = any("garmin_proxy" in str(item.get("file", "")) for item in evidence)
+    status = "PARTIAL" if evidence else "MISSING"
+    return {
+        "tool": "qbot_garmin_proxy_status",
+        "capability": "garmin_proxy",
+        "status": status,
+        "safety_class": "READ_ONLY",
+        "env_presence": env_presence,
+        "candidate_files": evidence,
+        "current_new_qbot_status": "Garmin proxy artifacts and sync code are present, but this is a read-only status surface only.",
+        "proposed_tools": ["qbot_garmin_proxy_status"],
+        "proxy_artifacts_visible": proxy_visible,
+        "can_restore_today": True,
+        "risk": "medium",
+        "notes": "No Garmin proxy action is executed here; the tool only reports the legacy proxy surface.",
+    }
+
+
+def _tool_qbot_garmin_upload_status(_args: dict | None = None) -> dict[str, Any]:
+    evidence = _scan_files(
+        [
+            "garmin",
+            "garminconnect",
+            "garmin_auth",
+            "upload_activity",
+            "garmin_upload_method",
+            "fit_export",
+            "tcx",
+            "gpx",
+            "qbot-hammerhead-sync",
+        ],
+        roots=[_PROJECT_ROOT, _ARTIFACT_ROOT, _WORKSPACE_ROOT],
+    )
+    env_presence = _env_presence([
+        "GARMIN_TOKENSTORE",
+        "GARMIN_PROFILE",
+        "GARMIN_USERNAME",
+        "GARMIN_PASSWORD",
+        "GARMIN_ACCESS_TOKEN",
+    ])
+    try:
+        from qbot_legacy_wrapper_tools import _tool_qbot_legacy_garmin_status
+        wrapper_status = _tool_qbot_legacy_garmin_status()
+    except Exception as exc:
+        wrapper_status = {"tool": "qbot_legacy_garmin_status", "status": "error", "error": str(exc)}
+    status = "PARTIAL" if evidence else "MISSING"
+    return {
+        "tool": "qbot_garmin_upload_status",
+        "capability": "garmin_upload",
+        "status": status,
+        "safety_class": "READ_ONLY",
+        "env_presence": env_presence,
+        "candidate_files": evidence,
+        "wrapper_status": wrapper_status,
+        "current_new_qbot_status": "Garmin upload logic exists in the repo, but this surface is read-only and does not upload anything.",
+        "proposed_tools": ["qbot_garmin_upload_status", "qbot_garmin_upload_preview"],
+        "can_restore_today": True,
+        "risk": "medium",
+        "notes": "Read-only upload parity status. No upload or token refresh is performed.",
+    }
+
+
+def _tool_qbot_hammerhead_import_status(_args: dict | None = None) -> dict[str, Any]:
+    evidence = _scan_files(
+        [
+            "hammerhead",
+            "karoo",
+            "qbot-hammerhead-sync",
+            "processed_hammerhead_activities",
+            "activities_url",
+            "fit_url",
+            "hammerhead_tokens",
+        ],
+        roots=[_PROJECT_ROOT, _ARTIFACT_ROOT, _WORKSPACE_ROOT],
+    )
+    env_presence = _env_presence([
+        "HAMMERHEAD_TOKENSTORE",
+        "HAMMERHEAD_USER_ID",
+        "HAMMERHEAD_ACCOUNT",
+        "HAMMERHEAD_PASSWORD",
+    ])
+    status = "PARTIAL" if evidence else "MISSING"
+    return {
+        "tool": "qbot_hammerhead_import_status",
+        "capability": "hammerhead_import",
+        "status": status,
+        "safety_class": "READ_ONLY",
+        "env_presence": env_presence,
+        "candidate_files": evidence,
+        "current_new_qbot_status": "Hammerhead import sync code and artifacts are present, but this tool only reports status and does not import anything.",
+        "proposed_tools": ["qbot_hammerhead_import_status", "qbot_hammerhead_import_preview"],
+        "can_restore_today": True,
+        "risk": "medium",
+        "notes": "Read-only import parity status. No Hammerhead or Garmin action is executed.",
+    }
+
+
 def _tool_qbot_external_integrations_report(_args: dict | None = None) -> dict[str, Any]:
     from qbot_mcp_adapter import _tool_qbot_mcp_status
     from qbot_telegram_tools import _tool_qbot_telegram_status
 
     sections: dict[str, Any] = {}
     sections["weather"] = _tool_qbot_weather_legacy_status()
+    sections["weather_current"] = _tool_qbot_weather_status()
     sections["garage_home_automation"] = _tool_qbot_garage_legacy_status()
     sections["artifacts_container"] = _tool_qbot_artifacts_legacy_status()
+    sections["artifacts_inventory"] = _tool_qbot_artifacts_filesystem_inventory()
+    sections["garmin_proxy"] = _tool_qbot_garmin_proxy_status()
+    sections["garmin_upload"] = _tool_qbot_garmin_upload_status()
+    sections["hammerhead_import"] = _tool_qbot_hammerhead_import_status()
     sections["telegram"] = _tool_qbot_telegram_status()
     sections["mcp"] = _tool_qbot_mcp_status({})
 
     evidence = {
-        "telegram": _scan_files(["telegram", "webhook", "chat_id", "allowed_chat_ids", "TELEGRAM_BOT_TOKEN"]),
-        "email": _scan_files(["smtp", "gmail", "email", "mail", "send_message", "send_mail"]),
-        "garmin": _scan_files(["garmin", "garmin_connect", "garmin_auth", "upload", "download"]),
-        "rwgps": _scan_files(["rwgps", "ridewithgps", "openmap", "openmaps_v1", "track", "route"]),
-        "maps": _scan_files(["openstreetmap", "osm", "overpass", "openmap"]),
-        "webhooks": _scan_files(["webhook", "callback", "setWebhook", "deleteWebhook"]),
+        "weather": sections["weather"].get("candidate_files", [])[:3],
+        "garage": sections["garage_home_automation"].get("candidate_files", [])[:3],
+        "artifacts": sections["artifacts_container"].get("candidate_files", [])[:3],
+        "garmin_proxy": sections["garmin_proxy"].get("candidate_files", [])[:3],
+        "garmin_upload": sections["garmin_upload"].get("candidate_files", [])[:3],
+        "hammerhead_import": sections["hammerhead_import"].get("candidate_files", [])[:3],
+        "telegram": {"status": sections["telegram"].get("status")},
+        "mcp": {"status": sections["mcp"].get("status")},
     }
 
     exposed = {
@@ -385,9 +719,12 @@ def _tool_qbot_external_integrations_report(_args: dict | None = None) -> dict[s
     }
 
     summary_lines = [
-        f"weather: {sections['weather'].get('status', 'UNKNOWN')}",
+        f"weather: legacy={sections['weather'].get('status', 'UNKNOWN')}, current={sections['weather_current'].get('status', 'UNKNOWN')}",
         f"garage/home automation: {sections['garage_home_automation'].get('status', 'UNKNOWN')}",
         f"artifacts/container: {sections['artifacts_container'].get('status', 'UNKNOWN')}",
+        f"garmin proxy: {sections['garmin_proxy'].get('status', 'UNKNOWN')}",
+        f"garmin upload: {sections['garmin_upload'].get('status', 'UNKNOWN')}",
+        f"hammerhead import: {sections['hammerhead_import'].get('status', 'UNKNOWN')}",
         f"telegram: {sections['telegram'].get('status', 'UNKNOWN')}",
         f"mcp: {sections['mcp'].get('status', 'UNKNOWN')}",
     ]
@@ -492,8 +829,8 @@ _CAPABILITY_SPECS: list[dict[str, Any]] = [
         "label": "Garmin proxy",
         "keywords": ["garmin", "garmin_auth", "garmin_connect", "garmin_proxy", "fit_export", "qbot-hammerhead-sync"],
         "new_qbot_status": "PARTIAL",
-        "new_qbot_tools": ["qbot_legacy_garmin_status", "qbot_legacy_garmin_dry_run", "qbot_legacy_capability_scan"],
-        "exposed_in_mcp": [],
+        "new_qbot_tools": ["qbot_legacy_garmin_status", "qbot_legacy_garmin_dry_run", "qbot_legacy_capability_scan", "qbot_garmin_proxy_status"],
+        "exposed_in_mcp": ["qbot.garmin_proxy_status"],
         "exposed_in_telegram": [],
         "safety_class": "READ_ONLY",
         "missing_tools": [],
@@ -507,11 +844,11 @@ _CAPABILITY_SPECS: list[dict[str, Any]] = [
         "label": "Garmin upload",
         "keywords": ["upload", "garmin", "garmin_connect", "fit", "tcx", "gpx"],
         "new_qbot_status": "PARTIAL",
-        "new_qbot_tools": ["qbot_legacy_garmin_dry_run", "qbot_legacy_garmin_status"],
-        "exposed_in_mcp": [],
+        "new_qbot_tools": ["qbot_legacy_garmin_dry_run", "qbot_legacy_garmin_status", "qbot_garmin_upload_status"],
+        "exposed_in_mcp": ["qbot.garmin_upload_status"],
         "exposed_in_telegram": [],
         "safety_class": "CONTROLLED_ACTION",
-        "missing_tools": ["qbot_garmin_upload_status", "qbot_garmin_upload_preview"],
+        "missing_tools": [],
         "risk": "medium",
         "can_restore_today": True,
         "priority": "high",
@@ -567,11 +904,11 @@ _CAPABILITY_SPECS: list[dict[str, Any]] = [
         "label": "Hammerhead import",
         "keywords": ["hammerhead", "karoo", "qbot-hammerhead-sync", "import"],
         "new_qbot_status": "PARTIAL",
-        "new_qbot_tools": ["qbot_legacy_dependency_inventory", "qbot_legacy_capability_scan"],
-        "exposed_in_mcp": [],
+        "new_qbot_tools": ["qbot_legacy_dependency_inventory", "qbot_legacy_capability_scan", "qbot_hammerhead_import_status"],
+        "exposed_in_mcp": ["qbot.hammerhead_import_status"],
         "exposed_in_telegram": [],
         "safety_class": "READ_ONLY",
-        "missing_tools": ["qbot_hammerhead_import_status", "qbot_hammerhead_import_preview"],
+        "missing_tools": [],
         "risk": "medium",
         "can_restore_today": True,
         "priority": "high",
@@ -611,16 +948,16 @@ _CAPABILITY_SPECS: list[dict[str, Any]] = [
         "legacy_capability": "weather_openweathermap",
         "label": "Weather / OpenWeatherMap",
         "keywords": ["openweathermap", "weather", "forecast", "pogoda", "open-meteo"],
-        "new_qbot_status": "MISSING",
-        "new_qbot_tools": ["qbot_weather_legacy_status"],
-        "exposed_in_mcp": [],
+        "new_qbot_status": "PARTIAL",
+        "new_qbot_tools": ["qbot_weather_legacy_status", "qbot_weather_status", "qbot_weather_current", "qbot_weather_forecast"],
+        "exposed_in_mcp": ["qbot.weather_status", "qbot.weather_current", "qbot.weather_forecast"],
         "exposed_in_telegram": ["/weather_status"],
         "safety_class": "READ_ONLY",
-        "missing_tools": ["qbot_weather_status", "qbot_weather_current", "qbot_weather_forecast"],
+        "missing_tools": [],
         "risk": "medium",
         "can_restore_today": True,
         "priority": "high",
-        "notes": "Weather exists, but OpenWeatherMap-specific parity is absent; current path uses Open-Meteo instead.",
+        "notes": "Weather status/current/forecast surfaces exist and are read-only; OpenWeatherMap-specific parity is still absent, so the capability remains partial.",
     },
     {
         "legacy_capability": "garage_gate",
@@ -642,15 +979,15 @@ _CAPABILITY_SPECS: list[dict[str, Any]] = [
         "label": "Artifacts container",
         "keywords": ["artifact", "artifacts", "container", "workspace", "outgoing", "generated", "uploads", "downloads", "/opt/qbot/artifacts", "/opt/qbot/workspace", "qbot_artifacts"],
         "new_qbot_status": "PARTIAL",
-        "new_qbot_tools": ["qbot_artifact_create", "qbot_artifact_list", "qbot_artifact_get", "qbot_workspace_write_file_preview", "qbot_artifacts_legacy_status"],
-        "exposed_in_mcp": ["qbot.artifact_create", "qbot.artifact_list", "qbot.artifact_get"],
+        "new_qbot_tools": ["qbot_artifact_create", "qbot_artifact_list", "qbot_artifact_get", "qbot_workspace_write_file_preview", "qbot_artifacts_legacy_status", "qbot_artifacts_filesystem_inventory", "qbot_artifact_import_from_file_preview", "qbot_artifact_export_preview"],
+        "exposed_in_mcp": ["qbot.artifact_create", "qbot.artifact_list", "qbot.artifact_get", "qbot.artifacts_filesystem_inventory", "qbot.artifact_import_preview", "qbot.artifact_export_preview"],
         "exposed_in_telegram": ["/artifacts"],
         "safety_class": "READ_ONLY",
-        "missing_tools": ["qbot_artifacts_filesystem_inventory", "qbot_artifact_import_from_file_preview", "qbot_artifact_export_preview"],
+        "missing_tools": [],
         "risk": "medium",
         "can_restore_today": True,
         "priority": "high",
-        "notes": "Filesystem artifacts and PostgreSQL artifacts both exist, but the generic bridge/inventory surface is incomplete.",
+        "notes": "Filesystem artifacts and PostgreSQL artifacts both exist, and the generic read-only bridge/inventory surface is now available.",
     },
     {
         "legacy_capability": "filesystem_artifacts",
@@ -732,8 +1069,24 @@ _CAPABILITY_SPECS: list[dict[str, Any]] = [
         "label": "External API integrations",
         "keywords": ["requests.get", "requests.post", "httpx", "webhook", "callback", "oauth", "openai", "deepseek", "telegram", "garmin", "rwgps", "openweathermap", "maps", "overpass"],
         "new_qbot_status": "PARTIAL",
-        "new_qbot_tools": ["qbot_external_integrations_report", "qbot_telegram_status", "qbot_mcp_status", "qbot_weather_legacy_status", "qbot_artifacts_legacy_status", "qbot_garage_legacy_status"],
-        "exposed_in_mcp": ["qbot.telegram_status", "qbot.weather_legacy_status", "qbot.artifacts_legacy_status", "qbot.garage_legacy_status", "qbot.external_integrations_report"],
+        "new_qbot_tools": [
+            "qbot_external_integrations_report",
+            "qbot_telegram_status",
+            "qbot_mcp_status",
+            "qbot_weather_legacy_status",
+            "qbot_weather_status",
+            "qbot_weather_current",
+            "qbot_weather_forecast",
+            "qbot_artifacts_legacy_status",
+            "qbot_artifacts_filesystem_inventory",
+            "qbot_artifact_import_from_file_preview",
+            "qbot_artifact_export_preview",
+            "qbot_garage_legacy_status",
+            "qbot_garmin_proxy_status",
+            "qbot_garmin_upload_status",
+            "qbot_hammerhead_import_status",
+        ],
+        "exposed_in_mcp": ["qbot.telegram_status", "qbot.weather_legacy_status", "qbot.weather_status", "qbot.weather_current", "qbot.weather_forecast", "qbot.artifacts_legacy_status", "qbot.artifacts_filesystem_inventory", "qbot.artifact_import_preview", "qbot.artifact_export_preview", "qbot.garmin_proxy_status", "qbot.garmin_upload_status", "qbot.hammerhead_import_status", "qbot.garage_legacy_status", "qbot.external_integrations_report"],
         "exposed_in_telegram": ["/status", "/legacy", "/ready", "/smoke", "/backup", "/errors", "/takeover", "/weather_status", "/garage_status", "/artifacts", "/integrations"],
         "safety_class": "READ_ONLY",
         "missing_tools": [],
@@ -857,8 +1210,17 @@ def _tool_qbot_legacy_full_parity_audit(_args: dict | None = None) -> dict[str, 
 def _get_legacy_parity_tool(name: str):
     mapping = {
         "qbot_weather_legacy_status": _tool_qbot_weather_legacy_status,
+        "qbot_weather_status": _tool_qbot_weather_status,
+        "qbot_weather_current": _tool_qbot_weather_current,
+        "qbot_weather_forecast": _tool_qbot_weather_forecast,
         "qbot_garage_legacy_status": _tool_qbot_garage_legacy_status,
         "qbot_artifacts_legacy_status": _tool_qbot_artifacts_legacy_status,
+        "qbot_artifacts_filesystem_inventory": _tool_qbot_artifacts_filesystem_inventory,
+        "qbot_artifact_import_from_file_preview": _tool_qbot_artifact_import_from_file_preview,
+        "qbot_artifact_export_preview": _tool_qbot_artifact_export_preview,
+        "qbot_garmin_proxy_status": _tool_qbot_garmin_proxy_status,
+        "qbot_garmin_upload_status": _tool_qbot_garmin_upload_status,
+        "qbot_hammerhead_import_status": _tool_qbot_hammerhead_import_status,
         "qbot_external_integrations_report": _tool_qbot_external_integrations_report,
         "qbot_legacy_parity_matrix": _tool_qbot_legacy_parity_matrix,
         "qbot_legacy_full_parity_audit": _tool_qbot_legacy_full_parity_audit,
