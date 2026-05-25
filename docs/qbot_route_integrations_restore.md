@@ -39,28 +39,28 @@
 
 ## Hammerhead FIT Import
 
-### Status: PARTIAL
+### Status: PARTIAL (read-only restored)
 
 **What's working:**
-- Cron pipeline: `*/10 * * * *` sync for 4 profiles via `qbot-hammerhead-sync`
-- Activity download: functional via refresh token
-- Garmin proxy upload: via `garminconnect` library
-- Inventory: 5+ FIT files in `outgoing/hammerhead_originals/`
+- Tokenstore: `.hammerhead_tokens/` active (owned by qbot, readable by service)
+- Bearer token + refresh token: both present in env
+- JWT expiration: parsed from token payload
+- 18 local FIT files in inventory (14 michal, 4 originals)
+- Dry-run `source=latest`: returns local artifacts, `would_fetch=false`
 
 **Config detection:**
-- `HAMMERHEAD_BEARER_TOKEN`: PRESENT (in `.env.hammerhead-garmin-sync`)
+- `HAMMERHEAD_BEARER_TOKEN`: PRESENT
 - `HAMMERHEAD_REFRESH_TOKEN`: PRESENT
-- `HAMMERHEAD_EMAIL`: MISSING
-- `HAMMERHEAD_PASSWORD`: MISSING
-- `HAMMERHEAD_TOKENSTORE`: MISSING (env var)
-- Token store on disk: `.hammerhead_tokens/` exists but owned by root (service user is qbot)
+- `HAMMERHEAD_TOKENSTORE`: PRESENT (env var + on disk)
+- `HAMMERHEAD_EMAIL`: MISSING (optional fallback — not required)
+- `HAMMERHEAD_PASSWORD`: MISSING (optional fallback — not required)
+- `HAMMERHEAD_USER_ID`: MISSING (optional for read-only local operations)
 
-**Issues:**
-1. `.hammerhead_tokens/` directory permissions: `drwx------ root:root` — qbot service user cannot access
-2. Bootstrap JWT expiration: unknown (cannot parse due to permission error)
-
-**What's needed:**
-1. `chmod 755 /opt/qbot/app/.hammerhead_tokens/` (or `chown qbot:qbot`)
+**Key features:**
+- Email/password are OPTIONAL fallback — tokenstore + bearer/refresh is primary
+- Dry-run works on local artifacts without API connection
+- `restored_status`: `RESTORED_FOR_READONLY` when tokenstore active
+- Real online import requires controlled execution approval
 
 **Read-only tools available:**
 - `qbot_hammerhead_config_status` — token/JWT/email presence check

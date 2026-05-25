@@ -538,17 +538,20 @@ async def telegram_webhook(webhook_secret: str, request: Request):
         }
     elif command == "/hammerhead":
         from qbot_legacy_parity_tools import _tool_qbot_hammerhead_import_status
-        from qbot_route_tools import _tool_qbot_hammerhead_config_status
+        from qbot_route_tools import _tool_qbot_hammerhead_config_status, _tool_qbot_hammerhead_import_inventory
         status = _tool_qbot_hammerhead_import_status()
         config = _tool_qbot_hammerhead_config_status()
+        inventory = _tool_qbot_hammerhead_import_inventory({"limit": 1})
+        restored = config.get("restored_status", status.get("status", "UNKNOWN"))
         result = {
             "command": "/hammerhead",
             "response": status,
             "text": "Hammerhead:\n"
-                    f"ℹ️ status: {status.get('restored_status', status.get('status', 'UNKNOWN'))}\n"
+                    f"ℹ️ status: {restored}\n"
                     f"ℹ️ JWT: {'present' if config.get('jwt_present') else 'missing'}\n"
+                    f"ℹ️ tokenstore: {'active' if config.get('tokenstore_active') else 'inactive'}\n"
                     f"ℹ️ token expired: {config.get('possible_expired_token', 'unknown')}\n"
-                    f"ℹ️ import: {'ready' if config.get('status') == 'OK' else 'blocked/' + config.get('status', 'unknown')}",
+                    f"ℹ️ FIT files: {inventory.get('count', 0)}",
         }
     elif command == "/csv":
         from qbot_route_tools import _tool_qbot_csv_export_status

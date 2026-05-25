@@ -468,15 +468,15 @@ Applied read-only restoration tools for the 3 PARTIAL capabilities identified in
 ### Partial Details
 | Capability | Gap | What's Needed |
 |-----------|-----|---------------|
-| **Hammerhead FIT Import** | Bootstrap JWT may be expired; `.hammerhead_tokens/` owned by root, service runs as qbot | Fresh `HAMMERHEAD_EMAIL`/`HAMMERHEAD_PASSWORD` for token refresh; `chmod -R 755 .hammerhead_tokens/` |
+| **Hammerhead FIT Import** | Tokenstore active, JWT present — read-only restored. Online import needs token refresh. | Token refresh if JWT expires; `RWGPS_USER_ID` for RWGPS live API |
 | **RWGPS** | No `RWGPS_USER_ID` configured | `RWGPS_USER_ID` in `.env` to activate live API |
 
 ### P0 Gaps to Fix First
 None. All P0 items (Telegram, MCP, QExt2, backup, public endpoints) are RESTORED and operational.
 
 ### P1 Gaps
-1. **Hammerhead FIT Import** — Token refresh needed; fix token directory permissions.
-2. **RWGPS** — API credentials needed to activate live route data. Local manifest fallback active.
+1. **Hammerhead FIT Import** — Token refresh needed if JWT expires. Tokenstore-based read-only status restored. Email/password are optional fallback.
+2. **RWGPS** — `RWGPS_USER_ID` needed in `.env` to activate live API. Local manifest fallback active.
 
 ---
 

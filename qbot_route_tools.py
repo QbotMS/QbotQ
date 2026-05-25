@@ -275,6 +275,8 @@ def _tool_qbot_hammerhead_config_status(_args: dict | None = None) -> dict[str, 
     jwt_ok = presence.get("HAMMERHEAD_BEARER_TOKEN")
     refresh_ok = presence.get("HAMMERHEAD_REFRESH_TOKEN")
     email_ok = presence.get("HAMMERHEAD_EMAIL")
+    user_id_ok = presence.get("HAMMERHEAD_USER_ID")
+    ts_env_ok = presence.get("HAMMERHEAD_TOKENSTORE")
 
     possible_expired = "unknown"
     if jwt_ok:
@@ -292,24 +294,67 @@ def _tool_qbot_hammerhead_config_status(_args: dict | None = None) -> dict[str, 
         except Exception:
             possible_expired = "unknown"
 
-    missing = [n for n, p in presence.items() if not p]
-
-    if jwt_ok and refresh_ok:
-        status = "OK"
-        notes = "Hammerhead JWT + refresh token configured."
-    elif jwt_ok or refresh_ok:
-        status = "WARN"
-        notes = f"Partial Hammerhead config. Expired JWT: {possible_expired}."
-    else:
-        status = "ERROR"
-        notes = "No Hammerhead tokens configured. Import pipeline cannot function without credentials."
-
     tokenstore = _PROJECT_ROOT / ".hammerhead_tokens"
     ts_ok = False
     try:
         ts_ok = tokenstore.exists() and any(tokenstore.iterdir())
     except (PermissionError, OSError):
         pass
+
+    ts_user_id = None
+    if ts_ok and not user_id_ok:
+        try:
+            for f in sorted(tokenstore.iterdir()):
+                if f.is_file() and f.suffix in (".json", ""):
+                    data = json.loads(f.read_text(encoding="utf-8"))
+                    uid = data.get("user_id") or data.get("userId") or data.get("id")
+                    if uid:
+                        ts_user_id = str(uid)
+                        break
+        except (PermissionError, OSError, json.JSONDecodeError, Exception):
+            pass
+
+    has_local_token = jwt_ok or refresh_ok or ts_ok
+    has_online_creds = email_ok and presence.get("HAMMERHEAD_PASSWORD")
+
+    missing = []
+    if not has_local_token and not has_online_creds:
+        missing = [n for n, p in presence.items() if not p]
+    else:
+        for n in ["HAMMERHEAD_BEARER_TOKEN", "HAMMERHEAD_REFRESH_TOKEN", "HAMMERHEAD_EMAIL", "HAMMERHEAD_PASSWORD"]:
+            if n in presence and not presence[n]:
+                if n.startswith("HAMMERHEAD_EMAIL") and has_local_token:
+                    continue
+                if n.startswith("HAMMERHEAD_PASSWORD") and has_local_token:
+                    continue
+                if n.startswith("HAMMERHEAD_BEARER") and ts_ok and refresh_ok:
+                    continue
+                if n.startswith("HAMMERHEAD_REFRESH") and ts_ok and jwt_ok:
+                    continue
+                if not has_local_token and not has_online_creds:
+                    missing.append(n)
+
+    if has_local_token and ts_ok:
+        status = "OK"
+        notes = "Hammerhead tokenstore active with bearer/refresh tokens. Local read-only ready."
+    elif has_local_token:
+        status = "OK"
+        notes = "Hammerhead bearer/refresh tokens configured. Tokenstore optional."
+    elif has_online_creds:
+        status = "WARN"
+        notes = "Hammerhead email/password configured (legacy). Token refresh path available."
+    else:
+        status = "ERROR"
+        notes = "No Hammerhead tokens or credentials configured."
+
+    if has_local_token and ts_ok:
+        restored = "RESTORED_FOR_READONLY"
+    elif has_local_token:
+        restored = "RESTORED_FOR_READONLY" if not (possible_expired == "true") else "PARTIAL"
+    elif has_online_creds:
+        restored = "PARTIAL"
+    else:
+        restored = "MISSING"
 
     return {
         "tool": "qbot_hammerhead_config_status",
@@ -324,8 +369,12 @@ def _tool_qbot_hammerhead_config_status(_args: dict | None = None) -> dict[str, 
         "tokenstore_active": ts_ok,
         "env_presence": presence,
         "missing": missing,
+        "has_local_token": has_local_token,
+        "has_online_creds": has_online_creds,
+        "ts_user_id_inferred": ts_user_id,
         "notes": notes,
-        "restored_status": "PARTIAL" if possible_expired == "true" else ("RESTORED" if jwt_ok and refresh_ok else ("PARTIAL" if jwt_ok else "MISSING")),
+        "restored_status": restored,
+        "email_optional_when_tokenstore_active": True,
     }
 
 
@@ -342,6 +391,17 @@ def _tool_qbot_hammerhead_import_status_enhanced(_args: dict | None = None) -> d
     config = _tool_qbot_hammerhead_config_status()
     inventory = _tool_qbot_hammerhead_import_inventory({"limit": 5})
 
+    has_local = config.get("has_local_token", False) and config.get("tokenstore_active", False)
+    local_ok = inventory.get("count", 0) > 0
+
+    if has_local and local_ok:
+        restored = "RESTORED_FOR_READONLY"
+    elif has_local:
+        restored = "PARTIAL"
+    else:
+        restored = config.get("restored_status", "PARTIAL")
+
+    base["restored_status"] = restored
     base["config_status"] = config.get("status")
     base["possible_expired_token"] = config.get("possible_expired_token")
     base["hammerhead_originals_count"] = inventory.get("count", 0)
@@ -350,7 +410,10 @@ def _tool_qbot_hammerhead_import_status_enhanced(_args: dict | None = None) -> d
         "jwt_present": config.get("jwt_present"),
         "refresh_token_present": config.get("refresh_token_present"),
         "email_configured": config.get("email_configured"),
+        "tokenstore_active": config.get("tokenstore_active"),
+        "has_local_token": config.get("has_local_token"),
     }
+    base["notes"] = "Tokenstore-based read-only status active. Online API import requires separate controlled execution approval."
     return base
 
 
@@ -381,43 +444,69 @@ def _tool_qbot_hammerhead_import_inventory(_args: dict | None = None) -> dict[st
 
 
 def _tool_qbot_hammerhead_import_dry_run(_args: dict | None = None) -> dict[str, Any]:
-    """Safe dry-run of Hammerhead import. No downloads, no sync."""
+    """Safe dry-run of Hammerhead import. No downloads, no sync.
+
+    source=latest only inspects local artifacts — no API call.
+    """
     _args = _args or {}
     source = str(_args.get("source", "latest"))
 
     config = _tool_qbot_hammerhead_config_status()
-    expired = config.get("possible_expired_token")
+    inventory = _tool_qbot_hammerhead_import_inventory({"limit": 5})
 
-    if expired == "true" or not config.get("jwt_present"):
+    has_token = config.get("has_local_token", False)
+    tokenstore_ok = config.get("tokenstore_active", False)
+    expired = config.get("possible_expired_token", "unknown")
+    local_count = inventory.get("count", 0)
+    latest = inventory.get("latest_files", [])[0] if inventory.get("latest_files") else None
+
+    profile_name = "default"
+    if latest and latest.get("profile"):
+        profile_name = latest["profile"][0] if latest["profile"] else "default"
+    elif source not in ("latest",):
+        profile_name = source
+
+    no_creds_at_all = not has_token and not config.get("has_online_creds", False)
+
+    if no_creds_at_all and local_count == 0:
         return {
             "tool": "qbot_hammerhead_import_dry_run",
-            "status": "BLOCKED_MISSING_OR_EXPIRED_TOKEN",
+            "status": "BLOCKED_NO_CREDENTIALS_OR_ARTIFACTS",
             "safety_class": "READ_ONLY",
             "source": source,
             "would_fetch": False,
             "would_store_to": None,
             "missing_config": config.get("missing", []),
             "latest_local_fit": None,
-            "notes": "Cannot perform dry-run: JWT missing or expired.",
+            "local_count": 0,
+            "notes": "No Hammerhead credentials and no local FIT artifacts. Nothing to inspect.",
         }
 
-    inventory = _tool_qbot_hammerhead_import_inventory({"limit": 5})
-    latest = inventory.get("latest_files", [])[0] if inventory.get("latest_files") else None
-
-    profile_name = source if source not in ("latest",) else (latest["profile"][0] if latest and latest.get("profile") else "default")
+    api_blocked = no_creds_at_all or (not has_token and not tokenstore_ok)
+    warning_jwt = expired == "true"
 
     return {
         "tool": "qbot_hammerhead_import_dry_run",
-        "status": "PLAN_ONLY",
+        "status": "OK" if (not api_blocked) and local_count > 0 else "WARN",
         "safety_class": "READ_ONLY",
         "source": source,
-        "would_fetch": True,
-        "would_store_to": str(_OUTGOING.relative_to(_PROJECT_ROOT)) + "/",
-        "missing_config": [],
+        "would_fetch": False,
+        "would_store_to": str(_OUTGOING.relative_to(_PROJECT_ROOT)) + "/" if not api_blocked else None,
+        "api_blocked": api_blocked,
+        "api_block_reason": (
+            "No credentials" if no_creds_at_all else "Tokenstore inactive" if not tokenstore_ok else "JWT expired" if warning_jwt else None
+        ),
+        "jwt_expired": warning_jwt,
+        "missing_config": config.get("missing", []),
         "latest_local_fit": latest,
         "profile": profile_name,
-        "local_count": inventory.get("count", 0),
-        "notes": "Dry-run only. No Hammerhead API call made. Real import requires controlled execution.",
+        "local_count": local_count,
+        "tokenstore_active": tokenstore_ok,
+        "has_local_token": has_token,
+        "notes": (
+            "Dry-run only. Local FIT artifacts available for inspection. "
+            "Online Hammerhead API import requires controlled execution with valid credentials."
+        ),
     }
 
 
@@ -425,28 +514,45 @@ def _tool_qbot_hammerhead_restore_plan(_args: dict | None = None) -> dict[str, A
     """Restore plan for Hammerhead FIT import."""
     config = _tool_qbot_hammerhead_config_status()
     expired = config.get("possible_expired_token")
+    has_local = config.get("has_local_token", False)
+    ts_ok = config.get("tokenstore_active", False)
+
+    if has_local and ts_ok and expired == "false":
+        plan_status = "RESTORED_FOR_READONLY"
+    elif has_local and ts_ok:
+        plan_status = "READY_FOR_TOKEN_REFRESH"
+    elif has_local:
+        plan_status = "PARTIAL"
+    else:
+        plan_status = "MISSING"
+
+    next_steps = []
+    if expired == "true" or expired == "unknown":
+        next_steps.append("Refresh HAMMERHEAD_BEARER_TOKEN using HAMMERHEAD_REFRESH_TOKEN (or email/password as fallback)")
+    if not ts_ok:
+        next_steps.append("Configure HAMMERHEAD_TOKENSTORE env var pointing to .hammerhead_tokens/")
+    if has_local and ts_ok and expired == "false":
+        next_steps.append("Tokenstore active and token valid — import pipeline ready for controlled execution")
+        next_steps.append("Monitor cron logs for sync success")
+    if not next_steps:
+        next_steps.append("Set HAMMERHEAD_BEARER_TOKEN and HAMMERHEAD_REFRESH_TOKEN in .env.local")
+        next_steps.append("Alternatively set HAMMERHEAD_EMAIL and HAMMERHEAD_PASSWORD for fresh login (optional fallback)")
 
     return {
         "tool": "qbot_hammerhead_restore_plan",
-        "status": "RESTORED" if config.get("status") == "OK" and expired == "false" else "PARTIAL",
+        "status": plan_status,
         "safety_class": "READ_ONLY",
         "missing_config": config.get("missing", []),
         "token_refresh_needed": expired != "false",
+        "email_password_optional": True,
         "safe_tests": [
             "qbot_hammerhead_config_status",
             "qbot_hammerhead_import_inventory",
             "qbot_hammerhead_import_dry_run",
         ],
         "controlled_execution_needed": True,
-        "next_steps": [
-            "Refresh HAMMERHEAD_BEARER_TOKEN using HAMMERHEAD_REFRESH_TOKEN",
-            "Alternatively set HAMMERHEAD_EMAIL and HAMMERHEAD_PASSWORD for fresh login",
-            "Run hammerhead_import_dry_run source=latest after token refresh",
-        ] if expired == "true" else [
-            "Token appears valid — import pipeline should be functional",
-            "Monitor cron logs for sync success",
-        ],
-        "notes": "CRON: */10 * * * * runs qbot-hammerhead-sync for 4 profiles. Tokenstore: .hammerhead_tokens/.",
+        "next_steps": next_steps,
+        "notes": "Email/password are optional fallback. Primary: tokenstore with bearer/refresh tokens.",
     }
 
 
