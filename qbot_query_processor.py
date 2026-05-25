@@ -1,6 +1,7 @@
 """Bezpieczny procesor zapytań z planami wykonania (Tool Execution Plan v1)."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from qbot_tool_registry import TOOLS
@@ -361,6 +362,14 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "confidence": "high",
         "required_data": ["API health", "systemd services", "PostgreSQL", "git repository", "guard rules"],
         "limitations": ["Local checks only", "Does not verify external dependencies"],
+    },
+    {
+        "keywords": ["ride readiness", "qext2 readiness", "karoo readiness", "ride-readiness"],
+        "tool": "qbot_ride_readiness_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Readiness report", "final smoke test", "legacy takeover", "telegram", "mcp"],
+        "limitations": ["Read-only public readiness endpoint", "No MCP or Telegram reconfiguration"],
     },
     {
         "keywords": ["snapshot", "zrzut diagnostyczny", "operator snapshot",
@@ -1041,8 +1050,7 @@ def process_query(query: str, execute: bool = False) -> dict[str, Any]:
     if not matches:
         return _unknown_plan(query, "unknown_intent")
 
-    conjunctions = {"i", ",", "oraz", "też", "także", "plus"}
-    has_conjunction = any(c in q for c in conjunctions)
+    has_conjunction = bool(re.search(r"\b(i|oraz|też|także|plus)\b|,", q))
 
     if has_conjunction and len(matches) >= 2:
         tool_args_list: list[tuple[str, dict[str, Any]]] = []

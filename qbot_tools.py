@@ -339,6 +339,139 @@ def _tool_qbot_api_self_check(_args: dict | None = None) -> dict[str, Any]:
     }
 
 
+def _tool_qbot_ride_readiness_status(_args: dict | None = None) -> dict[str, Any]:
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+
+    def _safe_call(tool_name: str, func, args: dict | None = None, timeout_s: float = 12.0) -> dict[str, Any]:
+        def _invoke():
+            try:
+                result = func(args) if args is not None else func()
+            except Exception as exc:
+                return {"tool": tool_name, "status": "ERROR", "error": str(exc)}
+            if isinstance(result, dict):
+                return result
+            return {"tool": tool_name, "status": "ERROR", "error": "unexpected tool payload"}
+
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(_invoke)
+        try:
+            return future.result(timeout=timeout_s)
+        except TimeoutError:
+            return {"tool": tool_name, "status": "ERROR", "error": f"{tool_name} timed out after {timeout_s:.1f}s"}
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+    from qbot_operator_tools import _tool_qbot_readiness_report
+    from qbot_ops_tools import _tool_qbot_operator_final_smoke_test
+    from qbot_legacy_cutover_tools import _tool_qbot_legacy_cutover_status
+    from qbot_mcp_adapter import _tool_qbot_mcp_status
+    from qbot_telegram_tools import _tool_qbot_telegram_transport_status
+
+    calls = {
+        "readiness": ("qbot_readiness_report", _tool_qbot_readiness_report, None),
+        "smoke": ("qbot_operator_final_smoke_test", _tool_qbot_operator_final_smoke_test, None),
+        "takeover": ("qbot_legacy_cutover_status", _tool_qbot_legacy_cutover_status, None),
+        "telegram": ("qbot_telegram_transport_status", _tool_qbot_telegram_transport_status, {"check_remote": False}),
+        "mcp": ("qbot_mcp_status", _tool_qbot_mcp_status, {}),
+    }
+    results: dict[str, dict[str, Any]] = {}
+    warnings: list[str] = []
+    blockers: list[str] = []
+    pool = ThreadPoolExecutor(max_workers=len(calls))
+    try:
+        futures = {
+            key: pool.submit(_safe_call, tool_name, func, args)
+            for key, (tool_name, func, args) in calls.items()
+        }
+        for key, future in futures.items():
+            try:
+                results[key] = future.result(timeout=13.0)
+            except TimeoutError:
+                results[key] = {"tool": calls[key][0], "status": "ERROR", "error": f"{calls[key][0]} timed out"}
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+
+    readiness = results["readiness"]
+    smoke = results["smoke"]
+    takeover = results["takeover"]
+    telegram = results["telegram"]
+    mcp = results["mcp"]
+
+    readiness_status = str(readiness.get("status", "UNKNOWN")).upper()
+    smoke_status = str(smoke.get("status", "UNKNOWN")).upper()
+    takeover_status = str(takeover.get("status", "UNKNOWN")).upper()
+    takeover_percent_raw = takeover.get("takeover_readiness_percent", takeover.get("legacy_takeover_percent", 0))
+    try:
+        takeover_percent = int(takeover_percent_raw)
+    except (ValueError, TypeError):
+        takeover_percent = 0
+    telegram_status = str(telegram.get("status", "UNKNOWN")).upper()
+    mcp_status = str(mcp.get("status", "UNKNOWN")).upper()
+
+    if readiness_status in {"ERROR", "NOT_READY"}:
+        blockers.append("Qbot readiness report is not ready")
+    elif readiness_status not in {"READY", "READY_WITH_WARNINGS"}:
+        warnings.append(f"Qbot readiness status: {readiness_status}")
+
+    if smoke_status == "FAIL":
+        blockers.append("Final smoke test failed")
+
+    if takeover_status == "ERROR":
+        warnings.append("Legacy cutover status check failed")
+    elif takeover_percent < 100 or not takeover.get("cutover_completed", False):
+        warnings.append(f"Legacy takeover not fully complete: {takeover_percent}%")
+
+    if telegram_status == "ERROR":
+        warnings.append("Telegram transport status check failed")
+    elif telegram_status != "OK":
+        warnings.append(f"Telegram status: {telegram_status}")
+
+    mcp_route_ok = bool(mcp.get("qbot_api_local_ok")) and bool(mcp.get("mcp_routes_enabled", True))
+    mcp_public_ok = bool(mcp.get("public_mcp_reachable", True))
+    if mcp_status == "ERROR" or not mcp_route_ok:
+        blockers.append("MCP route is not healthy")
+        mcp_effective = "ERROR"
+    else:
+        mcp_effective = "OK"
+
+    qbot_core = readiness_status if readiness_status in {"READY", "READY_WITH_WARNINGS", "NOT_READY"} else (
+        "READY" if smoke_status == "PASS" and not blockers else readiness_status
+    )
+
+    payload = {
+        "status": "ok" if not blockers and not warnings else "warn" if not blockers else "error",
+        "ready": not blockers,
+        "source": "qbot",
+        "service": "ride-readiness",
+        "qbot_core": qbot_core,
+        "legacy_takeover_percent": takeover_percent,
+        "telegram": telegram_status if telegram_status in {"OK", "WARN", "ERROR"} else "WARN",
+        "mcp": mcp_effective,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "warnings": warnings,
+        "blockers": blockers,
+        "details": {
+            "qbot_readiness_report": readiness,
+            "qbot_operator_final_smoke_test": smoke,
+            "qbot_legacy_cutover_status": takeover,
+            "qbot_telegram_transport_status": telegram,
+            "qbot_mcp_status": mcp,
+        },
+    }
+
+    return {
+        "tool": "qbot_ride_readiness_status",
+        "status": "OK" if payload["ready"] and not warnings else "WARN" if payload["ready"] else "ERROR",
+        "local_endpoint_available": True,
+        "public_endpoint_expected": "https://qbot.cytr.us/ride-readiness",
+        "payload_preview": payload,
+        "warnings": warnings,
+        "blockers": blockers,
+        "ready": payload["ready"],
+        "route": "/ride-readiness",
+    }
+
+
 # ── Project tools ───────────────────────────────────────────────────────
 
 _PROJECT_ROOT = Path("/opt/qbot/app")

@@ -18,6 +18,7 @@ from qbot_mcp_adapter import (
     handle_mcp_request,
     _validate_mcp_access,
 )
+from qbot_tools import _tool_qbot_ride_readiness_status
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -136,6 +137,28 @@ def health():
         "db": "connected" if DB_AVAILABLE else "disconnected",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.get("/ride-readiness")
+@app.get("/ride-readiness/")
+def ride_readiness():
+    result = _tool_qbot_ride_readiness_status({})
+    payload = result.get("payload_preview") if isinstance(result, dict) else None
+    if not isinstance(payload, dict):
+        payload = {
+            "status": "error",
+            "ready": False,
+            "source": "qbot",
+            "service": "ride-readiness",
+            "qbot_core": "UNKNOWN",
+            "legacy_takeover_percent": 0,
+            "telegram": "WARN",
+            "mcp": "WARN",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "warnings": ["ride readiness payload unavailable"],
+            "blockers": ["ride readiness tool unavailable"],
+        }
+    return JSONResponse(content=payload, status_code=200)
 
 
 @app.post("/q")

@@ -8,6 +8,7 @@ from qbot_tools import (
     _tool_qbot_api_tools_list,
     _tool_qbot_db_overview,
     _tool_qbot_git_status,
+    _tool_qbot_ride_readiness_status,
     _tool_qbot_project_diff_summary,
     _tool_qbot_project_files,
     _tool_qbot_project_guard_check,
@@ -222,6 +223,12 @@ TOOLS_META: dict[str, dict[str, Any]] = {
     "qbot_api_self_check": {
         "description": "Zbiorczy autotest API: DB, usługi, git, liczniki",
         "category": "meta",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_ride_readiness_status": {
+        "description": "Publiczny read-only status endpoint dla QExt2 / Karoo / ride-readiness",
+        "category": "diagnostic",
         "safe": True,
         "args_schema": {},
     },
@@ -854,6 +861,7 @@ TOOLS: dict[str, Any] = {
     "qbot_db_overview": _tool_qbot_db_overview,
     "qbot_system_overview": _tool_qbot_system_overview,
     "qbot_api_self_check": _tool_qbot_api_self_check,
+    "qbot_ride_readiness_status": _tool_qbot_ride_readiness_status,
     "qbot_project_tree": _tool_qbot_project_tree,
     "qbot_project_files": _tool_qbot_project_files,
     "qbot_project_recent_commits": _tool_qbot_project_recent_commits,

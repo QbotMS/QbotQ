@@ -49,6 +49,33 @@ curl -s -X POST http://127.0.0.1:8001/q \
 ```
 Checks: API health, backup timer, backup files, restore drill, guard, git, readiness, error classification. Returns operational readiness percent.
 
+## QExt2 / Karoo readiness
+QExt2 keeps using the historical public URL:
+```text
+https://qbot.cytr.us/ride-readiness
+```
+
+The endpoint is read-only and returns JSON readiness data for the riding workflow. It does not require MCP/SSE and it should stay stable across cutover.
+
+Local check:
+```bash
+curl -s http://127.0.0.1:8001/ride-readiness | jq
+```
+
+Public check:
+```bash
+curl -s https://qbot.cytr.us/ride-readiness | jq
+```
+
+Expected public routing:
+- `/telegram/webhook/`
+- `/mcp/`
+- `/ride-readiness`
+
+Still blocked publicly:
+- `/q`
+- `/health`
+
 ## LLM rules (LLM boundary)
 - **LLM role**: answer_synthesizer_only (summarize, explain, report)
 - **LLM NEVER**: execute commands, access secrets, modify files, perform backup/restore
