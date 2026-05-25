@@ -5,7 +5,22 @@ from dotenv import load_dotenv
 import httpx
 import db
 from qlab_replay_export import export_qlab_replay, find_fit_files
-from qbot_recovery import select_recovery_records
+from qbot_recovery import select_recovery_records, sleep_data_date_marker
+from tools.rwgps.client import (
+    get_route as rwgps_get_route,
+    get_route_cue_sheet as rwgps_get_route_cue_sheet,
+    get_route_export_links as rwgps_get_route_export_links,
+    get_route_geometry as rwgps_get_route_geometry,
+    download_route_fit as rwgps_download_route_fit,
+    download_route_gpx as rwgps_download_route_gpx,
+    download_route_tcx as rwgps_download_route_tcx,
+    list_collections as rwgps_list_collections,
+    list_planned_routes as rwgps_list_planned_routes,
+    list_routes as rwgps_list_routes,
+    export_route_to_artifact as rwgps_export_route_to_artifact,
+    summarize_rwgps_artifact as rwgps_summarize_rwgps_artifact,
+    extract_artifact_points as rwgps_extract_artifact_points,
+)
 
 load_dotenv()
 db.init()
@@ -41,6 +56,8 @@ RIDER_MAX_HR_SOURCE = os.getenv("RIDER_MAX_HR_SOURCE", "").strip() or None
 ROUTE_SURFACE_CACHE = Path("/opt/qbot/app/data/route_surface_cache.json")
 ARTIFACT_ROOT = Path("/opt/qbot/artifacts")
 ALLOWED_ARTIFACT_PREFIXES = ("routes/", "reports/", "imports/", "exports/", "qexp/", "inbox/")
+ARTIFACT_PREVIEW_BYTES = 200_000
+ARTIFACT_PREVIEW_LINES = 200
 
 
 def _load_route_surface_cache() -> dict:
@@ -108,6 +125,236 @@ def validate_artifact_relative_path(relative_path: str) -> str:
 
 def artifact_absolute_path(relative_path: str) -> Path:
     return ARTIFACT_ROOT / validate_artifact_relative_path(relative_path)
+
+
+def _artifact_root_resolved() -> Path:
+    return ARTIFACT_ROOT.resolve(strict=False)
+
+
+def _artifact_relative_path(path: Path) -> str:
+    return path.relative_to(_artifact_root_resolved()).as_posix()
+
+
+def _artifact_list_entries() -> list[Path]:
+    root = _artifact_root_resolved()
+    if not root.exists():
+        return []
+    paths: list[Path] = []
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        try:
+            resolved = path.resolve(strict=False)
+            if not resolved.is_relative_to(root):
+                continue
+        except Exception:
+            continue
+        paths.append(path)
+    return sorted(paths, key=lambda p: p.relative_to(root).as_posix())
+
+
+def _artifact_metadata(path: Path) -> dict[str, object]:
+    stat = path.stat()
+    resolved = path.resolve(strict=False)
+    return {
+        "relative_path": _artifact_relative_path(path),
+        "absolute_path": str(path),
+        "resolved_path": str(resolved),
+        "size_bytes": stat.st_size,
+        "modified_at": date.fromtimestamp(stat.st_mtime).isoformat(),
+        "is_symlink": path.is_symlink(),
+        "suffix": path.suffix.lower(),
+    }
+
+
+def _resolve_artifact_path(path_or_name: str) -> Path:
+    if not isinstance(path_or_name, str):
+        raise ValueError("INVALID_PATH: path_or_name must be a string")
+    raw = path_or_name.strip()
+    if not raw:
+        raise ValueError("INVALID_PATH: path_or_name must not be empty")
+
+    root = _artifact_root_resolved()
+    if "/" in raw or "\\" in raw:
+        normalized = validate_artifact_relative_path(raw.replace("\\", "/"))
+        path = artifact_absolute_path(normalized)
+        resolved = path.resolve(strict=False)
+        if not resolved.is_relative_to(root):
+            raise PermissionError("PERMISSION_DENIED: resolved path escapes artifacts root")
+        if not path.exists():
+            raise FileNotFoundError("NOT_FOUND: artifact does not exist")
+        return path
+
+    exact_matches = [path for path in _artifact_list_entries() if path.name == raw]
+    if not exact_matches:
+        casefold_matches = [path for path in _artifact_list_entries() if path.name.casefold() == raw.casefold()]
+        exact_matches = casefold_matches
+    if not exact_matches:
+        raise FileNotFoundError("NOT_FOUND: artifact does not exist")
+    if len(exact_matches) > 1:
+        rels = ", ".join(_artifact_relative_path(path) for path in exact_matches[:8])
+        raise ValueError(f"INVALID_PATH: ambiguous artifact name; matches: {rels}")
+    return exact_matches[0]
+
+
+def _read_text_preview(path: Path, max_bytes: int, preview_lines: int) -> tuple[str, bool]:
+    data = path.read_bytes()
+    truncated = len(data) > max_bytes
+    if truncated:
+        data = data[:max_bytes]
+    text = data.decode("utf-8", errors="replace")
+    if preview_lines > 0:
+        lines = text.splitlines()
+        if len(lines) > preview_lines:
+            text = "\n".join(lines[:preview_lines])
+            truncated = True
+    return text, truncated
+
+
+@mcp.tool()
+def list_qbot_artifacts(limit: int = 200, prefix: str = None) -> str:
+    """List available QBot artifacts from /opt/qbot/artifacts. Optional prefix filter (e.g. 'exports/rwgps/')."""
+    try:
+        if limit <= 0:
+            raise ValueError("INVALID_PATH: limit must be positive")
+        root = _artifact_root_resolved()
+        if not root.exists():
+            return json.dumps({
+                "status": "NOT_FOUND",
+                "root": str(ARTIFACT_ROOT),
+                "count": 0,
+                "artifacts": [],
+                "error": "artifacts root does not exist",
+            }, ensure_ascii=False)
+        if not os.access(root, os.R_OK | os.X_OK):
+            return json.dumps({
+                "status": "PERMISSION_DENIED",
+                "root": str(ARTIFACT_ROOT),
+                "count": 0,
+                "artifacts": [],
+                "error": "artifacts root is not readable",
+            }, ensure_ascii=False)
+
+        entries = _artifact_list_entries()
+        if prefix:
+            prefix = prefix.strip()
+            entries = [p for p in entries if _artifact_relative_path(p).startswith(prefix)]
+        artifacts = [_artifact_metadata(path) for path in entries[:limit]]
+        return json.dumps({
+            "status": "ok",
+            "root": str(ARTIFACT_ROOT),
+            "count": len(artifacts),
+            "prefix": prefix or None,
+            "artifacts": artifacts,
+        }, ensure_ascii=False)
+    except ValueError as exc:
+        return json.dumps({
+            "status": "INVALID_PATH",
+            "root": str(ARTIFACT_ROOT),
+            "count": 0,
+            "artifacts": [],
+            "error": str(exc),
+        }, ensure_ascii=False)
+    except PermissionError as exc:
+        return json.dumps({
+            "status": "PERMISSION_DENIED",
+            "root": str(ARTIFACT_ROOT),
+            "count": 0,
+            "artifacts": [],
+            "error": str(exc),
+        }, ensure_ascii=False)
+    except Exception as exc:
+        return json.dumps({
+            "status": "error",
+            "root": str(ARTIFACT_ROOT),
+            "count": 0,
+            "artifacts": [],
+            "error": str(exc),
+        }, ensure_ascii=False)
+
+
+@mcp.tool()
+def read_qbot_artifact(path_or_name: str, max_bytes: int = ARTIFACT_PREVIEW_BYTES, preview_lines: int = ARTIFACT_PREVIEW_LINES) -> str:
+    """Read a QBot artifact by safe relative path or unique file name."""
+    try:
+        if max_bytes <= 0:
+            raise ValueError("INVALID_PATH: max_bytes must be positive")
+        if preview_lines < 0:
+            raise ValueError("INVALID_PATH: preview_lines must be non-negative")
+        path = _resolve_artifact_path(path_or_name)
+        root = _artifact_root_resolved()
+        resolved = path.resolve(strict=False)
+        if not resolved.is_relative_to(root):
+            raise PermissionError("PERMISSION_DENIED: resolved path escapes artifacts root")
+        if not path.exists():
+            raise FileNotFoundError("NOT_FOUND: artifact does not exist")
+        if not os.access(path, os.R_OK):
+            raise PermissionError("PERMISSION_DENIED: artifact is not readable")
+
+        text, truncated = _read_text_preview(path, max_bytes=max_bytes, preview_lines=preview_lines)
+        return json.dumps({
+            "status": "ok",
+            "root": str(ARTIFACT_ROOT),
+            "relative_path": _artifact_relative_path(path),
+            "absolute_path": str(path),
+            "resolved_path": str(resolved),
+            "size_bytes": path.stat().st_size,
+            "bytes_read": min(path.stat().st_size, max_bytes),
+            "truncated": truncated,
+            "content": text,
+        }, ensure_ascii=False)
+    except FileNotFoundError as exc:
+        return json.dumps({
+            "status": "NOT_FOUND",
+            "root": str(ARTIFACT_ROOT),
+            "relative_path": path_or_name,
+            "absolute_path": None,
+            "resolved_path": None,
+            "size_bytes": 0,
+            "bytes_read": 0,
+            "truncated": False,
+            "content": None,
+            "error": str(exc),
+        }, ensure_ascii=False)
+    except PermissionError as exc:
+        return json.dumps({
+            "status": "PERMISSION_DENIED",
+            "root": str(ARTIFACT_ROOT),
+            "relative_path": path_or_name,
+            "absolute_path": None,
+            "resolved_path": None,
+            "size_bytes": 0,
+            "bytes_read": 0,
+            "truncated": False,
+            "content": None,
+            "error": str(exc),
+        }, ensure_ascii=False)
+    except ValueError as exc:
+        return json.dumps({
+            "status": "INVALID_PATH",
+            "root": str(ARTIFACT_ROOT),
+            "relative_path": path_or_name,
+            "absolute_path": None,
+            "resolved_path": None,
+            "size_bytes": 0,
+            "bytes_read": 0,
+            "truncated": False,
+            "content": None,
+            "error": str(exc),
+        }, ensure_ascii=False)
+    except Exception as exc:
+        return json.dumps({
+            "status": "error",
+            "root": str(ARTIFACT_ROOT),
+            "relative_path": path_or_name,
+            "absolute_path": None,
+            "resolved_path": None,
+            "size_bytes": 0,
+            "bytes_read": 0,
+            "truncated": False,
+            "content": None,
+            "error": str(exc),
+        }, ensure_ascii=False)
 
 _b64 = base64.b64encode(f"API_KEY:{API_KEY}".encode()).decode()
 HDR  = {"Authorization": f"Basic {_b64}"}
@@ -786,6 +1033,342 @@ def get_packing_summary(list_id: int) -> str:
     """Podsumowanie postępu pakowania"""
     return json.dumps(db.get_packing_summary(list_id), ensure_ascii=False)
 
+# ── RWGPS / TRASY ───────────────────────────────────────────────────────────
+
+@mcp.tool()
+def get_rwgps_routes(limit: int = 20, offset: int = 0, sort: str = "updated_at",
+    order: str = "desc", search: str = None) -> str:
+    """Pobierz listę tras z Ride With GPS"""
+    return json.dumps(
+        rwgps_list_routes(limit=limit, offset=offset, sort=sort, order=order, search=search),
+        ensure_ascii=False,
+    )
+
+
+@mcp.tool()
+def get_rwgps_route(route_id: str) -> str:
+    """Pobierz szczegóły jednej trasy RWGPS"""
+    return json.dumps(rwgps_get_route(route_id), ensure_ascii=False)
+
+
+@mcp.tool()
+def get_rwgps_route_export_links(route_id: str) -> str:
+    """Pobierz dostępne linki eksportowe trasy RWGPS"""
+    return json.dumps(rwgps_get_route_export_links(route_id), ensure_ascii=False)
+
+
+@mcp.tool()
+def get_rwgps_route_geometry(route_id: str) -> str:
+    """Pobierz geometrię trasy RWGPS"""
+    return json.dumps(rwgps_get_route_geometry(route_id), ensure_ascii=False)
+
+
+@mcp.tool()
+def get_rwgps_route_cue_sheet(route_id: str) -> str:
+    """Pobierz cue sheet trasy RWGPS"""
+    return json.dumps(rwgps_get_route_cue_sheet(route_id), ensure_ascii=False)
+
+
+@mcp.tool()
+def get_rwgps_route_gpx(route_id: str) -> str:
+    """Wygeneruj GPX z trasy RWGPS"""
+    return json.dumps(rwgps_download_route_gpx(route_id), ensure_ascii=False)
+
+
+@mcp.tool()
+def get_rwgps_route_tcx(route_id: str) -> str:
+    """Wygeneruj TCX z trasy RWGPS"""
+    return json.dumps(rwgps_download_route_tcx(route_id), ensure_ascii=False)
+
+
+@mcp.tool()
+def get_rwgps_route_fit(route_id: str) -> str:
+    """Pobierz FIT trasy RWGPS, jeśli klient to obsługuje"""
+    return json.dumps(rwgps_download_route_fit(route_id), ensure_ascii=False)
+
+
+@mcp.tool()
+def get_rwgps_planned_routes(limit: int = 4) -> str:
+    """Pobierz ostatnie lub planowane trasy z RWGPS"""
+    return json.dumps(rwgps_list_planned_routes(limit=limit), ensure_ascii=False)
+
+
+@mcp.tool()
+def get_rwgps_collections() -> str:
+    """Pobierz kolekcje tras RWGPS"""
+    return json.dumps(rwgps_list_collections(), ensure_ascii=False)
+
+
+@mcp.tool()
+def qbot_manifest_version() -> str:
+    """
+    Diagnostyka serwera MCP. Zwraca: pid, ścieżkę skryptu, timestamp startu,
+    liczbę zarejestrowanych tools, wersję Pythona.
+    """
+    import sys
+    import os as _os
+    from datetime import datetime
+    return json.dumps({
+        "pid": _os.getpid(),
+        "script_path": __file__ if "__file__" in dir() else str(Path(__file__)),
+        "python_version": sys.version,
+        "registered_tools": len(mcp._tool_manager._tools) if hasattr(mcp, "_tool_manager") and hasattr(mcp._tool_manager, "_tools") else None,
+        "server_started_at": None,
+        "artifact_root": str(ARTIFACT_ROOT),
+        "router_count": len(mcp._tool_manager._tools) if hasattr(mcp, "_tool_manager") and hasattr(mcp._tool_manager, "_tools") else "unknown",
+    }, ensure_ascii=False)
+
+
+@mcp.tool()
+def export_rwgps_route_to_artifact(route_id: str, format: str = "gpx") -> str:
+    """
+    Eksportuj trasę RWGPS do artefaktu (plik GPX/TCX/JSON) po stronie QBot.
+    NIE zwraca pełnej geometrii w odpowiedzi MCP — tylko metadane i ścieżkę do pliku.
+    format: gpx, tcx, json
+    """
+    return json.dumps(rwgps_export_route_to_artifact(route_id, format), ensure_ascii=False)
+
+
+@mcp.tool()
+def summarize_rwgps_artifact(artifact_path_or_name: str) -> str:
+    """
+    Podsumowanie zapisanego artefaktu GPX/TCX/JSON RWGPS.
+    Zwraca: point_count, bounds, distance_km, elevation_gain_m, elevation_loss_m,
+    min/max elevation, first/last point, looks_valid, cue_count (dla JSON).
+    """
+    return json.dumps(rwgps_summarize_rwgps_artifact(artifact_path_or_name), ensure_ascii=False)
+
+
+@mcp.tool()
+def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 500) -> str:
+    """
+    Analizuje nawierzchnię trasy z artefaktu RWGPS (GPX/JSON) przez OpenStreetMap/Overpass.
+
+    Wczytuje punkty z pliku GPX/TCX/JSON, próbkuje co sample_distance_m metrów,
+    odpytuje Overpass API o drogi i klasyfikuje nawierzchnię.
+
+    Zwraca: surface_percentages, dominant_surface, road_type_percentages,
+    tracktype_percentages, coverage, bounds, point_count, sampled_points,
+    matched/unmatched, confidence, warnings.
+
+    Wynik jest cache'owany w /opt/qbot/artifacts/analysis/.
+    """
+    import hashlib
+    import math
+    from urllib.parse import urlencode
+
+    path_or_name = str(path_or_name).strip()
+    if not path_or_name:
+        return json.dumps({"ok": False, "error": "INVALID_PATH", "reason": "path_or_name must not be empty"}, ensure_ascii=False)
+
+    sample_distance_m = max(100, min(sample_distance_m, 5000))
+
+    CACHE_ROOT = Path("/opt/qbot/artifacts/analysis")
+    CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+
+    # Determine file and sha256
+    try:
+        from tools.rwgps.client import ARTIFACT_RWGPS_EXPORT_DIR, _resolve_artifact_for_summary
+        file_path = _resolve_artifact_for_summary(path_or_name)
+    except Exception as exc:
+        return json.dumps({"ok": False, "error": "NOT_FOUND", "reason": str(exc), "path_or_name": path_or_name}, ensure_ascii=False)
+
+    try:
+        file_sha = hashlib.sha256(file_path.read_bytes()).hexdigest()
+    except Exception as exc:
+        return json.dumps({"ok": False, "error": "WRITE_FAILED", "reason": str(exc), "path": str(file_path)}, ensure_ascii=False)
+
+    cache_name = f"surface_{file_path.stem}_{sample_distance_m}m.json"
+    cache_path = CACHE_ROOT / cache_name
+
+
+    if cache_path.exists():
+        try:
+            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+            if isinstance(cached, dict) and cached.get("ok"):
+                cached["cache_hit"] = True
+                return json.dumps(cached, ensure_ascii=False)
+        except Exception:
+            pass
+
+    # Extract points
+    try:
+        points = rwgps_extract_artifact_points(path_or_name)
+    except Exception as exc:
+        return json.dumps({"ok": False, "error": "RWGPS_EXPORT_FAILED", "reason": str(exc), "path_or_name": path_or_name}, ensure_ascii=False)
+
+    if len(points) < 2:
+        return json.dumps({"ok": False, "error": "NO_POINTS", "reason": "Artifact has fewer than 2 points", "path_or_name": path_or_name, "point_count": len(points)}, ensure_ascii=False)
+
+    # Compute cumulative distance and sample
+    def _dist_fast(lat1, lon1, lat2, lon2):
+        dlat = (lat2 - lat1) * 111320
+        dlon = (lon2 - lon1) * 111320 * math.cos(math.radians((lat1 + lat2) / 2))
+        return math.sqrt(dlat * dlat + dlon * dlon)
+
+    dists = [0.0]
+    for i in range(1, len(points)):
+        dists.append(dists[-1] + _dist_fast(points[i-1][0], points[i-1][1], points[i][0], points[i][1]))
+
+    samples = [points[0]]
+    next_target = sample_distance_m
+    for i in range(1, len(points)):
+        if dists[i] >= next_target:
+            samples.append(points[i])
+            next_target += sample_distance_m
+
+    if samples[-1] != points[-1]:
+        samples.append(points[-1])
+
+    MAX_SAMPLES = 120
+    if len(samples) > MAX_SAMPLES:
+        step = len(samples) / MAX_SAMPLES
+        samples = [samples[int(i * step)] for i in range(MAX_SAMPLES)]
+
+    # Bounding box
+    lats = [p[0] for p in samples]
+    lons = [p[1] for p in samples]
+    south = min(lats) - 0.005
+    north = max(lats) + 0.005
+    west = min(lons) - 0.005
+    east = max(lons) + 0.005
+
+    # Batch Overpass queries — split samples into groups to keep each query small
+    BATCH_SIZE = 15
+    sample_batches = [samples[i:i + BATCH_SIZE] for i in range(0, len(samples), BATCH_SIZE)]
+
+    SURFACE_MAP = {
+        "asphalt": "asfalt", "paved": "asfalt", "concrete": "beton",
+        "cobblestone": "kocie łby", "sett": "kocie łby",
+        "paving_stones": "kostka brukowa",
+        "gravel": "gravel/żwir", "fine_gravel": "gravel drobny",
+        "compacted": "ubita nawierzchnia",
+        "dirt": "ziemia/grunt", "ground": "grunt",
+        "grass": "trawa", "sand": "piasek", "unpaved": "nieutwardzona",
+    }
+
+    SMOOTHNESS_MAP: dict[str, str] = {
+        "excellent": "doskonała", "good": "dobra", "intermediate": "średnia",
+        "bad": "słaba", "very_bad": "bardzo słaba",
+        "horrible": "okropna", "very_horrible": "bardzo okropna",
+        "impassable": "nieprzejezdna",
+    }
+
+    surface_counts: dict[str, int] = {}
+    highway_counts: dict[str, int] = {}
+    tracktype_counts: dict[str, int] = {}
+    smoothness_counts: dict[str, int] = {}
+    matched = 0
+    unmatched = 0
+    MAX_MATCH_DIST_M = 150
+    osm_errors: list[str] = []
+
+    for batch_idx, batch in enumerate(sample_batches):
+        b_lats = [p[0] for p in batch]
+        b_lons = [p[1] for p in batch]
+        b_south = min(b_lats) - 0.003
+        b_north = max(b_lats) + 0.003
+        b_west = min(b_lons) - 0.003
+        b_east = max(b_lons) + 0.003
+
+        batch_query = f"[out:json][timeout:25];way[highway]({b_south},{b_west},{b_north},{b_east});out tags geom;"
+        batch_ways = []
+        try:
+            with httpx.Client(timeout=30) as c:
+                r = c.post(
+                    "https://overpass-api.de/api/interpreter",
+                    content=urlencode({"data": batch_query}).encode("utf-8"),
+                    headers={"Content-Type": "application/x-www-form-urlencoded",
+                             "User-Agent": "Q-rowerowy-asystent/1.0 (cycling training tool)"})
+                r.raise_for_status()
+                batch_ways = r.json().get("elements", [])
+        except Exception as exc:
+            osm_errors.append(f"batch {batch_idx + 1}/{len(sample_batches)}: {exc}")
+            unmatched += len(batch)
+            continue
+
+        if not batch_ways:
+            unmatched += len(batch)
+            continue
+
+        for pt in batch:
+            best_tags = {}
+            best_dist = float("inf")
+            for way in batch_ways:
+                for node in way.get("geometry", []):
+                    d = _dist_fast(pt[0], pt[1], node["lat"], node["lon"])
+                    if d < best_dist:
+                        best_dist = d
+                        best_tags = way.get("tags", {})
+            if best_dist > MAX_MATCH_DIST_M:
+                unmatched += 1
+                continue
+            matched += 1
+            raw_surf = best_tags.get("surface")
+            label = SURFACE_MAP.get(raw_surf, raw_surf or "nieznana")
+            surface_counts[label] = surface_counts.get(label, 0) + 1
+            hw = best_tags.get("highway")
+            if hw:
+                highway_counts[hw] = highway_counts.get(hw, 0) + 1
+            tt = best_tags.get("tracktype")
+            if tt:
+                tracktype_counts[tt] = tracktype_counts.get(tt, 0) + 1
+            sm = best_tags.get("smoothness")
+            if sm:
+                sm_label = SMOOTHNESS_MAP.get(sm, sm)
+                smoothness_counts[sm_label] = smoothness_counts.get(sm_label, 0) + 1
+
+    if not surface_counts and osm_errors:
+        return json.dumps({"ok": False, "error": "OSM_UNAVAILABLE", "reason": f"Overpass API errors: {'; '.join(osm_errors[:3])}", "bounds": {"sw": [south, west], "ne": [north, east]}, "point_count": len(points), "sampled_points": len(samples)}, ensure_ascii=False)
+    if not surface_counts:
+        return json.dumps({"ok": False, "error": "OSM_UNAVAILABLE", "reason": "No OSM data found for any batch", "bounds": {"sw": [south, west], "ne": [north, east]}, "point_count": len(points), "sampled_points": len(samples)}, ensure_ascii=False)
+
+    total = sum(surface_counts.values()) or 1
+    dominated_by = max(surface_counts, key=surface_counts.get) if surface_counts else "nieznana"
+    coverage_pct = round(matched / max(1, len(samples)) * 100, 1)
+
+    warnings_list = []
+    if unmatched > matched:
+        warnings_list.append(f"Niski zasięg OSM: tylko {coverage_pct}% punktów dopasowanych")
+    if dominated_by == "nieznana":
+        warnings_list.append("Dominująca nawierzchnia nieznana — OSM może nie mieć tagów surface dla tej trasy")
+    if osm_errors:
+        warnings_list.append(f"Błędy Overpass: {len(osm_errors)}/{len(sample_batches)} batchy nieudane")
+
+    smoothness_total = sum(smoothness_counts.values()) or 1
+    result = {
+        "ok": True,
+        "status": "OK",
+        "source": "rwgps_artifact",
+        "artifact_path": str(file_path),
+        "artifact_name": file_path.name,
+        "artifact_sha256": file_sha,
+        "sample_distance_m": sample_distance_m,
+        "point_count": len(points),
+        "distance_km": round(dists[-1] / 1000, 3),
+        "sampled_points": len(samples),
+        "matched_points": matched,
+        "unmatched_points": unmatched,
+        "coverage_pct": coverage_pct,
+        "bounds": {"sw_lat": south + 0.005, "sw_lng": west + 0.005, "ne_lat": north - 0.005, "ne_lng": east - 0.005},
+        "surface_percentages": {k: round(v / total * 100, 1) for k, v in sorted(surface_counts.items(), key=lambda x: -x[1])},
+        "dominant_surface": dominated_by,
+        "road_type_percentages": {k: round(v / total * 100, 1) for k, v in sorted(highway_counts.items(), key=lambda x: -x[1])} if highway_counts else {},
+        "tracktype_percentages": {k.replace("grade", ""): round(v / total * 100, 1) for k, v in sorted(tracktype_counts.items())} if tracktype_counts else {},
+        "smoothness_summary": {k: round(v / smoothness_total * 100, 1) for k, v in sorted(smoothness_counts.items(), key=lambda x: -x[1])} if smoothness_counts else {},
+        "confidence": "high" if coverage_pct >= 80 else "medium" if coverage_pct >= 50 else "low",
+        "warnings": warnings_list if warnings_list else None,
+        "cache_hit": False,
+    }
+
+    try:
+        cache_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+    return json.dumps(result, ensure_ascii=False)
+
+
 @mcp.tool()
 async def save_wellness(
     date: str,
@@ -942,6 +1525,1051 @@ def get_cronometer_nutrition(date: str = None, days: int = 1) -> str:
         return json.dumps(clean, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"error": str(e)})
+
+
+# ── OPENMAPS ────────────────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def openmaps_healthcheck() -> str:
+    """
+    Sprawdź stan integracji z OpenStreetMap/Overpass API.
+    Zwraca JSON: ok, status, overpass_endpoint, cache_status, reason.
+    """
+    endpoint = "https://overpass-api.de/api/interpreter"
+    try:
+        with httpx.Client(timeout=10) as c:
+            r = c.get("https://overpass-api.de/api/status",
+                       headers={"User-Agent": "Q-rowerowy-asystent/1.0"})
+            if r.status_code == 200:
+                return json.dumps({
+                    "ok": True,
+                    "status": "OK",
+                    "overpass_endpoint": endpoint,
+                    "cache_status": "OK",
+                    "reason": "Overpass API dostępny, status HTTP 200",
+                }, ensure_ascii=False)
+            return json.dumps({
+                "ok": False,
+                "status": "DEGRADED",
+                "overpass_endpoint": endpoint,
+                "cache_status": "OK",
+                "reason": f"Overpass API odpowiedział kodem {r.status_code}",
+            }, ensure_ascii=False)
+    except Exception as exc:
+        return json.dumps({
+            "ok": False,
+            "status": "ERROR",
+            "overpass_endpoint": endpoint,
+            "cache_status": "DISABLED",
+            "reason": f"Nie można połączyć się z Overpass API: {exc}",
+        }, ensure_ascii=False)
+
+
+@mcp.tool()
+def openmaps_query_bbox(
+    south: float,
+    west: float,
+    north: float,
+    east: float,
+    features: list[str] | None = None,
+    timeout_sec: int | None = None,
+) -> str:
+    """
+    Odpytaj Overpass API o elementy OSM w zadanym bounding boxie.
+
+    south/west/north/east: współrzędne geograficzne (stopnie)
+    features: lista kategorii — roads, surface, amenities, barriers, access
+    timeout_sec: timeout Overpass w sekundach (domyślnie 25)
+
+    Zwraca JSON: ok, status (OK/NO_DATA/ERROR), elements[], source, reason.
+    """
+    if not (-90 <= south <= 90):
+        return json.dumps({"ok": False, "status": "ERROR", "elements": [], "source": "overpass",
+                           "reason": f"south latitude {south} out of range [-90, 90]"},
+                          ensure_ascii=False)
+    if not (-90 <= north <= 90):
+        return json.dumps({"ok": False, "status": "ERROR", "elements": [], "source": "overpass",
+                           "reason": f"north latitude {north} out of range [-90, 90]"},
+                          ensure_ascii=False)
+    if not (-180 <= west <= 180):
+        return json.dumps({"ok": False, "status": "ERROR", "elements": [], "source": "overpass",
+                           "reason": f"west longitude {west} out of range [-180, 180]"},
+                          ensure_ascii=False)
+    if not (-180 <= east <= 180):
+        return json.dumps({"ok": False, "status": "ERROR", "elements": [], "source": "overpass",
+                           "reason": f"east longitude {east} out of range [-180, 180]"},
+                          ensure_ascii=False)
+    if south >= north:
+        return json.dumps({"ok": False, "status": "ERROR", "elements": [], "source": "overpass",
+                           "reason": f"south ({south}) must be less than north ({north})"},
+                          ensure_ascii=False)
+    if west >= east:
+        return json.dumps({"ok": False, "status": "ERROR", "elements": [], "source": "overpass",
+                           "reason": f"west ({west}) must be less than east ({east})"},
+                          ensure_ascii=False)
+
+    lat_span = north - south
+    lon_span = east - west
+    if lat_span > 1.0 or lon_span > 1.0:
+        return json.dumps({"ok": False, "status": "ERROR", "elements": [], "source": "overpass",
+                           "reason": f"bbox too large: {lat_span:.3f}° lat × {lon_span:.3f}° lon exceeds 1.0° limit"},
+                          ensure_ascii=False)
+
+    timeout_val = timeout_sec if timeout_sec and timeout_sec > 0 else 25
+
+    valid_features = {"roads", "surface", "amenities", "barriers", "access"}
+    if not features:
+        selected = sorted(valid_features)
+    else:
+        selected = sorted(set(f.lower() for f in features if isinstance(f, str) and f.lower() in valid_features))
+    if not selected:
+        return json.dumps({"ok": False, "status": "ERROR", "elements": [], "source": "overpass",
+                           "reason": "no valid features selected"},
+                          ensure_ascii=False)
+
+    bbox_str = f"({south},{west},{north},{east})"
+    feature_queries = {
+        "access": f"way[highway][access]{bbox_str};",
+        "amenities": f"node[amenity]{bbox_str};way[amenity]{bbox_str};",
+        "barriers": f"node[barrier]{bbox_str};way[barrier]{bbox_str};",
+        "roads": f"way[highway]{bbox_str};",
+        "surface": f"way[highway][surface]{bbox_str};",
+    }
+    query_parts = [feature_queries[f] for f in selected]
+    query = f"[out:json][timeout:{timeout_val}];({' '.join(query_parts)});out tags geom;"
+
+    try:
+        from urllib.parse import urlencode
+        with httpx.Client(timeout=timeout_val + 5) as c:
+            r = c.post(
+                "https://overpass-api.de/api/interpreter",
+                content=urlencode({"data": query}).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "User-Agent": "Q-rowerowy-asystent/1.0 (cycling training tool)",
+                },
+            )
+            r.raise_for_status()
+            data = r.json()
+            elements = data.get("elements", [])
+    except Exception as exc:
+        return json.dumps({"ok": False, "status": "ERROR", "elements": [], "source": "overpass",
+                           "reason": f"Overpass API error: {exc}"},
+                          ensure_ascii=False)
+
+    if not elements:
+        return json.dumps({"ok": True, "status": "NO_DATA", "elements": [], "source": "overpass",
+                           "reason": f"no OSM elements in bbox ({south},{west},{north},{east}) for: {', '.join(selected)}"},
+                          ensure_ascii=False)
+
+    return json.dumps({"ok": True, "status": "OK", "elements": elements, "source": "overpass",
+                       "reason": f"{len(elements)} elements found for: {', '.join(selected)}"},
+                      ensure_ascii=False)
+
+
+@mcp.tool()
+def openmaps_enrich_rwgps_track(
+    points_json: str,
+    track_id: str | None = None,
+    buffer_m: int = 60,
+    sample_step_m: int = 100,
+) -> str:
+    """
+    Wzbogać track RWGPS/GPX o segmenty nawierzchni z OpenStreetMap.
+
+    points_json: JSON array of {lat, lon, ele?, distance_m?, timestamp?}
+    track_id: opcjonalny identyfikator trasy
+    buffer_m: promień bufora OSM wokół każdego punktu (30–200 m)
+    sample_step_m: krok próbkowania punktów (50–500 m)
+
+    Zwraca JSON: ok, status, track_id, segments[], summary{}, source, reason.
+    """
+    import math
+    from urllib.parse import urlencode
+
+    try:
+        points = json.loads(points_json)
+    except Exception:
+        return json.dumps({"ok": False, "status": "ERROR", "track_id": track_id, "segments": [],
+                           "summary": {}, "source": "osm_overpass",
+                           "reason": "invalid points_json: not valid JSON"},
+                          ensure_ascii=False)
+
+    if not isinstance(points, list) or len(points) < 2:
+        return json.dumps({"ok": False, "status": "ERROR", "track_id": track_id, "segments": [],
+                           "summary": {}, "source": "osm_overpass",
+                           "reason": f"need at least 2 points, got {len(points) if isinstance(points, list) else 'non-list'}"},
+                          ensure_ascii=False)
+
+    for i, p in enumerate(points):
+        if not isinstance(p, dict):
+            return json.dumps({"ok": False, "status": "ERROR", "track_id": track_id, "segments": [],
+                               "summary": {}, "source": "osm_overpass",
+                               "reason": f"point[{i}] is not a dict"},
+                              ensure_ascii=False)
+        lat = p.get("lat")
+        lon = p.get("lon")
+        if lat is None or lon is None:
+            return json.dumps({"ok": False, "status": "ERROR", "track_id": track_id, "segments": [],
+                               "summary": {}, "source": "osm_overpass",
+                               "reason": f"point[{i}] missing lat or lon"},
+                              ensure_ascii=False)
+        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+            return json.dumps({"ok": False, "status": "ERROR", "track_id": track_id, "segments": [],
+                               "summary": {}, "source": "osm_overpass",
+                               "reason": f"point[{i}] lat/lon must be numbers"},
+                              ensure_ascii=False)
+        if math.isnan(lat) or math.isnan(lon) or math.isinf(lat) or math.isinf(lon):
+            return json.dumps({"ok": False, "status": "ERROR", "track_id": track_id, "segments": [],
+                               "summary": {}, "source": "osm_overpass",
+                               "reason": f"point[{i}] lat/lon has NaN or Infinity"},
+                              ensure_ascii=False)
+
+    buffer_m = max(30, min(buffer_m, 200))
+    sample_step_m = max(50, min(sample_step_m, 500))
+
+    def _dist_m(lat1, lon1, lat2, lon2):
+        dlat = (lat2 - lat1) * 111320.0
+        dlon = (lon2 - lon1) * 111320.0 * math.cos(math.radians((lat1 + lat2) / 2.0))
+        return math.sqrt(dlat * dlat + dlon * dlon)
+
+    dists = [0.0]
+    for i in range(1, len(points)):
+        d_val = points[i].get("distance_m")
+        if isinstance(d_val, (int, float)) and d_val is not None and not math.isnan(d_val) and not math.isinf(d_val) and d_val >= 0:
+            dists.append(float(d_val))
+        else:
+            prev = dists[-1]
+            step = _dist_m(points[i - 1]["lat"], points[i - 1]["lon"], points[i]["lat"], points[i]["lon"])
+            dists.append(prev + step)
+
+    total_dist = dists[-1]
+
+    samples = []
+    next_target = sample_step_m
+    for i in range(len(points)):
+        if dists[i] >= next_target or i == len(points) - 1:
+            samples.append((i, float(points[i]["lat"]), float(points[i]["lon"]), dists[i]))
+            next_target += sample_step_m
+    if len(samples) < 2:
+        samples = [(0, float(points[0]["lat"]), float(points[0]["lon"]), 0.0),
+                   (len(points) - 1, float(points[-1]["lat"]), float(points[-1]["lon"]), total_dist)]
+    if len(samples) > 80:
+        step = len(samples) / 80
+        samples = [samples[int(i * step)] for i in range(80)]
+
+    BATCH_SIZE = 8
+    batches = [samples[i:i + BATCH_SIZE] for i in range(0, len(samples), BATCH_SIZE)]
+
+    _PAVED = {"asphalt", "paved", "concrete", "paving_stones"}
+    _FAST_SURF = {"compacted", "fine_gravel"}
+    _DIRT_SURF = {"earth", "mud", "sand", "grass"}
+    _GRAVEL_SURF = {"gravel", "ground", "dirt", "unpaved"}
+
+    def _surface_class_and_confidence(tags):
+        surf = (tags.get("surface") or "").lower()
+        tt = (tags.get("tracktype") or "").lower()
+        sm = (tags.get("smoothness") or "").lower()
+        bad_cond = tt in ("grade3", "grade4", "grade5") or sm in ("bad", "very_bad", "horrible", "very_horrible", "impassable")
+        if surf in _PAVED:
+            return "paved", 0.9
+        if surf in _FAST_SURF:
+            return "fast_gravel", 0.85
+        if surf == "gravel":
+            if bad_cond:
+                return "rough_gravel", 0.6
+            return "fast_gravel", 0.75
+        if surf in _GRAVEL_SURF:
+            if bad_cond:
+                return "rough_gravel", 0.55
+            if tt in ("grade1", "grade2") or sm in ("excellent", "good", "intermediate"):
+                return "fast_gravel", 0.6
+            return "rough_gravel", 0.55
+        if surf in _DIRT_SURF:
+            return "dirt", 0.65
+        if tags.get("highway"):
+            return "unknown", 0.3
+        return "unknown", 0.2
+
+    lat_per_m = 1.0 / 111320.0
+    buffer_deg = buffer_m * lat_per_m
+
+    sample_tags = []
+    osm_errors = 0
+
+    for batch in batches:
+        b_lats = [s[1] for s in batch]
+        b_lons = [s[2] for s in batch]
+        b_south = min(b_lats) - buffer_deg
+        b_north = max(b_lats) + buffer_deg
+        mid_lat = sum(b_lats) / len(b_lats)
+        lon_per_m = 1.0 / (111320.0 * math.cos(math.radians(mid_lat)))
+        b_west = min(b_lons) - buffer_m * lon_per_m
+        b_east = max(b_lons) + buffer_m * lon_per_m
+
+        query = f"[out:json][timeout:25];way[highway]({b_south},{b_west},{b_north},{b_east});out tags geom;"
+        ways = []
+        try:
+            with httpx.Client(timeout=30) as c:
+                r = c.post("https://overpass-api.de/api/interpreter",
+                           content=urlencode({"data": query}).encode("utf-8"),
+                           headers={"Content-Type": "application/x-www-form-urlencoded",
+                                    "User-Agent": "Q-rowerowy-asystent/1.0 (cycling training tool)"})
+                r.raise_for_status()
+                ways = r.json().get("elements", [])
+        except Exception:
+            osm_errors += len(batch)
+            for s in batch:
+                sample_tags.append((s[3], None, "unknown", 0.2,
+                                   "Overpass API unavailable"))
+            continue
+
+        if not ways:
+            for s in batch:
+                sample_tags.append((s[3], None, "unknown", 0.2,
+                                   "no OSM data in buffer"))
+            continue
+
+        for s in batch:
+            s_lat, s_lon, s_dist = s[1], s[2], s[3]
+            best_dist = float("inf")
+            best_tags = {}
+            for way in ways:
+                for node in way.get("geometry", []):
+                    d = _dist_m(s_lat, s_lon, node["lat"], node["lon"])
+                    if d < best_dist:
+                        best_dist = d
+                        best_tags = way.get("tags", {})
+            max_match = buffer_m * 1.5
+            if best_dist > max_match or not best_tags.get("highway"):
+                sc, cf = "unknown", 0.2
+                reason = f"nearest OSM way {best_dist:.0f}m away exceeds buffer {max_match:.0f}m" if best_dist > max_match else "no highway tag on nearest way"
+            else:
+                sc, cf = _surface_class_and_confidence(best_tags)
+                reason = f"matched OSM way at {best_dist:.0f}m"
+            sample_tags.append((s_dist, best_tags if best_tags.get("highway") else None, sc, cf, reason))
+
+    segments = []
+    seg_start = None
+    seg_tags = None
+    seg_class = None
+    seg_conf = None
+
+    for i, (st_dist, tags, sc, cf, reason) in enumerate(sample_tags):
+        if seg_start is None:
+            seg_start = st_dist
+            seg_tags = tags
+            seg_class = sc
+            seg_conf = cf
+            seg_reason = reason
+        elif sc != seg_class:
+            seg_end = st_dist
+            if seg_end - seg_start > 1.0:
+                segments.append(_build_segment(seg_start, seg_end, seg_tags, seg_class, seg_conf, seg_reason))
+            seg_start = st_dist
+            seg_tags = tags
+            seg_class = sc
+            seg_conf = cf
+            seg_reason = reason
+        else:
+            if tags and not seg_tags:
+                seg_tags = tags
+                seg_reason = reason
+            seg_end = st_dist
+
+    if seg_start is not None:
+        seg_end = sample_tags[-1][0] if sample_tags else total_dist
+        if seg_end - seg_start > 1.0:
+            segments.append(_build_segment(seg_start, seg_end, seg_tags, seg_class, seg_conf, seg_reason))
+
+    # Summary
+    paved_m = sum(s["distance_m"] for s in segments if s["surface_class"] == "paved")
+    gravel_m = sum(s["distance_m"] for s in segments if s["surface_class"] == "fast_gravel")
+    rough_m = sum(s["distance_m"] for s in segments if s["surface_class"] == "rough_gravel")
+    dirt_m = sum(s["distance_m"] for s in segments if s["surface_class"] == "dirt")
+    unknown_m = sum(s["distance_m"] for s in segments if s["surface_class"] == "unknown")
+
+    status = "OK"
+    reason_text = f"{len(segments)} segments from {len(samples)} samples"
+    if not segments:
+        status = "NO_DATA"
+        reason_text = "no OSM data found for any sample"
+    elif osm_errors > 0:
+        status = "PARTIAL"
+        reason_text = f"{len(segments)} segments ({osm_errors} OSM errors)"
+
+    return json.dumps({
+        "ok": True,
+        "status": status,
+        "track_id": track_id,
+        "segments": segments,
+        "summary": {
+            "distance_m": round(total_dist, 1),
+            "paved_m": round(paved_m, 1),
+            "gravel_m": round(gravel_m, 1),
+            "rough_m": round(rough_m, 1),
+            "dirt_m": round(dirt_m, 1),
+            "unknown_m": round(unknown_m, 1),
+        },
+        "source": "osm_overpass",
+        "reason": reason_text,
+    }, ensure_ascii=False)
+
+
+def _build_segment(from_m, to_m, tags, surface_class, confidence, reason):
+    return {
+        "from_m": round(from_m, 1),
+        "to_m": round(to_m, 1),
+        "distance_m": round(to_m - from_m, 1),
+        "road_type": tags.get("highway") if tags else None,
+        "surface": tags.get("surface") if tags else None,
+        "surface_class": surface_class,
+        "tracktype": tags.get("tracktype") if tags else None,
+        "smoothness": tags.get("smoothness") if tags else None,
+        "access": tags.get("access") if tags else None,
+        "bicycle": tags.get("bicycle") if tags else None,
+        "confidence": confidence,
+        "source": "osm_overpass",
+        "reason": reason,
+    }
+
+
+@mcp.tool()
+def openmaps_find_pois_near_track(
+    points_json: str,
+    radius_m: int = 500,
+    poi_types_json: str | None = None,
+) -> str:
+    """
+    Znajdź POI (punkty użyteczności) w pobliżu trasy przez Overpass API.
+
+    points_json: JSON array of {lat, lon, distance_m?}
+    radius_m: promień od trasy w metrach (50–3000)
+    poi_types_json: opcjonalnie JSON array typów POI:
+      drinking_water, cafe, shelter, shop, bicycle_service
+
+    Zwraca JSON: ok, status (OK/NO_DATA/ERROR), pois[], source, reason.
+    """
+    import math
+    from urllib.parse import urlencode
+
+    try:
+        points = json.loads(points_json)
+    except Exception:
+        return json.dumps({"ok": False, "status": "ERROR", "pois": [], "source": "osm_overpass",
+                           "reason": "invalid points_json: not valid JSON"}, ensure_ascii=False)
+
+    if not isinstance(points, list) or len(points) < 2:
+        return json.dumps({"ok": False, "status": "ERROR", "pois": [], "source": "osm_overpass",
+                           "reason": f"need at least 2 points, got {len(points) if isinstance(points, list) else 'non-list'}"},
+                          ensure_ascii=False)
+
+    radius_m = max(50, min(radius_m, 3000))
+
+    _POI_QUERY = {
+        "drinking_water": "node[amenity=drinking_water]",
+        "cafe": "node[amenity=cafe]",
+        "shelter": "node[amenity=shelter];node[tourism=alpine_hut]",
+        "shop": "node[shop=convenience];node[shop=supermarket]",
+        "bicycle_service": "node[shop=bicycle]",
+    }
+
+    if poi_types_json:
+        try:
+            requested = json.loads(poi_types_json)
+            if not isinstance(requested, list):
+                requested = []
+        except Exception:
+            return json.dumps({"ok": False, "status": "ERROR", "pois": [], "source": "osm_overpass",
+                               "reason": "invalid poi_types_json: not valid JSON array"}, ensure_ascii=False)
+        poi_types = [t.lower() for t in requested if isinstance(t, str) and t.lower() in _POI_QUERY]
+    else:
+        poi_types = list(_POI_QUERY.keys())
+
+    if not poi_types:
+        return json.dumps({"ok": False, "status": "ERROR", "pois": [], "source": "osm_overpass",
+                           "reason": "no valid POI types selected"}, ensure_ascii=False)
+
+    query_parts = [_POI_QUERY[t] for t in poi_types]
+
+    for i, p in enumerate(points):
+        if not isinstance(p, dict):
+            return json.dumps({"ok": False, "status": "ERROR", "pois": [], "source": "osm_overpass",
+                               "reason": f"point[{i}] is not a dict"}, ensure_ascii=False)
+        lat = p.get("lat")
+        lon = p.get("lon")
+        if lat is None or lon is None:
+            return json.dumps({"ok": False, "status": "ERROR", "pois": [], "source": "osm_overpass",
+                               "reason": f"point[{i}] missing lat or lon"}, ensure_ascii=False)
+        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+            return json.dumps({"ok": False, "status": "ERROR", "pois": [], "source": "osm_overpass",
+                               "reason": f"point[{i}] lat/lon must be numbers"}, ensure_ascii=False)
+        if math.isnan(lat) or math.isnan(lon) or math.isinf(lat) or math.isinf(lon):
+            return json.dumps({"ok": False, "status": "ERROR", "pois": [], "source": "osm_overpass",
+                               "reason": f"point[{i}] lat/lon has NaN or Infinity"}, ensure_ascii=False)
+
+    def _dist_m(lat1, lon1, lat2, lon2):
+        dlat = (lat2 - lat1) * 111320.0
+        dlon = (lon2 - lon1) * 111320.0 * math.cos(math.radians((lat1 + lat2) / 2.0))
+        return math.sqrt(dlat * dlat + dlon * dlon)
+
+    lats_all = [p["lat"] for p in points]
+    lons_all = [p["lon"] for p in points]
+    lat_per_m = 1.0 / 111320.0
+    mid_lat = sum(lats_all) / len(lats_all)
+    lon_per_m = 1.0 / (111320.0 * math.cos(math.radians(mid_lat)))
+    buffer_lat = radius_m * lat_per_m
+    buffer_lon = radius_m * lon_per_m
+
+    south = min(lats_all) - buffer_lat
+    north = max(lats_all) + buffer_lat
+    west = min(lons_all) - buffer_lon
+    east = max(lons_all) + buffer_lon
+
+    if (north - south) > 2.0 or (east - west) > 2.0:
+        return json.dumps({"ok": False, "status": "ERROR", "pois": [], "source": "osm_overpass",
+                           "reason": f"track bbox too large: {north - south:.2f}° × {east - west:.2f}° exceeds 2.0° limit"},
+                          ensure_ascii=False)
+
+    bbox_str = f"({south},{west},{north},{east})"
+    query = f"[out:json][timeout:25];({' '.join(f'{qp}{bbox_str};' for qp in query_parts)});out tags center;"
+
+    elements = []
+    try:
+        with httpx.Client(timeout=30) as c:
+            r = c.post("https://overpass-api.de/api/interpreter",
+                       content=urlencode({"data": query}).encode("utf-8"),
+                       headers={"Content-Type": "application/x-www-form-urlencoded",
+                                "User-Agent": "Q-rowerowy-asystent/1.0 (cycling training tool)"})
+            r.raise_for_status()
+            elements = r.json().get("elements", [])
+    except Exception as exc:
+        return json.dumps({"ok": False, "status": "ERROR", "pois": [], "source": "osm_overpass",
+                           "reason": f"Overpass API error: {exc}"}, ensure_ascii=False)
+
+    if not elements:
+        return json.dumps({"ok": True, "status": "NO_DATA", "pois": [], "source": "osm_overpass",
+                           "reason": f"no POIs found in {radius_m}m around track for: {', '.join(poi_types)}"},
+                          ensure_ascii=False)
+
+    def _poi_type_from_tags(tags):
+        amenity = (tags.get("amenity") or "").lower()
+        shop = (tags.get("shop") or "").lower()
+        tourism = (tags.get("tourism") or "").lower()
+        if amenity == "drinking_water": return "drinking_water"
+        if amenity == "cafe": return "cafe"
+        if amenity == "shelter" or tourism == "alpine_hut": return "shelter"
+        if shop in ("convenience", "supermarket"): return "shop"
+        if shop == "bicycle": return "bicycle_service"
+        return None
+
+    pois = []
+    for el in elements:
+        tags = el.get("tags") or {}
+        poi_type = _poi_type_from_tags(tags)
+        if poi_type is None:
+            continue
+        name = tags.get("name") or None
+        lat = el.get("lat")
+        lon = el.get("lon")
+        if lat is None or lon is None:
+            continue
+
+        min_dist = float("inf")
+        nearest_on_route = 0.0
+        for pi, p in enumerate(points):
+            d = _dist_m(lat, lon, p["lat"], p["lon"])
+            if d < min_dist:
+                min_dist = d
+                dm = p.get("distance_m")
+                if isinstance(dm, (int, float)):
+                    nearest_on_route = float(dm)
+                else:
+                    nearest_on_route = 0.0
+
+        if min_dist > radius_m:
+            continue
+
+        if name:
+            confidence_val = 0.9
+            reason_text = f"{poi_type}: {name}, {min_dist:.0f}m from track"
+        else:
+            confidence_val = 0.75
+            reason_text = f"{poi_type}: unnamed, {min_dist:.0f}m from track"
+
+        pois.append({
+            "type": poi_type,
+            "name": name,
+            "lat": round(lat, 6),
+            "lon": round(lon, 6),
+            "distance_from_track_m": round(min_dist, 1),
+            "nearest_track_distance_m": round(min_dist, 1),
+            "nearest_track_distance_m_on_route": round(nearest_on_route, 1) if nearest_on_route else None,
+            "tags": tags,
+            "source": "osm_overpass",
+            "confidence": confidence_val,
+            "reason": reason_text,
+        })
+
+    if not pois:
+        return json.dumps({"ok": True, "status": "NO_DATA", "pois": [], "source": "osm_overpass",
+                           "reason": f"no matching POI types found in {radius_m}m (got {len(elements)} raw elements)"},
+                          ensure_ascii=False)
+
+    pois.sort(key=lambda x: x["distance_from_track_m"])
+
+    return json.dumps({"ok": True, "status": "OK", "pois": pois, "source": "osm_overpass",
+                       "reason": f"{len(pois)} POIs found within {radius_m}m"},
+                      ensure_ascii=False)
+
+
+@mcp.tool()
+def openmaps_detect_route_risks(
+    points_json: str,
+    enriched_segments_json: str | None = None,
+    pois_json: str | None = None,
+) -> str:
+    """
+    Wykryj ryzyka gravelowe i logistyczne na podstawie tracka i danych OSM.
+
+    points_json: JSON array of {lat, lon, ele?, distance_m?}
+    enriched_segments_json: opcjonalnie wynik openmaps_enrich_rwgps_track.segments
+    pois_json: opcjonalnie wynik openmaps_find_pois_near_track.pois
+
+    Zwraca JSON: ok, status, risks[], source, reason.
+    Nie wykonuje zapytań HTTP/Overpass — działa tylko na danych wejściowych.
+    """
+    import math
+
+    try:
+        points = json.loads(points_json)
+    except Exception:
+        return json.dumps({"ok": False, "status": "ERROR", "risks": [], "source": "route_analysis",
+                           "reason": "invalid points_json: not valid JSON"}, ensure_ascii=False)
+
+    if not isinstance(points, list) or len(points) < 2:
+        return json.dumps({"ok": False, "status": "ERROR", "risks": [], "source": "route_analysis",
+                           "reason": f"need at least 2 points, got {len(points) if isinstance(points, list) else 'non-list'}"},
+                          ensure_ascii=False)
+
+    for i, p in enumerate(points):
+        if not isinstance(p, dict):
+            return json.dumps({"ok": False, "status": "ERROR", "risks": [], "source": "route_analysis",
+                               "reason": f"point[{i}] is not a dict"}, ensure_ascii=False)
+        lat = p.get("lat")
+        lon = p.get("lon")
+        if lat is None or lon is None:
+            return json.dumps({"ok": False, "status": "ERROR", "risks": [], "source": "route_analysis",
+                               "reason": f"point[{i}] missing lat or lon"}, ensure_ascii=False)
+        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+            return json.dumps({"ok": False, "status": "ERROR", "risks": [], "source": "route_analysis",
+                               "reason": f"point[{i}] lat/lon must be numbers"}, ensure_ascii=False)
+        if math.isnan(lat) or math.isnan(lon) or math.isinf(lat) or math.isinf(lon):
+            return json.dumps({"ok": False, "status": "ERROR", "risks": [], "source": "route_analysis",
+                               "reason": f"point[{i}] lat/lon has NaN or Infinity"}, ensure_ascii=False)
+
+    segments = []
+    if enriched_segments_json:
+        try:
+            segments = json.loads(enriched_segments_json)
+        except Exception:
+            return json.dumps({"ok": False, "status": "ERROR", "risks": [], "source": "route_analysis",
+                               "reason": "invalid enriched_segments_json: not valid JSON"}, ensure_ascii=False)
+        if not isinstance(segments, list):
+            return json.dumps({"ok": False, "status": "ERROR", "risks": [], "source": "route_analysis",
+                               "reason": "enriched_segments_json must be a list"}, ensure_ascii=False)
+
+    pois = []
+    if pois_json:
+        try:
+            pois = json.loads(pois_json)
+        except Exception:
+            return json.dumps({"ok": False, "status": "ERROR", "risks": [], "source": "route_analysis",
+                               "reason": "invalid pois_json: not valid JSON"}, ensure_ascii=False)
+        if not isinstance(pois, list):
+            return json.dumps({"ok": False, "status": "ERROR", "risks": [], "source": "route_analysis",
+                               "reason": "pois_json must be a list"}, ensure_ascii=False)
+
+    def _dist_m(lat1, lon1, lat2, lon2):
+        dlat = (lat2 - lat1) * 111320.0
+        dlon = (lon2 - lon1) * 111320.0 * math.cos(math.radians((lat1 + lat2) / 2.0))
+        return math.sqrt(dlat * dlat + dlon * dlon)
+
+    dists = [0.0]
+    for i in range(1, len(points)):
+        d_val = points[i].get("distance_m")
+        if isinstance(d_val, (int, float)) and d_val is not None and not math.isnan(d_val) and not math.isinf(d_val) and d_val >= 0:
+            dists.append(float(d_val))
+        else:
+            prev = dists[-1]
+            step = _dist_m(points[i - 1]["lat"], points[i - 1]["lon"], points[i]["lat"], points[i]["lon"])
+            dists.append(prev + step)
+
+    total_dist = dists[-1]
+    has_elevation = all(isinstance(p.get("ele"), (int, float)) and not math.isnan(p.get("ele")) and not math.isinf(p.get("ele")) for p in points)
+
+    risks = []
+
+    for seg in segments:
+        if not isinstance(seg, dict):
+            continue
+        sc = seg.get("surface_class", "")
+        conf = seg.get("confidence", 0)
+        if not isinstance(conf, (int, float)):
+            conf = 0
+        from_m = seg.get("from_m", 0)
+        to_m = seg.get("to_m", 0)
+        tags = seg.get("tags") if isinstance(seg.get("tags"), dict) else {}
+        access = (tags.get("access") or seg.get("access") or "").lower()
+        bicycle = (tags.get("bicycle") or seg.get("bicycle") or "").lower()
+        barrier = (tags.get("barrier") or "").lower()
+        ford = (tags.get("ford") or "").lower()
+
+        seg_lat = None
+        seg_lon = None
+        for pi, p in enumerate(points):
+            if dists[pi] >= from_m and dists[pi] <= to_m:
+                seg_lat = p["lat"]
+                seg_lon = p["lon"]
+                break
+
+        # unknown_surface
+        if sc == "unknown" or conf <= 0.3:
+            risks.append({
+                "type": "unknown_surface",
+                "from_m": round(from_m, 1) if isinstance(from_m, (int, float)) else None,
+                "to_m": round(to_m, 1) if isinstance(to_m, (int, float)) else None,
+                "lat": round(seg_lat, 6) if seg_lat is not None else None,
+                "lon": round(seg_lon, 6) if seg_lon is not None else None,
+                "severity": "MEDIUM" if conf <= 0.3 else "LOW",
+                "confidence": round(1.0 - max(conf, 0.2), 2),
+                "source": "osm_overpass",
+                "reason": "segment surface unknown" if sc == "unknown" else f"low OSM confidence ({conf})",
+            })
+
+        # private_access
+        if access in ("private", "no") or bicycle == "no":
+            risks.append({
+                "type": "private_access",
+                "from_m": round(from_m, 1) if isinstance(from_m, (int, float)) else None,
+                "to_m": round(to_m, 1) if isinstance(to_m, (int, float)) else None,
+                "lat": round(seg_lat, 6) if seg_lat is not None else None,
+                "lon": round(seg_lon, 6) if seg_lon is not None else None,
+                "severity": "HIGH",
+                "confidence": 0.85,
+                "source": "osm_overpass",
+                "reason": f"access={access}" if access else f"bicycle={bicycle}",
+            })
+
+        # gate
+        if barrier in ("gate", "lift_gate", "swing_gate", "bollard"):
+            risks.append({
+                "type": "gate",
+                "from_m": round(from_m, 1) if isinstance(from_m, (int, float)) else None,
+                "to_m": round(to_m, 1) if isinstance(to_m, (int, float)) else None,
+                "lat": round(seg_lat, 6) if seg_lat is not None else None,
+                "lon": round(seg_lon, 6) if seg_lon is not None else None,
+                "severity": "MEDIUM",
+                "confidence": 0.75,
+                "source": "osm_overpass",
+                "reason": f"barrier={barrier} on segment",
+            })
+
+        # ford
+        if ford == "yes":
+            risks.append({
+                "type": "ford",
+                "from_m": round(from_m, 1) if isinstance(from_m, (int, float)) else None,
+                "to_m": round(to_m, 1) if isinstance(to_m, (int, float)) else None,
+                "lat": round(seg_lat, 6) if seg_lat is not None else None,
+                "lon": round(seg_lon, 6) if seg_lon is not None else None,
+                "severity": "HIGH",
+                "confidence": 0.85,
+                "source": "osm_overpass",
+                "reason": "ford=yes on segment",
+            })
+
+        # steep_unpaved_climb / rough_descent — need elevation data
+        if has_elevation and sc in ("rough_gravel", "dirt", "fast_gravel"):
+            seg_points = [p for i, p in enumerate(points) if from_m <= dists[i] <= to_m]
+            if len(seg_points) >= 2:
+                elev_start = seg_points[0].get("ele")
+                elev_end = seg_points[-1].get("ele")
+                seg_dist = to_m - from_m
+                if isinstance(elev_start, (int, float)) and isinstance(elev_end, (int, float)) and seg_dist > 0:
+                    grade_pct = round((elev_end - elev_start) / seg_dist * 100, 1)
+                    if grade_pct > 5:
+                        risks.append({
+                            "type": "steep_unpaved_climb",
+                            "from_m": round(from_m, 1),
+                            "to_m": round(to_m, 1),
+                            "lat": round(seg_lat, 6) if seg_lat is not None else None,
+                            "lon": round(seg_lon, 6) if seg_lon is not None else None,
+                            "severity": "HIGH",
+                            "confidence": 0.8,
+                            "source": "track_elevation",
+                            "reason": f"{sc} surface with {grade_pct}% grade climb",
+                        })
+                    elif grade_pct < -5:
+                        risks.append({
+                            "type": "rough_descent",
+                            "from_m": round(from_m, 1),
+                            "to_m": round(to_m, 1),
+                            "lat": round(seg_lat, 6) if seg_lat is not None else None,
+                            "lon": round(seg_lon, 6) if seg_lon is not None else None,
+                            "severity": "MEDIUM",
+                            "confidence": 0.7,
+                            "source": "track_elevation",
+                            "reason": f"{sc} surface with {grade_pct}% grade descent",
+                        })
+
+    # long_no_resupply from POIs
+    if pois:
+        resupply_types = {"drinking_water", "cafe", "shop"}
+        resupply = sorted(
+            [p for p in pois if isinstance(p, dict) and p.get("type") in resupply_types],
+            key=lambda x: x.get("nearest_track_distance_m_on_route") or 0,
+        )
+        prev_positions = [0.0]
+        for rp in resupply:
+            pos = rp.get("nearest_track_distance_m_on_route") if isinstance(rp.get("nearest_track_distance_m_on_route"), (int, float)) else None
+            if pos is not None:
+                prev_positions.append(pos)
+        prev_positions.append(total_dist)
+
+        for j in range(1, len(prev_positions)):
+            gap = prev_positions[j] - prev_positions[j - 1]
+            if gap > 30000:
+                gap_from = prev_positions[j - 1]
+                gap_to = prev_positions[j]
+                gap_lat = None
+                gap_lon = None
+                for pi, p in enumerate(points):
+                    if dists[pi] >= gap_from and dists[pi] <= gap_to:
+                        gap_lat = p["lat"]
+                        gap_lon = p["lon"]
+                        break
+                risks.append({
+                    "type": "long_no_resupply",
+                    "from_m": round(gap_from, 1),
+                    "to_m": round(gap_to, 1),
+                    "lat": round(gap_lat, 6) if gap_lat is not None else None,
+                    "lon": round(gap_lon, 6) if gap_lon is not None else None,
+                    "severity": "MEDIUM" if gap > 50000 else "LOW",
+                    "confidence": 0.7,
+                    "source": "route_analysis",
+                    "reason": f"{gap / 1000:.1f} km without resupply (water/cafe/shop)",
+                })
+
+    if not risks:
+        return json.dumps({"ok": True, "status": "NO_DATA", "risks": [], "source": "route_analysis",
+                           "reason": "no route risks detected from provided data"}, ensure_ascii=False)
+
+    only_segment_based = all(r["source"] == "osm_overpass" for r in risks) and segments
+    risks.sort(key=lambda r: (0 if r["severity"] == "HIGH" else 1 if r["severity"] == "MEDIUM" else 2, r.get("from_m") or 0))
+
+    return json.dumps({"ok": True, "status": "OK", "risks": risks, "source": "route_analysis",
+                       "reason": f"{len(risks)} risks detected"},
+                      ensure_ascii=False)
+
+
+@mcp.tool()
+def openmaps_build_route_snapshot(
+    points_json: str,
+    track_id: str | None = None,
+    route_id: str | None = None,
+    buffer_m: int = 60,
+    sample_step_m: int = 100,
+    poi_radius_m: int = 500,
+    poi_types_json: str | None = None,
+) -> str:
+    """
+    Zbuduj pełny snapshot trasy: nawierzchnia + POI + ryzyka + podsumowanie.
+
+    Uruchamia pipeline openmaps_enrich_rwgps_track →
+    openmaps_find_pois_near_track → openmaps_detect_route_risks
+    i zwraca zagregowany wynik jako JSON.
+
+    points_json: JSON array of {lat, lon, ele?, distance_m?, timestamp?}
+    track_id, route_id: opcjonalne identyfikatory
+    buffer_m: bufor OSM dla enrich (30–200)
+    sample_step_m: krok próbkowania dla enrich (50–500)
+    poi_radius_m: promień POI (50–3000)
+    poi_types_json: opcjonalny filtr typów POI
+
+    Zwraca JSON: ok, status, route_id, track_id, generated_at, input_track_hash,
+    osm_query_version, summary, segments[], pois[], risks[], warnings[], source, reason.
+    """
+    import hashlib
+    import math
+    from datetime import datetime, timezone
+
+    try:
+        points = json.loads(points_json)
+    except Exception:
+        return json.dumps({"ok": False, "status": "ERROR", "route_id": route_id, "track_id": track_id,
+                           "generated_at": None, "input_track_hash": None, "osm_query_version": "openmaps_v1",
+                           "summary": {}, "segments": [], "pois": [], "risks": [], "warnings": [],
+                           "source": "openmaps_pipeline",
+                           "reason": "invalid points_json: not valid JSON"}, ensure_ascii=False)
+
+    if not isinstance(points, list) or len(points) < 2:
+        return json.dumps({"ok": False, "status": "ERROR", "route_id": route_id, "track_id": track_id,
+                           "generated_at": None, "input_track_hash": None, "osm_query_version": "openmaps_v1",
+                           "summary": {}, "segments": [], "pois": [], "risks": [], "warnings": [],
+                           "source": "openmaps_pipeline",
+                           "reason": f"need at least 2 points, got {len(points) if isinstance(points, list) else 'non-list'}"},
+                          ensure_ascii=False)
+
+    for i, p in enumerate(points):
+        if not isinstance(p, dict):
+            return json.dumps({"ok": False, "status": "ERROR", "route_id": route_id, "track_id": track_id,
+                               "generated_at": None, "input_track_hash": None, "osm_query_version": "openmaps_v1",
+                               "summary": {}, "segments": [], "pois": [], "risks": [], "warnings": [],
+                               "source": "openmaps_pipeline",
+                               "reason": f"point[{i}] is not a dict"}, ensure_ascii=False)
+        lat = p.get("lat")
+        lon = p.get("lon")
+        if lat is None or lon is None:
+            return json.dumps({"ok": False, "status": "ERROR", "route_id": route_id, "track_id": track_id,
+                               "generated_at": None, "input_track_hash": None, "osm_query_version": "openmaps_v1",
+                               "summary": {}, "segments": [], "pois": [], "risks": [], "warnings": [],
+                               "source": "openmaps_pipeline",
+                               "reason": f"point[{i}] missing lat or lon"}, ensure_ascii=False)
+        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+            return json.dumps({"ok": False, "status": "ERROR", "route_id": route_id, "track_id": track_id,
+                               "generated_at": None, "input_track_hash": None, "osm_query_version": "openmaps_v1",
+                               "summary": {}, "segments": [], "pois": [], "risks": [], "warnings": [],
+                               "source": "openmaps_pipeline",
+                               "reason": f"point[{i}] lat/lon must be numbers"}, ensure_ascii=False)
+        if math.isnan(lat) or math.isnan(lon) or math.isinf(lat) or math.isinf(lon):
+            return json.dumps({"ok": False, "status": "ERROR", "route_id": route_id, "track_id": track_id,
+                               "generated_at": None, "input_track_hash": None, "osm_query_version": "openmaps_v1",
+                               "summary": {}, "segments": [], "pois": [], "risks": [], "warnings": [],
+                               "source": "openmaps_pipeline",
+                               "reason": f"point[{i}] lat/lon has NaN or Infinity"}, ensure_ascii=False)
+
+    generated_at = datetime.now(timezone.utc).isoformat()
+    track_hash = hashlib.sha256(points_json.encode("utf-8")).hexdigest()[:16]
+
+    warnings = []
+    segments = []
+    pois = []
+    risks = []
+    status = "OK"
+    reason_parts = []
+
+    # Stage 1: enrich
+    enrich_raw = openmaps_enrich_rwgps_track(
+        points_json=points_json, track_id=track_id,
+        buffer_m=buffer_m, sample_step_m=sample_step_m,
+    )
+    try:
+        enrich_result = json.loads(enrich_raw)
+    except Exception:
+        enrich_result = {}
+    enrich_ok = enrich_result.get("ok", False)
+    enrich_status = enrich_result.get("status", "ERROR")
+    segments = enrich_result.get("segments", []) if isinstance(enrich_result.get("segments"), list) else []
+
+    if not enrich_ok:
+        warnings.append({"stage": "enrich", "status": enrich_status, "reason": enrich_result.get("reason", "enrich failed")})
+        if enrich_status == "ERROR":
+            status = "ERROR"
+            reason_parts.append("enrich failed")
+    elif enrich_status in ("NO_DATA", "PARTIAL"):
+        warnings.append({"stage": "enrich", "status": enrich_status, "reason": enrich_result.get("reason", "")})
+        if status == "OK":
+            status = "PARTIAL"
+    else:
+        reason_parts.append(f"{len(segments)} surface segments")
+
+    # Stage 2: pois
+    pois_raw = openmaps_find_pois_near_track(
+        points_json=points_json, radius_m=poi_radius_m,
+        poi_types_json=poi_types_json,
+    )
+    try:
+        pois_result = json.loads(pois_raw)
+    except Exception:
+        pois_result = {}
+    pois_ok = pois_result.get("ok", False)
+    pois_status = pois_result.get("status", "ERROR")
+    pois = pois_result.get("pois", []) if isinstance(pois_result.get("pois"), list) else []
+
+    if not pois_ok:
+        warnings.append({"stage": "pois", "status": pois_status, "reason": pois_result.get("reason", "pois failed")})
+        if pois_status == "ERROR":
+            status = "PARTIAL" if status == "OK" else status
+    elif pois_status == "NO_DATA":
+        warnings.append({"stage": "pois", "status": "NO_DATA", "reason": pois_result.get("reason", "")})
+    else:
+        reason_parts.append(f"{len(pois)} POIs")
+
+    # Stage 3: risks
+    enrich_segs_json = json.dumps(segments) if segments else None
+    pois_for_risks = json.dumps(pois) if pois else None
+    risks_raw = openmaps_detect_route_risks(
+        points_json=points_json,
+        enriched_segments_json=enrich_segs_json,
+        pois_json=pois_for_risks,
+    )
+    try:
+        risks_result = json.loads(risks_raw)
+    except Exception:
+        risks_result = {}
+    risks_ok = risks_result.get("ok", False)
+    risks_status = risks_result.get("status", "ERROR")
+    risks = risks_result.get("risks", []) if isinstance(risks_result.get("risks"), list) else []
+
+    if not risks_ok:
+        warnings.append({"stage": "risks", "status": risks_status, "reason": risks_result.get("reason", "risks failed")})
+    elif risks_status == "NO_DATA":
+        pass
+    else:
+        reason_parts.append(f"{len(risks)} risks")
+
+    # Summary from enrich summary
+    enrich_summary = enrich_result.get("summary", {}) if isinstance(enrich_result.get("summary"), dict) else {}
+    total_dist = enrich_summary.get("distance_m", 0) if isinstance(enrich_summary.get("distance_m"), (int, float)) else 0
+
+    summary = {
+        "distance_m": round(total_dist, 1),
+        "paved_m": round(enrich_summary.get("paved_m", 0)) if isinstance(enrich_summary.get("paved_m"), (int, float)) else 0,
+        "gravel_m": round(enrich_summary.get("gravel_m", 0)) if isinstance(enrich_summary.get("gravel_m"), (int, float)) else 0,
+        "rough_m": round(enrich_summary.get("rough_m", 0)) if isinstance(enrich_summary.get("rough_m"), (int, float)) else 0,
+        "dirt_m": round(enrich_summary.get("dirt_m", 0)) if isinstance(enrich_summary.get("dirt_m"), (int, float)) else 0,
+        "unknown_m": round(enrich_summary.get("unknown_m", 0)) if isinstance(enrich_summary.get("unknown_m"), (int, float)) else 0,
+        "poi_count": len(pois) if isinstance(pois, list) else 0,
+        "risk_count": len(risks) if isinstance(risks, list) else 0,
+    }
+
+    if not reason_parts:
+        reason_parts.append("snapshot assembled")
+    reason_text = "; ".join(reason_parts)
+
+    if status == "ERROR":
+        ok = False
+    else:
+        ok = True
+
+    return json.dumps({
+        "ok": ok,
+        "status": status,
+        "route_id": route_id,
+        "track_id": track_id,
+        "generated_at": generated_at,
+        "input_track_hash": track_hash,
+        "osm_query_version": "openmaps_v1",
+        "summary": summary,
+        "segments": segments,
+        "pois": pois,
+        "risks": risks,
+        "warnings": warnings,
+        "source": "openmaps_pipeline",
+        "reason": reason_text,
+    }, ensure_ascii=False)
 
 
 # ── START ─────────────────────────────────────────────────────────────────────
@@ -1280,6 +2908,11 @@ def _compute_today_factor(hrv_dev, bb, form, sleep_dev, hr_dev):
 
 @mcp.custom_route("/ride-readiness", methods=["GET"])
 async def ride_readiness(request):
+    """Return ride-readiness context for Karoo/QExt2.
+
+    `sleepDataDate` is a stable marker for the selected nightly sleep record
+    and changes only when a newer sleep record is selected.
+    """
     import asyncio
     from starlette.responses import JSONResponse
     from datetime import date, timedelta
@@ -1416,6 +3049,7 @@ async def ride_readiness(request):
 
     recovery_source = recovery["recoverySource"]
     sleep_min = recovery_source.get("sleepDurationMin")
+    sleep_data_date = sleep_data_date_marker(recovery_source)
     if recovery["completeSleepCandidates"]:
         print(
             "QBOT_RECOVERY_SELECT "
@@ -1464,6 +3098,7 @@ async def ride_readiness(request):
         "hrvBaseline30d":     hrv_baseline_30d,
         "sleepBaseline":      sleep_baseline_h,
         "recoverySource":     recovery_source,
+        "sleepDataDate":      sleep_data_date,
         "todayFactor":        today_factor,
         "ftpWatts":           ftp_watts,
         "ltpWatts":           ltp_watts,
@@ -1493,6 +3128,7 @@ async def ride_readiness(request):
             "sleepDaysWithData": sleep_days_with_data,
             "sleepDaysNull":     sleep_days_null,
             "sleepDev":          sleep_dev,
+            "sleepDataDate":     sleep_data_date,
             "recoverySource":    recovery_source,
             "maxHrBpm":         RIDER_MAX_HR_BPM,
             "maxHrSource":      RIDER_MAX_HR_SOURCE if RIDER_MAX_HR_BPM else None,
