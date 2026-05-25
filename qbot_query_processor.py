@@ -433,6 +433,46 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "required_data": ["All legacy inventory tools", "Guard check", "Git status"],
         "limitations": ["Plan only — no migration steps executed", "Read-only"],
     },
+    {
+        "keywords": ["status export", "legacy export", "sprawdź export"],
+        "tool": "qbot_legacy_export_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Filesystem at /opt/qbot/app"],
+        "limitations": ["Read-only diagnostic", "No export execution"],
+    },
+    {
+        "keywords": ["status garmin", "legacy garmin", "sprawdź garmin"],
+        "tool": "qbot_legacy_garmin_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Filesystem at /opt/qbot/app"],
+        "limitations": ["Read-only diagnostic", "No Garmin API calls"],
+    },
+    {
+        "keywords": ["status qlab", "legacy qlab", "sprawdź qlab"],
+        "tool": "qbot_legacy_qlab_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["systemd qbot-qlab-server.service", "Filesystem"],
+        "limitations": ["Read-only diagnostic", "No code modifications"],
+    },
+    {
+        "keywords": ["status sync", "legacy sync", "sprawdź sync"],
+        "tool": "qbot_legacy_sync_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Filesystem at /opt/qbot/app"],
+        "limitations": ["Read-only diagnostic", "No synchronization"],
+    },
+    {
+        "keywords": ["read only wrappers", "wrapper report", "raport wrapperów"],
+        "tool": "qbot_legacy_readonly_wrapper_report",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["All 4 capability wrappers"],
+        "limitations": ["Read-only composite report", "No legacy actions"],
+    },
 ]
 
 _EXAMPLES = [

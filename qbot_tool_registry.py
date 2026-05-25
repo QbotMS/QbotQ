@@ -62,6 +62,16 @@ from qbot_legacy_inventory_tools import (
     _tool_qbot_legacy_migration_plan,
 )
 
+from qbot_legacy_wrapper_tools import (
+    _tool_qbot_legacy_capability_status,
+    _tool_qbot_legacy_export_status,
+    _tool_qbot_legacy_garmin_status,
+    _tool_qbot_legacy_qlab_status,
+    _tool_qbot_legacy_readonly_wrapper_report,
+    _tool_qbot_legacy_sync_status,
+    _tool_qbot_legacy_wrapper_answer_context,
+)
+
 from qbot_ops_tools import (
     _tool_qbot_backup_plan,
     _tool_qbot_backup_status,
@@ -344,6 +354,48 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_legacy_export_status": {
+        "description": "Status capability export — pliki, symbole, logi, readiness",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_garmin_status": {
+        "description": "Status capability garmin — pliki, symbole, logi, readiness",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_qlab_status": {
+        "description": "Status capability qlab — server, pliki, symbole, logi",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_sync_status": {
+        "description": "Status capability sync — pliki, symbole, logi, readiness",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_capability_status": {
+        "description": "Ogólny wrapper dla jednej capability z allowlisty (export|garmin|qlab|sync)",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"capability": "export"},
+    },
+    "qbot_legacy_readonly_wrapper_report": {
+        "description": "Zbiorczy raport 4 capability wrappers — readiness, takeover%",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_wrapper_answer_context": {
+        "description": "Zsanitizowany kontekst wrapper report dla LLM",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -391,4 +443,11 @@ TOOLS: dict[str, Any] = {
     "qbot_legacy_dependency_inventory": _tool_qbot_legacy_dependency_inventory,
     "qbot_legacy_migration_plan": _tool_qbot_legacy_migration_plan,
     "qbot_legacy_inventory_answer_context": _tool_qbot_legacy_inventory_answer_context,
+    "qbot_legacy_export_status": _tool_qbot_legacy_export_status,
+    "qbot_legacy_garmin_status": _tool_qbot_legacy_garmin_status,
+    "qbot_legacy_qlab_status": _tool_qbot_legacy_qlab_status,
+    "qbot_legacy_sync_status": _tool_qbot_legacy_sync_status,
+    "qbot_legacy_capability_status": _tool_qbot_legacy_capability_status,
+    "qbot_legacy_readonly_wrapper_report": _tool_qbot_legacy_readonly_wrapper_report,
+    "qbot_legacy_wrapper_answer_context": _tool_qbot_legacy_wrapper_answer_context,
 }

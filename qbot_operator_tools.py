@@ -455,6 +455,8 @@ _OPERATOR_RUNBOOK_TOOLS: dict[str, list[str]] = {
     "legacy_inventory": ["qbot_legacy_file_inventory", "qbot_legacy_entrypoint_inventory", "qbot_legacy_capability_scan", "qbot_legacy_dependency_inventory"],
     "legacy_migration_review": ["qbot_legacy_migration_plan", "qbot_legacy_health_report", "qbot_project_guard_check", "qbot_git_status"],
     "legacy_migration_llm_context": ["qbot_legacy_inventory_answer_context", "qbot_llm_boundary_policy"],
+    "legacy_readonly_wrappers": ["qbot_legacy_export_status", "qbot_legacy_garmin_status", "qbot_legacy_qlab_status", "qbot_legacy_sync_status", "qbot_legacy_readonly_wrapper_report"],
+    "legacy_takeover_review": ["qbot_legacy_readonly_wrapper_report", "qbot_legacy_migration_plan", "qbot_legacy_health_report", "qbot_project_guard_check"],
 }
 
 _ALLOWED_RUNBOOK_NAMES: set[str] = set(_OPERATOR_RUNBOOK_TOOLS.keys())
@@ -494,7 +496,14 @@ def _operator_dispatch(tool_name: str):
         pass
     try:
         from qbot_legacy_inventory_tools import _get_legacy_inventory_tool
-        return _get_legacy_inventory_tool(tool_name)
+        func = _get_legacy_inventory_tool(tool_name)
+        if func:
+            return func
+    except ImportError:
+        pass
+    try:
+        from qbot_legacy_wrapper_tools import _get_legacy_wrapper_tool
+        return _get_legacy_wrapper_tool(tool_name)
     except ImportError:
         return None
 
