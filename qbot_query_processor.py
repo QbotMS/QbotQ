@@ -361,6 +361,38 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "required_data": ["None"],
         "limitations": ["Static policy document", "Educational only"],
     },
+    {
+        "keywords": ["stan starego q", "legacy status", "czy stary q działa"],
+        "tool": "qbot_legacy_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["systemd q-bot.service"],
+        "limitations": ["Read-only systemd check", "Only q-bot.service"],
+    },
+    {
+        "keywords": ["logi starego q", "legacy logs", "logi q-bot"],
+        "tool": "qbot_legacy_logs",
+        "args": {"lines": 120},
+        "confidence": "high",
+        "required_data": ["journalctl for q-bot.service"],
+        "limitations": ["Only q-bot.service", "Max 300 lines", "Read-only"],
+    },
+    {
+        "keywords": ["błędy starego q", "legacy errors", "co się wywala w starym q"],
+        "tool": "qbot_legacy_error_summary",
+        "args": {"lines": 300},
+        "confidence": "high",
+        "required_data": ["journalctl for q-bot.service"],
+        "limitations": ["Only q-bot.service", "Pattern matching only", "Read-only"],
+    },
+    {
+        "keywords": ["raport starego q", "legacy health", "sprawdź starego q"],
+        "tool": "qbot_legacy_health_report",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["systemd q-bot.service", "guard check", "services status"],
+        "limitations": ["Read-only diagnostic", "No restarts or modifications"],
+    },
 ]
 
 _EXAMPLES = [

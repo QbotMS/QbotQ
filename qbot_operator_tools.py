@@ -450,6 +450,8 @@ _OPERATOR_RUNBOOK_TOOLS: dict[str, list[str]] = {
     "operator_reference": ["qbot_operator_quick_reference", "qbot_readiness_report", "qbot_maintenance_report"],
     "final_operational_check": ["qbot_operator_final_smoke_test", "qbot_readiness_report", "qbot_maintenance_report", "qbot_llm_boundary_policy"],
     "llm_prep": ["qbot_llm_boundary_policy", "qbot_answer_context"],
+    "legacy_review": ["qbot_legacy_status", "qbot_legacy_error_summary", "qbot_legacy_health_report"],
+    "legacy_llm_context": ["qbot_legacy_answer_context", "qbot_llm_boundary_policy"],
 }
 
 _ALLOWED_RUNBOOK_NAMES: set[str] = set(_OPERATOR_RUNBOOK_TOOLS.keys())
@@ -475,7 +477,14 @@ def _operator_dispatch(tool_name: str):
         return func
     try:
         from qbot_ops_tools import _get_ops_tool
-        return _get_ops_tool(tool_name)
+        func = _get_ops_tool(tool_name)
+        if func:
+            return func
+    except ImportError:
+        pass
+    try:
+        from qbot_legacy_tools import _get_legacy_tool
+        return _get_legacy_tool(tool_name)
     except ImportError:
         return None
 

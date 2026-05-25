@@ -29,6 +29,31 @@ from qbot_operator_tools import (
 )
 
 from qbot_ops_tools import (
+    _tool_qbot_answer_context,
+    _tool_qbot_backup_plan,
+    _tool_qbot_backup_status,
+    _tool_qbot_backup_timer_status,
+    _tool_qbot_create_backup_script_preview,
+    _tool_qbot_llm_boundary_policy,
+    _tool_qbot_logs_overview,
+    _tool_qbot_maintenance_report,
+    _tool_qbot_operator_final_smoke_test,
+    _tool_qbot_operator_quick_reference,
+    _tool_qbot_restore_drill_plan,
+    _tool_qbot_restore_drill_status,
+    _tool_qbot_service_logs,
+    _tool_qbot_test_error_classification,
+)
+
+from qbot_legacy_tools import (
+    _tool_qbot_legacy_answer_context,
+    _tool_qbot_legacy_error_summary,
+    _tool_qbot_legacy_health_report,
+    _tool_qbot_legacy_logs,
+    _tool_qbot_legacy_status,
+)
+
+from qbot_ops_tools import (
     _tool_qbot_backup_plan,
     _tool_qbot_backup_status,
     _tool_qbot_backup_timer_status,
@@ -244,6 +269,36 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_legacy_status": {
+        "description": "Sprawdza stan legacy Q (q-bot.service) — read-only systemctl show",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_logs": {
+        "description": "Ostatnie logi q-bot.service z journalctl",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"lines": 120},
+    },
+    "qbot_legacy_error_summary": {
+        "description": "Podsumowanie błędów z logów q-bot.service — wzorce error/warning",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"lines": 300},
+    },
+    "qbot_legacy_health_report": {
+        "description": "Zbiorczy raport legacy Q — status, błędy, guard, services",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_answer_context": {
+        "description": "Zsanitizowany kontekst legacy Q dla przyszłego LLM answer synthesizer",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -280,4 +335,9 @@ TOOLS: dict[str, Any] = {
     "qbot_answer_context": _tool_qbot_answer_context,
     "qbot_llm_boundary_policy": _tool_qbot_llm_boundary_policy,
     "qbot_operator_final_smoke_test": _tool_qbot_operator_final_smoke_test,
+    "qbot_legacy_status": _tool_qbot_legacy_status,
+    "qbot_legacy_logs": _tool_qbot_legacy_logs,
+    "qbot_legacy_error_summary": _tool_qbot_legacy_error_summary,
+    "qbot_legacy_health_report": _tool_qbot_legacy_health_report,
+    "qbot_legacy_answer_context": _tool_qbot_legacy_answer_context,
 }
