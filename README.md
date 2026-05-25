@@ -12,6 +12,7 @@ The app is designed to run from `/opt/qbot/app` on the QBot server.
 - `telegram_reply_processor.py` and `email_reply_processor.py` process user replies.
 - `sync_nutrition.py` syncs nutrition data.
 - `mcp_server.py` exposes QBot MCP tools.
+  - `GET /ride-readiness` includes `sleepDataDate`, a stable marker for the selected nightly sleep record used by Karoo/QExt2 to detect fresh sleep data.
 
 ## Local Setup
 
@@ -70,4 +71,3 @@ It is installed in the `qbot` user crontab and logs to:
 ```text
 /opt/qbot/logs/git_auto_commit.log
 ```
-

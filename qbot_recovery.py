@@ -231,3 +231,18 @@ def select_recovery_records(
         "hrvBaseline": hrv_baseline,
         "recoverySource": recovery_source,
     }
+
+
+def sleep_data_date_marker(recovery_source: dict[str, Any] | None) -> str | None:
+    """Return a stable nightly-sleep marker for readiness payloads.
+
+    The value is the local date of the selected complete sleep record. It only
+    changes when a different sleep record is selected, which makes it suitable
+    as a "new sleep data" trigger for Karoo/QExt2.
+    """
+    if not isinstance(recovery_source, dict):
+        return None
+    sleep_date = recovery_source.get("sleepLocalDate")
+    if isinstance(sleep_date, str) and sleep_date.strip():
+        return sleep_date.strip()
+    return None

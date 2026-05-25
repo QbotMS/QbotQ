@@ -13,6 +13,8 @@ Core rules:
   1. Xert status: TP, HIE, form, athlete status, recommendations.
   2. Intervals wellness: HRV, resting HR, sleep, mood, TSB, user comments.
   3. Garmin wellness: Body Battery, SpO2, nightly HRV, sleep phases.
+- Sleep after waking uses Garmin as the primary source; Intervals wellness is
+  the fallback when Garmin is not yet available.
 - Weather questions should use QBot MCP `get_weather`; hourly weather comes
   from `hourly_forecast`.
 - Gravel cadence context for Canyon Grizl:

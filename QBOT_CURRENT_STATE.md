@@ -36,10 +36,11 @@ configuration.
 - Weather is fetched through MCP `get_weather`; direct Open-Meteo fallback was
   removed from `daily_report.py`.
 - Sleep-data behavior:
-  - from 06:00 to 08:45 it retries if sleep data has not arrived;
-  - at 09:00 it sends anyway, even without sleep data.
+  - Garmin is the primary post-wake sleep source; Intervals wellness is the fallback.
+  - from 06:00 to 08:50 it retries if Garmin sleep data has not arrived;
+  - at 09:00 it sends anyway, using Intervals as fallback if Garmin still has no sleep.
 - Current cron entries:
-  - `*/15 6-8 * * * cd /opt/qbot/app && /opt/qbot/app/.venv/bin/python daily_report.py >> /opt/qbot/logs/daily_report.log 2>&1`
+  - `*/10 6-8 * * * cd /opt/qbot/app && /opt/qbot/app/.venv/bin/python daily_report.py >> /opt/qbot/logs/daily_report.log 2>&1`
   - `0 9 * * * cd /opt/qbot/app && /opt/qbot/app/.venv/bin/python daily_report.py >> /opt/qbot/logs/daily_report.log 2>&1`
 - Last known fixed behavior:
   - report was manually sent on 2026-05-19 after enabling Anthropic fallback;
