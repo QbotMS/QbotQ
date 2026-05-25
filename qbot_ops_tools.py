@@ -438,6 +438,17 @@ def _tool_qbot_maintenance_report(_args: dict | None = None) -> dict[str, Any]:
     warnings.extend(rr.get("warnings", []))
 
     try:
+        timer_status = _tool_qbot_backup_timer_status()
+    except Exception as exc:
+        timer_status = {"status": "error", "error": str(exc)}
+    checks.append({"name": "backup_timer_status", "status": timer_status.get("status", "UNKNOWN"),
+                   "detail": timer_status})
+    if timer_status.get("status") in ("ERROR",):
+        blockers.append("Backup timer is not active or missing")
+    elif timer_status.get("status") in ("WARN",):
+        warnings.append("Backup timer check has warnings")
+
+    try:
         backup = _tool_qbot_backup_status()
     except Exception as exc:
         backup = {"status": "error", "error": str(exc)}
@@ -449,6 +460,17 @@ def _tool_qbot_maintenance_report(_args: dict | None = None) -> dict[str, Any]:
         warnings.append("Backup not fully configured")
     if not backup.get("latest_backup"):
         actions.append("Set up database backup (qbot_backup_plan for details)")
+
+    try:
+        drill = _tool_qbot_restore_drill_status()
+    except Exception as exc:
+        drill = {"status": "error", "error": str(exc)}
+    checks.append({"name": "restore_drill_status", "status": drill.get("status", "UNKNOWN"),
+                   "detail": drill})
+    if drill.get("status") == "ERROR":
+        warnings.append("Restore drill has errors — re-run drill")
+    elif drill.get("status") in ("WARN",):
+        actions.append("Run restore drill to verify backup integrity")
 
     try:
         logs = _tool_qbot_logs_overview({"lines": 30})
@@ -533,6 +555,264 @@ def _tool_qbot_maintenance_report(_args: dict | None = None) -> dict[str, Any]:
     }
 
 
+
+# ──────────────────── backup_timer_status ───────────────────────────────
+
+def _tool_qbot_backup_timer_status(_args: dict | None = None) -> dict[str, Any]:
+    timer = {"exists": False, "active": False, "enabled": False, "next_run": None, "last_run": None}
+    service = {"status": "unknown"}
+    latest = None
+    age_hours = None
+
+    def _run(cmd: list[str]) -> subprocess.CompletedProcess:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+
+    # Check timer exists
+    proc = _run(["systemctl", "list-unit-files", "qbot-backup.timer"])
+    if b"qbot-backup.timer" in proc.stdout.encode() or proc.returncode == 0:
+        timer["exists"] = True
+
+    if timer["exists"]:
+        proc = _run(["systemctl", "is-active", "qbot-backup.timer"])
+        timer["active"] = proc.stdout.strip() == "active"
+        proc = _run(["systemctl", "is-enabled", "qbot-backup.timer"])
+        timer["enabled"] = proc.stdout.strip() == "enabled"
+
+        # Next run
+        try:
+            proc = _run(["systemctl", "show", "qbot-backup.timer",
+                         "--property=NextElapseUSecRealtime"])
+            val = proc.stdout.strip()
+            if "=" in val:
+                usec = val.split("=", 1)[1]
+                if usec and usec.isdigit():
+                    ts = int(usec) / 1_000_000
+                    timer["next_run"] = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        except Exception:
+            pass
+
+        # Last run via service last invocation
+        try:
+            proc = _run(["systemctl", "show", "qbot-backup.service",
+                         "--property=ExecMainExitTimestampMonotonic,ActiveEnterTimestamp"])
+            for line in proc.stdout.strip().splitlines():
+                if "ActiveEnterTimestamp=" in line:
+                    timer["last_run"] = line.split("=", 1)[1].strip()
+        except Exception:
+            pass
+
+        # Service status
+        try:
+            proc = _run(["systemctl", "show", "qbot-backup.service",
+                         "--property=ActiveState,SubState,Result"])
+            props = {}
+            for line in proc.stdout.strip().splitlines():
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    props[k] = v
+            service = {
+                "active_state": props.get("ActiveState", "unknown"),
+                "sub_state": props.get("SubState", "unknown"),
+                "last_result": props.get("Result", "unknown"),
+            }
+        except Exception:
+            service = {"status": "ERROR", "error": "cannot query service"}
+
+    # Latest backup
+    try:
+        backup = _tool_qbot_backup_status()
+        latest = backup.get("latest_backup")
+        age_hours = backup.get("latest_backup_age_hours")
+    except Exception:
+        pass
+
+    if not timer["exists"]:
+        status = "ERROR"
+    elif not timer["enabled"]:
+        status = "WARN"
+    elif not timer["active"]:
+        status = "WARN"
+    else:
+        status = "OK"
+
+    return {
+        "tool": "qbot_backup_timer_status",
+        "timer_exists": timer["exists"],
+        "timer_active": timer["active"],
+        "timer_enabled": timer["enabled"],
+        "next_run": timer["next_run"],
+        "last_run": timer["last_run"],
+        "service_status": service,
+        "latest_backup": latest,
+        "latest_backup_age_hours": age_hours,
+        "status": status,
+    }
+
+
+# ──────────────────── restore_drill_plan ────────────────────────────────
+
+def _tool_qbot_restore_drill_plan(_args: dict | None = None) -> dict[str, Any]:
+    return {
+        "tool": "qbot_restore_drill_plan",
+        "drill_db_name": "qbot_restore_drill",
+        "commands": [
+            "createdb -U qbot -h localhost qbot_restore_drill",
+            "gunzip -c /opt/qbot/backups/qbot_YYYYmmdd_HHMMSS.sql.gz | psql -U qbot -h localhost qbot_restore_drill",
+        ],
+        "verification_queries": [
+            "SELECT COUNT(*) FROM tool_calls;",
+            "SELECT MAX(created_at) FROM tool_calls;",
+            "SELECT tool, COUNT(*) AS cnt FROM tool_calls GROUP BY tool ORDER BY cnt DESC LIMIT 5;",
+        ],
+        "cleanup_commands": [
+            "dropdb -U qbot -h localhost qbot_restore_drill",
+        ],
+        "safety_warnings": [
+            "NEVER restore over qbot production database",
+            "ALWAYS verify backup integrity with gzip -t first",
+            "ALWAYS stop qbot-api.service before restoring production",
+            "This drill uses separate database qbot_restore_drill — safe to run",
+            "Passwords are read from env, never exposed in commands",
+        ],
+    }
+
+
+# ──────────────────── restore_drill_status ──────────────────────────────
+
+def _check_drill_db() -> dict[str, Any]:
+    try:
+        import api_db
+        import psycopg
+        from psycopg.rows import dict_row
+        import os
+        conn = psycopg.connect(
+            host=os.getenv("PGHOST", "localhost"),
+            port=os.getenv("PGPORT", "5432"),
+            dbname="qbot_restore_drill",
+            user=os.getenv("PGUSER", "qbot"),
+            password=os.getenv("PGPASSWORD", ""),
+            row_factory=dict_row,
+        )
+        rows = conn.execute("SELECT COUNT(*) AS cnt FROM information_schema.tables WHERE table_name = 'tool_calls'").fetchone()
+        has_table = rows["cnt"] > 0 if rows else False
+        count = 0
+        latest = None
+        if has_table:
+            cnt_row = conn.execute("SELECT COUNT(*) AS cnt FROM tool_calls").fetchone()
+            count = cnt_row["cnt"] if cnt_row else 0
+            ts_row = conn.execute("SELECT MAX(created_at) AS ts FROM tool_calls").fetchone()
+            if ts_row and ts_row["ts"]:
+                latest = ts_row["ts"].isoformat()
+        conn.close()
+        return {
+            "restore_drill_db_exists": True,
+            "tool_calls_table_exists": has_table,
+            "tool_calls_count": count,
+            "latest_tool_call_at": latest,
+        }
+    except Exception:
+        return {
+            "restore_drill_db_exists": False,
+            "tool_calls_table_exists": False,
+            "tool_calls_count": 0,
+            "latest_tool_call_at": None,
+        }
+
+
+def _tool_qbot_restore_drill_status(_args: dict | None = None) -> dict[str, Any]:
+    info = _check_drill_db()
+    recommendations: list[str] = []
+
+    if not info["restore_drill_db_exists"]:
+        status = "WARN"
+        recommendations.append("Run restore drill: see qbot_restore_drill_plan for commands")
+    elif not info["tool_calls_table_exists"]:
+        status = "ERROR"
+        recommendations.append("Restore drill DB exists but tool_calls table missing — re-run drill")
+    elif info["tool_calls_count"] == 0:
+        status = "ERROR"
+        recommendations.append("tool_calls table exists but is empty — re-run drill")
+    else:
+        status = "OK"
+        recommendations.append("Restore drill verified — data present")
+
+    return {
+        "tool": "qbot_restore_drill_status",
+        **info,
+        "status": status,
+        "recommendations": recommendations,
+    }
+
+
+# ──────────────────── operator_quick_reference ──────────────────────────
+
+def _tool_qbot_operator_quick_reference(_args: dict | None = None) -> dict[str, Any]:
+    return {
+        "tool": "qbot_operator_quick_reference",
+        "endpoints": {
+            "health": "GET http://127.0.0.1:8001/health",
+            "query": "POST http://127.0.0.1:8001/q",
+        },
+        "key_tools": [
+            "qbot_readiness_report — overall system readiness",
+            "qbot_maintenance_report — full maintenance overview",
+            "qbot_backup_status — backup health check",
+            "qbot_backup_timer_status — automated backup timer status",
+            "qbot_restore_drill_status — restore drill verification",
+            "qbot_error_summary — recent errors overview",
+            "qbot_test_error_classification — classify real vs test errors",
+            "qbot_logs_overview — service logs check",
+            "qbot_operator_snapshot — full diagnostic snapshot",
+        ],
+        "key_runbooks": [
+            "safe_to_work — readiness + guard + git",
+            "full_diagnostic — readiness + snapshot + errors",
+            "backup_automation_review — backup + timer + drill + plan",
+            "restore_drill_review — drill status + plan + backup",
+            "operator_reference — quick reference + readiness + maintenance",
+            "maintenance — maintenance + readiness + guard",
+        ],
+        "backup_commands": [
+            "systemctl start qbot-backup.service",
+            "ls -lh /opt/qbot/backups/",
+            "gzip -t /opt/qbot/backups/qbot_*.sql.gz",
+            "systemctl status qbot-backup.timer",
+        ],
+        "restore_drill_commands": [
+            "createdb -U qbot -h localhost qbot_restore_drill",
+            "gunzip -c <backup.sql.gz> | psql -U qbot -h localhost qbot_restore_drill",
+            "psql -U qbot -h localhost qbot_restore_drill -c 'SELECT COUNT(*) FROM tool_calls;'",
+            "dropdb -U qbot -h localhost qbot_restore_drill",
+        ],
+        "forbidden_actions": [
+            "NEVER restore over qbot production database",
+            "NEVER run DROP DATABASE qbot",
+            "NEVER delete backup files younger than 14 days",
+            "NEVER expose backup files over HTTP",
+            "NEVER commit credentials or secrets",
+            "NEVER restart production services without confirmation",
+        ],
+        "daily_checklist": [
+            "Check health: curl http://127.0.0.1:8001/health",
+            "Check readiness: qbot_query 'czy qbot jest gotowy'",
+            "Check backup timer: systemctl status qbot-backup.timer",
+            "Check backup status: qbot_backup_status",
+            "Check errors: qbot_error_summary",
+            "Check logs: qbot_logs_overview",
+        ],
+        "emergency_checklist": [
+            "1. Check API: curl http://127.0.0.1:8001/health",
+            "2. Check services: systemctl status qbot-api q-bot qbot-qlab-server postgresql",
+            "3. Check backup: qbot_backup_status",
+            "4. Run maintenance report: qbot_maintenance_report",
+            "5. Check logs: journalctl -u qbot-api -n 100",
+            "6. Check disk: df -h /",
+            "7. Run restore drill: qbot_restore_drill_plan",
+            "8. If DB issue: follow docs/qbot_backup_recovery.md",
+        ],
+    }
+
+
 # ──────────────────── cross-file dispatch ───────────────────────────────
 
 def _get_ops_tool(name: str):
@@ -544,5 +824,9 @@ def _get_ops_tool(name: str):
         "qbot_create_backup_script_preview": _tool_qbot_create_backup_script_preview,
         "qbot_test_error_classification": _tool_qbot_test_error_classification,
         "qbot_maintenance_report": _tool_qbot_maintenance_report,
+        "qbot_backup_timer_status": _tool_qbot_backup_timer_status,
+        "qbot_restore_drill_plan": _tool_qbot_restore_drill_plan,
+        "qbot_restore_drill_status": _tool_qbot_restore_drill_status,
+        "qbot_operator_quick_reference": _tool_qbot_operator_quick_reference,
     }
     return mapping.get(name)

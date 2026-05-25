@@ -296,6 +296,46 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "required_data": ["API health", "PostgreSQL", "git", "guard", "backup", "logs"],
         "limitations": ["Read-only composite report", "Large response", "Aggregates multiple tools"],
     },
+    {
+        "keywords": ["timer backupu", "backup timer", "automatyczny backup"],
+        "tool": "qbot_backup_timer_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["systemd qbot-backup.timer"],
+        "limitations": ["Read-only systemd check", "Only checks qbot-backup timer"],
+    },
+    {
+        "keywords": ["restore drill", "test restore", "test odtworzenia"],
+        "tool": "qbot_restore_drill_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["PostgreSQL qbot_restore_drill database"],
+        "limitations": ["Read-only", "Checks drill DB only", "Does not execute restore"],
+    },
+    {
+        "keywords": ["plan restore", "jak odtworzyć backup"],
+        "tool": "qbot_restore_drill_plan",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["None"],
+        "limitations": ["Returns plan text only", "Does not execute any commands"],
+    },
+    {
+        "keywords": ["ściąga operatora", "operator reference", "co mam sprawdzać"],
+        "tool": "qbot_operator_quick_reference",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["None"],
+        "limitations": ["Static reference only", "Does not read secrets"],
+    },
+    {
+        "keywords": ["czy qbot jest w pełni gotowy"],
+        "tool": "qbot_readiness_report",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["API health", "systemd services", "PostgreSQL", "git", "guard", "backup"],
+        "limitations": ["Local checks only", "Does not verify external dependencies"],
+    },
 ]
 
 _EXAMPLES = [
@@ -325,6 +365,11 @@ _EXAMPLES = [
     "skrypt backupu",
     "testowe błędy",
     "raport utrzymania",
+    "timer backupu",
+    "restore drill",
+    "plan restore",
+    "ściąga operatora",
+    "czy qbot jest w pełni gotowy",
 ]
 
 _MULTI_TOOL_SETS: dict[str, list[str]] = {

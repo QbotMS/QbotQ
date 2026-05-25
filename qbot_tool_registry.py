@@ -31,9 +31,13 @@ from qbot_operator_tools import (
 from qbot_ops_tools import (
     _tool_qbot_backup_plan,
     _tool_qbot_backup_status,
+    _tool_qbot_backup_timer_status,
     _tool_qbot_create_backup_script_preview,
     _tool_qbot_logs_overview,
     _tool_qbot_maintenance_report,
+    _tool_qbot_operator_quick_reference,
+    _tool_qbot_restore_drill_plan,
+    _tool_qbot_restore_drill_status,
     _tool_qbot_service_logs,
     _tool_qbot_test_error_classification,
 )
@@ -195,6 +199,30 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_backup_timer_status": {
+        "description": "Status systemd timera backupu — czy istnieje, aktywny, następne odpalenie",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_restore_drill_plan": {
+        "description": "Plan testowego restore do osobnej bazy — komendy, weryfikacja, bezpieczeństwo",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_restore_drill_status": {
+        "description": "Status bazy qbot_restore_drill — czy istnieje, czy ma dane po drill",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_operator_quick_reference": {
+        "description": "Ściąga operatora — endpointy, tools, runbooki, checklisty",
+        "category": "operator",
+        "safe": True,
+        "args_schema": {},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -224,4 +252,8 @@ TOOLS: dict[str, Any] = {
     "qbot_create_backup_script_preview": _tool_qbot_create_backup_script_preview,
     "qbot_test_error_classification": _tool_qbot_test_error_classification,
     "qbot_maintenance_report": _tool_qbot_maintenance_report,
+    "qbot_backup_timer_status": _tool_qbot_backup_timer_status,
+    "qbot_restore_drill_plan": _tool_qbot_restore_drill_plan,
+    "qbot_restore_drill_status": _tool_qbot_restore_drill_status,
+    "qbot_operator_quick_reference": _tool_qbot_operator_quick_reference,
 }

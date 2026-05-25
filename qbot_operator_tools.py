@@ -230,6 +230,30 @@ def _tool_qbot_readiness_report(_args: dict | None = None) -> dict[str, Any]:
     elif backup.get("status") == "WARN":
         warnings.append("Backup not fully configured")
 
+    try:
+        from qbot_ops_tools import _tool_qbot_backup_timer_status
+        timer_st = _tool_qbot_backup_timer_status()
+    except Exception:
+        timer_st = {"status": "ERROR", "error": "timer check failed"}
+    checks.append({"name": "backup_timer_status", "status": timer_st.get("status", "UNKNOWN"),
+                   "detail": timer_st})
+    if timer_st.get("status") == "ERROR":
+        blockers.append("Backup timer is not active or missing")
+    elif timer_st.get("status") == "WARN":
+        warnings.append("Backup timer has warnings")
+
+    try:
+        from qbot_ops_tools import _tool_qbot_restore_drill_status
+        drill = _tool_qbot_restore_drill_status()
+    except Exception:
+        drill = {"status": "ERROR", "error": "drill check failed"}
+    checks.append({"name": "restore_drill_status", "status": drill.get("status", "UNKNOWN"),
+                   "detail": drill})
+    if drill.get("status") == "ERROR":
+        blockers.append("Restore drill has critical errors")
+    elif drill.get("status") == "WARN":
+        warnings.append("Restore drill not yet executed — run qbot_restore_drill_plan")
+
     svc_check = _tool_qbot_services_status()
     checks.append({"name": "services_status", "status": "OK", "detail": svc_check})
     for svc in svc_check.get("services", []):
@@ -267,6 +291,15 @@ def _tool_qbot_operator_snapshot(args: dict | None = None) -> dict[str, Any]:
     include_backup = (args or {}).get("include_backup", True)
     if not isinstance(include_backup, bool):
         include_backup = bool(include_backup)
+    include_backup_timer = (args or {}).get("include_backup_timer", True)
+    if not isinstance(include_backup_timer, bool):
+        include_backup_timer = bool(include_backup_timer)
+    include_restore_drill = (args or {}).get("include_restore_drill", True)
+    if not isinstance(include_restore_drill, bool):
+        include_restore_drill = bool(include_restore_drill)
+    include_quick_reference = (args or {}).get("include_quick_reference", False)
+    if not isinstance(include_quick_reference, bool):
+        include_quick_reference = bool(include_quick_reference)
 
     recent_limit_raw = (args or {}).get("recent_limit", 20)
     try:
@@ -344,6 +377,27 @@ def _tool_qbot_operator_snapshot(args: dict | None = None) -> dict[str, Any]:
         except Exception as exc:
             snapshot["logs_overview"] = {"error": str(exc)}
 
+    if include_backup_timer:
+        try:
+            from qbot_ops_tools import _tool_qbot_backup_timer_status
+            snapshot["backup_timer_status"] = _tool_qbot_backup_timer_status()
+        except Exception as exc:
+            snapshot["backup_timer_status"] = {"error": str(exc)}
+
+    if include_restore_drill:
+        try:
+            from qbot_ops_tools import _tool_qbot_restore_drill_status
+            snapshot["restore_drill_status"] = _tool_qbot_restore_drill_status()
+        except Exception as exc:
+            snapshot["restore_drill_status"] = {"error": str(exc)}
+
+    if include_quick_reference:
+        try:
+            from qbot_ops_tools import _tool_qbot_operator_quick_reference
+            snapshot["operator_quick_reference"] = _tool_qbot_operator_quick_reference()
+        except Exception as exc:
+            snapshot["operator_quick_reference"] = {"error": str(exc)}
+
     return snapshot
 
 
@@ -356,6 +410,9 @@ _OPERATOR_RUNBOOK_TOOLS: dict[str, list[str]] = {
     "logs_review": ["qbot_logs_overview", "qbot_error_summary", "qbot_test_error_classification"],
     "backup_review": ["qbot_backup_status", "qbot_backup_plan", "qbot_create_backup_script_preview"],
     "maintenance": ["qbot_maintenance_report", "qbot_readiness_report", "qbot_project_guard_check"],
+    "backup_automation_review": ["qbot_backup_status", "qbot_backup_timer_status", "qbot_restore_drill_status", "qbot_backup_plan"],
+    "restore_drill_review": ["qbot_restore_drill_status", "qbot_restore_drill_plan", "qbot_backup_status"],
+    "operator_reference": ["qbot_operator_quick_reference", "qbot_readiness_report", "qbot_maintenance_report"],
 }
 
 _ALLOWED_RUNBOOK_NAMES: set[str] = set(_OPERATOR_RUNBOOK_TOOLS.keys())
