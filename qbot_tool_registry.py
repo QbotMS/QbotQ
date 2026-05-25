@@ -45,6 +45,12 @@ from qbot_ops_tools import (
     _tool_qbot_test_error_classification,
 )
 
+from qbot_mcp_adapter import (
+    _tool_qbot_mcp_call_preview,
+    _tool_qbot_mcp_status,
+    _tool_qbot_mcp_tools_list,
+)
+
 from qbot_legacy_tools import (
     _tool_qbot_legacy_answer_context,
     _tool_qbot_legacy_error_summary,
@@ -350,6 +356,24 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "category": "operator",
         "safe": True,
         "args_schema": {},
+    },
+    "qbot_mcp_status": {
+        "description": "Status adaptera MCP dla ChatGPT connectora — routing, auth, reachability",
+        "category": "mcp",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_mcp_tools_list": {
+        "description": "Lista publicznych tools MCP i mapowania do tooli QBot",
+        "category": "mcp",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_mcp_call_preview": {
+        "description": "Podgląd mapowania MCP tool → QBot tool bez wykonania",
+        "category": "mcp",
+        "safe": True,
+        "args_schema": {"mcp_tool": "qbot.status", "args": {}},
     },
     "qbot_legacy_status": {
         "description": "Sprawdza stan legacy Q (q-bot.service) — read-only systemctl show",
@@ -747,6 +771,9 @@ TOOLS: dict[str, Any] = {
     "qbot_answer_context": _tool_qbot_answer_context,
     "qbot_llm_boundary_policy": _tool_qbot_llm_boundary_policy,
     "qbot_operator_final_smoke_test": _tool_qbot_operator_final_smoke_test,
+    "qbot_mcp_status": _tool_qbot_mcp_status,
+    "qbot_mcp_tools_list": _tool_qbot_mcp_tools_list,
+    "qbot_mcp_call_preview": _tool_qbot_mcp_call_preview,
     "qbot_legacy_status": _tool_qbot_legacy_status,
     "qbot_legacy_logs": _tool_qbot_legacy_logs,
     "qbot_legacy_error_summary": _tool_qbot_legacy_error_summary,

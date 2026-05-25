@@ -11,7 +11,13 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from qbot_tool_registry import TOOLS
+from qbot_mcp_adapter import (
+    _dispatch_local_qbot_tool,
+    _tool_qbot_mcp_status,
+    _tool_qbot_mcp_tools_list,
+    handle_mcp_request,
+    _validate_mcp_access,
+)
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -61,21 +67,8 @@ async def q_endpoint(request: Request):
 
     tool = (payload or {}).get("tool", "")
     args = payload.get("args", {})
-
-    if tool in TOOLS:
-        result = TOOLS[tool](args)
-    else:
-        result = {"error": f"unknown tool: {tool}", "available": sorted(TOOLS.keys())}
-
-    warnings: list[str] = []
-    _db_check()
-    if DB_AVAILABLE:
-        try:
-            import api_db
-            api_db.save_tool_call(tool, args, result)
-        except Exception as exc:
-            warnings.append(f"db save failed: {exc}")
-    else:
+    result, warnings = _dispatch_local_qbot_tool(tool, args, source="q")
+    if not DB_AVAILABLE:
         warnings.append("database unavailable, call not logged")
 
     return {"result": result, "warnings": warnings}
@@ -153,6 +146,75 @@ async def telegram_webhook(webhook_secret: str, request: Request):
         result = {"command": command, "response": {"status": "unknown_command", "text": text}}
 
     return JSONResponse(content={"status": "ok", "received": True, "command": command, "result": result}, status_code=200)
+
+
+def _mcp_response(payload: dict | None, status_code: int, headers: dict[str, str] | None = None):
+    headers = headers or {}
+    if payload is None:
+        return JSONResponse(content=None, status_code=status_code, headers=headers)
+    return JSONResponse(content=payload, status_code=status_code, headers=headers)
+
+
+def _mcp_auth_guard(request: Request):
+    ok, err = _validate_mcp_access({k.lower(): v for k, v in request.headers.items()})
+    if ok:
+        return None
+    return JSONResponse(
+        content={"status": "error", "detail": err or "unauthorized"},
+        status_code=401,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+@app.get("/mcp/")
+@app.get("/mcp")
+def mcp_root(request: Request):
+    denied = _mcp_auth_guard(request)
+    if denied is not None:
+        return denied
+    status = _tool_qbot_mcp_status({})
+    tools = _tool_qbot_mcp_tools_list({})
+    return {
+        "status": status.get("status", "UNKNOWN"),
+        "service": "qbot-mcp-adapter",
+        "version": "v1",
+        "health": "/mcp/health",
+        "tools": "/mcp/tools",
+        "public_url": status.get("public_url"),
+        "auth_configured": status.get("auth_configured"),
+        "exposed_tools": status.get("exposed_tools", []),
+        "tool_count": tools.get("count", 0),
+    }
+
+
+@app.get("/mcp/health")
+@app.get("/mcp/health/")
+def mcp_health(request: Request):
+    denied = _mcp_auth_guard(request)
+    if denied is not None:
+        return denied
+    return _tool_qbot_mcp_status({})
+
+
+@app.get("/mcp/tools")
+@app.get("/mcp/tools/")
+def mcp_tools(request: Request):
+    denied = _mcp_auth_guard(request)
+    if denied is not None:
+        return denied
+    return _tool_qbot_mcp_tools_list({})
+
+
+@app.post("/mcp/")
+@app.post("/mcp")
+async def mcp_post(request: Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse(content={"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "invalid JSON"}}, status_code=400)
+
+    response_payload, status_code, headers = handle_mcp_request(payload if isinstance(payload, dict) else {}, dict(request.headers))
+    return _mcp_response(response_payload, status_code, headers)
 
 
 if __name__ == "__main__":

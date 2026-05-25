@@ -16,6 +16,7 @@ from qbot_tools import (
     _tool_qbot_services_status,
     _tool_qbot_system_overview,
 )
+from qbot_mcp_adapter import _tool_qbot_mcp_status, _tool_qbot_mcp_tools_list
 
 _MAX_ERROR_OUTPUT = 300
 
@@ -455,6 +456,7 @@ _OPERATOR_RUNBOOK_TOOLS: dict[str, list[str]] = {
     "logs_review": ["qbot_logs_overview", "qbot_error_summary", "qbot_test_error_classification"],
     "backup_review": ["qbot_backup_status", "qbot_backup_plan", "qbot_create_backup_script_preview"],
     "maintenance": ["qbot_maintenance_report", "qbot_readiness_report", "qbot_project_guard_check"],
+    "mcp_connector_review": ["qbot_mcp_status", "qbot_mcp_tools_list", "qbot_operator_final_smoke_test", "qbot_project_guard_check"],
     "backup_automation_review": ["qbot_backup_status", "qbot_backup_timer_status", "qbot_restore_drill_status", "qbot_backup_plan"],
     "restore_drill_review": ["qbot_restore_drill_status", "qbot_restore_drill_plan", "qbot_backup_status"],
     "operator_reference": ["qbot_operator_quick_reference", "qbot_readiness_report", "qbot_maintenance_report"],
@@ -499,6 +501,8 @@ def _operator_dispatch(tool_name: str):
         "qbot_services_status": _tool_qbot_services_status,
         "qbot_db_overview": _tool_qbot_db_overview,
         "qbot_recent_tool_calls": _tool_qbot_recent_tool_calls,
+        "qbot_mcp_status": _tool_qbot_mcp_status,
+        "qbot_mcp_tools_list": _tool_qbot_mcp_tools_list,
     }
     func = mapping.get(tool_name)
     if func:

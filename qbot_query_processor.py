@@ -96,6 +96,16 @@ _RUNBOOKS: list[dict[str, Any]] = [
         "required_data": ["API health", "systemd services", "PostgreSQL", "git repository", "guard rules"],
         "limitations": ["Delegates to qbot_operator_runbook", "Preview only by default"],
     },
+    {
+        "name": "mcp_connector_review",
+        "keywords": ["mcp connector review", "review mcp connector", "sprawdź mcp connector", "mcp adapter review"],
+        "tools": [
+            ("qbot_operator_runbook", {"name": "mcp_connector_review", "execute": False}),
+        ],
+        "description": "MCP connector review — preview/execution of the public /mcp adapter runbook",
+        "required_data": ["MCP adapter status", "MCP tool list", "final smoke test", "project guard"],
+        "limitations": ["Delegates to qbot_operator_runbook", "Preview only by default"],
+    },
 ]
 
 _INTENT_MAP: list[dict[str, Any]] = [
@@ -107,6 +117,22 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "confidence": "high",
         "required_data": ["API health endpoint", "PostgreSQL connection", "systemd service status", "git repository state"],
         "limitations": ["Only checks local services", "Does not check external APIs like Intervals.icu or Garmin"],
+    },
+    {
+        "keywords": ["mcp status", "czy mcp działa", "status mcp", "sprawdź mcp"],
+        "tool": "qbot_mcp_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Local API health", "public /mcp route", "MCP auth mode"],
+        "limitations": ["Read-only status", "No tool execution"],
+    },
+    {
+        "keywords": ["mcp tools", "lista narzędzi mcp", "narzędzia mcp"],
+        "tool": "qbot_mcp_tools_list",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["MCP adapter metadata"],
+        "limitations": ["Static tool mapping", "Read-only"],
     },
     {
         "keywords": ["usługi", "services", "systemd", "czy działa q-bot",
