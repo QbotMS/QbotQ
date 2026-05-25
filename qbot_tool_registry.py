@@ -13,6 +13,7 @@ from qbot_tools import (
     _tool_qbot_project_guard_check,
     _tool_qbot_project_recent_commits,
     _tool_qbot_project_tree,
+    _tool_qbot_query,
     _tool_qbot_recent_tool_calls,
     _tool_qbot_services_status,
     _tool_qbot_status,
@@ -98,6 +99,12 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_query": {
+        "description": "Procesor zapytań naturalnych — rozpoznaje intencje i deleguje do narzędzi",
+        "category": "meta",
+        "safe": True,
+        "args_schema": {"query": "sprawdź stan Q"},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -114,4 +121,5 @@ TOOLS: dict[str, Any] = {
     "qbot_project_recent_commits": _tool_qbot_project_recent_commits,
     "qbot_project_diff_summary": _tool_qbot_project_diff_summary,
     "qbot_project_guard_check": _tool_qbot_project_guard_check,
+    "qbot_query": _tool_qbot_query,
 }

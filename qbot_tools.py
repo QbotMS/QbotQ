@@ -500,3 +500,11 @@ def _tool_qbot_project_guard_check(_args: dict | None = None) -> dict[str, Any]:
         "status": status,
         "violations": violations,
     }
+
+
+def _tool_qbot_query(args: dict | None = None) -> dict[str, Any]:
+    query = (args or {}).get("query", "")
+    from qbot_query_processor import process_query
+    result = process_query(query)
+    result["tool"] = "qbot_query"
+    return result
