@@ -37,6 +37,16 @@ def save_tool_call(tool: str, args: dict, result: dict) -> int:
         return row["id"]
 
 
+def select_tool_calls(limit: int = 10) -> list[dict]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT id, tool, args, result, created_at "
+            "FROM tool_calls ORDER BY id DESC LIMIT %s",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 def ping() -> bool:
     try:
         with _conn() as conn:

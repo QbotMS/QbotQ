@@ -29,7 +29,7 @@ def _db_check():
         DB_AVAILABLE = False
 
 
-def _tool_qbot_status() -> dict[str, Any]:
+def _tool_qbot_status(_args: dict | None = None) -> dict[str, Any]:
     try:
         hostname = subprocess.run(
             ["hostname"], capture_output=True, text=True, timeout=2
@@ -54,7 +54,7 @@ _SERVICES = [
 ]
 
 
-def _tool_qbot_services_status() -> dict[str, Any]:
+def _tool_qbot_services_status(_args: dict | None = None) -> dict[str, Any]:
     results = []
     for svc in _SERVICES:
         try:
@@ -99,9 +99,69 @@ def _tool_qbot_services_status() -> dict[str, Any]:
     return {"tool": "qbot_services_status", "services": results}
 
 
+def _tool_qbot_recent_tool_calls(args: dict | None = None) -> dict[str, Any]:
+    limit_raw = (args or {}).get("limit", 10)
+    try:
+        limit = int(limit_raw)
+    except (ValueError, TypeError):
+        return {
+            "tool": "qbot_recent_tool_calls",
+            "error": f"invalid limit: {limit_raw!r}, must be integer",
+        }
+    if limit < 1:
+        return {
+            "tool": "qbot_recent_tool_calls",
+            "error": f"limit {limit} below minimum 1",
+        }
+    if limit > 50:
+        return {
+            "tool": "qbot_recent_tool_calls",
+            "error": f"limit {limit} above maximum 50",
+        }
+
+    _db_check()
+    if not DB_AVAILABLE:
+        return {
+            "tool": "qbot_recent_tool_calls",
+            "error": "database unavailable",
+        }
+
+    try:
+        import api_db
+        rows = api_db.select_tool_calls(limit)
+    except Exception as exc:
+        return {
+            "tool": "qbot_recent_tool_calls",
+            "error": f"query failed: {exc}",
+        }
+
+    entries = []
+    for r in rows:
+        entry = {
+            "id": r["id"],
+            "tool": r["tool"],
+            "created_at": r["created_at"].isoformat() if r.get("created_at") else None,
+        }
+        result = r.get("result")
+        if isinstance(result, str):
+            import json
+            try:
+                result = json.loads(result)
+            except Exception:
+                pass
+        if isinstance(result, dict):
+            entry["status"] = "ok" if "error" not in result else "error"
+        else:
+            entry["status"] = "ok"
+        entries.append(entry)
+
+    return {"tool": "qbot_recent_tool_calls", "count": len(entries), "calls": entries}
+
+
 TOOLS: dict[str, Any] = {
     "qbot_status": _tool_qbot_status,
     "qbot_services_status": _tool_qbot_services_status,
+    "qbot_recent_tool_calls": _tool_qbot_recent_tool_calls,
 }
 
 
@@ -139,7 +199,7 @@ async def q_endpoint(request: Request):
     args = payload.get("args", {})
 
     if tool in TOOLS:
-        result = TOOLS[tool]()
+        result = TOOLS[tool](args)
     else:
         result = {"error": f"unknown tool: {tool}", "available": sorted(TOOLS.keys())}
 
