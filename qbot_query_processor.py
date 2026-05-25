@@ -602,6 +602,30 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "required_data": ["None"],
         "limitations": ["PLAN_ONLY", "Manual approval required"],
     },
+    {
+        "keywords": ["zaplanuj narzędzia", "dobierz narzędzia", "llm planner"],
+        "tool": "qbot_llm_plan_query",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Tool registry", "Policy engine"],
+        "limitations": ["Planner proposes, Qbot validates", "Rule fallback without LLM key"],
+    },
+    {
+        "keywords": ["wykonaj inteligentnie", "smart run", "uruchom qbot smart"],
+        "tool": "qbot_llm_run_query",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["LLM planner", "Policy engine", "Tool registry"],
+        "limitations": ["Only READ_ONLY auto-execute", "CONTROLLED_ACTION blocked"],
+    },
+    {
+        "keywords": ["lista polityk narzędzi", "tool policy"],
+        "tool": "qbot_tool_policy_list",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Tool registry"],
+        "limitations": ["Static listing"],
+    },
 ]
 
 _EXAMPLES = [

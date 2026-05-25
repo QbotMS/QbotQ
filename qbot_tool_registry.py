@@ -97,6 +97,22 @@ from qbot_legacy_cutover_tools import (
     _tool_qbot_legacy_takeover_status,
 )
 
+from qbot_llm_planner import (
+    _tool_qbot_execute_validated_plan,
+    _tool_qbot_llm_plan_query,
+    _tool_qbot_llm_provider_status,
+    _tool_qbot_llm_run_query,
+    _tool_qbot_policy_validate_plan,
+    _tool_qbot_tool_policy_list,
+)
+
+from qbot_artifact_tools import (
+    _tool_qbot_artifact_create,
+    _tool_qbot_artifact_get,
+    _tool_qbot_artifact_list,
+    _tool_qbot_workspace_write_file_preview,
+)
+
 from qbot_ops_tools import (
     _tool_qbot_backup_plan,
     _tool_qbot_backup_status,
@@ -517,6 +533,66 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_llm_provider_status": {
+        "description": "Status providera LLM — czy dostępny klucz API (bez ujawniania)",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_tool_policy_list": {
+        "description": "Lista wszystkich tooli z metadanymi bezpieczeństwa — safety_class, requires_approval",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_llm_plan_query": {
+        "description": "Planuje narzędzia dla zapytania — LLM proponuje, Qbot waliduje (fallback: rule-based)",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {"query": "sprawdź stan qbot", "mode": "preview"},
+    },
+    "qbot_policy_validate_plan": {
+        "description": "Waliduje proposed_plan przez policy engine — zwraca approved/blocked/requires_approval",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {"plan": {}},
+    },
+    "qbot_execute_validated_plan": {
+        "description": "Wykonuje zatwierdzony plan — tylko READ_ONLY auto-execute, CONTROLLED_ACTION wymaga approval",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {"plan_id": 1, "execute": False, "approval": False},
+    },
+    "qbot_llm_run_query": {
+        "description": "Pełen pipeline: plan → validate → execute → summarize (LLM proposes, Qbot disposes)",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {"query": "sprawdź stan qbot", "execute": False, "style": "concise"},
+    },
+    "qbot_artifact_create": {
+        "description": "Tworzy artifact w PostgreSQL — WRITE_SAFE, max 100 KB, blokuje sekrety",
+        "category": "artifact",
+        "safe": True,
+        "args_schema": {"artifact_type": "report", "title": "...", "content": "..."},
+    },
+    "qbot_artifact_list": {
+        "description": "Lista ostatnich artifactów — READ_ONLY, limit 1-100",
+        "category": "artifact",
+        "safe": True,
+        "args_schema": {"limit": 20},
+    },
+    "qbot_artifact_get": {
+        "description": "Pobiera artifact po ID — READ_ONLY, pełna treść do 100 KB",
+        "category": "artifact",
+        "safe": True,
+        "args_schema": {"id": 1},
+    },
+    "qbot_workspace_write_file_preview": {
+        "description": "Podgląd zapisu pliku do workspace — PREVIEW_ONLY v1, waliduje ścieżkę i sekrety",
+        "category": "artifact",
+        "safe": True,
+        "args_schema": {"relative_path": "reports/test.md", "content": "# test"},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -587,4 +663,14 @@ TOOLS: dict[str, Any] = {
     "qbot_legacy_takeover_status": _tool_qbot_legacy_takeover_status,
     "qbot_legacy_cutover_status": _tool_qbot_legacy_cutover_status,
     "qbot_legacy_rollback_plan": _tool_qbot_legacy_rollback_plan,
+    "qbot_llm_provider_status": _tool_qbot_llm_provider_status,
+    "qbot_tool_policy_list": _tool_qbot_tool_policy_list,
+    "qbot_llm_plan_query": _tool_qbot_llm_plan_query,
+    "qbot_policy_validate_plan": _tool_qbot_policy_validate_plan,
+    "qbot_execute_validated_plan": _tool_qbot_execute_validated_plan,
+    "qbot_llm_run_query": _tool_qbot_llm_run_query,
+    "qbot_artifact_create": _tool_qbot_artifact_create,
+    "qbot_artifact_list": _tool_qbot_artifact_list,
+    "qbot_artifact_get": _tool_qbot_artifact_get,
+    "qbot_workspace_write_file_preview": _tool_qbot_workspace_write_file_preview,
 }

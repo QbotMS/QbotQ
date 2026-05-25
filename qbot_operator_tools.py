@@ -474,6 +474,8 @@ _OPERATOR_RUNBOOK_TOOLS: dict[str, list[str]] = {
     "legacy_cutover_gate": ["qbot_legacy_cutover_readiness_gate", "qbot_legacy_manual_cutover_plan", "qbot_legacy_takeover_status", "qbot_project_guard_check", "qbot_operator_final_smoke_test"],
     "legacy_cutover_llm_context": ["qbot_legacy_cutover_answer_context", "qbot_llm_boundary_policy"],
     "legacy_post_cutover_check": ["qbot_legacy_cutover_status", "qbot_operator_final_smoke_test", "qbot_readiness_report", "qbot_legacy_rollback_plan"],
+    "llm_planner_review": ["qbot_llm_provider_status", "qbot_tool_policy_list", "qbot_llm_boundary_policy", "qbot_llm_plan_query"],
+    "smart_query_demo": ["qbot_llm_run_query", "qbot_policy_validate_plan"],
 }
 
 _ALLOWED_RUNBOOK_NAMES: set[str] = set(_OPERATOR_RUNBOOK_TOOLS.keys())
