@@ -247,24 +247,119 @@ def _tool_qbot_legacy_takeover_status(_args: dict | None = None) -> dict[str, An
         gate = _tool_qbot_legacy_cutover_readiness_gate()
     except Exception as exc:
         gate = {"takeover_readiness_percent": 90, "gate_status": "ERROR", "error": str(exc)}
+
+    try:
+        cutover_st = _tool_qbot_legacy_cutover_status()
+    except Exception:
+        cutover_st = {"cutover_completed": False, "takeover_readiness_percent": gate.get("takeover_readiness_percent", 90)}
+
     core_pct = 100
-    takeover_pct = gate.get("takeover_readiness_percent", 90)
+    takeover_pct = cutover_st.get("takeover_readiness_percent", gate.get("takeover_readiness_percent", 90))
 
     completed = ["Phase 1: read-only wrappers", "Phase 2: safe execution wrappers", "Phase 3: shadow mode"]
     remaining = ["Phase 4: manual cutover", "Phase 5: legacy disable"]
     if gate.get("cutover_allowed"):
         remaining = ["Phase 5: legacy disable"]
+    if cutover_st.get("cutover_completed"):
+        completed.append("Phase 4: manual cutover")
+        completed.append("Phase 5: legacy disabled")
+        remaining = []
+
+    current = "Phase 5: legacy disabled" if cutover_st.get("cutover_completed") else "Phase 4: cutover readiness gate"
 
     return {
         "tool": "qbot_legacy_takeover_status",
         "qbot_core_operational_percent": core_pct,
         "legacy_takeover_percent": takeover_pct,
-        "current_phase": "Phase 4: cutover readiness gate",
+        "current_phase": current,
         "completed_phases": completed,
         "remaining_phases": remaining,
         "cutover_gate_status": gate.get("gate_status", "UNKNOWN"),
         "ready_for_manual_cutover": gate.get("cutover_allowed", False),
-        "recommended_next_step": gate.get("recommended_next_step", "review gate status"),
+        "recommended_next_step": "Legacy takeover complete — monitor new Qbot API" if cutover_st.get("cutover_completed") else gate.get("recommended_next_step", "review gate status"),
+    }
+
+
+# ──────────── qbot_legacy_cutover_status ────────────────────────────────
+
+def _tool_qbot_legacy_cutover_status(_args: dict | None = None) -> dict[str, Any]:
+    import subprocess
+    legacy_active = False
+    legacy_enabled = False
+    qbot_api_active = False
+    qlab_active = False
+    try:
+        proc = subprocess.run(["systemctl", "is-active", "q-bot.service"], capture_output=True, text=True, timeout=5)
+        legacy_active = proc.stdout.strip() == "active"
+    except Exception:
+        pass
+    try:
+        proc = subprocess.run(["systemctl", "is-enabled", "q-bot.service"], capture_output=True, text=True, timeout=5)
+        legacy_enabled = proc.stdout.strip() == "enabled"
+    except Exception:
+        pass
+    try:
+        proc = subprocess.run(["systemctl", "is-active", "qbot-api.service"], capture_output=True, text=True, timeout=5)
+        qbot_api_active = proc.stdout.strip() == "active"
+    except Exception:
+        pass
+    try:
+        proc = subprocess.run(["systemctl", "is-active", "qbot-qlab-server.service"], capture_output=True, text=True, timeout=5)
+        qlab_active = proc.stdout.strip() == "active"
+    except Exception:
+        pass
+
+    backup_detected = False
+    try:
+        from qbot_ops_tools import _tool_qbot_backup_status
+        bk = _tool_qbot_backup_status()
+        backup_detected = bk.get("latest_backup") is not None
+    except Exception:
+        pass
+
+    cutover_done = not legacy_active and not legacy_enabled and qbot_api_active
+    takeover = 100 if cutover_done else 95
+
+    return {
+        "tool": "qbot_legacy_cutover_status",
+        "cutover_completed": cutover_done,
+        "legacy_service_active": legacy_active,
+        "legacy_service_enabled": legacy_enabled,
+        "qbot_api_active": qbot_api_active,
+        "qlab_active": qlab_active,
+        "backup_before_cutover_detected": backup_detected,
+        "rollback_available": True,
+        "current_phase": "Phase 5: legacy disabled" if cutover_done else "Phase 4: cutover readiness",
+        "takeover_readiness_percent": takeover,
+        "status": "OK" if cutover_done else "WARN",
+        "rollback_hint": "Use qbot_legacy_rollback_plan for rollback commands. Manual approval required.",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ──────────── qbot_legacy_rollback_plan ──────────────────────────────────
+
+def _tool_qbot_legacy_rollback_plan(_args: dict | None = None) -> dict[str, Any]:
+    return {
+        "tool": "qbot_legacy_rollback_plan",
+        "plan_status": "PLAN_ONLY",
+        "required_manual_approval": True,
+        "commands": [
+            "sudo systemctl enable q-bot.service",
+            "sudo systemctl start q-bot.service",
+            "systemctl status q-bot.service --no-pager",
+        ],
+        "validation_steps": [
+            "Verify: systemctl is-active q-bot.service",
+            "Run: qbot_legacy_health_report",
+            "Check: curl http://127.0.0.1:8001/health",
+            "Run: qbot_operator_final_smoke_test",
+        ],
+        "warnings": [
+            "Rollback should ONLY be used if the new Qbot API has critical issues",
+            "Legacy q-bot.service was disabled intentionally — only rollback if new system fails",
+            "After rollback, re-evaluate migration plan before retrying cutover",
+        ],
     }
 
 
@@ -274,5 +369,7 @@ def _get_legacy_cutover_tool(name: str):
         "qbot_legacy_manual_cutover_plan": _tool_qbot_legacy_manual_cutover_plan,
         "qbot_legacy_cutover_answer_context": _tool_qbot_legacy_cutover_answer_context,
         "qbot_legacy_takeover_status": _tool_qbot_legacy_takeover_status,
+        "qbot_legacy_cutover_status": _tool_qbot_legacy_cutover_status,
+        "qbot_legacy_rollback_plan": _tool_qbot_legacy_rollback_plan,
     }
     return mapping.get(name)

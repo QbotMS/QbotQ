@@ -586,6 +586,22 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "required_data": ["Cutover readiness gate"],
         "limitations": ["Read-only status report"],
     },
+    {
+        "keywords": ["status cutover", "czy stary q wyłączony", "status przełączenia"],
+        "tool": "qbot_legacy_cutover_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["systemd status q-bot/qbot-api/qlab services"],
+        "limitations": ["Read-only status", "No commands executed"],
+    },
+    {
+        "keywords": ["rollback legacy", "plan rollbacku starego q"],
+        "tool": "qbot_legacy_rollback_plan",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["None"],
+        "limitations": ["PLAN_ONLY", "Manual approval required"],
+    },
 ]
 
 _EXAMPLES = [

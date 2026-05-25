@@ -291,8 +291,18 @@ def _tool_qbot_readiness_report(_args: dict | None = None) -> dict[str, Any]:
 
     svc_check = _tool_qbot_services_status()
     checks.append({"name": "services_status", "status": "OK", "detail": svc_check})
+    legacy_disabled = False
+    try:
+        import subprocess
+        proc = subprocess.run(["systemctl", "is-enabled", "q-bot.service"], capture_output=True, text=True, timeout=5)
+        legacy_disabled = proc.stdout.strip() == "disabled" or proc.returncode != 0
+    except Exception:
+        pass
     for svc in svc_check.get("services", []):
         if svc.get("status") == "ERROR":
+            if svc["name"] == "q-bot.service" and legacy_disabled:
+                # q-bot.service is intentionally disabled after cutover - expected state
+                continue
             warnings.append(f"Service {svc['name']} is {svc.get('active_state', 'unknown')}")
 
     if blockers:
@@ -463,6 +473,7 @@ _OPERATOR_RUNBOOK_TOOLS: dict[str, list[str]] = {
     "legacy_cutover_review": ["qbot_legacy_shadow_report", "qbot_legacy_cutover_plan", "qbot_operator_final_smoke_test", "qbot_project_guard_check"],
     "legacy_cutover_gate": ["qbot_legacy_cutover_readiness_gate", "qbot_legacy_manual_cutover_plan", "qbot_legacy_takeover_status", "qbot_project_guard_check", "qbot_operator_final_smoke_test"],
     "legacy_cutover_llm_context": ["qbot_legacy_cutover_answer_context", "qbot_llm_boundary_policy"],
+    "legacy_post_cutover_check": ["qbot_legacy_cutover_status", "qbot_operator_final_smoke_test", "qbot_readiness_report", "qbot_legacy_rollback_plan"],
 }
 
 _ALLOWED_RUNBOOK_NAMES: set[str] = set(_OPERATOR_RUNBOOK_TOOLS.keys())

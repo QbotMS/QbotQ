@@ -91,7 +91,9 @@ from qbot_legacy_shadow_tools import (
 from qbot_legacy_cutover_tools import (
     _tool_qbot_legacy_cutover_answer_context,
     _tool_qbot_legacy_cutover_readiness_gate,
+    _tool_qbot_legacy_cutover_status,
     _tool_qbot_legacy_manual_cutover_plan,
+    _tool_qbot_legacy_rollback_plan,
     _tool_qbot_legacy_takeover_status,
 )
 
@@ -503,6 +505,18 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_legacy_cutover_status": {
+        "description": "Status cutover — czy q-bot.service zatrzymany, czy API działa",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_rollback_plan": {
+        "description": "Plan rollbacku legacy Q — PLAN_ONLY, komendy do ręcznego wykonania",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -571,4 +585,6 @@ TOOLS: dict[str, Any] = {
     "qbot_legacy_manual_cutover_plan": _tool_qbot_legacy_manual_cutover_plan,
     "qbot_legacy_cutover_answer_context": _tool_qbot_legacy_cutover_answer_context,
     "qbot_legacy_takeover_status": _tool_qbot_legacy_takeover_status,
+    "qbot_legacy_cutover_status": _tool_qbot_legacy_cutover_status,
+    "qbot_legacy_rollback_plan": _tool_qbot_legacy_rollback_plan,
 }
