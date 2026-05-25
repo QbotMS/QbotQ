@@ -23,6 +23,85 @@ load_dotenv(Path(__file__).parent / ".env")
 
 DB_AVAILABLE = False
 
+
+def _telegram_response_text(command: str, result: dict) -> str | None:
+    response = result.get("response") if isinstance(result, dict) else None
+    if command == "/status" and isinstance(response, dict):
+        text = response.get("summary_text")
+        if text:
+            return str(text)
+    if command == "/legacy":
+        text = result.get("text") if isinstance(result, dict) else None
+        if text:
+            return str(text)
+    if command == "/help":
+        if isinstance(response, dict):
+            commands = response.get("commands") or []
+            lines = ["Dostępne komendy:"]
+            for item in commands[:12]:
+                if isinstance(item, dict):
+                    cmd = item.get("command", "")
+                    desc = item.get("description", "")
+                    lines.append(f"{cmd} - {desc}")
+            return "\n".join(lines)
+    return None
+
+
+def _telegram_webhook_reply(chat_id: int, text: str) -> JSONResponse:
+    return JSONResponse(
+        content={
+            "method": "sendMessage",
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "HTML",
+        },
+        status_code=200,
+    )
+
+
+def _telegram_status_summary() -> tuple[str, dict]:
+    from qbot_tools import _tool_qbot_api_self_check, _tool_qbot_db_overview
+    from qbot_legacy_cutover_tools import _tool_qbot_legacy_cutover_status
+    from qbot_telegram_tools import _tool_qbot_telegram_transport_status
+
+    api_check = _tool_qbot_api_self_check()
+    db_overview = _tool_qbot_db_overview()
+    cutover = _tool_qbot_legacy_cutover_status()
+    transport = _tool_qbot_telegram_transport_status({"check_remote": False})
+
+    api_alive = False
+    db_ok = bool(db_overview.get("db_connected"))
+    for check in api_check.get("checks", []):
+        if check.get("check") == "api_alive" and str(check.get("status", "")).upper() == "OK":
+            api_alive = True
+
+    legacy_takeover_pct = int(cutover.get("takeover_readiness_percent", 0) or 0)
+    legacy_disabled = bool(cutover.get("cutover_completed")) or (
+        cutover.get("legacy_service_active") is False and cutover.get("legacy_service_enabled") is False
+    )
+    webhook_ok = str(transport.get("status", "UNKNOWN")).upper() == "OK"
+
+    lines = ["Qbot status:"]
+    lines.append("✅ API działa" if api_alive else "⚠️ API: problem")
+    lines.append("✅ DB działa" if db_ok else "⚠️ DB: problem")
+    lines.append("✅ Telegram webhook działa" if webhook_ok else "⚠️ Telegram webhook: problem")
+    lines.append(f"✅ Legacy takeover: {legacy_takeover_pct}%")
+    lines.append("ℹ️ q-bot.service: disabled po cutover" if legacy_disabled else "ℹ️ q-bot.service: legacy active")
+    lines.append("ℹ️ ngrok: nieużywany")
+
+    return "\n".join(lines), {
+        "tool": "qbot_telegram_status_quick",
+        "api_ok": api_alive,
+        "db_ok": db_ok,
+        "telegram_webhook_ok": webhook_ok,
+        "legacy_takeover_percent": legacy_takeover_pct,
+        "legacy_qbot_disabled": legacy_disabled,
+        "api_self_check": api_check,
+        "db_overview": db_overview,
+        "legacy_cutover_status": cutover,
+        "telegram_transport": transport,
+    }
+
 app = FastAPI(title="Q API", version="0.1.0")
 
 
@@ -119,9 +198,8 @@ async def telegram_webhook(webhook_secret: str, request: Request):
         from qbot_telegram_tools import _tool_qbot_telegram_command_help
         result = {"command": "/help", "response": _tool_qbot_telegram_command_help()}
     elif command == "/status":
-        from qbot_telegram_tools import _tool_qbot_telegram_status
-        response = _tool_qbot_telegram_status()
-        result = {"command": "/status", "response": response, "text": response.get("summary_text", "")}
+        summary_text, response = _telegram_status_summary()
+        result = {"command": "/status", "response": response, "text": summary_text}
     elif command == "/legacy":
         from qbot_legacy_cutover_tools import _tool_qbot_legacy_cutover_status
         response = _tool_qbot_legacy_cutover_status()
@@ -156,6 +234,10 @@ async def telegram_webhook(webhook_secret: str, request: Request):
             result = {"command": "/ask", "response": process_query(query, execute=True)}
     else:
         result = {"command": command, "response": {"status": "unknown_command", "text": text}}
+
+    reply_text = _telegram_response_text(command, result)
+    if reply_text:
+        return _telegram_webhook_reply(chat_id, reply_text)
 
     return JSONResponse(content={"status": "ok", "received": True, "command": command, "result": result}, status_code=200)
 

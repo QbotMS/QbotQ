@@ -28,12 +28,13 @@ def _public_url() -> str:
 # ──────────── helpers ───────────────────────────────────────────────────
 
 def _tool_qbot_telegram_transport_status(_args: dict | None = None) -> dict[str, Any]:
+    check_remote = bool((_args or {}).get("check_remote", False))
     config = _tool_qbot_telegram_config_status()
     has_token = _token_ok()
     enabled = os.getenv("TELEGRAM_ENABLED", "").lower() == "true" and has_token
     public = _tool_qbot_public_endpoint_status()
     wh_info: dict[str, Any] = {}
-    if has_token:
+    if has_token and check_remote:
         try:
             from qbot_telegram_client import get_webhook_info
             wh_info = get_webhook_info()
@@ -42,7 +43,10 @@ def _tool_qbot_telegram_transport_status(_args: dict | None = None) -> dict[str,
 
     webhook_has_url = bool(wh_info.get("result", {}).get("url")) if wh_info.get("ok") else False
     public_ok = bool(public.get("is_https", False))
-    status = "OK" if enabled and public_ok and webhook_has_url else "WARN"
+    if check_remote:
+        status = "OK" if enabled and public_ok and webhook_has_url else "WARN"
+    else:
+        status = "OK" if enabled and public_ok and config.get("status") != "ERROR" else "WARN"
     if config.get("status") == "ERROR" or not has_token:
         status = "WARN"
 
@@ -52,7 +56,7 @@ def _tool_qbot_telegram_transport_status(_args: dict | None = None) -> dict[str,
         "enabled": enabled,
         "bot_reachable": has_token,
         "public_endpoint_configured": public_ok,
-        "webhook_info": {"has_url": webhook_has_url} if wh_info.get("ok") else wh_info,
+        "webhook_info": {"has_url": webhook_has_url} if check_remote and wh_info.get("ok") else {"skipped": not check_remote, "has_url": webhook_has_url},
         "status": status,
     }
 
@@ -180,19 +184,13 @@ def _tool_qbot_public_endpoint_status(_args: dict | None = None) -> dict[str, An
 # ──────────── qbot_telegram_status ──────────────────────────────────────
 
 def _tool_qbot_telegram_status(_args: dict | None = None) -> dict[str, Any]:
-    transport = _tool_qbot_telegram_transport_status()
-
+    deep = bool((_args or {}).get("deep", False))
+    transport = _tool_qbot_telegram_transport_status({"check_remote": False})
     try:
-        from qbot_ops_tools import _tool_qbot_operator_final_smoke_test
-        smoke = _tool_qbot_operator_final_smoke_test()
+        from qbot_tools import _tool_qbot_api_self_check
+        api_check = _tool_qbot_api_self_check()
     except Exception as exc:
-        smoke = {"tool": "qbot_operator_final_smoke_test", "status": "ERROR", "error": str(exc)}
-
-    try:
-        from qbot_operator_tools import _tool_qbot_readiness_report
-        readiness = _tool_qbot_readiness_report()
-    except Exception as exc:
-        readiness = {"tool": "qbot_readiness_report", "status": "ERROR", "error": str(exc)}
+        api_check = {"tool": "qbot_api_self_check", "status": "ERROR", "error": str(exc)}
 
     try:
         from qbot_legacy_cutover_tools import _tool_qbot_legacy_takeover_status, _tool_qbot_legacy_cutover_status
@@ -202,27 +200,17 @@ def _tool_qbot_telegram_status(_args: dict | None = None) -> dict[str, Any]:
         takeover = {"tool": "qbot_legacy_takeover_status", "legacy_takeover_percent": 0, "status": "ERROR", "error": str(exc)}
         cutover = {"tool": "qbot_legacy_cutover_status", "cutover_completed": False, "legacy_service_active": True, "legacy_service_enabled": True}
 
-    smoke_status = str(smoke.get("status", "UNKNOWN")).upper()
-    readiness_status = str(readiness.get("status", "UNKNOWN")).upper()
     transport_status = str(transport.get("status", "UNKNOWN")).upper()
-
-    api_ok = False
-    for check in smoke.get("checks", []):
-        if check.get("name") == "api_health" and str(check.get("status", "")).upper() == "OK":
-            api_ok = True
-            break
-
-    db_ok = False
-    for check in readiness.get("checks", []):
-        if check.get("name") == "db_overview" and str(check.get("status", "")).upper() == "OK":
-            db_ok = True
-            break
-    if not db_ok:
-        for check in smoke.get("checks", []):
-            if check.get("name") == "api_health" and isinstance(check.get("detail"), dict):
-                db_ok = bool(check["detail"].get("db_connected"))
-                if db_ok:
-                    break
+    api_ok = any(
+        str(check.get("status", "")).upper() == "OK"
+        for check in api_check.get("checks", [])
+        if check.get("check") == "api_alive"
+    )
+    db_ok = any(
+        str(check.get("status", "")).upper() == "OK"
+        for check in api_check.get("checks", [])
+        if check.get("check") == "db_connected"
+    )
 
     webhook_ok = transport_status == "OK"
     legacy_takeover_pct = int(takeover.get("legacy_takeover_percent", 0) or 0)
@@ -239,12 +227,6 @@ def _tool_qbot_telegram_status(_args: dict | None = None) -> dict[str, Any]:
     lines.append("ℹ️ q-bot.service: disabled po cutover" if legacy_disabled else "ℹ️ q-bot.service: legacy active")
     lines.append("ℹ️ ngrok: nieużywany")
 
-    diagnostic_status = "OK"
-    if smoke_status == "FAIL" or readiness_status == "NOT_READY" or transport_status == "ERROR" or cutover_status == "ERROR":
-        diagnostic_status = "ERROR"
-    elif smoke_status == "WARN" or readiness_status == "READY_WITH_WARNINGS" or transport_status == "WARN" or (cutover_status == "WARN" and not legacy_disabled):
-        diagnostic_status = "WARN"
-
     core_ok = api_ok and db_ok and webhook_ok and legacy_disabled and legacy_takeover_pct >= 100
 
     overall = "OK" if core_ok else "ERROR"
@@ -259,10 +241,10 @@ def _tool_qbot_telegram_status(_args: dict | None = None) -> dict[str, Any]:
         "telegram_webhook_ok": webhook_ok,
         "legacy_takeover_percent": legacy_takeover_pct,
         "legacy_qbot_disabled": legacy_disabled,
-        "operator_diagnostic_status": diagnostic_status,
+        "api_self_check": api_check if deep else {"status": api_check.get("status", "UNKNOWN")},
         "telegram_transport": transport,
-        "smoke_test": smoke,
-        "readiness_report": readiness,
+        "smoke_test": None if not deep else None,
+        "readiness_report": None if not deep else None,
         "legacy_takeover_status": takeover,
         "legacy_cutover_status": cutover,
     }
