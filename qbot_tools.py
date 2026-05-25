@@ -317,3 +317,186 @@ def _tool_qbot_api_self_check(_args: dict | None = None) -> dict[str, Any]:
         "status": overall,
         "checks": checks,
     }
+
+
+# ── Project tools ───────────────────────────────────────────────────────
+
+_PROJECT_ROOT = Path("/opt/qbot/app")
+_SKIP_DIRS = {".git", ".venv", "__pycache__", "node_modules",
+              ".pytest_cache", "outgoing", "logs"}
+
+
+def _tool_qbot_project_tree(args: dict | None = None) -> dict[str, Any]:
+    max_depth_raw = (args or {}).get("max_depth", 2)
+    try:
+        max_depth = int(max_depth_raw)
+    except (ValueError, TypeError):
+        return {"tool": "qbot_project_tree",
+                "error": f"invalid max_depth: {max_depth_raw!r}"}
+    if max_depth < 1:
+        max_depth = 1
+    if max_depth > 4:
+        max_depth = 4
+
+    def _walk(path: Path, depth: int) -> list[dict[str, Any]]:
+        if depth > max_depth:
+            return []
+        entries: list[dict[str, Any]] = []
+        try:
+            children = sorted(path.iterdir(), key=lambda p: (not p.is_dir(), p.name))
+        except PermissionError:
+            return [{"name": path.name, "type": "dir", "error": "permission denied"}]
+        for child in children:
+            if child.name in _SKIP_DIRS:
+                continue
+            if child.is_dir():
+                subtree = _walk(child, depth + 1)
+                entries.append({
+                    "name": child.name,
+                    "type": "dir",
+                    "children": subtree,
+                })
+            else:
+                try:
+                    size = child.stat().st_size
+                except OSError:
+                    size = -1
+                entries.append({
+                    "name": child.name,
+                    "type": "file",
+                    "size_bytes": size,
+                })
+            if len(entries) >= 500:
+                entries.append({"name": "...", "type": "truncated"})
+                break
+        return entries
+
+    tree = _walk(_PROJECT_ROOT, 1)
+    return {"tool": "qbot_project_tree", "root": str(_PROJECT_ROOT),
+            "max_depth": max_depth, "entries": tree}
+
+
+def _tool_qbot_project_files(_args: dict | None = None) -> dict[str, Any]:
+    files = []
+    for path in sorted(_PROJECT_ROOT.rglob("*")):
+        if any(p in _SKIP_DIRS for p in path.parts):
+            continue
+        if not path.is_file():
+            continue
+        try:
+            st = path.stat()
+        except OSError:
+            continue
+        rel = path.relative_to(_PROJECT_ROOT).as_posix()
+        files.append({
+            "path": rel,
+            "size_bytes": st.st_size,
+            "modified_at": datetime.fromtimestamp(st.st_mtime, timezone.utc).isoformat(),
+        })
+        if len(files) >= 200:
+            files.append({"path": "...", "size_bytes": -1,
+                          "modified_at": "truncated"})
+            break
+    return {"tool": "qbot_project_files", "root": str(_PROJECT_ROOT),
+            "count": len(files), "files": files}
+
+
+def _tool_qbot_project_recent_commits(args: dict | None = None) -> dict[str, Any]:
+    limit_raw = (args or {}).get("limit", 10)
+    try:
+        limit = int(limit_raw)
+    except (ValueError, TypeError):
+        return {"tool": "qbot_project_recent_commits",
+                "error": f"invalid limit: {limit_raw!r}"}
+    if limit < 1:
+        limit = 1
+    if limit > 30:
+        limit = 30
+
+    try:
+        proc = subprocess.run(
+            ["git", "--no-pager", "log", f"-{limit}", "--format=%h %s"],
+            capture_output=True, text=True, timeout=5,
+            cwd=str(_PROJECT_ROOT),
+        )
+    except Exception as exc:
+        return {"tool": "qbot_project_recent_commits", "error": str(exc)}
+
+    if proc.returncode != 0:
+        return {"tool": "qbot_project_recent_commits",
+                "error": proc.stderr.strip()}
+
+    commits = [l.strip() for l in proc.stdout.strip().splitlines() if l]
+    return {"tool": "qbot_project_recent_commits", "count": len(commits),
+            "commits": commits}
+
+
+def _tool_qbot_project_diff_summary(_args: dict | None = None) -> dict[str, Any]:
+    def _git(cmd: list[str]) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["git", "--no-pager"] + cmd,
+            capture_output=True, text=True, timeout=5,
+            cwd=str(_PROJECT_ROOT),
+        )
+
+    status_proc = _git(["status", "--short"])
+    diff_stat = _git(["diff", "--stat"])
+    diff_names = _git(["diff", "--name-only"])
+
+    result: dict[str, Any] = {
+        "tool": "qbot_project_diff_summary",
+        "status_short": [l for l in status_proc.stdout.strip().splitlines() if l],
+        "diff_stat": [l for l in diff_stat.stdout.strip().splitlines() if l],
+        "diff_files": [l for l in diff_names.stdout.strip().splitlines() if l],
+    }
+    if status_proc.returncode != 0:
+        result.setdefault("errors", []).append(f"status: {status_proc.stderr.strip()}")
+    if diff_stat.returncode != 0:
+        result.setdefault("errors", []).append(f"diff_stat: {diff_stat.stderr.strip()}")
+    return result
+
+
+def _tool_qbot_project_guard_check(_args: dict | None = None) -> dict[str, Any]:
+    violations: list[dict[str, Any]] = []
+
+    result = _tool_qbot_project_diff_summary()
+    diff_files = result.get("diff_files", [])
+    status_lines = result.get("status_short", [])
+    all_names = "\n".join(status_lines + diff_files).lower()
+
+    if "qbot_qlab_server.py" in all_names:
+        violations.append({"what": "qbot_qlab_server.py modified", "severity": "ERROR"})
+
+    if ".env.example" in all_names:
+        violations.append({"what": ".env.example modified", "severity": "WARN"})
+
+    if "gate" in all_names or "hikconnect" in all_names:
+        violations.append({"what": "Gate/HikConnect detected in changes", "severity": "ERROR"})
+
+    gate_path = _PROJECT_ROOT / "gate_hikconnect.py"
+    if gate_path.exists():
+        violations.append({"what": "gate_hikconnect.py exists on disk", "severity": "ERROR"})
+
+    api_listening = subprocess.run(
+        ["ss", "-ltnp"], capture_output=True, text=True, timeout=5
+    ).stdout
+    if "0.0.0.0:8001" in api_listening:
+        violations.append({"what": "API listening on 0.0.0.0", "severity": "ERROR"})
+
+    git_result = _tool_qbot_git_status()
+    if not git_result.get("clean", True):
+        violations.append({"what": "repo has uncommitted changes", "severity": "WARN"})
+
+    severities = [v["severity"] for v in violations]
+    if "ERROR" in severities:
+        status = "ERROR"
+    elif "WARN" in severities:
+        status = "WARN"
+    else:
+        status = "OK"
+
+    return {
+        "tool": "qbot_project_guard_check",
+        "status": status,
+        "violations": violations,
+    }

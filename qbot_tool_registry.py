@@ -8,6 +8,11 @@ from qbot_tools import (
     _tool_qbot_api_tools_list,
     _tool_qbot_db_overview,
     _tool_qbot_git_status,
+    _tool_qbot_project_diff_summary,
+    _tool_qbot_project_files,
+    _tool_qbot_project_guard_check,
+    _tool_qbot_project_recent_commits,
+    _tool_qbot_project_tree,
     _tool_qbot_recent_tool_calls,
     _tool_qbot_services_status,
     _tool_qbot_status,
@@ -63,6 +68,36 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_project_tree": {
+        "description": "Drzewo katalogów projektu (max_depth 1–4)",
+        "category": "project",
+        "safe": True,
+        "args_schema": {"max_depth": 2},
+    },
+    "qbot_project_files": {
+        "description": "Lista plików projektu z rozmiarem i datą modyfikacji",
+        "category": "project",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_project_recent_commits": {
+        "description": "Ostatnie commity Git (limit 1–30)",
+        "category": "project",
+        "safe": True,
+        "args_schema": {"limit": 10},
+    },
+    "qbot_project_diff_summary": {
+        "description": "Podsumowanie zmian roboczych: status, diff --stat, lista plików",
+        "category": "project",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_project_guard_check": {
+        "description": "Sprawdzenie naruszeń zasad: qbot_qlab, Gate, env, port",
+        "category": "project",
+        "safe": True,
+        "args_schema": {},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -74,4 +109,9 @@ TOOLS: dict[str, Any] = {
     "qbot_db_overview": _tool_qbot_db_overview,
     "qbot_system_overview": _tool_qbot_system_overview,
     "qbot_api_self_check": _tool_qbot_api_self_check,
+    "qbot_project_tree": _tool_qbot_project_tree,
+    "qbot_project_files": _tool_qbot_project_files,
+    "qbot_project_recent_commits": _tool_qbot_project_recent_commits,
+    "qbot_project_diff_summary": _tool_qbot_project_diff_summary,
+    "qbot_project_guard_check": _tool_qbot_project_guard_check,
 }
