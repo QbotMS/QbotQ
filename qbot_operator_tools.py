@@ -461,6 +461,8 @@ _OPERATOR_RUNBOOK_TOOLS: dict[str, list[str]] = {
     "legacy_shadow_readiness": ["qbot_legacy_safe_execution_report", "qbot_legacy_readonly_wrapper_report", "qbot_legacy_migration_plan", "qbot_project_guard_check", "qbot_operator_final_smoke_test"],
     "legacy_shadow_mode": ["qbot_legacy_shadow_report", "qbot_legacy_safe_execution_report", "qbot_legacy_readonly_wrapper_report", "qbot_legacy_health_report"],
     "legacy_cutover_review": ["qbot_legacy_shadow_report", "qbot_legacy_cutover_plan", "qbot_operator_final_smoke_test", "qbot_project_guard_check"],
+    "legacy_cutover_gate": ["qbot_legacy_cutover_readiness_gate", "qbot_legacy_manual_cutover_plan", "qbot_legacy_takeover_status", "qbot_project_guard_check", "qbot_operator_final_smoke_test"],
+    "legacy_cutover_llm_context": ["qbot_legacy_cutover_answer_context", "qbot_llm_boundary_policy"],
 }
 
 _ALLOWED_RUNBOOK_NAMES: set[str] = set(_OPERATOR_RUNBOOK_TOOLS.keys())
@@ -521,7 +523,14 @@ def _operator_dispatch(tool_name: str):
         pass
     try:
         from qbot_legacy_shadow_tools import _get_legacy_shadow_tool
-        return _get_legacy_shadow_tool(tool_name)
+        func = _get_legacy_shadow_tool(tool_name)
+        if func:
+            return func
+    except ImportError:
+        pass
+    try:
+        from qbot_legacy_cutover_tools import _get_legacy_cutover_tool
+        return _get_legacy_cutover_tool(tool_name)
     except ImportError:
         return None
 

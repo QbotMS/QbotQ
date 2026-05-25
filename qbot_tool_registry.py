@@ -88,6 +88,13 @@ from qbot_legacy_shadow_tools import (
     _tool_qbot_legacy_shadow_report,
 )
 
+from qbot_legacy_cutover_tools import (
+    _tool_qbot_legacy_cutover_answer_context,
+    _tool_qbot_legacy_cutover_readiness_gate,
+    _tool_qbot_legacy_manual_cutover_plan,
+    _tool_qbot_legacy_takeover_status,
+)
+
 from qbot_ops_tools import (
     _tool_qbot_backup_plan,
     _tool_qbot_backup_status,
@@ -472,6 +479,30 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_legacy_cutover_readiness_gate": {
+        "description": "Finalna bramka gotowości do cutover — PASS/PASS_WITH_WARNINGS/BLOCKED",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_manual_cutover_plan": {
+        "description": "Dokładny plan manualnego przełączenia — PLAN_ONLY, komendy tylko do przeglądu",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_cutover_answer_context": {
+        "description": "Zsanitizowany kontekst cutover readiness gate + plan dla LLM",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_takeover_status": {
+        "description": "Syntetyczny status przejęcia starego Q — fazy, procent, gotowość",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -536,4 +567,8 @@ TOOLS: dict[str, Any] = {
     "qbot_legacy_shadow_report": _tool_qbot_legacy_shadow_report,
     "qbot_legacy_shadow_answer_context": _tool_qbot_legacy_shadow_answer_context,
     "qbot_legacy_cutover_plan": _tool_qbot_legacy_cutover_plan,
+    "qbot_legacy_cutover_readiness_gate": _tool_qbot_legacy_cutover_readiness_gate,
+    "qbot_legacy_manual_cutover_plan": _tool_qbot_legacy_manual_cutover_plan,
+    "qbot_legacy_cutover_answer_context": _tool_qbot_legacy_cutover_answer_context,
+    "qbot_legacy_takeover_status": _tool_qbot_legacy_takeover_status,
 }

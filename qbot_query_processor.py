@@ -561,6 +561,31 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "required_data": ["None"],
         "limitations": ["Plan only — PLAN_ONLY", "No actions executed", "Requires manual approval"],
     },
+    {
+        "keywords": ["cutover readiness", "czy można przełączyć starego q",
+                      "bramka cutover", "czy można zrobić cutover"],
+        "tool": "qbot_legacy_cutover_readiness_gate",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["All Qbot subsystems", "Legacy diagnostics", "Shadow report"],
+        "limitations": ["Readiness check only", "No cutover executed"],
+    },
+    {
+        "keywords": ["manual cutover plan", "plan manualnego przełączenia", "jak przełączyć q"],
+        "tool": "qbot_legacy_manual_cutover_plan",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["None"],
+        "limitations": ["PLAN_ONLY", "All commands for human review only"],
+    },
+    {
+        "keywords": ["status przejęcia starego q", "ile przejęcia starego q", "takeover status"],
+        "tool": "qbot_legacy_takeover_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Cutover readiness gate"],
+        "limitations": ["Read-only status report"],
+    },
 ]
 
 _EXAMPLES = [
