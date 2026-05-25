@@ -133,7 +133,20 @@ _EXAMPLES = [
     "ostatnie commity",
     "czy są jakieś zmiany",
     "sprawdź bezpieczeństwo",
+    "sprawdź stan Q, repo i guard",
+    "pełny przegląd",
 ]
+
+_MULTI_TOOL_SETS: dict[str, list[str]] = {
+    "wszystko": ["qbot_api_self_check", "qbot_system_overview", "qbot_db_overview",
+                  "qbot_git_status", "qbot_project_guard_check"],
+    "pełny przegląd": ["qbot_api_self_check", "qbot_system_overview", "qbot_db_overview",
+                        "qbot_git_status", "qbot_project_guard_check"],
+    "kompletny status": ["qbot_api_self_check", "qbot_system_overview", "qbot_db_overview",
+                          "qbot_git_status", "qbot_project_guard_check"],
+}
+
+_MULTI_TOOL_LIMIT = 5
 
 
 def _unknown_plan(query: str, reason: str) -> dict[str, Any]:
@@ -143,6 +156,7 @@ def _unknown_plan(query: str, reason: str) -> dict[str, Any]:
         "intent": "unknown_intent",
         "selected_tool": None,
         "confidence": "low",
+        "execution_mode": "preview_only",
         "execution_plan": {
             "mode": "single_tool",
             "steps": [
@@ -154,6 +168,9 @@ def _unknown_plan(query: str, reason: str) -> dict[str, Any]:
                  "reason": reason},
             ],
         },
+        "planned_tools": [],
+        "preview_only": True,
+        "tool_result": None,
         "required_data": [],
         "limitations": ["No intent matched — try a different query or use a direct tool"],
         "reason": reason,
@@ -161,41 +178,19 @@ def _unknown_plan(query: str, reason: str) -> dict[str, Any]:
     }
 
 
-def process_query(query: str) -> dict[str, Any]:
-    q = (query or "").strip().lower()
-    if not q:
-        return _unknown_plan(query, "empty_query")
-
-    best = None
-    best_score = 0
-    matched_kws: list[str] = []
-    for entry in _INTENT_MAP:
-        score = 0
-        kws: list[str] = []
-        for kw in entry["keywords"]:
-            if kw in q:
-                kws.append(kw)
-                score += len(kw)
-        if score > best_score:
-            best_score = score
-            best = entry
-            matched_kws = kws
-
-    if best is None or best_score == 0:
-        return _unknown_plan(query, "unknown_intent")
-
-    tool_name = best["tool"]
+def _single_tool_result(query: str, entry: dict[str, Any],
+                        matched_kws: list[str], best_score: int) -> dict[str, Any]:
+    tool_name = entry["tool"]
     if tool_name not in TOOLS:
         return _unknown_plan(query, f"tool {tool_name} not in registry")
 
     classify_ok = {"step": 1, "action": "classify_intent", "status": "ok",
                    "reason": f"matched_keywords: {matched_kws}"}
-
     select_ok = {"step": 2, "action": "select_tool", "status": "ok",
                  "tool": tool_name, "reason": "intent maps to allowlisted tool"}
 
     try:
-        tool_result = TOOLS[tool_name](best["args"])
+        tool_result = TOOLS[tool_name](entry["args"])
         execute_step = {"step": 3, "action": "execute_tool", "status": "ok",
                         "tool": tool_name}
     except Exception as exc:
@@ -207,15 +202,107 @@ def process_query(query: str) -> dict[str, Any]:
     return {
         "status": exec_status,
         "original_query": query,
-        "intent": best["keywords"][0],
+        "intent": entry["keywords"][0],
         "selected_tool": tool_name if exec_status == "ok" else None,
-        "confidence": best["confidence"],
+        "confidence": entry["confidence"],
+        "execution_mode": "single_tool",
         "execution_plan": {
             "mode": "single_tool",
             "steps": [classify_ok, select_ok, execute_step],
         },
-        "required_data": best.get("required_data", []),
-        "limitations": best.get("limitations", []),
+        "planned_tools": [tool_name],
+        "preview_only": False,
         "tool_result": tool_result if exec_status == "ok" else None,
+        "required_data": entry.get("required_data", []),
+        "limitations": entry.get("limitations", []),
         "notes": f"matched by keyword score {best_score}",
+    }
+
+
+def process_query(query: str) -> dict[str, Any]:
+    q = (query or "").strip().lower()
+    if not q:
+        return _unknown_plan(query, "empty_query")
+
+    # Check for full overview keywords first
+    for mt_key, mt_tools in _MULTI_TOOL_SETS.items():
+        if mt_key in q:
+            return _build_multi_preview(query, mt_tools, f"full_overview:{mt_key}")
+
+    # Scan all intents — collect matches with scores > 0
+    matches: list[tuple[int, dict[str, Any], list[str]]] = []
+    for entry in _INTENT_MAP:
+        score = 0
+        kws: list[str] = []
+        for kw in entry["keywords"]:
+            if kw in q:
+                kws.append(kw)
+                score += len(kw)
+        if score > 0:
+            matches.append((score, entry, kws))
+
+    if not matches:
+        return _unknown_plan(query, "unknown_intent")
+
+    # Detect multi-tool conjunction words
+    conjunctions = {"i", ",", "oraz", "też", "także", "plus"}
+    has_conjunction = any(c in q for c in conjunctions)
+
+    if has_conjunction and len(matches) >= 2:
+        tools: list[str] = []
+        seen: set[str] = set()
+        for _score, entry, _kws in matches:
+            t = entry["tool"]
+            if t not in seen:
+                tools.append(t)
+                seen.add(t)
+        if len(tools) >= 2:
+            if len(tools) > _MULTI_TOOL_LIMIT:
+                tools = tools[:_MULTI_TOOL_LIMIT]
+            return _build_multi_preview(query, tools, f"matched {len(matches)} intents with conjunction")
+
+    # Single-tool: use best match
+    best_score, best, matched_kws = max(matches, key=lambda x: x[0])
+    return _single_tool_result(query, best, matched_kws, best_score)
+
+
+def _build_multi_preview(query: str, tools: list[str], reason: str) -> dict[str, Any]:
+    valid = [t for t in tools if t in TOOLS]
+    if len(valid) > _MULTI_TOOL_LIMIT:
+        valid = valid[:_MULTI_TOOL_LIMIT]
+
+    steps: list[dict[str, Any]] = [
+        {"step": 1, "action": "classify_intent", "status": "ok",
+         "reason": reason},
+        {"step": 2, "action": "build_multi_tool_plan", "status": "ok",
+         "tools": valid, "reason": f"{len(valid)} allowlisted tools selected"},
+        {"step": 3, "action": "preview_tools", "status": "skipped",
+         "reason": "preview only — tools were not executed"},
+    ]
+
+    limitations: list[str] = [
+        "Preview only; tools were not executed",
+        "No arbitrary command execution",
+        "Only allowlisted tools can appear in plan",
+    ]
+    if len(tools) > _MULTI_TOOL_LIMIT:
+        limitations.append(f"Plan truncated to {_MULTI_TOOL_LIMIT} tools")
+
+    return {
+        "status": "ok",
+        "original_query": query,
+        "intent": "multi_tool_preview",
+        "selected_tool": None,
+        "confidence": "medium",
+        "execution_mode": "preview_only",
+        "execution_plan": {
+            "mode": "preview_only",
+            "steps": steps,
+        },
+        "planned_tools": valid,
+        "preview_only": True,
+        "tool_result": None,
+        "required_data": [],
+        "limitations": limitations,
+        "notes": "multi-tool preview — no tools executed",
     }
