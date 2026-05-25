@@ -46,8 +46,62 @@ def _tool_qbot_status() -> dict[str, Any]:
     }
 
 
+_SERVICES = [
+    "q-bot.service",
+    "qbot-qlab-server.service",
+    "qbot-api.service",
+    "postgresql.service",
+]
+
+
+def _tool_qbot_services_status() -> dict[str, Any]:
+    results = []
+    for svc in _SERVICES:
+        try:
+            proc = subprocess.run(
+                ["systemctl", "show", svc,
+                 "--property=ActiveState,SubState,LoadState,UnitFileState"],
+                capture_output=True, text=True, timeout=5,
+            )
+        except Exception as exc:
+            results.append({"name": svc, "error": str(exc), "status": "ERROR"})
+            continue
+
+        props = {}
+        for line in proc.stdout.strip().splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                props[k] = v
+
+        active_state = props.get("ActiveState", "unknown")
+        sub_state = props.get("SubState", "unknown")
+        load_state = props.get("LoadState", "unknown")
+        unit_file_state = props.get("UnitFileState")
+
+        if active_state == "active" and sub_state in ("running", "exited"):
+            status = "OK"
+        elif active_state == "active":
+            status = "WARN"
+        else:
+            status = "ERROR"
+
+        entry: dict[str, Any] = {
+            "name": svc,
+            "active_state": active_state,
+            "sub_state": sub_state,
+            "load_state": load_state,
+            "status": status,
+        }
+        if unit_file_state is not None:
+            entry["unit_file_state"] = unit_file_state
+        results.append(entry)
+
+    return {"tool": "qbot_services_status", "services": results}
+
+
 TOOLS: dict[str, Any] = {
     "qbot_status": _tool_qbot_status,
+    "qbot_services_status": _tool_qbot_services_status,
 }
 
 
