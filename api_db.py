@@ -6,6 +6,8 @@ import psycopg
 from psycopg.rows import dict_row
 
 
+_DB_CONNECT_TIMEOUT_SEC = int(os.getenv("PG_CONNECT_TIMEOUT", "5"))
+
 def _conn():
     return psycopg.connect(
         host=os.getenv("PGHOST", "localhost"),
@@ -14,6 +16,7 @@ def _conn():
         user=os.getenv("PGUSER", "qbot"),
         password=os.getenv("PGPASSWORD", ""),
         row_factory=dict_row,
+        connect_timeout=_DB_CONNECT_TIMEOUT_SEC,
     )
 
 

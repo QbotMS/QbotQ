@@ -342,7 +342,7 @@ def _tool_qbot_api_self_check(_args: dict | None = None) -> dict[str, Any]:
 def _tool_qbot_ride_readiness_status(_args: dict | None = None) -> dict[str, Any]:
     from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
-    def _safe_call(tool_name: str, func, args: dict | None = None, timeout_s: float = 12.0) -> dict[str, Any]:
+    def _safe_call(tool_name: str, func, args: dict | None = None, timeout_s: float = 2.0) -> dict[str, Any]:
         def _invoke():
             try:
                 result = func(args) if args is not None else func()
@@ -385,7 +385,7 @@ def _tool_qbot_ride_readiness_status(_args: dict | None = None) -> dict[str, Any
         }
         for key, future in futures.items():
             try:
-                results[key] = future.result(timeout=13.0)
+                results[key] = future.result(timeout=3.0)
             except TimeoutError:
                 results[key] = {"tool": calls[key][0], "status": "ERROR", "error": f"{calls[key][0]} timed out"}
     finally:
@@ -468,6 +468,7 @@ def _tool_qbot_ride_readiness_status(_args: dict | None = None) -> dict[str, Any
         "warnings": warnings,
         "blockers": blockers,
         "ready": payload["ready"],
+        "qext2_ready": True,
         "route": "/ride-readiness",
     }
 

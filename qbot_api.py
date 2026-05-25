@@ -119,6 +119,76 @@ def _db_check():
         DB_AVAILABLE = False
 
 
+def _xert_sync_fetch(xert_email: str, xert_password: str) -> dict:
+    import httpx
+
+    with httpx.Client(timeout=3.0, trust_env=False) as client:
+        token_resp = client.post(
+            "https://www.xertonline.com/oauth/token",
+            auth=("xert_public", "xert_public"),
+            data={
+                "grant_type": "password",
+                "username": xert_email,
+                "password": xert_password,
+            },
+        )
+        if token_resp.status_code != 200:
+            return {}
+        token = token_resp.json().get("access_token")
+        if not token:
+            return {}
+
+        training_resp = client.get(
+            "https://www.xertonline.com/oauth/training",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if training_resp.status_code != 200:
+            return {}
+        data = training_resp.json()
+
+    advice = data.get("advice", {})
+    sig = advice.get("signature", {})
+
+    ftp_raw = sig.get("ftp", 0)
+    ltp_raw = sig.get("ltp", 0)
+    atc_raw = sig.get("atc", 0)
+
+    return {
+        "ftp_watts": round(float(ftp_raw), 1) if ftp_raw else None,
+        "ltp_watts": round(float(ltp_raw), 1) if ltp_raw else None,
+        "w_prime_kj": round(float(atc_raw) / 1000, 1) if atc_raw else None,
+    }
+
+
+def _intervals_weight_sync() -> dict:
+    import base64, httpx
+    from datetime import date
+
+    athlete_id = os.getenv("INTERVALS_ATHLETE_ID", "")
+    api_key = os.getenv("INTERVALS_API_KEY", "")
+    if not athlete_id or not api_key:
+        return {}
+
+    token = base64.b64encode(f"API_KEY:{api_key}".encode()).decode()
+    today = date.today().isoformat()
+
+    with httpx.Client(timeout=2.0, trust_env=False) as client:
+        resp = client.get(
+            f"https://intervals.icu/api/v1/athlete/{athlete_id}/wellness",
+            params={"oldest": today, "newest": today},
+            headers={"Authorization": f"Basic {token}"},
+        )
+        if resp.status_code != 200:
+            return {}
+        data = resp.json()
+
+    for entry in data or []:
+        if entry.get("id") == today and entry.get("weight"):
+            return {"weight_kg": round(entry["weight"], 1)}
+
+    return {}  # no weight today, caller will handle
+
+
 @app.on_event("startup")
 def startup():
     try:
@@ -139,25 +209,181 @@ def health():
     }
 
 
+def _ping_db() -> bool:
+    import api_db
+    return api_db.ping()
+
+
 @app.get("/ride-readiness")
 @app.get("/ride-readiness/")
-def ride_readiness():
-    result = _tool_qbot_ride_readiness_status({})
-    payload = result.get("payload_preview") if isinstance(result, dict) else None
-    if not isinstance(payload, dict):
-        payload = {
-            "status": "error",
-            "ready": False,
-            "source": "qbot",
-            "service": "ride-readiness",
-            "qbot_core": "UNKNOWN",
-            "legacy_takeover_percent": 0,
-            "telegram": "WARN",
-            "mcp": "WARN",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "warnings": ["ride readiness payload unavailable"],
-            "blockers": ["ride readiness tool unavailable"],
+async def ride_readiness():
+    import asyncio, time as _time
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+
+    OVERALL_SEC = float(os.getenv("RIDE_READINESS_TIMEOUT_SEC", "5"))
+
+    async def _core():
+        t0 = _time.perf_counter()
+        print("[RIDE_READINESS_START]", flush=True)
+        warnings: list[str] = []
+        blockers: list[str] = []
+
+        # ── Lightweight local DB check ──────────────────────────
+        db_start = _time.perf_counter()
+        db_ok = False
+        try:
+            db_ok = await asyncio.wait_for(
+                asyncio.get_running_loop().run_in_executor(
+                    ThreadPoolExecutor(max_workers=1),
+                    _ping_db,
+                ),
+                timeout=2.0,
+            )
+        except (asyncio.TimeoutError, FutureTimeoutError):
+            warnings.append("db_ping_timeout")
+            print(f"[RIDE_READINESS_SECTION name=db status=TIMEOUT elapsed_ms={(_time.perf_counter()-db_start)*1000:.0f}]", flush=True)
+        except Exception as exc:
+            warnings.append(f"db_ping_error: {exc}")
+            print(f"[RIDE_READINESS_SECTION name=db status=ERROR elapsed_ms={(_time.perf_counter()-db_start)*1000:.0f}]", flush=True)
+        else:
+            print(f"[RIDE_READINESS_SECTION name=db status={'OK' if db_ok else 'FAIL'} elapsed_ms={(_time.perf_counter()-db_start)*1000:.0f}]", flush=True)
+
+        if not db_ok:
+            blockers.append("database not connected")
+
+        # ── QExt2 athlete metrics from Xert ──────────────────────
+        xert_start = _time.perf_counter()
+        ftp_watts = None
+        ltp_watts = None
+        w_prime_kj = None
+        xert_email = os.getenv("XERT_EMAIL", "")
+        xert_password = os.getenv("XERT_PASSWORD", "")
+
+        if xert_email and xert_password:
+            try:
+                xert_data = await asyncio.wait_for(
+                    asyncio.get_running_loop().run_in_executor(
+                        ThreadPoolExecutor(max_workers=1),
+                        _xert_sync_fetch,
+                        xert_email,
+                        xert_password,
+                    ),
+                    timeout=2.5,
+                )
+                if isinstance(xert_data, dict):
+                    ftp_watts = xert_data.get("ftp_watts")
+                    ltp_watts = xert_data.get("ltp_watts")
+                    w_prime_kj = xert_data.get("w_prime_kj")
+                    if ftp_watts:
+                        print(f"[RIDE_READINESS_SECTION name=xert status=OK elapsed_ms={(_time.perf_counter()-xert_start)*1000:.0f} ftp={ftp_watts}]", flush=True)
+                    else:
+                        warnings.append("xert: empty response")
+                        print(f"[RIDE_READINESS_SECTION name=xert status=WARN elapsed_ms={(_time.perf_counter()-xert_start)*1000:.0f}]", flush=True)
+            except (asyncio.TimeoutError, FutureTimeoutError):
+                warnings.append("xert_timeout")
+                print(f"[RIDE_READINESS_SECTION name=xert status=TIMEOUT elapsed_ms={(_time.perf_counter()-xert_start)*1000:.0f}]", flush=True)
+            except Exception as exc:
+                warnings.append(f"xert_error: {exc}")
+                print(f"[RIDE_READINESS_SECTION name=xert status=ERROR error={exc} elapsed_ms={(_time.perf_counter()-xert_start)*1000:.0f}]", flush=True)
+        else:
+            warnings.append("xert credentials not configured")
+            print("[RIDE_READINESS_SECTION name=xert status=SKIP reason=no_credentials]", flush=True)
+
+        # ── Try weight from Intervals.icu wellness ─────────────────
+        try:
+            weight_data = await asyncio.wait_for(
+                asyncio.get_running_loop().run_in_executor(
+                    ThreadPoolExecutor(max_workers=1),
+                    _intervals_weight_sync,
+                ),
+                timeout=2.0,
+            )
+            weight_kg = weight_data.get("weight_kg") if isinstance(weight_data, dict) else None
+        except (asyncio.TimeoutError, FutureTimeoutError, Exception):
+            weight_kg = None
+
+        # ── QExt2 readiness logic ─────────────────────────────────
+        # MCP is informational for QExt2 — never a blocker
+        mcp_status = "UNKNOWN"
+
+        # qbot_core based only on lightweight local health
+        if db_ok:
+            qbot_core = "OK"
+        else:
+            qbot_core = "WARN"
+
+        # Core readiness: athlete data present AND DB online
+        xert_ok = bool(ftp_watts and ltp_watts and w_prime_kj)
+        core_ok = xert_ok and db_ok
+
+        if not xert_ok and db_ok:
+            warnings.append("athlete power metrics unavailable from Xert")
+        if not xert_ok:
+            blockers.append("athlete power metrics unavailable")
+
+        if core_ok and not blockers:
+            status = "READY"
+        elif core_ok:
+            status = "READY_WITH_WARNINGS"
+        else:
+            status = "NOT_READY"
+
+        payload: dict = {
+            "ok": core_ok,
+            "status": status,
+            "source": "qbot-api",
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+            "warnings": warnings,
+            "qbot_core": qbot_core,
+            "telegram": "UNKNOWN",
+            "mcp": mcp_status,
+            "legacy_takeover_percent": 100,
+            "ready": core_ok,
+            "blockers": blockers,
         }
+
+        if core_ok:
+            payload["wPrimeKj"] = w_prime_kj
+            payload["ltpWatts"] = ltp_watts
+            payload["ftpWatts"] = ftp_watts
+        else:
+            reasons: list[str] = []
+            if not ftp_watts:
+                reasons.append("ftpWatts unavailable")
+            if not ltp_watts:
+                reasons.append("ltpWatts unavailable")
+            if not w_prime_kj:
+                reasons.append("wPrimeKj unavailable")
+            if not db_ok:
+                reasons.append("database not connected")
+            payload["reasons"] = reasons
+
+        if weight_kg is not None:
+            payload["weightKg"] = weight_kg
+
+        elapsed_ms = (_time.perf_counter() - t0) * 1000
+        print(f"[RIDE_READINESS_DONE status={status} ok={core_ok} ready={core_ok} elapsed_ms={elapsed_ms:.0f}]", flush=True)
+        return payload
+
+    try:
+        payload = await asyncio.wait_for(
+            _core(),
+            timeout=OVERALL_SEC,
+        )
+    except asyncio.TimeoutError:
+        print("[RIDE_READINESS_FAILED reason=overall_timeout]", flush=True)
+        payload = {
+            "ok": False,
+            "status": "NOT_READY",
+            "source": "qbot-api",
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+            "warnings": ["ride readiness timed out"],
+            "reasons": ["readiness check exceeded maximum time"],
+            "qbot_core": "UNKNOWN",
+            "ready": False,
+            "blockers": ["readiness check timed out"],
+        }
+
     return JSONResponse(content=payload, status_code=200)
 
 
