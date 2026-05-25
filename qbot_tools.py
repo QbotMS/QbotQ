@@ -504,7 +504,8 @@ def _tool_qbot_project_guard_check(_args: dict | None = None) -> dict[str, Any]:
 
 def _tool_qbot_query(args: dict | None = None) -> dict[str, Any]:
     query = (args or {}).get("query", "")
+    execute = (args or {}).get("execute", False) is True
     from qbot_query_processor import process_query
-    result = process_query(query)
+    result = process_query(query, execute)
     result["tool"] = "qbot_query"
     return result

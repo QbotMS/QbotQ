@@ -5,6 +5,19 @@ from typing import Any
 
 from qbot_tool_registry import TOOLS
 
+_SAFE_MULTI_EXECUTE_TOOLS: set[str] = {
+    "qbot_api_self_check",
+    "qbot_git_status",
+    "qbot_project_guard_check",
+    "qbot_services_status",
+    "qbot_db_overview",
+    "qbot_system_overview",
+    "qbot_project_diff_summary",
+    "qbot_project_recent_commits",
+    "qbot_recent_tool_calls",
+    "qbot_api_tools_list",
+}
+
 _INTENT_MAP: list[dict[str, Any]] = [
     {
         "keywords": ["stan q", "status q", "self check", "czy działa", "sprawdź wszystko",
@@ -149,6 +162,13 @@ _MULTI_TOOL_SETS: dict[str, list[str]] = {
 _MULTI_TOOL_LIMIT = 5
 
 
+def _get_tool_args(tool_name: str) -> dict[str, Any]:
+    for entry in _INTENT_MAP:
+        if entry["tool"] == tool_name:
+            return entry["args"]
+    return {}
+
+
 def _unknown_plan(query: str, reason: str) -> dict[str, Any]:
     return {
         "status": "error",
@@ -171,6 +191,8 @@ def _unknown_plan(query: str, reason: str) -> dict[str, Any]:
         "planned_tools": [],
         "preview_only": True,
         "tool_result": None,
+        "executed_tools": [],
+        "tool_results": None,
         "required_data": [],
         "limitations": ["No intent matched — try a different query or use a direct tool"],
         "reason": reason,
@@ -213,23 +235,26 @@ def _single_tool_result(query: str, entry: dict[str, Any],
         "planned_tools": [tool_name],
         "preview_only": False,
         "tool_result": tool_result if exec_status == "ok" else None,
+        "executed_tools": [tool_name] if exec_status == "ok" else [],
+        "tool_results": {tool_name: tool_result} if exec_status == "ok" else None,
         "required_data": entry.get("required_data", []),
         "limitations": entry.get("limitations", []),
         "notes": f"matched by keyword score {best_score}",
     }
 
 
-def process_query(query: str) -> dict[str, Any]:
+def process_query(query: str, execute: bool = False) -> dict[str, Any]:
     q = (query or "").strip().lower()
     if not q:
         return _unknown_plan(query, "empty_query")
 
-    # Check for full overview keywords first
     for mt_key, mt_tools in _MULTI_TOOL_SETS.items():
         if mt_key in q:
-            return _build_multi_preview(query, mt_tools, f"full_overview:{mt_key}")
+            tool_args_list: list[tuple[str, dict[str, Any]]] = [
+                (t, _get_tool_args(t)) for t in mt_tools if t in TOOLS
+            ]
+            return _build_multi_preview(query, tool_args_list, f"full_overview:{mt_key}", execute)
 
-    # Scan all intents — collect matches with scores > 0
     matches: list[tuple[int, dict[str, Any], list[str]]] = []
     for entry in _INTENT_MAP:
         score = 0
@@ -244,65 +269,156 @@ def process_query(query: str) -> dict[str, Any]:
     if not matches:
         return _unknown_plan(query, "unknown_intent")
 
-    # Detect multi-tool conjunction words
     conjunctions = {"i", ",", "oraz", "też", "także", "plus"}
     has_conjunction = any(c in q for c in conjunctions)
 
     if has_conjunction and len(matches) >= 2:
-        tools: list[str] = []
+        tool_args_list: list[tuple[str, dict[str, Any]]] = []
         seen: set[str] = set()
         for _score, entry, _kws in matches:
             t = entry["tool"]
             if t not in seen:
-                tools.append(t)
+                tool_args_list.append((t, entry["args"]))
                 seen.add(t)
-        if len(tools) >= 2:
-            if len(tools) > _MULTI_TOOL_LIMIT:
-                tools = tools[:_MULTI_TOOL_LIMIT]
-            return _build_multi_preview(query, tools, f"matched {len(matches)} intents with conjunction")
+        if len(tool_args_list) >= 2:
+            if len(tool_args_list) > _MULTI_TOOL_LIMIT:
+                tool_args_list = tool_args_list[:_MULTI_TOOL_LIMIT]
+            return _build_multi_preview(query, tool_args_list,
+                                        f"matched {len(matches)} intents with conjunction", execute)
 
-    # Single-tool: use best match
     best_score, best, matched_kws = max(matches, key=lambda x: x[0])
     return _single_tool_result(query, best, matched_kws, best_score)
 
 
-def _build_multi_preview(query: str, tools: list[str], reason: str) -> dict[str, Any]:
-    valid = [t for t in tools if t in TOOLS]
+def _build_multi_preview(query: str, tool_args_list: list[tuple[str, dict[str, Any]]],
+                          reason: str, execute: bool = False) -> dict[str, Any]:
+    valid = [(t, a) for t, a in tool_args_list if t in TOOLS]
     if len(valid) > _MULTI_TOOL_LIMIT:
         valid = valid[:_MULTI_TOOL_LIMIT]
 
-    steps: list[dict[str, Any]] = [
+    tool_names = [t for t, _ in valid]
+
+    if not execute:
+        steps: list[dict[str, Any]] = [
+            {"step": 1, "action": "classify_intent", "status": "ok",
+             "reason": reason},
+            {"step": 2, "action": "build_multi_tool_plan", "status": "ok",
+             "tools": tool_names, "reason": f"{len(valid)} allowlisted tools selected"},
+            {"step": 3, "action": "preview_tools", "status": "skipped",
+             "reason": "preview only — tools were not executed"},
+        ]
+
+        limitations: list[str] = [
+            "Preview only; tools were not executed",
+            "No arbitrary command execution",
+            "Only allowlisted tools can appear in plan",
+        ]
+        if len(tool_args_list) > _MULTI_TOOL_LIMIT:
+            limitations.append(f"Plan truncated to {_MULTI_TOOL_LIMIT} tools")
+
+        return {
+            "status": "ok",
+            "original_query": query,
+            "intent": "multi_tool_preview",
+            "selected_tool": None,
+            "confidence": "medium",
+            "execution_mode": "preview_only",
+            "execution_plan": {
+                "mode": "preview_only",
+                "steps": steps,
+            },
+            "planned_tools": tool_names,
+            "preview_only": True,
+            "tool_result": None,
+            "executed_tools": [],
+            "tool_results": None,
+            "required_data": [],
+            "limitations": limitations,
+            "notes": "multi-tool preview — no tools executed",
+        }
+
+    safe_valid = [(t, a) for t, a in valid if t in _SAFE_MULTI_EXECUTE_TOOLS]
+
+    execute_steps: list[dict[str, Any]] = [
         {"step": 1, "action": "classify_intent", "status": "ok",
          "reason": reason},
         {"step": 2, "action": "build_multi_tool_plan", "status": "ok",
-         "tools": valid, "reason": f"{len(valid)} allowlisted tools selected"},
-        {"step": 3, "action": "preview_tools", "status": "skipped",
-         "reason": "preview only — tools were not executed"},
+         "tools": [t for t, _ in safe_valid],
+         "reason": f"{len(safe_valid)} allowlisted tools selected for execution"},
     ]
 
-    limitations: list[str] = [
-        "Preview only; tools were not executed",
+    executed_tools: list[str] = []
+    tool_results: dict[str, Any] = {}
+    has_error = False
+    has_ok = False
+
+    step_num = 3
+    for tool_name, tool_args in safe_valid:
+        try:
+            result = TOOLS[tool_name](tool_args)
+            if isinstance(result, dict) and result.get("status") == "error":
+                has_error = True
+                execute_steps.append({
+                    "step": step_num, "action": "execute_tool",
+                    "tool": tool_name, "status": "error",
+                    "reason": result.get("error", "tool returned error"),
+                })
+            else:
+                has_ok = True
+                execute_steps.append({
+                    "step": step_num, "action": "execute_tool",
+                    "tool": tool_name, "status": "ok",
+                })
+            tool_results[tool_name] = result
+        except Exception as exc:
+            has_error = True
+            execute_steps.append({
+                "step": step_num, "action": "execute_tool",
+                "tool": tool_name, "status": "error",
+                "reason": str(exc),
+            })
+            tool_results[tool_name] = {"error": str(exc), "tool": tool_name}
+        executed_tools.append(tool_name)
+        step_num += 1
+
+    skipped = [t for t, _ in valid if t not in _SAFE_MULTI_EXECUTE_TOOLS]
+    if skipped:
+        execute_steps.append({
+            "step": step_num, "action": "skip_tool",
+            "tools": skipped, "status": "skipped",
+            "reason": "not in SAFE_MULTI_EXECUTE_TOOLS",
+        })
+
+    if has_error and has_ok:
+        status = "partial"
+    elif has_error:
+        status = "error"
+    else:
+        status = "ok"
+
+    limitations = [
+        "Controlled multi-tool execution",
+        "Only allowlisted tools were executed",
         "No arbitrary command execution",
-        "Only allowlisted tools can appear in plan",
     ]
-    if len(tools) > _MULTI_TOOL_LIMIT:
-        limitations.append(f"Plan truncated to {_MULTI_TOOL_LIMIT} tools")
 
     return {
-        "status": "ok",
+        "status": status,
         "original_query": query,
-        "intent": "multi_tool_preview",
+        "intent": "multi_tool_execution",
         "selected_tool": None,
         "confidence": "medium",
-        "execution_mode": "preview_only",
+        "execution_mode": "multi_tool_execute",
         "execution_plan": {
-            "mode": "preview_only",
-            "steps": steps,
+            "mode": "multi_tool_execute",
+            "steps": execute_steps,
         },
-        "planned_tools": valid,
-        "preview_only": True,
+        "planned_tools": tool_names,
+        "preview_only": False,
         "tool_result": None,
+        "executed_tools": executed_tools,
+        "tool_results": tool_results,
         "required_data": [],
         "limitations": limitations,
-        "notes": "multi-tool preview — no tools executed",
+        "notes": "multi-tool execution — tools were executed from allowlist",
     }
