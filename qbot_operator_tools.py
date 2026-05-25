@@ -452,6 +452,9 @@ _OPERATOR_RUNBOOK_TOOLS: dict[str, list[str]] = {
     "llm_prep": ["qbot_llm_boundary_policy", "qbot_answer_context"],
     "legacy_review": ["qbot_legacy_status", "qbot_legacy_error_summary", "qbot_legacy_health_report"],
     "legacy_llm_context": ["qbot_legacy_answer_context", "qbot_llm_boundary_policy"],
+    "legacy_inventory": ["qbot_legacy_file_inventory", "qbot_legacy_entrypoint_inventory", "qbot_legacy_capability_scan", "qbot_legacy_dependency_inventory"],
+    "legacy_migration_review": ["qbot_legacy_migration_plan", "qbot_legacy_health_report", "qbot_project_guard_check", "qbot_git_status"],
+    "legacy_migration_llm_context": ["qbot_legacy_inventory_answer_context", "qbot_llm_boundary_policy"],
 }
 
 _ALLOWED_RUNBOOK_NAMES: set[str] = set(_OPERATOR_RUNBOOK_TOOLS.keys())
@@ -484,7 +487,14 @@ def _operator_dispatch(tool_name: str):
         pass
     try:
         from qbot_legacy_tools import _get_legacy_tool
-        return _get_legacy_tool(tool_name)
+        func = _get_legacy_tool(tool_name)
+        if func:
+            return func
+    except ImportError:
+        pass
+    try:
+        from qbot_legacy_inventory_tools import _get_legacy_inventory_tool
+        return _get_legacy_inventory_tool(tool_name)
     except ImportError:
         return None
 

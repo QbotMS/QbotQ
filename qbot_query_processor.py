@@ -393,6 +393,46 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "required_data": ["systemd q-bot.service", "guard check", "services status"],
         "limitations": ["Read-only diagnostic", "No restarts or modifications"],
     },
+    {
+        "keywords": ["co robi stary q", "capability scan", "funkcje starego q"],
+        "tool": "qbot_legacy_capability_scan",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Filesystem at /opt/qbot/app"],
+        "limitations": ["Static scanning only", "No code execution", "No secret reading"],
+    },
+    {
+        "keywords": ["entrypointy starego q", "jak startuje stary q"],
+        "tool": "qbot_legacy_entrypoint_inventory",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["systemd q-bot.service", "Filesystem at /opt/qbot/app"],
+        "limitations": ["Read-only", "No execution of detected entrypoints"],
+    },
+    {
+        "keywords": ["pliki starego q", "inventory starego q"],
+        "tool": "qbot_legacy_file_inventory",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Filesystem at /opt/qbot/app"],
+        "limitations": ["Max 300 files", "Skips secrets and .env", "Read-only"],
+    },
+    {
+        "keywords": ["zależności starego q", "dependency inventory"],
+        "tool": "qbot_legacy_dependency_inventory",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["requirements.txt", "Python files", "systemd services"],
+        "limitations": ["Static analysis", "No pip execution"],
+    },
+    {
+        "keywords": ["plan migracji starego q", "jak przejąć starego q", "legacy migration plan"],
+        "tool": "qbot_legacy_migration_plan",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["All legacy inventory tools", "Guard check", "Git status"],
+        "limitations": ["Plan only — no migration steps executed", "Read-only"],
+    },
 ]
 
 _EXAMPLES = [

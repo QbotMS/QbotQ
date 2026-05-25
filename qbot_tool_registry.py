@@ -53,6 +53,15 @@ from qbot_legacy_tools import (
     _tool_qbot_legacy_status,
 )
 
+from qbot_legacy_inventory_tools import (
+    _tool_qbot_legacy_capability_scan,
+    _tool_qbot_legacy_dependency_inventory,
+    _tool_qbot_legacy_entrypoint_inventory,
+    _tool_qbot_legacy_file_inventory,
+    _tool_qbot_legacy_inventory_answer_context,
+    _tool_qbot_legacy_migration_plan,
+)
+
 from qbot_ops_tools import (
     _tool_qbot_backup_plan,
     _tool_qbot_backup_status,
@@ -299,6 +308,42 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_legacy_file_inventory": {
+        "description": "Inventory plików starego Q — lista, rozmiary, kategorie",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_entrypoint_inventory": {
+        "description": "Wykrywa potencjalne entrypointy starego Q — systemd, shebangi, main",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_capability_scan": {
+        "description": "Skanuje pliki w poszukiwaniu funkcji starego Q — qlab, garmin, sync, ride itp.",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_dependency_inventory": {
+        "description": "Mapuje zależności starego Q — pip, importy, systemd, external services",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_migration_plan": {
+        "description": "Plan migracji starego Q do nowej architektury — fazy, ryzyka, priorytety",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_inventory_answer_context": {
+        "description": "Zsanitizowany kontekst inventory/migration legacy Q dla LLM",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -340,4 +385,10 @@ TOOLS: dict[str, Any] = {
     "qbot_legacy_error_summary": _tool_qbot_legacy_error_summary,
     "qbot_legacy_health_report": _tool_qbot_legacy_health_report,
     "qbot_legacy_answer_context": _tool_qbot_legacy_answer_context,
+    "qbot_legacy_file_inventory": _tool_qbot_legacy_file_inventory,
+    "qbot_legacy_entrypoint_inventory": _tool_qbot_legacy_entrypoint_inventory,
+    "qbot_legacy_capability_scan": _tool_qbot_legacy_capability_scan,
+    "qbot_legacy_dependency_inventory": _tool_qbot_legacy_dependency_inventory,
+    "qbot_legacy_migration_plan": _tool_qbot_legacy_migration_plan,
+    "qbot_legacy_inventory_answer_context": _tool_qbot_legacy_inventory_answer_context,
 }
