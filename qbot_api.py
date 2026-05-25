@@ -30,6 +30,10 @@ def _telegram_response_text(command: str, result: dict) -> str | None:
         text = response.get("summary_text")
         if text:
             return str(text)
+    if command in {"/weather_status", "/garage_status", "/artifacts", "/integrations"} and isinstance(response, dict):
+        text = result.get("text") or response.get("summary_text") or response.get("text")
+        if text:
+            return str(text)
     if command == "/legacy":
         text = result.get("text") if isinstance(result, dict) else None
         if text:
@@ -226,6 +230,47 @@ async def telegram_webhook(webhook_secret: str, request: Request):
     elif command == "/takeover":
         from qbot_legacy_cutover_tools import _tool_qbot_legacy_takeover_status
         result = {"command": "/takeover", "response": _tool_qbot_legacy_takeover_status()}
+    elif command == "/weather_status":
+        from qbot_legacy_parity_tools import _tool_qbot_weather_legacy_status
+        response = _tool_qbot_weather_legacy_status()
+        result = {
+            "command": "/weather_status",
+            "response": response,
+            "text": "Weather legacy:\n"
+                    f"ℹ️ status: {response.get('status', 'UNKNOWN')}\n"
+                    f"ℹ️ current: {response.get('current_new_qbot_status', 'unknown')}\n"
+                    f"ℹ️ proposed tools: {', '.join(response.get('proposed_tools', []))}",
+        }
+    elif command == "/garage_status":
+        from qbot_legacy_parity_tools import _tool_qbot_garage_legacy_status
+        response = _tool_qbot_garage_legacy_status()
+        result = {
+            "command": "/garage_status",
+            "response": response,
+            "text": "Garage legacy:\n"
+                    f"ℹ️ status: {response.get('status', 'UNKNOWN')}\n"
+                    f"ℹ️ safety: {response.get('safety_class', 'UNKNOWN')}\n"
+                    f"ℹ️ note: no remote opening/closing implemented",
+        }
+    elif command == "/artifacts":
+        from qbot_legacy_parity_tools import _tool_qbot_artifacts_legacy_status
+        response = _tool_qbot_artifacts_legacy_status()
+        result = {
+            "command": "/artifacts",
+            "response": response,
+            "text": "Artifacts legacy:\n"
+                    f"ℹ️ status: {response.get('status', 'UNKNOWN')}\n"
+                    f"ℹ️ filesystem root: {response.get('filesystem_artifacts_root', 'unknown')}\n"
+                    f"ℹ️ bridge: {'present' if response.get('bridge_present') else 'partial/missing'}",
+        }
+    elif command == "/integrations":
+        from qbot_legacy_parity_tools import _tool_qbot_external_integrations_report
+        response = _tool_qbot_external_integrations_report()
+        result = {
+            "command": "/integrations",
+            "response": response,
+            "text": response.get("summary_text") or "External integrations report unavailable",
+        }
     elif command == "/ask":
         if not query:
             result = {"command": "/ask", "response": {"status": "error", "error": "empty query"}}

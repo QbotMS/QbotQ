@@ -106,6 +106,16 @@ _RUNBOOKS: list[dict[str, Any]] = [
         "required_data": ["MCP adapter status", "MCP tool list", "final smoke test", "project guard"],
         "limitations": ["Delegates to qbot_operator_runbook", "Preview only by default"],
     },
+    {
+        "name": "legacy_full_parity_review",
+        "keywords": ["legacy full parity review", "full parity audit", "legacy parity review", "pełny audyt legacy"],
+        "tools": [
+            ("qbot_operator_runbook", {"name": "legacy_full_parity_review", "execute": False}),
+        ],
+        "description": "Legacy full parity review — broad audit across all historical QBot capabilities",
+        "required_data": ["legacy parity audit", "parity matrix", "weather", "garage/gate", "artifacts", "telegram/mcp", "backup", "routes"],
+        "limitations": ["Delegates to qbot_operator_runbook", "Preview only by default"],
+    },
 ]
 
 _INTENT_MAP: list[dict[str, Any]] = [
@@ -133,6 +143,54 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "confidence": "high",
         "required_data": ["MCP adapter metadata"],
         "limitations": ["Static tool mapping", "Read-only"],
+    },
+    {
+        "keywords": ["pogoda legacy", "openweathermap", "weather legacy", "weather status"],
+        "tool": "qbot_weather_legacy_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Legacy weather/OpenWeatherMap code scan", "current weather path"],
+        "limitations": ["Read-only audit", "No external weather API calls"],
+    },
+    {
+        "keywords": ["garaż legacy", "garaz legacy", "brama legacy", "garage status", "gate legacy"],
+        "tool": "qbot_garage_legacy_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Legacy garage/gate/home automation code scan"],
+        "limitations": ["Read-only audit", "No garage/gate execution"],
+    },
+    {
+        "keywords": ["artifacts legacy", "kontener artefaktów", "kontener artefaktow", "artifacts container", "artifact bridge"],
+        "tool": "qbot_artifacts_legacy_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Filesystem artifacts", "PostgreSQL qbot_artifacts", "workspace roots"],
+        "limitations": ["Read-only audit", "No file writes"],
+    },
+    {
+        "keywords": ["wszystkie integracje", "external integrations", "all integrations", "integracje zewnętrzne"],
+        "tool": "qbot_external_integrations_report",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Weather", "garage/home automation", "artifacts", "telegram", "MCP", "email/webhooks"],
+        "limitations": ["Read-only audit", "No secret exposure"],
+    },
+    {
+        "keywords": ["legacy parity matrix", "macierz parity", "parity matrix"],
+        "tool": "qbot_legacy_parity_matrix",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Legacy parity matrix metadata"],
+        "limitations": ["Read-only matrix", "No legacy actions"],
+    },
+    {
+        "keywords": ["legacy full parity audit", "pełny audyt legacy", "full parity audit", "all legacy services"],
+        "tool": "qbot_legacy_full_parity_audit",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Legacy parity matrix", "service inventories", "public endpoints"],
+        "limitations": ["Read-only audit", "No legacy actions"],
     },
     {
         "keywords": ["usługi", "services", "systemd", "czy działa q-bot",

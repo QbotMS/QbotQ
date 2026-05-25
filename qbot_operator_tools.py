@@ -18,6 +18,15 @@ from qbot_tools import (
 )
 from qbot_mcp_adapter import _tool_qbot_mcp_status, _tool_qbot_mcp_tools_list
 
+from qbot_legacy_parity_tools import (
+    _tool_qbot_artifacts_legacy_status,
+    _tool_qbot_external_integrations_report,
+    _tool_qbot_garage_legacy_status,
+    _tool_qbot_legacy_full_parity_audit,
+    _tool_qbot_legacy_parity_matrix,
+    _tool_qbot_weather_legacy_status,
+)
+
 _MAX_ERROR_OUTPUT = 300
 
 
@@ -465,6 +474,16 @@ _OPERATOR_RUNBOOK_TOOLS: dict[str, list[str]] = {
     "legacy_review": ["qbot_legacy_status", "qbot_legacy_error_summary", "qbot_legacy_health_report"],
     "legacy_llm_context": ["qbot_legacy_answer_context", "qbot_llm_boundary_policy"],
     "legacy_inventory": ["qbot_legacy_file_inventory", "qbot_legacy_entrypoint_inventory", "qbot_legacy_capability_scan", "qbot_legacy_dependency_inventory"],
+    "legacy_full_parity_review": [
+        "qbot_legacy_full_parity_audit",
+        "qbot_legacy_parity_matrix",
+        "qbot_weather_legacy_status",
+        "qbot_garage_legacy_status",
+        "qbot_artifacts_legacy_status",
+        "qbot_external_integrations_report",
+        "qbot_operator_final_smoke_test",
+        "qbot_project_guard_check",
+    ],
     "legacy_migration_review": ["qbot_legacy_migration_plan", "qbot_legacy_health_report", "qbot_project_guard_check", "qbot_git_status"],
     "legacy_migration_llm_context": ["qbot_legacy_inventory_answer_context", "qbot_llm_boundary_policy"],
     "legacy_readonly_wrappers": ["qbot_legacy_export_status", "qbot_legacy_garmin_status", "qbot_legacy_qlab_status", "qbot_legacy_sync_status", "qbot_legacy_readonly_wrapper_report"],
@@ -524,6 +543,13 @@ def _operator_dispatch(tool_name: str):
     try:
         from qbot_legacy_inventory_tools import _get_legacy_inventory_tool
         func = _get_legacy_inventory_tool(tool_name)
+        if func:
+            return func
+    except ImportError:
+        pass
+    try:
+        from qbot_legacy_parity_tools import _get_legacy_parity_tool
+        func = _get_legacy_parity_tool(tool_name)
         if func:
             return func
     except ImportError:

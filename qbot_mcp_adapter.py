@@ -149,6 +149,34 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+    "qbot.weather_legacy_status": {
+        "qbot_tool": "qbot_weather_legacy_status",
+        "description": "Read-only weather/OpenWeatherMap legacy status.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.garage_legacy_status": {
+        "qbot_tool": "qbot_garage_legacy_status",
+        "description": "Read-only garage / gate / home automation legacy status.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.artifacts_legacy_status": {
+        "qbot_tool": "qbot_artifacts_legacy_status",
+        "description": "Read-only filesystem artifacts and PostgreSQL artifact bridge status.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.external_integrations_report": {
+        "qbot_tool": "qbot_external_integrations_report",
+        "description": "Read-only combined report for external integrations.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
 }
 
 

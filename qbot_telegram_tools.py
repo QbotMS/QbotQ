@@ -367,6 +367,10 @@ def _tool_qbot_telegram_command_help(_args: dict | None = None) -> dict[str, Any
             {"command": "/backup", "description": "Backup status overview"},
             {"command": "/errors", "description": "Recent error summary"},
             {"command": "/takeover", "description": "Legacy takeover status"},
+            {"command": "/weather_status", "description": "Legacy weather / OpenWeatherMap status"},
+            {"command": "/garage_status", "description": "Legacy garage / gate / home automation status"},
+            {"command": "/artifacts", "description": "Artifacts container status"},
+            {"command": "/integrations", "description": "External integrations overview"},
             {"command": "/ask <query>", "description": "Natural language query via Qbot policy engine"},
         ],
         "security_notes": [

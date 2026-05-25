@@ -68,6 +68,15 @@ from qbot_legacy_inventory_tools import (
     _tool_qbot_legacy_migration_plan,
 )
 
+from qbot_legacy_parity_tools import (
+    _tool_qbot_artifacts_legacy_status,
+    _tool_qbot_external_integrations_report,
+    _tool_qbot_garage_legacy_status,
+    _tool_qbot_legacy_full_parity_audit,
+    _tool_qbot_legacy_parity_matrix,
+    _tool_qbot_weather_legacy_status,
+)
+
 from qbot_legacy_wrapper_tools import (
     _tool_qbot_legacy_capability_status,
     _tool_qbot_legacy_export_status,
@@ -441,6 +450,42 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_weather_legacy_status": {
+        "description": "Read-only status legacy weather/OpenWeatherMap coverage and current weather parity",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_garage_legacy_status": {
+        "description": "Read-only status legacy garage / gate / home automation coverage",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_artifacts_legacy_status": {
+        "description": "Read-only status legacy filesystem artifacts vs PostgreSQL artifact bridge",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_external_integrations_report": {
+        "description": "Zbiorczy read-only raport integracji zewnętrznych — weather, garage, artifacts, telegram, MCP, email",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_parity_matrix": {
+        "description": "Macierz parity dla wszystkich legacy capabilities — status, evidence, missing tools",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_full_parity_audit": {
+        "description": "Pełny read-only audit legacy parity obejmujący wszystkie stare usługi QBot",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
     "qbot_legacy_export_status": {
         "description": "Status capability export — pliki, symbole, logi, readiness",
         "category": "legacy",
@@ -785,6 +830,12 @@ TOOLS: dict[str, Any] = {
     "qbot_legacy_dependency_inventory": _tool_qbot_legacy_dependency_inventory,
     "qbot_legacy_migration_plan": _tool_qbot_legacy_migration_plan,
     "qbot_legacy_inventory_answer_context": _tool_qbot_legacy_inventory_answer_context,
+    "qbot_weather_legacy_status": _tool_qbot_weather_legacy_status,
+    "qbot_garage_legacy_status": _tool_qbot_garage_legacy_status,
+    "qbot_artifacts_legacy_status": _tool_qbot_artifacts_legacy_status,
+    "qbot_external_integrations_report": _tool_qbot_external_integrations_report,
+    "qbot_legacy_parity_matrix": _tool_qbot_legacy_parity_matrix,
+    "qbot_legacy_full_parity_audit": _tool_qbot_legacy_full_parity_audit,
     "qbot_legacy_export_status": _tool_qbot_legacy_export_status,
     "qbot_legacy_garmin_status": _tool_qbot_legacy_garmin_status,
     "qbot_legacy_qlab_status": _tool_qbot_legacy_qlab_status,
