@@ -71,9 +71,29 @@ def _tool_qbot_status(_args: dict | None = None) -> dict[str, Any]:
 
 
 def _tool_qbot_services_status(_args: dict | None = None) -> dict[str, Any]:
+    try:
+        from qbot_legacy_cutover_tools import _tool_qbot_legacy_cutover_status
+        cutover = _tool_qbot_legacy_cutover_status()
+        cutover_completed = bool(cutover.get("cutover_completed"))
+    except Exception:
+        cutover = {"status": "UNKNOWN"}
+        cutover_completed = False
+
+    services: list[dict[str, Any]] = []
+    for svc in _SERVICES:
+        entry = _service_status(svc)
+        if svc == "q-bot.service" and cutover_completed:
+            if entry.get("active_state") != "active" and entry.get("unit_file_state") in ("disabled", "masked", "static"):
+                entry["status"] = "OK"
+                entry["expected_after_cutover"] = True
+                entry["note"] = "legacy service disabled after cutover"
+        services.append(entry)
+
     return {
         "tool": "qbot_services_status",
-        "services": [_service_status(s) for s in _SERVICES],
+        "cutover_completed": cutover_completed,
+        "cutover_status": cutover,
+        "services": services,
     }
 
 

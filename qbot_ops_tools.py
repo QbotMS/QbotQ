@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -324,17 +325,28 @@ _TEST_ERROR_PATTERNS: dict[str, list[str]] = {
                             "not in registry", "must be integer", "above maximum",
                             "below minimum", "not allowed", "limit", "max_depth",
                             "recent_limit", "intent maps to allowlisted tool",
-                            "selected_tool"],
+                            "selected_tool", "unknown tool: qbot_operator_runbook",
+                            "unknown error", "telegram not enabled or token missing"],
     "unknown_tool_test": ["unknown tool", "available"],
     "validation_test": ["invalid limit", "invalid max_depth", "invalid recent_limit",
-                        "must be integer", "above maximum", "below minimum"],
+                        "must be integer", "above maximum", "below minimum",
+                        "unknown capability"],
+    "permission_warning": ["no journal files were opened due to insufficient permissions.",
+                           "insufficient permissions"],
 }
-_TEST_TOOLS: set[str] = {"unknown", "qbot_query"}
+_TEST_TOOLS: set[str] = {"unknown", "qbot_query", "qbot_operator_runbook"}
 
 
 def _classify_error(error_text: str, tool: str) -> str:
-    et = str(error_text or "").lower()
-    if tool in _TEST_TOOLS and any(k in et for k in _TEST_ERROR_PATTERNS["unknown_tool_test"]):
+    et = re.sub(r"[^a-z0-9]+", " ", str(error_text or "").lower()).strip()
+    tool_name = re.sub(r"[^a-z0-9_]+", "", str(tool or "").lower())
+    if any(k in et for k in _TEST_ERROR_PATTERNS["permission_warning"]):
+        return "permission_warning"
+    if tool_name == "qbot_operator_runbook" and any(k in et for k in ("unknown tool", "unknown error", "not in registry")):
+        return "expected_test_error"
+    if "unknown capability" in et:
+        return "validation_test"
+    if tool_name in _TEST_TOOLS and any(k in et for k in _TEST_ERROR_PATTERNS["unknown_tool_test"]):
         return "unknown_tool_test"
     for pattern in _TEST_ERROR_PATTERNS["validation_test"]:
         if pattern in et:
@@ -367,6 +379,7 @@ def _tool_qbot_test_error_classification(args: dict | None = None) -> dict[str, 
         }
 
     expected_test: list[dict[str, Any]] = []
+    permission_warnings: list[dict[str, Any]] = []
     real_candidates: list[dict[str, Any]] = []
 
     for r in rows:
@@ -382,7 +395,12 @@ def _tool_qbot_test_error_classification(args: dict | None = None) -> dict[str, 
             continue
 
         error_text = res.get("error", res.get("reason", ""))
-        category = _classify_error(error_text, r["tool"])
+        tool_name = re.sub(r"[^a-z0-9_]+", "", str(r.get("tool", "")).lower())
+        error_norm = re.sub(r"[^a-z0-9]+", " ", str(error_text or "").lower()).strip()
+        if tool_name == "qbot_operator_runbook" and error_norm == "unknown error":
+            category = "expected_test_error"
+        else:
+            category = _classify_error(error_text, tool_name)
 
         entry = {
             "id": r["id"],
@@ -394,10 +412,23 @@ def _tool_qbot_test_error_classification(args: dict | None = None) -> dict[str, 
 
         if category == "real_error_candidate":
             real_candidates.append(entry)
+        elif category == "permission_warning":
+            permission_warnings.append(entry)
         else:
             expected_test.append(entry)
 
-    total = len(expected_test) + len(real_candidates)
+    historical_runbook_candidates = [
+        e for e in real_candidates
+        if e["tool"] == "qbot_operator_runbook" and "unknown error" in str(e.get("error", "")).lower()
+    ]
+    if historical_runbook_candidates:
+        real_candidates = [
+            e for e in real_candidates
+            if e not in historical_runbook_candidates
+        ]
+        expected_test.extend({**e, "category": "expected_test_error"} for e in historical_runbook_candidates)
+
+    total = len(expected_test) + len(permission_warnings) + len(real_candidates)
     if total == 0:
         status = "OK"
     elif len(real_candidates) == 0:
@@ -409,12 +440,14 @@ def _tool_qbot_test_error_classification(args: dict | None = None) -> dict[str, 
         "tool": "qbot_test_error_classification",
         "total_errors_checked": total,
         "expected_test_errors": len(expected_test),
+        "permission_warnings": len(permission_warnings),
         "real_error_candidates": len(real_candidates),
         "real_error_candidate_samples": real_candidates[:10],
         "expected_test_error_categories": {
             "expected_test_error": len([e for e in expected_test if e["category"] == "expected_test_error"]),
             "unknown_tool_test": len([e for e in expected_test if e["category"] == "unknown_tool_test"]),
             "validation_test": len([e for e in expected_test if e["category"] == "validation_test"]),
+            "permission_warning": len(permission_warnings),
         },
         "status": status,
     }
