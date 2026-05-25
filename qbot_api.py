@@ -158,10 +158,58 @@ def _tool_qbot_recent_tool_calls(args: dict | None = None) -> dict[str, Any]:
     return {"tool": "qbot_recent_tool_calls", "count": len(entries), "calls": entries}
 
 
+_GIT_REPO = Path("/opt/qbot/app")
+
+
+def _tool_qbot_git_status(_args: dict | None = None) -> dict[str, Any]:
+    def _run(cmd: list[str]):
+        return subprocess.run(
+            cmd, capture_output=True, text=True, timeout=5,
+            cwd=str(_GIT_REPO),
+        )
+
+    branch = "unknown"
+    commit = "unknown"
+    clean = False
+    status_short: list[str] = []
+    errors: list[str] = []
+
+    proc = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+    if proc.returncode == 0:
+        branch = proc.stdout.strip()
+    else:
+        errors.append(f"branch: {proc.stderr.strip()}")
+
+    proc = _run(["git", "rev-parse", "HEAD"])
+    if proc.returncode == 0:
+        commit = proc.stdout.strip()[:12]
+    else:
+        errors.append(f"commit: {proc.stderr.strip()}")
+
+    proc = _run(["git", "status", "--short"])
+    if proc.returncode == 0:
+        status_short = [l for l in proc.stdout.strip().splitlines() if l]
+        clean = len(status_short) == 0
+    else:
+        errors.append(f"status: {proc.stderr.strip()}")
+
+    result: dict[str, Any] = {
+        "tool": "qbot_git_status",
+        "branch": branch,
+        "commit": commit,
+        "clean": clean,
+        "status_short": status_short,
+    }
+    if errors:
+        result["errors"] = errors
+    return result
+
+
 TOOLS: dict[str, Any] = {
     "qbot_status": _tool_qbot_status,
     "qbot_services_status": _tool_qbot_services_status,
     "qbot_recent_tool_calls": _tool_qbot_recent_tool_calls,
+    "qbot_git_status": _tool_qbot_git_status,
 }
 
 
