@@ -72,6 +72,15 @@ from qbot_legacy_wrapper_tools import (
     _tool_qbot_legacy_wrapper_answer_context,
 )
 
+from qbot_legacy_execution_tools import (
+    _tool_qbot_legacy_export_dry_run,
+    _tool_qbot_legacy_garmin_dry_run,
+    _tool_qbot_legacy_qlab_smoke_check,
+    _tool_qbot_legacy_safe_execution_answer_context,
+    _tool_qbot_legacy_safe_execution_report,
+    _tool_qbot_legacy_sync_dry_run,
+)
+
 from qbot_ops_tools import (
     _tool_qbot_backup_plan,
     _tool_qbot_backup_status,
@@ -396,6 +405,42 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_legacy_qlab_smoke_check": {
+        "description": "Bezpieczny smoke check QLab server — sprawdza lokalnie endpointy health/status",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_export_dry_run": {
+        "description": "Dry-run dla capability export — bez tworzenia eksportu",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_sync_dry_run": {
+        "description": "Dry-run dla capability sync — bez synchronizacji i network",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_garmin_dry_run": {
+        "description": "Dry-run dla capability garmin — bez logowania do Garmin",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_safe_execution_report": {
+        "description": "Zbiorczy raport Phase 2 — smoke check, dry-runs, shadow readiness",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_safe_execution_answer_context": {
+        "description": "Zsanitizowany kontekst safe execution report dla LLM",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -450,4 +495,10 @@ TOOLS: dict[str, Any] = {
     "qbot_legacy_capability_status": _tool_qbot_legacy_capability_status,
     "qbot_legacy_readonly_wrapper_report": _tool_qbot_legacy_readonly_wrapper_report,
     "qbot_legacy_wrapper_answer_context": _tool_qbot_legacy_wrapper_answer_context,
+    "qbot_legacy_qlab_smoke_check": _tool_qbot_legacy_qlab_smoke_check,
+    "qbot_legacy_export_dry_run": _tool_qbot_legacy_export_dry_run,
+    "qbot_legacy_sync_dry_run": _tool_qbot_legacy_sync_dry_run,
+    "qbot_legacy_garmin_dry_run": _tool_qbot_legacy_garmin_dry_run,
+    "qbot_legacy_safe_execution_report": _tool_qbot_legacy_safe_execution_report,
+    "qbot_legacy_safe_execution_answer_context": _tool_qbot_legacy_safe_execution_answer_context,
 }

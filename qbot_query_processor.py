@@ -473,6 +473,46 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "required_data": ["All 4 capability wrappers"],
         "limitations": ["Read-only composite report", "No legacy actions"],
     },
+    {
+        "keywords": ["qlab smoke", "sprawdź qlab lokalnie", "qlab smoke check"],
+        "tool": "qbot_legacy_qlab_smoke_check",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["systemd qbot-qlab-server.service", "local HTTP to 127.0.0.1:8000"],
+        "limitations": ["Local only", "Read-only endpoints", "No data sent"],
+    },
+    {
+        "keywords": ["export dry run", "dry run export", "sprawdź export dry run"],
+        "tool": "qbot_legacy_export_dry_run",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Filesystem at /opt/qbot/app", "Export status wrapper"],
+        "limitations": ["Dry-run only", "No export created", "No files written"],
+    },
+    {
+        "keywords": ["sync dry run", "dry run sync"],
+        "tool": "qbot_legacy_sync_dry_run",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Filesystem at /opt/qbot/app", "Sync status wrapper"],
+        "limitations": ["Dry-run only", "No sync executed", "No network calls"],
+    },
+    {
+        "keywords": ["garmin dry run", "dry run garmin"],
+        "tool": "qbot_legacy_garmin_dry_run",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Filesystem at /opt/qbot/app", "Garmin status wrapper"],
+        "limitations": ["Dry-run only", "No Garmin API calls", "No tokens used"],
+    },
+    {
+        "keywords": ["safe execution report", "raport safe execution", "phase 2 report"],
+        "tool": "qbot_legacy_safe_execution_report",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["Smoke check", "Dry-run reports", "Guard check"],
+        "limitations": ["Phase 2 report only", "No real execution"],
+    },
 ]
 
 _EXAMPLES = [

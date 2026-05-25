@@ -457,6 +457,8 @@ _OPERATOR_RUNBOOK_TOOLS: dict[str, list[str]] = {
     "legacy_migration_llm_context": ["qbot_legacy_inventory_answer_context", "qbot_llm_boundary_policy"],
     "legacy_readonly_wrappers": ["qbot_legacy_export_status", "qbot_legacy_garmin_status", "qbot_legacy_qlab_status", "qbot_legacy_sync_status", "qbot_legacy_readonly_wrapper_report"],
     "legacy_takeover_review": ["qbot_legacy_readonly_wrapper_report", "qbot_legacy_migration_plan", "qbot_legacy_health_report", "qbot_project_guard_check"],
+    "legacy_safe_execution": ["qbot_legacy_qlab_smoke_check", "qbot_legacy_export_dry_run", "qbot_legacy_sync_dry_run", "qbot_legacy_garmin_dry_run", "qbot_legacy_safe_execution_report"],
+    "legacy_shadow_readiness": ["qbot_legacy_safe_execution_report", "qbot_legacy_readonly_wrapper_report", "qbot_legacy_migration_plan", "qbot_project_guard_check", "qbot_operator_final_smoke_test"],
 }
 
 _ALLOWED_RUNBOOK_NAMES: set[str] = set(_OPERATOR_RUNBOOK_TOOLS.keys())
@@ -503,7 +505,14 @@ def _operator_dispatch(tool_name: str):
         pass
     try:
         from qbot_legacy_wrapper_tools import _get_legacy_wrapper_tool
-        return _get_legacy_wrapper_tool(tool_name)
+        func = _get_legacy_wrapper_tool(tool_name)
+        if func:
+            return func
+    except ImportError:
+        pass
+    try:
+        from qbot_legacy_execution_tools import _get_legacy_execution_tool
+        return _get_legacy_execution_tool(tool_name)
     except ImportError:
         return None
 
