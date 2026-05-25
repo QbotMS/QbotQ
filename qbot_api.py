@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import os
-import platform
-import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
+
+from qbot_tool_registry import TOOLS
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -27,190 +26,6 @@ def _db_check():
         DB_AVAILABLE = api_db.ping()
     except Exception:
         DB_AVAILABLE = False
-
-
-def _tool_qbot_status(_args: dict | None = None) -> dict[str, Any]:
-    try:
-        hostname = subprocess.run(
-            ["hostname"], capture_output=True, text=True, timeout=2
-        ).stdout.strip()
-    except Exception:
-        hostname = "unknown"
-
-    return {
-        "tool": "qbot_status",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "hostname": hostname,
-        "python": platform.python_version(),
-        "pid": os.getpid(),
-    }
-
-
-_SERVICES = [
-    "q-bot.service",
-    "qbot-qlab-server.service",
-    "qbot-api.service",
-    "postgresql.service",
-]
-
-
-def _tool_qbot_services_status(_args: dict | None = None) -> dict[str, Any]:
-    results = []
-    for svc in _SERVICES:
-        try:
-            proc = subprocess.run(
-                ["systemctl", "show", svc,
-                 "--property=ActiveState,SubState,LoadState,UnitFileState"],
-                capture_output=True, text=True, timeout=5,
-            )
-        except Exception as exc:
-            results.append({"name": svc, "error": str(exc), "status": "ERROR"})
-            continue
-
-        props = {}
-        for line in proc.stdout.strip().splitlines():
-            if "=" in line:
-                k, v = line.split("=", 1)
-                props[k] = v
-
-        active_state = props.get("ActiveState", "unknown")
-        sub_state = props.get("SubState", "unknown")
-        load_state = props.get("LoadState", "unknown")
-        unit_file_state = props.get("UnitFileState")
-
-        if active_state == "active" and sub_state in ("running", "exited"):
-            status = "OK"
-        elif active_state == "active":
-            status = "WARN"
-        else:
-            status = "ERROR"
-
-        entry: dict[str, Any] = {
-            "name": svc,
-            "active_state": active_state,
-            "sub_state": sub_state,
-            "load_state": load_state,
-            "status": status,
-        }
-        if unit_file_state is not None:
-            entry["unit_file_state"] = unit_file_state
-        results.append(entry)
-
-    return {"tool": "qbot_services_status", "services": results}
-
-
-def _tool_qbot_recent_tool_calls(args: dict | None = None) -> dict[str, Any]:
-    limit_raw = (args or {}).get("limit", 10)
-    try:
-        limit = int(limit_raw)
-    except (ValueError, TypeError):
-        return {
-            "tool": "qbot_recent_tool_calls",
-            "error": f"invalid limit: {limit_raw!r}, must be integer",
-        }
-    if limit < 1:
-        return {
-            "tool": "qbot_recent_tool_calls",
-            "error": f"limit {limit} below minimum 1",
-        }
-    if limit > 50:
-        return {
-            "tool": "qbot_recent_tool_calls",
-            "error": f"limit {limit} above maximum 50",
-        }
-
-    _db_check()
-    if not DB_AVAILABLE:
-        return {
-            "tool": "qbot_recent_tool_calls",
-            "error": "database unavailable",
-        }
-
-    try:
-        import api_db
-        rows = api_db.select_tool_calls(limit)
-    except Exception as exc:
-        return {
-            "tool": "qbot_recent_tool_calls",
-            "error": f"query failed: {exc}",
-        }
-
-    entries = []
-    for r in rows:
-        entry = {
-            "id": r["id"],
-            "tool": r["tool"],
-            "created_at": r["created_at"].isoformat() if r.get("created_at") else None,
-        }
-        result = r.get("result")
-        if isinstance(result, str):
-            import json
-            try:
-                result = json.loads(result)
-            except Exception:
-                pass
-        if isinstance(result, dict):
-            entry["status"] = "ok" if "error" not in result else "error"
-        else:
-            entry["status"] = "ok"
-        entries.append(entry)
-
-    return {"tool": "qbot_recent_tool_calls", "count": len(entries), "calls": entries}
-
-
-_GIT_REPO = Path("/opt/qbot/app")
-
-
-def _tool_qbot_git_status(_args: dict | None = None) -> dict[str, Any]:
-    def _run(cmd: list[str]):
-        return subprocess.run(
-            cmd, capture_output=True, text=True, timeout=5,
-            cwd=str(_GIT_REPO),
-        )
-
-    branch = "unknown"
-    commit = "unknown"
-    clean = False
-    status_short: list[str] = []
-    errors: list[str] = []
-
-    proc = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
-    if proc.returncode == 0:
-        branch = proc.stdout.strip()
-    else:
-        errors.append(f"branch: {proc.stderr.strip()}")
-
-    proc = _run(["git", "rev-parse", "HEAD"])
-    if proc.returncode == 0:
-        commit = proc.stdout.strip()[:12]
-    else:
-        errors.append(f"commit: {proc.stderr.strip()}")
-
-    proc = _run(["git", "status", "--short"])
-    if proc.returncode == 0:
-        status_short = [l for l in proc.stdout.strip().splitlines() if l]
-        clean = len(status_short) == 0
-    else:
-        errors.append(f"status: {proc.stderr.strip()}")
-
-    result: dict[str, Any] = {
-        "tool": "qbot_git_status",
-        "branch": branch,
-        "commit": commit,
-        "clean": clean,
-        "status_short": status_short,
-    }
-    if errors:
-        result["errors"] = errors
-    return result
-
-
-TOOLS: dict[str, Any] = {
-    "qbot_status": _tool_qbot_status,
-    "qbot_services_status": _tool_qbot_services_status,
-    "qbot_recent_tool_calls": _tool_qbot_recent_tool_calls,
-    "qbot_git_status": _tool_qbot_git_status,
-}
 
 
 @app.on_event("startup")
