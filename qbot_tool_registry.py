@@ -81,6 +81,13 @@ from qbot_legacy_execution_tools import (
     _tool_qbot_legacy_sync_dry_run,
 )
 
+from qbot_legacy_shadow_tools import (
+    _tool_qbot_legacy_cutover_plan,
+    _tool_qbot_legacy_shadow_answer_context,
+    _tool_qbot_legacy_shadow_probe,
+    _tool_qbot_legacy_shadow_report,
+)
+
 from qbot_ops_tools import (
     _tool_qbot_backup_plan,
     _tool_qbot_backup_status,
@@ -441,6 +448,30 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_legacy_shadow_probe": {
+        "description": "Shadow probe dla allowlistowanej capability — porównuje legacy z nowym wrapperem",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"capability": "qlab"},
+    },
+    "qbot_legacy_shadow_report": {
+        "description": "Raport Phase 3 shadow mode — porównanie 4 capability, cutover readiness",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_shadow_answer_context": {
+        "description": "Zsanitizowany kontekst shadow report dla LLM",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_legacy_cutover_plan": {
+        "description": "Plan przełączenia cutover — PLAN_ONLY, bez wykonywania",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
 }
 
 TOOLS: dict[str, Any] = {
@@ -501,4 +532,8 @@ TOOLS: dict[str, Any] = {
     "qbot_legacy_garmin_dry_run": _tool_qbot_legacy_garmin_dry_run,
     "qbot_legacy_safe_execution_report": _tool_qbot_legacy_safe_execution_report,
     "qbot_legacy_safe_execution_answer_context": _tool_qbot_legacy_safe_execution_answer_context,
+    "qbot_legacy_shadow_probe": _tool_qbot_legacy_shadow_probe,
+    "qbot_legacy_shadow_report": _tool_qbot_legacy_shadow_report,
+    "qbot_legacy_shadow_answer_context": _tool_qbot_legacy_shadow_answer_context,
+    "qbot_legacy_cutover_plan": _tool_qbot_legacy_cutover_plan,
 }
