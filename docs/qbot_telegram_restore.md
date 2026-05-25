@@ -97,7 +97,8 @@ curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
 |---------|------|
 | /start | Powitanie i lista komend |
 | /help | Lista komend |
-| /status | Szybki status Qbot |
+| /status | Szybki status Qbot po cutover |
+| /legacy | Stan legacy Q i rollback |
 | /ready | Raport gotowości |
 | /smoke | Finalny smoke test |
 | /backup | Status backupów |
@@ -138,6 +139,18 @@ curl "https://api.telegram.org/bot<TOKEN>/deleteWebhook?drop_pending_updates=tru
 - NIE wystawiaj publicznie /docs FastAPI
 - NIE zezwalaj na CONTROLLED_ACTION przez Telegram
 - NIE dodawaj Gate/HikConnect do Telegram bota
+
+## Co pokazuje /status po cutover
+
+Komenda `/status` jest teraz cutover-aware i pokazuje krótki stan nowego Qbota:
+
+- API i DB
+- stan webhooka Telegram
+- status przejęcia legacy
+- informację, że `q-bot.service` jest wyłączony po cutover
+- informację, że ngrok nie jest używany
+
+Jeśli chcesz sprawdzić rollback lub stan starego Q, użyj `/legacy`.
 
 ## Jak nie wyciekać tokenów
 

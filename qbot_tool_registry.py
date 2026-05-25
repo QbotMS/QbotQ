@@ -694,7 +694,7 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "args_schema": {},
     },
     "qbot_telegram_status": {
-        "description": "Zbiorczy status Telegram bota — config, webhook, reachable",
+        "description": "Zbiorczy status Telegram bota po cutover — API, DB, webhook, legacy takeover",
         "category": "telegram",
         "safe": True,
         "args_schema": {},

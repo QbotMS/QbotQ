@@ -25,6 +25,38 @@ def _public_url() -> str:
     return os.getenv("QBOT_PUBLIC_BASE_URL", "")
 
 
+# ──────────── helpers ───────────────────────────────────────────────────
+
+def _tool_qbot_telegram_transport_status(_args: dict | None = None) -> dict[str, Any]:
+    config = _tool_qbot_telegram_config_status()
+    has_token = _token_ok()
+    enabled = os.getenv("TELEGRAM_ENABLED", "").lower() == "true" and has_token
+    public = _tool_qbot_public_endpoint_status()
+    wh_info: dict[str, Any] = {}
+    if has_token:
+        try:
+            from qbot_telegram_client import get_webhook_info
+            wh_info = get_webhook_info()
+        except Exception:
+            wh_info = {"ok": False, "error": "webhook check failed"}
+
+    webhook_has_url = bool(wh_info.get("result", {}).get("url")) if wh_info.get("ok") else False
+    public_ok = bool(public.get("is_https", False))
+    status = "OK" if enabled and public_ok and webhook_has_url else "WARN"
+    if config.get("status") == "ERROR" or not has_token:
+        status = "WARN"
+
+    return {
+        "tool": "qbot_telegram_transport_status",
+        "config_status": config.get("status"),
+        "enabled": enabled,
+        "bot_reachable": has_token,
+        "public_endpoint_configured": public_ok,
+        "webhook_info": {"has_url": webhook_has_url} if wh_info.get("ok") else wh_info,
+        "status": status,
+    }
+
+
 # ──────────── qbot_telegram_legacy_audit ────────────────────────────────
 
 def _tool_qbot_telegram_legacy_audit(_args: dict | None = None) -> dict[str, Any]:
@@ -148,26 +180,91 @@ def _tool_qbot_public_endpoint_status(_args: dict | None = None) -> dict[str, An
 # ──────────── qbot_telegram_status ──────────────────────────────────────
 
 def _tool_qbot_telegram_status(_args: dict | None = None) -> dict[str, Any]:
-    config = _tool_qbot_telegram_config_status()
-    has_token = _token_ok()
-    enabled = os.getenv("TELEGRAM_ENABLED", "").lower() == "true" and has_token
-    public = _tool_qbot_public_endpoint_status()
-    wh_info: dict[str, Any] = {}
-    if has_token:
-        try:
-            from qbot_telegram_client import get_webhook_info
-            wh_info = get_webhook_info()
-        except Exception:
-            wh_info = {"ok": False, "error": "webhook check failed"}
+    transport = _tool_qbot_telegram_transport_status()
+
+    try:
+        from qbot_ops_tools import _tool_qbot_operator_final_smoke_test
+        smoke = _tool_qbot_operator_final_smoke_test()
+    except Exception as exc:
+        smoke = {"tool": "qbot_operator_final_smoke_test", "status": "ERROR", "error": str(exc)}
+
+    try:
+        from qbot_operator_tools import _tool_qbot_readiness_report
+        readiness = _tool_qbot_readiness_report()
+    except Exception as exc:
+        readiness = {"tool": "qbot_readiness_report", "status": "ERROR", "error": str(exc)}
+
+    try:
+        from qbot_legacy_cutover_tools import _tool_qbot_legacy_takeover_status, _tool_qbot_legacy_cutover_status
+        takeover = _tool_qbot_legacy_takeover_status()
+        cutover = _tool_qbot_legacy_cutover_status()
+    except Exception as exc:
+        takeover = {"tool": "qbot_legacy_takeover_status", "legacy_takeover_percent": 0, "status": "ERROR", "error": str(exc)}
+        cutover = {"tool": "qbot_legacy_cutover_status", "cutover_completed": False, "legacy_service_active": True, "legacy_service_enabled": True}
+
+    smoke_status = str(smoke.get("status", "UNKNOWN")).upper()
+    readiness_status = str(readiness.get("status", "UNKNOWN")).upper()
+    transport_status = str(transport.get("status", "UNKNOWN")).upper()
+
+    api_ok = False
+    for check in smoke.get("checks", []):
+        if check.get("name") == "api_health" and str(check.get("status", "")).upper() == "OK":
+            api_ok = True
+            break
+
+    db_ok = False
+    for check in readiness.get("checks", []):
+        if check.get("name") == "db_overview" and str(check.get("status", "")).upper() == "OK":
+            db_ok = True
+            break
+    if not db_ok:
+        for check in smoke.get("checks", []):
+            if check.get("name") == "api_health" and isinstance(check.get("detail"), dict):
+                db_ok = bool(check["detail"].get("db_connected"))
+                if db_ok:
+                    break
+
+    webhook_ok = transport_status == "OK"
+    legacy_takeover_pct = int(takeover.get("legacy_takeover_percent", 0) or 0)
+    legacy_disabled = bool(cutover.get("cutover_completed")) or (
+        cutover.get("legacy_service_active") is False and cutover.get("legacy_service_enabled") is False
+    )
+    cutover_status = str(cutover.get("status", "UNKNOWN")).upper()
+
+    lines = ["Qbot status:"]
+    lines.append("✅ API działa" if api_ok else "⚠️ API: problem")
+    lines.append("✅ DB działa" if db_ok else "⚠️ DB: problem")
+    lines.append("✅ Telegram webhook działa" if webhook_ok else "⚠️ Telegram webhook: problem")
+    lines.append(f"✅ Legacy takeover: {legacy_takeover_pct}%")
+    lines.append("ℹ️ q-bot.service: disabled po cutover" if legacy_disabled else "ℹ️ q-bot.service: legacy active")
+    lines.append("ℹ️ ngrok: nieużywany")
+
+    diagnostic_status = "OK"
+    if smoke_status == "FAIL" or readiness_status == "NOT_READY" or transport_status == "ERROR" or cutover_status == "ERROR":
+        diagnostic_status = "ERROR"
+    elif smoke_status == "WARN" or readiness_status == "READY_WITH_WARNINGS" or transport_status == "WARN" or (cutover_status == "WARN" and not legacy_disabled):
+        diagnostic_status = "WARN"
+
+    core_ok = api_ok and db_ok and webhook_ok and legacy_disabled and legacy_takeover_pct >= 100
+
+    overall = "OK" if core_ok else "ERROR"
 
     return {
         "tool": "qbot_telegram_status",
-        "config_status": config.get("status"),
-        "enabled": enabled,
-        "bot_reachable": has_token,
-        "public_endpoint_configured": public.get("is_https", False),
-        "webhook_info": {"has_url": bool(wh_info.get("result", {}).get("url"))} if wh_info.get("ok") else wh_info,
-        "status": "OK" if enabled and public.get("is_https") else "WARN",
+        "status": overall,
+        "summary_text": "\n".join(lines),
+        "summary_lines": lines,
+        "api_ok": api_ok,
+        "db_ok": db_ok,
+        "telegram_webhook_ok": webhook_ok,
+        "legacy_takeover_percent": legacy_takeover_pct,
+        "legacy_qbot_disabled": legacy_disabled,
+        "operator_diagnostic_status": diagnostic_status,
+        "telegram_transport": transport,
+        "smoke_test": smoke,
+        "readiness_report": readiness,
+        "legacy_takeover_status": takeover,
+        "legacy_cutover_status": cutover,
     }
 
 
@@ -282,6 +379,7 @@ def _tool_qbot_telegram_command_help(_args: dict | None = None) -> dict[str, Any
             {"command": "/start", "description": "Welcome message and bot introduction"},
             {"command": "/help", "description": "Show this command list"},
             {"command": "/status", "description": "Quick Qbot status summary"},
+            {"command": "/legacy", "description": "Legacy cutover and rollback status"},
             {"command": "/ready", "description": "Readiness report summary"},
             {"command": "/smoke", "description": "Final smoke test result"},
             {"command": "/backup", "description": "Backup status overview"},

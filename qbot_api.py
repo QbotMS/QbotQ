@@ -120,7 +120,19 @@ async def telegram_webhook(webhook_secret: str, request: Request):
         result = {"command": "/help", "response": _tool_qbot_telegram_command_help()}
     elif command == "/status":
         from qbot_telegram_tools import _tool_qbot_telegram_status
-        result = {"command": "/status", "response": _tool_qbot_telegram_status()}
+        response = _tool_qbot_telegram_status()
+        result = {"command": "/status", "response": response, "text": response.get("summary_text", "")}
+    elif command == "/legacy":
+        from qbot_legacy_cutover_tools import _tool_qbot_legacy_cutover_status
+        response = _tool_qbot_legacy_cutover_status()
+        legacy_state = "disabled po cutover" if not response.get("legacy_service_active") and not response.get("legacy_service_enabled") else "legacy active"
+        result = {
+            "command": "/legacy",
+            "response": response,
+            "text": "Legacy status:\n"
+                    f"ℹ️ q-bot.service: {legacy_state}\n"
+                    f"ℹ️ rollback: {'available' if response.get('rollback_available') else 'unavailable'}",
+        }
     elif command == "/ready":
         from qbot_operator_tools import _tool_qbot_readiness_report
         result = {"command": "/ready", "response": _tool_qbot_readiness_report()}
