@@ -7,6 +7,12 @@ from pathlib import Path
 from datetime import datetime
 
 DB_PATH = Path(__file__).parent / "data" / "garage.db"
+ARTIFACT_ROOT = Path("/opt/qbot/artifacts")
+ARTIFACT_SCAN_LIMIT_BYTES = 200_000
+ARTIFACT_SEARCH_SUFFIXES = {
+    ".md", ".markdown", ".txt", ".json", ".html", ".htm", ".xml", ".csv",
+    ".yaml", ".yml", ".sh", ".py", ".ini", ".cfg", ".log",
+}
 
 TRIP_SCHEMA = """
 CREATE TABLE IF NOT EXISTS trips (
@@ -312,6 +318,7 @@ def save_memory_append(topic: str, content: str) -> dict:
 
 def search_garage(query: str) -> dict:
     q = f"%{query}%"
+    needle = (query or "").strip().lower()
     with _conn() as c:
         bikes = _rows(c.execute(
             "SELECT id, name, brand, model, type FROM bikes WHERE "
@@ -332,7 +339,45 @@ def search_garage(query: str) -> dict:
             "SELECT id, topic, content FROM memories WHERE topic LIKE ? OR content LIKE ?",
             (q, q)
         ))
-    return {"bikes": bikes, "components": components, "gear": gear, "memories": memories}
+    artifacts = []
+    if needle and ARTIFACT_ROOT.exists():
+        for path in sorted(ARTIFACT_ROOT.rglob("*")):
+            if not path.is_file():
+                continue
+            try:
+                resolved = path.resolve(strict=False)
+                if not resolved.is_relative_to(ARTIFACT_ROOT):
+                    continue
+            except Exception:
+                continue
+            rel = path.relative_to(ARTIFACT_ROOT).as_posix()
+            hay_parts = [rel.lower()]
+            text = ""
+            if path.suffix.lower() in ARTIFACT_SEARCH_SUFFIXES:
+                try:
+                    text = path.read_bytes()[:ARTIFACT_SCAN_LIMIT_BYTES].decode("utf-8", errors="replace")
+                    hay_parts.append(text.lower())
+                except Exception:
+                    text = ""
+            if needle not in "\n".join(hay_parts):
+                continue
+            snippet = None
+            if text:
+                idx = text.lower().find(needle)
+                if idx >= 0:
+                    start = max(0, idx - 120)
+                    end = min(len(text), idx + max(len(query), 120))
+                    snippet = text[start:end].strip()
+            artifacts.append({
+                "relative_path": rel,
+                "name": path.name,
+                "size_bytes": path.stat().st_size,
+                "match_in": "filename" if needle in rel.lower() else "content",
+                "snippet": snippet,
+            })
+            if len(artifacts) >= 25:
+                break
+    return {"bikes": bikes, "components": components, "gear": gear, "memories": memories, "artifacts": artifacts}
 
 
 def update_item(table: str, item_id: int, changes: dict) -> dict:
