@@ -1,0 +1,19 @@
+[Unit]
+Description=Q API — FastAPI thin layer
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=qbot
+Group=qbot
+WorkingDirectory=/opt/qbot/app
+EnvironmentFile=/opt/qbot/app/.env
+ExecStart=/opt/qbot/app/.venv/bin/python /opt/qbot/app/qbot_api.py --host 0.0.0.0 --port 8001
+Restart=always
+RestartSec=5
+StandardOutput=append:/opt/qbot/logs/qbot-api.log
+StandardError=append:/opt/qbot/logs/qbot-api.err.log
+
+[Install]
+WantedBy=multi-user.target
