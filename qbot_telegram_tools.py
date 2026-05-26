@@ -847,7 +847,8 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
 
     # Fitness/forma query → execute Xert + Intervals + Garmin
     if any(w in q for w in ["forma", "formę", "formie", "formy", "readiness", "gotowy", "czuję",
-                              "czuje", "trening", "treningu", "dzisiejsz", "dziś", "dzis"]):
+                              "czuje", "trening", "treningu", "dzisiejsz", "dziś", "dzis",
+                              "waga", "wagę", "intervals", "hrv", "sen", "spa"]):
         _safe_exec("qbot_xert_readiness_status")
         _safe_exec("qbot_intervals_wellness_status")
         _safe_exec("qbot_garmin_config_status")
@@ -864,6 +865,7 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
             _LAST_WEATHER[str(chat_id)] = {
                 "temperature_c": w.get("temperature_c"),
                 "feels_like_c": w.get("feels_like_c"),
+                "wind_mps": w.get("wind_mps"),
                 "wind_kmh": w.get("wind_kmh"),
                 "description": w.get("description", ""),
                 "humidity_percent": w.get("humidity_percent"),
@@ -950,7 +952,7 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
         brief = {k: r[k] for k in ("status", "ftp_watts", "ltp_watts", "w_prime_kj",
                                      "form_status", "configured", "restored_status",
                                      "temperature_c", "description", "source",
-                                     "wind_kmh", "humidity_percent", "location_resolved") if k in r and r[k] is not None}
+                                     "wind_mps", "wind_kmh", "humidity_percent", "location_resolved") if k in r and r[k] is not None}
         tool_context += f"\n[{tname}]: {brief}\n"
 
     # Step 3: If LLM is available, pass results to LLM for a clean answer
@@ -959,6 +961,7 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
         system = (
             "Odpowiadasz krótko po polsku, plain text, max 800 znaków. "
             "Jesteś Qbotem. Otrzymujesz wyniki z wykonanych narzędzi Qbot. "
+            "WAŻNE: wiatr zawsze podawaj TYLKO w m/s (nie km/h), pole wind_mps. NIE dodawaj przeliczenia na km/h. "
             "Odpowiedz konkretnie na podstawie danych, naturalnym językiem. "
             "NIGDY nie pokazuj użytkownikowi wewnętrznych nazw narzędzi (get_weather, qbot_*, NEEDS_LOCATION itp). "
             "NIGDY nie pisz 'narzędzie zwróciło', 'status X', 'tool Y'. "
@@ -999,7 +1002,7 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
             source_w = w.get("source", "?")
             lines = [
                 f"{loc}: {w['temperature_c']}°C, odczuwalnie {w.get('feels_like_c', '?')}°C, "
-                f"wiatr {w.get('wind_kmh', '?')} km/h, {w.get('description', '?')}.",
+                f"wiatr {round(w.get('wind_mps', 0), 1)} m/s, {w.get('description', '?')}.",
                 f"Źródło pogody: {source_w} via qbot_weather_current.",
                 f"Źródło lokalizacji: ostatnia przejechana trasa." if w.get("_location_source") == "last_ride_location"
                 else f"Źródło lokalizacji: tekst wiadomości.",
@@ -1109,7 +1112,7 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
 def _synthesize_clothing_advice(weather_current: dict, garage_data: dict | None, chat_id: str) -> str:
     """Build natural-language cycling clothing advice from weather data or conversation context."""
     temp = weather_current.get("temperature_c")
-    wind = weather_current.get("wind_kmh")
+    wind = weather_current.get("wind_mps")
     desc = (weather_current.get("description") or "").lower()
     loc = weather_current.get("location_resolved", "")
     weather_source = weather_current.get("source", "")
@@ -1120,7 +1123,7 @@ def _synthesize_clothing_advice(weather_current: dict, garage_data: dict | None,
         cached = _LAST_WEATHER.get(str(chat_id))
         if cached and cached.get("temperature_c") is not None and cached.get("ts", 0) > _time_module.time() - 3600:
             temp = cached.get("temperature_c")
-            wind = cached.get("wind_kmh")
+            wind = cached.get("wind_mps")
             desc = (cached.get("description") or "").lower()
             loc = cached.get("location_resolved", "")
             weather_source = cached.get("source", "")
@@ -1137,7 +1140,7 @@ def _synthesize_clothing_advice(weather_current: dict, garage_data: dict | None,
         temp_str = f"ok. {int(temp)}°C" if temp == int(temp) else f"{temp:.0f}°C"
         wind_str = ""
         if wind is not None:
-            wind_str = f", wiatr {int(wind)} km/h"
+            wind_str = f", wiatr {round(wind, 1)} m/s"
 
         # Build natural advice text
         advice_lines = []
@@ -1145,13 +1148,13 @@ def _synthesize_clothing_advice(weather_current: dict, garage_data: dict | None,
             advice_lines.append("Krótki rękaw, krótkie spodenki, lekkie rękawiczki, okulary.")
         elif temp >= 20:
             advice_lines.append("Krótki rękaw, krótkie spodenki, okulary, rękawiczki.")
-            if wind and wind > 25:
+            if wind and wind > 8:
                 advice_lines.append("Weź kamizelkę lub przeciwwiatrówkę na wiatr.")
         elif temp >= 15:
             advice_lines.append("Krótki lub długi rękaw, rękawki lub cienka kamizelka. Spodenki lub długie spodnie, okulary, rękawiczki.")
         elif temp >= 10:
             advice_lines.append("Długi rękaw, warstwa termo, kamizelka, rękawiczki, okulary.")
-            if wind and wind > 15:
+            if wind and wind > 4:
                 advice_lines.append("Weź przeciwwiatrówkę.")
         elif temp >= 5:
             advice_lines.append("Ciepła bluza lub softshell, ocieplane spodnie, rękawiczki, czapka pod kask.")
@@ -1160,8 +1163,8 @@ def _synthesize_clothing_advice(weather_current: dict, garage_data: dict | None,
 
         if desc and any(d in desc for d in ("deszcz", "mżawka", "opad")):
             advice_lines.append("Weź kurtkę przeciwdeszczową.")
-        if wind and wind > 35:
-            advice_lines.append(f"Silny wiatr ({int(wind)} km/h) — weź kamizelkę przeciwwiatrową.")
+        if wind and wind > 12:
+            advice_lines.append(f"Silny wiatr ({round(wind, 1)} m/s) — weź kamizelkę przeciwwiatrową.")
 
         advice_lines.append("Na gravel lub szuter: okulary, rękawiczki, ewentualnie buff.")
         advice = " ".join(advice_lines)
@@ -1201,12 +1204,13 @@ def _build_fallback_answer(message: str, extra_results: dict, tool_names: list) 
     # Clothing advice from weather context
     if any(w in q for w in ["ubrać", "ubiór", "ciuchy", "ubranie", "strój", "zabrać", "ubrac"]):
         temp = weather_r.get("temperature_c")
-        wind = weather_r.get("wind_kmh")
+        wind = weather_r.get("wind_mps")
         desc = weather_r.get("description", "")
         lines = []
         if temp is not None:
             sources.append(f"pogoda: {weather_r.get('source', '?')}, {weather_r.get('location_resolved', '?')}")
-            lines.append(f"Przy {temp}°C" + (f", wietrze {wind} km/h" if wind else "") + ":")
+            wind_part = f", wietrze {round(wind, 1)} m/s" if wind is not None else ""
+            lines.append(f"Przy {temp}°C{wind_part}:")
             if temp >= 20:
                 lines.append("- Krótki rękaw / lekka koszulka, krótkie spodenki.")
             elif temp >= 15:
@@ -1215,8 +1219,8 @@ def _build_fallback_answer(message: str, extra_results: dict, tool_names: list) 
                 lines.append("- Długa bluza lub warstwa, kamizelka, rękawiczki.")
             else:
                 lines.append("- Ciepłe warstwy, kurtka, rękawiczki, czapka.")
-            if wind and wind > 35:
-                lines.append("- Wiatr silny (>35 km/h): weź kamizelkę przeciwwiatrową.")
+            if wind and wind > 12:
+                lines.append("- Silny wiatr (>{round(wind, 1)} m/s): weź kamizelkę przeciwwiatrową.")
             if "deszcz" in desc or "mżawka" in desc:
                 lines.append("- Opady: weź kurtkę przeciwdeszczową.")
             lines.append("- Na gravel/szuter: okulary, rękawiczki, ewentualnie buff.")

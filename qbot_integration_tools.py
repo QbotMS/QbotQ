@@ -287,16 +287,17 @@ def _tool_qbot_intervals_wellness_status(_args: dict | None = None) -> dict[str,
     if not config.get("configured"):
         return {
             "tool": "qbot_intervals_wellness_status",
-            "status": "BLOCKED_MISSING_SECRET",
+            "status": "BLOCKED_BY_SECRET",
             "safety_class": "READ_ONLY",
-            "configured": False,
-            "latest_weight_kg": None,
-            "latest_hrv_ms": None,
-            "latest_sleep_hours": None,
-            "latest_date": None,
-            "error": None,
-            "restored_status": config.get("restored_status", "MISSING"),
-            "notes": "Intervals.icu credentials not configured. Set INTERVALS_ATHLETE_ID and INTERVALS_API_KEY in .env.local.",
+            "athlete_id_present": config.get("athlete_id_present", False),
+            "api_key_present": config.get("api_key_present", False),
+            "auth_ok": False,
+            "latest_wellness_date": None,
+            "weight_kg": None,
+            "hrv": None,
+            "resting_hr": None,
+            "sleep": None,
+            "reason": "Intervals.icu credentials not configured. Set INTERVALS_ATHLETE_ID and INTERVALS_API_KEY in .env.local.",
         }
 
     api_key = os.getenv("INTERVALS_API_KEY", "")
@@ -308,48 +309,116 @@ def _tool_qbot_intervals_wellness_status(_args: dict | None = None) -> dict[str,
             r = client.get(
                 f"https://intervals.icu/api/v1/athlete/{athlete_id}/wellness",
                 headers={"Authorization": f"Basic {encoded}"},
-                params={"oldest": None, "newest": None},
             )
+            if r.status_code == 401:
+                return {
+                    "tool": "qbot_intervals_wellness_status",
+                    "status": "AUTH_ERROR",
+                    "safety_class": "READ_ONLY",
+                    "athlete_id_present": True,
+                    "api_key_present": True,
+                    "auth_ok": False,
+                    "latest_wellness_date": None,
+                    "weight_kg": None,
+                    "hrv": None,
+                    "resting_hr": None,
+                    "sleep": None,
+                    "reason": "Intervals.icu HTTP 401 — invalid API key or athlete ID.",
+                }
             r.raise_for_status()
             data = r.json()
+    except httpx.HTTPStatusError as exc:
+        code = exc.response.status_code if exc.response else "?"
+        return {
+            "tool": "qbot_intervals_wellness_status",
+            "status": "API_ERROR",
+            "safety_class": "READ_ONLY",
+            "athlete_id_present": True,
+            "api_key_present": True,
+            "auth_ok": None,
+            "latest_wellness_date": None,
+            "weight_kg": None,
+            "hrv": None,
+            "resting_hr": None,
+            "sleep": None,
+            "reason": f"Intervals.icu HTTP {code}: {str(exc)[:200]}.",
+        }
     except Exception as exc:
         return {
             "tool": "qbot_intervals_wellness_status",
-            "status": "WARN",
+            "status": "API_ERROR",
             "safety_class": "READ_ONLY",
-            "configured": True,
-            "latest_weight_kg": None,
-            "latest_hrv_ms": None,
-            "latest_sleep_hours": None,
-            "latest_date": None,
-            "error": type(exc).__name__,
-            "error_detail": str(exc)[:200],
-            "restored_status": "PARTIAL",
-            "notes": f"Intervals.icu API fetch failed: {type(exc).__name__}. Credentials present but API may be unreachable.",
+            "athlete_id_present": True,
+            "api_key_present": True,
+            "auth_ok": None,
+            "latest_wellness_date": None,
+            "weight_kg": None,
+            "hrv": None,
+            "resting_hr": None,
+            "sleep": None,
+            "reason": f"Intervals.icu request failed: {type(exc).__name__}: {str(exc)[:200]}.",
         }
 
-    latest = data[-1] if isinstance(data, list) and data else (data if isinstance(data, dict) else {})
+    records = data if isinstance(data, list) else ([data] if isinstance(data, dict) else [])
+    latest = records[-1] if records else {}
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    latest_id = latest.get("id", "") if isinstance(latest, dict) else ""
 
     weight = latest.get("weight") if isinstance(latest, dict) else None
     hrv = latest.get("hrv") if isinstance(latest, dict) else None
+    resting_hr = latest.get("restingHR") if isinstance(latest, dict) else None
     sleep_hours = None
     sleep_data = latest.get("sleepSecs") if isinstance(latest, dict) else None
     if sleep_data is not None:
         sleep_hours = round(sleep_data / 3600, 1)
 
+    if not records:
+        return {
+            "tool": "qbot_intervals_wellness_status",
+            "status": "PARTIAL_NO_TODAY_DATA",
+            "safety_class": "READ_ONLY",
+            "athlete_id_present": True,
+            "api_key_present": True,
+            "auth_ok": True,
+            "latest_wellness_date": None,
+            "weight_kg": None,
+            "hrv": None,
+            "resting_hr": None,
+            "sleep": None,
+            "reason": "API responded but returned no wellness records.",
+        }
+
+    is_today = str(latest_id).startswith(today_str) if latest_id else False
+    if not is_today:
+        return {
+            "tool": "qbot_intervals_wellness_status",
+            "status": "PARTIAL_NO_TODAY_DATA",
+            "safety_class": "READ_ONLY",
+            "athlete_id_present": True,
+            "api_key_present": True,
+            "auth_ok": True,
+            "latest_wellness_date": latest_id,
+            "weight_kg": weight,
+            "hrv": hrv,
+            "resting_hr": resting_hr,
+            "sleep": sleep_hours,
+            "reason": f"Brak dzisiejszego wpisu wellness. Ostatni wpis: {latest_id}. API działa poprawnie.",
+        }
+
     return {
         "tool": "qbot_intervals_wellness_status",
         "status": "OK",
         "safety_class": "READ_ONLY",
-        "configured": True,
-        "latest_weight_kg": weight,
-        "latest_hrv_ms": hrv,
-        "latest_sleep_hours": sleep_hours,
-        "latest_date": latest.get("id") if isinstance(latest, dict) else None,
-        "wellness_records_count": len(data) if isinstance(data, list) else 0,
-        "error": None,
-        "restored_status": "RESTORED",
-        "notes": "Intervals.icu API responsive. Wellness data retrieved.",
+        "athlete_id_present": True,
+        "api_key_present": True,
+        "auth_ok": True,
+        "latest_wellness_date": latest_id,
+        "weight_kg": weight,
+        "hrv": hrv,
+        "resting_hr": resting_hr,
+        "sleep": sleep_hours,
+        "wellness_records_count": len(records),
+        "reason": "Intervals.icu API działa poprawnie. Zwrócono dane wellness.",
     }
 
 
