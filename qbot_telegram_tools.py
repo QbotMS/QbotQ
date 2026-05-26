@@ -900,7 +900,9 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
     tool_context = ""
     for tname, r in extra_results.items():
         brief = {k: r[k] for k in ("status", "ftp_watts", "ltp_watts", "w_prime_kj",
-                                     "form_status", "configured", "restored_status") if k in r and r[k] is not None}
+                                     "form_status", "configured", "restored_status",
+                                     "temperature_c", "description", "source",
+                                     "wind_kmh", "humidity_percent", "location_resolved") if k in r and r[k] is not None}
         tool_context += f"\n[{tname}]: {brief}\n"
 
     # Step 3: If LLM is available, pass results to LLM for a clean answer

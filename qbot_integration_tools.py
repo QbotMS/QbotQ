@@ -1178,18 +1178,26 @@ def _tool_qbot_weather_current(_args: dict | None = None) -> dict[str, Any]:
             owm_error_type = f"connection_error: {str(e)[:60]}"
 
     om_attempted = True
+    import urllib.parse as _urlparse
+    geo_city = location.split(",")[0].strip() if "," in (location or "") else location
+    geo_city_encoded = _urlparse.quote(geo_city, safe="")
+    geo_url_preview = ""
     try:
         import httpx
         with httpx.Client(timeout=10.0, trust_env=False) as c:
             if lat and lon:
                 r = c.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code,precipitation,cloud_cover&timezone=auto")
             else:
-                geo = c.get(f"https://geocoding-api.open-meteo.com/v1/search?name={location}&count=1&language=pl")
+                geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={geo_city_encoded}&count=1&language=pl"
+                geo_url_preview = f"geocoding-api.open-meteo.com/v1/search?name={geo_city_encoded}"
+                geo = c.get(geo_url)
                 om_status_code = geo.status_code if geo.status_code != 200 else None
                 if geo.status_code == 200 and geo.json().get("results"):
                     res = geo.json()["results"][0]
                     lat, lon = res["latitude"], res["longitude"]
-                    location = f"{res.get('name', location)}, {res.get('country', '')}"
+                    location = f"{res.get('name', geo_city)}, {res.get('country', '')}"
+                else:
+                    om_error_type = f"geocoding_http_{geo.status_code}"
                 r = c.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code,precipitation,cloud_cover&timezone=auto")
             om_status_code = r.status_code
             if r.status_code == 200:
@@ -1217,6 +1225,8 @@ def _tool_qbot_weather_current(_args: dict | None = None) -> dict[str, Any]:
                     "openweathermap_error_type": owm_error_type or None,
                     "open_meteo_attempted": True,
                     "open_meteo_status_code": om_status_code,
+                    "open_meteo_geocoding_url_preview": geo_url_preview,
+                    "open_meteo_geocoding_status_code": 200,
                 }
             else:
                 om_error_type = f"http_{r.status_code}"
