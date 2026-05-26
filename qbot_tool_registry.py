@@ -46,6 +46,24 @@ from qbot_ops_tools import (
     _tool_qbot_test_error_classification,
 )
 
+from qbot_roadmap_runner import (
+    _tool_qbot_roadmap_runner_execute_next,
+    _tool_qbot_roadmap_runner_list_tasks,
+    _tool_qbot_roadmap_runner_next_task,
+    _tool_qbot_roadmap_runner_notify_test,
+    _tool_qbot_roadmap_runner_pause,
+    _tool_qbot_roadmap_runner_resume,
+    _tool_qbot_roadmap_runner_run_until_blocked,
+    _tool_qbot_roadmap_runner_status,
+)
+
+from qbot_assistant_inbox import (
+    _tool_qbot_assistant_inbox_add,
+    _tool_qbot_assistant_inbox_list,
+    _tool_qbot_assistant_inbox_mark_read,
+    _tool_qbot_assistant_inbox_status,
+)
+
 from qbot_mcp_adapter import (
     _tool_qbot_mcp_call_preview,
     _tool_qbot_mcp_status,
@@ -315,6 +333,78 @@ TOOLS_META: dict[str, dict[str, Any]] = {
     "qbot_api_self_check": {
         "description": "Zbiorczy autotest API: DB, usługi, git, liczniki",
         "category": "meta",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_roadmap_runner_status": {
+        "description": "Status roadmap runnera: blok, task, progres, inbox, notyfikacje",
+        "category": "runner",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_roadmap_runner_list_tasks": {
+        "description": "Lista tasków roadmapy z ich statusami i safety metadata",
+        "category": "runner",
+        "safe": True,
+        "args_schema": {"block": "P0"},
+    },
+    "qbot_roadmap_runner_next_task": {
+        "description": "Następny task roadmapy do wykonania lub podglądu",
+        "category": "runner",
+        "safe": True,
+        "args_schema": {"block": "P0"},
+    },
+    "qbot_roadmap_runner_execute_next": {
+        "description": "Wykonuje lub symuluje następny task roadmapy z progressem krokowym",
+        "category": "runner",
+        "safe": True,
+        "args_schema": {"block": "P0", "dry_run": True},
+    },
+    "qbot_roadmap_runner_run_until_blocked": {
+        "description": "Uruchamia roadmap runner do najbliższego stopu z postępem per task i block",
+        "category": "runner",
+        "safe": True,
+        "args_schema": {"block": "P0", "max_tasks": 2, "max_minutes": 10, "dry_run": True},
+    },
+    "qbot_roadmap_runner_pause": {
+        "description": "Pauzuje roadmap runner",
+        "category": "runner",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_roadmap_runner_resume": {
+        "description": "Wznawia roadmap runner",
+        "category": "runner",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_roadmap_runner_notify_test": {
+        "description": "Testuje Telegram notification dla roadmap runnera",
+        "category": "runner",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_assistant_inbox_add": {
+        "description": "Dodaje wpis do lokalnego assistant inbox",
+        "category": "assistant_inbox",
+        "safe": True,
+        "args_schema": {"source": "roadmap_runner", "block": "P0", "task_id": "P0-1"},
+    },
+    "qbot_assistant_inbox_list": {
+        "description": "Listuje wpisy assistant inbox",
+        "category": "assistant_inbox",
+        "safe": True,
+        "args_schema": {"limit": 20},
+    },
+    "qbot_assistant_inbox_mark_read": {
+        "description": "Oznacza wpis assistant inbox jako przeczytany",
+        "category": "assistant_inbox",
+        "safe": True,
+        "args_schema": {"id": "<message_id>"},
+    },
+    "qbot_assistant_inbox_status": {
+        "description": "Status lokalnego assistant inbox: liczniki, latest, unread",
+        "category": "assistant_inbox",
         "safe": True,
         "args_schema": {},
     },
@@ -1409,6 +1499,18 @@ TOOLS: dict[str, Any] = {
     "qbot_db_overview": _tool_qbot_db_overview,
     "qbot_system_overview": _tool_qbot_system_overview,
     "qbot_api_self_check": _tool_qbot_api_self_check,
+    "qbot_roadmap_runner_status": _tool_qbot_roadmap_runner_status,
+    "qbot_roadmap_runner_list_tasks": _tool_qbot_roadmap_runner_list_tasks,
+    "qbot_roadmap_runner_next_task": _tool_qbot_roadmap_runner_next_task,
+    "qbot_roadmap_runner_execute_next": _tool_qbot_roadmap_runner_execute_next,
+    "qbot_roadmap_runner_run_until_blocked": _tool_qbot_roadmap_runner_run_until_blocked,
+    "qbot_roadmap_runner_pause": _tool_qbot_roadmap_runner_pause,
+    "qbot_roadmap_runner_resume": _tool_qbot_roadmap_runner_resume,
+    "qbot_roadmap_runner_notify_test": _tool_qbot_roadmap_runner_notify_test,
+    "qbot_assistant_inbox_add": _tool_qbot_assistant_inbox_add,
+    "qbot_assistant_inbox_list": _tool_qbot_assistant_inbox_list,
+    "qbot_assistant_inbox_mark_read": _tool_qbot_assistant_inbox_mark_read,
+    "qbot_assistant_inbox_status": _tool_qbot_assistant_inbox_status,
     "qbot_ride_readiness_status": _tool_qbot_ride_readiness_status,
     "qbot_project_tree": _tool_qbot_project_tree,
     "qbot_project_files": _tool_qbot_project_files,

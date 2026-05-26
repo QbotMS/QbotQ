@@ -38,6 +38,11 @@ _SAFE_MULTI_EXECUTE_TOOLS: set[str] = {
     "qbot_garage_raw_list",
     "qbot_daily_report_status",
     "qbot_ride_report_status",
+    "qbot_roadmap_runner_status",
+    "qbot_roadmap_runner_list_tasks",
+    "qbot_roadmap_runner_next_task",
+    "qbot_assistant_inbox_status",
+    "qbot_assistant_inbox_list",
 }
 
 _RUNBOOKS: list[dict[str, Any]] = [
@@ -179,6 +184,46 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "confidence": "high",
         "required_data": ["MCP adapter metadata"],
         "limitations": ["Static tool mapping", "Read-only"],
+    },
+    {
+        "keywords": ["roadmap runner status", "runner status", "roadmap status", "status runnera", "status roadmap runnera"],
+        "tool": "qbot_roadmap_runner_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["roadmap runner state", "assistant inbox"],
+        "limitations": ["Read-only status", "No task execution"],
+    },
+    {
+        "keywords": ["next roadmap task", "następny task", "next task roadmapy", "następny task roadmapy"],
+        "tool": "qbot_roadmap_runner_next_task",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["roadmap parser", "roadmap state"],
+        "limitations": ["Read-only planning", "No execution"],
+    },
+    {
+        "keywords": ["roadmap tasks", "lista tasków roadmapy", "taski roadmapy", "list tasks roadmap", "lista tasków runnera"],
+        "tool": "qbot_roadmap_runner_list_tasks",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["roadmap parser"],
+        "limitations": ["Read-only", "No execution"],
+    },
+    {
+        "keywords": ["assistant inbox status", "inbox status", "status inbox", "assistant inbox"],
+        "tool": "qbot_assistant_inbox_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["local inbox state file"],
+        "limitations": ["Read-only", "No modification"],
+    },
+    {
+        "keywords": ["inbox list", "lista inbox", "pokaż inbox", "show inbox"],
+        "tool": "qbot_assistant_inbox_list",
+        "args": {"limit": 20},
+        "confidence": "high",
+        "required_data": ["local inbox state file"],
+        "limitations": ["Read-only", "No modification"],
     },
     {
         "keywords": ["pogoda legacy", "openweathermap", "weather legacy", "weather status"],

@@ -19,7 +19,16 @@ from qbot_artifact_tools import (
 from qbot_external_llm_tools import _tool_qbot_external_context_bundle
 from qbot_llm_planner import _tool_qbot_llm_run_query, _tool_qbot_tool_policy_list
 from qbot_ops_tools import _tool_qbot_operator_final_smoke_test
+from qbot_roadmap_runner import (
+    _tool_qbot_roadmap_runner_list_tasks,
+    _tool_qbot_roadmap_runner_next_task,
+    _tool_qbot_roadmap_runner_status,
+)
 from qbot_telegram_tools import _tool_qbot_telegram_status
+from qbot_assistant_inbox import (
+    _tool_qbot_assistant_inbox_list,
+    _tool_qbot_assistant_inbox_status,
+)
 from qbot_tools import _tool_qbot_status
 
 MCP_PROTOCOL_VERSION = "2024-11-05"
@@ -146,6 +155,63 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "qbot_tool": "qbot_telegram_status",
         "description": "Summarize Telegram bot status and webhook health.",
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.roadmap_runner_status": {
+        "qbot_tool": "qbot_roadmap_runner_status",
+        "description": "Read-only roadmap runner status including task/block progress.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.roadmap_runner_list_tasks": {
+        "qbot_tool": "qbot_roadmap_runner_list_tasks",
+        "description": "Read-only roadmap task list and safety metadata.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block": {"type": "string", "default": ""},
+            },
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.roadmap_runner_next_task": {
+        "qbot_tool": "qbot_roadmap_runner_next_task",
+        "description": "Read-only next roadmap task preview.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block": {"type": "string", "default": ""},
+            },
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.assistant_inbox_status": {
+        "qbot_tool": "qbot_assistant_inbox_status",
+        "description": "Read-only local assistant inbox status.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.assistant_inbox_list": {
+        "qbot_tool": "qbot_assistant_inbox_list",
+        "description": "Read-only assistant inbox list.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                "unread_only": {"type": "boolean", "default": False},
+                "source": {"type": "string", "default": ""},
+                "block": {"type": "string", "default": ""},
+                "status": {"type": "string", "default": ""},
+            },
+            "additionalProperties": False,
+        },
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
