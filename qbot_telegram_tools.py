@@ -857,6 +857,7 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
     if any(w in q for w in ["pogod", "pada", "deszcz", "wiatr", "temperatur", "ubrać", "ubiór", "ciuchy", "ubranie", "strój", "ubrac", "ubier", "zabrać"]):
         _safe_exec("qbot_weather_current")
         _safe_exec("qbot_weather_config_status")
+        _safe_exec("qbot_garage_raw_status")
 
     # Cache latest weather for conversation context
     if "qbot_weather_current" in extra_results:
@@ -1208,29 +1209,26 @@ def _synthesize_clothing_advice(weather_current: dict, garage_data: dict | None,
         else:
             sources.append(f"pogoda: {weather_source}{f' ({loc})' if loc else ''}")
 
-        temp_str = f"ok. {int(temp)}°C" if temp == int(temp) else f"{temp:.0f}°C"
-        wind_str = ""
-        if wind is not None:
-            wind_str = f", wiatr {round(wind, 1)} m/s"
-
-        # Build natural advice text
         advice_lines = []
+        strong_wind = wind is not None and wind > 8
         if temp >= 25:
-            advice_lines.append("Krótki rękaw, krótkie spodenki, lekkie rękawiczki, okulary.")
+            advice_lines.append("ubierz się bardzo lekko: krótki rękaw, krótkie spodenki, okulary, lekkie rękawiczki.")
         elif temp >= 20:
-            advice_lines.append("Krótki rękaw, krótkie spodenki, okulary, rękawiczki.")
-            if wind and wind > 8:
-                advice_lines.append("Weź kamizelkę lub przeciwwiatrówkę na wiatr.")
+            if strong_wind:
+                advice_lines.append("ubierz się lekko, ale weź kamizelkę albo przeciwwiatrówkę.")
+            else:
+                advice_lines.append("ubierz się lekko: krótki rękaw, krótkie spodenki, okulary, rękawiczki.")
+            advice_lines.append("Bez grubej bluzy.")
         elif temp >= 15:
-            advice_lines.append("Krótki lub długi rękaw, rękawki lub cienka kamizelka. Spodenki lub długie spodnie, okulary, rękawiczki.")
+            advice_lines.append("krótki lub długi rękaw, cienka warstwa albo rękawki, spodenki lub lekkie długie spodnie, okulary, rękawiczki.")
         elif temp >= 10:
-            advice_lines.append("Długi rękaw, warstwa termo, kamizelka, rękawiczki, okulary.")
+            advice_lines.append("długi rękaw, warstwa termo, kamizelka, rękawiczki, okulary.")
             if wind and wind > 4:
-                advice_lines.append("Weź przeciwwiatrówkę.")
+                advice_lines.append("weź przeciwwiatrówkę.")
         elif temp >= 5:
-            advice_lines.append("Ciepła bluza lub softshell, ocieplane spodnie, rękawiczki, czapka pod kask.")
+            advice_lines.append("ciepła bluza lub softshell, ocieplane spodnie, rękawiczki, czapka pod kask.")
         else:
-            advice_lines.append("Kurtka zimowa, ocieplane spodnie, grube rękawiczki, czapka pod kask, ocieplane buty.")
+            advice_lines.append("kurtka zimowa, ocieplane spodnie, grube rękawiczki, czapka pod kask, ocieplane buty.")
 
         if desc and any(d in desc for d in ("deszcz", "mżawka", "opad")):
             advice_lines.append("Weź kurtkę przeciwdeszczową.")
@@ -1240,7 +1238,11 @@ def _synthesize_clothing_advice(weather_current: dict, garage_data: dict | None,
         advice_lines.append("Na gravel lub szuter: okulary, rękawiczki, ewentualnie buff.")
         advice = " ".join(advice_lines)
 
-        parts.append(f"Przy {temp_str}{wind_str}: {advice}")
+        if wind is not None and wind > 8 and 20 <= temp < 25:
+            parts.append(f"Przy ok. {temp:.0f}°C i silnym wietrze {advice}")
+        else:
+            wind_str = f", wiatr {round(wind, 1)} m/s" if wind is not None else ""
+            parts.append(f"Przy ok. {temp:.0f}°C{wind_str}: {advice}")
     else:
         sources.append("pogoda: brak danych")
         parts.append(
@@ -1257,7 +1259,7 @@ def _synthesize_clothing_advice(weather_current: dict, garage_data: dict | None,
             count = garage_data.get("count", garage_data.get("total_records", "?"))
             sources.append(f"Qbot garage: sprawdzono ({count})" if count else "Qbot garage: sprawdzono")
     else:
-        sources.append("Qbot garage: nie sprawdzono")
+        sources.append("Qbot garage: brak użytecznych danych")
 
     sources.append("wniosek: Qbot local heuristic")
     source_line = "Źródła: " + "; ".join(sources) + "."
@@ -1291,7 +1293,7 @@ def _build_fallback_answer(message: str, extra_results: dict, tool_names: list) 
             else:
                 lines.append("- Ciepłe warstwy, kurtka, rękawiczki, czapka.")
             if wind and wind > 12:
-                lines.append("- Silny wiatr (>{round(wind, 1)} m/s): weź kamizelkę przeciwwiatrową.")
+                lines.append(f"- Silny wiatr ({round(wind, 1)} m/s): weź kamizelkę przeciwwiatrową.")
             if "deszcz" in desc or "mżawka" in desc:
                 lines.append("- Opady: weź kurtkę przeciwdeszczową.")
             lines.append("- Na gravel/szuter: okulary, rękawiczki, ewentualnie buff.")
@@ -1376,14 +1378,26 @@ def _tool_qbot_telegram_clothing_advice_self_check(_args: dict | None = None) ->
     has_raw = False
     uses_weather = False
     natural = False
+    sources_present = False
+
+    chat_id = "clothing-self-check"
+    _LAST_WEATHER[chat_id] = {
+        "temperature_c": 21,
+        "wind_mps": 12.0,
+        "description": "silny wiatr",
+        "location_resolved": "Marki",
+        "source": "Open-Meteo",
+        "ts": _time_module.time(),
+    }
 
     # Simulate: weather context available, then ask clothing
     try:
-        r = _tool_qbot_telegram_agent_chat({"message": "jak się ubrać na rower?", "execute": True})
+        r = _tool_qbot_telegram_agent_chat({"message": "jak się ubrać na rower?", "execute": True, "chat_id": chat_id})
         answer = r.get("answer", "")
-        has_raw = "tool=" in answer or ("status=WARN" in answer and "qbot_garage" in answer)
-        uses_weather = any(w in answer.lower() for w in ["°c", "stopni", "temp", "wiatr", "warstw"])
-        natural = not has_raw and len(answer) > 50
+        has_raw = "tool=" in answer or "tool=qbot_garage_raw_status" in answer or "status=WARN" in answer
+        uses_weather = any(w in answer.lower() for w in ["°c", "silnym wietrze", "wiatr", "warstw", "kamizelk"])
+        sources_present = "Źródł" in answer
+        natural = not has_raw and len(answer) > 50 and sources_present
         if has_raw:
             blockers.append("raw tool output found in clothing answer")
         if not natural:
@@ -1398,7 +1412,7 @@ def _tool_qbot_telegram_clothing_advice_self_check(_args: dict | None = None) ->
         "uses_weather_context": uses_weather,
         "garage_warn_not_user_facing_raw": not has_raw,
         "natural_answer": natural,
-        "sources_present": "Źródło" in (r.get("answer", "") if hasattr(r, 'get') else ""),
+        "sources_present": sources_present,
         "blockers": blockers,
         "notes": "Checks that clothing advice is natural, not raw tool dump.",
     }
