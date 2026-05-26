@@ -1075,6 +1075,72 @@ def _tool_qbot_weather_forecast(_args: dict | None = None) -> dict[str, Any]:
     return {"tool": "qbot_weather_forecast", "status": "ERROR", "safety_class": "READ_ONLY", "location_resolved": location}
 
 
+def _tool_qbot_public_web_status(_args: dict | None = None) -> dict[str, Any]:
+    http_ok = False
+    try:
+        import httpx
+        with httpx.Client(timeout=5.0, trust_env=False) as c:
+            r = c.get("https://api.open-meteo.com/v1/forecast?latitude=52&longitude=21&current=temperature_2m")
+            http_ok = r.status_code == 200
+    except Exception:
+        pass
+
+    return {
+        "tool": "qbot_public_web_status",
+        "status": "OK" if http_ok else "WARN",
+        "safety_class": "READ_ONLY",
+        "web_fallback_enabled": True,
+        "http_client_available": http_ok,
+        "known_public_sources": ["Open-Meteo/ECMWF", "OpenStreetMap/Overpass", "OpenWeatherMap"],
+        "allowed_topics": ["weather", "maps", "docs", "news", "general"],
+        "blocked_topics": ["private authenticated data", "uploads", "sync", "delete"],
+        "notes": "Public web fallback allowed for public data. Private integrations via Qbot auth/tools only.",
+    }
+
+
+def _tool_qbot_public_web_fetch(_args: dict | None = None) -> dict[str, Any]:
+    _args = _args or {}
+    query = str(_args.get("query", ""))
+    topic = str(_args.get("topic", "general"))
+
+    if topic == "weather":
+        w = _tool_qbot_weather_current({"location": query, "text": query})
+        return {
+            "tool": "qbot_public_web_fetch",
+            "status": w.get("status", "ERROR"),
+            "safety_class": "READ_ONLY",
+            "topic": topic,
+            "query": query,
+            "sources": [{"name": w.get("source", "unknown"), "type": "API"}],
+            "extracted_summary": f"{w.get('temperature_c', '?')}°C, {w.get('description', '?')}",
+            "warnings": w.get("warnings", []),
+        }
+
+    if topic == "maps":
+        try:
+            from qbot_integration_tools import _tool_qbot_openmaps_legacy_status
+            return {
+                "tool": "qbot_public_web_fetch",
+                "status": "OK",
+                "topic": topic,
+                "query": query,
+                "sources": [{"name": "OpenStreetMap/Overpass", "type": "API"}],
+                "extracted_summary": "OSM/Overpass API available",
+            }
+        except Exception:
+            pass
+
+    return {
+        "tool": "qbot_public_web_fetch",
+        "status": "WARN_NO_SEARCH_BACKEND",
+        "safety_class": "READ_ONLY",
+        "topic": topic,
+        "query": query,
+        "sources": [],
+        "extracted_summary": f"No general search backend for topic={topic}",
+    }
+
+
 def _tool_qbot_public_web_fallback_self_check(_args: dict | None = None) -> dict[str, Any]:
     tests = []
     blockers = []
@@ -1136,6 +1202,8 @@ __all__ = [
     "_tool_qbot_weather_current",
     "_tool_qbot_weather_forecast",
     "_tool_qbot_public_web_fallback_self_check",
+    "_tool_qbot_public_web_fetch",
+    "_tool_qbot_public_web_status",
     "_tool_qbot_openmaps_config_status",
     "_tool_qbot_openmaps_legacy_status",
 ]

@@ -721,6 +721,7 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
 
     # Weather query
     if any(w in q for w in ["pogod", "pada", "deszcz", "wiatr", "temperatur"]):
+        _safe_exec("qbot_weather_current")
         _safe_exec("qbot_weather_config_status")
 
     # Backup
@@ -743,7 +744,8 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
             "Odpowiedz konkretnie na podstawie danych. Jeśli brak danych — powiedz czego brakuje. "
             "Nie pisz 'powinienem użyć' — narzędzia JUŻ zostały wykonane, widzisz wyniki. "
             "Nie pisz 'nie mam dostępu' — dane są załączone. "
-            "Nie pisz 'uruchom mnie w pełnym flow'."
+            "Nie pisz 'uruchom mnie w pełnym flow'. "
+            "Na końcu odpowiedzi dodaj linię 'Źródło: ...' z nazwą narzędzia Qbot."
         )
         full_context = f"Pytanie: {message}\n\nWyniki narzędzi Qbot:{tool_context}\n\nOdpowiedz krótko i konkretnie."
         try:
@@ -778,10 +780,12 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
             for k, v in r.items():
                 if k not in ("tool", "status", "safety_class", "notes") and v is not None:
                     lines.append(f"  {k}: {v}")
+        answer = "\n".join(lines)[:3800]
+        source_line = f"\nŹródło: Qbot tools ({', '.join(extra_tools)})"
         return {
             "tool": "qbot_telegram_agent_chat",
             "status": "OK",
-            "answer": "\n".join(lines)[:3900],
+            "answer": (answer + source_line)[:3900],
             "tools_considered_count": len(tool_names),
             "tools_used": extra_tools,
             "llm_used": False,
@@ -794,9 +798,10 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
     if has_llm:
         system = (
             "Odpowiadasz krótko po polsku, plain text. Jesteś Qbotem — asystentem rowerowym. "
-            "Widzisz listę dostępnych Qbot tools (status, integracje, backup, pogoda, etc). "
+            "Widzisz listę dostępnych Qbot tools. "
             "Jeśli pytanie dotyczy czegoś z tej listy, odpowiedz co byś sprawdził i podaj krótką interpretację. "
-            "Jeśli pytanie jest ogólne — odpowiedz normalnie, 2-4 zdania. Max 800 znaków."
+            "Jeśli pytanie jest ogólne — odpowiedz normalnie, 2-4 zdania. "
+            "Na końcu dodaj 'Źródło: Qbot agent' lub podaj konkretne źródło jeśli znane. Max 800 znaków."
         )
         try:
             from qgpt_client import qgpt_chat
