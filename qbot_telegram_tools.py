@@ -697,13 +697,16 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
     extra_tools: list[str] = []
     q = message.lower()
 
-    def _safe_exec(tool_name: str) -> dict | None:
+    def _safe_exec(tool_name: str, extra_args: dict | None = None) -> dict | None:
         nonlocal extra_tools
         func = TOOLS.get(tool_name)
         if not func:
             return None
         try:
-            r = func({})
+            args = dict(extra_args or {})
+            if extra_args is None and tool_name.startswith("qbot_weather"):
+                args["text"] = message
+            r = func(args)
             if r and isinstance(r, dict):
                 extra_tools.append(tool_name)
                 extra_results[tool_name] = r
@@ -728,6 +731,27 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
     if any(w in q for w in ["backup", "kopia", "backupy"]):
         _safe_exec("qbot_backup_status")
 
+    # Handle NEEDS_LOCATION from weather — clean user-facing, no tool names
+    weather_status = extra_results.get("qbot_weather_current", {})
+    if weather_status.get("status") == "NEEDS_LOCATION":
+        return {
+            "tool": "qbot_telegram_agent_chat",
+            "status": "OK",
+            "answer": (
+                "Dla jakiej lokalizacji sprawdzić pogodę? Nie mam lokalizacji w wiadomości "
+                "ani świeżej lokalizacji z ostatniej trasy (<18h). "
+                "Napisz np. „pogoda w Markach”.\n"
+                "Źródło pogody: nie pobrano — brak lokalizacji.\n"
+                "Źródło lokalizacji: brak w zapytaniu / brak świeżej trasy."
+            ),
+            "tools_considered_count": len(tool_names),
+            "tools_used": extra_tools,
+            "llm_used": False,
+            "planner_used": True,
+            "policy_result": "",
+            "requires_approval": False,
+        }
+
     # Build tool results context for LLM
     tool_context = ""
     for tname, r in extra_results.items():
@@ -741,11 +765,12 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
         system = (
             "Odpowiadasz krótko po polsku, plain text, max 800 znaków. "
             "Jesteś Qbotem. Otrzymujesz wyniki z wykonanych narzędzi Qbot. "
-            "Odpowiedz konkretnie na podstawie danych. Jeśli brak danych — powiedz czego brakuje. "
-            "Nie pisz 'powinienem użyć' — narzędzia JUŻ zostały wykonane, widzisz wyniki. "
-            "Nie pisz 'nie mam dostępu' — dane są załączone. "
-            "Nie pisz 'uruchom mnie w pełnym flow'. "
-            "Na końcu odpowiedzi dodaj linię 'Źródło: ...' z nazwą narzędzia Qbot."
+            "Odpowiedz konkretnie na podstawie danych, naturalnym językiem. "
+            "NIGDY nie pokazuj użytkownikowi wewnętrznych nazw narzędzi (get_weather, qbot_*, NEEDS_LOCATION itp). "
+            "NIGDY nie pisz 'narzędzie zwróciło', 'status X', 'tool Y'. "
+            "Zamiast tego przetłumacz dane na zrozumiałą odpowiedź. "
+            "Jeśli brak danych — powiedz normalnie czego brakuje. "
+            "Na końcu dodaj 'Źródło: ...' z opisem źródła (nie nazwą wewnętrzną)."
         )
         full_context = f"Pytanie: {message}\n\nWyniki narzędzi Qbot:{tool_context}\n\nOdpowiedz krótko i konkretnie."
         try:
@@ -772,6 +797,31 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
 
     # Step 4: If tools were executed but no LLM, format results directly
     if extra_tools:
+        # Natural language formatting for weather
+        weather_r = extra_results.get("qbot_weather_current", {})
+        if weather_r.get("status") == "OK" and weather_r.get("temperature_c") is not None:
+            w = weather_r
+            loc = w.get("location_resolved", "?")
+            source_w = w.get("source", "?")
+            lines = [
+                f"{loc}: {w['temperature_c']}°C, odczuwalnie {w.get('feels_like_c', '?')}°C, "
+                f"wiatr {w.get('wind_kmh', '?')} km/h, {w.get('description', '?')}.",
+                f"Źródło pogody: {source_w} via qbot_weather_current.",
+                f"Źródło lokalizacji: ostatnia przejechana trasa." if w.get("_location_source") == "last_ride_location"
+                else f"Źródło lokalizacji: tekst wiadomości.",
+            ]
+            return {
+                "tool": "qbot_telegram_agent_chat",
+                "status": "OK",
+                "answer": " ".join(lines)[:3900],
+                "tools_considered_count": len(tool_names),
+                "tools_used": extra_tools,
+                "llm_used": False,
+                "planner_used": True,
+                "policy_result": "",
+                "requires_approval": False,
+            }
+
         lines = []
         for tname in extra_tools:
             r = extra_results.get(tname, {})
