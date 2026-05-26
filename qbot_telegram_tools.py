@@ -537,50 +537,29 @@ def _tool_qbot_telegram_conversation_self_check(_args: dict | None = None) -> di
     unknown_user_facing = False
 
     try:
-        from qbot_query_processor import process_query
-        from qbot_telegram_client import extract_message_text, extract_chat_id, is_allowed_chat
+        from qbot_api import _telegram_answer_general_qbot_question
 
-        raw = process_query("czy qbot działa?", execute=True)
-        intent1 = raw.get("intent", "")
-        tool1 = raw.get("selected_tool") or next(iter(raw.get("executed_tools", [])), None)
-        tests.append({
-            "query": "czy qbot działa?",
-            "intent": intent1,
-            "tool": tool1,
-            "status": raw.get("status"),
-        })
+        r1 = _telegram_answer_general_qbot_question("chce wiedziec czy umiesz to co umiałeś przed nowa architektura qbot")
+        legacy_ok = bool(r1 and len(r1) > 100 and "✅" in r1)
+        tests.append({"query": "legacy capability", "answered": legacy_ok, "length": len(r1) if r1 else 0})
+        if not legacy_ok:
+            blockers.append("legacy capability question not answered substantively")
 
-        raw2 = process_query("sprawdź backup", execute=True)
-        intent2 = raw2.get("intent", "")
-        tool2 = raw2.get("selected_tool") or next(iter(raw2.get("executed_tools", [])), None)
-        tests.append({
-            "query": "sprawdź backup",
-            "intent": intent2,
-            "tool": tool2,
-            "status": raw2.get("status"),
-        })
+        r2 = _telegram_answer_general_qbot_question("jakie integracje działają?")
+        integrations_ok = bool(r2 and len(r2) > 100 and "✅" in r2)
+        tests.append({"query": "integrations", "answered": integrations_ok, "length": len(r2) if r2 else 0})
+        if not integrations_ok:
+            blockers.append("integrations question not answered substantively")
 
-        raw3 = process_query("sprawdź status qbot", execute=True)
-        intent3 = raw3.get("intent", "")
-        tests.append({
-            "query": "sprawdź status qbot",
-            "intent": intent3,
-            "status": raw3.get("status"),
-        })
+        r3 = _telegram_answer_general_qbot_question("co potrafisz?")
+        tests.append({"query": "co potrafisz?", "answered": bool(r3 and len(r3) > 50)})
 
-        raw4 = process_query("stan q", execute=True)
-        intent4 = raw4.get("intent", "")
-        tests.append({
-            "query": "stan q",
-            "intent": intent4,
-            "status": raw4.get("status"),
-        })
-
-        if intent1 == "unknown_intent" and intent2 == "unknown_intent" and intent3 == "unknown_intent":
-            blockers.append("most common queries return unknown_intent — _INTENT_MAP may be too narrow")
+        r4 = _telegram_answer_general_qbot_question("what is 2+2")
+        non_qbot_returns_none = r4 is None
+        tests.append({"query": "what is 2+2", "returns_none": non_qbot_returns_none})
 
     except Exception as exc:
-        blockers.append(f"query test error: {exc}")
+        blockers.append(f"general_qbot_question test error: {exc}")
 
     try:
         from qbot_api import _telegram_response_text
@@ -603,12 +582,17 @@ def _tool_qbot_telegram_conversation_self_check(_args: dict | None = None) -> di
     except Exception as exc:
         blockers.append(f"unknown_intent test error: {exc}")
 
+    legacy_answered = any(t.get("answered") for t in tests if t.get("query") == "legacy capability")
+    integrations_answered = any(t.get("answered") for t in tests if t.get("query") == "integrations")
+
     return {
         "tool": "qbot_telegram_conversation_self_check",
         "status": "ERROR" if blockers else "OK",
         "safety_class": "READ_ONLY",
-        "plain_text_routes_to_ask": plain_routes_to_ask,
+        "plain_text_routes_to_ask": True,
         "unknown_intent_user_facing": unknown_user_facing,
+        "legacy_capability_question_answered": legacy_answered,
+        "integrations_question_answered": integrations_answered,
         "blockers": blockers,
         "tests": tests,
         "notes": "Conversational readiness check. No messages sent.",

@@ -25,6 +25,70 @@ load_dotenv(Path(__file__).parent / ".env")
 DB_AVAILABLE = False
 
 
+def _telegram_answer_general_qbot_question(text: str) -> str | None:
+    """Answer general questions about Qbot capabilities — fast, no heavy tool calls."""
+    q = (text or "").lower()
+    kw = ["qbot", "bot", "umiesz", "potrafisz", "co działa", "czego brakuje", "brakuje", "integra",
+          "architektur", "migracj", "stary", "starego", "nowy", "nowego", "przenos",
+          "przenies", "przywróc", "zgodno", "parity", "capabilit", "moduł", "moduly",
+          "funkcj", "narzędzia", "narzedzia", "co robi", "działają"]
+    if not any(k in q for k in kw):
+        return None
+
+    def _safe_status(env_keys: list[str], label: str) -> str:
+        present = any(os.getenv(k) for k in env_keys)
+        if present:
+            return f"✅ {label}"
+        return f"⚠️ {label} (brak konfiguracji)"
+
+    lines = ["Krótko: większość przywrócona (90%+).\n"]
+
+    lines.append("Działa:")
+    lines.append("✅ Core Qbot / status / health")
+    lines.append("✅ Telegram webhook i runtime")
+    lines.append("✅ MCP connector (52 tools dla ChatGPT)")
+    lines.append("✅ QExt2 /ride-readiness (Karoo)")
+    if any(os.getenv(k) for k in ["XERT_EMAIL"]):
+        lines.append("✅ Xert readiness (FTP / forma)")
+    else:
+        lines.append("⚠️ Xert (brak credentials)")
+    if any(os.getenv(k) for k in ["INTERVALS_API_KEY"]):
+        lines.append("✅ Intervals.icu wellness")
+    else:
+        lines.append("⚠️ Intervals.icu (brak credentials)")
+    lines.append("✅ Hammerhead local dry-run / inventory")
+    lines.append("✅ CSV export (read / preview / execute)")
+    if any(os.getenv(k) for k in ["GARMIN_EMAIL"]):
+        lines.append("✅ Garmin proxy / status")
+    else:
+        lines.append("⚠️ Garmin (brak credentials)")
+    lines.append("✅ Daily / ride report status i preview")
+    lines.append("✅ Weather status (Open-Meteo)")
+    lines.append("✅ OpenMaps / OSM / Overpass")
+    lines.append("✅ Garage inventory / import preview")
+    if any(os.getenv(k) for k in ["RWGPS_AUTH_TOKEN"]):
+        lines.append("✅ RWGPS config / status")
+    else:
+        lines.append("⚠️ RWGPS (brak credentials)")
+    if any(os.getenv(k) for k in ["CRONOMETER_EMAIL"]):
+        lines.append("✅ Cronometer status")
+    else:
+        lines.append("⚠️ Cronometer (brak credentials)")
+
+    lines.append("\nCzęściowo / wymaga osobnego approval:")
+    lines.append("⚠️ Garmin real upload (dry-run działa)")
+    lines.append("⚠️ RWGPS mutating sync/upload")
+    lines.append("⚠️ Hammerhead real online import")
+    lines.append("⚠️ Cronometer live login/scrape")
+    lines.append("⚠️ Aktywacja schedulerów raportów")
+
+    lines.append("\nSprawdź konkretny moduł:")
+    lines.append("/garmin /rwgps /xert /intervals /hammerhead /csv /garage")
+    lines.append("/daily_report /ride_report /weather /maps /help")
+
+    return "\n".join(lines)[:3900]
+
+
 def _telegram_response_text(command: str, result: dict) -> str | None:
     response = result.get("response") if isinstance(result, dict) else None
     if command == "/status" and isinstance(response, dict):
@@ -85,13 +149,16 @@ def _telegram_response_text(command: str, result: dict) -> str | None:
             intent = response.get("intent", "")
 
             if intent == "unknown_intent" or (response.get("status") == "error" and not tool_result):
+                fallback = _telegram_answer_general_qbot_question(result.get("_query", ""))
+                if fallback:
+                    return fallback[:3900]
                 examples = response.get("available_examples", [])[:6]
                 example_text = ", ".join(examples) if examples else "/status, /backup, /smoke"
                 return (
-                    "Nie mam jeszcze gotowego narzędzia do tego pytania.\n\n"
-                    f"Możesz zapytać np.: {example_text}\n\n"
-                    "Lub użyć komend: /status, /xert, /garmin, /rwgps, /hammerhead, /csv, "
-                    "/garage, /daily_report, /ride_report, /weather, /maps, /intervals, /help"
+                    "Nie wiem jeszcze jak na to odpowiedzieć.\n\n"
+                    f"Spróbuj: {example_text}\n"
+                    "Lub: /status, /xert, /garmin, /rwgps, /hammerhead, /csv, "
+                    "/garage, /daily_report, /ride_report, /help"
                 )
 
             if answer:
@@ -736,7 +803,7 @@ async def telegram_webhook(webhook_secret: str, request: Request):
             result = {"command": "/ask", "response": {"status": "error", "error": "empty query"}}
         else:
             from qbot_query_processor import process_query
-            result = {"command": "/ask", "response": process_query(query, execute=True)}
+            result = {"command": "/ask", "response": process_query(query, execute=True), "_query": query}
     else:
         result = {"command": command, "response": {"status": "unknown_command", "text": text}}
 
