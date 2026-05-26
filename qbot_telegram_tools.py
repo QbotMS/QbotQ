@@ -901,6 +901,18 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
     if any(w in q for w in ["backup", "kopia", "backupy"]):
         _safe_exec("qbot_backup_status")
 
+    # Sleep/wellness/nutrition query → execute DB tools + live APIs
+    if any(w in q for w in ["spanie", "snu", "sen", "spałem", "spała", "spało", "spałe", "wyspa",
+                              "czuję", "czuje", "czuł", "samopocz", "wellness",
+                              "jadłem", "jadła", "jadłe", "zjadł", "kalor", "kcal", "żywieni",
+                              "nutrition", "dieta", "diet", "makro", "białko", "węglow",
+                              "tłuszcz", "cronomet", "intervals", "mfp", "komentarz"]):
+        _safe_exec("qbot_wellness_day_get")
+        _safe_exec("qbot_sleep_day_get")
+        _safe_exec("qbot_nutrition_day_get")
+        _safe_exec("qbot_intervals_wellness_status")
+        _safe_exec("qbot_intervals_comments_import_preview", {"dry_run": True, "date_to": datetime.now(timezone.utc).strftime("%Y-%m-%d")})
+
     # Handle NEEDS_LOCATION or ERROR from weather — clean user-facing
     weather_status = extra_results.get("qbot_weather_current", {})
     if weather_status.get("status") == "NEEDS_LOCATION":
@@ -952,7 +964,13 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
         brief = {k: r[k] for k in ("status", "ftp_watts", "ltp_watts", "w_prime_kj",
                                      "form_status", "configured", "restored_status",
                                      "temperature_c", "description", "source",
-                                     "wind_mps", "wind_kmh", "humidity_percent", "location_resolved") if k in r and r[k] is not None}
+                                     "wind_mps", "wind_kmh", "humidity_percent", "location_resolved",
+                                     "sleep_duration_min", "sleep_score", "deep_sleep_min", "rem_sleep_min",
+                                     "light_sleep_min", "awake_min", "hrv_ms", "resting_hr_bpm",
+                                     "weight_kg", "calories_kcal", "carbs_g", "protein_g", "fat_g",
+                                     "date", "data", "entries", "sources_available", "sources",
+                                     "reason", "summary",
+                                     "date_range", "missing_fields") if k in r and r[k] is not None}
         tool_context += f"\n[{tname}]: {brief}\n"
 
     # Step 3: If LLM is available, pass results to LLM for a clean answer
@@ -1011,6 +1029,59 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
                 "tool": "qbot_telegram_agent_chat",
                 "status": "OK",
                 "answer": " ".join(lines)[:3900],
+                "tools_considered_count": len(tool_names),
+                "tools_used": extra_tools,
+                "llm_used": False,
+                "planner_used": True,
+                "policy_result": "",
+                "requires_approval": False,
+            }
+
+        # Natural language formatting for sleep
+        sleep_r = extra_results.get("qbot_sleep_day_get", {})
+        if sleep_r.get("status") == "OK" and sleep_r.get("data"):
+            sd = sleep_r["data"]
+            lines = [
+                f"Sen: {sd.get('sleep_duration_min', '?')} min, "
+                f"głęboki {sd.get('deep_sleep_min', '?')} min, "
+                f"płytki {sd.get('light_sleep_min', '?')} min, "
+                f"REM {sd.get('rem_sleep_min', '?')} min, "
+                f"score {sd.get('sleep_score', '?')}.",
+                f"HRV: {sd.get('hrv_ms', '?')} ms, "
+                f"tętno spoczynkowe: {sd.get('resting_hr_bpm', '?')} bpm.",
+                f"Źródło: {sd.get('source', '?')} from qbot_sleep_day_get.",
+            ]
+            return {
+                "tool": "qbot_telegram_agent_chat",
+                "status": "OK",
+                "answer": " ".join(lines)[:3900],
+                "tools_considered_count": len(tool_names),
+                "tools_used": extra_tools,
+                "llm_used": False,
+                "planner_used": True,
+                "policy_result": "",
+                "requires_approval": False,
+            }
+
+        # Natural language formatting for nutrition
+        nutrition_r = extra_results.get("qbot_nutrition_day_get", {})
+        if nutrition_r.get("status") == "OK" and nutrition_r.get("entries"):
+            entries = nutrition_r["entries"]
+            parts = []
+            for e in entries:
+                src = e.get("source", "?")
+                parts.append(
+                    f"{e.get('date', '?')} ({src}): "
+                    f"{e.get('calories_kcal', '?')} kcal, "
+                    f"B:{e.get('protein_g', '?')}g "
+                    f"W:{e.get('carbs_g', '?')}g "
+                    f"T:{e.get('fat_g', '?')}g."
+                )
+            parts.append(f"Źródło: {', '.join(nutrition_r.get('sources_available', ['?']))}.")
+            return {
+                "tool": "qbot_telegram_agent_chat",
+                "status": "OK",
+                "answer": "\n".join(parts)[:3900],
                 "tools_considered_count": len(tool_names),
                 "tools_used": extra_tools,
                 "llm_used": False,
