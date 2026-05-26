@@ -24,6 +24,7 @@ _SAFE_MULTI_EXECUTE_TOOLS: set[str] = {
     "qbot_rwgps_route_search",
     "qbot_rwgps_route_get",
     "qbot_rwgps_route_export_links",
+    "qbot_rwgps_route_export_file",
     "qbot_hammerhead_import_status",
     "qbot_hammerhead_import_inventory",
     "qbot_csv_export_status",
@@ -246,7 +247,11 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "limitations": ["Read-only", "No external API keys exposed"],
     },
     {
-        "keywords": ["weather forecast", "forecast weather", "prognoza pogody", "prognoza"],
+        "keywords": [
+            "weather forecast", "forecast weather", "prognoza pogody", "prognoza",
+            "jutrzejsza pogoda", "jutrzejszy", "jutro", "na jutro", "tomorrow",
+            "pogoda na jutro", "prognoza na jutro",
+        ],
         "tool": "qbot_weather_forecast",
         "args": {},
         "confidence": "high",
@@ -993,8 +998,8 @@ _INTENT_MAP: list[dict[str, Any]] = [
     {
         "keywords": ["rwgps route", "ridewithgps route", "pokaż trasę", "szukaj trasy",
                       "lista tras", "list routes", "pokaż wszystkie trasy", "all routes",
-                      "route search", "trasa", "route", "toskania", "florencja", "firenze",
-                      "florence", "gpx", "tcx", "fit", "cue sheet"],
+                      "route search", "toskania", "florencja", "firenze",
+                      "florence"],
         "tool": "qbot_rwgps_route_search",
         "args": {"query": "__QUERY__", "limit": 5, "offset": 0, "include_details": True},
         "confidence": "high",
@@ -1008,6 +1013,17 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "confidence": "high",
         "required_data": ["RWGPS route catalog"],
         "limitations": ["Read-only listing", "Returns record data, not a summary only"],
+    },
+    {
+        "keywords": [
+            "pobierz trasę", "download route", "export route", "gpx track", "zwróć plik",
+            "pobierz gpx", "export gpx", "gpx file", "tcx file", "json file",
+        ],
+        "tool": "qbot_rwgps_route_export_file",
+        "args": {"route_id": "__ROUTE_ID__", "format": "gpx"},
+        "confidence": "high",
+        "required_data": ["RWGPS route record", "RWGPS geometry/track points", "RWGPS export artifact path"],
+        "limitations": ["Read-only export", "Returns a local artifact path, not a binary attachment"],
     },
     {
         "keywords": ["hammerhead import", "hammerhead status", "karoo import", "sprawdź hammerhead"],
@@ -1173,9 +1189,13 @@ def _get_tool_args(tool_name: str) -> dict[str, Any]:
 
 def _materialize_args(query: str, args: dict[str, Any]) -> dict[str, Any]:
     materialized: dict[str, Any] = {}
+    route_id_match = re.search(r"\b(\d{6,})\b", query)
+    route_id = route_id_match.group(1) if route_id_match else ""
     for key, value in (args or {}).items():
         if isinstance(value, str) and value == "__QUERY__":
             materialized[key] = query
+        elif isinstance(value, str) and value == "__ROUTE_ID__":
+            materialized[key] = route_id
         else:
             materialized[key] = value
     return materialized

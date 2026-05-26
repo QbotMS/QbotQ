@@ -225,7 +225,6 @@ def _tool_qbot_telegram_status(_args: dict | None = None) -> dict[str, Any]:
     lines.append("✅ Telegram webhook działa" if webhook_ok else "⚠️ Telegram webhook: problem")
     lines.append(f"✅ Legacy takeover: {legacy_takeover_pct}%")
     lines.append("ℹ️ q-bot.service: disabled po cutover" if legacy_disabled else "ℹ️ q-bot.service: legacy active")
-    lines.append("ℹ️ ngrok: nieużywany")
 
     core_ok = api_ok and db_ok and webhook_ok and legacy_disabled and legacy_takeover_pct >= 100
 
@@ -854,8 +853,15 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
         _safe_exec("qbot_garmin_config_status")
 
     # Weather query
-    if any(w in q for w in ["pogod", "pada", "deszcz", "wiatr", "temperatur", "ubrać", "ubiór", "ciuchy", "ubranie", "strój", "ubrac", "ubier", "zabrać"]):
-        _safe_exec("qbot_weather_current")
+    weather_kw = ["pogod", "pada", "deszcz", "wiatr", "temperatur", "ubrać", "ubiór", "ciuchy", "ubranie", "strój", "ubrac", "ubier", "zabrać"]
+    weather_future_kw = ["jutro", "jutrze", "jutrzejsz", "prognoz", "forecast", "tomorrow", "na jutro"]
+    is_weather_query = any(w in q for w in weather_kw) or any(w in q for w in weather_future_kw)
+    if is_weather_query:
+        if any(w in q for w in weather_future_kw):
+            period = "tomorrow_morning" if any(w in q for w in ["rano", "morning"]) else "tomorrow_evening" if any(w in q for w in ["wiecz", "evening"]) else "tomorrow"
+            _safe_exec("qbot_weather_forecast", {"text": message, "period": period, "hours": 48})
+        else:
+            _safe_exec("qbot_weather_current")
         _safe_exec("qbot_weather_config_status")
         _safe_exec("qbot_garage_raw_status")
 
@@ -915,7 +921,7 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
         _safe_exec("qbot_intervals_comments_import_preview", {"dry_run": True, "date_to": datetime.now(timezone.utc).strftime("%Y-%m-%d")})
 
     # Handle NEEDS_LOCATION or ERROR from weather — clean user-facing
-    weather_status = extra_results.get("qbot_weather_current", {})
+    weather_status = extra_results.get("qbot_weather_forecast", extra_results.get("qbot_weather_current", {}))
     if weather_status.get("status") == "NEEDS_LOCATION":
         if chat_id:
             _conv_append(chat_id, "assistant", "Dla jakiej lokalizacji?", intent="weather_inquiry",
@@ -974,9 +980,42 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
                                      "date_range", "missing_fields") if k in r and r[k] is not None}
         tool_context += f"\n[{tname}]: {brief}\n"
 
+    # Deterministic weather forecast response should win over the general LLM.
+    forecast_r = extra_results.get("qbot_weather_forecast", {})
+    if forecast_r.get("status") == "OK" and forecast_r.get("hourly_times"):
+        loc = forecast_r.get("location_resolved", "?")
+        summary = forecast_r.get("summary_text")
+        if summary:
+            answer = f"{loc}: {summary}"
+        else:
+            times = forecast_r.get("hourly_times", [])[:6]
+            temps = forecast_r.get("hourly_temps", [])[:6]
+            winds = forecast_r.get("hourly_wind", [])[:6]
+            answer = f"{loc}: prognoza na {forecast_r.get('period', 'okres')}. "
+            if times and temps:
+                answer += f"Pierwsze godziny: " + ", ".join(
+                    f"{t[-5:] if isinstance(t, str) else '?'} {temp}°C"
+                    for t, temp in zip(times, temps)
+                )
+            if winds:
+                answer += f". Wiatr do {max(winds):.1f} m/s."
+            source_w = forecast_r.get("source", "?")
+            answer += f"\nŹródło pogody: {source_w} via qbot_weather_forecast."
+        return {
+            "tool": "qbot_telegram_agent_chat",
+            "status": "OK",
+            "answer": answer[:3900],
+            "tools_considered_count": len(tool_names),
+            "tools_used": extra_tools,
+            "llm_used": False,
+            "planner_used": True,
+            "policy_result": "",
+            "requires_approval": False,
+        }
+
     # Step 3: If LLM is available, pass results to LLM for a clean answer
 
-    if has_llm and extra_tools:
+    if has_llm and extra_tools and not is_weather_query:
         system = (
             "Odpowiadasz krótko po polsku, plain text, max 800 znaków. "
             "Jesteś Qbotem. Otrzymujesz wyniki z wykonanych narzędzi Qbot. "

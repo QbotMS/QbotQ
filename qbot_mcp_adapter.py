@@ -516,6 +516,21 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+    "qbot.rwgps_route_export_file": {
+        "qbot_tool": "qbot_rwgps_route_export_file",
+        "description": "Export a RWGPS route to a local GPX/TCX/JSON artifact file.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "route_id": {"type": "string"},
+                "format": {"type": "string", "enum": ["gpx", "tcx", "json"], "default": "gpx"},
+            },
+            "required": ["route_id"],
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
     "qbot.rwgps_restore_plan": {
         "qbot_tool": "qbot_rwgps_restore_plan",
         "description": "Restore plan for RWGPS capability.",
@@ -1125,6 +1140,15 @@ def handle_mcp_request(
             else:
                 result = _tool_qbot_external_context_bundle({"topic": topic, "max_chars": max_chars})
                 result["tool"] = "qbot.context_bundle"
+        elif name == "qbot.rwgps_route_export_file":
+            route_id = str(clean_args.get("route_id", "")).strip()
+            fmt = str(clean_args.get("format", "gpx")).strip().lower() or "gpx"
+            if not route_id:
+                result = {"tool": "qbot.rwgps_route_export_file", "status": "error", "error": "route_id required"}
+            else:
+                from tools.rwgps.client import export_route_to_artifact as rwgps_export_route_to_artifact
+                result = rwgps_export_route_to_artifact(route_id, fmt=fmt)
+                result["tool"] = "qbot.rwgps_route_export_file"
         elif name == "qbot.artifact_create" and not _token_configured():
             result = {
                 "tool": name,

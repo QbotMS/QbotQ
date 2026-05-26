@@ -9,7 +9,7 @@ import base64 as _b64
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -1324,7 +1324,11 @@ def _tool_qbot_weather_forecast(_args: dict | None = None) -> dict[str, Any]:
     _args = _args or {}
     location = str(_args.get("location", "") or "")
     period = str(_args.get("period", "today"))
-    hours = min(int(_args.get("hours", 12)), 48)
+    hours = min(max(int(_args.get("hours", 12)), 1), 48)
+    period_l = period.lower().strip()
+    wants_tomorrow = any(k in period_l for k in ("tomorrow", "jutro", "jutrze"))
+    wants_morning = any(k in period_l for k in ("morning", "rano"))
+    wants_evening = any(k in period_l for k in ("evening", "wiecz"))
 
     loc = _tool_qbot_resolve_weather_location({"text": str(_args.get("text", "")), "max_last_ride_age_hours": 18})
     if not location:
@@ -1332,22 +1336,39 @@ def _tool_qbot_weather_forecast(_args: dict | None = None) -> dict[str, Any]:
             return {"tool": "qbot_weather_forecast", "status": "NEEDS_LOCATION", "safety_class": "READ_ONLY", "message": loc.get("message")}
         location = loc.get("location_resolved", "")
 
-    owm_key = os.getenv("OPENWEATHERMAP_API_KEY") or os.getenv("OWM_API_KEY") or os.getenv("WEATHER_API_KEY")
-
-    try:
-        import httpx
-        lat, lon = os.getenv("LOCATION_LAT", "52.2297"), os.getenv("LOCATION_LON", "21.0122")
-        with httpx.Client(timeout=10.0, trust_env=False) as c:
-            if location and not (lat and lon):
-                geo = c.get(f"https://geocoding-api.open-meteo.com/v1/search?name={location}&count=1")
+    lat = _args.get("lat")
+    lon = _args.get("lon")
+    if (lat is None or lon is None) and location:
+        import urllib.parse as _urlparse
+        geo_city = location.split(",")[0].strip()
+        geo_city_encoded = _urlparse.quote(geo_city, safe="")
+        try:
+            import httpx
+            with httpx.Client(timeout=10.0, trust_env=False) as c:
+                geo = c.get(f"https://geocoding-api.open-meteo.com/v1/search?name={geo_city_encoded}&count=1&language=pl")
                 if geo.status_code == 200 and geo.json().get("results"):
                     res = geo.json()["results"][0]
                     lat, lon = res["latitude"], res["longitude"]
+                    location = f"{res.get('name', geo_city)}, {res.get('country', '')}".strip(", ")
+        except Exception:
+            pass
 
+    if (lat is None or lon is None):
+        env_lat = os.getenv("LOCATION_LAT")
+        env_lon = os.getenv("LOCATION_LON")
+        if env_lat and env_lon:
+            lat, lon = env_lat, env_lon
+
+    try:
+        import httpx
+        forecast_hours = 48 if wants_tomorrow else hours
+        with httpx.Client(timeout=10.0, trust_env=False) as c:
+            if not (lat and lon):
+                return {"tool": "qbot_weather_forecast", "status": "NEEDS_LOCATION", "safety_class": "READ_ONLY", "message": "Dla jakiej lokalizacji sprawdzić prognozę?"}
             r = c.get(
                 f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
                 f"&hourly=temperature_2m,apparent_temperature,precipitation_probability,wind_speed_10m,weather_code"
-                f"&forecast_hours={hours}&timezone=auto"
+                f"&forecast_hours={forecast_hours}&timezone=auto"
             )
             if r.status_code == 200:
                 d = r.json()
@@ -1356,18 +1377,64 @@ def _tool_qbot_weather_forecast(_args: dict | None = None) -> dict[str, Any]:
                 temps = hourly.get("temperature_2m", [])
                 precip = hourly.get("precipitation_probability", [])
                 winds = hourly.get("wind_speed_10m", [])
+                target_date = None
+                if wants_tomorrow:
+                    target_date = (datetime.now() + timedelta(days=1)).date().isoformat()
+                elif "today" in period_l or "dzis" in period_l:
+                    target_date = datetime.now().date().isoformat()
+                selected_idx: list[int] = []
+                if target_date:
+                    for i, ts in enumerate(times):
+                        if not isinstance(ts, str) or len(ts) < 10:
+                            continue
+                        if ts[:10] != target_date:
+                            continue
+                        hour = None
+                        try:
+                            hour = int(ts[11:13])
+                        except Exception:
+                            pass
+                        if wants_morning and hour is not None and not (6 <= hour < 12):
+                            continue
+                        if wants_evening and hour is not None and not (18 <= hour < 23):
+                            continue
+                        selected_idx.append(i)
+                if not selected_idx:
+                    selected_idx = list(range(min(len(times), max(6, min(hours, 12)))))
+                sel_times = [times[i] for i in selected_idx if i < len(times)]
+                sel_temps = [temps[i] for i in selected_idx if i < len(temps)]
+                sel_precip = [precip[i] for i in selected_idx if i < len(precip)]
+                sel_winds = [winds[i] for i in selected_idx if i < len(winds)]
+                temp_min = min(sel_temps) if sel_temps else None
+                temp_max = max(sel_temps) if sel_temps else None
+                precip_max = max(sel_precip) if sel_precip else None
+                wind_max = max(sel_winds) if sel_winds else None
+                summary_bits = []
+                if temp_min is not None and temp_max is not None:
+                    summary_bits.append(f"temperatura {temp_min:.1f}-{temp_max:.1f}°C")
+                if precip_max is not None:
+                    summary_bits.append(f"opady do {precip_max}%")
+                if wind_max is not None:
+                    summary_bits.append(f"wiatr do {wind_max:.1f} m/s")
+                summary_text = ", ".join(summary_bits) if summary_bits else "brak danych podsumowania"
                 return {
                     "tool": "qbot_weather_forecast",
                     "status": "OK",
                     "safety_class": "READ_ONLY",
                     "source": "Open-Meteo/ECMWF",
                     "location_resolved": location,
-                    "hours": hours,
+                    "hours": forecast_hours,
                     "period": period,
-                    "hourly_times": times[:6],
-                    "hourly_temps": temps[:6],
-                    "hourly_precip_prob": precip[:6],
-                    "hourly_wind": winds[:6],
+                    "target_date": target_date,
+                    "summary_text": summary_text,
+                    "hourly_times": sel_times[:12],
+                    "hourly_temps": sel_temps[:12],
+                    "hourly_precip_prob": sel_precip[:12],
+                    "hourly_wind": sel_winds[:12],
+                    "daily_temp_min_c": temp_min,
+                    "daily_temp_max_c": temp_max,
+                    "daily_precip_max_prob": precip_max,
+                    "daily_wind_max_mps": wind_max,
                 }
     except Exception as e:
         return {"tool": "qbot_weather_forecast", "status": "ERROR", "safety_class": "READ_ONLY", "error": str(e)[:200]}

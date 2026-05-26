@@ -226,7 +226,6 @@ def _telegram_status_summary() -> tuple[str, dict]:
     lines.append("✅ Telegram webhook działa" if webhook_ok else "⚠️ Telegram webhook: problem")
     lines.append(f"✅ Legacy takeover: {legacy_takeover_pct}%")
     lines.append("ℹ️ q-bot.service: disabled po cutover" if legacy_disabled else "ℹ️ q-bot.service: legacy active")
-    lines.append("ℹ️ ngrok: nieużywany")
 
     return "\n".join(lines), {
         "tool": "qbot_telegram_status_quick",

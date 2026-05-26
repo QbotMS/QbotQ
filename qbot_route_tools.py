@@ -232,6 +232,31 @@ def _tool_qbot_rwgps_route_export_links(_args: dict | None = None) -> dict[str, 
     }
 
 
+def _tool_qbot_rwgps_route_export_file(_args: dict | None = None) -> dict[str, Any]:
+    """Export RWGPS route to a local artifact file. Read-only."""
+    _args = _args or {}
+    route_id = str(_args.get("route_id", "")).strip()
+    fmt = str(_args.get("format", "gpx")).strip().lower() or "gpx"
+    if not route_id:
+        return {
+            "tool": "qbot_rwgps_route_export_file",
+            "status": "ERROR",
+            "safety_class": "READ_ONLY",
+            "error": "route_id required",
+        }
+
+    from tools.rwgps.client import export_route_to_artifact as rwgps_export_route_to_artifact
+
+    result = rwgps_export_route_to_artifact(route_id, fmt=fmt)
+    return {
+        "tool": "qbot_rwgps_route_export_file",
+        "safety_class": "READ_ONLY",
+        "requested_format": fmt,
+        **result,
+        "notes": "Read-only route export. Returns a local artifact path that can be fetched separately.",
+    }
+
+
 def _tool_qbot_rwgps_legacy_status(_args: dict | None = None) -> dict[str, Any]:
     """Comprehensive RWGPS legacy parity status."""
     import subprocess

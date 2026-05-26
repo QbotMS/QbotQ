@@ -21,6 +21,7 @@ This module backs QBot route-planning tools for Ride With GPS.
 - `get_rwgps_route`
 - `get_rwgps_planned_routes`
 - `get_rwgps_collections`
+- `qbot_rwgps_route_export_file`
 
 ## Notes
 
@@ -32,3 +33,5 @@ This module backs QBot route-planning tools for Ride With GPS.
   adjustment if the account uses a different RWGPS API variant.
 - Route list tools should return record arrays plus `count`/`total`, not only a
   summary string.
+- Export tools should return a local artifact path for GPX/TCX/JSON exports,
+  not only a textual summary.
