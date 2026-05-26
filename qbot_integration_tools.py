@@ -1105,6 +1105,13 @@ def _tool_qbot_weather_current(_args: dict | None = None) -> dict[str, Any]:
 
     owm_key = os.getenv("OPENWEATHERMAP_API_KEY") or os.getenv("OWM_API_KEY") or os.getenv("WEATHER_API_KEY")
 
+    owm_attempted = False
+    owm_status_code = None
+    owm_error_type = ""
+    om_attempted = False
+    om_status_code = None
+    om_error_type = ""
+
     if not location and not (lat and lon):
         loc = _tool_qbot_resolve_weather_location({"text": str(_args.get("text", "")), "max_last_ride_age_hours": 18})
         if loc.get("status") == "NEEDS_LOCATION":
@@ -1116,6 +1123,8 @@ def _tool_qbot_weather_current(_args: dict | None = None) -> dict[str, Any]:
                 "fallback_used": False,
                 "location_source": "none",
                 "message": loc.get("message"),
+                "openweathermap_attempted": False,
+                "open_meteo_attempted": False,
             }
         location = loc.get("location_resolved", "")
         lat = loc.get("lat")
@@ -1124,6 +1133,7 @@ def _tool_qbot_weather_current(_args: dict | None = None) -> dict[str, Any]:
         last_ride_age = loc.get("last_ride_age_hours")
 
     if owm_key:
+        owm_attempted = True
         try:
             import httpx
             if lat and lon:
@@ -1132,6 +1142,7 @@ def _tool_qbot_weather_current(_args: dict | None = None) -> dict[str, Any]:
                 url = f"https://api.openweathermap.org/data/2.5/weather?q={location}&appid={owm_key}&units=metric&lang=pl"
             with httpx.Client(timeout=10.0, trust_env=False) as c:
                 r = c.get(url)
+                owm_status_code = r.status_code
                 if r.status_code == 200:
                     d = r.json()
                     return {
@@ -1151,12 +1162,22 @@ def _tool_qbot_weather_current(_args: dict | None = None) -> dict[str, Any]:
                         "humidity_percent": d["main"]["humidity"],
                         "pressure_hpa": d["main"]["pressure"],
                         "observed_at": datetime.fromtimestamp(d["dt"], tz=timezone.utc).isoformat(),
+                        "openweathermap_attempted": True,
+                        "openweathermap_status_code": owm_status_code,
+                        "open_meteo_attempted": False,
                     }
                 elif r.status_code in (401, 403):
-                    pass
-        except Exception:
-            pass
+                    owm_error_type = "auth_error"
+                elif r.status_code == 404:
+                    owm_error_type = "location_not_found"
+                elif r.status_code == 429:
+                    owm_error_type = "rate_limit"
+                else:
+                    owm_error_type = f"http_{r.status_code}"
+        except Exception as e:
+            owm_error_type = f"connection_error: {str(e)[:60]}"
 
+    om_attempted = True
     try:
         import httpx
         with httpx.Client(timeout=10.0, trust_env=False) as c:
@@ -1164,11 +1185,13 @@ def _tool_qbot_weather_current(_args: dict | None = None) -> dict[str, Any]:
                 r = c.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code,precipitation,cloud_cover&timezone=auto")
             else:
                 geo = c.get(f"https://geocoding-api.open-meteo.com/v1/search?name={location}&count=1&language=pl")
+                om_status_code = geo.status_code if geo.status_code != 200 else None
                 if geo.status_code == 200 and geo.json().get("results"):
                     res = geo.json()["results"][0]
                     lat, lon = res["latitude"], res["longitude"]
                     location = f"{res.get('name', location)}, {res.get('country', '')}"
                 r = c.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code,precipitation,cloud_cover&timezone=auto")
+            om_status_code = r.status_code
             if r.status_code == 200:
                 d = r.json()
                 current = d["current"]
@@ -1189,17 +1212,33 @@ def _tool_qbot_weather_current(_args: dict | None = None) -> dict[str, Any]:
                     "humidity_percent": current["relative_humidity_2m"],
                     "description": wmo_map.get(wmo_code, f"kod {wmo_code}"),
                     "observed_at": current["time"],
+                    "openweathermap_attempted": owm_attempted,
+                    "openweathermap_status_code": owm_status_code,
+                    "openweathermap_error_type": owm_error_type or None,
+                    "open_meteo_attempted": True,
+                    "open_meteo_status_code": om_status_code,
                 }
+            else:
+                om_error_type = f"http_{r.status_code}"
     except Exception as e:
-        return {
-            "tool": "qbot_weather_current",
-            "status": "ERROR",
-            "source": "none",
-            "fallback_used": False,
-            "error": str(e)[:200],
-        }
+        if not om_error_type:
+            om_error_type = f"connection_error: {str(e)[:60]}"
 
-    return {"tool": "qbot_weather_current", "status": "ERROR", "source": "none", "fallback_used": False, "error": "no source available"}
+    return {
+        "tool": "qbot_weather_current",
+        "status": "ERROR",
+        "source": "none",
+        "fallback_used": False,
+        "location_resolved": location,
+        "openweathermap_attempted": owm_attempted,
+        "openweathermap_status_code": owm_status_code,
+        "openweathermap_error_type": owm_error_type or None,
+        "open_meteo_attempted": om_attempted,
+        "open_meteo_status_code": om_status_code,
+        "open_meteo_error_type": om_error_type or None,
+        "openweathermap_error_message": f"HTTP {owm_status_code}: {owm_error_type}" if owm_status_code else (owm_error_type or "not configured"),
+        "open_meteo_error_message": f"HTTP {om_status_code}: {om_error_type}" if om_status_code else (om_error_type or None),
+    }
 
 
 def _tool_qbot_weather_forecast(_args: dict | None = None) -> dict[str, Any]:

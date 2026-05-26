@@ -851,7 +851,7 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
     if any(w in q for w in ["backup", "kopia", "backupy"]):
         _safe_exec("qbot_backup_status")
 
-    # Handle NEEDS_LOCATION from weather — clean user-facing, no tool names
+    # Handle NEEDS_LOCATION or ERROR from weather — clean user-facing
     weather_status = extra_results.get("qbot_weather_current", {})
     if weather_status.get("status") == "NEEDS_LOCATION":
         if chat_id:
@@ -866,6 +866,27 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
                 "Napisz np. „pogoda w Markach”.\n"
                 "Źródło pogody: nie pobrano — brak lokalizacji.\n"
                 "Źródło lokalizacji: brak w zapytaniu / brak świeżej trasy."
+            ),
+            "tools_considered_count": len(tool_names),
+            "tools_used": extra_tools,
+            "llm_used": False,
+            "planner_used": True,
+            "policy_result": "",
+            "requires_approval": False,
+        }
+    elif weather_status.get("status") == "ERROR":
+        owm_err = weather_status.get("openweathermap_error_message", "nie skonfigurowany")
+        om_err = weather_status.get("open_meteo_error_message", "brak")
+        loc = weather_status.get("location_resolved", "?")
+        return {
+            "tool": "qbot_telegram_agent_chat",
+            "status": "WARN",
+            "answer": (
+                f"Nie pobrałem pogody dla {loc}. "
+                f"OpenWeatherMap: {owm_err}. Open-Meteo fallback: {om_err or 'nie próbowano'}. "
+                f"Spróbuj ponownie za chwilę.\n"
+                f"Źródło pogody: obie próby nieudane.\n"
+                f"Źródło lokalizacji: tekst wiadomości."
             ),
             "tools_considered_count": len(tool_names),
             "tools_used": extra_tools,
