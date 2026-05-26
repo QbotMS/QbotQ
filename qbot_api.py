@@ -193,7 +193,6 @@ def _telegram_webhook_reply(chat_id: int, text: str) -> JSONResponse:
             "method": "sendMessage",
             "chat_id": chat_id,
             "text": text,
-            "parse_mode": "HTML",
         },
         status_code=200,
     )
@@ -571,11 +570,18 @@ async def telegram_webhook(webhook_secret: str, request: Request):
 
     cmd = text.strip().lower()
     if not cmd.startswith("/"):
-        cmd = "/ask " + text
+        from qbot_telegram_tools import _tool_qbot_telegram_llm_chat
+        chat_result = _tool_qbot_telegram_llm_chat({"message": text, "style": "short"})
+        return _telegram_webhook_reply(chat_id, chat_result.get("answer", "Nie mogę teraz odpowiedzieć."))
 
     parts = cmd.split(maxsplit=1)
     command = parts[0].lower()
     query = parts[1].strip() if len(parts) > 1 else ""
+
+    if command == "/ask":
+        from qbot_telegram_tools import _tool_qbot_telegram_llm_chat
+        chat_result = _tool_qbot_telegram_llm_chat({"message": query or text, "style": "short"})
+        return _telegram_webhook_reply(chat_id, chat_result.get("answer", "Nie mogę teraz odpowiedzieć."))
 
     result: dict = {}
 
@@ -805,7 +811,7 @@ async def telegram_webhook(webhook_secret: str, request: Request):
             from qbot_query_processor import process_query
             result = {"command": "/ask", "response": process_query(query, execute=True), "_query": query}
     else:
-        result = {"command": command, "response": {"status": "unknown_command", "text": text}}
+        return _telegram_webhook_reply(chat_id, f"Nie znam komendy '{command}'. Napisz pytanie normalnym tekstem albo /help.")
 
     reply_text = _telegram_response_text(command, result)
     if not reply_text:

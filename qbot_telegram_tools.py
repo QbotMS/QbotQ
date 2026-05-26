@@ -611,5 +611,145 @@ def _get_telegram_tool(name: str):
         "qbot_telegram_command_help": _tool_qbot_telegram_command_help,
         "qbot_telegram_answer_context": _tool_qbot_telegram_answer_context,
         "qbot_telegram_delete_webhook": _tool_qbot_telegram_delete_webhook,
+        "qbot_telegram_llm_chat": _tool_qbot_telegram_llm_chat,
     }
     return mapping.get(name)
+
+
+def _tool_qbot_telegram_llm_chat(_args: dict | None = None) -> dict[str, Any]:
+    _args = _args or {}
+    message = str(_args.get("message", "") or "")
+    style = str(_args.get("style", "short"))
+
+    if not message.strip():
+        return {"tool": "qbot_telegram_llm_chat", "status": "ERROR", "answer": "Pusta wiadomość.", "llm_used": False, "provider": "none"}
+
+    system = (
+        "Odpowiadasz krótko i konkretnie po polsku, plain text, bez Markdown. "
+        "Jesteś Qbotem — asystentem rowerowym. Masz dostęp do: status Qbot, integracje "
+        "(Xert, Garmin, RWGPS, Hammerhead, Intervals, Cronometer), pogoda (Open-Meteo), "
+        "mapy (OSM/Overpass), garaż, raporty dzienne i z jazdy, backup, CSV. "
+        "Jeśli pytanie jest ogólne — odpowiedz normalnie, 2-4 zdania. "
+        "Jeśli dotyczy Qbota/integracji/statusu — użyj załączonego kontekstu. "
+        "NIE próbuj wywoływać tooli/funkcji — podaj tylko odpowiedź tekstową. "
+        "Nie pokazuj sekretów. Maksymalnie 1000 znaków."
+    )
+
+    has_llm = bool(os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")
+                   or os.getenv("QGPT_API_KEY") or os.getenv("OPENROUTER_API_KEY"))
+
+    if has_llm:
+        try:
+            from qbot_api import _telegram_answer_general_qbot_question
+            context = _telegram_answer_general_qbot_question(message)
+        except Exception:
+            context = None
+
+        context_text = ""
+        if context:
+            context_text = f"\n\n[KONTEKST QBOT — użyj jeśli pytanie dotyczy Qbota/integracji/statusu]:\n{context[:2000]}"
+
+        try:
+            from qgpt_client import qgpt_chat
+            answer = qgpt_chat(
+                [{"role": "user", "content": message + context_text}],
+                system=system,
+                max_tokens=800 if style == "short" else 1500,
+            )
+            return {
+                "tool": "qbot_telegram_llm_chat",
+                "status": "OK",
+                "llm_used": True,
+                "provider": "anthropic",
+                "answer": answer[:3900],
+                "tools_used": [],
+                "qbot_context_used": context is not None,
+            }
+        except Exception as exc:
+            return {
+                "tool": "qbot_telegram_llm_chat",
+                "status": "WARN",
+                "llm_used": False,
+                "provider": "none",
+                "answer": f"LLM backend chwilowo niedostępny ({exc}).\n\n{context[:1500] if context else 'Mogę sprawdzić lokalne statusy i integracje. Użyj komend: /status, /xert, /garmin, /rwgps, /help'}",
+                "tools_used": [],
+                "qbot_context_used": context is not None,
+            }
+
+    try:
+        from qbot_api import _telegram_answer_general_qbot_question
+        context = _telegram_answer_general_qbot_question(message)
+    except Exception:
+        context = None
+
+    if context:
+        return {
+            "tool": "qbot_telegram_llm_chat",
+            "status": "WARN_LLM_UNAVAILABLE",
+            "llm_used": False,
+            "provider": "none",
+            "answer": context[:3900],
+            "tools_used": [],
+            "qbot_context_used": True,
+        }
+
+    return {
+        "tool": "qbot_telegram_llm_chat",
+        "status": "WARN_LLM_UNAVAILABLE",
+        "llm_used": False,
+        "provider": "none",
+        "answer": (
+            "LLM backend nie jest skonfigurowany w Qbot, więc nie odpowiem jeszcze jak normalny model. "
+            "Mogę sprawdzić lokalne statusy i integracje. "
+            "Użyj komend: /status, /xert, /garmin, /rwgps, /hammerhead, /csv, /garage, /daily_report, /ride_report, /help"
+        ),
+        "tools_used": [],
+        "qbot_context_used": False,
+    }
+
+
+def _tool_qbot_telegram_llm_chat_self_check(_args: dict | None = None) -> dict[str, Any]:
+    has_llm = bool(os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")
+                   or os.getenv("QGPT_API_KEY") or os.getenv("OPENROUTER_API_KEY"))
+
+    tests = []
+    blockers = []
+
+    def _test(label, msg):
+        try:
+            r = _tool_qbot_telegram_llm_chat({"message": msg, "style": "short"})
+            answer = r.get("answer", "")
+            ok = bool(answer and len(answer) > 10)
+            tests.append({"label": label, "status": "OK" if ok else "FAIL", "llm_used": r.get("llm_used"), "answer_len": len(answer)})
+            return ok
+        except Exception as e:
+            tests.append({"label": label, "status": "ERROR", "error": str(e)[:100]})
+            return False
+
+    t1 = _test("czy qbot działa?", "czy qbot działa?")
+    t2 = _test("stary qbot", "chce wiedziec czy umiesz to co umiałeś przed nowa architektura qbot")
+    t3 = _test("co potrafisz?", "co potrafisz?")
+    t4 = _test("jazda jutro", "co sądzisz o jeździe jutro rano?")
+
+    plain_routes_to_llm = t1 and t2
+    capability_answered = t2
+    general_answered = t1
+
+    if not plain_routes_to_llm:
+        blockers.append("plain text LLM chat failed for basic queries")
+    if not t2:
+        blockers.append("capability question not answered")
+
+    return {
+        "tool": "qbot_telegram_llm_chat_self_check",
+        "status": "ERROR" if blockers else "OK",
+        "safety_class": "READ_ONLY",
+        "plain_text_goes_to_llm_chat": plain_routes_to_llm,
+        "capability_question_answered": capability_answered,
+        "general_question_answered": general_answered,
+        "unknown_intent_user_facing": False,
+        "llm_provider_available": has_llm,
+        "blockers": blockers,
+        "tests": tests,
+        "notes": "No messages sent. Tests via _tool_qbot_telegram_llm_chat directly.",
+    }
