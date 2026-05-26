@@ -298,6 +298,8 @@ from qbot_nutrition_tools import (
     _tool_qbot_nutrition_status,
 )
 
+from qbot_query_router import _tool_qbot_query
+
 from qbot_task_queue import (
     _tool_qbot_task_queue_add,
     _tool_qbot_task_queue_list,

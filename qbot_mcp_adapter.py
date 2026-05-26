@@ -43,6 +43,44 @@ MCP_SESSION_HEADER = "mcp-session-id"
 _SESSION_STATE: dict[str, dict[str, Any]] = {}
 
 _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
+    # ── Core / read-only ──
+    "qbot.query": {
+        "qbot_tool": "qbot_query",
+        "description": "Universal read-only query router. QBot classifies intent, selects allowlisted internal readers, executes, and returns structured answer with provenance. No DB writes. ChatGPT should NOT know internal reader names — just ask in natural language.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Natural language question in any language"},
+                "mode": {"type": "string", "enum": ["read_only", "plan_only"], "default": "read_only", "description": "read_only: execute readers and return data. plan_only: return which readers would be used, without executing."},
+                "scope": {"type": "string", "enum": ["all", "nutrition", "training", "routes", "garage"], "default": "all", "description": "Limit to specific domain."},
+                "context": {"type": "string", "description": "Optional hint: timezone, project name, location"},
+                "max_rows": {"type": "integer", "minimum": 10, "maximum": 1000, "default": 500},
+                "include_provenance": {"type": "boolean", "default": True},
+                "include_missing": {"type": "boolean", "default": True},
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.ask": {
+        "qbot_tool": "qbot_llm_run_query",
+        "description": "Safe question routing through QBot LLM policy/planner. Use qbot.query for direct data reads.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "execute": {"type": "boolean", "default": False},
+                "style": {"type": "string", "enum": ["concise", "operator", "detailed"], "default": "concise"},
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    # ── System status ──
     "qbot.status": {
         "qbot_tool": "qbot_operator_final_smoke_test",
         "description": "Final operational smoke test for QBot.",
@@ -57,22 +95,14 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
-    "qbot.ask": {
-        "qbot_tool": "qbot_llm_run_query",
-        "description": "Safe question routing through QBot policy/planner.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "execute": {"type": "boolean", "default": False},
-                "style": {"type": "string", "enum": ["concise", "operator", "detailed"], "default": "concise"},
-            },
-            "required": ["query"],
-            "additionalProperties": False,
-        },
+    "qbot.tool_policy": {
+        "qbot_tool": "qbot_tool_policy_list",
+        "description": "List QBot tool policy metadata.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+    # ── Operator ──
     "qbot.runbook": {
         "qbot_tool": "qbot_operator_runbook",
         "description": "Execute or preview a curated QBot operator runbook.",
@@ -103,6 +133,22 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+    # ── Artifacts ──
+    "qbot.artifact_read": {
+        "qbot_tool": "qbot_artifact_read",
+        "description": "Read a QBot artifact file by relative path (e.g. 'exports/rwgps/rwgps_55256628.gpx'). Returns content as text or base64.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "relative_path": {"type": "string"},
+                "return_mode": {"type": "string", "enum": ["text", "base64"], "default": "text"},
+            },
+            "required": ["relative_path"],
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
     "qbot.artifact_create": {
         "qbot_tool": "qbot_artifact_create",
         "description": "Create a safe PostgreSQL artifact.",
@@ -121,48 +167,7 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "WRITE_SAFE",
         "auth_required": True,
     },
-    "qbot.artifact_list": {
-        "qbot_tool": "qbot_artifact_list",
-        "description": "List recent artifacts.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
-            },
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.artifact_get": {
-        "qbot_tool": "qbot_artifact_get",
-        "description": "Get one artifact by id.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "id": {"type": "integer"},
-            },
-            "required": ["id"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.artifact_read": {
-        "qbot_tool": "qbot_artifact_read",
-        "description": "Read a QBot artifact file by relative path (e.g. 'exports/rwgps/rwgps_55256628.gpx'). Returns content as text or base64.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "relative_path": {"type": "string"},
-                "return_mode": {"type": "string", "enum": ["text", "base64"], "default": "text"},
-            },
-            "required": ["relative_path"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
+    # ── Task queue ──
     "qbot.task_queue_add": {
         "qbot_tool": "qbot_task_queue_add",
         "description": "Add a task to QBot queue for CLI execution.",
@@ -218,332 +223,10 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "WRITE_SAFE",
         "auth_required": True,
     },
-    "qbot.tool_policy": {
-        "qbot_tool": "qbot_tool_policy_list",
-        "description": "List QBot tool policy metadata.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.telegram_status": {
-        "qbot_tool": "qbot_telegram_status",
-        "description": "Summarize Telegram bot status and webhook health.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.roadmap_runner_status": {
-        "qbot_tool": "qbot_roadmap_runner_status",
-        "description": "Read-only roadmap runner status including task/block progress.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.roadmap_runner_list_tasks": {
-        "qbot_tool": "qbot_roadmap_runner_list_tasks",
-        "description": "Read-only roadmap task list and safety metadata.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "block": {"type": "string", "default": ""},
-            },
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.roadmap_runner_next_task": {
-        "qbot_tool": "qbot_roadmap_runner_next_task",
-        "description": "Read-only next roadmap task preview.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "block": {"type": "string", "default": ""},
-            },
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.qlab_status": {
-        "qbot_tool": "qbot_qlab_status",
-        "description": "Compatibility alias for legacy QLab status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.assistant_inbox_status": {
-        "qbot_tool": "qbot_assistant_inbox_status",
-        "description": "Read-only local assistant inbox status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.assistant_inbox_list": {
-        "qbot_tool": "qbot_assistant_inbox_list",
-        "description": "Read-only assistant inbox list.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
-                "unread_only": {"type": "boolean", "default": False},
-                "source": {"type": "string", "default": ""},
-                "block": {"type": "string", "default": ""},
-                "status": {"type": "string", "default": ""},
-            },
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.weather_legacy_status": {
-        "qbot_tool": "qbot_weather_legacy_status",
-        "description": "Read-only weather/OpenWeatherMap legacy status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.weather_status": {
-        "qbot_tool": "qbot_weather_status",
-        "description": "Read-only current weather status.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "location": {"type": "string", "default": "Marki"},
-                "days": {"type": "integer", "minimum": 1, "maximum": 7, "default": 1},
-            },
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.weather_current": {
-        "qbot_tool": "qbot_weather_current",
-        "description": "Read-only current weather snapshot.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "location": {"type": "string", "default": "Marki"},
-            },
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.weather_forecast": {
-        "qbot_tool": "qbot_weather_forecast",
-        "description": "Read-only weather forecast summary.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "location": {"type": "string", "default": "Marki"},
-                "days": {"type": "integer", "minimum": 1, "maximum": 7, "default": 7},
-            },
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.garage_legacy_status": {
-        "qbot_tool": "qbot_garage_legacy_status",
-        "description": "Read-only garage / gate / home automation legacy status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.artifacts_legacy_status": {
-        "qbot_tool": "qbot_artifacts_legacy_status",
-        "description": "Read-only filesystem artifacts and PostgreSQL artifact bridge status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.artifacts_filesystem_inventory": {
-        "qbot_tool": "qbot_artifacts_filesystem_inventory",
-        "description": "Read-only inventory of /opt/qbot/artifacts.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "prefix": {"type": "string", "default": ""},
-            },
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.artifact_import_preview": {
-        "qbot_tool": "qbot_artifact_import_from_file_preview",
-        "description": "Preview-only artifact import mapping from a filesystem file.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "relative_path": {"type": "string"},
-            },
-            "required": ["relative_path"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.artifact_export_preview": {
-        "qbot_tool": "qbot_artifact_export_preview",
-        "description": "Preview-only artifact export plan.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "artifact_id": {"type": "integer"},
-            },
-            "required": ["artifact_id"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.external_integrations_report": {
-        "qbot_tool": "qbot_external_integrations_report",
-        "description": "Read-only combined report for external integrations.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.garmin_proxy_status": {
-        "qbot_tool": "qbot_garmin_proxy_status",
-        "description": "Read-only legacy Garmin proxy status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.garmin_upload_status": {
-        "qbot_tool": "qbot_garmin_upload_status",
-        "description": "Read-only legacy Garmin upload status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.hammerhead_import_status": {
-        "qbot_tool": "qbot_hammerhead_import_status",
-        "description": "Read-only legacy Hammerhead import status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.hammerhead_import_inventory": {
-        "qbot_tool": "qbot_hammerhead_import_inventory",
-        "description": "List Hammerhead original FIT files in outgoing.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}},
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.hammerhead_restore_plan": {
-        "qbot_tool": "qbot_hammerhead_restore_plan",
-        "description": "Restore plan for Hammerhead FIT import capability.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.external_tool_plan": {
-        "qbot_tool": "qbot_external_tool_plan",
-        "description": "Generate a QBot tool recommendation plan for a user query.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "style": {"type": "string", "enum": ["concise", "detailed", "operator", "decision_memo"], "default": "concise"},
-                "max_tools": {"type": "integer", "minimum": 1, "maximum": 5, "default": 3},
-                "include_prompt": {"type": "boolean", "default": True},
-            },
-            "required": ["query"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.rwgps_status": {
-        "qbot_tool": "qbot_rwgps_legacy_status",
-        "description": "Read-only RWGPS legacy parity status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.rwgps_config_status": {
-        "qbot_tool": "qbot_rwgps_config_status",
-        "description": "Check RWGPS configuration without exposing secrets.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.rwgps_artifact_store_status": {
-        "qbot_tool": "qbot_rwgps_artifact_store_status",
-        "description": "Inspect RWGPS artifact store schema and persistence status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.rwgps_route_search": {
-        "qbot_tool": "qbot_rwgps_route_search",
-        "description": "Search RWGPS routes by free-text query and show best match.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5},
-                "offset": {"type": "integer", "minimum": 0, "maximum": 1000, "default": 0},
-                "include_details": {"type": "boolean", "default": True},
-            },
-            "required": ["query"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.rwgps_route_list": {
-        "qbot_tool": "qbot_rwgps_route_list",
-        "description": "List RWGPS routes as records instead of a summary.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
-                "offset": {"type": "integer", "minimum": 0, "maximum": 1000, "default": 0},
-                "sort": {"type": "string", "default": "updated_at"},
-                "order": {"type": "string", "enum": ["asc", "desc"], "default": "desc"},
-                "search": {"type": "string", "default": ""},
-            },
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.rwgps_route_get": {
-        "qbot_tool": "qbot_rwgps_route_get",
-        "description": "Get a single RWGPS route by route_id.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"route_id": {"type": "string"}},
-            "required": ["route_id"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.rwgps_route_export_links": {
-        "qbot_tool": "qbot_rwgps_route_export_links",
-        "description": "Get RWGPS export availability and links for GPX/TCX/FIT by route_id.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"route_id": {"type": "string"}},
-            "required": ["route_id"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
+    # ── RWGPS exports ──
     "qbot.rwgps_route_export_file": {
         "qbot_tool": "qbot_rwgps_route_export_file",
-        "description": "Export a RWGPS route to a local GPX/TCX/JSON artifact file.",
+        "description": "Export a RWGPS route to a local GPX/TCX/JSON artifact file. Supports return_mode: metadata, text, base64.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -557,6 +240,19 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+    "qbot.rwgps_route_export_links": {
+        "qbot_tool": "qbot_rwgps_route_export_links",
+        "description": "Get RWGPS export availability and download links for GPX/TCX/FIT by route_id.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"route_id": {"type": "string"}},
+            "required": ["route_id"],
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    # ── Technical route tools ──
     "qbot.gpx_artifact_parse": {
         "qbot_tool": "qbot_gpx_artifact_parse",
         "description": "Parse a stored GPX artifact and return normalized track metadata.",
@@ -590,353 +286,13 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
-    "qbot.rwgps_restore_plan": {
-        "qbot_tool": "qbot_rwgps_restore_plan",
-        "description": "Restore plan for RWGPS capability.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.csv_export_status": {
-        "qbot_tool": "qbot_csv_export_status",
-        "description": "Comprehensive CSV export status — inventory, latest, preview readiness.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.csv_export_inventory": {
-        "qbot_tool": "qbot_csv_export_inventory",
-        "description": "List CSV files in outgoing directory.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}},
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.csv_export_latest_get": {
-        "qbot_tool": "qbot_csv_export_latest_get",
-        "description": "Read latest CSV file — preview rows only.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "source": {"type": "string", "enum": ["garmin_proxy_latest", "latest_any"], "default": "garmin_proxy_latest"},
-                "limit_rows": {"type": "integer", "minimum": 1, "maximum": 200, "default": 20},
-            },
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.xert_status": {
-        "qbot_tool": "qbot_xert_readiness_status",
-        "description": "Read-only Xert training status — FTP, form, W'.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.xert_config_status": {
-        "qbot_tool": "qbot_xert_config_status",
-        "description": "Read-only Xert configuration status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.intervals_status": {
-        "qbot_tool": "qbot_intervals_wellness_status",
-        "description": "Read-only Intervals.icu wellness status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.intervals_config_status": {
-        "qbot_tool": "qbot_intervals_config_status",
-        "description": "Read-only Intervals.icu configuration status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.garmin_status": {
-        "qbot_tool": "qbot_garmin_config_status",
-        "description": "Read-only Garmin configuration status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.garmin_upload_dry_run": {
-        "qbot_tool": "qbot_garmin_upload_dry_run",
-        "description": "Read-only Garmin upload dry run.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.hammerhead_status": {
-        "qbot_tool": "qbot_hammerhead_import_status",
-        "description": "Read-only Hammerhead import status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.hammerhead_inventory": {
-        "qbot_tool": "qbot_hammerhead_import_inventory",
-        "description": "Read-only Hammerhead FIT file inventory.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}},
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.hammerhead_dry_run": {
-        "qbot_tool": "qbot_hammerhead_import_dry_run",
-        "description": "Read-only Hammerhead import dry run.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.cronometer_status": {
-        "qbot_tool": "qbot_cronometer_legacy_status",
-        "description": "Read-only Cronometer legacy status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.nutrition_status": {
-        "qbot_tool": "qbot_nutrition_status",
-        "description": "QBot Nutrition/Fueling module status — table counts and readiness.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.nutrition_food_search": {
-        "qbot_tool": "qbot_nutrition_food_search",
-        "description": "Search food items in QBot food database.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20},
-            },
-            "required": ["query"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.nutrition_food_list": {
-        "qbot_tool": "qbot_nutrition_food_list",
-        "description": "List all food items in QBot database.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}},
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.nutrition_food_create": {
-        "qbot_tool": "qbot_nutrition_food_create",
-        "description": "Add a new food item — staple or from user label.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "brand": {"type": "string"},
-                "default_unit": {"type": "string", "default": "g"},
-                "kcal_per_100g": {"type": "number"},
-                "carbs_per_100g": {"type": "number"},
-                "protein_per_100g": {"type": "number"},
-                "fat_per_100g": {"type": "number"},
-                "fiber_per_100g": {"type": "number"},
-                "sodium_per_100g": {"type": "number"},
-                "source": {"type": "string", "enum": ["qbot", "user_label", "cronometer_import"], "default": "qbot"},
-            },
-            "required": ["name"],
-            "additionalProperties": False,
-        },
-        "safety_class": "WRITE_SAFE",
-        "auth_required": False,
-    },
-    "qbot.nutrition_intake_parse": {
-        "qbot_tool": "qbot_nutrition_intake_parse",
-        "description": "Parse natural language meal/hydration/fueling text into structured entries (dry run, no DB write).",
-        "input_schema": {
-            "type": "object",
-            "properties": {"text": {"type": "string"}},
-            "required": ["text"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.nutrition_intake_log": {
-        "qbot_tool": "qbot_nutrition_intake_log",
-        "description": "Log a meal/hydration/fueling from natural language text — writes to DB.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "text": {"type": "string"},
-                "meal_type": {"type": "string", "enum": ["breakfast", "lunch", "dinner", "snack", "meal", "fueling"], "default": "meal"},
-                "note": {"type": "string"},
-                "context": {"type": "string"},
-            },
-            "required": ["text"],
-            "additionalProperties": False,
-        },
-        "safety_class": "WRITE_SAFE",
-        "auth_required": False,
-    },
-    "qbot.nutrition_hydration_log": {
-        "qbot_tool": "qbot_nutrition_hydration_log",
-        "description": "Log a hydration event (water, iso, electrolytes).",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "fluid_ml": {"type": "number"},
-                "sodium_mg": {"type": "number", "default": 0},
-                "note": {"type": "string"},
-                "source": {"type": "string", "default": "qbot"},
-            },
-            "required": ["fluid_ml"],
-            "additionalProperties": False,
-        },
-        "safety_class": "WRITE_SAFE",
-        "auth_required": False,
-    },
-    "qbot.nutrition_fueling_log": {
-        "qbot_tool": "qbot_nutrition_fueling_log",
-        "description": "Log a fueling event — carbs consumed during ride.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "carbs_g": {"type": "number"},
-                "context": {"type": "string"},
-                "source": {"type": "string", "default": "qbot"},
-            },
-            "required": ["carbs_g"],
-            "additionalProperties": False,
-        },
-        "safety_class": "WRITE_SAFE",
-        "auth_required": False,
-    },
-    "qbot.nutrition_day_summary": {
-        "qbot_tool": "qbot_nutrition_day_summary",
-        "description": "Full daily summary — all meals, hydration, fueling, and macro balance.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "date": {"type": "string"},
-                "recompute": {"type": "boolean", "default": False},
-            },
-            "required": [],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.nutrition_meal_list": {
-        "qbot_tool": "qbot_nutrition_meal_list",
-        "description": "List meals for a specific date.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "date": {"type": "string"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
-            },
-            "required": [],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.openweathermap_status": {
-        "qbot_tool": "qbot_weather_config_status",
-        "description": "Read-only weather configuration status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.openmaps_status": {
-        "qbot_tool": "qbot_openmaps_legacy_status",
-        "description": "Read-only OpenMaps legacy status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.overpass_status": {
-        "qbot_tool": "qbot_openmaps_legacy_status",
-        "description": "Read-only Overpass/OpenMaps legacy status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.garage_list": {
-        "qbot_tool": "qbot_garage_raw_list",
-        "description": "Read-only Garage raw listing.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}},
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.garage_search": {
-        "qbot_tool": "qbot_garage_raw_search",
-        "description": "Read-only Garage raw search.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"query": {"type": "string", "default": ""}, "limit": {"type": "integer", "default": 20}},
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.garage_status": {
-        "qbot_tool": "qbot_garage_raw_status",
-        "description": "Read-only Garage raw status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.daily_report_status": {
-        "qbot_tool": "qbot_daily_report_status",
-        "description": "Read-only daily report status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.daily_report_preview": {
-        "qbot_tool": "qbot_daily_report_preview",
-        "description": "Read-only daily report preview.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.ride_report_status": {
-        "qbot_tool": "qbot_ride_report_status",
-        "description": "Read-only ride report status.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.ride_report_latest": {
-        "qbot_tool": "qbot_ride_report_latest",
-        "description": "Read-only latest ride report.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.ride_report_preview": {
-        "qbot_tool": "qbot_ride_report_preview",
-        "description": "Read-only ride report preview.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
 }
+
+# Internal readers (not exposed as MCP tools, accessed via qbot.query):
+#   GarminReader, CronometerReader, NutritionDBReader, IntervalsReader, XertReader,
+#   RWGPSReader, GarageReader, GearReader, WeatherReader, DailyReportReader,
+#   RideReportReader, WellnessReader, ArtifactIndexReader, ProjectReader
+
 
 
 def _token_configured() -> bool:
@@ -1224,7 +580,12 @@ def _normalize_tool_name(mcp_tool: str) -> str:
 
 
 def _mcp_result_content(result: dict[str, Any]) -> dict[str, Any]:
-    return {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}]}
+    def _json_default(obj):
+        from datetime import date as _date, datetime as _datetime
+        if isinstance(obj, (_datetime, _date)):
+            return obj.isoformat()
+        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+    return {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, default=_json_default)}]}
 
 
 def _mcp_error(message: str, *, code: int = -32601, request_id: Any = None) -> dict[str, Any]:
@@ -1336,6 +697,21 @@ def handle_mcp_request(
                     result = process_query(query, execute=False)
                 result["tool"] = "qbot.ask"
                 result["style"] = style
+        elif name == "qbot.query":
+            query = str(clean_args.get("query", "")).strip()
+            if not query:
+                result = {"tool": "qbot.query", "status": "error", "error": "query required"}
+            else:
+                from qbot_query_router import query as qbot_query
+                result = qbot_query(
+                    question=query,
+                    mode=str(clean_args.get("mode", "read_only")),
+                    scope=str(clean_args.get("scope", "all")),
+                    context=str(clean_args.get("context", "")),
+                    max_rows=int(clean_args.get("max_rows", 500)),
+                    include_provenance=bool(clean_args.get("include_provenance", True)),
+                    include_missing=bool(clean_args.get("include_missing", True)),
+                )
         elif name == "qbot.runbook":
             runbook_name = str(clean_args.get("name", "")).strip()
             execute = bool(clean_args.get("execute", False))
