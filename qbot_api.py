@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import uvicorn
@@ -323,6 +323,157 @@ def _intervals_weight_sync() -> dict:
     return {}  # no weight today, caller will handle
 
 
+def _ride_readiness_signals_snapshot() -> dict:
+    """Build optional QExt2 signals from local wellness DB.
+
+    Returns a lightweight snapshot only. If any part fails, the route still
+    responds without signals rather than crashing or changing the top-level
+    contract.
+    """
+    import psycopg
+    from psycopg.rows import dict_row
+
+    from qbot_recovery import select_recovery_records
+
+    since = (date.today() - timedelta(days=30)).isoformat()
+    sleep_rows: list[dict] = []
+    wellness_rows: list[dict] = []
+    averages = {"avg_hrv": None, "avg_sleep": None, "avg_rhr": None}
+
+    try:
+        with psycopg.connect(
+            host=os.getenv("PGHOST", "localhost"),
+            port=os.getenv("PGPORT", "5432"),
+            dbname=os.getenv("PGDATABASE", "qbot"),
+            user=os.getenv("PGUSER", "qbot"),
+            password=os.getenv("PGPASSWORD", ""),
+            row_factory=dict_row,
+            connect_timeout=3,
+        ) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT date, source, sleep_duration_min, sleep_start, sleep_end,
+                       sleep_score, hrv_ms, resting_hr_bpm
+                FROM qbot_sleep_daily
+                WHERE date >= %s
+                ORDER BY date DESC, source
+                """,
+                (since,),
+            )
+            sleep_rows = list(cur.fetchall() or [])
+
+            cur.execute(
+                """
+                SELECT date, source, source_priority, hrv_ms, resting_hr_bpm, sleep_duration_min
+                FROM qbot_wellness_daily
+                WHERE date >= %s
+                  AND (hrv_ms IS NOT NULL OR resting_hr_bpm IS NOT NULL OR sleep_duration_min IS NOT NULL)
+                ORDER BY date DESC, source_priority
+                """,
+                (since,),
+            )
+            wellness_rows = list(cur.fetchall() or [])
+
+            cur.execute(
+                """
+                SELECT AVG(hrv_ms) AS avg_hrv,
+                       AVG(sleep_duration_min) AS avg_sleep,
+                       AVG(resting_hr_bpm) AS avg_rhr
+                FROM qbot_wellness_daily
+                WHERE date >= %s
+                """,
+                (since,),
+            )
+            avg_row = cur.fetchone() or {}
+            averages = {
+                "avg_hrv": avg_row.get("avg_hrv"),
+                "avg_sleep": avg_row.get("avg_sleep"),
+                "avg_rhr": avg_row.get("avg_rhr"),
+            }
+    except Exception as exc:
+        return {
+            "status": "WARN",
+            "error": type(exc).__name__,
+            "error_detail": str(exc)[:200],
+            "signals": {},
+        }
+
+    sleep_records = []
+    for row in sleep_rows:
+        sleep_records.append({
+            "sleepLocalDate": str(row.get("date"))[:10] if row.get("date") else None,
+            "sleepDurationMin": row.get("sleep_duration_min"),
+            "sleepStartTime": row.get("sleep_start"),
+            "sleepEndTime": row.get("sleep_end"),
+            "source": row.get("source"),
+        })
+
+    hrv_records = []
+    for row in wellness_rows:
+        hrv_records.append({
+            "hrvLocalDate": str(row.get("date"))[:10] if row.get("date") else None,
+            "value": row.get("hrv_ms"),
+            "weeklyAvg": averages["avg_hrv"],
+            "source": row.get("source"),
+            "raw": row,
+        })
+
+    recovery = select_recovery_records(sleep_records, hrv_records)
+    selected_sleep = recovery.get("selectedSleepRecord") or {}
+    selected_hrv = recovery.get("selectedHrvRecord") or {}
+    selected_hrv_raw = selected_hrv.get("raw") if isinstance(selected_hrv, dict) else {}
+    selected_wellness_raw = wellness_rows[0] if wellness_rows else {}
+
+    hrv_today = recovery.get("hrvToday")
+    sleep_today_h = recovery.get("sleepTodayH")
+    hrv_baseline = recovery.get("hrvBaseline")
+    sleep_baseline = None
+    if averages["avg_sleep"] is not None:
+        try:
+            sleep_baseline = float(averages["avg_sleep"]) / 60.0
+        except (TypeError, ValueError):
+            sleep_baseline = None
+
+    current_rhr = None
+    if isinstance(selected_hrv_raw, dict):
+        current_rhr = selected_hrv_raw.get("resting_hr_bpm")
+    if current_rhr is None and isinstance(selected_wellness_raw, dict):
+        current_rhr = selected_wellness_raw.get("resting_hr_bpm")
+
+    signals: dict[str, object] = {}
+    if hrv_today is not None and hrv_today > 0:
+        signals["hrvToday"] = round(float(hrv_today), 1)
+    if hrv_baseline is not None:
+        signals["hrvBaseline30d"] = round(float(hrv_baseline), 1)
+        if hrv_today is not None and hrv_today > 0:
+            signals["hrvDeviation30d"] = round(float(hrv_today) - float(hrv_baseline), 1)
+    if sleep_today_h is not None and sleep_today_h > 0:
+        signals["sleepTodayH"] = round(float(sleep_today_h), 2)
+    if sleep_baseline is not None:
+        signals["sleepBaseline30d"] = round(float(sleep_baseline), 2)
+        if sleep_today_h is not None and sleep_today_h > 0:
+            signals["sleepDev"] = round(float(sleep_today_h) - float(sleep_baseline), 2)
+    if current_rhr is not None and averages["avg_rhr"] is not None:
+        try:
+            signals["restingHrDev"] = round(float(current_rhr) - float(averages["avg_rhr"]), 1)
+        except (TypeError, ValueError):
+            pass
+
+    recovery_source = recovery.get("recoverySource") if isinstance(recovery, dict) else {}
+    if recovery_source:
+        signals["recoverySource"] = recovery_source
+
+    if not signals:
+        return {"status": "NO_DATA", "signals": {}}
+
+    return {
+        "status": "OK",
+        "signals": signals,
+        "selectedSleepRecord": selected_sleep if isinstance(selected_sleep, dict) else {},
+        "selectedHrvRecord": selected_hrv if isinstance(selected_hrv, dict) else {},
+    }
+
+
 @app.on_event("startup")
 def startup():
     try:
@@ -392,6 +543,7 @@ async def ride_readiness():
         w_prime_kj = None
         xert_email = os.getenv("XERT_EMAIL", "")
         xert_password = os.getenv("XERT_PASSWORD", "")
+        xert_status_signal = "MISSING"
 
         if xert_email and xert_password:
             try:
@@ -409,14 +561,18 @@ async def ride_readiness():
                     ltp_watts = xert_data.get("ltp_watts")
                     w_prime_kj = xert_data.get("w_prime_kj")
                     if ftp_watts:
+                        xert_status_signal = "OK"
                         print(f"[RIDE_READINESS_SECTION name=xert status=OK elapsed_ms={(_time.perf_counter()-xert_start)*1000:.0f} ftp={ftp_watts}]", flush=True)
                     else:
+                        xert_status_signal = "WARN"
                         warnings.append("xert: empty response")
                         print(f"[RIDE_READINESS_SECTION name=xert status=WARN elapsed_ms={(_time.perf_counter()-xert_start)*1000:.0f}]", flush=True)
             except (asyncio.TimeoutError, FutureTimeoutError):
+                xert_status_signal = "WARN"
                 warnings.append("xert_timeout")
                 print(f"[RIDE_READINESS_SECTION name=xert status=TIMEOUT elapsed_ms={(_time.perf_counter()-xert_start)*1000:.0f}]", flush=True)
             except Exception as exc:
+                xert_status_signal = "WARN"
                 warnings.append(f"xert_error: {exc}")
                 print(f"[RIDE_READINESS_SECTION name=xert status=ERROR error={exc} elapsed_ms={(_time.perf_counter()-xert_start)*1000:.0f}]", flush=True)
         else:
@@ -494,6 +650,28 @@ async def ride_readiness():
 
         if weight_kg is not None:
             payload["weightKg"] = weight_kg
+
+        try:
+            signals_snapshot = await asyncio.wait_for(
+                asyncio.get_running_loop().run_in_executor(
+                    ThreadPoolExecutor(max_workers=1),
+                    _ride_readiness_signals_snapshot,
+                ),
+                timeout=2.0,
+            )
+        except (asyncio.TimeoutError, FutureTimeoutError):
+            warnings.append("signals_timeout")
+            signals_snapshot = {"status": "WARN", "signals": {}}
+        except Exception as exc:
+            warnings.append(f"signals_error: {exc}")
+            signals_snapshot = {"status": "WARN", "signals": {}}
+
+        signals = signals_snapshot.get("signals", {}) if isinstance(signals_snapshot, dict) else {}
+        if isinstance(signals, dict) and signals:
+            signals["xertStatus"] = xert_status_signal
+            payload["signals"] = signals
+        elif xert_status_signal != "MISSING":
+            payload["signals"] = {"xertStatus": xert_status_signal}
 
         elapsed_ms = (_time.perf_counter() - t0) * 1000
         print(f"[RIDE_READINESS_DONE status={status} ok={core_ok} ready={core_ok} elapsed_ms={elapsed_ms:.0f}]", flush=True)

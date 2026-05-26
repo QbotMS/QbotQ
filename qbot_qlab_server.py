@@ -7,18 +7,23 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import ipaddress
 import json
+import logging
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import uvicorn
+import httpx
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.responses import FileResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 load_dotenv("/opt/qbot/app/.env")
@@ -32,6 +37,15 @@ ALLOWED_CORS_ORIGINS = {
 CORS_METHODS = "GET, POST, OPTIONS"
 CORS_HEADERS = "X-QLab-Token, Content-Type, ngrok-skip-browser-warning"
 CORS_MAX_AGE = "86400"
+GATE_TOKEN_ENV = "GATE_TOKEN"
+GATE_RATE_LIMIT_SEC = max(1, int(os.getenv("GATE_RATE_LIMIT_SEC", "60")))
+GATE_BRIDGE_URL_ENV_NAMES = ("GATE_BRIDGE_URL", "HIKCONNECT_GATE_URL", "GATE_UPSTREAM_URL")
+GATE_ALLOWED_CLIENT_CIDR_ENV_NAMES = ("GATE_ALLOWED_CLIENT_CIDRS", "GATE_ALLOWED_CIDRS")
+GATE_DEVICE_SERIAL_ENV = "GATE_DEVICE_SERIAL"
+GATE_LOCK_CHANNEL_ENV = "GATE_LOCK_CHANNEL"
+GATE_LOCK_INDEX_ENV = "GATE_LOCK_INDEX"
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="QBot QLab Export API", version="1.0")
 app.add_middleware(
@@ -43,6 +57,9 @@ app.add_middleware(
     max_age=int(CORS_MAX_AGE),
 )
 EXPORTS_DIR = DEFAULT_EXPORTS_DIR
+_gate_last_success_monotonic = 0.0
+_gate_last_success_at_utc: str | None = None
+_gate_unlock_in_progress = False
 
 
 def _apply_cors_headers(response: Response, origin: str | None) -> None:
@@ -80,6 +97,187 @@ fit_export = _load_fit_export_module()
 
 class ExportFitRequest(BaseModel):
     fitPath: str
+
+
+def _gate_bridge_url() -> str | None:
+    for name in GATE_BRIDGE_URL_ENV_NAMES:
+        value = os.getenv(name)
+        if value:
+            return value.rstrip("/")
+    return None
+
+
+def _gate_allowed_client_nets() -> list[Any]:
+    nets: list[Any] = []
+    raw = ""
+    for name in GATE_ALLOWED_CLIENT_CIDR_ENV_NAMES:
+        raw = os.getenv(name, "")
+        if raw:
+            break
+    if not raw:
+        return nets
+    for token in raw.replace(",", " ").split():
+        try:
+            nets.append(ipaddress.ip_network(token, strict=False))
+        except ValueError:
+            continue
+    return nets
+
+
+def _gate_client_allowed(request: Request | None) -> bool:
+    if request is None or request.client is None or not request.client.host:
+        return True
+    client_host = request.client.host
+    try:
+        client_ip = ipaddress.ip_address(client_host)
+    except ValueError:
+        return False
+
+    allowed_nets = _gate_allowed_client_nets()
+    if allowed_nets:
+        return any(client_ip in net for net in allowed_nets)
+
+    return client_ip.is_loopback or client_ip.is_private or client_ip.is_link_local
+
+
+def _gate_status_snapshot() -> dict[str, Any]:
+    bridge_url = _gate_bridge_url()
+    allowed_nets = _gate_allowed_client_nets()
+    last_success_age_sec = None
+    if _gate_last_success_monotonic > 0.0:
+        last_success_age_sec = round(max(0.0, time.monotonic() - _gate_last_success_monotonic), 1)
+
+    return {
+        "status": "ok" if bridge_url else "warn",
+        "bridgeConfigured": bool(bridge_url),
+        "localOnly": not allowed_nets,
+        "rateLimitSec": GATE_RATE_LIMIT_SEC,
+        "lastSuccessAtUtc": _gate_last_success_at_utc,
+        "lastSuccessAgeSec": last_success_age_sec,
+        "allowedClientCidrs": [str(net) for net in allowed_nets],
+        "deviceConfigured": bool(os.getenv(GATE_DEVICE_SERIAL_ENV)),
+    }
+
+
+async def _unlock_gate_via_hikconnect() -> dict[str, Any]:
+    bridge_url = _gate_bridge_url()
+    if not bridge_url:
+        raise RuntimeError("Gate bridge URL is not configured")
+
+    device_serial = os.getenv(GATE_DEVICE_SERIAL_ENV, "").strip()
+    lock_channel = os.getenv(GATE_LOCK_CHANNEL_ENV, "").strip()
+    lock_index = os.getenv(GATE_LOCK_INDEX_ENV, "").strip()
+
+    if not device_serial:
+        raise RuntimeError("GATE_DEVICE_SERIAL is not configured")
+
+    params = {"deviceSerial": device_serial}
+    if lock_channel:
+        params["lockChannel"] = lock_channel
+    if lock_index:
+        params["lockIndex"] = lock_index
+
+    timeout = httpx.Timeout(connect=3.0, read=15.0, write=10.0, pool=5.0)
+    async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
+        response = await client.get(
+            bridge_url,
+            params=params,
+            headers={"Accept": "application/json"},
+        )
+
+    if response.status_code >= 400:
+        raise RuntimeError(f"Gate bridge returned HTTP {response.status_code}")
+
+    try:
+        payload = response.json()
+    except Exception:
+        payload = None
+
+    if isinstance(payload, dict):
+        return payload
+
+    return {
+        "status": "ok",
+        "bridgeStatusCode": response.status_code,
+        "bridgeResponse": response.text[:500],
+    }
+
+
+async def gate_open(token: str | None = None, request: Request | None = None) -> Response:
+    if not _gate_client_allowed(request):
+        return JSONResponse(
+            {"status": "forbidden", "detail": "gate open is local/vpn only"},
+            status_code=403,
+        )
+
+    expected = os.getenv(GATE_TOKEN_ENV)
+    if not expected:
+        return JSONResponse(
+            {"status": "error", "detail": "GATE_TOKEN is not configured"},
+            status_code=503,
+        )
+    if token != expected:
+        return JSONResponse(
+            {"status": "forbidden", "detail": "invalid token"},
+            status_code=403,
+        )
+
+    global _gate_last_success_monotonic, _gate_last_success_at_utc, _gate_unlock_in_progress
+
+    now = time.monotonic()
+    if _gate_last_success_monotonic and now - _gate_last_success_monotonic < GATE_RATE_LIMIT_SEC:
+        retry_after = max(1, int(GATE_RATE_LIMIT_SEC - (now - _gate_last_success_monotonic)))
+        return JSONResponse(
+            {"status": "rate_limited", "retryAfterSec": retry_after},
+            status_code=429,
+        )
+
+    if _gate_unlock_in_progress:
+        return JSONResponse(
+            {"status": "busy", "detail": "gate unlock already in progress"},
+            status_code=429,
+        )
+
+    _gate_unlock_in_progress = True
+    try:
+        result = await _unlock_gate_via_hikconnect()
+    except Exception as exc:
+        logger.warning("gate_open_failed: %s", type(exc).__name__)
+        return JSONResponse(
+            {"status": "error", "detail": str(exc)[:200]},
+            status_code=503,
+        )
+    finally:
+        _gate_unlock_in_progress = False
+
+    if isinstance(result, Response):
+        if result.status_code < 400:
+            _gate_last_success_monotonic = time.monotonic()
+            _gate_last_success_at_utc = datetime.now(timezone.utc).isoformat()
+        return result
+
+    if isinstance(result, dict):
+        status = str(result.get("status", "ok")).lower()
+        if status in {"ok", "success", "opened", "done"}:
+            _gate_last_success_monotonic = time.monotonic()
+            _gate_last_success_at_utc = datetime.now(timezone.utc).isoformat()
+            logger.info("gate_open_success bridge=%s", "configured" if _gate_bridge_url() else "missing")
+            return JSONResponse(result, status_code=200)
+        return JSONResponse(result, status_code=502)
+
+    _gate_last_success_monotonic = time.monotonic()
+    _gate_last_success_at_utc = datetime.now(timezone.utc).isoformat()
+    return JSONResponse({"status": "ok"}, status_code=200)
+
+
+@app.get("/gate/open")
+async def gate_open_route(request: Request, token: str | None = None) -> Response:
+    return await gate_open(token=token, request=request)
+
+
+@app.get("/gate/status")
+def gate_status() -> dict[str, Any]:
+    return _gate_status_snapshot()
 
 
 def _require_token(x_qlab_token: str | None = Header(default=None)) -> None:
@@ -161,7 +359,9 @@ def _write_export(fit_path: Path) -> dict[str, Any]:
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"ok": True, "service": "qbot-qlab-server", "exports": str(EXPORTS_DIR)}
+    payload = {"ok": True, "service": "qbot-qlab-server", "exports": str(EXPORTS_DIR)}
+    payload["gate"] = _gate_status_snapshot()
+    return payload
 
 
 @app.get("/files", dependencies=[Depends(_require_token)])
