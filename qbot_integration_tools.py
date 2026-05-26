@@ -875,6 +875,183 @@ def _tool_qbot_openmaps_legacy_status(_args: dict | None = None) -> dict[str, An
 #  WEATHER TOOLS — OpenWeatherMap primary, Open-Meteo fallback
 # ═══════════════════════════════════════════════════════════════════════
 
+
+def _find_city_from_text(text: str) -> str | None:
+    import re
+    t = (text or "").lower()
+    # City patterns
+    city_map = {
+        "marek": "Marki,PL", "markach": "Marki,PL", "markami": "Marki,PL", "marki": "Marki,PL",
+        "warszawy": "Warszawa,PL", "warszawie": "Warszawa,PL", "warszawa": "Warszawa,PL",
+        "wrocław": "Wrocław,PL", "wrocławia": "Wrocław,PL",
+        "krakow": "Kraków,PL", "krakowa": "Kraków,PL", "krakowie": "Kraków,PL",
+    }
+    for clean_prefix in ["dla ", "w ", "na ", "sprawdź pogodę dla ", "pogoda ", "pogodę "]:
+        t = t.replace(clean_prefix, " ")
+    words = t.split()
+    for w in words:
+        for city, full in city_map.items():
+            if city in w:
+                return full
+    # Generic pattern: if 2+ words, check if capitalized == location
+    return None
+
+
+def _tool_qbot_last_ride_location_status(_args: dict | None = None) -> dict[str, Any]:
+    from pathlib import Path
+    import json, csv as _csv_module
+
+    outgoing = Path("/opt/qbot/app/outgoing")
+    now = datetime.now(timezone.utc)
+
+    best_age = float("inf")
+    best_lat = None
+    best_lon = None
+    best_label = ""
+    best_file = ""
+    best_type = ""
+
+    # 1. Check report JSONs for location data
+    for rp in outgoing.glob("**/reports/*_report.json"):
+        try:
+            st = rp.stat()
+            age_h = (now - datetime.fromtimestamp(st.st_mtime, tz=timezone.utc)).total_seconds() / 3600
+            if age_h > 24:
+                continue
+            data = json.loads(rp.read_text(encoding="utf-8"))
+            for k in ("end_lat", "start_lat", "lat", "latitude", "location_lat"):
+                if k in data and data[k]:
+                    best_lat = float(data[k])
+                    for k2 in ("end_lon", "start_lon", "lon", "longitude", "location_lon"):
+                        if k2 in data and data[k2]:
+                            best_lon = float(data[k2])
+                            break
+                    if best_lat and best_lon:
+                        best_age = age_h
+                        best_file = str(rp)
+                        best_type = "report_json"
+                        best_label = f"{best_lat:.4f},{best_lon:.4f}"
+                        break
+        except Exception:
+            pass
+
+    # 2. Check Garmin proxy CSV for lat/lon columns
+    if best_lat is None:
+        for cp in outgoing.glob("**/garmin_proxy/*.csv"):
+            try:
+                st = cp.stat()
+                age_h = (now - datetime.fromtimestamp(st.st_mtime, tz=timezone.utc)).total_seconds() / 3600
+                if age_h > 24 or age_h >= best_age:
+                    continue
+                text = cp.read_text(encoding="utf-8", errors="ignore")
+                reader = _csv_module.reader(io.StringIO(text))
+                rows = list(reader)
+                if len(rows) < 2:
+                    continue
+                headers = [h.strip().lower() for h in rows[0]]
+                lat_i, lon_i = -1, -1
+                for i, h in enumerate(headers):
+                    if h in ("position_lat", "lat", "latitude"):
+                        lat_i = i
+                    if h in ("position_long", "lon", "longitude"):
+                        lon_i = i
+                if lat_i >= 0 and lon_i >= 0:
+                    for row in reversed(rows[1:]):
+                        try:
+                            best_lat = float(row[lat_i]) if row[lat_i] else None
+                            best_lon = float(row[lon_i]) if row[lon_i] else None
+                            if best_lat and best_lon:
+                                best_age = age_h
+                                best_file = str(cp)
+                                best_type = "garmin_proxy_csv"
+                                best_label = f"{best_lat:.4f},{best_lon:.4f}"
+                                break
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+    usable = best_lat is not None and best_age <= 18
+    reason = ""
+    if best_lat is None:
+        reason = "no location data found in recent ride artifacts"
+    elif best_age > 18:
+        reason = f"last ride is {best_age:.1f}h old (>18h limit)"
+
+    return {
+        "tool": "qbot_last_ride_location_status",
+        "status": "OK" if best_lat else ("WARN" if usable else "NO_DATA"),
+        "safety_class": "READ_ONLY",
+        "latest_ride_at": datetime.fromtimestamp(Path(best_file).stat().st_mtime, tz=timezone.utc).isoformat() if best_file else None,
+        "age_hours": round(best_age, 1) if best_age < float("inf") else None,
+        "lat": best_lat,
+        "lon": best_lon,
+        "location_label": best_label,
+        "source_file": best_file,
+        "source_type": best_type,
+        "usable_for_weather": usable,
+        "reason": reason,
+        "notes": "Read-only scan of ride artifacts. No API calls, no uploads.",
+    }
+
+
+def _tool_qbot_resolve_weather_location(_args: dict | None = None) -> dict[str, Any]:
+    _args = _args or {}
+    text = str(_args.get("text", "") or "")
+    max_age = float(_args.get("max_last_ride_age_hours", 18))
+
+    # Step 1: Look for location in message text
+    city = _find_city_from_text(text)
+    if city:
+        return {
+            "tool": "qbot_resolve_weather_location",
+            "status": "OK",
+            "location_resolved": city,
+            "location_source": "message_text",
+            "last_ride_age_hours": None,
+            "last_ride_source_file": None,
+            "warnings": [],
+        }
+
+    # Step 2: Check last ride location
+    ride = _tool_qbot_last_ride_location_status({})
+    if ride.get("usable_for_weather") and ride.get("age_hours", 99) <= max_age:
+        return {
+            "tool": "qbot_resolve_weather_location",
+            "status": "OK",
+            "location_resolved": ride.get("location_label"),
+            "lat": ride.get("lat"),
+            "lon": ride.get("lon"),
+            "location_source": "last_ride_location",
+            "last_ride_age_hours": ride.get("age_hours"),
+            "last_ride_source_file": ride.get("source_file"),
+            "warnings": ["użyto ostatniej lokalizacji z przejechanej trasy"],
+        }
+
+    # Step 3: No location available
+    age = ride.get("age_hours")
+    if age is not None:
+        return {
+            "tool": "qbot_resolve_weather_location",
+            "status": "NEEDS_LOCATION",
+            "location_resolved": None,
+            "location_source": "none",
+            "last_ride_age_hours": age,
+            "message": f"Dla jakiej lokalizacji sprawdzić pogodę? Ostatnia trasa ma {age:.0f}h (>18h).",
+            "warnings": [],
+        }
+
+    return {
+        "tool": "qbot_resolve_weather_location",
+        "status": "NEEDS_LOCATION",
+        "location_resolved": None,
+        "location_source": "none",
+        "last_ride_age_hours": age,
+        "message": "Dla jakiej lokalizacji sprawdzić pogodę? Brak zapisanej lokalizacji z trasy.",
+        "warnings": [],
+    }
+
+
 def _resolve_user_location(text: str, env_only: bool = False) -> dict[str, Any]:
     import re
 
@@ -929,7 +1106,7 @@ def _tool_qbot_weather_current(_args: dict | None = None) -> dict[str, Any]:
     owm_key = os.getenv("OPENWEATHERMAP_API_KEY") or os.getenv("OWM_API_KEY") or os.getenv("WEATHER_API_KEY")
 
     if not location and not (lat and lon):
-        loc = _resolve_user_location(str(_args.get("text", "")))
+        loc = _tool_qbot_resolve_weather_location({"text": str(_args.get("text", "")), "max_last_ride_age_hours": 18})
         if loc.get("status") == "NEEDS_LOCATION":
             return {
                 "tool": "qbot_weather_current",
@@ -937,9 +1114,14 @@ def _tool_qbot_weather_current(_args: dict | None = None) -> dict[str, Any]:
                 "safety_class": "READ_ONLY",
                 "source": "none",
                 "fallback_used": False,
+                "location_source": "none",
                 "message": loc.get("message"),
             }
         location = loc.get("location_resolved", "")
+        lat = loc.get("lat")
+        lon = loc.get("lon")
+        location_source = loc.get("location_source", "")
+        last_ride_age = loc.get("last_ride_age_hours")
 
     if owm_key:
         try:
@@ -1026,7 +1208,7 @@ def _tool_qbot_weather_forecast(_args: dict | None = None) -> dict[str, Any]:
     period = str(_args.get("period", "today"))
     hours = min(int(_args.get("hours", 12)), 48)
 
-    loc = _resolve_user_location(str(_args.get("text", "")))
+    loc = _tool_qbot_resolve_weather_location({"text": str(_args.get("text", "")), "max_last_ride_age_hours": 18})
     if not location:
         if loc.get("status") == "NEEDS_LOCATION":
             return {"tool": "qbot_weather_forecast", "status": "NEEDS_LOCATION", "safety_class": "READ_ONLY", "message": loc.get("message")}
@@ -1198,6 +1380,8 @@ __all__ = [
     "_tool_qbot_cronometer_legacy_status",
     "_tool_qbot_cronometer_restore_plan",
     "_tool_qbot_weather_config_status",
+    "_tool_qbot_last_ride_location_status",
+    "_tool_qbot_resolve_weather_location",
     "_tool_qbot_resolve_user_location",
     "_tool_qbot_weather_current",
     "_tool_qbot_weather_forecast",
