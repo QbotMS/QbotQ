@@ -20,6 +20,9 @@ _SAFE_MULTI_EXECUTE_TOOLS: set[str] = {
     "qbot_operator_runbook",
     "qbot_rwgps_legacy_status",
     "qbot_rwgps_config_status",
+    "qbot_rwgps_route_search",
+    "qbot_rwgps_route_get",
+    "qbot_rwgps_route_export_links",
     "qbot_hammerhead_import_status",
     "qbot_hammerhead_import_inventory",
     "qbot_csv_export_status",
@@ -979,6 +982,16 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "limitations": ["Config presence only", "No secret values"],
     },
     {
+        "keywords": ["rwgps route", "ridewithgps route", "pokaż trasę", "szukaj trasy",
+                      "route search", "trasa", "route", "toskania", "florencja", "firenze",
+                      "florence", "gpx", "tcx", "fit", "cue sheet"],
+        "tool": "qbot_rwgps_route_search",
+        "args": {"query": "__QUERY__", "limit": 5, "offset": 0, "include_details": True},
+        "confidence": "high",
+        "required_data": ["RWGPS route catalog", "RWGPS route detail endpoint", "RWGPS export availability"],
+        "limitations": ["Read-only search/detail", "No route modification", "No secrets"],
+    },
+    {
         "keywords": ["hammerhead import", "hammerhead status", "karoo import", "sprawdź hammerhead"],
         "tool": "qbot_hammerhead_import_status",
         "args": {},
@@ -1140,6 +1153,16 @@ def _get_tool_args(tool_name: str) -> dict[str, Any]:
     return {}
 
 
+def _materialize_args(query: str, args: dict[str, Any]) -> dict[str, Any]:
+    materialized: dict[str, Any] = {}
+    for key, value in (args or {}).items():
+        if isinstance(value, str) and value == "__QUERY__":
+            materialized[key] = query
+        else:
+            materialized[key] = value
+    return materialized
+
+
 def _unknown_plan(query: str, reason: str) -> dict[str, Any]:
     return {
         "status": "error",
@@ -1176,6 +1199,7 @@ def _single_tool_result(query: str, entry: dict[str, Any],
     tool_name = entry["tool"]
     if tool_name not in TOOLS:
         return _unknown_plan(query, f"tool {tool_name} not in registry")
+    tool_args = _materialize_args(query, entry["args"])
 
     classify_ok = {"step": 1, "action": "classify_intent", "status": "ok",
                    "reason": f"matched_keywords: {matched_kws}"}
@@ -1183,7 +1207,7 @@ def _single_tool_result(query: str, entry: dict[str, Any],
                  "tool": tool_name, "reason": "intent maps to allowlisted tool"}
 
     try:
-        tool_result = TOOLS[tool_name](entry["args"])
+        tool_result = TOOLS[tool_name](tool_args)
         execute_step = {"step": 3, "action": "execute_tool", "status": "ok",
                         "tool": tool_name}
     except Exception as exc:
@@ -1208,6 +1232,7 @@ def _single_tool_result(query: str, entry: dict[str, Any],
         "tool_result": tool_result if exec_status == "ok" else None,
         "executed_tools": [tool_name] if exec_status == "ok" else [],
         "tool_results": {tool_name: tool_result} if exec_status == "ok" else None,
+        "selected_tool_args": tool_args,
         "required_data": entry.get("required_data", []),
         "limitations": entry.get("limitations", []),
         "notes": f"matched by keyword score {best_score}",
@@ -1232,7 +1257,7 @@ def process_query(query: str, execute: bool = False) -> dict[str, Any]:
     for mt_key, mt_tools in _MULTI_TOOL_SETS.items():
         if mt_key in q:
             tool_args_list: list[tuple[str, dict[str, Any]]] = [
-                (t, _get_tool_args(t)) for t in mt_tools if t in TOOLS
+                (t, _materialize_args(query, _get_tool_args(t))) for t in mt_tools if t in TOOLS
             ]
             return _build_multi_preview(query, tool_args_list, f"full_overview:{mt_key}", execute)
 
@@ -1258,7 +1283,7 @@ def process_query(query: str, execute: bool = False) -> dict[str, Any]:
         for _score, entry, _kws in matches:
             t = entry["tool"]
             if t not in seen:
-                tool_args_list.append((t, entry["args"]))
+                tool_args_list.append((t, _materialize_args(query, entry["args"])))
                 seen.add(t)
         if len(tool_args_list) >= 2:
             if len(tool_args_list) > _MULTI_TOOL_LIMIT:

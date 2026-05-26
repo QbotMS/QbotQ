@@ -217,6 +217,9 @@ from qbot_route_tools import (
     _tool_qbot_rwgps_config_status,
     _tool_qbot_rwgps_dry_run,
     _tool_qbot_rwgps_legacy_status,
+    _tool_qbot_rwgps_route_export_links,
+    _tool_qbot_rwgps_route_get,
+    _tool_qbot_rwgps_route_search,
     _tool_qbot_rwgps_restore_plan,
 )
 
@@ -1112,6 +1115,24 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {"operation": "list_routes"},
     },
+    "qbot_rwgps_route_search": {
+        "description": "Szukaj tras RWGPS po nazwie/opisie i pokaż najlepsze dopasowanie",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"query": "__QUERY__", "limit": 5, "offset": 0, "include_details": True},
+    },
+    "qbot_rwgps_route_get": {
+        "description": "Pobierz szczegóły pojedynczej trasy RWGPS po route_id",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"route_id": "55291905"},
+    },
+    "qbot_rwgps_route_export_links": {
+        "description": "Pobierz dostępność i linki eksportowe GPX/TCX/FIT dla trasy RWGPS",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"route_id": "55291905"},
+    },
     "qbot_rwgps_restore_plan": {
         "description": "Plan przywrócenia RWGPS z brakującymi krokami",
         "category": "legacy",
@@ -1683,6 +1704,9 @@ TOOLS: dict[str, Any] = {
     "qbot_rwgps_config_status": _tool_qbot_rwgps_config_status,
     "qbot_rwgps_legacy_status": _tool_qbot_rwgps_legacy_status,
     "qbot_rwgps_dry_run": _tool_qbot_rwgps_dry_run,
+    "qbot_rwgps_route_search": _tool_qbot_rwgps_route_search,
+    "qbot_rwgps_route_get": _tool_qbot_rwgps_route_get,
+    "qbot_rwgps_route_export_links": _tool_qbot_rwgps_route_export_links,
     "qbot_rwgps_restore_plan": _tool_qbot_rwgps_restore_plan,
     "qbot_hammerhead_config_status": _tool_qbot_hammerhead_config_status,
     "qbot_hammerhead_import_inventory": _tool_qbot_hammerhead_import_inventory,

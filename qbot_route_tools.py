@@ -106,6 +106,106 @@ def _tool_qbot_rwgps_config_status(_args: dict | None = None) -> dict[str, Any]:
     }
 
 
+def _tool_qbot_rwgps_route_search(_args: dict | None = None) -> dict[str, Any]:
+    """Search RWGPS routes by free-text query. Read-only."""
+    _args = _args or {}
+    query = str(_args.get("query", "")).strip()
+    limit = min(max(int(_args.get("limit", 5)), 1), 20)
+    offset = min(max(int(_args.get("offset", 0)), 0), 1000)
+    include_details = bool(_args.get("include_details", True))
+
+    if not query:
+        return {
+            "tool": "qbot_rwgps_route_search",
+            "status": "ERROR",
+            "safety_class": "READ_ONLY",
+            "error": "query required",
+        }
+
+    from tools.rwgps.client import get_route as rwgps_get_route
+    from tools.rwgps.client import get_route_export_links as rwgps_get_route_export_links
+    from tools.rwgps.client import list_routes as rwgps_list_routes
+
+    result = rwgps_list_routes(limit=limit, offset=offset, search=query)
+    routes = result.get("routes", []) if isinstance(result, dict) else []
+    best_match = routes[0] if routes else None
+    best_route_detail = None
+    best_route_export_links = None
+    if include_details and isinstance(best_match, dict):
+        route_id = best_match.get("id")
+        if route_id is not None:
+            try:
+                best_route_detail = rwgps_get_route(route_id)
+            except Exception as exc:
+                best_route_detail = {"ok": False, "error": str(exc), "route_id": str(route_id)}
+            try:
+                best_route_export_links = rwgps_get_route_export_links(route_id)
+            except Exception as exc:
+                best_route_export_links = {"ok": False, "error": str(exc), "route_id": str(route_id)}
+
+    return {
+        "tool": "qbot_rwgps_route_search",
+        "status": "OK" if result.get("ok") else "WARN",
+        "safety_class": "READ_ONLY",
+        "query": query,
+        "limit": limit,
+        "offset": offset,
+        "source": result.get("source"),
+        "origin": result.get("origin"),
+        "integration": result.get("integration"),
+        "count": result.get("count"),
+        "total": result.get("total"),
+        "routes": routes,
+        "best_match": best_match,
+        "best_route_detail": best_route_detail,
+        "best_route_export_links": best_route_export_links,
+        "download_availability": (
+            best_route_export_links.get("export_links", {}).get("download", {})
+            if isinstance(best_route_export_links, dict)
+            else {}
+        ),
+        "notes": "Read-only RWGPS route search. The best match includes detail and export availability when possible.",
+    }
+
+
+def _tool_qbot_rwgps_route_get(_args: dict | None = None) -> dict[str, Any]:
+    """Get a single RWGPS route by id. Read-only."""
+    _args = _args or {}
+    route_id = str(_args.get("route_id", "")).strip()
+    if not route_id:
+        return {
+            "tool": "qbot_rwgps_route_get",
+            "status": "ERROR",
+            "safety_class": "READ_ONLY",
+            "error": "route_id required",
+        }
+    from tools.rwgps.client import get_route as rwgps_get_route
+    return {
+        "tool": "qbot_rwgps_route_get",
+        "safety_class": "READ_ONLY",
+        **rwgps_get_route(route_id),
+    }
+
+
+def _tool_qbot_rwgps_route_export_links(_args: dict | None = None) -> dict[str, Any]:
+    """Get RWGPS export link/availability metadata for a route. Read-only."""
+    _args = _args or {}
+    route_id = str(_args.get("route_id", "")).strip()
+    if not route_id:
+        return {
+            "tool": "qbot_rwgps_route_export_links",
+            "status": "ERROR",
+            "safety_class": "READ_ONLY",
+            "error": "route_id required",
+        }
+    from tools.rwgps.client import get_route_export_links as rwgps_get_route_export_links
+    return {
+        "tool": "qbot_rwgps_route_export_links",
+        "safety_class": "READ_ONLY",
+        **rwgps_get_route_export_links(route_id),
+    }
+
+
 def _tool_qbot_rwgps_legacy_status(_args: dict | None = None) -> dict[str, Any]:
     """Comprehensive RWGPS legacy parity status."""
     import subprocess

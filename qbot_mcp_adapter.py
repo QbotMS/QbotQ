@@ -440,6 +440,47 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+    "qbot.rwgps_route_search": {
+        "qbot_tool": "qbot_rwgps_route_search",
+        "description": "Search RWGPS routes by free-text query and show best match.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5},
+                "offset": {"type": "integer", "minimum": 0, "maximum": 1000, "default": 0},
+                "include_details": {"type": "boolean", "default": True},
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.rwgps_route_get": {
+        "qbot_tool": "qbot_rwgps_route_get",
+        "description": "Get a single RWGPS route by route_id.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"route_id": {"type": "string"}},
+            "required": ["route_id"],
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.rwgps_route_export_links": {
+        "qbot_tool": "qbot_rwgps_route_export_links",
+        "description": "Get RWGPS export availability and links for GPX/TCX/FIT by route_id.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"route_id": {"type": "string"}},
+            "required": ["route_id"],
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
     "qbot.rwgps_restore_plan": {
         "qbot_tool": "qbot_rwgps_restore_plan",
         "description": "Restore plan for RWGPS capability.",
