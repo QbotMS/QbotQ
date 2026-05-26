@@ -1164,6 +1164,15 @@ def _task_session(
         if not files_to_add:
             reason = reason or "PASS — no code files to commit"
         else:
+            # Record HEAD before commit attempt
+            head_before = None
+            try:
+                head_proc = _git(["git", "rev-parse", "HEAD"], timeout=5)
+                if head_proc.returncode == 0:
+                    head_before = head_proc.stdout.strip()
+            except Exception:
+                pass
+
             try:
                 add_proc = _git(["git", "add"] + files_to_add, timeout=15)
                 if add_proc.returncode != 0:
@@ -1173,10 +1182,30 @@ def _task_session(
                 else:
                     commit_msg = f"{task.get('task_id', '')} {task.get('description', '')[:80]}".strip()
                     commit_proc = _git(["git", "commit", "-m", commit_msg], timeout=15)
-                    if commit_proc.returncode != 0:
-                        final_status = "BLOCKED"
-                        last_error = f"git commit failed: {commit_proc.stderr.strip()[:200]}"
-                        reason = "git commit error"
+
+                    # Verify if commit was actually created (may succeed despite non-zero exit)
+                    head_after = None
+                    try:
+                        head2 = _git(["git", "rev-parse", "HEAD"], timeout=5)
+                        if head2.returncode == 0:
+                            head_after = head2.stdout.strip()
+                    except Exception:
+                        pass
+
+                    if head_after and head_after != head_before:
+                        # Commit was created despite non-zero exit from git commit
+                        commit = head_after[:12]
+                        reason = reason or f"committed {commit}"
+                        if commit_proc.returncode != 0:
+                            reason = f"PASS — verified commit {commit} (git commit returned non-zero but HEAD moved)"
+                    elif commit_proc.returncode != 0:
+                        stderr_lower = (commit_proc.stderr or "").lower()
+                        if "nothing to commit" in stderr_lower or "nothing added to commit" in stderr_lower:
+                            reason = reason or "PASS — no changes to commit"
+                        else:
+                            final_status = "BLOCKED"
+                            last_error = f"git commit failed: {commit_proc.stderr.strip()[:200]}"
+                            reason = "git commit error"
                     else:
                         commit = commit_proc.stdout.strip().split()[-1][:40] if commit_proc.stdout.strip() else "ok"
                         reason = reason or f"committed {commit}"
