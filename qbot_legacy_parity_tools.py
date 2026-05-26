@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 
 _PROJECT_ROOT: Path = Path("/opt/qbot/app")
+_OUTGOING: Path = _PROJECT_ROOT / "outgoing"
 _ARTIFACT_ROOT: Path = Path("/opt/qbot/artifacts")
 _WORKSPACE_ROOT: Path = Path("/opt/qbot/workspace")
 _SKIP_DIRS: set[str] = {
@@ -570,6 +571,13 @@ def _tool_qbot_artifact_export_preview(args: dict | None = None) -> dict[str, An
 
 
 def _tool_qbot_garmin_proxy_status(_args: dict | None = None) -> dict[str, Any]:
+    config = {}
+    try:
+        from qbot_integration_tools import _tool_qbot_garmin_config_status
+        config = _tool_qbot_garmin_config_status()
+    except Exception:
+        config = {}
+
     evidence = _scan_files(
         [
             "garmin_proxy",
@@ -582,15 +590,42 @@ def _tool_qbot_garmin_proxy_status(_args: dict | None = None) -> dict[str, Any]:
         ],
         roots=[_PROJECT_ROOT, _ARTIFACT_ROOT, _WORKSPACE_ROOT],
     )
-    env_presence = _env_presence([
+    proxy_dir = _OUTGOING / "garmin_proxy"
+    proxy_files: list[dict[str, Any]] = []
+    if proxy_dir.exists():
+        for path in sorted(proxy_dir.glob("*")):
+            if not path.is_file():
+                continue
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            proxy_files.append(
+                {
+                    "name": path.name,
+                    "path": str(path.relative_to(_PROJECT_ROOT)),
+                    "size_bytes": stat.st_size,
+                    "mtime": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+                }
+            )
+            if len(proxy_files) >= 10:
+                break
+    proxy_visible = bool(proxy_files)
+    env_presence = config.get("env_presence") or _env_presence([
         "GARMIN_TOKENSTORE",
         "GARMIN_PROFILE",
         "GARMIN_USERNAME",
         "GARMIN_PASSWORD",
         "GARMIN_ACCESS_TOKEN",
     ])
-    proxy_visible = any("garmin_proxy" in str(item.get("file", "")) for item in evidence)
-    status = "PARTIAL" if evidence else "MISSING"
+    creds_ready = bool(config.get("has_upload_credentials", False))
+    tokenstore_ready = bool(config.get("tokenstore_on_disk", False))
+    if proxy_visible and creds_ready and tokenstore_ready:
+        status = "OK"
+    elif proxy_visible or creds_ready or tokenstore_ready:
+        status = "PARTIAL"
+    else:
+        status = "MISSING"
     return {
         "tool": "qbot_garmin_proxy_status",
         "capability": "garmin_proxy",
@@ -598,12 +633,14 @@ def _tool_qbot_garmin_proxy_status(_args: dict | None = None) -> dict[str, Any]:
         "safety_class": "READ_ONLY",
         "env_presence": env_presence,
         "candidate_files": evidence,
-        "current_new_qbot_status": "Garmin proxy artifacts and sync code are present, but this is a read-only status surface only.",
-        "proposed_tools": ["qbot_garmin_proxy_status"],
+        "proxy_artifacts": proxy_files[:10],
+        "current_new_qbot_status": "Garmin proxy artifacts and sync code are present; read-only parity is restored and no upload is executed here.",
+        "proposed_tools": ["qbot_garmin_proxy_status", "qbot_garmin_upload_dry_run"],
         "proxy_artifacts_visible": proxy_visible,
         "can_restore_today": True,
         "risk": "medium",
-        "notes": "No Garmin proxy action is executed here; the tool only reports the legacy proxy surface.",
+        "notes": "No Garmin proxy action is executed here; the tool only reports the legacy proxy surface and local artifacts.",
+        "restored_status": "RESTORED" if proxy_visible and creds_ready and tokenstore_ready else ("PARTIAL" if proxy_visible or creds_ready or tokenstore_ready else "MISSING"),
     }
 
 
@@ -652,6 +689,7 @@ def _tool_qbot_garmin_upload_status(_args: dict | None = None) -> dict[str, Any]
 
 
 def _tool_qbot_hammerhead_import_status(_args: dict | None = None) -> dict[str, Any]:
+    inventory = []
     evidence = _scan_files(
         [
             "hammerhead",
@@ -668,9 +706,26 @@ def _tool_qbot_hammerhead_import_status(_args: dict | None = None) -> dict[str, 
         "HAMMERHEAD_TOKENSTORE",
         "HAMMERHEAD_USER_ID",
         "HAMMERHEAD_ACCOUNT",
-        "HAMMERHEAD_PASSWORD",
-    ])
-    status = "PARTIAL" if evidence else "MISSING"
+            "HAMMERHEAD_PASSWORD",
+        ])
+    try:
+        from qbot_route_tools import _tool_qbot_hammerhead_config_status, _tool_qbot_hammerhead_import_inventory
+        config = _tool_qbot_hammerhead_config_status()
+        inventory = _tool_qbot_hammerhead_import_inventory({"limit": 5})
+    except Exception:
+        config = {}
+        inventory = {"count": 0, "latest_files": []}
+
+    has_local_token = bool(config.get("has_local_token", False))
+    tokenstore_active = bool(config.get("tokenstore_active", False))
+    local_artifacts = int(inventory.get("count", 0) or 0) > 0
+
+    if has_local_token and tokenstore_active and local_artifacts:
+        status = "OK"
+    elif evidence or has_local_token or tokenstore_active or local_artifacts:
+        status = "PARTIAL"
+    else:
+        status = "MISSING"
     return {
         "tool": "qbot_hammerhead_import_status",
         "capability": "hammerhead_import",
@@ -678,11 +733,13 @@ def _tool_qbot_hammerhead_import_status(_args: dict | None = None) -> dict[str, 
         "safety_class": "READ_ONLY",
         "env_presence": env_presence,
         "candidate_files": evidence,
-        "current_new_qbot_status": "Hammerhead import sync code and artifacts are present, but this tool only reports status and does not import anything.",
+        "latest_local_fit": inventory.get("latest_files", [None])[0] if inventory.get("latest_files") else None,
+        "current_new_qbot_status": "Hammerhead import sync code, tokenstore, and local FIT artifacts are present; read-only parity is restored and no import is executed here.",
         "proposed_tools": ["qbot_hammerhead_import_status", "qbot_hammerhead_import_preview"],
         "can_restore_today": True,
         "risk": "medium",
         "notes": "Read-only import parity status. No Hammerhead or Garmin action is executed.",
+        "restored_status": "RESTORED_FOR_READONLY" if has_local_token and tokenstore_active and local_artifacts else ("PARTIAL" if evidence or has_local_token or tokenstore_active or local_artifacts else "MISSING"),
     }
 
 
@@ -828,7 +885,7 @@ _CAPABILITY_SPECS: list[dict[str, Any]] = [
         "legacy_capability": "garmin_proxy",
         "label": "Garmin proxy",
         "keywords": ["garmin", "garmin_auth", "garmin_connect", "garmin_proxy", "fit_export", "qbot-hammerhead-sync"],
-        "new_qbot_status": "PARTIAL",
+        "new_qbot_status": "RESTORED",
         "new_qbot_tools": ["qbot_legacy_garmin_status", "qbot_legacy_garmin_dry_run", "qbot_legacy_capability_scan", "qbot_garmin_proxy_status"],
         "exposed_in_mcp": ["qbot.garmin_proxy_status"],
         "exposed_in_telegram": [],
@@ -903,7 +960,7 @@ _CAPABILITY_SPECS: list[dict[str, Any]] = [
         "legacy_capability": "hammerhead_import",
         "label": "Hammerhead import",
         "keywords": ["hammerhead", "karoo", "qbot-hammerhead-sync", "import"],
-        "new_qbot_status": "PARTIAL",
+        "new_qbot_status": "RESTORED",
         "new_qbot_tools": ["qbot_legacy_dependency_inventory", "qbot_legacy_capability_scan", "qbot_hammerhead_import_status"],
         "exposed_in_mcp": ["qbot.hammerhead_import_status"],
         "exposed_in_telegram": [],
@@ -919,8 +976,8 @@ _CAPABILITY_SPECS: list[dict[str, Any]] = [
         "label": "RideWithGPS",
         "keywords": ["rwgps", "ridewithgps", "tools/rwgps/client.py", "route", "track"],
         "new_qbot_status": "RESTORED",
-        "new_qbot_tools": ["qbot_legacy_capability_scan", "qbot_legacy_dependency_inventory"],
-        "exposed_in_mcp": [],
+        "new_qbot_tools": ["qbot_rwgps_config_status", "qbot_rwgps_legacy_status", "qbot_rwgps_dry_run", "qbot_rwgps_restore_plan"],
+        "exposed_in_mcp": ["qbot.rwgps_config_status", "qbot.rwgps_legacy_status"],
         "exposed_in_telegram": [],
         "safety_class": "READ_ONLY",
         "missing_tools": [],

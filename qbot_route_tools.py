@@ -111,6 +111,7 @@ def _tool_qbot_rwgps_legacy_status(_args: dict | None = None) -> dict[str, Any]:
     import subprocess
 
     config = _tool_qbot_rwgps_config_status()
+    dry_run = _tool_qbot_rwgps_dry_run({"operation": "list_routes"})
 
     evidence_files: list[dict[str, Any]] = []
     for pattern in ["tools/rwgps/**/*.py", "data/routes/rwgps*.json", "mcp_server.py"]:
@@ -134,11 +135,11 @@ def _tool_qbot_rwgps_legacy_status(_args: dict | None = None) -> dict[str, Any]:
         except Exception:
             pass
 
-    configured = config.get("auth_token_present") and config.get("user_id_present")
+    configured = bool(config.get("auth_token_present") and config.get("user_id_present"))
 
-    if configured:
-        restored = "PARTIAL"
-        notes = "RWGPS credentials configured but live API needs read-only smoke test (dry_run)."
+    if configured and dry_run.get("status") == "PLAN_ONLY" and dry_run.get("would_execute"):
+        restored = "RESTORED"
+        notes = "RWGPS credentials configured and read-only dry-run path is available."
     elif evidence_files:
         restored = "PARTIAL"
         notes = "RWGPS code detected but missing API credentials. Local manifest fallback active."
@@ -159,9 +160,11 @@ def _tool_qbot_rwgps_legacy_status(_args: dict | None = None) -> dict[str, Any]:
             "has_cache": cache_path.exists(),
         },
         "configured": bool(configured),
+        "dry_run_status": dry_run.get("status"),
+        "dry_run_would_execute": dry_run.get("would_execute"),
         "restored_status": restored,
         "notes": notes,
-        "can_restore_today": bool(configured),
+        "can_restore_today": bool(configured and dry_run.get("would_execute")),
         "risk": "medium",
     }
 
@@ -396,10 +399,13 @@ def _tool_qbot_hammerhead_import_status_enhanced(_args: dict | None = None) -> d
 
     if has_local and local_ok:
         restored = "RESTORED_FOR_READONLY"
+        base["status"] = "OK"
     elif has_local:
         restored = "PARTIAL"
+        base["status"] = "WARN"
     else:
         restored = config.get("restored_status", "PARTIAL")
+        base["status"] = "WARN" if base.get("status") != "error" else base.get("status")
 
     base["restored_status"] = restored
     base["config_status"] = config.get("status")
