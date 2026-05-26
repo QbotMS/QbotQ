@@ -1082,11 +1082,13 @@ def _task_session(
     # 2. execute / preview
     _update(2, steps[1][0] if len(steps) > 1 else "applying changes", steps[1][1] if len(steps) > 1 else 25)
     if dry_run:
-        reason = "dry-run preview only"
-    else:
+        reason = reason or "dry-run preview only"
+    elif not task.get("eligible_for_auto"):
         final_status = "APPROVAL_REQUIRED"
-        reason = "non-dry-run execution is not automated yet"
-        last_error = "task executor not wired for real changes"
+        reason = "task is not eligible for auto-execution"
+        last_error = "task requires approval or has unsafe safety_class"
+    else:
+        reason = reason or "autonomous task — executing non-dry-run"
 
     # 3. py_compile
     _update(3, steps[2][0] if len(steps) > 2 else "running py_compile", steps[2][1] if len(steps) > 2 else 45)
@@ -1152,8 +1154,36 @@ def _task_session(
     commit = None
     if dry_run:
         reason = reason or "dry-run completed"
+    elif final_status != "PASS":
+        reason = reason or f"task {final_status.lower()} — not committing"
     else:
-        reason = reason or "real execution is not wired yet"
+        # Non-dry-run PASS → auto-commit
+        files_raw = task.get("files_likely_touched", "")
+        files_to_add = [f.strip().strip("`") for f in files_raw.replace(",", " ").split() if f.strip() and not f.strip().startswith("docs/")]
+
+        if not files_to_add:
+            reason = reason or "PASS — no code files to commit"
+        else:
+            try:
+                add_proc = _git(["git", "add"] + files_to_add, timeout=15)
+                if add_proc.returncode != 0:
+                    final_status = "BLOCKED"
+                    last_error = f"git add failed: {add_proc.stderr.strip()[:200]}"
+                    reason = f"git add error on {files_to_add}"
+                else:
+                    commit_msg = f"{task.get('task_id', '')} {task.get('description', '')[:80]}".strip()
+                    commit_proc = _git(["git", "commit", "-m", commit_msg], timeout=15)
+                    if commit_proc.returncode != 0:
+                        final_status = "BLOCKED"
+                        last_error = f"git commit failed: {commit_proc.stderr.strip()[:200]}"
+                        reason = "git commit error"
+                    else:
+                        commit = commit_proc.stdout.strip().split()[-1][:40] if commit_proc.stdout.strip() else "ok"
+                        reason = reason or f"committed {commit}"
+            except Exception as exc:
+                final_status = "BLOCKED"
+                last_error = f"git operation failed: {str(exc)[:200]}"
+                reason = "git operation exception"
 
     # 10. notify/inbox
     _update(10, steps[9][0] if len(steps) > 9 else "PASS / BLOCKED", steps[9][1] if len(steps) > 9 else 100)
