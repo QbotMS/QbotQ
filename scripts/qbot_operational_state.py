@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from urllib.request import urlopen
 
 sys.path.insert(0, "/opt/qbot/app")
 
@@ -39,6 +41,17 @@ def read_json(path: Path, default):
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return default
+
+
+def read_gate_status() -> dict:
+    try:
+        with urlopen("http://127.0.0.1:8899/gate/status", timeout=3) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            if isinstance(payload, dict):
+                return payload
+    except Exception:
+        pass
+    return {}
 
 
 def tail(path: Path, lines: int = 20) -> list[str]:
@@ -85,6 +98,21 @@ def collect_state() -> dict:
     root_cron = run(["crontab", "-l"])
     failed_messages = read_json(cfg.DATA_DIR / "telegram_failed_messages.json", [])
     failed_emails = read_json(cfg.DATA_DIR / "email_failed_replies.json", [])
+    gate_status = read_gate_status()
+    direct_gate_vars = {
+        "GATE_TOKEN": "configured" if os.getenv("GATE_TOKEN", "").strip() else "unconfigured",
+        "HIKCONNECT_ACCOUNT": "configured" if os.getenv("HIKCONNECT_ACCOUNT", "").strip() else "unconfigured",
+        "HIKCONNECT_PASSWORD": "configured" if os.getenv("HIKCONNECT_PASSWORD", "").strip() else "unconfigured",
+        "GATE_DEVICE_SERIAL": "configured" if os.getenv("GATE_DEVICE_SERIAL", "").strip() else "unconfigured",
+        "GATE_LOCK_CHANNEL": "configured" if os.getenv("GATE_LOCK_CHANNEL", "").strip() else "unconfigured",
+        "GATE_LOCK_INDEX": "configured" if os.getenv("GATE_LOCK_INDEX", "").strip() else "unconfigured",
+        "GATE_RATE_LIMIT_SEC": "configured" if os.getenv("GATE_RATE_LIMIT_SEC", "").strip() else "unconfigured",
+    }
+    legacy_gate_vars = {
+        "GATE_BRIDGE_URL": "configured" if os.getenv("GATE_BRIDGE_URL", "").strip() else "unconfigured",
+        "HIKCONNECT_GATE_URL": "configured" if os.getenv("HIKCONNECT_GATE_URL", "").strip() else "unconfigured",
+        "GATE_UPSTREAM_URL": "configured" if os.getenv("GATE_UPSTREAM_URL", "").strip() else "unconfigured",
+    }
     state = {
         "generated_at": datetime.now().isoformat(),
         "llm": {
@@ -101,6 +129,22 @@ def collect_state() -> dict:
         "reports": {
             "daily_sent_date": read_daily_sent(),
             "ride_report_cron_enabled": "ride_report.py" in qbot_cron,
+        },
+        "gate": {
+            "mode": gate_status.get("mode", "hikconnect_direct"),
+            "status": gate_status.get("status", "warn"),
+            "runtime": {
+                "tokenConfigured": gate_status.get("tokenConfigured"),
+                "hikconnectCredentialsConfigured": gate_status.get("hikconnectCredentialsConfigured"),
+                "deviceConfigured": gate_status.get("deviceConfigured"),
+                "legacyBridgeConfigured": gate_status.get("legacyBridgeConfigured"),
+                "legacyBridgeModeAvailable": gate_status.get("legacyBridgeModeAvailable"),
+                "rateLimitSec": gate_status.get("rateLimitSec"),
+                "lastSuccessAtUtc": gate_status.get("lastSuccessAtUtc"),
+                "lastSuccessAgeSec": gate_status.get("lastSuccessAgeSec"),
+            },
+            "variables": direct_gate_vars,
+            "legacy_variables": legacy_gate_vars,
         },
         "messages": {
             "telegram_failed_count": len(failed_messages) if isinstance(failed_messages, list) else 0,

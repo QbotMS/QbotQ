@@ -1,4 +1,4 @@
-# QBot current state - 2026-05-19
+# QBot current state - 2026-05-26
 
 ## Purpose
 
@@ -84,6 +84,25 @@ configuration.
   - `mcp_connector_review`
 - Current adapter status: `WARN` because no MCP token is configured, but read-only
   MCP routes are live and `/mcp/health` and `/mcp/tools` work locally and through nginx.
+
+## Gate
+
+- Current gate mode: `hikconnect_direct`
+- Current runtime endpoint: `/gate/status`
+- Required runtime variables:
+  - `GATE_TOKEN` configured
+  - `HIKCONNECT_ACCOUNT` configured
+  - `HIKCONNECT_PASSWORD` configured
+  - `GATE_DEVICE_SERIAL` configured
+  - `GATE_LOCK_CHANNEL` configured
+  - `GATE_LOCK_INDEX` configured
+  - `GATE_RATE_LIMIT_SEC` configured
+- Legacy bridge envs are optional fallback only:
+  - `GATE_BRIDGE_URL`
+  - `HIKCONNECT_GATE_URL`
+  - `GATE_UPSTREAM_URL`
+- Runtime diagnostics now expose configured/unconfigured state only for secrets and bridge fallback, without logging token/password values.
+- `qbot-qlab-server.service` remains the gate runtime host.
 
 ## Email
 

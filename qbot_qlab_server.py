@@ -100,12 +100,43 @@ class ExportFitRequest(BaseModel):
     fitPath: str
 
 
-def _gate_bridge_url() -> str | None:
+def _gate_legacy_bridge_url() -> str | None:
     for name in GATE_BRIDGE_URL_ENV_NAMES:
         value = os.getenv(name)
         if value:
             return value.rstrip("/")
     return None
+
+
+def _gate_direct_config() -> dict[str, Any]:
+    account = os.getenv("HIKCONNECT_ACCOUNT", "").strip()
+    password = os.getenv("HIKCONNECT_PASSWORD", "").strip()
+    device_serial = os.getenv(GATE_DEVICE_SERIAL_ENV, "").strip()
+    lock_channel = os.getenv(GATE_LOCK_CHANNEL_ENV, "").strip()
+    lock_index = os.getenv(GATE_LOCK_INDEX_ENV, "").strip()
+    token = os.getenv(GATE_TOKEN_ENV, "").strip()
+    return {
+        "account_configured": bool(account),
+        "password_configured": bool(password),
+        "credentials_configured": bool(account and password),
+        "device_serial": device_serial,
+        "device_serial_configured": bool(device_serial),
+        "lock_channel": lock_channel,
+        "lock_channel_configured": bool(lock_channel),
+        "lock_index": lock_index,
+        "lock_index_configured": bool(lock_index),
+        "token_configured": bool(token),
+        "configured": bool(account and password and device_serial and lock_channel and lock_index and token),
+    }
+
+
+def _gate_mode() -> str:
+    direct = _gate_direct_config()
+    if direct["configured"]:
+        return "hikconnect_direct"
+    if _gate_legacy_bridge_url():
+        return "legacy_bridge"
+    return "unconfigured"
 
 
 def _gate_allowed_client_nets() -> list[Any]:
@@ -142,28 +173,259 @@ def _gate_client_allowed(request: Request | None) -> bool:
 
 
 def _gate_status_snapshot() -> dict[str, Any]:
-    bridge_url = _gate_bridge_url()
+    bridge_url = _gate_legacy_bridge_url()
+    direct = _gate_direct_config()
+    mode = _gate_mode()
     allowed_nets = _gate_allowed_client_nets()
     last_success_age_sec = None
     if _gate_last_success_monotonic > 0.0:
         last_success_age_sec = round(max(0.0, time.monotonic() - _gate_last_success_monotonic), 1)
 
     return {
-        "status": "ok" if bridge_url else "warn",
+        "status": "ok" if direct["configured"] else "warn",
+        "mode": mode,
         "bridgeConfigured": bool(bridge_url),
+        "legacyBridgeConfigured": bool(bridge_url),
+        "legacyBridgeModeAvailable": bool(bridge_url),
+        "tokenConfigured": direct["token_configured"],
+        "hikconnectCredentialsConfigured": direct["credentials_configured"],
+        "deviceSerial": direct["device_serial"] or None,
+        "lockChannel": direct["lock_channel"] or None,
+        "lockIndex": direct["lock_index"] or None,
         "localOnly": bool(allowed_nets),
         "rateLimitSec": GATE_RATE_LIMIT_SEC,
         "lastSuccessAtUtc": _gate_last_success_at_utc,
         "lastSuccessAgeSec": last_success_age_sec,
         "allowedClientCidrs": [str(net) for net in allowed_nets],
-        "deviceConfigured": bool(os.getenv(GATE_DEVICE_SERIAL_ENV)),
+        "deviceConfigured": direct["device_serial_configured"],
     }
 
 
-async def _unlock_gate_via_hikconnect() -> dict[str, Any]:
-    bridge_url = _gate_bridge_url()
+def _extract_hikconnect_token(payload: Any) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    candidates: list[Any] = [
+        payload.get("access_token"),
+        payload.get("accessToken"),
+        payload.get("token"),
+        (payload.get("data") or {}).get("access_token") if isinstance(payload.get("data"), dict) else None,
+        (payload.get("data") or {}).get("accessToken") if isinstance(payload.get("data"), dict) else None,
+        (payload.get("result") or {}).get("access_token") if isinstance(payload.get("result"), dict) else None,
+        (payload.get("result") or {}).get("token") if isinstance(payload.get("result"), dict) else None,
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return None
+
+
+def _hikconnect_response_succeeded(payload: Any, response: httpx.Response) -> bool:
+    if response.status_code >= 400:
+        return False
+    if isinstance(payload, dict):
+        meta = payload.get("meta")
+        if isinstance(meta, dict):
+            if str(meta.get("code")) == "200":
+                return True
+        data = payload.get("data")
+        if isinstance(data, dict):
+            if data.get("rc") in (1, "1", True):
+                return True
+        if payload.get("status") in {"ok", "success", "opened", "done"}:
+            return True
+    text = response.text
+    return "\"rc\":1" in text or "\"rc\": 1" in text or "操作成功" in text or "\"status\":\"ok\"" in text
+
+
+def _hikconnect_response_brief(response: httpx.Response | None, payload: Any) -> str:
+    parts: list[str] = []
+    if response is not None:
+        parts.append(f"http={response.status_code}")
+    if isinstance(payload, dict):
+        meta = payload.get("meta")
+        if isinstance(meta, dict) and meta.get("code") is not None:
+            parts.append(f"meta.code={meta.get('code')}")
+        data = payload.get("data")
+        if isinstance(data, dict) and data.get("rc") is not None:
+            parts.append(f"rc={data.get('rc')}")
+        status = payload.get("status")
+        if status is not None:
+            parts.append(f"status={status}")
+        body_preview = payload.get("message") or payload.get("error") or payload.get("error_description")
+        if isinstance(body_preview, str) and body_preview.strip():
+            parts.append(f"body={body_preview.strip()[:80]}")
+    return " ".join(parts) if parts else "no-response"
+
+
+def _hikconnect_auth_brief(auth_result: dict[str, Any], payload: Any, bearer_token: str | None) -> str:
+    parts = []
+    if auth_result.get("status_code") is not None:
+        parts.append(f"http={auth_result.get('status_code')}")
+    if auth_result.get("error"):
+        parts.append(f"error={auth_result.get('error')}")
+    if isinstance(payload, dict):
+        meta = payload.get("meta")
+        if isinstance(meta, dict) and meta.get("code") is not None:
+            parts.append(f"meta.code={meta.get('code')}")
+        status = payload.get("status")
+        if status is not None:
+            parts.append(f"status={status}")
+        body_preview = payload.get("message") or payload.get("error") or payload.get("error_description")
+        if isinstance(body_preview, str) and body_preview.strip():
+            parts.append(f"body={body_preview.strip()[:80]}")
+    parts.append(f"tokenPresent={bool(bearer_token)}")
+    return " ".join(parts)
+
+
+async def _unlock_gate_direct() -> dict[str, Any]:
+    direct = _gate_direct_config()
+    if not direct["configured"]:
+        raise RuntimeError("Direct HikConnect gate config is incomplete")
+
+    timeout = httpx.Timeout(connect=3.0, read=15.0, write=10.0, pool=5.0)
+    auth_attempts = [
+        (
+            "https://api.hik-connect.com/api/v1/auth/token",
+            "json",
+            {"account": os.getenv("HIKCONNECT_ACCOUNT", ""), "password": os.getenv("HIKCONNECT_PASSWORD", "")},
+        ),
+        (
+            "https://api.hik-connect.com/api/v1/auth/login",
+            "json",
+            {"account": os.getenv("HIKCONNECT_ACCOUNT", ""), "password": os.getenv("HIKCONNECT_PASSWORD", "")},
+        ),
+        (
+            "https://api.hik-connect.com/oauth/token",
+            "form",
+            {
+                "grant_type": "password",
+                "username": os.getenv("HIKCONNECT_ACCOUNT", ""),
+                "password": os.getenv("HIKCONNECT_PASSWORD", ""),
+            },
+        ),
+    ]
+    unlock_attempts = [
+        (
+            "GET",
+            "none",
+            f"https://api.hik-connect.com/v3/devconfig/v1/call/{direct['device_serial']}/{direct['lock_channel']}/remote/unlock"
+            f"?srcId=1&lockId={direct['lock_index']}&userType=0",
+        ),
+        (
+            "GET",
+            "basic",
+            f"https://api.hik-connect.com/v3/devconfig/v1/call/{direct['device_serial']}/{direct['lock_channel']}/remote/unlock"
+            f"?srcId=1&lockId={direct['lock_index']}&userType=0",
+        ),
+        (
+            "POST",
+            "basic",
+            f"https://api.hik-connect.com/v3/devconfig/v1/call/{direct['device_serial']}/{direct['lock_channel']}/remote/unlock"
+            f"?srcId=1&lockId={direct['lock_index']}&userType=0",
+        ),
+    ]
+
+    auth_result: dict[str, Any] = {"attempted": False}
+    auth_payload: Any = None
+    auth_attempt_trace: list[str] = []
+    async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
+        bearer_token: str | None = None
+        for index, (url, kind, payload) in enumerate(auth_attempts, start=1):
+            try:
+                if kind == "json":
+                    response = await client.post(url, json=payload, headers={"Accept": "application/json"})
+                else:
+                    response = await client.post(url, data=payload, headers={"Accept": "application/json"})
+            except Exception as exc:
+                auth_result = {"attempted": True, "url": url, "error": type(exc).__name__}
+                auth_attempt_trace.append(f"{index}:{url.rsplit('/', 1)[-1]} error={type(exc).__name__}")
+                continue
+
+            auth_result = {"attempted": True, "url": url, "status_code": response.status_code}
+            if response.status_code >= 400:
+                try:
+                    auth_payload = response.json()
+                except Exception:
+                    auth_payload = None
+                auth_attempt_trace.append(
+                    f"{index}:{url.rsplit('/', 1)[-1]} {_hikconnect_auth_brief(auth_result, auth_payload, None)}"
+                )
+                continue
+
+            try:
+                auth_payload = response.json()
+            except Exception:
+                auth_payload = None
+
+            bearer_token = _extract_hikconnect_token(auth_payload)
+            auth_attempt_trace.append(
+                f"{index}:{url.rsplit('/', 1)[-1]} {_hikconnect_auth_brief(auth_result, auth_payload, bearer_token)}"
+            )
+            if bearer_token:
+                break
+        logger.info(
+            "gate_direct_auth url=%s %s trace=%s",
+            auth_result.get("url", "none"),
+            _hikconnect_auth_brief(auth_result, auth_payload, bearer_token),
+            " | ".join(auth_attempt_trace) if auth_attempt_trace else "none",
+        )
+
+        headers = {"Accept": "application/json"}
+        if bearer_token:
+            headers["Authorization"] = f"Bearer {bearer_token}"
+            headers["X-Access-Token"] = bearer_token
+
+        last_response: httpx.Response | None = None
+        last_payload: Any = None
+        unlock_attempt_trace: list[str] = []
+        for method, auth_mode, url in unlock_attempts:
+            try:
+                request_auth = None
+                if auth_mode == "basic":
+                    request_auth = (
+                        os.getenv("HIKCONNECT_ACCOUNT", ""),
+                        os.getenv("HIKCONNECT_PASSWORD", ""),
+                    )
+                if method == "GET":
+                    response = await client.get(url, headers=headers, auth=request_auth)
+                else:
+                    response = await client.post(url, headers=headers, auth=request_auth)
+            except Exception:
+                unlock_attempt_trace.append(f"{method} {url.rsplit('/', 1)[-1]} error={type(exc).__name__}")
+                continue
+            last_response = response
+            try:
+                last_payload = response.json()
+            except Exception:
+                last_payload = None
+            unlock_attempt_trace.append(
+                f"{method}/{auth_mode} {_hikconnect_response_brief(response, last_payload)}"
+            )
+            if _hikconnect_response_succeeded(last_payload, response):
+                return {
+                    "status": "ok",
+                    "mode": "hikconnect_direct",
+                    "authMethod": auth_result.get("url"),
+                    "unlockMethod": method,
+                    "rateLimitSec": GATE_RATE_LIMIT_SEC,
+                    "deviceSerial": direct["device_serial"],
+                    "lockChannel": direct["lock_channel"],
+                    "lockIndex": direct["lock_index"],
+                }
+
+        if last_response is not None:
+            raise RuntimeError(
+                f"HikConnect unlock failed {_hikconnect_response_brief(last_response, last_payload)}; "
+                f"authUrl={auth_result.get('url', 'none')}; authTrace={' | '.join(auth_attempt_trace)}; "
+                f"trace={' | '.join(unlock_attempt_trace)}"
+            )
+        raise RuntimeError("HikConnect unlock request could not be sent")
+
+
+async def _unlock_gate_via_legacy_bridge() -> dict[str, Any]:
+    bridge_url = _gate_legacy_bridge_url()
     if not bridge_url:
-        raise RuntimeError("Gate bridge URL is not configured")
+        raise RuntimeError("Legacy gate bridge URL is not configured")
 
     device_serial = os.getenv(GATE_DEVICE_SERIAL_ENV, "").strip()
     lock_channel = os.getenv(GATE_LOCK_CHANNEL_ENV, "").strip()
@@ -187,7 +449,7 @@ async def _unlock_gate_via_hikconnect() -> dict[str, Any]:
         )
 
     if response.status_code >= 400:
-        raise RuntimeError(f"Gate bridge returned HTTP {response.status_code}")
+        raise RuntimeError(f"Legacy gate bridge returned HTTP {response.status_code}")
 
     try:
         payload = response.json()
@@ -195,13 +457,38 @@ async def _unlock_gate_via_hikconnect() -> dict[str, Any]:
         payload = None
 
     if isinstance(payload, dict):
+        payload.setdefault("mode", "legacy_bridge")
         return payload
 
     return {
         "status": "ok",
+        "mode": "legacy_bridge",
         "bridgeStatusCode": response.status_code,
         "bridgeResponse": response.text[:500],
     }
+
+
+async def _unlock_gate_via_hikconnect() -> dict[str, Any]:
+    direct_error: Exception | None = None
+    if _gate_direct_config()["configured"]:
+        try:
+            return await _unlock_gate_direct()
+        except Exception as exc:
+            direct_error = exc
+            logger.warning("gate_direct_failed error=%s detail=%s", type(exc).__name__, exc)
+
+    if _gate_legacy_bridge_url():
+        try:
+            return await _unlock_gate_via_legacy_bridge()
+        except Exception as exc:
+            if direct_error is not None:
+                raise RuntimeError("Gate direct and legacy bridge both failed") from exc
+            raise
+
+    if direct_error is not None:
+        raise direct_error
+
+    raise RuntimeError("Gate direct config is incomplete and legacy bridge is not configured")
 
 
 async def gate_open(
@@ -256,9 +543,9 @@ async def gate_open(
     try:
         result = await _unlock_gate_via_hikconnect()
     except Exception as exc:
-        logger.warning("gate_open_failed src=%s error=%s", source, type(exc).__name__)
+        logger.warning("gate_open_failed src=%s error=%s detail=%s", source, type(exc).__name__, exc)
         return JSONResponse(
-            {"status": "error", "detail": "gate bridge failed"},
+            {"status": "error", "detail": "gate unlock failed"},
             status_code=503,
         )
     finally:
@@ -282,27 +569,27 @@ async def gate_open(
             _gate_last_success_monotonic = time.monotonic()
             _gate_last_success_at_utc = datetime.now(timezone.utc).isoformat()
             logger.info(
-                "gate_open src=%s status=200 duration_ms=%s bridge=%s",
+                "gate_open src=%s status=200 duration_ms=%s mode=%s",
                 source,
                 int((time.monotonic() - started_at) * 1000),
-                "configured" if _gate_bridge_url() else "missing",
+                result.get("mode", _gate_mode()),
             )
             return JSONResponse(result, status_code=200)
         logger.info(
-            "gate_open src=%s status=502 duration_ms=%s bridge=%s",
+            "gate_open src=%s status=502 duration_ms=%s mode=%s",
             source,
             int((time.monotonic() - started_at) * 1000),
-            "configured" if _gate_bridge_url() else "missing",
+            result.get("mode", _gate_mode()) if isinstance(result, dict) else _gate_mode(),
         )
         return JSONResponse(result, status_code=502)
 
     _gate_last_success_monotonic = time.monotonic()
     _gate_last_success_at_utc = datetime.now(timezone.utc).isoformat()
     logger.info(
-        "gate_open src=%s status=200 duration_ms=%s bridge=%s",
+        "gate_open src=%s status=200 duration_ms=%s mode=%s",
         source,
         int((time.monotonic() - started_at) * 1000),
-        "configured" if _gate_bridge_url() else "missing",
+        _gate_mode(),
     )
     return JSONResponse({"status": "ok"}, status_code=200)
 
@@ -433,6 +720,18 @@ def main() -> None:
     global EXPORTS_DIR
     EXPORTS_DIR = Path(args.exports).expanduser().resolve()
     EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    direct = _gate_direct_config()
+    logger.info(
+        "gate_runtime mode=%s tokenConfigured=%s hikconnectCredentialsConfigured=%s deviceSerial=%s lockChannel=%s lockIndex=%s rateLimit=%s legacyBridgeConfigured=%s",
+        _gate_mode(),
+        direct["token_configured"],
+        direct["credentials_configured"],
+        direct["device_serial"] or "unconfigured",
+        direct["lock_channel"] or "unconfigured",
+        direct["lock_index"] or "unconfigured",
+        GATE_RATE_LIMIT_SEC,
+        bool(_gate_legacy_bridge_url()),
+    )
     uvicorn.run(app, host=args.host, port=args.port, access_log=False)
 
 
