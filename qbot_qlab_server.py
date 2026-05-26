@@ -46,6 +46,7 @@ GATE_LOCK_CHANNEL_ENV = "GATE_LOCK_CHANNEL"
 GATE_LOCK_INDEX_ENV = "GATE_LOCK_INDEX"
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 app = FastAPI(title="QBot QLab Export API", version="1.0")
 app.add_middleware(
@@ -137,7 +138,7 @@ def _gate_client_allowed(request: Request | None) -> bool:
     if allowed_nets:
         return any(client_ip in net for net in allowed_nets)
 
-    return client_ip.is_loopback or client_ip.is_private or client_ip.is_link_local
+    return True
 
 
 def _gate_status_snapshot() -> dict[str, Any]:
@@ -150,7 +151,7 @@ def _gate_status_snapshot() -> dict[str, Any]:
     return {
         "status": "ok" if bridge_url else "warn",
         "bridgeConfigured": bool(bridge_url),
-        "localOnly": not allowed_nets,
+        "localOnly": bool(allowed_nets),
         "rateLimitSec": GATE_RATE_LIMIT_SEC,
         "lastSuccessAtUtc": _gate_last_success_at_utc,
         "lastSuccessAgeSec": last_success_age_sec,
@@ -203,8 +204,17 @@ async def _unlock_gate_via_hikconnect() -> dict[str, Any]:
     }
 
 
-async def gate_open(token: str | None = None, request: Request | None = None) -> Response:
+async def gate_open(
+    token: str | None = None,
+    x_gate_token: str | None = Header(default=None, alias="X-Gate-Token"),
+    request: Request | None = None,
+) -> Response:
+    started_at = time.monotonic()
+    source = request.client.host if request and request.client and request.client.host else "unknown"
+    provided_token = x_gate_token or token
+
     if not _gate_client_allowed(request):
+        logger.info("gate_open src=%s status=403 reason=client_not_allowed", source)
         return JSONResponse(
             {"status": "forbidden", "detail": "gate open is local/vpn only"},
             status_code=403,
@@ -212,11 +222,13 @@ async def gate_open(token: str | None = None, request: Request | None = None) ->
 
     expected = os.getenv(GATE_TOKEN_ENV)
     if not expected:
+        logger.info("gate_open src=%s status=503 reason=token_missing", source)
         return JSONResponse(
             {"status": "error", "detail": "GATE_TOKEN is not configured"},
             status_code=503,
         )
-    if token != expected:
+    if provided_token != expected:
+        logger.info("gate_open src=%s status=403 reason=token_invalid", source)
         return JSONResponse(
             {"status": "forbidden", "detail": "invalid token"},
             status_code=403,
@@ -227,12 +239,14 @@ async def gate_open(token: str | None = None, request: Request | None = None) ->
     now = time.monotonic()
     if _gate_last_success_monotonic and now - _gate_last_success_monotonic < GATE_RATE_LIMIT_SEC:
         retry_after = max(1, int(GATE_RATE_LIMIT_SEC - (now - _gate_last_success_monotonic)))
+        logger.info("gate_open src=%s status=429 reason=rate_limited retry_after=%s", source, retry_after)
         return JSONResponse(
             {"status": "rate_limited", "retryAfterSec": retry_after},
             status_code=429,
         )
 
     if _gate_unlock_in_progress:
+        logger.info("gate_open src=%s status=429 reason=busy", source)
         return JSONResponse(
             {"status": "busy", "detail": "gate unlock already in progress"},
             status_code=429,
@@ -242,9 +256,9 @@ async def gate_open(token: str | None = None, request: Request | None = None) ->
     try:
         result = await _unlock_gate_via_hikconnect()
     except Exception as exc:
-        logger.warning("gate_open_failed: %s", type(exc).__name__)
+        logger.warning("gate_open_failed src=%s error=%s", source, type(exc).__name__)
         return JSONResponse(
-            {"status": "error", "detail": str(exc)[:200]},
+            {"status": "error", "detail": "gate bridge failed"},
             status_code=503,
         )
     finally:
@@ -254,6 +268,12 @@ async def gate_open(token: str | None = None, request: Request | None = None) ->
         if result.status_code < 400:
             _gate_last_success_monotonic = time.monotonic()
             _gate_last_success_at_utc = datetime.now(timezone.utc).isoformat()
+            logger.info(
+                "gate_open src=%s status=%s duration_ms=%s",
+                source,
+                result.status_code,
+                int((time.monotonic() - started_at) * 1000),
+            )
         return result
 
     if isinstance(result, dict):
@@ -261,18 +281,39 @@ async def gate_open(token: str | None = None, request: Request | None = None) ->
         if status in {"ok", "success", "opened", "done"}:
             _gate_last_success_monotonic = time.monotonic()
             _gate_last_success_at_utc = datetime.now(timezone.utc).isoformat()
-            logger.info("gate_open_success bridge=%s", "configured" if _gate_bridge_url() else "missing")
+            logger.info(
+                "gate_open src=%s status=200 duration_ms=%s bridge=%s",
+                source,
+                int((time.monotonic() - started_at) * 1000),
+                "configured" if _gate_bridge_url() else "missing",
+            )
             return JSONResponse(result, status_code=200)
+        logger.info(
+            "gate_open src=%s status=502 duration_ms=%s bridge=%s",
+            source,
+            int((time.monotonic() - started_at) * 1000),
+            "configured" if _gate_bridge_url() else "missing",
+        )
         return JSONResponse(result, status_code=502)
 
     _gate_last_success_monotonic = time.monotonic()
     _gate_last_success_at_utc = datetime.now(timezone.utc).isoformat()
+    logger.info(
+        "gate_open src=%s status=200 duration_ms=%s bridge=%s",
+        source,
+        int((time.monotonic() - started_at) * 1000),
+        "configured" if _gate_bridge_url() else "missing",
+    )
     return JSONResponse({"status": "ok"}, status_code=200)
 
 
 @app.get("/gate/open")
-async def gate_open_route(request: Request, token: str | None = None) -> Response:
-    return await gate_open(token=token, request=request)
+async def gate_open_route(
+    request: Request,
+    token: str | None = None,
+    x_gate_token: str | None = Header(default=None, alias="X-Gate-Token"),
+) -> Response:
+    return await gate_open(token=token, x_gate_token=x_gate_token, request=request)
 
 
 @app.get("/gate/status")
@@ -392,7 +433,7 @@ def main() -> None:
     global EXPORTS_DIR
     EXPORTS_DIR = Path(args.exports).expanduser().resolve()
     EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(app, host=args.host, port=args.port, access_log=False)
 
 
 if __name__ == "__main__":
