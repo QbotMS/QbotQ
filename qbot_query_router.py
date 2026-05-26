@@ -245,6 +245,46 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
 }
 
 
+# ── Route alias map (project TOSKANIA 2026 — name→route_id) ────────────────
+
+_ROUTE_ALIASES: dict[str, str] = {
+    "toskania z florencji - qbot": "55257604",
+    "toskania z florencji": "55257604",
+    "toskania qbot": "55257604",
+    "toskania": "55257604",
+}
+
+
+def _resolve_route_id(query: str, search_result: dict | None = None) -> str:
+    """Resolve route_id from query, alias map, or rwgps search results."""
+    m = re.search(r"(\d{7,})", query)
+    if m:
+        return m.group(1)
+    q = query.lower()
+    for alias, rid in _ROUTE_ALIASES.items():
+        if alias in q:
+            return rid
+    if search_result:
+        routes = search_result.get("routes", [])
+        if routes:
+            return str(routes[0].get("id", ""))
+        best = search_result.get("best_route_detail", {})
+        if best and best.get("id"):
+            return str(best["id"])
+    return ""
+
+
+# ── Intent-specific parameter overrides ────────────────────────────────────
+
+_INTENT_PARAM_OVERRIDES: dict[str, dict] = {
+    "route_surface_profile": {
+        "enrich": ["summary", "surface"],
+        "surface_source": "osm",
+        "sample_every_m": 500,
+    },
+}
+
+
 # ── Tool dispatcher ────────────────────────────────────────────────────────
 
 _TOOL_DISPATCH: dict[str, Any] = {}
@@ -366,8 +406,15 @@ def _read_garmin_energy(args: dict | None = None) -> dict[str, Any]:
             }
 
         tokenstore = os.getenv("GARMIN_TOKENSTORE", "/opt/qbot/app/.garmin_tokens")
-        g = Garmin(email, password, tokenstore=tokenstore)
-        g.login()
+        os.makedirs(tokenstore, exist_ok=True)
+        # garminconnect 0.3.3 uses session serialization, not tokenstore kwarg
+        try:
+            g = Garmin(email, password)
+            g.login()
+        except TypeError:
+            # older garminconnect versions
+            g = Garmin(email, password)
+            g.login()
 
         stats = g.get_stats(day_str)
         if not stats:
@@ -652,20 +699,42 @@ def _synthesize_answer(question: str, answers: list[dict], missing: list[str]) -
             route = data.get("route", data.get("best_route_detail", {}))
             rlist = data.get("routes", [])
             if route and route.get("name"):
-                parts.append(f"Trasa: {route.get('name')} ID={route.get('id', '?')}")
+                parts.append(f"Trasa: {route.get('name')} ID={route.get('id', route.get('route_id', '?'))}")
             elif rlist:
                 parts.append(f"Trasy: {len(rlist)} znalezionych")
+        elif reader == "rwgps_export_file":
+            parts.append(
+                f"RWGPS: {data.get('distance_km', '?')} km, "
+                f"D+ {data.get('elevation_gain_m', '?')} m, "
+                f"GPX={data.get('artifact_relative_path', '?')}, "
+                f"SHA256={str(data.get('sha256', ''))[:16]}..."
+            )
         elif reader == "gpx_artifact_parse":
             parts.append(
                 f"GPX: {data.get('track_points', '?')} pkt, "
-                f"{data.get('distance_m', 0)/1000:.1f}km, "
+                f"{float(data.get('distance_m', 0))/1000:.1f}km, "
                 f"+{data.get('elevation_gain_m', 0)}m, "
-                f"SHA256={data.get('sha256', '?')[:12]}..."
+                f"SHA256={str(data.get('sha256', ''))[:16]}..."
             )
         elif reader == "route_artifact_enrich":
             profile = data.get("surface_profile", {})
-            if profile:
-                parts.append(f"Nawierzchnia: {profile.get('dominant_surface', '?')}, coverage={profile.get('coverage_pct', '?')}%")
+            if profile and (profile.get("segments") or profile.get("coverage_pct")):
+                segs = profile.get("segments", [])
+                seg_parts = []
+                for s in segs[:8]:
+                    name = str(s.get("surface", s.get("name", "?")))
+                    length_m = float(s.get("length_m", s.get("distance_m", s.get("dystans_m", 0))))
+                    share = float(s.get("share", s.get("udzial", 0)))
+                    seg_parts.append(f"{name} ok. {length_m/1000:.1f} km / {share*100:.0f}%")
+                cov = profile.get("coverage_pct", "?")
+                warn = profile.get("warnings", [])
+                warn_str = f"warning: {warn[0]}" if warn else ""
+                parts.append(
+                    f"Nawierzchnia (coverage={cov}%): {'; '.join(seg_parts)}. "
+                    f"{warn_str}. Wniosek: trasa nie jest czysto szosowa"
+                )
+            else:
+                parts.append("Nawierzchnia: dane niedostępne")
         elif reader == "garage_search":
             results = data.get("results", data.get("rows", []))
             parts.append(f"Garaż: {len(results)} rekordów" if results else "Garaż: brak wyników")
@@ -735,19 +804,17 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
                 readers_to_call.append(reader)
 
     if scope != "all":
-        scope_categories: dict[str, list[str]] = {
+        scope_category_map: dict[str, list[str]] = {
             "nutrition": ["nutrition", "hydration", "fueling"],
             "training": ["xert", "intervals", "wellness", "garmin"],
             "routes": ["rwgps", "routes", "route_surface"],
             "garage": ["garage", "gear"],
         }
-        allowed = set()
-        for cat in scope_categories.get(scope, [scope]):
-            for reader in _INTENT_TO_READERS.get(cat, []):
-                allowed.add(reader)
-        readers_to_call = [r for r in readers_to_call if r in allowed]
+        allowed_cats = set(scope_category_map.get(scope, [scope]))
+        allowed_readers = {rn for rn, reg in _READER_REGISTRY.items() if reg.get("category", "") in allowed_cats}
+        readers_to_call = [r for r in readers_to_call if r in allowed_readers]
         if not readers_to_call:
-            readers_to_call = list(allowed)[:5]
+            readers_to_call = list(allowed_readers)[:5]
 
     if not readers_to_call:
         readers_to_call = _INTENT_TO_READERS.get("general", ["status"])
@@ -790,6 +857,14 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     missing: list[str] = []
     limitations: list[str] = []
     has_blocked = False
+    resolved_route_id: str = _resolve_route_id(question)  # pre-resolve from query/aliases
+    resolved_artifact_path: str = ""
+    rwgps_search_result: dict | None = None
+    rwgps_export_result: dict | None = None
+
+    # Determine if question expects surface data
+    expects_surface = "route_surface_profile" in intents
+    surface_data_returned = False
 
     for reader_name in readers_to_call:
         reg = _READER_REGISTRY.get(reader_name)
@@ -805,24 +880,62 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
 
         try:
             args = _resolve_tool_arg(tool_name, reg["params"], question)
+
+            # Chain resolved route_id into args
+            if resolved_route_id and not args.get("route_id"):
+                if "route_id" in reg["params"]:
+                    args["route_id"] = resolved_route_id
+                if "artifact_path" in reg["params"] and resolved_route_id and not args.get("artifact_path"):
+                    args["artifact_path"] = f"exports/rwgps/rwgps_{resolved_route_id}.gpx"
+
+                # Apply intent-specific param overrides (to args regardless of reader params)
+                for intent in intents:
+                    overrides = _INTENT_PARAM_OVERRIDES.get(intent, {})
+                    for k, v in overrides.items():
+                        args[k] = v
+
             result = func(args)
+
+            # Extract route_id from search/export results for chaining
+            if reader_name == "rwgps_route_search":
+                rwgps_search_result = result
+                found_id = _resolve_route_id(question, result)
+                if found_id:
+                    resolved_route_id = found_id
+            if reader_name == "rwgps_export_file":
+                rwgps_export_result = result
+                if result.get("artifact_relative_path"):
+                    resolved_artifact_path = result["artifact_relative_path"]
+                if result.get("route_id"):
+                    resolved_route_id = str(result["route_id"])
+            if reader_name == "rwgps_route_get":
+                route = result.get("route", {})
+                if route.get("id"):
+                    resolved_route_id = str(route["id"])
+
+            # Check for surface data
+            if reader_name == "route_artifact_enrich" and expects_surface:
+                sp = result.get("surface_profile", {})
+                if sp and (sp.get("segments") or sp.get("coverage_pct")):
+                    surface_data_returned = True
 
             status_val = result.get("status", result.get("status", "UNKNOWN"))
             if _is_blocked(status_val):
                 has_blocked = True
             if _is_failure(status_val) and not result.get("items") and not result.get("routes") and not result.get("activities"):
                 if include_missing:
-                    missing.append(f"{reader_name}: {status_val}")
-                limitations.append(f"{reader_name}: returned {status_val}")
-            else:
-                provenance.append({
-                    "reader": reader_name, "tool": tool_name,
-                    "providers": reg["providers"], "status": status_val,
-                })
-                answers.append({
-                    "reader": reader_name, "category": reg["category"],
-                    "status": status_val, "data": result,
-                })
+                    if not (reg["category"] in ("rwgps", "routes") and _is_failure(status_val)):
+                        missing.append(f"{reader_name}: {status_val}")
+                        limitations.append(f"{reader_name}: returned {status_val}")
+                # Don't skip — include in answers even if ERROR, for provenance
+            provenance.append({
+                "reader": reader_name, "tool": tool_name,
+                "providers": reg["providers"], "status": status_val,
+            })
+            answers.append({
+                "reader": reader_name, "category": reg["category"],
+                "status": status_val, "data": result,
+            })
         except Exception as exc:
             missing.append(f"{reader_name}: {type(exc).__name__}: {exc}")
             limitations.append(f"{reader_name}: failed ({type(exc).__name__})")
@@ -854,11 +967,43 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     }
 
     # Status aggregation
+    key_readers_ok = any(
+        not _is_blocked(ans.get("status", "")) and ans["reader"] not in ("status", "readiness", "capability_scan")
+        for ans in answers
+    )
+    non_garage_ok = any(
+        not _is_blocked(ans.get("status", ""))
+        for ans in answers
+        if not ans["reader"].startswith("garage") and ans["reader"] not in ("status", "readiness", "capability_scan")
+    )
+
+    # Route lookup success override (only if primary intent is route lookup)
+    route_lookup_primary = (
+        "rwgps_route_lookup" in intents and
+        not expects_surface and
+        "route_stage_split" not in intents
+    )
+    route_lookup_success = (
+        route_lookup_primary and
+        bool(resolved_route_id) and
+        any(a["reader"] == "rwgps_export_file" and a.get("status", "").upper() == "OK" for a in answers)
+    )
+    if route_lookup_success:
+        response["status"] = "ok"
+        response["confidence"] = "high"
+
     if not answers:
-        response["status"] = "no_data"
-        response["answer"] = NO_DATA_PHRASE
-    elif has_blocked:
+        response["status"] = "partial"
+        response["confidence"] = "low"
+        missing.append("surface_profile: data not returned by route_artifact_enrich")
+        limitations.append("route_artifact_enrich did not return surface_profile")
+        response["missing_fields"] = missing if include_missing else []
+        if "Nawierzchnia: dane niedostępne" in answer_text or "niedostępne" in answer_text.lower():
+            response["status"] = "partial"
+    elif not key_readers_ok and has_blocked:
         response["status"] = "blocked"
+    elif has_blocked and non_garage_ok:
+        response["status"] = "partial"
     elif len(answers) == 1 and answers[0]["reader"] in ("status", "readiness", "capability_scan"):
         response["status"] = "no_data"
         response["answer"] = NO_DATA_PHRASE
@@ -870,7 +1015,16 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     else:
         response["status"] = "ok"
 
-    # Route stage split: always no_data (no reader)
+    # Post-status adjustments
+    if expects_surface and surface_data_returned:
+        response["status"] = "ok"
+        response["confidence"] = "medium"
+    elif response["status"] == "ok" and answer_text and "niedostępne" in answer_text and expects_surface:
+        response["status"] = "partial"
+    if expects_surface and response["status"] == "ok":
+        response["confidence"] = "medium"  # surface always medium due to Overpass fallibility
+
+    # Route stage split: always no_data
     if "route_stage_split" in intents:
         response["status"] = "no_data"
         response["answer"] = NO_DATA_PHRASE
@@ -879,7 +1033,7 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
             "town_snap_to_trackpoint",
             "lodging_waypoint_matcher",
         ]
-        response["limitations"].append("qbot.query can parse GPX summary, but cannot stage full GPX yet")
+        response.setdefault("limitations", []).append("qbot.query can parse GPX summary, but cannot stage full GPX yet")
 
     # No-data policy test
     if "no_data_policy_test" in intents:
