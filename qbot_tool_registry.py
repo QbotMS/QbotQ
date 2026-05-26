@@ -285,6 +285,19 @@ from qbot_wellness_store import (
     _tool_qbot_nutrition_db_status,
 )
 
+from qbot_nutrition_tools import (
+    _tool_qbot_nutrition_food_search,
+    _tool_qbot_nutrition_food_list,
+    _tool_qbot_nutrition_food_create,
+    _tool_qbot_nutrition_intake_parse,
+    _tool_qbot_nutrition_intake_log,
+    _tool_qbot_nutrition_hydration_log,
+    _tool_qbot_nutrition_fueling_log,
+    _tool_qbot_nutrition_day_summary,
+    _tool_qbot_nutrition_meal_list,
+    _tool_qbot_nutrition_status,
+)
+
 from qbot_task_queue import (
     _tool_qbot_task_queue_add,
     _tool_qbot_task_queue_list,
@@ -1529,6 +1542,66 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_nutrition_food_search": {
+        "description": "Wyszukaj produkt spożywczy w bazie QBot",
+        "category": "nutrition",
+        "safe": True,
+        "args_schema": {"query": "skyr", "limit": 20},
+    },
+    "qbot_nutrition_food_list": {
+        "description": "Lista wszystkich produktów spożywczych",
+        "category": "nutrition",
+        "safe": True,
+        "args_schema": {"limit": 50},
+    },
+    "qbot_nutrition_food_create": {
+        "description": "Dodaj nowy produkt spożywczy do bazy (stały lub z etykiety)",
+        "category": "nutrition",
+        "safe": True,
+        "args_schema": {"name": "skyr naturalny", "kcal_per_100g": 63, "protein_per_100g": 11, "carbs_per_100g": 4, "fat_per_100g": 0.2, "source": "qbot"},
+    },
+    "qbot_nutrition_intake_parse": {
+        "description": "Parsuj tekst żywieniowy (NL) na ustrukturyzowane wpisy — bez zapisu do DB",
+        "category": "nutrition",
+        "safe": True,
+        "args_schema": {"text": "zjadłem 200 g skyru, banana i 40 g płatków"},
+    },
+    "qbot_nutrition_intake_log": {
+        "description": "Dodaj posiłek/hydrację/ fueling z tekstu NL — zapis do DB",
+        "category": "nutrition",
+        "safe": True,
+        "args_schema": {"text": "śniadanie: 200 g skyru, banan, 40 g płatków, kawa z mlekiem", "meal_type": "breakfast"},
+    },
+    "qbot_nutrition_hydration_log": {
+        "description": "Zarejestruj wypity płyn",
+        "category": "nutrition",
+        "safe": True,
+        "args_schema": {"fluid_ml": 500, "sodium_mg": 0, "note": "woda"},
+    },
+    "qbot_nutrition_fueling_log": {
+        "description": "Zarejestruj carbs przyjęte podczas jazdy (żel, baton, izo)",
+        "category": "nutrition",
+        "safe": True,
+        "args_schema": {"carbs_g": 30, "context": "ride"},
+    },
+    "qbot_nutrition_day_summary": {
+        "description": "Pełne podsumowanie dnia — posiłki, hydracja, fueling, bilans",
+        "category": "nutrition",
+        "safe": True,
+        "args_schema": {"date": "2026-05-26", "recompute": False},
+    },
+    "qbot_nutrition_meal_list": {
+        "description": "Lista posiłków z danego dnia",
+        "category": "nutrition",
+        "safe": True,
+        "args_schema": {"date": "2026-05-26", "limit": 20},
+    },
+    "qbot_nutrition_status": {
+        "description": "Status modułu Nutrition/Fueling — liczba rekordów w tabelach",
+        "category": "nutrition",
+        "safe": True,
+        "args_schema": {},
+    },
     "qbot_task_queue_add": {
         "description": "Dodaj task do kolejki — source ChatGPT MCP/CLI",
         "category": "task_queue",
@@ -1811,6 +1884,16 @@ TOOLS: dict[str, Any] = {
     "qbot_wellness_range_summary": _tool_qbot_wellness_range_summary,
     "qbot_nutrition_range_summary": _tool_qbot_nutrition_range_summary,
     "qbot_nutrition_db_status": _tool_qbot_nutrition_db_status,
+    "qbot_nutrition_food_search": _tool_qbot_nutrition_food_search,
+    "qbot_nutrition_food_list": _tool_qbot_nutrition_food_list,
+    "qbot_nutrition_food_create": _tool_qbot_nutrition_food_create,
+    "qbot_nutrition_intake_parse": _tool_qbot_nutrition_intake_parse,
+    "qbot_nutrition_intake_log": _tool_qbot_nutrition_intake_log,
+    "qbot_nutrition_hydration_log": _tool_qbot_nutrition_hydration_log,
+    "qbot_nutrition_fueling_log": _tool_qbot_nutrition_fueling_log,
+    "qbot_nutrition_day_summary": _tool_qbot_nutrition_day_summary,
+    "qbot_nutrition_meal_list": _tool_qbot_nutrition_meal_list,
+    "qbot_nutrition_status": _tool_qbot_nutrition_status,
     "qbot_task_queue_add": _tool_qbot_task_queue_add,
     "qbot_task_queue_list": _tool_qbot_task_queue_list,
     "qbot_task_queue_next": _tool_qbot_task_queue_next,

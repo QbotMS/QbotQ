@@ -709,6 +709,158 @@ async def ride_readiness():
     return JSONResponse(content=payload, status_code=200)
 
 
+# ── Nutrition / Fueling endpoints ──────────────────────────────────────────────────
+
+
+@app.post("/nutrition/intake/text")
+async def nutrition_intake_text(request: Request):
+    """POST /nutrition/intake/text — log meal/hydration/fueling from NL text."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(content={"tool": "nutrition_intake_text", "status": "ERROR", "error": "invalid JSON"}, status_code=400)
+    text = str(body.get("text", "")).strip()
+    meal_type = str(body.get("meal_type", "meal")).strip() or "meal"
+    note = body.get("note")
+    context = body.get("context")
+    if not text:
+        return JSONResponse(content={"tool": "nutrition_intake_text", "status": "ERROR", "error": "text required"}, status_code=400)
+
+    from qbot_nutrition_tools import _tool_qbot_nutrition_intake_log
+    result = _tool_qbot_nutrition_intake_log({"text": text, "meal_type": meal_type, "note": note, "context": context})
+    status_code = 200 if result.get("status") == "OK" else 400
+    return JSONResponse(content=result, status_code=status_code)
+
+
+@app.post("/nutrition/intake/telegram")
+async def nutrition_intake_telegram(request: Request):
+    """POST /nutrition/intake/telegram — same as /text but tailored for Telegram webhook."""
+    return await nutrition_intake_text(request)
+
+
+@app.post("/nutrition/foods")
+async def nutrition_foods_create(request: Request):
+    """POST /nutrition/foods — add a food item."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(content={"tool": "nutrition_foods_create", "status": "ERROR", "error": "invalid JSON"}, status_code=400)
+    from qbot_nutrition_tools import _tool_qbot_nutrition_food_create
+    result = _tool_qbot_nutrition_food_create(body)
+    status_code = 200 if result.get("status") == "OK" else 400
+    return JSONResponse(content=result, status_code=status_code)
+
+
+@app.get("/nutrition/foods/search")
+def nutrition_foods_search(request: Request):
+    """GET /nutrition/foods/search?query=skyr&limit=20"""
+    query = request.query_params.get("query", "")
+    limit = int(request.query_params.get("limit", "20"))
+    from qbot_nutrition_tools import _tool_qbot_nutrition_food_search
+    result = _tool_qbot_nutrition_food_search({"query": query, "limit": limit})
+    return JSONResponse(content=result, status_code=200)
+
+
+@app.post("/nutrition/meals")
+async def nutrition_meals_create(request: Request):
+    """POST /nutrition/meals — log a meal with explicit items."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(content={"tool": "nutrition_meals_create", "status": "ERROR", "error": "invalid JSON"}, status_code=400)
+    from qbot_nutrition_db import meal_log_create
+    try:
+        meal = meal_log_create(
+            meal_type=body.get("meal_type", "meal"),
+            note=body.get("note"),
+            context=body.get("context"),
+            eaten_at=body.get("eaten_at"),
+            items=body.get("items", []),
+        )
+        return JSONResponse(content={"tool": "nutrition_meals_create", "status": "OK", "meal": meal}, status_code=200)
+    except Exception as exc:
+        return JSONResponse(content={"tool": "nutrition_meals_create", "status": "ERROR", "error": str(exc)}, status_code=400)
+
+
+@app.post("/nutrition/hydration")
+async def nutrition_hydration_create(request: Request):
+    """POST /nutrition/hydration — log a hydration event."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(content={"tool": "nutrition_hydration", "status": "ERROR", "error": "invalid JSON"}, status_code=400)
+    from qbot_nutrition_tools import _tool_qbot_nutrition_hydration_log
+    result = _tool_qbot_nutrition_hydration_log(body)
+    status_code = 200 if result.get("status") == "OK" else 400
+    return JSONResponse(content=result, status_code=status_code)
+
+
+@app.get("/nutrition/day/{date_str}")
+def nutrition_day_summary(date_str: str, request: Request):
+    """GET /nutrition/day/2026-05-26 — full daily summary."""
+    recompute = request.query_params.get("recompute", "0") == "1"
+    from qbot_nutrition_tools import _tool_qbot_nutrition_day_summary
+    result = _tool_qbot_nutrition_day_summary({"date": date_str, "recompute": recompute})
+    return JSONResponse(content=result, status_code=200)
+
+
+@app.post("/nutrition/import/cronometer/servings-csv")
+async def nutrition_import_cronometer_csv(request: Request):
+    """POST /nutrition/import/cronometer/servings-csv — import Cronometer servings CSV."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(content={"tool": "nutrition_import_cronometer", "status": "ERROR", "error": "invalid JSON"}, status_code=400)
+    csv_text = str(body.get("csv", "")).strip()
+    if not csv_text:
+        return JSONResponse(content={"tool": "nutrition_import_cronometer", "status": "ERROR", "error": "csv required"}, status_code=400)
+    try:
+        import csv, io
+        from qbot_nutrition_db import meal_log_create, food_item_create
+        reader = csv.DictReader(io.StringIO(csv_text))
+        rows = list(reader)
+        imported = 0
+        skipped = 0
+        for row in rows:
+            food_name = (row.get("Food Name") or row.get("Food") or "").strip()
+            amount_str = (row.get("Amount") or row.get("Serving") or "0").strip()
+            unit = (row.get("Unit") or "g").strip()
+            try:
+                amount = float(amount_str.replace(",", "."))
+            except ValueError:
+                skipped += 1
+                continue
+            if not food_name or amount <= 0:
+                skipped += 1
+                continue
+
+            kcal = float(row.get("Calories (kcal)", 0) or 0)
+            carbs = float(row.get("Carbs (g)", 0) or 0)
+            protein = float(row.get("Protein (g)", 0) or 0)
+            fat = float(row.get("Fat (g)", 0) or 0)
+            fiber = float(row.get("Fiber (g)", 0) or 0)
+            sodium = float(row.get("Sodium (mg)", 0) or 0)
+
+            food_item_create(name=food_name, kcal_per_100g=kcal * 100 / amount if amount else None,
+                             carbs_per_100g=carbs * 100 / amount if amount else None,
+                             protein_per_100g=protein * 100 / amount if amount else None,
+                             fat_per_100g=fat * 100 / amount if amount else None,
+                             fiber_per_100g=fiber * 100 / amount if amount else None,
+                             sodium_per_100g=sodium * 100 / amount if amount else None,
+                             source="cronometer_import")
+            imported += 1
+
+        return JSONResponse(content={
+            "tool": "nutrition_import_cronometer",
+            "status": "OK",
+            "rows_seen": len(rows),
+            "imported": imported,
+            "skipped": skipped,
+        }, status_code=200)
+    except Exception as exc:
+        return JSONResponse(content={"tool": "nutrition_import_cronometer", "status": "ERROR", "error": str(exc)}, status_code=400)
+
+
 @app.post("/q")
 async def q_endpoint(request: Request):
     try:

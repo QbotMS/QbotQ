@@ -12,6 +12,8 @@ _SQL_FILES = (
     "init_qbot.sql",
     "llm_planner_v1.sql",
     "rwgps_route_store_v1.sql",
+    "wellness_nutrition_store_v1.sql",
+    "nutrition_fueling_store_v1.sql",
 )
 
 def _conn():
