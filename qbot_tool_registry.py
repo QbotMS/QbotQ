@@ -770,6 +770,12 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_qlab_status": {
+        "description": "Compatibility alias for legacy QLab status",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
     "qbot_legacy_sync_status": {
         "description": "Status capability sync — pliki, symbole, logi, readiness",
         "category": "legacy",
@@ -1304,6 +1310,12 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_overpass_status": {
+        "description": "Compatibility alias for legacy Overpass/OpenMaps status",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
     "qbot_garage_legacy_file_audit": {
         "description": "Audyt plików legacy w katalogu Garage",
         "category": "garage",
@@ -1614,6 +1626,7 @@ TOOLS: dict[str, Any] = {
     "qbot_garmin_upload_status": _tool_qbot_garmin_upload_status,
     "qbot_hammerhead_import_status": _tool_qbot_hammerhead_import_status_enhanced,
     "qbot_legacy_qlab_status": _tool_qbot_legacy_qlab_status,
+    "qbot_qlab_status": _tool_qbot_legacy_qlab_status,
     "qbot_legacy_sync_status": _tool_qbot_legacy_sync_status,
     "qbot_legacy_capability_status": _tool_qbot_legacy_capability_status,
     "qbot_legacy_readonly_wrapper_report": _tool_qbot_legacy_readonly_wrapper_report,
@@ -1695,6 +1708,7 @@ TOOLS: dict[str, Any] = {
     "qbot_weather_config_status": _tool_qbot_weather_config_status,
     "qbot_openmaps_config_status": _tool_qbot_openmaps_config_status,
     "qbot_openmaps_legacy_status": _tool_qbot_openmaps_legacy_status,
+    "qbot_overpass_status": _tool_qbot_openmaps_legacy_status,
     "qbot_garage_legacy_file_audit": _tool_qbot_garage_legacy_file_audit,
     "qbot_garage_import_preview": _tool_qbot_garage_import_preview,
     "qbot_garage_import_execute": _tool_qbot_garage_import_execute,

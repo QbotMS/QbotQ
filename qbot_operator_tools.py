@@ -30,6 +30,22 @@ from qbot_legacy_parity_tools import (
 _MAX_ERROR_OUTPUT = 300
 
 
+def _result_has_real_error(result: Any) -> bool:
+    if not isinstance(result, dict):
+        return False
+    status = str(result.get("status", "")).strip().lower()
+    if status == "error":
+        return True
+    if "error" not in result:
+        return False
+    err = result.get("error")
+    if err in (None, "", False):
+        return False
+    if isinstance(err, str) and err.strip().lower() in {"null", "none"}:
+        return False
+    return True
+
+
 def _tool_qbot_error_summary(args: dict | None = None) -> dict[str, Any]:
     limit_raw = (args or {}).get("limit", 50)
     try:
@@ -66,16 +82,8 @@ def _tool_qbot_error_summary(args: dict | None = None) -> dict[str, Any]:
                 res = json.loads(res)
             except Exception:
                 res = None
-        is_error = False
-        error_text = None
-        if isinstance(res, dict):
-            if "error" in res:
-                is_error = True
-                error_text = str(res.get("error", ""))
-            elif res.get("status") == "error":
-                is_error = True
-                error_text = res.get("reason", res.get("error", ""))
-        if is_error:
+        if _result_has_real_error(res):
+            error_text = res.get("error", res.get("reason", ""))
             err_entry: dict[str, Any] = {
                 "id": r["id"],
                 "tool": r["tool"],

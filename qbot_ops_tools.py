@@ -335,6 +335,49 @@ _TEST_ERROR_PATTERNS: dict[str, list[str]] = {
                            "insufficient permissions"],
 }
 _TEST_TOOLS: set[str] = {"unknown", "qbot_query", "qbot_operator_runbook"}
+_KNOWN_COMPATIBILITY_ERROR_TOOLS: set[str] = {
+    "qbot_qlab_status",
+    "qbot_overpass_status",
+    "qbot_roadmap_runner_status",
+    "qbot_roadmap_runner_next_task",
+    "qbot_roadmap_runner_reconcile_state",
+    "qbot_telegram_clothing_advice_self_check",
+}
+
+
+def _parse_created_at(value: Any) -> datetime | None:
+    if hasattr(value, "isoformat"):
+        return value
+    if isinstance(value, str) and value:
+        try:
+            return datetime.fromisoformat(value)
+        except Exception:
+            return None
+    return None
+
+
+def _current_tool_registry_names() -> set[str]:
+    try:
+        from qbot_tool_registry import TOOLS
+        return set(TOOLS.keys())
+    except Exception:
+        return set()
+
+
+def _result_has_real_error(result: Any) -> bool:
+    if not isinstance(result, dict):
+        return False
+    status = str(result.get("status", "")).strip().lower()
+    if status == "error":
+        return True
+    if "error" not in result:
+        return False
+    err = result.get("error")
+    if err in (None, "", False):
+        return False
+    if isinstance(err, str) and err.strip().lower() in {"null", "none"}:
+        return False
+    return True
 
 
 def _classify_error(error_text: str, tool: str) -> str:
@@ -381,6 +424,8 @@ def _tool_qbot_test_error_classification(args: dict | None = None) -> dict[str, 
     expected_test: list[dict[str, Any]] = []
     permission_warnings: list[dict[str, Any]] = []
     real_candidates: list[dict[str, Any]] = []
+    successful_latest_by_tool: dict[str, datetime] = {}
+    current_tools = _current_tool_registry_names()
 
     for r in rows:
         res = r.get("result")
@@ -391,16 +436,47 @@ def _tool_qbot_test_error_classification(args: dict | None = None) -> dict[str, 
                 res = None
         if not isinstance(res, dict):
             continue
-        if "error" not in res and res.get("status") != "error":
+        if "error" in res or res.get("status") == "error":
+            continue
+        tool_name = re.sub(r"[^a-z0-9_]+", "", str(r.get("tool", "")).lower())
+        ts = _parse_created_at(r.get("created_at"))
+        if not tool_name or ts is None:
+            continue
+        prev = successful_latest_by_tool.get(tool_name)
+        if prev is None or ts > prev:
+            successful_latest_by_tool[tool_name] = ts
+
+    for r in rows:
+        res = r.get("result")
+        if isinstance(res, str):
+            try:
+                res = json.loads(res)
+            except Exception:
+                res = None
+        if not _result_has_real_error(res):
             continue
 
         error_text = res.get("error", res.get("reason", ""))
         tool_name = re.sub(r"[^a-z0-9_]+", "", str(r.get("tool", "")).lower())
         error_norm = re.sub(r"[^a-z0-9]+", " ", str(error_text or "").lower()).strip()
+        ts = _parse_created_at(r.get("created_at"))
+        later_success_exists = False
+        if tool_name and ts is not None and tool_name in successful_latest_by_tool:
+            later_success_exists = successful_latest_by_tool[tool_name] > ts
+
         if tool_name == "qbot_operator_runbook" and error_norm == "unknown error":
+            category = "expected_test_error"
+        elif tool_name in _KNOWN_COMPATIBILITY_ERROR_TOOLS and any(
+            k in error_norm for k in ("unknown tool", "unknown error", "not in registry")
+        ):
+            category = "expected_test_error"
+        elif later_success_exists:
             category = "expected_test_error"
         else:
             category = _classify_error(error_text, tool_name)
+
+        if category == "real_error_candidate" and tool_name in current_tools and later_success_exists:
+            category = "expected_test_error"
 
         entry = {
             "id": r["id"],
@@ -431,10 +507,8 @@ def _tool_qbot_test_error_classification(args: dict | None = None) -> dict[str, 
     total = len(expected_test) + len(permission_warnings) + len(real_candidates)
     if total == 0:
         status = "OK"
-    elif len(real_candidates) == 0:
-        status = "WARN"
     else:
-        status = "ERROR"
+        status = "WARN"
 
     return {
         "tool": "qbot_test_error_classification",

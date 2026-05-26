@@ -11,6 +11,7 @@ from qbot_tools import _tool_qbot_api_self_check, _tool_qbot_project_guard_check
 _PROJECT_ROOT: Path = Path("/opt/qbot/app")
 _SKIP_DIRS: set[str] = {".git", ".venv", "__pycache__", ".pytest_cache", "logs", "outgoing", "backups", "node_modules"}
 _SKIP_FILES: set[str] = {".env.local", ".env", ".garmin_tokens.json", ".garmin_session.pkl", ".hammerhead_tokens"}
+_SKIP_SUFFIXES: set[str] = {".db", ".sqlite", ".sqlite3", ".pkl", ".bin", ".cache"}
 _MAX_FILE: int = 300_000
 
 
@@ -20,6 +21,8 @@ def _file_excerpt(path: Path, keywords: list[str], max_len: int = 200) -> list[s
     try:
         content = path.read_text(encoding="utf-8", errors="ignore")[:_MAX_FILE]
     except Exception:
+        return excerpts
+    if "\x00" in content:
         return excerpts
     for line in content.splitlines():
         ll = line.lower().strip()
@@ -53,6 +56,8 @@ def _detect_capability_files(capability: str) -> list[dict[str, Any]]:
             if any(skip in p.parts for skip in _SKIP_DIRS):
                 continue
             if p.name in _SKIP_FILES:
+                continue
+            if any(str(p).endswith(suf) for suf in _SKIP_SUFFIXES):
                 continue
             if not p.is_file():
                 continue

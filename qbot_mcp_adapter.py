@@ -246,6 +246,13 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+    "qbot.qlab_status": {
+        "qbot_tool": "qbot_qlab_status",
+        "description": "Compatibility alias for legacy QLab status.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
     "qbot.assistant_inbox_status": {
         "qbot_tool": "qbot_assistant_inbox_status",
         "description": "Read-only local assistant inbox status.",
