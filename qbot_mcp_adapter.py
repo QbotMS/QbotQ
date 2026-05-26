@@ -932,7 +932,10 @@ def _new_session() -> str:
     return session_id
 
 
-def _validate_mcp_access(headers: dict[str, str]) -> tuple[bool, str | None]:
+def _validate_mcp_access(method: str, headers: dict[str, str]) -> tuple[bool, str | None]:
+    # initialize + tools/list are always accessible (MCP spec)
+    if method in ("initialize", "notifications/initialized", "tools/list"):
+        return True, None
     if _token_configured() and not _auth_header_ok(headers):
         return False, "missing or invalid MCP token"
     return True, None
@@ -943,9 +946,6 @@ def handle_mcp_request(
     headers: dict[str, str] | None = None,
 ) -> tuple[dict[str, Any] | None, int, dict[str, str]]:
     headers = {k.lower(): v for k, v in (headers or {}).items()}
-    ok, auth_error = _validate_mcp_access(headers)
-    if not ok:
-        return _mcp_error(auth_error or "unauthorized", code=401), 401, {"WWW-Authenticate": "Bearer"}
 
     if "tool" in payload and "method" not in payload:
         payload = {
@@ -958,8 +958,11 @@ def handle_mcp_request(
             },
         }
 
-    method = payload.get("method")
+    method = payload.get("method", "")
     request_id = payload.get("id")
+    ok, auth_error = _validate_mcp_access(method, headers)
+    if not ok:
+        return _mcp_error(auth_error or "unauthorized", code=401), 401, {"WWW-Authenticate": "Bearer"}
     params = payload.get("params", {}) if isinstance(payload.get("params", {}), dict) else {}
 
     if method == "initialize":

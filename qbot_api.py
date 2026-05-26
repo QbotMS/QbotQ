@@ -833,7 +833,7 @@ def _mcp_response(payload: dict | None, status_code: int, headers: dict[str, str
 
 
 def _mcp_auth_guard(request: Request):
-    ok, err = _validate_mcp_access({k.lower(): v for k, v in request.headers.items()})
+    ok, err = _validate_mcp_access("", {k.lower(): v for k, v in request.headers.items()})
     if ok:
         return None
     return JSONResponse(
@@ -876,9 +876,7 @@ def mcp_health(request: Request):
 @app.get("/mcp/tools")
 @app.get("/mcp/tools/")
 def mcp_tools(request: Request):
-    denied = _mcp_auth_guard(request)
-    if denied is not None:
-        return denied
+    # GET /mcp/tools is public (same semantics as MCP tools/list)
     return _tool_qbot_mcp_tools_list({})
 
 

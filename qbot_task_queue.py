@@ -146,6 +146,24 @@ def _tool_qbot_task_queue_status(args: dict | None = None) -> dict[str, Any]:
     new_status = str(args.get("status", "") or "").strip().lower()
     result_summary = str(args.get("result_summary", "") or "").strip()[:2000]
     error_detail = str(args.get("error", "") or "").strip()[:1000]
+
+    # Empty status + no task_id → queue overview (read-only)
+    if not new_status and not task_id:
+        data = _load()
+        tasks = data.get("tasks", [])
+        counts: dict[str, int] = {}
+        for t in tasks:
+            s = t.get("status", "unknown")
+            counts[s] = counts.get(s, 0) + 1
+        return {
+            "tool": "qbot_task_queue_status",
+            "status": "OK",
+            "safety_class": "READ_ONLY",
+            "queue_total": len(tasks),
+            "status_breakdown": counts,
+            "latest_task": tasks[-1] if tasks else None,
+        }
+
     valid = {"pending", "in_progress", "pass", "blocked", "fail"}
     if new_status not in valid:
         return {"tool": "qbot_task_queue_status", "status": "ERROR",
