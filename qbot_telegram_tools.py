@@ -175,7 +175,7 @@ def _tool_qbot_public_endpoint_status(_args: dict | None = None) -> dict[str, An
         "tool": "qbot_public_endpoint_status",
         "public_url_configured": has_url,
         "is_https": is_https,
-        "qbot_api_local": "127.0.0.1:8001 (active)",
+        "qbot_api_local": "127.0.0.1:8002 (active)",
         "recommendations": recommendations,
         "status": "ERROR" if not has_url else "WARN" if not is_https else "OK",
     }
@@ -275,7 +275,7 @@ def _tool_qbot_telegram_webhook_plan(_args: dict | None = None) -> dict[str, Any
         "verification_steps": [
             "1. Set QBOT_PUBLIC_BASE_URL=https://your-domain in .env.local",
             "2. Set TELEGRAM_WEBHOOK_SECRET in .env.local",
-            "3. Ensure HTTPS reverse proxy routes /telegram/webhook/ to 127.0.0.1:8001",
+            "3. Ensure HTTPS reverse proxy routes /telegram/webhook/ to 127.0.0.1:8002",
             "4. Set TELEGRAM_ENABLED=true in .env.local",
             "5. Run qbot_telegram_set_webhook with execute=true",
             "6. Verify with getWebhookInfo",

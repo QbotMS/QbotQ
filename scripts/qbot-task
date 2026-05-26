@@ -16,7 +16,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 APP_DIR = Path("/opt/qbot/app")
-Q_ENDPOINT = "http://127.0.0.1:8001/q"
+Q_ENDPOINT = "http://127.0.0.1:8002/q"
 STATE_FILE = APP_DIR / "state" / "qbot_task_queue.json"
 VENV_PYTHON = str(APP_DIR / ".venv" / "bin" / "python3")
 

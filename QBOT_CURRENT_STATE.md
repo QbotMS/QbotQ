@@ -60,7 +60,7 @@ configuration.
 ## Public MCP
 
 - Public ChatGPT connector URL stays `https://qbot.cytr.us/mcp/`.
-- Public `/mcp/` is routed through nginx to `qbot-api.service` on `127.0.0.1:8001`.
+- Public `/mcp/` is routed through nginx to `qbot-api.service` on `127.0.0.1:8002`.
 - Public `/q` and `/health` remain blocked with `404`.
 - Adapter file: `qbot_mcp_adapter.py`.
 - Exposed MCP tools:

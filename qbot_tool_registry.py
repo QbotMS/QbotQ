@@ -164,6 +164,7 @@ from qbot_external_llm_tools import (
     _tool_qbot_external_llm_policy,
     _tool_qbot_external_llm_status,
     _tool_qbot_external_llm_workflow_guide,
+    _tool_qbot_external_tool_plan,
 )
 
 from qbot_telegram_tools import (
@@ -978,11 +979,17 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {"topic": "operational_status", "max_chars": 12000},
     },
-    "qbot_chatgpt_prompt_pack": {
-        "description": "Generuje gotowy prompt do wklejenia w ChatGPT Plus — rola, kontekst, ograniczenia",
+    "qbot_external_tool_plan": {
+        "description": "Na podstawie zapytania wybiera i uzasadnia narzędzia QBot dla zewnętrznego LLM",
         "category": "llm_boundary",
         "safe": True,
-        "args_schema": {"topic": "operational_status", "task": "...", "style": "concise"},
+        "args_schema": {"query": "...", "style": "concise", "max_tools": 3, "include_prompt": True},
+    },
+    "qbot_chatgpt_prompt_pack": {
+        "description": "Generuje gotowy prompt do wklejenia w ChatGPT Plus — rola, kontekst, ograniczenia i plan narzędzi",
+        "category": "llm_boundary",
+        "safe": True,
+        "args_schema": {"topic": "operational_status", "task": "...", "style": "concise", "query": "", "max_tools": 3},
     },
     "qbot_chatgpt_decision_record_create": {
         "description": "Zapisuje decyzję z ChatGPT jako decision_record w PostgreSQL",
@@ -1688,6 +1695,7 @@ TOOLS: dict[str, Any] = {
     "qbot_external_llm_status": _tool_qbot_external_llm_status,
     "qbot_external_llm_policy": _tool_qbot_external_llm_policy,
     "qbot_external_context_bundle": _tool_qbot_external_context_bundle,
+    "qbot_external_tool_plan": _tool_qbot_external_tool_plan,
     "qbot_chatgpt_prompt_pack": _tool_qbot_chatgpt_prompt_pack,
     "qbot_chatgpt_decision_record_create": _tool_qbot_chatgpt_decision_record_create,
     "qbot_external_llm_workflow_guide": _tool_qbot_external_llm_workflow_guide,

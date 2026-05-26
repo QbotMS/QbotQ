@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${1:-http://127.0.0.1:8001}"
+BASE_URL="${1:-http://127.0.0.1:8002}"
 URL="${BASE_URL}/ride-readiness"
 MAX_SEC=8
 TMPFILE=$(mktemp /tmp/smoke_ride_readiness.XXXXXX)

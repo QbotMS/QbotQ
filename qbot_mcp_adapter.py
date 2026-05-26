@@ -17,6 +17,7 @@ from qbot_artifact_tools import (
     _tool_qbot_artifact_list,
 )
 from qbot_external_llm_tools import _tool_qbot_external_context_bundle
+from qbot_external_llm_tools import _tool_qbot_external_tool_plan
 from qbot_llm_planner import _tool_qbot_llm_run_query, _tool_qbot_tool_policy_list
 from qbot_ops_tools import _tool_qbot_operator_final_smoke_test
 from qbot_roadmap_runner import (
@@ -426,6 +427,23 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+    "qbot.external_tool_plan": {
+        "qbot_tool": "qbot_external_tool_plan",
+        "description": "Generate a QBot tool recommendation plan for a user query.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "style": {"type": "string", "enum": ["concise", "detailed", "operator", "decision_memo"], "default": "concise"},
+                "max_tools": {"type": "integer", "minimum": 1, "maximum": 5, "default": 3},
+                "include_prompt": {"type": "boolean", "default": True},
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
     "qbot.rwgps_status": {
         "qbot_tool": "qbot_rwgps_legacy_status",
         "description": "Read-only RWGPS legacy parity status.",
@@ -725,7 +743,7 @@ def _public_mcp_url() -> str:
 
 
 def _local_health_url() -> str:
-    return "http://127.0.0.1:8001/mcp/health"
+    return "http://127.0.0.1:8002/mcp/health"
 
 
 def _public_health_url() -> str:

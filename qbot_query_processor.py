@@ -892,6 +892,14 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "limitations": ["Sanitized output", "No secrets", "Truncated to max_chars"],
     },
     {
+        "keywords": ["jaki tool", "jakie narzędzie", "which tool", "recommend tool", "tool plan", "plan narzędzi", "which qbot tool", "tool selector"],
+        "tool": "qbot_external_tool_plan",
+        "args": {"query": "__QUERY__", "style": "concise", "max_tools": 3, "include_prompt": True},
+        "confidence": "high",
+        "required_data": ["Qbot tool policy", "Qbot LLM planner"],
+        "limitations": ["Returns plan only", "No execution", "Uses policy allowlist"],
+    },
+    {
         "keywords": ["prompt dla chatgpt", "chatgpt prompt pack", "przygotuj prompt"],
         "tool": "qbot_chatgpt_prompt_pack",
         "args": {"topic": "operational_status", "task": "Summarize status", "style": "concise"},

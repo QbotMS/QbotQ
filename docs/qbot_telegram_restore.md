@@ -3,7 +3,7 @@
 **Date**: 2026-05-26
 
 ## Architecture
-- Webhook: `POST https://qbot.cytr.us/telegram/webhook/{secret}` → Cloudflare → nginx → `127.0.0.1:8001`
+- Webhook: `POST https://qbot.cytr.us/telegram/webhook/{secret}` → Cloudflare → nginx → `127.0.0.1:8002`
 - Reply: `sendMessage` via webhook JSON response or direct API call
 - Auth: webhook secret in URL + optional `X-Telegram-Bot-Api-Secret-Token` header
 - Chat allowlist: `TELEGRAM_ALLOWED_CHAT_IDS`
