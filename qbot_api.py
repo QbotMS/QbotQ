@@ -210,6 +210,9 @@ def _telegram_status_summary() -> tuple[str, dict]:
 
     api_alive = False
     db_ok = bool(db_overview.get("db_connected"))
+    rwgps_storage = db_overview.get("rwgps_storage") if isinstance(db_overview, dict) else {}
+    rwgps_storage_status = str(rwgps_storage.get("status", "UNKNOWN")).upper() if isinstance(rwgps_storage, dict) else "UNKNOWN"
+    rwgps_storage_seed = str(rwgps_storage.get("seed_status", "UNKNOWN")).upper() if isinstance(rwgps_storage, dict) else "UNKNOWN"
     for check in api_check.get("checks", []):
         if check.get("check") == "api_alive" and str(check.get("status", "")).upper() == "OK":
             api_alive = True
@@ -223,6 +226,13 @@ def _telegram_status_summary() -> tuple[str, dict]:
     lines = ["Qbot status:"]
     lines.append("✅ API działa" if api_alive else "⚠️ API: problem")
     lines.append("✅ DB działa" if db_ok else "⚠️ DB: problem")
+    if isinstance(rwgps_storage, dict) and rwgps_storage:
+        if rwgps_storage_status == "OK":
+            lines.append(f"✅ RWGPS storage: {rwgps_storage_seed.lower()}")
+        elif rwgps_storage_status == "WARN":
+            lines.append(f"⚠️ RWGPS storage: {rwgps_storage_seed.lower()}")
+        else:
+            lines.append(f"⚠️ RWGPS storage: {rwgps_storage_status.lower()}")
     lines.append("✅ Telegram webhook działa" if webhook_ok else "⚠️ Telegram webhook: problem")
     lines.append(f"✅ Legacy takeover: {legacy_takeover_pct}%")
     lines.append("ℹ️ q-bot.service: disabled po cutover" if legacy_disabled else "ℹ️ q-bot.service: legacy active")
@@ -231,6 +241,7 @@ def _telegram_status_summary() -> tuple[str, dict]:
         "tool": "qbot_telegram_status_quick",
         "api_ok": api_alive,
         "db_ok": db_ok,
+        "rwgps_storage": rwgps_storage,
         "telegram_webhook_ok": webhook_ok,
         "legacy_takeover_percent": legacy_takeover_pct,
         "legacy_qbot_disabled": legacy_disabled,

@@ -40,15 +40,24 @@ except Exception:
 sys.path.insert(0, "/opt/qbot/app")
 
 import db
+try:
+    import api_db
+except Exception:
+    api_db = None
 import email_template
 import mcp_server
 import email_reply_processor as email_reply
 import qbot_cache
 import qbot_coach
+import qbot_api
 import qbot_report_status
+import qbot_route_tools
 import qbot_qlab_server
+import qbot_query_processor
 import scripts.qbot_operational_state as op_state
 import telegram_reply_processor as tg_reply
+import qbot_tools
+import qbot_tool_registry
 import tools.rwgps.client as rwgps_client
 from qbot_garage_mapper import classify_gear_text
 from qbot_readiness import evaluate_readiness
@@ -670,6 +679,26 @@ def test_rwgps_live_route_details_and_exports():
         if "<TrainingCenterDatabase" not in tcx["content"]:
             raise AssertionError("rwgps tcx content missing root element")
 
+        assert_equal(gpx["filename"], "rwgps_52537422.gpx", "rwgps gpx filename")
+        assert_equal(gpx["download_ready"], True, "rwgps gpx download ready")
+        assert_equal(gpx["return_mode"], "metadata", "rwgps gpx default return mode")
+
+        gpx_text = rwgps_client.export_route_to_artifact("52537422", fmt="gpx", return_mode="text")
+        assert_equal(gpx_text["return_mode"], "text", "rwgps gpx text return mode")
+        if not gpx_text["content"].startswith("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"):
+            raise AssertionError("rwgps gpx text content missing xml header")
+
+        gpx_base64 = rwgps_client.export_route_to_artifact("52537422", fmt="gpx", return_mode="base64")
+        assert_equal(gpx_base64["return_mode"], "base64", "rwgps gpx base64 return mode")
+        if "content_base64" not in gpx_base64 or not gpx_base64["content_base64"]:
+            raise AssertionError("rwgps gpx base64 content missing")
+
+        try:
+            rwgps_client.export_route_to_artifact("52537422", fmt="gpx", return_mode="oops")
+            raise AssertionError("rwgps invalid return_mode did not fail")
+        except rwgps_client.RWGPSError as exc:
+            assert_equal(exc.kind, "INVALID_RETURN_MODE", "rwgps invalid return_mode kind")
+
         fit = rwgps_client.download_route_fit("52537422")
         assert_equal(fit["ok"], False, "rwgps fit unavailable")
         if "FIT export" not in fit["warning"]:
@@ -682,6 +711,462 @@ def test_rwgps_live_route_details_and_exports():
     finally:
         for key, value in original_values.items():
             setattr(rwgps_client, key, value)
+
+
+def test_rwgps_query_router_prefers_export_for_gpx_requests():
+    original_export = qbot_tool_registry.TOOLS["qbot_rwgps_route_export_file"]
+    original_status = qbot_tool_registry.TOOLS["qbot_rwgps_legacy_status"]
+    try:
+        def fake_export(args):
+            return {
+                "tool": "qbot_rwgps_route_export_file",
+                "status": "OK",
+                "route_id": args.get("route_id"),
+                "format": args.get("format"),
+                "return_mode": args.get("return_mode"),
+                "artifact_path": "/opt/qbot/artifacts/exports/rwgps/rwgps_55256628.gpx",
+                "artifact_relative_path": "exports/rwgps/rwgps_55256628.gpx",
+                "filename": "rwgps_55256628.gpx",
+                "download_ready": True,
+            }
+
+        def fake_status(_args):
+            return {
+                "tool": "qbot_rwgps_legacy_status",
+                "status": "OK",
+                "safety_class": "READ_ONLY",
+            }
+
+        qbot_tool_registry.TOOLS["qbot_rwgps_route_export_file"] = fake_export
+        qbot_tool_registry.TOOLS["qbot_rwgps_legacy_status"] = fake_status
+
+        plan = qbot_query_processor.process_query("pobierz gpx rwgps 55256628", execute=True)
+        assert_equal(plan["selected_tool"], "qbot_rwgps_route_export_file", "rwgps router selected export")
+        assert_equal(plan["selected_tool_args"]["route_id"], "55256628", "rwgps router route id")
+        assert_equal(plan["tool_result"]["tool"], "qbot_rwgps_route_export_file", "rwgps router tool result")
+        assert_equal(plan["tool_result"]["download_ready"], True, "rwgps router download ready")
+    finally:
+        qbot_tool_registry.TOOLS["qbot_rwgps_route_export_file"] = original_export
+        qbot_tool_registry.TOOLS["qbot_rwgps_legacy_status"] = original_status
+
+
+def test_rwgps_export_persists_artifact_metadata():
+    if api_db is None:
+        raise AssertionError("api_db unavailable")
+    original_resolve = rwgps_client._resolve_route_record
+    original_build_gpx = rwgps_client._build_gpx
+    original_geometry = rwgps_client._route_geometry_from_route
+    original_upsert = api_db.upsert_route_artifact
+    captured: dict[str, dict] = {}
+
+    def fake_resolve(route_id_str):
+        return {
+            "route": {
+                "id": route_id_str,
+                "name": "Demo Route",
+                "distance": 1200,
+                "elevation_gain": 45,
+            },
+            "source": "cache",
+            "warning": None,
+        }
+
+    def fake_build_gpx(_route):
+        return """<?xml version=\"1.0\" encoding=\"UTF-8\"?><gpx version=\"1.1\" creator=\"QBot\" xmlns=\"http://www.topografix.com/GPX/1/1\"><trk><trkseg><trkpt lat=\"50.0\" lon=\"19.0\"/><trkpt lat=\"50.1\" lon=\"19.1\"/></trkseg></trk></gpx>"""
+
+    def fake_geometry(_route):
+        return {"available": True, "point_count": 2}
+
+    def fake_upsert(record):
+        captured["artifact"] = record
+        return {"id": 101, "sha256": record["sha256"]}
+
+    rwgps_client._resolve_route_record = fake_resolve
+    rwgps_client._build_gpx = fake_build_gpx
+    rwgps_client._route_geometry_from_route = fake_geometry
+    api_db.upsert_route_artifact = fake_upsert
+
+    try:
+        result = rwgps_client.export_route_to_artifact("55256628", fmt="gpx")
+        assert_equal(result["artifact_relative_path"], "exports/rwgps/rwgps_55256628.gpx", "export artifact relative path")
+        assert_equal(captured["artifact"]["route_id"], "55256628", "export persisted route id")
+        assert_equal(captured["artifact"]["export_format"], "gpx_track", "export persisted format")
+        assert_equal(captured["artifact"]["filename"], "rwgps_55256628.gpx", "export persisted filename")
+        assert_equal(captured["artifact"]["metadata_json"]["route_name"], "Demo Route", "export persisted route name")
+    finally:
+        rwgps_client._resolve_route_record = original_resolve
+        rwgps_client._build_gpx = original_build_gpx
+        rwgps_client._route_geometry_from_route = original_geometry
+        api_db.upsert_route_artifact = original_upsert
+
+
+def test_rwgps_parse_persists_summary_metadata():
+    if api_db is None:
+        raise AssertionError("api_db unavailable")
+    original_upsert_artifact = api_db.upsert_route_artifact
+    original_upsert_parse = api_db.upsert_route_parse_result
+    captured: dict[str, dict] = {}
+
+    def fake_upsert_artifact(record):
+        captured.setdefault("artifact_calls", []).append(record)
+        return {"id": 202, "sha256": record["sha256"]}
+
+    def fake_upsert_parse(record):
+        captured["parse"] = record
+        return {"id": 303, **record}
+
+    api_db.upsert_route_artifact = fake_upsert_artifact
+    api_db.upsert_route_parse_result = fake_upsert_parse
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            gpx_path = Path(tmp) / "rwgps_55256628.gpx"
+            gpx_path.write_text(
+                """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<gpx version=\"1.1\" creator=\"QBot\" xmlns=\"http://www.topografix.com/GPX/1/1\">
+  <trk><trkseg>
+    <trkpt lat=\"50.0000\" lon=\"19.0000\"><ele>100.0</ele></trkpt>
+    <trkpt lat=\"50.0010\" lon=\"19.0020\"><ele>110.0</ele></trkpt>
+  </trkseg></trk>
+</gpx>""",
+                encoding="utf-8",
+            )
+
+            result = rwgps_client.summarize_rwgps_artifact(str(gpx_path))
+            assert_equal(result["ok"], True, "parse summary ok")
+            assert_equal(result["artifact_name"], "rwgps_55256628.gpx", "parse artifact name")
+            assert_equal(captured["parse"]["parser_version"], "gpx-summary-v1", "parse persisted version")
+            assert_equal(captured["parse"]["track_points"], 2, "parse persisted track points")
+            assert_equal(captured["artifact_calls"][-1]["parser_version"], "gpx-summary-v1", "artifact persisted parser version")
+    finally:
+        api_db.upsert_route_artifact = original_upsert_artifact
+        api_db.upsert_route_parse_result = original_upsert_parse
+
+
+def test_rwgps_enrich_persists_surface_profile():
+    if api_db is None:
+        raise AssertionError("api_db unavailable")
+    original_upsert_artifact = api_db.upsert_route_artifact
+    original_upsert_parse = api_db.upsert_route_parse_result
+    original_upsert_profile = api_db.upsert_route_surface_profile
+    original_replace_segments = api_db.replace_route_surface_segments
+    original_surface = mcp_server.analyze_rwgps_artifact_surface
+    captured: dict[str, dict] = {}
+
+    def fake_upsert_artifact(record):
+        captured.setdefault("artifact_calls", []).append(record)
+        return {"id": 401, "sha256": record["sha256"]}
+
+    def fake_upsert_parse(record):
+        captured["parse"] = record
+        return {"id": 402, **record}
+
+    def fake_upsert_profile(record):
+        captured["profile"] = record
+        return {"id": 403, **record}
+
+    def fake_replace_segments(profile_id, segments):
+        captured["segments"] = {"profile_id": profile_id, "segments": segments}
+        return len(segments)
+
+    def fake_surface(_path, sample_distance_m=500):
+        return json.dumps({
+            "ok": True,
+            "status": "OK",
+            "source": "osm_overpass",
+            "confidence": "mixed",
+            "surface_percentages": {"asphalt": 70.0, "gravel": 30.0},
+            "dominant_surface": "asphalt",
+            "coverage_pct": 95.0,
+            "sampled_points": 20,
+            "matched_points": 18,
+            "unmatched_points": 2,
+            "warnings": [],
+        }, ensure_ascii=False)
+
+    api_db.upsert_route_artifact = fake_upsert_artifact
+    api_db.upsert_route_parse_result = fake_upsert_parse
+    api_db.upsert_route_surface_profile = fake_upsert_profile
+    api_db.replace_route_surface_segments = fake_replace_segments
+    mcp_server.analyze_rwgps_artifact_surface = fake_surface
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            gpx_path = Path(tmp) / "rwgps_55256628.gpx"
+            gpx_path.write_text(
+                """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<gpx version=\"1.1\" creator=\"QBot\" xmlns=\"http://www.topografix.com/GPX/1/1\">
+  <trk><trkseg>
+    <trkpt lat=\"50.0000\" lon=\"19.0000\"><ele>100.0</ele></trkpt>
+    <trkpt lat=\"50.0010\" lon=\"19.0020\"><ele>110.0</ele></trkpt>
+  </trkseg></trk>
+</gpx>""",
+                encoding="utf-8",
+            )
+
+            result = qbot_route_tools._tool_qbot_route_artifact_enrich({
+                "artifact_path": str(gpx_path),
+                "enrich": ["summary", "surface"],
+                "sample_every_m": 250,
+            })
+            assert_equal(result["ok"], True, "enrich ok")
+            assert_equal(result["surface_profile"]["dominant_surface"], "asphalt", "enrich dominant surface")
+            assert_equal(captured["profile"]["sample_every_m"], 250, "profile sample_every_m persisted")
+            assert_equal(captured["profile"]["surface_source"], "osm", "profile surface source persisted")
+            assert_equal(captured["segments"]["profile_id"], 403, "profile segments profile id")
+            assert_equal(len(captured["segments"]["segments"]), 2, "profile segments persisted count")
+    finally:
+        api_db.upsert_route_artifact = original_upsert_artifact
+        api_db.upsert_route_parse_result = original_upsert_parse
+        api_db.upsert_route_surface_profile = original_upsert_profile
+        api_db.replace_route_surface_segments = original_replace_segments
+        mcp_server.analyze_rwgps_artifact_surface = original_surface
+
+
+def test_rwgps_artifact_store_status_and_overview():
+    if api_db is None:
+        raise AssertionError("api_db unavailable")
+    original_conn = api_db._conn
+
+    class FakeCursor:
+        def __init__(self, row):
+            self._row = row
+
+        def fetchone(self):
+            return self._row
+
+    class FakeConn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, query, params=None):
+            q = str(query)
+            if "to_regclass" in q:
+                table_name = params[0].split(".")[-1]
+                return FakeCursor({"exists": table_name != "route_surface_segments"})
+            if "FROM route_artifacts" in q and "COUNT(*)" in q:
+                return FakeCursor({"cnt": 2})
+            if "FROM route_parse_results" in q and "COUNT(*)" in q:
+                return FakeCursor({"cnt": 1})
+            if "FROM route_surface_profiles" in q and "COUNT(*)" in q:
+                return FakeCursor({"cnt": 1})
+            if "FROM route_surface_segments" in q and "COUNT(*)" in q:
+                return FakeCursor({"cnt": 3})
+            if "FROM route_artifacts" in q and "ORDER BY id DESC LIMIT 1" in q:
+                return FakeCursor({"id": 10, "route_id": "55256628", "artifact_path": "/opt/qbot/artifacts/exports/rwgps/rwgps_55256628.gpx", "filename": "rwgps_55256628.gpx", "sha256": "abc", "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc)})
+            if "FROM route_parse_results" in q and "ORDER BY id DESC LIMIT 1" in q:
+                return FakeCursor({"id": 20, "route_artifact_id": 10, "parser_version": "gpx-summary-v1", "source_artifact_sha256": "abc", "parsed_at": datetime.now(timezone.utc)})
+            if "FROM route_surface_profiles" in q and "ORDER BY id DESC LIMIT 1" in q:
+                return FakeCursor({"id": 30, "route_artifact_id": 10, "enrichment_version": "surface-profile-v1", "source_artifact_sha256": "abc", "enriched_at": datetime.now(timezone.utc), "sample_every_m": 100})
+            if "FROM route_surface_segments" in q and "ORDER BY id DESC LIMIT 1" in q:
+                return FakeCursor({"id": 40, "route_surface_profile_id": 30, "segment_index": 0, "surface": "asphalt", "source": "osm"})
+            raise AssertionError(f"unexpected query: {q}")
+
+    api_db._conn = lambda: FakeConn()
+    try:
+        overview = api_db.rwgps_storage_overview()
+        assert_equal(overview["schema_ready"], False, "store schema ready false on missing table")
+        assert_equal(overview["seed_status"], "MISSING_SCHEMA", "store seed status missing schema")
+        assert_equal(overview["tables"]["route_artifacts"]["count"], 2, "store artifact count")
+        assert_equal(overview["tables"]["route_parse_results"]["exists"], True, "store parse table exists")
+        assert_equal(overview["tables"]["route_parse_results"]["count"], 1, "store parse count")
+        assert_equal(overview["tables"]["route_surface_segments"]["exists"], False, "store missing segments table")
+
+        original_overview = api_db.rwgps_storage_overview
+        api_db.rwgps_storage_overview = lambda: {
+            "status": "OK",
+            "schema_ready": True,
+            "seed_status": "SEEDED",
+            "missing_tables": [],
+            "tables": {},
+            "summary": {"route_artifacts_count": 2, "route_parse_results_count": 1, "route_surface_profiles_count": 1, "route_surface_segments_count": 3},
+            "recommended_actions": [],
+        }
+        try:
+            tool_result = qbot_route_tools._tool_qbot_rwgps_artifact_store_status()
+            assert_equal(tool_result["tool"], "qbot_rwgps_artifact_store_status", "store status tool name")
+            assert_equal(tool_result["db_connected"], True, "store status db connected")
+            assert_equal(tool_result["seed_status"], "SEEDED", "store status seed status")
+        finally:
+            api_db.rwgps_storage_overview = original_overview
+    finally:
+        api_db._conn = original_conn
+
+
+def test_db_overview_includes_rwgps_storage_section():
+    import api_db as real_api_db
+    original_db_overview = real_api_db.db_overview
+    original_storage_overview = real_api_db.rwgps_storage_overview
+    try:
+        real_api_db.db_overview = lambda: {"postgres_version": "X", "tool_calls_count": 1, "status_counts": {"ok": 1, "error": 0}}
+        real_api_db.rwgps_storage_overview = lambda: {"status": "WARN", "seed_status": "ARTIFACTS_ONLY", "schema_ready": True}
+
+        overview = qbot_tools._tool_qbot_db_overview()
+        assert_equal(overview["db_connected"], True, "db overview connected")
+        assert_equal(overview["rwgps_storage"]["seed_status"], "ARTIFACTS_ONLY", "db overview rwgps seed status")
+        assert_equal(overview["rwgps_storage"]["status"], "WARN", "db overview rwgps status")
+    finally:
+        real_api_db.db_overview = original_db_overview
+        real_api_db.rwgps_storage_overview = original_storage_overview
+
+
+def test_telegram_status_mentions_rwgps_storage():
+    import qbot_legacy_cutover_tools
+    import qbot_telegram_tools
+    original_api_self_check = qbot_tools._tool_qbot_api_self_check
+    original_db_overview = qbot_tools._tool_qbot_db_overview
+    original_cutover = qbot_legacy_cutover_tools._tool_qbot_legacy_cutover_status
+    original_transport = qbot_telegram_tools._tool_qbot_telegram_transport_status
+
+    try:
+        qbot_tools._tool_qbot_api_self_check = lambda: {"checks": [{"check": "api_alive", "status": "OK"}]}
+        qbot_tools._tool_qbot_db_overview = lambda: {
+            "db_connected": True,
+            "rwgps_storage": {"status": "OK", "seed_status": "SEEDED", "schema_ready": True},
+        }
+        qbot_legacy_cutover_tools._tool_qbot_legacy_cutover_status = lambda: {"takeover_readiness_percent": 99, "cutover_completed": True, "legacy_service_active": False, "legacy_service_enabled": False}
+        qbot_telegram_tools._tool_qbot_telegram_transport_status = lambda _args=None: {"status": "OK"}
+
+        text, response = qbot_api._telegram_status_summary()
+        if "RWGPS storage" not in text:
+            raise AssertionError("telegram status missing rwgps storage line")
+        assert_equal(response["db_overview"]["rwgps_storage"]["seed_status"], "SEEDED", "telegram rwgps storage seed")
+    finally:
+        qbot_tools._tool_qbot_api_self_check = original_api_self_check
+        qbot_tools._tool_qbot_db_overview = original_db_overview
+        qbot_legacy_cutover_tools._tool_qbot_legacy_cutover_status = original_cutover
+        qbot_telegram_tools._tool_qbot_telegram_transport_status = original_transport
+
+
+def test_gpx_artifact_parse_summary():
+    with tempfile.TemporaryDirectory() as tmp:
+        gpx_path = Path(tmp) / "sample.gpx"
+        gpx_path.write_text(
+            """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<gpx version=\"1.1\" creator=\"QBot\" xmlns=\"http://www.topografix.com/GPX/1/1\">
+  <trk><name>Sample</name><trkseg>
+    <trkpt lat=\"50.0000\" lon=\"19.0000\"><ele>100.0</ele></trkpt>
+    <trkpt lat=\"50.0010\" lon=\"19.0020\"><ele>110.0</ele></trkpt>
+  </trkseg></trk>
+</gpx>""",
+            encoding="utf-8",
+        )
+        result = qbot_tool_registry.TOOLS["qbot_gpx_artifact_parse"]({
+            "artifact_path": str(gpx_path),
+            "return_mode": "summary",
+        })
+        assert_equal(result["status"], "OK", "gpx parse status")
+        assert_equal(result["filename"], "sample.gpx", "gpx parse filename")
+        assert_equal(result["track_points"], 2, "gpx parse track points")
+        assert_equal(result["bbox"]["min_lat"], 50.0, "gpx parse bbox min lat")
+        assert_equal(result["bbox"]["max_lon"], 19.002, "gpx parse bbox max lon")
+        if result["distance_m"] is None or result["distance_m"] <= 0:
+            raise AssertionError("gpx parse distance missing")
+
+
+def test_rwgps_query_router_prefers_gpx_parse_for_artifact_summary_requests():
+    with tempfile.TemporaryDirectory() as tmp:
+        gpx_path = Path(tmp) / "summary.gpx"
+        gpx_path.write_text(
+            """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<gpx version=\"1.1\" creator=\"QBot\" xmlns=\"http://www.topografix.com/GPX/1/1\">
+  <trk><trkseg>
+    <trkpt lat=\"50.0000\" lon=\"19.0000\" />
+    <trkpt lat=\"50.0020\" lon=\"19.0030\" />
+  </trkseg></trk>
+</gpx>""",
+            encoding="utf-8",
+        )
+        plan = qbot_query_processor.process_query(f"parse gpx artifact {gpx_path}", execute=True)
+        assert_equal(plan["selected_tool"], "qbot_gpx_artifact_parse", "gpx parse router selected tool")
+        assert_equal(plan["selected_tool_args"]["artifact_path"], str(gpx_path), "gpx parse router artifact path")
+        assert_equal(plan["tool_result"]["tool"], "qbot_gpx_artifact_parse", "gpx parse router tool result")
+        assert_equal(plan["tool_result"]["track_points"], 2, "gpx parse router track points")
+
+
+def test_route_artifact_enrich_surface_profile():
+    original_analyze = mcp_server.analyze_rwgps_artifact_surface
+    with tempfile.TemporaryDirectory() as tmp:
+        gpx_path = Path(tmp) / "enrich.gpx"
+        gpx_path.write_text(
+            """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<gpx version=\"1.1\" creator=\"QBot\" xmlns=\"http://www.topografix.com/GPX/1/1\">
+  <trk><trkseg>
+    <trkpt lat=\"50.0000\" lon=\"19.0000\"><ele>100.0</ele></trkpt>
+    <trkpt lat=\"50.0010\" lon=\"19.0020\"><ele>110.0</ele></trkpt>
+    <trkpt lat=\"50.0020\" lon=\"19.0030\"><ele>120.0</ele></trkpt>
+  </trkseg></trk>
+</gpx>""",
+            encoding="utf-8",
+        )
+
+        def fake_analyze(path_or_name, sample_distance_m=500):
+            return json.dumps({
+                "ok": True,
+                "status": "OK",
+                "source": "osm_overpass",
+                "confidence": "mixed",
+                "surface_percentages": {"asphalt": 73.0, "gravel": 18.0, "unknown": 9.0},
+                "dominant_surface": "asphalt",
+                "coverage_pct": 91.2,
+                "sampled_points": 12,
+                "matched_points": 11,
+                "unmatched_points": 1,
+                "warnings": ["Niski zasięg OSM"],
+                "distance_km": 98.765,
+            }, ensure_ascii=False)
+
+        mcp_server.analyze_rwgps_artifact_surface = fake_analyze
+        try:
+            result = qbot_tool_registry.TOOLS["qbot_route_artifact_enrich"]({
+                "artifact_path": str(gpx_path),
+                "enrich": ["summary", "surface"],
+                "surface_source": "auto",
+                "sample_every_m": 100,
+                "return_mode": "summary",
+            })
+            assert_equal(result["status"], "OK", "route enrich status")
+            assert_equal(result["surface_source"], "osm", "route enrich surface source")
+            assert_equal(result["surface_profile"]["source"], "osm_overpass", "route enrich surface profile source")
+            assert_equal(result["surface_profile"]["segments"][0]["surface"], "asphalt", "route enrich dominant surface")
+            assert_equal(result["surface_profile"]["segments"][0]["share"], 0.73, "route enrich asphalt share")
+            assert_equal(result["track_points"], 3, "route enrich track points")
+
+            summary_only = qbot_tool_registry.TOOLS["qbot_route_artifact_enrich"]({
+                "artifact_path": str(gpx_path),
+                "enrich": ["summary"],
+                "return_mode": "summary",
+            })
+            assert_equal(summary_only["surface_source"], "unknown", "route enrich summary-only surface source")
+            if "surface_profile" in summary_only:
+                raise AssertionError("route enrich summary-only should not include surface_profile")
+        finally:
+            mcp_server.analyze_rwgps_artifact_surface = original_analyze
+
+
+def test_route_artifact_enrich_router_prefers_surface_requests():
+    original_tool = qbot_tool_registry.TOOLS["qbot_route_artifact_enrich"]
+    try:
+        def fake_tool(args):
+            return {
+                "tool": "qbot_route_artifact_enrich",
+                "status": "OK",
+                "ok": True,
+                "artifact_path": args.get("artifact_path"),
+                "surface_source": "osm",
+                "surface_profile": {"source": "osm_overpass", "confidence": "mixed", "segments": []},
+            }
+
+        qbot_tool_registry.TOOLS["qbot_route_artifact_enrich"] = fake_tool
+        plan = qbot_query_processor.process_query("enrich gpx artifact /opt/qbot/artifacts/exports/rwgps/rwgps_55256628.gpx with surface", execute=True)
+        assert_equal(plan["selected_tool"], "qbot_route_artifact_enrich", "route enrich router selected tool")
+        assert_equal(plan["selected_tool_args"]["artifact_path"], "/opt/qbot/artifacts/exports/rwgps/rwgps_55256628.gpx", "route enrich router artifact path")
+        assert_equal(plan["tool_result"]["surface_source"], "osm", "route enrich router surface source")
+    finally:
+        qbot_tool_registry.TOOLS["qbot_route_artifact_enrich"] = original_tool
 
 
 def test_rwgps_cache_source_is_explicit():

@@ -106,6 +106,38 @@ def _tool_qbot_rwgps_config_status(_args: dict | None = None) -> dict[str, Any]:
     }
 
 
+def _tool_qbot_rwgps_artifact_store_status(_args: dict | None = None) -> dict[str, Any]:
+    """Inspect RWGPS artifact store schema and persistence status. Read-only."""
+    try:
+        import api_db
+    except Exception as exc:
+        return {
+            "tool": "qbot_rwgps_artifact_store_status",
+            "status": "ERROR",
+            "safety_class": "READ_ONLY",
+            "db_connected": False,
+            "error": f"api_db import failed: {exc}",
+        }
+
+    try:
+        overview = api_db.rwgps_storage_overview()
+    except Exception as exc:
+        return {
+            "tool": "qbot_rwgps_artifact_store_status",
+            "status": "ERROR",
+            "safety_class": "READ_ONLY",
+            "db_connected": False,
+            "error": str(exc),
+        }
+
+    return {
+        "tool": "qbot_rwgps_artifact_store_status",
+        "safety_class": "READ_ONLY",
+        "db_connected": True,
+        **overview,
+    }
+
+
 def _tool_qbot_rwgps_route_search(_args: dict | None = None) -> dict[str, Any]:
     """Search RWGPS routes by free-text query. Read-only."""
     _args = _args or {}
@@ -237,6 +269,7 @@ def _tool_qbot_rwgps_route_export_file(_args: dict | None = None) -> dict[str, A
     _args = _args or {}
     route_id = str(_args.get("route_id", "")).strip()
     fmt = str(_args.get("format", "gpx")).strip().lower() or "gpx"
+    return_mode = _args.get("return_mode")
     if not route_id:
         return {
             "tool": "qbot_rwgps_route_export_file",
@@ -247,14 +280,220 @@ def _tool_qbot_rwgps_route_export_file(_args: dict | None = None) -> dict[str, A
 
     from tools.rwgps.client import export_route_to_artifact as rwgps_export_route_to_artifact
 
-    result = rwgps_export_route_to_artifact(route_id, fmt=fmt)
+    result = rwgps_export_route_to_artifact(route_id, fmt=fmt, return_mode=return_mode)
     return {
         "tool": "qbot_rwgps_route_export_file",
         "safety_class": "READ_ONLY",
         "requested_format": fmt,
+        "requested_return_mode": "metadata" if return_mode is None else str(return_mode).strip().lower(),
         **result,
         "notes": "Read-only route export. Returns a local artifact path that can be fetched separately.",
     }
+
+
+def _normalize_rwgps_artifact_summary(result: dict[str, Any], *, tool_name: str, return_mode: str) -> dict[str, Any]:
+    if not result.get("ok"):
+        return {
+            "tool": tool_name,
+            "safety_class": "READ_ONLY",
+            "return_mode": return_mode,
+            **result,
+        }
+
+    bounds = result.get("bounds") or {}
+    distance_km = result.get("distance_km")
+    return {
+        "tool": tool_name,
+        "safety_class": "READ_ONLY",
+        "status": "OK",
+        "ok": True,
+        "return_mode": return_mode,
+        "artifact_path": result.get("artifact_path"),
+        "filename": result.get("artifact_name"),
+        "track_points": result.get("point_count"),
+        "distance_m": round(float(distance_km) * 1000.0, 1) if distance_km is not None else None,
+        "elevation_gain_m": result.get("elevation_gain_m"),
+        "elevation_loss_m": result.get("elevation_loss_m"),
+        "bbox": {
+            "min_lat": bounds.get("sw_lat"),
+            "min_lon": bounds.get("sw_lng"),
+            "max_lat": bounds.get("ne_lat"),
+            "max_lon": bounds.get("ne_lng"),
+        } if bounds else None,
+        "looks_valid": result.get("looks_valid"),
+        "point_count": result.get("point_count"),
+        "distance_km": distance_km,
+        "min_elevation_m": result.get("min_elevation_m"),
+        "max_elevation_m": result.get("max_elevation_m"),
+        "first_point": result.get("first_point"),
+        "last_point": result.get("last_point"),
+        "sha256": result.get("sha256"),
+        "size_bytes": result.get("size_bytes"),
+    }
+
+
+def _tool_qbot_gpx_artifact_parse(_args: dict | None = None) -> dict[str, Any]:
+    """Parse an existing GPX artifact and return normalized summary metadata."""
+    _args = _args or {}
+    artifact_path = str(_args.get("artifact_path", "")).strip()
+    return_mode = str(_args.get("return_mode", "summary")).strip().lower() or "summary"
+    if not artifact_path:
+        return {
+            "tool": "qbot_gpx_artifact_parse",
+            "status": "ERROR",
+            "safety_class": "READ_ONLY",
+            "error": "artifact_path required",
+        }
+    if return_mode != "summary":
+        return {
+            "tool": "qbot_gpx_artifact_parse",
+            "status": "ERROR",
+            "safety_class": "READ_ONLY",
+            "error": "return_mode must be summary",
+            "artifact_path": artifact_path,
+            "return_mode": return_mode,
+        }
+
+    from tools.rwgps.client import summarize_rwgps_artifact as rwgps_summarize_rwgps_artifact
+
+    result = rwgps_summarize_rwgps_artifact(artifact_path)
+    return _normalize_rwgps_artifact_summary(result, tool_name="qbot_gpx_artifact_parse", return_mode=return_mode)
+
+
+def _tool_qbot_route_artifact_enrich(_args: dict | None = None) -> dict[str, Any]:
+    """Enrich an existing route artifact with optional surface analysis."""
+    _args = _args or {}
+    artifact_path = str(_args.get("artifact_path", "")).strip()
+    return_mode = str(_args.get("return_mode", "summary")).strip().lower() or "summary"
+    if not artifact_path:
+        return {
+            "tool": "qbot_route_artifact_enrich",
+            "status": "ERROR",
+            "safety_class": "READ_ONLY",
+            "error": "artifact_path required",
+        }
+    if return_mode != "summary":
+        return {
+            "tool": "qbot_route_artifact_enrich",
+            "status": "ERROR",
+            "safety_class": "READ_ONLY",
+            "error": "return_mode must be summary",
+            "artifact_path": artifact_path,
+            "return_mode": return_mode,
+        }
+
+    enrich_raw = _args.get("enrich", ["summary"])
+    if isinstance(enrich_raw, str):
+        enrich = [enrich_raw]
+    elif isinstance(enrich_raw, list):
+        enrich = [str(item).strip().lower() for item in enrich_raw if str(item).strip()]
+    else:
+        enrich = ["summary"]
+
+    surface_requested = "surface" in enrich
+    surface_source_input = str(_args.get("surface_source", "auto")).strip().lower() or "auto"
+    sample_every_m_raw = _args.get("sample_every_m", 100)
+    try:
+        sample_every_m = int(sample_every_m_raw)
+    except (TypeError, ValueError):
+        sample_every_m = 100
+    sample_every_m = max(100, min(sample_every_m, 5000))
+
+    from tools.rwgps.client import summarize_rwgps_artifact as rwgps_summarize_rwgps_artifact
+
+    summary_result = rwgps_summarize_rwgps_artifact(artifact_path)
+    payload = _normalize_rwgps_artifact_summary(
+        summary_result,
+        tool_name="qbot_route_artifact_enrich",
+        return_mode=return_mode,
+    )
+    if not payload.get("ok"):
+        return payload
+
+    payload["enrich"] = enrich
+    payload["surface_source"] = "unknown"
+    payload["sample_every_m"] = sample_every_m
+    surface_result: dict[str, Any] | None = None
+
+    if surface_requested:
+        if surface_source_input in {"auto", "osm"}:
+            import json as _json
+
+            try:
+                import mcp_server
+
+                surface_json = mcp_server.analyze_rwgps_artifact_surface(artifact_path, sample_distance_m=sample_every_m)
+                surface_result = _json.loads(surface_json) if isinstance(surface_json, str) else surface_json
+            except Exception as exc:
+                surface_result = {
+                    "ok": False,
+                    "status": "ERROR",
+                    "error": "OSM_UNAVAILABLE",
+                    "reason": str(exc),
+                }
+
+            if isinstance(surface_result, dict) and surface_result.get("ok"):
+                surface_percentages = surface_result.get("surface_percentages") or {}
+                total_distance_m = payload.get("distance_m")
+                try:
+                    total_distance_m = float(total_distance_m) if total_distance_m is not None else None
+                except (TypeError, ValueError):
+                    total_distance_m = None
+                if total_distance_m is None:
+                    try:
+                        total_distance_m = float(surface_result.get("distance_km")) * 1000.0 if surface_result.get("distance_km") is not None else None
+                    except (TypeError, ValueError):
+                        total_distance_m = None
+                segments = []
+                if isinstance(surface_percentages, dict) and surface_percentages and total_distance_m is not None:
+                    ordered = sorted(surface_percentages.items(), key=lambda item: float(item[1]), reverse=True)
+                    for surface_name, share_pct in ordered:
+                        try:
+                            share = float(share_pct) / 100.0
+                        except (TypeError, ValueError):
+                            share = 0.0
+                        segments.append({
+                            "surface": surface_name,
+                            "distance_m": round(total_distance_m * share, 1),
+                            "share": round(share, 2),
+                        })
+                payload["surface_source"] = "osm"
+                payload["surface_profile"] = {
+                    "source": surface_result.get("source", "osm_overpass"),
+                    "confidence": surface_result.get("confidence", "unknown"),
+                    "segments": segments,
+                    "dominant_surface": surface_result.get("dominant_surface"),
+                    "coverage_pct": surface_result.get("coverage_pct"),
+                    "sampled_points": surface_result.get("sampled_points"),
+                    "matched_points": surface_result.get("matched_points"),
+                    "unmatched_points": surface_result.get("unmatched_points"),
+                    "warnings": surface_result.get("warnings"),
+                }
+            else:
+                payload["surface_profile"] = {
+                    "source": "unknown",
+                    "confidence": "unknown",
+                    "status": surface_result.get("status") if isinstance(surface_result, dict) else "ERROR",
+                    "error": surface_result.get("error") if isinstance(surface_result, dict) else "ERROR",
+                    "reason": surface_result.get("reason") if isinstance(surface_result, dict) else "surface enrichment failed",
+                }
+        else:
+            payload["surface_profile"] = {
+                "source": surface_source_input if surface_source_input in {"gpx", "rwgps", "osm", "unknown"} else "unknown",
+                "confidence": "unknown",
+                "status": "SKIPPED",
+                "reason": "surface enrichment only runs for surface_source=auto|osm",
+            }
+
+        try:
+            from pathlib import Path as _Path
+
+            from tools.rwgps.client import _persist_route_surface_profile as rwgps_persist_route_surface_profile
+
+            rwgps_persist_route_surface_profile(_Path(artifact_path), payload, surface_result)
+        except Exception:
+            pass
+    return payload
 
 
 def _tool_qbot_rwgps_legacy_status(_args: dict | None = None) -> dict[str, Any]:

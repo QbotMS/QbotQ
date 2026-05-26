@@ -22,6 +22,9 @@ This module backs QBot route-planning tools for Ride With GPS.
 - `get_rwgps_planned_routes`
 - `get_rwgps_collections`
 - `qbot_rwgps_route_export_file`
+- `qbot_rwgps_artifact_store_status`
+- `qbot_gpx_artifact_parse`
+- `qbot_route_artifact_enrich`
 
 ## Notes
 
@@ -35,3 +38,11 @@ This module backs QBot route-planning tools for Ride With GPS.
   summary string.
 - Export tools should return a local artifact path for GPX/TCX/JSON exports,
   not only a textual summary.
+- Parsing is a separate step: `qbot_gpx_artifact_parse` summarizes an existing
+  GPX/TCX/JSON artifact by path or filename and does not change export behavior.
+- Enrichment is an explicit follow-up step: `qbot_route_artifact_enrich` can
+  add an OSM-based surface profile when `enrich` includes `surface`.
+- The storage layer is hybrid: artifact files stay on disk, while PostgreSQL
+  stores artifact metadata, parse summaries, surface profiles, and segment rows.
+- `qbot_rwgps_artifact_store_status` is the read-only schema/seed check for the
+  RWGPS storage tables. It reports table presence, counts, and latest rows.

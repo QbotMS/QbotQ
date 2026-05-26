@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import re
@@ -35,6 +36,8 @@ RWGPS_ROUTE_CACHE_PATH = Path(env("RWGPS_ROUTE_CACHE_PATH", str(APP_DIR / "data/
 ARTIFACT_RWGPS_EXPORT_DIR = Path("/opt/qbot/artifacts/exports/rwgps")
 ARTIFACT_RWGPS_RELATIVE_PREFIX = "exports/rwgps"
 ALLOWED_EXPORT_FORMATS = frozenset({"gpx", "tcx", "json"})
+RWGPS_PARSE_VERSION = "gpx-summary-v1"
+RWGPS_SURFACE_ENRICHMENT_VERSION = "surface-profile-v1"
 
 
 @dataclass
@@ -272,6 +275,146 @@ def _route_summary(route: dict[str, Any]) -> dict[str, Any]:
         "source": source,
         "origin": source,
     }
+
+
+def _artifact_route_id_from_path(file_path: Path) -> str:
+    stem = file_path.stem
+    if stem.startswith("rwgps_"):
+        candidate = stem.split("rwgps_", 1)[1].strip()
+        if candidate:
+            return candidate
+    return stem
+
+
+def _artifact_relative_path(file_path: Path) -> str | None:
+    try:
+        return str(file_path.resolve(strict=False).relative_to(Path("/opt/qbot/artifacts")))
+    except Exception:
+        return None
+
+
+def _persist_route_artifact_record(
+    file_path: Path,
+    *,
+    route_id: str | None = None,
+    export_format: str | None = None,
+    status: str = "ok",
+    parser_version: str | None = None,
+    source_artifact_sha256: str | None = None,
+    metadata_json: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    try:
+        import api_db
+
+        st = file_path.stat()
+        sha256_hash = hashlib.sha256(file_path.read_bytes()).hexdigest()
+        payload = {
+            "route_id": route_id or _artifact_route_id_from_path(file_path),
+            "source": "rwgps",
+            "export_format": export_format or (f"{file_path.suffix.lstrip('.')}_track" if file_path.suffix else "gpx_track"),
+            "artifact_path": str(file_path),
+            "artifact_relative_path": _artifact_relative_path(file_path),
+            "filename": file_path.name,
+            "file_size_bytes": st.st_size,
+            "sha256": sha256_hash,
+            "parser_version": parser_version,
+            "source_artifact_sha256": source_artifact_sha256 or sha256_hash,
+            "status": status,
+            "metadata_json": metadata_json or {},
+        }
+        return api_db.upsert_route_artifact(payload)
+    except Exception:
+        return None
+
+
+def _persist_route_parse_result(file_path: Path, summary: dict[str, Any]) -> dict[str, Any] | None:
+    try:
+        import api_db
+
+        route_artifact = _persist_route_artifact_record(
+            file_path,
+            route_id=_artifact_route_id_from_path(file_path),
+            export_format=f"{file_path.suffix.lstrip('.')}_track" if file_path.suffix else "gpx_track",
+            parser_version=RWGPS_PARSE_VERSION,
+            metadata_json={"kind": "parse_source"},
+        )
+        if not route_artifact:
+            return None
+
+        bounds = summary.get("bounds") or {}
+        first_point = summary.get("first_point") or {}
+        last_point = summary.get("last_point") or {}
+        record = {
+            "route_artifact_id": route_artifact["id"],
+            "parser_version": RWGPS_PARSE_VERSION,
+            "source_artifact_sha256": route_artifact.get("sha256"),
+            "track_points": summary.get("point_count"),
+            "distance_m": round(float(summary.get("distance_km")) * 1000.0, 1) if summary.get("distance_km") is not None else None,
+            "distance_km": summary.get("distance_km"),
+            "elevation_gain_m": summary.get("elevation_gain_m"),
+            "elevation_loss_m": summary.get("elevation_loss_m"),
+            "bbox_min_lat": bounds.get("sw_lat"),
+            "bbox_min_lon": bounds.get("sw_lng"),
+            "bbox_max_lat": bounds.get("ne_lat"),
+            "bbox_max_lon": bounds.get("ne_lng"),
+            "start_lat": first_point.get("lat"),
+            "start_lon": first_point.get("lon"),
+            "end_lat": last_point.get("lat"),
+            "end_lon": last_point.get("lon"),
+            "min_ele": summary.get("min_elevation_m"),
+            "max_ele": summary.get("max_elevation_m"),
+            "looks_valid": summary.get("looks_valid"),
+            "summary_json": summary,
+        }
+        return api_db.upsert_route_parse_result(record)
+    except Exception:
+        return None
+
+
+def _persist_route_surface_profile(file_path: Path, payload: dict[str, Any], surface_result: dict[str, Any] | None) -> dict[str, Any] | None:
+    try:
+        import api_db
+
+        route_artifact = _persist_route_artifact_record(
+            file_path,
+            route_id=_artifact_route_id_from_path(file_path),
+            export_format=f"{file_path.suffix.lstrip('.')}_track" if file_path.suffix else "gpx_track",
+            parser_version=RWGPS_PARSE_VERSION,
+            metadata_json={"kind": "enrich_source"},
+        )
+        if not route_artifact:
+            return None
+
+        surface_profile = payload.get("surface_profile") or {}
+        segments = surface_profile.get("segments") or []
+        record = {
+            "route_artifact_id": route_artifact["id"],
+            "enrichment_version": RWGPS_SURFACE_ENRICHMENT_VERSION,
+            "source_artifact_sha256": route_artifact.get("sha256"),
+            "surface_source": payload.get("surface_source", "unknown"),
+            "sample_every_m": payload.get("sample_every_m"),
+            "confidence": surface_profile.get("confidence"),
+            "coverage_pct": surface_profile.get("coverage_pct"),
+            "sampled_points": surface_profile.get("sampled_points"),
+            "matched_points": surface_profile.get("matched_points"),
+            "unmatched_points": surface_profile.get("unmatched_points"),
+            "dominant_surface": surface_profile.get("dominant_surface"),
+            "status": surface_profile.get("status", "ok" if surface_result and surface_result.get("ok") else "unknown"),
+            "surface_summary_json": surface_profile,
+            "surface_segments_json": segments,
+            "surface_segments_path": surface_profile.get("surface_segments_path"),
+        }
+        profile_row = api_db.upsert_route_surface_profile(record)
+        if isinstance(segments, list):
+            segment_rows = []
+            for segment in segments:
+                if isinstance(segment, dict):
+                    segment_rows.append(segment)
+            if segment_rows:
+                api_db.replace_route_surface_segments(profile_row["id"], segment_rows)
+        return profile_row
+    except Exception:
+        return None
 
 
 def _normalize_collection(item: dict[str, Any], *, source: str) -> dict[str, Any]:
@@ -1294,9 +1437,17 @@ def _valid_export_format(fmt: str) -> str:
     return fmt
 
 
-def export_route_to_artifact(route_id: str | int, fmt: str = "gpx") -> dict[str, Any]:
+def _valid_export_return_mode(return_mode: str | None) -> str:
+    mode = "metadata" if return_mode is None else str(return_mode).strip().lower()
+    if mode not in {"metadata", "text", "base64"}:
+        raise RWGPSError("INVALID_RETURN_MODE", "return_mode must be one of: metadata, text, base64")
+    return mode
+
+
+def export_route_to_artifact(route_id: str | int, fmt: str = "gpx", return_mode: str | None = None) -> dict[str, Any]:
     route_id_str = _valid_route_id(str(route_id))
     fmt = _valid_export_format(fmt)
+    return_mode = _valid_export_return_mode(return_mode)
 
     try:
         resolved = _resolve_route_record(route_id_str)
@@ -1306,6 +1457,7 @@ def export_route_to_artifact(route_id: str | int, fmt: str = "gpx") -> dict[str,
             "status": "RWGPS_EXPORT_FAILED",
             "route_id": route_id_str,
             "format": fmt,
+            "return_mode": return_mode,
             "artifact_path": None,
             "size_bytes": 0,
             "sha256": None,
@@ -1327,6 +1479,7 @@ def export_route_to_artifact(route_id: str | int, fmt: str = "gpx") -> dict[str,
             "status": "ROUTE_NOT_FOUND",
             "route_id": route_id_str,
             "format": fmt,
+            "return_mode": return_mode,
             "artifact_path": None,
             "size_bytes": 0,
             "sha256": None,
@@ -1367,6 +1520,7 @@ def export_route_to_artifact(route_id: str | int, fmt: str = "gpx") -> dict[str,
             "status": "RWGPS_EXPORT_FAILED",
             "route_id": route_id_str,
             "format": fmt,
+            "return_mode": return_mode,
             "artifact_path": None,
             "size_bytes": 0,
             "sha256": None,
@@ -1387,6 +1541,7 @@ def export_route_to_artifact(route_id: str | int, fmt: str = "gpx") -> dict[str,
     filename = f"rwgps_{route_id_str}.{fmt}"
     artifact_path = ARTIFACT_RWGPS_EXPORT_DIR / filename
     artifact_path.write_text(content, encoding="utf-8")
+    artifact_file = artifact_path if isinstance(artifact_path, Path) else Path(str(artifact_path))
 
     geometry = _route_geometry_from_route(route_view)
     point_count = geometry.get("point_count", 0)
@@ -1399,14 +1554,17 @@ def export_route_to_artifact(route_id: str | int, fmt: str = "gpx") -> dict[str,
 
     relative_path = f"{ARTIFACT_RWGPS_RELATIVE_PREFIX}/rwgps_{route_id_str}.{fmt}"
 
-    return {
+    payload = {
         "ok": True,
         "status": "OK",
         "route_id": route_id_str,
         "route_name": route_view.get("name"),
         "format": fmt,
+        "return_mode": return_mode,
         "artifact_path": str(artifact_path),
         "artifact_relative_path": relative_path,
+        "filename": artifact_file.name,
+        "download_ready": artifact_file.exists(),
         "size_bytes": len(content_bytes),
         "sha256": sha256_hash,
         "point_count": point_count,
@@ -1416,6 +1574,27 @@ def export_route_to_artifact(route_id: str | int, fmt: str = "gpx") -> dict[str,
         "origin": route_view.get("origin"),
         "integration": _integration_payload(source, warning=resolved.get("warning") if source == "cache" else None),
     }
+    if return_mode == "text":
+        payload["content"] = content
+    elif return_mode == "base64":
+        payload["content_base64"] = base64.b64encode(content_bytes).decode("ascii")
+
+    _persist_route_artifact_record(
+        artifact_file,
+        route_id=route_id_str,
+        export_format=f"{fmt}_track",
+        status="ok",
+        metadata_json={
+            "route_name": route_view.get("name"),
+            "route_origin": route_view.get("origin"),
+            "route_source": source,
+            "distance_km": dist_km,
+            "elevation_gain_m": elev_gain,
+            "point_count": point_count,
+            "return_mode": return_mode,
+        },
+    )
+    return payload
 
 
 def _parse_gpx_for_summary(file_path: Path) -> dict[str, Any]:
@@ -1721,6 +1900,19 @@ def summarize_rwgps_artifact(artifact_path_or_name: str) -> dict[str, Any]:
             "artifact_path": str(file_path),
         }
 
+    _persist_route_artifact_record(
+        file_path,
+        route_id=_artifact_route_id_from_path(file_path),
+        export_format=f"{file_path.suffix.lstrip('.')}_track" if file_path.suffix else "gpx_track",
+        parser_version=RWGPS_PARSE_VERSION,
+        source_artifact_sha256=sha256_hash,
+        metadata_json={
+            "kind": "artifact_summary_source",
+            "artifact_name": file_path.name,
+            "size_bytes": size_bytes,
+        },
+    )
+
     suffix = file_path.suffix.lower()
     try:
         if suffix == ".gpx":
@@ -1770,7 +1962,7 @@ def summarize_rwgps_artifact(artifact_path_or_name: str) -> dict[str, Any]:
             "sha256": sha256_hash,
         }
 
-    return {
+    payload = {
         "ok": True,
         "status": "OK",
         "artifact_path": str(file_path),
@@ -1779,3 +1971,6 @@ def summarize_rwgps_artifact(artifact_path_or_name: str) -> dict[str, Any]:
         "sha256": sha256_hash,
         **summary,
     }
+
+    _persist_route_parse_result(file_path, summary)
+    return payload

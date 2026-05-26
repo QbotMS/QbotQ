@@ -20,11 +20,14 @@ _SAFE_MULTI_EXECUTE_TOOLS: set[str] = {
     "qbot_operator_runbook",
     "qbot_rwgps_legacy_status",
     "qbot_rwgps_config_status",
+    "qbot_rwgps_artifact_store_status",
     "qbot_rwgps_route_list",
     "qbot_rwgps_route_search",
     "qbot_rwgps_route_get",
     "qbot_rwgps_route_export_links",
     "qbot_rwgps_route_export_file",
+    "qbot_gpx_artifact_parse",
+    "qbot_route_artifact_enrich",
     "qbot_hammerhead_import_status",
     "qbot_hammerhead_import_inventory",
     "qbot_csv_export_status",
@@ -980,12 +983,46 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "limitations": ["Read-only scan", "No token display"],
     },
     {
+        "keywords": ["czy wszystko gotowe", "czy wszystko jest gotowe", "czy gotowe", "gotowe", "czy wszystko ok"],
+        "tool": "qbot_api_self_check",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["API health endpoint", "PostgreSQL connection", "systemd service status", "git repository state"],
+        "limitations": ["Only checks local services", "Does not check external APIs like Intervals.icu or Garmin"],
+    },
+    {
+        "keywords": [
+            "sprawdź rwgps storage", "status rwgps storage", "rwgps storage",
+            "artifact store", "rwgps artifact store", "storage status rwgps",
+            "schema rwgps", "seed check rwgps", "rwgps db", "rwgps postgres",
+        ],
+        "tool": "qbot_rwgps_artifact_store_status",
+        "args": {},
+        "confidence": "high",
+        "required_data": ["PostgreSQL connectivity", "RWGPS storage schema"],
+        "limitations": ["Read-only status check", "No mutations"],
+    },
+    {
         "keywords": ["rwgps", "ridewithgps", "rwgps status", "sprawdź rwgps"],
         "tool": "qbot_rwgps_legacy_status",
         "args": {},
         "confidence": "high",
         "required_data": ["RWGPS API token", "RWGPS route data"],
         "limitations": ["Read-only status check", "No route modification", "No secrets"],
+    },
+    {
+        "keywords": [
+            "rwgps export", "rwgps download", "rwgps gpx", "rwgps tcx", "rwgps json",
+            "ridewithgps export", "ridewithgps download", "wyeksportuj trasę rwgps",
+            "pobierz gpx rwgps", "pobierz trasę rwgps", "zwróć plik rwgps",
+            "artifact_path", "artifact_relative_path", "download_ready", "return_mode",
+            "content_base64", "base64 rwgps", "gpx rwgps", "tcx rwgps", "json rwgps",
+        ],
+        "tool": "qbot_rwgps_route_export_file",
+        "args": {"route_id": "__ROUTE_ID__", "format": "gpx", "return_mode": "metadata"},
+        "confidence": "high",
+        "required_data": ["RWGPS route record", "RWGPS geometry/track points", "RWGPS export artifact path"],
+        "limitations": ["Read-only export", "Returns a local artifact path and optional content payload"],
     },
     {
         "keywords": ["rwgps config", "ridewithgps config", "konfiguracja rwgps"],
@@ -1024,6 +1061,30 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "confidence": "high",
         "required_data": ["RWGPS route record", "RWGPS geometry/track points", "RWGPS export artifact path"],
         "limitations": ["Read-only export", "Returns a local artifact path, not a binary attachment"],
+    },
+    {
+        "keywords": [
+            "parse gpx", "gpx parse", "gpx summary", "summarize gpx", "summarise gpx",
+            "artifact parse", "artifact summary", "gpx artifact", "track points", "bbox",
+            "analizuj gpx", "podsumuj gpx", "przeanalizuj gpx",
+        ],
+        "tool": "qbot_gpx_artifact_parse",
+        "args": {"artifact_path": "__ARTIFACT_PATH__", "return_mode": "summary"},
+        "confidence": "high",
+        "required_data": ["RWGPS artifact path"],
+        "limitations": ["Read-only summary", "No export or mutation"],
+    },
+    {
+        "keywords": [
+            "surface profile", "surface enrich", "enrich surface", "surface analysis", "nawierzchnia",
+            "surface source", "profile nawierzchni", "route artifact enrich", "artifact enrich",
+            "enrich gpx artifact", "enrich route artifact", "osm surface", "osm overpass",
+        ],
+        "tool": "qbot_route_artifact_enrich",
+        "args": {"artifact_path": "__ARTIFACT_PATH__", "enrich": ["summary", "surface"], "surface_source": "auto", "sample_every_m": 100, "return_mode": "summary"},
+        "confidence": "high",
+        "required_data": ["RWGPS artifact path", "optional Overpass/OSM access"],
+        "limitations": ["Read-only enrichment", "Surface profiling is opt-in and may return unknown"],
     },
     {
         "keywords": ["hammerhead import", "hammerhead status", "karoo import", "sprawdź hammerhead"],
@@ -1191,11 +1252,15 @@ def _materialize_args(query: str, args: dict[str, Any]) -> dict[str, Any]:
     materialized: dict[str, Any] = {}
     route_id_match = re.search(r"\b(\d{6,})\b", query)
     route_id = route_id_match.group(1) if route_id_match else ""
+    artifact_path_match = re.search(r"(/opt/qbot/artifacts/[^\s\"']+\.(?:gpx|tcx|json)|[^\s\"']+\.(?:gpx|tcx|json))", query)
+    artifact_path = artifact_path_match.group(1).rstrip(".,);]") if artifact_path_match else ""
     for key, value in (args or {}).items():
         if isinstance(value, str) and value == "__QUERY__":
             materialized[key] = query
         elif isinstance(value, str) and value == "__ROUTE_ID__":
             materialized[key] = route_id
+        elif isinstance(value, str) and value == "__ARTIFACT_PATH__":
+            materialized[key] = artifact_path
         else:
             materialized[key] = value
     return materialized

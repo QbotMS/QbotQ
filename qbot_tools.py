@@ -207,10 +207,16 @@ def _tool_qbot_db_overview(_args: dict | None = None) -> dict[str, Any]:
     except Exception as exc:
         return {"tool": "qbot_db_overview", "db_connected": False, "error": str(exc)}
 
+    try:
+        rwgps_storage = api_db.rwgps_storage_overview()
+    except Exception as exc:
+        rwgps_storage = {"status": "ERROR", "error": str(exc)}
+
     return {
         "tool": "qbot_db_overview",
         "db_connected": True,
         **overview,
+        "rwgps_storage": rwgps_storage,
     }
 
 

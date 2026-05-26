@@ -30,6 +30,9 @@ from qbot_assistant_inbox import (
     _tool_qbot_assistant_inbox_list,
     _tool_qbot_assistant_inbox_status,
 )
+from qbot_route_tools import _tool_qbot_gpx_artifact_parse
+from qbot_route_tools import _tool_qbot_route_artifact_enrich
+from qbot_route_tools import _tool_qbot_rwgps_artifact_store_status
 from qbot_tools import _tool_qbot_status
 
 MCP_PROTOCOL_VERSION = "2024-11-05"
@@ -140,6 +143,21 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
                 "id": {"type": "integer"},
             },
             "required": ["id"],
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.artifact_read": {
+        "qbot_tool": "qbot_artifact_read",
+        "description": "Read a QBot artifact file by relative path (e.g. 'exports/rwgps/rwgps_55256628.gpx'). Returns content as text or base64.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "relative_path": {"type": "string"},
+                "return_mode": {"type": "string", "enum": ["text", "base64"], "default": "text"},
+            },
+            "required": ["relative_path"],
             "additionalProperties": False,
         },
         "safety_class": "READ_ONLY",
@@ -458,6 +476,13 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+    "qbot.rwgps_artifact_store_status": {
+        "qbot_tool": "qbot_rwgps_artifact_store_status",
+        "description": "Inspect RWGPS artifact store schema and persistence status.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
     "qbot.rwgps_route_search": {
         "qbot_tool": "qbot_rwgps_route_search",
         "description": "Search RWGPS routes by free-text query and show best match.",
@@ -524,8 +549,42 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
             "properties": {
                 "route_id": {"type": "string"},
                 "format": {"type": "string", "enum": ["gpx", "tcx", "json"], "default": "gpx"},
+                "return_mode": {"type": "string", "enum": ["metadata", "text", "base64"], "default": "metadata"},
             },
             "required": ["route_id"],
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.gpx_artifact_parse": {
+        "qbot_tool": "qbot_gpx_artifact_parse",
+        "description": "Parse a stored GPX artifact and return normalized track metadata.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "artifact_path": {"type": "string"},
+                "return_mode": {"type": "string", "enum": ["summary"], "default": "summary"},
+            },
+            "required": ["artifact_path"],
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.route_artifact_enrich": {
+        "qbot_tool": "qbot_route_artifact_enrich",
+        "description": "Enrich a route artifact with summary metadata and optional surface profile.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "artifact_path": {"type": "string"},
+                "enrich": {"type": "array", "items": {"type": "string"}, "default": ["summary"]},
+                "surface_source": {"type": "string", "enum": ["auto", "gpx", "rwgps", "osm", "unknown"], "default": "auto"},
+                "sample_every_m": {"type": "integer", "minimum": 100, "maximum": 5000, "default": 100},
+                "return_mode": {"type": "string", "enum": ["summary"], "default": "summary"},
+            },
+            "required": ["artifact_path"],
             "additionalProperties": False,
         },
         "safety_class": "READ_ONLY",
@@ -922,6 +981,9 @@ def _tool_by_name(name: str):
         "qbot_artifact_create": _tool_qbot_artifact_create,
         "qbot_artifact_list": _tool_qbot_artifact_list,
         "qbot_artifact_get": _tool_qbot_artifact_get,
+        "qbot_gpx_artifact_parse": _tool_qbot_gpx_artifact_parse,
+        "qbot_route_artifact_enrich": _tool_qbot_route_artifact_enrich,
+        "qbot_rwgps_artifact_store_status": _tool_qbot_rwgps_artifact_store_status,
         "qbot_tool_policy_list": _tool_qbot_tool_policy_list,
         "qbot_telegram_status": _tool_qbot_telegram_status,
         "qbot_mcp_status": _tool_qbot_mcp_status,
@@ -1147,8 +1209,49 @@ def handle_mcp_request(
                 result = {"tool": "qbot.rwgps_route_export_file", "status": "error", "error": "route_id required"}
             else:
                 from tools.rwgps.client import export_route_to_artifact as rwgps_export_route_to_artifact
-                result = rwgps_export_route_to_artifact(route_id, fmt=fmt)
+                return_mode = clean_args.get("return_mode")
+                result = rwgps_export_route_to_artifact(route_id, fmt=fmt, return_mode=return_mode)
                 result["tool"] = "qbot.rwgps_route_export_file"
+        elif name == "qbot.artifact_read":
+            relative_path = str(clean_args.get("relative_path", "")).strip()
+            return_mode = str(clean_args.get("return_mode", "text")).strip().lower() or "text"
+            if not relative_path:
+                result = {"tool": "qbot.artifact_read", "status": "error", "error": "relative_path required"}
+            else:
+                from mcp_server import validate_artifact_relative_path, ARTIFACT_ROOT
+                try:
+                    normalized = validate_artifact_relative_path(relative_path)
+                    artifact_path = ARTIFACT_ROOT / normalized
+                    if not artifact_path.exists():
+                        result = {"tool": "qbot.artifact_read", "status": "NOT_FOUND", "error": "artifact does not exist", "relative_path": relative_path}
+                    elif not os.access(artifact_path, os.R_OK):
+                        result = {"tool": "qbot.artifact_read", "status": "PERMISSION_DENIED", "error": "artifact not readable", "relative_path": relative_path}
+                    else:
+                        data = artifact_path.read_bytes()
+                        if return_mode == "base64":
+                            import base64
+                            result = {
+                                "tool": "qbot.artifact_read",
+                                "status": "ok",
+                                "relative_path": relative_path,
+                                "size_bytes": len(data),
+                                "content_base64": base64.b64encode(data).decode("ascii"),
+                            }
+                        else:
+                            text = data.decode("utf-8", errors="replace")
+                            result = {
+                                "tool": "qbot.artifact_read",
+                                "status": "ok",
+                                "relative_path": relative_path,
+                                "size_bytes": len(data),
+                                "content": text,
+                            }
+                except ValueError as exc:
+                    result = {"tool": "qbot.artifact_read", "status": "INVALID_PATH", "error": str(exc), "relative_path": relative_path}
+                except FileNotFoundError as exc:
+                    result = {"tool": "qbot.artifact_read", "status": "NOT_FOUND", "error": str(exc), "relative_path": relative_path}
+                except PermissionError as exc:
+                    result = {"tool": "qbot.artifact_read", "status": "PERMISSION_DENIED", "error": str(exc), "relative_path": relative_path}
         elif name == "qbot.artifact_create" and not _token_configured():
             result = {
                 "tool": name,
