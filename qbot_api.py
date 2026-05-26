@@ -79,12 +79,44 @@ def _telegram_response_text(command: str, result: dict) -> str | None:
             return f"Takeover: {pct}% complete"
     if command == "/ask":
         if isinstance(response, dict):
-            text = response.get("answer") or response.get("summary_text") or response.get("result")
-            if text:
-                return str(text)[:3900]
-            intent = response.get("intent", "?")
-            tool = response.get("tool", "?")
-            return f"Q: {intent} → {tool}\nUse /help to see available commands."
+            tool_result = response.get("tool_result") or response.get("tool_results")
+            executed = response.get("executed_tools") or []
+            answer = response.get("answer")
+            intent = response.get("intent", "")
+
+            if intent == "unknown_intent" or (response.get("status") == "error" and not tool_result):
+                examples = response.get("available_examples", [])[:6]
+                example_text = ", ".join(examples) if examples else "/status, /backup, /smoke"
+                return (
+                    "Nie mam jeszcze gotowego narzędzia do tego pytania.\n\n"
+                    f"Możesz zapytać np.: {example_text}\n\n"
+                    "Lub użyć komend: /status, /xert, /garmin, /rwgps, /hammerhead, /csv, "
+                    "/garage, /daily_report, /ride_report, /weather, /maps, /intervals, /help"
+                )
+
+            if answer:
+                return str(answer)[:3900]
+
+            if isinstance(tool_result, dict):
+                r = tool_result
+                lines = []
+                status = r.get("status", "?")
+                label = r.get("tool", "") or executed[0] if executed else "result"
+                lines.append(f"[{label}] status: {status}")
+                for k in ("ftp_watts", "ltp_watts", "wPrimeKj", "weightKg", "operational_readiness_percent",
+                          "last_sent_date", "csv_count", "total_records", "count", "restored_status",
+                          "configured", "takeover_readiness_percent"):
+                    if k in r and r[k] is not None:
+                        lines.append(f"  {k}: {r[k]}")
+                result_text = "\n".join(lines[:10])
+                if result_text:
+                    return result_text[:3900]
+
+            summary = response.get("summary_text") or response.get("result")
+            if summary:
+                return str(summary)[:3900]
+
+            return "Qbot przetworzył zapytanie. Użyj /help aby zobaczyć dostępne komendy."
     return None
 
 

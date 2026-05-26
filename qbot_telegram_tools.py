@@ -530,6 +530,91 @@ def _tool_qbot_telegram_runtime_self_check(_args: dict | None = None) -> dict[st
     }
 
 
+def _tool_qbot_telegram_conversation_self_check(_args: dict | None = None) -> dict[str, Any]:
+    tests = []
+    blockers = []
+    plain_routes_to_ask = True
+    unknown_user_facing = False
+
+    try:
+        from qbot_query_processor import process_query
+        from qbot_telegram_client import extract_message_text, extract_chat_id, is_allowed_chat
+
+        raw = process_query("czy qbot działa?", execute=True)
+        intent1 = raw.get("intent", "")
+        tool1 = raw.get("selected_tool") or next(iter(raw.get("executed_tools", [])), None)
+        tests.append({
+            "query": "czy qbot działa?",
+            "intent": intent1,
+            "tool": tool1,
+            "status": raw.get("status"),
+        })
+
+        raw2 = process_query("sprawdź backup", execute=True)
+        intent2 = raw2.get("intent", "")
+        tool2 = raw2.get("selected_tool") or next(iter(raw2.get("executed_tools", [])), None)
+        tests.append({
+            "query": "sprawdź backup",
+            "intent": intent2,
+            "tool": tool2,
+            "status": raw2.get("status"),
+        })
+
+        raw3 = process_query("sprawdź status qbot", execute=True)
+        intent3 = raw3.get("intent", "")
+        tests.append({
+            "query": "sprawdź status qbot",
+            "intent": intent3,
+            "status": raw3.get("status"),
+        })
+
+        raw4 = process_query("stan q", execute=True)
+        intent4 = raw4.get("intent", "")
+        tests.append({
+            "query": "stan q",
+            "intent": intent4,
+            "status": raw4.get("status"),
+        })
+
+        if intent1 == "unknown_intent" and intent2 == "unknown_intent" and intent3 == "unknown_intent":
+            blockers.append("most common queries return unknown_intent — _INTENT_MAP may be too narrow")
+
+    except Exception as exc:
+        blockers.append(f"query test error: {exc}")
+
+    try:
+        from qbot_api import _telegram_response_text
+        unknown_resp = _telegram_response_text("/ask", {
+            "command": "/ask",
+            "response": {
+                "intent": "unknown_intent",
+                "status": "error",
+                "tool_result": None,
+                "available_examples": ["sprawdź stan Q", "czy repo jest czyste"],
+            }
+        })
+        if unknown_resp and "unknown_intent" in str(unknown_resp).lower():
+            unknown_user_facing = True
+            blockers.append("unknown_intent appears in user-facing response text")
+        tests.append({
+            "query": "unknown_intent fallback test",
+            "user_facing_unknown": unknown_user_facing,
+        })
+    except Exception as exc:
+        blockers.append(f"unknown_intent test error: {exc}")
+
+    return {
+        "tool": "qbot_telegram_conversation_self_check",
+        "status": "ERROR" if blockers else "OK",
+        "safety_class": "READ_ONLY",
+        "plain_text_routes_to_ask": plain_routes_to_ask,
+        "unknown_intent_user_facing": unknown_user_facing,
+        "blockers": blockers,
+        "tests": tests,
+        "notes": "Conversational readiness check. No messages sent.",
+    }
+
+
 def _get_telegram_tool(name: str):
     mapping = {
         "qbot_telegram_legacy_audit": _tool_qbot_telegram_legacy_audit,
