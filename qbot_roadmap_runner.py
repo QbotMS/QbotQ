@@ -1251,7 +1251,7 @@ def _task_session(
         "error": _sanitize_text(notif.get("error"), 200),
         "notif_key": notif_key,
     })
-    if not notif.get("ok") and not allow_no_notify:
+    if not notif.get("ok") and not allow_no_notify and "skipped" not in notif:
         final_status = "PAUSED"
         last_error = f"telegram notify failed: {notif.get('error')}"
         _update_state_progress(
