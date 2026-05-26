@@ -545,28 +545,14 @@ def _update_state_progress(
     preview_current_step: int | None = None,
     preview_total_steps: int | None = None,
     preview_step_name: str | None = None,
+    dry_run_persist: bool = False,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     state = _load_state()
-    updates = {
-        "runner_status": runner_status,
-        "current_block": current_block,
-        "current_task_id": current_task_id,
-        "last_task_id": last_task_id,
-        "last_status": last_status,
-        "last_commit": last_commit,
-        "last_error": last_error,
-        "started_at": started_at,
-        "task_progress_percent": task_progress_percent,
-        "block_progress_percent": block_progress_percent,
-        "current_step": current_step,
-        "total_steps": total_steps,
-        "step_name": step_name,
-        "last_task_summary": last_task_summary,
-        "last_task_tools": last_task_tools,
+    # Preview fields always update
+    updates: dict[str, Any] = {
         "preview_tasks_completed": preview_tasks_completed,
         "preview_tasks_blocked": preview_tasks_blocked,
-        "tasks_completed": tasks_completed,
-        "tasks_blocked": tasks_blocked,
         "preview_block": preview_block,
         "preview_total_tasks_in_block": preview_total_tasks_in_block,
         "preview_current_task_id": preview_current_task_id,
@@ -576,6 +562,28 @@ def _update_state_progress(
         "preview_total_steps": preview_total_steps,
         "preview_step_name": preview_step_name,
     }
+    # Real fields only for non-dry-run or explicit persist
+    if not dry_run or dry_run_persist:
+        real_updates = {
+            "runner_status": runner_status,
+            "current_block": current_block,
+            "current_task_id": current_task_id,
+            "last_task_id": last_task_id,
+            "last_status": last_status,
+            "last_commit": last_commit,
+            "last_error": last_error,
+            "started_at": started_at,
+            "task_progress_percent": task_progress_percent,
+            "block_progress_percent": block_progress_percent,
+            "current_step": current_step,
+            "total_steps": total_steps,
+            "step_name": step_name,
+            "last_task_summary": last_task_summary,
+            "last_task_tools": last_task_tools,
+            "tasks_completed": tasks_completed,
+            "tasks_blocked": tasks_blocked,
+        }
+        updates.update(real_updates)
     for key, value in updates.items():
         if value is not None:
             state[key] = value
@@ -950,6 +958,7 @@ def _task_session(
             preview_step_name=step_name,
             preview_tasks_completed=preview_completed_ids,
             preview_tasks_blocked=preview_blocked_ids,
+            dry_run=dry_run,
         )
 
     # 1. preflight
@@ -1012,6 +1021,7 @@ def _task_session(
             preview_step_name=step_name,
             preview_tasks_completed=preview_completed_ids,
             preview_tasks_blocked=preview_blocked_ids,
+            dry_run=dry_run,
         )
         message = _build_notification_text(
             result_status=final_status,
@@ -1307,6 +1317,7 @@ def _task_session(
             preview_step_name=step_name,
             preview_tasks_completed=preview_completed_ids,
             preview_tasks_blocked=preview_blocked_ids,
+            dry_run=dry_run,
         )
     _record_inbox(
         status=final_status,
@@ -1676,6 +1687,72 @@ def _tool_qbot_roadmap_runner_pause(args: dict | None = None) -> dict[str, Any]:
         last_error=reason,
     )
     return {"tool": "qbot_roadmap_runner_pause", "status": "OK", "state": state, "reason": reason}
+
+
+def _tool_qbot_roadmap_runner_reconcile_state(args: dict | None = None) -> dict[str, Any]:
+    """Reconcile runner state with git log commits. Discovers completed tasks from commit subjects."""
+    args = args or {}
+    block = str(args.get("block", "") or "").strip() or None
+    state = _load_state()
+
+    # Get task IDs from git log commit subjects
+    git_completed: list[str] = []
+    try:
+        import re as _regex
+        log_proc = _git(["git", "log", "--oneline", "-100"], timeout=10)
+        if log_proc.returncode == 0:
+            for line in log_proc.stdout.splitlines():
+                # Search entire line (commit hash + subject) for task IDs
+                matches = _regex.findall(r'\b(P\d+-\d+)\b', line)
+                for m in matches:
+                    if m not in git_completed:
+                        git_completed.append(m)
+    except Exception:
+        pass
+
+    # Merge with existing completed tasks
+    existing_completed = list(state.get("tasks_completed", []))
+    existing_blocked = list(state.get("tasks_blocked", []))
+
+    for tid in git_completed:
+        if tid not in existing_completed:
+            existing_completed.append(tid)
+        if tid in existing_blocked:
+            existing_blocked.remove(tid)
+
+    # Update state
+    state["tasks_completed"] = existing_completed
+    state["tasks_blocked"] = existing_blocked
+    if existing_completed and not existing_blocked:
+        state["runner_status"] = "PAUSED"
+        state["last_status"] = "PASS"
+        state["last_error"] = None
+    state["last_commit"] = git_completed[0] if git_completed else state.get("last_commit")
+
+    _save_state(state)
+
+    # Determine next task
+    tasks = _flatten_tasks(block) if block else _flatten_tasks()
+    completed = set(existing_completed)
+    blocked = set(existing_blocked)
+    next_task = None
+    for t in tasks:
+        if t["task_id"] not in completed and t["task_id"] not in blocked:
+            next_task = t
+            break
+
+    return {
+        "tool": "qbot_roadmap_runner_reconcile_state",
+        "status": "OK",
+        "safety_class": "WRITE_SAFE",
+        "block": block,
+        "completed_from_git": git_completed,
+        "completed_current": existing_completed,
+        "blocked_current": existing_blocked,
+        "next_task_id": next_task["task_id"] if next_task else None,
+        "next_task_description": next_task["description"][:120] if next_task else None,
+        "notes": f"Reconciled {len(git_completed)} tasks from git log",
+    }
 
 
 def _tool_qbot_roadmap_runner_resume(args: dict | None = None) -> dict[str, Any]:
