@@ -20,7 +20,7 @@ os.environ.setdefault("GATE_TOKEN", "test-gate-token")
 os.environ.setdefault("GATE_DEVICE_SERIAL", "Q13393992")
 os.environ.setdefault("GATE_LOCK_CHANNEL", "1")
 os.environ.setdefault("GATE_LOCK_INDEX", "0")
-os.environ.setdefault("GATE_RATE_LIMIT_SEC", "60")
+os.environ.setdefault("GATE_RATE_LIMIT_SEC", "15")
 try:
     from pydantic_settings.sources.providers import dotenv as pydantic_dotenv
 
