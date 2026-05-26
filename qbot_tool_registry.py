@@ -275,6 +275,13 @@ from qbot_wellness_store import (
     _tool_qbot_nutrition_db_status,
 )
 
+from qbot_task_queue import (
+    _tool_qbot_task_queue_add,
+    _tool_qbot_task_queue_list,
+    _tool_qbot_task_queue_next,
+    _tool_qbot_task_queue_status,
+)
+
 from qbot_report_tools import (
     _tool_qbot_daily_report_status,
     _tool_qbot_daily_report_preview,
@@ -1434,6 +1441,30 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_task_queue_add": {
+        "description": "Dodaj task do kolejki — source ChatGPT MCP/CLI",
+        "category": "task_queue",
+        "safe": True,
+        "args_schema": {"title": "...", "description": "...", "source": "chatgpt_mcp", "style": "short"},
+    },
+    "qbot_task_queue_list": {
+        "description": "Lista tasków w kolejce — filtrowanie po statusie",
+        "category": "task_queue",
+        "safe": True,
+        "args_schema": {"status": "pending", "limit": 50},
+    },
+    "qbot_task_queue_next": {
+        "description": "Pobiera następny pending task (bez zmiany stanu)",
+        "category": "task_queue",
+        "safe": True,
+        "args_schema": {},
+    },
+    "qbot_task_queue_status": {
+        "description": "Aktualizuje status taska: pass / blocked / fail / in_progress",
+        "category": "task_queue",
+        "safe": True,
+        "args_schema": {"task_id": "...", "status": "pass|blocked|fail|in_progress", "result_summary": "..."},
+    },
     "qbot_daily_report_status": {
         "description": "Status raportu dziennego — konfiguracja, dane",
         "category": "reports",
@@ -1680,6 +1711,10 @@ TOOLS: dict[str, Any] = {
     "qbot_wellness_range_summary": _tool_qbot_wellness_range_summary,
     "qbot_nutrition_range_summary": _tool_qbot_nutrition_range_summary,
     "qbot_nutrition_db_status": _tool_qbot_nutrition_db_status,
+    "qbot_task_queue_add": _tool_qbot_task_queue_add,
+    "qbot_task_queue_list": _tool_qbot_task_queue_list,
+    "qbot_task_queue_next": _tool_qbot_task_queue_next,
+    "qbot_task_queue_status": _tool_qbot_task_queue_status,
     "qbot_daily_report_status": _tool_qbot_daily_report_status,
     "qbot_daily_report_preview": _tool_qbot_daily_report_preview,
     "qbot_daily_report_send": _tool_qbot_daily_report_send,

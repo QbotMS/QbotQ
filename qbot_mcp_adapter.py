@@ -144,6 +144,61 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+    "qbot.task_queue_add": {
+        "qbot_tool": "qbot_task_queue_add",
+        "description": "Add a task to QBot queue for CLI execution.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Task title"},
+                "description": {"type": "string", "description": "What to do"},
+                "style": {"type": "string", "default": "short"},
+                "tools_to_use": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["title"],
+            "additionalProperties": False,
+        },
+        "safety_class": "WRITE_SAFE",
+        "auth_required": True,
+    },
+    "qbot.task_queue_list": {
+        "qbot_tool": "qbot_task_queue_list",
+        "description": "List tasks in the QBot queue.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string", "default": "pending"},
+                "limit": {"type": "integer", "default": 50},
+            },
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.task_queue_next": {
+        "qbot_tool": "qbot_task_queue_next",
+        "description": "Get the next pending task for CLI execution.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.task_queue_status": {
+        "qbot_tool": "qbot_task_queue_status",
+        "description": "Update task status after execution.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string"},
+                "status": {"type": "string", "enum": ["pass", "blocked", "fail", "in_progress"]},
+                "result_summary": {"type": "string"},
+                "error": {"type": "string"},
+            },
+            "required": ["task_id", "status"],
+            "additionalProperties": False,
+        },
+        "safety_class": "WRITE_SAFE",
+        "auth_required": True,
+    },
     "qbot.tool_policy": {
         "qbot_tool": "qbot_tool_policy_list",
         "description": "List QBot tool policy metadata.",

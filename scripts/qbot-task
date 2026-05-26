@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+"""QBot task queue CLI — execute tasks pushed by ChatGPT via MCP.
+
+Usage:
+  scripts/qbot-task start              Start executing next pending task
+  scripts/qbot-task status             Show queue status  
+  scripts/qbot-task next               Show next pending task (read-only)
+  scripts/qbot-task list [status]      List tasks filtered by status
+"""
+
+import os
+import sys
+import json
+import subprocess
+from pathlib import Path
+from datetime import datetime, timezone
+
+APP_DIR = Path("/opt/qbot/app")
+Q_ENDPOINT = "http://127.0.0.1:8001/q"
+STATE_FILE = APP_DIR / "state" / "qbot_task_queue.json"
+VENV_PYTHON = str(APP_DIR / ".venv" / "bin" / "python3")
+
+
+def _curl_tool(tool_name: str, args: dict | None = None) -> dict:
+    payload = {"tool": tool_name, "args": args or {}}
+    try:
+        r = subprocess.run(
+            ["curl", "-s", "-X", "POST", Q_ENDPOINT,
+             "-H", "Content-Type: application/json",
+             "-d", json.dumps(payload)],
+            capture_output=True, text=True, timeout=60,
+        )
+        return json.loads(r.stdout).get("result", {})
+    except Exception as e:
+        return {"status": "ERROR", "error": str(e)}
+
+
+def cmd_status():
+    result = _curl_tool("qbot_task_queue_list", {"limit": 20})
+    tasks = result.get("tasks", [])
+    total = result.get("queue_total", 0)
+    print(f"Queue: {total} total, {len(tasks)} shown")
+    statuses = {}
+    for t in tasks:
+        s = t.get("status", "?")
+        statuses[s] = statuses.get(s, 0) + 1
+    for s, c in sorted(statuses.items()):
+        print(f"  {s}: {c}")
+    if not tasks:
+        print("  (empty)")
+    else:
+        print(f"\nLast {min(5, len(tasks))} tasks:")
+        for t in tasks[-5:]:
+            print(f"  [{t.get('status','?')}] {t.get('id','?')} {t.get('title','?')[:80]}")
+
+
+def cmd_next():
+    result = _curl_tool("qbot_task_queue_next")
+    task = result.get("task")
+    pending = result.get("pending_count", 0)
+    if not task:
+        print(f"No pending tasks ({result.get('total_count', 0)} total)")
+        return None
+    print(f"Next pending task ({pending} pending, {result.get('total_count', 0)} total):")
+    print(f"  ID:    {task['id']}")
+    print(f"  Title: {task['title']}")
+    print(f"  Desc:  {task['description'][:200]}")
+    print(f"  From:  {task['source']}")
+    return task
+
+
+def cmd_list(args: list[str]):
+    status = args[0] if args else "all"
+    result = _curl_tool("qbot_task_queue_list", {"status": status, "limit": 50})
+    tasks = result.get("tasks", [])
+    print(f"{status} tasks: {len(tasks)} / {result.get('queue_total', 0)} total")
+    for t in tasks:
+        print(f"  [{t.get('status','?')}] {t.get('id','?')} {t.get('title','?')[:100]}")
+
+
+def cmd_start():
+    task = cmd_next()
+    if not task:
+        print("No task to execute.")
+        return
+
+    task_id = task["id"]
+    query = task.get("description", "") or task.get("title", "")
+    style = task.get("style", "short")
+
+    # Mark in_progress
+    _curl_tool("qbot_task_queue_status", {
+        "task_id": task_id, "status": "in_progress"
+    })
+
+    print(f"\nExecuting task {task_id}: {task['title']}")
+    print(f"Query: {query[:200]}")
+
+    # Execute via agent_chat
+    result = _curl_tool("qbot_telegram_agent_chat", {
+        "message": query, "style": style, "execute": True
+    })
+
+    answer = result.get("answer", "")[:3000]
+    status = result.get("status", "ERROR")
+    tools_used = result.get("tools_used", [])
+    llm_used = result.get("llm_used", False)
+    print(f"\nStatus: {status} | Tools: {tools_used} | LLM: {llm_used}")
+    print(f"Answer: {answer[:500]}")
+
+    # Determine task status
+    if status == "OK":
+        task_status = "pass"
+        summary = f"OK, tools used: {tools_used}"[:2000]
+    elif status.startswith("WARN"):
+        task_status = "blocked"
+        summary = f"WARN: {answer[:500]}"[:2000]
+    else:
+        task_status = "fail"
+        summary = f"{status}: {answer[:500]}"[:2000]
+
+    # Mark result
+    _curl_tool("qbot_task_queue_status", {
+        "task_id": task_id, "status": task_status,
+        "result_summary": summary,
+        "error": "" if task_status == "pass" else answer[:500],
+    })
+    print(f"\nTask {task_id} → {task_status}")
+
+
+if __name__ == "__main__":
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
+    args = sys.argv[2:] if len(sys.argv) > 2 else []
+    if cmd == "start":
+        cmd_start()
+    elif cmd == "status":
+        cmd_status()
+    elif cmd == "next":
+        cmd_next()
+    elif cmd == "list":
+        cmd_list(args)
+    else:
+        print(f"Unknown command: {cmd}")
+        print("Usage: qbot-task start|status|next|list [status]")
+        sys.exit(1)
