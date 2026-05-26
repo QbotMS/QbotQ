@@ -1403,3 +1403,4 @@ def _tool_qbot_telegram_clothing_advice_self_check(_args: dict | None = None) ->
         "notes": "Checks that clothing advice is natural, not raw tool dump.",
     }
 # P0-1: normalize agent reply routing
+# P0 test change
