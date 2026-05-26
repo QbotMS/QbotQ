@@ -833,14 +833,8 @@ def _mcp_response(payload: dict | None, status_code: int, headers: dict[str, str
 
 
 def _mcp_auth_guard(request: Request):
-    ok, err = _validate_mcp_access("", {k.lower(): v for k, v in request.headers.items()})
-    if ok:
-        return None
-    return JSONResponse(
-        content={"status": "error", "detail": err or "unauthorized"},
-        status_code=401,
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    # Discovery and health surfaces are read-only. Tool-level auth is enforced on tools/call.
+    return None
 
 
 @app.get("/mcp/")
