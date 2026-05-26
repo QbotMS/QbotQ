@@ -976,7 +976,7 @@ def _task_session(
         final_status = "BLOCKED"
         last_error = f"public /health returned {baseline['public_health'].get('status_code')}"
         reason = "public /health is not blocked"
-    elif not baseline["git_status"].get("clean", False):
+    elif not baseline["git_status"].get("clean", False) and (dry_run or not task.get("eligible_for_auto")):
         baseline_ok = False
         final_status = "BLOCKED"
         last_error = "repository dirty before runner start"
@@ -1145,7 +1145,7 @@ def _task_session(
     # 8. git diff/status
     _update(8, steps[7][0] if len(steps) > 7 else "git diff/status", steps[7][1] if len(steps) > 7 else 98)
     git_status = baseline["git_status"]
-    if not git_status.get("clean", False):
+    if not git_status.get("clean", False) and (dry_run or not task.get("eligible_for_auto")):
         final_status = "BLOCKED"
         last_error = "repository dirty"
 
