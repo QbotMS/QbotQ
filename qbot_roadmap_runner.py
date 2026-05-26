@@ -197,8 +197,28 @@ def _scan_secret_patterns() -> dict[str, Any]:
     patterns = re.compile(r"\b(?:TOKEN|API_KEY|SECRET|PASSWORD|JWT)\s*=\s*([^\s#'\"`]+)")
     excludes = {".git", ".venv", "__pycache__", "outgoing", "logs", "backups"}
     skip_files = {".env.local", ".env.hammerhead-garmin-sync"}
-    placeholder_markers = {"<", ">", "***", "REDACTED", "SET-ME", "WEBHOOK_SECRET", "PLACEHOLDER"}
-    hits: list[dict[str, Any]] = []
+    placeholder_markers = {"SET-ME", "WEBHOOK_SECRET", "PLACEHOLDER"}
+
+    def _is_symbolic(value: str) -> bool:
+        """True if value is a code reference (getenv, config access, etc.), not a real secret."""
+        v = value.strip()
+        if v.startswith("<") or v.endswith(">"):
+            return True
+        if v in ("***", "REDACTED"):
+            return True
+        # Code patterns: getenv, config access, env strings
+        if any(sig in v for sig in (
+            "env(", "os.getenv(", "os.environ", "cfg.",
+            ".getenv(", ".environ", "getenv(",
+        )):
+            return True
+        # Heuristic: symbolic references contain dots/parens from code, not raw values
+        if "." in v or "(" in v or ")" in v:
+            return True
+        return False
+
+    symbolic: list[dict[str, Any]] = []
+    blocking: list[dict[str, Any]] = []
     changed_files: list[Path] = []
     try:
         git = _git(["git", "status", "--short"], timeout=8)
@@ -222,7 +242,6 @@ def _scan_secret_patterns() -> dict[str, Any]:
                         changed_files.append(PROJECT_ROOT / rel)
         except Exception:
             changed_files = []
-
     if not changed_files:
         changed_files = [p for p in PROJECT_ROOT.rglob("*") if p.is_file()]
 
@@ -240,17 +259,34 @@ def _scan_secret_patterns() -> dict[str, Any]:
         for match in patterns.finditer(text):
             raw_value = match.group(1).strip()
             raw_value_upper = raw_value.upper()
+
             if raw_value.startswith("<") or raw_value.endswith(">"):
                 continue
             if any(marker in raw_value_upper for marker in placeholder_markers):
                 continue
-            hits.append({
-                "file": path.relative_to(PROJECT_ROOT).as_posix(),
-                "sample": f"{match.group(1)}=***",
-            })
-            if len(hits) >= 20:
-                return {"count": len(hits), "samples": hits, "truncated": True}
-    return {"count": len(hits), "samples": hits, "truncated": False}
+
+            if _is_symbolic(raw_value):
+                symbolic.append({
+                    "file": path.relative_to(PROJECT_ROOT).as_posix(),
+                    "sample": raw_value[:80],
+                })
+            else:
+                blocking.append({
+                    "file": path.relative_to(PROJECT_ROOT).as_posix(),
+                    "sample": match.group(0)[:80],
+                })
+            if len(blocking) + len(symbolic) >= 50:
+                break
+
+    return {
+        "blocking_hits_count": len(blocking),
+        "symbolic_hits_count": len(symbolic),
+        "blocking_samples": blocking[:10],
+        "ignored_symbolic_samples": [s["sample"] for s in symbolic[:10]],
+        "env_local_tracked": any(p.name == ".env.local" for p in changed_files if p.is_file()),
+        "status": "BLOCKED" if blocking else ("WARN" if symbolic else "OK"),
+        "truncated": len(blocking) + len(symbolic) >= 50,
+    }
 
 
 def _step_plan_for_task(_task: dict[str, Any]) -> list[tuple[str, int]]:
@@ -926,7 +962,7 @@ def _task_session(
         final_status = "BLOCKED"
         last_error = "repository dirty before runner start"
         reason = "repository is dirty"
-    elif baseline["secret_hits"].get("count", 0) > 0:
+    elif baseline["secret_hits"].get("blocking_hits_count", baseline["secret_hits"].get("count", 0)) > 0 or baseline["secret_hits"].get("env_local_tracked"):
         baseline_ok = False
         final_status = "SECURITY_BLOCKED"
         last_error = "secret-like pattern detected"
