@@ -220,6 +220,7 @@ def _scan_secret_patterns() -> dict[str, Any]:
     symbolic: list[dict[str, Any]] = []
     blocking: list[dict[str, Any]] = []
     changed_files: list[Path] = []
+    env_local_in_git = False
     try:
         git = _git(["git", "status", "--short"], timeout=8)
         if git.returncode == 0:
@@ -229,6 +230,8 @@ def _scan_secret_patterns() -> dict[str, Any]:
                 m = re.match(r"^[ MADRCU\?]{1,2}\s+(.*)$", line)
                 rel = m.group(1).strip() if m else line.strip()
                 if rel:
+                    if rel.endswith(".env.local"):
+                        env_local_in_git = True
                     changed_files.append(PROJECT_ROOT / rel)
     except Exception:
         changed_files = []
@@ -283,7 +286,7 @@ def _scan_secret_patterns() -> dict[str, Any]:
         "symbolic_hits_count": len(symbolic),
         "blocking_samples": blocking[:10],
         "ignored_symbolic_samples": [s["sample"] for s in symbolic[:10]],
-        "env_local_tracked": any(p.name == ".env.local" for p in changed_files if p.is_file()),
+        "env_local_tracked": env_local_in_git,
         "status": "BLOCKED" if blocking else ("WARN" if symbolic else "OK"),
         "truncated": len(blocking) + len(symbolic) >= 50,
     }
