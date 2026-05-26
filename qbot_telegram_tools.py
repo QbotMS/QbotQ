@@ -617,6 +617,105 @@ def _get_telegram_tool(name: str):
     return mapping.get(name)
 
 
+# ── Conversation memory (in-process, TTL-based) ──────────────────────
+
+_CONV_MEMORY: dict[str, list[dict[str, Any]]] = {}
+_CONV_MAX_MSGS = 30
+_CONV_MAX_AGE_MIN = 60
+
+import time as _time_module
+
+
+def _conv_get(chat_id: str) -> list[dict[str, Any]]:
+    msgs = _CONV_MEMORY.get(str(chat_id), [])
+    now = _time_module.time()
+    cutoff = now - _CONV_MAX_AGE_MIN * 60
+    fresh = [m for m in msgs if m.get("ts", 0) > cutoff]
+    _CONV_MEMORY[str(chat_id)] = fresh[-_CONV_MAX_MSGS:]
+    return fresh[-_CONV_MAX_MSGS:]
+
+
+def _conv_append(chat_id: str, role: str, text: str, intent: str = "", tools_used: list[str] | None = None,
+                 missing_slots: list[str] | None = None, answer_summary: str = ""):
+    msgs = _conv_get(str(chat_id))
+    msgs.append({
+        "role": role,
+        "text": text[:4000],
+        "ts": _time_module.time(),
+        "intent": intent,
+        "tools_used": tools_used or [],
+        "missing_slots": missing_slots or [],
+        "answer_summary": answer_summary[:500],
+    })
+    msgs = msgs[-_CONV_MAX_MSGS:]
+    _CONV_MEMORY[str(chat_id)] = msgs
+
+
+def _conv_detect_followup(message: str, chat_id: str) -> dict[str, Any] | None:
+    msgs = _conv_get(str(chat_id))
+    if not msgs:
+        return None
+    last_agent = None
+    for m in reversed(msgs):
+        if m["role"] == "assistant":
+            last_agent = m
+            break
+    if not last_agent:
+        return None
+
+    missing = last_agent.get("missing_slots", [])
+    last_intent = last_agent.get("intent", "")
+    q = message.lower().strip()
+    resolved = {}
+
+    # Follow-up: location for weather
+    if "location" in missing and last_intent in ("weather_current", "weather_inquiry"):
+        from qbot_integration_tools import _find_city_from_text
+        city = _find_city_from_text(message)
+        if city:
+            return {"is_followup": True, "resolved_intent": "weather_current",
+                    "resolved_slots": {"location": city}, "source": "conversation_context",
+                    "confidence": "high", "reason": "previous assistant asked for location for weather"}
+
+    # Follow-up: period/forecast for weather
+    if last_intent in ("weather_current", "weather_inquiry") and any(w in q for w in ["jutro", "rano", "wieczorem", "jutrzejszy", "forecast"]):
+        prev_loc = None
+        for m in reversed(msgs):
+            if m["role"] == "user" and m.get("slots"):
+                prev_loc = m["slots"].get("location")
+                break
+        period = "tomorrow_morning" if any(w in q for w in ["rano", "morning"]) else "tomorrow"
+        return {"is_followup": True, "resolved_intent": "weather_forecast",
+                "resolved_slots": {"location": prev_loc or "Marki,PL", "period": period},
+                "source": "conversation_context", "confidence": "high",
+                "reason": f"weather forecast follow-up, period={period}"}
+
+    # Follow-up: different integration
+    if any(w in q for w in ["a garmin", "a xert", "a rwgps", "a intervals", "a hammerhead"]):
+        for mod in ["garmin", "xert", "rwgps", "intervals", "hammerhead"]:
+            if mod in q:
+                return {"is_followup": True, "resolved_intent": f"{mod}_status",
+                        "resolved_slots": {"integration": mod}, "source": "conversation_context",
+                        "confidence": "medium", "reason": f"integration follow-up: {mod}"}
+
+    # Affirmative/confirm
+    if q in ("tak", "yes", "ok", "okej", "dobrze", "spoko"):
+        return {"is_followup": True, "resolved_intent": "confirm_previous",
+                "resolved_slots": {}, "source": "conversation_context",
+                "confidence": "high", "reason": "user confirmed previous question"}
+
+    return None
+
+
+def _tool_qbot_conversation_resolve_followup(_args: dict | None = None) -> dict[str, Any]:
+    _args = _args or {}
+    result = _conv_detect_followup(str(_args.get("message", "")), str(_args.get("chat_id", "")))
+    if result:
+        return {"tool": "qbot_conversation_resolve_followup", "status": "OK", "safety_class": "READ_ONLY", **result}
+    return {"tool": "qbot_conversation_resolve_followup", "status": "OK", "safety_class": "READ_ONLY",
+            "is_followup": False, "resolved_intent": None, "resolved_slots": {}, "source": None, "confidence": "none"}
+
+
 def _build_agent_context(query: str) -> tuple[str, list[str]]:
     """Build lightweight Qbot context for the agent: available tools + capability status."""
     try:
@@ -647,12 +746,33 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
     message = str(_args.get("message", "") or "")
     style = str(_args.get("style", "short"))
     execute = bool(_args.get("execute", True))
+    chat_id = str(_args.get("chat_id", "") or "")
 
     if not message.strip():
         return {"tool": "qbot_telegram_agent_chat", "status": "ERROR", "answer": "Pusta wiadomość.", "tools_considered_count": 0, "tools_used": [], "llm_used": False, "planner_used": False, "policy_result": "", "requires_approval": False}
 
+    # Check conversation context for follow-up detection
+    followup = None
+    if chat_id:
+        followup = _conv_detect_followup(message, chat_id)
+
+    # If follow-up detected, inject resolved slots into message/query
+    if followup and followup.get("is_followup"):
+        resolved = followup.get("resolved_intent", "")
+        slots = followup.get("resolved_slots", {})
+        if resolved == "weather_current" and slots.get("location"):
+            message = f"pogoda w {slots['location']}"
+        elif resolved == "weather_forecast" and slots.get("location"):
+            message = f"prognoza pogody na {slots.get('period', '')} dla {slots['location']}"
+        elif resolved and slots.get("integration"):
+            message = f"sprawdź status {slots['integration']}"
+
+    # Record user message
+    if chat_id:
+        _conv_append(chat_id, "user", message, intent=followup.get("resolved_intent", "") if followup else "", missing_slots=[])
+
     context, tool_names = _build_agent_context(message)
-    tools_used = []
+    tools_used: list[str] = []
     policy_result = ""
     requires_approval = False
 
@@ -734,6 +854,9 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
     # Handle NEEDS_LOCATION from weather — clean user-facing, no tool names
     weather_status = extra_results.get("qbot_weather_current", {})
     if weather_status.get("status") == "NEEDS_LOCATION":
+        if chat_id:
+            _conv_append(chat_id, "assistant", "Dla jakiej lokalizacji?", intent="weather_inquiry",
+                         missing_slots=["location"])
         return {
             "tool": "qbot_telegram_agent_chat",
             "status": "OK",

@@ -571,7 +571,7 @@ async def telegram_webhook(webhook_secret: str, request: Request):
     cmd = text.strip().lower()
     if not cmd.startswith("/"):
         from qbot_telegram_tools import _tool_qbot_telegram_agent_chat
-        chat_result = _tool_qbot_telegram_agent_chat({"message": text, "style": "short", "execute": True})
+        chat_result = _tool_qbot_telegram_agent_chat({"message": text, "style": "short", "execute": True, "chat_id": str(chat_id)})
         return _telegram_webhook_reply(chat_id, chat_result.get("answer", "Nie mogę teraz odpowiedzieć."))
 
     parts = cmd.split(maxsplit=1)
