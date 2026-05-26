@@ -853,7 +853,8 @@ async def telegram_webhook(webhook_secret: str, request: Request):
                     f"ℹ️ status: {status.get('restored_status', 'UNKNOWN')}\n"
                     f"ℹ️ configured: {'yes' if config.get('auth_token_present') else 'no'}\n"
                     f"ℹ️ code: {'detected' if status.get('code_detected') else 'missing'}\n"
-                    f"ℹ️ missing: {', '.join(config.get('missing', [])) or 'none'}",
+                    f"ℹ️ missing: {', '.join(config.get('missing', [])) or 'none'}\n"
+                    f"ℹ️ route list: qbot_rwgps_route_list",
         }
     elif command == "/hammerhead":
         from qbot_legacy_parity_tools import _tool_qbot_hammerhead_import_status

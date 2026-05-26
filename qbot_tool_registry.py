@@ -217,6 +217,7 @@ from qbot_route_tools import (
     _tool_qbot_rwgps_config_status,
     _tool_qbot_rwgps_dry_run,
     _tool_qbot_rwgps_legacy_status,
+    _tool_qbot_rwgps_route_list,
     _tool_qbot_rwgps_route_export_links,
     _tool_qbot_rwgps_route_get,
     _tool_qbot_rwgps_route_search,
@@ -1115,6 +1116,12 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {"operation": "list_routes"},
     },
+    "qbot_rwgps_route_list": {
+        "description": "Listuje trasy RWGPS w formie rekordów, bez tekstowego summary",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"limit": 20, "offset": 0, "sort": "updated_at", "order": "desc", "search": ""},
+    },
     "qbot_rwgps_route_search": {
         "description": "Szukaj tras RWGPS po nazwie/opisie i pokaż najlepsze dopasowanie",
         "category": "legacy",
@@ -1704,6 +1711,7 @@ TOOLS: dict[str, Any] = {
     "qbot_rwgps_config_status": _tool_qbot_rwgps_config_status,
     "qbot_rwgps_legacy_status": _tool_qbot_rwgps_legacy_status,
     "qbot_rwgps_dry_run": _tool_qbot_rwgps_dry_run,
+    "qbot_rwgps_route_list": _tool_qbot_rwgps_route_list,
     "qbot_rwgps_route_search": _tool_qbot_rwgps_route_search,
     "qbot_rwgps_route_get": _tool_qbot_rwgps_route_get,
     "qbot_rwgps_route_export_links": _tool_qbot_rwgps_route_export_links,

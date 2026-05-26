@@ -20,6 +20,7 @@ _SAFE_MULTI_EXECUTE_TOOLS: set[str] = {
     "qbot_operator_runbook",
     "qbot_rwgps_legacy_status",
     "qbot_rwgps_config_status",
+    "qbot_rwgps_route_list",
     "qbot_rwgps_route_search",
     "qbot_rwgps_route_get",
     "qbot_rwgps_route_export_links",
@@ -983,6 +984,7 @@ _INTENT_MAP: list[dict[str, Any]] = [
     },
     {
         "keywords": ["rwgps route", "ridewithgps route", "pokaż trasę", "szukaj trasy",
+                      "lista tras", "list routes", "pokaż wszystkie trasy", "all routes",
                       "route search", "trasa", "route", "toskania", "florencja", "firenze",
                       "florence", "gpx", "tcx", "fit", "cue sheet"],
         "tool": "qbot_rwgps_route_search",
@@ -990,6 +992,14 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "confidence": "high",
         "required_data": ["RWGPS route catalog", "RWGPS route detail endpoint", "RWGPS export availability"],
         "limitations": ["Read-only search/detail", "No route modification", "No secrets"],
+    },
+    {
+        "keywords": ["rwgps route list", "lista tras rwgps", "lista wszystkich tras", "pokaż listę tras", "list all rwgps routes"],
+        "tool": "qbot_rwgps_route_list",
+        "args": {"limit": 20, "offset": 0, "sort": "updated_at", "order": "desc", "search": ""},
+        "confidence": "high",
+        "required_data": ["RWGPS route catalog"],
+        "limitations": ["Read-only listing", "Returns record data, not a summary only"],
     },
     {
         "keywords": ["hammerhead import", "hammerhead status", "karoo import", "sprawdź hammerhead"],

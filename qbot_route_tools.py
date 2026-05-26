@@ -168,6 +168,32 @@ def _tool_qbot_rwgps_route_search(_args: dict | None = None) -> dict[str, Any]:
     }
 
 
+def _tool_qbot_rwgps_route_list(_args: dict | None = None) -> dict[str, Any]:
+    """List RWGPS routes in a read-only way."""
+    _args = _args or {}
+    limit = min(max(int(_args.get("limit", 20)), 1), 100)
+    offset = min(max(int(_args.get("offset", 0)), 0), 1000)
+    sort = str(_args.get("sort", "updated_at")).strip() or "updated_at"
+    order = str(_args.get("order", "desc")).strip() or "desc"
+    search = str(_args.get("search", "")).strip() or None
+
+    from tools.rwgps.client import list_routes as rwgps_list_routes
+
+    result = rwgps_list_routes(limit=limit, offset=offset, sort=sort, order=order, search=search)
+    return {
+        "tool": "qbot_rwgps_route_list",
+        "safety_class": "READ_ONLY",
+        "status": "OK" if result.get("ok") else "WARN",
+        "limit": limit,
+        "offset": offset,
+        "sort": sort,
+        "order": order,
+        "search": search,
+        **result,
+        "notes": "Read-only RWGPS route listing. Returns route records, not a text summary.",
+    }
+
+
 def _tool_qbot_rwgps_route_get(_args: dict | None = None) -> dict[str, Any]:
     """Get a single RWGPS route by id. Read-only."""
     _args = _args or {}

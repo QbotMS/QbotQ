@@ -30,4 +30,5 @@ This module backs QBot route-planning tools for Ride With GPS.
   integration status block.
 - The endpoint paths in `tools/rwgps/client.py` are centralized and may need
   adjustment if the account uses a different RWGPS API variant.
-
+- Route list tools should return record arrays plus `count`/`total`, not only a
+  summary string.

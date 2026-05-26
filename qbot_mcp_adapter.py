@@ -457,6 +457,23 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+    "qbot.rwgps_route_list": {
+        "qbot_tool": "qbot_rwgps_route_list",
+        "description": "List RWGPS routes as records instead of a summary.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                "offset": {"type": "integer", "minimum": 0, "maximum": 1000, "default": 0},
+                "sort": {"type": "string", "default": "updated_at"},
+                "order": {"type": "string", "enum": ["asc", "desc"], "default": "desc"},
+                "search": {"type": "string", "default": ""},
+            },
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
     "qbot.rwgps_route_get": {
         "qbot_tool": "qbot_rwgps_route_get",
         "description": "Get a single RWGPS route by route_id.",
