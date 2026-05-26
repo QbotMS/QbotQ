@@ -570,8 +570,8 @@ async def telegram_webhook(webhook_secret: str, request: Request):
 
     cmd = text.strip().lower()
     if not cmd.startswith("/"):
-        from qbot_telegram_tools import _tool_qbot_telegram_llm_chat
-        chat_result = _tool_qbot_telegram_llm_chat({"message": text, "style": "short"})
+        from qbot_telegram_tools import _tool_qbot_telegram_agent_chat
+        chat_result = _tool_qbot_telegram_agent_chat({"message": text, "style": "short", "execute": True})
         return _telegram_webhook_reply(chat_id, chat_result.get("answer", "Nie mogę teraz odpowiedzieć."))
 
     parts = cmd.split(maxsplit=1)
@@ -579,8 +579,8 @@ async def telegram_webhook(webhook_secret: str, request: Request):
     query = parts[1].strip() if len(parts) > 1 else ""
 
     if command == "/ask":
-        from qbot_telegram_tools import _tool_qbot_telegram_llm_chat
-        chat_result = _tool_qbot_telegram_llm_chat({"message": query or text, "style": "short"})
+        from qbot_telegram_tools import _tool_qbot_telegram_agent_chat
+        chat_result = _tool_qbot_telegram_agent_chat({"message": query or text, "style": "short", "execute": True})
         return _telegram_webhook_reply(chat_id, chat_result.get("answer", "Nie mogę teraz odpowiedzieć."))
 
     result: dict = {}

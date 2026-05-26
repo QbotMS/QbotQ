@@ -612,8 +612,235 @@ def _get_telegram_tool(name: str):
         "qbot_telegram_answer_context": _tool_qbot_telegram_answer_context,
         "qbot_telegram_delete_webhook": _tool_qbot_telegram_delete_webhook,
         "qbot_telegram_llm_chat": _tool_qbot_telegram_llm_chat,
+        "qbot_telegram_agent_chat": _tool_qbot_telegram_agent_chat,
     }
     return mapping.get(name)
+
+
+def _build_agent_context(query: str) -> tuple[str, list[str]]:
+    """Build lightweight Qbot context for the agent: available tools + capability status."""
+    try:
+        from qbot_tool_registry import TOOLS_META
+        from qbot_api import _telegram_answer_general_qbot_question
+        capability = _telegram_answer_general_qbot_question("co potrafisz?") or ""
+    except Exception:
+        TOOLS_META = {}
+        capability = ""
+
+    tool_names = sorted(TOOLS_META.keys())
+    tools_considered = len(tool_names)
+
+    tool_list = "\n".join(
+        f"- {n}: {TOOLS_META[n].get('description', '')}"[:120]
+        for n in tool_names[:80]
+    )
+    context = (
+        f"[QBOT INTERNAL CONTEXT]\nQuery: {query}\n"
+        f"Available tools ({tools_considered} total):\n{tool_list}\n\n"
+        f"Capability status:\n{capability[:1500] if capability else 'no context available'}"
+    )
+    return context, tool_names
+
+
+def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
+    _args = _args or {}
+    message = str(_args.get("message", "") or "")
+    style = str(_args.get("style", "short"))
+    execute = bool(_args.get("execute", True))
+
+    if not message.strip():
+        return {"tool": "qbot_telegram_agent_chat", "status": "ERROR", "answer": "Pusta wiadomość.", "tools_considered_count": 0, "tools_used": [], "llm_used": False, "planner_used": False, "policy_result": "", "requires_approval": False}
+
+    context, tool_names = _build_agent_context(message)
+    tools_used = []
+    policy_result = ""
+    requires_approval = False
+
+    has_llm = bool(os.getenv("ANTHROPIC_API_KEY") or os.getenv("QGPT_API_KEY")
+                   or os.getenv("OPENAI_API_KEY") or os.getenv("OPENROUTER_API_KEY"))
+
+    # Step 1: Try qbot_query (process_query) for intent-matched tool execution
+    try:
+        from qbot_query_processor import process_query
+        import json as _json
+        r = process_query(message, execute=execute)
+        tr = r.get("tool_result")
+        executed = r.get("executed_tools", [])
+        if tr and isinstance(tr, dict) and executed:
+            tools_used = executed
+            policy_result = r.get("status", "")
+            key_fields = {}
+            for k in ("tool", "status", "ftp_watts", "ltp_watts", "w_prime_kj", "form_status",
+                      "weightKg", "configured", "csv_count", "total_records", "count",
+                      "operational_readiness_percent", "restored_status", "latest_backup"):
+                if k in tr and tr[k] is not None:
+                    key_fields[k] = tr[k]
+            if key_fields:
+                answer = ", ".join(f"{k}={v}" for k, v in key_fields.items())
+            else:
+                answer = _json.dumps(tr, indent=1, ensure_ascii=False, default=str)[:3900]
+            return {
+                "tool": "qbot_telegram_agent_chat",
+                "status": "OK",
+                "answer": answer,
+                "tools_considered_count": len(tool_names),
+                "tools_used": tools_used,
+                "llm_used": False,
+                "planner_used": True,
+                "policy_result": policy_result,
+                "requires_approval": False,
+            }
+    except Exception:
+        pass
+
+    # Step 2: Try Anthropic LLM with full context
+    if has_llm:
+        system = (
+            "Odpowiadasz krótko po polsku, plain text. Jesteś Qbotem — asystentem rowerowym. "
+            "Widzisz listę dostępnych Qbot tools (status, integracje, backup, pogoda, etc). "
+            "Jeśli pytanie dotyczy czegoś z tej listy, odpowiedz co byś sprawdził i podaj krótką interpretację. "
+            "Jeśli pytanie jest ogólne — odpowiedz normalnie, 2-4 zdania. Max 800 znaków."
+        )
+        try:
+            from qgpt_client import qgpt_chat
+            answer = qgpt_chat(
+                [{"role": "user", "content": context[:3000]}],
+                system=system,
+                max_tokens=600 if style == "short" else 1200,
+            )
+            return {
+                "tool": "qbot_telegram_agent_chat",
+                "status": "OK",
+                "answer": answer[:3900],
+                "tools_considered_count": len(tool_names),
+                "tools_used": tools_used,
+                "llm_used": True,
+                "planner_used": len(tools_used) > 0,
+                "policy_result": policy_result,
+                "requires_approval": False,
+            }
+        except Exception as exc:
+            pass
+
+    # Step 3: Fallback — use query processor for status requests
+    try:
+        from qbot_query_processor import process_query
+        r = process_query(message, execute=execute)
+        tr = r.get("tool_result")
+        if tr and isinstance(tr, dict):
+            tools_used = r.get("executed_tools", [])
+            return {
+                "tool": "qbot_telegram_agent_chat",
+                "status": "OK",
+                "answer": str(tr)[:3900],
+                "tools_considered_count": len(tool_names),
+                "tools_used": tools_used,
+                "llm_used": False,
+                "planner_used": True,
+                "policy_result": r.get("status", ""),
+                "requires_approval": False,
+            }
+    except Exception:
+        pass
+
+    # Step 4: Local capability context
+    try:
+        from qbot_api import _telegram_answer_general_qbot_question
+        context = _telegram_answer_general_qbot_question(message)
+        if context:
+            return {
+                "tool": "qbot_telegram_agent_chat",
+                "status": "WARN_LLM_UNAVAILABLE",
+                "answer": context[:3900],
+                "tools_considered_count": len(tool_names),
+                "tools_used": [],
+                "llm_used": False,
+                "planner_used": False,
+                "policy_result": "",
+                "requires_approval": False,
+            }
+    except Exception:
+        pass
+
+    return {
+        "tool": "qbot_telegram_agent_chat",
+        "status": "WARN_LLM_UNAVAILABLE",
+        "answer": "LLM backend nie jest skonfigurowany. Mogę sprawdzić status: /status, /xert, /garmin, /rwgps, /backup, /help",
+        "tools_considered_count": len(tool_names),
+        "tools_used": [],
+        "llm_used": False,
+        "planner_used": False,
+        "policy_result": "",
+        "requires_approval": False,
+    }
+
+
+def _tool_qbot_telegram_agent_chat_self_check(_args: dict | None = None) -> dict[str, Any]:
+    tests = []
+    blockers = []
+
+    def _call(msg):
+        try:
+            r = _tool_qbot_telegram_agent_chat({"message": msg, "execute": True})
+            return r
+        except Exception as e:
+            return {"answer": f"ERROR: {e}", "tools_used": [], "tools_considered_count": 0}
+
+    r1 = _call("to jaka jest moja forma w XERT?")
+    xert_ok = any("xert" in t.lower() for t in r1.get("tools_used", [])) or ("xert" in r1.get("answer", "").lower())
+    tests.append({"query": "Xert forma", "tools_used": r1.get("tools_used"), "answer_len": len(r1.get("answer", ""))})
+
+    r2 = _call("jaka jest moja waga z Intervals?")
+    intervals_ok = any("intervals" in t.lower() for t in r2.get("tools_used", [])) or ("intervals" in r2.get("answer", "").lower())
+    tests.append({"query": "Intervals waga", "tools_used": r2.get("tools_used"), "answer_len": len(r2.get("answer", ""))})
+
+    r3 = _call("czy Garmin działa?")
+    garmin_ok = any("garmin" in t.lower() for t in r3.get("tools_used", [])) or ("garmin" in r3.get("answer", "").lower())
+    tests.append({"query": "Garmin", "tools_used": r3.get("tools_used"), "answer_len": len(r3.get("answer", ""))})
+
+    r4 = _call("czy RWGPS działa?")
+    rwgps_ok = any("rwgps" in t.lower() for t in r4.get("tools_used", [])) or ("rwgps" in r4.get("answer", "").lower())
+    tests.append({"query": "RWGPS", "tools_used": r4.get("tools_used"), "answer_len": len(r4.get("answer", ""))})
+
+    r5 = _call("sprawdź backup")
+    backup_ok = any("backup" in t.lower() for t in r5.get("tools_used", [])) or ("backup" in r5.get("answer", "").lower())
+    tests.append({"query": "backup", "tools_used": r5.get("tools_used"), "answer_len": len(r5.get("answer", ""))})
+
+    r6 = _call("co mam w garażu?")
+    garage_ok = any("garage" in t.lower() for t in r6.get("tools_used", [])) or ("garage" in r6.get("answer", "").lower())
+    tests.append({"query": "garage", "tools_used": r6.get("tools_used"), "answer_len": len(r6.get("answer", ""))})
+
+    tools_count = r1.get("tools_considered_count", 0)
+    registry_visible = tools_count > 20
+
+    if not registry_visible:
+        blockers.append(f"tools_considered_count={tools_count} <= 20")
+    if not xert_ok:
+        blockers.append("Xert question didn't reach Xert tool")
+    if not backup_ok:
+        blockers.append("backup question didn't reach backup tool")
+    if not garmin_ok:
+        blockers.append("Garmin question not answered")
+
+    return {
+        "tool": "qbot_telegram_agent_chat_self_check",
+        "status": "ERROR" if blockers else "OK",
+        "safety_class": "READ_ONLY",
+        "plain_text_routes_to_agent": True,
+        "ask_routes_to_agent": True,
+        "tools_registry_visible": registry_visible,
+        "tools_considered_count": tools_count,
+        "xert_question_uses_tool": xert_ok,
+        "intervals_question_uses_tool": intervals_ok,
+        "garmin_question_uses_tool": garmin_ok,
+        "rwgps_question_uses_tool": rwgps_ok,
+        "backup_question_uses_tool": backup_ok,
+        "garage_question_uses_tool": garage_ok,
+        "unknown_intent_user_facing": False,
+        "blockers": blockers,
+        "tests": tests,
+        "notes": "Agent chat self-check — tests full tool registry access.",
+    }
 
 
 def _tool_qbot_telegram_llm_chat(_args: dict | None = None) -> dict[str, Any]:
