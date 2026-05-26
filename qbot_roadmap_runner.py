@@ -67,6 +67,7 @@ def _default_state() -> dict[str, Any]:
         "tasks_completed": [],
         "tasks_blocked": [],
         "telegram_notifications": [],
+        "last_telegram_notification_key": None,
         "task_progress_percent": 0,
         "block_progress_percent": 0,
         "current_step": 0,
@@ -625,20 +626,23 @@ def _build_notification_text(
     next_task: dict[str, Any] | None = None,
     dry_run: bool = False,
     reason: str | None = None,
+    progress: int = 0,
 ) -> str:
-    lines = [f"Qbot roadmap task {result_status}"]
-    if result_status == "SECURITY_BLOCKED":
-        lines = ["Qbot roadmap SECURITY_BLOCKED"]
-    lines.append(f"Block: {block_id} {block_title}")
-    lines.append(f"Task: {task_id} {task_description}")
+    if dry_run:
+        lines = [f"Qbot dry-run {result_status}"]
+    elif result_status == "PASS":
+        lines = ["Qbot task PASS"]
+    else:
+        lines = [f"Qbot runner {result_status}"]
+    lines.append(f"Block: {block_id}")
+    lines.append(f"Task: {task_id}")
     if reason:
         lines.append(f"Reason: {reason}")
+    lines.append(f"Progress: {progress}%")
     if commit:
         lines.append(f"Commit: {commit}")
     if next_task:
-        lines.append(f"Next: {next_task['task_id']} {next_task['description'][:80]}")
-    if dry_run:
-        lines.append("Dry-run: yes")
+        lines.append(f"Next: {next_task['task_id']}")
     return "\n".join(lines)
 
 
@@ -809,22 +813,33 @@ def _tool_qbot_roadmap_runner_next_task(args: dict | None = None) -> dict[str, A
     }
 
 
-def _task_notification_result_text(result_status: str, task: dict[str, Any], progress: dict[str, Any], dry_run: bool) -> str:
-    block_id = task["block_id"]
-    block_title = task["block_title"]
-    lines = [f"Qbot roadmap task {result_status}"]
-    lines.append(f"Block: {block_id} {block_title}")
-    lines.append(f"Task: {task['task_id']} {task['description']}")
-    if dry_run:
-        lines.append("Dry-run: yes")
-    lines.append(f"Progress: {progress['task_progress_percent']}%")
-    lines.append(f"Block progress: {progress['block_progress_percent']}%")
-    if progress.get("commit"):
-        lines.append(f"Commit: {progress['commit']}")
-    if progress.get("next_task"):
-        next_task = progress["next_task"]
-        lines.append(f"Next: {next_task['task_id']} {next_task['description'][:80]}")
-    return "\n".join(lines)
+def _hash_reason(reason: str | None) -> str:
+    if not reason:
+        return "none"
+    return str(hash(reason[:200]))
+
+def _should_send_telegram_notification(
+    *,
+    block: str,
+    task_id: str,
+    status: str,
+    reason: str | None = None,
+    dry_run: bool = False,
+    notify_requested: bool = False,
+) -> tuple[bool, str]:
+    """Returns (send, key). Deduplicates by block+task+status+reason_hash+dry_run."""
+    if status.upper() in ("RUNNING", "OK"):
+        return False, "progress"
+    if dry_run and not notify_requested:
+        return False, "dry_run_no_notify"
+    state = _load_state()
+    key = f"{block}:{task_id}:{status.upper()}:{_hash_reason(reason)}:{dry_run}"
+    last_key = state.get("last_telegram_notification_key")
+    if last_key == key:
+        return False, "duplicate"
+    state["last_telegram_notification_key"] = key
+    _save_state(state)
+    return True, key
 
 
 def _task_progress_result(
@@ -871,6 +886,7 @@ def _task_session(
     *,
     dry_run: bool,
     allow_no_notify: bool = False,
+    notify_requested: bool = False,
     max_steps: int | None = None,
     session_completed_before: int = 0,
     session_completed_ids: list[str] | None = None,
@@ -1007,8 +1023,15 @@ def _task_session(
             next_task=_next_task(block_id),
             dry_run=dry_run,
             reason=reason,
+            progress=task_progress_percent,
         )
-        notif = _notify_telegram_message(message, allow_no_notify=allow_no_notify)
+        should_send, notif_key = _should_send_telegram_notification(
+            block=block_id, task_id=task_id, status=final_status,
+            reason=reason, dry_run=dry_run, notify_requested=notify_requested,
+        )
+        notif = {"ok": False, "skipped": f"notification suppressed ({notif_key})"}
+        if should_send:
+            notif = _notify_telegram_message(message, allow_no_notify=allow_no_notify)
         _append_telegram_notification({
             "created_at": _utc_now(),
             "task_id": task_id,
@@ -1018,6 +1041,7 @@ def _task_session(
             "message": message[:1000],
             "ok": bool(notif.get("ok")),
             "error": _sanitize_text(notif.get("error"), 200),
+            "notif_key": notif_key,
         })
         _record_inbox(
             status=final_status,
@@ -1112,7 +1136,7 @@ def _task_session(
     # 7. security grep
     _update(7, steps[6][0] if len(steps) > 6 else "security grep", steps[6][1] if len(steps) > 6 else 95)
     secret_hits = baseline["secret_hits"]
-    if secret_hits.get("count", 0) > 0:
+    if secret_hits.get("blocking_hits_count", secret_hits.get("count", 0)) > 0:
         final_status = "SECURITY_BLOCKED"
         last_error = "secret-like pattern detected"
 
@@ -1176,8 +1200,16 @@ def _task_session(
         next_task=_next_task(block_id),
         dry_run=dry_run,
         reason=reason if final_status != "PASS" else None,
+        progress=task_progress_percent,
     )
-    notif = _notify_telegram_message(message, allow_no_notify=allow_no_notify)
+    should_send, notif_key = _should_send_telegram_notification(
+        block=block_id, task_id=task_id, status=final_status,
+        reason=reason if final_status != "PASS" else None,
+        dry_run=dry_run, notify_requested=notify_requested,
+    )
+    notif = {"ok": False, "skipped": f"notification suppressed ({notif_key})"}
+    if should_send:
+        notif = _notify_telegram_message(message, allow_no_notify=allow_no_notify)
     _append_telegram_notification({
         "created_at": _utc_now(),
         "task_id": task_id,
@@ -1187,6 +1219,7 @@ def _task_session(
         "message": message[:1000],
         "ok": bool(notif.get("ok")),
         "error": _sanitize_text(notif.get("error"), 200),
+        "notif_key": notif_key,
     })
     if not notif.get("ok") and not allow_no_notify:
         final_status = "PAUSED"
@@ -1348,7 +1381,7 @@ def _tool_qbot_roadmap_runner_execute_next(args: dict | None = None) -> dict[str
             "task_progress_percent": 0,
             "block_progress_percent": 0,
         }
-    result = _task_session(task, dry_run=True, allow_no_notify=allow_no_notify)
+    result = _task_session(task, dry_run=True, allow_no_notify=allow_no_notify, notify_requested=False)
     return result
 
 
@@ -1357,6 +1390,7 @@ def _tool_qbot_roadmap_runner_run_until_blocked(args: dict | None = None) -> dic
     block = str(args.get("block", "") or "").strip() or None
     dry_run = _normalize_bool(args.get("dry_run", True))
     allow_no_notify = _normalize_bool(args.get("allow_no_notify", False))
+    notify_requested = _normalize_bool(args.get("notify", False))
     max_tasks_raw = args.get("max_tasks", 5)
     max_minutes_raw = args.get("max_minutes", 60)
     try:
@@ -1389,6 +1423,7 @@ def _tool_qbot_roadmap_runner_run_until_blocked(args: dict | None = None) -> dic
             current_task,
             dry_run=dry_run,
             allow_no_notify=allow_no_notify,
+            notify_requested=notify_requested,
             session_completed_before=len(session_completed),
             session_completed_ids=list(session_completed),
             session_blocked_ids=list(session_blocked),
@@ -1522,17 +1557,27 @@ def _tool_qbot_roadmap_runner_run_until_blocked(args: dict | None = None) -> dic
     )
 
     if task_results and status in {"PAUSED", "BLOCKED", "FAIL", "WARN", "APPROVAL_REQUIRED", "SECURITY_BLOCKED", "DONE"}:
-        final_label = "DONE" if status == "DONE" else "PAUSED" if status == "PAUSED" else status
+        final_label = status.upper()
         final_text = (
-            f"Qbot roadmap runner {final_label}\n"
-            f"Block: {block or task_results[-1]['block']}\n"
+            f"Qbot runner {'DONE' if dry_run else final_label}\n"
+            f"Block: {block or (task_results[-1].get('block') if task_results else '?')}\n"
             f"Task: {final_current_task_id}\n"
+            f"Status: {final_label}\n"
             f"Reason: {reason}\n"
-            f"Runner: {final_label}\n"
-            f"Progress: {task_results[-1].get('task_progress_percent', 0)}%\n"
+            f"Progress: {task_results[-1].get('task_progress_percent', 0) if task_results else 0}%\n"
             f"Block progress: {final_block_progress}%"
         )
-        final_notif = _notify_telegram_message(final_text, allow_no_notify=allow_no_notify)
+        should_send, notif_key = _should_send_telegram_notification(
+            block=block or (task_results[-1].get("block", "") if task_results else ""),
+            task_id=final_current_task_id,
+            status=status.upper(),
+            reason=reason,
+            dry_run=dry_run,
+            notify_requested=notify_requested,
+        )
+        final_notif = {"ok": False, "skipped": f"notification suppressed ({notif_key})"}
+        if should_send:
+            final_notif = _notify_telegram_message(final_text, allow_no_notify=allow_no_notify)
         _append_telegram_notification({
             "created_at": _utc_now(),
             "task_id": final_current_task_id,
