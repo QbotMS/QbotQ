@@ -446,6 +446,90 @@ def _tool_qbot_telegram_delete_webhook(args: dict | None = None) -> dict[str, An
             "execute": True, "result": {"ok": result.get("ok"), "description": result.get("description", "")}}
 
 
+def _tool_qbot_telegram_runtime_self_check(_args: dict | None = None) -> dict[str, Any]:
+    config = _tool_qbot_telegram_config_status()
+    has_token = bool(os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN"))
+    enabled = os.getenv("TELEGRAM_ENABLED", "").lower() == "true"
+
+    send_test_ok = False
+    try:
+        from qbot_telegram_client import send_message
+        chat_raw = (os.getenv("TELEGRAM_ALLOWED_CHAT_IDS") or "").split(",")[0].strip()
+        if has_token and chat_raw:
+            chat_id = int(chat_raw)
+            resp = send_message(chat_id, "QBot runtime self-check OK")
+            send_test_ok = bool(resp.get("ok"))
+    except Exception as exc:
+        send_test_ok = False
+
+    synthetic_ok = False
+    synthetic_detail = ""
+    try:
+        chat_raw = (os.getenv("TELEGRAM_ALLOWED_CHAT_IDS") or "").split(",")[0].strip()
+        if chat_raw and has_token:
+            from qbot_tools import _tool_qbot_api_self_check, _tool_qbot_db_overview
+            from qbot_legacy_cutover_tools import _tool_qbot_legacy_cutover_status
+            api_check = _tool_qbot_api_self_check()
+            db_overview = _tool_qbot_db_overview()
+            cutover = _tool_qbot_legacy_cutover_status()
+            api_alive = False
+            db_ok = bool(db_overview.get("db_connected"))
+            for check in api_check.get("checks", []):
+                if check.get("check") == "api_alive" and str(check.get("status", "")).upper() == "OK":
+                    api_alive = True
+            legacy_pct = int(cutover.get("takeover_readiness_percent", 0) or 0)
+            synthetic_text = "Qbot status:\n"
+            synthetic_text += "✅ API działa\n" if api_alive else "⚠️ API: problem\n"
+            synthetic_text += "✅ DB działa\n" if db_ok else "⚠️ DB: problem\n"
+            synthetic_text += f"ℹ️ Legacy takeover: {legacy_pct}%\n"
+            synthetic_ok = bool(synthetic_text)
+            synthetic_detail = f"would_send_message (text_len={len(synthetic_text)})"
+    except Exception as exc:
+        synthetic_detail = f"error: {str(exc)[:200]}"
+
+    webhook_url = os.getenv("TELEGRAM_WEBHOOK_URL", "") or "https://qbot.cytr.us/telegram/webhook/<secret>"
+    webhook_secret_set = bool(os.getenv("TELEGRAM_WEBHOOK_SECRET"))
+    public_base = os.getenv("QBOT_PUBLIC_BASE_URL", "https://qbot.cytr.us")
+    webhook_public = f"{public_base}/telegram/webhook/<secret>"
+
+    issues = []
+    if not has_token:
+        issues.append("no bot token")
+    if not enabled:
+        issues.append("bot not enabled")
+    if not webhook_secret_set:
+        issues.append("no webhook secret")
+    if not send_test_ok:
+        issues.append("send_test failed")
+    if not synthetic_ok:
+        issues.append("synthetic dispatch failed")
+
+    if has_token and enabled and send_test_ok and synthetic_ok:
+        overall = "OK"
+    elif has_token and (send_test_ok or synthetic_ok):
+        overall = "WARN"
+    else:
+        overall = "ERROR"
+
+    return {
+        "tool": "qbot_telegram_runtime_self_check",
+        "status": overall,
+        "safety_class": "READ_ONLY",
+        "token_configured": has_token,
+        "enabled": enabled,
+        "webhook_secret_set": webhook_secret_set,
+        "public_webhook_url": webhook_public,
+        "send_test_result": "OK" if send_test_ok else "FAIL",
+        "synthetic_dispatch": "OK" if synthetic_ok else "FAIL",
+        "synthetic_detail": synthetic_detail,
+        "would_send_message": synthetic_ok,
+        "issues": issues,
+        "allowed_chats_configured": bool(os.getenv("TELEGRAM_ALLOWED_CHAT_IDS")),
+        "chat_count": len((os.getenv("TELEGRAM_ALLOWED_CHAT_IDS") or "").split(",")),
+        "notes": "Send test: real message sent to first allowed chat. Synthetic: webhook dispatch simulated without actual POST.",
+    }
+
+
 def _get_telegram_tool(name: str):
     mapping = {
         "qbot_telegram_legacy_audit": _tool_qbot_telegram_legacy_audit,

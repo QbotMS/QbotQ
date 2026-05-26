@@ -154,6 +154,7 @@ from qbot_telegram_tools import (
     _tool_qbot_telegram_config_status,
     _tool_qbot_telegram_delete_webhook,
     _tool_qbot_telegram_legacy_audit,
+    _tool_qbot_telegram_runtime_self_check,
     _tool_qbot_telegram_send_test,
     _tool_qbot_telegram_set_webhook,
     _tool_qbot_telegram_status,
@@ -907,6 +908,12 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_telegram_runtime_self_check": {
+        "description": "Test runtime Telegram — send test + synthetic dispatch",
+        "category": "telegram",
+        "safe": True,
+        "args_schema": {},
+    },
     "qbot_rwgps_config_status": {
         "description": "Sprawdza konfigurację RWGPS bez wypisywania sekretów",
         "category": "legacy",
@@ -1286,6 +1293,7 @@ TOOLS: dict[str, Any] = {
     "qbot_telegram_send_test": _tool_qbot_telegram_send_test,
     "qbot_telegram_command_help": _tool_qbot_telegram_command_help,
     "qbot_telegram_answer_context": _tool_qbot_telegram_answer_context,
+    "qbot_telegram_runtime_self_check": _tool_qbot_telegram_runtime_self_check,
     "qbot_rwgps_config_status": _tool_qbot_rwgps_config_status,
     "qbot_rwgps_legacy_status": _tool_qbot_rwgps_legacy_status,
     "qbot_rwgps_dry_run": _tool_qbot_rwgps_dry_run,

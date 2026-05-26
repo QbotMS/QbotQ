@@ -39,16 +39,52 @@ def _telegram_response_text(command: str, result: dict) -> str | None:
         text = result.get("text") if isinstance(result, dict) else None
         if text:
             return str(text)
-    if command == "/help":
+    if command in ("/start", "/help"):
         if isinstance(response, dict):
             commands = response.get("commands") or []
-            lines = ["Dostępne komendy:"]
-            for item in commands[:12]:
+            lines = ["QBot — dostępne komendy:"]
+            for item in commands[:15]:
                 if isinstance(item, dict):
                     cmd = item.get("command", "")
                     desc = item.get("description", "")
-                    lines.append(f"{cmd} - {desc}")
+                    lines.append(f"{cmd} — {desc}")
             return "\n".join(lines)
+    if command == "/ready":
+        if isinstance(response, dict):
+            status = response.get("status", "UNKNOWN")
+            blockers = response.get("blockers", [])
+            text_lines = [f"Readiness: {status}"]
+            if blockers:
+                text_lines.append("Blockers: " + ", ".join(blockers[:5]))
+            return "\n".join(text_lines)
+    if command == "/smoke":
+        if isinstance(response, dict):
+            pct = response.get("operational_readiness_percent", "?")
+            status = response.get("status", "UNKNOWN")
+            return f"Smoke test: {status} ({pct}%)"
+    if command == "/backup":
+        if isinstance(response, dict):
+            status = response.get("status", "UNKNOWN")
+            latest = response.get("latest_backup")
+            if latest:
+                return f"Backup: {status}\nLatest: {latest}"
+            return f"Backup: {status}"
+    if command == "/errors":
+        if isinstance(response, dict):
+            count = response.get("errors_count", "?")
+            return f"Errors: {count} recently"
+    if command == "/takeover":
+        if isinstance(response, dict):
+            pct = response.get("takeover_readiness_percent", "?")
+            return f"Takeover: {pct}% complete"
+    if command == "/ask":
+        if isinstance(response, dict):
+            text = response.get("answer") or response.get("summary_text") or response.get("result")
+            if text:
+                return str(text)[:3900]
+            intent = response.get("intent", "?")
+            tool = response.get("tool", "?")
+            return f"Q: {intent} → {tool}\nUse /help to see available commands."
     return None
 
 
@@ -673,10 +709,15 @@ async def telegram_webhook(webhook_secret: str, request: Request):
         result = {"command": command, "response": {"status": "unknown_command", "text": text}}
 
     reply_text = _telegram_response_text(command, result)
-    if reply_text:
-        return _telegram_webhook_reply(chat_id, reply_text)
+    if not reply_text:
+        if isinstance(result.get("response"), dict):
+            r = result["response"]
+            status = r.get("status", "?")
+            reply_text = f"{command}\nStatus: {status}"
+        else:
+            reply_text = f"{command} — received"
 
-    return JSONResponse(content={"status": "ok", "received": True, "command": command, "result": result}, status_code=200)
+    return _telegram_webhook_reply(chat_id, reply_text)
 
 
 def _mcp_response(payload: dict | None, status_code: int, headers: dict[str, str] | None = None):
