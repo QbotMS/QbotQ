@@ -613,6 +613,7 @@ def _get_telegram_tool(name: str):
         "qbot_telegram_delete_webhook": _tool_qbot_telegram_delete_webhook,
         "qbot_telegram_llm_chat": _tool_qbot_telegram_llm_chat,
         "qbot_telegram_agent_chat": _tool_qbot_telegram_agent_chat,
+        "qbot_telegram_clothing_advice_self_check": _tool_qbot_telegram_clothing_advice_self_check,
     }
     return mapping.get(name)
 
@@ -622,6 +623,7 @@ def _get_telegram_tool(name: str):
 _CONV_MEMORY: dict[str, list[dict[str, Any]]] = {}
 _CONV_MAX_MSGS = 30
 _CONV_MAX_AGE_MIN = 60
+_LAST_WEATHER: dict[str, dict[str, Any]] = {}
 
 import time as _time_module
 
@@ -787,27 +789,35 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
         tr = r.get("tool_result")
         executed = r.get("executed_tools", [])
         if tr and isinstance(tr, dict) and executed:
-            key_fields = {}
-            for k in ("tool", "status", "ftp_watts", "ltp_watts", "w_prime_kj", "form_status",
-                      "weightKg", "configured", "csv_count", "total_records", "count",
-                      "operational_readiness_percent", "restored_status", "latest_backup"):
-                if k in tr and tr[k] is not None:
-                    key_fields[k] = tr[k]
-            if key_fields:
-                answer = ", ".join(f"{k}={v}" for k, v in key_fields.items())
+            tstatus = str(tr.get("status", "")).upper()
+            has_useful = any(k in tr for k in ("ftp_watts", "temperature_c", "latest_backup", "count", "operational_readiness_percent")) and tstatus not in ("WARN", "ERROR", "NO_DATA", "PARTIAL")
+            if has_useful:
+                key_fields = {}
+                for k in ("tool", "status", "ftp_watts", "ltp_watts", "w_prime_kj", "form_status",
+                          "weightKg", "configured", "csv_count", "total_records", "count",
+                          "operational_readiness_percent", "restored_status", "latest_backup"):
+                    if k in tr and tr[k] is not None:
+                        key_fields[k] = tr[k]
+                if key_fields:
+                    answer = ", ".join(f"{k}={v}" for k, v in key_fields.items())
+                else:
+                    answer = _json.dumps(tr, indent=1, ensure_ascii=False, default=str)[:3900]
+                return {
+                    "tool": "qbot_telegram_agent_chat",
+                    "status": "OK",
+                    "answer": answer,
+                    "tools_considered_count": len(tool_names),
+                    "tools_used": executed,
+                    "llm_used": False,
+                    "planner_used": True,
+                    "policy_result": r.get("status", ""),
+                    "requires_approval": False,
+                }
             else:
-                answer = _json.dumps(tr, indent=1, ensure_ascii=False, default=str)[:3900]
-            return {
-                "tool": "qbot_telegram_agent_chat",
-                "status": "OK",
-                "answer": answer,
-                "tools_considered_count": len(tool_names),
-                "tools_used": executed,
-                "llm_used": False,
-                "planner_used": True,
-                "policy_result": r.get("status", ""),
-                "requires_approval": False,
-            }
+                extra_tools.extend(executed)
+                for tn in executed:
+                    if tn not in extra_results:
+                        extra_results[tn] = tr
     except Exception:
         pass
 
@@ -843,9 +853,47 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
         _safe_exec("qbot_garmin_config_status")
 
     # Weather query
-    if any(w in q for w in ["pogod", "pada", "deszcz", "wiatr", "temperatur"]):
+    if any(w in q for w in ["pogod", "pada", "deszcz", "wiatr", "temperatur", "ubrać", "ubiór", "ciuchy", "ubranie", "strój", "ubrac", "ubier", "zabrać"]):
         _safe_exec("qbot_weather_current")
         _safe_exec("qbot_weather_config_status")
+
+    # Cache latest weather for conversation context
+    if "qbot_weather_current" in extra_results:
+        w = extra_results["qbot_weather_current"]
+        if w.get("status") == "OK" and w.get("temperature_c") is not None and chat_id:
+            _LAST_WEATHER[str(chat_id)] = {
+                "temperature_c": w.get("temperature_c"),
+                "feels_like_c": w.get("feels_like_c"),
+                "wind_kmh": w.get("wind_kmh"),
+                "description": w.get("description", ""),
+                "humidity_percent": w.get("humidity_percent"),
+                "location_resolved": w.get("location_resolved", ""),
+                "source": w.get("source", ""),
+                "ts": _time_module.time(),
+            }
+
+    # Clothing advice synthesis — check before NEEDS_LOCATION returns
+    clothing_kw = ["ubrać", "ubiór", "ciuchy", "ubranie", "strój", "ubrac", "ubier", "zabrać"]
+    if any(w in q for w in clothing_kw):
+        clothing_answer = _synthesize_clothing_advice(
+            extra_results.get("qbot_weather_current", {}),
+            extra_results.get("qbot_garage_raw_status"),
+            chat_id
+        )
+        if chat_id:
+            _conv_append(chat_id, "assistant", clothing_answer, intent="clothing_advice",
+                         tools_used=extra_tools)
+        return {
+            "tool": "qbot_telegram_agent_chat",
+            "status": "OK",
+            "answer": clothing_answer[:3900],
+            "tools_considered_count": len(tool_names),
+            "tools_used": extra_tools,
+            "llm_used": False,
+            "planner_used": True,
+            "policy_result": "",
+            "requires_approval": False,
+        }
 
     # Backup
     if any(w in q for w in ["backup", "kopia", "backupy"]):
@@ -972,12 +1020,18 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
         for tname in extra_tools:
             r = extra_results.get(tname, {})
             s = r.get("status", "?")
+            if s in ("WARN", "ERROR", "NO_DATA", "PARTIAL") and not any(k in r for k in ("temperature_c", "ftp_watts", "latest_backup")):
+                continue
             lines.append(f"{tname}: {s}")
             for k, v in r.items():
                 if k not in ("tool", "status", "safety_class", "notes") and v is not None:
                     lines.append(f"  {k}: {v}")
-        answer = "\n".join(lines)[:3800]
-        source_line = f"\nŹródło: Qbot tools ({', '.join(extra_tools)})"
+        if not lines:
+            answer = _build_fallback_answer(message, extra_results, tool_names)
+        else:
+            answer = "\n".join(lines)[:3800]
+            source_line = f"\nŹródło: Qbot tools ({', '.join(extra_tools)})"
+            answer = (answer + source_line)[:3900]
         return {
             "tool": "qbot_telegram_agent_chat",
             "status": "OK",
@@ -994,8 +1048,8 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
     if has_llm:
         system = (
             "Odpowiadasz krótko po polsku, plain text. Jesteś Qbotem — asystentem rowerowym. "
-            "Widzisz listę dostępnych Qbot tools. "
-            "Jeśli pytanie dotyczy czegoś z tej listy, odpowiedz co byś sprawdził i podaj krótką interpretację. "
+            "NIGDY nie pokazuj użytkownikowi wewnętrznych nazw narzędzi (get_weather, qbot_*, status=WARN itp). "
+            "Nie pisz 'Sprawdziłbym pogodę'. Zamiast tego podaj praktyczną odpowiedź. "
             "Jeśli pytanie jest ogólne — odpowiedz normalnie, 2-4 zdania. "
             "Na końcu dodaj 'Źródło: Qbot agent' lub podaj konkretne źródło jeśli znane. Max 800 znaków."
         )
@@ -1050,6 +1104,138 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
         "policy_result": "",
         "requires_approval": False,
     }
+
+
+def _synthesize_clothing_advice(weather_current: dict, garage_data: dict | None, chat_id: str) -> str:
+    """Build natural-language cycling clothing advice from weather data or conversation context."""
+    temp = weather_current.get("temperature_c")
+    wind = weather_current.get("wind_kmh")
+    desc = (weather_current.get("description") or "").lower()
+    loc = weather_current.get("location_resolved", "")
+    weather_source = weather_current.get("source", "")
+    sources: list[str] = []
+    used_cache = False
+
+    if temp is None and chat_id:
+        cached = _LAST_WEATHER.get(str(chat_id))
+        if cached and cached.get("temperature_c") is not None and cached.get("ts", 0) > _time_module.time() - 3600:
+            temp = cached.get("temperature_c")
+            wind = cached.get("wind_kmh")
+            desc = (cached.get("description") or "").lower()
+            loc = cached.get("location_resolved", "")
+            weather_source = cached.get("source", "")
+            used_cache = True
+
+    parts: list[str] = []
+
+    if temp is not None:
+        if used_cache:
+            sources.append(f"ostatnia pogoda z rozmowy{f' ({loc})' if loc else ''}")
+        else:
+            sources.append(f"pogoda: {weather_source}{f' ({loc})' if loc else ''}")
+
+        temp_str = f"ok. {int(temp)}°C" if temp == int(temp) else f"{temp:.0f}°C"
+        wind_str = ""
+        if wind is not None:
+            wind_str = f", wiatr {int(wind)} km/h"
+
+        # Build natural advice text
+        advice_lines = []
+        if temp >= 25:
+            advice_lines.append("Krótki rękaw, krótkie spodenki, lekkie rękawiczki, okulary.")
+        elif temp >= 20:
+            advice_lines.append("Krótki rękaw, krótkie spodenki, okulary, rękawiczki.")
+            if wind and wind > 25:
+                advice_lines.append("Weź kamizelkę lub przeciwwiatrówkę na wiatr.")
+        elif temp >= 15:
+            advice_lines.append("Krótki lub długi rękaw, rękawki lub cienka kamizelka. Spodenki lub długie spodnie, okulary, rękawiczki.")
+        elif temp >= 10:
+            advice_lines.append("Długi rękaw, warstwa termo, kamizelka, rękawiczki, okulary.")
+            if wind and wind > 15:
+                advice_lines.append("Weź przeciwwiatrówkę.")
+        elif temp >= 5:
+            advice_lines.append("Ciepła bluza lub softshell, ocieplane spodnie, rękawiczki, czapka pod kask.")
+        else:
+            advice_lines.append("Kurtka zimowa, ocieplane spodnie, grube rękawiczki, czapka pod kask, ocieplane buty.")
+
+        if desc and any(d in desc for d in ("deszcz", "mżawka", "opad")):
+            advice_lines.append("Weź kurtkę przeciwdeszczową.")
+        if wind and wind > 35:
+            advice_lines.append(f"Silny wiatr ({int(wind)} km/h) — weź kamizelkę przeciwwiatrową.")
+
+        advice_lines.append("Na gravel lub szuter: okulary, rękawiczki, ewentualnie buff.")
+        advice = " ".join(advice_lines)
+
+        parts.append(f"Przy {temp_str}{wind_str}: {advice}")
+    else:
+        sources.append("pogoda: brak danych")
+        parts.append(
+            "Nie mam danych pogodowych — ubierz się warstwowo, weź kurtkę na wszelki wypadek. "
+            "Dla dokładniejszej porady podaj lokalizację (np. „pogoda w Markach”)."
+        )
+
+    # Garage info — never show raw status=WARN to user
+    if garage_data:
+        gs = (garage_data.get("status") or "").upper()
+        if gs in ("WARN", "ERROR", "NO_DATA"):
+            sources.append("Qbot garage: brak użytecznych danych")
+        else:
+            count = garage_data.get("count", garage_data.get("total_records", "?"))
+            sources.append(f"Qbot garage: sprawdzono ({count})" if count else "Qbot garage: sprawdzono")
+    else:
+        sources.append("Qbot garage: nie sprawdzono")
+
+    sources.append("wniosek: Qbot local heuristic")
+    source_line = "Źródła: " + "; ".join(sources) + "."
+
+    return "\n".join(parts) + "\n" + source_line
+
+
+def _build_fallback_answer(message: str, extra_results: dict, tool_names: list) -> str:
+    """Provide heuristic answers when tools return WARN/empty and no LLM."""
+    q = message.lower()
+    weather_r = extra_results.get("qbot_weather_current", {})
+    garage_r = extra_results.get("qbot_garage_raw_status", {})
+    sources = []
+
+    # Clothing advice from weather context
+    if any(w in q for w in ["ubrać", "ubiór", "ciuchy", "ubranie", "strój", "zabrać", "ubrac"]):
+        temp = weather_r.get("temperature_c")
+        wind = weather_r.get("wind_kmh")
+        desc = weather_r.get("description", "")
+        lines = []
+        if temp is not None:
+            sources.append(f"pogoda: {weather_r.get('source', '?')}, {weather_r.get('location_resolved', '?')}")
+            lines.append(f"Przy {temp}°C" + (f", wietrze {wind} km/h" if wind else "") + ":")
+            if temp >= 20:
+                lines.append("- Krótki rękaw / lekka koszulka, krótkie spodenki.")
+            elif temp >= 15:
+                lines.append("- Krótki lub długi rękaw, rękawki lub kamizelka.")
+            elif temp >= 10:
+                lines.append("- Długa bluza lub warstwa, kamizelka, rękawiczki.")
+            else:
+                lines.append("- Ciepłe warstwy, kurtka, rękawiczki, czapka.")
+            if wind and wind > 35:
+                lines.append("- Wiatr silny (>35 km/h): weź kamizelkę przeciwwiatrową.")
+            if "deszcz" in desc or "mżawka" in desc:
+                lines.append("- Opady: weź kurtkę przeciwdeszczową.")
+            lines.append("- Na gravel/szuter: okulary, rękawiczki, ewentualnie buff.")
+        else:
+            lines.append("Brak danych pogodowych — ubierz się warstwowo, weź kurtkę na wszelki wypadek.")
+        if garage_r.get("status") in ("WARN", "ERROR", "NO_DATA"):
+            sources.append("garaż: brak danych")
+        else:
+            sources.append("garaż: sprawdzono")
+        lines.append("\nŹródła: " + "; ".join(sources) + "; wniosek — heurystyka Qbot.")
+        return "\n".join(lines)[:3900]
+
+    # Generic fallback
+    return (
+        "Nie mam wystarczających danych, aby odpowiedzieć konkretnie. "
+        "Spróbuj zadać pytanie z konkretną lokalizacją (np. \"pogoda w Markach\") "
+        "lub użyj komendy /help.\n"
+        "Źródło: Qbot fallback."
+    )
 
 
 def _tool_qbot_telegram_agent_chat_self_check(_args: dict | None = None) -> dict[str, Any]:
@@ -1109,34 +1295,35 @@ def _tool_qbot_telegram_llm_chat_self_check(_args: dict | None = None) -> dict[s
     return _tool_qbot_telegram_agent_chat_self_check(_args)
 
 
-def _get_telegram_tool(name: str):
-    mapping = {
-        "qbot_telegram_legacy_audit": _tool_qbot_telegram_legacy_audit,
-        "qbot_telegram_config_status": _tool_qbot_telegram_config_status,
-        "qbot_public_endpoint_status": _tool_qbot_public_endpoint_status,
-        "qbot_telegram_status": _tool_qbot_telegram_status,
-        "qbot_telegram_webhook_plan": _tool_qbot_telegram_webhook_plan,
-        "qbot_telegram_set_webhook": _tool_qbot_telegram_set_webhook,
-        "qbot_telegram_send_test": _tool_qbot_telegram_send_test,
-        "qbot_telegram_command_help": _tool_qbot_telegram_command_help,
-        "qbot_telegram_answer_context": _tool_qbot_telegram_answer_context,
-        "qbot_telegram_delete_webhook": _tool_qbot_telegram_delete_webhook,
-        "qbot_telegram_llm_chat": _tool_qbot_telegram_llm_chat,
-        "qbot_telegram_agent_chat": _tool_qbot_telegram_agent_chat,
+def _tool_qbot_telegram_clothing_advice_self_check(_args: dict | None = None) -> dict[str, Any]:
+    blockers = []
+
+    has_raw = False
+    uses_weather = False
+    natural = False
+
+    # Simulate: weather context available, then ask clothing
+    try:
+        r = _tool_qbot_telegram_agent_chat({"message": "jak się ubrać na rower?", "execute": True})
+        answer = r.get("answer", "")
+        has_raw = "tool=" in answer or ("status=WARN" in answer and "qbot_garage" in answer)
+        uses_weather = any(w in answer.lower() for w in ["°c", "stopni", "temp", "wiatr", "warstw"])
+        natural = not has_raw and len(answer) > 50
+        if has_raw:
+            blockers.append("raw tool output found in clothing answer")
+        if not natural:
+            blockers.append("answer not natural/too short")
+    except Exception as e:
+        blockers.append(f"clothing test error: {e}")
+
+    return {
+        "tool": "qbot_telegram_clothing_advice_self_check",
+        "status": "ERROR" if blockers else "OK",
+        "safety_class": "READ_ONLY",
+        "uses_weather_context": uses_weather,
+        "garage_warn_not_user_facing_raw": not has_raw,
+        "natural_answer": natural,
+        "sources_present": "Źródło" in (r.get("answer", "") if hasattr(r, 'get') else ""),
+        "blockers": blockers,
+        "notes": "Checks that clothing advice is natural, not raw tool dump.",
     }
-    return mapping.get(name)
-    mapping = {
-        "qbot_telegram_legacy_audit": _tool_qbot_telegram_legacy_audit,
-        "qbot_telegram_config_status": _tool_qbot_telegram_config_status,
-        "qbot_public_endpoint_status": _tool_qbot_public_endpoint_status,
-        "qbot_telegram_status": _tool_qbot_telegram_status,
-        "qbot_telegram_webhook_plan": _tool_qbot_telegram_webhook_plan,
-        "qbot_telegram_set_webhook": _tool_qbot_telegram_set_webhook,
-        "qbot_telegram_send_test": _tool_qbot_telegram_send_test,
-        "qbot_telegram_command_help": _tool_qbot_telegram_command_help,
-        "qbot_telegram_answer_context": _tool_qbot_telegram_answer_context,
-        "qbot_telegram_delete_webhook": _tool_qbot_telegram_delete_webhook,
-        "qbot_telegram_llm_chat": _tool_qbot_telegram_llm_chat,
-        "qbot_telegram_agent_chat": _tool_qbot_telegram_agent_chat,
-    }
-    return mapping.get(name)

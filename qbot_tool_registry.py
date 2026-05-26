@@ -154,6 +154,7 @@ from qbot_telegram_tools import (
     _tool_qbot_telegram_config_status,
     _tool_qbot_telegram_agent_chat,
     _tool_qbot_telegram_agent_chat_self_check,
+    _tool_qbot_telegram_clothing_advice_self_check,
     _tool_qbot_telegram_conversation_self_check,
     _tool_qbot_telegram_delete_webhook,
     _tool_qbot_telegram_legacy_audit,
@@ -945,6 +946,12 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_telegram_clothing_advice_self_check": {
+        "description": "Test clothing advice — sprawdza czy odpowiedź jest naturalna i bez surowego tool dumpu",
+        "category": "telegram",
+        "safe": True,
+        "args_schema": {},
+    },
     "qbot_telegram_llm_chat": {
         "description": "LLM chat dla Telegram — krótka odpowiedź na dowolne pytanie użytkownika",
         "category": "telegram",
@@ -1394,6 +1401,7 @@ TOOLS: dict[str, Any] = {
     "qbot_telegram_conversation_self_check": _tool_qbot_telegram_conversation_self_check,
     "qbot_telegram_agent_chat": _tool_qbot_telegram_agent_chat,
     "qbot_telegram_agent_chat_self_check": _tool_qbot_telegram_agent_chat_self_check,
+    "qbot_telegram_clothing_advice_self_check": _tool_qbot_telegram_clothing_advice_self_check,
     "qbot_telegram_llm_chat": _tool_qbot_telegram_llm_chat,
     "qbot_telegram_llm_chat_self_check": _tool_qbot_telegram_llm_chat_self_check,
     "qbot_rwgps_config_status": _tool_qbot_rwgps_config_status,
