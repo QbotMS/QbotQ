@@ -216,6 +216,10 @@ from qbot_integration_tools import (
     _tool_qbot_weather_config_status,
     _tool_qbot_openmaps_config_status,
     _tool_qbot_openmaps_legacy_status,
+    _tool_qbot_public_web_fallback_self_check,
+    _tool_qbot_resolve_user_location,
+    _tool_qbot_weather_current,
+    _tool_qbot_weather_forecast,
 )
 
 from qbot_garage_tools import (
@@ -1105,6 +1109,30 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {},
     },
+    "qbot_resolve_user_location": {
+        "description": "Ustala lokalizację użytkownika z tekstu, env, lub profilu",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"text": "sprawdź pogodę dla Marek"},
+    },
+    "qbot_weather_current": {
+        "description": "Aktualna pogoda — OpenWeatherMap primary, Open-Meteo fallback",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"location": "Marki,PL", "units": "metric", "lang": "pl"},
+    },
+    "qbot_weather_forecast": {
+        "description": "Prognoza pogody — godziny, opady, wiatr",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {"location": "Marki,PL", "period": "tomorrow_morning", "hours": 12},
+    },
+    "qbot_public_web_fallback_self_check": {
+        "description": "Sprawdza czy public web fallback działa dla pogody i geokodowania",
+        "category": "legacy",
+        "safe": True,
+        "args_schema": {},
+    },
     "qbot_openmaps_config_status": {
         "description": "Sprawdza konfigurację OpenMaps bez wypisywania sekretów",
         "category": "legacy",
@@ -1268,6 +1296,8 @@ TOOLS: dict[str, Any] = {
     "qbot_weather_status": _tool_qbot_weather_status,
     "qbot_weather_current": _tool_qbot_weather_current,
     "qbot_weather_forecast": _tool_qbot_weather_forecast,
+    "qbot_resolve_user_location": _tool_qbot_resolve_user_location,
+    "qbot_public_web_fallback_self_check": _tool_qbot_public_web_fallback_self_check,
     "qbot_garage_legacy_status": _tool_qbot_garage_legacy_status,
     "qbot_artifacts_legacy_status": _tool_qbot_artifacts_legacy_status,
     "qbot_artifacts_filesystem_inventory": _tool_qbot_artifacts_filesystem_inventory,
