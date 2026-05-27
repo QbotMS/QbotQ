@@ -1234,3 +1234,12 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8001)
     args = parser.parse_args()
     uvicorn.run(app, host=args.host, port=args.port)
+
+
+@app.get("/mcp/.well-known/oauth-protected-resource")
+@app.get("/.well-known/oauth-protected-resource")
+def oauth_protected_resource():
+    return {
+        "resource": "https://qbot.cytr.us/mcp/"
+    }
+
