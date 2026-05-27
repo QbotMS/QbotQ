@@ -273,6 +273,32 @@ CAPABILITIES: dict[str, dict] = {
         "description": "Ocena ostatniej aktywności treningowej z danych QBot DB.",
         "limitations": ["Używa zaimportowanych danych Garmin. Nie wymaga live API."],
     },
+    "qcal_reminder_add": {
+        "name": "qcal_reminder_add", "status": "ready",
+        "domains": ["qcal", "reminders", "write_qcal"],
+        "intents": ["reminder_add", "deadline_add"],
+        "keywords": ["przypomnij mi","dodaj przypomnienie","ustaw przypomnienie","muszę","trzeba"],
+        "writer": "qbot.qcal_reminder_add",
+        "tables": ["reminders"],
+        "required_fields": ["date", "title"],
+        "optional_fields": ["time","reminder_type","channel","priority"],
+        "output_type": "confirmation","safety":"write_qcal_only",
+        "description": "Dodanie przypomnienia QCal przez MCP/CLI z idempotency key.",
+        "limitations": ["Wymaga confirm=true i idempotency_key."],
+    },
+    "qcal_event_add": {
+        "name": "qcal_event_add", "status": "ready",
+        "domains": ["qcal", "events", "write_qcal"],
+        "intents": ["event_add"],
+        "keywords": ["dodaj wydarzenie","zapisz event","dodaj event"],
+        "writer": "qbot.qcal_event_add",
+        "tables": ["calendar_events"],
+        "required_fields": ["date_start", "title"],
+        "optional_fields": ["time_start","event_type","description"],
+        "output_type": "confirmation","safety":"write_qcal_only",
+        "description": "Dodanie wydarzenia QCal przez MCP/CLI z idempotency key.",
+        "limitations": ["Wymaga confirm=true i idempotency_key."],
+    },
 }
 
 

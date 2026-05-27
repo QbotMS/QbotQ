@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -68,6 +69,24 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
     ("no_data_policy_test", [
         "dane których nie ma", "dane nieistniejące",
         "polityką braku danych",
+    ]),
+    # ── Write intents (draft only) ────────────────────────────────────
+    ("nutrition_log_add_draft", [
+        "dodaj do dzisiejszego spożycia", "dodaj do spożycia",
+        "zapisz posiłek", "dodaj jedzenie",
+        "dopisz do dzisiejszego jedzenia", "dopisz do jedzenia",
+    ]),
+    ("qcal_reminder_add_draft", [
+        "przypomnij mi", "dodaj przypomnienie",
+        "ustaw przypomnienie",
+    ]),
+    ("deadline_task_draft", [
+        r"muszę.+do ", r"trzeba.+do ", r"mam\s+\w+\s+.*do ",
+        r"muszę.+na ", r"trzeba.+na ",
+    ]),
+    ("qcal_event_add_draft", [
+        "dodaj wydarzenie", "zapisz event", "dodaj event",
+        "mam wizytę", "mam spotkanie",
     ]),
     # General intents
     ("nutrition_planning", [
@@ -262,7 +281,15 @@ def classify_intent(query: str) -> list[str]:
         if "detail" in negations and intent in ("rwgps_route",):
             continue
         for kw in keywords:
-            if kw in q:
+            # Check if keyword contains regex metacharacters
+            if any(c in kw for c in '.*+?[](){}^$\\|'):
+                try:
+                    if re.search(kw, q):
+                        intents.append(intent)
+                        break
+                except re.error:
+                    pass
+            elif kw in q:
                 intents.append(intent)
                 break
     if not intents:
@@ -394,6 +421,11 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "reminder_status": ["calendar_snapshot"],
     "event_lookup": ["calendar_snapshot", "health_advisor"],
     "general": ["status", "readiness"],
+    # Write intents (no readers — handled by draft pipeline)
+    "nutrition_log_add_draft": [],
+    "qcal_reminder_add_draft": [],
+    "deadline_task_draft": [],
+    "qcal_event_add_draft": [],
 }
 
 
@@ -1491,6 +1523,575 @@ def _extract_tables(answers: list[dict]) -> list[dict]:
     return tables
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Write draft handlers (draft only — no actual writes)
+# ═══════════════════════════════════════════════════════════════════════════
+
+_WRITER_CAPABILITIES = {
+    "nutrition_log_add": "nutrition_log_add",
+    "qcal_reminder_add": "qcal_reminder_add",
+    "qcal_event_add": "qcal_event_add",
+}
+
+
+def _check_writer_capability(cap_name: str) -> dict:
+    """Check if a writer capability exists and is ready."""
+    from qbot_capabilities import CAPABILITIES
+    cap = CAPABILITIES.get(cap_name)
+    if not cap:
+        return {"exists": False, "status": "missing", "ready": False, "reason": f"capability {cap_name} not registered"}
+    status = cap.get("status", "missing")
+    return {"exists": True, "status": status, "ready": status == "ready"}
+
+
+def _generate_idempotency_key(prefix: str, query: str) -> str:
+    """Generate a deterministic idempotency key proposal."""
+    h = uuid.uuid5(uuid.NAMESPACE_DNS, f"{prefix}:{query.strip().lower()}")
+    return f"{prefix}_{h.hex[:16]}"
+
+
+def _resolve_polish_date(expr: str) -> date | None:
+    """Resolve Polish date expressions to date objects."""
+    expr_lower = expr.lower().strip()
+    today = date.today()
+
+    if expr_lower in ("dziś", "dzisiaj", "dzisiejszego"):
+        return today
+    if expr_lower in ("jutro", "jutra", "jutrzejszego"):
+        return today + timedelta(days=1)
+    if expr_lower in ("pojutrze", "pojutrza", "pojutrzejszego"):
+        return today + timedelta(days=2)
+
+    weekday_map = {
+        "poniedziałek": 0, "poniedziałku": 0, "poniedziałkiem": 0,
+        "wtorek": 1, "wtorku": 1, "wtorkiem": 1,
+        "środę": 2, "środy": 2, "środą": 2,
+        "srodę": 2, "srody": 2, "srodą": 2,
+        "czwartek": 3, "czwartku": 3, "czwartkiem": 3,
+        "piątek": 4, "piątku": 4, "piątkiem": 4,
+        "piatku": 4, "piatkiem": 4,
+        "sobota": 5, "sobotę": 5, "soboty": 5, "sobotą": 5,
+        "niedziela": 6, "niedzielę": 6, "niedzieli": 6, "niedzielą": 6,
+    }
+
+    # "następnego X" → next X
+    m = re.search(r'następnego\s+(\w+)', expr_lower, re.IGNORECASE)
+    if m:
+        day_name = m.group(1).lower()
+        target = weekday_map.get(day_name)
+        if target is not None:
+            days_ahead = target - today.weekday()
+            if days_ahead <= 0:
+                days_ahead += 7
+            return today + timedelta(days=days_ahead)
+
+    # "w X", "we X", "do X", "na X" where X is a weekday
+    m = re.search(r'(?:w|we|do|na)\s+(\w+)', expr_lower)
+    if m:
+        day_name = m.group(1).lower()
+        target = weekday_map.get(day_name)
+        if target is not None:
+            days_ahead = target - today.weekday()
+            if days_ahead <= 0:
+                days_ahead += 7
+            return today + timedelta(days=days_ahead)
+
+    # YYYY-MM-DD
+    m = re.search(r'(\d{4}-\d{2}-\d{2})', expr)
+    if m:
+        try:
+            return date.fromisoformat(m.group(1))
+        except ValueError:
+            pass
+
+    return None
+
+
+def _resolve_polish_time(expr: str) -> str | None:
+    """Resolve time expression like 'o 8', 'o 08:00', '20:00'."""
+    for pattern in [
+        r'o\s+(\d{1,2})(?::(\d{2}))?\b',
+        r'(\d{1,2}):(\d{2})\b',
+    ]:
+        m = re.search(pattern, expr)
+        if m:
+            h = int(m.group(1))
+            minute = int(m.group(2)) if m.lastindex and m.lastindex >= 2 and m.group(2) else 0
+            if 0 <= h <= 23 and 0 <= minute <= 59:
+                return f"{h:02d}:{minute:02d}"
+    return None
+
+
+def _extract_meal_name(raw: str) -> str:
+    """Clean macro values from raw meal text, return food description."""
+    cleaned = re.sub(r'\d+(?:\.\d+)?\s*kcal', '', raw, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\b[BWT]\s*\d+(?:\.?\d+)?', '', cleaned)
+    cleaned = re.sub(r'białko\s*\d+(?:\.?\d+)?', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'(?:węgl|węglow|carbs)\w*\s*\d+(?:\.?\d+)?', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'(?:tłuszcz|fat)\w*\s*\d+(?:\.?\d+)?', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\s+,', ',', cleaned)
+    cleaned = re.sub(r',\s+', ', ', cleaned)
+    cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip().strip(',').strip()
+    return cleaned
+
+
+def _parse_nutrition_draft(question: str, date_ctx: dict) -> dict:
+    """Parse a nutrition log add request. Returns (payload, missing_fields)."""
+    ql = question.lower()
+    target_date = date.today().isoformat()
+    resolved_date = date_ctx.get("date") or date_ctx.get("resolved_date") or target_date
+
+    # Kcal
+    kcal = None
+    m = re.search(r'(\d+(?:\.?\d+)?)\s*kcal', ql)
+    if m:
+        kcal = round(float(m.group(1).replace(",", ".")), 1)
+    if kcal is None:
+        m = re.search(r'kcal\s*(\d+(?:\.?\d+)?)', ql)
+        if m:
+            kcal = round(float(m.group(1).replace(",", ".")), 1)
+
+    # Protein
+    protein = None
+    m = re.search(r'\bB\s*(\d+(?:\.?\d+)?)\b', question)
+    if m:
+        protein = round(float(m.group(1).replace(",", ".")), 1)
+    if protein is None:
+        m = re.search(r'białko\s*(\d+(?:\.?\d+)?)', ql)
+        if m:
+            protein = round(float(m.group(1).replace(",", ".")), 1)
+
+    # Carbs
+    carbs = None
+    m = re.search(r'\bW\s*(\d+(?:\.?\d+)?)\b', question)
+    if m:
+        carbs = round(float(m.group(1).replace(",", ".")), 1)
+    if carbs is None:
+        m = re.search(r'(?:węgl|węglow|carbs)\w*\s*(\d+(?:\.?\d+)?)', ql)
+        if m:
+            carbs = round(float(m.group(1).replace(",", ".")), 1)
+
+    # Fat
+    fat = None
+    m = re.search(r'\bT\s*(\d+(?:\.?\d+)?)\b', question)
+    if m:
+        fat = round(float(m.group(1).replace(",", ".")), 1)
+    if fat is None:
+        m = re.search(r'(?:tłuszcz|fat)\w*\s*(\d+(?:\.?\d+)?)', ql)
+        if m:
+            fat = round(float(m.group(1).replace(",", ".")), 1)
+
+    # Meal name: strip command prefix then clean
+    meal_text = question
+    for prefix in [
+        r'dodaj\s+do\s+dzisiejszego\s+spożycia\s*:?\s*',
+        r'dodaj\s+do\s+spożycia\s*:?\s*',
+        r'zapisz\s+posiłek\s*:?\s*',
+        r'dodaj\s+jedzenie\s*:?\s*',
+        r'dopisz\s+do\s+dzisiejszego\s+jadzenia\s*:?\s*',
+        r'dopisz\s+do\s+jadzenia\s*:?\s*',
+        r'dodaj\s+do\s+dzisiejszego\s+jadzenia\s*:?\s*',
+        r'dopisz\s+do\s+dzisiejszego\s+jedzenia\s*:?\s*',
+        r'dopisz\s+do\s+jedzenia\s*:?\s*',
+    ]:
+        meal_text = re.sub(prefix, '', meal_text, flags=re.IGNORECASE).strip()
+
+    meal_name = _extract_meal_name(meal_text)
+
+    payload = {
+        "date": resolved_date,
+        "meal_name": meal_name,
+        "raw_text": meal_text,
+        "kcal_total": kcal,
+        "protein_g": protein,
+        "carbs_g": carbs,
+        "fat_g": fat,
+        "source": "qbot_query_draft",
+        "confidence": "high" if (kcal is not None) else "medium",
+    }
+
+    missing = []
+    if kcal is None:
+        missing.append("kcal_total")
+    if not meal_name:
+        missing.append("meal_name")
+
+    return payload, missing
+
+
+def _parse_reminder_draft(question: str) -> dict:
+    """Parse a reminder add request. Returns (payload, missing_fields)."""
+    today = date.today()
+    q = question
+    ql = q.lower()
+
+    # Resolve date
+    reminder_date = today
+    date_sources = ["jutro", "dziś", "dzisiaj", "pojutrze", "pojutrzejszego",
+                    "następnego"]
+    for token in date_sources:
+        if token in ql:
+            resolved = _resolve_polish_date(token.replace("jutra", "jutro").replace("dziś", "dziś"))
+            # Actually just check each pattern
+            break
+
+    # Check various date expressions
+    m = re.search(r'(jutro|dziś|dzisiaj|pojutrze)', ql)
+    if m:
+        reminder_date = _resolve_polish_date(m.group(1)) or today
+
+    # Check for named days
+    weekday_check = re.search(r'(następnego\s+\w+|w\s+\w+|do\s+\w+)', ql)
+    if weekday_check:
+        resolved = _resolve_polish_date(weekday_check.group(1))
+        if resolved:
+            reminder_date = resolved
+
+    # YYYY-MM-DD
+    m = re.search(r'(\d{4}-\d{2}-\d{2})', q)
+    if m:
+        try:
+            reminder_date = date.fromisoformat(m.group(1))
+        except ValueError:
+            pass
+
+    # Resolve time
+    reminder_time = _resolve_polish_time(q) or "09:00"
+
+    # Extract title: text after time or after command prefix
+    title = ""
+    for cmd in ["przypomnij mi", "dodaj przypomnienie", "ustaw przypomnienie"]:
+        if cmd in ql:
+            rest = q[ql.find(cmd) + len(cmd):].strip().lstrip(":").strip()
+            # Remove date/time fragments
+            rest = re.sub(r'\b(jutro|dziś|dzisiaj|pojutrze)\b', '', rest, flags=re.IGNORECASE).strip()
+            rest = re.sub(r'o\s*\d{1,2}(?::\d{2})?', '', rest).strip()
+            rest = re.sub(r'\b\d{1,2}:\d{2}\b', '', rest).strip()
+            title = rest
+            break
+
+    if not title:
+        # Fallback: take all text after date/time
+        title = q.strip()
+
+    payload = {
+        "date": reminder_date.isoformat(),
+        "time": reminder_time,
+        "title": title,
+        "message": title,
+        "reminder_type": "custom",
+        "channel": "telegram",
+        "priority": "normal",
+        "source": "qbot_query_draft",
+    }
+
+    missing = []
+    if not title:
+        missing.append("title")
+
+    return payload, missing
+
+
+def _parse_deadline_task_draft(question: str) -> dict:
+    """Parse a deadline task request. Returns (payload, missing_fields)."""
+    today = date.today()
+    q = question
+    ql = q.lower()
+
+    # Extract task description (X) and deadline (DATE) from "muszę X do DATE"
+    task = ""
+    deadline_date = today + timedelta(days=7)  # default: a week out
+
+    for prefix in ["muszę", "trzeba", "mam"]:
+        pattern = rf'{re.escape(prefix)}\s+(.+?)\s+(?:do|na)\s+(.+)'
+        m = re.search(pattern, q, re.IGNORECASE)
+        if m:
+            task = m.group(1).strip()
+            deadline_text = m.group(2).strip()
+
+            # Resolve deadline date
+            resolved = _resolve_polish_date(deadline_text)
+            if resolved:
+                deadline_date = resolved
+            else:
+                # Try as a standalone date
+                resolved = _resolve_polish_date("do " + deadline_text)
+                if resolved:
+                    deadline_date = resolved
+
+            break
+
+    if not task:
+        # Broader fallback
+        m = re.search(r'(?:muszę|trzeba|mam)\s+(.+?)\s+(?:do|na)\s+(.+)', q, re.IGNORECASE)
+        if m:
+            task = m.group(1).strip()
+            deadline_text = m.group(2).strip()
+            resolved = _resolve_polish_date(deadline_text) or _resolve_polish_date("do " + deadline_text)
+            if resolved:
+                deadline_date = resolved
+
+    if not task:
+        # Last resort: everything between command and deadline keyword
+        m = re.search(r'(?:muszę|trzeba|mam)\s+(.+?)\s+(?:do|na)\s', q, re.IGNORECASE)
+        if m:
+            task = m.group(1).strip()
+
+    message = f"{task} do {deadline_date.isoformat()}"
+    if not task:
+        task = question.strip()
+        message = task
+
+    payload = {
+        "date": today.isoformat(),
+        "time": "09:00",
+        "title": task,
+        "message": message,
+        "reminder_type": "maintenance",
+        "task_kind": "deadline_task",
+        "deadline_date": deadline_date.isoformat(),
+        "start_date": today.isoformat(),
+        "repeat_until_done": True,
+        "recurrence_rule": "daily",
+        "channel": "telegram",
+        "priority": "normal",
+        "source": "qbot_query_draft",
+    }
+
+    missing = []
+    if not task:
+        missing.append("title")
+
+    return payload, missing
+
+
+def _parse_event_draft(question: str) -> dict:
+    """Parse an event add request. Returns (payload, missing_fields)."""
+    today = date.today()
+    q = question
+    ql = q.lower()
+
+    # Resolve date from query
+    event_date = today
+    m = re.search(r'(jutro|dziś|dzisiaj|pojutrze)', ql)
+    if m:
+        event_date = _resolve_polish_date(m.group(1)) or today
+
+    weekday_check = re.search(r'(w\s+\w+|do\s+\w+|następnego\s+\w+)', ql)
+    if weekday_check:
+        resolved = _resolve_polish_date(weekday_check.group(1))
+        if resolved:
+            event_date = resolved
+
+    # Named day like "w sobotę"
+    m = re.search(r'(?:w|we)\s+(\w+)', ql)
+    if m:
+        resolved = _resolve_polish_date(m.group(0))
+        if resolved:
+            event_date = resolved
+
+    m = re.search(r'(\d{4}-\d{2}-\d{2})', q)
+    if m:
+        try:
+            event_date = date.fromisoformat(m.group(1))
+        except ValueError:
+            pass
+
+    # Resolve time
+    event_time = _resolve_polish_time(q)
+
+    # Determine event_type
+    event_type = "custom"
+    for kw, etype in [("dentysta", "appointment"), ("lekarz", "appointment"),
+                       ("wizyt", "appointment"), ("spotkan", "appointment")]:
+        if kw in ql:
+            event_type = etype
+            break
+
+    # Extract title
+    title = ""
+    title_prefix = ""
+    for cmd in ["dodaj wydarzenie", "zapisz event", "dodaj event",
+                "mam wizytę", "mam spotkanie"]:
+        if cmd in ql:
+            rest = q[ql.find(cmd) + len(cmd):].strip().lstrip(":").strip()
+            if "mam wizytę" in cmd:
+                title_prefix = "wizyta "
+            elif "mam spotkanie" in cmd:
+                title_prefix = "spotkanie "
+            # Remove date/time fragments
+            rest = re.sub(r'\b(jutro|dziś|dzisiaj|pojutrze)\b', '', rest, flags=re.IGNORECASE).strip()
+            rest = re.sub(r'\b(w|we)\s+\w+\b', '', rest, flags=re.IGNORECASE).strip()
+            rest = re.sub(r'o\s*\d{1,2}(?::\d{2})?', '', rest).strip()
+            rest = re.sub(r'\b\d{1,2}:\d{2}\b', '', rest).strip()
+            rest = re.sub(r'\s{2,}', ' ', rest).strip().lstrip(":").strip()
+            if rest:
+                title = title_prefix + rest
+            break
+
+    if not title:
+        # Fallback: everything after the date
+        title = q.strip()
+        for cmd in ["dodaj wydarzenie", "zapisz event", "dodaj event"]:
+            if cmd in ql:
+                title = q[ql.find(cmd) + len(cmd):].strip().lstrip(":").strip()
+                break
+
+    payload = {
+        "date_start": event_date.isoformat(),
+        "time_start": event_time,
+        "event_type": event_type,
+        "title": title or "Nowe wydarzenie",
+        "description": title or "",
+        "source": "qbot_query_draft",
+    }
+
+    missing = []
+    if not title:
+        missing.append("title")
+    if not event_time:
+        missing.append("time_start")
+
+    return payload, missing
+
+
+def _handle_write_draft(question: str, intents: list[str], date_ctx: dict) -> dict[str, Any] | None:
+    """Handle write intents: build draft response without writing.
+
+    Returns a structured draft response, or None if no write intent found.
+    """
+    write_intent = None
+    for wi in ("nutrition_log_add_draft", "qcal_reminder_add_draft", "deadline_task_draft", "qcal_event_add_draft"):
+        if wi in intents:
+            write_intent = wi
+            break
+
+    if not write_intent:
+        return None
+
+    # ── Check writer capability ────────────────────────────────────────
+    writer_cap_map = {
+        "nutrition_log_add_draft": "nutrition_log_add",
+        "qcal_reminder_add_draft": "qcal_reminder_add",
+        "deadline_task_draft": "qcal_reminder_add",
+        "qcal_event_add_draft": "qcal_event_add",
+    }
+    cap_name = writer_cap_map[write_intent]
+    cap_check = _check_writer_capability(cap_name)
+
+    if not cap_check["ready"]:
+        answer = (
+            f"Rozpoznałem intencję zapisu, ale capability {cap_name} "
+            f"ma status {cap_check['status']}. Brakuje kontrolowanego writera."
+        )
+        return {
+            "tool": "qbot.query",
+            "safety_class": "READ_ONLY",
+            "mode": "read_only",
+            "status": "draft",
+            "query": question,
+            "intents_detected": intents,
+            "answer": answer,
+            "action_draft": None,
+            "missing_capabilities": [cap_name],
+            "provenance": [{"source": "qbot_query_draft", "capability": cap_name, "status": cap_check["status"]}],
+        }
+
+    # ── Parse draft ────────────────────────────────────────────────────
+    if write_intent == "nutrition_log_add_draft":
+        payload, missing = _parse_nutrition_draft(question, date_ctx)
+        action_type = "nutrition_log_add"
+        writer = "nutrition_log_add"
+        # Build answer
+        kcal_s = f"{payload['kcal_total']}" if payload['kcal_total'] is not None else "?"
+        protein_s = f"{payload['protein_g']}" if payload['protein_g'] is not None else "?"
+        carbs_s = f"{payload['carbs_g']}" if payload['carbs_g'] is not None else "?"
+        fat_s = f"{payload['fat_g']}" if payload['fat_g'] is not None else "?"
+        answer = (
+            f"Przygotowałem draft wpisu żywieniowego:\n"
+            f"- data: {payload['date']}\n"
+            f"- posiłek: {payload['meal_name'] or '?'}\n"
+            f"- kcal: {kcal_s}\n"
+            f"- B/W/T: {protein_s} / {carbs_s} / {fat_s} g\n\n"
+            f"Zapis wymaga potwierdzenia przez writer {writer}."
+        )
+        idem_prefix = "nl"
+    elif write_intent == "qcal_reminder_add_draft":
+        payload, missing = _parse_reminder_draft(question)
+        action_type = "qcal_reminder_add"
+        writer = "qcal_reminder_add"
+        answer = (
+            f"Przygotowałem draft przypomnienia:\n"
+            f"{payload['date']} {payload['time']} — {payload['title']}.\n"
+            f"Zapis wymaga potwierdzenia."
+        )
+        idem_prefix = "rem"
+    elif write_intent == "deadline_task_draft":
+        payload, missing = _parse_deadline_task_draft(question)
+        action_type = "qcal_reminder_add"
+        writer = "qcal_reminder_add"
+        answer = (
+            f"Rozumiem to jako zadanie do wykonania do {payload['deadline_date']}:\n"
+            f"{payload['title']}.\n"
+            f"Będę przypominał codziennie do deadline'u, aż oznaczysz jako zrobione.\n"
+            f"Zapis wymaga potwierdzenia."
+        )
+        idem_prefix = "dl"
+    elif write_intent == "qcal_event_add_draft":
+        payload, missing = _parse_event_draft(question)
+        action_type = "qcal_event_add"
+        writer = "qcal_event_add"
+        time_s = payload.get("time_start") or "brak godziny"
+        answer = (
+            f"Przygotowałem draft wydarzenia:\n"
+            f"{payload['date_start']} o {time_s} — {payload['title']}.\n"
+            f"Zapis wymaga potwierdzenia."
+        )
+        idem_prefix = "ev"
+    else:
+        return None
+
+    idempotency_key = _generate_idempotency_key(idem_prefix, question)
+
+    action_draft = {
+        "action_type": action_type,
+        "writer_capability": writer,
+        "requires_confirm": True,
+        "idempotency_key": idempotency_key,
+        "payload": payload,
+    }
+
+    # Build tables with draft preview
+    tables = []
+    if write_intent == "nutrition_log_add_draft":
+        tables.append({
+            "reader": "action_draft_preview",
+            "key": "draft",
+            "rows": [{
+                "date": payload["date"],
+                "meal_name": payload["meal_name"],
+                "kcal": payload["kcal_total"],
+                "protein_g": payload["protein_g"],
+                "carbs_g": payload["carbs_g"],
+                "fat_g": payload["fat_g"],
+            }],
+        })
+
+    return {
+        "tool": "qbot.query",
+        "safety_class": "READ_ONLY",
+        "mode": "read_only",
+        "status": "draft",
+        "query": question,
+        "intents_detected": intents,
+        "answer": answer,
+        "action_draft": action_draft,
+        "missing_fields": missing,
+        "tables": tables,
+        "provenance": [{"source": "qbot_query_draft", "capability": cap_name, "status": cap_check["status"]}],
+    }
+
+
 # ── Public API ─────────────────────────────────────────────────────────────
 
 
@@ -1511,6 +2112,14 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
           max_rows: int = 500, include_provenance: bool = True, include_missing: bool = True) -> dict[str, Any]:
     if not _TOOL_DISPATCH:
         _init_dispatch()
+
+    # ── Write intent check (draft only) ─────────────────────────────────
+    # Run before semantic planner or keyword classifier to catch write
+    # intents early and return a draft without executing anything.
+    intents = classify_intent(question)
+    write_result = _handle_write_draft(question, intents, _resolve_date_context(context, question))
+    if write_result is not None:
+        return write_result
 
     # ── Semantic Planner route ──
     # Use context resolver to detect task types that bypass keyword classifier.
@@ -1544,7 +2153,6 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         except Exception:
             pass  # fall through to keyword classifier
 
-    intents = classify_intent(question)
     readers_to_call: list[str] = []
     for intent in intents:
         for reader in _INTENT_TO_READERS.get(intent, []):
