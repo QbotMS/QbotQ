@@ -108,6 +108,7 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
     ("nutrition_range", [
         "kalorii z ostatnich", "w tym tygodniu", "podsumowanie tygodnia",
         "średni", "średnia kalorii", "trend", "7 dni",
+        "bilans odżywiania", "bilans odżyw", "saldo kalorii",
     ]),
     ("hydration", [
         "wypi", "płyn", "woda", "nawodnieni", "hydration", "fluids",
@@ -1388,9 +1389,9 @@ def _synthesize_answer(question: str, answers: list[dict], missing: list[str],
             s = data.get("summary", {})
             if s:
                 parts.append(
-                    f"Dzisiaj: {s.get('kcal_total', 0)} kcal, "
-                    f"{s.get('carbs_total', 0)}g węgli, "
-                    f"{s.get('protein_total', 0)}g białka"
+                    f"Dzisiaj: {round(s.get('kcal_total', 0), 1)} kcal, "
+                    f"{round(s.get('carbs_total', 0), 1)}g węgli, "
+                    f"{round(s.get('protein_total', 0), 1)}g białka"
                 )
         elif reader == "nutrition_planning":
             tkcal = data.get("target_intake_kcal", "?")
@@ -1516,20 +1517,67 @@ def _synthesize_answer(question: str, answers: list[dict], missing: list[str],
     return " | ".join(parts)
 
 
+_TABLE_DOMAIN: dict[str, str] = {
+    "nutrition_planning": "meal_plan_suggestions",
+    "nutrition_day": "current_day_summary",
+    "nutrition_range": "nutrition_range_summary",
+    "nutrition_food_search": "food_catalog",
+    "meal_list": "meal_logs",
+    "rwgps_route_list": "route_list",
+    "rwgps_route_get": "route_detail",
+    "rwgps_route_search": "route_search",
+    "gpx_artifact_parse": "gpx_summary",
+    "route_artifact_enrich": "surface_profile",
+    "garage_search": "garage_results",
+    "garage_list": "garage_list",
+    "intervals_activities": "activities",
+    "xert_readiness": "xert_readiness",
+    "xert_config": "xert_config",
+    "weather_current": "weather",
+    "garmin_energy": "garmin_energy",
+    "ride_report_latest": "latest_training",
+    "ride_report_preview": "ride_preview",
+    "daily_report_preview": "daily_report",
+    "calendar_snapshot": "calendar_snapshot",
+    "health_advisor": "health_check",
+    "supplement_inventory": "supplement_inventory",
+    "wellness_day": "wellness",
+    "sleep_day": "sleep",
+}
+
+def _round_row_vals(row: dict) -> dict:
+    """Round float values in a row to 1 decimal place."""
+    return {k: round(v, 1) if isinstance(v, float) else v for k, v in row.items()}
+
 def _extract_tables(answers: list[dict]) -> list[dict]:
     tables: list[dict] = []
+    seen_sigs: set[str] = set()
     for ans in answers:
         data = ans.get("data", {})
         reader = ans["reader"]
 
         for key in ("activities", "items", "routes", "records", "results", "rows", "meals", "hydration_events", "fueling_events"):
             if isinstance(data.get(key), list) and len(data[key]) > 0:
-                tables.append({"reader": reader, "key": key, "count": len(data[key]), "rows": data[key][:20]})
+                rows_raw = data[key][:20]
+                rows = [_round_row_vals(r) for r in rows_raw]
+                cols = list(rows[0].keys()) if rows else []
+                sig = f"{reader}:{cols}" if cols else reader
+                if sig in seen_sigs:
+                    continue
+                seen_sigs.add(sig)
+                dom = _TABLE_DOMAIN.get(reader, reader)
+                tables.append({"reader": reader, "key": key, "domain": dom, "columns": cols, "count": len(rows), "rows": rows})
                 break
-        if not tables:
+        else:
             summary = data.get("summary", {})
             if isinstance(summary, dict) and summary:
-                tables.append({"reader": reader, "key": "summary", "rows": [summary]})
+                summary_rounded = _round_row_vals(summary)
+                cols = list(summary_rounded.keys())
+                dom = _TABLE_DOMAIN.get(reader, reader)
+                sig = f"{reader}:summary"
+                if sig not in seen_sigs:
+                    seen_sigs.add(sig)
+                    tables.append({"reader": reader, "key": "summary", "domain": dom, "columns": cols, "count": 1, "rows": [summary_rounded]})
     return tables
 
 
@@ -2152,7 +2200,7 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     # Only skip semantic planner when keyword classifier found nutrition/planning
     # intents (keyword dispatch is more accurate for these). For all others,
     # the semantic planner provides better domain classification.
-    _nutrition_intents = {"nutrition_planning", "nutrition_daily", "nutrition_range", "fueling"}
+    _nutrition_intents = {"nutrition_planning", "nutrition_daily", "fueling"}
     _planning_intents = {"planning_notice"}
     _bypass_semantic = bool((_nutrition_intents | _planning_intents) & set(intents))
     if not _bypass_semantic:
@@ -2175,6 +2223,14 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
                             pf_lines.append(f"- {d['title']} ({d['confidence']})")
                         pf_lines.append("Mogę to zapisać jako planning fact po potwierdzeniu.")
                         sp_result["answer"] = (sp_result.get("answer", "") or "") + "\n".join(pf_lines)
+                        _sp_tables = sp_result.get("tables", [])
+                        _sp_tables.append({
+                            "domain": "planning_fact_drafts", "key": "planning_fact_drafts",
+                            "count": len(pf_drafts),
+                            "columns": ["fact_type", "date", "title", "confidence"],
+                            "rows": [{"fact_type": d.get("fact_type",""), "date": d.get("date",""), "title": d.get("title",""), "confidence": d.get("confidence","")} for d in pf_drafts],
+                        })
+                        sp_result["tables"] = _sp_tables
                 except Exception:
                     pass
                 return sp_result
@@ -2206,6 +2262,14 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
                         pf_lines.append(f"- {d['title']} ({d['confidence']})")
                     pf_lines.append("Mogę to zapisać jako planning fact po potwierdzeniu.")
                     sp_result["answer"] = (sp_result.get("answer", "") or "") + "\n".join(pf_lines)
+                    _sp_tables = sp_result.get("tables", [])
+                    _sp_tables.append({
+                        "domain": "planning_fact_drafts", "key": "planning_fact_drafts",
+                        "count": len(pf_drafts),
+                        "columns": ["fact_type", "date", "title", "confidence"],
+                        "rows": [{"fact_type": d.get("fact_type",""), "date": d.get("date",""), "title": d.get("title",""), "confidence": d.get("confidence","")} for d in pf_drafts],
+                    })
+                    sp_result["tables"] = _sp_tables
             except Exception:
                 pass
             return sp_result
@@ -2261,6 +2325,12 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
                     pf_lines.append(f"- {d['title']} ({d['confidence']})")
                 pf_lines.append("Mogę to zapisać jako planning fact po potwierdzeniu.")
                 response["answer"] = (response.get("answer", "") or "") + "\n".join(pf_lines)
+                response["tables"].append({
+                    "domain": "planning_fact_drafts", "key": "planning_fact_drafts",
+                    "count": len(pf_drafts),
+                    "columns": ["fact_type", "date", "title", "confidence"],
+                    "rows": [{"fact_type": d.get("fact_type",""), "date": d.get("date",""), "title": d.get("title",""), "confidence": d.get("confidence","")} for d in pf_drafts],
+                })
         except Exception:
             pass
         return response
@@ -2462,6 +2532,33 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
                 data[f"{key}_truncated"] = True
 
     tables = _extract_tables(answers)
+
+    # ── Clean up tables for nutrition/planning intents ──────────────
+    _nutri_clean_intents = {"nutrition_planning", "nutrition_daily", "fueling", "nutrition_range", "calorie_balance"}
+    if _nutri_clean_intents & set(intents):
+        keep_cols_for_current_day = {"id", "eaten_at", "meal_type", "note"}
+        cleaned_tables: list[dict] = []
+        seen_domains: set[str] = set()
+        for t in tables:
+            dom = t.get("domain", "")
+            # Remove duplicate meal_logs (same data as current_day_summary)
+            if dom == "meal_logs":
+                continue
+            # Strip verbose JSON columns from current_day_summary rows
+            if dom == "current_day_summary":
+                stripped_rows = []
+                for row in t["rows"]:
+                    stripped = {k: v for k, v in row.items() if k in keep_cols_for_current_day}
+                    stripped_rows.append(stripped)
+                if not stripped_rows:
+                    continue
+                new_cols = list(stripped_rows[0].keys()) if stripped_rows else []
+                t = {**t, "rows": stripped_rows, "columns": new_cols, "count": len(stripped_rows)}
+            if dom not in seen_domains:
+                seen_domains.add(dom)
+                cleaned_tables.append(t)
+        tables = cleaned_tables
+
     answer_text = _synthesize_answer(question, answers, missing, intents)
 
     # ═══════════════════════════════════════════════════════════════════
@@ -2753,18 +2850,37 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         response.setdefault("limitations", []).append("qbot.query can parse GPX summary, but cannot stage full GPX yet")
 
     # Attach planning_fact_drafts (detected from query text, never auto-saved)
-    if "planning_fact_drafts" not in response:
-        try:
-            from qbot_planning_memory import detect_planning_facts
-            pf_drafts = detect_planning_facts(question)
-            if pf_drafts:
-                response["planning_fact_drafts"] = pf_drafts
-                pf_lines = ["\n\nWykryłem założenie planistyczne:"]
-                for d in pf_drafts:
-                    pf_lines.append(f"- {d['title']} ({d['confidence']})")
-                pf_lines.append("Mogę to zapisać jako planning fact po potwierdzeniu.")
-                response["answer"] = (response.get("answer", "") or "") + "\n".join(pf_lines)
-        except Exception:
-            pass
+    planning_fact_drafts: list[dict] = []
+    try:
+        from qbot_planning_memory import detect_planning_facts
+        pf_drafts = detect_planning_facts(question)
+        if pf_drafts:
+            planning_fact_drafts = pf_drafts
+            pf_lines = ["\n\nWykryłem założenie planistyczne:"]
+            for d in pf_drafts:
+                pf_lines.append(f"- {d['title']} ({d['confidence']})")
+            pf_lines.append("Mogę to zapisać jako planning fact po potwierdzeniu.")
+            response["answer"] = (response.get("answer", "") or "") + "\n".join(pf_lines)
+    except Exception:
+        pass
+    if planning_fact_drafts:
+        response["planning_fact_drafts"] = planning_fact_drafts
+        pf_table = {
+            "domain": "planning_fact_drafts",
+            "key": "planning_fact_drafts",
+            "count": len(planning_fact_drafts),
+            "columns": ["fact_type", "date", "title", "confidence"],
+            "rows": [
+                {
+                    "fact_type": d.get("fact_type", ""),
+                    "date": d.get("date", ""),
+                    "title": d.get("title", ""),
+                    "confidence": d.get("confidence", ""),
+                }
+                for d in planning_fact_drafts
+            ],
+        }
+        tables.append(pf_table)
+        response["tables"] = tables
 
     return response
