@@ -16,6 +16,24 @@ def _allowed() -> set[str]:
 
 def is_authorized(chat_id: str) -> bool:
     return str(chat_id).strip() in _allowed()
+
+_ALLOWED_ACTIONS = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add"}
+
+def _clean_preview(answer: str) -> str:
+    for suffix in [
+        "\n\nZapis wymaga potwierdzenia przez writer nutrition_log_add.",
+        "\n\nZapis wymaga potwierdzenia przez writer qcal_reminder_add.",
+        "\n\nZapis wymaga potwierdzenia przez writer qcal_event_add.",
+        "\nZapis wymaga potwierdzenia przez writer nutrition_log_add.",
+        "\nZapis wymaga potwierdzenia przez writer qcal_reminder_add.",
+        "\nZapis wymaga potwierdzenia przez writer qcal_event_add.",
+        "\nZapis wymaga potwierdzenia.",
+        "\nZapis wymaga potwierdzenia",
+    ]:
+        if answer.rstrip().endswith(suffix):
+            return answer.rstrip()[:-len(suffix)].rstrip()
+    return answer.rstrip()
+
 # ── Telegram API ──
 
 def send_message(chat_id: str, text: str) -> dict:
@@ -130,7 +148,9 @@ def _pending_decline(chat_id: str, action_id: int) -> dict:
     except: return {"status":"error"}
 
 def _execute_writer(atype: str, payload: dict, idem_key: str) -> dict:
-    """Execute a local writer — same as MCP handlers."""
+    """Execute a local writer — same as MCP handlers. Allowlist enforced."""
+    if atype not in _ALLOWED_ACTIONS:
+        return {"status": "not_allowed", "action_type": atype, "allowlist": sorted(_ALLOWED_ACTIONS)}
     try:
         if atype == "nutrition_log_add":
             from qbot_mcp_adapter import _handle_nutrition_add
@@ -138,18 +158,9 @@ def _execute_writer(atype: str, payload: dict, idem_key: str) -> dict:
         elif atype == "qcal_reminder_add":
             from qbot_mcp_adapter import _handle_qcal_reminder_add
             return _handle_qcal_reminder_add({**payload, "idempotency_key": idem_key, "confirm": True})
-        elif atype == "qcal_reminder_done":
-            from qbot_mcp_adapter import _handle_qcal_reminder_done
-            return _handle_qcal_reminder_done({**payload, "confirm": True})
-        elif atype == "qcal_reminder_cancel":
-            from qbot_mcp_adapter import _handle_qcal_reminder_cancel
-            return _handle_qcal_reminder_cancel({**payload, "confirm": True})
         elif atype == "qcal_event_add":
             from qbot_mcp_adapter import _handle_qcal_event_add
             return _handle_qcal_event_add({**payload, "idempotency_key": idem_key, "confirm": True})
-        elif atype == "qcal_event_cancel":
-            from qbot_mcp_adapter import _handle_qcal_event_cancel
-            return _handle_qcal_event_cancel({**payload, "confirm": True})
         return {"status": "unknown_action_type", "action_type": atype}
     except Exception as e:
         return {"status": "error", "error": str(e)[:200]}
@@ -187,31 +198,37 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
     pending_id = (conv or {}).get("pending_action_id")
 
     # ── Confirmation commands ──
-    if tl in ("tak","yes","ok","potwierdzam","zapisz","dodaj","confirm","/confirm","/yes"):
-        if pending_id:
-            if dry_run:
-                _turn_add(chat_id, "inbound", text, intent="confirm_dryrun")
-                pa_info = ""
-                try:
-                    c2 = _db(); cur2 = c2.cursor()
-                    cur2.execute("SELECT action_type, preview_text FROM telegram_pending_actions WHERE id=%s",(pending_id,))
-                    pa = cur2.fetchone()
-                    if pa: pa_info = f" (akcja: {pa.get('action_type','?')} — {pa.get('preview_text','')[:100]})"
-                    c2.close()
-                except: pass
-                msg = f"[DRY-RUN] Pending action nie została wykonana — tryb dry-run.{pa_info} Uruchom bez --dry-run aby zapisać."
-                _turn_add(chat_id, "outbound", text=msg, intent="confirm_dryrun_result")
-                return {"response": msg, "status": "ok", "dry_run": True}
-            result = _pending_execute(chat_id, pending_id, dry_run=False)
-            _turn_add(chat_id, "inbound", text, intent="confirm")
-            st = result.get("status","?")
-            msg = "✓ Wykonano." if st in ("OK","ok") else f"Błąd: {result.get('error',result.get('status','?'))}"
-            _turn_add(chat_id, "outbound", text=msg, intent="confirm_result")
-            return {"response": msg, "status": "ok", "executed": True, "action_result": result}
+    _CONFIRM_WORDS = {"tak","yes","ok","potwierdzam","zapisz","dodaj","confirm","/confirm","/yes","t","y"}
+    if tl in _CONFIRM_WORDS:
+        if not pending_id:
+            return {"response": "Nie mam aktywnej akcji do potwierdzenia.", "status": "idle"}
+        if dry_run:
+            _turn_add(chat_id, "inbound", text, intent="confirm_dryrun")
+            pa_info = "?"
+            try:
+                c2 = _db(); cur2 = c2.cursor()
+                cur2.execute("SELECT action_type FROM telegram_pending_actions WHERE id=%s",(pending_id,))
+                pa = cur2.fetchone()
+                if pa: pa_info = pa.get("action_type","?")
+                c2.close()
+            except: pass
+            msg = f"[DRY-RUN] Wykonałbym {pa_info}. Uruchom bez --dry-run aby zapisać."
+            _turn_add(chat_id, "outbound", text=msg, intent="confirm_dryrun_result")
+            return {"response": msg, "status": "ok", "dry_run": True}
+        result = _pending_execute(chat_id, pending_id, dry_run=False)
+        _turn_add(chat_id, "inbound", text, intent="confirm")
+        st = result.get("status","?")
+        if st in ("OK","ok"):
+            msg = "✓ Wykonano!"
+        elif st == "expired":
+            msg = "Ta akcja wygasła. Wyślij prośbę jeszcze raz."
         else:
-            return {"response": "Brak pending action do potwierdzenia.", "status": "idle"}
+            msg = f"Błąd: {result.get('error',result.get('status','?'))}"
+        _turn_add(chat_id, "outbound", text=msg, intent="confirm_result")
+        return {"response": msg, "status": "ok", "executed": st in ("OK","ok"), "action_result": result}
 
-    if tl in ("nie","no","anuluj","cancel","/cancel","/no"):
+    _DECLINE_WORDS = {"nie","no","anuluj","cancel","/cancel","/no","n"}
+    if tl in _DECLINE_WORDS:
         if pending_id:
             _pending_decline(chat_id, pending_id)
             _turn_add(chat_id, "inbound", text, intent="decline")
@@ -253,13 +270,10 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
         prior_intent and re.search(r"^\s*a\s+|^\s*od\s+\d|^\s*dla\s+dat|^\s*zmien.*zakres|^\s*pokaż\s+ten\s+sam", tl)
     )
     if is_followup:
-        # Extract date range from the follow-up text and build a proper range query
         date_text = tl
-        # Try to extract "od X do Y" pattern and construct proper ISO dates
         df_val, dt_val = _parse_followup_dates(date_text)
         if df_val and prior_ctx.get("last_query"):
             prior_query = prior_ctx["last_query"]
-            # Replace date part or construct new query
             m = re.search(r"(od\s+\d{4}-\d{2}-\d{2}|ostatn\S+\s+\d+\s+\S+)", prior_query)
             if m:
                 new_date = f"od {df_val} do {dt_val}" if dt_val else f"od {df_val}"
@@ -274,25 +288,43 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
         intent = result.get("intents_detected",[])
         answer = result.get("answer","")
         tables = result.get("tables",[])
+        action_draft = result.get("action_draft")
 
-        # Detect if user's intent suggests a write action
-        write_hint = _detect_write_intent(tl, answer, result)
+        # ── Action draft handling ──
+        # Use action_draft from qbot.query instead of separate Telegram parser.
+        has_draft = bool(action_draft and action_draft.get("action_type"))
+        write_hint = None
 
-        if write_hint:
-            preview = write_hint.get("preview","")
-            idem = hashlib.sha256(f"{chat_id}|{write_hint.get('action_type')}|{datetime.now().isoformat()}".encode()).hexdigest()[:16]
-            if not dry_run:
-                pid = _pending_create(chat_id, write_hint["action_type"], write_hint.get("payload",{}), preview, idem)
-                response = f"{preview}\nPotwierdzić? Odpowiedz: tak / nie."
-                _turn_add(chat_id, "inbound", text, intent="write_draft")
-                _turn_add(chat_id, "outbound", text=response, intent="write_draft")
+        if has_draft:
+            atype = action_draft["action_type"]
+            payload = action_draft.get("payload", {})
+            idem_key = action_draft.get("idempotency_key", "")
+
+            # Allowlist check
+            if atype not in _ALLOWED_ACTIONS:
+                response = (
+                    f"Rozpoznałem akcję {atype}, ale nie znajduje się na allowliście "
+                    f"dostępnych writerów: {', '.join(sorted(_ALLOWED_ACTIONS))}. "
+                    f"Nie mogę jej wykonać przez Telegram."
+                )
+                _turn_add(chat_id, "inbound", text, intent="draft_not_allowed")
+                _turn_add(chat_id, "outbound", text=response, intent="draft_not_allowed")
+                _conv_upsert(chat_id, state="idle",
+                             last_intent=str(intent)[:100],
+                             last_response_summary=response[:300],
+                             context_json=json.dumps({"last_query": text}))
+                return {"response": response, "status": "blocked", "action_draft": action_draft}
+
+            preview = _clean_preview(answer)
+            pid = _pending_create(chat_id, atype, payload, preview, idem_key)
+
+            if dry_run:
+                response = f"{preview}\n\n[DRY-RUN] Akcja: {atype}. 'tak' nie wykona zapisu."
             else:
-                # In dry-run, still create a dummy pending action for testing
-                pid = _pending_create(chat_id, write_hint["action_type"], write_hint.get("payload",{}), preview, idem)
-                response = _format_answer(answer, tables)
-                response += f"\n\n[DRY-RUN] Proponowana akcja: {preview}\nPending action utworzona (test). 'tak' pokaże co zostało zrobione, ale nic nie zapisze."
-                _turn_add(chat_id, "inbound", text, intent="write_draft")
-                _turn_add(chat_id, "outbound", text=response, intent="write_draft")
+                response = f"{preview}\n\nPotwierdzić? Odpowiedz: tak / nie."
+            write_hint = atype  # truthy for conv_upsert
+            _turn_add(chat_id, "inbound", text, intent="write_draft")
+            _turn_add(chat_id, "outbound", text=response, intent="write_draft")
         else:
             response = _format_answer(answer, tables)
             _turn_add(chat_id, "inbound", text, intent=str(intent)[:100])
@@ -308,26 +340,10 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
                          "last_query": text,
                      }))
 
-        return {"response": response, "status": "ok", "read_only": True, "intents": intent}
+        return {"response": response, "status": "ok", "read_only": True, "intents": intent,
+                "has_draft": has_draft}
     except Exception as e:
         return {"response": f"Błąd: {str(e)[:200]}", "status": "error"}
-
-
-def _detect_write_intent(tl: str, answer: str, result: dict) -> dict | None:
-    """Detect if user wants to write/create/set/cancel."""
-    intents = result.get("intents_detected",[])
-    if re.search(r"przypomnij\s+mi|dodaj\s+(przypomnienie|wydarzenie|event|posiłek|do\s+j)|zapisz|stwórz|utwórz", tl):
-        if re.search(r"przypomnij|przypomnienie", tl):
-            return {"action_type": "qcal_reminder_add", "preview": "Przygotowano draft przypomnienia.", "payload": {}}
-        if re.search(r"posiłek|jedzenie|spożycie|dodaj do", tl):
-            return {"action_type": "nutrition_log_add", "preview": "Przygotowano draft posiłku.", "payload": {}}
-    if re.search(r"oznacz\s+(przypomnienie|reminder).*jako\s+(zrobione|done)", tl):
-        m = re.search(r"(\d+)", tl)
-        rid = int(m.group(1)) if m else 0
-        return {"action_type": "qcal_reminder_done", "preview": f"Oznaczyć reminder {rid} jako done?", "payload": {"reminder_id": rid}}
-    if re.search(r"(odwołaj|anuluj|usuń|skasuj)\s+(przypomnienie|reminder|wydarzenie|event)", tl):
-        return {"action_type": "qcal_reminder_cancel", "preview": "Anulować?", "payload": {}}
-    return None
 
 
 def _format_answer(answer: str, tables: list) -> str:
