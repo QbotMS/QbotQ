@@ -19,16 +19,18 @@ NO_DATA_PHRASE = "Brak danych w QBot / plikach projektu."
 
 _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
     # Priority-ordered: more specific first
+    ("garmin_energy", [
+        "zużycie kcal z garmin", "zuzycie kcal z garmin", "garmin energy",
+        "aktywne kcal", "spoczynkowe kcal", "bmr",
+        "resting kcal", "całkowite kcal z garmin", "calkowite kcal",
+        "dzisiejsze zużycie", "dzisiejsze zuzycie", "garmin spalone",
+        "zuzycie kcal", "garmin energia", "garmin kcal",
+    ]),
     ("calorie_balance", [
         "bilans kaloryczny", "bilans kalorii", "bilans energetyczny",
         "garmin i cronometer", "cronometer i garmin",
         "kalorii z ostatnich", "kalorii w tym tygodniu", "kalorii z garmin",
         "kcal z ostatnich", "kcal z garmin",
-    ]),
-    ("garmin_energy", [
-        "zużycie kcal z garmin", "garmin energy", "aktywne kcal",
-        "spoczynkowe kcal", "bmr", "resting kcal", "całkowite kcal z garmin",
-        "dzisiejsze zużycie", "garmin spalone",
     ]),
     ("ride_today", [
         "dzisiaj była jazda", "czy był trening", "dzisiejsza jazda",
@@ -385,36 +387,173 @@ def _init_dispatch():
 
 
 def _read_garmin_energy(args: dict | None = None) -> dict[str, Any]:
-    """Read today's Garmin energy data via garminconnect API. Live read, no DB storage."""
+    """Read Garmin energy data: local cache first, then live garminconnect API."""
     args = args or {}
     day_str = args.get("date") or date.today().isoformat()
+    import os
+    from pathlib import Path
+
+    # ── Diagnostic base ──
+    diag: dict[str, Any] = {
+        "tool": "qbot_garmin_energy_read",
+        "safety_class": "READ_ONLY",
+        "date": day_str,
+        "env_configured": bool(os.getenv("GARMIN_EMAIL")),
+        "token_store_found": False,
+        "session_cache_found": False,
+        "local_cache_found": False,
+        "auth_status": "unknown",
+        "error_class": None,
+        "source": None,
+        "active_kcal": None,
+        "resting_kcal": None,
+        "bmr_kcal": None,
+        "total_kcal": None,
+        "activity_kcal": None,
+        "activities": None,
+        "safe_next_action": None,
+        "error": None,
+        "missing_fields": [],
+        "limitations": [],
+    }
+
+    tokenstore = os.getenv("GARMIN_TOKENSTORE", "/opt/qbot/app/.garmin_tokens")
+    ts_path = Path(tokenstore)
+    if ts_path.exists():
+        diag["token_store_found"] = ts_path.is_dir() and any(ts_path.iterdir())
+
+    session_pkl = Path("/opt/qbot/app/.garmin_session.pkl")
+    if session_pkl.exists() and session_pkl.stat().st_size > 0:
+        diag["session_cache_found"] = True
+
+    # ═══════════════════════════════════════════════════════════════
+    # Step 1: Local DB/cache
+    # ═══════════════════════════════════════════════════════════════
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+        pg_host = os.getenv("PGHOST", "localhost")
+        pg_db = os.getenv("PGDATABASE", "qbot")
+        pg_user = os.getenv("PGUSER", "qbot")
+        pg_pass = os.getenv("PGPASSWORD", "")
+        with psycopg.connect(
+            host=pg_host, port=os.getenv("PGPORT", "5432"),
+            dbname=pg_db, user=pg_user, password=pg_pass,
+            row_factory=dict_row, connect_timeout=3,
+        ) as conn, conn.cursor() as cur:
+            # Check qbot_wellness_daily for imported Garmin energy data
+            cur.execute(
+                "SELECT raw_json FROM qbot_wellness_daily WHERE date=%s AND source='garmin'",
+                (day_str,),
+            )
+            row = cur.fetchone()
+            if row and row.get("raw_json"):
+                raw = row["raw_json"]
+                if isinstance(raw, str):
+                    import json as _j
+                    raw = _j.loads(raw)
+                # Check if wellness has calories fields
+                active = raw.get("activeKilocalories") or raw.get("active_kcal")
+                bmr = raw.get("bmrKilocalories") or raw.get("bmr_kcal")
+                total = raw.get("totalKilocalories") or raw.get("total_kcal")
+                resting = raw.get("resting_kcal")
+                if not resting and total and active:
+                    resting = total - active
+                if any(v is not None for v in (active, bmr, total)):
+                    diag.update({
+                        "status": "OK",
+                        "source": "wellness_store",
+                        "local_cache_found": True,
+                        "auth_status": "ok",
+                        "active_kcal": float(active) if active is not None else None,
+                        "bmr_kcal": float(bmr) if bmr is not None else None,
+                        "total_kcal": float(total) if total is not None else None,
+                        "resting_kcal": float(resting) if resting is not None else None,
+                        "safe_next_action": "Local wellness_store data used — no live Garmin call needed.",
+                    })
+                    return diag
+    except Exception:
+        pass
+
+    # ═══════════════════════════════════════════════════════════════
+    # Step 2: Garmin proxy CSV
+    # ═══════════════════════════════════════════════════════════════
+    try:
+        proxy_paths = [
+            Path("/opt/qbot/app/outgoing/qbot_garmin_proxy_latest.csv"),
+            Path("/opt/qbot/app/qbot_garmin_proxy.csv"),
+        ]
+        for pp in proxy_paths:
+            if pp.exists() and pp.stat().st_size > 0:
+                diag["local_cache_found"] = True
+                diag["source"] = "garmin_proxy_csv"
+                diag["status"] = "partial"
+                diag["limitations"].append(
+                    f"Found Garmin proxy CSV at {pp} — raw FIT export, not structured daily energy."
+                )
+                diag["safe_next_action"] = (
+                    "Garmin proxy CSV found but not parsed for daily energy. "
+                    "Import wellness data to local DB first, or refresh GarminConnect session."
+                )
+                break
+    except Exception:
+        pass
+
+    # ═══════════════════════════════════════════════════════════════
+    # Step 3: Live GarminConnect API
+    # ═══════════════════════════════════════════════════════════════
+    email = os.getenv("GARMIN_EMAIL", "")
+    password = os.getenv("GARMIN_PASSWORD", "")
+    if not email or not password:
+        diag.update({
+            "status": "no_data",
+            "auth_status": "unknown",
+            "error_class": "credentials_missing",
+            "error": "GARMIN_EMAIL or GARMIN_PASSWORD not configured",
+            "missing_fields": ["garmin_credentials", "garmin_energy"],
+            "safe_next_action": "Set GARMIN_EMAIL and GARMIN_PASSWORD in .env.local.",
+        })
+        return diag
 
     try:
-        import os
-        from garminconnect import Garmin
+        from garminconnect import Garmin, GarminConnectAuthenticationError, GarminConnectConnectionError
+    except ImportError:
+        diag.update({
+            "status": "error",
+            "auth_status": "unknown",
+            "error_class": "library_missing",
+            "error": "garminconnect library not installed",
+            "missing_fields": ["garminconnect_library"],
+            "safe_next_action": "Install garminconnect: pip install garminconnect",
+        })
+        return diag
 
-        email = os.getenv("GARMIN_EMAIL", "")
-        password = os.getenv("GARMIN_PASSWORD", "")
-        if not email or not password:
-            return {
-                "tool": "qbot_garmin_energy_read",
-                "safety_class": "READ_ONLY",
-                "status": "no_data",
-                "date": day_str,
-                "error": "GARMIN_EMAIL or GARMIN_PASSWORD not configured",
-                "missing_fields": ["garmin_credentials"],
-            }
-
-        tokenstore = os.getenv("GARMIN_TOKENSTORE", "/opt/qbot/app/.garmin_tokens")
+    try:
         os.makedirs(tokenstore, exist_ok=True)
-        # garminconnect 0.3.3 uses session serialization, not tokenstore kwarg
         try:
             g = Garmin(email, password)
-            g.login()
-        except TypeError:
-            # older garminconnect versions
-            g = Garmin(email, password)
-            g.login()
+            g.login(tokenstore=tokenstore)
+        except (GarminConnectAuthenticationError, Exception) as auth_err:
+            err_msg = str(auth_err)
+            if "MFA" in err_msg.upper() or "mfa" in err_msg.lower():
+                diag.update({
+                    "status": "blocked",
+                    "auth_status": "mfa_required",
+                    "error_class": "mfa_required",
+                    "error": err_msg,
+                    "missing_fields": ["garmin_energy", "garmin_auth_mfa"],
+                    "limitations": [
+                        "GarminConnect requires MFA; no prompt_mfa mechanism available in MCP read-only context",
+                    ],
+                    "safe_next_action": (
+                        "Refresh GarminConnect session outside MCP. "
+                        "Run: sync_nutrition.py or garmin_auth.py flow to complete MFA, "
+                        "then retry qbot.query."
+                    ),
+                    "source": "garminconnect_api",
+                })
+                return diag
+            raise
 
         stats = g.get_stats(day_str)
         if not stats:
@@ -425,6 +564,17 @@ def _read_garmin_energy(args: dict | None = None) -> dict[str, Any]:
                 "date": day_str,
                 "error": "No Garmin stats returned for this date",
                 "missing_fields": ["garmin_stats_data"],
+                "env_configured": True,
+                "token_store_found": diag["token_store_found"],
+                "session_cache_found": diag["session_cache_found"],
+                "local_cache_found": False,
+                "auth_status": "ok",
+                "error_class": "no_data",
+                "source": "garminconnect_api",
+                "safe_next_action": "Check Garmin Connect for this date — no energy data available.",
+                "active_kcal": None, "resting_kcal": None, "bmr_kcal": None, "total_kcal": None,
+                "activity_kcal": None, "activities": None,
+                "limitations": ["No stats available for this date in Garmin"],
             }
 
         active_kcal = float(stats.get("activeKilocalories", 0) or 0)
@@ -441,17 +591,60 @@ def _read_garmin_energy(args: dict | None = None) -> dict[str, Any]:
             "resting_kcal": resting_kcal,
             "bmr_kcal": bmr_kcal,
             "total_kcal": total_kcal,
-            "source": "garminconnect",
+            "activity_kcal": active_kcal,
+            "activities": stats.get("activities", []) if isinstance(stats.get("activities"), list) else None,
+            "source": "garminconnect_api",
+            "env_configured": True,
+            "token_store_found": diag["token_store_found"],
+            "session_cache_found": diag["session_cache_found"],
+            "local_cache_found": diag.get("local_cache_found", False),
+            "auth_status": "ok",
+            "error_class": None,
+            "safe_next_action": None,
+            "error": None,
+            "missing_fields": [],
+            "limitations": [],
         }
     except Exception as exc:
-        return {
-            "tool": "qbot_garmin_energy_read",
-            "safety_class": "READ_ONLY",
-            "status": "no_data",
-            "date": day_str,
-            "error": str(exc),
-            "missing_fields": ["garminconnect_api_error"],
-        }
+        err_msg = str(exc)
+        # Classify error type
+        if "token" in err_msg.lower() or "session" in err_msg.lower() or "expired" in err_msg.lower():
+            diag.update({
+                "status": "blocked",
+                "auth_status": "token_expired",
+                "error_class": "token_expired",
+                "error": err_msg,
+                "missing_fields": ["garmin_energy", "garmin_auth_token"],
+                "limitations": ["GarminConnect session expired or token invalid."],
+                "safe_next_action": (
+                    "Refresh GarminConnect session outside MCP. "
+                    "Run garmin_auth.py to re-authenticate."
+                ),
+                "source": "garminconnect_api",
+            })
+        elif "rate" in err_msg.lower() or "429" in err_msg:
+            diag.update({
+                "status": "blocked",
+                "auth_status": "rate_limited",
+                "error_class": "rate_limited",
+                "error": err_msg,
+                "missing_fields": ["garmin_energy"],
+                "limitations": ["GarminConnect API rate-limited."],
+                "safe_next_action": "Wait and retry later.",
+                "source": "garminconnect_api",
+            })
+        else:
+            diag.update({
+                "status": "error",
+                "auth_status": "unknown",
+                "error_class": "api_error",
+                "error": err_msg,
+                "missing_fields": ["garmin_energy", "garminconnect_api_error"],
+                "limitations": [f"GarminConnect API error: {err_msg[:100]}"],
+                "safe_next_action": "Check GarminConnect API status and network.",
+                "source": "garminconnect_api",
+            })
+        return diag
 
 
 def _read_intervals_activities(args: dict | None = None) -> dict[str, Any]:
@@ -539,38 +732,156 @@ def _read_intervals_activities(args: dict | None = None) -> dict[str, Any]:
         }
 
 
-# ── Argument resolver ──────────────────────────────────────────────────────
+# ── Date context resolver ───────────────────────────────────────────────────
 
 
-def _resolve_tool_arg(tool_name: str, tool_params: dict, query: str) -> dict:
+def _resolve_date_context(context_str: str, query_text: str) -> dict[str, Any]:
+    """Resolve dates from context JSON and query text with explicit precedence.
+
+    Returns a dict with:
+      - date, date_from, date_to: resolved ISO dates
+      - source: "context" | "query_text" | "relative_phrase" | "timezone_today"
+      - timezone: timezone string
+    """
+    # Default: server today
+    server_today = date.today()
+
+    ctx: dict[str, Any] = {}
+    if context_str:
+        try:
+            ctx = json.loads(context_str) if isinstance(context_str, str) else context_str
+        except (json.JSONDecodeError, TypeError):
+            ctx = {}
+
+    tz = ctx.get("timezone", "Europe/Warsaw")
+    result: dict[str, Any] = {
+        "timezone": tz,
+        "date": server_today.isoformat(),
+        "date_from": server_today.isoformat(),
+        "date_to": server_today.isoformat(),
+        "source": "timezone_today",
+    }
+
+    # Precedence 1: explicit ISO dates in context
+    ctx_date = ctx.get("date", "")
+    ctx_date_from = ctx.get("date_from", "")
+    ctx_date_to = ctx.get("date_to", "")
+
+    if ctx_date and re.match(r"\d{4}-\d{2}-\d{2}", str(ctx_date)):
+        result["date"] = str(ctx_date)
+        result["source"] = "context"
+        if not ctx_date_from:
+            result["date_from"] = str(ctx_date)
+        if not ctx_date_to:
+            result["date_to"] = str(ctx_date)
+
+    if ctx_date_from and re.match(r"\d{4}-\d{2}-\d{2}", str(ctx_date_from)):
+        result["date_from"] = str(ctx_date_from)
+        result["source"] = "context"
+        if not ctx_date and result.get("date") == server_today.isoformat():
+            result["date"] = str(ctx_date_from)
+    if ctx_date_to and re.match(r"\d{4}-\d{2}-\d{2}", str(ctx_date_to)):
+        result["date_to"] = str(ctx_date_to)
+        result["source"] = "context"
+
+    # Precedence 2: explicit ISO dates in query text
+    q = query_text.lower()
+    iso_pattern = re.search(r"(\d{4}-\d{2}-\d{2})\s*(?:do|–|to|-)\s*(\d{4}-\d{2}-\d{2})", q)
+    if iso_pattern:
+        q_from = iso_pattern.group(1)
+        q_to = iso_pattern.group(2)
+        try:
+            date.fromisoformat(q_from)
+            date.fromisoformat(q_to)
+            if result["source"] != "context":
+                result["date_from"] = q_from
+                result["date_to"] = q_to
+                result["source"] = "query_text"
+        except ValueError:
+            pass
+    else:
+        single_iso = re.search(r"(\d{4}-\d{2}-\d{2})", q)
+        if single_iso:
+            try:
+                d = date.fromisoformat(single_iso.group(1))
+                if result["source"] != "context":
+                    result["date"] = d.isoformat()
+                    result["source"] = "query_text"
+            except ValueError:
+                pass
+
+    # Precedence 3: relative phrases (use context date or server today)
+    effective_today = server_today
+    if ctx_date and re.match(r"\d{4}-\d{2}-\d{2}", str(ctx_date)):
+        try:
+            effective_today = date.fromisoformat(str(ctx_date))
+        except ValueError:
+            pass
+
+    if result["source"] not in ("context", "query_text"):
+        if "wczoraj" in q:
+            result["date"] = (effective_today - timedelta(days=1)).isoformat()
+            result["source"] = "relative_phrase"
+        elif "dzisiaj" in q or "dzisiejsze" in q or "dzisiejsz" in q or "dziś" in q:
+            result["date"] = effective_today.isoformat()
+            result["source"] = "relative_phrase"
+        elif "przedwczoraj" in q:
+            result["date"] = (effective_today - timedelta(days=2)).isoformat()
+            result["source"] = "relative_phrase"
+
+    if result["source"] not in ("context", "query_text"):
+        ostatnich_match = re.search(r"ostatnich\s+(\d+)", q)
+        dni_match = re.search(r"(?:ostatnie\s+)?(\d+)\s*dni", q)
+
+        if "tydzień" in q or "tygodnia" in q or ostatnich_match or dni_match:
+            days = 7
+            if ostatnich_match:
+                days = int(ostatnich_match.group(1))
+            elif dni_match:
+                days = int(dni_match.group(1))
+
+            if result["source"] != "context":
+                result["date_from"] = (effective_today - timedelta(days=days - 1)).isoformat()
+                result["date_to"] = effective_today.isoformat()
+                result["source"] = "relative_phrase"
+
+    return result
+
+
+def _resolve_tool_arg(tool_name: str, tool_params: dict, query: str,
+                      date_ctx: dict | None = None) -> dict:
+    """Resolve tool arguments. Uses date_ctx for date resolution when available.
+
+    date_ctx must contain: date, date_from, date_to (ISO strings).
+    """
     args: dict = {}
+    dc = date_ctx or {}
+
     for param, ptype in tool_params.items():
         if param in ("date",):
-            today = date.today()
-            days_match = re.search(r"(\d+)\s*dni", query.lower())
-            if days_match:
-                days = int(days_match.group(1))
-                args[param] = (today - timedelta(days=days - 1)).isoformat()
-            elif "wczoraj" in query.lower():
-                args[param] = (today - timedelta(days=1)).isoformat()
-            elif "tydzień" in query.lower() or "tygodnia" in query.lower():
-                args[param] = (today - timedelta(days=6)).isoformat()
-            elif "dzisiaj" in query.lower() or "dzisiejsze" in query.lower() or "dzisiejsz" in query.lower():
-                args[param] = today.isoformat()
+            if dc.get("date"):
+                args[param] = dc["date"]
             else:
-                args[param] = today.isoformat()
+                args[param] = date.today().isoformat()
 
         elif param in ("date_from",):
-            today = date.today()
-            days_match = re.search(r"ostatnich\s+(\d+)", query.lower())
-            days_match2 = re.search(r"(\d+)\s*dni", query.lower())
-            days = int(days_match.group(1)) if days_match else (int(days_match2.group(1)) if days_match2 else 7)
-            args[param] = (today - timedelta(days=days - 1)).isoformat()
-            args["date_to"] = today.isoformat()
+            if dc.get("date_from"):
+                args[param] = dc["date_from"]
+                args["date_to"] = dc.get("date_to", date.today().isoformat())
+            else:
+                today = date.today()
+                days_match = re.search(r"ostatnich\s+(\d+)", query.lower())
+                days_match2 = re.search(r"(\d+)\s*dni", query.lower())
+                days = int(days_match.group(1)) if days_match else (int(days_match2.group(1)) if days_match2 else 7)
+                args[param] = (today - timedelta(days=days - 1)).isoformat()
+                args["date_to"] = today.isoformat()
 
         elif param in ("date_to",):
             if "date_to" not in args:
-                args[param] = date.today().isoformat()
+                if dc.get("date_to"):
+                    args[param] = dc["date_to"]
+                else:
+                    args[param] = date.today().isoformat()
 
         elif param in ("query",):
             route_match = re.search(r"(\d{7,})", query)
@@ -641,20 +952,79 @@ def _is_blocked(status_val: str) -> bool:
     return status_val.upper().startswith("BLOCKED")
 
 
-def _confidence_from_results(results: list[dict]) -> str:
-    ok_count = sum(1 for r in results if r.get("ok") or r.get("status", "").upper() == "OK")
-    total = len(results)
-    if total == 0:
+def _confidence_from_results(results: list[dict], response_status: str = "",
+                            has_required_missing: bool = False) -> str:
+    """Compute confidence based on result statuses and requirements.
+
+    Rules:
+    - status==ok and all required fields present -> high
+    - status==partial because optional fields missing -> medium
+    - status==partial because required source missing (e.g. Garmin energy) -> low/medium
+    - status==no_data -> low
+    - status==blocked -> low
+    - Never high when: status is partial/no_data/blocked/error,
+      required source missing, answer contains "?" placeholders,
+      balance_kcal cannot be computed.
+    """
+    if not results:
         return "low"
-    ratio = ok_count / total
-    if ratio >= 0.8:
+
+    # Check for blocked or no_data in results
+    blocked_count = 0
+    no_data_count = 0
+    ok_count = 0
+    garmin_blocked = False
+    garmin_missing = False
+
+    for r in results:
+        status = str(r.get("status", r.get("data", {}).get("status", ""))).upper()
+        if status.startswith("BLOCKED"):
+            blocked_count += 1
+            if r.get("reader") == "garmin_energy":
+                garmin_blocked = True
+        elif status in ("NO_DATA", "ERROR", "FAIL", "TIMEOUT"):
+            no_data_count += 1
+            if r.get("reader") == "garmin_energy":
+                garmin_missing = True
+        elif status == "OK":
+            ok_count += 1
+
+    total = len(results)
+    ok_ratio = ok_count / total if total else 0
+
+    # Hard rules: blocked anywhere with required source = low
+    if garmin_blocked and has_required_missing:
+        return "low"
+
+    # Status-based
+    if response_status == "blocked":
+        return "low"
+    elif response_status == "no_data":
+        return "low"
+    elif response_status == "partial":
+        if blocked_count > 0 or no_data_count > 0:
+            if has_required_missing:
+                return "low"
+            return "medium"
+        return "medium"
+    elif response_status == "ok":
+        if ok_ratio >= 0.8:
+            return "high"
+        if ok_ratio >= 0.4:
+            return "medium"
+        return "low"
+
+    # Fallback: ratio-based
+    if ok_ratio >= 0.8:
         return "high"
-    if ratio >= 0.4:
+    if ok_ratio >= 0.4:
         return "medium"
     return "low"
 
 
-def _synthesize_answer(question: str, answers: list[dict], missing: list[str]) -> str:
+def _synthesize_answer(question: str, answers: list[dict], missing: list[str],
+                       intents: list[str] | None = None) -> str:
+    intents = intents or []
     if not answers:
         return NO_DATA_PHRASE
 
@@ -664,11 +1034,43 @@ def _synthesize_answer(question: str, answers: list[dict], missing: list[str]) -
         reader = ans["reader"]
 
         if reader == "garmin_energy":
-            parts.append(
-                f"Garmin: {data.get('total_kcal', '?')} kcal całk., "
-                f"{data.get('active_kcal', '?')} aktywne, "
-                f"{data.get('bmr_kcal', '?')} BMR"
-            )
+            status_val = str(data.get("status", "")).upper()
+            auth_status = data.get("auth_status", "")
+            error_class = data.get("error_class", "")
+
+            if status_val == "BLOCKED" or error_class == "mfa_required":
+                parts.append(
+                    "Garmin energy: brak danych — GarminConnect wymaga MFA. "
+                    "Reader działa, ale sesja/token nie pozwala pobrać danych w trybie MCP read-only."
+                )
+            elif status_val == "BLOCKED" and error_class == "token_expired":
+                parts.append(
+                    "Garmin energy: brak danych — sesja GarminConnect wygasła. "
+                    "Odśwież sesję poza MCP (garmin_auth.py)."
+                )
+            elif error_class == "credentials_missing":
+                parts.append(
+                    "Garmin energy: brak danych — brak skonfigurowanych poświadczeń "
+                    "GarminConnect (GARMIN_EMAIL/GARMIN_PASSWORD)."
+                )
+            elif status_val == "OK":
+                tkcal = data.get("total_kcal")
+                akcal = data.get("active_kcal")
+                bkcal = data.get("bmr_kcal")
+                if tkcal is not None:
+                    akcal_s = f"{akcal:.0f}" if akcal is not None else "?"
+                    bkcal_s = f"{bkcal:.0f}" if bkcal is not None else "?"
+                    parts.append(
+                        f"Garmin: {tkcal:.0f} kcal całk., "
+                        f"{akcal_s} aktywne, {bkcal_s} BMR"
+                    )
+                else:
+                    parts.append("Garmin: dane energii niedostępne")
+            elif status_val == "NO_DATA":
+                parts.append("Garmin energy: brak danych — brak energii dla tej daty w Garmin")
+            else:
+                err = data.get("error", "")
+                parts.append(f"Garmin: błąd odczytu — {err[:80]}")
         elif reader == "intervals_activities":
             acts = data.get("activities", [])
             if acts:
@@ -852,12 +1254,16 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         }
 
     # ── read_only ──
+    # Resolve date context from context + query text
+    date_ctx = _resolve_date_context(context, question)
+
     answers: list[dict] = []
     provenance: list[dict] = []
     missing: list[str] = []
     limitations: list[str] = []
     has_blocked = False
-    resolved_route_id: str = _resolve_route_id(question)  # pre-resolve from query/aliases
+    has_garmin_blocked = False
+    resolved_route_id: str = _resolve_route_id(question)
     resolved_artifact_path: str = ""
     rwgps_search_result: dict | None = None
     rwgps_export_result: dict | None = None
@@ -865,6 +1271,11 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     # Determine if question expects surface data
     expects_surface = "route_surface_profile" in intents
     surface_data_returned = False
+
+    # Track whether calorie balance query needs Garmin as required source
+    is_calorie_balance = "calorie_balance" in intents
+    garmin_energy_used = False
+    garmin_energy_blocked = False
 
     for reader_name in readers_to_call:
         reg = _READER_REGISTRY.get(reader_name)
@@ -879,7 +1290,7 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
             continue
 
         try:
-            args = _resolve_tool_arg(tool_name, reg["params"], question)
+            args = _resolve_tool_arg(tool_name, reg["params"], question, date_ctx)
 
             # Chain resolved route_id into args
             if resolved_route_id and not args.get("route_id"):
@@ -895,6 +1306,13 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
                         args[k] = v
 
             result = func(args)
+
+            # Track Garmin energy status
+            if reader_name == "garmin_energy":
+                garmin_energy_used = True
+                garmin_status = str(result.get("status", "")).upper()
+                if garmin_status.startswith("BLOCKED"):
+                    garmin_energy_blocked = True
 
             # Extract route_id from search/export results for chaining
             if reader_name == "rwgps_route_search":
@@ -927,7 +1345,6 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
                     if not (reg["category"] in ("rwgps", "routes") and _is_failure(status_val)):
                         missing.append(f"{reader_name}: {status_val}")
                         limitations.append(f"{reader_name}: returned {status_val}")
-                # Don't skip — include in answers even if ERROR, for provenance
             provenance.append({
                 "reader": reader_name, "tool": tool_name,
                 "providers": reg["providers"], "status": status_val,
@@ -949,7 +1366,148 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
                 data[f"{key}_truncated"] = True
 
     tables = _extract_tables(answers)
-    answer_text = _synthesize_answer(question, answers, missing)
+    answer_text = _synthesize_answer(question, answers, missing, intents)
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Calorie balance table (for calorie_balance intent)
+    # ═══════════════════════════════════════════════════════════════════
+    balance_table: list[dict] = []
+    balance_summary: dict[str, Any] = {}
+    if is_calorie_balance:
+        # Gather per-day data from answers
+        nutrition_data: dict[str, dict] = {}
+        garmin_data: dict[str, dict] = {}
+        days_requested: list[str] = []
+
+        # Build the date range from resolved context
+        df_str = date_ctx.get("date_from", date_ctx.get("date", ""))
+        dt_str = date_ctx.get("date_to", date_ctx.get("date", ""))
+        if df_str and dt_str:
+            try:
+                d_start = date.fromisoformat(df_str)
+                d_end = date.fromisoformat(dt_str)
+                cur = d_start
+                while cur <= d_end:
+                    days_requested.append(cur.isoformat())
+                    cur += timedelta(days=1)
+            except ValueError:
+                days_requested.append(date_ctx.get("date", date.today().isoformat()))
+
+        # Extract per-day nutrition from nutrition_range / nutrition_day
+        for ans in answers:
+            reader = ans["reader"]
+            data = ans.get("data", {})
+            if reader in ("nutrition_range", "nutrition_day", "nutrition_day_legacy"):
+                entries = data.get("entries", [])
+                for entry in entries:
+                    entry_date = str(entry.get("date", ""))[:10]
+                    if entry_date:
+                        nutrition_data[entry_date] = entry
+                # Also check per-day rows in range data
+                per_day = data.get("per_day", [])
+                for day_row in per_day:
+                    d = str(day_row.get("date", ""))[:10]
+                    if d:
+                        nutrition_data[d] = day_row
+            elif reader == "garmin_energy":
+                g_date = data.get("date", "")
+                garmin_data[g_date] = {
+                    "active_kcal": data.get("active_kcal"),
+                    "resting_kcal": data.get("resting_kcal"),
+                    "bmr_kcal": data.get("bmr_kcal"),
+                    "total_kcal": data.get("total_kcal"),
+                }
+
+        # Build per-day rows
+        total_cal_in = 0.0
+        total_garmin = 0.0
+        days_with_nut = 0
+        days_with_garmin = 0
+        missing_garmin: list[str] = []
+        missing_nut: list[str] = []
+
+        for d in days_requested:
+            nd = nutrition_data.get(d, {})
+            gd = garmin_data.get(d, {})
+            cal_in = nd.get("calories_kcal")
+            if cal_in is None and isinstance(nd.get("kcal_total"), (int, float)):
+                cal_in = float(nd["kcal_total"])
+
+            has_nut = cal_in is not None
+            has_garmin = gd.get("total_kcal") is not None and gd.get("total_kcal") is not None
+
+            row_missing: list[str] = []
+            if not has_nut:
+                missing_nut.append(d)
+                row_missing.append("nutrition")
+            if not has_garmin:
+                missing_garmin.append(d)
+                row_missing.append("garmin_energy")
+
+            balance = None
+            if has_nut and has_garmin:
+                balance = cal_in - gd["total_kcal"]
+
+            row = {
+                "date": d,
+                "calories_in": cal_in,
+                "protein_g": nd.get("protein_g"),
+                "carbs_g": nd.get("carbs_g"),
+                "fat_g": nd.get("fat_g"),
+                "fluids_ml": nd.get("fluid_ml") or nd.get("fluids_ml"),
+                "garmin_active_kcal": gd.get("active_kcal"),
+                "garmin_resting_kcal": gd.get("resting_kcal"),
+                "garmin_bmr_kcal": gd.get("bmr_kcal"),
+                "garmin_total_kcal": gd.get("total_kcal"),
+                "balance_kcal": balance,
+                "data_quality": "ok" if (has_nut and has_garmin) else ("partial" if has_nut else "no_data"),
+                "missing_fields": row_missing,
+            }
+            balance_table.append(row)
+
+            if has_nut:
+                days_with_nut += 1
+                total_cal_in += cal_in or 0.0
+            if has_garmin and gd.get("total_kcal"):
+                days_with_garmin += 1
+                total_garmin += float(gd["total_kcal"]) or 0.0
+
+        n_days = len(days_requested) or 1
+        balance_summary = {
+            "date_from": df_str,
+            "date_to": dt_str,
+            "days_requested": n_days,
+            "days_with_nutrition": days_with_nut,
+            "days_with_garmin_energy": days_with_garmin,
+            "total_calories_in": total_cal_in if days_with_nut else None,
+            "total_garmin_total_kcal": total_garmin if days_with_garmin else None,
+            "total_balance_kcal": (total_cal_in - total_garmin) if (days_with_nut and days_with_garmin) else None,
+            "avg_calories_in": (total_cal_in / days_with_nut) if days_with_nut else None,
+            "avg_garmin_total_kcal": (total_garmin / days_with_garmin) if days_with_garmin else None,
+            "avg_balance_kcal": ((total_cal_in - total_garmin) / days_with_nut) if (days_with_nut and days_with_garmin) else None,
+            "days_missing_garmin": missing_garmin,
+            "days_missing_nutrition": missing_nut,
+        }
+
+        # If Garmin blocked or no_data, adjust answer for calorie balance queries
+        if garmin_energy_blocked or (garmin_energy_used and is_calorie_balance):
+            garmin_status = None
+            garmin_error = None
+            for a in answers:
+                if a["reader"] == "garmin_energy":
+                    garmin_status = str(a.get("data", {}).get("status", "")).upper()
+                    garmin_error = a.get("data", {}).get("error_class", "")
+                    break
+            if garmin_status and garmin_status != "OK":
+                reason = "MFA" if "mfa" in str(garmin_status).lower() or "mfa" in str(garmin_error) else "no data"
+                limitations.append(
+                    f"Garmin energy unavailable ({reason}) — bilans kcal nie może być w pełni obliczony."
+                )
+                answer_text = (
+                    f"Bilans częściowy {df_str}–{dt_str}: "
+                    f"nutrition data available from local sources, Garmin energy unavailable ({reason}); "
+                    f"balance_kcal cannot be computed."
+                )
 
     response: dict[str, Any] = {
         "tool": "qbot.query", "safety_class": "READ_ONLY",
@@ -962,9 +1520,56 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         "tables": tables, "data": answers[0].get("data", {}) if answers else {},
         "answers": answers, "provenance": provenance if include_provenance else [],
         "missing_fields": missing if include_missing else [],
-        "confidence": _confidence_from_results(answers),
         "limitations": limitations[:10],
+        "date_resolution": date_ctx,
     }
+
+    # Include calorie balance data if computed
+    if balance_table:
+        response["calorie_balance"] = {
+            "rows": balance_table,
+            "summary": balance_summary,
+        }
+
+    # Garmin energy diagnostic block (if garmin_energy was used)
+    if garmin_energy_used:
+        garmin_answer = next((a for a in answers if a["reader"] == "garmin_energy"), None)
+        if garmin_answer:
+            gd = garmin_answer.get("data", {})
+            response["garmin_energy"] = {
+                "status": gd.get("status"),
+                "date": gd.get("date"),
+                "active_kcal": gd.get("active_kcal"),
+                "resting_kcal": gd.get("resting_kcal"),
+                "bmr_kcal": gd.get("bmr_kcal"),
+                "total_kcal": gd.get("total_kcal"),
+                "activity_kcal": gd.get("activity_kcal"),
+                "source": gd.get("source"),
+                "auth_status": gd.get("auth_status"),
+                "error_class": gd.get("error_class"),
+                "error": gd.get("error"),
+                "env_configured": gd.get("env_configured"),
+                "token_store_found": gd.get("token_store_found"),
+                "session_cache_found": gd.get("session_cache_found"),
+                "local_cache_found": gd.get("local_cache_found"),
+                "safe_next_action": gd.get("safe_next_action"),
+                "missing_fields": gd.get("missing_fields", []),
+                "limitations": gd.get("limitations", []),
+            }
+
+    # Determine if Garmin is a required source for this query
+    garmin_is_required = garmin_energy_used and (
+        is_calorie_balance or
+        "garmin_energy" in intents or
+        ("garmin_energy" in readers_to_call)
+    )
+
+    # No-data policy test — override early
+    if "no_data_policy_test" in intents:
+        response["status"] = "no_data"
+        response["answer"] = NO_DATA_PHRASE
+        response["confidence"] = "low"
+        return response
 
     # Status aggregation
     key_readers_ok = any(
@@ -991,18 +1596,17 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     if route_lookup_success:
         response["status"] = "ok"
         response["confidence"] = "high"
-
-    if not answers:
-        response["status"] = "partial"
+    elif not answers:
+        response["status"] = "no_data"
         response["confidence"] = "low"
         missing.append("surface_profile: data not returned by route_artifact_enrich")
         limitations.append("route_artifact_enrich did not return surface_profile")
         response["missing_fields"] = missing if include_missing else []
-        if "Nawierzchnia: dane niedostępne" in answer_text or "niedostępne" in answer_text.lower():
-            response["status"] = "partial"
     elif not key_readers_ok and has_blocked:
         response["status"] = "blocked"
     elif has_blocked and non_garage_ok:
+        response["status"] = "partial"
+    elif garmin_energy_blocked:
         response["status"] = "partial"
     elif len(answers) == 1 and answers[0]["reader"] in ("status", "readiness", "capability_scan"):
         response["status"] = "no_data"
@@ -1014,6 +1618,22 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         response["status"] = "partial"
     else:
         response["status"] = "ok"
+
+    # Compute confidence after status is determined
+    if "confidence" not in response:
+        garmin_missing_or_blocked = garmin_is_required and (
+            garmin_energy_blocked or
+            any(
+                r.get("reader") == "garmin_energy" and
+                str(r.get("status", r.get("data", {}).get("status", ""))).upper() not in ("OK", "")
+                for r in answers
+            )
+        )
+        response["confidence"] = _confidence_from_results(
+            answers,
+            response_status=response["status"],
+            has_required_missing=garmin_missing_or_blocked,
+        )
 
     # Post-status adjustments
     if expects_surface and surface_data_returned:
@@ -1028,16 +1648,12 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     if "route_stage_split" in intents:
         response["status"] = "no_data"
         response["answer"] = NO_DATA_PHRASE
+        response["confidence"] = "low"
         response["missing_capabilities"] = [
             "route_stage_splitter",
             "town_snap_to_trackpoint",
             "lodging_waypoint_matcher",
         ]
         response.setdefault("limitations", []).append("qbot.query can parse GPX summary, but cannot stage full GPX yet")
-
-    # No-data policy test
-    if "no_data_policy_test" in intents:
-        response["status"] = "no_data"
-        response["answer"] = NO_DATA_PHRASE
 
     return response
