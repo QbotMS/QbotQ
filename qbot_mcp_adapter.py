@@ -86,112 +86,8 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
     # ── Readiness (optional — detailed status with blockers) ──
     "qbot.readiness": {
         "qbot_tool": "qbot_readiness_report",
-        "description": (
-            "Szczegółowy raport gotowości QBot — lista blokerów, status integracji, "
-            "rekomendowane akcje. Bardziej szczegółowy niż qbot.status."
-        ),
+        "description": "Szczegółowy raport gotowości QBot — lista blokerów, status integracji.",
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-
-    # ── Tool policy audit (optional) ──
-    "qbot.tool_policy": {
-        "qbot_tool": "qbot_tool_policy_list",
-        "description": "Lista polityk narzędzi QBot — do audytu dostępności i bezpieczeństwa.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-
-    # ── Task queue ──
-    "qbot.task_queue_add": {
-        "qbot_tool": "qbot_task_queue_add",
-        "description": "Dodaj zadanie do kolejki QBot do wykonania przez CLI/admina.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "title": {"type": "string", "description": "Tytuł zadania"},
-                "description": {"type": "string", "description": "Co ma być zrobione"},
-                "style": {"type": "string", "default": "short"},
-                "tools_to_use": {"type": "array", "items": {"type": "string"}},
-            },
-            "required": ["title"],
-            "additionalProperties": False,
-        },
-        "safety_class": "WRITE_SAFE",
-        "auth_required": True,
-    },
-    "qbot.task_queue_list": {
-        "qbot_tool": "qbot_task_queue_list",
-        "description": "Lista zadań w kolejce QBot.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "status": {"type": "string", "default": "pending"},
-                "limit": {"type": "integer", "default": 50},
-            },
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.task_queue_next": {
-        "qbot_tool": "qbot_task_queue_next",
-        "description": "Pobierz następne zadanie pending do wykonania.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.task_queue_status": {
-        "qbot_tool": "qbot_task_queue_status",
-        "description": "Aktualizuj status zadania po wykonaniu (pass/blocked/fail/in_progress).",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "task_id": {"type": "string"},
-                "status": {"type": "string", "enum": ["pass", "blocked", "fail", "in_progress"]},
-                "result_summary": {"type": "string"},
-                "error": {"type": "string"},
-            },
-            "required": ["task_id", "status"],
-            "additionalProperties": False,
-        },
-        "safety_class": "WRITE_SAFE",
-        "auth_required": True,
-    },
-
-    # ── Artifacts (optional — read-only artifact access) ──
-    "qbot.artifact_list": {
-        "qbot_tool": "qbot_artifact_list",
-        "description": (
-            "Lista artefaktów QBot z opcjonalnym filtrem typu. "
-            "Read-only — nie tworzy ani nie modyfikuje plików."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "artifact_type": {"type": "string", "description": "Filtr typu: report/export/log/state"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
-            },
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.artifact_get": {
-        "qbot_tool": "qbot_artifact_get",
-        "description": (
-            "Pobiera artefakt QBot po ID. Read-only — zwraca pełną treść do 100 KB."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "id": {"type": "integer", "description": "Artifact ID"},
-            },
-            "required": ["id"],
-            "additionalProperties": False,
-        },
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
@@ -531,10 +427,9 @@ def _validate_mcp_access(method: str, headers: dict[str, str], *, tool_name: str
     meta = _MCP_TOOL_MAP.get(tool_name)
     if not meta:
         return False, "tool not allowed"
-    # Require Bearer token for ALL tools/call when MCP_SECRET is configured.
-    # Without configured token → open mode (transition/development).
-    if _token_configured() and not _auth_header_ok(headers):
-        return False, "missing or invalid MCP Bearer token"
+    # Public MCP is read-only, no Bearer auth required.
+    # OpenAI MCP UI does not support simple Bearer token.
+    # All write/admin tools are excluded from the public allowlist.
     return True, None
 
 
@@ -619,29 +514,8 @@ def handle_mcp_request(
                     include_provenance=bool(clean_args.get("include_provenance", True)),
                     include_missing=bool(clean_args.get("include_missing", True)),
                 )
-        elif name == "qbot.artifact_list":
-            result = _tool_qbot_artifact_list(clean_args)
-            result["tool"] = "qbot.artifact_list"
-        elif name == "qbot.artifact_get":
-            artifact_id = clean_args.get("id")
-            if not artifact_id:
-                result = {"tool": "qbot.artifact_get", "status": "error", "error": "id required"}
-            else:
-                result = _tool_qbot_artifact_get({"id": int(artifact_id)})
-                result["tool"] = "qbot.artifact_get"
-        elif name == "qbot.artifact_create" and not _token_configured():
-            result = {
-                "tool": name,
-                "status": "BLOCKED",
-                "execute": False,
-                "policy_status": "BLOCKED",
-                "reason": "MCP token not configured",
-            }
         else:
             tool_args = dict(clean_args)
-            if name == "qbot.artifact_create":
-                if "tags" in tool_args and isinstance(tool_args["tags"], str):
-                    tool_args["tags"] = [tool_args["tags"]]
             tool_result, warnings = _dispatch_local_qbot_tool(
                 qbot_tool,
                 tool_args,
