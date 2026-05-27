@@ -103,6 +103,149 @@ def event_create(date_start: str, title: str, event_type: str = "note",
     return {k: _s(v) for k, v in dict(r).items()}
 
 
+def qcal_event_add_controlled(
+    date_start: str,
+    title: str,
+    date_end: str | None = None,
+    time_start: str | None = None,
+    event_type: str = "custom",
+    description: str | None = None,
+    source: str = "chatgpt_mcp",
+    idempotency_key: str | None = None,
+    confirm: bool = False,
+    affects_training: bool = False,
+    affects_nutrition: bool = False,
+) -> dict:
+    """Unified QCal event writer — used by CLI, MCP, action_execute.
+
+    Returns structured result:
+      status: ok | duplicate | refused | error
+      created: bool
+      event_id: int | None
+      record: dict | None
+      snapshot_rebuilt: bool
+      message: str
+    """
+    import datetime
+    import json as _json
+    from psycopg.rows import dict_row
+
+    if not confirm:
+        return {"status": "refused", "event_id": None, "record": None, "snapshot_rebuilt": False,
+                "created": False, "message": "confirm must be true to write."}
+
+    if not idempotency_key:
+        return {"status": "refused", "event_id": None, "record": None, "snapshot_rebuilt": False,
+                "created": False, "message": "idempotency_key required."}
+
+    # ── Duplicate / stale audit check ──
+    try:
+        c = _conn()
+        cur = c.cursor()
+        cur.execute("SELECT entity_id FROM qcal_write_audit WHERE idempotency_key=%s", (idempotency_key,))
+        row = cur.fetchone()
+        if row:
+            existing_id = row["entity_id"]
+            # Validate linked record
+            cur.execute("SELECT * FROM calendar_events WHERE id=%s", (existing_id,))
+            ev = cur.fetchone()
+            if ev and ev.get("status") not in ("cancelled", "deleted"):
+                ev_dict = {k: str(v) if hasattr(v, "isoformat") else v for k, v in dict(ev).items()}
+                c.close()
+                return {"status": "duplicate", "created": False, "event_id": existing_id, "record": ev_dict,
+                        "message": f"Event already exists (id={existing_id}).", "snapshot_rebuilt": False}
+            # Stale audit: clean up
+            cur.execute("DELETE FROM qcal_write_audit WHERE idempotency_key=%s", (idempotency_key,))
+            c.commit()
+        c.close()
+    except Exception:
+        pass
+
+    # ── Natural-key duplicate fallback ──
+    # Check calendar_events by date_start + date_end + event_type + normalized title
+    try:
+        c = _conn()
+        cur = c.cursor()
+        norm_title = title.strip().lower()
+        cur.execute(
+            "SELECT * FROM calendar_events WHERE date_start=%s::date AND date_end IS NOT DISTINCT FROM %s::date AND event_type=%s AND LOWER(TRIM(title))=%s AND status NOT IN ('cancelled','deleted') ORDER BY id",
+            (date_start, date_end, event_type, norm_title))
+        matches = cur.fetchall()
+        if matches:
+            if len(matches) == 1:
+                ev = matches[0]
+                eid = ev["id"]
+                ev_dict = {k: str(v) if hasattr(v, "isoformat") else v for k, v in dict(ev).items()}
+                # Update audit to point to this existing event
+                if idempotency_key:
+                    cur.execute(
+                        "INSERT INTO qcal_write_audit (idempotency_key, operation, entity_type, entity_id, date, source, payload_json, result_json) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (idempotency_key) DO UPDATE SET entity_id=EXCLUDED.entity_id",
+                        (idempotency_key, "event_add", "event", eid, date_start, source,
+                         _json.dumps({"title": title, "date_start": date_start}, default=str),
+                         _json.dumps({"id": eid}, default=str)))
+                    c.commit()
+                c.close()
+                return {"status": "duplicate", "created": False, "event_id": eid, "record": ev_dict,
+                        "message": f"Event already exists (id={eid}, natural key match).", "snapshot_rebuilt": False,
+                        "idempotency_key": idempotency_key}
+            else:
+                eids = [r["id"] for r in matches]
+                c.close()
+                return {"status": "conflict_duplicate", "created": False, "event_id": None, "record": None,
+                        "message": f"Multiple active events match natural key: {eids}. Suggested cleanup.",
+                        "event_ids": eids, "suggested_cleanup": "Use qcal event-cancel to keep only one."}
+        c.close()
+    except Exception:
+        pass
+
+    # ── Create event ──
+    try:
+        ev = event_create(
+            date_start=date_start, title=title, event_type=event_type,
+            description=description, date_end=date_end,
+            status="planned", source=source,
+            affects_training=affects_training, affects_nutrition=affects_nutrition,
+        )
+    except Exception as e:
+        return {"status": "error", "created": False, "event_id": None, "record": None,
+                "message": str(e)[:200], "snapshot_rebuilt": False}
+
+    eid = ev.get("id")
+
+    # ── Audit ──
+    try:
+        c = _conn()
+        cur = c.cursor()
+        cur.execute(
+            "INSERT INTO qcal_write_audit (idempotency_key, operation, entity_type, entity_id, date, source, payload_json, result_json) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+            (idempotency_key, "event_add", "event", eid, date_start, source,
+             _json.dumps({"title": title, "date_start": date_start}, default=str),
+             _json.dumps({"id": eid}, default=str)))
+        c.commit()
+        c.close()
+    except Exception:
+        pass
+
+    # ── Snapshot ──
+    snap_ok = False
+    try:
+        build_snapshot(date_start)
+        snap_ok = True
+    except Exception:
+        pass
+
+    # ── Serialize record ──
+    record = {k: str(v) if hasattr(v, "isoformat") or isinstance(v, type) else v for k, v in ev.items()}
+
+    return {
+        "status": "ok", "created": True, "event_id": eid, "record": record,
+        "idempotency_key": idempotency_key, "snapshot_rebuilt": snap_ok,
+        "message": f"Utworzono wydarzenie: {title} (id={eid}, {date_start})",
+    }
+
+
 def event_list(date_from: str | None = None, date_to: str | None = None,
                status: str | None = None, limit: int = 50) -> list[dict]:
     with _conn() as c:

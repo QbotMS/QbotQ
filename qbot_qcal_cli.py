@@ -28,17 +28,33 @@ def _db():
 # ── Events ──
 
 def cmd_event_add(args):
-    c = _db(); cur = c.cursor()
-    cur.execute("""INSERT INTO calendar_events (date_start,date_end,time_start,event_type,title,description,status,source,affects_training,affects_nutrition) VALUES (%s,%s,%s,%s,%s,%s,'planned','manual',%s,%s) RETURNING id""",
-        (_rd(args.date), _rd(args.date_end) if args.date_end else None, args.time or None, args.type, args.title, args.description, args.affects_training, args.affects_nutrition))
-    eid = cur.fetchone()["id"]; c.commit(); c.close()
-    print(f"✓ Event id={eid} — {args.title} ({_rd(args.date)})"); return 0
+    from qbot_calendar_core import qcal_event_add_controlled
+    idem = args.idempotency_key or f"cli-event-{args.date}-{args.title}-{datetime.datetime.now().isoformat()}"
+    r = qcal_event_add_controlled(
+        date_start=_rd(args.date), title=args.title, event_type=args.type,
+        description=args.description, date_end=_rd(args.date_end) if args.date_end else None,
+        time_start=args.time, source="manual", idempotency_key=idem,
+        confirm=True, affects_training=args.affects_training, affects_nutrition=args.affects_nutrition,
+    )
+    if r["status"] == "ok":
+        print(f"✓ Event id={r['event_id']} — {args.title} ({_rd(args.date)})")
+        print(f"  idempotency_key: {idem}")
+    elif r["status"] == "duplicate":
+        print(f"✓ Event already exists: id={r['event_id']} — {args.title}")
+    else:
+        print(f"ERROR: {r['message']}")
+        return 1
+    return 0
 
 def cmd_event_list(args):
     c = _db(); cur = c.cursor()
     df = _rd(args.date_from) if args.date_from else date.today().isoformat()
     dt = _rd(args.date_to) if args.date_to else (date.today() + timedelta(days=7)).isoformat()
-    cur.execute("SELECT * FROM calendar_events WHERE date_start BETWEEN %s AND %s ORDER BY date_start, time_start", (df, dt))
+    include_cancelled = getattr(args, "include_cancelled", False)
+    if include_cancelled:
+        cur.execute("SELECT * FROM calendar_events WHERE date_start BETWEEN %s AND %s ORDER BY date_start, time_start", (df, dt))
+    else:
+        cur.execute("SELECT * FROM calendar_events WHERE date_start BETWEEN %s AND %s AND status NOT IN ('cancelled','deleted') ORDER BY date_start, time_start", (df, dt))
     rows = cur.fetchall(); c.close()
     if not rows: print("No events."); return 0
     print(f"Events ({len(rows)}):")
@@ -268,9 +284,9 @@ def main():
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     ea = sub.add_parser("event-add")
-    ea.add_argument("--date", required=True); ea.add_argument("--date-end"); ea.add_argument("--time"); ea.add_argument("--type", default="note"); ea.add_argument("--title", required=True); ea.add_argument("--description"); ea.add_argument("--affects-training", dest="affects_training", action="store_true"); ea.add_argument("--affects-nutrition", dest="affects_nutrition", action="store_true"); ea.add_argument("--yes", action="store_true")
+    ea.add_argument("--date", required=True); ea.add_argument("--date-end"); ea.add_argument("--time"); ea.add_argument("--type", default="note"); ea.add_argument("--title", required=True); ea.add_argument("--description"); ea.add_argument("--affects-training", dest="affects_training", action="store_true"); ea.add_argument("--affects-nutrition", dest="affects_nutrition", action="store_true"); ea.add_argument("--idempotency-key"); ea.add_argument("--yes", action="store_true")
 
-    el = sub.add_parser("event-list"); el.add_argument("--date-from"); el.add_argument("--date-to"); el.add_argument("--from", dest="date_from"); el.add_argument("--to", dest="date_to")
+    el = sub.add_parser("event-list"); el.add_argument("--date-from"); el.add_argument("--date-to"); el.add_argument("--from", dest="date_from"); el.add_argument("--to", dest="date_to"); el.add_argument("--include-cancelled", action="store_true")
     sub.add_parser("event-show").add_argument("--id", type=int, required=True)
     ec = sub.add_parser("event-cancel"); ec.add_argument("--id", type=int, required=True); ec.add_argument("--yes", action="store_true")
     ed = sub.add_parser("event-delete"); ed.add_argument("--id", type=int, required=True); ed.add_argument("--yes", action="store_true")

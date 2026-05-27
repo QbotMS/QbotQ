@@ -1151,25 +1151,25 @@ def _handle_qcal_event_preview(args: dict) -> dict:
             "next_action":"Call qbot.qcal_event_add with confirm=true and idempotency_key."}
 
 def _handle_qcal_event_add(args: dict) -> dict:
-    if not (args.get("confirm") == True or str(args.get("confirm","")).lower()=="true"):
-        return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":"confirm must be true."}
-    idem = str(args.get("idempotency_key",""))
-    if not idem: return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":"idempotency_key required."}
-    if _qcal_check_idem(idem): return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"DUPLICATE"}
-    try:
-        import psycopg, os, json; from psycopg.rows import dict_row
-        c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
-        cur = c.cursor()
-        cur.execute("""INSERT INTO calendar_events (date_start,date_end,time_start,event_type,title,description,status,source)
-            VALUES (%s,%s,%s,%s,%s,%s,'planned',%s) RETURNING id""",
-            (args.get("date_start"),args.get("date_end"),args.get("time_start"),args.get("event_type","note"),args.get("title","?"),args.get("description"),args.get("source","chatgpt_mcp")))
-        eid = cur.fetchone()["id"]; c.commit(); c.close()
-        _qcal_audit(idem, "event_add", "calendar_event", eid, args.get("date_start"), dict(args), {"id":eid})
-        try:
-            from qbot_calendar_core import build_snapshot; build_snapshot(args.get("date_start",""))
-        except: pass
-        return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"OK","event_id":eid}
-    except Exception as e: return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
+    from qbot_calendar_core import qcal_event_add_controlled
+    r = qcal_event_add_controlled(
+        date_start=args.get("date_start",""), title=args.get("title","?"),
+        date_end=args.get("date_end"), time_start=args.get("time_start"),
+        event_type=args.get("event_type","note"), description=args.get("description"),
+        source=args.get("source","chatgpt_mcp"),
+        idempotency_key=args.get("idempotency_key"),
+        confirm=(args.get("confirm") == True or str(args.get("confirm","")).lower()=="true"),
+    )
+    # Map to MCP-style response
+    mcp_status = r["status"].upper() if r["status"] in ("ok","duplicate","refused","error") else "ERROR"
+    if mcp_status == "OK":
+        return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"OK","event_id":r["event_id"],"record":r.get("record"),"idempotency_key":r.get("idempotency_key"),"snapshot_rebuilt":r.get("snapshot_rebuilt")}
+    elif mcp_status == "DUPLICATE":
+        return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"DUPLICATE","event_id":r["event_id"],"record":r.get("record")}
+    elif mcp_status == "REFUSED":
+        return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":r.get("message","refused")}
+    else:
+        return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":r.get("message","unknown error")}
 
 def _handle_qcal_event_cancel(args: dict) -> dict:
     if not (args.get("confirm") == True or str(args.get("confirm","")).lower()=="true"):
@@ -1374,7 +1374,7 @@ def _action_check_duplicate(idem_key: str, action_type: str) -> dict | None:
                 existing_id = row["entity_id"]
                 c.close()
                 if existing_id:
-                    return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "created": False, "action_type": action_type, "idempotency_key": idem_key, "existing_id": existing_id, "note": "idempotency_key already exists (nutrition_write_audit)."}
+                    return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "created": False, "action_type": action_type, "idempotency_key": idem_key, "meal_id": existing_id, "existing_id": existing_id, "note": "idempotency_key already exists (nutrition_write_audit)."}
             c.close()
         except Exception:
             pass
@@ -1399,7 +1399,7 @@ def _action_check_duplicate(idem_key: str, action_type: str) -> dict | None:
                 active = target and target["status"] not in ("cancelled", "deleted", "done")
                 c.close()
                 if active:
-                    return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "created": False, "action_type": action_type, "idempotency_key": idem_key, "existing_id": existing_id, "note": "Linked record is active."}
+                    return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "created": False, "action_type": action_type, "idempotency_key": idem_key, "event_id": existing_id, "existing_id": existing_id, "note": "Linked record is active."}
                 # Stale audit: cleanup and let caller re-execute
                 c2 = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
                 cur2 = c2.cursor()
@@ -1516,41 +1516,23 @@ def _action_exec_reminder(payload: dict, idem_key: str, source: str) -> dict:
 
 
 def _action_exec_event(payload: dict, idem_key: str, source: str) -> dict:
-    """Execute qcal_event_add."""
-    import json, psycopg, os
-    from psycopg.rows import dict_row
-
-    c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
-    cur = c.cursor()
-
-    cur.execute("""INSERT INTO calendar_events (date_start,date_end,time_start,event_type,title,description,status,source)
-        VALUES (%s,%s,%s,%s,%s,%s,'planned',%s) RETURNING id""",
-        (payload.get("date_start"), payload.get("date_end"), payload.get("time_start"),
-         payload.get("event_type","note"), payload.get("title","?"), payload.get("description", payload.get("title","")),
-         source))
-    eid = cur.fetchone()["id"]
-    cur.execute("SELECT * FROM calendar_events WHERE id=%s", (eid,))
-    row = cur.fetchone()
-    record = {k: str(v) if hasattr(v, "isoformat") or isinstance(v, type) else v for k, v in dict(row).items()} if row else {}
-    c.commit()
-    c.close()
-
-    _qcal_audit(idem_key, "event_add", "event", eid, payload.get("date_start",""), payload, {"id": eid, "action_execute": True})
-    snap_ok = False
-    try:
-        from qbot_calendar_core import build_snapshot
-        build_snapshot(payload.get("date_start",""))
-        snap_ok = True
-    except Exception:
-        pass
-
+    """Execute qcal_event_add via shared writer."""
+    from qbot_calendar_core import qcal_event_add_controlled
+    r = qcal_event_add_controlled(
+        date_start=payload.get("date_start",""), title=payload.get("title","?"),
+        date_end=payload.get("date_end"), time_start=payload.get("time_start"),
+        event_type=payload.get("event_type","note"), description=payload.get("description", payload.get("title","")),
+        source=source, idempotency_key=idem_key, confirm=True,
+    )
+    status_map = {"ok": "OK", "duplicate": "DUPLICATE", "refused": "BLOCKED", "error": "ERROR"}
     return {
         "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
-        "status": "OK", "action_type": "qcal_event_add",
-        "idempotency_key": idem_key, "created": True,
-        "event_id": eid, "record": record,
-        "message": f"Utworzono wydarzenie: {record.get('title','?')} (id={eid}, {record.get('date_start','?')} → {record.get('date_end','?')})",
-        "snapshot_rebuilt": snap_ok,
+        "status": status_map.get(r["status"], "ERROR"),
+        "action_type": "qcal_event_add",
+        "idempotency_key": idem_key, "created": r.get("created", False),
+        "event_id": r.get("event_id"), "record": r.get("record"),
+        "message": r.get("message", ""),
+        "snapshot_rebuilt": r.get("snapshot_rebuilt", False),
     }
 
 
