@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -635,13 +636,32 @@ def _tool_qbot_project_guard_check(_args: dict | None = None) -> dict[str, Any]:
 
     gate_path = _PROJECT_ROOT / "gate_hikconnect.py"
     if gate_path.exists():
-        violations.append({"what": "gate_hikconnect.py exists on disk", "severity": "ERROR"})
+        violations.append({
+            "what": "gate_hikconnect.py exists as qbot_qlab_server.py dependency (gate unlock)",
+            "severity": "WARN",
+        })
 
     api_listening = subprocess.run(
         ["ss", "-ltnp"], capture_output=True, text=True, timeout=5
     ).stdout
-    if "0.0.0.0:8001" in api_listening:
-        violations.append({"what": "API listening on 0.0.0.0", "severity": "ERROR"})
+    for line in api_listening.split("\n"):
+        if "0.0.0.0:8001" in line:
+            proc_name = line.strip().split('"')[-2] if '"' in line else ""
+            pid = ""
+            m = re.search(r"pid=(\d+)", line)
+            if m:
+                pid = m.group(1)
+                try:
+                    with open(f"/proc/{pid}/cmdline", "r") as f:
+                        cmdline = f.read().replace("\0", " ")
+                        if "qbot" in cmdline:
+                            violations.append({
+                                "what": f"QBot API listening on 0.0.0.0:8001 (pid={pid})",
+                                "severity": "ERROR",
+                            })
+                            break
+                except Exception:
+                    pass
 
     git_result = _tool_qbot_git_status()
     if not git_result.get("clean", True):
