@@ -148,6 +148,8 @@ def cmd_import_history(args):
         else:
             print(f"  ✗ {t}: MISSING")
     print(f"\n{result.get('note','')}")
+    if not args.yes:
+        print("(--yes not specified — no data imported)")
     return 0
 
 
@@ -204,8 +206,10 @@ def main():
 
     ih = sub.add_parser("import-history")
     ih.add_argument("--source", default="all")
-    ih.add_argument("--date-from", default="2025-01-01")
-    ih.add_argument("--date-to")
+    ih.add_argument("--from", dest="date_from", default="2025-01-01")
+    ih.add_argument("--to", dest="date_to")
+    ih.add_argument("--dry-run", dest="dry_run", action="store_true", default=True)
+    ih.add_argument("--yes", action="store_true")
 
     args = parser.parse_args()
     cmds = {
