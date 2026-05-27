@@ -35,10 +35,14 @@ _SESSION_STATE: dict[str, dict[str, Any]] = {}
 
 _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
     # ═══════════════════════════════════════════════════════════════
-    # PUBLIC MCP TOOLS — allowlisted for ChatGPT
-    # qbot.query is the primary entry point. All reader logic
-    # (nutrition, training, routes, garage, weather, artifacts,
-    # reports) is dispatched internally by QBot.
+    # PUBLIC MCP TOOLS — docelowo tylko 4 narzędzia:
+    #   qbot.query          — rozumienie + plan + action_draft
+    #   qbot.action_execute — jedyny executor zapisów
+    #   qbot.status         — smoke test
+    #   qbot.readiness      — diagnostyka
+    # Wszystkie domenowe narzędzia (nutrition_log_add, qcal_event_add,
+    # qcal_reminder_add, itd.) są internal — dostępne tylko przez
+    # action_execute.
     # ═══════════════════════════════════════════════════════════════
 
     # ── Core: universal read-only query router ──
@@ -51,7 +55,7 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
             "Garmin, Cronometer, Intervals, Xert, RWGPS, wellness, artifacts, reports). "
             "Zwraca structured answer + tables + provenance + missing_fields + limitations. "
             "Tryb plan_only podgląda plan readerów bez wykonywania. "
-            "Nie używaj niskopoziomowych narzędzi — wszystko jest przez qbot.query."
+            "Jeśli query zapisów, zwraca action_draft (bez zapisu). Wywołaj qbot.action_execute."
         ),
         "input_schema": {
             "type": "object",
@@ -92,152 +96,7 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "auth_required": False,
     },
 
-    # ── Nutrition write (narrow, confirmed, idempotent) ──
-    "qbot.nutrition_log_preview": {
-        "qbot_tool": "qbot_nutrition_log_preview",
-        "description": "Podgląd posiłku przed zapisem. READ_ONLY — nic nie zapisuje do DB. Zwraca draft, makra, idempotency_key.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "date": {"type": "string", "description": "YYYY-MM-DD, default today"},
-                "meal_name": {"type": "string"},
-                "raw_text": {"type": "string", "description": "Naturalny opis: 'jogurt 200g, banan'"},
-                "kcal_total": {"type": "number"},
-                "protein_g": {"type": "number"},
-                "carbs_g": {"type": "number"},
-                "fat_g": {"type": "number"},
-                "fluids_ml": {"type": "number"},
-                "source": {"type": "string", "default": "chatgpt_mcp"},
-                "confidence": {"type": "string", "default": "medium"},
-            },
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.nutrition_log_add": {
-        "qbot_tool": "qbot_nutrition_log_add",
-        "description": "ZAPISZ posiłek do nutrition DB. WYMAGA: confirm=true, idempotency_key. Tylko nutrition tables. Zwraca wpis + daily summary.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "date": {"type": "string"},
-                "meal_name": {"type": "string"},
-                "raw_text": {"type": "string"},
-                "kcal_total": {"type": "number"},
-                "protein_g": {"type": "number"},
-                "carbs_g": {"type": "number"},
-                "fat_g": {"type": "number"},
-                "fluids_ml": {"type": "number"},
-                "source": {"type": "string", "default": "chatgpt_mcp"},
-                "confidence": {"type": "string", "default": "medium"},
-                "idempotency_key": {"type": "string", "description": "Unikalny klucz — zapobiega duplikatom."},
-                "confirm": {"type": "boolean", "description": "MUSI być true, żeby zapisać."},
-            },
-            "required": ["date", "kcal_total", "idempotency_key"],
-            "additionalProperties": False,
-        },
-        "safety_class": "WRITE_NUTRITION_ONLY",
-        "auth_required": False,
-    },
-    "qbot.nutrition_log_delete_preview": {
-        "qbot_tool": "qbot_nutrition_log_delete_preview",
-        "description": "Podgląd usunięcia posiłku. READ_ONLY — nic nie usuwa. Pokazuje meal_log + items przed potwierdzeniem.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "meal_log_id": {"type": "integer", "description": "ID posiłku do podglądu usunięcia"},
-            },
-            "required": ["meal_log_id"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.nutrition_log_delete": {
-        "qbot_tool": "qbot_nutrition_log_delete",
-        "description": "USUŃ posiłek z nutrition DB. WYMAGA: confirm=true, idempotency_key. Tylko wpisy z source=chatgpt_mcp / MCP:. Zwraca deleted info + recomputed daily summary.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "meal_log_id": {"type": "integer"},
-                "confirm": {"type": "boolean", "description": "MUSI być true"},
-                "idempotency_key": {"type": "string"},
-            },
-            "required": ["meal_log_id", "idempotency_key"],
-            "additionalProperties": False,
-        },
-        "safety_class": "WRITE_NUTRITION_ONLY",
-        "auth_required": False,
-    },
-    "qbot.nutrition_log_replace": {
-        "qbot_tool": "qbot_nutrition_log_replace",
-        "description": "ZAMIEŃ posiłek MCP na nowy (delete old + insert new). WYMAGA: confirm=true, idempotency_key. Tylko MCP-sourced wpisy. Zwraca old + new entry + daily summary.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "meal_log_id": {"type": "integer"},
-                "new_meal_name": {"type": "string"},
-                "raw_text": {"type": "string"},
-                "kcal_total": {"type": "number"},
-                "protein_g": {"type": "number"},
-                "carbs_g": {"type": "number"},
-                "fat_g": {"type": "number"},
-                "confirm": {"type": "boolean"},
-                "idempotency_key": {"type": "string"},
-            },
-            "required": ["meal_log_id", "kcal_total", "idempotency_key"],
-            "additionalProperties": False,
-        },
-        "safety_class": "WRITE_NUTRITION_ONLY",
-        "auth_required": False,
-    },
-
-    # ── QCal Event tools ──
-    "qbot.qcal_event_preview": {
-        "qbot_tool": "qbot_qcal_event_preview",
-        "description": "Podgląd wydarzenia przed zapisem. READ_ONLY.",
-        "input_schema": {"type":"object","properties":{"raw_text":{"type":"string"},"date_start":{"type":"string"},"date_end":{"type":"string"},"time_start":{"type":"string"},"event_type":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"}},"additionalProperties":False},
-        "safety_class":"READ_ONLY","auth_required":False,
-    },
-    "qbot.qcal_event_add": {
-        "qbot_tool": "qbot_qcal_event_add",
-        "description": "ZAPISZ wydarzenie do QCal. WYMAGA: confirm=true, idempotency_key.",
-        "input_schema": {"type":"object","properties":{"date_start":{"type":"string"},"date_end":{"type":"string"},"time_start":{"type":"string"},"event_type":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},"source":{"type":"string","default":"chatgpt_mcp"},"idempotency_key":{"type":"string"},"confirm":{"type":"boolean"}},"required":["date_start","title","event_type","idempotency_key"],"additionalProperties":False},
-        "safety_class":"WRITE_QCAL_ONLY","auth_required":False,
-    },
-    "qbot.qcal_event_cancel": {
-        "qbot_tool": "qbot_qcal_event_cancel",
-        "description": "ANULUJ wydarzenie (status=cancelled). WYMAGA confirm=true.",
-        "input_schema": {"type":"object","properties":{"event_id":{"type":"integer"},"reason":{"type":"string"},"confirm":{"type":"boolean"}},"required":["event_id"],"additionalProperties":False},
-        "safety_class":"WRITE_QCAL_ONLY","auth_required":False,
-    },
-
-    # ── QCal Reminder tools ──
-    "qbot.qcal_reminder_preview": {
-        "qbot_tool": "qbot_qcal_reminder_preview",
-        "description": "Podgląd przypomnienia przed zapisem. READ_ONLY.",
-        "input_schema": {"type":"object","properties":{"raw_text":{"type":"string"},"date":{"type":"string"},"time":{"type":"string"},"reminder_type":{"type":"string"},"title":{"type":"string"},"message":{"type":"string"},"channel":{"type":"string"}},"additionalProperties":False},
-        "safety_class":"READ_ONLY","auth_required":False,
-    },
-    "qbot.qcal_reminder_add": {
-        "qbot_tool": "qbot_qcal_reminder_add",
-        "description": "ZAPISZ przypomnienie do QCal. WYMAGA: confirm=true, idempotency_key.",
-        "input_schema": {"type":"object","properties":{"date":{"type":"string"},"time":{"type":"string"},"reminder_type":{"type":"string"},"title":{"type":"string"},"message":{"type":"string"},"channel":{"type":"string","default":"cli"},"priority":{"type":"string","default":"normal"},"idempotency_key":{"type":"string"},"confirm":{"type":"boolean"}},"required":["date","title","message","reminder_type","idempotency_key"],"additionalProperties":False},
-        "safety_class":"WRITE_QCAL_ONLY","auth_required":False,
-    },
-    "qbot.qcal_reminder_done": {
-        "qbot_tool": "qbot_qcal_reminder_done",
-        "description": "OZNACZ przypomnienie jako done.",
-        "input_schema": {"type":"object","properties":{"reminder_id":{"type":"integer"},"confirm":{"type":"boolean"}},"required":["reminder_id"],"additionalProperties":False},
-        "safety_class":"WRITE_QCAL_ONLY","auth_required":False,
-    },
-    "qbot.qcal_reminder_cancel": {
-        "qbot_tool": "qbot_qcal_reminder_cancel",
-        "description": "ANULUJ przypomnienie.",
-        "input_schema": {"type":"object","properties":{"reminder_id":{"type":"integer"},"reason":{"type":"string"},"confirm":{"type":"boolean"}},"required":["reminder_id"],"additionalProperties":False},
-        "safety_class":"WRITE_QCAL_ONLY","auth_required":False,
-    },
+    # ── Unified action executor ──
     "qbot.action_execute": {
         "qbot_tool": "qbot_action_execute",
         "description": (

@@ -9,7 +9,7 @@ sys.path.insert(0, "/opt/qbot/app")
 
 # ── Auth ──
 
-def _token() -> str: return os.getenv("TELEGRAM_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN", "")
+def _token() -> str: return os.getenv("TELEGRAM_BOT_TOKEN", "")
 def _allowed() -> set[str]:
     raw = os.getenv("TELEGRAM_ALLOWED_CHAT_IDS") or os.getenv("TELEGRAM_ALLOWED_CHAT_ID") or ""
     return {s.strip() for s in raw.split(",") if s.strip()}
