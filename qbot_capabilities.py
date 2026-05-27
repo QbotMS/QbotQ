@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-import json, os, re
+import json, os, re, sys
 from typing import Any
 
 CAPABILITIES: dict[str, dict] = {
@@ -230,6 +230,49 @@ CAPABILITIES: dict[str, dict] = {
         "output_type": "audit","safety":"read_only",
         "description": "Audyt połączeń meal_log_items → food_items. 17/21 wpisów bez linku.",
     },
+    "nutrition_food_search": {
+        "name": "nutrition_food_search", "status": "ready",
+        "domains": ["nutrition", "food_search"],
+        "intents": ["product_search", "food_query"],
+        "keywords": ["znajdź produkt","szukaj produktu","ile kcal ma","ile białka ma",
+                     "wartości odżywcze","co zawiera","skład produktu","policz kalorie",
+                     "wyszukaj jedzenie","ile ma kalorii","sprawdź produkt"],
+        "reader": "read_food_product_catalog",
+        "tables": ["food_items"],
+        "required_fields": ["name", "kcal_per_100g"],
+        "output_type": "list","safety":"read_only",
+        "description": "Wyszukiwanie produktów w katalogu food_items po nazwie lub składnikach.",
+        "limitations": ["Szuka po pełnej nazwie lub fragmencie. 41 produktów w bazie."],
+    },
+    "nutrition_log_add": {
+        "name": "nutrition_log_add", "status": "ready",
+        "domains": ["nutrition", "meal_logs", "write_nutrition"],
+        "intents": ["log_meal", "add_food_entry"],
+        "keywords": ["dodaj posiłek","dodaj jedzenie","zaloguj posiłek","wpisz jedzenie",
+                     "dodaj do logu","zapisz posiłek","log-add","log_add",
+                     "dodaj meal","zamów jedzenie","wpisz co zjadłem"],
+        "writer": "qbot.nutrition_log_add",
+        "tables": ["meal_logs", "meal_log_items", "nutrition_write_audit"],
+        "required_fields": ["date", "name", "kcal"],
+        "optional_fields": ["protein_g", "carbs_g", "fat_g"],
+        "output_type": "confirmation","safety":"write_nutrition_only",
+        "description": "Dodanie wpisu posiłku do meal_logs przez MCP/CLI z idempotency key.",
+        "limitations": ["Wymaga confirm=true i idempotency_key. Po dodaniu: daily_summary_compute + build_snapshot."],
+    },
+    "training_latest_activity": {
+        "name": "training_latest_activity", "status": "ready",
+        "domains": ["training", "activity"],
+        "intents": ["latest_training_analysis", "training_assessment"],
+        "keywords": ["jak mi poszła jazda","jak poszedł trening","oceń jazdę","oceń trening",
+                     "ostatnia jazda","ostatni trening","dzisiejsza aktywność","jak mi dziś poszło",
+                     "jak wyszła jazda","jak mi poszło","jak wyszła aktywność"],
+        "reader": "read_latest_training_session",
+        "tables": ["training_sessions"],
+        "required_fields": ["date", "calories_kcal"],
+        "output_type": "assessment","safety":"read_only",
+        "description": "Ocena ostatniej aktywności treningowej z danych QBot DB.",
+        "limitations": ["Używa zaimportowanych danych Garmin. Nie wymaga live API."],
+    },
 }
 
 
@@ -249,7 +292,6 @@ def update_statuses():
     """Update capability statuses based on actual DB state."""
     conn = _db_check()
     if not conn: return
-    cur = conn.cursor()
     try:
         for name, cap in CAPABILITIES.items():
             tables = cap.get("tables", [])
@@ -257,14 +299,18 @@ def update_statuses():
             exists = True; has_fields = True
             for t in tables:
                 try:
-                    cur.execute(f"SELECT 1 FROM {t} LIMIT 0")
-                except: exists = False; break
+                    conn.execute(f"SELECT 1 FROM {t} LIMIT 0")
+                except:
+                    conn.rollback()
+                    exists = False; break
                 # Check required fields
                 required = cap.get("required_fields", [])
                 for f in required:
                     try:
-                        cur.execute(f"SELECT {f} FROM {t} LIMIT 0")
-                    except: has_fields = False
+                        conn.execute(f"SELECT {f} FROM {t} LIMIT 0")
+                    except:
+                        conn.rollback()
+                        has_fields = False
             if not exists:
                 cap["status"] = "missing"
             elif not has_fields:
@@ -287,17 +333,17 @@ def list_capabilities() -> list[dict]:
     result = []
     conn = _db_check()
     for name, c in caps.items():
-        entry = {"name": name, "status": c["status"], "domains": c["domains"],
-                 "reader": c["reader"], "tables": c["tables"], "limitations": c.get("limitations",[])}
+        handler = c.get("reader") or c.get("writer") or c.get("handler") or "missing_handler"
+        entry = {"name": name, "status": c.get("status", "missing"), "safety": c.get("safety", "read_only"),
+                 "domains": c.get("domains", []), "handler": handler, "tables": c.get("tables", []),
+                 "limitations": c.get("limitations",[])}
         if conn:
-            try:
-                cur = conn.cursor()
-                for t in c.get("tables",[]):
-                    try:
-                        cur.execute(f"SELECT COUNT(*) c FROM {t}")
-                        entry[f"{t}_rows"] = cur.fetchone()["c"]
-                    except: pass
-            except: pass
+            for t in c.get("tables",[]):
+                try:
+                    r = conn.execute(f"SELECT COUNT(*) c FROM {t}").fetchone()
+                    entry[f"{t}_rows"] = r["c"]
+                except:
+                    conn.rollback()
         result.append(entry)
     if conn: conn.close()
     return result
@@ -312,17 +358,16 @@ def match_capabilities(question: str) -> dict:
             if kw in ql:
                 matched[name] = cap
                 break
-    # Status report
-    ready = {k: v for k, v in matched.items() if v["status"] == "ready"}
-    partial = {k: v for k, v in matched.items() if v["status"] == "partial"}
-    missing = {k: v for k, v in matched.items() if v["status"] == "missing"}
+    ready = {k: v for k, v in matched.items() if v.get("status") == "ready"}
+    partial = {k: v for k, v in matched.items() if v.get("status") == "partial"}
+    missing = {k: v for k, v in matched.items() if v.get("status") == "missing"}
     return {
         "query": question,
         "matched": list(matched.keys()),
         "ready": list(ready.keys()),
         "partial": list(partial.keys()),
         "missing": list(missing.keys()),
-        "capabilities": {k: {"status": v["status"], "reader": v["reader"], "tables": v["tables"]} for k, v in matched.items()},
+        "capabilities": {k: {"status": v.get("status", "missing"), "reader": v.get("reader") or v.get("writer") or "missing_handler", "tables": v.get("tables", [])} for k, v in matched.items()},
     }
 
 
@@ -348,3 +393,52 @@ def validate_plan(capabilities_matched: dict, domains: list) -> dict:
         issues.append(f"Missing capabilities: {missing_caps}")
 
     return {"valid": not issues, "issues": issues, "ready_caps": [k for k, v in capabilities_matched.items() if v.get("status") == "ready"]}
+
+
+# ── CLI ──
+
+def _print_table(caps: dict, domain: str = None):
+    """Print capabilities as a formatted table."""
+    if domain:
+        header = f"QBot Capabilities (domain: {domain})"
+        caps = {k: v for k, v in caps.items() if domain in v.get("domains", [])}
+    else:
+        header = "QBot Capabilities (all)"
+
+    if not caps:
+        print(f"{header}\n  (none)")
+        return
+
+    print(header)
+    print("-" * len(header))
+    print(f"{'capability':35s} {'status':10s} {'safety':22s} {'tables':50s} {'handler':35s}")
+    print("-" * 155)
+    for name, cap in sorted(caps.items()):
+        status = cap.get("status", "?")
+        safety = cap.get("safety", "read_only")
+        tables = ", ".join(cap.get("tables", []))[:50]
+        handler = cap.get("reader") or cap.get("writer") or "missing_handler"
+        print(f"{name:35s} {status:10s} {safety:22s} {tables:50s} {handler:35s}")
+    print()
+
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="QBot Capability Registry CLI")
+    parser.add_argument("command", nargs="?", default="query-capabilities",
+                        help="Subcommand (default: query-capabilities)")
+    parser.add_argument("--domain", "-d", default=None,
+                        help="Filter capabilities by domain (nutrition, training, qcal, routes, ...)")
+
+    args = parser.parse_args()
+
+    if args.command == "query-capabilities":
+        caps = get_capabilities()
+        _print_table(caps, args.domain)
+    else:
+        print(f"Unknown command: {args.command}")
+        print("Usage: python qbot_capabilities.py query-capabilities [--domain <domain>]")
+
+
+if __name__ == "__main__":
+    main()
