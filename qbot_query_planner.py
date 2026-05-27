@@ -160,7 +160,7 @@ def plan(canonical: dict) -> dict[str, Any]:
                     """LEFT JOIN (SELECT date, SUM(kcal_total) AS kcal_in, SUM(protein_total) AS protein_g,
                        SUM(carbs_total) AS carbs_g, SUM(fat_total) AS fat_g, SUM(fluids_total) AS fluids_ml
                        FROM nutrition_daily_summary WHERE date BETWEEN %(df)s AND %(dt)s GROUP BY date) n ON d.date = n.date""")
-            select_extras.extend(["COALESCE(n.kcal_in,0) AS kcal_in","n.protein_g","n.carbs_g","n.fat_g","n.fluids_ml"])
+            select_extras.extend(["COALESCE(n.kcal_in,0) AS kcal_in","n.protein_g","n.carbs_g","n.fat_g","n.fluids_ml","'intervals_comment_import' AS source_in"])
 
         # Daily energy expenditure (kcal out of day)
         has_energy = _count_nonzero("daily_energy_expenditure", "total_kcal_out", df, dt) > 0
@@ -169,6 +169,7 @@ def plan(canonical: dict) -> dict[str, Any]:
                 """LEFT JOIN (SELECT date, total_kcal_out, resting_kcal_out, active_kcal_out, kcal_burned_total, source AS energy_source
                    FROM daily_energy_expenditure WHERE date BETWEEN %(df)s AND %(dt)s) e ON d.date = e.date""")
             select_extras.extend(["e.total_kcal_out","e.resting_kcal_out","e.active_kcal_out",
+                                  "ROUND((COALESCE(n.kcal_in,0) - COALESCE(e.total_kcal_out,0))::numeric,0) AS kcal_balance",
                                   "e.energy_source AS source_out"])
 
         # Training sessions
@@ -204,13 +205,6 @@ def plan(canonical: dict) -> dict[str, Any]:
         if has_weight: mf_parts.append("CASE WHEN w.weight_kg IS NULL THEN 'no_weight' END")
         if mf_parts:
             select_extras.append(f"ARRAY_REMOVE(ARRAY[{','.join(mf_parts)}], NULL) AS missing_flags")
-
-        # Balance: kcal_in - total_kcal_out (from daily expenditure, NOT training)
-        if has_nutrition:
-            if has_energy:
-                select_extras.append("ROUND((COALESCE(n.kcal_in,0) - COALESCE(e.total_kcal_out,0))::numeric,0) AS kcal_balance")
-            elif has_training:
-                select_extras.append("ROUND((COALESCE(n.kcal_in,0) - COALESCE(t.kcal_burned_training,0))::numeric,0) AS kcal_balance")
 
         sql = f"""SELECT {', '.join(select_extras)}
 FROM generate_series(%(df)s::date, %(dt)s::date, '1 day'::interval) AS d(date)
