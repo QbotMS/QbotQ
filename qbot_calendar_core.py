@@ -246,6 +246,281 @@ def qcal_event_add_controlled(
     }
 
 
+def qcal_event_update_controlled(
+    event_id: int | None = None,
+    match: dict | None = None,
+    updates: dict | None = None,
+    idempotency_key: str | None = None,
+    confirm: bool = False,
+    source: str = "chatgpt_mcp",
+) -> dict:
+    """Update an existing QCal event. Only allowlisted fields can be changed.
+
+    Allowlisted fields: date_start, date_end, time_start, event_type, title,
+    description, affects_training, affects_nutrition.
+
+    Returns structured result:
+      status: ok | duplicate | refused | not_found | ambiguous_match | error
+      event_id: int | None
+      updated: bool
+      before: dict | None
+      after: dict | None
+    """
+    import datetime, json as _json
+    if not confirm:
+        return {"status": "refused", "event_id": None, "updated": False, "before": None, "after": None,
+                "message": "confirm must be true."}
+
+    if not updates:
+        return {"status": "refused", "event_id": None, "updated": False, "before": None, "after": None,
+                "message": "No updates provided."}
+
+    _ALLOWED_UPDATE_FIELDS = {"date_start", "date_end", "time_start", "event_type", "title",
+                              "description", "affects_training", "affects_nutrition"}
+
+    # Resolve event
+    eid = event_id
+    if not eid and match:
+        try:
+            c = _conn()
+            cur = c.cursor()
+            where = []
+            params = []
+            if match.get("title"):
+                where.append("LOWER(TRIM(title))=LOWER(TRIM(%s))")
+                params.append(match["title"])
+            if match.get("date_start"):
+                where.append("date_start=%s::date")
+                params.append(match["date_start"])
+            if match.get("date_end"):
+                where.append("date_end=%s::date")
+                params.append(match["date_end"])
+            if match.get("event_type"):
+                where.append("event_type=%s")
+                params.append(match["event_type"])
+            where.append("status NOT IN ('cancelled','deleted')")
+            cur.execute(f"SELECT id FROM calendar_events WHERE {' AND '.join(where)} ORDER BY id", params)
+            rows = cur.fetchall()
+            c.close()
+            if len(rows) == 0:
+                return {"status": "not_found", "event_id": None, "updated": False,
+                        "before": None, "after": None, "message": "No matching active event found."}
+            if len(rows) > 1:
+                return {"status": "ambiguous_match", "event_id": None, "updated": False,
+                        "before": None, "after": None, "message": "Multiple matching events.",
+                        "candidates": [r["id"] for r in rows]}
+            eid = rows[0]["id"]
+        except Exception as e:
+            return {"status": "error", "event_id": None, "updated": False,
+                    "before": None, "after": None, "message": str(e)[:200]}
+
+    if not eid:
+        return {"status": "refused", "event_id": None, "updated": False,
+                "before": None, "after": None, "message": "event_id or match required."}
+
+    # Fetch before
+    try:
+        c = _conn()
+        cur = c.cursor()
+        cur.execute("SELECT * FROM calendar_events WHERE id=%s", (eid,))
+        before = cur.fetchone()
+        if not before:
+            c.close()
+            return {"status": "not_found", "event_id": eid, "updated": False,
+                    "before": None, "after": None, "message": f"Event id={eid} not found."}
+    except Exception as e:
+        return {"status": "error", "event_id": eid, "updated": False,
+                "before": None, "after": None, "message": str(e)[:200]}
+
+    # Build SET clause
+    set_parts = []
+    set_vals = []
+    for field in _ALLOWED_UPDATE_FIELDS:
+        if field in updates:
+            val = updates[field]
+            if val is None:
+                set_parts.append(f"{field}=NULL")
+            elif field in ("affects_training", "affects_nutrition"):
+                set_parts.append(f"{field}=%s")
+                set_vals.append(bool(val))
+            else:
+                cast = "::date" if field in ("date_start", "date_end") else ""
+                set_parts.append(f"{field}=%s{cast}")
+                set_vals.append(val)
+    if not set_parts:
+        c.close()
+        return {"status": "refused", "event_id": eid, "updated": False,
+                "before": before, "after": None, "message": "No updateable fields changed."}
+
+    try:
+        set_parts.append("updated_at=now()")
+        sql = f"UPDATE calendar_events SET {', '.join(set_parts)} WHERE id=%s RETURNING *"
+        cur.execute(sql, set_vals + [eid])
+        after = cur.fetchone()
+        c.commit()
+        c.close()
+    except Exception as e:
+        try: c.close()
+        except: pass
+        return {"status": "error", "event_id": eid, "updated": False,
+                "before": _serialize_dict(before), "after": None, "message": str(e)[:200]}
+
+    before_s = _serialize_dict(before)
+    after_s = _serialize_dict(after) if after else None
+
+    # Audit
+    try:
+        c2 = _conn()
+        cur2 = c2.cursor()
+        cur2.execute(
+            "INSERT INTO qcal_write_audit (idempotency_key, operation, entity_type, entity_id, date, source, payload_json, result_json) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+            (idempotency_key, "event_update", "event", eid,
+             after_s.get("date_start", "") if after_s else "",
+             source, _json.dumps({"updates": updates}, default=str),
+             _json.dumps({"before": before_s, "after": after_s}, default=str)))
+        c2.commit()
+        c2.close()
+    except Exception:
+        pass
+
+    # Snapshot
+    try:
+        build_snapshot(after_s.get("date_start", ""))
+    except Exception:
+        pass
+
+    return {"status": "ok", "event_id": eid, "updated": True, "before": before_s, "after": after_s,
+            "idempotency_key": idempotency_key,
+            "message": f"Updated event id={eid}: {', '.join(updates.keys())}"}
+
+
+def qcal_event_cancel_controlled(
+    event_id: int | None = None,
+    match: dict | None = None,
+    reason: str | None = None,
+    idempotency_key: str | None = None,
+    confirm: bool = False,
+    source: str = "chatgpt_mcp",
+) -> dict:
+    """Cancel an event. Sets status=cancelled.
+
+    Returns structured result:
+      status: ok | duplicate | refused | not_found | ambiguous_match | error
+      event_id: int | None
+      cancelled: bool
+      before: dict | None
+      after: dict | None
+    """
+    import datetime, json as _json
+    if not confirm:
+        return {"status": "refused", "event_id": None, "cancelled": False,
+                "before": None, "after": None, "message": "confirm must be true."}
+
+    # Resolve event
+    eid = event_id
+    if not eid and match:
+        try:
+            c = _conn()
+            cur = c.cursor()
+            where = []
+            params = []
+            if match.get("title"):
+                where.append("LOWER(TRIM(title))=LOWER(TRIM(%s))")
+                params.append(match["title"])
+            if match.get("date_start"):
+                where.append("date_start=%s::date")
+                params.append(match["date_start"])
+            if match.get("event_type"):
+                where.append("event_type=%s")
+                params.append(match["event_type"])
+            where.append("status NOT IN ('cancelled','deleted')")
+            cur.execute(f"SELECT id FROM calendar_events WHERE {' AND '.join(where)} ORDER BY id", params)
+            rows = cur.fetchall()
+            c.close()
+            if len(rows) == 0:
+                return {"status": "not_found", "event_id": None, "cancelled": False,
+                        "before": None, "after": None, "message": "No matching active event found."}
+            if len(rows) > 1:
+                return {"status": "ambiguous_match", "event_id": None, "cancelled": False,
+                        "before": None, "after": None, "message": "Multiple matching events.",
+                        "candidates": [r["id"] for r in rows]}
+            eid = rows[0]["id"]
+        except Exception as e:
+            return {"status": "error", "event_id": None, "cancelled": False,
+                    "before": None, "after": None, "message": str(e)[:200]}
+
+    if not eid:
+        return {"status": "refused", "event_id": None, "cancelled": False,
+                "before": None, "after": None, "message": "event_id or match required."}
+
+    try:
+        c = _conn()
+        cur = c.cursor()
+        cur.execute("SELECT * FROM calendar_events WHERE id=%s", (eid,))
+        before = cur.fetchone()
+        if not before:
+            c.close()
+            return {"status": "not_found", "event_id": eid, "cancelled": False,
+                    "before": None, "after": None, "message": f"Event id={eid} not found."}
+        if before["status"] == "cancelled":
+            c.close()
+            before_s = _serialize_dict(before)
+            return {"status": "duplicate", "event_id": eid, "cancelled": False,
+                    "before": before_s, "after": before_s, "message": "Event is already cancelled."}
+        cur.execute("UPDATE calendar_events SET status='cancelled', updated_at=now() WHERE id=%s RETURNING *", (eid,))
+        after = cur.fetchone()
+        c.commit()
+        c.close()
+    except Exception as e:
+        return {"status": "error", "event_id": eid, "cancelled": False,
+                "before": None, "after": None, "message": str(e)[:200]}
+
+    before_s = _serialize_dict(before)
+    after_s = _serialize_dict(after) if after else None
+
+    # Audit
+    try:
+        c2 = _conn()
+        cur2 = c2.cursor()
+        cur2.execute(
+            "INSERT INTO qcal_write_audit (idempotency_key, operation, entity_type, entity_id, date, source, payload_json, result_json) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+            (idempotency_key, "event_cancel", "event", eid,
+             after_s.get("date_start", "") if after_s else "",
+             source, _json.dumps({"reason": reason}, default=str),
+             _json.dumps({"before": before_s, "after": after_s}, default=str)))
+        c2.commit()
+        c2.close()
+    except Exception:
+        pass
+
+    # Snapshot
+    try:
+        build_snapshot(after_s.get("date_start", "") if after_s else "")
+    except Exception:
+        pass
+
+    return {"status": "ok", "event_id": eid, "cancelled": True, "before": before_s, "after": after_s,
+            "idempotency_key": idempotency_key,
+            "message": f"Cancelled event id={eid}: {before.get('title','?')}"}
+
+
+def _serialize_dict(d: dict) -> dict:
+    """Convert non-serializable types to strings in a dict."""
+    if not d:
+        return {}
+    out = {}
+    for k, v in d.items():
+        if hasattr(v, "isoformat"):
+            out[k] = v.isoformat()
+        elif isinstance(v, (int, float, str, bool, type(None))):
+            out[k] = v
+        else:
+            out[k] = str(v)
+    return out
+
+
 def event_list(date_from: str | None = None, date_to: str | None = None,
                status: str | None = None, limit: int = 50) -> list[dict]:
     with _conn() as c:

@@ -299,6 +299,32 @@ CAPABILITIES: dict[str, dict] = {
         "description": "Dodanie wydarzenia QCal przez MCP/CLI z idempotency key.",
         "limitations": ["Wymaga confirm=true i idempotency_key."],
     },
+    "qcal_event_update": {
+        "name": "qcal_event_update", "status": "ready",
+        "domains": ["qcal", "events", "write_qcal"],
+        "intents": ["event_update"],
+        "keywords": ["zmień wydarzenie","edytuj wydarzenie","aktualizuj wydarzenie"],
+        "writer": "qbot.qcal_event_update",
+        "tables": ["calendar_events"],
+        "required_fields": ["event_id", "updates"],
+        "optional_fields": [],
+        "output_type": "confirmation","safety":"write_qcal_only",
+        "description": "Aktualizacja wydarzenia QCal przez MCP/CLI z idempotency key.",
+        "limitations": ["Tylko dozwolone pola: date_start, date_end, time_start, event_type, title, description, affects_training, affects_nutrition."],
+    },
+    "qcal_event_cancel": {
+        "name": "qcal_event_cancel", "status": "ready",
+        "domains": ["qcal", "events", "write_qcal"],
+        "intents": ["event_cancel"],
+        "keywords": ["usuń wydarzenie","anuluj wydarzenie","odwołaj wydarzenie"],
+        "writer": "qbot.qcal_event_cancel",
+        "tables": ["calendar_events"],
+        "required_fields": ["event_id"],
+        "optional_fields": ["reason"],
+        "output_type": "confirmation","safety":"write_qcal_only",
+        "description": "Anulowanie wydarzenia QCal przez MCP/CLI z idempotency key.",
+        "limitations": ["Ustawia status=cancelled, nie usuwa."],
+    },
 }
 
 

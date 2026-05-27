@@ -1172,22 +1172,17 @@ def _handle_qcal_event_add(args: dict) -> dict:
         return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":r.get("message","unknown error")}
 
 def _handle_qcal_event_cancel(args: dict) -> dict:
-    if not (args.get("confirm") == True or str(args.get("confirm","")).lower()=="true"):
-        return {"tool":"qbot.qcal_event_cancel","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":"confirm must be true."}
-    eid = int(args.get("event_id",0))
-    try:
-        import psycopg, os; from psycopg.rows import dict_row
-        c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
-        cur = c.cursor()
-        cur.execute("SELECT date_start FROM calendar_events WHERE id=%s",(eid,)); ev = cur.fetchone()
-        if not ev: c.close(); return {"tool":"qbot.qcal_event_cancel","safety_class":"WRITE_QCAL_ONLY","status":"NOT_FOUND"}
-        date_str = str(ev["date_start"])[:10]
-        cur.execute("UPDATE calendar_events SET status='cancelled', updated_at=now() WHERE id=%s",(eid,)); c.commit(); c.close()
-        _qcal_audit("cancel_"+str(eid), "event_cancel", "calendar_event", eid, date_str, dict(args), {"cancelled":True})
-        try: from qbot_calendar_core import build_snapshot; build_snapshot(date_str)
-        except: pass
-        return {"tool":"qbot.qcal_event_cancel","safety_class":"WRITE_QCAL_ONLY","status":"OK","event_id":eid,"cancelled":True}
-    except Exception as e: return {"tool":"qbot.qcal_event_cancel","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
+    from qbot_calendar_core import qcal_event_cancel_controlled
+    r = qcal_event_cancel_controlled(
+        event_id=args.get("event_id"), match=args.get("match"),
+        reason=args.get("reason"),
+        idempotency_key=args.get("idempotency_key") or f"mcp-cancel-{args.get('event_id','?')}",
+        confirm=(args.get("confirm") == True or str(args.get("confirm","")).lower()=="true"),
+    )
+    smap = {"ok":"OK","duplicate":"DUPLICATE","refused":"BLOCKED","not_found":"NOT_FOUND","ambiguous_match":"AMBIGUOUS","error":"ERROR"}
+    return {"tool":"qbot.qcal_event_cancel","safety_class":"WRITE_QCAL_ONLY","status":smap.get(r["status"],"ERROR"),
+            "event_id":r.get("event_id"),"cancelled":r.get("cancelled",False),
+            "before":r.get("before"),"after":r.get("after"),"message":r.get("message","")}
 
 def _handle_qcal_reminder_preview(args: dict) -> dict:
     import hashlib
@@ -1262,12 +1257,14 @@ def _handle_qcal_reminder_cancel(args: dict) -> dict:
     except Exception as e: return {"tool":"qbot.qcal_reminder_cancel","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
 
 
-_ACTION_EXECUTE_ALLOWLIST = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "planning_fact_add"}
+_ACTION_EXECUTE_ALLOWLIST = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add"}
 
 _ACTION_REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {
     "nutrition_log_add": ["date", "kcal_total"],
     "qcal_reminder_add": ["date", "title"],
     "qcal_event_add": ["date_start", "title"],
+    "qcal_event_update": ["event_id", "updates"],
+    "qcal_event_cancel": ["event_id"],
     "planning_fact_add": ["fact_type", "date", "title"],
 }
 
@@ -1347,6 +1344,10 @@ def _handle_action_execute(args: dict) -> dict[str, Any]:
         return _action_exec_reminder(payload, idem_key, source)
     elif action_type == "qcal_event_add":
         return _action_exec_event(payload, idem_key, source)
+    elif action_type == "qcal_event_update":
+        return _action_exec_event_update(payload, idem_key, source)
+    elif action_type == "qcal_event_cancel":
+        return _action_exec_event_cancel(payload, idem_key, source)
     elif action_type == "planning_fact_add":
         return _action_exec_planning(payload, idem_key, source)
     else:
@@ -1381,7 +1382,7 @@ def _action_check_duplicate(idem_key: str, action_type: str) -> dict | None:
         return None
 
     # QCal actions: only check QCal audit, validate linked record
-    if action_type in ("qcal_reminder_add", "qcal_event_add"):
+    if action_type in ("qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel"):
         try:
             import psycopg, os
             from psycopg.rows import dict_row
@@ -1393,13 +1394,14 @@ def _action_check_duplicate(idem_key: str, action_type: str) -> dict | None:
                 existing_id = row["entity_id"]
                 entity_type = row["entity_type"]
                 target_table = "calendar_events" if entity_type == "event" else "reminders"
-                # Check if linked record exists and is active
-                cur.execute("SELECT status FROM %s WHERE id=%%s" % target_table, (existing_id,))
+                # Fetch full record
+                cur.execute("SELECT * FROM %s WHERE id=%%s" % target_table, (existing_id,))
                 target = cur.fetchone()
                 active = target and target["status"] not in ("cancelled", "deleted", "done")
+                record = {k: str(v) if hasattr(v, "isoformat") or isinstance(v, type) else v for k, v in dict(target).items()} if target else None
                 c.close()
                 if active:
-                    return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "created": False, "action_type": action_type, "idempotency_key": idem_key, "event_id": existing_id, "existing_id": existing_id, "note": "Linked record is active."}
+                    return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "created": False, "action_type": action_type, "idempotency_key": idem_key, "event_id": existing_id, "existing_id": existing_id, "record": record, "note": "Linked record is active."}
                 # Stale audit: cleanup and let caller re-execute
                 c2 = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
                 cur2 = c2.cursor()
@@ -1512,6 +1514,43 @@ def _action_exec_reminder(payload: dict, idem_key: str, source: str) -> dict:
         "reminder_id": rid, "record": record,
         "message": f"Utworzono przypomnienie: {record.get('title','?')} (id={rid}, {record.get('date','?')} {record.get('time','')})",
         "snapshot_rebuilt": snap_ok,
+    }
+
+
+def _action_exec_event_update(payload: dict, idem_key: str, source: str) -> dict:
+    from qbot_calendar_core import qcal_event_update_controlled
+    r = qcal_event_update_controlled(
+        event_id=payload.get("event_id"), match=payload.get("match"),
+        updates=payload.get("updates", {}),
+        idempotency_key=idem_key, confirm=True, source=source,
+    )
+    status_map = {"ok": "OK", "duplicate": "DUPLICATE", "refused": "REFUSED",
+                  "not_found": "NOT_FOUND", "ambiguous_match": "AMBIGUOUS", "error": "ERROR"}
+    return {
+        "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+        "status": status_map.get(r["status"], "ERROR"),
+        "action_type": "qcal_event_update",
+        "idempotency_key": idem_key, "updated": r.get("updated", False),
+        "event_id": r.get("event_id"), "before": r.get("before"), "after": r.get("after"),
+        "message": r.get("message", ""),
+    }
+
+
+def _action_exec_event_cancel(payload: dict, idem_key: str, source: str) -> dict:
+    from qbot_calendar_core import qcal_event_cancel_controlled
+    r = qcal_event_cancel_controlled(
+        event_id=payload.get("event_id"), match=payload.get("match"),
+        reason=payload.get("reason"), idempotency_key=idem_key, confirm=True, source=source,
+    )
+    status_map = {"ok": "OK", "duplicate": "DUPLICATE", "refused": "REFUSED",
+                  "not_found": "NOT_FOUND", "ambiguous_match": "AMBIGUOUS", "error": "ERROR"}
+    return {
+        "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+        "status": status_map.get(r["status"], "ERROR"),
+        "action_type": "qcal_event_cancel",
+        "idempotency_key": idem_key, "cancelled": r.get("cancelled", False),
+        "event_id": r.get("event_id"), "before": r.get("before"), "after": r.get("after"),
+        "message": r.get("message", ""),
     }
 
 

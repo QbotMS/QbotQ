@@ -93,6 +93,17 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         "dodaj wydarzenie", "zapisz event", "dodaj event",
         "mam wizytę", "mam spotkanie",
     ]),
+    ("qcal_event_cancel_draft", [
+        "usuń event", "usuń wydarzenie", "anuluj event", "anuluj wydarzenie",
+        "odwołaj wydarzenie", "odwołaj event", "skasuj wydarzenie", "skasuj event",
+        "usuń event o id", "usuń wydarzenie o id",
+    ]),
+    ("qcal_event_update_draft", [
+        "zmień datę", "zmień godzinę", "zmień opis", "zmień nazwę",
+        "popraw datę", "popraw godzinę", "popraw opis",
+        "przesuń wydarzenie", "przesuń event",
+        "edytuj wydarzenie", "edytuj event",
+    ]),
     # General intents
     ("nutrition_planning", [
         "ułóż mi jadłospis", "ułóż jadłospis", "zaplanuj jedzenie",
@@ -452,6 +463,8 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "qcal_reminder_add_draft": [],
     "deadline_task_draft": [],
     "qcal_event_add_draft": [],
+    "qcal_event_cancel_draft": [],
+    "qcal_event_update_draft": [],
     # Planning intents (no readers — handled by planning_fact_drafts)
     "planning_notice": [],
     # Semantic-handled intents (no readers — planner handles via resolve_context)
@@ -1618,6 +1631,8 @@ _WRITER_CAPABILITIES = {
     "nutrition_log_add": "nutrition_log_add",
     "qcal_reminder_add": "qcal_reminder_add",
     "qcal_event_add": "qcal_event_add",
+    "qcal_event_cancel": "qcal_event_cancel",
+    "qcal_event_update": "qcal_event_update",
 }
 
 
@@ -2048,7 +2063,8 @@ def _handle_write_draft(question: str, intents: list[str], date_ctx: dict) -> di
     Returns a structured draft response, or None if no write intent found.
     """
     write_intent = None
-    for wi in ("nutrition_log_add_draft", "qcal_reminder_add_draft", "deadline_task_draft", "qcal_event_add_draft"):
+    for wi in ("nutrition_log_add_draft", "qcal_reminder_add_draft", "deadline_task_draft",
+               "qcal_event_add_draft", "qcal_event_cancel_draft", "qcal_event_update_draft"):
         if wi in intents:
             write_intent = wi
             break
@@ -2062,6 +2078,8 @@ def _handle_write_draft(question: str, intents: list[str], date_ctx: dict) -> di
         "qcal_reminder_add_draft": "qcal_reminder_add",
         "deadline_task_draft": "qcal_reminder_add",
         "qcal_event_add_draft": "qcal_event_add",
+        "qcal_event_cancel_draft": "qcal_event_cancel",
+        "qcal_event_update_draft": "qcal_event_update",
     }
     cap_name = writer_cap_map[write_intent]
     cap_check = _check_writer_capability(cap_name)
@@ -2135,6 +2153,28 @@ def _handle_write_draft(question: str, intents: list[str], date_ctx: dict) -> di
             f"Zapis wymaga potwierdzenia."
         )
         idem_prefix = "ev"
+    elif write_intent == "qcal_event_cancel_draft":
+        payload = {"raw_query": question, "intent": "cancel"}
+        missing = []
+        action_type = "qcal_event_cancel"
+        writer = "qcal_event_cancel"
+        answer = (
+            f"Przygotowałem draft anulowania wydarzenia.\n"
+            f"Zapytanie: {question}\n"
+            f"Zapis wymaga potwierdzenia — użyj action_execute z action_type=qcal_event_cancel."
+        )
+        idem_prefix = "cancel"
+    elif write_intent == "qcal_event_update_draft":
+        payload = {"raw_query": question, "intent": "update"}
+        missing = []
+        action_type = "qcal_event_update"
+        writer = "qcal_event_update"
+        answer = (
+            f"Przygotowałem draft edycji wydarzenia.\n"
+            f"Zapytanie: {question}\n"
+            f"Zapis wymaga potwierdzenia — użyj action_execute z action_type=qcal_event_update."
+        )
+        idem_prefix = "upd"
     else:
         return None
 
@@ -2232,6 +2272,7 @@ _ALLOWED_CANONICAL_INTENTS = [
     "saved_meals_catalog", "food_link_audit", "nutrition_planning",
     "nutrition_log_add_draft", "latest_training", "training_summary",
     "route_list", "qcal_reminder_add_draft", "qcal_event_add_draft",
+    "qcal_event_cancel_draft", "qcal_event_update_draft",
     "planning_fact_detect", "qcal_lookup", "calendar_day_context",
     "status_readiness", "unknown",
 ]
@@ -2241,6 +2282,7 @@ _ALLOWED_CAPABILITIES = [
     "saved_meals_catalog", "food_link_audit", "nutrition_planning",
     "nutrition_log_add", "latest_training_session", "training_summary",
     "route_list", "qcal_reminder_add", "qcal_event_add",
+    "qcal_event_update", "qcal_event_cancel",
     "planning_memory", "qcal_reminders", "qcal_events",
     "calendar_daily_snapshot", "qbot_status", "unknown",
 ]
