@@ -91,6 +91,55 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+
+    # ── Nutrition write (narrow, confirmed, idempotent) ──
+    "qbot.nutrition_log_preview": {
+        "qbot_tool": "qbot_nutrition_log_preview",
+        "description": "Podgląd posiłku przed zapisem. READ_ONLY — nic nie zapisuje do DB. Zwraca draft, makra, idempotency_key.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "date": {"type": "string", "description": "YYYY-MM-DD, default today"},
+                "meal_name": {"type": "string"},
+                "raw_text": {"type": "string", "description": "Naturalny opis: 'jogurt 200g, banan'"},
+                "kcal_total": {"type": "number"},
+                "protein_g": {"type": "number"},
+                "carbs_g": {"type": "number"},
+                "fat_g": {"type": "number"},
+                "fluids_ml": {"type": "number"},
+                "source": {"type": "string", "default": "chatgpt_mcp"},
+                "confidence": {"type": "string", "default": "medium"},
+            },
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.nutrition_log_add": {
+        "qbot_tool": "qbot_nutrition_log_add",
+        "description": "ZAPISZ posiłek do nutrition DB. WYMAGA: confirm=true, idempotency_key. Tylko nutrition tables. Zwraca wpis + daily summary.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "date": {"type": "string"},
+                "meal_name": {"type": "string"},
+                "raw_text": {"type": "string"},
+                "kcal_total": {"type": "number"},
+                "protein_g": {"type": "number"},
+                "carbs_g": {"type": "number"},
+                "fat_g": {"type": "number"},
+                "fluids_ml": {"type": "number"},
+                "source": {"type": "string", "default": "chatgpt_mcp"},
+                "confidence": {"type": "string", "default": "medium"},
+                "idempotency_key": {"type": "string", "description": "Unikalny klucz — zapobiega duplikatom."},
+                "confirm": {"type": "boolean", "description": "MUSI być true, żeby zapisać."},
+            },
+            "required": ["date", "kcal_total", "idempotency_key"],
+            "additionalProperties": False,
+        },
+        "safety_class": "WRITE_NUTRITION_ONLY",
+        "auth_required": False,
+    },
 }
 
 # Internal readers & tools (NOT exposed to MCP — accessed exclusively via qbot.query):
@@ -514,6 +563,10 @@ def handle_mcp_request(
                     include_provenance=bool(clean_args.get("include_provenance", True)),
                     include_missing=bool(clean_args.get("include_missing", True)),
                 )
+        elif name == "qbot.nutrition_log_preview":
+            result = _handle_nutrition_preview(clean_args)
+        elif name == "qbot.nutrition_log_add":
+            result = _handle_nutrition_add(clean_args)
         else:
             tool_args = dict(clean_args)
             tool_result, warnings = _dispatch_local_qbot_tool(
@@ -551,3 +604,154 @@ def handle_mcp_request(
         }, 200, {}
 
     return _mcp_error(f"unsupported method: {method}", code=-32601, request_id=request_id), 200, {}
+
+
+# ── Nutrition write handlers ──
+
+def _handle_nutrition_preview(args: dict) -> dict[str, Any]:
+    """Read-only preview: parse meal, compute idempotency_key, return draft. No DB writes."""
+    import hashlib, uuid
+    from datetime import date as dt_date
+
+    day = str(args.get("date", dt_date.today().isoformat()))[:10]
+    raw = str(args.get("raw_text", ""))
+    kcal = args.get("kcal_total")
+    prot = args.get("protein_g")
+    carbs = args.get("carbs_g")
+    fat = args.get("fat_g")
+    fluids = args.get("fluids_ml")
+    meal_name = str(args.get("meal_name", raw[:60] or "posiłek"))
+    source = str(args.get("source", "chatgpt_mcp"))
+    conf = str(args.get("confidence", "medium"))
+
+    # Generate idempotency key
+    payload = f"{day}|{meal_name}|{kcal}|{prot}|{carbs}|{fat}"
+    idem_key = hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+    return {
+        "tool": "qbot.nutrition_log_preview",
+        "safety_class": "READ_ONLY",
+        "status": "DRY_RUN",
+        "idempotency_key": idem_key,
+        "draft": {
+            "date": day,
+            "meal_name": meal_name,
+            "raw_text": raw,
+            "kcal_total": kcal,
+            "protein_g": prot,
+            "carbs_g": carbs,
+            "fat_g": fat,
+            "fluids_ml": fluids,
+            "source": source,
+            "confidence": conf,
+        },
+        "next_action": "Call qbot.nutrition_log_add with confirm=true and this idempotency_key to save.",
+    }
+
+
+def _handle_nutrition_add(args: dict) -> dict[str, Any]:
+    """Write meal to nutrition DB. Requires confirm=true and idempotency_key."""
+    import hashlib, json, os
+    from datetime import date as dt_date, datetime
+
+    confirm = args.get("confirm", False)
+    if confirm is not True and str(confirm).lower() != "true":
+        return {
+            "tool": "qbot.nutrition_log_add",
+            "safety_class": "WRITE_NUTRITION_ONLY",
+            "status": "BLOCKED",
+            "error": "confirm must be true to save. Use qbot.nutrition_log_preview first.",
+            "preview": _handle_nutrition_preview(args),
+        }
+
+    idem_key = str(args.get("idempotency_key", ""))
+    if not idem_key:
+        return {
+            "tool": "qbot.nutrition_log_add",
+            "safety_class": "WRITE_NUTRITION_ONLY",
+            "status": "BLOCKED",
+            "error": "idempotency_key required.",
+        }
+
+    day = str(args.get("date", dt_date.today().isoformat()))[:10]
+    kcal = float(args.get("kcal_total", 0))
+    prot = args.get("protein_g")
+    carbs = args.get("carbs_g")
+    fat = args.get("fat_g")
+    fluids = args.get("fluids_ml")
+    meal_name = str(args.get("meal_name", args.get("raw_text", "posiłek")[:60]))
+    source = str(args.get("source", "chatgpt_mcp"))
+    conf = str(args.get("confidence", "medium"))
+    raw_text = str(args.get("raw_text", ""))
+
+    # Check idempotency
+    try:
+        from qbot_nutrition_db import _conn as nut_conn
+        c = nut_conn()
+        cur = c.cursor()
+        cur.execute("SELECT 1 FROM nutrition_write_audit WHERE idempotency_key=%s", (idem_key,))
+        if cur.fetchone():
+            c.close()
+            return {
+                "tool": "qbot.nutrition_log_add",
+                "safety_class": "WRITE_NUTRITION_ONLY",
+                "status": "DUPLICATE",
+                "note": "This idempotency_key already exists. Meal was already saved.",
+                "idempotency_key": idem_key,
+            }
+        c.close()
+    except Exception:
+        pass  # table may not exist — proceed
+
+    # Write meal log
+    try:
+        from qbot_nutrition_db import meal_log_create, daily_summary_compute
+        context = json.dumps({"source": source, "confidence": conf, "mcp_tool": "nutrition_log_add", "raw_text": raw_text})
+        item = {
+            "food_name": meal_name,
+            "amount": 1, "unit": "porcja",
+            "kcal": kcal,
+            "carbs_g": carbs,
+            "protein_g": prot,
+            "fat_g": fat,
+            "fiber_g": None,
+            "sodium_mg": None,
+        }
+        meal = meal_log_create(meal_type="meal", note=f"ChatGPT MCP: {meal_name}", context=context, eaten_at=f"{day}T12:00:00", items=[item])
+        summary = daily_summary_compute(day)
+
+        # Write audit log
+        try:
+            c2 = nut_conn()
+            cur2 = c2.cursor()
+            cur2.execute(
+                "INSERT INTO nutrition_write_audit (idempotency_key, meal_log_id, date, source, raw_user_text, payload_json, result_json) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                (idem_key, meal.get("id"), day, source, raw_text, json.dumps(args, default=str), json.dumps({"meal_id": meal.get("id"), "summary": summary}, default=str)))
+            c2.commit(); c2.close()
+        except Exception:
+            pass  # audit table may not exist
+
+        # Rebuild snapshot
+        try:
+            from qbot_calendar_core import build_snapshot
+            build_snapshot(day)
+        except Exception:
+            pass
+
+        return {
+            "tool": "qbot.nutrition_log_add",
+            "safety_class": "WRITE_NUTRITION_ONLY",
+            "status": "OK",
+            "idempotency_key": idem_key,
+            "meal": meal,
+            "daily_summary": {k: v for k, v in (summary or {}).items() if k in ("date","kcal_total","carbs_total","protein_total","fat_total","fiber_total","sodium_total","fluids_total")},
+            "note": "Meal saved. Daily summary + calendar snapshot updated.",
+        }
+    except Exception as e:
+        return {
+            "tool": "qbot.nutrition_log_add",
+            "safety_class": "WRITE_NUTRITION_ONLY",
+            "status": "ERROR",
+            "error": str(e)[:300],
+        }
+

@@ -396,6 +396,35 @@ def main() -> int:
     p_pdel.add_argument("--id", type=int, required=True)
     p_pdel.add_argument("--yes", action="store_true")
 
+    # ── MCP log preview / add ──
+    plp = sub.add_parser("log-preview", aliases=["log_preview"],
+                         help="Podgląd posiłku przed zapisem (MCP compatible)")
+    plp.add_argument("--date", default=date.today().isoformat())
+    plp.add_argument("--meal-name")
+    plp.add_argument("--raw-text", dest="raw_text")
+    plp.add_argument("--kcal", type=float)
+    plp.add_argument("--protein", "--protein-g", type=float, dest="protein")
+    plp.add_argument("--carbs", "--carbs-g", type=float, dest="carbs")
+    plp.add_argument("--fat", "--fat-g", type=float, dest="fat")
+    plp.add_argument("--fluids", "--fluids-ml", type=float, dest="fluids")
+    plp.add_argument("--source", default="chatgpt_mcp")
+    plp.add_argument("--confidence", default="medium")
+
+    pla = sub.add_parser("log-add", aliases=["log_add"],
+                         help="Zapisz posiłek do nutrition DB (wymaga --yes i --idempotency-key)")
+    pla.add_argument("--date", default=date.today().isoformat())
+    pla.add_argument("--meal-name")
+    pla.add_argument("--raw-text", dest="raw_text")
+    pla.add_argument("--kcal", type=float)
+    pla.add_argument("--protein", "--protein-g", type=float, dest="protein")
+    pla.add_argument("--carbs", "--carbs-g", type=float, dest="carbs")
+    pla.add_argument("--fat", "--fat-g", type=float, dest="fat")
+    pla.add_argument("--fluids", "--fluids-ml", type=float, dest="fluids")
+    pla.add_argument("--source", default="chatgpt_mcp")
+    pla.add_argument("--confidence", default="medium")
+    pla.add_argument("--idempotency-key", required=True)
+    pla.add_argument("--yes", action="store_true")
+
     args = parser.parse_args()
 
     if args.command in ("meal-add", "meal_add", "meal", "add"):
@@ -430,6 +459,10 @@ def main() -> int:
         return cmd_plan_apply(args)
     elif args.command in ("plan-delete", "plan_delete", "pdel"):
         return cmd_plan_delete(args)
+    elif args.command in ("log-preview", "log_preview"):
+        return cmd_log_preview(args)
+    elif args.command in ("log-add", "log_add"):
+        return cmd_log_add(args)
     else:
         parser.print_help()
         return 1
@@ -776,6 +809,112 @@ def cmd_plan_delete(args: argparse.Namespace) -> int:
         if resp not in ("t","y","yes","tak"): print("Anulowano."); return 0
     plan_delete(args.id)
     print(f"✓ Plan id={args.id} usunięty.")
+    return 0
+
+
+# ── MCP nutrition log commands ──────────────────────────────────────────────
+
+def cmd_log_preview(args: argparse.Namespace) -> int:
+    """Preview meal before saving — no DB writes."""
+    import hashlib, json
+    from datetime import date as dt_date
+
+    day = _resolve_date(args.date or dt_date.today().isoformat())
+    raw = args.raw_text or ""
+    meal_name = args.meal_name or (raw[:60] if raw else "posiłek")
+    kcal = args.kcal or 0
+    prot = args.protein or 0
+    carbs = args.carbs or 0
+    fat = args.fat or 0
+    fluids = args.fluids or 0
+    source = args.source or "chatgpt_mcp"
+    conf = args.confidence or "medium"
+
+    payload = f"{day}|{meal_name}|{kcal}|{prot}|{carbs}|{fat}"
+    idem_key = hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+    draft = {
+        "date": day, "meal_name": meal_name, "raw_text": raw,
+        "kcal_total": kcal, "protein_g": prot, "carbs_g": carbs, "fat_g": fat,
+        "fluids_ml": fluids, "source": source, "confidence": conf,
+    }
+    print("[PREVIEW] Draft meal — nic nie zapisano.")
+    print(json.dumps(draft, indent=2, ensure_ascii=False))
+    print(f"\nIdempotency key: {idem_key}")
+    print("Aby zapisać: qbot nutrition log-add --idempotency-key " + idem_key + " --yes")
+    return 0
+
+
+def cmd_log_add(args: argparse.Namespace) -> int:
+    """Save meal to nutrition DB. Requires --yes and --idempotency-key."""
+    import json
+    from qbot_nutrition_db import meal_log_create, daily_summary_compute, _conn as nut_conn
+
+    if not args.yes:
+        print("ERROR: --yes required to save.")
+        return 1
+
+    idem_key = args.idempotency_key or ""
+    if not idem_key:
+        print("ERROR: --idempotency-key required. Use qbot nutrition log-preview to generate one.")
+        return 1
+
+    # Check idempotency
+    try:
+        c = nut_conn()
+        cur = c.cursor()
+        cur.execute("SELECT 1 FROM nutrition_write_audit WHERE idempotency_key=%s", (idem_key,))
+        if cur.fetchone():
+            c.close()
+            print(f"⚠ DUPLICATE: idempotency_key '{idem_key}' already exists. Meal already saved.")
+            return 0
+        c.close()
+    except Exception:
+        pass
+
+    day = _resolve_date(args.date or date.today().isoformat())
+    meal_name = args.meal_name or "posiłek"
+    kcal = args.kcal or 0
+    prot = args.protein or 0
+    carbs = args.carbs or 0
+    fat = args.fat or 0
+    fluids = args.fluids or 0
+    source = args.source or "chatgpt_mcp"
+    conf = args.confidence or "medium"
+    raw_text = args.raw_text or ""
+    idem_key = args.idempotency_key or ""
+
+    context = json.dumps({"source": source, "confidence": conf, "raw_text": raw_text, "idempotency_key": idem_key})
+    item = {"food_name": meal_name, "amount": 1, "unit": "porcja", "kcal": kcal,
+            "carbs_g": carbs, "protein_g": prot, "fat_g": fat}
+
+    try:
+        meal = meal_log_create(meal_type="meal", note=f"MCP: {meal_name}", context=context, eaten_at=f"{day}T12:00:00", items=[item])
+        summary = daily_summary_compute(day)
+
+        # Audit
+        try:
+            c2 = nut_conn()
+            cur2 = c2.cursor()
+            cur2.execute(
+                "INSERT INTO nutrition_write_audit (idempotency_key, meal_log_id, date, source, raw_user_text, payload_json, result_json) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                (idem_key, meal.get("id"), day, source, raw_text, json.dumps({"meal_name": meal_name, "kcal": kcal}, default=str), json.dumps({"meal_id": meal.get("id")}, default=str)))
+            c2.commit(); c2.close()
+        except Exception:
+            pass
+
+        # Snapshot
+        try:
+            from qbot_calendar_core import build_snapshot
+            build_snapshot(day)
+        except Exception:
+            pass
+
+        print(f"✓ Saved: id={meal.get('id')} — {meal_name} ({kcal:.0f} kcal)")
+        print(f"  Daily summary ({day}): kcal_total={summary.get('kcal_total',0):.0f}, P={summary.get('protein_total',0):.0f}g, C={summary.get('carbs_total',0):.0f}g, F={summary.get('fat_total',0):.0f}g")
+    except Exception as e:
+        print(f"ERROR: {e}")
+        return 1
     return 0
 
 
