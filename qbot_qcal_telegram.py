@@ -1,127 +1,352 @@
 #!/usr/bin/env python3
-"""QCal Telegram — send reminders, receive commands, basic poller."""
+"""QBot Telegram Conversational Gateway — qbot.query + context memory + confirm flow."""
 
-import json, os, sys
-from datetime import date, datetime
+import hashlib, json, os, sys, re
+from datetime import date, datetime, timedelta
+from typing import Any
 
 sys.path.insert(0, "/opt/qbot/app")
 
+# ── Auth ──
 
-def _token() -> str:
-    return os.getenv("TELEGRAM_BOT_TOKEN", "")
+def _token() -> str: return os.getenv("TELEGRAM_BOT_TOKEN", "")
+def _allowed() -> set[str]:
+    raw = os.getenv("TELEGRAM_ALLOWED_CHAT_IDS") or os.getenv("TELEGRAM_ALLOWED_CHAT_ID") or ""
+    return {s.strip() for s in raw.split(",") if s.strip()}
 
+def is_authorized(chat_id: str) -> bool:
+    return str(chat_id).strip() in _allowed()
+# ── Telegram API ──
 
-def _allowed_chats() -> set:
-    raw = os.getenv("TELEGRAM_ALLOWED_CHAT_IDS", "")
-    return set(raw.split(",")) if raw else set()
-
+def send_message(chat_id: str, text: str) -> dict:
+    token = _token()
+    if not token: return {"ok": False, "error": "no token"}
+    import httpx
+    r = httpx.post(f"https://api.telegram.org/bot{token}/sendMessage",
+        json={"chat_id": chat_id, "text": text[:4096], "parse_mode": "Markdown"}, timeout=10)
+    try: return r.json()
+    except: return {"ok": False, "error": r.text[:100]}
 
 def status() -> dict:
-    token = _token()
-    allowed = _allowed_chats()
+    token = _token(); allowed = _allowed()
     configured = bool(token and allowed)
     try:
-        import httpx
-        me = {}
-        if token:
-            r = httpx.get(f"https://api.telegram.org/bot{token}/getMe", timeout=5)
-            if r.status_code == 200:
-                me = r.json().get("result", {})
-    except Exception:
-        me = {}
-    return {
-        "configured": configured,
-        "bot_name": me.get("first_name", "?"),
-        "bot_username": me.get("username", "?"),
-        "allowed_chats": len(allowed),
-    }
-
-
-def send_message(text: str) -> bool:
-    token = _token()
-    allowed = _allowed_chats()
-    if not token or not allowed:
-        return False
-    import httpx
-    errors = []
-    for chat_id in allowed:
-        r = httpx.post(f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": chat_id.strip(), "text": text, "parse_mode": "Markdown"}, timeout=10)
-        if r.status_code != 200:
-            errors.append(f"chat={chat_id}: {r.status_code}")
-    return not errors
-
+        import httpx; me = {}
+        if token: me = httpx.get(f"https://api.telegram.org/bot{token}/getMe", timeout=5).json().get("result", {})
+    except: me = {}
+    return {"configured": configured, "bot_name": me.get("first_name","?"), "bot_username": me.get("username","?"), "allowed_chats": len(allowed)}
 
 def poll_once() -> list[dict]:
     token = _token()
     if not token: return []
     import httpx
     r = httpx.get(f"https://api.telegram.org/bot{token}/getUpdates", params={"limit": 10, "timeout": 5}, timeout=10)
-    if r.status_code != 200: return []
-    return r.json().get("result", [])
+    return r.json().get("result",[]) if r.status_code == 200 else []
 
 
-def handle_update(update: dict) -> str:
-    msg = update.get("message", {})
-    chat_id = str(msg.get("chat", {}).get("id", ""))
-    if chat_id not in _allowed_chats():
-        return "unauthorized"
-    text = msg.get("text", "")
-    from_user = msg.get("from", {}).get("first_name", "?")
+# ── DB helpers ──
 
-    if text.startswith("/"):
-        cmd = text.split()[0].lower()
-        if cmd == "/today":
-            return _today_response()
-        elif cmd == "/reminders":
-            return _reminders_response()
-        elif cmd == "/status":
-            return "QBot status: OK"
-        elif cmd in ("/help", "/start"):
-            return "QCal Bot:\n/today /reminders /status"
-        elif cmd == "/done":
-            parts = text.split()
-            if len(parts) > 1:
-                try:
-                    _mark_done(int(parts[1]))
-                    return "✓ Done."
-                except: pass
-            return "Usage: /done ID"
-    return ""
+def _db():
+    import psycopg; from psycopg.rows import dict_row
+    return psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
 
-
-def _today_response() -> str:
+def _conv_get(chat_id: str) -> dict | None:
     try:
-        from qbot_calendar_core import get_snapshot
-        d = date.today().isoformat()
-        snap = get_snapshot(d)
-        if snap:
-            sd = snap.get("snapshot_json", {})
-            if isinstance(sd, str):
-                try: sd = json.loads(sd)
-                except: sd = {}
-            return f"Today {d}: completeness={snap.get('completeness_score',0)*100:.0f}%"
-    except: pass
-    return f"Today: {date.today().isoformat()}"
+        c = _db(); cur = c.cursor()
+        cur.execute("SELECT * FROM telegram_conversations WHERE chat_id=%s", (str(chat_id),))
+        r = cur.fetchone(); c.close()
+        return dict(r) if r else None
+    except: return None
 
-
-def _reminders_response() -> str:
+def _conv_upsert(chat_id: str, **fields):
     try:
-        from psycopg import connect; from psycopg.rows import dict_row
-        c = connect(host="127.0.0.1",port=5432,dbname="qbot",user="qbot",password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
-        cur = c.cursor()
-        cur.execute("SELECT id, title, reminder_type, time FROM reminders WHERE date=%s AND status='pending' ORDER BY time", (date.today().isoformat(),))
-        rows = cur.fetchall(); c.close()
-        if not rows: return "No pending reminders today."
-        return "\n".join(f"[{r['id']}] {r.get('time','')} {r['title']}" for r in rows)
-    except: return "Could not check reminders."
-
-
-def _mark_done(rid: int):
-    try:
-        from psycopg import connect
-        c = connect(host="127.0.0.1",port=5432,dbname="qbot",user="qbot",password=os.getenv("PGPASSWORD",""),connect_timeout=5)
-        cur = c.cursor()
-        cur.execute("UPDATE reminders SET status='done', sent_at=now(), updated_at=now() WHERE id=%s",(rid,))
+        c = _db(); cur = c.cursor()
+        conv = _conv_get(chat_id)
+        if conv:
+            sets = ", ".join(f"{k}=%s" for k in fields)
+            vals = list(fields.values()) + [chat_id]
+            cur.execute(f"UPDATE telegram_conversations SET {sets}, updated_at=now() WHERE chat_id=%s", vals)
+        else:
+            fields["chat_id"] = chat_id
+            keys = ", ".join(fields.keys()); placeholders = ", ".join(["%s"]*len(fields))
+            cur.execute(f"INSERT INTO telegram_conversations ({keys}) VALUES ({placeholders})", list(fields.values()))
         c.commit(); c.close()
     except: pass
+
+def _turn_add(chat_id: str, direction: str, text: str = "", intent: str = "", response_json: dict = None):
+    try:
+        c = _db(); cur = c.cursor()
+        cur.execute("INSERT INTO telegram_conversation_turns (chat_id, direction, message_text, intent, qbot_response_json) VALUES (%s,%s,%s,%s,%s)",
+            (str(chat_id), direction, text[:1000], intent, json.dumps(response_json, default=str) if response_json else None))
+        c.commit(); c.close()
+    except: pass
+
+def _pending_create(chat_id: str, action_type: str, payload: dict, preview: str, idem_key: str = "") -> int | None:
+    try:
+        c = _db(); cur = c.cursor()
+        expires = datetime.now() + timedelta(minutes=15)
+        cur.execute("""INSERT INTO telegram_pending_actions (chat_id, action_type, status, payload_json, preview_text, idempotency_key, expires_at)
+            VALUES (%s,%s,'pending',%s,%s,%s,%s) RETURNING id""",
+            (str(chat_id), action_type, json.dumps(payload, default=str), preview, idem_key, expires))
+        pid = cur.fetchone()["id"]; c.commit(); c.close()
+        _conv_upsert(chat_id, state="awaiting_confirmation", pending_action_id=pid)
+        return pid
+    except Exception as e: return None
+
+def _pending_execute(chat_id: str, action_id: int, dry_run: bool = False) -> dict:
+    try:
+        c = _db(); cur = c.cursor()
+        cur.execute("SELECT * FROM telegram_pending_actions WHERE id=%s AND chat_id=%s AND status='pending'", (action_id, str(chat_id)))
+        pa = cur.fetchone()
+        if not pa: c.close(); return {"status":"not_found"}
+        if pa["expires_at"] and pa["expires_at"] < datetime.now():
+            cur.execute("UPDATE telegram_pending_actions SET status='expired', updated_at=now() WHERE id=%s",(action_id,))
+            c.commit(); c.close(); _conv_upsert(chat_id, state="idle", pending_action_id=None)
+            return {"status":"expired"}
+
+        atype = pa["action_type"]
+        payload = pa["payload_json"] if isinstance(pa["payload_json"], dict) else json.loads(pa["payload_json"]) if pa["payload_json"] else {}
+
+        if dry_run:
+            cur.execute("UPDATE telegram_pending_actions SET status='executed', updated_at=now() WHERE id=%s",(action_id,))
+            c.commit(); c.close()
+            return {"status":"dry_run_only", "action_type": atype, "payload_fields": list(payload.keys())}
+
+        # Execute the writer
+        result = _execute_writer(atype, payload, pa.get("idempotency_key",""))
+        cur.execute("UPDATE telegram_pending_actions SET status=%s, updated_at=now() WHERE id=%s", ("executed" if result.get("status") in ("OK","ok") else "failed", action_id))
+        c.commit(); c.close()
+        _conv_upsert(chat_id, state="idle", pending_action_id=None)
+        return result
+    except Exception as e: return {"status":"error","error":str(e)[:200]}
+
+def _pending_decline(chat_id: str, action_id: int) -> dict:
+    try:
+        c = _db(); cur = c.cursor()
+        cur.execute("UPDATE telegram_pending_actions SET status='declined', updated_at=now() WHERE id=%s AND chat_id=%s AND status='pending'", (action_id, str(chat_id)))
+        c.commit(); c.close()
+        _conv_upsert(chat_id, state="idle", pending_action_id=None)
+        return {"status":"declined"}
+    except: return {"status":"error"}
+
+def _execute_writer(atype: str, payload: dict, idem_key: str) -> dict:
+    """Execute a local writer — same as MCP handlers."""
+    try:
+        if atype == "nutrition_log_add":
+            from qbot_mcp_adapter import _handle_nutrition_add
+            return _handle_nutrition_add({**payload, "idempotency_key": idem_key, "confirm": True})
+        elif atype == "qcal_reminder_add":
+            from qbot_mcp_adapter import _handle_qcal_reminder_add
+            return _handle_qcal_reminder_add({**payload, "idempotency_key": idem_key, "confirm": True})
+        elif atype == "qcal_reminder_done":
+            from qbot_mcp_adapter import _handle_qcal_reminder_done
+            return _handle_qcal_reminder_done({**payload, "confirm": True})
+        elif atype == "qcal_reminder_cancel":
+            from qbot_mcp_adapter import _handle_qcal_reminder_cancel
+            return _handle_qcal_reminder_cancel({**payload, "confirm": True})
+        elif atype == "qcal_event_add":
+            from qbot_mcp_adapter import _handle_qcal_event_add
+            return _handle_qcal_event_add({**payload, "idempotency_key": idem_key, "confirm": True})
+        elif atype == "qcal_event_cancel":
+            from qbot_mcp_adapter import _handle_qcal_event_cancel
+            return _handle_qcal_event_cancel({**payload, "confirm": True})
+        return {"status": "unknown_action_type", "action_type": atype}
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:200]}
+
+
+# ── Main handler ──
+
+def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
+    """Route Telegram message through qbot.query + context memory + confirm flow."""
+    if not is_authorized(str(chat_id)):
+        _turn_add(chat_id, "system", text="[unauthorized]", intent="unauthorized")
+        return {"response": "Unauthorized. No data returned.", "authorized": False, "status": "blocked"}
+
+    conv = _conv_get(chat_id)
+    tl = text.strip().lower()
+    state = (conv or {}).get("state", "idle")
+    pending_id = (conv or {}).get("pending_action_id")
+
+    # ── Confirmation commands ──
+    if tl in ("tak","yes","ok","potwierdzam","zapisz","dodaj","confirm","/confirm","/yes"):
+        if pending_id:
+            result = _pending_execute(chat_id, pending_id, dry_run=dry_run)
+            _turn_add(chat_id, "inbound", text, intent="confirm")
+            if dry_run:
+                msg = f"[DRY-RUN] Would execute {result.get('action_type','?')}: {json.dumps(result, default=str)[:300]}"
+            else:
+                st = result.get("status","?")
+                msg = "✓ Wykonano." if st in ("OK","ok") else f"Błąd: {result.get('error',result.get('status','?'))}"
+            _turn_add(chat_id, "outbound", text=msg, intent="confirm_result")
+            return {"response": msg, "status": "ok", "executed": not dry_run, "action_result": result}
+
+    if tl in ("nie","no","anuluj","cancel","/cancel","/no"):
+        if pending_id:
+            _pending_decline(chat_id, pending_id)
+            _turn_add(chat_id, "inbound", text, intent="decline")
+            msg = "Anulowano."
+            _turn_add(chat_id, "outbound", text=msg, intent="decline_result")
+            return {"response": msg, "status": "ok"}
+
+    # ── Simple slash commands ──
+    if text.startswith("/"):
+        cmd = text.split()[0].lower()
+        if cmd == "/today": return _today_response(chat_id)
+        if cmd == "/reminders": return _reminders_response(chat_id)
+        if cmd in ("/help","/start"): return {"response": "QBot Telegram:\n/today /reminders /status\nPisz naturalnie np. 'pokaż bilans za ostatnie 7 dni'"}
+        if cmd == "/status":
+            return {"response": f"QBot v1 — {date.today().isoformat()}"}
+
+    # ── Natural language via qbot.query ──
+    context = {}
+    if conv:
+        ctx = conv.get("context_json") or {}
+        if isinstance(ctx, str):
+            try: ctx = json.loads(ctx)
+            except: ctx = {}
+        if conv.get("last_intent"): context["last_intent"] = conv["last_intent"]
+        for k in ("last_date_from","last_date_to","last_domains"):
+            if ctx.get(k): context[k] = ctx[k]
+
+    # ── Follow-up detection ──
+    # If user types a short message with date references and there's a prior intent,
+    # reconstruct the query with prior intent + new date range.
+    prior_intent = (conv or {}).get("last_intent","")
+    prior_ctx = (conv or {}).get("context_json") or {}
+    if isinstance(prior_ctx, str):
+        try: prior_ctx = json.loads(prior_ctx)
+        except: prior_ctx = {}
+
+    is_followup = (
+        tl and len(tl) < 80 and not tl.startswith("/") and
+        prior_intent and re.search(r"\d{1,2}[\.\-\s]?\d{1,2}|\d{4}-\d{2}-\d{2}|wczoraj|jutro|od\s+\d|ostatni", tl)
+    )
+    if is_followup and prior_ctx.get("last_query"):
+        prior_query = prior_ctx["last_query"]
+        # Replace date range in prior query
+        m = re.search(r"od\s+(\d{4}-\d{2}-\d{2}|ostatn\S+\s+\d+\s+\S+)", prior_query)
+        if m:
+            text = prior_query[:m.start()] + tl + prior_query[m.end():]
+        else:
+            text = prior_query + " " + tl
+
+    try:
+        from qbot_query_router import query as qbot_query
+        result = qbot_query(question=text, mode="read_only", scope="all", context=json.dumps(context))
+
+        intent = result.get("intents_detected",[])
+        answer = result.get("answer","")
+        tables = result.get("tables",[])
+
+        # Detect if user's intent suggests a write action
+        write_hint = _detect_write_intent(tl, answer, result)
+
+        if write_hint and not dry_run:
+            preview = write_hint.get("preview","")
+            idem = hashlib.sha256(f"{chat_id}|{write_hint.get('action_type')}|{datetime.now().isoformat()}".encode()).hexdigest()[:16]
+            pid = _pending_create(chat_id, write_hint["action_type"], write_hint.get("payload",{}), preview, idem)
+            response = f"{preview}\nPotwierdzić? Odpowiedz: tak / nie."
+            _turn_add(chat_id, "inbound", text, intent="write_draft")
+            _turn_add(chat_id, "outbound", text=response, intent="write_draft")
+        else:
+            response = _format_answer(answer, tables)
+            if write_hint:
+                response += f"\n\n[DRY-RUN] Proponowana akcja: {write_hint.get('preview','')}\nAby wykonać, uruchom bez --dry-run."
+            _turn_add(chat_id, "inbound", text, intent=str(intent)[:100])
+            _turn_add(chat_id, "outbound", text=response, intent="query_response")
+
+        _conv_upsert(chat_id, state="idle" if not write_hint else "awaiting_confirmation",
+                     last_intent=str(intent)[:100],
+                     last_response_summary=answer[:300],
+                     context_json=json.dumps({
+                         "last_date_from": result.get("date_resolution",{}).get("date_from",""),
+                         "last_date_to": result.get("date_resolution",{}).get("date_to",""),
+                         "last_domains": intent,
+                         "last_query": text,
+                     }))
+
+        return {"response": response, "status": "ok", "read_only": True, "intents": intent}
+    except Exception as e:
+        return {"response": f"Błąd: {str(e)[:200]}", "status": "error"}
+
+
+def _detect_write_intent(tl: str, answer: str, result: dict) -> dict | None:
+    """Detect if user wants to write/create/set/cancel."""
+    intents = result.get("intents_detected",[])
+    if re.search(r"przypomnij\s+mi|dodaj\s+(przypomnienie|wydarzenie|event|posiłek|do\s+j)|zapisz|stwórz|utwórz", tl):
+        if re.search(r"przypomnij|przypomnienie", tl):
+            return {"action_type": "qcal_reminder_add", "preview": "Przygotowano draft przypomnienia.", "payload": {}}
+        if re.search(r"posiłek|jedzenie|spożycie|dodaj do", tl):
+            return {"action_type": "nutrition_log_add", "preview": "Przygotowano draft posiłku.", "payload": {}}
+    if re.search(r"oznacz\s+(przypomnienie|reminder).*jako\s+(zrobione|done)", tl):
+        m = re.search(r"(\d+)", tl)
+        rid = int(m.group(1)) if m else 0
+        return {"action_type": "qcal_reminder_done", "preview": f"Oznaczyć reminder {rid} jako done?", "payload": {"reminder_id": rid}}
+    if re.search(r"(odwołaj|anuluj|usuń|skasuj)\s+(przypomnienie|reminder|wydarzenie|event)", tl):
+        return {"action_type": "qcal_reminder_cancel", "preview": "Anulować?", "payload": {}}
+    return None
+
+
+def _format_answer(answer: str, tables: list) -> str:
+    lines = [answer.strip()]
+    for t in tables:
+        rows = t.get("rows",[])
+        if rows:
+            cols = [c for c in (t.get("columns",[]) or list(rows[0].keys()))]
+            max_rows = 8
+            if cols:
+                header = " | ".join(c[:7])
+                lines.append("\n" + header[:100])
+            for r in rows[:max_rows]:
+                vals = []
+                for c in cols[:7]:
+                    v = r.get(c)
+                    if isinstance(v, list): v = ",".join(str(x)[:8] for x in v[:2])
+                    if isinstance(v, str) and len(v) > 20: v = v[:18] + ".."
+                    if isinstance(v, float): v = f"{v:.0f}" if abs(v) > 10 else f"{v:.1f}"
+                    vals.append(str(v or "")[:14])
+                lines.append(" | ".join(vals))
+            if len(rows) > max_rows:
+                lines.append(f"... +{len(rows)-max_rows} więcej wierszy")
+    return "\n".join(lines)[:3800]
+
+
+def _today_response(chat_id: str) -> dict:
+    try:
+        from qbot_query_router import query
+        r = query(question="Pokaż wszystko co QBot wie o dzisiejszym dniu", mode="read_only", scope="all")
+        return {"response": _format_answer(r.get("answer",""), r.get("tables",[])), "status": "ok"}
+    except: return {"response": f"Today: {date.today().isoformat()}", "status": "ok"}
+
+def _reminders_response(chat_id: str) -> dict:
+    try:
+        c = _db(); cur = c.cursor()
+        cur.execute("SELECT id, title, reminder_type, time, status FROM reminders WHERE date=%s AND status='pending' ORDER BY time", (date.today().isoformat(),))
+        rows = cur.fetchall(); c.close()
+        if not rows: return {"response": "Brak przypomnień na dziś.", "status": "ok"}
+        lines = [f"Przypomnienia ({len(rows)}):"]
+        for r in rows:
+            t = str(r.get("time","") or "")[:5]
+            lines.append(f"[{r['id']}] {t} {r['title']} ({r['reminder_type']})")
+        return {"response": "\n".join(lines), "status": "ok"}
+    except: return {"response": "Nie można sprawdzić przypomnień.", "status": "error"}
+
+
+# ── CLI entry points ──
+
+def handle_update(update: dict, dry_run: bool = True) -> dict:
+    msg = update.get("message", {})
+    chat_id = str(msg.get("chat", {}).get("id", ""))
+    text = msg.get("text", "")
+    return handle_message(chat_id, text, dry_run=dry_run)
+
+
+def handle_text_cmd(args):
+    """CLI handler for handle-text command."""
+    import argparse
+    chat_id = args.get("chat_id","")
+    text = args.get("text","")
+    dry = args.get("dry_run", True)
+    r = handle_message(chat_id, text, dry_run=dry)
+    print(r.get("response","?"))
