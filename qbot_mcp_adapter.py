@@ -238,6 +238,30 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "input_schema": {"type":"object","properties":{"reminder_id":{"type":"integer"},"reason":{"type":"string"},"confirm":{"type":"boolean"}},"required":["reminder_id"],"additionalProperties":False},
         "safety_class":"WRITE_QCAL_ONLY","auth_required":False,
     },
+    "qbot.action_execute": {
+        "qbot_tool": "qbot_action_execute",
+        "description": (
+            "WYKONAJ action_draft z qbot.query. Przyjmuje action_type z allowlisty "
+            "(nutrition_log_add, qcal_reminder_add, qcal_event_add, planning_fact_add). "
+            "WYMAGA: confirm=true, idempotency_key. "
+            "Sprawdza bezpieczeństwo: allowlist, wymagane pola, duplicate key."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action_type": {"type": "string", "enum": ["nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "planning_fact_add"]},
+                "payload_json": {"type": "object", "description": "Kompletny obiekt payload (tak jak w action_draft z qbot.query)"},
+                "idempotency_key": {"type": "string", "description": "Unikalny klucz — zapobiega duplikatom."},
+                "confirm": {"type": "boolean", "description": "MUSI być true, żeby zapisać."},
+                "dry_run": {"type": "boolean", "default": False, "description": "Tylko walidacja, bez zapisu."},
+                "source": {"type": "string", "default": "chatgpt_mcp"},
+            },
+            "required": ["action_type", "payload_json", "idempotency_key", "confirm"],
+            "additionalProperties": False,
+        },
+        "safety_class": "WRITE_ONLY_ALLOWLIST",
+        "auth_required": False,
+    },
 }
 
 # Internal readers & tools (NOT exposed to MCP — accessed exclusively via qbot.query):
@@ -688,6 +712,8 @@ def handle_mcp_request(
             result = _handle_qcal_reminder_done(clean_args)
         elif name == "qbot.qcal_reminder_cancel":
             result = _handle_qcal_reminder_cancel(clean_args)
+        elif name == "qbot.action_execute":
+            result = _handle_action_execute(clean_args)
         else:
             tool_args = dict(clean_args)
             tool_result, warnings = _dispatch_local_qbot_tool(
@@ -1236,3 +1262,260 @@ def _handle_qcal_reminder_cancel(args: dict) -> dict:
     except Exception as e: return {"tool":"qbot.qcal_reminder_cancel","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
 
 
+_ACTION_EXECUTE_ALLOWLIST = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "planning_fact_add"}
+
+_ACTION_REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {
+    "nutrition_log_add": ["date", "kcal_total"],
+    "qcal_reminder_add": ["date", "title"],
+    "qcal_event_add": ["date_start", "title"],
+    "planning_fact_add": ["fact_type", "date", "title"],
+}
+
+
+def _handle_action_execute(args: dict) -> dict[str, Any]:
+    """Execute an action_draft. Unified entry point for allowed action_types.
+
+    Safety:
+      1. confirm must be true
+      2. idempotency_key must be present
+      3. action_type must be in allowlist
+      4. payload must have required fields
+      5. duplicate idempotency_key is rejected
+      6. dry_run prevents writes
+    """
+    confirm = args.get("confirm") is True or str(args.get("confirm", "")).lower() == "true"
+    if not confirm:
+        return {
+            "tool": "qbot.action_execute",
+            "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "BLOCKED",
+            "error": "confirm must be true to execute. Use qbot.query first to get action_draft, then call action_execute with confirm=true.",
+        }
+
+    idem_key = str(args.get("idempotency_key", "")).strip()
+    if not idem_key:
+        return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "BLOCKED", "error": "idempotency_key required."}
+
+    action_type = str(args.get("action_type", "")).strip()
+    if action_type not in _ACTION_EXECUTE_ALLOWLIST:
+        return {
+            "tool": "qbot.action_execute",
+            "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "BLOCKED",
+            "error": f"action_type '{action_type}' not in allowlist: {sorted(_ACTION_EXECUTE_ALLOWLIST)}",
+        }
+
+    payload = args.get("payload_json", {}) or {}
+    if not isinstance(payload, dict):
+        return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "BLOCKED", "error": "payload_json must be an object."}
+
+    # Validate required payload fields
+    required = _ACTION_REQUIRED_PAYLOAD_FIELDS.get(action_type, [])
+    missing = [f for f in required if not payload.get(f)]
+    if missing:
+        return {
+            "tool": "qbot.action_execute",
+            "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "BLOCKED",
+            "error": f"Missing required payload fields: {missing}",
+            "missing_fields": missing,
+        }
+
+    source = str(args.get("source", "chatgpt_mcp"))
+
+    # ── Dry run ──
+    if args.get("dry_run") is True or str(args.get("dry_run", "")).lower() == "true":
+        return {
+            "tool": "qbot.action_execute",
+            "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "DRY_RUN",
+            "action_type": action_type,
+            "idempotency_key": idem_key,
+            "payload": payload,
+            "note": "dry_run — no write performed.",
+        }
+
+    # ── Check duplicate ──
+    dup = _action_check_duplicate(idem_key, action_type)
+    if dup:
+        return dup
+
+    # ── Dispatch ──
+    if action_type == "nutrition_log_add":
+        return _action_exec_nutrition(payload, idem_key, source)
+    elif action_type == "qcal_reminder_add":
+        return _action_exec_reminder(payload, idem_key, source)
+    elif action_type == "qcal_event_add":
+        return _action_exec_event(payload, idem_key, source)
+    elif action_type == "planning_fact_add":
+        return _action_exec_planning(payload, idem_key, source)
+    else:
+        return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "ERROR", "error": f"Unhandled action_type: {action_type}"}
+
+
+def _action_check_duplicate(idem_key: str, action_type: str) -> dict | None:
+    """Check if idempotency_key already used. Returns duplicate response or None."""
+    from qbot_nutrition_db import _conn as nut_conn
+    from qbot_calendar_core import _conn as cal_conn
+
+    # Check nutrition audit
+    try:
+        c = nut_conn()
+        cur = c.cursor()
+        cur.execute("SELECT 1 FROM nutrition_write_audit WHERE idempotency_key=%s", (idem_key,))
+        if cur.fetchone():
+            c.close()
+            return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "note": "idempotency_key already exists (nutrition_write_audit).", "idempotency_key": idem_key}
+        c.close()
+    except Exception:
+        pass
+
+    # Check QCal audit
+    try:
+        import psycopg, os
+        from psycopg.rows import dict_row
+        c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
+        cur = c.cursor()
+        cur.execute("SELECT 1 FROM qcal_write_audit WHERE idempotency_key=%s", (idem_key,))
+        if cur.fetchone():
+            c.close()
+            return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "note": "idempotency_key already exists (qcal_write_audit).", "idempotency_key": idem_key}
+        c.close()
+    except Exception:
+        pass
+
+    return None
+
+
+def _action_exec_nutrition(payload: dict, idem_key: str, source: str) -> dict:
+    """Execute nutrition_log_add using existing handler pattern."""
+    from datetime import date as dt_date
+    import json
+
+    day = str(payload.get("date", dt_date.today().isoformat()))[:10]
+    kcal = float(payload.get("kcal_total", 0))
+    prot = payload.get("protein_g")
+    carbs = payload.get("carbs_g")
+    fat = payload.get("fat_g")
+    meal_name = str(payload.get("meal_name", payload.get("raw_text", "posiłek")[:60]))
+    conf = str(payload.get("confidence", "medium"))
+    raw_text = str(payload.get("raw_text", ""))
+
+    from qbot_nutrition_db import meal_log_create, daily_summary_compute
+    context = json.dumps({"source": source, "confidence": conf, "mcp_tool": "action_execute", "action_type": "nutrition_log_add", "raw_text": raw_text})
+    item = {"food_name": meal_name, "amount": 1, "unit": "porcja", "kcal": kcal, "carbs_g": carbs, "protein_g": prot, "fat_g": fat}
+
+    meal = meal_log_create(meal_type="meal", note=f"MCP: {meal_name}", context=context, eaten_at=f"{day}T12:00:00", items=[item])
+    summary = daily_summary_compute(day)
+
+    # Audit
+    try:
+        from qbot_nutrition_db import _conn as nut_conn
+        c2 = nut_conn()
+        cur2 = c2.cursor()
+        cur2.execute(
+            "INSERT INTO nutrition_write_audit (idempotency_key, meal_log_id, date, source, raw_user_text, payload_json, result_json) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+            (idem_key, meal.get("id"), day, source, raw_text, json.dumps(payload, default=str), json.dumps({"meal_id": meal.get("id")}, default=str)))
+        c2.commit()
+        c2.close()
+    except Exception:
+        pass
+
+    # Snapshot
+    try:
+        from qbot_calendar_core import build_snapshot
+        build_snapshot(day)
+    except Exception:
+        pass
+
+    return {
+        "tool": "qbot.action_execute",
+        "safety_class": "WRITE_ONLY_ALLOWLIST",
+        "status": "OK",
+        "action_type": "nutrition_log_add",
+        "idempotency_key": idem_key,
+        "meal_id": meal.get("id"),
+        "daily_summary": {k: v for k, v in (summary or {}).items() if k in ("date","kcal_total","carbs_total","protein_total","fat_total")},
+    }
+
+
+def _action_exec_reminder(payload: dict, idem_key: str, source: str) -> dict:
+    """Execute qcal_reminder_add."""
+    import json, psycopg, os
+    from psycopg.rows import dict_row
+
+    c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
+    cur = c.cursor()
+
+    meta = {}
+    for k in ("task_kind","deadline_date","start_date","repeat_until_done"):
+        v = payload.get(k)
+        if v is not None:
+            meta[k] = v
+    if source:
+        meta["source"] = source
+    metadata_json = json.dumps(meta, default=str) if meta else None
+
+    cur.execute("""INSERT INTO reminders (date,time,timezone,title,message,reminder_type,status,priority,channel,recurrence_rule,metadata_json)
+        VALUES (%s,%s,'Europe/Warsaw',%s,%s,%s,'pending',%s,%s,%s,%s) RETURNING id""",
+        (payload.get("date"), payload.get("time"), payload.get("title","?"), payload.get("message",""),
+         payload.get("reminder_type","custom"), payload.get("priority","normal"),
+         payload.get("channel","cli"), payload.get("recurrence_rule"), metadata_json))
+    rid = cur.fetchone()["id"]
+    c.commit()
+    c.close()
+
+    _qcal_audit(idem_key, "reminder_add", "reminder", rid, payload.get("date",""), payload, {"id": rid, "action_execute": True})
+    try:
+        from qbot_calendar_core import build_snapshot
+        build_snapshot(payload.get("date",""))
+    except Exception:
+        pass
+
+    return {"tool":"qbot.action_execute","safety_class":"WRITE_ONLY_ALLOWLIST","status":"OK","action_type":"qcal_reminder_add","idempotency_key":idem_key,"reminder_id":rid}
+
+
+def _action_exec_event(payload: dict, idem_key: str, source: str) -> dict:
+    """Execute qcal_event_add."""
+    import json, psycopg, os
+    from psycopg.rows import dict_row
+
+    c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
+    cur = c.cursor()
+
+    cur.execute("""INSERT INTO calendar_events (date_start,date_end,time_start,event_type,title,description,status,source)
+        VALUES (%s,%s,%s,%s,%s,%s,'planned',%s) RETURNING id""",
+        (payload.get("date_start"), payload.get("date_end"), payload.get("time_start"),
+         payload.get("event_type","note"), payload.get("title","?"), payload.get("description", payload.get("title","")),
+         source))
+    eid = cur.fetchone()["id"]
+    c.commit()
+    c.close()
+
+    _qcal_audit(idem_key, "event_add", "event", eid, payload.get("date_start",""), payload, {"id": eid, "action_execute": True})
+    try:
+        from qbot_calendar_core import build_snapshot
+        build_snapshot(payload.get("date_start",""))
+    except Exception:
+        pass
+
+    return {"tool":"qbot.action_execute","safety_class":"WRITE_ONLY_ALLOWLIST","status":"OK","action_type":"qcal_event_add","idempotency_key":idem_key,"event_id":eid}
+
+
+def _action_exec_planning(payload: dict, idem_key: str, source: str) -> dict:
+    """Execute planning_fact_add."""
+    try:
+        from qbot_planning_memory import save_planning_fact
+        result = save_planning_fact(draft=payload, channel=source, confirm=True)
+        if result.get("status") == "OK":
+            return {
+                "tool": "qbot.action_execute",
+                "safety_class": "WRITE_ONLY_ALLOWLIST",
+                "status": "OK",
+                "action_type": "planning_fact_add",
+                "idempotency_key": idem_key,
+                "planning_fact_id": result.get("planning_fact_id"),
+            }
+        return {"tool":"qbot.action_execute","safety_class":"WRITE_ONLY_ALLOWLIST","status":"ERROR","error": result.get("error","save_planning_fact failed")}
+    except ImportError:
+        return {"tool":"qbot.action_execute","safety_class":"WRITE_ONLY_ALLOWLIST","status":"MISSING_CAPABILITY","missing_capability":"planning_fact_add","note":"save_planning_fact not available."}
