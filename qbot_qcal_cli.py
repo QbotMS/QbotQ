@@ -270,7 +270,7 @@ def main():
     ea = sub.add_parser("event-add")
     ea.add_argument("--date", required=True); ea.add_argument("--date-end"); ea.add_argument("--time"); ea.add_argument("--type", default="note"); ea.add_argument("--title", required=True); ea.add_argument("--description"); ea.add_argument("--affects-training", dest="affects_training", action="store_true"); ea.add_argument("--affects-nutrition", dest="affects_nutrition", action="store_true"); ea.add_argument("--yes", action="store_true")
 
-    el = sub.add_parser("event-list"); el.add_argument("--date-from"); el.add_argument("--date-to")
+    el = sub.add_parser("event-list"); el.add_argument("--date-from"); el.add_argument("--date-to"); el.add_argument("--from", dest="date_from"); el.add_argument("--to", dest="date_to")
     sub.add_parser("event-show").add_argument("--id", type=int, required=True)
     ec = sub.add_parser("event-cancel"); ec.add_argument("--id", type=int, required=True); ec.add_argument("--yes", action="store_true")
     ed = sub.add_parser("event-delete"); ed.add_argument("--id", type=int, required=True); ed.add_argument("--yes", action="store_true")
@@ -278,7 +278,7 @@ def main():
     ra = sub.add_parser("reminder-add")
     ra.add_argument("--date", required=True); ra.add_argument("--time"); ra.add_argument("--type", default="custom"); ra.add_argument("--title", required=True); ra.add_argument("--message"); ra.add_argument("--channel", default="cli"); ra.add_argument("--priority", default="normal"); ra.add_argument("--recurrence"); ra.add_argument("--requires-confirmation", action="store_true"); ra.add_argument("--yes", action="store_true")
 
-    rl = sub.add_parser("reminder-list"); rl.add_argument("--date"); rl.add_argument("--date-from"); rl.add_argument("--date-to")
+    rl = sub.add_parser("reminder-list"); rl.add_argument("--date"); rl.add_argument("--date-from"); rl.add_argument("--date-to"); rl.add_argument("--from", dest="date_from"); rl.add_argument("--to", dest="date_to")
     rd = sub.add_parser("reminder-done"); rd.add_argument("--id", type=int, required=True); rd.add_argument("--yes", action="store_true")
     rc = sub.add_parser("reminder-cancel"); rc.add_argument("--id", type=int, required=True); rc.add_argument("--yes", action="store_true")
     rs = sub.add_parser("reminder-snooze"); rs.add_argument("--id", type=int, required=True); rs.add_argument("--minutes", type=int, default=30); rs.add_argument("--yes", action="store_true")

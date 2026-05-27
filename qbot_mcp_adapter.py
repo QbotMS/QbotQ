@@ -140,6 +140,104 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "WRITE_NUTRITION_ONLY",
         "auth_required": False,
     },
+    "qbot.nutrition_log_delete_preview": {
+        "qbot_tool": "qbot_nutrition_log_delete_preview",
+        "description": "Podgląd usunięcia posiłku. READ_ONLY — nic nie usuwa. Pokazuje meal_log + items przed potwierdzeniem.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "meal_log_id": {"type": "integer", "description": "ID posiłku do podglądu usunięcia"},
+            },
+            "required": ["meal_log_id"],
+            "additionalProperties": False,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+    "qbot.nutrition_log_delete": {
+        "qbot_tool": "qbot_nutrition_log_delete",
+        "description": "USUŃ posiłek z nutrition DB. WYMAGA: confirm=true, idempotency_key. Tylko wpisy z source=chatgpt_mcp / MCP:. Zwraca deleted info + recomputed daily summary.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "meal_log_id": {"type": "integer"},
+                "confirm": {"type": "boolean", "description": "MUSI być true"},
+                "idempotency_key": {"type": "string"},
+            },
+            "required": ["meal_log_id", "idempotency_key"],
+            "additionalProperties": False,
+        },
+        "safety_class": "WRITE_NUTRITION_ONLY",
+        "auth_required": False,
+    },
+    "qbot.nutrition_log_replace": {
+        "qbot_tool": "qbot_nutrition_log_replace",
+        "description": "ZAMIEŃ posiłek MCP na nowy (delete old + insert new). WYMAGA: confirm=true, idempotency_key. Tylko MCP-sourced wpisy. Zwraca old + new entry + daily summary.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "meal_log_id": {"type": "integer"},
+                "new_meal_name": {"type": "string"},
+                "raw_text": {"type": "string"},
+                "kcal_total": {"type": "number"},
+                "protein_g": {"type": "number"},
+                "carbs_g": {"type": "number"},
+                "fat_g": {"type": "number"},
+                "confirm": {"type": "boolean"},
+                "idempotency_key": {"type": "string"},
+            },
+            "required": ["meal_log_id", "kcal_total", "idempotency_key"],
+            "additionalProperties": False,
+        },
+        "safety_class": "WRITE_NUTRITION_ONLY",
+        "auth_required": False,
+    },
+
+    # ── QCal Event tools ──
+    "qbot.qcal_event_preview": {
+        "qbot_tool": "qbot_qcal_event_preview",
+        "description": "Podgląd wydarzenia przed zapisem. READ_ONLY.",
+        "input_schema": {"type":"object","properties":{"raw_text":{"type":"string"},"date_start":{"type":"string"},"date_end":{"type":"string"},"time_start":{"type":"string"},"event_type":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"}},"additionalProperties":False},
+        "safety_class":"READ_ONLY","auth_required":False,
+    },
+    "qbot.qcal_event_add": {
+        "qbot_tool": "qbot_qcal_event_add",
+        "description": "ZAPISZ wydarzenie do QCal. WYMAGA: confirm=true, idempotency_key.",
+        "input_schema": {"type":"object","properties":{"date_start":{"type":"string"},"date_end":{"type":"string"},"time_start":{"type":"string"},"event_type":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},"source":{"type":"string","default":"chatgpt_mcp"},"idempotency_key":{"type":"string"},"confirm":{"type":"boolean"}},"required":["date_start","title","event_type","idempotency_key"],"additionalProperties":False},
+        "safety_class":"WRITE_QCAL_ONLY","auth_required":False,
+    },
+    "qbot.qcal_event_cancel": {
+        "qbot_tool": "qbot_qcal_event_cancel",
+        "description": "ANULUJ wydarzenie (status=cancelled). WYMAGA confirm=true.",
+        "input_schema": {"type":"object","properties":{"event_id":{"type":"integer"},"reason":{"type":"string"},"confirm":{"type":"boolean"}},"required":["event_id"],"additionalProperties":False},
+        "safety_class":"WRITE_QCAL_ONLY","auth_required":False,
+    },
+
+    # ── QCal Reminder tools ──
+    "qbot.qcal_reminder_preview": {
+        "qbot_tool": "qbot_qcal_reminder_preview",
+        "description": "Podgląd przypomnienia przed zapisem. READ_ONLY.",
+        "input_schema": {"type":"object","properties":{"raw_text":{"type":"string"},"date":{"type":"string"},"time":{"type":"string"},"reminder_type":{"type":"string"},"title":{"type":"string"},"message":{"type":"string"},"channel":{"type":"string"}},"additionalProperties":False},
+        "safety_class":"READ_ONLY","auth_required":False,
+    },
+    "qbot.qcal_reminder_add": {
+        "qbot_tool": "qbot_qcal_reminder_add",
+        "description": "ZAPISZ przypomnienie do QCal. WYMAGA: confirm=true, idempotency_key.",
+        "input_schema": {"type":"object","properties":{"date":{"type":"string"},"time":{"type":"string"},"reminder_type":{"type":"string"},"title":{"type":"string"},"message":{"type":"string"},"channel":{"type":"string","default":"cli"},"priority":{"type":"string","default":"normal"},"idempotency_key":{"type":"string"},"confirm":{"type":"boolean"}},"required":["date","title","message","reminder_type","idempotency_key"],"additionalProperties":False},
+        "safety_class":"WRITE_QCAL_ONLY","auth_required":False,
+    },
+    "qbot.qcal_reminder_done": {
+        "qbot_tool": "qbot_qcal_reminder_done",
+        "description": "OZNACZ przypomnienie jako done.",
+        "input_schema": {"type":"object","properties":{"reminder_id":{"type":"integer"},"confirm":{"type":"boolean"}},"required":["reminder_id"],"additionalProperties":False},
+        "safety_class":"WRITE_QCAL_ONLY","auth_required":False,
+    },
+    "qbot.qcal_reminder_cancel": {
+        "qbot_tool": "qbot_qcal_reminder_cancel",
+        "description": "ANULUJ przypomnienie.",
+        "input_schema": {"type":"object","properties":{"reminder_id":{"type":"integer"},"reason":{"type":"string"},"confirm":{"type":"boolean"}},"required":["reminder_id"],"additionalProperties":False},
+        "safety_class":"WRITE_QCAL_ONLY","auth_required":False,
+    },
 }
 
 # Internal readers & tools (NOT exposed to MCP — accessed exclusively via qbot.query):
@@ -567,6 +665,26 @@ def handle_mcp_request(
             result = _handle_nutrition_preview(clean_args)
         elif name == "qbot.nutrition_log_add":
             result = _handle_nutrition_add(clean_args)
+        elif name == "qbot.nutrition_log_delete_preview":
+            result = _handle_nutrition_delete_preview(clean_args)
+        elif name == "qbot.nutrition_log_delete":
+            result = _handle_nutrition_delete(clean_args)
+        elif name == "qbot.nutrition_log_replace":
+            result = _handle_nutrition_replace(clean_args)
+        elif name == "qbot.qcal_event_preview":
+            result = _handle_qcal_event_preview(clean_args)
+        elif name == "qbot.qcal_event_add":
+            result = _handle_qcal_event_add(clean_args)
+        elif name == "qbot.qcal_event_cancel":
+            result = _handle_qcal_event_cancel(clean_args)
+        elif name == "qbot.qcal_reminder_preview":
+            result = _handle_qcal_reminder_preview(clean_args)
+        elif name == "qbot.qcal_reminder_add":
+            result = _handle_qcal_reminder_add(clean_args)
+        elif name == "qbot.qcal_reminder_done":
+            result = _handle_qcal_reminder_done(clean_args)
+        elif name == "qbot.qcal_reminder_cancel":
+            result = _handle_qcal_reminder_cancel(clean_args)
         else:
             tool_args = dict(clean_args)
             tool_result, warnings = _dispatch_local_qbot_tool(
@@ -754,4 +872,357 @@ def _handle_nutrition_add(args: dict) -> dict[str, Any]:
             "status": "ERROR",
             "error": str(e)[:300],
         }
+
+
+def _handle_nutrition_delete_preview(args: dict) -> dict[str, Any]:
+    """Read-only preview of meal deletion. No DB writes."""
+    meal_id = int(args.get("meal_log_id", 0))
+    if not meal_id:
+        return {"tool": "qbot.nutrition_log_delete_preview", "safety_class": "READ_ONLY", "status": "ERROR", "error": "meal_log_id required"}
+
+    try:
+        from qbot_nutrition_db import get_meal_log
+        meal = get_meal_log(meal_id)
+        if not meal:
+            return {"tool": "qbot.nutrition_log_delete_preview", "safety_class": "READ_ONLY", "status": "NOT_FOUND", "meal_log_id": meal_id}
+
+        items_count = len(meal.get("items", []))
+        context = meal.get("context", "") or ""
+        note = meal.get("note", "") or ""
+        is_mcp = "chatgpt_mcp" in str(context).lower() or "MCP:" in str(note) or "ChatGPT MCP" in str(note)
+
+        return {
+            "tool": "qbot.nutrition_log_delete_preview",
+            "safety_class": "READ_ONLY",
+            "status": "OK",
+            "meal_log_id": meal_id,
+            "date": str(meal.get("eaten_at", "?"))[:10],
+            "meal_name": (meal.get("items", [{}])[0].get("food_name", "?") if meal.get("items") else "?"),
+            "items_count": items_count,
+            "can_delete": is_mcp,
+            "restriction": None if is_mcp else "Only MCP-sourced meals can be deleted via this tool.",
+            "note": meal.get("note", "")[:100],
+        }
+    except Exception as e:
+        return {"tool": "qbot.nutrition_log_delete_preview", "safety_class": "READ_ONLY", "status": "ERROR", "error": str(e)[:200]}
+
+
+def _handle_nutrition_delete(args: dict) -> dict[str, Any]:
+    """Delete MCP-sourced meal. Requires confirm=true and idempotency_key."""
+    import json, os
+    from datetime import date as dt_date
+
+    confirm = args.get("confirm", False)
+    if confirm is not True and str(confirm).lower() != "true":
+        return {"tool": "qbot.nutrition_log_delete", "safety_class": "WRITE_NUTRITION_ONLY", "status": "BLOCKED",
+                "error": "confirm must be true. Use qbot.nutrition_log_delete_preview first."}
+
+    idem_key = str(args.get("idempotency_key", ""))
+    if not idem_key:
+        return {"tool": "qbot.nutrition_log_delete", "safety_class": "WRITE_NUTRITION_ONLY", "status": "BLOCKED",
+                "error": "idempotency_key required."}
+
+    meal_id = int(args.get("meal_log_id", 0))
+    if not meal_id:
+        return {"tool": "qbot.nutrition_log_delete", "safety_class": "WRITE_NUTRITION_ONLY", "status": "ERROR", "error": "meal_log_id required"}
+
+    # Check idempotency
+    try:
+        from qbot_nutrition_db import _conn as nut_conn
+        c = nut_conn(); cur = c.cursor()
+        cur.execute("SELECT 1 FROM nutrition_write_audit WHERE idempotency_key=%s", (idem_key,))
+        if cur.fetchone():
+            c.close()
+            return {"tool": "qbot.nutrition_log_delete", "safety_class": "WRITE_NUTRITION_ONLY", "status": "DUPLICATE",
+                    "note": "This idempotency_key already used — deletion already processed."}
+        c.close()
+    except Exception:
+        pass
+
+    try:
+        from qbot_nutrition_db import get_meal_log, daily_summary_compute, _conn as nut_conn
+
+        meal = get_meal_log(meal_id)
+        if not meal:
+            return {"tool": "qbot.nutrition_log_delete", "safety_class": "WRITE_NUTRITION_ONLY", "status": "NOT_FOUND", "meal_log_id": meal_id}
+
+        context = meal.get("context", "") or ""
+        note = meal.get("note", "") or ""
+        is_mcp = "chatgpt_mcp" in str(context).lower() or "MCP:" in str(note) or "ChatGPT MCP" in str(note)
+        if not is_mcp:
+            return {"tool": "qbot.nutrition_log_delete", "safety_class": "WRITE_NUTRITION_ONLY", "status": "BLOCKED",
+                    "error": "Only MCP-sourced meals (source=chatgpt_mcp or note starting with 'MCP:') can be deleted via this tool."}
+
+        date_str = str(meal.get("eaten_at", ""))[:10]
+        items_count = len(meal.get("items", []))
+
+        # Delete
+        c = nut_conn(); cur = c.cursor()
+        cur.execute("DELETE FROM meal_log_items WHERE meal_log_id=%s", (meal_id,))
+        cur.execute("DELETE FROM meal_logs WHERE id=%s", (meal_id,))
+        c.commit()
+
+        # Audit
+        try:
+            cur.execute("INSERT INTO nutrition_write_audit (idempotency_key, meal_log_id, date, source, raw_user_text, payload_json, result_json) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                (idem_key, meal_id, date_str, "chatgpt_mcp_delete", f"deleted meal {meal_id}",
+                 json.dumps({"action":"delete","meal_log_id":meal_id,"note":note[:100]}),
+                 json.dumps({"deleted_items":items_count})))
+            c.commit()
+        except Exception:
+            pass
+        c.close()
+
+        summary = daily_summary_compute(date_str)
+
+        # Rebuild snapshot
+        try:
+            from qbot_calendar_core import build_snapshot
+            build_snapshot(date_str)
+        except Exception:
+            pass
+
+        return {
+            "tool": "qbot.nutrition_log_delete",
+            "safety_class": "WRITE_NUTRITION_ONLY",
+            "status": "OK",
+            "deleted_meal_log_id": meal_id,
+            "deleted_items_count": items_count,
+            "date": date_str,
+            "daily_summary": {k: v for k, v in (summary or {}).items() if k in ("date","kcal_total","carbs_total","protein_total","fat_total")},
+            "note": "Meal deleted. Daily summary + calendar snapshot recomputed.",
+        }
+    except Exception as e:
+        return {"tool": "qbot.nutrition_log_delete", "safety_class": "WRITE_NUTRITION_ONLY", "status": "ERROR", "error": str(e)[:300]}
+
+
+def _handle_nutrition_replace(args: dict) -> dict[str, Any]:
+    """Replace MCP-sourced meal: delete old + insert new in one transaction."""
+    import json
+    from datetime import date as dt_date
+
+    confirm = args.get("confirm", False)
+    if confirm is not True and str(confirm).lower() != "true":
+        old_meal_id = int(args.get("meal_log_id", 0))
+        preview = {"meal_log_id": old_meal_id, "confirm_required": True}
+        try:
+            from qbot_nutrition_db import get_meal_log
+            m = get_meal_log(old_meal_id)
+            if m:
+                preview["old_meal"] = {"date": str(m.get("eaten_at","?"))[:10], "items_count": len(m.get("items",[])),
+                    "food_name": (m.get("items",[{}])[0].get("food_name","?") if m.get("items") else "?")}
+        except: pass
+        return {"tool": "qbot.nutrition_log_replace", "safety_class": "WRITE_NUTRITION_ONLY", "status": "BLOCKED",
+                "error": "confirm must be true.", "preview": preview}
+
+    idem_key = str(args.get("idempotency_key", ""))
+    if not idem_key:
+        return {"tool": "qbot.nutrition_log_replace", "safety_class": "WRITE_NUTRITION_ONLY", "status": "BLOCKED", "error": "idempotency_key required."}
+
+    old_meal_id = int(args.get("meal_log_id", 0))
+
+    # Check idempotency
+    try:
+        from qbot_nutrition_db import _conn as nut_conn
+        c = nut_conn(); cur = c.cursor()
+        cur.execute("SELECT 1 FROM nutrition_write_audit WHERE idempotency_key=%s", (idem_key,))
+        if cur.fetchone():
+            c.close()
+            return {"tool": "qbot.nutrition_log_replace", "safety_class": "WRITE_NUTRITION_ONLY", "status": "DUPLICATE"}
+        c.close()
+    except: pass
+
+    try:
+        from qbot_nutrition_db import get_meal_log, meal_log_create, daily_summary_compute, _conn as nut_conn
+
+        old = get_meal_log(old_meal_id)
+        if not old:
+            return {"tool": "qbot.nutrition_log_replace", "safety_class": "WRITE_NUTRITION_ONLY", "status": "NOT_FOUND", "meal_log_id": old_meal_id}
+
+        ctx = old.get("context","") or ""; n = old.get("note","") or ""
+        if not ("chatgpt_mcp" in str(ctx).lower() or "MCP:" in str(n)):
+            return {"tool": "qbot.nutrition_log_replace", "safety_class": "WRITE_NUTRITION_ONLY", "status": "BLOCKED", "error": "Only MCP-sourced meals can be replaced."}
+
+        date_str = str(old.get("eaten_at",""))[:10]
+
+        new_name = str(args.get("new_meal_name", args.get("raw_text","posiłek")[:60]))
+        new_kcal = float(args.get("kcal_total", 0))
+        new_prot = args.get("protein_g")
+        new_carbs = args.get("carbs_g")
+        new_fat = args.get("fat_g")
+        new_raw = str(args.get("raw_text",""))
+
+        # Delete old + insert new
+        c = nut_conn(); cur = c.cursor()
+        cur.execute("DELETE FROM meal_log_items WHERE meal_log_id=%s", (old_meal_id,))
+        cur.execute("DELETE FROM meal_logs WHERE id=%s", (old_meal_id,))
+
+        new_context = json.dumps({"source":"chatgpt_mcp_replace","confidence":"medium","raw_text":new_raw,"replaced_meal_id":old_meal_id})
+        item = {"food_name": new_name, "amount":1, "unit":"porcja", "kcal":new_kcal,
+                "carbs_g": new_carbs, "protein_g": new_prot, "fat_g": new_fat}
+        new_meal = meal_log_create(meal_type="meal", note=f"MCP replace: {new_name}", context=new_context,
+                                   eaten_at=f"{date_str}T12:00:00", items=[item])
+        c.commit()
+
+        # Audit
+        try:
+            cur.execute("INSERT INTO nutrition_write_audit (idempotency_key, meal_log_id, date, source, raw_user_text, payload_json, result_json) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                (idem_key, new_meal.get("id"), date_str, "chatgpt_mcp_replace", f"replaced {old_meal_id} → {new_meal.get('id')}",
+                 json.dumps({"action":"replace","old":old_meal_id,"new_name":new_name,"kcal":new_kcal}),
+                 json.dumps({"old_deleted":True,"new_id":new_meal.get("id")})))
+            c.commit()
+        except: pass
+        c.close()
+
+        summary = daily_summary_compute(date_str)
+        try:
+            from qbot_calendar_core import build_snapshot
+            build_snapshot(date_str)
+        except: pass
+
+        return {"tool": "qbot.nutrition_log_replace", "safety_class": "WRITE_NUTRITION_ONLY", "status": "OK",
+                "old_meal_log_id": old_meal_id, "new_meal_log_id": new_meal.get("id"), "date": date_str,
+                "daily_summary": {k:v for k,v in (summary or {}).items() if k in ("date","kcal_total","carbs_total","protein_total","fat_total")}}
+    except Exception as e:
+        return {"tool": "qbot.nutrition_log_replace", "safety_class": "WRITE_NUTRITION_ONLY", "status": "ERROR", "error": str(e)[:300]}
+
+
+# ── QCal Event + Reminder handlers ──────────────────────────────────────────
+
+def _qcal_audit(idem_key: str, operation: str, entity_type: str, entity_id: int | None, date_str: str | None, payload: dict, result: dict):
+    try:
+        import psycopg, os, json
+        from psycopg.rows import dict_row
+        c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
+        cur = c.cursor()
+        cur.execute("INSERT INTO qcal_write_audit (idempotency_key,operation,entity_type,entity_id,date,source,payload_json,result_json) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+            (idem_key, operation, entity_type, entity_id, date_str, "chatgpt_mcp", json.dumps(payload), json.dumps(result)))
+        c.commit(); c.close()
+    except: pass
+
+
+def _qcal_check_idem(idem_key: str) -> bool:
+    try:
+        from qbot_nutrition_db import _conn as nut_conn
+        c = nut_conn(); cur = c.cursor()
+        cur.execute("SELECT 1 FROM qcal_write_audit WHERE idempotency_key=%s",(idem_key,))
+        exists = cur.fetchone() is not None; c.close()
+        return exists
+    except: return False
+
+
+def _handle_qcal_event_preview(args: dict) -> dict:
+    import hashlib
+    d = args.get("date_start","") or "?"
+    t = args.get("title","") or ""
+    payload = f"event|{d}|{t}"
+    return {"tool":"qbot.qcal_event_preview","safety_class":"READ_ONLY","status":"DRY_RUN",
+            "draft":{"date_start":d,"title":t,"event_type":args.get("event_type","note")},
+            "idempotency_key":hashlib.sha256(payload.encode()).hexdigest()[:16],
+            "next_action":"Call qbot.qcal_event_add with confirm=true and idempotency_key."}
+
+def _handle_qcal_event_add(args: dict) -> dict:
+    if not (args.get("confirm") == True or str(args.get("confirm","")).lower()=="true"):
+        return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":"confirm must be true."}
+    idem = str(args.get("idempotency_key",""))
+    if not idem: return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":"idempotency_key required."}
+    if _qcal_check_idem(idem): return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"DUPLICATE"}
+    try:
+        import psycopg, os, json; from psycopg.rows import dict_row
+        c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
+        cur = c.cursor()
+        cur.execute("""INSERT INTO calendar_events (date_start,date_end,time_start,event_type,title,description,status,source)
+            VALUES (%s,%s,%s,%s,%s,%s,'planned',%s) RETURNING id""",
+            (args.get("date_start"),args.get("date_end"),args.get("time_start"),args.get("event_type","note"),args.get("title","?"),args.get("description"),args.get("source","chatgpt_mcp")))
+        eid = cur.fetchone()["id"]; c.commit(); c.close()
+        _qcal_audit(idem, "event_add", "calendar_event", eid, args.get("date_start"), dict(args), {"id":eid})
+        try:
+            from qbot_calendar_core import build_snapshot; build_snapshot(args.get("date_start",""))
+        except: pass
+        return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"OK","event_id":eid}
+    except Exception as e: return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
+
+def _handle_qcal_event_cancel(args: dict) -> dict:
+    if not (args.get("confirm") == True or str(args.get("confirm","")).lower()=="true"):
+        return {"tool":"qbot.qcal_event_cancel","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":"confirm must be true."}
+    eid = int(args.get("event_id",0))
+    try:
+        import psycopg, os; from psycopg.rows import dict_row
+        c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
+        cur = c.cursor()
+        cur.execute("SELECT date_start FROM calendar_events WHERE id=%s",(eid,)); ev = cur.fetchone()
+        if not ev: c.close(); return {"tool":"qbot.qcal_event_cancel","safety_class":"WRITE_QCAL_ONLY","status":"NOT_FOUND"}
+        date_str = str(ev["date_start"])[:10]
+        cur.execute("UPDATE calendar_events SET status='cancelled', updated_at=now() WHERE id=%s",(eid,)); c.commit(); c.close()
+        _qcal_audit("cancel_"+str(eid), "event_cancel", "calendar_event", eid, date_str, dict(args), {"cancelled":True})
+        try: from qbot_calendar_core import build_snapshot; build_snapshot(date_str)
+        except: pass
+        return {"tool":"qbot.qcal_event_cancel","safety_class":"WRITE_QCAL_ONLY","status":"OK","event_id":eid,"cancelled":True}
+    except Exception as e: return {"tool":"qbot.qcal_event_cancel","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
+
+def _handle_qcal_reminder_preview(args: dict) -> dict:
+    import hashlib
+    d = args.get("date","?"); t = args.get("title","") or args.get("raw_text","") or ""
+    payload = f"reminder|{d}|{t}"
+    return {"tool":"qbot.qcal_reminder_preview","safety_class":"READ_ONLY","status":"DRY_RUN",
+            "draft":{"date":d,"title":t,"reminder_type":args.get("reminder_type","custom"),"time":args.get("time","")},
+            "idempotency_key":hashlib.sha256(payload.encode()).hexdigest()[:16],
+            "next_action":"Call qbot.qcal_reminder_add with confirm=true and idempotency_key."}
+
+def _handle_qcal_reminder_add(args: dict) -> dict:
+    if not (args.get("confirm") == True or str(args.get("confirm","")).lower()=="true"):
+        return {"tool":"qbot.qcal_reminder_add","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":"confirm must be true."}
+    idem = str(args.get("idempotency_key",""))
+    if not idem: return {"tool":"qbot.qcal_reminder_add","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":"idempotency_key required."}
+    if _qcal_check_idem(idem): return {"tool":"qbot.qcal_reminder_add","safety_class":"WRITE_QCAL_ONLY","status":"DUPLICATE"}
+    try:
+        import psycopg, os; from psycopg.rows import dict_row
+        c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
+        cur = c.cursor()
+        cur.execute("""INSERT INTO reminders (date,time,timezone,title,message,reminder_type,status,priority,channel)
+            VALUES (%s,%s,'Europe/Warsaw',%s,%s,%s,'pending',%s,%s) RETURNING id""",
+            (args.get("date"),args.get("time"),args.get("title","?"),args.get("message",""),args.get("reminder_type","custom"),args.get("priority","normal"),args.get("channel","cli")))
+        rid = cur.fetchone()["id"]; c.commit(); c.close()
+        _qcal_audit(idem, "reminder_add", "reminder", rid, args.get("date"), dict(args), {"id":rid})
+        try: from qbot_calendar_core import build_snapshot; build_snapshot(args.get("date",""))
+        except: pass
+        return {"tool":"qbot.qcal_reminder_add","safety_class":"WRITE_QCAL_ONLY","status":"OK","reminder_id":rid}
+    except Exception as e: return {"tool":"qbot.qcal_reminder_add","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
+
+def _handle_qcal_reminder_done(args: dict) -> dict:
+    if not (args.get("confirm") == True or str(args.get("confirm","")).lower()=="true"):
+        return {"tool":"qbot.qcal_reminder_done","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":"confirm must be true."}
+    rid = int(args.get("reminder_id",0))
+    try:
+        import psycopg, os; from psycopg.rows import dict_row
+        c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
+        cur = c.cursor()
+        cur.execute("SELECT date FROM reminders WHERE id=%s",(rid,)); r = cur.fetchone()
+        if not r: c.close(); return {"tool":"qbot.qcal_reminder_done","safety_class":"WRITE_QCAL_ONLY","status":"NOT_FOUND"}
+        d = str(r["date"])[:10]
+        cur.execute("UPDATE reminders SET status='done', sent_at=now(), updated_at=now() WHERE id=%s",(rid,)); c.commit(); c.close()
+        _qcal_audit("done_"+str(rid), "reminder_done", "reminder", rid, d, dict(args), {"done":True})
+        try: from qbot_calendar_core import build_snapshot; build_snapshot(d)
+        except: pass
+        return {"tool":"qbot.qcal_reminder_done","safety_class":"WRITE_QCAL_ONLY","status":"OK","reminder_id":rid}
+    except Exception as e: return {"tool":"qbot.qcal_reminder_done","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
+
+def _handle_qcal_reminder_cancel(args: dict) -> dict:
+    if not (args.get("confirm") == True or str(args.get("confirm","")).lower()=="true"):
+        return {"tool":"qbot.qcal_reminder_cancel","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":"confirm must be true."}
+    rid = int(args.get("reminder_id",0))
+    try:
+        import psycopg, os; from psycopg.rows import dict_row
+        c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
+        cur = c.cursor()
+        cur.execute("SELECT date FROM reminders WHERE id=%s",(rid,)); r = cur.fetchone()
+        if not r: c.close(); return {"tool":"qbot.qcal_reminder_cancel","safety_class":"WRITE_QCAL_ONLY","status":"NOT_FOUND"}
+        d = str(r["date"])[:10]
+        cur.execute("UPDATE reminders SET status='cancelled', updated_at=now() WHERE id=%s",(rid,)); c.commit(); c.close()
+        _qcal_audit("cancel_"+str(rid), "reminder_cancel", "reminder", rid, d, dict(args), {"cancelled":True})
+        try: from qbot_calendar_core import build_snapshot; build_snapshot(d)
+        except: pass
+        return {"tool":"qbot.qcal_reminder_cancel","safety_class":"WRITE_QCAL_ONLY","status":"OK","reminder_id":rid}
+    except Exception as e: return {"tool":"qbot.qcal_reminder_cancel","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
+
 
