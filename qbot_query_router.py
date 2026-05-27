@@ -1512,7 +1512,21 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     if not _TOOL_DISPATCH:
         _init_dispatch()
 
-    # ── Semantic Planner route: detect analytical queries ──
+    # ── Semantic Planner route ──
+    # Use context resolver to detect task types that bypass keyword classifier.
+    try:
+        from qbot_context_resolver import resolve as resolve_context
+        canonical = resolve_context(question, context)
+        task_type = canonical.get("task", {}).get("type", "")
+        # Route list, calendar context, range analysis → semantic planner
+        if task_type in ("route_list", "calendar_day_context", "range_analysis",
+                         "missing_data_check", "comparison", "trend"):
+            from qbot_query_planner import semantic_query
+            return semantic_query(question, context, mode="read_only")
+    except Exception:
+        pass
+
+    # Fallback: keyword-based heuristic detection
     q = question.lower()
     is_analytical = any(w in q for w in [
         "od pocz", "od 1.", "od 202", "zakres dat", "zestawienie", "tabel",
