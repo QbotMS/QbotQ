@@ -157,6 +157,24 @@ def _execute_writer(atype: str, payload: dict, idem_key: str) -> dict:
 
 # ── Main handler ──
 
+def _parse_followup_dates(text: str):
+    """Parse 'od 4 maja do 26' → ('2026-05-04','2026-05-26')."""
+    from datetime import date as dt_date
+    today = dt_date.today()
+    months = {"stycznia":1,"lutego":2,"marca":3,"kwietnia":4,"maja":5,"czerwca":6,
+              "lipca":7,"sierpnia":8,"września":9,"października":10,"listopada":11,"grudnia":12}
+    m = re.search(r"od\s+(\d{1,2})\s+(stycznia|lutego|marca|kwietnia|maja|czerwca|lipca|sierpnia|września|października|listopada|grudnia)\s+do\s+(\d{1,2})", text)
+    if m:
+        day1, mon, day2 = int(m.group(1)), m.group(2), int(m.group(3))
+        mo = months.get(mon, today.month)
+        return f"{today.year}-{mo:02d}-{day1:02d}", f"{today.year}-{mo:02d}-{day2:02d}"
+    m = re.search(r"od\s+(\d{4}-\d{2}-\d{2})\s+do\s+(\d{4}-\d{2}-\d{2})", text)
+    if m: return m.group(1), m.group(2)
+    m = re.search(r"od\s+(\d{4}-\d{2}-\d{2})", text)
+    if m: return m.group(1), None
+    return None, None
+
+
 def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
     """Route Telegram message through qbot.query + context memory + confirm flow."""
     if not is_authorized(str(chat_id)):
@@ -171,15 +189,27 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
     # ── Confirmation commands ──
     if tl in ("tak","yes","ok","potwierdzam","zapisz","dodaj","confirm","/confirm","/yes"):
         if pending_id:
-            result = _pending_execute(chat_id, pending_id, dry_run=dry_run)
-            _turn_add(chat_id, "inbound", text, intent="confirm")
             if dry_run:
-                msg = f"[DRY-RUN] Would execute {result.get('action_type','?')}: {json.dumps(result, default=str)[:300]}"
-            else:
-                st = result.get("status","?")
-                msg = "✓ Wykonano." if st in ("OK","ok") else f"Błąd: {result.get('error',result.get('status','?'))}"
+                _turn_add(chat_id, "inbound", text, intent="confirm_dryrun")
+                pa_info = ""
+                try:
+                    c2 = _db(); cur2 = c2.cursor()
+                    cur2.execute("SELECT action_type, preview_text FROM telegram_pending_actions WHERE id=%s",(pending_id,))
+                    pa = cur2.fetchone()
+                    if pa: pa_info = f" (akcja: {pa.get('action_type','?')} — {pa.get('preview_text','')[:100]})"
+                    c2.close()
+                except: pass
+                msg = f"[DRY-RUN] Pending action nie została wykonana — tryb dry-run.{pa_info} Uruchom bez --dry-run aby zapisać."
+                _turn_add(chat_id, "outbound", text=msg, intent="confirm_dryrun_result")
+                return {"response": msg, "status": "ok", "dry_run": True}
+            result = _pending_execute(chat_id, pending_id, dry_run=False)
+            _turn_add(chat_id, "inbound", text, intent="confirm")
+            st = result.get("status","?")
+            msg = "✓ Wykonano." if st in ("OK","ok") else f"Błąd: {result.get('error',result.get('status','?'))}"
             _turn_add(chat_id, "outbound", text=msg, intent="confirm_result")
-            return {"response": msg, "status": "ok", "executed": not dry_run, "action_result": result}
+            return {"response": msg, "status": "ok", "executed": True, "action_result": result}
+        else:
+            return {"response": "Brak pending action do potwierdzenia.", "status": "idle"}
 
     if tl in ("nie","no","anuluj","cancel","/cancel","/no"):
         if pending_id:
@@ -219,17 +249,23 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
         except: prior_ctx = {}
 
     is_followup = (
-        tl and len(tl) < 80 and not tl.startswith("/") and
-        prior_intent and re.search(r"\d{1,2}[\.\-\s]?\d{1,2}|\d{4}-\d{2}-\d{2}|wczoraj|jutro|od\s+\d|ostatni", tl)
+        tl and len(tl) < 60 and not tl.startswith("/") and
+        prior_intent and re.search(r"^\s*a\s+|^\s*od\s+\d|^\s*dla\s+dat|^\s*zmien.*zakres|^\s*pokaż\s+ten\s+sam", tl)
     )
-    if is_followup and prior_ctx.get("last_query"):
-        prior_query = prior_ctx["last_query"]
-        # Replace date range in prior query
-        m = re.search(r"od\s+(\d{4}-\d{2}-\d{2}|ostatn\S+\s+\d+\s+\S+)", prior_query)
-        if m:
-            text = prior_query[:m.start()] + tl + prior_query[m.end():]
-        else:
-            text = prior_query + " " + tl
+    if is_followup:
+        # Extract date range from the follow-up text and build a proper range query
+        date_text = tl
+        # Try to extract "od X do Y" pattern and construct proper ISO dates
+        df_val, dt_val = _parse_followup_dates(date_text)
+        if df_val and prior_ctx.get("last_query"):
+            prior_query = prior_ctx["last_query"]
+            # Replace date part or construct new query
+            m = re.search(r"(od\s+\d{4}-\d{2}-\d{2}|ostatn\S+\s+\d+\s+\S+)", prior_query)
+            if m:
+                new_date = f"od {df_val} do {dt_val}" if dt_val else f"od {df_val}"
+                text = prior_query[:m.start()] + new_date + prior_query[m.end():]
+            else:
+                text = f"{prior_query} od {df_val}" + (f" do {dt_val}" if dt_val else "")
 
     try:
         from qbot_query_router import query as qbot_query
@@ -242,17 +278,23 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
         # Detect if user's intent suggests a write action
         write_hint = _detect_write_intent(tl, answer, result)
 
-        if write_hint and not dry_run:
+        if write_hint:
             preview = write_hint.get("preview","")
             idem = hashlib.sha256(f"{chat_id}|{write_hint.get('action_type')}|{datetime.now().isoformat()}".encode()).hexdigest()[:16]
-            pid = _pending_create(chat_id, write_hint["action_type"], write_hint.get("payload",{}), preview, idem)
-            response = f"{preview}\nPotwierdzić? Odpowiedz: tak / nie."
-            _turn_add(chat_id, "inbound", text, intent="write_draft")
-            _turn_add(chat_id, "outbound", text=response, intent="write_draft")
+            if not dry_run:
+                pid = _pending_create(chat_id, write_hint["action_type"], write_hint.get("payload",{}), preview, idem)
+                response = f"{preview}\nPotwierdzić? Odpowiedz: tak / nie."
+                _turn_add(chat_id, "inbound", text, intent="write_draft")
+                _turn_add(chat_id, "outbound", text=response, intent="write_draft")
+            else:
+                # In dry-run, still create a dummy pending action for testing
+                pid = _pending_create(chat_id, write_hint["action_type"], write_hint.get("payload",{}), preview, idem)
+                response = _format_answer(answer, tables)
+                response += f"\n\n[DRY-RUN] Proponowana akcja: {preview}\nPending action utworzona (test). 'tak' pokaże co zostało zrobione, ale nic nie zapisze."
+                _turn_add(chat_id, "inbound", text, intent="write_draft")
+                _turn_add(chat_id, "outbound", text=response, intent="write_draft")
         else:
             response = _format_answer(answer, tables)
-            if write_hint:
-                response += f"\n\n[DRY-RUN] Proponowana akcja: {write_hint.get('preview','')}\nAby wykonać, uruchom bez --dry-run."
             _turn_add(chat_id, "inbound", text, intent=str(intent)[:100])
             _turn_add(chat_id, "outbound", text=response, intent="query_response")
 
@@ -293,15 +335,15 @@ def _format_answer(answer: str, tables: list) -> str:
     for t in tables:
         rows = t.get("rows",[])
         if rows:
-            cols = [c for c in (t.get("columns",[]) or list(rows[0].keys()))]
+            cols = [col for col in (t.get("columns",[]) or list(rows[0].keys()))]
             max_rows = 8
             if cols:
-                header = " | ".join(c[:7])
+                header = " | ".join(cols[:7])
                 lines.append("\n" + header[:100])
             for r in rows[:max_rows]:
                 vals = []
-                for c in cols[:7]:
-                    v = r.get(c)
+                for col in cols[:7]:
+                    v = r.get(col)
                     if isinstance(v, list): v = ",".join(str(x)[:8] for x in v[:2])
                     if isinstance(v, str) and len(v) > 20: v = v[:18] + ".."
                     if isinstance(v, float): v = f"{v:.0f}" if abs(v) > 10 else f"{v:.1f}"
