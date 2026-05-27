@@ -185,6 +185,26 @@ def plan_day(
     if day_type in ("long_ride", "hard_training") and deficit > 250:
         warnings.append(f"Deficit {deficit:.0f} kcal too aggressive for {day_type} — consider reducing to ≤250 kcal.")
 
+    # Step 4b: Health event constraints
+    try:
+        from qbot_health_advisor import get_planning_constraints
+        hc = get_planning_constraints()
+        if hc.get("avoid_aggressive_deficit") and deficit > 300:
+            old_deficit = deficit
+            deficit = min(deficit, 300)
+            intake = max(tdee - deficit, _MIN_INTAKE_KCAL)
+            warnings.append(f"Active health event — deficit reduced from {old_deficit:.0f} to {deficit:.0f} kcal.")
+        if hc.get("avoid_hard_training") and day_type in ("hard_training", "normal_training"):
+            warnings.append(f"Active health event — rozważ rest day zamiast {day_type}.")
+        if hc.get("avoid_carb_spikes"):
+            warnings.append("Health risk note: unikaj ekstremalnych skoków węgli w jednym posiłku.")
+        if hc.get("prefer_fiber_protein_with_carbs"):
+            warnings.append("Health risk note: preferuj węgle z błonnikiem i białkiem.")
+        for w in hc.get("warnings", []):
+            warnings.append(f"Health: {w}")
+    except Exception:
+        pass
+
     # Step 5: Remaining after already logged
     remaining = max(intake - already_logged_kcal, 0)
 

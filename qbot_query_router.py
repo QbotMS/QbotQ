@@ -151,6 +151,72 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
     ("project", [
         "projekt", "kod", "pliki projektu", "repozytorium",
     ]),
+    ("health_advice", [
+        "health check", "czy moja redukcja", "czy redukcja idzie",
+        "czy waga spada", "czy masa spada", "czy chudnę",
+        "czy mam za mało białka", "czy powinienem jeść mniej",
+        "czy mój trening", "czy regeneracja",
+        "zrób health check", "jak idzie redukcja",
+        "jaka jest moja forma", "czy dobrze jem",
+    ]),
+    ("supplement_advice", [
+        "czy moja suplementacja", "czy suplementacja ma sens",
+        "jakie suplementy", "suplementy mam",
+        "kiedy skończy mi się", "kiedy skończy się",
+        "ile zostało", "czy mam brać melatoninę",
+        "czy brać kreatynę", "suplement",
+    ]),
+    ("supplement_inventory", [
+        "stan suplementów", "inventory suplementów",
+        "lista suplementów", "co mam w suplementach",
+        "pokaż suplementy",
+    ]),
+    ("recovery_advice", [
+        "czy regeneracja", "jak śpię", "jak mój sen",
+        "czy się regeneruję", "czy odpoczywam",
+        "czy hrv", "zmęczenie", "przetrenowanie",
+    ]),
+    ("health_event_log", [
+        "przeziębiłem", "przeziębienie", "zachorowałem",
+        "jestem chory", "jestem chora", "choroba",
+        "złapałem infekcję", "mam katar", "mam gorączkę",
+        "mam ból gardła", "kaszel",
+    ]),
+    ("wellbeing_log", [
+        "źle się czuję", "złe samopoczucie", "czuję się źle",
+        "słabo się czuję", "rozbity", "rozbita",
+        "nie mam energii", "brak energii",
+        "czuję się słabo", "brak siły",
+    ]),
+    ("health_risk_note", [
+        "możliwe stany przedcukrzycowe", "stan przedcukrzycowy",
+        "ryzyko metaboliczne", "ryzyko sercowo",
+        "uwzględniaj to w jedzeniu", "przy planowaniu diety",
+    ]),
+    ("recovery_anomaly_check", [
+        "czy wszystko ok z regeneracją", "sprawdź regenerację",
+        "czy hrv ok", "czy sen ok",
+        "coś się dzieje z regeneracją",
+    ]),
+    ("calendar_day_context", [
+        "pokaż wszystko co qbot wie o dzisiejszym", "pokaż wszystko co wiesz o",
+        "kontekst dnia", "co było", "co qbot wie o",
+        "dzienny kontekst", "jak wygląda dzień", "co jest dziś",
+        "co mam dziś zaplanowane", "pokaż dzisiejszy",
+        "przypomnienia na dziś", "eventy na dziś",
+    ]),
+    ("daily_timeline", [
+        "oś czasu", "timeline", "co się działo",
+        "historia dnia", "podsumowanie dnia",
+    ]),
+    ("reminder_status", [
+        "jakie mam przypomnienia", "przypomnienia",
+        "czy mam dziś przypomnienia",
+    ]),
+    ("event_lookup", [
+        "jakie eventy", "jakie wydarzenia",
+        "eventy zapisane", "co jest zaplanowane na",
+    ]),
 ]
 
 
@@ -229,6 +295,15 @@ def _reader(name: str, category: str, tool: str, params: dict, providers: list[s
 
 _reader("nutrition_planning", "nutrition", "qbot_nutrition_plan_day", {"date": "str", "goal": "str", "day_type": "str"}, ["nutrition_db", "meal_templates"])
 
+# Health advisor readers
+_reader("health_advisor", "health", "qbot_health_advisor_check", {"period": "int"}, ["health_db", "nutrition_db", "supplement_db"])
+_reader("supplement_inventory", "health", "qbot_health_supplement_inventory", {}, ["health_db"])
+_reader("weight_advisor", "health", "qbot_health_weight_advice", {}, ["health_db", "weight_history"])
+_reader("recovery_advisor", "health", "qbot_health_recovery_advice", {}, ["health_db", "garmin_api", "intervals_api"])
+
+# Calendar core reader
+_reader("calendar_snapshot", "calendar", "qbot_calendar_snapshot", {"date": "str"}, ["calendar_daily_snapshots", "calendar_core"])
+
 # Core readers
 _reader("nutrition_day", "nutrition", "qbot_nutrition_day_summary", {"date": "str"}, ["nutrition_db"])
 _reader("nutrition_range", "nutrition", "qbot_nutrition_range_summary", {"date_from": "str", "date_to": "str"}, ["nutrition_db", "wellness_store"])
@@ -306,6 +381,18 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "artifact_read": [],
     "capability_check": ["status", "capability_scan"],
     "project": [],
+    "health_advice": ["health_advisor", "nutrition_day", "meal_list", "nutrition_planning", "supplement_inventory", "garmin_energy", "wellness_day"],
+    "supplement_advice": ["supplement_inventory", "health_advisor"],
+    "supplement_inventory": ["supplement_inventory"],
+    "recovery_advice": ["recovery_advisor", "wellness_day", "sleep_day"],
+    "health_event_log": ["health_advisor", "wellness_day"],
+    "wellbeing_log": ["health_advisor", "wellness_day"],
+    "health_risk_note": ["health_advisor"],
+    "recovery_anomaly_check": ["recovery_advisor", "wellness_day", "sleep_day"],
+    "calendar_day_context": ["calendar_snapshot", "nutrition_day", "meal_list", "health_advisor", "recovery_advisor"],
+    "daily_timeline": ["calendar_snapshot"],
+    "reminder_status": ["calendar_snapshot"],
+    "event_lookup": ["calendar_snapshot", "health_advisor"],
     "general": ["status", "readiness"],
 }
 
@@ -447,6 +534,18 @@ def _init_dispatch():
 
     # New: Nutrition planning reader (read-only)
     _TOOL_DISPATCH["qbot_nutrition_plan_day"] = _read_nutrition_plan
+
+    # New: Health advisor readers (read-only)
+    _TOOL_DISPATCH["qbot_health_advisor_check"] = _read_health_advisor
+    _TOOL_DISPATCH["qbot_health_supplement_inventory"] = _read_supplement_inventory
+    _TOOL_DISPATCH["qbot_health_weight_advice"] = _read_weight_advice
+    _TOOL_DISPATCH["qbot_health_recovery_advice"] = _read_recovery_advice
+
+    # New: Recovery anomaly check reader
+    _TOOL_DISPATCH["qbot_health_recovery_anomaly_check"] = _read_recovery_anomaly
+
+    # New: Calendar snapshot reader
+    _TOOL_DISPATCH["qbot_calendar_snapshot"] = _read_calendar_snapshot
 
 
 # ── New readers ────────────────────────────────────────────────────────────
@@ -833,6 +932,59 @@ def _read_nutrition_plan(args: dict | None = None) -> dict[str, Any]:
     return result
 
 
+def _read_health_advisor(args: dict | None = None) -> dict[str, Any]:
+    from qbot_health_advisor import advisor_check
+    period = int((args or {}).get("period", 14))
+    return advisor_check(period)
+
+
+def _read_supplement_inventory(args: dict | None = None) -> dict[str, Any]:
+    from qbot_health_advisor import supplement_inventory_report
+    return supplement_inventory_report()
+
+
+def _read_weight_advice(args: dict | None = None) -> dict[str, Any]:
+    from qbot_health_advisor import _weight_advice
+    r = _weight_advice()
+    r["tool"] = "qbot_health_weight_advice"
+    r["safety_class"] = "READ_ONLY"
+    r["status"] = "OK"
+    return r
+
+
+def _read_recovery_advice(args: dict | None = None) -> dict[str, Any]:
+    from qbot_health_advisor import _recovery_advice
+    r = _recovery_advice()
+    r["tool"] = "qbot_health_recovery_advice"
+    r["safety_class"] = "READ_ONLY"
+    r["status"] = "OK"
+    return r
+
+
+def _read_recovery_anomaly(args: dict | None = None) -> dict[str, Any]:
+    from qbot_health_advisor import recovery_anomaly_check
+    return recovery_anomaly_check()
+
+
+def _read_planning_constraints(args: dict | None = None) -> dict[str, Any]:
+    from qbot_health_advisor import get_planning_constraints
+    r = get_planning_constraints()
+    r["tool"] = "qbot_health_planning_constraints"
+    r["safety_class"] = "READ_ONLY"
+    r["status"] = "OK"
+    return r
+
+
+def _read_calendar_snapshot(args: dict | None = None) -> dict[str, Any]:
+    from qbot_calendar_core import build_snapshot
+    day = (args or {}).get("date", date.today().isoformat())
+    snap = build_snapshot(day)
+    snap["tool"] = "qbot_calendar_snapshot"
+    snap["safety_class"] = "READ_ONLY"
+    snap["status"] = "OK"
+    return snap
+
+
 # ── Date context resolver ───────────────────────────────────────────────────
 
 
@@ -1211,6 +1363,38 @@ def _synthesize_answer(question: str, answers: list[dict], missing: list[str],
                 f"remaining={rem_s} kcal, posiłki: {', '.join(meal_names)}, "
                 f"confidence={conf}. {data.get('note','To jest plan/draft.')}"
             )
+        elif reader == "health_advisor":
+            recs = data.get("recommendations", [])
+            warn = data.get("warnings", [])
+            conf = data.get("confidence", "?")
+            parts.append(
+                f"Health check ({data.get('period_days','?')}d): "
+                f"{len(recs)} rek., {len(warn)} ostrzeżeń, confidence={conf}"
+            )
+        elif reader == "supplement_inventory":
+            items = data.get("items", [])
+            if items:
+                names = [i['name'] for i in items[:3]]
+                parts.append(f"Suplementy: {len(items)} — {', '.join(names)}")
+            else:
+                parts.append("Suplementy: brak w inventory")
+        elif reader == "weight_advisor":
+            recs = data.get("recommendations", [])
+            parts.append(f"Waga: {recs[0][:80] if recs else 'brak rekomendacji'}")
+        elif reader == "calendar_snapshot":
+            score = data.get("_completeness_score", 0) or 0
+            sections = []
+            for k in ("nutrition", "training", "sleep", "health_events",
+                      "supplements", "goals", "reminders"):
+                v = data.get(k)
+                if isinstance(v, list) and v:
+                    sections.append(f"{k}:{len(v)}")
+                elif isinstance(v, dict) and v:
+                    sections.append(k)
+            missing = data.get("_missing_tables", [])
+            parts.append(f"Dzień {data.get('date','?')}: completeness={score*100:.0f}%, "
+                         f"sekcje: {', '.join(sections) if sections else 'brak'}, "
+                         f"braki: {', '.join(missing[:4]) if missing else 'brak'}")
         elif reader in ("rwgps_route_get", "rwgps_route_search"):
             route = data.get("route", data.get("best_route_detail", {}))
             rlist = data.get("routes", [])
