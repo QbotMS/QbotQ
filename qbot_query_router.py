@@ -98,6 +98,16 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         "zaplanuj mi jedzenie", "ułóż mi dietę",
         "co powinienem zjeść", "co zjeść przed",
     ]),
+    ("saved_meals_catalog", [
+        "zdefiniowane posiłki", "moje posiłki", "szablony posiłków",
+        "standardowe posiłki", "posiłki z cronometer",
+        "posiłki przeniesione z cronometer", "templates",
+    ]),
+    ("food_link_audit", [
+        "bez food_item_id", "niepołączone wpisy", "logi bez produktu",
+        "niepołączone produkty", "food_item_id null",
+        "audyt produktów", "bez produktu",
+    ]),
     ("nutrition_daily", [
         "bilans kalorii", "kalorii", "kcal", "zjadł", "zjedzone", "posiłk",
         "co jadł", "co zjadł", "dieta", "makro", "żywieni", "nutrition",
@@ -437,6 +447,9 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "qcal_event_add_draft": [],
     # Planning intents (no readers — handled by planning_fact_drafts)
     "planning_notice": [],
+    # Semantic-handled intents (no readers — planner handles via resolve_context)
+    "saved_meals_catalog": [],
+    "food_link_audit": [],
 }
 
 
@@ -2200,7 +2213,7 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     # Only skip semantic planner when keyword classifier found nutrition/planning
     # intents (keyword dispatch is more accurate for these). For all others,
     # the semantic planner provides better domain classification.
-    _nutrition_intents = {"nutrition_planning", "nutrition_daily", "fueling"}
+    _nutrition_intents = {"nutrition_planning", "fueling"}
     _planning_intents = {"planning_notice"}
     _bypass_semantic = bool((_nutrition_intents | _planning_intents) & set(intents))
     if not _bypass_semantic:
