@@ -108,7 +108,7 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "input_schema": {
             "type": "object",
             "properties": {
-                "action_type": {"type": "string", "enum": ["nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "planning_fact_add"]},
+                "action_type": {"type": "string", "enum": ["nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add"]},
                 "payload_json": {"type": "object", "description": "Kompletny obiekt payload (tak jak w action_draft z qbot.query)"},
                 "idempotency_key": {"type": "string", "description": "Unikalny klucz — zapobiega duplikatom."},
                 "confirm": {"type": "boolean", "description": "MUSI być true, żeby zapisać."},
