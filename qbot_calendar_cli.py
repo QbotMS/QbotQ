@@ -136,7 +136,35 @@ def cmd_reminder_cancel(args):
 
 
 def cmd_import_history(args):
-    from qbot_calendar_core import import_history_audit
+    from qbot_calendar_core import import_history_per_source, import_history_audit
+
+    if args.source in ("garmin", "intervals-comments", "xert", "routes"):
+        # Per-source live data import
+        result = import_history_per_source(
+            source=args.source, date_from=_rd(args.date_from),
+            date_to=_rd(args.date_to or date.today().isoformat()),
+            dry_run=not args.yes,
+        )
+        print(f"Import: source={result['source']} range={result['date_from']} → {result['date_to']}")
+        print(f"  dry_run={result['dry_run']} imported={result.get('imported', False)}")
+        for section, info in sorted(result.get("sections", {}).items()):
+            count = info.get("count", info.get("total", 0))
+            if count:
+                sample = info.get("sample", [])
+                note = info.get("note", "")
+                status = info.get("status", "")
+                already = " (already imported)" if info.get("already_imported") else ""
+                print(f"  ✓ {section}: {count} records{already}{' ' + note if note else ''}{' ' + status if status else ''}")
+                if sample and not info.get("already_imported"):
+                    print(f"    sample: {json.dumps(sample[0], indent=2, ensure_ascii=False, default=str)[:200]}")
+            else:
+                print(f"  - {section}: 0 records")
+        if result.get("errors"):
+            for e in result["errors"]:
+                print(f"  ✗ {e}")
+        return 0
+
+    # All-sources table audit
     result = import_history_audit(source=args.source, date_from=_rd(args.date_from),
                                   date_to=_rd(args.date_to or date.today().isoformat()))
     print(f"Import audit: source={result['source']} range={result['date_from']} → {result['date_to']}")
@@ -164,6 +192,8 @@ def main():
 
     dr = sub.add_parser("day-rebuild")
     dr.add_argument("--date", default=date.today().isoformat())
+    dr.add_argument("--from", dest="date_from")
+    dr.add_argument("--to", dest="date_to")
     dr.add_argument("--date-from", dest="date_from")
     dr.add_argument("--date-to", dest="date_to")
 

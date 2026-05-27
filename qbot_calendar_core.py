@@ -347,6 +347,34 @@ def build_snapshot(date_str: str) -> dict[str, Any]:
     snap["reminders"] = _safe_query("SELECT * FROM reminders WHERE date=%s ORDER BY time", (date_str,))
     source_tables.append("reminders")
 
+    # Weight history
+    if _table_exists("weight_history"):
+        wh = _safe_query("SELECT * FROM weight_history WHERE date=%s ORDER BY measured_at DESC LIMIT 1", (date_str,))
+        snap["weight"] = wh[0] if wh else None
+        source_tables.append("weight_history")
+        total_fields += 1
+        if wh: found_fields += 1
+    else:
+        missing_tables.append("weight_history")
+
+    # Body composition
+    if _table_exists("body_composition"):
+        bc = _safe_query("SELECT * FROM body_composition WHERE date=%s ORDER BY measured_at DESC LIMIT 1", (date_str,))
+        snap["body_composition"] = bc[0] if bc else None
+        source_tables.append("body_composition")
+        total_fields += 1
+        if bc: found_fields += 1
+    else:
+        missing_tables.append("body_composition")
+
+    # Training sessions
+    if _table_exists("training_sessions"):
+        ts = _safe_query("SELECT * FROM training_sessions WHERE date=%s ORDER BY started_at", (date_str,))
+        snap["training"] = ts if ts else None
+        source_tables.append("training_sessions")
+        total_fields += 1
+        if ts: found_fields += 1
+
     # Calendar day metadata
     day = day_get(date_str)
     if day:
@@ -354,13 +382,27 @@ def build_snapshot(date_str: str) -> dict[str, Any]:
         snap["day_notes"] = day.get("notes")
     source_tables.append("calendar_days")
 
-    # Xert / form — no local table
-    missing_tables.append("xert_metrics")
-    missing_fields.extend(["threshold_power_w", "form_score", "freshness", "fatigue", "training_load"])
+    # Xert — only if table missing, else just missing_field
+    if not _table_exists("xert_metrics"):
+        missing_tables.append("xert_metrics")
+    if not _table_exists("weight_history"):
+        missing_tables.append("weight_history")
+    if not _table_exists("body_composition"):
+        missing_tables.append("body_composition")
 
-    # Weight / body composition — no table
-    missing_tables.extend(["weight_history", "body_composition"])
-    missing_fields.extend(["weight_kg", "body_fat_pct"])
+    # Per-date missing fields (table exists but no data for this date)
+    if _table_exists("weight_history") and not snap.get("weight"):
+        missing_fields.append("weight_kg")
+    if _table_exists("body_composition") and not snap.get("body_composition"):
+        missing_fields.append("body_fat_pct")
+    if _table_exists("training_sessions") and not snap.get("training"):
+        missing_fields.append("training_load")
+    if _table_exists("qbot_sleep_daily") and not snap.get("sleep"):
+        missing_fields.extend(["sleep_duration", "sleep_score", "hrv_ms", "resting_hr"])
+    if _table_exists("qbot_wellness_daily") and not snap.get("training"):
+        missing_fields.append("hrv_ms")
+    if _table_exists("xert_metrics"):
+        missing_fields.append("threshold_power_w")  # table exists but never gets xert data yet
 
     score = found_fields / max(total_fields, 1)
 
@@ -469,3 +511,152 @@ def import_history_audit(source: str = "all", date_from: str = "2025-01-01", dat
         "tables": available,
         "note": "Dry-run audit only. No data imported. Use --yes to execute actual import.",
     }
+
+
+def import_history_per_source(source: str, date_from: str, date_to: str, dry_run: bool = True) -> dict:
+    """Per-source import audit or execution. Fetches live data for Garmin sources."""
+    result: dict[str, Any] = {
+        "source": source, "date_from": date_from, "date_to": date_to,
+        "dry_run": dry_run, "sections": {}, "errors": [],
+    }
+
+    if source == "garmin":
+        try:
+            from qbot_garmin_history import read_weight_history, read_body_composition, read_training_sessions
+
+            # Weight
+            weight = read_weight_history(date_from, date_to)
+            if weight and "error" in weight[0]:
+                result["errors"].append(f"weight: {weight[0]['error']}")
+            else:
+                result["sections"]["weight_history"] = {"count": len(weight), "sample": weight[:2] if weight else [], "all": weight, "table": "weight_history"}
+
+            # Body composition
+            bc = read_body_composition(date_from, date_to)
+            if bc and "error" in bc[0]:
+                result["errors"].append(f"body_comp: {bc[0]['error']}")
+            else:
+                result["sections"]["body_composition"] = {"count": len(bc), "sample": bc[:2] if bc else [], "all": bc, "table": "body_composition"}
+
+            # Training
+            train = read_training_sessions(date_from, date_to)
+            if train and "error" in train[0]:
+                result["errors"].append(f"training: {train[0]['error']}")
+            else:
+                result["sections"]["training_sessions"] = {"count": len(train), "sample": train[:2] if train else [], "all": train, "table": "training_sessions"}
+
+            # Sleep/wellness (already in DB — just count)
+            try:
+                with _conn() as c:
+                    for tbl, col in [("qbot_sleep_daily","date"),("qbot_wellness_daily","date")]:
+                        r = c.execute(f"SELECT COUNT(*) c FROM {tbl} WHERE {col} BETWEEN %s AND %s", (date_from, date_to)).fetchone()
+                        result["sections"][tbl] = {"count": r["c"], "already_imported": True}
+            except Exception:
+                pass
+
+            if not dry_run and not result.get("errors"):
+                _import_garmin_data(result["sections"])
+                result["imported"] = True
+            else:
+                result["imported"] = False
+
+        except Exception as e:
+            result["errors"].append(f"garmin reader failed: {e}")
+
+    elif source == "intervals-comments":
+        try:
+            from qbot_garmin_history import read_intervals_comments
+            comments = read_intervals_comments(date_from, date_to)
+            if comments and "error" in comments[0]:
+                result["errors"].append(comments[0]["error"])
+            else:
+                high = [c for c in comments if c.get("confidence") == "high"]
+                manual = [c for c in comments if c.get("manual_review_required")]
+                result["sections"]["intervals_nutrition_comments"] = {
+                    "total": len(comments),
+                    "high_confidence": len(high),
+                    "needs_manual_review": len(manual),
+                    "sample": comments[:3],
+                }
+            result["imported"] = False
+        except Exception as e:
+            result["errors"].append(f"intervals-comments failed: {e}")
+
+    elif source == "xert":
+        xpw = os.getenv("XERT_PASSWORD", "")
+        xu = os.getenv("XERT_USERNAME", "")
+        if not xpw or not xu:
+            result["sections"]["xert_metrics"] = {
+                "count": 0,
+                "status": "credentials_missing",
+                "note": "XERT_USERNAME and XERT_PASSWORD not set in .env. Configure Xert credentials to enable form/training metrics import.",
+            }
+        else:
+            result["sections"]["xert_metrics"] = {"count": 0, "status": "reader_not_implemented"}
+        result["imported"] = False
+
+    else:
+        result["sections"]["unknown"] = {"count": 0, "status": "unknown_source"}
+
+    return result
+
+
+def _import_garmin_data(sections: dict) -> None:
+    """Import Garmin data into target tables. Iterates over 'all' entries."""
+    # Weight
+    w = sections.get("weight_history", {})
+    for entry in w.get("all", []):
+        try:
+            with _conn() as conn:
+                conn.execute(
+                    """INSERT INTO weight_history (date, weight_kg, source, external_id, raw_json)
+                       VALUES (%s,%s,%s,%s,%s)""",
+                    (entry["date"], entry["weight_kg"], "garmin", entry.get("external_id"), json.dumps(entry.get("raw_json"))),
+                )
+                conn.commit()
+        except Exception:
+            pass
+
+    # Body composition
+    bc = sections.get("body_composition", {})
+    for entry in bc.get("all", []):
+        try:
+            with _conn() as conn:
+                conn.execute(
+                    """INSERT INTO body_composition (date, weight_kg, body_fat_pct, bmi, lean_mass_kg,
+                       muscle_mass_kg, body_water_pct, bone_mass_kg, source, external_id, raw_json)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (entry["date"], entry.get("weight_kg"), entry.get("body_fat_pct"), entry.get("bmi"),
+                     entry.get("lean_mass_kg"), entry.get("muscle_mass_kg"), entry.get("body_water_pct"),
+                     entry.get("bone_mass_kg"), "garmin", entry.get("external_id"), json.dumps(entry.get("raw_json"))),
+                )
+                conn.commit()
+        except Exception:
+            pass
+
+    # Training
+    t = sections.get("training_sessions", {})
+    for entry in t.get("all", []):
+        try:
+            with _conn() as conn:
+                conn.execute(
+                    """INSERT INTO training_sessions (date, started_at, ended_at, source, external_id,
+                       activity_type, title, duration_sec, elapsed_duration_sec,
+                       distance_km, elevation_gain_m,
+                       calories_kcal, avg_hr, max_hr, avg_power_w, max_power_w,
+                       training_load, training_effect, anaerobic_training_effect,
+                       route_ref, raw_json)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (entry["date"], entry.get("started_at"), entry.get("ended_at"), "garmin", entry.get("external_id"),
+                     entry.get("activity_type"), entry.get("title"), entry.get("duration_sec"),
+                     entry.get("elapsed_duration_sec"),
+                     entry.get("distance_km"), entry.get("elevation_gain_m"),
+                     entry.get("calories_kcal"), entry.get("avg_hr"), entry.get("max_hr"),
+                     entry.get("avg_power_w"), entry.get("max_power_w"),
+                     entry.get("training_load"), entry.get("training_effect"),
+                     entry.get("anaerobic_training_effect"),
+                     entry.get("route_ref"), json.dumps(entry.get("raw_json"))),
+                )
+                conn.commit()
+        except Exception:
+            pass
