@@ -256,6 +256,103 @@ def cmd_summary_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def _nut_db():
+    import os, psycopg
+    from psycopg.rows import dict_row
+    return psycopg.connect(
+        host=os.getenv("PGHOST", "localhost"), port=os.getenv("PGPORT", "5432"),
+        dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
+        password=os.getenv("PGPASSWORD", ""), row_factory=dict_row,
+    )
+
+
+def cmd_catalog_audit(args: argparse.Namespace) -> int:
+    c = _nut_db()
+    print("=== Catalog Audit ===")
+    rows = c.execute("SELECT source, COUNT(*) AS cnt FROM food_items GROUP BY source ORDER BY cnt DESC").fetchall()
+    print(f"food_items by source:")
+    for r in rows:
+        print(f"  {r['source']!r}: {r['cnt']}")
+    rows = c.execute("SELECT id, name, source, verified FROM food_items WHERE verified=false ORDER BY id").fetchall()
+    print(f"\nunverified:")
+    if rows:
+        for r in rows:
+            linked = c.execute("SELECT COUNT(*) AS c FROM meal_log_items WHERE food_item_id=%s", (r['id'],)).fetchone()['c']
+            print(f"  id={r['id']} name={r['name']!r} source={r['source']!r} verified={r['verified']} linked={linked}")
+    else:
+        print("  (none)")
+    rows = c.execute("SELECT source, COUNT(*) AS cnt FROM meal_templates GROUP BY source ORDER BY cnt DESC").fetchall()
+    print(f"\nmeal_templates by source:")
+    for r in rows:
+        print(f"  {r['source']!r}: {r['cnt']}")
+    rows = c.execute("SELECT COUNT(*) AS total FROM meal_log_items").fetchone()
+    linked = c.execute("SELECT COUNT(*) AS c FROM meal_log_items WHERE food_item_id IS NULL").fetchone()
+    print(f"\nmeal_log_items: {rows['total']} total, {linked['c']} unlinked (food_item_id IS NULL)")
+    if args.verbose:
+        rows = c.execute("""
+            SELECT food_name, COUNT(*) AS cnt, ROUND(AVG(kcal)) AS avg_kcal
+            FROM meal_log_items WHERE food_item_id IS NULL AND food_name IS NOT NULL
+            GROUP BY food_name ORDER BY cnt DESC
+        """).fetchall()
+        print(f"\ncandidate groups ({len(rows)}):")
+        for r in rows:
+            print(f"  {r['food_name']!r}: {r['cnt']}x, ~{r['avg_kcal']} kcal")
+    c.close()
+    return 0
+
+
+def cmd_catalog_cleanup(args: argparse.Namespace) -> int:
+    c = _nut_db()
+    test_ids = c.execute(
+        "SELECT id, name, source, verified FROM food_items WHERE name ILIKE 'test%' AND source='qbot' AND verified=false ORDER BY id"
+    ).fetchall()
+
+    if not test_ids:
+        print("No test products found.")
+        c.close()
+        return 0
+
+    can_delete = []
+    for r in test_ids:
+        linked = c.execute("SELECT COUNT(*) AS cnt FROM meal_log_items WHERE food_item_id=%s", (r['id'],)).fetchone()['cnt']
+        can_delete.append((r, linked))
+
+    print("Products to clean up:")
+    total = 0
+    for r, linked in can_delete:
+        status = "CAN DELETE" if linked == 0 else f"IN USE ({linked} links)"
+        print(f"  id={r['id']} name={r['name']!r} source={r['source']!r} verified={r['verified']} → {status}")
+        if linked == 0:
+            total += 1
+
+    if not total:
+        print("\nNo products can be safely deleted (all have links).")
+        c.close()
+        return 0
+
+    if args.dry_run:
+        print(f"\n[DRY-RUN] Would delete {total} product(s). Use --yes to execute.")
+        c.close()
+        return 0
+
+    if not args.yes:
+        print(f"\nUse --yes to delete {total} product(s).")
+        c.close()
+        return 1
+
+    # Execute
+    deleted = []
+    for r, linked in can_delete:
+        if linked == 0:
+            c.execute("DELETE FROM food_items WHERE id=%s", (r['id'],))
+            deleted.append(r['name'])
+
+    c.commit()
+    c.close()
+    print(f"\n✓ Deleted {len(deleted)} product(s): {', '.join(deleted)}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="QBot Nutrition CLI — ad hoc meal logging",
@@ -425,6 +522,17 @@ def main() -> int:
     pla.add_argument("--idempotency-key", required=True)
     pla.add_argument("--yes", action="store_true")
 
+    # ── catalog-audit ──
+    p_ca = sub.add_parser("catalog-audit", aliases=["catalog_audit", "caudit"],
+                          help="Audyt katalogu produktów")
+    p_ca.add_argument("--verbose", action="store_true", help="Pokaż szczegóły")
+
+    # ── catalog-cleanup ──
+    p_cc = sub.add_parser("catalog-cleanup", aliases=["catalog_cleanup", "cclean"],
+                          help="Usuń testowe produkty z katalogu")
+    p_cc.add_argument("--dry-run", action="store_true", help="Tylko pokaż, nie usuwaj")
+    p_cc.add_argument("--yes", action="store_true", help="Wykonaj cleanup")
+
     args = parser.parse_args()
 
     if args.command in ("meal-add", "meal_add", "meal", "add"):
@@ -463,6 +571,10 @@ def main() -> int:
         return cmd_log_preview(args)
     elif args.command in ("log-add", "log_add"):
         return cmd_log_add(args)
+    elif args.command in ("catalog-audit", "catalog_audit", "caudit"):
+        return cmd_catalog_audit(args)
+    elif args.command in ("catalog-cleanup", "catalog_cleanup", "cclean"):
+        return cmd_catalog_cleanup(args)
     else:
         parser.print_help()
         return 1
