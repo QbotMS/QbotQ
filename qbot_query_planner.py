@@ -153,14 +153,15 @@ def plan(canonical: dict) -> dict[str, Any]:
             if qb_count > ns_count * 2:
                 joins.append(
                     """LEFT JOIN (SELECT date, SUM(calories_kcal) AS kcal_in, SUM(protein_g) AS protein_g,
-                       SUM(carbs_g) AS carbs_g, SUM(fat_g) AS fat_g, SUM(fluid_ml) AS fluids_ml
+                       SUM(carbs_g) AS carbs_g, SUM(fat_g) AS fat_g, SUM(fluid_ml) AS fluids_ml, 'intervals_comment_import' AS nut_source
                        FROM qbot_nutrition_daily WHERE date BETWEEN %(df)s AND %(dt)s GROUP BY date) n ON d.date = n.date""")
             else:
                 joins.append(
                     """LEFT JOIN (SELECT date, SUM(kcal_total) AS kcal_in, SUM(protein_total) AS protein_g,
-                       SUM(carbs_total) AS carbs_g, SUM(fat_total) AS fat_g, SUM(fluids_total) AS fluids_ml
+                       SUM(carbs_total) AS carbs_g, SUM(fat_total) AS fat_g, SUM(fluids_total) AS fluids_ml, MAX(source) AS nut_source
                        FROM nutrition_daily_summary WHERE date BETWEEN %(df)s AND %(dt)s GROUP BY date) n ON d.date = n.date""")
-            select_extras.extend(["COALESCE(n.kcal_in,0) AS kcal_in","n.protein_g","n.carbs_g","n.fat_g","n.fluids_ml","'intervals_comment_import' AS source_in"])
+            select_extras.extend(["COALESCE(n.kcal_in,0) AS kcal_in","n.protein_g","n.carbs_g","n.fat_g","n.fluids_ml",
+                                  "COALESCE(n.nut_source,'qbot') AS source_in"])
 
         # Daily energy expenditure (kcal out of day)
         has_energy = _count_nonzero("daily_energy_expenditure", "total_kcal_out", df, dt) > 0
@@ -169,7 +170,7 @@ def plan(canonical: dict) -> dict[str, Any]:
                 """LEFT JOIN (SELECT date, total_kcal_out, resting_kcal_out, active_kcal_out, kcal_burned_total, source AS energy_source
                    FROM daily_energy_expenditure WHERE date BETWEEN %(df)s AND %(dt)s) e ON d.date = e.date""")
             select_extras.extend(["e.total_kcal_out","e.resting_kcal_out","e.active_kcal_out",
-                                  "ROUND((COALESCE(n.kcal_in,0) - COALESCE(e.total_kcal_out,0))::numeric,0) AS kcal_balance",
+                                  "ROUND((n.kcal_in - e.total_kcal_out)::numeric,0) AS kcal_balance",
                                   "e.energy_source AS source_out"])
 
         # Training sessions
