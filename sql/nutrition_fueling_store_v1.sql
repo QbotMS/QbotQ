@@ -104,4 +104,79 @@ CREATE TABLE IF NOT EXISTS nutrition_daily_summary (
 
 CREATE INDEX IF NOT EXISTS idx_nutrition_summary_date ON nutrition_daily_summary(date);
 
+-- 7. Meal templates — szablony posiłków do szybkiego logowania
+CREATE TABLE IF NOT EXISTS meal_templates (
+    id              SERIAL PRIMARY KEY,
+    name            TEXT NOT NULL,
+    serving_label   TEXT NOT NULL DEFAULT 'porcja',
+    kcal            DOUBLE PRECISION NOT NULL DEFAULT 0,
+    carbs_g         DOUBLE PRECISION NOT NULL DEFAULT 0,
+    protein_g       DOUBLE PRECISION NOT NULL DEFAULT 0,
+    fat_g           DOUBLE PRECISION NOT NULL DEFAULT 0,
+    fiber_g         DOUBLE PRECISION DEFAULT 0,
+    sodium_mg       DOUBLE PRECISION DEFAULT 0,
+    source          TEXT NOT NULL DEFAULT 'manual',
+    confidence      TEXT NOT NULL DEFAULT 'high',
+    notes           TEXT,
+    assumptions_json JSONB DEFAULT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_template_name UNIQUE (name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_template_name ON meal_templates(name);
+CREATE INDEX IF NOT EXISTS idx_template_source ON meal_templates(source);
+
+-- 8. Nutrition day plans — zaplanowane jadłospisy
+CREATE TABLE IF NOT EXISTS nutrition_day_plans (
+    id              SERIAL PRIMARY KEY,
+    date            DATE NOT NULL,
+    goal            TEXT NOT NULL DEFAULT 'maintenance',
+    day_type        TEXT NOT NULL DEFAULT 'rest',
+    status          TEXT NOT NULL DEFAULT 'draft',
+    planned_training_ref  TEXT,
+    planned_ride_km       DOUBLE PRECISION,
+    estimated_base_kcal   DOUBLE PRECISION,
+    estimated_activity_kcal DOUBLE PRECISION,
+    estimated_total_expenditure DOUBLE PRECISION,
+    target_deficit_kcal   DOUBLE PRECISION,
+    target_intake_kcal    DOUBLE PRECISION NOT NULL DEFAULT 0,
+    target_protein_g      DOUBLE PRECISION,
+    target_carbs_g        DOUBLE PRECISION,
+    target_fat_g          DOUBLE PRECISION,
+    planned_meals_count   INTEGER DEFAULT 3,
+    available_foods       TEXT,
+    used_templates        BOOLEAN DEFAULT false,
+    confidence            TEXT NOT NULL DEFAULT 'medium',
+    source                TEXT NOT NULL DEFAULT 'llm_plan',
+    assumptions_json      JSONB,
+    warnings_json         JSONB,
+    shopping_list_json    JSONB,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_plan_date ON nutrition_day_plans(date);
+CREATE INDEX IF NOT EXISTS idx_plan_status ON nutrition_day_plans(status);
+
+-- 9. Planned meals — posiłki w ramach planu dnia
+CREATE TABLE IF NOT EXISTS nutrition_day_plan_meals (
+    id              SERIAL PRIMARY KEY,
+    plan_id         INTEGER NOT NULL REFERENCES nutrition_day_plans(id) ON DELETE CASCADE,
+    meal_order      INTEGER NOT NULL DEFAULT 1,
+    meal_name       TEXT NOT NULL DEFAULT 'posiłek',
+    template_id     INTEGER REFERENCES meal_templates(id) ON DELETE SET NULL,
+    planned_time    TEXT,
+    kcal            DOUBLE PRECISION NOT NULL DEFAULT 0,
+    carbs_g         DOUBLE PRECISION DEFAULT 0,
+    protein_g       DOUBLE PRECISION DEFAULT 0,
+    fat_g           DOUBLE PRECISION DEFAULT 0,
+    fiber_g         DOUBLE PRECISION DEFAULT 0,
+    sodium_mg       DOUBLE PRECISION DEFAULT 0,
+    notes           TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_plan_meal_plan ON nutrition_day_plan_meals(plan_id);
+
 COMMIT;

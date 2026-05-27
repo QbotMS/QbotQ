@@ -313,3 +313,130 @@ def _tool_qbot_nutrition_status(_args: dict | None = None) -> dict[str, Any]:
         }
     except Exception as exc:
         return {"tool": "qbot_nutrition_status", "status": "ERROR", "error": str(exc)}
+
+
+# ── Meal Template tools ─────────────────────────────────────────────────────
+
+def _tool_qbot_nutrition_template_create(_args: dict | None = None) -> dict[str, Any]:
+    _args = _args or {}
+    name = str(_args.get("name", "")).strip()
+    if not name:
+        return {"tool": "qbot_nutrition_template_create", "status": "ERROR", "error": "name required"}
+    try:
+        from qbot_nutrition_db import template_create
+        tmpl = template_create(
+            name=name,
+            serving_label=str(_args.get("serving_label", "porcja")),
+            kcal=float(_args.get("kcal", 0)),
+            carbs_g=float(_args.get("carbs_g", 0)),
+            protein_g=float(_args.get("protein_g", 0)),
+            fat_g=float(_args.get("fat_g", 0)),
+            fiber_g=float(_args.get("fiber_g", 0)),
+            sodium_mg=float(_args.get("sodium_mg", 0)),
+            source=str(_args.get("source", "manual")),
+            confidence=str(_args.get("confidence", "high")),
+            notes=_args.get("notes"),
+            assumptions_json=_args.get("assumptions_json"),
+        )
+        return {"tool": "qbot_nutrition_template_create", "safety_class": "WRITE_SAFE", "status": "OK", "template": tmpl}
+    except Exception as exc:
+        return {"tool": "qbot_nutrition_template_create", "status": "ERROR", "error": str(exc)}
+
+
+def _tool_qbot_nutrition_template_list(_args: dict | None = None) -> dict[str, Any]:
+    _args = _args or {}
+    try:
+        from qbot_nutrition_db import template_list
+        templates = template_list(limit=int(_args.get("limit", 50)))
+        return {"tool": "qbot_nutrition_template_list", "safety_class": "READ_ONLY", "status": "OK", "count": len(templates), "templates": templates}
+    except Exception as exc:
+        return {"tool": "qbot_nutrition_template_list", "status": "ERROR", "error": str(exc)}
+
+
+def _tool_qbot_nutrition_template_get(_args: dict | None = None) -> dict[str, Any]:
+    _args = _args or {}
+    name = str(_args.get("name", "")).strip()
+    tid = _args.get("id")
+    try:
+        from qbot_nutrition_db import template_get, template_get_by_name
+        tmpl = template_get(int(tid)) if tid else template_get_by_name(name)
+        if not tmpl:
+            return {"tool": "qbot_nutrition_template_get", "status": "NOT_FOUND"}
+        return {"tool": "qbot_nutrition_template_get", "safety_class": "READ_ONLY", "status": "OK", "template": tmpl}
+    except Exception as exc:
+        return {"tool": "qbot_nutrition_template_get", "status": "ERROR", "error": str(exc)}
+
+
+def _tool_qbot_nutrition_template_delete(_args: dict | None = None) -> dict[str, Any]:
+    _args = _args or {}
+    name = str(_args.get("name", "")).strip()
+    tid = _args.get("id")
+    dry_run = bool(_args.get("dry_run", False))
+    try:
+        from qbot_nutrition_db import template_get, template_get_by_name, template_delete
+        tmpl = template_get(int(tid)) if tid else template_get_by_name(name)
+        if not tmpl:
+            return {"tool": "qbot_nutrition_template_delete", "status": "NOT_FOUND"}
+        if dry_run:
+            return {"tool": "qbot_nutrition_template_delete", "safety_class": "WRITE_SAFE", "status": "DRY_RUN", "would_delete": True, "template": tmpl}
+        template_delete(tmpl["id"])
+        return {"tool": "qbot_nutrition_template_delete", "safety_class": "WRITE_SAFE", "status": "OK", "deleted": True}
+    except Exception as exc:
+        return {"tool": "qbot_nutrition_template_delete", "status": "ERROR", "error": str(exc)}
+
+
+def _tool_qbot_nutrition_template_import(_args: dict | None = None) -> dict[str, Any]:
+    _args = _args or {}
+    data = _args.get("templates")
+    if not isinstance(data, list):
+        return {"tool": "qbot_nutrition_template_import", "status": "ERROR", "error": "templates must be a list"}
+    dry_run = bool(_args.get("dry_run", False))
+    try:
+        from qbot_nutrition_db import template_import_batch
+        result = template_import_batch(data, dry_run=dry_run)
+        result["tool"] = "qbot_nutrition_template_import"
+        result["safety_class"] = "READ_ONLY" if dry_run else "WRITE_SAFE"
+        result["status"] = "OK"
+        return result
+    except Exception as exc:
+        return {"tool": "qbot_nutrition_template_import", "status": "ERROR", "error": str(exc)}
+
+
+def _tool_qbot_nutrition_meal_from_template(_args: dict | None = None) -> dict[str, Any]:
+    _args = _args or {}
+    template_name = str(_args.get("template", "")).strip()
+    date_str = str(_args.get("date", ""))
+    if not template_name:
+        return {"tool": "qbot_nutrition_meal_from_template", "status": "ERROR", "error": "template name required"}
+    try:
+        from datetime import date as dt_date
+        from qbot_nutrition_db import template_get_by_name, meal_log_create, daily_summary_compute
+        import json as _json
+        tmpl = template_get_by_name(template_name)
+        if not tmpl:
+            return {"tool": "qbot_nutrition_meal_from_template", "status": "NOT_FOUND", "error": f"template '{template_name}' not found"}
+        day = date_str or dt_date.today().isoformat()
+        dry_run = bool(_args.get("dry_run", False))
+        item = {
+            "food_name": tmpl["name"],
+            "amount": 1,
+            "unit": tmpl.get("serving_label", "porcja"),
+            "kcal": tmpl["kcal"],
+            "carbs_g": tmpl["carbs_g"],
+            "protein_g": tmpl["protein_g"],
+            "fat_g": tmpl["fat_g"],
+            "fiber_g": tmpl.get("fiber_g", 0),
+            "sodium_mg": tmpl.get("sodium_mg", 0),
+        }
+        if dry_run:
+            return {"tool": "qbot_nutrition_meal_from_template", "safety_class": "WRITE_SAFE", "status": "DRY_RUN", "template": template_name, "item": item, "date": day}
+        context = _json.dumps({"source":"template","template_id":tmpl["id"],"template_name":tmpl["name"]})
+        meal_log_create(meal_type="meal", context=context, note=f"from template: {template_name}", eaten_at=f"{day}T12:00:00", items=[item])
+        s = daily_summary_compute(day)
+        return {"tool": "qbot_nutrition_meal_from_template", "safety_class": "WRITE_SAFE", "status": "OK", "template": template_name, "date": day, "summary": _serialize_summary(s) if s else None}
+    except Exception as exc:
+        return {"tool": "qbot_nutrition_meal_from_template", "status": "ERROR", "error": str(exc)}
+
+
+def _serialize_summary(s: dict) -> dict:
+    return {k: v for k, v in s.items() if k in ("kcal_total","carbs_total","protein_total","fat_total","fiber_total","sodium_total","fluids_total")}

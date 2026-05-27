@@ -353,3 +353,322 @@ def daily_summary_range(from_date: str, to_date: str) -> list[dict]:
             (from_date, to_date),
         ).fetchall()
         return _serialize_rows(rows)
+
+
+# ── Meal Templates ──────────────────────────────────────────────────────────
+
+def template_create(
+    name: str,
+    serving_label: str = "porcja",
+    kcal: float = 0,
+    carbs_g: float = 0,
+    protein_g: float = 0,
+    fat_g: float = 0,
+    fiber_g: float = 0,
+    sodium_mg: float = 0,
+    source: str = "manual",
+    confidence: str = "high",
+    notes: str | None = None,
+    assumptions_json: dict | None = None,
+) -> dict:
+    import json as _json
+    with _conn() as conn:
+        row = conn.execute(
+            """INSERT INTO meal_templates (name, serving_label, kcal, carbs_g, protein_g, fat_g,
+               fiber_g, sodium_mg, source, confidence, notes, assumptions_json)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               RETURNING *""",
+            (name, serving_label, kcal, carbs_g, protein_g, fat_g,
+             fiber_g, sodium_mg, source, confidence, notes,
+             _json.dumps(assumptions_json) if assumptions_json else None),
+        ).fetchone()
+        conn.commit()
+        return _serialize_row(dict(row))
+
+
+def template_update(
+    template_id: int,
+    name: str | None = None,
+    serving_label: str | None = None,
+    kcal: float | None = None,
+    carbs_g: float | None = None,
+    protein_g: float | None = None,
+    fat_g: float | None = None,
+    fiber_g: float | None = None,
+    sodium_mg: float | None = None,
+    source: str | None = None,
+    confidence: str | None = None,
+    notes: str | None = None,
+    assumptions_json: dict | None = None,
+) -> dict | None:
+    import json as _json
+    existing = template_get(template_id)
+    if not existing:
+        return None
+    with _conn() as conn:
+        row = conn.execute(
+            """UPDATE meal_templates SET
+               name=COALESCE(%s,name), serving_label=COALESCE(%s,serving_label),
+               kcal=COALESCE(%s,kcal), carbs_g=COALESCE(%s,carbs_g),
+               protein_g=COALESCE(%s,protein_g), fat_g=COALESCE(%s,fat_g),
+               fiber_g=COALESCE(%s,fiber_g), sodium_mg=COALESCE(%s,sodium_mg),
+               source=COALESCE(%s,source), confidence=COALESCE(%s,confidence),
+               notes=COALESCE(%s,notes),
+               assumptions_json=COALESCE(%s,assumptions_json),
+               updated_at=now()
+               WHERE id=%s RETURNING *""",
+            (name, serving_label, kcal, carbs_g, protein_g, fat_g,
+             fiber_g, sodium_mg, source, confidence, notes,
+             _json.dumps(assumptions_json) if assumptions_json else None,
+             template_id),
+        ).fetchone()
+        conn.commit()
+        return _serialize_row(dict(row))
+
+
+def template_get(template_id: int) -> dict | None:
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM meal_templates WHERE id=%s", (template_id,)
+        ).fetchone()
+    return _serialize_row(dict(row)) if row else None
+
+
+def template_get_by_name(name: str) -> dict | None:
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM meal_templates WHERE name=%s", (name,)
+        ).fetchone()
+    return _serialize_row(dict(row)) if row else None
+
+
+def template_list(limit: int = 50) -> list[dict]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM meal_templates ORDER BY name LIMIT %s", (limit,)
+        ).fetchall()
+    return _serialize_rows(rows)
+
+
+def template_delete(template_id: int) -> dict | None:
+    existing = template_get(template_id)
+    if not existing:
+        return None
+    with _conn() as conn:
+        conn.execute("DELETE FROM meal_templates WHERE id=%s", (template_id,))
+        conn.commit()
+    return existing
+
+
+def template_import_batch(templates: list[dict], dry_run: bool = False) -> dict:
+    """Import a list of templates. Returns counts and preview."""
+    created = 0
+    updated = 0
+    skipped = 0
+    preview: list[dict] = []
+    for t in templates:
+        name = t.get("name", "")
+        if not name:
+            skipped += 1
+            continue
+        exists = template_get_by_name(name)
+        if dry_run:
+            preview.append({"name": name, "action": "update" if exists else "create"})
+            continue
+        if exists:
+            template_update(exists["id"],
+                serving_label=t.get("serving_label"),
+                kcal=t.get("kcal"),
+                carbs_g=t.get("carbs_g"),
+                protein_g=t.get("protein_g"),
+                fat_g=t.get("fat_g"),
+                fiber_g=t.get("fiber_g"),
+                sodium_mg=t.get("sodium_mg"),
+                source=t.get("source"),
+                confidence=t.get("confidence"),
+                notes=t.get("notes"),
+                assumptions_json=t.get("assumptions_json"),
+            )
+            updated += 1
+        else:
+            template_create(
+                name=name,
+                serving_label=t.get("serving_label", "porcja"),
+                kcal=t.get("kcal", 0),
+                carbs_g=t.get("carbs_g", 0),
+                protein_g=t.get("protein_g", 0),
+                fat_g=t.get("fat_g", 0),
+                fiber_g=t.get("fiber_g", 0),
+                sodium_mg=t.get("sodium_mg", 0),
+                source=t.get("source", "manual"),
+                confidence=t.get("confidence", "high"),
+                notes=t.get("notes"),
+                assumptions_json=t.get("assumptions_json"),
+            )
+            created += 1
+    return {
+        "created": created, "updated": updated, "skipped": skipped,
+        "preview": preview if dry_run else [],
+        "dry_run": dry_run,
+    }
+
+
+# ── Day Plans ───────────────────────────────────────────────────────────────
+
+def plan_create(
+    date_str: str,
+    goal: str = "deficit",
+    day_type: str = "rest",
+    status: str = "draft",
+    planned_ride_km: float | None = None,
+    estimated_base_kcal: float | None = None,
+    estimated_activity_kcal: float | None = None,
+    estimated_total_expenditure: float | None = None,
+    target_deficit_kcal: float | None = None,
+    target_intake_kcal: float = 0,
+    target_protein_g: float | None = None,
+    target_carbs_g: float | None = None,
+    target_fat_g: float | None = None,
+    planned_meals_count: int = 3,
+    available_foods: str | None = None,
+    used_templates: bool = False,
+    confidence: str = "medium",
+    source: str = "llm_plan",
+    assumptions_json: dict | None = None,
+    warnings_json: dict | None = None,
+    shopping_list_json: dict | None = None,
+    meals: list[dict] | None = None,
+) -> dict:
+    import json as _json
+    with _conn() as conn:
+        row = conn.execute(
+            """INSERT INTO nutrition_day_plans (date, goal, day_type, status,
+               planned_ride_km, estimated_base_kcal, estimated_activity_kcal,
+               estimated_total_expenditure, target_deficit_kcal, target_intake_kcal,
+               target_protein_g, target_carbs_g, target_fat_g, planned_meals_count,
+               available_foods, used_templates, confidence, source,
+               assumptions_json, warnings_json, shopping_list_json)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               RETURNING *""",
+            (date_str, goal, day_type, status,
+             planned_ride_km, estimated_base_kcal, estimated_activity_kcal,
+             estimated_total_expenditure, target_deficit_kcal, target_intake_kcal,
+             target_protein_g, target_carbs_g, target_fat_g, planned_meals_count,
+             available_foods, used_templates, confidence, source,
+             _json.dumps(assumptions_json) if assumptions_json else None,
+             _json.dumps(warnings_json) if warnings_json else None,
+             _json.dumps(shopping_list_json) if shopping_list_json else None),
+        ).fetchone()
+        plan_id = row["id"]
+
+        if meals:
+            for i, m in enumerate(meals):
+                conn.execute(
+                    """INSERT INTO nutrition_day_plan_meals
+                       (plan_id, meal_order, meal_name, template_id, planned_time,
+                        kcal, carbs_g, protein_g, fat_g, fiber_g, sodium_mg, notes)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (plan_id, i + 1,
+                     m.get("meal_name", m.get("template_name", f"posiłek {i+1}")),
+                     m.get("template_id"),
+                     m.get("planned_time"),
+                     m.get("kcal", 0), m.get("carbs_g", 0),
+                     m.get("protein_g", 0), m.get("fat_g", 0),
+                     m.get("fiber_g", 0), m.get("sodium_mg", 0),
+                     m.get("notes")),
+                )
+        conn.commit()
+    return plan_get(plan_id)
+
+
+def plan_get(plan_id: int) -> dict | None:
+    with _conn() as conn:
+        plan = conn.execute("SELECT * FROM nutrition_day_plans WHERE id=%s", (plan_id,)).fetchone()
+        if not plan:
+            return None
+        meals = conn.execute("SELECT * FROM nutrition_day_plan_meals WHERE plan_id=%s ORDER BY meal_order", (plan_id,)).fetchall()
+        result = _serialize_row(dict(plan))
+        result["meals"] = _serialize_rows(meals)
+        # Parse JSON fields
+        for k in ("assumptions_json", "warnings_json", "shopping_list_json"):
+            if result.get(k) and isinstance(result[k], str):
+                try:
+                    result[k] = __import__("json").loads(result[k])
+                except Exception:
+                    pass
+        return result
+
+
+def plan_list(date_str: str | None = None, status: str | None = None, limit: int = 20) -> list[dict]:
+    with _conn() as conn:
+        conds = []
+        params: list = []
+        if date_str:
+            conds.append("date=%s"); params.append(date_str)
+        if status:
+            conds.append("status=%s"); params.append(status)
+        where = ("WHERE " + " AND ".join(conds)) if conds else ""
+        rows = conn.execute(
+            f"SELECT * FROM nutrition_day_plans {where} ORDER BY date DESC, id DESC LIMIT %s",
+            params + [limit],
+        ).fetchall()
+        results = []
+        for r in rows:
+            d = _serialize_row(dict(r))
+            d["meals_count"] = conn.execute(
+                "SELECT COUNT(*) AS c FROM nutrition_day_plan_meals WHERE plan_id=%s", (r["id"],)
+            ).fetchone()["c"]
+            results.append(d)
+        return results
+
+
+def plan_update_status(plan_id: int, status: str) -> dict | None:
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE nutrition_day_plans SET status=%s, updated_at=now() WHERE id=%s",
+            (status, plan_id),
+        )
+        conn.commit()
+    return plan_get(plan_id)
+
+
+def plan_delete(plan_id: int) -> dict | None:
+    existing = plan_get(plan_id)
+    if not existing:
+        return None
+    with _conn() as conn:
+        conn.execute("DELETE FROM nutrition_day_plan_meals WHERE plan_id=%s", (plan_id,))
+        conn.execute("DELETE FROM nutrition_day_plans WHERE id=%s", (plan_id,))
+        conn.commit()
+    return existing
+
+
+def plan_apply(plan_id: int) -> dict:
+    """Apply a plan: log all planned meals as actual meals, recompute summary."""
+    plan = plan_get(plan_id)
+    if not plan:
+        return {"status": "not_found", "error": f"plan {plan_id} not found"}
+
+    from qbot_nutrition_db import meal_log_create, daily_summary_compute
+    import json as _json
+    items = []
+    for m in plan.get("meals", []):
+        items.append({
+            "food_name": m.get("meal_name", "posiłek"),
+            "amount": 1, "unit": "porcja",
+            "kcal": m.get("kcal"), "carbs_g": m.get("carbs_g"),
+            "protein_g": m.get("protein_g"), "fat_g": m.get("fat_g"),
+            "fiber_g": m.get("fiber_g"), "sodium_mg": m.get("sodium_mg"),
+        })
+
+    if not items:
+        return {"status": "no_meals", "error": "plan has no meals"}
+    date_str = str(plan["date"])[:10]
+    context = _json.dumps({"source": "plan_applied", "plan_id": plan_id})
+    meal_log_create(meal_type="meal", context=context,
+                    note=f"plan applied: id={plan_id}",
+                    eaten_at=f"{date_str}T12:00:00", items=items)
+    daily_summary_compute(date_str)
+    plan_update_status(plan_id, "applied")
+    plan_applied = plan_get(plan_id)
+    return {"status": "ok", "plan": plan_applied}

@@ -70,6 +70,13 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         "polityką braku danych",
     ]),
     # General intents
+    ("nutrition_planning", [
+        "ułóż mi jadłospis", "ułóż jadłospis", "zaplanuj jedzenie",
+        "jadłospis", "ile mogę jeszcze zjeść", "dieta na dziś",
+        "zaplanuj dietę", "plan posiłków", "meal plan",
+        "rozpisz jedzenie", "rozplanuj posiłki", "co mogę zjeść",
+        "zaplanuj mi jedzenie", "ułóż mi dietę",
+    ]),
     ("nutrition_daily", [
         "bilans kalorii", "kalorii", "kcal", "zjadł", "zjedzone", "posiłk",
         "co jadł", "co zjadł", "dieta", "makro", "żywieni", "nutrition",
@@ -220,6 +227,8 @@ def _reader(name: str, category: str, tool: str, params: dict, providers: list[s
     }
 
 
+_reader("nutrition_planning", "nutrition", "qbot_nutrition_plan_day", {"date": "str", "goal": "str", "day_type": "str"}, ["nutrition_db", "meal_templates"])
+
 # Core readers
 _reader("nutrition_day", "nutrition", "qbot_nutrition_day_summary", {"date": "str"}, ["nutrition_db"])
 _reader("nutrition_range", "nutrition", "qbot_nutrition_range_summary", {"date_from": "str", "date_to": "str"}, ["nutrition_db", "wellness_store"])
@@ -276,6 +285,7 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "garage_gear_route_fit": ["garage_search", "garage_list", "garage_status", "route_artifact_enrich"],
     "no_data_policy_test": [],
     # Standard intents
+    "nutrition_planning": ["nutrition_planning", "nutrition_day", "meal_list", "nutrition_food_search"],
     "nutrition_daily": ["nutrition_day", "meal_list", "nutrition_food_search"],
     "nutrition_range": ["nutrition_range", "nutrition_day"],
     "hydration": ["nutrition_day"],
@@ -434,6 +444,9 @@ def _init_dispatch():
 
     # New: Intervals activities reader (in-module function)
     _TOOL_DISPATCH["qbot_intervals_activities_read"] = _read_intervals_activities
+
+    # New: Nutrition planning reader (read-only)
+    _TOOL_DISPATCH["qbot_nutrition_plan_day"] = _read_nutrition_plan
 
 
 # ── New readers ────────────────────────────────────────────────────────────
@@ -783,6 +796,41 @@ def _read_intervals_activities(args: dict | None = None) -> dict[str, Any]:
             "error": str(exc),
             "missing_fields": ["intervals_api_error"],
         }
+
+
+def _read_nutrition_plan(args: dict | None = None) -> dict[str, Any]:
+    """Read-only nutrition day planner. Generates a draft plan — no DB writes."""
+    args = args or {}
+    day_str = args.get("date", args.get("date", ""))
+    goal = args.get("goal", "deficit")
+    day_type = args.get("day_type", "rest")
+    planned_km = args.get("planned_ride_km")
+    target_kcal = args.get("target_kcal")
+    meals_count = int(args.get("meals_count", 3))
+    av_foods = args.get("available_foods", "")
+    available = [f.strip() for f in av_foods.split(",") if f.strip()] if av_foods else None
+
+    from qbot_nutrition_planner import plan_day, _get_templates_from_db, _get_already_logged
+
+    templates = _get_templates_from_db() if len(_get_templates_from_db()) > 0 else []
+    already_kcal = _get_already_logged(day_str) if day_str else 0
+
+    result = plan_day(
+        goal=goal,
+        day_type=day_type,
+        date_str=day_str,
+        planned_ride_km=float(planned_km) if planned_km else None,
+        target_kcal=float(target_kcal) if target_kcal else None,
+        meals_count=meals_count,
+        available_foods=available,
+        use_templates=bool(templates),
+        templates=templates,
+        already_logged_kcal=already_kcal,
+    )
+    result["tool"] = "qbot_nutrition_plan_day"
+    result["safety_class"] = "READ_ONLY"
+    result["status"] = "OK"
+    return result
 
 
 # ── Date context resolver ───────────────────────────────────────────────────
@@ -1150,6 +1198,19 @@ def _synthesize_answer(question: str, answers: list[dict], missing: list[str],
                     f"{s.get('carbs_total', 0)}g węgli, "
                     f"{s.get('protein_total', 0)}g białka"
                 )
+        elif reader == "nutrition_planning":
+            tkcal = data.get("target_intake_kcal", "?")
+            tkcal_s = f"{tkcal:.0f}" if isinstance(tkcal, (int, float)) else str(tkcal)
+            rem = data.get("remaining_kcal", "?")
+            rem_s = f"{rem:.0f}" if isinstance(rem, (int, float)) else str(rem)
+            meals = data.get("meals", [])
+            meal_names = [m.get("meal_name", m.get("template_name", "?")) for m in meals[:3]]
+            conf = data.get("confidence", "?")
+            parts.append(
+                f"Plan dnia: cel={data.get('goal','?')}, intake={tkcal_s} kcal, "
+                f"remaining={rem_s} kcal, posiłki: {', '.join(meal_names)}, "
+                f"confidence={conf}. {data.get('note','To jest plan/draft.')}"
+            )
         elif reader in ("rwgps_route_get", "rwgps_route_search"):
             route = data.get("route", data.get("best_route_detail", {}))
             rlist = data.get("routes", [])

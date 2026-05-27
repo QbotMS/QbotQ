@@ -41,6 +41,20 @@ VALID_CONFIDENCE = {"low", "medium", "high"}
 VALID_SOURCES = {"llm_estimate", "manual", "qbot"}
 
 
+def _resolve_date(raw: str) -> str:
+    """Resolve 'today'/'yesterday' keywords to ISO date."""
+    raw = raw.strip().lower()
+    if raw in ("today", "dzisiaj", "dziś"):
+        return date.today().isoformat()
+    if raw in ("yesterday", "wczoraj"):
+        return (date.today() - __import__("datetime").timedelta(days=1)).isoformat()
+    try:
+        date.fromisoformat(raw)
+        return raw
+    except ValueError:
+        return date.today().isoformat()
+
+
 def cmd_meal_add(args: argparse.Namespace) -> int:
     meal_log_create, _, _, daily_summary_compute, _ = _load_deps()
 
@@ -69,7 +83,7 @@ def cmd_meal_add(args: argparse.Namespace) -> int:
             print(f"ERROR: --{k.replace('_g','')} must be >= 0")
             return 1
 
-    day = args.date or date.today().isoformat()
+    day = _resolve_date(args.date or date.today().isoformat())
     try:
         date.fromisoformat(day)
     except ValueError:
@@ -159,7 +173,7 @@ def cmd_meal_add(args: argparse.Namespace) -> int:
 
 def cmd_meal_list(args: argparse.Namespace) -> int:
     _, _, meal_log_list, _, _ = _load_deps()
-    day = args.date or date.today().isoformat()
+    day = _resolve_date(args.date or date.today().isoformat())
     meals = meal_log_list(date_str=day, limit=args.limit or 50)
 
     if not meals:
@@ -218,7 +232,7 @@ def cmd_meal_delete(args: argparse.Namespace) -> int:
 
 def cmd_summary_show(args: argparse.Namespace) -> int:
     _, _, _, daily_summary_compute, daily_summary_get = _load_deps()
-    day = args.date or date.today().isoformat()
+    day = _resolve_date(args.date or date.today().isoformat())
 
     if args.recompute:
         s = daily_summary_compute(day)
@@ -287,6 +301,101 @@ def main() -> int:
     p_sum.add_argument("--date", default=date.today().isoformat())
     p_sum.add_argument("--recompute", action="store_true", help="Wymuś przeliczenie")
 
+    # ── template add ──
+    p_ta = sub.add_parser("template-add", aliases=["template_add", "tadd"],
+                          help="Dodaj szablon posiłku")
+    p_ta.add_argument("--name", required=True)
+    p_ta.add_argument("--serving-label", default="porcja")
+    p_ta.add_argument("--kcal", type=float, required=True)
+    p_ta.add_argument("--carbs", type=float, default=0)
+    p_ta.add_argument("--protein", type=float, default=0)
+    p_ta.add_argument("--fat", type=float, default=0)
+    p_ta.add_argument("--fiber", type=float, default=0)
+    p_ta.add_argument("--sodium", type=float, default=0)
+    p_ta.add_argument("--source", default="manual_cronometer_migration")
+    p_ta.add_argument("--confidence", choices=sorted(VALID_CONFIDENCE), default="high")
+    p_ta.add_argument("--notes")
+    p_ta.add_argument("--assumptions")
+    p_ta.add_argument("--dry-run", action="store_true")
+
+    # ── template list ──
+    p_tl = sub.add_parser("template-list", aliases=["template_list", "tlist"],
+                          help="Lista szablonów")
+    p_tl.add_argument("--limit", type=int, default=50)
+
+    # ── template show ──
+    p_ts = sub.add_parser("template-show", aliases=["template_show", "tshow"],
+                          help="Pokaż szablon")
+    p_ts.add_argument("--name", required=True)
+
+    # ── template delete ──
+    p_td = sub.add_parser("template-delete", aliases=["template_delete", "tdel"],
+                          help="Usuń szablon")
+    p_td.add_argument("--name", required=True)
+    p_td.add_argument("--yes", action="store_true")
+
+    # ── template import ──
+    p_ti = sub.add_parser("template-import", aliases=["template_import", "timport"],
+                          help="Import szablonów z JSON")
+    p_ti.add_argument("--file", required=True)
+    p_ti.add_argument("--dry-run", action="store_true")
+    p_ti.add_argument("--yes", action="store_true")
+
+    # ── meal add-from-template ──
+    p_mt = sub.add_parser("meal-add-from-template",
+                          aliases=["meal_from_template", "maddt"],
+                          help="Dodaj posiłek z szablonu")
+    p_mt.add_argument("--template", required=True)
+    p_mt.add_argument("--date", default=date.today().isoformat())
+    p_mt.add_argument("--dry-run", action="store_true")
+    p_mt.add_argument("--yes", action="store_true")
+
+    # ── plan-day ──
+    p_pd = sub.add_parser("plan-day", aliases=["plan_day", "plan"],
+                          help="Zaplanuj jadłospis na dzień")
+    p_pd.add_argument("--date", default=date.today().isoformat())
+    p_pd.add_argument("--goal", choices=["deficit","maintenance","fueling","recovery"], default="deficit")
+    p_pd.add_argument("--day-type", dest="day_type",
+                      choices=["rest","light_training","normal_training","long_ride","hard_training","recovery"],
+                      default="rest")
+    p_pd.add_argument("--planned-ride-km", type=float)
+    p_pd.add_argument("--target-kcal", type=float)
+    p_pd.add_argument("--meals-count", type=int, default=3)
+    p_pd.add_argument("--available-foods")
+    p_pd.add_argument("--use-templates", action="store_true")
+    p_pd.add_argument("--save-draft", action="store_true")
+    p_pd.add_argument("--dry-run", action="store_true")
+    p_pd.add_argument("--yes", action="store_true")
+
+    # ── plan-show ──
+    p_ps = sub.add_parser("plan-show", aliases=["plan_show", "pshow"],
+                          help="Pokaż plan")
+    p_ps.add_argument("--id", type=int)
+    p_ps.add_argument("--date")
+
+    # ── plan-list ──
+    p_pl = sub.add_parser("plan-list", aliases=["plan_list", "plist"],
+                          help="Lista planów")
+    p_pl.add_argument("--date")
+    p_pl.add_argument("--status")
+    p_pl.add_argument("--limit", type=int, default=20)
+
+    # ── plan-accept / plan-apply / plan-delete ──
+    p_pa = sub.add_parser("plan-accept", aliases=["plan_accept", "paccept"],
+                          help="Zaakceptuj plan (status → accepted)")
+    p_pa.add_argument("--id", type=int, required=True)
+    p_pa.add_argument("--yes", action="store_true")
+
+    p_pap = sub.add_parser("plan-apply", aliases=["plan_apply", "papply"],
+                           help="Zastosuj plan — dodaj posiłki do dziennego spożycia")
+    p_pap.add_argument("--id", type=int, required=True)
+    p_pap.add_argument("--yes", action="store_true")
+
+    p_pdel = sub.add_parser("plan-delete", aliases=["plan_delete", "pdel"],
+                            help="Usuń/anuluj plan")
+    p_pdel.add_argument("--id", type=int, required=True)
+    p_pdel.add_argument("--yes", action="store_true")
+
     args = parser.parse_args()
 
     if args.command in ("meal-add", "meal_add", "meal", "add"):
@@ -297,9 +406,377 @@ def main() -> int:
         return cmd_meal_delete(args)
     elif args.command in ("summary-show", "summary_show", "summary"):
         return cmd_summary_show(args)
+    elif args.command in ("template-add", "template_add", "tadd"):
+        return cmd_template_add(args)
+    elif args.command in ("template-list", "template_list", "tlist"):
+        return cmd_template_list(args)
+    elif args.command in ("template-show", "template_show", "tshow"):
+        return cmd_template_show(args)
+    elif args.command in ("template-delete", "template_delete", "tdel"):
+        return cmd_template_delete(args)
+    elif args.command in ("template-import", "template_import", "timport"):
+        return cmd_template_import(args)
+    elif args.command in ("meal-add-from-template", "meal_from_template", "maddt"):
+        return cmd_meal_add_from_template(args)
+    elif args.command in ("plan-day", "plan_day", "plan"):
+        return cmd_plan_day(args)
+    elif args.command in ("plan-show", "plan_show", "pshow"):
+        return cmd_plan_show(args)
+    elif args.command in ("plan-list", "plan_list", "plist"):
+        return cmd_plan_list(args)
+    elif args.command in ("plan-accept", "plan_accept", "paccept"):
+        return cmd_plan_accept(args)
+    elif args.command in ("plan-apply", "plan_apply", "papply"):
+        return cmd_plan_apply(args)
+    elif args.command in ("plan-delete", "plan_delete", "pdel"):
+        return cmd_plan_delete(args)
     else:
         parser.print_help()
         return 1
+
+
+# ── Template command implementations ────────────────────────────────────────
+
+def cmd_template_add(args: argparse.Namespace) -> int:
+    from qbot_nutrition_db import template_create, template_get_by_name
+
+    existing = template_get_by_name(args.name)
+    if existing and not args.dry_run:
+        print(f"⚠ Szablon '{args.name}' już istnieje (id={existing['id']}). Użyj template-delete najpierw.")
+        return 1
+
+    assumptions = None
+    if args.assumptions:
+        try:
+            assumptions = json.loads(args.assumptions)
+        except json.JSONDecodeError:
+            print("ERROR: --assumptions must be valid JSON")
+            return 1
+
+    if args.dry_run:
+        print(f"[DRY-RUN] Would create template: {args.name}")
+        print(f"  {args.kcal} kcal, C={args.carbs} P={args.protein} F={args.fat}")
+        return 0
+
+    tmpl = template_create(
+        name=args.name,
+        serving_label=args.serving_label,
+        kcal=args.kcal,
+        carbs_g=args.carbs,
+        protein_g=args.protein,
+        fat_g=args.fat,
+        fiber_g=args.fiber,
+        sodium_mg=args.sodium,
+        source=args.source,
+        confidence=args.confidence,
+        notes=args.notes,
+        assumptions_json=assumptions,
+    )
+    print(f"✓ Szablon zapisany: id={tmpl['id']} {tmpl['name']}")
+    return 0
+
+
+def cmd_template_list(args: argparse.Namespace) -> int:
+    from qbot_nutrition_db import template_list
+    templates = template_list(limit=args.limit or 50)
+    if not templates:
+        print("Brak szablonów.")
+        return 0
+    print(f"Szablony ({len(templates)}):")
+    for t in templates:
+        print(f"  [{t['id']}] {t['name']} — {t['kcal']:.0f} kcal "
+              f"C={t['carbs_g']:.0f} P={t['protein_g']:.0f} F={t['fat_g']:.0f} "
+              f"src={t['source']} conf={t['confidence']}")
+    return 0
+
+
+def cmd_template_show(args: argparse.Namespace) -> int:
+    from qbot_nutrition_db import template_get_by_name
+    t = template_get_by_name(args.name)
+    if not t:
+        print(f"Szablon '{args.name}' nie znaleziony.")
+        return 1
+    print(f"  name:           {t['name']}")
+    print(f"  serving_label:  {t['serving_label']}")
+    print(f"  kcal:           {t['kcal']:.0f}")
+    print(f"  carbs_g:        {t['carbs_g']:.0f}")
+    print(f"  protein_g:      {t['protein_g']:.0f}")
+    print(f"  fat_g:          {t['fat_g']:.0f}")
+    print(f"  fiber_g:        {t['fiber_g']:.0f}")
+    print(f"  sodium_mg:      {t['sodium_mg']:.0f}")
+    print(f"  source:         {t['source']}")
+    print(f"  confidence:     {t['confidence']}")
+    print(f"  notes:          {t['notes'] or '-'}")
+    if t.get('assumptions_json'):
+        a = t['assumptions_json']
+        if isinstance(a, str):
+            a = json.loads(a)
+        print(f"  assumptions:    {json.dumps(a, ensure_ascii=False)[:200]}")
+    print(f"  created_at:     {t['created_at'][:19]}")
+    return 0
+
+
+def cmd_template_delete(args: argparse.Namespace) -> int:
+    from qbot_nutrition_db import template_get_by_name, template_delete
+    t = template_get_by_name(args.name)
+    if not t:
+        print(f"Szablon '{args.name}' nie znaleziony.")
+        return 1
+    if not args.yes:
+        resp = input(f"Usunąć szablon '{args.name}' (id={t['id']})? [t/N] ").strip().lower()
+        if resp not in ("t", "y", "yes", "tak"):
+            print("Anulowano.")
+            return 0
+    template_delete(t["id"])
+    print(f"✓ Usunięto szablon '{args.name}'.")
+    return 0
+
+
+def cmd_template_import(args: argparse.Namespace) -> int:
+    from qbot_nutrition_db import template_import_batch
+    try:
+        with open(args.file) as f:
+            data = json.load(f)
+    except Exception as e:
+        print(f"ERROR: cannot read {args.file}: {e}")
+        return 1
+
+    if not isinstance(data, list):
+        print("ERROR: JSON must be a list of templates")
+        return 1
+
+    dry = args.dry_run
+    if not dry and not args.yes:
+        print(f"Zaimportować {len(data)} szablonów z {args.file}?")
+        resp = input("[t/N] ").strip().lower()
+        if resp not in ("t", "y", "yes", "tak"):
+            print("Anulowano.")
+            return 0
+
+    result = template_import_batch(data, dry_run=dry)
+    if dry:
+        print(f"[DRY-RUN] Would process {len(result['preview'])} templates:")
+        for p in result['preview']:
+            print(f"  {p['name']} → {p['action']}")
+    else:
+        print(f"✓ Import: {result['created']} created, {result['updated']} updated, {result['skipped']} skipped")
+    return 0
+
+
+def cmd_meal_add_from_template(args: argparse.Namespace) -> int:
+    from qbot_nutrition_db import (template_get_by_name, meal_log_create,
+                                    daily_summary_compute)
+
+    tmpl = template_get_by_name(args.template)
+    if not tmpl:
+        print(f"Szablon '{args.template}' nie znaleziony. Lista: qbot nutrition template-list")
+        return 1
+
+    day = _resolve_date(args.date or date.today().isoformat())
+
+    kcal = tmpl["kcal"]
+    item = {
+        "food_name": tmpl["name"],
+        "amount": 1,
+        "unit": tmpl.get("serving_label", "porcja"),
+        "kcal": kcal,
+        "carbs_g": tmpl["carbs_g"],
+        "protein_g": tmpl["protein_g"],
+        "fat_g": tmpl["fat_g"],
+        "fiber_g": tmpl.get("fiber_g", 0),
+        "sodium_mg": tmpl.get("sodium_mg", 0),
+    }
+
+    context = json.dumps({
+        "source": "template",
+        "template_id": tmpl["id"],
+        "template_name": tmpl["name"],
+        "confidence": tmpl.get("confidence", "high"),
+    }, ensure_ascii=False)
+
+    if args.dry_run:
+        print(f"[DRY-RUN] Would add meal from template '{tmpl['name']}' on {day}")
+        print(f"  {kcal:.0f} kcal, {item['carbs_g']:.0f}g C, {item['protein_g']:.0f}g P, {item['fat_g']:.0f}g F")
+        return 0
+
+    if not args.yes:
+        print(f"Dodać '{tmpl['name']}' ({kcal:.0f} kcal) na {day}?")
+        resp = input("[t/N] ").strip().lower()
+        if resp not in ("t", "y", "yes", "tak"):
+            print("Anulowano.")
+            return 0
+
+    meal_log_create(
+        meal_type="meal",
+        context=context,
+        note=f"from template: {args.template}",
+        eaten_at=f"{day}T12:00:00",
+        items=[item],
+    )
+    s = daily_summary_compute(day)
+    print(f"✓ Dodano z szablonu '{args.template}'. Bilans dnia {day}:")
+    print(f"  kcal={s.get('kcal_total',0):.0f} C={s.get('carbs_total',0):.0f}g "
+          f"P={s.get('protein_total',0):.0f}g F={s.get('fat_total',0):.0f}g")
+    return 0
+
+
+# ── Plan command implementations ─────────────────────────────────────────────
+
+def _plan_from_args(args) -> dict:
+    from qbot_nutrition_planner import plan_day, _get_templates_from_db, _get_already_logged
+    day = _resolve_date(args.date or date.today().isoformat())
+    templates = _get_templates_from_db() if args.use_templates else []
+    av = [f.strip() for f in args.available_foods.split(",") if f.strip()] if args.available_foods else None
+    already = _get_already_logged(day) if not args.dry_run else 0
+    return plan_day(
+        goal=args.goal, day_type=args.day_type, date_str=day,
+        planned_ride_km=args.planned_ride_km, target_kcal=args.target_kcal,
+        meals_count=args.meals_count or 3, available_foods=av,
+        use_templates=bool(templates) and args.use_templates, templates=templates,
+        already_logged_kcal=already,
+    )
+
+
+def cmd_plan_day(args: argparse.Namespace) -> int:
+    plan = _plan_from_args(args)
+    day = _resolve_date(args.date or date.today().isoformat())
+    meals = plan.get("meals", [])
+
+    print(f"Plan dnia {day}")
+    print(f"  goal:     {plan['goal']} | day_type: {plan['day_type']}")
+    print(f"  TDEE:     {plan['estimated_total_expenditure']:.0f} kcal (conf={plan['confidence']})")
+    print(f"  deficit:  {plan['target_deficit_kcal']:.0f} kcal")
+    print(f"  intake:   {plan['target_intake_kcal']:.0f} kcal")
+    if plan.get("already_logged_kcal", 0) > 0:
+        print(f"  eaten:    {plan['already_logged_kcal']:.0f} kcal")
+    print(f"  remaining:{plan['remaining_kcal']:.0f} kcal")
+    print(f"  macros:   P={plan['target_protein_g']:.0f}g C={plan['target_carbs_g']:.0f}g F={plan['target_fat_g']:.0f}g")
+    print(f"  posiłków: {len(meals)}")
+    for i, m in enumerate(meals):
+        print(f"    {i+1}. {m.get('meal_name','?')} — {m.get('kcal',0):.0f} kcal "
+              f"P={m.get('protein_g',0):.0f}g C={m.get('carbs_g',0):.0f}g F={m.get('fat_g',0):.0f}g")
+    if plan.get("warnings_json"):
+        w = plan["warnings_json"]
+        if isinstance(w, list):
+            for wm in w:
+                print(f"  ⚠ {wm}")
+    print(f"\n  {plan.get('note','To jest plan/draft.')}")
+
+    if args.dry_run or not args.save_draft:
+        if not args.save_draft:
+            print("  (--save-draft nie podano — plan nie zapisany)")
+        return 0
+
+    if not args.yes:
+        resp = input("Zapisać draft planu do bazy? [t/N] ").strip().lower()
+        if resp not in ("t","y","yes","tak"):
+            print("Anulowano."); return 0
+
+    from qbot_nutrition_db import plan_create
+    p = plan_create(date_str=day, goal=plan["goal"], day_type=plan["day_type"],
+        planned_ride_km=plan.get("planned_ride_km"),
+        estimated_total_expenditure=plan["estimated_total_expenditure"],
+        target_deficit_kcal=plan["target_deficit_kcal"],
+        target_intake_kcal=plan["target_intake_kcal"],
+        target_protein_g=plan.get("target_protein_g"),
+        target_carbs_g=plan.get("target_carbs_g"),
+        target_fat_g=plan.get("target_fat_g"),
+        planned_meals_count=args.meals_count or 3,
+        available_foods=args.available_foods,
+        used_templates=bool(plan.get("used_templates")),
+        confidence=plan.get("confidence","medium"),
+        assumptions_json=plan.get("assumptions_json"),
+        warnings_json=plan.get("warnings_json") if isinstance(plan.get("warnings_json"), list) else None,
+        meals=meals)
+    print(f"✓ Draft zapisany: plan_id={p['id']}")
+    return 0
+
+
+def cmd_plan_show(args: argparse.Namespace) -> int:
+    from qbot_nutrition_db import plan_get, plan_list
+    plan = None
+    if args.id:
+        plan = plan_get(args.id)
+    elif args.date:
+        plans = plan_list(date_str=_resolve_date(args.date), limit=1)
+        if plans:
+            plan = plan_get(plans[0]["id"])
+    if not plan:
+        print("Plan nie znaleziony.")
+        return 1
+    meals = plan.get("meals", [])
+    print(f"Plan id={plan['id']}  date={plan['date']}  status={plan['status']}")
+    print(f"  goal={plan['goal']} day_type={plan['day_type']}")
+    print(f"  TDEE={plan.get('estimated_total_expenditure','?')} kcal")
+    print(f"  intake={plan.get('target_intake_kcal','?')} deficit={plan.get('target_deficit_kcal','?')}")
+    print(f"  macros: P={plan.get('target_protein_g','?')}g C={plan.get('target_carbs_g','?')}g F={plan.get('target_fat_g','?')}g")
+    print(f"  confidence={plan.get('confidence','?')} source={plan.get('source','?')}")
+    if meals:
+        print(f"  meals ({len(meals)}):")
+        for m in meals:
+            print(f"    {m['meal_order']}. {m['meal_name']} — {m.get('kcal',0):.0f} kcal")
+    return 0
+
+
+def cmd_plan_list(args: argparse.Namespace) -> int:
+    from qbot_nutrition_db import plan_list
+    plans = plan_list(date_str=_resolve_date(args.date) if args.date else None,
+                      status=args.status, limit=args.limit or 20)
+    if not plans:
+        print("Brak planów.")
+        return 0
+    print(f"Plany ({len(plans)}):")
+    for p in plans:
+        print(f"  id={p['id']} {p['date']} status={p['status']} "
+              f"goal={p['goal']} intake={p.get('target_intake_kcal','?'):.0f} kcal")
+    return 0
+
+
+def cmd_plan_accept(args: argparse.Namespace) -> int:
+    from qbot_nutrition_db import plan_get, plan_update_status
+    plan = plan_get(args.id)
+    if not plan:
+        print(f"Plan id={args.id} nie znaleziony."); return 1
+    if not args.yes:
+        resp = input(f"Zaakceptować plan id={args.id} ({plan['date']})? [t/N] ").strip().lower()
+        if resp not in ("t","y","yes","tak"): print("Anulowano."); return 0
+    plan_update_status(args.id, "accepted")
+    print(f"✓ Plan id={args.id} zaakceptowany.")
+    return 0
+
+
+def cmd_plan_apply(args: argparse.Namespace) -> int:
+    from qbot_nutrition_db import plan_get, plan_apply
+    plan = plan_get(args.id)
+    if not plan:
+        print(f"Plan id={args.id} nie znaleziony."); return 1
+    meals = plan.get("meals", [])
+    total = sum(m.get("kcal", 0) or 0 for m in meals)
+    print(f"Plan id={args.id}: {len(meals)} posiłków, {total:.0f} kcal łącznie.")
+    if not args.yes:
+        resp = input(f"UWAGA: dodać {len(meals)} posiłków do dziennego spożycia? [t/N] ").strip().lower()
+        if resp not in ("t","y","yes","tak"): print("Anulowano."); return 0
+    result = plan_apply(args.id)
+    if result.get("status") == "ok":
+        p = result.get("plan", {})
+        print(f"✓ Plan id={args.id} zastosowany — posiłki dodane do spożycia ({p.get('date','')}).")
+    else:
+        print(f"✗ Błąd: {result.get('error','')}")
+        return 1
+    return 0
+
+
+def cmd_plan_delete(args: argparse.Namespace) -> int:
+    from qbot_nutrition_db import plan_get, plan_delete
+    plan = plan_get(args.id)
+    if not plan:
+        print(f"Plan id={args.id} nie znaleziony."); return 1
+    if not args.yes:
+        resp = input(f"Usunąć plan id={args.id} ({plan['date']}, {plan['status']})? [t/N] ").strip().lower()
+        if resp not in ("t","y","yes","tak"): print("Anulowano."); return 0
+    plan_delete(args.id)
+    print(f"✓ Plan id={args.id} usunięty.")
+    return 0
 
 
 if __name__ == "__main__":
