@@ -45,6 +45,14 @@ _DOMAIN_KW = {
     "health_events": ["chorob","przezięb","infekcj","gorączk","katar","kaszel","wellbeing"],
     "supplements": ["suplement","omega","kreatyn","witamin","ashwagandha","melatonin"],
     "routes":    ["rwgps","trasy","route","gpx ","tcx","fit "],
+    "food_catalog": ["produkty z bazy","katalog produktów","baza produktów","wszystkie produkty",
+                     "lista produktów","pokaż produkty"],
+    "meal_templates": ["zdefiniowane posiłki","moje posiłki","templates","standardowe posiłki",
+                       "szablony posiłków","cronometer","crono","manual_cronometer"],
+    "meal_logs":    ["wpisy posiłków","logi posiłków","historia posiłków","posiłki przeniesione",
+                     "cronometer","import z crono","chrono posiłki"],
+    "data_quality": ["bez food_item_id","niepołączone produkty","kandydatów","kandydaci",
+                     "bez produktu","audyt produktów","uporządkuj produkty","dodać do katalogu"],
 }
 
 # ── Task type keywords ──

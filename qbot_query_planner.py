@@ -170,10 +170,15 @@ def plan(canonical: dict) -> dict[str, Any]:
         return plan_obj
 
     # ── Food product catalog ──
-    if "nutrition" in domains and "food_catalog" in domains:
+    if "food_catalog" in domains:
         plan_obj["queries"].append({
             "domain": "food_catalog",
             "sql": "SELECT id, name, brand, default_unit, kcal_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, fiber_per_100g, source, verified FROM food_items ORDER BY name",
+            "params": {},
+        })
+        plan_obj["queries"].append({
+            "domain": "unlinked_summary",
+            "sql": "SELECT COUNT(*) AS total FROM meal_log_items WHERE food_item_id IS NULL",
             "params": {},
         })
         return plan_obj
@@ -187,8 +192,8 @@ def plan(canonical: dict) -> dict[str, Any]:
         })
         return plan_obj
 
-    # ── Meal log inventory ──
-    if "meal_logs" in domains and "nutrition" in domains:
+    # ── Meal log inventory (not when data_quality audit is requested) ──
+    if "meal_logs" in domains and "nutrition" in domains and "data_quality" not in domains:
         plan_obj["queries"].append({
             "domain": "meal_log_inventory",
             "sql": """SELECT ml.id, ml.eaten_at::date AS date, ml.note, ml.context,
@@ -202,7 +207,7 @@ def plan(canonical: dict) -> dict[str, Any]:
         return plan_obj
 
     # ── Food link audit ──
-    if "data_quality" in domains and "nutrition" in domains:
+    if "data_quality" in domains:
         plan_obj["queries"].append({
             "domain": "food_link_audit",
             "sql": """SELECT (SELECT COUNT(*) FROM meal_log_items) AS total_items,
@@ -212,11 +217,27 @@ def plan(canonical: dict) -> dict[str, Any]:
         })
         plan_obj["queries"].append({
             "domain": "unlinked_candidates",
-            "sql": """SELECT food_name, COUNT(*) AS cnt, ROUND(AVG(kcal)::numeric,0) AS avg_kcal,
-               ROUND(AVG(protein_g)::numeric,1) AS avg_protein, ROUND(AVG(carbs_g)::numeric,1) AS avg_carbs,
-               ROUND(AVG(fat_g)::numeric,1) AS avg_fat
-               FROM meal_log_items WHERE food_item_id IS NULL
-               GROUP BY food_name ORDER BY cnt DESC""",
+            "sql": """SELECT LOWER(TRIM(mli.food_name)) AS name, COUNT(*) AS cnt,
+               ROUND(AVG(mli.kcal)::numeric,0) AS avg_kcal,
+               ROUND(AVG(mli.protein_g)::numeric,1) AS avg_protein,
+               ROUND(AVG(mli.carbs_g)::numeric,1) AS avg_carbs,
+               ROUND(AVG(mli.fat_g)::numeric,1) AS avg_fat,
+               STRING_AGG(DISTINCT LEFT(COALESCE(ml.note,'?'),40), ', ') AS example_notes
+               FROM meal_log_items mli
+               LEFT JOIN meal_logs ml ON ml.id = mli.meal_log_id
+               WHERE mli.food_item_id IS NULL
+               GROUP BY 1 ORDER BY cnt DESC""",
+            "params": {},
+        })
+        plan_obj["queries"].append({
+            "domain": "source_distribution",
+            "sql": """
+               SELECT 'food_items' AS tbl, source, COUNT(*) AS cnt FROM food_items GROUP BY source
+               UNION ALL
+               SELECT 'meal_templates', source, COUNT(*) FROM meal_templates GROUP BY source
+               UNION ALL
+               SELECT 'nutrition_write_audit', COALESCE(source,'?'), COUNT(*) FROM nutrition_write_audit GROUP BY source
+               ORDER BY tbl, cnt DESC""",
             "params": {},
         })
         return plan_obj
@@ -430,6 +451,62 @@ def execute_and_format(plan_obj: dict) -> dict[str, Any]:
             else:
                 parts.append("Brak danych treningowych w QBot DB.")
             tables.append({"domain": "latest_training", "columns": list(rows[0].keys()) if rows else [], "rows": rows})
+            continue
+
+        if domain == "food_catalog" and rows:
+            unlinked_rows = None
+            for qd in plan_obj.get("queries", []):
+                if qd.get("domain") == "unlinked_summary":
+                    unlinked = execute_sql(qd["sql"], qd["params"])
+                    unlinked_rows = unlinked[0]["total"] if unlinked else 0
+            msg = f"Katalog produktów: {len(rows)} pozycji."
+            if unlinked_rows and unlinked_rows > 0:
+                msg += f" Dodatkowo {unlinked_rows} wpisów posiłków bez powiązania z katalogiem — użyj audytu/kandydatów."
+            parts.append(msg)
+            tables.append({"domain": "food_catalog", "columns": list(rows[0].keys()) if rows else [], "rows": rows})
+            continue
+
+        if domain == "saved_meals" and rows:
+            sources = set(r.get("source","?") for r in rows)
+            raw_q = plan_obj.get("task_type","")  # not ideal, use canonical
+            is_crono = any(w in str(plan_obj.get("domains",[])).lower() for w in ("cronometer","crono"))
+            src_detail = f" (źródła: {', '.join(sorted(sources))})" if sources else ""
+            parts.append(f"Zdefiniowane posiłki/templates: {len(rows)} pozycji{src_detail}.")
+            if is_crono and "manual_cronometer_migration" in sources:
+                parts.append(f"Wszystkie template pochodzą z migracji Cronometer (manual_cronometer_migration).")
+            tables.append({"domain": "saved_meals", "columns": list(rows[0].keys()) if rows else [], "rows": rows})
+            continue
+
+        if domain == "meal_log_inventory" and rows:
+            linked = sum(1 for r in rows if r.get("items_linked",0) > 0)
+            parts.append(f"Wpisy posiłków: {len(rows)} logów, {linked} z powiązaniem do katalogu produktów.")
+            tables.append({"domain": "meal_log_inventory", "columns": list(rows[0].keys()) if rows else [], "rows": rows})
+            continue
+
+        if domain == "food_link_audit" and rows:
+            audit = rows[0]
+            total = audit.get("total_items",0)
+            linked = audit.get("items_linked",0)
+            unlinked = audit.get("items_unlinked",0)
+            parts.append(f"Audyt połączeń: {total} wpisów, {linked} połączonych z katalogiem, {unlinked} niepołączonych.")
+            tables.append({"domain": "food_link_audit", "columns": list(rows[0].keys()) if rows else [], "rows": rows})
+            continue
+
+        if domain == "unlinked_candidates" and rows:
+            candidates = []
+            for r in rows:
+                name = r.get("name","?")
+                cnt = r.get("cnt",0)
+                kcal = r.get("avg_kcal")
+                candidates.append(f"{name} (×{cnt}, ~{kcal}kcal)" if kcal else f"{name} (×{cnt})")
+            parts.append(f"Kandydaci z logów ({len(rows)} grup): {'; '.join(candidates[:8])}{'...' if len(rows)>8 else ''}.")
+            tables.append({"domain": "unlinked_candidates", "columns": list(rows[0].keys()) if rows else [], "rows": rows})
+            continue
+
+        if domain == "source_distribution" and rows:
+            srcs = "; ".join(f"{r['tbl']}: {r['source']} (x{r['cnt']})" for r in rows)
+            parts.append(f"Źródła danych: {srcs}.")
+            tables.append({"domain": "source_distribution", "columns": list(rows[0].keys()) if rows else [], "rows": rows})
             continue
 
         if domain == "route_list" and rows:
