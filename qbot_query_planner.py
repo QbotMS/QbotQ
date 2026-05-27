@@ -166,10 +166,12 @@ def plan(canonical: dict) -> dict[str, Any]:
         if has_training:
             joins.append(
                 """LEFT JOIN (SELECT date, COUNT(*) AS workouts, SUM(calories_kcal) AS kcal_burned_training,
-                   SUM(distance_km) AS distance_km, SUM(duration_sec)/60.0 AS moving_min
+                   SUM(distance_km) AS distance_km, SUM(duration_sec)/60.0 AS moving_min,
+                   SUM(elapsed_duration_sec)/60.0 AS elapsed_min
                    FROM training_sessions WHERE date BETWEEN %(df)s AND %(dt)s GROUP BY date) t ON d.date = t.date""")
             select_extras.extend(["COALESCE(t.workouts,0) AS workouts","t.kcal_burned_training","t.distance_km",
-                                  "ROUND(COALESCE(t.moving_min,0)::numeric,0) AS moving_min"])
+                                  "ROUND(COALESCE(t.moving_min,0)::numeric,0) AS moving_min",
+                                  "ROUND(COALESCE(t.elapsed_min,0)::numeric,0) AS elapsed_min"])
 
         # Weight
         if has_weight:
@@ -185,7 +187,9 @@ def plan(canonical: dict) -> dict[str, Any]:
 
         # Missing flags
         mf_parts = []
-        if has_training: mf_parts.append("CASE WHEN t.workouts IS NULL OR t.workouts=0 THEN 'no_training' END")
+        if has_training:
+            mf_parts.append("CASE WHEN t.workouts IS NULL OR t.workouts=0 THEN 'no_training' END")
+            mf_parts.append("CASE WHEN t.workouts > 0 AND t.kcal_burned_training IS NULL THEN 'missing_training_calories' END")
         if has_nutrition: mf_parts.append("CASE WHEN n.kcal_in IS NULL OR n.kcal_in=0 THEN 'no_nutrition' END")
         if has_weight: mf_parts.append("CASE WHEN w.weight_kg IS NULL THEN 'no_weight' END")
         if mf_parts:
@@ -208,14 +212,23 @@ ORDER BY d.date"""
 
     # ── Comparison ──
     if itype == "comparison" and has_training and has_nutrition:
+        ns_c = _count_nonzero("nutrition_daily_summary", "kcal_total", df, dt)
+        qb_c = _count_nonzero("qbot_nutrition_daily", "calories_kcal", df, dt)
+        nut_table = "qbot_nutrition_daily" if qb_c > ns_c * 2 else "nutrition_daily_summary"
+        nut_col = "calories_kcal" if nut_table == "qbot_nutrition_daily" else "kcal_total"
+        comp_sql = (
+            "SELECT CASE WHEN t.workouts>0 THEN 'treningowe' ELSE 'nietreningowe' END AS grp, "
+            f"ROUND(AVG(n.kcal_in)::numeric,0) AS avg_kcal_in, COUNT(*) AS days "
+            "FROM (SELECT date, COUNT(*) AS workouts FROM training_sessions "
+            "WHERE date BETWEEN %(df)s AND %(dt)s GROUP BY date) t "
+            f"FULL JOIN (SELECT date, SUM({nut_col}) AS kcal_in FROM {nut_table} "
+            "WHERE date BETWEEN %(df)s AND %(dt)s GROUP BY date) n ON t.date=n.date "
+            "WHERE n.kcal_in IS NOT NULL AND n.kcal_in > 0 "
+            "GROUP BY 1 ORDER BY 1"
+        )
         plan_obj["queries"].append({
             "domain": "comparison",
-            "sql": """SELECT CASE WHEN t.workouts>0 THEN 'treningowe' ELSE 'nietreningowe' END AS grp,
-               ROUND(AVG(n.kcal_in)::numeric,0) AS avg_kcal_in, COUNT(*) AS days
-               FROM (SELECT date, COUNT(*) AS workouts FROM training_sessions WHERE date BETWEEN %(df)s AND %(dt)s GROUP BY date) t
-               FULL JOIN (SELECT date, SUM(kcal_total) AS kcal_in FROM nutrition_daily_summary WHERE date BETWEEN %(df)s AND %(dt)s GROUP BY date) n ON t.date=n.date
-               WHERE n.kcal_in IS NOT NULL AND n.kcal_in > 0
-               GROUP BY 1 ORDER BY 1""",
+            "sql": comp_sql,
             "params": {"df": df, "dt": dt},
         })
 
@@ -319,11 +332,13 @@ def execute_and_format(plan_obj: dict) -> dict[str, Any]:
 
         if domain in ("daily_table",) and rows:
             days = len(rows)
-            w = sum(1 for r in rows if r.get("workouts",0) > 0)
+            w = sum(1 for r in rows if (r.get("workouts",0) or 0) > 0)
             n = sum(1 for r in rows if (r.get("kcal_in",0) or 0) > 0)
-            tk = sum(r.get("kcal_burned_training",0) or 0 for r in rows)
+            tk = sum(r.get("kcal_burned_training") or 0 for r in rows if r.get("kcal_burned_training") is not None)
             nk = sum(r.get("kcal_in",0) or 0 for r in rows)
-            parts.append(f"Zakres {df}–{dt}: {days} dni, {w} z treningiem, {n} z żywieniem, kcal treningowe={tk:.0f}, kcal spożyte={nk:.0f}. Szczegóły w tabeli.")
+            missing_cal = sum(1 for r in rows if (r.get("workouts",0) or 0) > 0 and r.get("kcal_burned_training") is None)
+            cal_msg = f"kcal treningowe={tk:.0f}" if tk > 0 else (f"kcal treningowe=missing ({missing_cal} dni)" if missing_cal > 0 else "kcal treningowe=0")
+            parts.append(f"Zakres {df}–{dt}: {days} dni, {w} z treningiem, {n} z żywieniem, {cal_msg}, kcal spożyte={nk:.0f}. Szczegóły w tabeli.")
             tables.append({"domain": "semantic_daily_table", "columns": list(rows[0].keys()) if rows else [], "rows": rows})
             continue
 
