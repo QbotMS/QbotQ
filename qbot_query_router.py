@@ -2206,7 +2206,6 @@ def _tool_qbot_query(args: dict | None = None) -> dict[str, Any]:
 # Empty list = use semantic planner.
 _CANONICAL_FORCE_READERS: dict[str, list[str]] = {
     "current_day_meals": ["meal_list"],
-    "food_product_catalog": ["nutrition_food_search"],
     "food_link_audit": [],
     "saved_meals_catalog": [],
     "nutrition_planning": ["nutrition_planning", "nutrition_day", "meal_list", "nutrition_food_search"],
@@ -2780,9 +2779,10 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     # ── Clean up tables for nutrition/planning intents ──────────────
     _nutri_clean_intents = {"nutrition_planning", "nutrition_daily", "fueling", "nutrition_range", "calorie_balance", "current_day_meals"}
     if _nutri_clean_intents & set(intents):
-        keep_cols_for_current_day = {"id", "eaten_at", "meal_type", "note"}
+        verbose_fields = {"items_json", "provenance", "raw_text", "source", "context", "created_at", "updated_at"}
         cleaned_tables: list[dict] = []
         seen_domains: set[str] = set()
+        daily_summary_totals: dict[str, float] = {}
         for t in tables:
             dom = t.get("domain", "")
             # For current_day_meals intent: rename meal_logs → current_day_meals
@@ -2792,11 +2792,54 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
             # Remove duplicate meal_logs (same data as current_day_summary)
             if dom == "meal_logs":
                 continue
-            # Strip verbose JSON columns from current_day_summary / current_day_meals rows
-            if dom in ("current_day_summary", "current_day_meals"):
+            # Strip verbose JSON, add aggregated macros for current_day_meals
+            if dom == "current_day_meals":
                 stripped_rows = []
                 for row in t["rows"]:
-                    stripped = {k: v for k, v in row.items() if k in keep_cols_for_current_day}
+                    # Aggregate items into per-meal macros
+                    items_list = row.get("items", []) or []
+                    if isinstance(items_list, list):
+                        kcal = sum(float(i.get("kcal", 0) or 0) for i in items_list)
+                        prot = sum(float(i.get("protein_g", 0) or 0) for i in items_list)
+                        carbs = sum(float(i.get("carbs_g", 0) or 0) for i in items_list)
+                        fat = sum(float(i.get("fat_g", 0) or 0) for i in items_list)
+                    else:
+                        kcal = prot = carbs = fat = 0.0
+                    stripped = {
+                        "id": row.get("id"),
+                        "eaten_at": row.get("eaten_at"),
+                        "meal_type": row.get("meal_type"),
+                        "note": (row.get("note") or "")[:80],
+                        "kcal": round(kcal, 1) if kcal else None,
+                        "protein_g": round(prot, 1) if prot else None,
+                        "carbs_g": round(carbs, 1) if carbs else None,
+                        "fat_g": round(fat, 1) if fat else None,
+                    }
+                    stripped_rows.append(stripped)
+                    daily_summary_totals["kcal_total"] = daily_summary_totals.get("kcal_total", 0) + kcal
+                    daily_summary_totals["protein_g"] = daily_summary_totals.get("protein_g", 0) + prot
+                    daily_summary_totals["carbs_g"] = daily_summary_totals.get("carbs_g", 0) + carbs
+                    daily_summary_totals["fat_g"] = daily_summary_totals.get("fat_g", 0) + fat
+                if not stripped_rows:
+                    continue
+                new_cols = ["id", "eaten_at", "meal_type", "note", "kcal", "protein_g", "carbs_g", "fat_g"]
+                t = {**t, "rows": stripped_rows, "columns": new_cols, "count": len(stripped_rows)}
+                # Add daily_nutrition_summary table
+                if daily_summary_totals:
+                    summary_row = {k: round(v, 1) for k, v in daily_summary_totals.items()}
+                    cleaned_tables.append({
+                        "domain": "daily_nutrition_summary",
+                        "key": "summary",
+                        "count": 1,
+                        "columns": list(summary_row.keys()),
+                        "rows": [summary_row],
+                    })
+            # Strip verbose JSON from current_day_summary
+            elif dom == "current_day_summary":
+                stripped_rows = []
+                keep = {"id", "eaten_at", "meal_type", "note"}
+                for row in t["rows"]:
+                    stripped = {k: v for k, v in row.items() if k in keep}
                     stripped_rows.append(stripped)
                 if not stripped_rows:
                     continue

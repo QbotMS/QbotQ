@@ -53,7 +53,8 @@ _DOMAIN_KW = {
     "meal_logs":    ["wpisy posiłków","logi posiłków","historia posiłków","posiłki przeniesione",
                      "cronometer","import z crono","chrono posiłki"],
     "data_quality": ["bez food_item_id","niepołączone produkty","kandydatów","kandydaci",
-                     "bez produktu","audyt produktów","uporządkuj produkty","dodać do katalogu"],
+                     "bez produktu","audyt produktów","uporządkuj produkty","dodać do katalogu",
+                     "nie jest podpięte","niepodpięte"],
 }
 
 # ── Task type keywords ──
