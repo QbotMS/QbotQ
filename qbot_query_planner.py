@@ -97,6 +97,51 @@ def plan(canonical: dict) -> dict[str, Any]:
         })
         return plan_obj
 
+    # ── Route list ──
+    if itype == "route_list" or ("routes" in domains and negs and any(n in negs for n in ("no_export","no_gpx","list_only"))):
+        limit = 10
+        m = re.search(r"(\d+)\s+najnowsze", canonical.get("raw_query", "").lower())
+        if m: limit = int(m.group(1))
+
+        try:
+            from qbot_route_tools import _tool_qbot_rwgps_route_list
+            api_result = _tool_qbot_rwgps_route_list({"limit": max(limit, 10)})
+            api_routes = api_result.get("routes", [])
+
+            rows = []
+            for r in api_routes[:limit]:
+                rid = str(r.get("id", ""))
+                name = r.get("name", "")
+                dkm = r.get("distance_km") or 0
+                elev = r.get("elevation_m") or 0
+                # Fallback: local cache if API has 0 distance
+                if dkm == 0:
+                    try:
+                        with _conn() as c:
+                            local = c.execute(
+                                "SELECT (metadata_json->>'distance_km')::float AS dkm, (metadata_json->>'elevation_gain_m')::float AS elev FROM route_artifacts WHERE route_id=%s AND (metadata_json->>'distance_km')::float > 0 LIMIT 1",
+                                (rid,),
+                            ).fetchone()
+                            if local:
+                                dkm = local.get("dkm", 0) or dkm
+                                elev = local.get("elev", 0) or elev
+                    except Exception:
+                        pass
+
+                rows.append({
+                    "route_id": rid,
+                    "name": name,
+                    "distance_km": dkm,
+                    "elevation_gain_m": elev,
+                    "updated_at": r.get("updated_at", ""),
+                    "origin": r.get("origin", ""),
+                })
+            plan_obj["queries"].append({"domain": "route_list", "limit": limit, "sql": "rwgps_api", "params": {}, "rows": rows})
+        except Exception as e:
+            plan_obj["warnings"].append(f"RWGPS API failed: {str(e)[:100]}")
+
+        return plan_obj
+
     # ── Latest training session ──
     if "training" in domains and not has_nutrition and not has_weight:
         from datetime import date as dt_date
@@ -105,7 +150,14 @@ def plan(canonical: dict) -> dict[str, Any]:
             "sql": """SELECT date, title, activity_type, distance_km, duration_sec,
                calories_kcal, avg_hr, max_hr, avg_power_w, max_power_w,
                training_load, training_effect, elevation_gain_m
-               FROM training_sessions
+               FROM (
+                 SELECT *, ROW_NUMBER() OVER (
+                   PARTITION BY COALESCE(external_id, date::text || '|' || title || '|' || activity_type || '|' || COALESCE(distance_km::text, '') || '|' || COALESCE(duration_sec::text, ''))
+                   ORDER BY id DESC
+                 ) AS rn
+                 FROM training_sessions
+               ) sub
+               WHERE rn = 1
                ORDER BY date DESC LIMIT 3""",
             "params": {},
         })
@@ -167,51 +219,6 @@ def plan(canonical: dict) -> dict[str, Any]:
                GROUP BY food_name ORDER BY cnt DESC""",
             "params": {},
         })
-        return plan_obj
-
-    # ── Route list ──
-    if itype == "route_list" or ("routes" in domains and negs and any(n in negs for n in ("no_export","no_gpx","list_only"))):
-        limit = 10
-        m = re.search(r"(\d+)\s+najnowsze", canonical.get("raw_query", "").lower())
-        if m: limit = int(m.group(1))
-
-        try:
-            from qbot_route_tools import _tool_qbot_rwgps_route_list
-            api_result = _tool_qbot_rwgps_route_list({"limit": max(limit, 10)})
-            api_routes = api_result.get("routes", [])
-
-            rows = []
-            for r in api_routes[:limit]:
-                rid = str(r.get("id", ""))
-                name = r.get("name", "")
-                dkm = r.get("distance_km") or 0
-                elev = r.get("elevation_m") or 0
-                # Fallback: local cache if API has 0 distance
-                if dkm == 0:
-                    try:
-                        with _conn() as c:
-                            local = c.execute(
-                                "SELECT (metadata_json->>'distance_km')::float AS dkm, (metadata_json->>'elevation_gain_m')::float AS elev FROM route_artifacts WHERE route_id=%s AND (metadata_json->>'distance_km')::float > 0 LIMIT 1",
-                                (rid,),
-                            ).fetchone()
-                            if local:
-                                dkm = local.get("dkm", 0) or dkm
-                                elev = local.get("elev", 0) or elev
-                    except Exception:
-                        pass
-
-                rows.append({
-                    "route_id": rid,
-                    "name": name,
-                    "distance_km": dkm,
-                    "elevation_gain_m": elev,
-                    "updated_at": r.get("updated_at", ""),
-                    "origin": r.get("origin", ""),
-                })
-            plan_obj["queries"].append({"domain": "route_list", "limit": limit, "sql": "rwgps_api", "params": {}, "rows": rows})
-        except Exception as e:
-            plan_obj["warnings"].append(f"RWGPS API failed: {str(e)[:100]}")
-
         return plan_obj
 
     # ── Daily table: only when nutrition or training involved ──
@@ -397,27 +404,29 @@ def execute_and_format(plan_obj: dict) -> dict[str, Any]:
         if domain == "latest_training" and rows:
             latest = rows[0] if rows else None
             today_name = str(df)[:10]
+            if latest:
+                _cal = latest.get("calories_kcal")
+                cal_str = f"{_cal:.0f}kcal" if _cal is not None else "kcal: brak danych"
+
             if latest and latest.get("date") != today_name:
                 date_str = str(latest.get("date","?"))[:10]
                 title = latest.get("title","?")
                 dist = (latest.get("distance_km") or 0)
                 elev = latest.get("elevation_gain_m") or 0
-                cal = latest.get("calories_kcal") or 0
                 dur = (latest.get("duration_sec") or 0) / 60
                 load = latest.get("training_load") or 0
                 eff = latest.get("training_effect") or 0
                 hr = latest.get("avg_hr") or "?"
                 parts.append(
                     f"Nie widzę jeszcze dzisiejszej aktywności w QBot DB. "
-                    f"Ostatnia dostępna: {date_str} — {title} ({dist:.1f}km, {cal:.0f}kcal, {dur:.0f}min, "
+                    f"Ostatnia dostępna: {date_str} — {title} ({dist:.1f}km, {cal_str}, {dur:.0f}min, "
                     f"load={load:.0f}, effect={eff:.1f}, HR={hr}bpm). "
                     f"Dane z zaimportowanych treningów Garmin."
                 )
             elif latest:
                 title = latest.get("title","?")
                 dist = (latest.get("distance_km") or 0)
-                cal = latest.get("calories_kcal") or 0
-                parts.append(f"Dzisiejsza aktywność: {title} ({dist:.1f}km, {cal:.0f}kcal)")
+                parts.append(f"Dzisiejsza aktywność: {title} ({dist:.1f}km, {cal_str})")
             else:
                 parts.append("Brak danych treningowych w QBot DB.")
             tables.append({"domain": "latest_training", "columns": list(rows[0].keys()) if rows else [], "rows": rows})
