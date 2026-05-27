@@ -295,6 +295,7 @@ from qbot_nutrition_tools import (
     _tool_qbot_nutrition_fueling_log,
     _tool_qbot_nutrition_day_summary,
     _tool_qbot_nutrition_meal_list,
+    _tool_qbot_nutrition_meal_delete,
     _tool_qbot_nutrition_status,
 )
 
@@ -1598,6 +1599,12 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "safe": True,
         "args_schema": {"date": "2026-05-26", "limit": 20},
     },
+    "qbot_nutrition_meal_delete": {
+        "description": "Usuwa posiłek po ID — WRITE_SAFE, przelicza dzienne podsumowanie",
+        "category": "nutrition",
+        "safe": True,
+        "args_schema": {"meal_id": 1, "dry_run": False},
+    },
     "qbot_nutrition_status": {
         "description": "Status modułu Nutrition/Fueling — liczba rekordów w tabelach",
         "category": "nutrition",
@@ -1893,9 +1900,10 @@ TOOLS: dict[str, Any] = {
     "qbot_nutrition_intake_log": _tool_qbot_nutrition_intake_log,
     "qbot_nutrition_hydration_log": _tool_qbot_nutrition_hydration_log,
     "qbot_nutrition_fueling_log": _tool_qbot_nutrition_fueling_log,
-    "qbot_nutrition_day_summary": _tool_qbot_nutrition_day_summary,
-    "qbot_nutrition_meal_list": _tool_qbot_nutrition_meal_list,
-    "qbot_nutrition_status": _tool_qbot_nutrition_status,
+     "qbot_nutrition_day_summary": _tool_qbot_nutrition_day_summary,
+     "qbot_nutrition_meal_list": _tool_qbot_nutrition_meal_list,
+     "qbot_nutrition_meal_delete": _tool_qbot_nutrition_meal_delete,
+     "qbot_nutrition_status": _tool_qbot_nutrition_status,
     "qbot_task_queue_add": _tool_qbot_task_queue_add,
     "qbot_task_queue_list": _tool_qbot_task_queue_list,
     "qbot_task_queue_next": _tool_qbot_task_queue_next,

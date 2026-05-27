@@ -204,6 +204,18 @@ def meal_log_list(date_str: str | None = None, limit: int = 20) -> list[dict]:
         return result
 
 
+def meal_log_delete(meal_id: int) -> dict | None:
+    """Delete a meal log by ID (cascades to meal_log_items). Returns deleted meal or None."""
+    with _conn() as conn:
+        meal = get_meal_log(meal_id)
+        if not meal:
+            return None
+        conn.execute("DELETE FROM meal_log_items WHERE meal_log_id = %s", (meal_id,))
+        conn.execute("DELETE FROM meal_logs WHERE id = %s", (meal_id,))
+        conn.commit()
+        return meal
+
+
 # ── Hydration ─────────────────────────────────────────────────────────────
 
 def hydration_event_create(fluid_ml: float, sodium_mg: float = 0, source: str = "qbot", note: str | None = None, drank_at: str | None = None) -> dict:

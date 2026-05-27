@@ -254,6 +254,43 @@ def _tool_qbot_nutrition_meal_list(_args: dict | None = None) -> dict[str, Any]:
         return {"tool": "qbot_nutrition_meal_list", "status": "ERROR", "error": str(exc)}
 
 
+def _tool_qbot_nutrition_meal_delete(_args: dict | None = None) -> dict[str, Any]:
+    _args = _args or {}
+    meal_id = _args.get("meal_id") or _args.get("id")
+    if not meal_id:
+        return {"tool": "qbot_nutrition_meal_delete", "status": "ERROR", "error": "meal_id required"}
+    dry_run = bool(_args.get("dry_run", False))
+    try:
+        from qbot_nutrition_db import meal_log_delete, daily_summary_compute
+        if dry_run:
+            from qbot_nutrition_db import get_meal_log
+            meal = get_meal_log(int(meal_id))
+            return {
+                "tool": "qbot_nutrition_meal_delete",
+                "safety_class": "WRITE_SAFE",
+                "status": "DRY_RUN",
+                "meal_id": int(meal_id),
+                "would_delete": meal is not None,
+                "meal_preview": meal,
+            }
+        deleted = meal_log_delete(int(meal_id))
+        if deleted:
+            date_str = deleted.get("eaten_at", "")[:10]
+            try:
+                daily_summary_compute(date_str)
+            except Exception:
+                pass
+        return {
+            "tool": "qbot_nutrition_meal_delete",
+            "safety_class": "WRITE_SAFE",
+            "status": "OK" if deleted else "NOT_FOUND",
+            "deleted": deleted is not None,
+            "meal_id": int(meal_id),
+        }
+    except Exception as exc:
+        return {"tool": "qbot_nutrition_meal_delete", "status": "ERROR", "error": str(exc)}
+
+
 def _tool_qbot_nutrition_status(_args: dict | None = None) -> dict[str, Any]:
     """DB readiness check: table counts + date range."""
     try:
