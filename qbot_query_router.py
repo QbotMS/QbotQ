@@ -74,6 +74,7 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
     ("nutrition_log_add_draft", [
         "dodaj do dzisiejszego spożycia", "dodaj do spożycia",
         "zapisz posiłek", "dodaj jedzenie",
+        "dodaj do jedzenia", "dodaj posiłek",
         "dopisz do dzisiejszego jedzenia", "dopisz do jedzenia",
     ]),
     ("qcal_reminder_add_draft", [
