@@ -108,6 +108,9 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         "niepołączone produkty", "food_item_id null",
         "audyt produktów", "bez produktu",
     ]),
+    ("current_day_meals", [
+        # empty — handled by canonicalize_query_intent() semantic classifier
+    ]),
     ("nutrition_daily", [
         "bilans kalorii", "kalorii", "kcal", "zjadł", "zjedzone", "posiłk",
         "co jadł", "co zjadł", "dieta", "makro", "żywieni", "nutrition",
@@ -450,6 +453,8 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     # Semantic-handled intents (no readers — planner handles via resolve_context)
     "saved_meals_catalog": [],
     "food_link_audit": [],
+    # Daily meal log intents
+    "current_day_meals": ["meal_list"],
 }
 
 
@@ -2195,6 +2200,192 @@ def _tool_qbot_query(args: dict | None = None) -> dict[str, Any]:
     return result
 
 
+# ── Canonical intent → forced readers mapping ───────────────────────────
+# When the canonicalizer returns a high-confidence intent with forced
+# readers, bypass the semantic planner and dispatch directly.
+# Empty list = use semantic planner.
+_CANONICAL_FORCE_READERS: dict[str, list[str]] = {
+    "current_day_meals": ["meal_list"],
+    "food_product_catalog": ["nutrition_food_search"],
+    "food_link_audit": [],
+    "saved_meals_catalog": [],
+    "nutrition_planning": ["nutrition_planning", "nutrition_day", "meal_list", "nutrition_food_search"],
+    "nutrition_balance": [],
+    "latest_training": [],
+    "route_list": [],
+}
+
+# ── Allowed intents / capabilities (closed enum for LLM) ────────────────
+
+_ALLOWED_CANONICAL_INTENTS = [
+    "current_day_meals", "nutrition_balance", "food_product_catalog",
+    "saved_meals_catalog", "food_link_audit", "nutrition_planning",
+    "nutrition_log_add_draft", "latest_training", "training_summary",
+    "route_list", "qcal_reminder_add_draft", "qcal_event_add_draft",
+    "planning_fact_detect", "qcal_lookup", "calendar_day_context",
+    "status_readiness", "unknown",
+]
+
+_ALLOWED_CAPABILITIES = [
+    "meal_log_inventory", "nutrition_balance", "food_product_catalog",
+    "saved_meals_catalog", "food_link_audit", "nutrition_planning",
+    "nutrition_log_add", "latest_training_session", "training_summary",
+    "route_list", "qcal_reminder_add", "qcal_event_add",
+    "planning_memory", "qcal_reminders", "qcal_events",
+    "calendar_daily_snapshot", "qbot_status", "unknown",
+]
+
+_CANONICALIZER_LLM_SYSTEM = """\
+Jesteś klasyfikatorem intencji QBot. Twoim zadaniem jest wyłącznie zamapowanie \
+pytania użytkownika na canonical_intent i capability z poniższej allowlisty.
+
+Nie odpowiadaj użytkownikowi. Nie wymyślaj narzędzi. Nie twórz nowych intentów \
+ani capability. Zwróć tylko JSON.
+
+Allowed canonical_intents:
+""" + ", ".join(_ALLOWED_CANONICAL_INTENTS) + """
+
+Allowed capabilities:
+""" + ", ".join(_ALLOWED_CAPABILITIES) + """
+
+{"canonical_intent":"...","domain":"...","capability":"...","confidence":"low|medium|high","needs_clarification":true|false,"missing_fields":[],"reason":"krótkie uzasadnienie","date_hint":null|"YYYY-MM-DD","write_intent":true|false}"""
+
+
+# ── Semantic intent canonicalizer ────────────────────────────────────────
+
+def canonicalize_query_intent(
+    question: str,
+    intents: list[str],
+    context: str = "",
+) -> dict | None:
+    """Semantic intent canonicalizer.
+
+    Uses hard guards for known patterns, then LLM if available,
+    then heuristic fallback. Returns a canonical intent dict or None.
+
+    This is the PRIMARY routing mechanism. Keyword-based classify_intent
+    is a fallback for patterns the canonicalizer doesn't handle.
+    """
+    # ── Hard guards (high-priority patterns) ──
+    # These are handled by classify_intent correctly, but the LLM
+    # may produce a better canonical_intent. Only block obvious
+    # patterns where classify_intent is already authoritative.
+    _guarded_intents = {
+        "planning_notice", "rwgps_route_list_only", "rwgps_route_lookup",
+        "route_surface_profile",
+    }
+    if set(intents) & _guarded_intents:
+        return {"canonical_intent": list(set(intents) & _guarded_intents)[0],
+                "domain": "nutrition", "capability": "unknown",
+                "confidence": "high", "source": "hard_guard",
+                "reason": "hard guard pattern matched"}
+
+    # ── LLM classifier ──
+    try:
+        canonical = _llm_classify_intent(question)
+        if canonical and canonical.get("confidence") in ("high", "medium"):
+            canonical["source"] = "llm"
+            return canonical
+    except Exception:
+        pass
+
+    # ── Heuristic fallback ──
+    result = _heuristic_canonicalize(question, intents)
+    if result:
+        result["source"] = "heuristic_fallback"
+        return result
+    return None
+
+
+def _llm_classify_intent(question: str) -> dict | None:
+    """LLM-based intent classifier.
+
+    Uses qgpt_json() with a closed-enum prompt.
+    Returns validated canonical intent or None on failure.
+    """
+    from qgpt_client import qgpt_json
+
+    user = f"Użytkownik: {question}\n\nJaki to canonical_intent i capability?"
+    try:
+        result = qgpt_json(user, system=_CANONICALIZER_LLM_SYSTEM,
+                           max_tokens=300, temperature=0)
+    except Exception:
+        return None
+
+    if not isinstance(result, dict):
+        return None
+
+    ci = str(result.get("canonical_intent", "unknown"))
+    cap = str(result.get("capability", "unknown"))
+    conf = str(result.get("confidence", "low"))
+
+    # Validate against allowlist
+    if ci not in _ALLOWED_CANONICAL_INTENTS:
+        ci = "unknown"
+    if cap not in _ALLOWED_CAPABILITIES:
+        cap = "unknown"
+
+    return {
+        "canonical_intent": ci,
+        "domain": result.get("domain", "unknown"),
+        "capability": cap,
+        "confidence": conf,
+        "needs_clarification": bool(result.get("needs_clarification", False)),
+        "missing_fields": result.get("missing_fields", []),
+        "reason": str(result.get("reason", "")),
+        "date_hint": result.get("date_hint"),
+        "write_intent": bool(result.get("write_intent", False)),
+    }
+
+
+def _heuristic_canonicalize(question: str, intents: list[str]) -> dict | None:
+    """Heuristic fallback for intent canonicalization.
+
+    Handles queries that the keyword classifier misses.
+    Primarily catches nutrition/today queries like 'co dziś jadłem?'
+    from ANY wording.
+    """
+    ql = question.lower()
+
+    # Normalize Polish characters for matching
+    def _norm(s: str) -> str:
+        return s.replace("ł", "l").replace("ą", "a").replace("ę", "e").replace("ó", "o").replace("ś", "s").replace("ć", "c").replace("ź", "z").replace("ż", "z").replace("ń", "n")
+
+    nq = _norm(ql)
+
+    # Detect today reference
+    has_today = any(w in nq for w in ("dzis", "dzisiaj", "dzisiejsz", "today"))
+
+    # Detect food/intake concept: any query about eating, meals, food
+    # Normalized words so Polish ł→l, etc.
+    food_concepts = {
+        # Verbs: eating/consuming
+        "jadl", "jedz", "zjadl", "spozy", "konsum", "jem",
+        # Nouns: food/meals
+        "jedzeni", "posilek", "posilk", "intake", "zywieni",
+        # Slang/colloquial
+        "zarcie", "brzuch", "szamy", "szam",
+        # Logging/tracking
+        "wpis", "log",
+        # Calories
+        "kalor", "kcal",
+    }
+    has_food = any(c in nq for c in food_concepts)
+
+    # If query is about today AND has a food/eating concept
+    if has_today and has_food:
+        return {
+            "canonical_intent": "current_day_meals",
+            "domain": "nutrition",
+            "capability": "meal_log_inventory",
+            "confidence": "medium",
+            "reason": "heuristic: food concept + today reference",
+            "needs_clarification": False,
+        }
+
+    return None
+
+
 def query(question: str, mode: str = "read_only", scope: str = "all", context: str = "",
           max_rows: int = 500, include_provenance: bool = True, include_missing: bool = True) -> dict[str, Any]:
     if not _TOOL_DISPATCH:
@@ -2204,18 +2395,39 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     # Run before semantic planner or keyword classifier to catch write
     # intents early and return a draft without executing anything.
     intents = classify_intent(question)
+
+    # ── Semantic intent canonicalization ──
+    # Overrides keyword classification for queries the canonicalizer
+    # can handle more accurately (e.g., "co dziś jadłem?").
+    canonical_intent_info = canonicalize_query_intent(question, intents, context)
+    if canonical_intent_info:
+        ci = canonical_intent_info.get("canonical_intent")
+        if ci and ci not in intents:
+            intents = [ci] + [i for i in intents if i != "general"]
+            # If canonicalizer says current_day_meals and we have no
+            # more specific nutrition intent, promote it.
+            if ci == "current_day_meals":
+                intents = [ci]
+
     date_ctx = _resolve_date_context(context, question)
     write_result = _handle_write_draft(question, intents, date_ctx)
     if write_result is not None:
         return write_result
 
     # ── Semantic Planner route ──
-    # Only skip semantic planner when keyword classifier found nutrition/planning
-    # intents (keyword dispatch is more accurate for these). For all others,
-    # the semantic planner provides better domain classification.
-    _nutrition_intents = {"nutrition_planning", "fueling"}
+    # Skip semantic planner when canonicalizer has an authoritative intent
+    # with forced readers, OR when keyword classifier matched specific intents.
+    _canonical_forced = False
+    _canonical_forced_readers: list[str] = []
+    if canonical_intent_info and canonical_intent_info.get("confidence") in ("high", "medium"):
+        _ci = canonical_intent_info.get("canonical_intent")
+        _cfr = _CANONICAL_FORCE_READERS.get(_ci, None)
+        if _cfr is not None and len(_cfr) > 0:
+            _canonical_forced = True
+            _canonical_forced_readers = list(_cfr)
+    _nutrition_intents = {"nutrition_planning", "fueling", "current_day_meals"}
     _planning_intents = {"planning_notice"}
-    _bypass_semantic = bool((_nutrition_intents | _planning_intents) & set(intents))
+    _bypass_semantic = _canonical_forced or bool((_nutrition_intents | _planning_intents) & set(intents))
     if not _bypass_semantic:
         try:
             from qbot_context_resolver import resolve as resolve_context
@@ -2244,6 +2456,11 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
                             "rows": [{"fact_type": d.get("fact_type",""), "date": d.get("date",""), "title": d.get("title",""), "confidence": d.get("confidence","")} for d in pf_drafts],
                         })
                         sp_result["tables"] = _sp_tables
+                except Exception:
+                    pass
+                try:
+                    if isinstance(canonical_intent_info, dict):
+                        sp_result["canonicalizer"] = canonical_intent_info
                 except Exception:
                     pass
                 return sp_result
@@ -2285,15 +2502,24 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
                     sp_result["tables"] = _sp_tables
             except Exception:
                 pass
+            try:
+                if isinstance(canonical_intent_info, dict):
+                    sp_result["canonicalizer"] = canonical_intent_info
+            except Exception:
+                pass
             return sp_result
         except Exception:
             pass  # fall through to keyword classifier
 
     readers_to_call: list[str] = []
-    for intent in intents:
-        for reader in _INTENT_TO_READERS.get(intent, []):
-            if reader not in readers_to_call:
-                readers_to_call.append(reader)
+    # When canonicalizer has authoritative intent with forced readers, use those
+    if _canonical_forced:
+        readers_to_call = list(_canonical_forced_readers)
+    else:
+        for intent in intents:
+            for reader in _INTENT_TO_READERS.get(intent, []):
+                if reader not in readers_to_call:
+                    readers_to_call.append(reader)
 
     if scope != "all":
         scope_category_map: dict[str, list[str]] = {
@@ -2344,6 +2570,11 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
                     "columns": ["fact_type", "date", "title", "confidence"],
                     "rows": [{"fact_type": d.get("fact_type",""), "date": d.get("date",""), "title": d.get("title",""), "confidence": d.get("confidence","")} for d in pf_drafts],
                 })
+            try:
+                if isinstance(canonical_intent_info, dict):
+                    response["canonicalizer"] = canonical_intent_info
+            except Exception:
+                pass
         except Exception:
             pass
         return response
@@ -2547,18 +2778,22 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     tables = _extract_tables(answers)
 
     # ── Clean up tables for nutrition/planning intents ──────────────
-    _nutri_clean_intents = {"nutrition_planning", "nutrition_daily", "fueling", "nutrition_range", "calorie_balance"}
+    _nutri_clean_intents = {"nutrition_planning", "nutrition_daily", "fueling", "nutrition_range", "calorie_balance", "current_day_meals"}
     if _nutri_clean_intents & set(intents):
         keep_cols_for_current_day = {"id", "eaten_at", "meal_type", "note"}
         cleaned_tables: list[dict] = []
         seen_domains: set[str] = set()
         for t in tables:
             dom = t.get("domain", "")
+            # For current_day_meals intent: rename meal_logs → current_day_meals
+            if "current_day_meals" in intents and dom == "meal_logs":
+                dom = "current_day_meals"
+                t = {**t, "domain": dom}
             # Remove duplicate meal_logs (same data as current_day_summary)
             if dom == "meal_logs":
                 continue
-            # Strip verbose JSON columns from current_day_summary rows
-            if dom == "current_day_summary":
+            # Strip verbose JSON columns from current_day_summary / current_day_meals rows
+            if dom in ("current_day_summary", "current_day_meals"):
                 stripped_rows = []
                 for row in t["rows"]:
                     stripped = {k: v for k, v in row.items() if k in keep_cols_for_current_day}
@@ -2719,6 +2954,7 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         "tool": "qbot.query", "safety_class": "READ_ONLY",
         "mode": "read_only",
         "query": question, "intents_detected": intents,
+        "canonicalizer": canonical_intent_info if isinstance(canonical_intent_info, dict) else None,
         "readers_planned": readers_to_call,
         "readers_used": readers_to_call,
         "readers_count": len(answers),

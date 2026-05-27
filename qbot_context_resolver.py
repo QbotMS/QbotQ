@@ -35,7 +35,8 @@ _DOMAIN_KW = {
                    "cycling","dystans","przewyższenie","elevation","training load","tss",
                    "garmin activity","przebieg","kcal spalone","spalon","przejechane",
                   "jak mi poszła jazda","jak poszedł trening","oceń jazdę","jak wyszła jazda",
-                  "ostatnia jazda","ostatni trening","jak mi poszło","dzisiejsza aktywność"],
+                  "ostatnia jazda","ostatni trening","jak mi poszło","dzisiejsza aktywność",
+                  "oceń ostatnią jazdę","oceń jazdę"],
     "weight":    ["waga","wagę","ważę","ważył","weight","kilogramy","kg ","masa ciała","masę ciała"],
     "body_comp": ["body fat","body_fat","bmi","body composition","skład ciała",
                   "masa mięśniowa","muscle","bone","tkanka tłuszczowa","bf "],
@@ -46,7 +47,7 @@ _DOMAIN_KW = {
     "supplements": ["suplement","omega","kreatyn","witamin","ashwagandha","melatonin"],
     "routes":    ["rwgps","trasy","route","gpx ","tcx","fit "],
     "food_catalog": ["produkty z bazy","katalog produktów","baza produktów","wszystkie produkty",
-                     "lista produktów","pokaż produkty"],
+                     "lista produktów","pokaż produkty","jakie produkty"],
     "meal_templates": ["zdefiniowane posiłki","moje posiłki","templates","standardowe posiłki",
                        "szablony posiłków","cronometer","crono","manual_cronometer"],
     "meal_logs":    ["wpisy posiłków","logi posiłków","historia posiłków","posiłki przeniesione",
@@ -198,11 +199,13 @@ def _resolve_time(ql: str, ctx: dict, today: date) -> tuple:
     if m:
         return f"{today.year}-{int(m.group(2)):02d}-{int(m.group(1)):02d}", today.isoformat(), None, "day", None, {}, "high"
 
-    # "ostatnie X dni"
-    m = re.search(r"ostatni(?:ch|e)?\s+(\d+)\s*(?:dni|day)", ql)
+    # "ostatnie X dni" / "ostatniego tygodnia"
+    m = re.search(r"ostatni(?:ch|e|ego)?\s+(\d+)\s*(?:dni|day)", ql)
     if m:
         days = int(m.group(1))
         return (today - timedelta(days=days-1)).isoformat(), today.isoformat(), None, "day", f"ostatnie {days} dni", {}, "high"
+    if re.search(r"ostatni(?:ego|ch|e)?\s+tygodni", ql):
+        return (today - timedelta(days=6)).isoformat(), today.isoformat(), None, "day", "ostatni tydzień", {}, "high"
 
     # "wczoraj" / "przedwczoraj"
     if re.search(r"\bwczoraj\b", ql):
