@@ -101,7 +101,7 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "qbot_tool": "qbot_action_execute",
         "description": (
             "WYKONAJ action_draft z qbot.query. Przyjmuje action_type z allowlisty "
-            "(nutrition_log_add, qcal_reminder_add, qcal_event_add, planning_fact_add). "
+            "(nutrition_log_add, qcal_reminder_add, qcal_event_add, qcal_event_update, qcal_event_cancel, planning_fact_add). "
             "WYMAGA: confirm=true, idempotency_key. "
             "Sprawdza bezpieczeństwo: allowlist, wymagane pola, duplicate key."
         ),
