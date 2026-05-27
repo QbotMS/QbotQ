@@ -32,6 +32,10 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         "garmin i cronometer", "cronometer i garmin",
         "kalorii z ostatnich", "kalorii w tym tygodniu", "kalorii z garmin",
         "kcal z ostatnich", "kcal z garmin",
+        "ile spaliłem", "ile spalilem", "spaliłem dzisiaj", "spalilem dzisiaj",
+        "ile kcal out", "kcal out dzisiaj", "wydatek energetyczny",
+        "na deficycie", "deficycie", "nadwyżkę", "nadwyzke",
+        "bilans netto", "bilans energetyczny",
     ]),
     ("ride_today", [
         "dzisiaj była jazda", "czy był trening", "dzisiejsza jazda",
@@ -807,6 +811,13 @@ def _read_garmin_energy(args: dict | None = None) -> dict[str, Any]:
         bmr_kcal = float(stats.get("bmrKilocalories", 0) or 0)
         total_kcal = float(stats.get("totalKilocalories", 0) or 0)
         resting_kcal = total_kcal - active_kcal if total_kcal else bmr_kcal
+
+        # Persist to daily_energy_expenditure for future queries
+        try:
+            from qbot_energy_store import ensure_daily_energy_expenditure
+            ensure_daily_energy_expenditure(day_str, reason="garmin_energy_read")
+        except Exception:
+            pass
 
         return {
             "tool": "qbot_garmin_energy_read",
@@ -2424,7 +2435,7 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         if _cfr is not None and len(_cfr) > 0:
             _canonical_forced = True
             _canonical_forced_readers = list(_cfr)
-    _nutrition_intents = {"nutrition_planning", "fueling", "current_day_meals"}
+    _nutrition_intents = {"nutrition_planning", "fueling", "current_day_meals", "calorie_balance"}
     _planning_intents = {"planning_notice"}
     _bypass_semantic = _canonical_forced or bool((_nutrition_intents | _planning_intents) & set(intents))
     if not _bypass_semantic:
