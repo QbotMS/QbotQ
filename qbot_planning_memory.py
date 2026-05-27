@@ -356,6 +356,7 @@ def reconcile_plans(fact_date: str, dry_run: bool = True) -> list[dict]:
     if not training_facts:
         return [{"date": fact_date, "reconciliation_type": "no_plans", "summary": "Brak planowanych treningów do reconciliacji."}]
 
+    actual_sessions = []
     try:
         c = _db()
         cur = c.cursor()

@@ -96,12 +96,14 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         "zaplanuj dietę", "plan posiłków", "meal plan",
         "rozpisz jedzenie", "rozplanuj posiłki", "co mogę zjeść",
         "zaplanuj mi jedzenie", "ułóż mi dietę",
+        "co powinienem zjeść", "co zjeść przed",
     ]),
     ("nutrition_daily", [
         "bilans kalorii", "kalorii", "kcal", "zjadł", "zjedzone", "posiłk",
         "co jadł", "co zjadł", "dieta", "makro", "żywieni", "nutrition",
         "carbs", "białko", "tłuszcz", "węglowodan",
         "zjadlem", "zjadłam", "jadlem", "jadłam", "jadl", "jedzeni",
+        "przed treningiem", "zjeść na trening", "jedzenie przed",
     ]),
     ("nutrition_range", [
         "kalorii z ostatnich", "w tym tygodniu", "podsumowanie tygodnia",
@@ -112,6 +114,11 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
     ]),
     ("fueling", [
         "żel", "fueling", "carbs na trasie", "węgli na trasie",
+        "węgli przed", "carbs przed", "przed jazdą",
+    ]),
+    ("planning_notice", [
+        "jadę dziś", "planuję trening", "rest day", "dzień odpoczynku",
+        "dziś odpoczynek", "dziś wolne", "bez treningu",
     ]),
     ("training_load", [
         "obciążenie treningowe", "tss", "ctl", "atl", "tsb",
@@ -427,6 +434,8 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "qcal_reminder_add_draft": [],
     "deadline_task_draft": [],
     "qcal_event_add_draft": [],
+    # Planning intents (no readers — handled by planning_fact_drafts)
+    "planning_notice": [],
 }
 
 
@@ -2098,7 +2107,7 @@ def _handle_write_draft(question: str, intents: list[str], date_ctx: dict) -> di
 
 def _tool_qbot_query(args: dict | None = None) -> dict[str, Any]:
     args = args or {}
-    return query(
+    result = query(
         question=str(args.get("query", "")).strip(),
         mode=str(args.get("mode", "read_only")),
         scope=str(args.get("scope", "all")),
@@ -2107,6 +2116,22 @@ def _tool_qbot_query(args: dict | None = None) -> dict[str, Any]:
         include_provenance=bool(args.get("include_provenance", True)),
         include_missing=bool(args.get("include_missing", True)),
     )
+    # Attach planning_fact_drafts (for both read and write results)
+    if "planning_fact_drafts" not in result:
+        try:
+            from qbot_planning_memory import detect_planning_facts
+            question = str(args.get("query", "")).strip()
+            pf_drafts = detect_planning_facts(question)
+            if pf_drafts:
+                result["planning_fact_drafts"] = pf_drafts
+                pf_lines = ["\n\nWykryłem założenie planistyczne:"]
+                for d in pf_drafts:
+                    pf_lines.append(f"- {d['title']} ({d['confidence']})")
+                pf_lines.append("Mogę to zapisać jako planning fact po potwierdzeniu.")
+                result["answer"] = (result.get("answer", "") or "") + "\n".join(pf_lines)
+        except Exception:
+            pass
+    return result
 
 
 def query(question: str, mode: str = "read_only", scope: str = "all", context: str = "",
@@ -2121,28 +2146,40 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     date_ctx = _resolve_date_context(context, question)
     write_result = _handle_write_draft(question, intents, date_ctx)
     if write_result is not None:
-        try:
-            from qbot_planning_memory import detect_planning_facts
-            pf_drafts = detect_planning_facts(question, date_ctx)
-            if pf_drafts:
-                write_result["planning_fact_drafts"] = pf_drafts
-        except Exception:
-            pass
         return write_result
 
     # ── Semantic Planner route ──
-    # Use context resolver to detect task types that bypass keyword classifier.
-    try:
-        from qbot_context_resolver import resolve as resolve_context
-        canonical = resolve_context(question, context)
-        task_type = canonical.get("task", {}).get("type", "")
-        # Route list, calendar context, range analysis → semantic planner
-        if task_type in ("route_list", "calendar_day_context", "range_analysis",
-                         "missing_data_check", "comparison", "trend", "lookup"):
-            from qbot_query_planner import semantic_query
-            return semantic_query(question, context, mode="read_only")
-    except Exception:
-        pass
+    # Only skip semantic planner when keyword classifier found nutrition/planning
+    # intents (keyword dispatch is more accurate for these). For all others,
+    # the semantic planner provides better domain classification.
+    _nutrition_intents = {"nutrition_planning", "nutrition_daily", "nutrition_range", "fueling"}
+    _planning_intents = {"planning_notice"}
+    _bypass_semantic = bool((_nutrition_intents | _planning_intents) & set(intents))
+    if not _bypass_semantic:
+        try:
+            from qbot_context_resolver import resolve as resolve_context
+            canonical = resolve_context(question, context)
+            task_type = canonical.get("task", {}).get("type", "")
+            # Route list, calendar context, range analysis → semantic planner
+            if task_type in ("route_list", "calendar_day_context", "range_analysis",
+                             "missing_data_check", "comparison", "trend", "lookup"):
+                from qbot_query_planner import semantic_query
+                sp_result = semantic_query(question, context, mode="read_only")
+                try:
+                    from qbot_planning_memory import detect_planning_facts
+                    pf_drafts = detect_planning_facts(question)
+                    if pf_drafts:
+                        sp_result["planning_fact_drafts"] = pf_drafts
+                        pf_lines = ["\n\nWykryłem założenie planistyczne:"]
+                        for d in pf_drafts:
+                            pf_lines.append(f"- {d['title']} ({d['confidence']})")
+                        pf_lines.append("Mogę to zapisać jako planning fact po potwierdzeniu.")
+                        sp_result["answer"] = (sp_result.get("answer", "") or "") + "\n".join(pf_lines)
+                except Exception:
+                    pass
+                return sp_result
+        except Exception:
+            pass
 
     # Fallback: keyword-based heuristic detection
     q = question.lower()
@@ -2158,7 +2195,20 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     if is_analytical and mode == "read_only":
         try:
             from qbot_query_planner import semantic_query
-            return semantic_query(question, context, mode="read_only")
+            sp_result = semantic_query(question, context, mode="read_only")
+            try:
+                from qbot_planning_memory import detect_planning_facts
+                pf_drafts = detect_planning_facts(question)
+                if pf_drafts:
+                    sp_result["planning_fact_drafts"] = pf_drafts
+                    pf_lines = ["\n\nWykryłem założenie planistyczne:"]
+                    for d in pf_drafts:
+                        pf_lines.append(f"- {d['title']} ({d['confidence']})")
+                    pf_lines.append("Mogę to zapisać jako planning fact po potwierdzeniu.")
+                    sp_result["answer"] = (sp_result.get("answer", "") or "") + "\n".join(pf_lines)
+            except Exception:
+                pass
+            return sp_result
         except Exception:
             pass  # fall through to keyword classifier
 
@@ -2183,6 +2233,37 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
 
     if not readers_to_call:
         readers_to_call = _INTENT_TO_READERS.get("general", ["status"])
+
+    # ── Planning notice ──
+    # Pure planning declarations (e.g. "Jadę dziś luźne Z2 45 min", "Dziś rest day")
+    # return early with planning_fact_drafts — no data readers to execute.
+    if "planning_notice" in intents:
+        response = {
+            "tool": "qbot.query", "safety_class": "READ_ONLY",
+            "mode": "read_only",
+            "query": question, "intents_detected": intents,
+            "readers_planned": [], "readers_used": [], "readers_count": 0,
+            "answer": "Wykryto deklarację planistyczną.",
+            "tables": [], "data": {},
+            "answers": [], "provenance": [],
+            "missing_fields": [], "limitations": [],
+            "date_resolution": date_ctx,
+            "status": "ok",
+            "confidence": "high",
+        }
+        try:
+            from qbot_planning_memory import detect_planning_facts
+            pf_drafts = detect_planning_facts(question)
+            if pf_drafts:
+                response["planning_fact_drafts"] = pf_drafts
+                pf_lines = ["\n\nWykryłem założenie planistyczne:"]
+                for d in pf_drafts:
+                    pf_lines.append(f"- {d['title']} ({d['confidence']})")
+                pf_lines.append("Mogę to zapisać jako planning fact po potwierdzeniu.")
+                response["answer"] = (response.get("answer", "") or "") + "\n".join(pf_lines)
+        except Exception:
+            pass
+        return response
 
     # ── plan_only ──
     if mode == "plan_only":
@@ -2671,24 +2752,19 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         ]
         response.setdefault("limitations", []).append("qbot.query can parse GPX summary, but cannot stage full GPX yet")
 
-    # ── Planning fact detection (read-only, never writes) ────────────────
-    try:
-        from qbot_planning_memory import detect_planning_facts
-        pf_drafts = detect_planning_facts(question, date_ctx)
-        if pf_drafts:
-            response["planning_fact_drafts"] = pf_drafts
-            pf_lines = ["\n\nWykryłem założenie planistyczne:"]
-            for d in pf_drafts:
-                fj = d.get("fact_json", {})
-                fj_summary = " | ".join(f"{k}={v}" for k, v in fj.items() if not isinstance(v, list) and not isinstance(v, bool))
-                if not fj_summary:
-                    fj_summary = ", ".join(f"{k}:{v}" for k, v in fj.items())
-                pf_lines.append(f"- {d['title']} ({d['confidence']})")
-                if fj_summary:
-                    pf_lines.append(f"  {fj_summary[:200]}")
-            pf_lines.append("Mogę to zapisać jako planning fact po potwierdzeniu.")
-            response["answer"] = (response.get("answer", "") or "") + "\n".join(pf_lines)
-    except Exception:
-        pass
+    # Attach planning_fact_drafts (detected from query text, never auto-saved)
+    if "planning_fact_drafts" not in response:
+        try:
+            from qbot_planning_memory import detect_planning_facts
+            pf_drafts = detect_planning_facts(question)
+            if pf_drafts:
+                response["planning_fact_drafts"] = pf_drafts
+                pf_lines = ["\n\nWykryłem założenie planistyczne:"]
+                for d in pf_drafts:
+                    pf_lines.append(f"- {d['title']} ({d['confidence']})")
+                pf_lines.append("Mogę to zapisać jako planning fact po potwierdzeniu.")
+                response["answer"] = (response.get("answer", "") or "") + "\n".join(pf_lines)
+        except Exception:
+            pass
 
     return response
