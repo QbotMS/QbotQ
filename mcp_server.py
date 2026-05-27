@@ -26,7 +26,7 @@ load_dotenv()
 db.init()
 
 from mcp.server.fastmcp import FastMCP
-mcp = FastMCP("Q — Rowerowy Asystent", host="0.0.0.0", port=8000)
+mcp = FastMCP("Q — Rowerowy Asystent", host="127.0.0.1", port=8000)
 
 ATHLETE_ID = os.getenv("INTERVALS_ATHLETE_ID", "")
 API_KEY    = os.getenv("INTERVALS_API_KEY", "")

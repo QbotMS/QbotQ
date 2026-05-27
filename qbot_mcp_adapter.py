@@ -16,23 +16,14 @@ from qbot_artifact_tools import (
     _tool_qbot_artifact_get,
     _tool_qbot_artifact_list,
 )
-from qbot_external_llm_tools import _tool_qbot_external_context_bundle
 from qbot_external_llm_tools import _tool_qbot_external_tool_plan
 from qbot_llm_planner import _tool_qbot_llm_run_query, _tool_qbot_tool_policy_list
 from qbot_ops_tools import _tool_qbot_operator_final_smoke_test
-from qbot_roadmap_runner import (
-    _tool_qbot_roadmap_runner_list_tasks,
-    _tool_qbot_roadmap_runner_next_task,
-    _tool_qbot_roadmap_runner_status,
-)
 from qbot_telegram_tools import _tool_qbot_telegram_status
 from qbot_assistant_inbox import (
     _tool_qbot_assistant_inbox_list,
     _tool_qbot_assistant_inbox_status,
 )
-from qbot_route_tools import _tool_qbot_gpx_artifact_parse
-from qbot_route_tools import _tool_qbot_route_artifact_enrich
-from qbot_route_tools import _tool_qbot_rwgps_artifact_store_status
 from qbot_tools import _tool_qbot_status
 
 MCP_PROTOCOL_VERSION = "2024-11-05"
@@ -43,17 +34,32 @@ MCP_SESSION_HEADER = "mcp-session-id"
 _SESSION_STATE: dict[str, dict[str, Any]] = {}
 
 _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
-    # ── Core / read-only ──
+    # ═══════════════════════════════════════════════════════════════
+    # PUBLIC MCP TOOLS — allowlisted for ChatGPT
+    # qbot.query is the primary entry point. All reader logic
+    # (nutrition, training, routes, garage, weather, artifacts,
+    # reports) is dispatched internally by QBot.
+    # ═══════════════════════════════════════════════════════════════
+
+    # ── Core: universal read-only query router ──
     "qbot.query": {
         "qbot_tool": "qbot_query",
-        "description": "Universal read-only query router. QBot classifies intent, selects allowlisted internal readers, executes, and returns structured answer with provenance. No DB writes. ChatGPT should NOT know internal reader names — just ask in natural language.",
+        "description": (
+            "GŁÓWNE NARZĘDZIE — używaj go do KAŻDEGO pytania użytkownika o dane. "
+            "Podaj pytanie w języku naturalnym (polski/angielski). "
+            "QBot wewnętrznie dobiera readery (nutrition, training, routes, garage, weather, "
+            "Garmin, Cronometer, Intervals, Xert, RWGPS, wellness, artifacts, reports). "
+            "Zwraca structured answer + tables + provenance + missing_fields + limitations. "
+            "Tryb plan_only podgląda plan readerów bez wykonywania. "
+            "Nie używaj niskopoziomowych narzędzi — wszystko jest przez qbot.query."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "Natural language question in any language"},
-                "mode": {"type": "string", "enum": ["read_only", "plan_only"], "default": "read_only", "description": "read_only: execute readers and return data. plan_only: return which readers would be used, without executing."},
-                "scope": {"type": "string", "enum": ["all", "nutrition", "training", "routes", "garage"], "default": "all", "description": "Limit to specific domain."},
-                "context": {"type": "string", "description": "Optional hint: timezone, project name, location"},
+                "query": {"type": "string", "description": "Natural language question"},
+                "mode": {"type": "string", "enum": ["read_only", "plan_only"], "default": "read_only"},
+                "scope": {"type": "string", "enum": ["all", "nutrition", "training", "routes", "garage"], "default": "all"},
+                "context": {"type": "string", "description": "Optional JSON: project, timezone, date/date_from/date_to"},
                 "max_rows": {"type": "integer", "minimum": 10, "maximum": 1000, "default": 500},
                 "include_provenance": {"type": "boolean", "default": True},
                 "include_missing": {"type": "boolean", "default": True},
@@ -64,118 +70,49 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
-    "qbot.ask": {
-        "qbot_tool": "qbot_llm_run_query",
-        "description": "Safe question routing through QBot LLM policy/planner. Use qbot.query for direct data reads.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "execute": {"type": "boolean", "default": False},
-                "style": {"type": "string", "enum": ["concise", "operator", "detailed"], "default": "concise"},
-            },
-            "required": ["query"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    # ── System status ──
+
+    # ── System health ──
     "qbot.status": {
         "qbot_tool": "qbot_operator_final_smoke_test",
-        "description": "Final operational smoke test for QBot.",
+        "description": (
+            "Globalny smoke test QBot — sprawdza API, DB, guard, usługi, backup. "
+            "Używaj tylko do diagnostyki systemu, nie do pytań o dane."
+        ),
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+
+    # ── Readiness (optional — detailed status with blockers) ──
     "qbot.readiness": {
         "qbot_tool": "qbot_readiness_report",
-        "description": "Readiness report for the local QBot stack.",
+        "description": (
+            "Szczegółowy raport gotowości QBot — lista blokerów, status integracji, "
+            "rekomendowane akcje. Bardziej szczegółowy niż qbot.status."
+        ),
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
+
+    # ── Tool policy audit (optional) ──
     "qbot.tool_policy": {
         "qbot_tool": "qbot_tool_policy_list",
-        "description": "List QBot tool policy metadata.",
+        "description": "Lista polityk narzędzi QBot — do audytu dostępności i bezpieczeństwa.",
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
-    # ── Operator ──
-    "qbot.runbook": {
-        "qbot_tool": "qbot_operator_runbook",
-        "description": "Execute or preview a curated QBot operator runbook.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "execute": {"type": "boolean", "default": False},
-            },
-            "required": ["name"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.context_bundle": {
-        "qbot_tool": "qbot_external_context_bundle",
-        "description": "Build a sanitized context bundle for external ChatGPT usage.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "topic": {"type": "string"},
-                "max_chars": {"type": "integer", "minimum": 100, "maximum": 20000, "default": 12000},
-            },
-            "required": ["topic"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    # ── Artifacts ──
-    "qbot.artifact_read": {
-        "qbot_tool": "qbot_artifact_read",
-        "description": "Read a QBot artifact file by relative path (e.g. 'exports/rwgps/rwgps_55256628.gpx'). Returns content as text or base64.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "relative_path": {"type": "string"},
-                "return_mode": {"type": "string", "enum": ["text", "base64"], "default": "text"},
-            },
-            "required": ["relative_path"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.artifact_create": {
-        "qbot_tool": "qbot_artifact_create",
-        "description": "Create a safe PostgreSQL artifact.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "artifact_type": {"type": "string", "default": "report"},
-                "title": {"type": "string"},
-                "content": {"type": "string"},
-                "tags": {"type": "array", "items": {"type": "string"}},
-                "source_plan_id": {"type": "integer"},
-            },
-            "required": ["title", "content"],
-            "additionalProperties": False,
-        },
-        "safety_class": "WRITE_SAFE",
-        "auth_required": True,
-    },
+
     # ── Task queue ──
     "qbot.task_queue_add": {
         "qbot_tool": "qbot_task_queue_add",
-        "description": "Add a task to QBot queue for CLI execution.",
+        "description": "Dodaj zadanie do kolejki QBot do wykonania przez CLI/admina.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "title": {"type": "string", "description": "Task title"},
-                "description": {"type": "string", "description": "What to do"},
+                "title": {"type": "string", "description": "Tytuł zadania"},
+                "description": {"type": "string", "description": "Co ma być zrobione"},
                 "style": {"type": "string", "default": "short"},
                 "tools_to_use": {"type": "array", "items": {"type": "string"}},
             },
@@ -187,7 +124,7 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
     },
     "qbot.task_queue_list": {
         "qbot_tool": "qbot_task_queue_list",
-        "description": "List tasks in the QBot queue.",
+        "description": "Lista zadań w kolejce QBot.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -201,14 +138,14 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
     },
     "qbot.task_queue_next": {
         "qbot_tool": "qbot_task_queue_next",
-        "description": "Get the next pending task for CLI execution.",
+        "description": "Pobierz następne zadanie pending do wykonania.",
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
     "qbot.task_queue_status": {
         "qbot_tool": "qbot_task_queue_status",
-        "description": "Update task status after execution.",
+        "description": "Aktualizuj status zadania po wykonaniu (pass/blocked/fail/in_progress).",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -223,64 +160,36 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "safety_class": "WRITE_SAFE",
         "auth_required": True,
     },
-    # ── RWGPS exports ──
-    "qbot.rwgps_route_export_file": {
-        "qbot_tool": "qbot_rwgps_route_export_file",
-        "description": "Export a RWGPS route to a local GPX/TCX/JSON artifact file. Supports return_mode: metadata, text, base64.",
+
+    # ── Artifacts (optional — read-only artifact access) ──
+    "qbot.artifact_list": {
+        "qbot_tool": "qbot_artifact_list",
+        "description": (
+            "Lista artefaktów QBot z opcjonalnym filtrem typu. "
+            "Read-only — nie tworzy ani nie modyfikuje plików."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "route_id": {"type": "string"},
-                "format": {"type": "string", "enum": ["gpx", "tcx", "json"], "default": "gpx"},
-                "return_mode": {"type": "string", "enum": ["metadata", "text", "base64"], "default": "metadata"},
+                "artifact_type": {"type": "string", "description": "Filtr typu: report/export/log/state"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
             },
-            "required": ["route_id"],
             "additionalProperties": False,
         },
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
-    "qbot.rwgps_route_export_links": {
-        "qbot_tool": "qbot_rwgps_route_export_links",
-        "description": "Get RWGPS export availability and download links for GPX/TCX/FIT by route_id.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"route_id": {"type": "string"}},
-            "required": ["route_id"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    # ── Technical route tools ──
-    "qbot.gpx_artifact_parse": {
-        "qbot_tool": "qbot_gpx_artifact_parse",
-        "description": "Parse a stored GPX artifact and return normalized track metadata.",
+    "qbot.artifact_get": {
+        "qbot_tool": "qbot_artifact_get",
+        "description": (
+            "Pobiera artefakt QBot po ID. Read-only — zwraca pełną treść do 100 KB."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "artifact_path": {"type": "string"},
-                "return_mode": {"type": "string", "enum": ["summary"], "default": "summary"},
+                "id": {"type": "integer", "description": "Artifact ID"},
             },
-            "required": ["artifact_path"],
-            "additionalProperties": False,
-        },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-    "qbot.route_artifact_enrich": {
-        "qbot_tool": "qbot_route_artifact_enrich",
-        "description": "Enrich a route artifact with summary metadata and optional surface profile.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "artifact_path": {"type": "string"},
-                "enrich": {"type": "array", "items": {"type": "string"}, "default": ["summary"]},
-                "surface_source": {"type": "string", "enum": ["auto", "gpx", "rwgps", "osm", "unknown"], "default": "auto"},
-                "sample_every_m": {"type": "integer", "minimum": 100, "maximum": 5000, "default": 100},
-                "return_mode": {"type": "string", "enum": ["summary"], "default": "summary"},
-            },
-            "required": ["artifact_path"],
+            "required": ["id"],
             "additionalProperties": False,
         },
         "safety_class": "READ_ONLY",
@@ -288,10 +197,24 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
     },
 }
 
-# Internal readers (not exposed as MCP tools, accessed via qbot.query):
-#   GarminReader, CronometerReader, NutritionDBReader, IntervalsReader, XertReader,
-#   RWGPSReader, GarageReader, GearReader, WeatherReader, DailyReportReader,
-#   RideReportReader, WellnessReader, ArtifactIndexReader, ProjectReader
+# Internal readers & tools (NOT exposed to MCP — accessed exclusively via qbot.query):
+#   GarminReader      — Garmin energy, sleep, HRV, Body Battery
+#   CronometerReader  — daily nutrition import
+#   NutritionDBReader — meals, hydration, fueling
+#   IntervalsReader   — activities, wellness, events
+#   XertReader        — FTP, freshness, fatigue
+#   RWGPSReader       — route listing, export, GPX parse, surface enrichment
+#   GarageReader      — bike components, gear
+#   GearReader        — trip packing lists
+#   WeatherReader     — current + forecast
+#   DailyReportReader — daily morning report
+#   RideReportReader  — ride protocol
+#   WellnessReader    — DB wellness queries
+#   ArtifactIndexReader — artifact list/get
+#   ProjectReader     — codebase introspection
+#
+# qbot.query is the SINGLE entry point for all user data questions.
+# ChatGPT must NOT know or directly call internal readers.
 
 
 
@@ -481,13 +404,9 @@ def _tool_by_name(name: str):
         "qbot_operator_final_smoke_test": _tool_qbot_operator_final_smoke_test,
         "qbot_readiness_report": _tool_qbot_readiness_report,
         "qbot_llm_run_query": _tool_qbot_llm_run_query,
-        "qbot_external_context_bundle": _tool_qbot_external_context_bundle,
         "qbot_artifact_create": _tool_qbot_artifact_create,
         "qbot_artifact_list": _tool_qbot_artifact_list,
         "qbot_artifact_get": _tool_qbot_artifact_get,
-        "qbot_gpx_artifact_parse": _tool_qbot_gpx_artifact_parse,
-        "qbot_route_artifact_enrich": _tool_qbot_route_artifact_enrich,
-        "qbot_rwgps_artifact_store_status": _tool_qbot_rwgps_artifact_store_status,
         "qbot_tool_policy_list": _tool_qbot_tool_policy_list,
         "qbot_telegram_status": _tool_qbot_telegram_status,
         "qbot_mcp_status": _tool_qbot_mcp_status,
@@ -612,8 +531,10 @@ def _validate_mcp_access(method: str, headers: dict[str, str], *, tool_name: str
     meta = _MCP_TOOL_MAP.get(tool_name)
     if not meta:
         return False, "tool not allowed"
-    if meta.get("auth_required", False) and _token_configured() and not _auth_header_ok(headers):
-        return False, "missing or invalid MCP token"
+    # Require Bearer token for ALL tools/call when MCP_SECRET is configured.
+    # Without configured token → open mode (transition/development).
+    if _token_configured() and not _auth_header_ok(headers):
+        return False, "missing or invalid MCP Bearer token"
     return True, None
 
 
@@ -683,21 +604,7 @@ def handle_mcp_request(
         session_id = headers.get(MCP_SESSION_HEADER, "")
         clean_args = dict(arguments)
 
-        if name == "qbot.ask":
-            query = str(clean_args.get("query", "")).strip()
-            execute = bool(clean_args.get("execute", False))
-            style = str(clean_args.get("style", "concise"))
-            if not query:
-                result = {"tool": name, "status": "error", "error": "query required"}
-            else:
-                if execute:
-                    result = _tool_qbot_llm_run_query({"query": query, "execute": True})
-                else:
-                    from qbot_query_processor import process_query
-                    result = process_query(query, execute=False)
-                result["tool"] = "qbot.ask"
-                result["style"] = style
-        elif name == "qbot.query":
+        if name == "qbot.query":
             query = str(clean_args.get("query", "")).strip()
             if not query:
                 result = {"tool": "qbot.query", "status": "error", "error": "query required"}
@@ -712,70 +619,16 @@ def handle_mcp_request(
                     include_provenance=bool(clean_args.get("include_provenance", True)),
                     include_missing=bool(clean_args.get("include_missing", True)),
                 )
-        elif name == "qbot.runbook":
-            runbook_name = str(clean_args.get("name", "")).strip()
-            execute = bool(clean_args.get("execute", False))
-            from qbot_operator_tools import _tool_qbot_operator_runbook
-            result = _tool_qbot_operator_runbook({"name": runbook_name, "execute": execute})
-            result["tool"] = "qbot.runbook"
-        elif name == "qbot.context_bundle":
-            topic = str(clean_args.get("topic", "")).strip()
-            max_chars = clean_args.get("max_chars", 12000)
-            if not topic:
-                result = {"tool": "qbot.context_bundle", "status": "error", "error": "topic required"}
+        elif name == "qbot.artifact_list":
+            result = _tool_qbot_artifact_list(clean_args)
+            result["tool"] = "qbot.artifact_list"
+        elif name == "qbot.artifact_get":
+            artifact_id = clean_args.get("id")
+            if not artifact_id:
+                result = {"tool": "qbot.artifact_get", "status": "error", "error": "id required"}
             else:
-                result = _tool_qbot_external_context_bundle({"topic": topic, "max_chars": max_chars})
-                result["tool"] = "qbot.context_bundle"
-        elif name == "qbot.rwgps_route_export_file":
-            route_id = str(clean_args.get("route_id", "")).strip()
-            fmt = str(clean_args.get("format", "gpx")).strip().lower() or "gpx"
-            if not route_id:
-                result = {"tool": "qbot.rwgps_route_export_file", "status": "error", "error": "route_id required"}
-            else:
-                from tools.rwgps.client import export_route_to_artifact as rwgps_export_route_to_artifact
-                return_mode = clean_args.get("return_mode")
-                result = rwgps_export_route_to_artifact(route_id, fmt=fmt, return_mode=return_mode)
-                result["tool"] = "qbot.rwgps_route_export_file"
-        elif name == "qbot.artifact_read":
-            relative_path = str(clean_args.get("relative_path", "")).strip()
-            return_mode = str(clean_args.get("return_mode", "text")).strip().lower() or "text"
-            if not relative_path:
-                result = {"tool": "qbot.artifact_read", "status": "error", "error": "relative_path required"}
-            else:
-                from mcp_server import validate_artifact_relative_path, ARTIFACT_ROOT
-                try:
-                    normalized = validate_artifact_relative_path(relative_path)
-                    artifact_path = ARTIFACT_ROOT / normalized
-                    if not artifact_path.exists():
-                        result = {"tool": "qbot.artifact_read", "status": "NOT_FOUND", "error": "artifact does not exist", "relative_path": relative_path}
-                    elif not os.access(artifact_path, os.R_OK):
-                        result = {"tool": "qbot.artifact_read", "status": "PERMISSION_DENIED", "error": "artifact not readable", "relative_path": relative_path}
-                    else:
-                        data = artifact_path.read_bytes()
-                        if return_mode == "base64":
-                            import base64
-                            result = {
-                                "tool": "qbot.artifact_read",
-                                "status": "ok",
-                                "relative_path": relative_path,
-                                "size_bytes": len(data),
-                                "content_base64": base64.b64encode(data).decode("ascii"),
-                            }
-                        else:
-                            text = data.decode("utf-8", errors="replace")
-                            result = {
-                                "tool": "qbot.artifact_read",
-                                "status": "ok",
-                                "relative_path": relative_path,
-                                "size_bytes": len(data),
-                                "content": text,
-                            }
-                except ValueError as exc:
-                    result = {"tool": "qbot.artifact_read", "status": "INVALID_PATH", "error": str(exc), "relative_path": relative_path}
-                except FileNotFoundError as exc:
-                    result = {"tool": "qbot.artifact_read", "status": "NOT_FOUND", "error": str(exc), "relative_path": relative_path}
-                except PermissionError as exc:
-                    result = {"tool": "qbot.artifact_read", "status": "PERMISSION_DENIED", "error": str(exc), "relative_path": relative_path}
+                result = _tool_qbot_artifact_get({"id": int(artifact_id)})
+                result["tool"] = "qbot.artifact_get"
         elif name == "qbot.artifact_create" and not _token_configured():
             result = {
                 "tool": name,

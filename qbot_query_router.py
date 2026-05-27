@@ -101,6 +101,12 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         "pogoda", "temperatura", "wiatr", "deszcz", "weather",
         "prognoza", "forecast",
     ]),
+    ("rwgps_route_list_only", [
+        "wypisz trasy", "pokaż najnowsze trasy", "lista tras rwgps",
+        "pokaż 3 najnowsze trasy", "jakie trasy są dostępne",
+        "routes list", "ostatnie trasy", "najnowsze trasy",
+        "tylko lista tras", "wypisz ostatnie", "pokaż ostatnie trasy",
+    ]),
     ("rwgps_route", [
         "trasa", "trasy", "rwgps", "route", "kolekcj",
         "nawierzchnia trasy", "podziel trasę", "etap",
@@ -141,16 +147,62 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
 ]
 
 
+def _detect_negations(query: str) -> set[str]:
+    """Detect negated reader categories from query text.
+
+    Returns set of categories to suppress:
+      export  — "bez eksportu", "bez GPX", "nie eksportuj"
+      gpx     — "bez GPX", "bez analizy GPX"
+      artifact— "bez analizy artefaktów"
+      enrich  — "bez wzbogacania", "bez surface"
+    """
+    q = query.lower()
+    suppressed: set[str] = set()
+    if re.search(r"bez\s+eksportu|bez\s+exportu|nie\s+eksportuj|nie\s+exportuj|bez\s+gpx\b|bez\s+tcx|bez\s+fit\b", q):
+        suppressed.add("export")
+        suppressed.add("gpx")
+    if re.search(r"bez\s+gpx|bez\s+analizy\s+gpx|nie\s+analizuj\s+gpx|bez\s+plików\s+gpx", q):
+        suppressed.add("gpx")
+    if re.search(r"bez\s+analizy\s+artefakt|bez\s+artefakt|nie\s+analizuj\s+artefakt|tylko\s+lista", q):
+        suppressed.add("artifact")
+    if re.search(r"bez\s+wzbogac|bez\s+surface|bez\s+nawierzchni|bez\s+analizy\s+trasy", q):
+        suppressed.add("enrich")
+    if re.search(r"bez\s+szczegół|bez\s+danych\s+trasy|tylko\s+lista\s+tras|tylko\s+podstawowe", q):
+        suppressed.add("detail")
+    return suppressed
+
+
 def classify_intent(query: str) -> list[str]:
     q = query.lower()
+    negations = _detect_negations(query)
     intents: list[str] = []
     for intent, keywords in _INTENT_PATTERNS:
+        # Skip intents suppressed by negations
+        if "export" in negations and intent in ("rwgps_export",):
+            continue
+        if "gpx" in negations and intent in ("rwgps_export",):
+            continue
+        if "artifact" in negations and intent in ("artifact_read",):
+            continue
+        if "enrich" in negations and intent in ("route_surface", "route_surface_profile"):
+            continue
+        if "detail" in negations and intent in ("rwgps_route",):
+            continue
         for kw in keywords:
             if kw in q:
                 intents.append(intent)
                 break
     if not intents:
         intents.append("general")
+
+    # Post-classification refinement:
+    # rwgps_route_list_only takes precedence over rwgps_route
+    if "rwgps_route_list_only" in intents and "rwgps_route" in intents:
+        intents.remove("rwgps_route")
+    # rwgps_route_lookup (by name) is more specific than rwgps_route
+    if "rwgps_route_lookup" in intents and "rwgps_route" in intents:
+        intents.remove("rwgps_route")
+
     return intents
 
 
@@ -232,6 +284,7 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "xert": ["xert_readiness", "xert_config"],
     "intervals": ["intervals_wellness", "intervals_config", "wellness_day"],
     "weather": ["weather_current", "weather_forecast"],
+    "rwgps_route_list_only": ["rwgps_route_list"],
     "rwgps_route": ["rwgps_route_get", "rwgps_route_list", "gpx_artifact_parse", "route_artifact_enrich"],
     "rwgps_search": ["rwgps_route_search", "rwgps_route_list"],
     "rwgps_export": ["rwgps_export_links", "rwgps_route_get"],
@@ -1104,6 +1157,22 @@ def _synthesize_answer(question: str, answers: list[dict], missing: list[str],
                 parts.append(f"Trasa: {route.get('name')} ID={route.get('id', route.get('route_id', '?'))}")
             elif rlist:
                 parts.append(f"Trasy: {len(rlist)} znalezionych")
+        elif reader == "rwgps_route_list":
+            rlist = data.get("routes", [])
+            if rlist:
+                previews = []
+                for r in rlist[:5]:
+                    name = r.get("name", "?")
+                    rid = r.get("id", "")
+                    dist = r.get("distance_m") or r.get("distance", 0)
+                    elev = r.get("elevation_gain_m") or r.get("elevation_gain", 0)
+                    previews.append(
+                        f"{name} (ID={rid}, {float(dist)/1000:.1f}km, +{elev}m)"
+                    )
+                tail = f" +{len(rlist)-5} więcej" if len(rlist) > 5 else ""
+                parts.append(f"Znaleziono {len(rlist)} tras: {'; '.join(previews)}{tail}")
+            else:
+                parts.append("Brak tras RWGPS")
         elif reader == "rwgps_export_file":
             parts.append(
                 f"RWGPS: {data.get('distance_km', '?')} km, "
@@ -1225,26 +1294,49 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     if mode == "plan_only":
         reader_details = []
         missing_caps: list[str] = []
+        negations = _detect_negations(question)
+        resolved_rid = _resolve_route_id(question)
         for rn in readers_to_call:
             reg = _READER_REGISTRY.get(rn, {})
             tool = reg.get("tool", "?")
             if tool == "?" or tool not in _TOOL_DISPATCH:
                 missing_caps.append(f"{rn}: reader or tool missing")
+                continue
+
+            # Apply parameter-requirement filter
+            params = reg.get("params", {})
+            skipped_reason = None
+
+            if "route_id" in params and not resolved_rid:
+                skipped_reason = "no route_id in query"
+            elif "artifact_path" in params:
+                has_artifact = bool(re.search(r"(exports/rwgps/rwgps_\d+\.\w+)", question))
+                if not has_artifact and not resolved_rid:
+                    skipped_reason = "no artifact_path available"
+            if rn in ("rwgps_export_links", "rwgps_export_file") and "export" in negations:
+                skipped_reason = "export suppressed by negation"
+
+            if skipped_reason:
+                missing_caps.append(f"{rn}: skipped — {skipped_reason}")
+                continue
+
             reader_details.append({
                 "reader": rn,
                 "category": reg.get("category", "?"),
                 "providers": reg.get("providers", []),
                 "available": tool in _TOOL_DISPATCH,
             })
+
+        planned_readers = [rd["reader"] for rd in reader_details]
         return {
             "tool": "qbot.query", "safety_class": "READ_ONLY",
             "status": "partial" if missing_caps else "ok",
             "mode": "plan_only",
             "query": question, "intents_detected": intents,
-            "readers_planned": readers_to_call, "readers_count": len(readers_to_call),
+            "readers_planned": planned_readers, "readers_count": len(planned_readers),
             "readers_used": [],
             "plan": reader_details,
-            "answer": f"Plan: {len(readers_to_call)} readerów. {'Brakujące: ' + ', '.join(missing_caps) if missing_caps else 'Wszystkie dostępne.'}",
+            "answer": f"Plan: {len(planned_readers)} readerów. {'Brakujące: ' + ', '.join(missing_caps) if missing_caps else 'Wszystkie dostępne.'}",
             "tables": [], "data": {},
             "provenance": [], "missing_fields": missing_caps,
             "missing_capabilities": missing_caps,
@@ -1290,6 +1382,38 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
             continue
 
         try:
+            # ── Parameter-requirement filter ──────────────────────────
+            # Skip readers whose required params aren't available and
+            # can't be resolved from the query or chained results.
+            reader_params = reg["params"]
+            reader_category = reg.get("category", "")
+
+            # route_id-requiring readers — skip if no route_id resolvable
+            if "route_id" in reader_params:
+                if not resolved_route_id and not _resolve_route_id(question):
+                    limitations.append(
+                        f"{reader_name}: skipped — no route_id in query or context"
+                    )
+                    continue
+
+            # artifact_path-requiring readers — skip if no path
+            if "artifact_path" in reader_params:
+                has_artifact = bool(resolved_artifact_path) or bool(
+                    re.search(r"(exports/rwgps/rwgps_\d+\.\w+)", question)
+                )
+                if not has_artifact and not resolved_route_id:
+                    limitations.append(
+                        f"{reader_name}: skipped — no artifact_path available"
+                    )
+                    continue
+
+            # Export readers — skip if "bez eksportu" / negations suppress
+            if reader_name in ("rwgps_export_links", "rwgps_export_file"):
+                negs = _detect_negations(question)
+                if "export" in negs:
+                    limitations.append(f"{reader_name}: skipped — export suppressed by negation")
+                    continue
+
             args = _resolve_tool_arg(tool_name, reg["params"], question, date_ctx)
 
             # Chain resolved route_id into args
