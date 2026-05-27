@@ -89,6 +89,10 @@ def read_body_composition(start_date: str, end_date: str) -> list[dict]:
             bm = _safe_float(entry.get("boneMass"))
             mm = _safe_float(entry.get("muscleMass"))
 
+            # Convert grams to kg for muscle/bone mass
+            if mm and mm > 500: mm = mm / 1000.0
+            if bm and bm > 500: bm = bm / 1000.0
+
             # Only include if there's body composition data beyond weight
             if bmi or bf or bw or bm or mm:
                 results.append({

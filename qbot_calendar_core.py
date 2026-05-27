@@ -375,6 +375,16 @@ def build_snapshot(date_str: str) -> dict[str, Any]:
         total_fields += 1
         if ts: found_fields += 1
 
+    # Xert metrics
+    if _table_exists("xert_metrics"):
+        xm = _safe_query("SELECT * FROM xert_metrics WHERE date=%s ORDER BY imported_at DESC LIMIT 1", (date_str,))
+        snap["xert"] = xm[0] if xm else None
+        source_tables.append("xert_metrics")
+        total_fields += 1
+        if xm: found_fields += 1
+    else:
+        missing_tables.append("xert_metrics")
+
     # Calendar day metadata
     day = day_get(date_str)
     if day:
@@ -583,20 +593,183 @@ def import_history_per_source(source: str, date_from: str, date_to: str, dry_run
             result["errors"].append(f"intervals-comments failed: {e}")
 
     elif source == "xert":
-        xpw = os.getenv("XERT_PASSWORD", "")
-        xu = os.getenv("XERT_USERNAME", "")
-        if not xpw or not xu:
-            result["sections"]["xert_metrics"] = {
-                "count": 0,
-                "status": "credentials_missing",
-                "note": "XERT_USERNAME and XERT_PASSWORD not set in .env. Configure Xert credentials to enable form/training metrics import.",
-            }
-        else:
-            result["sections"]["xert_metrics"] = {"count": 0, "status": "reader_not_implemented"}
-        result["imported"] = False
+        try:
+            import httpx, base64
+            xert_email = os.getenv("XERT_EMAIL", "")
+            xert_pw = os.getenv("XERT_PASSWORD", "")
+            if not xert_email or not xert_pw:
+                result["sections"]["xert_metrics"] = {"count": 0, "status": "credentials_missing"}
+            else:
+                with httpx.Client(timeout=15) as client:
+                    token_r = client.post(
+                        "https://www.xertonline.com/oauth/token",
+                        auth=("xert_public", "xert_public"),
+                        data={"grant_type": "password", "username": xert_email, "password": xert_pw},
+                    )
+                    token_r.raise_for_status()
+                    token = token_r.json()["access_token"]
+                    training_r = client.get(
+                        "https://www.xertonline.com/oauth/training",
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+                    training_r.raise_for_status()
+                    training_data = training_r.json()
+                    advice = training_data.get("advice", {})
+                    sig = advice.get("signature", {})
+                    ts = advice.get("training_status", {})
 
-    else:
-        result["sections"]["unknown"] = {"count": 0, "status": "unknown_source"}
+                    today = date.today().isoformat()
+                    entry = {
+                        "date": today,
+                        "source": "xert",
+                        "threshold_power_w": round(sig.get("ftp", 0), 1) if sig.get("ftp") else None,
+                        "high_intensity_energy_kj": round((sig.get("atc", 0) or 0) / 1000, 1),
+                        "peak_power_w": round(sig.get("pp", 0), 1) if sig.get("pp") else None,
+                        "form_score": None,
+                        "freshness": ts.get("freshness"),
+                        "fatigue": ts.get("fatigue"),
+                        "fitness": ts.get("fitness"),
+                        "strain": ts.get("strain"),
+                        "difficulty_score": ts.get("difficulty_score"),
+                        "focus": ts.get("focus_name"),
+                        "status": ts.get("status"),
+                        "training_load": ts.get("load"),
+                        "raw_json": training_data,
+                    }
+
+                    result["sections"]["xert_metrics"] = {"count": 1, "sample": [entry], "all": [entry], "table": "xert_metrics"}
+
+                    if not dry_run:
+                        with _conn() as conn:
+                            conn.execute(
+                                """INSERT INTO xert_metrics (date, source, threshold_power_w,
+                                   high_intensity_energy_kj, peak_power_w, training_load,
+                                   freshness, fatigue, fitness, strain, difficulty_score,
+                                   focus, status, raw_json)
+                                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                                (today, "xert", entry["threshold_power_w"], entry["high_intensity_energy_kj"],
+                                 entry["peak_power_w"], entry["training_load"], entry["freshness"],
+                                 entry["fatigue"], entry["fitness"], entry["strain"],
+                                 entry["difficulty_score"], entry["focus"], entry["status"],
+                                 json.dumps(entry["raw_json"])),
+                            )
+                            conn.commit()
+                        result["imported"] = True
+                        result["sections"]["xert_metrics"]["note"] = "Xert daily snapshot imported"
+                    else:
+                        result["sections"]["xert_metrics"]["note"] = "Xert API ok — current-day form data. No historical API available."
+                        result["imported"] = False
+        except Exception as e:
+            result["errors"].append(f"Xert API: {str(e)[:200]}")
+            result["sections"]["xert_metrics"] = {"count": 0, "status": "api_error", "detail": str(e)[:100]}
+        result["imported"] = result.get("imported", False)
+
+    elif source == "intervals-comments":
+        try:
+            from qbot_garmin_history import read_intervals_comments
+            comments = read_intervals_comments(date_from, date_to)
+            if comments and "error" in comments[0]:
+                result["errors"].append(comments[0]["error"])
+            else:
+                high = [c for c in comments if c.get("confidence") == "high"]
+                manual = [c for c in comments if c.get("manual_review_required")]
+                result["sections"]["intervals_nutrition_comments"] = {
+                    "total": len(comments),
+                    "high_confidence": len(high),
+                    "needs_manual_review": len(manual),
+                    "sample": comments[:3] if comments else [],
+                }
+                # Import high-confidence entries into nutrition_daily_summary
+                if not dry_run and high:
+                    imported = 0
+                    for c in high:
+                        d = c["date"]
+                        kcal = c.get("calories_kcal")
+                        prot = c.get("protein_g")
+                        carbs = c.get("carbs_g")
+                        fat = c.get("fat_g")
+                        if kcal is not None:
+                            with _conn() as conn:
+                                conn.execute(
+                                    """INSERT INTO nutrition_daily_summary (date, source, kcal_total,
+                                       protein_total, carbs_total, fat_total)
+                                       VALUES (%s,%s,%s,%s,%s,%s)
+                                       ON CONFLICT (date, source) DO NOTHING""",
+                                    (d, "intervals_comment_import", kcal, prot, carbs, fat),
+                                )
+                                conn.commit()
+                            imported += 1
+                    result["sections"]["intervals_nutrition_comments"]["imported"] = imported
+                    result["imported"] = True
+            result["imported"] = result.get("imported", False)
+        except Exception as e:
+            result["errors"].append(f"intervals-comments failed: {e}")
+
+    elif source == "cronometer":
+        crono_e = os.getenv("CRONOMETER_EMAIL", "")
+        crono_p = os.getenv("CRONOMETER_PASSWORD", "")
+        if not crono_e or not crono_p:
+            result["sections"]["cronometer"] = {"count": 0, "status": "credentials_missing", "note": "CRONOMETER_EMAIL/CRONOMETER_PASSWORD not configured."}
+        else:
+            try:
+                os.environ['CRONOMETER_USERNAME'] = crono_e
+                os.environ['CRONOMETER_PASSWORD'] = crono_p
+                from cronometer_mcp import CronometerClient
+                c = CronometerClient()
+                c.authenticate()
+                sd = date.fromisoformat(date_from)
+                ed = date.fromisoformat(date_to)
+                daily = c.get_daily_summary(sd, ed)
+                total = len(daily) if daily else 0
+                result["sections"]["cronometer"] = {
+                    "count": total,
+                    "status": "ok" if total > 0 else "no_data",
+                    "sample": daily[:2] if daily else [],
+                }
+                if not dry_run and daily:
+                    for row in daily:
+                        d = str(row.get("date", ""))[:10]
+                        if d:
+                            with _conn() as conn:
+                                conn.execute(
+                                    """INSERT INTO nutrition_daily_summary (date, source, kcal_total,
+                                       protein_total, carbs_total, fat_total, fiber_total, sodium_mg, fluids_total)
+                                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                                       ON CONFLICT (date, source) DO NOTHING""",
+                                    (d, "cronometer_import",
+                                     float(row.get("Energy (kcal)", 0) or 0),
+                                     float(row.get("Carbs (g)", 0) or 0),
+                                     float(row.get("Protein (g)", 0) or 0),
+                                     float(row.get("Fat (g)", 0) or 0),
+                                     float(row.get("Fiber (g)", 0) or 0),
+                                     float(row.get("Sodium (mg)", 0) or 0),
+                                     float(row.get("Water (ml)", 0) or 0)),
+                                )
+                                conn.commit()
+                    result["imported"] = True
+            except Exception as e:
+                err_str = str(e)[:200]
+                if "GWT" in err_str or "RPC" in err_str:
+                    result["sections"]["cronometer"] = {"count": 0, "status": "gwt_rpc_version_mismatch", "note": "Cronometer API GWT-RPC version mismatch — library outdated. Działa przez import CSV manualnie."}
+                else:
+                    result["sections"]["cronometer"] = {"count": 0, "status": "api_error", "detail": err_str}
+        result["imported"] = result.get("imported", False)
+
+    elif source == "routes":
+        # Check route_artifacts and training_sessions for route_ref
+        try:
+            with _conn() as c:
+                r = c.execute("SELECT COUNT(*) c FROM route_artifacts WHERE created_at::date BETWEEN %s AND %s", (date_from, date_to)).fetchone()
+                t = c.execute("SELECT COUNT(*) c FROM training_sessions WHERE date BETWEEN %s AND %s AND route_ref IS NOT NULL", (date_from, date_to)).fetchone()
+                sample = _safe_query("SELECT id, route_id, created_at FROM route_artifacts WHERE created_at::date BETWEEN %s AND %s LIMIT 5", (date_from, date_to))
+                result["sections"]["routes"] = {
+                    "route_artifacts": r["c"],
+                    "training_sessions_with_routes": t["c"],
+                    "sample": sample,
+                }
+        except Exception as e:
+            result["sections"]["routes"] = {"count": 0, "status": "error", "detail": str(e)[:100]}
+        result["imported"] = False
 
     return result
 

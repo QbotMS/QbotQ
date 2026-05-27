@@ -1512,6 +1512,24 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     if not _TOOL_DISPATCH:
         _init_dispatch()
 
+    # ── Semantic Planner route: detect analytical queries ──
+    q = question.lower()
+    is_analytical = any(w in q for w in [
+        "od pocz", "od 1.", "od 202", "zakres dat", "zestawienie", "tabel",
+        "porównaj", "porównanie", "czy w dni", "które dni", "trend",
+        "wszystko co qbot wie", "co qbot wie o", "co wiesz o dniu",
+        "pokaż wage", "pokaż wag", "pokaż sen", "pokaż hrv", "pokaż tętno",
+        "pokaż body fat", "pokaż bmi", "pokaż spalanie", "pokaż żywienie",
+        "pokaż treningi", "pokaż kalorie", "pokaż kcal",
+    ]) or ("od " in q and re.search(r"\d{1,2}[\.\-/]\d{1,2}|\d{4}-\d{2}-\d{2}", q))
+
+    if is_analytical and mode == "read_only":
+        try:
+            from qbot_query_planner import semantic_query
+            return semantic_query(question, context, mode="read_only")
+        except Exception:
+            pass  # fall through to keyword classifier
+
     intents = classify_intent(question)
     readers_to_call: list[str] = []
     for intent in intents:
