@@ -544,8 +544,11 @@ def _normalize_tool_name(mcp_tool: str) -> str:
 def _mcp_result_content(result: dict[str, Any]) -> dict[str, Any]:
     def _json_default(obj):
         from datetime import date as _date, datetime as _datetime
+        from decimal import Decimal as _Decimal
         if isinstance(obj, (_datetime, _date)):
             return obj.isoformat()
+        if isinstance(obj, _Decimal):
+            return float(obj)
         raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
     return {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, default=_json_default)}]}
 
@@ -1176,12 +1179,19 @@ def _handle_qcal_reminder_add(args: dict) -> dict:
     if not idem: return {"tool":"qbot.qcal_reminder_add","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":"idempotency_key required."}
     if _qcal_check_idem(idem): return {"tool":"qbot.qcal_reminder_add","safety_class":"WRITE_QCAL_ONLY","status":"DUPLICATE"}
     try:
-        import psycopg, os; from psycopg.rows import dict_row
+        import psycopg, os, json; from psycopg.rows import dict_row
         c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
         cur = c.cursor()
-        cur.execute("""INSERT INTO reminders (date,time,timezone,title,message,reminder_type,status,priority,channel)
-            VALUES (%s,%s,'Europe/Warsaw',%s,%s,%s,'pending',%s,%s) RETURNING id""",
-            (args.get("date"),args.get("time"),args.get("title","?"),args.get("message",""),args.get("reminder_type","custom"),args.get("priority","normal"),args.get("channel","cli")))
+        # Build metadata_json from deadline_task fields + any extra fields
+        meta = {}
+        for k in ("task_kind","deadline_date","start_date","repeat_until_done","source"):
+            v = args.get(k)
+            if v is not None:
+                meta[k] = v
+        metadata_json = json.dumps(meta, default=str) if meta else None
+        cur.execute("""INSERT INTO reminders (date,time,timezone,title,message,reminder_type,status,priority,channel,recurrence_rule,metadata_json)
+            VALUES (%s,%s,'Europe/Warsaw',%s,%s,%s,'pending',%s,%s,%s,%s) RETURNING id""",
+            (args.get("date"),args.get("time"),args.get("title","?"),args.get("message",""),args.get("reminder_type","custom"),args.get("priority","normal"),args.get("channel","cli"),args.get("recurrence_rule"),metadata_json))
         rid = cur.fetchone()["id"]; c.commit(); c.close()
         _qcal_audit(idem, "reminder_add", "reminder", rid, args.get("date"), dict(args), {"id":rid})
         try: from qbot_calendar_core import build_snapshot; build_snapshot(args.get("date",""))
