@@ -1354,39 +1354,63 @@ def _handle_action_execute(args: dict) -> dict[str, Any]:
 
 
 def _action_check_duplicate(idem_key: str, action_type: str) -> dict | None:
-    """Check if idempotency_key already used. Returns duplicate response or None."""
+    """Check if idempotency_key already used.
+
+    Only checks the audit table relevant to action_type.
+    Validates that the linked record still exists and is active.
+    If the record is deleted/cancelled/missing, removes the stale
+    audit entry so the action can be re-executed (caller proceeds).
+    """
     from qbot_nutrition_db import _conn as nut_conn
-    from qbot_calendar_core import _conn as cal_conn
 
-    # Check nutrition audit
-    try:
-        c = nut_conn()
-        cur = c.cursor()
-        cur.execute("SELECT entity_id FROM nutrition_write_audit WHERE idempotency_key=%s", (idem_key,))
-        row = cur.fetchone()
-        if row:
-            existing_id = row["entity_id"]
+    # Nutrition actions: only check nutrition audit
+    if action_type == "nutrition_log_add":
+        try:
+            c = nut_conn()
+            cur = c.cursor()
+            cur.execute("SELECT entity_id FROM nutrition_write_audit WHERE idempotency_key=%s", (idem_key,))
+            row = cur.fetchone()
+            if row:
+                existing_id = row["entity_id"]
+                c.close()
+                if existing_id:
+                    return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "created": False, "action_type": action_type, "idempotency_key": idem_key, "existing_id": existing_id, "note": "idempotency_key already exists (nutrition_write_audit)."}
             c.close()
-            return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "created": False, "action_type": action_type, "idempotency_key": idem_key, "existing_id": existing_id, "note": "idempotency_key already exists (nutrition_write_audit)."}
-        c.close()
-    except Exception:
-        pass
+        except Exception:
+            pass
+        return None
 
-    # Check QCal audit
-    try:
-        import psycopg, os
-        from psycopg.rows import dict_row
-        c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
-        cur = c.cursor()
-        cur.execute("SELECT entity_id FROM qcal_write_audit WHERE idempotency_key=%s", (idem_key,))
-        row = cur.fetchone()
-        if row:
-            existing_id = row["entity_id"]
-            c.close()
-            return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "created": False, "action_type": action_type, "idempotency_key": idem_key, "existing_id": existing_id, "note": "idempotency_key already exists (qcal_write_audit)."}
-        c.close()
-    except Exception:
-        pass
+    # QCal actions: only check QCal audit, validate linked record
+    if action_type in ("qcal_reminder_add", "qcal_event_add"):
+        try:
+            import psycopg, os
+            from psycopg.rows import dict_row
+            c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
+            cur = c.cursor()
+            cur.execute("SELECT entity_id, entity_type FROM qcal_write_audit WHERE idempotency_key=%s", (idem_key,))
+            row = cur.fetchone()
+            if row:
+                existing_id = row["entity_id"]
+                entity_type = row["entity_type"]
+                target_table = "calendar_events" if entity_type == "event" else "reminders"
+                # Check if linked record exists and is active
+                cur.execute("SELECT status FROM %s WHERE id=%%s" % target_table, (existing_id,))
+                target = cur.fetchone()
+                active = target and target["status"] not in ("cancelled", "deleted", "done")
+                c.close()
+                if active:
+                    return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "created": False, "action_type": action_type, "idempotency_key": idem_key, "existing_id": existing_id, "note": "Linked record is active."}
+                # Stale audit: cleanup and let caller re-execute
+                c2 = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
+                cur2 = c2.cursor()
+                cur2.execute("DELETE FROM qcal_write_audit WHERE idempotency_key=%s", (idem_key,))
+                c2.commit()
+                c2.close()
+            else:
+                c.close()
+        except Exception:
+            pass
+        return None
 
     return None
 
@@ -1466,12 +1490,10 @@ def _action_exec_reminder(payload: dict, idem_key: str, source: str) -> dict:
          payload.get("reminder_type","custom"), payload.get("priority","normal"),
          payload.get("channel","cli"), payload.get("recurrence_rule"), metadata_json))
     rid = cur.fetchone()["id"]
-    c.commit()
-    c.close()
-
     cur.execute("SELECT * FROM reminders WHERE id=%s", (rid,))
     row = cur.fetchone()
-    record = dict(row) if row else {}
+    record = {k: str(v) if hasattr(v, "isoformat") or isinstance(v, type) else v for k, v in dict(row).items()} if row else {}
+    c.commit()
     c.close()
 
     _qcal_audit(idem_key, "reminder_add", "reminder", rid, payload.get("date",""), payload, {"id": rid, "action_execute": True})
@@ -1508,7 +1530,8 @@ def _action_exec_event(payload: dict, idem_key: str, source: str) -> dict:
          source))
     eid = cur.fetchone()["id"]
     cur.execute("SELECT * FROM calendar_events WHERE id=%s", (eid,))
-    record = dict(cur.fetchone())
+    row = cur.fetchone()
+    record = {k: str(v) if hasattr(v, "isoformat") or isinstance(v, type) else v for k, v in dict(row).items()} if row else {}
     c.commit()
     c.close()
 
