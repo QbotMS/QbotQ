@@ -1,0 +1,144 @@
+#!/bin/bash
+# QBot Unified CLI — versioned wrapper
+# Installed to /usr/local/bin/qbot via scripts/install-qbot-wrapper.sh
+# Source: https://github.com/qbot/qbot (scripts/qbot)
+
+set -euo pipefail
+
+APP="${QBOT_APP:-/opt/qbot/app}"
+VENV="$APP/.venv/bin/python"
+
+# ── Load env ────────────────────────────────────────────────────────────────
+set -a
+if [ -f "$APP/.env.local" ]; then source "$APP/.env.local"; fi
+if [ -f "$APP/.env" ]; then source "$APP/.env"; fi
+set +a
+
+CMD="${1:-}"; shift 2>/dev/null || true
+
+case "$CMD" in
+    # ── Direct CLI modules ───────────────────────────────────────────────
+    nutrition) exec "$VENV" "$APP/qbot_nutrition_cli.py" "$@" ;;
+    health)    exec "$VENV" "$APP/qbot_health_cli.py" "$@" ;;
+    calendar)  exec "$VENV" "$APP/qbot_calendar_cli.py" "$@" ;;
+    qcal)      exec "$VENV" "$APP/qbot_qcal_cli.py" "$@" ;;
+    planning)  exec "$VENV" "$APP/qbot_planning_cli.py" "$@" ;;
+    ask)       exec "$VENV" "$APP/qbot_ask_cli.py" "$@" ;;
+
+    # ── query-plan: planner preview ──────────────────────────────────────
+    query-plan|query_plan)
+        exec "$VENV" -c "
+import sys; sys.path.insert(0,'$APP')
+from qbot_query_planner import plan_only_display
+from qbot_capabilities import match_capabilities
+question = ' '.join(sys.argv[1:])
+matched = match_capabilities(question)
+print('Matched capabilities:', ', '.join(matched['matched']))
+print('Ready:', ', '.join(matched['ready']) if matched['ready'] else '(none)')
+print('Partial:', ', '.join(matched['partial']) if matched['partial'] else '(none)')
+print('Missing:', ', '.join(matched['missing']) if matched['missing'] else '(none)')
+print()
+import traceback
+try:
+    plan = plan_only_display(question, '')
+    print(plan)
+except Exception as e:
+    print(f'Planner error: {e}')
+" "$@"
+        ;;
+
+    # ── query-understand: context resolver ──────────────────────────────
+    query-understand)
+        exec "$VENV" -c "import sys,json; sys.path.insert(0,'$APP'); from qbot_context_resolver import resolve; print(json.dumps(resolve(' '.join(sys.argv[1:])), indent=2, ensure_ascii=False, default=str))" "$@"
+        ;;
+
+    # ── query-capabilities: capability registry ─────────────────────────
+    query-capabilities)
+        exec "$VENV" -c "
+import sys,json,os; sys.path.insert(0,'$APP')
+from dotenv import load_dotenv; load_dotenv('$APP/.env'); load_dotenv('$APP/.env.local', override=True)
+from qbot_capabilities import list_capabilities, get_capabilities
+
+def _handler(c):
+    return c.get('handler') or c.get('reader') or c.get('writer') or 'missing_handler'
+
+def _tables(c):
+    ts = c.get('tables', [])
+    return ','.join(ts) if isinstance(ts, list) else str(ts)
+
+if '--domain' in sys.argv:
+    idx = sys.argv.index('--domain')
+    dom = sys.argv[idx+1] if idx+1 < len(sys.argv) else ''
+    for n,c in get_capabilities(dom).items():
+        print(f'  {n:30s} {c.get(\"status\",\"missing\"):8s} safety={c.get(\"safety\",\"read_only\"):22s} handler={_handler(c)} tables={_tables(c)}')
+else:
+    for c in list_capabilities():
+        print(f'  {c.get(\"name\",\"?\"):30s} {c.get(\"status\",\"missing\"):8s} safety={c.get(\"safety\",\"read_only\"):22s} handler={_handler(c)} tables={_tables(c)}')
+" "$@"
+        ;;
+
+    # ── telegram: QCal Telegram interface ───────────────────────────────
+    telegram)
+        exec "$VENV" -c "
+import sys,json,os; sys.path.insert(0,'$APP')
+sub = sys.argv[1] if len(sys.argv) > 1 else 'status'
+if sub == 'status':
+    from qbot_qcal_telegram import status; print(json.dumps(status(), indent=2))
+elif sub == 'handle-text':
+    cid = None; txt = None; dry = 'True'
+    rem = sys.argv[2:]
+    i = 0
+    while i < len(rem):
+        a = rem[i]
+        if a == '--chat-id': cid = rem[i+1]; i += 2; continue
+        if a == '--text':      txt = rem[i+1]; i += 2; continue
+        if a == '--dry-run':   dry = 'True'; i += 1; continue
+        if cid is None:        cid = a; i += 1; continue
+        if cid and txt is None: txt = a; i += 1; continue
+        i += 1
+    cid = cid or '?'; txt = txt or 'status'
+    from qbot_qcal_telegram import handle_message
+    r = handle_message(cid, txt, dry_run=(dry != 'False'))
+    print(r.get('response','?'))
+elif sub == 'handle-update':
+    f = sys.argv[2] if len(sys.argv) > 2 else ''
+    if f:
+        with open(f) as ff: u = json.load(ff)
+        from qbot_qcal_telegram import handle_update
+        print(json.dumps(handle_update(u, True), indent=2, default=str)[:500])
+elif sub == 'poll':
+    from qbot_qcal_telegram import poll_once, handle_update
+    for u in poll_once():
+        print(json.dumps(handle_update(u, True), indent=2, default=str)[:500])
+" "$@"
+        ;;
+
+    # ── status: operator smoke test ─────────────────────────────────────
+    status)
+        exec "$VENV" -c "import sys; sys.path.insert(0,'$APP'); from dotenv import load_dotenv; load_dotenv('$APP/.env'); from qbot_ops_tools import _tool_qbot_operator_final_smoke_test; r=_tool_qbot_operator_final_smoke_test(); print('overall:',r.get('overall','?'),' blockers:',r.get('blockers',[]))"
+        ;;
+
+    # ── query: read-only MCP-style dispatch ─────────────────────────────
+    query)
+        exec "$VENV" -c "
+import sys,json; sys.path.insert(0,'$APP')
+from qbot_query_router import query
+r=query(question='${*:-test}',mode='read_only',scope='all')
+print('ANSWER:', r.get('answer',''))
+tables = r.get('tables',[])
+for t in tables:
+    cols = t.get('columns',[]); rows = t.get('rows',[])
+    print(f'\n--- {t.get(\"domain\",\"?\")} ({len(rows)} rows) ---')
+    if cols: print('  ' + ' | '.join(cols[:12])); print('  ' + '-' * (len(cols) * 8))
+    for row in rows:
+        vals = [str(row.get(c,'')) for c in cols] if cols else [str(v) for v in list(row.values())[:12]]
+        print('  ' + ' | '.join(vals[:12]))
+"
+        ;;
+
+    # ── Unknown command ─────────────────────────────────────────────────
+    *)
+        echo "qbot {nutrition|health|calendar|qcal|planning|ask|telegram|status|query|query-plan|query-understand}"
+        exit 1
+        ;;
+esac
