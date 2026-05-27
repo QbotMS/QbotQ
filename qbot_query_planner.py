@@ -82,12 +82,90 @@ def plan(canonical: dict) -> dict[str, Any]:
         plan_obj["warnings"].append("No date range resolved")
         return plan_obj
 
+    # ── Domain flags ──
+    has_nutrition = "nutrition" in domains
+    has_training = "training" in domains
+    has_weight = "weight" in domains
+    has_body = "body_comp" in domains
+
     # ── Calendar day context ──
     if itype == "calendar_day_context":
         plan_obj["queries"].append({
             "domain": "calendar_snapshot",
             "sql": "SELECT * FROM calendar_daily_snapshots WHERE date=%(df)s",
             "params": {"df": df},
+        })
+        return plan_obj
+
+    # ── Latest training session ──
+    if "training" in domains and not has_nutrition and not has_weight:
+        from datetime import date as dt_date
+        plan_obj["queries"].append({
+            "domain": "latest_training",
+            "sql": """SELECT date, title, activity_type, distance_km, duration_sec,
+               calories_kcal, avg_hr, max_hr, avg_power_w, max_power_w,
+               training_load, training_effect, elevation_gain_m
+               FROM training_sessions
+               ORDER BY date DESC LIMIT 3""",
+            "params": {},
+        })
+        # Also check today's snapshot for context
+        plan_obj["queries"].append({
+            "domain": "today_snapshot",
+            "sql": "SELECT * FROM calendar_daily_snapshots WHERE date=%(df)s",
+            "params": {"df": dt_date.today().isoformat()},
+        })
+        return plan_obj
+
+    # ── Food product catalog ──
+    if "nutrition" in domains and "food_catalog" in domains:
+        plan_obj["queries"].append({
+            "domain": "food_catalog",
+            "sql": "SELECT id, name, brand, default_unit, kcal_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, fiber_per_100g, source, verified FROM food_items ORDER BY name",
+            "params": {},
+        })
+        return plan_obj
+
+    # ── Saved meals ──
+    if "meal_templates" in domains:
+        plan_obj["queries"].append({
+            "domain": "saved_meals",
+            "sql": "SELECT id, name, serving_label, kcal, protein_g, carbs_g, fat_g, fiber_g, sodium_mg, source, confidence, notes FROM meal_templates ORDER BY name",
+            "params": {},
+        })
+        return plan_obj
+
+    # ── Meal log inventory ──
+    if "meal_logs" in domains and "nutrition" in domains:
+        plan_obj["queries"].append({
+            "domain": "meal_log_inventory",
+            "sql": """SELECT ml.id, ml.eaten_at::date AS date, ml.note, ml.context,
+               COUNT(mli.id) AS items_count,
+               COUNT(mli.food_item_id) AS items_linked,
+               SUM(COALESCE(mli.kcal,0)) AS total_kcal
+               FROM meal_logs ml LEFT JOIN meal_log_items mli ON mli.meal_log_id=ml.id
+               GROUP BY ml.id ORDER BY ml.eaten_at DESC LIMIT 50""",
+            "params": {},
+        })
+        return plan_obj
+
+    # ── Food link audit ──
+    if "data_quality" in domains and "nutrition" in domains:
+        plan_obj["queries"].append({
+            "domain": "food_link_audit",
+            "sql": """SELECT (SELECT COUNT(*) FROM meal_log_items) AS total_items,
+               (SELECT COUNT(*) FROM meal_log_items WHERE food_item_id IS NOT NULL) AS items_linked,
+               (SELECT COUNT(*) FROM meal_log_items WHERE food_item_id IS NULL) AS items_unlinked""",
+            "params": {},
+        })
+        plan_obj["queries"].append({
+            "domain": "unlinked_candidates",
+            "sql": """SELECT food_name, COUNT(*) AS cnt, ROUND(AVG(kcal)::numeric,0) AS avg_kcal,
+               ROUND(AVG(protein_g)::numeric,1) AS avg_protein, ROUND(AVG(carbs_g)::numeric,1) AS avg_carbs,
+               ROUND(AVG(fat_g)::numeric,1) AS avg_fat
+               FROM meal_log_items WHERE food_item_id IS NULL
+               GROUP BY food_name ORDER BY cnt DESC""",
+            "params": {},
         })
         return plan_obj
 
@@ -137,11 +215,6 @@ def plan(canonical: dict) -> dict[str, Any]:
         return plan_obj
 
     # ── Daily table: only when nutrition or training involved ──
-    has_nutrition = "nutrition" in domains
-    has_training = "training" in domains
-    has_weight = "weight" in domains
-    has_body = "body_comp" in domains
-
     if itype in ("range_analysis", "comparison", "trend") and (has_nutrition or has_training):
         joins, select_extras = [], []
         select_extras.append("d.date::date AS date")
@@ -308,7 +381,7 @@ def execute_and_format(plan_obj: dict) -> dict[str, Any]:
         if not rows: continue
         if isinstance(rows[0], dict) and "error" in rows[0]: continue
 
-        if domain == "calendar_snapshot" and rows:
+        if domain in ("calendar_snapshot", "today_snapshot") and rows:
             snap = rows[0]
             sd = snap.get("snapshot_json")
             if isinstance(sd, str):
@@ -319,6 +392,35 @@ def execute_and_format(plan_obj: dict) -> dict[str, Any]:
             parts.append(f"Dzień {df}: completeness={comp*100:.0f}%, sekcje={', '.join(sections[:8])}")
             tables.append({"domain": "snapshot", "columns": ["date","completeness","sections"],
                            "rows": [{"date": snap.get("date"), "completeness": comp, "sections": sections}]})
+            continue
+
+        if domain == "latest_training" and rows:
+            latest = rows[0] if rows else None
+            today_name = str(df)[:10]
+            if latest and latest.get("date") != today_name:
+                date_str = str(latest.get("date","?"))[:10]
+                title = latest.get("title","?")
+                dist = (latest.get("distance_km") or 0)
+                elev = latest.get("elevation_gain_m") or 0
+                cal = latest.get("calories_kcal") or 0
+                dur = (latest.get("duration_sec") or 0) / 60
+                load = latest.get("training_load") or 0
+                eff = latest.get("training_effect") or 0
+                hr = latest.get("avg_hr") or "?"
+                parts.append(
+                    f"Nie widzę jeszcze dzisiejszej aktywności w QBot DB. "
+                    f"Ostatnia dostępna: {date_str} — {title} ({dist:.1f}km, {cal:.0f}kcal, {dur:.0f}min, "
+                    f"load={load:.0f}, effect={eff:.1f}, HR={hr}bpm). "
+                    f"Dane z zaimportowanych treningów Garmin."
+                )
+            elif latest:
+                title = latest.get("title","?")
+                dist = (latest.get("distance_km") or 0)
+                cal = latest.get("calories_kcal") or 0
+                parts.append(f"Dzisiejsza aktywność: {title} ({dist:.1f}km, {cal:.0f}kcal)")
+            else:
+                parts.append("Brak danych treningowych w QBot DB.")
+            tables.append({"domain": "latest_training", "columns": list(rows[0].keys()) if rows else [], "rows": rows})
             continue
 
         if domain == "route_list" and rows:

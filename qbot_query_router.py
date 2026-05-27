@@ -1520,7 +1520,7 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         task_type = canonical.get("task", {}).get("type", "")
         # Route list, calendar context, range analysis → semantic planner
         if task_type in ("route_list", "calendar_day_context", "range_analysis",
-                         "missing_data_check", "comparison", "trend"):
+                         "missing_data_check", "comparison", "trend", "lookup"):
             from qbot_query_planner import semantic_query
             return semantic_query(question, context, mode="read_only")
     except Exception:
