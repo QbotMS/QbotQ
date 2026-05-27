@@ -1362,10 +1362,12 @@ def _action_check_duplicate(idem_key: str, action_type: str) -> dict | None:
     try:
         c = nut_conn()
         cur = c.cursor()
-        cur.execute("SELECT 1 FROM nutrition_write_audit WHERE idempotency_key=%s", (idem_key,))
-        if cur.fetchone():
+        cur.execute("SELECT entity_id FROM nutrition_write_audit WHERE idempotency_key=%s", (idem_key,))
+        row = cur.fetchone()
+        if row:
+            existing_id = row["entity_id"]
             c.close()
-            return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "note": "idempotency_key already exists (nutrition_write_audit).", "idempotency_key": idem_key}
+            return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "created": False, "action_type": action_type, "idempotency_key": idem_key, "existing_id": existing_id, "note": "idempotency_key already exists (nutrition_write_audit)."}
         c.close()
     except Exception:
         pass
@@ -1376,10 +1378,12 @@ def _action_check_duplicate(idem_key: str, action_type: str) -> dict | None:
         from psycopg.rows import dict_row
         c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
         cur = c.cursor()
-        cur.execute("SELECT 1 FROM qcal_write_audit WHERE idempotency_key=%s", (idem_key,))
-        if cur.fetchone():
+        cur.execute("SELECT entity_id FROM qcal_write_audit WHERE idempotency_key=%s", (idem_key,))
+        row = cur.fetchone()
+        if row:
+            existing_id = row["entity_id"]
             c.close()
-            return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "note": "idempotency_key already exists (qcal_write_audit).", "idempotency_key": idem_key}
+            return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "created": False, "action_type": action_type, "idempotency_key": idem_key, "existing_id": existing_id, "note": "idempotency_key already exists (qcal_write_audit)."}
         c.close()
     except Exception:
         pass
@@ -1465,14 +1469,28 @@ def _action_exec_reminder(payload: dict, idem_key: str, source: str) -> dict:
     c.commit()
     c.close()
 
+    cur.execute("SELECT * FROM reminders WHERE id=%s", (rid,))
+    row = cur.fetchone()
+    record = dict(row) if row else {}
+    c.close()
+
     _qcal_audit(idem_key, "reminder_add", "reminder", rid, payload.get("date",""), payload, {"id": rid, "action_execute": True})
+    snap_ok = False
     try:
         from qbot_calendar_core import build_snapshot
         build_snapshot(payload.get("date",""))
+        snap_ok = True
     except Exception:
         pass
 
-    return {"tool":"qbot.action_execute","safety_class":"WRITE_ONLY_ALLOWLIST","status":"OK","action_type":"qcal_reminder_add","idempotency_key":idem_key,"reminder_id":rid}
+    return {
+        "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+        "status": "OK", "action_type": "qcal_reminder_add",
+        "idempotency_key": idem_key, "created": True,
+        "reminder_id": rid, "record": record,
+        "message": f"Utworzono przypomnienie: {record.get('title','?')} (id={rid}, {record.get('date','?')} {record.get('time','')})",
+        "snapshot_rebuilt": snap_ok,
+    }
 
 
 def _action_exec_event(payload: dict, idem_key: str, source: str) -> dict:
@@ -1489,17 +1507,28 @@ def _action_exec_event(payload: dict, idem_key: str, source: str) -> dict:
          payload.get("event_type","note"), payload.get("title","?"), payload.get("description", payload.get("title","")),
          source))
     eid = cur.fetchone()["id"]
+    cur.execute("SELECT * FROM calendar_events WHERE id=%s", (eid,))
+    record = dict(cur.fetchone())
     c.commit()
     c.close()
 
     _qcal_audit(idem_key, "event_add", "event", eid, payload.get("date_start",""), payload, {"id": eid, "action_execute": True})
+    snap_ok = False
     try:
         from qbot_calendar_core import build_snapshot
         build_snapshot(payload.get("date_start",""))
+        snap_ok = True
     except Exception:
         pass
 
-    return {"tool":"qbot.action_execute","safety_class":"WRITE_ONLY_ALLOWLIST","status":"OK","action_type":"qcal_event_add","idempotency_key":idem_key,"event_id":eid}
+    return {
+        "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+        "status": "OK", "action_type": "qcal_event_add",
+        "idempotency_key": idem_key, "created": True,
+        "event_id": eid, "record": record,
+        "message": f"Utworzono wydarzenie: {record.get('title','?')} (id={eid}, {record.get('date_start','?')} → {record.get('date_end','?')})",
+        "snapshot_rebuilt": snap_ok,
+    }
 
 
 def _action_exec_planning(payload: dict, idem_key: str, source: str) -> dict:
