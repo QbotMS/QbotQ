@@ -2118,8 +2118,16 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     # Run before semantic planner or keyword classifier to catch write
     # intents early and return a draft without executing anything.
     intents = classify_intent(question)
-    write_result = _handle_write_draft(question, intents, _resolve_date_context(context, question))
+    date_ctx = _resolve_date_context(context, question)
+    write_result = _handle_write_draft(question, intents, date_ctx)
     if write_result is not None:
+        try:
+            from qbot_planning_memory import detect_planning_facts
+            pf_drafts = detect_planning_facts(question, date_ctx)
+            if pf_drafts:
+                write_result["planning_fact_drafts"] = pf_drafts
+        except Exception:
+            pass
         return write_result
 
     # ── Semantic Planner route ──
@@ -2232,9 +2240,6 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         }
 
     # ── read_only ──
-    # Resolve date context from context + query text
-    date_ctx = _resolve_date_context(context, question)
-
     answers: list[dict] = []
     provenance: list[dict] = []
     missing: list[str] = []
@@ -2665,5 +2670,25 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
             "lodging_waypoint_matcher",
         ]
         response.setdefault("limitations", []).append("qbot.query can parse GPX summary, but cannot stage full GPX yet")
+
+    # ── Planning fact detection (read-only, never writes) ────────────────
+    try:
+        from qbot_planning_memory import detect_planning_facts
+        pf_drafts = detect_planning_facts(question, date_ctx)
+        if pf_drafts:
+            response["planning_fact_drafts"] = pf_drafts
+            pf_lines = ["\n\nWykryłem założenie planistyczne:"]
+            for d in pf_drafts:
+                fj = d.get("fact_json", {})
+                fj_summary = " | ".join(f"{k}={v}" for k, v in fj.items() if not isinstance(v, list) and not isinstance(v, bool))
+                if not fj_summary:
+                    fj_summary = ", ".join(f"{k}:{v}" for k, v in fj.items())
+                pf_lines.append(f"- {d['title']} ({d['confidence']})")
+                if fj_summary:
+                    pf_lines.append(f"  {fj_summary[:200]}")
+            pf_lines.append("Mogę to zapisać jako planning fact po potwierdzeniu.")
+            response["answer"] = (response.get("answer", "") or "") + "\n".join(pf_lines)
+    except Exception:
+        pass
 
     return response
