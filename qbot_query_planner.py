@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-import json, os
+import json, os, re
 from datetime import date, timedelta
 from typing import Any
 
@@ -93,15 +93,47 @@ def plan(canonical: dict) -> dict[str, Any]:
 
     # ── Route list ──
     if itype == "route_list" or ("routes" in domains and negs and any(n in negs for n in ("no_export","no_gpx","list_only"))):
-        plan_obj["queries"].append({
-            "domain": "route_list",
-            "sql": """SELECT id, route_id, source, metadata_json->>'name' AS name,
-               COALESCE((metadata_json->>'distance_km')::float, (metadata_json->>'distance_m')::float, 0) AS distance_km,
-               COALESCE((metadata_json->>'elevation_gain_m')::float, 0) AS elevation_gain_m,
-               created_at
-               FROM route_artifacts ORDER BY created_at DESC LIMIT 10""",
-            "params": {},
-        })
+        limit = 10
+        m = re.search(r"(\d+)\s+najnowsze", canonical.get("raw_query", "").lower())
+        if m: limit = int(m.group(1))
+
+        try:
+            from qbot_route_tools import _tool_qbot_rwgps_route_list
+            api_result = _tool_qbot_rwgps_route_list({"limit": max(limit, 10)})
+            api_routes = api_result.get("routes", [])
+
+            rows = []
+            for r in api_routes[:limit]:
+                rid = str(r.get("id", ""))
+                name = r.get("name", "")
+                dkm = r.get("distance_km") or 0
+                elev = r.get("elevation_m") or 0
+                # Fallback: local cache if API has 0 distance
+                if dkm == 0:
+                    try:
+                        with _conn() as c:
+                            local = c.execute(
+                                "SELECT (metadata_json->>'distance_km')::float AS dkm, (metadata_json->>'elevation_gain_m')::float AS elev FROM route_artifacts WHERE route_id=%s AND (metadata_json->>'distance_km')::float > 0 LIMIT 1",
+                                (rid,),
+                            ).fetchone()
+                            if local:
+                                dkm = local.get("dkm", 0) or dkm
+                                elev = local.get("elev", 0) or elev
+                    except Exception:
+                        pass
+
+                rows.append({
+                    "route_id": rid,
+                    "name": name,
+                    "distance_km": dkm,
+                    "elevation_gain_m": elev,
+                    "updated_at": r.get("updated_at", ""),
+                    "origin": r.get("origin", ""),
+                })
+            plan_obj["queries"].append({"domain": "route_list", "limit": limit, "sql": "rwgps_api", "params": {}, "rows": rows})
+        except Exception as e:
+            plan_obj["warnings"].append(f"RWGPS API failed: {str(e)[:100]}")
+
         return plan_obj
 
     # ── Daily table: only when nutrition or training involved ──
@@ -245,10 +277,15 @@ def execute_and_format(plan_obj: dict) -> dict[str, Any]:
     parts, tables = [], []
 
     for qdef in plan_obj.get("queries", []):
-        rows = execute_sql(qdef["sql"], qdef["params"])
-        domain = qdef.get("domain", "?")
-        if not rows or (rows and "error" in rows[0]):
-            continue
+        # Inline rows from planner (e.g. RWGPS API)
+        if "rows" in qdef:
+            rows = qdef["rows"]
+            domain = qdef.get("domain", "?")
+        else:
+            rows = execute_sql(qdef["sql"], qdef["params"])
+            domain = qdef.get("domain", "?")
+        if not rows: continue
+        if isinstance(rows[0], dict) and "error" in rows[0]: continue
 
         if domain == "calendar_snapshot" and rows:
             snap = rows[0]
@@ -264,16 +301,20 @@ def execute_and_format(plan_obj: dict) -> dict[str, Any]:
             continue
 
         if domain == "route_list" and rows:
+            limit = 10
+            for qdef2 in plan_obj.get("queries", []):
+                if qdef2.get("domain") == "route_list":
+                    limit = qdef2.get("limit", 10)
+            rows = rows[:limit]
             previews = []
-            for r in rows[:5]:
-                rid = r.get("route_id", "?")
-                name = r.get("name") or r.get("route_id", "?")
+            for r in rows:
+                rid = str(r.get("route_id", "?"))
+                name = r.get("name") or rid
                 dist = (r.get("distance_km") or 0)
-                elev = r.get("elevation_gain_m") or 0
+                elev = (r.get("elevation_gain_m") or 0)
                 previews.append(f"{name} (ID={rid}, {dist:.1f}km, +{elev:.0f}m)")
-            tail = f" +{len(rows)-5} więcej" if len(rows) > 5 else ""
-            parts.append(f"Trasy: {len(rows)} znalezionych — {'; '.join(previews)}{tail}.")
-            tables.append({"domain": "route_list", "columns": list(rows[0].keys()) if rows else [], "rows": rows})
+            parts.append(f"Trasy: {len(rows)} znalezionych — {'; '.join(previews)}.")
+            tables.append({"domain": "route_list", "columns": ["route_id","name","distance_km","elevation_gain_m"], "rows": rows})
             continue
 
         if domain in ("daily_table",) and rows:
