@@ -14,6 +14,7 @@ _SQL_FILES = (
     "rwgps_route_store_v1.sql",
     "wellness_nutrition_store_v1.sql",
     "nutrition_fueling_store_v1.sql",
+    "doc_write_v1.sql",
 )
 
 def _conn():

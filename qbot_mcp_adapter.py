@@ -114,14 +114,15 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "qbot_tool": "qbot_action_execute",
         "description": (
             "WYKONAJ action_draft z qbot.query. Przyjmuje action_type z allowlisty "
-            "(nutrition_log_add, qcal_reminder_add, qcal_event_add, qcal_event_update, qcal_event_cancel, planning_fact_add). "
+            "(nutrition_log_add, qcal_reminder_add, qcal_event_add, qcal_event_update, qcal_event_cancel, "
+            "planning_fact_add, qbot_doc_append, qbot_doc_replace_section, qbot_doc_update). "
             "WYMAGA: confirm=true, idempotency_key. "
             "Sprawdza bezpieczeństwo: allowlist, wymagane pola, duplicate key."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "action_type": {"type": "string", "enum": ["nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add"]},
+                "action_type": {"type": "string", "enum": ["nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update"]},
                 "payload_json": {"type": "object", "description": "Kompletny obiekt payload (tak jak w action_draft z qbot.query)"},
                 "idempotency_key": {"type": "string", "description": "Unikalny klucz — zapobiega duplikatom."},
                 "confirm": {"type": "boolean", "description": "MUSI być true, żeby zapisać."},
@@ -1155,7 +1156,7 @@ def _handle_qcal_reminder_cancel(args: dict) -> dict:
     except Exception as e: return {"tool":"qbot.qcal_reminder_cancel","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
 
 
-_ACTION_EXECUTE_ALLOWLIST = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add"}
+_ACTION_EXECUTE_ALLOWLIST = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update"}
 
 _ACTION_REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {
     "nutrition_log_add": ["date", "kcal_total"],
@@ -1164,6 +1165,9 @@ _ACTION_REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {
     "qcal_event_update": ["event_id", "updates"],
     "qcal_event_cancel": ["event_id"],
     "planning_fact_add": ["fact_type", "date", "title"],
+    "qbot_doc_append": ["target_document", "heading", "content_markdown"],
+    "qbot_doc_replace_section": ["target_document", "heading", "content_markdown"],
+    "qbot_doc_update": ["target_document", "content_markdown"],
 }
 
 
@@ -1218,7 +1222,38 @@ def _handle_action_execute(args: dict) -> dict[str, Any]:
 
     source = str(args.get("source", "chatgpt_mcp"))
 
-    # ── Dry run ──
+    # ── Doc action dry-run — handled in the handler for richer preview ──
+    if action_type in ("qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update"):
+        dry_run = args.get("dry_run") is True or str(args.get("dry_run", "")).lower() == "true"
+        try:
+            _doc_verify_db()
+        except Exception as e:
+            return {
+                "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+                "status": "ERROR", "error": f"Audit table unavailable — write blocked: {e}",
+            }
+        if not dry_run:
+            try:
+                doc_dup = _doc_check_duplicate(idem_key)
+            except Exception as e:
+                return {
+                    "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+                    "status": "ERROR", "error": f"Duplicate check failed — cannot verify idempotency: {e}",
+                }
+            if doc_dup:
+                return {
+                    "tool": "qbot.action_execute",
+                    "safety_class": "WRITE_ONLY_ALLOWLIST",
+                    **doc_dup,
+                }
+        if action_type == "qbot_doc_append":
+            return _action_exec_doc_append(payload, idem_key, source, dry_run)
+        elif action_type == "qbot_doc_replace_section":
+            return _action_exec_doc_replace_section(payload, idem_key, source, dry_run)
+        elif action_type == "qbot_doc_update":
+            return _action_exec_doc_update(payload, idem_key, source, dry_run)
+
+    # ── Dry run (non-doc actions) ──
     if args.get("dry_run") is True or str(args.get("dry_run", "")).lower() == "true":
         return {
             "tool": "qbot.action_execute",
@@ -1490,3 +1525,403 @@ def _action_exec_planning(payload: dict, idem_key: str, source: str) -> dict:
         return {"tool":"qbot.action_execute","safety_class":"WRITE_ONLY_ALLOWLIST","status":"ERROR","error": result.get("error","save_planning_fact failed")}
     except ImportError:
         return {"tool":"qbot.action_execute","safety_class":"WRITE_ONLY_ALLOWLIST","status":"MISSING_CAPABILITY","missing_capability":"planning_fact_add","note":"save_planning_fact not available."}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Doc write action handlers
+# ═══════════════════════════════════════════════════════════════════
+
+_DOC_ALLOWLIST = frozenset({
+    "QBOT_BIBLE.md",
+    "QBOT_KNOWHOW.md",
+    "QBOT_PROJECT_INSTRUCTION_LOCAL.md",
+})
+
+_DOC_BASE_DIR = "/opt/qbot/docs"
+_DOC_HISTORY_DIR = "/opt/qbot/docs/.history"
+
+
+def _doc_ensure_history_dir() -> None:
+    os.makedirs(_DOC_HISTORY_DIR, exist_ok=True)
+
+
+def _doc_resolve_path(target_document: str) -> str | None:
+    if target_document not in _DOC_ALLOWLIST:
+        return None
+    target_document = target_document.strip()
+    if ".." in target_document:
+        return None
+    full_path = os.path.join(_DOC_BASE_DIR, target_document)
+    real = os.path.realpath(full_path)
+    if not real.startswith(_DOC_BASE_DIR + "/"):
+        return None
+    return real
+
+
+def _doc_backup(filepath: str, idem_key: str) -> str:
+    _doc_ensure_history_dir()
+    filename = os.path.basename(filepath)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    backup_name = f"{filename}.{timestamp}.{idem_key}.bak"
+    backup_path = os.path.join(_DOC_HISTORY_DIR, backup_name)
+    import shutil
+    shutil.copy2(filepath, backup_path)
+    return backup_path
+
+
+def _doc_verify_db():
+    """Probe that DB is reachable and qbot_doc_write_audit exists.
+
+    Raised from bootstrap — doc_write_v1.sql is loaded by api_db.init_db()
+    at service startup.  If this check fails the caller must abort the
+    write: without an audit table we cannot enforce idempotency.
+    """
+    import psycopg
+    from psycopg.rows import dict_row
+    c = psycopg.connect(
+        host=os.getenv("PGHOST", "127.0.0.1"), port=os.getenv("PGPORT", "5432"),
+        dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
+        password=os.getenv("PGPASSWORD", ""), row_factory=dict_row, connect_timeout=5,
+    )
+    try:
+        c.execute("SELECT 1 FROM qbot_doc_write_audit LIMIT 0")
+    finally:
+        c.close()
+
+
+def _doc_save_audit(action_type: str, target_document: str, idem_key: str, status: str, backup_path: str | None, payload: dict, result: dict, source: str):
+    import json, hashlib
+    payload_hash = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    import psycopg
+    from psycopg.rows import dict_row
+    c = psycopg.connect(
+        host=os.getenv("PGHOST", "127.0.0.1"), port=os.getenv("PGPORT", "5432"),
+        dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
+        password=os.getenv("PGPASSWORD", ""), row_factory=dict_row, connect_timeout=5,
+    )
+    try:
+        c.execute(
+            """INSERT INTO qbot_doc_write_audit
+               (action_type, target_document, idempotency_key, status, backup_path, payload_hash, result_json, source)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (action_type, target_document, idem_key, status, backup_path, payload_hash,
+             json.dumps(result, default=str), source),
+        )
+        c.commit()
+    finally:
+        c.close()
+
+
+def _doc_check_duplicate(idem_key: str) -> dict | None:
+    import json
+    import psycopg
+    from psycopg.rows import dict_row
+    c = psycopg.connect(
+        host=os.getenv("PGHOST", "127.0.0.1"), port=os.getenv("PGPORT", "5432"),
+        dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
+        password=os.getenv("PGPASSWORD", ""), row_factory=dict_row, connect_timeout=5,
+    )
+    try:
+        cur = c.cursor()
+        cur.execute(
+            "SELECT * FROM qbot_doc_write_audit WHERE idempotency_key=%s AND status='OK' ORDER BY id DESC LIMIT 1",
+            (idem_key,),
+        )
+        row = cur.fetchone()
+        if row:
+            result = row.get("result_json") or {}
+            if isinstance(result, str):
+                try:
+                    result = json.loads(result)
+                except Exception:
+                    result = {}
+            return {
+                "status": "DUPLICATE",
+                "action_type": row["action_type"],
+                "target_document": row["target_document"],
+                "idempotency_key": idem_key,
+                "backup_path": row.get("backup_path"),
+                "result": result,
+                "note": "idempotency_key already processed (qbot_doc_write_audit).",
+            }
+        return None
+    finally:
+        c.close()
+
+
+def _action_exec_doc_append(payload: dict, idem_key: str, source: str, dry_run: bool = False) -> dict:
+    target_document = str(payload.get("target_document", "")).strip()
+    heading = str(payload.get("heading", "")).strip()
+    content_md = str(payload.get("content_markdown", "")).strip()
+
+    resolved = _doc_resolve_path(target_document)
+    if not resolved:
+        return {
+            "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "BLOCKED", "error": f"Invalid target_document: {target_document}",
+        }
+
+    if not os.path.isfile(resolved):
+        return {
+            "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "NOT_FOUND", "error": f"File not found: {resolved}",
+        }
+
+    with open(resolved, "r", encoding="utf-8") as f:
+        current_content = f.read()
+
+    new_section = f"\n\n{heading}\n\n{content_md}\n"
+    new_content = current_content + new_section
+
+    if dry_run:
+        return {
+            "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "DRY_RUN",
+            "action_type": "qbot_doc_append",
+            "target_document": target_document,
+            "idempotency_key": idem_key,
+            "dry_run": True,
+            "changed": True,
+            "backup_path": None,
+            "error": None,
+            "result": {
+                "current_size": len(current_content),
+                "new_size": len(new_content),
+                "appended_preview": new_section.strip()[:500],
+            },
+        }
+
+    try:
+        backup_path = _doc_backup(resolved, idem_key)
+    except Exception as e:
+        return {
+            "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "ERROR", "error": f"Backup failed — write aborted: {e}",
+        }
+
+    with open(resolved, "w", encoding="utf-8") as f:
+        f.write(new_content)
+
+    result = {"backup_path": backup_path, "new_size": len(new_content), "appended_heading": heading[:200]}
+    audit_error: str | None = None
+    try:
+        _doc_save_audit("qbot_doc_append", target_document, idem_key, "OK", backup_path, payload, result, source)
+    except Exception as e:
+        audit_error = str(e)
+        result["audit_error"] = audit_error
+
+    return {
+        "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+        "status": "OK",
+        "action_type": "qbot_doc_append",
+        "target_document": target_document,
+        "idempotency_key": idem_key,
+        "dry_run": False,
+        "backup_path": backup_path,
+        "changed": True,
+        "error": audit_error,
+        "result": result,
+    }
+
+
+def _action_exec_doc_replace_section(payload: dict, idem_key: str, source: str, dry_run: bool = False) -> dict:
+    target_document = str(payload.get("target_document", "")).strip()
+    heading = str(payload.get("heading", "")).strip()
+    content_md = str(payload.get("content_markdown", "")).strip()
+
+    if not content_md:
+        return {
+            "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "BLOCKED", "error": "content_markdown cannot be empty — would delete section.",
+        }
+
+    resolved = _doc_resolve_path(target_document)
+    if not resolved:
+        return {
+            "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "BLOCKED", "error": f"Invalid target_document: {target_document}",
+        }
+
+    if not os.path.isfile(resolved):
+        return {
+            "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "NOT_FOUND", "error": f"File not found: {resolved}",
+        }
+
+    with open(resolved, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    heading_stripped = heading.strip()
+    heading_idx = None
+    for i, line in enumerate(lines):
+        if line.rstrip("\n").rstrip("\r").strip() == heading_stripped:
+            heading_idx = i
+            break
+
+    if heading_idx is None:
+        return {
+            "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "NOT_FOUND", "error": f"Heading not found: {heading[:100]}",
+        }
+
+    h_level = 0
+    for ch in heading_stripped:
+        if ch == "#":
+            h_level += 1
+        else:
+            break
+    if h_level == 0:
+        return {
+            "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "BLOCKED", "error": "Invalid heading format — must start with #",
+        }
+
+    heading_prefix = "#" * h_level
+    next_heading_idx = len(lines)
+    for i in range(heading_idx + 1, len(lines)):
+        stripped = lines[i].lstrip()
+        if stripped.startswith(heading_prefix) and not stripped.startswith(heading_prefix + "#"):
+            next_heading_idx = i
+            break
+
+    new_lines = lines[:heading_idx]
+    new_lines.append(content_md.rstrip("\n") + "\n")
+    new_lines.extend(lines[next_heading_idx:])
+    new_content = "".join(new_lines)
+
+    if dry_run:
+        return {
+            "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "DRY_RUN",
+            "action_type": "qbot_doc_replace_section",
+            "target_document": target_document,
+            "idempotency_key": idem_key,
+            "dry_run": True,
+            "changed": True,
+            "backup_path": None,
+            "error": None,
+            "result": {
+                "current_size": sum(len(l) for l in lines),
+                "new_size": len(new_content),
+                "replaced_heading": heading[:200],
+                "lines_removed": next_heading_idx - heading_idx,
+            },
+        }
+
+    try:
+        backup_path = _doc_backup(resolved, idem_key)
+    except Exception as e:
+        return {
+            "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "ERROR", "error": f"Backup failed — write aborted: {e}",
+        }
+
+    with open(resolved, "w", encoding="utf-8") as f:
+        f.write(new_content)
+
+    result = {"backup_path": backup_path, "new_size": len(new_content), "replaced_heading": heading[:200]}
+    audit_error: str | None = None
+    try:
+        _doc_save_audit("qbot_doc_replace_section", target_document, idem_key, "OK", backup_path, payload, result, source)
+    except Exception as e:
+        audit_error = str(e)
+        result["audit_error"] = audit_error
+
+    return {
+        "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+        "status": "OK",
+        "action_type": "qbot_doc_replace_section",
+        "target_document": target_document,
+        "idempotency_key": idem_key,
+        "dry_run": False,
+        "backup_path": backup_path,
+        "changed": True,
+        "error": audit_error,
+        "result": result,
+    }
+
+
+def _action_exec_doc_update(payload: dict, idem_key: str, source: str, dry_run: bool = False) -> dict:
+    target_document = str(payload.get("target_document", "")).strip()
+    content_md = str(payload.get("content_markdown", "")).strip()
+
+    if not content_md:
+        return {
+            "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "BLOCKED", "error": "content_markdown cannot be empty.",
+        }
+    if not content_md.lstrip().startswith("# "):
+        return {
+            "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "BLOCKED", "error": "content_markdown must be a valid Markdown document starting with a top-level heading (# ).",
+        }
+
+    resolved = _doc_resolve_path(target_document)
+    if not resolved:
+        return {
+            "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "BLOCKED", "error": f"Invalid target_document: {target_document}",
+        }
+
+    current_content = ""
+    current_size = 0
+    if os.path.isfile(resolved):
+        with open(resolved, "r", encoding="utf-8") as f:
+            current_content = f.read()
+        current_size = len(current_content)
+
+    new_content = content_md
+    if new_content and not new_content.endswith("\n"):
+        new_content += "\n"
+
+    if dry_run:
+        return {
+            "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "DRY_RUN",
+            "action_type": "qbot_doc_update",
+            "target_document": target_document,
+            "idempotency_key": idem_key,
+            "dry_run": True,
+            "changed": new_content != current_content,
+            "backup_path": None,
+            "error": None,
+            "result": {
+                "current_size": current_size,
+                "new_size": len(new_content),
+            },
+        }
+
+    try:
+        backup_path = None
+        if os.path.isfile(resolved):
+            backup_path = _doc_backup(resolved, idem_key)
+    except Exception as e:
+        return {
+            "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "ERROR", "error": f"Backup failed — write aborted: {e}",
+        }
+
+    os.makedirs(os.path.dirname(resolved), exist_ok=True)
+    with open(resolved, "w", encoding="utf-8") as f:
+        f.write(new_content)
+
+    result = {"backup_path": backup_path, "new_size": len(new_content)}
+    audit_error: str | None = None
+    try:
+        _doc_save_audit("qbot_doc_update", target_document, idem_key, "OK", backup_path, payload, result, source)
+    except Exception as e:
+        audit_error = str(e)
+        result["audit_error"] = audit_error
+
+    return {
+        "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+        "status": "OK",
+        "action_type": "qbot_doc_update",
+        "target_document": target_document,
+        "idempotency_key": idem_key,
+        "dry_run": False,
+        "backup_path": backup_path,
+        "changed": True,
+        "error": audit_error,
+        "result": result,
+    }
