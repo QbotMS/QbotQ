@@ -81,6 +81,13 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         "dokumenty kanoniczne qbot", "dokumenty kanoniczne", "kanoniczne qbot",
         "przeczytaj dokumenty kanoniczne qbot", "czy ten problem był już rozwiązany",
         "czy ten problem byl juz rozwiazany",
+        # Docs / roadmap / status queries — must NOT route to nutrition
+        "roadmapa", "roadmap", "llm-first", "llm first",
+        "status wdrożenia", "status wdrozenia",
+        "procent wdrożenia", "procent wdrozenia",
+        "stopień wdrożenia", "stopien wdrozenia",
+        "status mcp", "publiczne mcp",
+        "etapy qbot", "etapy llm", "etap qbot", "etap llm", "kolejny etap", "etapów qbot",
     ]),
     ("garage_gear_route_fit", [
         "garaż", "sprzęt", "opony", "częściowo gravelowy",
@@ -3850,7 +3857,12 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
             if nutrition_hit:
                 nutrition_llm_result = llm_result
             if llm_result["status"] == "use_llm" and llm_result["confidence"] >= _LLM_CONFIDENCE_THRESHOLD:
-                intents = [llm_result["intent"]] if llm_result["intent"] and llm_result["intent"] != "unknown" else kw_intents
+                # Hard guard: if keyword classifier says artifact_read, keep it —
+                # LLM must not override docs/roadmap queries into nutrition.
+                if "artifact_read" in kw_intents:
+                    intents = kw_intents
+                else:
+                    intents = [llm_result["intent"]] if llm_result["intent"] and llm_result["intent"] != "unknown" else kw_intents
             else:
                 intents = kw_intents
         else:
@@ -3902,7 +3914,10 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
             if ci == "current_day_meals" and not any(i.endswith("_draft") for i in intents):
                 intents = [ci]
     if _LLM_FIRST_NUTRITION_READONLY_ENABLED and nutrition_llm_result:
-        if nutrition_llm_result.get("status") == "use_llm" and nutrition_llm_result.get("confidence", 0.0) >= _LLM_CONFIDENCE_THRESHOLD:
+        # Docs/roadmap take priority — never override artifact_read with nutrition
+        if "artifact_read" in intents:
+            pass
+        elif nutrition_llm_result.get("status") == "use_llm" and nutrition_llm_result.get("confidence", 0.0) >= _LLM_CONFIDENCE_THRESHOLD:
             nutrition_intent = nutrition_llm_result.get("intent")
             if nutrition_intent in _NUTRITION_READONLY_INTENTS or nutrition_intent == "nutrition_log_add_draft":
                 intents = [nutrition_intent]
@@ -3913,7 +3928,7 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     if write_result is not None:
         return write_result
 
-    if _LLM_FIRST_NUTRITION_READONLY_ENABLED:
+    if _LLM_FIRST_NUTRITION_READONLY_ENABLED and "artifact_read" not in intents:
         nutrition_params = {}
         if nutrition_llm_result and isinstance(nutrition_llm_result.get("parameters"), dict):
             nutrition_params = dict(nutrition_llm_result.get("parameters") or {})
@@ -3962,7 +3977,8 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     # ── Catch-all template alias matching ────────────────────────────
     # Handles standalone template name queries like "Brokuł", "Brokuł sport 2000"
     # when no explicit saved_meals_catalog intent was detected by keywords.
-    if not set(intents) & {"nutrition_log_add_draft"}:
+    # Docs/architecture/roadmap queries must NOT route to nutrition.
+    if "artifact_read" not in intents and not set(intents) & {"nutrition_log_add_draft"}:
         alias_match = _match_meal_template(question)
         if alias_match:
             q_norm = _normalize_template_text(question, stem=False)
