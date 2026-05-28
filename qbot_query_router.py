@@ -434,7 +434,7 @@ _reader("intervals_activities", "intervals", "qbot_intervals_activities_read", {
 # ── Intent → reader mapping ────────────────────────────────────────────────
 
 _INTENT_TO_READERS: dict[str, list[str]] = {
-    "calorie_balance": ["nutrition_range", "nutrition_day", "garmin_energy", "cronometer_status"],
+    "calorie_balance": ["nutrition_range", "nutrition_day", "garmin_energy", "cronometer_status", "wellness_range"],
     "garmin_energy": ["garmin_energy"],
     "ride_today": ["ride_report_preview", "ride_report_latest", "intervals_activities", "garmin_energy"],
     "intervals_today": ["intervals_wellness", "intervals_activities", "intervals_config"],
@@ -452,7 +452,7 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "fueling": ["nutrition_day"],
     "training_load": ["xert_readiness", "intervals_wellness"],
     "xert": ["xert_readiness", "xert_config"],
-    "intervals": ["intervals_wellness", "intervals_config", "wellness_day"],
+    "intervals": ["intervals_wellness", "intervals_config", "wellness_day", "intervals_activities"],
     "weather": ["weather_current", "weather_forecast"],
     "rwgps_route_list_only": ["rwgps_route_list"],
     "rwgps_route": ["rwgps_route_get", "rwgps_route_list", "gpx_artifact_parse", "route_artifact_enrich"],
@@ -494,7 +494,7 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "saved_meals_catalog": [],
     "food_link_audit": [],
     # Daily meal log intents
-    "current_day_meals": ["meal_list"],
+    "current_day_meals": ["meal_list", "nutrition_day"],
 }
 
 
@@ -2596,7 +2596,7 @@ def _tool_qbot_query(args: dict | None = None) -> dict[str, Any]:
 # readers, bypass the semantic planner and dispatch directly.
 # Empty list = use semantic planner.
 _CANONICAL_FORCE_READERS: dict[str, list[str]] = {
-    "current_day_meals": ["meal_list"],
+    "current_day_meals": ["meal_list", "nutrition_day"],
     "food_link_audit": [],
     "saved_meals_catalog": [],
     "nutrition_planning": ["nutrition_planning", "nutrition_day", "meal_list", "nutrition_food_search"],
