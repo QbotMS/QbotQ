@@ -432,9 +432,11 @@ def _normalize_tool_name(mcp_tool: str) -> str:
 
 def _mcp_result_content(result: dict[str, Any]) -> dict[str, Any]:
     def _json_default(obj):
-        from datetime import date as _date, datetime as _datetime
+        from datetime import date as _date, datetime as _datetime, time as _time
         from decimal import Decimal as _Decimal
         if isinstance(obj, (_datetime, _date)):
+            return obj.isoformat()
+        if isinstance(obj, _time):
             return obj.isoformat()
         if isinstance(obj, _Decimal):
             return float(obj)
