@@ -11,6 +11,9 @@ import json
 import os
 import re
 import uuid
+import unicodedata
+from difflib import SequenceMatcher
+from functools import lru_cache
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -451,6 +454,7 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "nutrition_range": ["nutrition_range", "nutrition_day"],
     "hydration": ["nutrition_day"],
     "fueling": ["nutrition_day"],
+    "meal_log_inventory": [],
     "training_load": ["xert_readiness", "intervals_wellness"],
     "xert": ["xert_readiness", "xert_config"],
     "intervals": ["intervals_wellness", "intervals_config", "wellness_day", "intervals_activities"],
@@ -2069,7 +2073,265 @@ def _extract_meal_name(raw: str) -> str:
     return cleaned
 
 
-def _parse_nutrition_draft(question: str, date_ctx: dict) -> dict:
+def _strip_diacritics(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
+
+def _normalize_template_text(text: str) -> str:
+    text = _strip_diacritics(str(text or "")).lower()
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    stop_words = {
+        "dieta", "dieta", "od", "na", "w", "we", "mojej", "moje", "moj", "mojey",
+        "bazie", "bazie", "baza", "bazy", "mojejbazy", "zapisy", "zapisane",
+        "zapisany", "zapisanych", "szablon", "szablony", "template", "templates",
+        "posilek", "posilki", "posilku", "meal", "meals", "co", "to", "jest",
+        "w", "m", "mojej", "ma", "moje", "baza", "baze", "my", "from",
+    }
+    tokens = [tok for tok in text.split() if tok not in stop_words]
+    return re.sub(r"\s+", " ", " ".join(tokens)).strip()
+
+
+def _template_keywords(template: dict) -> set[str]:
+    name = _normalize_template_text(template.get("name", ""))
+    serving = _normalize_template_text(template.get("serving_label", ""))
+    notes = _normalize_template_text(template.get("notes", ""))
+    kws = {k for k in (name, serving, notes) if k}
+    if name:
+        parts = name.split()
+        kws.update(parts)
+        if parts:
+            kws.add(" ".join(parts[:1]))
+            kws.add(" ".join(parts[:2]))
+    return {k for k in kws if k}
+
+
+@lru_cache(maxsize=1)
+def _get_meal_templates_cache() -> tuple[dict, ...]:
+    try:
+        from qbot_nutrition_db import template_list
+        return tuple(template_list(limit=200))
+    except Exception:
+        return tuple()
+
+
+def _score_template_candidate(question: str, template: dict) -> float:
+    q = _normalize_template_text(question)
+    t = _normalize_template_text(template.get("name", ""))
+    if not q or not t:
+        return 0.0
+
+    q_tokens = q.split()
+    t_tokens = t.split()
+    if q == t:
+        return 1.0
+    if t in q or q in t:
+        return 0.98
+
+    overlap = len(set(q_tokens) & set(t_tokens))
+    overlap_score = overlap / max(len(set(t_tokens)), 1)
+    seq = SequenceMatcher(None, q, t).ratio()
+
+    score = 0.0
+    if overlap:
+        score += 0.55 * overlap_score
+    score += 0.35 * seq
+    if t_tokens and q_tokens and q_tokens[0] == t_tokens[0]:
+        score += 0.1
+    if len(t_tokens) >= 2 and len(q_tokens) >= 2 and t_tokens[:2] == q_tokens[:2]:
+        score += 0.12
+    if len(q_tokens) == 1 and q_tokens[0] in t_tokens:
+        score += 0.18
+    return min(score, 1.0)
+
+
+def _match_meal_template(question: str) -> dict[str, Any] | None:
+    templates = list(_get_meal_templates_cache())
+    if not templates:
+        return None
+
+    scored: list[dict[str, Any]] = []
+    for tmpl in templates:
+        score = _score_template_candidate(question, tmpl)
+        if score <= 0:
+            continue
+        scored.append({
+            "template": tmpl,
+            "score": round(score, 3),
+            "template_id": tmpl.get("id"),
+            "template_name": tmpl.get("name"),
+        })
+
+    if not scored:
+        return None
+
+    scored.sort(key=lambda x: (-float(x["score"]), str(x["template_name"]).lower()))
+    top = scored[0]
+    second = scored[1] if len(scored) > 1 else None
+    ambiguity = bool(second and abs(float(top["score"]) - float(second["score"])) < 0.08)
+    strong = float(top["score"]) >= 0.86 and not ambiguity
+
+    return {
+        "match": strong,
+        "ambiguous": ambiguity or not strong,
+        "score": float(top["score"]),
+        "template": top["template"],
+        "candidates": scored[:5],
+        "needs_clarification": not strong,
+    }
+
+
+def _template_lookup_response(question: str, *, match: dict[str, Any]) -> dict[str, Any]:
+    template = match["template"]
+    row = {
+        "template_id": template.get("id"),
+        "name": template.get("name"),
+        "serving_label": template.get("serving_label"),
+        "kcal": template.get("kcal"),
+        "protein_g": template.get("protein_g"),
+        "carbs_g": template.get("carbs_g"),
+        "fat_g": template.get("fat_g"),
+        "fiber_g": template.get("fiber_g"),
+        "sodium_mg": template.get("sodium_mg"),
+        "source": template.get("source"),
+        "confidence": template.get("confidence"),
+        "notes": template.get("notes"),
+    }
+    return {
+        "tool": "qbot.query",
+        "safety_class": "READ_ONLY",
+        "mode": "read_only",
+        "status": "ok",
+        "query": question,
+        "answer": (
+            f"Znalazłem zapisany posiłek: {row['name']} "
+            f"(ID {row['template_id']}, {row['serving_label']})."
+        ),
+        "tables": [{
+            "domain": "saved_meals_catalog",
+            "key": "meal_templates",
+            "count": 1,
+            "columns": list(row.keys()),
+            "rows": [row],
+        }],
+        "template_match": {
+            "template_id": row["template_id"],
+            "template_name": row["name"],
+            "score": match["score"],
+        },
+        "needs_clarification": False,
+        "missing_fields": [],
+        "limitations": [],
+        "provenance": [{
+            "source": "meal_template_match",
+            "template_id": row["template_id"],
+            "score": match["score"],
+        }],
+        "confidence": "high",
+    }
+
+
+def _saved_meals_catalog_response(question: str, *, max_rows: int = 20) -> dict[str, Any]:
+    templates = list(_get_meal_templates_cache())
+    rows = []
+    for tmpl in templates[:max_rows]:
+        rows.append({
+            "template_id": tmpl.get("id"),
+            "name": tmpl.get("name"),
+            "serving_label": tmpl.get("serving_label"),
+            "kcal": tmpl.get("kcal"),
+            "protein_g": tmpl.get("protein_g"),
+            "carbs_g": tmpl.get("carbs_g"),
+            "fat_g": tmpl.get("fat_g"),
+            "fiber_g": tmpl.get("fiber_g"),
+            "sodium_mg": tmpl.get("sodium_mg"),
+            "source": tmpl.get("source"),
+            "confidence": tmpl.get("confidence"),
+        })
+    top_names = ", ".join(row["name"] for row in rows[:5])
+    answer = f"Zapisane posiłki: {len(templates)} szablonów."
+    if top_names:
+        answer += f" Przykłady: {top_names}."
+    return {
+        "tool": "qbot.query",
+        "safety_class": "READ_ONLY",
+        "mode": "read_only",
+        "status": "ok",
+        "query": question,
+        "answer": answer,
+        "tables": [{
+            "domain": "saved_meals_catalog",
+            "key": "meal_templates",
+            "count": len(templates),
+            "columns": list(rows[0].keys()) if rows else [
+                "template_id", "name", "serving_label", "kcal", "protein_g", "carbs_g", "fat_g", "fiber_g", "sodium_mg", "source", "confidence",
+            ],
+            "rows": rows,
+        }],
+        "missing_fields": [],
+        "limitations": [],
+        "provenance": [{
+            "source": "meal_template_list",
+            "count": len(templates),
+        }],
+        "confidence": "high",
+    }
+
+
+def _template_lookup_clarification_response(question: str, *, match: dict[str, Any], intents: list[str]) -> dict[str, Any]:
+    candidates = match.get("candidates", [])[:5]
+    rows = []
+    for cand in candidates:
+        tmpl = cand.get("template", {})
+        rows.append({
+            "template_id": tmpl.get("id"),
+            "name": tmpl.get("name"),
+            "serving_label": tmpl.get("serving_label"),
+            "kcal": tmpl.get("kcal"),
+            "protein_g": tmpl.get("protein_g"),
+            "carbs_g": tmpl.get("carbs_g"),
+            "fat_g": tmpl.get("fat_g"),
+            "score": cand.get("score"),
+        })
+    return {
+        "tool": "qbot.query",
+        "safety_class": "READ_ONLY",
+        "mode": "read_only",
+        "status": "partial",
+        "query": question,
+        "intents_detected": intents,
+        "answer": "Nie mam jednoznacznego dopasowania do zapisanego posiłku. Podaj nazwę dokładniej.",
+        "tables": [{
+            "domain": "saved_meals_catalog",
+            "key": "meal_template_candidates",
+            "count": len(rows),
+            "columns": list(rows[0].keys()) if rows else ["template_id", "name", "serving_label", "kcal", "protein_g", "carbs_g", "fat_g", "score"],
+            "rows": rows,
+        }],
+        "template_match": {
+            "score": match.get("score"),
+            "candidates": [
+                {
+                    "template_id": c.get("template", {}).get("id"),
+                    "template_name": c.get("template", {}).get("name"),
+                    "score": c.get("score"),
+                } for c in candidates
+            ],
+        },
+        "needs_clarification": True,
+        "clarification_question": "Który zapisany posiłek masz na myśli?",
+        "missing_fields": ["template_id"],
+        "limitations": [],
+        "provenance": [{
+            "source": "meal_template_match",
+            "status": "ambiguous",
+            "score": match.get("score"),
+        }],
+        "confidence": "medium",
+    }
+
+
+def _parse_nutrition_draft(question: str, date_ctx: dict, template_match: dict[str, Any] | None = None) -> dict:
     """Parse a nutrition log add request. Returns (payload, missing_fields)."""
     ql = question.lower()
     target_date = date.today().isoformat()
@@ -2132,6 +2394,19 @@ def _parse_nutrition_draft(question: str, date_ctx: dict) -> dict:
 
     meal_name = _extract_meal_name(meal_text)
 
+    template = template_match.get("template") if template_match else None
+    if template and template.get("id"):
+        # Prefer the matched template as the canonical meal identity.
+        meal_name = str(template.get("name", meal_name or "")).strip() or meal_name
+        if kcal is None and template.get("kcal") is not None:
+            kcal = round(float(template.get("kcal", 0) or 0), 1)
+        if protein is None and template.get("protein_g") is not None:
+            protein = round(float(template.get("protein_g", 0) or 0), 1)
+        if carbs is None and template.get("carbs_g") is not None:
+            carbs = round(float(template.get("carbs_g", 0) or 0), 1)
+        if fat is None and template.get("fat_g") is not None:
+            fat = round(float(template.get("fat_g", 0) or 0), 1)
+
     payload = {
         "date": resolved_date,
         "meal_name": meal_name,
@@ -2143,6 +2418,12 @@ def _parse_nutrition_draft(question: str, date_ctx: dict) -> dict:
         "source": "qbot_query_draft",
         "confidence": "high" if (kcal is not None) else "medium",
     }
+
+    if template and template.get("id"):
+        payload["template_id"] = template.get("id")
+        payload["template_name"] = template.get("name")
+        payload["template_serving_label"] = template.get("serving_label")
+        payload["template_match_score"] = template_match.get("score")
 
     missing = []
     if kcal is None:
@@ -2445,7 +2726,8 @@ def _handle_write_draft(question: str, intents: list[str], date_ctx: dict) -> di
 
     # ── Parse draft ────────────────────────────────────────────────────
     if write_intent == "nutrition_log_add_draft":
-        payload, missing = _parse_nutrition_draft(question, date_ctx)
+        template_match = _match_meal_template(question)
+        payload, missing = _parse_nutrition_draft(question, date_ctx, template_match=template_match)
         action_type = "nutrition_log_add"
         writer = "nutrition_log_add"
         # Build answer
@@ -2461,6 +2743,11 @@ def _handle_write_draft(question: str, intents: list[str], date_ctx: dict) -> di
             f"- B/W/T: {protein_s} / {carbs_s} / {fat_s} g\n\n"
             f"Zapis wymaga potwierdzenia przez writer {writer}."
         )
+        if template_match and template_match.get("match"):
+            answer += (
+                f"\nTemplate match: {payload.get('template_name')} "
+                f"(ID {payload.get('template_id')}, score={template_match.get('score')})."
+            )
         idem_prefix = "nl"
     elif write_intent == "qcal_reminder_add_draft":
         payload, missing = _parse_reminder_draft(question)
@@ -2538,6 +2825,8 @@ def _handle_write_draft(question: str, intents: list[str], date_ctx: dict) -> di
             "rows": [{
                 "date": payload["date"],
                 "meal_name": payload["meal_name"],
+                "template_id": payload.get("template_id"),
+                "template_name": payload.get("template_name"),
                 "kcal": payload["kcal_total"],
                 "protein_g": payload["protein_g"],
                 "carbs_g": payload["carbs_g"],
@@ -2613,6 +2902,7 @@ _ALLOWED_CANONICAL_INTENTS = [
     "current_day_meals", "nutrition_balance", "food_product_catalog",
     "saved_meals_catalog", "food_link_audit", "nutrition_planning",
     "nutrition_log_add_draft", "latest_training", "training_summary",
+    "meal_log_inventory",
     "route_list", "qcal_reminder_add_draft", "qcal_event_add_draft",
     "qcal_event_cancel_draft", "qcal_event_update_draft",
     "planning_fact_detect", "qcal_lookup", "calendar_day_context",
@@ -2678,6 +2968,15 @@ def canonicalize_query_intent(
     try:
         canonical = _llm_classify_intent(question)
         if canonical and canonical.get("confidence") in ("high", "medium"):
+            if canonical.get("canonical_intent") == "artifact_read":
+                ql = question.lower()
+                nutrition_cues = any(w in ql for w in (
+                    "dieta", "posił", "posilk", "meal", "template", "szablon",
+                    "brokuł", "brokul", "kcal", "kalor", "makro", "białk", "bialk",
+                    "węgl", "wegl", "tłuszcz", "tluszcz", "jadł", "jedzeni", "nutrition",
+                ))
+                if nutrition_cues or bool(set(intents) & (_NUTRITION_READONLY_INTENTS | {"nutrition_log_add_draft"})):
+                    return None
             canonical["source"] = "llm"
             return canonical
     except Exception:
@@ -2794,10 +3093,22 @@ _SAFE_DOMAIN_INTENTS: frozenset[str] = frozenset({
 })
 
 _LLM_FIRST_CALENDAR_READONLY_ENABLED = os.getenv("QBOT_LLM_FIRST_CALENDAR_READONLY", "0") == "1"
+_LLM_FIRST_NUTRITION_READONLY_ENABLED = os.getenv("QBOT_LLM_FIRST_NUTRITION_READONLY", "0") == "1"
 
 _CALENDAR_READONLY_INTENTS: frozenset[str] = frozenset({
     "qcal_lookup", "reminder_status", "event_lookup",
     "calendar_day_context", "daily_timeline",
+})
+
+_NUTRITION_READONLY_INTENTS: frozenset[str] = frozenset({
+    "saved_meals_catalog",
+    "current_day_meals",
+    "nutrition_daily",
+    "nutrition_range",
+    "calorie_balance",
+    "nutrition_status",
+    "meal_log_inventory",
+    "nutrition_planning",
 })
 
 _ALLOWED_DOMAINS = [
@@ -2843,6 +3154,12 @@ _LLM_ALIAS_MAP: dict[str, str] = {
     "calorie_summary": "calorie_balance",
     "balance_check": "calorie_balance",
     "nutrition_status": "nutrition_status",
+    "template_lookup": "saved_meals_catalog",
+    "meal_template_lookup": "saved_meals_catalog",
+    "template_list": "saved_meals_catalog",
+    "meal_history": "meal_log_inventory",
+    "nutrition_history": "meal_log_inventory",
+    "history_search": "meal_log_inventory",
     # calendar / reminders family
     "reminder_list": "reminder_status",
     "reminder_check": "reminder_status",
@@ -2903,6 +3220,9 @@ Przykłady:
 - Pytanie: "status QBot" → {"domain":"meta","intent":"status","parameters":{},"confidence":0.95,"needs_clarification":false,"clarification_question":"","readers":["status"],"action_type":null,"is_write_intent":false}
 - Pytanie: "readiness QBot" → {"domain":"meta","intent":"readiness","parameters":{},"confidence":0.95,"needs_clarification":false,"clarification_question":"","readers":["readiness"],"action_type":null,"is_write_intent":false}
 - Pytanie: "Przeczytaj Biblię QBot" → {"domain":"project","intent":"artifact_read","parameters":{"query":"Biblię QBot"},"confidence":0.95,"needs_clarification":false,"clarification_question":"","readers":["qbot_canonical_docs"],"action_type":null,"is_write_intent":false}
+- Pytanie: "wylistuj zapisane posiłki" → {"domain":"nutrition","intent":"saved_meals_catalog","parameters":{},"confidence":0.95,"needs_clarification":false,"clarification_question":"","readers":[],"action_type":null,"is_write_intent":false}
+- Pytanie: "co to jest dieta od Brokuła w mojej bazie?" → {"domain":"nutrition","intent":"saved_meals_catalog","parameters":{"query":"Brokuł"},"confidence":0.95,"needs_clarification":false,"clarification_question":"","readers":[],"action_type":null,"is_write_intent":false}
+- Pytanie: "dodaj dzisiaj dietę od Brokuła" → {"domain":"nutrition","intent":"nutrition_log_add_draft","parameters":{"template_query":"Brokuł"},"confidence":0.95,"needs_clarification":false,"clarification_question":"","readers":[],"action_type":null,"is_write_intent":true}
 - Pytanie: "Dodaj przypomnienie jutro o 8:00: test" → {"domain":"calendar","intent":"qcal_reminder_add_draft","parameters":{"date":"jutro","time":"8:00","title":"test"},"confidence":0.95,"needs_clarification":false,"clarification_question":"","readers":[],"action_type":null,"is_write_intent":true}
 
 Dozwolone domeny: """ + ", ".join(_ALLOWED_DOMAINS) + """
@@ -3195,6 +3515,7 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         _init_dispatch()
 
     # ── Intent classification ──────────────────────────────────────────
+    nutrition_llm_result: dict[str, Any] | None = None
     if _LLM_FIRST_ENABLED:
         llm_result = llm_first_classify_intent(question, context)
         if llm_result["status"] == "use_llm" and llm_result["confidence"] >= _LLM_CONFIDENCE_THRESHOLD:
@@ -3203,8 +3524,21 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
             intents = classify_intent(question)
     elif _LLM_FIRST_SAFE_DOMAINS_ENABLED:
         kw_intents = classify_intent(question)
-        if _SAFE_DOMAIN_INTENTS & set(kw_intents):
+        ql = question.lower()
+        nutrition_cues = _LLM_FIRST_NUTRITION_READONLY_ENABLED and any(w in ql for w in (
+            "dieta", "posił", "posilk", "meal", "template", "szablon",
+            "brokuł", "brokul", "kcal", "kalor", "makro", "białk", "bialk",
+            "węgl", "wegl", "tłuszcz", "tluszcz", "jadł", "jedzeni", "nutrition",
+        ))
+        nutrition_hit = _LLM_FIRST_NUTRITION_READONLY_ENABLED and (
+            bool(_NUTRITION_READONLY_INTENTS & set(kw_intents))
+            or "nutrition_log_add_draft" in kw_intents
+            or nutrition_cues
+        )
+        if _SAFE_DOMAIN_INTENTS & set(kw_intents) or nutrition_hit:
             llm_result = llm_first_classify_intent(question, context)
+            if nutrition_hit:
+                nutrition_llm_result = llm_result
             if llm_result["status"] == "use_llm" and llm_result["confidence"] >= _LLM_CONFIDENCE_THRESHOLD:
                 intents = [llm_result["intent"]] if llm_result["intent"] and llm_result["intent"] != "unknown" else kw_intents
             else:
@@ -3217,6 +3551,27 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
             llm_result = llm_first_classify_intent(question, context)
             if llm_result["status"] == "use_llm" and llm_result["confidence"] >= _LLM_CONFIDENCE_THRESHOLD:
                 intents = [llm_result["intent"]] if llm_result["intent"] and llm_result["intent"] != "unknown" else kw_intents
+            else:
+                intents = kw_intents
+        else:
+            intents = kw_intents
+    elif _LLM_FIRST_NUTRITION_READONLY_ENABLED:
+        kw_intents = classify_intent(question)
+        ql = question.lower()
+        nutrition_cues = any(w in ql for w in (
+            "dieta", "posił", "posilk", "meal", "template", "szablon",
+            "brokuł", "brokul", "kcal", "kalor", "makro", "białk", "bialk",
+            "węgl", "wegl", "tłuszcz", "tluszcz", "jadł", "jedzeni", "nutrition",
+        ))
+        if _NUTRITION_READONLY_INTENTS & set(kw_intents) or "nutrition_log_add_draft" in kw_intents or nutrition_cues:
+            llm_result = llm_first_classify_intent(question, context)
+            nutrition_llm_result = llm_result
+            if llm_result["status"] == "use_llm" and llm_result["confidence"] >= _LLM_CONFIDENCE_THRESHOLD:
+                llm_intent = llm_result["intent"]
+                if "nutrition_log_add_draft" in kw_intents and not str(llm_intent or "").endswith("_draft"):
+                    intents = kw_intents
+                else:
+                    intents = [llm_intent] if llm_intent and llm_intent != "unknown" else kw_intents
             else:
                 intents = kw_intents
         else:
@@ -3236,11 +3591,39 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
             # more specific nutrition intent, promote it.
             if ci == "current_day_meals":
                 intents = [ci]
+    if _LLM_FIRST_NUTRITION_READONLY_ENABLED and nutrition_llm_result:
+        if nutrition_llm_result.get("status") == "use_llm" and nutrition_llm_result.get("confidence", 0.0) >= _LLM_CONFIDENCE_THRESHOLD:
+            nutrition_intent = nutrition_llm_result.get("intent")
+            if nutrition_intent in _NUTRITION_READONLY_INTENTS or nutrition_intent == "nutrition_log_add_draft":
+                intents = [nutrition_intent]
+                canonical_intent_info = None
 
     date_ctx = _resolve_date_context(context, question)
     write_result = _handle_write_draft(question, intents, date_ctx)
     if write_result is not None:
         return write_result
+
+    if _LLM_FIRST_NUTRITION_READONLY_ENABLED:
+        nutrition_params = {}
+        if nutrition_llm_result and isinstance(nutrition_llm_result.get("parameters"), dict):
+            nutrition_params = dict(nutrition_llm_result.get("parameters") or {})
+        template_probe_text = str(
+            nutrition_params.get("query")
+            or nutrition_params.get("template_query")
+            or question
+        ).strip()
+        template_match = _match_meal_template(template_probe_text)
+        if "saved_meals_catalog" in intents:
+            explicit_template_lookup = bool(nutrition_params.get("query") or nutrition_params.get("template_query"))
+            if explicit_template_lookup and template_match and template_match.get("match"):
+                return _template_lookup_response(question, match=template_match)
+            if explicit_template_lookup and template_match and template_match.get("ambiguous"):
+                return _template_lookup_clarification_response(question, match=template_match, intents=intents)
+            return _saved_meals_catalog_response(question, max_rows=max_rows)
+        if template_match and template_match.get("match") and (set(intents) & {"nutrition_planning", "meal_log_inventory"}):
+            return _template_lookup_response(question, match=template_match)
+        if template_match and template_match.get("ambiguous") and (set(intents) & {"nutrition_planning", "meal_log_inventory"}):
+            return _template_lookup_clarification_response(question, match=template_match, intents=intents)
 
     # ── Semantic Planner route ──
     # Skip semantic planner when canonicalizer has an authoritative intent
