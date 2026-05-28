@@ -97,6 +97,7 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         "zapisz posiłek", "dodaj jedzenie",
         "dodaj do jedzenia", "dodaj posiłek",
         "dopisz do dzisiejszego jedzenia", "dopisz do jedzenia",
+        "dopisz do dzisiejszego spożycia", "dopisz do spożycia",
         "dodaj dzisiaj dietę", "dodaj dzisiaj",
         "dopisz dzisiaj", "zapisz dzisiaj",
         "dodaj dietę", "dopisz dietę", "zapisz dietę",
@@ -2118,8 +2119,8 @@ def _normalize_template_text(text: str, *, stem: bool = False) -> str:
         "zapisany", "zapisanych", "szablon", "szablony", "template", "templates",
         "posilek", "posilki", "posilku", "meal", "meals", "co", "to", "jest",
         "w", "m", "mojej", "ma", "moje", "baza", "baze", "my", "from",
-        "dodaj", "dzisiaj", "dzisiejszy", "dzisiejszego", "spozycia", "spozycia",
-        "jedzenia", "jadzenia", "posilek", "posilku", "zapisz",
+        "dodaj", "dopisz", "do", "dzisiaj", "dzisiejszy", "dzisiejszego",
+        "spozycia", "spozycia", "jedzenia", "jadzenia", "posilek", "posilku", "zapisz",
         "szukam", "znajdz", "poka", "mam", "na", "mysli", "wyszukaj",
     }
     tokens = [tok for tok in text.split() if tok not in stop_words]
@@ -2153,12 +2154,18 @@ _TEMPLATE_ALIASES: dict[str, list[int]] = {}
 
 def _build_template_aliases() -> dict[str, list[int]]:
     """Build alias map from cached templates.
-    Auto-aliases: full name, first word, first two words (all normalized).
-    If an auto-alias matches >1 template_id, it becomes ambiguous (len > 1).
-    Explicit overrides always win (replace the list for that key).
+    Three-pass strategy:
+      1. Full normalized name for every template (always unique per template).
+      2. Shortcut (first word / first two words) ONLY if unambiguous AND
+         the key doesn't collide with an existing full-name alias.
+      3. Explicit overrides always win (single-element list).
+    If an alias maps to >1 template_id, clarification is needed.
     """
     aliases: dict[str, list[int]] = {}
     templates = list(_get_meal_templates_cache())
+    tmpl_map: dict[int, dict] = {tmpl["id"]: tmpl for tmpl in templates if tmpl.get("id")}
+
+    # ── Pass 1: full normalized names (never ambiguous) ──
     for tmpl in templates:
         tid = tmpl.get("id")
         if not tid:
@@ -2167,24 +2174,41 @@ def _build_template_aliases() -> dict[str, list[int]]:
         if not name:
             continue
         norm = _normalize_template_text(name, stem=False)
-        auto_keys: list[str] = []
         if norm:
-            auto_keys.append(norm)
+            aliases.setdefault(norm, []).append(tid)
+
+    # ── Pass 2: shortcuts (first word / first two words) ──
+    # Only add if the key doesn't exist yet AND it's unique across templates.
+    def _add_shortcut(key: str, tid: int) -> None:
+        if key in aliases:
+            return  # already claimed by a full-name alias
+        if key in _pending:
+            if tid not in _pending[key]:
+                _pending[key].append(tid)
+        else:
+            _pending[key] = [tid]
+
+    _pending: dict[str, list[int]] = {}
+    for tmpl in templates:
+        tid = tmpl.get("id")
+        if not tid:
+            continue
+        norm = _normalize_template_text(str(tmpl.get("name", "") or ""), stem=False)
         parts = norm.split()
         if parts:
-            auto_keys.append(parts[0])
+            _add_shortcut(parts[0], tid)
         if len(parts) >= 2:
-            auto_keys.append(" ".join(parts[:2]))
+            _add_shortcut(" ".join(parts[:2]), tid)
 
-        for key in auto_keys:
-            if key in aliases:
-                if tid not in aliases[key]:
-                    aliases[key].append(tid)
-            else:
-                aliases[key] = [tid]
+    for key, tids in _pending.items():
+        if len(tids) == 1:
+            aliases[key] = tids
+        # else: ambiguous — skip silently; scoring fallback will handle it.
 
-    # Explicit overrides — always win (single-element list)
-    explicit: dict[str, int] = {
+    # ── Pass 3: explicit overrides (always win, single-element list) ──
+
+    # Template 4 — Brokuł sport 2000
+    _EX: dict[str, int] = {
         "dieta od brokula": 4,
         "dieta brokula": 4,
         "dieta brokul": 4,
@@ -2203,7 +2227,41 @@ def _build_template_aliases() -> dict[str, list[int]]:
         "co to jest dieta od brokula": 4,
         "dieta od brokula w mojej bazie": 4,
     }
-    for key, tid in explicit.items():
+
+    # Template 5 — Wiejski HP
+    #  (full name "wiejski hp" added in pass 1; shortcut "wiejski" in pass 2)
+    _EX["dieta wiejska"] = 5
+    _EX["dieta wiejski"] = 5
+    _EX["co to jest wiejski hp w mojej bazie"] = 5
+    _EX["co to jest wiejski hp"] = 5
+    _EX["wiejski hp w mojej bazie"] = 5
+
+    # Template 6 — Białko / owsiane / pół banana
+    #  full name "bialko owsiane pol banana" in pass 1
+    _EX["pol banana"] = 6
+    _EX["owsiane pol banana"] = 6
+    _EX["dieta owsiane pol banana"] = 6
+
+    # Template 7 — Białko / owsiane / banan
+    #  full name "bialko owsiane banan" in pass 1
+    _EX["owsiane banan"] = 7
+    _EX["dieta owsiane banan"] = 7
+
+    # Template 8 — Białko / owsiane
+    #  full name "bialko owsiane" in pass 1 (unambiguous because pass 1
+    #  reserves the key before pass 2 shortcuts can collide)
+
+    # Template 9 — Białko / woda / banan
+    #  full name "bialko woda banan" in pass 1; shortcut "bialko woda" in pass 2
+    _EX["woda banan"] = 9
+    _EX["dieta woda banan"] = 9
+
+    # Template 10 — Białko z wodą
+    #  full name "bialko z woda" in pass 1; shortcut "bialko z" in pass 2
+    _EX["dieta z woda"] = 10
+    _EX["dieta bialko z woda"] = 10
+
+    for key, tid in _EX.items():
         aliases[key] = [tid]
 
     return aliases
@@ -2631,6 +2689,8 @@ def _parse_nutrition_draft(question: str, date_ctx: dict, template_match: dict[s
         r'dodaj\s+do\s+dzisiejszego\s+jadzenia\s*:?\s*',
         r'dopisz\s+do\s+dzisiejszego\s+jedzenia\s*:?\s*',
         r'dopisz\s+do\s+jedzenia\s*:?\s*',
+        r'dopisz\s+do\s+dzisiejszego\s+spożycia\s*:?\s*',
+        r'dopisz\s+do\s+spożycia\s*:?\s*',
     ]:
         meal_text = re.sub(prefix, '', meal_text, flags=re.IGNORECASE).strip()
 
@@ -2969,7 +3029,9 @@ def _handle_write_draft(question: str, intents: list[str], date_ctx: dict) -> di
     # ── Parse draft ────────────────────────────────────────────────────
     if write_intent == "nutrition_log_add_draft":
         template_match = _match_meal_template(question)
-        payload, missing = _parse_nutrition_draft(question, date_ctx, template_match=template_match)
+        # If template match is ambiguous (not strong), don't guess — use raw parse instead
+        tm_for_parse = template_match if (template_match and template_match.get("match")) else None
+        payload, missing = _parse_nutrition_draft(question, date_ctx, template_match=tm_for_parse)
         action_type = "nutrition_log_add"
         writer = "nutrition_log_add"
         # Build answer
@@ -2989,6 +3051,12 @@ def _handle_write_draft(question: str, intents: list[str], date_ctx: dict) -> di
             answer += (
                 f"\nTemplate match: {payload.get('template_name')} "
                 f"(ID {payload.get('template_id')}, score={template_match.get('score')})."
+            )
+        if template_match and template_match.get("ambiguous"):
+            missing.append("template_id")
+            answer += (
+                f"\nUwaga: dopasowanie do szablonu jest niejednoznaczne. "
+                f"Podaj nazwę dokładniej."
             )
         idem_prefix = "nl"
     elif write_intent == "qcal_reminder_add_draft":
@@ -3831,7 +3899,7 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
             intents = [ci] + [i for i in intents if i != "general"]
             # If canonicalizer says current_day_meals and we have no
             # more specific nutrition intent, promote it.
-            if ci == "current_day_meals":
+            if ci == "current_day_meals" and not any(i.endswith("_draft") for i in intents):
                 intents = [ci]
     if _LLM_FIRST_NUTRITION_READONLY_ENABLED and nutrition_llm_result:
         if nutrition_llm_result.get("status") == "use_llm" and nutrition_llm_result.get("confidence", 0.0) >= _LLM_CONFIDENCE_THRESHOLD:
