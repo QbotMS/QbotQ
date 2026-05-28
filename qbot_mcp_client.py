@@ -6,7 +6,15 @@ from typing import Any, Callable
 import httpx
 from qbot_config import MCP_URL
 
-DEFAULT_MCP_URL = MCP_URL
+
+def _normalize_mcp_url(url: str) -> str:
+    cleaned = url.strip()
+    if cleaned.endswith("/mcp"):
+        cleaned += "/"
+    return cleaned
+
+
+DEFAULT_MCP_URL = _normalize_mcp_url(MCP_URL)
 PROTOCOL_VERSION = "2024-11-05"
 
 

@@ -35,13 +35,12 @@ _SESSION_STATE: dict[str, dict[str, Any]] = {}
 
 _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
     # ═══════════════════════════════════════════════════════════════
-    # PUBLIC MCP TOOLS — docelowo 2 narzędzia:
-    #   qbot.query          — rozumienie + plan + action_draft + status/readiness
-    #   qbot.action_execute — jedyny executor zapisów
+    # PUBLIC MCP TOOLS — tylko 2 narzędzia:
+    #   qbot.query          — natural language + reader dispatch
+    #   qbot.action_execute  — jedyny executor zapisów
     # Wszystkie domenowe narzędzia (nutrition_log_add, qcal_event_add,
     # qcal_reminder_add, itd.) są internal — dostępne tylko przez
     # action_execute.
-    # qbot.status i qbot.readiness są dostępne przez qbot.query.
     # ═══════════════════════════════════════════════════════════════
 
     # ── Core: universal read-only query router ──

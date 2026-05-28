@@ -7,23 +7,15 @@ ChatGPT connector URL stays:
 ## How it works
 
 - Public traffic reaches nginx on `https://qbot.cytr.us/mcp/`.
-- nginx proxies `/mcp/` to the local FastAPI service on `127.0.0.1:8001`.
+- nginx proxies `/mcp/` to the local FastAPI service on `127.0.0.1:8002`.
 - `qbot_api.py` handles the public MCP routes and forwards tool calls to local QBot dispatch.
 - Tool execution stays inside QBot policy and tool allowlists.
 - Tool calls are recorded in PostgreSQL `tool_calls`.
 
 ## Exposed MCP tools
 
-- `qbot.status`
-- `qbot.readiness`
-- `qbot.ask`
-- `qbot.runbook`
-- `qbot.context_bundle`
-- `qbot.artifact_create`
-- `qbot.artifact_list`
-- `qbot.artifact_get`
-- `qbot.tool_policy`
-- `qbot.telegram_status`
+- `qbot.query`
+- `qbot.action_execute`
 
 ## What MCP cannot do
 
@@ -81,4 +73,3 @@ Expected result: `404` or `403`, not `200`.
 - `qbot.runbook` uses the operator runbook allowlist.
 - `execute=true` still goes through QBot policy boundaries.
 - The adapter does not auto-run controlled actions.
-

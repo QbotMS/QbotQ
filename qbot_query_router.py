@@ -3551,6 +3551,145 @@ Dozwoleni readerzy: """ + ", ".join(_LLM_FIRST_READER_NAMES) + """
 Nie dodawaj własnych domain/intent/reader — użyj tylko z powyższych list."""
 
 
+def _llm_first_classify(query_text: str, date_ctx: Any) -> dict[str, Any]:
+    """Classify the query with the LLM before the regex fallback."""
+    from qgpt_client import qgpt_json
+
+    reader_registry_snapshot = [
+        {
+            "name": name,
+            "category": meta.get("category", ""),
+            "tool": meta.get("tool", ""),
+            "params": meta.get("params", {}),
+            "providers": meta.get("providers", []),
+        }
+        for name, meta in sorted(_READER_REGISTRY.items())
+    ]
+    intent_to_readers_snapshot = {
+        intent: readers
+        for intent, readers in sorted(_INTENT_TO_READERS.items())
+    }
+    user_prompt = json.dumps(
+        {
+            "query_text": query_text,
+            "date_ctx": date_ctx,
+            "reader_registry": reader_registry_snapshot,
+            "intent_to_readers": intent_to_readers_snapshot,
+            "output_schema": {
+                "intent": "string",
+                "readers": ["reader_name"],
+                "parameters": {},
+                "confidence": 0.0,
+            },
+        },
+        ensure_ascii=False,
+        default=str,
+        indent=2,
+    )
+
+    try:
+        raw = qgpt_json(
+            user_prompt,
+            system=(
+                "Jesteś klasyfikatorem intencji QBot. "
+                "Zwróć wyłącznie JSON z polami: intent, readers, parameters, confidence. "
+                "confidence ma być w zakresie 0.0-1.0. "
+                f"Jeśli confidence >= {_LLM_CONFIDENCE_THRESHOLD}, readers powinny pochodzić z provided lists. "
+                "Nie dodawaj żadnych komentarzy ani markdown."
+            ),
+            max_tokens=500,
+            temperature=0,
+        )
+    except Exception as exc:
+        return {
+            "status": "fallback_needed",
+            "error": str(exc),
+            "intent": None,
+            "readers": [],
+            "parameters": {},
+            "confidence": 0.0,
+            "llm_status": "fallback_needed",
+            "fallback_reason": str(exc),
+        }
+
+    if not isinstance(raw, dict):
+        return {
+            "status": "fallback_needed",
+            "error": "LLM returned a non-object response",
+            "intent": None,
+            "readers": [],
+            "parameters": {},
+            "confidence": 0.0,
+            "llm_status": "fallback_needed",
+            "fallback_reason": "non_object",
+        }
+
+    intent = str(raw.get("intent", "")).strip()
+    readers_raw = raw.get("readers", [])
+    if not isinstance(readers_raw, list):
+        readers_raw = []
+    readers = [str(reader).strip() for reader in readers_raw if str(reader).strip() in _READER_REGISTRY]
+    parameters = raw.get("parameters", {})
+    if not isinstance(parameters, dict):
+        parameters = {}
+    try:
+        confidence = float(raw.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        confidence = 0.0
+
+    if not intent or intent == "unknown":
+        return {
+            "status": "fallback_needed",
+            "error": "LLM intent missing",
+            "intent": intent or None,
+            "readers": readers,
+            "parameters": parameters,
+            "confidence": confidence,
+            "llm_status": "fallback_needed",
+            "fallback_reason": "missing_intent",
+        }
+    if intent not in _LLM_FIRST_ALLOWED_INTENTS:
+        return {
+            "status": "fallback_needed",
+            "error": f"intent '{intent}' not in allowlist",
+            "intent": intent,
+            "readers": readers,
+            "parameters": parameters,
+            "confidence": confidence,
+            "llm_status": "fallback_needed",
+            "fallback_reason": "intent_not_allowed",
+        }
+
+    allowed_readers = set(_INTENT_TO_READERS.get(intent, []))
+    if readers and allowed_readers and any(reader not in allowed_readers for reader in readers):
+        readers = [reader for reader in readers if reader in allowed_readers]
+    if not readers:
+        readers = list(_INTENT_TO_READERS.get(intent, []))
+
+    if confidence < _LLM_CONFIDENCE_THRESHOLD:
+        return {
+            "status": "fallback_needed",
+            "error": f"low confidence: {confidence}",
+            "intent": intent,
+            "readers": readers,
+            "parameters": parameters,
+            "confidence": confidence,
+            "llm_status": "fallback_needed",
+            "fallback_reason": f"low_confidence: {confidence}",
+        }
+
+    return {
+        "status": "use_llm",
+        "error": None,
+        "intent": intent,
+        "readers": readers,
+        "parameters": parameters,
+        "confidence": confidence,
+        "llm_status": "use_llm",
+        "fallback_reason": None,
+    }
+
+
 def _build_intent_domain_map() -> dict[str, set[str]]:
     """Build intent → expected domains from _INTENT_TO_READERS + _READER_REGISTRY."""
     mapping: dict[str, set[str]] = {}
@@ -3678,109 +3817,42 @@ def llm_first_classify_intent(
     *,
     _retry_count: int = 0,
 ) -> dict:
-    """LLM-first intent classifier.
-
-    Calls qgpt_json() as the FIRST decision mechanism.
-    Each call is bounded by _LLM_TIMEOUT_SEC (env QBOT_LLM_FIRST_TIMEOUT_SEC, default 3.0s).
-    Retries once on failure.
-    Returns a validated structured dict or a fallback指示.
-    """
-    from qgpt_client import qgpt_json
-
-    user_prompt = f"Użytkownik: {question}\n\nKontekst: {context}"
-    last_error: str | None = None
-
-    for attempt in range(2):
-        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        try:
-            fut = pool.submit(
-                qgpt_json, user_prompt,
-                system=_LLM_FIRST_SYSTEM, max_tokens=500, temperature=0,
-            )
-            raw = fut.result(timeout=_LLM_TIMEOUT_SEC)
-        except concurrent.futures.TimeoutError:
-            fut.cancel()
-            return {
-                "status": "fallback_needed",
-                "error": f"LLM timeout after {_LLM_TIMEOUT_SEC}s",
-                "raw_intent": None, "normalized_intent": None,
-                "domain": None, "intent": None, "parameters": {},
-                "confidence": 0.0, "needs_clarification": False,
-                "clarification_question": "", "readers": [],
-                "action_type": None, "is_write_intent": False,
-                "llm_status": "fallback_needed",
-                "fallback_reason": f"timeout: {_LLM_TIMEOUT_SEC}s",
-            }
-        except Exception as exc:
-            last_error = str(exc)
-            if attempt == 0:
-                continue
-            return {
-                "status": "fallback_needed",
-                "error": f"LLM call failed after retry: {last_error}",
-                "raw_intent": None, "normalized_intent": None,
-                "domain": None, "intent": None, "parameters": {},
-                "confidence": 0.0, "needs_clarification": False,
-                "clarification_question": "", "readers": [],
-                "action_type": None, "is_write_intent": False,
-                "llm_status": "fallback_needed",
-                "fallback_reason": f"api_error: {last_error}",
-            }
-        finally:
-            pool.shutdown(wait=False)
-
-        validated = _validate_llm_intent(raw)
-        if validated is not None:
-            if validated["status"] in ("inconsistent", "unrecognised_intent"):
-                return {
-                    "status": "fallback_needed",
-                    "error": validated.get("error", "LLM result invalid"),
-                    "raw_intent": validated.get("raw_intent"),
-                    "normalized_intent": validated.get("normalized_intent"),
-                    "domain": validated["domain"],
-                    "intent": validated["intent"],
-                    "parameters": validated["parameters"],
-                    "confidence": validated["confidence"],
-                    "needs_clarification": True,
-                    "clarification_question": validated.get("clarification_question", ""),
-                    "readers": validated["readers"],
-                    "action_type": None,
-                    "is_write_intent": validated["is_write_intent"],
-                    "llm_status": "fallback_needed",
-                    "fallback_reason": validated.get("fallback_reason", validated.get("error", "validation failed")),
-                }
-
-            status = "use_llm" if validated["confidence"] >= _LLM_CONFIDENCE_THRESHOLD else "ask_clarification"
-            validated["status"] = status
-            validated["llm_status"] = status
-            validated["fallback_reason"] = None if status == "use_llm" else f"low_confidence: {validated['confidence']}"
-            return validated
-
-        last_error = "LLM returned invalid/unparseable result"
-        if attempt == 0:
-            continue
+    """Compatibility wrapper around the new LLM-first classifier."""
+    result = _llm_first_classify(question, context)
+    if result.get("status") == "use_llm":
         return {
-            "status": "fallback_needed",
-            "error": last_error,
-            "raw_intent": None, "normalized_intent": None,
-            "domain": None, "intent": None, "parameters": {},
-            "confidence": 0.0, "needs_clarification": False,
-            "clarification_question": "", "readers": [],
-            "action_type": None, "is_write_intent": False,
-            "llm_status": "fallback_needed",
-            "fallback_reason": "unparseable_json",
+            "status": "use_llm",
+            "error": None,
+            "raw_intent": result.get("intent"),
+            "normalized_intent": result.get("intent"),
+            "domain": None,
+            "intent": result.get("intent"),
+            "parameters": result.get("parameters", {}),
+            "confidence": result.get("confidence", 0.0),
+            "needs_clarification": False,
+            "clarification_question": "",
+            "readers": result.get("readers", []),
+            "action_type": None,
+            "is_write_intent": False,
+            "llm_status": "use_llm",
+            "fallback_reason": None,
         }
-
     return {
         "status": "fallback_needed",
-        "error": last_error or "Unknown LLM failure",
-        "raw_intent": None, "normalized_intent": None,
-        "domain": None, "intent": None, "parameters": {},
-        "confidence": 0.0, "needs_clarification": False,
-        "clarification_question": "", "readers": [],
-        "action_type": None, "is_write_intent": False,
+        "error": result.get("error", "LLM fallback needed"),
+        "raw_intent": result.get("intent"),
+        "normalized_intent": result.get("intent"),
+        "domain": None,
+        "intent": result.get("intent"),
+        "parameters": result.get("parameters", {}),
+        "confidence": result.get("confidence", 0.0),
+        "needs_clarification": False,
+        "clarification_question": "",
+        "readers": result.get("readers", []),
+        "action_type": None,
+        "is_write_intent": False,
         "llm_status": "fallback_needed",
-        "fallback_reason": "unknown_error",
+        "fallback_reason": result.get("fallback_reason", result.get("error", "fallback")),
     }
 
 
@@ -3831,75 +3903,24 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     if not _TOOL_DISPATCH:
         _init_dispatch()
 
-    # ── Intent classification ──────────────────────────────────────────
-    nutrition_llm_result: dict[str, Any] | None = None
-    if _LLM_FIRST_ENABLED:
-        llm_result = llm_first_classify_intent(question, context)
-        if llm_result["status"] == "use_llm" and llm_result["confidence"] >= _LLM_CONFIDENCE_THRESHOLD:
-            intents = [llm_result["intent"]] if llm_result["intent"] and llm_result["intent"] != "unknown" else classify_intent(question)
-        else:
-            intents = classify_intent(question)
-    elif _LLM_FIRST_SAFE_DOMAINS_ENABLED:
-        kw_intents = classify_intent(question)
-        ql = question.lower()
-        nutrition_cues = _LLM_FIRST_NUTRITION_READONLY_ENABLED and any(w in ql for w in (
-            "dieta", "posił", "posilk", "meal", "template", "szablon",
-            "brokuł", "brokul", "kcal", "kalor", "makro", "białk", "bialk",
-            "węgl", "wegl", "tłuszcz", "tluszcz", "jadł", "jedzeni", "nutrition",
-        ))
-        nutrition_hit = _LLM_FIRST_NUTRITION_READONLY_ENABLED and (
-            bool(_NUTRITION_READONLY_INTENTS & set(kw_intents))
-            or "nutrition_log_add_draft" in kw_intents
-            or nutrition_cues
-        )
-        if _SAFE_DOMAIN_INTENTS & set(kw_intents) or nutrition_hit:
-            llm_result = llm_first_classify_intent(question, context)
-            if nutrition_hit:
-                nutrition_llm_result = llm_result
-            if llm_result["status"] == "use_llm" and llm_result["confidence"] >= _LLM_CONFIDENCE_THRESHOLD:
-                # Hard guard: if keyword classifier says artifact_read, keep it —
-                # LLM must not override docs/roadmap queries into nutrition.
-                if "artifact_read" in kw_intents:
-                    intents = kw_intents
-                else:
-                    intents = [llm_result["intent"]] if llm_result["intent"] and llm_result["intent"] != "unknown" else kw_intents
-            else:
-                intents = kw_intents
-        else:
-            intents = kw_intents
-    elif _LLM_FIRST_CALENDAR_READONLY_ENABLED:
-        kw_intents = classify_intent(question)
-        if _CALENDAR_READONLY_INTENTS & set(kw_intents):
-            llm_result = llm_first_classify_intent(question, context)
-            if llm_result["status"] == "use_llm" and llm_result["confidence"] >= _LLM_CONFIDENCE_THRESHOLD:
-                intents = [llm_result["intent"]] if llm_result["intent"] and llm_result["intent"] != "unknown" else kw_intents
-            else:
-                intents = kw_intents
-        else:
-            intents = kw_intents
-    elif _LLM_FIRST_NUTRITION_READONLY_ENABLED:
-        kw_intents = classify_intent(question)
-        ql = question.lower()
-        nutrition_cues = any(w in ql for w in (
-            "dieta", "posił", "posilk", "meal", "template", "szablon",
-            "brokuł", "brokul", "kcal", "kalor", "makro", "białk", "bialk",
-            "węgl", "wegl", "tłuszcz", "tluszcz", "jadł", "jedzeni", "nutrition",
-        ))
-        if _NUTRITION_READONLY_INTENTS & set(kw_intents) or "nutrition_log_add_draft" in kw_intents or nutrition_cues:
-            llm_result = llm_first_classify_intent(question, context)
-            nutrition_llm_result = llm_result
-            if llm_result["status"] == "use_llm" and llm_result["confidence"] >= _LLM_CONFIDENCE_THRESHOLD:
-                llm_intent = llm_result["intent"]
-                if "nutrition_log_add_draft" in kw_intents and not str(llm_intent or "").endswith("_draft"):
-                    intents = kw_intents
-                else:
-                    intents = [llm_intent] if llm_intent and llm_intent != "unknown" else kw_intents
-            else:
-                intents = kw_intents
-        else:
-            intents = kw_intents
+    date_ctx = _resolve_date_context(context, question)
+
+    # ── LLM-first classification ───────────────────────────────────────
+    llm_result = _llm_first_classify(question, date_ctx)
+    if llm_result.get("status") == "use_llm" and llm_result.get("confidence", 0.0) >= _LLM_CONFIDENCE_THRESHOLD:
+        llm_intent = str(llm_result.get("intent", "")).strip()
+        intents = [llm_intent] if llm_intent and llm_intent != "unknown" else classify_intent(question)
+        llm_selected_readers = [reader for reader in llm_result.get("readers", []) if reader in _READER_REGISTRY]
+        nutrition_llm_result: dict[str, Any] | None = {
+            "status": "use_llm",
+            "intent": llm_intent,
+            "parameters": dict(llm_result.get("parameters", {})),
+            "confidence": float(llm_result.get("confidence", 0.0)),
+        }
     else:
         intents = classify_intent(question)
+        llm_selected_readers = []
+        nutrition_llm_result = None
 
     # ── Semantic intent canonicalization ──
     # Overrides keyword classification for queries the canonicalizer
@@ -3913,17 +3934,6 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
             # more specific nutrition intent, promote it.
             if ci == "current_day_meals" and not any(i.endswith("_draft") for i in intents):
                 intents = [ci]
-    if _LLM_FIRST_NUTRITION_READONLY_ENABLED and nutrition_llm_result:
-        # Docs/roadmap take priority — never override artifact_read with nutrition
-        if "artifact_read" in intents:
-            pass
-        elif nutrition_llm_result.get("status") == "use_llm" and nutrition_llm_result.get("confidence", 0.0) >= _LLM_CONFIDENCE_THRESHOLD:
-            nutrition_intent = nutrition_llm_result.get("intent")
-            if nutrition_intent in _NUTRITION_READONLY_INTENTS or nutrition_intent == "nutrition_log_add_draft":
-                intents = [nutrition_intent]
-                canonical_intent_info = None
-
-    date_ctx = _resolve_date_context(context, question)
     write_result = _handle_write_draft(question, intents, date_ctx)
     if write_result is not None:
         return write_result
@@ -4087,8 +4097,11 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
             pass  # fall through to keyword classifier
 
     readers_to_call: list[str] = []
+    # Prefer readers selected by the LLM when confidence was high.
+    if llm_selected_readers:
+        readers_to_call = list(llm_selected_readers)
     # When canonicalizer has authoritative intent with forced readers, use those
-    if _canonical_forced:
+    elif _canonical_forced:
         readers_to_call = list(_canonical_forced_readers)
     else:
         for intent in intents:

@@ -43,7 +43,7 @@ LOCATION_LAT = env_float("LOCATION_LAT", 52.2297)
 LOCATION_LON = env_float("LOCATION_LON", 21.0122)
 LOCATION_NAME = env("LOCATION_NAME", "Warszawa")
 
-MCP_URL = env("QBOT_MCP_URL", "http://localhost:8000/mcp/")
+MCP_URL = env("QBOT_MCP_URL", "http://127.0.0.1:8002/mcp/")
 
 QGPT_BASE_URL = env("QGPT_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 QGPT_MODEL = env("QGPT_MODEL") or env("OPENAI_MODEL") or "gpt-4.1-mini"

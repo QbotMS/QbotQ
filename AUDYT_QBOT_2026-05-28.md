@@ -6,10 +6,10 @@ Zakres: read-only, bez zmian w kodzie, bez restartów, bez commitów.
 ## Executive summary
 
 - Publiczny MCP działa przez `qbot-api.service` na `127.0.0.1:8002` i jest wystawiany pod `https://qbot.cytr.us/mcp/` przez nginx.
-- Aktualne publiczne `tools/list` pokazuje 5 narzędzi: `qbot.query`, `qbot.status`, `qbot.readiness`, `qbot.reminder_add`, `qbot.action_execute`.
-- `qbot.query` jest routerem regułowym z LLM jako fallback do canonicalizacji, a nie czystym agentem LLM.
-- `qbot.action_execute` jest jedynym publicznym executorem zapisów dla allowlisty 6 akcji.
-- W repo widać niespójność architektury: `QBOT_MCP_URL` nadal domyślnie wskazuje na martwe `http://localhost:8000/mcp/`, a aktywny publiczny MCP działa na `8002`.
+- Aktualne publiczne `tools/list` pokazuje 2 narzędzia: `qbot.query` i `qbot.action_execute`.
+- `qbot.query` jest LLM-first routerem z regexowym fallbackiem.
+- `qbot.action_execute` jest jedynym publicznym executorem zapisów dla allowlisty akcji.
+- W repo widać niespójność architektury: `QBOT_MCP_URL` powinien wskazywać na lokalny `http://127.0.0.1:8002/mcp/`, a aktywny publiczny MCP działa na `8002`.
 
 ## Aktualna architektura
 
@@ -92,7 +92,7 @@ Publiczny MCP jest obsługiwany bezpośrednio przez `qbot-api`, nie przez osobny
 
 - Publiczny MCP nie wskazuje na osobny upstream backend.
 - `qbot-api.py` sam wystawia `/mcp/`, `/mcp/health` i `/mcp/tools`.
-- Lokalny klient MCP w `qbot_mcp_client.py` nadal domyślnie używa `QBOT_MCP_URL=http://localhost:8000/mcp/`, co jest niespójne z aktualnym listenem.
+- Lokalny klient MCP w `qbot_mcp_client.py` domyślnie używa `QBOT_MCP_URL=http://127.0.0.1:8002/mcp/`, co jest spójne z aktualnym listenem.
 
 ## Action types i możliwości zapisu
 
@@ -338,4 +338,3 @@ Obsługiwane obszary:
 - Czy `qbot-api` ma być jedynym publicznym MCP entrypointem?
 - Gdzie ma formalnie żyć Telegram webhook secret?
 - Czy chcesz, żebym przygotował na tej bazie `QBOT_BIBLE.md` i `QBOT_KNOWHOW.md`?
-

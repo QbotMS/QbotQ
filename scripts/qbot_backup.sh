@@ -3,11 +3,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(dirname "$SCRIPT_DIR")"
-ENV_FILE="${APP_DIR}/.env.local"
+ENV_FILE_LOCAL="${APP_DIR}/.env.local"
+ENV_FILE="${APP_DIR}/.env"
 BACKUP_DIR="/opt/qbot/backups"
 RETENTION_DAYS=14
 
-if [ -f "$ENV_FILE" ]; then
+if [ -r "$ENV_FILE_LOCAL" ]; then
+    set -a
+    source "$ENV_FILE_LOCAL"
+    set +a
+elif [ -r "$ENV_FILE" ]; then
     set -a
     source "$ENV_FILE"
     set +a

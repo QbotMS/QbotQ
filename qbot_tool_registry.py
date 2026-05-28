@@ -619,7 +619,7 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "description": "Podgląd mapowania MCP tool → QBot tool bez wykonania",
         "category": "mcp",
         "safe": True,
-        "args_schema": {"mcp_tool": "qbot.status", "args": {}},
+        "args_schema": {"mcp_tool": "qbot.query", "args": {"query": "status qbot"}},
     },
     "qbot_legacy_status": {
         "description": "Sprawdza stan legacy Q (q-bot.service) — read-only systemctl show",

@@ -683,9 +683,21 @@ def _tool_qbot_project_guard_check(_args: dict | None = None) -> dict[str, Any]:
 
 
 def _tool_qbot_query(args: dict | None = None) -> dict[str, Any]:
-    query = (args or {}).get("query", "")
-    execute = (args or {}).get("execute", False) is True
-    from qbot_query_processor import process_query
-    result = process_query(query, execute)
+    payload = args or {}
+    query = str(payload.get("query", "")).strip()
+    if not query:
+        return {"tool": "qbot_query", "status": "error", "error": "empty query"}
+
+    from qbot_query_router import query as qbot_query
+
+    result = qbot_query(
+        question=query,
+        mode=str(payload.get("mode", "read_only")),
+        scope=str(payload.get("scope", "all")),
+        context=str(payload.get("context", "")),
+        max_rows=int(payload.get("max_rows", 500)),
+        include_provenance=bool(payload.get("include_provenance", True)),
+        include_missing=bool(payload.get("include_missing", True)),
+    )
     result["tool"] = "qbot_query"
     return result

@@ -184,6 +184,10 @@ def _telegram_response_text(command: str, result: dict) -> str | None:
                 return str(summary)[:3900]
 
             return "Qbot przetworzył zapytanie. Użyj /help aby zobaczyć dostępne komendy."
+    if isinstance(result, dict):
+        text = result.get("text")
+        if text:
+            return str(text)
     return None
 
 
@@ -918,241 +922,52 @@ async def telegram_webhook(webhook_secret: str, request: Request):
     command = parts[0].lower()
     query = parts[1].strip() if len(parts) > 1 else ""
 
-    if command == "/ask":
-        from qbot_telegram_tools import _tool_qbot_telegram_agent_chat
-        chat_result = _tool_qbot_telegram_agent_chat({"message": query or text, "style": "short", "execute": True})
-        return _telegram_webhook_reply(chat_id, chat_result.get("answer", "Nie mogę teraz odpowiedzieć."))
-
-    result: dict = {}
-
     if command == "/start":
         from qbot_telegram_tools import _tool_qbot_telegram_command_help
         result = {"command": "/start", "response": _tool_qbot_telegram_command_help()}
     elif command == "/help":
         from qbot_telegram_tools import _tool_qbot_telegram_command_help
         result = {"command": "/help", "response": _tool_qbot_telegram_command_help()}
-    elif command == "/status":
-        summary_text, response = _telegram_status_summary()
-        result = {"command": "/status", "response": response, "text": summary_text}
-    elif command == "/legacy":
-        from qbot_legacy_cutover_tools import _tool_qbot_legacy_cutover_status
-        response = _tool_qbot_legacy_cutover_status()
-        legacy_state = "disabled po cutover" if not response.get("legacy_service_active") and not response.get("legacy_service_enabled") else "legacy active"
-        result = {
-            "command": "/legacy",
-            "response": response,
-            "text": "Legacy status:\n"
-                    f"ℹ️ q-bot.service: {legacy_state}\n"
-                    f"ℹ️ rollback: {'available' if response.get('rollback_available') else 'unavailable'}",
-        }
-    elif command == "/ready":
-        from qbot_operator_tools import _tool_qbot_readiness_report
-        result = {"command": "/ready", "response": _tool_qbot_readiness_report()}
-    elif command == "/smoke":
-        from qbot_ops_tools import _tool_qbot_operator_final_smoke_test
-        result = {"command": "/smoke", "response": _tool_qbot_operator_final_smoke_test()}
-    elif command == "/backup":
-        from qbot_ops_tools import _tool_qbot_backup_status
-        result = {"command": "/backup", "response": _tool_qbot_backup_status()}
-    elif command == "/errors":
-        from qbot_operator_tools import _tool_qbot_error_summary
-        result = {"command": "/errors", "response": _tool_qbot_error_summary({"limit": 20})}
-    elif command == "/takeover":
-        from qbot_legacy_cutover_tools import _tool_qbot_legacy_takeover_status
-        result = {"command": "/takeover", "response": _tool_qbot_legacy_takeover_status()}
-    elif command == "/weather_status":
-        from qbot_legacy_parity_tools import _tool_qbot_weather_legacy_status, _tool_qbot_weather_status
-        current = _tool_qbot_weather_status()
-        legacy = _tool_qbot_weather_legacy_status()
-        response = {"current": current, "legacy": legacy}
-        result = {
-            "command": "/weather_status",
-            "response": response,
-            "text": "Weather status:\n"
-                    f"ℹ️ current status: {current.get('status', 'UNKNOWN')}\n"
-                    f"ℹ️ current path: {current.get('current_weather_path', 'unknown')}\n"
-                    f"ℹ️ OWM legacy: {legacy.get('status', 'UNKNOWN')}\n"
-                    f"ℹ️ OWM note: {legacy.get('current_new_qbot_status', 'unknown')}",
-        }
-    elif command == "/garage_status":
-        from qbot_legacy_parity_tools import _tool_qbot_garage_legacy_status
-        response = _tool_qbot_garage_legacy_status()
-        result = {
-            "command": "/garage_status",
-            "response": response,
-            "text": "Garage legacy:\n"
-                    f"ℹ️ status: {response.get('status', 'UNKNOWN')}\n"
-                    f"ℹ️ safety: {response.get('safety_class', 'UNKNOWN')}\n"
-                    f"ℹ️ note: no remote opening/closing implemented",
-        }
-    elif command == "/artifacts":
-        from qbot_legacy_parity_tools import _tool_qbot_artifacts_legacy_status
-        response = _tool_qbot_artifacts_legacy_status()
-        result = {
-            "command": "/artifacts",
-            "response": response,
-            "text": "Artifacts legacy:\n"
-                    f"ℹ️ status: {response.get('status', 'UNKNOWN')}\n"
-                    f"ℹ️ filesystem root: {response.get('filesystem_artifacts_root', 'unknown')}\n"
-                    f"ℹ️ bridge: {'present' if response.get('bridge_present') else 'partial/missing'}",
-        }
-    elif command == "/integrations":
-        from qbot_legacy_parity_tools import _tool_qbot_external_integrations_report
-        response = _tool_qbot_external_integrations_report()
-        result = {
-            "command": "/integrations",
-            "response": response,
-            "text": response.get("summary_text") or "External integrations report unavailable",
-        }
-    elif command == "/rwgps":
-        from qbot_route_tools import _tool_qbot_rwgps_legacy_status, _tool_qbot_rwgps_config_status
-        status = _tool_qbot_rwgps_legacy_status()
-        config = _tool_qbot_rwgps_config_status()
-        result = {
-            "command": "/rwgps",
-            "response": status,
-            "text": "RWGPS:\n"
-                    f"ℹ️ status: {status.get('restored_status', 'UNKNOWN')}\n"
-                    f"ℹ️ configured: {'yes' if config.get('auth_token_present') else 'no'}\n"
-                    f"ℹ️ code: {'detected' if status.get('code_detected') else 'missing'}\n"
-                    f"ℹ️ missing: {', '.join(config.get('missing', [])) or 'none'}\n"
-                    f"ℹ️ route list: qbot_rwgps_route_list",
-        }
-    elif command == "/hammerhead":
-        from qbot_legacy_parity_tools import _tool_qbot_hammerhead_import_status
-        from qbot_route_tools import _tool_qbot_hammerhead_config_status, _tool_qbot_hammerhead_import_inventory
-        status = _tool_qbot_hammerhead_import_status()
-        config = _tool_qbot_hammerhead_config_status()
-        inventory = _tool_qbot_hammerhead_import_inventory({"limit": 1})
-        restored = config.get("restored_status", status.get("status", "UNKNOWN"))
-        result = {
-            "command": "/hammerhead",
-            "response": status,
-            "text": "Hammerhead:\n"
-                    f"ℹ️ status: {restored}\n"
-                    f"ℹ️ JWT: {'present' if config.get('jwt_present') else 'missing'}\n"
-                    f"ℹ️ tokenstore: {'active' if config.get('tokenstore_active') else 'inactive'}\n"
-                    f"ℹ️ token expired: {config.get('possible_expired_token', 'unknown')}\n"
-                    f"ℹ️ FIT files: {inventory.get('count', 0)}",
-        }
-    elif command == "/csv":
-        from qbot_route_tools import _tool_qbot_csv_export_status
-        status = _tool_qbot_csv_export_status()
-        result = {
-            "command": "/csv",
-            "response": status,
-            "text": "CSV Export:\n"
-                    f"ℹ️ status: {status.get('restored_status', 'UNKNOWN')}\n"
-                    f"ℹ️ csv count: {status.get('inventory', {}).get('csv_count', 0)}\n"
-                    f"ℹ️ latest available: {'yes' if status.get('latest_available') else 'no'}",
-        }
-    elif command == "/xert":
-        from qbot_integration_tools import _tool_qbot_xert_readiness_status, _tool_qbot_xert_config_status
-        config = _tool_qbot_xert_config_status()
-        status = _tool_qbot_xert_readiness_status()
-        result = {
-            "command": "/xert",
-            "response": status,
-            "text": "Xert:\n"
-                    f"ℹ️ configured: {'yes' if config.get('configured') else 'no'}\n"
-                    f"ℹ️ status: {status.get('status', 'UNKNOWN')}\n"
-                    f"ℹ️ FTP: {status.get('ftp_watts', 'N/A')}W\n"
-                    f"ℹ️ forma: {status.get('form_status', 'N/A')}",
-        }
-    elif command == "/intervals":
-        from qbot_integration_tools import _tool_qbot_intervals_wellness_status, _tool_qbot_intervals_config_status
-        config = _tool_qbot_intervals_config_status()
-        status = _tool_qbot_intervals_wellness_status()
-        result = {
-            "command": "/intervals",
-            "response": status,
-            "text": "Intervals.icu:\n"
-                    f"ℹ️ configured: {'yes' if config.get('configured') else 'no'}\n"
-                    f"ℹ️ status: {status.get('status', 'UNKNOWN')}\n"
-                    f"ℹ️ weight: {status.get('latest_weight', 'N/A')}kg",
-        }
-    elif command == "/garmin":
-        from qbot_integration_tools import _tool_qbot_garmin_config_status, _tool_qbot_garmin_upload_dry_run
-        config = _tool_qbot_garmin_config_status()
-        dry_run = _tool_qbot_garmin_upload_dry_run()
-        result = {
-            "command": "/garmin",
-            "response": config,
-            "text": "Garmin:\n"
-                    f"ℹ️ configured: {'yes' if config.get('configured') else 'no'}\n"
-                    f"ℹ️ tokenstore: {'active' if config.get('tokenstore_active') else 'inactive'}\n"
-                    f"ℹ️ latest FIT: {'available' if dry_run.get('latest_fit_available') else 'none'}",
-        }
-    elif command == "/cronometer":
-        from qbot_integration_tools import _tool_qbot_cronometer_legacy_status
-        status = _tool_qbot_cronometer_legacy_status()
-        result = {
-            "command": "/cronometer",
-            "response": status,
-            "text": "Cronometer:\n"
-                    f"ℹ️ status: {status.get('status', 'UNKNOWN')}\n"
-                    f"ℹ️ restored: {status.get('restored_status', 'UNKNOWN')}",
-        }
-    elif command == "/weather":
-        from qbot_integration_tools import _tool_qbot_weather_config_status
-        status = _tool_qbot_weather_config_status()
-        result = {
-            "command": "/weather",
-            "response": status,
-            "text": "Weather:\n"
-                    f"ℹ️ status: {status.get('status', 'UNKNOWN')}\n"
-                    f"ℹ️ API configured: {'yes' if status.get('api_configured') else 'no'}\n"
-                    f"ℹ️ location: {'set' if status.get('location_configured') else 'missing'}",
-        }
-    elif command == "/maps":
-        from qbot_integration_tools import _tool_qbot_openmaps_legacy_status
-        status = _tool_qbot_openmaps_legacy_status()
-        result = {
-            "command": "/maps",
-            "response": status,
-            "text": "OpenMaps:\n"
-                    f"ℹ️ status: {status.get('status', 'UNKNOWN')}\n"
-                    f"ℹ️ code: {'detected' if status.get('code_detected') else 'missing'}",
-        }
-    elif command == "/garage":
-        from qbot_garage_tools import _tool_qbot_garage_raw_status
-        status = _tool_qbot_garage_raw_status()
-        result = {
-            "command": "/garage",
-            "response": status,
-            "text": "Garage:\n"
-                    f"ℹ️ status: {status.get('status', 'UNKNOWN')}\n"
-                    f"ℹ️ records: {status.get('total_records', 0)}",
-        }
-    elif command == "/daily_report" or command == "/daily":
-        from qbot_report_tools import _tool_qbot_daily_report_status
-        status = _tool_qbot_daily_report_status()
-        result = {
-            "command": command,
-            "response": status,
-            "text": "Daily Report:\n"
-                    f"ℹ️ status: {status.get('status', 'UNKNOWN')}\n"
-                    f"ℹ️ last sent: {status.get('last_sent_date', 'never')}\n"
-                    f"ℹ️ channels: {', '.join(status.get('channels', [])) or 'none'}",
-        }
-    elif command == "/ride_report" or command == "/reports":
-        from qbot_report_tools import _tool_qbot_ride_report_status
-        status = _tool_qbot_ride_report_status()
-        result = {
-            "command": command,
-            "response": status,
-            "text": "Ride Report:\n"
-                    f"ℹ️ status: {status.get('status', 'UNKNOWN')}\n"
-                    f"ℹ️ activities reported: {status.get('reported_count', 0)}",
-        }
-    elif command == "/ask":
-        if not query:
-            result = {"command": "/ask", "response": {"status": "error", "error": "empty query"}}
-        else:
-            from qbot_query_processor import process_query
-            result = {"command": "/ask", "response": process_query(query, execute=True), "_query": query}
     else:
-        return _telegram_webhook_reply(chat_id, f"Nie znam komendy '{command}'. Napisz pytanie normalnym tekstem albo /help.")
+        from qbot_tools import _tool_qbot_query
+
+        command_query_map = {
+            "/status": "status qbot",
+            "/legacy": "legacy cutover status",
+            "/ready": "readiness qbot",
+            "/smoke": "final smoke test qbot",
+            "/backup": "backup status qbot",
+            "/errors": "recent errors qbot",
+            "/takeover": "legacy takeover status",
+            "/weather_status": "weather status qbot",
+            "/garage_status": "garage status qbot",
+            "/artifacts": "artifacts status qbot",
+            "/integrations": "external integrations qbot",
+            "/rwgps": "status rwgps",
+            "/hammerhead": "status hammerhead",
+            "/csv": "status csv export",
+            "/xert": "status xert",
+            "/intervals": "status intervals",
+            "/garmin": "status garmin",
+            "/cronometer": "status cronometer",
+            "/weather": "weather status qbot",
+            "/maps": "status maps",
+            "/garage": "garage status qbot",
+            "/daily_report": "daily report status",
+            "/daily": "daily report status",
+            "/ride_report": "ride report status",
+            "/reports": "ride report status",
+            "/ask": query or text,
+        }
+        query_text = command_query_map.get(command)
+        if not query_text:
+            return _telegram_webhook_reply(chat_id, f"Nie znam komendy '{command}'. Napisz pytanie normalnym tekstem albo /help.")
+        query_result = _tool_qbot_query({"query": query_text, "mode": "read_only", "scope": "all"})
+        result = {
+            "command": command,
+            "response": query_result,
+            "text": query_result.get("answer") or query_result.get("summary_text") or query_result.get("text") or "Nie mogę teraz odpowiedzieć.",
+        }
 
     reply_text = _telegram_response_text(command, result)
     if not reply_text:
@@ -1242,4 +1057,3 @@ def oauth_protected_resource():
     return {
         "resource": "https://qbot.cytr.us/mcp/"
     }
-

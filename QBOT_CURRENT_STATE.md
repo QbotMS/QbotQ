@@ -64,16 +64,8 @@ configuration.
 - Public `/q` and `/health` remain blocked with `404`.
 - Adapter file: `qbot_mcp_adapter.py`.
 - Exposed MCP tools:
-  - `qbot.status`
-  - `qbot.readiness`
-  - `qbot.ask`
-  - `qbot.runbook`
-  - `qbot.context_bundle`
-  - `qbot.artifact_create` requires MCP token and is disabled without one
-  - `qbot.artifact_list`
-  - `qbot.artifact_get`
-  - `qbot.tool_policy`
-  - `qbot.telegram_status`
+  - `qbot.query`
+  - `qbot.action_execute`
 - Diagnostics added:
   - `qbot_mcp_status`
   - `qbot_mcp_tools_list`
