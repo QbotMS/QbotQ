@@ -2785,8 +2785,13 @@ def _heuristic_canonicalize(question: str, intents: list[str]) -> dict | None:
 # ═══════════════════════════════════════════════════════════════════════
 
 _LLM_FIRST_ENABLED = os.getenv("QBOT_LLM_FIRST_QUERY", "0") == "1"
+_LLM_FIRST_SAFE_DOMAINS_ENABLED = os.getenv("QBOT_LLM_FIRST_SAFE_DOMAINS", "0") == "1"
 _LLM_CONFIDENCE_THRESHOLD = 0.6
 _LLM_TIMEOUT_SEC = float(os.getenv("QBOT_LLM_FIRST_TIMEOUT_SEC", "3.0"))
+
+_SAFE_DOMAIN_INTENTS: frozenset[str] = frozenset({
+    "status", "readiness", "artifact_read", "weather",
+})
 
 _ALLOWED_DOMAINS = [
     "nutrition", "health", "calendar", "wellness", "xert", "intervals",
@@ -3188,8 +3193,17 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         if llm_result["status"] == "use_llm" and llm_result["confidence"] >= _LLM_CONFIDENCE_THRESHOLD:
             intents = [llm_result["intent"]] if llm_result["intent"] and llm_result["intent"] != "unknown" else classify_intent(question)
         else:
-            # Pre-fallback: keyword classifier for reads; writes still produce a draft
             intents = classify_intent(question)
+    elif _LLM_FIRST_SAFE_DOMAINS_ENABLED:
+        kw_intents = classify_intent(question)
+        if _SAFE_DOMAIN_INTENTS & set(kw_intents):
+            llm_result = llm_first_classify_intent(question, context)
+            if llm_result["status"] == "use_llm" and llm_result["confidence"] >= _LLM_CONFIDENCE_THRESHOLD:
+                intents = [llm_result["intent"]] if llm_result["intent"] and llm_result["intent"] != "unknown" else kw_intents
+            else:
+                intents = kw_intents
+        else:
+            intents = kw_intents
     else:
         intents = classify_intent(question)
 
