@@ -2784,6 +2784,9 @@ def _heuristic_canonicalize(question: str, intents: list[str]) -> dict | None:
 # ═══════════════════════════════════════════════════════════════════════
 
 _LLM_FIRST_ENABLED = os.getenv("QBOT_LLM_FIRST_QUERY", "0") == "1"
+_LLM_CONFIDENCE_THRESHOLD = 0.6
+# Proposed (not yet implemented):
+# _LLM_TIMEOUT_SEC = float(os.getenv("QBOT_LLM_FIRST_TIMEOUT_SEC", "3.0"))
 
 _ALLOWED_DOMAINS = [
     "nutrition", "health", "calendar", "wellness", "xert", "intervals",
@@ -2798,6 +2801,67 @@ _LLM_FIRST_ALLOWED_INTENTS = sorted(
     | {name for name, _ in _INTENT_PATTERNS}
     | {"status", "readiness", "general"}
 )
+
+# ── LLM alias → canonical intent normalisation ────────────────────────
+# Maps common LLM-generated intent labels to the existing canonical
+# intent names used by the keyword classifier and reader dispatch.
+_LLM_ALIAS_MAP: dict[str, str] = {
+    # status / readiness family
+    "status_check": "status",
+    "system_status": "status",
+    "health_check": "status",
+    "smoke_test": "status",
+    "readiness_report": "readiness",
+    "project_status": "readiness",
+    "integration_status": "readiness",
+    "availability_check": "readiness",
+    # docs / artifact family
+    "document_read": "artifact_read",
+    "artifact_lookup": "artifact_read",
+    "knowhow_read": "artifact_read",
+    "bible_read": "artifact_read",
+    "canonical_docs": "artifact_read",
+    "project_docs": "artifact_read",
+    # nutrition family
+    "daily_meals": "current_day_meals",
+    "today_meals": "current_day_meals",
+    "meal_log": "current_day_meals",
+    "meal_list": "current_day_meals",
+    "calorie_check": "calorie_balance",
+    "calorie_summary": "calorie_balance",
+    "balance_check": "calorie_balance",
+    "nutrition_status": "nutrition_status",
+    # calendar / reminders family
+    "reminder_list": "reminder_status",
+    "reminder_check": "reminder_status",
+    "event_list": "event_lookup",
+    "event_check": "event_lookup",
+    "daily_plan": "daily_timeline",
+    "day_timeline": "daily_timeline",
+    "day_summary": "daily_timeline",
+    "calendar_view": "calendar_day_context",
+    # weather family
+    "weather_check": "weather",
+    "forecast": "weather",
+    # planning family
+    "planning_read": "planning_fact_detect",
+    "planning_list": "planning_fact_detect",
+    "planning_facts": "planning_fact_detect",
+    # training family
+    "training_history": "training_summary",
+    "workout_history": "training_summary",
+    "recent_workouts": "training_summary",
+    "activity_list": "intervals",
+    "recent_activities": "intervals",
+    # write intents
+    "reminder_create": "qcal_reminder_add_draft",
+    "event_create": "qcal_event_add_draft",
+    "event_cancel": "qcal_event_cancel_draft",
+    "event_update": "qcal_event_update_draft",
+    "meal_add": "nutrition_log_add_draft",
+    "nutrition_log": "nutrition_log_add_draft",
+    "note_save": "nutrition_log_add_draft",
+}
 
 _LLM_FIRST_SYSTEM = """\
 Jesteś klasyfikatorem intencji asystenta rowerowego QBot.
@@ -2816,7 +2880,7 @@ Na podstawie pytania użytkownika zwróć WYŁĄCZNIE JSON o tej strukturze:
 }
 
 Zasady:
-- confidence 0.0–1.0 (>= 0.6 = pewna decyzja LLM, < 0.6 = zapytaj użytkownika).
+- confidence 0.0–1.0 (>= """ + str(_LLM_CONFIDENCE_THRESHOLD) + """ = pewna decyzja LLM, < """ + str(_LLM_CONFIDENCE_THRESHOLD) + """ = zapytaj użytkownika).
 - readers to lista nazw readerów potrzebnych do odpowiedzi (pusta jeśli nie wiesz).
 - Jeśli pytanie dotyczy zapisu (dodanie/jako dodanie/edycja/usunięcie), ustaw is_write_intent=true.
 - Dla zapisów NIGDY nie używaj fallbacku — oznacz is_write_intent=true i tyle.
@@ -2857,17 +2921,23 @@ def _validate_llm_intent(result: Any) -> dict | None:
 
     Checks:
       1. domain in allowlist
-      2. intent in allowlist
+      2. intent (after alias normalisation) in allowlist
       3. confidence 0.0–1.0
       4. readers exist in _READER_REGISTRY
       5. all LLM-chosen readers are allowed for the intent (per _INTENT_TO_READERS)
       6. for write intents: must not have readers
+
+    Returns dict with extra diagnostic fields:
+      - raw_intent: the intent string returned by the LLM
+      - normalized_intent: the canonical intent after alias mapping
+      - fallback_reason: set if validation determined that fallback is needed
     """
     if not isinstance(result, dict):
         return None
 
     domain = str(result.get("domain", "")).strip()
-    intent = str(result.get("intent", "")).strip()
+    raw_intent = str(result.get("intent", "")).strip()
+    intent = _LLM_ALIAS_MAP.get(raw_intent, raw_intent)
     confidence = result.get("confidence", 0.0)
     readers = result.get("readers", [])
     is_write = bool(result.get("is_write_intent", False))
@@ -2877,7 +2947,22 @@ def _validate_llm_intent(result: Any) -> dict | None:
     if domain not in _ALLOWED_DOMAINS:
         return None
     if intent not in _LLM_FIRST_ALLOWED_INTENTS:
-        return None
+        return {
+            "status": "unrecognised_intent",
+            "error": f"intent '{raw_intent}' not recognised (normalised to '{intent}', not in allowlist)",
+            "raw_intent": raw_intent,
+            "normalized_intent": intent,
+            "domain": domain, "intent": intent,
+            "parameters": result.get("parameters", {}),
+            "confidence": float(confidence),
+            "needs_clarification": True,
+            "clarification_question": f"Nie rozpoznano intencji: {raw_intent}",
+            "readers": [],
+            "action_type": None,
+            "is_write_intent": is_write,
+            "llm_status": "fallback_needed",
+            "fallback_reason": f"unrecognised_intent: {raw_intent} → {intent}",
+        }
     if not isinstance(confidence, (int, float)) or confidence < 0.0 or confidence > 1.0:
         confidence = 0.0
     if not isinstance(readers, list):
@@ -2905,6 +2990,8 @@ def _validate_llm_intent(result: Any) -> dict | None:
         return {
             "status": "inconsistent",
             "error": "; ".join(consistency_issues),
+            "raw_intent": raw_intent,
+            "normalized_intent": intent,
             "domain": domain, "intent": intent,
             "parameters": result.get("parameters", {}),
             "confidence": float(confidence),
@@ -2913,11 +3000,15 @@ def _validate_llm_intent(result: Any) -> dict | None:
             "readers": known_readers,
             "action_type": None,
             "is_write_intent": is_write,
+            "llm_status": "fallback_needed",
+            "fallback_reason": f"inconsistent: {'; '.join(consistency_issues)}",
         }
 
     return {
         "status": "validated",
         "error": None,
+        "raw_intent": raw_intent,
+        "normalized_intent": intent,
         "domain": domain,
         "intent": intent,
         "parameters": result.get("parameters", {}),
@@ -2927,6 +3018,8 @@ def _validate_llm_intent(result: Any) -> dict | None:
         "readers": known_readers,
         "action_type": result.get("action_type"),
         "is_write_intent": is_write,
+        "llm_status": "pending",
+        "fallback_reason": None,
     }
 
 
@@ -2962,19 +3055,24 @@ def llm_first_classify_intent(
             return {
                 "status": "fallback_needed",
                 "error": f"LLM call failed after retry: {last_error}",
+                "raw_intent": None, "normalized_intent": None,
                 "domain": None, "intent": None, "parameters": {},
                 "confidence": 0.0, "needs_clarification": False,
                 "clarification_question": "", "readers": [],
                 "action_type": None, "is_write_intent": False,
+                "llm_status": "fallback_needed",
+                "fallback_reason": f"api_error: {last_error}",
             }
 
         validated = _validate_llm_intent(raw)
         if validated is not None:
-            # Check if consistency issues triggered a special result
-            if validated["status"] == "inconsistent":
+            # Diagnose unrecognised intent or inconsistency
+            if validated["status"] in ("inconsistent", "unrecognised_intent"):
                 return {
                     "status": "fallback_needed",
-                    "error": validated.get("error", "LLM result inconsistent"),
+                    "error": validated.get("error", "LLM result invalid"),
+                    "raw_intent": validated.get("raw_intent"),
+                    "normalized_intent": validated.get("normalized_intent"),
                     "domain": validated["domain"],
                     "intent": validated["intent"],
                     "parameters": validated["parameters"],
@@ -2984,10 +3082,14 @@ def llm_first_classify_intent(
                     "readers": validated["readers"],
                     "action_type": None,
                     "is_write_intent": validated["is_write_intent"],
+                    "llm_status": "fallback_needed",
+                    "fallback_reason": validated.get("fallback_reason", validated.get("error", "validation failed")),
                 }
 
-            status = "use_llm" if validated["confidence"] >= 0.6 else "ask_clarification"
+            status = "use_llm" if validated["confidence"] >= _LLM_CONFIDENCE_THRESHOLD else "ask_clarification"
             validated["status"] = status
+            validated["llm_status"] = status
+            validated["fallback_reason"] = None if status == "use_llm" else f"low_confidence: {validated['confidence']}"
             return validated
 
         last_error = "LLM returned invalid/unparseable result"
@@ -2996,20 +3098,26 @@ def llm_first_classify_intent(
         return {
             "status": "fallback_needed",
             "error": last_error,
+            "raw_intent": None, "normalized_intent": None,
             "domain": None, "intent": None, "parameters": {},
             "confidence": 0.0, "needs_clarification": False,
             "clarification_question": "", "readers": [],
             "action_type": None, "is_write_intent": False,
+            "llm_status": "fallback_needed",
+            "fallback_reason": "unparseable_json",
         }
 
     # Should not reach here
     return {
         "status": "fallback_needed",
         "error": last_error or "Unknown LLM failure",
+        "raw_intent": None, "normalized_intent": None,
         "domain": None, "intent": None, "parameters": {},
         "confidence": 0.0, "needs_clarification": False,
         "clarification_question": "", "readers": [],
         "action_type": None, "is_write_intent": False,
+        "llm_status": "fallback_needed",
+        "fallback_reason": "unknown_error",
     }
 
 
@@ -3039,7 +3147,7 @@ def compare_classifiers(test_queries: list[str]) -> list[dict]:
             rec = "fallback_readonly"
         elif llm["needs_clarification"]:
             rec = "ask_clarification"
-        elif llm["confidence"] >= 0.6:
+        elif llm["confidence"] >= _LLM_CONFIDENCE_THRESHOLD:
             rec = "use_llm"
         else:
             rec = "ask_clarification"
@@ -3063,7 +3171,7 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     # ── Intent classification ──────────────────────────────────────────
     if _LLM_FIRST_ENABLED:
         llm_result = llm_first_classify_intent(question, context)
-        if llm_result["status"] == "use_llm" and llm_result["confidence"] >= 0.6:
+        if llm_result["status"] == "use_llm" and llm_result["confidence"] >= _LLM_CONFIDENCE_THRESHOLD:
             intents = [llm_result["intent"]] if llm_result["intent"] and llm_result["intent"] != "unknown" else classify_intent(question)
         else:
             intents = classify_intent(question)
