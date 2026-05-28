@@ -1736,6 +1736,32 @@ def _synthesize_answer(question: str, answers: list[dict], missing: list[str],
             else:
                 err = data.get("error", "")
                 parts.append(f"Garmin: błąd odczytu — {err[:80]}")
+        elif reader == "status":
+            hostname = data.get("hostname", "?")
+            python = data.get("python", "?")
+            pid = data.get("pid", "?")
+            timestamp = data.get("timestamp", "")
+            ts_part = f" @ {timestamp[:19]}" if timestamp else ""
+            parts.append(
+                f"QBot status: host={hostname}, python={python}, pid={pid}{ts_part}"
+            )
+        elif reader == "readiness":
+            readiness_status = str(data.get("status", "")).upper() or "UNKNOWN"
+            blockers = data.get("blockers", []) or []
+            warnings = data.get("warnings", []) or []
+            next_action = data.get("recommended_next_action", "")
+            summary = {
+                "READY": "gotowy",
+                "READY_WITH_WARNINGS": "gotowy z ostrzeżeniami",
+                "NOT_READY": "niegotowy",
+            }.get(readiness_status, readiness_status.lower())
+            parts.append(
+                f"QBot readiness: {summary}; blockerów={len(blockers)}, ostrzeżeń={len(warnings)}"
+                + (f"; next={next_action}" if next_action else "")
+            )
+        elif reader == "capability_scan":
+            status_val = str(data.get("status", "")).upper() or "UNKNOWN"
+            parts.append(f"Capability scan: {status_val}")
         elif reader == "intervals_activities":
             acts = data.get("activities", [])
             if acts:
@@ -3934,11 +3960,27 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
             # more specific nutrition intent, promote it.
             if ci == "current_day_meals" and not any(i.endswith("_draft") for i in intents):
                 intents = [ci]
+    ql = question.lower()
+    nutrition_like_query = bool(set(intents) & {
+        "saved_meals_catalog",
+        "current_day_meals",
+        "nutrition_daily",
+        "nutrition_range",
+        "calorie_balance",
+        "nutrition_planning",
+        "meal_log_inventory",
+        "nutrition_status",
+    }) or any(w in ql for w in (
+        "dieta", "posił", "posilk", "meal", "template", "szablon",
+        "brokuł", "brokul", "kcal", "kalor", "makro", "białk", "bialk",
+        "węgl", "wegl", "tłuszcz", "tluszcz", "jadł", "jedzeni", "nutrition",
+        "posiłki", "posilki", "jedzenie",
+    ))
     write_result = _handle_write_draft(question, intents, date_ctx)
     if write_result is not None:
         return write_result
 
-    if _LLM_FIRST_NUTRITION_READONLY_ENABLED and "artifact_read" not in intents:
+    if nutrition_like_query and "artifact_read" not in intents:
         nutrition_params = {}
         if nutrition_llm_result and isinstance(nutrition_llm_result.get("parameters"), dict):
             nutrition_params = dict(nutrition_llm_result.get("parameters") or {})
@@ -3969,7 +4011,7 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
 
     # ── Universal saved_meals_catalog / template matching ──────────────
     # Works regardless of QBOT_LLM_FIRST_NUTRITION_READONLY flag.
-    if "saved_meals_catalog" in intents:
+    if nutrition_like_query and "saved_meals_catalog" in intents:
         template_match = _match_meal_template(question)
         # Heuristic: if query explicitly mentions a template name (not just a list request),
         # show the template; otherwise show the full catalog.
@@ -3988,7 +4030,7 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     # Handles standalone template name queries like "Brokuł", "Brokuł sport 2000"
     # when no explicit saved_meals_catalog intent was detected by keywords.
     # Docs/architecture/roadmap queries must NOT route to nutrition.
-    if "artifact_read" not in intents and not set(intents) & {"nutrition_log_add_draft"}:
+    if nutrition_like_query and "artifact_read" not in intents and not set(intents) & {"nutrition_log_add_draft"}:
         alias_match = _match_meal_template(question)
         if alias_match:
             q_norm = _normalize_template_text(question, stem=False)
@@ -4012,7 +4054,12 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     _nutrition_intents = {"nutrition_planning", "fueling", "current_day_meals", "calorie_balance"}
     _planning_intents = {"planning_notice"}
     _docs_intents = {"artifact_read"}
-    _bypass_semantic = _canonical_forced or bool((_nutrition_intents | _planning_intents | _docs_intents) & set(intents))
+    _status_intents = {"status", "readiness"}
+    _bypass_semantic = (
+        _canonical_forced
+        or bool((_nutrition_intents | _planning_intents | _docs_intents | _status_intents) & set(intents))
+        or bool(canonical_intent_info and canonical_intent_info.get("canonical_intent") in _status_intents)
+    )
     if not _bypass_semantic:
         try:
             from qbot_context_resolver import resolve as resolve_context
@@ -4700,8 +4747,22 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     elif garmin_energy_blocked:
         response["status"] = "partial"
     elif len(answers) == 1 and answers[0]["reader"] in ("status", "readiness", "capability_scan"):
-        response["status"] = "no_data"
-        response["answer"] = NO_DATA_PHRASE
+        single_reader = answers[0]["reader"]
+        single_data = answers[0].get("data", {}) or {}
+        if single_reader == "status":
+            response["status"] = "ok"
+        elif single_reader == "readiness":
+            readiness_status = str(single_data.get("status", "")).upper()
+            if readiness_status == "READY":
+                response["status"] = "ok"
+            elif readiness_status == "READY_WITH_WARNINGS":
+                response["status"] = "partial"
+            elif readiness_status == "NOT_READY":
+                response["status"] = "blocked"
+            else:
+                response["status"] = "partial"
+        else:
+            response["status"] = "ok" if answer_text and answer_text != NO_DATA_PHRASE else "partial"
     elif missing and not answers:
         response["status"] = "no_data"
         response["answer"] = NO_DATA_PHRASE

@@ -45,9 +45,18 @@ LOCATION_NAME = env("LOCATION_NAME", "Warszawa")
 
 MCP_URL = env("QBOT_MCP_URL", "http://127.0.0.1:8002/mcp/")
 
-QGPT_BASE_URL = env("QGPT_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-QGPT_MODEL = env("QGPT_MODEL") or env("OPENAI_MODEL") or "gpt-4.1-mini"
-QGPT_API_KEY = env("QGPT_API_KEY") or env("OPENAI_API_KEY")
+QGPT_BASE_URL = (
+    env("QGPT_BASE_URL")
+    or env("QGPT_FALLBACK_BASE_URL")
+    or "https://api.openai.com/v1"
+).rstrip("/")
+QGPT_MODEL = env("QGPT_MODEL") or env("OPENAI_MODEL") or env("QGPT_FALLBACK_MODEL") or "gpt-4.1-mini"
+QGPT_API_KEY = (
+    env("QGPT_API_KEY")
+    or env("OPENAI_API_KEY")
+    or env("QGPT_FALLBACK_API_KEY")
+    or env("OPENROUTER_API_KEY")
+)
 QGPT_TIMEOUT_SEC = env_float("QGPT_TIMEOUT_SEC", 60)
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", "claude-sonnet-4-6")
