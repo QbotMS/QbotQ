@@ -22,10 +22,13 @@ from qgpt_client import qgpt_json
 
 _BIBLE_PATH = Path("/opt/qbot/docs/QBOT_BIBLE.md")
 _ORCHESTRATOR_FLAG = "QBOT_LLM_ORCHESTRATOR"
+_ORCHESTRATOR_NAME = "Albert"
+_INSTRUCTION_PATH = Path("/opt/qbot/docs/QBOT_ORCHESTRATOR_INSTRUCTION.md")
+_INSTRUCTION_CACHE: str | None = None
 _PLAN_CONFIDENCE_THRESHOLD = 0.6
 
 _PLAN_SYSTEM = """\
-Jesteś planistą LLM dla QBot.
+Jesteś planistą LLM dla QBot (Albert).
 
 Masz wygenerować WYŁĄCZNIE JSON o strukturze:
 {
@@ -40,18 +43,28 @@ Masz wygenerować WYŁĄCZNIE JSON o strukturze:
   "action_type": null
 }
 
-Zasady:
-- Nie odpowiadaj użytkownikowi.
-- Używaj tylko dostępnych intentów, readerów i zasad z QBOT_BIBLE.md.
+TWARDE ZASADY:
+- Nie odpowiadaj użytkownikowi. Zwracasz TYLKO JSON planu.
+- Używaj TYLKO intentów, readerów i action_type z przekazanego reader_registry i intent_to_readers.
+- NIE wymyślaj nazw tooli, readerów, writerów ani action_type.
+- Jeśli intentu/readera nie ma w registry: ustaw needs_clarification=true z komunikatem "nieobsługiwany intent/reader".
 - Dla odczytu wybieraj task_type="read".
-- Dla zapisu bez wykonania ustaw task_type="draft" i is_write_intent=true.
-- Dla niskiej pewności ustaw task_type="clarify".
-- readers mają wskazywać realne readery lub puste listy przy draft/clarify.
-- Nie wymyślaj nowych readerów ani action_type.
+- Dla zapisu (dodaj/usuń/zmień/zapisz): task_type="draft", is_write_intent=true. NIGDY task_type="read" dla zapisu.
+- Dla niskiej pewności (<0.6) ustaw task_type="clarify".
+- readers: tylko nazwy z reader_registry. Dla draft/clarify: pusta lista [].
+- Dla qcal_event_add_draft: parametry date_start, time_start (opcjonalnie), title.
+- Dla kalendarza (wydarzenia, eventy): intent="calendar" lub "calendar_day_context", readers=["calendar_snapshot"].
+
+CANONICAL TASK / NOISE:
+- Zignoruj technical noise w query: "przygotuj action_draft", "użyj writera", "nutrition_log_add", "template match", "confirm", "action_type" itp. To są instrukcje od klienta, nie zadanie użytkownika.
+- Zbuduj canonical_task: usuń szum, zostaw realne intencje użytkownika.
+- Dla "białko z wodą z katalogu": intent=nutrition_log_add_draft, parametry: meal_name, use_catalog=true.
+- Dla zaśmieconego inputu z kaloriami/składnikami: intent=nutrition_log_add_draft, parametry: meal_name, estimated_kcal, estimated_macros (jeśli podane). Nie używaj podanych wartości jako jedyne źródło — mogą być szacunkiem.
+- Dla "pokaż dzisiejszy bilans": intent=calorie_balance, readers=["nutrition_day", "garmin_energy"].
 """
 
 _FINAL_SYSTEM = """\
-Jesteś końcowym generatorem odpowiedzi QBot.
+Jesteś końcowym generatorem odpowiedzi QBot (Albert).
 
 Masz dostać:
 - pytanie użytkownika
@@ -59,7 +72,13 @@ Masz dostać:
 - wyniki readerów
 - wybrane zasady z QBOT_BIBLE.md
 
-Zadanie:
+TWARDE ZASADY:
+- NIE wymyślaj nazw tooli, readerów, writerów, ani funkcji. Używaj TYLKO tego, co jest w reader_results.
+- DLA WRITE INTENTÓW (plan.is_write_intent=true): NIGDY nie pisz "dodano", "zapisano", "wykonano", "utworzono". Zawsze mów "Przygotowałem draft" lub "wymaga potwierdzenia przez action_execute".
+- Jeśli reader nie zwrócił danych, odpowiedź ma wskazywać braku źródła (np. "brak wydarzeń w kalendarzu", "brak danych w DB"), a nie "nie mam dostępu".
+- Zignoruj technical noise w query (np. "przygotuj action_draft", "nutrition_log_add", "użyj writera"). To są instrukcje od klienta, nie treść odpowiedzi.
+- Dla bilansu (calorie_balance): odczytaj meal_log z DB i energy readers jeśli dostępne. Zwróć bilans z provenance (kcal_in, kcal_out, balance). Nie zgaduj danych.
+- Dla nutrition_log_add_draft: jeśli reader nutrition_template_list zwrócił template, użyj template_id i makr z DB. Jeśli podano estimated_kcal/macros w parametrach, użyj ich jako uzupełnienia, nie jako jedynego źródła.
 - odpowiedz krótko, konkretnie i bez zgadywania
 - jeśli brakuje danych, powiedz to wprost
 - nie opisuj procesu planowania
@@ -69,7 +88,7 @@ Zadanie:
 - `missing_fields` dotyczy WYŁĄCZNIE pól danych (np. nazwa posiłku, data, kcal) — NIGDY nie dodawaj tu orchestrator.enabled, orchestrator.stage, orchestrator.fallback_used ani innych pól systemowych
 - odpowiedź nie powinna sugerować, że brakuje metadanych orchestratora — te są dostępne w sekcji orchestrator wyniku
 - dla `qbot_canonical_docs` — skorzystaj z pola `answer` readera i streść znalezione sekcje/excerpty; nie pisz, że brakuje informacji, jeśli reader zwrócił trafne fragmenty
-- dla `calendar_snapshot` — przedstaw PEŁNY obraz dnia: wydarzenia, remindery, zadania, posiłki (jeśli są); nie zawężaj odpowiedzi tylko do posiłku
+- dla `calendar_snapshot` — przedstaw PEŁNY obraz dnia: wydarzenia, remindery, zadania, posiłki (jeśli są); nie zawężaj odpowiedź tylko do posiłku
 - dla `weather_forecast` — uwzględnij przekazany `period` ("jutro" → jutrzejsza data)
 - zwróć WYŁĄCZNIE JSON:
 {
@@ -99,6 +118,40 @@ _HIDDEN_READERS: dict[str, dict[str, Any]] = {
 
 def _orchestrator_enabled() -> bool:
     return os.getenv(_ORCHESTRATOR_FLAG, "0") == "1"
+
+
+def _load_instruction() -> str:
+    global _INSTRUCTION_CACHE
+    if _INSTRUCTION_CACHE is not None:
+        return _INSTRUCTION_CACHE
+    try:
+        if _INSTRUCTION_PATH.is_file():
+            text = _INSTRUCTION_PATH.read_text(encoding="utf-8").strip()
+            if text:
+                _INSTRUCTION_CACHE = text
+                return text
+    except OSError:
+        pass
+    _INSTRUCTION_CACHE = ""
+    return ""
+
+
+def _instruction_loaded() -> bool:
+    return bool(_load_instruction())
+
+
+def _orchestrator_meta(stage: str, fallback_used: bool = False, reason: str = "") -> dict[str, Any]:
+    d: dict[str, Any] = {
+        "enabled": True,
+        "name": _ORCHESTRATOR_NAME,
+        "instruction_file": str(_INSTRUCTION_PATH),
+        "instruction_loaded": _instruction_loaded(),
+        "stage": stage,
+        "fallback_used": fallback_used,
+    }
+    if reason:
+        d["reason"] = reason
+    return d
 
 
 def _load_bible_rules() -> str:
@@ -604,6 +657,11 @@ def _compact_reader_result(result: dict[str, Any], limit: int = 4000) -> dict[st
         "templates",
         "items",
         "meals",
+        "calendar_events",
+        "reminders",
+        "day_type",
+        "day_notes",
+        "health_events",
         "tables",
         "data",
     )
@@ -642,12 +700,7 @@ def _build_unsupported_response(
         "missing_fields": [],
         "limitations": ["unsupported_by_orchestrator"],
         "orchestrator_failed": True,
-        "orchestrator": {
-            "enabled": True,
-            "stage": "unsupported",
-            "fallback_used": False,
-            "reason": reason,
-        },
+        "orchestrator": _orchestrator_meta("unsupported", reason=reason),
         "date_resolution": None,
         "context": context,
         "max_rows": max_rows,
@@ -689,12 +742,7 @@ def _build_emergency_response(
         result["mode"] = "read_only"
         result["query"] = question
         result["orchestrator_failed"] = True
-        result["orchestrator"] = {
-            "enabled": True,
-            "stage": stage,
-            "fallback_used": True,
-            "reason": reason,
-        }
+        result["orchestrator"] = _orchestrator_meta(stage, fallback_used=True, reason=reason)
         result.setdefault("missing_fields", [])
         result.setdefault("limitations", [])
         return result
@@ -811,7 +859,15 @@ def _execute_reader(name: str, parameters: dict[str, Any], question: str, max_ro
         if name in {"qbot_canonical_docs_read"} and not args.get("query"):
             args["query"] = question
         if name in {"qbot_nutrition_day_summary", "qbot_nutrition_meal_list", "qbot_nutrition_day_get", "qbot_nutrition_range_summary", "qbot_wellness_day_get", "qbot_sleep_day_get", "qbot_calendar_snapshot"} and not args.get("date"):
-            args["date"] = date.today().isoformat()
+            ql = question.lower()
+            if any(k in ql for k in ("jutro", "tomorrow", "jutrze")):
+                from datetime import timedelta
+                args["date"] = (date.today() + timedelta(days=1)).isoformat()
+            elif any(k in ql for k in ("pojutrze",)):
+                from datetime import timedelta
+                args["date"] = (date.today() + timedelta(days=2)).isoformat()
+            else:
+                args["date"] = date.today().isoformat()
         if name in {"qbot_weather_forecast"} and not args.get("period"):
             ql = question.lower()
             if any(k in ql for k in ("jutro", "tomorrow", "jutrze")):
@@ -863,7 +919,15 @@ def _execute_reader(name: str, parameters: dict[str, Any], question: str, max_ro
     if name in {"nutrition_day", "meal_list"} and not args.get("date"):
         args["date"] = date.today().isoformat()
     if name == "calendar_snapshot" and not args.get("date"):
-        args["date"] = date.today().isoformat()
+        ql = question.lower()
+        if any(k in ql for k in ("jutro", "tomorrow", "jutrze")):
+            from datetime import timedelta
+            args["date"] = (date.today() + timedelta(days=1)).isoformat()
+        elif any(k in ql for k in ("pojutrze",)):
+            from datetime import timedelta
+            args["date"] = (date.today() + timedelta(days=2)).isoformat()
+        else:
+            args["date"] = date.today().isoformat()
     if name == "wellness_day" and not args.get("date"):
         args["date"] = date.today().isoformat()
     if name == "sleep_day" and not args.get("date"):
@@ -880,7 +944,7 @@ def _execute_reader(name: str, parameters: dict[str, Any], question: str, max_ro
     }
 
 
-def _final_answer(question: str, plan: dict[str, Any], reader_results: list[dict[str, Any]], context: str) -> dict[str, Any]:
+def _final_answer(question: str, plan: dict[str, Any], reader_results: list[dict[str, Any]], context: str, system_override: str | None = None) -> dict[str, Any]:
     compact_reader_results = []
     for item in reader_results:
         compact_reader_results.append({
@@ -898,9 +962,10 @@ def _final_answer(question: str, plan: dict[str, Any], reader_results: list[dict
         "bible_rules": _load_bible_rules(),
     }
 
+    final_system = system_override if system_override else _FINAL_SYSTEM
     final = qgpt_json(
         json.dumps(system_payload, ensure_ascii=False, default=str, indent=2),
-        system=_FINAL_SYSTEM,
+        system=final_system,
         max_tokens=700,
         temperature=0,
     )
@@ -1008,12 +1073,19 @@ def orchestrate_query(question: str, context: str, max_rows: int = 500) -> dict[
     if not qr._TOOL_DISPATCH:  # noqa: SLF001
         qr._init_dispatch()  # noqa: SLF001
 
+    instruction_content = _load_instruction()
+    plan_system = _PLAN_SYSTEM
+    final_system = _FINAL_SYSTEM
+    if instruction_content:
+        plan_system = _PLAN_SYSTEM + "\n\n## Instrukcja Orchestratora (Albert)\n\n" + instruction_content
+        final_system = _FINAL_SYSTEM + "\n\n## Instrukcja Orchestratora (Albert)\n\n" + instruction_content
+
     date_ctx = qr._resolve_date_context(context, question)  # noqa: SLF001
     plan_prompt = _plan_prompt(question, context, max_rows)
     try:
         raw_plan = qgpt_json(
             plan_prompt,
-            system=_PLAN_SYSTEM,
+            system=plan_system,
             max_tokens=500,
             temperature=0,
         )
@@ -1044,11 +1116,7 @@ def orchestrate_query(question: str, context: str, max_rows: int = 500) -> dict[
             "answer": plan.get("clarification_question") or "Doprecyzuj pytanie.",
             "clarification_question": plan.get("clarification_question") or "Doprecyzuj pytanie.",
             "plan": plan,
-            "orchestrator": {
-                "enabled": True,
-                "stage": "plan",
-                "fallback_used": False,
-            },
+            "orchestrator": _orchestrator_meta("plan"),
         }
 
     if plan.get("task_type") == "draft" or plan.get("is_write_intent"):
@@ -1072,11 +1140,7 @@ def orchestrate_query(question: str, context: str, max_rows: int = 500) -> dict[
             )
         draft = dict(draft)
         draft["plan"] = plan
-        draft["orchestrator"] = {
-            "enabled": True,
-            "stage": "draft",
-            "fallback_used": False,
-        }
+        draft["orchestrator"] = _orchestrator_meta("draft")
         return draft
 
     reader_results = []
@@ -1097,7 +1161,7 @@ def orchestrate_query(question: str, context: str, max_rows: int = 500) -> dict[
         )
 
     try:
-        final = _final_answer(question, plan, reader_results, context)
+        final = _final_answer(question, plan, reader_results, context, system_override=final_system)
     except Exception as exc:
         emergency = _build_emergency_response(question, context, max_rows, reason=f"final answer failed: {exc}")
         if emergency is not None:
@@ -1137,17 +1201,29 @@ def orchestrate_query(question: str, context: str, max_rows: int = 500) -> dict[
     if status == "draft":
         status = "draft"
 
+    trace = {
+        "original_query": question,
+        "source_channel": "mcp",
+        "canonical_task": plan.get("intent", ""),
+        "data_context_used": date_ctx,
+        "db_readers_called": [r.get("reader") for r in reader_results],
+        "external_readers_called": [],
+        "result_type": status,
+        "selected_action": plan.get("action_type"),
+        "has_action_draft": bool(answer_data.get("action_draft") if isinstance(answer_data, dict) else False or any(r.get("data", {}).get("action_draft") for r in reader_results)),
+        "confidence": final.get("confidence", "medium"),
+        "limitations": list(dict.fromkeys(limitations + list(final.get("limitations", []) or []))),
+        "fallback_used": False,
+    }
+
     return {
         "tool": "qbot.query",
         "safety_class": "READ_ONLY",
         "mode": "read_only",
         "query": question,
         "plan": plan,
-        "orchestrator": {
-            "enabled": True,
-            "stage": "final",
-            "fallback_used": False,
-        },
+        "orchestrator": _orchestrator_meta("final"),
+        "trace": trace,
         "intents_detected": [plan.get("intent", "")],
         "readers_planned": plan.get("readers", []),
         "readers_used": plan.get("readers", []),

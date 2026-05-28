@@ -327,6 +327,12 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
             _turn_add(chat_id, "outbound", text=response, intent="write_draft")
         else:
             response = _format_answer(answer, tables)
+            # Safety: never claim write was executed without action_execute confirm
+            if result.get("plan", {}).get("is_write_intent") or result.get("orchestrator", {}).get("stage") in ("draft",):
+                for fake_word in ["dodano", "zapisano", "wykonano", "utworzono"]:
+                    if fake_word in response.lower()[:80]:
+                        response = "Przygotowałem draft. Zapis wymaga potwierdzenia przez qbot.action_execute."
+                        break
             _turn_add(chat_id, "inbound", text, intent=str(intent)[:100])
             _turn_add(chat_id, "outbound", text=response, intent="query_response")
 

@@ -2,9 +2,11 @@
 """Cienka warstwa FastAPI Q — /health, /q."""
 from __future__ import annotations
 
+import logging
 import os
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import uvicorn
 from dotenv import load_dotenv
@@ -19,6 +21,8 @@ from qbot_mcp_adapter import (
     _validate_mcp_access,
 )
 from qbot_tools import _tool_qbot_ride_readiness_status
+
+logger = logging.getLogger("qbot.telegram")
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -189,6 +193,51 @@ def _telegram_response_text(command: str, result: dict) -> str | None:
         if text:
             return str(text)
     return None
+
+
+def _telegram_render_query_result(result: dict[str, Any]) -> str:
+    """Render qbot.query structured result for Telegram — single shared renderer.
+
+    Telegram is a transport layer: no separate brain logic.
+    This renderer formats the structured Orchestrator result for human display.
+    """
+    orch = result.get("orchestrator", {})
+    plan = result.get("plan", {})
+    logger.info(
+        "TG render | intent=%s readers=%s fallback=%s stage=%s action_draft=%s status=%s",
+        plan.get("intent", "?"),
+        plan.get("readers", []),
+        orch.get("fallback_used"),
+        orch.get("stage"),
+        bool(result.get("action_draft")),
+        result.get("status", "?"),
+    )
+
+    answer = str(result.get("answer", "") or "").strip()
+    status = result.get("status", "")
+    action_draft = result.get("action_draft")
+
+    if action_draft and action_draft.get("action_type"):
+        preview = answer
+        for fake_word in ["dodano", "zapisano", "wykonano", "utworzono"]:
+            if fake_word in preview.lower()[:80]:
+                preview = "Przygotowałem draft."
+                break
+        return f"{preview}\n\nPotwierdzić? Odpowiedz: tak / nie."
+
+    if status in ("draft",):
+        return f"{answer}\n\nPotwierdzić? Odpowiedz: tak / nie."
+
+    if status == "clarify":
+        return result.get("clarification_question") or answer or "Doprecyzuj pytanie."
+
+    if status == "error":
+        return answer or "Nie mogę teraz odpowiedzieć."
+
+    if status in ("no_data",):
+        return answer or "Brak danych."
+
+    return answer or "OK."
 
 
 def _telegram_webhook_reply(chat_id: int, text: str) -> JSONResponse:
@@ -914,9 +963,17 @@ async def telegram_webhook(webhook_secret: str, request: Request):
 
     cmd = text.strip().lower()
     if not cmd.startswith("/"):
-        from qbot_telegram_tools import _tool_qbot_telegram_agent_chat
-        chat_result = _tool_qbot_telegram_agent_chat({"message": text, "style": "short", "execute": True, "chat_id": str(chat_id)})
-        return _telegram_webhook_reply(chat_id, chat_result.get("answer", "Nie mogę teraz odpowiedzieć."))
+        from qbot_tools import _tool_qbot_query
+        query_result = _tool_qbot_query({"query": text, "mode": "read_only", "scope": "all"})
+        logger.info("TG NL input=%s intent=%s readers=%s fallback=%s stage=%s status=%s",
+            text[:60],
+            query_result.get("plan", {}).get("intent", "?"),
+            query_result.get("plan", {}).get("readers", []),
+            query_result.get("orchestrator", {}).get("fallback_used"),
+            query_result.get("orchestrator", {}).get("stage"),
+            query_result.get("status", "?"),
+        )
+        return _telegram_webhook_reply(chat_id, _telegram_render_query_result(query_result))
 
     parts = cmd.split(maxsplit=1)
     command = parts[0].lower()
@@ -963,6 +1020,8 @@ async def telegram_webhook(webhook_secret: str, request: Request):
         if not query_text:
             return _telegram_webhook_reply(chat_id, f"Nie znam komendy '{command}'. Napisz pytanie normalnym tekstem albo /help.")
         query_result = _tool_qbot_query({"query": query_text, "mode": "read_only", "scope": "all"})
+        if command == "/ask":
+            return _telegram_webhook_reply(chat_id, _telegram_render_query_result(query_result))
         result = {
             "command": command,
             "response": query_result,

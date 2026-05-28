@@ -47,22 +47,20 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
     "qbot.query": {
         "qbot_tool": "qbot_query",
         "description": (
-            "GŁÓWNE NARZĘDZIE — używaj go do KAŻDEGO pytania użytkownika o dane. "
-            "Podaj pytanie w języku naturalnym (polski/angielski). "
-            "QBot wewnętrznie dobiera readery (nutrition, training, routes, garage, weather, "
-            "Garmin, Cronometer, Intervals, Xert, RWGPS, wellness, artifacts, reports). "
-            "Obsługuje też intent status i readiness — zapytaj 'status QBot' lub 'readiness QBot'. "
-            "Zwraca structured answer + tables + provenance + missing_fields + limitations. "
-            "Tryb plan_only podgląda plan readerów bez wykonywania. "
-            "Jeśli query zapisów, zwraca action_draft (bez zapisu). Wywołaj qbot.action_execute."
+            "JEDYNE wejście do QBot Runtime. Przekaż oryginalne pytanie użytkownika bez żadnych modyfikacji. "
+            "NIE dopisuj action_type, writer name, payload schema, 'przygotuj draft', 'użyj writera', 'confirm' ani template match. "
+            "NIE pre-routuj, NIE enrichuj z nazwami tooli/akcji. "
+            "Albert (QBot LLM) sam rozpoznaje intent, wybiera readery, agreguje dane z DB i buduje odpowiedź. "
+            "Dla zapisów zwraca action_draft — wywołaj qbot.action_execute aby wykonać. "
+            "Parametr context: przekaż tylko source, timezone, date jeśli znane."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "Natural language question"},
+                "query": {"type": "string", "description": "Oryginalne pytanie użytkownika — NIE modyfikuj, NIE enrichuj"},
                 "mode": {"type": "string", "enum": ["read_only", "plan_only"], "default": "read_only"},
                 "scope": {"type": "string", "enum": ["all", "nutrition", "training", "routes", "garage"], "default": "all"},
-                "context": {"type": "string", "description": "Optional JSON: project, timezone, date/date_from/date_to"},
+                "context": {"type": "string", "description": "Optional JSON: source, timezone, date/date_from/date_to"},
                 "max_rows": {"type": "integer", "minimum": 10, "maximum": 1000, "default": 500},
                 "include_provenance": {"type": "boolean", "default": True},
                 "include_missing": {"type": "boolean", "default": True},

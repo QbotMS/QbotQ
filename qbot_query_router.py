@@ -2104,15 +2104,47 @@ def _extract_quoted_field(expr: str, field: str) -> str | None:
 
 
 def _extract_meal_name(raw: str) -> str:
-    """Clean macro values from raw meal text, return food description."""
+    """Clean macro values, technical noise, and nutritional estimates from raw meal text, return food description."""
     cleaned = re.sub(r'\d+(?:\.\d+)?\s*kcal', '', raw, flags=re.IGNORECASE)
     cleaned = re.sub(r'\b[BWT]\s*\d+(?:\.?\d+)?', '', cleaned)
     cleaned = re.sub(r'białko\s*\d+(?:\.?\d+)?', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'(?:węgl|węglow|carbs)\w*\s*\d+(?:\.?\d+)?', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'(?:tłuszcz|fat)\w*\s*\d+(?:\.?\d+)?', '', cleaned, flags=re.IGNORECASE)
+    # Strip technical noise — client instructions, not food names
+    cleaned = re.sub(r'(?:przygotuj|przygotuj\s+mi)\s+action_draft\s+\w+', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'action_draft\s+\w+', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'(?:użyj|use)\s+writera?\s*\w*', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'nutrition_log_add', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'template\s+match', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'action_type\s*[:=]\s*\w+', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'confirm\s*[:=]\s*(?:true|false)', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'data\s+dzisiejsza\s*:?\s*\d{4}-\d{2}-\d{2}', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'produkt\s*:?\s*', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'(?:około|ok\.?|~)\s*\d+(?:\.\d+)?\s*kcal', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'(?:węglowodany|błonnik|cukry|tłuszcz|białko)\s+\d+(?:[.,]\d+)?\s*g', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'wraz\s+ze\s+składnikami\s+odżywczymi', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'uwzględnij\s+typowe\s+wartości\s+odżywcze', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'\s+,', ',', cleaned)
     cleaned = re.sub(r',\s+', ', ', cleaned)
     cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip().strip(',').strip()
+    # Remove orphaned periods/punctuation and repeated content
+    cleaned = re.sub(r'\s*\.\s+\.\s*', ', ', cleaned)
+    cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip().strip(',').strip('.')
+    cleaned = re.sub(r'\.$', '', cleaned)
+    cleaned = re.sub(r'\s*\.\s*', ' ', cleaned)  # any remaining orphaned dot
+    cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip().strip(',').strip('.')
+    # Deduplicate repeated food mentions
+    segments = re.split(r'[,;.]+(?:\s+|$)', cleaned)
+    segments = [s.strip() for s in segments if s.strip()]
+    seen = set()
+    deduped = []
+    for s in segments:
+        key = re.sub(r'\d+', '', re.sub(r'\s+', '', s.lower()))
+        if key not in seen:
+            seen.add(key)
+            deduped.append(s)
+    if deduped:
+        cleaned = ', '.join(deduped)
     return cleaned
 
 
@@ -2930,34 +2962,55 @@ def _parse_event_draft(question: str) -> dict:
     q = question
     ql = q.lower()
 
-    # Resolve date from query
-    event_date = today
-    m = re.search(r'(jutro|dziś|dzisiaj|pojutrze)', ql)
-    if m:
-        event_date = _resolve_polish_date(m.group(1)) or today
+    # Resolve date from query — try DD.MM-DD.MM range first (e.g. "5.06-13.06")
+    date_start = today
+    date_end = None
+    all_day = False
 
-    weekday_check = re.search(r'(w\s+\w+|do\s+\w+|następnego\s+\w+)', ql)
-    if weekday_check:
-        resolved = _resolve_polish_date(weekday_check.group(1))
-        if resolved:
-            event_date = resolved
-
-    # Named day like "w sobotę"
-    m = re.search(r'(?:w|we)\s+(\w+)', ql)
-    if m:
-        resolved = _resolve_polish_date(m.group(0))
-        if resolved:
-            event_date = resolved
-
-    m = re.search(r'(\d{4}-\d{2}-\d{2})', q)
-    if m:
+    range_m = re.search(r'(\d{1,2})\.(\d{1,2})\s*[-–]\s*(\d{1,2})\.(\d{1,2})', q)
+    if range_m:
         try:
-            event_date = date.fromisoformat(m.group(1))
+            sd, sm = int(range_m.group(1)), int(range_m.group(2))
+            ed, em = int(range_m.group(3)), int(range_m.group(4))
+            year = today.year
+            date_start = date(year, sm, sd)
+            date_end = date(year, em, ed)
+            if date_end < date_start:
+                date_end = date(year + 1, em, ed)
+            all_day = True
         except ValueError:
             pass
 
+    if not range_m:
+        m = re.search(r'(jutro|dziś|dzisiaj|pojutrze)', ql)
+        if m:
+            date_start = _resolve_polish_date(m.group(1)) or today
+
+        weekday_check = re.search(r'(w\s+\w+|do\s+\w+|następnego\s+\w+)', ql)
+        if weekday_check:
+            resolved = _resolve_polish_date(weekday_check.group(1))
+            if resolved:
+                date_start = resolved
+
+        m = re.search(r'(?:w|we)\s+(\w+)', ql)
+        if m:
+            resolved = _resolve_polish_date(m.group(0))
+            if resolved:
+                date_start = resolved
+
+        m = re.search(r'(\d{4}-\d{2}-\d{2})', q)
+        if m:
+            try:
+                date_start = date.fromisoformat(m.group(1))
+            except ValueError:
+                pass
+
     # Resolve time
     event_time = _resolve_polish_time(q)
+    if not all_day and event_time:
+        all_day = False
+    elif not event_time and not range_m:
+        all_day = False
 
     # Determine event_type
     event_type = "custom"
@@ -2983,13 +3036,13 @@ def _parse_event_draft(question: str) -> dict:
             rest = re.sub(r'\b(w|we)\s+\w+\b', '', rest, flags=re.IGNORECASE).strip()
             rest = re.sub(r'o\s*\d{1,2}(?::\d{2})?', '', rest).strip()
             rest = re.sub(r'\b\d{1,2}:\d{2}\b', '', rest).strip()
+            rest = re.sub(r'\b\d{1,2}\.\d{1,2}\s*[-–]\s*\d{1,2}\.\d{1,2}\b', '', rest).strip()
             rest = re.sub(r'\s{2,}', ' ', rest).strip().lstrip(":").strip()
             if rest:
                 title = title_prefix + rest
             break
 
     if not title:
-        # Fallback: everything after the date
         title = q.strip()
         for cmd in ["dodaj wydarzenie", "zapisz event", "dodaj event"]:
             if cmd in ql:
@@ -2997,18 +3050,22 @@ def _parse_event_draft(question: str) -> dict:
                 break
 
     payload = {
-        "date_start": event_date.isoformat(),
+        "date_start": date_start.isoformat(),
         "time_start": event_time,
         "event_type": event_type,
         "title": title or "Nowe wydarzenie",
         "description": title or "",
         "source": "qbot_query_draft",
     }
+    if date_end:
+        payload["date_end"] = date_end.isoformat()
+    if all_day:
+        payload["all_day"] = True
 
     missing = []
     if not title:
         missing.append("title")
-    if not event_time:
+    if not event_time and not date_end:
         missing.append("time_start")
 
     return payload, missing
@@ -3118,11 +3175,21 @@ def _handle_write_draft(question: str, intents: list[str], date_ctx: dict) -> di
         action_type = "qcal_event_add"
         writer = "qcal_event_add"
         time_s = payload.get("time_start") or "brak godziny"
-        answer = (
-            f"Przygotowałem draft wydarzenia:\n"
-            f"{payload['date_start']} o {time_s} — {payload['title']}.\n"
-            f"Zapis wymaga potwierdzenia."
-        )
+        date_s = payload["date_start"]
+        date_e = payload.get("date_end")
+        all_day = payload.get("all_day", False)
+        if date_e and all_day:
+            answer = (
+                f"Przygotowałem draft wydarzenia:\n"
+                f"{date_s} do {date_e}, całodniowe — {payload['title']}.\n"
+                f"Zapis wymaga potwierdzenia przez action_execute."
+            )
+        else:
+            answer = (
+                f"Przygotowałem draft wydarzenia:\n"
+                f"{date_s} o {time_s} — {payload['title']}.\n"
+                f"Zapis wymaga potwierdzenia."
+            )
         idem_prefix = "ev"
     elif write_intent == "qcal_event_cancel_draft":
         payload = {"raw_query": question, "intent": "cancel"}
@@ -4873,6 +4940,9 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
                 "orchestrator_failed": True,
                 "orchestrator": {
                     "enabled": True,
+                    "name": "Albert",
+                    "instruction_file": "/opt/qbot/docs/QBOT_ORCHESTRATOR_INSTRUCTION.md",
+                    "instruction_loaded": False,
                     "stage": "wrapper_error",
                     "fallback_used": False,
                     "reason": str(exc),
