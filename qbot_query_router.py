@@ -97,6 +97,9 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         "zapisz posiłek", "dodaj jedzenie",
         "dodaj do jedzenia", "dodaj posiłek",
         "dopisz do dzisiejszego jedzenia", "dopisz do jedzenia",
+        "dodaj dzisiaj dietę", "dodaj dzisiaj",
+        "dopisz dzisiaj", "zapisz dzisiaj",
+        "dodaj dietę", "dopisz dietę", "zapisz dietę",
     ]),
     ("qcal_reminder_add_draft", [
         "przypomnij mi", "dodaj przypomnienie",
@@ -134,6 +137,12 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         "zdefiniowane posiłki", "moje posiłki", "szablony posiłków",
         "standardowe posiłki", "posiłki z cronometer",
         "posiłki przeniesione z cronometer", "templates",
+        "co to jest dieta", "pokaż zapisany posiłek",
+        "znajdź posiłek", "znajdz posilek",
+        "pokaż szablon", "pokaż template",
+        "wyszukaj w posiłkach", "szukam w posiłkach",
+        "wylistuj zapisane", "lista zapisanych", "zapisane posiłki",
+        "zapisany posiłek", "lista posiłków",
     ]),
     ("food_link_audit", [
         "bez food_item_id", "niepołączone wpisy", "logi bez produktu",
@@ -2075,10 +2084,32 @@ def _extract_meal_name(raw: str) -> str:
 
 def _strip_diacritics(text: str) -> str:
     normalized = unicodedata.normalize("NFKD", text)
-    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    result = "".join(ch for ch in normalized if unicodedata.category(ch)[0] != 'M')
+    # ł (U+0142) is the only Polish letter NFKD doesn't decompose — handle manually
+    return result.replace('\u0142', 'l').replace('\u0141', 'L')
 
 
-def _normalize_template_text(text: str) -> str:
+def _stem_polish_word(word: str) -> str:
+    """Basic Polish stemmer: strips common inflectional suffixes.
+
+    Handles case endings: genitive 'a', locative 'e', plural 'y'/'i',
+    dative 'u', etc. Keeps at least 3 characters.
+    """
+    if len(word) <= 4:
+        return word
+    # Remove common adjective/noun case suffixes
+    for suffix in ["ami", "emi", "ego", "emu", "ych", "ym", "ej", "im",
+                   "ie", "ia", "ii", "iu", "om", "ow", "em", "y",
+                   "a", "e", "i", "u"]:
+        if word.endswith(suffix) and len(word) - len(suffix) >= 3:
+            # Don't strip if it would lose the character identity
+            stripped = word[:-len(suffix)]
+            if len(stripped) >= 3:
+                return stripped
+    return word
+
+
+def _normalize_template_text(text: str, *, stem: bool = False) -> str:
     text = _strip_diacritics(str(text or "")).lower()
     text = re.sub(r"[^a-z0-9]+", " ", text)
     stop_words = {
@@ -2087,9 +2118,17 @@ def _normalize_template_text(text: str) -> str:
         "zapisany", "zapisanych", "szablon", "szablony", "template", "templates",
         "posilek", "posilki", "posilku", "meal", "meals", "co", "to", "jest",
         "w", "m", "mojej", "ma", "moje", "baza", "baze", "my", "from",
+        "dodaj", "dzisiaj", "dzisiejszy", "dzisiejszego", "spozycia", "spozycia",
+        "jedzenia", "jadzenia", "posilek", "posilku", "zapisz",
+        "szukam", "znajdz", "poka", "mam", "na", "mysli",
     }
     tokens = [tok for tok in text.split() if tok not in stop_words]
-    return re.sub(r"\s+", " ", " ".join(tokens)).strip()
+    if stem:
+        tokens = [_stem_polish_word(tok) for tok in tokens]
+    result = re.sub(r"\s+", " ", " ".join(tokens)).strip()
+    if not result and stem:
+        return _normalize_template_text(text, stem=False)
+    return result
 
 
 def _template_keywords(template: dict) -> set[str]:
@@ -2106,6 +2145,151 @@ def _template_keywords(template: dict) -> set[str]:
     return {k for k in kws if k}
 
 
+# ── Template alias map ─────────────────────────────────────────────────────
+# Maps alias → list of template_ids. Length > 1 means ambiguous.
+# Built at startup from cache + explicit overrides.
+_TEMPLATE_ALIASES: dict[str, list[int]] = {}
+
+
+def _build_template_aliases() -> dict[str, list[int]]:
+    """Build alias map from cached templates.
+    Auto-aliases: full name, first word, first two words (all normalized).
+    If an auto-alias matches >1 template_id, it becomes ambiguous (len > 1).
+    Explicit overrides always win (replace the list for that key).
+    """
+    aliases: dict[str, list[int]] = {}
+    templates = list(_get_meal_templates_cache())
+    for tmpl in templates:
+        tid = tmpl.get("id")
+        if not tid:
+            continue
+        name = str(tmpl.get("name", "")).strip()
+        if not name:
+            continue
+        norm = _normalize_template_text(name, stem=False)
+        auto_keys: list[str] = []
+        if norm:
+            auto_keys.append(norm)
+        parts = norm.split()
+        if parts:
+            auto_keys.append(parts[0])
+        if len(parts) >= 2:
+            auto_keys.append(" ".join(parts[:2]))
+
+        for key in auto_keys:
+            if key in aliases:
+                if tid not in aliases[key]:
+                    aliases[key].append(tid)
+            else:
+                aliases[key] = [tid]
+
+    # Explicit overrides — always win (single-element list)
+    explicit: dict[str, int] = {
+        "dieta od brokula": 4,
+        "dieta brokula": 4,
+        "dieta brokul": 4,
+        "dieta od brokul": 4,
+        "dieta brokula sport": 4,
+        "dieta brokul sport": 4,
+        "szukam brokula": 4,
+        "szukam brokul": 4,
+        "poka brokul sport": 4,
+        "poka brokula sport": 4,
+        "mam na mysli brokul sport": 4,
+        "mam na mysli brokula sport": 4,
+        "mam na mysli brokul sport 2000": 4,
+        "brokula": 4,
+        "co to jest dieta od brokula w mojej bazie": 4,
+        "co to jest dieta od brokula": 4,
+        "dieta od brokula w mojej bazie": 4,
+    }
+    for key, tid in explicit.items():
+        aliases[key] = [tid]
+
+    return aliases
+
+
+def _alias_match_template(question: str) -> dict | None:
+    """Check alias map for a quick template match.
+    Returns certain match, ambiguous clarification, or None."""
+    templates = list(_get_meal_templates_cache())
+    templates_map: dict[int, dict] = {}
+    for tmpl in templates:
+        tid = tmpl.get("id")
+        if tid:
+            templates_map[tid] = tmpl
+
+    if not _TEMPLATE_ALIASES:
+        _TEMPLATE_ALIASES.update(_build_template_aliases())
+
+    q_norm = _normalize_template_text(question, stem=False)
+    q_stem = _normalize_template_text(question, stem=True)
+    if not q_norm and not q_stem:
+        return None
+
+    # Try full normalized query (both stemmed and unstemmed)
+    for variant in [q_norm, q_stem]:
+        if variant and variant in _TEMPLATE_ALIASES:
+            tids = _TEMPLATE_ALIASES[variant]
+            if len(tids) > 1:
+                return {
+                    "match": False,
+                    "ambiguous": True,
+                    "score": 0.0,
+                    "template": None,
+                    "template_id": None,
+                    "template_name": None,
+                    "candidates": [{
+                        "template": templates_map.get(tid),
+                        "score": 1.0,
+                        "template_id": tid,
+                        "template_name": (templates_map.get(tid) or {}).get("name"),
+                    } for tid in tids if tid in templates_map],
+                    "needs_clarification": True,
+                    "source": "alias_ambiguous",
+                }
+            tid = tids[0]
+            if tid in templates_map:
+                return {"score": 1.0, "match": True, "template": templates_map[tid],
+                        "template_id": tid, "template_name": templates_map[tid].get("name"),
+                        "ambiguous": False, "candidates": [], "needs_clarification": False,
+                        "source": "alias"}
+
+    # Try each individual token (both stemmed and unstemmed)
+    for source in [q_norm, q_stem]:
+        if not source:
+            continue
+        q_tokens = source.split()
+        for token in q_tokens:
+            if token in _TEMPLATE_ALIASES:
+                tids = _TEMPLATE_ALIASES[token]
+                if len(tids) > 1:
+                    return {
+                        "match": False,
+                        "ambiguous": True,
+                        "score": 0.0,
+                        "template": None,
+                        "template_id": None,
+                        "template_name": None,
+                        "candidates": [{
+                            "template": templates_map.get(tid),
+                            "score": 1.0,
+                            "template_id": tid,
+                            "template_name": (templates_map.get(tid) or {}).get("name"),
+                        } for tid in tids if tid in templates_map],
+                        "needs_clarification": True,
+                        "source": "alias_token_ambiguous",
+                    }
+                tid = tids[0]
+                if tid in templates_map:
+                    return {"score": 0.98, "match": True, "template": templates_map[tid],
+                            "template_id": tid, "template_name": templates_map[tid].get("name"),
+                            "ambiguous": False, "candidates": [], "needs_clarification": False,
+                            "source": "alias_token"}
+
+    return None
+
+
 @lru_cache(maxsize=1)
 def _get_meal_templates_cache() -> tuple[dict, ...]:
     try:
@@ -2115,9 +2299,47 @@ def _get_meal_templates_cache() -> tuple[dict, ...]:
         return tuple()
 
 
+def _levenshtein(a: str, b: str) -> int:
+    """Compute Levenshtein distance between two strings."""
+    if len(a) < len(b):
+        a, b = b, a
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a):
+        curr = [i + 1]
+        for j, cb in enumerate(b):
+            cost = 0 if ca == cb else 1
+            curr.append(min(curr[j] + 1, prev[j + 1] + 1, prev[j] + cost))
+        prev = curr
+    return prev[-1]
+
+
+def _fuzzy_token_match(tokens_a: list[str], tokens_b: list[str], threshold: float = 0.7) -> float:
+    """Fuzzy token overlap: count stemmed+diacritics-free token matches
+    using Levenshtein distance for near-miss tokens."""
+    if not tokens_a or not tokens_b:
+        return 0.0
+    matched = 0
+    for ta in tokens_a:
+        for tb in tokens_b:
+            if ta == tb or ta in tb or tb in ta:
+                matched += 1
+                break
+        else:
+            # Try Levenshtein for partial matches
+            for tb in tokens_b:
+                dist = _levenshtein(ta, tb)
+                max_len = max(len(ta), len(tb))
+                if max_len > 0 and dist / max_len <= 1.0 - threshold:
+                    matched += 1
+                    break
+    return matched / max(len(tokens_b), 1)
+
+
 def _score_template_candidate(question: str, template: dict) -> float:
-    q = _normalize_template_text(question)
-    t = _normalize_template_text(template.get("name", ""))
+    q = _normalize_template_text(question, stem=True)
+    t = _normalize_template_text(template.get("name", ""), stem=True)
     if not q or not t:
         return 0.0
 
@@ -2130,11 +2352,14 @@ def _score_template_candidate(question: str, template: dict) -> float:
 
     overlap = len(set(q_tokens) & set(t_tokens))
     overlap_score = overlap / max(len(set(t_tokens)), 1)
+    fuzzy_score = _fuzzy_token_match(q_tokens, t_tokens)
     seq = SequenceMatcher(None, q, t).ratio()
 
     score = 0.0
     if overlap:
         score += 0.55 * overlap_score
+    else:
+        score += 0.30 * fuzzy_score
     score += 0.35 * seq
     if t_tokens and q_tokens and q_tokens[0] == t_tokens[0]:
         score += 0.1
@@ -2142,6 +2367,12 @@ def _score_template_candidate(question: str, template: dict) -> float:
         score += 0.12
     if len(q_tokens) == 1 and q_tokens[0] in t_tokens:
         score += 0.18
+    # Bonus: single query token matches start of a template token (stemmed match)
+    if len(q_tokens) == 1:
+        for tt in t_tokens:
+            if tt.startswith(q_tokens[0]) or q_tokens[0].startswith(tt):
+                score += 0.10
+                break
     return min(score, 1.0)
 
 
@@ -2150,6 +2381,12 @@ def _match_meal_template(question: str) -> dict[str, Any] | None:
     if not templates:
         return None
 
+    # Fast path: alias matching
+    alias_result = _alias_match_template(question)
+    if alias_result:
+        return alias_result
+
+    # Score all templates
     scored: list[dict[str, Any]] = []
     for tmpl in templates:
         score = _score_template_candidate(question, tmpl)
@@ -2169,7 +2406,12 @@ def _match_meal_template(question: str) -> dict[str, Any] | None:
     top = scored[0]
     second = scored[1] if len(scored) > 1 else None
     ambiguity = bool(second and abs(float(top["score"]) - float(second["score"])) < 0.08)
-    strong = float(top["score"]) >= 0.86 and not ambiguity
+
+    # Dynamic threshold: 0.86 for multi-token queries, 0.72 for single-token
+    q_norm = _normalize_template_text(question, stem=False)
+    q_tokens = q_norm.split()
+    threshold = 0.72 if len(q_tokens) <= 2 else 0.86
+    strong = float(top["score"]) >= threshold and not ambiguity
 
     return {
         "match": strong,
@@ -3620,10 +3862,40 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
             if explicit_template_lookup and template_match and template_match.get("ambiguous"):
                 return _template_lookup_clarification_response(question, match=template_match, intents=intents)
             return _saved_meals_catalog_response(question, max_rows=max_rows)
-        if template_match and template_match.get("match") and (set(intents) & {"nutrition_planning", "meal_log_inventory"}):
+        if template_match and template_match.get("match") and (set(intents) & {"nutrition_planning", "meal_log_inventory", "nutrition_daily", "calorie_balance"}):
             return _template_lookup_response(question, match=template_match)
-        if template_match and template_match.get("ambiguous") and (set(intents) & {"nutrition_planning", "meal_log_inventory"}):
+        if template_match and template_match.get("ambiguous") and (set(intents) & {"nutrition_planning", "meal_log_inventory", "nutrition_daily", "calorie_balance"}):
             return _template_lookup_clarification_response(question, match=template_match, intents=intents)
+
+    # ── Universal saved_meals_catalog / template matching ──────────────
+    # Works regardless of QBOT_LLM_FIRST_NUTRITION_READONLY flag.
+    if "saved_meals_catalog" in intents:
+        template_match = _match_meal_template(question)
+        # Heuristic: if query explicitly mentions a template name (not just a list request),
+        # show the template; otherwise show the full catalog.
+        ql = question.lower()
+        explicit_lookup = any(w in ql for w in (
+            "dieta od", "co to jest", "znajdź", "znajdz", "szukam",
+            "pokaż zapisany", "pokaż szablon", "wyszukaj",
+        ))
+        if explicit_lookup and template_match and template_match.get("match"):
+            return _template_lookup_response(question, match=template_match)
+        if explicit_lookup and template_match and template_match.get("ambiguous"):
+            return _template_lookup_clarification_response(question, match=template_match, intents=intents)
+        return _saved_meals_catalog_response(question, max_rows=max_rows)
+
+    # ── Catch-all template alias matching ────────────────────────────
+    # Handles standalone template name queries like "Brokuł", "Brokuł sport 2000"
+    # when no explicit saved_meals_catalog intent was detected by keywords.
+    if not set(intents) & {"nutrition_log_add_draft"}:
+        alias_match = _match_meal_template(question)
+        if alias_match:
+            q_norm = _normalize_template_text(question, stem=False)
+            q_len = len(q_norm.split())
+            if alias_match.get("match") and not alias_match.get("ambiguous") and q_len <= 3:
+                return _template_lookup_response(question, match=alias_match)
+            if alias_match.get("ambiguous") and q_len <= 2:
+                return _template_lookup_clarification_response(question, match=alias_match, intents=intents)
 
     # ── Semantic Planner route ──
     # Skip semantic planner when canonicalizer has an authoritative intent

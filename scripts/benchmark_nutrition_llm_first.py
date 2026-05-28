@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Nutrition LLM-first canary benchmark.
+"""Nutrition LLM-first canary benchmark v2 — template matching + read-only.
 
 Runs a fixed set of read-only / draft-only nutrition queries against
 qbot.query with the nutrition-readonly canary enabled in-process.
 Does not change production environment.
+64 test cases across 7 categories.
 """
 from __future__ import annotations
 
 import json
 import os
 import sys
-import statistics
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -36,7 +36,7 @@ from qbot_query_router import classify_intent, llm_first_classify_intent, query
 
 
 CASES: list[dict[str, Any]] = [
-    # saved_meals_catalog
+    # ── saved_meals_catalog (12 cases) ───────────────────────────────
     *[{"category": "saved_meals_catalog", "query": q, "expect_template_id": None, "expect_draft": False} for q in [
         "wylistuj zapisane posiłki",
         "pokaż moje posiłki",
@@ -48,8 +48,10 @@ CASES: list[dict[str, Any]] = [
         "lista zapisanych posiłków",
         "wyświetl moje templates",
         "pokaż posiłki z cronometer",
+        "lista posiłków",
+        "wylistuj szablony",
     ]],
-    # template_lookup
+    # ── template_lookup (14 cases) ───────────────────────────────────
     *[{"category": "template_lookup", "query": q, "expect_template_id": 4, "expect_draft": False} for q in [
         "co to jest dieta od Brokuła w mojej bazie?",
         "dieta od Brokuła",
@@ -61,8 +63,12 @@ CASES: list[dict[str, Any]] = [
         "szukam brokuła",
         "pokaż brokuł sport",
         "dieta brokuła sport",
+        "pokaż szablon Brokuł",
+        "znajdź posiłek Brokuł",
+        "co to jest brokuł sport",
+        "wyszukaj brokuł sport 2000",
     ]],
-    # current_day_meals
+    # ── current_day_meals (10 cases) ─────────────────────────────────
     *[{"category": "current_day_meals", "query": q, "expect_template_id": None, "expect_draft": False} for q in [
         "co jadłem dzisiaj",
         "pokaż dzisiejsze posiłki",
@@ -72,8 +78,10 @@ CASES: list[dict[str, Any]] = [
         "current day meals",
         "jakie były dzisiejsze posiłki",
         "pokaż meal list na dziś",
+        "co dziś jadłem",
+        "pokaż moje dzisiejsze jedzenie",
     ]],
-    # calorie_balance
+    # ── calorie_balance (10 cases) ───────────────────────────────────
     *[{"category": "calorie_balance", "query": q, "expect_template_id": None, "expect_draft": False} for q in [
         "ile kcal wczoraj",
         "bilans kalorii dziś",
@@ -83,8 +91,10 @@ CASES: list[dict[str, Any]] = [
         "nadwyżka kalorii w tym tygodniu",
         "kcal z ostatnich 7 dni",
         "bilans kalorii z ostatnich dni",
+        "jaki mam bilans kaloryczny",
+        "kalorie z garmin i cronometer",
     ]],
-    # nutrition_history
+    # ── nutrition_history (10 cases) ─────────────────────────────────
     *[{"category": "nutrition_history", "query": q, "expect_template_id": None, "expect_draft": False} for q in [
         "historia posiłków",
         "pokaż logi posiłków z wczoraj",
@@ -94,8 +104,10 @@ CASES: list[dict[str, Any]] = [
         "pokaż wpisy posiłków",
         "lista posiłków z wczoraj",
         "co jadłem przedwczoraj",
+        "pokaż historię jedzenia",
+        "historia moich posiłków",
     ]],
-    # nutrition_log_add_draft
+    # ── nutrition_log_add_draft (8 cases) ─────────────────────────────
     *[{"category": "nutrition_log_add_draft", "query": q, "expect_template_id": 4, "expect_draft": True} for q in [
         "dodaj dzisiaj dietę od Brokuła",
         "dodaj dzisiaj Brokuł sport 2000",
@@ -103,6 +115,8 @@ CASES: list[dict[str, Any]] = [
         "dodaj posiłek z brokuła sport",
         "dopisz do dzisiejszego jedzenia Brokuł sport",
         "dodaj do spożycia Brokuł",
+        "dodaj dzisiaj dietę Brokuł sport",
+        "zapisz dzisiaj brokuł sport 2000",
     ]],
 ]
 
@@ -285,6 +299,14 @@ def main() -> int:
     out_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(summary["overall"], ensure_ascii=False))
     print(f"saved={out_path}")
+
+    # Per-category summary to stdout
+    print("\n=== Per-category ===")
+    for cat, stats in sorted(summary["by_category"].items()):
+        print(f"  {cat:<25} total={stats['total']:>2}  ok={stats['template_match_ok']:>2}  "
+              f"llm={stats['use_llm']:>2}  fallback_ro={stats['fallback_readonly']:>2}  "
+              f"err={stats['api_errors']:>2}  to={stats['timeouts']:>2}  "
+              f"avg={stats['avg_time']:.2f}s  p95={stats['p95']:.2f}s")
     return 0
 
 
