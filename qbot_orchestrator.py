@@ -68,7 +68,9 @@ Zadanie:
 - dla `qbot_roadmap_runner_status` pokaż wprost `task_progress_percent` i `block_progress_percent`
 - `missing_fields` dotyczy WYŁĄCZNIE pól danych (np. nazwa posiłku, data, kcal) — NIGDY nie dodawaj tu orchestrator.enabled, orchestrator.stage, orchestrator.fallback_used ani innych pól systemowych
 - odpowiedź nie powinna sugerować, że brakuje metadanych orchestratora — te są dostępne w sekcji orchestrator wyniku
-- dla `qbot_canonical_docs` skorzystaj z pola `answer` z wyniku readera
+- dla `qbot_canonical_docs` — skorzystaj z pola `answer` readera i streść znalezione sekcje/excerpty; nie pisz, że brakuje informacji, jeśli reader zwrócił trafne fragmenty
+- dla `calendar_snapshot` — przedstaw PEŁNY obraz dnia: wydarzenia, remindery, zadania, posiłki (jeśli są); nie zawężaj odpowiedzi tylko do posiłku
+- dla `weather_forecast` — uwzględnij przekazany `period` ("jutro" → jutrzejsza data)
 - zwróć WYŁĄCZNIE JSON:
 {
   "answer": "...",
@@ -415,8 +417,22 @@ def _plan_prompt(question: str, context: str, max_rows: int) -> str:
                 "plan": {
                     "intent": "rwgps",
                     "task_type": "read",
-                    "readers": ["rwgps_route_search", "rwgps_route_list"],
+                    "readers": ["rwgps_route_list"],
                     "parameters": {},
+                    "confidence": 0.95,
+                    "needs_clarification": False,
+                    "clarification_question": "",
+                    "is_write_intent": False,
+                    "action_type": None,
+                },
+            },
+            {
+                "question": "znajdź trasę RWGPS Toskania",
+                "plan": {
+                    "intent": "rwgps",
+                    "task_type": "read",
+                    "readers": ["rwgps_route_search"],
+                    "parameters": {"query": "Toskania"},
                     "confidence": 0.90,
                     "needs_clarification": False,
                     "clarification_question": "",
@@ -444,8 +460,8 @@ def _plan_prompt(question: str, context: str, max_rows: int) -> str:
                     "intent": "weather",
                     "task_type": "read",
                     "readers": ["weather_forecast"],
-                    "parameters": {"location": "Marki"},
-                    "confidence": 0.90,
+                    "parameters": {"location": "Marki", "period": "jutro"},
+                    "confidence": 0.95,
                     "needs_clarification": False,
                     "clarification_question": "",
                     "is_write_intent": False,
@@ -796,6 +812,12 @@ def _execute_reader(name: str, parameters: dict[str, Any], question: str, max_ro
             args["query"] = question
         if name in {"qbot_nutrition_day_summary", "qbot_nutrition_meal_list", "qbot_nutrition_day_get", "qbot_nutrition_range_summary", "qbot_wellness_day_get", "qbot_sleep_day_get", "qbot_calendar_snapshot"} and not args.get("date"):
             args["date"] = date.today().isoformat()
+        if name in {"qbot_weather_forecast"} and not args.get("period"):
+            ql = question.lower()
+            if any(k in ql for k in ("jutro", "tomorrow", "jutrze")):
+                args["period"] = "jutro"
+            elif any(k in ql for k in ("pojutrze", "pojutrz")):
+                args["period"] = "day_after_tomorrow"
         if name in {"qbot_weather_current", "qbot_weather_forecast", "qbot_rwgps_route_search", "qbot_garage_raw_search", "qbot_garage_raw_list", "qbot_backup_status", "qbot_error_summary", "qbot_logs_overview", "qbot_external_integrations_report", "qbot_readiness_report", "qbot_operator_snapshot", "qbot_mcp_status", "qbot_mcp_tools_list", "qbot_public_endpoint_status", "qbot_telegram_status", "qbot_wellness_db_status", "qbot_nutrition_db_status", "qbot_nutrition_status", "qbot_service_logs", "qbot_services_status", "qbot_db_overview", "qbot_api_self_check", "qbot_git_status", "qbot_project_guard_check", "qbot_maintenance_report"} and not args:
             args = {}
         result = func(args)
@@ -830,6 +852,12 @@ def _execute_reader(name: str, parameters: dict[str, Any], question: str, max_ro
     args = dict(parameters)
     if name == "qbot_canonical_docs" and not args.get("query"):
         args["query"] = question
+    if name in {"weather_forecast"} and not args.get("period"):
+        ql = question.lower()
+        if any(k in ql for k in ("jutro", "tomorrow", "jutrze")):
+            args["period"] = "jutro"
+        elif any(k in ql for k in ("pojutrze", "pojutrz")):
+            args["period"] = "day_after_tomorrow"
     if name in {"nutrition_food_search"} and not args.get("query"):
         args["query"] = question
     if name in {"nutrition_day", "meal_list"} and not args.get("date"):
@@ -892,14 +920,19 @@ def _final_answer(question: str, plan: dict[str, Any], reader_results: list[dict
 
     q_lower = question.lower()
 
-    # Canonical docs result post-processing
+    # Canonical docs result post-processing — force-use reader answer for artifact_read
     canonical_docs_result = next((item for item in reader_results if item.get("reader") == "qbot_canonical_docs"), None)
     if canonical_docs_result:
         cd_data = canonical_docs_result.get("data", {}) or {}
         cd_answer = str(cd_data.get("answer", "")).strip()
         cd_status = str(cd_data.get("status", "partial")).strip().lower()
-        if cd_answer and (final.get("status") == "no_data" or "no_data" in answer.lower()):
-            final["answer"] = cd_answer
+        plan_intent = plan.get("intent", "")
+        force_cd = plan_intent == "artifact_read" and cd_answer and cd_status in {"ok", "partial"}
+        if force_cd or (cd_answer and (final.get("status") == "no_data" or "no_data" in answer.lower())):
+            if force_cd:
+                final["answer"] = cd_answer
+            else:
+                final["answer"] = cd_answer
             final["status"] = cd_status if cd_status in {"ok", "partial", "no_data"} else "partial"
             final["confidence"] = "high" if cd_status == "ok" else "medium"
             answer = str(final["answer"]).strip()
