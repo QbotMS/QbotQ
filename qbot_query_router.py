@@ -476,7 +476,7 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "health_risk_note": ["health_advisor"],
     "recovery_anomaly_check": ["recovery_advisor", "wellness_day", "sleep_day"],
     "calendar_day_context": ["calendar_snapshot", "nutrition_day", "meal_list", "health_advisor", "recovery_advisor"],
-    "daily_timeline": ["calendar_snapshot"],
+    "daily_timeline": ["calendar_snapshot", "wellness_day"],
     "reminder_status": ["calendar_snapshot"],
     "event_lookup": ["calendar_snapshot", "health_advisor"],
     "status": ["status"],
@@ -2793,6 +2793,13 @@ _SAFE_DOMAIN_INTENTS: frozenset[str] = frozenset({
     "status", "readiness", "artifact_read", "weather",
 })
 
+_LLM_FIRST_CALENDAR_READONLY_ENABLED = os.getenv("QBOT_LLM_FIRST_CALENDAR_READONLY", "0") == "1"
+
+_CALENDAR_READONLY_INTENTS: frozenset[str] = frozenset({
+    "qcal_lookup", "reminder_status", "event_lookup",
+    "calendar_day_context", "daily_timeline",
+})
+
 _ALLOWED_DOMAINS = [
     "nutrition", "health", "calendar", "wellness", "xert", "intervals",
     "weather", "rwgps", "routes", "garage", "reports", "garmin",
@@ -3197,6 +3204,16 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
     elif _LLM_FIRST_SAFE_DOMAINS_ENABLED:
         kw_intents = classify_intent(question)
         if _SAFE_DOMAIN_INTENTS & set(kw_intents):
+            llm_result = llm_first_classify_intent(question, context)
+            if llm_result["status"] == "use_llm" and llm_result["confidence"] >= _LLM_CONFIDENCE_THRESHOLD:
+                intents = [llm_result["intent"]] if llm_result["intent"] and llm_result["intent"] != "unknown" else kw_intents
+            else:
+                intents = kw_intents
+        else:
+            intents = kw_intents
+    elif _LLM_FIRST_CALENDAR_READONLY_ENABLED:
+        kw_intents = classify_intent(question)
+        if _CALENDAR_READONLY_INTENTS & set(kw_intents):
             llm_result = llm_first_classify_intent(question, context)
             if llm_result["status"] == "use_llm" and llm_result["confidence"] >= _LLM_CONFIDENCE_THRESHOLD:
                 intents = [llm_result["intent"]] if llm_result["intent"] and llm_result["intent"] != "unknown" else kw_intents
