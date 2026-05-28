@@ -3042,30 +3042,26 @@ def llm_first_classify_intent(
     last_error: str | None = None
 
     for attempt in range(2):
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                fut = pool.submit(
-                    qgpt_json, user_prompt,
-                    system=_LLM_FIRST_SYSTEM, max_tokens=500, temperature=0,
-                )
-                try:
-                    raw = fut.result(timeout=_LLM_TIMEOUT_SEC)
-                except concurrent.futures.TimeoutError:
-                    fut.cancel()
-                    last_error = f"LLM timeout after {_LLM_TIMEOUT_SEC}s"
-                    if attempt == 0:
-                        continue
-                    return {
-                        "status": "fallback_needed",
-                        "error": last_error,
-                        "raw_intent": None, "normalized_intent": None,
-                        "domain": None, "intent": None, "parameters": {},
-                        "confidence": 0.0, "needs_clarification": False,
-                        "clarification_question": "", "readers": [],
-                        "action_type": None, "is_write_intent": False,
-                        "llm_status": "fallback_needed",
-                        "fallback_reason": f"timeout: {_LLM_TIMEOUT_SEC}s",
-                    }
+            fut = pool.submit(
+                qgpt_json, user_prompt,
+                system=_LLM_FIRST_SYSTEM, max_tokens=500, temperature=0,
+            )
+            raw = fut.result(timeout=_LLM_TIMEOUT_SEC)
+        except concurrent.futures.TimeoutError:
+            fut.cancel()
+            return {
+                "status": "fallback_needed",
+                "error": f"LLM timeout after {_LLM_TIMEOUT_SEC}s",
+                "raw_intent": None, "normalized_intent": None,
+                "domain": None, "intent": None, "parameters": {},
+                "confidence": 0.0, "needs_clarification": False,
+                "clarification_question": "", "readers": [],
+                "action_type": None, "is_write_intent": False,
+                "llm_status": "fallback_needed",
+                "fallback_reason": f"timeout: {_LLM_TIMEOUT_SEC}s",
+            }
         except Exception as exc:
             last_error = str(exc)
             if attempt == 0:
@@ -3081,10 +3077,11 @@ def llm_first_classify_intent(
                 "llm_status": "fallback_needed",
                 "fallback_reason": f"api_error: {last_error}",
             }
+        finally:
+            pool.shutdown(wait=False)
 
         validated = _validate_llm_intent(raw)
         if validated is not None:
-            # Diagnose unrecognised intent or inconsistency
             if validated["status"] in ("inconsistent", "unrecognised_intent"):
                 return {
                     "status": "fallback_needed",
@@ -3125,7 +3122,6 @@ def llm_first_classify_intent(
             "fallback_reason": "unparseable_json",
         }
 
-    # Should not reach here
     return {
         "status": "fallback_needed",
         "error": last_error or "Unknown LLM failure",
