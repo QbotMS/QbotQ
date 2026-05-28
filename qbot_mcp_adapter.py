@@ -35,14 +35,13 @@ _SESSION_STATE: dict[str, dict[str, Any]] = {}
 
 _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
     # ═══════════════════════════════════════════════════════════════
-    # PUBLIC MCP TOOLS — docelowo tylko 4 narzędzia:
-    #   qbot.query          — rozumienie + plan + action_draft
+    # PUBLIC MCP TOOLS — docelowo 2 narzędzia:
+    #   qbot.query          — rozumienie + plan + action_draft + status/readiness
     #   qbot.action_execute — jedyny executor zapisów
-    #   qbot.status         — smoke test
-    #   qbot.readiness      — diagnostyka
     # Wszystkie domenowe narzędzia (nutrition_log_add, qcal_event_add,
     # qcal_reminder_add, itd.) są internal — dostępne tylko przez
     # action_execute.
+    # qbot.status i qbot.readiness są dostępne przez qbot.query.
     # ═══════════════════════════════════════════════════════════════
 
     # ── Core: universal read-only query router ──
@@ -53,6 +52,7 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
             "Podaj pytanie w języku naturalnym (polski/angielski). "
             "QBot wewnętrznie dobiera readery (nutrition, training, routes, garage, weather, "
             "Garmin, Cronometer, Intervals, Xert, RWGPS, wellness, artifacts, reports). "
+            "Obsługuje też intent status i readiness — zapytaj 'status QBot' lub 'readiness QBot'. "
             "Zwraca structured answer + tables + provenance + missing_fields + limitations. "
             "Tryb plan_only podgląda plan readerów bez wykonywania. "
             "Jeśli query zapisów, zwraca action_draft (bez zapisu). Wywołaj qbot.action_execute."
@@ -84,27 +84,6 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
                 "error": {"type": "string"}
             }
         },
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-
-    # ── System health ──
-    "qbot.status": {
-        "qbot_tool": "qbot_operator_final_smoke_test",
-        "description": (
-            "Globalny smoke test QBot — sprawdza API, DB, guard, usługi, backup. "
-            "Używaj tylko do diagnostyki systemu, nie do pytań o dane."
-        ),
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
-        "safety_class": "READ_ONLY",
-        "auth_required": False,
-    },
-
-    # ── Readiness (optional — detailed status with blockers) ──
-    "qbot.readiness": {
-        "qbot_tool": "qbot_readiness_report",
-        "description": "Szczegółowy raport gotowości QBot — lista blokerów, status integracji.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },

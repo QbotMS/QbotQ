@@ -7,6 +7,7 @@ structured output with answer, tables, provenance, no-data policy.
 from __future__ import annotations
 
 import json
+import os
 import re
 import uuid
 from datetime import date, datetime, timedelta
@@ -2766,15 +2767,196 @@ def _heuristic_canonicalize(question: str, intents: list[str]) -> dict | None:
     return None
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# LLM-first intent classifier (Phase 1 — comparative, default OFF)
+# ═══════════════════════════════════════════════════════════════════════
+
+_LLM_FIRST_ENABLED = os.getenv("QBOT_LLM_FIRST_QUERY", "0") == "1"
+
+_ALLOWED_DOMAINS = [
+    "nutrition", "health", "calendar", "wellness", "xert", "intervals",
+    "weather", "rwgps", "routes", "garage", "reports", "garmin",
+    "cronometer", "meta", "project", "write",
+]
+
+_LLM_FIRST_READER_NAMES = sorted(_READER_REGISTRY.keys())
+
+_LLM_FIRST_ALLOWED_INTENTS = sorted(
+    set(_ALLOWED_CANONICAL_INTENTS)
+    | {name for name, _ in _INTENT_PATTERNS}
+    | {"status", "readiness", "general"}
+)
+
+_LLM_FIRST_SYSTEM = """\
+Jesteś klasyfikatorem intencji asystenta rowerowego QBot.
+
+Na podstawie pytania użytkownika zwróć WYŁĄCZNIE JSON o tej strukturze:
+{
+  "domain": "nutrition|health|calendar|wellness|xert|intervals|weather|rwgps|routes|garage|reports|garmin|cronometer|meta|project|write",
+  "intent": "nazwa_intentu_z_allowlisty",
+  "parameters": {},
+  "confidence": 0.0,
+  "needs_clarification": false,
+  "clarification_question": "",
+  "readers": [],
+  "action_type": null,
+  "is_write_intent": false
+}
+
+Zasady:
+- confidence 0.0–1.0 (>= 0.6 = pewna decyzja LLM, < 0.6 = zapytaj użytkownika).
+- readers to lista nazw readerów potrzebnych do odpowiedzi (pusta jeśli nie wiesz).
+- Jeśli pytanie dotyczy zapisu (dodanie/jako dodanie/edycja/usunięcie), ustaw is_write_intent=true.
+- Dla zapisów NIGDY nie używaj fallbacku — oznacz is_write_intent=true i tyle.
+- Dla odczytów z niskim confidence ustaw needs_clarification=true i podaj clarification_question.
+- parameters: wyciągnij daty, ID, nazwy, keywords z pytania.
+
+Dozwolone domeny: """ + ", ".join(_ALLOWED_DOMAINS) + """
+
+Dozwolone intenty: """ + ", ".join(_LLM_FIRST_ALLOWED_INTENTS) + """
+
+Dozwoleni readerzy: """ + ", ".join(_LLM_FIRST_READER_NAMES) + """
+
+Nie dodawaj własnych domain/intent/reader — użyj tylko z powyższych list."""
+
+
+def _validate_llm_intent(result: Any) -> dict | None:
+    """Validate LLM result structure and values. Returns cleaned dict or None."""
+    if not isinstance(result, dict):
+        return None
+
+    domain = str(result.get("domain", "")).strip()
+    intent = str(result.get("intent", "")).strip()
+    confidence = result.get("confidence", 0.0)
+    readers = result.get("readers", [])
+    is_write = bool(result.get("is_write_intent", False))
+    needs_clar = bool(result.get("needs_clarification", False))
+
+    if domain not in _ALLOWED_DOMAINS:
+        return None
+    if intent not in _LLM_FIRST_ALLOWED_INTENTS:
+        return None
+    if not isinstance(confidence, (int, float)) or confidence < 0.0 or confidence > 1.0:
+        confidence = 0.0
+    if not isinstance(readers, list):
+        readers = []
+    readers = [r for r in readers if r in _READER_REGISTRY]
+
+    return {
+        "domain": domain,
+        "intent": intent,
+        "parameters": result.get("parameters", {}),
+        "confidence": float(confidence),
+        "needs_clarification": needs_clar,
+        "clarification_question": str(result.get("clarification_question", "")),
+        "readers": readers,
+        "action_type": result.get("action_type"),
+        "is_write_intent": is_write,
+    }
+
+
+def llm_first_classify_intent(
+    question: str,
+    context: str = "",
+) -> dict:
+    """LLM-first intent classifier.
+
+    Calls qgpt_json() as the FIRST decision mechanism.
+    Returns a validated structured dict or a fallback指示.
+    """
+    from qgpt_client import qgpt_json
+
+    user_prompt = f"Użytkownik: {question}\n\nKontekst: {context}"
+    try:
+        raw = qgpt_json(
+            user_prompt,
+            system=_LLM_FIRST_SYSTEM,
+            max_tokens=500,
+            temperature=0,
+        )
+    except Exception as exc:
+        return {
+            "status": "fallback_needed",
+            "error": f"LLM call failed: {exc}",
+            "domain": None, "intent": None, "parameters": {},
+            "confidence": 0.0, "needs_clarification": False,
+            "clarification_question": "", "readers": [],
+            "action_type": None, "is_write_intent": False,
+        }
+
+    validated = _validate_llm_intent(raw)
+    if validated is None:
+        return {
+            "status": "fallback_needed",
+            "error": "LLM returned invalid/unparseable result",
+            "domain": None, "intent": None, "parameters": {},
+            "confidence": 0.0, "needs_clarification": False,
+            "clarification_question": "", "readers": [],
+            "action_type": None, "is_write_intent": False,
+        }
+
+    status = "use_llm" if validated["confidence"] >= 0.6 else "ask_clarification"
+    validated["status"] = status
+    validated["error"] = None
+    return validated
+
+
+def compare_classifiers(test_queries: list[str]) -> list[dict]:
+    """Run comparative test: old classify_intent vs llm_first_classify_intent.
+
+    Returns list of dicts with:
+      - query
+      - keyword_intents (from classify_intent)
+      - llm_result (from llm_first_classify_intent)
+      - llm_valid (bool)
+      - differences: list of noted differences
+      - recommendation: use_llm / ask_clarification / fallback_readonly
+    """
+    results = []
+    for q in test_queries:
+        kw_intents = classify_intent(q)
+        llm = llm_first_classify_intent(q)
+        diff: list[str] = []
+        kw_set = set(kw_intents)
+        if llm["status"] == "fallback_needed":
+            diff.append(f"LLM failed: {llm.get('error')}")
+        elif llm["intent"] and llm["intent"] not in kw_set:
+            diff.append(f"LLM intent '{llm['intent']}' not in keyword intents {kw_intents}")
+        # Determine recommendation
+        if llm["status"] == "fallback_needed":
+            rec = "fallback_readonly"
+        elif llm["needs_clarification"]:
+            rec = "ask_clarification"
+        elif llm["confidence"] >= 0.6:
+            rec = "use_llm"
+        else:
+            rec = "ask_clarification"
+
+        results.append({
+            "query": q,
+            "keyword_intents": kw_intents,
+            "llm_result": llm,
+            "llm_valid": llm["status"] != "fallback_needed",
+            "differences": diff,
+            "recommendation": rec,
+        })
+    return results
+
+
 def query(question: str, mode: str = "read_only", scope: str = "all", context: str = "",
           max_rows: int = 500, include_provenance: bool = True, include_missing: bool = True) -> dict[str, Any]:
     if not _TOOL_DISPATCH:
         _init_dispatch()
 
-    # ── Write intent check (draft only) ─────────────────────────────────
-    # Run before semantic planner or keyword classifier to catch write
-    # intents early and return a draft without executing anything.
-    intents = classify_intent(question)
+    # ── Intent classification ──────────────────────────────────────────
+    if _LLM_FIRST_ENABLED:
+        llm_result = llm_first_classify_intent(question, context)
+        if llm_result["status"] == "use_llm" and llm_result["confidence"] >= 0.6:
+            intents = [llm_result["intent"]] if llm_result["intent"] and llm_result["intent"] != "unknown" else classify_intent(question)
+        else:
+            intents = classify_intent(question)
+    else:
+        intents = classify_intent(question)
 
     # ── Semantic intent canonicalization ──
     # Overrides keyword classification for queries the canonicalizer
