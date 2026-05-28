@@ -2120,7 +2120,7 @@ def _normalize_template_text(text: str, *, stem: bool = False) -> str:
         "w", "m", "mojej", "ma", "moje", "baza", "baze", "my", "from",
         "dodaj", "dzisiaj", "dzisiejszy", "dzisiejszego", "spozycia", "spozycia",
         "jedzenia", "jadzenia", "posilek", "posilku", "zapisz",
-        "szukam", "znajdz", "poka", "mam", "na", "mysli",
+        "szukam", "znajdz", "poka", "mam", "na", "mysli", "wyszukaj",
     }
     tokens = [tok for tok in text.split() if tok not in stop_words]
     if stem:
@@ -3857,6 +3857,13 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         template_match = _match_meal_template(template_probe_text)
         if "saved_meals_catalog" in intents:
             explicit_template_lookup = bool(nutrition_params.get("query") or nutrition_params.get("template_query"))
+            # Fallback: check query text for explicit lookup language if LLM didn't provide params
+            if not explicit_template_lookup:
+                ql = question.lower()
+                explicit_template_lookup = any(w in ql for w in (
+                    "dieta od", "co to jest", "znajdź", "znajdz", "szukam",
+                    "pokaż zapisany", "pokaż szablon", "wyszukaj",
+                ))
             if explicit_template_lookup and template_match and template_match.get("match"):
                 return _template_lookup_response(question, match=template_match)
             if explicit_template_lookup and template_match and template_match.get("ambiguous"):
@@ -3892,7 +3899,7 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         if alias_match:
             q_norm = _normalize_template_text(question, stem=False)
             q_len = len(q_norm.split())
-            if alias_match.get("match") and not alias_match.get("ambiguous") and q_len <= 3:
+            if alias_match.get("match") and not alias_match.get("ambiguous") and q_len <= 4:
                 return _template_lookup_response(question, match=alias_match)
             if alias_match.get("ambiguous") and q_len <= 2:
                 return _template_lookup_clarification_response(question, match=alias_match, intents=intents)
