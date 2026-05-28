@@ -10,6 +10,7 @@ import json
 import re
 import uuid
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 # ── Required no-data phrase ───────────────────────────────────────────────
@@ -64,6 +65,17 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         "podziel trasę", "etapów dziennych", "podziel na 7",
         "etapy", "bolgheri", "pienza", "monteriggioni",
         "końcami etapów", "noclegowych",
+    ]),
+    ("artifact_read", [
+        "plik", "artefakt", "artifact", "csv",
+        "biblia qbot", "qbot bible", "qbot_bible", "bible qbot",
+        "know-how qbot", "knowhow qbot", "qbot_knowhow", "know how qbot",
+        "instrukcja projektu qbot", "qbot_project_instruction_local",
+        "instrukcja lokalna qbot", "lokalna instrukcja projektu qbot",
+        "architektura qbot", "zasady mcp", "mcp qbot",
+        "dokumenty kanoniczne qbot", "dokumenty kanoniczne", "kanoniczne qbot",
+        "przeczytaj dokumenty kanoniczne qbot", "czy ten problem był już rozwiązany",
+        "czy ten problem byl juz rozwiazany",
     ]),
     ("garage_gear_route_fit", [
         "garaż", "sprzęt", "opony", "częściowo gravelowy",
@@ -197,9 +209,6 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
     ("wellness", [
         "samopoczucie", "wellness", "sen", "sleep",
         "battery", "stres",
-    ]),
-    ("artifact_read", [
-        "plik", "artefakt", "artifact", "csv",
     ]),
     ("capability_check", [
         "czy masz", "czy qbot ma", "czy potrafisz", "dane do odpowiedzi",
@@ -402,6 +411,7 @@ _reader("cronometer_status", "cronometer", "qbot_cronometer_legacy_status", {}, 
 _reader("status", "meta", "qbot_status", {}, ["qbot_core"])
 _reader("readiness", "meta", "qbot_readiness_report", {}, ["qbot_core"])
 _reader("capability_scan", "meta", "qbot_legacy_capability_scan", {}, ["qbot_core"])
+_reader("qbot_canonical_docs", "project", "qbot_canonical_docs_read", {"query": "str"}, ["filesystem", "docs"])
 
 # New: Garmin energy reader (live read via garminconnect, no DB storage needed)
 _reader("garmin_energy", "garmin", "qbot_garmin_energy_read", {"date": "str"}, ["garminconnect_api"])
@@ -442,7 +452,7 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "daily_report": ["daily_report_preview"],
     "ride_report": ["ride_report_preview", "ride_report_latest"],
     "wellness": ["wellness_day", "sleep_day", "nutrition_day_legacy"],
-    "artifact_read": [],
+    "artifact_read": ["qbot_canonical_docs"],
     "capability_check": ["status", "capability_scan"],
     "project": [],
     "health_advice": ["health_advisor", "nutrition_day", "meal_list", "nutrition_planning", "supplement_inventory", "garmin_energy", "wellness_day"],
@@ -624,6 +634,9 @@ def _init_dispatch():
 
     # New: Calendar snapshot reader
     _TOOL_DISPATCH["qbot_calendar_snapshot"] = _read_calendar_snapshot
+
+    # Canonical QBot docs reader
+    _TOOL_DISPATCH["qbot_canonical_docs_read"] = _read_qbot_canonical_docs
 
 
 # ── New readers ────────────────────────────────────────────────────────────
@@ -1068,6 +1081,285 @@ def _read_calendar_snapshot(args: dict | None = None) -> dict[str, Any]:
     snap["safety_class"] = "READ_ONLY"
     snap["status"] = "OK"
     return snap
+
+
+_QBOT_CANONICAL_DOCS: list[dict[str, Any]] = [
+    {
+        "key": "bible",
+        "label": "QBOT_BIBLE",
+        "title": "QBot Bible",
+        "path": Path("/opt/qbot/docs/QBOT_BIBLE.md"),
+        "aliases": (
+            "biblia qbot",
+            "qbot_bible",
+            "qbot bible",
+            "bible qbot",
+            "architektura qbot",
+            "zasady mcp",
+            "mcp qbot",
+        ),
+    },
+    {
+        "key": "knowhow",
+        "label": "QBOT_KNOWHOW",
+        "title": "QBot Know-how",
+        "path": Path("/opt/qbot/docs/QBOT_KNOWHOW.md"),
+        "aliases": (
+            "know-how qbot",
+            "knowhow qbot",
+            "qbot_knowhow",
+            "know how qbot",
+            "czy ten problem był już rozwiązany",
+            "czy ten problem byl juz rozwiazany",
+            "telegram 404",
+        ),
+    },
+    {
+        "key": "project_instruction",
+        "label": "QBOT_PROJECT_INSTRUCTION_LOCAL",
+        "title": "QBot Project Instruction",
+        "path": Path("/opt/qbot/docs/QBOT_PROJECT_INSTRUCTION_LOCAL.md"),
+        "aliases": (
+            "instrukcja projektu qbot",
+            "qbot_project_instruction_local",
+            "lokalna instrukcja projektu qbot",
+            "przeczytaj lokalną instrukcję projektu qbot",
+            "przeczytaj lokalna instrukcje projektu qbot",
+        ),
+    },
+]
+
+
+def _safe_read_markdown(path: Path) -> str:
+    try:
+        if not path.exists() or not path.is_file():
+            return ""
+        if path.stat().st_size > 300_000:
+            return ""
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        return text if "\x00" not in text else ""
+    except Exception:
+        return ""
+
+
+def _query_terms(question: str) -> list[str]:
+    raw = re.findall(r"[A-Za-zÀ-ÿ0-9_ąćęłńóśźżĄĆĘŁŃÓŚŹŻ-]+", question.lower())
+    stopwords = {
+        "a", "i", "oraz", "lub", "w", "na", "do", "z", "ze", "o", "u", "dla", "ten",
+        "ta", "to", "te", "przeczytaj", "sprawdź", "sprawdz", "podaj", "pokaż",
+        "pokaz", "czy", "jest", "był", "byl", "już", "juz", "jak", "the", "and",
+        "of", "for", "with", "czytaj", "dla",
+    }
+    return [w for w in raw if len(w) >= 3 and w not in stopwords]
+
+
+def _doc_headings(text: str) -> list[str]:
+    headings: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            headings.append(stripped.lstrip("#").strip())
+        if len(headings) >= 12:
+            break
+    return headings
+
+
+def _doc_summary(text: str, headings: list[str]) -> str:
+    first_heading = headings[0] if headings else "Dokument QBot"
+    paragraphs: list[str] = []
+    current: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            if current:
+                paragraphs.append(" ".join(current).strip())
+                current = []
+            if len(paragraphs) >= 2:
+                break
+            continue
+        if stripped.startswith("#"):
+            continue
+        if stripped.startswith(("-", "*")):
+            current.append(stripped.lstrip("-* ").strip())
+        else:
+            current.append(stripped)
+    if current and len(paragraphs) < 2:
+        paragraphs.append(" ".join(current).strip())
+
+    body = paragraphs[0] if paragraphs else ""
+    body = re.sub(r"\s+", " ", body).strip()
+    if len(body) > 240:
+        body = body[:237].rstrip() + "..."
+    summary = first_heading
+    if body:
+        summary = f"{summary}: {body}"
+    if len(headings) > 1:
+        extra = ", ".join(headings[1:4])
+        summary = f"{summary} | sekcje: {extra}"
+    return summary
+
+
+def _doc_excerpts(text: str, question: str) -> list[str]:
+    terms = _query_terms(question)
+    lines = [line.rstrip() for line in text.splitlines()]
+    matches: list[str] = []
+
+    def add_excerpt(line: str) -> None:
+        cleaned = re.sub(r"\s+", " ", line).strip()
+        if cleaned and cleaned not in matches:
+            matches.append(cleaned[:280])
+
+    if terms:
+        for idx, line in enumerate(lines):
+            lower = line.lower()
+            if any(term in lower for term in terms):
+                if line.strip().startswith("#"):
+                    add_excerpt(line.strip())
+                else:
+                    start = max(0, idx - 1)
+                    end = min(len(lines), idx + 2)
+                    for chunk in lines[start:end]:
+                        if chunk.strip():
+                            add_excerpt(chunk)
+                if len(matches) >= 5:
+                    break
+
+    if not matches:
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                add_excerpt(stripped)
+            elif stripped.startswith(("- ", "* ")):
+                add_excerpt(stripped)
+            if len(matches) >= 5:
+                break
+
+    return matches
+
+
+def _read_canonical_doc(entry: dict[str, Any], question: str) -> dict[str, Any]:
+    path: Path = entry["path"]
+    text = _safe_read_markdown(path)
+    exists = bool(text)
+    if not exists:
+        return {
+            "doc_key": entry["key"],
+            "label": entry["label"],
+            "title": entry["title"],
+            "path": path.as_posix(),
+            "exists": False,
+            "summary": f"Plik nie istnieje: {path.as_posix()}",
+            "matched_excerpts": [],
+            "headings": [],
+        }
+    headings = _doc_headings(text)
+    return {
+        "doc_key": entry["key"],
+        "label": entry["label"],
+        "title": entry["title"],
+        "path": path.as_posix(),
+        "exists": True,
+        "summary": _doc_summary(text, headings),
+        "matched_excerpts": _doc_excerpts(text, question),
+        "headings": headings[:10],
+    }
+
+
+def _select_canonical_docs(question: str) -> list[dict[str, Any]]:
+    q = question.lower()
+    if any(
+        phrase in q
+        for phrase in (
+            "dokumenty kanoniczne",
+            "kanoniczne qbot",
+            "przeczytaj dokumenty kanoniczne qbot",
+            "przeczytaj dokumenty kanoniczne",
+            "read canonical docs",
+            "canonical docs",
+        )
+    ):
+        return list(_QBOT_CANONICAL_DOCS)
+
+    selected: list[dict[str, Any]] = []
+    for entry in _QBOT_CANONICAL_DOCS:
+        if any(alias in q for alias in entry["aliases"]):
+            selected.append(entry)
+    if selected:
+        return selected
+
+    if "bible" in q or "biblia" in q:
+        return [_QBOT_CANONICAL_DOCS[0]]
+    if "knowhow" in q or "know-how" in q:
+        return [_QBOT_CANONICAL_DOCS[1]]
+    if "instrukcja" in q or "instruction" in q or "project" in q:
+        return [_QBOT_CANONICAL_DOCS[2]]
+    return list(_QBOT_CANONICAL_DOCS)
+
+
+def _read_qbot_canonical_docs(args: dict | None = None) -> dict[str, Any]:
+    args = args or {}
+    question = str(args.get("query") or args.get("question") or "").strip()
+    selected = _select_canonical_docs(question or "dokumenty kanoniczne qbot")
+    doc_results = [_read_canonical_doc(entry, question) for entry in selected]
+    missing = [f"{doc['label']}: missing" for doc in doc_results if not doc["exists"]]
+
+    tables = [{
+        "domain": "canonical_docs",
+        "key": "canonical_docs",
+        "columns": ["label", "path", "exists", "summary"],
+        "rows": [
+            {
+                "label": doc["label"],
+                "path": doc["path"],
+                "exists": doc["exists"],
+                "summary": doc["summary"],
+            }
+            for doc in doc_results
+        ],
+    }]
+
+    excerpt_rows = [
+        {"label": doc["label"], "excerpt": excerpt}
+        for doc in doc_results
+        for excerpt in doc["matched_excerpts"][:3]
+    ]
+    if excerpt_rows:
+        tables.append({
+            "domain": "canonical_doc_excerpts",
+            "key": "canonical_doc_excerpts",
+            "columns": ["label", "excerpt"],
+            "rows": excerpt_rows,
+        })
+
+    summaries = []
+    for doc in doc_results:
+        state = "brak pliku" if not doc["exists"] else "ok"
+        summaries.append(f"- {doc['label']}: {state} | {doc['summary']}")
+
+    answer = "Przeczytałem dokumenty kanoniczne QBot:\n" + "\n".join(summaries)
+    status = "partial" if missing else "ok"
+    if not doc_results:
+        status = "no_data"
+        answer = "Brak zdefiniowanych dokumentów kanonicznych."
+
+    return {
+        "tool": "qbot_canonical_docs_read",
+        "safety_class": "READ_ONLY",
+        "status": status,
+        "query": question,
+        "documents": doc_results,
+        "tables": tables,
+        "answer": answer,
+        "missing_fields": missing,
+        "limitations": [
+            "read-only filesystem access",
+            "summaries are heuristic and derived from markdown structure",
+        ],
+        "provenance": [
+            {"source": doc["path"], "exists": doc["exists"], "label": doc["label"]}
+            for doc in doc_results
+        ],
+    }
 
 
 # ── Date context resolver ───────────────────────────────────────────────────
@@ -2298,6 +2590,7 @@ _CANONICAL_FORCE_READERS: dict[str, list[str]] = {
     "nutrition_balance": [],
     "latest_training": [],
     "route_list": [],
+    "artifact_read": ["qbot_canonical_docs"],
 }
 
 # ── Allowed intents / capabilities (closed enum for LLM) ────────────────
@@ -2309,7 +2602,7 @@ _ALLOWED_CANONICAL_INTENTS = [
     "route_list", "qcal_reminder_add_draft", "qcal_event_add_draft",
     "qcal_event_cancel_draft", "qcal_event_update_draft",
     "planning_fact_detect", "qcal_lookup", "calendar_day_context",
-    "status_readiness", "unknown",
+    "status_readiness", "artifact_read", "unknown",
 ]
 
 _ALLOWED_CAPABILITIES = [
@@ -2318,7 +2611,7 @@ _ALLOWED_CAPABILITIES = [
     "nutrition_log_add", "latest_training_session", "training_summary",
     "route_list", "qcal_reminder_add", "qcal_event_add",
     "qcal_event_update", "qcal_event_cancel",
-    "planning_memory", "qcal_reminders", "qcal_events",
+    "planning_memory", "qcal_reminders", "qcal_events", "artifact_read",
     "calendar_daily_snapshot", "qbot_status", "unknown",
 ]
 
@@ -2514,7 +2807,8 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
             _canonical_forced_readers = list(_cfr)
     _nutrition_intents = {"nutrition_planning", "fueling", "current_day_meals", "calorie_balance"}
     _planning_intents = {"planning_notice"}
-    _bypass_semantic = _canonical_forced or bool((_nutrition_intents | _planning_intents) & set(intents))
+    _docs_intents = {"artifact_read"}
+    _bypass_semantic = _canonical_forced or bool((_nutrition_intents | _planning_intents | _docs_intents) & set(intents))
     if not _bypass_semantic:
         try:
             from qbot_context_resolver import resolve as resolve_context
@@ -3096,6 +3390,23 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         "limitations": limitations[:10],
         "date_resolution": date_ctx,
     }
+
+    canonical_docs_answer = next((a for a in answers if a.get("reader") == "qbot_canonical_docs"), None)
+    if canonical_docs_answer:
+        doc_payload = canonical_docs_answer.get("data", {}) or {}
+        response["answer"] = str(doc_payload.get("answer", response.get("answer", "")))
+        response["tables"] = doc_payload.get("tables", [])
+        response["documents"] = doc_payload.get("documents", [])
+        response["provenance"] = doc_payload.get("provenance", response.get("provenance", []))
+        response["missing_fields"] = doc_payload.get("missing_fields", response.get("missing_fields", []))
+        response["limitations"] = doc_payload.get("limitations", response.get("limitations", []))
+        response["status"] = str(doc_payload.get("status", response.get("status", "ok")))
+        if response["status"] == "ok":
+            response["confidence"] = "high"
+        elif response["status"] == "partial":
+            response["confidence"] = "medium"
+        elif response["status"] == "no_data":
+            response["confidence"] = "low"
 
     # Include calorie balance data if computed
     if balance_table:
