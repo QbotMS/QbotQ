@@ -283,6 +283,16 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         "jakie eventy", "jakie wydarzenia",
         "eventy zapisane", "co jest zaplanowane na",
     ]),
+    ("status", [
+        "status qbot", "jaki jest status", "czy wszystko działa",
+        "system status", "smoke test", "czy qbot działa",
+        "health check", "czy serwer chodzi", "czy api żyje",
+    ]),
+    ("readiness", [
+        "readiness qbot", "gotowość", "gotowość qbot",
+        "czy integracje działają", "czy api dostępne",
+        "raport gotowości", "blockery", "readiness report",
+    ]),
 ]
 
 
@@ -468,6 +478,8 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "daily_timeline": ["calendar_snapshot"],
     "reminder_status": ["calendar_snapshot"],
     "event_lookup": ["calendar_snapshot", "health_advisor"],
+    "status": ["status"],
+    "readiness": ["readiness"],
     "general": ["status", "readiness"],
     # Write intents (no readers — handled by draft pipeline)
     "nutrition_log_add_draft": [],
@@ -2811,6 +2823,12 @@ Zasady:
 - Dla odczytów z niskim confidence ustaw needs_clarification=true i podaj clarification_question.
 - parameters: wyciągnij daty, ID, nazwy, keywords z pytania.
 
+Przykłady:
+- Pytanie: "status QBot" → {"domain":"meta","intent":"status","parameters":{},"confidence":0.95,"needs_clarification":false,"clarification_question":"","readers":["status"],"action_type":null,"is_write_intent":false}
+- Pytanie: "readiness QBot" → {"domain":"meta","intent":"readiness","parameters":{},"confidence":0.95,"needs_clarification":false,"clarification_question":"","readers":["readiness"],"action_type":null,"is_write_intent":false}
+- Pytanie: "Przeczytaj Biblię QBot" → {"domain":"project","intent":"artifact_read","parameters":{"query":"Biblię QBot"},"confidence":0.95,"needs_clarification":false,"clarification_question":"","readers":["qbot_canonical_docs"],"action_type":null,"is_write_intent":false}
+- Pytanie: "Dodaj przypomnienie jutro o 8:00: test" → {"domain":"calendar","intent":"qcal_reminder_add_draft","parameters":{"date":"jutro","time":"8:00","title":"test"},"confidence":0.95,"needs_clarification":false,"clarification_question":"","readers":[],"action_type":null,"is_write_intent":true}
+
 Dozwolone domeny: """ + ", ".join(_ALLOWED_DOMAINS) + """
 
 Dozwolone intenty: """ + ", ".join(_LLM_FIRST_ALLOWED_INTENTS) + """
@@ -2820,8 +2838,31 @@ Dozwoleni readerzy: """ + ", ".join(_LLM_FIRST_READER_NAMES) + """
 Nie dodawaj własnych domain/intent/reader — użyj tylko z powyższych list."""
 
 
+def _build_intent_domain_map() -> dict[str, set[str]]:
+    """Build intent → expected domains from _INTENT_TO_READERS + _READER_REGISTRY."""
+    mapping: dict[str, set[str]] = {}
+    for intent, readers in _INTENT_TO_READERS.items():
+        domains: set[str] = set()
+        for reader in readers:
+            info = _READER_REGISTRY.get(reader)
+            if info:
+                domains.add(info["category"])
+        if domains:
+            mapping[intent] = domains
+    return mapping
+
+
 def _validate_llm_intent(result: Any) -> dict | None:
-    """Validate LLM result structure and values. Returns cleaned dict or None."""
+    """Validate LLM result structure and values. Returns cleaned dict or None.
+
+    Checks:
+      1. domain in allowlist
+      2. intent in allowlist
+      3. confidence 0.0–1.0
+      4. readers exist in _READER_REGISTRY
+      5. all LLM-chosen readers are allowed for the intent (per _INTENT_TO_READERS)
+      6. for write intents: must not have readers
+    """
     if not isinstance(result, dict):
         return None
 
@@ -2832,6 +2873,7 @@ def _validate_llm_intent(result: Any) -> dict | None:
     is_write = bool(result.get("is_write_intent", False))
     needs_clar = bool(result.get("needs_clarification", False))
 
+    # ── Basic field validation ──
     if domain not in _ALLOWED_DOMAINS:
         return None
     if intent not in _LLM_FIRST_ALLOWED_INTENTS:
@@ -2840,16 +2882,49 @@ def _validate_llm_intent(result: Any) -> dict | None:
         confidence = 0.0
     if not isinstance(readers, list):
         readers = []
-    readers = [r for r in readers if r in _READER_REGISTRY]
+
+    # ── Filter readers to registry-known only ──
+    known_readers = [r for r in readers if r in _READER_REGISTRY]
+
+    # ── Intent + reader consistency (primary check) ──
+    allowed_readers_for_intent = set(_INTENT_TO_READERS.get(intent, []))
+    consistency_issues: list[str] = []
+    for r in known_readers:
+        if allowed_readers_for_intent and r not in allowed_readers_for_intent:
+            consistency_issues.append(
+                f"reader '{r}' not allowed for intent '{intent}' (allowed: {sorted(allowed_readers_for_intent) or 'none'})"
+            )
+
+    # ── Write-intent checks ──
+    if is_write and known_readers:
+        consistency_issues.append("write intent must not specify readers")
+        known_readers = []
+
+    # ── If consistency fails, force fallback ──
+    if consistency_issues:
+        return {
+            "status": "inconsistent",
+            "error": "; ".join(consistency_issues),
+            "domain": domain, "intent": intent,
+            "parameters": result.get("parameters", {}),
+            "confidence": float(confidence),
+            "needs_clarification": True,
+            "clarification_question": f"Wynik klasyfikacji jest niespójny: {'; '.join(consistency_issues)}",
+            "readers": known_readers,
+            "action_type": None,
+            "is_write_intent": is_write,
+        }
 
     return {
+        "status": "validated",
+        "error": None,
         "domain": domain,
         "intent": intent,
         "parameters": result.get("parameters", {}),
         "confidence": float(confidence),
         "needs_clarification": needs_clar,
         "clarification_question": str(result.get("clarification_question", "")),
-        "readers": readers,
+        "readers": known_readers,
         "action_type": result.get("action_type"),
         "is_write_intent": is_write,
     }
@@ -2858,47 +2933,84 @@ def _validate_llm_intent(result: Any) -> dict | None:
 def llm_first_classify_intent(
     question: str,
     context: str = "",
+    *,
+    _retry_count: int = 0,
 ) -> dict:
     """LLM-first intent classifier.
 
     Calls qgpt_json() as the FIRST decision mechanism.
+    Retries once on failure.
     Returns a validated structured dict or a fallback指示.
     """
     from qgpt_client import qgpt_json
 
     user_prompt = f"Użytkownik: {question}\n\nKontekst: {context}"
-    try:
-        raw = qgpt_json(
-            user_prompt,
-            system=_LLM_FIRST_SYSTEM,
-            max_tokens=500,
-            temperature=0,
-        )
-    except Exception as exc:
+    last_error: str | None = None
+
+    for attempt in range(2):
+        try:
+            raw = qgpt_json(
+                user_prompt,
+                system=_LLM_FIRST_SYSTEM,
+                max_tokens=500,
+                temperature=0,
+            )
+        except Exception as exc:
+            last_error = str(exc)
+            if attempt == 0:
+                continue
+            return {
+                "status": "fallback_needed",
+                "error": f"LLM call failed after retry: {last_error}",
+                "domain": None, "intent": None, "parameters": {},
+                "confidence": 0.0, "needs_clarification": False,
+                "clarification_question": "", "readers": [],
+                "action_type": None, "is_write_intent": False,
+            }
+
+        validated = _validate_llm_intent(raw)
+        if validated is not None:
+            # Check if consistency issues triggered a special result
+            if validated["status"] == "inconsistent":
+                return {
+                    "status": "fallback_needed",
+                    "error": validated.get("error", "LLM result inconsistent"),
+                    "domain": validated["domain"],
+                    "intent": validated["intent"],
+                    "parameters": validated["parameters"],
+                    "confidence": validated["confidence"],
+                    "needs_clarification": True,
+                    "clarification_question": validated.get("clarification_question", ""),
+                    "readers": validated["readers"],
+                    "action_type": None,
+                    "is_write_intent": validated["is_write_intent"],
+                }
+
+            status = "use_llm" if validated["confidence"] >= 0.6 else "ask_clarification"
+            validated["status"] = status
+            return validated
+
+        last_error = "LLM returned invalid/unparseable result"
+        if attempt == 0:
+            continue
         return {
             "status": "fallback_needed",
-            "error": f"LLM call failed: {exc}",
+            "error": last_error,
             "domain": None, "intent": None, "parameters": {},
             "confidence": 0.0, "needs_clarification": False,
             "clarification_question": "", "readers": [],
             "action_type": None, "is_write_intent": False,
         }
 
-    validated = _validate_llm_intent(raw)
-    if validated is None:
-        return {
-            "status": "fallback_needed",
-            "error": "LLM returned invalid/unparseable result",
-            "domain": None, "intent": None, "parameters": {},
-            "confidence": 0.0, "needs_clarification": False,
-            "clarification_question": "", "readers": [],
-            "action_type": None, "is_write_intent": False,
-        }
-
-    status = "use_llm" if validated["confidence"] >= 0.6 else "ask_clarification"
-    validated["status"] = status
-    validated["error"] = None
-    return validated
+    # Should not reach here
+    return {
+        "status": "fallback_needed",
+        "error": last_error or "Unknown LLM failure",
+        "domain": None, "intent": None, "parameters": {},
+        "confidence": 0.0, "needs_clarification": False,
+        "clarification_question": "", "readers": [],
+        "action_type": None, "is_write_intent": False,
+    }
 
 
 def compare_classifiers(test_queries: list[str]) -> list[dict]:
