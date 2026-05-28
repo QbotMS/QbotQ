@@ -6,6 +6,7 @@ structured output with answer, tables, provenance, no-data policy.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import os
 import re
@@ -434,7 +435,7 @@ _reader("intervals_activities", "intervals", "qbot_intervals_activities_read", {
 # ── Intent → reader mapping ────────────────────────────────────────────────
 
 _INTENT_TO_READERS: dict[str, list[str]] = {
-    "calorie_balance": ["nutrition_range", "nutrition_day", "garmin_energy", "cronometer_status", "wellness_range"],
+    "calorie_balance": ["nutrition_range", "nutrition_day", "garmin_energy", "cronometer_status", "wellness_range", "nutrition_day_legacy", "nutrition_status"],
     "garmin_energy": ["garmin_energy"],
     "ride_today": ["ride_report_preview", "ride_report_latest", "intervals_activities", "garmin_energy"],
     "intervals_today": ["intervals_wellness", "intervals_activities", "intervals_config"],
@@ -462,11 +463,11 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "garage": ["garage_search", "garage_list", "garage_status"],
     "daily_report": ["daily_report_preview"],
     "ride_report": ["ride_report_preview", "ride_report_latest"],
-    "wellness": ["wellness_day", "sleep_day", "nutrition_day_legacy"],
+    "wellness": ["wellness_day", "sleep_day", "nutrition_day_legacy", "garmin_status", "wellness_range"],
     "artifact_read": ["qbot_canonical_docs"],
     "capability_check": ["status", "capability_scan"],
     "project": [],
-    "health_advice": ["health_advisor", "nutrition_day", "meal_list", "nutrition_planning", "supplement_inventory", "garmin_energy", "wellness_day"],
+    "health_advice": ["health_advisor", "nutrition_day", "meal_list", "nutrition_planning", "supplement_inventory", "garmin_energy", "wellness_day", "garmin_status", "intervals_wellness"],
     "supplement_advice": ["supplement_inventory", "health_advisor"],
     "supplement_inventory": ["supplement_inventory"],
     "recovery_advice": ["recovery_advisor", "wellness_day", "sleep_day"],
@@ -479,7 +480,7 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "reminder_status": ["calendar_snapshot"],
     "event_lookup": ["calendar_snapshot", "health_advisor"],
     "status": ["status"],
-    "readiness": ["readiness"],
+    "readiness": ["readiness", "xert_readiness"],
     "general": ["status", "readiness"],
     # Write intents (no readers — handled by draft pipeline)
     "nutrition_log_add_draft": [],
@@ -2785,8 +2786,7 @@ def _heuristic_canonicalize(question: str, intents: list[str]) -> dict | None:
 
 _LLM_FIRST_ENABLED = os.getenv("QBOT_LLM_FIRST_QUERY", "0") == "1"
 _LLM_CONFIDENCE_THRESHOLD = 0.6
-# Proposed (not yet implemented):
-# _LLM_TIMEOUT_SEC = float(os.getenv("QBOT_LLM_FIRST_TIMEOUT_SEC", "3.0"))
+_LLM_TIMEOUT_SEC = float(os.getenv("QBOT_LLM_FIRST_TIMEOUT_SEC", "3.0"))
 
 _ALLOWED_DOMAINS = [
     "nutrition", "health", "calendar", "wellness", "xert", "intervals",
@@ -3032,6 +3032,7 @@ def llm_first_classify_intent(
     """LLM-first intent classifier.
 
     Calls qgpt_json() as the FIRST decision mechanism.
+    Each call is bounded by _LLM_TIMEOUT_SEC (env QBOT_LLM_FIRST_TIMEOUT_SEC, default 3.0s).
     Retries once on failure.
     Returns a validated structured dict or a fallback指示.
     """
@@ -3042,12 +3043,29 @@ def llm_first_classify_intent(
 
     for attempt in range(2):
         try:
-            raw = qgpt_json(
-                user_prompt,
-                system=_LLM_FIRST_SYSTEM,
-                max_tokens=500,
-                temperature=0,
-            )
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                fut = pool.submit(
+                    qgpt_json, user_prompt,
+                    system=_LLM_FIRST_SYSTEM, max_tokens=500, temperature=0,
+                )
+                try:
+                    raw = fut.result(timeout=_LLM_TIMEOUT_SEC)
+                except concurrent.futures.TimeoutError:
+                    fut.cancel()
+                    last_error = f"LLM timeout after {_LLM_TIMEOUT_SEC}s"
+                    if attempt == 0:
+                        continue
+                    return {
+                        "status": "fallback_needed",
+                        "error": last_error,
+                        "raw_intent": None, "normalized_intent": None,
+                        "domain": None, "intent": None, "parameters": {},
+                        "confidence": 0.0, "needs_clarification": False,
+                        "clarification_question": "", "readers": [],
+                        "action_type": None, "is_write_intent": False,
+                        "llm_status": "fallback_needed",
+                        "fallback_reason": f"timeout: {_LLM_TIMEOUT_SEC}s",
+                    }
         except Exception as exc:
             last_error = str(exc)
             if attempt == 0:
@@ -3174,6 +3192,7 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         if llm_result["status"] == "use_llm" and llm_result["confidence"] >= _LLM_CONFIDENCE_THRESHOLD:
             intents = [llm_result["intent"]] if llm_result["intent"] and llm_result["intent"] != "unknown" else classify_intent(question)
         else:
+            # Pre-fallback: keyword classifier for reads; writes still produce a draft
             intents = classify_intent(question)
     else:
         intents = classify_intent(question)
