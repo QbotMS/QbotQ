@@ -71,19 +71,6 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
             "required": ["query"],
             "additionalProperties": False,
         },
-        "output_schema": {
-            "type": "object",
-            "additionalProperties": True,
-            "properties": {
-                "tool": {"type": "string"},
-                "status": {"type": "string"},
-                "answer": {"type": "string"},
-                "action_draft": {"type": "object"},
-                "payload": {"type": "object"},
-                "record": {"type": "object"},
-                "error": {"type": "string"}
-            }
-        },
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
@@ -130,19 +117,6 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
             },
             "required": ["action_type", "payload_json", "idempotency_key", "confirm"],
             "additionalProperties": False,
-        },
-        "output_schema": {
-            "type": "object",
-            "additionalProperties": True,
-            "properties": {
-                "tool": {"type": "string"},
-                "status": {"type": "string"},
-                "answer": {"type": "string"},
-                "action_draft": {"type": "object"},
-                "payload": {"type": "object"},
-                "record": {"type": "object"},
-                "error": {"type": "string"}
-            }
         },
         "safety_class": "WRITE_ONLY_ALLOWLIST",
         "auth_required": False,
@@ -240,7 +214,6 @@ def _exposed_tool_items() -> list[dict[str, Any]]:
             "qbot_tool": meta["qbot_tool"],
             "description": meta["description"],
             "inputSchema": meta["input_schema"],
-            **({"outputSchema": meta["output_schema"]} if "output_schema" in meta else {}),
             "safety_class": meta["safety_class"],
             "auth_required": meta["auth_required"],
             "enabled": enabled,
@@ -460,19 +433,7 @@ def _mcp_result_content(result: dict[str, Any]) -> dict[str, Any]:
         if isinstance(obj, _Decimal):
             return float(obj)
         raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
-
-    # MCP/OpenAI clients consume content[] for display, but structuredContent
-    # is the machine-readable payload used to chain qbot.query -> qbot.action_execute.
-    normalized = json.loads(json.dumps(result, ensure_ascii=False, default=_json_default))
-    return {
-        "content": [
-            {
-                "type": "text",
-                "text": json.dumps(normalized, ensure_ascii=False),
-            }
-        ],
-        "structuredContent": normalized,
-    }
+    return {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, default=_json_default)}]}
 
 
 def _mcp_error(message: str, *, code: int = -32601, request_id: Any = None) -> dict[str, Any]:

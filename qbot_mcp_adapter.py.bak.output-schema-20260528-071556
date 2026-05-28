@@ -71,19 +71,6 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
             "required": ["query"],
             "additionalProperties": False,
         },
-        "output_schema": {
-            "type": "object",
-            "additionalProperties": True,
-            "properties": {
-                "tool": {"type": "string"},
-                "status": {"type": "string"},
-                "answer": {"type": "string"},
-                "action_draft": {"type": "object"},
-                "payload": {"type": "object"},
-                "record": {"type": "object"},
-                "error": {"type": "string"}
-            }
-        },
         "safety_class": "READ_ONLY",
         "auth_required": False,
     },
@@ -130,19 +117,6 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
             },
             "required": ["action_type", "payload_json", "idempotency_key", "confirm"],
             "additionalProperties": False,
-        },
-        "output_schema": {
-            "type": "object",
-            "additionalProperties": True,
-            "properties": {
-                "tool": {"type": "string"},
-                "status": {"type": "string"},
-                "answer": {"type": "string"},
-                "action_draft": {"type": "object"},
-                "payload": {"type": "object"},
-                "record": {"type": "object"},
-                "error": {"type": "string"}
-            }
         },
         "safety_class": "WRITE_ONLY_ALLOWLIST",
         "auth_required": False,
@@ -240,7 +214,6 @@ def _exposed_tool_items() -> list[dict[str, Any]]:
             "qbot_tool": meta["qbot_tool"],
             "description": meta["description"],
             "inputSchema": meta["input_schema"],
-            **({"outputSchema": meta["output_schema"]} if "output_schema" in meta else {}),
             "safety_class": meta["safety_class"],
             "auth_required": meta["auth_required"],
             "enabled": enabled,

@@ -1710,21 +1710,7 @@ def _resolve_polish_date(expr: str) -> date | None:
 
 
 def _resolve_polish_time(expr: str) -> str | None:
-    """Resolve time expression like 'o 8', 'o 08:00', '20:00', 'za 10 minut'."""
-    # Relative: za 10 minut / za 2 godziny / in 10 minutes
-    rel = re.search(
-        r'\b(?:za|in)\s+(\d{1,3})\s*(minut|minuty|min|minutes?|godzin(?:y|ę)?|godz|hours?)\b',
-        expr,
-        flags=re.IGNORECASE,
-    )
-    if rel:
-        from datetime import datetime, timedelta
-        amount = int(rel.group(1))
-        unit = rel.group(2).lower()
-        delta = timedelta(hours=amount) if unit.startswith(("godz", "hour")) else timedelta(minutes=amount)
-        target = datetime.now() + delta
-        return target.strftime("%H:%M")
-
+    """Resolve time expression like 'o 8', 'o 08:00', '20:00'."""
     for pattern in [
         r'o\s+(\d{1,2})(?::(\d{2}))?\b',
         r'(\d{1,2}):(\d{2})\b',
@@ -1735,18 +1721,6 @@ def _resolve_polish_time(expr: str) -> str | None:
             minute = int(m.group(2)) if m.lastindex and m.lastindex >= 2 and m.group(2) else 0
             if 0 <= h <= 23 and 0 <= minute <= 59:
                 return f"{h:02d}:{minute:02d}"
-    return None
-
-
-def _extract_quoted_field(expr: str, field: str) -> str | None:
-    """Extract title="..." / title: "..." / message='...' from prompt."""
-    m = re.search(
-        rf'\b{re.escape(field)}\s*(?:=|:)\s*["\']([^"\']+)["\']',
-        expr,
-        flags=re.IGNORECASE,
-    )
-    if m:
-        return m.group(1).strip()
     return None
 
 
@@ -1886,20 +1860,13 @@ def _parse_reminder_draft(question: str) -> dict:
     # Resolve time
     reminder_time = _resolve_polish_time(q) or "09:00"
 
-    # Explicit fields win over natural-language fallback.
-    explicit_title = _extract_quoted_field(q, "title")
-    explicit_message = _extract_quoted_field(q, "message")
-
     # Extract title: text after time or after command prefix
-    title = explicit_title or ""
+    title = ""
     for cmd in ["przypomnij mi", "dodaj przypomnienie", "ustaw przypomnienie"]:
-        if title:
-            break
         if cmd in ql:
             rest = q[ql.find(cmd) + len(cmd):].strip().lstrip(":").strip()
             # Remove date/time fragments
             rest = re.sub(r'\b(jutro|dziś|dzisiaj|pojutrze)\b', '', rest, flags=re.IGNORECASE).strip()
-            rest = re.sub(r'\bza\s+\d{1,3}\s*(?:minut|minuty|min|godzin(?:y|ę)?|godz)\b', '', rest, flags=re.IGNORECASE).strip()
             rest = re.sub(r'o\s*\d{1,2}(?::\d{2})?', '', rest).strip()
             rest = re.sub(r'\b\d{1,2}:\d{2}\b', '', rest).strip()
             title = rest
@@ -1909,13 +1876,11 @@ def _parse_reminder_draft(question: str) -> dict:
         # Fallback: take all text after date/time
         title = q.strip()
 
-    message = explicit_message or title
-
     payload = {
         "date": reminder_date.isoformat(),
         "time": reminder_time,
         "title": title,
-        "message": message,
+        "message": title,
         "reminder_type": "custom",
         "channel": "telegram",
         "priority": "normal",
