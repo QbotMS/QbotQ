@@ -51,6 +51,7 @@ QGPT_BASE_URL = (
     or "https://api.openai.com/v1"
 ).rstrip("/")
 QGPT_MODEL = env("QGPT_MODEL") or env("OPENAI_MODEL") or env("QGPT_FALLBACK_MODEL") or "gpt-4.1-mini"
+QGPT_FALLBACK_MODEL = env("QGPT_FALLBACK_MODEL") or "gpt-4.1-mini"
 QGPT_API_KEY = (
     env("QGPT_API_KEY")
     or env("OPENAI_API_KEY")

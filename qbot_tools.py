@@ -64,10 +64,12 @@ def _tool_qbot_status(_args: dict | None = None) -> dict[str, Any]:
         hostname = "unknown"
     return {
         "tool": "qbot_status",
+        "status": "OK",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "hostname": hostname,
         "python": platform.python_version(),
         "pid": os.getpid(),
+        "summary_text": f"QBot process running on {hostname} (pid {os.getpid()})",
     }
 
 

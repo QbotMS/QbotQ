@@ -4843,3 +4843,50 @@ def query(question: str, mode: str = "read_only", scope: str = "all", context: s
         response["tables"] = tables
 
     return response
+
+
+_LEGACY_QUERY_ROUTER = query
+
+
+def query(question: str, mode: str = "read_only", scope: str = "all", context: str = "",
+          max_rows: int = 500, include_provenance: bool = True, include_missing: bool = True) -> dict[str, Any]:
+    if os.getenv("QBOT_LLM_ORCHESTRATOR", "0") == "1" and mode == "read_only":
+        try:
+            from qbot_orchestrator import orchestrate_query
+            return orchestrate_query(question, context, max_rows=max_rows)
+        except Exception as exc:
+            try:
+                from qbot_orchestrator import emergency_fallback_query
+                fallback = emergency_fallback_query(question, context, max_rows=max_rows, reason=str(exc))
+                if fallback is not None:
+                    return fallback
+            except Exception:
+                pass
+            return {
+                "tool": "qbot.query",
+                "safety_class": "READ_ONLY",
+                "mode": "read_only",
+                "query": question,
+                "status": "error",
+                "confidence": "low",
+                "answer": "LLM unavailable / orchestrator failed. Rozszerz Orchestrator.",
+                "orchestrator_failed": True,
+                "orchestrator": {
+                    "enabled": True,
+                    "stage": "wrapper_error",
+                    "fallback_used": False,
+                    "reason": str(exc),
+                },
+                "missing_capability": "unsupported_by_orchestrator",
+                "limitations": ["unsupported_by_orchestrator"],
+                "missing_fields": [],
+            }
+    return _LEGACY_QUERY_ROUTER(
+        question=question,
+        mode=mode,
+        scope=scope,
+        context=context,
+        max_rows=max_rows,
+        include_provenance=include_provenance,
+        include_missing=include_missing,
+    )

@@ -26,6 +26,7 @@ from qbot_config import (
     QGPT_API_KEY,
     QGPT_BASE_URL,
     QGPT_MODEL,
+    QGPT_FALLBACK_MODEL,
     QGPT_TIMEOUT_SEC,
 )
 
@@ -137,24 +138,39 @@ def qgpt_chat(
     payload_messages.extend(messages)
 
     payload = {
-        "model": QGPT_MODEL,
         "messages": payload_messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
 
-    r = httpx.post(
-        _chat_url(),
-        headers=_headers(),
-        json=payload,
-        timeout=QGPT_TIMEOUT_SEC,
-    )
-    r.raise_for_status()
-    data: dict[str, Any] = r.json()
-    try:
-        return data["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        raise RuntimeError(f"Niepoprawna odpowiedź QGPT: {data}") from e
+    models_to_try = [QGPT_MODEL]
+    if QGPT_FALLBACK_MODEL and QGPT_FALLBACK_MODEL not in models_to_try:
+        models_to_try.append(QGPT_FALLBACK_MODEL)
+
+    last_exc: Exception | None = None
+    for model in models_to_try:
+        try:
+            attempt_payload = dict(payload)
+            attempt_payload["model"] = model
+            r = httpx.post(
+                _chat_url(),
+                headers=_headers(),
+                json=attempt_payload,
+                timeout=QGPT_TIMEOUT_SEC,
+            )
+            r.raise_for_status()
+            data: dict[str, Any] = r.json()
+            try:
+                return data["choices"][0]["message"]["content"].strip()
+            except Exception as e:
+                raise RuntimeError(f"Niepoprawna odpowiedź QGPT: {data}") from e
+        except Exception as exc:
+            last_exc = exc
+            continue
+
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("QGPT request failed without exception")
 
 
 def qgpt_text(
