@@ -1152,13 +1152,20 @@ import logging as _logging
 _withings_log = _logging.getLogger("qbot.withings_oauth")
 
 
-@app.get("/oauth/withings/callback")
-@app.get("/oauth/withings/callback/")
+@app.api_route("/oauth/withings/callback", methods=["GET", "POST", "HEAD", "OPTIONS"])
+@app.api_route("/oauth/withings/callback/", methods=["GET", "POST", "HEAD", "OPTIONS"])
 def withings_oauth_callback(code: str = "", state: str = "", error: str = ""):
     _withings_log.info("Withings OAuth callback: code_present=%s state_present=%s error=%s",
                        bool(code), bool(state), error or "none")
     if error:
         return {"status": "error", "detail": f"Withings OAuth error: {error}"}
-    if not code:
-        return {"status": "error", "detail": "Missing authorization code"}
-    return {"status": "ok", "detail": "Withings OAuth callback received. You can close this page."}
+    if code:
+        try:
+            from pathlib import Path
+            p = Path("/opt/q/secrets/withings/last_code.txt")
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(code.strip())
+            p.chmod(0o600)
+        except Exception:
+            pass
+    return {"status": "ok", "detail": "Withings OAuth code captured. You can close this page."}
