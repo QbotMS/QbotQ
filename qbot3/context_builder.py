@@ -83,6 +83,11 @@ def build_context(user_message: str, mode: str = "read_only") -> dict[str, Any]:
     if any(k in ql for k in ("rwgps", "tras", "route", "gpx")):
         ctx["relevant_contexts"] = ctx.get("relevant_contexts", []) + ["routes"]
 
+    # Daily report / pipeline context
+    if any(k in ql for k in ("raport dzienny", "daily report", "email z raportem", "nie przeszedł",
+                              "niedostarczony raport", "daily_report", "pipeline", "report pipeline")):
+        ctx["relevant_contexts"] = ctx.get("relevant_contexts", []) + ["daily_report"]
+
     # System status — only for status/readiness/diagnostic queries
     if any(k in ql for k in ("status", "readiness", "diagnost", "dlaczego", "problem", "błąd", "error", "nie działa", "co się dzieje")):
         ctx["load_system_status"] = True

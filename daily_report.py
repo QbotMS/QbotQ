@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Codzienny raport poranny Q → Telegram i email (retry 6:00-9:00)."""
+"""Codzienny raport poranny Q → Telegram i email (retry 6:00-9:00).
+
+PARTIAL mode: never blocks on missing non-critical data after 9:00.
+Uses daily_report_adapter.py instead of legacy MCP tool calls.
+"""
+
 import json, httpx
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -16,7 +21,7 @@ from qbot_coach import build_daily_coach
 from qbot_cache import cached_call
 from qbot_report_status import mark_single_report, single_report_complete, single_report_state_for_date
 from qgpt_client import qgpt_text
-from qbot_mcp_client import mcp_call as _shared_mcp_call
+import daily_report_adapter as _adapter
 
 ATHLETE_ID    = cfg.INTERVALS_ATHLETE_ID
 API_KEY       = cfg.INTERVALS_API_KEY
@@ -40,6 +45,33 @@ SENT_FILE.parent.mkdir(exist_ok=True)
 today     = date.today()
 yesterday = today - timedelta(days=1)
 week_ago  = today - timedelta(days=7)
+
+# Pipeline tracking
+_PIPELINE_STAGE = "init"
+_DATA_SOURCES: dict[str, str] = {}
+_LAST_ERROR: str | None = None
+
+def _save_state():
+    """Write current pipeline state to SENT_FILE."""
+    state = sent_state_today() or {}
+    state["date"] = today.isoformat()
+    state["pipeline_stage"] = _PIPELINE_STAGE
+    state["last_attempt_at"] = datetime.now().isoformat()
+    state["data_sources"] = dict(_DATA_SOURCES)
+    if _LAST_ERROR:
+        state["last_error"] = _LAST_ERROR[:500]
+    channels = state.get("channels") or {}
+    for ch in ("telegram", "email"):
+        if ch not in channels:
+            channels[ch] = "not_attempted"
+    state["channels"] = channels
+    mark_single_report(SENT_FILE, today.isoformat(), state.get("channels"))
+    # Write full state
+    import json as _json
+    try:
+        SENT_FILE.write_text(_json.dumps(state, ensure_ascii=False, indent=2, default=str))
+    except Exception:
+        pass
 
 def sent_state_today():
     return single_report_state_for_date(SENT_FILE, today.isoformat())
@@ -95,7 +127,38 @@ def send_email(subject, html, inline_image_path=None, inline_image_cid=None):
         s.send_message(msg)
 
 def mcp_call(tool, args=None):
-    return _shared_mcp_call(tool, args, client_name="q-report", logger=print)
+    """Internal adapter — maps legacy tool names to direct calls."""
+    global _PIPELINE_STAGE, _DATA_SOURCES, _LAST_ERROR
+    _PIPELINE_STAGE = f"fetch:{tool}"
+    try:
+        if tool == "get_events":
+            result = _adapter.get_events(args.get("oldest"), args.get("newest"))
+            _DATA_SOURCES[tool] = "ok" if result else "empty"
+            return result
+        if tool == "get_weather":
+            result = _adapter.get_weather(days=args.get("days", 2), location=args.get("location", cfg.LOCATION_NAME))
+            _DATA_SOURCES[tool] = "ok" if result and not result.get("error") else "error"
+            return result
+        if tool == "get_xert_status":
+            result = _adapter.get_xert_status()
+            _DATA_SOURCES[tool] = "ok" if result and not result.get("error") else "error"
+            return result
+        if tool == "get_xert_activities":
+            result = _adapter.get_xert_activities(limit=args.get("limit", 10))
+            _DATA_SOURCES[tool] = "ok" if result else "empty"
+            return result
+        if tool == "get_garmin_wellness":
+            result = _adapter.get_garmin_wellness(args.get("date"))
+            _DATA_SOURCES[tool] = "ok" if result else "empty"
+            return result
+        _DATA_SOURCES[tool] = "unknown"
+        print(f"  ⚠️  Unknown legacy tool: {tool}")
+        return None
+    except Exception as exc:
+        _LAST_ERROR = str(exc)[:300]
+        _DATA_SOURCES[tool] = f"error: {_LAST_ERROR[:60]}"
+        print(f"  ⚠️  mcp_call({tool}): {exc}")
+        return None
 
 def parse_kcal(comments):
     if not comments:
@@ -326,15 +389,21 @@ _intervals_sleep_secs = w_today.get("sleepSecs")
 _intervals_sleep_h = round(_intervals_sleep_secs / 3600, 1) if _intervals_sleep_secs is not None else None
 _now_hour = datetime.now().hour
 
-# Guard: dane snu
+# Guard: dane snu — PARTIAL mode po 9:00
 # Garmin jest źródłem priorytetowym po przebudzeniu; Intervals jest fallbackiem.
 _sleep_ok = _garmin_sleep.get("czas_h") is not None or (_now_hour >= 9 and _intervals_sleep_h is not None)
+_PIPELINE_STAGE = "sleep_check"
+_DATA_SOURCES["sleep"] = "ok" if _sleep_ok else "missing"
+_LAST_ERROR = None  # sleep delay is not an error
 if not _sleep_ok:
     if _now_hour < 9:
         print(f"⏳ Brak danych snu, czekam (teraz {_now_hour}:xx, deadline 9:00).")
+        _PIPELINE_STAGE = "waiting_for_sleep_data"
+        _save_state()
         sys.exit(0)
     else:
-        print("⚠️  Brak danych snu po 9:00 — wysyłam raport bez danych ze snu.")
+        print("⚠️  Brak danych snu po 9:00 — wysyłam raport PARTIAL bez danych ze snu.")
+        _PIPELINE_STAGE = "partial_missing_sleep"
 
 # Nadchodzące wyjazdy
 try:
@@ -371,6 +440,10 @@ else:
     _hrv_fakt_str = None
 
 # ════════════════════════════════════════════════════════════════════════════
+# Save pipeline state after data fetch
+_PIPELINE_STAGE = "data_fetched"
+_save_state()
+
 # Debug przed generowaniem
 print(f"🔍 Xert TP: {xert.get('tp_ftp_watts')} | Garmin BB: {(garmin or {}).get('body_battery',{}).get('max_rano')} | HRV fakt: {_hrv_fakt_str}")
 print("🤖 Generuję raporty (Telegram + Email)...")
@@ -447,6 +520,8 @@ _data = {
     },
     "wyjazdy": upcoming,
     "brak_danych_snu": not _sleep_ok,
+    "braki_danych": [src for src, st in _DATA_SOURCES.items() if st not in ("ok",)],
+    "pipeline_stage": _PIPELINE_STAGE,
 }
 _data["coach"] = build_daily_coach(_data, future_events=future_events)
 _SYS = (
@@ -606,32 +681,51 @@ _sent_state = sent_state_today()
 _channels = dict(_sent_state.get("channels") or {})
 
 if _channels.get("telegram") == "sent":
-    print("\u2705 Telegram ju\u017c wys\u0142any — pomijam.")
+    print("✅ Telegram już wysłany — pomijam.")
 else:
-    print("\U0001f4f1 Wysy\u0142am Telegram...")
-    send_telegram(_tg)
-    _channels["telegram"] = "sent"
-    mark_sent(_channels)
+    _PIPELINE_STAGE = "sending_telegram"
+    _save_state()
+    print("📱 Wysyłam Telegram...")
+    try:
+        send_telegram(_tg)
+        _channels["telegram"] = "sent"
+        mark_sent(_channels)
+        _PIPELINE_STAGE = "telegram_sent"
+        _save_state()
+    except Exception as _tge:
+        _channels["telegram"] = "failed"
+        _LAST_ERROR = str(_tge)[:300]
+        _PIPELINE_STAGE = "telegram_failed"
+        _save_state()
+        print(f"⚠️  Telegram: {_tge}")
+        # Telegram fail is non-critical — continue to email
 
 if _channels.get("email") == "sent":
-    print("\u2705 Email ju\u017c wys\u0142any — pomijam.")
+    print("✅ Email już wysłany — pomijam.")
 else:
-    print("\U0001f4e7 Wysy\u0142am email...")
+    _PIPELINE_STAGE = "sending_email"
+    _save_state()
+    print("📧 Wysyłam email...")
     try:
         send_email(
-            f"\U0001f6b4 Q-raport {today:%d.%m.%Y}",
+            f"🚴 Q-raport {today:%d.%m.%Y}",
             _email_html,
             inline_image_path=_banner_path if _banner_path.exists() else None,
             inline_image_cid=_banner_cid if _banner_path.exists() else None,
         )
         _channels["email"] = "sent"
         mark_sent(_channels)
-        print("\u2705 Email wys\u0142any!")
+        _PIPELINE_STAGE = "email_sent"
+        _save_state()
+        print("✅ Email wysłany!")
     except Exception as _e:
         _channels["email"] = "failed"
+        _LAST_ERROR = str(_e)[:300]
+        _PIPELINE_STAGE = "email_failed"
+        _save_state()
         mark_sent(_channels)
-        print(f"\u26a0\ufe0f  Email: {_e}")
-        raise
+        print(f"⚠️  Email: {_e}")
+        # Don't re-raise — pipeline continues even if email fails
 
 # ── Snapshot Xert ────────────────────────────────────────────────────────────
 if xert:

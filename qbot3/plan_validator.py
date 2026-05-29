@@ -2,13 +2,17 @@
 """QBot3 Plan Validator — checks LLM-generated plans before execution.
 
 Ensures plan integrity, safety, and registry compliance.
+When tools=[] but intent is clear, checks capability registry.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from qbot3.errors import OK, PLAN_INVALID, SAFETY_BLOCKED, LEGACY_FALLBACK_BLOCKED, error_result, success_result
+from qbot3.errors import (
+    OK, PLAN_INVALID, CAPABILITY_MISSING, SAFETY_BLOCKED,
+    LEGACY_FALLBACK_BLOCKED, error_result, success_result,
+)
 from qbot3.tool_registry import lookup
 
 
@@ -50,9 +54,19 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
         if tools:
             return error_result(PLAN_INVALID, "Write mode should not have tools_to_call — use write_action instead")
 
-    # Read mode checks
+    # Read mode checks — if no tools but intent is clear, check capability registry
     if mode == "read_only" and not tools:
+        if intent:
+            proposal = _check_capability_for_intent(intent)
+            if proposal:
+                return error_result(
+                    CAPABILITY_MISSING,
+                    proposal["message"],
+                    capability_proposal=proposal,
+                    intent=intent,
+                )
         return error_result(PLAN_INVALID, "Read mode requires at least one tool")
+
     if mode == "read_only" and write_action:
         return error_result(PLAN_INVALID, "Read mode should not have write_action")
 
@@ -81,3 +95,45 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
             return error_result(SAFETY_BLOCKED, f"Plan contains dangerous pattern: '{pattern}'")
 
     return success_result({"valid": True})
+
+
+def _check_capability_for_intent(intent: str) -> dict[str, Any] | None:
+    """Check if a capability exists or could be proposed for an intent."""
+    try:
+        from qbot3.capabilities import find_capability_by_intent, propose_capability
+        cap = find_capability_by_intent(intent)
+        if cap:
+            d = cap.definition
+            if cap.is_active():
+                # Capability exists and is active — use it instead of tools
+                return {
+                    "needed_capability": d.name,
+                    "intent": intent,
+                    "safety_class": d.safety_class,
+                    "data_sources": d.data_sources,
+                    "capability_found": True,
+                    "active": True,
+                    "auto_buildable": d.capability_type in ("READ_ONLY_FILE", "READ_ONLY_DB"),
+                    "message": f"Intent '{intent}' pasuje do capability '{d.name}' (state: {d.promotion_state}). "
+                               f"Uruchom capability bezpośrednio.",
+                }
+            return {
+                "needed_capability": d.name,
+                "intent": intent,
+                "safety_class": d.safety_class,
+                "capability_found": True,
+                "active": False,
+                "promotion_state": d.promotion_state,
+                "auto_buildable": d.capability_type in ("READ_ONLY_FILE", "READ_ONLY_DB"),
+                "message": f"Intent '{intent}' pasuje do capability '{d.name}', ale jest w stanie "
+                           f"'{d.promotion_state}'. Promuj do 'active' przed użyciem.",
+            }
+        # No capability found — propose one
+        proposal = propose_capability(
+            intent,
+            f"Brak capability dla intentu '{intent}'. "
+            f"Żaden z istniejących tooli ani capability nie obsługuje tego zapytania.",
+        )
+        return proposal
+    except ImportError:
+        return None

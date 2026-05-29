@@ -68,6 +68,9 @@ class MockProvider(LLMProvider):
         elif any(k in ql for k in ("garage", "samochód", "rower")):
             intent = "garage"
             tools = ["garage_status"]
+        elif any(k in ql for k in ("raport dzienny", "daily report", "report status", "pipeline", "dlaczego email", "raport nie przeszedł")):
+            intent = "daily_report_status"
+            tools = ["daily_report_status"]
 
         return PlanResult(
             intent=intent,

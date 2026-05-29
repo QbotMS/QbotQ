@@ -20,13 +20,20 @@ from qbot3.observability import log_request, Timer, request_id as rid
 
 def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> dict[str, Any]:
     _check_qbot3_enabled()
-    from qbot3.errors import OK, ERROR, PLAN_INVALID, PROVIDER_ERROR
+    from qbot3.errors import OK, ERROR, PLAN_INVALID, CAPABILITY_MISSING, PROVIDER_ERROR
 
     timer = Timer()
     timer.start()
     req_id = rid()
     provider_name = os.getenv("ALBERT_LLM_PROVIDER", "openai")
     model_name = os.getenv("ALBERT_LLM_MODEL", "")
+
+    # Deterministic pre-router: intercepts obvious domain matches before LLM planner
+    pre_routed = _deterministic_pre_route(question)
+    if pre_routed:
+        result = _execute_pre_routed(pre_routed, question, req_id, provider_name, model_name, timer)
+        result["request_id"] = req_id
+        return result
 
     llm = get_llm_provider()
     ctx = build_context(question)
@@ -42,6 +49,31 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
         return result
 
     validation = validate_plan(plan)
+    if validation.get("status") == CAPABILITY_MISSING:
+        # Try to use internal capability
+        cap_result = _try_execute_capability(plan.get("intent", ""), ctx, question)
+        if cap_result:
+            result = cap_result
+            _log(req_id, provider_name, model_name, plan.get("mode", "read_only"), plan.get("intent", ""),
+                 plan.get("tools_to_call", []), [f"capability:{plan.get('intent', '')}"], False,
+                 result.get("status", OK), "", timer.elapsed_ms())
+            result["request_id"] = req_id
+            return result
+        # No capability or not active — return proposal
+        proposal = validation.get("capability_proposal", {})
+        cap_intent = plan.get("intent", "")
+        answer = f"Brak capability dla '{cap_intent}'. "
+        if proposal.get("capability_found"):
+            answer += f"Znaleziono capability '{proposal.get('needed_capability', '')}', ale nie jest aktywna (state: {proposal.get('promotion_state', 'unknown')})."
+        else:
+            answer += f"Propozycja: utwórz capability '{cap_intent.replace(' ', '_')}_status' typu READ_ONLY."
+        result = _build_response(ctx, status=CAPABILITY_MISSING, answer=answer,
+                                plan=plan, limitations=["capability_missing"])
+        _log(req_id, provider_name, model_name, plan.get("mode", "unknown"), plan.get("intent", ""),
+             plan.get("tools_to_call", []), [], False, CAPABILITY_MISSING, "capability_missing", timer.elapsed_ms())
+        result["request_id"] = req_id
+        return result
+
     if validation.get("status") != OK:
         result = _build_response(ctx, status=validation.get("status", ERROR), answer=f"Plan odrzucony: {validation.get('error', 'validation failed')}",
                                 plan=plan, limitations=[f"plan_validation: {validation.get('status', 'FAILED')}"])
@@ -74,11 +106,31 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
     tool_results = _execute_tools(plan["tools_to_call"], plan.get("parameters", {}), question)
 
     if not tool_results:
+        # Try capability fallback before giving up
+        cap_result = _try_capability_fallback(plan, ctx, question)
+        if cap_result:
+            result = cap_result
+            _log(req_id, provider_name, model_name, plan.get("mode", "read_only"), plan.get("intent", ""),
+                 plan.get("tools_to_call", []), [f"capability:{plan.get('intent', '')}"],
+                 False, result.get("status", OK), "", timer.elapsed_ms())
+            result["request_id"] = req_id
+            return result
         result = _build_response(ctx, status=ERROR, answer="Nie znaleziono narzędzi do wykonania.", plan=plan, limitations=["no_tools_executed"])
         _log(req_id, provider_name, model_name, plan.get("mode", "read_only"), plan.get("intent", ""),
              plan.get("tools_to_call", []), [], False, ERROR, "tool_execution", timer.elapsed_ms())
         result["request_id"] = req_id
         return result
+
+    # Check if all tool results are effectively empty/no_data — capability fallback
+    if _all_tools_empty(tool_results):
+        cap_result = _try_capability_fallback(plan, ctx, question)
+        if cap_result:
+            result = cap_result
+            _log(req_id, provider_name, model_name, plan.get("mode", "read_only"), plan.get("intent", ""),
+                 plan.get("tools_to_call", []), [f"capability:{plan.get('intent', '')}"],
+                 False, result.get("status", OK), "", timer.elapsed_ms())
+            result["request_id"] = req_id
+            return result
 
     tools_called = [r.get("reader", "") for r in tool_results]
     answer_result = llm.answer(ctx, plan, tool_results)
@@ -96,6 +148,93 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
 def _check_qbot3_enabled() -> None:
     if os.getenv("QBOT3_ENABLED") != "1":
         raise RuntimeError("QBOT3_ENABLED=1 required for QBot3 agent runtime")
+
+
+# ── Deterministic pre-router ───────────────────────────────────────────
+# Runs BEFORE the LLM planner for obvious domain matches.
+# LLM-first principle preserved: only intercepts well-defined domains
+# where the LLM historically routes incorrectly.
+
+_PRE_ROUTE_DOMAINS: list[tuple[list[str], str, str]] = [
+    # (keywords, intent, tool_name)
+    (["raport dzienny", "daily report", "email z raportem", "nie przeszedł", "niedostarczony raport",
+      "daily_report", "pipeline", "report pipeline", "dlaczego nie dostałem raportu",
+      "co z raportem", "stuck", "pending", "block", "report_status"],
+     "daily_report_status", "daily_report_status"),
+]
+
+
+def _deterministic_pre_route(question: str) -> dict[str, Any] | None:
+    """Check if question matches a deterministic pre-route domain.
+    
+    Returns a plan dict if matched, None to continue with LLM planner.
+    """
+    ql = question.lower().strip()
+    for keywords, intent, tool_name in _PRE_ROUTE_DOMAINS:
+        if any(kw in ql for kw in keywords):
+            tool_spec = lookup(tool_name)
+            if not tool_spec:
+                continue
+            return {
+                "intent": intent,
+                "mode": "read_only",
+                "tools_to_call": [tool_name],
+                "parameters": {},
+                "write_action": None,
+                "write_payload": {},
+                "requires_confirm": False,
+                "confidence": 1.0,
+                "needs_clarification": False,
+                "clarification_question": "",
+                "needed_context": [],
+                "_pre_routed": True,
+            }
+    return None
+
+
+def _execute_pre_routed(
+    plan: dict[str, Any], question: str,
+    req_id: str, provider_name: str, model_name: str,
+    timer: Timer,
+) -> dict[str, Any]:
+    """Execute a pre-routed plan without LLM planner."""
+    from qbot3.errors import OK, ERROR
+    ctx = build_context(question)
+    tools = plan.get("tools_to_call", [])
+    tool_results = _execute_tools(tools, plan.get("parameters", {}), question)
+    if tool_results:
+        # Build answer from tool results directly
+        answer_parts = []
+        for tr in tool_results:
+            data = tr.get("data", {})
+            if isinstance(data, dict):
+                summary = data.get("summary", "")
+                if summary:
+                    answer_parts.append(summary)
+                # Extract human-readable info
+                state = data.get("state", {})
+                if state:
+                    pipe = state.get("pipeline_stage", "")
+                    if pipe:
+                        answer_parts.insert(0, f"Raport zatrzymał się na etapie: {pipe}.")
+                    ch = state.get("channels", {})
+                    tel = ch.get("telegram", "?")
+                    eml = ch.get("email", "?")
+                    answer_parts.append(f"Telegram: {tel}. Email: {eml}.")
+                    last_err = state.get("last_error", "")
+                    if last_err:
+                        answer_parts.append(f"Ostatni błąd: {last_err}")
+        if not answer_parts:
+            answer_parts.append(str(data)[:300] if isinstance(data, dict) else str(data))
+        answer = " ".join(answer_parts)
+    else:
+        answer = "Nie znaleziono narzędzia dla pre-routed plan."
+    result = _build_response(ctx, status=OK, answer=answer, plan=plan, tool_results=tool_results,
+                            limitations=["pre_routed"])
+    _log(req_id, provider_name, model_name, plan.get("mode", "read_only"), plan.get("intent", ""),
+         tools, [t.get("reader", "") for t in (tool_results or [])],
+         False, result.get("status", OK), "", timer.elapsed_ms())
+    return result
 
 
 def _normalize_plan(plan_result: Any) -> dict[str, Any] | None:
@@ -162,6 +301,107 @@ def _execute_tools(tool_names: list[str], params: dict[str, Any], question: str)
             result = {"status": "error", "error": str(exc)[:300]}
         results.append({"reader": name, "category": spec.get("category", ""), "status": "OK", "data": result})
     return results
+
+
+def _all_tools_empty(tool_results: list[dict[str, Any]]) -> bool:
+    """Check if all tool results are effectively empty (no useful data).
+
+    A result is 'empty' if:
+      - status is DATA_MISSING/CONNECTOR_MISSING/NO_DATA/NOT_IMPLEMENTED, or
+      - the dict has no meaningful keys beyond status, or
+      - the result is None/empty string.
+    """
+    if not tool_results:
+        return True
+    empty_count = 0
+    for tr in tool_results:
+        data = tr.get("data", {})
+        if not isinstance(data, dict):
+            empty_count += 1
+            continue
+        status = data.get("status", "")
+        if status in ("DATA_MISSING", "CONNECTOR_MISSING", "NO_DATA", "NOT_IMPLEMENTED"):
+            empty_count += 1
+            continue
+        # Has explicit error
+        if data.get("error"):
+            empty_count += 1
+            continue
+        # Check if it has actual data content beyond status/error
+        meaningful_keys = [k for k in data if k not in ("status", "tool", "safety_class")]
+        if not meaningful_keys:
+            empty_count += 1
+            continue
+        # Has at least some data — not empty
+        return False
+    return empty_count == len(tool_results)
+
+
+def _try_capability_fallback(plan: dict[str, Any], ctx: dict[str, Any], question: str) -> dict[str, Any] | None:
+    """When LLM-chosen tools fail, try capability matching the intent."""
+    from qbot3.errors import OK, ERROR
+    intent = plan.get("intent", "")
+    if not intent:
+        return None
+    try:
+        from qbot3.capabilities import find_capability_by_intent
+        cap = find_capability_by_intent(intent)
+        if not cap or not cap.is_active():
+            return None
+        context = {
+            "question": question,
+            "date": ctx.get("date", ""),
+            "timezone": ctx.get("timezone", "Europe/Warsaw"),
+        }
+        result = cap.run(context)
+        if not isinstance(result, dict):
+            return None
+        data = result.get("data", result)
+        status = result.get("status", OK)
+        answer = data.get("summary", str(data)[:300]) if isinstance(data, dict) else str(data)[:300]
+        cap_plan = dict(plan)
+        cap_plan["tools_to_call"] = list(plan.get("tools_to_call", [])) + [f"capability:{cap.definition.name}"]
+        return _build_response(ctx, status=status, answer=answer,
+                              plan=cap_plan,
+                              tool_results=[{"reader": f"capability:{cap.definition.name}",
+                                            "category": "capability",
+                                            "status": "OK", "data": data}],
+                              limitations=["capability_fallback"],
+                              confidence="high")
+    except ImportError:
+        return None
+    except Exception as exc:
+        return _build_response(ctx, status=ERROR, answer=f"Capability fallback error: {str(exc)[:200]}",
+                              limitations=["capability_error"])
+
+
+def _try_execute_capability(intent: str, ctx: dict[str, Any], question: str) -> dict[str, Any] | None:
+    """Try to execute an internal capability for the given intent."""
+    from qbot3.errors import OK, ERROR
+    try:
+        from qbot3.capabilities import find_capability_by_intent
+        cap = find_capability_by_intent(intent)
+        if not cap or not cap.is_active():
+            return None
+        context = {
+            "question": question,
+            "date": ctx.get("date", ""),
+            "timezone": ctx.get("timezone", "Europe/Warsaw"),
+        }
+        result = cap.run(context)
+        if not isinstance(result, dict):
+            return None
+        data = result.get("data", result)
+        status = result.get("status", OK)
+        answer = data.get("summary", str(data)[:300]) if isinstance(data, dict) else str(data)[:300]
+        return _build_response(ctx, status=status, answer=answer,
+                              limitations=["capability_executed"] if status != OK else [],
+                              confidence="high")
+    except ImportError:
+        return None
+    except Exception as exc:
+        return _build_response(ctx, status=ERROR, answer=f"Capability error: {str(exc)[:200]}",
+                              limitations=["capability_error"])
 
 
 def _handle_write(ctx: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:

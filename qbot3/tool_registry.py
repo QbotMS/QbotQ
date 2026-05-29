@@ -513,6 +513,38 @@ def _load_system_env_status_tool() -> dict[str, Any]:
     }
 
 
+# ── Daily report status (internal capability wrapper) ──────────────────
+
+def _load_daily_report_status_tool() -> dict[str, Any]:
+    from qbot3.errors import OK, DATA_MISSING, CONNECTOR_MISSING, TOOL_ERROR, error_result, success_result
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        try:
+            from qbot3.capabilities import find_capability
+            cap = find_capability("daily_report_status")
+            if not cap:
+                return error_result(CONNECTOR_MISSING, "daily_report_status capability not loaded")
+            result = cap.run({"question": args.get("_question", "")})
+            if isinstance(result, dict):
+                data = result.get("data", result)
+                summary = data.get("summary", str(data)[:300]) if isinstance(data, dict) else str(data)
+                return success_result(data, summary=summary)
+            return error_result(TOOL_ERROR, "capability returned non-dict")
+        except ImportError as exc:
+            return error_result(CONNECTOR_MISSING, f"capabilities module: {exc}")
+        except Exception as exc:
+            return error_result(TOOL_ERROR, str(exc)[:200])
+    return {
+        "callable": _wrapper,
+        "category": "system",
+        "description": "Daily report pipeline status: pipeline stage, channel delivery (telegram/email), data source errors, legacy tool errors, sleep data wait status. Używaj gdy pytanie dotyczy raportu dziennego, emaila, Telegram pipeline.",
+        "args_schema": {},
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+        "notes": "Internal capability — nie jest publicznym MCP tool. Wrapper dla qbot3.capabilities.system.daily_report_status.",
+    }
+
+
 # ── MCP tools list ─────────────────────────────────────────────────────
 
 def _load_mcp_tools_list_tool() -> dict[str, Any]:
@@ -947,6 +979,7 @@ def _init_registry():
         ("garage_status", _load_garage_status_tool),
         ("canonical_docs", _load_canonical_docs_tool),
         ("mcp_tools_list", _load_mcp_tools_list_tool),
+        ("daily_report_status", _load_daily_report_status_tool),
         ("system_logs_recent", _load_system_logs_recent_tool),
         ("docs_list_qbot", _load_docs_list_qbot_tool),
         ("nutrition_balance_today", _load_nutrition_balance_today_tool),
