@@ -963,12 +963,12 @@ async def telegram_webhook(webhook_secret: str, request: Request):
 
     cmd = text.strip().lower()
     if not cmd.startswith("/"):
-        from qbot_tools import _tool_qbot_query
-        query_result = _tool_qbot_query({"query": text, "mode": "read_only", "scope": "all"})
+        from qbot3.agent_runtime import orchestrate_query
+        query_result = orchestrate_query(text)
         logger.info("TG NL input=%s intent=%s readers=%s fallback=%s stage=%s status=%s",
             text[:60],
             query_result.get("plan", {}).get("intent", "?"),
-            query_result.get("plan", {}).get("readers", []),
+            query_result.get("plan", {}).get("tools_to_call", []),
             query_result.get("orchestrator", {}).get("fallback_used"),
             query_result.get("orchestrator", {}).get("stage"),
             query_result.get("status", "?"),

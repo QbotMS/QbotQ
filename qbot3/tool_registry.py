@@ -1051,6 +1051,110 @@ def _load_rwgps_artifact_status_tool() -> dict[str, Any]:
     }
 
 
+def _load_route_artifact_enrich_dry_run_tool() -> dict[str, Any]:
+    """Diagnostyka nawierzchni trasy przez Overpass/OSM — tylko dry-run, bez zapisu do DB."""
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        from qbot3.errors import CONNECTOR_MISSING, error_result, success_result
+        import json as _json
+
+        route_id = str(args.get("route_id", "")).strip()
+        sample_every_m = int(args.get("sample_every_m", 500))
+        sample_every_m = max(100, min(sample_every_m, 5000))
+
+        if not route_id:
+            return error_result(CONNECTOR_MISSING, "route_id required — podaj ID trasy RWGPS")
+
+        # Znajdź artifact w DB
+        import psycopg
+        from psycopg.rows import dict_row
+        try:
+            c = psycopg.connect(host="127.0.0.1", dbname="qbot", user="qbot", password="", row_factory=dict_row)
+            artifact = c.execute(
+                "SELECT id, route_id, source, export_format, artifact_path, sha256, status "
+                "FROM route_artifacts WHERE route_id = %s ORDER BY id LIMIT 1", (route_id,)
+            ).fetchone()
+            c.close()
+        except Exception as exc:
+            return error_result(CONNECTOR_MISSING, f"DB error: {exc}")
+
+        if not artifact:
+            return error_result(CONNECTOR_MISSING, f"Brak artifactu dla route_id={route_id} w DB. "
+                                f"Najpierw pobierz trasę przez rwgps_route_fetch.")
+
+        # Użyj istniejącego artifact_path do analizy
+        artifact_path = artifact.get("artifact_path") or ""
+        if not artifact_path:
+            return error_result(CONNECTOR_MISSING, "Artifact nie ma ścieżki")
+
+        # Wywołaj analizę surface — tylko odczyt, nie zapisuje do route_surface_profiles
+        try:
+            import mcp_server
+            surface_json = mcp_server.analyze_rwgps_artifact_surface(artifact_path, sample_distance_m=sample_every_m)
+            surface_result = _json.loads(surface_json) if isinstance(surface_json, str) else surface_json
+        except Exception as exc:
+            return error_result(CONNECTOR_MISSING, f"Surface analysis error: {exc}")
+
+        if not isinstance(surface_result, dict):
+            return error_result(CONNECTOR_MISSING, "Surface analysis returned non-dict")
+
+        if not surface_result.get("ok"):
+            return error_result(CONNECTOR_MISSING,
+                                surface_result.get("error", "UNKNOWN"),
+                                surface_result.get("reason", "Surface analysis failed"))
+
+        # Zbuduj wynik dry-run (bez zapisu do DB)
+        result = {
+            "route_id": route_id,
+            "artifact_id": artifact["id"],
+            "artifact_format": artifact["export_format"],
+            "artifact_sha256": artifact["sha256"],
+            "dry_run": True,
+            "would_write_to": ["route_surface_profiles", "route_surface_segments"],
+            "surface_analysis": {
+                "sample_distance_m": surface_result.get("sample_distance_m"),
+                "point_count": surface_result.get("point_count"),
+                "distance_km": surface_result.get("distance_km"),
+                "sampled_points": surface_result.get("sampled_points"),
+                "matched_points": surface_result.get("matched_points"),
+                "unmatched_points": surface_result.get("unmatched_points"),
+                "coverage_pct": surface_result.get("coverage_pct"),
+                "dominant_surface": surface_result.get("dominant_surface"),
+                "surface_percentages": surface_result.get("surface_percentages"),
+                "road_type_percentages": surface_result.get("road_type_percentages"),
+                "tracktype_percentages": surface_result.get("tracktype_percentages"),
+                "smoothness_summary": surface_result.get("smoothness_summary"),
+                "confidence": surface_result.get("confidence"),
+                "warnings": surface_result.get("warnings"),
+                "source": "rwgps_artifact + osm_overpass",
+                "cache_hit": surface_result.get("cache_hit", False),
+            },
+        }
+
+        # Dodaj przykładowe tagi OSM dla pierwszych 3 segmentów
+        return success_result(result)
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "Diagnostyka nawierzchni trasy RWGPS przez OpenStreetMap/Overpass — DRY-RUN, bez zapisu do DB. "
+            "Używa istniejącego artifactu (GPX) i odczytuje tagi OSM: surface, highway, tracktype. "
+            "Pokazuje procentowy rozkład nawierzchni, dominujący typ, zasięg OSM. "
+            "NIE zapisuje do route_surface_profiles ani route_surface_segments. "
+            "Parametry: route_id (wymagany, z rwgps_route_list), "
+            "sample_every_m (opcjonalny, 100-5000, domyślnie 500)."
+        ),
+        "args_schema": {
+            "route_id": {"type": "string", "description": "ID trasy RWGPS (liczba)"},
+            "sample_every_m": {"type": "integer", "default": 500, "description": "Odstęp próbkowania w metrach (100-5000)"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+        "notes": "Dry-run surface enrichment — czyta artifact, woła Overpass API, nie zapisuje do DB surface tables.",
+    }
+
+
 # ── write tools ────────────────────────────────────────────────────────
 
 def _load_nutrition_log_add_tool() -> dict[str, Any]:
@@ -1357,6 +1461,7 @@ def _init_registry():
         ("qcal_events_upcoming", _load_qcal_events_upcoming_tool),
         ("rwgps_route_last", _load_rwgps_route_last_tool),
         ("rwgps_artifact_status", _load_rwgps_artifact_status_tool),
+        ("route_artifact_enrich_dry_run", _load_route_artifact_enrich_dry_run_tool),
         # DB introspection tools (transparent read-only for Albert)
         ("db_schema_list", _load_db_schema_list_tool),
         ("db_table_describe", _load_db_table_describe_tool),
