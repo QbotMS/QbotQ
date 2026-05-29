@@ -1052,6 +1052,13 @@ def _mcp_auth_guard(request: Request):
     return None
 
 
+@app.head("/mcp/")
+@app.head("/mcp")
+def mcp_head(request: Request):
+    from starlette.responses import Response
+    return Response(status_code=200, headers={"MCP-Protocol-Version": "2025-06-18"})
+
+
 @app.get("/mcp/")
 @app.get("/mcp")
 def mcp_root(request: Request):
@@ -1119,5 +1126,23 @@ if __name__ == "__main__":
 @app.get("/.well-known/oauth-protected-resource")
 def oauth_protected_resource():
     return {
-        "resource": "https://qbot.cytr.us/mcp/"
+        "resource": "https://qbot.cytr.us/mcp/",
+        "authorization_servers": ["https://qbot.cytr.us"],
+        "bearer_methods_supported": ["header"],
+        "scopes_supported": ["qbot"]
+    }
+
+
+@app.get("/.well-known/oauth-authorization-server")
+@app.get("/mcp/.well-known/oauth-authorization-server")
+def oauth_authorization_server():
+    return {
+        "issuer": "https://qbot.cytr.us",
+        "authorization_endpoint": "https://qbot.cytr.us/oauth/authorize",
+        "token_endpoint": "https://qbot.cytr.us/oauth/token",
+        "response_types_supported": ["code"],
+        "grant_types_supported": ["authorization_code"],
+        "code_challenge_methods_supported": ["S256"],
+        "token_endpoint_auth_methods_supported": ["none"],
+        "scopes_supported": ["qbot"]
     }

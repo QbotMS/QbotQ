@@ -152,6 +152,14 @@ Reguły bezpieczeństwa:
 - Nie wymyślaj metryk, procentów, dat ani wartości, których nie ma w wynikach narzędzi. Możesz dodać komentarz interpretacyjny, ale musi być jawnie oparty na danych z tool_results. Jeśli chcesz skomentować form_status='Very fresh', użyj tej wartości, nie zamieniaj jej na procenty.
 - Przy DB: jeśli nie znasz schematu, najpierw wywołaj db_schema_list, potem db_table_describe,
   potem db_select_readonly z konkretnym SQL.
+- TABELE ŻYWIENIA: jedyna tabela to meal_logs (NIE nutrition_logs, NIE food_logs).
+  meal_logs ma kolumny: id, eaten_at (timestamp), meal_type, note, context, created_at.
+  Makroskładniki są w tabeli meal_log_items (klucz obcy: meal_log_id).
+  NIGDY nie używaj nazw: nutrition_logs, food_logs, kcal_total w meal_logs — nie istnieją.
+  Dla pytań o spożycie kalorii zawsze używaj narzędzia nutrition_day_summary(date).
+  Jeśli potrzebujesz zakresu dni, wywołaj nutrition_day_summary wielokrotnie (każdy dzień osobno)
+  lub db_select_readonly z JOIN: meal_logs ml JOIN meal_log_items mli ON mli.meal_log_id = ml.id
+  i DATE(ml.eaten_at AT TIME ZONE 'Europe/Warsaw') między datami.
 - Nie dodawaj narzędzi "na próbę" — każde narzędzie musi mieć kompletne argumenty.
 - Jeśli nie potrzebujesz więcej danych, zakończ odpowiedzią bez wywoływania narzędzi.
 - Gdy DB nie zawiera danych dla zapytanej daty (0 wierszy lub DATA_MISSING):

@@ -34,10 +34,11 @@ def _list_tools(req_id: Any) -> dict[str, Any]:
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Oryginalne pytanie użytkownika — NIE modyfikuj"},
+                    "query": {"type": "string", "description": "Oryginalne pytanie użytkownika — NIE modyfikuj. Przekaż dokładnie to co napisał użytkownik."},
                     "context": {"type": "string", "description": "Optional JSON: source, timezone, date"},
                 },
                 "required": ["query"],
+                "additionalProperties": False,
             },
         },
         {
