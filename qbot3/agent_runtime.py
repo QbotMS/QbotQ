@@ -352,6 +352,8 @@ def _try_db_introspection_fallback(plan: dict[str, Any], question: str) -> list[
     """When a reader fails, try DB introspection to get the data.
 
     Inspects the DB schema and runs a safe SELECT on relevant tables.
+    Only uses tables confirmed by db_schema_list or known domain maps.
+    Never guesses table names from arbitrary words in queries or descriptions.
     """
     from qbot3.db_introspection import db_table_describe, db_select_readonly, db_schema_list
     from qbot3.tool_registry import lookup
@@ -361,39 +363,72 @@ def _try_db_introspection_fallback(plan: dict[str, Any], question: str) -> list[
     results = []
 
     # 1. Determine which tables might be relevant from the query
-    table_candidates = []
-    if any(k in ql for k in ("kalendarz", "event", "wydarzen", "calendar", "toskan", "bikepack", "qcal")):
-        table_candidates.append(("public", "calendar_events"))
-    if any(k in ql for k in ("jadł", "jedzeni", "posiłk", "meal", "nutrition", "kalor")):
-        table_candidates.append(("public", "meal_logs"))
-        table_candidates.append(("public", "meal_log_items"))
-    if any(k in ql for k in ("reminder", "przypomn")):
-        table_candidates.append(("public", "reminders"))
+    #    Only known domain → table mappings, no guessing.
+    domain_table_map: list[tuple[list[str], str, str]] = [
+        (["kalendarz", "event", "wydarzen", "calendar", "toskan", "bikepack", "qcal"], "public", "calendar_events"),
+        (["jadł", "jedzeni", "posiłk", "meal", "nutrition", "kalor"], "public", "meal_logs"),
+        (["jadł", "jedzeni", "posiłk", "meal", "nutrition", "kalor"], "public", "meal_log_items"),
+        (["reminder", "przypomn"], "public", "reminders"),
+        (["xert", "readiness", "ftp", "training", "fitness"], "public", "training_sessions"),
+        (["xert", "readiness", "ftp", "training", "fitness"], "public", "xert_metrics"),
+    ]
+    table_candidates: list[tuple[str, str]] = []
+    seen = set()
+    for keywords, schema, table in domain_table_map:
+        if any(k in ql for k in keywords):
+            key = (schema, table)
+            if key not in seen:
+                seen.add(key)
+                table_candidates.append(key)
 
     if not table_candidates:
         # Map known tool names to database tables
-        tool_to_table = {
+        tool_to_table: dict[str, tuple[str, str]] = {
             "qcal_events_range": ("public", "calendar_events"),
             "qcal_events_upcoming": ("public", "calendar_events"),
             "qcal_reminders_upcoming": ("public", "reminders"),
             "nutrition_day_summary": ("public", "meal_logs"),
             "nutrition_log_add": ("public", "meal_logs"),
+            "xert_readiness": ("public", "training_sessions"),
+            "xert_config": ("public", "xert_metrics"),
         }
         for tool_name in plan.get("tools_to_call", []):
             if tool_name in tool_to_table:
-                table_candidates.append(tool_to_table[tool_name])
+                key = tool_to_table[tool_name]
+                if key not in seen:
+                    seen.add(key)
+                    table_candidates.append(key)
 
     if not table_candidates:
-        # Try to extract table name from the failed tool's description
-        for tool_name in plan.get("tools_to_call", []):
-            spec = lookup(tool_name)
-            if spec:
-                desc = spec.get("description", "").lower()
-                for tbl in re.findall(r'\b(\w+)\b', desc):
-                    if tbl.endswith("s") and tbl not in ("parameters", "status", "data", "class", "type"):
-                        table_candidates.append(("public", tbl))
+        return None
+
+    # 1b. Verify candidates against actual DB schema — only keep real tables
+    schema_result = db_schema_list()
+    real_tables: set[str] = set()
+    if schema_result.get("status") == "OK":
+        for schema_name, tables_list in schema_result.get("schemas", {}).items():
+            for t in tables_list:
+                real_tables.add(f"{schema_name}.{t}")
+    table_candidates = [
+        (s, t) for s, t in table_candidates
+        if f"{s}.{t}" in real_tables
+    ]
 
     if not table_candidates:
+        # No real tables found — return a clear diagnostic instead of guessing
+        xert_keywords = ["xert", "readiness", "ftp", "training", "fitness"]
+        if any(k in ql for k in xert_keywords):
+            results.append({
+                "reader": "db_introspection_fallback",
+                "category": "db",
+                "status": "DATA_MISSING",
+                "data": {
+                    "status": "DATA_MISSING",
+                    "note": "No Xert tables found in DB schema. Expected tables: training_sessions, xert_metrics.",
+                    "tables_available": sorted(real_tables) if real_tables else ["(none — schema check failed or empty)"],
+                },
+            })
+            return results
         return None
 
     # 2. Describe tables and build safe SELECTs

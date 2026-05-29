@@ -219,7 +219,7 @@ def _load_sleep_day_tool() -> dict[str, Any]:
 def _load_xert_readiness_tool() -> dict[str, Any]:
     from qbot_integration_tools import _tool_qbot_xert_readiness_status
     return {
-        "callable": lambda args: _safe_call(_tool_qbot_xert_readiness_status, args),
+        "callable": _safe_call,
         "wrapped": _tool_qbot_xert_readiness_status,
         "category": "fitness",
         "description": "Xert training readiness: FTP, form, W', fatigue, freshness",
@@ -987,7 +987,7 @@ def _load_rwgps_artifact_status_tool() -> dict[str, Any]:
 def _load_nutrition_log_add_tool() -> dict[str, Any]:
     from qbot_nutrition_tools import _tool_qbot_nutrition_meal_from_template, _tool_qbot_nutrition_intake_log
     return {
-        "callable": lambda args: _safe_call(_tool_qbot_nutrition_intake_log, args),
+        "callable": _safe_call,
         "wrapped": _tool_qbot_nutrition_intake_log,
         "category": "nutrition",
         "description": "Log a meal entry. Parameters: date (ISO), meal_name, kcal_total, protein_g, carbs_g, fat_g, template_id (optional)",

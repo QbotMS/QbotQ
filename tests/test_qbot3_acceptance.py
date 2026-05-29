@@ -58,6 +58,15 @@ class TestTransparentGateway(unittest.TestCase):
         )
         self.assertEqual(result["status"], "OK")
 
+    def test_write_mode_rejects_no_confirm(self):
+        """write mode with requires_confirm=false is rejected by validator."""
+        result = validate_plan(
+            {"intent": "add_nutrition_entry", "mode": "write", "write_action": "nutrition_log_add",
+             "tools_to_call": [], "requires_confirm": False, "confidence": 0.9}
+        )
+        self.assertNotEqual(result["status"], "OK")
+        self.assertIn("requires_confirm", result.get("error", "").lower())
+
 class TestNutritionDraft(unittest.TestCase):
     """Nutrition write intent → action_draft with correct payload."""
 
@@ -191,6 +200,32 @@ class TestActionExecuteSemantics(unittest.TestCase):
         data = json.loads(result["result"]["content"][0]["text"])
         self.assertEqual(data["status"], "DRY_RUN_OK")
         self.assertFalse(data.get("write_committed", True))
+
+
+class TestWriteDraftWithoutSave(unittest.TestCase):
+    """'bez zapisu' returns draft, never executes write."""
+
+    def test_brokol_bez_zapisu_returns_draft(self):
+        """'bez zapisu' → status=draft, mode=write, requires_confirm=true, action_draft present"""
+        q = "dodaj Brokuł Sport 2000: 2011 kcal, białko 118 g, węgle 196 g, tłuszcz 79 g, sól 9,5 g, bez zapisu"
+        result = orchestrate_query(q)
+        self.assertEqual(result.get("status"), "draft")
+        self.assertEqual(result.get("plan", {}).get("mode"), "write")
+        self.assertIn("nutrition_log_add", str(result.get("action_draft", {})))
+        ad = result.get("action_draft", {})
+        self.assertEqual(ad.get("action_type"), "nutrition_log_add")
+        self.assertTrue(ad.get("requires_confirm"))
+        payload = ad.get("payload", {})
+        self.assertIn("meal_name", payload)
+        self.assertIn("kcal_total", payload)
+        self.assertIn("protein_g", payload)
+        self.assertIn("carbs_g", payload)
+        self.assertIn("fat_g", payload)
+        self.assertIn("brokuł", payload.get("meal_name", "").lower())
+        self.assertEqual(payload.get("kcal_total"), 2011.0)
+        self.assertEqual(payload.get("protein_g"), 118.0)
+        self.assertNotIn("tool_results", result)  # write mode has no tools
+        # answer informs user to use qbot.action_execute — that's correct, not execution
 
 
 class TestRegression(unittest.TestCase):
@@ -569,6 +604,122 @@ class TestDBIntrospectionFallbackIntegration(unittest.TestCase):
                       f"db_select_readonly missing from tool_results. Got: {readers_str}")
         self.assertNotIn("db_introspection_fallback", readers_str,
                          "Should not have fallback when direct DB read succeeds")
+
+
+class TestToolParameterValidation(unittest.TestCase):
+    """Tools must be planned with required parameters."""
+
+    def test_db_select_readonly_rejects_no_sql(self):
+        """db_select_readonly without sql parameter is rejected."""
+        result = validate_plan({
+            "intent": "xert_status", "mode": "read_only",
+            "tools_to_call": ["db_select_readonly"],
+            "parameters": {}, "confidence": 0.9,
+        })
+        self.assertNotEqual(result["status"], "OK")
+        self.assertIn("sql", result.get("error", "").lower())
+
+    def test_db_select_readonly_with_sql_passes(self):
+        """db_select_readonly with sql parameter passes validation."""
+        result = validate_plan({
+            "intent": "xert_status", "mode": "read_only",
+            "tools_to_call": ["db_select_readonly"],
+            "parameters": {"sql": "SELECT * FROM xert_metrics LIMIT 10"},
+            "confidence": 0.9,
+        })
+        self.assertEqual(result["status"], "OK")
+
+    def test_db_table_describe_rejects_no_table(self):
+        """db_table_describe without table parameter is rejected."""
+        result = validate_plan({
+            "intent": "xert_status", "mode": "read_only",
+            "tools_to_call": ["db_table_describe"],
+            "parameters": {}, "confidence": 0.9,
+        })
+        self.assertNotEqual(result["status"], "OK")
+        self.assertIn("table", result.get("error", "").lower())
+
+    def test_non_db_tools_ignore_param_check(self):
+        """Non-DB tools are not affected by parameter validation."""
+        result = validate_plan({
+            "intent": "xert_status", "mode": "read_only",
+            "tools_to_call": ["xert_readiness", "garmin_sync_status"],
+            "parameters": {}, "confidence": 0.9,
+        })
+        self.assertEqual(result["status"], "OK")
+
+
+class TestXertReadinessRegistry(unittest.TestCase):
+    """xert_readiness tool must be callable through registry without TypeError."""
+
+    def test_xert_readiness_lookup_and_call(self):
+        """xert_readiness in registry, callable via _execute_tools signature."""
+        from qbot3.tool_registry import lookup
+        spec = lookup("xert_readiness")
+        self.assertIsNotNone(spec, "xert_readiness not in registry")
+        self.assertIn("callable", spec)
+        self.assertIn("wrapped", spec)
+        # Simulate what _execute_tools does: callable_fn(wrapped, args)
+        callable_fn = spec["callable"]
+        wrapped = spec["wrapped"]
+        args = {"_question": "test xert readiness"}
+        # This should NOT raise TypeError (takes 2 positional args but X were given)
+        try:
+            result = callable_fn(wrapped, args)
+            self.assertIsInstance(result, dict)
+        except TypeError as e:
+            self.fail(f"xert_readiness callable raised TypeError: {e}")
+
+    def test_xert_readiness_via_execute_tools(self):
+        """xert_readiness callable through _execute_tools works."""
+        from qbot3.agent_runtime import _execute_tools
+        result = _execute_tools(["xert_readiness"], {}, "test xert query")
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].get("reader"), "xert_readiness")
+        # Should not be a TypeError — even if the tool returns error, it should be caught
+        self.assertNotIn("TypeError", str(result[0].get("data", {})))
+
+
+class TestDbIntrospectionFallbackNoGuessing(unittest.TestCase):
+    """Fallback must not guess table names from query words."""
+
+    @patch('qbot3.db_introspection.db_schema_list')
+    @patch('qbot3.db_introspection.db_table_describe')
+    @patch('qbot3.db_introspection.db_select_readonly')
+    def test_fallback_rejects_guess_tables(self, mock_select, mock_describe, mock_schema_list):
+        """Fallback with only non-table words in query returns None or clear DATA_MISSING."""
+        mock_schema_list.return_value = {"status": "OK", "schemas": {"public": []}, "schema_count": 0}
+        plan = {"intent": "xert_status", "tools_to_call": ["xert_readiness"]}
+        # Query contains words like "readiness", "freshness", "this", "is", "questions", "records", "days"
+        q = "sprawdź status Xert: konfiguracja, ostatnie dane w DB, ostatnia synchronizacja, błędy connectora"
+        results = _try_db_introspection_fallback(plan, q)
+        # Should NOT try to describe tables named "readiness", "freshness", "this", "is", etc.
+        # If no real xert tables exist, it should return DATA_MISSING or None
+        if results:
+            # If results returned, none should be from guessed table names
+            for r in results:
+                reader = r.get("reader", "")
+                self.assertNotIn("readiness", reader, f"Guessed table name in reader: {reader}")
+                self.assertNotIn("freshness", reader, f"Guessed table name in reader: {reader}")
+                self.assertNotIn("this", reader, f"Guessed table name in reader: {reader}")
+                self.assertNotIn("is", reader, f"Guessed table name in reader: {reader}")
+                self.assertNotIn("questions", reader, f"Guessed table name in reader: {reader}")
+                self.assertNotIn("records", reader, f"Guessed table name in reader: {reader}")
+                self.assertNotIn("days", reader, f"Guessed table name in reader: {reader}")
+
+    @patch('qbot3.db_introspection.db_schema_list')
+    @patch('qbot3.db_introspection.db_table_describe')
+    @patch('qbot3.db_introspection.db_select_readonly')
+    def test_fallback_xert_no_tables(self, mock_select, mock_describe, mock_schema_list):
+        """Xert query without xert tables in DB returns DATA_MISSING."""
+        mock_schema_list.return_value = {"status": "OK", "schemas": {"public": []}, "schema_count": 0}
+        plan = {"intent": "xert_status", "tools_to_call": ["xert_readiness"]}
+        q = "sprawdź status Xert"
+        results = _try_db_introspection_fallback(plan, q)
+        self.assertIsNotNone(results, "Should return diagnostic even without xert tables")
+        self.assertEqual(results[0]["status"], "DATA_MISSING")
+        self.assertIn("Xert", results[0]["data"].get("note", ""))
 
 
 if __name__ == "__main__":

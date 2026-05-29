@@ -76,6 +76,67 @@ General rules:
 - If required data, source material, or a target module is missing, report it
   instead of inventing a location or schema.
 
+## Temporary Gemini provider for smoke tests
+
+Gemini API is available as an OpenAI-compatible transport. No code changes to `qgpt_client.py` are needed — it already supports any `QGPT_BASE_URL` that speaks OpenAI Chat Completions format.
+
+### Runtime config (set in systemd env or shell)
+
+```
+GEMINI_API_KEY=<secret>
+QGPT_API_KEY=$GEMINI_API_KEY
+QGPT_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+QGPT_MODEL=gemini-2.5-flash-lite
+QGPT_FALLBACK_MODEL=gemini-2.5-flash-lite
+```
+
+### Diagnostics
+
+Run `llm_status` capability to verify the transport:
+
+```python
+from qbot3.capabilities.system.llm_status import LlmStatusCapability
+result = LlmStatusCapability().run({})
+print(result["summary"])
+```
+
+Expected output with Gemini active:
+```
+Transport: gemini (OpenAI-compatible) | Host: generativelanguage.googleapis.com | Model: gemini-2.5-flash-lite | GEMINI_API_KEY: configured | Gemini endpoint: yes | Fallback: gemini-2.5-flash-lite
+```
+
+### Smoke test (no systemd restart)
+
+```bash
+GEMINI_API_KEY="<sekret>" \
+QGPT_API_KEY="$GEMINI_API_KEY" \
+QGPT_BASE_URL="https://generativelanguage.googleapis.com/v1beta/openai/" \
+QGPT_MODEL="gemini-2.5-flash-lite" \
+QGPT_FALLBACK_MODEL="gemini-2.5-flash-lite" \
+QBOT3_ENABLED=1 \
+.venv/bin/python - <<'PY'
+from qbot3.agent_runtime import orchestrate_query
+for q in [
+    "status QBot LLM provider",
+    "pokaż wydarzenia w kalendarzu na najbliższy tydzień",
+    "co dzisiaj jadłem?"
+]:
+    print("\nQUERY:", q)
+    r = orchestrate_query(q)
+    print("status:", r.get("status"))
+    print("tools:", r.get("plan", {}).get("tools_to_call"))
+    print("limitations:", r.get("limitations"))
+    print("answer:", (r.get("answer") or "")[:500])
+PY
+```
+
+### Notes
+
+- Gemini free tier has rate limits (1500 RPD for flash-lite). If you see `429` — switch to a paid key or wait.
+- Do NOT commit `GEMINI_API_KEY` to `.env` or any file in the repo.
+- To disable Gemini and revert to OpenRouter/OpenAI, unset/change `QGPT_BASE_URL` and `QGPT_API_KEY` in the env.
+- The `llm_status` capability will report `transport: gemini` only when `QGPT_BASE_URL` contains `generativelanguage.googleapis.com`.
+
 RWGPS Route Lab rules:
 - Work with any RWGPS route provided by the user or discovered from current state.
 - Never overwrite or modify the original RWGPS route by default.

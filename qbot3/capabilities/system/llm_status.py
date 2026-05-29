@@ -140,6 +140,7 @@ class LlmStatusCapability(Capability):
                 "openrouter": "configured" if os.getenv("OPENROUTER_API_KEY") else "not_configured",
                 "anthropic_api": "unusable" if os.getenv("ANTHROPIC_API_KEY") else "not_configured",
                 "deepseek": "configured" if os.getenv("DEEPSEEK_API_KEY") else "not_configured",
+                "gemini": "configured" if os.getenv("GEMINI_API_KEY") else "not_configured",
             },
             "secrets_masked": True,
         }
@@ -165,6 +166,20 @@ class LlmStatusCapability(Capability):
                 parts.append(f"⚠️ CONFIG MISMATCH: {runtime.get('mismatch_detail', '')}")
             else:
                 parts.append("Fallback: none (Anthropic has no configured fallback)")
+        elif transport == "gemini":
+            parts.append("Transport: gemini (OpenAI-compatible)")
+            parts.append(f"Host: {runtime.get('base_url_host', '?')}")
+            parts.append(f"Model: {runtime['active_model']}")
+            if runtime.get("has_gemini_key"):
+                parts.append("GEMINI_API_KEY: configured")
+            else:
+                parts.append("GEMINI_API_KEY: not_configured (QGPT_API_KEY fallback)")
+            if runtime.get("is_gemini_endpoint"):
+                parts.append("Gemini endpoint: yes")
+            else:
+                parts.append("Gemini endpoint: no (custom base_url)")
+            if runtime["fallback_model"] and runtime["fallback_model"] != "none":
+                parts.append(f"Fallback: {runtime['fallback_model']}")
         elif transport == "openrouter":
             parts.append("Transport: openrouter")
             parts.append(f"Model: {runtime['active_model']}")

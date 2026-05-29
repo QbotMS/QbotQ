@@ -76,6 +76,22 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
     if any(k in plan_json_lower for k in ("action_execute", "qbot.action_execute")):
         return error_result(PLAN_INVALID, "Write execution through qbot.query is blocked — use qbot.action_execute")
 
+    # Validate tool parameters against args_schema
+    params = plan.get("parameters", {})
+    for tool_name in tools:
+        spec = lookup(tool_name)
+        if not spec:
+            continue
+        args_schema = spec.get("args_schema", {})
+        if not args_schema:
+            continue
+        # db_select_readonly requires sql parameter — reject if missing
+        if tool_name == "db_select_readonly" and not params.get("sql"):
+            return error_result(PLAN_INVALID, f"db_select_readonly requires 'sql' parameter. Provide a concrete SELECT query or use db_schema_list / db_table_describe first.")
+        # db_table_describe and db_sample_rows require table parameter
+        if tool_name in ("db_table_describe", "db_sample_rows") and not params.get("table"):
+            return error_result(PLAN_INVALID, f"{tool_name} requires 'table' parameter. Use db_schema_list to discover available tables first.")
+
     # Block legacy patterns
     blocked_patterns = [
         "classify_intent", "_parse_nutrition", "_parse_event", "_match_meal",

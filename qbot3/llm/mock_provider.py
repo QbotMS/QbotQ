@@ -34,7 +34,11 @@ class MockProvider(LLMProvider):
             else:
                 intent = "nutrition_log_add"
             write_action = intent
-            write_payload = {"title": user_message[:80]}
+            if intent == "nutrition_log_add":
+                from qbot3.write_router import extract_nutrition_slots
+                write_payload = extract_nutrition_slots(user_message)
+            else:
+                write_payload = {"title": user_message[:80]}
             requires_confirm = True
         elif any(k in ql for k in ("readiness", "gotowoś")):
             intent = "readiness"
