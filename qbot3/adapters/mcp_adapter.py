@@ -46,7 +46,7 @@ def _list_tools(req_id: Any) -> dict[str, Any]:
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "action_type": {"type": "string", "enum": ["nutrition_log_add", "calendar_event_add", "reminder_add", "qbot_doc_append"]},
+                    "action_type": {"type": "string", "enum": ["nutrition_log_add", "calendar_event_add", "reminder_add", "planning_fact_add", "memory_confirmed_fact_add", "qbot_doc_append"]},
                     "payload_json": {"type": "object"},
                     "idempotency_key": {"type": "string"},
                     "confirm": {"type": "boolean"},

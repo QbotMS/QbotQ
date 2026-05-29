@@ -35,6 +35,37 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
         result["request_id"] = req_id
         return result
 
+    # Write pre-router: intercepts write intents before LLM planner
+    ctx = build_context(question)
+    write_routed = _deterministic_write_pre_route(question)
+    if write_routed:
+        wc = write_routed.get("_write_classification", "")
+        if wc == "DESTRUCTIVE_WRITE":
+            result = _build_response(ctx, status="BLOCKED", answer=write_routed.get("_write_message", "Destrukcyjne operacje zablokowane."),
+                                    limitations=["destructive_blocked"])
+            result["request_id"] = req_id
+            return result
+        if write_routed.get("_pre_routed_write"):
+            # Build draft directly
+            draft = write_routed.get("_write_action_draft")
+            if draft:
+                answer_parts = [f"Przygotowałem draft: {draft['human_summary']}"]
+                if draft.get("missing_fields"):
+                    answer_parts.append(draft.get("clarification_question", ""))
+                answer_parts.append("Zapis wymaga potwierdzenia przez qbot.action_execute.")
+                result = _build_response(ctx, status="draft", answer=" ".join(answer_parts),
+                                        plan={"intent": write_routed.get("intent", ""), "mode": "write",
+                                              "tools": []},
+                                        limitations=["write_draft"])
+                result["action_draft"] = draft
+                result["request_id"] = req_id
+                return result
+            # Handle unsupported action type
+            result = _build_response(ctx, status="CAPABILITY_MISSING", answer=write_routed.get("answer", "Nieobsługiwany typ akcji."),
+                                    limitations=["write_draft"])
+            result["request_id"] = req_id
+            return result
+
     llm = get_llm_provider()
     ctx = build_context(question)
     tools_desc = tool_descriptions()
@@ -170,7 +201,118 @@ _PRE_ROUTE_DOMAINS: list[tuple[list[str], str, str]] = [
     (["garmin import", "ostatni import", "garmin sync status", "garmin_sync_status",
       "kiedy był import", "data garmin"],
      "garmin_sync_status", "garmin_sync_status"),
+    (["llm", "model llm", "jaki model", "jakiego modelu", "provider", "llm_status",
+      "ai model", "sztuczna inteligencja", "albert llm", "fallback model"],
+     "llm_status", "llm_status"),
 ]
+
+# Write pre-router — intercepts write intents before LLM planner
+_WRITE_PRE_ROUTE_KEYWORDS: list[tuple[list[str], str]] = [
+    (["dodaj posiłek", "dodaj jedzenie", "dodaj do spożycia", "zjedz", "jadłem", "nutrition_log_add"], "nutrition_log_add"),
+    (["dodaj event", "dodaj wydarzenie", "zaplanuj event", "zapisz do kalendarza", "dodaj do kalendarza", "calendar_event_add"], "calendar_event_add"),
+    (["przypomnij", "przypomnij mi", "reminder", "dodaj przypomnienie", "reminder_add"], "reminder_add"),
+    (["zapamiętaj fakt", "zapamiętaj", "zapisz fakt", "planning_fact_add", "notuj", "zanotuj"], "planning_fact_add"),
+    (["usuń wszystko", "usuń wszystkie", "wyczyść", "delete all"], "DESTRUCTIVE"),
+]
+
+
+def _deterministic_write_pre_route(question: str) -> dict[str, Any] | None:
+    """Intercept write intents before LLM planner.
+
+    Returns a write plan dict if matched, None to continue with LLM planner.
+    """
+    from qbot3.write_router import build_draft, validate_action_type, classify_write_intent
+
+    ql = question.lower().strip()
+    cls = classify_write_intent(question)
+
+    if cls["type"] == "DESTRUCTIVE_WRITE":
+        return {
+            "intent": "destructive_write_blocked",
+            "mode": "plan_only",
+            "tools_to_call": [],
+            "write_action": None,
+            "write_payload": {},
+            "requires_confirm": False,
+            "confidence": 1.0,
+            "needs_clarification": False,
+            "clarification_question": "",
+            "_pre_routed_write": True,
+            "_write_classification": "DESTRUCTIVE_WRITE",
+            "_write_blocked": True,
+            "_write_message": "Destrukcyjne operacje są zablokowane. Wymagają osobnej zgody.",
+            "answer": "Destrukcyjne operacje są zablokowane bez osobnej zgody.",
+        }
+
+    if cls["type"] == "WRITE_DRAFT_REQUEST" and cls.get("action_type"):
+        at = cls["action_type"]
+        is_valid, error, _ = validate_action_type(at), None, None
+        v = validate_action_type(at)
+        if not v["valid"]:
+            return {
+                "intent": f"{at}_draft",
+                "mode": "plan_only",
+                "tools_to_call": [],
+                "_pre_routed_write": True,
+                "_write_classification": "UNSUPPORTED_ACTION_TYPE",
+                "answer": f"Akcja '{at}' nie jest na allowliście. Dostępne: {v['allowed']}.",
+            }
+        # Extract payload from question
+        payload = _extract_write_payload(at, question)
+        draft = build_draft(at, payload, question)
+        needs_clarification = bool(draft.get("missing_fields"))
+        answer_parts = [f"Przygotowałem draft: {draft['human_summary']}"]
+        if needs_clarification:
+            answer_parts.append(draft.get("clarification_question", ""))
+        answer_parts.append("Zapis wymaga potwierdzenia przez qbot.action_execute.")
+        return {
+            "intent": f"{at}_draft",
+            "mode": "write",
+            "tools_to_call": [],
+            "write_action": at,
+            "write_payload": draft["payload"],
+            "requires_confirm": True,
+            "confidence": 0.9,
+            "needs_clarification": needs_clarification,
+            "clarification_question": draft.get("clarification_question", ""),
+            "_pre_routed_write": True,
+            "_write_classification": "WRITE_DRAFT_REQUEST",
+            "_write_action_draft": draft,
+            "answer": " ".join(answer_parts),
+        }
+
+    return None
+
+
+def _extract_write_payload(action_type: str, question: str) -> dict[str, Any]:
+    """Extract payload fields from a natural language write query."""
+    import re
+    ql = question.lower()
+    payload: dict[str, Any] = {}
+
+    # Common: extract title/name between quotes
+    quoted = re.findall(r'"([^"]+)"', question)
+    if quoted:
+        payload["title"] = quoted[0]
+        payload["meal_name"] = quoted[0]
+
+    # Nutrition: extract amount (e.g., "200g ryżu", "0,5 kg truskawek")
+    amount_match = re.search(r'(\d+[,.]?\d*)\s*(kg|g|ml|l|szt|porcji)', ql)
+    if amount_match and action_type == "nutrition_log_add":
+        payload["meal_name"] = amount_match.group(0)
+        payload["kcal_total"] = None  # would need DB lookup
+
+    # Calendar: extract date patterns
+    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', question)
+    if date_match:
+        payload["date_start"] = date_match.group(1)
+
+    # Reminder: extract time
+    time_match = re.search(r'(\d{1,2}:\d{2})', question)
+    if time_match:
+        payload["time"] = time_match.group(1)
+
+    return payload
 
 
 def _deterministic_pre_route(question: str) -> dict[str, Any] | None:

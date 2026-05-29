@@ -125,7 +125,8 @@ except Exception as e:
     STATUS=$(echo "$RESPONSE" | $PYTHON -c "import sys,json; d=json.loads(sys.stdin.read()); print(d.get('status','PARSE_ERROR'))" 2>/dev/null || echo "NETWORK_ERROR")
     REQ_ID=$(echo "$RESPONSE" | $PYTHON -c "import sys,json; d=json.loads(sys.stdin.read()); print(d.get('req_id',''))" 2>/dev/null || echo "")
     echo "$STATUS (req: $REQ_ID)"
-    if [ "$STATUS" = "ok" ] || [ "$STATUS" = "draft" ] || [ "$STATUS" = "clarify" ] || [ "$STATUS" = "partial" ]; then
+    STATUS_LOWER=$(echo "$STATUS" | tr '[:upper:]' '[:lower:]')
+    if [ "$STATUS_LOWER" = "ok" ] || [ "$STATUS_LOWER" = "draft" ] || [ "$STATUS_LOWER" = "clarify" ] || [ "$STATUS_LOWER" = "partial" ]; then
         PASS=$((PASS + 1))
     fi
     if $FIRST; then FIRST=false; else RESULTS_JSON+=","; fi

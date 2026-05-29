@@ -33,6 +33,7 @@ _ACTION_ALLOWLIST = frozenset({
     "reminder_add",
     "planning_fact_add",
     "memory_confirmed_fact_add",
+    "qbot_doc_append",
 })
 
 

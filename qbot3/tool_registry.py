@@ -609,6 +609,47 @@ def _load_hammerhead_sync_status_tool() -> dict[str, Any]:
     }
 
 
+# ── LLM status (internal capability wrapper) ──────────────────────────
+
+def _load_llm_status_tool() -> dict[str, Any]:
+    from qbot3.errors import OK, CONNECTOR_MISSING, TOOL_ERROR, error_result, success_result
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        try:
+            from qbot3.capabilities import find_capability
+            cap = find_capability("llm_status")
+            if not cap:
+                return error_result(CONNECTOR_MISSING, "llm_status capability not loaded")
+            result = cap.run({"question": args.get("_question", "")})
+            if isinstance(result, dict):
+                data = result.get("data", result)
+                summary = result.get("summary", "") or (data.get("summary", "") if isinstance(data, dict) else "")
+                if not summary:
+                    inner = data if isinstance(data, dict) else result
+                    parts = []
+                    parts.append(f"Provider: {inner.get('provider','?')}")
+                    parts.append(f"Model: {inner.get('model','?')}")
+                    parts.append(f"Fallback: {inner.get('fallback_model','?')}")
+                    keys_str = ", ".join(f"{k}={'Y' if v else 'N'}" for k, v in inner.get("providers_configured", {}).items())
+                    parts.append(f"Keys: {keys_str}")
+                    summary = " | ".join(parts)
+                return success_result(data, summary=summary)
+            return error_result(TOOL_ERROR, "capability returned non-dict")
+        except ImportError as exc:
+            return error_result(CONNECTOR_MISSING, f"capabilities module: {exc}")
+        except Exception as exc:
+            return error_result(TOOL_ERROR, str(exc)[:200])
+    return {
+        "callable": _wrapper,
+        "category": "system",
+        "description": "Status używanego modelu LLM i providera. Zwraca provider, model, fallback_model, providers_configured. Tylko odczyt — bez sekretów.",
+        "args_schema": {},
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+        "notes": "Internal capability — nie jest publicznym MCP tool. Wrapper dla qbot3.capabilities.system.llm_status.",
+    }
+
+
 # ── MCP tools list ─────────────────────────────────────────────────────
 
 def _load_mcp_tools_list_tool() -> dict[str, Any]:
@@ -1057,6 +1098,7 @@ def _init_registry():
         ("daily_report_status", _load_daily_report_status_tool),
         ("gate_status", _load_gate_status_tool),
         ("hammerhead_sync_status", _load_hammerhead_sync_status_tool),
+        ("llm_status", _load_llm_status_tool),
         ("system_logs_recent", _load_system_logs_recent_tool),
         ("docs_list_qbot", _load_docs_list_qbot_tool),
         ("nutrition_balance_today", _load_nutrition_balance_today_tool),

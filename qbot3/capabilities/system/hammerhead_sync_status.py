@@ -19,9 +19,25 @@ APP_DIR = Path("/opt/qbot/app")
 STATE_FILE = APP_DIR / "state/michal_processed_hammerhead_activities.json"
 LOG_FILE = APP_DIR / "logs/hammerhead-garmin-sync-michal.log"
 PROFILE_ENV = APP_DIR / "config/profiles/michal.env"
-HAMMERHEAD_TOKENS = APP_DIR / ".hammerhead_tokens/michal.json"
-GARMIN_TOKENS = APP_DIR / ".garmin_tokens/michal/garmin_tokens.json"
 OUTGOING_DIR = APP_DIR / "outgoing/michal"
+
+# Secrets store preference: new store → legacy fallback
+_SECRETS_BASE = Path(os.getenv("Q_SECRETS_STORE") or os.getenv("QBOT3_SECRETS_STORE") or "/opt/q/secrets")
+_HAMMERHEAD_TOKENS_NEW = _SECRETS_BASE / "hammerhead/michal_tokens.json"
+_GARMIN_TOKENS_NEW = _SECRETS_BASE / "garmin/michal_tokens.json"
+_HAMMERHEAD_TOKENS_OLD = APP_DIR / ".hammerhead_tokens/michal.json"
+_GARMIN_TOKENS_OLD = APP_DIR / ".garmin_tokens/michal/garmin_tokens.json"
+
+def _check_secret(new_path: Path, old_path: Path) -> tuple[bool, str, Path]:
+    """Check secret existence. Returns (found, source_label, used_path)."""
+    for path, label in [(new_path, f"store:{new_path.parent.name}/{new_path.name}"),
+                        (old_path, f"legacy:{old_path.relative_to(APP_DIR)}")]:
+        try:
+            if path.is_file() and path.stat().st_size > 0:
+                return True, label, path
+        except (OSError, PermissionError):
+            continue
+    return False, "not_found", new_path
 
 
 class HammerheadSyncStatusCapability(Capability):
@@ -54,23 +70,15 @@ class HammerheadSyncStatusCapability(Capability):
         else:
             config_issues.append("profile env missing")
 
-        try:
-            if HAMMERHEAD_TOKENS.is_file():
-                result["hammerhead_tokens"] = "present"
-            else:
-                config_issues.append("hammerhead tokens missing")
-        except PermissionError:
-            result["hammerhead_tokens"] = "restricted"
-            config_issues.append("hammerhead tokens restricted (permission)")
+        hh_found, hh_src, hh_path = _check_secret(_HAMMERHEAD_TOKENS_NEW, _HAMMERHEAD_TOKENS_OLD)
+        result["hammerhead_tokens"] = hh_src
+        if not hh_found:
+            config_issues.append("hammerhead tokens missing")
 
-        try:
-            if GARMIN_TOKENS.is_file():
-                result["garmin_tokens"] = "present"
-            else:
-                config_issues.append("garmin tokens missing")
-        except PermissionError:
-            result["garmin_tokens"] = "restricted"
-            config_issues.append(f"garmin tokens restricted (permission) — path: {GARMIN_TOKENS.parent}")
+        gm_found, gm_src, gm_path = _check_secret(_GARMIN_TOKENS_NEW, _GARMIN_TOKENS_OLD)
+        result["garmin_tokens"] = gm_src
+        if not gm_found:
+            config_issues.append("garmin tokens missing")
 
         if OUTGOING_DIR.exists():
             originals = list((OUTGOING_DIR / "hammerhead_originals").glob("*.fit"))
