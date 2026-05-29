@@ -161,6 +161,12 @@ _PRE_ROUTE_DOMAINS: list[tuple[list[str], str, str]] = [
       "daily_report", "pipeline", "report pipeline", "dlaczego nie dostałem raportu",
       "co z raportem", "stuck", "pending", "block", "report_status"],
      "daily_report_status", "daily_report_status"),
+    (["furtk", "gate", "hikconnect", "otwórz bram", "brama", "gate_status", "open gate",
+      "unlock", "czy furtka"],
+     "gate_status", "gate_status"),
+    (["hammerhead", "garmin sync", "transfer aktywno", "karoo", "activity transfer",
+      "synchronizacja", "sync status", "hammerhead_sync", "czy przesłał"],
+     "hammerhead_sync_status", "hammerhead_sync_status"),
 ]
 
 

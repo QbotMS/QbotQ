@@ -545,6 +545,70 @@ def _load_daily_report_status_tool() -> dict[str, Any]:
     }
 
 
+# ── Gate status (internal capability wrapper) ─────────────────────────
+
+def _load_gate_status_tool() -> dict[str, Any]:
+    from qbot3.errors import OK, CONNECTOR_MISSING, TOOL_ERROR, error_result, success_result
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        try:
+            from qbot3.capabilities import find_capability
+            cap = find_capability("gate_status")
+            if not cap:
+                return error_result(CONNECTOR_MISSING, "gate_status capability not loaded")
+            result = cap.run({"question": args.get("_question", "")})
+            if isinstance(result, dict):
+                data = result.get("data", result)
+                summary = data.get("summary", str(data)[:300]) if isinstance(data, dict) else str(data)
+                return success_result(data, summary=summary)
+            return error_result(TOOL_ERROR, "capability returned non-dict")
+        except ImportError as exc:
+            return error_result(CONNECTOR_MISSING, f"capabilities module: {exc}")
+        except Exception as exc:
+            return error_result(TOOL_ERROR, str(exc)[:200])
+    return {
+        "callable": _wrapper,
+        "category": "system",
+        "description": "Gate (HikConnect) configuration and last-success status. Tylko odczyt — nie otwiera furtki.",
+        "args_schema": {},
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+        "notes": "Internal capability — nie jest publicznym MCP tool. Wrapper dla qbot3.capabilities.system.gate_status.",
+    }
+
+
+# ── Hammerhead sync status (internal capability wrapper) ──────────────
+
+def _load_hammerhead_sync_status_tool() -> dict[str, Any]:
+    from qbot3.errors import OK, CONNECTOR_MISSING, TOOL_ERROR, error_result, success_result
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        try:
+            from qbot3.capabilities import find_capability
+            cap = find_capability("hammerhead_sync_status")
+            if not cap:
+                return error_result(CONNECTOR_MISSING, "hammerhead_sync_status capability not loaded")
+            result = cap.run({"question": args.get("_question", "")})
+            if isinstance(result, dict):
+                data = result.get("data", result)
+                summary = data.get("summary", str(data)[:300]) if isinstance(data, dict) else str(data)
+                return success_result(data, summary=summary)
+            return error_result(TOOL_ERROR, "capability returned non-dict")
+        except ImportError as exc:
+            return error_result(CONNECTOR_MISSING, f"capabilities module: {exc}")
+        except Exception as exc:
+            return error_result(TOOL_ERROR, str(exc)[:200])
+    return {
+        "callable": _wrapper,
+        "category": "system",
+        "description": "Hammerhead→Garmin sync pipeline status: config, dedup state, last log, outgoing files. Tylko odczyt — nie wykonuje transferu.",
+        "args_schema": {},
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+        "notes": "Internal capability — nie jest publicznym MCP tool. Wrapper dla qbot3.capabilities.system.hammerhead_sync_status.",
+    }
+
+
 # ── MCP tools list ─────────────────────────────────────────────────────
 
 def _load_mcp_tools_list_tool() -> dict[str, Any]:
@@ -980,6 +1044,8 @@ def _init_registry():
         ("canonical_docs", _load_canonical_docs_tool),
         ("mcp_tools_list", _load_mcp_tools_list_tool),
         ("daily_report_status", _load_daily_report_status_tool),
+        ("gate_status", _load_gate_status_tool),
+        ("hammerhead_sync_status", _load_hammerhead_sync_status_tool),
         ("system_logs_recent", _load_system_logs_recent_tool),
         ("docs_list_qbot", _load_docs_list_qbot_tool),
         ("nutrition_balance_today", _load_nutrition_balance_today_tool),

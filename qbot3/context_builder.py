@@ -88,6 +88,14 @@ def build_context(user_message: str, mode: str = "read_only") -> dict[str, Any]:
                               "niedostarczony raport", "daily_report", "pipeline", "report pipeline")):
         ctx["relevant_contexts"] = ctx.get("relevant_contexts", []) + ["daily_report"]
 
+    # Gate / furtka context
+    if any(k in ql for k in ("furtk", "gate", "hikconnect", "brama", "unlock", "otwórz")):
+        ctx["relevant_contexts"] = ctx.get("relevant_contexts", []) + ["gate"]
+
+    # Hammerhead / Garmin sync context
+    if any(k in ql for k in ("hammerhead", "garmin sync", "transfer", "karoo", "synchronizacja")):
+        ctx["relevant_contexts"] = ctx.get("relevant_contexts", []) + ["hammerhead_sync"]
+
     # System status — only for status/readiness/diagnostic queries
     if any(k in ql for k in ("status", "readiness", "diagnost", "dlaczego", "problem", "błąd", "error", "nie działa", "co się dzieje")):
         ctx["load_system_status"] = True

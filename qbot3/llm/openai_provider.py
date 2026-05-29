@@ -42,6 +42,12 @@ TWARDE ZASADY:
 - parameters: tylko pola z args_schema narzędzia.
 - confidence: 0.0-1.0. Jeśli <0.6, ustaw needs_clarification=true.
 - needed_context: lista kontekstu który może być potrzebny (np. "bible", "knowhow").
+- DOPASUJ narzędzie do DOMENY pytania. Nie używaj system_logs_recent jako domyślnego dla problemów domenowych.
+  * daily report / email pipeline → daily_report_status
+  * gate / furtka / unlock → gate_status
+  * hammerhead / garmin sync / transfer → hammerhead_sync_status
+  * docs / bible / knowhow → canonical_docs
+- Jeśli narzędzie z available_tools pasuje do domeny, UŻYJ go. Nie wybieraj ogólnych narzędzi (system_logs_recent, system_env_status) gdy istnieje dedykowane narzędzie.
 """
 
 _FINAL_SYSTEM = """\

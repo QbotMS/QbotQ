@@ -68,6 +68,12 @@ class MockProvider(LLMProvider):
         elif any(k in ql for k in ("garage", "samochód", "rower")):
             intent = "garage"
             tools = ["garage_status"]
+        elif any(k in ql for k in ("furtk", "gate", "hikconnect", "otwórz bram", "gate_status")):
+            intent = "gate_status"
+            tools = ["gate_status"]
+        elif any(k in ql for k in ("hammerhead", "garmin sync", "transfer", "karoo", "activity transfer")):
+            intent = "hammerhead_sync_status"
+            tools = ["hammerhead_sync_status"]
         elif any(k in ql for k in ("raport dzienny", "daily report", "report status", "pipeline", "dlaczego email", "raport nie przeszedł")):
             intent = "daily_report_status"
             tools = ["daily_report_status"]
