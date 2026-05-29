@@ -327,30 +327,46 @@ def _extract_write_payload(action_type: str, question: str) -> dict[str, Any]:
     """Extract payload fields from a natural language write query.
 
     Uses domain-specific slot extractors from write_router.
+    Extracts from domain_task_text (control directives removed).
     """
     from qbot3.write_router import (
         extract_nutrition_slots, extract_calendar_slots,
         extract_reminder_slots, extract_planning_fact_slots,
     )
+    from qbot3.query_decomposer import decompose_query, is_payload_contaminated, clean_payload
+
+    # Decompose query first
+    decomposition = decompose_query(question)
+    domain_task = decomposition.get("domain_task_text", question)
+    control_directives = decomposition.get("control_directives", [])
+    execution_intent = decomposition.get("execution_intent", "unknown")
 
     payload: dict[str, Any] = {}
-
     if action_type == "nutrition_log_add":
-        payload = extract_nutrition_slots(question)
-        # If no food name extracted, add to payload as missing
+        payload = extract_nutrition_slots(domain_task)
         if "meal_name" not in payload and "amount" not in payload:
             quoted = re.findall(r'"([^"]+)"', question)
             if quoted:
                 payload["meal_name"] = quoted[0]
-
     elif action_type in ("calendar_event_add",):
-        payload = extract_calendar_slots(question)
-
+        payload = extract_calendar_slots(domain_task)
     elif action_type in ("reminder_add",):
-        payload = extract_reminder_slots(question)
-
+        payload = extract_reminder_slots(domain_task)
     elif action_type in ("planning_fact_add", "memory_confirmed_fact_add"):
-        payload = extract_planning_fact_slots(question)
+        payload = extract_planning_fact_slots(domain_task)
+
+    # Contamination check + clean
+    contamination = is_payload_contaminated(payload, decomposition, action_type)
+    if contamination:
+        payload = clean_payload(payload, contamination, action_type)
+        payload["_contamination_cleaned"] = True
+
+    # Attach decomposition metadata
+    payload["_decomposition"] = {
+        "execution_intent": execution_intent,
+        "control_directives": [d["text"] for d in control_directives],
+        "domain_task_text": domain_task,
+    }
 
     return payload
 

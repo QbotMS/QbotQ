@@ -68,6 +68,8 @@ def _call_tool(req_id: Any, params: dict[str, Any]) -> dict[str, Any]:
         if not query:
             return _result(req_id, {"error": "empty query"})
         result = orchestrate_query(query, context=args.get("context", ""))
+        from qbot3.response_normalizer import normalize_response
+        result = normalize_response(result)
         return _result(req_id, result)
 
     if name == "qbot.action_execute":

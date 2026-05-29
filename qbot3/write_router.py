@@ -302,66 +302,248 @@ def validate_action_type(action_type: str) -> dict[str, Any]:
             "allowed": sorted(_ACTION_ALLOWLIST)}
 
 
-# ── Action draft builder ──────────────────────────────────────────────
+# ── Action contracts ──────────────────────────────────────────────────
+# Each contract defines what qbot.action_execute requires to execute.
 
-_ACTION_SCHEMAS: dict[str, dict[str, Any]] = {
+_ACTION_CONTRACTS: dict[str, dict[str, Any]] = {
     "nutrition_log_add": {
-        "required": [],
-        "optional": ["meal_name", "food_name", "amount", "unit", "kcal_total",
-                     "protein_g", "carbs_g", "fat_g", "template_id",
-                     "nutrients_unknown", "requires_lookup"],
-        "description": "Log a meal entry",
+        "required_fields": ["meal_name"],
+        "optional_fields": ["food_name", "amount", "unit", "kcal_total",
+                            "protein_g", "carbs_g", "fat_g", "template_id",
+                            "nutrients_unknown", "requires_lookup"],
+        "forbidden_fields": [],
+        "semantic_requirements": [
+            "if amount provided, meal_name must also be provided",
+            "if query mentions food, meal_name must contain that food",
+            "nutrients_unknown=true when no kcal lookup available",
+        ],
+        "entity_retention": [
+            "food_name or meal_name must retain the food type from query",
+            "amount+unit must retain quantity from query if provided",
+        ],
+        "date_time_requirements": [],
+        "destructive": False,
+        "description": "Log a meal entry. food_name/meal_name jest wymagane.",
     },
     "calendar_event_add": {
-        "required": ["title"],
-        "optional": ["date_start", "date_end", "time_start", "description", "event_type", "all_day"],
-        "description": "Add a calendar event",
+        "required_fields": ["title"],
+        "optional_fields": ["date_start", "date_end", "time_start",
+                            "description", "event_type", "all_day"],
+        "forbidden_fields": [],
+        "semantic_requirements": [
+            "date_start always required for calendar events",
+            "if query specifies time, time_start must be present or missing_fields",
+            "timezone=Europe/Warsaw assumed",
+        ],
+        "entity_retention": [
+            "title must retain event name from query",
+        ],
+        "date_time_requirements": [
+            "date_start: ISO 8601 or relative (jutro → +1 day)",
+        ],
+        "always_require": ["date_start"],
+        "destructive": False,
+        "description": "Add a calendar event. title + date_start wymagane do wykonania.",
     },
     "reminder_add": {
-        "required": ["title"],
-        "optional": ["date", "time", "message"],
-        "description": "Add a reminder",
+        "required_fields": ["title"],
+        "optional_fields": ["date", "time", "message"],
+        "forbidden_fields": [],
+        "semantic_requirements": [
+            "if query specifies time, time must be in payload",
+            "title/message must contain the action to be reminded about",
+        ],
+        "entity_retention": [
+            "title or message must retain the reminder action from query",
+        ],
+        "date_time_requirements": [
+            "date: ISO 8601 or relative (jutro → +1 day)",
+        ],
+        "destructive": False,
+        "description": "Add a reminder. title + date wymagane do wykonania.",
     },
     "planning_fact_add": {
-        "required": ["title"],
-        "optional": ["fact_type", "date", "fact_json"],
-        "description": "Save a planning fact",
+        "required_fields": ["title"],
+        "optional_fields": ["fact_type", "date", "fact_json"],
+        "forbidden_fields": [],
+        "semantic_requirements": [
+            "title must retain the fact content from query",
+        ],
+        "entity_retention": [
+            "title must retain the fact content from query",
+        ],
+        "date_time_requirements": [],
+        "destructive": False,
+        "description": "Save a planning fact. title (treść faktu) wymagane.",
     },
     "memory_confirmed_fact_add": {
-        "required": ["key", "value"],
-        "optional": ["memory_type"],
-        "description": "Save a confirmed fact to memory",
+        "required_fields": ["key", "value"],
+        "optional_fields": ["memory_type"],
+        "forbidden_fields": [],
+        "semantic_requirements": [
+            "key must encode the fact domain",
+            "value must encode the fact content",
+        ],
+        "entity_retention": [],
+        "date_time_requirements": [],
+        "destructive": False,
+        "description": "Save a confirmed fact. key+value wymagane.",
     },
     "qbot_doc_append": {
-        "required": ["target_document", "content_markdown"],
-        "optional": ["heading"],
-        "description": "Append content to a QBot document",
+        "required_fields": ["target_document", "content_markdown"],
+        "optional_fields": ["heading"],
+        "forbidden_fields": [],
+        "semantic_requirements": [
+            "target_document must be an allowed doc name",
+            "content_markdown must be non-empty",
+        ],
+        "entity_retention": [],
+        "date_time_requirements": [],
+        "destructive": False,
+        "description": "Append to a QBot doc. target_document + content wymagane.",
     },
 }
 
 
-def get_action_schema(action_type: str) -> dict[str, Any] | None:
-    return _ACTION_SCHEMAS.get(action_type)
+def get_action_contract(action_type: str) -> dict[str, Any] | None:
+    return _ACTION_CONTRACTS.get(action_type)
 
+
+# ── Draft self-review / contract validation ───────────────────────────
+
+def draft_self_review(action_type: str, payload: dict[str, Any], question: str,
+                      decomposition: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Validate a draft against its action contract.
+
+    Returns:
+      review_status: "approved" | "needs_clarification" | "incomplete"
+      missing_fields: list of fields that must be provided
+      semantic_issues: list of semantic requirement violations
+      ready_for_execute: True/False
+    """
+    contract = _ACTION_CONTRACTS.get(action_type)
+    if not contract:
+        return {"review_status": "approved", "ready_for_execute": True,
+                "missing_fields": [], "semantic_issues": []}
+
+    ql = question.lower()
+    missing = []
+    semantic_issues = []
+
+    # 1. Check required fields
+    for field in contract.get("required_fields", []):
+        if not payload.get(field):
+            missing.append(field)
+
+    # 2. Entity retention: check that query entities made it to payload
+    for rule in contract.get("entity_retention", []):
+        if "food" in rule and action_type == "nutrition_log_add":
+            food_words = ["ryż", "truskawk", "makaron", "mięso", "kurczak", "jajk",
+                          "mleko", "chleb", "ser", "banan", "jabłk", "pomidor",
+                          "płatki", "owsian", "brokuł", "szpinak", "ziemniak", "sałat"]
+            mentioned = [fw for fw in food_words if fw in ql]
+            if mentioned:
+                pn = (payload.get("meal_name") or "").lower()
+                pfn = (payload.get("food_name") or "").lower()
+                if not any(m in pn or m in pfn for m in mentioned):
+                    if "meal_name" not in missing:
+                        missing.append("meal_name")
+                    semantic_issues.append(f"food_name_lost: query mentions {mentioned[-1]} but payload has no food name")
+
+        if "title" in rule and action_type in ("calendar_event_add", "reminder_add", "planning_fact_add"):
+            has_title = bool(payload.get("title"))
+            # If query has specific words but no title extracted
+            if not has_title:
+                # Check if the query had content that should've become a title
+                content_words = [w for w in ql.split() if len(w) > 3]
+                task_words = {"dodaj", "zapisz", "zaplanuj", "przypomnij", "event", "kalendarz",
+                              "action_draft", "zapisu", "wykonania", "bez", "jako"}
+                meaningful = [w for w in content_words if w not in task_words]
+                if len(meaningful) >= 2 and "title" not in missing:
+                    missing.append("title")
+                    semantic_issues.append(f"title_missing: query has content but no title extracted")
+
+    # 3. Semantic requirements
+    for req in contract.get("semantic_requirements", []):
+        if "meal_name" in req and "amount" in req:
+            if payload.get("amount") is not None and not payload.get("meal_name") and "meal_name" not in missing:
+                missing.append("meal_name")
+                semantic_issues.append("amount_without_meal_name")
+
+        if "query mentions food" in req and action_type == "nutrition_log_add":
+            food_words = ["ryż", "truskawk", "makaron", "mięso", "kurczak", "jajk"]
+            if any(fw in ql for fw in food_words):
+                pn = (payload.get("meal_name") or "").lower()
+                if not any(fw in pn for fw in food_words):
+                    if "meal_name" not in missing:
+                        missing.append("meal_name")
+                        semantic_issues.append("food_mentioned_but_not_in_payload")
+
+        if "date_start always required" in req and action_type == "calendar_event_add":
+            if not payload.get("date_start") and "date_start" not in missing:
+                missing.append("date_start")
+                if any(w in ql for w in ("jutro", "dzisiaj", "pojutrze", "202")):
+                    semantic_issues.append("date_mentioned_but_not_resolved")
+
+        if "time must be in payload" in req and "reminder" in action_type:
+            if re.search(r'\d{1,2}:\d{2}', ql) and not payload.get("time"):
+                semantic_issues.append("time_mentioned_but_not_extracted")
+
+    # 4. Contamination check — if decomposition provided
+    if decomposition:
+        from qbot3.query_decomposer import is_payload_contaminated
+        contamination_warnings = is_payload_contaminated(payload, decomposition, action_type)
+        if contamination_warnings:
+            for w in contamination_warnings:
+                semantic_issues.append(w)
+            # If contaminated, don't approve regardless of other checks
+            if missing:
+                ready = False
+                status = "needs_clarification"
+            else:
+                ready = False
+                status = "incomplete"
+
+    # 5. Determine status
+    if not missing and not semantic_issues:
+        ready = True
+        status = "approved"
+    elif not missing and semantic_issues:
+        ready = False
+        status = "needs_clarification"
+    else:
+        ready = False
+        status = "needs_clarification" if len(missing) <= 3 else "incomplete"
+
+    return {
+        "review_status": status,
+        "ready_for_execute": ready,
+        "missing_fields": missing,
+        "semantic_issues": semantic_issues,
+    }
+
+
+# ── Action draft builder (with mandatory self-review) ─────────────────
 
 def build_draft(action_type: str, payload: dict[str, Any], question: str) -> dict[str, Any]:
     from qbot3.tool_registry import _idempotency_key as _idk
 
-    schema = _ACTION_SCHEMAS.get(action_type, {})
-    required = schema.get("required", [])
+    # 1. Build base payload (strip decomposition metadata from payload)
+    decomposition = payload.pop("_decomposition", None) if isinstance(payload, dict) else None
+    provided = {k: v for k, v in payload.items() if v is not None and v != "" and not k.startswith("_")}
 
-    # Run quality validation
-    quality = validate_payload_quality(action_type, payload, question)
+    # 2. Mandatory self-review with decomposition
+    review = draft_self_review(action_type, provided, question, decomposition=decomposition)
+
+    # 3. Merge review findings into missing_fields
+    missing = list(dict.fromkeys(review.get("missing_fields", [])))
+
+    # 4. Quality validation
+    quality = validate_payload_quality(action_type, provided, question)
     if not quality.get("ok"):
         for issue in quality["issues"]:
-            if issue.startswith("food_name_missing") or issue.startswith("amount_without_food"):
-                # Amount without food name — add to required
-                if "meal_name" not in required:
-                    required = required + ["meal_name"]
-
-    # Detect missing fields
-    missing = [f for f in required if not payload.get(f)]
-    provided = {k: v for k, v in payload.items() if v is not None and v != ""}
+            if issue.startswith("food_name_missing") and "meal_name" not in missing:
+                missing.append("meal_name")
 
     idem_key = _idk(action_type[:8] if action_type else "wr", question)
 
@@ -373,6 +555,8 @@ def build_draft(action_type: str, payload: dict[str, Any], question: str) -> dic
         "dry_run_available": True,
         "safety_notes": [f"write action: {action_type}"],
         "human_summary": _build_human_summary(action_type, provided, question),
+        "ready_for_execute": review.get("ready_for_execute", False),
+        "contract_review": review.get("review_status", "approved"),
     }
 
     if missing:
@@ -381,6 +565,9 @@ def build_draft(action_type: str, payload: dict[str, Any], question: str) -> dic
         draft["clarification_question"] = _build_clarification(action_type, missing, question)
     else:
         draft["missing_fields"] = []
+
+    if semantic_issues := review.get("semantic_issues", []):
+        draft["semantic_issues"] = semantic_issues
 
     if quality.get("issues"):
         draft["quality_warnings"] = quality["issues"]
@@ -405,15 +592,27 @@ def _build_clarification(action_type: str, missing: list[str], question: str) ->
         "title": "tytuł",
         "date": "datę",
         "time": "godzinę",
-        "date_start": "datę rozpoczęcia",
+        "date_start": "datę/czas rozpoczęcia",
         "date_end": "datę zakończenia",
         "time_start": "godzinę rozpoczęcia",
-        "meal_name": "nazwę posiłku",
+        "meal_name": "nazwę posiłku (np. 'ryż')",
         "key": "klucz (np. nazwa faktu)",
         "value": "wartość",
         "target_document": "nazwę dokumentu docelowego",
         "content_markdown": "treść do dopisania",
     }
+    # Context-aware: if it's a calendar or reminder, group date+time
+    if action_type == "calendar_event_add":
+        if "date_start" in missing or "time_start" in missing:
+            field_strs = ["tytuł i datę/czas wydarzenia" if "title" in missing else "datę/czas wydarzenia"]
+            field_strs += [field_names_pl.get(f, f) for f in missing if f not in ("title", "date_start", "time_start")]
+            return f"Podaj {', '.join(field_strs)}."
+    elif action_type == "reminder_add":
+        if "date" in missing or "time" in missing:
+            field_strs = ["tytuł i datę/czas przypomnienia" if "title" in missing else "datę/czas przypomnienia"]
+            field_strs += [field_names_pl.get(f, f) for f in missing if f not in ("title", "date", "time")]
+            return f"Podaj {', '.join(field_strs)}."
+
     field_strs = [field_names_pl.get(f, f) for f in missing]
     if len(field_strs) == 1:
         return f"Podaj {field_strs[0]}."
