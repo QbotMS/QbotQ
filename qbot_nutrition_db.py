@@ -162,6 +162,58 @@ def meal_log_create(
                 ),
             )
         conn.commit()
+
+        # Równoległy zapis do qbot_v2
+        try:
+            import os, psycopg
+            from psycopg.rows import dict_row
+            from datetime import timezone
+            v2 = psycopg.connect(
+                host=os.getenv("PGHOST", "127.0.0.1"),
+                port=os.getenv("PGPORT", "5432"),
+                dbname=os.getenv("PGDATABASE", "qbot"),
+                user=os.getenv("PGUSER", "qbot"),
+                password=os.getenv("PGPASSWORD", ""),
+                row_factory=dict_row,
+                connect_timeout=3,
+            )
+            eaten_date = eaten_dt.date() if hasattr(eaten_dt, 'date') else eaten_dt
+            with v2:
+                v2.execute(
+                    "INSERT INTO qbot_v2.days (date) VALUES (%s) ON CONFLICT DO NOTHING",
+                    (eaten_date,)
+                )
+                v2_log = v2.execute(
+                    """INSERT INTO qbot_v2.intake_logs
+                       (date, eaten_at, meal_type, note, source, quality_status)
+                       VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+                    (eaten_date, eaten_dt, meal_type, note,
+                     'chatgpt_mcp', 'manual'),
+                ).fetchone()
+                v2_log_id = v2_log["id"]
+                for item in items:
+                    v2.execute(
+                        """INSERT INTO qbot_v2.intake_items
+                           (intake_log_id, food_name, amount, unit,
+                            kcal, protein_g, carbs_g, fat_g, fiber_g, sodium_mg)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                        (
+                            v2_log_id,
+                            item.get("food") or item.get("food_name", "unknown"),
+                            item.get("amount", 0),
+                            item.get("unit", "g"),
+                            item.get("kcal"),
+                            item.get("protein_g"),
+                            item.get("carbs_g"),
+                            item.get("fat_g"),
+                            item.get("fiber_g"),
+                            item.get("sodium_mg"),
+                        ),
+                    )
+            v2.close()
+        except Exception as _v2_err:
+            pass  # v2 zapis nigdy nie blokuje v1
+
     return get_meal_log(meal_id)
 
 
