@@ -30,70 +30,106 @@ _MODEL    = QGPT_MODEL or os.getenv("ALBERT_LLM_MODEL", "gpt-4o-mini")
 _API_KEY  = QGPT_API_KEY or os.getenv("OPENAI_API_KEY") or ANTHROPIC_API_KEY or ""
 
 def _needs_forced_final_answer(answer_text: str, tool_results_log: list[dict]) -> bool:
-    """Sprawdza czy model zakończył z pustą odpowiedzią mimo że ma dane z narzędzi.
+    """Sprawdza czy model dał złą odpowiedź mimo że ma dane z narzędzi.
 
-    Wymusza final-answer call gdy model zwrócił 'Brak danych' lub pusty string,
-    a w tool_results są rzeczywiste dane (nie błędy).
+    Odpala się gdy:
+    - odpowiedź jest pusta lub zawiera "brak danych" (stary case)
+    - odpowiedź zawiera wartości których nie ma w tool_results (halucynacja)
+    - odpowiedź jest krótka i nie zawiera żadnych wartości z tool_results (zubożenie)
+
+    Zwraca True tylko gdy w tool_results są rzeczywiste dane.
     """
     if not tool_results_log:
         return False
-    # Pusta odpowiedź lub fraza "brak danych"
-    if answer_text and "brak danych" not in answer_text.lower():
-        return False
-    # Sprawdź czy któryś tool_result ma rzeczywiste dane (nie błąd)
+
+    # Sprawdź czy któryś tool_result ma rzeczywiste dane
+    has_real_data = False
+    tool_data_values: set[str] = set()  # wartości liczbowe/tekstowe z tool_results
+
     for tr in tool_results_log:
         status = tr.get("status", "")
-        if status in ("error", "ERROR", "BLOCKED", "SCHEMA_MISMATCH", "READER_ERROR", "DATA_MISSING"):
+        if status in ("error", "ERROR", "BLOCKED", "SCHEMA_MISMATCH",
+                      "READER_ERROR", "DATA_MISSING", "CONNECTOR_MISSING"):
             continue
         data = tr.get("data", {})
-        if isinstance(data, dict):
-            # Ma klucze poza standardowymi meta-polami
-            meaningful = {k for k in data if k not in ("status", "tool", "safety_class", "reader", "category")}
-            if meaningful:
-                return True
+        flat = _flatten_tool_result(tr.get("reader", "?"), data) if isinstance(data, dict) else {}
+        meaningful = {k for k in flat if k not in ("status", "tool", "safety_class", "reader")}
+        if meaningful:
+            has_real_data = True
+            for v in flat.values():
+                if isinstance(v, (int, float)):
+                    tool_data_values.add(str(round(float(v), 1)))
+                elif isinstance(v, str) and v:
+                    tool_data_values.add(v.lower()[:30])
+
+    if not has_real_data:
+        return False
+
+    # Case 1: pusta odpowiedź lub "brak danych"
+    if not answer_text or "brak danych" in answer_text.lower():
+        return True
+
+    # Case 2: odpowiedź jest bardzo krótka i nie zawiera żadnych wartości z tool_results
+    if len(answer_text) < 80 and tool_data_values:
+        answer_lower = answer_text.lower()
+        if not any(v in answer_lower for v in tool_data_values):
+            _log.info(f"Albert: short answer without tool values — forcing. answer='{answer_text[:60]}'")
+            return True
+
     return False
 
 
 def _flatten_tool_result(tool_name: str, result: Any) -> dict:
     """Wypłaszcza wynik toola do formatu czytelnego dla modelu.
 
-    Modele OpenAI-compatible oczekują że content w role=tool to
-    bezpośredni wynik narzędzia — nie wrapper {reader, status, data}.
+    Obsługuje dwa formaty zwracane przez narzędzia QBot3:
+    - Format A (success_result): {"status": "OK", "data": {"ftp_watts": 245.2, ...}}
+    - Format B (bezpośredni):    {"status": "OK", "ftp_watts": 245.2, ...}
+
+    W obu przypadkach Albert dostaje płaski dict z danymi na poziomie głównym.
     """
     if not isinstance(result, dict):
         return {"tool": tool_name, "result": str(result)}
 
     status = result.get("status", "OK")
+    _meta_keys = frozenset({
+        "status", "tool", "safety_class", "reader", "category",
+        "_rows_truncated", "_events_truncated", "_documents_truncated",
+        "args_schema", "mode", "notes",
+    })
 
-    # Przypadek błędu — zachowaj komunikat
+    # Błąd — zwróć komunikat bez danych
     if status not in ("OK", "ok", "READY_WITH_WARNINGS"):
         error_msg = (
             result.get("error")
             or result.get("message")
-            or (result.get("data", {}).get("error", "") if isinstance(result.get("data"), dict) else "")
+            or (result.get("data", {}).get("error") if isinstance(result.get("data"), dict) else None)
             or str(status)
         )
-        return {
-            "tool": tool_name,
-            "status": status,
-            "error": error_msg,
-        }
+        return {"tool": tool_name, "status": status, "error": error_msg}
 
-    # Przypadek sukcesu — wypłaszcz data na poziom główny
-    data = result.get("data", {})
-    if isinstance(data, dict):
+    # Sukces — wykryj format i wypłaszcz
+    data = result.get("data")
+
+    if isinstance(data, dict) and data:
+        # Format A: dane są w result["data"]
         flat: dict[str, Any] = {"tool": tool_name, "status": "OK"}
-        skip = {"status", "tool", "safety_class", "_rows_truncated", "_events_truncated",
-                "_documents_truncated", "reader", "category", "args_schema", "mode", "notes"}
         for k, v in data.items():
-            if k not in skip:
+            if k not in _meta_keys:
                 flat[k] = v
+        # Jeśli data był pusty lub same meta-klucze, sprawdź też poziom główny
+        if len(flat) <= 2:  # tylko tool + status
+            for k, v in result.items():
+                if k not in _meta_keys and k != "data":
+                    flat[k] = v
         return flat
 
-    # Fallback — zwróć oryginalny result bez wrappera reader/category
+    # Format B: dane są bezpośrednio w result (lub data jest null/lista)
     flat = {"tool": tool_name, "status": "OK"}
+    if isinstance(data, list):
+        flat["data"] = data  # lista zostaje jako lista
     for k, v in result.items():
-        if k not in ("reader", "category", "safety_class"):
+        if k not in _meta_keys and k != "data":
             flat[k] = v
     return flat
 
@@ -112,6 +148,8 @@ Reguły bezpieczeństwa:
 - Odczyt danych → wywołaj narzędzia i odpowiedz na podstawie wyników.
 - Jeśli nie masz danych, powiedz wprost "brak danych" zamiast "nie mam dostępu".
 - Po otrzymaniu wyniku narzędzia użyj go do odpowiedzi. Jeśli tool zwrócił dane, NIE mów "brak danych".
+- Po otrzymaniu wyników narzędzi nie ograniczaj się do statusu OK. Wypisz najważniejsze wartości, daty, statusy i ostrzeżenia z danych narzędzia, a następnie dodaj krótki komentarz interpretacyjny. Komentarz ma być oparty wyłącznie na danych z narzędzi i kontekście użytkownika. Jeśli brakuje danych do pełnej oceny, powiedz to wprost.
+- Nie wymyślaj metryk, procentów, dat ani wartości, których nie ma w wynikach narzędzi. Możesz dodać komentarz interpretacyjny, ale musi być jawnie oparty na danych z tool_results. Jeśli chcesz skomentować form_status='Very fresh', użyj tej wartości, nie zamieniaj jej na procenty.
 - Przy DB: jeśli nie znasz schematu, najpierw wywołaj db_schema_list, potem db_table_describe,
   potem db_select_readonly z konkretnym SQL.
 - Nie dodawaj narzędzi "na próbę" — każde narzędzie musi mieć kompletne argumenty.
@@ -202,15 +240,36 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict) -
 
             # Jeśli model skończył z pustą odpowiedzią mimo danych → wymuś final answer
             if _needs_forced_final_answer(answer_text, tool_results_log):
-                _log.info("Albert forcing final answer without tools")
-                messages.append({
-                    "role": "user",
-                    "content": (
-                        "Masz powyżej wyniki narzędzi. "
-                        "Odpowiedz użytkownikowi po polsku na podstawie tych danych. "
-                        "Jeśli wynik narzędzia zawiera dane, NIE mów 'brak danych'."
-                    ),
-                })
+                _log.info("Albert forcing final answer — injecting tool data explicitly")
+
+                # Zbuduj jawny, skondensowany blok danych z tool_results
+                data_blocks = []
+                for tr in tool_results_log:
+                    tr_status = tr.get("status", "")
+                    if tr_status in ("error", "ERROR", "BLOCKED", "SCHEMA_MISMATCH",
+                                     "READER_ERROR", "DATA_MISSING", "CONNECTOR_MISSING"):
+                        continue
+                    flat = _flatten_tool_result(tr.get("reader", "unknown"), tr.get("data", {}))
+                    data_blocks.append(flat)
+
+                if data_blocks:
+                    data_json = json.dumps(data_blocks, ensure_ascii=False, default=str, indent=2)
+                    forced_prompt = (
+                        f"Wyniki narzędzi:\n{data_json}\n\n"
+                        "Odpowiedz użytkownikowi po polsku na podstawie POWYŻSZYCH DANYCH.\n"
+                        "Wypisz wszystkie wartości liczbowe, daty i statusy które są w danych.\n"
+                        "Dodaj krótki komentarz jakościowy oparty wyłącznie na tych wartościach.\n"
+                        "NIE dodawaj liczb, procentów ani wartości których nie ma w danych.\n"
+                        "NIE mów 'brak danych' jeśli dane są powyżej."
+                    )
+                else:
+                    forced_prompt = (
+                        "Narzędzia nie zwróciły użytecznych danych. "
+                        "Odpowiedz użytkownikowi po polsku i powiedz wprost, "
+                        "że dane są niedostępne i z jakiego powodu."
+                    )
+
+                messages.append({"role": "user", "content": forced_prompt})
                 try:
                     final_response = client.chat.completions.create(
                         model=_MODEL,
@@ -221,7 +280,7 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict) -
                     forced_answer = (final_response.choices[0].message.content or "").strip()
                     if forced_answer:
                         answer_text = forced_answer
-                        _log.info(f"Albert forced answer obtained: len={len(answer_text)}")
+                        _log.info(f"Albert forced answer: len={len(answer_text)}")
                 except Exception as exc:
                     _log.error(f"Albert forced final answer error: {exc}")
 

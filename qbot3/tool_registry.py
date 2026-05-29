@@ -394,6 +394,7 @@ def _load_nutrition_range_summary_tool() -> dict[str, Any]:
         "description": "Nutrition summary for a date range — total kcal, macros, meal count. Parameters: date_from (ISO), date_to (ISO)",
         "args_schema": {"date_from": {"type": "string"}, "date_to": {"type": "string"}},
         "safety": "read",
+        "status": "legacy",
     }
 
 
@@ -771,8 +772,8 @@ def _load_nutrition_balance_today_tool() -> dict[str, Any]:
         "args_schema": {"date": {"type": "string"}},
         "safety": "read",
         "mode": "read_only",
-        "status": "implemented",
-        "notes": "Combines nutrition intake with Garmin energy data",
+        "status": "legacy",
+        "notes": "Legacy — use db_schema_list + db_select_readonly instead",
     }
 
 
@@ -809,8 +810,8 @@ def _load_garmin_energy_today_tool() -> dict[str, Any]:
         "args_schema": {"date": {"type": "string"}},
         "safety": "read",
         "mode": "read_only",
-        "status": "implemented",
-        "notes": "Queries qbot_wellness_daily for Garmin data",
+        "status": "legacy",
+        "notes": "Legacy — use db_schema_list + db_select_readonly instead",
     }
 
 
@@ -1103,7 +1104,11 @@ def _load_db_schema_list_tool() -> dict[str, Any]:
     return {
         "callable": lambda args: db_schema_list(args),
         "category": "db",
-        "description": "List all database schemas and their tables. No args needed.",
+        "description": (
+            "Lista tabel w bazie danych. Wywołaj to jako pierwszy krok gdy potrzebujesz "
+            "danych użytkownika (nutrition, kalendarz, wellness, trasy, sprzęt) "
+            "i nie znasz jeszcze nazw tabel. Parametry: schema (domyślnie 'public')."
+        ),
         "args_schema": {},
         "safety": "read",
         "mode": "read_only",
@@ -1115,7 +1120,11 @@ def _load_db_table_describe_tool() -> dict[str, Any]:
     return {
         "callable": lambda args: db_table_describe(args),
         "category": "db",
-        "description": "Describe columns of a table: name, type, nullable, default, is_pk. Parameters: table (required), schema (default: public)",
+        "description": (
+            "Kolumny i typy danych tabeli. Wywołaj po db_schema_list aby poznać "
+            "dostępne kolumny przed budowaniem zapytania SQL. "
+            "Parametry: table (nazwa tabeli), schema (domyślnie 'public')."
+        ),
         "args_schema": {"table": {"type": "string"}, "schema": {"type": "string"}},
         "safety": "read",
         "mode": "read_only",
@@ -1139,7 +1148,12 @@ def _load_db_select_readonly_tool() -> dict[str, Any]:
     return {
         "callable": lambda args: db_select_readonly(args),
         "category": "db",
-        "description": "Execute a read-only SELECT query. This is the default source of truth for ordinary data questions. Only SELECT allowed, LIMIT enforced. Parameters: sql (required)",
+        "description": (
+            "Wykonaj bezpieczne zapytanie SELECT na bazie danych. "
+            "Użyj do pobrania danych nutrition, kalendarza, wellness, tras, sprzętu. "
+            "Zawsze sprawdź kolumny przez db_table_describe przed użyciem. "
+            "Parametry: sql (zapytanie SELECT, bez modyfikacji danych)."
+        ),
         "args_schema": {"sql": {"type": "string"}},
         "safety": "read",
         "mode": "read_only",
@@ -1251,5 +1265,5 @@ def tool_descriptions() -> list[dict[str, Any]]:
             "notes": spec.get("notes", ""),
         }
         for name, spec in sorted(_TOOL_REGISTRY.items())
-        if "error" not in spec
+        if "error" not in spec and spec.get("status") != "legacy"
     ]
