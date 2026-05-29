@@ -44,7 +44,8 @@ class AnswerResult:
 
 class LLMProvider(ABC):
     @abstractmethod
-    def plan(self, context: dict[str, Any], tools_desc: list[dict[str, Any]], user_message: str) -> PlanResult:
+    def plan(self, context: dict[str, Any], tools_desc: list[dict[str, Any]], user_message: str,
+             tool_results: list[dict[str, Any]] | None = None) -> PlanResult:
         ...
 
     @abstractmethod

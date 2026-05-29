@@ -19,9 +19,151 @@ from qbot3.plan_validator import validate_plan
 from qbot3.observability import log_request, Timer, request_id as rid
 
 
+def _execute_single_tool(tool_name: str, args: dict) -> dict:
+    """Wykonuje jedno narzędzie wskazane przez Alberta.
+
+    Używane przez albert.run() jako execute_tool_fn.
+    Pilnuje bezpieczeństwa: blokuje write tools przez qbot.query.
+    """
+    from qbot3.errors import SAFETY_BLOCKED
+    from qbot3.tool_registry import list_write_tools
+
+    write_tools = list_write_tools()
+    if tool_name in write_tools:
+        return {
+            "status": SAFETY_BLOCKED,
+            "error": f"Tool '{tool_name}' jest write-only. Użyj qbot.action_execute z confirm=true.",
+        }
+
+    spec = lookup(tool_name)
+    if not spec:
+        return {"status": "error", "error": f"Nieznane narzędzie: {tool_name}"}
+
+    callable_fn = spec.get("callable")
+    wrapped = spec.get("wrapped")
+
+    if not callable_fn:
+        return {"status": "error", "error": f"Tool '{tool_name}' nie ma callable"}
+
+    try:
+        if wrapped:
+            return callable_fn(wrapped, args)
+        else:
+            return callable_fn(args)
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)[:400]}
+
+
 def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> dict[str, Any]:
+    """QBot3 agent loop — Albert jako natywny tool-calling agent.
+
+    Przepływ:
+      pytanie → Albert (tool_calls loop, max 5 kroków) → odpowiedź tekstem
+
+    Bez plan()+answer(). Bez JSON parsowania. Bez domenowych routerów.
+    """
     _check_qbot3_enabled()
-    from qbot3.errors import OK, ERROR, PLAN_INVALID, CAPABILITY_MISSING, PROVIDER_ERROR
+
+    # Fallback do legacy loop dla testów z mock providerem
+    if os.getenv("ALBERT_LLM_PROVIDER") == "mock":
+        return _orchestrate_query_legacy(question, context, max_rows)
+
+    from qbot3.errors import OK, ERROR
+
+    timer = Timer()
+    timer.start()
+    req_id = rid()
+    provider_name = os.getenv("ALBERT_LLM_PROVIDER", "openai")
+    model_name = os.getenv("QGPT_MODEL") or os.getenv("ALBERT_LLM_MODEL", "")
+
+    ctx = build_context(question)
+
+    # ── Bezpieczeństwo: blokuj destrukcyjne zapytania przed LLM ─────────────
+    if _is_destructive_query(question):
+        result = _build_response(
+            ctx,
+            status="BLOCKED",
+            answer="Destrukcyjne operacje są zablokowane.",
+            limitations=["destructive_blocked"],
+        )
+        result["request_id"] = req_id
+        return result
+
+    # ── Przygotuj listę tools dla Alberta ───────────────────────────────────
+    from qbot3.llm.albert import run as albert_run, build_tools_spec
+
+    tools_desc = tool_descriptions()
+    tools_spec = build_tools_spec(tools_desc)
+
+    # ── Uruchom Alberta ─────────────────────────────────────────────────────
+    albert_result = albert_run(
+        question=question,
+        tools_spec=tools_spec,
+        execute_tool_fn=_execute_single_tool,
+        context=ctx,
+    )
+
+    answer = albert_result.get("answer", "")
+    status = albert_result.get("status", "ok")
+    tool_results = albert_result.get("tool_results", [])
+    action_draft = albert_result.get("action_draft")
+    steps = albert_result.get("steps", 0)
+
+    if not answer:
+        answer = "Brak odpowiedzi od Alberta."
+        status = "error"
+
+    # ── Mapuj status na format oczekiwany przez MCP adapter ─────────────────
+    if status == "draft":
+        mcp_status = "draft"
+    elif status == "error":
+        mcp_status = ERROR
+    elif status == "partial":
+        mcp_status = "partial"
+    else:
+        mcp_status = OK
+
+    # Zbuduj plan-like summary (dla loggingu i trace)
+    pseudo_plan = {
+        "intent": f"albert_native_step_{steps}",
+        "mode": "write" if action_draft else "read_only",
+        "tools_to_call": [r["reader"] for r in tool_results],
+    }
+
+    try:
+        log_request(
+            req_id, provider_name, model_name,
+            pseudo_plan["mode"], pseudo_plan["intent"],
+            pseudo_plan["tools_to_call"], pseudo_plan["tools_to_call"],
+            False, mcp_status, "", timer.elapsed_ms(),
+        )
+    except Exception:
+        pass
+
+    response = _build_response(
+        ctx,
+        status=mcp_status,
+        answer=answer,
+        plan=pseudo_plan,
+        tool_results=tool_results,
+        limitations=[],
+        confidence="high" if steps <= 2 else "medium",
+    )
+    response["request_id"] = req_id
+    if action_draft:
+        response["action_draft"] = action_draft
+        response["status"] = "draft"
+
+    return response
+
+
+def _orchestrate_query_legacy(question: str, context: str = "", max_rows: int = 500) -> dict[str, Any]:
+    """Legacy agent loop — używane tylko dla ALBERT_LLM_PROVIDER=mock (testy).
+
+    Ten sam wielokrokowy przepływ co wcześniej, ale przez LLM provider interface.
+    """
+    _check_qbot3_enabled()
+    from qbot3.errors import OK, ERROR, PLAN_INVALID, CAPABILITY_MISSING
 
     timer = Timer()
     timer.start()
@@ -31,126 +173,110 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
 
     ctx = build_context(question)
 
-    # ── Pre-layer: only context injection, safety envelope, destructive block ──
-    # NO intent routing — Albert decides everything.
-
-    # Destructive block (pure safety, not routing)
     if _is_destructive_query(question):
         result = _build_response(ctx, status="BLOCKED", answer="Destrukcyjne operacje są zablokowane. Wymagają osobnej zgody.",
                                 limitations=["destructive_blocked"])
         result["request_id"] = req_id
         return result
 
-    # ── LLM-first: Albert decides intent, mode, write vs read ────────────────
     llm = get_llm_provider()
     tools_desc = tool_descriptions()
+    MAX_STEPS = 4
+    all_tool_results: list[dict[str, Any]] = []
 
     plan_result = llm.plan(ctx, tools_desc, question)
-    plan = _normalize_plan(plan_result)
+    current_plan = _normalize_plan(plan_result)
 
-    if not plan:
+    if not current_plan:
         result = _build_response(ctx, status=ERROR, answer="Nie mogę zaplanować zapytania.", limitations=["invalid_plan"])
         _log(req_id, provider_name, model_name, "unknown", "", [], [], False, ERROR, "plan_generation", timer.elapsed_ms())
         result["request_id"] = req_id
         return result
 
-    # ── Plan validation ──────────────────────────────────────────────────────
-    validation = validate_plan(plan)
-    if validation.get("status") == CAPABILITY_MISSING:
-        intent = plan.get("intent", "")
-        answer = f"Brak capability dla '{intent}'. "
-        proposal = validation.get("capability_proposal", {})
-        if proposal.get("capability_found"):
-            answer += f"Znaleziono capability '{proposal.get('needed_capability', '')}', ale nie jest aktywna."
-        else:
-            answer += f"Propozycja: utwórz capability '{intent.replace(' ', '_')}'."
-        result = _build_response(ctx, status=CAPABILITY_MISSING, answer=answer,
-                                plan=plan, limitations=["capability_missing"])
-        _log(req_id, provider_name, model_name, plan.get("mode", "unknown"), plan.get("intent", ""),
-             plan.get("tools_to_call", []), [], False, CAPABILITY_MISSING, "capability_missing", timer.elapsed_ms())
-        result["request_id"] = req_id
-        return result
+    for step in range(1, MAX_STEPS + 1):
+        plan = current_plan
+        validation = validate_plan(plan)
+        if validation.get("status") == CAPABILITY_MISSING:
+            intent = plan.get("intent", "")
+            answer = f"Brak capability dla '{intent}'. "
+            proposal = validation.get("capability_proposal", {})
+            if proposal.get("capability_found"):
+                answer += f"Znaleziono capability '{proposal.get('needed_capability', '')}', ale nie jest aktywna."
+            else:
+                answer += f"Propozycja: utwórz capability '{intent.replace(' ', '_')}'."
+            result = _build_response(ctx, status=CAPABILITY_MISSING, answer=answer, plan=plan, limitations=["capability_missing"])
+            _log(req_id, provider_name, model_name, plan.get("mode", "unknown"), plan.get("intent", ""),
+                 plan.get("tools_to_call", []), [], False, CAPABILITY_MISSING, "capability_missing", timer.elapsed_ms())
+            result["request_id"] = req_id
+            return result
 
-    if validation.get("status") != OK:
-        result = _build_response(ctx, status=validation.get("status", ERROR), answer=f"Plan odrzucony: {validation.get('error', 'validation failed')}",
-                                plan=plan, limitations=[f"plan_validation: {validation.get('status', 'FAILED')}"])
-        _log(req_id, provider_name, model_name, plan.get("mode", "unknown"), plan.get("intent", ""),
-             plan.get("tools_to_call", []), [], False, validation.get("status", ERROR), "plan_validation", timer.elapsed_ms())
-        result["request_id"] = req_id
-        return result
+        if validation.get("status") != OK:
+            result = _build_response(ctx, status=validation.get("status", ERROR), answer=f"Plan odrzucony: {validation.get('error', 'validation failed')}",
+                                     plan=plan, limitations=[f"plan_validation: {validation.get('status', 'FAILED')}"])
+            _log(req_id, provider_name, model_name, plan.get("mode", "unknown"), plan.get("intent", ""),
+                 plan.get("tools_to_call", []), [], False, validation.get("status", ERROR), "plan_validation", timer.elapsed_ms())
+            result["request_id"] = req_id
+            return result
 
-    if plan["needs_clarification"]:
-        result = _build_response(ctx, status="clarify", answer=plan.get("clarification_question") or "Doprecyzuj pytanie.", plan=plan)
-        _log(req_id, provider_name, model_name, plan.get("mode", "read_only"), plan.get("intent", ""),
-             plan.get("tools_to_call", []), [], False, "clarify", "", timer.elapsed_ms())
-        result["request_id"] = req_id
-        return result
+        if plan.get("needs_clarification"):
+            result = _build_response(ctx, status="clarify", answer=plan.get("clarification_question") or "Doprecyzuj pytanie.", plan=plan)
+            _log(req_id, provider_name, model_name, plan.get("mode", "read_only"), plan.get("intent", ""),
+                 plan.get("tools_to_call", []), [], False, "clarify", "", timer.elapsed_ms())
+            result["request_id"] = req_id
+            return result
 
-    if plan["mode"] == "write":
-        result = _handle_write(ctx, plan)
-        _log(req_id, provider_name, model_name, "write", plan.get("intent", ""),
-             plan.get("tools_to_call", []), [], False, result.get("status", "draft"), "", timer.elapsed_ms())
-        result["request_id"] = req_id
-        return result
+        if plan["mode"] == "write":
+            result = _handle_write(ctx, plan)
+            _log(req_id, provider_name, model_name, "write", plan.get("intent", ""),
+                 plan.get("tools_to_call", []), [], False, result.get("status", "draft"), "", timer.elapsed_ms())
+            result["request_id"] = req_id
+            return result
 
-    if plan["mode"] == "plan_only":
-        result = _build_response(ctx, status=OK, answer=f"Plan: intent={plan['intent']}, tools={plan.get('tools_to_call', [])}", plan=plan)
-        _log(req_id, provider_name, model_name, "plan_only", plan.get("intent", ""),
-             plan.get("tools_to_call", []), [], False, OK, "", timer.elapsed_ms())
-        result["request_id"] = req_id
-        return result
+        if plan["mode"] == "plan_only":
+            result = _build_response(ctx, status=OK, answer=f"Plan: intent={plan['intent']}, tools={plan.get('tools_to_call', [])}", plan=plan)
+            _log(req_id, provider_name, model_name, "plan_only", plan.get("intent", ""),
+                 plan.get("tools_to_call", []), [], False, OK, "", timer.elapsed_ms())
+            result["request_id"] = req_id
+            return result
 
-    if plan["mode"] == "read_only" and not plan.get("tools_to_call"):
-        answer_result = llm.answer(ctx, plan, [])
-        result = _build_response(
-            ctx,
-            status=answer_result.status,
-            answer=answer_result.answer,
-            plan=plan,
-            tool_results=[],
-            missing=answer_result.missing_fields,
-            limitations=answer_result.limitations,
-            final_llm=answer_result.raw,
-            confidence=answer_result.confidence,
-        )
-        _log(req_id, provider_name, model_name, plan.get("mode", "read_only"), plan.get("intent", ""),
-             [], [], False, answer_result.status, "", timer.elapsed_ms())
-        result["request_id"] = req_id
-        return result
+        if not plan.get("tools_to_call"):
+            answer_result = llm.answer(ctx, plan, all_tool_results)
+            result = _build_response(ctx, status=answer_result.status, answer=answer_result.answer, plan=plan,
+                                     tool_results=all_tool_results, missing=answer_result.missing_fields,
+                                     limitations=answer_result.limitations, final_llm=answer_result.raw,
+                                     confidence=answer_result.confidence)
+            all_called = [r.get("reader", "") for r in all_tool_results]
+            _log(req_id, provider_name, model_name, plan.get("mode", "read_only"), plan.get("intent", ""),
+                 plan.get("tools_to_call", []), all_called, False, answer_result.status, "", timer.elapsed_ms())
+            result["request_id"] = req_id
+            return result
 
-    tool_results = _execute_tools(plan["tools_to_call"], plan.get("parameters", {}), question)
+        step_results = _execute_tools(plan["tools_to_call"], plan.get("parameters", {}), question)
+        all_tool_results.extend(step_results)
 
-    if not tool_results:
-        result = _build_response(ctx, status=ERROR, answer="Nie znaleziono narzędzi do wykonania.", plan=plan, limitations=["no_tools_executed"])
-        _log(req_id, provider_name, model_name, plan.get("mode", "read_only"), plan.get("intent", ""),
-             plan.get("tools_to_call", []), [], False, ERROR, "tool_execution", timer.elapsed_ms())
-        result["request_id"] = req_id
-        return result
+        if step == MAX_STEPS:
+            all_called = [r.get("reader", "") for r in all_tool_results]
+            answer_result = llm.answer(ctx, plan, all_tool_results)
+            result = _build_response(ctx, status="partial", answer=answer_result.answer, plan=plan,
+                                     tool_results=all_tool_results, missing=answer_result.missing_fields,
+                                     limitations=answer_result.limitations + ["max_steps_reached"],
+                                     final_llm=answer_result.raw, confidence=answer_result.confidence)
+            _log(req_id, provider_name, model_name, plan.get("mode", "read_only"), plan.get("intent", ""),
+                 plan.get("tools_to_call", []), all_called, False, "partial", "", timer.elapsed_ms())
+            result["request_id"] = req_id
+            return result
 
-    if _all_tools_empty(tool_results):
-        pass
+        plan_result = llm.plan(ctx, tools_desc, question, tool_results=all_tool_results)
+        current_plan = _normalize_plan(plan_result)
 
-    # ── DB introspection fallback: if any reader returned SCHEMA_MISMATCH/READER_ERROR ──
-    # Albert described the right domain tool but the reader failed on schema.
-    # Fall back to DB introspection so Albert can still get the data.
-    if _has_reader_error(tool_results):
-        db_fallback = _try_db_introspection_fallback(plan, question)
-        if db_fallback:
-            tool_results.extend(db_fallback)
-            plan["tools_to_call"] = list(plan.get("tools_to_call", [])) + ["db_introspection_fallback"]
-            plan["db_introspection_used"] = True
-
-    tools_called = [r.get("reader", "") for r in tool_results]
-    answer_result = llm.answer(ctx, plan, tool_results)
-
-    result = _build_response(ctx, status=answer_result.status, answer=answer_result.answer, plan=plan,
-                            tool_results=tool_results, missing=answer_result.missing_fields,
-                            limitations=answer_result.limitations, final_llm=answer_result.raw,
-                            confidence=answer_result.confidence)
-    _log(req_id, provider_name, model_name, plan.get("mode", "read_only"), plan.get("intent", ""),
-         plan.get("tools_to_call", []), tools_called, False, answer_result.status, "", timer.elapsed_ms())
-    result["request_id"] = req_id
-    return result
+        if not current_plan:
+            all_called = [r.get("reader", "") for r in all_tool_results]
+            result = _build_response(ctx, status=ERROR, answer="Nie mogę zaplanować kolejnego kroku.", plan=plan,
+                                     tool_results=all_tool_results, limitations=["invalid_plan_step"])
+            _log(req_id, provider_name, model_name, plan.get("mode", "unknown"), plan.get("intent", ""),
+                 plan.get("tools_to_call", []), all_called, False, ERROR, "plan_step", timer.elapsed_ms())
+            result["request_id"] = req_id
+            return result
 
 
 def _check_qbot3_enabled() -> None:

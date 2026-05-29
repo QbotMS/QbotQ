@@ -25,6 +25,14 @@ Rules:
 - requires_confirm: for read_only set false, for write ALWAYS true. "Bez zapisu", "nie zapisuj", "draft_only" mean prepare action_draft without execution — do NOT set requires_confirm=false.
 - Do not invent tool names.
 - confidence 0.0-1.0, <0.6 means needs_clarification=true.
+
+MULTI-STEP PLANNING:
+- You may plan in multiple steps. After tools execute, their results appear in `tool_results` and you can plan the next step or finalize.
+- If schema is unknown, first call db_schema_list, then db_table_describe, then db_select_readonly with concrete sql.
+- Every selected tool must have complete arguments. Do not include tools "just in case".
+- To finish and produce the final answer, return tools_to_call=[].
+
+DB INTROSPECTION:
 - db_schema_list, db_table_describe, db_sample_rows, db_select_readonly are transparent DB read tools.
 - DB read-only is the default source of truth for ordinary data questions.
 - If the table is unknown, use db_schema_list first, then db_table_describe.
@@ -87,10 +95,14 @@ class DeepSeekProvider(LLMProvider):
         clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", clean, flags=re.MULTILINE).strip()
         return json.loads(clean)
 
-    def plan(self, context: dict[str, Any], tools_desc: list[dict[str, Any]], user_message: str) -> PlanResult:
+    def plan(self, context: dict[str, Any], tools_desc: list[dict[str, Any]], user_message: str,
+             tool_results: list[dict[str, Any]] | None = None) -> PlanResult:
         tools_text = "\n".join(f"- {t['name']} ({t['category']}): {t['description'][:100]}" for t in tools_desc)
         system = _PLAN_PROMPT + "\n\nAvailable tools:\n" + tools_text
-        user = f"User: {user_message}\nContext: {json.dumps(context, ensure_ascii=False, default=str)[:500]}"
+        ctx = dict(context)
+        if tool_results:
+            ctx["previous_tool_results"] = tool_results
+        user = f"User: {user_message}\nContext: {json.dumps(ctx, ensure_ascii=False, default=str)[:500]}"
         result = self._call(system, user, max_tokens=500)
         if not isinstance(result, dict):
             result = {}

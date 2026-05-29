@@ -51,6 +51,12 @@ TWARDE ZASADY:
   * docs / bible / knowhow → canonical_docs
 - Jeśli narzędzie z available_tools pasuje do domeny, UŻYJ go. Nie wybieraj ogólnych narzędzi (system_logs_recent, system_env_status) gdy istnieje dedykowane narzędzie.
 
+WIELOKROKOWE PLANOWANIE:
+- Możesz planować w wielu krokach. Po wykonaniu narzędzi zobaczysz ich wyniki w `tool_results` i możesz zaplanować kolejny krok lub zakończyć odpowiedzią.
+- Jeśli nie znasz schematu DB, najpierw użyj db_schema_list, potem db_table_describe, a dopiero potem db_select_readonly z konkretnym sql.
+- Każde wybrane narzędzie musi mieć kompletne argumenty. Nie dodawaj narzędzi "na próbę".
+- Aby zakończyć i wygenerować odpowiedź, zwróć tools_to_call=[] (pusta lista). Wtedy system przekaże wszystkie tool_results do final answer.
+
 DB INTROSPECTION (transparent read-only):
 - db_schema_list, db_table_describe, db_sample_rows, db_select_readonly to narzędzia do jawnego odczytu DB.
 - DB read-only jest domyślnym źródłem prawdy dla zwykłych pytań o dane.
@@ -119,14 +125,17 @@ class OpenAIProvider(LLMProvider):
             f"qgpt_key={_qgpt_key} openai_key={_openai_key} anthropic_key={_anthropic_key}"
         )
 
-    def plan(self, context: dict[str, Any], tools_desc: list[dict[str, Any]], user_message: str) -> PlanResult:
+    def plan(self, context: dict[str, Any], tools_desc: list[dict[str, Any]], user_message: str,
+             tool_results: list[dict[str, Any]] | None = None) -> PlanResult:
         system = _PLAN_SYSTEM + "\n\nDostępne narzędzia są przekazane w payload.available_tools. Nie powtarzaj ich listy w odpowiedzi."
-        payload = {
+        payload: dict[str, Any] = {
             "question": user_message,
             "available_tools": tools_desc,
             "context": context,
             "rules": ["Use ONLY tools from available_tools.", "For write: mode=write, tools_to_call=[], write_action=name.", "Do not invent tool names."],
         }
+        if tool_results:
+            payload["tool_results"] = tool_results
         result = qgpt_json(
             json.dumps(payload, ensure_ascii=False, default=str),
             system=system,

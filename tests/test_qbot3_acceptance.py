@@ -722,6 +722,100 @@ class TestDbIntrospectionFallbackNoGuessing(unittest.TestCase):
         self.assertIn("Xert", results[0]["data"].get("note", ""))
 
 
+class TestMultiStepAgentLoop(unittest.TestCase):
+    """Agent loop: Albert plans in multiple steps for DB exploration."""
+
+    @patch('qbot3.db_introspection.db_schema_list')
+    @patch('qbot3.db_introspection.db_table_describe')
+    @patch('qbot3.db_introspection.db_select_readonly')
+    def test_agent_loop_db_exploration(self, mock_select, mock_describe, mock_schema_list):
+        """DB query → agent loop discovers schema then queries."""
+        mock_schema_list.return_value = {"status": "OK", "schemas": {"public": ["calendar_events", "meal_logs"]}, "schema_count": 2}
+        mock_describe.return_value = {"status": "OK", "columns": [{"name": "id", "type": "integer"}], "column_count": 1}
+        mock_select.return_value = {"status": "OK", "rows": [{"id": 1}], "row_count": 1}
+        from qbot3.tool_registry import _TOOL_REGISTRY
+        from qbot3.agent_runtime import orchestrate_query
+        original_tools = dict(_TOOL_REGISTRY)
+        try:
+            result = orchestrate_query("pokaż tabelę calendar_events")
+            self.assertIsInstance(result, dict)
+            plan = result.get("plan", {})
+            self.assertEqual(plan.get("mode"), "read_only")
+            tr = result.get("tool_results", [])
+            readers = [r.get("reader", "") for r in tr]
+            # Should have results from executed tools
+            self.assertGreater(len(readers), 0, f"No tools executed. Got readers: {readers}")
+            self.assertNotIn("sql required", str(result).lower())
+        finally:
+            _TOOL_REGISTRY.clear()
+            _TOOL_REGISTRY.update(original_tools)
+
+    @patch('qbot3.db_introspection.db_schema_list')
+    @patch('qbot3.db_introspection.db_table_describe')
+    @patch('qbot3.db_introspection.db_select_readonly')
+    def test_agent_loop_stops_after_max_steps(self, mock_select, mock_describe, mock_schema_list):
+        """Agent loop returns partial after max_steps if planner never finishes."""
+        mock_schema_list.return_value = {"status": "OK", "schemas": {"public": []}, "schema_count": 0}
+        mock_describe.return_value = {"status": "OK", "columns": [], "column_count": 0}
+        mock_select.return_value = {"status": "BLOCKED", "error": "test"}
+        from qbot3.llm.mock_provider import MockProvider
+        # Override mock to never signal done (always returns tools)
+        original_plan = MockProvider.plan
+        def never_done_plan(self, context, tools_desc, user_message, tool_results=None):
+            if tool_results:
+                # Still return tools to force loop to continue
+                from qbot3.llm.base import PlanResult
+                return PlanResult(
+                    intent="keep_going", mode="read_only",
+                    tools_to_call=["status"], parameters={},
+                    confidence=0.95,
+                    raw={"intent": "keep_going", "mode": "read_only"},
+                )
+            return original_plan(self, context, tools_desc, user_message, tool_results)
+        with patch.object(MockProvider, 'plan', never_done_plan):
+            result = orchestrate_query("test query for max steps")
+            self.assertEqual(result.get("status"), "partial")
+            limitations = result.get("limitations", [])
+            self.assertTrue(any("max_steps" in l for l in limitations),
+                           f"Expected max_steps in limitations, got: {limitations}")
+
+
+class TestXertStatusEndToEnd(unittest.TestCase):
+    """Xert status query through full pipeline."""
+
+    @patch('qbot3.db_introspection.db_schema_list')
+    @patch('qbot3.db_introspection.db_table_describe')
+    @patch('qbot3.db_introspection.db_select_readonly')
+    def test_xert_status_no_invalid_plan(self, mock_select, mock_describe, mock_schema_list):
+        """Xert query does not crash with PLAN_INVALID, no sql required, no TypeError."""
+        mock_schema_list.return_value = {"status": "OK", "schemas": {"public": []}, "schema_count": 0}
+        mock_describe.return_value = {"status": "OK", "columns": [], "column_count": 0}
+        mock_select.return_value = {"status": "BLOCKED", "error": "test"}
+        from qbot3.agent_runtime import orchestrate_query
+        result = orchestrate_query("sprawdź status Xert: konfiguracja, ostatnie dane w DB, ostatnia synchronizacja, błędy connectora")
+        result_str = str(result)
+        self.assertNotIn("PLAN_INVALID", result_str, f"Plan was invalid: {result.get('answer', '')}")
+        self.assertNotIn("sql required", result_str.lower())
+        self.assertNotIn("TypeError", result_str)
+        # Should have tool results or draft answer
+        tr = result.get("tool_results", []) or []
+        if tr:
+            readers = [r.get("reader", "") for r in tr]
+            self.assertNotIn("this", readers, "Fallback guessed table name")
+            self.assertNotIn("is", readers, "Fallback guessed table name")
+            self.assertNotIn("questions", readers, "Fallback guessed table name")
+            self.assertNotIn("days", readers, "Fallback guessed table name")
+        # xert_readiness should be in tools called
+        plan = result.get("plan", {})
+        all_tools = plan.get("tools_to_call", [])
+        for tr_item in (result.get("tool_results") or []):
+            rdr = tr_item.get("reader", "")
+            if rdr not in all_tools:
+                all_tools.append(rdr)
+        self.assertIn("xert_readiness", str(all_tools).lower(),
+                      f"xert_readiness not used. tools={all_tools}")
+
+
 if __name__ == "__main__":
     print("=== QBot3 Acceptance Tests ===")
     unittest.main(verbosity=2)

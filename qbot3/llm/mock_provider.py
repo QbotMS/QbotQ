@@ -13,7 +13,17 @@ from qbot3.llm.base import LLMProvider, PlanResult, AnswerResult
 
 
 class MockProvider(LLMProvider):
-    def plan(self, context: dict[str, Any], tools_desc: list[dict[str, Any]], user_message: str) -> PlanResult:
+    def plan(self, context: dict[str, Any], tools_desc: list[dict[str, Any]], user_message: str,
+             tool_results: list[dict[str, Any]] | None = None) -> PlanResult:
+        # If called with previous tool results (multi-step loop), signal "done" on 2nd+ step
+        if tool_results:
+            return PlanResult(
+                intent="final_answer",
+                mode="read_only",
+                tools_to_call=[],
+                confidence=0.95,
+                raw={"intent": "final_answer", "mode": "read_only"},
+            )
         ql = user_message.lower()
         intent = "status"
         tools = ["status"]
@@ -87,6 +97,9 @@ class MockProvider(LLMProvider):
         elif any(k in ql for k in ("wellness", "sen", "spa", "sleep", "hrv")):
             intent = "wellness"
             tools = ["wellness_day", "sleep_day"]
+        elif any(k in ql for k in ("xert",)):
+            intent = "xert_status"
+            tools = ["xert_readiness", "garmin_sync_status"]
         elif any(k in ql for k in ("garmin", "diagnost", "dane", "sync", "import")):
             intent = "garmin_diagnostics"
             tools = ["garmin_diagnostics", "garmin_sync_status"]
