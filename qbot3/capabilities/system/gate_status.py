@@ -17,7 +17,7 @@ from typing import Any
 
 import httpx
 
-from qbot3.capabilities.base import Capability, CapabilityDef, PROMOTION_ACTIVE, SAFETY_READ_ONLY
+from qbot3.capabilities.base import Capability, CapabilityDef, PROMOTION_ACTIVE, SAFETY_READ_ONLY_HTTP_STATUS
 
 
 # Local endpoint (nginx -> qbot-qlab-server). Safe: only reads config, never unlocks.
@@ -34,7 +34,7 @@ class GateStatusCapability(Capability):
                        "Tylko odczyt — nie otwiera furtki. "
                        "Production path: qbot.cytr.us -> nginx -> qbot-qlab-server -> HikConnect. "
                        "Ngrok był historyczny/testowy, nie aktualny.",
-            safety_class=SAFETY_READ_ONLY,
+            safety_class=SAFETY_READ_ONLY_HTTP_STATUS,
             capability_type="READ_ONLY_API",
             data_sources=[
                 "http://127.0.0.1:8899/gate/status",

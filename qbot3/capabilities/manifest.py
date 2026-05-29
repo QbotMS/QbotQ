@@ -10,7 +10,7 @@ from typing import Any
 
 from qbot3.capabilities.base import (
     Capability, ALLOWED_SAFETY_CLASSES, ALLOWED_PROMOTION_STATES,
-    AUTO_BUILDABLE_TYPES, PROMOTION_ACTIVE,
+    PROMOTION_ACTIVE, is_auto_buildable, READ_ONLY_SAFETY,
 )
 
 
@@ -32,9 +32,9 @@ def validate_manifest(cap: Capability) -> list[str]:
         errors.append("output_schema must be a dict")
     if not isinstance(d.data_sources, list):
         errors.append("data_sources must be a list")
-    if d.capability_type and d.safety_class == "READ_ONLY" and d.capability_type not in ("READ_ONLY_FILE", "READ_ONLY_DB", "READ_ONLY_API"):
-        errors.append(f"Unsupported READ_ONLY capability_type: {d.capability_type}")
-
+    if d.safety_class not in READ_ONLY_SAFETY:
+        if d.safety_class.startswith("WRITE") and not d.reason_existing_insufficient:
+            errors.append(f"Write capabilities must provide reason_existing_insufficient")
     return errors
 
 
@@ -47,11 +47,12 @@ def can_promote_to_active(cap: Capability) -> tuple[bool, list[str]]:
     if d.promotion_state == "active":
         return True, []
 
-    # Active requires tests — verify the capability module path for test existence
+    if d.promotion_state not in ("draft", "tested"):
+        return False, [f"Cannot promote from {d.promotion_state} to active"]
+
     if not _has_test(cap):
         errors.append("Active capabilities must have tests (test_ cap_module.py in tests/)")
 
-    # Active must have valid data_sources
     if not d.data_sources:
         errors.append("Active capabilities must declare data_sources")
 

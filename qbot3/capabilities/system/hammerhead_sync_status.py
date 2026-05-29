@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from qbot3.capabilities.base import Capability, CapabilityDef, PROMOTION_ACTIVE, SAFETY_READ_ONLY
+from qbot3.capabilities.base import Capability, CapabilityDef, PROMOTION_ACTIVE, SAFETY_READ_ONLY_FILE
 
 
 APP_DIR = Path("/opt/qbot/app")
@@ -29,7 +29,7 @@ class HammerheadSyncStatusCapability(Capability):
         return CapabilityDef(
             name="hammerhead_sync_status",
             description="Hammerhead→Garmin sync pipeline status: config check, dedup state file, last log entries, outgoing files. Tylko odczyt — nie wykonuje transferu.",
-            safety_class=SAFETY_READ_ONLY,
+            safety_class=SAFETY_READ_ONLY_FILE,
             capability_type="READ_ONLY_FILE",
             data_sources=["config/profiles/michal.env", "state/*_processed_hammerhead_activities.json", "logs/hammerhead-garmin-sync-*.log"],
             promotion_state=PROMOTION_ACTIVE,

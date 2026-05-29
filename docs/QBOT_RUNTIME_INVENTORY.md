@@ -135,6 +135,57 @@ Wszystkie credentials, tokeny, ścieżki i crony pozostają bez zmian.
 
 ---
 
+## D. Albert's Workspace — autonomia capability lifecycle
+
+Gdy Albert rozpoznaje intencję, ale nie ma pasującej active capability:
+1. **PROPOSE** — tworzy proposal w `workspace/proposals/`
+2. **DRAFT** — generuje manifest + test skeleton w `workspace/drafts/`
+3. **TEST** — uruchamia harness, sprawdza schema, secrets, side effects
+4. **ACTIVATE** — promuje do active po przejściu testów
+5. **REPORT** — dokumentuje w `workspace/reports/`
+
+### Struktura
+
+```
+qbot3/workspace/
+├── __init__.py          # workspace lifecycle API
+├── proposals/           # CAPABILITY_MISSING → proposal.json
+├── drafts/              # wygenerowane capability .py
+├── tests/               # wygenerowane test .py
+├── activation/          # logi promocji (promote → active)
+└── reports/             # raporty z testów i aktywacji
+```
+
+### Safety classes rozszerzone
+
+| Klasa | Auto-build | Przykład |
+|---|---|---|
+| `READ_ONLY_CONFIG` | ✅ | llm_status (env vars, masked) |
+| `READ_ONLY_FILE` | ✅ | daily_report_status |
+| `READ_ONLY_DB` | ✅ | garmin_sync_status |
+| `READ_ONLY_HTTP_STATUS` | ✅ | gate_status |
+| `WRITE_DRAFT` | ❌ | nutrition_log_add (proposal only) |
+| `WRITE_EXECUTE` | ❌ | wymaga confirm |
+| `DESTRUCTIVE_BLOCKED` | ❌ | delete, raw SQL |
+
+### Życie capability lifecycle
+
+```
+proposed → draft → tested → active → disabled
+```
+
+- `proposed`: planner wie, że capability brakuje; proposal w workspace
+- `draft`: wygenerowany manifest + test skeleton; nieużywane w qbot.query
+- `tested`: przeszło harness; gotowe do aktywacji
+- `active`: używane przez qbot.query
+- `disabled`: wyłączone, nieużywane
+
+### Domain-tool mismatch detection
+
+Plan validator wykrywa gdy LLM wybiera generic tools (system_logs_recent, system_env_status) zamiast dedykowanych domenowych. Wtedy zwraca CAPABILITY_MISSING z propozycją zamiast cichego użycia złego narzędzia.
+
+---
+
 ## D. Docelowy Centralny Q Secrets Store
 
 ### Problem

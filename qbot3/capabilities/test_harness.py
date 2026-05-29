@@ -46,31 +46,42 @@ def test_capability(name: str) -> list[str]:
         print("  Output schema: empty")
 
     # 3. Run with empty context (read-only safe)
-    if d.safety_class == "READ_ONLY":
+    run_result: dict | None = None
+    from qbot3.capabilities.base import READ_ONLY_SAFETY
+    if d.safety_class in READ_ONLY_SAFETY:
         try:
-            result = cap.run({})
-            if isinstance(result, dict):
-                status = result.get("status", "unknown")
+            run_result = cap.run({})
+            if isinstance(run_result, dict):
+                status = run_result.get("status", "unknown")
                 print(f"  Run status: {status}")
-                if "data" in result:
-                    data_keys = list(result["data"].keys()) if isinstance(result["data"], dict) else []
+                if "data" in run_result:
+                    data_keys = list(run_result["data"].keys()) if isinstance(run_result["data"], dict) else []
                     print(f"  Data keys: {data_keys[:10]}")
             else:
-                errors.append(f"run() returned non-dict: {type(result)}")
+                errors.append(f"run() returned non-dict: {type(run_result)}")
         except Exception as exc:
             errors.append(f"run() error: {exc}")
 
-    # 4. No secrets in output — check values, not keys (log content may contain env var names)
-    result_str = json.dumps(result if isinstance(result, dict) else {}, default=str)
-    for secret_word in ("api_key", "password", "authorization", "secret"):
-        if secret_word.lower() in result_str.lower():
-            # Only flag if it looks like a real value (not just a reference)
-            import re
-            matches = re.findall(rf'.{{0,40}}{secret_word}.{{0,40}}', result_str, re.IGNORECASE)
-            for m in matches:
-                if len(m.strip()) > len(secret_word) + 10:  # has real content beyond the word
-                    errors.append(f"Potential secret leak: '{secret_word}' in output context")
-                    break
+    # 4. No secrets in output — check actual VALUES, not dict keys or field names
+    # Only flag if a value looks like a credential string (long, alphanumeric, no spaces)
+    import re as _re
+    result_str = json.dumps(run_result if isinstance(run_result, dict) else {}, default=str)
+    # Skip keys — only check values that look like tokens/credentials (no spaces, long strings)
+    potential_secrets = _re.findall(r':\s*"([A-Za-z0-9_\-\.]{20,})"', result_str)
+    for val in set(potential_secrets):
+        # Skip hex colors, known field values, snake_case labels, timestamps, UUIDs
+        if _re.match(r'^[0-9a-f]{32}$', val, _re.I):
+            continue
+        if _re.match(r'^\d{4}-\d{2}-\d{2}', val):
+            continue
+        if _re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-', val, _re.I):
+            continue
+        if _re.match(r'^[a-z]+[a-z_]+[a-z]$', val):  # snake_case field values
+            continue
+        if _re.match(r'^[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)+$', val):  # dotted paths
+            continue
+        errors.append(f"Potential secret leak: long value ({len(val)} chars) in output: {val[:20]}...")
+        break
 
     # 5. Promotion check
     if d.promotion_state == "active":

@@ -13,7 +13,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from qbot3.capabilities.base import Capability, CapabilityDef, PROMOTION_ACTIVE, SAFETY_READ_ONLY
+from qbot3.capabilities.base import Capability, CapabilityDef, PROMOTION_ACTIVE, SAFETY_READ_ONLY_FILE
 
 
 _SENT_FILE = Path("/opt/qbot/app/data/daily_report_sent.json")
@@ -25,7 +25,7 @@ class DailyReportStatusCapability(Capability):
         return CapabilityDef(
             name="daily_report_status",
             description="Daily report pipeline status: pipeline stage, channel delivery, data source errors, legacy tool errors, sleep data wait status",
-            safety_class=SAFETY_READ_ONLY,
+            safety_class=SAFETY_READ_ONLY_FILE,
             capability_type="READ_ONLY_FILE",
             data_sources=["daily_report_sent.json", "daily_report.log"],
             promotion_state=PROMOTION_ACTIVE,
