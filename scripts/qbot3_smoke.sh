@@ -5,6 +5,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_DIR="$SCRIPT_DIR/.."
+
+# Auto-detect venv Python
+if [ -f "$APP_DIR/.venv/bin/python3" ]; then
+    PYTHON="$APP_DIR/.venv/bin/python3"
+else
+    PYTHON="python3"
+fi
 REPORT_DIR="$APP_DIR/docs/reports"
 mkdir -p "$REPORT_DIR"
 
@@ -26,7 +33,7 @@ echo "--- COMPILE ALL ---"
 cd "$APP_DIR"
 COMPILE_FAIL=0
 for f in qbot3/*.py qbot3/llm/*.py qbot3/adapters/*.py; do
-    if python3 -m py_compile "$f" 2>/dev/null; then
+    if $PYTHON -m py_compile "$f" 2>/dev/null; then
         echo "  OK: $f"
     else
         echo "  FAIL: $f"
@@ -52,7 +59,7 @@ echo ""
 
 # ── 4. MCP tools/list via direct Python (no server needed) ────────────
 echo "--- INTERNAL MCP TOOLS ---"
-python3 -c "
+$PYTHON -c "
 from qbot3.adapters.mcp_adapter import handle_qbot3_mcp
 result = handle_qbot3_mcp({'method': 'tools/list', 'id': 1})
 tools = [t['name'] for t in result['result']['tools']]
@@ -65,7 +72,7 @@ echo ""
 
 # ── 5. Capability scanner ─────────────────────────────────────────────
 echo "--- CAPABILITY STATUS ---"
-python3 -c "
+$PYTHON -c "
 from qbot3.tool_registry import list_all_tools
 all_tools = list_all_tools()
 read = [n for n, s in all_tools.items() if s.get('safety') != 'write' and 'error' not in s]
@@ -106,7 +113,7 @@ TOTAL=0
 for q in "${QUERIES[@]}"; do
     TOTAL=$((TOTAL + 1))
     echo -n "  [$TOTAL/${#QUERIES[@]}] $q ... "
-    RESPONSE=$(QBOT3_ENABLED=1 python3 -c "
+    RESPONSE=$(QBOT3_ENABLED=1 $PYTHON -c "
 import sys, json
 from qbot3.agent_runtime import orchestrate_query
 try:
@@ -115,8 +122,8 @@ try:
 except Exception as e:
     print(json.dumps({'status': 'RUNTIME_ERROR', 'error': str(e)[:100]}))
 " 2>/dev/null)
-    STATUS=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(d.get('status','PARSE_ERROR'))" 2>/dev/null || echo "NETWORK_ERROR")
-    REQ_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(d.get('req_id',''))" 2>/dev/null || echo "")
+    STATUS=$(echo "$RESPONSE" | $PYTHON -c "import sys,json; d=json.loads(sys.stdin.read()); print(d.get('status','PARSE_ERROR'))" 2>/dev/null || echo "NETWORK_ERROR")
+    REQ_ID=$(echo "$RESPONSE" | $PYTHON -c "import sys,json; d=json.loads(sys.stdin.read()); print(d.get('req_id',''))" 2>/dev/null || echo "")
     echo "$STATUS (req: $REQ_ID)"
     if [ "$STATUS" = "ok" ] || [ "$STATUS" = "draft" ] || [ "$STATUS" = "clarify" ] || [ "$STATUS" = "partial" ]; then
         PASS=$((PASS + 1))
@@ -130,7 +137,7 @@ echo ""
 
 # ── 7. Action draft test ──────────────────────────────────────────────
 echo "--- ACTION DRAFT ---"
-python3 -c "
+$PYTHON -c "
 import json
 from qbot3.agent_runtime import orchestrate_query
 r = orchestrate_query('dodaj 0,5 kg truskawek do dzisiejszego spożycia')
@@ -150,7 +157,7 @@ echo ""
 
 # ── 8. Action execute dry_run ─────────────────────────────────────────
 echo "--- ACTION EXECUTE DRY RUN ---"
-python3 -c "
+$PYTHON -c "
 import json
 from qbot3.adapters.mcp_adapter import handle_qbot3_mcp
 result = handle_qbot3_mcp({
@@ -171,7 +178,6 @@ content = result['result']['content'][0]
 data = json.loads(content['text'])
 print(f'  Status: {data.get(\"status\")}')
 print(f'  Dry run: {data.get(\"dry_run\")}')
-print(f'  Blocked: {data.get(\"status\") == \"BLOCKED\"}')
 if data.get('note'):
     print(f'  Note: {data.get(\"note\")}')
 " 2>&1 || echo "  ACTION EXECUTE DRY RUN FAIL"
@@ -179,7 +185,7 @@ echo ""
 
 # ── 9. Docs search test ───────────────────────────────────────────────
 echo "--- DOCS SEARCH ---"
-python3 -c "
+$PYTHON -c "
 from qbot3.tool_registry import lookup
 docs_tool = lookup('canonical_docs')
 if docs_tool:
@@ -196,7 +202,7 @@ echo ""
 
 # ── 10. Error taxonomy test ──────────────────────────────────────────
 echo "--- ERROR TAXONOMY ---"
-python3 -c "
+$PYTHON -c "
 from qbot3.errors import OK, ERROR, DATA_MISSING, CONNECTOR_MISSING, AUTH_MISSING, DOC_MISSING
 from qbot3.errors import NOT_IMPLEMENTED, PLAN_INVALID, SAFETY_BLOCKED, LEGACY_FALLBACK_BLOCKED
 from qbot3.errors import TOOL_ERROR, PROVIDER_ERROR, READY_WITH_WARNINGS, NEEDS_LOCATION, DUPLICATE
@@ -234,7 +240,7 @@ cat > "$REPORT_MD" <<MDEOF
 ## Results
 | # | Query | Status |
 |---|---|---|
-$(python3 -c "
+$($PYTHON -c "
 import json
 with open('$REPORT_JSON') as f:
     data = json.load(f)

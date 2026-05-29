@@ -16,48 +16,67 @@ class MockProvider(LLMProvider):
     def plan(self, context: dict[str, Any], tools_desc: list[dict[str, Any]], user_message: str) -> PlanResult:
         ql = user_message.lower()
         intent = "status"
-        tools = []
+        tools = ["status"]
         mode = "read_only"
+        write_action = None
+        write_payload = {}
+        requires_confirm = False
 
-        if any(k in ql for k in ("readiness", "gotowoś")):
+        # Write patterns must be checked FIRST to avoid matching "event" etc.
+        if any(k in ql for k in ("dodaj", "zapisz", "przypomnij")):
+            mode = "write"
+            tools = []
+            if "przypomnij" in ql:
+                intent = "reminder_add"
+            elif "wydarzenie" in ql or "event" in ql or "kalendarz" in ql or "bikepack" in ql:
+                intent = "calendar_event_add"
+            else:
+                intent = "nutrition_log_add"
+            write_action = intent
+            write_payload = {"title": user_message[:80]}
+            requires_confirm = True
+        elif any(k in ql for k in ("readiness", "gotowoś")):
             intent = "readiness"
             tools = ["readiness"]
-        elif "status" in ql:
-            intent = "status"
-            tools = ["status"]
-        elif any(k in ql for k in ("kalendarz", "calendar", "wydarzeń", "wydarzen")):
+        elif any(k in ql for k in ("kalendarz", "calendar", "wydarzeń", "wydarzen", "event", "eventy", "zaplanowane", "spotkan")):
             intent = "calendar"
-            tools = ["calendar_snapshot"]
+            tools = ["qcal_events_upcoming"]
         elif any(k in ql for k in ("pogoda", "weather", "temperatur")):
             intent = "weather"
             tools = ["weather_forecast"]
         elif any(k in ql for k in ("posiłk", "jadłem", "jadłam", "zjadł", "meal", "jedzeni")):
             intent = "nutrition_day"
             tools = ["nutrition_day_summary", "nutrition_meal_list"]
-        elif any(k in ql for k in ("bilans", "kalor")):
-            intent = "nutrition_day"
-            tools = ["nutrition_day_summary", "nutrition_meal_list"]
-        elif any(k in ql for k in ("knowhow", "know-how", "know_how", "bible", "dokument")):
+        elif any(k in ql for k in ("bilans", "kalor", "kcal", "energy")):
+            intent = "nutrition_balance"
+            tools = ["nutrition_balance_today", "nutrition_day_summary"]
+        elif any(k in ql for k in ("knowhow", "know-how", "know_how", "bible", "dokument", "kanoniczn")):
             intent = "docs"
             tools = ["canonical_docs"]
-        elif any(k in ql for k in ("rwgps", "tras")):
+        elif any(k in ql for k in ("rwgps", "tras", "route")):
             intent = "routes"
             tools = ["rwgps_route_list"]
-        elif any(k in ql for k in ("wellness", "sen", "spa", "sleep")):
+        elif any(k in ql for k in ("wellness", "sen", "spa", "sleep", "hrv")):
             intent = "wellness"
             tools = ["wellness_day", "sleep_day"]
-        elif any(k in ql for k in ("dodaj", "zapisz", "przypomnij")):
-            intent = "reminder_add" if "przypomnij" in ql else "calendar_event_add" if "wydarzenie" in ql else "nutrition_log_add"
-            mode = "write"
+        elif any(k in ql for k in ("garmin", "diagnost", "dane", "sync", "import")):
+            intent = "garmin_diagnostics"
+            tools = ["garmin_diagnostics", "garmin_sync_status"]
+        elif any(k in ql for k in ("narzędzi", "tool", "mcp", "dostępny", "capabilit")):
+            intent = "mcp_tools"
+            tools = ["mcp_tools_list"]
+        elif any(k in ql for k in ("garage", "samochód", "rower")):
+            intent = "garage"
+            tools = ["garage_status"]
 
         return PlanResult(
             intent=intent,
             mode=mode,
             tools_to_call=tools,
             parameters={},
-            write_action=None if mode == "read_only" else intent,
-            write_payload={"title": user_message[:50]} if mode == "write" else {},
-            requires_confirm=mode == "write",
+            write_action=write_action,
+            write_payload=write_payload,
+            requires_confirm=requires_confirm,
             confidence=0.95,
             needs_clarification=False,
             needed_context=[],

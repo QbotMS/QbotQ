@@ -12,8 +12,13 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
-import psycopg
-from psycopg.rows import dict_row
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+    _HAS_PSYCOPG = True
+except ImportError:
+    psycopg = None
+    _HAS_PSYCOPG = False
 
 _DOC_ALLOWLIST = frozenset({
     "QBOT_BIBLE.md",
@@ -32,6 +37,8 @@ _ACTION_ALLOWLIST = frozenset({
 
 
 def _db() -> Any:
+    if not _HAS_PSYCOPG:
+        raise RuntimeError("psycopg not available — cannot connect to DB")
     return psycopg.connect(
         host=os.getenv("PGHOST", "127.0.0.1"), port=os.getenv("PGPORT", "5432"),
         dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),

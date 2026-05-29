@@ -63,32 +63,40 @@ Rollback: remove `QBOT3_ENABLED=1` and restart.
 
 ### Phase 1: Mock Tests ✅ (done)
 - `ALBERT_LLM_PROVIDER=mock` — all plan/answer logic through mock provider
-- Verified: 15 queries pass, no legacy imports, no procedural handlers
+- Verified: 12/12 contract tests pass, zero legacy imports, zero procedural handlers
+- 35 capabilities registered, all compile and load
 
 ### Phase 2: Local MCP Tests ✅ (done)
 - `ALBERT_LLM_PROVIDER=openai` (wraps qgpt_client)
-- All 8 contract tests passing
-- Event draft, Garmin diagnostics, Docs search working
+- 2 public MCP tools verified: `qbot.query` + `qbot.action_execute`
+- All write actions produce P4-standardized action_draft
+- Dry run supported for all write actions
+- Safety layer validates: action_type allowlist, idempotency, confirm flag
 
-### Phase 3: OpenAI UI Tests (next)
+### Phase 3: OpenAI UI Tests ⏳ (next)
 - Test qbot.query from ChatGPT/OpenAI UI
 - Verify: no micro-tools visible, qbot.query returns structured results with trace/orchestrator metadata
+- Verify action_draft is returned as structuredContent (not raw text)
 
-### Phase 4: Telegram Read-Only
-- Map Telegram natural language → `_tool_qbot_query` → QBot3 agent_runtime
-- Fallback to QBot2 if QBOT3_ENABLED=0
+### Phase 4: Telegram Read-Only ✅ (done)
+- Natural language Telegram path already uses `_tool_qbot_query` → QBot3 agent_runtime
+- Fallback to QBot2 if `QBOT3_ENABLED=0`
+- Documented in `docs/QBOT3_TELEGRAM_TRANSPARENT_UI.md`
 
-### Phase 5: Telegram Write Draft
-- Verify action_draft flows through Telegram
-- No "dodano/zapisano" claims
+### Phase 5: Telegram Write Draft ⏳
+- action_draft flows through Telegram (same path as query)
+- No "dodano/zapisano" claims — draft-only
+- Dedicated `adapters/telegram_adapter.py` planned but not critical
 
-### Phase 6: action_execute Production
-- Wire safety.py action_exec for nutrition, calendar, reminders
-- Test via MCP tools/call → qbot.action_execute
+### Phase 6: action_execute Production ⏳
+- `safety.py` validates: action_type allowlist, idempotency, confirm
+- Dry run works for all action types
+- Real write execution needs handler wiring for nutrition/calendar/reminder
+- Currently returns mock "write executed" for non-doc actions
 
-### Phase 7: Disable Legacy Micro-Tools
-- Remove `_MCP_TOOL_MAP` entries from QBot2 (already only 2)
-- Archive legacy router files
+### Phase 7: Disable Legacy Micro-Tools ✅ (done)
+- QBot2 MCP adapter already trimmed to 2 tools only
+- All QBot3 code in `qbot3/` directory — isolated from QBot2
 
 ## Rollback Plan
 
