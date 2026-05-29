@@ -103,40 +103,117 @@ def get_conversation_response(input_kind: str) -> str | None:
 # ── Write slot extraction ──────────────────────────────────────────────
 
 def extract_nutrition_slots(question: str) -> dict[str, Any]:
-    """Extract food name, amount, unit from a nutrition query.
+    """Extract food name, amount, unit, macros from a nutrition query.
 
-    '200g ryżu' → meal_name='ryż', amount=200, unit='g'
-    '0,5 kg truskawek' → meal_name='truskawki', amount=0.5, unit='kg'
+    Simple:           '200g ryżu' → meal_name='ryż', amount=200, unit='g'
+    Complex:          'Brokuł Sport 2000: 1 zestaw, 2011 kcal, białko 118 g, ...'
+    With template:    'template_id=4'
+    Relative date:    'dzisiaj', 'jutro'
     """
     ql = question.lower()
     payload: dict[str, Any] = {}
 
-    # Match amount + unit + food (e.g., "200g ryżu", "0,5 kg truskawek")
+    # ── 1. Template ID ──────────────────────────────────────────────────
+    tmpl = re.search(r'template_id\s*[=:]\s*(\d+)', ql)
+    if tmpl:
+        payload["template_id"] = int(tmpl.group(1))
+
+    # ── 2. Macros: kcal, protein, carbs, fat, salt ─────────────────────
+    macro_patterns = [
+        (r'(\d+[.,]?\d*)\s*kcal', "kcal_total"),
+        (r'białko\s+(\d+[.,]?\d*)\s*g', "protein_g"),
+        (r'protein\s+(\d+[.,]?\d*)\s*g', "protein_g"),
+        (r'węglowodany\s+(\d+[.,]?\d*)\s*g', "carbs_g"),
+        (r'carbs\s+(\d+[.,]?\d*)\s*g', "carbs_g"),
+        (r'węgle\s+(\d+[.,]?\d*)\s*g', "carbs_g"),
+        (r'tłuszcz\s+(\d+[.,]?\d*)\s*g', "fat_g"),
+        (r'fat\s+(\d+[.,]?\d*)\s*g', "fat_g"),
+        (r'sól\s+(\d+[.,]?\d*)\s*g', "salt_g"),
+        (r'salt\s+(\d+[.,]?\d*)\s*g', "salt_g"),
+        (r'sodium\s+(\d+[.,]?\d*)\s*mg', "salt_g"),
+        (r'błonnik\s+(\d+[.,]?\d*)\s*g', "fiber_g"),
+        (r'fiber\s+(\d+[.,]?\d*)\s*g', "fiber_g"),
+    ]
+    has_any_macro = False
+    for pat, key in macro_patterns:
+        m = re.search(pat, ql)
+        if m:
+            val = float(m.group(1).replace(",", "."))
+            payload[key] = val
+            has_any_macro = True
+
+    # ── 3. Quantity/ servings: "1 zestaw", "5 pudełek", "2 porcje" ─────
+    # Also match "X zestaw / Y pudełek" compound
+    compound = re.search(r'(\d+[.,]?\d*)\s*(zestaw|porcj|pudełek|sztuk|szt|szt\.)\s*[\/]\s*(\d+[.,]?\d*)\s*(pudełek|sztuk|szt|szt\.|porcj)', ql)
+    if compound:
+        payload["quantity"] = float(compound.group(1).replace(",", "."))
+        payload["unit"] = compound.group(2)
+        payload["servings"] = float(compound.group(3).replace(",", "."))
+    else:
+        quantity_match = re.search(r'(\d+[.,]?\d*)\s*(zestaw|porcj|pudełek|sztuk|szt|szt\.|kg|g|ml|l|gram|litr)', ql)
+        if quantity_match:
+            payload["quantity"] = float(quantity_match.group(1).replace(",", "."))
+            payload["unit"] = quantity_match.group(2)
+
+    # ── 4. Amount + unit + food (e.g., "200g ryżu", "0,5 kg truskawek") ─
     amount_unit_food = re.search(
-        r'(\d+[.,]?\d*)\s*(kg|g|ml|l|szt|porcji|sztuk)\s+(.+?)(?:\s+jako|\s+bez|\s+do|\s+action|\s*$|,|\s+i\s)',
+        r'(\d+[.,]?\d*)\s*(kg|g|ml|l|szt|porcji|sztuk)\s+(.+?)(?:\s+jako|\s+bez|\s+do|\s+action|\s*$|,|\s+i\s|\s+\d+)',
         ql
     )
-    if amount_unit_food:
+    if amount_unit_food and not payload.get("meal_name"):
         amount_raw = amount_unit_food.group(1).replace(",", ".")
         payload["amount"] = float(amount_raw)
-        payload["unit"] = amount_unit_food.group(2)
+        if "unit" not in payload:
+            payload["unit"] = amount_unit_food.group(2)
         food = amount_unit_food.group(3).strip().rstrip(".,;")
-        payload["meal_name"] = food
-        payload["food_name"] = food
-        return payload
+        if len(food) > 1:
+            payload["meal_name"] = food
+            payload["food_name"] = food
 
-    # Match amount + unit only (e.g., "200g")
-    amount_unit = re.search(r'(\d+[.,]?\d*)\s*(kg|g|ml|l|szt)', ql)
-    if amount_unit:
-        amount_raw = amount_unit.group(1).replace(",", ".")
-        payload["amount"] = float(amount_raw)
-        payload["unit"] = amount_unit.group(2)
+    # ── 5. Meal/food name from complex query (before colon, or after "dieta") ─
+    if not payload.get("meal_name"):
+        # Pattern: "Brokuł Sport 2000: 1 zestaw, 5 pudełek, 2011 kcal..."
+        name_from_colon = re.search(r'(?:dodaj|dopisz|zjedz|jadł)\s+(?:do\s+)?(?:dzisiejszego\s+)?(?:jadłospisu\s+)?(?:wpis\s+z\s+szablonu\s+)?[""]?(.+?)[""]?\s*[:\n,]+\s*(?:\d+|zestaw|porcj|pudełek|kcal|białko|tłuszcz|węglowod)', ql)
+        if name_from_colon:
+            name = name_from_colon.group(1).strip()
+            # Clean trailing noise
+            for suffix in ["action_draft", "bez zapisu", "jako draft", "draft"]:
+                if name.lower().endswith(suffix):
+                    name = name[:-len(suffix)].strip()
+            if name and len(name) > 1:
+                payload["meal_name"] = name
 
-    # Match food name after amount or as standalone
-    food_candidates = re.findall(r'(?:ryż|ryżu|truskaw|truskawek|makaron|mięso|kurczak|wołow|wieprzow|jajk|jajko|jaja|mleko|chleb|masło|ser|warzyw|owoc|banan|jabłk|pomidor|ogór|sałat|płatki|owsian|brokuł|szpinak|ziemniak)', ql)
-    if food_candidates:
-        payload["meal_name"] = food_candidates[-1]  # last mention is most specific
-        payload["food_name"] = food_candidates[-1]
+    if not payload.get("meal_name"):
+        # Pattern: "dieta ..." or "... jako dieta" — extract meal template name
+        diet_match = re.search(r'(?:dieta|posiłek|meal|szablon)\s+[""]?(.+?)[""]?\s*(?:[:\n]|\d|$)', ql)
+        if diet_match:
+            name = diet_match.group(1).strip()
+            if name and len(name) > 1:
+                payload["meal_name"] = name
+
+    # ── 6. Description: everything between meal name and macros ──────────
+    if payload.get("meal_name") and has_any_macro:
+        mn = re.escape(payload["meal_name"])
+        desc_match = re.search(rf'{mn}\s*[:\s]+(.+?)(?:\d+\s*kcal|\d+\s*g\s+białko|\d+\s*g\s+protein|\d+\s*g\s+tłuszcz)', ql, re.I)
+        if desc_match:
+            desc = desc_match.group(1).strip().rstrip(",:;-")
+            if desc and len(desc) > 2:
+                payload["description"] = desc
+
+    # ── 7. Date ──────────────────────────────────────────────────────────
+    if "dzisiaj" in ql or "dziś" in ql or "dzisiejsz" in ql:
+        from datetime import date as dt_date
+        payload["date"] = dt_date.today().isoformat()
+    elif "jutro" in ql:
+        from datetime import date as dt_date, timedelta
+        payload["date"] = (dt_date.today() + timedelta(days=1)).isoformat()
+
+    # ── 8. Fallback food name from known food words ──────────────────────
+    if not payload.get("meal_name"):
+        food_candidates = re.findall(r'(?:ryż|ryżu|truskaw|truskawek|makaron|mięso|kurczak|wołow|wieprzow|jajk|jajko|jaja|mleko|chleb|masło|ser|warzyw|owoc|banan|jabłk|pomidor|ogór|sałat|płatki|owsian|brokuł|szpinak|ziemniak)', ql)
+        if food_candidates:
+            payload["meal_name"] = food_candidates[-1]
+            payload["food_name"] = food_candidates[-1]
 
     # If no food found but amount exists, the query needs clarification
     if "amount" in payload and "meal_name" not in payload:

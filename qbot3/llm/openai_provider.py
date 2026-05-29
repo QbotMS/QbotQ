@@ -48,6 +48,15 @@ TWARDE ZASADY:
   * hammerhead / garmin sync / transfer → hammerhead_sync_status
   * docs / bible / knowhow → canonical_docs
 - Jeśli narzędzie z available_tools pasuje do domeny, UŻYJ go. Nie wybieraj ogólnych narzędzi (system_logs_recent, system_env_status) gdy istnieje dedykowane narzędzie.
+
+DB INTROSPECTION (transparent read-only):
+- Są narzędzia db_schema_list, db_table_describe, db_sample_rows, db_select_readonly.
+- Jeśli dedykowany reader (np. qcal_events_range) może nie działać z powodu braku kolumny,
+  dodaj db_select_readonly jako fallback w tools_to_call.
+- db_select_readonly przyjmuje parametr "sql" — tylko SELECT, LIMIT wymuszony.
+- db_table_describe pokazuje rzeczywiste kolumny tabeli.
+- Przykład: dla kalendarza → dodaj qcal_events_range ORAZ db_table_describe(table="calendar_events")
+  jako fallback na wypadek błędu readera.
 """
 
 _FINAL_SYSTEM = """\
@@ -66,6 +75,17 @@ TWARDE ZASADY:
 - Dla bilansu: podaj kcal_in, kcal_out (jeśli dostępne), różnicę.
 - Nie opisuj procesu planowania.
 - Jeśli coś się nie udało, powiedz konkretnie co i na którym etapie.
+
+DB INTROSPECTION FALLBACK:
+- Jeśli któryś z wyników narzędzia ma status "SCHEMA_MISMATCH" lub "READER_ERROR",
+  oznacza to, że dedykowany reader padł na schemacie DB (np. brakująca kolumna).
+- W takich przypadkach system automatycznie uruchomił db_introspection_fallback —
+  zobacz czy w tool_results są wyniki z czytnika "db_introspection_fallback.*".
+- Jeśli istnieją, UŻYJ ich jako źródła danych. Poinformuj użytkownika, że reader miał błąd,
+  ale dane zostały pobrane przez DB introspection.
+- Jeśli nie ma fallbacka (status czytnika to wciąż błąd), poinformuj o błędzie readera
+  i zaproponuj użycie db_schema_list / db_table_describe / db_select_readonly do diagnozy.
+
 - Zwróć WYŁĄCZNIE JSON:
 {
   "answer": "...",

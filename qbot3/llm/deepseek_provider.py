@@ -24,6 +24,8 @@ Rules:
 - For write: mode="write", write_action="writer_name", write_payload={params}.
 - Do not invent tool names.
 - confidence 0.0-1.0, <0.6 means needs_clarification=true.
+- Includes db_schema_list, db_table_describe, db_sample_rows, db_select_readonly tools.
+- If a domain reader might fail (e.g. missing column), add db_table_describe as fallback.
 Output JSON: {{"intent":"...","mode":"read_only|write","tools_to_call":[],"parameters":{{}},"write_action":null,"write_payload":{{}},"requires_confirm":false,"confidence":0.0,"needs_clarification":false,"clarification_question":"","needed_context":[]}}
 """
 
@@ -34,6 +36,9 @@ Rules:
 - If tool returned no data: "brak danych w DB", not "nie mam dostępu".
 - For calendar: show events, reminders, meals.
 - Do not describe planning process.
+- If any tool result has status "SCHEMA_MISMATCH" or "READER_ERROR", check for
+  db_introspection_fallback results. If available, use them as data source.
+- If fallback not available, explain the reader error and suggest DB introspection.
 Output JSON: {{"answer":"...","status":"ok|partial|no_data|draft|clarify|error","confidence":"low|medium|high","missing_fields":[],"limitations":[]}}
 """
 

@@ -399,10 +399,10 @@ def _load_nutrition_range_summary_tool() -> dict[str, Any]:
 
 def _load_qcal_events_range_tool() -> dict[str, Any]:
     def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
-        from qbot3.errors import OK, DATA_MISSING, CONNECTOR_MISSING, error_result, success_result
+        from qbot3.errors import OK, DATA_MISSING, CONNECTOR_MISSING, SCHEMA_MISMATCH, error_result, success_result
+        import psycopg
+        from psycopg.rows import dict_row
         try:
-            import psycopg
-            from psycopg.rows import dict_row
             c = psycopg.connect(
                 host=os.getenv("PGHOST", "127.0.0.1"), port=os.getenv("PGPORT", "5432"),
                 dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
@@ -411,17 +411,28 @@ def _load_qcal_events_range_tool() -> dict[str, Any]:
             cur = c.cursor()
             date_from = args.get("date_from", date.today().isoformat())
             date_to = args.get("date_to", date_from)
+            # Discover actual columns to avoid schema mismatch
+            try:
+                cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='calendar_events' AND table_schema='public'")
+                actual_cols = {r["column_name"] for r in cur.fetchall()}
+            except Exception:
+                actual_cols = set()
+            safe_cols = ["id", "date_start", "date_end", "time_start", "title", "event_type", "status"]
+            available = [c for c in safe_cols + ["all_day"] if c in actual_cols] or safe_cols
+            cols_sql = ", ".join(available)
             cur.execute(
-                "SELECT id, date_start, date_end, time_start, title, event_type, status, all_day FROM calendar_events WHERE date_start >= %s AND date_start <= %s ORDER BY date_start",
+                f"SELECT {cols_sql} FROM calendar_events WHERE date_start >= %s AND date_start <= %s ORDER BY date_start",
                 (date_from, date_to),
             )
             rows = cur.fetchall()
             c.close()
             if not rows:
                 return error_result(DATA_MISSING, f"Brak wydarzeń w okresie {date_from}–{date_to}")
-            return success_result({"events": rows, "count": len(rows), "date_from": date_from, "date_to": date_to})
+            return success_result({"events": rows, "count": len(rows), "date_from": date_from, "date_to": date_to, "columns_used": available})
+        except psycopg.errors.UndefinedColumn as exc:
+            return error_result(SCHEMA_MISMATCH, f"Reader query references non-existent column: {exc}. Use db_table_describe to discover actual columns.")
         except Exception as exc:
-            return error_result(CONNECTOR_MISSING, str(exc)[:200])
+            return error_result(READER_ERROR, str(exc)[:200])
     return {
         "callable": _wrapper,
         "category": "calendar",
@@ -856,11 +867,11 @@ def _load_garmin_sync_status_tool() -> dict[str, Any]:
 
 
 def _load_qcal_events_upcoming_tool() -> dict[str, Any]:
-    from qbot3.errors import OK, DATA_MISSING, CONNECTOR_MISSING, error_result, success_result
+    from qbot3.errors import OK, DATA_MISSING, CONNECTOR_MISSING, SCHEMA_MISMATCH, error_result, success_result
+    import psycopg
+    from psycopg.rows import dict_row
     def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
         try:
-            import psycopg
-            from psycopg.rows import dict_row
             c = psycopg.connect(
                 host=os.getenv("PGHOST", "127.0.0.1"), port=os.getenv("PGPORT", "5432"),
                 dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
@@ -869,16 +880,26 @@ def _load_qcal_events_upcoming_tool() -> dict[str, Any]:
             cur = c.cursor()
             today = date.today().isoformat()
             limit = int(args.get("limit", 10))
+            # Discover actual columns to avoid schema mismatch
+            try:
+                cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='calendar_events' AND table_schema='public'")
+                actual_cols = {r["column_name"] for r in cur.fetchall()}
+            except Exception:
+                actual_cols = set()
+            safe_cols = ["id", "date_start", "date_end", "time_start", "title", "event_type", "status", "all_day"]
+            available = [c for c in safe_cols if c in actual_cols] or [c for c in safe_cols if c not in ("all_day",)]
+            cols_sql = ", ".join(available)
             cur.execute(
-                "SELECT id, date_start, date_end, time_start, title, event_type, status, all_day "
-                "FROM calendar_events WHERE date_start >= %s AND status='active' ORDER BY date_start LIMIT %s",
+                f"SELECT {cols_sql} FROM calendar_events WHERE date_start >= %s AND status='active' ORDER BY date_start LIMIT %s",
                 (today, limit),
             )
             rows = cur.fetchall()
             c.close()
             if not rows:
                 return error_result(DATA_MISSING, "Brak nadchodzących wydarzeń")
-            return success_result({"events": rows, "count": len(rows)})
+            return success_result({"events": rows, "count": len(rows), "columns_used": available})
+        except psycopg.errors.UndefinedColumn as exc:
+            return error_result(SCHEMA_MISMATCH, f"Reader query references non-existent column: {exc}. Use db_table_describe to discover actual columns.")
         except Exception as exc:
             return error_result(CONNECTOR_MISSING, str(exc)[:200])
     return {
@@ -1066,6 +1087,57 @@ def _load_memory_write_tool() -> dict[str, Any]:
     }
 
 
+# ── DB introspection tool loaders ──────────────────────────────────────
+
+def _load_db_schema_list_tool() -> dict[str, Any]:
+    from qbot3.db_introspection import db_schema_list
+    return {
+        "callable": lambda args: db_schema_list(args),
+        "category": "db",
+        "description": "List all database schemas and their tables. No args needed.",
+        "args_schema": {},
+        "safety": "read",
+        "mode": "read_only",
+        "notes": "Transparent DB introspection — Albert can discover available tables",
+    }
+
+def _load_db_table_describe_tool() -> dict[str, Any]:
+    from qbot3.db_introspection import db_table_describe
+    return {
+        "callable": lambda args: db_table_describe(args),
+        "category": "db",
+        "description": "Describe columns of a table: name, type, nullable, default, is_pk. Parameters: table (required), schema (default: public)",
+        "args_schema": {"table": {"type": "string"}, "schema": {"type": "string"}},
+        "safety": "read",
+        "mode": "read_only",
+        "notes": "Use this to discover actual column names and types when readers fail",
+    }
+
+def _load_db_sample_rows_tool() -> dict[str, Any]:
+    from qbot3.db_introspection import db_sample_rows
+    return {
+        "callable": lambda args: db_sample_rows(args),
+        "category": "db",
+        "description": "Sample rows from a table. Parameters: table (required), schema (default: public), limit (default: 5, max: 50)",
+        "args_schema": {"table": {"type": "string"}, "schema": {"type": "string"}, "limit": {"type": "integer"}},
+        "safety": "read",
+        "mode": "read_only",
+        "notes": "Use to see actual data shape when readers return unexpected results",
+    }
+
+def _load_db_select_readonly_tool() -> dict[str, Any]:
+    from qbot3.db_introspection import db_select_readonly
+    return {
+        "callable": lambda args: db_select_readonly(args),
+        "category": "db",
+        "description": "Execute a read-only SELECT query. Only SELECT allowed, LIMIT enforced. Parameters: sql (required)",
+        "args_schema": {"sql": {"type": "string"}},
+        "safety": "read",
+        "mode": "read_only",
+        "notes": "Last resort when no reader covers the query. INSERT/UPDATE/DELETE/DROP/ALTER blocked.",
+    }
+
+
 # ── init ───────────────────────────────────────────────────────────────
 
 def _init_registry():
@@ -1107,6 +1179,11 @@ def _init_registry():
         ("qcal_events_upcoming", _load_qcal_events_upcoming_tool),
         ("rwgps_route_last", _load_rwgps_route_last_tool),
         ("rwgps_artifact_status", _load_rwgps_artifact_status_tool),
+        # DB introspection tools (transparent read-only for Albert)
+        ("db_schema_list", _load_db_schema_list_tool),
+        ("db_table_describe", _load_db_table_describe_tool),
+        ("db_sample_rows", _load_db_sample_rows_tool),
+        ("db_select_readonly", _load_db_select_readonly_tool),
         # Write tools
         ("nutrition_log_add", _load_nutrition_log_add_tool),
         ("calendar_event_add", _load_calendar_event_add_tool),

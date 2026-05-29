@@ -93,13 +93,101 @@ def _handle_action_execute(req_id: Any, args: dict[str, Any]) -> dict[str, Any]:
         return _result(req_id, {"tool": "qbot.action_execute", **validation})
 
     if validation.get("dry_run"):
-        return _result(req_id, {"tool": "qbot.action_execute", "status": "OK", "dry_run": True, "action_type": action_type, "idempotency_key": idem_key, "note": "dry_run — no actual write performed"})
+        return _result(req_id, {
+            "tool": "qbot.action_execute", "status": "DRY_RUN_OK",
+            "execution_mode": "dry_run", "write_committed": False,
+            "action_type": action_type, "idempotency_key": idem_key,
+            "note": "dry_run — walidacja OK, żaden zapis nie został wykonany",
+        })
 
+    # ── Real execute ──────────────────────────────────────────────────
     if action_type == "qbot_doc_append":
         result = exec_doc_append(action_type, payload, idem_key)
-        return _result(req_id, {"tool": "qbot.action_execute", **result})
+        real_write = result.get("status") == "OK"
+        return _result(req_id, {
+            "tool": "qbot.action_execute",
+            "status": "OK" if real_write else result.get("status", "ERROR"),
+            "execution_mode": "real_write" if real_write else "error",
+            "write_committed": real_write,
+            **result,
+        })
 
-    return _result(req_id, {"tool": "qbot.action_execute", "status": "OK", "action_type": action_type, "idempotency_key": idem_key, "note": "write executed (mock for non-doc actions)"})
+    # Non-doc write actions — try real writer
+    if action_type == "nutrition_log_add":
+        write_result = _execute_nutrition_write(action_type, payload, idem_key)
+        return _result(req_id, write_result)
+
+    if action_type in ("calendar_event_add", "reminder_add", "planning_fact_add", "memory_confirmed_fact_add"):
+        return _result(req_id, {
+            "tool": "qbot.action_execute", "status": "WRITE_NOT_AVAILABLE",
+            "execution_mode": "mock", "write_committed": False,
+            "action_type": action_type, "idempotency_key": idem_key,
+            "note": f"{action_type} nie ma jeszcze realnego writera w QBot3. "
+                     "Draft został przygotowany, ale wykonanie wymaga implementacji backendu.",
+        })
+
+    return _result(req_id, {
+        "tool": "qbot.action_execute", "status": "BLOCKED",
+        "execution_mode": "unknown", "write_committed": False,
+        "action_type": action_type, "error": f"Unknown action_type: {action_type}",
+    })
+
+
+def _execute_nutrition_write(action_type: str, payload: dict[str, Any], idem_key: str) -> dict[str, Any]:
+    """Execute nutrition log write via existing legacy writer."""
+    try:
+        from qbot_nutrition_tools import _tool_qbot_nutrition_intake_log
+        from datetime import date, datetime
+        meal_name = payload.get("meal_name", "")
+        if not meal_name:
+            return {"tool": "qbot.action_execute", "status": "BLOCKED",
+                    "execution_mode": "error", "write_committed": False,
+                    "error": "meal_name is required", "action_type": action_type, "idempotency_key": idem_key}
+
+        items = [{
+            "food": meal_name,
+            "food_name": meal_name,
+            "amount": payload.get("amount", 0) or payload.get("quantity", 0) or 1,
+            "unit": payload.get("unit", "szt"),
+            "kcal": payload.get("kcal_total"),
+            "carbs_g": payload.get("carbs_g"),
+            "protein_g": payload.get("protein_g"),
+            "fat_g": payload.get("fat_g"),
+            "sodium_mg": payload.get("salt_g"),
+        }]
+
+        result = _tool_qbot_nutrition_intake_log({
+            "text": meal_name,
+            "meal_type": "meal",
+            "note": payload.get("description", ""),
+            "context": f"qbot3 action_execute {action_type}",
+        })
+
+        if result.get("status") == "OK" and result.get("meal_id"):
+            return {
+                "tool": "qbot.action_execute", "status": "OK",
+                "execution_mode": "real_write", "write_committed": True,
+                "db_inserted": True, "inserted_id": result["meal_id"],
+                "action_type": action_type, "idempotency_key": idem_key,
+                "meal_log_id": result["meal_id"],
+                "storage_backend": "postgresql (meal_logs + meal_log_items via qbot_nutrition_db.meal_log_create)",
+                "note": "Posiłek zapisany przez qbot_nutrition_tools._tool_qbot_nutrition_intake_log",
+            }
+
+        return {
+            "tool": "qbot.action_execute", "status": "WRITE_ERROR",
+            "execution_mode": "error", "write_committed": False,
+            "action_type": action_type, "idempotency_key": idem_key,
+            "error": f"Writer returned: {result.get('status')} — {result.get('error', 'unknown')}",
+        }
+
+    except Exception as exc:
+        return {
+            "tool": "qbot.action_execute", "status": "WRITE_ERROR",
+            "execution_mode": "error", "write_committed": False,
+            "action_type": action_type, "idempotency_key": idem_key,
+            "error": str(exc)[:500],
+        }
 
 
 def _result(req_id: Any, data: dict) -> dict[str, Any]:

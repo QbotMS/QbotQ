@@ -40,7 +40,7 @@ class MockProvider(LLMProvider):
             tools = ["readiness"]
         elif any(k in ql for k in ("kalendarz", "calendar", "wydarzeń", "wydarzen", "event", "eventy", "zaplanowane", "spotkan")):
             intent = "calendar"
-            tools = ["qcal_events_upcoming"]
+            tools = ["qcal_events_range"]
         elif any(k in ql for k in ("pogoda", "weather", "temperatur")):
             intent = "weather"
             tools = ["weather_forecast"]

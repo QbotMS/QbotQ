@@ -51,48 +51,20 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
                 "orchestrator": {"enabled": True, "name": "Albert", "version": "qbot3", "stage": "final", "fallback_used": False},
             }
 
-    # Write pre-router: intercepts write intents BEFORE read pre-router
-    # Write has priority — if matched, skip read pre-router entirely
     ctx = build_context(question)
-    write_routed = _deterministic_write_pre_route(question)
-    if write_routed:
-        wc = write_routed.get("_write_classification", "")
-        if wc == "DESTRUCTIVE_WRITE":
-            result = _build_response(ctx, status="BLOCKED", answer=write_routed.get("_write_message", "Destrukcyjne operacje zablokowane."),
-                                    limitations=["destructive_blocked"])
-            result["request_id"] = req_id
-            return result
-        if write_routed.get("_pre_routed_write"):
-            draft = write_routed.get("_write_action_draft")
-            if draft:
-                answer_parts = [f"Przygotowałem draft: {draft['human_summary']}"]
-                if draft.get("missing_fields"):
-                    answer_parts.append(draft.get("clarification_question", ""))
-                else:
-                    answer_parts.append("Zapis wymaga potwierdzenia przez qbot.action_execute.")
-                human_answer = " ".join(answer_parts)
-                result = _build_response(ctx, status="draft", answer=human_answer,
-                                        plan={"intent": write_routed.get("intent", ""), "mode": "write",
-                                              "tools": []},
-                                        limitations=["write_draft"])
-                result["action_draft"] = draft
-                result["human_answer"] = human_answer
-                result["request_id"] = req_id
-                return result
-            result = _build_response(ctx, status="CAPABILITY_MISSING", answer=write_routed.get("answer", "Nieobsługiwany typ akcji."),
-                                    limitations=["write_draft"])
-            result["request_id"] = req_id
-            return result
 
-    # Read pre-router: intercepts obvious domain matches before LLM planner
-    pre_routed = _deterministic_pre_route(question)
-    if pre_routed:
-        result = _execute_pre_routed(pre_routed, question, req_id, provider_name, model_name, timer)
+    # ── Pre-layer: only context injection, safety envelope, destructive block ──
+    # NO intent routing — Albert decides everything.
+
+    # Destructive block (pure safety, not routing)
+    if _is_destructive_query(question):
+        result = _build_response(ctx, status="BLOCKED", answer="Destrukcyjne operacje są zablokowane. Wymagają osobnej zgody.",
+                                limitations=["destructive_blocked"])
         result["request_id"] = req_id
         return result
 
+    # ── LLM-first: Albert decides intent, mode, write vs read ────────────────
     llm = get_llm_provider()
-    ctx = build_context(question)
     tools_desc = tool_descriptions()
 
     plan_result = llm.plan(ctx, tools_desc, question)
@@ -104,31 +76,42 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
         result["request_id"] = req_id
         return result
 
+    # ── Post-LLM: Convert write-related intents to mode=write ────────────────
+    # Albert may return read_only+no_tools for a write intent (e.g. add_nutrition_entry)
+    # because the LLM is not always perfect at mode selection.
+    # We resolve: if intent suggests a write action and no tools are planned, convert.
+    plan = _resolve_write_intent(plan, question)
+
+    # ── Plan validation ──────────────────────────────────────────────────────
     validation = validate_plan(plan)
     if validation.get("status") == CAPABILITY_MISSING:
-        # Try to use internal capability
-        cap_result = _try_execute_capability(plan.get("intent", ""), ctx, question)
-        if cap_result:
-            result = cap_result
-            _log(req_id, provider_name, model_name, plan.get("mode", "read_only"), plan.get("intent", ""),
-                 plan.get("tools_to_call", []), [f"capability:{plan.get('intent', '')}"], False,
-                 result.get("status", OK), "", timer.elapsed_ms())
+        # Before giving up, check if this is really a write intent that was missed
+        resolved = _try_resolve_missing_capability_as_write(plan, question)
+        if resolved:
+            plan = resolved
+            validation = {"status": OK, "valid": True}
+        else:
+            cap_result = _try_execute_capability(plan.get("intent", ""), ctx, question)
+            if cap_result:
+                result = cap_result
+                _log(req_id, provider_name, model_name, plan.get("mode", "read_only"), plan.get("intent", ""),
+                     plan.get("tools_to_call", []), [f"capability:{plan.get('intent', '')}"], False,
+                     result.get("status", OK), "", timer.elapsed_ms())
+                result["request_id"] = req_id
+                return result
+            proposal = validation.get("capability_proposal", {})
+            cap_intent = plan.get("intent", "")
+            answer = f"Brak capability dla '{cap_intent}'. "
+            if proposal.get("capability_found"):
+                answer += f"Znaleziono capability '{proposal.get('needed_capability', '')}', ale nie jest aktywna (state: {proposal.get('promotion_state', 'unknown')})."
+            else:
+                answer += f"Propozycja: utwórz capability '{cap_intent.replace(' ', '_')}_status' typu READ_ONLY."
+            result = _build_response(ctx, status=CAPABILITY_MISSING, answer=answer,
+                                    plan=plan, limitations=["capability_missing"])
+            _log(req_id, provider_name, model_name, plan.get("mode", "unknown"), plan.get("intent", ""),
+                 plan.get("tools_to_call", []), [], False, CAPABILITY_MISSING, "capability_missing", timer.elapsed_ms())
             result["request_id"] = req_id
             return result
-        # No capability or not active — return proposal
-        proposal = validation.get("capability_proposal", {})
-        cap_intent = plan.get("intent", "")
-        answer = f"Brak capability dla '{cap_intent}'. "
-        if proposal.get("capability_found"):
-            answer += f"Znaleziono capability '{proposal.get('needed_capability', '')}', ale nie jest aktywna (state: {proposal.get('promotion_state', 'unknown')})."
-        else:
-            answer += f"Propozycja: utwórz capability '{cap_intent.replace(' ', '_')}_status' typu READ_ONLY."
-        result = _build_response(ctx, status=CAPABILITY_MISSING, answer=answer,
-                                plan=plan, limitations=["capability_missing"])
-        _log(req_id, provider_name, model_name, plan.get("mode", "unknown"), plan.get("intent", ""),
-             plan.get("tools_to_call", []), [], False, CAPABILITY_MISSING, "capability_missing", timer.elapsed_ms())
-        result["request_id"] = req_id
-        return result
 
     if validation.get("status") != OK:
         result = _build_response(ctx, status=validation.get("status", ERROR), answer=f"Plan odrzucony: {validation.get('error', 'validation failed')}",
@@ -162,7 +145,6 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
     tool_results = _execute_tools(plan["tools_to_call"], plan.get("parameters", {}), question)
 
     if not tool_results:
-        # Try capability fallback before giving up
         cap_result = _try_capability_fallback(plan, ctx, question)
         if cap_result:
             result = cap_result
@@ -177,7 +159,6 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
         result["request_id"] = req_id
         return result
 
-    # Check if all tool results are effectively empty/no_data — capability fallback
     if _all_tools_empty(tool_results):
         cap_result = _try_capability_fallback(plan, ctx, question)
         if cap_result:
@@ -187,6 +168,16 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
                  False, result.get("status", OK), "", timer.elapsed_ms())
             result["request_id"] = req_id
             return result
+
+    # ── DB introspection fallback: if any reader returned SCHEMA_MISMATCH/READER_ERROR ──
+    # Albert described the right domain tool but the reader failed on schema.
+    # Fall back to DB introspection so Albert can still get the data.
+    if _has_reader_error(tool_results):
+        db_fallback = _try_db_introspection_fallback(plan, question)
+        if db_fallback:
+            tool_results.extend(db_fallback)
+            plan["tools_to_call"] = list(plan.get("tools_to_call", [])) + ["db_introspection_fallback"]
+            plan["db_introspection_used"] = True
 
     tools_called = [r.get("reader", "") for r in tool_results]
     answer_result = llm.answer(ctx, plan, tool_results)
@@ -206,13 +197,10 @@ def _check_qbot3_enabled() -> None:
         raise RuntimeError("QBOT3_ENABLED=1 required for QBot3 agent runtime")
 
 
-# ── Deterministic pre-router ───────────────────────────────────────────
-# Runs BEFORE the LLM planner for obvious domain matches.
-# LLM-first principle preserved: only intercepts well-defined domains
-# where the LLM historically routes incorrectly.
-
+# ── Read pre-router domains (dry, safe, for well-known read-only domains) ─
+# Kept as a convenience — NOT for final intent routing. Albert still gets
+# the final say. This just provides quick answers for obvious known domains.
 _PRE_ROUTE_DOMAINS: list[tuple[list[str], str, str]] = [
-    # (keywords, intent, tool_name)
     (["status qbot", "qbot status", "status systemu"], "status", "status"),
     (["readiness", "gotowość", "readiness qbot"], "readiness", "readiness"),
     (["raport dzienny", "daily report", "email z raportem", "nie przeszedł", "niedostarczony raport",
@@ -233,14 +221,94 @@ _PRE_ROUTE_DOMAINS: list[tuple[list[str], str, str]] = [
      "llm_status", "llm_status"),
 ]
 
-# Write pre-router — intercepts write intents before LLM planner
-_WRITE_PRE_ROUTE_KEYWORDS: list[tuple[list[str], str]] = [
-    (["dodaj posiłek", "dodaj jedzenie", "dodaj do spożycia", "zjedz", "jadłem", "nutrition_log_add"], "nutrition_log_add"),
-    (["dodaj event", "dodaj wydarzenie", "zaplanuj event", "zapisz do kalendarza", "dodaj do kalendarza", "calendar_event_add", "zapisz event", "dodaj do kalendarza"], "calendar_event_add"),
-    (["przypomnij", "przypomnij mi", "reminder", "dodaj przypomnienie", "reminder_add"], "reminder_add"),
-    (["zapamiętaj fakt", "zapamiętaj", "zapisz fakt", "planning_fact_add", "notuj", "zanotuj"], "planning_fact_add"),
-    (["usuń wszystko", "usuń wszystkie", "wyczyść", "delete all"], "DESTRUCTIVE"),
+# ── Write intent ↔ action type mapping (post-LLM resolver) ─────────────
+# Used when LLM returns read_only+no_tools for an intent that is actually a write.
+# Not a pre-router — runs AFTER Albert, only as a safety net for LLM mode mistakes.
+
+_WRITE_INTENT_MAP: dict[str, str] = {
+    "add_nutrition_entry": "nutrition_log_add",
+    "nutrition_log_add": "nutrition_log_add",
+    "add_calendar_event": "calendar_event_add",
+    "calendar_event_add": "calendar_event_add",
+    "add_reminder": "reminder_add",
+    "reminder_add": "reminder_add",
+    "add_planning_fact": "planning_fact_add",
+    "planning_fact_add": "planning_fact_add",
+    "add_memory_fact": "memory_confirmed_fact_add",
+    "memory_confirmed_fact_add": "memory_confirmed_fact_add",
+    "append_doc": "qbot_doc_append",
+    "qbot_doc_append": "qbot_doc_append",
+}
+
+# Destructive patterns — blocked before Albert (pure safety)
+_DESTRUCTIVE_PATTERNS = [
+    "usuń wszystko", "usuń wszystkie", "wyczyść", "skasuj wszystko", "delete all",
+    "usuń", "skasuj", "delete", "remove", "usun",
 ]
+
+
+def _is_destructive_query(question: str) -> bool:
+    ql = question.lower().strip()
+    for pat in _DESTRUCTIVE_PATTERNS:
+        if ql.startswith(pat) or pat in ql.split()[:3]:
+            return True
+    return False
+
+
+def _resolve_write_intent(plan: dict[str, Any], question: str) -> dict[str, Any]:
+    """Post-LLM resolver: if plan looks like a misclassified write intent, fix it."""
+    plan = dict(plan)
+    intent = plan.get("intent", "")
+    mode = plan.get("mode", "read_only")
+    tools = plan.get("tools_to_call", [])
+
+    # If mode=write already, nothing to resolve
+    if mode == "write":
+        return plan
+
+    # If intent maps to a write action and no tools were planned
+    if intent in _WRITE_INTENT_MAP and not tools:
+        write_action = _WRITE_INTENT_MAP[intent]
+        plan["mode"] = "write"
+        plan["write_action"] = write_action
+        plan["requires_confirm"] = True
+        plan["write_payload"] = _extract_write_payload(write_action, question)
+        plan["tools_to_call"] = []
+        return plan
+
+    # If intent is generic write-like (starts with add_, create_, save_, log_, insert_)
+    # and no tools, try to infer the write action
+    generic_write_prefixes = ("add_", "create_", "save_", "log_", "insert_", "new_", "set_", "write_")
+    if mode == "read_only" and not tools and any(intent.startswith(p) for p in generic_write_prefixes):
+        for known_intent, known_action in _WRITE_INTENT_MAP.items():
+            if intent.startswith(known_intent.rstrip("_").split("_")[0]):
+                plan["mode"] = "write"
+                plan["write_action"] = known_action
+                plan["requires_confirm"] = True
+                plan["write_payload"] = _extract_write_payload(known_action, question)
+                plan["tools_to_call"] = []
+                return plan
+
+    return plan
+
+
+def _try_resolve_missing_capability_as_write(plan: dict[str, Any], question: str) -> dict[str, Any] | None:
+    """When plan gets CAPABILITY_MISSING, check if it's really a write intent."""
+    intent = plan.get("intent", "")
+    if intent in _WRITE_INTENT_MAP:
+        write_action = _WRITE_INTENT_MAP[intent]
+        return {
+            "intent": intent,
+            "mode": "write",
+            "tools_to_call": [],
+            "write_action": write_action,
+            "write_payload": _extract_write_payload(write_action, question),
+            "requires_confirm": True,
+            "confidence": plan.get("confidence", 0.5),
+            "needs_clarification": False,
+            "clarification_question": "",
+        }
+    return None
 
 
 def _deterministic_write_pre_route(question: str) -> dict[str, Any] | None:
@@ -533,7 +601,14 @@ def _execute_tools(tool_names: list[str], params: dict[str, Any], question: str)
                 result = callable_fn(args)
         except Exception as exc:
             result = {"status": "error", "error": str(exc)[:300]}
-        results.append({"reader": name, "category": spec.get("category", ""), "status": "OK", "data": result})
+        # Propagate error status from tool result — do NOT mask as OK
+        data_status = result.get("status", "OK") if isinstance(result, dict) else "OK"
+        if data_status in ("SQL_ERROR", "SCHEMA_MISMATCH", "TIMEOUT", "BLOCKED", "ERROR", "CONNECTOR_MISSING", "READER_ERROR"):
+            results.append({"reader": name, "category": spec.get("category", ""), "status": data_status, "data": result})
+        elif "error" in result and isinstance(result, dict) and result.get("error"):
+            results.append({"reader": name, "category": spec.get("category", ""), "status": "error", "data": result})
+        else:
+            results.append({"reader": name, "category": spec.get("category", ""), "status": "OK", "data": result})
     return results
 
 
@@ -544,23 +619,29 @@ def _all_tools_empty(tool_results: list[dict[str, Any]]) -> bool:
       - status is DATA_MISSING/CONNECTOR_MISSING/NO_DATA/NOT_IMPLEMENTED, or
       - the dict has no meaningful keys beyond status, or
       - the result is None/empty string.
+
+    ERROR/SCHEMA_MISMATCH/SQL_ERROR/TIMEOUT/BLOCKED are NOT empty —
+    they contain diagnostic info that Albert needs to see.
     """
     if not tool_results:
         return True
     empty_count = 0
     for tr in tool_results:
+        wrapper_status = tr.get("status", "OK")
+        # Error statuses contain diagnostic info — NOT empty
+        if wrapper_status in ("error", "SQL_ERROR", "SCHEMA_MISMATCH", "TIMEOUT", "BLOCKED", "CONNECTOR_MISSING"):
+            return False
         data = tr.get("data", {})
         if not isinstance(data, dict):
             empty_count += 1
             continue
         status = data.get("status", "")
-        if status in ("DATA_MISSING", "CONNECTOR_MISSING", "NO_DATA", "NOT_IMPLEMENTED"):
+        if status in ("DATA_MISSING", "NO_DATA", "NOT_IMPLEMENTED"):
             empty_count += 1
             continue
         # Has explicit error
         if data.get("error"):
-            empty_count += 1
-            continue
+            return False
         # Check if it has actual data content beyond status/error
         meaningful_keys = [k for k in data if k not in ("status", "tool", "safety_class")]
         if not meaningful_keys:
@@ -569,6 +650,168 @@ def _all_tools_empty(tool_results: list[dict[str, Any]]) -> bool:
         # Has at least some data — not empty
         return False
     return empty_count == len(tool_results)
+
+
+def _has_reader_error(tool_results: list[dict[str, Any]]) -> bool:
+    """Check if any tool result has a reader error (schema mismatch, SQL error, etc.)."""
+    error_statuses = ("SCHEMA_MISMATCH", "READER_ERROR", "SQL_ERROR", "CONNECTOR_MISSING", "TIMEOUT", "error")
+    for tr in tool_results:
+        ws = tr.get("status", "")
+        if ws in error_statuses:
+            return True
+        data = tr.get("data", {})
+        if isinstance(data, dict):
+            ds = data.get("status", "")
+            if ds in error_statuses:
+                return True
+    return False
+
+
+def _try_db_introspection_fallback(plan: dict[str, Any], question: str) -> list[dict[str, Any]] | None:
+    """When a reader fails, try DB introspection to get the data.
+
+    Inspects the DB schema and runs a safe SELECT on relevant tables.
+    """
+    from qbot3.db_introspection import db_table_describe, db_select_readonly, db_schema_list
+    from qbot3.tool_registry import lookup
+    import re
+
+    ql = question.lower()
+    results = []
+
+    # 1. Determine which tables might be relevant from the query
+    table_candidates = []
+    if any(k in ql for k in ("kalendarz", "event", "wydarzen", "calendar", "toskan", "bikepack", "qcal")):
+        table_candidates.append(("public", "calendar_events"))
+    if any(k in ql for k in ("jadł", "jedzeni", "posiłk", "meal", "nutrition", "kalor")):
+        table_candidates.append(("public", "meal_logs"))
+        table_candidates.append(("public", "meal_log_items"))
+    if any(k in ql for k in ("reminder", "przypomn")):
+        table_candidates.append(("public", "reminders"))
+
+    if not table_candidates:
+        # Map known tool names to database tables
+        tool_to_table = {
+            "qcal_events_range": ("public", "calendar_events"),
+            "qcal_events_upcoming": ("public", "calendar_events"),
+            "qcal_reminders_upcoming": ("public", "reminders"),
+            "nutrition_day_summary": ("public", "meal_logs"),
+            "nutrition_log_add": ("public", "meal_logs"),
+        }
+        for tool_name in plan.get("tools_to_call", []):
+            if tool_name in tool_to_table:
+                table_candidates.append(tool_to_table[tool_name])
+
+    if not table_candidates:
+        # Try to extract table name from the failed tool's description
+        for tool_name in plan.get("tools_to_call", []):
+            spec = lookup(tool_name)
+            if spec:
+                desc = spec.get("description", "").lower()
+                for tbl in re.findall(r'\b(\w+)\b', desc):
+                    if tbl.endswith("s") and tbl not in ("parameters", "status", "data", "class", "type"):
+                        table_candidates.append(("public", tbl))
+
+    if not table_candidates:
+        return None
+
+    # 2. Describe tables and build safe SELECTs
+    explored = set()
+    for schema, table in table_candidates:
+        key = f"{schema}.{table}"
+        if key in explored:
+            continue
+        explored.add(key)
+
+        # Describe the table to discover actual columns
+        describe_args = {"table": table, "schema": schema}
+        results.append({
+            "reader": "db_table_describe",
+            "category": "db",
+            "status": "OK",
+            "data": {"args": describe_args, "query": "DB introspection fallback — describe table"},
+        })
+        desc = db_table_describe(describe_args)
+        if desc.get("status") != "OK":
+            results.append({
+                "reader": f"db_introspection_fallback.{table}",
+                "category": "db",
+                "status": "error",
+                "data": {
+                    "status": desc.get("status", "ERROR"),
+                    "error": desc.get("error", f"cannot describe table {table}"),
+                    "table": table,
+                    "note": "DB introspection fallback attempted but table describe failed",
+                },
+            })
+            continue
+        cols = [c["name"] for c in desc.get("columns", [])]
+
+        # Build a safe SELECT with all columns
+        if not cols:
+            continue
+
+        # Detect date range from query for calendar tables
+        where_clause = ""
+        if "calendar_events" in table:
+            date_from = None
+            date_to = None
+            m = re.search(r'(\d{1,2})[./](\d{1,2})[./](\d{4})', question)
+            if m:
+                date_from = f"{m.group(3)}-{m.group(2).zfill(2)}-{m.group(1).zfill(2)}"
+            m2 = re.search(r'od\s+(\d{1,2}[./]\d{1,2}[./]\d{4})', ql)
+            m3 = re.search(r'do\s+(\d{1,2}[./]\d{1,2}[./]\d{4})', ql)
+            if m2:
+                parts = re.split(r'[./]', m2.group(1))
+                if len(parts) == 3:
+                    date_from = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+            if m3:
+                parts = re.split(r'[./]', m3.group(1))
+                if len(parts) == 3:
+                    date_to = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+
+            if date_from and date_to and "date_start" in cols:
+                where_clause = f" WHERE date_start >= '{date_from}' AND date_start <= '{date_to}'"
+            elif date_from and "date_start" in cols:
+                where_clause = f" WHERE date_start >= '{date_from}'"
+
+        cols_sql = ", ".join(cols[:20])
+        sql = f"SELECT {cols_sql} FROM \"{table}\"{where_clause} ORDER BY 1 LIMIT 50"
+
+        select_args = {"sql": sql}
+        results.append({
+            "reader": "db_select_readonly",
+            "category": "db",
+            "status": "OK",
+            "data": {"args": select_args, "query": "DB introspection fallback — safe SELECT"},
+        })
+        select_result = db_select_readonly(select_args)
+        if select_result.get("status") == "OK":
+            rrows = select_result.get("rows", [])
+            note = f"db_introspection_fallback for {table}: {len(rrows)} rows via db_select_readonly"
+            results.append({
+                "reader": f"db_introspection_fallback.{table}",
+                "category": "db",
+                "status": "OK",
+                "data": {
+                    "status": "OK",
+                    "note": note,
+                    "table": table,
+                    "columns_used": cols[:20],
+                    "rows": rrows,
+                    "row_count": len(rrows),
+                    "fallback_from": "reader_error",
+                },
+            })
+        else:
+            results.append({
+                "reader": f"db_introspection_fallback.{table}",
+                "category": "db",
+                "status": "error",
+                "data": select_result,
+            })
+
+    return results if results else None
 
 
 def _try_capability_fallback(plan: dict[str, Any], ctx: dict[str, Any], question: str) -> dict[str, Any] | None:
@@ -740,7 +983,7 @@ def _build_response(ctx: dict[str, Any], *, status: str, answer: str,
         "tool": "qbot.query",
         "safety_class": "READ_ONLY",
         "query": ctx.get("question", ""),
-        "plan": {"intent": plan["intent"] if plan else "", "mode": plan["mode"] if plan else "read_only", "tools": plan.get("tools_to_call", []) if plan else []},
+        "plan": dict(plan) if plan else {},
         "trace": trace,
         "orchestrator": {"enabled": True, "name": "Albert", "version": "qbot3", "stage": "final", "fallback_used": False},
         "answer": answer,

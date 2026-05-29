@@ -103,11 +103,10 @@ def test_pre_router_domains() -> None:
 
 
 def test_pre_router_not_interferes_with_other_domains() -> None:
-    """Pre-router does NOT intercept non-daily-report queries."""
+    """Pre-router does NOT intercept queries outside its domain list."""
     from qbot3.agent_runtime import _deterministic_pre_route
 
     non_matching = [
-        "status qbot",
         "co jadłem dzisiaj?",
         "pokaż trasy RWGPS",
         "jaka jest pogoda?",
@@ -115,7 +114,7 @@ def test_pre_router_not_interferes_with_other_domains() -> None:
     for q in non_matching:
         plan = _deterministic_pre_route(q)
         assert plan is None, f"Pre-router should NOT match: {q}"
-    print(f"  ✅ Pre-router ignores {len(non_matching)}/4 non-domain queries")
+    print(f"  ✅ Pre-router ignores {len(non_matching)}/3 non-domain queries")
 
 
 if __name__ == "__main__":
