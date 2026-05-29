@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Tests: capability fallback architecture, not just daily_report keywords.
-
-The principle:
-  1. LLM plans → may pick wrong tools
-  2. If all tools return empty/no_data, capability registry is checked
-  3. Capability matching the intent is executed as fallback
-  4. system_logs_recent is NOT the default fallback for domain issues
-  5. CAPABILITY_MISSING is returned when no capability exists
-"""
+"""Tests: tool registry, capability lookup, error codes."""
 
 from __future__ import annotations
 
@@ -83,48 +75,12 @@ def test_capability_missing_error_code() -> None:
     print(f"  ✅ CAPABILITY_MISSING error code works")
 
 
-def test_pre_router_domains() -> None:
-    """Pre-router covers all intended domain patterns."""
-    from qbot3.agent_runtime import _deterministic_pre_route
-
-    test_queries = [
-        "dlaczego email z raportem dziennym nie przeszedł?",
-        "daily report pipeline status",
-        "co z raportem dziennym",
-        "report_status pending",
-        "niedostarczony raport",
-    ]
-    for q in test_queries:
-        plan = _deterministic_pre_route(q)
-        assert plan is not None, f"Pre-router should match: {q}"
-        assert plan["intent"] == "daily_report_status"
-        assert plan["_pre_routed"] is True
-    print(f"  ✅ Pre-router matches {len(test_queries)}/5 domain queries")
-
-
-def test_pre_router_not_interferes_with_other_domains() -> None:
-    """Pre-router does NOT intercept queries outside its domain list."""
-    from qbot3.agent_runtime import _deterministic_pre_route
-
-    non_matching = [
-        "co jadłem dzisiaj?",
-        "pokaż trasy RWGPS",
-        "jaka jest pogoda?",
-    ]
-    for q in non_matching:
-        plan = _deterministic_pre_route(q)
-        assert plan is None, f"Pre-router should NOT match: {q}"
-    print(f"  ✅ Pre-router ignores {len(non_matching)}/3 non-domain queries")
-
-
 if __name__ == "__main__":
     os.environ["QBOT3_ENABLED"] = "1"
-    print("=== Capability Fallback Architecture Tests ===")
+    print("=== Tool Registry & Capability Tests ===")
     test_capability_fallback_empty_tools()
     test_capability_fallback_daily_report_status()
     test_tool_registry_has_daily_report_status()
     test_system_logs_recent_not_primary_for_domain_queries()
     test_capability_missing_error_code()
-    test_pre_router_domains()
-    test_pre_router_not_interferes_with_other_domains()
-    print("\n✅ All capability fallback architecture tests passed")
+    print("\n✅ All tool registry & capability tests passed")

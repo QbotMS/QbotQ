@@ -16,8 +16,6 @@ from qbot3.safety import _ACTION_ALLOWLIST
 
 # ── Input kind classification ──────────────────────────────────────────
 
-CONVERSATIONAL_PING = "CONVERSATIONAL_PING"
-SMALLTALK = "SMALLTALK"
 GENERAL_QUESTION = "GENERAL_QUESTION"
 READ_ONLY_TASK = "READ_ONLY_TASK"
 WRITE_DRAFT_TASK = "WRITE_DRAFT_TASK"
@@ -25,13 +23,6 @@ WRITE_EXECUTE_REQUEST = "WRITE_EXECUTE_REQUEST"
 WORKFLOW_AUDIT_REQUEST = "WORKFLOW_AUDIT_REQUEST"
 UNKNOWN_TASK_REQUIRES_CAPABILITY = "UNKNOWN_TASK_REQUIRES_CAPABILITY"
 UNSUPPORTED_OR_DESTRUCTIVE = "UNSUPPORTED_OR_DESTRUCTIVE"
-
-# Conversational ping patterns (short, no task content)
-_PING_PATTERNS = [
-    r"^(test|hej|halo|elo|siema|czesc|cześć|dzien dobry|dzień dobry|dobry|witaj| hello|hi|hey)\W*$",
-    r"^(dzi.?a|czy dzialasz|czy działasz|jestes tam|jesteś tam|co slychac|co słychać)\W*$",
-    r"^ok|ok\.|okay|spoko|dobra|super|git|fajnie$",
-]
 
 # Write intent keywords (first-match priority)
 _WRITE_KEYWORDS: list[tuple[list[str], str, str | None]] = [
@@ -50,54 +41,6 @@ _WRITE_KEYWORDS: list[tuple[list[str], str, str | None]] = [
       "qbot_doc_append", "doc append", "update doc"], WRITE_DRAFT_TASK, "qbot_doc_append"),
     (["zapisz", "dodaj", "utwórz", "stwórz", "draft"], WRITE_DRAFT_TASK, None),
 ]
-
-
-def classify_input_kind(question: str) -> dict[str, Any]:
-    """Classify what kind of input the user sent.
-
-    Returns input_kind and action_type if applicable.
-    """
-    ql = question.lower().strip()
-
-    # 1. Conversational ping — very short, no task
-    for pat in _PING_PATTERNS:
-        if re.match(pat, ql):
-            return {"input_kind": CONVERSATIONAL_PING, "action_type": None, "confidence": 0.95}
-
-    # 2. Smalltalk — casual greetings, check-ins, but not purely ping
-    smalltalk_words = ["hej", "cześć", "siema", "witam", "dzien", "dobry", "jak leci",
-                       "co tam", "dzieki", "dzięki", "ok", "spoko", "super"]
-    word_count = len(ql.split())
-    if word_count <= 4 and any(w in ql for w in smalltalk_words):
-        return {"input_kind": SMALLTALK, "action_type": None, "confidence": 0.85}
-
-    # 3. Check if it's a question (read intent) — overrides write keywords
-    question_starters = ("co ", "czy ", "jaki ", "jaka ", "jakie ", "jaka ", "jacy ", "kiedy ", "gdzie ", "dlaczego ", "po co ", "ile ")
-    if ql.startswith(question_starters):
-        return {"input_kind": READ_ONLY_TASK, "action_type": None, "confidence": 0.8}
-
-    # 4. Write intent — check keywords
-    for keywords, cls, suggested_at in _WRITE_KEYWORDS:
-        if any(kw in ql for kw in keywords):
-            action_type = suggested_at
-            if cls == UNSUPPORTED_OR_DESTRUCTIVE and not suggested_at:
-                action_type = "DESTRUCTIVE"
-            return {"input_kind": cls, "action_type": action_type, "confidence": 0.9}
-
-    # 4. Default — task or general question
-    return {"input_kind": READ_ONLY_TASK, "action_type": None, "confidence": 0.5}
-
-
-# ── Conversation responses ─────────────────────────────────────────────
-
-_CONVERSATION_RESPONSES = {
-    CONVERSATIONAL_PING: "Działam. Jestem podłączony.",
-    SMALLTALK: "Hej. Jestem.",
-}
-
-
-def get_conversation_response(input_kind: str) -> str | None:
-    return _CONVERSATION_RESPONSES.get(input_kind)
 
 
 # ── Write slot extraction ──────────────────────────────────────────────

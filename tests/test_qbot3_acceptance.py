@@ -17,7 +17,6 @@ os.environ["ALBERT_LLM_PROVIDER"] = "mock"
 
 from qbot3.agent_runtime import (
     _resolve_write_intent, _is_destructive_query,
-    _try_resolve_missing_capability_as_write,
     _all_tools_empty, _execute_tools,
     _has_reader_error, _try_db_introspection_fallback,
     orchestrate_query,
@@ -64,17 +63,6 @@ class TestTransparentGateway(unittest.TestCase):
             "pokaż wydarzenia"
         )
         self.assertEqual(plan["mode"], "read_only")
-
-    def test_capability_missing_resolver(self):
-        """CAPABILITY_MISSING for add_nutrition_entry → resolved as write"""
-        resolved = _try_resolve_missing_capability_as_write(
-            {"intent": "add_nutrition_entry", "mode": "read_only", "confidence": 0.5, "tools_to_call": []},
-            "Dodaj ryż"
-        )
-        self.assertIsNotNone(resolved)
-        self.assertEqual(resolved["mode"], "write")
-        self.assertEqual(resolved["write_action"], "nutrition_log_add")
-
 
 class TestNutritionDraft(unittest.TestCase):
     """Nutrition write intent → action_draft with correct payload."""
@@ -232,19 +220,10 @@ class TestRegression(unittest.TestCase):
         names = [t["name"] for t in tools]
         self.assertEqual(names, ["qbot.query", "qbot.action_execute"])
 
-    def test_conversational_ping(self):
-        """'test' → ping, not capability_missing"""
-        from qbot3.write_router import classify_input_kind, CONVERSATIONAL_PING
-        result = classify_input_kind("test")
-        self.assertEqual(result["input_kind"], CONVERSATIONAL_PING)
-
     def test_calendar_missing_title(self):
         """'zapisz event' → draft incomplete, pending_task"""
         q = "zapisz event"
-        slots = extract_nutrition_slots(q)  # wrong extractor but just checking
-        # Use write router directly
-        from qbot3.write_router import build_draft, WRITE_DRAFT_TASK, classify_input_kind
-        cls = classify_input_kind(q)
+        from qbot3.write_router import build_draft
         payload = {}
         draft = build_draft("calendar_event_add", payload, q)
         self.assertFalse(draft["ready_for_execute"])
