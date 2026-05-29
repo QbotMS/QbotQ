@@ -14,10 +14,36 @@ from typing import Any
 from qbot3.agent_runtime import orchestrate_query
 from qbot3.safety import validate, exec_doc_append
 
+_MCP_PROTOCOL = "2024-11-05"
+_MCP_SERVER_NAME = "qbot3"
+_MCP_SERVER_VERSION = "qbot3"
+
 
 def handle_qbot3_mcp(payload: dict[str, Any]) -> dict[str, Any]:
     method = payload.get("method", "")
     req_id = payload.get("id")
+
+    if method == "initialize":
+        proto = payload.get("params", {}).get("protocolVersion", _MCP_PROTOCOL)
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "protocolVersion": proto,
+                "capabilities": {"tools": {"listChanged": False}},
+                "serverInfo": {"name": _MCP_SERVER_NAME, "version": _MCP_SERVER_VERSION},
+                "instructions": (
+                    "Używaj tools/call z qbot.query (pytania + zapisy) "
+                    "i qbot.action_execute (wykonanie zapisu)."
+                ),
+            },
+        }
+
+    if method == "notifications/initialized":
+        # Notification without id — return nothing per JSON-RPC/MCP
+        if req_id is None:
+            return {}  # empty dict → qbot_api.py returns 202 with null body
+        return {"jsonrpc": "2.0", "id": req_id, "result": {}}
 
     if method == "tools/list":
         return _list_tools(req_id)
