@@ -18,7 +18,7 @@ _CONTROL_PATTERNS: list[tuple[re.Pattern, str, str]] = [
     (re.compile(r'\b(?:bez zapisu|nie zapisuj|nie wysyłaj|nie zapisuj tego)\b', re.I), "no_write", "execution"),
     (re.compile(r'\b(?:tylko przygotuj draft|przygotuj draft|zrób draft|draft)\b', re.I), "draft_only", "execution"),
     (re.compile(r'\b(?:dry.run|dry_run|tryb suchy)\b', re.I), "dry_run", "execution"),
-    (re.compile(r'\b(?:bez wykonywania|bez wykonania|nie wykonuj|nie wykonuj akcji)\b', re.I), "no_execute", "execution"),
+    (re.compile(r'\b(?:bez wykonywania akcji|bez wykonywania|bez wykonania|nie wykonuj akcji|nie wykonuj)\b', re.I), "no_execute", "execution"),
     (re.compile(r'\b(?:tylko plan|pokaż plan|pokaż tylko plan)\b', re.I), "plan_only", "execution"),
 
     # Safety intent
@@ -36,9 +36,11 @@ _CONTROL_PATTERNS: list[tuple[re.Pattern, str, str]] = [
     (re.compile(r'\b(?:krótko|zwięźle|w skrócie|jedno zdanie)\b', re.I), "concise", "response"),
     (re.compile(r'\b(?:debug|trace|technical)\b', re.I), "debug_ok", "response"),
 
-    # Test / probe
-    (re.compile(r'\b(?:testowo|test|na próbę|próbny)\b', re.I), "test_probe", "test"),
-    (re.compile(r'\b(?:smoke|smoke test)\b', re.I), "smoke", "test"),
+    # Test / probe — only match if "test" is standalone and NOT part of a title/noun
+    (re.compile(r'\b(testowo|testowy|testowy|próbny|na próbę)\b', re.I), "test_probe", "test"),
+    (re.compile(r'^test$|\btest\b(?!\s+[A-Z])', re.I), "test_probe", "test"),
+    (re.compile(r'\b(?:smoke test|smoke)\b', re.I), "smoke", "test"),
+    (re.compile(r'\b(?:action.draft)\b', re.I), "action_draft_marker", "execution"),
 
     # Action draft marker (contextual — not always control)
     (re.compile(r'\b(?:action_draft|action draft)\b', re.I), "action_draft_marker", "execution"),
@@ -99,7 +101,25 @@ def decompose_query(raw_query: str) -> dict[str, Any]:
 
     # Build domain_task_text by removing control spans
     if excluded_spans:
-        merged_spans = _merge_spans(excluded_spans)
+        # Expand spans backward to include preceding connectors (ale, tylko, bez, jako, etc.)
+        expanded_spans = []
+        for s, e in excluded_spans:
+            # Look backward for connector words and punctuation
+            prefix = ql[:s].rstrip()
+            # Remove trailing comma/space before the span
+            while prefix.endswith(",") or prefix.endswith(" "):
+                prefix = prefix[:-1].rstrip()
+            # Check for connector words (ale, tylko, bez, jako, na, and, or, but, etc.)
+            connector_match = re.search(r'\b(ale|tylko|bez|jako|na|ale też|ale tylko)\s*$', prefix, re.I)
+            if connector_match:
+                s = connector_match.start()
+            else:
+                # Check for comma before the span
+                if prefix.endswith(","):
+                    s = len(prefix.rstrip(","))
+            expanded_spans.append((s, e))
+
+        merged_spans = _merge_spans(expanded_spans)
         parts = []
         pos = 0
         for s, e in sorted(merged_spans):
@@ -108,7 +128,13 @@ def decompose_query(raw_query: str) -> dict[str, Any]:
             pos = e
         if pos < len(ql):
             parts.append(ql[pos:])
-        domain_task_text = "".join(parts).strip().rstrip(" ,;:")
+        domain_task_text = "".join(parts).strip()
+        # Clean trailing connectors
+        for conn in ["ale", "tylko", "bez", "jako", "i", "oraz", ",", ";"]:
+            while domain_task_text.rstrip().endswith(conn):
+                domain_task_text = domain_task_text.rstrip()[:-len(conn)].strip().rstrip(",").strip()
+        domain_task_text = re.sub(r'\s+,$', '', domain_task_text).strip()
+        domain_task_text = re.sub(r',\s*,', ',', domain_task_text).strip().rstrip(" ,;:")
     else:
         domain_task_text = ql.strip()
 
@@ -182,13 +208,23 @@ def is_payload_contaminated(payload: dict[str, Any], decomposition: dict[str, An
         "qbot_doc_append": ["content_markdown"],
     }
 
+    # Residual connector words that indicate contamination
+    residual_connectors = [", ale", " ale", ", tylko", " tylko", ", bez", " bez", ", jako", " jako"]
+
     for field in sensitive_fields.get(action_type, []):
         val = str(payload.get(field, "")).lower().strip()
+        # Check for known control directive text in value
         for dt in directive_texts:
             dt_clean = dt.strip()
             if dt_clean and dt_clean in val and len(dt_clean) > 3:
                 warnings.append(f"contamination:{field} contains directive '{dt_clean[:30]}'")
                 break
+        # Check for residual connectors at end of value
+        if not any("contamination" in w for w in warnings):
+            for rc in residual_connectors:
+                if val.endswith(rc) or rc in val[-20:]:
+                    warnings.append(f"contamination:{field} has residual connector '{rc.strip()}'")
+                    break
 
     return warnings
 
@@ -213,7 +249,7 @@ def clean_payload(payload: dict[str, Any], contamination_warnings: list[str], ac
             continue
         field_info = parts[1]
         field_name = field_info.split(" ")[0] if " " in field_info else field_info
-        field_name = field_name.replace("contains", "").strip()
+        field_name = field_name.replace("contains", "").strip().replace("has", "").strip()
         # Remove the directives from field value
         val = str(cleaned.get(field_name, ""))
         if not val:
@@ -225,9 +261,17 @@ def clean_payload(payload: dict[str, Any], contamination_warnings: list[str], ac
                     new_val = pat.sub("", val).strip()
                     if new_val != val:
                         val = new_val
+                # Strip residual connectors
+                for rc in [", ale", " ale", ", tylko", " tylko", ", bez", " bez", ", jako", " jako",
+                           "ale", "tylko", "bez", "jako"]:
+                    if val.lower().endswith(rc):
+                        val = val[:-len(rc)].strip().rstrip(",").strip()
+                    if val.lower().startswith(rc):
+                        val = val[len(rc):].strip().lstrip(",").strip()
                 val = re.sub(r'\s+,?\s*$', '', val).strip()
                 val = re.sub(r'^,\s*', '', val).strip()
-                if val:
+                val = re.sub(r'\s+', ' ', val).strip()
+                if val and len(val) > 2:
                     cleaned[field_name] = val
                 else:
                     cleaned.pop(field_name, None)

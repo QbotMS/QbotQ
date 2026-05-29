@@ -237,14 +237,28 @@ def extract_planning_fact_slots(question: str) -> dict[str, Any]:
     ql = question.lower()
     payload: dict[str, Any] = {}
 
-    title_match = re.search(r'(?:fakt|fact|notatka|info|informacja)[:\s]+(.+?)(?:\s+bez|\s*$)', ql, re.IGNORECASE)
-    if title_match:
-        payload["title"] = title_match.group(1).strip().rstrip(".,")
-    else:
-        # Take everything after "zapamiętaj" or "zanotuj"
-        kw_match = re.search(r'(?:zapamiętaj|zanotuj|notuj)\s+(.+?)(?:\s+bez|\s*$)', ql, re.IGNORECASE)
-        if kw_match:
-            payload["title"] = kw_match.group(1).strip().rstrip(".,")
+    # Try various patterns — use original case for final title
+    patterns = [
+        r'(?:fakt|fact)[:\s]+(?:projektowy|projekt|plan|info|informat)?[:\s]*([A-Z].+?)(?:\s+bez|\s*$)',
+        r'(?:zapamiętaj|zanotuj|notuj)\s+(?:jako\s+)?(?:fakt|fact|info|informacja|notatk)[:\s]+(.+?)(?:\s+bez|\s*$)',
+        r'(?:zapamiętaj|zanotuj|notuj)\s+(?:jako\s+)?(.+?)(?:\s+bez|\s*$)',
+    ]
+    
+    for pat in patterns:
+        match = re.search(pat, question, re.I)
+        if match:
+            title = match.group(1).strip().rstrip(".,;:")
+            # Clean up leading adjectives (case-insensitive)
+            for skip in ["projektowy", "projekt", "plan", "info", "ważny", "roboczy"]:
+                if title.lower().startswith(skip):
+                    title = title[len(skip):].strip().lstrip(": ,;")
+            # Extract meaningful content — take from first capital letter if exists
+            cap_match = re.search(r'[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]', title)
+            if cap_match:
+                title = title[cap_match.start():]
+            if title:
+                payload["title"] = title
+            break
 
     return payload
 
