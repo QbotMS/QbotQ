@@ -154,6 +154,12 @@ Reguły bezpieczeństwa:
   potem db_select_readonly z konkretnym SQL.
 - Nie dodawaj narzędzi "na próbę" — każde narzędzie musi mieć kompletne argumenty.
 - Jeśli nie potrzebujesz więcej danych, zakończ odpowiedzią bez wywoływania narzędzi.
+- Gdy DB nie zawiera danych dla zapytanej daty (0 wierszy lub DATA_MISSING):
+  nie kończ odpowiedzią "brak danych". Sprawdź czy istnieje live narzędzie
+  dla tego źródła (Garmin → wellness_day lub garmin_diagnostics,
+  Xert → xert_readiness, trasy → rwgps_route_list) i wywołaj je.
+  Jeśli live narzędzie też nie ma danych, powiedz konkretnie:
+  "DB nie ma rekordu dla [data], live connector [nazwa] zwrócił [status/błąd]."
 """
 
 

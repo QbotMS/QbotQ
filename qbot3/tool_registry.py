@@ -138,7 +138,13 @@ def _load_weather_forecast_tool() -> dict[str, Any]:
     return {
         "callable": _wrapper,
         "category": "weather",
-        "description": "Weather forecast — location (city name), period (today/jutro), hours (1-48)",
+        "description": (
+            "Live fetch prognozy pogody z OpenWeatherMap — pobiera bezpośrednio z API, "
+            "nie z cache DB. Używaj gdy użytkownik pyta o pogodę. "
+            "Zwraca: temperatura, opady, wiatr, ciśnienie. "
+            "Parametry: location (miasto, domyślnie Warszawa), period (today/jutro), "
+            "hours (1-48, domyślnie 24)."
+        ),
         "args_schema": {"location": {"type": "string"}, "period": {"type": "string"}, "hours": {"type": "integer"}},
         "safety": "read",
     }
@@ -198,7 +204,13 @@ def _load_wellness_day_tool() -> dict[str, Any]:
         "callable": _safe_call,
         "wrapped": _tool_qbot_wellness_day_get,
         "category": "wellness",
-        "description": "Wellness data for a date (HRV, resting HR, sleep duration)",
+        "description": (
+            "Live fetch danych wellness z Garmin — pobiera bezpośrednio z Garmin API, "
+            "nie z cache DB. Używaj gdy DB (qbot_wellness_daily) nie ma rekordu dla danej "
+            "daty lub gdy użytkownik pyta o aktualne dane. "
+            "Zwraca: hrv_ms, resting_hr_bpm, sleep_duration_min, kcal_burned. "
+            "Parametry: date (ISO, domyślnie dziś)."
+        ),
         "args_schema": {"date": {"type": "string"}},
         "safety": "read",
     }
@@ -210,7 +222,13 @@ def _load_sleep_day_tool() -> dict[str, Any]:
         "callable": _safe_call,
         "wrapped": _tool_qbot_sleep_day_get,
         "category": "wellness",
-        "description": "Sleep data for a date (duration, score, start/end time, source)",
+        "description": (
+            "Live fetch danych snu z Garmin — pobiera bezpośrednio z Garmin API, "
+            "nie z cache DB. Używaj gdy DB (qbot_wellness_daily) nie ma rekordu "
+            "dla danej daty. "
+            "Zwraca: sleep_duration_min, sleep_score, awake_duration, source. "
+            "Parametry: date (ISO, domyślnie dziś)."
+        ),
         "args_schema": {"date": {"type": "string"}},
         "safety": "read",
     }
@@ -222,7 +240,13 @@ def _load_xert_readiness_tool() -> dict[str, Any]:
         "callable": _safe_call,
         "wrapped": _tool_qbot_xert_readiness_status,
         "category": "fitness",
-        "description": "Xert training readiness: FTP, form, W', fatigue, freshness",
+        "description": (
+            "Live fetch danych treningowych z Xert API — pobiera bezpośrednio, "
+            "nie z cache DB. Używaj gdy DB (training_sessions, xert_metrics) nie ma "
+            "rekordu lub użytkownik pyta o aktualny stan. "
+            "Zwraca: ftp_watts, ltp_watts, w_prime_kj, form_status. "
+            "Parametry: brak (zawsze bieżący stan)."
+        ),
         "args_schema": {},
         "safety": "read",
     }
@@ -234,7 +258,12 @@ def _load_rwgps_list_tool() -> dict[str, Any]:
         "callable": _safe_call,
         "wrapped": _tool_qbot_rwgps_route_list,
         "category": "routes",
-        "description": "List RWGPS routes with metadata (count, names, ids)",
+        "description": (
+            "Live fetch listy tras z RWGPS API — pobiera bezpośrednio, "
+            "nie z cache DB. Używaj gdy użytkownik pyta o dostępne trasy. "
+            "Zwraca: lista tras z nazwami i ID. "
+            "Parametry: brak (zawsze aktualna lista)."
+        ),
         "args_schema": {},
         "safety": "read",
     }
@@ -352,7 +381,13 @@ def _load_garmin_diagnostics_tool() -> dict[str, Any]:
     return {
         "callable": _wrapper,
         "category": "garmin",
-        "description": "Garmin diagnostics: check DB tables, last import date, today's data presence, 30-day record count",
+        "description": (
+            "Sprawdza stan danych Garmin w DB — czy tabela istnieje, "
+            "ostatnia data importu, liczba rekordów dziś i w 30 dni. "
+            "Używaj jako wstęp przed wellness_day lub sleep_day gdy nie wiesz "
+            "czy dane są dostępne. "
+            "Zwraca: table_exists, today_data_count, last_import_date, records_last_30d."
+        ),
         "args_schema": {},
         "safety": "read",
     }
@@ -482,7 +517,12 @@ def _load_rwgps_route_fetch_tool() -> dict[str, Any]:
         "callable": _safe_call,
         "wrapped": _tool_qbot_rwgps_route_get,
         "category": "routes",
-        "description": "Fetch a specific RWGPS route by ID. Parameter: route_id (string or number)",
+        "description": (
+            "Live fetch trasy z RWGPS API — pobiera bezpośrednio trasę po ID. "
+            "Używaj gdy użytkownik pyta o konkretną trasę. "
+            "Zwraca: szczegóły trasy (dystans, przewyższenie, punkty). "
+            "Parametry: route_id (wymagany, string lub number)."
+        ),
         "args_schema": {"route_id": {"type": "string"}},
         "safety": "read",
     }
@@ -858,7 +898,12 @@ def _load_garmin_sync_status_tool() -> dict[str, Any]:
     return {
         "callable": _wrapper,
         "category": "garmin",
-        "description": "Garmin sync status: last data date, last sync time, records in last 7 days",
+        "description": (
+            "Live sprawdzenie stanu synchronizacji Garmin — ostatnia data danych, "
+            "ostatni czas syncu, liczba rekordów w 7 dni. "
+            "Używaj gdy użytkownik pyta o synchronizację lub aktualność danych Garmin. "
+            "Zwraca: last_data_date, last_sync, records_last_7d, has_recent_data."
+        ),
         "args_schema": {},
         "safety": "read",
         "mode": "read_only",
@@ -940,7 +985,12 @@ def _load_rwgps_route_last_tool() -> dict[str, Any]:
         return {
             "callable": _wrapper,
             "category": "routes",
-            "description": "Get the most recent RWGPS route",
+            "description": (
+                "Live fetch ostatniej trasy z RWGPS API — pobiera bezpośrednio, "
+                "nie z cache DB. Używaj gdy użytkownik pyta o ostatnią trasę. "
+                "Zwraca: route_id, nazwa, dystans, lokacje. "
+                "Parametry: brak."
+            ),
             "args_schema": {},
             "safety": "read",
             "mode": "read_only",
@@ -954,7 +1004,10 @@ def _load_rwgps_route_last_tool() -> dict[str, Any]:
         return {
             "callable": _stub,
             "category": "routes",
-            "description": "Get the most recent RWGPS route",
+            "description": (
+                "Live fetch ostatniej trasy z RWGPS API. "
+                "Zwraca: route_id, nazwa, dystans. Parametry: brak."
+            ),
             "args_schema": {},
             "safety": "read",
             "mode": "read_only",
@@ -983,7 +1036,13 @@ def _load_rwgps_artifact_status_tool() -> dict[str, Any]:
     return {
         "callable": _wrapper,
         "category": "routes",
-        "description": "Check if route artifacts (GPX/JSON) exist for a given route_id. Parameters: route_id (required string)",
+        "description": (
+            "Live sprawdzenie artefaktów trasy (GPX/JSON) w RWGPS API. "
+            "Używaj po rwgps_route_list lub rwgps_route_fetch gdy potrzebujesz "
+            "sprawdzić czy dana trasa ma gotowe pliki. "
+            "Zwraca: lista dostępnych formatów (gpx, json, fit, tcx). "
+            "Parametry: route_id (wymagany string)."
+        ),
         "args_schema": {"route_id": {"type": "string"}},
         "safety": "read",
         "mode": "read_only",
@@ -1161,6 +1220,101 @@ def _load_db_select_readonly_tool() -> dict[str, Any]:
     }
 
 
+def _load_garmin_live_fetch_tool() -> dict[str, Any]:
+    """Live fetch danych Garmin wellness/energy dla konkretnej daty.
+
+    Używa garminconnect bezpośrednio. Nie zapisuje do DB.
+    Wymaga ważnych tokenów OAuth (garmin_auth.garmin_client).
+    """
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        from qbot3.errors import CONNECTOR_MISSING, error_result, success_result
+        from datetime import date as dt_date
+
+        target_date = args.get("date", dt_date.today().isoformat())
+
+        try:
+            from garmin_auth import garmin_client, GarminAuthError
+            client = garmin_client()
+        except GarminAuthError as exc:
+            return error_result(CONNECTOR_MISSING, f"Garmin auth: {exc}")
+        except Exception as exc:
+            return error_result(CONNECTOR_MISSING, f"Garmin client init error: {str(exc)[:200]}")
+
+        try:
+            summary = client.get_user_summary(target_date)
+            if not summary:
+                return error_result(
+                    CONNECTOR_MISSING,
+                    f"Garmin zwrócił pustą odpowiedź dla daty {target_date}."
+                )
+
+            result: dict[str, Any] = {
+                "date": target_date,
+                "source": "garmin_live",
+                "fetched_at": dt_date.today().isoformat(),
+            }
+
+            field_map = {
+                "totalKilocalories":        "total_kcal_out",
+                "activeKilocalories":       "active_kcal_out",
+                "bmrKilocalories":          "resting_kcal_out",
+                "restingHeartRate":         "resting_hr_bpm",
+                "totalSteps":               "steps",
+                "averageStressLevel":       "stress_avg",
+                "bodyBatteryMostCharged":   "body_battery_max",
+                "bodyBatteryLeastCharged":  "body_battery_min",
+            }
+            for api_key, result_key in field_map.items():
+                val = summary.get(api_key)
+                if val is not None:
+                    result[result_key] = val
+
+            energy_fields = {"total_kcal_out", "active_kcal_out", "resting_kcal_out"}
+            if not any(f in result for f in energy_fields):
+                result["warning"] = (
+                    "Garmin zwrócił dane ale bez pól energetycznych. "
+                    f"Dostępne klucze: {list(summary.keys())[:15]}"
+                )
+
+            return success_result(result)
+
+        except Exception as exc:
+            err = str(exc)
+            if "401" in err or "auth" in err.lower() or "token" in err.lower():
+                return error_result(
+                    CONNECTOR_MISSING,
+                    f"Garmin API: błąd autoryzacji — tokeny wygasłe. {err[:150]}"
+                )
+            return error_result(
+                CONNECTOR_MISSING,
+                f"Garmin API error dla {target_date}: {err[:200]}"
+            )
+
+    return {
+        "callable": _wrapper,
+        "category": "garmin",
+        "description": (
+            "Live fetch danych wellness i energii z Garmin API dla konkretnej daty. "
+            "Pobiera bezpośrednio z Garmin — nie z cache DB. "
+            "Używaj gdy DB (daily_energy_expenditure, qbot_wellness_daily) nie ma "
+            "rekordu dla danej daty lub gdy ostatni import był dawno. "
+            "Zwraca: total_kcal_out, active_kcal_out, resting_kcal_out, steps, "
+            "resting_hr_bpm, body_battery. "
+            "Parametry: date (ISO YYYY-MM-DD, domyślnie dziś)."
+        ),
+        "args_schema": {
+            "date": {
+                "type": "string",
+                "description": "Data w formacie ISO (YYYY-MM-DD). Domyślnie: dziś.",
+            }
+        },
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+        "notes": "Live Garmin fetch — wymaga ważnych tokenów OAuth w garmin_auth.",
+    }
+
+
 # ── init ───────────────────────────────────────────────────────────────
 
 def _init_registry():
@@ -1183,6 +1337,7 @@ def _init_registry():
         ("sleep_day", _load_sleep_day_tool),
         ("xert_readiness", _load_xert_readiness_tool),
         ("garmin_diagnostics", _load_garmin_diagnostics_tool),
+        ("garmin_live_fetch", _load_garmin_live_fetch_tool),
         ("rwgps_route_list", _load_rwgps_list_tool),
         ("rwgps_route_fetch", _load_rwgps_route_fetch_tool),
         ("qcal_events_range", _load_qcal_events_range_tool),
@@ -1231,14 +1386,21 @@ def _init_registry():
             }
 
 
-def lookup(name: str) -> dict[str, Any] | None:
+def lookup(name: str, allow_legacy: bool = False) -> dict[str, Any] | None:
     _init_registry()
-    return _TOOL_REGISTRY.get(name)
+    spec = _TOOL_REGISTRY.get(name)
+    if spec is None:
+        return None
+    if not allow_legacy and spec.get("status") == "legacy":
+        return None
+    return spec
 
 
-def list_read_tools() -> dict[str, dict[str, Any]]:
+def list_read_tools(include_legacy: bool = False) -> dict[str, dict[str, Any]]:
     _init_registry()
-    return dict(_READ_ONLY_TOOLS)
+    if include_legacy:
+        return dict(_READ_ONLY_TOOLS)
+    return {n: s for n, s in _READ_ONLY_TOOLS.items() if s.get("status") != "legacy"}
 
 
 def list_write_tools() -> dict[str, dict[str, Any]]:
@@ -1246,9 +1408,11 @@ def list_write_tools() -> dict[str, dict[str, Any]]:
     return dict(_WRITE_TOOLS)
 
 
-def list_all_tools() -> dict[str, dict[str, Any]]:
+def list_all_tools(include_legacy: bool = False) -> dict[str, dict[str, Any]]:
     _init_registry()
-    return dict(_TOOL_REGISTRY)
+    if include_legacy:
+        return dict(_TOOL_REGISTRY)
+    return {n: s for n, s in _TOOL_REGISTRY.items() if s.get("status") != "legacy"}
 
 
 def tool_descriptions() -> list[dict[str, Any]]:
