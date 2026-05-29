@@ -1097,8 +1097,13 @@ async def mcp_post(request: Request):
     except Exception:
         return JSONResponse(content={"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "invalid JSON"}}, status_code=400)
 
-    response_payload, status_code, headers = handle_mcp_request(payload if isinstance(payload, dict) else {}, dict(request.headers))
-    return _mcp_response(response_payload, status_code, headers)
+    if os.getenv("QBOT3_ENABLED", "0") == "1":
+        from qbot3.adapters.mcp_adapter import handle_qbot3_mcp
+        response_payload = handle_qbot3_mcp(payload if isinstance(payload, dict) else {})
+        return _mcp_response(response_payload, 200, {})
+    else:
+        response_payload, status_code, headers = handle_mcp_request(payload if isinstance(payload, dict) else {}, dict(request.headers))
+        return _mcp_response(response_payload, status_code, headers)
 
 
 if __name__ == "__main__":
