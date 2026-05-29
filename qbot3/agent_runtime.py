@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import date, timedelta
 from typing import Any
 
@@ -28,14 +29,30 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
     provider_name = os.getenv("ALBERT_LLM_PROVIDER", "openai")
     model_name = os.getenv("ALBERT_LLM_MODEL", "")
 
-    # Deterministic pre-router: intercepts obvious domain matches before LLM planner
-    pre_routed = _deterministic_pre_route(question)
-    if pre_routed:
-        result = _execute_pre_routed(pre_routed, question, req_id, provider_name, model_name, timer)
-        result["request_id"] = req_id
-        return result
+    # Input kind classification — runs before any routing
+    input_kind = _classify_input(question)
+    if input_kind.get("conversational"):
+        try:
+            answer = input_kind.get("answer", "Działam.")
+            local_ctx = build_context(question)
+            result = _build_response(local_ctx, status="ok", answer=answer,
+                                     confidence="high")
+            result["human_answer"] = answer
+            result["request_id"] = req_id
+            return result
+        except Exception as exc:
+            # Fallback: return simple dict directly if _build_response fails
+            return {
+                "status": "ok",
+                "answer": answer,
+                "human_answer": answer,
+                "request_id": req_id,
+                "tool": "qbot.query",
+                "orchestrator": {"enabled": True, "name": "Albert", "version": "qbot3", "stage": "final", "fallback_used": False},
+            }
 
-    # Write pre-router: intercepts write intents before LLM planner
+    # Write pre-router: intercepts write intents BEFORE read pre-router
+    # Write has priority — if matched, skip read pre-router entirely
     ctx = build_context(question)
     write_routed = _deterministic_write_pre_route(question)
     if write_routed:
@@ -46,25 +63,33 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
             result["request_id"] = req_id
             return result
         if write_routed.get("_pre_routed_write"):
-            # Build draft directly
             draft = write_routed.get("_write_action_draft")
             if draft:
                 answer_parts = [f"Przygotowałem draft: {draft['human_summary']}"]
                 if draft.get("missing_fields"):
                     answer_parts.append(draft.get("clarification_question", ""))
-                answer_parts.append("Zapis wymaga potwierdzenia przez qbot.action_execute.")
-                result = _build_response(ctx, status="draft", answer=" ".join(answer_parts),
+                else:
+                    answer_parts.append("Zapis wymaga potwierdzenia przez qbot.action_execute.")
+                human_answer = " ".join(answer_parts)
+                result = _build_response(ctx, status="draft", answer=human_answer,
                                         plan={"intent": write_routed.get("intent", ""), "mode": "write",
                                               "tools": []},
                                         limitations=["write_draft"])
                 result["action_draft"] = draft
+                result["human_answer"] = human_answer
                 result["request_id"] = req_id
                 return result
-            # Handle unsupported action type
             result = _build_response(ctx, status="CAPABILITY_MISSING", answer=write_routed.get("answer", "Nieobsługiwany typ akcji."),
                                     limitations=["write_draft"])
             result["request_id"] = req_id
             return result
+
+    # Read pre-router: intercepts obvious domain matches before LLM planner
+    pre_routed = _deterministic_pre_route(question)
+    if pre_routed:
+        result = _execute_pre_routed(pre_routed, question, req_id, provider_name, model_name, timer)
+        result["request_id"] = req_id
+        return result
 
     llm = get_llm_provider()
     ctx = build_context(question)
@@ -188,6 +213,8 @@ def _check_qbot3_enabled() -> None:
 
 _PRE_ROUTE_DOMAINS: list[tuple[list[str], str, str]] = [
     # (keywords, intent, tool_name)
+    (["status qbot", "qbot status", "status systemu"], "status", "status"),
+    (["readiness", "gotowość", "readiness qbot"], "readiness", "readiness"),
     (["raport dzienny", "daily report", "email z raportem", "nie przeszedł", "niedostarczony raport",
       "daily_report", "pipeline", "report pipeline", "dlaczego nie dostałem raportu",
       "co z raportem", "stuck", "pending", "block", "report_status"],
@@ -209,7 +236,7 @@ _PRE_ROUTE_DOMAINS: list[tuple[list[str], str, str]] = [
 # Write pre-router — intercepts write intents before LLM planner
 _WRITE_PRE_ROUTE_KEYWORDS: list[tuple[list[str], str]] = [
     (["dodaj posiłek", "dodaj jedzenie", "dodaj do spożycia", "zjedz", "jadłem", "nutrition_log_add"], "nutrition_log_add"),
-    (["dodaj event", "dodaj wydarzenie", "zaplanuj event", "zapisz do kalendarza", "dodaj do kalendarza", "calendar_event_add"], "calendar_event_add"),
+    (["dodaj event", "dodaj wydarzenie", "zaplanuj event", "zapisz do kalendarza", "dodaj do kalendarza", "calendar_event_add", "zapisz event", "dodaj do kalendarza"], "calendar_event_add"),
     (["przypomnij", "przypomnij mi", "reminder", "dodaj przypomnienie", "reminder_add"], "reminder_add"),
     (["zapamiętaj fakt", "zapamiętaj", "zapisz fakt", "planning_fact_add", "notuj", "zanotuj"], "planning_fact_add"),
     (["usuń wszystko", "usuń wszystkie", "wyczyść", "delete all"], "DESTRUCTIVE"),
@@ -221,12 +248,24 @@ def _deterministic_write_pre_route(question: str) -> dict[str, Any] | None:
 
     Returns a write plan dict if matched, None to continue with LLM planner.
     """
-    from qbot3.write_router import build_draft, validate_action_type, classify_write_intent
+    from qbot3.write_router import build_draft, validate_action_type, classify_input_kind, WRITE_DRAFT_TASK
 
     ql = question.lower().strip()
-    cls = classify_write_intent(question)
+    cls = classify_input_kind(question)
 
-    if cls["type"] == "DESTRUCTIVE_WRITE":
+    # If classification is ambiguous but question contains write keywords, try harder
+    if cls["input_kind"] in (WRITE_DRAFT_TASK, "AMBIGUOUS_WRITE") and cls.get("confidence", 0) < 0.9:
+        # Check against write pre-router keywords directly
+        for keywords, at in _WRITE_PRE_ROUTE_KEYWORDS:
+            if any(kw in ql for kw in keywords):
+                if at == "DESTRUCTIVE":
+                    return _build_destructive_block()
+                cls = {"input_kind": WRITE_DRAFT_TASK, "action_type": at, "confidence": 0.85}
+                break
+
+    if cls["input_kind"] == "UNSUPPORTED_OR_DESTRUCTIVE":
+        if cls.get("action_type") == "DESTRUCTIVE":
+            return _build_destructive_block()
         return {
             "intent": "destructive_write_blocked",
             "mode": "plan_only",
@@ -244,7 +283,7 @@ def _deterministic_write_pre_route(question: str) -> dict[str, Any] | None:
             "answer": "Destrukcyjne operacje są zablokowane bez osobnej zgody.",
         }
 
-    if cls["type"] == "WRITE_DRAFT_REQUEST" and cls.get("action_type"):
+    if cls["input_kind"] == WRITE_DRAFT_TASK and cls.get("action_type"):
         at = cls["action_type"]
         is_valid, error, _ = validate_action_type(at), None, None
         v = validate_action_type(at)
@@ -285,34 +324,62 @@ def _deterministic_write_pre_route(question: str) -> dict[str, Any] | None:
 
 
 def _extract_write_payload(action_type: str, question: str) -> dict[str, Any]:
-    """Extract payload fields from a natural language write query."""
-    import re
-    ql = question.lower()
+    """Extract payload fields from a natural language write query.
+
+    Uses domain-specific slot extractors from write_router.
+    """
+    from qbot3.write_router import (
+        extract_nutrition_slots, extract_calendar_slots,
+        extract_reminder_slots, extract_planning_fact_slots,
+    )
+
     payload: dict[str, Any] = {}
 
-    # Common: extract title/name between quotes
-    quoted = re.findall(r'"([^"]+)"', question)
-    if quoted:
-        payload["title"] = quoted[0]
-        payload["meal_name"] = quoted[0]
+    if action_type == "nutrition_log_add":
+        payload = extract_nutrition_slots(question)
+        # If no food name extracted, add to payload as missing
+        if "meal_name" not in payload and "amount" not in payload:
+            quoted = re.findall(r'"([^"]+)"', question)
+            if quoted:
+                payload["meal_name"] = quoted[0]
 
-    # Nutrition: extract amount (e.g., "200g ryżu", "0,5 kg truskawek")
-    amount_match = re.search(r'(\d+[,.]?\d*)\s*(kg|g|ml|l|szt|porcji)', ql)
-    if amount_match and action_type == "nutrition_log_add":
-        payload["meal_name"] = amount_match.group(0)
-        payload["kcal_total"] = None  # would need DB lookup
+    elif action_type in ("calendar_event_add",):
+        payload = extract_calendar_slots(question)
 
-    # Calendar: extract date patterns
-    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', question)
-    if date_match:
-        payload["date_start"] = date_match.group(1)
+    elif action_type in ("reminder_add",):
+        payload = extract_reminder_slots(question)
 
-    # Reminder: extract time
-    time_match = re.search(r'(\d{1,2}:\d{2})', question)
-    if time_match:
-        payload["time"] = time_match.group(1)
+    elif action_type in ("planning_fact_add", "memory_confirmed_fact_add"):
+        payload = extract_planning_fact_slots(question)
 
     return payload
+
+
+def _classify_input(question: str) -> dict[str, Any]:
+    """Classify input kind - conversational, task, or destructive.
+
+    Returns dict with conversational flag and answer for conversational inputs.
+    """
+    from qbot3.write_router import classify_input_kind, get_conversation_response, CONVERSATIONAL_PING, SMALLTALK
+
+    kind = classify_input_kind(question)
+    ik = kind.get("input_kind")
+    if ik in (CONVERSATIONAL_PING, SMALLTALK):
+        answer = get_conversation_response(ik) or "Działam."
+        return {"conversational": True, "kind": ik, "answer": answer}
+    return {"conversational": False, "kind": ik}
+
+
+def _build_destructive_block() -> dict[str, Any]:
+    return {
+        "intent": "destructive_write_blocked",
+        "mode": "plan_only",
+        "tools_to_call": [],
+        "_pre_routed_write": True,
+        "_write_classification": "DESTRUCTIVE_WRITE",
+        "_write_message": "Destrukcyjne operacje są zablokowane. Wymagają osobnej zgody.",
+        "answer": "Destrukcyjne operacje są zablokowane bez osobnej zgody.",
+    }
 
 
 def _deterministic_pre_route(question: str) -> dict[str, Any] | None:
