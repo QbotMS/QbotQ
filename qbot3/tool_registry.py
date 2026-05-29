@@ -774,10 +774,20 @@ def _load_garmin_sync_status_tool() -> dict[str, Any]:
                 password=os.getenv("PGPASSWORD", ""), row_factory=dict_row, connect_timeout=5,
             )
             cur = c.cursor()
-            cur.execute("SELECT MAX(date) as last_date, MAX(updated_at) as last_sync FROM qbot_wellness_daily")
+            # Use imported_at (real column name) instead of updated_at (doesn't exist)
+            cur.execute("SELECT MAX(date) as last_date, MAX(imported_at) as last_sync FROM qbot_wellness_daily")
             row = cur.fetchone()
             cur.execute("SELECT COUNT(*) as cnt FROM qbot_wellness_daily WHERE date >= %s", ((date.today() - timedelta(days=7)).isoformat(),))
             count_7d = cur.fetchone()["cnt"]
+            # Check import_runs for additional sync metadata
+            last_import = None
+            try:
+                cur.execute("SELECT status, created_at FROM qbot_import_runs WHERE import_type='garmin' ORDER BY created_at DESC LIMIT 1")
+                ir = cur.fetchone()
+                if ir:
+                    last_import = {"status": ir["status"], "created_at": str(ir["created_at"]) if ir["created_at"] else None}
+            except Exception:
+                pass
             c.close()
             if not row or not row.get("last_date"):
                 return error_result(DATA_MISSING, "Brak danych Garmin w DB")
@@ -786,6 +796,7 @@ def _load_garmin_sync_status_tool() -> dict[str, Any]:
                 "last_sync": str(row.get("last_sync", "")),
                 "records_last_7d": count_7d,
                 "has_recent_data": count_7d > 0,
+                "last_import_run": last_import,
             })
         except ImportError:
             return error_result(CONNECTOR_MISSING, "psycopg not available")

@@ -54,15 +54,23 @@ class HammerheadSyncStatusCapability(Capability):
         else:
             config_issues.append("profile env missing")
 
-        if HAMMERHEAD_TOKENS.is_file():
-            result["hammerhead_tokens"] = "present"
-        else:
-            config_issues.append("hammerhead tokens missing")
+        try:
+            if HAMMERHEAD_TOKENS.is_file():
+                result["hammerhead_tokens"] = "present"
+            else:
+                config_issues.append("hammerhead tokens missing")
+        except PermissionError:
+            result["hammerhead_tokens"] = "restricted"
+            config_issues.append("hammerhead tokens restricted (permission)")
 
-        if GARMIN_TOKENS.is_file():
-            result["garmin_tokens"] = "present"
-        else:
-            config_issues.append("garmin tokens missing")
+        try:
+            if GARMIN_TOKENS.is_file():
+                result["garmin_tokens"] = "present"
+            else:
+                config_issues.append("garmin tokens missing")
+        except PermissionError:
+            result["garmin_tokens"] = "restricted"
+            config_issues.append(f"garmin tokens restricted (permission) — path: {GARMIN_TOKENS.parent}")
 
         if OUTGOING_DIR.exists():
             originals = list((OUTGOING_DIR / "hammerhead_originals").glob("*.fit"))
@@ -98,44 +106,103 @@ class HammerheadSyncStatusCapability(Capability):
                 state_info["error"] = str(exc)[:200]
         result["state"] = state_info
 
-        # 3. Log tail
+        # 3. Log tail — auxiliary only, never overrides current state
         log_info: dict[str, Any] = {"exists": LOG_FILE.is_file()}
         if LOG_FILE.is_file():
             try:
                 lines = LOG_FILE.read_text().splitlines()
                 log_info["total_lines"] = len(lines)
-                tail = lines[-15:]
-                log_info["tail"] = tail
-                # Detect last status
-                for line in reversed(tail):
-                    if "uploaded" in line.lower() and "activity" in line.lower():
-                        log_info["last_action"] = "upload"
+                # Find last run line and its status
+                previous_run_status = None
+                previous_run_at = None
+                previous_run_note = None
+                for line in reversed(lines):
+                    if "qbot-hammerhead-sync" in line and ("failed" in line or "done" in line):
+                        previous_run_at = line[:25]  # timestamp
+                        previous_run_note = line.strip()[:120]
+                        if "failed" in line:
+                            previous_run_status = "failed"
+                        elif "done" in line:
+                            previous_run_status = "done"
                         break
-                    if "dry-run" in line.lower():
-                        log_info["last_action"] = "dry_run"
-                        break
-                    if "skipped" in line.lower():
-                        log_info["last_action"] = "skipped"
-                        break
-                    if "failed" in line.lower():
-                        log_info["last_action"] = "failed"
-                        break
-                    if "NoUnprocessed" in line or "no unprocessed" in line.lower():
-                        log_info["last_action"] = "no_new_activities"
-                        break
+                log_info["previous_run_status"] = previous_run_status
+                log_info["previous_run_at"] = previous_run_at
+                log_info["previous_run_note"] = previous_run_note
+                # Keep last few raw lines for debugging
+                log_info["tail"] = lines[-5:] if len(lines) >= 5 else lines[:]
             except Exception as exc:
                 log_info["error"] = str(exc)[:200]
         result["log"] = log_info
 
-        # 4. Summary
-        parts = []
-        if result["config_ok"]:
-            parts.append("Config OK")
-        else:
-            parts.append(f"Config issues: {', '.join(config_issues)}")
+        # 4. Dry-run support and upload candidates
+        result["dry_run_supported"] = True
+        total_originals = len(list((OUTGOING_DIR / "hammerhead_originals").glob("*.fit"))) if OUTGOING_DIR.exists() else 0
+        total_uploaded = result.get("state", {}).get("uploaded", 0)
+        result["upload_candidates"] = max(0, total_originals - total_uploaded)
+
+        # 5. Garmin DB sync status (cross-reference)
+        garmin_db_status: dict[str, Any] = {"checked": False}
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+            import os
+            c = psycopg.connect(
+                host=os.getenv("PGHOST", "127.0.0.1"), port=os.getenv("PGPORT", "5432"),
+                dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
+                password=os.getenv("PGPASSWORD", ""), row_factory=dict_row, connect_timeout=3,
+            )
+            cur = c.cursor()
+            cur.execute("SELECT MAX(date) as last_date, MAX(imported_at) as last_sync FROM qbot_wellness_daily")
+            row = cur.fetchone()
+            if row and row.get("last_date"):
+                garmin_db_status = {"checked": True, "last_garmin_data": str(row["last_date"]),
+                                    "last_sync": str(row.get("last_sync", "")) if row.get("last_sync") else None}
+            c.close()
+        except Exception:
+            garmin_db_status = {"checked": False, "error": "schema_incompatible"}
+        result["garmin_db"] = garmin_db_status
+
+        # 6. Overall health — derived from current state, not historical log
         s = result.get("state", {})
-        parts.append(f"Uploaded: {s.get('uploaded', '?')}/{s.get('total_processed', '?')}")
-        la = result.get("log", {}).get("last_action", "unknown")
-        parts.append(f"Last action: {la}")
+        total_processed = s.get("total_processed", 0)
+        uploaded_count = s.get("uploaded", 0)
+        failed_count = s.get("failed", 0)
+        candidates = result.get("upload_candidates", 0)
+        issues: list[str] = []
+        if result.get("config_issues"):
+            issues.append("config issues")
+        if failed_count > 0:
+            issues.append(f"{failed_count} failed")
+        if candidates > 0:
+            issues.append(f"{candidates} pending")
+        health = "clean" if not issues else "; ".join(issues)
+
+        # 7. Summary — state-first, log is auxiliary
+        result["health"] = health
+        parts = []
+        if health == "clean":
+            parts.append("State OK")
+        else:
+            parts.append(f"State: {health}")
+        parts.append(f"Uploaded: {uploaded_count}/{total_processed}")
+        parts.append(f"Candidates: {candidates}")
+        parts.append(f"Failed: {failed_count}")
+        parts.append(f"Dry-run: {'✅' if result.get('dry_run_supported') else '❌'}")
+
+        # Log info is auxiliary, not primary
+        log_prev = result.get("log", {})
+        prev_status = log_prev.get("previous_run_status")
+        prev_at = log_prev.get("previous_run_at")
+        if prev_status:
+            # Only show as warning if state also shows issues
+            if health != "clean" and prev_status == "failed":
+                parts.append(f"Previous run: FAILED at {prev_at[:19] if prev_at else '?'}")
+            else:
+                # Historical — not current
+                parts.append(f"Previous run: {prev_status} ({prev_at[:19] if prev_at else '?'}, historical)")
+
+        if garmin_db_status.get("last_garmin_data"):
+            parts.append(f"Garmin DB: {garmin_db_status['last_garmin_data']}")
+
         result["summary"] = " | ".join(parts)
         return {"status": "OK", "data": result}
