@@ -31,8 +31,15 @@ def _execute_single_tool(tool_name: str, args: dict) -> dict:
     write_tools = list_write_tools()
     if tool_name in write_tools:
         return {
-            "status": SAFETY_BLOCKED,
-            "error": f"Tool '{tool_name}' jest write-only. Użyj qbot.action_execute z confirm=true.",
+            "status": "WRITE_DRAFT",
+            "action_type": tool_name,
+            "payload_json": args,
+            "requires_confirm": True,
+            "message": (
+                f"Zapis '{tool_name}' wymaga potwierdzenia. "
+                f"Wywołaj qbot.action_execute z action_type='{tool_name}', "
+                f"payload_json=<patrz payload_json>, confirm=true."
+            ),
         }
 
     spec = lookup(tool_name)
@@ -153,6 +160,10 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
     if action_draft:
         response["action_draft"] = action_draft
         response["status"] = "draft"
+        response["answer"] = (
+            albert_result.get("answer", "")
+            + f"\n\n_action_draft gotowy. Wykonaj qbot.action_execute z action_type='{action_draft['action_type']}'._"
+        )
 
     return response
 

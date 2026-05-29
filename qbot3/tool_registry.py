@@ -879,7 +879,7 @@ def _load_qcal_events_upcoming_tool() -> dict[str, Any]:
             )
             cur = c.cursor()
             today = date.today().isoformat()
-            limit = int(args.get("limit", 10))
+            limit = int(args.get("limit", 30))
             # Discover actual columns to avoid schema mismatch
             try:
                 cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='calendar_events' AND table_schema='public'")
@@ -890,7 +890,9 @@ def _load_qcal_events_upcoming_tool() -> dict[str, Any]:
             available = [c for c in safe_cols if c in actual_cols] or [c for c in safe_cols if c not in ("all_day",)]
             cols_sql = ", ".join(available)
             cur.execute(
-                f"SELECT {cols_sql} FROM calendar_events WHERE date_start >= %s AND status='active' ORDER BY date_start LIMIT %s",
+                f"SELECT {cols_sql} FROM calendar_events "
+                f"WHERE date_start >= %s AND status NOT IN ('cancelled', 'deleted') "
+                f"ORDER BY date_start LIMIT %s",
                 (today, limit),
             )
             rows = cur.fetchall()
@@ -905,12 +907,19 @@ def _load_qcal_events_upcoming_tool() -> dict[str, Any]:
     return {
         "callable": _wrapper,
         "category": "calendar",
-        "description": "Raw upcoming calendar event rows from today forward. Prefer db_schema_list / db_table_describe / db_select_readonly for ordinary calendar questions. Parameters: limit (default 10)",
-        "args_schema": {"limit": {"type": "integer"}},
+        "description": (
+            "Upcoming calendar events from today forward. "
+            "Returns events with status 'planned', 'active', 'confirmed' (excludes 'cancelled'/'deleted'). "
+            "Parameters: limit (default 30, max 100). "
+            "Use qcal_events_range for a specific date range."
+        ),
+        "args_schema": {
+            "limit": {"type": "integer", "default": 30, "description": "Max events to return (default 30)"},
+        },
         "safety": "read",
         "mode": "read_only",
         "status": "implemented",
-        "notes": "Queries calendar_events table for active future events",
+        "notes": "Queries calendar_events table for non-cancelled future events",
     }
 
 
