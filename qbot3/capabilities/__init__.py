@@ -117,12 +117,19 @@ def find_capability(name: str) -> Capability | None:
 
 
 def find_capability_by_intent(intent: str) -> Capability | None:
-    """Match a capability by intent name (fuzzy: exact match or intent in description)."""
+    """Match a capability by intent name.
+
+    Use exact name match first, then whole-word intent match in the description.
+    Avoid broad substring matches so generic intents like "test" do not collide
+    with unrelated capability descriptions.
+    """
     il = intent.lower()
     for name, cap in init_registry().items():
         if name.lower() == il:
             return cap
-        if il in cap.definition.description.lower():
+        desc = cap.definition.description.lower()
+        import re
+        if re.search(rf'\\b{re.escape(il)}\\b', desc):
             return cap
     return None
 

@@ -98,7 +98,7 @@ def _load_calendar_snapshot_tool() -> dict[str, Any]:
     return {
         "callable": _wrapper,
         "category": "calendar",
-        "description": "Full day snapshot: calendar events, reminders, meals, wellness, health data",
+        "description": "Dashboard dnia: calendar events, reminders, meals, wellness, health data. Use only for explicit day-summary / dashboard / snapshot / status-day requests.",
         "args_schema": {"date": {"type": "string", "description": "ISO date (optional, default: today or resolved from question)"}},
         "safety": "read",
     }
@@ -436,7 +436,7 @@ def _load_qcal_events_range_tool() -> dict[str, Any]:
     return {
         "callable": _wrapper,
         "category": "calendar",
-        "description": "QCal events for a date range. Parameters: date_from (ISO), date_to (ISO)",
+        "description": "Raw QCal event rows for a date range. Prefer db_schema_list / db_table_describe / db_select_readonly for ordinary calendar questions. Parameters: date_from (ISO), date_to (ISO)",
         "args_schema": {"date_from": {"type": "string"}, "date_to": {"type": "string"}},
         "safety": "read",
     }
@@ -905,7 +905,7 @@ def _load_qcal_events_upcoming_tool() -> dict[str, Any]:
     return {
         "callable": _wrapper,
         "category": "calendar",
-        "description": "Upcoming calendar events from today forward. Parameters: limit (default 10)",
+        "description": "Raw upcoming calendar event rows from today forward. Prefer db_schema_list / db_table_describe / db_select_readonly for ordinary calendar questions. Parameters: limit (default 10)",
         "args_schema": {"limit": {"type": "integer"}},
         "safety": "read",
         "mode": "read_only",
@@ -1098,7 +1098,7 @@ def _load_db_schema_list_tool() -> dict[str, Any]:
         "args_schema": {},
         "safety": "read",
         "mode": "read_only",
-        "notes": "Transparent DB introspection — Albert can discover available tables",
+        "notes": "Transparent DB introspection — Albert should use this when the target table is unknown.",
     }
 
 def _load_db_table_describe_tool() -> dict[str, Any]:
@@ -1110,7 +1110,7 @@ def _load_db_table_describe_tool() -> dict[str, Any]:
         "args_schema": {"table": {"type": "string"}, "schema": {"type": "string"}},
         "safety": "read",
         "mode": "read_only",
-        "notes": "Use this to discover actual column names and types when readers fail",
+        "notes": "Use this to discover actual column names and types when the schema is unknown or a reader failed.",
     }
 
 def _load_db_sample_rows_tool() -> dict[str, Any]:
@@ -1122,7 +1122,7 @@ def _load_db_sample_rows_tool() -> dict[str, Any]:
         "args_schema": {"table": {"type": "string"}, "schema": {"type": "string"}, "limit": {"type": "integer"}},
         "safety": "read",
         "mode": "read_only",
-        "notes": "Use to see actual data shape when readers return unexpected results",
+        "notes": "Use to inspect actual row shape after db_table_describe or when rows are needed for orientation.",
     }
 
 def _load_db_select_readonly_tool() -> dict[str, Any]:
@@ -1130,11 +1130,11 @@ def _load_db_select_readonly_tool() -> dict[str, Any]:
     return {
         "callable": lambda args: db_select_readonly(args),
         "category": "db",
-        "description": "Execute a read-only SELECT query. Only SELECT allowed, LIMIT enforced. Parameters: sql (required)",
+        "description": "Execute a read-only SELECT query. This is the default source of truth for ordinary data questions. Only SELECT allowed, LIMIT enforced. Parameters: sql (required)",
         "args_schema": {"sql": {"type": "string"}},
         "safety": "read",
         "mode": "read_only",
-        "notes": "Last resort when no reader covers the query. INSERT/UPDATE/DELETE/DROP/ALTER blocked.",
+        "notes": "Primary transparent read path for ordinary questions; use db_schema_list / db_table_describe first when schema is unknown.",
     }
 
 

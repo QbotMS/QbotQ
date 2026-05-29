@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from typing import Any
+from urllib.parse import urlparse
 
 from qbot3.capabilities.base import (
     Capability, CapabilityDef,
@@ -31,7 +32,11 @@ def _resolve_llm_runtime() -> dict[str, Any]:
     has_openrouter_key = bool(os.getenv("OPENROUTER_API_KEY"))
     has_anthropic_key = bool(os.getenv("ANTHROPIC_API_KEY"))
     has_deepseek_key = bool(os.getenv("DEEPSEEK_API_KEY"))
-    base_url = (os.getenv("QGPT_BASE_URL") or "").lower()
+    has_gemini_key = bool(os.getenv("GEMINI_API_KEY"))
+    base_url_raw = os.getenv("QGPT_BASE_URL") or ""
+    base_url = base_url_raw.lower()
+    base_url_host = urlparse(base_url_raw).hostname or "" if base_url_raw else ""
+    is_gemini_endpoint = "generativelanguage.googleapis.com" in base_url
 
     # Active model from env
     active_model = os.getenv("ALBERT_LLM_MODEL") or os.getenv("QGPT_MODEL") or ""
@@ -53,13 +58,14 @@ def _resolve_llm_runtime() -> dict[str, Any]:
     uses_openai_compatible = has_qgpt_key or base_url.startswith(("http://localhost", "http://127.0.0.1"))
 
     if uses_openai_compatible:
-        # OpenAI-compatible path — could be OpenRouter or real OpenAI API
-        if has_openrouter_key or "openrouter" in base_url:
+        # OpenAI-compatible path — detect specific provider
+        if is_gemini_endpoint or (has_gemini_key and "googleapis" in base_url):
+            transport = "gemini"
+        elif has_openrouter_key or "openrouter" in base_url:
             transport = "openrouter"
         elif has_openai_key:
             transport = "openai_api"
         elif has_qgpt_key:
-            # Generic OpenAI-compatible key, source unknown
             transport = "openai_compatible"
         else:
             transport = "local"
@@ -70,6 +76,9 @@ def _resolve_llm_runtime() -> dict[str, Any]:
             "config_ok": True,
             "mismatch": False,
             "key": transport,
+            "has_gemini_key": has_gemini_key,
+            "is_gemini_endpoint": is_gemini_endpoint,
+            "base_url_host": base_url_host,
         }
 
     # Runtime: _anthropic_text() fallback

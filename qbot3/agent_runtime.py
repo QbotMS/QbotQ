@@ -54,9 +54,6 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
         result["request_id"] = req_id
         return result
 
-    # ── Post-LLM: Convert write-related intents to mode=write ────────────────
-    plan = _resolve_write_intent(plan, question)
-
     # ── Plan validation ──────────────────────────────────────────────────────
     validation = validate_plan(plan)
     if validation.get("status") == CAPABILITY_MISSING:
@@ -103,6 +100,24 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
         result["request_id"] = req_id
         return result
 
+    if plan["mode"] == "read_only" and not plan.get("tools_to_call"):
+        answer_result = llm.answer(ctx, plan, [])
+        result = _build_response(
+            ctx,
+            status=answer_result.status,
+            answer=answer_result.answer,
+            plan=plan,
+            tool_results=[],
+            missing=answer_result.missing_fields,
+            limitations=answer_result.limitations,
+            final_llm=answer_result.raw,
+            confidence=answer_result.confidence,
+        )
+        _log(req_id, provider_name, model_name, plan.get("mode", "read_only"), plan.get("intent", ""),
+             [], [], False, answer_result.status, "", timer.elapsed_ms())
+        result["request_id"] = req_id
+        return result
+
     tool_results = _execute_tools(plan["tools_to_call"], plan.get("parameters", {}), question)
 
     if not tool_results:
@@ -142,28 +157,6 @@ def _check_qbot3_enabled() -> None:
     if os.getenv("QBOT3_ENABLED") != "1":
         raise RuntimeError("QBOT3_ENABLED=1 required for QBot3 agent runtime")
 
-
-
-
-# ── Write intent ↔ action type mapping (post-LLM resolver) ─────────────
-# Used when LLM returns read_only+no_tools for an intent that is actually a write.
-# Not a pre-router — runs AFTER Albert, only as a safety net for LLM mode mistakes.
-
-_WRITE_INTENT_MAP: dict[str, str] = {
-    "add_nutrition_entry": "nutrition_log_add",
-    "nutrition_log_add": "nutrition_log_add",
-    "add_calendar_event": "calendar_event_add",
-    "calendar_event_add": "calendar_event_add",
-    "add_reminder": "reminder_add",
-    "reminder_add": "reminder_add",
-    "add_planning_fact": "planning_fact_add",
-    "planning_fact_add": "planning_fact_add",
-    "add_memory_fact": "memory_confirmed_fact_add",
-    "memory_confirmed_fact_add": "memory_confirmed_fact_add",
-    "append_doc": "qbot_doc_append",
-    "qbot_doc_append": "qbot_doc_append",
-}
-
 # Destructive patterns — blocked before Albert (pure safety)
 _DESTRUCTIVE_PATTERNS = [
     "usuń wszystko", "usuń wszystkie", "wyczyść", "skasuj wszystko", "delete all",
@@ -177,43 +170,6 @@ def _is_destructive_query(question: str) -> bool:
         if ql.startswith(pat) or pat in ql.split()[:3]:
             return True
     return False
-
-
-def _resolve_write_intent(plan: dict[str, Any], question: str) -> dict[str, Any]:
-    """Post-LLM resolver: if plan looks like a misclassified write intent, fix it."""
-    plan = dict(plan)
-    intent = plan.get("intent", "")
-    mode = plan.get("mode", "read_only")
-    tools = plan.get("tools_to_call", [])
-
-    # If mode=write already, nothing to resolve
-    if mode == "write":
-        return plan
-
-    # If intent maps to a write action and no tools were planned
-    if intent in _WRITE_INTENT_MAP and not tools:
-        write_action = _WRITE_INTENT_MAP[intent]
-        plan["mode"] = "write"
-        plan["write_action"] = write_action
-        plan["requires_confirm"] = True
-        plan["write_payload"] = _extract_write_payload(write_action, question)
-        plan["tools_to_call"] = []
-        return plan
-
-    # If intent is generic write-like (starts with add_, create_, save_, log_, insert_)
-    # and no tools, try to infer the write action
-    generic_write_prefixes = ("add_", "create_", "save_", "log_", "insert_", "new_", "set_", "write_")
-    if mode == "read_only" and not tools and any(intent.startswith(p) for p in generic_write_prefixes):
-        for known_intent, known_action in _WRITE_INTENT_MAP.items():
-            if intent.startswith(known_intent.rstrip("_").split("_")[0]):
-                plan["mode"] = "write"
-                plan["write_action"] = known_action
-                plan["requires_confirm"] = True
-                plan["write_payload"] = _extract_write_payload(known_action, question)
-                plan["tools_to_call"] = []
-                return plan
-
-    return plan
 
 
 def _extract_write_payload(action_type: str, question: str) -> dict[str, Any]:

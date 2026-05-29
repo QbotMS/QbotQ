@@ -16,11 +16,14 @@ os.environ["QBOT3_ENABLED"] = "1"
 os.environ["ALBERT_LLM_PROVIDER"] = "mock"
 
 from qbot3.agent_runtime import (
-    _resolve_write_intent, _is_destructive_query,
+    _is_destructive_query,
     _all_tools_empty, _execute_tools,
     _has_reader_error, _try_db_introspection_fallback,
     orchestrate_query,
 )
+from qbot3.context_builder import build_context
+from qbot3.llm.mock_provider import MockProvider
+from qbot3.plan_validator import validate_plan
 from qbot3.write_router import extract_nutrition_slots, build_draft, draft_self_review
 from qbot3.query_decomposer import decompose_query, is_payload_contaminated, clean_payload
 from qbot3.db_introspection import db_schema_list, db_table_describe, db_select_readonly
@@ -38,31 +41,22 @@ class TestTransparentGateway(unittest.TestCase):
         self.assertTrue(_is_destructive_query("skasuj wszystko"))
         self.assertFalse(_is_destructive_query("dodaj posiłek"))
 
-    def test_write_intent_resolver(self):
-        """add_nutrition_entry → mode=write, write_action=nutrition_log_add"""
-        plan = _resolve_write_intent(
-            {"intent": "add_nutrition_entry", "mode": "read_only", "tools_to_call": []},
-            "Dodaj do dzisiejszego jadłospisu ryż"
+    def test_read_only_no_tools_allowed(self):
+        """read_only without tools stays valid — Albert may answer directly."""
+        result = validate_plan(
+            {"intent": "pytanie konwersacyjne", "mode": "read_only", "tools_to_call": [], "confidence": 0.9}
         )
-        self.assertEqual(plan["mode"], "write")
-        self.assertEqual(plan["write_action"], "nutrition_log_add")
-        self.assertTrue(plan["requires_confirm"])
+        self.assertEqual(result["status"], "OK")
+        self.assertTrue(result["data"]["valid"])
+        self.assertTrue(result["data"]["no_tools_ok"])
 
-    def test_write_intent_already_write(self):
-        """mode=write should not be modified"""
-        plan = _resolve_write_intent(
-            {"intent": "add_nutrition_entry", "mode": "write", "write_action": "nutrition_log_add"},
-            "dodaj ryż"
+    def test_write_mode_still_requires_confirm(self):
+        """write mode still requires explicit confirmation."""
+        result = validate_plan(
+            {"intent": "add_nutrition_entry", "mode": "write", "write_action": "nutrition_log_add",
+             "tools_to_call": [], "requires_confirm": True, "confidence": 0.9}
         )
-        self.assertEqual(plan["mode"], "write")
-
-    def test_read_intent_not_touched(self):
-        """read_only intent (no write prefix) → untouched"""
-        plan = _resolve_write_intent(
-            {"intent": "get_calendar_events", "mode": "read_only", "tools_to_call": ["qcal_events_range"]},
-            "pokaż wydarzenia"
-        )
-        self.assertEqual(plan["mode"], "read_only")
+        self.assertEqual(result["status"], "OK")
 
 class TestNutritionDraft(unittest.TestCase):
     """Nutrition write intent → action_draft with correct payload."""
@@ -202,13 +196,38 @@ class TestActionExecuteSemantics(unittest.TestCase):
 class TestRegression(unittest.TestCase):
     """Existing features must still work."""
 
+    def test_mock_calendar_uses_db_readonly(self):
+        """'pokaż kalendarz' → db_schema_list + db_table_describe + db_select_readonly, no snapshot"""
+        provider = MockProvider()
+        plan = provider.plan(build_context("pokaż kalendarz"), [], "pokaż kalendarz")
+        self.assertIn("db_select_readonly", plan.tools_to_call)
+        self.assertIn("db_table_describe", plan.tools_to_call)
+        self.assertNotIn("calendar_snapshot", plan.tools_to_call)
+        self.assertEqual(plan.parameters.get("table"), "calendar_events")
+
+    def test_mock_dashboard_uses_snapshot(self):
+        """'pokaż dzisiejszy dashboard' → calendar_snapshot"""
+        provider = MockProvider()
+        plan = provider.plan(build_context("pokaż dzisiejszy dashboard"), [], "pokaż dzisiejszy dashboard")
+        self.assertIn("calendar_snapshot", plan.tools_to_call)
+        self.assertNotIn("db_select_readonly", plan.tools_to_call)
+
+    def test_mock_nutrition_uses_db_readonly(self):
+        """'co dziś jadłem' → db_schema_list + db_table_describe + db_select_readonly"""
+        provider = MockProvider()
+        plan = provider.plan(build_context("co dziś jadłem"), [], "co dziś jadłem")
+        self.assertIn("db_select_readonly", plan.tools_to_call)
+        self.assertIn("db_table_describe", plan.tools_to_call)
+        self.assertNotIn("nutrition_day_summary", plan.tools_to_call)
+        self.assertEqual(plan.parameters.get("table"), "meal_logs")
+
     def test_tool_registry_includes_all(self):
         """All expected tools in registry"""
         tools = tool_descriptions()
         names = [t["name"] for t in tools]
         self.assertIn("nutrition_log_add", names)
-        self.assertIn("calendar_event_add", names)
-        self.assertIn("reminder_add", names)
+        self.assertIn("qcal_events_range", names)
+        self.assertIn("qcal_reminders_upcoming", names)
         self.assertIn("db_schema_list", names)
         self.assertIn("db_select_readonly", names)
 
@@ -247,8 +266,68 @@ class TestDBIntrospectionFallback(unittest.TestCase):
         """Empty results → no error"""
         self.assertFalse(_has_reader_error([]))
 
-    def test_db_introspection_fallback_calendar(self):
+    def _mock_db_table_describe_flexible(self, args=None, **kwargs):
+        payload = args if isinstance(args, dict) else kwargs
+        table = str(payload.get("table", "calendar_events"))
+        if table == "meal_logs":
+            return {
+                "status": "OK",
+                "schema": "public",
+                "table": "meal_logs",
+                "columns": [
+                    {"name": "id", "type": "integer", "nullable": False, "is_pk": True},
+                    {"name": "date", "type": "date", "nullable": False},
+                    {"name": "meal_name", "type": "text", "nullable": True},
+                    {"name": "kcal_total", "type": "numeric", "nullable": True},
+                ],
+                "column_count": 4,
+            }
+        return {
+            "status": "OK",
+            "schema": "public",
+            "table": "calendar_events",
+            "columns": [
+                {"name": "id", "type": "integer", "nullable": False, "is_pk": True},
+                {"name": "date_start", "type": "date", "nullable": False},
+                {"name": "date_end", "type": "date", "nullable": True},
+                {"name": "title", "type": "text", "nullable": True},
+                {"name": "event_type", "type": "text", "nullable": True},
+                {"name": "status", "type": "text", "nullable": True},
+            ],
+            "column_count": 6,
+        }
+
+    def _mock_db_select_readonly_flexible(self, args=None, **kwargs):
+        payload = args if isinstance(args, dict) else kwargs
+        sql = str(payload.get("sql", ""))
+        if "meal_logs" in sql:
+            return {
+                "status": "OK",
+                "rows": [
+                    {"id": 11, "date": "2026-05-29", "meal_name": "Owsianka", "kcal_total": 540},
+                    {"id": 12, "date": "2026-05-29", "meal_name": "Ryż z kurczakiem", "kcal_total": 810},
+                ],
+                "row_count": 2,
+                "sql_audit": "SELECT ... FROM meal_logs ...",
+            }
+        return {
+            "status": "OK",
+            "rows": [
+                {"id": 1, "date_start": "2026-06-04", "title": "Bikepacking Toskania", "event_type": "trip", "status": "active"},
+                {"id": 2, "date_start": "2026-06-07", "title": "Odpoczynek", "event_type": "rest", "status": "active"},
+            ],
+            "row_count": 2,
+            "sql_audit": "SELECT ... FROM calendar_events ...",
+        }
+
+    @patch('qbot3.db_introspection.db_schema_list')
+    @patch('qbot3.db_introspection.db_table_describe')
+    @patch('qbot3.db_introspection.db_select_readonly')
+    def test_db_introspection_fallback_calendar(self, mock_select, mock_describe, mock_schema_list):
         """DB introspection fallback for calendar queries"""
+        mock_schema_list.return_value = {"status": "OK", "schemas": {"public": ["calendar_events"]}, "schema_count": 1}
+        mock_describe.side_effect = self._mock_db_table_describe_flexible
+        mock_select.side_effect = self._mock_db_select_readonly_flexible
         plan = {"intent": "calendar", "tools_to_call": ["qcal_events_range"]}
         results = _try_db_introspection_fallback(plan, "zobacz wydarzenia w kalendarzu")
         if results:
@@ -270,8 +349,14 @@ class TestDBIntrospectionFallback(unittest.TestCase):
         results = _try_db_introspection_fallback(plan, "hello world")
         self.assertIsNone(results)
 
-    def test_db_introspection_fallback_nutrition(self):
+    @patch('qbot3.db_introspection.db_schema_list')
+    @patch('qbot3.db_introspection.db_table_describe')
+    @patch('qbot3.db_introspection.db_select_readonly')
+    def test_db_introspection_fallback_nutrition(self, mock_select, mock_describe, mock_schema_list):
         """DB introspection fallback for nutrition queries"""
+        mock_schema_list.return_value = {"status": "OK", "schemas": {"public": ["meal_logs"]}, "schema_count": 1}
+        mock_describe.side_effect = self._mock_db_table_describe_flexible
+        mock_select.side_effect = self._mock_db_select_readonly_flexible
         plan = {"intent": "nutrition", "tools_to_call": ["nutrition_day_summary"]}
         results = _try_db_introspection_fallback(plan, "co jadłem dzisiaj")
         if results:
@@ -299,7 +384,7 @@ class TestDBIntrospectionFallbackIntegration(unittest.TestCase):
         from qbot3.tool_registry import _TOOL_REGISTRY
         self._orig_tools = {
             k: dict(v) for k, v in _TOOL_REGISTRY.items()
-            if k in ("qcal_events_range",)
+            if k in ("qcal_events_range", "db_schema_list", "db_table_describe", "db_select_readonly")
         }
 
     def tearDown(self):
@@ -318,6 +403,13 @@ class TestDBIntrospectionFallbackIntegration(unittest.TestCase):
             "description": "QCal events for a date range.",
             "args_schema": {"date_from": {"type": "string"}, "date_to": {"type": "string"}},
             "safety": "read",
+        }
+
+    def _mock_db_schema_list(self, *args, **kwargs):
+        return {
+            "status": "OK",
+            "schemas": {"public": ["calendar_events", "meal_logs"]},
+            "schema_count": 1,
         }
 
     def _mock_db_table_describe(self, *args, **kwargs):
@@ -347,14 +439,75 @@ class TestDBIntrospectionFallbackIntegration(unittest.TestCase):
             "sql_audit": "SELECT ... FROM calendar_events ...",
         }
 
+    def _mock_db_table_describe_flexible(self, args=None, **kwargs):
+        payload = args if isinstance(args, dict) else kwargs
+        table = str(payload.get("table", "calendar_events"))
+        if table == "meal_logs":
+            return {
+                "status": "OK",
+                "schema": "public",
+                "table": "meal_logs",
+                "columns": [
+                    {"name": "id", "type": "integer", "nullable": False, "is_pk": True},
+                    {"name": "date", "type": "date", "nullable": False},
+                    {"name": "meal_name", "type": "text", "nullable": True},
+                    {"name": "kcal_total", "type": "numeric", "nullable": True},
+                ],
+                "column_count": 4,
+            }
+        return self._mock_db_table_describe()
+
+    def _mock_db_select_readonly_flexible(self, args=None, **kwargs):
+        payload = args if isinstance(args, dict) else kwargs
+        sql = str(payload.get("sql", ""))
+        if "meal_logs" in sql:
+            return {
+                "status": "OK",
+                "rows": [
+                    {"id": 11, "date": "2026-05-29", "meal_name": "Owsianka", "kcal_total": 540},
+                    {"id": 12, "date": "2026-05-29", "meal_name": "Ryż z kurczakiem", "kcal_total": 810},
+                ],
+                "row_count": 2,
+                "sql_audit": "SELECT ... FROM meal_logs ...",
+            }
+        return self._mock_db_select_readonly()
+
+    def _mock_db_schema_tool(self):
+        return {
+            "callable": lambda args: self._mock_db_schema_list(),
+            "category": "db",
+            "description": "Mock db_schema_list",
+            "args_schema": {},
+            "safety": "read",
+        }
+
+    def _mock_db_table_tool(self):
+        return {
+            "callable": lambda args: self._mock_db_table_describe(),
+            "category": "db",
+            "description": "Mock db_table_describe",
+            "args_schema": {"schema": {"type": "string"}, "table": {"type": "string"}},
+            "safety": "read",
+        }
+
+    def _mock_db_select_tool(self):
+        return {
+            "callable": lambda args: self._mock_db_select_readonly(),
+            "category": "db",
+            "description": "Mock db_select_readonly",
+            "args_schema": {"sql": {"type": "string"}},
+            "safety": "read",
+        }
+
+    @patch('qbot3.db_introspection.db_schema_list')
     @patch('qbot3.db_introspection.db_table_describe')
     @patch('qbot3.db_introspection.db_select_readonly')
-    def test_reader_error_triggers_db_introspection_fallback(self, mock_select, mock_describe):
-        """Reader SCHEMA_MISMATCH → runtime auto-runs db_table_describe + db_select_readonly."""
-        mock_describe.side_effect = self._mock_db_table_describe
-        mock_select.side_effect = self._mock_db_select_readonly
-
+    def test_reader_query_uses_direct_db_readonly(self, mock_select, mock_describe, mock_schema_list):
+        """Ordinary calendar question → direct db_schema_list + db_table_describe + db_select_readonly, no snapshot/fallback."""
         from qbot3.tool_registry import _TOOL_REGISTRY
+        _TOOL_REGISTRY["db_schema_list"] = self._mock_db_schema_tool()
+        _TOOL_REGISTRY["db_table_describe"] = self._mock_db_table_tool()
+        _TOOL_REGISTRY["db_select_readonly"] = self._mock_db_select_tool()
         schema_mismatch_tool = self._make_schema_mismatch_tool()
         _TOOL_REGISTRY["qcal_events_range"] = schema_mismatch_tool
 
@@ -368,42 +521,38 @@ class TestDBIntrospectionFallbackIntegration(unittest.TestCase):
         readers = [r.get("reader", "") for r in tool_results]
         readers_str = ", ".join(readers)
 
-        # REQUIREMENT 1: db_table_describe must appear in tool_results
+        # REQUIREMENT 1: direct DB tools must appear in tool_results
         self.assertIn("db_table_describe", readers,
                       f"db_table_describe missing from tool_results. Got: {readers_str}")
-
-        # REQUIREMENT 2: db_select_readonly must appear in tool_results
         self.assertIn("db_select_readonly", readers,
                       f"db_select_readonly missing from tool_results. Got: {readers_str}")
 
-        # REQUIREMENT 3: db_introspection_fallback.* must appear in tool_results
-        self.assertTrue(
-            any("db_introspection_fallback" in r for r in readers),
-            f"db_introspection_fallback.* missing from tool_results. Got: {readers_str}",
-        )
+        # REQUIREMENT 2: no fallback should be needed
+        self.assertNotIn("db_introspection_fallback", readers_str,
+                         f"Unexpected fallback in tool_results. Got: {readers_str}")
 
-        # REQUIREMENT 4: plan must record db_introspection_used
+        # REQUIREMENT 3: plan must not mark db_introspection_used
         plan = result.get("plan", {})
-        self.assertTrue(plan.get("db_introspection_used", False),
-                        "plan.db_introspection_used must be True")
+        self.assertFalse(plan.get("db_introspection_used", False),
+                         "plan.db_introspection_used must be False for direct DB reads")
 
-        # REQUIREMENT 5: fallback data must contain actual rows
-        fallback_entries = [r for r in tool_results if "db_introspection_fallback" in r.get("reader", "")]
-        self.assertTrue(len(fallback_entries) > 0, "At least one db_introspection_fallback entry")
-        fb = fallback_entries[0]
-        self.assertEqual(fb.get("status"), "OK", f"Fallback status should be OK, got {fb.get('status')}")
-        fb_data = fb.get("data", {})
-        self.assertIn("rows", fb_data, "Fallback data must contain rows")
-        self.assertGreater(fb_data.get("row_count", 0), 0, "Fallback must return at least 1 row")
+        # REQUIREMENT 4: direct rows must contain future events from calendar_events
+        select_entries = [r for r in tool_results if r.get("reader") == "db_select_readonly"]
+        self.assertTrue(select_entries, f"No db_select_readonly entries. Got: {readers_str}")
+        select_data = select_entries[0].get("data", {})
+        self.assertEqual(select_data.get("status"), "OK")
+        self.assertIn("rows", select_data)
+        self.assertGreater(len(select_data.get("rows", [])), 0)
 
+    @patch('qbot3.db_introspection.db_schema_list')
     @patch('qbot3.db_introspection.db_table_describe')
     @patch('qbot3.db_introspection.db_select_readonly')
-    def test_reader_error_fallback_only_when_needed(self, mock_select, mock_describe):
+    def test_reader_error_fallback_only_when_needed(self, mock_select, mock_describe, mock_schema_list):
         """OK reader → NO DB introspection fallback."""
-        mock_describe.side_effect = self._mock_db_table_describe
-        mock_select.side_effect = self._mock_db_select_readonly
-
         from qbot3.tool_registry import _TOOL_REGISTRY
+        _TOOL_REGISTRY["db_schema_list"] = self._mock_db_schema_tool()
+        _TOOL_REGISTRY["db_table_describe"] = self._mock_db_table_tool()
+        _TOOL_REGISTRY["db_select_readonly"] = self._mock_db_select_tool()
         _TOOL_REGISTRY.pop("qcal_events_range", None)
 
         question = "Zobacz wydarzenia w kalendarzu na dzisiaj"
@@ -413,9 +562,13 @@ class TestDBIntrospectionFallbackIntegration(unittest.TestCase):
         readers = [r.get("reader", "") for r in tool_results]
         readers_str = ", ".join(readers)
 
-        # When no error, no fallback needed
+        # Direct DB path should still be used
+        self.assertIn("db_table_describe", readers,
+                      f"db_table_describe missing from tool_results. Got: {readers_str}")
+        self.assertIn("db_select_readonly", readers,
+                      f"db_select_readonly missing from tool_results. Got: {readers_str}")
         self.assertNotIn("db_introspection_fallback", readers_str,
-                         "Should not have fallback when no reader error")
+                         "Should not have fallback when direct DB read succeeds")
 
 
 if __name__ == "__main__":

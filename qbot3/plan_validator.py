@@ -2,8 +2,6 @@
 """QBot3 Plan Validator — checks LLM-generated plans before execution.
 
 Ensures plan integrity, safety, and registry compliance.
-Detects domain-tool mismatches and returns CAPABILITY_MISSING/MISMATCH
-with concrete proposals instead of PLAN_INVALID or silent wrong-tool usage.
 """
 
 from __future__ import annotations
@@ -17,35 +15,12 @@ from qbot3.errors import (
 from qbot3.tool_registry import lookup
 
 
-# Known domain ↔ dedicated tool/capability mappings.
-# When LLM plans tools outside these for a domain, it's a MISMATCH.
-_DOMAIN_TOOL_MAP: dict[str, list[str]] = {
-    # domain keywords -> expected tools/capabilities
-    "daily report": ["daily_report_status"],
-    "raport dzienny": ["daily_report_status"],
-    "email pipeline": ["daily_report_status"],
-    "report pipeline": ["daily_report_status"],
-    "gate": ["gate_status"],
-    "furtka": ["gate_status"],
-    "hikconnect": ["gate_status"],
-    "hammerhead": ["hammerhead_sync_status"],
-    "garmin sync": ["hammerhead_sync_status", "garmin_sync_status"],
-    "transfer": ["hammerhead_sync_status"],
-    "llm": ["system_env_status"],
-    "model": ["system_env_status"],
-    "jaki model": ["system_env_status"],
-    "provider": ["system_env_status"],
-    "llm_status": ["system_env_status"],
-    "daily_report_status": ["daily_report_status"],
-    "gate_status": ["gate_status"],
-    "hammerhead_sync_status": ["hammerhead_sync_status", "garmin_sync_status"],
-}
-
-# Generic tools that should NOT be the primary answer for specific domains.
-# They are fallbacks, not domain solutions.
-_GENERIC_TOOLS = frozenset({
-    "system_logs_recent", "system_env_status",
-})
+_READ_ONLY_TOOL_HINTS = (
+    "calendar", "calend", "nutrition", "meal", "food", "posił", "jad",
+    "route", "rwgps", "training", "workout", "wellness", "sleep", "garmin",
+    "xert", "gate", "weather", "dashboard", "snapshot", "summary", "report",
+    "balance", "bilans", "kcal", "energy",
+)
 
 
 def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
@@ -86,29 +61,9 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
         if tools:
             return error_result(PLAN_INVALID, "Write mode should not have tools_to_call — use write_action instead")
 
-    # Read mode domain-tool mismatch detection
-    if mode == "read_only" and tools:
-        mismatch_result = _detect_domain_tool_mismatch(intent, tools, plan_json_lower)
-        if mismatch_result:
-            return mismatch_result
-        # Also check intent-based mismatch: if intent clearly maps to a domain but tools are generic
-        if intent:
-            intent_mismatch = _detect_intent_tool_mismatch(intent, tools)
-            if intent_mismatch:
-                return intent_mismatch
-
     # Read mode — no tools, check capability registry
     if mode == "read_only" and not tools:
-        if intent:
-            proposal = _check_capability_for_intent(intent)
-            if proposal:
-                return error_result(
-                    CAPABILITY_MISSING,
-                    proposal["message"],
-                    capability_proposal=proposal,
-                    intent=intent,
-                )
-        return error_result(PLAN_INVALID, "Read mode requires at least one tool")
+        return success_result({"valid": True, "no_tools_ok": True})
 
     if mode == "read_only" and write_action:
         return error_result(PLAN_INVALID, "Read mode should not have write_action")
@@ -138,75 +93,6 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
             return error_result(SAFETY_BLOCKED, f"Plan contains dangerous pattern: '{pattern}'")
 
     return success_result({"valid": True})
-
-
-def _detect_domain_tool_mismatch(intent: str, tools: list[str], plan_lower: str) -> dict[str, Any] | None:
-    """Detect when LLM picks generic tools for a specific domain.
-
-    Returns a CAPABILITY_MISSING proposal if tools don't match the domain.
-    """
-    # Check each domain mapping
-    for domain_keywords, expected_tools in _DOMAIN_TOOL_MAP.items():
-        if domain_keywords not in plan_lower:
-            continue
-        # Domain matched — check if tools include expected ones
-        has_expected = any(et in tools for et in expected_tools)
-        if has_expected:
-            return None  # OK, correct tools used
-        # Domain matched but expected tools NOT used — this is a MISMATCH
-        # Check if generic tools were used instead
-        generic_used = [t for t in tools if t in _GENERIC_TOOLS]
-        if generic_used:
-            proposal = _propose_for_domain(intent, domain_keywords, expected_tools)
-            return error_result(
-                CAPABILITY_MISSING,
-                proposal["message"],
-                capability_proposal=proposal,
-                mismatch_detected=True,
-                generic_tools_used=generic_used,
-                expected_tools=expected_tools,
-                intent=intent,
-            )
-    return None
-
-
-def _detect_intent_tool_mismatch(intent: str, tools: list[str]) -> dict[str, Any] | None:
-    """Detect when intent name suggests a domain but LLM picked generic tools.
-
-    Example: intent='llm_status' with tools=['system_env_status'] → mismatch.
-    """
-    # Check if any domain keyword is in the intent name
-    il = intent.lower()
-    for domain_keywords, expected_tools in _DOMAIN_TOOL_MAP.items():
-        if domain_keywords not in il:
-            continue
-        has_expected = any(et in tools for et in expected_tools)
-        if has_expected:
-            return None
-        generic_used = [t for t in tools if t in _GENERIC_TOOLS]
-        if generic_used:
-            proposal = _propose_for_domain(intent, domain_keywords, expected_tools)
-            return error_result(
-                CAPABILITY_MISSING,
-                proposal["message"],
-                capability_proposal=proposal,
-                mismatch_detected=True,
-                generic_tools_used=generic_used,
-                expected_tools=expected_tools,
-                intent=intent,
-            )
-    return None
-
-
-def _propose_for_domain(intent: str, domain: str, expected_tools: list[str]) -> dict[str, Any]:
-    """Generate a concrete capability proposal for a known domain."""
-    from qbot3.capabilities import propose_capability
-    return propose_capability(
-        intent,
-        f"Wykryto mismatch domeny '{domain}': zamiast {expected_tools} użyto ogólnych narzędzi. "
-        f"Potrzebna capability dla '{domain}'.",
-        domain_hint=domain,
-    )
 
 
 def _check_capability_for_intent(intent: str) -> dict[str, Any] | None:
@@ -239,6 +125,8 @@ def _check_capability_for_intent(intent: str) -> dict[str, Any] | None:
                 "message": f"Intent '{intent}' pasuje do capability '{d.name}', ale jest w stanie "
                            f"'{d.promotion_state}'. Promuj do 'active' przed użyciem.",
             }
+        if not any(h in intent.lower() for h in _READ_ONLY_TOOL_HINTS):
+            return None
         # No capability found — propose one
         proposal = propose_capability(
             intent,

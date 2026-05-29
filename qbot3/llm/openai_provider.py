@@ -8,6 +8,7 @@ Model selected by ALBERT_LLM_MODEL env var, or QGPT_MODEL / ANTHROPIC_MODEL.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any
 
@@ -50,13 +51,18 @@ TWARDE ZASADY:
 - Jeśli narzędzie z available_tools pasuje do domeny, UŻYJ go. Nie wybieraj ogólnych narzędzi (system_logs_recent, system_env_status) gdy istnieje dedykowane narzędzie.
 
 DB INTROSPECTION (transparent read-only):
-- Są narzędzia db_schema_list, db_table_describe, db_sample_rows, db_select_readonly.
-- Jeśli dedykowany reader (np. qcal_events_range) może nie działać z powodu braku kolumny,
-  dodaj db_select_readonly jako fallback w tools_to_call.
-- db_select_readonly przyjmuje parametr "sql" — tylko SELECT, LIMIT wymuszony.
-- db_table_describe pokazuje rzeczywiste kolumny tabeli.
-- Przykład: dla kalendarza → dodaj qcal_events_range ORAZ db_table_describe(table="calendar_events")
-  jako fallback na wypadek błędu readera.
+- db_schema_list, db_table_describe, db_sample_rows, db_select_readonly to narzędzia do jawnego odczytu DB.
+- DB read-only jest domyślnym źródłem prawdy dla zwykłych pytań o dane.
+- Jeśli tabela nie jest znana, najpierw użyj db_schema_list, potem db_table_describe.
+- Jeśli znasz lub możesz ustalić tabelę, użyj db_select_readonly do pobrania realnych rekordów.
+- db_sample_rows używaj tylko do orientacji w kształcie danych, nie jako zamiennik realnych rekordów.
+- Snapshoty / dashboardy nie są domyślnym odczytem danych.
+- calendar_snapshot używaj wyłącznie, gdy użytkownik pyta wprost o dzisiejszy dashboard, podsumowanie dnia, snapshot dnia albo status dnia.
+- Przykład: dla "pokaż kalendarz" użyj db_schema_list lub db_table_describe(table="calendar_events"), a potem db_select_readonly z future rows z calendar_events (od dziś w przyszłość, limit 100).
+- Przykład: dla "co dziś jadłem" użyj db_schema_list / db_table_describe dla tabel żywieniowych, a potem db_select_readonly z dzisiejszymi realnymi logami.
+- Jeśli dane nie siedzą w DB, możesz użyć technicznego connector read-only, ale nadal bez snapshotu jako domyślnego zamiennika.
+- Jeśli pytanie jest czysto testowe / konwersacyjne i nie wymaga danych, możesz zwrócić mode="read_only" z pustym tools_to_call.
+- Dla ordinary calendar / food / training questions nie używaj calendar_snapshot ani gotowych summary readers jako domyślnego źródła.
 """
 
 _FINAL_SYSTEM = """\
@@ -71,7 +77,9 @@ TWARDE ZASADY:
 - NIE wymyślaj nazw tooli, readerów, writerów.
 - DLA ZAPISU (mode=write): NIGDY nie pisz "dodano", "zapisano", "wykonano". Zawsze mów "Przygotowałem draft" lub "wymaga potwierdzenia przez qbot.action_execute".
 - Jeśli narzędzie nie zwróciło danych: "brak danych w DB", a nie "nie mam dostępu".
-- Dla calendar_snapshot: przedstaw wydarzenia, remindery, posiłki — pełny obraz dnia.
+- Dla snapshotów / dashboardów: pokazuj je tylko wtedy, gdy użytkownik pyta wprost o dzisiejszy dashboard, podsumowanie dnia, snapshot dnia albo status dnia.
+- Dla zwykłych pytań o kalendarz, jedzenie, treningi czy trasy używaj realnych rekordów przez DB read-only albo low-level connector read-only.
+- Jeśli plan ma puste tools_to_call, odpowiedz bezpośrednio i zwięźle zamiast zgłaszać brak narzędzi.
 - Dla bilansu: podaj kcal_in, kcal_out (jeśli dostępne), różnicę.
 - Nie opisuj procesu planowania.
 - Jeśli coś się nie udało, powiedz konkretnie co i na którym etapie.
@@ -98,12 +106,20 @@ DB INTROSPECTION FALLBACK:
 
 
 class OpenAIProvider(LLMProvider):
-    def plan(self, context: dict[str, Any], tools_desc: list[dict[str, Any]], user_message: str) -> PlanResult:
-        model = os.getenv("ALBERT_LLM_MODEL", "") or None
-        system = _PLAN_SYSTEM + "\n\nDostępne narzędzia:\n" + "\n".join(
-            f"  {t.get('name', '?')} ({t.get('category', '?')}, safety={t.get('safety', '?')}) — {t.get('description', '')[:120]}"
-            for t in tools_desc
+    def __init__(self) -> None:
+        _log = logging.getLogger("qbot3.llm")
+        _provider = os.getenv("ALBERT_LLM_PROVIDER", "openai")
+        _model = os.getenv("ALBERT_LLM_MODEL") or os.getenv("QGPT_MODEL") or "(env not set)"
+        _qgpt_key = bool(os.getenv("QGPT_API_KEY"))
+        _openai_key = bool(os.getenv("OPENAI_API_KEY"))
+        _anthropic_key = bool(os.getenv("ANTHROPIC_API_KEY"))
+        _log.info(
+            f"Albert LLM transport: provider={_provider} model={_model} "
+            f"qgpt_key={_qgpt_key} openai_key={_openai_key} anthropic_key={_anthropic_key}"
         )
+
+    def plan(self, context: dict[str, Any], tools_desc: list[dict[str, Any]], user_message: str) -> PlanResult:
+        system = _PLAN_SYSTEM + "\n\nDostępne narzędzia są przekazane w payload.available_tools. Nie powtarzaj ich listy w odpowiedzi."
         payload = {
             "question": user_message,
             "available_tools": tools_desc,
@@ -140,7 +156,7 @@ class OpenAIProvider(LLMProvider):
 
     def answer(self, context: dict[str, Any], plan: dict[str, Any], tool_results: list[dict[str, Any]]) -> AnswerResult:
         system = _FINAL_SYSTEM
-        payload = {"question": context.get("question", ""), "plan": plan, "tool_results": tool_results}
+        payload = {"question": context.get("question", ""), "plan": plan, "tool_results": _compact_tool_results(tool_results)}
         final = qgpt_json(
             json.dumps(payload, ensure_ascii=False, default=str),
             system=system,
@@ -160,3 +176,37 @@ class OpenAIProvider(LLMProvider):
             limitations=final.get("limitations", []),
             raw=final,
         )
+
+
+def _compact_tool_results(tool_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Shrink tool results before final answer generation.
+
+    Keeps the semantics and row-level evidence, but removes bulky repeated data
+    that can cause model truncation or malformed JSON.
+    """
+    compacted: list[dict[str, Any]] = []
+    for tr in tool_results:
+        data = tr.get("data", {})
+        if not isinstance(data, dict):
+            compacted.append(tr)
+            continue
+        item = dict(tr)
+        compact_data = dict(data)
+        rows = compact_data.get("rows")
+        if isinstance(rows, list):
+            compact_data["rows"] = rows[:5]
+            compact_data["row_count"] = compact_data.get("row_count", len(rows))
+            compact_data["_rows_truncated"] = len(rows) > 5
+        events = compact_data.get("events")
+        if isinstance(events, list):
+            compact_data["events"] = events[:5]
+            compact_data["count"] = compact_data.get("count", len(events))
+            compact_data["_events_truncated"] = len(events) > 5
+        documents = compact_data.get("documents")
+        if isinstance(documents, list):
+            compact_data["documents"] = documents[:3]
+            compact_data["count"] = compact_data.get("count", len(documents))
+            compact_data["_documents_truncated"] = len(documents) > 3
+        item["data"] = compact_data
+        compacted.append(item)
+    return compacted

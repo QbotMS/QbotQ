@@ -34,6 +34,21 @@ def _clean_preview(answer: str) -> str:
             return answer.rstrip()[:-len(suffix)].rstrip()
     return answer.rstrip()
 
+
+def _telegram_result_text(result: dict) -> str:
+    answer = str(result.get("answer", "") or "").strip()
+    status = str(result.get("status", "") or "").lower()
+    limitations = result.get("limitations", [])
+    first_limitation = limitations[0] if isinstance(limitations, list) and limitations else "nieznany błąd"
+
+    if not answer and status == "error":
+        return f"⚠️ Albert nie mógł odpowiedzieć: {first_limitation}"
+    if not answer:
+        return ""
+    if status == "draft":
+        return answer + "\n\n_(zapis wymaga potwierdzenia — wywołaj qbot.action_execute)_"
+    return answer
+
 # ── Telegram API ──
 
 def send_message(chat_id: str, text: str) -> dict:
@@ -286,8 +301,7 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
         result = qbot_query(question=text, mode="read_only", scope="all", context=json.dumps(context))
 
         intent = result.get("intents_detected",[])
-        answer = result.get("answer","")
-        tables = result.get("tables",[])
+        answer = str(result.get("answer", "") or "").strip()
         action_draft = result.get("action_draft")
 
         # ── Action draft handling ──
@@ -326,7 +340,9 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
             _turn_add(chat_id, "inbound", text, intent="write_draft")
             _turn_add(chat_id, "outbound", text=response, intent="write_draft")
         else:
-            response = _format_answer(answer, tables)
+            response = _telegram_result_text(result)
+            if not response:
+                response = "Nie mogę teraz odpowiedzieć."
             # Safety: never claim write was executed without action_execute confirm
             if result.get("plan", {}).get("is_write_intent") or result.get("orchestrator", {}).get("stage") in ("draft",):
                 for fake_word in ["dodano", "zapisano", "wykonano", "utworzono"]:
@@ -380,7 +396,8 @@ def _today_response(chat_id: str) -> dict:
     try:
         from qbot_query_router import query
         r = query(question="Pokaż wszystko co QBot wie o dzisiejszym dniu", mode="read_only", scope="all")
-        return {"response": _format_answer(r.get("answer",""), r.get("tables",[])), "status": "ok"}
+        response = _telegram_result_text(r)
+        return {"response": response or "Nie mogę teraz odpowiedzieć.", "status": "ok"}
     except: return {"response": f"Today: {date.today().isoformat()}", "status": "ok"}
 
 def _reminders_response(chat_id: str) -> dict:

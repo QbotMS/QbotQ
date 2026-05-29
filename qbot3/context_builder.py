@@ -33,11 +33,14 @@ def build_context(user_message: str, mode: str = "read_only") -> dict[str, Any]:
     }
 
     ctx["system_rules"] = [
-        "Albert is the single decision-making brain — no procedural handlers.",
+        "Albert is the single decision-making brain. No Python code overrides his tool choices.",
         "qbot.query is for reads and write drafts only.",
         "qbot.action_execute executes writes after safety validation.",
         "Never claim 'dodano', 'zapisano', 'wykonano' for writes — always say 'draft'.",
         "If data is missing, say what's missing and why, not 'I don't have access'.",
+        "DB read-only is the default source of truth for ordinary data questions.",
+        "Use db_schema_list / db_table_describe when the table is unknown, then db_select_readonly for real records.",
+        "Use calendar_snapshot and other dashboard tools only for explicit dashboard/day-summary requests.",
         "Use only tools from the available tools list — never invent tool names.",
         "If unsure, ask for clarification rather than guessing.",
     ]
@@ -66,39 +69,8 @@ def build_context(user_message: str, mode: str = "read_only") -> dict[str, Any]:
     if any(k in ql for k in ("knowhow", "bible", "dokument", "kanoniczn", "instrukcja", "zasad")):
         ctx["relevant_docs"] = ["qbot_bible", "qbot_knowhow"]
 
-    # Nutrition context — when user asks about food/meals/balance
-    if any(k in ql for k in ("jadłem", "jadł", "zjadł", "jedzeni", "posiłk", "kalor", "nutrition",
-                              "dieta", "makro", "bialk", "wegl", "tłusz", "bilans", "kcal", "energy")):
-        ctx["relevant_contexts"] = ctx.get("relevant_contexts", []) + ["nutrition"]
-
-    # Calendar context
-    if any(k in ql for k in ("kalendarz", "calendar", "event", "wydarzen", "przypomn", "reminder", "spotkan")):
-        ctx["relevant_contexts"] = ctx.get("relevant_contexts", []) + ["calendar"]
-
-    # Garmin / fitness context
-    if any(k in ql for k in ("garmin", "trening", "ćwiczen", "activity", "dane", "sync", "import")):
-        ctx["relevant_contexts"] = ctx.get("relevant_contexts", []) + ["garmin"]
-
-    # Route context
-    if any(k in ql for k in ("rwgps", "tras", "route", "gpx")):
-        ctx["relevant_contexts"] = ctx.get("relevant_contexts", []) + ["routes"]
-
-    # Daily report / pipeline context
-    if any(k in ql for k in ("raport dzienny", "daily report", "email z raportem", "nie przeszedł",
-                              "niedostarczony raport", "daily_report", "pipeline", "report pipeline")):
-        ctx["relevant_contexts"] = ctx.get("relevant_contexts", []) + ["daily_report"]
-
-    # Gate / furtka context
-    if any(k in ql for k in ("furtk", "gate", "hikconnect", "brama", "unlock", "otwórz")):
-        ctx["relevant_contexts"] = ctx.get("relevant_contexts", []) + ["gate"]
-
-    # Hammerhead / Garmin sync context
-    if any(k in ql for k in ("hammerhead", "garmin sync", "transfer", "karoo", "synchronizacja")):
-        ctx["relevant_contexts"] = ctx.get("relevant_contexts", []) + ["hammerhead_sync"]
-
     # System status — only for status/readiness/diagnostic queries
     if any(k in ql for k in ("status", "readiness", "diagnost", "dlaczego", "problem", "błąd", "error", "nie działa", "co się dzieje")):
         ctx["load_system_status"] = True
-        ctx["relevant_contexts"] = ctx.get("relevant_contexts", []) + ["system"]
 
     return ctx

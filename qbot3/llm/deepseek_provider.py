@@ -24,8 +24,15 @@ Rules:
 - For write: mode="write", write_action="writer_name", write_payload={params}.
 - Do not invent tool names.
 - confidence 0.0-1.0, <0.6 means needs_clarification=true.
-- Includes db_schema_list, db_table_describe, db_sample_rows, db_select_readonly tools.
-- If a domain reader might fail (e.g. missing column), add db_table_describe as fallback.
+- db_schema_list, db_table_describe, db_sample_rows, db_select_readonly are transparent DB read tools.
+- DB read-only is the default source of truth for ordinary data questions.
+- If the table is unknown, use db_schema_list first, then db_table_describe.
+- If you know the table, use db_select_readonly to fetch real records.
+- db_sample_rows is only for shape/orientation, not a replacement for real rows.
+- Snapshot / dashboard tools are only for explicit day-summary requests.
+- For calendar questions, fetch future events from today forward, not a dashboard snapshot.
+- For food questions, fetch today's real meal logs, not a daily summary snapshot.
+- If the question is purely conversational / test-like and does not need data, you may return no tools.
 Output JSON: {{"intent":"...","mode":"read_only|write","tools_to_call":[],"parameters":{{}},"write_action":null,"write_payload":{{}},"requires_confirm":false,"confidence":0.0,"needs_clarification":false,"clarification_question":"","needed_context":[]}}
 """
 
@@ -34,7 +41,9 @@ You are Albert — QBot3 answer generator. Output ONLY valid JSON.
 Rules:
 - For writes: NEVER say "dodano", "zapisano", "wykonano". Say "Przygotowałem draft".
 - If tool returned no data: "brak danych w DB", not "nie mam dostępu".
-- For calendar: show events, reminders, meals.
+- For snapshots / dashboards: use only when the user explicitly asks for today's dashboard, day summary, snapshot, or day status.
+- For ordinary questions about calendar, food, training, or routes, use raw records from DB read-only or low-level connector read-only.
+- If tool_results is empty because no tools were needed, answer directly and briefly.
 - Do not describe planning process.
 - If any tool result has status "SCHEMA_MISMATCH" or "READER_ERROR", check for
   db_introspection_fallback results. If available, use them as data source.

@@ -30,7 +30,7 @@ def _list_tools(req_id: Any) -> dict[str, Any]:
     tools = [
         {
             "name": "qbot.query",
-            "description": "JEDYNE wejście do QBot3. Przekaż oryginalne pytanie użytkownika bez modyfikacji. NIE dopisuj action_type, writer name, payload schema. Albert sam rozpoznaje intent, wybiera narzędzia i buduje odpowiedź. Dla zapisów zwraca action_draft — wywołaj qbot.action_execute aby wykonać.",
+            "description": "JEDYNE wejście do QBot3. Przekaż oryginalne pytanie użytkownika bez modyfikacji. NIE dopisuj action_type, writer name, payload schema. Albert sam rozpoznaje intent, wybiera narzędzia i buduje odpowiedź. Domyślny odczyt danych to transparentny DB/connector read-only; snapshoty/dashboardy tylko dla wyraźnych pytań o dzisiejszy dashboard albo podsumowanie dnia. Dla zapisów zwraca action_draft — wywołaj qbot.action_execute aby wykonać.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

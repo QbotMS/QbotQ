@@ -19,7 +19,8 @@ class MockProvider(LLMProvider):
         tools = ["status"]
         mode = "read_only"
         write_action = None
-        write_payload = {}
+        write_payload: dict[str, Any] = {}
+        parameters: dict[str, Any] = {}
         requires_confirm = False
 
         # Write patterns must be checked FIRST to avoid matching "event" etc.
@@ -38,15 +39,38 @@ class MockProvider(LLMProvider):
         elif any(k in ql for k in ("readiness", "gotowoś")):
             intent = "readiness"
             tools = ["readiness"]
+        elif any(k in ql for k in ("dashboard", "podsumowanie dnia", "snapshot dnia", "status dnia", "dzisiejszy dashboard")):
+            intent = "calendar_snapshot"
+            tools = ["calendar_snapshot"]
         elif any(k in ql for k in ("kalendarz", "calendar", "wydarzeń", "wydarzen", "event", "eventy", "zaplanowane", "spotkan")):
             intent = "calendar"
-            tools = ["qcal_events_range"]
+            tools = ["db_schema_list", "db_table_describe", "db_select_readonly"]
+            parameters = {
+                "schema": "public",
+                "table": "calendar_events",
+                "sql": (
+                    "SELECT * FROM calendar_events "
+                    "WHERE date_start >= CURRENT_DATE "
+                    "ORDER BY date_start, time_start NULLS LAST, id "
+                    "LIMIT 100"
+                ),
+            }
         elif any(k in ql for k in ("pogoda", "weather", "temperatur")):
             intent = "weather"
             tools = ["weather_forecast"]
         elif any(k in ql for k in ("posiłk", "jadłem", "jadłam", "zjadł", "meal", "jedzeni")):
             intent = "nutrition_day"
-            tools = ["nutrition_day_summary", "nutrition_meal_list"]
+            tools = ["db_schema_list", "db_table_describe", "db_select_readonly"]
+            parameters = {
+                "schema": "public",
+                "table": "meal_logs",
+                "sql": (
+                    "SELECT * FROM meal_logs "
+                    "WHERE date = CURRENT_DATE "
+                    "ORDER BY id "
+                    "LIMIT 100"
+                ),
+            }
         elif any(k in ql for k in ("bilans", "kalor", "kcal", "energy")):
             intent = "nutrition_balance"
             tools = ["nutrition_balance_today", "nutrition_day_summary"]
@@ -82,7 +106,7 @@ class MockProvider(LLMProvider):
             intent=intent,
             mode=mode,
             tools_to_call=tools,
-            parameters={},
+            parameters=parameters,
             write_action=write_action,
             write_payload=write_payload,
             requires_confirm=requires_confirm,
