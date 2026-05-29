@@ -148,10 +148,10 @@ def qgpt_chat(
         models_to_try.append(QGPT_FALLBACK_MODEL)
 
     last_exc: Exception | None = None
-    for model in models_to_try:
+    for mdl in models_to_try:
         try:
             attempt_payload = dict(payload)
-            attempt_payload["model"] = model
+            attempt_payload["model"] = mdl
             r = httpx.post(
                 _chat_url(),
                 headers=_headers(),
@@ -161,7 +161,29 @@ def qgpt_chat(
             r.raise_for_status()
             data: dict[str, Any] = r.json()
             try:
-                return data["choices"][0]["message"]["content"].strip()
+                choices = data.get("choices", [])
+                if not choices:
+                    raise RuntimeError("No choices in response")
+                choice = choices[0]
+                finish_reason = choice.get("finish_reason", "unknown")
+                msg = choice.get("message") or {}
+                content = msg.get("content")
+                provider = data.get("provider", data.get("model_info", {}).get("provider_name", ""))
+                resp_model = data.get("model", mdl)
+                if isinstance(content, str) and content.strip():
+                    return content.strip()
+                has_reasoning = "reasoning" in msg or "reasoning_details" in msg
+                detail_parts = [f"model={resp_model}"]
+                if provider:
+                    detail_parts.append(f"provider={provider}")
+                detail_parts.append(f"finish_reason={finish_reason}")
+                if has_reasoning:
+                    detail_parts.append("reasoning_present=true")
+                raise RuntimeError(
+                    f"Model returned empty message.content ({'; '.join(detail_parts)})"
+                )
+            except RuntimeError:
+                raise
             except Exception as e:
                 raise RuntimeError(f"Niepoprawna odpowiedź QGPT: {data}") from e
         except Exception as exc:
