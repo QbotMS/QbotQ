@@ -1146,3 +1146,19 @@ def oauth_authorization_server():
         "token_endpoint_auth_methods_supported": ["none"],
         "scopes_supported": ["qbot"]
     }
+
+
+import logging as _logging
+_withings_log = _logging.getLogger("qbot.withings_oauth")
+
+
+@app.get("/oauth/withings/callback")
+@app.get("/oauth/withings/callback/")
+def withings_oauth_callback(code: str = "", state: str = "", error: str = ""):
+    _withings_log.info("Withings OAuth callback: code_present=%s state_present=%s error=%s",
+                       bool(code), bool(state), error or "none")
+    if error:
+        return {"status": "error", "detail": f"Withings OAuth error: {error}"}
+    if not code:
+        return {"status": "error", "detail": "Missing authorization code"}
+    return {"status": "ok", "detail": "Withings OAuth callback received. You can close this page."}
