@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""gravel_build_safe_gpx — Build safe-import GPX with ACCEPT_WARNING waypoints.
+
+Usage:
+    python3 q/gravel_build_safe_gpx --route-id 55401067
+"""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from q.gravel_intelligence_10 import main
+main()

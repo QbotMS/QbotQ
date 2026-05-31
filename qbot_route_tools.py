@@ -1200,3 +1200,438 @@ def _tool_qbot_csv_export_status(_args: dict | None = None) -> dict[str, Any]:
         "create_execute_ready": has_csv,
         "notes": "CSV export from Hammerhead-Garmin proxy pipeline. Read-only preview available; controlled execute writes to outgoing/exports/.",
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  RWGPS ROUTE IMPORT GPX — WRITE TOOL
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def _validate_gpx_file(gpx_path: str) -> dict[str, Any]:
+    """Validate a GPX file for import. Returns (valid, summary) or error dict."""
+    path = Path(gpx_path)
+    if not path.exists():
+        return {"valid": False, "error": f"File not found: {gpx_path}"}
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        return {"valid": False, "error": f"Cannot stat file: {exc}"}
+    if size == 0:
+        return {"valid": False, "error": "File is empty (0 bytes)"}
+
+    import xml.etree.ElementTree as ET
+    try:
+        tree = ET.parse(str(path))
+    except ET.ParseError as exc:
+        return {"valid": False, "error": f"Invalid XML: {exc}"}
+
+    root = tree.getroot()
+    ns = "http://www.topografix.com/GPX/1/1"
+    trkpts = list(root.iter(f"{{{ns}}}trkpt"))
+    trackpoint_count = len(trkpts)
+    if trackpoint_count <= 2:
+        return {"valid": False, "error": f"Too few track points ({trackpoint_count}); need > 2"}
+
+    lats = []
+    lons = []
+    for tp in trkpts:
+        lat = tp.get("lat")
+        lon = tp.get("lon")
+        if lat is not None and lon is not None:
+            try:
+                lats.append(float(lat))
+                lons.append(float(lon))
+            except (TypeError, ValueError):
+                pass
+
+    return {
+        "valid": True,
+        "file_exists": True,
+        "size_bytes": size,
+        "filename": path.name,
+        "trackpoint_count": trackpoint_count,
+        "valid_coordinates": len(lats),
+        "bounds": {
+            "min_lat": min(lats) if lats else None,
+            "max_lat": max(lats) if lats else None,
+            "min_lon": min(lons) if lons else None,
+            "max_lon": max(lons) if lons else None,
+        } if lats else None,
+    }
+
+
+def _check_duplicate_route_name(name: str) -> dict[str, Any]:
+    """Check if a route with the same name already exists in RWGPS."""
+    try:
+        from tools.rwgps.client import list_routes as rwgps_list_routes
+        result = rwgps_list_routes(limit=100, search=name)
+        routes = result.get("routes", []) if isinstance(result, dict) else []
+        for r in routes:
+            existing_name = (r.get("name") or "").strip().lower()
+            if existing_name == name.strip().lower():
+                return {
+                    "is_duplicate": True,
+                    "existing_route_id": str(r.get("id", "")),
+                    "existing_name": r.get("name"),
+                    "existing_url": f"https://ridewithgps.com/routes/{r.get('id')}" if r.get("id") else None,
+                }
+    except Exception:
+        pass
+    return {"is_duplicate": False}
+
+
+def _tool_qbot_rwgps_route_import_gpx(args: dict | None = None) -> dict[str, Any]:
+    """Import a route into RWGPS.
+
+    Two modes:
+
+    1. **Canonical-copy mode** (preferred — produces correct geometry):
+       Provide `source_route_id` + `start_km` + `end_km`.
+       Pipeline: copy canonical route → fetch track_points → trim by
+       distance → update copy with trimmed points + new name.
+       Used for Tuscany 2026 stage import.
+
+    2. **GPX-upload mode** (legacy — may produce empty route):
+       Provide `gpx_path`.  Uploads GPX via POST /api/v1/routes.json.
+       KNOWN ISSUE: RWGPS may create a route with distance=null and
+       track_points=[] when receiving a GPX upload this way.
+
+    WRITE tool — requires confirm=true to execute.
+    Dry-run (confirm=false) shows planned action without writing.
+
+    Args:
+        source_route_id: Canonical RWGPS route ID to copy (e.g. 55256628)
+        stage: Stage number (looks up start_km/end_km from StageSpec)
+        start_km: Stage start km (used if stage not provided)
+        end_km: Stage end km (used if stage not provided)
+        name: Route name
+        gpx_path: Absolute path to local .gpx file (legacy fallback)
+        description: Route description
+        privacy: One of "public", "private", "friends" (default: "private")
+        collection_id: Optional RWGPS collection ID
+        confirm: Set to true to execute (default: false)
+
+    Returns:
+        On dry-run: validation result with planned action
+        On confirm=true: status, new_route_id, html_url, diagnostics
+    """
+    _args = args or {}
+    source_route_id = str(_args.get("source_route_id", "")).strip()
+    stage_raw = _args.get("stage")
+    start_km_raw = _args.get("start_km")
+    end_km_raw = _args.get("end_km")
+    gpx_path = str(_args.get("gpx_path", "")).strip()
+    name = str(_args.get("name", "")).strip()
+    description = str(_args.get("description", "")).strip()
+    privacy = str(_args.get("privacy", "private")).strip().lower()
+    collection_id = str(_args.get("collection_id", "")).strip() or None
+    confirm = bool(_args.get("confirm", False))
+
+    # ── Determine mode ──
+    use_canonical = bool(source_route_id) and (stage_raw is not None or (start_km_raw is not None and end_km_raw is not None))
+    use_gpx = bool(gpx_path) and not use_canonical
+
+    # Validate required
+    missing = []
+    if not name:
+        missing.append("name")
+    if not use_canonical and not use_gpx:
+        missing.append("source_route_id+stage/start_km+end_km  OR  gpx_path")
+
+    if privacy not in ("public", "private", "friends"):
+        missing.append(f"privacy must be public/private/friends, got '{privacy}'")
+
+    if missing:
+        return {
+            "tool": "qbot_rwgps_route_import_gpx",
+            "status": "ERROR",
+            "safety_class": "WRITE_SAFE",
+            "missing_fields": missing,
+            "error": f"Missing or invalid required field(s): {', '.join(missing)}",
+        }
+
+    # Check RWGPS config
+    try:
+        from tools.rwgps.client import _missing_required_env as rwgps_missing_env
+        rwgps_missing = rwgps_missing_env()
+        if rwgps_missing:
+            return {
+                "tool": "qbot_rwgps_route_import_gpx",
+                "status": "BLOCKED_MISSING_CONFIG",
+                "safety_class": "WRITE_SAFE",
+                "name": name,
+                "missing_env": rwgps_missing,
+                "notes": "RWGPS API credentials not configured in .env",
+            }
+    except Exception as exc:
+        return {
+            "tool": "qbot_rwgps_route_import_gpx",
+            "status": "ERROR",
+            "safety_class": "WRITE_SAFE",
+            "error": str(exc),
+        }
+
+    # ── Resolve spec ──
+    start_km: float | None = None
+    end_km: float | None = None
+    if use_canonical:
+        if stage_raw is not None:
+            stage = int(stage_raw)
+            try:
+                from qbot3.artifacts.gpx_splitter import DEFAULT_STAGE_SPECS
+                specs = DEFAULT_STAGE_SPECS.get(("tuscany_2026", int(source_route_id)), [])
+                spec = next((s for s in specs if s.stage == stage), None)
+                if not spec:
+                    return {
+                        "tool": "qbot_rwgps_route_import_gpx",
+                        "status": "ERROR",
+                        "safety_class": "WRITE_SAFE",
+                        "error": f"StageSpec not found for route={source_route_id}, stage={stage}",
+                    }
+                start_km = spec.start_km
+                end_km = spec.end_km
+                if not name:
+                    name = spec.title
+            except Exception as exc:
+                return {
+                    "tool": "qbot_rwgps_route_import_gpx",
+                    "status": "ERROR",
+                    "safety_class": "WRITE_SAFE",
+                    "error": str(exc),
+                }
+        else:
+            start_km = float(start_km_raw) if start_km_raw is not None else None
+            end_km = float(end_km_raw) if end_km_raw is not None else None
+
+    # ── Build plan ──
+    if use_canonical:
+        plan = {
+            "action": "rwgps_canonical_stage_import",
+            "planned_route": {
+                "name": name or "(unnamed)",
+                "source_route_id": source_route_id,
+                "range_km": [start_km, end_km],
+                "description": description,
+                "privacy": privacy,
+            },
+        }
+    else:
+        validation = _validate_gpx_file(gpx_path)
+        if not validation.get("valid"):
+            return {
+                "tool": "qbot_rwgps_route_import_gpx",
+                "status": "VALIDATION_ERROR",
+                "safety_class": "WRITE_SAFE",
+                "gpx_path": gpx_path,
+                "validation_error": validation.get("error"),
+                "name": name,
+                "description": description,
+            }
+        # Check duplicates by name
+        dup_check = _check_duplicate_route_name(name)
+        if dup_check.get("is_duplicate"):
+            return {
+                "tool": "qbot_rwgps_route_import_gpx",
+                "status": "DUPLICATE_SKIPPED",
+                "safety_class": "WRITE_SAFE",
+                "gpx_path": gpx_path,
+                "name": name,
+                "is_duplicate": True,
+                "existing_route_id": dup_check.get("existing_route_id"),
+                "existing_url": dup_check.get("existing_url"),
+                "notes": f"A route with name '{name}' already exists (ID {dup_check.get('existing_route_id')}). Skipping.",
+            }
+        plan = {
+            "action": "rwgps_route_create",
+            "planned_route": {
+                "name": name,
+                "description": description,
+                "privacy": privacy,
+                "source_gpx": gpx_path,
+                "gpx_filename": validation.get("filename"),
+                "gpx_size_bytes": validation.get("size_bytes"),
+                "trackpoint_count": validation.get("trackpoint_count"),
+                "bounds": validation.get("bounds"),
+            },
+        }
+        if collection_id and collection_id.lower() != "none":
+            plan["planned_route"]["collection_id"] = collection_id
+
+    if not confirm:
+        return {
+            "tool": "qbot_rwgps_route_import_gpx",
+            "safety_class": "WRITE_SAFE",
+            "status": "DRY_RUN",
+            "confirm": False,
+            "mode": "canonical_copy" if use_canonical else "gpx_upload",
+            "plan": plan,
+            "notes": "Dry-run mode. Set confirm=true to execute.",
+        }
+
+    # ── Execute ──
+    if use_canonical:
+        try:
+            from tools.rwgps.client import import_stage_from_canonical
+            result = import_stage_from_canonical(
+                source_route_id,
+                start_km=start_km,
+                end_km=end_km,
+                name=name,
+            )
+        except Exception as exc:
+            return {
+                "tool": "qbot_rwgps_route_import_gpx",
+                "status": "CREATE_FAILED",
+                "safety_class": "WRITE_SAFE",
+                "error": str(exc),
+                "notes": "Canonical stage import failed.",
+            }
+
+        if not result.get("ok"):
+            return {
+                "tool": "qbot_rwgps_route_import_gpx",
+                "status": "CREATE_FAILED",
+                "safety_class": "WRITE_SAFE",
+                "error": result.get("error", "Unknown error"),
+                "notes": "Canonical stage import failed.",
+            }
+
+        return {
+            "tool": "qbot_rwgps_route_import_gpx",
+            "safety_class": "WRITE_SAFE",
+            "status": "OK",
+            "confirm": True,
+            "mode": "canonical_copy",
+            "new_route_id": result["route_id"],
+            "html_url": result["html_url"],
+            "distance_km": result.get("distance_km"),
+            "track_points_count": result.get("track_points_count"),
+            "track_points_total": result.get("track_points_total"),
+            "track_points_trimmed": result.get("track_points_trimmed"),
+            "name": name,
+            "diagnostics": result.get("diagnostics", []),
+            "notes": f"RWGPS stage imported successfully. ID={result['route_id']}",
+        }
+
+    # ── Legacy GPX-upload path (may create empty route) ──
+    try:
+        from tools.rwgps.client import create_route_from_gpx as rwgps_create_route
+        create_result = rwgps_create_route(
+            gpx_path=gpx_path,
+            name=name,
+            description=description,
+            privacy=privacy,
+        )
+    except Exception as exc:
+        return {
+            "tool": "qbot_rwgps_route_import_gpx",
+            "status": "CREATE_FAILED",
+            "safety_class": "WRITE_SAFE",
+            "gpx_path": gpx_path,
+            "name": name,
+            "error": str(exc),
+            "notes": "RWGPS route creation failed.",
+        }
+
+    if not create_result.get("ok"):
+        return {
+            "tool": "qbot_rwgps_route_import_gpx",
+            "status": "CREATE_FAILED",
+            "safety_class": "WRITE_SAFE",
+            "gpx_path": gpx_path,
+            "name": name,
+            "error": create_result.get("error", "Unknown error"),
+            "notes": "RWGPS route creation failed.",
+        }
+
+    new_route_id = create_result.get("route_id", "")
+
+    if collection_id and new_route_id:
+        try:
+            from tools.rwgps.client import _request_json as rwgps_request_json
+            from tools.rwgps.client import _collection_routes_path as rwgps_collection_routes_path
+            add_url = rwgps_collection_routes_path(collection_id)
+            rwgps_request_json(add_url)
+        except Exception:
+            pass
+
+    return {
+        "tool": "qbot_rwgps_route_import_gpx",
+        "safety_class": "WRITE_SAFE",
+        "status": "OK",
+        "confirm": True,
+        "mode": "gpx_upload",
+        "new_route_id": new_route_id,
+        "html_url": create_result.get("html_url"),
+        "api_url": create_result.get("api_url"),
+        "source_gpx_path": gpx_path,
+        "name": name,
+        "description": description,
+        "privacy": privacy,
+        "validation": validation,
+        "notes": f"RWGPS route created (GPX upload). ID={new_route_id}",
+    }
+
+
+def _tool_qbot_rwgps_route_import_gpx_batch(args: dict | None = None) -> dict[str, Any]:
+    """Batch import multiple GPX files as new RWGPS routes.
+
+    Each item in `routes` list must have: gpx_path, name.
+    Optional per-item: description, privacy, collection_id.
+
+    Args:
+        routes: list of dicts, each with gpx_path and name
+        confirm: Set to true to execute imports (default: false)
+
+    Returns:
+        Summary of all imports: total, succeeded, skipped, failed
+    """
+    _args = args or {}
+    routes_raw = _args.get("routes", [])
+    confirm = bool(_args.get("confirm", False))
+
+    if not isinstance(routes_raw, list) or not routes_raw:
+        return {
+            "tool": "qbot_rwgps_route_import_gpx_batch",
+            "status": "ERROR",
+            "safety_class": "WRITE_SAFE",
+            "error": "routes must be a non-empty list of {gpx_path, name}",
+        }
+
+    results: list[dict[str, Any]] = []
+    for i, item in enumerate(routes_raw):
+        if not isinstance(item, dict):
+            results.append({"index": i, "status": "ERROR", "error": "item is not a dict"})
+            continue
+        sub_result = _tool_qbot_rwgps_route_import_gpx({
+            "gpx_path": item.get("gpx_path", ""),
+            "name": item.get("name", ""),
+            "description": item.get("description", ""),
+            "privacy": item.get("privacy", "private"),
+            "collection_id": item.get("collection_id"),
+            "confirm": confirm,
+        })
+        results.append(sub_result)
+
+    succeeded = sum(1 for r in results if r.get("status") == "OK")
+    skipped_dup = sum(1 for r in results if r.get("status") == "DUPLICATE_SKIPPED")
+    failed = sum(1 for r in results if r.get("status") in ("ERROR", "VALIDATION_ERROR", "CREATE_FAILED", "BLOCKED_MISSING_CONFIG"))
+    dry_run = sum(1 for r in results if r.get("status") == "DRY_RUN")
+
+    return {
+        "tool": "qbot_rwgps_route_import_gpx_batch",
+        "safety_class": "WRITE_SAFE",
+        "status": "OK" if succeeded > 0 else ("DRY_RUN" if dry_run > 0 else "PARTIAL"),
+        "confirm": confirm,
+        "total": len(results),
+        "succeeded": succeeded,
+        "skipped_duplicate": skipped_dup,
+        "failed": failed,
+        "dry_run": dry_run,
+        "results": results,
+        "notes": (
+            f"Batch complete: {succeeded} created, {skipped_dup} duplicates skipped, "
+            f"{failed} failed, {dry_run} in dry-run mode."
+        ),
+    }
+

@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+"""gravel_analyze_route — Run G10+G11+G13 pipeline for a route.
+
+Usage:
+    python3 q/gravel_analyze_route --route-id 55401067
+    python3 q/gravel_analyze_route --route-id 55401067 --pretty
+"""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from q.gravel_intelligence_10 import main
+main()

@@ -39,6 +39,19 @@ ALLOWED_EXPORT_FORMATS = frozenset({"gpx", "tcx", "json"})
 RWGPS_PARSE_VERSION = "gpx-summary-v1"
 RWGPS_SURFACE_ENRICHMENT_VERSION = "surface-profile-v1"
 
+_ARTIFACT_PROJECT_NAME_MAP: dict[str, str] = {
+    "toskania": "tuscany_2026",
+    "tuscany": "tuscany_2026",
+}
+
+
+def _resolve_project_id_from_name(route_name: str) -> str | None:
+    name_lower = route_name.lower()
+    for keyword, project_id in _ARTIFACT_PROJECT_NAME_MAP.items():
+        if keyword in name_lower:
+            return project_id
+    return None
+
 
 @dataclass
 class RWGPSError(Exception):
@@ -1594,6 +1607,43 @@ def export_route_to_artifact(route_id: str | int, fmt: str = "gpx", return_mode:
             "return_mode": return_mode,
         },
     )
+
+    # ── Register in qbot_v2.artifacts (Artifact Store) ──
+    try:
+        from qbot3.artifacts.store import register_existing_file as _register_artifact
+
+        route_name = route_view.get("name") or ""
+        project_id = _resolve_project_id_from_name(route_name)
+
+        idem_key = f"rwgps_export:{route_id_str}:{fmt}"
+        artifact_record = _register_artifact(
+            relative_path,
+            artifact_type="route",
+            title=route_name or f"Route {route_id_str}",
+            project_id=project_id,
+            mutation_type="export",
+            source="rwgps",
+            idempotency_key=idem_key,
+            metadata={
+                "rwgps_route_id": int(route_id_str),
+                "rwgps_url": f"https://ridewithgps.com/routes/{route_id_str}",
+                "distance_km": dist_km,
+                "elevation_gain_m": elev_gain,
+                "point_count": point_count,
+                "route_name": route_name,
+                "route_source": source,
+            },
+        )
+        if artifact_record and artifact_record.get("artifact_id"):
+            payload["artifact_store_id"] = str(artifact_record["artifact_id"])
+            payload["artifact_store_status"] = "registered"
+        else:
+            payload["artifact_store_warning"] = "Artifact Store returned empty record"
+            payload["artifact_store_status"] = "skipped"
+    except Exception as _as_exc:
+        payload["artifact_store_warning"] = f"Artifact Store registration failed: {_as_exc}"
+        payload["artifact_store_status"] = "failed"
+
     return payload
 
 
@@ -1745,32 +1795,47 @@ def _resolve_artifact_for_summary(artifact_path_or_name: str) -> Path:
 
     export_dir = ARTIFACT_RWGPS_EXPORT_DIR
 
+    def _try_resolve(path: Path) -> Path | None:
+        try:
+            p = path.resolve(strict=False)
+            if p.exists() and p.is_file():
+                return p
+        except (OSError, RuntimeError):
+            pass
+        return None
+
     if raw.startswith("/"):
-        abs_path = Path(raw).resolve(strict=False)
-        if abs_path.exists() and abs_path.is_file():
-            return abs_path
-        raise RWGPSError("NOT_FOUND", f"Artifact not found: {raw}")
+        found = _try_resolve(Path(raw))
+        if found:
+            return found
 
     artifact_root = Path("/opt/qbot/artifacts")
     if "/" in raw:
-        rel_path = artifact_root / raw
-        rel_path = rel_path.resolve(strict=False)
-        if rel_path.exists() and rel_path.is_file():
-            return rel_path
+        found = _try_resolve(artifact_root / raw)
+        if found:
+            return found
 
-    from_export = export_dir / raw
-    from_export = from_export.resolve(strict=False)
-    if from_export.exists() and from_export.is_file():
-        return from_export
+    found = _try_resolve(export_dir / raw)
+    if found:
+        return found
 
     if export_dir.exists():
-        all_files = sorted(export_dir.glob("*"))
-        for fpath in all_files:
-            if fpath.is_file() and fpath.name == raw:
+        for fpath in sorted(export_dir.glob("*")):
+            if fpath.is_file() and (fpath.name == raw or fpath.name.casefold() == raw.casefold()):
                 return fpath
-        for fpath in all_files:
-            if fpath.is_file() and fpath.name.casefold() == raw.casefold():
-                return fpath
+
+    # ── Auto-export on demand: if filename matches rwgps_{route_id}.gpx, try to export ──
+    import re as _re
+    m = _re.match(r"rwgps_(\d+)\.gpx", Path(raw).name)
+    if m:
+        route_id = m.group(1)
+        export_result = export_route_to_artifact(route_id, fmt="gpx", return_mode="metadata")
+        if export_result.get("ok"):
+            artifact_path_str = export_result.get("artifact_path")
+            if artifact_path_str:
+                ap = Path(artifact_path_str).resolve(strict=False)
+                if ap.exists() and ap.is_file():
+                    return ap
 
     raise RWGPSError("NOT_FOUND", f"Artifact not found: {raw}")
 
@@ -1974,3 +2039,1414 @@ def summarize_rwgps_artifact(artifact_path_or_name: str) -> dict[str, Any]:
 
     _persist_route_parse_result(file_path, summary)
     return payload
+
+
+def _sample_points(
+    points: list[dict],
+    max_points: int = 200,
+) -> list[dict[str, Any]]:
+    """Downsample a point list to at most max_points (uniform sampling)."""
+    if not points:
+        return []
+    if len(points) <= max_points:
+        return [{"lat": p["lat"], "lon": p["lon"], "ele": p.get("ele")} for p in points]
+    step = len(points) / max_points
+    sampled: list[dict[str, Any]] = []
+    for i in range(max_points):
+        idx = min(int(i * step), len(points) - 1)
+        p = points[idx]
+        sampled.append({"lat": p["lat"], "lon": p["lon"], "ele": p.get("ele")})
+    return sampled
+
+
+def parse_gpx_artifact_geometry(
+    route_id: str | int | None = None,
+    artifact_id: str | None = None,
+    path: str | None = None,
+) -> dict[str, Any]:
+    """Deterministic readout of full GPX geometry.
+
+    Exactly one of *route_id*, *artifact_id*, or *path* must be provided.
+    Does NOT call RWGPS API — works entirely from local files + qbot_v2.artifacts.
+    Does NOT write to database.
+    """
+    # ── Validate input ──────────────────────────────────────────
+    provided = sum(1 for x in (route_id, artifact_id, path) if x is not None)
+    if provided != 1:
+        return {
+            "ok": False,
+            "status": "INVALID_ARGS",
+            "error": "Provide exactly one of: route_id, artifact_id, path",
+        }
+
+    file_path: Path | None = None
+    artifact_record: dict | None = None
+    resolved_route_id: str | None = None
+
+    # ── Resolve by artifact_id ─────────────────────────────────
+    if artifact_id is not None:
+        try:
+            import os as _os
+            from qbot3.artifacts.store import get_artifact as _get_artifact
+
+            artifact_record = _get_artifact(str(artifact_id))
+            if artifact_record is None:
+                return {
+                    "ok": False,
+                    "status": "NOT_FOUND",
+                    "error": f"Artifact {artifact_id} not found in qbot_v2.artifacts",
+                }
+            rel = artifact_record.get("file_path")
+            if not rel:
+                return {
+                    "ok": False,
+                    "status": "NO_FILE",
+                    "error": f"Artifact {artifact_id} has no file_path",
+                }
+            candidate = Path("/opt/qbot/artifacts") / rel
+            if candidate.exists():
+                file_path = candidate
+        except Exception as exc:
+            return {"ok": False, "status": "RESOLVE_ERROR", "error": str(exc)}
+
+    # ── Resolve by route_id ────────────────────────────────────
+    elif route_id is not None:
+        rid = str(route_id)
+
+        # Always try to find artifact record from store
+        try:
+            import os as _os
+            import psycopg
+            from psycopg.rows import dict_row
+
+            conn = psycopg.connect(
+                host=_os.getenv("PGHOST", "127.0.0.1"),
+                port=_os.getenv("PGPORT", "5432"),
+                dbname=_os.getenv("PGDATABASE", "qbot"),
+                user=_os.getenv("PGUSER", "qbot"),
+                password=_os.getenv("PGPASSWORD", ""),
+                row_factory=dict_row,
+                connect_timeout=5,
+            )
+            row = conn.execute(
+                "SELECT * FROM qbot_v2.artifacts "
+                "WHERE metadata_json->>'rwgps_route_id' = %s "
+                "AND status = 'active'::qbot_v2.artifact_status "
+                "ORDER BY created_at DESC LIMIT 1",
+                (rid,),
+            ).fetchone()
+            conn.close()
+            if row:
+                artifact_record = dict(row)
+                for key in ("created_at", "updated_at", "expires_at"):
+                    if hasattr(artifact_record.get(key), "isoformat"):
+                        artifact_record[key] = artifact_record[key].isoformat()
+        except Exception:
+            pass
+
+        # Determine file path
+        std_path = ARTIFACT_RWGPS_EXPORT_DIR / f"rwgps_{rid}.gpx"
+        if std_path.exists():
+            file_path = std_path
+        elif artifact_record:
+            rel = artifact_record.get("file_path")
+            if rel:
+                candidate = Path("/opt/qbot/artifacts") / rel
+                if candidate.exists():
+                    file_path = candidate
+
+        if file_path is None:
+            return {
+                "ok": False,
+                "status": "NOT_FOUND",
+                "error": f"No GPX artifact found for route_id={rid}",
+            }
+        resolved_route_id = rid
+
+    # ── Resolve by path ────────────────────────────────────────
+    elif path is not None:
+        raw = str(path).strip()
+        candidate = Path(raw)
+        if not candidate.exists():
+            candidate = Path("/opt/qbot/artifacts") / raw
+        if not candidate.exists():
+            candidate = ARTIFACT_RWGPS_EXPORT_DIR / raw
+        if not candidate.exists():
+            # glob-style lookup by filename
+            if ARTIFACT_RWGPS_EXPORT_DIR.exists():
+                for fp in sorted(ARTIFACT_RWGPS_EXPORT_DIR.glob("*")):
+                    if fp.is_file() and (fp.name == raw or fp.name.casefold() == raw.casefold()):
+                        candidate = fp
+                        break
+        if not candidate.exists():
+            return {
+                "ok": False,
+                "status": "NOT_FOUND",
+                "error": f"GPX file not found: {path}",
+            }
+        file_path = candidate.resolve()
+
+    # ── Guard ───────────────────────────────────────────────────
+    if file_path is None or not file_path.exists():
+        return {"ok": False, "status": "NOT_FOUND", "error": "Could not resolve GPX file"}
+
+    # ── Parse GPX ───────────────────────────────────────────────
+    from qbot3.artifacts.route_analyzer import _parse_gpx_file_detailed, _find_point_at_km
+
+    try:
+        detailed = _parse_gpx_file_detailed(file_path)
+    except Exception as exc:
+        return {"ok": False, "status": "PARSE_ERROR", "error": str(exc)}
+
+    if not detailed:
+        return {
+            "ok": False,
+            "status": "PARSE_EMPTY",
+            "error": f"No track points in {file_path}",
+        }
+
+    # ── Compute summary ─────────────────────────────────────────
+    raw_points = [
+        {"lat": p["lat"], "lon": p["lon"], "elevation": p.get("ele")}
+        for p in detailed
+    ]
+    summary = _compute_summary_from_points(raw_points)
+
+    total_km = detailed[-1]["cum_km"]
+    first = detailed[0]
+    last = detailed[-1]
+
+    # ── Control points every 5 km ───────────────────────────────
+    control_points: list[dict[str, Any]] = []
+    for km in range(0, int(total_km) + 1, 5):
+        pt = _find_point_at_km(detailed, float(km))
+        control_points.append({
+            "km": pt.get("nearest_km", round(float(km), 3)),
+            "lat": pt["lat"],
+            "lon": pt["lon"],
+            "ele": pt.get("ele"),
+        })
+
+    # ── Simplified geometry (max 200 points) ────────────────────
+    geometry_sample = _sample_points(detailed, max_points=200)
+
+    # ── Build response ──────────────────────────────────────────
+    size_bytes = file_path.stat().st_size
+
+    result: dict[str, Any] = {
+        "ok": True,
+        "status": "OK",
+        "analytics_source": "parse_gpx_artifact_geometry v1",
+        "artifact_id": str(artifact_record["artifact_id"]) if artifact_record else None,
+        "project_id": artifact_record.get("project_id") if artifact_record else None,
+        "route_id": resolved_route_id,
+        "absolute_path": str(file_path.resolve()),
+        "relative_path": str(file_path.relative_to(Path("/opt/qbot/artifacts")))
+        if file_path.is_relative_to(Path("/opt/qbot/artifacts"))
+        else str(file_path),
+        "filename": file_path.name,
+        "size_bytes": size_bytes,
+        "point_count": summary.get("point_count"),
+        "distance_km": summary.get("distance_km"),
+        "elevation_gain_m": summary.get("elevation_gain_m"),
+        "elevation_loss_m": summary.get("elevation_loss_m"),
+        "min_elevation_m": summary.get("min_elevation_m"),
+        "max_elevation_m": summary.get("max_elevation_m"),
+        "bbox": summary.get("bounds"),
+        "start_point": {
+            "lat": first["lat"],
+            "lon": first["lon"],
+            "ele": first.get("ele"),
+        },
+        "end_point": {
+            "lat": last["lat"],
+            "lon": last["lon"],
+            "ele": last.get("ele"),
+        },
+        "track_length_km": round(total_km, 3),
+        "control_points_every_5km": control_points,
+        "geometry_sample": geometry_sample,
+    }
+
+    return result
+
+
+def create_route_from_gpx(
+    gpx_path: str | Path,
+    name: str,
+    description: str = "",
+    privacy: str = "private",
+) -> dict[str, Any]:
+    """Create a new RWGPS route from a local GPX file.
+
+    POST to /api/v1/routes.json with the GPX file as multipart upload.
+    Returns the new route id, html_url, and api_url on success.
+    """
+    path = Path(gpx_path)
+    if not path.exists():
+        raise RWGPSError("NOT_FOUND", f"GPX file not found: {path}")
+    if path.stat().st_size == 0:
+        raise RWGPSError("EMPTY_FILE", f"GPX file is empty: {path}")
+
+    if _missing_required_env():
+        raise RWGPSError("not_configured", "RWGPS integration not configured")
+
+    url = f"{RWGPS_API_BASE}{_routes_path()}"
+    headers = _remote_headers()
+    # Do not set Content-Type — httpx will set multipart boundary automatically
+
+    file_content = path.read_bytes()
+    files = {
+        "file": (path.name, file_content, "application/gpx+xml"),
+    }
+    data: dict[str, str] = {
+        "route[name]": name,
+        "route[description]": description,
+        "route[privacy]": privacy,
+    }
+
+    try:
+        with httpx.Client(timeout=RWGPS_TIMEOUT_SEC * 2) as client:
+            response = client.post(url, headers=headers, files=files, data=data)
+    except httpx.TimeoutException as exc:
+        raise RWGPSError("timeout", "RWGPS route creation timed out", url=url) from exc
+    except httpx.RequestError as exc:
+        raise RWGPSError("network_error", f"RWGPS network error: {exc.__class__.__name__}", url=url) from exc
+
+    if response.status_code in (401, 403):
+        raise RWGPSError("auth_error", f"RWGPS auth failed (HTTP {response.status_code})", status_code=response.status_code, url=url)
+    if response.status_code == 429:
+        raise RWGPSError("rate_limited", "RWGPS rate limited (HTTP 429)", status_code=response.status_code, url=url)
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        body = response.text[:600]
+        raise RWGPSError("http_error", f"RWGPS create route error (HTTP {response.status_code})", status_code=response.status_code, url=url, details={"body": body}) from exc
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise RWGPSError("malformed_response", "RWGPS returned invalid JSON", url=url) from exc
+
+    route = _route_object(payload)
+    if not route:
+        # Fallback: try top-level keys
+        route = payload.get("route") or payload
+
+    route_id = str(route.get("id", "")) if isinstance(route, dict) else ""
+    return {
+        "ok": True,
+        "route_id": route_id,
+        "html_url": f"https://ridewithgps.com/routes/{route_id}" if route_id else None,
+        "api_url": f"{RWGPS_API_BASE}/api/v1/routes/{route_id}.json" if route_id else None,
+        "name": name,
+        "description": description,
+        "privacy": privacy,
+        "route": route,
+    }
+
+
+def _fetch_track_points(route_id: str) -> list[dict]:
+    """Fetch track_points from an RWGPS route via GET with track_points=1."""
+    url = f"{RWGPS_API_BASE}/api/v1/routes/{route_id}.json?track_points=1"
+    headers = _remote_headers()
+    with httpx.Client(timeout=RWGPS_TIMEOUT_SEC) as client:
+        resp = client.get(url, headers=headers)
+    resp.raise_for_status()
+    data = resp.json()
+    route = data.get("route") or data
+    return list(route.get("track_points") or [])
+
+
+def _copy_route(source_route_id: str) -> str:
+    """Copy a route via POST /routes/{id}/copy.json, return new route id."""
+    url = f"{RWGPS_API_BASE}/routes/{source_route_id}/copy.json"
+    headers = _remote_headers()
+    with httpx.Client(timeout=RWGPS_TIMEOUT_SEC) as client:
+        resp = client.post(url, headers=headers)
+    resp.raise_for_status()
+    data = resp.json()
+    route = data.get("route") or data
+    rid = str(route.get("id", ""))
+    if not rid:
+        raise RWGPSError("copy_failed", f"COPY {source_route_id} returned empty id")
+    return rid
+
+
+def _trim_and_normalize_track_points(
+    points: list[dict],
+    start_m: float,
+    end_m: float,
+) -> list[dict]:
+    """Trim track_points to d ∈ [start_m, end_m] and rebase d to start at 0.
+
+    RWGPS uses the d field (cumulative distance in meters) to compute route
+    distance and profile. If we send points with d starting at e.g. 65000 m,
+    the route distance will appear as (max_d - min_d) which is correct for
+    length, but the d values themselves will confuse the elevation/distance
+    profile display. By rebasing so d[0] = 0, the displayed profile matches
+    the stage length.
+    """
+    trimmed = [
+        tp for tp in points
+        if isinstance(tp, dict) and start_m <= (tp.get("d") or 0) <= end_m
+    ]
+    if not trimmed:
+        return []
+    base = trimmed[0].get("d") or 0
+    result = []
+    for tp in trimmed:
+        r = dict(tp)
+        raw_d = r.get("d") or 0
+        r["d"] = round(raw_d - base, 1)
+        result.append(r)
+    return result
+
+
+def import_stage_from_canonical(
+    source_route_id: str,
+    *,
+    start_km: float,
+    end_km: float | None,
+    name: str,
+) -> dict:
+    """Full pipeline: copy canonical route → fetch track_points → trim →
+    normalize d → update copy → validate.
+
+    This is the replacement for create_route_from_gpx / GPX upload for the
+    Tuscany 2026 import use case.  GPX upload creates empty routes; this
+    pipeline creates a correctly-geometried stage route.
+
+    Returns:
+        dict with ok, route_id, html_url, distance_m, track_points_count,
+        diagnostics_log (list of per-step entries).
+    """
+    if _missing_required_env():
+        raise RWGPSError("not_configured", "RWGPS integration not configured")
+
+    diagnostics: list[dict] = []
+
+    # Step 1 — copy
+    copied_id = _copy_route(source_route_id)
+    diagnostics.append({"step": "COPY", "route_id": copied_id, "endpoint": f"POST /routes/{source_route_id}/copy.json"})
+
+    # Step 2 — fetch track_points from source
+    all_tp = _fetch_track_points(source_route_id)
+    diagnostics.append({"step": "FETCH", "count_total": len(all_tp)})
+    if not all_tp:
+        raise RWGPSError("no_track_points", f"Source route {source_route_id} has no track_points")
+
+    # Step 3 — trim
+    start_m = start_km * 1000.0
+    end_m = end_km * 1000.0 if end_km is not None else float("inf")
+    trimmed = _trim_and_normalize_track_points(all_tp, start_m, end_m)
+    diagnostics.append({"step": "TRIM", "trimmed": len(trimmed), "range_m": [start_m, end_m]})
+    if not trimmed:
+        raise RWGPSError("trim_empty", f"Trim d∈[{start_m:.0f},{end_m:.0f}]m produced zero points (total={len(all_tp)})")
+
+    # Step 4 — update
+    update_result = update_route(copied_id, {"name": name, "track_points": trimmed})
+    if not update_result.get("ok"):
+        raise RWGPSError("update_failed", f"Update route {copied_id} failed")
+    diagnostics.append({
+        "step": "UPDATE",
+        "endpoint": "PUT /routes/{id}.json",
+        "payload": {"route": {"name": name, "track_points": len(trimmed)}},
+    })
+
+    # Step 5 — validate: re-fetch and check geometry
+    updated_tp = _fetch_track_points(copied_id)
+    updated_route = update_result.get("route") or {}
+    distance_m = updated_route.get("distance") or 0
+    html_url = f"https://ridewithgps.com/routes/{copied_id}"
+
+    diagnostics.append({
+        "step": "VALIDATE",
+        "final_distance_m": distance_m,
+        "final_track_points": len(updated_tp),
+    })
+
+    return {
+        "ok": True,
+        "route_id": copied_id,
+        "html_url": html_url,
+        "distance_m": distance_m,
+        "distance_km": round(distance_m / 1000.0, 1) if distance_m else None,
+        "track_points_count": len(updated_tp),
+        "track_points_trimmed": len(trimmed),
+        "track_points_total": len(all_tp),
+        "name": name,
+        "diagnostics": diagnostics,
+    }
+
+
+def update_route(
+    route_id: str,
+    updates: dict[str, Any],
+) -> dict[str, Any]:
+    """Update an existing RWGPS route metadata and/or track_points.
+
+    PUT to the legacy endpoint /routes/{id}.json (not /api/v1/) — this is the
+    only path that accepts track_points replacement.
+
+    Use nested {"route": {...}} when sending track_points so the geometry is
+    actually replaced; flat payloads only update metadata fields.
+
+    Returns the full route object on success.
+    """
+    if _missing_required_env():
+        raise RWGPSError("not_configured", "RWGPS integration not configured")
+
+    url = f"{RWGPS_API_BASE}/routes/{route_id}.json"
+    headers = _remote_headers()
+
+    payload: dict[str, Any]
+    if "track_points" in updates:
+        payload = {"route": updates}
+    else:
+        payload = updates
+
+    try:
+        with httpx.Client(timeout=RWGPS_TIMEOUT_SEC) as client:
+            response = client.put(url, headers=headers, json=payload)
+    except httpx.TimeoutException as exc:
+        raise RWGPSError("timeout", "RWGPS update timed out", url=url) from exc
+    except httpx.RequestError as exc:
+        raise RWGPSError("network_error", f"RWGPS network error: {exc.__class__.__name__}", url=url) from exc
+
+    if response.status_code in (401, 403):
+        raise RWGPSError("auth_error", f"RWGPS auth failed (HTTP {response.status_code})", status_code=response.status_code, url=url)
+    if response.status_code == 429:
+        raise RWGPSError("rate_limited", "RWGPS rate limited (HTTP 429)", status_code=response.status_code, url=url)
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        body = response.text[:600]
+        raise RWGPSError("http_error", f"RWGPS update error (HTTP {response.status_code})", status_code=response.status_code, url=url, details={"body": body}) from exc
+
+    try:
+        result = response.json()
+    except ValueError as exc:
+        raise RWGPSError("malformed_response", "RWGPS returned invalid JSON", url=url) from exc
+
+    route = _route_object(result)
+    if not route:
+        route = result.get("route") or result
+
+    return {
+        "ok": True,
+        "route_id": route_id,
+        "route": route,
+    }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# RWGPS Custom POI (points_of_interest) — dry-run helper
+# ═════════════════════════════════════════════════════════════════════════════
+
+RWGPS_POI_CATEGORY_MAP: dict[str, dict[str, Any]] = {
+    "groceries":     {"type": "convenience_store", "type_id": 24},
+    "food":          {"type": "food",              "type_id": 3},
+    "water":         {"type": "water",             "type_id": 1},
+    "bike_service":  {"type": "bike_shop",         "type_id": 8},
+    "camping":       {"type": "camping",           "type_id": 6},
+    "restroom":      {"type": "restroom",          "type_id": 5},
+}
+
+RWGPS_POI_FALLBACK = {"type": "generic", "type_id": 0}
+
+
+def get_rwgps_raw_route(route_id: str | int) -> dict[str, Any]:
+    """Fetch the raw RWGPS route object (not the detailed QBot-wrapped version).
+
+    Returns the raw route dict as returned by RWGPS API (route.points_of_interest
+    is present if the route has custom POIs).
+    """
+    route_id_str = str(route_id)
+    if _missing_required_env():
+        return {"ok": False, "error": "RWGPS not configured", "missing": _missing_required_env()}
+
+    try:
+        remote_payload = _request_json(_route_path(route_id_str))
+        route = _route_object(remote_payload)
+        if not route:
+            return {"ok": False, "error": "No route object in RWGPS response"}
+        return {"ok": True, "route_id": route_id_str, "route": route, "source": "rwgps_api"}
+    except RWGPSError as exc:
+        return {"ok": False, "error": str(exc), "kind": exc.kind}
+
+
+def _rwgps_poi_category(category_label: str) -> dict[str, Any]:
+    """Map a QBot category label to RWGPS POI type/type_id."""
+    key = category_label.strip().lower()
+    mapped = RWGPS_POI_CATEGORY_MAP.get(key)
+    if mapped:
+        return dict(mapped)
+    return dict(RWGPS_POI_FALLBACK)
+
+
+def _normalize_poi_name(name: str) -> str:
+    return re.sub(r"\s+", " ", name.strip().lower())
+
+
+def _poi_distance_key(lat: float, lng: float, precision: int = 4) -> str:
+    return f"{round(lat, precision)}:{round(lng, precision)}"
+
+
+def _format_poi_for_rwgps(poi: dict[str, Any]) -> dict[str, Any]:
+    """Format a single QBot POI dict into RWGPS points_of_interest format."""
+    category_info = _rwgps_poi_category(poi.get("category", ""))
+    name = str(poi.get("name", "")).strip() or "unnamed"
+
+    desc_parts = []
+    if poi.get("category"):
+        desc_parts.append(f"cat:{poi['category']}")
+    if poi.get("distance_to_track_m") is not None:
+        desc_parts.append(f"dist:{poi['distance_to_track_m']:.0f}m")
+    if poi.get("nearest_track_km") is not None:
+        desc_parts.append(f"km:{poi['nearest_track_km']:.1f}")
+    if poi.get("description"):
+        short = str(poi["description"])[:80]
+        desc_parts.append(short)
+
+    description = " | ".join(desc_parts) if desc_parts else "QBot/OSM"
+    description += " | src:QBot/OSM"
+
+    return {
+        "type": category_info["type"],
+        "type_id": category_info["type_id"],
+        "name": name,
+        "description": description[:200],
+        "url": poi.get("url") or "",
+        "lat": float(poi["lat"]),
+        "lng": float(poi["lng"]),
+    }
+
+
+def prepare_rwgps_poi_update(
+    route_id: str | int,
+    new_pois: list[dict[str, Any]],
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    """Dry-run: prepare a payload to update route.points_of_interest without
+    executing the PUT.
+
+    Reads the current route, merges existing + new POIs, deduplicates, and
+    returns a preview.  Does NOT call the RWGPS PUT endpoint.
+
+    Parameters
+    ----------
+    route_id : str | int
+        RWGPS route ID.
+    new_pois : list[dict]
+        List of QBot-format POI dicts.  Each must have at minimum:
+          - name (str)
+          - category (str) — one of the keys in RWGPS_POI_CATEGORY_MAP or
+            fallback to generic
+          - lat (float)
+          - lng (float)
+        Optional:
+          - description (str)
+          - distance_to_track_m (float)
+          - nearest_track_km (float)
+          - url (str)
+    dry_run : bool
+        If True (default), the PUT is skipped.
+
+    Returns
+    -------
+    dict with keys: ok, route_id, route_name, existing_pois_count,
+    new_pois_count, duplicates_skipped, duplicate_keys, final_pois_count,
+    no_put_executed, payload_preview, warnings
+    """
+    route_id_str = str(route_id)
+    warnings: list[str] = []
+    seen_distance_keys: set[str] = set()
+    seen_names: set[str] = set()
+    duplicates_skipped = 0
+    duplicate_examples: list[str] = []
+
+    # 1. GET current route
+    raw = get_rwgps_raw_route(route_id_str)
+    if not raw.get("ok"):
+        return {
+            "ok": False,
+            "error": raw.get("error", "failed to fetch route"),
+            "route_id": route_id_str,
+            "no_put_executed": True,
+        }
+
+    route = raw["route"]
+    route_name = route.get("name") or route.get("title") or f"Route {route_id_str}"
+
+    # 2. Read existing POIs
+    existing = [p for p in (route.get("points_of_interest") or []) if isinstance(p, dict)]
+    existing_pois: list[dict[str, Any]] = []
+    for p in existing:
+        formatted = {
+            "type": p.get("type", "generic"),
+            "type_id": p.get("type_id", 0),
+            "name": str(p.get("name", "")).strip() or "unnamed",
+            "description": str(p.get("description", "")),
+            "url": str(p.get("url", "")),
+            "lat": float(p.get("lat", 0)),
+            "lng": float(p.get("lng", 0)),
+        }
+        existing_pois.append(formatted)
+        # Seed dedupe keys from existing
+        norm_name = _normalize_poi_name(formatted["name"])
+        dist_key = _poi_distance_key(formatted["lat"], formatted["lng"])
+        seen_names.add(norm_name)
+        seen_distance_keys.add(dist_key)
+
+    # 3. Format new POIs and merge
+    formatted_new: list[dict[str, Any]] = []
+    for poi in new_pois:
+        f = _format_poi_for_rwgps(poi)
+        norm_name = _normalize_poi_name(f["name"])
+        dist_key = _poi_distance_key(f["lat"], f["lng"])
+
+        # Check duplicate by name
+        if norm_name in seen_names:
+            duplicates_skipped += 1
+            if len(duplicate_examples) < 3:
+                duplicate_examples.append(f"name:'{f['name']}' (by normalized name)")
+            continue
+
+        # Check duplicate by location (lat/lng tolerance)
+        if dist_key in seen_distance_keys:
+            duplicates_skipped += 1
+            if len(duplicate_examples) < 3:
+                duplicate_examples.append(f"lat/lng:{dist_key} (by location)")
+            continue
+
+        formatted_new.append(f)
+        seen_names.add(norm_name)
+        seen_distance_keys.add(dist_key)
+
+    # 4. Build merged list
+    merged = existing_pois + formatted_new
+    final_count = len(merged)
+
+    # 5. Build preview (limit to avoid huge output)
+    preview = {
+        "route": {
+            "name": route_name,
+            "points_of_interest": merged,
+        }
+    }
+
+    return {
+        "ok": True,
+        "route_id": route_id_str,
+        "route_name": route_name,
+        "existing_pois_count": len(existing_pois),
+        "new_pois_count": len(formatted_new),
+        "duplicates_skipped": duplicates_skipped,
+        "duplicate_keys": duplicate_examples,
+        "final_pois_count": final_count,
+        "no_put_executed": dry_run,
+        "payload_preview": preview,
+        "warnings": warnings,
+        "_dry_run_note": "PUT was NOT executed — this is a dry-run preview only.",
+    }
+
+
+def apply_rwgps_poi_update(
+    route_id: str | int,
+    new_pois: list[dict[str, Any]],
+    confirm: bool = False,
+    restore_after_test: bool = False,
+    backup_path: str | None = None,
+) -> dict[str, Any]:
+    """Real writer: update route.points_of_interest via PUT.
+
+    Pipeline:
+      1. GET current route (read existing POIs)
+      2. Backup existing POIs to JSON artifact
+      3. Merge existing + new POIs (via prepare_rwgps_poi_update)
+      4. PUT merged POIs to RWGPS
+      5. GET verify
+      6. Optionally restore original POIs (restore_after_test)
+
+    Never modifies track_points, cuesheet, or other route fields.
+    """
+    route_id_str = str(route_id)
+    if not confirm:
+        return {
+            "ok": False,
+            "error": "confirm=True is required for real PUT. Use prepare_rwgps_poi_update for dry-run.",
+            "route_id": route_id_str,
+            "put_executed": False,
+        }
+
+    # 1. GET current route (raw for POI, detailed for track_points count)
+    raw = get_rwgps_raw_route(route_id_str)
+    if not raw.get("ok"):
+        return {"ok": False, "error": raw.get("error", "failed to fetch route"), "route_id": route_id_str}
+    route = raw["route"]
+    route_name = route.get("name") or route.get("title") or f"Route {route_id_str}"
+
+    # 2. Backup existing POIs
+    existing_pois_raw = [p for p in (route.get("points_of_interest") or []) if isinstance(p, dict)]
+    backup_ts = datetime.now(timezone.utc)
+    backup_data = {
+        "route_id": route_id_str,
+        "route_name": route_name,
+        "backup_timestamp": backup_ts.isoformat(),
+        "existing_points_of_interest": existing_pois_raw,
+        "count": len(existing_pois_raw),
+        "note": "Backup of route.points_of_interest before PUT smoke test",
+    }
+    if not backup_path:
+        backup_path = str(Path(f"/opt/qbot/artifacts/exports/rwgps/rwgps_{route_id_str}_poi_backup_before_R3_2.json"))
+    backup_file = Path(backup_path)
+    backup_file.parent.mkdir(parents=True, exist_ok=True)
+    backup_file.write_text(json.dumps(backup_data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    # Track point count before
+    tp_before = len(route.get("track_points") or [])
+    existing_pois_count = len(existing_pois_raw)
+
+    # 3. Prepare merged POI list
+    dry_result = prepare_rwgps_poi_update(route_id_str, new_pois, dry_run=True)
+    if not dry_result.get("ok"):
+        return {
+            "ok": False,
+            "error": dry_result.get("error", "merge failed"),
+            "route_id": route_id_str,
+            "put_executed": False,
+        }
+
+    merged = dry_result["payload_preview"]["route"]["points_of_interest"]
+    new_count = dry_result["new_pois_count"]
+    dup_skipped = dry_result["duplicates_skipped"]
+    final_count = len(merged)
+
+    # 4. PUT merged POIs
+    put_payload = {"route": {"points_of_interest": merged}}
+    try:
+        put_result = update_route(route_id_str, put_payload)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": f"PUT failed: {exc}",
+            "route_id": route_id_str,
+            "put_executed": True,
+            "put_may_have_partially_succeeded": True,
+            "backup_path": backup_path,
+        }
+
+    if not put_result.get("ok"):
+        return {
+            "ok": False,
+            "error": f"PUT returned non-ok: {put_result}",
+            "route_id": route_id_str,
+            "put_executed": True,
+            "backup_path": backup_path,
+        }
+
+    # 5. GET verify
+    verify_raw = get_rwgps_raw_route(route_id_str)
+    verify_ok = verify_raw.get("ok", False)
+    verify_route = verify_raw.get("route", {})
+    verify_pois = [p for p in (verify_route.get("points_of_interest") or []) if isinstance(p, dict)]
+    tp_after = len(verify_route.get("track_points") or [])
+    verify_count = len(verify_pois)
+    verify_has_test_poi = any("QBot TEST POI" in str(p.get("name", "")) for p in verify_pois)
+
+    result = {
+        "ok": True,
+        "status": "PUT_OK",
+        "route_id": route_id_str,
+        "route_name": route_name,
+        "put_executed": True,
+        "backup_path": backup_path,
+        "backup_count": existing_pois_count,
+        "existing_pois_count": existing_pois_count,
+        "new_pois_count": new_count,
+        "duplicates_skipped": dup_skipped,
+        "final_pois_count": final_count,
+        "verify_get_ok": verify_ok,
+        "verify_pois_count": verify_count,
+        "verify_has_test_poi": verify_has_test_poi,
+        "track_points_count_before": tp_before,
+        "track_points_count_after": tp_after,
+        "track_points_unchanged": tp_before == tp_after,
+        "route_id_unchanged": verify_raw.get("route", {}).get("id") == route.get("id"),
+        "restore_attempted": False,
+        "restored": False,
+    }
+
+    # 6. Restore
+    if restore_after_test and existing_pois_count > 0:
+        restore_payload = {"route": {"points_of_interest": existing_pois_raw}}
+        try:
+            restore_result = update_route(route_id_str, restore_payload)
+            restore_ok = restore_result.get("ok", False)
+        except Exception:
+            restore_ok = False
+
+        if restore_ok:
+            verify2_raw = get_rwgps_raw_route(route_id_str)
+            verify2_pois = [p for p in (verify2_raw.get("route", {}).get("points_of_interest") or []) if isinstance(p, dict)]
+            result["restore_attempted"] = True
+            result["restored"] = True
+            result["after_restore_pois_count"] = len(verify2_pois)
+            result["restore_matched_original"] = len(verify2_pois) == existing_pois_count
+        else:
+            result["restore_attempted"] = True
+            result["restored"] = False
+            result["restore_error"] = "PUT restore failed"
+    elif restore_after_test and existing_pois_count == 0:
+        result["restore_attempted"] = True
+        result["restored"] = True
+        result["after_restore_pois_count"] = 0
+        result["restore_matched_original"] = True
+
+    return result
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# RWGPS course_points — on-route writer (R3.4)
+# ═════════════════════════════════════════════════════════════════════════════
+
+RWGPS_CP_TYPE_MAP: dict[str, str] = {
+    "water": "Water",
+    "food": "Food",
+    "groceries": "Food",
+    "bike_service": "Waypoint",
+    "camping": "Camping",
+    "restroom": "Restroom",
+    "attractions": "Waypoint",
+    "warning": "Waypoint",
+    "surface": "Waypoint",
+}
+
+RWGPS_CP_FALLBACK_TYPE = "Waypoint"
+
+COURSE_POINTS_DEFAULT_MAX_DISTANCE_M = 100
+
+
+def _format_qbot_poi_as_course_point(poi: dict[str, Any]) -> dict[str, Any]:
+    """Convert a QBot-format POI dict to an RWGPS course_point dict.
+
+    Input fields used: lat, lng/lon, name, category (or type).
+    Output: {x, y, n, t}
+    """
+    lat = float(poi.get("lat", 0))
+    lng = float(poi.get("lng", 0) or poi.get("lon", 0))
+    name = str(poi.get("name", "")).strip() or "unnamed"
+
+    category_raw = str(poi.get("category", "") or poi.get("type", "")).strip().lower()
+    cp_type = RWGPS_CP_FALLBACK_TYPE
+    if category_raw:
+        for cat_key, cp_t in RWGPS_CP_TYPE_MAP.items():
+            if cat_key in category_raw:
+                cp_type = cp_t
+                break
+
+    return {
+        "x": round(lng, 6),
+        "y": round(lat, 6),
+        "n": name[:60],
+        "t": cp_type,
+    }
+
+
+def _course_point_normalize_name(name: str) -> str:
+    return re.sub(r"\s+", " ", name.strip().lower())
+
+
+def _course_point_loc_key(x: float, y: float, precision: int = 4) -> str:
+    return f"{round(y, precision)}:{round(x, precision)}"
+
+
+def _course_point_lat_from_cp(cp: dict[str, Any]) -> float:
+    return float(cp.get("y", 0))
+
+
+def _course_point_lng_from_cp(cp: dict[str, Any]) -> float:
+    return float(cp.get("x", 0))
+
+
+def prepare_rwgps_course_points_update(
+    route_id: str | int,
+    new_points: list[dict[str, Any]],
+    dry_run: bool = True,
+    max_distance_to_track_m: int = COURSE_POINTS_DEFAULT_MAX_DISTANCE_M,
+) -> dict[str, Any]:
+    """Prepare a course_points update payload — dry-run by default.
+
+    Validates each candidate QBot POI:
+      - Must have distance_to_track_m <= max_distance_to_track_m
+      - Must have valid lat/lng
+      - Deduplicated against existing course_points on the route
+
+    Does NOT execute PUT if dry_run=True.
+    """
+    route_id_str = str(route_id)
+    warnings: list[str] = []
+    accepted: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    duplicates_skipped = 0
+    duplicate_examples: list[str] = []
+
+    # 1. GET current route
+    raw = get_rwgps_raw_route(route_id_str)
+    if not raw.get("ok"):
+        return {"ok": False, "error": raw.get("error", "failed to fetch route"), "route_id": route_id_str}
+
+    route = raw["route"]
+    route_name = route.get("name") or route.get("title") or f"Route {route_id_str}"
+
+    # 2. Read existing course_points
+    existing = [cp for cp in (route.get("course_points") or []) if isinstance(cp, dict)]
+    seen_names: set[str] = set()
+    seen_locs: set[str] = set()
+    for cp in existing:
+        norm = _course_point_normalize_name(cp.get("n", ""))
+        loc = _course_point_loc_key(float(cp.get("x", 0)), float(cp.get("y", 0)))
+        seen_names.add(norm)
+        seen_locs.add(loc)
+
+    # 3. Process new points
+    for poi in new_points:
+        dist = poi.get("distance_to_track_m")
+        if dist is None:
+            rejected.append({**poi, "_reason": "missing distance_to_track_m"})
+            warnings.append(f"Rejected '{poi.get('name', '?')}': missing distance_to_track_m")
+            continue
+
+        try:
+            dist_f = float(dist)
+        except (TypeError, ValueError):
+            rejected.append({**poi, "_reason": "invalid distance_to_track_m"})
+            continue
+
+        if dist_f > max_distance_to_track_m:
+            rejected.append({**poi, "_reason": f"off-route ({dist_f:.0f}m > {max_distance_to_track_m}m)"})
+            warnings.append(f"Rejected '{poi.get('name', '?')}': {dist_f:.0f}m > {max_distance_to_track_m}m")
+            continue
+
+        cp = _format_qbot_poi_as_course_point(poi)
+        norm = _course_point_normalize_name(cp["n"])
+        loc = _course_point_loc_key(cp["x"], cp["y"])
+
+        if norm in seen_names:
+            duplicates_skipped += 1
+            if len(duplicate_examples) < 3:
+                duplicate_examples.append(f"name:'{cp['n']}' (by normalized name)")
+            continue
+
+        if loc in seen_locs:
+            duplicates_skipped += 1
+            if len(duplicate_examples) < 3:
+                duplicate_examples.append(f"x/y:{loc} (by location)")
+            continue
+
+        accepted.append(cp)
+        seen_names.add(norm)
+        seen_locs.add(loc)
+
+    # 4. Build merged list
+    merged = existing + accepted
+
+    preview = {
+        "route": {
+            "name": route_name,
+            "course_points": merged,
+        }
+    }
+
+    return {
+        "ok": True,
+        "route_id": route_id_str,
+        "route_name": route_name,
+        "existing_course_points_count": len(existing),
+        "accepted_count": len(accepted),
+        "rejected_count": len(rejected),
+        "rejected": rejected,
+        "duplicates_skipped": duplicates_skipped,
+        "duplicate_keys": duplicate_examples,
+        "final_course_points_count": len(merged),
+        "max_distance_to_track_m": max_distance_to_track_m,
+        "no_put_executed": dry_run,
+        "payload_preview": preview,
+        "warnings": warnings,
+        "_dry_run_note": "PUT was NOT executed — this is a dry-run preview only.",
+    }
+
+
+def apply_rwgps_course_points_update(
+    route_id: str | int,
+    new_points: list[dict[str, Any]],
+    confirm: bool = False,
+    restore_after_test: bool = False,
+    max_distance_to_track_m: int = COURSE_POINTS_DEFAULT_MAX_DISTANCE_M,
+    backup_path: str | None = None,
+) -> dict[str, Any]:
+    """Real writer: update route.course_points via PUT.
+
+    Only accepts points with distance_to_track_m <= max_distance_to_track_m.
+    Backs up existing course_points before PUT.  Optionally restores after test.
+    Never modifies track_points or other route fields.
+    """
+    from datetime import datetime, timezone
+
+    route_id_str = str(route_id)
+    if not confirm:
+        return {
+            "ok": False,
+            "error": "confirm=True is required for real PUT.",
+            "route_id": route_id_str,
+            "put_executed": False,
+        }
+
+    # 1. GET current route
+    raw = get_rwgps_raw_route(route_id_str)
+    if not raw.get("ok"):
+        return {"ok": False, "error": raw.get("error", "failed to fetch route"), "route_id": route_id_str}
+    route = raw["route"]
+    route_name = route.get("name") or route.get("title") or f"Route {route_id_str}"
+
+    # 2. Backup existing course_points
+    existing_raw = [cp for cp in (route.get("course_points") or []) if isinstance(cp, dict)]
+    backup_ts = datetime.now(timezone.utc)
+    backup_data = {
+        "route_id": route_id_str,
+        "route_name": route_name,
+        "backup_timestamp": backup_ts.isoformat(),
+        "course_points": existing_raw,
+        "count": len(existing_raw),
+        "note": "Backup of route.course_points before R3.4 PUT test",
+    }
+    if not backup_path:
+        backup_path = str(Path(f"/opt/qbot/artifacts/exports/rwgps/rwgps_{route_id_str}_course_points_backup_before_R3_4.json"))
+    backup_file = Path(backup_path)
+    backup_file.parent.mkdir(parents=True, exist_ok=True)
+    backup_file.write_text(json.dumps(backup_data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    tp_before = len(route.get("track_points") or [])
+    before_count = len(existing_raw)
+
+    # 3. Prepare via dry-run function
+    dry = prepare_rwgps_course_points_update(
+        route_id_str, new_points, dry_run=True,
+        max_distance_to_track_m=max_distance_to_track_m,
+    )
+    if not dry.get("ok"):
+        return {"ok": False, "error": dry.get("error", "prepare failed"), "route_id": route_id_str, "put_executed": False}
+
+    accepted = dry["accepted_count"]
+    rejected = dry["rejected_count"]
+    duplicates = dry["duplicates_skipped"]
+    merged = dry["payload_preview"]["route"]["course_points"]
+    final_count = len(merged)
+
+    if accepted == 0:
+        return {
+            "ok": False,
+            "error": f"No points accepted (0/{len(new_points)}). All rejected or duplicates.",
+            "route_id": route_id_str,
+            "put_executed": False,
+            "accepted": 0,
+            "rejected": rejected,
+            "duplicates_skipped": duplicates,
+            "backup_path": backup_path,
+        }
+
+    # 4. PUT merged course_points
+    put_payload = {"route": {"course_points": merged}}
+    try:
+        put_result = update_route(route_id_str, put_payload)
+    except Exception as exc:
+        return {
+            "ok": False, "error": f"PUT failed: {exc}",
+            "route_id": route_id_str, "put_executed": True,
+            "backup_path": backup_path,
+        }
+
+    if not put_result.get("ok"):
+        return {
+            "ok": False, "error": f"PUT returned non-ok: {put_result}",
+            "route_id": route_id_str, "put_executed": True,
+            "backup_path": backup_path,
+        }
+
+    # 5. GET verify
+    verify_raw = get_rwgps_raw_route(route_id_str)
+    verify_route = verify_raw.get("route", {})
+    verify_cps = [cp for cp in (verify_route.get("course_points") or []) if isinstance(cp, dict)]
+    tp_after = len(verify_route.get("track_points") or [])
+    verify_count = len(verify_cps)
+
+    # Check if our test CPs are visible (by name prefix)
+    test_names = [cp["n"] for cp in merged if cp["n"].startswith("QBot TEST")]
+    verify_has_test = all(any(tn in str(vcp.get("n", "")) for vcp in verify_cps) for tn in test_names)
+
+    result = {
+        "ok": True,
+        "status": "PUT_OK",
+        "route_id": route_id_str,
+        "route_name": route_name,
+        "put_executed": True,
+        "backup_path": backup_path,
+        "before_course_points_count": before_count,
+        "accepted_count": accepted,
+        "rejected_count": rejected,
+        "duplicates_skipped": duplicates,
+        "after_put_course_points_count": verify_count,
+        "verify_has_test_points": verify_has_test,
+        "track_points_count_before": tp_before,
+        "track_points_count_after": tp_after,
+        "track_points_unchanged": tp_before == tp_after,
+        "route_id_unchanged": verify_route.get("id") == route.get("id"),
+        "max_distance_to_track_m": max_distance_to_track_m,
+        "restore_attempted": False,
+        "restored": False,
+    }
+
+    # 6. Restore
+    if restore_after_test and before_count == 0 and accepted > 0:
+        restore_payload = {"route": {"course_points": []}}
+        try:
+            rr = update_route(route_id_str, restore_payload)
+            restore_ok = rr.get("ok", False)
+        except Exception:
+            restore_ok = False
+        if restore_ok:
+            verify2 = get_rwgps_raw_route(route_id_str)
+            verify2_cps = [cp for cp in (verify2.get("route", {}).get("course_points") or []) if isinstance(cp, dict)]
+            result["restore_attempted"] = True
+            result["restored"] = True
+            result["after_restore_course_points_count"] = len(verify2_cps)
+            result["restore_matched_original"] = len(verify2_cps) == before_count
+            result["route_name_after_restore"] = verify2.get("route", {}).get("name")
+            result["track_points_after_restore"] = len(verify2.get("route", {}).get("track_points") or [])
+    elif restore_after_test and before_count > 0 and accepted > 0:
+        restore_payload = {"route": {"course_points": existing_raw}}
+        try:
+            rr = update_route(route_id_str, restore_payload)
+            restore_ok = rr.get("ok", False)
+        except Exception:
+            restore_ok = False
+        if restore_ok:
+            verify2 = get_rwgps_raw_route(route_id_str)
+            verify2_cps = [cp for cp in (verify2.get("route", {}).get("course_points") or []) if isinstance(cp, dict)]
+            result["restore_attempted"] = True
+            result["restored"] = True
+            result["after_restore_course_points_count"] = len(verify2_cps)
+            result["restore_matched_original"] = len(verify2_cps) == before_count
+    else:
+        result["restore_attempted"] = False
+        result["restored"] = False
+
+    return result
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# RWGPS points_of_interest — off-route writer (R3.4B)
+# ═════════════════════════════════════════════════════════════════════════════
+
+POI_OFF_ROUTE_MIN_M = 100
+POI_OFF_ROUTE_MAX_M = 1000
+
+
+def _format_poi_for_rwgps_v2(poi: dict[str, Any]) -> dict[str, Any]:
+    """Format a QBot-format POI into RWGPS points_of_interest dict."""
+    name = str(poi.get("name", "")).strip() or "unnamed"
+    desc_parts = []
+    if poi.get("category"):
+        desc_parts.append(f"cat:{poi['category']}")
+    if poi.get("distance_to_track_m") is not None:
+        desc_parts.append(f"dist:{poi['distance_to_track_m']:.0f}m")
+    if poi.get("nearest_track_km") is not None:
+        desc_parts.append(f"km:{poi['nearest_track_km']:.1f}")
+    if poi.get("description"):
+        desc_parts.append(str(poi["description"])[:80])
+    description = " | ".join(desc_parts) if desc_parts else "src:QBot/OSM"
+    description += " | src:QBot/OSM"
+
+    category_info = _rwgps_poi_category(poi.get("category", ""))
+
+    return {
+        "type": category_info["type"],
+        "type_id": category_info["type_id"],
+        "name": name[:80],
+        "description": description[:200],
+        "url": poi.get("url") or "",
+        "lat": float(poi.get("lat", 0)),
+        "lng": float(poi.get("lng", 0) or poi.get("lon", 0)),
+    }
+
+
+def prepare_rwgps_points_of_interest_update(
+    route_id: str | int,
+    new_pois: list[dict[str, Any]],
+    dry_run: bool = True,
+    min_distance_m: int = POI_OFF_ROUTE_MIN_M,
+    max_distance_m: int = POI_OFF_ROUTE_MAX_M,
+) -> dict[str, Any]:
+    """Prepare a points_of_interest update for off-route POI (100-1000m).
+
+    RWGPS API does NOT accept points_of_interest via PUT (confirmed HTTP 500).
+    This function still prepares the merge for:
+      - dry-run payload preview
+      - fallback GPX <wpt> export
+
+    Points with distance_to_track_m < min_distance_m are rejected
+    (they should use course_points instead).
+    Points with distance_to_track_m > max_distance_m are warned.
+    """
+    route_id_str = str(route_id)
+    warnings: list[str] = []
+    accepted: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    duplicates_skipped = 0
+    duplicate_examples: list[str] = []
+
+    raw = get_rwgps_raw_route(route_id_str)
+    if not raw.get("ok"):
+        return {"ok": False, "error": raw.get("error", "failed to fetch route"), "route_id": route_id_str}
+
+    route = raw["route"]
+    route_name = route.get("name") or route.get("title") or f"Route {route_id_str}"
+
+    existing = [p for p in (route.get("points_of_interest") or []) if isinstance(p, dict)]
+    seen_names: set[str] = set()
+    seen_locs: set[str] = set()
+    for p in existing:
+        norm = _normalize_poi_name(p.get("name", ""))
+        loc = _poi_distance_key(float(p.get("lat", 0)), float(p.get("lng", 0)))
+        seen_names.add(norm)
+        seen_locs.add(loc)
+
+    for poi in new_pois:
+        dist = poi.get("distance_to_track_m")
+        if dist is None:
+            rejected.append({**poi, "_reason": "missing distance_to_track_m"})
+            warnings.append(f"Rejected '{poi.get('name', '?')}': missing distance")
+            continue
+
+        try:
+            dist_f = float(dist)
+        except (TypeError, ValueError):
+            rejected.append({**poi, "_reason": "invalid distance"})
+            continue
+
+        if dist_f < min_distance_m:
+            rejected.append({**poi, "_reason": f"too close ({dist_f:.0f}m < {min_distance_m}m) — use course_points"})
+            warnings.append(f"Rejected '{poi.get('name', '?')}': {dist_f:.0f}m < {min_distance_m}m (use course_points)")
+            continue
+
+        if dist_f > max_distance_m:
+            warnings.append(f"Warning '{poi.get('name', '?')}': {dist_f:.0f}m > {max_distance_m}m — far from route")
+
+        fp = _format_poi_for_rwgps_v2(poi)
+        norm = _normalize_poi_name(fp["name"])
+        loc = _poi_distance_key(fp["lat"], fp["lng"])
+
+        if norm in seen_names:
+            duplicates_skipped += 1
+            if len(duplicate_examples) < 3:
+                duplicate_examples.append(f"name:'{fp['name']}'")
+            continue
+        if loc in seen_locs:
+            duplicates_skipped += 1
+            if len(duplicate_examples) < 3:
+                duplicate_examples.append(f"lat/lng:{loc}")
+            continue
+
+        accepted.append(fp)
+        seen_names.add(norm)
+        seen_locs.add(loc)
+
+    merged = existing + accepted
+
+    return {
+        "ok": True,
+        "route_id": route_id_str,
+        "route_name": route_name,
+        "existing_pois_count": len(existing),
+        "accepted_count": len(accepted),
+        "rejected_count": len(rejected),
+        "rejected": rejected,
+        "duplicates_skipped": duplicates_skipped,
+        "duplicate_keys": duplicate_examples,
+        "final_pois_count": len(merged),
+        "min_distance_m": min_distance_m,
+        "max_distance_m": max_distance_m,
+        "no_put_executed": True,
+        "_rwgps_api_note": "RWGPS API does not accept points_of_interest via PUT (confirmed HTTP 500). "
+                           "Use fallback GPX <wpt> export instead.",
+        "warnings": warnings,
+    }
+
+
+def generate_poi_gpx_wpt(
+    pois: list[dict[str, Any]],
+    gpx_path: str | None = None,
+) -> str:
+    """Generate GPX <wpt> elements for off-route POI points.
+
+    These can be added as separate waypoints file or merged into an existing GPX.
+    """
+    from xml.sax.saxutils import escape
+
+    lines: list[str] = []
+    for i, poi in enumerate(pois, 1):
+        lat = poi.get("lat", 0)
+        lon = poi.get("lng", 0) or poi.get("lon", 0)
+        name = escape(str(poi.get("name", f"POI {i}")))
+        desc_lines = []
+        if poi.get("category"):
+            desc_lines.append(f"Category: {poi['category']}")
+        if poi.get("distance_to_track_m") is not None:
+            desc_lines.append(f"Distance from track: {poi['distance_to_track_m']:.0f}m")
+        if poi.get("nearest_track_km") is not None:
+            desc_lines.append(f"Nearest track km: {poi['nearest_track_km']:.1f}")
+        if poi.get("description"):
+            desc_lines.append(str(poi["description"]))
+        desc = escape(" | ".join(desc_lines)) if desc_lines else "QBot POI"
+        lines.append(f'  <wpt lat="{lat}" lon="{lon}">')
+        lines.append(f"    <name>{name}</name>")
+        lines.append(f"    <desc>{desc}</desc>")
+        lines.append(f"    <type>{poi.get('category', 'generic')}</type>")
+        lines.append(f"  </wpt>")
+
+    return "\n".join(lines)
+
+
+def export_poi_to_gpx_artifact(
+    route_id: str | int,
+    pois: list[dict[str, Any]],
+    project_id: str = "tuscany_2026",
+    fmt: str = "gpx_wpt",
+) -> dict[str, Any]:
+    """Export off-route POIs as a standalone GPX waypoints artifact.
+
+    File: /opt/qbot/artifacts/projects/<project_id>/rwgps_<route_id>_poi_off_route.gpx
+    """
+    route_id_str = str(route_id)
+    wpt_xml = generate_poi_gpx_wpt(pois)
+
+    gpx = f"""<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="QBot R3.4B POI Export" xmlns="http://www.topografix.com/GPX/1/1">
+{wpt_xml}
+</gpx>"""
+
+    artifact_path = Path("/opt/qbot/artifacts") / "projects" / project_id / f"rwgps_{route_id_str}_poi_off_route.gpx"
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(gpx, encoding="utf-8")
+
+    return {
+        "ok": True,
+        "route_id": route_id_str,
+        "project_id": project_id,
+        "artifact_path": str(artifact_path),
+        "filename": artifact_path.name,
+        "poi_count": len(pois),
+        "format": fmt,
+        "note": "Off-route POIs exported as GPX waypoints (RWGPS API does not support points_of_interest write).",
+    }
