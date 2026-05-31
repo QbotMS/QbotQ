@@ -20,6 +20,8 @@ from qbot_readiness import evaluate_readiness
 from qbot_coach import build_daily_coach
 from qbot_cache import cached_call
 from qbot_report_status import mark_single_report, single_report_complete, single_report_state_for_date
+from qbot_report_validator import validate_daily_report_data, validate_daily_from_provider, DATA_OK, DATA_PARTIAL, DATA_MISSING
+from qbot_report_data_provider import ReportDataProvider
 from qgpt_client import qgpt_text
 import daily_report_adapter as _adapter
 
@@ -523,6 +525,65 @@ _data = {
     "braki_danych": [src for src, st in _DATA_SOURCES.items() if st not in ("ok",)],
     "pipeline_stage": _PIPELINE_STAGE,
 }
+# ── Provider-based data validation gate ─────────────────────────────────
+_provider = ReportDataProvider()
+_provider_data = _provider.get_daily_report_data(today)
+_provider_val_status, _provider_val_details = validate_daily_from_provider(_provider_data)
+
+# Use provider data to complement/enrich the report data dict
+_pd = _provider_data
+if _pd.get("sleep", {}).get("status") not in ("missing",):
+    _s = _pd["sleep"]
+    _data["sen"] = {
+        "czas_h": _s.get("czas_h"),
+        "score": _s.get("score"),
+        "ocena": None,
+        "gleboki_min": _s.get("data", {}).get("deep_min"),
+        "rem_min": _s.get("data", {}).get("rem_min"),
+    }
+    _data["regeneracja"]["hrv"] = _s.get("hrv_ms") or _data["regeneracja"].get("hrv")
+    _data["regeneracja"]["tetno_spoczynkowe"] = _s.get("resting_hr_bpm") or _data["regeneracja"].get("tetno_spoczynkowe")
+    _data["brak_danych_snu"] = False
+
+if _pd.get("wellness", {}).get("status") not in ("missing",):
+    _w = _pd["wellness"]
+    if _w.get("hrv_ms") is not None:
+        _data["regeneracja"]["hrv"] = _w["hrv_ms"]
+    if _w.get("resting_hr_bpm") is not None:
+        _data["regeneracja"]["tetno_spoczynkowe"] = _w["resting_hr_bpm"]
+    if _w.get("body_battery_start") is not None:
+        _data["regeneracja"]["body_battery_rano"] = _w["body_battery_start"]
+    if _w.get("body_battery_end") is not None:
+        _data["regeneracja"]["body_battery_min"] = _w["body_battery_end"]
+    if _w.get("weight_kg") is not None:
+        _data["bilans"]["waga_dzis_kg"] = _w["weight_kg"]
+
+if _pd.get("energy", {}).get("status") not in ("missing",):
+    _e = _pd["energy"]
+    if _e.get("total_kcal") is not None and _data.get("bilans", {}).get("wczoraj_kcal") is None:
+        _data["bilans"]["wczoraj_kcal"] = round(_e["total_kcal"])
+
+if _pd.get("nutrition", {}).get("status") not in ("missing",):
+    _n = _pd["nutrition"]
+
+if _pd.get("body_composition", {}).get("status") not in ("missing",):
+    _bc = _pd["body_composition"]
+    if _bc.get("weight_kg") is not None and _data.get("bilans", {}).get("waga_dzis_kg") is None:
+        _data["bilans"]["waga_dzis_kg"] = _bc["weight_kg"]
+
+if _pd.get("activity_summary", {}).get("status") not in ("missing",):
+    _act = _pd["activity_summary"]
+    if not activities and _act.get("activities"):
+        activities = _act["activities"]
+        _data["kontekst_ostatnie_7dni"] = [
+            {"data": str(a.get("date", "")), "komentarz": ""}
+            for a in _act["activities"]
+        ]
+
+# Add validation metadata to _data
+_data["sources_freshness"] = _provider.get_source_freshness(today)
+_data["provider_validation"] = _provider_val_status
+
 _data["coach"] = build_daily_coach(_data, future_events=future_events)
 _SYS = (
     "Jeste\u015b Q \u2014 osobistym asystentem kolarskim. Zawsze po polsku. "
@@ -675,6 +736,76 @@ _tg = _fallback_telegram()
 _banner_path = Path("/opt/qbot/app/outgoing/banners/tuscany_gravel_banner.png")
 _banner_cid = "tuscany-gravel-banner"
 _email_html = _et.render(_data, _ai, banner_cid=_banner_cid if _banner_path.exists() else None)
+
+# ── Data validation ─────────────────────────────────────────────────────────
+# Primary: provider-based validation (reads from local DB)
+_validation_status = _provider_val_status
+_validation_details = _provider_val_details
+
+# Fallback: if provider says OK but we have incomplete runtime data, use runtime check
+if _validation_status in (DATA_OK, DATA_PARTIAL):
+    _runtime_sources = {
+        "sleep_wellness": "ok" if _sleep_ok else ("empty" if _now_hour >= 9 else "missing"),
+        "calories_expenditure": "ok" if balance_yest is not None else "empty",
+        "nutrition": "ok" if _e is not None else "empty",
+        "activity_summary": "ok" if activities else "empty",
+        "garmin_sync": "ok" if garmin and not garmin.get("error") else "failed",
+    }
+    _runtime_status, _runtime_details = validate_daily_report_data(_runtime_sources, today)
+    # If runtime sees DATA_MISSING but provider sees OK, trust runtime for alert
+    if _runtime_status == DATA_MISSING:
+        _validation_status = DATA_MISSING
+        _validation_details = _runtime_details
+
+if _validation_status == DATA_MISSING:
+    _alert_msg = _validation_details.get("alert_message", "Raport nie zosta\u0142 wygenerowany \u2014 brak danych krytycznych.")
+    print(f"\u26a0\ufe0f  {_alert_msg}")
+    _PIPELINE_STAGE = "validation_failed_data_missing"
+    _save_state()
+    _tg_alert = (
+        f"\u26a0\ufe0f *Raport dobowy nie zosta\u0142 wygenerowany*\n\n"
+        f"{_alert_msg}\n\n"
+        f"Sprawd\u017a: synchronizacj\u0119 Garmin, Intervals.icu, "
+        f"oraz czy dane wellness/sleep s\u0105 dost\u0119pne w bazie."
+    )
+    try:
+        if not already_sent_today():
+            send_telegram(_tg_alert)
+            print("\U0001f4f1 Alert techniczny wys\u0142any (Telegram)")
+    except Exception as _tge:
+        print(f"\u26a0\ufe0f  Alert Telegram: {_tge}")
+
+    _email_alert_html = f"""<!DOCTYPE html><html lang="pl"><body style="background:#0f1117;color:#f0f2f8;font-family:Arial;padding:40px;">
+<h2 style="color:#e05555;">\u26a0\ufe0f Raport dobowy nie zosta\u0142 wygenerowany</h2>
+<p>{_alert_msg}</p>
+<hr style="border-color:#2a2e3d;">
+<p style="color:#7a8299;font-size:13px;">Sprawd\u017a \u017ar\u00f3d\u0142a danych i spr\u00f3buj ponownie.</p>
+<pre style="color:#c8cdd8;font-size:12px;background:#1a1d27;padding:16px;border-radius:8px;">
+BRAKUJ\u0104CE: {', '.join(_validation_details.get('missing', _validation_details.get('partial', [])))}
+GARMIN_SYNC: {str(_validation_details.get('garmin_sync_failed', '?'))}
+</pre></body></html>"""
+    try:
+        if not already_sent_today():
+            send_email(
+                f"\u26a0\ufe0f Raport dobowy nie wygenerowany \u2014 {today:%d.%m.%Y}",
+                _email_alert_html,
+            )
+            print("\U0001f4e7 Alert techniczny wys\u0142any (Email)")
+    except Exception as _e:
+        print(f"\u26a0\ufe0f  Alert Email: {_e}")
+    _PIPELINE_STAGE = "validation_data_missing_alert_sent"
+    _save_state()
+    sys.exit(0)
+
+if _validation_status == DATA_PARTIAL:
+    print(f"\u26a0\ufe0f  Raport cz\u0119\u015bciowy: {_validation_details.get('alert_message', '')}")
+    _PIPELINE_STAGE = "partial_data"
+    if "braki_danych" not in _data:
+        _data["braki_danych"] = []
+    _data["braki_danych"].extend(_validation_details.get("missing", []))
+    _data["braki_danych"].extend(_validation_details.get("partial", []))
+    _data["validation_partial"] = True
+    _data["validation_alert"] = _validation_details.get("alert_message")
 
 # ── Wysy\u0142ka ─────────────────────────────────────────────────────────────────
 _sent_state = sent_state_today()

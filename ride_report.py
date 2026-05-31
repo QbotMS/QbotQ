@@ -14,6 +14,8 @@ import qbot_config as cfg
 from qbot_readiness import evaluate_readiness
 from qbot_coach import build_ride_lesson
 from qbot_report_status import activity_report_complete, mark_activity_report
+from qbot_report_validator import validate_ride_report_data, validate_ride_from_provider, DATA_OK, DATA_PARTIAL, DATA_MISSING
+from qbot_report_data_provider import ReportDataProvider
 from qbot_mcp_client import mcp_call as _shared_mcp_call
 
 ATHLETE_ID    = cfg.INTERVALS_ATHLETE_ID
@@ -901,11 +903,56 @@ def check_new_activities():
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def process_activity(activity_id, activity_name="Trening"):
-    print(f"🚴 Generuję raport dla: {activity_name} ({activity_id})")
+    print(f"\U0001f6b4 Generuj\u0119 raport dla: {activity_name} ({activity_id})")
     channels = {"email": "pending", "telegram": "pending"}
     mark_report_status(activity_id, activity_name, "in_progress", channels=channels)
     try:
         data = fetch_activity_data(activity_id)
+
+        # ── Provider-based validation ──
+        _provider_ride = ReportDataProvider().get_ride_report_data(activity_id)
+        _prov_val_status, _prov_val_details = validate_ride_from_provider(_provider_ride)
+
+        # Primary: provider validation (local DB)
+        validation_status = _prov_val_status
+        validation_details = _prov_val_details
+
+        # Fallback: runtime validation if provider says MISSING
+        if validation_status == DATA_MISSING:
+            _runtime_status, _runtime_details = validate_ride_report_data(data, activity_id)
+            if _runtime_status != DATA_MISSING:
+                validation_status = _runtime_status
+                validation_details = _runtime_details
+
+        if validation_status == DATA_MISSING:
+            alert = validation_details.get("alert_message",
+                "Raport nie został wygenerowany — brak danych aktywności.")
+            print(f"⚠️  {alert}")
+            # Send technical alert via Telegram
+            tg_alert = (
+                f"⚠️ *Raport z jazdy nie został wygenerowany*
+
+"
+                f"{alert}
+
+"
+                f"Aktywność: {activity_name} ({activity_id})"
+            )
+            try:
+                send_telegram(tg_alert)
+            except Exception as _tge:
+                print(f"⚠️  Alert Telegram: {_tge}")
+            mark_report_status(activity_id, activity_name, "failed",
+                               error=Exception(alert), channels=channels)
+            return
+
+        if validation_status == DATA_PARTIAL:
+            missing_fields = validation_details.get("missing", []) + validation_details.get("partial", [])
+            print(f"⚠️  Raport częściowy — brakujące: {', '.join(missing_fields)}")
+            # Store validation info in data for downstream use
+            data["_validation_partial"] = True
+            data["_validation_alert"] = validation_details.get("alert_message")
+
         html = generate_html(data, activity_name)
         RIDE_REPORT_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
         safe_id = str(activity_id).replace("/", "_")

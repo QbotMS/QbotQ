@@ -113,6 +113,25 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         "przypomnij mi", "dodaj przypomnienie",
         "ustaw przypomnienie",
     ]),
+    ("rwgps_gpx_import_draft", [
+        # Single import-related words (catch all Polish forms)
+        "importu", "importem", "importuj", "zaimportuj",
+        "zaimportow", "imporcie", "importowac", "importować",
+        "wgraj", "wgrać",
+        # Create/write action words relevant to route creation
+        "utwórz trasę", "utworz trase", "stwórz trasę", "stworz trase",
+        "dodaj trasę", "dodaj trase", "zapisz trasę", "zapisz trase",
+        # Multi-word phrases with GPX
+        "import gpx", "importu gpx", "importem gpx",
+        "import do rwgps", "importu do rwgps", "importem do rwgps",
+        "dry run rwgps", "dry-run rwgps", "dryrun rwgps",
+        "zapisz gpx", "zapisz do rwgps", "zapisz plik gpx",
+        "gpx do rwgps", "gpx jako nowa trasa",
+        # Create route from file — with possible text in between
+        "trasę z gpx", "trase z gpx", "trasę z pliku", "trase z pliku",
+        "trasę rwgps z", "trase rwgps z", "trasę rwgps", "trase rwgps",
+        "importuj plik gpx", "zaimportuj plik gpx",
+    ]),
     ("deadline_task_draft", [
         r"muszę.+do ", r"trzeba.+do ", r"mam\s+\w+\s+.*do ",
         r"muszę.+na ", r"trzeba.+na ",
@@ -227,6 +246,11 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
     ]),
     ("ride_report", [
         "raport z jazdy", "ride report", "ostatnia jazda",
+    ]),
+    ("report_diagnostic", [
+        "brak danych w raporcie", "dlaczego raport jest pusty", "pusty raport",
+        "raport bez danych", "niekompletny raport", "diagnostyka raportu",
+        "raport nie zawiera danych", "status źródeł raportu",
     ]),
     ("wellness", [
         "samopoczucie", "wellness", "sen", "sleep",
@@ -431,6 +455,8 @@ _reader("rwgps_route_search", "rwgps", "qbot_rwgps_route_search", {"query": "str
 _reader("rwgps_export_links", "rwgps", "qbot_rwgps_route_export_links", {"route_id": "str"}, ["rwgps_api"])
 _reader("rwgps_export_file", "rwgps", "qbot_rwgps_route_export_file", {"route_id": "str", "format": "str", "return_mode": "str"}, ["rwgps_api", "filesystem"])
 _reader("gpx_artifact_parse", "routes", "qbot_gpx_artifact_parse", {"artifact_path": "str"}, ["filesystem"])
+_reader("stage_gpx_analyze", "routes", "stage_gpx_analyze", {"file_path": "str"}, ["filesystem"])
+_reader("artifacts_list", "artifacts", "artifacts_list", {"project_id": "str", "artifact_type": "str"}, ["postgresql"])
 _reader("route_artifact_enrich", "routes", "qbot_route_artifact_enrich", {"artifact_path": "str"}, ["filesystem", "osm_overpass"])
 _reader("garage_list", "garage", "qbot_garage_raw_list", {"limit": "int"}, ["postgresql", "garage_db"])
 _reader("garage_search", "garage", "qbot_garage_raw_search", {"query": "str"}, ["postgresql", "garage_db"])
@@ -460,8 +486,8 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "ride_today": ["ride_report_preview", "ride_report_latest", "intervals_activities", "garmin_energy"],
     "intervals_today": ["intervals_wellness", "intervals_activities", "intervals_config"],
     "xert_status": ["xert_readiness", "xert_config"],
-    "rwgps_route_lookup": ["rwgps_route_search", "rwgps_route_get", "rwgps_export_file", "gpx_artifact_parse", "rwgps_export_links"],
-    "route_surface_profile": ["rwgps_route_get", "rwgps_export_file", "route_artifact_enrich", "gpx_artifact_parse"],
+    "rwgps_route_lookup": ["rwgps_route_search", "rwgps_route_get", "rwgps_export_file", "gpx_artifact_parse", "rwgps_export_links", "stage_gpx_analyze"],
+    "route_surface_profile": ["rwgps_route_get", "rwgps_export_file", "route_artifact_enrich", "gpx_artifact_parse", "stage_gpx_analyze"],
     "route_stage_split": [],  # no reader yet — will return no_data
     "garage_gear_route_fit": ["garage_search", "garage_list", "garage_status", "route_artifact_enrich"],
     "no_data_policy_test": [],
@@ -477,13 +503,14 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "intervals": ["intervals_wellness", "intervals_config", "wellness_day", "intervals_activities"],
     "weather": ["weather_current", "weather_forecast"],
     "rwgps_route_list_only": ["rwgps_route_list"],
-    "rwgps_route": ["rwgps_route_get", "rwgps_route_list", "gpx_artifact_parse", "route_artifact_enrich"],
+    "rwgps_route": ["rwgps_route_get", "rwgps_route_list", "gpx_artifact_parse", "route_artifact_enrich", "stage_gpx_analyze"],
     "rwgps_search": ["rwgps_route_search", "rwgps_route_list"],
     "rwgps_export": ["rwgps_export_links", "rwgps_route_get"],
     "route_surface": ["route_artifact_enrich", "gpx_artifact_parse"],
     "garage": ["garage_search", "garage_list", "garage_status"],
     "daily_report": ["daily_report_preview"],
     "ride_report": ["ride_report_preview", "ride_report_latest"],
+    "report_diagnostic": ["daily_report_preview", "ride_report_preview", "garmin_status", "intervals_config"],
     "wellness": ["wellness_day", "sleep_day", "nutrition_day_legacy", "garmin_status", "wellness_range"],
     "artifact_read": ["qbot_canonical_docs"],
     "capability_check": ["status", "capability_scan"],
@@ -666,6 +693,25 @@ def _init_dispatch():
 
     # New: Recovery anomaly check reader
     _TOOL_DISPATCH["qbot_health_recovery_anomaly_check"] = _read_recovery_anomaly
+
+    # New: stage_gpx_analyze — local GPX file analysis
+    from qbot3.artifacts.route_analyzer import analyze_stage_gpx
+    from pathlib import Path
+    def _call_stage_analyze(args):
+        fp = args.get("file_path", "")
+        stage = args.get("stage")
+        if not fp and stage:
+            base = Path("/opt/qbot/artifacts/projects/tuscany_2026/projects")
+            ms = sorted(base.glob(f"tuscany_2026_stage_{int(stage):02d}_*.gpx"))
+            if ms: fp = str(ms[0])
+        if not fp: return {"status": "ERROR", "error": "no file_path"}
+        return analyze_stage_gpx(fp)
+    _TOOL_DISPATCH["stage_gpx_analyze"] = _call_stage_analyze
+
+    # New: artifacts_list — list QBot artifacts
+    from qbot3.tool_registry import _load_artifacts_list_tool
+    _artifacts_list_cfg = _load_artifacts_list_tool()
+    _TOOL_DISPATCH["artifacts_list"] = _artifacts_list_cfg["callable"]
 
     # New: Calendar snapshot reader
     _TOOL_DISPATCH["qbot_calendar_snapshot"] = _read_calendar_snapshot
@@ -1933,6 +1979,7 @@ _TABLE_DOMAIN: dict[str, str] = {
     "ride_report_latest": "latest_training",
     "ride_report_preview": "ride_preview",
     "daily_report_preview": "daily_report",
+    "report_diagnostic": "report_diagnostic",
     "calendar_snapshot": "calendar_snapshot",
     "health_advisor": "health_check",
     "supplement_inventory": "supplement_inventory",
@@ -1986,6 +2033,7 @@ _WRITER_CAPABILITIES = {
     "qcal_event_add": "qcal_event_add",
     "qcal_event_cancel": "qcal_event_cancel",
     "qcal_event_update": "qcal_event_update",
+    "rwgps_gpx_import": "rwgps_gpx_import",
 }
 
 
@@ -3078,7 +3126,8 @@ def _handle_write_draft(question: str, intents: list[str], date_ctx: dict) -> di
     """
     write_intent = None
     for wi in ("nutrition_log_add_draft", "qcal_reminder_add_draft", "deadline_task_draft",
-               "qcal_event_add_draft", "qcal_event_cancel_draft", "qcal_event_update_draft"):
+               "qcal_event_add_draft", "qcal_event_cancel_draft", "qcal_event_update_draft",
+               "rwgps_gpx_import_draft"):
         if wi in intents:
             write_intent = wi
             break
@@ -3094,6 +3143,7 @@ def _handle_write_draft(question: str, intents: list[str], date_ctx: dict) -> di
         "qcal_event_add_draft": "qcal_event_add",
         "qcal_event_cancel_draft": "qcal_event_cancel",
         "qcal_event_update_draft": "qcal_event_update",
+        "rwgps_gpx_import_draft": "rwgps_gpx_import",
     }
     cap_name = writer_cap_map[write_intent]
     cap_check = _check_writer_capability(cap_name)
@@ -3202,6 +3252,177 @@ def _handle_write_draft(question: str, intents: list[str], date_ctx: dict) -> di
             f"Zapis wymaga potwierdzenia — użyj action_execute z action_type=qcal_event_cancel."
         )
         idem_prefix = "cancel"
+    elif write_intent == "rwgps_gpx_import_draft":
+        # Parse GPX path from query — look for absolute path after "GPX:" or "plik GPX:"
+        gpx_path = ""
+        name = ""
+        description = ""
+        privacy = "private"
+
+        # Extract gpx_path: look for /opt/... .gpx or any absolute path ending in .gpx
+        path_m = re.search(r'(/[/\w\-\.]+\.gpx)', question)
+        if path_m:
+            gpx_path = path_m.group(1)
+        else:
+            path_m = re.search(r'(/[/\w\-\.]+\.gpx)', question)
+            if path_m:
+                gpx_path = path_m.group(1)
+
+        # Extract name: look after "nazwie:" or "nazwa:" or "name:"
+        name_m = re.search(r'(?:nazwie|nazwa|name)\s*:\s*(.+?)(?:\.|,|confirm|$)', question, re.IGNORECASE)
+        if name_m:
+            name = name_m.group(1).strip().rstrip('.')
+        # Fallback: look for quoted name
+        if not name:
+            name_m = re.search(r'["\']([^"\']+)["\']', question)
+            if name_m:
+                name = name_m.group(1).strip()
+
+        # Extract description
+        desc_m = re.search(r'(?:description|desc|opis)\s*:\s*(.+?)(?:\.|,|privacy|confirm|$)', question, re.IGNORECASE)
+        if desc_m:
+            description = desc_m.group(1).strip().rstrip('.')
+
+        # Extract privacy
+        priv_m = re.search(r'privacy\s*:\s*(\w+)', question, re.IGNORECASE)
+        if priv_m:
+            pv = priv_m.group(1).strip().lower()
+            if pv in ("public", "private", "friends"):
+                privacy = pv
+
+        confirm = False
+        # Check if confirm=true in query
+        if re.search(r'confirm\s*=\s*true', question, re.IGNORECASE):
+            confirm = True
+
+        # Validate
+        missing = []
+        if not gpx_path:
+            missing.append("gpx_path")
+        if not name:
+            missing.append("name")
+
+        if missing:
+            payload = {"raw_query": question, "intent": "rwgps_gpx_import"}
+            action_type = "rwgps_gpx_import"
+            writer = "rwgps_gpx_import"
+            answer = (
+                f"Nie mogę wyodrębnić wszystkich wymaganych parametrów z zapytania.\n"
+                f"Brakuje: {', '.join(missing)}\n"
+                f"Użyj bezpośrednio narzędzia qbot_rwgps_route_import_gpx z parametrami: "
+                f"gpx_path=..., name=..., confirm=false|true."
+            )
+            idem_prefix = "gpx"
+        else:
+            # Call the tool directly for dry-run
+            action_type = "rwgps_gpx_import"
+            writer = "rwgps_gpx_import"
+            idem_prefix = "gpx"
+            try:
+                from qbot_route_tools import _tool_qbot_rwgps_route_import_gpx as _gpx_import_tool
+                tool_result = _gpx_import_tool({
+                    "gpx_path": gpx_path,
+                    "name": name,
+                    "description": description,
+                    "privacy": privacy,
+                    "confirm": confirm,
+                })
+            except Exception as exc:
+                tool_result = {
+                    "status": "VALIDATION_ERROR",
+                    "error": str(exc),
+                    "gpx_path": gpx_path,
+                    "name": name,
+                }
+
+            tool_status = tool_result.get("status", "ERROR")
+            valid_gpx = tool_result.get("valid_gpx", tool_result.get("validation", {}).get("valid", False)) if isinstance(tool_result.get("validation"), dict) else tool_result.get("valid_gpx", False)
+            validation = tool_result.get("validation", {})
+            plan = tool_result.get("plan", {})
+            is_dup = tool_result.get("is_duplicate", False)
+
+            action_draft_payload = {
+                "gpx_path": gpx_path,
+                "name": name,
+                "description": description,
+                "privacy": privacy,
+                "confirm": confirm,
+            }
+
+            if tool_status in ("DRY_RUN",):
+                validation_detail = validation or {}
+                tp_count = validation_detail.get("trackpoint_count", "?")
+                size = validation_detail.get("size_bytes", "?")
+                file_ok = validation_detail.get("valid", False)
+                answer = (
+                    f"Przygotowałem dry-run importu GPX do RWGPS.\n"
+                    f"Plik: {gpx_path}\n"
+                    f"Nazwa trasy: {name}\n"
+                    f"GPX valid={file_ok}, trackpoints={tp_count}, size={size} bytes\n"
+                    f"Plan: utworzenie nowej trasy RWGPS przez API.\n"
+                    f"Aby wykonać, ustaw confirm=true."
+                )
+                missing = []
+            elif tool_status == "DUPLICATE_SKIPPED":
+                answer = (
+                    f"Trasa o nazwie '{name}' już istnieje w RWGPS "
+                    f"(ID {tool_result.get('existing_route_id', '?')}). "
+                    f"Import pominięty."
+                )
+                missing = []
+            elif tool_status == "VALIDATION_ERROR":
+                err = tool_result.get("validation_error", tool_result.get("error", "Unknown error"))
+                answer = (
+                    f"Błąd walidacji pliku GPX:\n{err}\n"
+                    f"Ścieżka: {gpx_path}"
+                )
+                missing = ["valid_gpx"]
+            else:
+                answer = (
+                    f"Problem z przetworzeniem importu GPX: {tool_result.get('status', '?')} "
+                    f"- {tool_result.get('error', tool_result.get('validation_error', ''))}"
+                )
+                missing = ["gpx_path", "name"]
+
+            # Build validation table for draft preview
+            tables = []
+            if validation:
+                tables.append({
+                    "reader": "action_draft_preview",
+                    "key": "draft",
+                    "rows": [{
+                        "gpx_path": gpx_path,
+                        "name": name,
+                        "trackpoint_count": validation.get("trackpoint_count"),
+                        "size_bytes": validation.get("size_bytes"),
+                        "valid_gpx": validation.get("valid"),
+                    }],
+                })
+
+            payload = action_draft_payload
+            return {
+                "tool": "qbot.query",
+                "safety_class": "READ_ONLY",
+                "mode": "read_only",
+                "status": tool_status if tool_status in ("DRY_RUN", "DUPLICATE_SKIPPED") else "draft",
+                "query": question,
+                "intents_detected": intents,
+                "answer": answer,
+                "action_draft": {
+                    "action_type": action_type,
+                    "writer_capability": writer,
+                    "requires_confirm": True,
+                    "idempotency_key": _generate_idempotency_key(idem_prefix, question),
+                    "payload": payload,
+                },
+                "valid_gpx": bool(valid_gpx),
+                "validation": validation or {},
+                "gpx_path": gpx_path,
+                "name": name,
+                "missing_fields": missing,
+                "tables": tables,
+                "provenance": [{"source": "qbot_query_draft", "capability": "rwgps_gpx_import", "tool": "qbot_rwgps_route_import_gpx"}],
+            }
     elif write_intent == "qcal_event_update_draft":
         payload = {"raw_query": question, "intent": "update"}
         missing = []
@@ -4917,6 +5138,13 @@ _LEGACY_QUERY_ROUTER = query
 
 def query(question: str, mode: str = "read_only", scope: str = "all", context: str = "",
           max_rows: int = 500, include_provenance: bool = True, include_missing: bool = True) -> dict[str, Any]:
+    # ── Pre-orchestrator: handle GPX import write intents directly ──
+    _pre_intents = classify_intent(question)
+    if "rwgps_gpx_import_draft" in _pre_intents:
+        _pre_date_ctx = _resolve_date_context(context, question)
+        _pre_write = _handle_write_draft(question, _pre_intents, _pre_date_ctx)
+        if _pre_write is not None:
+            return _pre_write
     if os.getenv("QBOT_LLM_ORCHESTRATOR", "0") == "1" and mode == "read_only":
         try:
             from qbot_orchestrator import orchestrate_query
