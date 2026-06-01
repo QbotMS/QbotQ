@@ -2,11 +2,9 @@
 """QBot Route Logistics — TEMPO 2: Commit POI.
 
 Selects candidates from candidates.json and writes final POI artifacts.
-GPX contains ONLY selected waypoints — no <trk>, no unselected candidates.
-
-Usage:
-    python3 scripts/route_logistics_commit_poi.py --route-id 55395119 --select food_001,water_003
-    python3 scripts/route_logistics_commit_poi.py --route-id 55395119 --select food_001 water_003 attractions_007
+Generates route_with_selected_poi.gpx — original GPX track + selected POI <wpt>.
+This enriched GPX is the file to import to RWGPS.
+selected_poi.gpx is a debug artifact only (waypoints without track).
 """
 
 from __future__ import annotations
@@ -22,7 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from lib.route_logistics import (
     LOGISTICS_DIR, CATEGORY_ORDER,
     write_selected_poi_json, write_selected_poi_geojson,
-    write_selected_poi_gpx, write_commit_summary_md,
+    write_selected_poi_gpx, write_route_with_selected_poi_gpx,
+    write_commit_summary_md,
     POICandidate,
 )
 
@@ -150,20 +149,23 @@ def main():
     print(f"\n  Writing artifacts...")
     write_selected_poi_json(valid_pois, route_id)
     write_selected_poi_geojson(valid_pois, route_id)
-    write_selected_poi_gpx(valid_pois, route_id)
+    write_selected_poi_gpx(valid_pois, route_id)          # debug/review: waypoints only
+    write_route_with_selected_poi_gpx(valid_pois, route_id)  # import-ready: track + wpt
     write_commit_summary_md(valid_pois, rejected_ids, route_id)
 
     out_dir = LOGISTICS_DIR / str(route_id)
     print(f"  Output: {out_dir}")
-    print(f"    selected_poi.json")
-    print(f"    selected_poi.geojson")
-    print(f"    selected_poi.gpx")
-    print(f"    poi_commit_summary.md")
+    print(f"    selected_poi.json         — POI metadane")
+    print(f"    selected_poi.geojson      — POI GeoJSON (review)")
+    print(f"    selected_poi.gpx          — POI waypoints only (debug)")
+    print(f"    route_with_selected_poi.gpx — track + POI waypoints (IMPORT TO RWGPS)")
+    print(f"    poi_commit_summary.md     — podsumowanie")
 
-    print(f"\n  Status: POI_READY_FOR_IMPORT")
-    print(f"  GPX zawiera WY\u0141\u0104CZNIE {len(valid_pois)} zatwierdzone POI.")
+    print(f"\n  Status: GPX_READY_FOR_RIDEWITHGPS_IMPORT")
+    print(f"  Plik do importu: route_with_selected_poi.gpx")
+    print(f"  Zawiera oryginalny przebieg trasy + {len(valid_pois)} zatwierdzone POI.")
     print(f"  \u017baden niezatwierdzony kandydat nie trafi\u0142 do GPX.")
-    print(f"  Next action: manual_import_or_combined_gpx")
+    print(f"  Next action: rwgps_import")
 
 
 if __name__ == "__main__":

@@ -595,7 +595,7 @@ def write_selected_poi_json(selected: list[POICandidate], route_id: str) -> Path
 
     payload = {
         "ok": True,
-        "status": "POI_READY_FOR_IMPORT",
+        "status": "GPX_READY_FOR_RIDEWITHGPS_IMPORT",
         "route_id": str(route_id),
         "selected_count": len(selected),
         "counts": {k: v for k, v in counts.items() if v},
@@ -604,9 +604,12 @@ def write_selected_poi_json(selected: list[POICandidate], route_id: str) -> Path
             "selected_poi_json": str(path),
             "selected_poi_geojson": str(out_dir / "selected_poi.geojson"),
             "selected_poi_gpx": str(out_dir / "selected_poi.gpx"),
+            "route_with_selected_poi_gpx": str(out_dir / "route_with_selected_poi.gpx"),
             "summary_md": str(out_dir / "poi_commit_summary.md"),
         },
-        "next_action": "manual_import_or_combined_gpx",
+        "import_gpx": str(out_dir / "route_with_selected_poi.gpx"),
+        "next_action": "rwgps_import_via_enriched_gpx",
+        "notes": "Import route_with_selected_poi.gpx to RWGPS as a new route (contains track + POI waypoints). selected_poi.gpx is debug-only, not for import.",
         "committed_at": datetime.now(timezone.utc).isoformat(),
     }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -636,7 +639,11 @@ def write_selected_poi_geojson(selected: list[POICandidate], route_id: str) -> P
 
 
 def write_selected_poi_gpx(selected: list[POICandidate], route_id: str) -> Path:
-    """Write GPX with <wpt> entries for selected POIs. No <trk> — only waypoints."""
+    """Write GPX with <wpt> entries for selected POIs. No <trk> — only waypoints.
+    
+    This is a debug/review artifact only. Use write_route_with_selected_poi_gpx()
+    for RWGPS import.
+    """
     out_dir = ensure_dir(route_id)
     path = out_dir / "selected_poi.gpx"
 
@@ -660,6 +667,49 @@ def write_selected_poi_gpx(selected: list[POICandidate], route_id: str) -> Path:
     tree = ET.ElementTree(root)
     tree.write(str(path), encoding="utf-8", xml_declaration=True)
     return path
+
+
+def write_route_with_selected_poi_gpx(selected: list[POICandidate], route_id: str) -> Path:
+    """Create enriched GPX: original track + selected POI <wpt>.
+    
+    Reads the original route GPX from exports, copies all track data,
+    and injects selected POI as waypoints. This is the file to import to RWGPS.
+    """
+    out_dir = ensure_dir(route_id)
+    path = out_dir / "route_with_selected_poi.gpx"
+
+    gpx_path = resolve_route_gpx(route_id)
+    if not gpx_path:
+        raise FileNotFoundError(f"Cannot resolve GPX for route {route_id}")
+
+    tree = ET.parse(str(gpx_path))
+    root = tree.getroot()
+
+    _clean_ns(root)
+
+    # Inject <wpt> elements for each selected POI
+    for c in selected:
+        wpt = ET.SubElement(root, "{http://www.topografix.com/GPX/1/1}wpt",
+                            {"lat": str(c.lat), "lon": str(c.lon)})
+        name_el = ET.SubElement(wpt, "{http://www.topografix.com/GPX/1/1}name")
+        name_el.text = c.candidate_id
+        desc_el = ET.SubElement(wpt, "{http://www.topografix.com/GPX/1/1}desc")
+        desc_el.text = f"{c.name} ({c.category}/{c.subtype}) | dist:{c.distance_from_track_m}m | km:{c.km_on_route} | src:{c.source}"
+        type_el = ET.SubElement(wpt, "{http://www.topografix.com/GPX/1/1}type")
+        type_el.text = c.category
+        sym_el = ET.SubElement(wpt, "{http://www.topografix.com/GPX/1/1}sym")
+        sym_el.text = _rwgps_sym(c.category)
+
+    tree.write(str(path), encoding="utf-8", xml_declaration=True)
+    return path
+
+
+def _clean_ns(root: ET.Element) -> None:
+    """Ensure the root GPX element has the standard namespace."""
+    NS = "http://www.topografix.com/GPX/1/1"
+    if root.tag != f"{{{NS}}}gpx":
+        root.tag = f"{{{NS}}}gpx"
+    root.set("xmlns", NS)
 
 
 def _rwgps_sym(category: str) -> str:

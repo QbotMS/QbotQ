@@ -25,9 +25,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from lib.route_logistics import (
     ARTIFACTS_ROOT, LOGISTICS_DIR,
-    POICandidate, ensure_dir,
+    POICandidate, ensure_dir, resolve_route_gpx,
     write_selected_poi_json, write_selected_poi_geojson,
-    write_selected_poi_gpx, write_commit_summary_md,
+    write_selected_poi_gpx, write_route_with_selected_poi_gpx,
+    write_commit_summary_md,
 )
 
 ROUTE_ID = "test_route_99999"
@@ -55,6 +56,25 @@ class TestCommitPoiGpxWpt(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ensure_dir(ROUTE_ID)
+        # Create a minimal GPX so write_route_with_selected_poi_gpx can resolve it
+        from pathlib import Path as _Path
+        from xml.etree import ElementTree as _ET
+        from lib.route_logistics import RWGPS_EXPORT_DIR
+        synthetic_gpx = RWGPS_EXPORT_DIR / f"rwgps_{ROUTE_ID}.gpx"
+        if not synthetic_gpx.exists():
+            root = _ET.Element("gpx", {
+                "version": "1.1", "creator": "QBot Test",
+                "xmlns": "http://www.topografix.com/GPX/1/1",
+            })
+            trk = _ET.SubElement(root, "{http://www.topografix.com/GPX/1/1}trk")
+            name = _ET.SubElement(trk, "{http://www.topografix.com/GPX/1/1}name")
+            name.text = f"Test Route {ROUTE_ID}"
+            trkseg = _ET.SubElement(trk, "{http://www.topografix.com/GPX/1/1}trkseg")
+            for lat, lon in [(43.55, 10.60), (43.56, 10.61), (43.57, 10.62)]:
+                pt = _ET.SubElement(trkseg, "{http://www.topografix.com/GPX/1/1}trkpt",
+                                    {"lat": str(lat), "lon": str(lon)})
+            _ET.ElementTree(root).write(str(synthetic_gpx), encoding="utf-8", xml_declaration=True)
+        cls._test_gpx_created = True
         cls.test_pois = [
             POICandidate(
                 candidate_id="food_001",
@@ -96,6 +116,11 @@ class TestCommitPoiGpxWpt(unittest.TestCase):
         import shutil
         if TEST_DIR.exists():
             shutil.rmtree(str(TEST_DIR))
+        # Clean up synthetic GPX created for tests
+        from lib.route_logistics import RWGPS_EXPORT_DIR
+        synthetic = RWGPS_EXPORT_DIR / f"rwgps_{ROUTE_ID}.gpx"
+        if synthetic.exists() and synthetic.stat().st_size < 500:
+            synthetic.unlink()
 
     def test_candidates_does_not_modify_rwgps(self):
         """Candidates phase must not call any RWGPS API."""
@@ -233,11 +258,13 @@ class TestCommitPoiGpxWpt(unittest.TestCase):
         write_selected_poi_json(self.test_pois, ROUTE_ID)
         write_selected_poi_geojson(self.test_pois, ROUTE_ID)
         write_selected_poi_gpx(self.test_pois, ROUTE_ID)
+        write_route_with_selected_poi_gpx(self.test_pois, ROUTE_ID)
         write_commit_summary_md(self.test_pois, [], ROUTE_ID)
 
         self.assertTrue((TEST_DIR / "selected_poi.json").exists())
         self.assertTrue((TEST_DIR / "selected_poi.geojson").exists())
         self.assertTrue((TEST_DIR / "selected_poi.gpx").exists())
+        self.assertTrue((TEST_DIR / "route_with_selected_poi.gpx").exists())
         self.assertTrue((TEST_DIR / "poi_commit_summary.md").exists())
 
     def test_gpx_wpt_coordinates_from_selection(self):
@@ -256,6 +283,63 @@ class TestCommitPoiGpxWpt(unittest.TestCase):
             self.assertEqual(wpt.find("gpx:name", ns).text, poi.candidate_id)
             self.assertIn(poi.name, wpt.find("gpx:desc", ns).text)
             self.assertEqual(wpt.find("gpx:type", ns).text, poi.category)
+
+    def test_route_with_selected_poi_gpx_has_track_and_wpt(self):
+        """route_with_selected_poi.gpx must contain both <trk> and <wpt>."""
+        write_route_with_selected_poi_gpx(self.test_pois, ROUTE_ID)
+        gpx_path = TEST_DIR / "route_with_selected_poi.gpx"
+        self.assertTrue(gpx_path.exists())
+        self.assertGreater(gpx_path.stat().st_size, 0)
+
+        tree = ET.parse(str(gpx_path))
+        root = tree.getroot()
+        ns = {"gpx": "http://www.topografix.com/GPX/1/1"}
+
+        trks = root.findall("gpx:trk", ns)
+        self.assertGreater(len(trks), 0, "route_with_selected_poi.gpx must contain <trk>")
+
+        wpts = root.findall("gpx:wpt", ns)
+        self.assertEqual(len(wpts), len(self.test_pois),
+                         f"Expected {len(self.test_pois)} <wpt>, got {len(wpts)}")
+
+        for poi, wpt in zip(self.test_pois, wpts):
+            self.assertAlmostEqual(float(wpt.attrib["lat"]), poi.lat, places=4)
+            self.assertAlmostEqual(float(wpt.attrib["lon"]), poi.lon, places=4)
+            self.assertIsNotNone(wpt.find("gpx:name", ns))
+
+    def test_selected_poi_gpx_is_debug_only_no_trk(self):
+        """selected_poi.gpx must NOT contain <trk> — it's a debug artifact."""
+        write_selected_poi_gpx(self.test_pois, ROUTE_ID)
+        gpx_path = TEST_DIR / "selected_poi.gpx"
+        content = gpx_path.read_text(encoding="utf-8")
+        self.assertIn("<wpt ", content)
+        self.assertNotIn("<trk>", content, "selected_poi.gpx must not contain track data")
+
+    def test_route_gpx_not_modified_by_enriched_gpx(self):
+        """Original export GPX must remain unchanged after enriched GPX creation."""
+        # Use the synthetic GPX created in setUpClass (same as ROUTE_ID)
+        orig = resolve_route_gpx(ROUTE_ID)
+        if not orig or not orig.exists():
+            self.skipTest("Original GPX not available")
+        mtime_before = orig.stat().st_mtime
+        write_route_with_selected_poi_gpx(self.test_pois, ROUTE_ID)
+        mtime_after = orig.stat().st_mtime
+        self.assertEqual(mtime_before, mtime_after, "Original GPX was modified!")
+
+    def test_selected_poi_gpx_not_for_rwgps_import(self):
+        """selected_poi.gpx must not be listed as the RWGPS import file.
+        The import file must be route_with_selected_poi.gpx."""
+        from lib.route_logistics import write_selected_poi_json
+        write_selected_poi_json(self.test_pois, ROUTE_ID)
+
+        json_path = TEST_DIR / "selected_poi.json"
+        payload = json.loads(json_path.read_text())
+        import_gpx = payload.get("import_gpx", "")
+        import_basename = Path(import_gpx).name
+        self.assertEqual(import_basename, "route_with_selected_poi.gpx",
+                         f"import_gpx basename must be route_with_selected_poi.gpx, got {import_basename}")
+        self.assertIn("debug-only", payload.get("notes", ""),
+                      "notes must clarify selected_poi.gpx is debug-only")
 
 if __name__ == "__main__":
     unittest.main()

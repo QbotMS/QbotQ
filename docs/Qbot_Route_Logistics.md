@@ -1,30 +1,31 @@
 # QBot Route Logistics
 
-Dwutaktowy system wyszukiwania i zatwierdzania POI przy trasach rowerowych.
-GPX `<wpt>` jest podstawową i docelową metodą dostarczania POI — plik
-`selected_poi.gpx` jest gotowy do importu do RWGPS jako kopia trasy z waypointami.
+Trójtaktowy system wyszukiwania, zatwierdzania i importu POI do RWGPS.
+POI są wstrzykiwane jako `<wpt>` do oryginalnego GPX trasy przed importem.
 
 ## Architektura
 
 ```
-TEMPO 1 — CANDIDATES                    TEMPO 2 — COMMIT-POI
-─────────────────────────               ────────────────────────
-GPX + Overpass                           candidates.json
-    │                                         │
-    ▼                                         ▼
-candidates.json ◄── ręczny wybór ───►   selected_poi.json
-candidates.geojson                       selected_poi.geojson
-candidates.md                            selected_poi.gpx  ← primary
-candidates.xlsx                          poi_commit_summary.md
-debug.json                                     │
-                                               ▼
-                                      Import GPX do RWGPS
-                                      (kopia trasy z <wpt>)
+TEMPO 1 — CANDIDATES          TEMPO 2 — COMMIT-POI         TEMPO 3 — RWGPS IMPORT
+─────────────────────         ──────────────────────        ──────────────────────────
+GPX + Overpass                 candidates.json               route_with_selected_poi.gpx
+    │                               │                                 │
+    ▼                               ▼                                 ▼
+candidates.json ◄─ ręczny ──►  selected_poi.json        POST /api/v1/routes.json
+candidates.geojson     wybór   selected_poi.geojson      (nowa kopia trasy)
+candidates.md                  selected_poi.gpx  ← debug  rwgps_import_result.json
+candidates.xlsx                route_with_selected_poi.gpx ← IMPORT TO RWGPS
+debug.json                     poi_commit_summary.md      route_logistics_final_summary.md
+                               status: GPX_READY_FOR_     status: RWGPS_ROUTE_WITH_POI_
+                                         RIDEWITHGPS_               IMPORTED
+                                         IMPORT
 ```
 
 **Zasada:** Candidates ≠ POI. Do GPX trafiają wyłącznie ręcznie zatwierdzone POI.
-**POI delivery:** GPX `<wpt>` — primary. RWGPS `points_of_interest` PUT nie jest
-używany w workflow produkcyjnym (HTTP 500, diagnostyczny tylko).
+**Import:** POI są wstrzykiwane do oryginalnego GPX trasy jako `<wpt>` — powstaje
+`route_with_selected_poi.gpx`. Ten plik jest importowany do RWGPS jako nowa kopia.
+`selected_poi.gpx` (tylko waypointy) jest artefaktem debug/review, nie plikiem importowym.
+RWGPS `points_of_interest` PUT nie jest używany (HTTP 500).
 
 ## Komendy CLI
 
@@ -82,10 +83,13 @@ Wszystkie pod `/opt/qbot/artifacts/route_logistics/{route_id}/`:
 | `candidates.md` | 1 | Raport czytelny |
 | `candidates.xlsx` | 1 | Excel (fallback CSV) |
 | `debug.json` | 1 | Debug + timing |
-| `selected_poi.json` | 2 | JSON contract POI_READY_FOR_IMPORT |
-| `selected_poi.geojson` | 2 | GeoJSON tylko selected |
-| `selected_poi.gpx` | 2 | GPX \<wpt\> tylko selected |
+| `selected_poi.json` | 2 | JSON contract GPX_READY_FOR_RIDEWITHGPS_IMPORT |
+| `selected_poi.geojson` | 2 | GeoJSON tylko selected (review) |
+| `selected_poi.gpx` | 2 | GPX \<wpt\> tylko selected (debug, NIE importować) |
+| `route_with_selected_poi.gpx` | 2 | Oryginalny track + \<wpt\> POI (import do RWGPS) |
 | `poi_commit_summary.md` | 2 | Raport commita |
+| `rwgps_import_result.json` | 3 | Wynik importu RWGPS |
+| `route_logistics_final_summary.md` | 3 | Raport końcowy |
 
 ## Statusy kandydata
 
