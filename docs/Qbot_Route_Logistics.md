@@ -22,10 +22,25 @@ debug.json                     poi_commit_summary.md      route_logistics_final_
 ```
 
 **Zasada:** Candidates ≠ POI. Do GPX trafiają wyłącznie ręcznie zatwierdzone POI.
-**Import:** POI są wstrzykiwane do oryginalnego GPX trasy jako `<wpt>` — powstaje
-`route_with_selected_poi.gpx`. Ten plik jest importowany do RWGPS jako nowa kopia.
-`selected_poi.gpx` (tylko waypointy) jest artefaktem debug/review, nie plikiem importowym.
-RWGPS `points_of_interest` PUT nie jest używany (HTTP 500).
+
+**Import:** Geometria trasy jest kopiowana z oryginału (`copy_route` → `update_name`).
+`route_with_selected_poi.gpx` jest artefaktem lokalnym zawierającym track + `<wpt>`.
+
+**Ograniczenie RWGPS API:**
+- `POST /routes.json` (GPX upload) — nie parsuje tracków ani waypointów (pusta trasa)
+- `PUT /routes/{id}.json` (`course_points`) — zwraca 200, ale nie persistuje
+- `PUT /routes/{id}.json` (`points_of_interest`) — zwraca HTTP 500
+- Jedyna działająca metoda: `COPY` oryginału, potem `UPDATE` nazwy/opisu
+- Waypointy/POI nie mogą być dodane programistycznie przez RWGPS API
+
+**Status po imporcie:** `ROUTE_IMPORTED_BUT_POI_NOT_NATIVE_IN_RWGPS` —
+geometria OK, ale POI nie są natywnie widoczne w RWGPS/Karoo.
+POI są udokumentowane w `route_with_selected_poi.gpx` (lokalny artefakt) i opisie trasy.
+
+**Rekomendowane metody dla widoczności POI:**
+1. RWGPS web UI — dodaj waypointy ręcznie do nowej trasy
+2. QExt/Karoo overlay — użyj lokalnego `route_with_selected_poi.gpx` jako overlay
+3. GPX re-upload przez RWGPS web UI (nie API) — zachowuje `<wpt>`
 
 ## Komendy CLI
 
