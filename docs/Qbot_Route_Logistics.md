@@ -47,31 +47,33 @@ debug.json                     poi_commit_summary.md      route_logistics_final_
 **Zasada:** Candidates ≠ POI. Do GPX trafiają wyłącznie ręcznie zatwierdzone POI.
 
 **Import references verified in repo:**
-- `create_route_from_gpx()` / `POST /routes.json` variants were tested and produced empty routes in current diagnostics.
-- This does not prove that RWGPS cannot upload GPX.
-- It only proves that the correct RWGPS GPX import endpoint/payload has not yet been identified in the repo.
+- `create_route_from_gpx()` uses legacy `POST /routes.json` multipart upload.
+- Tested `POST /routes.json` variants created empty routes / `distance=null` / `track_points=[]` in current diagnostics.
+- This proves only that the current endpoint/payload is wrong or incomplete.
+- It does not prove that RWGPS API cannot upload GPX.
 
 **Verified route logistics status:**
 - `route_with_selected_poi.gpx` is a local artifact that contains track + `<wpt>`.
 - `selected_poi.gpx` is debug-only and not the route import file.
-- POI/warnings visibility in RWGPS after import is currently confirmed only for the G3/Puznówka reference route above.
+- POI/warnings visibility in RWGPS after import is currently confirmed for the G3/Puznówka reference route above.
 
 **Current validation rules for a successful import:**
 - `distance > 0`
-- `track_points/trkpt > 0` after RWGPS import/export
+- `track/trkpt` or `route/rtept` present after RWGPS import/export
 - POI/warnings preserved as visible RWGPS POI or as `<wpt>` in exported GPX
 - no success based only on HTTP `200/201` or `route_id`
 
 **Next required work:**
-1. Identify the official RWGPS GPX import endpoint/payload.
-2. Or capture a single RWGPS web UI `Import → Upload File` request as fallback diagnostics.
-3. Implement a dedicated import method only after the endpoint/payload is known.
+1. Identify the correct RWGPS GPX import endpoint/payload from official docs, existing code, old logs, or a captured web import request.
+2. Implement a dedicated importer only after the endpoint and multipart payload are known.
+3. Use G3/Puznówka GPX as the only test fixture.
 
 **Known non-solutions / blind alleys**
-- direct `points_of_interest` API is not the current architecture
+- direct `points_of_interest` API is not the current route+GPX import architecture
 - `course_points` are not accepted as final POI visibility unless UI-visible
 - `selected_poi.gpx` alone is not a valid route import
 - `copy+update` route is not the final solution for GPX+POI import
+- `POST /routes.json` empty-route result is not proof that RWGPS has no GPX API import
 
 ## Komendy CLI
 
