@@ -73,6 +73,8 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
     ]),
     ("artifact_read", [
         "plik", "artefakt", "artifact", "csv",
+        "przeczytaj", "odczytaj", "poka\u017c plik", "poka\u017c raport",
+        "poka zawarto\u015b\u0107", "tre\u015b\u0107 pliku", "zawarto\u015b\u0107 pliku",
         "biblia qbot", "qbot bible", "qbot_bible", "bible qbot",
         "know-how qbot", "knowhow qbot", "qbot_knowhow", "know how qbot",
         "instrukcja projektu qbot", "qbot_project_instruction_local",
@@ -236,6 +238,20 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
     ]),
     ("route_surface", [
         "nawierzchnia", "surface", "szuter", "asfalt",
+    ]),
+    ("artifact_search", [
+        "artefakt", "artifact store", "artifact_id", "zarejestrowany artefakt",
+        "zarejestrowane artefakty", "metadane artefaktu", "metadata artifact",
+        "route_logistics", "logistics_tool_implementation",
+        "qbot_artifact", "nie odczytuj filesystemu", "nie czytaj z dysku",
+        "artifact_search", "przeszukaj artefakty", "przeszukaj zarejestrowane",
+    ]),
+    ("artifact_read", [
+        "zobacz /opt/qbot/artifacts/", "przeczytaj /opt/qbot/artifacts/",
+        "odczytaj /opt/qbot/artifacts/", "poka\u017c /opt/qbot/artifacts/",
+        "zobacz artefakt", "przeczytaj artefakt", "odczytaj artefakt",
+        "poka\u017c artefakt", "artifact_get", "artifact_read",
+        "artifact content", "/opt/qbot/artifacts/",
     ]),
     ("garage", [
         "garaż", "garage", "sprzęt", "rower", "opon",
@@ -470,6 +486,7 @@ _reader("status", "meta", "qbot_status", {}, ["qbot_core"])
 _reader("readiness", "meta", "qbot_readiness_report", {}, ["qbot_core"])
 _reader("capability_scan", "meta", "qbot_legacy_capability_scan", {}, ["qbot_core"])
 _reader("qbot_canonical_docs", "project", "qbot_canonical_docs_read", {"query": "str"}, ["filesystem", "docs"])
+_reader("qbot_artifact_read", "artifacts", "qbot_artifact_read", {"path": "str", "start_line": "int", "max_lines": "int", "max_bytes": "int"}, ["filesystem"])
 
 # New: Garmin energy reader (live read via garminconnect, no DB storage needed)
 _reader("garmin_energy", "garmin", "qbot_garmin_energy_read", {"date": "str"}, ["garminconnect_api"])
@@ -508,11 +525,13 @@ _INTENT_TO_READERS: dict[str, list[str]] = {
     "rwgps_export": ["rwgps_export_links", "rwgps_route_get"],
     "route_surface": ["route_artifact_enrich", "gpx_artifact_parse"],
     "garage": ["garage_search", "garage_list", "garage_status"],
+    "artifact_search": ["artifacts_list"],
+    "artifact_lookup": ["artifacts_list"],
     "daily_report": ["daily_report_preview"],
     "ride_report": ["ride_report_preview", "ride_report_latest"],
     "report_diagnostic": ["daily_report_preview", "ride_report_preview", "garmin_status", "intervals_config"],
     "wellness": ["wellness_day", "sleep_day", "nutrition_day_legacy", "garmin_status", "wellness_range"],
-    "artifact_read": ["qbot_canonical_docs"],
+    "artifact_read": ["qbot_canonical_docs", "qbot_artifact_read"],
     "capability_check": ["status", "capability_scan"],
     "project": [],
     "health_advice": ["health_advisor", "nutrition_day", "meal_list", "nutrition_planning", "supplement_inventory", "garmin_energy", "wellness_day", "garmin_status", "intervals_wellness"],
@@ -718,6 +737,12 @@ def _init_dispatch():
 
     # Canonical QBot docs reader
     _TOOL_DISPATCH["qbot_canonical_docs_read"] = _read_qbot_canonical_docs
+
+    # Read-only artifact file reader
+    from qbot_file_tools import _tool_qbot_artifact_read
+    _TOOL_DISPATCH["qbot_artifact_read"] = _tool_qbot_artifact_read
+
+    # Route Logistics tools (CLI only — use scripts/q/route_logistics wrapper)
 
 
 # ── New readers ────────────────────────────────────────────────────────────
@@ -1980,6 +2005,8 @@ _TABLE_DOMAIN: dict[str, str] = {
     "ride_report_preview": "ride_preview",
     "daily_report_preview": "daily_report",
     "report_diagnostic": "report_diagnostic",
+    "artifact_search": "artifact_search",
+    "artifact_lookup": "artifact_lookup",
     "calendar_snapshot": "calendar_snapshot",
     "health_advisor": "health_check",
     "supplement_inventory": "supplement_inventory",
@@ -3524,7 +3551,8 @@ _CANONICAL_FORCE_READERS: dict[str, list[str]] = {
     "nutrition_balance": [],
     "latest_training": [],
     "route_list": [],
-    "artifact_read": ["qbot_canonical_docs"],
+    "artifact_read": ["qbot_canonical_docs", "qbot_artifact_read"],
+    "artifact_search": ["artifacts_list"],
 }
 
 # ── Allowed intents / capabilities (closed enum for LLM) ────────────────
@@ -3537,7 +3565,7 @@ _ALLOWED_CANONICAL_INTENTS = [
     "route_list", "qcal_reminder_add_draft", "qcal_event_add_draft",
     "qcal_event_cancel_draft", "qcal_event_update_draft",
     "planning_fact_detect", "qcal_lookup", "calendar_day_context",
-    "status_readiness", "artifact_read", "unknown",
+    "status_readiness", "artifact_read", "artifact_search", "unknown",
 ]
 
 _ALLOWED_CAPABILITIES = [
@@ -3546,7 +3574,7 @@ _ALLOWED_CAPABILITIES = [
     "nutrition_log_add", "latest_training_session", "training_summary",
     "route_list", "qcal_reminder_add", "qcal_event_add",
     "qcal_event_update", "qcal_event_cancel",
-    "planning_memory", "qcal_reminders", "qcal_events", "artifact_read",
+    "planning_memory", "qcal_reminders", "qcal_events", "artifact_read", "artifact_search",
     "calendar_daily_snapshot", "qbot_status", "unknown",
 ]
 
@@ -3771,7 +3799,9 @@ _LLM_ALIAS_MAP: dict[str, str] = {
     "availability_check": "readiness",
     # docs / artifact family
     "document_read": "artifact_read",
-    "artifact_lookup": "artifact_read",
+    "artifact_lookup": "artifact_search",
+    "artifact_search": "artifact_search",
+    "artifact_get_metadata": "artifact_search",
     "knowhow_read": "artifact_read",
     "bible_read": "artifact_read",
     "canonical_docs": "artifact_read",

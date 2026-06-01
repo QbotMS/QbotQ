@@ -144,6 +144,20 @@ INTENT_KEYWORDS: list[tuple[list[str], str]] = [
     (["wyjazd", "wyjazdy", "trip", "tripy", "zaplanowane", "toskania", "toskanię", "toskanii", "tuscany", "tuscany trail"], "trips_status"),
     (["odśwież xert", "wymuś live fetch", "live fetch xert", "sprawdź xert api", "refresh xert", "xert live", "xert na żywo", "xert live fetch", "wymuś xert"], "xert_live_fetch"),
     (["xert", "forma", "gotowość", "readiness", "freshness", "fatigue", "ftp", "ltp", "w'", "w_prime", "w prime"], "xert_status"),
+    # ── Artifact lookup intents (must precede garage_search) ──
+    (["artefakt", "artifact", "artifact store", "artifact_id",
+      "metadane", "metadata", "zarejestrowany artefakt", "zarejestrowane artefakty",
+      "route_logistics", "logistics_tool_implementation",
+      "qbot_artifact", "artifacts_list", "artifact_search",
+      "przeszukaj artefakty", "przeszukaj zarejestrowane",
+      "nie odczytuj filesystemu", "nie czytaj z dysku"], "artifact_search"),
+    # ── Artifact read intents ──
+    (["zobacz /opt/qbot/artifacts/", "przeczytaj /opt/qbot/artifacts/",
+      "odczytaj /opt/qbot/artifacts/", "poka\u017c /opt/qbot/artifacts/",
+      "zobacz artefakt", "przeczytaj artefakt", "odczytaj artefakt",
+      "poka\u017c artefakt", "artifact_get", "artifact_read",
+      "artifact content", "odczytaj zarejestrowany",
+      "poka\u017c zarejestrowany", "/opt/qbot/artifacts/"], "artifact_read"),
     (["garaż", "garage", "sprzęt", "sprzet", "rower", "rowery", "wyposażenie"], "garage_status"),
     (["kask", "buty", "rękawiczki", "rekawiczki", "kurtka", "kurtki", "jersey", "koszulka", "spodenki", "szukaj", "opony", "koła", "kola", "komponenty", "base layer", "rafa", "rapha", "pedaled", "kaski", "butów", "kurtek", "skarpety", "torby", "namiot", "kamizelka", "spodnie", "kierownica", "siodło", "siodlo", "lancuch", "łańcuch", "kaseta", "komin", "czapka", "chusta"], "garage_search"),
 ]
@@ -2026,10 +2040,308 @@ def _handle_report_diagnostic(question: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Artifact lookup (from DB qbot_v2.artifacts, NOT filesystem)
+# ---------------------------------------------------------------------------
+def _handle_artifact_search(question: str) -> dict:
+    """Search registered artifacts in QBot artifact store (DB qbot_v2.artifacts).
+
+    Uses search_artifacts() which does ILIKE on filename, title, project_id, artifact_id.
+    If DB unavailable, tries a raw SQL query as fallback.
+    Does NOT read from filesystem — returns metadata only.
+    """
+    q = question.lower()
+    search_term = ""
+
+    # Extract likely filename from query — look for .md, .json, .gpx etc.
+    import re
+    file_match = re.search(r'[\w\-]+\.(?:md|json|gpx|txt|csv|xlsx|html)', question)
+    if file_match:
+        search_term = file_match.group(0)
+
+    # If no filename found, extract quoted string or meaningful noun phrase
+    if not search_term:
+        qm = re.search(r'"([^"]+)"', question)
+        if qm:
+            search_term = qm.group(1).strip()
+        else:
+            # Extract after specific prefixes (prioritized)
+            # "po frazie route_logistics" → "route_logistics"
+            for prefix in ["po frazie", "frazie", "fraza"]:
+                if prefix in q:
+                    idx = q.find(prefix) + len(prefix)
+                    after = question[idx:].strip().lstrip(":,. ")
+                    words = after.split()[:3]
+                    candidate = " ".join(words).strip(".,;:!?").strip()
+                    if candidate:
+                        search_term = candidate
+                        break
+            if not search_term:
+                # Extract after 'artefakt' or 'artifact' (skip common noise words)
+                for prefix in ["artefakt", "artifact"]:
+                    if prefix in q:
+                        idx = q.find(prefix) + len(prefix)
+                        after = question[idx:].strip().lstrip(":,. ")
+                        # Skip known noise words
+                        noise = {"store", "w", "na", "z", "po", "do", "QBot", "qbot", "i", "oraz", "the"}
+                        words = [w for w in after.split() if w.lower() not in noise][:3]
+                        candidate = " ".join(words).strip(".,;:!?").strip()
+                        if candidate:
+                            search_term = candidate
+                            break
+
+    if not search_term:
+        # Last resort: use the whole query
+        search_term = question.strip()[:80]
+
+    # ── Method 1: Try search_artifacts() from artifact store module ──
+    all_artifacts = []
+    store_unavailable = False
+    try:
+        from qbot3.artifacts.store import search_artifacts
+        all_artifacts = search_artifacts(query=search_term, limit=50)
+    except ImportError:
+        store_unavailable = True
+    except Exception as exc:
+        return _envelope("artifact_search",
+                         f"B\u0142\u0105d zapytania artifact store: {exc}",
+                         status_override="ERROR",
+                         sources_used=["qbot_v2.artifacts"],
+                         data={"question": question, "search_term": search_term})
+
+    # ── Method 2: Fallback to raw SQL if module unavailable ──
+    if store_unavailable or not all_artifacts:
+        try:
+            pg = _pg_conn()
+            like = f"%{search_term.lower()}%"
+            rows = _safe_fetch(pg, """
+                SELECT artifact_id, project_id, artifact_type, title, filename,
+                       file_path, size_bytes, sha256, source, status, metadata_json,
+                       created_at, updated_at
+                FROM qbot_v2.artifacts
+                WHERE status = 'active'::qbot_v2.artifact_status
+                  AND (LOWER(filename) LIKE %s
+                    OR LOWER(title) LIKE %s
+                    OR LOWER(project_id) LIKE %s
+                    OR artifact_id::text LIKE %s)
+                ORDER BY created_at DESC
+                LIMIT 50
+            """, (like, like, like, like))
+            all_artifacts = rows if rows else []
+            pg.close()
+        except Exception:
+            pass
+
+    if not all_artifacts:
+        parts = [f"\U0001f50d Nie znaleziono artefaktu{' ' + search_term if search_term else ''} w rejestrze QBot."]
+        if search_term:
+            parts.append(f"")
+            parts.append(f"Poszukiwano: \"{search_term}\"")
+            parts.append(f"Spr\u00f3buj: innej nazwy, artifact_id, lub sprawd\u017a czy plik zosta\u0142 zarejestrowany przez qbot_artifact_put.")
+        parts.append(f"")
+        parts.append(f"Plik mo\u017ce istnie\u0107 na filesystemie /opt/qbot/artifacts/")
+        parts.append(f"ale nie jest zarejestrowany jako artefakt QBot w qbot_v2.artifacts.")
+        parts.append(f"Aby zarejestrowa\u0107, u\u017Cyj narz\u0119dzia qbot_artifact_put.")
+
+        return _envelope("artifact_search", "\n".join(parts),
+                         data={"question": question, "search_term": search_term,
+                               "found": False, "count": 0,
+                               "filesystem_only": store_unavailable},
+                         sources_used=["qbot_v2.artifacts"],
+                         missing_sources=["qbot_v2.artifacts"])
+
+    # Build answer
+    parts = [f"\U0001f4c1 Znaleziono {len(all_artifacts)} artefakt(y/\u00f3w) w rejestrze QBot:"]
+    for a in all_artifacts:
+        parts.append(f"")
+        parts.append(f"  artifact_id: {a.get('artifact_id', '?')}")
+        parts.append(f"  nazwa: {a.get('filename', '?')}")
+        parts.append(f"  tytu\u0142: {a.get('title', '?')}")
+        parts.append(f"  typ: {a.get('artifact_type', '?')}")
+        parts.append(f"  projekt: {a.get('project_id', '?')}")
+        parts.append(f"  \u015bcie\u017cka: {a.get('file_path', '?')}")
+        parts.append(f"  rozmiar: {a.get('size_bytes', '?')} bajt\u00f3w")
+        parts.append(f"  status: {a.get('status', '?')}")
+        if a.get("metadata"):
+            import json
+            parts.append(f"  metadane: {json.dumps(a['metadata'], ensure_ascii=False)[:200]}")
+        if a.get("created_at"):
+            parts.append(f"  utworzono: {str(a['created_at'])[:19]}")
+        if a.get("updated_at"):
+            parts.append(f"  aktualizacja: {str(a['updated_at'])[:19]}")
+
+    answer = "\n".join(parts)
+
+    data = {
+        "question": question,
+        "search_term": search_term,
+        "found": True,
+        "count": len(all_artifacts),
+        "store_unavailable": store_unavailable,
+        "filesystem_only": False,
+        "artifacts": all_artifacts,
+    }
+
+    return _envelope("artifact_search", answer, data=data,
+                     sources_used=["qbot_v2.artifacts"],
+                     freshness={"search_term": search_term})
+
+
+# ---------------------------------------------------------------------------
+# Artifact Read Handler
+# ---------------------------------------------------------------------------
+def _handle_artifact_read(question: str) -> dict:
+    """Read artifact content from qbot_v2.artifacts via identifier."""
+    q = question.lower()
+    search_term = ""
+
+    # Extract artifact_id UUID from query
+    import re as _re
+    uuid_match = _re.search(
+        r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
+        question, _re.IGNORECASE)
+    if uuid_match:
+        search_term = uuid_match.group(0)
+    else:
+        # Extract filename or path
+        file_match = _re.search(r'[\w\-\.\/]+\.(?:md|json|txt|csv|xlsx|html)', question)
+        if file_match:
+            search_term = file_match.group(0).lstrip("/")
+        else:
+            # Extract after "artefakt" or "artifact"
+            for prefix in ["artefakt", "artifact"]:
+                if prefix in q:
+                    idx = q.find(prefix) + len(prefix)
+                    after = question[idx:].strip().lstrip(":,. ")
+                    noise = {"store", "w", "na", "z", "po", "do", "QBot", "qbot", "i", "oraz",
+                             "the", "content", "get", "read"}
+                    words = [w for w in after.split() if w.lower() not in noise][:3]
+                    candidate = " ".join(words).strip(".,;:!?").strip()
+                    if candidate:
+                        search_term = candidate
+                        break
+
+            if not search_term:
+                # Clean path from query
+                path_match = _re.search(r'/opt/qbot/artifacts/[^\s]+', question)
+                if path_match:
+                    search_term = path_match.group(0)
+
+    if not search_term:
+        return _envelope("artifact_read",
+                         "Podaj artifact_id, nazw\u0119 pliku lub \u015bcie\u017ck\u0119 artefaktu do odczytu.",
+                         data={"question": question, "search_term": ""},
+                         sources_used=["qbot_v2.artifacts"],
+                         warnings=["no identifier found in query"])
+
+    try:
+        from qbot3.artifacts.store import read_artifact_content
+        result = read_artifact_content(identifier=search_term, start_line=1, max_lines=200, max_bytes=65536)
+    except ImportError:
+        return _envelope("artifact_read",
+                         "Modu\u0142 artifact store niedost\u0119pny.",
+                         status_override="ERROR",
+                         sources_used=["qbot_v2.artifacts"],
+                         data={"question": question, "search_term": search_term})
+    except Exception as exc:
+        return _envelope("artifact_read",
+                         f"B\u0142\u0105d odczytu artefaktu: {exc}",
+                         status_override="ERROR",
+                         sources_used=["qbot_v2.artifacts"],
+                         data={"question": question, "search_term": search_term})
+
+    if not result.get("ok"):
+        status_map = {
+            "NOT_FOUND": "PARTIAL",
+            "DENIED": "ERROR",
+            "TOO_LARGE": "PARTIAL",
+            "BINARY_FILE": "PARTIAL",
+            "READ_ERROR": "ERROR",
+            "DB_ERROR": "ERROR",
+        }
+        error_status = status_map.get(result.get("status", ""), "ERROR")
+        warnings = [result.get("error", "unknown error")]
+        if result.get("status") == "NOT_FOUND":
+            warnings.append(
+                "Artefakt nie istnieje w rejestrze qbot_v2.artifacts. "
+                "Mo\u017ce istnie\u0107 na filesystemie /opt/qbot/artifacts/ "
+                "ale nie jest zarejestrowany. U\u017Cyj qbot_artifact_put aby zarejestrowa\u0107.")
+
+        parts = [f"\u26A0\ufe0f Nie mo\u017cna odczyta\u0107 artefaktu: {result.get('error', '')}"]
+        if result.get("artifact_id"):
+            parts.append(f"artifact_id: {result['artifact_id']}")
+        if result.get("path"):
+            parts.append(f"\u015bcie\u017cka: {result['path']}")
+        if result.get("status") == "NOT_FOUND":
+            parts.append(f"")
+            parts.append(f"Spr\u00f3buj: innej nazwy, artifact_id, lub sprawd\u017a czy plik zosta\u0142 zarejestrowany.")
+
+        return _envelope("artifact_read", "\n".join(parts),
+                         data={"question": question, "search_term": search_term,
+                               "found": False, "read_status": result.get("status")},
+                         sources_used=["qbot_v2.artifacts"],
+                         missing_sources=["artifact_file_read"] if result.get("status") == "NOT_FOUND" else [],
+                         warnings=warnings,
+                         status_override=error_status)
+
+    # Success
+    aid = result.get("artifact_id", "?")
+    fname = result.get("filename", "?")
+    atype = result.get("artifact_type", "?")
+    lines = result.get("line_count", 0)
+    sz = result.get("size_bytes", 0)
+    truncated = result.get("truncated", False)
+
+    parts = [f"\U0001f4c4 Artefakt: {fname}"]
+    parts.append(f"  artifact_id: {aid}")
+    parts.append(f"  typ: {atype}")
+    parts.append(f"  rozmiar: {sz} bajt\u00f3w, linii: {lines}")
+    if result.get("project_id"):
+        parts.append(f"  projekt: {result['project_id']}")
+    parts.append(f"")
+    parts.append(result.get("content", ""))
+
+    if truncated:
+        parts.append(f"")
+        parts.append(f"\u26A0\ufe0f Tre\u015b\u0107 przyci\u0119ta (max 65536 bajt\u00f3w / 200 linii). "
+                      f"U\u017Cyj start_line/max_lines aby czyta\u0107 fragmentami.")
+
+    answer = "\n".join(parts)
+    data = {
+        "question": question,
+        "search_term": search_term,
+        "found": True,
+        "artifact_id": aid,
+        "filename": fname,
+        "artifact_type": atype,
+        "project_id": result.get("project_id"),
+        "line_count": lines,
+        "size_bytes": sz,
+        "truncated": truncated,
+    }
+
+    return _envelope("artifact_read", answer, data=data,
+                     sources_used=["qbot_v2.artifacts", "artifact_file_read"],
+                     freshness={"artifact_id": aid})
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 def handle_query(question: str, context: dict | None = None) -> dict:
+    ql = question.lower().strip()
     intent = _resolve_intent(question)
+
+    # Redirect artifact_search to artifact_read when query starts with a read verb
+    # and contains a filename/identifier pattern — this handles "Zobacz <filename>"
+    # where the filename itself matches artifact_search keywords (e.g. "route_logistics")
+    if intent == "artifact_search":
+        read_prefixes = ("zobacz", "poka\u017c", "przeczytaj", "odczytaj", "see", "show", "read", "display")
+        has_read_file = any(ql.startswith(p) for p in read_prefixes) and ("." in question or any(c.isdigit() for c in question))
+        has_uuid = bool(__import__("re").search(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', question, __import__("re").IGNORECASE))
+        has_full_path = "/opt/qbot/artifacts/" in ql
+        if has_read_file or has_uuid or has_full_path:
+            intent = "artifact_read"
+
     day_str = ""
     for part in question.split():
         parsed = _parse_date(part)
@@ -2087,6 +2399,10 @@ def handle_query(question: str, context: dict | None = None) -> dict:
         return _handle_ride_report_diagnostic(question)
     elif intent == "report_diagnostic":
         return _handle_report_diagnostic(question)
+    elif intent == "artifact_search":
+        return _handle_artifact_search(question)
+    elif intent == "artifact_read":
+        return _handle_artifact_read(question)
     else:
         return _envelope("unrecognized",
                          "Nie rozpoznano intencji. Spróbuj: bilans, jedzenie, sen, wellness, energia, trening, xert, garaż, notatki, wyjazdy, raport dobowy, raport z jazdy.")

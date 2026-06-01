@@ -85,6 +85,32 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "auth_required": False,
     },
 
+    # ── Read-only artifact getter ──
+    "qbot.artifact_get": {
+        "qbot_tool": "qbot_artifact_read",
+        "description": (
+            "Odczytaj treść zarejestrowanego artefaktu QBot. "
+            "Identifier może być: artifact_id UUID, nazwa pliku, tytuł, lub ścieżka. "
+            "Bezpieczny, read-only, bez potwierdzenia."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "identifier": {"type": "string", "description": "artifact_id UUID, filename, title lub ścieżka"},
+                "start_line": {"type": "integer", "default": 1, "minimum": 1},
+                "max_lines": {"type": "integer", "default": 200, "minimum": 1, "maximum": 2000},
+            },
+            "required": ["identifier"],
+            "additionalProperties": False,
+        },
+        "output_schema": {
+            "type": "object",
+            "additionalProperties": True,
+        },
+        "safety_class": "READ_ONLY",
+        "auth_required": False,
+    },
+
     # ── Unified action executor ──
     "qbot.action_execute": {
         "qbot_tool": "qbot_action_execute",
@@ -98,7 +124,7 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "input_schema": {
             "type": "object",
             "properties": {
-                "action_type": {"type": "string", "enum": ["nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update"]},
+                "action_type": {"type": "string", "enum": ["nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update", "rwgps_route_import_gpx", "qbot_artifact_put", "qbot_artifact_get"]},
                 "payload_json": {"type": "object", "description": "Kompletny obiekt payload (tak jak w action_draft z qbot.query)"},
                 "idempotency_key": {"type": "string", "description": "Unikalny klucz — zapobiega duplikatom."},
                 "confirm": {"type": "boolean", "description": "MUSI być true, żeby zapisać."},
@@ -554,6 +580,38 @@ def handle_mcp_request(
             query = str(clean_args.get("query", "")).strip()
             if not query:
                 result = {"tool": "qbot.query", "status": "error", "error": "query required"}
+            elif os.getenv("QBOT_QUERY_VNEXT_ENABLED") == "1":
+                try:
+                    from qbot_query_handler import handle_query
+                    vnext_result = handle_query(question=query)
+                    if vnext_result.get("status") == "UNRECOGNIZED":
+                        # query_vnext does not recognise this intent — fall back to Albert
+                        from qbot_query_router import query as qbot_query
+                        result = qbot_query(
+                            question=query,
+                            mode=str(clean_args.get("mode", "read_only")),
+                            scope=str(clean_args.get("scope", "all")),
+                            context=str(clean_args.get("context", "")),
+                            max_rows=int(clean_args.get("max_rows", 500)),
+                            include_provenance=bool(clean_args.get("include_provenance", True)),
+                            include_missing=bool(clean_args.get("include_missing", True)),
+                        )
+                        result["fallback_reason"] = "query_vnext UNRECOGNIZED — fell back to Albert"
+                    else:
+                        result = vnext_result
+                except Exception as exc:
+                    # Defensive: if query_vnext fails, fall back to Albert
+                    from qbot_query_router import query as qbot_query
+                    result = qbot_query(
+                        question=query,
+                        mode=str(clean_args.get("mode", "read_only")),
+                        scope=str(clean_args.get("scope", "all")),
+                        context=str(clean_args.get("context", "")),
+                        max_rows=int(clean_args.get("max_rows", 500)),
+                        include_provenance=bool(clean_args.get("include_provenance", True)),
+                        include_missing=bool(clean_args.get("include_missing", True)),
+                    )
+                    result["fallback_reason"] = f"query_vnext error: {exc} — fell back to Albert"
             else:
                 from qbot_query_router import query as qbot_query
                 result = qbot_query(
@@ -589,6 +647,22 @@ def handle_mcp_request(
             result = _handle_qcal_reminder_done(clean_args)
         elif name == "qbot.qcal_reminder_cancel":
             result = _handle_qcal_reminder_cancel(clean_args)
+        elif name == "qbot.artifact_get":
+            identifier = str(clean_args.get("identifier", "")).strip()
+            if not identifier:
+                result = {"tool": "qbot.artifact_get", "status": "error", "error": "identifier required"}
+            else:
+                try:
+                    from qbot3.artifacts.store import read_artifact_content
+                    result = read_artifact_content(
+                        identifier=identifier,
+                        start_line=int(clean_args.get("start_line", 1)),
+                        max_lines=int(clean_args.get("max_lines", 200)),
+                        max_bytes=65536,
+                    )
+                    result.setdefault("tool", "qbot.artifact_get")
+                except Exception as exc:
+                    result = {"tool": "qbot.artifact_get", "status": "error", "error": str(exc)}
         elif name == "qbot.action_execute":
             result = _handle_action_execute(clean_args)
         else:
@@ -1134,7 +1208,7 @@ def _handle_qcal_reminder_cancel(args: dict) -> dict:
     except Exception as e: return {"tool":"qbot.qcal_reminder_cancel","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
 
 
-_ACTION_EXECUTE_ALLOWLIST = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update"}
+_ACTION_EXECUTE_ALLOWLIST = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update", "rwgps_gpx_import", "qbot_artifact_get"}
 
 _ACTION_REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {
     "nutrition_log_add": ["date", "kcal_total"],
@@ -1146,6 +1220,8 @@ _ACTION_REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {
     "qbot_doc_append": ["target_document", "heading", "content_markdown"],
     "qbot_doc_replace_section": ["target_document", "heading", "content_markdown"],
     "qbot_doc_update": ["target_document", "content_markdown"],
+    "rwgps_gpx_import": ["gpx_path", "name"],
+    "qbot_artifact_get": ["identifier"],
 }
 
 
@@ -1259,8 +1335,12 @@ def _handle_action_execute(args: dict) -> dict[str, Any]:
         return _action_exec_event_update(payload, idem_key, source)
     elif action_type == "qcal_event_cancel":
         return _action_exec_event_cancel(payload, idem_key, source)
+    elif action_type == "rwgps_gpx_import":
+        return _action_exec_rwgps_gpx_import(payload, idem_key, source)
     elif action_type == "planning_fact_add":
         return _action_exec_planning(payload, idem_key, source)
+    elif action_type == "qbot_artifact_put":
+        return _action_exec_qbot_artifact_put(payload, idem_key, source)
     else:
         return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "ERROR", "error": f"Unhandled action_type: {action_type}"}
 
@@ -1486,6 +1566,56 @@ def _action_exec_event(payload: dict, idem_key: str, source: str) -> dict:
     }
 
 
+def _action_exec_rwgps_gpx_import(payload: dict, idem_key: str, source: str) -> dict:
+    """Execute rwgps_gpx_import — import GPX file as new RWGPS route."""
+    gpx_path = str(payload.get("gpx_path", "")).strip()
+    name = str(payload.get("name", "")).strip()
+    description = str(payload.get("description", "")).strip()
+    privacy = str(payload.get("privacy", "private")).strip().lower()
+    confirm = bool(payload.get("confirm", True))
+
+    if not gpx_path or not name:
+        return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+                "status": "BLOCKED", "error": "gpx_path and name required in payload."}
+
+    try:
+        from qbot_route_tools import _tool_qbot_rwgps_route_import_gpx
+        result = _tool_qbot_rwgps_route_import_gpx({
+            "gpx_path": gpx_path,
+            "name": name,
+            "description": description,
+            "privacy": privacy,
+            "confirm": True,
+        })
+    except Exception as exc:
+        return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
+                "status": "ERROR", "error": str(exc)}
+
+    if result.get("status") == "OK":
+        return {
+            "tool": "qbot.action_execute",
+            "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "OK",
+            "action_type": "rwgps_gpx_import",
+            "idempotency_key": idem_key,
+            "new_route_id": result.get("new_route_id"),
+            "html_url": result.get("html_url"),
+            "api_url": result.get("api_url"),
+            "name": name,
+            "source_gpx_path": gpx_path,
+            "validation": result.get("validation"),
+        }
+    return {
+        "tool": "qbot.action_execute",
+        "safety_class": "WRITE_ONLY_ALLOWLIST",
+        "status": result.get("status", "ERROR"),
+        "action_type": "rwgps_gpx_import",
+        "idempotency_key": idem_key,
+        "error": result.get("error") or result.get("validation_error") or result.get("notes", "Unknown error"),
+        "payload": payload,
+    }
+
+
 def _action_exec_planning(payload: dict, idem_key: str, source: str) -> dict:
     """Execute planning_fact_add."""
     try:
@@ -1503,6 +1633,25 @@ def _action_exec_planning(payload: dict, idem_key: str, source: str) -> dict:
         return {"tool":"qbot.action_execute","safety_class":"WRITE_ONLY_ALLOWLIST","status":"ERROR","error": result.get("error","save_planning_fact failed")}
     except ImportError:
         return {"tool":"qbot.action_execute","safety_class":"WRITE_ONLY_ALLOWLIST","status":"MISSING_CAPABILITY","missing_capability":"planning_fact_add","note":"save_planning_fact not available."}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Artifact put action handler
+# ═══════════════════════════════════════════════════════════════════
+
+
+def _action_exec_qbot_artifact_put(payload: dict, idem_key: str, source: str) -> dict:
+    """Execute qbot_artifact_put — save binary/text file to project artifacts."""
+    try:
+        from qbot3.adapters.mcp_adapter import _execute_qbot_artifact_put
+        return _execute_qbot_artifact_put("qbot_artifact_put", payload, idem_key)
+    except Exception as exc:
+        return {
+            "tool": "qbot.action_execute",
+            "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "ERROR",
+            "error": str(exc),
+        }
 
 
 # ═══════════════════════════════════════════════════════════════════

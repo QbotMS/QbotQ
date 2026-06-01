@@ -127,7 +127,7 @@ def normalize_response(response: dict[str, Any]) -> dict[str, Any]:
         return r
 
     # ── 8. ERROR / PLAN_INVALID ───────────────────────────────────────
-    if status in ("ERROR", "PLAN_INVALID", "error"):
+    if status in ("ERROR", "PLAN_INVALID", "WRITE_INCONSISTENT", "error"):
         r["status"] = "error"
         if not r.get("human_answer"):
             r["human_answer"] = "Nie mogę przetworzyć zapytania. Sprawdź logi."
@@ -140,4 +140,10 @@ def normalize_response(response: dict[str, Any]) -> dict[str, Any]:
     r.setdefault("missing_fields", [])
     r.setdefault("human_answer", r.get("answer", ""))
     r["limitations"] = list(dict.fromkeys(limitations))
+    # Strip internal/metadata fields — client needs only answer + status + metadata
+    KEEP = {"status", "answer", "human_answer", "confidence", "missing_fields",
+            "limitations", "request_id", "action_draft", "tool"}
+    for _key in list(r.keys()):
+        if _key not in KEEP:
+            del r[_key]
     return r

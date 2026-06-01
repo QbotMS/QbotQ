@@ -34,6 +34,11 @@ _ACTION_ALLOWLIST = frozenset({
     "planning_fact_add",
     "memory_confirmed_fact_add",
     "qbot_doc_append",
+    "rwgps_route_import_gpx",
+    "rwgps_route_export_gpx",
+    "rwgps_route_surface_analyze",
+    "qbot_artifact_put",
+    "qbot_artifact_get",
 })
 
 
@@ -54,6 +59,57 @@ def validate(action_type: str, payload: dict[str, Any], idem_key: str, dry_run: 
         return {"status": "BLOCKED", "error": "payload must be an object"}
     if not idem_key:
         return {"status": "BLOCKED", "error": "idempotency_key required"}
+    if action_type == "nutrition_log_add":
+        required = ("date", "source", "meal_name", "kcal_total")
+        missing = [field for field in required if payload.get(field) in (None, "")]
+        if missing:
+            return {"status": "BLOCKED", "error": f"nutrition payload missing required fields: {', '.join(missing)}"}
+        date_raw = str(payload.get("date", "")).strip()
+        try:
+            from datetime import date as dt_date
+            dt_date.fromisoformat(date_raw[:10])
+        except Exception:
+            return {"status": "BLOCKED", "error": f"invalid nutrition date: {date_raw}"}
+        if not str(payload.get("source", "")).strip():
+            return {"status": "BLOCKED", "error": "nutrition source required"}
+        macros = [payload.get("protein_g"), payload.get("carbs_g"), payload.get("fat_g")]
+        if any(v is not None for v in macros) and any(v in (None, "") for v in macros):
+            return {"status": "BLOCKED", "error": "protein_g, carbs_g and fat_g must be provided together when known"}
+
+    if action_type == "qbot_artifact_put":
+        required = ("project_id", "filename", "content_base64", "mime_type")
+        missing = [f for f in required if not payload.get(f)]
+        if missing:
+            return {"status": "BLOCKED", "error": f"artifact_put payload missing required fields: {', '.join(missing)}"}
+
+        filename = str(payload["filename"])
+        if any(c in filename for c in ("/", "\\", "..", "\x00")):
+            return {"status": "BLOCKED", "error": f"path traversal detected in filename: {filename}"}
+
+        allowed_exts = frozenset({".xlsx", ".csv", ".md", ".json", ".gpx", ".txt", ".pdf"})
+        ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if ext not in allowed_exts:
+            return {"status": "BLOCKED", "error": f"extension '{ext}' not allowed; allowed: {sorted(allowed_exts)}"}
+
+        import base64
+        try:
+            raw = base64.b64decode(payload["content_base64"], validate=True)
+        except Exception:
+            return {"status": "BLOCKED", "error": "content_base64 is not valid base64"}
+
+        if len(raw) > 25 * 1024 * 1024:
+            return {"status": "BLOCKED", "error": f"decoded content exceeds 25 MB ({len(raw)} bytes)"}
+
+        import hashlib
+        actual_sha256 = hashlib.sha256(raw).hexdigest()
+        sha256_provided = str(payload.get("sha256", "")).strip()
+        if sha256_provided and actual_sha256 != sha256_provided:
+            return {"status": "BLOCKED", "error": f"sha256 mismatch: got {actual_sha256[:16]}... expected {sha256_provided[:16]}..."}
+
+        size_provided = payload.get("size_bytes")
+        if size_provided is not None and int(size_provided) != len(raw):
+            return {"status": "BLOCKED", "error": f"size_bytes mismatch: got {len(raw)}, expected {int(size_provided)}"}
+
     if dry_run:
         return {"status": "OK", "dry_run": True, "action_type": action_type, "idempotency_key": idem_key,
                 "note": "dry_run — no actual write performed"}

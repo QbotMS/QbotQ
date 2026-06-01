@@ -307,5 +307,127 @@ class TestReportDiagnosticHandlers(unittest.TestCase):
             self.assertIn("ride_report", data)
 
 
+# ── Test: Artifact search routing ─────────────────────────────────────────
+
+from qbot_query_handler import _resolve_intent as _resolve_intent_h
+
+
+class TestArtifactSearchRouting(unittest.TestCase):
+    """artifact_search must NOT fall into garage_search."""
+
+    def test_user_query_a(self):
+        """Query A: 'Znajdź artefakt route_logistics_tool_implementation_2026-05-31.md w artifact store QBot' → artifact_search"""
+        intent = _resolve_intent_h(
+            "Znajd\u017a artefakt route_logistics_tool_implementation_2026-05-31.md w artifact store QBot")
+        self.assertEqual(intent, "artifact_search")
+
+    def test_user_query_b(self):
+        """Query B: 'artifact store: znajdź route_logistics_tool_implementation_2026-05-31.md' → artifact_search"""
+        intent = _resolve_intent_h(
+            "artifact store: znajd\u017a route_logistics_tool_implementation_2026-05-31.md")
+        self.assertEqual(intent, "artifact_search")
+
+    def test_user_query_c(self):
+        """Query C: 'Przeszukaj zarejestrowane artefakty QBot po frazie route_logistics' → artifact_search"""
+        intent = _resolve_intent_h(
+            "Przeszukaj zarejestrowane artefakty QBot po frazie route_logistics")
+        self.assertEqual(intent, "artifact_search")
+
+    def test_exact_filename(self):
+        """Full artifact filename → artifact_search"""
+        intent = _resolve_intent_h(
+            "Znajd\u017a artefakt route_logistics_tool_implementation_2026-05-31.md")
+        self.assertEqual(intent, "artifact_search")
+
+    def test_route_logistics_fragment(self):
+        """'route_logistics' alone → artifact_search (not garage)"""
+        intent = _resolve_intent_h("route_logistics")
+        self.assertEqual(intent, "artifact_search")
+
+    def test_logistics_tool_fragment(self):
+        """'logistics_tool_implementation' → artifact_search"""
+        intent = _resolve_intent_h("logistics_tool_implementation")
+        self.assertEqual(intent, "artifact_search")
+
+    def test_artifact_store_phrase(self):
+        """'artifact store QBot' → artifact_search"""
+        intent = _resolve_intent_h("artifact store QBot")
+        self.assertEqual(intent, "artifact_search")
+
+    def test_artifact_id_phrase(self):
+        """'artifact_id' → artifact_search"""
+        intent = _resolve_intent_h("artifact_id abc-123")
+        self.assertEqual(intent, "artifact_search")
+
+    def test_metadata_artifact(self):
+        """'metadane artefaktu' → artifact_search"""
+        intent = _resolve_intent_h("poka\u017c metadane artefaktu")
+        self.assertEqual(intent, "artifact_search")
+
+    def test_no_filesystem(self):
+        """'nie odczytuj filesystemu' → artifact_search"""
+        intent = _resolve_intent_h("nie odczytuj filesystemu tylko rejestr")
+        self.assertEqual(intent, "artifact_search")
+
+    def test_garage_still_works(self):
+        """'szukaj opony rowerowe' still → garage (not artifact_search)"""
+        intent = _resolve_intent_h("szukaj opony rowerowe")
+        self.assertIn(intent, ("garage_search", "garage_status"))
+
+    def test_no_garage_fallthrough_for_artifact(self):
+        """'szukaj artefaktu' MUST go to artifact_search, NOT garage_search"""
+        intent = _resolve_intent_h("szukaj artefaktu")
+        self.assertEqual(intent, "artifact_search")
+
+    def test_handle_artifact_search_returns_envelope(self):
+        """handle_query('artifact_search') returns structured envelope"""
+        result = handle_query("Znajd\u017a artefakt route_logistics_tool_implementation_2026-05-31.md")
+        self.assertEqual(result.get("intent"), "artifact_search")
+        self.assertEqual(result.get("engine"), "query_vnext")
+        self.assertIsNone(result.get("fallback_reason"))
+        if result.get("status") != "ERROR":
+            self.assertIn("data", result)
+            data = result.get("data", {})
+            self.assertIn("search_term", data)
+
+    def test_handle_artifact_search_query_b(self):
+        """handle_query for query B returns correct envelope"""
+        result = handle_query(
+            "artifact store: znajd\u017a route_logistics_tool_implementation_2026-05-31.md")
+        self.assertEqual(result.get("intent"), "artifact_search")
+
+    def test_handle_artifact_search_query_c(self):
+        """handle_query for query C returns correct envelope"""
+        result = handle_query(
+            "Przeszukaj zarejestrowane artefakty QBot po frazie route_logistics")
+        self.assertEqual(result.get("intent"), "artifact_search")
+
+
+# ── Test: classify_intent in qbot_query_router ─────────────────────────────
+
+from qbot_query_router import classify_intent
+
+
+class TestArtifactSearchRouterRouting(unittest.TestCase):
+    """classify_intent in qbot_query_router must include artifact_search."""
+
+    def test_artifact_search_in_classify(self):
+        """classify_intent must include artifact_search for artifact queries"""
+        intents = classify_intent("Znajd\u017a artefakt route_logistics_tool_implementation")
+        self.assertIn("artifact_search", intents)
+        self.assertNotIn("garage", intents)
+
+    def test_artifact_search_not_garage(self):
+        """artifact queries must NOT include garage"""
+        intents = classify_intent("zarejestrowane artefakty qbot")
+        self.assertIn("artifact_search", intents)
+        self.assertNotIn("garage", intents)
+
+    def test_route_logistics_classify(self):
+        """'route_logistics' must include artifact_search in classify_intent"""
+        intents = classify_intent("route_logistics")
+        self.assertIn("artifact_search", intents)
+
+
 if __name__ == "__main__":
     unittest.main()
