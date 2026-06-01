@@ -1,6 +1,8 @@
 # QBot Route Logistics
 
 Dwutaktowy system wyszukiwania i zatwierdzania POI przy trasach rowerowych.
+GPX `<wpt>` jest podstawową i docelową metodą dostarczania POI — plik
+`selected_poi.gpx` jest gotowy do importu do RWGPS jako kopia trasy z waypointami.
 
 ## Architektura
 
@@ -12,24 +14,29 @@ GPX + Overpass                           candidates.json
     ▼                                         ▼
 candidates.json ◄── ręczny wybór ───►   selected_poi.json
 candidates.geojson                       selected_poi.geojson
-candidates.md                            selected_poi.gpx
+candidates.md                            selected_poi.gpx  ← primary
 candidates.xlsx                          poi_commit_summary.md
-debug.json
+debug.json                                     │
+                                               ▼
+                                      Import GPX do RWGPS
+                                      (kopia trasy z <wpt>)
 ```
 
 **Zasada:** Candidates ≠ POI. Do GPX trafiają wyłącznie ręcznie zatwierdzone POI.
+**POI delivery:** GPX `<wpt>` — primary. RWGPS `points_of_interest` PUT nie jest
+używany w workflow produkcyjnym (HTTP 500, diagnostyczny tylko).
 
 ## Komendy CLI
 
 ```bash
 # TEMPO 1 — szukaj kandydatów
-python3 scripts/route_logistics_candidates.py --route-id 55395119 --mode full
-python3 scripts/route_logistics_candidates.py --route-id 55401067 --mode attractions
-python3 scripts/route_logistics_candidates.py --route-id 55395119 --mode lodging --require '{"people":2,"budget":150}'
+.venv/bin/python scripts/route_logistics_candidates.py --route-id 55395119 --mode full
+.venv/bin/python scripts/route_logistics_candidates.py --route-id 55401067 --mode attractions
+.venv/bin/python scripts/route_logistics_candidates.py --route-id 55395119 --mode lodging --require '{"people":2,"budget":150}'
 
 # TEMPO 2 — zatwierdź POI
-python3 scripts/route_logistics_commit_poi.py --route-id 55395119 --select food_001,water_003
-python3 scripts/route_logistics_commit_poi.py --route-id 55395119 --select food_001 water_003
+.venv/bin/python scripts/route_logistics_commit_poi.py --route-id 55395119 --select food_001,water_003
+.venv/bin/python scripts/route_logistics_commit_poi.py --route-id 55395119 --select food_001 water_003
 
 # CLI wrapper
 scripts/q/route_logistics candidates --route-id 55395119 --mode full

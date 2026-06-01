@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Test off-route POI writer (points_of_interest) + GPX wpt fallback.
+"""Diagnostic test: RWGPS points_of_interest endpoint.
 
 RWGPS API does NOT accept points_of_interest via PUT (confirmed HTTP 500).
-This test validates:
+GPX <wpt> is the primary method for POI delivery — this test is diagnostic only.
+
+Tests:
   1. On-route POIs (<100m) are rejected from points_of_interest
   2. Off-route POIs (100-1000m) are accepted for points_of_interest
-  3. Fallback GPX <wpt> generator works
-  4. GPX artifact export works
+  3. GPX <wpt> generation (primary method for production)
+  4. GPX artifact export
 
 Usage:
   cd /opt/qbot/app
@@ -65,7 +67,7 @@ def main():
     )
 
     print("=" * 60)
-    print("TEST: Off-route POI writer + GPX wpt fallback")
+    print("TEST: RWGPS points_of_interest diagnostic (GPX wpt = primary)")
     print("=" * 60)
 
     # Test 1: prepare_rwgps_points_of_interest_update
@@ -166,8 +168,8 @@ def main():
     print("=" * 60)
     print(f"\nAccepted for points_of_interest: {result['accepted_count']} (off-route)")
     print(f"Rejected from points_of_interest: {result['rejected_count']} (on-route/far)")
-    print(f"GPX fallback: {export.get('artifact_path')}")
-    print(f"RWGPS points_of_interest write: NOT AVAILABLE (HTTP 500)")
+    print(f"GPX wpt artifact: {export.get('artifact_path')}")
+    print(f"RWGPS points_of_interest write: NOT AVAILABLE (HTTP 500) — GPX <wpt> is primary")
 
 
 if __name__ == "__main__":
