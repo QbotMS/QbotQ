@@ -341,20 +341,20 @@ class TestCommitPoiGpxWpt(unittest.TestCase):
         self.assertIn("debug-only", payload.get("notes", ""),
                       "notes must clarify selected_poi.gpx is debug-only")
 
-    def test_rwgps_import_status_poi_not_native(self):
-        """After RWGPS import, if native POI count is 0, status must not claim success."""
+    def test_rwgps_import_status_poi_native(self):
+        """After RWGPS import with course_points via PUT, POI must be native."""
         import json as _json
         result_path = Path("/opt/qbot/artifacts/route_logistics/55395119/rwgps_import_result.json")
         if not result_path.exists():
             self.skipTest("RWGPS import result not found — skipping")
         result = _json.loads(result_path.read_text())
-        self.assertEqual(result.get("status"), "ROUTE_IMPORTED_BUT_POI_NOT_NATIVE_IN_RWGPS",
-                         "Full POI workflow must fail when POI not native in RWGPS")
-        self.assertIs(result.get("poi_native_in_rwgps"), False)
+        self.assertEqual(result.get("status"), "RWGPS_ROUTE_WITH_POI_IMPORTED",
+                         "Full POI workflow must succeed when POI are native in RWGPS")
+        self.assertIs(result.get("poi_native_in_rwgps"), True)
         self.assertGreater(result.get("distance_km", 0), 0,
                           "Route distance must be > 0 for successful geometry import")
-        self.assertEqual(result.get("poi_native_count", -1), 0,
-                         "POI native count must be 0 when RWGPS API does not support injection")
+        self.assertGreaterEqual(result.get("course_points_count", 0), 2,
+                                "Must have at least 2 course points for POI workflow")
 
     def test_gpx_wpt_not_preserved_in_rwgps_export(self):
         """RWGPS GPX export must NOT contain <wpt> — API does not support waypoints."""
