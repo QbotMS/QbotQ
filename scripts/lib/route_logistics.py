@@ -672,8 +672,13 @@ def write_selected_poi_gpx(selected: list[POICandidate], route_id: str) -> Path:
 def write_route_with_selected_poi_gpx(selected: list[POICandidate], route_id: str) -> Path:
     """Create enriched GPX: original track + selected POI <wpt>.
     
-    Reads the original route GPX from exports, injects selected POI as waypoints
-    without altering track structure or namespace. This is the file to import to RWGPS.
+    Follows the G3 gravel pipeline format proven to work with RWGPS web UI import:
+    - default GPX namespace
+    - <wpt> before <trk>
+    - <type>Alert</type> (maps to points_of_interest type_id=17 Information)
+    - human-readable <name>
+    - no <sym> element
+    This file is ready for upload via RWGPS web UI Import → Upload File.
     """
     import xml.etree.ElementTree as _ET
     _ET.register_namespace("", "http://www.topografix.com/GPX/1/1")
@@ -689,20 +694,19 @@ def write_route_with_selected_poi_gpx(selected: list[POICandidate], route_id: st
     root = tree.getroot()
     NS = "http://www.topografix.com/GPX/1/1"
 
-    # Inject <wpt> elements for each selected POI — insert before <trk> if possible
     trk_elements = root.findall(f"{{{NS}}}trk")
     insert_before = trk_elements[0] if trk_elements else None
 
     for c in selected:
+        label = c.category.upper()[:12]
+        dist_s = f" {c.distance_from_track_m:.0f}m" if c.distance_from_track_m is not None else ""
         wpt = _ET.Element(f"{{{NS}}}wpt", {"lat": str(c.lat), "lon": str(c.lon)})
         name_el = _ET.SubElement(wpt, f"{{{NS}}}name")
-        name_el.text = c.candidate_id
+        name_el.text = f"{label}{dist_s}"
         desc_el = _ET.SubElement(wpt, f"{{{NS}}}desc")
-        desc_el.text = f"{c.name} ({c.category}/{c.subtype}) | dist:{c.distance_from_track_m}m | km:{c.km_on_route} | src:{c.source}"
+        desc_el.text = f"{c.name} — {c.category}/{c.subtype}. km {c.km_on_route:.1f}, {c.distance_from_track_m:.0f}m od trasy. Źródło: {c.source}."
         type_el = _ET.SubElement(wpt, f"{{{NS}}}type")
-        type_el.text = c.category
-        sym_el = _ET.SubElement(wpt, f"{{{NS}}}sym")
-        sym_el.text = _rwgps_sym(c.category)
+        type_el.text = "Alert"
 
         if insert_before is not None:
             root.insert(list(root).index(insert_before), wpt)
