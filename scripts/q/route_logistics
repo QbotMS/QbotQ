@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # QBot Route Logistics CLI wrapper
 set -e
-DIR="$(cd "$(dirname "$0")/.." && pwd)"
+DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 CMD="${1:-help}"
 shift 2>/dev/null || true
 

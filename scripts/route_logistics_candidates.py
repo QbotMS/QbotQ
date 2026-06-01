@@ -24,12 +24,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from lib.route_logistics import (
     ARTIFACTS_ROOT, LOGISTICS_DIR, CATEGORY_ORDER, DEFAULT_BUFFERS,
-    load_gpx_track, resolve_route_gpx,
+    OVERPASS_URLS, load_gpx_track, resolve_route_gpx,
     _overpass_segmented, osm_elements_to_candidates,
     write_candidates_json, write_candidates_geojson, write_candidates_md,
     write_candidates_xlsx, write_debug_json,
-    parse_lodging_requirements,
-    POICandidate,
+    parse_lodging_requirements, POICandidate,
 )
 
 
@@ -78,6 +77,7 @@ def main():
 
     # ── Lodging requirements ──
     lodging_requirements = None
+    lodging_skipped = False
     if "lodging" in categories:
         if require_raw:
             try:
@@ -88,36 +88,34 @@ def main():
             lodging_requirements = parse_lodging_requirements(req_data)
             if lodging_requirements.get("status") == "NEEDS_REQUIREMENTS":
                 missing = lodging_requirements.get("missing", [])
-                print(f"\u274c Lodging: NEEDS_REQUIREMENTS — brakuje: {', '.join(missing)}")
+                print(f"\u26a0\ufe0f  Lodging: NEEDS_REQUIREMENTS — brakuje: {', '.join(missing)}")
                 print(f"  Wymagane pola: {', '.join(lodging_requirements['missing'])}")
-                result = {
-                    "ok": False,
-                    "status": "NEEDS_REQUIREMENTS",
-                    "route_id": route_id,
-                    "missing_fields": lodging_requirements["missing"],
-                    "required_fields": ["people", "budget", "radius_from_stage_end_m"],
-                    "notes": "Lodging wymaga indywidualnych wymaga\u0144 u\u017cytkownika.",
-                }
-                out_dir = LOGISTICS_DIR / str(route_id)
-                out_dir.mkdir(parents=True, exist_ok=True)
-                (out_dir / "candidates.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-                print(f"\n  Wynik: {json.dumps(result, ensure_ascii=False, indent=2)}")
-                sys.exit(0)
+                if mode == "lodging":
+                    result = {
+                        "ok": False,
+                        "status": "NEEDS_REQUIREMENTS",
+                        "route_id": route_id,
+                        "missing_fields": lodging_requirements["missing"],
+                        "required_fields": ["people", "budget", "radius_from_stage_end_m"],
+                        "notes": "Lodging wymaga indywidualnych wymaga\u0144 u\u017cytkownika.",
+                    }
+                    out_dir = LOGISTICS_DIR / str(route_id)
+                    out_dir.mkdir(parents=True, exist_ok=True)
+                    (out_dir / "candidates.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+                    print(f"\n  Wynik: {json.dumps(result, ensure_ascii=False, indent=2)}")
+                    sys.exit(0)
+                else:
+                    lodging_skipped = True
+                    categories = [c for c in categories if c != "lodging"]
+                    print(f"  \u2192 Lodging pomini\u0119ty (brak --require). Kontynuuj\u0119 pozosta\u0142e kategorie.")
         else:
-            print(f"\u26a0\ufe0f  Lodging: brak --require. Uruchom z --require '{{\"people\":2,\"budget\":150}}'")
-            result = {
-                "ok": False,
-                "status": "NEEDS_REQUIREMENTS",
-                "route_id": route_id,
-                "missing_fields": ["people", "budget", "radius_from_stage_end_m"],
-                "required_fields": ["people", "budget", "radius_from_stage_end_m", "room_type", "beds", "bike_storage"],
-                "notes": "Lodging wymaga indywidualnych wymaga\u0144 u\u017cytkownika.",
-            }
-            out_dir = LOGISTICS_DIR / str(route_id)
-            out_dir.mkdir(parents=True, exist_ok=True)
-            (out_dir / "candidates.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-            print(f"\n  Wynik: {json.dumps(result, ensure_ascii=False, indent=2)}")
-            sys.exit(0)
+            if mode == "lodging":
+                print(f"\u274c Lodging: wymaga --require. Uruchom z --require '{{\"people\":2,\"budget\":150,\"radius_from_stage_end_m\":5000}}'")
+                sys.exit(1)
+            else:
+                lodging_skipped = True
+                categories = [c for c in categories if c != "lodging"]
+                print(f"\u26a0\ufe0f  Lodging: brak --require. Pomijam lodging, kontynuuj\u0119 pozosta\u0142e kategorie.")
 
     # ── Overpass queries ──
     all_candidates: list[POICandidate] = []
@@ -131,7 +129,12 @@ def main():
         "stage": stage,
         "categories": {},
         "timing": {},
+        "overpass_endpoints_tried": OVERPASS_URLS,
     }
+
+    if lodging_skipped:
+        debug_info["lodging"] = "skipped_requires_input"
+        warnings.append("Lodging skipped: requires --require with people, budget, radius_from_stage_end_m")
 
     for cat in categories:
         buffer_m = args.buffer or DEFAULT_BUFFERS.get(cat, 1000)
@@ -141,7 +144,7 @@ def main():
         print(f"  \U0001f50d Querying {cat} (buffer={buffer_m}m)...")
 
         t0 = time.time()
-        elements = _overpass_segmented(cat, track, buffer_m)
+        elements, api_debug = _overpass_segmented(cat, track, buffer_m)
         elapsed = time.time() - t0
 
         candidates = osm_elements_to_candidates(elements, cat, track)
@@ -155,17 +158,22 @@ def main():
 
         all_candidates.extend(candidates)
 
-        debug_info["categories"][cat] = {
+        cat_debug = {
             "buffer_m": buffer_m,
             "raw_elements": len(elements),
             "candidates": len(candidates),
             "elapsed_s": round(elapsed, 2),
         }
+        cat_debug.update(api_debug)
+        debug_info["categories"][cat] = cat_debug
         print(f"    -> {len(candidates)} candidates ({elapsed:.1f}s)")
+        if api_debug.get("status") == "all_failed":
+            err = api_debug.get("error", "unknown")
+            errors.append(f"{cat}: Overpass API unavailable ({err})")
 
     print(f"\n  Total candidates: {len(all_candidates)}")
 
-    # ── Write artifacts ──
+    # ── Write artifacts (always, even if 0 candidates) ──
     print(f"\n  Writing artifacts...")
     write_candidates_json(all_candidates, route_id, mode, stage, warnings, errors)
     write_candidates_geojson(all_candidates, route_id)

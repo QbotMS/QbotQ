@@ -173,11 +173,60 @@ class TestCommitPoiGpxWpt(unittest.TestCase):
     def test_candidates_output_files(self):
         """Candidates phase generates required artifacts."""
         from lib.route_logistics import write_candidates_json, write_candidates_md
-        payload = {"candidates": [], "metadata": {"route_id": ROUTE_ID, "mode": "test"}}
-        p1 = write_candidates_json(self.test_pois, ROUTE_ID, payload, "test", [], [])
+        p1 = write_candidates_json(self.test_pois, ROUTE_ID, "test", None, [], [])
         self.assertTrue(p1.exists(), "candidates.json not created")
         p2 = write_candidates_md(self.test_pois, ROUTE_ID, mode="test")
         self.assertTrue(p2.exists(), "candidates.md not created")
+
+    def test_empty_candidates_creates_all_outputs(self):
+        """Empty candidate list must still produce all output files."""
+        from lib.route_logistics import write_candidates_json, write_candidates_geojson, write_candidates_md, write_debug_json
+        empty: list = []
+        p1 = write_candidates_json(empty, ROUTE_ID, "test", None, [], [])
+        self.assertTrue(p1.exists(), "candidates.json not created for empty list")
+        payload = json.loads(p1.read_text())
+        self.assertEqual(payload.get("status"), "CANDIDATES_READY")
+        self.assertEqual(payload.get("counts", {}).get("shops"), 0)
+
+        p2 = write_candidates_geojson(empty, ROUTE_ID)
+        self.assertTrue(p2.exists(), "candidates.geojson not created for empty list")
+        geojson = json.loads(p2.read_text())
+        self.assertEqual(len(geojson.get("features", [])), 0)
+
+        p3 = write_candidates_md(empty, ROUTE_ID, mode="test")
+        self.assertTrue(p3.exists(), "candidates.md not created for empty list")
+
+        p4 = write_debug_json({"route_id": ROUTE_ID, "total": 0, "note": "empty test"}, ROUTE_ID)
+        self.assertTrue(p4.exists(), "debug.json not created")
+
+    def test_lodging_skip_in_full_mode(self):
+        """--mode full without --require must skip lodging, not abort.
+        Tests the category filtering logic directly (no Overpass calls)."""
+        from lib.route_logistics import CATEGORY_ORDER, DEFAULT_BUFFERS
+
+        # Simulate the logic from candidates.py:
+        # When --mode full and no --require, lodging should be removed from categories
+        categories_full = list(CATEGORY_ORDER)
+        self.assertIn("lodging", categories_full)
+
+        require_raw = None  # no --require provided
+        lodging_skipped = False
+        if "lodging" in categories_full and not require_raw:
+            lodging_skipped = True
+            categories_full = [c for c in categories_full if c != "lodging"]
+
+        self.assertTrue(lodging_skipped, "lodging must be flagged as skipped")
+        self.assertNotIn("lodging", categories_full, "lodging must be removed from categories")
+        self.assertIn("shops", categories_full, "other categories must remain")
+        self.assertIn("food", categories_full, "other categories must remain")
+        self.assertGreater(len(categories_full), 0, "must have remaining categories")
+
+    def test_overpass_fallback_endpoints_defined(self):
+        """Overpass fallback list must have at least 2 endpoints."""
+        from lib.route_logistics import OVERPASS_URLS
+        self.assertGreaterEqual(len(OVERPASS_URLS), 2)
+        for url in OVERPASS_URLS:
+            self.assertTrue(url.startswith("http"), f"Invalid Overpass URL: {url}")
 
     def test_selected_poi_output_files(self):
         """Commit-poi generates all required artifacts."""

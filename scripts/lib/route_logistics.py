@@ -189,7 +189,12 @@ def detour_from_track(lat: float, lon: float, track: list[dict]) -> float:
 # Overpass queries
 # ---------------------------------------------------------------------------
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://lz4.overpass-api.de/api/interpreter",
+    "https://z.overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+]
 
 OVERPASS_QUERIES: dict[str, str] = {
     "shops": """
@@ -283,20 +288,36 @@ out center tags {nwr};
 }
 
 
-def _overpass_category(category: str, lat: float, lon: float, buffer_m: int) -> list[dict]:
-    """Query Overpass for a category. Returns raw osm elements."""
+def _overpass_category(category: str, lat: float, lon: float, buffer_m: int) -> tuple[list[dict], dict]:
+    """Query Overpass for a category. Returns (elements, debug_info)."""
     import httpx
     query = OVERPASS_QUERIES.get(category)
     if not query:
-        return []
-    q = query.format(lat=lat, lon=lon, buffer=buffer_m)
-    try:
-        resp = httpx.post(OVERPASS_URL, data={"data": q}, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("elements", [])
-    except Exception:
-        return []
+        return [], {"endpoint": None, "status": "no_query", "error": f"no query for category {category}"}
+    q = query.replace("{nwr}", "center").format(lat=lat, lon=lon, buffer=buffer_m)
+
+    last_error = None
+    for url in OVERPASS_URLS:
+        try:
+            resp = httpx.post(url, data={"data": q}, timeout=25)
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("elements", []), {
+                "endpoint": url,
+                "status": "ok",
+                "http_status": resp.status_code,
+            }
+        except httpx.ConnectError as exc:
+            last_error = f"ConnectError: {exc}"
+            continue
+        except httpx.TimeoutException as exc:
+            last_error = f"Timeout: {exc}"
+            continue
+        except Exception as exc:
+            last_error = f"{exc.__class__.__name__}: {exc}"
+            continue
+
+    return [], {"endpoint": None, "status": "all_failed", "error": last_error}
 
 
 def _overpass_segmented(
@@ -304,12 +325,12 @@ def _overpass_segmented(
     track: list[dict],
     buffer_m: int,
     segment_interval_km: float = 10.0,
-) -> list[dict]:
-    """Query Overpass for a category along a track, segmenting every N km."""
+) -> tuple[list[dict], dict]:
+    """Query Overpass for a category along a track, segmenting every N km.
+    Returns (elements, debug_info)."""
     all_elements: list[dict] = []
     seen_ids: set[str] = set()
 
-    # Sample track every ~segment_interval_km
     sample_dist = segment_interval_km * 1000
     cumulative = 0.0
     sample_points = [track[0]]
@@ -321,8 +342,16 @@ def _overpass_segmented(
     if sample_points[-1] != track[-1]:
         sample_points.append(track[-1])
 
+    endpoint_used = None
+    api_status = "ok"
+    api_error = None
     for pt in sample_points:
-        elements = _overpass_category(category, pt["lat"], pt["lon"], buffer_m)
+        elements, dbg = _overpass_category(category, pt["lat"], pt["lon"], buffer_m)
+        if not endpoint_used:
+            endpoint_used = dbg.get("endpoint")
+        if dbg.get("status") == "all_failed":
+            api_status = "all_failed"
+            api_error = dbg.get("error")
         for el in elements:
             el_id = f"{el.get('type', 'node')}_{el.get('id', '')}"
             if el_id not in seen_ids:
@@ -330,7 +359,12 @@ def _overpass_segmented(
                 all_elements.append(el)
         time.sleep(0.5)  # rate limit
 
-    return all_elements
+    return all_elements, {
+        "endpoint": endpoint_used,
+        "status": api_status,
+        "error": api_error,
+        "sample_points": len(sample_points),
+    }
 
 
 # ---------------------------------------------------------------------------
