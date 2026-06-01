@@ -2348,6 +2348,304 @@ def create_route_from_gpx(
     }
 
 
+def _parse_cookie_header(cookie_header: str | None) -> dict[str, str]:
+    cookies: dict[str, str] = {}
+    if not cookie_header:
+        return cookies
+    for chunk in cookie_header.split(";"):
+        part = chunk.strip()
+        if not part or "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key and value:
+            cookies[key] = value
+    return cookies
+
+
+def _web_upload_session_cookie_source() -> tuple[str, dict[str, str]] | None:
+    """Return the explicit browser session cookie source for RWGPS web upload."""
+    raw = env("RWGPS_BROWSER_SESSION_COOKIE", "").strip()
+    if not raw:
+        return None
+    parsed = _parse_cookie_header(raw)
+    if not parsed:
+        return None
+    return ("RWGPS_BROWSER_SESSION_COOKIE", parsed)
+
+
+def _web_upload_preview_payload(
+    *,
+    path: Path,
+    name: str | None,
+    description: str | None,
+    privacy: str | None,
+    auth_mode: str,
+    session_cookie_source: str | None = None,
+    session_cookie_names: list[str] | None = None,
+) -> dict[str, Any]:
+    preview: dict[str, Any] = {
+        "ok": False,
+        "status": "RWGPS_WEB_UPLOAD_REQUIRES_SESSION_COOKIE",
+        "endpoint": f"{RWGPS_API_BASE}/trips?import_type=route",
+        "method": "POST",
+        "content_type": "multipart/form-data",
+        "multipart": {
+            "file_field_name": "data_file",
+            "filename": path.name,
+            "file_content_type": "application/octet-stream",
+        },
+        "auth_mode": auth_mode,
+        "auth_headers": {
+            "accept": "application/json",
+            "origin": "https://ridewithgps.com",
+            "referer": "https://ridewithgps.com/upload",
+            "x-requested-with": "XMLHttpRequest",
+        },
+        "route_metadata": {
+            "name": name,
+            "description": description,
+            "privacy": privacy,
+        },
+        "required_auth_env": "RWGPS_BROWSER_SESSION_COOKIE",
+        "missing_auth_requirement": "RWGPS_BROWSER_SESSION_COOKIE environment variable required for RWGPS web upload",
+    }
+    if session_cookie_source:
+        preview["session_cookie_source"] = session_cookie_source
+    if session_cookie_names is not None:
+        preview["session_cookie_names"] = session_cookie_names
+    return preview
+
+
+def _sanitize_response_text(text: str, limit: int = 2000) -> str:
+    snippet = text[:limit]
+    replacements = (
+        ("_rwgps_3_session", "_REDACTED_SESSION_COOKIE_"),
+        ("csrf_token", "csrf_token[redacted]"),
+        ("auth_token", "auth_token[redacted]"),
+        ("api_key", "api_key[redacted]"),
+    )
+    for needle, replacement in replacements:
+        snippet = snippet.replace(needle, replacement)
+    return snippet
+
+
+def _extract_async_task_fields(payload: Any) -> dict[str, Any]:
+    fields: dict[str, Any] = {}
+    if not isinstance(payload, dict):
+        return fields
+
+    direct_keys = (
+        "id",
+        "task_id",
+        "trip_id",
+        "route_id",
+        "url",
+        "redirect",
+        "location",
+        "status",
+        "state",
+        "error",
+        "message",
+        "success",
+    )
+    for key in direct_keys:
+        value = payload.get(key)
+        if value is not None:
+            fields[key] = value
+
+    for nested_key in ("task", "trip", "route", "errors", "error", "result"):
+        nested_value = payload.get(nested_key)
+        if isinstance(nested_value, dict):
+            for key in ("id", "task_id", "trip_id", "route_id", "url", "redirect", "location", "status", "state", "error", "message"):
+                value = nested_value.get(key)
+                if value is not None and key not in fields:
+                    fields[key] = value
+        elif isinstance(nested_value, list) and nested_value and nested_key not in fields:
+            fields[nested_key] = nested_value[:10]
+    return fields
+
+
+def _build_web_upload_response_preview(
+    *,
+    url: str,
+    response: httpx.Response,
+    file_name: str,
+    auth_mode: str,
+    session_source_name: str | None,
+    session_cookie_names: list[str] | None,
+    name: str | None,
+    description: str | None,
+    privacy: str | None,
+) -> dict[str, Any]:
+    response_headers = dict(response.headers)
+    location = response_headers.get("location")
+    response_json: Any = None
+    try:
+        response_json = response.json()
+    except ValueError:
+        response_json = None
+
+    payload_preview: dict[str, Any] = {
+        "ok": response.status_code < 400,
+        "status": "RWGPS_WEB_UPLOAD_REQUEST_SENT",
+        "endpoint": url,
+        "method": "POST",
+        "content_type": "multipart/form-data",
+        "multipart": {
+            "file_field_name": "data_file",
+            "filename": file_name,
+            "file_content_type": "application/octet-stream",
+        },
+        "auth_mode": auth_mode,
+        "auth_headers": {
+            "accept": "application/json",
+            "origin": "https://ridewithgps.com",
+            "referer": "https://ridewithgps.com/upload",
+            "x-requested-with": "XMLHttpRequest",
+        },
+        "session_cookie_source": session_source_name,
+        "session_cookie_names": session_cookie_names,
+        "route_metadata": {
+            "name": name,
+            "description": description,
+            "privacy": privacy,
+        },
+        "response_status": response.status_code,
+        "response_content_type": response_headers.get("content-type"),
+        "response_location": location,
+        "response_headers": {
+            "content_type": response_headers.get("content-type"),
+            "location": location,
+            "redirect": response_headers.get("location"),
+        },
+        "response_body_preview": _sanitize_response_text(response.text, 2000),
+        "response_json_keys": sorted(response_json.keys()) if isinstance(response_json, dict) else [],
+    }
+    if isinstance(response_json, dict):
+        payload_preview["response_fields"] = _extract_async_task_fields(response_json)
+    task_id = None
+    if isinstance(response_json, dict):
+        task_value = response_json.get("task_id") or response_json.get("id")
+        if task_value is not None:
+            task_id = str(task_value)
+    if task_id:
+        payload_preview["task_id"] = task_id
+        payload_preview["status"] = "RWGPS_WEB_UPLOAD_ACCEPTED_TASK_CREATED"
+    return payload_preview
+
+
+def import_route_via_trips_upload_gpx(
+    path: str | Path,
+    name: str | None = None,
+    description: str | None = None,
+    privacy: str | None = None,
+) -> dict[str, Any]:
+    """Experimental RWGPS web upload via /trips?import_type=route.
+
+    This uses the browser upload endpoint captured from the RWGPS web UI:
+    multipart file field name: data_file.
+
+    The function is intentionally conservative:
+    - it will use a browser-session cookie only if the runtime exposes one
+    - it will not guess POI architecture or mutate the legacy GPX uploader
+    - if no session cookie is available, it returns a sanitized dry-run payload
+      with RWGPS_WEB_UPLOAD_REQUIRES_SESSION_COOKIE
+    """
+    file_path = Path(path)
+    if not file_path.exists():
+        raise RWGPSError("NOT_FOUND", f"GPX file not found: {file_path}")
+    if file_path.stat().st_size == 0:
+        raise RWGPSError("EMPTY_FILE", f"GPX file is empty: {file_path}")
+
+    session_source = _web_upload_session_cookie_source()
+    if not session_source:
+        return _web_upload_preview_payload(
+            path=file_path,
+            name=name,
+            description=description,
+            privacy=privacy,
+            auth_mode="headers_only",
+        )
+
+    session_source_name, session_cookies = session_source
+    session_cookie_names = sorted(session_cookies.keys())
+    headers = _remote_headers()
+    headers.update({
+        "Accept": "application/json",
+        "Origin": "https://ridewithgps.com",
+        "Referer": "https://ridewithgps.com/upload",
+        "X-Requested-With": "XMLHttpRequest",
+    })
+    url = f"{RWGPS_API_BASE}/trips?import_type=route"
+    file_content = file_path.read_bytes()
+    files = {
+        "data_file": (file_path.name, file_content, "application/octet-stream"),
+    }
+
+    try:
+        with httpx.Client(timeout=RWGPS_TIMEOUT_SEC * 2, follow_redirects=False, cookies=session_cookies) as client:
+            response = client.post(url, headers=headers, files=files)
+    except httpx.TimeoutException as exc:
+        raise RWGPSError("timeout", "RWGPS web upload timed out", url=url) from exc
+    except httpx.RequestError as exc:
+        raise RWGPSError("network_error", f"RWGPS web upload network error: {exc.__class__.__name__}", url=url) from exc
+
+    response_headers = dict(response.headers)
+    location = response_headers.get("location")
+
+    if response.status_code in (401, 403) or (300 <= response.status_code < 400 and location and "login" in location.lower()):
+        preview = _web_upload_preview_payload(
+            path=file_path,
+            name=name,
+            description=description,
+            privacy=privacy,
+            auth_mode="browser_session_cookie",
+            session_cookie_source=session_source_name,
+            session_cookie_names=session_cookie_names,
+        )
+        preview.update({
+            "ok": False,
+            "status": "RWGPS_WEB_UPLOAD_REQUIRES_SESSION_COOKIE",
+            "response_status": response.status_code,
+            "response_location": location,
+        })
+        return preview
+
+    if response.status_code in (301, 302, 303, 307, 308) and location:
+        preview = _web_upload_preview_payload(
+            path=file_path,
+            name=name,
+            description=description,
+            privacy=privacy,
+            auth_mode="browser_session_cookie",
+            session_cookie_source=session_source_name,
+            session_cookie_names=session_cookie_names,
+        )
+        preview.update({
+            "ok": True,
+            "status": "RWGPS_WEB_UPLOAD_REDIRECTED",
+            "response_status": response.status_code,
+            "response_location": location,
+        })
+        return preview
+
+    response_preview = _build_web_upload_response_preview(
+        url=url,
+        response=response,
+        file_name=file_path.name,
+        auth_mode="browser_session_cookie",
+        session_source_name=session_source_name,
+        session_cookie_names=session_cookie_names,
+        name=name,
+        description=description,
+        privacy=privacy,
+    )
+
+    return response_preview
+
+
 def _fetch_track_points(route_id: str) -> list[dict]:
     """Fetch track_points from an RWGPS route via GET with track_points=1."""
     url = f"{RWGPS_API_BASE}/api/v1/routes/{route_id}.json?track_points=1"
