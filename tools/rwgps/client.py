@@ -2279,7 +2279,8 @@ def create_route_from_gpx(
 ) -> dict[str, Any]:
     """Create a new RWGPS route from a local GPX file.
 
-    POST to /api/v1/routes.json with the GPX file as multipart upload.
+    POST to /routes.json with the GPX file as multipart upload.
+    Uses /routes.json (NOT /api/v1/routes.json — that endpoint returns 404 for POST).
     Returns the new route id, html_url, and api_url on success.
     """
     path = Path(gpx_path)
@@ -2291,7 +2292,8 @@ def create_route_from_gpx(
     if _missing_required_env():
         raise RWGPSError("not_configured", "RWGPS integration not configured")
 
-    url = f"{RWGPS_API_BASE}{_routes_path()}"
+    _create_path = env("RWGPS_CREATE_ROUTE_PATH", "/routes.json")
+    url = f"{RWGPS_API_BASE}{_create_path}"
     headers = _remote_headers()
     # Do not set Content-Type — httpx will set multipart boundary automatically
 
