@@ -1,0 +1,2 @@
+"""QBot artifact store package."""
+

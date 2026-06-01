@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# QBot Route Logistics CLI wrapper
+set -e
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CMD="${1:-help}"
+shift 2>/dev/null || true
+
+case "$CMD" in
+    candidates)
+        "$DIR/.venv/bin/python" "$DIR/scripts/route_logistics_candidates.py" "$@"
+        ;;
+    commit-poi)
+        "$DIR/.venv/bin/python" "$DIR/scripts/route_logistics_commit_poi.py" "$@"
+        ;;
+    commit-poi)
+        "$DIR/.venv/bin/python" "$DIR/scripts/route_logistics_commit_poi.py" "$@"
+        ;;
+    commit-poi)
+        "$DIR/.venv/bin/python" "$DIR/scripts/route_logistics_commit_poi.py" "$@"
+        ;;
+    help|--help|-h)
+        echo "QBot Route Logistics"
+        echo ""
+        echo "  candidates --route-id <ID> [--mode full|attractions|food|lodging] [--require '{}']"
+        echo "  commit-poi --route-id <ID> --select <ids>"
+        echo ""
+        echo "Examples:"
+        echo "  q/route_logistics candidates --route-id 55395119 --mode full"
+        echo "  q/route_logistics commit-poi --route-id 55395119 --select food_001 water_003"
+        ;;
+    *)
+        echo "Unknown command: $CMD"
+        echo "Usage: q/route_logistics candidates|commit-poi [options]"
+        exit 1
+        ;;
+esac
