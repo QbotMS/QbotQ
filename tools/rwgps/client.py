@@ -2930,11 +2930,11 @@ RWGPS_CP_FALLBACK_TYPE = "Waypoint"
 COURSE_POINTS_DEFAULT_MAX_DISTANCE_M = 100
 
 
-def _format_qbot_poi_as_course_point(poi: dict[str, Any]) -> dict[str, Any]:
+def _format_qbot_poi_as_course_point(poi: dict[str, Any], index: int = 0) -> dict[str, Any]:
     """Convert a QBot-format POI dict to an RWGPS course_point dict.
 
-    Input fields used: lat, lng/lon, name, category (or type).
-    Output: {x, y, n, t}
+    Input fields used: lat, lng/lon, name, category (or type), km_on_route.
+    Output: {x, y, n, t, d, i} — d=distance_m, i=index (both required by RWGPS).
     """
     lat = float(poi.get("lat", 0))
     lng = float(poi.get("lng", 0) or poi.get("lon", 0))
@@ -2948,11 +2948,17 @@ def _format_qbot_poi_as_course_point(poi: dict[str, Any]) -> dict[str, Any]:
                 cp_type = cp_t
                 break
 
+    # Compute distance in meters from km_on_route
+    km = poi.get("km_on_route")
+    d_m = round(float(km) * 1000, 1) if km is not None else 0.0
+
     return {
         "x": round(lng, 6),
         "y": round(lat, 6),
         "n": name[:60],
         "t": cp_type,
+        "d": d_m,
+        "i": index,
     }
 
 
@@ -3031,7 +3037,7 @@ def prepare_rwgps_course_points_update(
             warnings.append(f"Rejected '{poi.get('name', '?')}': {dist_f:.0f}m > {max_distance_to_track_m}m")
             continue
 
-        cp = _format_qbot_poi_as_course_point(poi)
+        cp = _format_qbot_poi_as_course_point(poi, index=len(accepted))
         norm = _course_point_normalize_name(cp["n"])
         loc = _course_point_loc_key(cp["x"], cp["y"])
 
