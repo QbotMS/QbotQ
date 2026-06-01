@@ -672,9 +672,12 @@ def write_selected_poi_gpx(selected: list[POICandidate], route_id: str) -> Path:
 def write_route_with_selected_poi_gpx(selected: list[POICandidate], route_id: str) -> Path:
     """Create enriched GPX: original track + selected POI <wpt>.
     
-    Reads the original route GPX from exports, copies all track data,
-    and injects selected POI as waypoints. This is the file to import to RWGPS.
+    Reads the original route GPX from exports, injects selected POI as waypoints
+    without altering track structure or namespace. This is the file to import to RWGPS.
     """
+    import xml.etree.ElementTree as _ET
+    _ET.register_namespace("", "http://www.topografix.com/GPX/1/1")
+
     out_dir = ensure_dir(route_id)
     path = out_dir / "route_with_selected_poi.gpx"
 
@@ -682,34 +685,32 @@ def write_route_with_selected_poi_gpx(selected: list[POICandidate], route_id: st
     if not gpx_path:
         raise FileNotFoundError(f"Cannot resolve GPX for route {route_id}")
 
-    tree = ET.parse(str(gpx_path))
+    tree = _ET.parse(str(gpx_path))
     root = tree.getroot()
+    NS = "http://www.topografix.com/GPX/1/1"
 
-    _clean_ns(root)
+    # Inject <wpt> elements for each selected POI — insert before <trk> if possible
+    trk_elements = root.findall(f"{{{NS}}}trk")
+    insert_before = trk_elements[0] if trk_elements else None
 
-    # Inject <wpt> elements for each selected POI
     for c in selected:
-        wpt = ET.SubElement(root, "{http://www.topografix.com/GPX/1/1}wpt",
-                            {"lat": str(c.lat), "lon": str(c.lon)})
-        name_el = ET.SubElement(wpt, "{http://www.topografix.com/GPX/1/1}name")
+        wpt = _ET.Element(f"{{{NS}}}wpt", {"lat": str(c.lat), "lon": str(c.lon)})
+        name_el = _ET.SubElement(wpt, f"{{{NS}}}name")
         name_el.text = c.candidate_id
-        desc_el = ET.SubElement(wpt, "{http://www.topografix.com/GPX/1/1}desc")
+        desc_el = _ET.SubElement(wpt, f"{{{NS}}}desc")
         desc_el.text = f"{c.name} ({c.category}/{c.subtype}) | dist:{c.distance_from_track_m}m | km:{c.km_on_route} | src:{c.source}"
-        type_el = ET.SubElement(wpt, "{http://www.topografix.com/GPX/1/1}type")
+        type_el = _ET.SubElement(wpt, f"{{{NS}}}type")
         type_el.text = c.category
-        sym_el = ET.SubElement(wpt, "{http://www.topografix.com/GPX/1/1}sym")
+        sym_el = _ET.SubElement(wpt, f"{{{NS}}}sym")
         sym_el.text = _rwgps_sym(c.category)
 
-    tree.write(str(path), encoding="utf-8", xml_declaration=True)
+        if insert_before is not None:
+            root.insert(list(root).index(insert_before), wpt)
+        else:
+            root.append(wpt)
+
+    tree.write(str(path), encoding="UTF-8", xml_declaration=True)
     return path
-
-
-def _clean_ns(root: ET.Element) -> None:
-    """Ensure the root GPX element has the standard namespace."""
-    NS = "http://www.topografix.com/GPX/1/1"
-    if root.tag != f"{{{NS}}}gpx":
-        root.tag = f"{{{NS}}}gpx"
-    root.set("xmlns", NS)
 
 
 def _rwgps_sym(category: str) -> str:
