@@ -37,6 +37,7 @@ _ACTION_ALLOWLIST = frozenset({
     "rwgps_route_import_gpx",
     "rwgps_route_export_gpx",
     "rwgps_route_surface_analyze",
+    "route_poi_analyze",
     "qbot_artifact_put",
     "qbot_artifact_get",
 })
@@ -109,6 +110,47 @@ def validate(action_type: str, payload: dict[str, Any], idem_key: str, dry_run: 
         size_provided = payload.get("size_bytes")
         if size_provided is not None and int(size_provided) != len(raw):
             return {"status": "BLOCKED", "error": f"size_bytes mismatch: got {len(raw)}, expected {int(size_provided)}"}
+
+    if action_type == "route_poi_analyze":
+        merge_artifacts = payload.get("merge_artifact_ids")
+        has_source = any(str(payload.get(field, "")).strip() for field in ("route_id", "artifact_id", "path"))
+        if not has_source and not merge_artifacts:
+            return {"status": "BLOCKED", "error": "route_id, artifact_id, path or merge_artifact_ids required"}
+        if not merge_artifacts:
+            required = ("km_from", "km_to")
+            missing = [field for field in required if payload.get(field) in (None, "")]
+            if missing:
+                return {"status": "BLOCKED", "error": f"route_poi_analyze payload missing required fields: {', '.join(missing)}"}
+            try:
+                km_from = float(payload.get("km_from"))
+                km_to = float(payload.get("km_to"))
+            except (TypeError, ValueError):
+                return {"status": "BLOCKED", "error": "km_from and km_to must be numeric"}
+            if km_to < km_from:
+                return {"status": "BLOCKED", "error": "km_to must be >= km_from"}
+        buffers = payload.get("buffers") or {}
+        if buffers and not isinstance(buffers, dict):
+            return {"status": "BLOCKED", "error": "buffers must be an object if provided"}
+        for key in ("attractions_m", "hard_resupply_m", "soft_food_m", "water_m", "food_m", "chunk_km", "chunk_overlap_km", "min_chunk_km", "analysis_timeout_sec", "overpass_timeout_sec", "overpass_retries", "retry_backoff_sec"):
+            value = buffers.get(key) if isinstance(buffers, dict) else None
+            if value in (None, ""):
+                continue
+            try:
+                float(value)
+            except (TypeError, ValueError):
+                return {"status": "BLOCKED", "error": f"buffers.{key} must be numeric"}
+            if float(value) < 0:
+                return {"status": "BLOCKED", "error": f"buffers.{key} must be >= 0"}
+        focus = str(payload.get("focus", "")).strip()
+        if focus and focus.lower() not in {"all", "logistics", "hard_resupply", "food_only"}:
+            return {"status": "BLOCKED", "error": "focus must be one of: all, logistics, hard_resupply, food_only"}
+        timeout_sec = payload.get("timeout_sec")
+        if timeout_sec not in (None, ""):
+            try:
+                if float(timeout_sec) <= 0:
+                    return {"status": "BLOCKED", "error": "timeout_sec must be > 0"}
+            except (TypeError, ValueError):
+                return {"status": "BLOCKED", "error": "timeout_sec must be numeric"}
 
     if dry_run:
         return {"status": "OK", "dry_run": True, "action_type": action_type, "idempotency_key": idem_key,

@@ -112,12 +112,24 @@ def _load_planning_facts_tool() -> dict[str, Any]:
             "facts": list_planning_facts(
                 fact_date=args.get("date"),
                 status=args.get("status"),
+                fact_type=args.get("fact_type"),
+                title=args.get("title"),
             ),
-            "count": len(list_planning_facts(fact_date=args.get("date"), status=args.get("status"))),
+            "count": len(list_planning_facts(
+                fact_date=args.get("date"),
+                status=args.get("status"),
+                fact_type=args.get("fact_type"),
+                title=args.get("title"),
+            )),
         },
         "category": "planning",
-        "description": "List planning facts (notes, decisions) optionally filtered by date or status",
-        "args_schema": {"date": {"type": "string"}, "status": {"type": "string"}},
+        "description": "List planning facts (notes, decisions) optionally filtered by date, status, fact_type or title",
+        "args_schema": {
+            "date": {"type": "string"},
+            "status": {"type": "string"},
+            "fact_type": {"type": "string"},
+            "title": {"type": "string"},
+        },
         "safety": "read",
     }
 
@@ -170,6 +182,32 @@ def _load_nutrition_template_get_tool() -> dict[str, Any]:
         "category": "nutrition",
         "description": "Get one saved meal template by name or id",
         "args_schema": {"name": {"type": "string"}},
+        "safety": "read",
+    }
+
+
+def _load_nutrition_write_resolve_tool() -> dict[str, Any]:
+    from qbot3.nutrition_write_resolver import resolve_nutrition_write
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        query = str(args.get("query", "") or args.get("_question", "")).strip()
+        payload = args.get("payload", {})
+        if not isinstance(payload, dict):
+            payload = {}
+        return resolve_nutrition_write(query, payload)
+
+    return {
+        "callable": _wrapper,
+        "category": "nutrition",
+        "description": (
+            "Resolve ambiguous nutrition writes with meal template / food lookup and arithmetic. "
+            "Use before nutrition_log_add when the query mentions minus/pomniejszone, pół kilo, "
+            "opakowanie, template or szablon. Never guess kcal from raw prompt numbers."
+        ),
+        "args_schema": {
+            "query": {"type": "string", "description": "Original nutrition write text"},
+            "payload": {"type": "object", "description": "Optional base payload to refine"},
+        },
         "safety": "read",
     }
 
@@ -281,6 +319,137 @@ def _load_garage_status_tool() -> dict[str, Any]:
     }
 
 
+def _load_artifacts_list_tool() -> dict[str, Any]:
+    from qbot3.errors import DATA_MISSING, error_result, success_result
+    from qbot3.artifacts.store import list_artifacts, list_projects
+
+    def _normalize_project_id(raw: str | None) -> str | None:
+        if not raw:
+            return None
+        pid = raw.strip().lower().replace(" ", "_").replace("-", "_")
+        # Known alias map
+        ALIASES = {
+            "toskania_2026": "tuscany_2026",
+            "toskania": "tuscany_2026",
+            "toscana": "tuscany_2026",
+        }
+        return ALIASES.get(pid, pid)
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        try:
+            if args.get("list_projects"):
+                projects = list_projects()
+                return success_result({"projects": projects, "count": len(projects)})
+
+            artifacts = list_artifacts(
+                project_id=_normalize_project_id(args.get("project_id")),
+                artifact_type=args.get("artifact_type"),
+                status=str(args.get("status", "active")),
+            )
+            if not artifacts:
+                return error_result(DATA_MISSING, "Brak artefaktów dla podanych filtrów")
+            # Wypłaszcz metadata_json żeby Albert widział rwgps_url wprost
+            for a in artifacts:
+                if isinstance(a.get("metadata_json"), dict):
+                    a["metadata"] = a["metadata_json"]
+                elif isinstance(a.get("metadata_json"), str):
+                    import json as _j
+                    try:
+                        a["metadata"] = _j.loads(a["metadata_json"])
+                    except Exception:
+                        pass
+            return success_result({"artifacts": artifacts, "count": len(artifacts)})
+        except Exception as exc:
+            return error_result("ARTIFACT_ERROR", str(exc)[:300])
+
+    return {
+        "callable": _wrapper,
+        "category": "artifacts",
+        "description": (
+            "Lista projektów lub artefaktów QBot Sandbox. "
+            "Używaj dla pytań o projekty, pliki projektu, trasę, raporty, importy lub bazę garage.db. "
+            "Parametry: list_projects=true albo project_id, artifact_type, status."
+        ),
+        "args_schema": {
+            "project_id": {"type": "string", "description": "ID projektu, np. tuscany_2026"},
+            "artifact_type": {"type": "string", "enum": ["route", "poi", "plan", "report", "export", "database", "import", "document"]},
+            "status": {"type": "string", "description": "active|archived|deleted|tmp"},
+            "list_projects": {"type": "boolean", "description": "Pokaż listę projektów zamiast artefaktów"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+    }
+
+
+def _load_artifact_save_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+    from qbot3.artifacts.store import save_file
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        try:
+            content = args.get("content")
+            if content is None and args.get("content_base64"):
+                import base64
+                content = base64.b64decode(str(args["content_base64"]))
+            if content is None:
+                return error_result("ARTIFACT_ERROR", "content or content_base64 required")
+
+            result = save_file(
+                content=content,
+                filename=str(args.get("filename", "artifact.txt")),
+                artifact_type=str(args.get("artifact_type", "document")),
+                title=str(args.get("title", args.get("filename", "artifact.txt"))),
+                project_id=args.get("project_id"),
+                mutation_type=str(args.get("mutation_type", "source")),
+                source=str(args.get("source", "albert")),
+                parent_artifact_id=args.get("parent_artifact_id"),
+                idempotency_key=args.get("idempotency_key"),
+                metadata=args.get("metadata"),
+                subdir=args.get("subdir"),
+                is_tmp=bool(args.get("is_tmp", False)),
+            )
+            return success_result({
+                "artifact_id": str(result.get("artifact_id")),
+                "file_path": result.get("file_path"),
+                "title": result.get("title"),
+                "artifact_type": result.get("artifact_type"),
+                "project_id": result.get("project_id"),
+                "size_bytes": result.get("size_bytes"),
+                "sha256": result.get("sha256"),
+            })
+        except Exception as exc:
+            return error_result("ARTIFACT_SAVE_ERROR", str(exc)[:300])
+
+    return {
+        "callable": _wrapper,
+        "category": "artifacts",
+        "description": (
+            "Zapisz artefakt do /opt/qbot/artifacts i zarejestruj go w qbot_v2.artifacts. "
+            "Używaj dla plików tekstowych i binarnych (content_base64). "
+            "Parametry: content lub content_base64, filename, artifact_type, title, project_id, subdir, is_tmp."
+        ),
+        "args_schema": {
+            "content": {"type": "string", "description": "Zawartość pliku tekstowego"},
+            "content_base64": {"type": "string", "description": "Zawartość binarna w base64"},
+            "filename": {"type": "string", "description": "Nazwa pliku"},
+            "artifact_type": {"type": "string", "enum": ["route", "poi", "plan", "report", "export", "database", "import", "document"]},
+            "title": {"type": "string", "description": "Czytelna nazwa artefaktu"},
+            "project_id": {"type": "string", "description": "ID projektu"},
+            "mutation_type": {"type": "string", "enum": ["source", "copy", "split", "merge", "edit", "export", "analysis", "generated"]},
+            "source": {"type": "string", "description": "Źródło artefaktu"},
+            "parent_artifact_id": {"type": "string", "description": "ID artefaktu nadrzędnego"},
+            "idempotency_key": {"type": "string", "description": "Klucz idempotencji"},
+            "metadata": {"type": "object", "description": "Dodatkowe metadane JSON"},
+            "subdir": {"type": "string", "description": "Podkatalog względem /opt/qbot/artifacts"},
+            "is_tmp": {"type": "boolean", "description": "True dla plików tymczasowych"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+    }
+
+
 def _load_canonical_docs_tool() -> dict[str, Any]:
     _DOCS_DIR = Path("/opt/qbot/docs")
     _DOCS = {
@@ -351,28 +520,58 @@ def _load_garmin_diagnostics_tool() -> dict[str, Any]:
                 password=os.getenv("PGPASSWORD", ""), row_factory=dict_row, connect_timeout=5,
             )
             cur = c.cursor()
-            cur.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name='qbot_wellness_daily')")
-            table_exists = cur.fetchone()["exists"]
-            if not table_exists:
-                c.close()
-                return error_result(CONNECTOR_MISSING, "Tabela qbot_wellness_daily nie istnieje w DB.")
             today = date.today().isoformat()
-            cur.execute("SELECT source, hrv_ms, resting_hr_bpm, sleep_duration_min FROM qbot_wellness_daily WHERE date=%s ORDER BY source_priority LIMIT 5", (today,))
-            today_rows = cur.fetchall()
-            cur.execute("SELECT MAX(date) as last_date FROM qbot_wellness_daily")
-            last_row = cur.fetchone()
-            last_date = last_row["last_date"] if last_row else None
-            cur.execute("SELECT COUNT(*) as cnt FROM qbot_wellness_daily WHERE date >= %s", ((date.today() - timedelta(days=30)).isoformat(),))
-            count_30d = cur.fetchone()["cnt"]
-            c.close()
-            details = {
-                "table_exists": True,
-                "today_data_count": len(today_rows),
-                "last_import_date": str(last_date) if last_date else None,
-                "records_last_30d": count_30d,
+            cutoff_30d = (date.today() - timedelta(days=30)).isoformat()
+
+            # Check all qbot_v2 Garmin tables
+            tables_info = {
+                "v2_sleep": {"schema": "qbot_v2", "table": "sleep_daily"},
+                "v2_energy": {"schema": "qbot_v2", "table": "energy_daily"},
+                "v2_wellness": {"schema": "qbot_v2", "table": "wellness_daily"},
+                "v2_training": {"schema": "qbot_v2", "table": "training_sessions"},
+                "v2_body_measurements": {"schema": "qbot_v2", "table": "body_measurements"},
+                "v2_body_daily": {"schema": "qbot_v2", "table": "body_daily"},
             }
-            if today_rows:
-                details["sources"]: list[str] = list(set(r["source"] for r in today_rows if r.get("source")))
+
+            details = {}
+            for key, tbl in tables_info.items():
+                schema_tbl = f"{tbl['schema']}.{tbl['table']}"
+                exists = False
+                try:
+                    cur.execute(
+                        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema=%s AND table_name=%s)",
+                        (tbl["schema"], tbl["table"]),
+                    )
+                    exists = cur.fetchone()["exists"]
+                except Exception:
+                    pass
+                if not exists:
+                    details[key] = {"exists": False}
+                    continue
+
+                try:
+                    cur.execute(f"SELECT count(*)::int FROM {schema_tbl}")
+                    total = cur.fetchone()["count"]
+                    cur.execute(f"SELECT count(*)::int FROM {schema_tbl} WHERE date >= %s", (cutoff_30d,))
+                    cnt_30d = cur.fetchone()["count"]
+                    cur.execute(f"SELECT MAX(date) as last_date FROM {schema_tbl}")
+                    last_row = cur.fetchone()
+                    last_date = str(last_row["last_date"]) if last_row and last_row["last_date"] else None
+                    details[key] = {
+                        "exists": True, "total_rows": total,
+                        "last_30d": cnt_30d, "last_date": last_date,
+                    }
+                except Exception as e:
+                    details[key] = {"exists": True, "error": str(e)[:100]}
+
+            c.close()
+
+            # Aggregate health status
+            has_recent = any(
+                v.get("last_30d", 0) > 0 for v in details.values() if isinstance(v, dict)
+            )
+            details["health"] = "OK" if has_recent else "NO_RECENT_DATA"
+
             return success_result(details)
         except ImportError:
             return error_result(CONNECTOR_MISSING, "psycopg not available")
@@ -382,11 +581,9 @@ def _load_garmin_diagnostics_tool() -> dict[str, Any]:
         "callable": _wrapper,
         "category": "garmin",
         "description": (
-            "Sprawdza stan danych Garmin w DB — czy tabela istnieje, "
-            "ostatnia data importu, liczba rekordów dziś i w 30 dni. "
-            "Używaj jako wstęp przed wellness_day lub sleep_day gdy nie wiesz "
-            "czy dane są dostępne. "
-            "Zwraca: table_exists, today_data_count, last_import_date, records_last_30d."
+            "Sprawdza stan synchronizacji Garmin w DB — czy tabele qbot_v2.sleep_daily, "
+            "energy_daily, wellness_daily, training_sessions istnieją i mają dane. "
+            "Zwraca tabelarycznie: exists, total_rows, last_30d, last_date."
         ),
         "args_schema": {},
         "safety": "read",
@@ -525,6 +722,194 @@ def _load_rwgps_route_fetch_tool() -> dict[str, Any]:
         ),
         "args_schema": {"route_id": {"type": "string"}},
         "safety": "read",
+    }
+
+
+def _load_route_stage_plan_analyze_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+    from qbot3.artifacts.route_analyzer import analyze_stage_endpoints
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        route_id = args.get("route_id")
+        stage_km = args.get("stage_km", [])
+        lodging_radius_km = args.get("lodging_radius_km", 5.0)
+        check_lodging = bool(args.get("check_lodging", True))
+
+        if not route_id:
+            return error_result("MISSING_ARGS", "Wymagany parametr: route_id (int)")
+        if not stage_km:
+            return error_result("MISSING_ARGS", "Wymagany parametr: stage_km (lista kilometrów)")
+
+        try:
+            route_id_int = int(route_id)
+        except (TypeError, ValueError):
+            return error_result("INVALID_ARGS", f"route_id musi być liczbą całkowitą, dostałem: {route_id}")
+
+        if isinstance(stage_km, (str, bytes)):
+            stage_values = [stage_km]
+        else:
+            stage_values = list(stage_km)
+
+        try:
+            stage_values_f = [float(k) for k in stage_values]
+        except (TypeError, ValueError) as exc:
+            return error_result("INVALID_ARGS", f"stage_km musi być listą liczb: {exc}")
+
+        try:
+            lodging_radius = float(lodging_radius_km)
+        except (TypeError, ValueError):
+            return error_result("INVALID_ARGS", f"lodging_radius_km musi być liczbą: {lodging_radius_km}")
+
+        result = analyze_stage_endpoints(
+            route_id=route_id_int,
+            stage_km=stage_values_f,
+            lodging_radius_km=lodging_radius,
+            check_lodging=check_lodging,
+        )
+        if result.get("status") == "error":
+            return error_result("ROUTE_ANALYZER_ERROR", result.get("error", "nieznany błąd"))
+        return success_result(result)
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "Analizuje końcówki etapów trasy RWGPS lokalnie na podstawie pliku JSON/GPX. "
+            "Nie wysyła pełnej geometrii do LLM. Wylicza punkty na śladzie, robi reverse geocoding "
+            "przez Nominatim i opcjonalnie sprawdza noclegi przez Overpass. "
+            "Używaj dla pytań o podział trasy na etapy, końcówki etapów po kilometrze i bazę noclegową."
+        ),
+        "args_schema": {
+            "route_id": {"type": "integer", "description": "ID trasy RWGPS, np. 55256628"},
+            "stage_km": {
+                "type": "array",
+                "items": {"type": "number"},
+                "description": "Lista kilometrów końcowych etapów, np. [65, 150, 235]",
+            },
+            "lodging_radius_km": {
+                "type": "number",
+                "description": "Promień szukania noclegów w km, domyślnie 5.0",
+            },
+            "check_lodging": {
+                "type": "boolean",
+                "description": "Czy sprawdzać noclegi przez Overpass API, domyślnie true",
+            },
+        },
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+        "notes": "Reads /opt/qbot/artifacts/exports/rwgps/rwgps_{route_id}.json locally.",
+    }
+
+
+def _load_stage_gpx_analyze_tool() -> dict[str, Any]:
+    from pathlib import Path
+    from qbot3.artifacts.route_analyzer import analyze_stage_gpx
+    from qbot3.errors import error_result, success_result
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        file_path = args.get("file_path", "")
+        stage = args.get("stage")
+
+        if not file_path and stage:
+            # Resolve stage number to known GPX file
+            stage_int = int(stage)
+            base = Path("/opt/qbot/artifacts/projects/tuscany_2026/projects")
+            matches = sorted(base.glob(f"tuscany_2026_stage_{stage_int:02d}_*.gpx"))
+            if matches:
+                file_path = str(matches[0])
+
+        if not file_path:
+            return error_result("MISSING_ARGS",
+                "Podaj file_path (np. /opt/qbot/artifacts/projects/tuscany_2026/projects/"
+                "tuscany_2026_stage_01_scandicci_capannoli.gpx) lub stage=1")
+        try:
+            result = analyze_stage_gpx(str(file_path))
+        except Exception as exc:
+            return error_result("ANALYSIS_ERROR", str(exc))
+        if result.get("status") == "ERROR":
+            return error_result("ANALYSIS_ERROR", result.get("error", "nieznany błąd"))
+        return success_result(result)
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "Analizuje lokalny plik GPX etapu i zwraca pełny profil: "
+            "distance_km, elevation_gain_m, elevation_loss_m, min/max elevation, "
+            "profile_5km, climbs i descents. "
+            "Używaj gdy pytanie dotyczy przewyższenia, profilu wysokościowego, "
+            "podjazdów/zjazdów konkretnego etapu Tuscany lub innej trasy. "
+            "Pliki GPX etapów znajdują się w "
+            "/opt/qbot/artifacts/projects/tuscany_2026/projects/ jako "
+            "tuscany_2026_stage_{NN}_*.gpx. "
+            "Można też podać stage=1 zamiast pełnej ścieżki."
+        ),
+        "args_schema": {
+            "file_path": {
+                "type": "string",
+                "description": "Pełna ścieżka do pliku GPX",
+            },
+            "stage": {
+                "type": "integer",
+                "description": "Numer etapu Tuscany (1-7) — rozpozna plik automatycznie",
+            },
+        },
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+        "notes": "Parsuje GPX lokalnie, nie wysyła danych do RWGPS.",
+    }
+
+
+def _load_route_gpx_split_tool() -> dict[str, Any]:
+    from qbot3.artifacts.gpx_splitter import split_route_gpx
+    from qbot3.errors import error_result, success_result
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        route_id = args.get("route_id")
+        if route_id is None:
+            return error_result("MISSING_ARGS", "Wymagany parametr: route_id (int)")
+
+        try:
+            route_id_int = int(route_id)
+        except (TypeError, ValueError):
+            return error_result("INVALID_ARGS", f"route_id musi być liczbą całkowitą, dostałem: {route_id}")
+
+        project_id = str(args.get("project_id", "tuscany_2026") or "tuscany_2026")
+        source_gpx_path = args.get("source_gpx_path")
+        overwrite_existing = bool(args.get("overwrite_existing", True))
+
+        result = split_route_gpx(
+            route_id=route_id_int,
+            project_id=project_id,
+            source_gpx_path=str(source_gpx_path) if source_gpx_path else None,
+            overwrite_existing=overwrite_existing,
+        )
+        if result.get("status") == "error":
+            return error_result("ROUTE_GPX_SPLIT_ERROR", result.get("error", "nieznany błąd"))
+        return success_result(result)
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "Lokalnie dzieli GPX RWGPS na etapy i zapisuje poprawne pliki GPX w sandboxie. "
+            "Nie wysyła pełnej geometrii do LLM. Dla Tuscany 2026 / RWGPS 55256628 tworzy "
+            "7 plików stage: 01 scandicci-capannoli, 02 capannoli-castagneto carducci, "
+            "03 castagneto carducci-castiglione della pescaia, 04 castiglione della pescaia-cinigiano, "
+            "05 cinigiano-pienza, 06 pienza-monteriggioni, 07 monteriggioni-scandicci."
+        ),
+        "args_schema": {
+            "route_id": {"type": "integer", "description": "ID trasy RWGPS, np. 55256628"},
+            "project_id": {"type": "string", "description": "ID projektu, domyślnie tuscany_2026"},
+            "source_gpx_path": {"type": "string", "description": "Opcjonalna ścieżka do lokalnego GPX"},
+            "overwrite_existing": {"type": "boolean", "description": "Nadpisz istniejące pliki stage, domyślnie true"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+        "notes": "Reads /opt/qbot/artifacts/exports/rwgps/rwgps_{route_id}.gpx locally and writes stage GPX artifacts.",
     }
 
 
@@ -1155,6 +1540,131 @@ def _load_route_artifact_enrich_dry_run_tool() -> dict[str, Any]:
     }
 
 
+def _load_route_poi_analyze_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+    from qbot_route_tools import _tool_qbot_route_poi_analyze
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        route_id = args.get("route_id")
+        artifact_id = args.get("artifact_id")
+        project_id = args.get("project_id")
+        path = args.get("path")
+        focus = args.get("focus")
+        retry_chunk_id = args.get("retry_chunk_id")
+        retry_mode = bool(args.get("retry_mode", False))
+        merge_artifact_ids = args.get("merge_artifact_ids")
+        timeout_sec = args.get("timeout_sec")
+        km_from = args.get("km_from")
+        km_to = args.get("km_to")
+        buffers = args.get("buffers")
+        output_format = str(args.get("output_format", "md")).strip().lower() or "md"
+        merge_list: list[str] = []
+        if isinstance(merge_artifact_ids, list):
+            merge_list = [str(item).strip() for item in merge_artifact_ids if str(item).strip()]
+        elif isinstance(merge_artifact_ids, str):
+            merge_list = [item.strip() for item in merge_artifact_ids.split(",") if item.strip()]
+
+        if not route_id and not artifact_id and not path and not merge_list:
+            return error_result("MISSING_ARGS", "Wymagany route_id, artifact_id, path lub merge_artifact_ids")
+        if km_from is None or km_to is None:
+            if not merge_list:
+                return error_result("MISSING_ARGS", "Wymagane km_from i km_to")
+            km_from = 0
+            km_to = 0
+
+        if km_from is None or km_to is None:
+            return error_result("MISSING_ARGS", "Wymagane km_from i km_to")
+
+        try:
+            km_from_f = float(km_from)
+            km_to_f = float(km_to)
+        except (TypeError, ValueError):
+            return error_result("INVALID_ARGS", "km_from i km_to muszą być liczbami")
+
+        result = _tool_qbot_route_poi_analyze({
+            "route_id": route_id,
+            "artifact_id": artifact_id,
+            "project_id": project_id,
+            "path": path,
+            "km_from": km_from_f,
+            "km_to": km_to_f,
+            "buffers": buffers,
+            "focus": focus,
+            "retry_chunk_id": retry_chunk_id,
+            "retry_mode": retry_mode,
+            "merge_artifact_ids": merge_list or None,
+            "timeout_sec": timeout_sec,
+            "output_format": output_format,
+            "confirm": True,
+        })
+        if result.get("status") not in {"OK", "PARTIAL"} or not result.get("ok", True):
+            return error_result("ROUTE_POI_ANALYSIS_FAILED", result.get("error", "nieznany błąd"))
+
+        payload = dict(result)
+        payload.pop("tool", None)
+        payload.pop("safety_class", None)
+        return success_result(payload)
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "Analizuje POI trasy RWGPS na podstawie GPX lokalnie i zapisuje raport MD do artefaktów. "
+            "Parametry: project_id, route_id lub artifact_id lub path, albo merge_artifact_ids; km_from/km_to, buffers, output_format, focus, retry_chunk_id, retry_mode, timeout_sec."
+        ),
+        "args_schema": {
+            "route_id": {"type": "string", "description": "ID trasy RWGPS"},
+            "artifact_id": {"type": "string", "description": "ID artefaktu GPX"},
+            "project_id": {"type": "string", "description": "ID projektu logistycznego, np. tuscany_2026"},
+            "path": {"type": "string", "description": "Lokalna ścieżka do pliku GPX"},
+            "merge_artifact_ids": {"type": "array", "items": {"type": "string"}, "description": "Lista artefaktów partial/chunk do scalenia"},
+            "km_from": {"type": "number", "description": "Początek analizowanego zakresu km"},
+            "km_to": {"type": "number", "description": "Koniec analizowanego zakresu km"},
+            "buffers": {
+                "type": "object",
+                "description": "Bufory POI: attractions_m, hard_resupply_m, soft_food_m, water_m, oraz opcjonalnie chunk_km, chunk_overlap_km, min_chunk_km, analysis_timeout_sec, overpass_timeout_sec, overpass_retries, retry_backoff_sec",
+            },
+            "focus": {"type": "string", "enum": ["all", "logistics", "hard_resupply", "food_only"], "default": "all"},
+            "retry_chunk_id": {"type": "string", "description": "Identyfikator chunku do ponownej analizy"},
+            "retry_mode": {"type": "boolean", "default": False},
+            "timeout_sec": {"type": "number", "description": "Deadline całej analizy"},
+            "output_format": {"type": "string", "enum": ["json", "md"], "default": "md"},
+        },
+        "safety": "write",
+        "mode": "write",
+        "status": "implemented",
+        "notes": "Writes a project/report-specific MD artifact under /opt/qbot/artifacts/reports/ and registers it in artifact store.",
+    }
+
+
+# ── RWGPS route import GPX (write tool) ────────────────────────────────
+
+def _load_rwgps_route_import_gpx_tool() -> dict[str, Any]:
+    from qbot_route_tools import _tool_qbot_rwgps_route_import_gpx
+    return {
+        "callable": _safe_call,
+        "wrapped": _tool_qbot_rwgps_route_import_gpx,
+        "category": "routes",
+        "description": (
+            "Importuj lokalny plik GPX jako nową trasę RWGPS. "
+            "Potrzebuje gpx_path (ścieżka absolutna do pliku .gpx) i name (nazwa trasy). "
+            "confirm=false = tylko walidacja GPX (dry-run). "
+            "confirm=true = wykonuje rzeczywisty POST do RWGPS API i tworzy trasę. "
+            "Zwraca: status, valid_gpx, trackpoint_count, a dla confirm=true: new_route_id, html_url."
+        ),
+        "args_schema": {
+            "gpx_path": {"type": "string", "description": "Absolute path to local .gpx file"},
+            "name": {"type": "string", "description": "Route name, e.g. 'Toskania 2026 7D-B Etap 01'"},
+            "description": {"type": "string", "description": "Route description"},
+            "privacy": {"type": "string", "enum": ["private", "public", "friends"], "default": "private"},
+            "confirm": {"type": "boolean", "default": False, "description": "Set true to execute real RWGPS POST"},
+        },
+        "safety": "write",
+        "mode": "write",
+        "status": "implemented",
+    }
+
+
 # ── write tools ────────────────────────────────────────────────────────
 
 def _load_nutrition_log_add_tool() -> dict[str, Any]:
@@ -1434,6 +1944,7 @@ def _init_registry():
         ("weather_forecast", _load_weather_forecast_tool),
         ("nutrition_template_list", _load_nutrition_templates_tool),
         ("nutrition_template_get", _load_nutrition_template_get_tool),
+        ("nutrition_write_resolve", _load_nutrition_write_resolve_tool),
         ("nutrition_day_summary", _load_nutrition_day_summary_tool),
         ("nutrition_meal_list", _load_nutrition_meal_list_tool),
         ("nutrition_range_summary", _load_nutrition_range_summary_tool),
@@ -1444,9 +1955,14 @@ def _init_registry():
         ("garmin_live_fetch", _load_garmin_live_fetch_tool),
         ("rwgps_route_list", _load_rwgps_list_tool),
         ("rwgps_route_fetch", _load_rwgps_route_fetch_tool),
+        ("route_stage_plan_analyze", _load_route_stage_plan_analyze_tool),
+        ("route_gpx_split", _load_route_gpx_split_tool),
+        ("stage_gpx_analyze", _load_stage_gpx_analyze_tool),
         ("qcal_events_range", _load_qcal_events_range_tool),
         ("qcal_reminders_upcoming", _load_qcal_reminders_upcoming_tool),
         ("garage_status", _load_garage_status_tool),
+        ("artifacts_list", _load_artifacts_list_tool),
+        ("artifact_save", _load_artifact_save_tool),
         ("canonical_docs", _load_canonical_docs_tool),
         ("mcp_tools_list", _load_mcp_tools_list_tool),
         ("daily_report_status", _load_daily_report_status_tool),
@@ -1462,6 +1978,8 @@ def _init_registry():
         ("rwgps_route_last", _load_rwgps_route_last_tool),
         ("rwgps_artifact_status", _load_rwgps_artifact_status_tool),
         ("route_artifact_enrich_dry_run", _load_route_artifact_enrich_dry_run_tool),
+        ("route_poi_analyze", _load_route_poi_analyze_tool),
+        ("rwgps_route_import_gpx", _load_rwgps_route_import_gpx_tool),
         # DB introspection tools (transparent read-only for Albert)
         ("db_schema_list", _load_db_schema_list_tool),
         ("db_table_describe", _load_db_table_describe_tool),

@@ -54,6 +54,9 @@ TWARDE ZASADY:
 WIELOKROKOWE PLANOWANIE:
 - Możesz planować w wielu krokach. Po wykonaniu narzędzi zobaczysz ich wyniki w `tool_results` i możesz zaplanować kolejny krok lub zakończyć odpowiedzią.
 - Jeśli nie znasz schematu DB, najpierw użyj db_schema_list, potem db_table_describe, a dopiero potem db_select_readonly z konkretnym sql.
+- DANE BODY COMPOSITION: znajdują się w qbot_v2.body_measurements (kanoniczna tabela, Garmin Garmin Connect API). NIE w qbot_v2.body_daily (legacy).
+- qbot_v2.body_daily: legacy, nie używać do nowych odczytów. Zastąpione przez body_measurements.
+  Priorytet źródeł: garmin_index_scale (full body comp) > garmin_mfp (weight-only).
 - Każde wybrane narzędzie musi mieć kompletne argumenty. Nie dodawaj narzędzi "na próbę".
 - Aby zakończyć i wygenerować odpowiedź, zwróć tools_to_call=[] (pusta lista). Wtedy system przekaże wszystkie tool_results do final answer.
 

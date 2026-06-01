@@ -49,7 +49,7 @@ _ALLOWED_ACTIONS_DESCRIPTION = (
     "nutrition_log_add, calendar_event_add, reminder_add, "
     "planning_fact_add, memory_confirmed_fact_add, qbot_doc_append, "
     "rwgps_route_import_gpx, rwgps_route_export_gpx, "
-    "rwgps_route_surface_analyze, qbot_artifact_put, qbot_artifact_get"
+    "rwgps_route_surface_analyze, route_poi_analyze, qbot_artifact_put, qbot_artifact_get"
 )
 
 
@@ -112,11 +112,11 @@ def _list_tools(req_id: Any) -> dict[str, Any]:
         },
         {
             "name": "qbot.action_execute",
-            "description": "WYKONAJ action_draft z qbot.query. action_type: nutrition_log_add, calendar_event_add, reminder_add, planning_fact_add, memory_confirmed_fact_add, qbot_doc_append, rwgps_route_import_gpx, rwgps_route_export_gpx, rwgps_route_surface_analyze, qbot_artifact_put, qbot_artifact_get. WYMAGA: confirm=true, idempotency_key. Server-side allowlista blokuje nieznane akcje.",
+            "description": "WYKONAJ action_draft z qbot.query. action_type: nutrition_log_add, calendar_event_add, reminder_add, planning_fact_add, memory_confirmed_fact_add, qbot_doc_append, rwgps_route_import_gpx, rwgps_route_export_gpx, rwgps_route_surface_analyze, route_poi_analyze, qbot_artifact_put, qbot_artifact_get. Dla route_poi_analyze payload powinien zawierać route_id, artifact_id albo path, km_from, km_to oraz opcjonalnie buffers: attractions_m, hard_resupply_m, soft_food_m, water_m, chunk_km, chunk_overlap_km, analysis_timeout_sec, overpass_timeout_sec, min_chunk_km, overpass_retries, retry_backoff_sec; obsługuje też focus, retry_chunk_id, retry_mode, merge_artifact_ids i timeout_sec. WYMAGA: confirm=true, idempotency_key. Server-side allowlista blokuje nieznane akcje.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "action_type": {"type": "string", "description": "Nazwa akcji z server-side allowlisty. Aktualna lista: nutrition_log_add, calendar_event_add, reminder_add, planning_fact_add, memory_confirmed_fact_add, qbot_doc_append, rwgps_route_import_gpx, rwgps_route_export_gpx, rwgps_route_surface_analyze, qbot_artifact_put, qbot_artifact_get. Inne akcje mogą być dostępne po stronie serwera."},
+                    "action_type": {"type": "string", "description": "Nazwa akcji z server-side allowlisty. Aktualna lista: nutrition_log_add, calendar_event_add, reminder_add, planning_fact_add, memory_confirmed_fact_add, qbot_doc_append, rwgps_route_import_gpx, rwgps_route_export_gpx, rwgps_route_surface_analyze, route_poi_analyze, qbot_artifact_put, qbot_artifact_get. route_poi_analyze obsługuje route_id, artifact_id lub path + km_from/km_to + buffers/focus/retry/merge. Inne akcje mogą być dostępne po stronie serwera."},
                     "payload_json": {"type": "object"},
                     "idempotency_key": {"type": "string"},
                     "confirm": {"type": "boolean"},
@@ -237,6 +237,9 @@ def _handle_action_execute(req_id: Any, args: dict[str, Any]) -> dict[str, Any]:
 
     if action_type == "rwgps_route_surface_analyze":
         return _result(req_id, _execute_rwgps_route_surface_analyze(action_type, payload, idem_key))
+
+    if action_type == "route_poi_analyze":
+        return _result(req_id, _execute_route_poi_analyze(action_type, payload, idem_key))
 
     if action_type == "qbot_artifact_put":
         return _result(req_id, _execute_qbot_artifact_put(action_type, payload, idem_key))
@@ -703,6 +706,68 @@ def _execute_rwgps_route_surface_analyze(action_type: str, payload: dict, idem_k
             "write_committed": False,
             "error": str(exc)[:500],
         }
+
+
+def _execute_route_poi_analyze(action_type: str, payload: dict, idem_key: str) -> dict:
+    """Run deterministic route POI analysis and persist a report artifact."""
+    import logging
+    _log = logging.getLogger("route_poi_analyze")
+
+    try:
+        from qbot_route_tools import _tool_qbot_route_poi_analyze
+        result = _tool_qbot_route_poi_analyze({
+            "route_id": payload.get("route_id"),
+            "artifact_id": payload.get("artifact_id"),
+            "project_id": payload.get("project_id"),
+            "path": payload.get("path"),
+            "km_from": payload.get("km_from"),
+            "km_to": payload.get("km_to"),
+            "buffers": payload.get("buffers"),
+            "focus": payload.get("focus"),
+            "retry_chunk_id": payload.get("retry_chunk_id"),
+            "retry_mode": payload.get("retry_mode"),
+            "merge_artifact_ids": payload.get("merge_artifact_ids"),
+            "timeout_sec": payload.get("timeout_sec"),
+            "output_format": payload.get("output_format", "md"),
+            "confirm": True,
+        })
+    except Exception as exc:
+        _log.error("route_poi_analyze exception: %s", exc)
+        return {
+            "tool": "qbot.action_execute",
+            "status": "ERROR",
+            "write_committed": False,
+            "error": str(exc)[:500],
+        }
+
+    if result.get("status") in {"OK", "PARTIAL"} and result.get("ok", True):
+        return {
+            "tool": "qbot.action_execute",
+            "status": result.get("status", "OK"),
+            "write_committed": True,
+            "execution_mode": "partial_write" if result.get("status") == "PARTIAL" else "real_write",
+            "action_type": action_type,
+            "idempotency_key": idem_key,
+            "route_id": result.get("route_id"),
+            "artifact_id": result.get("artifact_id"),
+            "source_path": result.get("source_path"),
+            "report_path": result.get("report_path"),
+            "report_artifact_id": result.get("report_artifact_id"),
+            "analysis": result.get("analysis"),
+            "analysis_status": result.get("status"),
+            "warnings": result.get("analysis", {}).get("warnings"),
+        }
+
+    return {
+        "tool": "qbot.action_execute",
+        "status": result.get("status", "ERROR"),
+        "write_committed": False,
+        "execution_mode": "error",
+        "action_type": action_type,
+        "idempotency_key": idem_key,
+        "error": result.get("error", "route_poi_analyze failed"),
+        "payload": payload,
+    }
 
 
 def _execute_qbot_artifact_put(action_type: str, payload: dict, idem_key: str) -> dict:

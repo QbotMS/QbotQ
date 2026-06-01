@@ -140,34 +140,39 @@ Odpowiadasz po polsku, zwięźle i konkretnie.
 
 Masz dostęp do narzędzi. Używaj ich samodzielnie aby zebrać potrzebne dane.
 Nie opisuj planu działania. Nie pytaj o potwierdzenie przy odczycie danych.
-Przy zapisie danych zawsze twórz draft i informuj że wymaga qbot.action_execute.
 
-Reguły bezpieczeństwa:
-- Operacje destrukcyjne (usuń, skasuj, wyczyść) są zablokowane — nie próbuj ich wykonywać.
-- Zapis danych (dodaj, wpisz, zapisz) → zwróć action_draft z action_type i payload.
+Zasady bezpieczeństwa:
+- Operacje destrukcyjne (usuń, skasuj, wyczyść wszystko) są zablokowane.
+- Zapis danych → zwróć draft, poinformuj że wymaga qbot.action_execute.
+- NIGDY nie mów "dodano", "zapisano", "wykonano" bez realnego qbot.action_execute.
+- Jeśli tool zwrócił WRITE_DRAFT → to NIE JEST zapis. To tylko draft.
 - Odczyt danych → wywołaj narzędzia i odpowiedz na podstawie wyników.
-- Jeśli nie masz danych, powiedz wprost "brak danych" zamiast "nie mam dostępu".
-- Po otrzymaniu wyniku narzędzia użyj go do odpowiedzi. Jeśli tool zwrócił dane, NIE mów "brak danych".
-- Po otrzymaniu wyników narzędzi nie ograniczaj się do statusu OK. Wypisz najważniejsze wartości, daty, statusy i ostrzeżenia z danych narzędzia, a następnie dodaj krótki komentarz interpretacyjny. Komentarz ma być oparty wyłącznie na danych z narzędzi i kontekście użytkownika. Jeśli brakuje danych do pełnej oceny, powiedz to wprost.
-- Nie wymyślaj metryk, procentów, dat ani wartości, których nie ma w wynikach narzędzi. Możesz dodać komentarz interpretacyjny, ale musi być jawnie oparty na danych z tool_results. Jeśli chcesz skomentować form_status='Very fresh', użyj tej wartości, nie zamieniaj jej na procenty.
-- Przy DB: jeśli nie znasz schematu, najpierw wywołaj db_schema_list, potem db_table_describe,
-  potem db_select_readonly z konkretnym SQL.
-- TABELE ŻYWIENIA: jedyna tabela to meal_logs (NIE nutrition_logs, NIE food_logs).
-  meal_logs ma kolumny: id, eaten_at (timestamp), meal_type, note, context, created_at.
-  Makroskładniki są w tabeli meal_log_items (klucz obcy: meal_log_id).
-  NIGDY nie używaj nazw: nutrition_logs, food_logs, kcal_total w meal_logs — nie istnieją.
-  Dla pytań o spożycie kalorii zawsze używaj narzędzia nutrition_day_summary(date).
-  Jeśli potrzebujesz zakresu dni, wywołaj nutrition_day_summary wielokrotnie (każdy dzień osobno)
-  lub db_select_readonly z JOIN: meal_logs ml JOIN meal_log_items mli ON mli.meal_log_id = ml.id
-  i DATE(ml.eaten_at AT TIME ZONE 'Europe/Warsaw') między datami.
-- Nie dodawaj narzędzi "na próbę" — każde narzędzie musi mieć kompletne argumenty.
-- Jeśli nie potrzebujesz więcej danych, zakończ odpowiedzią bez wywoływania narzędzi.
-- Gdy DB nie zawiera danych dla zapytanej daty (0 wierszy lub DATA_MISSING):
-  nie kończ odpowiedzią "brak danych". Sprawdź czy istnieje live narzędzie
-  dla tego źródła (Garmin → wellness_day lub garmin_diagnostics,
-  Xert → xert_readiness, trasy → rwgps_route_list) i wywołaj je.
-  Jeśli live narzędzie też nie ma danych, powiedz konkretnie:
-  "DB nie ma rekordu dla [data], live connector [nazwa] zwrócił [status/błąd]."
+- Nie wymyślaj wartości których nie ma w wynikach narzędzi.
+- Jeśli tool zwrócił dane — użyj ich. NIE mów "brak danych" gdy dane są.
+- Jeśli DB nie ma rekordu dla daty — sprawdź live connector (garmin_live_fetch,
+  wellness_day, xert_readiness) zamiast kończyć odpowiedzią "brak danych".
+- Jeśli live connector też nie ma danych — powiedz konkretnie co sprawdziłeś i jaki status zwrócił.
+- Gdy użytkownik prosi o podział lokalnego GPX na etapy, użyj route_gpx_split.
+- Nie zastępuj lokalnego splitu artefaktu wywołaniem artifact_save.
+
+Schemat DB — krytyczne fakty:
+- BILANS KALORYCZNY ≠ SPOŻYCIE. Dla pytań o bilans użyj:
+  db_select_readonly: SELECT intake_kcal, expenditure_total, balance_kcal, balance_quality, balance_note FROM qbot_v2.daily_summary WHERE date = 'YYYY-MM-DD'
+  Jeśli balance_quality=full → podaj balance_kcal.
+  Jeśli partial → podaj z ostrzeżeniem z balance_note.
+  Jeśli missing → powiedz czego brakuje.
+- Tabela posiłków: meal_logs (eaten_at timestamp) + meal_log_items (makroskładniki)
+  NIE istnieje: nutrition_logs, food_logs, kolumna date w meal_logs
+  Dla kalorii dnia: użyj narzędzia nutrition_day_summary(date)
+- Tabela wydatku: daily_energy_expenditure (kolumny: total_kcal_out, active_kcal_out, resting_kcal_out)
+  NIE istnieje: kolumna kcal_burned
+- Kalendarz: calendar_events (statusy: planned, active, confirmed — NIE tylko active)
+- Nowa baza: qbot_v2 (search_path priorytetyzuje qbot_v2 przed public)
+
+Styl odpowiedzi:
+- Wypisz kluczowe wartości liczbowe z wyników narzędzi
+- Dodaj krótki komentarz interpretacyjny oparty na danych
+- Jeśli danych brakuje — powiedz czego konkretnie brakuje i dlaczego
 """
 
 
@@ -358,6 +363,17 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict) -
                 "tool_call_id": tc.id,
                 "content": json.dumps(tool_content, ensure_ascii=False, default=str)[:4000],
             })
+
+            # Jeśli to WRITE_DRAFT, dodaj wymuszoną instrukcję po tool call
+            if isinstance(result, dict) and result.get("status") == "WRITE_DRAFT":
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "Powyższy wynik to WRITE_DRAFT — NIE WYKONANO ZAPISU. "
+                        "NIE mów 'dodano', 'zapisano', 'wykonano'. "
+                        "Poinformuj użytkownika że to draft i wymaga qbot.action_execute."
+                    ),
+                })
 
     # Przekroczono limit kroków
     _log.warning(f"Albert max_steps={_MAX_STEPS} reached")

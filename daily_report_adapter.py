@@ -33,8 +33,8 @@ def get_events(oldest: str | None = None, newest: str | None = None) -> list[dic
 def get_weather(days: int = 2, location: str = "Marki") -> dict[str, Any]:
     """Internal replacement for mcp_call('get_weather')."""
     try:
-        from qbot_integration_tools import _tool_qbot_weather_forecast
-        result = _tool_qbot_weather_forecast({"location": location, "period": "today", "hours": days * 12})
+        from qbot_integration_tools import _tool_qbot_weather_daily_report
+        result = _tool_qbot_weather_daily_report({"location": location, "days": days})
         if isinstance(result, dict) and result.get("status") == "OK":
             return result
         return {"error": result.get("error", "unknown") if isinstance(result, dict) else "empty"}

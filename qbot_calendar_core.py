@@ -26,10 +26,13 @@ def _s(v: Any) -> Any:
     return v
 
 
-def _table_exists(name: str) -> bool:
+def _table_exists(name: str, schema: str | None = None) -> bool:
     try:
         with _conn() as c:
-            r = c.execute("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name=%s)", (name,)).fetchone()
+            if schema:
+                r = c.execute("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema=%s AND table_name=%s)", (schema, name)).fetchone()
+            else:
+                r = c.execute("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name=%s)", (name,)).fetchone()
             return r["exists"] if r else False
     except Exception:
         return False
@@ -776,14 +779,34 @@ def build_snapshot(date_str: str) -> dict[str, Any]:
         missing_tables.append("weight_history")
 
     # Body composition
-    if _table_exists("body_composition"):
-        bc = _safe_query("SELECT * FROM body_composition WHERE date=%s ORDER BY measured_at DESC LIMIT 1", (date_str,))
-        snap["body_composition"] = bc[0] if bc else None
-        source_tables.append("body_composition")
-        total_fields += 1
-        if bc: found_fields += 1
-    else:
-        missing_tables.append("body_composition")
+    # Primary: qbot_v2.body_measurements (Garmin canonical, INDEX_SCALE full body comp)
+    if _table_exists("body_measurements", schema="qbot_v2"):
+        bm = _safe_query(
+            "SELECT date AS date, source_system || '/' || source_type AS source, "
+            "weight_kg, bmi, body_fat_pct, body_water_pct, muscle_mass_kg, "
+            "bone_mass_kg, quality_status, completeness_score, imported_at "
+            "FROM qbot_v2.body_measurements WHERE date=%s "
+            "ORDER BY completeness_score DESC, imported_at DESC LIMIT 1",
+            (date_str,))
+        snap["body_composition"] = bm[0] if bm else None
+        if bm:
+            source_tables.append("qbot_v2.body_measurements")
+    # Fallback: legacy body_daily
+    if not snap.get("body_composition") and _table_exists("body_daily", schema="qbot_v2"):
+        bd = _safe_query(
+            "SELECT * FROM qbot_v2.body_daily WHERE date=%s "
+            "ORDER BY CASE source WHEN 'garmin_index_scale' THEN 1 "
+            "WHEN 'garmin_mfp' THEN 2 ELSE 3 END, "
+            "imported_at DESC LIMIT 1",
+            (date_str,))
+        snap["body_composition"] = bd[0] if bd else None
+        if bd:
+            source_tables.append("qbot_v2.body_daily (legacy fallback)")
+    if not snap.get("body_composition"):
+        if not _table_exists("body_measurements", schema="qbot_v2"):
+            missing_tables.append("qbot_v2.body_measurements")
+        if not _table_exists("body_daily", schema="qbot_v2"):
+            missing_tables.append("qbot_v2.body_daily (legacy)")
 
     # Training sessions
     if _table_exists("training_sessions"):

@@ -242,12 +242,24 @@ def _tool_qbot_nutrition_meal_list(_args: dict | None = None) -> dict[str, Any]:
     try:
         from qbot_nutrition_db import meal_log_list
         meals = meal_log_list(date_str=date_str, limit=limit)
+        meal_log_items: list[dict[str, Any]] = []
+        for meal in meals:
+            meal_id = meal.get("id")
+            for item in meal.get("items", []) or []:
+                flat_item = dict(item)
+                flat_item["meal_log_id"] = meal_id
+                flat_item["meal_eaten_at"] = meal.get("eaten_at")
+                flat_item["meal_type"] = meal.get("meal_type")
+                flat_item["meal_note"] = meal.get("note")
+                meal_log_items.append(flat_item)
         return {
             "tool": "qbot_nutrition_meal_list",
             "safety_class": "READ_ONLY",
             "status": "OK",
             "date": date_str,
             "count": len(meals),
+            "meal_logs": meals,
+            "meal_log_items": meal_log_items,
             "meals": meals,
         }
     except Exception as exc:

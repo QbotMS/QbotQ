@@ -3,6 +3,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from qbot_reminder_tools import (
+    _tool_qbot_reminder_add,
+    _tool_qbot_reminder_list,
+    _tool_qbot_reminder_edit,
+    _tool_qbot_reminder_delete,
+)
 from qbot_tools import (
     _tool_qbot_api_self_check,
     _tool_qbot_api_tools_list,
@@ -217,11 +223,14 @@ from qbot_route_tools import (
     _tool_qbot_hammerhead_restore_plan,
     _tool_qbot_gpx_artifact_parse,
     _tool_qbot_route_artifact_enrich,
+    _tool_qbot_route_poi_analyze,
     _tool_qbot_rwgps_artifact_store_status,
     _tool_qbot_rwgps_config_status,
     _tool_qbot_rwgps_dry_run,
     _tool_qbot_rwgps_legacy_status,
     _tool_qbot_rwgps_route_export_file,
+    _tool_qbot_rwgps_route_import_gpx,
+    _tool_qbot_rwgps_route_import_gpx_batch,
     _tool_qbot_rwgps_route_list,
     _tool_qbot_rwgps_route_export_links,
     _tool_qbot_rwgps_route_get,
@@ -1197,11 +1206,56 @@ TOOLS_META: dict[str, dict[str, Any]] = {
             "return_mode": "summary",
         },
     },
+    "qbot_route_poi_analyze": {
+        "description": "Analizuj POI trasy na podstawie GPX i zapisuj raport MD do artefaktów. Obsługuje project_id, route_id, artifact_id lub path albo merge_artifact_ids, km_from, km_to, focus, retry_chunk_id, retry_mode, timeout_sec i buffers (attractions_m, hard_resupply_m, soft_food_m, water_m, chunk_km, chunk_overlap_km, min_chunk_km, analysis_timeout_sec, overpass_timeout_sec, overpass_retries, retry_backoff_sec).",
+        "category": "write",
+        "safe": False,
+        "args_schema": {
+            "route_id": "55291905",
+            "artifact_id": "",
+            "project_id": "tuscany_2026",
+            "path": "/opt/qbot/artifacts/exports/rwgps/rwgps_55256628.gpx",
+            "merge_artifact_ids": ["artifact-1", "artifact-2"],
+            "km_from": 0,
+            "km_to": 65,
+            "buffers": {"attractions_m": 1000, "hard_resupply_m": 400, "soft_food_m": 400, "water_m": 200, "chunk_km": 12.0, "chunk_overlap_km": 1.0, "min_chunk_km": 5.0, "analysis_timeout_sec": 80.0, "overpass_timeout_sec": 20.0, "overpass_retries": 3, "retry_backoff_sec": 1.25},
+            "focus": "logistics",
+            "retry_chunk_id": "",
+            "retry_mode": False,
+            "timeout_sec": 80.0,
+            "output_format": "md",
+            "confirm": False,
+        },
+    },
     "qbot_rwgps_restore_plan": {
         "description": "Plan przywrócenia RWGPS z brakującymi krokami",
         "category": "legacy",
         "safe": True,
         "args_schema": {},
+    },
+    "qbot_rwgps_route_import_gpx": {
+        "description": "Importuj lokalny plik GPX jako nową trasę RWGPS. Wymaga confirm=true.",
+        "category": "write",
+        "safe": False,
+        "args_schema": {
+            "gpx_path": "/opt/qbot/artifacts/projects/tuscany_2026/projects/tuscany_2026_stage_01_scandicci_capannoli.gpx",
+            "name": "Toskania 2026 7D-B Etap 01 Scandicci - Capannoli",
+            "description": "Etap 1 z Scandicci do Capannoli",
+            "privacy": "private",
+            "collection_id": "",
+            "confirm": False,
+        },
+    },
+    "qbot_rwgps_route_import_gpx_batch": {
+        "description": "Batchowy import wielu plików GPX jako nowych tras RWGPS. Wymaga confirm=true.",
+        "category": "write",
+        "safe": False,
+        "args_schema": {
+            "routes": [
+                {"gpx_path": "...", "name": "...", "description": "...", "privacy": "private"},
+            ],
+            "confirm": False,
+        },
     },
     "qbot_hammerhead_config_status": {
         "description": "Sprawdza konfigurację Hammerhead — tokeny, JWT, tokenstore",
@@ -1843,7 +1897,10 @@ TOOLS: dict[str, Any] = {
     "qbot_rwgps_route_export_file": _tool_qbot_rwgps_route_export_file,
     "qbot_gpx_artifact_parse": _tool_qbot_gpx_artifact_parse,
     "qbot_route_artifact_enrich": _tool_qbot_route_artifact_enrich,
+    "qbot_route_poi_analyze": _tool_qbot_route_poi_analyze,
     "qbot_rwgps_restore_plan": _tool_qbot_rwgps_restore_plan,
+    "qbot_rwgps_route_import_gpx": _tool_qbot_rwgps_route_import_gpx,
+    "qbot_rwgps_route_import_gpx_batch": _tool_qbot_rwgps_route_import_gpx_batch,
     "qbot_hammerhead_config_status": _tool_qbot_hammerhead_config_status,
     "qbot_hammerhead_import_inventory": _tool_qbot_hammerhead_import_inventory,
     "qbot_hammerhead_import_dry_run": _tool_qbot_hammerhead_import_dry_run,
@@ -1917,4 +1974,8 @@ TOOLS: dict[str, Any] = {
     "qbot_ride_report_send": _tool_qbot_ride_report_send,
     "qbot_reports_schedule_status": _tool_qbot_reports_schedule_status,
     "qbot_reports_restore_plan": _tool_qbot_reports_restore_plan,
+    "qbot_reminder_add": _tool_qbot_reminder_add,
+    "qbot_reminder_list": _tool_qbot_reminder_list,
+    "qbot_reminder_edit": _tool_qbot_reminder_edit,
+    "qbot_reminder_delete": _tool_qbot_reminder_delete,
 }

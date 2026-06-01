@@ -11,6 +11,7 @@ from typing import Any
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
+from starlette.responses import RedirectResponse
 from fastapi.responses import JSONResponse
 
 from qbot_mcp_adapter import (
@@ -963,17 +964,10 @@ async def telegram_webhook(webhook_secret: str, request: Request):
 
     cmd = text.strip().lower()
     if not cmd.startswith("/"):
-        from qbot3.agent_runtime import orchestrate_query
-        query_result = orchestrate_query(text)
-        logger.info("TG NL input=%s intent=%s readers=%s fallback=%s stage=%s status=%s",
-            text[:60],
-            query_result.get("plan", {}).get("intent", "?"),
-            query_result.get("plan", {}).get("tools_to_call", []),
-            query_result.get("orchestrator", {}).get("fallback_used"),
-            query_result.get("orchestrator", {}).get("stage"),
-            query_result.get("status", "?"),
-        )
-        return _telegram_webhook_reply(chat_id, _telegram_render_query_result(query_result))
+        from qbot_qcal_telegram import handle_message
+        tg_result = handle_message(chat_id=str(chat_id), text=text, dry_run=False)
+        reply = tg_result.get("response") or "Brak odpowiedzi."
+        return _telegram_webhook_reply(chat_id, reply)
 
     parts = cmd.split(maxsplit=1)
     command = parts[0].lower()
@@ -1065,6 +1059,18 @@ def mcp_root(request: Request):
     denied = _mcp_auth_guard(request)
     if denied is not None:
         return denied
+    if os.getenv("QBOT3_ENABLED", "0") == "1":
+        from qbot3.adapters.mcp_adapter import list_allowed_actions
+        allowed = list_allowed_actions()
+        return {
+            "status": "OK",
+            "service": "qbot3-mcp-adapter",
+            "version": "v3",
+            "health": "/mcp/health",
+            "tools": "/mcp/tools",
+            "allowed_actions": allowed,
+            "action_count": len(allowed),
+        }
     status = _tool_qbot_mcp_status({})
     tools = _tool_qbot_mcp_tools_list({})
     return {
@@ -1086,13 +1092,30 @@ def mcp_health(request: Request):
     denied = _mcp_auth_guard(request)
     if denied is not None:
         return denied
+    if os.getenv("QBOT3_ENABLED", "0") == "1":
+        from qbot3.adapters.mcp_adapter import list_allowed_actions
+        allowed = list_allowed_actions()
+        return {
+            "status": "OK",
+            "service": "qbot3-mcp-adapter",
+            "version": "v3",
+            "allowed_actions": allowed,
+        }
     return _tool_qbot_mcp_status({})
 
 
 @app.get("/mcp/tools")
 @app.get("/mcp/tools/")
 def mcp_tools(request: Request):
-    # GET /mcp/tools is public (same semantics as MCP tools/list)
+    # GET /mcp/tools is public — shows current server-side action allowlist
+    if os.getenv("QBOT3_ENABLED", "0") == "1":
+        from qbot3.adapters.mcp_adapter import list_allowed_actions
+        allowed = list_allowed_actions()
+        return {
+            "service": "qbot3-mcp-adapter",
+            "allowed_actions": allowed,
+            "count": len(allowed),
+        }
     return _tool_qbot_mcp_tools_list({})
 
 
@@ -1144,6 +1167,7 @@ def oauth_authorization_server():
         "grant_types_supported": ["authorization_code"],
         "code_challenge_methods_supported": ["S256"],
         "token_endpoint_auth_methods_supported": ["none"],
+        "registration_endpoint": "https://qbot.cytr.us/oauth/register",
         "scopes_supported": ["qbot"]
     }
 
@@ -1169,3 +1193,61 @@ def withings_oauth_callback(code: str = "", state: str = "", error: str = ""):
         except Exception:
             pass
     return {"status": "ok", "detail": "Withings OAuth code captured. You can close this page."}
+
+# ── OAuth 2.1 / DCR dla Claude.ai ──────────────────────────────────────────
+import secrets as _secrets
+import time as _time
+
+_oauth_clients: dict = {}
+_oauth_codes: dict = {}
+_oauth_tokens: dict = {}
+
+@app.post("/oauth/register")
+@app.post("/oauth/register/")
+async def oauth_register(request: Request):
+    body = await request.json()
+    client_id = "claude_" + _secrets.token_hex(16)
+    _oauth_clients[client_id] = {
+        "redirect_uris": body.get("redirect_uris", []),
+        "client_name": body.get("client_name", "claude"),
+    }
+    return JSONResponse({
+        "client_id": client_id,
+        "client_id_issued_at": int(_time.time()),
+        "redirect_uris": body.get("redirect_uris", []),
+        "grant_types": ["authorization_code"],
+        "response_types": ["code"],
+        "token_endpoint_auth_method": "none",
+    })
+
+@app.get("/oauth/authorize")
+@app.get("/oauth/authorize/")
+async def oauth_authorize(request: Request):
+    params = dict(request.query_params)
+    code = _secrets.token_urlsafe(32)
+    _oauth_codes[code] = {
+        "client_id": params.get("client_id"),
+        "redirect_uri": params.get("redirect_uri"),
+        "code_verifier": None,
+        "expires": _time.time() + 600,
+    }
+    redirect_uri = params.get("redirect_uri", "")
+    sep = "&" if "?" in redirect_uri else "?"
+    state = params.get("state", "")
+    return RedirectResponse(url=f"{redirect_uri}{sep}code={code}&state={state}", status_code=302)
+
+@app.post("/oauth/token")
+@app.post("/oauth/token/")
+async def oauth_token(request: Request):
+    form = await request.form()
+    code = form.get("code")
+    if not code or code not in _oauth_codes:
+        return JSONResponse({"error": "invalid_grant"}, status_code=400)
+    del _oauth_codes[code]
+    token = _secrets.token_urlsafe(48)
+    _oauth_tokens[token] = {"issued": _time.time()}
+    return JSONResponse({
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_in": 86400,
+    })

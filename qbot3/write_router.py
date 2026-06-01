@@ -65,11 +65,15 @@ def extract_nutrition_slots(question: str) -> dict[str, Any]:
     macro_patterns = [
         (r'(\d+[.,]?\d*)\s*kcal', "kcal_total"),
         (r'białko\s+(\d+[.,]?\d*)\s*g', "protein_g"),
+        (r'(\d+[.,]?\d*)\s*g\s*białka', "protein_g"),
         (r'protein\s+(\d+[.,]?\d*)\s*g', "protein_g"),
         (r'węglowodany\s+(\d+[.,]?\d*)\s*g', "carbs_g"),
+        (r'(\d+[.,]?\d*)\s*g\s*węgli', "carbs_g"),
+        (r'(\d+[.,]?\d*)\s*g\s*węglowodan', "carbs_g"),
         (r'carbs\s+(\d+[.,]?\d*)\s*g', "carbs_g"),
         (r'węgle\s+(\d+[.,]?\d*)\s*g', "carbs_g"),
         (r'tłuszcz\s+(\d+[.,]?\d*)\s*g', "fat_g"),
+        (r'(\d+[.,]?\d*)\s*g\s*tłuszcz', "fat_g"),
         (r'fat\s+(\d+[.,]?\d*)\s*g', "fat_g"),
         (r'sól\s+(\d+[.,]?\d*)\s*g', "salt_g"),
         (r'salt\s+(\d+[.,]?\d*)\s*g', "salt_g"),
@@ -310,6 +314,15 @@ def validate_payload_quality(action_type: str, payload: dict[str, Any], question
         if not payload.get("kcal_total"):
             payload["nutrients_unknown"] = True
             payload["requires_lookup"] = True
+        lookup_sensitive = any(
+            cue in ql for cue in (
+                "minus", "pomniejsz", "pomniejszone", "odejmij", "odję",
+                "template", "szablon", "pół kilo", "pol kilo", "opakowanie",
+                "zestaw", "porcja", "serving",
+            )
+        )
+        if lookup_sensitive and not payload.get("resolved_from_lookup"):
+            issues.append("nutrition_lookup_required")
 
     elif action_type == "calendar_event_add":
         # Must have title if query has specific words
@@ -341,10 +354,12 @@ def validate_action_type(action_type: str) -> dict[str, Any]:
 
 _ACTION_CONTRACTS: dict[str, dict[str, Any]] = {
     "nutrition_log_add": {
-        "required_fields": ["meal_name"],
+        "required_fields": ["meal_name", "date", "source", "kcal_total"],
         "optional_fields": ["food_name", "amount", "unit", "kcal_total",
                             "protein_g", "carbs_g", "fat_g", "template_id",
-                            "nutrients_unknown", "requires_lookup"],
+                            "nutrients_unknown", "requires_lookup", "fiber_g",
+                            "sodium_mg", "lookup_source", "resolved_from_lookup",
+                            "source_kind"],
         "forbidden_fields": [],
         "semantic_requirements": [
             "if amount provided, meal_name must also be provided",
@@ -504,6 +519,19 @@ def draft_self_review(action_type: str, payload: dict[str, Any], question: str,
                 missing.append("meal_name")
                 semantic_issues.append("amount_without_meal_name")
 
+        if action_type == "nutrition_log_add":
+            lookup_sensitive = any(
+                cue in ql for cue in (
+                    "minus", "pomniejsz", "pomniejszone", "odejmij", "odję",
+                    "template", "szablon", "pół kilo", "pol kilo", "opakowanie",
+                    "zestaw", "porcja", "serving",
+                )
+            )
+            if lookup_sensitive and not payload.get("resolved_from_lookup"):
+                if "lookup_source" not in missing:
+                    missing.append("lookup_source")
+                semantic_issues.append("nutrition_lookup_required")
+
         if "query mentions food" in req and action_type == "nutrition_log_add":
             food_words = ["ryż", "truskawk", "makaron", "mięso", "kurczak", "jajk"]
             if any(fw in ql for fw in food_words):
@@ -561,16 +589,34 @@ def draft_self_review(action_type: str, payload: dict[str, Any], question: str,
 
 def build_draft(action_type: str, payload: dict[str, Any], question: str) -> dict[str, Any]:
     from qbot3.tool_registry import _idempotency_key as _idk
+    from qbot3.nutrition_write_resolver import resolve_nutrition_write
 
     # 1. Build base payload (strip decomposition metadata from payload)
     decomposition = payload.pop("_decomposition", None) if isinstance(payload, dict) else None
     provided = {k: v for k, v in payload.items() if v is not None and v != "" and not k.startswith("_")}
 
+    if action_type == "nutrition_log_add":
+        resolution = resolve_nutrition_write(question, provided)
+        provided = dict(resolution.get("payload", provided))
+        resolution_missing = list(resolution.get("missing_fields", []))
+        if resolution_missing:
+            provided["missing_fields"] = resolution_missing
+        if resolution.get("lookup_required"):
+            provided["lookup_required"] = True
+        if resolution.get("resolution_notes"):
+            provided["resolution_notes"] = resolution["resolution_notes"]
+        from qbot3.tool_registry import _resolve_date as _resolve_nutrition_date
+        provided.setdefault("date", _resolve_nutrition_date(question)[0].isoformat())
+        provided.setdefault("source", "qbot3")
+    else:
+        resolution_missing = []
+
     # 2. Mandatory self-review with decomposition
     review = draft_self_review(action_type, provided, question, decomposition=decomposition)
 
     # 3. Merge review findings into missing_fields
-    missing = list(dict.fromkeys(review.get("missing_fields", [])))
+    missing = list(dict.fromkeys(review.get("missing_fields", []) + resolution_missing))
+    provided.pop("missing_fields", None)
 
     # 4. Quality validation
     quality = validate_payload_quality(action_type, provided, question)
@@ -589,8 +635,8 @@ def build_draft(action_type: str, payload: dict[str, Any], question: str) -> dic
         "dry_run_available": True,
         "safety_notes": [f"write action: {action_type}"],
         "human_summary": _build_human_summary(action_type, provided, question),
-        "ready_for_execute": review.get("ready_for_execute", False),
-        "contract_review": review.get("review_status", "approved"),
+        "ready_for_execute": review.get("ready_for_execute", False) and not missing,
+        "contract_review": review.get("review_status", "approved") if not missing else "needs_clarification",
     }
 
     if missing:
@@ -605,6 +651,10 @@ def build_draft(action_type: str, payload: dict[str, Any], question: str) -> dic
 
     if quality.get("issues"):
         draft["quality_warnings"] = quality["issues"]
+
+    if action_type == "nutrition_log_add":
+        draft["payload"].setdefault("date", provided.get("date"))
+        draft["payload"].setdefault("source", provided.get("source", "qbot3"))
 
     return draft
 
@@ -630,6 +680,7 @@ def _build_clarification(action_type: str, missing: list[str], question: str) ->
         "date_end": "datę zakończenia",
         "time_start": "godzinę rozpoczęcia",
         "meal_name": "nazwę posiłku (np. 'ryż')",
+        "lookup_source": "źródło lookupu / wartości z bazy",
         "key": "klucz (np. nazwa faktu)",
         "value": "wartość",
         "target_document": "nazwę dokumentu docelowego",

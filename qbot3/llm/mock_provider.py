@@ -7,6 +7,7 @@ Returns predefined JSON patterns regardless of input.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from qbot3.llm.base import LLMProvider, PlanResult, AnswerResult
@@ -34,13 +35,20 @@ class MockProvider(LLMProvider):
         requires_confirm = False
 
         # Write patterns must be checked FIRST to avoid matching "event" etc.
-        if any(k in ql for k in ("dodaj", "zapisz", "przypomnij")):
+        explicit_nutrition_write = any(k in ql for k in ("dodaj", "zapisz", "przypomnij"))
+        subtractive_nutrition_write = "minus" in ql and any(
+            k in ql for k in ("kcal", "białko", "białka", "węgle", "węglowodany", "tłuszcz")
+        )
+        nutrition_hint = explicit_nutrition_write or subtractive_nutrition_write
+        if nutrition_hint:
             mode = "write"
             tools = []
             if "przypomnij" in ql:
                 intent = "reminder_add"
             elif "wydarzenie" in ql or "event" in ql or "kalendarz" in ql or "bikepack" in ql:
                 intent = "calendar_event_add"
+            elif subtractive_nutrition_write:
+                intent = "nutrition_log_add"
             else:
                 intent = "nutrition_log_add"
             write_action = intent
@@ -56,6 +64,10 @@ class MockProvider(LLMProvider):
         elif any(k in ql for k in ("dashboard", "podsumowanie dnia", "snapshot dnia", "status dnia", "dzisiejszy dashboard")):
             intent = "calendar_snapshot"
             tools = ["calendar_snapshot"]
+        elif any(k in ql for k in ("pokaż listę projektów", "lista projektów", "projekty", "artefakt", "artifacts")):
+            intent = "artifacts_list"
+            tools = ["artifacts_list"]
+            parameters = {"list_projects": True}
         elif any(k in ql for k in ("kalendarz", "calendar", "wydarzeń", "wydarzen", "event", "eventy", "zaplanowane", "spotkan")):
             intent = "calendar"
             tools = ["db_schema_list", "db_table_describe", "db_select_readonly"]
@@ -76,10 +88,10 @@ class MockProvider(LLMProvider):
             intent = "nutrition_day"
             tools = ["db_schema_list", "db_table_describe", "db_select_readonly"]
             parameters = {
-                "schema": "public",
-                "table": "meal_logs",
+                "schema": "qbot_v2",
+                "table": "intake_logs",
                 "sql": (
-                    "SELECT * FROM meal_logs "
+                    "SELECT * FROM qbot_v2.intake_logs "
                     "WHERE date = CURRENT_DATE "
                     "ORDER BY id "
                     "LIMIT 100"
@@ -91,6 +103,22 @@ class MockProvider(LLMProvider):
         elif any(k in ql for k in ("knowhow", "know-how", "know_how", "bible", "dokument", "kanoniczn")):
             intent = "docs"
             tools = ["canonical_docs"]
+        elif (
+            "split gpx" in ql
+            or "podziel gpx" in ql
+            or "podziel tras" in ql
+            or "przygotuj 7 plików gpx" in ql
+            or "przygotuj 7 plikow gpx" in ql
+            or "etapy do rwgps" in ql
+            or "route_gpx_split" in ql
+        ):
+            intent = "route_gpx_split"
+            tools = ["route_gpx_split"]
+            match = re.search(r"\b(\d{6,})\b", ql)
+            if match:
+                parameters = {"route_id": int(match.group(1))}
+            else:
+                parameters = {"route_id": 55256628}
         elif any(k in ql for k in ("rwgps", "tras", "route")):
             intent = "routes"
             tools = ["rwgps_route_list"]

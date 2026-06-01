@@ -1,7 +1,17 @@
 #!/usr/bin/env python3
-"""Cron job: import Withings body composition for last 3 days into qbot_v2.body_daily.
+"""⚠️ DEPRECATED — Cron job: import Withings body composition.
 
-Runs at 07:00, 08:00, 09:00.
+Produkcyjnym źródłem body composition jest Garmin Index Scale
+poprzez import_garmin_body.py. Tokeny Withings/OAuth są zbyt niepewne.
+
+Zostawiony jako legacy: nie uruchamiać, nie używać jako fallbacku,
+nie raportować w integracjach, nie kasować pliku.
+
+--- stary opis poniżej ---
+
+Import Withings body composition for last 3 days into qbot_v2.body_daily.
+
+Runs at 07:00, 08:00, 09:00 (deprecated).
 Only records with actual measurements — no empty days.
 Replaces Garmin records for the same date (Withings has precedence).
 """

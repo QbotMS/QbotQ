@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 from datetime import date, timedelta
 from typing import Any
@@ -25,10 +26,14 @@ from qbot3.context_builder import build_context
 from qbot3.llm.mock_provider import MockProvider
 from qbot3.plan_validator import validate_plan
 from qbot3.write_router import extract_nutrition_slots, build_draft, draft_self_review
+from qbot3.nutrition_write_resolver import resolve_nutrition_write
 from qbot3.query_decomposer import decompose_query, is_payload_contaminated, clean_payload
 from qbot3.db_introspection import db_schema_list, db_table_describe, db_select_readonly
 from qbot3.errors import SCHEMA_MISMATCH, READER_ERROR
+from qbot3.safety import validate
 from qbot3.tool_registry import tool_descriptions, list_all_tools
+from qbot_nutrition_db import _normalize_day_input
+from qbot_nutrition_tools import _tool_qbot_nutrition_meal_list
 
 
 class TestTransparentGateway(unittest.TestCase):
@@ -107,6 +112,81 @@ class TestNutritionDraft(unittest.TestCase):
         self.assertEqual(draft["action_type"], "nutrition_log_add")
         self.assertTrue(draft["ready_for_execute"])
         self.assertEqual(draft["contract_review"], "approved")
+        self.assertEqual(draft["payload"].get("source_kind"), "template")
+        self.assertTrue(draft["payload"].get("resolved_from_lookup"))
+
+    def test_template_minus_uses_lookup_not_prompt_numbers(self):
+        """Template minus query → arithmetic from template, not raw prompt numbers."""
+        q = "Brokuł sport 2000 minus 577 kcal, 32.7 g białka, 39.6 g węgli, 31.8 g tłuszczu"
+        resolved = resolve_nutrition_write(q)
+        self.assertTrue(resolved.get("resolved"))
+        payload = resolved.get("payload", {})
+        self.assertEqual(payload.get("meal_name"), "Brokuł sport 2000")
+        self.assertEqual(payload.get("kcal_total"), 1434.0)
+        self.assertEqual(payload.get("protein_g"), 85.3)
+        self.assertEqual(payload.get("carbs_g"), 156.4)
+        self.assertEqual(payload.get("fat_g"), 47.2)
+        self.assertEqual(payload.get("source_kind"), "template_adjusted")
+        self.assertTrue(payload.get("resolved_from_lookup"))
+
+
+class TestNutritionMealListReader(unittest.TestCase):
+    """Nutrition meal list reader should read qbot_v2 with normalized dates."""
+
+    def test_day_month_input_normalizes_to_current_year(self):
+        """'29.05' → real date in current year."""
+        parsed = _normalize_day_input("29.05")
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.year, date.today().year)
+        self.assertEqual(parsed.month, 5)
+        self.assertEqual(parsed.day, 29)
+
+    def test_meal_list_returns_meal_logs_and_items(self):
+        """Reader payload should expose meal_logs + meal_log_items."""
+        with patch("qbot_nutrition_db.meal_log_list") as mock_meal_list:
+            mock_meal_list.return_value = [
+                {
+                    "id": 10,
+                    "eaten_at": "2026-05-29T12:00:00+02:00",
+                    "meal_type": "meal",
+                    "note": "test",
+                    "items": [
+                        {"id": 1, "food_name": "Truskawki", "amount": 500, "unit": "g"},
+                    ],
+                }
+            ]
+            result = _tool_qbot_nutrition_meal_list({"date": "29.05", "limit": 20})
+
+        self.assertEqual(result["status"], "OK")
+        self.assertEqual(result["count"], 1)
+        self.assertIn("meal_logs", result)
+        self.assertIn("meal_log_items", result)
+        self.assertEqual(result["meal_logs"][0]["id"], 10)
+        self.assertEqual(result["meal_log_items"][0]["meal_log_id"], 10)
+        self.assertEqual(result["meal_log_items"][0]["meal_eaten_at"], "2026-05-29T12:00:00+02:00")
+
+    def test_half_kilo_truskawek_normalizes_quantity_only(self):
+        """'pół kilo truskawek' → 500 g, not 500 kcal."""
+        q = "dodaj pół kilo truskawek"
+        resolved = resolve_nutrition_write(q)
+        payload = resolved.get("payload", {})
+        self.assertEqual(payload.get("amount"), 500)
+        self.assertEqual(payload.get("unit"), "g")
+        self.assertNotEqual(payload.get("kcal_total"), 500)
+        self.assertIn("lookup_source", resolved.get("missing_fields", []))
+
+    def test_template_lookup_for_bialko_owsiane(self):
+        """Template name should resolve via lookup, not guessing macros."""
+        q = "dodaj Białko / owsiane"
+        resolved = resolve_nutrition_write(q)
+        self.assertTrue(resolved.get("resolved"))
+        payload = resolved.get("payload", {})
+        self.assertEqual(payload.get("meal_name"), "Białko / owsiane")
+        self.assertEqual(payload.get("kcal_total"), 225)
+        self.assertEqual(payload.get("protein_g"), 24)
+        self.assertEqual(payload.get("carbs_g"), 20)
+        self.assertEqual(payload.get("fat_g"), 3.5)
+        self.assertEqual(payload.get("source_kind"), "template")
 
     def test_draft_incomplete_no_meal_name(self):
         """Missing meal_name → draft_incomplete"""
@@ -172,6 +252,202 @@ class TestDBIntrospection(unittest.TestCase):
         self.assertEqual(result["status"], "BLOCKED")
 
 
+class TestWeatherProvider(unittest.TestCase):
+    """Daily-report weather should use OpenWeatherMap and fail safely."""
+
+    class _FakeResponse:
+        def __init__(self, status_code: int, payload: Any):
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class _FakeClient:
+        def __init__(self, payloads: dict[str, tuple[int, Any]]):
+            self.payloads = payloads
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def get(self, url, params=None):
+            if "geo/1.0/direct" in url:
+                status, payload = self.payloads["geo"]
+            elif "data/2.5/weather" in url:
+                status, payload = self.payloads["current"]
+            elif "data/2.5/forecast" in url:
+                status, payload = self.payloads["forecast"]
+            else:
+                status, payload = 404, {}
+            return TestWeatherProvider._FakeResponse(status, payload)
+
+    def _fake_payloads(self):
+        return {
+            "geo": (
+                200,
+                [
+                    {
+                        "name": "Marki",
+                        "country": "PL",
+                        "lat": 52.3206,
+                        "lon": 21.1047,
+                    }
+                ],
+            ),
+            "current": (
+                200,
+                {
+                    "dt": 1748512800,
+                    "main": {
+                        "temp": 18.2,
+                        "feels_like": 17.6,
+                        "humidity": 61,
+                    },
+                    "wind": {"speed": 4.2},
+                    "clouds": {"all": 35},
+                    "weather": [{"description": "zachmurzenie umiarkowane"}],
+                    "rain": {"1h": 0.0},
+                    "snow": {},
+                },
+            ),
+            "forecast": (
+                200,
+                {
+                    "city": {"timezone": 7200},
+                    "list": [
+                        {
+                            "dt": 1748512800,
+                            "dt_txt": "2026-05-29 12:00:00",
+                            "main": {"temp": 18.2},
+                            "wind": {"speed": 4.2},
+                            "clouds": {"all": 35},
+                            "pop": 0.1,
+                            "weather": [{"description": "zachmurzenie umiarkowane"}],
+                        },
+                        {
+                            "dt": 1748523600,
+                            "dt_txt": "2026-05-29 15:00:00",
+                            "main": {"temp": 19.1},
+                            "wind": {"speed": 5.0},
+                            "clouds": {"all": 45},
+                            "pop": 0.2,
+                            "weather": [{"description": "przelotne chmury"}],
+                        },
+                        {
+                            "dt": 1748610000,
+                            "dt_txt": "2026-05-30 15:00:00",
+                            "main": {"temp": 20.5},
+                            "wind": {"speed": 4.0},
+                            "clouds": {"all": 25},
+                            "pop": 0.0,
+                            "weather": [{"description": "bezchmurnie"}],
+                        },
+                    ],
+                },
+            ),
+        }
+
+    def test_config_loader_exposes_weather_key_names_without_leaking_value(self):
+        """Config loader knows OWM env names and config status does not leak secret values."""
+        import qbot_config as cfg
+        from qbot_integration_tools import _tool_qbot_weather_config_status
+
+        self.assertIn("OPENWEATHERMAP_API_KEY", cfg.WEATHER_API_KEY_NAMES)
+        self.assertIn("OWM_API_KEY", cfg.WEATHER_API_KEY_NAMES)
+        self.assertIn("WEATHER_API_KEY", cfg.WEATHER_API_KEY_NAMES)
+
+        with patch.dict(os.environ, {"OPENWEATHERMAP_API_KEY": "FAKE-OWM-SECRET"}, clear=False):
+            result = _tool_qbot_weather_config_status()
+            dumped = json.dumps(result, ensure_ascii=False)
+
+        self.assertTrue(result["openweathermap_key_present"])
+        self.assertIn("OPENWEATHERMAP_API_KEY", result["owm_envs_checked"])
+        self.assertNotIn("FAKE-OWM-SECRET", dumped)
+
+    @patch("qbot_integration_tools.httpx.Client")
+    def test_owm_provider_mocked_response(self, mock_client):
+        """OpenWeatherMap provider returns daily-report payload with structured fields."""
+        from qbot_integration_tools import _tool_qbot_weather_daily_report
+
+        mock_client.return_value = self._FakeClient(self._fake_payloads())
+        with patch("qbot_config.OPENWEATHERMAP_API_KEY", "FAKE-OWM-KEY"):
+            result = _tool_qbot_weather_daily_report({"location": "Marki", "days": 2})
+
+        self.assertEqual(result["status"], "OK")
+        self.assertEqual(result["source"], "OpenWeatherMap")
+        self.assertIn("teraz", result)
+        self.assertIn("hourly_forecast", result)
+        self.assertIn("prognoza", result)
+        self.assertGreater(len(result["hourly_forecast"]), 0)
+        self.assertGreater(len(result["prognoza"]), 0)
+        self.assertEqual(result["teraz"]["warunki"], "zachmurzenie umiarkowane")
+
+    def test_daily_report_adapter_uses_weather_payload(self):
+        """daily_report_adapter should accept the OWM payload without surfacing get_weather:error."""
+        from daily_report_adapter import get_weather
+
+        fake_payload = {
+            "status": "OK",
+            "source": "OpenWeatherMap",
+            "location_resolved": "Marki, PL",
+            "teraz": {
+                "temperatura": "18.2°C",
+                "odczuwalna": "17.6°C",
+                "warunki": "zachmurzenie umiarkowane",
+                "wiatr_ms": "4.2 m/s",
+                "zachmurzenie": "35%",
+                "wilgotnosc": "61%",
+                "opady_mm": 0.0,
+                "observed_at": "2026-05-29T12:00:00+02:00",
+            },
+            "hourly_forecast": [
+                {
+                    "czas": "2026-05-29T12:00:00+02:00",
+                    "temperatura": "18.2°C",
+                    "szansa_deszczu": "10%",
+                    "opady_mm": 0.0,
+                    "wiatr_ms": "4.2 m/s",
+                    "zachmurzenie": "35%",
+                    "warunki": "zachmurzenie umiarkowane",
+                }
+            ],
+            "prognoza": [
+                {
+                    "data": "2026-05-29",
+                    "warunki": "zachmurzenie umiarkowane",
+                    "temp_max": "19.1°C",
+                    "temp_min": "18.2°C",
+                    "szansa_deszcz": "20%",
+                    "opady_mm": 0.0,
+                    "max_wiatr_ms": "5.0 m/s",
+                    "zachmurzenie": "40%",
+                }
+            ],
+        }
+
+        with patch("qbot_integration_tools._tool_qbot_weather_daily_report", return_value=fake_payload):
+            result = get_weather(days=2, location="Marki")
+
+        self.assertNotIn("error", result)
+        self.assertEqual(result["source"], "OpenWeatherMap")
+        self.assertIn("hourly_forecast", result)
+        self.assertIn("prognoza", result)
+
+    def test_missing_weather_key_returns_controlled_error(self):
+        """No API key should return a controlled error, not a crash."""
+        from qbot_integration_tools import _tool_qbot_weather_daily_report
+
+        with patch("qbot_config.OPENWEATHERMAP_API_KEY", ""):
+            result = _tool_qbot_weather_daily_report({"location": "Marki", "days": 2})
+
+        self.assertEqual(result["status"], "ERROR")
+        self.assertIn("API key", result["error"])
+        self.assertEqual(result["source"], "OpenWeatherMap")
+
+
 class TestActionExecuteSemantics(unittest.TestCase):
     """qbot.action_execute proper semantics."""
 
@@ -192,13 +468,118 @@ class TestActionExecuteSemantics(unittest.TestCase):
         from qbot3.adapters.mcp_adapter import _handle_action_execute
         result = _handle_action_execute("test-req", {
             "action_type": "nutrition_log_add",
-            "payload_json": {"meal_name": "test"},
+            "payload_json": {
+                "meal_name": "test",
+                "date": "2026-05-29",
+                "source": "qbot3",
+                "kcal_total": 10.0,
+            },
             "idempotency_key": "test-key-dry",
             "confirm": True,
             "dry_run": True,
         })
         data = json.loads(result["result"]["content"][0]["text"])
         self.assertEqual(data["status"], "DRY_RUN_OK")
+        self.assertFalse(data.get("write_committed", True))
+
+    def test_runtime_nutrition_paths_do_not_use_public_meal_tables(self):
+        """Core runtime nutrition code should not source from public.meal_* tables."""
+        files = [
+            Path("/opt/qbot/app/qbot_nutrition_db.py"),
+            Path("/opt/qbot/app/qbot3/agent_runtime.py"),
+            Path("/opt/qbot/app/qbot3/llm/mock_provider.py"),
+            Path("/opt/qbot/app/qbot3/write_router.py"),
+        ]
+        text = "\n".join(path.read_text() for path in files)
+        self.assertNotIn("public.meal_logs", text)
+        self.assertNotIn("public.meal_log_items", text)
+
+    def test_nutrition_validate_requires_core_fields(self):
+        """nutrition_log_add must require date, source, meal_name and kcal_total."""
+        result = validate("nutrition_log_add", {"meal_name": "X", "source": "qbot3"}, "idem")
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("date", result["error"])
+        self.assertIn("kcal_total", result["error"])
+
+    @patch("qbot_nutrition_db.intake_log_create")
+    @patch("qbot_nutrition_db.daily_summary_get")
+    @patch("qbot_nutrition_db.daily_summary_compute")
+    @patch("qbot_nutrition_db.meal_log_list")
+    @patch("qbot_nutrition_db._conn")
+    def test_nutrition_write_inconsistent_blocks_on_public_rows(
+        self, mock_conn, mock_meal_list, mock_summary_compute, mock_summary_get, mock_intake_create
+    ):
+        """If public/V1 receives a row, action_execute must return WRITE_INCONSISTENT."""
+        mock_intake_create.return_value = {
+            "id": 123,
+            "date": "2026-05-29",
+            "eaten_at": "2026-05-29T12:00:00+02:00",
+            "items": [{"food_name": "X", "kcal": 160.0, "protein_g": 3.5, "carbs_g": 10.0, "fat_g": 1.5}],
+        }
+        mock_meal_list.return_value = [{"id": 123}]
+        mock_summary_get.side_effect = [
+            {"kcal_total": 0.0},
+            {"kcal_total": 160.0},
+        ]
+        mock_summary_compute.side_effect = [
+            {"kcal_total": 160.0},
+            {"kcal_total": 0.0},
+        ]
+
+        class _FakeCursor:
+            def __init__(self):
+                self._fetchone = {"exists_flag": "public.meal_logs"}
+                self._step = 0
+
+            def execute(self, sql, params=None):
+                self._step += 1
+                if "to_regclass" in sql:
+                    self._fetchone = {"exists_flag": "public.meal_logs"}
+                elif "public.meal_logs" in sql:
+                    self._fetchone = {"n": 1}
+                elif "public.meal_log_items" in sql:
+                    self._fetchone = {"n": 0}
+                else:
+                    self._fetchone = {"n": 0}
+
+            def fetchone(self):
+                return self._fetchone
+
+        class _FakeConn:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def cursor(self):
+                return _FakeCursor()
+
+            def execute(self, *args, **kwargs):
+                return self
+
+            def commit(self):
+                return None
+
+        mock_conn.return_value = _FakeConn()
+
+        from qbot3.adapters.mcp_adapter import _handle_action_execute
+        result = _handle_action_execute("req-1", {
+            "action_type": "nutrition_log_add",
+            "payload_json": {
+                "date": "2026-05-29",
+                "source": "qbot3",
+                "meal_name": "Test meal",
+                "kcal_total": 160.0,
+                "protein_g": 3.5,
+                "carbs_g": 10.0,
+                "fat_g": 1.5,
+            },
+            "idempotency_key": "idem-123",
+            "confirm": True,
+        })
+        data = json.loads(result["result"]["content"][0]["text"])
+        self.assertEqual(data["status"], "WRITE_INCONSISTENT")
         self.assertFalse(data.get("write_committed", True))
 
 
@@ -224,8 +605,25 @@ class TestWriteDraftWithoutSave(unittest.TestCase):
         self.assertIn("brokuł", payload.get("meal_name", "").lower())
         self.assertEqual(payload.get("kcal_total"), 2011.0)
         self.assertEqual(payload.get("protein_g"), 118.0)
+        self.assertEqual(payload.get("source_kind"), "template")
+        self.assertTrue(payload.get("resolved_from_lookup"))
         self.assertNotIn("tool_results", result)  # write mode has no tools
         # answer informs user to use qbot.action_execute — that's correct, not execution
+
+    def test_brokol_minus_returns_adjusted_draft(self):
+        """Template minus should resolve from lookup and arithmetic, not raw prompt numbers."""
+        q = "Brokuł sport 2000 minus 577 kcal, 32.7 g białka, 39.6 g węgli, 31.8 g tłuszczu, bez zapisu"
+        result = orchestrate_query(q)
+        self.assertIn(result.get("status"), ("draft", "draft_incomplete"))
+        draft = result.get("action_draft", {})
+        payload = draft.get("payload", {})
+        self.assertEqual(payload.get("meal_name"), "Brokuł sport 2000")
+        self.assertEqual(payload.get("kcal_total"), 1434.0)
+        self.assertEqual(payload.get("protein_g"), 85.3)
+        self.assertEqual(payload.get("carbs_g"), 156.4)
+        self.assertEqual(payload.get("fat_g"), 47.2)
+        self.assertEqual(payload.get("source_kind"), "template_adjusted")
+        self.assertTrue(payload.get("resolved_from_lookup"))
 
 
 class TestRegression(unittest.TestCase):
@@ -254,7 +652,7 @@ class TestRegression(unittest.TestCase):
         self.assertIn("db_select_readonly", plan.tools_to_call)
         self.assertIn("db_table_describe", plan.tools_to_call)
         self.assertNotIn("nutrition_day_summary", plan.tools_to_call)
-        self.assertEqual(plan.parameters.get("table"), "meal_logs")
+        self.assertEqual(plan.parameters.get("table"), "intake_logs")
 
     def test_tool_registry_includes_all(self):
         """All expected tools in registry"""

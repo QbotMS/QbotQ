@@ -395,30 +395,66 @@ def _intervals_import_wellness(date_from: str, date_to: str, dry_run: bool) -> d
 
 
 def _parse_comment_for_nutrition(comment_text: str) -> dict[str, Any] | None:
-    """Try to extract nutrition data from Intervals comment text."""
+    """Try to extract nutrition data from Intervals comment text.
+
+    Obsługuje pełny blok dziennego bilansu:
+      🍽️ Zjedzone: 2126 kcal | B:140g W:198g T:81g
+      🔥 Spalone: 3221 kcal (BMR:2287 + aktywne:934)
+      ⚖️ Bilans: -1095 kcal
+    """
+    import re
     result: dict[str, Any] = {}
     try:
-        for line in comment_text.split("\n"):
-            if "Zjedzone:" in line:
-                try:
-                    result["calories_kcal"] = float(line.split("Zjedzone:")[1].split("kcal")[0].strip())
-                except Exception:
-                    pass
-                if "B:" in line and "W:" in line and "T:" in line:
+        # Full block: Zjedzone + B/W/T macros (priorytet)
+        m = re.search(
+            r'Zjedzone:\s*([\d.]+)\s*kcal\s*\|\s*'
+            r'B:\s*([\d.]+)g\s+'
+            r'W:\s*([\d.]+)g\s+'
+            r'T:\s*([\d.]+)g',
+            comment_text, re.I,
+        )
+        if m:
+            result["calories_kcal"] = round(float(m.group(1)), 1)
+            result["protein_g"] = round(float(m.group(2)), 1)
+            result["carbs_g"] = round(float(m.group(3)), 1)
+            result["fat_g"] = round(float(m.group(4)), 1)
+        else:
+            # Fallback: line-by-line for legacy format
+            for line in comment_text.split("\n"):
+                if "Zjedzone:" in line:
                     try:
-                        b_part = line.split("B:")[1].split("W:")[0].replace("g", "").strip()
-                        w_part = line.split("W:")[1].split("T:")[0].replace("g", "").strip()
-                        t_part = line.split("T:")[1].replace("g", "").strip()
-                        result["protein_g"] = float(b_part)
-                        result["carbs_g"] = float(w_part)
-                        result["fat_g"] = float(t_part)
+                        result["calories_kcal"] = float(line.split("Zjedzone:")[1].split("kcal")[0].strip())
                     except Exception:
                         pass
-            if "Spalone:" in line:
-                try:
-                    result["calories_burned_kcal"] = float(line.split("Spalone:")[1].split("kcal")[0].strip())
-                except Exception:
-                    pass
+                    if "B:" in line and "W:" in line and "T:" in line:
+                        try:
+                            b_part = line.split("B:")[1].split("W:")[0].replace("g", "").strip()
+                            w_part = line.split("W:")[1].split("T:")[0].replace("g", "").strip()
+                            t_part = line.split("T:")[1].replace("g", "").strip()
+                            result["protein_g"] = float(b_part)
+                            result["carbs_g"] = float(w_part)
+                            result["fat_g"] = float(t_part)
+                        except Exception:
+                            pass
+
+        # Spalone: (expenditure)
+        m = re.search(r'Spalone:\s*([\d.]+)\s*kcal', comment_text, re.I)
+        if m:
+            result["calories_burned_kcal"] = round(float(m.group(1)), 1)
+
+        m = re.search(r'BMR:\s*([\d.]+)', comment_text)
+        if m:
+            result["bmr_kcal"] = round(float(m.group(1)), 1)
+
+        m = re.search(r'aktywne:\s*([\d.]+)', comment_text)
+        if m:
+            result["active_kcal"] = round(float(m.group(1)), 1)
+
+        # Bilans:
+        m = re.search(r'Bilans:\s*(-?[\d.]+)\s*kcal', comment_text)
+        if m:
+            result["balance_kcal"] = round(float(m.group(1)), 1)
+
     except Exception:
         return None
     return result if result else None
@@ -686,34 +722,131 @@ def _date_range(start: str, end: str) -> list[str]:
 
 def _tool_qbot_wellness_day_get(args: dict | None = None) -> dict[str, Any]:
     d = str((args or {}).get("date", _today_str()))[:10]
-    rows = []
+    data: dict[str, Any] = {}
     sources_available: list[str] = []
+
     try:
         with _db_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT * FROM qbot_wellness_daily WHERE date = %s ORDER BY source_priority", (d,))
-            rows = cur.fetchall()
-            for r in rows:
-                sources_available.append(r["source"])
-                if isinstance(r.get("raw_json"), str):
+            # 1. Try qbot_v2.wellness_daily (HRV, RHR, body battery, stress, weight)
+            cur.execute("SELECT * FROM qbot_v2.wellness_daily WHERE date = %s", (d,))
+            wrows = cur.fetchall()
+            if wrows:
+                sources_available.append(f"wellness/{wrows[0]['source']}")
+                for k, v in wrows[0].items():
+                    if k not in ("id", "quality_status", "imported_at"):
+                        data[k] = _serialize_val(v)
+
+            # 2. Try qbot_v2.energy_daily (kcal, steps)
+            cur.execute("SELECT * FROM qbot_v2.energy_daily WHERE date = %s", (d,))
+            erows = cur.fetchall()
+            if erows:
+                sources_available.append(f"energy/{erows[0]['source']}")
+                data["total_kcal"] = _serialize_val(erows[0].get("total_kcal"))
+                data["active_kcal"] = _serialize_val(erows[0].get("active_kcal"))
+                data["resting_kcal"] = _serialize_val(erows[0].get("resting_kcal"))
+                data["steps"] = _serialize_val(erows[0].get("steps"))
+
+            # 2b. Try qbot_v2.body_measurements (Garmin canonical)
+            try:
+                cur.execute(
+                    """SELECT weight_kg, bmi, body_fat_pct, body_water_pct,
+                              muscle_mass_kg, bone_mass_kg,
+                              source_system, source_type, quality_status
+                       FROM qbot_v2.body_measurements WHERE date = %s
+                       ORDER BY completeness_score DESC, imported_at DESC
+                       LIMIT 1""", (d,))
+                bm = cur.fetchone()
+                if bm and bm.get("weight_kg") is not None:
+                    data["weight_kg"] = _serialize_val(bm.get("weight_kg"))
+                    data["body_fat_pct"] = _serialize_val(bm.get("body_fat_pct"))
+                    data["bmi"] = _serialize_val(bm.get("bmi"))
+                    data["muscle_mass_kg"] = _serialize_val(bm.get("muscle_mass_kg"))
+                    data["bone_mass_kg"] = _serialize_val(bm.get("bone_mass_kg"))
+                    data["body_water_pct"] = _serialize_val(bm.get("body_water_pct"))
+                    data["weight_source"] = f"body_measurements/{bm.get('source_type','?')}"
+            except Exception:
+                conn.rollback()
+            # Fallback: legacy body_daily
+            if data.get("weight_kg") is None:
+                try:
+                    cur.execute(
+                        """SELECT * FROM qbot_v2.body_daily WHERE date = %s
+                           ORDER BY CASE source
+                               WHEN 'garmin_index_scale' THEN 1
+                               WHEN 'garmin_mfp' THEN 2
+                               ELSE 3
+                           END, imported_at DESC
+                           LIMIT 1""", (d,))
+                    bd = cur.fetchone()
+                    if bd:
+                        data["weight_kg"] = _serialize_val(bd.get("weight_kg"))
+                        data["body_fat_pct"] = _serialize_val(bd.get("body_fat_pct"))
+                        data["bmi"] = _serialize_val(bd.get("bmi"))
+                        data["muscle_mass_kg"] = _serialize_val(bd.get("muscle_mass_kg"))
+                        data["bone_mass_kg"] = _serialize_val(bd.get("bone_mass_kg"))
+                        data["body_water_pct"] = _serialize_val(bd.get("body_water_pct"))
+                        data["visceral_fat"] = _serialize_val(bd.get("visceral_fat"))
+                        data["weight_source"] = f"body_daily/{bd.get('source','?')} (legacy)"
+                except Exception:
+                    conn.rollback()
+            if data.get("weight_kg") is None:
+                # Legacy fallback: public tables
+                for wt_tbl, wt_col in [("public.weight_history", "weight_kg"),
+                                        ("public.body_composition", "weight_kg")]:
                     try:
-                        r["raw_json"] = json.loads(r["raw_json"])
+                        cur.execute(f"SELECT {wt_col} FROM {wt_tbl} WHERE date = %s ORDER BY created_at DESC LIMIT 1", (d,))
+                        wr = cur.fetchone()
+                        if wr and wr.get(wt_col) is not None:
+                            data["weight_kg"] = _serialize_val(wr[wt_col])
+                            data["weight_source"] = wt_tbl.split(".")[-1].replace("_", "/")
+                            break
                     except Exception:
-                        pass
-                if hasattr(r, "_asdict"):
-                    pass
+                        conn.rollback()
+                        continue
+            if data.get("weight_kg") is None and "weight_source" not in data:
+                data["weight_status"] = "NO_RECORD_FOR_DATE"
+
+            # 3. Try qbot_v2.sleep_daily (sleep duration, score)
+            cur.execute("SELECT * FROM qbot_v2.sleep_daily WHERE date = %s", (d,))
+            srows = cur.fetchall()
+            if srows:
+                sources_available.append(f"sleep/{srows[0]['source']}")
+                data["sleep_duration_min"] = _serialize_val(srows[0].get("duration_min"))
+                data["sleep_score"] = _serialize_val(srows[0].get("score"))
+                data["deep_min"] = _serialize_val(srows[0].get("deep_min"))
+                data["light_min"] = _serialize_val(srows[0].get("light_min"))
+                data["rem_min"] = _serialize_val(srows[0].get("rem_min"))
+                data["awake_min"] = _serialize_val(srows[0].get("awake_min"))
+                data["sleep_start"] = _serialize_val(srows[0].get("sleep_start"))
+                data["sleep_end"] = _serialize_val(srows[0].get("sleep_end"))
+                if data.get("hrv_ms") is None:
+                    data["hrv_ms"] = _serialize_val(srows[0].get("hrv_ms"))
+                if data.get("resting_hr_bpm") is None:
+                    data["resting_hr_bpm"] = _serialize_val(srows[0].get("resting_hr_bpm"))
     except Exception as e:
         return {"tool": "qbot_wellness_day_get", "status": "ERROR", "date": d,
                 "safety_class": "READ_ONLY", "error": str(e)[:200]}
 
-    if not rows:
+    # Fallback to old public.qbot_wellness_daily if qbot_v2 had nothing
+    if not data:
+        try:
+            with _db_conn() as conn, conn.cursor() as cur:
+                cur.execute("SELECT * FROM qbot_wellness_daily WHERE date = %s ORDER BY source_priority", (d,))
+                rows = cur.fetchall()
+                if rows:
+                    sources_available.append(rows[0]["source"])
+                    data = {k: _serialize_val(v) for k, v in rows[0].items() if k not in ("raw_json", "id")}
+        except Exception:
+            pass
+
+    if not data:
         return {"tool": "qbot_wellness_day_get", "status": "NO_DATA", "date": d,
                 "safety_class": "READ_ONLY", "sources_available": [],
                 "data": None, "missing_fields": ["all"], "raw_sources_available": False,
                 "reason": "Brak danych wellness w DB dla tej daty."}
 
-    data = {k: _serialize_val(v) for k, v in rows[0].items() if k not in ("raw_json", "id")}
     missing = [k for k in ("sleep_duration_min", "sleep_score", "hrv_ms", "resting_hr_bpm",
-                            "body_battery_start", "weight_kg", "subjective_feel") if data.get(k) is None]
+                            "body_battery_start", "weight_kg") if data.get(k) is None]
 
     return {"tool": "qbot_wellness_day_get", "status": "OK", "date": d,
             "safety_class": "READ_ONLY", "sources_available": sources_available,
@@ -722,25 +855,55 @@ def _tool_qbot_wellness_day_get(args: dict | None = None) -> dict[str, Any]:
 
 def _tool_qbot_sleep_day_get(args: dict | None = None) -> dict[str, Any]:
     d = str((args or {}).get("date", _today_str()))[:10]
-    rows = []
+    data: dict[str, Any] = {}
+    source_name = None
+
     try:
         with _db_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT * FROM qbot_sleep_daily WHERE date = %s ORDER BY source", (d,))
+            # Try qbot_v2.sleep_daily first
+            cur.execute("SELECT * FROM qbot_v2.sleep_daily WHERE date = %s", (d,))
             rows = cur.fetchall()
+            if rows:
+                source_name = rows[0].get("source", "garmin_live")
+                r = rows[0]
+                data = {
+                    "sleep_duration_min": _serialize_val(r.get("duration_min")),
+                    "sleep_score": _serialize_val(r.get("score")),
+                    "deep_sleep_min": _serialize_val(r.get("deep_min")),
+                    "light_sleep_min": _serialize_val(r.get("light_min")),
+                    "rem_sleep_min": _serialize_val(r.get("rem_min")),
+                    "awake_min": _serialize_val(r.get("awake_min")),
+                    "hrv_ms": _serialize_val(r.get("hrv_ms")),
+                    "resting_hr_bpm": _serialize_val(r.get("resting_hr_bpm")),
+                    "sleep_start": _serialize_val(r.get("sleep_start")),
+                    "sleep_end": _serialize_val(r.get("sleep_end")),
+                    "source": source_name,
+                }
     except Exception as e:
         return {"tool": "qbot_sleep_day_get", "status": "ERROR", "date": d,
                 "safety_class": "READ_ONLY", "error": str(e)[:200]}
 
-    if not rows:
+    # Fallback to old public.qbot_sleep_daily if qbot_v2 had nothing
+    if not data:
+        try:
+            with _db_conn() as conn, conn.cursor() as cur:
+                cur.execute("SELECT * FROM qbot_sleep_daily WHERE date = %s ORDER BY source", (d,))
+                rows = cur.fetchall()
+                if rows:
+                    source_name = rows[0].get("source")
+                    r = rows[0]
+                    data = {k: _serialize_val(v) for k, v in r.items() if k not in ("raw_json", "id")}
+        except Exception:
+            pass
+
+    if not data:
         return {"tool": "qbot_sleep_day_get", "status": "NO_DATA", "date": d,
                 "safety_class": "READ_ONLY", "data": None, "reason": "Brak danych snu w DB."}
 
-    r = rows[0]
-    data = {k: _serialize_val(v) for k, v in r.items() if k not in ("raw_json", "id")}
     missing = [k for k in ("sleep_duration_min", "sleep_score", "deep_sleep_min", "rem_sleep_min",
                             "light_sleep_min", "awake_min") if data.get(k) is None]
     return {"tool": "qbot_sleep_day_get", "status": "OK", "date": d,
-            "safety_class": "READ_ONLY", "sources_available": [r["source"]],
+            "safety_class": "READ_ONLY", "sources_available": [source_name or "garmin_live"],
             "data": data, "missing_fields": missing, "raw_sources_available": True}
 
 

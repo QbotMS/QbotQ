@@ -41,6 +41,7 @@ def build_context(user_message: str, mode: str = "read_only") -> dict[str, Any]:
         "DB read-only is the default source of truth for ordinary data questions.",
         "Use db_schema_list / db_table_describe when the table is unknown, then db_select_readonly for real records.",
         "Use calendar_snapshot and other dashboard tools only for explicit dashboard/day-summary requests.",
+        "For local GPX stage-splitting requests, use route_gpx_split and return generated stage files.",
         "Use only tools from the available tools list — never invent tool names.",
         "If unsure, ask for clarification rather than guessing.",
     ]

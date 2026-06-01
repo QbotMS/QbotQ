@@ -311,8 +311,13 @@ def save_planning_fact(draft: dict, channel: str = "unknown", confirm: bool = Fa
         return {"status": "ERROR", "error": str(e)[:200]}
 
 
-def list_planning_facts(fact_date: str | None = None, status: str | None = None) -> list[dict]:
-    """List planning facts, optionally filtered by date and/or status."""
+def list_planning_facts(
+    fact_date: str | None = None,
+    status: str | None = None,
+    fact_type: str | None = None,
+    title: str | None = None,
+) -> list[dict]:
+    """List planning facts, optionally filtered by date, status, fact_type and/or title."""
     _ensure_table()
     where = []
     params = []
@@ -322,6 +327,12 @@ def list_planning_facts(fact_date: str | None = None, status: str | None = None)
     if status:
         where.append("status = %s")
         params.append(status)
+    if fact_type:
+        where.append("fact_type = %s")
+        params.append(fact_type)
+    if title:
+        where.append("title ILIKE %s")
+        params.append(f"%{title}%")
 
     sql = "SELECT * FROM qbot_planning_facts"
     if where:

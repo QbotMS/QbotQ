@@ -17,7 +17,7 @@ def _allowed() -> set[str]:
 def is_authorized(chat_id: str) -> bool:
     return str(chat_id).strip() in _allowed()
 
-_ALLOWED_ACTIONS = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add"}
+_ALLOWED_ACTIONS = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "reminder_add", "calendar_event_add"}
 
 def _clean_preview(answer: str) -> str:
     for suffix in [
@@ -124,7 +124,9 @@ def _pending_create(chat_id: str, action_type: str, payload: dict, preview: str,
         pid = cur.fetchone()["id"]; c.commit(); c.close()
         _conv_upsert(chat_id, state="awaiting_confirmation", pending_action_id=pid)
         return pid
-    except Exception as e: return None
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return None
 
 def _pending_execute(chat_id: str, action_id: int, dry_run: bool = False) -> dict:
     try:
@@ -132,7 +134,7 @@ def _pending_execute(chat_id: str, action_id: int, dry_run: bool = False) -> dic
         cur.execute("SELECT * FROM telegram_pending_actions WHERE id=%s AND chat_id=%s AND status='pending'", (action_id, str(chat_id)))
         pa = cur.fetchone()
         if not pa: c.close(); return {"status":"not_found"}
-        if pa["expires_at"] and pa["expires_at"] < datetime.now():
+        if pa["expires_at"] and pa["expires_at"] < datetime.now(tz=pa["expires_at"].tzinfo):
             cur.execute("UPDATE telegram_pending_actions SET status='expired', updated_at=now() WHERE id=%s",(action_id,))
             c.commit(); c.close(); _conv_upsert(chat_id, state="idle", pending_action_id=None)
             return {"status":"expired"}
@@ -170,10 +172,10 @@ def _execute_writer(atype: str, payload: dict, idem_key: str) -> dict:
         if atype == "nutrition_log_add":
             from qbot_mcp_adapter import _handle_nutrition_add
             return _handle_nutrition_add({**payload, "idempotency_key": idem_key, "confirm": True})
-        elif atype == "qcal_reminder_add":
+        elif atype in ("qcal_reminder_add", "reminder_add"):
             from qbot_mcp_adapter import _handle_qcal_reminder_add
             return _handle_qcal_reminder_add({**payload, "idempotency_key": idem_key, "confirm": True})
-        elif atype == "qcal_event_add":
+        elif atype in ("qcal_event_add", "calendar_event_add"):
             from qbot_mcp_adapter import _handle_qcal_event_add
             return _handle_qcal_event_add({**payload, "idempotency_key": idem_key, "confirm": True})
         return {"status": "unknown_action_type", "action_type": atype}
@@ -308,10 +310,11 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
         # Use action_draft from qbot.query instead of separate Telegram parser.
         has_draft = bool(action_draft and action_draft.get("action_type"))
         write_hint = None
+        pid = None  # pending_action_id — ustawiane przez _pending_create gdy has_draft
 
         if has_draft:
             atype = action_draft["action_type"]
-            payload = action_draft.get("payload", {})
+            payload = action_draft.get("payload_json") or action_draft.get("payload") or {}
             idem_key = action_draft.get("idempotency_key", "")
 
             # Allowlist check
@@ -353,6 +356,7 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
             _turn_add(chat_id, "outbound", text=response, intent="query_response")
 
         _conv_upsert(chat_id, state="idle" if not write_hint else "awaiting_confirmation",
+                     pending_action_id=pid if write_hint else None,
                      last_intent=str(intent)[:100],
                      last_response_summary=answer[:300],
                      context_json=json.dumps({

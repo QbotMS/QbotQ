@@ -21,6 +21,7 @@ def _conn():
 SAFE_TABLES = {
     "nutrition_daily_summary", "qbot_nutrition_daily", "meal_logs",
     "training_sessions", "weight_history", "body_composition",
+    "body_daily",
     "qbot_sleep_daily", "qbot_wellness_daily",
     "xert_metrics", "calendar_daily_snapshots", "calendar_events",
     "health_events", "health_risk_notes", "health_goals",
@@ -33,7 +34,7 @@ _DOMAIN_TABLE = {
     "nutrition":    ("nutrition_daily_summary", "qbot_nutrition_daily"),
     "training":     ("training_sessions",),
     "weight":       ("weight_history",),
-    "body_comp":    ("body_composition",),
+    "body_comp":    ("qbot_v2.body_daily",),
     "sleep":        ("qbot_sleep_daily",),
     "recovery":     ("qbot_wellness_daily",),
     "xert":         ("xert_metrics",),
@@ -291,11 +292,13 @@ def plan(canonical: dict) -> dict[str, Any]:
                 "LEFT JOIN (SELECT DISTINCT ON (date) date, weight_kg FROM weight_history WHERE date BETWEEN %(df)s AND %(dt)s ORDER BY date, measured_at DESC) w ON d.date = w.date")
             select_extras.append("w.weight_kg")
 
-        # Body comp
+        # Body comp (primary: qbot_v2.body_daily, fallback: public.body_composition)
         if has_body:
             joins.append(
-                "LEFT JOIN (SELECT DISTINCT ON (date) date, body_fat_pct, bmi FROM body_composition WHERE date BETWEEN %(df)s AND %(dt)s ORDER BY date, measured_at DESC) bc ON d.date = bc.date")
-            select_extras.append("bc.body_fat_pct")
+                """LEFT JOIN (SELECT DISTINCT ON (date) date, body_fat_pct, bmi, muscle_mass_kg, bone_mass_kg, body_water_pct, source
+                   FROM qbot_v2.body_daily WHERE date BETWEEN %(df)s AND %(dt)s
+                   ORDER BY date, CASE source WHEN 'garmin_index_scale' THEN 1 WHEN 'garmin_mfp' THEN 2 ELSE 3 END, imported_at DESC) bd ON d.date = bd.date""")
+            select_extras.extend(["bd.body_fat_pct", "bd.bmi", "bd.muscle_mass_kg", "bd.bone_mass_kg", "bd.body_water_pct"])
 
         # Missing flags
         mf_parts = []
@@ -368,8 +371,8 @@ ORDER BY d.date"""
             wj = "LEFT JOIN (SELECT DISTINCT ON (date) date, weight_kg FROM weight_history WHERE date BETWEEN %(df)s AND %(dt)s ORDER BY date, measured_at DESC) w ON d.date = w.date"
             wsel = ["w.weight_kg"]
         if has_body:
-            bj = "LEFT JOIN (SELECT DISTINCT ON (date) date, body_fat_pct, bmi FROM body_composition WHERE date BETWEEN %(df)s AND %(dt)s ORDER BY date, measured_at DESC) bc ON d.date = bc.date"
-            bsel = ["bc.body_fat_pct","bc.bmi"]
+            bj = "LEFT JOIN (SELECT DISTINCT ON (date) date, body_fat_pct, bmi, muscle_mass_kg, bone_mass_kg, body_water_pct, source FROM qbot_v2.body_daily WHERE date BETWEEN %(df)s AND %(dt)s ORDER BY date, CASE source WHEN 'garmin_index_scale' THEN 1 WHEN 'garmin_mfp' THEN 2 ELSE 3 END, imported_at DESC) bd ON d.date = bd.date"
+            bsel = ["bd.body_fat_pct","bd.bmi","bd.muscle_mass_kg","bd.bone_mass_kg","bd.body_water_pct"]
         all_sel = ["d.date::date AS date"] + wsel + bsel
         plan_obj["queries"].append({
             "domain": "weight_body_table",

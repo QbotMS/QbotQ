@@ -179,12 +179,18 @@ def db_table_describe(args: dict | None = None) -> dict[str, Any]:
                     "is_pk": c["column_name"] in pk_cols,
                 })
 
+            # Legacy table hint for body_composition
+            hint = None
+            if schema == "public" and table == "body_composition":
+                hint = "⚠️ LEGACY — nie używać. Body composition znajduje się w qbot_v2.body_measurements (kanoniczna tabela Garmin)."
+
             return {
                 "status": "OK",
                 "schema": schema,
                 "table": table,
                 "columns": columns,
                 "column_count": len(columns),
+                "hint": hint,
             }
     except PermissionError:
         return {"status": "BLOCKED", "error": f"table '{table}' is in secret denylist"}

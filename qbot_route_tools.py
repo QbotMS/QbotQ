@@ -496,6 +496,259 @@ def _tool_qbot_route_artifact_enrich(_args: dict | None = None) -> dict[str, Any
     return payload
 
 
+def _tool_qbot_route_poi_analyze(_args: dict | None = None) -> dict[str, Any]:
+    """Analyze route GPX POI candidates and persist a markdown report artifact."""
+    _args = _args or {}
+    route_id = str(_args.get("route_id", "")).strip() or None
+    artifact_id = str(_args.get("artifact_id", "")).strip() or None
+    project_id = str(_args.get("project_id", "")).strip() or None
+    path_raw = str(_args.get("path", "")).strip()
+    output_format = str(_args.get("output_format", "md")).strip().lower() or "md"
+    focus = str(_args.get("focus", "")).strip() or None
+    retry_chunk_id = str(_args.get("retry_chunk_id", "")).strip() or None
+    retry_mode = bool(_args.get("retry_mode", False))
+    timeout_sec_raw = _args.get("timeout_sec")
+    merge_artifact_ids_raw = _args.get("merge_artifact_ids")
+    confirm = bool(_args.get("confirm", True))
+
+    if not confirm:
+        return {
+            "tool": "qbot_route_poi_analyze",
+            "status": "BLOCKED",
+            "safety_class": "READ_ONLY",
+            "error": "confirm must be true",
+        }
+    if output_format not in {"json", "md"}:
+        return {
+            "tool": "qbot_route_poi_analyze",
+            "status": "ERROR",
+            "safety_class": "READ_ONLY",
+            "error": "output_format must be json or md",
+        }
+    merge_artifact_ids: list[str] = []
+    if isinstance(merge_artifact_ids_raw, list):
+        merge_artifact_ids = [str(item).strip() for item in merge_artifact_ids_raw if str(item).strip()]
+    elif isinstance(merge_artifact_ids_raw, str):
+        merge_artifact_ids = [item.strip() for item in merge_artifact_ids_raw.split(",") if item.strip()]
+
+    if not route_id and not artifact_id and not path_raw and not merge_artifact_ids:
+        return {
+            "tool": "qbot_route_poi_analyze",
+            "status": "ERROR",
+            "safety_class": "READ_ONLY",
+            "error": "route_id, artifact_id, path or merge_artifact_ids required",
+        }
+
+    from pathlib import Path as _Path
+
+    source_path: _Path | None = None
+    resolved_route_id = route_id
+
+    if route_id:
+        from tools.rwgps.client import export_route_to_artifact as rwgps_export_route_to_artifact
+
+        export_result = rwgps_export_route_to_artifact(route_id, fmt="gpx", return_mode="metadata")
+        if not export_result.get("ok"):
+            return {
+                "tool": "qbot_route_poi_analyze",
+                "status": export_result.get("status", "ERROR"),
+                "safety_class": "READ_ONLY",
+                "error": export_result.get("reason") or export_result.get("error") or "RWGPS export failed",
+                "route_id": route_id,
+                "export_result": export_result,
+            }
+        exported_path = export_result.get("artifact_path")
+        if not exported_path:
+            return {
+                "tool": "qbot_route_poi_analyze",
+                "status": "ERROR",
+                "safety_class": "READ_ONLY",
+                "error": "RWGPS export did not return artifact_path",
+                "route_id": route_id,
+                "export_result": export_result,
+            }
+        source_path = _Path(str(exported_path))
+
+    elif artifact_id:
+        from qbot3.artifacts.store import get_artifact as _get_artifact
+
+        record = _get_artifact(artifact_id)
+        if not record:
+            return {
+                "tool": "qbot_route_poi_analyze",
+                "status": "NOT_FOUND",
+                "safety_class": "READ_ONLY",
+                "error": f"artifact not found: {artifact_id}",
+                "artifact_id": artifact_id,
+            }
+        file_path = str(record.get("file_path") or "").strip()
+        if not file_path:
+            return {
+                "tool": "qbot_route_poi_analyze",
+                "status": "ERROR",
+                "safety_class": "READ_ONLY",
+                "error": f"artifact {artifact_id} has no file_path",
+                "artifact_id": artifact_id,
+            }
+        source_path = _Path("/opt/qbot/artifacts") / file_path
+        if not resolved_route_id:
+            resolved_route_id = str(record.get("metadata_json", {}).get("route_id") if isinstance(record.get("metadata_json"), dict) else "") or None
+
+    elif path_raw:
+        source_path = _Path(path_raw)
+
+    if not merge_artifact_ids and (source_path is None or not source_path.exists()):
+        return {
+            "tool": "qbot_route_poi_analyze",
+            "status": "ERROR",
+            "safety_class": "READ_ONLY",
+            "error": f"source GPX not found: {source_path}",
+            "route_id": resolved_route_id,
+            "artifact_id": artifact_id,
+        }
+
+    if merge_artifact_ids:
+        try:
+            km_from = float(_args.get("km_from", 0) or 0)
+            km_to = float(_args.get("km_to", 0) or 0)
+        except (TypeError, ValueError):
+            km_from = 0.0
+            km_to = 0.0
+    else:
+        try:
+            km_from = float(_args.get("km_from"))
+            km_to = float(_args.get("km_to"))
+        except (TypeError, ValueError):
+            return {
+                "tool": "qbot_route_poi_analyze",
+                "status": "ERROR",
+                "safety_class": "READ_ONLY",
+                "error": "km_from and km_to are required numeric values",
+                "route_id": resolved_route_id,
+                "artifact_id": artifact_id,
+            }
+    buffers_raw = _args.get("buffers") or {}
+    if not isinstance(buffers_raw, dict):
+        buffers_raw = {}
+    buffers = {
+        "attractions_m": buffers_raw.get("attractions_m", 1000),
+        "hard_resupply_m": buffers_raw.get("hard_resupply_m", buffers_raw.get("food_m", 400)),
+        "soft_food_m": buffers_raw.get("soft_food_m", buffers_raw.get("food_m", 400)),
+        "food_m": buffers_raw.get("food_m", buffers_raw.get("soft_food_m", 400)),
+        "water_m": buffers_raw.get("water_m", 200),
+        "chunk_km": buffers_raw.get("chunk_km", 12.0),
+        "chunk_overlap_km": buffers_raw.get("chunk_overlap_km", 1.0),
+        "analysis_timeout_sec": timeout_sec_raw if timeout_sec_raw is not None else buffers_raw.get("analysis_timeout_sec", 80.0),
+        "overpass_timeout_sec": buffers_raw.get("overpass_timeout_sec", 20.0),
+        "min_chunk_km": buffers_raw.get("min_chunk_km", 5.0),
+        "overpass_retries": buffers_raw.get("overpass_retries", 3),
+        "retry_backoff_sec": buffers_raw.get("retry_backoff_sec", 1.25),
+    }
+
+    from qbot3.artifacts.route_analyzer import analyze_route_poi_artifact
+    analysis = analyze_route_poi_artifact(
+        str(source_path) if source_path is not None else "",
+        route_id=resolved_route_id,
+        artifact_id=artifact_id,
+        project_id=project_id,
+        km_from=km_from,
+        km_to=km_to,
+        buffers=buffers,
+        focus=focus,
+        retry_chunk_id=retry_chunk_id,
+        retry_mode=retry_mode,
+        merge_artifact_ids=merge_artifact_ids or None,
+        timeout_sec=float(timeout_sec_raw) if timeout_sec_raw not in (None, "") else None,
+        output_format=output_format,
+    )
+    if not analysis.get("ok"):
+        return {
+            "tool": "qbot_route_poi_analyze",
+            "status": analysis.get("status", "ERROR"),
+            "safety_class": "READ_ONLY",
+            "error": analysis.get("error", "analysis failed"),
+            "route_id": resolved_route_id,
+            "artifact_id": artifact_id,
+            "source_path": str(source_path) if source_path is not None else "",
+        }
+
+    source_slug = resolved_route_id or artifact_id or (source_path.stem if source_path is not None else "route_poi")
+    report_filename = analysis.get("report_filename") or f"tuscany_2026_stage_01_poi_analysis_{source_slug}_{int(km_from):02d}_{int(km_to):02d}.md"
+    report_path = _Path("/opt/qbot/artifacts/reports") / report_filename
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(analysis["markdown"], encoding="utf-8")
+
+    report_json_filename = analysis.get("report_json_filename") or report_path.with_suffix(".json").name
+    report_json_path = report_path.with_name(report_json_filename)
+    report_json_path.write_text(json.dumps(analysis, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+
+    from qbot3.artifacts.store import register_existing_file as _register_existing_file
+
+    artifact_record = _register_existing_file(
+        str(report_path.relative_to(_Path("/opt/qbot/artifacts"))),
+        artifact_type="report",
+        title="Tuscany 2026 Stage 01 POI analysis",
+        project_id="tuscany_2026",
+        source="qbot",
+        mutation_type="source",
+        metadata={
+            "route_id": resolved_route_id,
+            "artifact_id": artifact_id,
+            "project_id": project_id,
+            "source_path": str(source_path),
+            "km_from": km_from,
+            "km_to": km_to,
+            "buffers": buffers,
+            "output_format": output_format,
+            "focus": focus,
+            "retry_chunk_id": retry_chunk_id,
+            "retry_mode": retry_mode,
+            "merge_artifact_ids": merge_artifact_ids,
+            "timeout_sec": timeout_sec_raw,
+            "report_json_path": str(report_json_path),
+        },
+    )
+    json_artifact_record = _register_existing_file(
+        str(report_json_path.relative_to(_Path("/opt/qbot/artifacts"))),
+        artifact_type="report",
+        title="Tuscany 2026 Stage 01 POI analysis JSON",
+        project_id="tuscany_2026",
+        source="qbot",
+        mutation_type="source",
+        metadata={
+            "route_id": resolved_route_id,
+            "artifact_id": artifact_id,
+            "project_id": project_id,
+            "source_path": str(source_path) if source_path is not None else "",
+            "km_from": km_from,
+            "km_to": km_to,
+            "buffers": buffers,
+            "output_format": output_format,
+            "focus": focus,
+            "retry_chunk_id": retry_chunk_id,
+            "retry_mode": retry_mode,
+            "merge_artifact_ids": merge_artifact_ids,
+            "timeout_sec": timeout_sec_raw,
+            "report_md_path": str(report_path),
+        },
+    )
+
+    return {
+        "tool": "qbot_route_poi_analyze",
+        "status": analysis.get("status", "OK"),
+        "safety_class": "READ_ONLY",
+        "ok": True,
+        "route_id": resolved_route_id,
+        "artifact_id": artifact_id,
+        "source_path": str(source_path) if source_path is not None else "",
+        "report_path": str(report_path),
+        "report_artifact_id": artifact_record.get("artifact_id"),
+        "report_json_path": str(report_json_path),
+        "report_json_artifact_id": json_artifact_record.get("artifact_id"),
+        "analysis": analysis,
+    }
+
+
 def _tool_qbot_rwgps_legacy_status(_args: dict | None = None) -> dict[str, Any]:
     """Comprehensive RWGPS legacy parity status."""
     import subprocess
@@ -1634,4 +1887,3 @@ def _tool_qbot_rwgps_route_import_gpx_batch(args: dict | None = None) -> dict[st
             f"{failed} failed, {dry_run} in dry-run mode."
         ),
     }
-

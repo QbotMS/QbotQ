@@ -44,6 +44,46 @@ def _serialize_rows(rows: list[dict]) -> list[dict]:
     return [_serialize_row(r) for r in rows if r]
 
 
+def _normalize_day_input(day_value: str | date | datetime | None) -> date | None:
+    """Normalize user/date inputs to a real date object.
+
+    Accepts ISO dates, ISO datetimes, and common Polish day-first forms like
+    `29.05` or `29.05.2026`. A day-month form without year uses the current year.
+    """
+    if day_value is None:
+        return None
+    if isinstance(day_value, date) and not isinstance(day_value, datetime):
+        return day_value
+    if isinstance(day_value, datetime):
+        return day_value.date()
+
+    raw = str(day_value).strip()
+    if not raw:
+        return None
+
+    raw = raw.replace("/", ".")
+    if "T" in raw:
+        try:
+            return datetime.fromisoformat(raw).date()
+        except ValueError:
+            pass
+
+    try:
+        return date.fromisoformat(raw[:10])
+    except ValueError:
+        pass
+
+    for fmt in ("%d.%m.%Y", "%d.%m"):
+        try:
+            parsed = datetime.strptime(raw, fmt).date()
+            if fmt == "%d.%m":
+                parsed = parsed.replace(year=date.today().year)
+            return parsed
+        except ValueError:
+            continue
+    return None
+
+
 def ping() -> bool:
     try:
         with _conn() as conn:
@@ -72,7 +112,7 @@ def food_item_create(
 ) -> dict:
     with _conn() as conn:
         row = conn.execute(
-            """INSERT INTO food_items (name, brand, default_unit, kcal_per_100g, carbs_per_100g,
+            """INSERT INTO qbot_v2.food_items (name, brand, default_unit, kcal_per_100g, carbs_per_100g,
                sugar_per_100g, protein_per_100g, fat_per_100g, fiber_per_100g, sodium_per_100g,
                source, verified)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -94,7 +134,7 @@ def food_item_create(
 def food_item_search(query: str, limit: int = 20) -> list[dict]:
     with _conn() as conn:
         rows = conn.execute(
-            """SELECT * FROM food_items
+            """SELECT * FROM qbot_v2.food_items
                WHERE name ILIKE %s OR brand ILIKE %s
                ORDER BY name LIMIT %s""",
             (f"%{query}%", f"%{query}%", limit),
@@ -105,7 +145,7 @@ def food_item_search(query: str, limit: int = 20) -> list[dict]:
 def food_item_get_by_name(name: str) -> dict | None:
     with _conn() as conn:
         row = conn.execute(
-            "SELECT * FROM food_items WHERE name ILIKE %s LIMIT 1", (name,)
+            "SELECT * FROM qbot_v2.food_items WHERE name ILIKE %s LIMIT 1", (name,)
         ).fetchone()
         return _serialize_row(dict(row)) if row else None
 
@@ -113,7 +153,7 @@ def food_item_get_by_name(name: str) -> dict | None:
 def food_item_list(limit: int = 50, offset: int = 0) -> list[dict]:
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM food_items ORDER BY name LIMIT %s OFFSET %s", (limit, offset)
+            "SELECT * FROM qbot_v2.food_items ORDER BY name LIMIT %s OFFSET %s", (limit, offset)
         ).fetchall()
         return _serialize_rows(rows)
 
@@ -131,7 +171,7 @@ def meal_log_create(
     items = items or []
     with _conn() as conn:
         meal = conn.execute(
-            """INSERT INTO meal_logs (eaten_at, meal_type, note, context)
+            """INSERT INTO qbot_v2.meal_logs (eaten_at, meal_type, note, context)
                VALUES (%s, %s, %s, %s) RETURNING *""",
             (eaten_dt, meal_type, note, context),
         ).fetchone()
@@ -144,7 +184,7 @@ def meal_log_create(
                 if lookup:
                     food_id = lookup["id"]
             conn.execute(
-                """INSERT INTO meal_log_items (meal_log_id, food_item_id, food_name, amount, unit,
+                """INSERT INTO qbot_v2.meal_log_items (meal_log_id, food_item_id, food_name, amount, unit,
                    kcal, carbs_g, protein_g, fat_g, fiber_g, sodium_mg)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (
@@ -217,15 +257,84 @@ def meal_log_create(
     return get_meal_log(meal_id)
 
 
+def intake_log_create(
+    meal_type: str = "meal",
+    note: str | None = None,
+    context: str | None = None,
+    eaten_at: str | None = None,
+    items: list[dict] | None = None,
+    *,
+    source: str = "qbot3",
+    quality_status: str = "manual",
+) -> dict:
+    """Create a nutrition log in qbot_v2 only.
+
+    This is the qbot3 runtime path. It deliberately avoids the legacy public
+    meal_logs/meal_log_items mirror so read-after-write can validate qbot_v2
+    as the source of truth.
+    """
+    eaten_dt = datetime.fromisoformat(eaten_at) if eaten_at else datetime.now()
+    eaten_date = eaten_dt.date()
+    items = items or []
+
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO qbot_v2.days (date) VALUES (%s) ON CONFLICT DO NOTHING",
+            (eaten_date,),
+        )
+        meal = conn.execute(
+            """INSERT INTO qbot_v2.intake_logs
+               (date, eaten_at, meal_type, note, source, quality_status)
+               VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
+            (eaten_date, eaten_dt, meal_type, note, source, quality_status),
+        ).fetchone()
+        meal_id = meal["id"]
+        inserted_items: list[dict] = []
+        for item in items:
+            food = item.get("food") or item.get("food_name", "unknown")
+            food_id = None
+            if food:
+                lookup = food_item_get_by_name(str(food))
+                if lookup:
+                    food_id = lookup["id"]
+            row = conn.execute(
+                """INSERT INTO qbot_v2.intake_items
+                   (intake_log_id, food_item_id, food_name, amount, unit,
+                    kcal, protein_g, carbs_g, fat_g, fiber_g, sodium_mg, source)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   RETURNING *""",
+                (
+                    meal_id,
+                    food_id,
+                    food,
+                    item.get("amount", 0),
+                    item.get("unit", "g"),
+                    item.get("kcal"),
+                    item.get("protein_g"),
+                    item.get("carbs_g"),
+                    item.get("fat_g"),
+                    item.get("fiber_g"),
+                    item.get("sodium_mg"),
+                    source,
+                ),
+            ).fetchone()
+            inserted_items.append(dict(row))
+        conn.commit()
+
+    result = _serialize_row(dict(meal))
+    result["items"] = _serialize_rows(inserted_items)
+    return result
+
+
 def get_meal_log(meal_id: int) -> dict | None:
     with _conn() as conn:
         meal = conn.execute(
-            "SELECT * FROM meal_logs WHERE id = %s", (meal_id,)
+            "SELECT * FROM qbot_v2.meal_logs WHERE id = %s", (meal_id,)
         ).fetchone()
         if not meal:
             return None
         items = conn.execute(
-            "SELECT * FROM meal_log_items WHERE meal_log_id = %s ORDER BY id", (meal_id,)
+            "SELECT * FROM qbot_v2.meal_log_items WHERE meal_log_id = %s ORDER BY id", (meal_id,)
         ).fetchall()
         result = _serialize_row(dict(meal))
         result["items"] = _serialize_rows(items)
@@ -233,21 +342,23 @@ def get_meal_log(meal_id: int) -> dict | None:
 
 
 def meal_log_list(date_str: str | None = None, limit: int = 20) -> list[dict]:
+    day = _normalize_day_input(date_str)
     with _conn() as conn:
-        if date_str:
+        if day:
             rows = conn.execute(
-                """SELECT * FROM meal_logs WHERE eaten_at::date = %s
+                """SELECT * FROM qbot_v2.intake_logs
+                   WHERE date = %s
                    ORDER BY eaten_at DESC LIMIT %s""",
-                (date_str, limit),
+                (day, limit),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM meal_logs ORDER BY eaten_at DESC LIMIT %s", (limit,)
+                "SELECT * FROM qbot_v2.intake_logs ORDER BY eaten_at DESC LIMIT %s", (limit,)
             ).fetchall()
         result = []
         for meal in rows:
             items = conn.execute(
-                "SELECT * FROM meal_log_items WHERE meal_log_id = %s ORDER BY id",
+                "SELECT * FROM qbot_v2.intake_items WHERE intake_log_id = %s ORDER BY id",
                 (meal["id"],),
             ).fetchall()
             d = _serialize_row(dict(meal))
@@ -262,8 +373,8 @@ def meal_log_delete(meal_id: int) -> dict | None:
         meal = get_meal_log(meal_id)
         if not meal:
             return None
-        conn.execute("DELETE FROM meal_log_items WHERE meal_log_id = %s", (meal_id,))
-        conn.execute("DELETE FROM meal_logs WHERE id = %s", (meal_id,))
+        conn.execute("DELETE FROM qbot_v2.meal_log_items WHERE meal_log_id = %s", (meal_id,))
+        conn.execute("DELETE FROM qbot_v2.meal_logs WHERE id = %s", (meal_id,))
         conn.commit()
         return meal
 
@@ -274,7 +385,7 @@ def hydration_event_create(fluid_ml: float, sodium_mg: float = 0, source: str = 
     drank_dt = datetime.fromisoformat(drank_at) if drank_at else datetime.now()
     with _conn() as conn:
         row = conn.execute(
-            """INSERT INTO hydration_events (drank_at, fluid_ml, sodium_mg, source, note)
+            """INSERT INTO qbot_v2.hydration_events (drank_at, fluid_ml, sodium_mg, source, note)
                VALUES (%s, %s, %s, %s, %s) RETURNING *""",
             (drank_dt, fluid_ml, sodium_mg, source, note),
         ).fetchone()
@@ -286,13 +397,13 @@ def hydration_list(date_str: str | None = None, limit: int = 50) -> list[dict]:
     with _conn() as conn:
         if date_str:
             rows = conn.execute(
-                """SELECT * FROM hydration_events WHERE drank_at::date = %s
+                """SELECT * FROM qbot_v2.hydration_events WHERE drank_at::date = %s
                    ORDER BY drank_at DESC LIMIT %s""",
                 (date_str, limit),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM hydration_events ORDER BY drank_at DESC LIMIT %s", (limit,)
+                "SELECT * FROM qbot_v2.hydration_events ORDER BY drank_at DESC LIMIT %s", (limit,)
             ).fetchall()
         return _serialize_rows(rows)
 
@@ -303,7 +414,7 @@ def fueling_event_create(carbs_g: float, source: str = "qbot", context: str | No
     event_dt = datetime.fromisoformat(event_at) if event_at else datetime.now()
     with _conn() as conn:
         row = conn.execute(
-            """INSERT INTO fueling_events (event_at, carbs_g, source, context)
+            """INSERT INTO qbot_v2.fueling_events (event_at, carbs_g, source, context)
                VALUES (%s, %s, %s, %s) RETURNING *""",
             (event_dt, carbs_g, source, context),
         ).fetchone()
@@ -315,13 +426,13 @@ def fueling_list(date_str: str | None = None, limit: int = 50) -> list[dict]:
     with _conn() as conn:
         if date_str:
             rows = conn.execute(
-                """SELECT * FROM fueling_events WHERE event_at::date = %s
+                """SELECT * FROM qbot_v2.fueling_events WHERE event_at::date = %s
                    ORDER BY event_at DESC LIMIT %s""",
                 (date_str, limit),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM fueling_events ORDER BY event_at DESC LIMIT %s", (limit,)
+                "SELECT * FROM qbot_v2.fueling_events ORDER BY event_at DESC LIMIT %s", (limit,)
             ).fetchall()
         return _serialize_rows(rows)
 
@@ -331,28 +442,46 @@ def fueling_list(date_str: str | None = None, limit: int = 50) -> list[dict]:
 def daily_summary_compute(date_str: str) -> dict:
     day = date.fromisoformat(date_str)
     with _conn() as conn:
-        meals = conn.execute(
-            """SELECT COALESCE(SUM(mli.kcal), 0) AS kcal,
-               COALESCE(SUM(mli.carbs_g), 0) AS carbs,
-               COALESCE(SUM(mli.protein_g), 0) AS protein,
-               COALESCE(SUM(mli.fat_g), 0) AS fat,
-               COALESCE(SUM(mli.fiber_g), 0) AS fiber,
-               COALESCE(SUM(mli.sodium_mg), 0) AS sodium
-               FROM meal_log_items mli
-               JOIN meal_logs ml ON ml.id = mli.meal_log_id
-               WHERE ml.eaten_at::date = %s""",
+        intake_count = conn.execute(
+            "SELECT COUNT(*) AS n FROM qbot_v2.intake_logs WHERE date = %s",
             (day,),
-        ).fetchone()
+        ).fetchone()["n"]
+        if intake_count:
+            meals = conn.execute(
+                """SELECT COALESCE(SUM(ii.kcal), 0) AS kcal,
+                   COALESCE(SUM(ii.carbs_g), 0) AS carbs,
+                   COALESCE(SUM(ii.protein_g), 0) AS protein,
+                   COALESCE(SUM(ii.fat_g), 0) AS fat,
+                   COALESCE(SUM(ii.fiber_g), 0) AS fiber,
+                   COALESCE(SUM(ii.sodium_mg), 0) AS sodium
+                   FROM qbot_v2.intake_items ii
+                   JOIN qbot_v2.intake_logs il ON il.id = ii.intake_log_id
+                   WHERE il.date = %s""",
+                (day,),
+            ).fetchone()
+        else:
+            meals = conn.execute(
+                """SELECT COALESCE(SUM(mli.kcal), 0) AS kcal,
+                   COALESCE(SUM(mli.carbs_g), 0) AS carbs,
+                   COALESCE(SUM(mli.protein_g), 0) AS protein,
+                   COALESCE(SUM(mli.fat_g), 0) AS fat,
+                   COALESCE(SUM(mli.fiber_g), 0) AS fiber,
+                   COALESCE(SUM(mli.sodium_mg), 0) AS sodium
+                   FROM qbot_v2.meal_log_items mli
+                   JOIN qbot_v2.meal_logs ml ON ml.id = mli.meal_log_id
+                   WHERE ml.eaten_at::date = %s""",
+                (day,),
+            ).fetchone()
 
         hyd = conn.execute(
             """SELECT COALESCE(SUM(fluid_ml), 0) AS fluids,
                COALESCE(SUM(sodium_mg), 0) AS sodium
-               FROM hydration_events WHERE drank_at::date = %s""",
+               FROM qbot_v2.hydration_events WHERE drank_at::date = %s""",
             (day,),
         ).fetchone()
 
         fuel = conn.execute(
-            "SELECT COALESCE(SUM(carbs_g), 0) AS carbs FROM fueling_events WHERE event_at::date = %s",
+            "SELECT COALESCE(SUM(carbs_g), 0) AS carbs FROM qbot_v2.fueling_events WHERE event_at::date = %s",
             (day,),
         ).fetchone()
 
@@ -366,7 +495,7 @@ def daily_summary_compute(date_str: str) -> dict:
 
     with _conn() as conn:
         row = conn.execute(
-            """INSERT INTO nutrition_daily_summary (date, source, kcal_total, carbs_total,
+            """INSERT INTO qbot_v2.nutrition_daily_summary (date, source, kcal_total, carbs_total,
                protein_total, fat_total, fiber_total, sodium_total, fluids_total)
                VALUES (%s, 'qbot', %s, %s, %s, %s, %s, %s, %s)
                ON CONFLICT (date, source) DO UPDATE SET
@@ -389,7 +518,7 @@ def daily_summary_get(date_str: str) -> dict | None:
     day = date.fromisoformat(date_str)
     with _conn() as conn:
         row = conn.execute(
-            "SELECT * FROM nutrition_daily_summary WHERE date = %s AND source = 'qbot'", (day,)
+            "SELECT * FROM qbot_v2.nutrition_daily_summary WHERE date = %s AND source = 'qbot'", (day,)
         ).fetchone()
         if row:
             return _serialize_row(dict(row))
@@ -399,7 +528,7 @@ def daily_summary_get(date_str: str) -> dict | None:
 def daily_summary_range(from_date: str, to_date: str) -> list[dict]:
     with _conn() as conn:
         rows = conn.execute(
-            """SELECT * FROM nutrition_daily_summary
+            """SELECT * FROM qbot_v2.nutrition_daily_summary
                WHERE source = 'qbot' AND date BETWEEN %s AND %s
                ORDER BY date""",
             (from_date, to_date),
@@ -426,7 +555,7 @@ def template_create(
     import json as _json
     with _conn() as conn:
         row = conn.execute(
-            """INSERT INTO meal_templates (name, serving_label, kcal, carbs_g, protein_g, fat_g,
+            """INSERT INTO qbot_v2.meal_templates (name, serving_label, kcal, carbs_g, protein_g, fat_g,
                fiber_g, sodium_mg, source, confidence, notes, assumptions_json)
                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                RETURNING *""",
@@ -459,7 +588,7 @@ def template_update(
         return None
     with _conn() as conn:
         row = conn.execute(
-            """UPDATE meal_templates SET
+            """UPDATE qbot_v2.meal_templates SET
                name=COALESCE(%s,name), serving_label=COALESCE(%s,serving_label),
                kcal=COALESCE(%s,kcal), carbs_g=COALESCE(%s,carbs_g),
                protein_g=COALESCE(%s,protein_g), fat_g=COALESCE(%s,fat_g),
@@ -481,7 +610,7 @@ def template_update(
 def template_get(template_id: int) -> dict | None:
     with _conn() as conn:
         row = conn.execute(
-            "SELECT * FROM meal_templates WHERE id=%s", (template_id,)
+            "SELECT * FROM qbot_v2.meal_templates WHERE id=%s", (template_id,)
         ).fetchone()
     return _serialize_row(dict(row)) if row else None
 
@@ -489,7 +618,7 @@ def template_get(template_id: int) -> dict | None:
 def template_get_by_name(name: str) -> dict | None:
     with _conn() as conn:
         row = conn.execute(
-            "SELECT * FROM meal_templates WHERE name=%s", (name,)
+            "SELECT * FROM qbot_v2.meal_templates WHERE name=%s", (name,)
         ).fetchone()
     return _serialize_row(dict(row)) if row else None
 
@@ -497,7 +626,7 @@ def template_get_by_name(name: str) -> dict | None:
 def template_list(limit: int = 50) -> list[dict]:
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM meal_templates ORDER BY name LIMIT %s", (limit,)
+            "SELECT * FROM qbot_v2.meal_templates ORDER BY name LIMIT %s", (limit,)
         ).fetchall()
     return _serialize_rows(rows)
 
@@ -507,7 +636,7 @@ def template_delete(template_id: int) -> dict | None:
     if not existing:
         return None
     with _conn() as conn:
-        conn.execute("DELETE FROM meal_templates WHERE id=%s", (template_id,))
+        conn.execute("DELETE FROM qbot_v2.meal_templates WHERE id=%s", (template_id,))
         conn.commit()
     return existing
 
@@ -594,7 +723,7 @@ def plan_create(
     import json as _json
     with _conn() as conn:
         row = conn.execute(
-            """INSERT INTO nutrition_day_plans (date, goal, day_type, status,
+            """INSERT INTO qbot_v2.nutrition_day_plans (date, goal, day_type, status,
                planned_ride_km, estimated_base_kcal, estimated_activity_kcal,
                estimated_total_expenditure, target_deficit_kcal, target_intake_kcal,
                target_protein_g, target_carbs_g, target_fat_g, planned_meals_count,
@@ -616,7 +745,7 @@ def plan_create(
         if meals:
             for i, m in enumerate(meals):
                 conn.execute(
-                    """INSERT INTO nutrition_day_plan_meals
+                    """INSERT INTO qbot_v2.nutrition_day_plan_meals
                        (plan_id, meal_order, meal_name, template_id, planned_time,
                         kcal, carbs_g, protein_g, fat_g, fiber_g, sodium_mg, notes)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
@@ -635,10 +764,10 @@ def plan_create(
 
 def plan_get(plan_id: int) -> dict | None:
     with _conn() as conn:
-        plan = conn.execute("SELECT * FROM nutrition_day_plans WHERE id=%s", (plan_id,)).fetchone()
+        plan = conn.execute("SELECT * FROM qbot_v2.nutrition_day_plans WHERE id=%s", (plan_id,)).fetchone()
         if not plan:
             return None
-        meals = conn.execute("SELECT * FROM nutrition_day_plan_meals WHERE plan_id=%s ORDER BY meal_order", (plan_id,)).fetchall()
+        meals = conn.execute("SELECT * FROM qbot_v2.nutrition_day_plan_meals WHERE plan_id=%s ORDER BY meal_order", (plan_id,)).fetchall()
         result = _serialize_row(dict(plan))
         result["meals"] = _serialize_rows(meals)
         # Parse JSON fields
@@ -661,14 +790,14 @@ def plan_list(date_str: str | None = None, status: str | None = None, limit: int
             conds.append("status=%s"); params.append(status)
         where = ("WHERE " + " AND ".join(conds)) if conds else ""
         rows = conn.execute(
-            f"SELECT * FROM nutrition_day_plans {where} ORDER BY date DESC, id DESC LIMIT %s",
+            f"SELECT * FROM qbot_v2.nutrition_day_plans {where} ORDER BY date DESC, id DESC LIMIT %s",
             params + [limit],
         ).fetchall()
         results = []
         for r in rows:
             d = _serialize_row(dict(r))
             d["meals_count"] = conn.execute(
-                "SELECT COUNT(*) AS c FROM nutrition_day_plan_meals WHERE plan_id=%s", (r["id"],)
+                "SELECT COUNT(*) AS c FROM qbot_v2.nutrition_day_plan_meals WHERE plan_id=%s", (r["id"],)
             ).fetchone()["c"]
             results.append(d)
         return results
@@ -677,7 +806,7 @@ def plan_list(date_str: str | None = None, status: str | None = None, limit: int
 def plan_update_status(plan_id: int, status: str) -> dict | None:
     with _conn() as conn:
         conn.execute(
-            "UPDATE nutrition_day_plans SET status=%s, updated_at=now() WHERE id=%s",
+            "UPDATE qbot_v2.nutrition_day_plans SET status=%s, updated_at=now() WHERE id=%s",
             (status, plan_id),
         )
         conn.commit()
@@ -689,8 +818,8 @@ def plan_delete(plan_id: int) -> dict | None:
     if not existing:
         return None
     with _conn() as conn:
-        conn.execute("DELETE FROM nutrition_day_plan_meals WHERE plan_id=%s", (plan_id,))
-        conn.execute("DELETE FROM nutrition_day_plans WHERE id=%s", (plan_id,))
+        conn.execute("DELETE FROM qbot_v2.nutrition_day_plan_meals WHERE plan_id=%s", (plan_id,))
+        conn.execute("DELETE FROM qbot_v2.nutrition_day_plans WHERE id=%s", (plan_id,))
         conn.commit()
     return existing
 

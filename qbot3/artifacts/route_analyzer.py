@@ -8,14 +8,22 @@ Dla zadanych kilometrów wylicza punkty na śladzie i sprawdza noclegi przez Nom
 from __future__ import annotations
 
 import json
+import logging
 import math
 import time
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 ARTIFACTS_ROOT = Path("/opt/qbot/artifacts")
 NOMINATIM_URL = "https://nominatim.openstreetmap.org"
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OVERPASS_URLS = [
+    OVERPASS_URL,
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.openstreetmap.ru/api/interpreter",
+]
 USER_AGENT = "QBot/1.0 (personal assistant; michal@qbot)"
 
 
@@ -446,3 +454,1799 @@ def analyze_stage_gpx(file_path: str) -> dict:
         "climbs": climbs,
         "descents": descents,
     }
+
+
+def _project_xy(lat: float, lon: float, ref_lat: float) -> tuple[float, float]:
+    """Approximate WGS84 -> local meters using an equirectangular projection."""
+    lat_m = 111_320.0
+    lon_m = 111_320.0 * math.cos(math.radians(ref_lat))
+    return lon * lon_m, lat * lat_m
+
+
+def _point_to_segment_distance_m(
+    px: float,
+    py: float,
+    ax: float,
+    ay: float,
+    bx: float,
+    by: float,
+) -> tuple[float, float]:
+    """Return distance from point to segment plus interpolation factor t."""
+    vx = bx - ax
+    vy = by - ay
+    wx = px - ax
+    wy = py - ay
+    seg_len2 = vx * vx + vy * vy
+    if seg_len2 <= 0:
+        dist = math.hypot(px - ax, py - ay)
+        return dist, 0.0
+    t = max(0.0, min(1.0, (wx * vx + wy * vy) / seg_len2))
+    nx = ax + t * vx
+    ny = ay + t * vy
+    return math.hypot(px - nx, py - ny), t
+
+
+def _track_projection(points: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not points:
+        return []
+    ref_lat = sum(float(p["lat"]) for p in points) / len(points)
+    projected: list[dict[str, Any]] = []
+    cum_m = 0.0
+    prev = None
+    for point in points:
+        lat = float(point["lat"])
+        lon = float(point["lon"])
+        x, y = _project_xy(lat, lon, ref_lat)
+        if prev is not None:
+            cum_m += _haversine_km(prev["lat"], prev["lon"], lat, lon) * 1000.0
+        projected.append({
+            "lat": lat,
+            "lon": lon,
+            "ele": point.get("ele"),
+            "cum_m": cum_m,
+            "x": x,
+            "y": y,
+        })
+        prev = projected[-1]
+    return projected
+
+
+def _track_segment_projection(
+    track: list[dict[str, Any]],
+    km_from: float,
+    km_to: float,
+) -> list[dict[str, Any]]:
+    if not track:
+        return []
+    start_m = max(0.0, float(km_from) * 1000.0)
+    end_m = max(start_m, float(km_to) * 1000.0)
+    segment: list[dict[str, Any]] = []
+    if start_m <= 0.0:
+        segment.append(dict(track[0]))
+    for idx in range(len(track) - 1):
+        a = track[idx]
+        b = track[idx + 1]
+        a_m = float(a["cum_m"])
+        b_m = float(b["cum_m"])
+        if b_m < start_m or a_m > end_m:
+            continue
+        if a_m <= start_m <= b_m and (not segment or segment[-1].get("cum_m") != start_m):
+            t = 0.0 if b_m == a_m else (start_m - a_m) / (b_m - a_m)
+            segment.append({
+                "lat": a["lat"] + t * (b["lat"] - a["lat"]),
+                "lon": a["lon"] + t * (b["lon"] - a["lon"]),
+                "ele": None if a.get("ele") is None or b.get("ele") is None else a["ele"] + t * (b["ele"] - a["ele"]),
+                "cum_m": start_m,
+                "x": None,
+                "y": None,
+            })
+        if a_m >= start_m and a_m <= end_m:
+            segment.append(dict(a))
+        if a_m <= end_m <= b_m:
+            t = 0.0 if b_m == a_m else (end_m - a_m) / (b_m - a_m)
+            segment.append({
+                "lat": a["lat"] + t * (b["lat"] - a["lat"]),
+                "lon": a["lon"] + t * (b["lon"] - a["lon"]),
+                "ele": None if a.get("ele") is None or b.get("ele") is None else a["ele"] + t * (b["ele"] - a["ele"]),
+                "cum_m": end_m,
+                "x": None,
+                "y": None,
+            })
+            break
+    if not segment:
+        segment.append(dict(track[0]))
+        if track[-1]["cum_m"] > end_m:
+            segment.append(dict(track[-1]))
+    deduped: list[dict[str, Any]] = []
+    seen_positions: set[tuple[float, float, float]] = set()
+    for point in segment:
+        key = (round(float(point["lat"]), 7), round(float(point["lon"]), 7), round(float(point["cum_m"]), 2))
+        if key in seen_positions:
+            continue
+        seen_positions.add(key)
+        deduped.append(point)
+    return deduped
+
+
+def _nearest_track_projection(
+    track: list[dict[str, Any]],
+    lat: float,
+    lon: float,
+) -> dict[str, Any]:
+    if not track:
+        return {
+            "route_km": None,
+            "distance_to_track_m": None,
+            "nearest_lat": None,
+            "nearest_lon": None,
+        }
+    ref_lat = sum(point["lat"] for point in track) / len(track)
+    px, py = _project_xy(lat, lon, ref_lat)
+    best: dict[str, Any] | None = None
+    for idx in range(len(track) - 1):
+        a = track[idx]
+        b = track[idx + 1]
+        dist_m, t = _point_to_segment_distance_m(px, py, a["x"], a["y"], b["x"], b["y"])
+        seg_len_m = math.hypot(b["x"] - a["x"], b["y"] - a["y"])
+        route_m = a["cum_m"] + t * seg_len_m
+        lat_i = a["lat"] + t * (b["lat"] - a["lat"])
+        lon_i = a["lon"] + t * (b["lon"] - a["lon"])
+        candidate = {
+            "route_km": round(route_m / 1000.0, 3),
+            "distance_to_track_m": round(dist_m, 1),
+            "nearest_lat": round(lat_i, 6),
+            "nearest_lon": round(lon_i, 6),
+        }
+        if best is None or dist_m < float(best["distance_to_track_m"] or 10**9):
+            best = candidate
+    if best is None:
+        first = track[0]
+        dist_m = math.hypot(px - first["x"], py - first["y"])
+        best = {
+            "route_km": round(first["cum_m"] / 1000.0, 3),
+            "distance_to_track_m": round(dist_m, 1),
+            "nearest_lat": round(first["lat"], 6),
+            "nearest_lon": round(first["lon"], 6),
+        }
+    return best
+
+
+def _track_bbox(points: list[dict[str, Any]]) -> dict[str, float]:
+    lats = [float(p["lat"]) for p in points]
+    lons = [float(p["lon"]) for p in points]
+    return {
+        "min_lat": min(lats),
+        "min_lon": min(lons),
+        "max_lat": max(lats),
+        "max_lon": max(lons),
+    }
+
+
+def _expand_bbox(bbox: dict[str, float], buffer_m: float) -> dict[str, float]:
+    center_lat = (bbox["min_lat"] + bbox["max_lat"]) / 2.0
+    lat_delta = buffer_m / 111_320.0
+    lon_delta = buffer_m / max(1.0, 111_320.0 * math.cos(math.radians(center_lat)))
+    return {
+        "min_lat": bbox["min_lat"] - lat_delta,
+        "min_lon": bbox["min_lon"] - lon_delta,
+        "max_lat": bbox["max_lat"] + lat_delta,
+        "max_lon": bbox["max_lon"] + lon_delta,
+    }
+
+
+def _bbox_to_overpass_string(bbox: dict[str, float]) -> str:
+    return f"{bbox['min_lat']},{bbox['min_lon']},{bbox['max_lat']},{bbox['max_lon']}"
+
+
+def _overpass_fetch_candidates(query: str) -> list[dict[str, Any]]:
+    timeout = httpx.Timeout(60.0, connect=10.0, read=60.0, write=10.0, pool=10.0)
+    last_error: Exception | None = None
+    for endpoint in OVERPASS_URLS:
+        try:
+            resp = httpx.post(
+                endpoint,
+                data={"data": query},
+                headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+                timeout=timeout,
+            )
+            if resp.status_code in {429, 502, 503, 504}:
+                last_error = httpx.HTTPStatusError(
+                    f"Overpass HTTP {resp.status_code}",
+                    request=resp.request,
+                    response=resp,
+                )
+                continue
+            resp.raise_for_status()
+            payload = resp.json()
+            return [element for element in payload.get("elements", []) if isinstance(element, dict)]
+        except Exception as exc:
+            last_error = exc
+            continue
+    if last_error is not None:
+        raise last_error
+    return []
+
+
+def _element_lat_lon(element: dict[str, Any]) -> tuple[float | None, float | None]:
+    lat = element.get("lat")
+    lon = element.get("lon")
+    if lat is not None and lon is not None:
+        try:
+            return float(lat), float(lon)
+        except (TypeError, ValueError):
+            return None, None
+    center = element.get("center")
+    if isinstance(center, dict) and center.get("lat") is not None and center.get("lon") is not None:
+        try:
+            return float(center["lat"]), float(center["lon"])
+        except (TypeError, ValueError):
+            return None, None
+    return None, None
+
+
+def _element_source_tags(element: dict[str, Any]) -> dict[str, Any]:
+    tags = element.get("tags") or {}
+    if not isinstance(tags, dict):
+        return {}
+    wanted = {}
+    for key in ("name", "tourism", "historic", "shop", "amenity", "drinking_water", "man_made", "wheelchair", "operator", "cuisine"):
+        value = tags.get(key)
+        if value not in (None, ""):
+            wanted[key] = value
+    return wanted
+
+
+def _classify_poi(element: dict[str, Any]) -> tuple[str | None, str]:
+    tags = element.get("tags") or {}
+    if not isinstance(tags, dict):
+        return None, "unclassified"
+
+    amenity = str(tags.get("amenity", "")).strip().lower()
+    shop = str(tags.get("shop", "")).strip().lower()
+    tourism = str(tags.get("tourism", "")).strip().lower()
+    historic = str(tags.get("historic", "")).strip().lower()
+    man_made = str(tags.get("man_made", "")).strip().lower()
+    drinking_water = str(tags.get("drinking_water", "")).strip().lower()
+
+    if amenity in {"drinking_water", "fountain"} or drinking_water in {"yes", "potable", "true"} or man_made == "water_tap":
+        return "water", "water access"
+
+    if shop in {"supermarket", "convenience", "bakery", "deli", "greengrocer"} or amenity == "marketplace":
+        return "food", "food POI"
+
+    if tourism in {"attraction", "artwork", "gallery", "museum", "viewpoint", "theme_park", "zoo", "aquarium", "picnic_site"} or historic:
+        return "attractions", "attraction / historic"
+
+    return None, "unclassified"
+
+
+def _source_tags_text(tags: dict[str, Any]) -> str:
+    ordered = []
+    for key in ("name", "tourism", "historic", "shop", "amenity", "drinking_water", "man_made", "operator", "cuisine"):
+        value = tags.get(key)
+        if value not in (None, ""):
+            ordered.append(f"{key}={value}")
+    return "; ".join(ordered)
+
+
+def _render_route_poi_markdown(result: dict[str, Any]) -> str:
+    lines: list[str] = []
+    lines.append(f"# {result.get('report_title', 'Route POI analysis')}")
+    lines.append("")
+    lines.append(f"- route_id: {result.get('route_id') or ''}")
+    if result.get("artifact_id"):
+        lines.append(f"- artifact_id: {result.get('artifact_id')}")
+    lines.append(f"- source_path: {result.get('source_path')}")
+    lines.append(f"- km_from: {result.get('km_from')}")
+    lines.append(f"- km_to: {result.get('km_to')}")
+    lines.append(
+        "- buffers_m: "
+        f"attractions={result.get('buffers', {}).get('attractions_m')}, "
+        f"food={result.get('buffers', {}).get('food_m')}, "
+        f"water={result.get('buffers', {}).get('water_m')}"
+    )
+    lines.append(f"- track_points: {result.get('track_points_count')}")
+    lines.append(f"- distance_km: {result.get('distance_km')}")
+    lines.append("")
+    lines.append("## Summary")
+    lines.append(f"- attractions: {len(result.get('attractions', []))}")
+    lines.append(f"- food: {len(result.get('food', []))}")
+    lines.append(f"- water: {len(result.get('water', []))}")
+    lines.append("")
+
+    def _table(title: str, rows: list[dict[str, Any]]) -> None:
+        lines.append(f"## {title}")
+        if not rows:
+            lines.append("")
+            lines.append("_No candidates found._")
+            lines.append("")
+            return
+        lines.append("")
+        lines.append("| name | category | lat | lon | route_km | distance_to_track_m | source_tags | note |")
+        lines.append("| --- | --- | ---: | ---: | ---: | ---: | --- | --- |")
+        for row in rows:
+            lines.append(
+                "| "
+                f"{row.get('name', '')} | {row.get('category', '')} | "
+                f"{row.get('lat', '')} | {row.get('lon', '')} | {row.get('route_km', '')} | "
+                f"{row.get('distance_to_track_m', '')} | {row.get('source_tags', '')} | "
+                f"{row.get('note', '')} |"
+            )
+        lines.append("")
+
+    _table("Attractions", result.get("attractions", []))
+    _table("Food", result.get("food", []))
+    _table("Water", result.get("water", []))
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _analyze_route_poi_artifact_legacy(
+    file_path: str | Path,
+    *,
+    route_id: str | None = None,
+    artifact_id: str | None = None,
+    km_from: float,
+    km_to: float,
+    buffers: dict[str, float] | None = None,
+    output_format: str = "md",
+) -> dict[str, Any]:
+    """Analyze POI candidates along a GPX route segment."""
+    path = Path(file_path)
+    if not path.exists():
+        return {"ok": False, "status": "ERROR", "error": f"File not found: {path}"}
+    if km_to < km_from:
+        return {"ok": False, "status": "ERROR", "error": "km_to must be >= km_from"}
+
+    buffers = buffers or {}
+    attractions_m = float(buffers.get("attractions_m", 1000))
+    food_m = float(buffers.get("food_m", 400))
+    water_m = float(buffers.get("water_m", 200))
+    max_buffer_m = max(attractions_m, food_m, water_m)
+
+    points = _parse_gpx_file_detailed(path)
+    if not points:
+        return {"ok": False, "status": "ERROR", "error": f"No track points in {path}"}
+
+    projected = _track_projection(points)
+    total_km = round(projected[-1]["cum_m"] / 1000.0, 3)
+    overpass_queries = [
+        (
+            "attractions",
+            """
+[out:json][timeout:25];
+(
+  node["tourism"~"attraction|artwork|gallery|museum|viewpoint|theme_park|zoo|aquarium|picnic_site"](around:{radius},{lat},{lon});
+  node["historic"](around:{radius},{lat},{lon});
+);
+out center tags;
+""",
+        ),
+        (
+            "food",
+            """
+[out:json][timeout:25];
+(
+  node["shop"~"supermarket|convenience|bakery|deli|greengrocer"](around:{radius},{lat},{lon});
+  node["amenity"="marketplace"](around:{radius},{lat},{lon});
+);
+out center tags;
+""",
+        ),
+        (
+            "water",
+            """
+[out:json][timeout:25];
+(
+  node["amenity"="drinking_water"](around:{radius},{lat},{lon});
+  node["amenity"="fountain"](around:{radius},{lat},{lon});
+  node["drinking_water"="yes"](around:{radius},{lat},{lon});
+  node["man_made"="water_tap"](around:{radius},{lat},{lon});
+);
+out center tags;
+""",
+        ),
+    ]
+    candidates_raw: list[dict[str, Any]] = []
+    radius_m = int(max(max_buffer_m + 500.0, 1000.0))
+    sample_step_km = 10.0 if (km_to - km_from) > 10.0 else max(1.0, float(km_to - km_from) or 1.0)
+    sample_km = float(km_from)
+    while sample_km <= float(km_to) + 1e-9:
+        sample_point = _find_point_at_km(points, sample_km)
+        for category_name, overpass_query_template in overpass_queries:
+            overpass_query = overpass_query_template.format(radius=radius_m, lat=sample_point["lat"], lon=sample_point["lon"])
+            try:
+                candidates_raw.extend(_overpass_fetch_candidates(overpass_query))
+            except Exception:
+                continue
+        sample_km += sample_step_km
+
+    categorized: dict[str, list[dict[str, Any]]] = {"attractions": [], "food": [], "water": []}
+    seen_keys: set[str] = set()
+    for element in candidates_raw:
+        lat, lon = _element_lat_lon(element)
+        if lat is None or lon is None:
+            continue
+        category, note = _classify_poi(element)
+        if not category:
+            continue
+        key = f"{element.get('type')}:{element.get('id')}:{category}"
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+
+        nearest = _nearest_track_projection(projected, lat, lon)
+        route_km = nearest.get("route_km")
+        distance_to_track_m = nearest.get("distance_to_track_m")
+        if route_km is None or distance_to_track_m is None:
+            continue
+        if route_km < km_from or route_km > km_to:
+            continue
+
+        limit = attractions_m if category == "attractions" else food_m if category == "food" else water_m
+        if float(distance_to_track_m) > limit:
+            continue
+
+        tags = _element_source_tags(element)
+        name = str(tags.get("name") or element.get("tags", {}).get("name") or f"{category[:-1].capitalize()} {element.get('id')}")
+        categorized[category].append({
+            "name": name,
+            "category": category[:-1],
+            "lat": round(lat, 6),
+            "lon": round(lon, 6),
+            "route_km": route_km,
+            "distance_to_track_m": distance_to_track_m,
+            "source_tags": _source_tags_text(tags),
+            "note": note,
+        })
+
+    for category in categorized:
+        categorized[category].sort(key=lambda item: (float(item.get("route_km") or 0), float(item.get("distance_to_track_m") or 0)))
+
+    categorized["attractions"] = categorized["attractions"][:15]
+    categorized["food"] = categorized["food"][:12]
+    categorized["water"] = categorized["water"][:12]
+
+    result: dict[str, Any] = {
+        "ok": True,
+        "status": "OK",
+        "route_id": route_id,
+        "artifact_id": artifact_id,
+        "source_path": str(path),
+        "km_from": km_from,
+        "km_to": km_to,
+        "buffers": {
+            "attractions_m": attractions_m,
+            "food_m": food_m,
+            "water_m": water_m,
+        },
+        "track_points_count": len(projected),
+        "distance_km": total_km,
+        "bbox": bbox,
+        "attractions": categorized["attractions"],
+        "food": categorized["food"],
+        "water": categorized["water"],
+        "report_title": "Tuscany 2026 Stage 01 POI analysis",
+    }
+    result["markdown"] = _render_route_poi_markdown(result)
+    if output_format == "json":
+        result["output_format"] = "json"
+    else:
+        result["output_format"] = "md"
+    return result
+
+
+def analyze_route_poi_artifact(
+    file_path: str | Path,
+    *,
+    route_id: str | None = None,
+    artifact_id: str | None = None,
+    project_id: str | None = None,
+    km_from: float,
+    km_to: float,
+    buffers: dict[str, float] | None = None,
+    focus: str | None = None,
+    retry_chunk_id: str | None = None,
+    retry_mode: bool = False,
+    merge_artifact_ids: list[str] | None = None,
+    timeout_sec: float | None = None,
+    output_format: str = "md",
+) -> dict[str, Any]:
+    """Deterministic POI analysis with retries, chunk splitting and merge support."""
+    log = logging.getLogger("route_poi_analyze")
+    t_start = time.perf_counter()
+    buffers = buffers or {}
+    focus_mode = _route_poi_v2_focus_mode(focus or buffers.get("focus"))
+    categories_requested = _route_poi_v2_requested_categories(focus_mode)
+    route_source_path = str(file_path).strip()
+    path = Path(route_source_path) if route_source_path else None
+    source_slug = str(route_id or artifact_id or (path.stem if path else "route_poi")).strip() or "route_poi"
+    deadline_sec = float(timeout_sec if timeout_sec is not None else buffers.get("analysis_timeout_sec", 80.0))
+    overpass_timeout_sec = float(buffers.get("overpass_timeout_sec", 20.0))
+    chunk_km = float(buffers.get("chunk_km", 12.0))
+    overlap_km = max(1.0, float(buffers.get("chunk_overlap_km", 1.0)))
+    min_chunk_km = max(1.0, float(buffers.get("min_chunk_km", 5.0)))
+    retry_attempts = max(1, int(buffers.get("overpass_retries", 3)))
+    retry_backoff_sec = max(0.1, float(buffers.get("retry_backoff_sec", 1.25)))
+    attractions_m = float(buffers.get("attractions_m", 1000))
+    hard_resupply_m = float(buffers.get("hard_resupply_m", buffers.get("food_m", 400)))
+    soft_food_m = float(buffers.get("soft_food_m", buffers.get("food_m", 400)))
+    water_m = float(buffers.get("water_m", 200))
+    max_buffer_m = max(
+        attractions_m,
+        hard_resupply_m,
+        soft_food_m,
+        water_m,
+    )
+    deadline_at = t_start + deadline_sec
+
+    def _retry_payload(
+        *,
+        chunk_id: str,
+        km_a: float,
+        km_b: float,
+        bbox: dict[str, float],
+        reason: str,
+    ) -> dict[str, Any]:
+        return _route_poi_v2_missing_chunk_entry(
+            route_id=route_id,
+            artifact_id=artifact_id,
+            source_path=route_source_path or None,
+            km_from=km_a,
+            km_to=km_b,
+            bbox=bbox,
+            focus=focus_mode,
+            categories_requested=categories_requested,
+            buffers={
+                "attractions_m": float(buffers.get("attractions_m", 1000)),
+                "hard_resupply_m": float(buffers.get("hard_resupply_m", buffers.get("food_m", 400))),
+                "soft_food_m": float(buffers.get("soft_food_m", buffers.get("food_m", 400))),
+                "water_m": float(buffers.get("water_m", 200)),
+                "chunk_km": chunk_km,
+                "chunk_overlap_km": overlap_km,
+                "analysis_timeout_sec": deadline_sec,
+                "overpass_timeout_sec": overpass_timeout_sec,
+                "min_chunk_km": min_chunk_km,
+            },
+            reason=reason,
+            retry_chunk_id=chunk_id,
+            timeout_sec=deadline_sec,
+            overpass_timeout_sec=overpass_timeout_sec,
+            output_format=output_format,
+        )
+
+    def _collect_chunk(km_a: float, km_b: float, chunk_id: str | None = None) -> dict[str, Any]:
+        chunk_id = chunk_id or _route_poi_v2_chunk_id(km_a, km_b)
+        segment = _track_segment_projection(projected, km_a, km_b)
+        if len(segment) < 2:
+            bbox0 = _expand_bbox(_track_bbox(points), max_buffer_m + 500.0)
+            return {
+                "chunks": [{
+                    "chunk_id": chunk_id,
+                    "chunk_from_km": round(km_a, 3),
+                    "chunk_to_km": round(km_b, 3),
+                    "status": "EMPTY",
+                    "reason": "insufficient_track_points",
+                    "bbox": bbox0,
+                    "categories_requested": list(categories_requested),
+                    "attempts": 0,
+                }],
+                "poi_candidates": [],
+                "town_candidates": [],
+                "missing_chunks": [],
+            }
+
+        bbox = _expand_bbox(_track_bbox(segment), max_buffer_m + 500.0)
+        query = _route_poi_v2_build_query(bbox, focus_mode)
+        last_exc: Exception | None = None
+        for attempt in range(1, retry_attempts + 1):
+            if time.perf_counter() > deadline_at:
+                retry = _retry_payload(chunk_id=chunk_id, km_a=km_a, km_b=km_b, bbox=bbox, reason="analysis_timeout")
+                retry["status"] = "MISSING"
+                retry["error"] = "analysis timeout reached before Overpass request"
+                return {"chunks": [retry], "poi_candidates": [], "town_candidates": [], "missing_chunks": [retry]}
+            try:
+                log.info(
+                    "route_poi_analyze overpass attempt %s/%s chunk=%s km=%.2f-%.2f focus=%s",
+                    attempt, retry_attempts, chunk_id, km_a, km_b, focus_mode,
+                )
+                raw_elements = _route_poi_v2_overpass_candidates(query, overpass_timeout_sec)
+                poi_candidates: list[dict[str, Any]] = []
+                town_candidates: list[dict[str, Any]] = []
+                for element in raw_elements:
+                    tags = element.get("tags") or {}
+                    if not isinstance(tags, dict):
+                        continue
+                    lat, lon = _element_lat_lon(element)
+                    if lat is None or lon is None:
+                        continue
+                    category, note = _route_poi_v2_classify(tags)
+                    if not category:
+                        continue
+                    if focus_mode == "logistics" and category == "attraction":
+                        continue
+                    nearest = _nearest_track_projection(projected, lat, lon)
+                    route_km = nearest.get("route_km")
+                    distance_to_track_m = nearest.get("distance_to_track_m")
+                    if route_km is None or distance_to_track_m is None:
+                        continue
+                    if route_km < km_a or route_km > km_b:
+                        continue
+                    if category == "hard_resupply" and float(distance_to_track_m) > float(buffers.get("hard_resupply_m", buffers.get("food_m", 400))):
+                        continue
+                    if category == "soft_food_stop" and float(distance_to_track_m) > float(buffers.get("soft_food_m", buffers.get("food_m", 400))):
+                        continue
+                    if category == "water" and float(distance_to_track_m) > float(buffers.get("water_m", 200)):
+                        continue
+                    if category == "attraction" and float(distance_to_track_m) > float(buffers.get("attractions_m", 1000)):
+                        continue
+                    item = {
+                        "osm_type": element.get("type"),
+                        "osm_id": element.get("id"),
+                        "name": _route_poi_v2_name(element, tags, category),
+                        "category": category,
+                        "lat": round(float(lat), 6),
+                        "lon": round(float(lon), 6),
+                        "route_km": route_km,
+                        "distance_to_track_m": distance_to_track_m,
+                        "source_tags": _route_poi_v2_source_tags(_element_source_tags(element)),
+                        "note": note,
+                    }
+                    if category == "town":
+                        town_candidates.append(item)
+                    else:
+                        poi_candidates.append(item)
+                chunk_record = {
+                    "chunk_id": chunk_id,
+                    "chunk_from_km": round(km_a, 3),
+                    "chunk_to_km": round(km_b, 3),
+                    "status": "OK",
+                    "attempts": attempt,
+                    "bbox": bbox,
+                    "categories_requested": list(categories_requested),
+                    "overpass_candidates": len(raw_elements),
+                    "poi_candidates": len(poi_candidates),
+                    "town_candidates": len(town_candidates),
+                    "duration_ms": round((time.perf_counter() - t_start) * 1000.0, 1),
+                }
+                log.info(
+                    "route_poi_analyze chunk %s finished in %.1fms: raw=%s poi=%s town=%s",
+                    chunk_id,
+                    chunk_record["duration_ms"],
+                    len(raw_elements),
+                    len(poi_candidates),
+                    len(town_candidates),
+                )
+                return {"chunks": [chunk_record], "poi_candidates": poi_candidates, "town_candidates": town_candidates, "missing_chunks": []}
+            except Exception as exc:
+                last_exc = exc
+                log.warning("route_poi_analyze overpass error chunk %s attempt %s/%s: %s", chunk_id, attempt, retry_attempts, exc)
+                if attempt < retry_attempts:
+                    time.sleep(min(retry_backoff_sec * attempt, 3.0))
+
+        reason_text = str(last_exc or "overpass error").lower()
+        reason = "overpass_timeout" if any(token in reason_text for token in ("timeout", "timed out", "read timed out")) else "overpass_error"
+        if (km_b - km_a) <= min_chunk_km:
+            retry = _retry_payload(chunk_id=chunk_id, km_a=km_a, km_b=km_b, bbox=bbox, reason=reason)
+            retry["status"] = "MISSING"
+            retry["error"] = str(last_exc)[:200] if last_exc else reason
+            return {"chunks": [retry], "poi_candidates": [], "town_candidates": [], "missing_chunks": [retry]}
+
+        mid = round((km_a + km_b) / 2.0, 3)
+        left = _collect_chunk(km_a, mid, f"{chunk_id}a")
+        right = _collect_chunk(mid, km_b, f"{chunk_id}b")
+        return {
+            "chunks": list(left.get("chunks", [])) + list(right.get("chunks", [])),
+            "poi_candidates": list(left.get("poi_candidates", [])) + list(right.get("poi_candidates", [])),
+            "town_candidates": list(left.get("town_candidates", [])) + list(right.get("town_candidates", [])),
+            "missing_chunks": list(left.get("missing_chunks", [])) + list(right.get("missing_chunks", [])),
+        }
+
+    timings: dict[str, float] = {}
+    if merge_artifact_ids:
+        merge_payloads: list[dict[str, Any]] = []
+        for art_id in merge_artifact_ids:
+            art_id = str(art_id or "").strip()
+            if not art_id:
+                continue
+            merge_payloads.append(_route_poi_v2_load_analysis_payload(art_id))
+        if not merge_payloads:
+            return {"ok": False, "status": "ERROR", "error": "No merge artifacts found"}
+        t_merge = time.perf_counter()
+        result = _route_poi_v2_merge_analysis_payloads(merge_payloads)
+        timings.update(result.get("timings_ms") or {})
+        if path and path.exists():
+            try:
+                t0 = time.perf_counter()
+                points = _parse_gpx_file_detailed(path)
+                timings["gpx_load_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
+                t1 = time.perf_counter()
+                projected = _track_projection(points)
+                timings["track_projection_ms"] = round((time.perf_counter() - t1) * 1000.0, 1)
+                result["track_points_count"] = len(projected)
+                result["distance_km"] = round(projected[-1]["cum_m"] / 1000.0, 3)
+                result["bbox"] = _track_bbox(points)
+            except Exception as exc:
+                log.warning("route_poi_analyze merge GPX refresh failed: %s", exc)
+        result["route_id"] = result.get("route_id") or route_id
+        result["project_id"] = result.get("project_id") or project_id
+        result["artifact_id"] = artifact_id
+        result["source_path"] = result.get("source_path") or route_source_path
+        result["focus"] = focus_mode
+        result["analysis_status"] = result.get("status")
+        result["report_tag"] = "FINAL"
+        report_stem = _route_poi_v2_report_stem(source_slug, km_from, km_to, "FINAL")
+        result["report_filename"] = f"{report_stem}.md"
+        result["report_json_filename"] = f"{report_stem}.json"
+        result["markdown"] = _route_poi_v2_build_markdown(result)
+        timings["merge_ms"] = round((time.perf_counter() - t_merge) * 1000.0, 1)
+        timings["total_ms"] = round((time.perf_counter() - t_start) * 1000.0, 1)
+        result["timings_ms"] = timings
+        result["output_format"] = output_format
+        return result
+
+    if path is None or not path.exists():
+        return {"ok": False, "status": "ERROR", "error": f"File not found: {path}"}
+
+    t0 = time.perf_counter()
+    points = _parse_gpx_file_detailed(path)
+    if not points:
+        return {"ok": False, "status": "ERROR", "error": f"No track points in {path}"}
+    timings["gpx_load_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
+
+    t1 = time.perf_counter()
+    projected = _track_projection(points)
+    total_km = round(projected[-1]["cum_m"] / 1000.0, 3)
+    timings["track_projection_ms"] = round((time.perf_counter() - t1) * 1000.0, 1)
+    bbox = _track_bbox(points)
+
+    t_overpass = time.perf_counter()
+    chunk_start = float(km_from)
+    chunk_end_limit = float(km_to)
+    if chunk_km <= 0:
+        chunk_km = max(1.0, float(km_to - km_from) or 1.0)
+    step_km = max(0.5, chunk_km - overlap_km)
+    all_candidates: list[dict[str, Any]] = []
+    town_candidates: list[dict[str, Any]] = []
+    chunks: list[dict[str, Any]] = []
+    missing_chunks: list[dict[str, Any]] = []
+    partial = False
+
+    while chunk_start <= chunk_end_limit + 1e-9:
+        if time.perf_counter() > deadline_at:
+            partial = True
+            remaining_from = chunk_start
+            remaining_to = chunk_end_limit
+            remaining_segment = _track_segment_projection(projected, remaining_from, remaining_to) or projected
+            remaining_bbox = _expand_bbox(_track_bbox(remaining_segment), max_buffer_m + 500.0)
+            missing = _retry_payload(chunk_id=_route_poi_v2_chunk_id(remaining_from, remaining_to), km_a=remaining_from, km_b=remaining_to, bbox=remaining_bbox, reason="analysis_timeout")
+            missing["status"] = "MISSING"
+            missing["error"] = "analysis timeout reached before chunk start"
+            missing_chunks.append(missing)
+            chunks.append({
+                "chunk_id": missing["chunk_id"],
+                "chunk_from_km": missing["km_from"],
+                "chunk_to_km": missing["km_to"],
+                "status": "MISSING",
+                "reason": missing["reason"],
+                "bbox": missing["bbox"],
+                "categories_requested": missing["categories_requested"],
+                "attempts": 0,
+            })
+            log.info("route_poi_analyze deadline reached before chunk start %.2f", chunk_start)
+            break
+
+        chunk_stop = min(chunk_end_limit, chunk_start + chunk_km)
+        result_chunk = _collect_chunk(chunk_start, chunk_stop)
+        chunks.extend(list(result_chunk.get("chunks", [])))
+        all_candidates.extend(list(result_chunk.get("poi_candidates", [])))
+        town_candidates.extend(list(result_chunk.get("town_candidates", [])))
+        missing_chunks.extend(list(result_chunk.get("missing_chunks", [])))
+        if result_chunk.get("missing_chunks"):
+            partial = True
+        chunk_start += step_km
+
+    timings["overpass_ms"] = round((time.perf_counter() - t_overpass) * 1000.0, 1)
+
+    t_filter = time.perf_counter()
+    deduped = _route_poi_v2_dedupe(all_candidates)
+    grouped: dict[str, list[dict[str, Any]]] = {"hard_resupply": [], "soft_food_stop": [], "water": [], "attraction": []}
+    for item in deduped:
+        grouped.setdefault(str(item.get("category") or ""), []).append(item)
+    for key in grouped:
+        grouped[key] = _route_poi_v2_mark_clusters(grouped[key])
+        grouped[key].sort(key=lambda item: (float(item.get("route_km") or 0), float(item.get("distance_to_track_m") or 10**9)))
+    timings["filter_ms"] = round((time.perf_counter() - t_filter) * 1000.0, 1)
+
+    t_town = time.perf_counter()
+    town_deduped = _route_poi_v2_mark_clusters(_route_poi_v2_dedupe(town_candidates))
+    town_deduped.sort(key=lambda item: (float(item.get("route_km") or 0), float(item.get("distance_to_track_m") or 10**9)))
+    for town in town_deduped:
+        nearby_hard = [
+            item for item in grouped.get("hard_resupply", [])
+            if abs(float(item.get("route_km") or 0) - float(town.get("route_km") or 0)) <= 2.0
+            and float(item.get("distance_to_track_m") or 10**9) <= max(hard_resupply_m, soft_food_m, 1000.0)
+        ]
+        town["hard_resupply_found"] = bool(nearby_hard)
+        town["hard_resupply_names"] = ", ".join([str(item.get("name") or "") for item in nearby_hard[:5]])
+    timings["town_fallback_ms"] = round((time.perf_counter() - t_town) * 1000.0, 1)
+
+    summary = {
+        "hard_resupply": len(grouped.get("hard_resupply", [])),
+        "soft_food_stop": len(grouped.get("soft_food_stop", [])),
+        "water": len(grouped.get("water", [])),
+        "attraction": len(grouped.get("attraction", [])),
+        "town": len(town_deduped),
+    }
+
+    report_tag_effective = retry_chunk_id if retry_mode and retry_chunk_id else (
+        "FINAL" if not missing_chunks and focus_mode == "logistics" and float(km_from) <= 0.0 and float(km_to) >= 80.0 else None
+    )
+    report_stem = _route_poi_v2_report_stem(source_slug, km_from, km_to, report_tag_effective)
+    result: dict[str, Any] = {
+        "ok": True,
+        "status": "PARTIAL" if partial or missing_chunks else "OK",
+        "analysis_status": "PARTIAL" if partial or missing_chunks else "OK",
+        "route_id": route_id,
+        "project_id": project_id,
+        "artifact_id": artifact_id,
+        "source_path": str(path),
+        "focus": focus_mode,
+        "km_from": km_from,
+        "km_to": km_to,
+        "buffers": {
+            "attractions_m": attractions_m,
+            "hard_resupply_m": hard_resupply_m,
+            "soft_food_m": soft_food_m,
+            "water_m": water_m,
+            "chunk_km": chunk_km,
+            "chunk_overlap_km": overlap_km,
+            "analysis_timeout_sec": deadline_sec,
+            "overpass_timeout_sec": overpass_timeout_sec,
+            "min_chunk_km": min_chunk_km,
+        },
+        "track_points_count": len(projected),
+        "distance_km": total_km,
+        "bbox": bbox,
+        "chunks": chunks,
+        "missing_chunks": missing_chunks,
+        "missing_chunks_count": len(missing_chunks),
+        "timings_ms": timings,
+        "summary": summary,
+        "hard_resupply": grouped.get("hard_resupply", [])[:15],
+        "soft_food_stop": grouped.get("soft_food_stop", [])[:12],
+        "water": grouped.get("water", [])[:12],
+        "attractions": grouped.get("attraction", [])[:15],
+        "town_fallback_check": town_deduped[:20],
+        "report_title": "Tuscany 2026 Stage 01 POI analysis",
+        "report_tag": report_tag_effective,
+        "report_filename": f"{report_stem}.md",
+        "report_json_filename": f"{report_stem}.json",
+        "warnings": [],
+        "retry_chunk_id": retry_chunk_id,
+        "retry_mode": bool(retry_mode),
+    }
+    if missing_chunks:
+        result["warnings"].append("analysis truncated due to timeout budget; partial artifact written")
+        result["warnings"].append("missing_chunks include retry_payload_json for targeted retries")
+    result["warnings"].append("candidate counts are filtered by route distance and per-category distance-to-track buffers")
+    timings["total_ms"] = round((time.perf_counter() - t_start) * 1000.0, 1)
+    result["timings_ms"] = timings
+    result["markdown"] = _route_poi_v2_build_markdown(result)
+    result["output_format"] = output_format
+    return result
+
+
+# ── route_poi_analyze v2 ───────────────────────────────────────────────
+
+def _route_poi_v2_norm_text(value: Any) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _route_poi_v2_is_food_hard(tags: dict[str, Any], name_text: str) -> bool:
+    shop = _route_poi_v2_norm_text(tags.get("shop"))
+    amenity = _route_poi_v2_norm_text(tags.get("amenity"))
+    vending = _route_poi_v2_norm_text(tags.get("vending"))
+    if shop in {"convenience", "supermarket", "grocery", "bakery", "deli", "butcher", "greengrocer", "pastry", "farm", "general"}:
+        return True
+    if amenity == "marketplace":
+        return True
+    if amenity == "fuel":
+        if shop:
+            return True
+        cues = ("convenience", "alimentari", "market", "shop", "store", "gas", "station", "ristoro", "bar", "cafe", "caff", "food", "snack", "spesa")
+        return any(cue in name_text for cue in cues) or vending in {"food", "drinks", "food;drinks", "drinks;food"}
+    if vending in {"food", "drinks", "food;drinks", "drinks;food"}:
+        return True
+    return False
+
+
+def _route_poi_v2_classify(tags: dict[str, Any]) -> tuple[str | None, str]:
+    name_text = _route_poi_v2_norm_text(tags.get("name") or tags.get("operator") or tags.get("brand"))
+    amenity = _route_poi_v2_norm_text(tags.get("amenity"))
+    shop = _route_poi_v2_norm_text(tags.get("shop"))
+    tourism = _route_poi_v2_norm_text(tags.get("tourism"))
+    historic = _route_poi_v2_norm_text(tags.get("historic"))
+    place = _route_poi_v2_norm_text(tags.get("place"))
+    man_made = _route_poi_v2_norm_text(tags.get("man_made"))
+    drinking_water = _route_poi_v2_norm_text(tags.get("drinking_water"))
+
+    if amenity in {"drinking_water", "fountain"} or drinking_water in {"yes", "potable", "true"} or man_made == "water_tap":
+        return "water", "water"
+    if _route_poi_v2_is_food_hard(tags, name_text):
+        return "hard_resupply", "hard_resupply"
+    if amenity in {"cafe", "bar", "restaurant", "fast_food", "pub", "ice_cream"}:
+        return "soft_food_stop", "soft_food_stop"
+    if tourism in {"attraction", "artwork", "gallery", "museum", "viewpoint", "theme_park", "zoo", "aquarium", "picnic_site"} or historic:
+        return "attraction", "attraction"
+    if place in {"city", "town", "village", "hamlet"}:
+        return "town", "town_fallback_check"
+    if shop in {"convenience", "supermarket", "grocery", "bakery", "deli", "butcher", "greengrocer", "pastry", "farm", "general"}:
+        return "hard_resupply", "hard_resupply"
+    return None, "unclassified"
+
+
+def _route_poi_v2_source_tags(tags: dict[str, Any]) -> str:
+    ordered = []
+    for key in ("name", "place", "tourism", "historic", "shop", "amenity", "drinking_water", "man_made", "vending", "operator", "brand", "cuisine"):
+        value = tags.get(key)
+        if value not in (None, ""):
+            ordered.append(f"{key}={value}")
+    return "; ".join(ordered)
+
+
+def _route_poi_v2_name(element: dict[str, Any], tags: dict[str, Any], category: str) -> str:
+    name = str(tags.get("name") or "").strip()
+    if name:
+        return name
+    fallback = {
+        "hard_resupply": "Hard resupply",
+        "soft_food_stop": "Food stop",
+        "water": "Water",
+        "attraction": "Attraction",
+        "town": "Town",
+    }.get(category, "POI")
+    osm_id = element.get("id")
+    return f"{fallback} {osm_id}" if osm_id is not None else fallback
+
+
+def _route_poi_v2_round_key(value: float, digits: int = 3) -> float:
+    return round(float(value), digits)
+
+
+def _route_poi_v2_dedupe(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for item in sorted(items, key=lambda x: (float(x.get("route_km") or 0), float(x.get("distance_to_track_m") or 10**9), str(x.get("name") or ""))):
+        osm_id = item.get("osm_id")
+        if osm_id not in (None, ""):
+            key = (item.get("category"), str(osm_id))
+        else:
+            key = (
+                item.get("category"),
+                _route_poi_v2_norm_text(item.get("name")),
+                _route_poi_v2_round_key(float(item.get("lat") or 0.0), 3),
+                _route_poi_v2_round_key(float(item.get("lon") or 0.0), 3),
+            )
+        existing = grouped.get(key)
+        if existing is None:
+            item["cluster_size"] = 1
+            grouped[key] = item
+            continue
+        existing["cluster_size"] = int(existing.get("cluster_size", 1)) + 1
+        if float(item.get("distance_to_track_m") or 10**9) < float(existing.get("distance_to_track_m") or 10**9):
+            grouped[key] = item
+            grouped[key]["cluster_size"] = existing["cluster_size"]
+    return list(grouped.values())
+
+
+def _route_poi_v2_mark_clusters(items: list[dict[str, Any]], proximity_m: float = 120.0, route_km_window: float = 0.25) -> list[dict[str, Any]]:
+    if not items:
+        return items
+    items = sorted(items, key=lambda x: (float(x.get("route_km") or 0), float(x.get("distance_to_track_m") or 10**9)))
+    cluster_start = 0
+    for idx in range(1, len(items) + 1):
+        same_cluster = False
+        if idx < len(items):
+            prev = items[idx - 1]
+            cur = items[idx]
+            if abs(float(cur.get("route_km") or 0) - float(prev.get("route_km") or 0)) <= route_km_window:
+                if _haversine_km(float(cur["lat"]), float(cur["lon"]), float(prev["lat"]), float(prev["lon"])) * 1000.0 <= proximity_m:
+                    same_cluster = True
+        if same_cluster:
+            continue
+        cluster = items[cluster_start:idx]
+        if len(cluster) > 1:
+            label = f"cluster: {len(cluster)} POI"
+            for row in cluster:
+                note = str(row.get("note") or "").strip()
+                extra = f"{note}; {label}; logistics_stop" if note else f"{label}; logistics_stop"
+                row["note"] = extra
+        cluster_start = idx
+    return items
+
+
+def _route_poi_v2_build_query(bbox: dict[str, float], focus: str | None = None) -> str:
+    bbox_s = _bbox_to_overpass_string(bbox)
+    focus_mode = _route_poi_v2_focus_mode(focus)
+    lines = [
+        "[out:json][timeout:20];",
+        "(",
+    ]
+    if focus_mode != "logistics":
+        lines.extend([
+            f'  node["tourism"~"attraction|artwork|gallery|museum|viewpoint|theme_park|zoo|aquarium|picnic_site"]({bbox_s});',
+            f'  way["tourism"~"attraction|artwork|gallery|museum|viewpoint|theme_park|zoo|aquarium|picnic_site"]({bbox_s});',
+            f'  relation["tourism"~"attraction|artwork|gallery|museum|viewpoint|theme_park|zoo|aquarium|picnic_site"]({bbox_s});',
+            f'  node["historic"]({bbox_s});',
+            f'  way["historic"]({bbox_s});',
+            f'  relation["historic"]({bbox_s});',
+        ])
+    lines.extend([
+        f'  node["shop"~"supermarket|convenience|grocery|bakery|deli|butcher|greengrocer|pastry|farm|general"]({bbox_s});',
+        f'  way["shop"~"supermarket|convenience|grocery|bakery|deli|butcher|greengrocer|pastry|farm|general"]({bbox_s});',
+        f'  relation["shop"~"supermarket|convenience|grocery|bakery|deli|butcher|greengrocer|pastry|farm|general"]({bbox_s});',
+        f'  node["amenity"="marketplace"]({bbox_s});',
+        f'  way["amenity"="marketplace"]({bbox_s});',
+        f'  relation["amenity"="marketplace"]({bbox_s});',
+        f'  node["amenity"="fuel"]({bbox_s});',
+        f'  way["amenity"="fuel"]({bbox_s});',
+        f'  relation["amenity"="fuel"]({bbox_s});',
+        f'  node["vending"~"food|drinks"]({bbox_s});',
+        f'  way["vending"~"food|drinks"]({bbox_s});',
+        f'  relation["vending"~"food|drinks"]({bbox_s});',
+        f'  node["amenity"~"cafe|bar|restaurant|fast_food|pub|ice_cream"]({bbox_s});',
+        f'  way["amenity"~"cafe|bar|restaurant|fast_food|pub|ice_cream"]({bbox_s});',
+        f'  relation["amenity"~"cafe|bar|restaurant|fast_food|pub|ice_cream"]({bbox_s});',
+        f'  node["amenity"="drinking_water"]({bbox_s});',
+        f'  way["amenity"="drinking_water"]({bbox_s});',
+        f'  relation["amenity"="drinking_water"]({bbox_s});',
+        f'  node["amenity"="fountain"]({bbox_s});',
+        f'  way["amenity"="fountain"]({bbox_s});',
+        f'  relation["amenity"="fountain"]({bbox_s});',
+        f'  node["drinking_water"="yes"]({bbox_s});',
+        f'  way["drinking_water"="yes"]({bbox_s});',
+        f'  relation["drinking_water"="yes"]({bbox_s});',
+        f'  node["man_made"="water_tap"]({bbox_s});',
+        f'  way["man_made"="water_tap"]({bbox_s});',
+        f'  relation["man_made"="water_tap"]({bbox_s});',
+        f'  node["place"~"city|town|village|hamlet"]({bbox_s});',
+    ])
+    lines.append(");")
+    lines.append("out center tags;")
+    return "\n".join(lines) + "\n"
+
+
+def _route_poi_v2_overpass_candidates(query: str, timeout_sec: float) -> list[dict[str, Any]]:
+    timeout = httpx.Timeout(timeout_sec, connect=8.0, read=timeout_sec, write=8.0, pool=8.0)
+    last_error: Exception | None = None
+    for endpoint in OVERPASS_URLS:
+        try:
+            resp = httpx.post(
+                endpoint,
+                data={"data": query},
+                headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+                timeout=timeout,
+            )
+            if resp.status_code in {429, 502, 503, 504}:
+                last_error = httpx.HTTPStatusError(
+                    f"Overpass HTTP {resp.status_code}",
+                    request=resp.request,
+                    response=resp,
+                )
+                continue
+            resp.raise_for_status()
+            payload = resp.json()
+            return [element for element in payload.get("elements", []) if isinstance(element, dict)]
+        except Exception as exc:
+            last_error = exc
+            continue
+    if last_error is not None:
+        raise last_error
+    return []
+
+
+_ROUTE_POI_CATEGORY_PRIORITY = {
+    "hard_resupply": 0,
+    "water": 1,
+    "soft_food_stop": 2,
+    "attraction": 3,
+    "town": 9,
+}
+
+
+def _route_poi_v2_focus_mode(focus: str | None) -> str:
+    focus_norm = _route_poi_v2_norm_text(focus)
+    if focus_norm in {"food_only", "hard_resupply", "logistics"}:
+        return "logistics"
+    if focus_norm in {"all", "attractions", ""}:
+        return "all"
+    return focus_norm or "all"
+
+
+def _route_poi_v2_requested_categories(focus: str | None) -> list[str]:
+    categories = ["hard_resupply", "soft_food_stop", "water", "town_fallback_check"]
+    if _route_poi_v2_focus_mode(focus) != "logistics":
+        categories.insert(3, "attraction")
+    return categories
+
+
+def _route_poi_v2_chunk_id(km_from: float, km_to: float) -> str:
+    return f"{float(km_from):06.2f}_{float(km_to):06.2f}"
+
+
+def _route_poi_v2_report_stem(source_slug: str, km_from: float, km_to: float, suffix: str | None = None) -> str:
+    stem = f"tuscany_2026_stage_01_poi_analysis_{source_slug}_{int(float(km_from)):02d}_{int(float(km_to)):02d}"
+    if suffix:
+        stem = f"{stem}_{suffix}"
+    return stem
+
+
+def _route_poi_v2_category_priority(category: str | None) -> int:
+    return _ROUTE_POI_CATEGORY_PRIORITY.get(str(category or ""), 50)
+
+
+def _route_poi_v2_is_better_candidate(candidate: dict[str, Any], existing: dict[str, Any]) -> bool:
+    cand_priority = _route_poi_v2_category_priority(candidate.get("category"))
+    exist_priority = _route_poi_v2_category_priority(existing.get("category"))
+    if cand_priority != exist_priority:
+        return cand_priority < exist_priority
+    cand_dist = float(candidate.get("distance_to_track_m") or 10**9)
+    exist_dist = float(existing.get("distance_to_track_m") or 10**9)
+    if cand_dist != exist_dist:
+        return cand_dist < exist_dist
+    cand_route = float(candidate.get("route_km") or 10**9)
+    exist_route = float(existing.get("route_km") or 10**9)
+    if cand_route != exist_route:
+        return cand_route < exist_route
+    return _route_poi_v2_norm_text(candidate.get("name")) < _route_poi_v2_norm_text(existing.get("name"))
+
+
+def _route_poi_v2_dedupe(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not items:
+        return []
+
+    ordered = sorted(items, key=lambda x: (float(x.get("route_km") or 0), float(x.get("distance_to_track_m") or 10**9), str(x.get("name") or "")))
+    by_osm: dict[str, dict[str, Any]] = {}
+    nameless: list[dict[str, Any]] = []
+    for item in ordered:
+        osm_id = item.get("osm_id")
+        if osm_id not in (None, ""):
+            key = str(osm_id)
+            existing = by_osm.get(key)
+            if existing is None:
+                fresh = dict(item)
+                fresh["cluster_size"] = int(fresh.get("cluster_size", 1) or 1)
+                by_osm[key] = fresh
+            else:
+                existing["cluster_size"] = int(existing.get("cluster_size", 1)) + 1
+                if _route_poi_v2_is_better_candidate(item, existing):
+                    replacement = dict(item)
+                    replacement["cluster_size"] = int(existing.get("cluster_size", 1))
+                    by_osm[key] = replacement
+        else:
+            nameless.append(dict(item))
+
+    grouped = list(by_osm.values()) + nameless
+    merged: list[dict[str, Any]] = []
+    proximity_m = 80.0
+    route_km_window = 0.15
+    for item in sorted(grouped, key=lambda x: (float(x.get("route_km") or 0), float(x.get("distance_to_track_m") or 10**9), str(x.get("name") or ""))):
+        item = dict(item)
+        item.setdefault("cluster_size", 1)
+        item_name = _route_poi_v2_norm_text(item.get("name"))
+        placed = False
+        for idx, existing in enumerate(merged):
+            if item_name and item_name == _route_poi_v2_norm_text(existing.get("name")):
+                if abs(float(item.get("route_km") or 0) - float(existing.get("route_km") or 0)) <= route_km_window:
+                    if _haversine_km(float(item.get("lat") or 0.0), float(item.get("lon") or 0.0), float(existing.get("lat") or 0.0), float(existing.get("lon") or 0.0)) * 1000.0 <= proximity_m:
+                        existing["cluster_size"] = int(existing.get("cluster_size", 1)) + 1
+                        if _route_poi_v2_is_better_candidate(item, existing):
+                            replacement = dict(item)
+                            replacement["cluster_size"] = int(existing.get("cluster_size", 1))
+                            merged[idx] = replacement
+                        placed = True
+                        break
+        if not placed:
+            merged.append(item)
+    return merged
+
+
+def _route_poi_v2_missing_chunk_entry(
+    *,
+    route_id: str | None,
+    artifact_id: str | None,
+    source_path: str | None,
+    km_from: float,
+    km_to: float,
+    bbox: dict[str, float],
+    focus: str | None,
+    categories_requested: list[str],
+    buffers: dict[str, float],
+    reason: str,
+    retry_chunk_id: str | None,
+    timeout_sec: float,
+    overpass_timeout_sec: float,
+    output_format: str,
+) -> dict[str, Any]:
+    chunk_id = retry_chunk_id or _route_poi_v2_chunk_id(km_from, km_to)
+    retry_payload_json = {
+        "route_id": route_id,
+        "artifact_id": artifact_id,
+        "path": source_path,
+        "km_from": round(float(km_from), 3),
+        "km_to": round(float(km_to), 3),
+        "buffers": buffers,
+        "focus": focus,
+        "output_format": output_format,
+        "retry_mode": True,
+        "retry_chunk_id": chunk_id,
+        "timeout_sec": timeout_sec,
+    }
+    return {
+        "chunk_id": chunk_id,
+        "km_from": round(float(km_from), 3),
+        "km_to": round(float(km_to), 3),
+        "bbox": dict(bbox),
+        "categories_requested": list(categories_requested),
+        "reason": reason,
+        "attempts": 0,
+        "timeout_sec": timeout_sec,
+        "overpass_timeout_sec": overpass_timeout_sec,
+        "retry_payload_json": retry_payload_json,
+    }
+
+
+def _route_poi_v2_load_analysis_payload(artifact_id: str) -> dict[str, Any]:
+    from qbot3.artifacts.store import get_artifact as _get_artifact
+
+    record = _get_artifact(artifact_id)
+    if not record:
+        raise FileNotFoundError(f"artifact not found: {artifact_id}")
+    file_path = str(record.get("file_path") or "").strip()
+    if not file_path:
+        raise FileNotFoundError(f"artifact {artifact_id} has no file_path")
+    rel = file_path.replace("\\", "/").lstrip("/")
+    abs_path = (ARTIFACTS_ROOT / rel).resolve()
+    candidates = [abs_path]
+    if abs_path.suffix.lower() == ".md":
+        candidates.insert(0, abs_path.with_suffix(".json"))
+    else:
+        candidates.append(abs_path.with_suffix(".json"))
+    for candidate in candidates:
+        if candidate.exists() and candidate.suffix.lower() == ".json":
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                payload.setdefault("source_artifact_id", artifact_id)
+                payload.setdefault("source_report_path", str(abs_path))
+                payload.setdefault("analysis_artifact_id", artifact_id)
+                return payload
+    raise FileNotFoundError(f"analysis JSON sidecar not found for artifact {artifact_id}: {abs_path.with_suffix('.json')}")
+
+
+def _route_poi_v2_merge_analysis_payloads(payloads: list[dict[str, Any]]) -> dict[str, Any]:
+    if not payloads:
+        return {"ok": False, "status": "ERROR", "error": "No analysis payloads to merge"}
+
+    merged_route_id = None
+    merged_project_id = None
+    merged_source_path = ""
+    merged_artifact_id = None
+    km_from = None
+    km_to = None
+    buffers = {}
+    focus = None
+    output_format = "md"
+    all_chunks: dict[str, dict[str, Any]] = {}
+    missing_chunks: dict[str, dict[str, Any]] = {}
+    merged_items: dict[str, list[dict[str, Any]]] = {
+        "hard_resupply": [],
+        "soft_food_stop": [],
+        "water": [],
+        "attraction": [],
+        "town_fallback_check": [],
+    }
+    timings: dict[str, float] = {
+        "gpx_load_ms": 0.0,
+        "track_projection_ms": 0.0,
+        "overpass_ms": 0.0,
+        "filter_ms": 0.0,
+        "town_fallback_ms": 0.0,
+        "merge_ms": 0.0,
+    }
+
+    t_merge = time.perf_counter()
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        merged_route_id = merged_route_id or payload.get("route_id")
+        merged_project_id = merged_project_id or payload.get("project_id")
+        merged_source_path = merged_source_path or str(payload.get("source_path") or "")
+        merged_artifact_id = merged_artifact_id or payload.get("artifact_id")
+        km_from = payload.get("km_from") if km_from is None else min(float(km_from), float(payload.get("km_from") or km_from))
+        km_to = payload.get("km_to") if km_to is None else max(float(km_to), float(payload.get("km_to") or km_to))
+        buffers = buffers or dict(payload.get("buffers") or {})
+        focus = focus or payload.get("focus")
+        output_format = str(payload.get("output_format", output_format) or output_format)
+        for key in merged_items:
+            merged_items[key].extend(list(payload.get(key) or []))
+        for chunk in list(payload.get("chunks") or []):
+            if not isinstance(chunk, dict):
+                continue
+            chunk_id = str(chunk.get("chunk_id") or f"{chunk.get('chunk_from_km', '')}_{chunk.get('chunk_to_km', '')}").strip()
+            if not chunk_id:
+                continue
+            existing = all_chunks.get(chunk_id)
+            if existing is None:
+                all_chunks[chunk_id] = dict(chunk)
+            else:
+                if str(chunk.get("status", "")).upper() == "OK" and str(existing.get("status", "")).upper() != "OK":
+                    all_chunks[chunk_id] = dict(chunk)
+        for missing in list(payload.get("missing_chunks") or []):
+            if not isinstance(missing, dict):
+                continue
+            chunk_id = str(missing.get("chunk_id") or "").strip()
+            if not chunk_id:
+                continue
+            missing_chunks[chunk_id] = dict(missing)
+
+    successful_chunk_ids = {chunk_id for chunk_id, chunk in all_chunks.items() if str(chunk.get("status", "")).upper() == "OK"}
+    for chunk_id in list(missing_chunks):
+        if chunk_id in successful_chunk_ids:
+            missing_chunks.pop(chunk_id, None)
+
+    successful_ranges: list[tuple[float, float]] = []
+    for chunk in all_chunks.values():
+        if str(chunk.get("status", "")).upper() != "OK":
+            continue
+        try:
+            start = float(chunk.get("chunk_from_km", chunk.get("km_from", 0)) or 0)
+            end = float(chunk.get("chunk_to_km", chunk.get("km_to", 0)) or 0)
+        except Exception:
+            continue
+        if end < start:
+            start, end = end, start
+        successful_ranges.append((start, end))
+    successful_ranges.sort()
+    merged_ranges: list[tuple[float, float]] = []
+    for start, end in successful_ranges:
+        if not merged_ranges or start > merged_ranges[-1][1] + 1e-9:
+            merged_ranges.append((start, end))
+        else:
+            merged_ranges[-1] = (merged_ranges[-1][0], max(merged_ranges[-1][1], end))
+
+    def _covered(start: float, end: float) -> bool:
+        for range_start, range_end in merged_ranges:
+            if start >= range_start - 1e-9 and end <= range_end + 1e-9:
+                return True
+        return False
+
+    for chunk_id in list(missing_chunks):
+        missing = missing_chunks.get(chunk_id) or {}
+        try:
+            start = float(missing.get("km_from", 0) or 0)
+            end = float(missing.get("km_to", 0) or 0)
+        except Exception:
+            continue
+        if _covered(start, end):
+            missing_chunks.pop(chunk_id, None)
+
+    for key in ("hard_resupply", "soft_food_stop", "water", "attraction"):
+        merged_items[key] = _route_poi_v2_mark_clusters(_route_poi_v2_dedupe(merged_items[key]))
+        merged_items[key].sort(key=lambda item: (float(item.get("route_km") or 0), float(item.get("distance_to_track_m") or 10**9)))
+
+    town_items = _route_poi_v2_mark_clusters(_route_poi_v2_dedupe(merged_items["town_fallback_check"]))
+    town_items.sort(key=lambda item: (float(item.get("route_km") or 0), float(item.get("distance_to_track_m") or 10**9)))
+    for town in town_items:
+        nearby_hard = [
+            item for item in merged_items["hard_resupply"]
+            if abs(float(item.get("route_km") or 0) - float(town.get("route_km") or 0)) <= 2.0
+            and float(item.get("distance_to_track_m") or 10**9) <= max(
+                float((buffers or {}).get("hard_resupply_m", 400)),
+                float((buffers or {}).get("soft_food_m", 400)),
+                1000.0,
+            )
+        ]
+        town["hard_resupply_found"] = bool(nearby_hard)
+        town["hard_resupply_names"] = ", ".join(str(item.get("name") or "") for item in nearby_hard[:5])
+    timings["merge_ms"] = round((time.perf_counter() - t_merge) * 1000.0, 1)
+
+    summary = {
+        "hard_resupply": len(merged_items["hard_resupply"]),
+        "soft_food_stop": len(merged_items["soft_food_stop"]),
+        "water": len(merged_items["water"]),
+        "attraction": len(merged_items["attraction"]),
+        "town": len(town_items),
+    }
+    missing_list = sorted(
+        list(missing_chunks.values()),
+        key=lambda item: (float(item.get("km_from") or 0), float(item.get("km_to") or 0), str(item.get("chunk_id") or "")),
+    )
+
+    status = "PARTIAL" if missing_list else "OK"
+    result: dict[str, Any] = {
+        "ok": True,
+        "status": status,
+        "analysis_status": status,
+        "route_id": merged_route_id,
+        "project_id": merged_project_id,
+        "artifact_id": merged_artifact_id,
+        "source_path": merged_source_path,
+        "km_from": km_from,
+        "km_to": km_to,
+        "focus": _route_poi_v2_focus_mode(focus),
+        "buffers": {
+            "attractions_m": float((buffers or {}).get("attractions_m", 1000)),
+            "hard_resupply_m": float((buffers or {}).get("hard_resupply_m", (buffers or {}).get("food_m", 400))),
+            "soft_food_m": float((buffers or {}).get("soft_food_m", (buffers or {}).get("food_m", 400))),
+            "water_m": float((buffers or {}).get("water_m", 200)),
+        },
+        "track_points_count": None,
+        "distance_km": None,
+        "bbox": None,
+        "chunks": list(all_chunks.values()),
+        "missing_chunks": missing_list,
+        "missing_chunks_count": len(missing_list),
+        "timings_ms": timings,
+        "summary": summary,
+        "hard_resupply": merged_items["hard_resupply"][:15],
+        "soft_food_stop": merged_items["soft_food_stop"][:12],
+        "water": merged_items["water"][:12],
+        "attractions": merged_items["attraction"][:15],
+        "town_fallback_check": town_items[:20],
+        "report_title": "Tuscany 2026 Stage 01 POI analysis",
+        "warnings": [
+            "candidate counts are filtered by route distance and per-category distance-to-track buffers",
+        ],
+    }
+    if missing_list:
+        result["warnings"].append("analysis truncated due to timeout budget; partial artifact written")
+        result["warnings"].append("missing_chunks include retry_payload_json for targeted retries")
+    result["markdown"] = _route_poi_v2_build_markdown(result)
+    result["timings_ms"]["total_ms"] = round(sum(v for v in timings.values()) if timings else 0.0, 1)
+    result["report_tag"] = "FINAL" if not missing_list else None
+    return result
+
+
+def _route_poi_v2_build_markdown(result: dict[str, Any]) -> str:
+    lines: list[str] = []
+    lines.append(f"# {result.get('report_title', 'Route POI analysis')}")
+    lines.append("")
+    lines.append(f"- route_id: {result.get('route_id') or ''}")
+    lines.append(f"- project_id: {result.get('project_id') or ''}")
+    if result.get("focus"):
+        lines.append(f"- focus: {result.get('focus')}")
+    if result.get("artifact_id"):
+        lines.append(f"- artifact_id: {result.get('artifact_id')}")
+    lines.append(f"- source_path: {result.get('source_path')}")
+    lines.append(f"- km_from: {result.get('km_from')}")
+    lines.append(f"- km_to: {result.get('km_to')}")
+    lines.append(
+        "- buffers_m: "
+        f"attractions={result.get('buffers', {}).get('attractions_m')}, "
+        f"hard_resupply={result.get('buffers', {}).get('hard_resupply_m')}, "
+        f"soft_food={result.get('buffers', {}).get('soft_food_m')}, "
+        f"water={result.get('buffers', {}).get('water_m')}"
+    )
+    lines.append(f"- track_points: {result.get('track_points_count')}")
+    lines.append(f"- distance_km: {result.get('distance_km')}")
+    if result.get("status"):
+        lines.append(f"- analysis_status: {result.get('status')}")
+    lines.append(f"- missing_chunks_count: {len(result.get('missing_chunks') or [])}")
+    if result.get("report_tag"):
+        lines.append(f"- report_tag: {result.get('report_tag')}")
+    timings = result.get("timings_ms") or {}
+    if timings:
+        lines.append(f"- timings_ms: {json.dumps(timings, ensure_ascii=False)}")
+    lines.append("")
+    lines.append("## Summary")
+    summary = result.get("summary") or {}
+    lines.append(f"- hard_resupply: {summary.get('hard_resupply', 0)}")
+    lines.append(f"- soft_food_stop: {summary.get('soft_food_stop', 0)}")
+    lines.append(f"- water: {summary.get('water', 0)}")
+    lines.append(f"- attractions: {summary.get('attraction', 0)}")
+    lines.append(f"- towns: {summary.get('town', 0)}")
+    lines.append("")
+
+    def _table(title: str, rows: list[dict[str, Any]], extra_cols: list[str] | None = None) -> None:
+        lines.append(f"## {title}")
+        lines.append("")
+        if not rows:
+            lines.append("_No candidates found._")
+            lines.append("")
+            return
+        extra_cols = extra_cols or []
+        header = ["name", "category", "lat", "lon", "route_km", "distance_to_track_m", "source_tags", "note"] + extra_cols
+        lines.append("| " + " | ".join(header) + " |")
+        lines.append("| " + " | ".join("---" if col in {"name", "category", "source_tags", "note"} else "---:" for col in header) + " |")
+        for row in rows:
+            values = [str(row.get(col, "")) for col in header]
+            lines.append("| " + " | ".join(values) + " |")
+        lines.append("")
+
+    _table("Hard resupply", result.get("hard_resupply", []), ["cluster_size"])
+    _table("Soft food stop", result.get("soft_food_stop", []), ["cluster_size"])
+    _table("Water", result.get("water", []), ["cluster_size"])
+    _table("Attractions", result.get("attractions", []), ["cluster_size"])
+
+    lines.append("## Missing chunks")
+    lines.append("")
+    missing_chunks = result.get("missing_chunks") or []
+    if not missing_chunks:
+        lines.append("_No missing chunks._")
+        lines.append("")
+    else:
+        lines.append("| chunk_id | km_from | km_to | bbox | categories requested | reason | retry_payload_json |")
+        lines.append("| --- | ---: | ---: | --- | --- | --- | --- |")
+        for row in missing_chunks:
+            lines.append(
+                "| "
+                f"{row.get('chunk_id', '')} | {row.get('km_from', '')} | {row.get('km_to', '')} | "
+                f"{json.dumps(row.get('bbox', {}), ensure_ascii=False)} | "
+                f"{', '.join(row.get('categories_requested', []) or [])} | {row.get('reason', '')} | "
+                f"{json.dumps(row.get('retry_payload_json', {}), ensure_ascii=False)} |"
+            )
+        lines.append("")
+
+    lines.append("## Town fallback check")
+    lines.append("")
+    town_rows = result.get("town_fallback_check", [])
+    if not town_rows:
+        lines.append("_No town nodes found._")
+        lines.append("")
+    else:
+        lines.append("| name | category | lat | lon | route_km | distance_to_track_m | hard_resupply_found | hard_resupply_names | source_tags | note |")
+        lines.append("| --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- | --- |")
+        for row in town_rows:
+            lines.append(
+                "| "
+                f"{row.get('name', '')} | {row.get('category', '')} | {row.get('lat', '')} | {row.get('lon', '')} | "
+                f"{row.get('route_km', '')} | {row.get('distance_to_track_m', '')} | "
+                f"{row.get('hard_resupply_found', '')} | {row.get('hard_resupply_names', '')} | "
+                f"{row.get('source_tags', '')} | {row.get('note', '')} |"
+            )
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _analyze_route_poi_artifact_legacy(
+    file_path: str | Path,
+    *,
+    route_id: str | None = None,
+    artifact_id: str | None = None,
+    project_id: str | None = None,
+    km_from: float,
+    km_to: float,
+    buffers: dict[str, float] | None = None,
+    output_format: str = "md",
+) -> dict[str, Any]:
+    """Improved POI analysis with chunked Overpass queries and partial results."""
+    log = logging.getLogger("route_poi_analyze")
+    t_start = time.perf_counter()
+    path = Path(file_path)
+    if not path.exists():
+        return {"ok": False, "status": "ERROR", "error": f"File not found: {path}"}
+    if km_to < km_from:
+        return {"ok": False, "status": "ERROR", "error": "km_to must be >= km_from"}
+
+    buffers = buffers or {}
+    attractions_m = float(buffers.get("attractions_m", 1000))
+    hard_resupply_m = float(buffers.get("hard_resupply_m", buffers.get("food_m", 400)))
+    soft_food_m = float(buffers.get("soft_food_m", buffers.get("food_m", 400)))
+    water_m = float(buffers.get("water_m", 200))
+    max_buffer_m = max(attractions_m, hard_resupply_m, soft_food_m, water_m)
+    chunk_km = float(buffers.get("chunk_km", 12.0))
+    overlap_km = max(1.0, float(buffers.get("chunk_overlap_km", 1.0)))
+    overpass_timeout_sec = float(buffers.get("overpass_timeout_sec", 20.0))
+    deadline_sec = float(buffers.get("analysis_timeout_sec", 80.0))
+
+    timings: dict[str, float] = {}
+    t0 = time.perf_counter()
+    points = _parse_gpx_file_detailed(path)
+    if not points:
+        return {"ok": False, "status": "ERROR", "error": f"No track points in {path}"}
+    timings["gpx_load_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
+
+    t1 = time.perf_counter()
+    projected = _track_projection(points)
+    total_km = round(projected[-1]["cum_m"] / 1000.0, 3)
+    timings["track_projection_ms"] = round((time.perf_counter() - t1) * 1000.0, 1)
+    bbox = _track_bbox(points)
+
+    chunks: list[dict[str, Any]] = []
+    chunk_start = float(km_from)
+    chunk_end_limit = float(km_to)
+    if chunk_km <= 0:
+        chunk_km = max(1.0, float(km_to - km_from) or 1.0)
+    step_km = max(0.5, chunk_km - overlap_km)
+    all_candidates: list[dict[str, Any]] = []
+    town_candidates: list[dict[str, Any]] = []
+    t_overpass = time.perf_counter()
+    partial = False
+
+    while chunk_start <= chunk_end_limit + 1e-9:
+        if (time.perf_counter() - t_start) > deadline_sec:
+            partial = True
+            log.info("route_poi_analyze deadline reached before chunk start %.2f", chunk_start)
+            break
+        chunk_stop = min(chunk_end_limit, chunk_start + chunk_km)
+        segment = _track_segment_projection(projected, chunk_start, chunk_stop)
+        if len(segment) < 2:
+            chunk_start += step_km
+            continue
+
+        segment_bbox = _expand_bbox(_track_bbox(segment), max_buffer_m + 500.0)
+        query = _route_poi_v2_build_query(segment_bbox)
+        query_started = time.perf_counter()
+        try:
+            raw_elements = _route_poi_v2_overpass_candidates(query, overpass_timeout_sec)
+        except Exception as exc:
+            partial = True
+            chunks.append({
+                "chunk_from_km": round(chunk_start, 3),
+                "chunk_to_km": round(chunk_stop, 3),
+                "status": "ERROR",
+                "error": str(exc)[:200],
+                "candidates": 0,
+            })
+            log.warning("route_poi_analyze overpass error chunk %.2f-%.2f: %s", chunk_start, chunk_stop, exc)
+            chunk_start += step_km
+            continue
+
+        chunk_candidates: list[dict[str, Any]] = []
+        chunk_town_candidates: list[dict[str, Any]] = []
+        for element in raw_elements:
+            tags = element.get("tags") or {}
+            if not isinstance(tags, dict):
+                continue
+            lat, lon = _element_lat_lon(element)
+            if lat is None or lon is None:
+                continue
+            category, note = _route_poi_v2_classify(tags)
+            if not category:
+                continue
+
+            nearest = _nearest_track_projection(projected, lat, lon)
+            route_km = nearest.get("route_km")
+            distance_to_track_m = nearest.get("distance_to_track_m")
+            if route_km is None or distance_to_track_m is None:
+                continue
+            if route_km < km_from or route_km > km_to:
+                continue
+
+            source_category = category
+            if category == "hard_resupply" and float(distance_to_track_m) > hard_resupply_m:
+                continue
+            if category == "soft_food_stop" and float(distance_to_track_m) > soft_food_m:
+                continue
+            if category == "water" and float(distance_to_track_m) > water_m:
+                continue
+            if category == "attraction" and float(distance_to_track_m) > attractions_m:
+                continue
+
+            tags_snapshot = _element_source_tags(element)
+            item = {
+                "osm_type": element.get("type"),
+                "osm_id": element.get("id"),
+                "name": _route_poi_v2_name(element, tags, source_category),
+                "category": source_category,
+                "lat": round(float(lat), 6),
+                "lon": round(float(lon), 6),
+                "route_km": route_km,
+                "distance_to_track_m": distance_to_track_m,
+                "source_tags": _route_poi_v2_source_tags(tags_snapshot),
+                "note": note,
+            }
+            if category == "town":
+                chunk_town_candidates.append(item)
+            else:
+                chunk_candidates.append(item)
+
+        chunk_duration_ms = round((time.perf_counter() - query_started) * 1000.0, 1)
+        chunks.append({
+            "chunk_from_km": round(chunk_start, 3),
+            "chunk_to_km": round(chunk_stop, 3),
+            "status": "OK",
+            "overpass_candidates": len(raw_elements),
+            "poi_candidates": len(chunk_candidates),
+            "town_candidates": len(chunk_town_candidates),
+            "duration_ms": chunk_duration_ms,
+        })
+        all_candidates.extend(chunk_candidates)
+        town_candidates.extend(chunk_town_candidates)
+
+        log.info(
+            "route_poi_analyze chunk %.2f-%.2f finished in %.1fms: raw=%s poi=%s town=%s",
+            chunk_start,
+            chunk_stop,
+            chunk_duration_ms,
+            len(raw_elements),
+            len(chunk_candidates),
+            len(chunk_town_candidates),
+        )
+        if (time.perf_counter() - t_start) > deadline_sec:
+            partial = True
+            break
+        chunk_start += step_km
+
+    timings["overpass_ms"] = round((time.perf_counter() - t_overpass) * 1000.0, 1)
+
+    t_filter = time.perf_counter()
+    deduped = _route_poi_v2_dedupe(all_candidates)
+    grouped: dict[str, list[dict[str, Any]]] = {"hard_resupply": [], "soft_food_stop": [], "water": [], "attraction": []}
+    for item in deduped:
+        grouped.setdefault(item["category"], []).append(item)
+    for key in grouped:
+        grouped[key] = _route_poi_v2_mark_clusters(grouped[key])
+        grouped[key].sort(key=lambda item: (float(item.get("route_km") or 0), float(item.get("distance_to_track_m") or 10**9)))
+    timings["filter_ms"] = round((time.perf_counter() - t_filter) * 1000.0, 1)
+
+    t_town = time.perf_counter()
+    town_deduped = _route_poi_v2_dedupe(town_candidates)
+    town_deduped.sort(key=lambda item: (float(item.get("route_km") or 0), float(item.get("distance_to_track_m") or 10**9)))
+    for town in town_deduped:
+        nearby_hard = [
+            item for item in grouped.get("hard_resupply", [])
+            if abs(float(item.get("route_km") or 0) - float(town.get("route_km") or 0)) <= 2.0
+            and float(item.get("distance_to_track_m") or 10**9) <= max(hard_resupply_m, soft_food_m, 1000.0)
+        ]
+        town["hard_resupply_found"] = bool(nearby_hard)
+        town["hard_resupply_names"] = ", ".join([str(item.get("name") or "") for item in nearby_hard[:5]])
+    timings["town_fallback_ms"] = round((time.perf_counter() - t_town) * 1000.0, 1)
+
+    raw_counts = {
+        "hard_resupply": len(grouped.get("hard_resupply", [])),
+        "soft_food_stop": len(grouped.get("soft_food_stop", [])),
+        "water": len(grouped.get("water", [])),
+        "attraction": len(grouped.get("attraction", [])),
+        "town": len(town_deduped),
+    }
+    limited = {
+        "hard_resupply": grouped.get("hard_resupply", [])[:15],
+        "soft_food_stop": grouped.get("soft_food_stop", [])[:12],
+        "water": grouped.get("water", [])[:12],
+        "attraction": grouped.get("attraction", [])[:15],
+        "town_fallback_check": town_deduped[:20],
+    }
+
+    result: dict[str, Any] = {
+        "ok": True,
+        "status": "PARTIAL" if partial else "OK",
+        "route_id": route_id,
+        "project_id": project_id,
+        "artifact_id": artifact_id,
+        "source_path": str(path),
+        "km_from": km_from,
+        "km_to": km_to,
+        "buffers": {
+            "attractions_m": attractions_m,
+            "hard_resupply_m": hard_resupply_m,
+            "soft_food_m": soft_food_m,
+            "water_m": water_m,
+        },
+        "track_points_count": len(projected),
+        "distance_km": total_km,
+        "bbox": bbox,
+        "chunks": chunks,
+        "timings_ms": timings,
+        "summary": raw_counts,
+        "hard_resupply": limited["hard_resupply"],
+        "soft_food_stop": limited["soft_food_stop"],
+        "water": limited["water"],
+        "attractions": limited["attraction"],
+        "town_fallback_check": limited["town_fallback_check"],
+        "report_title": "Tuscany 2026 Stage 01 POI analysis",
+        "warnings": [],
+    }
+    if partial:
+        result["warnings"].append("analysis truncated due to timeout budget; partial artifact written")
+    result["warnings"].append(
+        "candidate counts are filtered by route distance and per-category distance-to-track buffers"
+    )
+    result["markdown"] = _route_poi_v2_build_markdown(result)
+    result["timings_ms"]["total_ms"] = round((time.perf_counter() - t_start) * 1000.0, 1)
+    if output_format == "json":
+        result["output_format"] = "json"
+    else:
+        result["output_format"] = "md"
+    return result

@@ -35,10 +35,12 @@ def _execute_single_tool(tool_name: str, args: dict) -> dict:
             "action_type": tool_name,
             "payload_json": args,
             "requires_confirm": True,
+            "write_not_performed": True,
             "message": (
-                f"Zapis '{tool_name}' wymaga potwierdzenia. "
-                f"Wywołaj qbot.action_execute z action_type='{tool_name}', "
-                f"payload_json=<patrz payload_json>, confirm=true."
+                f"⚠️ TO JEST TYLKO DRAFT — NIE WYKONANO ZAPISU.\n"
+                f"Aby wykonać, użyj qbot.action_execute z action_type='{tool_name}', "
+                f"payload_json z danymi poniżej, confirm=true.\n"
+                f"Payload: {json.dumps(args, ensure_ascii=False, default=str)[:500]}"
             ),
         }
 
@@ -503,8 +505,8 @@ def _try_db_introspection_fallback(plan: dict[str, Any], question: str) -> list[
     #    Only known domain → table mappings, no guessing.
     domain_table_map: list[tuple[list[str], str, str]] = [
         (["kalendarz", "event", "wydarzen", "calendar", "toskan", "bikepack", "qcal"], "public", "calendar_events"),
-        (["jadł", "jedzeni", "posiłk", "meal", "nutrition", "kalor"], "public", "meal_logs"),
-        (["jadł", "jedzeni", "posiłk", "meal", "nutrition", "kalor"], "public", "meal_log_items"),
+        (["jadł", "jedzeni", "posiłk", "meal", "nutrition", "kalor"], "qbot_v2", "intake_logs"),
+        (["jadł", "jedzeni", "posiłk", "meal", "nutrition", "kalor"], "qbot_v2", "intake_items"),
         (["reminder", "przypomn"], "public", "reminders"),
         (["xert", "readiness", "ftp", "training", "fitness"], "public", "training_sessions"),
         (["xert", "readiness", "ftp", "training", "fitness"], "public", "xert_metrics"),
@@ -524,8 +526,8 @@ def _try_db_introspection_fallback(plan: dict[str, Any], question: str) -> list[
             "qcal_events_range": ("public", "calendar_events"),
             "qcal_events_upcoming": ("public", "calendar_events"),
             "qcal_reminders_upcoming": ("public", "reminders"),
-            "nutrition_day_summary": ("public", "meal_logs"),
-            "nutrition_log_add": ("public", "meal_logs"),
+            "nutrition_day_summary": ("qbot_v2", "intake_logs"),
+            "nutrition_log_add": ("qbot_v2", "intake_logs"),
             "xert_readiness": ("public", "training_sessions"),
             "xert_config": ("public", "xert_metrics"),
         }
@@ -675,9 +677,13 @@ def _handle_write(ctx: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
         d, _ = _resolve_date(q)
         write_payload["date"] = d.isoformat()
     idem_key = _idempotency_key(write_action[:8] if write_action else "wr", q)
-    action_draft = _build_action_draft(write_action, write_payload, idem_key, q)
+    from qbot3.write_router import build_draft
+
+    action_draft = build_draft(write_action, write_payload, q)
     answer_parts = ["Przygotowałem draft:"]
-    for k, v in write_payload.items():
+    for k, v in action_draft.get("payload", write_payload).items():
+        if str(k).startswith("_"):
+            continue
         answer_parts.append(f"- {k}: {v}")
     answer_parts.append("Zapis wymaga potwierdzenia przez qbot.action_execute.")
 
@@ -688,7 +694,7 @@ def _handle_write(ctx: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
         "tools_called": plan.get("tools_to_call", []),
         "result_type": "draft",
         "write_action": write_action,
-        "confidence": "high",
+        "confidence": "high" if action_draft.get("ready_for_execute", False) else "medium",
     }
     return {
         "tool": "qbot.query",
@@ -697,10 +703,10 @@ def _handle_write(ctx: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
         "plan": {"intent": plan["intent"], "mode": plan["mode"], "tools": plan.get("tools_to_call", [])},
         "trace": trace,
         "orchestrator": {"enabled": True, "name": "Albert", "version": "qbot3", "stage": "draft", "fallback_used": False},
-        "status": "draft",
+        "status": "draft" if action_draft.get("ready_for_execute", False) else "draft_incomplete",
         "answer": "\n".join(answer_parts),
         "action_draft": action_draft,
-        "missing_fields": [],
+        "missing_fields": action_draft.get("missing_fields", []),
         "tables": [],
         "date_resolution": {"date": ctx.get("date"), "timezone": ctx.get("timezone")},
     }

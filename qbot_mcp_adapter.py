@@ -117,14 +117,18 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "description": (
             "WYKONAJ action_draft z qbot.query. Przyjmuje action_type z allowlisty "
             "(nutrition_log_add, qcal_reminder_add, qcal_event_add, qcal_event_update, qcal_event_cancel, "
-            "planning_fact_add, qbot_doc_append, qbot_doc_replace_section, qbot_doc_update). "
+            "planning_fact_add, qbot_doc_append, qbot_doc_replace_section, qbot_doc_update, route_poi_analyze). "
+            "Dla route_poi_analyze payload_json powinien zawierać route_id, artifact_id albo path, km_from, km_to "
+            "oraz opcjonalnie buffers: attractions_m, hard_resupply_m, soft_food_m, water_m, chunk_km, chunk_overlap_km, "
+            "analysis_timeout_sec, overpass_timeout_sec, min_chunk_km, overpass_retries, retry_backoff_sec; "
+            "obsługuje też focus, retry_chunk_id, retry_mode, merge_artifact_ids i timeout_sec. "
             "WYMAGA: confirm=true, idempotency_key. "
             "Sprawdza bezpieczeństwo: allowlist, wymagane pola, duplicate key."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "action_type": {"type": "string", "enum": ["nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update", "rwgps_route_import_gpx", "qbot_artifact_put", "qbot_artifact_get"]},
+                "action_type": {"type": "string", "enum": ["nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update", "rwgps_route_import_gpx", "route_poi_analyze", "qbot_artifact_put", "qbot_artifact_get"]},
                 "payload_json": {"type": "object", "description": "Kompletny obiekt payload (tak jak w action_draft z qbot.query)"},
                 "idempotency_key": {"type": "string", "description": "Unikalny klucz — zapobiega duplikatom."},
                 "confirm": {"type": "boolean", "description": "MUSI być true, żeby zapisać."},
@@ -1208,7 +1212,7 @@ def _handle_qcal_reminder_cancel(args: dict) -> dict:
     except Exception as e: return {"tool":"qbot.qcal_reminder_cancel","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
 
 
-_ACTION_EXECUTE_ALLOWLIST = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update", "rwgps_gpx_import", "qbot_artifact_get"}
+_ACTION_EXECUTE_ALLOWLIST = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update", "rwgps_gpx_import", "route_poi_analyze", "qbot_artifact_get"}
 
 _ACTION_REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {
     "nutrition_log_add": ["date", "kcal_total"],
@@ -1221,6 +1225,7 @@ _ACTION_REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {
     "qbot_doc_replace_section": ["target_document", "heading", "content_markdown"],
     "qbot_doc_update": ["target_document", "content_markdown"],
     "rwgps_gpx_import": ["gpx_path", "name"],
+    "route_poi_analyze": ["km_from", "km_to"],
     "qbot_artifact_get": ["identifier"],
 }
 
@@ -1261,9 +1266,21 @@ def _handle_action_execute(args: dict) -> dict[str, Any]:
     payload = args.get("payload_json", {}) or {}
     if not isinstance(payload, dict):
         return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "BLOCKED", "error": "payload_json must be an object."}
+    if action_type == "route_poi_analyze" and not (
+        any(str(payload.get(field, "")).strip() for field in ("route_id", "artifact_id", "path"))
+        or any(str(payload.get(field, "")).strip() for field in ("merge_artifact_ids",))
+    ):
+        return {
+            "tool": "qbot.action_execute",
+            "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "BLOCKED",
+            "error": "route_poi_analyze requires route_id, artifact_id, path or merge_artifact_ids.",
+        }
 
     # Validate required payload fields
     required = _ACTION_REQUIRED_PAYLOAD_FIELDS.get(action_type, [])
+    if action_type == "route_poi_analyze" and any(str(payload.get(field, "")).strip() for field in ("merge_artifact_ids",)):
+        required = []
     missing = [f for f in required if not payload.get(f)]
     if missing:
         return {
@@ -1337,6 +1354,8 @@ def _handle_action_execute(args: dict) -> dict[str, Any]:
         return _action_exec_event_cancel(payload, idem_key, source)
     elif action_type == "rwgps_gpx_import":
         return _action_exec_rwgps_gpx_import(payload, idem_key, source)
+    elif action_type == "route_poi_analyze":
+        return _action_exec_route_poi_analyze(payload, idem_key, source)
     elif action_type == "planning_fact_add":
         return _action_exec_planning(payload, idem_key, source)
     elif action_type == "qbot_artifact_put":
@@ -1612,6 +1631,63 @@ def _action_exec_rwgps_gpx_import(payload: dict, idem_key: str, source: str) -> 
         "action_type": "rwgps_gpx_import",
         "idempotency_key": idem_key,
         "error": result.get("error") or result.get("validation_error") or result.get("notes", "Unknown error"),
+        "payload": payload,
+    }
+
+
+def _action_exec_route_poi_analyze(payload: dict, idem_key: str, source: str) -> dict:
+    try:
+        from qbot_route_tools import _tool_qbot_route_poi_analyze
+        result = _tool_qbot_route_poi_analyze({
+            "route_id": payload.get("route_id"),
+            "artifact_id": payload.get("artifact_id"),
+            "project_id": payload.get("project_id"),
+            "path": payload.get("path"),
+            "km_from": payload.get("km_from"),
+            "km_to": payload.get("km_to"),
+            "buffers": payload.get("buffers"),
+            "focus": payload.get("focus"),
+            "retry_chunk_id": payload.get("retry_chunk_id"),
+            "retry_mode": payload.get("retry_mode"),
+            "merge_artifact_ids": payload.get("merge_artifact_ids"),
+            "timeout_sec": payload.get("timeout_sec"),
+            "output_format": payload.get("output_format", "md"),
+            "confirm": True,
+        })
+    except Exception as exc:
+        return {
+            "tool": "qbot.action_execute",
+            "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "ERROR",
+            "error": str(exc),
+        }
+
+    if result.get("status") in {"OK", "PARTIAL"} and result.get("ok", True):
+        return {
+            "tool": "qbot.action_execute",
+            "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": result.get("status", "OK"),
+            "action_type": "route_poi_analyze",
+            "idempotency_key": idem_key,
+            "execution_mode": "partial_write" if result.get("status") == "PARTIAL" else "real_write",
+            "write_committed": True,
+            "route_id": result.get("route_id"),
+            "artifact_id": result.get("artifact_id"),
+            "source_path": result.get("source_path"),
+            "report_path": result.get("report_path"),
+            "report_artifact_id": result.get("report_artifact_id"),
+            "analysis": result.get("analysis"),
+            "analysis_status": result.get("status"),
+            "warnings": result.get("analysis", {}).get("warnings"),
+        }
+
+    return {
+        "tool": "qbot.action_execute",
+        "safety_class": "WRITE_ONLY_ALLOWLIST",
+        "status": result.get("status", "ERROR"),
+        "action_type": "route_poi_analyze",
+        "idempotency_key": idem_key,
+        "error": result.get("error") or "route_poi_analyze failed",
         "payload": payload,
     }
 
