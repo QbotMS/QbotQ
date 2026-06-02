@@ -38,3 +38,4 @@ fit_rewrite_diff.txt
 .claude/
 .DS_Store
 .aider*
+*.bak*

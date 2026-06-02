@@ -35,16 +35,79 @@ _TODAY = datetime.now(WARSAW).date()
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+MONTHS_PL = {
+    "stycznia":1,"lutego":2,"marca":3,"kwietnia":4,"maja":5,"czerwca":6,
+    "lipca":7,"sierpnia":8,"września":9,"pazdziernika":10,"października":10,
+    "listopada":11,"grudnia":12,
+    "styczen":1,"luty":2,"marzec":3,"kwiecien":4,"maj":5,"czerwiec":6,
+    "lipiec":7,"sierpien":8,"wrzesien":9,"pazdziernik":10,"listopad":11,"grudzien":12,
+}
+
 def _parse_date(text: str) -> date | None:
-    text = text.strip().lower()
-    if text in ("dziś", "dzisiaj", "today"):
+    text = text.strip()
+    tl = text.lower()
+    if tl in ("dziś", "dzisiaj", "today", "dzi\u015b"):
         return _TODAY
-    if text in ("wczoraj", "yesterday"):
+    if tl in ("wczoraj", "yesterday"):
         return _TODAY - timedelta(days=1)
+    # YYYY-MM-DD
     m = re.match(r"(\d{4})-(\d{2})-(\d{2})", text)
     if m:
-        return date(int(m[1]), int(m[2]), int(m[3]))
+        try: return date(int(m[1]), int(m[2]), int(m[3]))
+        except: pass
+    # DD.MM.YYYY
+    m = re.match(r"(\d{1,2})\.(\d{1,2})\.(\d{4})", text)
+    if m:
+        try: return date(int(m[3]), int(m[2]), int(m[1]))
+        except: pass
+    # DD/MM/YYYY
+    m = re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", text)
+    if m:
+        try: return date(int(m[3]), int(m[2]), int(m[1]))
+        except: pass
+    # "1 czerwca 2026" or "1 czerwca"
+    m = re.match(r"(\d{1,2})\s+([a-zA-Ząęśżźćńół]+)\s*(\d{4})?", tl)
+    if m:
+        mon = MONTHS_PL.get(m[2])
+        yr = int(m[3]) if m[3] else _TODAY.year
+        if mon:
+            try: return date(yr, mon, int(m[1]))
+            except: pass
     return None
+
+
+def _parse_date_from_question(question: str) -> str:
+    """Wyciagnij date z pelnego pytania - sprawdz wszystkie tokeny i multiword."""
+    # Najpierw sprawdz jawne frazy wielowyrazowe
+    q = question.strip()
+    # "wczoraj" / "dzisiaj"
+    ql = q.lower()
+    if "wczoraj" in ql or "yesterday" in ql:
+        return str(_TODAY - timedelta(days=1))
+    if "dzisiaj" in ql or "dziś" in ql or "today" in ql:
+        return str(_TODAY)
+    # Sprawdz DD.MM.YYYY lub YYYY-MM-DD w tekscie
+    for pat, fmt in [
+        (r"(\d{4}-\d{2}-\d{2})", "%Y-%m-%d"),
+        (r"(\d{1,2}\.\d{1,2}\.\d{4})", "%d.%m.%Y"),
+    ]:
+        m = re.search(pat, q)
+        if m:
+            d = _parse_date(m.group(1))
+            if d:
+                return str(d)
+    # "D miesiac YYYY"
+    m = re.search(r"(\d{1,2})\s+([a-zA-Ząęśżźćńół]+)\s*(\d{4})?", ql)
+    if m:
+        d = _parse_date(m.group(0).strip())
+        if d:
+            return str(d)
+    # sprawdz token po tokenie
+    for part in q.split():
+        d = _parse_date(part)
+        if d:
+            return str(d)
+    return ""
 
 
 def _today_or(text: str) -> date:
@@ -113,8 +176,11 @@ def _envelope(
 # Intent router  (deterministic, keyword-based)
 # ---------------------------------------------------------------------------
 INTENT_KEYWORDS: list[tuple[list[str], str]] = [
+    (["feasibility", "ocena trasy", "czy dam rade", "czy moge jechac", "analiza wykonalnosci", "check feasibility", "czy trasa jest wykonalna"], "route_feasibility"),
+    (["kafelki", "kwadraty", "tiles", "uberkwadrat", "statshunters", "nowe kwadraty", "nowe kafelki", "tile store", "przejechane kwadraty"], "tile_analysis"),
+    (["/help", "help", "pomoc", "co umiesz", "co potrafisz", "lista komend", "komendy", "funkcje qbot", "co mozesz"], "qbot_help"),
     (["bilans", "balance", "kalorii", "kalorie", "kcal"], "daily_balance"),
-    (["intake_logs", "lista posiłków", "lista wpisów", "całe jedzenie", "surową listę", "jadłem", "jadłam"], "nutrition_intake_logs_list"),
+    (["meal_logs", "intake_logs", "lista posiłków", "lista wpisów", "całe jedzenie", "surową listę", "jadłem", "jadłam", "lista posilkow", "wszystkie posilki", "pelna lista jedzenia"], "nutrition_intake_logs_list"),
     (["jedzenie", "jadło", "posiłek", "posiłki", "meal", "nutrition", "żywność", "zjadłem", "zjadłam", "spożycie"], "nutrition_day"),
     # ── Report and diagnostic intents (must precede nutrition_range) ──
     (["raport dobowy", "raport dzienny", "daily report", "podsumowanie dnia", "podsumowanie dni",
@@ -141,7 +207,16 @@ INTENT_KEYWORDS: list[tuple[list[str], str]] = [
     (["energia", "energię", "energy", "spaliłem", "spaliłam", "kroki", "steps", "aktywność"], "energy_day"),
     (["trening", "treningi", "treningów", "training", "aktywność fizyczna", "aktywności", "ćwiczenia", "sport", "jazda", "jeździłem"], "training_recent"),
     (["notatki", "pamięć", "pamiętasz", "pamięci", "wiem o", "fakty o", "w notatkach", "w pamięci", "w wiedzy", "przypomnij"], "memories_search"),
+    (["pobierz trase", "przetworz trase", "fetch route", "pobierz etap", "przetworz etap", "obrab trase", "analizuj trase"], "route_workflow_fetch"),
+    (["wyslij trase", "upload trasy", "zatwierdz trase", "potwierdz trase do rwgps"], "route_workflow_upload"),
+    (["lista tras", "przetworzone trasy", "historia tras"], "route_workflow_list"),
+    (["podjazdy", "climbs", "wzniesienia", "podejscia", "podjazd", "climb", "ile podjazdow", "trudne miejsca", "kategoria podjazdu", "hc", "cat 1", "cat 2", "cat 3", "cat 4"], "route_climbs"),
+    (["wyslij poi", "dodaj poi", "wrzuc poi", "poi do rwgps", "wyslij do rwgps", "dodaj do trasy", "zatwierdz poi", "potwierdz poi", "wykonaj poi"], "rwgps_poi_push"),
+    (["przeanalizuj poi", "analiza poi", "poi na trasie", "atrakcje na trasie", "atrakcje na etapie", "nawierzchnia trasy", "nawierzchnia etapu", "surface trasy", "analiza nawierzchni", "route_poi", "route_surface", "co po drodze", "sklepy na trasie", "woda na trasie", "jedzenie na trasie", "stacje na trasie", "stacja benzynowa", "paliwo na trasie", "fuel", "ładowanie na trasie", "poi etap", "poi trasy", "km trasy"], "route_poi_analyze"),
     (["wyjazd", "wyjazdy", "trip", "tripy", "zaplanowane", "toskania", "toskanię", "toskanii", "tuscany", "tuscany trail"], "trips_status"),
+    (["atrakcje", "atrakcja", "attractions", "must see", "must-see", "co warto", "co zobaczyć", "co zobaczyc", "poi wyjazd"], "trip_attractions"),
+    (["generuj trasę", "generuj trase", "generate route", "wygeneruj trasę", "wygeneruj trase", "zaproponuj trasę", "zaproponuj trase", "nowa trasa", "trasa od zera"], "route_generate"),
+    (["etap", "etapy", "stage", "stages", "dzisiejszy etap", "etap dziś", "etap dzis", "plan etapów", "plan etapow", "jaki etap", "który etap"], "trip_stages"),
     (["odśwież xert", "wymuś live fetch", "live fetch xert", "sprawdź xert api", "refresh xert", "xert live", "xert na żywo", "xert live fetch", "wymuś xert"], "xert_live_fetch"),
     (["xert", "forma", "gotowość", "readiness", "freshness", "fatigue", "ftp", "ltp", "w'", "w_prime", "w prime"], "xert_status"),
     # ── Artifact lookup intents (must precede garage_search) ──
@@ -1407,6 +1482,100 @@ EXPLICIT_RANGE_PATTERNS = [
 ]
 
 
+
+# ── Multi-intent: domeny i ich sygnaly ─────────────────────────────────────
+_DOMAIN_SIGNALS: dict[str, list[str]] = {
+    "nutrition": ["kalorii", "kcal", "jedzenie", "jadlem", "jadlam", "bilans", "bialko",
+                  "wegle", "tluszcz", "makro", "nutrition", "posilek", "spozycle",
+                  "intake", "dieta", "kaloryczny"],
+    "body": ["body composition", "sklad ciala", "body fat", "tkanka tluszczowa",
+             "masa miesniowa", "bmi", "waga", "body comp", "body_comp",
+             "pomiary ciala", "wyniki wazenia"],
+    "sleep": ["sen", "spalem", "spalem", "sleep", "spanie", "regeneracja snu"],
+    "wellness": ["hrv", "wellness", "bateria", "body battery", "tetno spoczynkowe",
+                 "resting hr", "stres"],
+    "training": ["trening", "treningi", "aktywnosc", "jazda", "jezddem", "sport",
+                 "training", "workout", "aktywnosc fizyczna"],
+    "energy": ["energia", "wydatek", "spalone", "spalony", "kroki", "steps", "energy"],
+}
+
+_DOMAIN_TO_HANDLER: dict[str, str] = {
+    "nutrition": "nutrition_range",
+    "body": "body_measurements_range",
+    "sleep": "sleep_day",
+    "wellness": "wellness_day",
+    "training": "training_recent",
+    "energy": "energy_day",
+}
+
+
+def _detect_domains(question: str) -> list[str]:
+    """Wykryj domeny w pytaniu - zwroc liste gdy >1."""
+    ql = question.lower()
+    found = []
+    for domain, signals in _DOMAIN_SIGNALS.items():
+        if any(s in ql for s in signals):
+            found.append(domain)
+    return found
+
+
+def _handle_multi_intent(question: str, domains: list[str]) -> dict:
+    """Wywolaj wiele handlerow i scalaj odpowiedzi."""
+    results = []
+    errors = []
+
+    for domain in domains:
+        intent = _DOMAIN_TO_HANDLER.get(domain)
+        if not intent:
+            continue
+        try:
+            if intent == "nutrition_range":
+                r = _handle_nutrition_range(question)
+            elif intent == "body_measurements_range":
+                r = _handle_body_measurements_range(question)
+            elif intent == "sleep_day":
+                r = _handle_sleep_day(_parse_date_from_question(question))
+            elif intent == "wellness_day":
+                r = _handle_wellness_day(_parse_date_from_question(question))
+            elif intent == "training_recent":
+                r = _handle_training_recent(question)
+            elif intent == "energy_day":
+                r = _handle_energy_day(_parse_date_from_question(question))
+            else:
+                continue
+
+            if r.get("status") not in ("ERROR",):
+                results.append((domain, r.get("answer", "")))
+            else:
+                errors.append(domain)
+        except Exception as exc:
+            errors.append(f"{domain}:{exc}")
+
+    if not results:
+        return _envelope("multi_intent", "Brak danych dla podanych domen.", status_override="PARTIAL")
+
+    # Scal odpowiedzi
+    parts = []
+    for domain, answer in results:
+        label = {
+            "nutrition": "🍽️ ŻYWIENIE",
+            "body": "📊 SKŁAD CIAŁA",
+            "sleep": "😴 SEN",
+            "wellness": "💓 WELLNESS",
+            "training": "🚴 TRENING",
+            "energy": "⚡ ENERGIA",
+        }.get(domain, domain.upper())
+        parts.append(f"{label}\n{answer}")
+
+    combined = "\n\n".join(parts)
+    if errors:
+        combined += f"\n\n⚠️ Błąd dla: {', '.join(str(e) for e in errors)}"
+
+    return _envelope("multi_intent", combined,
+                     data={"domains": domains, "results_count": len(results)},
+                     sources_used=list(_DOMAIN_TO_HANDLER.values()))
+
+
 def _has_range_indicator(text: str) -> bool:
     ql = text.lower()
     for ind in RANGE_INDICATORS:
@@ -1558,8 +1727,12 @@ def _handle_nutrition_range(text: str) -> dict:
             if dse.get("expenditure_total") is not None:
                 totals["expenditure_kcal"] += dse["expenditure_total"]
                 totals_count["expenditure_kcal"] += 1
-            if dse.get("balance_kcal") is not None:
-                totals["balance_kcal"] += dse["balance_kcal"]
+            # Uzywaj balance_kcal jesli jest, w przeciwnym razie oblicz z intake-expenditure
+            _bal = dse.get("balance_kcal")
+            if _bal is None and dse.get("intake_kcal") is not None and dse.get("expenditure_total") is not None:
+                _bal = dse["intake_kcal"] - dse["expenditure_total"]
+            if _bal is not None:
+                totals["balance_kcal"] += _bal
                 totals_count["balance_kcal"] += 1
             # If no nutrition summary but daily_summary has intake, use that
             if not n and dse.get("intake_kcal") is not None:
@@ -1714,6 +1887,34 @@ def _extract_trip_terms(text: str) -> list[str]:
         return [m.group(1).strip()]
     return []
 
+
+
+# ── Trip stages (generic, DB-backed) ──────────────────────────────────
+def _handle_trip_stages(text: str) -> dict:
+    try:
+        from tools.trip_stages import handle_trip_stages
+        res = handle_trip_stages(text)
+        return _envelope("trip_stages", res.get("answer", ""), data=res.get("data"), sources_used=res.get("sources"))
+    except Exception as exc:
+        return _envelope("trip_stages", f"Błąd trip_stages: {exc}", status_override="ERROR")
+
+# ── Trip attractions (generic, DB-backed) ─────────────────────────────
+def _handle_trip_attractions(text: str) -> dict:
+    try:
+        from tools.trip_attractions import handle_trip_attractions
+        res = handle_trip_attractions(text)
+        return _envelope("trip_attractions", res.get("answer", ""), data=res.get("data"), sources_used=res.get("sources"))
+    except Exception as exc:
+        return _envelope("trip_attractions", f"Błąd trip_attractions: {exc}", status_override="ERROR")
+
+# ── Route generate (Valhalla + tile scoring) ──────────────────────────
+def _handle_route_generate(text: str) -> dict:
+    try:
+        from tools.route_generator import handle_route_generate
+        res = handle_route_generate(text)
+        return _envelope("route_generate", res.get("answer", ""), data=res.get("data"), sources_used=res.get("sources"))
+    except Exception as exc:
+        return _envelope("route_generate", f"Błąd route_generate: {exc}", status_override="ERROR")
 
 def _handle_trips_status(text: str) -> dict:
     try:
@@ -2327,9 +2528,68 @@ def _handle_artifact_read(question: str) -> dict:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+def _handle_qbot_help() -> dict:
+    help_text = """\U0001f916 *QBot3 — lista komend*
+
+**\U0001f34e ŻYWIENIE**
+• bilans / kcal → dzienny bilans kalorii
+• jedzenie / posiłki → co jadłem dziś
+• zakres / ostatni tydzień → makro za zakres dat
+• dodaj posiłek [nazwa] [kcal] [B/W/T] → zapis żywienia
+
+**\u2764\ufe0f ZDROWIE**
+• sen / sleep → dane snu (REM, deep, light)
+• wellness / hrv / bateria → HRV, body battery, tętno spoczynkowe
+• energia / kroki → wydatek energetyczny
+• waga → aktualna waga
+• body composition / skład ciała → pełny skład (tłuszcz, mięśnie, BMI)
+• trend wagi → historia wagi
+• tabela body → pełna tabela pomiarów za okres
+
+**\U0001f3cb TRENING**
+• trening / aktywność → ostatnie treningi
+• xert / forma / ftp → status Xert (FTP, LTP, W', forma)
+• odśwież xert → live fetch z API Xert
+
+**\U0001f6e3 TRASY**
+• przeanalizuj poi [trasa] km [X-Y] → POI na trasie (woda/jedzenie/sklepy+stacje/atrakcje)
+• nawierzchnia trasy [trasa] → analiza nawierzchni
+• podjazdy [trasa] km [X-Y] → lista podjazdów
+• ocena trasy [trasa] start [HH:MM] → feasibility check (forma + pogoda + profil)
+• kafelki [share_id] trasa [route_id] → analiza kafelków + Überkwadrat
+• generuj trasę [X]km start [lat,lon] → nowa trasa Valhalla + tile scoring
+• pobierz trasę [route_id] → pobierz i przetwórz trasę z RWGPS
+• lista tras → przetworzone trasy
+• wyślij poi do rwgps [trasa] → wyślij POI do RWGPS (dry-run)
+• wyślij poi ... potwierdź → rzeczywisty zapis
+
+**\U0001f9f3 WYJAZDY**
+• wyjazd / toskania → status wyjazdu
+• etap / dzisiejszy etap → info o etapie (data lub numer)
+• etap 3 / plan etapów → konkretny etap lub cały plan
+• atrakcje / co warto → atrakcje na etapie/trasie
+• atrakcje etap 2 / must see → POI z bazy planowania
+
+**\U0001f4ca RAPORTY**
+• raport dobowy → status raportu dziennego
+• raport z jazdy → ostatni raport po jeździe
+• diagnostyka raportu → sprawdź źródła danych
+
+**\U0001f6b2 GARAŻ**
+• garaż / sprzęt → status sprzętu
+• szukaj [element] → szukaj w garażu
+
+**\U0001f4be SYSTEM**
+• /help → ta lista
+• przypomnij / pamięć → notatki i fakty
+• artefakt / artifact [id] → przeszukaj/odczytaj artefakty"""
+    return _envelope("qbot_help", help_text, sources_used=[])
+
 def handle_query(question: str, context: dict | None = None) -> dict:
     ql = question.lower().strip()
     intent = _resolve_intent(question)
+    if intent == "qbot_help":
+        return _handle_qbot_help()
 
     # Redirect artifact_search to artifact_read when query starts with a read verb
     # and contains a filename/identifier pattern — this handles "Zobacz <filename>"
@@ -2342,12 +2602,13 @@ def handle_query(question: str, context: dict | None = None) -> dict:
         if has_read_file or has_uuid or has_full_path:
             intent = "artifact_read"
 
-    day_str = ""
-    for part in question.split():
-        parsed = _parse_date(part)
-        if parsed:
-            day_str = part
-            break
+    # ── Multi-intent: sprawdz czy pytanie obejmuje >1 domene ──────────
+    if _has_range_indicator(question):
+        domains = _detect_domains(question)
+        if len(domains) >= 2:
+            return _handle_multi_intent(question, domains)
+
+    day_str = _parse_date_from_question(question)
 
     # If daily_balance or nutrition_day but query has range indicators → nutrition_range
     if intent in ("daily_balance", "nutrition_day") and _has_range_indicator(question):
@@ -2393,12 +2654,34 @@ def handle_query(question: str, context: dict | None = None) -> dict:
         return _handle_memories_search(question)
     elif intent == "trips_status":
         return _handle_trips_status(question)
+    elif intent == "trip_stages":
+        return _handle_trip_stages(question)
+    elif intent == "trip_attractions":
+        return _handle_trip_attractions(question)
+    elif intent == "route_generate":
+        return _handle_route_generate(question)
     elif intent == "daily_report":
         return _handle_daily_report_diagnostic(question)
     elif intent == "ride_report":
         return _handle_ride_report_diagnostic(question)
     elif intent == "report_diagnostic":
         return _handle_report_diagnostic(question)
+    elif intent == "route_feasibility":
+        return _handle_route_feasibility(question)
+    elif intent == "tile_analysis":
+        return _handle_tile_analysis(question)
+    elif intent == "route_workflow_fetch":
+        return _handle_route_workflow_fetch(question)
+    elif intent == "route_workflow_upload":
+        return _handle_route_workflow_upload(question)
+    elif intent == "route_workflow_list":
+        return _handle_route_workflow_list()
+    elif intent == "route_climbs":
+        return _handle_route_climbs(question)
+    elif intent == "rwgps_poi_push":
+        return _handle_rwgps_poi_push(question)
+    elif intent == "route_poi_analyze":
+        return _handle_route_poi_analyze(question)
     elif intent == "artifact_search":
         return _handle_artifact_search(question)
     elif intent == "artifact_read":
@@ -2406,6 +2689,232 @@ def handle_query(question: str, context: dict | None = None) -> dict:
     else:
         return _envelope("unrecognized",
                          "Nie rozpoznano intencji. Spróbuj: bilans, jedzenie, sen, wellness, energia, trening, xert, garaż, notatki, wyjazdy, raport dobowy, raport z jazdy.")
+
+
+def _handle_route_feasibility(question):
+    import re as _re
+    ql=question.lower()
+    route_id_m=_re.search(r"\b(\d{6,8})\b",question)
+    route_id=route_id_m.group(1) if route_id_m else None
+    hour_m=_re.search(r"(\d{1,2}):\d{2}|start\s*(\d{1,2})",ql)
+    start_hour=int((hour_m.group(1) or hour_m.group(2))) if hour_m else 8
+    for name,rid in [("toskania","55257604"),("tuscany","55257604")]:
+        if name in ql and not route_id: route_id=rid; break
+    try:
+        from tools.feasibility import check_feasibility,format_report
+        r=check_feasibility(route_id=route_id,start_hour=start_hour)
+        answer=format_report(r)
+        return _envelope("route_feasibility",answer,data=r,sources_used=["xert","rwgps","owm"])
+    except Exception as exc:
+        return _envelope("route_feasibility","Blad: {}".format(exc),status_override="ERROR")
+
+
+def _handle_tile_analysis(question):
+    import re as _re
+    ql=question.lower()
+    share_m=_re.search(r'share[=:]?\s*([a-zA-Z0-9_-]{4,20})',ql)
+    share_id=share_m.group(1) if share_m else None
+    if not share_id:
+        share_m=_re.search(r'[a-zA-Z0-9_-]{8,20}',question)
+        share_id=share_m.group(0) if share_m else None
+    route_id_m=_re.search(r'(\d{6,8})',question)
+    route_id=route_id_m.group(1) if route_id_m else None
+    if not share_id:
+        return _envelope('tile_analysis','Podaj share_id ze StatsHunters.',status_override='PARTIAL')
+    try:
+        from tools.tile_store import build_route_report
+        r=build_route_report(share_id,route_id=route_id)
+        ub=r.get('uberkwadrat',{})
+        sep=chr(10)
+        lines=['Kafelki StatsHunters (share={}):'.format(share_id),
+               'Przejechane: {} kafelkow'.format(r.get('existing_tiles_count',0)),
+               'Uberkwadrat: {}x{} = {} kafelkow'.format(ub.get('width',0),ub.get('height',0),ub.get('area',0)),
+               'Centrum Uberkwadratu: lat={} lon={}'.format(ub.get('center_lat',0),ub.get('center_lon',0))]
+        if r.get('route_tile_score'):
+            sc=r['route_tile_score']
+            lines.append('Trasa {}: {} nowych kafelkow ({:.0f}%) | score={:.2f}'.format(
+                route_id,sc['new_tiles'],sc['new_pct']*100,sc['score']))
+        if r.get('tile_error'): lines.append('Blad pobierania: '+str(r['tile_error']))
+        return _envelope('tile_analysis',sep.join(lines),data=r,sources_used=['statshunters'])
+    except Exception as exc:
+        return _envelope('tile_analysis','Blad: {}'.format(exc),status_override='ERROR')
+
+
+def _handle_route_workflow_fetch(question: str) -> dict:
+    import re as _re
+    ql = question.lower()
+    route_id_m = _re.search(r"\b(\d{6,8})\b", question)
+    route_id = route_id_m.group(1) if route_id_m else None
+    if not route_id:
+        return _envelope("route_workflow", "Podaj route_id RWGPS.", status_override="PARTIAL")
+    try:
+        from tools.rwgps.route_workflow import fetch_and_process
+        r = fetch_and_process(route_id)
+        climbs = r.get("climbs_count", 0)
+        poi = r.get("poi_candidates", {})
+        poi_str = " | ".join(f"{k}: {v}" for k,v in poi.items() if v)
+        answer = "Trasa {} przetworzona lokalnie.\n{}km | +{}m | {} podjazdow\nPOI: {}\n\nKatalog: {}\n\n{}".format(
+            r.get("name"), r.get("distance_km"), r.get("elevation_gain_m"),
+            climbs, poi_str or "brak", r.get("work_dir"), r.get("note",""))
+        return _envelope("route_workflow", answer, data=r, sources_used=["rwgps"])
+    except Exception as exc:
+        return _envelope("route_workflow", "Blad: {}".format(exc), status_override="ERROR")
+
+
+def _handle_route_workflow_upload(question: str) -> dict:
+    import re as _re
+    ql = question.lower()
+    route_id_m = _re.search(r"\b(\d{6,8})\b", question)
+    route_id = route_id_m.group(1) if route_id_m else None
+    if not route_id:
+        return _envelope("route_workflow", "Podaj route_id RWGPS.", status_override="PARTIAL")
+    dry_run = not any(w in ql for w in ["potwierdz", "zatwierdz", "wykonaj"])
+    try:
+        from tools.rwgps.route_workflow import upload_to_rwgps
+        r = upload_to_rwgps(route_id, dry_run=dry_run)
+        if r.get("dry_run"):
+            answer = "Dry-run upload trasy {}:\nNowa nazwa: {}\n\n{}".format(
+                route_id, r.get("new_name"), r.get("note",""))
+        else:
+            answer = "Wyslano do RWGPS!\nNowa nazwa: {}".format(r.get("new_name"))
+        return _envelope("route_workflow", answer, data=r, sources_used=["rwgps"])
+    except Exception as exc:
+        return _envelope("route_workflow", "Blad: {}".format(exc), status_override="ERROR")
+
+
+def _handle_route_workflow_list() -> dict:
+    try:
+        from tools.rwgps.route_workflow import list_processed_routes
+        routes = list_processed_routes(days=14)
+        if not routes:
+            answer = "Brak przetworzonych tras w ostatnich 14 dniach."
+        else:
+            lines = ["Przetworzone trasy:"]
+            for r in routes:
+                lines.append("  {} | {} | {} km | {}".format(
+                    r.get("date"), r.get("name"), r.get("distance_km"), r.get("status")))
+            answer = "\n".join(lines)
+        return _envelope("route_workflow", answer, data={"routes": routes}, sources_used=[])
+    except Exception as exc:
+        return _envelope("route_workflow", "Blad: {}".format(exc), status_override="ERROR")
+
+
+def _handle_route_climbs(question: str) -> dict:
+    import re as _re, os, httpx
+    ql = question.lower()
+    route_id_m = _re.search(r"\b(\d{6,8})\b", question)
+    route_id = route_id_m.group(1) if route_id_m else None
+    km_m = _re.search(r"(\d+(?:\.\d+)?)\s*[-\u2013]\s*(\d+(?:\.\d+)?)\s*km", question)
+    km_from = float(km_m.group(1)) if km_m else 0.0
+    km_to = float(km_m.group(2)) if km_m else None
+    if not route_id:
+        for name, rid in [("toskania","55257604"),("tuscany","55257604")]:
+            if name in ql: route_id = rid; break
+    if not route_id:
+        return _envelope("route_climbs", "Podaj route_id RWGPS lub nazwe trasy.", status_override="PARTIAL")
+    try:
+        env = dict(line.strip().split("=",1) for line in open("/opt/qbot/app/.env.local") if "=" in line and not line.startswith("#"))
+        url = "https://ridewithgps.com/routes/{}.json?apikey={}&auth_token={}&version=2".format(
+            route_id, env.get("RWGPS_API_KEY",""), env.get("RWGPS_AUTH_TOKEN",""))
+        r = httpx.get(url, timeout=15.0)
+        tp = r.json().get("route",{}).get("track_points",[])
+        from tools.rwgps.climbs import detect_climbs, format_climbs_report
+        climbs = detect_climbs(tp, km_from=km_from, km_to=km_to or (km_from+200))
+        report = format_climbs_report(climbs)
+        return _envelope("route_climbs", report, data={"climbs": climbs, "count": len(climbs)}, sources_used=["rwgps"])
+    except Exception as exc:
+        return _envelope("route_climbs", "Blad: {}".format(exc), status_override="ERROR")
+
+
+def _handle_rwgps_poi_push(question: str) -> dict:
+    import re as _re
+    ql = question.lower()
+    route_id_m = _re.search(r"\b(\d{6,8})\b", question)
+    route_id = route_id_m.group(1) if route_id_m else None
+    km_m = _re.search(r"(\d+(?:\.\d+)?)\s*[-\u2013]\s*(\d+(?:\.\d+)?)\s*km", question)
+    km_from = float(km_m.group(1)) if km_m else 0.0
+    km_to = float(km_m.group(2)) if km_m else None
+    dry_run = not any(w in ql for w in ["potwierdz", "zatwierdz", "wykonaj", "wrzuc", "wyslij"])
+    confirm = not dry_run
+    if not route_id:
+        for name, rid in [("toskania", "55257604"), ("tuscany", "55257604")]:
+            if name in ql:
+                route_id = rid
+                break
+    if not route_id:
+        return _envelope("rwgps_poi_push", "Podaj route_id RWGPS lub nazwe trasy.", status_override="PARTIAL")
+    if km_to is None:
+        km_to = 530.0 if route_id == "55257604" else 100.0
+    try:
+        from qbot_route_tools import _tool_qbot_rwgps_poi_push
+        result = _tool_qbot_rwgps_poi_push({
+            "route_id": route_id, "km_from": km_from, "km_to": km_to,
+            "km_total": 530.0 if route_id == "55257604" else 0.0,
+            "dry_run": dry_run, "confirm": confirm,
+        })
+        status = result.get("status")
+        if status == "DRY_RUN":
+            sel = result.get("selected_pois") or []
+            lines = ["km{:.1f} | {} | {}m | {}".format(
+                p.get("route_km", 0), p.get("category"),
+                int(p.get("distance_to_track_m", 0)), p.get("name")) for p in sel]
+            preview = "\n".join(lines) if lines else "Brak POI w tym odcinku."
+            answer = "Dry-run: {} POI z {} kandydatow.\n\n{}\n\nDodaj: potwierdz / wykonaj aby wyslac do RWGPS.".format(
+                result.get("selected_count", 0), result.get("raw_poi_count", 0), preview)
+        elif status == "OK":
+            answer = "Wyslano {} POI do trasy {} w RWGPS. Lacznie: {} POI.".format(
+                result.get("selected_count", 0), route_id, result.get("final_pois_count", 0))
+        else:
+            answer = "Blad: {}".format(result.get("error", status))
+        return _envelope("rwgps_poi_push", answer, data=result, sources_used=["route_analyzer", "rwgps"])
+    except Exception as exc:
+        return _envelope("rwgps_poi_push", "Blad: {}".format(exc), status_override="ERROR")
+
+
+def _handle_route_poi_analyze(question: str) -> dict:
+    import re as _re2
+    from qbot3.artifacts import store as _store
+    ql = question.lower()
+    route_id_m = _re2.search(r"\b(\d{6,8})\b", question)
+    route_id = route_id_m.group(1) if route_id_m else None
+    km_m = _re2.search(r"(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*km", question)
+    km_from = float(km_m.group(1)) if km_m else 0.0
+    km_to = float(km_m.group(2)) if km_m else None
+    if any(w in ql for w in ["nawierzchnia", "surface", "asfalt", "szuter"]):
+        focus = "logistics"
+    elif any(w in ql for w in ["jedzenie", "sklep", "woda", "resupply"]):
+        focus = "logistics"
+    else:
+        focus = None
+    artifact_id = None
+    gpx_path = None
+    if not route_id:
+        try:
+            arts = _store.list_artifacts(artifact_type="route")
+            for a in arts:
+                fname = (a.get("filename") or "").lower()
+                if any(t in ql for t in ["toskania", "tuscany"] if t in fname):
+                    artifact_id = a.get("artifact_id")
+                    gpx_path = a.get("file_path") or a.get("abs_path")
+                    rid_m2 = _re2.search(r"(\d{6,8})", fname)
+                    if rid_m2:
+                        route_id = rid_m2.group(1)
+                    break
+        except Exception:
+            pass
+    if not route_id and not artifact_id and not gpx_path:
+        return _envelope("route_poi_analyze", "Nie mogę zidentyfikować trasy. Podaj route_id RWGPS, artifact_id lub nazwę trasy.", status_override="PARTIAL")
+    if km_to is None:
+        km_to = 530.0 if route_id == "55257604" else 100.0
+    try:
+        from qbot_route_tools import _tool_qbot_route_poi_analyze
+        result = _tool_qbot_route_poi_analyze({"route_id": route_id, "artifact_id": artifact_id, "path": gpx_path, "km_from": km_from, "km_to": km_to, "focus": focus, "output_format": "md", "confirm": True})
+        if result.get("status") in ("OK", "PARTIAL"):
+            answer = result.get("report_md") or result.get("answer") or "Analiza zakończona."
+            return _envelope("route_poi_analyze", answer, data=result, sources_used=["route_analyzer"])
+        return _envelope("route_poi_analyze", "Blad analizy: " + str(result.get("error", "nieznany")), status_override="ERROR")
+    except Exception as exc:
+        return _envelope("route_poi_analyze", "Blad: " + str(exc), status_override="ERROR")
 
 
 # ---------------------------------------------------------------------------

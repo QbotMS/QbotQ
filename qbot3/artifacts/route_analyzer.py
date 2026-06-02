@@ -711,8 +711,20 @@ def _classify_poi(element: dict[str, Any]) -> tuple[str | None, str]:
     if amenity in {"drinking_water", "fountain"} or drinking_water in {"yes", "potable", "true"} or man_made == "water_tap":
         return "water", "water access"
 
-    if shop in {"supermarket", "convenience", "bakery", "deli", "greengrocer"} or amenity == "marketplace":
-        return "food", "food POI"
+    if amenity in {"restaurant", "cafe", "bar", "fast_food", "pub", "biergarten", "food_court", "ice_cream"}:
+        cuisine = str(tags.get("cuisine", "")).strip()
+        name = str(tags.get("name", "")).strip()
+        label = name if name else (cuisine if cuisine else amenity)
+        return "food", label
+
+    if shop in {"supermarket", "convenience", "bakery", "deli", "greengrocer", "general"} or amenity == "marketplace":
+        name = str(tags.get("name", "")).strip()
+        return "shop", name if name else f"{shop} shop"
+
+    if amenity in {"fuel", "charging_station"}:
+        brand = str(tags.get("brand", tags.get("operator", tags.get("name", "")))).strip()
+        kind = "EV charging" if amenity == "charging_station" else "fuel station"
+        return "shop", f"{kind} ({brand})" if brand else kind
 
     if tourism in {"attraction", "artwork", "gallery", "museum", "viewpoint", "theme_park", "zoo", "aquarium", "picnic_site"} or historic:
         return "attractions", "attraction / historic"
@@ -776,6 +788,7 @@ def _render_route_poi_markdown(result: dict[str, Any]) -> str:
 
     _table("Attractions", result.get("attractions", []))
     _table("Food", result.get("food", []))
+    _table("Shop", result.get("shop", []))
     _table("Water", result.get("water", []))
 
     return "\n".join(lines).rstrip() + "\n"
@@ -800,9 +813,10 @@ def _analyze_route_poi_artifact_legacy(
 
     buffers = buffers or {}
     attractions_m = float(buffers.get("attractions_m", 1000))
-    food_m = float(buffers.get("food_m", 400))
+    food_m = float(buffers.get("food_m", 500))
+    shop_m = float(buffers.get("shop_m", 1000))
     water_m = float(buffers.get("water_m", 200))
-    max_buffer_m = max(attractions_m, food_m, water_m)
+    max_buffer_m = max(attractions_m, food_m, shop_m, water_m)
 
     points = _parse_gpx_file_detailed(path)
     if not points:
@@ -827,8 +841,18 @@ out center tags;
             """
 [out:json][timeout:25];
 (
-  node["shop"~"supermarket|convenience|bakery|deli|greengrocer"](around:{radius},{lat},{lon});
-  node["amenity"="marketplace"](around:{radius},{lat},{lon});
+  node["amenity"~"restaurant|cafe|bar|fast_food|pub|biergarten|food_court|ice_cream"](around:{radius},{lat},{lon});
+);
+out center tags;
+""",
+        ),
+        (
+            "shop",
+            """
+[out:json][timeout:25];
+(
+  node["shop"~"supermarket|convenience|bakery|deli|greengrocer|general"](around:{radius},{lat},{lon});
+  node["amenity"~"marketplace|fuel|charging_station"](around:{radius},{lat},{lon});
 );
 out center tags;
 """,
@@ -861,7 +885,7 @@ out center tags;
                 continue
         sample_km += sample_step_km
 
-    categorized: dict[str, list[dict[str, Any]]] = {"attractions": [], "food": [], "water": []}
+    categorized: dict[str, list[dict[str, Any]]] = {"attractions": [], "food": [], "shop": [], "water": []}
     seen_keys: set[str] = set()
     for element in candidates_raw:
         lat, lon = _element_lat_lon(element)
@@ -905,6 +929,8 @@ out center tags;
 
     categorized["attractions"] = categorized["attractions"][:15]
     categorized["food"] = categorized["food"][:12]
+    categorized["food"] = categorized["food"][:15]
+    categorized["shop"] = categorized.get("shop", [])[:15]
     categorized["water"] = categorized["water"][:12]
 
     result: dict[str, Any] = {
@@ -925,6 +951,8 @@ out center tags;
         "bbox": bbox,
         "attractions": categorized["attractions"],
         "food": categorized["food"],
+        "food": categorized["food"],
+        "shop": categorized.get("shop", []),
         "water": categorized["water"],
         "report_title": "Tuscany 2026 Stage 01 POI analysis",
     }
@@ -962,8 +990,8 @@ def analyze_route_poi_artifact(
     path = Path(route_source_path) if route_source_path else None
     source_slug = str(route_id or artifact_id or (path.stem if path else "route_poi")).strip() or "route_poi"
     deadline_sec = float(timeout_sec if timeout_sec is not None else buffers.get("analysis_timeout_sec", 80.0))
-    overpass_timeout_sec = float(buffers.get("overpass_timeout_sec", 20.0))
-    chunk_km = float(buffers.get("chunk_km", 12.0))
+    overpass_timeout_sec = float(buffers.get("overpass_timeout_sec", 30.0))
+    chunk_km = float(buffers.get("chunk_km", 8.0))
     overlap_km = max(1.0, float(buffers.get("chunk_overlap_km", 1.0)))
     min_chunk_km = max(1.0, float(buffers.get("min_chunk_km", 5.0)))
     retry_attempts = max(1, int(buffers.get("overpass_retries", 3)))
@@ -1037,7 +1065,7 @@ def analyze_route_poi_artifact(
             }
 
         bbox = _expand_bbox(_track_bbox(segment), max_buffer_m + 500.0)
-        query = _route_poi_v2_build_query(bbox, focus_mode)
+        query = _route_poi_v2_build_query(bbox, focus_mode, timeout_sec=overpass_timeout_sec)
         last_exc: Exception | None = None
         for attempt in range(1, retry_attempts + 1):
             if time.perf_counter() > deadline_at:
@@ -1050,7 +1078,7 @@ def analyze_route_poi_artifact(
                     "route_poi_analyze overpass attempt %s/%s chunk=%s km=%.2f-%.2f focus=%s",
                     attempt, retry_attempts, chunk_id, km_a, km_b, focus_mode,
                 )
-                raw_elements = _route_poi_v2_overpass_candidates(query, overpass_timeout_sec)
+                raw_elements = _route_poi_v2_overpass_candidates(query, overpass_timeout_sec, bbox=bbox)
                 poi_candidates: list[dict[str, Any]] = []
                 town_candidates: list[dict[str, Any]] = []
                 for element in raw_elements:
@@ -1465,58 +1493,86 @@ def _route_poi_v2_mark_clusters(items: list[dict[str, Any]], proximity_m: float 
     return items
 
 
-def _route_poi_v2_build_query(bbox: dict[str, float], focus: str | None = None) -> str:
+def _route_poi_v2_build_query(bbox: dict[str, float], focus: str | None = None, timeout_sec: float = 30.0) -> str:
     bbox_s = _bbox_to_overpass_string(bbox)
     focus_mode = _route_poi_v2_focus_mode(focus)
-    lines = [
-        "[out:json][timeout:20];",
-        "(",
-    ]
+    t = int(timeout_sec)
+    parts = [f"[out:json][timeout:{t}];", "("]
     if focus_mode != "logistics":
-        lines.extend([
-            f'  node["tourism"~"attraction|artwork|gallery|museum|viewpoint|theme_park|zoo|aquarium|picnic_site"]({bbox_s});',
-            f'  way["tourism"~"attraction|artwork|gallery|museum|viewpoint|theme_park|zoo|aquarium|picnic_site"]({bbox_s});',
-            f'  relation["tourism"~"attraction|artwork|gallery|museum|viewpoint|theme_park|zoo|aquarium|picnic_site"]({bbox_s});',
-            f'  node["historic"]({bbox_s});',
-            f'  way["historic"]({bbox_s});',
-            f'  relation["historic"]({bbox_s});',
-        ])
-    lines.extend([
-        f'  node["shop"~"supermarket|convenience|grocery|bakery|deli|butcher|greengrocer|pastry|farm|general"]({bbox_s});',
-        f'  way["shop"~"supermarket|convenience|grocery|bakery|deli|butcher|greengrocer|pastry|farm|general"]({bbox_s});',
-        f'  relation["shop"~"supermarket|convenience|grocery|bakery|deli|butcher|greengrocer|pastry|farm|general"]({bbox_s});',
-        f'  node["amenity"="marketplace"]({bbox_s});',
-        f'  way["amenity"="marketplace"]({bbox_s});',
-        f'  relation["amenity"="marketplace"]({bbox_s});',
-        f'  node["amenity"="fuel"]({bbox_s});',
-        f'  way["amenity"="fuel"]({bbox_s});',
-        f'  relation["amenity"="fuel"]({bbox_s});',
-        f'  node["vending"~"food|drinks"]({bbox_s});',
-        f'  way["vending"~"food|drinks"]({bbox_s});',
-        f'  relation["vending"~"food|drinks"]({bbox_s});',
-        f'  node["amenity"~"cafe|bar|restaurant|fast_food|pub|ice_cream"]({bbox_s});',
-        f'  way["amenity"~"cafe|bar|restaurant|fast_food|pub|ice_cream"]({bbox_s});',
-        f'  relation["amenity"~"cafe|bar|restaurant|fast_food|pub|ice_cream"]({bbox_s});',
-        f'  node["amenity"="drinking_water"]({bbox_s});',
-        f'  way["amenity"="drinking_water"]({bbox_s});',
-        f'  relation["amenity"="drinking_water"]({bbox_s});',
-        f'  node["amenity"="fountain"]({bbox_s});',
-        f'  way["amenity"="fountain"]({bbox_s});',
-        f'  relation["amenity"="fountain"]({bbox_s});',
-        f'  node["drinking_water"="yes"]({bbox_s});',
-        f'  way["drinking_water"="yes"]({bbox_s});',
-        f'  relation["drinking_water"="yes"]({bbox_s});',
-        f'  node["man_made"="water_tap"]({bbox_s});',
-        f'  way["man_made"="water_tap"]({bbox_s});',
-        f'  relation["man_made"="water_tap"]({bbox_s});',
-        f'  node["place"~"city|town|village|hamlet"]({bbox_s});',
-    ])
-    lines.append(");")
-    lines.append("out center tags;")
-    return "\n".join(lines) + "\n"
+        parts.append(f'  nwr["tourism"~"attraction|artwork|gallery|museum|viewpoint|theme_park|zoo|aquarium|picnic_site"]({bbox_s});')
+        parts.append(f'  nwr["historic"]({bbox_s});')
+    parts.append(f'  nwr["shop"~"supermarket|convenience|grocery|bakery|deli|butcher|greengrocer|pastry|farm|general"]({bbox_s});')
+    parts.append(f'  nwr["amenity"~"marketplace|fuel|cafe|bar|restaurant|fast_food|pub|ice_cream|drinking_water|fountain"]({bbox_s});')
+    parts.append(f'  nwr["vending"~"food|drinks"]({bbox_s});')
+    parts.append(f'  nwr["drinking_water"="yes"]({bbox_s});')
+    parts.append(f'  nwr["man_made"="water_tap"]({bbox_s});')
+    parts.append(f'  node["place"~"city|town|village|hamlet"]({bbox_s});')
+    parts.append(");")
+    parts.append("out center tags;")
+    return chr(10).join(parts) + chr(10)
+
+def _geofabrik_cache_candidates(bbox: dict[str, float]) -> list[dict[str, Any]] | None:
+    """Load POI from local Geofabrik cache if available for this bbox.
+    Returns None if no cache found (fallback to Overpass).
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    CACHE_DIR = _Path("/opt/qbot/artifacts/overpass_cache")
+    SLUG = "tuscany_2026"
+
+    # Check if bbox overlaps with Tuscany cache
+    TUSCANY = {"min_lat": 42.755, "max_lat": 43.758, "min_lon": 10.456, "max_lon": 11.682}
+    if not (bbox["min_lat"] < TUSCANY["max_lat"] and bbox["max_lat"] > TUSCANY["min_lat"] and
+            bbox["min_lon"] < TUSCANY["max_lon"] and bbox["max_lon"] > TUSCANY["min_lon"]):
+        return None  # outside Tuscany — use Overpass
+
+    all_elements: list[dict] = []
+    found_any = False
+    for cat in ("water", "food", "attraction"):
+        cache_file = CACHE_DIR / f"{SLUG}_{cat}.json"
+        if not cache_file.exists():
+            continue
+        found_any = True
+        data = _json.loads(cache_file.read_text(encoding="utf-8"))
+        for el in data.get("elements", []):
+            lat = float(el.get("lat") or 0)
+            lon = float(el.get("lon") or 0)
+            if not lat or not lon:
+                continue
+            # filter to bbox
+            if lat < bbox["min_lat"] or lat > bbox["max_lat"]:
+                continue
+            if lon < bbox["min_lon"] or lon > bbox["max_lon"]:
+                continue
+            # normalize tags from geofabrik CSV format
+            tags = el.get("tags") or {}
+            normalized_tags: dict[str, str] = {}
+            for k, v in tags.items():
+                if v and str(v).strip():
+                    # map CSV column names back to OSM tag names
+                    osm_key = {"name_en": "name:en", "name_it": "name:it"}.get(k, k)
+                    normalized_tags[osm_key] = str(v).strip()
+            all_elements.append({
+                "type": el.get("type", "node"),
+                "id": el.get("id"),
+                "lat": lat,
+                "lon": lon,
+                "tags": normalized_tags,
+            })
+
+    if not found_any:
+        return None
+    return all_elements
 
 
-def _route_poi_v2_overpass_candidates(query: str, timeout_sec: float) -> list[dict[str, Any]]:
+def _route_poi_v2_overpass_candidates(query: str, timeout_sec: float, bbox: dict[str, float] | None = None) -> list[dict[str, Any]]:
+    # Try local Geofabrik cache first
+    if bbox is not None:
+        cached = _geofabrik_cache_candidates(bbox)
+        if cached is not None:
+            return cached
+
     timeout = httpx.Timeout(timeout_sec, connect=8.0, read=timeout_sec, write=8.0, pool=8.0)
     last_error: Exception | None = None
     for endpoint in OVERPASS_URLS:

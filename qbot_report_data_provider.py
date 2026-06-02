@@ -230,10 +230,10 @@ class ReportDataProvider:
 
             # ── Nutrition ──
             row = _safe_fetch_one(cur,
-                "SELECT * FROM qbot_v2.nutrition_daily_summary WHERE date = %s", (ds,))
+                "SELECT * FROM qbot_v2.nutrition_daily_summary WHERE date = %s", (yds,))  # wczoraj
             if not row or row.get("kcal_total") is None:
                 row = _safe_fetch_one(cur,
-                    "SELECT * FROM public.nutrition_daily_summary WHERE date = %s", (ds,))
+                    "SELECT * FROM public.nutrition_daily_summary WHERE date = %s", (yds,))  # wczoraj
             if row and row.get("kcal_total") is not None:
                 mf = [k for k in ("kcal_total", "carbs_total", "protein_total", "fat_total") if row.get(k) is None]
                 result["nutrition"] = {
@@ -250,10 +250,10 @@ class ReportDataProvider:
 
             # ── Activity summary (today's training sessions) ──
             rows = _safe_fetch(cur,
-                "SELECT * FROM qbot_v2.training_sessions WHERE date = %s ORDER BY started_at DESC LIMIT 10", (ds,))
+                "SELECT * FROM qbot_v2.training_sessions WHERE date = %s ORDER BY started_at DESC LIMIT 10", (yds,))  # wczoraj
             if not rows:
                 rows = _safe_fetch(cur,
-                    "SELECT * FROM public.training_sessions WHERE date = %s ORDER BY started_at DESC LIMIT 10", (ds,))
+                    "SELECT * FROM public.training_sessions WHERE date = %s ORDER BY started_at DESC LIMIT 10", (yds,))  # wczoraj
             if rows:
                 result["activity_summary"] = {
                     "data": rows,
@@ -274,17 +274,28 @@ class ReportDataProvider:
             if not row:
                 row = _safe_fetch_one(cur,
                     "SELECT * FROM public.body_composition WHERE date = %s", (ds,))
+            # fallback: ostatnie dostepne wazenie jezeli nie ma dzisiejszego
+            _bc_freshness = "fresh"
+            if not (row and row.get("weight_kg") is not None):
+                row = _safe_fetch_one(cur,
+                    "SELECT * FROM qbot_v2.body_measurements WHERE weight_kg IS NOT NULL ORDER BY date DESC LIMIT 1")
+                if not row:
+                    row = _safe_fetch_one(cur,
+                        "SELECT * FROM public.body_composition WHERE weight_kg IS NOT NULL ORDER BY date DESC LIMIT 1")
+                if row:
+                    _bc_freshness = "stale"
             if row and row.get("weight_kg") is not None:
                 mf = [k for k in ("weight_kg", "body_fat_pct", "bmi") if row.get(k) is None]
                 result["body_composition"] = {
                     "data": dict(row),
                     "source": "qbot_v2.body_measurements" if "completeness_score" in (row or {}) else "public.body_composition",
-                    "freshness": "fresh",
+                    "freshness": _bc_freshness,
                     "missing_fields": mf,
                     "status": "partial" if mf else "ok",
                     "weight_kg": row.get("weight_kg"),
                     "body_fat_pct": row.get("body_fat_pct"),
                     "bmi": row.get("bmi"),
+                    "date": str(row.get("date", ds)),
                 }
 
             # ── Xert ──
@@ -316,12 +327,15 @@ class ReportDataProvider:
             elif result[key].get("status") == "partial":
                 missing_fields.append(f"{key}(partial)")
 
+        # DATA_MISSING tylko gdy brakuje nutrition (jedyne dane ktore user wprowadza recznie)
+        # Dane Garmin (wellness, energy, activity, body_comp) nigdy nie blokuja raportu
+        _hard_missing = [f for f in missing_fields if "nutrition" in f and "(partial)" not in f]
         if not missing_fields:
             result["validation"] = {"status": "DATA_OK", "missing_fields": []}
-        elif len(missing_fields) <= 3:
-            result["validation"] = {"status": "DATA_PARTIAL", "missing_fields": missing_fields}
-        else:
+        elif _hard_missing:
             result["validation"] = {"status": "DATA_MISSING", "missing_fields": missing_fields}
+        else:
+            result["validation"] = {"status": "DATA_PARTIAL", "missing_fields": missing_fields}
 
         return result
 

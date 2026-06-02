@@ -225,20 +225,11 @@ def validate_daily_report_data(
             "alert_message": alert,
         }
 
-    if len(missing) + len(partial) >= 4:
-        alert = (
-            "Raport nie zosta\u0142 wygenerowany \u2014 brak danych: "
-            + ", ".join(missing + partial)
-            + ". Wi\u0119kszo\u015b\u0107 \u017ar\u00f3de\u0142 nie dostarczy\u0142a danych."
-        )
-        return DATA_MISSING, {
-            "required_fields": required_fields,
-            "missing": missing,
-            "partial": partial,
-            "present": present,
-            "garmin_sync_failed": garmin_sync_failed,
-            "alert_message": alert,
-        }
+    # Blokuj tylko gdy brakuje nutrition - reszta to PARTIAL
+    _hard_missing = [f for f in missing if "nutrition" in f]
+    if _hard_missing:
+        alert = "Raport nie zostal wygenerowany - brak danych zywieniowych: " + ", ".join(_hard_missing)
+        return DATA_MISSING, {"required_fields": required_fields, "missing": missing, "partial": partial, "present": present, "garmin_sync_failed": garmin_sync_failed, "alert_message": alert}
 
     # DATA_PARTIAL: some data present but some missing
     if missing or partial:

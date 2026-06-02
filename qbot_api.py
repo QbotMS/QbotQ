@@ -1129,8 +1129,13 @@ async def mcp_post(request: Request):
 
     if os.getenv("QBOT3_ENABLED", "0") == "1":
         from qbot3.adapters.mcp_adapter import handle_qbot3_mcp
-        response_payload = handle_qbot3_mcp(payload if isinstance(payload, dict) else {})
-        return _mcp_response(response_payload, 200, {})
+        import uuid as _uuid
+        _p = payload if isinstance(payload, dict) else {}
+        response_payload = handle_qbot3_mcp(_p)
+        _resp_headers = {}
+        if _p.get("method") == "initialize":
+            _resp_headers["mcp-session-id"] = str(_uuid.uuid4())
+        return _mcp_response(response_payload, 200, _resp_headers)
     else:
         response_payload, status_code, headers = handle_mcp_request(payload if isinstance(payload, dict) else {}, dict(request.headers))
         return _mcp_response(response_payload, status_code, headers)

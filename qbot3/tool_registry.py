@@ -1540,6 +1540,30 @@ def _load_route_artifact_enrich_dry_run_tool() -> dict[str, Any]:
     }
 
 
+
+def _load_rwgps_poi_push_tool() -> dict:
+    from qbot3.errors import error_result
+    from qbot_route_tools import _tool_qbot_rwgps_poi_push
+
+    def _wrapper(args):
+        return _tool_qbot_rwgps_poi_push(args)
+
+    return {
+        "name": "rwgps_poi_push",
+        "description": "Analizuje POI na trasie RWGPS (woda/sklepy/atrakcje), wybiera najlepsze i dodaje do trasy w RWGPS. Wymaga route_id. Domyslnie dry_run=True.",
+        "safety_class": "WRITE_SAFE",
+        "fn": _wrapper,
+        "schema": {
+            "route_id": "str",
+            "km_from": "float",
+            "km_to": "float",
+            "km_total": "float",
+            "dry_run": "bool",
+            "confirm": "bool",
+            "focus": "str: all|logistics|attractions",
+        },
+    }
+
 def _load_route_poi_analyze_tool() -> dict[str, Any]:
     from qbot3.errors import error_result, success_result
     from qbot_route_tools import _tool_qbot_route_poi_analyze
@@ -1979,6 +2003,7 @@ def _init_registry():
         ("rwgps_artifact_status", _load_rwgps_artifact_status_tool),
         ("route_artifact_enrich_dry_run", _load_route_artifact_enrich_dry_run_tool),
         ("route_poi_analyze", _load_route_poi_analyze_tool),
+        ("rwgps_poi_push", _load_rwgps_poi_push_tool),
         ("rwgps_route_import_gpx", _load_rwgps_route_import_gpx_tool),
         # DB introspection tools (transparent read-only for Albert)
         ("db_schema_list", _load_db_schema_list_tool),

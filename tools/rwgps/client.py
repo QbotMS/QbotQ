@@ -2912,6 +2912,7 @@ def _format_poi_for_rwgps(poi: dict[str, Any]) -> dict[str, Any]:
     description = " | ".join(desc_parts) if desc_parts else "QBot/OSM"
     description += " | src:QBot/OSM"
 
+    lng = poi.get("lng") or poi.get("lon") or poi.get("longitude")
     return {
         "type": category_info["type"],
         "type_id": category_info["type_id"],
@@ -2919,9 +2920,117 @@ def _format_poi_for_rwgps(poi: dict[str, Any]) -> dict[str, Any]:
         "description": description[:200],
         "url": poi.get("url") or "",
         "lat": float(poi["lat"]),
-        "lng": float(poi["lng"]),
+        "lng": float(lng),
     }
 
+
+
+# =============================================================================
+# POI selection / filtering before sending to RWGPS
+# =============================================================================
+
+def select_best_pois(
+    poi_candidates: list[dict],
+    km_total: float = 0.0,
+) -> list[dict]:
+    """Filter and select best POIs from route_poi_analyze output.
+
+    WATER:    max 200m from track, deduplicate < 500m route-distance
+    FOOD:     max 500m from track, max 1 per 20km, best shop type priority
+    ATTRACT:  max 500m from track, max 4 per 100km, by type priority
+    TOWNS:    skipped
+    """
+    FOOD_PRIORITY = {
+        "supermarket": 0, "convenience": 1, "grocery": 2, "bakery": 3,
+        "deli": 4, "butcher": 5, "greengrocer": 5, "farm": 6,
+        "cafe": 7, "restaurant": 8, "fast_food": 9, "bar": 10, "pub": 11,
+    }
+    ATTRACTION_PRIORITY = {
+        "viewpoint": 0, "museum": 1, "gallery": 1,
+        "historic": 2, "artwork": 3, "picnic_site": 4,
+    }
+
+    def _km(p):
+        return float(p.get("route_km") or p.get("nearest_track_km") or 0.0)
+
+    def _dist(p):
+        return float(p.get("distance_to_track_m") or 9999.0)
+
+    def _parse_tags(p):
+        st = p.get("source_tags") or {}
+        if isinstance(st, str):
+            r = {}
+            for part in st.split(";"):
+                part = part.strip()
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    r[k.strip()] = v.strip()
+            return r
+        return st if isinstance(st, dict) else {}
+
+    def _food_prio(p):
+        tags = _parse_tags(p)
+        amenity = str(tags.get("amenity") or "").lower()
+        shop = str(tags.get("shop") or "").lower()
+        for label, score in FOOD_PRIORITY.items():
+            if label in amenity or label in shop:
+                return score
+        return 99
+
+    def _attr_prio(p):
+        tags = _parse_tags(p)
+        tourism = str(tags.get("tourism") or "").lower()
+        historic = str(tags.get("historic") or "").lower()
+        for label, score in ATTRACTION_PRIORITY.items():
+            if label in tourism or label in historic:
+                return score
+        return 99
+
+    # WATER
+    water_raw = sorted(
+        [p for p in poi_candidates if p.get("category") == "water" and _dist(p) <= 200.0],
+        key=lambda p: (_km(p), _dist(p))
+    )
+    water_out = []
+    last_km = -999.0
+    for p in water_raw:
+        if _km(p) - last_km >= 0.5:
+            water_out.append(p)
+            last_km = _km(p)
+
+    # FOOD
+    food_raw = sorted(
+        [p for p in poi_candidates
+         if p.get("category") in ("hard_resupply", "soft_food_stop", "food")
+         and _dist(p) <= 500.0],
+        key=lambda p: (_km(p), _food_prio(p), _dist(p))
+    )
+    food_out = []
+    last_km = -999.0
+    for p in food_raw:
+        if _km(p) - last_km >= 20.0:
+            food_out.append(p)
+            last_km = _km(p)
+
+    # ATTRACTIONS
+    attr_raw = sorted(
+        [p for p in poi_candidates
+         if p.get("category") == "attraction"
+         and _dist(p) <= 500.0
+         and str(p.get("name") or "").strip()],
+        key=lambda p: (_attr_prio(p), _dist(p))
+    )
+    max_attr = max(4, int(km_total / 100.0) * 4) if km_total > 0 else 4
+    attr_out = attr_raw[:max_attr]
+
+    try:
+        from tools.rwgps.google_places import enrich_food_pois, filter_local_food
+        food_enriched = enrich_food_pois(food_out, radius_m=150.0, min_rating=3.8, max_price_level=2)
+        food_out = filter_local_food(food_enriched)
+    except Exception:
+        pass
+    result = sorted(water_out + food_out + attr_out, key=_km)
+    return result
 
 def prepare_rwgps_poi_update(
     route_id: str | int,

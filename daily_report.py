@@ -393,13 +393,13 @@ _now_hour = datetime.now().hour
 
 # Guard: dane snu — PARTIAL mode po 9:00
 # Garmin jest źródłem priorytetowym po przebudzeniu; Intervals jest fallbackiem.
-_sleep_ok = _garmin_sleep.get("czas_h") is not None or (_now_hour >= 9 and _intervals_sleep_h is not None)
+_sleep_ok = _garmin_sleep.get("czas_h") is not None or (_now_hour >= 7 and _intervals_sleep_h is not None)
 _PIPELINE_STAGE = "sleep_check"
 _DATA_SOURCES["sleep"] = "ok" if _sleep_ok else "missing"
 _LAST_ERROR = None  # sleep delay is not an error
 if not _sleep_ok:
-    if _now_hour < 9:
-        print(f"⏳ Brak danych snu, czekam (teraz {_now_hour}:xx, deadline 9:00).")
+    if _now_hour < 7:
+        print(f"⏳ Brak danych snu, czekam (teraz {_now_hour}:xx, deadline 9:00 CEST (7:00 UTC)).")
         _PIPELINE_STAGE = "waiting_for_sleep_data"
         _save_state()
         sys.exit(0)
@@ -745,7 +745,7 @@ _validation_details = _provider_val_details
 # Fallback: if provider says OK but we have incomplete runtime data, use runtime check
 if _validation_status in (DATA_OK, DATA_PARTIAL):
     _runtime_sources = {
-        "sleep_wellness": "ok" if _sleep_ok else ("empty" if _now_hour >= 9 else "missing"),
+        "sleep_wellness": "ok" if _sleep_ok else ("empty" if _now_hour >= 7 else "missing"),
         "calories_expenditure": "ok" if balance_yest is not None else "empty",
         "nutrition": "ok" if _e is not None else "empty",
         "activity_summary": "ok" if activities else "empty",

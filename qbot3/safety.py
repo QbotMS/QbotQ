@@ -37,6 +37,7 @@ _ACTION_ALLOWLIST = frozenset({
     "rwgps_route_import_gpx",
     "rwgps_route_export_gpx",
     "rwgps_route_surface_analyze",
+    "rwgps_poi_push",
     "route_poi_analyze",
     "qbot_artifact_put",
     "qbot_artifact_get",

@@ -1887,3 +1887,96 @@ def _tool_qbot_rwgps_route_import_gpx_batch(args: dict | None = None) -> dict[st
             f"{failed} failed, {dry_run} in dry-run mode."
         ),
     }
+
+
+def _tool_qbot_rwgps_poi_push(args=None):
+    a = args or {}
+    route_id = str(a.get("route_id", "")).strip()
+    artifact_id = str(a.get("artifact_id", "")).strip() or None
+    fpath = str(a.get("path", "")).strip() or None
+    km_from = float(a.get("km_from", 0.0))
+    km_to = a.get("km_to")
+    km_total = float(a.get("km_total", 0.0))
+    dry_run = bool(a.get("dry_run", True))
+    confirm = bool(a.get("confirm", False))
+    focus = str(a.get("focus", "all")).strip() or "all"
+    buffers = a.get("buffers") or {}
+
+    if not route_id and not artifact_id and not fpath:
+        return {"tool": "qbot_rwgps_poi_push", "status": "ERROR",
+                "error": "Wymagany route_id, artifact_id lub path"}
+
+    if km_to is None:
+        km_to = km_total if km_total > 0 else 100.0
+    km_to = float(km_to)
+
+    buf = {
+        "attractions_m": buffers.get("attractions_m", 500),
+        "hard_resupply_m": buffers.get("hard_resupply_m", 500),
+        "soft_food_m": buffers.get("soft_food_m", 500),
+        "water_m": buffers.get("water_m", 200),
+    }
+    buf.update({k: v for k, v in buffers.items() if k not in buf})
+
+    poi_result = _tool_qbot_route_poi_analyze({
+        "route_id": route_id or None,
+        "artifact_id": artifact_id,
+        "path": fpath,
+        "km_from": km_from,
+        "km_to": km_to,
+        "focus": None if focus == "all" else focus,
+        "output_format": "json",
+        "confirm": True,
+        "buffers": buf,
+    })
+
+    if poi_result.get("status") not in ("OK", "PARTIAL"):
+        return {"tool": "qbot_rwgps_poi_push", "status": "ERROR",
+                "error": "POI analyze failed: " + str(poi_result.get("error", poi_result.get("status"))),
+                "poi_result": poi_result}
+
+    # poi_candidates sa w podkluczach: hard_resupply, soft_food_stop, water, attractions
+    analysis = poi_result.get("analysis") or poi_result
+    raw_pois = []
+    for key in ("hard_resupply", "soft_food_stop", "water", "attractions"):
+        items = analysis.get(key) or []
+        for p in items:
+            if isinstance(p, dict):
+                cat = key if key != "attractions" else "attraction"
+                if "category" not in p:
+                    p = dict(p, category=cat)
+                raw_pois.append(p)
+    raw_count = len(raw_pois)
+
+    from tools.rwgps.client import select_best_pois, prepare_rwgps_poi_update, apply_rwgps_poi_update
+    selected = select_best_pois(raw_pois, km_total=km_total or (km_to - km_from))
+    selected_count = len(selected)
+
+    if dry_run or not confirm:
+        preview = prepare_rwgps_poi_update(route_id, selected, dry_run=True)
+        return {
+            "tool": "qbot_rwgps_poi_push", "status": "DRY_RUN",
+            "route_id": route_id, "km_from": km_from, "km_to": km_to,
+            "raw_poi_count": raw_count, "selected_count": selected_count,
+            "existing_pois_count": preview.get("existing_pois_count", 0),
+            "final_pois_count": preview.get("final_pois_count", 0),
+            "selected_pois": [{
+                "name": p.get("name"), "category": p.get("category"),
+                "route_km": p.get("route_km"),
+                "distance_to_track_m": p.get("distance_to_track_m"),
+            } for p in selected],
+            "note": "Dry-run — ustaw confirm=True i dry_run=False aby wykonac PUT do RWGPS",
+        }
+
+    result = apply_rwgps_poi_update(route_id, selected, confirm=True)
+    return {
+        "tool": "qbot_rwgps_poi_push",
+        "status": "OK" if result.get("ok") else "ERROR",
+        "route_id": route_id, "km_from": km_from, "km_to": km_to,
+        "raw_poi_count": raw_count, "selected_count": selected_count,
+        "put_executed": result.get("put_executed"),
+        "final_pois_count": result.get("final_pois_count"),
+        "verify_get_ok": result.get("verify_get_ok"),
+        "backup_path": result.get("backup_path"),
+        "error": result.get("error"),
+    }

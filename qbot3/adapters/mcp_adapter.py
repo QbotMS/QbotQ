@@ -99,7 +99,7 @@ def _list_tools(req_id: Any) -> dict[str, Any]:
     tools = [
         {
             "name": "qbot.query",
-            "description": "JEDYNE wejście do QBot3. Przekaż oryginalne pytanie użytkownika bez modyfikacji. NIE dopisuj action_type, writer name, payload schema. Albert sam rozpoznaje intent, wybiera narzędzia i buduje odpowiedź. Domyślny odczyt danych to transparentny DB/connector read-only; snapshoty/dashboardy tylko dla wyraźnych pytań o dzisiejszy dashboard albo podsumowanie dnia. Dla zapisów zwraca action_draft — wywołaj qbot.action_execute aby wykonać.",
+            "description": "JEDYNE wejście do QBot3. Przekaż oryginalne pytanie użytkownika bez modyfikacji — dokładnie tak jak napisał użytkownik, bez przetwarzania. Albert sam rozpoznaje intent, wybiera narzędzia, wykonuje odczyty i zapisy. Obsługuje żywienie, trening, trasy, zdrowie, kalendarz, przypomnienia.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -108,21 +108,6 @@ def _list_tools(req_id: Any) -> dict[str, Any]:
                 },
                 "required": ["query"],
                 "additionalProperties": False,
-            },
-        },
-        {
-            "name": "qbot.action_execute",
-            "description": "WYKONAJ action_draft z qbot.query. action_type: nutrition_log_add, calendar_event_add, reminder_add, planning_fact_add, memory_confirmed_fact_add, qbot_doc_append, rwgps_route_import_gpx, rwgps_route_export_gpx, rwgps_route_surface_analyze, route_poi_analyze, qbot_artifact_put, qbot_artifact_get. Dla route_poi_analyze payload powinien zawierać route_id, artifact_id albo path, km_from, km_to oraz opcjonalnie buffers: attractions_m, hard_resupply_m, soft_food_m, water_m, chunk_km, chunk_overlap_km, analysis_timeout_sec, overpass_timeout_sec, min_chunk_km, overpass_retries, retry_backoff_sec; obsługuje też focus, retry_chunk_id, retry_mode, merge_artifact_ids i timeout_sec. WYMAGA: confirm=true, idempotency_key. Server-side allowlista blokuje nieznane akcje.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "action_type": {"type": "string", "description": "Nazwa akcji z server-side allowlisty. Aktualna lista: nutrition_log_add, calendar_event_add, reminder_add, planning_fact_add, memory_confirmed_fact_add, qbot_doc_append, rwgps_route_import_gpx, rwgps_route_export_gpx, rwgps_route_surface_analyze, route_poi_analyze, qbot_artifact_put, qbot_artifact_get. route_poi_analyze obsługuje route_id, artifact_id lub path + km_from/km_to + buffers/focus/retry/merge. Inne akcje mogą być dostępne po stronie serwera."},
-                    "payload_json": {"type": "object"},
-                    "idempotency_key": {"type": "string"},
-                    "confirm": {"type": "boolean"},
-                    "dry_run": {"type": "boolean", "default": False},
-                },
-                "required": ["action_type", "payload_json", "idempotency_key", "confirm"],
             },
         },
     ]
