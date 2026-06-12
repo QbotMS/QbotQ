@@ -33,12 +33,16 @@ _ACTION_ALLOWLIST = frozenset({
     "reminder_add",
     "planning_fact_add",
     "memory_confirmed_fact_add",
+    "garmin_workout_create",
     "qbot_doc_append",
+    "rwgps_gpx_import",
     "rwgps_route_import_gpx",
     "rwgps_route_export_gpx",
+    "rwgps_route_profile_export_csv",
     "rwgps_route_surface_analyze",
     "rwgps_poi_push",
     "route_poi_analyze",
+    "fit_file_analyze",
     "qbot_artifact_put",
     "qbot_artifact_get",
 })
@@ -112,6 +116,15 @@ def validate(action_type: str, payload: dict[str, Any], idem_key: str, dry_run: 
         if size_provided is not None and int(size_provided) != len(raw):
             return {"status": "BLOCKED", "error": f"size_bytes mismatch: got {len(raw)}, expected {int(size_provided)}"}
 
+    if action_type == "garmin_workout_create":
+        has_name = bool(str(payload.get("workoutName", "")).strip() or str(payload.get("name", "")).strip())
+        has_segments = isinstance(payload.get("workoutSegments"), list) and bool(payload.get("workoutSegments"))
+        has_steps = isinstance(payload.get("steps"), list) and bool(payload.get("steps"))
+        if not has_name:
+            return {"status": "BLOCKED", "error": "garmin_workout_create requires workoutName or name"}
+        if not (has_segments or has_steps):
+            return {"status": "BLOCKED", "error": "garmin_workout_create requires workoutSegments or steps"}
+
     if action_type == "route_poi_analyze":
         merge_artifacts = payload.get("merge_artifact_ids")
         has_source = any(str(payload.get(field, "")).strip() for field in ("route_id", "artifact_id", "path"))
@@ -152,6 +165,11 @@ def validate(action_type: str, payload: dict[str, Any], idem_key: str, dry_run: 
                     return {"status": "BLOCKED", "error": "timeout_sec must be > 0"}
             except (TypeError, ValueError):
                 return {"status": "BLOCKED", "error": "timeout_sec must be numeric"}
+
+    if action_type == "rwgps_route_profile_export_csv":
+        route_id = payload.get("route_id")
+        if route_id in (None, ""):
+            return {"status": "BLOCKED", "error": "route_id required"}
 
     if dry_run:
         return {"status": "OK", "dry_run": True, "action_type": action_type, "idempotency_key": idem_key,
@@ -197,6 +215,12 @@ def _check_duplicate(action_type: str, idem_key: str) -> dict[str, Any] | None:
                 return {"status": "DUPLICATE", "action_type": action_type, "idempotency_key": idem_key, "note": "already processed"}
             cur.execute(
                 "SELECT id FROM qcal_write_audit WHERE idempotency_key=%s LIMIT 1",
+                (idem_key,),
+            )
+            if cur.fetchone():
+                return {"status": "DUPLICATE", "action_type": action_type, "idempotency_key": idem_key, "note": "already processed"}
+            cur.execute(
+                "SELECT id FROM garmin_workout_write_audit WHERE idempotency_key=%s LIMIT 1",
                 (idem_key,),
             )
             if cur.fetchone():

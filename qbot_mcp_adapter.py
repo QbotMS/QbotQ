@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -26,6 +27,59 @@ from qbot_assistant_inbox import (
 )
 from qbot_tools import _tool_qbot_status
 
+logger = logging.getLogger(__name__)
+
+
+class _ArtifactStoreAdapter:
+    def register(
+        self,
+        *,
+        project_id: str,
+        artifact_type: str,
+        title: str,
+        filename: str,
+        file_path: str,
+        mime_type: str,
+    ) -> dict[str, Any]:
+        from qbot3.artifacts.store import register_existing_file
+
+        try:
+            result = register_existing_file(
+                file_path,
+                artifact_type=artifact_type,
+                title=title,
+                project_id=project_id,
+            )
+            if not result or not isinstance(result, dict):
+                logger.error(
+                    "artifact register returned empty result for file_path=%s project_id=%s artifact_type=%s",
+                    file_path,
+                    project_id,
+                    artifact_type,
+                )
+                return ""
+            artifact_id = str(result.get("artifact_id", "")).strip()
+            if not artifact_id:
+                logger.error(
+                    "artifact register returned no artifact_id for file_path=%s project_id=%s artifact_type=%s result=%r",
+                    file_path,
+                    project_id,
+                    artifact_type,
+                    result,
+                )
+            return artifact_id
+        except Exception:
+            logger.exception(
+                "artifact register failed for file_path=%s project_id=%s artifact_type=%s",
+                file_path,
+                project_id,
+                artifact_type,
+            )
+            return ""
+
+
+ARTIFACT_STORE = _ArtifactStoreAdapter()
+
 MCP_PROTOCOL_VERSION = "2024-11-05"
 MCP_SERVER_NAME = "QBot MCP Adapter v1"
 MCP_SERVER_VERSION = "1.0.0"
@@ -47,7 +101,10 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
     "qbot.query": {
         "qbot_tool": "qbot_query",
         "description": (
-            "JEDYNE wejście do QBot Runtime. Przekaż oryginalne pytanie użytkownika bez żadnych modyfikacji. "
+            "[OBOWIĄZKOWE] Wywołaj to narzędzie PRZED każdą odpowiedzią na pytanie użytkownika. "
+            "NIE odpowiadaj z własnej wiedzy — ZAWSZE najpierw wywołaj qbot.query i użyj zwróconych danych. "
+            "Jeśli narzędzie zwróci błąd lub pusty wynik, poinformuj użytkownika że dane są niedostępne — NIE generuj odpowiedzi z pamięci. "
+            "Przekaż oryginalne pytanie użytkownika bez żadnych modyfikacji. "
             "NIE dopisuj action_type, writer name, payload schema, 'przygotuj draft', 'użyj writera', 'confirm' ani template match. "
             "NIE pre-routuj, NIE enrichuj z nazwami tooli/akcji. "
             "Albert (QBot LLM) sam rozpoznaje intent, wybiera readery, agreguje dane z DB i buduje odpowiedź. "
@@ -117,7 +174,7 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "description": (
             "WYKONAJ action_draft z qbot.query. Przyjmuje action_type z allowlisty "
             "(nutrition_log_add, qcal_reminder_add, qcal_event_add, qcal_event_update, qcal_event_cancel, "
-            "planning_fact_add, qbot_doc_append, qbot_doc_replace_section, qbot_doc_update, route_poi_analyze). "
+            "planning_fact_add, garmin_workout_create, qbot_doc_append, qbot_doc_replace_section, qbot_doc_update, route_poi_analyze, rwgps_route_profile_sample, rwgps_route_profile_export_csv). "
             "Dla route_poi_analyze payload_json powinien zawierać route_id, artifact_id albo path, km_from, km_to "
             "oraz opcjonalnie buffers: attractions_m, hard_resupply_m, soft_food_m, water_m, chunk_km, chunk_overlap_km, "
             "analysis_timeout_sec, overpass_timeout_sec, min_chunk_km, overpass_retries, retry_backoff_sec; "
@@ -128,7 +185,7 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "input_schema": {
             "type": "object",
             "properties": {
-                "action_type": {"type": "string", "enum": ["nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update", "rwgps_route_import_gpx", "route_poi_analyze", "qbot_artifact_put", "qbot_artifact_get"]},
+                "action_type": {"type": "string", "enum": ["nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "garmin_workout_create", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update", "rwgps_gpx_import", "route_poi_analyze", "rwgps_route_profile_sample", "rwgps_route_profile_export_csv", "qbot_artifact_put", "qbot_artifact_get"]},
                 "payload_json": {"type": "object", "description": "Kompletny obiekt payload (tak jak w action_draft z qbot.query)"},
                 "idempotency_key": {"type": "string", "description": "Unikalny klucz — zapobiega duplikatom."},
                 "confirm": {"type": "boolean", "description": "MUSI być true, żeby zapisać."},
@@ -1212,7 +1269,7 @@ def _handle_qcal_reminder_cancel(args: dict) -> dict:
     except Exception as e: return {"tool":"qbot.qcal_reminder_cancel","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
 
 
-_ACTION_EXECUTE_ALLOWLIST = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update", "rwgps_gpx_import", "route_poi_analyze", "qbot_artifact_get"}
+_ACTION_EXECUTE_ALLOWLIST = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "garmin_workout_create", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update", "rwgps_gpx_import", "route_poi_analyze", "rwgps_route_profile_sample", "rwgps_route_profile_export_csv", "qbot_artifact_put", "qbot_artifact_get"}
 
 _ACTION_REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {
     "nutrition_log_add": ["date", "kcal_total"],
@@ -1221,11 +1278,15 @@ _ACTION_REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {
     "qcal_event_update": ["event_id", "updates"],
     "qcal_event_cancel": ["event_id"],
     "planning_fact_add": ["fact_type", "date", "title"],
+    "garmin_workout_create": [],
     "qbot_doc_append": ["target_document", "heading", "content_markdown"],
     "qbot_doc_replace_section": ["target_document", "heading", "content_markdown"],
     "qbot_doc_update": ["target_document", "content_markdown"],
-    "rwgps_gpx_import": ["gpx_path", "name"],
+    "rwgps_gpx_import": [],
     "route_poi_analyze": ["km_from", "km_to"],
+    "rwgps_route_profile_sample": ["route_id", "km_from", "km_to"],
+    "rwgps_route_profile_export_csv": ["route_id"],
+    "qbot_artifact_put": ["project_id", "filename", "content_base64"],
     "qbot_artifact_get": ["identifier"],
 }
 
@@ -1266,6 +1327,34 @@ def _handle_action_execute(args: dict) -> dict[str, Any]:
     payload = args.get("payload_json", {}) or {}
     if not isinstance(payload, dict):
         return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "BLOCKED", "error": "payload_json must be an object."}
+    if action_type == "garmin_workout_create":
+        has_name = bool(str(payload.get("workoutName", "")).strip() or str(payload.get("name", "")).strip())
+        has_segments = isinstance(payload.get("workoutSegments"), list) and bool(payload.get("workoutSegments"))
+        has_steps = isinstance(payload.get("steps"), list) and bool(payload.get("steps"))
+        if not has_name:
+            return {
+                "tool": "qbot.action_execute",
+                "safety_class": "WRITE_ONLY_ALLOWLIST",
+                "status": "BLOCKED",
+                "error": "garmin_workout_create requires workoutName or name.",
+            }
+        if not (has_segments or has_steps):
+            return {
+                "tool": "qbot.action_execute",
+                "safety_class": "WRITE_ONLY_ALLOWLIST",
+                "status": "BLOCKED",
+                "error": "garmin_workout_create requires workoutSegments or steps.",
+            }
+    if action_type == "rwgps_gpx_import":
+        has_route_id = str(payload.get("route_id", "")).strip()
+        has_explicit_gpx = str(payload.get("gpx_path", "")).strip() and str(payload.get("name", "")).strip()
+        if not has_route_id and not has_explicit_gpx:
+            return {
+                "tool": "qbot.action_execute",
+                "safety_class": "WRITE_ONLY_ALLOWLIST",
+                "status": "BLOCKED",
+                "error": "rwgps_gpx_import requires route_id or gpx_path+name.",
+            }
     if action_type == "route_poi_analyze" and not (
         any(str(payload.get(field, "")).strip() for field in ("route_id", "artifact_id", "path"))
         or any(str(payload.get(field, "")).strip() for field in ("merge_artifact_ids",))
@@ -1292,6 +1381,15 @@ def _handle_action_execute(args: dict) -> dict[str, Any]:
         }
 
     source = str(args.get("source", "chatgpt_mcp"))
+
+    if action_type == "garmin_workout_create" and (args.get("dry_run") is True or str(args.get("dry_run", "")).lower() == "true"):
+        from qbot_garmin_workouts import execute_garmin_workout_create
+
+        return {
+            "tool": "qbot.action_execute",
+            "safety_class": "WRITE_ONLY_ALLOWLIST",
+            **execute_garmin_workout_create(payload, idempotency_key=idem_key, confirm=True, dry_run=True, source=source),
+        }
 
     # ── Doc action dry-run — handled in the handler for richer preview ──
     if action_type in ("qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update"):
@@ -1342,7 +1440,11 @@ def _handle_action_execute(args: dict) -> dict[str, Any]:
         return dup
 
     # ── Dispatch ──
-    if action_type == "nutrition_log_add":
+    if action_type == "nutrition_log_delete":
+        return _action_exec_nutrition_delete(payload, idem_key)
+    elif action_type == "nutrition_log_correct":
+        return _action_exec_nutrition_correct(payload, idem_key)
+    elif action_type == "nutrition_log_add":
         return _action_exec_nutrition(payload, idem_key, source)
     elif action_type == "qcal_reminder_add":
         return _action_exec_reminder(payload, idem_key, source)
@@ -1356,8 +1458,20 @@ def _handle_action_execute(args: dict) -> dict[str, Any]:
         return _action_exec_rwgps_gpx_import(payload, idem_key, source)
     elif action_type == "route_poi_analyze":
         return _action_exec_route_poi_analyze(payload, idem_key, source)
+    elif action_type == "rwgps_route_profile_sample":
+        return _action_exec_rwgps_route_profile_sample(payload, idem_key, source)
+    elif action_type == "rwgps_route_profile_export_csv":
+        return _action_exec_rwgps_route_profile_export_csv(payload, idem_key, source)
     elif action_type == "planning_fact_add":
         return _action_exec_planning(payload, idem_key, source)
+    elif action_type == "garmin_workout_create":
+        from qbot_garmin_workouts import execute_garmin_workout_create
+
+        return {
+            "tool": "qbot.action_execute",
+            "safety_class": "WRITE_ONLY_ALLOWLIST",
+            **execute_garmin_workout_create(payload, idempotency_key=idem_key, confirm=True, dry_run=False, source=source),
+        }
     elif action_type == "qbot_artifact_put":
         return _action_exec_qbot_artifact_put(payload, idem_key, source)
     else:
@@ -1424,7 +1538,112 @@ def _action_check_duplicate(idem_key: str, action_type: str) -> dict | None:
             pass
         return None
 
+    if action_type == "garmin_workout_create":
+        try:
+            from qbot_garmin_workouts import audit_lookup
+
+            existing = audit_lookup(idem_key)
+            if existing:
+                return {
+                    "tool": "qbot.action_execute",
+                    "safety_class": "WRITE_ONLY_ALLOWLIST",
+                    "status": "DUPLICATE",
+                    "created": False,
+                    "action_type": action_type,
+                    "idempotency_key": idem_key,
+                    "workoutName": existing.get("workout_name"),
+                    "workoutId": existing.get("workout_id"),
+                    "verified": bool(existing.get("verified")),
+                    "note": f"idempotency_key already processed (garmin_workout_write_audit:{existing.get('status')}).",
+                }
+        except Exception:
+            pass
+        return None
+
     return None
+
+
+def _action_exec_nutrition_delete(payload: dict, idem_key: str) -> dict:
+    """Usuń wpis intake_log. Wymaga meal_log_id w payload."""
+    import os, psycopg
+    from psycopg.rows import dict_row
+    meal_log_id = payload.get("meal_log_id") or payload.get("intake_log_id")
+    if not meal_log_id:
+        return {"tool":"qbot.action_execute","status":"ERROR","error":"meal_log_id required in payload"}
+    try:
+        conn = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),
+            port=os.getenv("PGPORT","5432"), dbname=os.getenv("PGDATABASE","qbot"),
+            user=os.getenv("PGUSER","qbot"), password=os.getenv("PGPASSWORD",""),
+            row_factory=dict_row, connect_timeout=5,
+            options="-c search_path=qbot_v2")
+        with conn:
+            row = conn.execute("SELECT date FROM qbot_v2.intake_logs WHERE id=%s", (meal_log_id,)).fetchone()
+            if not row:
+                return {"tool":"qbot.action_execute","status":"NOT_FOUND","error":f"intake_log {meal_log_id} not found"}
+            date_str = str(row["date"])
+            conn.execute("DELETE FROM qbot_v2.intake_items WHERE intake_log_id=%s", (meal_log_id,))
+            conn.execute("DELETE FROM qbot_v2.intake_logs WHERE id=%s", (meal_log_id,))
+            # Przelicz summary
+            conn.execute("""
+                UPDATE qbot_v2.nutrition_daily_summary
+                SET kcal_total=(SELECT COALESCE(SUM(ii.kcal),0) FROM qbot_v2.intake_items ii JOIN qbot_v2.intake_logs il ON il.id=ii.intake_log_id WHERE il.date=%s),
+                    protein_total=(SELECT COALESCE(SUM(ii.protein_g),0) FROM qbot_v2.intake_items ii JOIN qbot_v2.intake_logs il ON il.id=ii.intake_log_id WHERE il.date=%s),
+                    carbs_total=(SELECT COALESCE(SUM(ii.carbs_g),0) FROM qbot_v2.intake_items ii JOIN qbot_v2.intake_logs il ON il.id=ii.intake_log_id WHERE il.date=%s),
+                    fat_total=(SELECT COALESCE(SUM(ii.fat_g),0) FROM qbot_v2.intake_items ii JOIN qbot_v2.intake_logs il ON il.id=ii.intake_log_id WHERE il.date=%s),
+                    computed_at=NOW()
+                WHERE date=%s
+            """, (date_str,date_str,date_str,date_str,date_str))
+        conn.close()
+        return {"tool":"qbot.action_execute","status":"OK",
+                "message":f"intake_log {meal_log_id} usunięty, summary przeliczone dla {date_str}",
+                "meal_log_id":meal_log_id, "date":date_str}
+    except Exception as e:
+        return {"tool":"qbot.action_execute","status":"ERROR","error":str(e)[:200]}
+
+
+def _action_exec_nutrition_correct(payload: dict, idem_key: str) -> dict:
+    """Popraw makra wpisu intake_items. Wymaga intake_item_id lub meal_log_id."""
+    import os, psycopg
+    from psycopg.rows import dict_row
+    item_id = payload.get("intake_item_id")
+    meal_log_id = payload.get("meal_log_id") or payload.get("intake_log_id")
+    if not item_id and not meal_log_id:
+        return {"tool":"qbot.action_execute","status":"ERROR","error":"intake_item_id or meal_log_id required"}
+    try:
+        conn = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),
+            port=os.getenv("PGPORT","5432"), dbname=os.getenv("PGDATABASE","qbot"),
+            user=os.getenv("PGUSER","qbot"), password=os.getenv("PGPASSWORD",""),
+            row_factory=dict_row, connect_timeout=5,
+            options="-c search_path=qbot_v2")
+        updates = {}
+        for f in ("kcal","protein_g","carbs_g","fat_g","food_name"):
+            if f in payload: updates[f] = payload[f]
+        if not updates:
+            return {"tool":"qbot.action_execute","status":"ERROR","error":"No fields to update in payload"}
+        set_clause = ", ".join(f"{k}=%s" for k in updates)
+        vals = list(updates.values())
+        with conn:
+            if item_id:
+                row = conn.execute("SELECT il.date FROM qbot_v2.intake_items ii JOIN qbot_v2.intake_logs il ON il.id=ii.intake_log_id WHERE ii.id=%s",(item_id,)).fetchone()
+                date_str = str(row["date"]) if row else None
+                conn.execute(f"UPDATE qbot_v2.intake_items SET {set_clause} WHERE id=%s", vals+[item_id])
+            else:
+                row = conn.execute("SELECT date FROM qbot_v2.intake_logs WHERE id=%s",(meal_log_id,)).fetchone()
+                date_str = str(row["date"]) if row else None
+                conn.execute(f"UPDATE qbot_v2.intake_items SET {set_clause} WHERE intake_log_id=%s", vals+[meal_log_id])
+            if date_str:
+                conn.execute("""
+                    UPDATE qbot_v2.nutrition_daily_summary
+                    SET kcal_total=(SELECT COALESCE(SUM(ii.kcal),0) FROM qbot_v2.intake_items ii JOIN qbot_v2.intake_logs il ON il.id=ii.intake_log_id WHERE il.date=%s),
+                        protein_total=(SELECT COALESCE(SUM(ii.protein_g),0) FROM qbot_v2.intake_items ii JOIN qbot_v2.intake_logs il ON il.id=ii.intake_log_id WHERE il.date=%s),
+                        carbs_total=(SELECT COALESCE(SUM(ii.carbs_g),0) FROM qbot_v2.intake_items ii JOIN qbot_v2.intake_logs il ON il.id=ii.intake_log_id WHERE il.date=%s),
+                        fat_total=(SELECT COALESCE(SUM(ii.fat_g),0) FROM qbot_v2.intake_items ii JOIN qbot_v2.intake_logs il ON il.id=ii.intake_log_id WHERE il.date=%s),
+                        computed_at=NOW() WHERE date=%s
+                """, (date_str,date_str,date_str,date_str,date_str))
+        conn.close()
+        return {"tool":"qbot.action_execute","status":"OK","message":f"Makra poprawione, summary przeliczone dla {date_str}","updates":updates}
+    except Exception as e:
+        return {"tool":"qbot.action_execute","status":"ERROR","error":str(e)[:200]}
 
 
 def _action_exec_nutrition(payload: dict, idem_key: str, source: str) -> dict:
@@ -1587,11 +1806,29 @@ def _action_exec_event(payload: dict, idem_key: str, source: str) -> dict:
 
 def _action_exec_rwgps_gpx_import(payload: dict, idem_key: str, source: str) -> dict:
     """Execute rwgps_gpx_import — import GPX file as new RWGPS route."""
-    gpx_path = str(payload.get("gpx_path", "")).strip()
-    name = str(payload.get("name", "")).strip()
+    p = payload or {}
+    route_id = p.get("route_id")
+    gpx_path = str(p.get("gpx_path", "")).strip()
+    name = str(p.get("name", "")).strip()
     description = str(payload.get("description", "")).strip()
     privacy = str(payload.get("privacy", "private")).strip().lower()
     confirm = bool(payload.get("confirm", True))
+
+    if not gpx_path and not name and route_id is not None:
+        gpx_path = "/opt/qbot/artifacts/exports/rwgps/rwgps_%s.gpx" % route_id
+        if not os.path.exists(gpx_path) or p.get("force", False):
+            import requests
+            api_key = os.getenv("RWGPS_API_KEY", "").strip()
+            auth_token = os.getenv("RWGPS_AUTH_TOKEN", "").strip()
+            r = requests.get(
+                "https://ridewithgps.com/routes/%s.gpx" % route_id,
+                params={"apikey": api_key, "auth_token": auth_token, "version": "2"},
+                timeout=30,
+            )
+            r.raise_for_status()
+            os.makedirs(os.path.dirname(gpx_path), exist_ok=True)
+            open(gpx_path, "wb").write(r.content)
+        name = name or ("rwgps_%s" % route_id)
 
     if not gpx_path or not name:
         return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
@@ -1690,6 +1927,78 @@ def _action_exec_route_poi_analyze(payload: dict, idem_key: str, source: str) ->
         "error": result.get("error") or "route_poi_analyze failed",
         "payload": payload,
     }
+
+
+def _action_exec_rwgps_route_profile_sample(payload: dict, idem_key: str, source: str) -> dict:
+    try:
+        from tools.rwgps.rwgps_route_profile_sample import rwgps_route_profile_sample
+        from tools.rwgps.client import export_route_to_artifact
+        result = rwgps_route_profile_sample(
+            route_id=payload.get("route_id"),
+            km_from=payload.get("km_from"),
+            km_to=payload.get("km_to"),
+            sample_m=payload.get("sample_m", 100),
+            max_segments=payload.get("max_segments"),
+            export_fn=lambda rid: export_route_to_artifact(rid, fmt="gpx", return_mode="metadata"),
+        )
+    except Exception as exc:
+        return {
+            "tool": "qbot.action_execute",
+            "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "ERROR",
+            "error": str(exc),
+        }
+
+    if result.get("ok"):
+        return {
+            "tool": "qbot.action_execute",
+            "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "OK",
+            "action_type": "rwgps_route_profile_sample",
+            "idempotency_key": idem_key,
+            "execution_mode": "read_only",
+            "write_committed": False,
+            "route_id": result.get("route_id"),
+            "artifact_path": result.get("artifact_path"),
+            "sample_m": result.get("sample_m"),
+            "max_segments": result.get("max_segments"),
+            "summary": result.get("summary"),
+            "segments": result.get("segments") or [],
+        }
+    return {
+        "tool": "qbot.action_execute",
+        "safety_class": "WRITE_ONLY_ALLOWLIST",
+        "status": result.get("status", "ERROR"),
+        "action_type": "rwgps_route_profile_sample",
+        "idempotency_key": idem_key,
+        "error": result.get("error") or "rwgps_route_profile_sample failed",
+        "payload": payload,
+    }
+
+
+def _action_exec_rwgps_route_profile_export_csv(payload: dict, idem_key: str, source: str) -> dict:
+    try:
+        from tools.rwgps.route_profile_export import export_route_profile_csv
+        p = payload or {}
+        meta = export_route_profile_csv(
+            route_id=p["route_id"],
+            project_id=p.get("project_id", "tuscany_2026"),
+            km_from=float(p.get("km_from", 0)),
+            km_to=(float(p["km_to"]) if p.get("km_to") not in (None, "") else None),
+            sample_m=float(p.get("sample_m", 100)),
+            gpx_path=p.get("artifact_path"),
+            artifact_store=ARTIFACT_STORE,
+        )
+        return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "OK", "action_type": "rwgps_route_profile_export_csv", "idempotency_key": idem_key, "execution_mode": "real_write", "write_committed": True, **meta}
+    except Exception as exc:
+        return {
+            "tool": "qbot.action_execute",
+            "safety_class": "WRITE_ONLY_ALLOWLIST",
+            "status": "ERROR",
+            "action_type": "rwgps_route_profile_export_csv",
+            "idempotency_key": idem_key,
+            "error": str(exc),
+        }
 
 
 def _action_exec_planning(payload: dict, idem_key: str, source: str) -> dict:

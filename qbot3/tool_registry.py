@@ -224,6 +224,10 @@ def _load_nutrition_day_summary_tool() -> dict[str, Any]:
     }
 
 
+def _load_planning_fact_lookup_tool() -> dict[str, Any]:
+    return _load_planning_facts_tool()
+
+
 def _load_nutrition_meal_list_tool() -> dict[str, Any]:
     from qbot_nutrition_tools import _tool_qbot_nutrition_meal_list
     return {
@@ -304,6 +308,85 @@ def _load_rwgps_list_tool() -> dict[str, Any]:
         ),
         "args_schema": {},
         "safety": "read",
+    }
+
+
+def _load_rwgps_route_find_tool() -> dict[str, Any]:
+    from tools.rwgps.route_find import find_routes
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        name_hint = str(args.get("name_hint") or args.get("query") or args.get("search") or "").strip()
+        limit_raw = args.get("limit", 5)
+        try:
+            limit = max(1, min(20, int(limit_raw)))
+        except (TypeError, ValueError):
+            limit = 5
+        routes = find_routes(name_hint, limit=limit)
+        matched = [item for item in routes if int(item.get("score", 0) or 0) > 0]
+        return {
+            "status": "OK" if matched else "PARTIAL",
+            "name_hint": name_hint,
+            "count": len(matched) if matched else len(routes),
+            "routes": matched if matched else routes,
+            "matches": matched,
+            "closest_routes": routes,
+        }
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "Wyszukaj trasy RWGPS po nazwie lub fragmencie nazwy. "
+            "Używaj do rozwiązywania route_id po nazwie trasy przed importem lub podglądem. "
+            "Parametry: name_hint, limit."
+        ),
+        "args_schema": {
+            "name_hint": {"type": "string", "description": "Fragment nazwy trasy lub hint wyszukiwania"},
+            "limit": {"type": "integer", "description": "Maksymalna liczba wyników", "default": 5},
+        },
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+    }
+
+
+def _load_artifact_search_tool() -> dict[str, Any]:
+    from qbot3.artifacts.store import search_artifacts
+    from qbot3.errors import success_result
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        query = str(args.get("query") or args.get("name_hint") or args.get("search") or "").strip()
+        limit_raw = args.get("limit", 50)
+        try:
+            limit = max(1, min(200, int(limit_raw)))
+        except (TypeError, ValueError):
+            limit = 50
+        artifacts = search_artifacts(
+            query=query,
+            project_id=args.get("project_id"),
+            artifact_type=args.get("artifact_type"),
+            status=str(args.get("status", "active")),
+            limit=limit,
+        )
+        return success_result({"query": query, "count": len(artifacts), "artifacts": artifacts})
+
+    return {
+        "callable": _wrapper,
+        "category": "artifacts",
+        "description": (
+            "Wyszukaj artefakty po nazwie, tytule, project_id albo artifact_id. "
+            "Używaj do znajdowania istniejących artefaktów przed zapisem lub importem."
+        ),
+        "args_schema": {
+            "query": {"type": "string", "description": "Fraza wyszukiwania"},
+            "project_id": {"type": "string"},
+            "artifact_type": {"type": "string"},
+            "status": {"type": "string", "default": "active"},
+            "limit": {"type": "integer", "default": 50},
+        },
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
     }
 
 
@@ -436,7 +519,7 @@ def _load_artifact_save_tool() -> dict[str, Any]:
             "artifact_type": {"type": "string", "enum": ["route", "poi", "plan", "report", "export", "database", "import", "document"]},
             "title": {"type": "string", "description": "Czytelna nazwa artefaktu"},
             "project_id": {"type": "string", "description": "ID projektu"},
-            "mutation_type": {"type": "string", "enum": ["source", "copy", "split", "merge", "edit", "export", "analysis", "generated"]},
+            "mutation_type": {"type": "string", "enum": ["source", "copy", "split", "merge", "edit", "export", "analysis", "generated", "import"]},
             "source": {"type": "string", "description": "Źródło artefaktu"},
             "parent_artifact_id": {"type": "string", "description": "ID artefaktu nadrzędnego"},
             "idempotency_key": {"type": "string", "description": "Klucz idempotencji"},
@@ -1670,13 +1753,16 @@ def _load_rwgps_route_import_gpx_tool() -> dict[str, Any]:
         "wrapped": _tool_qbot_rwgps_route_import_gpx,
         "category": "routes",
         "description": (
-            "Importuj lokalny plik GPX jako nową trasę RWGPS. "
-            "Potrzebuje gpx_path (ścieżka absolutna do pliku .gpx) i name (nazwa trasy). "
-            "confirm=false = tylko walidacja GPX (dry-run). "
-            "confirm=true = wykonuje rzeczywisty POST do RWGPS API i tworzy trasę. "
-            "Zwraca: status, valid_gpx, trackpoint_count, a dla confirm=true: new_route_id, html_url."
+            "Importuj trasę RWGPS z GPX lokalnego albo rozwiązanego po nazwie. "
+            "Używaj source_route_id/route_id albo route_name_hint do wybrania trasy źródłowej. "
+            "confirm=false = tylko walidacja i dry-run. confirm=true = wykonanie. "
+            "Zwraca: status, resolved_route_id, resolved_route_name, a dla confirm=true: new_route_id, html_url."
         ),
         "args_schema": {
+            "source_route_id": {"type": "string", "description": "Canonical RWGPS source route ID"},
+            "route_id": {"type": "string", "description": "RWGPS route ID to resolve from hint"},
+            "route_name_hint": {"type": "string", "description": "Fragment nazwy trasy do wyszukania"},
+            "find_latest": {"type": "boolean", "default": False, "description": "Preferuj najnowszą trasę przy remisie"},
             "gpx_path": {"type": "string", "description": "Absolute path to local .gpx file"},
             "name": {"type": "string", "description": "Route name, e.g. 'Toskania 2026 7D-B Etap 01'"},
             "description": {"type": "string", "description": "Route description"},
@@ -1702,7 +1788,41 @@ def _load_nutrition_log_add_tool() -> dict[str, Any]:
             "date": {"type": "string"}, "meal_name": {"type": "string"},
             "kcal_total": {"type": "number"}, "protein_g": {"type": "number"},
             "carbs_g": {"type": "number"}, "fat_g": {"type": "number"},
-            "template_id": {"type": "integer"},
+        "template_id": {"type": "integer"},
+    },
+    "safety": "write",
+}
+
+
+def _load_garmin_workout_create_tool() -> dict[str, Any]:
+    from qbot_garmin_workouts import execute_garmin_workout_create
+
+    return {
+        "callable": _safe_call,
+        "wrapped": lambda args: execute_garmin_workout_create(
+            args,
+            idempotency_key=str(args.get("idempotency_key", "")),
+            confirm=bool(args.get("confirm", False)),
+            dry_run=bool(args.get("dry_run", False)),
+            source=str(args.get("source", "qbot3")),
+        ),
+        "category": "training",
+        "description": (
+            "Create a Garmin Connect structured workout using existing QBot Garmin auth. "
+            "Supports canonical payloads with workoutName/sportType/workoutSegments or simplified payloads with "
+            "name/sport/steps. Use confirm=true for real execution and dry_run=true for preview."
+        ),
+        "args_schema": {
+            "workoutName": {"type": "string"},
+            "name": {"type": "string"},
+            "sport": {"type": "string"},
+            "sportType": {"type": "object"},
+            "workoutSegments": {"type": "array"},
+            "steps": {"type": "array"},
+            "description": {"type": "string"},
+            "confirm": {"type": "boolean"},
+            "dry_run": {"type": "boolean"},
+            "idempotency_key": {"type": "string"},
         },
         "safety": "write",
     }
@@ -1965,6 +2085,7 @@ def _init_registry():
         ("system_env_status", _load_system_env_status_tool),
         ("calendar_snapshot", _load_calendar_snapshot_tool),
         ("planning_facts", _load_planning_facts_tool),
+        ("planning_fact_lookup", _load_planning_fact_lookup_tool),
         ("weather_forecast", _load_weather_forecast_tool),
         ("nutrition_template_list", _load_nutrition_templates_tool),
         ("nutrition_template_get", _load_nutrition_template_get_tool),
@@ -2001,10 +2122,12 @@ def _init_registry():
         ("qcal_events_upcoming", _load_qcal_events_upcoming_tool),
         ("rwgps_route_last", _load_rwgps_route_last_tool),
         ("rwgps_artifact_status", _load_rwgps_artifact_status_tool),
+        ("rwgps_route_find", _load_rwgps_route_find_tool),
         ("route_artifact_enrich_dry_run", _load_route_artifact_enrich_dry_run_tool),
         ("route_poi_analyze", _load_route_poi_analyze_tool),
         ("rwgps_poi_push", _load_rwgps_poi_push_tool),
         ("rwgps_route_import_gpx", _load_rwgps_route_import_gpx_tool),
+        ("artifact_search", _load_artifact_search_tool),
         # DB introspection tools (transparent read-only for Albert)
         ("db_schema_list", _load_db_schema_list_tool),
         ("db_table_describe", _load_db_table_describe_tool),
@@ -2012,6 +2135,7 @@ def _init_registry():
         ("db_select_readonly", _load_db_select_readonly_tool),
         # Write tools
         ("nutrition_log_add", _load_nutrition_log_add_tool),
+        ("garmin_workout_create", _load_garmin_workout_create_tool),
         ("calendar_event_add", _load_calendar_event_add_tool),
         ("reminder_add", _load_reminder_add_tool),
         ("planning_fact_add", _load_planning_fact_add_tool),
