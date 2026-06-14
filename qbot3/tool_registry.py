@@ -894,18 +894,49 @@ def _load_stage_gpx_analyze_tool() -> dict[str, Any]:
         file_path = args.get("file_path", "")
         stage = args.get("stage")
 
-        if not file_path and stage:
-            # Resolve stage number to known GPX file
-            stage_int = int(stage)
-            base = Path("/opt/qbot/artifacts/projects/tuscany_2026/projects")
-            matches = sorted(base.glob(f"tuscany_2026_stage_{stage_int:02d}_*.gpx"))
-            if matches:
-                file_path = str(matches[0])
+        if not file_path and stage is not None:
+            try:
+                stage_int = int(stage)
+            except (TypeError, ValueError):
+                return error_result("INVALID_ARGS", "stage musi być liczbą całkowitą")
+
+            # Generic: resolve stage -> route_id via qbot_planning_facts
+            # (route_stages), same mechanism as route_poi_analyze's stage
+            # invariant. GPX is then read from the canonical RWGPS export
+            # path, same convention used everywhere else.
+            resolved = _resolve_stage_from_planning_facts(args.get("project_id"), stage_int)
+            if resolved:
+                candidate = Path("/opt/qbot/artifacts/exports/rwgps") / f"rwgps_{resolved['route_id']}.gpx"
+                if candidate.exists():
+                    file_path = str(candidate)
+
+            if not file_path:
+                # Fallback: legacy Tuscany-specific layout, kept for
+                # backward compatibility if files are placed there manually.
+                base = Path("/opt/qbot/artifacts/projects/tuscany_2026/projects")
+                matches = sorted(base.glob(f"tuscany_2026_stage_{stage_int:02d}_*.gpx"))
+                if matches:
+                    file_path = str(matches[0])
+
+            if not file_path:
+                if resolved:
+                    return error_result(
+                        "FILE_NOT_FOUND",
+                        f"Brak pliku GPX dla stage={stage_int} "
+                        f"(route_id={resolved['route_id']}): "
+                        f"/opt/qbot/artifacts/exports/rwgps/rwgps_{resolved['route_id']}.gpx"
+                    )
+                return error_result(
+                    "STAGE_NOT_FOUND",
+                    f"Brak wpisu dla stage={stage_int}"
+                    + (f" w project_id={args.get('project_id')}" if args.get("project_id") else "")
+                    + " w qbot_planning_facts (fact_type='route_stages')."
+                )
 
         if not file_path:
             return error_result("MISSING_ARGS",
-                "Podaj file_path (np. /opt/qbot/artifacts/projects/tuscany_2026/projects/"
-                "tuscany_2026_stage_01_scandicci_capannoli.gpx) lub stage=1")
+                "Podaj file_path (np. /opt/qbot/artifacts/exports/rwgps/"
+                "rwgps_55444268.gpx) lub stage=<numer etapu>")
         try:
             result = analyze_stage_gpx(str(file_path))
         except Exception as exc:
