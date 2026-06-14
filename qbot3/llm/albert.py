@@ -189,7 +189,7 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict,
     Returns:
         dict: answer, status, tool_results, steps, action_draft
     """
-    if os.getenv("QBOT_DISABLE_ALBERT_FALLBACK") == "1":
+    if os.getenv("QBOT_ALBERT_HARD_KILL") == "1":
         return {
             "answer": "Planner niedostępny dla tego zapytania. Fallback jest wyłączony.",
             "status": "no_data",
@@ -197,7 +197,7 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict,
             "steps": 0,
             "action_draft": None,
             "error": "planner_unavailable",
-            "fallback_reason": "QBOT_DISABLE_ALBERT_FALLBACK=1",
+            "fallback_reason": "QBOT_ALBERT_HARD_KILL=1",
         }
 
     try:

@@ -20,7 +20,17 @@ _ROUTE_DOMAIN_HINTS = (
 
 
 def albert_fallback_disabled() -> bool:
+    """DEPRECATED semantyka globalna. Pozostawione dla zgodnosci wstecznej.
+    QBOT_DISABLE_ALBERT_FALLBACK dotyczy teraz TYLKO domeny tras (patrz
+    should_use_albert_fallback). Globalny twardy kill to QBOT_ALBERT_HARD_KILL.
+    """
     return os.getenv("QBOT_DISABLE_ALBERT_FALLBACK") == "1"
+
+
+def albert_hard_killed() -> bool:
+    """Awaryjny globalny wylacznik Alberta (domyslnie OFF). Gdy =1, Albert
+    nie dziala NIGDZIE, niezaleznie od domeny."""
+    return os.getenv("QBOT_ALBERT_HARD_KILL") == "1"
 
 
 def is_route_domain_query(question: str) -> bool:
@@ -60,4 +70,13 @@ def planner_unavailable_response(
 
 
 def should_use_albert_fallback(question: str) -> bool:
-    return not albert_fallback_disabled() and not is_route_domain_query(question)
+    """Czy zapytanie po UNRECOGNIZED ma trafic do Alberta.
+
+    Domena ZAMKNIETA (nie-route): TAK - Albert jako siatka na luki keywordow,
+    niezaleznie od QBOT_DISABLE_ALBERT_FALLBACK (ktory dotyczy tylko tras).
+    Domena OTWARTA (route): NIE - obsluguje ja Planner v2.
+    Awaryjny twardy kill QBOT_ALBERT_HARD_KILL wylacza wszystko.
+    """
+    if albert_hard_killed():
+        return False
+    return not is_route_domain_query(question)

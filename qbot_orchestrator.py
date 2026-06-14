@@ -1068,7 +1068,7 @@ def _final_answer(question: str, plan: dict[str, Any], reader_results: list[dict
 
 def orchestrate_query(question: str, context: str, max_rows: int = 500) -> dict[str, Any]:
     """Run the first real LLM orchestrator pipeline for qbot.query."""
-    if os.getenv("QBOT_DISABLE_ALBERT_FALLBACK") == "1":
+    if os.getenv("QBOT_ALBERT_HARD_KILL") == "1":
         return {
             "tool": "qbot.query",
             "safety_class": "READ_ONLY",
@@ -1078,7 +1078,7 @@ def orchestrate_query(question: str, context: str, max_rows: int = 500) -> dict[
             "confidence": "low",
             "answer": "Planner jest niedostępny dla tego zapytania. Fallback jest wyłączony.",
             "error": "planner_unavailable",
-            "fallback_reason": "QBOT_DISABLE_ALBERT_FALLBACK=1",
+            "fallback_reason": "QBOT_ALBERT_HARD_KILL=1",
             "limitations": ["planner_unavailable"],
             "missing_fields": [],
         }

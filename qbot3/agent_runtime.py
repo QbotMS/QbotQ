@@ -74,12 +74,12 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
     """
     _check_qbot3_enabled()
 
-    if os.getenv("QBOT_DISABLE_ALBERT_FALLBACK") == "1":
+    if os.getenv("QBOT_ALBERT_HARD_KILL") == "1":
         result = planner_unavailable_response(
             question,
             intent="albert_native",
             source="qbot.query",
-            fallback_reason="QBOT_DISABLE_ALBERT_FALLBACK=1",
+            fallback_reason="QBOT_ALBERT_HARD_KILL=1",
         )
         result["steps"] = 0
         result["tool_results"] = []
