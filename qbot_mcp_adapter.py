@@ -788,7 +788,7 @@ def handle_mcp_request(
             result = _handle_action_execute(clean_args)
             try:
                 from core.change_log import log_action_execute
-                log_action_execute(
+                _cl_id = log_action_execute(
                     clean_args.get("action_type"),
                     (result or {}).get("status"),
                     idempotency_key=clean_args.get("idempotency_key"),
@@ -796,8 +796,22 @@ def handle_mcp_request(
                     payload=clean_args.get("payload_json") or clean_args.get("payload"),
                     result=result if isinstance(result, dict) else None,
                 )
+                # ERROR -> auto-ticket incydentu (curated subset, nie BLOCKED/DRY_RUN/DUPLICATE)
+                _st = (result or {}).get("status")
+                if _st == "ERROR" and isinstance(result, dict):
+                    from core.incidents import open_incident
+                    _at = clean_args.get("action_type")
+                    open_incident(
+                        f"action_execute {_at} -> ERROR",
+                        severity="high",
+                        source="action_execute",
+                        action_type=_at,
+                        error_text=str(result.get("error", ""))[:2000],
+                        detail={"result_excerpt": {k: result.get(k) for k in ("status", "error", "note") if k in result}},
+                        change_log_id=_cl_id,
+                    )
             except Exception:
-                pass  # rejestr zmian jest best-effort, nigdy nie psuje akcji
+                pass  # rejestr/incydenty best-effort, nigdy nie psuja akcji
         else:
             tool_args = dict(clean_args)
             tool_result, warnings = _dispatch_local_qbot_tool(

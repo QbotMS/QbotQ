@@ -400,6 +400,7 @@ INTENT_KEYWORDS: list[tuple[list[str], str]] = [
     (["aktywny planner", "który planner", "status planner", "planner status",
        "jaki planner", "aktywny llm", "planner aktywny"], "planner_status"),
     (["/help", "help", "pomoc", "co umiesz", "co potrafisz", "lista komend", "komendy", "funkcje qbot", "co mozesz"], "qbot_help"),
+    (["/incydenty", "incydenty", "incydent", "/incidents", "lista incydentow", "lista incydentów", "otwarte incydenty", "ticket diagnostyczny", "prompt diagnostyczny"], "qbot_incidents"),
     (["streamy aktywności", "streamy aktywnosci", "streams garmin", "hr stream", "moc stream",
       "power stream", "szczegóły jazdy", "szczegoly jazdy", "analiza po km", "analiza po czasie"], "garmin_activity_streams"),
     (["eksport aktywności", "eksport aktywnosci", "export aktywności", "export aktywnosci",
@@ -4598,6 +4599,33 @@ def _handle_artifact_read(question: str) -> dict:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+def _handle_qbot_incidents() -> dict:
+    """Lista otwartych incydentow + gotowy prompt diagnostyczny do Terminus."""
+    try:
+        from core.incidents import list_open_incidents, build_incident_prompt
+    except Exception as exc:
+        return _envelope("qbot_incidents",
+                         f"Modul incydentow niedostepny: {exc}",
+                         status_override="ERROR")
+    incidents = list_open_incidents(limit=20)
+    if not incidents:
+        return _envelope("qbot_incidents",
+                         "\u2705 Brak otwartych incydentow.",
+                         data={"open_incidents": []})
+    lines = [f"\U0001f6a8 Otwarte incydenty ({len(incidents)}):", ""]
+    for inc in incidents:
+        lines.append(
+            f"#{inc['id']} [{inc.get('severity','?')}] {inc.get('summary','')}"
+            + (f" — {inc['error_text'][:80]}" if inc.get('error_text') else "")
+        )
+    prompt = build_incident_prompt()  # najnowszy otwarty
+    lines.append("")
+    lines.append("\u2500\u2500\u2500 PROMPT DO WKLEJENIA (Terminus) \u2500\u2500\u2500")
+    lines.append(prompt)
+    return _envelope("qbot_incidents", "\n".join(lines),
+                     data={"open_incidents": incidents, "paste_prompt": prompt})
+
+
 def _handle_qbot_help() -> dict:
     help_text = """\U0001f916 *QBot3 — lista komend*
 
@@ -4699,6 +4727,8 @@ def handle_query(question: str, context: dict | None = None) -> dict:
 
     if intent == "qbot_help":
         return _handle_qbot_help()
+    if intent == "qbot_incidents":
+        return _handle_qbot_incidents()
     if intent == "garmin_activity_export":
         return _handle_garmin_activity_export(question)
     if intent == "garmin_activity_streams":
@@ -4730,7 +4760,7 @@ def handle_query(question: str, context: dict | None = None) -> dict:
         not _rv2_is_open_intent
         and _classify_domain(question) == "open"
         and intent not in {
-            "unrecognized", "qbot_help", "db_access_blocked",
+            "unrecognized", "qbot_help", "qbot_incidents", "db_access_blocked",
             "write_meal", "write_delete_unsupported",
             "write_planning_unsupported", "write_weight_unsupported",
         }
@@ -4773,7 +4803,7 @@ def handle_query(question: str, context: dict | None = None) -> dict:
         "artifact_search", "artifact_read",
         "write_meal", "write_delete_unsupported", "write_planning_unsupported",
         "write_weight_unsupported", "db_access_blocked",
-        "unrecognized", "qbot_help", "action_execute",
+        "unrecognized", "qbot_help", "qbot_incidents", "action_execute",
         "body_measurements_range", "training_recent",
         "fit_file_analyze",
         "garmin_activity_streams", "garmin_activity_export", "garmin_last_activity",
