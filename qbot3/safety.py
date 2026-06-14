@@ -27,25 +27,45 @@ _DOC_ALLOWLIST = frozenset({
 })
 _DOC_BASE_DIR = "/opt/qbot/docs"
 
-_ACTION_ALLOWLIST = frozenset({
-    "nutrition_log_add",
+# Akcje dozwolone w qbot3, ktore na 2026-06-14 nie maja jeszcze wpisu w
+# modules/*/manifest.py["write_actions"]. Migrowac do manifestow w kolejnej
+# sesji; do tego czasu utrzymywane tu jawnie, zeby nie zrobic regresji.
+_LEGACY_EXTRA_ACTIONS = frozenset({
     "calendar_event_add",
     "reminder_add",
-    "planning_fact_add",
     "memory_confirmed_fact_add",
-    "garmin_workout_create",
-    "qbot_doc_append",
-    "rwgps_gpx_import",
-    "rwgps_route_import_gpx",
     "rwgps_route_export_gpx",
-    "rwgps_route_profile_export_csv",
     "rwgps_route_surface_analyze",
-    "rwgps_poi_push",
-    "route_poi_analyze",
     "fit_file_analyze",
-    "qbot_artifact_put",
-    "qbot_artifact_get",
 })
+
+# Allowlist generowana z manifestow modulow (core/registry.py) + legacy
+# extra. Jedyne zrodlo prawdy dla write_actions to modules/*/manifest.py -
+# nowa akcja dodana tam automatycznie dziala tutaj, bez recznej edycji.
+try:
+    from core.registry import get_allowlist as _registry_get_allowlist
+    _ACTION_ALLOWLIST = frozenset(_registry_get_allowlist()) | _LEGACY_EXTRA_ACTIONS
+except Exception:
+    # fallback hard-coded na wypadek bledu importu registry
+    _ACTION_ALLOWLIST = frozenset({
+        "nutrition_log_add",
+        "calendar_event_add",
+        "reminder_add",
+        "planning_fact_add",
+        "memory_confirmed_fact_add",
+        "garmin_workout_create",
+        "qbot_doc_append",
+        "rwgps_gpx_import",
+        "rwgps_route_import_gpx",
+        "rwgps_route_export_gpx",
+        "rwgps_route_profile_export_csv",
+        "rwgps_route_surface_analyze",
+        "rwgps_poi_push",
+        "route_poi_analyze",
+        "fit_file_analyze",
+        "qbot_artifact_put",
+        "qbot_artifact_get",
+    })
 
 
 def _db() -> Any:
