@@ -438,6 +438,29 @@ def analyze_stage_gpx(file_path: str) -> dict:
         _emit_descent(seg_start, last, seg_base_ele,
                       min(points[s]["ele"] for s in range(seg_start, last + 1) if points[s]["ele"] is not None))
 
+    # Max grade (wygladzone okno ~100m, redukcja szumu GPS)
+    max_grade_pct = None
+    if len(points) >= 2:
+        _win_m = 100.0
+        _j = 0
+        _best = 0.0
+        for _i in range(len(points)):
+            if points[_i]["ele"] is None:
+                continue
+            if _j < _i:
+                _j = _i
+            while _j < len(points) - 1 and (points[_j]["cum_km"] - points[_i]["cum_km"]) * 1000.0 < _win_m:
+                _j += 1
+            if _j <= _i or points[_j]["ele"] is None:
+                continue
+            _dist_m = (points[_j]["cum_km"] - points[_i]["cum_km"]) * 1000.0
+            if _dist_m <= 0:
+                continue
+            _g = (points[_j]["ele"] - points[_i]["ele"]) / _dist_m * 100.0
+            if _g > _best:
+                _best = _g
+        max_grade_pct = round(_best, 1)
+
     return {
         "status": "OK",
         "file_path": str(path),
@@ -451,6 +474,8 @@ def analyze_stage_gpx(file_path: str) -> dict:
         "start_elevation_m": round(points[0]["ele"], 1) if points[0]["ele"] is not None else None,
         "end_elevation_m": round(points[-1]["ele"], 1) if points[-1]["ele"] is not None else None,
         "profile_5km": profile_5km,
+        "max_grade_pct": max_grade_pct,
+        "max_grade_window_m": 100,
         "climbs": climbs,
         "descents": descents,
     }
@@ -954,7 +979,7 @@ out center tags;
         "food": categorized["food"],
         "shop": categorized.get("shop", []),
         "water": categorized["water"],
-        "report_title": "Tuscany 2026 Stage 01 POI analysis",
+        "report_title": f"POI analysis — route {route_id or artifact_id or path.stem}",
     }
     result["markdown"] = _render_route_poi_markdown(result)
     if output_format == "json":
@@ -1346,7 +1371,7 @@ def analyze_route_poi_artifact(
         "water": grouped.get("water", [])[:12],
         "attractions": grouped.get("attraction", [])[:15],
         "town_fallback_check": town_deduped[:20],
-        "report_title": "Tuscany 2026 Stage 01 POI analysis",
+        "report_title": f"POI analysis — route {source_slug}",
         "report_tag": report_tag_effective,
         "report_filename": f"{report_stem}.md",
         "report_json_filename": f"{report_stem}.json",
@@ -1514,52 +1539,50 @@ def _route_poi_v2_build_query(bbox: dict[str, float], focus: str | None = None, 
 def _geofabrik_cache_candidates(bbox: dict[str, float]) -> list[dict[str, Any]] | None:
     """Load POI from local Geofabrik cache if available for this bbox.
     Returns None if no cache found (fallback to Overpass).
+
+    Generic: scans CACHE_DIR for any project's "*_{cat}.json" cache files
+    (built via tools/rwgps/overpass_cache.py under any slug) and merges
+    elements from all of them, filtered to the requested bbox. No
+    project/event-specific slug or bbox is hardcoded here.
     """
     import json as _json
     from pathlib import Path as _Path
 
     CACHE_DIR = _Path("/opt/qbot/artifacts/overpass_cache")
-    SLUG = "tuscany_2026"
-
-    # Check if bbox overlaps with Tuscany cache
-    TUSCANY = {"min_lat": 42.755, "max_lat": 43.758, "min_lon": 10.456, "max_lon": 11.682}
-    if not (bbox["min_lat"] < TUSCANY["max_lat"] and bbox["max_lat"] > TUSCANY["min_lat"] and
-            bbox["min_lon"] < TUSCANY["max_lon"] and bbox["max_lon"] > TUSCANY["min_lon"]):
-        return None  # outside Tuscany — use Overpass
 
     all_elements: list[dict] = []
     found_any = False
     for cat in ("water", "food", "attraction"):
-        cache_file = CACHE_DIR / f"{SLUG}_{cat}.json"
-        if not cache_file.exists():
-            continue
-        found_any = True
-        data = _json.loads(cache_file.read_text(encoding="utf-8"))
-        for el in data.get("elements", []):
-            lat = float(el.get("lat") or 0)
-            lon = float(el.get("lon") or 0)
-            if not lat or not lon:
+        for cache_file in sorted(CACHE_DIR.glob(f"*_{cat}.json")):
+            if not cache_file.exists():
                 continue
-            # filter to bbox
-            if lat < bbox["min_lat"] or lat > bbox["max_lat"]:
-                continue
-            if lon < bbox["min_lon"] or lon > bbox["max_lon"]:
-                continue
-            # normalize tags from geofabrik CSV format
-            tags = el.get("tags") or {}
-            normalized_tags: dict[str, str] = {}
-            for k, v in tags.items():
-                if v and str(v).strip():
-                    # map CSV column names back to OSM tag names
-                    osm_key = {"name_en": "name:en", "name_it": "name:it"}.get(k, k)
-                    normalized_tags[osm_key] = str(v).strip()
-            all_elements.append({
-                "type": el.get("type", "node"),
-                "id": el.get("id"),
-                "lat": lat,
-                "lon": lon,
-                "tags": normalized_tags,
-            })
+            found_any = True
+            data = _json.loads(cache_file.read_text(encoding="utf-8"))
+            for el in data.get("elements", []):
+                lat = float(el.get("lat") or 0)
+                lon = float(el.get("lon") or 0)
+                if not lat or not lon:
+                    continue
+                # filter to bbox
+                if lat < bbox["min_lat"] or lat > bbox["max_lat"]:
+                    continue
+                if lon < bbox["min_lon"] or lon > bbox["max_lon"]:
+                    continue
+                # normalize tags from geofabrik CSV format
+                tags = el.get("tags") or {}
+                normalized_tags: dict[str, str] = {}
+                for k, v in tags.items():
+                    if v and str(v).strip():
+                        # map CSV column names back to OSM tag names
+                        osm_key = {"name_en": "name:en", "name_it": "name:it"}.get(k, k)
+                        normalized_tags[osm_key] = str(v).strip()
+                all_elements.append({
+                    "type": el.get("type", "node"),
+                    "id": el.get("id"),
+                    "lat": lat,
+                    "lon": lon,
+                    "tags": normalized_tags,
+                })
 
     if not found_any:
         return None
@@ -1631,7 +1654,7 @@ def _route_poi_v2_chunk_id(km_from: float, km_to: float) -> str:
 
 
 def _route_poi_v2_report_stem(source_slug: str, km_from: float, km_to: float, suffix: str | None = None) -> str:
-    stem = f"tuscany_2026_stage_01_poi_analysis_{source_slug}_{int(float(km_from)):02d}_{int(float(km_to)):02d}"
+    stem = f"poi_analysis_{source_slug}_{int(float(km_from)):02d}_{int(float(km_to)):02d}"
     if suffix:
         stem = f"{stem}_{suffix}"
     return stem
@@ -1949,7 +1972,7 @@ def _route_poi_v2_merge_analysis_payloads(payloads: list[dict[str, Any]]) -> dic
         "water": merged_items["water"][:12],
         "attractions": merged_items["attraction"][:15],
         "town_fallback_check": town_items[:20],
-        "report_title": "Tuscany 2026 Stage 01 POI analysis",
+        "report_title": f"POI analysis — route {merged_route_id or merged_artifact_id or merged_source_path}",
         "warnings": [
             "candidate counts are filtered by route distance and per-category distance-to-track buffers",
         ],
@@ -2291,7 +2314,7 @@ def _analyze_route_poi_artifact_legacy(
         "water": limited["water"],
         "attractions": limited["attraction"],
         "town_fallback_check": limited["town_fallback_check"],
-        "report_title": "Tuscany 2026 Stage 01 POI analysis",
+        "report_title": f"POI analysis — route {route_id or artifact_id or path.stem}",
         "warnings": [],
     }
     if partial:

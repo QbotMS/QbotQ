@@ -1068,6 +1068,20 @@ def _final_answer(question: str, plan: dict[str, Any], reader_results: list[dict
 
 def orchestrate_query(question: str, context: str, max_rows: int = 500) -> dict[str, Any]:
     """Run the first real LLM orchestrator pipeline for qbot.query."""
+    if os.getenv("QBOT_DISABLE_ALBERT_FALLBACK") == "1":
+        return {
+            "tool": "qbot.query",
+            "safety_class": "READ_ONLY",
+            "mode": "read_only",
+            "query": question,
+            "status": "no_data",
+            "confidence": "low",
+            "answer": "Planner jest niedostępny dla tego zapytania. Fallback jest wyłączony.",
+            "error": "planner_unavailable",
+            "fallback_reason": "QBOT_DISABLE_ALBERT_FALLBACK=1",
+            "limitations": ["planner_unavailable"],
+            "missing_fields": [],
+        }
     import qbot_query_router as qr
 
     if not qr._TOOL_DISPATCH:  # noqa: SLF001

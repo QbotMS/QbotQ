@@ -7,9 +7,10 @@ from __future__ import annotations
 from typing import Any
 import math
 
-MIN_GRADE = 1.0   # min avg grade % - jak RWGPS
-MIN_LENGTH_M = 100.0  # min 100m - jak RWGPS
-MIN_ELEV_M = 5.0     # min 5m gain - jak RWGPS
+MIN_GRADE = 2.0   # min avg grade % (podwyzszone z 1% — eliminuje mikro)
+MIN_LENGTH_M = 300.0  # min 300m (podwyzszone z 100m)
+MIN_ELEV_M = 10.0     # min 10m gain (podwyzszone z 5m)
+GAP_FILL_M = 80.0     # lacz segmenty przedzielone <80m plaszczyzny
 
 def _categorize(length_m: float, avg_grade: float) -> str:
     """Prosta kategoryzacja jak RWGPS: dlugosc x nachylenie."""
@@ -65,7 +66,29 @@ def detect_climbs(track_points: list[dict], km_from: float = 0.0, km_to: float |
         if climb:
             climbs.append(climb)
 
-    return climbs
+    # Gap-fill: łącz podjazdy przedzielone krótką plażą (<GAP_FILL_M)
+    merged = []
+    for c in climbs:
+        if merged and (c["start_km"] - merged[-1]["end_km"]) * 1000 <= GAP_FILL_M:
+            prev = merged[-1]
+            # Merge
+            combined_len = (c["end_km"] - prev["start_km"]) * 1000
+            combined_gain = prev["elevation_gain_m"] + c["elevation_gain_m"]
+            if combined_len > 0:
+                merged[-1] = {
+                    "start_km": prev["start_km"],
+                    "end_km": c["end_km"],
+                    "length_m": round(combined_len),
+                    "elevation_gain_m": round(combined_gain, 1),
+                    "avg_grade_pct": round(combined_gain / combined_len * 100, 1),
+                    "max_grade_pct": max(prev["max_grade_pct"], c["max_grade_pct"]),
+                    "score": round(combined_gain * (combined_gain / combined_len * 10) ** 2, 1),
+                    "category": _categorize(combined_len, combined_gain / combined_len * 100),
+                    "estimated_time_sec": prev["estimated_time_sec"] + c["estimated_time_sec"],
+                }
+        else:
+            merged.append(c)
+    return merged
 
 def _build_climb(pts: list[dict], start_i: int, end_i: int) -> dict | None:
     start = pts[start_i]

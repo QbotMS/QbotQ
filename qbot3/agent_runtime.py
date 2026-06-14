@@ -17,6 +17,7 @@ from qbot3.tool_registry import lookup, tool_descriptions, _idempotency_key, _re
 from qbot3.context_builder import build_context
 from qbot3.plan_validator import validate_plan
 from qbot3.observability import log_request, Timer, request_id as rid
+from qbot3.fallback_policy import planner_unavailable_response
 
 
 def _execute_single_tool(tool_name: str, args: dict) -> dict:
@@ -73,6 +74,18 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
     """
     _check_qbot3_enabled()
 
+    if os.getenv("QBOT_DISABLE_ALBERT_FALLBACK") == "1":
+        result = planner_unavailable_response(
+            question,
+            intent="albert_native",
+            source="qbot.query",
+            fallback_reason="QBOT_DISABLE_ALBERT_FALLBACK=1",
+        )
+        result["steps"] = 0
+        result["tool_results"] = []
+        result["request_id"] = rid()
+        return result
+
     # Fallback do legacy loop dla testów z mock providerem
     if os.getenv("ALBERT_LLM_PROVIDER") == "mock":
         return _orchestrate_query_legacy(question, context, max_rows)
@@ -110,6 +123,9 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
         tools_spec=tools_spec,
         execute_tool_fn=_execute_single_tool,
         context=ctx,
+        override_api_key=os.getenv("QGPT_ANALYTICAL_API_KEY", ""),
+        override_base_url=os.getenv("QGPT_ANALYTICAL_BASE_URL", ""),
+        override_model=os.getenv("QGPT_ANALYTICAL_MODEL", ""),
     )
 
     answer = albert_result.get("answer", "")

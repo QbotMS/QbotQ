@@ -58,6 +58,14 @@ EXCEPTION
         NULL;
 END $$;
 
+DO $$
+BEGIN
+    ALTER TYPE qbot_v2.mutation_type ADD VALUE IF NOT EXISTS 'import';
+EXCEPTION
+    WHEN duplicate_object THEN
+        NULL;
+END $$;
+
 CREATE TABLE IF NOT EXISTS qbot_v2.projects (
     project_id      text        PRIMARY KEY,
     title           text        NOT NULL,
@@ -110,4 +118,3 @@ INSERT INTO qbot_v2.projects (
     '2026-06-13'
 )
 ON CONFLICT (project_id) DO NOTHING;
-

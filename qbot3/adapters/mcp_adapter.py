@@ -11,10 +11,17 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
+from datetime import datetime, timezone
 from time import perf_counter
 from typing import Any
 
 from qbot3.agent_runtime import orchestrate_query
+from qbot3.fallback_policy import (
+    is_route_domain_query,
+    planner_unavailable_response,
+    should_use_albert_fallback,
+)
 from qbot3.safety import validate, exec_doc_append
 
 logger = logging.getLogger(__name__)
@@ -44,12 +51,27 @@ _MCP_PROTOCOL = "2024-11-05"
 _MCP_SERVER_NAME = "qbot3"
 _MCP_SERVER_VERSION = "qbot3"
 
+_ACTION_EXECUTE_ALLOWLIST = (
+    "nutrition_log_add",
+    "calendar_event_add",
+    "reminder_add",
+    "planning_fact_add",
+    "memory_confirmed_fact_add",
+    "qbot_doc_append",
+    "rwgps_gpx_import",
+    "rwgps_route_import_gpx",
+    "rwgps_route_export_gpx",
+    "rwgps_route_profile_export_csv",
+    "rwgps_route_surface_analyze",
+    "rwgps_poi_push",
+    "route_poi_analyze",
+    "fit_file_analyze",
+    "qbot_artifact_put",
+    "qbot_artifact_get",
+)
 
 _ALLOWED_ACTIONS_DESCRIPTION = (
-    "nutrition_log_add, calendar_event_add, reminder_add, "
-    "planning_fact_add, memory_confirmed_fact_add, qbot_doc_append, "
-    "rwgps_route_import_gpx, rwgps_route_export_gpx, "
-    "rwgps_route_surface_analyze, route_poi_analyze, qbot_artifact_put, qbot_artifact_get"
+    ", ".join(_ACTION_EXECUTE_ALLOWLIST)
 )
 
 
@@ -99,7 +121,7 @@ def _list_tools(req_id: Any) -> dict[str, Any]:
     tools = [
         {
             "name": "qbot.query",
-            "description": "JEDYNE wejście do QBot3. Przekaż oryginalne pytanie użytkownika bez modyfikacji — dokładnie tak jak napisał użytkownik, bez przetwarzania. Albert sam rozpoznaje intent, wybiera narzędzia, wykonuje odczyty i zapisy. Obsługuje żywienie, trening, trasy, zdrowie, kalendarz, przypomnienia.",
+            "description": "[OBOWIĄZKOWE] Wywołaj to narzędzie PRZED każdą odpowiedzią na pytanie użytkownika. NIE odpowiadaj z własnej wiedzy — ZAWSZE najpierw wywołaj qbot.query i użyj zwróconych danych. Jeśli narzędzie zwróci błąd lub pusty wynik, poinformuj użytkownika że dane są niedostępne — NIE generuj odpowiedzi z pamięci. Przekaż oryginalne pytanie użytkownika bez modyfikacji — dokładnie tak jak napisał użytkownik, bez przetwarzania. Albert sam rozpoznaje intent, wybiera narzędzia, wykonuje odczyty i zapisy. Obsługuje żywienie, trening, trasy, zdrowie, kalendarz, przypomnienia.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -129,21 +151,79 @@ def _call_tool(req_id: Any, params: dict[str, Any]) -> dict[str, Any]:
                 from qbot_query_handler import handle_query
                 vnext_result = handle_query(question=query, context=args.get("context"))
                 if vnext_result.get("status") == "UNRECOGNIZED":
-                    result = orchestrate_query(query, context=args.get("context", ""))
-                    from qbot3.response_normalizer import normalize_response
-                    result = normalize_response(result)
-                    result["fallback_reason"] = "query_vnext UNRECOGNIZED — fell back to Albert"
+                    if is_route_domain_query(query):
+                        from core.planner import plan_routes
+                        try:
+                            result = plan_routes(query)
+                        except Exception as exc:
+                            result = planner_unavailable_response(
+                                query,
+                                intent="planner_routes",
+                                source="qbot.query",
+                                fallback_reason=f"planner_error: {exc}",
+                            )
+                    elif should_use_albert_fallback(query):
+                        result = orchestrate_query(query, context=args.get("context", ""))
+                        from qbot3.response_normalizer import normalize_response
+                        result = normalize_response(result)
+                        result["fallback_reason"] = "query_vnext UNRECOGNIZED — fell back to Albert"
+                    else:
+                        result = planner_unavailable_response(
+                            query,
+                            intent="unrecognized",
+                            source="qbot.query",
+                            fallback_reason="QBOT_DISABLE_ALBERT_FALLBACK=1",
+                        )
                 else:
                     result = vnext_result
             except Exception as exc:
+                if is_route_domain_query(query):
+                    from core.planner import plan_routes
+                    try:
+                        result = plan_routes(query)
+                    except Exception as planner_exc:
+                        result = planner_unavailable_response(
+                            query,
+                            intent="planner_routes",
+                            source="qbot.query",
+                            fallback_reason=f"query_vnext error: {exc}; planner_error: {planner_exc}",
+                        )
+                elif should_use_albert_fallback(query):
+                    result = orchestrate_query(query, context=args.get("context", ""))
+                    from qbot3.response_normalizer import normalize_response
+                    result = normalize_response(result)
+                    result["fallback_reason"] = f"query_vnext error: {exc} — fell back to Albert"
+                else:
+                    result = planner_unavailable_response(
+                        query,
+                        intent="unrecognized",
+                        source="qbot.query",
+                        fallback_reason=f"query_vnext error: {exc}",
+                    )
+        else:
+            if is_route_domain_query(query):
+                from core.planner import plan_routes
+                try:
+                    result = plan_routes(query)
+                except Exception as exc:
+                    result = planner_unavailable_response(
+                        query,
+                        intent="planner_routes",
+                        source="qbot.query",
+                        fallback_reason=f"planner_error: {exc}",
+                    )
+            elif should_use_albert_fallback(query):
                 result = orchestrate_query(query, context=args.get("context", ""))
                 from qbot3.response_normalizer import normalize_response
                 result = normalize_response(result)
-                result["fallback_reason"] = f"query_vnext error: {exc} — fell back to Albert"
-        else:
-            result = orchestrate_query(query, context=args.get("context", ""))
-            from qbot3.response_normalizer import normalize_response
-            result = normalize_response(result)
+            else:
+                result = planner_unavailable_response(
+                    query,
+                    intent="unrecognized",
+                    source="qbot.query",
+                    fallback_reason="QBOT_DISABLE_ALBERT_FALLBACK=1",
+                )
+            result["fallback_reason"] = "query_vnext disabled"
         dur_ms = (perf_counter() - t0) * 1000
         _log_query_vnext_metrics(
             engine=str(result.get("engine", "")),
@@ -220,11 +300,17 @@ def _handle_action_execute(req_id: Any, args: dict[str, Any]) -> dict[str, Any]:
     if action_type == "rwgps_route_export_gpx":
         return _result(req_id, _execute_rwgps_route_export_gpx(action_type, payload, idem_key))
 
+    if action_type == "rwgps_route_profile_export_csv":
+        return _result(req_id, _execute_rwgps_route_profile_export_csv(action_type, payload, idem_key))
+
     if action_type == "rwgps_route_surface_analyze":
         return _result(req_id, _execute_rwgps_route_surface_analyze(action_type, payload, idem_key))
 
     if action_type == "route_poi_analyze":
         return _result(req_id, _execute_route_poi_analyze(action_type, payload, idem_key))
+
+    if action_type == "fit_file_analyze":
+        return _result(req_id, _execute_fit_file_analyze(action_type, payload, idem_key))
 
     if action_type == "qbot_artifact_put":
         return _result(req_id, _execute_qbot_artifact_put(action_type, payload, idem_key))
@@ -473,10 +559,279 @@ def _execute_rwgps_import(action_type: str, payload: dict, idem_key: str) -> dic
             import_stage_from_canonical, RWGPSError,
         )
         from qbot3.artifacts.gpx_splitter import DEFAULT_STAGE_SPECS
-
-        stage = int(payload.get("stage", 1))
+        route_name_hint = str(
+            payload.get("route_name_hint")
+            or payload.get("name_hint")
+            or payload.get("route_name")
+            or ""
+        ).strip()
+        find_latest = bool(payload.get("find_latest", False))
+        publish = bool(payload.get("publish", False))
         project_id = str(payload.get("project_id", "tuscany_2026"))
-        source_route_id = int(payload.get("source_route_id", 55256628))
+        source_route_id_raw = payload.get("source_route_id", payload.get("route_id"))
+        source_route_id: int | None = None
+        resolved_route_name = ""
+        resolved_candidates: list[dict[str, Any]] = []
+
+        if source_route_id_raw is not None:
+            source_route_id_text = str(source_route_id_raw).strip()
+            if source_route_id_text.isdigit():
+                source_route_id = int(source_route_id_text)
+
+        if source_route_id is None and route_name_hint:
+            from tools.rwgps.route_find import find_routes
+
+            candidates = find_routes(route_name_hint, limit=10)
+            resolved_candidates = [item for item in candidates if isinstance(item, dict)]
+            if find_latest and resolved_candidates:
+                def _updated_ts(item: dict[str, Any]) -> float:
+                    raw = str(item.get("updated_at") or "").strip()
+                    if not raw:
+                        return 0.0
+                    try:
+                        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        return dt.astimezone(timezone.utc).timestamp()
+                    except Exception:
+                        return 0.0
+
+                resolved_candidates = sorted(
+                    resolved_candidates,
+                    key=lambda item: (
+                        -int(item.get("score", 0) or 0),
+                        -_updated_ts(item),
+                        str(item.get("name") or "").lower(),
+                    ),
+                )
+            numeric_candidate = next(
+                (
+                    item
+                    for item in resolved_candidates
+                    if str(item.get("route_id") or "").strip().isdigit()
+                ),
+                None,
+            )
+            if numeric_candidate:
+                source_route_id = int(str(numeric_candidate.get("route_id")).strip())
+                resolved_route_name = str(numeric_candidate.get("name") or "").strip()
+            else:
+                return {
+                    "tool": "qbot.action_execute",
+                    "status": "PARTIAL",
+                    "error": "Nie udało się rozwiązać route_id z route_name_hint.",
+                    "resolved_route_id": None,
+                    "route_name": None,
+                    "route_name_hint": route_name_hint,
+                    "candidates": resolved_candidates[:5],
+                    "write_committed": False,
+                }
+
+        stage_raw = payload.get("stage")
+        stage: int | None = None
+        if stage_raw not in (None, ""):
+            try:
+                stage = int(stage_raw)
+            except (TypeError, ValueError):
+                stage = None
+
+        if source_route_id is not None and stage_raw is None:
+            try:
+                import hashlib
+                import requests
+
+                from qbot3.artifacts.store import register_existing_file, search_artifacts
+
+                route_id_text = str(source_route_id)
+                gpx_path = f"/opt/qbot/artifacts/exports/rwgps/rwgps_{route_id_text}.gpx"
+                if not os.path.exists(gpx_path) or bool(payload.get("force", False)):
+                    api_key = os.getenv("RWGPS_API_KEY", "").strip()
+                    auth_token = os.getenv("RWGPS_AUTH_TOKEN", "").strip()
+                    r = requests.get(
+                        f"https://ridewithgps.com/routes/{route_id_text}.gpx",
+                        params={"apikey": api_key, "auth_token": auth_token, "version": "2"},
+                        timeout=30,
+                    )
+                    r.raise_for_status()
+                    os.makedirs(os.path.dirname(gpx_path), exist_ok=True)
+                    with open(gpx_path, "wb") as fh:
+                        fh.write(r.content)
+
+                with open(gpx_path, "rb") as fh:
+                    gpx_bytes = fh.read()
+                gpx_sha256 = hashlib.sha256(gpx_bytes).hexdigest()
+                artifact_filename = f"rwgps_{route_id_text}.gpx"
+                artifact_title = resolved_route_name or route_name_hint or f"rwgps_{route_id_text}"
+
+                if bool(payload.get("import_to_artifacts", False)) and not publish:
+                    existing = search_artifacts(
+                        query=artifact_filename,
+                        project_id=project_id,
+                        artifact_type="route",
+                        status="active",
+                        limit=20,
+                    )
+                    for item in existing:
+                        if str(item.get("sha256") or "").strip() == gpx_sha256:
+                            item_metadata = item.get("metadata") or item.get("metadata_json") or {}
+                            if isinstance(item_metadata, dict):
+                                item_metadata = dict(item_metadata)
+                                item_metadata.setdefault("stage", None)
+                            else:
+                                item_metadata = {"stage": None}
+                            return {
+                                "tool": "qbot.action_execute",
+                                "status": "OK",
+                                "action_type": action_type,
+                                "idempotency_key": idem_key,
+                                "execution_mode": "real_write",
+                                "write_committed": False,
+                                "reused": True,
+                                "resolved_route_id": route_id_text,
+                                "route_name": artifact_title,
+                                "filename": artifact_filename,
+                                "source_gpx_path": gpx_path,
+                                "artifact_id": item.get("artifact_id"),
+                                "artifact_path": item.get("file_path") or item.get("artifact_path"),
+                                "artifact_status": item.get("status") or "active",
+                                "metadata": item_metadata,
+                                "note": "Route resolved by name hint and reused existing RWGPS GPX artifact.",
+                            }
+
+                    artifact_abs = f"/opt/qbot/artifacts/exports/rwgps/{artifact_filename}"
+                    if not os.path.exists(artifact_abs):
+                        os.makedirs(os.path.dirname(artifact_abs), exist_ok=True)
+                        with open(artifact_abs, "wb") as fh:
+                            fh.write(gpx_bytes)
+                    artifact_result = register_existing_file(
+                        f"exports/rwgps/{artifact_filename}",
+                        artifact_type="route",
+                        title=artifact_title,
+                        project_id=project_id,
+                        mutation_type="import",
+                        source="rwgps",
+                        idempotency_key=f"rwgps_import:{route_id_text}:{gpx_sha256}",
+                        metadata={
+                            "rwgps_route_id": int(route_id_text),
+                            "route_name": artifact_title,
+                            "source_route_id": int(route_id_text),
+                            "stage": stage,
+                        },
+                    )
+                    return {
+                        "tool": "qbot.action_execute",
+                        "status": "OK",
+                        "action_type": action_type,
+                        "idempotency_key": idem_key,
+                        "execution_mode": "real_write",
+                        "write_committed": True,
+                        "reused": False,
+                        "resolved_route_id": route_id_text,
+                        "route_name": artifact_title,
+                        "filename": artifact_filename,
+                        "source_gpx_path": gpx_path,
+                        "artifact_id": artifact_result.get("artifact_id"),
+                        "artifact_path": artifact_result.get("file_path") or artifact_result.get("artifact_path"),
+                        "artifact_status": artifact_result.get("status") or "active",
+                        "metadata": artifact_result.get("metadata_json") or {"stage": stage},
+                        "note": "Route resolved by name hint and imported as RWGPS GPX artifact.",
+                    }
+
+                if not publish:
+                    return {
+                        "tool": "qbot.action_execute",
+                        "status": "PARTIAL",
+                        "error": "publish=true jest wymagane do publikacji nowej trasy na RWGPS.",
+                        "resolved_route_id": route_id_text,
+                        "route_name": artifact_title,
+                        "route_name_hint": route_name_hint or None,
+                        "source_gpx_path": gpx_path,
+                        "write_committed": False,
+                    }
+
+                from tools.rwgps.client import create_route_from_gpx as rwgps_create_route
+
+                create_result = rwgps_create_route(
+                    gpx_path=gpx_path,
+                    name=artifact_title,
+                    description=str(payload.get("description", "")).strip(),
+                    privacy=str(payload.get("privacy", "private")).strip().lower(),
+                )
+                if not create_result.get("ok"):
+                    return {
+                        "tool": "qbot.action_execute",
+                        "status": "CREATE_FAILED",
+                        "error": create_result.get("error", "Unknown error"),
+                        "resolved_route_id": route_id_text,
+                        "route_name": artifact_title,
+                        "route_name_hint": route_name_hint or None,
+                        "write_committed": False,
+                    }
+
+                artifact_result = None
+                if bool(payload.get("import_to_artifacts", False)) and create_result.get("route_id"):
+                    try:
+                        from tools.rwgps.client import export_route_to_artifact
+
+                        artifact_result = export_route_to_artifact(create_result.get("route_id"), fmt="gpx")
+                    except Exception as exc:
+                        artifact_result = {"ok": False, "error": str(exc)}
+                    if not isinstance(artifact_result, dict) or not artifact_result.get("artifact_store_id"):
+                        try:
+                            from qbot3.artifacts.store import register_existing_file
+
+                            artifact_rel = f"exports/rwgps/rwgps_{create_result.get('route_id')}.gpx"
+                            artifact_abs = os.path.join("/opt/qbot/artifacts", artifact_rel)
+                            os.makedirs(os.path.dirname(artifact_abs), exist_ok=True)
+                            if not os.path.exists(artifact_abs):
+                                shutil.copyfile(gpx_path, artifact_abs)
+
+                            artifact_result = register_existing_file(
+                                artifact_rel,
+                                artifact_type="route",
+                                title=artifact_title,
+                                project_id=project_id,
+                                mutation_type="import",
+                                source="rwgps",
+                                metadata={
+                                    "rwgps_route_id": int(route_id_text),
+                                    "rwgps_new_route_id": int(str(create_result.get("route_id") or route_id_text)),
+                                    "route_name": artifact_title,
+                                    "stage": stage,
+                                },
+                            )
+                        except Exception as exc:
+                            artifact_result = {"ok": False, "error": str(exc)}
+
+                return {
+                    "tool": "qbot.action_execute",
+                    "status": "OK",
+                    "action_type": action_type,
+                    "idempotency_key": idem_key,
+                    "execution_mode": "real_write",
+                    "write_committed": True,
+                    "resolved_route_id": route_id_text,
+                    "route_name": artifact_title,
+                    "filename": artifact_filename,
+                    "new_route_id": create_result.get("route_id"),
+                    "html_url": create_result.get("html_url"),
+                    "api_url": create_result.get("api_url"),
+                    "source_gpx_path": gpx_path,
+                    "artifact_id": (artifact_result or {}).get("artifact_store_id") or (artifact_result or {}).get("artifact_id") if isinstance(artifact_result, dict) else None,
+                    "artifact_path": (artifact_result or {}).get("artifact_path") if isinstance(artifact_result, dict) else None,
+                    "artifact_status": (artifact_result or {}).get("status") if isinstance(artifact_result, dict) else None,
+                    "metadata": (artifact_result or {}).get("metadata_json") if isinstance(artifact_result, dict) else None,
+                    "note": "Route resolved by name hint and imported from RWGPS GPX.",
+                }
+            except Exception as exc:
+                return {
+                    "tool": "qbot.action_execute",
+                    "status": "ERROR",
+                    "error": str(exc)[:500],
+                    "resolved_route_id": route_id_text if 'route_id_text' in locals() else None,
+                    "route_name": resolved_route_name or route_name_hint or None,
+                    "write_committed": False,
+                }
 
         specs = DEFAULT_STAGE_SPECS.get((project_id, source_route_id), [])
         spec = next((s for s in specs if s.stage == stage), None)
@@ -605,6 +960,90 @@ def _execute_rwgps_route_export_gpx(action_type: str, payload: dict, idem_key: s
         _log.error("export_gpx exception: %s", exc)
         return {
             "tool": "qbot.action_execute", "status": "ERROR",
+            "error": str(exc)[:500],
+            "write_committed": False,
+        }
+
+
+def _execute_rwgps_route_profile_export_csv(action_type: str, payload: dict, idem_key: str) -> dict:
+    """Export route elevation profile to CSV/Markdown artifacts."""
+    import logging
+    _log = logging.getLogger("rwgps_route_profile_export_csv")
+
+    try:
+        from tools.rwgps.route_profile_export import export_route_profile_csv
+
+        class _ArtifactStoreAdapter:
+            def register(
+                self,
+                *,
+                project_id: str,
+                artifact_type: str,
+                title: str,
+                filename: str,
+                file_path: str,
+                mime_type: str,
+            ) -> dict[str, Any]:
+                from qbot3.artifacts.store import register_existing_file
+
+                try:
+                    result = register_existing_file(
+                        file_path,
+                        artifact_type=artifact_type,
+                        title=title,
+                        project_id=project_id,
+                    )
+                    if not result or not isinstance(result, dict):
+                        _log.error(
+                            "artifact register returned empty result for file_path=%s project_id=%s artifact_type=%s",
+                            file_path,
+                            project_id,
+                            artifact_type,
+                        )
+                        return ""
+                    artifact_id = str(result.get("artifact_id", "")).strip()
+                    if not artifact_id:
+                        _log.error(
+                            "artifact register returned no artifact_id for file_path=%s project_id=%s artifact_type=%s result=%r",
+                            file_path,
+                            project_id,
+                            artifact_type,
+                            result,
+                        )
+                    return artifact_id
+                except Exception:
+                    _log.exception(
+                        "artifact register failed for file_path=%s project_id=%s artifact_type=%s",
+                        file_path,
+                        project_id,
+                        artifact_type,
+                    )
+                    return ""
+
+        meta = export_route_profile_csv(
+            route_id=payload["route_id"],
+            project_id=payload.get("project_id", "tuscany_2026"),
+            km_from=float(payload.get("km_from", 0)),
+            km_to=(float(payload["km_to"]) if payload.get("km_to") not in (None, "") else None),
+            sample_m=float(payload.get("sample_m", 100)),
+            gpx_path=payload.get("artifact_path"),
+            artifact_store=_ArtifactStoreAdapter(),
+        )
+
+        return {
+            "tool": "qbot.action_execute",
+            "status": "OK",
+            "execution_mode": "real_write",
+            "write_committed": True,
+            "action_type": action_type,
+            "idempotency_key": idem_key,
+            **meta,
+        }
+    except Exception as exc:
+        _log.error("route_profile_export_csv exception: %s", exc)
+        return {
+            "tool": "qbot.action_execute",
+            "status": "ERROR",
             "error": str(exc)[:500],
             "write_committed": False,
         }
@@ -755,6 +1194,39 @@ def _execute_route_poi_analyze(action_type: str, payload: dict, idem_key: str) -
     }
 
 
+def _execute_fit_file_analyze(action_type: str, payload: dict, idem_key: str) -> dict:
+    """Run read-only FIT file analysis through the query handler helper."""
+    import logging
+    _log = logging.getLogger("fit_file_analyze")
+
+    try:
+        from qbot_query_handler import _handle_fit_file_analyze
+
+        query = str(payload.get("query") or payload.get("text") or "").strip()
+        params = payload.get("params") if isinstance(payload.get("params"), dict) else None
+        result = _handle_fit_file_analyze(query, params)
+        return {
+            "tool": "qbot.action_execute",
+            "status": result.get("status", "OK"),
+            "action_type": action_type,
+            "idempotency_key": idem_key,
+            "execution_mode": "read_only",
+            "write_committed": False,
+            "answer": result.get("answer"),
+            "data": result.get("data"),
+            "sources_used": result.get("sources_used", []),
+            "warnings": result.get("warnings", []),
+        }
+    except Exception as exc:
+        _log.error("fit_file_analyze exception: %s", exc)
+        return {
+            "tool": "qbot.action_execute",
+            "status": "ERROR",
+            "write_committed": False,
+            "error": str(exc)[:500],
+        }
+
+
 def _execute_qbot_artifact_put(action_type: str, payload: dict, idem_key: str) -> dict:
     """Save a binary/text artefact file from a ChatGPT session into the project tree.
 
@@ -784,7 +1256,13 @@ def _execute_qbot_artifact_put(action_type: str, payload: dict, idem_key: str) -
               idem_key)
     filename = str(payload.get("filename", "")).strip()
     mime_type = str(payload.get("mime_type", "")).strip()
+    # Akceptuj content (plain text) i sam koduj do base64
     content_b64 = payload.get("content_base64", "")
+    if not content_b64 and payload.get("content"):
+        import base64 as _b64
+        content_b64 = _b64.b64encode(str(payload["content"]).encode("utf-8")).decode("ascii")
+        if not mime_type:
+            mime_type = "text/markdown"
     sha256_expected = str(payload.get("sha256", "")).strip()
     overwrite = bool(payload.get("overwrite", False))
     subdir_raw = str(payload.get("subdir", "")).strip()
@@ -797,12 +1275,19 @@ def _execute_qbot_artifact_put(action_type: str, payload: dict, idem_key: str) -
     _VALID_ARTIFACT_TYPES = frozenset({"route", "poi", "plan", "report", "export", "database", "import", "document"})
     if artifact_type not in _VALID_ARTIFACT_TYPES:
         artifact_type = "document"
-    _VALID_MUTATION_TYPES = frozenset({"source", "copy", "split", "merge", "edit", "export", "analysis", "generated"})
+    _VALID_MUTATION_TYPES = frozenset({"source", "copy", "split", "merge", "edit", "export", "analysis", "generated", "import"})
     if mutation_type not in _VALID_MUTATION_TYPES:
         mutation_type = "generated"
 
     # Sanity checks (in addition to safety.validate)
-    if not project_id or not filename or not mime_type or not content_b64:
+    # Zgadnij mime_type z rozszerzenia jeśli nie podany
+    if not mime_type:
+        _ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        mime_type = {"md": "text/markdown", "txt": "text/plain",
+                     "json": "application/json", "gpx": "application/gpx+xml",
+                     "html": "text/html"}.get(_ext, "text/plain")
+    if not project_id or not filename or not content_b64:
+
         return {
             "tool": "qbot.action_execute", "status": "BLOCKED",
             "error": "Missing required fields in payload",
@@ -842,12 +1327,29 @@ def _execute_qbot_artifact_put(action_type: str, payload: dict, idem_key: str) -
             "write_committed": False,
         }
 
-    # Build path
+    # Build path — shelf routing
     artifacts_root = Path("/opt/qbot/artifacts")
+    VALID_SHELVES = {"wip", "export", "canonical"}
+    shelf_raw = str(payload.get("shelf", "")).strip().lower()
+    shelf = shelf_raw if shelf_raw in VALID_SHELVES else "wip"
+
+    # canonical i export wymagaja confirm=true
+    if shelf in ("canonical", "export") and not bool(payload.get("confirm", False)):
+        return {
+            "tool": "qbot.action_execute", "status": "BLOCKED",
+            "error": (
+                f"Zapis do shelf='{shelf}' wymaga jawnego confirm=true w payloadzie. "
+                "Dodaj confirm: true i ponow."
+            ),
+            "write_committed": False,
+            "shelf": shelf,
+        }
+
     subdir = subdir_raw.strip("/") if subdir_raw else "files"
     if any(c in subdir for c in ("/", "\\", "..", "\x00")):
         subdir = "files"
-    rel_dir = f"projects/{project_id}/{subdir}"
+    _eff_sub = subdir if (subdir and subdir != shelf) else "files"
+    rel_dir = f"{shelf}/{project_id}/{_eff_sub}"
     abs_dir = (artifacts_root / rel_dir).resolve()
     root = artifacts_root.resolve()
     if not str(abs_dir).startswith(str(root)):
@@ -926,6 +1428,7 @@ def _execute_qbot_artifact_put(action_type: str, payload: dict, idem_key: str) -
         "filename": filename,
         "artifact_path": str(abs_path),
         "relative_path": relative_path,
+        "shelf": shelf,
         "mime_type": mime_type,
         "size_bytes": size_bytes,
         "sha256": actual_sha256,

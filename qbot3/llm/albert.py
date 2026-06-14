@@ -176,7 +176,8 @@ Styl odpowiedzi:
 """
 
 
-def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict) -> dict[str, Any]:
+def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict,
+        override_api_key: str = "", override_base_url: str = "", override_model: str = "") -> dict[str, Any]:
     """Główna pętla Alberta.
 
     Args:
@@ -188,6 +189,17 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict) -
     Returns:
         dict: answer, status, tool_results, steps, action_draft
     """
+    if os.getenv("QBOT_DISABLE_ALBERT_FALLBACK") == "1":
+        return {
+            "answer": "Planner niedostępny dla tego zapytania. Fallback jest wyłączony.",
+            "status": "no_data",
+            "tool_results": [],
+            "steps": 0,
+            "action_draft": None,
+            "error": "planner_unavailable",
+            "fallback_reason": "QBOT_DISABLE_ALBERT_FALLBACK=1",
+        }
+
     try:
         import openai
     except ImportError:
@@ -199,7 +211,10 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict) -
             "action_draft": None,
         }
 
-    client = openai.OpenAI(api_key=_API_KEY, base_url=_BASE_URL)
+    _eff_key = override_api_key or _API_KEY
+    _eff_url = override_base_url or _BASE_URL
+    _eff_model = override_model or _MODEL
+    client = openai.OpenAI(api_key=_eff_key, base_url=_eff_url)
 
     ctx_str = ""
     if context:
@@ -221,14 +236,14 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict) -
 
         try:
             kwargs: dict[str, Any] = {
-                "model": _MODEL,
+                "model": _eff_model,
                 "messages": messages,
                 "temperature": 0,
                 "max_tokens": 1200,
             }
             if tools_spec:
                 kwargs["tools"] = tools_spec
-                kwargs["tool_choice"] = "auto"
+                kwargs["tool_choice"] = "required"
 
             response = client.chat.completions.create(**kwargs)
         except Exception as exc:

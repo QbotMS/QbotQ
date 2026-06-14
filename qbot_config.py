@@ -16,7 +16,7 @@ LOG_DIR = Path("/opt/qbot/logs")
 APP_LOG_DIR = APP_DIR / "logs"
 
 load_dotenv(ENV_FILE)
-load_dotenv(APP_DIR / ".env.local")
+load_dotenv(APP_DIR / ".env.local", override=True)
 
 
 def env(name: str, default: str = "") -> str:

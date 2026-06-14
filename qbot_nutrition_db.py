@@ -169,6 +169,11 @@ def meal_log_create(
 ) -> dict:
     eaten_dt = datetime.fromisoformat(eaten_at) if eaten_at else datetime.now()
     items = items or []
+    # Validate and auto-fix items before insert
+    items, _fix_warnings = _validate_and_fix_meal_items(items)
+    if _fix_warnings:
+        import logging
+        logging.getLogger('qbot.nutrition').warning('meal_log_create validation: %s', _fix_warnings)
     with _conn() as conn:
         meal = conn.execute(
             """INSERT INTO qbot_v2.meal_logs (eaten_at, meal_type, note, context)
@@ -231,7 +236,12 @@ def meal_log_create(
                      'chatgpt_mcp', 'manual'),
                 ).fetchone()
                 v2_log_id = v2_log["id"]
+                _inserted_items = set()  # dedup: (food_name, kcal)
                 for item in items:
+                    _item_key = (item.get("food") or item.get("food_name",""), item.get("kcal"))
+                    if _item_key in _inserted_items:
+                        continue  # pomiń duplikat
+                    _inserted_items.add(_item_key)
                     v2.execute(
                         """INSERT INTO qbot_v2.intake_items
                            (intake_log_id, food_name, amount, unit,
@@ -256,6 +266,115 @@ def meal_log_create(
 
     return get_meal_log(meal_id)
 
+
+
+def _validate_and_fix_meal_items(items: list[dict]) -> tuple[list[dict], list[str]]:
+    """Validate and auto-correct item macros. Returns (fixed_items, warnings).
+
+    Auto-corrections applied:
+    - Sugar/honey/syrup items: zero out protein_g and fat_g if > 2g
+    - Items where macro-derived kcal > 2x reported: cap macros proportionally
+    Blocking:
+    - Negative macro values → set to 0
+    """
+    import copy
+    fixed = copy.deepcopy(items)
+    warnings = []
+    for i, item in enumerate(fixed):
+        name = (item.get("food") or item.get("food_name", "?"))[:40]
+        name_l = name.lower()
+
+        # Fix negatives
+        for field in ("kcal", "protein_g", "carbs_g", "fat_g", "fiber_g", "sodium_mg"):
+            v = item.get(field)
+            if v is not None and v < 0:
+                item[field] = 0
+                warnings.append(f"item[{i}] '{name}': {field} was negative, set to 0")
+
+        kcal = item.get("kcal") or 0
+        p = item.get("protein_g") or 0
+        c = item.get("carbs_g") or 0
+        f = item.get("fat_g") or 0
+
+        # Auto-fix sugar-like items
+        _sugar_keywords = ["miod", "miód", "honey", "cukier", "sugar", "dżem",
+                           "dzem", "syrop", "jam", "marmolada", "konfitura"]
+        if any(kw in name_l for kw in _sugar_keywords):
+            if p > 2:
+                warnings.append(f"item[{i}] '{name}': auto-fix protein {p}->0 (sugar-type)")
+                item["protein_g"] = 0
+            if f > 2:
+                warnings.append(f"item[{i}] '{name}': auto-fix fat {f}->0 (sugar-type)")
+                item["fat_g"] = 0
+
+        # Check macro consistency — auto-fix when macros wildly exceed reported kcal
+        p2 = item.get("protein_g") or 0
+        c2 = item.get("carbs_g") or 0
+        f2 = item.get("fat_g") or 0
+        derived = p2 * 4 + c2 * 4 + f2 * 9
+        if kcal > 0 and derived > 0:
+            ratio = derived / kcal
+            if ratio > 2.0:
+                # Scale macros down proportionally to fit reported kcal
+                scale = kcal / derived
+                old_p, old_c, old_f = p2, c2, f2
+                item["protein_g"] = round(p2 * scale, 1)
+                item["carbs_g"] = round(c2 * scale, 1)
+                item["fat_g"] = round(f2 * scale, 1)
+                warnings.append(
+                    "item[%d] %r: auto-fix macros scaled %.1fx (derived %d >> reported %d kcal). "
+                    "P:%.0f->%.1f C:%.0f->%.1f F:%.0f->%.1f"
+                    % (i, name, scale, derived, kcal, old_p, item["protein_g"],
+                       old_c, item["carbs_g"], old_f, item["fat_g"])
+                )
+            elif ratio < 0.3:
+                warnings.append(
+                    "item[%d] %r: macro kcal (%d) << reported (%d), ratio=%.1f"
+                    % (i, name, derived, kcal, ratio)
+                )
+
+    # Cross-item checks: detect duplicated macros across items (LLM copy-paste bug)
+    if len(fixed) >= 2:
+        for field in ("carbs_g", "fat_g", "protein_g", "fiber_g"):
+            vals = [item.get(field) or 0 for item in fixed]
+            nonzero = [v for v in vals if v > 0]
+            if len(nonzero) >= 2 and len(set(nonzero)) == 1 and nonzero[0] > 1:
+                # All non-zero items have identical value — likely copy-paste
+                seen_first = False
+                for i, item in enumerate(fixed):
+                    v = item.get(field) or 0
+                    if v > 0:
+                        if not seen_first:
+                            seen_first = True
+                        else:
+                            nm = (item.get("food") or item.get("food_name", "?"))[:30]
+                            warnings.append(
+                                "item[%d] %r: auto-fix duplicate %s=%s -> 0 (copy-paste detected)"
+                                % (i, nm, field, v)
+                            )
+                            item[field] = 0
+
+        # Macro-sum sanity
+        sum_reported = sum((it.get("kcal") or 0) for it in fixed)
+        sum_derived = sum(
+            (it.get("protein_g") or 0) * 4 + (it.get("carbs_g") or 0) * 4 + (it.get("fat_g") or 0) * 9
+            for it in fixed
+        )
+        if sum_reported > 0 and sum_derived > 0:
+            ratio = sum_derived / sum_reported
+            if ratio > 1.8:
+                warnings.append(
+                    "total macro-derived kcal (%.0f) >> sum reported (%.0f), ratio=%.1f — possible item duplication"
+                    % (sum_derived, sum_reported, ratio)
+                )
+
+    return fixed, warnings
+
+
+def _validate_meal_items(items: list[dict]) -> list[str]:
+    """Legacy wrapper — calls _validate_and_fix_meal_items, returns warnings only."""
+    _, warnings = _validate_and_fix_meal_items(items)
+    return warnings
 
 def intake_log_create(
     meal_type: str = "meal",
@@ -289,6 +408,10 @@ def intake_log_create(
             (eaten_date, eaten_dt, meal_type, note, source, quality_status),
         ).fetchone()
         meal_id = meal["id"]
+        items, _warnings = _validate_and_fix_meal_items(items)
+        if _warnings:
+            import logging
+            logging.getLogger("qbot.nutrition").warning("Item validation (auto-fixed): %s", _warnings)
         inserted_items: list[dict] = []
         for item in items:
             food = item.get("food") or item.get("food_name", "unknown")
@@ -486,7 +609,10 @@ def daily_summary_compute(date_str: str) -> dict:
         ).fetchone()
 
     kcal_total = (meals["kcal"] or 0)
-    carbs_total = (meals["carbs"] or 0) + (fuel["carbs"] or 0)
+    # Only add fueling carbs if no meal data exists (avoids double-count)
+    _meal_carbs = meals["carbs"] or 0
+    _fuel_carbs = fuel["carbs"] or 0
+    carbs_total = _meal_carbs if _meal_carbs > 0 else _fuel_carbs
     protein_total = (meals["protein"] or 0)
     fat_total = (meals["fat"] or 0)
     fiber_total = (meals["fiber"] or 0)

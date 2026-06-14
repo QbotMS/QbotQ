@@ -8,6 +8,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from datetime import date, timedelta
 from typing import Any
@@ -71,6 +72,249 @@ class TestTransparentGateway(unittest.TestCase):
         )
         self.assertNotEqual(result["status"], "OK")
         self.assertIn("requires_confirm", result.get("error", "").lower())
+
+
+class TestRoutePlannerFallbackPolicy(unittest.TestCase):
+    """Route/RWGPS queries should not fall back to Albert."""
+
+    def _mcp_content(self, response: dict) -> dict:
+        payload = response.get("result", {})
+        content = payload.get("content", [{}])[0]
+        return json.loads(content.get("text", "{}"))
+
+    def test_route_queries_do_not_call_albert_in_qbot3_adapter(self):
+        from qbot3.adapters.mcp_adapter import handle_qbot3_mcp
+
+        with patch.dict(os.environ, {"QBOT_QUERY_VNEXT_ENABLED": "1", "QBOT_DISABLE_ALBERT_FALLBACK": "1"}, clear=False), \
+             patch("qbot_query_handler.handle_query", return_value={"status": "UNRECOGNIZED"}), \
+             patch("core.planner._run_openai_tool_loop", return_value={
+                 "status": "OK",
+                 "answer": "stub planner",
+                 "intent": "planner_routes",
+                 "planner": "stub",
+                 "steps": 1,
+                 "tool_calls": ["rwgps_route_list"],
+                 "sources_used": ["rwgps_route_list"],
+             }), \
+             patch("qbot3.llm.albert.run", side_effect=AssertionError("Albert fallback should not run")), \
+             patch("qbot3.adapters.mcp_adapter.orchestrate_query", side_effect=AssertionError("Albert fallback should not run")):
+            response = handle_qbot3_mcp({
+                "method": "tools/call",
+                "id": 1,
+                "params": {"name": "qbot.query", "arguments": {"query": "pokaż moje ostatnie trasy z RWGPS"}},
+            })
+
+        result = self._mcp_content(response)
+        self.assertEqual(result.get("status"), "OK")
+        self.assertEqual(result.get("intent"), "planner_routes")
+        self.assertNotIn("Przekroczono limit 5 kroków", result.get("answer", ""))
+
+    def test_route_queries_do_not_call_albert_in_legacy_adapter(self):
+        from qbot_mcp_adapter import handle_mcp_request
+
+        with patch.dict(os.environ, {"QBOT_QUERY_VNEXT_ENABLED": "1", "QBOT_DISABLE_ALBERT_FALLBACK": "1"}, clear=False), \
+             patch("qbot_query_handler.handle_query", return_value={"status": "UNRECOGNIZED"}), \
+             patch("core.planner._run_openai_tool_loop", return_value={
+                 "status": "OK",
+                 "answer": "stub planner",
+                 "intent": "planner_routes",
+                 "planner": "stub",
+                 "steps": 1,
+                 "tool_calls": ["rwgps_route_last"],
+                 "sources_used": ["rwgps_route_last"],
+             }), \
+             patch("qbot3.llm.albert.run", side_effect=AssertionError("Albert fallback should not run")):
+            response, status_code, _headers = handle_mcp_request({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "qbot.query", "arguments": {"query": "RWGPS: pokaż tylko ostatnią zaplanowaną trasę"}},
+            }, {})
+
+        self.assertEqual(status_code, 200)
+        result = self._mcp_content(response)
+        self.assertEqual(result.get("status"), "OK")
+        self.assertEqual(result.get("intent"), "planner_routes")
+        self.assertNotIn("Przekroczono limit 5 kroków", result.get("answer", ""))
+
+    def test_global_disable_blocks_albert_for_unrecognized(self):
+        from qbot3.adapters.mcp_adapter import handle_qbot3_mcp
+
+        with patch.dict(os.environ, {"QBOT_QUERY_VNEXT_ENABLED": "1", "QBOT_DISABLE_ALBERT_FALLBACK": "1"}, clear=False), \
+             patch("qbot_query_handler.handle_query", return_value={"status": "UNRECOGNIZED"}), \
+             patch("qbot3.llm.albert.run", side_effect=AssertionError("Albert fallback should not run")), \
+             patch("qbot3.adapters.mcp_adapter.orchestrate_query", side_effect=AssertionError("Albert fallback should not run")):
+            response = handle_qbot3_mcp({
+                "method": "tools/call",
+                "id": 1,
+                "params": {"name": "qbot.query", "arguments": {"query": "napisz mi wiersz"}},
+            })
+
+        result = self._mcp_content(response)
+        self.assertEqual(result.get("status"), "no_data")
+        self.assertEqual(result.get("error"), "planner_unavailable")
+        self.assertNotIn("Albert", result.get("answer", ""))
+
+
+class TestTuscanyE07RouteResolution(unittest.TestCase):
+    """Tuscany E07 live analysis must use the live route_id, not the artifact copy."""
+
+    def test_e07_live_analysis_route_id_guard(self):
+        from qbot_query_handler import _resolve_tuscany_e07_live_route_id
+
+        question = "Czy E07 jest finalna i jaki route_id używać do analiz?"
+        resolved = _resolve_tuscany_e07_live_route_id(question, stage_num=7, route_id="55590078")
+
+        self.assertEqual(resolved, "55567991")
+        self.assertNotEqual(resolved, "55590078")
+
+    def test_e07_stage_query_without_explicit_id_uses_live_route(self):
+        from qbot_query_handler import _resolve_tuscany_e07_live_route_id
+
+        resolved = _resolve_tuscany_e07_live_route_id("Tuscany 2026 etap 7 profil", stage_num=7)
+
+        self.assertEqual(resolved, "55567991")
+
+
+class TestRoutePlannerRuntime(unittest.TestCase):
+    """Planner runtime should finish route queries without requiring tool_choice and without fetch."""
+
+    def _make_tool_response(self, tool_name: str, arguments: dict[str, Any]) -> SimpleNamespace:
+        return SimpleNamespace(
+            id="call_1",
+            type="function",
+            function=SimpleNamespace(name=tool_name, arguments=json.dumps(arguments, ensure_ascii=False)),
+        )
+
+    def _make_chat_response(
+        self,
+        *,
+        content: str | None,
+        tool_calls: list[SimpleNamespace] | None = None,
+        finish_reason: str = "stop",
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    finish_reason=finish_reason,
+                    message=SimpleNamespace(content=content, tool_calls=tool_calls or []),
+                )
+            ]
+        )
+
+    def _install_fake_openai(self, responses: list[SimpleNamespace], create_calls: list[dict[str, Any]]):
+        class FakeCompletions:
+            def __init__(self, seq: list[SimpleNamespace], calls: list[dict[str, Any]]) -> None:
+                self._seq = seq
+                self._calls = calls
+
+            def create(self, **kwargs: Any) -> SimpleNamespace:
+                self._calls.append(dict(kwargs))
+                if not self._seq:
+                    raise AssertionError("Unexpected extra OpenAI call")
+                return self._seq.pop(0)
+
+        class FakeChat:
+            def __init__(self, seq: list[SimpleNamespace], calls: list[dict[str, Any]]) -> None:
+                self.completions = FakeCompletions(seq, calls)
+
+        class FakeClient:
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                self.chat = FakeChat(responses, create_calls)
+
+        return FakeClient
+
+    def test_routes_list_finishes_without_fetch_and_uses_auto_tool_choice(self):
+        from core import planner
+
+        create_calls: list[dict[str, Any]] = []
+        responses = [
+            self._make_chat_response(
+                content=None,
+                tool_calls=[self._make_tool_response("rwgps_route_list", {"limit": 20, "days": 7})],
+                finish_reason="tool_calls",
+            ),
+            self._make_chat_response(
+                content="Oto Twoje ostatnie trasy z RWGPS.",
+                finish_reason="stop",
+            ),
+        ]
+
+        tool_spec = [{"type": "function", "function": {"name": "rwgps_route_list"}}]
+        tool_map = {
+            "rwgps_route_list": {
+                "callable": lambda args: {
+                    "status": "OK",
+                    "routes": [{"id": 1, "name": "route-1"}],
+                    "count": 1,
+                }
+            },
+            "rwgps_route_fetch": {
+                "callable": lambda args: (_ for _ in ()).throw(AssertionError("route_fetch must not be called")),
+            },
+        }
+
+        with patch("core.planner._planner_config", return_value=("sk-test", "https://api.openai.com/v1", "gpt-4.1-mini")), \
+             patch("core.planner._load_route_tools", return_value=(tool_spec, tool_map)), \
+             patch("openai.OpenAI", new=self._install_fake_openai(responses, create_calls)):
+            result = planner.plan_routes("pokaż moje ostatnie trasy z RWGPS")
+
+        self.assertEqual(result.get("status"), "OK")
+        self.assertEqual(result.get("intent"), "planner_routes")
+        self.assertEqual(result.get("tool_calls"), ["rwgps_route_list"])
+        self.assertEqual(result.get("active_provider"), "openai")
+        self.assertNotIn("Przekroczono limit", result.get("answer", ""))
+        self.assertNotIn("fell back to Albert", result.get("answer", ""))
+        self.assertNotIn("planner_unavailable", str(result))
+        self.assertTrue(create_calls, "Expected at least one OpenAI call")
+        self.assertTrue(all(call.get("tool_choice") == "auto" for call in create_calls))
+        self.assertTrue(all(call.get("tool_choice") != "required" for call in create_calls))
+
+    def test_routes_last_finishes_without_fetch_and_uses_auto_tool_choice(self):
+        from core import planner
+
+        create_calls: list[dict[str, Any]] = []
+        responses = [
+            self._make_chat_response(
+                content=None,
+                tool_calls=[self._make_tool_response("rwgps_route_last", {"limit": 1})],
+                finish_reason="tool_calls",
+            ),
+            self._make_chat_response(
+                content="Ostatnia zaplanowana trasa została znaleziona.",
+                finish_reason="stop",
+            ),
+        ]
+
+        tool_spec = [{"type": "function", "function": {"name": "rwgps_route_last"}}]
+        tool_map = {
+            "rwgps_route_last": {
+                "callable": lambda args: {
+                    "status": "OK",
+                    "route_id": 55567991,
+                    "name": "TT E07 Poggibonsi -Firenze - Scandici last",
+                }
+            },
+            "rwgps_route_fetch": {
+                "callable": lambda args: (_ for _ in ()).throw(AssertionError("route_fetch must not be called")),
+            },
+        }
+
+        with patch("core.planner._planner_config", return_value=("sk-test", "https://api.openai.com/v1", "gpt-4.1-mini")), \
+             patch("core.planner._load_route_tools", return_value=(tool_spec, tool_map)), \
+             patch("openai.OpenAI", new=self._install_fake_openai(responses, create_calls)):
+            result = planner.plan_routes("pokaż ostatnią zaplanowaną trasę w RWGPS")
+
+        self.assertEqual(result.get("status"), "OK")
+        self.assertEqual(result.get("intent"), "planner_routes")
+        self.assertEqual(result.get("tool_calls"), ["rwgps_route_last"])
+        self.assertEqual(result.get("active_provider"), "openai")
+        self.assertNotIn("Przekroczono limit", result.get("answer", ""))
+        self.assertNotIn("fell back to Albert", result.get("answer", ""))
+        self.assertNotIn("planner_unavailable", str(result))
+        self.assertTrue(create_calls, "Expected at least one OpenAI call")
+        self.assertTrue(all(call.get("tool_choice") == "auto" for call in create_calls))
+        self.assertTrue(all(call.get("tool_choice") != "required" for call in create_calls))
 
 class TestNutritionDraft(unittest.TestCase):
     """Nutrition write intent → action_draft with correct payload."""

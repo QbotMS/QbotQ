@@ -32,7 +32,6 @@ _TYPE_DIR = {
 }
 
 _TTL_DAYS = {"tmp": 7, "import": 30, "report": 365}
-_BASE_PROJECT_ID = "tuscany_2026"
 _GARAGE_ARTIFACT_ID = uuid.UUID("11111111-1111-4111-8111-111111111111")
 _GARAGE_IDEMPOTENCY_KEY = "garage_db_main"
 

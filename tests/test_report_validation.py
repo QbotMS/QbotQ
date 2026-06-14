@@ -196,7 +196,7 @@ class TestRideReportValidation(unittest.TestCase):
 
 # ── Test: Intent routing in qbot_query_handler ─────────────────────────────
 
-from qbot_query_handler import _resolve_intent, handle_query
+from qbot_query_handler import _classify_domain, _detect_domains, _resolve_intent, handle_query
 
 
 class TestReportIntentRouting(unittest.TestCase):
@@ -249,6 +249,18 @@ class TestReportIntentRouting(unittest.TestCase):
         """'ostatni tydzień' alone → nutrition_range (no report keywords present)"""
         intent = _resolve_intent("ostatni tydzie\u0144")
         self.assertEqual(intent, "nutrition_range")
+
+    def test_multiline_meal_log_resolves_to_write_meal(self):
+        """Meal logs with kcal + B/W/T lines must bypass daily_balance."""
+        question = """Risotto z lososiem - bogata wersja
+300 g
+660 kcal
+B: 28 g
+W: 68 g
+T: 32 g"""
+        self.assertEqual(_classify_domain(question), "closed")
+        self.assertEqual(_detect_domains(question), ["nutrition"])
+        self.assertEqual(_resolve_intent(question), "write_meal")
 
 
 class TestReportDiagnosticHandlers(unittest.TestCase):

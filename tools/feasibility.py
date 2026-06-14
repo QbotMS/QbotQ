@@ -84,7 +84,9 @@ def _get_form_data(target_date: str | None = None) -> dict:
         form["_error"] = str(e)
     return form
 
-   try:
+def get_weather(lat: float, lon: float, start_hour: int = 8) -> dict:
+    """Pobierz prognozę pogody z OWM dla punktu startu."""
+    try:
         url="https://api.openweathermap.org/data/2.5/forecast?lat={}&lon={}&appid={}&units=metric&cnt=8&lang=pl".format(lat,lon,OWM_KEY)
         items=httpx.get(url,timeout=8.0).json().get("list",[])
         best=next((i for i in items if datetime.fromtimestamp(i["dt"]).hour>=start_hour),items[0] if items else None)
@@ -140,6 +142,85 @@ def assess_feasibility(form,route,weather,start_hour=8):
             "kcal_per_hour":round(kcal_h),"total_kcal":round(kcal_h*est_h),
             "hydration_ml_h":500 if weather.get("feels_c",20)<20 else 750,
             "windows_co_20km":windows[:8],"po_trasie":"20-30g bialka + wegle w 30-60min po."}}
+
+# Aliasy stałych (używane w assess_feasibility)
+BASE_SPEED   = BASE_SPEED_KMPH
+ELEV_PENALTY = ELEV_SPEED_PENALTY_PER_1000M
+KCAL_BASE    = KCAL_PER_H_BASE
+KCAL_HARD    = KCAL_PER_H_HARD
+HRV_OK       = HRV_OK_RATIO
+HRV_RISKY    = HRV_RISKY_RATIO
+
+
+def _rwgps_env() -> dict:
+    """Załaduj credentials RWGPS ze zmiennych środowiskowych lub .env."""
+    env = {
+        "RWGPS_API_KEY": os.environ.get("RWGPS_API_KEY", ""),
+        "RWGPS_AUTH_TOKEN": os.environ.get("RWGPS_AUTH_TOKEN", ""),
+    }
+    # Fallback: próbuj różne pliki .env
+    for env_file in ["/opt/qbot/app/.env", "/opt/qbot/app/.env.local", "/etc/qbot/qbot-api.env"]:
+        try:
+            for line in open(env_file):
+                line = line.strip()
+                if "=" in line and not line.startswith("#"):
+                    k, v = line.split("=", 1)
+                    k = k.strip(); v = v.strip().strip('"').strip("'")
+                    if k in ("RWGPS_API_KEY", "RWGPS_AUTH_TOKEN") and not env[k]:
+                        env[k] = v
+        except Exception:
+            pass
+    return env
+
+
+def get_form(target_date=None) -> dict:
+    """Alias dla _get_form_data."""
+    return _get_form_data(target_date)
+
+
+def get_route(route_id=None, gpx_path=None) -> dict:
+    """Pobierz dane trasy z RWGPS lub GPX. Zwraca distance_km, elevation_gain_m, max_grade_pct."""
+    result = {"distance_km": 0, "elevation_gain_m": 0, "max_grade_pct": 0, "climbs_count": 0}
+    try:
+        if route_id:
+            env = _rwgps_env()
+            url = "https://ridewithgps.com/routes/{}.json?apikey={}&auth_token={}&version=2".format(
+                route_id, env.get("RWGPS_API_KEY", ""), env.get("RWGPS_AUTH_TOKEN", ""))
+            rd = httpx.get(url, timeout=15.0).json().get("route", {})
+            result["distance_km"] = round(float(rd.get("distance", 0)) / 1000, 1)
+            result["elevation_gain_m"] = round(float(rd.get("elevation_gain", 0)), 0)
+            # max grade z track_points
+            tps = rd.get("track_points", [])
+            grades = []
+            for i in range(1, len(tps)):
+                d = float(tps[i].get("d", 0)) - float(tps[i-1].get("d", 0))
+                e = float(tps[i].get("e", 0)) - float(tps[i-1].get("e", 0))
+                if d > 10:
+                    grades.append(abs(e / d * 100))
+            result["max_grade_pct"] = round(max(grades), 1) if grades else 0
+            # climbs
+            try:
+                from tools.rwgps.climbs import detect_climbs
+                climbs = detect_climbs(tps)
+                result["climbs_count"] = len(climbs)
+            except Exception:
+                pass
+        elif gpx_path:
+            import xml.etree.ElementTree as ET
+            tree = ET.parse(gpx_path)
+            root = tree.getroot()
+            ns = {"g": "http://www.topografix.com/GPX/1/1"}
+            pts = root.findall(".//g:trkpt", ns)
+            if pts:
+                eles = [float(p.find("g:ele", ns).text) for p in pts if p.find("g:ele", ns) is not None]
+                gain = sum(max(0, eles[i] - eles[i-1]) for i in range(1, len(eles)))
+                result["elevation_gain_m"] = round(gain)
+                # Przybliżony dystans
+                result["distance_km"] = round(len(pts) * 0.02, 1)
+    except Exception as exc:
+        result["_error"] = str(exc)
+    return result
+
 
 def check_feasibility(route_id=None,gpx_path=None,start_lat=None,start_lon=None,start_hour=8,target_date=None):
     form=get_form(target_date); route=get_route(route_id=route_id,gpx_path=gpx_path)

@@ -945,6 +945,54 @@ def _load_stage_gpx_analyze_tool() -> dict[str, Any]:
     }
 
 
+def _load_rwgps_route_surface_analyze_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        route_id = args.get("route_id")
+        if route_id is None:
+            return error_result("MISSING_ARGS", "Wymagany parametr: route_id (int)")
+        try:
+            rid = str(int(route_id))
+        except (TypeError, ValueError):
+            return error_result("INVALID_ARGS", "route_id musi byc liczba: %s" % route_id)
+        project_id = str(args.get("project_id", "tuscany_2026") or "tuscany_2026")
+        refresh = bool(args.get("refresh_overpass", False))
+        try:
+            from scripts.analyze_rwgps_surface import analyze_rwgps_surface_route
+            result = analyze_rwgps_surface_route(rid, project_id=project_id, refresh_overpass=refresh)
+        except Exception as exc:
+            return error_result("SURFACE_ERROR", str(exc)[:300])
+        if not result.get("ok"):
+            return error_result("SURFACE_ERROR", result.get("error") or result.get("status", "nieznany blad"))
+        keep = ("route_id", "route_name", "geometry", "surface_breakdown", "dominant_surface",
+                "practical_groups", "unknown_percent", "highway_breakdown", "tracktype",
+                "smoothness", "overpass", "recommendation", "warnings")
+        trimmed = {k: result[k] for k in keep if k in result}
+        return success_result(trimmed)
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "Analizuje nawierzchnie trasy RWGPS (OSM/Overpass): zwraca rozklad "
+            "asfalt/gravel/grunt/nieznana w %, dominujaca nawierzchnie, smoothness, "
+            "tracktype, pokrycie i rekomendacje. Uzywaj gdy pytanie dotyczy nawierzchni, "
+            "asfaltu/szutru/sciezek, gravela lub ryzykownych odcinkow trasy. "
+            "Wymaga route_id (np. z rwgps_route_last). Overpass moze trwac kilkanascie sekund."
+        ),
+        "args_schema": {
+            "route_id": {"type": "integer", "description": "ID trasy RWGPS"},
+            "project_id": {"type": "string", "description": "ID projektu, domyslnie tuscany_2026"},
+            "refresh_overpass": {"type": "boolean", "description": "Wymus odswiezenie OSM (domyslnie cache)"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+        "notes": "Wrapper na scripts.analyze_rwgps_surface.analyze_rwgps_surface_route.",
+    }
+
+
 def _load_route_gpx_split_tool() -> dict[str, Any]:
     from qbot3.artifacts.gpx_splitter import split_route_gpx
     from qbot3.errors import error_result, success_result
@@ -1647,11 +1695,96 @@ def _load_rwgps_poi_push_tool() -> dict:
         },
     }
 
+def _resolve_stage_from_planning_facts(
+    project_id: str | None, stage: int
+) -> dict[str, Any] | None:
+    """Generyczny lookup stage->route_id/distance_km z qbot_planning_facts.
+
+    Czyta fact_type='route_stages' (najnowszy, opcjonalnie filtrowany po
+    fact_json.project_id), szuka w fact_json.stages[] wpisu ze stage==stage.
+    Zwraca {"route_id": str, "distance_km": float, "project_id": str,
+    "segment": str | None} albo None jesli nie znaleziono.
+    """
+    import psycopg
+    from psycopg.rows import dict_row
+    try:
+        c = psycopg.connect(
+            host=os.getenv("PGHOST", "127.0.0.1"), port=os.getenv("PGPORT", "5432"),
+            dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
+            password=os.getenv("PGPASSWORD", ""), row_factory=dict_row, connect_timeout=5,
+        )
+        cur = c.cursor()
+        cur.execute(
+            "SELECT id, fact_json FROM qbot_planning_facts "
+            "WHERE fact_type='route_stages' ORDER BY id DESC LIMIT 20"
+        )
+        rows = cur.fetchall()
+        c.close()
+    except Exception:
+        return None
+
+    target_pid = (project_id or "").strip().lower() or None
+    for row in rows:
+        fact_json = row.get("fact_json")
+        if isinstance(fact_json, str):
+            try:
+                fact_json = json.loads(fact_json or "{}")
+            except Exception:
+                fact_json = {}
+        if not isinstance(fact_json, dict):
+            continue
+        row_pid = str(fact_json.get("project_id") or "").strip().lower()
+        if target_pid and row_pid != target_pid:
+            continue
+        stages = fact_json.get("stages")
+        if not isinstance(stages, list):
+            continue
+        for s in stages:
+            try:
+                if int(s.get("stage")) == int(stage):
+                    route_id = s.get("route_id")
+                    distance_km = s.get("distance_km")
+                    if route_id in (None, "") or distance_km in (None, ""):
+                        continue
+                    return {
+                        "route_id": str(route_id),
+                        "distance_km": float(distance_km),
+                        "project_id": row_pid or fact_json.get("project_id"),
+                        "segment": s.get("segment"),
+                    }
+            except Exception:
+                continue
+    return None
+
+
 def _load_route_poi_analyze_tool() -> dict[str, Any]:
     from qbot3.errors import error_result, success_result
     from qbot_route_tools import _tool_qbot_route_poi_analyze
 
     def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        stage = args.get("stage")
+        if stage is not None:
+            try:
+                stage_int = int(stage)
+            except (TypeError, ValueError):
+                return error_result("INVALID_ARGS", "stage musi być liczbą całkowitą")
+            resolved = _resolve_stage_from_planning_facts(args.get("project_id"), stage_int)
+            if not resolved:
+                return error_result(
+                    "STAGE_NOT_FOUND",
+                    f"Brak wpisu dla stage={stage_int}"
+                    + (f" w project_id={args.get('project_id')}" if args.get("project_id") else "")
+                    + " w qbot_planning_facts (fact_type='route_stages')."
+                )
+            args = dict(args)
+            args["route_id"] = resolved["route_id"]
+            args["project_id"] = resolved.get("project_id") or args.get("project_id")
+            args["km_from"] = 0.0
+            args["km_to"] = resolved["distance_km"]
+            args["artifact_id"] = None
+            args["path"] = None
+            args["merge_artifact_ids"] = None
+
         route_id = args.get("route_id")
         artifact_id = args.get("artifact_id")
         project_id = args.get("project_id")
@@ -1720,6 +1853,7 @@ def _load_route_poi_analyze_tool() -> dict[str, Any]:
             "Parametry: project_id, route_id lub artifact_id lub path, albo merge_artifact_ids; km_from/km_to, buffers, output_format, focus, retry_chunk_id, retry_mode, timeout_sec."
         ),
         "args_schema": {
+            "stage": {"type": "integer", "description": "Numer etapu z qbot_planning_facts.route_stages - jesli podany, route_id/km_from/km_to sa wyliczane automatycznie z planu etapow (nadpisuja inne podane wartosci)."},
             "route_id": {"type": "string", "description": "ID trasy RWGPS"},
             "artifact_id": {"type": "string", "description": "ID artefaktu GPX"},
             "project_id": {"type": "string", "description": "ID projektu logistycznego, np. tuscany_2026"},
@@ -2103,6 +2237,7 @@ def _init_registry():
         ("route_stage_plan_analyze", _load_route_stage_plan_analyze_tool),
         ("route_gpx_split", _load_route_gpx_split_tool),
         ("stage_gpx_analyze", _load_stage_gpx_analyze_tool),
+        ("rwgps_route_surface_analyze", _load_rwgps_route_surface_analyze_tool),
         ("qcal_events_range", _load_qcal_events_range_tool),
         ("qcal_reminders_upcoming", _load_qcal_reminders_upcoming_tool),
         ("garage_status", _load_garage_status_tool),
