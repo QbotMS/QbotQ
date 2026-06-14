@@ -786,6 +786,18 @@ def handle_mcp_request(
                     result = {"tool": "qbot.artifact_get", "status": "error", "error": str(exc)}
         elif name == "qbot.action_execute":
             result = _handle_action_execute(clean_args)
+            try:
+                from core.change_log import log_action_execute
+                log_action_execute(
+                    clean_args.get("action_type"),
+                    (result or {}).get("status"),
+                    idempotency_key=clean_args.get("idempotency_key"),
+                    source=str(clean_args.get("source") or "mcp"),
+                    payload=clean_args.get("payload_json") or clean_args.get("payload"),
+                    result=result if isinstance(result, dict) else None,
+                )
+            except Exception:
+                pass  # rejestr zmian jest best-effort, nigdy nie psuje akcji
         else:
             tool_args = dict(clean_args)
             tool_result, warnings = _dispatch_local_qbot_tool(
