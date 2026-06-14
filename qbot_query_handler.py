@@ -422,6 +422,17 @@ INTENT_KEYWORDS: list[tuple[list[str], str]] = [
       "dodaj jedzenie", "loguj posiłek", "wpisz posiłek", "batonik", "baton", "przekąska", "snack",
       "zjedziałem", "zjadłem", "zjadłam", "spożyłem", "spożyłam",
       "cały batonik", "porcja", "całe opakowanie"], "write_meal"),
+    # "Commit" ostatniego estymatu do dzisiejszego logu — krotkie polecenie
+    # po oszacowaniu produktu. GPT trzyma makra w kontekscie i sklada
+    # nutrition_log_add (envelope write_meal mu to wskazuje). Tylko frazy
+    # JEDNOZNACZNIE zywieniowe ("...do dzis/dzisiaj/logu/dziennika") -
+    # bez zachlannych "ok dodaj"/"dodaj to" zeby nie kolidowac z
+    # rwgps_poi_push ("dodaj poi", "dodaj do trasy").
+    (["dodaj do dziś", "dodaj do dzis", "dodaj do dzisiaj",
+      "zapisz do dziś", "zapisz do dzis", "zapisz do dzisiaj",
+      "wrzuć do dziś", "wrzuc do dzis", "wrzuć do dzisiaj", "wrzuc do dzisiaj",
+      "dodaj do logu", "zapisz do logu", "wrzuć do logu", "wrzuc do logu",
+      "dodaj do dziennika", "zapisz do dziennika"], "write_meal"),
     (["skasuj wpis", "usuń wpis", "skasuj posiłek", "usuń posiłek",
       "skasuj ostatni", "usuń ostatni", "delete", "kasuj"], "write_delete_unsupported"),
     (["dodaj etap", "dodaj trasę", "dodaj trasę", "utwórz etap",
