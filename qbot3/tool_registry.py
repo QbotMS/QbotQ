@@ -1011,13 +1011,32 @@ def _load_rwgps_route_surface_analyze_tool() -> dict[str, Any]:
 
     def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
         route_id = args.get("route_id")
+        project_id_arg = args.get("project_id")
+        stage = args.get("stage")
+
+        if stage is not None:
+            try:
+                stage_int = int(stage)
+            except (TypeError, ValueError):
+                return error_result("INVALID_ARGS", "stage musi być liczbą całkowitą")
+            resolved = _resolve_stage_from_planning_facts(project_id_arg, stage_int)
+            if not resolved:
+                return error_result(
+                    "STAGE_NOT_FOUND",
+                    f"Brak wpisu dla stage={stage_int}"
+                    + (f" w project_id={project_id_arg}" if project_id_arg else "")
+                    + " w qbot_planning_facts (fact_type='route_stages')."
+                )
+            route_id = resolved["route_id"]
+            project_id_arg = resolved.get("project_id") or project_id_arg
+
         if route_id is None:
-            return error_result("MISSING_ARGS", "Wymagany parametr: route_id (int)")
+            return error_result("MISSING_ARGS", "Wymagany parametr: route_id (int) lub stage")
         try:
             rid = str(int(route_id))
         except (TypeError, ValueError):
             return error_result("INVALID_ARGS", "route_id musi byc liczba: %s" % route_id)
-        project_id = str(args.get("project_id", "tuscany_2026") or "tuscany_2026")
+        project_id = str(project_id_arg or "tuscany_2026")
         refresh = bool(args.get("refresh_overpass", False))
         try:
             from scripts.analyze_rwgps_surface import analyze_rwgps_surface_route
@@ -1043,6 +1062,7 @@ def _load_rwgps_route_surface_analyze_tool() -> dict[str, Any]:
             "Wymaga route_id (np. z rwgps_route_last). Overpass moze trwac kilkanascie sekund."
         ),
         "args_schema": {
+            "stage": {"type": "integer", "description": "Numer etapu z qbot_planning_facts.route_stages - jesli podany, route_id/project_id sa wyliczane automatycznie z planu etapow (nadpisuja inne podane wartosci)."},
             "route_id": {"type": "integer", "description": "ID trasy RWGPS"},
             "project_id": {"type": "string", "description": "ID projektu, domyslnie tuscany_2026"},
             "refresh_overpass": {"type": "boolean", "description": "Wymus odswiezenie OSM (domyslnie cache)"},
