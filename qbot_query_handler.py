@@ -609,6 +609,37 @@ def _looks_like_meal_log_entry(question: str) -> bool:
     return has_title and has_kcal and {"B", "W", "T"}.issubset(macros)
 
 
+_MEAL_COMMIT_VERB_RE = re.compile(
+    r"\b(dodaj|zapisz|wrzu[cć]|zaloguj|wpisz|loguj)\b",
+    re.IGNORECASE,
+)
+# Sygnaly ze to commit ZYWIENIA (cel zapisu / kontekst posilku)
+_MEAL_COMMIT_SIGNALS = (
+    "spożyci", "spozyci", "spożyc", "spozyc",
+    "dziś", "dzis", "dzisiaj", "wczoraj", "wczorajsz",
+    "do logu", "dziennik", "posiłek", "posilek", "posiłk", "posilk",
+    "jedzenie", "jedzenia", "kcal", "kalori", "makro",
+)
+# Sygnaly ROUTE - jesli obecne, to NIE jest commit zywienia (np. "dodaj poi",
+# "dodaj do trasy", "zapisz gpx")
+_MEAL_COMMIT_ROUTE_BLOCK = ("poi", "tras", "rwgps", "gpx", " etap", "trase", "trasę")
+
+
+def _looks_like_meal_commit(question: str) -> bool:
+    """Rozpoznaj polecenie zapisu posilku po intencji (czasownik + sygnal
+    zywieniowy), niezaleznie od konkretnej frazy. Wyklucza route.
+
+    Lapie m.in.: "dodaj popcorn do wczorajszego spożycia", "dodaj do dzis",
+    "zapisz do logu", "wrzuc do dziennika", "zaloguj posilek".
+    """
+    ql = (question or "").lower()
+    if not _MEAL_COMMIT_VERB_RE.search(ql):
+        return False
+    if any(block in ql for block in _MEAL_COMMIT_ROUTE_BLOCK):
+        return False
+    return any(sig in ql for sig in _MEAL_COMMIT_SIGNALS)
+
+
 def _classify_domain(question: str) -> str:
     """Router v2: 'open' = trasy/planowanie (→ Planner), 'closed' = deterministyczne (→ keyword)."""
     ql = question.lower()
@@ -623,6 +654,8 @@ def _resolve_intent(question: str) -> str:
     if garmin_req:
         return str(garmin_req.get("intent", "garmin_activity_streams"))
     if _looks_like_meal_log_entry(question):
+        return "write_meal"
+    if _looks_like_meal_commit(question):
         return "write_meal"
     if _parse_route_import_request(question) is not None:
         return "rwgps_route_import_gpx"
