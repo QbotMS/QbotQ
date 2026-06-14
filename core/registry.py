@@ -29,6 +29,7 @@ _BASE_ALLOWLIST: set[str] = {
     "qcal_event_update",
     "qcal_event_cancel",
     "planning_fact_add",
+    "planning_fact_update",
     "garmin_workout_create",
     "qbot_doc_append",
     "qbot_doc_replace_section",

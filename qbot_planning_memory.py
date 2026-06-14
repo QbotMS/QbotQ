@@ -311,6 +311,153 @@ def save_planning_fact(draft: dict, channel: str = "unknown", confirm: bool = Fa
         return {"status": "ERROR", "error": str(e)[:200]}
 
 
+def update_planning_fact(
+    fact_id: int,
+    fact_json_patch: dict | None = None,
+    stage_patch: dict | None = None,
+    title: str | None = None,
+    status: str | None = None,
+    confidence: str | None = None,
+    valid_until: str | None = None,
+    confirm: bool = False,
+) -> dict:
+    """Update an existing qbot_planning_facts row by id.
+
+    Exactly one of fact_json_patch / stage_patch may be provided (both
+    touch fact_json; combining them is ambiguous). Both are optional -
+    a call may update only top-level columns (title/status/confidence/
+    valid_until) without touching fact_json.
+
+    fact_json_patch: shallow-merged into existing fact_json.
+    stage_patch: {"stage": N, **fields} - merges `fields` into the entry
+      of fact_json["stages"] where entry["stage"] == N. Errors if
+      fact_json has no "stages" list or no entry with that stage number
+      (does not create new stage entries).
+
+    Only writes if confirm=True (mirrors save_planning_fact).
+    """
+    if not confirm:
+        return {"status": "draft", "note": "confirm=True required to save"}
+
+    if fact_json_patch and stage_patch:
+        return {"status": "ERROR", "error": "fact_json_patch i stage_patch sa wzajemnie wykluczajace - podaj tylko jeden"}
+
+    try:
+        fact_id_int = int(fact_id)
+    except (TypeError, ValueError):
+        return {"status": "ERROR", "error": f"fact_id musi byc liczba calkowita: {fact_id}"}
+
+    _ensure_table()
+
+    try:
+        c = _db()
+        cur = c.cursor()
+        cur.execute("SELECT * FROM qbot_planning_facts WHERE id = %s", (fact_id_int,))
+        row = cur.fetchone()
+        if not row:
+            c.close()
+            return {"status": "ERROR", "error": f"Brak qbot_planning_facts.id={fact_id_int}"}
+
+        current_json = row.get("fact_json") or {}
+        if isinstance(current_json, str):
+            try:
+                current_json = json.loads(current_json)
+            except (json.JSONDecodeError, TypeError):
+                current_json = {}
+
+        new_json = current_json
+        json_changed = False
+
+        if fact_json_patch:
+            if not isinstance(fact_json_patch, dict):
+                c.close()
+                return {"status": "ERROR", "error": "fact_json_patch musi byc obiektem"}
+            new_json = dict(current_json)
+            new_json.update(fact_json_patch)
+            json_changed = True
+
+        elif stage_patch:
+            if not isinstance(stage_patch, dict) or "stage" not in stage_patch:
+                c.close()
+                return {"status": "ERROR", "error": "stage_patch musi zawierac pole 'stage'"}
+            try:
+                target_stage = int(stage_patch["stage"])
+            except (TypeError, ValueError):
+                c.close()
+                return {"status": "ERROR", "error": f"stage_patch['stage'] musi byc liczba: {stage_patch.get('stage')}"}
+
+            stages = current_json.get("stages")
+            if not isinstance(stages, list):
+                c.close()
+                return {"status": "ERROR", "error": "fact_json nie zawiera listy 'stages' - stage_patch wymaga fact_type='route_stages'"}
+
+            patch_fields = {k: v for k, v in stage_patch.items() if k != "stage"}
+            new_stages = []
+            found = False
+            for entry in stages:
+                if isinstance(entry, dict) and entry.get("stage") == target_stage:
+                    merged = dict(entry)
+                    merged.update(patch_fields)
+                    new_stages.append(merged)
+                    found = True
+                else:
+                    new_stages.append(entry)
+
+            if not found:
+                c.close()
+                available = sorted(
+                    e.get("stage") for e in stages if isinstance(e, dict) and "stage" in e
+                )
+                return {"status": "ERROR", "error": f"Brak wpisu stage={target_stage} w fact_json.stages (dostepne: {available})"}
+
+            new_json = dict(current_json)
+            new_json["stages"] = new_stages
+            json_changed = True
+
+        set_clauses = []
+        params: list = []
+
+        if json_changed:
+            set_clauses.append("fact_json = %s")
+            params.append(json.dumps(new_json, default=str))
+        if title is not None:
+            set_clauses.append("title = %s")
+            params.append(title)
+        if status is not None:
+            set_clauses.append("status = %s")
+            params.append(status)
+        if confidence is not None:
+            set_clauses.append("confidence = %s")
+            params.append(confidence)
+        if valid_until is not None:
+            set_clauses.append("valid_until = %s")
+            params.append(valid_until)
+
+        if not set_clauses:
+            c.close()
+            return {"status": "ERROR", "error": "Brak pol do aktualizacji (podaj fact_json_patch, stage_patch, title, status, confidence lub valid_until)"}
+
+        set_clauses.append("updated_at = now()")
+        sql = f"UPDATE qbot_planning_facts SET {', '.join(set_clauses)} WHERE id = %s RETURNING id, fact_type, title, status"
+        params.append(fact_id_int)
+
+        cur.execute(sql, params)
+        updated = cur.fetchone()
+        c.commit()
+        c.close()
+
+        return {
+            "status": "OK",
+            "planning_fact_id": updated["id"],
+            "fact_type": updated["fact_type"],
+            "title": updated["title"],
+            "fact_status": updated["status"],
+            "json_changed": json_changed,
+        }
+    except Exception as e:
+        return {"status": "ERROR", "error": str(e)[:300]}
+
+
 def list_planning_facts(
     fact_date: str | None = None,
     status: str | None = None,
