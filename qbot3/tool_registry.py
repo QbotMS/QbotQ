@@ -893,6 +893,7 @@ def _load_stage_gpx_analyze_tool() -> dict[str, Any]:
     def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
         file_path = args.get("file_path", "")
         stage = args.get("stage")
+        resolved: dict[str, Any] | None = None
 
         if not file_path and stage is not None:
             try:
@@ -943,7 +944,36 @@ def _load_stage_gpx_analyze_tool() -> dict[str, Any]:
             return error_result("ANALYSIS_ERROR", str(exc))
         if result.get("status") == "ERROR":
             return error_result("ANALYSIS_ERROR", result.get("error", "nieznany błąd"))
-        return success_result(result)
+
+        # Sanity-check (Etap 1 PRZEBUDOWA): porownaj distance_km z GPX
+        # z distance_km z qbot_planning_facts.route_stages (ground truth
+        # dla tego etapu), tylko gdy stage zostal uzyty do resolwowania
+        # pliku. Rozjazd >5% = PARTIAL z ostrzezeniem, nie cichy OK.
+        top_status = "OK"
+        if resolved and resolved.get("distance_km") and result.get("distance_km"):
+            try:
+                gpx_km = float(result["distance_km"])
+                plan_km = float(resolved["distance_km"])
+                diff_pct = abs(gpx_km - plan_km) / plan_km * 100.0 if plan_km else 0.0
+                result["sanity_check"] = {
+                    "ok": diff_pct <= 5.0,
+                    "distance_km_gpx": gpx_km,
+                    "distance_km_planning_facts": plan_km,
+                    "diff_pct": round(diff_pct, 2),
+                }
+                if diff_pct > 5.0:
+                    top_status = "PARTIAL"
+                    result.setdefault("warnings", [])
+                    result["warnings"].append(
+                        f"sanity check: dystans z GPX ({gpx_km:.2f} km) rozjeżdża się "
+                        f"z planning_facts ({plan_km:.2f} km) o {diff_pct:.1f}% "
+                        f"(tolerancja 5%) - mozliwy nieaktualny artefakt GPX dla "
+                        f"route_id={resolved.get('route_id')}"
+                    )
+            except (TypeError, ValueError, ZeroDivisionError):
+                pass
+
+        return success_result(result, status=top_status)
 
     return {
         "callable": _wrapper,
