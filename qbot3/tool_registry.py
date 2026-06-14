@@ -970,6 +970,28 @@ def _load_stage_gpx_analyze_tool() -> dict[str, Any]:
                         f"(tolerancja 5%) - mozliwy nieaktualny artefakt GPX dla "
                         f"route_id={resolved.get('route_id')}"
                     )
+                    # zlamany niezmiennik -> ticket incydentu (best-effort, dedup 6h)
+                    try:
+                        from core.incidents import open_incident
+                        _rid = resolved.get("route_id")
+                        open_incident(
+                            f"sanity-check dystansu: route_id={_rid} GPX vs planning_facts rozjazd",
+                            severity="medium",
+                            source="invariant",
+                            action_type="stage_gpx_analyze",
+                            error_text=(
+                                f"GPX {gpx_km:.2f} km vs planning_facts {plan_km:.2f} km "
+                                f"= {diff_pct:.1f}% (>5%)"
+                            ),
+                            detail={
+                                "route_id": _rid,
+                                "distance_km_gpx": gpx_km,
+                                "distance_km_planning_facts": plan_km,
+                                "diff_pct": round(diff_pct, 2),
+                            },
+                        )
+                    except Exception:
+                        pass
             except (TypeError, ValueError, ZeroDivisionError):
                 pass
 
