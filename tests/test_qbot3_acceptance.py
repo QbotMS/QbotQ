@@ -415,14 +415,17 @@ class TestNutritionMealListReader(unittest.TestCase):
         self.assertEqual(result["meal_log_items"][0]["meal_eaten_at"], "2026-05-29T12:00:00+02:00")
 
     def test_half_kilo_truskawek_normalizes_quantity_only(self):
-        """'pół kilo truskawek' → 500 g, not 500 kcal."""
+        """'pół kilo truskawek' → 500 g truskawek, kcal z generic-bazy, bez lookup_source."""
         q = "dodaj pół kilo truskawek"
         resolved = resolve_nutrition_write(q)
         payload = resolved.get("payload", {})
         self.assertEqual(payload.get("amount"), 500)
         self.assertEqual(payload.get("unit"), "g")
         self.assertNotEqual(payload.get("kcal_total"), 500)
-        self.assertIn("lookup_source", resolved.get("missing_fields", []))
+        self.assertEqual(resolved.get("status"), "OK")
+        self.assertEqual(resolved.get("source_kind"), "generic_fallback")
+        self.assertEqual(resolved.get("missing_fields", []), [])
+        self.assertEqual(payload.get("kcal_total"), 160.0)
 
     def test_template_lookup_for_bialko_owsiane(self):
         """Template name should resolve via lookup, not guessing macros."""
