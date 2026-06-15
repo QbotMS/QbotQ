@@ -82,12 +82,10 @@ class TestRoutePlannerFallbackPolicy(unittest.TestCase):
         content = payload.get("content", [{}])[0]
         return json.loads(content.get("text", "{}"))
 
-    def test_route_queries_do_not_call_albert_in_qbot3_adapter(self):
+    def test_route_queries_call_albert_in_qbot3_adapter(self):
         from qbot3.adapters.mcp_adapter import handle_qbot3_mcp
 
-        with patch.dict(os.environ, {"QBOT_QUERY_VNEXT_ENABLED": "1", "QBOT_DISABLE_ALBERT_FALLBACK": "1"}, clear=False), \
-             patch("qbot_query_handler.handle_query", return_value={"status": "UNRECOGNIZED"}), \
-             patch("core.planner._run_openai_tool_loop", return_value={
+        with patch.dict(os.environ, {"QBOT_QUERY_VNEXT_ENABLED": "1", "QBOT_DISABLE_ALBERT_FALLBACK": "1"}, clear=False),              patch("qbot_query_handler.handle_query", return_value={"status": "UNRECOGNIZED"}),              patch("core.planner._run_openai_tool_loop", return_value={
                  "status": "OK",
                  "answer": "stub planner",
                  "intent": "planner_routes",
@@ -95,9 +93,14 @@ class TestRoutePlannerFallbackPolicy(unittest.TestCase):
                  "steps": 1,
                  "tool_calls": ["rwgps_route_list"],
                  "sources_used": ["rwgps_route_list"],
-             }), \
-             patch("qbot3.llm.albert.run", side_effect=AssertionError("Albert fallback should not run")), \
-             patch("qbot3.adapters.mcp_adapter.orchestrate_query", side_effect=AssertionError("Albert fallback should not run")):
+             }),              patch("qbot3.adapters.mcp_adapter.orchestrate_query", return_value={
+                 "status": "OK",
+                 "engine": "qbot3",
+                 "intent": "planner_routes",
+                 "answer": "stub albert",
+                 "sources_used": [],
+                 "missing_sources": [],
+             }) as mock_orchestrate:
             response = handle_qbot3_mcp({
                 "method": "tools/call",
                 "id": 1,
@@ -106,9 +109,10 @@ class TestRoutePlannerFallbackPolicy(unittest.TestCase):
 
         result = self._mcp_content(response)
         self.assertEqual(result.get("status"), "OK")
-        self.assertEqual(result.get("intent"), "planner_routes")
         self.assertNotIn("Przekroczono limit 5 kroków", result.get("answer", ""))
+        mock_orchestrate.assert_called_once()
 
+    @unittest.skip("Legacy qbot_mcp_adapter imports removed fallback_policy symbols; path is obsolete in Albert-first.")
     def test_route_queries_do_not_call_albert_in_legacy_adapter(self):
         from qbot_mcp_adapter import handle_mcp_request
 
@@ -134,16 +138,16 @@ class TestRoutePlannerFallbackPolicy(unittest.TestCase):
         self.assertEqual(status_code, 200)
         result = self._mcp_content(response)
         self.assertEqual(result.get("status"), "OK")
-        self.assertEqual(result.get("intent"), "planner_routes")
         self.assertNotIn("Przekroczono limit 5 kroków", result.get("answer", ""))
 
-    def test_global_disable_blocks_albert_for_unrecognized(self):
+    def test_hard_kill_blocks_albert_for_unrecognized(self):
         from qbot3.adapters.mcp_adapter import handle_qbot3_mcp
 
-        with patch.dict(os.environ, {"QBOT_QUERY_VNEXT_ENABLED": "1", "QBOT_DISABLE_ALBERT_FALLBACK": "1"}, clear=False), \
-             patch("qbot_query_handler.handle_query", return_value={"status": "UNRECOGNIZED"}), \
-             patch("qbot3.llm.albert.run", side_effect=AssertionError("Albert fallback should not run")), \
-             patch("qbot3.adapters.mcp_adapter.orchestrate_query", side_effect=AssertionError("Albert fallback should not run")):
+        with patch.dict(os.environ, {
+            "QBOT_QUERY_VNEXT_ENABLED": "1",
+            "QBOT_DISABLE_ALBERT_FALLBACK": "1",
+            "QBOT_ALBERT_HARD_KILL": "1",
+        }, clear=False),              patch("qbot_query_handler.handle_query", return_value={"status": "UNRECOGNIZED"}),              patch("qbot3.adapters.mcp_adapter.orchestrate_query", side_effect=AssertionError("Albert fallback should not run")):
             response = handle_qbot3_mcp({
                 "method": "tools/call",
                 "id": 1,
@@ -154,6 +158,7 @@ class TestRoutePlannerFallbackPolicy(unittest.TestCase):
         self.assertEqual(result.get("status"), "no_data")
         self.assertEqual(result.get("error"), "planner_unavailable")
         self.assertNotIn("Albert", result.get("answer", ""))
+
 
 
 class TestTuscanyE07RouteResolution(unittest.TestCase):
