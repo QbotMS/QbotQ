@@ -4698,60 +4698,69 @@ def _handle_qbot_incidents() -> dict:
 
 
 def _handle_qbot_help() -> dict:
-    help_text = """\U0001f916 *QBot3 — lista komend*
+    help_text = """\U0001f916 *QBot3 — co potrafię*
+
+Możesz pytać normalnym zdaniem — QBot rozumie naturalny język. Poniżej skróty.
 
 **\U0001f34e ŻYWIENIE**
-• bilans / kcal → dzienny bilans kalorii
-• jedzenie / posiłki → co jadłem dziś
-• zakres / ostatni tydzień → makro za zakres dat
-• dodaj posiłek [nazwa] [kcal] [B/W/T] → zapis żywienia
+- bilans / kcal → dzienny bilans kalorii
+- jedzenie / posiłki → co jadłem dziś
+- zakres / ostatni tydzień → makro za zakres dat
+- dodaj posiłek [nazwa] [kcal] [B/W/T] → zapis żywienia
+- usuń posiłek [nazwa] → usuń wpis z dziennika
+- popraw posiłek [nazwa] na [kcal] → korekta wpisu
 
 **\u2764\ufe0f ZDROWIE**
-• sen / sleep → dane snu (REM, deep, light)
-• wellness / hrv / bateria → HRV, body battery, tętno spoczynkowe
-• energia / kroki → wydatek energetyczny
-• waga → aktualna waga
-• body composition / skład ciała → pełny skład (tłuszcz, mięśnie, BMI)
-• trend wagi → historia wagi
-• tabela body → pełna tabela pomiarów za okres
+- sen / sleep → dane snu (REM, deep, light)
+- wellness / hrv / bateria → HRV, body battery, tętno spoczynkowe
+- energia / kroki → wydatek energetyczny
+- waga → aktualna waga
+- body composition / skład ciała → pełny skład (tłuszcz, mięśnie, BMI)
+- trend wagi → historia wagi
+- tabela body → pełna tabela pomiarów za okres
 
 **\U0001f3cb TRENING**
-• trening / aktywność → ostatnie treningi
-• xert / forma / ftp → status Xert (FTP, LTP, W', forma)
-• odśwież xert → live fetch z API Xert
+- trening / aktywność → ostatnie treningi
+- xert / forma / ftp → status Xert (FTP, LTP, W', forma)
+- odśwież xert → live fetch z API Xert
 
 **\U0001f6e3 TRASY**
-• przeanalizuj poi [trasa] km [X-Y] → POI na trasie (woda/jedzenie/sklepy+stacje/atrakcje)
-• nawierzchnia trasy [trasa] → analiza nawierzchni
-• podjazdy [trasa] km [X-Y] → lista podjazdów
-• ocena trasy [trasa] start [HH:MM] → feasibility check (forma + pogoda + profil)
-• kafelki [share_id] trasa [route_id] → analiza kafelków + Überkwadrat
-• generuj trasę [X]km start [lat,lon] → nowa trasa Valhalla + tile scoring
-• pobierz trasę [route_id] → pobierz i przetwórz trasę z RWGPS
-• lista tras → przetworzone trasy
-• wyślij poi do rwgps [trasa] → wyślij POI do RWGPS (dry-run)
-• wyślij poi ... potwierdź → rzeczywisty zapis
+- przeanalizuj poi [trasa] km [X-Y] → POI na trasie (woda/jedzenie/sklepy+stacje/atrakcje)
+- nawierzchnia trasy [trasa] → analiza nawierzchni
+- podjazdy [trasa] km [X-Y] → lista podjazdów
+- ocena trasy [trasa] start [HH:MM] → feasibility check (forma + pogoda + profil)
+- kafelki [share_id] trasa [route_id] → analiza kafelków + Überkwadrat
+- generuj trasę [X]km start [lat,lon] → nowa trasa Valhalla + tile scoring
+- pobierz trasę [route_id] → pobierz i przetwórz trasę z RWGPS
+- lista tras → przetworzone trasy
+- wyślij poi do rwgps [trasa] → wyślij POI do RWGPS (dry-run)
+- wyślij poi ... potwierdź → rzeczywisty zapis
 
 **\U0001f9f3 WYJAZDY**
-• wyjazd / toskania → status wyjazdu
-• etap / dzisiejszy etap → info o etapie (data lub numer)
-• etap 3 / plan etapów → konkretny etap lub cały plan
-• atrakcje / co warto → atrakcje na etapie/trasie
-• atrakcje etap 2 / must see → POI z bazy planowania
+- wyjazd / toskania → status wyjazdu
+- etap / dzisiejszy etap → info o etapie (data lub numer)
+- etap 3 / plan etapów → konkretny etap lub cały plan
+- atrakcje / co warto → atrakcje na etapie/trasie
+- atrakcje etap 2 / must see → POI z bazy planowania
+
+**\U0001f4c5 KALENDARZ / PRZYPOMNIENIA**
+- dodaj wydarzenie [tytuł] [data] [godz] → wpis do kalendarza
+- przypomnij mi [treść] na [data/godz] → nowe przypomnienie
 
 **\U0001f4ca RAPORTY**
-• raport dobowy → status raportu dziennego
-• raport z jazdy → ostatni raport po jeździe
-• diagnostyka raportu → sprawdź źródła danych
+- raport dobowy → status raportu dziennego
+- raport z jazdy → ostatni raport po jeździe
+- diagnostyka raportu → sprawdź źródła danych
 
 **\U0001f6b2 GARAŻ**
-• garaż / sprzęt → status sprzętu
-• szukaj [element] → szukaj w garażu
+- garaż / sprzęt → status sprzętu
+- szukaj [element] → szukaj w garażu
 
 **\U0001f4be SYSTEM**
-• /help → ta lista
-• przypomnij / pamięć → notatki i fakty
-• artefakt / artifact [id] → przeszukaj/odczytaj artefakty"""
+- /help → ta lista
+- /incydenty → otwarte incydenty + prompt diagnostyczny
+- przypomnij / pamięć → notatki i fakty
+- artefakt / artifact [id] → przeszukaj/odczytaj artefakty"""
     return _envelope("qbot_help", help_text, sources_used=[])
 
 def _normalize_question(q: str) -> str:
