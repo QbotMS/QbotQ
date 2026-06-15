@@ -610,9 +610,45 @@ def _looks_like_meal_log_entry(question: str) -> bool:
 
 
 _MEAL_COMMIT_VERB_RE = re.compile(
-    r"\b(dodaj|zapisz|wrzu[cć]|zaloguj|wpisz|loguj)\b",
+    r"\b(dodaj|dorzu[cć]|dopisz|dolicz|zapisz|wrzu[cć]|zaloguj|wpisz|loguj)\b",
     re.IGNORECASE,
 )
+
+# Inline meal-log: nazwa produktu + konkretna liczba kcal (jednoliniowy wpis).
+# Np. "popcorn karmelowy 1100 kcal", "popcorn 1100 kcal B10 W170 T42".
+_INLINE_KCAL_RE = re.compile(r"\b\d{2,5}\s*kcal\b", re.IGNORECASE)
+# Makra w formie zwartej (B10 / W170 / T42) lub z dwukropkiem (B:10)
+_INLINE_MACRO_RE = re.compile(r"\b([BWT])\s*:?\s*\d{1,3}\b", re.IGNORECASE)
+# Frazy ktore znacza ZAPYTANIE o bilans/podsumowanie, nie wpis
+_BALANCE_QUERY_MARKERS = (
+    "ile kcal", "ile kalori", "ile zjad", "ile spal", "ile mam",
+    "ile zosta", "zostało", "zostalo", "bilans", "podsumowanie",
+    "podsumuj", "ile wynosi", "jaki bilans", "stan na",
+)
+
+
+def _looks_like_inline_meal_log(question: str) -> bool:
+    """Wpis posilku w jednej linii: nazwa + konkretna liczba kcal.
+
+    Lapie 'popcorn karmelowy 1100 kcal', 'popcorn 1100 kcal B10 W170 T42'.
+    Wyklucza zapytania o bilans ('ile kcal zjadłem', 'bilans') i route.
+    """
+    ql = (question or "").lower()
+    if not _INLINE_KCAL_RE.search(ql):
+        return False
+    # zapytanie o bilans/podsumowanie -> NIE wpis
+    if any(m in ql for m in _BALANCE_QUERY_MARKERS):
+        return False
+    # route -> NIE wpis zywienia
+    if any(block in ql for block in _MEAL_COMMIT_ROUTE_BLOCK):
+        return False
+    # musi byc slowo-nazwa produktu (litera alfabetu poza samym 'kcal'/'B/W/T')
+    without_numbers = re.sub(r"\b[bwt]\s*:?\s*\d+\b", " ", ql, flags=re.IGNORECASE)
+    without_numbers = re.sub(r"\b\d+(?:[.,]\d+)?\s*(?:kcal|g|kg|ml|l)?\b", " ", without_numbers, flags=re.IGNORECASE)
+    without_numbers = without_numbers.replace("kcal", " ")
+    name_tokens = [t for t in re.findall(r"[a-ząćęłńóśźż]{3,}", without_numbers)
+                   if t not in ("oraz", "plus", "and")]
+    return len(name_tokens) >= 1
 # Sygnaly ze to commit ZYWIENIA (cel zapisu / kontekst posilku)
 _MEAL_COMMIT_SIGNALS = (
     "spożyci", "spozyci", "spożyc", "spozyc",
@@ -656,6 +692,8 @@ def _resolve_intent(question: str) -> str:
     if _looks_like_meal_log_entry(question):
         return "write_meal"
     if _looks_like_meal_commit(question):
+        return "write_meal"
+    if _looks_like_inline_meal_log(question):
         return "write_meal"
     if _parse_route_import_request(question) is not None:
         return "rwgps_route_import_gpx"
