@@ -1952,6 +1952,7 @@ def _load_route_poi_analyze_tool() -> dict[str, Any]:
         "callable": _wrapper,
         "category": "routes",
         "description": (
+            "[Dla zapytań informacyjnych o POI użyj route_poi_analyze_readonly - to narzędzie zapisuje/aktualizuje raport POI w artefaktach i wymaga potwierdzenia (action_execute).] "
             "Analizuje POI trasy RWGPS na podstawie GPX lokalnie i zapisuje raport MD do artefaktów. "
             "Parametry: project_id, route_id lub artifact_id lub path, albo merge_artifact_ids; km_from/km_to, buffers, output_format, focus, retry_chunk_id, retry_mode, timeout_sec."
         ),
@@ -1978,6 +1979,128 @@ def _load_route_poi_analyze_tool() -> dict[str, Any]:
         "mode": "write",
         "status": "implemented",
         "notes": "Writes a project/report-specific MD artifact under /opt/qbot/artifacts/reports/ and registers it in artifact store.",
+    }
+
+
+def _load_route_poi_analyze_readonly_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+    from qbot_route_tools import _tool_qbot_route_poi_analyze
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        stage = args.get("stage")
+        if stage is not None:
+            try:
+                stage_int = int(stage)
+            except (TypeError, ValueError):
+                return error_result("INVALID_ARGS", "stage musi być liczbą całkowitą")
+            resolved = _resolve_stage_from_planning_facts(args.get("project_id"), stage_int)
+            if not resolved:
+                return error_result(
+                    "STAGE_NOT_FOUND",
+                    f"Brak wpisu dla stage={stage_int}"
+                    + (f" w project_id={args.get('project_id')}" if args.get("project_id") else "")
+                    + " w qbot_planning_facts (fact_type='route_stages')."
+                )
+            args = dict(args)
+            args["route_id"] = resolved["route_id"]
+            args["project_id"] = resolved.get("project_id") or args.get("project_id")
+            args["km_from"] = 0.0
+            args["km_to"] = resolved["distance_km"]
+            args["artifact_id"] = None
+            args["path"] = None
+            args["merge_artifact_ids"] = None
+
+        route_id = args.get("route_id")
+        artifact_id = args.get("artifact_id")
+        project_id = args.get("project_id")
+        path = args.get("path")
+        focus = args.get("focus")
+        retry_chunk_id = args.get("retry_chunk_id")
+        retry_mode = bool(args.get("retry_mode", False))
+        merge_artifact_ids = args.get("merge_artifact_ids")
+        timeout_sec = args.get("timeout_sec")
+        km_from = args.get("km_from")
+        km_to = args.get("km_to")
+        buffers = args.get("buffers")
+        output_format = str(args.get("output_format", "md")).strip().lower() or "md"
+        merge_list: list[str] = []
+        if isinstance(merge_artifact_ids, list):
+            merge_list = [str(item).strip() for item in merge_artifact_ids if str(item).strip()]
+        elif isinstance(merge_artifact_ids, str):
+            merge_list = [item.strip() for item in merge_artifact_ids.split(",") if item.strip()]
+
+        if not route_id and not artifact_id and not path and not merge_list:
+            return error_result("MISSING_ARGS", "Wymagany route_id, artifact_id, path lub merge_artifact_ids")
+        if km_from is None or km_to is None:
+            if not merge_list:
+                return error_result("MISSING_ARGS", "Wymagane km_from i km_to")
+            km_from = 0
+            km_to = 0
+
+        if km_from is None or km_to is None:
+            return error_result("MISSING_ARGS", "Wymagane km_from i km_to")
+
+        try:
+            km_from_f = float(km_from)
+            km_to_f = float(km_to)
+        except (TypeError, ValueError):
+            return error_result("INVALID_ARGS", "km_from i km_to muszą być liczbami")
+
+        result = _tool_qbot_route_poi_analyze({
+            "route_id": route_id,
+            "artifact_id": artifact_id,
+            "project_id": project_id,
+            "path": path,
+            "km_from": km_from_f,
+            "km_to": km_to_f,
+            "buffers": buffers,
+            "focus": focus,
+            "retry_chunk_id": retry_chunk_id,
+            "retry_mode": retry_mode,
+            "merge_artifact_ids": merge_list or None,
+            "timeout_sec": timeout_sec,
+            "output_format": output_format,
+            "confirm": True,
+        })
+        if result.get("status") not in {"OK", "PARTIAL"} or not result.get("ok", True):
+            return error_result("ROUTE_POI_ANALYSIS_FAILED", result.get("error", "nieznany błąd"))
+
+        payload = dict(result)
+        payload.pop("tool", None)
+        payload.pop("safety_class", None)
+        return success_result(payload)
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "[UŻYJ TEGO dla zapytań INFORMACYJNYCH typu 'co jest na etapie/trasie X', 'jakie POI na trasie', 'pokaż mi atrakcje/wodę/jedzenie na etapie' - zwraca wynik ANALIZY NATYCHMIAST, bez wymogu potwierdzenia. Dla zapisu/aktualizacji raportu POI w artefaktach projektu użyj route_poi_analyze.] "
+            "Analizuje POI trasy RWGPS na podstawie GPX lokalnie i zapisuje raport MD do artefaktów. "
+            "Parametry: project_id, route_id lub artifact_id lub path, albo merge_artifact_ids; km_from/km_to, buffers, output_format, focus, retry_chunk_id, retry_mode, timeout_sec."
+        ),
+        "args_schema": {
+            "stage": {"type": "integer", "description": "Numer etapu z qbot_planning_facts.route_stages - jesli podany, route_id/km_from/km_to sa wyliczane automatycznie z planu etapow (nadpisuja inne podane wartosci)."},
+            "route_id": {"type": "string", "description": "ID trasy RWGPS"},
+            "artifact_id": {"type": "string", "description": "ID artefaktu GPX"},
+            "project_id": {"type": "string", "description": "ID projektu logistycznego, np. tuscany_2026"},
+            "path": {"type": "string", "description": "Lokalna ścieżka do pliku GPX"},
+            "merge_artifact_ids": {"type": "array", "items": {"type": "string"}, "description": "Lista artefaktów partial/chunk do scalenia"},
+            "km_from": {"type": "number", "description": "Początek analizowanego zakresu km"},
+            "km_to": {"type": "number", "description": "Koniec analizowanego zakresu km"},
+            "buffers": {
+                "type": "object",
+                "description": "Bufory POI: attractions_m, hard_resupply_m, soft_food_m, water_m, oraz opcjonalnie chunk_km, chunk_overlap_km, min_chunk_km, analysis_timeout_sec, overpass_timeout_sec, overpass_retries, retry_backoff_sec",
+            },
+            "focus": {"type": "string", "enum": ["all", "logistics", "hard_resupply", "food_only"], "default": "all"},
+            "retry_chunk_id": {"type": "string", "description": "Identyfikator chunku do ponownej analizy"},
+            "retry_mode": {"type": "boolean", "default": False},
+            "timeout_sec": {"type": "number", "description": "Deadline całej analizy"},
+            "output_format": {"type": "string", "enum": ["json", "md"], "default": "md"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+        "notes": "Read-only variant that returns POI analysis without entering the write tool path.",
     }
 
 
@@ -2445,6 +2568,7 @@ def _init_registry():
         ("rwgps_route_find", _load_rwgps_route_find_tool),
         ("route_artifact_enrich_dry_run", _load_route_artifact_enrich_dry_run_tool),
         ("route_poi_analyze", _load_route_poi_analyze_tool),
+        ("route_poi_analyze_readonly", _load_route_poi_analyze_readonly_tool),
         ("rwgps_poi_push", _load_rwgps_poi_push_tool),
         ("rwgps_route_import_gpx", _load_rwgps_route_import_gpx_tool),
         ("artifact_search", _load_artifact_search_tool),
