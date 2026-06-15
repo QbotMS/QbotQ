@@ -18,8 +18,8 @@ from typing import Any
 
 from qbot3.agent_runtime import orchestrate_query
 from qbot3.fallback_policy import (
+    albert_hard_killed,
     planner_unavailable_response,
-    should_use_albert_fallback,
 )
 from qbot3.safety import validate, exec_doc_append
 
@@ -185,7 +185,7 @@ def _call_tool(req_id: Any, params: dict[str, Any]) -> dict[str, Any]:
                 # jak UNRECOGNIZED - przekaz do Alberta, ktory wykona zapis
                 # naprawde (zobacz _execute_single_tool: nutrition_log_add).
                 if vnext_result.get("status") in ("UNRECOGNIZED", "ACTION_REQUIRED"):
-                    if should_use_albert_fallback(query):
+                    if not albert_hard_killed():
                         result = orchestrate_query(query, context=args.get("context", ""))
                         from qbot3.response_normalizer import normalize_response
                         result = normalize_response(result)
@@ -195,12 +195,12 @@ def _call_tool(req_id: Any, params: dict[str, Any]) -> dict[str, Any]:
                             query,
                             intent="unrecognized",
                             source="qbot.query",
-                            fallback_reason="QBOT_DISABLE_ALBERT_FALLBACK=1",
+                            fallback_reason="QBOT_ALBERT_HARD_KILL=1",
                         )
                 else:
                     result = vnext_result
             except Exception as exc:
-                if should_use_albert_fallback(query):
+                if not albert_hard_killed():
                     result = orchestrate_query(query, context=args.get("context", ""))
                     from qbot3.response_normalizer import normalize_response
                     result = normalize_response(result)
@@ -213,7 +213,7 @@ def _call_tool(req_id: Any, params: dict[str, Any]) -> dict[str, Any]:
                         fallback_reason=f"query_vnext error: {exc}",
                     )
         else:
-            if should_use_albert_fallback(query):
+            if not albert_hard_killed():
                 result = orchestrate_query(query, context=args.get("context", ""))
                 from qbot3.response_normalizer import normalize_response
                 result = normalize_response(result)
@@ -222,7 +222,7 @@ def _call_tool(req_id: Any, params: dict[str, Any]) -> dict[str, Any]:
                     query,
                     intent="unrecognized",
                     source="qbot.query",
-                    fallback_reason="QBOT_DISABLE_ALBERT_FALLBACK=1",
+                    fallback_reason="QBOT_ALBERT_HARD_KILL=1",
                 )
             result["fallback_reason"] = "query_vnext disabled"
         dur_ms = (perf_counter() - t0) * 1000
