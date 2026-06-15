@@ -2,13 +2,15 @@
 
 Hierarchia modeli (konfiguracja w /opt/qbot/app/.env):
   1. QBOT_PLANNER_API_KEY + QBOT_PLANNER_MODEL  -> primary (np. gpt-4o, claude-3-5-sonnet)
-     QBOT_PLANNER_BASE_URL (opcjonalnie, domyslnie OpenAI)
+    QBOT_PLANNER_BASE_URL (opcjonalnie, domyslnie OpenAI)
   2. Gemini flash (QGPT_API_KEY + QGPT_BASE_URL)  -> fallback free
 
 Przyklad konfiguracji OpenAI:
     QBOT_PLANNER_API_KEY=sk-...
     QBOT_PLANNER_MODEL=gpt-4o
 """
+
+# DEPRECATED (2026-06-15, Krok 3 Albert-first): plan_routes() nie jest już wywoływane z qbot3/adapters/mcp_adapter.py - Albert obsługuje zapytania routowe bezpośrednio (toolset już kompletny, zobacz _session_notes/krok3_diagnoza.md). Plik zostaje do obserwacji, usunięcie w Kroku 5 (porządki) po potwierdzeniu że nic go nie woła.
 
 from __future__ import annotations
 

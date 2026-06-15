@@ -18,7 +18,6 @@ from typing import Any
 
 from qbot3.agent_runtime import orchestrate_query
 from qbot3.fallback_policy import (
-    is_route_domain_query,
     planner_unavailable_response,
     should_use_albert_fallback,
 )
@@ -186,18 +185,7 @@ def _call_tool(req_id: Any, params: dict[str, Any]) -> dict[str, Any]:
                 # jak UNRECOGNIZED - przekaz do Alberta, ktory wykona zapis
                 # naprawde (zobacz _execute_single_tool: nutrition_log_add).
                 if vnext_result.get("status") in ("UNRECOGNIZED", "ACTION_REQUIRED"):
-                    if is_route_domain_query(query):
-                        from core.planner import plan_routes
-                        try:
-                            result = plan_routes(query)
-                        except Exception as exc:
-                            result = planner_unavailable_response(
-                                query,
-                                intent="planner_routes",
-                                source="qbot.query",
-                                fallback_reason=f"planner_error: {exc}",
-                            )
-                    elif should_use_albert_fallback(query):
+                    if should_use_albert_fallback(query):
                         result = orchestrate_query(query, context=args.get("context", ""))
                         from qbot3.response_normalizer import normalize_response
                         result = normalize_response(result)
@@ -212,18 +200,7 @@ def _call_tool(req_id: Any, params: dict[str, Any]) -> dict[str, Any]:
                 else:
                     result = vnext_result
             except Exception as exc:
-                if is_route_domain_query(query):
-                    from core.planner import plan_routes
-                    try:
-                        result = plan_routes(query)
-                    except Exception as planner_exc:
-                        result = planner_unavailable_response(
-                            query,
-                            intent="planner_routes",
-                            source="qbot.query",
-                            fallback_reason=f"query_vnext error: {exc}; planner_error: {planner_exc}",
-                        )
-                elif should_use_albert_fallback(query):
+                if should_use_albert_fallback(query):
                     result = orchestrate_query(query, context=args.get("context", ""))
                     from qbot3.response_normalizer import normalize_response
                     result = normalize_response(result)
@@ -236,18 +213,7 @@ def _call_tool(req_id: Any, params: dict[str, Any]) -> dict[str, Any]:
                         fallback_reason=f"query_vnext error: {exc}",
                     )
         else:
-            if is_route_domain_query(query):
-                from core.planner import plan_routes
-                try:
-                    result = plan_routes(query)
-                except Exception as exc:
-                    result = planner_unavailable_response(
-                        query,
-                        intent="planner_routes",
-                        source="qbot.query",
-                        fallback_reason=f"planner_error: {exc}",
-                    )
-            elif should_use_albert_fallback(query):
+            if should_use_albert_fallback(query):
                 result = orchestrate_query(query, context=args.get("context", ""))
                 from qbot3.response_normalizer import normalize_response
                 result = normalize_response(result)

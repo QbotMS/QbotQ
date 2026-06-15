@@ -72,11 +72,9 @@ def planner_unavailable_response(
 def should_use_albert_fallback(question: str) -> bool:
     """Czy zapytanie po UNRECOGNIZED ma trafic do Alberta.
 
-    Domena ZAMKNIETA (nie-route): TAK - Albert jako siatka na luki keywordow,
-    niezaleznie od QBOT_DISABLE_ALBERT_FALLBACK (ktory dotyczy tylko tras).
-    Domena OTWARTA (route): NIE - obsluguje ja Planner v2.
-    Awaryjny twardy kill QBOT_ALBERT_HARD_KILL wylacza wszystko.
+    Po Kroku 3 Albert obsluguje wszystkie domeny, bo ma juz kompletny
+    toolset routowy. Jedynym wylacznikiem pozostaje QBOT_ALBERT_HARD_KILL.
     """
     if albert_hard_killed():
         return False
-    return not is_route_domain_query(question)
+    return True
