@@ -4892,6 +4892,12 @@ def handle_query(question: str, context: dict | None = None) -> dict:
         "garmin_activity_detail",
         "weight_trend",
     }
+    # Multi-intent hijack guard ma być węższy niż ogólny analytical fallback:
+    # chronimy głównie intenty zapisu, które nie powinny wpadać w ogólny raport.
+    _MULTI_INTENT_HIJACK_EXEMPT = {
+        "write_meal", "write_delete_meal",
+        "write_planning_unsupported", "write_weight_unsupported",
+    }
     _ql_analytical = question.lower()
     _is_analytical = any(w in _ql_analytical for w in _ANALYTICAL_WORDS)
     _albert_enabled = __import__("os").getenv("QBOT3_ENABLED") == "1"
@@ -4925,7 +4931,7 @@ def handle_query(question: str, context: dict | None = None) -> dict:
     # ── Multi-intent: sprawdz czy pytanie obejmuje >1 domene ──────────
     # Multi-intent: sprawdz czy pytanie obejmuje >1 domene
     domains = _detect_domains(question)
-    if len(domains) >= 2:
+    if len(domains) >= 2 and intent not in _MULTI_INTENT_HIJACK_EXEMPT:
         return _handle_multi_intent(question, domains)
 
 
