@@ -440,6 +440,8 @@ INTENT_KEYWORDS: list[tuple[list[str], str]] = [
       "zapisz etap", "nowy etap"], "write_planning_unsupported"),
     (["ustaw wagę", "ustaw wage", "zmień wagę", "set weight",
       "wpisz wagę", "wpisz wage"], "write_weight_unsupported"),
+    (["bilans tygodnia", "bilans tygodniowy", "tygodniowy bilans",
+      "bilans za tydzień", "bilans za tydzien"], "nutrition_range"),
     (["bilans", "balance", "kalorii", "kalorie", "kcal"], "daily_balance"),
     # Safety: blokuj próby dostępu do tabel DB przez język naturalny
     (["qbot_v2.", "intake_logs", "meal_log_items", "public.nutrition",
