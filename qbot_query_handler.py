@@ -435,7 +435,7 @@ INTENT_KEYWORDS: list[tuple[list[str], str]] = [
       "dodaj do logu", "zapisz do logu", "wrzuć do logu", "wrzuc do logu",
       "dodaj do dziennika", "zapisz do dziennika"], "write_meal"),
     (["skasuj wpis", "usuń wpis", "skasuj posiłek", "usuń posiłek",
-      "skasuj ostatni", "usuń ostatni", "delete", "kasuj"], "write_delete_unsupported"),
+      "skasuj ostatni", "usuń ostatni", "delete", "kasuj"], "write_delete_meal"),
     (["dodaj etap", "dodaj trasę", "dodaj trasę", "utwórz etap",
       "zapisz etap", "nowy etap"], "write_planning_unsupported"),
     (["ustaw wagę", "ustaw wage", "zmień wagę", "set weight",
@@ -4832,7 +4832,7 @@ def handle_query(question: str, context: dict | None = None) -> dict:
         and _classify_domain(question) == "open"
         and intent not in {
             "unrecognized", "qbot_help", "qbot_incidents", "db_access_blocked",
-            "write_meal", "write_delete_unsupported",
+            "write_meal", "write_delete_meal",
             "write_planning_unsupported", "write_weight_unsupported",
         }
     )
@@ -4872,7 +4872,7 @@ def handle_query(question: str, context: dict | None = None) -> dict:
         "trip_summary", "route_climbs", "route_feasibility",
         "report_diagnostic", "ride_report", "daily_report",
         "artifact_search", "artifact_read",
-        "write_meal", "write_delete_unsupported", "write_planning_unsupported",
+        "write_meal", "write_delete_meal", "write_planning_unsupported",
         "write_weight_unsupported", "db_access_blocked",
         "unrecognized", "qbot_help", "qbot_incidents", "action_execute",
         "body_measurements_range", "training_recent",
@@ -5052,7 +5052,14 @@ def handle_query(question: str, context: dict | None = None) -> dict:
                          "Przykład: qbot.action_execute z action_type=nutrition_log_add.",
                          data={"action_type": "nutrition_log_add", "requires_confirm": True},
                          status_override="ACTION_REQUIRED")
-    elif intent == "write_delete_unsupported":
+    elif intent == "write_delete_meal":
+        _ql = question.lower()
+        if any(hint in _ql for hint in ("dziennik", "posił", "posile", "jedzen", "nutrition", "kcal", "kalor", "makro")):
+            return _envelope("write_delete_meal",
+                             "🗑️ Usuwanie wpisu wymaga wykonania przez Alberta.\n"
+                             "Użyj qbot.action_execute z action_type=nutrition_log_delete i confirm=true.",
+                             data={"action_type": "nutrition_log_delete", "requires_confirm": True},
+                             status_override="ACTION_REQUIRED")
         return _envelope("write_delete_unsupported",
                          "🚫 Kasowanie wpisów nie jest obsługiwane przez qbot.query.\n"
                          "Operacja delete nie jest na liście dozwolonych akcji.",

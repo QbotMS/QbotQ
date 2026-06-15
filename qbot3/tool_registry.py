@@ -2026,9 +2026,66 @@ def _load_nutrition_log_add_tool() -> dict[str, Any]:
             "kcal_total": {"type": "number"}, "protein_g": {"type": "number"},
             "carbs_g": {"type": "number"}, "fat_g": {"type": "number"},
         "template_id": {"type": "integer"},
-    },
-    "safety": "write",
+        },
+        "safety": "write",
 }
+
+
+def _load_nutrition_log_delete_tool() -> dict[str, Any]:
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        from qbot3.adapters.mcp_adapter import _execute_nutrition_delete
+        idem_key = _idempotency_key("nutr", json.dumps(args, sort_keys=True, ensure_ascii=False, default=str))
+        return _execute_nutrition_delete("nutrition_log_delete", args, idem_key)
+    return {
+        "callable": _safe_call,
+        "wrapped": _wrapper,
+        "category": "nutrition",
+        "description": (
+            "Delete one logged meal by meal_id. Use with nutrition_meal_list or nutrition_day_summary to discover the id first."
+        ),
+        "args_schema": {
+            "type": "object",
+            "properties": {
+                "meal_id": {"type": "integer", "description": "ID wpisu intake_logs"},
+                "meal_log_id": {"type": "integer", "description": "Alias meal_id"},
+                "intake_log_id": {"type": "integer", "description": "Alias meal_id"},
+            },
+            "required": ["meal_id"],
+        },
+        "safety": "write",
+    }
+
+
+def _load_nutrition_log_correct_tool() -> dict[str, Any]:
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        from qbot3.adapters.mcp_adapter import _execute_nutrition_correct
+        idem_key = _idempotency_key("nutr", json.dumps(args, sort_keys=True, ensure_ascii=False, default=str))
+        return _execute_nutrition_correct("nutrition_log_correct", args, idem_key)
+    return {
+        "callable": _safe_call,
+        "wrapped": _wrapper,
+        "category": "nutrition",
+        "description": (
+            "Correct one logged meal by meal_id. Use with nutrition_meal_list or nutrition_day_summary to discover the id first. "
+            "Supports optional item_id for a specific item inside the meal."
+        ),
+        "args_schema": {
+            "type": "object",
+            "properties": {
+                "meal_id": {"type": "integer", "description": "ID wpisu intake_logs"},
+                "meal_log_id": {"type": "integer", "description": "Alias meal_id"},
+                "intake_log_id": {"type": "integer", "description": "Alias meal_id"},
+                "item_id": {"type": "integer", "description": "Optional ID of a specific intake_items row"},
+                "meal_name": {"type": "string", "description": "New meal name"},
+                "kcal_total": {"type": "number", "description": "New kcal value"},
+                "protein_g": {"type": "number", "description": "New protein grams"},
+                "carbs_g": {"type": "number", "description": "New carbs grams"},
+                "fat_g": {"type": "number", "description": "New fat grams"},
+            },
+            "required": ["meal_id"],
+        },
+        "safety": "write",
+    }
 
 
 def _load_garmin_workout_create_tool() -> dict[str, Any]:
@@ -2373,6 +2430,8 @@ def _init_registry():
         ("db_select_readonly", _load_db_select_readonly_tool),
         # Write tools
         ("nutrition_log_add", _load_nutrition_log_add_tool),
+        ("nutrition_log_delete", _load_nutrition_log_delete_tool),
+        ("nutrition_log_correct", _load_nutrition_log_correct_tool),
         ("garmin_workout_create", _load_garmin_workout_create_tool),
         ("calendar_event_add", _load_calendar_event_add_tool),
         ("reminder_add", _load_reminder_add_tool),

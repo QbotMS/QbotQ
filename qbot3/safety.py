@@ -102,6 +102,18 @@ def validate(action_type: str, payload: dict[str, Any], idem_key: str, dry_run: 
         if any(v is not None for v in macros) and any(v in (None, "") for v in macros):
             return {"status": "BLOCKED", "error": "protein_g, carbs_g and fat_g must be provided together when known"}
 
+    if action_type in ("nutrition_log_delete", "nutrition_log_correct"):
+        meal_id = payload.get("meal_id") or payload.get("meal_log_id") or payload.get("intake_log_id")
+        if meal_id in (None, ""):
+            return {"status": "BLOCKED", "error": f"{action_type} payload missing required field: meal_id"}
+        try:
+            int(meal_id)
+        except Exception:
+            return {"status": "BLOCKED", "error": f"invalid meal_id: {meal_id}"}
+        if action_type == "nutrition_log_correct":
+            if not any(payload.get(field) not in (None, "") for field in ("meal_name", "kcal_total", "protein_g", "carbs_g", "fat_g", "item_id")):
+                return {"status": "BLOCKED", "error": "nutrition_log_correct requires at least one field to update"}
+
     if action_type == "qbot_artifact_put":
         required = ("project_id", "filename", "content_base64", "mime_type")
         missing = [f for f in required if not payload.get(f)]

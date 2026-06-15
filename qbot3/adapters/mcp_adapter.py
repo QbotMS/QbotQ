@@ -283,6 +283,12 @@ def _handle_action_execute(req_id: Any, args: dict[str, Any]) -> dict[str, Any]:
         write_result = _execute_nutrition_write(action_type, payload, idem_key)
         return _result(req_id, write_result)
 
+    if action_type == "nutrition_log_delete":
+        return _result(req_id, _execute_nutrition_delete(action_type, payload, idem_key))
+
+    if action_type == "nutrition_log_correct":
+        return _result(req_id, _execute_nutrition_correct(action_type, payload, idem_key))
+
     if action_type in ("calendar_event_add", "reminder_add", "memory_confirmed_fact_add"):
         return _result(req_id, {
             "tool": "qbot.action_execute", "status": "WRITE_NOT_AVAILABLE",
@@ -520,6 +526,301 @@ def _execute_nutrition_write(action_type: str, payload: dict[str, Any], idem_key
             "action_type": action_type, "idempotency_key": idem_key,
             "error": str(exc)[:500],
         }
+
+
+def _nutrition_summary_subset(summary: dict[str, Any] | None) -> dict[str, Any]:
+    return {
+        k: v for k, v in (summary or {}).items()
+        if k in (
+            "date",
+            "source",
+            "kcal_total",
+            "carbs_total",
+            "protein_total",
+            "fat_total",
+            "fiber_total",
+            "sodium_total",
+            "fluids_total",
+            "computed_at",
+        )
+    }
+
+
+def _execute_nutrition_delete(action_type: str, payload: dict[str, Any], idem_key: str) -> dict[str, Any]:
+    """Delete one qbot_v2 intake log and recompute the daily summary."""
+    from qbot_nutrition_db import _conn, daily_summary_compute, daily_summary_get, meal_log_list
+
+    meal_id_raw = payload.get("meal_id") or payload.get("meal_log_id") or payload.get("intake_log_id")
+    if meal_id_raw in (None, ""):
+        return {
+            "tool": "qbot.action_execute",
+            "status": "BLOCKED",
+            "execution_mode": "error",
+            "write_committed": False,
+            "commit_executed": False,
+            "action_type": action_type,
+            "idempotency_key": idem_key,
+            "error": "meal_id is required",
+        }
+    try:
+        meal_id = int(meal_id_raw)
+    except (TypeError, ValueError):
+        return {
+            "tool": "qbot.action_execute",
+            "status": "BLOCKED",
+            "execution_mode": "error",
+            "write_committed": False,
+            "commit_executed": False,
+            "action_type": action_type,
+            "idempotency_key": idem_key,
+            "error": "meal_id must be an integer",
+        }
+
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT id, date FROM qbot_v2.intake_logs WHERE id=%s",
+            (meal_id,),
+        ).fetchone()
+        if not row:
+            return {
+                "tool": "qbot.action_execute",
+                "status": "NOT_FOUND",
+                "execution_mode": "error",
+                "write_committed": False,
+                "commit_executed": False,
+                "action_type": action_type,
+                "idempotency_key": idem_key,
+                "meal_log_id": meal_id,
+                "error": f"intake_log {meal_id} not found",
+            }
+
+        date_str = str(row["date"])
+        before_summary = daily_summary_get(date_str)
+        items_count = conn.execute(
+            "SELECT COUNT(*) AS n FROM qbot_v2.intake_items WHERE intake_log_id=%s",
+            (meal_id,),
+        ).fetchone()["n"]
+
+        conn.execute("DELETE FROM qbot_v2.intake_items WHERE intake_log_id=%s", (meal_id,))
+        conn.execute("DELETE FROM qbot_v2.intake_logs WHERE id=%s", (meal_id,))
+        conn.commit()
+
+    after_summary = daily_summary_compute(date_str)
+    remaining = [meal for meal in meal_log_list(date_str=date_str, limit=500) if meal.get("id") == meal_id]
+    verification_error = None
+    if remaining:
+        verification_error = "deleted meal still visible in meal_log_list"
+    elif after_summary is None:
+        verification_error = "daily_summary_compute returned no summary"
+
+    if verification_error:
+        return {
+            "tool": "qbot.action_execute",
+            "status": "WRITE_INCONSISTENT",
+            "execution_mode": "real_write",
+            "write_committed": True,
+            "commit_executed": True,
+            "action_type": action_type,
+            "idempotency_key": idem_key,
+            "meal_log_id": meal_id,
+            "deleted_items_count": int(items_count),
+            "before_summary": _nutrition_summary_subset(before_summary),
+            "after_summary": _nutrition_summary_subset(after_summary),
+            "error": verification_error,
+        }
+
+    return {
+        "tool": "qbot.action_execute",
+        "status": "OK",
+        "execution_mode": "real_write",
+        "write_committed": True,
+        "commit_executed": True,
+        "action_type": action_type,
+        "idempotency_key": idem_key,
+        "meal_log_id": meal_id,
+        "deleted_items_count": int(items_count),
+        "before_summary": _nutrition_summary_subset(before_summary),
+        "after_summary": _nutrition_summary_subset(after_summary),
+        "note": "Meal deleted and daily summary recomputed.",
+    }
+
+
+def _execute_nutrition_correct(action_type: str, payload: dict[str, Any], idem_key: str) -> dict[str, Any]:
+    """Update one qbot_v2 intake log or intake item and recompute the daily summary."""
+    from qbot_nutrition_db import _conn, daily_summary_compute, daily_summary_get, meal_log_list
+
+    meal_id_raw = payload.get("meal_id") or payload.get("meal_log_id") or payload.get("intake_log_id")
+    if meal_id_raw in (None, ""):
+        return {
+            "tool": "qbot.action_execute",
+            "status": "BLOCKED",
+            "execution_mode": "error",
+            "write_committed": False,
+            "commit_executed": False,
+            "action_type": action_type,
+            "idempotency_key": idem_key,
+            "error": "meal_id is required",
+        }
+    try:
+        meal_id = int(meal_id_raw)
+    except (TypeError, ValueError):
+        return {
+            "tool": "qbot.action_execute",
+            "status": "BLOCKED",
+            "execution_mode": "error",
+            "write_committed": False,
+            "commit_executed": False,
+            "action_type": action_type,
+            "idempotency_key": idem_key,
+            "error": "meal_id must be an integer",
+        }
+
+    item_id_raw = payload.get("item_id")
+    item_id: int | None = None
+    if item_id_raw not in (None, ""):
+        try:
+            item_id = int(item_id_raw)
+        except (TypeError, ValueError):
+            return {
+                "tool": "qbot.action_execute",
+                "status": "BLOCKED",
+                "execution_mode": "error",
+                "write_committed": False,
+                "commit_executed": False,
+                "action_type": action_type,
+                "idempotency_key": idem_key,
+                "error": "item_id must be an integer",
+            }
+
+    updates: dict[str, Any] = {}
+    if payload.get("meal_name") not in (None, ""):
+        updates["food_name"] = str(payload.get("meal_name")).strip()
+    for field in ("kcal_total", "protein_g", "carbs_g", "fat_g"):
+        if payload.get(field) not in (None, ""):
+            updates["kcal" if field == "kcal_total" else field] = payload.get(field)
+
+    if not updates:
+        return {
+            "tool": "qbot.action_execute",
+            "status": "BLOCKED",
+            "execution_mode": "error",
+            "write_committed": False,
+            "commit_executed": False,
+            "action_type": action_type,
+            "idempotency_key": idem_key,
+            "error": "At least one field to correct is required",
+        }
+
+    with _conn() as conn:
+        meal = conn.execute(
+            "SELECT id, date FROM qbot_v2.intake_logs WHERE id=%s",
+            (meal_id,),
+        ).fetchone()
+        if not meal:
+            return {
+                "tool": "qbot.action_execute",
+                "status": "NOT_FOUND",
+                "execution_mode": "error",
+                "write_committed": False,
+                "commit_executed": False,
+                "action_type": action_type,
+                "idempotency_key": idem_key,
+                "meal_log_id": meal_id,
+                "error": f"intake_log {meal_id} not found",
+            }
+
+        date_str = str(meal["date"])
+        before_summary = daily_summary_get(date_str)
+
+        target_where = "intake_log_id=%s"
+        target_args: list[Any] = [meal_id]
+        if item_id is not None:
+            item_row = conn.execute(
+                "SELECT id FROM qbot_v2.intake_items WHERE id=%s AND intake_log_id=%s",
+                (item_id, meal_id),
+            ).fetchone()
+            if not item_row:
+                return {
+                    "tool": "qbot.action_execute",
+                    "status": "NOT_FOUND",
+                    "execution_mode": "error",
+                    "write_committed": False,
+                    "commit_executed": False,
+                    "action_type": action_type,
+                    "idempotency_key": idem_key,
+                    "meal_log_id": meal_id,
+                    "item_id": item_id,
+                    "error": f"item_id {item_id} does not belong to meal_id {meal_id}",
+                }
+            target_where = "id=%s"
+            target_args = [item_id]
+
+        if "food_name" in updates:
+            conn.execute("UPDATE qbot_v2.intake_logs SET note=%s WHERE id=%s", (updates["food_name"], meal_id))
+
+        set_clause = ", ".join(f"{col}=%s" for col in updates)
+        conn.execute(
+            f"UPDATE qbot_v2.intake_items SET {set_clause} WHERE {target_where}",
+            list(updates.values()) + target_args,
+        )
+        conn.commit()
+
+    after_summary = daily_summary_compute(date_str)
+    meals_today = meal_log_list(date_str=date_str, limit=500)
+    match = next((meal for meal in meals_today if meal.get("id") == meal_id), None)
+    verification_error = None
+    if not match:
+        verification_error = "corrected meal not visible in meal_log_list"
+    else:
+        items = match.get("items", []) or []
+        if "food_name" in updates:
+            if item_id is not None:
+                item_match = next((item for item in items if item.get("id") == item_id), None)
+                if not item_match or str(item_match.get("food_name", "")) != str(updates["food_name"]):
+                    verification_error = "corrected item_name not visible after update"
+            elif not items or any(str(item.get("food_name", "")) != str(updates["food_name"]) for item in items):
+                verification_error = "corrected meal_name not visible after update"
+        for field, db_field in (("kcal_total", "kcal"), ("protein_g", "protein_g"), ("carbs_g", "carbs_g"), ("fat_g", "fat_g")):
+            if field in updates and verification_error is None:
+                if item_id is not None:
+                    item_match = next((item for item in items if item.get("id") == item_id), None)
+                    if not item_match or float(item_match.get(db_field, 0) or 0) != float(updates[field]):
+                        verification_error = f"corrected {field} not visible after update"
+                elif not items or any(float(item.get(db_field, 0) or 0) != float(updates[field]) for item in items):
+                    verification_error = f"corrected {field} not visible after update"
+
+    if verification_error:
+        return {
+            "tool": "qbot.action_execute",
+            "status": "WRITE_INCONSISTENT",
+            "execution_mode": "real_write",
+            "write_committed": True,
+            "commit_executed": True,
+            "action_type": action_type,
+            "idempotency_key": idem_key,
+            "meal_log_id": meal_id,
+            "item_id": item_id,
+            "before_summary": _nutrition_summary_subset(before_summary),
+            "after_summary": _nutrition_summary_subset(after_summary),
+            "updates": updates,
+            "error": verification_error,
+        }
+
+    return {
+        "tool": "qbot.action_execute",
+        "status": "OK",
+        "execution_mode": "real_write",
+        "write_committed": True,
+        "commit_executed": True,
+        "action_type": action_type,
+        "idempotency_key": idem_key,
+        "meal_log_id": meal_id,
+        "item_id": item_id,
+        "before_summary": _nutrition_summary_subset(before_summary),
+        "after_summary": _nutrition_summary_subset(after_summary),
+        "updates": updates,
+        "note": "Meal corrected and daily summary recomputed.",
+    }
 
 
 def _result(req_id: Any, data: dict) -> dict[str, Any]:

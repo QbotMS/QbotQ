@@ -30,10 +30,8 @@ def _execute_single_tool(tool_name: str, args: dict) -> dict:
     from qbot3.tool_registry import list_write_tools
 
     write_tools = list_write_tools()
-    if tool_name == "nutrition_log_add":
-        # Albert-first (2026-06-15): zapis posilku WYKONYWANY NAPRAWDE,
-        # nie WRITE_DRAFT. GPT i tak nie pyta o confirm - draft byl tylko
-        # dodatkowym skokiem gdzie zapis sie gubil.
+    if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct"):
+        # Albert-first (2026-06-15): nutrition write actions execute for real.
         from qbot3.safety import validate
         from qbot3.tool_registry import _idempotency_key
 
@@ -41,17 +39,26 @@ def _execute_single_tool(tool_name: str, args: dict) -> dict:
         payload.setdefault("source", "albert")
         idem_key = _idempotency_key("nutr", json.dumps(args, sort_keys=True, default=str))
 
-        validation = validate("nutrition_log_add", payload, idem_key)
+        validation = validate(tool_name, payload, idem_key)
         if validation.get("status") != "OK":
             return {
                 "status": "error",
                 "action_type": tool_name,
-                "error": f"nutrition_log_add validation failed: {validation.get('error')}",
+                "error": f"{tool_name} validation failed: {validation.get('error')}",
                 "payload_json": payload,
             }
 
-        from qbot3.adapters.mcp_adapter import _execute_nutrition_write
-        write_result = _execute_nutrition_write("nutrition_log_add", payload, idem_key)
+        from qbot3.adapters.mcp_adapter import (
+            _execute_nutrition_correct,
+            _execute_nutrition_delete,
+            _execute_nutrition_write,
+        )
+        if tool_name == "nutrition_log_add":
+            write_result = _execute_nutrition_write(tool_name, payload, idem_key)
+        elif tool_name == "nutrition_log_delete":
+            write_result = _execute_nutrition_delete(tool_name, payload, idem_key)
+        else:
+            write_result = _execute_nutrition_correct(tool_name, payload, idem_key)
         write_result.setdefault("status", "OK" if write_result.get("write_committed") else "WRITE_ERROR")
         return write_result
 
@@ -150,7 +157,7 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
     _write_call_cache: dict[str, dict] = {}
 
     def _execute_tool_dedup(tool_name: str, args: dict) -> dict:
-        if tool_name == "nutrition_log_add":
+        if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct"):
             from qbot3.tool_registry import _idempotency_key
             cache_key = _idempotency_key("nutr", json.dumps(args, sort_keys=True, default=str))
             if cache_key in _write_call_cache:
@@ -363,8 +370,32 @@ _DESTRUCTIVE_PATTERNS = [
 ]
 
 
+def _looks_like_nutrition_delete_request(question: str) -> bool:
+    ql = question.lower()
+    if not any(pat in ql for pat in ("usuń", "skasuj", "delete", "remove", "usun")):
+        return False
+    if any(pat in ql for pat in ("wszystko", "wszystkie", "all", "everything", "wyczyść")):
+        return False
+    return any(
+        hint in ql
+        for hint in (
+            "dziennik",
+            "wpis do dziennika",
+            "posiłk",
+            "posilek",
+            "jedzen",
+            "nutrition",
+            "kalori",
+            "kcal",
+            "makro",
+        )
+    )
+
+
 def _is_destructive_query(question: str) -> bool:
     ql = question.lower().strip()
+    if _looks_like_nutrition_delete_request(ql):
+        return False
     for pat in _DESTRUCTIVE_PATTERNS:
         if ql.startswith(pat) or pat in ql.split()[:3]:
             return True
