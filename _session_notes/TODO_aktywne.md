@@ -1,1 +1,1 @@
-- TODO (duza sesja, NIE porzadki): Dokończenie Kroku 3 dla domeny tras - zobacz [`_session_notes/krok8_architektura_korekta.md`](/opt/qbot/app/_session_notes/krok8_architektura_korekta.md). `core/planner.py` NIE do usunięcia bez tego.
+- Krok 3c (NOWA SESJA): `route_poi_analyze_readonly` (opcja 1a) + audyt 4 pozostalych `WRITE_DRAFT`. START: [`_session_notes/krok3c_punkt_startowy.md`](/opt/qbot/app/_session_notes/krok3c_punkt_startowy.md), ZADANIE 1 (rozstrzygnij H1 vs H2 dla `WRITE_DRAFT` w `_tool_qbot_route_poi_analyze` PRZED implementacja).
