@@ -1,0 +1,1 @@
+- TODO (duza sesja, NIE porzadki): Dokończenie Kroku 3 dla domeny tras - zobacz [`_session_notes/krok8_architektura_korekta.md`](/opt/qbot/app/_session_notes/krok8_architektura_korekta.md). `core/planner.py` NIE do usunięcia bez tego.
