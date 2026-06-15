@@ -20,34 +20,34 @@ from qbot3.observability import log_request, Timer, request_id as rid
 from qbot3.fallback_policy import planner_unavailable_response
 
 
-def _execute_single_tool(tool_name: str, args: dict) -> dict:
-    """Wykonuje jedno narzędzie wskazane przez Alberta.
+def _execute_real_write_tool(tool_name: str, args: dict) -> dict:
+    """Execute a real write tool from Albert without drafting."""
+    from qbot3.safety import validate
+    from qbot3.tool_registry import _idempotency_key
 
-    Używane przez albert.run() jako execute_tool_fn.
-    Pilnuje bezpieczeństwa: blokuje write tools przez qbot.query.
-    """
-    from qbot3.errors import SAFETY_BLOCKED
-    from qbot3.tool_registry import list_write_tools
-
-    write_tools = list_write_tools()
+    payload = dict(args)
     if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct"):
-        # Albert-first (2026-06-15): nutrition write actions execute for real.
-        from qbot3.safety import validate
-        from qbot3.tool_registry import _idempotency_key
-
-        payload = dict(args)
         payload.setdefault("source", "albert")
-        idem_key = _idempotency_key("nutr", json.dumps(args, sort_keys=True, default=str))
 
-        validation = validate(tool_name, payload, idem_key)
-        if validation.get("status") != "OK":
-            return {
-                "status": "error",
-                "action_type": tool_name,
-                "error": f"{tool_name} validation failed: {validation.get('error')}",
-                "payload_json": payload,
-            }
+    idem_prefix = {
+        "nutrition_log_add": "nutr",
+        "nutrition_log_delete": "nutr",
+        "nutrition_log_correct": "nutr",
+        "calendar_event_add": "cal",
+        "reminder_add": "rem",
+    }.get(tool_name, tool_name[:8] or "wr")
+    idem_key = _idempotency_key(idem_prefix, json.dumps(args, sort_keys=True, default=str))
 
+    validation = validate(tool_name, payload, idem_key)
+    if validation.get("status") != "OK":
+        return {
+            "status": "error",
+            "action_type": tool_name,
+            "error": f"{tool_name} validation failed: {validation.get('error')}",
+            "payload_json": payload,
+        }
+
+    if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct"):
         from qbot3.adapters.mcp_adapter import (
             _execute_nutrition_correct,
             _execute_nutrition_delete,
@@ -61,6 +61,46 @@ def _execute_single_tool(tool_name: str, args: dict) -> dict:
             write_result = _execute_nutrition_correct(tool_name, payload, idem_key)
         write_result.setdefault("status", "OK" if write_result.get("write_committed") else "WRITE_ERROR")
         return write_result
+
+    if tool_name == "calendar_event_add":
+        from qbot_mcp_adapter import _action_exec_event
+        write_result = _action_exec_event(payload, idem_key, source="albert")
+        success = write_result.get("status") == "OK"
+        write_result.setdefault("execution_mode", "real_write")
+        write_result.setdefault("write_committed", success)
+        write_result.setdefault("commit_executed", success)
+        return write_result
+
+    if tool_name == "reminder_add":
+        from qbot_mcp_adapter import _action_exec_reminder
+        write_result = _action_exec_reminder(payload, idem_key, source="albert")
+        success = write_result.get("status") == "OK"
+        write_result.setdefault("execution_mode", "real_write")
+        write_result.setdefault("write_committed", success)
+        write_result.setdefault("commit_executed", success)
+        return write_result
+
+    return {
+        "status": "error",
+        "action_type": tool_name,
+        "error": f"Nieobslugiwane narzedzie zapisu: {tool_name}",
+        "payload_json": payload,
+    }
+
+
+def _execute_single_tool(tool_name: str, args: dict) -> dict:
+    """Wykonuje jedno narzędzie wskazane przez Alberta.
+
+    Używane przez albert.run() jako execute_tool_fn.
+    Pilnuje bezpieczeństwa: blokuje write tools przez qbot.query.
+    """
+    from qbot3.errors import SAFETY_BLOCKED
+    from qbot3.tool_registry import list_write_tools
+
+    write_tools = list_write_tools()
+    if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct",
+                     "calendar_event_add", "reminder_add"):
+        return _execute_real_write_tool(tool_name, args)
 
     if tool_name in write_tools:
         return {
@@ -150,15 +190,22 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
 
     # ── Uruchom Alberta ─────────────────────────────────────────────────────
     # Dedup cache per-run (2026-06-15): jesli model w jednej turze wywola
-    # nutrition_log_add wiecej niz raz z tymi samymi danymi (tool_choice=
-    # 'required' moze zwrocic >1 tool_call na odpowiedz), drugi i kolejne
+    # ten sam tool write wiecej niz raz z tymi samymi danymi, drugi i kolejne
     # wywolania dostaja CACHED wynik pierwszego - zero dodatkowych zapisow.
     _write_call_cache: dict[str, dict] = {}
 
     def _execute_tool_dedup(tool_name: str, args: dict) -> dict:
-        if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct"):
+        if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct",
+                         "calendar_event_add", "reminder_add"):
             from qbot3.tool_registry import _idempotency_key
-            cache_key = _idempotency_key("nutr", json.dumps(args, sort_keys=True, default=str))
+            prefix = {
+                "nutrition_log_add": "nutr",
+                "nutrition_log_delete": "nutr",
+                "nutrition_log_correct": "nutr",
+                "calendar_event_add": "cal",
+                "reminder_add": "rem",
+            }.get(tool_name, tool_name[:8] or "wr")
+            cache_key = _idempotency_key(prefix, json.dumps(args, sort_keys=True, default=str))
             if cache_key in _write_call_cache:
                 cached = dict(_write_call_cache[cache_key])
                 cached["duplicate_call_suppressed"] = True

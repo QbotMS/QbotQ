@@ -148,6 +148,10 @@ Zasady bezpieczeństwa:
 - Jeśli tool zwrócił WRITE_DRAFT → to NIE JEST zapis. To tylko draft.
 - Odczyt danych → wywołaj narzędzia i odpowiedz na podstawie wyników.
 - Nie wymyślaj wartości których nie ma w wynikach narzędzi.
+- Dla calendar_event_add i reminder_add wykonaj zapis tylko raz. Gdy tool
+  zwróci OK lub DUPLICATE, nie ponawiaj tego samego zapisu.
+- Dla calendar_event_add użyj date_start i title; time_start jest godziną
+  zdarzenia. Dla reminder_add użyj date i title; time jest godziną.
 - Jeśli tool zwrócił dane — użyj ich. NIE mów "brak danych" gdy dane są.
 - Jeśli DB nie ma rekordu dla daty — sprawdź live connector (garmin_live_fetch,
   wellness_day, xert_readiness) zamiast kończyć odpowiedzią "brak danych".

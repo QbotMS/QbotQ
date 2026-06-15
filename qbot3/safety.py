@@ -114,6 +114,37 @@ def validate(action_type: str, payload: dict[str, Any], idem_key: str, dry_run: 
             if not any(payload.get(field) not in (None, "") for field in ("meal_name", "kcal_total", "protein_g", "carbs_g", "fat_g", "item_id")):
                 return {"status": "BLOCKED", "error": "nutrition_log_correct requires at least one field to update"}
 
+    if action_type == "calendar_event_add":
+        required = ("date_start", "title")
+        missing = [field for field in required if payload.get(field) in (None, "")]
+        if missing:
+            return {"status": "BLOCKED", "error": f"calendar_event_add payload missing required fields: {', '.join(missing)}"}
+        date_raw = str(payload.get("date_start", "")).strip()
+        try:
+            from datetime import date as dt_date
+            dt_date.fromisoformat(date_raw[:10])
+        except Exception:
+            return {"status": "BLOCKED", "error": f"invalid calendar date_start: {date_raw}"}
+        if payload.get("date_end") not in (None, ""):
+            end_raw = str(payload.get("date_end", "")).strip()
+            try:
+                from datetime import date as dt_date
+                dt_date.fromisoformat(end_raw[:10])
+            except Exception:
+                return {"status": "BLOCKED", "error": f"invalid calendar date_end: {end_raw}"}
+
+    if action_type == "reminder_add":
+        required = ("date", "title")
+        missing = [field for field in required if payload.get(field) in (None, "")]
+        if missing:
+            return {"status": "BLOCKED", "error": f"reminder_add payload missing required fields: {', '.join(missing)}"}
+        date_raw = str(payload.get("date", "")).strip()
+        try:
+            from datetime import date as dt_date
+            dt_date.fromisoformat(date_raw[:10])
+        except Exception:
+            return {"status": "BLOCKED", "error": f"invalid reminder date: {date_raw}"}
+
     if action_type == "qbot_artifact_put":
         required = ("project_id", "filename", "content_base64", "mime_type")
         missing = [f for f in required if not payload.get(f)]

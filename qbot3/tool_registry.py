@@ -2134,12 +2134,23 @@ def _load_calendar_event_add_tool() -> dict[str, Any]:
     return {
         "callable": lambda args: _safe_call(TOOL_FUNC, args),
         "category": "calendar",
-        "description": "Add a calendar event. Parameters: date_start (ISO), time_start, title, description, event_type, date_end, all_day",
+        "description": (
+            "Add a calendar event. Use for natural requests like 'dodaj do kalendarza'. "
+            "Required: date_start (ISO), title. Optional: time_start, date_end, event_type, description, all_day."
+        ),
         "args_schema": {
-            "date_start": {"type": "string"}, "time_start": {"type": "string"},
-            "title": {"type": "string"}, "description": {"type": "string"},
-            "event_type": {"type": "string"}, "date_end": {"type": "string"},
-            "all_day": {"type": "boolean"},
+            "type": "object",
+            "properties": {
+                "date_start": {"type": "string", "description": "ISO date or datetime start"},
+                "time_start": {"type": "string", "description": "Optional HH:MM start time"},
+                "title": {"type": "string", "description": "Event title"},
+                "description": {"type": "string", "description": "Optional event description"},
+                "event_type": {"type": "string", "description": "Optional event type"},
+                "date_end": {"type": "string", "description": "Optional ISO end date"},
+                "all_day": {"type": "boolean", "description": "Optional all-day flag"},
+            },
+            "required": ["date_start", "title"],
+            "additionalProperties": False,
         },
         "safety": "write",
     }
@@ -2157,10 +2168,24 @@ def _load_reminder_add_tool() -> dict[str, Any]:
     return {
         "callable": lambda args: _safe_call(TOOL_FUNC, args),
         "category": "calendar",
-        "description": "Add a reminder. Parameters: date (ISO), time, title, message",
+        "description": (
+            "Add a reminder. Use for natural requests like 'dodaj przypomnienie'. "
+            "Required: date (ISO), title. Optional: time, message, reminder_type, priority, channel, recurrence_rule."
+        ),
         "args_schema": {
-            "date": {"type": "string"}, "time": {"type": "string"},
-            "title": {"type": "string"}, "message": {"type": "string"},
+            "type": "object",
+            "properties": {
+                "date": {"type": "string", "description": "ISO reminder date"},
+                "time": {"type": "string", "description": "Optional HH:MM reminder time"},
+                "title": {"type": "string", "description": "Reminder title"},
+                "message": {"type": "string", "description": "Optional reminder message"},
+                "reminder_type": {"type": "string", "description": "Optional reminder type"},
+                "priority": {"type": "string", "description": "Optional priority"},
+                "channel": {"type": "string", "description": "Optional channel"},
+                "recurrence_rule": {"type": "string", "description": "Optional recurrence rule"},
+            },
+            "required": ["date", "title"],
+            "additionalProperties": False,
         },
         "safety": "write",
     }
