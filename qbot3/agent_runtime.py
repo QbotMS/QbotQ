@@ -30,6 +30,31 @@ def _execute_single_tool(tool_name: str, args: dict) -> dict:
     from qbot3.tool_registry import list_write_tools
 
     write_tools = list_write_tools()
+    if tool_name == "nutrition_log_add":
+        # Albert-first (2026-06-15): zapis posilku WYKONYWANY NAPRAWDE,
+        # nie WRITE_DRAFT. GPT i tak nie pyta o confirm - draft byl tylko
+        # dodatkowym skokiem gdzie zapis sie gubil.
+        from qbot3.safety import validate
+        from qbot3.tool_registry import _idempotency_key
+
+        payload = dict(args)
+        payload.setdefault("source", "albert")
+        idem_key = _idempotency_key("nutr", json.dumps(args, sort_keys=True, default=str))
+
+        validation = validate("nutrition_log_add", payload, idem_key)
+        if validation.get("status") != "OK":
+            return {
+                "status": "error",
+                "action_type": tool_name,
+                "error": f"nutrition_log_add validation failed: {validation.get('error')}",
+                "payload_json": payload,
+            }
+
+        from qbot3.adapters.mcp_adapter import _execute_nutrition_write
+        write_result = _execute_nutrition_write("nutrition_log_add", payload, idem_key)
+        write_result.setdefault("status", "OK" if write_result.get("write_committed") else "WRITE_ERROR")
+        return write_result
+
     if tool_name in write_tools:
         return {
             "status": "WRITE_DRAFT",
@@ -118,10 +143,29 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
     tools_spec = build_tools_spec(tools_desc)
 
     # ── Uruchom Alberta ─────────────────────────────────────────────────────
+    # Dedup cache per-run (2026-06-15): jesli model w jednej turze wywola
+    # nutrition_log_add wiecej niz raz z tymi samymi danymi (tool_choice=
+    # 'required' moze zwrocic >1 tool_call na odpowiedz), drugi i kolejne
+    # wywolania dostaja CACHED wynik pierwszego - zero dodatkowych zapisow.
+    _write_call_cache: dict[str, dict] = {}
+
+    def _execute_tool_dedup(tool_name: str, args: dict) -> dict:
+        if tool_name == "nutrition_log_add":
+            from qbot3.tool_registry import _idempotency_key
+            cache_key = _idempotency_key("nutr", json.dumps(args, sort_keys=True, default=str))
+            if cache_key in _write_call_cache:
+                cached = dict(_write_call_cache[cache_key])
+                cached["duplicate_call_suppressed"] = True
+                return cached
+            result = _execute_single_tool(tool_name, args)
+            _write_call_cache[cache_key] = result
+            return result
+        return _execute_single_tool(tool_name, args)
+
     albert_result = albert_run(
         question=question,
         tools_spec=tools_spec,
-        execute_tool_fn=_execute_single_tool,
+        execute_tool_fn=_execute_tool_dedup,
         context=ctx,
         override_api_key=os.getenv("QGPT_ANALYTICAL_API_KEY", ""),
         override_base_url=os.getenv("QGPT_ANALYTICAL_BASE_URL", ""),

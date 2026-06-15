@@ -181,7 +181,11 @@ def _call_tool(req_id: Any, params: dict[str, Any]) -> dict[str, Any]:
             try:
                 from qbot_query_handler import handle_query
                 vnext_result = handle_query(question=query, context=args.get("context"))
-                if vnext_result.get("status") == "UNRECOGNIZED":
+                # Albert-first (2026-06-15): ACTION_REQUIRED (keyword zlapal
+                # write_meal, ale potrzebuje LLM do dokonczenia zapisu) traktuj
+                # jak UNRECOGNIZED - przekaz do Alberta, ktory wykona zapis
+                # naprawde (zobacz _execute_single_tool: nutrition_log_add).
+                if vnext_result.get("status") in ("UNRECOGNIZED", "ACTION_REQUIRED"):
                     if is_route_domain_query(query):
                         from core.planner import plan_routes
                         try:

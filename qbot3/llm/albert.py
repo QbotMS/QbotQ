@@ -231,6 +231,8 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict,
 
     _log.info(f"Albert start: model={_MODEL} base_url={_BASE_URL} tools={len(tools_spec)} question={question[:80]}")
 
+    _had_successful_write = False
+
     for step in range(_MAX_STEPS):
         steps = step + 1
 
@@ -243,7 +245,13 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict,
             }
             if tools_spec:
                 kwargs["tools"] = tools_spec
-                kwargs["tool_choice"] = "required"
+                # Po udanym realnym zapisie (write_committed=True) zdejmij
+                # przymus tool_choice='required' - model moze odpowiedziec
+                # tekstem ("Zapisano X") bez przymusu ponownego wywolania
+                # tego samego narzedzia (temperature=0 -> deterministycznie
+                # wybralby je ponownie, dedup blokuje zapis ale model i tak
+                # probuje dalej do limitu krokow).
+                kwargs["tool_choice"] = "auto" if _had_successful_write else "required"
 
             response = client.chat.completions.create(**kwargs)
         except Exception as exc:
@@ -361,6 +369,9 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict,
                 "status": result.get("status", "OK") if isinstance(result, dict) else "OK",
                 "data": result,
             })
+
+            if isinstance(result, dict) and result.get("write_committed") is True:
+                _had_successful_write = True
 
             # Wykryj write draft — zapisz action_draft do zwrotu
             if isinstance(result, dict) and result.get("status") == "WRITE_DRAFT":
