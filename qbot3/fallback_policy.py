@@ -37,3 +37,33 @@ def planner_unavailable_response(
         "fallback_reason": reason,
         "warnings": ["planner_unavailable"],
     }
+
+
+# Compatibility shim for qbot_mcp_adapter import.
+# Added because qbot_mcp_adapter imports is_route_domain_query,
+# but current fallback_policy.py does not expose it.
+def is_route_domain_query(query: str) -> bool:
+    q = (query or "").lower()
+    route_keywords = (
+        "rwgps",
+        "ridewithgps",
+        "route",
+        "trasa",
+        "trasy",
+        "gpx",
+        "profil",
+        "nawierzchnia",
+        "surface",
+        "podjazd",
+        "podjazdy",
+        "etap",
+        "etapy",
+    )
+    return any(k in q for k in route_keywords)
+
+def should_use_albert_fallback(question: str) -> bool:
+    """Compat shim for qbot_mcp_adapter import.
+    qbot_api.py imports qbot_mcp_adapter at module load. Albert-first no longer
+    uses this for routing, so keep the legacy import alive and return False."""
+    return False
+
