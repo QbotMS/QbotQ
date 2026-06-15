@@ -71,8 +71,7 @@ def _execute_single_tool(tool_name: str, args: dict) -> dict:
             "write_not_performed": True,
             "message": (
                 f"⚠️ TO JEST TYLKO DRAFT — NIE WYKONANO ZAPISU.\n"
-                f"Aby wykonać, użyj qbot.action_execute z action_type='{tool_name}', "
-                f"payload_json z danymi poniżej, confirm=true.\n"
+                f"Ta operacja ({tool_name}) nie jest jeszcze wspierana przez automatyczny zapis w qbot.query.\n"
                 f"Payload: {json.dumps(args, ensure_ascii=False, default=str)[:500]}"
             ),
         }
