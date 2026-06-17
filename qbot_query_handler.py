@@ -651,6 +651,74 @@ def _looks_like_inline_meal_log(question: str) -> bool:
     name_tokens = [t for t in re.findall(r"[a-ząćęłńóśźż]{3,}", without_numbers)
                    if t not in ("oraz", "plus", "and")]
     return len(name_tokens) >= 1
+
+
+def _albert_to_planner_shape(alb: dict, question: str) -> dict:
+    if not isinstance(alb, dict):
+        return {
+            "status": "ERROR",
+            "answer": "Albert zwrócił nieprawidłowy wynik",
+            "intent": "albert_routes",
+            "planner": "albert",
+        }
+
+    plan = alb.get("plan") or {}
+    trace = alb.get("trace") or []
+    tool_results = alb.get("tool_results") or []
+    orchestrator = alb.get("orchestrator") or alb.get("final_llm") or "albert"
+
+    def _provider_label(provider) -> str:
+        if isinstance(provider, dict):
+            return str(provider.get("name") or provider.get("model") or provider.get("version") or "albert")
+        return str(getattr(provider, "name", None) or getattr(provider, "model", None) or provider)
+
+    steps = None
+    if isinstance(trace, dict):
+        tools_called = trace.get("tools_called")
+        if isinstance(tools_called, list):
+            steps = len(tools_called)
+        elif isinstance(trace.get("step_count"), int):
+            steps = trace.get("step_count")
+    elif isinstance(trace, list):
+        steps = len(trace)
+    if steps is None and isinstance(plan, dict):
+        plan_steps = plan.get("steps")
+        if isinstance(plan_steps, list):
+            steps = len(plan_steps)
+        elif isinstance(plan_steps, int):
+            steps = plan_steps
+
+    tool_calls: list[str] = []
+    if isinstance(trace, list):
+        for item in trace:
+            if isinstance(item, dict):
+                tool_name = item.get("tool") or item.get("name")
+                if tool_name:
+                    tool_calls.append(str(tool_name))
+
+    sources_used: list[str] = []
+    if isinstance(tool_results, list):
+        for item in tool_results:
+            if isinstance(item, dict):
+                tool_name = item.get("tool") or item.get("name")
+                if tool_name:
+                    sources_used.append(str(tool_name))
+
+    return {
+        "status": alb.get("status", "OK"),
+        "answer": alb.get("answer") or alb.get("human_answer") or "",
+        "intent": "albert_routes",
+        "planner": "albert",
+        "steps": steps,
+        "tool_calls": tool_calls or list(plan.get("tool_calls") or []),
+        "sources_used": sources_used or list(plan.get("sources_used") or []),
+        "active_provider": _provider_label(orchestrator),
+        "confidence": alb.get("confidence"),
+        "missing_fields": alb.get("missing_fields") or [],
+        "request_id": alb.get("request_id"),
+        "router_v2": f"open_domain intent={plan.get('intent') or 'albert_routes'} engine=albert",
+        "_albert_raw_status": alb.get("status"),
+    }
 # Sygnaly ze to commit ZYWIENIA (cel zapisu / kontekst posilku)
 _MEAL_COMMIT_SIGNALS = (
     "spożyci", "spozyci", "spożyc", "spozyc",
@@ -4849,13 +4917,26 @@ def handle_query(question: str, context: dict | None = None) -> dict:
     )
     if _rv2_is_open_intent or _rv2_domain_conflict:
         try:
-            from core.planner import plan_routes
-            _rv2_result = plan_routes(question=question)
-            _rv2_result["router_v2"] = (
-                f"open_domain intent={intent} "
-                f"conflict={_rv2_domain_conflict}"
-            )
-            return _rv2_result
+            _routes_via_albert = os.environ.get("QBOT_ROUTES_VIA_ALBERT", "0") == "1"
+            if _routes_via_albert and _rv2_albert_enabled:
+                from qbot3.agent_runtime import orchestrate_query
+                _alb = orchestrate_query(question, "")
+                result = _albert_to_planner_shape(_alb, question)
+                result["router_v2"] = (
+                    f"open_domain intent={intent} conflict={_rv2_domain_conflict} engine=albert"
+                )
+            else:
+                from core.planner import plan_routes
+                result = plan_routes(question=question)
+                result["router_v2"] = (
+                    f"open_domain intent={intent} conflict={_rv2_domain_conflict} engine=planner"
+                )
+            import json as _json
+            try:
+                _json.dumps(result)
+            except Exception:
+                result = _json.loads(_json.dumps(result, default=str))
+            return result
         except Exception as _rv2_exc:
             import logging as _rv2_log
             _rv2_log.getLogger("qbot.router_v2").warning(
