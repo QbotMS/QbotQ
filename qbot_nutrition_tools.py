@@ -370,11 +370,21 @@ def _tool_qbot_nutrition_template_get(_args: dict | None = None) -> dict[str, An
     name = str(_args.get("name", "")).strip()
     tid = _args.get("id")
     try:
-        from qbot_nutrition_db import template_get, template_get_by_name
-        tmpl = template_get(int(tid)) if tid else template_get_by_name(name)
+        from qbot_nutrition_db import template_find_by_name, template_get
+        if tid:
+            tmpl = template_get(int(tid))
+            match_method = "exact"
+        else:
+            tmpl, match_method = template_find_by_name(name)
         if not tmpl:
             return {"tool": "qbot_nutrition_template_get", "status": "NOT_FOUND"}
-        return {"tool": "qbot_nutrition_template_get", "safety_class": "READ_ONLY", "status": "OK", "template": tmpl}
+        return {
+            "tool": "qbot_nutrition_template_get",
+            "safety_class": "READ_ONLY",
+            "status": "OK",
+            "template": tmpl,
+            "match_method": match_method or "exact",
+        }
     except Exception as exc:
         return {"tool": "qbot_nutrition_template_get", "status": "ERROR", "error": str(exc)}
 

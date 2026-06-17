@@ -35,6 +35,52 @@ def _env_presence(names: list[str]) -> dict[str, bool]:
     return {n: _env_has(n) for n in names}
 
 
+def _resolve_rwgps_route_hint(name_hint: str, *, limit: int = 5, find_latest: bool = False) -> dict[str, Any]:
+    hint = str(name_hint or "").strip()
+    if not hint:
+        return {"route_id": None, "route_name": None, "candidates": []}
+    try:
+        from tools.rwgps.route_find import find_routes
+
+        candidates = find_routes(hint, limit=max(1, int(limit or 5)))
+        if find_latest and candidates:
+            def _updated_ts(item: dict[str, Any]) -> float:
+                raw = str(item.get("updated_at") or "").strip()
+                if not raw:
+                    return 0.0
+                try:
+                    dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt.astimezone(timezone.utc).timestamp()
+                except Exception:
+                    return 0.0
+
+            candidates = sorted(
+                candidates,
+                key=lambda item: (
+                    -int(item.get("score", 0) or 0),
+                    -_updated_ts(item),
+                    str(item.get("name") or "").lower(),
+                ),
+            )
+        numeric_candidate = next(
+            (
+                item
+                for item in candidates
+                if str(item.get("route_id") or "").strip().isdigit()
+            ),
+            None,
+        )
+        return {
+            "route_id": str(numeric_candidate.get("route_id")).strip() if numeric_candidate else None,
+            "route_name": str(numeric_candidate.get("name") or "").strip() if numeric_candidate else None,
+            "candidates": candidates,
+        }
+    except Exception as exc:
+        return {"route_id": None, "route_name": None, "candidates": [], "error": str(exc)}
+
+
 def _list_glob_files(root: Path, pattern: str, *, max_files: int = 100) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for path in sorted(root.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True):
@@ -1573,6 +1619,8 @@ def _tool_qbot_rwgps_route_import_gpx(args: dict | None = None) -> dict[str, Any
     stage_raw = _args.get("stage")
     start_km_raw = _args.get("start_km")
     end_km_raw = _args.get("end_km")
+    route_name_hint = str(_args.get("route_name_hint", "")).strip()
+    find_latest = bool(_args.get("find_latest", False))
     gpx_path = str(_args.get("gpx_path", "")).strip()
     name = str(_args.get("name", "")).strip()
     description = str(_args.get("description", "")).strip()
@@ -1580,8 +1628,59 @@ def _tool_qbot_rwgps_route_import_gpx(args: dict | None = None) -> dict[str, Any
     collection_id = str(_args.get("collection_id", "")).strip() or None
     confirm = bool(_args.get("confirm", False))
 
+    resolved_candidates: list[dict[str, Any]] = []
+    resolved_route_name = ""
+    if source_route_id and not source_route_id.isdigit():
+        source_route_id = ""
+    if not source_route_id and route_name_hint:
+        resolved = _resolve_rwgps_route_hint(route_name_hint, find_latest=find_latest)
+        resolved_candidates = [item for item in resolved.get("candidates", []) if isinstance(item, dict)]
+        if resolved.get("route_id") and str(resolved["route_id"]).isdigit():
+            source_route_id = str(resolved["route_id"]).strip()
+            resolved_route_name = str(resolved.get("route_name") or "").strip()
+            if not name and resolved_route_name:
+                name = resolved_route_name
+
+    if route_name_hint and not source_route_id and not gpx_path:
+        return {
+            "tool": "qbot_rwgps_route_import_gpx",
+            "status": "PARTIAL",
+            "safety_class": "WRITE_SAFE",
+            "route_name_hint": route_name_hint,
+            "candidates": resolved_candidates[:5],
+            "error": "Nie udało się rozwiązać route_id z podanej nazwy trasy.",
+        }
+
     # ── Determine mode ──
     use_canonical = bool(source_route_id) and (stage_raw is not None or (start_km_raw is not None and end_km_raw is not None))
+    if not use_canonical and not gpx_path and source_route_id and source_route_id.isdigit():
+        try:
+            gpx_path = "/opt/qbot/artifacts/exports/rwgps/rwgps_%s.gpx" % source_route_id
+            if not os.path.exists(gpx_path) or bool(_args.get("force", False)):
+                import requests
+
+                api_key = os.getenv("RWGPS_API_KEY", "").strip()
+                auth_token = os.getenv("RWGPS_AUTH_TOKEN", "").strip()
+                response = requests.get(
+                    "https://ridewithgps.com/routes/%s.gpx" % source_route_id,
+                    params={"apikey": api_key, "auth_token": auth_token, "version": "2"},
+                    timeout=30,
+                )
+                response.raise_for_status()
+                os.makedirs(os.path.dirname(gpx_path), exist_ok=True)
+                with open(gpx_path, "wb") as fh:
+                    fh.write(response.content)
+            if not name:
+                name = resolved_route_name or ("rwgps_%s" % source_route_id)
+        except Exception as exc:
+            return {
+                "tool": "qbot_rwgps_route_import_gpx",
+                "status": "ERROR",
+                "safety_class": "WRITE_SAFE",
+                "error": str(exc),
+                "resolved_route_id": source_route_id or None,
+                "route_name_hint": route_name_hint or None,
+            }
     use_gpx = bool(gpx_path) and not use_canonical
 
     # Validate required
@@ -1717,6 +1816,10 @@ def _tool_qbot_rwgps_route_import_gpx(args: dict | None = None) -> dict[str, Any
             "status": "DRY_RUN",
             "confirm": False,
             "mode": "canonical_copy" if use_canonical else "gpx_upload",
+            "resolved_route_id": source_route_id or None,
+            "resolved_route_name": resolved_route_name or name or None,
+            "route_name_hint": route_name_hint or None,
+            "candidates": resolved_candidates[:5],
             "plan": plan,
             "notes": "Dry-run mode. Set confirm=true to execute.",
         }
@@ -1755,6 +1858,8 @@ def _tool_qbot_rwgps_route_import_gpx(args: dict | None = None) -> dict[str, Any
             "status": "OK",
             "confirm": True,
             "mode": "canonical_copy",
+            "resolved_route_id": source_route_id or None,
+            "resolved_route_name": resolved_route_name or name or None,
             "new_route_id": result["route_id"],
             "html_url": result["html_url"],
             "distance_km": result.get("distance_km"),
@@ -1814,6 +1919,8 @@ def _tool_qbot_rwgps_route_import_gpx(args: dict | None = None) -> dict[str, Any
         "status": "OK",
         "confirm": True,
         "mode": "gpx_upload",
+        "resolved_route_id": source_route_id or None,
+        "resolved_route_name": resolved_route_name or name or None,
         "new_route_id": new_route_id,
         "html_url": create_result.get("html_url"),
         "api_url": create_result.get("api_url"),

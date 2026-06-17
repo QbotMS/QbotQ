@@ -15,8 +15,13 @@ DATA_DIR = APP_DIR / "data"
 LOG_DIR = Path("/opt/qbot/logs")
 APP_LOG_DIR = APP_DIR / "logs"
 
-load_dotenv(ENV_FILE)
-load_dotenv(APP_DIR / ".env.local")
+def _load_env_if_readable(path: Path, *, override: bool = False) -> None:
+    if path.is_file() and os.access(path, os.R_OK):
+        load_dotenv(path, override=override)
+
+
+_load_env_if_readable(ENV_FILE)
+_load_env_if_readable(APP_DIR / ".env.local", override=True)
 
 
 def env(name: str, default: str = "") -> str:

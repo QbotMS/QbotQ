@@ -29,6 +29,29 @@ _BASE_URL = (QGPT_BASE_URL or "https://api.openai.com/v1").rstrip("/")
 _MODEL    = QGPT_MODEL or os.getenv("ALBERT_LLM_MODEL", "gpt-4o-mini")
 _API_KEY  = QGPT_API_KEY or os.getenv("OPENAI_API_KEY") or ANTHROPIC_API_KEY or ""
 
+
+def _tool_result_has_meaningful_data(result: dict[str, object]) -> bool:
+    """Zwraca True, jeśli wynik toola zawiera realne dane użytkowe."""
+    if not isinstance(result, dict):
+        return False
+
+    status = result.get("status", "")
+    if status in (
+        "error",
+        "ERROR",
+        "BLOCKED",
+        "SCHEMA_MISMATCH",
+        "READER_ERROR",
+        "DATA_MISSING",
+        "CONNECTOR_MISSING",
+    ):
+        return False
+
+    flat = _flatten_tool_result("tool", result)
+    meaningful = {k for k in flat if k not in ("status", "tool", "safety_class", "reader")}
+    return bool(meaningful)
+
+
 def _needs_forced_final_answer(answer_text: str, tool_results_log: list[dict]) -> bool:
     """Sprawdza czy model dał złą odpowiedź mimo że ma dane z narzędzi.
 
@@ -47,20 +70,17 @@ def _needs_forced_final_answer(answer_text: str, tool_results_log: list[dict]) -
     tool_data_values: set[str] = set()  # wartości liczbowe/tekstowe z tool_results
 
     for tr in tool_results_log:
-        status = tr.get("status", "")
-        if status in ("error", "ERROR", "BLOCKED", "SCHEMA_MISMATCH",
-                      "READER_ERROR", "DATA_MISSING", "CONNECTOR_MISSING"):
-            continue
         data = tr.get("data", {})
+        if not _tool_result_has_meaningful_data(data):
+            continue
+
+        has_real_data = True
         flat = _flatten_tool_result(tr.get("reader", "?"), data) if isinstance(data, dict) else {}
-        meaningful = {k for k in flat if k not in ("status", "tool", "safety_class", "reader")}
-        if meaningful:
-            has_real_data = True
-            for v in flat.values():
-                if isinstance(v, (int, float)):
-                    tool_data_values.add(str(round(float(v), 1)))
-                elif isinstance(v, str) and v:
-                    tool_data_values.add(v.lower()[:30])
+        for v in flat.values():
+            if isinstance(v, (int, float)):
+                tool_data_values.add(str(round(float(v), 1)))
+            elif isinstance(v, str) and v:
+                tool_data_values.add(v.lower()[:30])
 
     if not has_real_data:
         return False
@@ -148,6 +168,10 @@ Zasady bezpieczeństwa:
 - Jeśli tool zwrócił WRITE_DRAFT → to NIE JEST zapis. To tylko draft.
 - Odczyt danych → wywołaj narzędzia i odpowiedz na podstawie wyników.
 - Nie wymyślaj wartości których nie ma w wynikach narzędzi.
+- Dla calendar_event_add i reminder_add wykonaj zapis tylko raz. Gdy tool
+  zwróci OK lub DUPLICATE, nie ponawiaj tego samego zapisu.
+- Dla calendar_event_add użyj date_start i title; time_start jest godziną
+  zdarzenia. Dla reminder_add użyj date i title; time jest godziną.
 - Jeśli tool zwrócił dane — użyj ich. NIE mów "brak danych" gdy dane są.
 - Jeśli DB nie ma rekordu dla daty — sprawdź live connector (garmin_live_fetch,
   wellness_day, xert_readiness) zamiast kończyć odpowiedzią "brak danych".
@@ -176,7 +200,8 @@ Styl odpowiedzi:
 """
 
 
-def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict) -> dict[str, Any]:
+def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict,
+        override_api_key: str = "", override_base_url: str = "", override_model: str = "") -> dict[str, Any]:
     """Główna pętla Alberta.
 
     Args:
@@ -188,6 +213,17 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict) -
     Returns:
         dict: answer, status, tool_results, steps, action_draft
     """
+    if os.getenv("QBOT_ALBERT_HARD_KILL") == "1":
+        return {
+            "answer": "Planner niedostępny dla tego zapytania. Fallback jest wyłączony.",
+            "status": "no_data",
+            "tool_results": [],
+            "steps": 0,
+            "action_draft": None,
+            "error": "planner_unavailable",
+            "fallback_reason": "QBOT_ALBERT_HARD_KILL=1",
+        }
+
     try:
         import openai
     except ImportError:
@@ -199,7 +235,10 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict) -
             "action_draft": None,
         }
 
-    client = openai.OpenAI(api_key=_API_KEY, base_url=_BASE_URL)
+    _eff_key = override_api_key or _API_KEY
+    _eff_url = override_base_url or _BASE_URL
+    _eff_model = override_model or _MODEL
+    client = openai.OpenAI(api_key=_eff_key, base_url=_eff_url)
 
     ctx_str = ""
     if context:
@@ -216,19 +255,26 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict) -
 
     _log.info(f"Albert start: model={_MODEL} base_url={_BASE_URL} tools={len(tools_spec)} question={question[:80]}")
 
+    _had_successful_write = False
+    _had_successful_read = False
+
     for step in range(_MAX_STEPS):
         steps = step + 1
 
         try:
             kwargs: dict[str, Any] = {
-                "model": _MODEL,
+                "model": _eff_model,
                 "messages": messages,
                 "temperature": 0,
                 "max_tokens": 1200,
             }
             if tools_spec:
                 kwargs["tools"] = tools_spec
-                kwargs["tool_choice"] = "auto"
+                # Po udanym realnym zapisie (write_committed=True) albo po
+                # uzyskaniu sensownych danych read-only zdejmij przymus
+                # tool_choice='required' - model moze wtedy zakonczyc odpowiedz
+                # tekstem bez dalszego wymuszania tool_call.
+                kwargs["tool_choice"] = "auto" if (_had_successful_write or _had_successful_read) else "required"
 
             response = client.chat.completions.create(**kwargs)
         except Exception as exc:
@@ -346,6 +392,16 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict) -
                 "status": result.get("status", "OK") if isinstance(result, dict) else "OK",
                 "data": result,
             })
+
+            if isinstance(result, dict) and result.get("write_committed") is True:
+                _had_successful_write = True
+
+            if (
+                isinstance(result, dict)
+                and result.get("status") in ("OK", "ok", "PARTIAL", "partial", "READY_WITH_WARNINGS")
+                and _tool_result_has_meaningful_data(result)
+            ):
+                _had_successful_read = True
 
             # Wykryj write draft — zapisz action_draft do zwrotu
             if isinstance(result, dict) and result.get("status") == "WRITE_DRAFT":

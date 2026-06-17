@@ -21,6 +21,11 @@ from qbot_external_llm_tools import _tool_qbot_external_tool_plan
 from qbot_llm_planner import _tool_qbot_llm_run_query, _tool_qbot_tool_policy_list
 from qbot_ops_tools import _tool_qbot_operator_final_smoke_test
 from qbot_telegram_tools import _tool_qbot_telegram_status
+from qbot3.fallback_policy import (
+    is_route_domain_query,
+    planner_unavailable_response,
+    should_use_albert_fallback,
+)
 from qbot_assistant_inbox import (
     _tool_qbot_assistant_inbox_list,
     _tool_qbot_assistant_inbox_status,
@@ -185,7 +190,7 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "input_schema": {
             "type": "object",
             "properties": {
-                "action_type": {"type": "string", "enum": ["nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "garmin_workout_create", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update", "rwgps_gpx_import", "route_poi_analyze", "rwgps_route_profile_sample", "rwgps_route_profile_export_csv", "qbot_artifact_put", "qbot_artifact_get"]},
+                "action_type": {"type": "string", "enum": ["nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "planning_fact_update", "garmin_workout_create", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update", "rwgps_gpx_import", "route_poi_analyze", "rwgps_route_profile_sample", "rwgps_route_profile_export_csv", "qbot_artifact_put", "qbot_artifact_get"]},
                 "payload_json": {"type": "object", "description": "Kompletny obiekt payload (tak jak w action_draft z qbot.query)"},
                 "idempotency_key": {"type": "string", "description": "Unikalny klucz — zapobiega duplikatom."},
                 "confirm": {"type": "boolean", "description": "MUSI być true, żeby zapisać."},
@@ -646,7 +651,51 @@ def handle_mcp_request(
                     from qbot_query_handler import handle_query
                     vnext_result = handle_query(question=query)
                     if vnext_result.get("status") == "UNRECOGNIZED":
-                        # query_vnext does not recognise this intent — fall back to Albert
+                        if is_route_domain_query(query):
+                            from core.planner import plan_routes
+                            try:
+                                result = plan_routes(query)
+                            except Exception as planner_exc:
+                                result = planner_unavailable_response(
+                                    query,
+                                    intent="planner_routes",
+                                    source="qbot.query",
+                                    fallback_reason=f"planner_error: {planner_exc}",
+                                )
+                        elif should_use_albert_fallback(query):
+                            from qbot_query_router import query as qbot_query
+                            result = qbot_query(
+                                question=query,
+                                mode=str(clean_args.get("mode", "read_only")),
+                                scope=str(clean_args.get("scope", "all")),
+                                context=str(clean_args.get("context", "")),
+                                max_rows=int(clean_args.get("max_rows", 500)),
+                                include_provenance=bool(clean_args.get("include_provenance", True)),
+                                include_missing=bool(clean_args.get("include_missing", True)),
+                            )
+                            result["fallback_reason"] = "query_vnext UNRECOGNIZED — fell back to Albert"
+                        else:
+                            result = planner_unavailable_response(
+                                query,
+                                intent="unrecognized",
+                                source="qbot.query",
+                                fallback_reason="QBOT_DISABLE_ALBERT_FALLBACK=1",
+                            )
+                    else:
+                        result = vnext_result
+                except Exception as exc:
+                    if is_route_domain_query(query):
+                        from core.planner import plan_routes
+                        try:
+                            result = plan_routes(query)
+                        except Exception as planner_exc:
+                            result = planner_unavailable_response(
+                                query,
+                                intent="planner_routes",
+                                source="qbot.query",
+                                fallback_reason=f"query_vnext error: {exc}; planner_error: {planner_exc}",
+                            )
+                    elif should_use_albert_fallback(query):
                         from qbot_query_router import query as qbot_query
                         result = qbot_query(
                             question=query,
@@ -657,11 +706,27 @@ def handle_mcp_request(
                             include_provenance=bool(clean_args.get("include_provenance", True)),
                             include_missing=bool(clean_args.get("include_missing", True)),
                         )
-                        result["fallback_reason"] = "query_vnext UNRECOGNIZED — fell back to Albert"
+                        result["fallback_reason"] = f"query_vnext error: {exc} — fell back to Albert"
                     else:
-                        result = vnext_result
-                except Exception as exc:
-                    # Defensive: if query_vnext fails, fall back to Albert
+                        result = planner_unavailable_response(
+                            query,
+                            intent="unrecognized",
+                            source="qbot.query",
+                            fallback_reason=f"query_vnext error: {exc}",
+                        )
+            else:
+                if is_route_domain_query(query):
+                    from core.planner import plan_routes
+                    try:
+                        result = plan_routes(query)
+                    except Exception as planner_exc:
+                        result = planner_unavailable_response(
+                            query,
+                            intent="planner_routes",
+                            source="qbot.query",
+                            fallback_reason=f"planner_error: {planner_exc}",
+                        )
+                elif should_use_albert_fallback(query):
                     from qbot_query_router import query as qbot_query
                     result = qbot_query(
                         question=query,
@@ -672,18 +737,13 @@ def handle_mcp_request(
                         include_provenance=bool(clean_args.get("include_provenance", True)),
                         include_missing=bool(clean_args.get("include_missing", True)),
                     )
-                    result["fallback_reason"] = f"query_vnext error: {exc} — fell back to Albert"
-            else:
-                from qbot_query_router import query as qbot_query
-                result = qbot_query(
-                    question=query,
-                    mode=str(clean_args.get("mode", "read_only")),
-                    scope=str(clean_args.get("scope", "all")),
-                    context=str(clean_args.get("context", "")),
-                    max_rows=int(clean_args.get("max_rows", 500)),
-                    include_provenance=bool(clean_args.get("include_provenance", True)),
-                    include_missing=bool(clean_args.get("include_missing", True)),
-                )
+                else:
+                    result = planner_unavailable_response(
+                        query,
+                        intent="unrecognized",
+                        source="qbot.query",
+                        fallback_reason="QBOT_DISABLE_ALBERT_FALLBACK=1",
+                    )
         elif name == "qbot.nutrition_log_preview":
             result = _handle_nutrition_preview(clean_args)
         elif name == "qbot.nutrition_log_add":
@@ -726,6 +786,32 @@ def handle_mcp_request(
                     result = {"tool": "qbot.artifact_get", "status": "error", "error": str(exc)}
         elif name == "qbot.action_execute":
             result = _handle_action_execute(clean_args)
+            try:
+                from core.change_log import log_action_execute
+                _cl_id = log_action_execute(
+                    clean_args.get("action_type"),
+                    (result or {}).get("status"),
+                    idempotency_key=clean_args.get("idempotency_key"),
+                    source=str(clean_args.get("source") or "mcp"),
+                    payload=clean_args.get("payload_json") or clean_args.get("payload"),
+                    result=result if isinstance(result, dict) else None,
+                )
+                # ERROR -> auto-ticket incydentu (curated subset, nie BLOCKED/DRY_RUN/DUPLICATE)
+                _st = (result or {}).get("status")
+                if _st == "ERROR" and isinstance(result, dict):
+                    from core.incidents import open_incident
+                    _at = clean_args.get("action_type")
+                    open_incident(
+                        f"action_execute {_at} -> ERROR",
+                        severity="high",
+                        source="action_execute",
+                        action_type=_at,
+                        error_text=str(result.get("error", ""))[:2000],
+                        detail={"result_excerpt": {k: result.get(k) for k in ("status", "error", "note") if k in result}},
+                        change_log_id=_cl_id,
+                    )
+            except Exception:
+                pass  # rejestr/incydenty best-effort, nigdy nie psuja akcji
         else:
             tool_args = dict(clean_args)
             tool_result, warnings = _dispatch_local_qbot_tool(
@@ -1269,7 +1355,21 @@ def _handle_qcal_reminder_cancel(args: dict) -> dict:
     except Exception as e: return {"tool":"qbot.qcal_reminder_cancel","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
 
 
-_ACTION_EXECUTE_ALLOWLIST = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "garmin_workout_create", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update", "rwgps_gpx_import", "route_poi_analyze", "rwgps_route_profile_sample", "rwgps_route_profile_export_csv", "qbot_artifact_put", "qbot_artifact_get"}
+# Allowlista generowana z manifestów modułów — jedyne źródło prawdy.
+# Dodaj akcję w modules/<modul>/manifest.py["write_actions"], nie tutaj.
+try:
+    from core.registry import get_allowlist as _registry_get_allowlist
+    _ACTION_EXECUTE_ALLOWLIST = _registry_get_allowlist()
+except Exception:
+    # fallback hard-coded na wypadek błędu importu registry
+    _ACTION_EXECUTE_ALLOWLIST = {
+        "nutrition_log_add", "qcal_reminder_add", "qcal_event_add",
+        "qcal_event_update", "qcal_event_cancel", "planning_fact_add",
+        "garmin_workout_create", "qbot_doc_append", "qbot_doc_replace_section",
+        "qbot_doc_update", "rwgps_gpx_import", "route_poi_analyze",
+        "rwgps_route_profile_sample", "rwgps_route_profile_export_csv",
+        "qbot_artifact_put", "qbot_artifact_get",
+    }
 
 _ACTION_REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {
     "nutrition_log_add": ["date", "kcal_total"],
@@ -1278,6 +1378,7 @@ _ACTION_REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {
     "qcal_event_update": ["event_id", "updates"],
     "qcal_event_cancel": ["event_id"],
     "planning_fact_add": ["fact_type", "date", "title"],
+    "planning_fact_update": ["id"],
     "garmin_workout_create": [],
     "qbot_doc_append": ["target_document", "heading", "content_markdown"],
     "qbot_doc_replace_section": ["target_document", "heading", "content_markdown"],
@@ -1464,6 +1565,8 @@ def _handle_action_execute(args: dict) -> dict[str, Any]:
         return _action_exec_rwgps_route_profile_export_csv(payload, idem_key, source)
     elif action_type == "planning_fact_add":
         return _action_exec_planning(payload, idem_key, source)
+    elif action_type == "planning_fact_update":
+        return _action_exec_planning_fact_update(payload, idem_key, source)
     elif action_type == "garmin_workout_create":
         from qbot_garmin_workouts import execute_garmin_workout_create
 
@@ -2018,6 +2121,46 @@ def _action_exec_planning(payload: dict, idem_key: str, source: str) -> dict:
         return {"tool":"qbot.action_execute","safety_class":"WRITE_ONLY_ALLOWLIST","status":"ERROR","error": result.get("error","save_planning_fact failed")}
     except ImportError:
         return {"tool":"qbot.action_execute","safety_class":"WRITE_ONLY_ALLOWLIST","status":"MISSING_CAPABILITY","missing_capability":"planning_fact_add","note":"save_planning_fact not available."}
+
+
+def _action_exec_planning_fact_update(payload: dict, idem_key: str, source: str) -> dict:
+    """Execute planning_fact_update - edit existing qbot_planning_facts row.
+
+    payload: {id, fact_json_patch?, stage_patch?, title?, status?,
+              confidence?, valid_until?}
+    fact_json_patch and stage_patch are mutually exclusive (validated in
+    update_planning_fact). stage_patch={"stage": N, **fields} merges
+    `fields` into fact_json.stages[] entry where stage==N (route_stages
+    use-case - edit stage->route_id mapping without SSH, works for any
+    project_id).
+    """
+    try:
+        from qbot_planning_memory import update_planning_fact
+        result = update_planning_fact(
+            fact_id=payload.get("id"),
+            fact_json_patch=payload.get("fact_json_patch"),
+            stage_patch=payload.get("stage_patch"),
+            title=payload.get("title"),
+            status=payload.get("status"),
+            confidence=payload.get("confidence"),
+            valid_until=payload.get("valid_until"),
+            confirm=True,
+        )
+        if result.get("status") == "OK":
+            return {
+                "tool": "qbot.action_execute",
+                "safety_class": "WRITE_ONLY_ALLOWLIST",
+                "status": "OK",
+                "action_type": "planning_fact_update",
+                "idempotency_key": idem_key,
+                "planning_fact_id": result.get("planning_fact_id"),
+                "fact_type": result.get("fact_type"),
+                "title": result.get("title"),
+                "json_changed": result.get("json_changed"),
+            }
+        return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "ERROR", "error": result.get("error", "update_planning_fact failed")}
+    except ImportError:
+        return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "MISSING_CAPABILITY", "missing_capability": "planning_fact_update", "note": "update_planning_fact not available."}
 
 
 # ═══════════════════════════════════════════════════════════════════

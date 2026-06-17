@@ -893,26 +893,109 @@ def _load_stage_gpx_analyze_tool() -> dict[str, Any]:
     def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
         file_path = args.get("file_path", "")
         stage = args.get("stage")
+        resolved: dict[str, Any] | None = None
 
-        if not file_path and stage:
-            # Resolve stage number to known GPX file
-            stage_int = int(stage)
-            base = Path("/opt/qbot/artifacts/projects/tuscany_2026/projects")
-            matches = sorted(base.glob(f"tuscany_2026_stage_{stage_int:02d}_*.gpx"))
-            if matches:
-                file_path = str(matches[0])
+        if not file_path and stage is not None:
+            try:
+                stage_int = int(stage)
+            except (TypeError, ValueError):
+                return error_result("INVALID_ARGS", "stage musi być liczbą całkowitą")
+
+            # Generic: resolve stage -> route_id via qbot_planning_facts
+            # (route_stages), same mechanism as route_poi_analyze's stage
+            # invariant. GPX is then read from the canonical RWGPS export
+            # path, same convention used everywhere else.
+            resolved = _resolve_stage_from_planning_facts(args.get("project_id"), stage_int)
+            if resolved:
+                candidate = Path("/opt/qbot/artifacts/exports/rwgps") / f"rwgps_{resolved['route_id']}.gpx"
+                if candidate.exists():
+                    file_path = str(candidate)
+
+            if not file_path:
+                # Fallback: legacy Tuscany-specific layout, kept for
+                # backward compatibility if files are placed there manually.
+                base = Path("/opt/qbot/artifacts/projects/tuscany_2026/projects")
+                matches = sorted(base.glob(f"tuscany_2026_stage_{stage_int:02d}_*.gpx"))
+                if matches:
+                    file_path = str(matches[0])
+
+            if not file_path:
+                if resolved:
+                    return error_result(
+                        "FILE_NOT_FOUND",
+                        f"Brak pliku GPX dla stage={stage_int} "
+                        f"(route_id={resolved['route_id']}): "
+                        f"/opt/qbot/artifacts/exports/rwgps/rwgps_{resolved['route_id']}.gpx"
+                    )
+                return error_result(
+                    "STAGE_NOT_FOUND",
+                    f"Brak wpisu dla stage={stage_int}"
+                    + (f" w project_id={args.get('project_id')}" if args.get("project_id") else "")
+                    + " w qbot_planning_facts (fact_type='route_stages')."
+                )
 
         if not file_path:
             return error_result("MISSING_ARGS",
-                "Podaj file_path (np. /opt/qbot/artifacts/projects/tuscany_2026/projects/"
-                "tuscany_2026_stage_01_scandicci_capannoli.gpx) lub stage=1")
+                "Podaj file_path (np. /opt/qbot/artifacts/exports/rwgps/"
+                "rwgps_55444268.gpx) lub stage=<numer etapu>")
         try:
             result = analyze_stage_gpx(str(file_path))
         except Exception as exc:
             return error_result("ANALYSIS_ERROR", str(exc))
         if result.get("status") == "ERROR":
             return error_result("ANALYSIS_ERROR", result.get("error", "nieznany błąd"))
-        return success_result(result)
+
+        # Sanity-check (Etap 1 PRZEBUDOWA): porownaj distance_km z GPX
+        # z distance_km z qbot_planning_facts.route_stages (ground truth
+        # dla tego etapu), tylko gdy stage zostal uzyty do resolwowania
+        # pliku. Rozjazd >5% = PARTIAL z ostrzezeniem, nie cichy OK.
+        top_status = "OK"
+        if resolved and resolved.get("distance_km") and result.get("distance_km"):
+            try:
+                gpx_km = float(result["distance_km"])
+                plan_km = float(resolved["distance_km"])
+                diff_pct = abs(gpx_km - plan_km) / plan_km * 100.0 if plan_km else 0.0
+                result["sanity_check"] = {
+                    "ok": diff_pct <= 5.0,
+                    "distance_km_gpx": gpx_km,
+                    "distance_km_planning_facts": plan_km,
+                    "diff_pct": round(diff_pct, 2),
+                }
+                if diff_pct > 5.0:
+                    top_status = "PARTIAL"
+                    result.setdefault("warnings", [])
+                    result["warnings"].append(
+                        f"sanity check: dystans z GPX ({gpx_km:.2f} km) rozjeżdża się "
+                        f"z planning_facts ({plan_km:.2f} km) o {diff_pct:.1f}% "
+                        f"(tolerancja 5%) - mozliwy nieaktualny artefakt GPX dla "
+                        f"route_id={resolved.get('route_id')}"
+                    )
+                    # zlamany niezmiennik -> ticket incydentu (best-effort, dedup 6h)
+                    try:
+                        from core.incidents import open_incident
+                        _rid = resolved.get("route_id")
+                        open_incident(
+                            f"sanity-check dystansu: route_id={_rid} GPX vs planning_facts rozjazd",
+                            severity="medium",
+                            source="invariant",
+                            action_type="stage_gpx_analyze",
+                            error_text=(
+                                f"GPX {gpx_km:.2f} km vs planning_facts {plan_km:.2f} km "
+                                f"= {diff_pct:.1f}% (>5%)"
+                            ),
+                            detail={
+                                "route_id": _rid,
+                                "distance_km_gpx": gpx_km,
+                                "distance_km_planning_facts": plan_km,
+                                "diff_pct": round(diff_pct, 2),
+                            },
+                        )
+                    except Exception:
+                        pass
+            except (TypeError, ValueError, ZeroDivisionError):
+                pass
+
+        return success_result(result, status=top_status)
 
     return {
         "callable": _wrapper,
@@ -942,6 +1025,74 @@ def _load_stage_gpx_analyze_tool() -> dict[str, Any]:
         "mode": "read_only",
         "status": "implemented",
         "notes": "Parsuje GPX lokalnie, nie wysyła danych do RWGPS.",
+    }
+
+
+def _load_rwgps_route_surface_analyze_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        route_id = args.get("route_id")
+        project_id_arg = args.get("project_id")
+        stage = args.get("stage")
+
+        if stage is not None:
+            try:
+                stage_int = int(stage)
+            except (TypeError, ValueError):
+                return error_result("INVALID_ARGS", "stage musi być liczbą całkowitą")
+            resolved = _resolve_stage_from_planning_facts(project_id_arg, stage_int)
+            if not resolved:
+                return error_result(
+                    "STAGE_NOT_FOUND",
+                    f"Brak wpisu dla stage={stage_int}"
+                    + (f" w project_id={project_id_arg}" if project_id_arg else "")
+                    + " w qbot_planning_facts (fact_type='route_stages')."
+                )
+            route_id = resolved["route_id"]
+            project_id_arg = resolved.get("project_id") or project_id_arg
+
+        if route_id is None:
+            return error_result("MISSING_ARGS", "Wymagany parametr: route_id (int) lub stage")
+        try:
+            rid = str(int(route_id))
+        except (TypeError, ValueError):
+            return error_result("INVALID_ARGS", "route_id musi byc liczba: %s" % route_id)
+        project_id = str(project_id_arg or "tuscany_2026")
+        refresh = bool(args.get("refresh_overpass", False))
+        try:
+            from scripts.analyze_rwgps_surface import analyze_rwgps_surface_route
+            result = analyze_rwgps_surface_route(rid, project_id=project_id, refresh_overpass=refresh)
+        except Exception as exc:
+            return error_result("SURFACE_ERROR", str(exc)[:300])
+        if not result.get("ok"):
+            return error_result("SURFACE_ERROR", result.get("error") or result.get("status", "nieznany blad"))
+        keep = ("route_id", "route_name", "geometry", "surface_breakdown", "dominant_surface",
+                "practical_groups", "unknown_percent", "highway_breakdown", "tracktype",
+                "smoothness", "overpass", "recommendation", "warnings")
+        trimmed = {k: result[k] for k in keep if k in result}
+        return success_result(trimmed)
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "Analizuje nawierzchnie trasy RWGPS (OSM/Overpass): zwraca rozklad "
+            "asfalt/gravel/grunt/nieznana w %, dominujaca nawierzchnie, smoothness, "
+            "tracktype, pokrycie i rekomendacje. Uzywaj gdy pytanie dotyczy nawierzchni, "
+            "asfaltu/szutru/sciezek, gravela lub ryzykownych odcinkow trasy. "
+            "Wymaga route_id (np. z rwgps_route_last). Overpass moze trwac kilkanascie sekund."
+        ),
+        "args_schema": {
+            "stage": {"type": "integer", "description": "Numer etapu z qbot_planning_facts.route_stages - jesli podany, route_id/project_id sa wyliczane automatycznie z planu etapow (nadpisuja inne podane wartosci)."},
+            "route_id": {"type": "integer", "description": "ID trasy RWGPS"},
+            "project_id": {"type": "string", "description": "ID projektu, domyslnie tuscany_2026"},
+            "refresh_overpass": {"type": "boolean", "description": "Wymus odswiezenie OSM (domyslnie cache)"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+        "notes": "Wrapper na scripts.analyze_rwgps_surface.analyze_rwgps_surface_route.",
     }
 
 
@@ -1647,11 +1798,96 @@ def _load_rwgps_poi_push_tool() -> dict:
         },
     }
 
+def _resolve_stage_from_planning_facts(
+    project_id: str | None, stage: int
+) -> dict[str, Any] | None:
+    """Generyczny lookup stage->route_id/distance_km z qbot_planning_facts.
+
+    Czyta fact_type='route_stages' (najnowszy, opcjonalnie filtrowany po
+    fact_json.project_id), szuka w fact_json.stages[] wpisu ze stage==stage.
+    Zwraca {"route_id": str, "distance_km": float, "project_id": str,
+    "segment": str | None} albo None jesli nie znaleziono.
+    """
+    import psycopg
+    from psycopg.rows import dict_row
+    try:
+        c = psycopg.connect(
+            host=os.getenv("PGHOST", "127.0.0.1"), port=os.getenv("PGPORT", "5432"),
+            dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
+            password=os.getenv("PGPASSWORD", ""), row_factory=dict_row, connect_timeout=5,
+        )
+        cur = c.cursor()
+        cur.execute(
+            "SELECT id, fact_json FROM qbot_planning_facts "
+            "WHERE fact_type='route_stages' ORDER BY id DESC LIMIT 20"
+        )
+        rows = cur.fetchall()
+        c.close()
+    except Exception:
+        return None
+
+    target_pid = (project_id or "").strip().lower() or None
+    for row in rows:
+        fact_json = row.get("fact_json")
+        if isinstance(fact_json, str):
+            try:
+                fact_json = json.loads(fact_json or "{}")
+            except Exception:
+                fact_json = {}
+        if not isinstance(fact_json, dict):
+            continue
+        row_pid = str(fact_json.get("project_id") or "").strip().lower()
+        if target_pid and row_pid != target_pid:
+            continue
+        stages = fact_json.get("stages")
+        if not isinstance(stages, list):
+            continue
+        for s in stages:
+            try:
+                if int(s.get("stage")) == int(stage):
+                    route_id = s.get("route_id")
+                    distance_km = s.get("distance_km")
+                    if route_id in (None, "") or distance_km in (None, ""):
+                        continue
+                    return {
+                        "route_id": str(route_id),
+                        "distance_km": float(distance_km),
+                        "project_id": row_pid or fact_json.get("project_id"),
+                        "segment": s.get("segment"),
+                    }
+            except Exception:
+                continue
+    return None
+
+
 def _load_route_poi_analyze_tool() -> dict[str, Any]:
     from qbot3.errors import error_result, success_result
     from qbot_route_tools import _tool_qbot_route_poi_analyze
 
     def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        stage = args.get("stage")
+        if stage is not None:
+            try:
+                stage_int = int(stage)
+            except (TypeError, ValueError):
+                return error_result("INVALID_ARGS", "stage musi być liczbą całkowitą")
+            resolved = _resolve_stage_from_planning_facts(args.get("project_id"), stage_int)
+            if not resolved:
+                return error_result(
+                    "STAGE_NOT_FOUND",
+                    f"Brak wpisu dla stage={stage_int}"
+                    + (f" w project_id={args.get('project_id')}" if args.get("project_id") else "")
+                    + " w qbot_planning_facts (fact_type='route_stages')."
+                )
+            args = dict(args)
+            args["route_id"] = resolved["route_id"]
+            args["project_id"] = resolved.get("project_id") or args.get("project_id")
+            args["km_from"] = 0.0
+            args["km_to"] = resolved["distance_km"]
+            args["artifact_id"] = None
+            args["path"] = None
+            args["merge_artifact_ids"] = None
+
         route_id = args.get("route_id")
         artifact_id = args.get("artifact_id")
         project_id = args.get("project_id")
@@ -1716,10 +1952,12 @@ def _load_route_poi_analyze_tool() -> dict[str, Any]:
         "callable": _wrapper,
         "category": "routes",
         "description": (
+            "[Dla zapytań informacyjnych o POI użyj route_poi_analyze_readonly - to narzędzie zapisuje/aktualizuje raport POI w artefaktach i wymaga potwierdzenia (action_execute).] "
             "Analizuje POI trasy RWGPS na podstawie GPX lokalnie i zapisuje raport MD do artefaktów. "
             "Parametry: project_id, route_id lub artifact_id lub path, albo merge_artifact_ids; km_from/km_to, buffers, output_format, focus, retry_chunk_id, retry_mode, timeout_sec."
         ),
         "args_schema": {
+            "stage": {"type": "integer", "description": "Numer etapu z qbot_planning_facts.route_stages - jesli podany, route_id/km_from/km_to sa wyliczane automatycznie z planu etapow (nadpisuja inne podane wartosci)."},
             "route_id": {"type": "string", "description": "ID trasy RWGPS"},
             "artifact_id": {"type": "string", "description": "ID artefaktu GPX"},
             "project_id": {"type": "string", "description": "ID projektu logistycznego, np. tuscany_2026"},
@@ -1741,6 +1979,167 @@ def _load_route_poi_analyze_tool() -> dict[str, Any]:
         "mode": "write",
         "status": "implemented",
         "notes": "Writes a project/report-specific MD artifact under /opt/qbot/artifacts/reports/ and registers it in artifact store.",
+    }
+
+
+def _load_route_poi_analyze_readonly_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+    from qbot_route_tools import _tool_qbot_route_poi_analyze
+
+    def _slim_poi_data(data: dict[str, Any]) -> dict[str, Any]:
+        analysis = data.get("analysis") or {}
+
+        def _count(section: str) -> int | None:
+            value = analysis.get(section)
+            if isinstance(value, list):
+                return len(value)
+            if isinstance(value, int):
+                return value
+            return None
+
+        hard_resupply = _count("hard_resupply")
+        soft_food_stop = _count("soft_food_stop")
+        food_count = None
+        if hard_resupply is not None or soft_food_stop is not None:
+            food_count = (hard_resupply or 0) + (soft_food_stop or 0)
+
+        slim = {
+            "status": data.get("status"),
+            "ok": data.get("ok"),
+            "route_id": data.get("route_id"),
+            "km_from": analysis.get("km_from") if analysis.get("km_from") is not None else data.get("km_from"),
+            "km_to": analysis.get("km_to") if analysis.get("km_to") is not None else data.get("km_to"),
+            "counts": {
+                "water": _count("water"),
+                "food": food_count,
+                "attractions": _count("attractions"),
+                "attractions_google": _count("town_fallback_check"),
+            },
+            "report_path": data.get("report_path"),
+            "report_json_path": data.get("report_json_path"),
+            "report_artifact_id": str(data.get("report_artifact_id") or ""),
+            "note": (
+                "Pełny raport POI w report_path/report_json_path. "
+                "Tu tylko liczniki — czytaj artefakt dla szczegółów."
+            ),
+        }
+        return slim
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        stage = args.get("stage")
+        if stage is not None:
+            try:
+                stage_int = int(stage)
+            except (TypeError, ValueError):
+                return error_result("INVALID_ARGS", "stage musi być liczbą całkowitą")
+            resolved = _resolve_stage_from_planning_facts(args.get("project_id"), stage_int)
+            if not resolved:
+                return error_result(
+                    "STAGE_NOT_FOUND",
+                    f"Brak wpisu dla stage={stage_int}"
+                    + (f" w project_id={args.get('project_id')}" if args.get("project_id") else "")
+                    + " w qbot_planning_facts (fact_type='route_stages')."
+                )
+            args = dict(args)
+            args["route_id"] = resolved["route_id"]
+            args["project_id"] = resolved.get("project_id") or args.get("project_id")
+            args["km_from"] = 0.0
+            args["km_to"] = resolved["distance_km"]
+            args["artifact_id"] = None
+            args["path"] = None
+            args["merge_artifact_ids"] = None
+
+        route_id = args.get("route_id")
+        artifact_id = args.get("artifact_id")
+        project_id = args.get("project_id")
+        path = args.get("path")
+        focus = args.get("focus")
+        retry_chunk_id = args.get("retry_chunk_id")
+        retry_mode = bool(args.get("retry_mode", False))
+        merge_artifact_ids = args.get("merge_artifact_ids")
+        timeout_sec = args.get("timeout_sec")
+        km_from = args.get("km_from")
+        km_to = args.get("km_to")
+        buffers = args.get("buffers")
+        output_format = str(args.get("output_format", "md")).strip().lower() or "md"
+        merge_list: list[str] = []
+        if isinstance(merge_artifact_ids, list):
+            merge_list = [str(item).strip() for item in merge_artifact_ids if str(item).strip()]
+        elif isinstance(merge_artifact_ids, str):
+            merge_list = [item.strip() for item in merge_artifact_ids.split(",") if item.strip()]
+
+        if not route_id and not artifact_id and not path and not merge_list:
+            return error_result("MISSING_ARGS", "Wymagany route_id, artifact_id, path lub merge_artifact_ids")
+        if km_from is None or km_to is None:
+            if not merge_list:
+                return error_result("MISSING_ARGS", "Wymagane km_from i km_to")
+            km_from = 0
+            km_to = 0
+
+        if km_from is None or km_to is None:
+            return error_result("MISSING_ARGS", "Wymagane km_from i km_to")
+
+        try:
+            km_from_f = float(km_from)
+            km_to_f = float(km_to)
+        except (TypeError, ValueError):
+            return error_result("INVALID_ARGS", "km_from i km_to muszą być liczbami")
+
+        result = _tool_qbot_route_poi_analyze({
+            "route_id": route_id,
+            "artifact_id": artifact_id,
+            "project_id": project_id,
+            "path": path,
+            "km_from": km_from_f,
+            "km_to": km_to_f,
+            "buffers": buffers,
+            "focus": focus,
+            "retry_chunk_id": retry_chunk_id,
+            "retry_mode": retry_mode,
+            "merge_artifact_ids": merge_list or None,
+            "timeout_sec": timeout_sec,
+            "output_format": output_format,
+            "confirm": True,
+        })
+        if result.get("status") not in {"OK", "PARTIAL"} or not result.get("ok", True):
+            return error_result("ROUTE_POI_ANALYSIS_FAILED", result.get("error", "nieznany błąd"))
+
+        payload = _slim_poi_data(dict(result))
+        payload.pop("tool", None)
+        payload.pop("safety_class", None)
+        return success_result(payload)
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "[UŻYJ TEGO dla zapytań INFORMACYJNYCH typu 'co jest na etapie/trasie X', 'jakie POI na trasie', 'pokaż mi atrakcje/wodę/jedzenie na etapie' - zwraca wynik ANALIZY NATYCHMIAST, bez wymogu potwierdzenia. Dla zapisu/aktualizacji raportu POI w artefaktach projektu użyj route_poi_analyze.] "
+            "Analizuje POI trasy RWGPS na podstawie GPX lokalnie i zapisuje raport MD do artefaktów. "
+            "Parametry: project_id, route_id lub artifact_id lub path, albo merge_artifact_ids; km_from/km_to, buffers, output_format, focus, retry_chunk_id, retry_mode, timeout_sec."
+        ),
+        "args_schema": {
+            "stage": {"type": "integer", "description": "Numer etapu z qbot_planning_facts.route_stages - jesli podany, route_id/km_from/km_to sa wyliczane automatycznie z planu etapow (nadpisuja inne podane wartosci)."},
+            "route_id": {"type": "string", "description": "ID trasy RWGPS"},
+            "artifact_id": {"type": "string", "description": "ID artefaktu GPX"},
+            "project_id": {"type": "string", "description": "ID projektu logistycznego, np. tuscany_2026"},
+            "path": {"type": "string", "description": "Lokalna ścieżka do pliku GPX"},
+            "merge_artifact_ids": {"type": "array", "items": {"type": "string"}, "description": "Lista artefaktów partial/chunk do scalenia"},
+            "km_from": {"type": "number", "description": "Początek analizowanego zakresu km"},
+            "km_to": {"type": "number", "description": "Koniec analizowanego zakresu km"},
+            "buffers": {
+                "type": "object",
+                "description": "Bufory POI: attractions_m, hard_resupply_m, soft_food_m, water_m, oraz opcjonalnie chunk_km, chunk_overlap_km, min_chunk_km, analysis_timeout_sec, overpass_timeout_sec, overpass_retries, retry_backoff_sec",
+            },
+            "focus": {"type": "string", "enum": ["all", "logistics", "hard_resupply", "food_only"], "default": "all"},
+            "retry_chunk_id": {"type": "string", "description": "Identyfikator chunku do ponownej analizy"},
+            "retry_mode": {"type": "boolean", "default": False},
+            "timeout_sec": {"type": "number", "description": "Deadline całej analizy"},
+            "output_format": {"type": "string", "enum": ["json", "md"], "default": "md"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+        "notes": "Read-only variant that returns POI analysis without entering the write tool path.",
     }
 
 
@@ -1789,9 +2188,66 @@ def _load_nutrition_log_add_tool() -> dict[str, Any]:
             "kcal_total": {"type": "number"}, "protein_g": {"type": "number"},
             "carbs_g": {"type": "number"}, "fat_g": {"type": "number"},
         "template_id": {"type": "integer"},
-    },
-    "safety": "write",
+        },
+        "safety": "write",
 }
+
+
+def _load_nutrition_log_delete_tool() -> dict[str, Any]:
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        from qbot3.adapters.mcp_adapter import _execute_nutrition_delete
+        idem_key = _idempotency_key("nutr", json.dumps(args, sort_keys=True, ensure_ascii=False, default=str))
+        return _execute_nutrition_delete("nutrition_log_delete", args, idem_key)
+    return {
+        "callable": _safe_call,
+        "wrapped": _wrapper,
+        "category": "nutrition",
+        "description": (
+            "Delete one logged meal by meal_id. Use with nutrition_meal_list or nutrition_day_summary to discover the id first."
+        ),
+        "args_schema": {
+            "type": "object",
+            "properties": {
+                "meal_id": {"type": "integer", "description": "ID wpisu intake_logs"},
+                "meal_log_id": {"type": "integer", "description": "Alias meal_id"},
+                "intake_log_id": {"type": "integer", "description": "Alias meal_id"},
+            },
+            "required": ["meal_id"],
+        },
+        "safety": "write",
+    }
+
+
+def _load_nutrition_log_correct_tool() -> dict[str, Any]:
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        from qbot3.adapters.mcp_adapter import _execute_nutrition_correct
+        idem_key = _idempotency_key("nutr", json.dumps(args, sort_keys=True, ensure_ascii=False, default=str))
+        return _execute_nutrition_correct("nutrition_log_correct", args, idem_key)
+    return {
+        "callable": _safe_call,
+        "wrapped": _wrapper,
+        "category": "nutrition",
+        "description": (
+            "Correct one logged meal by meal_id. Use with nutrition_meal_list or nutrition_day_summary to discover the id first. "
+            "Supports optional item_id for a specific item inside the meal."
+        ),
+        "args_schema": {
+            "type": "object",
+            "properties": {
+                "meal_id": {"type": "integer", "description": "ID wpisu intake_logs"},
+                "meal_log_id": {"type": "integer", "description": "Alias meal_id"},
+                "intake_log_id": {"type": "integer", "description": "Alias meal_id"},
+                "item_id": {"type": "integer", "description": "Optional ID of a specific intake_items row"},
+                "meal_name": {"type": "string", "description": "New meal name"},
+                "kcal_total": {"type": "number", "description": "New kcal value"},
+                "protein_g": {"type": "number", "description": "New protein grams"},
+                "carbs_g": {"type": "number", "description": "New carbs grams"},
+                "fat_g": {"type": "number", "description": "New fat grams"},
+            },
+            "required": ["meal_id"],
+        },
+        "safety": "write",
+    }
 
 
 def _load_garmin_workout_create_tool() -> dict[str, Any]:
@@ -1840,12 +2296,23 @@ def _load_calendar_event_add_tool() -> dict[str, Any]:
     return {
         "callable": lambda args: _safe_call(TOOL_FUNC, args),
         "category": "calendar",
-        "description": "Add a calendar event. Parameters: date_start (ISO), time_start, title, description, event_type, date_end, all_day",
+        "description": (
+            "Add a calendar event. Use for natural requests like 'dodaj do kalendarza'. "
+            "Required: date_start (ISO), title. Optional: time_start, date_end, event_type, description, all_day."
+        ),
         "args_schema": {
-            "date_start": {"type": "string"}, "time_start": {"type": "string"},
-            "title": {"type": "string"}, "description": {"type": "string"},
-            "event_type": {"type": "string"}, "date_end": {"type": "string"},
-            "all_day": {"type": "boolean"},
+            "type": "object",
+            "properties": {
+                "date_start": {"type": "string", "description": "ISO date or datetime start"},
+                "time_start": {"type": "string", "description": "Optional HH:MM start time"},
+                "title": {"type": "string", "description": "Event title"},
+                "description": {"type": "string", "description": "Optional event description"},
+                "event_type": {"type": "string", "description": "Optional event type"},
+                "date_end": {"type": "string", "description": "Optional ISO end date"},
+                "all_day": {"type": "boolean", "description": "Optional all-day flag"},
+            },
+            "required": ["date_start", "title"],
+            "additionalProperties": False,
         },
         "safety": "write",
     }
@@ -1863,10 +2330,24 @@ def _load_reminder_add_tool() -> dict[str, Any]:
     return {
         "callable": lambda args: _safe_call(TOOL_FUNC, args),
         "category": "calendar",
-        "description": "Add a reminder. Parameters: date (ISO), time, title, message",
+        "description": (
+            "Add a reminder. Use for natural requests like 'dodaj przypomnienie'. "
+            "Required: date (ISO), title. Optional: time, message, reminder_type, priority, channel, recurrence_rule."
+        ),
         "args_schema": {
-            "date": {"type": "string"}, "time": {"type": "string"},
-            "title": {"type": "string"}, "message": {"type": "string"},
+            "type": "object",
+            "properties": {
+                "date": {"type": "string", "description": "ISO reminder date"},
+                "time": {"type": "string", "description": "Optional HH:MM reminder time"},
+                "title": {"type": "string", "description": "Reminder title"},
+                "message": {"type": "string", "description": "Optional reminder message"},
+                "reminder_type": {"type": "string", "description": "Optional reminder type"},
+                "priority": {"type": "string", "description": "Optional priority"},
+                "channel": {"type": "string", "description": "Optional channel"},
+                "recurrence_rule": {"type": "string", "description": "Optional recurrence rule"},
+            },
+            "required": ["date", "title"],
+            "additionalProperties": False,
         },
         "safety": "write",
     }
@@ -2103,6 +2584,7 @@ def _init_registry():
         ("route_stage_plan_analyze", _load_route_stage_plan_analyze_tool),
         ("route_gpx_split", _load_route_gpx_split_tool),
         ("stage_gpx_analyze", _load_stage_gpx_analyze_tool),
+        ("rwgps_route_surface_analyze", _load_rwgps_route_surface_analyze_tool),
         ("qcal_events_range", _load_qcal_events_range_tool),
         ("qcal_reminders_upcoming", _load_qcal_reminders_upcoming_tool),
         ("garage_status", _load_garage_status_tool),
@@ -2125,6 +2607,7 @@ def _init_registry():
         ("rwgps_route_find", _load_rwgps_route_find_tool),
         ("route_artifact_enrich_dry_run", _load_route_artifact_enrich_dry_run_tool),
         ("route_poi_analyze", _load_route_poi_analyze_tool),
+        ("route_poi_analyze_readonly", _load_route_poi_analyze_readonly_tool),
         ("rwgps_poi_push", _load_rwgps_poi_push_tool),
         ("rwgps_route_import_gpx", _load_rwgps_route_import_gpx_tool),
         ("artifact_search", _load_artifact_search_tool),
@@ -2135,6 +2618,8 @@ def _init_registry():
         ("db_select_readonly", _load_db_select_readonly_tool),
         # Write tools
         ("nutrition_log_add", _load_nutrition_log_add_tool),
+        ("nutrition_log_delete", _load_nutrition_log_delete_tool),
+        ("nutrition_log_correct", _load_nutrition_log_correct_tool),
         ("garmin_workout_create", _load_garmin_workout_create_tool),
         ("calendar_event_add", _load_calendar_event_add_tool),
         ("reminder_add", _load_reminder_add_tool),

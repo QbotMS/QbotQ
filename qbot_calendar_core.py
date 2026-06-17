@@ -88,19 +88,24 @@ def day_list(date_from: str, date_to: str) -> list[dict]:
 
 def event_create(date_start: str, title: str, event_type: str = "note",
                  description: str | None = None, date_end: str | None = None,
-                 status: str = "planned", source: str = "manual",
-                 external_ref: str | None = None, metadata: dict | None = None,
-                 affects_training: bool = False, affects_nutrition: bool = False,
-                 affects_health: bool = False) -> dict:
+                 time_start: str | None = None, status: str = "planned",
+                 source: str = "manual", external_ref: str | None = None,
+                 metadata: dict | None = None, affects_training: bool = False,
+                 affects_nutrition: bool = False, affects_health: bool = False) -> dict:
     with _conn() as c:
+        c.execute(
+            """INSERT INTO days (date, has_calendar)
+               VALUES (%s, true)
+               ON CONFLICT (date) DO UPDATE SET
+               has_calendar = true,
+               updated_at = now()""",
+            (date_start,),
+        )
         r = c.execute(
-            """INSERT INTO calendar_events (date_start, date_end, event_type, title, description,
-               status, source, external_ref, metadata_json,
-               affects_training, affects_nutrition, affects_health_advice)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
-            (date_start, date_end, event_type, title, description, status, source,
-             external_ref, json.dumps(metadata) if metadata else None,
-             affects_training, affects_nutrition, affects_health),
+            """INSERT INTO calendar_events (date_start, date_end, time_start, event_type, title,
+               status, source)
+               VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+            (date_start, date_end, time_start, event_type, title, status, source),
         ).fetchone()
         c.commit()
     return {k: _s(v) for k, v in dict(r).items()}
@@ -165,14 +170,14 @@ def qcal_event_add_controlled(
         pass
 
     # ── Natural-key duplicate fallback ──
-    # Check calendar_events by date_start + date_end + event_type + normalized title
+    # Check calendar_events by date_start + date_end + time_start + event_type + normalized title
     try:
         c = _conn()
         cur = c.cursor()
         norm_title = title.strip().lower()
         cur.execute(
-            "SELECT * FROM calendar_events WHERE date_start=%s::date AND date_end IS NOT DISTINCT FROM %s::date AND event_type=%s AND LOWER(TRIM(title))=%s AND status NOT IN ('cancelled','deleted') ORDER BY id",
-            (date_start, date_end, event_type, norm_title))
+            "SELECT * FROM calendar_events WHERE date_start=%s::date AND date_end IS NOT DISTINCT FROM %s::date AND time_start IS NOT DISTINCT FROM %s::time AND event_type=%s AND LOWER(TRIM(title))=%s AND status NOT IN ('cancelled','deleted') ORDER BY id",
+            (date_start, date_end, time_start, event_type, norm_title))
         matches = cur.fetchall()
         if matches:
             if len(matches) == 1:
@@ -206,7 +211,7 @@ def qcal_event_add_controlled(
     try:
         ev = event_create(
             date_start=date_start, title=title, event_type=event_type,
-            description=description, date_end=date_end,
+            description=description, date_end=date_end, time_start=time_start,
             status="planned", source=source,
             affects_training=affects_training, affects_nutrition=affects_nutrition,
         )

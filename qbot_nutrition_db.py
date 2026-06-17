@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import unicodedata
+from functools import lru_cache
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -169,6 +172,11 @@ def meal_log_create(
 ) -> dict:
     eaten_dt = datetime.fromisoformat(eaten_at) if eaten_at else datetime.now()
     items = items or []
+    # Validate and auto-fix items before insert
+    items, _fix_warnings = _validate_and_fix_meal_items(items)
+    if _fix_warnings:
+        import logging
+        logging.getLogger('qbot.nutrition').warning('meal_log_create validation: %s', _fix_warnings)
     with _conn() as conn:
         meal = conn.execute(
             """INSERT INTO qbot_v2.meal_logs (eaten_at, meal_type, note, context)
@@ -231,7 +239,12 @@ def meal_log_create(
                      'chatgpt_mcp', 'manual'),
                 ).fetchone()
                 v2_log_id = v2_log["id"]
+                _inserted_items = set()  # dedup: (food_name, kcal)
                 for item in items:
+                    _item_key = (item.get("food") or item.get("food_name",""), item.get("kcal"))
+                    if _item_key in _inserted_items:
+                        continue  # pomiń duplikat
+                    _inserted_items.add(_item_key)
                     v2.execute(
                         """INSERT INTO qbot_v2.intake_items
                            (intake_log_id, food_name, amount, unit,
@@ -256,6 +269,115 @@ def meal_log_create(
 
     return get_meal_log(meal_id)
 
+
+
+def _validate_and_fix_meal_items(items: list[dict]) -> tuple[list[dict], list[str]]:
+    """Validate and auto-correct item macros. Returns (fixed_items, warnings).
+
+    Auto-corrections applied:
+    - Sugar/honey/syrup items: zero out protein_g and fat_g if > 2g
+    - Items where macro-derived kcal > 2x reported: cap macros proportionally
+    Blocking:
+    - Negative macro values → set to 0
+    """
+    import copy
+    fixed = copy.deepcopy(items)
+    warnings = []
+    for i, item in enumerate(fixed):
+        name = (item.get("food") or item.get("food_name", "?"))[:40]
+        name_l = name.lower()
+
+        # Fix negatives
+        for field in ("kcal", "protein_g", "carbs_g", "fat_g", "fiber_g", "sodium_mg"):
+            v = item.get(field)
+            if v is not None and v < 0:
+                item[field] = 0
+                warnings.append(f"item[{i}] '{name}': {field} was negative, set to 0")
+
+        kcal = item.get("kcal") or 0
+        p = item.get("protein_g") or 0
+        c = item.get("carbs_g") or 0
+        f = item.get("fat_g") or 0
+
+        # Auto-fix sugar-like items
+        _sugar_keywords = ["miod", "miód", "honey", "cukier", "sugar", "dżem",
+                           "dzem", "syrop", "jam", "marmolada", "konfitura"]
+        if any(kw in name_l for kw in _sugar_keywords):
+            if p > 2:
+                warnings.append(f"item[{i}] '{name}': auto-fix protein {p}->0 (sugar-type)")
+                item["protein_g"] = 0
+            if f > 2:
+                warnings.append(f"item[{i}] '{name}': auto-fix fat {f}->0 (sugar-type)")
+                item["fat_g"] = 0
+
+        # Check macro consistency — auto-fix when macros wildly exceed reported kcal
+        p2 = item.get("protein_g") or 0
+        c2 = item.get("carbs_g") or 0
+        f2 = item.get("fat_g") or 0
+        derived = p2 * 4 + c2 * 4 + f2 * 9
+        if kcal > 0 and derived > 0:
+            ratio = derived / kcal
+            if ratio > 2.0:
+                # Scale macros down proportionally to fit reported kcal
+                scale = kcal / derived
+                old_p, old_c, old_f = p2, c2, f2
+                item["protein_g"] = round(p2 * scale, 1)
+                item["carbs_g"] = round(c2 * scale, 1)
+                item["fat_g"] = round(f2 * scale, 1)
+                warnings.append(
+                    "item[%d] %r: auto-fix macros scaled %.1fx (derived %d >> reported %d kcal). "
+                    "P:%.0f->%.1f C:%.0f->%.1f F:%.0f->%.1f"
+                    % (i, name, scale, derived, kcal, old_p, item["protein_g"],
+                       old_c, item["carbs_g"], old_f, item["fat_g"])
+                )
+            elif ratio < 0.3:
+                warnings.append(
+                    "item[%d] %r: macro kcal (%d) << reported (%d), ratio=%.1f"
+                    % (i, name, derived, kcal, ratio)
+                )
+
+    # Cross-item checks: detect duplicated macros across items (LLM copy-paste bug)
+    if len(fixed) >= 2:
+        for field in ("carbs_g", "fat_g", "protein_g", "fiber_g"):
+            vals = [item.get(field) or 0 for item in fixed]
+            nonzero = [v for v in vals if v > 0]
+            if len(nonzero) >= 2 and len(set(nonzero)) == 1 and nonzero[0] > 1:
+                # All non-zero items have identical value — likely copy-paste
+                seen_first = False
+                for i, item in enumerate(fixed):
+                    v = item.get(field) or 0
+                    if v > 0:
+                        if not seen_first:
+                            seen_first = True
+                        else:
+                            nm = (item.get("food") or item.get("food_name", "?"))[:30]
+                            warnings.append(
+                                "item[%d] %r: auto-fix duplicate %s=%s -> 0 (copy-paste detected)"
+                                % (i, nm, field, v)
+                            )
+                            item[field] = 0
+
+        # Macro-sum sanity
+        sum_reported = sum((it.get("kcal") or 0) for it in fixed)
+        sum_derived = sum(
+            (it.get("protein_g") or 0) * 4 + (it.get("carbs_g") or 0) * 4 + (it.get("fat_g") or 0) * 9
+            for it in fixed
+        )
+        if sum_reported > 0 and sum_derived > 0:
+            ratio = sum_derived / sum_reported
+            if ratio > 1.8:
+                warnings.append(
+                    "total macro-derived kcal (%.0f) >> sum reported (%.0f), ratio=%.1f — possible item duplication"
+                    % (sum_derived, sum_reported, ratio)
+                )
+
+    return fixed, warnings
+
+
+def _validate_meal_items(items: list[dict]) -> list[str]:
+    """Legacy wrapper — calls _validate_and_fix_meal_items, returns warnings only."""
+    _, warnings = _validate_and_fix_meal_items(items)
+    return warnings
 
 def intake_log_create(
     meal_type: str = "meal",
@@ -289,6 +411,10 @@ def intake_log_create(
             (eaten_date, eaten_dt, meal_type, note, source, quality_status),
         ).fetchone()
         meal_id = meal["id"]
+        items, _warnings = _validate_and_fix_meal_items(items)
+        if _warnings:
+            import logging
+            logging.getLogger("qbot.nutrition").warning("Item validation (auto-fixed): %s", _warnings)
         inserted_items: list[dict] = []
         for item in items:
             food = item.get("food") or item.get("food_name", "unknown")
@@ -486,7 +612,10 @@ def daily_summary_compute(date_str: str) -> dict:
         ).fetchone()
 
     kcal_total = (meals["kcal"] or 0)
-    carbs_total = (meals["carbs"] or 0) + (fuel["carbs"] or 0)
+    # Only add fueling carbs if no meal data exists (avoids double-count)
+    _meal_carbs = meals["carbs"] or 0
+    _fuel_carbs = fuel["carbs"] or 0
+    carbs_total = _meal_carbs if _meal_carbs > 0 else _fuel_carbs
     protein_total = (meals["protein"] or 0)
     fat_total = (meals["fat"] or 0)
     fiber_total = (meals["fiber"] or 0)
@@ -621,6 +750,121 @@ def template_get_by_name(name: str) -> dict | None:
             "SELECT * FROM qbot_v2.meal_templates WHERE name=%s", (name,)
         ).fetchone()
     return _serialize_row(dict(row)) if row else None
+
+
+@lru_cache(maxsize=1)
+def _has_unaccent_extension() -> bool:
+    try:
+        with _conn() as conn:
+            row = conn.execute(
+                "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'unaccent') AS ok"
+            ).fetchone()
+        return bool(row["ok"]) if row else False
+    except Exception:
+        return False
+
+
+def _normalize_template_text(text: str | None) -> str:
+    raw = str(text or "").lower().strip()
+    if not raw:
+        return ""
+    if _has_unaccent_extension():
+        try:
+            with _conn() as conn:
+                row = conn.execute("SELECT unaccent(%s) AS txt", (raw,)).fetchone()
+            if row and row.get("txt"):
+                raw = str(row["txt"]).lower().strip()
+        except Exception:
+            pass
+    raw = raw.translate(str.maketrans({
+        "ą": "a",
+        "ć": "c",
+        "ę": "e",
+        "ł": "l",
+        "ń": "n",
+        "ó": "o",
+        "ś": "s",
+        "ź": "z",
+        "ż": "z",
+    }))
+    raw = unicodedata.normalize("NFKD", raw)
+    raw = "".join(ch for ch in raw if not unicodedata.combining(ch))
+    raw = re.sub(r"[^0-9a-z\s]+", " ", raw)
+    return re.sub(r"\s+", " ", raw).strip()
+
+
+def _template_lookup_candidates() -> list[tuple[dict, str, set[str]]]:
+    with _conn() as conn:
+        rows = conn.execute("SELECT * FROM qbot_v2.meal_templates ORDER BY id").fetchall()
+    candidates: list[tuple[dict, str, set[str]]] = []
+    for row in rows:
+        tmpl = _serialize_row(dict(row))
+        name_norm = _normalize_template_text(tmpl.get("name"))
+        tokens = {tok for tok in name_norm.split() if len(tok) >= 3}
+        candidates.append((tmpl, name_norm, tokens))
+    return candidates
+
+
+def _token_matches(a: str, b: str) -> bool:
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    return a.startswith(b) or b.startswith(a)
+
+
+def template_find_by_name(name: str) -> tuple[dict | None, str | None]:
+    q_raw = str(name or "").strip()
+    if not q_raw:
+        return None, None
+
+    q_norm = _normalize_template_text(q_raw)
+    q_tokens = [tok for tok in q_norm.split() if len(tok) >= 3]
+    if not q_tokens:
+        q_tokens = [tok for tok in re.split(r"\s+", q_norm) if len(tok) >= 3]
+
+    with _conn() as conn:
+        exact_row = conn.execute(
+            "SELECT * FROM qbot_v2.meal_templates WHERE lower(name)=lower(%s) ORDER BY confidence DESC, id ASC LIMIT 1",
+            (q_raw,),
+        ).fetchone()
+    if exact_row:
+        return _serialize_row(dict(exact_row)), "exact"
+
+    candidates = _template_lookup_candidates()
+
+    normalized_hits: list[tuple[dict, int, int]] = []
+    for tmpl, name_norm, _tokens in candidates:
+        if not name_norm or not q_norm:
+            continue
+        if name_norm == q_norm or name_norm in q_norm or q_norm in name_norm:
+            confidence_rank = {"high": 2, "medium": 1, "low": 0}.get(str(tmpl.get("confidence", "")).lower(), 0)
+            normalized_hits.append((tmpl, confidence_rank, int(tmpl.get("id") or 0)))
+    if normalized_hits:
+        normalized_hits.sort(key=lambda item: (-item[1], item[2]))
+        return normalized_hits[0][0], "normalized"
+
+    token_hits: list[tuple[dict, float, int, int]] = []
+    if q_tokens:
+        for tmpl, _name_norm, tokens in candidates:
+            if not tokens:
+                continue
+            matched = set()
+            for q_token in q_tokens:
+                if any(_token_matches(q_token, t_token) for t_token in tokens):
+                    matched.add(q_token)
+            if not matched:
+                continue
+            coverage = len(matched) / len(q_tokens)
+            if coverage <= 0:
+                continue
+            confidence_rank = {"high": 2, "medium": 1, "low": 0}.get(str(tmpl.get("confidence", "")).lower(), 0)
+            token_hits.append((tmpl, coverage, confidence_rank, int(tmpl.get("id") or 0)))
+    if token_hits:
+        token_hits.sort(key=lambda item: (-item[1], -item[2], item[3]))
+        return token_hits[0][0], "token"
+
+    return None, None
 
 
 def template_list(limit: int = 50) -> list[dict]:

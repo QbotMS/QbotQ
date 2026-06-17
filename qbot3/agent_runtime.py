@@ -17,6 +17,75 @@ from qbot3.tool_registry import lookup, tool_descriptions, _idempotency_key, _re
 from qbot3.context_builder import build_context
 from qbot3.plan_validator import validate_plan
 from qbot3.observability import log_request, Timer, request_id as rid
+from qbot3.fallback_policy import planner_unavailable_response
+
+
+def _execute_real_write_tool(tool_name: str, args: dict) -> dict:
+    """Execute a real write tool from Albert without drafting."""
+    from qbot3.safety import validate
+    from qbot3.tool_registry import _idempotency_key
+
+    payload = dict(args)
+    if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct"):
+        payload.setdefault("source", "albert")
+
+    idem_prefix = {
+        "nutrition_log_add": "nutr",
+        "nutrition_log_delete": "nutr",
+        "nutrition_log_correct": "nutr",
+        "calendar_event_add": "cal",
+        "reminder_add": "rem",
+    }.get(tool_name, tool_name[:8] or "wr")
+    idem_key = _idempotency_key(idem_prefix, json.dumps(args, sort_keys=True, default=str))
+
+    validation = validate(tool_name, payload, idem_key)
+    if validation.get("status") != "OK":
+        return {
+            "status": "error",
+            "action_type": tool_name,
+            "error": f"{tool_name} validation failed: {validation.get('error')}",
+            "payload_json": payload,
+        }
+
+    if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct"):
+        from qbot3.adapters.mcp_adapter import (
+            _execute_nutrition_correct,
+            _execute_nutrition_delete,
+            _execute_nutrition_write,
+        )
+        if tool_name == "nutrition_log_add":
+            write_result = _execute_nutrition_write(tool_name, payload, idem_key)
+        elif tool_name == "nutrition_log_delete":
+            write_result = _execute_nutrition_delete(tool_name, payload, idem_key)
+        else:
+            write_result = _execute_nutrition_correct(tool_name, payload, idem_key)
+        write_result.setdefault("status", "OK" if write_result.get("write_committed") else "WRITE_ERROR")
+        return write_result
+
+    if tool_name == "calendar_event_add":
+        from qbot_mcp_adapter import _action_exec_event
+        write_result = _action_exec_event(payload, idem_key, source="albert")
+        success = write_result.get("status") == "OK"
+        write_result.setdefault("execution_mode", "real_write")
+        write_result.setdefault("write_committed", success)
+        write_result.setdefault("commit_executed", success)
+        return write_result
+
+    if tool_name == "reminder_add":
+        from qbot_mcp_adapter import _action_exec_reminder
+        write_result = _action_exec_reminder(payload, idem_key, source="albert")
+        success = write_result.get("status") == "OK"
+        write_result.setdefault("execution_mode", "real_write")
+        write_result.setdefault("write_committed", success)
+        write_result.setdefault("commit_executed", success)
+        return write_result
+
+    return {
+        "status": "error",
+        "action_type": tool_name,
+        "error": f"Nieobslugiwane narzedzie zapisu: {tool_name}",
+        "payload_json": payload,
+    }
 
 
 def _execute_single_tool(tool_name: str, args: dict) -> dict:
@@ -29,6 +98,10 @@ def _execute_single_tool(tool_name: str, args: dict) -> dict:
     from qbot3.tool_registry import list_write_tools
 
     write_tools = list_write_tools()
+    if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct",
+                     "calendar_event_add", "reminder_add"):
+        return _execute_real_write_tool(tool_name, args)
+
     if tool_name in write_tools:
         return {
             "status": "WRITE_DRAFT",
@@ -38,8 +111,7 @@ def _execute_single_tool(tool_name: str, args: dict) -> dict:
             "write_not_performed": True,
             "message": (
                 f"⚠️ TO JEST TYLKO DRAFT — NIE WYKONANO ZAPISU.\n"
-                f"Aby wykonać, użyj qbot.action_execute z action_type='{tool_name}', "
-                f"payload_json z danymi poniżej, confirm=true.\n"
+                f"Ta operacja ({tool_name}) nie jest jeszcze wspierana przez automatyczny zapis w qbot.query.\n"
                 f"Payload: {json.dumps(args, ensure_ascii=False, default=str)[:500]}"
             ),
         }
@@ -73,6 +145,18 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
     """
     _check_qbot3_enabled()
 
+    if os.getenv("QBOT_ALBERT_HARD_KILL") == "1":
+        result = planner_unavailable_response(
+            question,
+            intent="albert_native",
+            source="qbot.query",
+            fallback_reason="QBOT_ALBERT_HARD_KILL=1",
+        )
+        result["steps"] = 0
+        result["tool_results"] = []
+        result["request_id"] = rid()
+        return result
+
     # Fallback do legacy loop dla testów z mock providerem
     if os.getenv("ALBERT_LLM_PROVIDER") == "mock":
         return _orchestrate_query_legacy(question, context, max_rows)
@@ -105,11 +189,40 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
     tools_spec = build_tools_spec(tools_desc)
 
     # ── Uruchom Alberta ─────────────────────────────────────────────────────
+    # Dedup cache per-run (2026-06-15): jesli model w jednej turze wywola
+    # ten sam tool write wiecej niz raz z tymi samymi danymi, drugi i kolejne
+    # wywolania dostaja CACHED wynik pierwszego - zero dodatkowych zapisow.
+    _write_call_cache: dict[str, dict] = {}
+
+    def _execute_tool_dedup(tool_name: str, args: dict) -> dict:
+        if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct",
+                         "calendar_event_add", "reminder_add"):
+            from qbot3.tool_registry import _idempotency_key
+            prefix = {
+                "nutrition_log_add": "nutr",
+                "nutrition_log_delete": "nutr",
+                "nutrition_log_correct": "nutr",
+                "calendar_event_add": "cal",
+                "reminder_add": "rem",
+            }.get(tool_name, tool_name[:8] or "wr")
+            cache_key = _idempotency_key(prefix, json.dumps(args, sort_keys=True, default=str))
+            if cache_key in _write_call_cache:
+                cached = dict(_write_call_cache[cache_key])
+                cached["duplicate_call_suppressed"] = True
+                return cached
+            result = _execute_single_tool(tool_name, args)
+            _write_call_cache[cache_key] = result
+            return result
+        return _execute_single_tool(tool_name, args)
+
     albert_result = albert_run(
         question=question,
         tools_spec=tools_spec,
-        execute_tool_fn=_execute_single_tool,
+        execute_tool_fn=_execute_tool_dedup,
         context=ctx,
+        override_api_key=os.getenv("QGPT_ANALYTICAL_API_KEY", ""),
+        override_base_url=os.getenv("QGPT_ANALYTICAL_BASE_URL", ""),
+        override_model=os.getenv("QGPT_ANALYTICAL_MODEL", ""),
     )
 
     answer = albert_result.get("answer", "")
@@ -303,8 +416,32 @@ _DESTRUCTIVE_PATTERNS = [
 ]
 
 
+def _looks_like_nutrition_delete_request(question: str) -> bool:
+    ql = question.lower()
+    if not any(pat in ql for pat in ("usuń", "skasuj", "delete", "remove", "usun")):
+        return False
+    if any(pat in ql for pat in ("wszystko", "wszystkie", "all", "everything", "wyczyść")):
+        return False
+    return any(
+        hint in ql
+        for hint in (
+            "dziennik",
+            "wpis do dziennika",
+            "posiłk",
+            "posilek",
+            "jedzen",
+            "nutrition",
+            "kalori",
+            "kcal",
+            "makro",
+        )
+    )
+
+
 def _is_destructive_query(question: str) -> bool:
     ql = question.lower().strip()
+    if _looks_like_nutrition_delete_request(ql):
+        return False
     for pat in _DESTRUCTIVE_PATTERNS:
         if ql.startswith(pat) or pat in ql.split()[:3]:
             return True

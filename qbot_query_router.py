@@ -3561,6 +3561,7 @@ _ALLOWED_CANONICAL_INTENTS = [
     "current_day_meals", "nutrition_balance", "food_product_catalog",
     "saved_meals_catalog", "food_link_audit", "nutrition_planning",
     "nutrition_log_add_draft", "latest_training", "training_summary",
+    "garmin_last_activity",
     "meal_log_inventory",
     "route_list", "qcal_reminder_add_draft", "qcal_event_add_draft",
     "qcal_event_cancel_draft", "qcal_event_update_draft",

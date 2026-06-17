@@ -1615,7 +1615,15 @@ def export_route_to_artifact(route_id: str | int, fmt: str = "gpx", return_mode:
         route_name = route_view.get("name") or ""
         project_id = _resolve_project_id_from_name(route_name)
 
-        idem_key = f"rwgps_export:{route_id_str}:{fmt}"
+        # Wersjonowany klucz idempotencji — zawiera date updated_at z RWGPS.
+        # Zmiana trasy na RWGPS = nowy klucz = nowy rekord; stary -> superseded.
+        _rwgps_upd = route_view.get("updated_at") or ""
+        _idem_date = (
+            _rwgps_upd[:10].replace("-", "")  # "20260610"
+            if len(_rwgps_upd) >= 10
+            else "unknown"
+        )
+        idem_key = f"rwgps_export:{route_id_str}:{fmt}:{_idem_date}"
         artifact_record = _register_artifact(
             relative_path,
             artifact_type="route",
@@ -1632,11 +1640,20 @@ def export_route_to_artifact(route_id: str | int, fmt: str = "gpx", return_mode:
                 "point_count": point_count,
                 "route_name": route_name,
                 "route_source": source,
+                "rwgps_updated_at": route_view.get("updated_at") or "",
             },
         )
         if artifact_record and artifact_record.get("artifact_id"):
             payload["artifact_store_id"] = str(artifact_record["artifact_id"])
             payload["artifact_store_status"] = "registered"
+            # Freshness invariant: superseduj stare rekordy tej trasy
+            try:
+                from core.invariants import supersede_stale_route_artifacts as _supersede
+                _n_sup = _supersede(route_id_str, fmt, idem_key)
+                if _n_sup:
+                    payload["freshness_superseded"] = _n_sup
+            except Exception as _inv_exc:
+                payload["freshness_warning"] = f"supersede failed: {_inv_exc}"
         else:
             payload["artifact_store_warning"] = "Artifact Store returned empty record"
             payload["artifact_store_status"] = "skipped"

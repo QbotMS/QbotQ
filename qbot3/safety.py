@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 try:
     import psycopg
@@ -27,25 +27,85 @@ _DOC_ALLOWLIST = frozenset({
 })
 _DOC_BASE_DIR = "/opt/qbot/docs"
 
-_ACTION_ALLOWLIST = frozenset({
-    "nutrition_log_add",
+_ZERO_KCAL_OK_TOKENS = (
+    "woda",
+    "water",
+    "kawa czarna",
+    "czarna kawa",
+    "espresso",
+    "herbata",
+    "tea",
+    "napar",
+    "zioła",
+    "ziola",
+    "guma",
+    "sól",
+    "sol",
+    "elektrolit",
+)
+
+
+def _nutrition_zero_kcal_guard(payload: dict[str, Any]) -> Optional[str]:
+    kcal = payload.get("kcal_total")
+    try:
+        kcal_val = float(kcal) if kcal is not None else None
+    except (TypeError, ValueError):
+        kcal_val = None
+    if kcal_val is None or kcal_val > 0:
+        return None
+
+    name = str(payload.get("meal_name") or "").strip().lower()
+    if any(tok in name for tok in _ZERO_KCAL_OK_TOKENS):
+        return None
+
+    if payload.get("resolved_from_lookup") is True and not payload.get("requires_lookup"):
+        return None
+
+    return (
+        "Zapis odrzucony: '{}' ma 0 kcal i nie przeszedł przez lookup. "
+        "Najpierw wywołaj nutrition_template_get lub nutrition_write_resolve, "
+        "albo podaj kcal jawnie. (Jeśli to napój zero-kcal, dodaj słowo np. 'woda')."
+    ).format(payload.get("meal_name") or "(bez nazwy)")
+
+# Akcje dozwolone w qbot3, ktore na 2026-06-14 nie maja jeszcze wpisu w
+# modules/*/manifest.py["write_actions"]. Migrowac do manifestow w kolejnej
+# sesji; do tego czasu utrzymywane tu jawnie, zeby nie zrobic regresji.
+_LEGACY_EXTRA_ACTIONS = frozenset({
     "calendar_event_add",
     "reminder_add",
-    "planning_fact_add",
     "memory_confirmed_fact_add",
-    "garmin_workout_create",
-    "qbot_doc_append",
-    "rwgps_gpx_import",
-    "rwgps_route_import_gpx",
     "rwgps_route_export_gpx",
-    "rwgps_route_profile_export_csv",
     "rwgps_route_surface_analyze",
-    "rwgps_poi_push",
-    "route_poi_analyze",
     "fit_file_analyze",
-    "qbot_artifact_put",
-    "qbot_artifact_get",
 })
+
+# Allowlist generowana z manifestow modulow (core/registry.py) + legacy
+# extra. Jedyne zrodlo prawdy dla write_actions to modules/*/manifest.py -
+# nowa akcja dodana tam automatycznie dziala tutaj, bez recznej edycji.
+try:
+    from core.registry import get_allowlist as _registry_get_allowlist
+    _ACTION_ALLOWLIST = frozenset(_registry_get_allowlist()) | _LEGACY_EXTRA_ACTIONS
+except Exception:
+    # fallback hard-coded na wypadek bledu importu registry
+    _ACTION_ALLOWLIST = frozenset({
+        "nutrition_log_add",
+        "calendar_event_add",
+        "reminder_add",
+        "planning_fact_add",
+        "memory_confirmed_fact_add",
+        "garmin_workout_create",
+        "qbot_doc_append",
+        "rwgps_gpx_import",
+        "rwgps_route_import_gpx",
+        "rwgps_route_export_gpx",
+        "rwgps_route_profile_export_csv",
+        "rwgps_route_surface_analyze",
+        "rwgps_poi_push",
+        "route_poi_analyze",
+        "fit_file_analyze",
+        "qbot_artifact_put",
+        "qbot_artifact_get",
+    })
 
 
 def _db() -> Any:
@@ -81,6 +141,52 @@ def validate(action_type: str, payload: dict[str, Any], idem_key: str, dry_run: 
         macros = [payload.get("protein_g"), payload.get("carbs_g"), payload.get("fat_g")]
         if any(v is not None for v in macros) and any(v in (None, "") for v in macros):
             return {"status": "BLOCKED", "error": "protein_g, carbs_g and fat_g must be provided together when known"}
+        zero_kcal_guard = _nutrition_zero_kcal_guard(payload)
+        if zero_kcal_guard:
+            return {"status": "BLOCKED", "error": zero_kcal_guard, "missing_fields": ["kcal_total"]}
+
+    if action_type in ("nutrition_log_delete", "nutrition_log_correct"):
+        meal_id = payload.get("meal_id") or payload.get("meal_log_id") or payload.get("intake_log_id")
+        if meal_id in (None, ""):
+            return {"status": "BLOCKED", "error": f"{action_type} payload missing required field: meal_id"}
+        try:
+            int(meal_id)
+        except Exception:
+            return {"status": "BLOCKED", "error": f"invalid meal_id: {meal_id}"}
+        if action_type == "nutrition_log_correct":
+            if not any(payload.get(field) not in (None, "") for field in ("meal_name", "kcal_total", "protein_g", "carbs_g", "fat_g", "item_id")):
+                return {"status": "BLOCKED", "error": "nutrition_log_correct requires at least one field to update"}
+
+    if action_type == "calendar_event_add":
+        required = ("date_start", "title")
+        missing = [field for field in required if payload.get(field) in (None, "")]
+        if missing:
+            return {"status": "BLOCKED", "error": f"calendar_event_add payload missing required fields: {', '.join(missing)}"}
+        date_raw = str(payload.get("date_start", "")).strip()
+        try:
+            from datetime import date as dt_date
+            dt_date.fromisoformat(date_raw[:10])
+        except Exception:
+            return {"status": "BLOCKED", "error": f"invalid calendar date_start: {date_raw}"}
+        if payload.get("date_end") not in (None, ""):
+            end_raw = str(payload.get("date_end", "")).strip()
+            try:
+                from datetime import date as dt_date
+                dt_date.fromisoformat(end_raw[:10])
+            except Exception:
+                return {"status": "BLOCKED", "error": f"invalid calendar date_end: {end_raw}"}
+
+    if action_type == "reminder_add":
+        required = ("date", "title")
+        missing = [field for field in required if payload.get(field) in (None, "")]
+        if missing:
+            return {"status": "BLOCKED", "error": f"reminder_add payload missing required fields: {', '.join(missing)}"}
+        date_raw = str(payload.get("date", "")).strip()
+        try:
+            from datetime import date as dt_date
+            dt_date.fromisoformat(date_raw[:10])
+        except Exception:
+            return {"status": "BLOCKED", "error": f"invalid reminder date: {date_raw}"}
 
     if action_type == "qbot_artifact_put":
         required = ("project_id", "filename", "content_base64", "mime_type")
