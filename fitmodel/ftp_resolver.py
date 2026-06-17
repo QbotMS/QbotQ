@@ -9,7 +9,10 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import psycopg2
+try:
+    import psycopg2
+except ModuleNotFoundError:
+    import psycopg as psycopg2
 
 
 ENV_FILE = Path("/etc/qbot/qbot-api.env")
@@ -67,15 +70,16 @@ def load_params(db_conn) -> dict:
     return params
 
 
-def compute_ef_median(db_conn, as_of_date=None, window_days=28) -> float | None:
+def compute_ef_median(db_conn, as_of_date=None, window_days=28, exclude_days: list[date] | None = None) -> float | None:
     day = _coerce_date(as_of_date)
     start_day = day - timedelta(days=int(window_days))
     start_ts = datetime.combine(start_day, time.min)
     end_ts = datetime.combine(day + timedelta(days=1), time.min)
+    excluded_days = {_coerce_date(item) for item in (exclude_days or [])}
     with db_conn.cursor() as cur:
         cur.execute(
             """
-            SELECT ef_norm
+            SELECT started_at, ef_norm
             FROM qbot_v2.fitmodel_segment
             WHERE hr_quality_ok IS TRUE
               AND ef_norm IS NOT NULL
@@ -85,7 +89,14 @@ def compute_ef_median(db_conn, as_of_date=None, window_days=28) -> float | None:
             """,
             (start_ts, end_ts),
         )
-        values = [float(row[0]) for row in cur.fetchall() if row[0] is not None]
+        values = []
+        for started_at, ef_norm in cur.fetchall():
+            if started_at is None or ef_norm is None:
+                continue
+            started_day = started_at.date() if hasattr(started_at, "date") else _coerce_date(started_at)
+            if started_day in excluded_days:
+                continue
+            values.append(float(ef_norm))
     if len(values) < 3:
         return None
     return float(median(values))
@@ -99,6 +110,92 @@ def compute_ftp_est(ef_med, params) -> float | None:
     if ftp_anchor is None or ef_anchor in (None, 0):
         return None
     return float(ftp_anchor * (float(ef_med) / float(ef_anchor)))
+
+
+def _table_has_column(db_conn, table_schema: str, table_name: str, column_name: str) -> bool:
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = %s
+              AND table_name = %s
+              AND column_name = %s
+            LIMIT 1
+            """,
+            (table_schema, table_name, column_name),
+        )
+        return cur.fetchone() is not None
+
+
+
+def _fetch_wellness_row(db_conn, day_value: date) -> dict[str, Any]:
+    sleep_expr = "sleep_h" if _table_has_column(db_conn, "qbot_v2", "qbot_wellness_daily", "sleep_h") else "sleep_duration_min"
+    with db_conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT {sleep_expr}, hrv_ms, resting_hr_bpm
+            FROM qbot_v2.qbot_wellness_daily
+            WHERE date = %s
+            ORDER BY source_priority ASC, imported_at DESC
+            LIMIT 1
+            """,
+            (day_value,),
+        )
+        row = cur.fetchone()
+    if not row:
+        return {}
+    sleep_value, hrv_ms, resting_hr_bpm = row
+    if sleep_value is None:
+        sleep_h = None
+    elif sleep_expr == "sleep_h":
+        sleep_h = float(sleep_value)
+    else:
+        sleep_h = float(sleep_value) / 60.0
+    return {
+        "sleep_h": sleep_h,
+        "hrv_ms": float(hrv_ms) if hrv_ms is not None else None,
+        "rhr": int(resting_hr_bpm) if resting_hr_bpm is not None else None,
+    }
+
+
+
+def compute_readiness_weight(db_conn, day, params) -> float:
+    day_value = _coerce_date(day)
+    wellness = _fetch_wellness_row(db_conn, day_value)
+    if not wellness:
+        return 1.0
+
+    sleep_h = wellness.get("sleep_h")
+    hrv_ms = wellness.get("hrv_ms")
+
+    baseline_hrv = None
+    start_day = day_value - timedelta(days=28)
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT hrv_ms
+            FROM qbot_v2.qbot_wellness_daily
+            WHERE date >= %s
+              AND date < %s
+              AND hrv_ms IS NOT NULL
+            ORDER BY date DESC, source_priority ASC, imported_at DESC
+            """,
+            (start_day, day_value),
+        )
+        hrv_values = [float(row[0]) for row in cur.fetchall() if row[0] is not None]
+    if len(hrv_values) >= 5:
+        baseline_hrv = float(median(hrv_values))
+
+    weight = 1.0
+    if sleep_h is not None and sleep_h < 6.0:
+        weight = min(weight, 0.4)
+    if baseline_hrv is not None and hrv_ms is not None:
+        if hrv_ms < 0.60 * baseline_hrv:
+            weight = 0.0
+        elif hrv_ms < 0.75 * baseline_hrv:
+            weight = min(weight, 0.3)
+    return float(weight)
 
 
 def _fetch_daily_wellness(db_conn, day_value: date) -> dict[str, Any]:
@@ -168,15 +265,17 @@ def update_fitmodel_daily(db_conn, day=None) -> dict:
     day_value = _coerce_date(day)
     params = load_params(db_conn)
     window_days = int(params.get("ef_window_days", DEFAULT_WINDOW_DAYS))
-    ef_med_28d = compute_ef_median(db_conn, day_value, window_days=window_days)
+    readiness_weight = compute_readiness_weight(db_conn, day_value, params)
+    exclude_days = [day_value] if readiness_weight == 0.0 else None
+    ef_med_28d = compute_ef_median(db_conn, day_value, window_days=window_days, exclude_days=exclude_days)
     ftp_est_w = compute_ftp_est(ef_med_28d, params)
-    daily = _fetch_daily_wellness(db_conn, day_value)
+    daily = _fetch_wellness_row(db_conn, day_value)
     weight_kg = _fetch_last_weight(db_conn, day_value)
     if weight_kg is None and daily.get("weight_kg") is not None:
         weight_kg = float(daily["weight_kg"])
     w_per_kg = float(ftp_est_w / weight_kg) if ftp_est_w is not None and weight_kg not in (None, 0) else None
     segment_count = _count_segments_in_window(db_conn, day_value, window_days)
-    notes = f"segments={segment_count}; window_days={window_days}"
+    notes = f"segments={segment_count}; window_days={window_days}; readiness={readiness_weight}"
 
     with db_conn.cursor() as cur:
         cur.execute(
@@ -216,6 +315,7 @@ def update_fitmodel_daily(db_conn, day=None) -> dict:
         "ef_med_28d": ef_med_28d,
         "weight_kg": weight_kg,
         "w_per_kg": w_per_kg,
+        "readiness_weight": readiness_weight,
     }
     if daily:
         result.update(daily)
