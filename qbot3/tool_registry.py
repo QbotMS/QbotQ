@@ -1986,6 +1986,45 @@ def _load_route_poi_analyze_readonly_tool() -> dict[str, Any]:
     from qbot3.errors import error_result, success_result
     from qbot_route_tools import _tool_qbot_route_poi_analyze
 
+    def _slim_poi_data(data: dict[str, Any]) -> dict[str, Any]:
+        analysis = data.get("analysis") or {}
+
+        def _count(section: str) -> int | None:
+            value = analysis.get(section)
+            if isinstance(value, list):
+                return len(value)
+            if isinstance(value, int):
+                return value
+            return None
+
+        hard_resupply = _count("hard_resupply")
+        soft_food_stop = _count("soft_food_stop")
+        food_count = None
+        if hard_resupply is not None or soft_food_stop is not None:
+            food_count = (hard_resupply or 0) + (soft_food_stop or 0)
+
+        slim = {
+            "status": data.get("status"),
+            "ok": data.get("ok"),
+            "route_id": data.get("route_id"),
+            "km_from": analysis.get("km_from") if analysis.get("km_from") is not None else data.get("km_from"),
+            "km_to": analysis.get("km_to") if analysis.get("km_to") is not None else data.get("km_to"),
+            "counts": {
+                "water": _count("water"),
+                "food": food_count,
+                "attractions": _count("attractions"),
+                "attractions_google": _count("town_fallback_check"),
+            },
+            "report_path": data.get("report_path"),
+            "report_json_path": data.get("report_json_path"),
+            "report_artifact_id": str(data.get("report_artifact_id") or ""),
+            "note": (
+                "Pełny raport POI w report_path/report_json_path. "
+                "Tu tylko liczniki — czytaj artefakt dla szczegółów."
+            ),
+        }
+        return slim
+
     def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
         stage = args.get("stage")
         if stage is not None:
@@ -2065,7 +2104,7 @@ def _load_route_poi_analyze_readonly_tool() -> dict[str, Any]:
         if result.get("status") not in {"OK", "PARTIAL"} or not result.get("ok", True):
             return error_result("ROUTE_POI_ANALYSIS_FAILED", result.get("error", "nieznany błąd"))
 
-        payload = dict(result)
+        payload = _slim_poi_data(dict(result))
         payload.pop("tool", None)
         payload.pop("safety_class", None)
         return success_result(payload)
