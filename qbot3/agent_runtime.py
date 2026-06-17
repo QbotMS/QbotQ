@@ -80,7 +80,7 @@ def _execute_real_write_tool(tool_name: str, args: dict) -> dict:
         write_result.setdefault("commit_executed", success)
         return write_result
 
-    if tool_name in ("planning_fact_add", "planning_fact_update", "memory_confirmed_fact_add"):
+    if tool_name in ("planning_fact_add", "planning_fact_update", "memory_confirmed_fact_add", "garmin_workout_create", "route_poi_analyze", "rwgps_route_import_gpx"):
         from qbot3.tool_registry import lookup
         spec = lookup(tool_name)
         if spec and spec.get("callable"):
@@ -112,7 +112,8 @@ def _execute_single_tool(tool_name: str, args: dict) -> dict:
     if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct",
                      "calendar_event_add", "reminder_add",
                      "planning_fact_add", "planning_fact_update",
-                     "memory_confirmed_fact_add"):
+                     "memory_confirmed_fact_add", "garmin_workout_create",
+                     "route_poi_analyze", "rwgps_route_import_gpx"):
         return _execute_real_write_tool(tool_name, args)
 
     if tool_name in write_tools:
@@ -226,7 +227,8 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
         if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct",
                          "calendar_event_add", "reminder_add",
                          "planning_fact_add", "planning_fact_update",
-                         "memory_confirmed_fact_add"):
+                         "memory_confirmed_fact_add", "garmin_workout_create",
+                         "route_poi_analyze", "rwgps_route_import_gpx"):
             from qbot3.tool_registry import _idempotency_key
             prefix = {
                 "nutrition_log_add": "nutr",
@@ -237,6 +239,9 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
                 "planning_fact_add": "pf",
                 "planning_fact_update": "pf",
                 "memory_confirmed_fact_add": "mem",
+                "garmin_workout_create": "gwc",
+                "route_poi_analyze": "poi",
+                "rwgps_route_import_gpx": "gpx",
             }.get(tool_name, tool_name[:8] or "wr")
             cache_key = _idempotency_key(prefix, json.dumps(args, sort_keys=True, default=str))
             if cache_key in _write_call_cache:
