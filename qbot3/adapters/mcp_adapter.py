@@ -97,8 +97,7 @@ def handle_qbot3_mcp(payload: dict[str, Any]) -> dict[str, Any]:
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": {"name": _MCP_SERVER_NAME, "version": _MCP_SERVER_VERSION},
                 "instructions": (
-                    "Używaj tools/call z qbot.query (pytania + zapisy) "
-                    "i qbot.action_execute (wykonanie zapisu)."
+                    "Używaj tools/call z qbot.query. Zapisy finalizuje Albert po stronie serwera."
                 ),
             },
         }
@@ -132,37 +131,6 @@ def _list_tools(req_id: Any) -> dict[str, Any]:
             },
         },
     ]
-    try:
-        from qbot3.safety import _ACTION_ALLOWLIST
-        _action_enum = sorted(_ACTION_ALLOWLIST)
-    except Exception:
-        _action_enum = ["nutrition_log_add"]
-    tools.append({
-        "name": "qbot.action_execute",
-        "description": (
-            "WYKONAJ zapis/operacje zwrocona przez qbot.query jako ACTION_REQUIRED. "
-            "Gdy qbot.query zwroci status=ACTION_REQUIRED z data.action_type "
-            "(np. nutrition_log_add), wywolaj to narzedzie z tym action_type, "
-            "kompletnym payload_json, confirm=true i unikalnym idempotency_key. "
-            "Dla nutrition_log_add payload_json WYMAGA: date (YYYY-MM-DD; uzyj "
-            "wczorajszej daty gdy uzytkownik mowi 'wczoraj'), source (np. "
-            "'chatgpt_mcp'), meal_name (nazwa produktu/posilku), kcal_total; "
-            "opcjonalnie protein_g, carbs_g, fat_g. WYMAGA confirm=true."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "action_type": {"type": "string", "enum": _action_enum},
-                "payload_json": {"type": "object", "description": "Kompletny payload (jak w data/action_draft z qbot.query)."},
-                "idempotency_key": {"type": "string", "description": "Unikalny klucz - zapobiega duplikatom."},
-                "confirm": {"type": "boolean", "description": "MUSI byc true, zeby zapisac."},
-                "dry_run": {"type": "boolean", "default": False, "description": "Tylko walidacja, bez zapisu."},
-                "source": {"type": "string", "default": "chatgpt_mcp"},
-            },
-            "required": ["action_type", "payload_json", "idempotency_key", "confirm"],
-            "additionalProperties": False,
-        },
-    })
     return {"jsonrpc": "2.0", "id": req_id, "result": {"tools": tools}}
 
 
