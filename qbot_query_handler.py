@@ -4851,6 +4851,15 @@ def handle_query(question: str, context: dict | None = None) -> dict:
     question = _normalize_question(question)
     ql = question.lower().strip()
     intent = _resolve_intent(question)
+    if re.search(r'\b(zapamiętaj|zapamietaj|zanotuj|notuj)\b', ql) and any(
+        tok in ql for tok in (" to ", " jest ", " = ", ":", " że ", " ze ")
+    ):
+        return _envelope(
+            "write_memory_confirmed_fact",
+            "Zapamiętywanie wymaga wykonania przez Alberta.",
+            data={"action_type": "memory_confirmed_fact_add", "requires_confirm": True},
+            status_override="ACTION_REQUIRED",
+        )
     if intent in ("planner_switch_claude", "planner_switch_openai", "planner_switch_gemini", "planner_status"):
         try:
             from core.planner import set_active_provider, _get_active_provider

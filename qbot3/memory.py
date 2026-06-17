@@ -28,6 +28,49 @@ def _memory_path(memory_type: str) -> Path:
     return _MEMORY_DIR / f"{memory_type}.jsonl"
 
 
+def _write_memory_db(memory_type: str, content: dict[str, Any], source: str) -> None:
+    import psycopg
+
+    conn = psycopg.connect(
+        host=os.getenv("PGHOST", "127.0.0.1"),
+        port=os.getenv("PGPORT", "5432"),
+        dbname=os.getenv("PGDATABASE", "qbot"),
+        user=os.getenv("PGUSER", "qbot"),
+        password=os.getenv("PGPASSWORD", ""),
+        connect_timeout=5,
+    )
+    try:
+        key = str(content.get("key", "")).strip()
+        value_json = {
+            "value": content.get("value"),
+            "source": content.get("source", source),
+        }
+        confidence = str(content.get("confidence", "medium") or "medium")
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO qbot_v2.qbot_memory (memory_type, key, value, source, confidence)
+                VALUES (%s, %s, %s::jsonb, %s, %s)
+                ON CONFLICT (key) DO UPDATE SET
+                    created_at = now(),
+                    memory_type = EXCLUDED.memory_type,
+                    value = EXCLUDED.value,
+                    source = EXCLUDED.source,
+                    confidence = EXCLUDED.confidence
+                """,
+                (
+                    memory_type,
+                    key,
+                    json.dumps(value_json, ensure_ascii=False, default=str),
+                    source,
+                    confidence,
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def write_memory(memory_type: str, content: dict[str, Any], source: str = "qbot3") -> None:
     entry = {
         "type": memory_type,
@@ -35,6 +78,10 @@ def write_memory(memory_type: str, content: dict[str, Any], source: str = "qbot3
         "source": source,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    try:
+        _write_memory_db(memory_type, content, source)
+    except Exception:
+        pass
     path = _memory_path(memory_type)
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")

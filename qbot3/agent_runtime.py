@@ -80,7 +80,7 @@ def _execute_real_write_tool(tool_name: str, args: dict) -> dict:
         write_result.setdefault("commit_executed", success)
         return write_result
 
-    if tool_name in ("planning_fact_add", "planning_fact_update"):
+    if tool_name in ("planning_fact_add", "planning_fact_update", "memory_confirmed_fact_add"):
         from qbot3.tool_registry import lookup
         spec = lookup(tool_name)
         if spec and spec.get("callable"):
@@ -111,7 +111,8 @@ def _execute_single_tool(tool_name: str, args: dict) -> dict:
     write_tools = list_write_tools()
     if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct",
                      "calendar_event_add", "reminder_add",
-                     "planning_fact_add", "planning_fact_update"):
+                     "planning_fact_add", "planning_fact_update",
+                     "memory_confirmed_fact_add"):
         return _execute_real_write_tool(tool_name, args)
 
     if tool_name in write_tools:
@@ -169,6 +170,21 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
         result["request_id"] = rid()
         return result
 
+    _memory_fact_match = re.search(
+        r"(?:zapamiętaj|zapamietaj|zanotuj|notuj)\s+(?:że|ze)?\s*(.+?)\s*(?:to|jest|=|:)\s*(.+)$",
+        question,
+        re.IGNORECASE,
+    )
+    if _memory_fact_match:
+        key = _memory_fact_match.group(1).strip().strip(" .,:;")
+        value = _memory_fact_match.group(2).strip().strip(" .,:;")
+        key = re.sub(r"^(?:mój|moj|moja|moje|moi)\s+", "", key, flags=re.IGNORECASE)
+        if key and value:
+            return _execute_real_write_tool(
+                "memory_confirmed_fact_add",
+                {"memory_type": "confirmed_fact", "key": key, "value": value, "source": "qbot3"},
+            )
+
     # Fallback do legacy loop dla testów z mock providerem
     if os.getenv("ALBERT_LLM_PROVIDER") == "mock":
         return _orchestrate_query_legacy(question, context, max_rows)
@@ -209,7 +225,8 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
     def _execute_tool_dedup(tool_name: str, args: dict) -> dict:
         if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct",
                          "calendar_event_add", "reminder_add",
-                         "planning_fact_add", "planning_fact_update"):
+                         "planning_fact_add", "planning_fact_update",
+                         "memory_confirmed_fact_add"):
             from qbot3.tool_registry import _idempotency_key
             prefix = {
                 "nutrition_log_add": "nutr",
@@ -219,6 +236,7 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
                 "reminder_add": "rem",
                 "planning_fact_add": "pf",
                 "planning_fact_update": "pf",
+                "memory_confirmed_fact_add": "mem",
             }.get(tool_name, tool_name[:8] or "wr")
             cache_key = _idempotency_key(prefix, json.dumps(args, sort_keys=True, default=str))
             if cache_key in _write_call_cache:
