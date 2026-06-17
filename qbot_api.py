@@ -7,6 +7,7 @@ import os
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import uvicorn
 from dotenv import load_dotenv
@@ -306,6 +307,17 @@ def _telegram_status_summary() -> tuple[str, dict]:
     }
 
 app = FastAPI(title="Q API", version="0.1.0")
+_PHOTOS_ACTIVITY_TZ = ZoneInfo("Europe/Warsaw")
+_PHOTOS_ACTIVITY_LIMIT = 100
+_PHOTOS_ACTIVITY_FALLBACK = {
+    "id": "manual_2026-05-24_test",
+    "source": "fallback",
+    "title": "Fallback photos activity 2026-05-24",
+    "startLocal": "2026-05-24T00:00:00+02:00",
+    "endLocal": "2026-05-24T23:59:59+02:00",
+    "distanceKm": None,
+    "durationSec": 86399,
+}
 
 
 def _db_check():
@@ -315,6 +327,171 @@ def _db_check():
         DB_AVAILABLE = api_db.ping()
     except Exception:
         DB_AVAILABLE = False
+
+
+def _photos_activity_iso(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, date):
+        dt = datetime(value.year, value.month, value.day, tzinfo=_PHOTOS_ACTIVITY_TZ)
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        text = text.replace("Z", "+00:00")
+        try:
+            dt = datetime.fromisoformat(text)
+        except ValueError:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_PHOTOS_ACTIVITY_TZ)
+    return dt.astimezone(_PHOTOS_ACTIVITY_TZ).isoformat(timespec="seconds")
+
+
+def _photos_activity_first_present(row: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        value = row.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def _photos_activity_row_payload(row: dict[str, Any], source: str) -> dict[str, Any] | None:
+    started_at = _photos_activity_first_present(row, ("started_at", "start_local", "startTimeLocal"))
+    start_iso = _photos_activity_iso(started_at)
+    if not start_iso:
+        return None
+
+    ended_at = _photos_activity_first_present(
+        row,
+        ("ended_at", "end_local", "endLocal", "endTimeLocal"),
+    )
+    end_iso = _photos_activity_iso(ended_at)
+
+    duration_sec = _photos_activity_first_present(
+        row,
+        ("duration_sec", "elapsed_duration_sec", "elapsedDurationSec", "duration_s"),
+    )
+    try:
+        duration_value = float(duration_sec) if duration_sec is not None else None
+    except (TypeError, ValueError):
+        duration_value = None
+
+    start_dt = datetime.fromisoformat(start_iso)
+    if end_iso is None and duration_value is not None:
+        end_iso = (start_dt + timedelta(seconds=duration_value)).isoformat(timespec="seconds")
+
+    if end_iso is None:
+        return None
+
+    activity_id = row.get("id") or row.get("external_id") or row.get("activity_id")
+    if activity_id is None:
+        return None
+
+    title = row.get("title") or row.get("activity_name") or row.get("sport_type") or row.get("activityType")
+    if not title:
+        title = "Aktywność"
+
+    distance_km = row.get("distance_km")
+    if distance_km is None and row.get("distance_m") is not None:
+        try:
+            distance_km = float(row["distance_m"]) / 1000.0
+        except (TypeError, ValueError):
+            distance_km = None
+    elif distance_km is not None:
+        try:
+            distance_km = float(distance_km)
+        except (TypeError, ValueError):
+            distance_km = None
+
+    return {
+        "id": str(activity_id),
+        "source": source,
+        "title": str(title),
+        "startLocal": start_iso,
+        "endLocal": end_iso,
+        "distanceKm": distance_km,
+        "durationSec": int(duration_value) if duration_value is not None and float(duration_value).is_integer() else duration_value,
+    }
+
+
+def _photos_activity_row_sql(table_name: str) -> str:
+    if table_name == "qbot_v2.training_sessions":
+        return (
+            "SELECT * "
+            f"FROM {table_name} "
+            "WHERE started_at IS NOT NULL AND date >= %s "
+            "ORDER BY started_at DESC, id DESC "
+            "LIMIT %s"
+        )
+    return (
+        "SELECT * "
+        f"FROM {table_name} "
+        "WHERE started_at IS NOT NULL AND date >= %s "
+        "ORDER BY started_at DESC, id DESC "
+        "LIMIT %s"
+    )
+
+
+def _fetch_photos_activity_rows_from_table(table_name: str, since_date: date, limit: int) -> list[dict[str, Any]]:
+    import psycopg
+    from psycopg.rows import dict_row
+
+    sql = _photos_activity_row_sql(table_name)
+    with psycopg.connect(
+        host=os.getenv("PGHOST", "localhost"),
+        port=os.getenv("PGPORT", "5432"),
+        dbname=os.getenv("PGDATABASE", "qbot"),
+        user=os.getenv("PGUSER", "qbot"),
+        password=os.getenv("PGPASSWORD", ""),
+        row_factory=dict_row,
+        connect_timeout=5,
+    ) as conn:
+        rows = conn.execute(sql, (since_date, limit)).fetchall()
+        return [dict(row) for row in rows]
+
+
+def _load_photos_activity_rows(days: int, limit: int = _PHOTOS_ACTIVITY_LIMIT) -> list[dict[str, Any]]:
+    today_local = datetime.now(_PHOTOS_ACTIVITY_TZ).date()
+    since_date = today_local - timedelta(days=max(days, 1) - 1)
+    limit = max(1, min(limit, _PHOTOS_ACTIVITY_LIMIT))
+
+    tables = ("qbot_v2.training_sessions", "public.training_sessions")
+    for table_name in tables:
+        try:
+            rows = _fetch_photos_activity_rows_from_table(table_name, since_date, limit)
+        except Exception:
+            continue
+        if rows:
+            return [{**row, "_source": table_name} for row in rows]
+    return []
+
+
+def _photos_activities_payload(days: int = 30) -> dict[str, Any]:
+    rows = _load_photos_activity_rows(days)
+    activities: list[dict[str, Any]] = []
+    seen: set[tuple[Any, ...]] = set()
+    for row in rows:
+        payload = _photos_activity_row_payload(row, str(row.get("_source") or row.get("source") or "qbot"))
+        if payload:
+            dedupe_key = (
+                payload.get("startLocal"),
+                payload.get("endLocal"),
+                payload.get("title"),
+                payload.get("durationSec"),
+                payload.get("distanceKm"),
+            )
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            activities.append(payload)
+
+    activities.sort(key=lambda item: item["startLocal"], reverse=True)
+    if not activities:
+        activities = [dict(_PHOTOS_ACTIVITY_FALLBACK)]
+    return {"activities": activities[:_PHOTOS_ACTIVITY_LIMIT]}
 
 
 def _xert_sync_fetch(xert_email: str, xert_password: str) -> dict:
@@ -556,6 +733,13 @@ def health():
         "db": "connected" if DB_AVAILABLE else "disconnected",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.get("/photos/activities")
+@app.get("/photos/activities/")
+def photos_activities(days: int = 30):
+    # Minimal read-only endpoint for the Mac Photos app.
+    return _photos_activities_payload(days=days)
 
 
 def _ping_db() -> bool:
