@@ -39,3 +39,7 @@ fit_rewrite_diff.txt
 .DS_Store
 .aider*
 *.bak*
+
+# Backups and session notes (local only)
+_bak_archive/
+_session_notes/
