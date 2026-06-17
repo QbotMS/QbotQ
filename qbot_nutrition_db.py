@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import unicodedata
+from functools import lru_cache
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -747,6 +750,121 @@ def template_get_by_name(name: str) -> dict | None:
             "SELECT * FROM qbot_v2.meal_templates WHERE name=%s", (name,)
         ).fetchone()
     return _serialize_row(dict(row)) if row else None
+
+
+@lru_cache(maxsize=1)
+def _has_unaccent_extension() -> bool:
+    try:
+        with _conn() as conn:
+            row = conn.execute(
+                "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'unaccent') AS ok"
+            ).fetchone()
+        return bool(row["ok"]) if row else False
+    except Exception:
+        return False
+
+
+def _normalize_template_text(text: str | None) -> str:
+    raw = str(text or "").lower().strip()
+    if not raw:
+        return ""
+    if _has_unaccent_extension():
+        try:
+            with _conn() as conn:
+                row = conn.execute("SELECT unaccent(%s) AS txt", (raw,)).fetchone()
+            if row and row.get("txt"):
+                raw = str(row["txt"]).lower().strip()
+        except Exception:
+            pass
+    raw = raw.translate(str.maketrans({
+        "ą": "a",
+        "ć": "c",
+        "ę": "e",
+        "ł": "l",
+        "ń": "n",
+        "ó": "o",
+        "ś": "s",
+        "ź": "z",
+        "ż": "z",
+    }))
+    raw = unicodedata.normalize("NFKD", raw)
+    raw = "".join(ch for ch in raw if not unicodedata.combining(ch))
+    raw = re.sub(r"[^0-9a-z\s]+", " ", raw)
+    return re.sub(r"\s+", " ", raw).strip()
+
+
+def _template_lookup_candidates() -> list[tuple[dict, str, set[str]]]:
+    with _conn() as conn:
+        rows = conn.execute("SELECT * FROM qbot_v2.meal_templates ORDER BY id").fetchall()
+    candidates: list[tuple[dict, str, set[str]]] = []
+    for row in rows:
+        tmpl = _serialize_row(dict(row))
+        name_norm = _normalize_template_text(tmpl.get("name"))
+        tokens = {tok for tok in name_norm.split() if len(tok) >= 3}
+        candidates.append((tmpl, name_norm, tokens))
+    return candidates
+
+
+def _token_matches(a: str, b: str) -> bool:
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    return a.startswith(b) or b.startswith(a)
+
+
+def template_find_by_name(name: str) -> tuple[dict | None, str | None]:
+    q_raw = str(name or "").strip()
+    if not q_raw:
+        return None, None
+
+    q_norm = _normalize_template_text(q_raw)
+    q_tokens = [tok for tok in q_norm.split() if len(tok) >= 3]
+    if not q_tokens:
+        q_tokens = [tok for tok in re.split(r"\s+", q_norm) if len(tok) >= 3]
+
+    with _conn() as conn:
+        exact_row = conn.execute(
+            "SELECT * FROM qbot_v2.meal_templates WHERE lower(name)=lower(%s) ORDER BY confidence DESC, id ASC LIMIT 1",
+            (q_raw,),
+        ).fetchone()
+    if exact_row:
+        return _serialize_row(dict(exact_row)), "exact"
+
+    candidates = _template_lookup_candidates()
+
+    normalized_hits: list[tuple[dict, int, int]] = []
+    for tmpl, name_norm, _tokens in candidates:
+        if not name_norm or not q_norm:
+            continue
+        if name_norm == q_norm or name_norm in q_norm or q_norm in name_norm:
+            confidence_rank = {"high": 2, "medium": 1, "low": 0}.get(str(tmpl.get("confidence", "")).lower(), 0)
+            normalized_hits.append((tmpl, confidence_rank, int(tmpl.get("id") or 0)))
+    if normalized_hits:
+        normalized_hits.sort(key=lambda item: (-item[1], item[2]))
+        return normalized_hits[0][0], "normalized"
+
+    token_hits: list[tuple[dict, float, int, int]] = []
+    if q_tokens:
+        for tmpl, _name_norm, tokens in candidates:
+            if not tokens:
+                continue
+            matched = set()
+            for q_token in q_tokens:
+                if any(_token_matches(q_token, t_token) for t_token in tokens):
+                    matched.add(q_token)
+            if not matched:
+                continue
+            coverage = len(matched) / len(q_tokens)
+            if coverage <= 0:
+                continue
+            confidence_rank = {"high": 2, "medium": 1, "low": 0}.get(str(tmpl.get("confidence", "")).lower(), 0)
+            token_hits.append((tmpl, coverage, confidence_rank, int(tmpl.get("id") or 0)))
+    if token_hits:
+        token_hits.sort(key=lambda item: (-item[1], -item[2], item[3]))
+        return token_hits[0][0], "token"
+
+    return None, None
 
 
 def template_list(limit: int = 50) -> list[dict]:

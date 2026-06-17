@@ -342,6 +342,9 @@ def _execute_nutrition_write(action_type: str, payload: dict[str, Any], idem_key
             intake_log_create,
             meal_log_list,
         )
+        import hashlib
+        import logging
+        import time
         from datetime import date as dt_date
 
         meal_name = str(payload.get("meal_name", "")).strip()
@@ -356,6 +359,44 @@ def _execute_nutrition_write(action_type: str, payload: dict[str, Any], idem_key
         smoke_test = source == "smoke_test" or bool(payload.get("is_test"))
         quality_status = str(payload.get("quality_status", "manual")).strip() or "manual"
         eaten_at = payload.get("eaten_at") or f"{target_date}T12:00:00+02:00"
+        try:
+            kcal_bucket = round(float(payload.get("kcal_total") or 0))
+        except (TypeError, ValueError):
+            kcal_bucket = 0
+
+        def _nutrition_dedup_key(bucket: int) -> str:
+            raw = f"nutr:{target_date}:{meal_name.lower()}:{kcal_bucket}:{bucket}"
+            return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+        current_bucket = int(time.time() // 120)
+        dedup_keys = [_nutrition_dedup_key(current_bucket), _nutrition_dedup_key(current_bucket - 1)]
+
+        try:
+            with _conn() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT idempotency_key, meal_log_id FROM public.nutrition_write_audit WHERE idempotency_key = ANY(%s) LIMIT 1",
+                    (dedup_keys,),
+                )
+                dup_row = cur.fetchone()
+            if dup_row:
+                return {
+                    "tool": "qbot.action_execute",
+                    "status": "DUPLICATE_SKIPPED",
+                    "execution_mode": "real_write",
+                    "write_committed": False,
+                    "commit_executed": False,
+                    "action_type": action_type,
+                    "idempotency_key": dup_row.get("idempotency_key") if isinstance(dup_row, dict) else None,
+                    "meal_log_id": dup_row.get("meal_log_id") if isinstance(dup_row, dict) else None,
+                    "note": (
+                        f"Pominięto: '{meal_name}' ({kcal_bucket} kcal) wygląda na duplikat "
+                        "zapisu z ostatnich 2 minut. Jeśli to celowy drugi posiłek, odczekaj chwilę i powtórz."
+                    ),
+                }
+        except Exception:
+            pass
+
         context = json.dumps({
             "origin": "qbot3",
             "action_type": action_type,
@@ -416,6 +457,42 @@ def _execute_nutrition_write(action_type: str, payload: dict[str, Any], idem_key
                 "action_type": action_type, "idempotency_key": idem_key,
                 "error": f"intake_log_create returned: {result}",
             }
+
+        try:
+            audit_result = {
+                "meal_id": meal_id,
+                "summary": None,
+                "dedup_window_sec": 120,
+                "dedup_bucket": current_bucket,
+                "dedup_key": dedup_keys[0],
+            }
+            with _conn() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO public.nutrition_write_audit
+                        (idempotency_key, meal_log_id, date, source, raw_user_text, payload_json, result_json)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (idempotency_key) DO NOTHING
+                    """,
+                    (
+                        dedup_keys[0],
+                        meal_id,
+                        target_date,
+                        source,
+                        payload.get("raw_text") or payload.get("description") or meal_name,
+                        json.dumps({
+                            "action_type": action_type,
+                            "payload": payload,
+                            "dedup_keys": dedup_keys,
+                            "dedup_window_sec": 120,
+                        }, ensure_ascii=False, default=str),
+                        json.dumps(audit_result, ensure_ascii=False, default=str),
+                    ),
+                )
+                conn.commit()
+        except Exception as audit_exc:
+            logging.getLogger("qbot.nutrition").warning("nutrition audit write failed: %s", audit_exc)
 
         verification_error = None
         after_summary = None

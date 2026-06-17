@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 try:
     import psycopg
@@ -26,6 +26,46 @@ _DOC_ALLOWLIST = frozenset({
     "QBOT_PROJECT_INSTRUCTION_LOCAL.md",
 })
 _DOC_BASE_DIR = "/opt/qbot/docs"
+
+_ZERO_KCAL_OK_TOKENS = (
+    "woda",
+    "water",
+    "kawa czarna",
+    "czarna kawa",
+    "espresso",
+    "herbata",
+    "tea",
+    "napar",
+    "zioła",
+    "ziola",
+    "guma",
+    "sól",
+    "sol",
+    "elektrolit",
+)
+
+
+def _nutrition_zero_kcal_guard(payload: dict[str, Any]) -> Optional[str]:
+    kcal = payload.get("kcal_total")
+    try:
+        kcal_val = float(kcal) if kcal is not None else None
+    except (TypeError, ValueError):
+        kcal_val = None
+    if kcal_val is None or kcal_val > 0:
+        return None
+
+    name = str(payload.get("meal_name") or "").strip().lower()
+    if any(tok in name for tok in _ZERO_KCAL_OK_TOKENS):
+        return None
+
+    if payload.get("resolved_from_lookup") is True and not payload.get("requires_lookup"):
+        return None
+
+    return (
+        "Zapis odrzucony: '{}' ma 0 kcal i nie przeszedł przez lookup. "
+        "Najpierw wywołaj nutrition_template_get lub nutrition_write_resolve, "
+        "albo podaj kcal jawnie. (Jeśli to napój zero-kcal, dodaj słowo np. 'woda')."
+    ).format(payload.get("meal_name") or "(bez nazwy)")
 
 # Akcje dozwolone w qbot3, ktore na 2026-06-14 nie maja jeszcze wpisu w
 # modules/*/manifest.py["write_actions"]. Migrowac do manifestow w kolejnej
@@ -101,6 +141,9 @@ def validate(action_type: str, payload: dict[str, Any], idem_key: str, dry_run: 
         macros = [payload.get("protein_g"), payload.get("carbs_g"), payload.get("fat_g")]
         if any(v is not None for v in macros) and any(v in (None, "") for v in macros):
             return {"status": "BLOCKED", "error": "protein_g, carbs_g and fat_g must be provided together when known"}
+        zero_kcal_guard = _nutrition_zero_kcal_guard(payload)
+        if zero_kcal_guard:
+            return {"status": "BLOCKED", "error": zero_kcal_guard, "missing_fields": ["kcal_total"]}
 
     if action_type in ("nutrition_log_delete", "nutrition_log_correct"):
         meal_id = payload.get("meal_id") or payload.get("meal_log_id") or payload.get("intake_log_id")
