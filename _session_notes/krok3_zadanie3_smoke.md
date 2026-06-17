@@ -1,7 +1,15 @@
-# Krok 3 zadanie 3 smoke
+Krok 3 smoke - 2026-06-15
 
-- profil etapu 5: `OK` - dystans 55,2 km, +1203,5 m, uwaga o niespójności GPX vs planning_facts (10,4%)
-- jedzenie etap 3 toskania: `OK` - route_id 55444735, zakres 0-85 km, najwięcej POI w km 44-67
-- podjazdy etapu 6: `OK` - 74,9 km, +925 m, kilka krótszych ramp zamiast jednego długiego podjazdu
-- nawierzchnia etapu 2: `OK` - brak odczytu nawierzchni z powodu błędu zapisu uprawnień, ale zwrocono route_id 55444268
-- ile km ma etap 7: `OK` - 54,95 km
+Endpoint: https://qbot.cytr.us/mcp/
+
+Wynik startowy:
+- `initialize` -> 200 OK, `mcp-session-id` zwrocony.
+
+Blokada:
+- `tools/call` dla `qbot.query` zwraca 403 Forbidden bez poprawnego publicznego sekretu MCP.
+- Próba z lokalnym `QBOT_DEV_MCP_TOKEN` nie odblokowala `qbot.query`.
+- Z tego powodu 5 zaplanowanych zapytan nie zostalo wykonanych.
+
+Uwagi:
+- Token nie zostal zapisany do repo ani do notatek.
+- Kod po stronie repo pozostaje bez commit.
