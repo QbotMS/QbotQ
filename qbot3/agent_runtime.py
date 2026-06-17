@@ -80,6 +80,17 @@ def _execute_real_write_tool(tool_name: str, args: dict) -> dict:
         write_result.setdefault("commit_executed", success)
         return write_result
 
+    if tool_name in ("planning_fact_add", "planning_fact_update"):
+        from qbot3.tool_registry import lookup
+        spec = lookup(tool_name)
+        if spec and spec.get("callable"):
+            write_result = spec["callable"](args)
+            success = write_result.get("status") == "OK"
+            write_result.setdefault("write_committed", success)
+            write_result.setdefault("execution_mode", "real_write")
+            return write_result
+        return {"status": "error", "error": f"{tool_name} callable not found"}
+
     return {
         "status": "error",
         "action_type": tool_name,
@@ -99,7 +110,8 @@ def _execute_single_tool(tool_name: str, args: dict) -> dict:
 
     write_tools = list_write_tools()
     if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct",
-                     "calendar_event_add", "reminder_add"):
+                     "calendar_event_add", "reminder_add",
+                     "planning_fact_add", "planning_fact_update"):
         return _execute_real_write_tool(tool_name, args)
 
     if tool_name in write_tools:
@@ -196,7 +208,8 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
 
     def _execute_tool_dedup(tool_name: str, args: dict) -> dict:
         if tool_name in ("nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct",
-                         "calendar_event_add", "reminder_add"):
+                         "calendar_event_add", "reminder_add",
+                         "planning_fact_add", "planning_fact_update"):
             from qbot3.tool_registry import _idempotency_key
             prefix = {
                 "nutrition_log_add": "nutr",
@@ -204,6 +217,8 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
                 "nutrition_log_correct": "nutr",
                 "calendar_event_add": "cal",
                 "reminder_add": "rem",
+                "planning_fact_add": "pf",
+                "planning_fact_update": "pf",
             }.get(tool_name, tool_name[:8] or "wr")
             cache_key = _idempotency_key(prefix, json.dumps(args, sort_keys=True, default=str))
             if cache_key in _write_call_cache:

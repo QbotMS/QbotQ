@@ -2357,24 +2357,86 @@ def _load_planning_fact_add_tool() -> dict[str, Any]:
     from qbot_planning_memory import save_planning_fact
     def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
         try:
-            result = save_planning_fact(
-                fact_type=str(args.get("fact_type", "custom")),
-                date=str(args.get("date", _today())),
-                title=str(args.get("title", "")),
-                fact_json=args.get("fact_json", {}),
-            )
-            return {"status": "OK", "fact": result}
+            draft = {
+                "fact_type": str(args.get("fact_type", "custom")),
+                "date": str(args.get("date", _today())),
+                "title": str(args.get("title", "")),
+                "fact_json": args.get("fact_json", {}),
+                "confidence": str(args.get("confidence", "medium")),
+            }
+            result = save_planning_fact(draft=draft, channel="albert", confirm=True)
+            if result.get("status") == "OK":
+                return {"status": "OK", "write_committed": True,
+                        "planning_fact_id": result.get("planning_fact_id"),
+                        "title": draft["title"], "fact_type": draft["fact_type"]}
+            return {"status": "ERROR", "error": result.get("error", "save_planning_fact failed")}
         except Exception as exc:
             return {"status": "ERROR", "error": str(exc)[:300]}
     return {
         "callable": _wrapper,
         "category": "planning",
-        "description": "Save a planning fact. Parameters: title (required), fact_type (default: custom), date (ISO), fact_json (optional dict)",
-        "args_schema": {
-            "title": {"type": "string"}, "fact_type": {"type": "string"},
-            "date": {"type": "string"}, "fact_json": {"type": "object"},
-        },
         "safety": "write",
+        "description": (
+            "Zapisz nowy fakt planowania do qbot_planning_facts. "
+            "Parametry: title (wymagany), fact_type (domyslnie: custom), "
+            "date (ISO, domyslnie: dzisiaj), fact_json (opcjonalny dict z danymi), "
+            "confidence (low/medium/high, domyslnie: medium)."
+        ),
+        "args_schema": {
+            "title": {"type": "string", "description": "Tytul faktu (wymagany)"},
+            "fact_type": {"type": "string", "description": "Typ: custom/route_stages/trip_plan/nutrition_plan"},
+            "date": {"type": "string", "description": "Data ISO YYYY-MM-DD"},
+            "fact_json": {"type": "object", "description": "Dane faktu jako JSON"},
+            "confidence": {"type": "string", "description": "low/medium/high"},
+        },
+    }
+
+
+def _load_planning_fact_update_tool() -> dict[str, Any]:
+    from qbot_planning_memory import update_planning_fact
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        try:
+            fact_id = args.get("fact_id")
+            if not fact_id:
+                return {"status": "ERROR", "error": "fact_id wymagany"}
+            result = update_planning_fact(
+                fact_id=int(fact_id),
+                fact_json_patch=args.get("fact_json_patch"),
+                stage_patch=args.get("stage_patch"),
+                title=args.get("title"),
+                status=args.get("status"),
+                confidence=args.get("confidence"),
+                valid_until=args.get("valid_until"),
+                confirm=True,
+            )
+            if result.get("status") == "OK":
+                return {"status": "OK", "write_committed": True,
+                        "fact_id": int(fact_id),
+                        "updated_fields": result.get("updated_fields", [])}
+            return {"status": "ERROR", "error": result.get("error", "update_planning_fact failed")}
+        except Exception as exc:
+            return {"status": "ERROR", "error": str(exc)[:300]}
+    return {
+        "callable": _wrapper,
+        "category": "planning",
+        "safety": "write",
+        "description": (
+            "Zaktualizuj istniejacy fakt planowania (qbot_planning_facts) po jego ID. "
+            "Uzyj planning_fact_get aby najpierw poznac fact_id. "
+            "Parametry: fact_id (wymagany, int), fact_json_patch (dict scalany z fact_json), "
+            "stage_patch ({stage: N, ...pola}) - aktualizuje jeden etap w fact_json.stages, "
+            "title, status, confidence, valid_until (opcjonalne). "
+            "fact_json_patch i stage_patch wzajemnie sie wykluczaja."
+        ),
+        "args_schema": {
+            "fact_id": {"type": "integer", "description": "ID wiersza w qbot_planning_facts (wymagany)"},
+            "fact_json_patch": {"type": "object", "description": "Pola do scalenia z fact_json (plytkie)"},
+            "stage_patch": {"type": "object", "description": "{stage: N, route_id: ..., distance_km: ...} - aktualizuje etap N"},
+            "title": {"type": "string"},
+            "status": {"type": "string", "description": "proposed/confirmed/superseded"},
+            "confidence": {"type": "string", "description": "low/medium/high"},
+            "valid_until": {"type": "string", "description": "Data ISO YYYY-MM-DD"},
+        },
     }
 
 
@@ -2624,6 +2686,7 @@ def _init_registry():
         ("calendar_event_add", _load_calendar_event_add_tool),
         ("reminder_add", _load_reminder_add_tool),
         ("planning_fact_add", _load_planning_fact_add_tool),
+        ("planning_fact_update", _load_planning_fact_update_tool),
         ("memory_confirmed_fact_add", _load_memory_write_tool),
     ]
 
