@@ -33,7 +33,7 @@ for a in acts:
     start_ts = a.get("startTimeGMT")
     if not start_ts:
         continue
-    started_at = datetime.strptime(start_ts, "%Y-%m-%d %H:%M:%S")
+    started_at = datetime.strptime(start_ts, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
     ds = started_at.strftime("%Y-%m-%d")
     cur.execute("INSERT INTO qbot_v2.days (date) VALUES (%s) ON CONFLICT DO NOTHING", (ds,))
     cur.execute(
