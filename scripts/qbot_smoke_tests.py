@@ -73,6 +73,8 @@ def assert_equal(actual, expected, label):
 def _load_rwgps_env_values() -> dict[str, str]:
     values: dict[str, str] = {}
     env_path = Path("/opt/qbot/app/.env")
+    if not env_path.exists():
+        return values
     for line in env_path.read_text(encoding="utf-8").splitlines():
         if not line or line.lstrip().startswith("#") or "=" not in line:
             continue
@@ -614,6 +616,9 @@ def test_rwgps_live_route_details_and_exports():
         "RWGPS_PLANNED_COLLECTION_ID": rwgps_client.RWGPS_PLANNED_COLLECTION_ID,
     }
     live_values = _load_rwgps_env_values()
+    if not live_values:
+        print("SKIP test_rwgps_live_route_details_and_exports (brak RWGPS .env -- np. CI)")
+        return
     try:
         for key, value in live_values.items():
             setattr(rwgps_client, key, value)

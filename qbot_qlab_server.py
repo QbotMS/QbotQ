@@ -26,12 +26,13 @@ from fastapi.responses import FileResponse
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-load_dotenv("/opt/qbot/app/.env")
+APP_DIR = Path(__file__).resolve().parent
+load_dotenv(APP_DIR / ".env")
 
 import gate_hikconnect
 
-DEFAULT_EXPORTS_DIR = Path("/opt/qbot/app/qlab_exports")
-FIT_EXPORT_MODULE = Path("/opt/qbot/app/tools/fit-export/fit_export.py")
+DEFAULT_EXPORTS_DIR = APP_DIR / "qlab_exports"
+FIT_EXPORT_MODULE = APP_DIR / "tools" / "fit-export" / "fit_export.py"
 ALLOWED_CORS_ORIGINS = {
     "http://localhost:8080",
     "http://127.0.0.1:8080",
