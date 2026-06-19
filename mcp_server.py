@@ -1308,6 +1308,14 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 8
     # Nie ograniczamy liczby probek - wiecej probek = lepsza jakosc
     # Batchujemy po 15 punktow, kazdy batch to osobne zapytanie Overpass around:20m
 
+    # Bounding box — tylko do raportu (bounds w wyniku/bledach); sampling per-punkt around:20m
+    lats = [p[0] for p in samples]
+    lons = [p[1] for p in samples]
+    south = min(lats) - 0.005
+    north = max(lats) + 0.005
+    west = min(lons) - 0.005
+    east = max(lons) + 0.005
+
     # Batch Overpass queries — around:20m per punkt (zamiast bbox)
     BATCH_SIZE = 15
     sample_batches = [samples[i:i + BATCH_SIZE] for i in range(0, len(samples), BATCH_SIZE)]
