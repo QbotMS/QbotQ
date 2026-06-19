@@ -1,5 +1,5 @@
-"""QBot dashboard — minimalna auth na podpisanym ciasteczku (stdlib) + placeholder.
-Dodane 2026-06-19. Zero dodatkowych zależności.
+"""QBot dashboard — auth na podpisanym ciasteczku (stdlib) + realne metryki z qbot_v2.
+Dodane 2026-06-19. Zero dodatkowych zaleznosci poza psycopg (juz w venv).
 """
 from __future__ import annotations
 
@@ -103,29 +103,121 @@ def _login_page(err: str = "") -> str:
     )
 
 
-_DASH_TEMPLATE = """<!doctype html><html lang=pl><head><meta charset=utf-8>
-<meta name=viewport content='width=device-width,initial-scale=1'>
-<title>QBot - dashboard</title>
-<style>body{font-family:system-ui,Arial,sans-serif;background:#f5f5f4;margin:0;color:#222}
-.top{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;
-background:#fff;border-bottom:1px solid #e3e3e0}
-.top a{color:#1d9e75;text-decoration:none;font-size:14px}
-.wrap{max-width:760px;margin:24px auto;padding:0 16px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
-.card{background:#fff;border:1px solid #e3e3e0;border-radius:10px;padding:16px}
-.lbl{font-size:13px;color:#777}.val{font-size:26px;font-weight:500;margin-top:4px}
-.note{margin-top:16px;background:#fff;border:1px dashed #cfcfca;border-radius:10px;
-padding:18px;color:#999;font-size:14px}</style></head><body>
-<div class=top><strong>QBot</strong><span>zalogowany: __USER__ &nbsp; <a href='/logout'>wyloguj</a></span></div>
-<div class=wrap>
-<div class=grid>
-<div class=card><div class=lbl>CTL (forma)</div><div class=val>72</div></div>
-<div class=card><div class=lbl>TSB (swiezosc)</div><div class=val>+4</div></div>
-<div class=card><div class=lbl>TSS / tydzien</div><div class=val>540</div></div>
-<div class=card><div class=lbl>Ostatni przejazd</div><div class=val>186 W</div></div>
-</div>
-<div class=note>To sa dane TESTOWE (placeholder). Nastepny krok: podpiac realne zapytania do qbot_v2.</div>
-</div></body></html>"""
+def _fmt(v, suffix="", nd=0):
+    if v is None:
+        return "&mdash;"
+    try:
+        if nd == 0:
+            return f"{round(float(v))}{suffix}"
+        return f"{round(float(v), nd)}{suffix}"
+    except Exception:
+        return _html.escape(str(v)) + suffix
+
+
+def _fetch_metrics() -> dict:
+    d = {"cards": [], "ride": None, "error": None}
+    try:
+        import psycopg
+        with psycopg.connect("", connect_timeout=5) as conn:
+            with conn.cursor() as cur:
+                def one(sql):
+                    try:
+                        cur.execute(sql)
+                        return cur.fetchone()
+                    except Exception:
+                        conn.rollback()
+                        return None
+
+                xert = one(
+                    "select date, form_status, form_ratio, training_load, fatigue, ftp_power_w "
+                    "from qbot_v2.xert_profile_snapshots order by snapshot_at desc limit 1"
+                )
+                wtss = one(
+                    "select coalesce(round(sum(tss)),0) from qbot_v2.training_sessions "
+                    "where started_at >= now() - interval '7 days'"
+                )
+                ride = one(
+                    "select date, sport_type, normalized_power_w, avg_power_w, avg_hr_bpm, "
+                    "tss, intensity_factor from qbot_v2.training_sessions "
+                    "order by started_at desc limit 1"
+                )
+                weight = one(
+                    "select date, weight_kg from qbot_v2.body_latest_weight order by date desc limit 1"
+                )
+
+                if xert:
+                    xd = xert[0]
+                    d["cards"].append(("Forma (Xert)", _html.escape(str(xert[1] or "—")),
+                                       f"ratio {_fmt(xert[2], nd=2)} &middot; {xd}"))
+                    d["cards"].append(("Training load", _fmt(xert[3]),
+                                       f"fatigue {_fmt(xert[4])} &middot; {xd}"))
+                    d["cards"].append(("FTP (Xert)", _fmt(xert[5], " W"), str(xd)))
+                if wtss:
+                    d["cards"].append(("TSS / 7 dni", _fmt(wtss[0]), "ostatnie 7 dni"))
+                if ride:
+                    d["cards"].append(("Ostatni przejazd", _fmt(ride[2], " W"),
+                                       f"NP &middot; {ride[0]}"))
+                    d["ride"] = ride
+                if weight:
+                    d["cards"].append(("Waga", _fmt(weight[1], " kg", nd=1), str(weight[0])))
+    except Exception as e:
+        d["error"] = str(e)
+    return d
+
+
+def _dash_page() -> str:
+    m = _fetch_metrics()
+    cards_html = ""
+    for label, val, sub in m["cards"]:
+        cards_html += (
+            "<div class=card><div class=lbl>" + label + "</div>"
+            "<div class=val>" + val + "</div>"
+            "<div class=sub>" + sub + "</div></div>"
+        )
+    if not cards_html:
+        cards_html = "<div class=card><div class=lbl>Brak danych</div></div>"
+
+    ride_html = ""
+    r = m["ride"]
+    if r:
+        ride_html = (
+            "<div class=detail><strong>Ostatni przejazd</strong> &middot; " + str(r[0]) +
+            " (" + _html.escape(str(r[1] or "")) + ")<br>"
+            "NP " + _fmt(r[2], " W") + " &middot; avg " + _fmt(r[3], " W") +
+            " &middot; HR " + _fmt(r[4], " bpm") + " &middot; TSS " + _fmt(r[5]) +
+            " &middot; IF " + _fmt(r[6], nd=2) + "</div>"
+        )
+
+    banner = ""
+    if m["error"]:
+        banner = ("<div class=warn>Problem z baza danych: " +
+                  _html.escape(m["error"]) + "</div>")
+
+    return (
+        "<!doctype html><html lang=pl><head><meta charset=utf-8>"
+        "<meta name=viewport content='width=device-width,initial-scale=1'>"
+        "<title>QBot - dashboard</title>"
+        "<style>body{font-family:system-ui,Arial,sans-serif;background:#f5f5f4;margin:0;color:#222}"
+        ".top{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;"
+        "background:#fff;border-bottom:1px solid #e3e3e0}"
+        ".top a{color:#1d9e75;text-decoration:none;font-size:14px}"
+        ".wrap{max-width:760px;margin:24px auto;padding:0 16px}"
+        ".grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}"
+        ".card{background:#fff;border:1px solid #e3e3e0;border-radius:10px;padding:16px}"
+        ".lbl{font-size:13px;color:#777}.val{font-size:26px;font-weight:500;margin:4px 0}"
+        ".sub{font-size:12px;color:#999}"
+        ".detail{margin-top:16px;background:#fff;border:1px solid #e3e3e0;border-radius:10px;"
+        "padding:16px;font-size:14px;line-height:1.6}"
+        ".warn{margin-top:16px;background:#fff3cd;border:1px solid #ffe08a;border-radius:10px;"
+        "padding:12px;font-size:13px;color:#7a5b00}"
+        ".foot{margin-top:18px;font-size:12px;color:#aaa}</style></head><body>"
+        "<div class=top><strong>QBot</strong><span>zalogowany: " + _html.escape(_USER) +
+        " &nbsp; <a href='/logout'>wyloguj</a></span></div>"
+        "<div class=wrap><div class=grid>" + cards_html + "</div>" +
+        ride_html + banner +
+        "<div class=foot>Dane na zywo z qbot_v2.</div>"
+        "</div></body></html>"
+    )
 
 
 @router.get("/login")
@@ -158,4 +250,4 @@ async def logout(request: Request):
 async def dash(request: Request):
     if not _authed(request):
         return RedirectResponse(url="/login", status_code=303)
-    return HTMLResponse(_DASH_TEMPLATE.replace("__USER__", _html.escape(_USER)))
+    return HTMLResponse(_dash_page())
