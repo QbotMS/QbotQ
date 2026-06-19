@@ -609,15 +609,7 @@ async def get_route_surface(activity_id: str) -> str:
     # 6. Jedno zapytanie Overpass
     query = f"[out:json][timeout:25];way[highway]({south},{west},{north},{east});out tags geom;"
     try:
-        from urllib.parse import urlencode
-        async with httpx.AsyncClient(timeout=30) as c:
-            r = await c.post(
-                "https://overpass-api.de/api/interpreter",
-                content=urlencode({"data": query}).encode("utf-8"),
-                headers={"Content-Type": "application/x-www-form-urlencoded",
-                         "User-Agent": "Q-rowerowy-asystent/1.0 (cycling training tool)"})
-            r.raise_for_status()
-            ways = r.json().get("elements", [])
+        ways = await _overpass_post_async(query, timeout=30)
     except Exception as e:
         return _route_surface_error(activity_id, f"Błąd Overpass API: {e}")
 
@@ -1139,8 +1131,101 @@ def summarize_rwgps_artifact(artifact_path_or_name: str) -> str:
     return json.dumps(rwgps_summarize_rwgps_artifact(artifact_path_or_name), ensure_ascii=False)
 
 
+# -- OVERPASS: helper z fallbackiem mirrorow + backoff na 429/5xx --------------
+import time as _time
+
+_OVERPASS_ENDPOINTS = [
+    u.strip() for u in os.getenv(
+        "QBOT_OVERPASS_URLS",
+        "https://overpass-api.de/api/interpreter",
+    ).split(",") if u.strip()
+]
+_OVERPASS_RETRIES = int(os.getenv("QBOT_OVERPASS_RETRIES", "4"))
+_OVERPASS_BACKOFF = float(os.getenv("QBOT_OVERPASS_BACKOFF", "3.0"))
+_OVERPASS_SLEEP = float(os.getenv("QBOT_OVERPASS_SLEEP", "1.0"))
+
+
+def _overpass_post(query: str, timeout: int = 30) -> list:
+    """POST do Overpass z rotacja mirrorow i backoffem.
+
+    Kolejnosc endpointow z env QBOT_OVERPASS_URLS (CSV). Na 429 przeskakuje
+    od razu na nastepny mirror; na 5xx/timeout/blad sieci ponawia ten sam
+    endpoint z wykladniczym backoffem. Zwraca liste elements OSM.
+    Rzuca RuntimeError gdy wszystkie mirrory zawioda.
+    """
+    from urllib.parse import urlencode
+    body = urlencode({"data": query}).encode("utf-8")
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Q-rowerowy-asystent/1.0 (cycling training tool)",
+    }
+    last = None
+    for endpoint in _OVERPASS_ENDPOINTS:
+        for attempt in range(_OVERPASS_RETRIES):
+            try:
+                with httpx.Client(timeout=timeout) as c:
+                    r = c.post(endpoint, content=body, headers=headers)
+                if r.status_code == 429:
+                    last = f"429 Too Many Requests @ {endpoint}"
+                    ra = r.headers.get("Retry-After")
+                    try:
+                        delay = float(ra) if ra else _OVERPASS_BACKOFF * (2 ** attempt)
+                    except ValueError:
+                        delay = _OVERPASS_BACKOFF * (2 ** attempt)
+                    _time.sleep(min(delay, 30))
+                    continue
+                if r.status_code in (502, 503, 504):
+                    last = f"{r.status_code} @ {endpoint}"
+                    _time.sleep(min(_OVERPASS_BACKOFF * (2 ** attempt), 30))
+                    continue
+                r.raise_for_status()
+                return r.json().get("elements", [])
+            except Exception as exc:
+                last = exc
+                _time.sleep(min(_OVERPASS_BACKOFF * (2 ** attempt), 30))
+                continue
+    raise RuntimeError(f"Overpass: wszystkie mirrory zawiodly ({last})")
+
+
+async def _overpass_post_async(query: str, timeout: int = 30) -> list:
+    """Async wariant _overpass_post -- ta sama logika mirrorow + backoff."""
+    import asyncio
+    from urllib.parse import urlencode
+    body = urlencode({"data": query}).encode("utf-8")
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Q-rowerowy-asystent/1.0 (cycling training tool)",
+    }
+    last = None
+    for endpoint in _OVERPASS_ENDPOINTS:
+        for attempt in range(_OVERPASS_RETRIES):
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as c:
+                    r = await c.post(endpoint, content=body, headers=headers)
+                if r.status_code == 429:
+                    last = f"429 Too Many Requests @ {endpoint}"
+                    ra = r.headers.get("Retry-After")
+                    try:
+                        delay = float(ra) if ra else _OVERPASS_BACKOFF * (2 ** attempt)
+                    except ValueError:
+                        delay = _OVERPASS_BACKOFF * (2 ** attempt)
+                    await asyncio.sleep(min(delay, 30))
+                    continue
+                if r.status_code in (502, 503, 504):
+                    last = f"{r.status_code} @ {endpoint}"
+                    await asyncio.sleep(min(_OVERPASS_BACKOFF * (2 ** attempt), 30))
+                    continue
+                r.raise_for_status()
+                return r.json().get("elements", [])
+            except Exception as exc:
+                last = exc
+                await asyncio.sleep(min(_OVERPASS_BACKOFF * (2 ** attempt), 30))
+                continue
+    raise RuntimeError(f"Overpass: wszystkie mirrory zawiodly ({last})")
+
+
 @mcp.tool()
-def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 500) -> str:
+def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 80) -> str:
     """
     Analizuje nawierzchnię trasy z artefaktu RWGPS (GPX/JSON) przez OpenStreetMap/Overpass.
 
@@ -1220,12 +1305,10 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 5
     if samples[-1] != points[-1]:
         samples.append(points[-1])
 
-    MAX_SAMPLES = 120
-    if len(samples) > MAX_SAMPLES:
-        step = len(samples) / MAX_SAMPLES
-        samples = [samples[int(i * step)] for i in range(MAX_SAMPLES)]
+    # Nie ograniczamy liczby probek - wiecej probek = lepsza jakosc
+    # Batchujemy po 15 punktow, kazdy batch to osobne zapytanie Overpass around:20m
 
-    # Bounding box
+    # Bounding box — tylko do raportu (bounds w wyniku/bledach); sampling per-punkt around:20m
     lats = [p[0] for p in samples]
     lons = [p[1] for p in samples]
     south = min(lats) - 0.005
@@ -1233,7 +1316,7 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 5
     west = min(lons) - 0.005
     east = max(lons) + 0.005
 
-    # Batch Overpass queries — split samples into groups to keep each query small
+    # Batch Overpass queries — around:20m per punkt (zamiast bbox)
     BATCH_SIZE = 15
     sample_batches = [samples[i:i + BATCH_SIZE] for i in range(0, len(samples), BATCH_SIZE)]
 
@@ -1264,28 +1347,21 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 5
     osm_errors: list[str] = []
 
     for batch_idx, batch in enumerate(sample_batches):
-        b_lats = [p[0] for p in batch]
-        b_lons = [p[1] for p in batch]
-        b_south = min(b_lats) - 0.003
-        b_north = max(b_lats) + 0.003
-        b_west = min(b_lons) - 0.003
-        b_east = max(b_lons) + 0.003
-
-        batch_query = f"[out:json][timeout:25];way[highway]({b_south},{b_west},{b_north},{b_east});out tags geom;"
+        # around:20m per punkt - pobiera droge najblizej punktu GPS
+        around_parts = "".join(
+            f"  way[highway](around:20,{pt[0]},{pt[1]});\n"
+            for pt in batch
+        )
+        batch_query = f"[out:json][timeout:25];(\n{around_parts});out tags geom;"
         batch_ways = []
         try:
-            with httpx.Client(timeout=30) as c:
-                r = c.post(
-                    "https://overpass-api.de/api/interpreter",
-                    content=urlencode({"data": batch_query}).encode("utf-8"),
-                    headers={"Content-Type": "application/x-www-form-urlencoded",
-                             "User-Agent": "Q-rowerowy-asystent/1.0 (cycling training tool)"})
-                r.raise_for_status()
-                batch_ways = r.json().get("elements", [])
+            batch_ways = _overpass_post(batch_query, timeout=30)
         except Exception as exc:
             osm_errors.append(f"batch {batch_idx + 1}/{len(sample_batches)}: {exc}")
             unmatched += len(batch)
             continue
+        if _OVERPASS_SLEEP > 0 and batch_idx + 1 < len(sample_batches):
+            _time.sleep(_OVERPASS_SLEEP)
 
         if not batch_ways:
             unmatched += len(batch)
@@ -1640,19 +1716,7 @@ def openmaps_query_bbox(
     query = f"[out:json][timeout:{timeout_val}];({' '.join(query_parts)});out tags geom;"
 
     try:
-        from urllib.parse import urlencode
-        with httpx.Client(timeout=timeout_val + 5) as c:
-            r = c.post(
-                "https://overpass-api.de/api/interpreter",
-                content=urlencode({"data": query}).encode("utf-8"),
-                headers={
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "User-Agent": "Q-rowerowy-asystent/1.0 (cycling training tool)",
-                },
-            )
-            r.raise_for_status()
-            data = r.json()
-            elements = data.get("elements", [])
+        elements = _overpass_post(query, timeout=timeout_val + 5)
     except Exception as exc:
         return json.dumps({"ok": False, "status": "ERROR", "elements": [], "source": "overpass",
                            "reason": f"Overpass API error: {exc}"},
@@ -1811,13 +1875,7 @@ def openmaps_enrich_rwgps_track(
         query = f"[out:json][timeout:25];way[highway]({b_south},{b_west},{b_north},{b_east});out tags geom;"
         ways = []
         try:
-            with httpx.Client(timeout=30) as c:
-                r = c.post("https://overpass-api.de/api/interpreter",
-                           content=urlencode({"data": query}).encode("utf-8"),
-                           headers={"Content-Type": "application/x-www-form-urlencoded",
-                                    "User-Agent": "Q-rowerowy-asystent/1.0 (cycling training tool)"})
-                r.raise_for_status()
-                ways = r.json().get("elements", [])
+            ways = _overpass_post(query, timeout=30)
         except Exception:
             osm_errors += len(batch)
             for s in batch:
@@ -2037,13 +2095,7 @@ def openmaps_find_pois_near_track(
 
     elements = []
     try:
-        with httpx.Client(timeout=30) as c:
-            r = c.post("https://overpass-api.de/api/interpreter",
-                       content=urlencode({"data": query}).encode("utf-8"),
-                       headers={"Content-Type": "application/x-www-form-urlencoded",
-                                "User-Agent": "Q-rowerowy-asystent/1.0 (cycling training tool)"})
-            r.raise_for_status()
-            elements = r.json().get("elements", [])
+        elements = _overpass_post(query, timeout=30)
     except Exception as exc:
         return json.dumps({"ok": False, "status": "ERROR", "pois": [], "source": "osm_overpass",
                            "reason": f"Overpass API error: {exc}"}, ensure_ascii=False)

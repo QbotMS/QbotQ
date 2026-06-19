@@ -6,12 +6,12 @@ import logging
 import os
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Header
 from starlette.responses import RedirectResponse
 from fastapi.responses import JSONResponse
 
@@ -1325,13 +1325,93 @@ async def mcp_post(request: Request):
         return _mcp_response(response_payload, status_code, headers)
 
 
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="Q API server")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8001)
-    args = parser.parse_args()
-    uvicorn.run(app, host=args.host, port=args.port)
+@app.get("/api/surface/by-name")
+async def surface_by_name_endpoint(
+    name: str,
+    authorization: Optional[str] = Header(None),
+):
+    """Profil nawierzchni trasy po nazwie - dla QExt2 Karoo."""
+    BEARER = os.environ["QBOT_MCP_BEARER"]
+    if not authorization or authorization != f"Bearer {BEARER}":
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    try:
+        from api_db import _conn
+        conn = _conn()
+        cur = conn.cursor()
+
+        # Znajdz route_id po nazwie etapu w planning_facts
+        cur.execute("""
+            SELECT DISTINCT fact_json->>'route_id' as route_id
+            FROM qbot_v2.qbot_planning_facts
+            WHERE fact_type = 'poi_stage_detail'
+              AND (
+                fact_json->>'segment' ILIKE %s OR
+                fact_json->>'stage' = %s
+              )
+            LIMIT 1
+        """, (f"%{name}%", name))
+        row = cur.fetchone()
+        route_id = row['route_id'] if row else None
+
+        if not route_id:
+            cur.close(); conn.close()
+            return JSONResponse({"status": "not_found", "name": name}, status_code=202)
+
+        # Pobierz segmenty nawierzchni - TYLKO najnowszy profil TEJ trasy
+        cur.execute("""
+            SELECT s.distance_m, s.surface
+            FROM qbot_v2.route_surface_segments s
+            WHERE s.route_surface_profile_id = (
+                SELECT p.id
+                FROM qbot_v2.route_surface_profiles p
+                JOIN qbot_v2.route_artifacts a ON a.id = p.route_artifact_id
+                WHERE a.route_id = %s
+                ORDER BY p.enriched_at DESC NULLS LAST, p.id DESC
+                LIMIT 1
+            )
+            ORDER BY s.segment_index
+        """, (route_id,))
+        segments = cur.fetchall()
+        cur.close(); conn.close()
+
+        if not segments:
+            return JSONResponse({"status": "not_ready", "route_id": route_id}, status_code=202)
+
+        SURFACE_MAP = {
+            "asfalt": "paved", "beton": "paved", "kostka brukowa": "paved",
+            "asphalt": "paved", "paved": "paved", "concrete": "paved",
+            "sett": "paved", "cobblestone": "paved", "paving_stones": "paved",
+            "kocie łby": "paved", "kocie lby": "paved",
+            "gravel/zwir": "gravel", "gravel drobny": "gravel",
+            "ubita nawierzchnia": "gravel", "gravel": "gravel",
+            "fine_gravel": "gravel", "compacted": "gravel", "unpaved": "gravel",
+            "dirt": "gravel", "ground": "gravel", "nieutwardzona": "gravel",
+            "ziemia/grunt": "gravel", "grunt": "gravel",
+            "trawa": "loose", "piasek": "loose", "grass": "loose",
+            "sand": "loose", "mud": "loose", "snow": "loose", "ice": "loose",
+        }
+        result = []
+        km = 0.0
+        for seg in segments:
+            dist_m = seg.get('distance_m') or 80
+            surface_raw = (seg.get('surface') or '').lower()
+            surface_norm = (surface_raw.replace('ż', 'z').replace('ź', 'z').replace('ł', 'l')
+                            .replace('ó', 'o').replace('ą', 'a').replace('ę', 'e')
+                            .replace('ć', 'c').replace('ń', 'n').replace('ś', 's'))
+            surface_3 = SURFACE_MAP.get(surface_raw) or SURFACE_MAP.get(surface_norm, "paved")
+            km_end = km + dist_m / 1000.0
+            if result and result[-1]['surface'] == surface_3:
+                result[-1]['km_end'] = round(km_end, 3)
+            else:
+                result.append({'km_start': round(km, 3), 'km_end': round(km_end, 3), 'surface': surface_3})
+            km = km_end
+
+        return JSONResponse(result)
+
+    except Exception as e:
+        import traceback
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]}, status_code=500)
 
 
 @app.get("/mcp/.well-known/oauth-protected-resource")

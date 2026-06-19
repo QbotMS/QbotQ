@@ -123,3 +123,32 @@ POBOCZNE (do osobnej sesji):
 restart qbot-api: active.
 
 ---
+## 2026-06-19 — surface: odporność Overpass + filtr route_id + fix diakrytyków
+
+Branch: feature/surface-overpass-resilience (pushnięty na origin). Pliki: mcp_server.py, qbot_api.py.
+
+qbot_api.py (/api/surface/by-name):
+- BUG filtr route_id: zapytanie o segmenty nie filtrowało po trasie -> pobierało
+  segmenty WSZYSTKICH tras. Fix: JOIN segments -> profiles -> route_artifacts.route_id,
+  ograniczone do NAJNOWSZEGO profilu (ORDER BY enriched_at DESC, id DESC LIMIT 1).
+- BUG diakrytyki: SURFACE_MAP miał klucze ASCII ("gravel/zwir"); analizator zwraca
+  polskie ("gravel/żwir","kocie łby") -> default "paved". Fix: normalizacja diakrytyków
+  przy lookupie + brakujące klucze. Dowód na żywo: stage 5 gravel/żwir -> gravel (było paved).
+
+mcp_server.py (Overpass):
+- Nowe helpery _overpass_post / _overpass_post_async: endpointy z env QBOT_OVERPASS_URLS,
+  backoff z Retry-After na 429, retry na 5xx/timeout, QBOT_OVERPASS_SLEEP między batchami.
+- Domyślnie tylko overpass-api.de (kumi.systems + private.coffee NIEOSIĄGALNE z VPS - timeout;
+  mirrory opt-in przez env). Wszystkie 5 wywołań Overpass przepięte na helpery.
+
+Env: QBOT_OVERPASS_URLS, QBOT_OVERPASS_RETRIES, QBOT_OVERPASS_BACKOFF, QBOT_OVERPASS_SLEEP.
+
+Zweryfikowane na żywo: enrichment trasy 55554132 pobiera OSM bez 429; by-name zwraca
+wyizolowane segmenty per trasa z poprawną klasą nawierzchni. restart: qbot-api + q-bot active.
+
+Znane ograniczenia (osobne sesje):
+- by-name: segment ILIKE '%name%' niejednoznaczne (np. "Paganico" = stage 4 i 5) -> po numerze stage.
+- coverage ~25% przy sample 500 m (around:20m + MAX_MATCH_DIST 150m).
+- B3/B4 (webhook RWGPS, prefetch) i QExt2 E1-E7 niezaczęte.
+
+---

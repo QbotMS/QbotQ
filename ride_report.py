@@ -930,12 +930,8 @@ def process_activity(activity_id, activity_name="Trening"):
             print(f"⚠️  {alert}")
             # Send technical alert via Telegram
             tg_alert = (
-                f"⚠️ *Raport z jazdy nie został wygenerowany*
-
-"
-                f"{alert}
-
-"
+                f"⚠️ *Raport z jazdy nie został wygenerowany*\n\n"
+                f"{alert}\n\n"
                 f"Aktywność: {activity_name} ({activity_id})"
             )
             try:
