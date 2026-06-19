@@ -400,15 +400,33 @@ _now_hour = datetime.now().hour
 import os as _os_gate
 _EARLIEST_HOUR = int(_os_gate.getenv("REPORT_EARLIEST_HOUR", "6"))
 _DEADLINE_HOUR = int(_os_gate.getenv("REPORT_DEADLINE_HOUR", "9"))
-_sleep_present = _garmin_sleep.get("czas_h") is not None or _intervals_sleep_h is not None
+
+# Provider snu (lokalna DB qbot_v2) -- zrodlo wyniku snu i HRV snu.
+_provider = ReportDataProvider()
+_provider_data = _provider.get_daily_report_data(today)
+_pd_sleep = _provider_data.get("sleep") or {}
+
+# Trigger: wysylamy dopiero gdy splynie WYNIK SNU oraz HRV SNU (i po progu porannym).
+_sleep_result_present = (
+    _pd_sleep.get("czas_h") is not None
+    or _garmin_sleep.get("czas_h") is not None
+    or _intervals_sleep_h is not None
+)
+_sleep_hrv_present = (_pd_sleep.get("hrv_ms") is not None) or (w_today.get("hrv") is not None)
+_sleep_present = _sleep_result_present and _sleep_hrv_present
 _sleep_ok = _sleep_present and _now_hour >= _EARLIEST_HOUR
 _PIPELINE_STAGE = "sleep_check"
 _DATA_SOURCES["sleep"] = "ok" if _sleep_ok else "missing"
+_DATA_SOURCES["sleep_hrv"] = "ok" if _sleep_hrv_present else "missing"
 _LAST_ERROR = None  # sleep delay is not an error
 if not _sleep_ok:
     if _now_hour < _DEADLINE_HOUR:
         if _sleep_present and _now_hour < _EARLIEST_HOUR:
             _why = f"przed progiem porannym {_EARLIEST_HOUR}:00"
+        elif not _sleep_result_present:
+            _why = "brak wyniku snu"
+        elif not _sleep_hrv_present:
+            _why = "brak HRV snu"
         else:
             _why = "brak danych snu"
         print(f"⏳ Czekam ({_why}, teraz {_now_hour}:xx, prog {_EARLIEST_HOUR}:00, deadline {_DEADLINE_HOUR}:00).")
@@ -416,7 +434,7 @@ if not _sleep_ok:
         _save_state()
         sys.exit(0)
     else:
-        print(f"⚠️  Brak danych snu po {_DEADLINE_HOUR}:00 — wysylam raport PARTIAL bez danych ze snu.")
+        print(f"⚠️  Brak kompletu snu (wynik+HRV) po {_DEADLINE_HOUR}:00 — wysylam raport PARTIAL.")
         _PIPELINE_STAGE = "partial_missing_sleep"
 
 # Nadchodzące wyjazdy
@@ -538,8 +556,7 @@ _data = {
     "pipeline_stage": _PIPELINE_STAGE,
 }
 # ── Provider-based data validation gate ─────────────────────────────────
-_provider = ReportDataProvider()
-_provider_data = _provider.get_daily_report_data(today)
+# _provider / _provider_data utworzone wyzej przy bramce snu
 _provider_val_status, _provider_val_details = validate_daily_from_provider(_provider_data)
 
 # Use provider data to complement/enrich the report data dict
