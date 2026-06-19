@@ -388,12 +388,21 @@ def _persist_route_surface_profile(file_path: Path, payload: dict[str, Any], sur
     try:
         import api_db
 
+        _rname = None
+        try:
+            import re as _re
+            _gpx_txt = file_path.read_text(encoding="utf-8", errors="ignore")
+            _nm = _re.search(r"<name>(.*?)</name>", _gpx_txt)
+            if _nm:
+                _rname = _nm.group(1).strip()
+        except Exception:
+            _rname = None
         route_artifact = _persist_route_artifact_record(
             file_path,
             route_id=_artifact_route_id_from_path(file_path),
             export_format=f"{file_path.suffix.lstrip('.')}_track" if file_path.suffix else "gpx_track",
             parser_version=RWGPS_PARSE_VERSION,
-            metadata_json={"kind": "enrich_source"},
+            metadata_json={"kind": "enrich_source", "route_name": _rname},
         )
         if not route_artifact:
             return None

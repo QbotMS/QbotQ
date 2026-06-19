@@ -1305,6 +1305,16 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 8
     if samples[-1] != points[-1]:
         samples.append(points[-1])
 
+    _lats = [p[0] for p in points]
+    _lngs = [p[1] for p in points]
+    south, north = (min(_lats), max(_lats)) if _lats else (0.0, 0.0)
+    west, east = (min(_lngs), max(_lngs)) if _lngs else (0.0, 0.0)
+
+    sample_dists = [0.0]
+    for _i in range(1, len(samples)):
+        sample_dists.append(sample_dists[-1] + _dist_fast(samples[_i - 1][0], samples[_i - 1][1], samples[_i][0], samples[_i][1]))
+    sample_surfaces = [None] * len(samples)
+
     # Nie ograniczamy liczby probek - wiecej probek = lepsza jakosc
     # Batchujemy po 15 punktow, kazdy batch to osobne zapytanie Overpass around:20m
 
@@ -1367,7 +1377,8 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 8
             unmatched += len(batch)
             continue
 
-        for pt in batch:
+        for _local_i, pt in enumerate(batch):
+            _gidx = batch_idx * BATCH_SIZE + _local_i
             best_tags = {}
             best_dist = float("inf")
             for way in batch_ways:
@@ -1383,6 +1394,8 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 8
             raw_surf = best_tags.get("surface")
             label = SURFACE_MAP.get(raw_surf, raw_surf or "nieznana")
             surface_counts[label] = surface_counts.get(label, 0) + 1
+            if 0 <= _gidx < len(sample_surfaces):
+                sample_surfaces[_gidx] = label
             hw = best_tags.get("highway")
             if hw:
                 highway_counts[hw] = highway_counts.get(hw, 0) + 1
@@ -1398,6 +1411,27 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 8
         return json.dumps({"ok": False, "error": "OSM_UNAVAILABLE", "reason": f"Overpass API errors: {'; '.join(osm_errors[:3])}", "bounds": {"sw": [south, west], "ne": [north, east]}, "point_count": len(points), "sampled_points": len(samples)}, ensure_ascii=False)
     if not surface_counts:
         return json.dumps({"ok": False, "error": "OSM_UNAVAILABLE", "reason": "No OSM data found for any batch", "bounds": {"sw": [south, west], "ne": [north, east]}, "point_count": len(points), "sampled_points": len(samples)}, ensure_ascii=False)
+
+    surface_segments = []
+    _n = len(samples)
+    _i = 0
+    while _i < _n:
+        _lab = sample_surfaces[_i] if (_i < len(sample_surfaces) and sample_surfaces[_i]) else "nieznana"
+        _j = _i + 1
+        while _j < _n and (sample_surfaces[_j] if sample_surfaces[_j] else "nieznana") == _lab:
+            _j += 1
+        _start_d = sample_dists[_i] if _i < len(sample_dists) else 0.0
+        _end_d = sample_dists[_j] if _j < len(sample_dists) else sample_dists[-1]
+        surface_segments.append({
+            "surface": _lab,
+            "distance_m": round(max(0.0, _end_d - _start_d), 1),
+            "source": "osm_overpass",
+            "start_lat": samples[_i][0],
+            "start_lon": samples[_i][1],
+            "end_lat": samples[_j - 1][0],
+            "end_lon": samples[_j - 1][1],
+        })
+        _i = _j
 
     total = sum(surface_counts.values()) or 1
     dominated_by = max(surface_counts, key=surface_counts.get) if surface_counts else "nieznana"
@@ -1426,6 +1460,7 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 8
         "matched_points": matched,
         "unmatched_points": unmatched,
         "coverage_pct": coverage_pct,
+        "segments": surface_segments,
         "bounds": {"sw_lat": south + 0.005, "sw_lng": west + 0.005, "ne_lat": north - 0.005, "ne_lng": east - 0.005},
         "surface_percentages": {k: round(v / total * 100, 1) for k, v in sorted(surface_counts.items(), key=lambda x: -x[1])},
         "dominant_surface": dominated_by,

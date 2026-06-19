@@ -1118,6 +1118,69 @@ async def q_endpoint(request: Request):
     return {"result": result, "warnings": warnings}
 
 
+@app.post("/rwgps-webhook/{webhook_secret}")
+async def rwgps_webhook(webhook_secret: str, request: Request, x_rwgps_signature: Optional[str] = Header(None)):
+    """RWGPS webhook (B3): route created/updated -> background surface enrichment.
+
+    Auth: path secret must equal QBOT_RWGPS_WEBHOOK_SECRET. If QBOT_RWGPS_API_CLIENT_SECRET
+    is set and an x-rwgps-signature header is present, the HMAC-SHA256 of the raw body is
+    also verified. Responds 200 fast (<1s); enrichment runs in a detached worker process.
+    """
+    import hmac as _hmac
+    import hashlib as _hashlib
+    import json as _json
+    import subprocess as _subprocess
+    import sys as _sys
+
+    expected = os.environ.get("QBOT_RWGPS_WEBHOOK_SECRET", "")
+    if not expected or webhook_secret != expected:
+        return JSONResponse({"status": "forbidden"}, status_code=403)
+
+    raw = await request.body()
+
+    client_secret = os.environ.get("QBOT_RWGPS_API_CLIENT_SECRET", "")
+    if client_secret and x_rwgps_signature:
+        digest = _hmac.new(client_secret.encode(), raw, _hashlib.sha256).hexdigest()
+        if not _hmac.compare_digest(digest, x_rwgps_signature):
+            return JSONResponse({"status": "bad_signature"}, status_code=403)
+
+    try:
+        body = _json.loads(raw.decode("utf-8") or "{}")
+    except Exception:
+        body = {}
+    notifications = body.get("notifications") if isinstance(body, dict) else None
+    if not notifications:
+        notifications = [body] if isinstance(body, dict) else []
+
+    spawned = []
+    seen = set()
+    for note in notifications:
+        if not isinstance(note, dict):
+            continue
+        if str(note.get("item_type", "")).lower() != "route":
+            continue
+        if str(note.get("action", "")).lower() not in ("created", "updated"):
+            continue
+        route_id = str(note.get("item_id") or note.get("route_id") or "").strip()
+        if not route_id or route_id in seen:
+            continue
+        seen.add(route_id)
+        try:
+            _logf = open("/tmp/rwgps_enrich_" + route_id + ".log", "ab")
+            _subprocess.Popen(
+                [_sys.executable, "/opt/qbot/app/scripts/surface_enrich_route.py", route_id],
+                stdout=_logf,
+                stderr=_subprocess.STDOUT,
+                cwd="/opt/qbot/app",
+                start_new_session=True,
+            )
+            spawned.append(route_id)
+        except Exception:
+            pass
+
+    return JSONResponse({"status": "ok", "enriching": spawned})
+
+
 @app.post("/telegram/webhook/{webhook_secret}")
 async def telegram_webhook(webhook_secret: str, request: Request):
     expected_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
@@ -1353,6 +1416,15 @@ async def surface_by_name_endpoint(
         """, (f"%{name}%", name))
         row = cur.fetchone()
         route_id = row['route_id'] if row else None
+
+        if not route_id:
+            cur.execute("""
+                SELECT route_id FROM qbot_v2.route_artifacts
+                WHERE metadata_json->>'route_name' ILIKE %s
+                ORDER BY id DESC LIMIT 1
+            """, (name,))
+            _row2 = cur.fetchone()
+            route_id = _row2['route_id'] if _row2 else None
 
         if not route_id:
             cur.close(); conn.close()
