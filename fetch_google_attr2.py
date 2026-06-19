@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Pobierz Google Places ATRAKCJE (museum/winery/historical) dla etapów 1-7."""
-import json, time, subprocess, psycopg, xml.etree.ElementTree as ET, math, httpx, glob
+import os, json, time, subprocess, psycopg, xml.etree.ElementTree as ET, math, httpx, glob
 from psycopg.rows import dict_row
 
 PLACES_URL = "https://places.googleapis.com/v1/places:searchNearby"
-api_key = "AIzaSyA5tC4gljF_THElQUbSCQM5GT-1nDNMZZ0"
+api_key = os.environ.get("GOOGLE_PLACES_API_KEY") or subprocess.check_output(
+    "source /etc/qbot/qbot-api.env && echo $GOOGLE_PLACES_API_KEY",
+    shell=True, executable='/bin/bash').decode().strip()
+if not api_key:
+    raise SystemExit("GOOGLE_PLACES_API_KEY not set (env or /etc/qbot/qbot-api.env)")
 pg_pwd = subprocess.check_output(
     "source /etc/qbot/qbot-api.env && echo $PGPASSWORD",
     shell=True, executable='/bin/bash').decode().strip()
