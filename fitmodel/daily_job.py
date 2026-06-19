@@ -80,6 +80,15 @@ def main() -> None:
             from fitmodel.xert_bench import run_weekly_benchmark
             return run_weekly_benchmark(conn, dry_run=False)
         _step("xert_bench", _xert)
+
+        # 7. Plan tygodnia (tryb=PROPOZYCJA do zatwierdzenia) -> fitmodel_week_plan
+        def _plan():
+            from fitmodel.week_planner import build_plan, upsert_plan
+            p = build_plan(conn)
+            upsert_plan(conn, p)
+            return {"week": p["week"], "mode": p["mode"],
+                    "budget_h": p["time_budget_h"], "feasible": p["feasible"]}
+        _step("week_planner", _plan)
     finally:
         conn.close()
     print("=== koniec ===")
