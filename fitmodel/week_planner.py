@@ -29,6 +29,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fitmodel.ftp_resolver import _db_connect, _coerce_date
+from fitmodel.focus import compute_focus
 
 MODE_TOTAL_FACTOR = {"regeneracja": 0.65, "podtrzymanie": 1.0, "rozwoj": 1.075}
 WINDOW_DAYS = 28
@@ -126,10 +127,13 @@ def recommend_mode(db_conn, as_of: date, inp: dict[str, float]) -> tuple[str, st
 
 
 def build_plan(db_conn, as_of: date | None = None, mode: str | None = None,
-               budget_h: float | None = None) -> dict[str, Any]:
+               budget_h: float | None = None, route_artifact_id: int | None = None,
+               days_to_event: int | None = None) -> dict[str, Any]:
     as_of = _coerce_date(as_of)
     week = _week_monday(as_of)
     inp = _rolling_inputs(db_conn, as_of)
+    focus = compute_focus(db_conn, as_of, route_artifact_id, days_to_event)
+    fw = focus["weights"]
 
     mode_basis = "tryb wymuszony recznie"
     if mode is None:
@@ -145,13 +149,13 @@ def build_plan(db_conn, as_of: date | None = None, mode: str | None = None,
     factor = MODE_TOTAL_FACTOR[mode]
     target_total = inp["weekly_total_strain"] * factor
 
-    # Dystrybucja: proporcje z okna; regeneracja -> wszystko do Low (zeruje High/Peak)
+    # Dystrybucja wg FOCUS (T2); regeneracja -> wszystko do Low (zeruje High/Peak)
     if mode == "regeneracja":
         t_low, t_high, t_peak = target_total, 0.0, 0.0
     else:
-        t_low = target_total * inp["prop_low"]
-        t_high = target_total * inp["prop_high"]
-        t_peak = target_total * inp["prop_peak"]
+        t_low = target_total * fw["low"]
+        t_high = target_total * fw["high"]
+        t_peak = target_total * fw["peak"]
 
     # Bramka wykonalnosci: ile godzin trzeba na target_total wg strain/h z okna
     sph = inp["strain_per_h"]
@@ -159,6 +163,7 @@ def build_plan(db_conn, as_of: date | None = None, mode: str | None = None,
     feasible = (budget <= 0) or (required_h <= budget * 1.05)  # 5% tolerancji
 
     note_bits = [f"tryb: {mode_basis}",
+                 f"focus[{focus['source']}]: {focus['note']}",
                  f"budzet auto={auto_budget}h" + (f", korekta={budget}h" if budget_h is not None else ""),
                  f"wymagane~={required_h:.1f}h @ {sph} strain/h"]
     if not feasible:
@@ -170,11 +175,11 @@ def build_plan(db_conn, as_of: date | None = None, mode: str | None = None,
 
     return {
         "week": week, "mode": mode, "time_budget_h": round(budget, 1),
-        "focus_source": "deficit",
+        "focus_source": focus["source"],
         "target_low": round(t_low, 1), "target_high": round(t_high, 1),
         "target_peak": round(t_peak, 1),
         "feasible": feasible, "note": note,
-        "_inp": inp, "_required_h": round(required_h, 1),
+        "_inp": inp, "_required_h": round(required_h, 1), "_focus": focus,
     }
 
 
@@ -216,6 +221,8 @@ if __name__ == "__main__":
     ap.add_argument("--as-of", default=None)
     ap.add_argument("--mode", default=None, help="regeneracja|podtrzymanie|rozwoj (wymusza)")
     ap.add_argument("--budget-h", type=float, default=None, help="korekta budzetu godzin")
+    ap.add_argument("--route-id", type=int, default=None, help="route_artifact_id -> focus Stan A")
+    ap.add_argument("--days-to-event", type=int, default=None, help="dni do daty eventu (dryf)")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--demo-infeasible", action="store_true",
                     help="pokaz przyklad niewykonalny (rozwoj przy malym budzecie)")
@@ -223,7 +230,8 @@ if __name__ == "__main__":
 
     conn = _db_connect()
     try:
-        plan = build_plan(conn, as_of=args.as_of, mode=args.mode, budget_h=args.budget_h)
+        plan = build_plan(conn, as_of=args.as_of, mode=args.mode, budget_h=args.budget_h,
+                          route_artifact_id=args.route_id, days_to_event=args.days_to_event)
         if not args.dry_run:
             upsert_plan(conn, plan)
         print("PLAN" + (" (DRY-RUN)" if args.dry_run else " (zapisany)") + ":")
