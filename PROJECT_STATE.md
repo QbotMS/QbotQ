@@ -19,6 +19,9 @@ konta Claude (account-bound, NIE migruje) i w transkryptach — a nie w repo.
    nowy, i przekonfiguruj remote tak, by NIE trzymał tokena w configu
    (credential helper / `insteadOf` czytające z `/etc/qbot/qext2_push.token`).
    Wartości tokena NIE ma w tym pliku (celowo).
+   > CZĘŚCIOWO 2026-06-19: `/opt/qext2/.git/config` NIE trzyma już literału —
+   > używa credential helpera czytającego `/etc/qbot/qext2_push.token`.
+   > POZOSTAJE: potwierdzić, że stary ujawniony token zrewokowany na GitHubie.
 2. **Bearer MCP** (`/mcp/`) — jeśli był wklejany w transkrypty/konfig GPT,
    rozważ rotację przy zmianie konta. Wartość trzymana w `/etc/qbot/` na VPS.
 
@@ -65,6 +68,8 @@ stronie:
   `krok8_architektura_korekta.md` (repo) mówi "ŻYWY dla domeny tras, NIE
   usuwać przed Krokiem 3b". Sprawdź: `ls -la /opt/qbot/app/core/planner.py`
   oraz realny routing zapytania "profil etapu 3".
+  > ROZSTRZYGNIĘTE 2026-06-19 (sprawdzone na żywo): `core/planner.py` NIE
+  > istnieje — planer usunięty. Wersja "z pamięci" była prawdziwa.
 - **`action_execute` w `tools/list`:** pamięć w jednym miejscu mówi "usunięty
   (Opcja A, commity 93b1f6b / b20c855)", a opis Kroku 4 mówi "zostaje
   (Opcja B)". Sprawdź realny `tools/list` przez `/mcp/`.
@@ -73,6 +78,7 @@ stronie:
   Sprawdź `SELECT id FROM qbot_v2.reminders ORDER BY id;`.
 - **Branch:** pamięć: `feature/router-v2-planner-v2-and-fixes` zmergowany do
   main. Repo na VPS był na branchu — sprawdź `git -C /opt/qbot/app branch`.
+  > ROZSTRZYGNIĘTE 2026-06-19: repo na VPS na `main`, remote `QbotMS/QbotQ` (SSH).
 
 ## 4. FITMODEL
 
@@ -95,8 +101,23 @@ E0–E5 ukończone: 5 tabel DB, `fit_ingest.py`, `ftp_resolver.py`,
 Cross-system QBot+QExt2. Backend B1–B4 (Overpass around:20, REST
 `/api/surface/{route_id}`, webhook RWGPS, prefetch athlete-data),
 QExt2 E1–E7 (cache, fetch, fallback RouteGraph, mnożnik węgli/płynów,
-advisory pacing, pole "szuter ahead"). NIE rozpoczęte. W' bez mnożnika
+advisory pacing, pole "szuter ahead"). W' bez mnożnika
 nawierzchni (Quarq mierzy realną moc — mnożnik = double-count).
+
+**STATUS 2026-06-19** (branch `feature/surface-overpass-resilience`, pushnięty):
+- B1 ZROBIONE w części: Overpass `around:20m` per punkt, batchowanie,
+  próbkowanie domyślnie 80 m, zdjęty limit próbek. Test vs RouteGraph — TODO.
+- B2 ZROBIONE jako `GET /api/surface/by-name?name=` (wariant by-name, NIE
+  `/{route_id}`): Bearer, cache w `route_surface_segments`, mapowanie 3-klasowe
+  paved/gravel/loose, scalanie zakresów km, odpowiedź `not_ready`/`not_found` (202).
+- Odporność Overpass: helpery `_overpass_post[/ _async]` z backoffem (429/5xx) +
+  env `QBOT_OVERPASS_URLS/RETRIES/BACKOFF/SLEEP`; wszystkie wywołania przez nie.
+- B3 (webhook RWGPS), B4 (prefetch), QExt2 E1–E7 — NIE rozpoczęte.
+- Ograniczenia: mirrory kumi/private.coffee NIEOSIĄGALNE z VPS (został
+  `overpass-api.de`); `by-name` niejednoznaczne przy substringach nazw etapów
+  (pewny lookup po numerze stage); coverage ~25% przy sample 500 m.
+- Bugfix: filtr `route_id` (segmenty per trasa) + diakrytyki w `SURFACE_MAP`
+  (`gravel/żwir` itp. nie trafiały — leciały na default `paved`).
 
 ## 7. Infrastruktura (ścieżki — sekrety tylko WSKAZANE, nie zawarte)
 
@@ -157,7 +178,9 @@ usunięcie planera; (3) Krok 5 cleanup (redukcja keyword routera, /help,
 testowe reminders); (4) FITMODEL E6–E9; (5) `planning_fact_add/update` w
 `tool_descriptions()` Alberta.
 QExt2: merge `feature/cassette-override` → main.
-Nawierzchnia: B1 → B2 → E1/E2 → E3 → E5 → B3 → B4 → E6 → E7.
+Nawierzchnia: B1/B2 wstępnie ZROBIONE (06-19, branch
+feature/surface-overpass-resilience — review/PR); dalej: doprecyzować `by-name`
+(niejednoznaczność), test vs RouteGraph, potem E1/E2 → E3 → E5 → B3 → B4 → E6 → E7.
 RidePhoto: parkowany (MVP 0 = tekstowy instagram_draft bez zależności).
 
 ---

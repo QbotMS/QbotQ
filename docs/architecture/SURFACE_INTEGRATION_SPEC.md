@@ -60,6 +60,13 @@ Pola / advisory:
 
 ## TODO
 
+> **STATUS 2026-06-19** (branch `feature/surface-overpass-resilience`, pushnięty na origin):
+> - **B1** — zrobione: `around:20m` per punkt + batchowanie + próbkowanie domyślnie 80 m + zdjęty limit próbek. Test porównawczy z RouteGraph: TODO.
+> - **B2** — zrobione jako `GET /api/surface/by-name?name=` (wariant by-name): Bearer, cache `route_surface_segments`, mapowanie 3-klasowe paved/gravel/loose, scalanie km, `not_ready`/`not_found` (202). Endpoint `/{route_id}` jeszcze nie istnieje.
+> - **Odporność Overpass:** helpery `_overpass_post`/`_overpass_post_async` (backoff 429/5xx, env `QBOT_OVERPASS_URLS/RETRIES/BACKOFF/SLEEP`); wszystkie wywołania Overpass przez nie.
+> - **B3/B4** oraz **E1–E7** — niezaczęte.
+> - **Z VPS:** mirrory kumi/private.coffee nieosiągalne (timeout) → tylko `overpass-api.de`; `by-name` niejednoznaczne przy substringach nazw; coverage ~25% przy 500 m.
+
 ### QBot — backend
 
 #### B1. Przepisanie pipeline nawierzchni (Overpass)
