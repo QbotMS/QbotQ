@@ -1431,6 +1431,10 @@ def test_analyze_rwgps_artifact_surface():
         )
         result = json.loads(result_json)
 
+        if not result.get("ok") and result.get("error") == "NOT_FOUND":
+            print("SKIP test_analyze_rwgps_artifact_surface (brak artefaktu GPX -- np. CI)")
+            return
+
         assert_equal(result["ok"], True, "analyze surface ok")
         assert_equal(result["status"], "OK", "analyze surface status")
         assert_equal(result["source"], "rwgps_artifact", "analyze surface source")
