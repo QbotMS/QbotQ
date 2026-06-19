@@ -183,6 +183,14 @@ feature/surface-overpass-resilience — review/PR); dalej: doprecyzować `by-nam
 (niejednoznaczność), test vs RouteGraph, potem E1/E2 → E3 → E5 → B3 → B4 → E6 → E7.
 RidePhoto: parkowany (MVP 0 = tekstowy instagram_draft bez zależności).
 
+
+**Dodane 2026-06-19 (sesja W' / SETUP / Xert):**
+- [TODO] Telegram: alert o nieświeżości Xert — codzienny check, jeśli najnowszy `xert_profile_snapshots` starszy niż ~2 dni → ping na Telegram (zapobiega cichej luce jak 02–19.06).
+- [po jeździe] ModelQ → QExt2: wystawić `GET /fitmodel/buckets/active` publicznie przez bramę `qbot-mcp/server.py` (jak `/api/surface`) + nowy data-type w QExt2 konsumujący endpoint (targety wiader / forma). Pole na Karoo dotąd "poza zakresem".
+- [po jeździe] Dostroić W' z realnych danych z jazdy (build-138+): zakres `cf`, próg/siła decouplingu, ewentualnie deplecja z mocy wygładzonej 3 s; opcjonalnie CP = FTP×1.0x.
+
+Zrobione w tej sesji (do reconcyliacji wyżej): nawierzchnia end-to-end (backend + endpoint + bramka + webhook RWGPS B3), QExt2 cassette-override już w main, SETUP zakładki, model W' (CP=FTP), naprawa crona Xert (load_dotenv).
+
 ---
 *Źródła stanu: pamięć konta Claude (2026-06) + repo `_session_notes/`
 (krok3..krok11, SESJA_FINAL_2026-06-15) + docs/architecture/. Przy rozbieżności
