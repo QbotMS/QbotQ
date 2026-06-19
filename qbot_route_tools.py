@@ -491,7 +491,10 @@ def _tool_qbot_route_artifact_enrich(_args: dict | None = None) -> dict[str, Any
                     except (TypeError, ValueError):
                         total_distance_m = None
                 segments = []
-                if isinstance(surface_percentages, dict) and surface_percentages and total_distance_m is not None:
+                _real_segs = surface_result.get("segments")
+                if isinstance(_real_segs, list) and _real_segs:
+                    segments = _real_segs
+                elif isinstance(surface_percentages, dict) and surface_percentages and total_distance_m is not None:
                     ordered = sorted(surface_percentages.items(), key=lambda item: float(item[1]), reverse=True)
                     for surface_name, share_pct in ordered:
                         try:
