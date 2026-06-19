@@ -1,3 +1,7 @@
+> [DEPRECATED 2026-06-19] Ten plik (stan 2026-05-26) jest NIEAKTUALNY.
+> Kanon architektury: docs/architecture/QBOT_ARCHITEKTURA_V2.md
+> Aktualny stan i handoff: PROJECT_STATE.md (repo root).
+
 # QBot current state - 2026-05-26
 
 ## Purpose
