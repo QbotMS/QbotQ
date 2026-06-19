@@ -9,7 +9,10 @@ from statistics import mean, pstdev
 from typing import Any
 
 import numpy as np
-import psycopg2
+try:
+    import psycopg2
+except ModuleNotFoundError:
+    import psycopg as psycopg2
 from fitparse import FitFile
 
 
@@ -354,12 +357,16 @@ def ingest_all_new(fit_dir: str, db_conn) -> dict:
 
 
 def _connect_db():
-    return psycopg2.connect(
-        host=os.getenv("PGHOST", "127.0.0.1"),
-        user=os.getenv("PGUSER", "qbot"),
-        password=os.getenv("PGPASSWORD", ""),
-        dbname=os.getenv("PGDATABASE", "qbot"),
-    )
+    kwargs = {
+        "host": os.getenv("PGHOST", "127.0.0.1"),
+        "port": int(os.getenv("PGPORT", "5432")),
+        "user": os.getenv("PGUSER", "qbot"),
+        "dbname": os.getenv("PGDATABASE", "qbot"),
+    }
+    pw = os.getenv("PGPASSWORD")
+    if pw:
+        kwargs["password"] = pw
+    return psycopg2.connect(**kwargs)
 
 
 if __name__ == "__main__":
