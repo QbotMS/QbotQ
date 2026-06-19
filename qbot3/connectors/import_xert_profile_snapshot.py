@@ -18,6 +18,10 @@ from pathlib import Path
 APP_DIR = Path("/opt/qbot/app")
 sys.path.insert(0, str(APP_DIR))
 
+from dotenv import load_dotenv
+load_dotenv("/opt/qbot/app/.env")
+load_dotenv("/opt/qbot/app/.env.local")
+
 import httpx
 import psycopg
 
