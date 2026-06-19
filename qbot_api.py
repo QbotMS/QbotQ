@@ -735,6 +735,14 @@ def health():
     }
 
 
+@app.get("/fitmodel/buckets/active")
+@app.get("/fitmodel/buckets/active/")
+def fitmodel_buckets_active():
+    """FITMODEL E8: aktywny blok dla pola na Karoo (spec sek. 8)."""
+    from fitmodel.api import active_payload
+    return active_payload()
+
+
 @app.get("/photos/activities")
 @app.get("/photos/activities/")
 def photos_activities(days: int = 30):
@@ -1592,3 +1600,12 @@ async def oauth_token(request: Request):
         "token_type": "bearer",
         "expires_in": 86400,
     })
+
+
+# --- QBot dashboard (added 2026-06-19) ---
+try:
+    from qbot_dashboard import router as _dash_router
+    app.include_router(_dash_router)
+    logger.info("dashboard router loaded (/login /dash /logout)")
+except Exception as _dash_exc:  # pragma: no cover
+    logger.warning("dashboard router not loaded: %s", _dash_exc)
