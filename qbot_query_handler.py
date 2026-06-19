@@ -4826,6 +4826,12 @@ Możesz pytać normalnym zdaniem — QBot rozumie naturalny język. Poniżej skr
 - garaż / sprzęt → status sprzętu
 - szukaj [element] → szukaj w garażu
 
+**\U0001f6b4 FORMA (FITMODEL)** — w raporcie dobowym
+- FTP_est z wlasnych jazd (submax, niezalezny od Xerta) + W/kg
+- stan glikogenu + sugestia fuelingu na jazde
+- rozklad wiader (tlenowe/progowe/neuro) vs target tygodnia + tryb
+- benchmark FTP_est vs Xert TP
+
 **\U0001f4be SYSTEM**
 - /help → ta lista
 - /incydenty → otwarte incydenty + prompt diagnostyczny

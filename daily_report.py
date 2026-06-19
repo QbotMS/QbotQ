@@ -731,6 +731,13 @@ def _fallback_ai(prompt):
     return _fallback_telegram()
 
 _tg = _fallback_telegram()
+try:
+    from fitmodel.brief import full_brief
+    _fm_brief = full_brief()
+    if _fm_brief.strip():
+        _tg = _tg + "\n\n" + _fm_brief
+except Exception as _fm_e:
+    print(f"fitmodel brief skip: {_fm_e}")
 
 # ── Email: pe\u0142na wersja HTML ─────────────────────────────────────────────────
 _banner_path = Path("/opt/qbot/app/outgoing/banners/tuscany_gravel_banner.png")
