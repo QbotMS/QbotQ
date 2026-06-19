@@ -69,6 +69,8 @@ QGPT_BASE_URL = (
 ).rstrip("/")
 QGPT_MODEL = env("QGPT_MODEL") or env("OPENAI_MODEL") or env("QGPT_FALLBACK_MODEL") or "gpt-4.1-mini"
 QGPT_FALLBACK_MODEL = env("QGPT_FALLBACK_MODEL") or "gpt-4.1-mini"
+QGPT_FALLBACK_BASE_URL = (env("QGPT_FALLBACK_BASE_URL") or "").rstrip("/")
+QGPT_FALLBACK_API_KEY = env("QGPT_FALLBACK_API_KEY")
 QGPT_API_KEY = (
     env("QGPT_API_KEY")
     or env("OPENAI_API_KEY")

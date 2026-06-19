@@ -97,8 +97,7 @@ def send_telegram(msg):
     for i in range(0, len(msg), 4000):
         r = httpx.post(
             f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            json={"chat_id": CHAT_ID, "text": msg[i:i+4000],
-                  "parse_mode": "Markdown"},
+            json={"chat_id": CHAT_ID, "text": msg[i:i+4000]},
             timeout=10
         )
         r.raise_for_status()
@@ -391,20 +390,33 @@ _intervals_sleep_secs = w_today.get("sleepSecs")
 _intervals_sleep_h = round(_intervals_sleep_secs / 3600, 1) if _intervals_sleep_secs is not None else None
 _now_hour = datetime.now().hour
 
-# Guard: dane snu — PARTIAL mode po 9:00
-# Garmin jest źródłem priorytetowym po przebudzeniu; Intervals jest fallbackiem.
-_sleep_ok = _garmin_sleep.get("czas_h") is not None or (_now_hour >= 7 and _intervals_sleep_h is not None)
+# Guard: pora wysylki + dane snu.
+# Cel: raport ma trafic krotko PO przebudzeniu -- nie w srodku snu i nie 2h pozniej.
+#   * prog poranny EARLIEST (domyslnie 6:00): nie wysylamy wczesniej, nawet gdy
+#     dane snu juz sa (Garmin czesto synchronizuje sen jeszcze w jego trakcie).
+#   * po progu: wysylamy od razu, gdy sa dane snu (~ tuz po przebudzeniu).
+#   * DEADLINE (domyslnie 9:00): jak nadal brak snu -> PARTIAL bez snu.
+# Progi konfigurowalne w .env(.local): REPORT_EARLIEST_HOUR / REPORT_DEADLINE_HOUR.
+import os as _os_gate
+_EARLIEST_HOUR = int(_os_gate.getenv("REPORT_EARLIEST_HOUR", "6"))
+_DEADLINE_HOUR = int(_os_gate.getenv("REPORT_DEADLINE_HOUR", "9"))
+_sleep_present = _garmin_sleep.get("czas_h") is not None or _intervals_sleep_h is not None
+_sleep_ok = _sleep_present and _now_hour >= _EARLIEST_HOUR
 _PIPELINE_STAGE = "sleep_check"
 _DATA_SOURCES["sleep"] = "ok" if _sleep_ok else "missing"
 _LAST_ERROR = None  # sleep delay is not an error
 if not _sleep_ok:
-    if _now_hour < 7:
-        print(f"⏳ Brak danych snu, czekam (teraz {_now_hour}:xx, deadline 9:00 CEST (7:00 UTC)).")
+    if _now_hour < _DEADLINE_HOUR:
+        if _sleep_present and _now_hour < _EARLIEST_HOUR:
+            _why = f"przed progiem porannym {_EARLIEST_HOUR}:00"
+        else:
+            _why = "brak danych snu"
+        print(f"⏳ Czekam ({_why}, teraz {_now_hour}:xx, prog {_EARLIEST_HOUR}:00, deadline {_DEADLINE_HOUR}:00).")
         _PIPELINE_STAGE = "waiting_for_sleep_data"
         _save_state()
         sys.exit(0)
     else:
-        print("⚠️  Brak danych snu po 9:00 — wysyłam raport PARTIAL bez danych ze snu.")
+        print(f"⚠️  Brak danych snu po {_DEADLINE_HOUR}:00 — wysylam raport PARTIAL bez danych ze snu.")
         _PIPELINE_STAGE = "partial_missing_sleep"
 
 # Nadchodzące wyjazdy
@@ -730,7 +742,29 @@ def _fallback_ai(prompt):
         return "OK"
     return _fallback_telegram()
 
-_tg = _fallback_telegram()
+def _telegram_report():
+    """Telegram generowany przez LLM (gpt-5.4-mini); fallback = szablon _fallback_telegram()."""
+    try:
+        import json as _json_tg
+        _payload = _json_tg.dumps(_data, ensure_ascii=False)
+        _p = (
+            "Napisz KROTKI poranny raport kolarski na Telegram. Zwykly tekst, bez markdown, bez naglowkow. "
+            "Pierwsza linia: werdykt na dzis + konkretna rekomendacja (czas w minutach + intensywnosc/strefa). "
+            "Jesli w danych jest realne ryzyko, kolejna linia zaczyna sie od slowa Alert. "
+            "Dalej zwiezle, po jednej linii: SEN, REGENERACJA (HRV vs norma, Body Battery), "
+            "FORMA (obciazenie dlugoterminowe / swiezosc / TP), POGODA (temperatura, wiatr, okno bez deszczu), "
+            "BILANS (wczoraj / srednia 7 dni, waga). Maks okolo 12 linii. Konkretnie, jak dobry trener. "
+            "Nie powtarzaj liczb tam gdzie wystarczy ocena slowna. Wszystko po polsku. "
+            "Dane JSON: " + _payload
+        )
+        _txt = _ai(_p, max_t=700)
+        if _txt and _txt.strip() and len(_txt.strip()) > 40:
+            return _txt.strip()
+    except Exception as _exc_tg:
+        print("  [WARN] Telegram AI fallback: " + str(_exc_tg))
+    return _fallback_telegram()
+
+_tg = _telegram_report()
 try:
     from fitmodel.brief import full_brief
     _fm_brief = full_brief()

@@ -27,6 +27,8 @@ from qbot_config import (
     QGPT_BASE_URL,
     QGPT_MODEL,
     QGPT_FALLBACK_MODEL,
+    QGPT_FALLBACK_BASE_URL,
+    QGPT_FALLBACK_API_KEY,
     QGPT_TIMEOUT_SEC,
 )
 
@@ -139,22 +141,38 @@ def qgpt_chat(
 
     payload = {
         "messages": payload_messages,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
     }
 
-    models_to_try = [QGPT_MODEL]
-    if QGPT_FALLBACK_MODEL and QGPT_FALLBACK_MODEL not in models_to_try:
-        models_to_try.append(QGPT_FALLBACK_MODEL)
+    # Dostawcy LLM: primary -> fallback. Kazdy ma WLASNY base URL i klucz,
+    # zeby model fallbackowy nie byl wolany na endpoincie primary (wczesniej 404).
+    attempts = [(QGPT_BASE_URL, QGPT_API_KEY, QGPT_MODEL)]
+    if QGPT_FALLBACK_MODEL:
+        _fb = (
+            QGPT_FALLBACK_BASE_URL or QGPT_BASE_URL,
+            QGPT_FALLBACK_API_KEY or QGPT_API_KEY,
+            QGPT_FALLBACK_MODEL,
+        )
+        if _fb != attempts[0]:
+            attempts.append(_fb)
 
     last_exc: Exception | None = None
-    for mdl in models_to_try:
+    for base_url, api_key, mdl in attempts:
         try:
             attempt_payload = dict(payload)
             attempt_payload["model"] = mdl
+            if mdl.startswith("gpt-5") or mdl.startswith("o1") or mdl.startswith("o3") or mdl.startswith("o4"):
+                attempt_payload["max_completion_tokens"] = max(max_tokens, 2000)
+                attempt_payload["reasoning_effort"] = "low"
+            else:
+                attempt_payload["max_tokens"] = max_tokens
+                attempt_payload["temperature"] = temperature
+            _url = base_url if base_url.endswith("/chat/completions") else f"{base_url}/chat/completions"
+            _hdrs = {"content-type": "application/json"}
+            if api_key:
+                _hdrs["authorization"] = f"Bearer {api_key}"
             r = httpx.post(
-                _chat_url(),
-                headers=_headers(),
+                _url,
+                headers=_hdrs,
                 json=attempt_payload,
                 timeout=QGPT_TIMEOUT_SEC,
             )

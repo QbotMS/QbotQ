@@ -74,28 +74,55 @@ def get_xert_status() -> dict[str, Any]:
 
 
 def get_xert_activities(limit: int = 10) -> list[dict[str, Any]]:
-    """Internal replacement for mcp_call('get_xert_activities')."""
+    """Pobiera ostatnie aktywnosci z Xert.
+
+    Loguje sie password-grant (klient xert_public) tak samo jak
+    qbot_xert_readiness_status -- statyczny XERT_ACCESS_TOKEN nie istnieje.
+    Mapuje activities.data[] -> [{date, threshold_power, ...}] dla
+    tp_z_aktywnosci() w daily_report.py.
+    """
     try:
         import httpx
         import os
-        token = os.getenv("XERT_ACCESS_TOKEN") or os.getenv("XERT_AUTH_TOKEN")
-        if not token:
-            print("  ⚠️  get_xert_activities: no XERT token")
+        import qbot_config  # noqa: F401 - upewnia sie, ze .env(.local) zaladowany
+        email = os.getenv("XERT_EMAIL", "")
+        password = os.getenv("XERT_PASSWORD", "")
+        if not (email and password):
+            print("  [WARN] get_xert_activities: brak XERT_EMAIL/XERT_PASSWORD")
             return []
-        r = httpx.get(
-            "https://www.xertonline.com/oauth/activities",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=15,
-        )
-        r.raise_for_status()
-        data = r.json()
-        if isinstance(data, list):
-            return data[:limit]
-        return []
+        with httpx.Client(timeout=15) as client:
+            tok_r = client.post(
+                "https://www.xertonline.com/oauth/token",
+                auth=("xert_public", "xert_public"),
+                data={"grant_type": "password", "username": email, "password": password},
+            )
+            tok_r.raise_for_status()
+            token = tok_r.json().get("access_token", "")
+            if not token:
+                print("  [WARN] get_xert_activities: brak access_token z logowania")
+                return []
+            r = client.get(
+                "https://www.xertonline.com/oauth/activities",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            r.raise_for_status()
+            payload = r.json()
+        rows = payload.get("activities", {}).get("data", []) if isinstance(payload, dict) else []
+        out: list[dict[str, Any]] = []
+        for it in rows[:limit]:
+            sess = (it.get("sessions") or [{}])[0]
+            tp = sess.get("threshold_power") or it.get("threshold_power")
+            start = it.get("start_date") or ""
+            out.append({
+                "date": start[:10] if start else None,
+                "start_date": start,
+                "threshold_power": tp,
+                "name": it.get("name"),
+            })
+        return out
     except Exception as exc:
-        print(f"  ⚠️  get_xert_activities: {exc}")
+        print(f"  [WARN] get_xert_activities: {exc}")
         return []
-
 
 def get_garmin_wellness(date_str: str | None = None) -> dict[str, Any]:
     """Internal replacement for mcp_call('get_garmin_wellness')."""
