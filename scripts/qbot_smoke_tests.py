@@ -1184,6 +1184,9 @@ def test_rwgps_cache_source_is_explicit():
         "RWGPS_PLANNED_COLLECTION_ID": rwgps_client.RWGPS_PLANNED_COLLECTION_ID,
     }
     live_values = _load_rwgps_env_values()
+    if not live_values:
+        print("SKIP test_rwgps_cache_source_is_explicit (brak RWGPS .env -- np. CI)")
+        return
     with tempfile.TemporaryDirectory() as tmp:
         rwgps_client.RWGPS_ROUTE_CACHE_PATH = Path(tmp) / "rwgps_route_cache.json"
         try:
