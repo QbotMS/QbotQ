@@ -10,11 +10,12 @@ import sys, os
 sys.path.insert(0, "/opt/qbot/app")
 import psycopg
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from garmin_auth import garmin_client
 from dotenv import load_dotenv
 load_dotenv("/opt/qbot/app/.env")
 
-now = datetime.now(timezone.utc)
+now = datetime.now(ZoneInfo("Europe/Warsaw"))
 hour = now.hour
 is_finalize = (5 <= hour <= 8)
 
