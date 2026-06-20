@@ -195,3 +195,14 @@ Zrobione w tej sesji (do reconcyliacji wyżej): nawierzchnia end-to-end (backend
 *Źródła stanu: pamięć konta Claude (2026-06) + repo `_session_notes/`
 (krok3..krok11, SESJA_FINAL_2026-06-15) + docs/architecture/. Przy rozbieżności
 patrz sekcja 3 i weryfikuj na żywym systemie.*
+
+**Dodane 2026-06-21 (sesja: audyt bazy / connectory):**
+- [DONE 06-21] Backup przed sprzątaniem: `qbot_precleanup_20260621_003750.dump` (+ nocne backupy działają, codziennie ~03:22).
+- [USTALONE] Connectory qbot_v2 (energy/sleep/wellness/training/xert) CHODZĄ i są świeże — wbrew notatce z 06-20. Dane całe, nic nie ginie.
+- [USTALONE] Żywienie ręczne (GPT/MCP) ląduje OK w qbot_v2.intake_logs/intake_items → rollup qbot_v2.nutrition_daily_summary (UNIQUE(date,source) już jest). Raport czyta poprawnie (qbot_v2 first).
+- [TODO porządki — ZABLOKOWANE kodem] Przeniesienie starej skorupy public.* → archive NIE jest bezpieczne: qbot_report_data_provider.py + qbot_query_handler.py używają public.* jako FALLBACK dla starych dat (energy/sleep/wellness/training/body/nutrition). Najpierw DECYZJA: czy historia sprzed qbot_v2 ma zostać dostępna w raporcie (→ migracja do qbot_v2, potem sprzątanie) czy nie (→ odpiąć fallbacki w kodzie, potem sprzątanie).
+- [TODO twarda blokada — opcjonalnie] „Portier": event trigger blokujący CREATE w schema public. Wymaga superusera (root/postgres) — konto qbot jest WŁAŚCICIELEM bazy, więc REVOKE nie działa. W praktyce nowe szuflady w public i tak nie powstają (search_path=qbot_v2 first + brak w kodzie jawnego tworzenia w public).
+- [TODO dane] Naprawić 2 dni jedzenia 14–15.06: prawda rozbita między (stare) meal_logs i (nowe) intake_logs podczas migracji — przeliczyć ręcznie, NIE automatem (auto nadpisałoby poprawne wartości błędnymi).
+- [TODO puste tabele] qbot_v2.fueling_events/hydration_events/nutrition_day_plans/food_items = 0 wierszy → do archive (uwaga: kolizja nazwy nutrition_day_plans z istniejącą w archive; sprawdzić referencje w kodzie przed ruchem).
+- [TODO repo cleanup] Śmieci-kopie w repo: _bak_archive=172, _patch_archive=47, *.bak=254 plików → uprzątnąć poza working tree.
+- [TODO governance] Pole `source` w jedzeniu = wolny tekst (gpt/chatgpt/chatgpt_mcp/albert/user_estimate/...). Ujednolicić słownik, bo filtrowanie po źródle jest bezużyteczne.
