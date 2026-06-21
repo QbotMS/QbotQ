@@ -1,0 +1,2 @@
+#!/bin/sh
+python3 "$(git rev-parse --show-toplevel)/scripts/build_context.py" >/dev/null 2>&1 || true

@@ -43,3 +43,4 @@ fit_rewrite_diff.txt
 # Backups and session notes (local only)
 _bak_archive/
 _session_notes/
+docs/CONTEXT.md
