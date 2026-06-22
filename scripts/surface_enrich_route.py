@@ -45,6 +45,16 @@ def main():
         + " took_s=" + str(round(time.time() - t0, 1))
     )
 
+    # FAZA A: zbuduj siatke pudelek 80 m (qbot_v2.route_frames) tuz po enrichmencie.
+    # GPX i segmenty nawierzchni juz sa. Blad framingu NIE moze wywrocic workera —
+    # enrichment juz sie udal, wiec lapiemy wyjatek i tylko logujemy.
+    try:
+        from tools.rwgps.route_frames import build as _build_frames
+        _build_frames(route_id=route_id, frame_size=80.0)
+        print("FRAMES_DONE route_id=" + route_id)
+    except Exception as _e:
+        print("FRAMES_FAILED route_id=" + route_id + " error=" + repr(_e))
+
 
 if __name__ == "__main__":
     main()

@@ -2185,6 +2185,7 @@ def _tool_qbot_route_profile_detail(_args: dict | None = None) -> dict[str, Any]
     _args = _args or {}
     artifact_id = _args.get("artifact_id")
     route_id = _args.get("route_id")
+    land_cover = bool(_args.get("land_cover", False))
     if route_id and not str(route_id).strip().isdigit():
         _hint = _resolve_rwgps_route_hint(str(route_id))
         route_id = _hint.get("route_id") or None
@@ -2202,7 +2203,7 @@ def _tool_qbot_route_profile_detail(_args: dict | None = None) -> dict[str, Any]
             return {"tool": "qbot_route_profile_detail", "safety_class": "READ_ONLY", "status": "WARN", "notes": "Brak otrasowanych tras (route_frames)."}
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            build_detail(artifact_id=int(artifact_id) if artifact_id else None, route_id=str(route_id) if route_id else None)
-        return {"tool": "qbot_route_profile_detail", "safety_class": "READ_ONLY", "status": "OK", "analysis": buf.getvalue(), "notes": "Szczegolowy profil z ramek. Pokaz pole analysis w calosci, 1:1."}
+            build_detail(artifact_id=int(artifact_id) if artifact_id else None, route_id=str(route_id) if route_id else None, land_cover=land_cover)
+        return {"tool": "qbot_route_profile_detail", "safety_class": "READ_ONLY", "status": "OK", "analysis": buf.getvalue(), "notes": "Szczegolowy profil z ramek. Pokaz pole analysis w calosci, 1:1, pokrycie terenu gdy land_cover."}
     except Exception as exc:
         return {"tool": "qbot_route_profile_detail", "safety_class": "READ_ONLY", "status": "ERROR", "error": repr(exc)}

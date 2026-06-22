@@ -150,7 +150,7 @@ def build(artifact_id=None, route_id=None, frame_size=80):
     return 0
 
 
-def build_detail(artifact_id=None, route_id=None, frame_size=80, climb_grade=3.0, climb_min_m=200.0):
+def build_detail(artifact_id=None, route_id=None, frame_size=80, climb_grade=3.0, climb_min_m=200.0, land_cover=False):
     # FAZA A — SZCZEGOLOWY ale ZWIEZLY profil z ramek (mocno < 4000 znakow = limit relay Alberta). Tylko ODCZYT.
     conn = _db_connect()
     cur = conn.cursor()
@@ -174,31 +174,67 @@ def build_detail(artifact_id=None, route_id=None, frame_size=80, climb_grade=3.0
     lines = []
     lines.append("SZCZEGOLOWY PROFIL TRASY (z ramek %d m)" % int(frame_size))
     lines.append("Dystans %.1f km | %d ramek | +%.0f m / -%.0f m | max %.0f%% | stromo(>=4%%) ~%.1f km" % (total_km, len(rows), ascent, descent, max_grade, steep_m/1000.0))
-    # --- Nawierzchnia odcinkami: scal sasiednie + absorbuj mikro-odcinki (kasuje szum "nieznana") ---
-    merged = []
-    for r in rows:
-        surf = r[7] or "nieznana"
-        if merged and merged[-1][2] == surf:
-            merged[-1][1] = r[2]
-        else:
-            merged.append([r[1], r[2], surf])
-    min_seg = 250.0
-    cleaned = []
-    for seg in merged:
-        if cleaned and (seg[1] - seg[0]) < min_seg:
-            cleaned[-1][1] = seg[1]
-        else:
-            cleaned.append([seg[0], seg[1], seg[2]])
-    final = []
-    for seg in cleaned:
-        if final and final[-1][2] == seg[2]:
-            final[-1][1] = seg[1]
-        else:
-            final.append(seg)
-    lines.append("")
-    lines.append("Nawierzchnia (odcinki >= %.1f km):" % (min_seg/1000.0))
-    for s0, e0, surf in final:
-        lines.append("  km %.1f-%.1f (%.1f): %s" % (s0/1000.0, e0/1000.0, (e0-s0)/1000.0, surf))
+    if land_cover:
+        try:
+            from tools.rwgps.surface_landcover import build_sectors as _bs, annotate_sectors as _an, render_sectors_text as _rt
+            _sectors = _bs(artifact_id=artifact_id, route_id=route_id, frame_size=int(frame_size))
+            _an(_sectors, want_landcover=True, want_surface_cascade=False)
+            lines.append("")
+            lines.append("Nawierzchnia + pokrycie terenu (OSM):")
+            lines.append(_rt(_sectors))
+        except Exception:
+            # fallback: zostaw dotychczasowy listing nawierzchni
+            # --- Nawierzchnia odcinkami: scal sasiednie + absorbuj mikro-odcinki (kasuje szum "nieznana") ---
+            merged = []
+            for r in rows:
+                surf = r[7] or "nieznana"
+                if merged and merged[-1][2] == surf:
+                    merged[-1][1] = r[2]
+                else:
+                    merged.append([r[1], r[2], surf])
+            min_seg = 250.0
+            cleaned = []
+            for seg in merged:
+                if cleaned and (seg[1] - seg[0]) < min_seg:
+                    cleaned[-1][1] = seg[1]
+                else:
+                    cleaned.append([seg[0], seg[1], seg[2]])
+            final = []
+            for seg in cleaned:
+                if final and final[-1][2] == seg[2]:
+                    final[-1][1] = seg[1]
+                else:
+                    final.append(seg)
+            lines.append("")
+            lines.append("Nawierzchnia (odcinki >= %.1f km):" % (min_seg/1000.0))
+            for s0, e0, surf in final:
+                lines.append("  km %.1f-%.1f (%.1f): %s" % (s0/1000.0, e0/1000.0, (e0-s0)/1000.0, surf))
+    else:
+        # --- Nawierzchnia odcinkami: scal sasiednie + absorbuj mikro-odcinki (kasuje szum "nieznana") ---
+        merged = []
+        for r in rows:
+            surf = r[7] or "nieznana"
+            if merged and merged[-1][2] == surf:
+                merged[-1][1] = r[2]
+            else:
+                merged.append([r[1], r[2], surf])
+        min_seg = 250.0
+        cleaned = []
+        for seg in merged:
+            if cleaned and (seg[1] - seg[0]) < min_seg:
+                cleaned[-1][1] = seg[1]
+            else:
+                cleaned.append([seg[0], seg[1], seg[2]])
+        final = []
+        for seg in cleaned:
+            if final and final[-1][2] == seg[2]:
+                final[-1][1] = seg[1]
+            else:
+                final.append(seg)
+        lines.append("")
+        lines.append("Nawierzchnia (odcinki >= %.1f km):" % (min_seg/1000.0))
+        for s0, e0, surf in final:
+            lines.append("  km %.1f-%.1f (%.1f): %s" % (s0/1000.0, e0/1000.0, (e0-s0)/1000.0, surf))
     # --- Wysokosci: zwiezle, tylko km z istotna zmiana netto ---
     from collections import OrderedDict
     kmg = OrderedDict()

@@ -2816,11 +2816,13 @@ def _load_route_profile_detail_tool() -> dict[str, Any]:
             "SZCZEGOLOWY profil ZAPLANOWANEJ trasy z ramek 80 m: nawierzchnia ODCINKAMI (km od-do z typem), "
             "profil wysokosci po kilometrach (delta netto) i lista podjazdow. "
             "Uzyj gdy uzytkownik chce ROZBICIE / szczegoly nawierzchni i przewyzszen 'km po km' / 'odcinek po odcinku', "
-            "a nie samo podsumowanie procentowe (od tego jest route_plan_analysis). Bez route_id bierze najnowsza otrasowana trase."
+            "a nie samo podsumowanie procentowe (od tego jest route_plan_analysis). Bez route_id bierze najnowsza otrasowana trase. "
+            "Opcjonalnie land_cover=true dodaje pokrycie terenu OSM per sektor."
         ),
         "args_schema": {
             "route_id": {"type": "string", "description": "ID trasy RWGPS (opcjonalne; domyslnie najnowsza otrasowana)"},
             "artifact_id": {"type": "integer", "description": "ID artefaktu trasy (opcjonalne)"},
+            "land_cover": {"type": "boolean", "default": False, "description": "Dodaje pokrycie terenu OSM per sektor: las/pola/laki/zabudowa/woda + podsumowanie"},
         },
         "safety": "read",
         "mode": "read_only",

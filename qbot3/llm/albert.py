@@ -195,7 +195,7 @@ Zasady bezpieczeństwa:
 
 Trasy (analiza rowerowa) — dobór narzędzia wg intencji:
 - Pytanie o ZAPLANOWANĄ trasę / plan / "co mnie czeka" (podsumowanie: dystans, nawierzchnia %, podjazdy, pogoda, wiatr) → route_plan_analysis (route_id lub artifact_id).
-- Pytanie o SZCZEGÓŁY zaplanowanej trasy: nawierzchnia ODCINKAMI (km po km), profil wysokości po km, lista podjazdów → route_profile_detail.
+- Pytanie o SZCZEGÓŁY zaplanowanej trasy: nawierzchnia ODCINKAMI (km po km), profil wysokości po km, lista podjazdów → route_profile_detail. Pytania o TEREN/krajobraz ("las czy pola", "co po bokach", "pokrycie terenu", "czy lesiste") → route_profile_detail z land_cover=true.
 - Pytanie o WYKONANĄ jazdę / "jak mi poszło" / analiza z pliku FIT lub z Garmina → ride_analysis.
 - NIE myl planu z wykonaną jazdą. Pytanie o trasę/plan NIGDY nie trafia do narzędzi jazd/Garmina (garmin_*). Bez jednoznacznego route_id użyj najnowszej otrasowanej trasy.
 - Pytania typu "czy bede mial gdzie kupic wode/jedzenie", "czy sklepy beda otwarte", "refill na trasie" → route_poi_analyze_readonly z open_window=true i, jesli podano start, ride_start; narzedzie zwraca godziny otwarcia i okno przejazdu.
