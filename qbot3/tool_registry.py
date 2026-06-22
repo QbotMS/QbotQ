@@ -2687,6 +2687,7 @@ def _init_registry():
         ("ride_analysis", _load_ride_analysis_tool),
         ("route_profile_detail", _load_route_profile_detail_tool),
         ("tire_pressure", _load_tire_pressure_tool),
+        ("route_fuel_plan", _load_route_fuel_plan_tool),
         ("route_artifact_enrich_dry_run", _load_route_artifact_enrich_dry_run_tool),
         ("route_poi_analyze", _load_route_poi_analyze_tool),
         ("route_poi_analyze_readonly", _load_route_poi_analyze_readonly_tool),
@@ -2857,6 +2858,44 @@ def _load_tire_pressure_tool() -> dict[str, Any]:
             "weight_kg": {"type": "number", "description": "Waga zawodnika kg (opcjonalne; domyslnie body_measurements)"},
             "bike_weight_kg": {"type": "number", "description": "Masa roweru kg (opcjonalne; domyslnie garaz lub 10)"},
             "extra_load_kg": {"type": "number", "description": "Dodatkowy ladunek kg (opcjonalne)"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+    }
+
+
+def _load_route_fuel_plan_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+    from qbot3 import qbot_fuel_tools as _ft
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        out = _ft._tool_qbot_route_fuel_plan(args or {})
+        if out.get("status") == "OK":
+            return success_result({
+                "analysis": out.get("analysis", ""),
+                "note": out.get("notes", ""),
+                "data": out.get("data", {}),
+            })
+        return error_result("ROUTE_FUEL_PLAN_FAILED",
+                            out.get("error") or "blad kalkulatora zywienia trasy")
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "Plan zywienia na ZAPLANOWANA trase: B2 plyny (L/h) + B3 wegle (g/h). "
+            "Mirror 1:1 wzorow QExt2, karmiony estymatami planu: if_target, vi, "
+            "temp_c/humidity_pct (z prognozy A5), duration_h (z B4), body_kg (z body_measurements). "
+            "Zwraca gotowe sekcje B2/B3 w polu analysis — pokaz w calosci. "
+            "B1 (%FTP) pominiete. Bez parametrow uzywa domyslnych i zaznacza zaleznosci A5/B4."
+        ),
+        "args_schema": {
+            "if_target": {"type": "number", "description": "Planowany target IF (0.4-1.1; domyslnie 0.70)"},
+            "vi": {"type": "number", "description": "Variability Index (domyslnie 1.05; gravel ~1.05-1.10)"},
+            "duration_h": {"type": "number", "description": "Czas jazdy w h (z B4; domyslnie 3.0 — ZALEZNOSC)"},
+            "temp_c": {"type": "number", "description": "Temperatura C z prognozy A5 (brak -> mnoznik 1.00)"},
+            "humidity_pct": {"type": "number", "description": "Wilgotnosc % z prognozy A5 (brak -> 1.00)"},
+            "body_kg": {"type": "number", "description": "Waga zawodnika kg (domyslnie z body_measurements)"},
         },
         "safety": "read",
         "mode": "read_only",

@@ -200,6 +200,7 @@ Trasy (analiza rowerowa) — dobór narzędzia wg intencji:
 - NIE myl planu z wykonaną jazdą. Pytanie o trasę/plan NIGDY nie trafia do narzędzi jazd/Garmina (garmin_*). Bez jednoznacznego route_id użyj najnowszej otrasowanej trasy.
 - Pytania typu "czy bede mial gdzie kupic wode/jedzenie", "czy sklepy beda otwarte", "refill na trasie" → route_poi_analyze_readonly z open_window=true i, jesli podano start, ride_start; narzedzie zwraca godziny otwarcia i okno przejazdu.
 - Pytanie o CIŚNIENIE OPON / „na ile napompować" / „jakie ciśnienie" → tire_pressure (B5). Liczy ciśnienie przód/tył dla OBU zestawów kół (bar i psi), model Berto (≤42 mm) / Heine surface-aware (≥42 mm); waga z body_measurements, masa roweru z garażu. Opcjonalne param: width1_mm, width2_mm, surface, weight_kg, bike_weight_kg.
+- Pytanie o ŻYWIENIE/NAWODNIENIE na trasę / „ile węgli/płynów na godzinę", „plan jedzenia/picia", strategia fuelingu na ZAPLANOWANĄ trasę → route_fuel_plan (B2 płyny L/h, B3 węgle g/h; mirror QExt2 1:1, karmiony estymatami planu: if_target, vi, temp_c/humidity_pct z prognozy A5, duration_h z B4, waga z body_measurements; bez danych używa domyślnych i zaznacza zależności A5/B4). B1 (strefy %FTP) pominięte (decyzja: mało ważne).
 
 Schemat DB — krytyczne fakty:
 - BILANS KALORYCZNY ≠ SPOŻYCIE. Dla pytań o bilans użyj:
