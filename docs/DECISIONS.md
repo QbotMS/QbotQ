@@ -5,6 +5,42 @@
 
 ---
 
+## 2026-06-22 — Przełącznik modeli Alberta + fixy (ucinanie wyników, loteria route_id) [dokumentacja wdrożonego]
+
+**Status:** wdrożone i ZACOMMITOWANE (patrz „Stan w git" niżej). Wpis dokumentuje zmiany już obecne w kodzie (TASK 03 = tylko spisanie, bez zmian kodu).
+
+### 1. Przełącznik modeli Alberta (gpt / gemini / claude)
+- Moduł `qbot3/llm/model_profiles.py`: słownik `PROFILES` z 3 profilami; każdy ma jawny `base_url` + `model` + `key_env` (niezależne od QGPT_*):
+  - `gpt` → base `QBOT_PLANNER_BASE_URL` (default `https://api.openai.com/v1`), model `QBOT_PLANNER_MODEL` (default `gpt-5.4-mini`), klucz `QBOT_PLANNER_API_KEY`
+  - `gemini` → `https://generativelanguage.googleapis.com/v1beta/openai`, `gemini-2.5-flash`, klucz `GEMINI_API_KEY`
+  - `claude` → `https://api.anthropic.com/v1/`, `claude-sonnet-4-6`, klucz `ANTHROPIC_API_KEY`
+  - `DEFAULT = gemini`.
+- Aktywny profil w `data/albert_model.json` (`{"active": "..."}`) — zmiana BEZ restartu (plik czytany przy każdym `get_active()`/`resolve()`). Stan na 2026-06-22: `active=claude`.
+- API modułu: `get_active()`, `set_active(name)`, `resolve()` (zwraca base_url/model/api_key/key_present z env), `public_status()`.
+- `qbot3/agent_runtime.py` (l. 256–269): orkiestracja woła `resolve()` i przekazuje profil do `albert_run` jako `override_api_key` / `override_base_url` / `override_model` (zastąpiło puste `QGPT_ANALYTICAL_*`).
+- Komendy (deterministyczne, `qbot_query_handler.py` l. 392–395 + `handle_query` l. 4865–4879):
+  - „model gpt|gemini|claude" (+ synonimy „przełącz na…", „użyj…", „albert na…") → `set_active` + potwierdzenie; ostrzega, gdy brak klucza dla profilu.
+  - „jaki model" / „aktywny model" / „który model" / „status modelu" → `public_status` (label, model, klucz jest/BRAK).
+- `qbot3/llm/albert.py` `_gen_kwargs(model, base_url, max_n)` (l. 33–43): modele OpenAI gpt-5+/o-series → `max_completion_tokens`, bez `temperature`; pozostałe (Gemini/Anthropic w trybie OpenAI-compat) → `max_tokens` + `temperature=0`.
+- Klucz `ANTHROPIC_API_KEY` skonsolidowany do autorytatywnego env `/etc/qbot/qbot-api.env` (backup `qbot-api.env.bak.20260622_080645` — wg notatek sesji CURRENT.md).
+
+### 2. Fix ucinania długich wyników (profil km-po-km)
+- Root cause: w `albert.py` wynik KAŻDEGO narzędzia podawany modelowi był cięty do 4000 znaków → `route_profile_detail` urywał się ~km19 (bez wysokości/podjazdów).
+- Fix (zweryfikowany w kodzie): relay 4000 → 16000 (`albert.py` l. 441: `json.dumps(tool_content, …)[:16000]`); `max_tokens` 1200 → 5000 (przez `_gen_kwargs(…, 5000)`, l. 291 i 364); `build_detail` w `tools/rwgps/route_brief.py` przepisany na zwięzły (scalanie nawierzchni + absorpcja mikroodcinków, wysokości tylko gdy |netto| ≥ 6 m, podjazdy) → ~3,8 tys. znaków.
+- Efekt: pełny profil 0→99,3 km w jednym wywołaniu.
+
+### 3. Fix loterii `route_id` (nazwa zamiast numeru)
+- Problem: `route_plan_analysis` / `route_profile_detail` przy `route_id` = NAZWA trasy zwracały po cichu pusto ze `status: OK` (cichy fail) — gdy LLM (zwł. GPT) wepchnął nazwę zamiast wywołać `rwgps_route_find`. Skutek: losowo pusta analiza trasy.
+- Fix (`qbot_route_tools.py`): gdy `route_id` nie jest numeryczny (`not str(route_id).strip().isdigit()`) → `_resolve_rwgps_route_hint(name)` (l. 38) zamienia nazwę na numeryczny RWGPS id (myślniki / półpauzy / spacje → 55734589); gdy się nie rozwiąże → `None` (spadek na „najnowszą", nie pustkę). Miejsca wpięcia: l. ~1640 (plan_analysis), ~2112 i ~2189 (profile_detail).
+
+### Stan w git (WERYFIKACJA NA ŻYWO 2026-06-22)
+- Wcześniejsze notatki (CURRENT.md oraz brief TASK 03) mówiły „zmiany kodu STAGED, niezacommitowane". To JUŻ NIEAKTUALNE — zgodnie z zasadą „gdy dokument rozjeżdża się z kodem, wygrywa żywy system":
+  - `git status --short` = pusto (drzewo robocze czyste).
+  - Zmiany są ZACOMMITOWANE: `2f5b62a` „checkpoint: model switch + route fixes + B5 pressure + legacy route archive + dev MCP auth + route/refill modules" oraz `d8591c4` „geo Cel 2".
+- Backupy `.bak` z sesji (wg CURRENT.md): `albert.py.bak.20260621_234253` i `.bak.20260622_094721`, `route_brief.py.bak.20260621_233943`, `qbot_route_tools.py.bak.20260622_102054`.
+
+---
+
 ## 2026-06-21 — ZASADA: instrukcja Alberta zawsze zsynchronizowana z narzedziami (OBOWIAZKOWE)
 
 **Status:** obowiazujace, twarda regula procesu.
