@@ -2866,7 +2866,7 @@ def _load_tire_pressure_tool() -> dict[str, Any]:
 
 def _load_route_fuel_plan_tool() -> dict[str, Any]:
     from qbot3.errors import error_result, success_result
-    from qbot3 import qbot_fuel_tools as _ft
+    import qbot_fuel_tools as _ft
 
     def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
         out = _ft._tool_qbot_route_fuel_plan(args or {})

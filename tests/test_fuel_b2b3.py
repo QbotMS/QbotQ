@@ -1,6 +1,6 @@
 import unittest
 
-from qbot3 import qbot_fuel_tools as f
+import qbot_fuel_tools as f
 
 
 class TestCarbsB3(unittest.TestCase):
