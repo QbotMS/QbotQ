@@ -799,7 +799,7 @@ def _load_rwgps_route_fetch_tool() -> dict[str, Any]:
         "category": "routes",
         "description": (
             "Live fetch trasy z RWGPS API — pobiera bezpośrednio trasę po ID. "
-            "Używaj gdy użytkownik pyta o konkretną trasę. "
+            "Używaj TYLKO gdy potrzebne są surowe metadane jednej trasy (sam dystans/nazwa/punkty). Do ANALIZY/OCENY trasy (nawierzchnia, podjazdy, pogoda, forma) NIE używaj tego — użyj route_plan_analysis. "
             "Zwraca: szczegóły trasy (dystans, przewyższenie, punkty). "
             "Parametry: route_id (wymagany, string lub number)."
         ),
@@ -1938,6 +1938,10 @@ def _load_route_poi_analyze_tool() -> dict[str, Any]:
             "merge_artifact_ids": merge_list or None,
             "timeout_sec": timeout_sec,
             "output_format": output_format,
+            "open_window": bool(args.get("open_window", False)),
+            "ride_start": args.get("ride_start"),
+            "avg_speed_kmh": args.get("avg_speed_kmh", 18.0),
+            "google_hours": args.get("google_hours", True),
             "confirm": True,
         })
         if result.get("status") not in {"OK", "PARTIAL"} or not result.get("ok", True):
@@ -1974,6 +1978,10 @@ def _load_route_poi_analyze_tool() -> dict[str, Any]:
             "retry_mode": {"type": "boolean", "default": False},
             "timeout_sec": {"type": "number", "description": "Deadline całej analizy"},
             "output_format": {"type": "string", "enum": ["json", "md"], "default": "md"},
+            "open_window": {"type": "boolean", "default": False, "description": "Wlacza weryfikacje godzin otwarcia i okna przejazdu"},
+            "ride_start": {"type": "string", "description": "ISO start jazdy, np. 2026-07-01T07:00"},
+            "avg_speed_kmh": {"type": "number", "default": 18.0, "description": "Srednia predkosc do ETA"},
+            "google_hours": {"type": "boolean", "default": True, "description": "Pozwala na Google Places gdy OSM nie wystarcza"},
         },
         "safety": "write",
         "mode": "write",
@@ -2099,6 +2107,10 @@ def _load_route_poi_analyze_readonly_tool() -> dict[str, Any]:
             "merge_artifact_ids": merge_list or None,
             "timeout_sec": timeout_sec,
             "output_format": output_format,
+            "open_window": bool(args.get("open_window", False)),
+            "ride_start": args.get("ride_start"),
+            "avg_speed_kmh": args.get("avg_speed_kmh", 18.0),
+            "google_hours": args.get("google_hours", True),
             "confirm": True,
         })
         if result.get("status") not in {"OK", "PARTIAL"} or not result.get("ok", True):
@@ -2135,6 +2147,10 @@ def _load_route_poi_analyze_readonly_tool() -> dict[str, Any]:
             "retry_mode": {"type": "boolean", "default": False},
             "timeout_sec": {"type": "number", "description": "Deadline całej analizy"},
             "output_format": {"type": "string", "enum": ["json", "md"], "default": "md"},
+            "open_window": {"type": "boolean", "default": False, "description": "Wlacza weryfikacje godzin otwarcia i okna przejazdu"},
+            "ride_start": {"type": "string", "description": "ISO start jazdy, np. 2026-07-01T07:00"},
+            "avg_speed_kmh": {"type": "number", "default": 18.0, "description": "Srednia predkosc do ETA"},
+            "google_hours": {"type": "boolean", "default": True, "description": "Pozwala na Google Places gdy OSM nie wystarcza"},
         },
         "safety": "read",
         "mode": "read_only",
@@ -2667,6 +2683,10 @@ def _init_registry():
         ("rwgps_route_last", _load_rwgps_route_last_tool),
         ("rwgps_artifact_status", _load_rwgps_artifact_status_tool),
         ("rwgps_route_find", _load_rwgps_route_find_tool),
+        ("route_plan_analysis", _load_route_plan_analysis_tool),
+        ("ride_analysis", _load_ride_analysis_tool),
+        ("route_profile_detail", _load_route_profile_detail_tool),
+        ("tire_pressure", _load_tire_pressure_tool),
         ("route_artifact_enrich_dry_run", _load_route_artifact_enrich_dry_run_tool),
         ("route_poi_analyze", _load_route_poi_analyze_tool),
         ("route_poi_analyze_readonly", _load_route_poi_analyze_readonly_tool),
@@ -2704,6 +2724,141 @@ def _init_registry():
                 "safety": "error",
                 "category": "error",
             }
+
+
+def _load_route_plan_analysis_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+    import qbot_route_tools as _rt
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        out = _rt._tool_qbot_route_plan_analysis(args or {})
+        st = out.get("status")
+        if st == "OK":
+            return success_result({"analysis": out.get("analysis", ""), "note": out.get("notes", "")})
+        if st == "WARN":
+            return success_result({"analysis": out.get("notes", ""), "warning": out.get("notes", "")})
+        return error_result("ROUTE_PLAN_ANALYSIS_FAILED", out.get("error") or out.get("notes") or "blad analizy trasy")
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "PELNA, gotowa analiza ZAPLANOWANEJ trasy (jeszcze nieprzejechanej; track z RWGPS). "
+            "To DOMYSLNE i jedyne narzedzie do ogolnej analizy/oceny/sprawdzenia trasy: "
+            "'przeanalizuj trase', 'pelna analiza trasy', 'analiza techniczna trasy', 'sprawdz trase', 'ocen trase', 'analiza planowanej trasy'. "
+            "Zwraca komplet w jednym tekscie (pole analysis): nawierzchnia, podjazdy i przewyzszenie (siatka 80 m), "
+            "prognoza pogody liczona po WSPOLRZEDNYCH trasy, wiatr per kilometr, dopasowanie do aktualnej formy (FTP). "
+            "NIE lacz tego z rwgps_route_fetch, rwgps_route_surface_analyze ani route_poi_analyze — to narzedzie juz zawiera nawierzchnie i przewyzszenie. "
+            "Dla JUZ PRZEJECHANEJ jazdy (plik FIT) uzyj ride_analysis, nie tego. "
+            "Bez route_id bierze najnowsza otrasowana trase. Pokaz uzytkownikowi pole analysis w calosci, bez przerabiania."
+        ),
+        "args_schema": {
+            "route_id": {"type": "string", "description": "ID trasy RWGPS (opcjonalne; domyslnie najnowsza otrasowana)"},
+            "artifact_id": {"type": "integer", "description": "ID artefaktu trasy (opcjonalne)"},
+            "start": {"type": "string", "description": "Start 'YYYY-MM-DD HH:MM' (opcjonalne; dolicza prognoze pogody)"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+    }
+
+
+def _load_ride_analysis_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+    import qbot_route_tools as _rt
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        out = _rt._tool_qbot_ride_analysis(args or {})
+        st = out.get("status")
+        if st == "OK":
+            return success_result({"analysis": out.get("analysis", ""), "note": out.get("notes", "")})
+        if st == "WARN":
+            return success_result({"analysis": out.get("notes", ""), "warning": out.get("notes", "")})
+        return error_result("RIDE_ANALYSIS_FAILED", out.get("error") or out.get("notes") or "blad oceny jazdy")
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "Ocena JUZ PRZEJECHANEJ, WYKONANEJ jazdy na podstawie pliku FIT (Garmin/Hammerhead). "
+            "Uzyj zawsze gdy mowa o przejechanej jezdzie: 'dzisiejsza jazda', 'wczorajsza jazda', "
+            "'dzisiejsza trasa' / 'wczorajsza trasa' (czyli ta przejechana dzis/wczoraj), 'moja jazda', "
+            "'jak mi poszlo', 'ocen przejazd', 'analiza dzisiejszej jazdy', 'analiza trasy dzisiejszej', 'podsumuj jazde'. "
+            "Naklada FIT na plan (siatka 80 m), liczy roznice plan-wykonanie (moc/predkosc/wiatr) i werdykt wobec formy. "
+            "WAZNE: slowa 'dzisiejsza/wczorajsza' przy slowie trasa oznaczaja jazde WYKONANA -> uzyj TEGO narzedzia, NIE route_plan_analysis. "
+            "Bez argumentow bierze najnowszy FIT. Pokaz pole analysis w calosci."
+        ),
+        "args_schema": {
+            "fit": {"type": "string", "description": "Sciezka do pliku FIT (opcjonalne; domyslnie najnowszy)"},
+            "ride": {"type": "string", "description": "Klucz jazdy (opcjonalne; domyslnie 'latest')"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+    }
+
+
+def _load_route_profile_detail_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+    import qbot_route_tools as _rt
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        out = _rt._tool_qbot_route_profile_detail(args or {})
+        st = out.get("status")
+        if st == "OK":
+            return success_result({"analysis": out.get("analysis", ""), "note": out.get("notes", "")})
+        if st == "WARN":
+            return success_result({"analysis": out.get("notes", ""), "warning": out.get("notes", "")})
+        return error_result("ROUTE_PROFILE_DETAIL_FAILED", out.get("error") or out.get("notes") or "blad profilu")
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "SZCZEGOLOWY profil ZAPLANOWANEJ trasy z ramek 80 m: nawierzchnia ODCINKAMI (km od-do z typem), "
+            "profil wysokosci po kilometrach (delta netto) i lista podjazdow. "
+            "Uzyj gdy uzytkownik chce ROZBICIE / szczegoly nawierzchni i przewyzszen 'km po km' / 'odcinek po odcinku', "
+            "a nie samo podsumowanie procentowe (od tego jest route_plan_analysis). Bez route_id bierze najnowsza otrasowana trase."
+        ),
+        "args_schema": {
+            "route_id": {"type": "string", "description": "ID trasy RWGPS (opcjonalne; domyslnie najnowsza otrasowana)"},
+            "artifact_id": {"type": "integer", "description": "ID artefaktu trasy (opcjonalne)"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+    }
+
+
+def _load_tire_pressure_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+    import qbot_pressure_tools as _pt
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        out = _pt._tool_qbot_tire_pressure(args or {})
+        st = out.get("status")
+        if st == "OK":
+            return success_result({"analysis": out.get("analysis", ""), "note": out.get("notes", "")})
+        return error_result("TIRE_PRESSURE_FAILED", out.get("error") or "blad kalkulatora cisnien")
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "B5 - kalkulator CISNIENIA OPON (punkt startowy). Uzyj przy pytaniu o cisnienie opon "
+            "('na ile napompowac', 'jakie cisnienie', 'cisnienie opon'). Liczy przod/tyl dla OBU zestawow "
+            "kol w bar i psi: <=42 mm Berto, >=42 mm Heine (surface-aware, baza Rene Herse). Waga zawodnika "
+            "z body_measurements, masa roweru z garazu. Param: weight_kg, bike_weight_kg, width1_mm, width2_mm, "
+            "surface (asfalt/szuter_gladki/szuter_luzny/techniczny). Pokaz pole analysis w calosci."
+        ),
+        "args_schema": {
+            "width1_mm": {"type": "number", "description": "Szerokosc opony zestaw #1 mm (opcjonalne; nadpisuje oponę odczytaną z garażu)"},
+            "width2_mm": {"type": "number", "description": "Szerokosc opony zestaw #2 mm (opcjonalne; nadpisuje oponę odczytaną z garażu)"},
+            "surface": {"type": "string", "description": "Nawierzchnia: asfalt/szuter_gladki/szuter_luzny/techniczny (opcjonalne)"},
+            "weight_kg": {"type": "number", "description": "Waga zawodnika kg (opcjonalne; domyslnie body_measurements)"},
+            "bike_weight_kg": {"type": "number", "description": "Masa roweru kg (opcjonalne; domyslnie garaz lub 10)"},
+            "extra_load_kg": {"type": "number", "description": "Dodatkowy ladunek kg (opcjonalne)"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+    }
 
 
 def lookup(name: str, allow_legacy: bool = False) -> dict[str, Any] | None:

@@ -1377,6 +1377,13 @@ def mcp_tools(request: Request):
 @app.post("/mcp/")
 @app.post("/mcp")
 async def mcp_post(request: Request):
+    import qbot_mcp_auth as _auth
+    if not _auth.validate_bearer(request.headers.get("authorization", ""), "qbot"):
+        return JSONResponse(
+            content={"jsonrpc": "2.0", "id": None, "error": {"code": -32001, "message": "unauthorized"}},
+            status_code=401,
+            headers={"WWW-Authenticate": 'Bearer resource_metadata="https://qbot.cytr.us/.well-known/oauth-protected-resource"'},
+        )
     try:
         payload = await request.json()
     except Exception:
@@ -1572,34 +1579,55 @@ async def oauth_register(request: Request):
 @app.get("/oauth/authorize")
 @app.get("/oauth/authorize/")
 async def oauth_authorize(request: Request):
+    from starlette.responses import HTMLResponse
+    import qbot_mcp_auth as _auth
     params = dict(request.query_params)
+    realm = "dev" if ("dev-mcp" in params.get("resource", "") or params.get("scope", "") == "dev") else "qbot"
+    return HTMLResponse(_auth.login_form_html(params, realm=realm))
+
+
+@app.post("/oauth/authorize")
+@app.post("/oauth/authorize/")
+async def oauth_authorize_submit(request: Request):
+    from starlette.responses import HTMLResponse
+    import qbot_mcp_auth as _auth
+    form = dict(await request.form())
+    passcode = form.pop("passcode", "")
+    realm = "dev" if ("dev-mcp" in form.get("resource", "") or form.get("scope", "") == "dev") else "qbot"
+    if not _auth.verify_passcode(passcode, realm):
+        return HTMLResponse(_auth.login_form_html(form, error="Bledny passcode.", realm=realm), status_code=401)
     code = _secrets.token_urlsafe(32)
-    _oauth_codes[code] = {
-        "client_id": params.get("client_id"),
-        "redirect_uri": params.get("redirect_uri"),
-        "code_verifier": None,
-        "expires": _time.time() + 600,
-    }
-    redirect_uri = params.get("redirect_uri", "")
+    _auth.save_code(
+        code,
+        form.get("client_id"),
+        form.get("redirect_uri"),
+        form.get("code_challenge"),
+        form.get("code_challenge_method", "S256"),
+        scope=realm,
+    )
+    redirect_uri = form.get("redirect_uri", "")
     sep = "&" if "?" in redirect_uri else "?"
-    state = params.get("state", "")
+    state = form.get("state", "")
     return RedirectResponse(url=f"{redirect_uri}{sep}code={code}&state={state}", status_code=302)
 
 @app.post("/oauth/token")
 @app.post("/oauth/token/")
 async def oauth_token(request: Request):
+    import qbot_mcp_auth as _auth
     form = await request.form()
     code = form.get("code")
-    if not code or code not in _oauth_codes:
+    if not code:
+        return JSONResponse({"error": "invalid_request"}, status_code=400)
+    rec = _auth.consume_code(code)
+    if not rec:
         return JSONResponse({"error": "invalid_grant"}, status_code=400)
-    del _oauth_codes[code]
-    token = _secrets.token_urlsafe(48)
-    _oauth_tokens[token] = {"issued": _time.time()}
-    return JSONResponse({
-        "access_token": token,
-        "token_type": "bearer",
-        "expires_in": 86400,
-    })
+    redirect_uri = form.get("redirect_uri")
+    if rec.get("redirect_uri") and redirect_uri and rec["redirect_uri"] != redirect_uri:
+        return JSONResponse({"error": "invalid_grant", "error_description": "redirect_uri mismatch"}, status_code=400)
+    if not _auth.verify_pkce(form.get("code_verifier", ""), rec.get("code_challenge"), rec.get("method")):
+        return JSONResponse({"error": "invalid_grant", "error_description": "PKCE verification failed"}, status_code=400)
+    token, ttl = _auth.issue_token(rec.get("scope", "qbot"))
+    return JSONResponse({"access_token": token, "token_type": "bearer", "expires_in": ttl})
 
 
 # --- QBot dashboard (added 2026-06-19) ---
@@ -1609,3 +1637,12 @@ try:
     logger.info("dashboard router loaded (/login /dash /logout)")
 except Exception as _dash_exc:  # pragma: no cover
     logger.warning("dashboard router not loaded: %s", _dash_exc)
+
+
+# --- DEV MCP OAuth gate (scope=dev, ukryty token) — dodane 2026-06-21 ---
+try:
+    import qbot_dev_mcp_gate as _dev_gate
+    _dev_gate.register_dev_mcp_routes(app)
+    logger.info("dev-mcp OAuth gate loaded (/dev-mcp, scope=dev)")
+except Exception as _dev_exc:  # pragma: no cover
+    logger.warning("dev-mcp gate not loaded: %s", _dev_exc)

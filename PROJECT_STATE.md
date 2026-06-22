@@ -206,3 +206,6 @@ patrz sekcja 3 i weryfikuj na żywym systemie.*
 - [TODO puste tabele] qbot_v2.fueling_events/hydration_events/nutrition_day_plans/food_items = 0 wierszy → do archive (uwaga: kolizja nazwy nutrition_day_plans z istniejącą w archive; sprawdzić referencje w kodzie przed ruchem).
 - [TODO repo cleanup] Śmieci-kopie w repo: _bak_archive=172, _patch_archive=47, *.bak=254 plików → uprzątnąć poza working tree.
 - [TODO governance] Pole `source` w jedzeniu = wolny tekst (gpt/chatgpt/chatgpt_mcp/albert/user_estimate/...). Ujednolicić słownik, bo filtrowanie po źródle jest bezużyteczne.
+
+## TODO (2026-06-21)
+- [ ] POI dwuwarstwowo: (1) w analizie planu trasy zwracac obecnosc punktow zaopatrzenia (woda/sklepy: jest/brak); (2) osobne narzedzie szczegolowe POI -> GPX -> push RWGPS (route_poi_analyze / rwgps_poi_push juz istnieja; ew. przywrocic route_logistics_commit_poi z archive/ jesli to byl uzywany workflow).

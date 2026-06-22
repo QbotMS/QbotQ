@@ -25,6 +25,24 @@ NO_DATA_PHRASE = "Brak danych w QBot / plikach projektu."
 # ── Intent classification ─────────────────────────────────────────────────
 
 _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
+    ("route_plan_analysis", [
+        "analiza planowanej trasy", "analiza zaplanowanej trasy", "analiza trasy planowanej",
+        "pełna analiza trasy", "pelna analiza trasy", "pełna analiza", "pelna analiza",
+        "analiza trasy", "analizę trasy", "analize trasy", "analizy trasy",
+        "oceń trasę", "ocen trase", "oceń trasę do", "ocen trase do",
+        "planowanej trasy", "planowaną trasę", "planowana trase",
+        "zaplanowanej trasy", "zaplanowaną trasę", "zaplanowana trase",
+        "analizę planowanej", "analize planowanej", "analizuj planowaną",
+        "briefing trasy", "ocen planowana trase", "oceń planowaną trasę",
+        "przeanalizuj trasę", "przeanalizuj trase", "co mnie czeka na trasie",
+        "analiza pudelek trasy", "analiza pudełek trasy",
+    ]),
+    ("ride_analysis", [
+        "oceń jazdę", "ocen jazde", "analiza jazdy", "ocena jazdy",
+        "oceń przejazd", "ocen przejazd", "podsumuj jazdę", "podsumuj jazde",
+        "jak mi poszła jazda", "jak mi poszla jazda",
+        "oceń wczorajszą jazdę", "ocen wczorajsza jazde", "ocen jazde do",
+    ]),
     # Priority-ordered: more specific first
     ("garmin_energy", [
         "zużycie kcal z garmin", "zuzycie kcal z garmin", "garmin energy",
@@ -468,6 +486,8 @@ _reader("weather_forecast", "weather", "qbot_weather_forecast", {"location": "st
 _reader("rwgps_route_get", "rwgps", "qbot_rwgps_route_get", {"route_id": "str"}, ["rwgps_api", "rwgps_cache"])
 _reader("rwgps_route_list", "rwgps", "qbot_rwgps_route_list", {"limit": "int"}, ["rwgps_api", "rwgps_cache"])
 _reader("rwgps_route_search", "rwgps", "qbot_rwgps_route_search", {"query": "str"}, ["rwgps_api", "rwgps_cache", "rwgps_manifest"])
+_reader("route_plan_analysis", "rwgps", "qbot_route_plan_analysis", {"artifact_id": "str", "route_id": "str", "start": "str", "speed_kmh": "int"}, ["route_frames", "route_frame_weather", "fitmodel_daily"])
+_reader("ride_analysis", "rwgps", "qbot_ride_analysis", {"fit": "str", "ride": "str"}, ["ride_frames", "route_frames", "fit"])
 _reader("rwgps_export_links", "rwgps", "qbot_rwgps_route_export_links", {"route_id": "str"}, ["rwgps_api"])
 _reader("rwgps_export_file", "rwgps", "qbot_rwgps_route_export_file", {"route_id": "str", "format": "str", "return_mode": "str"}, ["rwgps_api", "filesystem"])
 _reader("gpx_artifact_parse", "routes", "qbot_gpx_artifact_parse", {"artifact_path": "str"}, ["filesystem"])

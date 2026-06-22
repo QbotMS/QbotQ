@@ -11,6 +11,7 @@ import json
 import logging
 import math
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -1032,6 +1033,22 @@ def analyze_route_poi_artifact(
         water_m,
     )
     deadline_at = t_start + deadline_sec
+    open_window_enabled = bool(buffers.get("open_window", False))
+    ride_start_raw = buffers.get("ride_start")
+    ride_start_dt: datetime | None = None
+    if ride_start_raw:
+        try:
+            ride_start_dt = datetime.fromisoformat(str(ride_start_raw).replace("Z", "+00:00"))
+        except ValueError:
+            ride_start_dt = None
+    try:
+        avg_speed_kmh = float(buffers.get("avg_speed_kmh", 18.0))
+    except (TypeError, ValueError):
+        avg_speed_kmh = 18.0
+    try:
+        google_hours_flag = bool(buffers.get("google_hours", True))
+    except Exception:
+        google_hours_flag = True
 
     def _retry_payload(
         *,
@@ -1060,6 +1077,10 @@ def analyze_route_poi_artifact(
                 "analysis_timeout_sec": deadline_sec,
                 "overpass_timeout_sec": overpass_timeout_sec,
                 "min_chunk_km": min_chunk_km,
+                "open_window": open_window_enabled,
+                "ride_start": ride_start_raw,
+                "avg_speed_kmh": avg_speed_kmh,
+                "google_hours": google_hours_flag,
             },
             reason=reason,
             retry_chunk_id=chunk_id,
@@ -1143,6 +1164,7 @@ def analyze_route_poi_artifact(
                         "route_km": route_km,
                         "distance_to_track_m": distance_to_track_m,
                         "source_tags": _route_poi_v2_source_tags(_element_source_tags(element)),
+                        "opening_hours_osm": tags.get("opening_hours") if tags.get("opening_hours") not in (None, "") else None,
                         "note": note,
                     }
                     if category == "town":
@@ -1311,6 +1333,44 @@ def analyze_route_poi_artifact(
         grouped[key].sort(key=lambda item: (float(item.get("route_km") or 0), float(item.get("distance_to_track_m") or 10**9)))
     timings["filter_ms"] = round((time.perf_counter() - t_filter) * 1000.0, 1)
 
+    if open_window_enabled:
+        try:
+            from tools.rwgps.poi_open_window import enrich_open_window, _api_key
+
+            google_api_key = _api_key()
+            use_google = bool(google_hours_flag and google_api_key)
+            enrich_open_window(
+                grouped.get("hard_resupply", []),
+                ride_start=ride_start_dt,
+                avg_speed_kmh=avg_speed_kmh,
+                use_google=use_google,
+                api_key=google_api_key,
+            )
+            enrich_open_window(
+                grouped.get("soft_food_stop", []),
+                ride_start=ride_start_dt,
+                avg_speed_kmh=avg_speed_kmh,
+                use_google=use_google,
+                api_key=google_api_key,
+            )
+            enrich_open_window(
+                grouped.get("water", []),
+                ride_start=ride_start_dt,
+                avg_speed_kmh=avg_speed_kmh,
+                use_google=use_google,
+                api_key=google_api_key,
+            )
+            if "shop" in grouped:
+                enrich_open_window(
+                    grouped.get("shop", []),
+                    ride_start=ride_start_dt,
+                    avg_speed_kmh=avg_speed_kmh,
+                    use_google=use_google,
+                    api_key=google_api_key,
+                )
+        except Exception as exc:
+            log.warning("route_poi_analyze open_window enrichment failed: %s", exc)
+
     t_town = time.perf_counter()
     town_deduped = _route_poi_v2_mark_clusters(_route_poi_v2_dedupe(town_candidates))
     town_deduped.sort(key=lambda item: (float(item.get("route_km") or 0), float(item.get("distance_to_track_m") or 10**9)))
@@ -1357,6 +1417,10 @@ def analyze_route_poi_artifact(
             "analysis_timeout_sec": deadline_sec,
             "overpass_timeout_sec": overpass_timeout_sec,
             "min_chunk_km": min_chunk_km,
+            "open_window": open_window_enabled,
+            "ride_start": ride_start_raw,
+            "avg_speed_kmh": avg_speed_kmh,
+            "google_hours": google_hours_flag,
         },
         "track_points_count": len(projected),
         "distance_km": total_km,
@@ -1584,7 +1648,8 @@ def _geofabrik_cache_candidates(bbox: dict[str, float]) -> list[dict[str, Any]] 
                     "tags": normalized_tags,
                 })
 
-    if not found_any:
+    if not all_elements:
+        # Brak elementow w bbox ma oznaczac brak cache, zeby spasc do Overpass.
         return None
     return all_elements
 
@@ -1913,6 +1978,60 @@ def _route_poi_v2_merge_analysis_payloads(payloads: list[dict[str, Any]]) -> dic
         merged_items[key] = _route_poi_v2_mark_clusters(_route_poi_v2_dedupe(merged_items[key]))
         merged_items[key].sort(key=lambda item: (float(item.get("route_km") or 0), float(item.get("distance_to_track_m") or 10**9)))
 
+    open_window_enabled = bool((buffers or {}).get("open_window", False))
+    if open_window_enabled:
+        ride_start_raw = (buffers or {}).get("ride_start")
+        ride_start_dt: datetime | None = None
+        if ride_start_raw:
+            try:
+                ride_start_dt = datetime.fromisoformat(str(ride_start_raw).replace("Z", "+00:00"))
+            except ValueError:
+                ride_start_dt = None
+        try:
+            avg_speed_kmh = float((buffers or {}).get("avg_speed_kmh", 18.0))
+        except (TypeError, ValueError):
+            avg_speed_kmh = 18.0
+        try:
+            google_hours_flag = bool((buffers or {}).get("google_hours", True))
+        except Exception:
+            google_hours_flag = True
+        try:
+            from tools.rwgps.poi_open_window import enrich_open_window, _api_key
+
+            google_api_key = _api_key()
+            use_google = bool(google_hours_flag and google_api_key)
+            enrich_open_window(
+                merged_items["hard_resupply"],
+                ride_start=ride_start_dt,
+                avg_speed_kmh=avg_speed_kmh,
+                use_google=use_google,
+                api_key=google_api_key,
+            )
+            enrich_open_window(
+                merged_items["soft_food_stop"],
+                ride_start=ride_start_dt,
+                avg_speed_kmh=avg_speed_kmh,
+                use_google=use_google,
+                api_key=google_api_key,
+            )
+            enrich_open_window(
+                merged_items["water"],
+                ride_start=ride_start_dt,
+                avg_speed_kmh=avg_speed_kmh,
+                use_google=use_google,
+                api_key=google_api_key,
+            )
+            if "shop" in merged_items:
+                enrich_open_window(
+                    merged_items["shop"],
+                    ride_start=ride_start_dt,
+                    avg_speed_kmh=avg_speed_kmh,
+                    use_google=use_google,
+                    api_key=google_api_key,
+                )
+        except Exception as exc:
+            log.warning("route_poi_analyze merge open_window enrichment failed: %s", exc)
+
     town_items = _route_poi_v2_mark_clusters(_route_poi_v2_dedupe(merged_items["town_fallback_check"]))
     town_items.sort(key=lambda item: (float(item.get("route_km") or 0), float(item.get("distance_to_track_m") or 10**9)))
     for town in town_items:
@@ -1958,6 +2077,10 @@ def _route_poi_v2_merge_analysis_payloads(payloads: list[dict[str, Any]]) -> dic
             "hard_resupply_m": float((buffers or {}).get("hard_resupply_m", (buffers or {}).get("food_m", 400))),
             "soft_food_m": float((buffers or {}).get("soft_food_m", (buffers or {}).get("food_m", 400))),
             "water_m": float((buffers or {}).get("water_m", 200)),
+            "open_window": bool((buffers or {}).get("open_window", False)),
+            "ride_start": (buffers or {}).get("ride_start"),
+            "avg_speed_kmh": float((buffers or {}).get("avg_speed_kmh", 18.0)),
+            "google_hours": bool((buffers or {}).get("google_hours", True)),
         },
         "track_points_count": None,
         "distance_km": None,

@@ -389,6 +389,10 @@ def _envelope(
 # Intent router  (deterministic, keyword-based)
 # ---------------------------------------------------------------------------
 INTENT_KEYWORDS: list[tuple[list[str], str]] = [
+    (["model gpt", "albert gpt", "przełącz na gpt", "przelacz na gpt", "użyj gpt", "uzyj gpt", "albert na gpt"], "albert_model_gpt"),
+    (["model gemini", "albert gemini", "przełącz na gemini", "przelacz na gemini", "użyj gemini", "uzyj gemini", "albert na gemini"], "albert_model_gemini"),
+    (["model claude", "albert claude", "przełącz na claude", "przelacz na claude", "użyj claude", "uzyj claude", "albert na claude"], "albert_model_claude"),
+    (["jaki model", "aktywny model", "model status", "status modelu", "na czym działa albert", "na czym dziala albert", "który model", "ktory model"], "albert_model_status"),
     (["feasibility", "ocena trasy", "czy dam rade", "czy moge jechac", "analiza wykonalnosci", "check feasibility", "czy trasa jest wykonalna"], "route_feasibility"),
     (["kafelki", "kwadraty", "tiles", "uberkwadrat", "statshunters", "nowe kwadraty", "nowe kafelki", "tile store", "przejechane kwadraty"], "tile_analysis"),
     (["planner claude", "przełącz planner na claude", "przelacz planner na claude",
@@ -4857,6 +4861,22 @@ def handle_query(question: str, context: dict | None = None) -> dict:
     question = _normalize_question(question)
     ql = question.lower().strip()
     intent = _resolve_intent(question)
+    if intent in ("albert_model_gpt", "albert_model_gemini", "albert_model_claude", "albert_model_status"):
+        from qbot3.llm.model_profiles import set_active, public_status
+        if intent == "albert_model_status":
+            st = public_status()
+            return _envelope("albert_model_status",
+                             f"Albert: {st['label']} ({st['model']}). Klucz: {'jest' if st['key_present'] else 'BRAK'}.",
+                             data=st, sources_used=[])
+        target = intent.rsplit("_", 1)[-1]
+        ok = set_active(target)
+        st = public_status(target)
+        if not ok:
+            return _envelope("albert_model_switch", f"Nie udało się przełączyć na profil '{target}'.", status_override="ERROR")
+        warn = "" if st["key_present"] else " UWAGA: brak klucza API dla tego profilu — zapytania bedą failować."
+        return _envelope("albert_model_switch",
+                         f"Przełączono Alberta na {st['label']} ({st['model']}).{warn}",
+                         data=st, sources_used=[])
     if re.search(r'\b(zapamiętaj|zapamietaj|zanotuj|notuj)\b', ql) and any(
         tok in ql for tok in (" to ", " jest ", " = ", ":", " że ", " ze ")
     ):
@@ -4997,6 +5017,17 @@ def handle_query(question: str, context: dict | None = None) -> dict:
     _ql_analytical = question.lower()
     _is_analytical = any(w in _ql_analytical for w in _ANALYTICAL_WORDS)
     _albert_enabled = __import__("os").getenv("QBOT3_ENABLED") == "1"
+    # ── Ciśnienie opon (B5) → Albert/tire_pressure ──
+    # 'opony' łapie garage_search; pytanie o CIŚNIENIE ma trafić do Alberta (narzędzie tire_pressure).
+    _PRESSURE_WORDS = ["ci\u015bnien", "cisnien", "napompow", "ile bar", "pompowa\u0107 opon", "pompowac opon"]
+    if any(w in _ql_analytical for w in _PRESSURE_WORDS) and _albert_enabled:
+        try:
+            from qbot3.agent_runtime import orchestrate_query
+            _press_res = orchestrate_query(question=question)
+            _press_res["fallback_reason"] = f"pressure_to_albert (intent={intent})"
+            return _press_res
+        except Exception:
+            pass
     if _is_analytical and intent not in _ANALYTICAL_INTENTS_EXEMPT and _albert_enabled:
         try:
             import os as _os

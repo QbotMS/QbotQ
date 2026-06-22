@@ -692,6 +692,10 @@ def _tool_qbot_route_poi_analyze(_args: dict | None = None) -> dict[str, Any]:
         "min_chunk_km": buffers_raw.get("min_chunk_km", 5.0),
         "overpass_retries": buffers_raw.get("overpass_retries", 3),
         "retry_backoff_sec": buffers_raw.get("retry_backoff_sec", 1.25),
+        "open_window": bool(_args.get("open_window", buffers_raw.get("open_window", False))),
+        "ride_start": _args.get("ride_start", buffers_raw.get("ride_start")),
+        "avg_speed_kmh": _args.get("avg_speed_kmh", buffers_raw.get("avg_speed_kmh", 18.0)),
+        "google_hours": _args.get("google_hours", buffers_raw.get("google_hours", True)),
     }
 
     from qbot3.artifacts.route_analyzer import analyze_route_poi_artifact
@@ -2090,3 +2094,115 @@ def _tool_qbot_rwgps_poi_push(args=None):
         "backup_path": result.get("backup_path"),
         "error": result.get("error"),
     }
+
+
+# ── FAZA A/B: analiza trasy planowanej i ocena jazdy (pudelka 80 m) ──────────
+
+def _tool_qbot_route_plan_analysis(_args: dict | None = None) -> dict[str, Any]:
+    """FAZA A — briefing planowanej trasy: droga, podjazdy, nawierzchnia, wiatr per km, forma.
+
+    Args: artifact_id|route_id (opcjonalnie; domyslnie najnowsza otrasowana trasa),
+          start 'YYYY-MM-DD HH:MM' (opcjonalnie -> dolicza prognoze pogody), speed_kmh.
+    """
+    import io
+    import contextlib
+    _args = _args or {}
+    artifact_id = _args.get("artifact_id")
+    route_id = _args.get("route_id")
+    if route_id and not str(route_id).strip().isdigit():
+        _hint = _resolve_rwgps_route_hint(str(route_id))
+        route_id = _hint.get("route_id") or None
+    start = _args.get("start")
+    speed = float(_args.get("speed_kmh", 22.0))
+    try:
+        from tools.rwgps.route_brief import build as brief_build, _db_connect
+        from tools.rwgps.route_weather import build as weather_build
+        if not artifact_id and not route_id:
+            c = _db_connect(); cur = c.cursor()
+            cur.execute("SELECT route_artifact_id FROM qbot_v2.route_frames "
+                        "WHERE frame_size_m=80 ORDER BY route_artifact_id DESC LIMIT 1")
+            r = cur.fetchone(); c.close()
+            if r:
+                artifact_id = r[0]
+        if not artifact_id and not route_id:
+            return {"tool": "qbot_route_plan_analysis", "safety_class": "READ_ONLY",
+                    "status": "WARN", "notes": "Brak otrasowanych tras (route_frames)."}
+        aid = int(artifact_id) if artifact_id else None
+        rid = str(route_id) if route_id else None
+        if start:
+            with contextlib.redirect_stdout(io.StringIO()):
+                weather_build(artifact_id=aid, route_id=rid, start=start, speed_kmh=speed)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            brief_build(artifact_id=aid, route_id=rid)
+        return {"tool": "qbot_route_plan_analysis", "safety_class": "READ_ONLY", "status": "OK",
+                "analysis": buf.getvalue(),
+                "notes": "To jest PELNA, znormalizowana analiza trasy. Pokaz uzytkownikowi pole analysis w calosci (1:1). NIE przerabiaj, NIE dodawaj pogody ani przewyzszen z innych narzedzi — pogoda tutaj jest liczona po wspolrzednych trasy."}
+    except Exception as exc:
+        return {"tool": "qbot_route_plan_analysis", "safety_class": "READ_ONLY",
+                "status": "ERROR", "error": repr(exc)}
+
+
+def _tool_qbot_ride_analysis(_args: dict | None = None) -> dict[str, Any]:
+    """FAZA B — ocena wykonanej jazdy: naloz FIT na pudelka planu (diff) + werdykt wobec formy.
+
+    Args: fit (sciezka, opcjonalnie) lub domyslnie najnowszy FIT; ride (ride_key, domyslnie 'latest').
+    """
+    import io
+    import contextlib
+    _args = _args or {}
+    fit = _args.get("fit")
+    ride = _args.get("ride", "latest")
+    try:
+        from tools.rwgps.ride_overlay import build as overlay_build
+        from tools.rwgps.ride_verdict import build as verdict_build
+        with contextlib.redirect_stdout(io.StringIO()):
+            if fit:
+                rc = overlay_build(fit_path=str(fit), use_latest=False)
+            else:
+                rc = overlay_build(use_latest=True)
+        if rc == 3:
+            return {"tool": "qbot_ride_analysis", "safety_class": "READ_ONLY", "status": "WARN",
+                    "notes": "Jazda nie pasuje do zadnego planu (start za daleko). Tryb bez planu jeszcze niedostepny."}
+        if rc not in (0, None):
+            return {"tool": "qbot_ride_analysis", "safety_class": "READ_ONLY", "status": "WARN",
+                    "notes": f"Nakladanie FIT zwrocilo kod {rc}."}
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            verdict_build(ride=ride)
+        return {"tool": "qbot_ride_analysis", "safety_class": "READ_ONLY", "status": "OK",
+                "analysis": buf.getvalue(),
+                "notes": "Ocena wykonanej jazdy (Faza B). Tekst gotowy do pokazania."}
+    except Exception as exc:
+        return {"tool": "qbot_ride_analysis", "safety_class": "READ_ONLY",
+                "status": "ERROR", "error": repr(exc)}
+
+
+def _tool_qbot_route_profile_detail(_args: dict | None = None) -> dict[str, Any]:
+    # FAZA A — SZCZEGOLOWY profil trasy z ramek (nawierzchnia odcinkami, wysokosci po km, podjazdy).
+    import io
+    import contextlib
+    _args = _args or {}
+    artifact_id = _args.get("artifact_id")
+    route_id = _args.get("route_id")
+    if route_id and not str(route_id).strip().isdigit():
+        _hint = _resolve_rwgps_route_hint(str(route_id))
+        route_id = _hint.get("route_id") or None
+    try:
+        from tools.rwgps.route_brief import build_detail, _db_connect
+        if not artifact_id and not route_id:
+            c = _db_connect()
+            cur = c.cursor()
+            cur.execute("SELECT route_artifact_id FROM qbot_v2.route_frames WHERE frame_size_m=80 ORDER BY route_artifact_id DESC LIMIT 1")
+            r = cur.fetchone()
+            c.close()
+            if r:
+                artifact_id = r[0]
+        if not artifact_id and not route_id:
+            return {"tool": "qbot_route_profile_detail", "safety_class": "READ_ONLY", "status": "WARN", "notes": "Brak otrasowanych tras (route_frames)."}
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            build_detail(artifact_id=int(artifact_id) if artifact_id else None, route_id=str(route_id) if route_id else None)
+        return {"tool": "qbot_route_profile_detail", "safety_class": "READ_ONLY", "status": "OK", "analysis": buf.getvalue(), "notes": "Szczegolowy profil z ramek. Pokaz pole analysis w calosci, 1:1."}
+    except Exception as exc:
+        return {"tool": "qbot_route_profile_detail", "safety_class": "READ_ONLY", "status": "ERROR", "error": repr(exc)}

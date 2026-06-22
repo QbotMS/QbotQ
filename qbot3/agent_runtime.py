@@ -253,14 +253,19 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
             return result
         return _execute_single_tool(tool_name, args)
 
+    from qbot3.llm.model_profiles import resolve as _resolve_albert_profile
+    _albert_profile = _resolve_albert_profile()
+    provider_name = _albert_profile["name"]
+    model_name = _albert_profile["model"]
+
     albert_result = albert_run(
         question=question,
         tools_spec=tools_spec,
         execute_tool_fn=_execute_tool_dedup,
         context=ctx,
-        override_api_key=os.getenv("QGPT_ANALYTICAL_API_KEY", ""),
-        override_base_url=os.getenv("QGPT_ANALYTICAL_BASE_URL", ""),
-        override_model=os.getenv("QGPT_ANALYTICAL_MODEL", ""),
+        override_api_key=_albert_profile["api_key"],
+        override_base_url=_albert_profile["base_url"],
+        override_model=_albert_profile["model"],
     )
 
     answer = albert_result.get("answer", "")
@@ -466,6 +471,7 @@ def _looks_like_nutrition_delete_request(question: str) -> bool:
             "dziennik",
             "wpis do dziennika",
             "posiłk",
+            "posiłek",
             "posilek",
             "jedzen",
             "nutrition",

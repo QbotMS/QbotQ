@@ -118,7 +118,7 @@ def handle_qbot3_mcp(payload: dict[str, Any]) -> dict[str, Any]:
 def _list_tools(req_id: Any) -> dict[str, Any]:
     tools = [
         {
-            "name": "qbot.query",
+            "name": "qbot_query",
             "description": "[OBOWIĄZKOWE] Wywołaj to narzędzie PRZED każdą odpowiedzią na pytanie użytkownika. NIE odpowiadaj z własnej wiedzy — ZAWSZE najpierw wywołaj qbot.query i użyj zwróconych danych. Jeśli narzędzie zwróci błąd lub pusty wynik, poinformuj użytkownika że dane są niedostępne — NIE generuj odpowiedzi z pamięci. Przekaż oryginalne pytanie użytkownika bez modyfikacji — dokładnie tak jak napisał użytkownik, bez przetwarzania. Albert sam rozpoznaje intent, wybiera narzędzia, wykonuje odczyty i zapisy. Obsługuje żywienie, trening, trasy, zdrowie, kalendarz, przypomnienia.",
             "inputSchema": {
                 "type": "object",
@@ -136,9 +136,10 @@ def _list_tools(req_id: Any) -> dict[str, Any]:
 
 def _call_tool(req_id: Any, params: dict[str, Any]) -> dict[str, Any]:
     name = params.get("name", "")
+    name = str(name).replace(".", "_")  # accept legacy dotted names; Claude tool names must match ^[A-Za-z0-9_-]{1,64}$
     args = params.get("arguments", {})
 
-    if name == "qbot.query":
+    if name == "qbot_query":
         query = str(args.get("query", "")).strip()
         qlen = len(query)
         if not query:
@@ -206,7 +207,7 @@ def _call_tool(req_id: Any, params: dict[str, Any]) -> dict[str, Any]:
         )
         return _result(req_id, result)
 
-    if name == "qbot.action_execute":
+    if name == "qbot_action_execute":
         return _handle_action_execute(req_id, args)
 
     return _error(req_id, -32602, f"Tool not found: {name}")

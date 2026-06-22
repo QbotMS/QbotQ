@@ -30,6 +30,20 @@ _MODEL    = QGPT_MODEL or os.getenv("ALBERT_LLM_MODEL", "gpt-4o-mini")
 _API_KEY  = QGPT_API_KEY or os.getenv("OPENAI_API_KEY") or ANTHROPIC_API_KEY or ""
 
 
+def _gen_kwargs(model: str, base_url: str, max_n: int) -> dict:
+    """Parametry generacji per-dostawca.
+
+    Nowe modele OpenAI (gpt-5+, o-series) wymagaja max_completion_tokens i
+    nie akceptuja temperature != domyslnej. Gemini/Anthropic (OpenAI-compat)
+    uzywaja klasycznego max_tokens + temperature.
+    """
+    m = (model or "").lower()
+    is_openai_new = ("api.openai.com" in (base_url or "")) or m.startswith(("gpt-5", "o1", "o3", "o4"))
+    if is_openai_new:
+        return {"max_completion_tokens": max_n}
+    return {"max_tokens": max_n, "temperature": 0}
+
+
 def _tool_result_has_meaningful_data(result: dict[str, object]) -> bool:
     """Zwraca True, jeśli wynik toola zawiera realne dane użytkowe."""
     if not isinstance(result, dict):
@@ -179,6 +193,14 @@ Zasady bezpieczeństwa:
 - Gdy użytkownik prosi o podział lokalnego GPX na etapy, użyj route_gpx_split.
 - Nie zastępuj lokalnego splitu artefaktu wywołaniem artifact_save.
 
+Trasy (analiza rowerowa) — dobór narzędzia wg intencji:
+- Pytanie o ZAPLANOWANĄ trasę / plan / "co mnie czeka" (podsumowanie: dystans, nawierzchnia %, podjazdy, pogoda, wiatr) → route_plan_analysis (route_id lub artifact_id).
+- Pytanie o SZCZEGÓŁY zaplanowanej trasy: nawierzchnia ODCINKAMI (km po km), profil wysokości po km, lista podjazdów → route_profile_detail.
+- Pytanie o WYKONANĄ jazdę / "jak mi poszło" / analiza z pliku FIT lub z Garmina → ride_analysis.
+- NIE myl planu z wykonaną jazdą. Pytanie o trasę/plan NIGDY nie trafia do narzędzi jazd/Garmina (garmin_*). Bez jednoznacznego route_id użyj najnowszej otrasowanej trasy.
+- Pytania typu "czy bede mial gdzie kupic wode/jedzenie", "czy sklepy beda otwarte", "refill na trasie" → route_poi_analyze_readonly z open_window=true i, jesli podano start, ride_start; narzedzie zwraca godziny otwarcia i okno przejazdu.
+- Pytanie o CIŚNIENIE OPON / „na ile napompować" / „jakie ciśnienie" → tire_pressure (B5). Liczy ciśnienie przód/tył dla OBU zestawów kół (bar i psi), model Berto (≤42 mm) / Heine surface-aware (≥42 mm); waga z body_measurements, masa roweru z garażu. Opcjonalne param: width1_mm, width2_mm, surface, weight_kg, bike_weight_kg.
+
 Schemat DB — krytyczne fakty:
 - BILANS KALORYCZNY ≠ SPOŻYCIE. Dla pytań o bilans użyj:
   db_select_readonly: SELECT intake_kcal, expenditure_total, balance_kcal, balance_quality, balance_note FROM qbot_v2.daily_summary WHERE date = 'YYYY-MM-DD'
@@ -194,6 +216,7 @@ Schemat DB — krytyczne fakty:
 - Nowa baza: qbot_v2 (search_path priorytetyzuje qbot_v2 przed public)
 
 Styl odpowiedzi:
+- Gdy narzędzie zwróciło gotową analizę w polu "analysis" (np. route_profile_detail, route_plan_analysis, ride_analysis) — pokaż ją w CAŁOŚCI, 1:1, NIE streszczaj i NIE skracaj, nawet gdy jest długa; profil km-po-km i listy odcinków mają być kompletne.
 - Wypisz kluczowe wartości liczbowe z wyników narzędzi
 - Dodaj krótki komentarz interpretacyjny oparty na danych
 - Jeśli danych brakuje — powiedz czego konkretnie brakuje i dlaczego
@@ -265,8 +288,7 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict,
             kwargs: dict[str, Any] = {
                 "model": _eff_model,
                 "messages": messages,
-                "temperature": 0,
-                "max_tokens": 1200,
+                **_gen_kwargs(_eff_model, _eff_url, 5000),
             }
             if tools_spec:
                 kwargs["tools"] = tools_spec
@@ -337,10 +359,9 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict,
                 messages.append({"role": "user", "content": forced_prompt})
                 try:
                     final_response = client.chat.completions.create(
-                        model=_MODEL,
+                        model=_eff_model,
                         messages=messages,
-                        temperature=0,
-                        max_tokens=1200,
+                        **_gen_kwargs(_eff_model, _eff_url, 5000),
                     )
                     forced_answer = (final_response.choices[0].message.content or "").strip()
                     if forced_answer:
@@ -417,7 +438,7 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict,
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
-                "content": json.dumps(tool_content, ensure_ascii=False, default=str)[:4000],
+                "content": json.dumps(tool_content, ensure_ascii=False, default=str)[:16000],
             })
 
             # Jeśli to WRITE_DRAFT, dodaj wymuszoną instrukcję po tool call
