@@ -112,6 +112,13 @@ def _parse_date_from_question(question: str) -> str:
             d = _parse_date(m.group(1))
             if d:
                 return str(d)
+    # DD.MM bez roku (wymagany 2-cyfrowy miesiac, by nie mylic z "3.5 jajka") -> biezacy rok
+    m = re.search(r"(?<!\d)(\d{1,2})\.(\d{2})(?!\d)", q)
+    if m:
+        try:
+            return str(date(_TODAY.year, int(m.group(2)), int(m.group(1))))
+        except Exception:
+            pass
     # "D miesiac YYYY"
     m = re.search(r"(\d{1,2})\s+([a-zA-Ząęśżźćńół]+)\s*(\d{4})?", ql)
     if m:
@@ -446,17 +453,18 @@ INTENT_KEYWORDS: list[tuple[list[str], str]] = [
       "wpisz wagę", "wpisz wage"], "write_weight_unsupported"),
     (["bilans tygodnia", "bilans tygodniowy", "tygodniowy bilans",
       "bilans za tydzień", "bilans za tydzien"], "nutrition_range"),
-    (["bilans", "balance", "kalorii", "kalorie", "kcal"], "daily_balance"),
     # Safety: blokuj próby dostępu do tabel DB przez język naturalny
-    (["qbot_v2.", "intake_logs", "meal_log_items", "public.nutrition",
+    (["qbot_v2.", "meal_log_items", "public.nutrition",
       "tabela qbot", "jestem administratorem", "administrator systemu",
       "dostęp do tabeli", "dostep do tabeli", "show tables", "select *",
       "drop table", "truncate", "insert into", "update qbot"], "db_access_blocked"),
     (["meal_logs", "intake_logs", "lista posiłków", "lista wpisów", "całe jedzenie", "surową listę",
+      "produkty", "wszystkie produkty", "wypisz produkty", "wypisz posiłki", "wszystkie posiłki",
       "jadłem", "jadłam", "co jadłem", "co jadłam", "co zjadłem", "co zjadłam",
       "lista posilkow", "wszystkie posilki", "pelna lista jedzenia",
       "posiłki dziś", "posiłki wczoraj", "dzisiejsze posiłki", "wczorajsze posiłki",
       "moje posiłki", "moje jedzenie", "szczegóły posiłków"], "nutrition_intake_logs_list"),
+    (["bilans", "balance", "kalorii", "kalorie", "kcal"], "daily_balance"),
     (["nutrition status", "status nutrition", "status bazy żywienia"], "nutrition_status"),
     # Multi-word trip keywords muszą być przed nutrition_day
     (["jedzenie etap", "jedzenie na etapie", "jedzenie na trasie",

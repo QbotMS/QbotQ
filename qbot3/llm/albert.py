@@ -209,7 +209,8 @@ Schemat DB — krytyczne fakty:
   Jeśli missing → powiedz czego brakuje.
 - Tabela posiłków: meal_logs (eaten_at timestamp) + meal_log_items (makroskładniki)
   NIE istnieje: nutrition_logs, food_logs, kolumna date w meal_logs
-  Dla kalorii dnia: użyj narzędzia nutrition_day_summary(date)
+  Dla kalorii dnia (sama suma/bilans): użyj narzędzia nutrition_day_summary(date)
+  Dla LISTY poszczególnych posiłków/produktów dnia (każdy produkt + kcal/B/W/T): użyj nutrition_meal_list(date). NIE odpowiadaj samym bilansem gdy użytkownik prosi o listę/produkty/co jadł.
 - Tabela wydatku: daily_energy_expenditure (kolumny: total_kcal_out, active_kcal_out, resting_kcal_out)
   NIE istnieje: kolumna kcal_burned
 - Kalendarz: calendar_events (statusy: planned, active, confirmed — NIE tylko active)
