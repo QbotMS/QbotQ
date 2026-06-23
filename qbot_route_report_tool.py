@@ -157,7 +157,7 @@ def _generate_section_c(analysis_ab: str, variant: str) -> str:
     )
     try:
         from qgpt_client import qgpt_text
-        text = (qgpt_text(prompt, system=system, max_tokens=500, temperature=0) or "").strip()
+        text = (qgpt_text(prompt, system=system, max_tokens=900, temperature=0) or "").strip()
         return text or "(ocena niedostępna)"
     except Exception:
         return "(ocena niedostępna)"
