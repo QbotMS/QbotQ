@@ -145,7 +145,7 @@ def _generate_section_c(analysis_ab: str, variant: str) -> str:
         return ""
     prompt = (
         "Dane raportu trasy (sekcje A/B, fakty z narzedzi QBot):\n\n"
-        f"{analysis_ab}\n\n"
+        f"{analysis_ab[:2000]}\n\n"
         "Na podstawie WYLACZNIE powyzszych danych (bez zgadywania, bez nowych liczb) "
         f"napisz sekcje oceny: {zakres} "
         "Kazdy punkt w osobnej linii zaczynajacej sie od '- ' z numerem, "
@@ -157,7 +157,7 @@ def _generate_section_c(analysis_ab: str, variant: str) -> str:
     )
     try:
         from qgpt_client import qgpt_text
-        text = (qgpt_text(prompt, system=system, max_tokens=900, temperature=0) or "").strip()
+        text = (qgpt_text(prompt, system=system, max_tokens=400, temperature=0) or "").strip()
         return text or "(ocena niedostępna)"
     except Exception:
         return "(ocena niedostępna)"
