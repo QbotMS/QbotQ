@@ -2692,6 +2692,7 @@ def _init_registry():
         ("route_artifact_enrich_dry_run", _load_route_artifact_enrich_dry_run_tool),
         ("route_poi_analyze", _load_route_poi_analyze_tool),
         ("route_poi_analyze_readonly", _load_route_poi_analyze_readonly_tool),
+        ("route_report", _load_route_report_tool),
         ("rwgps_poi_push", _load_rwgps_poi_push_tool),
         ("rwgps_route_import_gpx", _load_rwgps_route_import_gpx_tool),
         ("artifact_search", _load_artifact_search_tool),
@@ -2927,6 +2928,41 @@ def _load_route_fuel_plan_tool() -> dict[str, Any]:
             "temp_c": {"type": "number", "description": "Temperatura C z prognozy A5 (brak -> mnoznik 1.00)"},
             "humidity_pct": {"type": "number", "description": "Wilgotnosc % z prognozy A5 (brak -> 1.00)"},
             "body_kg": {"type": "number", "description": "Waga zawodnika kg (domyslnie z body_measurements)"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+    }
+
+def _load_route_report_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+    import qbot_route_report_tool as _rr
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        out = _rr._tool_route_report(args or {})
+        if out.get("status") == "OK":
+            return success_result({
+                "analysis": out.get("analysis", ""),
+                "variant": out.get("variant"),
+                "route_id": out.get("route_id"),
+                "note": out.get("notes", ""),
+            })
+        return error_result("ROUTE_REPORT_FAILED",
+                            out.get("error") or out.get("notes") or "blad raportu trasy")
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "Znormalizowany RAPORT TRASY - orkiestrator: skleja gotowe narzedzia w 3 warianty "
+            "(skrocony domyslny / pelny / grupa). Triggery: 'analizuj trase X', 'zrob raport trasy X', 'raport trasy'. "
+            "skrocony=dystans+czas+nawierzchnia+pogoda+wiatr+cisnienia; pelny=pelne sekcje A/B + C; "
+            "grupa=trasa+warunki+logistyka BEZ danych osobistych. Param: variant, route_id, start. "
+            "Pokaz analysis w calosci; sekcje C uzupelnij sam."
+        ),
+        "args_schema": {
+            "variant": {"type": "string", "description": "skrocony (domyslny) / pelny / grupa"},
+            "route_id": {"type": "string", "description": "ID trasy RWGPS (opcjonalne; domyslnie najnowsza otrasowana)"},
+            "start": {"type": "string", "description": "Start 'YYYY-MM-DD HH:MM' (opcjonalne; dolicza pogode i okno POI)"},
         },
         "safety": "read",
         "mode": "read_only",
