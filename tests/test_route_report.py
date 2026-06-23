@@ -237,5 +237,107 @@ class TestRouteReportTask09(unittest.TestCase):
         self.assertNotIn("## C", a)
 
 
+def _echo_section_c(prompt, **kwargs):
+    """TASK10 stub LLM: echo-uje konkretne liczby (waty, km) z briefu do oceny."""
+    import re as _re
+    watts = _re.findall(r"\d+\s*[–-]\s*\d+\s*W", prompt)
+    kms = _re.findall(r"km\s*\d+(?:\.\d+)?\s*[–-]\s*\d+(?:\.\d+)?", prompt)
+    w = watts[0] if watts else "moc wg briefu"
+    km1 = kms[0] if kms else "km 5-12"
+    lines = [
+        f"- C1 Moc per segment (ocena): trzymaj {w} na plaskich odcinkach.",
+        f"- C2 Ryzyko (ocena): najtrudniejszy odcinek {km1} - luzny zwir, jedz ostroznie.",
+    ]
+    if "C3" in prompt:
+        lines.append("- C3 Sprzet (ocena): TAK, opony gravel pasuja do nawierzchni.")
+    lines.append(f"- C4 (ocena): najwieksze zagrozenie to {km1} z luznym zwirem.")
+    return "\n".join(lines)
+
+
+class TestRouteReportTask10(unittest.TestCase):
+    """TASK 10 - brief z konkretnymi liczbami + sekcja C bez ogolnikow."""
+
+    def setUp(self):
+        self.calls = []
+        self.canned = {
+            "route_plan_analysis": {"status": "OK", "data": {"analysis": (
+                "ANALIZA PLANOWANEJ TRASY\n"
+                "Dystans: 99.4 km | podjazdy: +1200 m\n"
+                "Pogoda: 16–22°C, wiatr w plecy km 10-20\n"
+                "\n"
+                "\U0001f4aa Forma (FitModel, 2026-06-20): FTP 257 W, 3.30 W/kg"
+            )}},
+            "route_profile_detail": {"status": "OK", "data": {"analysis": (
+                "SZCZEGOLOWY PROFIL TRASY\n"
+                "Nawierzchnia (odcinki >= 0.2 km):\n"
+                "  km 0.0-5.0 (5.0): asfalt\n"
+                "  km 5.0-12.0 (7.0): szuter luzny\n"
+                "  km 20.0-35.0 (15.0): zwir\n"
+                "  km 40.0-41.5 (1.5): trawa\n"
+            )}},
+            "route_time_estimate": {"status": "OK", "data": {"analysis":
+                "Szacowany czas trasy\nv 17.3 km/h -> 5:45"}},
+            "tire_pressure": {"status": "OK", "data": {"analysis":
+                "CISNIENIE OPON\naktywny zestaw: gravel\n#1 2.0 bar / 2.2 bar"}},
+            "route_fuel_plan": {"status": "OK", "data": {"analysis":
+                "- **60 g/h** (zaokraglone do 5 g)\n- **0.85 L/h** (zaokraglone do 0.05 L)"}},
+            "route_poi_analyze_readonly": {"status": "OK", "data": {
+                "counts": {"water": 3, "food": 5, "attractions": 2},
+                "report_path": "/opt/qbot/artifacts/poi.md"}},
+        }
+
+        def fake_call(name, args):
+            self.calls.append((name, dict(args)))
+            return self.canned[name]
+
+        self._orig_call = rr._call_tool
+        self._orig_dist = rr._resolve_distance_km
+        rr._call_tool = fake_call
+        rr._resolve_distance_km = lambda route_id: 99.4
+        import qgpt_client
+        self._orig_qgpt = qgpt_client.qgpt_text
+        qgpt_client.qgpt_text = _echo_section_c
+
+    def tearDown(self):
+        import qgpt_client
+        rr._call_tool = self._orig_call
+        rr._resolve_distance_km = self._orig_dist
+        qgpt_client.qgpt_text = self._orig_qgpt
+
+    def _section_c(self, a):
+        idx = a.find("## C")
+        return a[idx:] if idx >= 0 else ""
+
+    def test_section_c_has_watts(self):
+        out = rr._tool_route_report({"route_id": "55734589", "variant": "pelny"})
+        c = self._section_c(out["analysis"])
+        self.assertRegex(c, r"\d+\s*[–-]\s*\d+\s*W")
+
+    def test_section_c_has_km_reference(self):
+        out = rr._tool_route_report({"route_id": "55734589", "variant": "pelny"})
+        c = self._section_c(out["analysis"])
+        self.assertIn("km", c)
+
+    def test_section_c_no_generic_phrases(self):
+        out = rr._tool_route_report({"route_id": "55734589", "variant": "pelny"})
+        c = self._section_c(out["analysis"]).lower()
+        self.assertNotIn("równe tempo", c)
+        self.assertNotIn("rownomierne tempo", c)
+
+    def test_brief_extracts_ftp(self):
+        brief = rr._build_section_c_brief({
+            "plan": self.canned["route_plan_analysis"],
+            "variant": "pelny",
+        })
+        self.assertIn("257", brief)
+
+    def test_brief_extracts_surface_segments(self):
+        brief = rr._build_section_c_brief({
+            "prof": self.canned["route_profile_detail"],
+            "variant": "pelny",
+        })
+        self.assertIn("km", brief)
+
+
 if __name__ == "__main__":
     unittest.main()

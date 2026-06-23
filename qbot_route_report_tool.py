@@ -125,39 +125,208 @@ def _parse_duration_h(text: str | None) -> float | None:
     return int(m.group(1)) + int(m.group(2)) / 60.0
 
 
-def _generate_section_c(analysis_ab: str, variant: str) -> str:
-    """Sekcja C (ocena) generowana przez LLM wzorcem qgpt_client.qgpt_text.
-    Pelny: C1-C4; grupa: C1/C2/C4; inny: pusto. Fallback: '(ocena niedostępna)'."""
+_PAVED_SURF = ("asfalt", "asphalt", "beton", "concrete", "paved", "kostka", "paving_stones")
+
+
+def _parse_ftp_w(text: str | None) -> int | None:
+    r"""FTP z analizy planu (A6). Regex r'FTP\s+(\d+)\s*W'."""
+    if not text:
+        return None
+    m = re.search(r"FTP\s+(\d+)\s*W", text)
+    return int(m.group(1)) if m else None
+
+
+def _power_zone(ftp: int, lo_pct: int, hi_pct: int) -> tuple[int, int]:
+    return round(ftp * lo_pct / 100.0), round(ftp * hi_pct / 100.0)
+
+
+def _parse_surface_segments(text: str | None) -> list[tuple[float, float, float, str]]:
+    """Odcinki nawierzchni >1 km, NIE-utwardzone (grunt/trawa/zwir/szuter/gravel itp.),
+    sortowane malejaco wg dlugosci -> top 5. Zwraca [(km_from, km_to, dlugosc, surf), ...].
+    Format wejscia (route_profile_detail): 'km 5.0-12.0 (7.0): szuter' lub 'km 5-12 szuter'."""
+    if not text:
+        return []
+    segs: list[tuple[float, float, float, str]] = []
+    for m in re.finditer(r"km\s*([\d.]+)\s*[-–]\s*([\d.]+)(?:\s*\(([\d.]+)\))?\s*:?\s*([^\n]+)", text):
+        try:
+            x = float(m.group(1))
+            y = float(m.group(2))
+        except (TypeError, ValueError):
+            continue
+        length = float(m.group(3)) if m.group(3) else (y - x)
+        surf = (m.group(4) or "").strip()
+        low = surf.lower()
+        if not surf or "nieznana" in low or "unknown" in low:
+            continue
+        if any(p in low for p in _PAVED_SURF):
+            continue
+        if length > 1.0:
+            segs.append((x, y, length, surf))
+    segs.sort(key=lambda s: s[2], reverse=True)
+    return segs[:5]
+
+
+def _extract_wind(text: str | None) -> list[str]:
+    """Bloki pod wiatr / w plecy z analizy planu (A4) - linie zawierajace 'wiatr'."""
+    if not text:
+        return []
+    return [ln.strip() for ln in text.splitlines() if "wiatr" in ln.lower()]
+
+
+def _parse_fuel_rates(text: str | None) -> tuple[str | None, str | None]:
+    """Zywienie g/h i L/h z B2/B3. Zwraca (np. '60 g/h', '0.85 L/h')."""
+    if not text:
+        return None, None
+    g = re.search(r"(\d+(?:\.\d+)?)\s*g/h", text)
+    l = re.search(r"(\d+(?:\.\d+)?)\s*[lL]/h", text)
+    return (g.group(0) if g else None, l.group(0) if l else None)
+
+
+def _build_forma_line(start: Any) -> str:
+    """ZMIANA 2 (TASK10): forma dnia z xert_readiness + wellness_day (gdy podano date startu).
+    Wyciaga TP, HIE, forma, HRV, Body Battery. Brak startu -> komunikat."""
+    if not start:
+        return "FORMA DNIA: nie podano daty startu"
+    combined = ""
+    try:
+        combined += (_analysis(_call_tool("xert_readiness", {})) or "") + "\n"
+    except Exception:
+        pass
+    try:
+        combined += (_analysis(_call_tool("wellness_day", {"date": str(start)[:10]})) or "")
+    except Exception:
+        pass
+    parts: list[str] = []
+    for label, pat in (
+        ("TP", r"\bTP[:\s]+(-?\d+(?:\.\d+)?)"),
+        ("HIE", r"\bHIE[:\s]+(\d+(?:\.\d+)?)"),
+        ("forma", r"[Ff]orma(?:/TSB)?[:\s]+(-?\d+(?:\.\d+)?)"),
+        ("HRV", r"\bHRV[:\s]+(\d+(?:\.\d+)?)"),
+        ("Body Battery", r"Body Battery[:\s]+(\d+)"),
+    ):
+        m = re.search(pat, combined)
+        if m:
+            parts.append(f"{label} {m.group(1)}")
+    if parts:
+        return "FORMA DNIA: " + ", ".join(parts)
+    return f"FORMA DNIA: dane formy niedostepne (start {str(start)[:10]})"
+
+
+def _build_section_c_brief(sections_data: dict[str, Any] | None) -> str:
+    """ZMIANA 1 (TASK10): zwiezly brief z KONKRETNYMI liczbami z zebranych wynikow
+    (plan, prof, t, fuel, tp, forma) zamiast surowego tekstu A/B. Trafia do LLM (sekcja C).
+    sections_data: {plan, prof, t, fuel, tp, forma, variant}."""
+    sd = sections_data or {}
+    variant = sd.get("variant", "pelny")
+    plan_txt = _analysis(sd.get("plan")) if sd.get("plan") else None
+    prof_txt = _analysis(sd.get("prof")) if sd.get("prof") else None
+    t_txt = _analysis(sd.get("t")) if sd.get("t") else None
+    fuel_txt = _analysis(sd.get("fuel")) if sd.get("fuel") else None
+    tp_txt = _analysis(sd.get("tp")) if sd.get("tp") else None
+
+    out: list[str] = ["BRIEF DO OCENY (konkretne liczby z narzedzi QBot):", ""]
+
+    if variant == "pelny":
+        ftp = _parse_ftp_w(plan_txt)
+        if ftp:
+            e_lo, e_hi = _power_zone(ftp, 55, 75)
+            t_lo, t_hi = _power_zone(ftp, 76, 90)
+            out.append(f"MOC (FTP {ftp} W):")
+            out.append(f"- endurance (55-75% FTP): {e_lo}–{e_hi} W")
+            out.append(f"- tempo (76-90% FTP): {t_lo}–{t_hi} W")
+        else:
+            out.append("MOC: brak FTP w danych planu.")
+        out.append("")
+
+    segs = _parse_surface_segments(prof_txt)
+    if segs:
+        out.append("NAWIERZCHNIA (odcinki off-road >1 km, top 5 wg dlugosci):")
+        for x, y, ln, surf in segs:
+            out.append(f"- km {x:g}–{y:g}: {surf} ({ln:g} km)")
+    else:
+        out.append("NAWIERZCHNIA: brak odcinkow off-road >1 km w profilu.")
+    out.append("")
+
+    winds = _extract_wind(plan_txt)
+    if winds:
+        out.append("WIATR (bloki z planu):")
+        out.extend(f"- {w}" for w in winds)
+    else:
+        out.append("WIATR: brak wyroznionych blokow wiatru w planie.")
+    out.append("")
+
+    dur = _parse_duration_h(t_txt)
+    if dur is not None:
+        h = int(dur)
+        mnt = int(round((dur - h) * 60))
+        out.append(f"CZAS (B4): ~{h}:{mnt:02d} h przejazdu.")
+    elif t_txt:
+        out.append("CZAS (B4): " + t_txt.splitlines()[0].strip())
+    else:
+        out.append("CZAS (B4): brak danych.")
+    out.append("")
+
+    if variant == "pelny":
+        g, l = _parse_fuel_rates(fuel_txt)
+        if g or l:
+            out.append("ZYWIENIE (B2/B3): " + ", ".join(s for s in (g, l) if s) + ".")
+        else:
+            out.append("ZYWIENIE (B2/B3): brak danych.")
+        if tp_txt:
+            lines_ne = [ln.strip() for ln in tp_txt.splitlines() if ln.strip()]
+            wheel = next((ln.lstrip("# ").strip() for ln in lines_ne
+                          if "Zipp" in ln and ("Zestaw" in ln or "główny" in ln.lower())), None)
+            if wheel is None:
+                wheel = next((ln.lstrip("# ").strip() for ln in lines_ne if "Zipp" in ln), None)
+            opona = next((ln for ln in lines_ne if ln.lower().startswith("opona")), None)
+            gravel = next((ln for ln in lines_ne
+                           if "luźny szuter" in ln.lower() or "żwir" in ln.lower()), None)
+            picked = [x for x in (wheel, opona, gravel) if x]
+            out.append("SPRZET/CISNIENIE (B5): " + (" | ".join(picked) if picked else lines_ne[0]))
+        else:
+            out.append("SPRZET/CISNIENIE (B5): brak danych.")
+        out.append("")
+        out.append(sd.get("forma") or "FORMA DNIA: nie podano daty startu")
+
+    return "\n".join(out).rstrip()
+
+
+def _generate_section_c(brief: str, variant: str) -> str:
+    """ZMIANA 3+4 (TASK10): sekcja C (ocena) z briefu konkretnych liczb (nie surowy A/B).
+    Pelny: C1-C4; grupa: C1/C2/C4. Fallback: '(ocena niedostępna)'."""
     if variant == "pelny":
         zakres = (
-            "C1 Taktyka (kluczowe wyzwania trasy i sugestia tempa - z A2/A3/A4/B4); "
-            "C2 Ryzyko (pogoda / nawierzchnia / wiatr - z A3/A4/A5); "
-            "C3 Sprzet (czy aktywny zestaw kol/opony pasuja do nawierzchni - z A3/A7/B5); "
-            "C4 Najwieksze zagrozenie (jedno zdanie)."
+            "C1 Moc per segment: na podstawie zakresow mocy z briefu podaj konkretne waty (W) "
+            "dla plaskich odcinkow i podjazdow. "
+            "C2 Ryzyko: wskaz 3 najbardziej ryzykowne odcinki, kazdy jako 'km X-Y' + powod "
+            "(nawierzchnia / wiatr / zjazd). "
+            "C3 Sprzet: czy aktywny zestaw kol/opony i cisnienie pasuja do nawierzchni - "
+            "odpowiedz TAK lub NIE + uzasadnienie. "
+            "C4 Najwieksze zagrozenie: jedno zdanie z konkretnym km i powodem."
         )
     elif variant == "grupa":
         zakres = (
-            "C1 Taktyka (kluczowe wyzwania trasy i sugestia tempa - z A2/A3/A4/B4); "
-            "C2 Ryzyko (pogoda / nawierzchnia / wiatr - z A3/A4/A5); "
-            "C4 Najwieksze zagrozenie (jedno zdanie). Pomin ocene sprzetu."
+            "C1 Tempo: sugestia tempa na kluczowych odcinkach (km X-Y), bez danych osobistych i bez watow. "
+            "C2 Ryzyko: wskaz 3 najbardziej ryzykowne odcinki, kazdy jako 'km X-Y' + powod "
+            "(nawierzchnia / wiatr / zjazd). "
+            "C4 Najwieksze zagrozenie: jedno zdanie z konkretnym km i powodem. Pomin ocene sprzetu."
         )
     else:
         return ""
     prompt = (
-        "Dane raportu trasy (sekcje A/B, fakty z narzedzi QBot):\n\n"
-        f"{analysis_ab[:2000]}\n\n"
-        "Na podstawie WYLACZNIE powyzszych danych (bez zgadywania, bez nowych liczb) "
-        f"napisz sekcje oceny: {zakres} "
-        "Kazdy punkt w osobnej linii zaczynajacej sie od '- ' z numerem, "
-        "np. '- C1 Taktyka (ocena): ...'. Pisz krotko, po polsku."
+        "Brief faktow z narzedzi QBot (uzyj WYLACZNIE tych liczb, nie wymyslaj nowych):\n\n"
+        f"{brief}\n\n"
+        f"Napisz sekcje oceny trasy: {zakres}\n"
+        "Kazdy punkt w osobnej linii zaczynajacej sie od '- ' z numerem (np. '- C1 ...'). "
+        "Pisz po polsku. Kazdy punkt 2–4 zdania z liczbami. Oznaczaj „(ocena)”."
     )
     system = (
         "Jestes Albert - analityk tras rowerowych QBot. Oceniasz ZAPLANOWANA trase "
-        "wylacznie na podstawie podanych danych A/B. Nie wymyslaj liczb ani faktow spoza danych."
+        "wylacznie na podstawie podanych faktow z briefu. Nie wymyslaj liczb ani faktow spoza briefu."
     )
     try:
         from qgpt_client import qgpt_text
-        text = (qgpt_text(prompt, system=system, max_tokens=400, temperature=0) or "").strip()
+        text = (qgpt_text(prompt, system=system, max_tokens=800, temperature=0) or "").strip()
         return text or "(ocena niedostępna)"
     except Exception:
         return "(ocena niedostępna)"
@@ -189,6 +358,7 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
     if route_id:
         base_args["route_id"] = route_id
 
+    collected: dict[str, Any] = {"variant": variant}
     sections: list[str] = []
     H = sections.append
 
@@ -202,6 +372,7 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
     if start:
         plan_args["start"] = start
     plan = _call_tool("route_plan_analysis", plan_args)
+    collected["plan"] = plan
     H("## A - DANE TRASY")
     if _ok(plan) and _analysis(plan):
         text = _analysis(plan)
@@ -215,6 +386,7 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
     # ---- A2/A3 odcinkami: profile_detail (pelny + grupa) ----
     if variant in ("pelny", "grupa"):
         prof = _call_tool("route_profile_detail", dict(base_args))
+        collected["prof"] = prof
         H("## A3 - NAWIERZCHNIA I PROFIL ODCINKAMI")
         if _ok(prof) and _analysis(prof):
             H(_analysis(prof))
@@ -274,6 +446,7 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
 
     # B4 czas (wszystkie warianty)
     t = _call_tool("route_time_estimate", dict(base_args))
+    collected["t"] = t
     H("### B4 - Szacowany czas przejazdu")
     if _ok(t) and _analysis(t):
         H(_analysis(t))
@@ -292,6 +465,7 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
         if duration_h is not None:
             fuel_args["duration_h"] = duration_h
         fuel = _call_tool("route_fuel_plan", fuel_args)
+        collected["fuel"] = fuel
         H("### B2/B3 - Plyny i weglowodany")
         if _ok(fuel) and _analysis(fuel):
             H(_analysis(fuel))
@@ -307,6 +481,7 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
     # B5 cisnienia (skrocony + pelny; NIE grupa - dane osobiste)
     if variant in ("skrocony", "pelny"):
         tp = _call_tool("tire_pressure", {})
+        collected["tp"] = tp
         H("### B5 - Cisnienie opon")
         if _ok(tp) and _analysis(tp):
             H(_analysis(tp))
@@ -316,9 +491,10 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
 
     # ---- C: ocena (generowana przez LLM na podstawie zebranych danych A/B) ----
     if variant in ("pelny", "grupa"):
-        analysis_ab = "\n".join(sections)
+        collected["forma"] = _build_forma_line(start) if variant == "pelny" else None
+        brief = _build_section_c_brief(collected)
         H("## C - OCENA (na podstawie danych A/B; oznaczona „(ocena)”)")
-        H(_generate_section_c(analysis_ab, variant))
+        H(_generate_section_c(brief, variant))
 
     analysis_text = "\n".join(sections).rstrip() + "\n"
     note = ("Raport zlozony z gotowych narzedzi (orkiestracja). Sekcje A/B pochodza 1:1 "
