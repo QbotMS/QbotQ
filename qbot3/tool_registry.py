@@ -2688,6 +2688,7 @@ def _init_registry():
         ("route_profile_detail", _load_route_profile_detail_tool),
         ("tire_pressure", _load_tire_pressure_tool),
         ("route_fuel_plan", _load_route_fuel_plan_tool),
+        ("route_time_estimate", _load_route_time_estimate_tool),
         ("route_artifact_enrich_dry_run", _load_route_artifact_enrich_dry_run_tool),
         ("route_poi_analyze", _load_route_poi_analyze_tool),
         ("route_poi_analyze_readonly", _load_route_poi_analyze_readonly_tool),
@@ -2725,6 +2726,36 @@ def _init_registry():
                 "safety": "error",
                 "category": "error",
             }
+
+
+def _load_route_time_estimate_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+    import qbot_route_time_tools as _rtt
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        out = _rtt._tool_route_time_estimate(args or {})
+        st = out.get("status")
+        if st == "OK":
+            return success_result({"analysis": out.get("analysis", ""), "note": out.get("notes", "")})
+        if st in ("NO_DATA", "NEEDS_INPUT"):
+            return success_result({"analysis": out.get("analysis", ""), "warning": out.get("notes", "")})
+        return error_result("ROUTE_TIME_ESTIMATE_FAILED", out.get("error") or out.get("notes") or "blad szacowania czasu trasy")
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "Szacowany CZAS przejechania ZAPLANOWANEJ trasy (B4 uproszczony). "
+            "Pytania: 'ile zajmie trasa', 'jak dlugo bede jechal', 'ile czasu/tempo na trase'. "
+            "Predkosc BAZOWA = wazona czasem z 10 ostatnich jazd OUTDOOR (v_kmh=suma_km/suma_h); czas=dystans/v_kmh. "
+            "Param: distance_km LUB route_id. Model UPROSZCZONY - bez nawierzchni/przewyzszen/pogody/formy. Pokaz pole analysis w calosci."
+        ),
+        "args_schema": {
+            "distance_km": {"type": "number", "description": "Dystans trasy w km (alternatywa dla route_id)"},
+            "route_id": {"type": "string", "description": "ID zaplanowanej trasy RWGPS (gdy brak distance_km)"},
+        },
+        "safety": "read",
+    }
 
 
 def _load_route_plan_analysis_tool() -> dict[str, Any]:
