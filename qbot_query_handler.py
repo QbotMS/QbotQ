@@ -556,7 +556,7 @@ INTENT_KEYWORDS: list[tuple[list[str], str]] = [
       "najtrudniejszy etap", "najkrótszy etap", "najkrotszy etap",
       "statystyki etapów", "statystyki etapow", "podsumowanie etapów",
       "podsumowanie trasy", "overview etapów"], "trip_summary"),
-    (["ocen forme", "ocen formę", "gotowość przed", "gotowosc przed", "czy jestem gotowy", "czy dam rade", "czy dam radę", "forma przed wyjazdem", "forma przed wyprawa", "readiness przed", "gotowy na wyjazd", "ocen moja forme", "ocen moją formę", "jaka mam forme", "jaka mam formę"], "xert_status"),
+    (["ocen forme", "ocen formę", "gotowość przed", "gotowosc przed", "czy jestem gotowy", "forma przed wyjazdem", "forma przed wyprawa", "readiness przed", "gotowy na wyjazd", "ocen moja forme", "ocen moją formę", "jaka mam forme", "jaka mam formę"], "xert_status"),
     (["etap", "etapy", "stage", "stages", "dzisiejszy etap", "etap dziś", "etap dzis", "plan etapów", "plan etapow", "jaki etap", "który etap"], "trip_stages"),
     (["odśwież xert", "wymuś live fetch", "live fetch xert", "sprawdź xert api", "refresh xert", "xert live", "xert na żywo", "xert live fetch", "wymuś xert"], "xert_live_fetch"),
     (["sprzęt", "sprzet", "rower", "rowery", "wyposażenie", "status garażu", "co mam w garażu", "garaż qbot", "mój garaż"], "garage_status"),
