@@ -232,6 +232,49 @@ def _parse_spec(spec: str):
     return name, wmm
 
 
+def _parse_width_mm(spec: str, notes: str, param):
+    """Zwraca (front_mm|None, rear_mm|None) z param/spec/notes."""
+    if param is not None:
+        try:
+            w = float(re.findall(r"[\d.]+", str(param))[0])
+            return w, w
+        except Exception:
+            return None, None
+
+    d = {}
+    if spec and spec.strip():
+        for part in spec.split(";"):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                d[k.strip().lower()] = v.strip()
+
+        def _num(key: str):
+            val = d.get(key)
+            if not val:
+                return None
+            m = re.search(r"[\d.]+", val)
+            return float(m.group(0)) if m else None
+
+        front = _num("width_front_mm")
+        rear = _num("width_rear_mm")
+        if front is not None and rear is not None:
+            return front, rear
+
+        w = _num("width_mm")
+        if w is not None:
+            return w, w
+
+        if not d:
+            w, _ = _width_from_text(spec)
+            if w is not None:
+                return w, w
+
+    _, width, _ = _parse_notes_tire(notes)
+    if width is not None:
+        return width, width
+    return None, None
+
+
 def _mounted_section(notes: str) -> str:
     """Zwraca fragment notes opisujący ZAMONTOWANE opony (ucina przy markerze zapasów)."""
     if not notes:
@@ -264,61 +307,86 @@ def _read_wheelsets(overrides: dict[int, float]) -> list[dict]:
     try:
         c = _garage_conn()
         rows = c.execute(
-            "SELECT id, brand, model, spec, notes FROM components "
+            "SELECT id, brand, model, spec, notes, weight_g FROM components "
             "WHERE category='wheels' AND active=1 ORDER BY id").fetchall()
         c.close()
     except Exception:
         rows = []
     sets = []
-    for idx, (cid, brand, model, spec, notes) in enumerate(rows, start=1):
-        name_spec, w_spec = _parse_spec(spec)
+    for idx, (cid, brand, model, spec, notes, weight_g) in enumerate(rows, start=1):
+        name_spec, _ = _parse_spec(spec)
         tire_name, width, wsrc = None, None, None
-        if w_spec is not None:
-            width, wsrc, tire_name = w_spec, "spec", name_spec
-        if width is None:
-            tn, w_notes, wsrc_n = _parse_notes_tire(notes)
-            if tn and not tire_name:
-                tire_name = tn
-            if w_notes is not None:
-                width, wsrc = w_notes, "notes/" + (wsrc_n or "?")
+        front_mm, rear_mm = _parse_width_mm(spec, notes, None)
+        if front_mm is not None and rear_mm is not None:
+            width = (front_mm, rear_mm)
+            wsrc = "spec" if spec and "width_" in spec.lower() else "notes"
         ov = overrides.get(idx)
         if ov is not None:
-            width, wsrc = float(ov), f"parametr width{idx}_mm"
+            width = (float(ov), float(ov))
+            wsrc = f"parametr width{idx}_mm"
         if not tire_name and name_spec:
             tire_name = name_spec
         label = f"{brand} {model}".strip() if brand else (model or f"Zestaw #{idx}")
-        sets.append({"idx": idx, "label": label, "tire": tire_name, "width": width, "wsrc": wsrc})
+        wheelset_kg = float(weight_g) / 1000.0 if weight_g is not None else None
+        sets.append({
+            "idx": idx,
+            "label": label,
+            "tire": tire_name,
+            "width": width,
+            "wsrc": wsrc,
+            "wheelset_kg": wheelset_kg,
+        })
     return sets
 
 
-def _wheelset_block(ws: dict, combined_kg, front_frac, rear_frac, surface):
+def _wheelset_block(ws: dict, rider_kg, bike_kg, extra_kg, front_frac, rear_frac, surface):
     out = [f"### {ws['label']}"]
     tire = ws.get("tire") or "nieznana"
     width = ws.get("width")
-    if width is None:
+    if not width or width[0] is None or width[1] is None:
         out.append(f"Opona: {tire} — **BRAK DANYCH o szerokości**. "
                    f"Podaj parametr width{ws['idx']}_mm albo uzupełnij components.spec "
                    f"(np. 'tire={tire}; width_mm=NN').")
         return "\n".join(out)
-    out.append(f"Opona (z garażu): {tire} · {width:.0f} mm (źródło: {ws.get('wsrc') or '?'}).")
+    front_mm, rear_mm = width
+    if front_mm == rear_mm:
+        out.append(f"Opona (z garażu): {tire} · {front_mm:.0f}mm (źródło: {ws.get('wsrc') or '?'}).")
+    else:
+        out.append(f"Opona (z garażu): {tire} · {front_mm:.0f}/{rear_mm:.0f} mm (przód/tył, źródło: {ws.get('wsrc') or '?'}).")
     if ws.get("wsrc", "").startswith("notes/cal"):
         out.append("_(szerokość z cali = nominalna; dla precyzji wpisz zmierzoną do components.spec width_mm)_")
-    if width <= 42:
-        fl = _berto_psi(combined_kg * front_frac, width)
-        rl = _berto_psi(combined_kg * rear_frac, width)
+
+    bike_kg = bike_kg + float(ws.get("wheelset_kg") or 0.0)
+    combined_kg = rider_kg + bike_kg + extra_kg
+
+    def _base_bar(side_width: float, load_kg: float):
+        if side_width <= 42:
+            return _berto_psi(load_kg, side_width) / _PSI_PER_BAR, "Berto"
+        soft, firm = _rh_lookup(side_width, combined_kg)
+        return soft, "Heine"
+
+    rear_base, rear_model = _base_bar(rear_mm, combined_kg * rear_frac)
+    front_base, front_model = _base_bar(front_mm, combined_kg * front_frac)
+
+    if front_mm == rear_mm and rear_model == "Heine":
+        out.append(f"Model: Heine (surface-aware, baza Rene Herse @ {combined_kg:.0f} kg łącznie). Punkt startowy.")
+        soft, firm = _rh_lookup(rear_mm, combined_kg)
+        out.append(f"Referencja RH (cały rower, jedna wartość): soft {soft:.1f} bar / firm {firm:.1f} bar.")
+    elif rear_model == "Heine" or front_model == "Heine":
+        out.append(f"Model: Heine (surface-aware, baza Rene Herse @ {combined_kg:.0f} kg łącznie). Punkt startowy.")
+        rear_soft, rear_firm = _rh_lookup(rear_mm, combined_kg)
+        front_soft, front_firm = _rh_lookup(front_mm, combined_kg)
+        out.append(f"Referencja RH tył: soft {rear_soft:.1f} bar / firm {rear_firm:.1f} bar.")
+        out.append(f"Referencja RH przód: soft {front_soft:.1f} bar / firm {front_firm:.1f} bar.")
+    else:
         out.append("Model: Berto (opona ≤42 mm). Punkt startowy:")
-        out.append(f"- przód: {fl / _PSI_PER_BAR:.1f} bar ({round(fl)} psi)")
-        out.append(f"- tył:   {rl / _PSI_PER_BAR:.1f} bar ({round(rl)} psi)")
-        return "\n".join(out)
-    soft, firm = _rh_lookup(width, combined_kg)
-    out.append(f"Model: Heine (surface-aware, baza Rene Herse @ {combined_kg:.0f} kg łącznie). Punkt startowy.")
-    out.append(f"Referencja RH (cały rower, jedna wartość): soft {soft:.1f} bar / firm {firm:.1f} bar.")
+
     buckets = _SURFACE
     if surface:
         buckets = [b for b in _SURFACE if b[0] == surface] or _SURFACE
     for key, mult, desc in buckets:
-        rear = soft * mult
-        front = rear * _FRONT_FACTOR
+        rear = rear_base * mult if rear_model == "Heine" else rear_base
+        front = front_base * mult * _FRONT_FACTOR if front_model == "Heine" else front_base
         out.append(f"- {desc}: przód {front:.1f} bar ({_psi(front)} psi) · tył {rear:.1f} bar ({_psi(rear)} psi)")
     return "\n".join(out)
 
@@ -363,11 +431,11 @@ def _tool_qbot_tire_pressure(args: dict | None = None) -> dict[str, Any]:
         f"Waga zawodnika: {weight:.2f} kg ({wsrc}{', ' + wdate if wdate else ''}).",
         f"Masa roweru: {bike:.1f} kg ({'DOMYŚLNA — bikes.weight_kg puste, do przeważenia' if bike_default else 'garage.db'})."
         + (f" + ładunek {extra:.1f} kg." if extra else ""),
-        f"Masa łączna (do modelu): {combined:.1f} kg. Rozkład przód/tył: {dist[0]}/{dist[1]}.",
+        f"Masa roweru: {bike:.1f} kg. Rozkład przód/tył: {dist[0]}/{dist[1]}. Masa łączna z kołami widoczna per zestaw.",
         f"Zestawy kół z garażu: {len(wheelsets)}.",
         "",
     ]
-    blocks = [_wheelset_block(ws, combined, front_frac, rear_frac, surface) for ws in wheelsets]
+    blocks = [_wheelset_block(ws, weight, bike, extra, front_frac, rear_frac, surface) for ws in wheelsets]
 
     notes = (
         "Wartości to PUNKT STARTOWY — dostroić do odczucia i terenu. "
