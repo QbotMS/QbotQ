@@ -2693,6 +2693,7 @@ def _init_registry():
         ("route_poi_analyze", _load_route_poi_analyze_tool),
         ("route_poi_analyze_readonly", _load_route_poi_analyze_readonly_tool),
         ("route_report", _load_route_report_tool),
+        ("route_analysis", _load_route_analysis_tool),
         ("rwgps_poi_push", _load_rwgps_poi_push_tool),
         ("rwgps_route_import_gpx", _load_rwgps_route_import_gpx_tool),
         ("artifact_search", _load_artifact_search_tool),
@@ -2963,6 +2964,42 @@ def _load_route_report_tool() -> dict[str, Any]:
             "variant": {"type": "string", "description": "skrocony (domyslny) / pelny / grupa"},
             "route_id": {"type": "string", "description": "ID trasy RWGPS (opcjonalne; domyslnie najnowsza otrasowana)"},
             "start": {"type": "string", "description": "Start 'YYYY-MM-DD HH:MM' (opcjonalne; dolicza pogode i okno POI)"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+    }
+
+
+def _load_route_analysis_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+    import qbot_route_analysis_tool as _ra
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        out = _ra._tool_route_analysis(args or {})
+        if out.get("status") == "OK":
+            return success_result({
+                "analysis": out.get("analysis", ""),
+                "variant": out.get("variant"),
+                "route_id": out.get("route_id"),
+                "note": out.get("notes", ""),
+            })
+        return error_result("ROUTE_ANALYSIS_FAILED",
+                            out.get("error") or out.get("notes") or "blad analizy trasy")
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "PELNA ANALIZA TRASY (jednowarstwowa analiza LLM). Buduje jeden kontekst "
+            "(trasa, zawodnik, sprzet, POI z km, zywienie, czas) i robi spojna analize sekcji A-F. "
+            "Triggery: 'analizuj trase X', 'pelna analiza trasy X', 'przeanalizuj trase X'. "
+            "Warianty: skrocony (A+C+F) / pelny (A-F) / grupa (A+B+D+F bez danych osobistych). "
+            "Param: variant, route_id, start. Pokaz pole analysis w calosci."
+        ),
+        "args_schema": {
+            "variant": {"type": "string", "description": "skrocony / pelny / grupa"},
+            "route_id": {"type": "string", "description": "ID trasy RWGPS (opcjonalne; domyslnie najnowsza otrasowana)"},
+            "start": {"type": "string", "description": "Start YYYY-MM-DD HH:MM (opcjonalne; dolicza pogode i okno POI)"},
         },
         "safety": "read",
         "mode": "read_only",
