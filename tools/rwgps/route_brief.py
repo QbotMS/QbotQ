@@ -311,16 +311,33 @@ def _map_guess_to_frames(rows, sectors):
 
 
 def _infer_unknown_frame_surfaces(rows, artifact_id=None, route_id=None, frame_size=80):
-    """Uzupelnia NIEZNANE nawierzchnie z typu drogi OSM (kaskada highway/tracktype, etykieta '(szac.)').
-    Sieciowo (Overpass przez surface_landcover) TYLKO gdy istnieja nieznane ramki; przy kazdym bledzie
-    zwraca {} (wtedy zostaje 'nieznana'). 'nieznana' pozostaje tylko gdy brak i surface, i highway/tracktype."""
-    if not any((r[7] in (None, "", "nieznana")) for r in rows):
+    """Uzupelnia NIEZNANE nawierzchnie metoda map-match PUNKT PO PUNKCIE (TASK 14):
+    dla kazdej nieznanej ramki pyta Overpass o droge wokol srodka ramki (mid_lat/mid_lon)
+    i mapuje surface/typ drogi na etykiete PL z sufiksem '(szac.)'. Sieciowo TYLKO gdy istnieja
+    nieznane ramki; przy kazdym bledzie zwraca {} (wtedy zostaje 'nieznana')."""
+    unknown_idx = [r[0] for r in rows if r[7] in (None, "", "nieznana")]
+    if not unknown_idx:
         return {}
     try:
-        from tools.rwgps.surface_landcover import build_sectors as _bs, annotate_sectors as _an
-        sectors = _bs(artifact_id=artifact_id, route_id=route_id, frame_size=int(frame_size))
-        _an(sectors, want_landcover=False, want_surface_cascade=True)
-        return _map_guess_to_frames(rows, sectors)
+        from tools.rwgps.surface_landcover import _fetch_highway_for_point
+        conn = _db_connect()
+        cur = conn.cursor()
+        where = "route_artifact_id=%s" if artifact_id is not None else "route_id=%s"
+        key = artifact_id if artifact_id is not None else route_id
+        cur.execute(
+            f"SELECT frame_index, mid_lat, mid_lon FROM qbot_v2.route_frames "
+            f"WHERE {where} AND frame_size_m=%s AND frame_index = ANY(%s) ORDER BY frame_index",
+            (key, int(frame_size), list(unknown_idx)),
+        )
+        coords = cur.fetchall()
+        guesses: dict = {}
+        for fi, mid_lat, mid_lon in coords:
+            if mid_lat is None or mid_lon is None:
+                continue
+            label = _fetch_highway_for_point(float(mid_lat), float(mid_lon))
+            if label:
+                guesses[int(fi)] = label + " (szac.)"
+        return guesses
     except Exception:
         return {}
 

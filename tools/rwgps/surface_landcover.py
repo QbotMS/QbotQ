@@ -316,6 +316,120 @@ def highway_surface_for_point(
     return None, "none"
 
 
+# --- TASK 14: map-match PUNKT PO PUNKCIE (zamiast bbox) ---
+_HIGHWAY_POINT_CACHE: dict[tuple[float, float], str | None] = {}
+
+# Surowy tag OSM `surface` -> etykieta PL (BEZ sufiksu "(szac.)"; sufiks dodaje wolajacy).
+_SURFACE_PL: dict[str, str] = {
+    "asphalt": "asfalt",
+    "paved": "asfalt",
+    "chipseal": "asfalt",
+    "concrete": "beton",
+    "concrete:plates": "beton",
+    "concrete:lanes": "beton",
+    "cobblestone": "kostka brukowa",
+    "unhewn_cobblestone": "kostka brukowa",
+    "sett": "kostka brukowa",
+    "paving_stones": "kostka brukowa",
+    "bricks": "kostka brukowa",
+    "brick": "kostka brukowa",
+    "metal": "asfalt/utwardzona",
+    "wood": "asfalt/utwardzona",
+    "compacted": "szuter ubity",
+    "fine_gravel": "szuter ubity",
+    "gravel": "szuter",
+    "pebblestone": "szuter",
+    "rock": "szuter",
+    "stone": "szuter",
+    "ground": "gruntowa",
+    "dirt": "gruntowa",
+    "earth": "gruntowa",
+    "soil": "gruntowa",
+    "mud": "gruntowa techniczna",
+    "clay": "gruntowa techniczna",
+    "grass": "trawa",
+    "sand": "piach",
+}
+
+
+def _normalize_surface(surface: Any) -> str | None:
+    """Surowy tag OSM 'surface' -> etykieta PL (bez sufiksu '(szac.)'). None gdy brak/pusty."""
+    raw = str(surface).strip().lower() if surface is not None else ""
+    if not raw:
+        return None
+    if raw in _SURFACE_PL:
+        return _SURFACE_PL[raw]
+    # heurystyka na nieznany string (spojna z fitmodel/surface_tag + surface_classifier)
+    if any(k in raw for k in ("asph", "paved", "concrete")):
+        return "asfalt"
+    if "fine_gravel" in raw or "compact" in raw:
+        return "szuter ubity"
+    if any(k in raw for k in ("gravel", "stone", "rock", "crush")):
+        return "szuter"
+    if "sand" in raw:
+        return "piach"
+    if any(k in raw for k in ("ground", "dirt", "earth", "mud", "soil", "unpaved")):
+        return "gruntowa"
+    return raw
+
+
+def _highway_to_surface_label(highway: Any, tracktype: Any) -> str | None:
+    """Kaskada highway/tracktype -> etykieta PL (bez sufiksu '(szac.)'). None gdy brak sygnalu.
+    Lustro kaskady etykiet z highway_surface_for_point (tracktype ma pierwszenstwo)."""
+    tt = str(tracktype).strip().lower() if tracktype is not None else ""
+    if tt == "grade1":
+        return "szuter ubity"
+    if tt == "grade2":
+        return "szuter"
+    if tt == "grade3":
+        return "gruntowa"
+    if tt in {"grade4", "grade5"}:
+        return "gruntowa techniczna"
+
+    hw = str(highway).strip().lower() if highway is not None else ""
+    if hw == "track":
+        return "gruntowa/szuter"
+    if hw == "path":
+        return "sciezka"
+    if hw in {"residential", "living_street", "unclassified", "tertiary", "secondary", "primary", "trunk", "service"}:
+        return "asfalt"
+    if hw == "cycleway":
+        return "asfalt/utwardzona"
+    return None
+
+
+def _fetch_highway_for_point(lat: float, lon: float, radius: int = 30) -> str | None:
+    """Map-match PUNKT PO PUNKCIE: pyta Overpass o drogi w promieniu `radius` m wokol punktu
+    i zwraca etykiete PL nawierzchni (bez sufiksu '(szac.)') albo None.
+
+    Kaskada: najpierw way z jawnym tagiem `surface` -> _normalize_surface; fallback
+    highway/tracktype -> _highway_to_surface_label. Cache per (round(lat,4), round(lon,4))
+    (~11 m). Throttle time.sleep(0.1) po realnym requescie (pomijany przy cache-hit)."""
+    key = (round(float(lat), 4), round(float(lon), 4))
+    if key in _HIGHWAY_POINT_CACHE:
+        return _HIGHWAY_POINT_CACHE[key]
+    query = f'[out:json][timeout:10];way["highway"](around:{radius},{lat},{lon});out tags;'
+    payload = _overpass(query, timeout=10)
+    time.sleep(0.1)
+    tag_sets = _tags_from_overpass(payload)
+    result: str | None = None
+    # 1) jawny tag surface
+    for tags in tag_sets:
+        label = _normalize_surface(tags.get("surface"))
+        if label:
+            result = label
+            break
+    # 2) fallback: highway/tracktype
+    if result is None:
+        for tags in tag_sets:
+            label = _highway_to_surface_label(tags.get("highway"), tags.get("tracktype"))
+            if label:
+                result = label
+                break
+    _HIGHWAY_POINT_CACHE[key] = result
+    return result
+
+
 def _norm_surface(value: Any) -> str:
     txt = str(value).strip().lower() if value is not None else ""
     return txt or "nieznana"
