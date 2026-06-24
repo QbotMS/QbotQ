@@ -1224,6 +1224,67 @@ async def _overpass_post_async(query: str, timeout: int = 30) -> list:
     raise RuntimeError(f"Overpass: wszystkie mirrory zawiodly ({last})")
 
 
+def _haversine(lat1, lon1, lat2, lon2) -> float:
+    import math
+    R = 6371000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+
+def _fetch_ways_along_track(samples, radius_m=30, timeout=60):
+    """Pobierz wszystkie drogi (highway) wzdluz calego sladu jednym zapytaniem
+    Overpass na kazdy chunk po 500 punktow. Deduplikuje way-e po id. Fail-open
+    per chunk: blad jednego chunku nie przerywa calosci. Zwraca liste way-ow."""
+    CHUNK = 500
+    ways_by_id = {}
+    n_chunks = (len(samples) + CHUNK - 1) // CHUNK if samples else 0
+    for ci in range(0, len(samples), CHUNK):
+        chunk = samples[ci:ci + CHUNK]
+        coords = ",".join(f"{pt[0]},{pt[1]}" for pt in chunk)
+        query = (
+            f"[out:json][timeout:{timeout}];"
+            f'way["highway"](around:{radius_m},{coords});'
+            f"out tags geom;"
+        )
+        idx = ci // CHUNK + 1
+        try:
+            print(f"[surface] Overpass chunk {idx}/{n_chunks}: {len(chunk)} pts, radius={radius_m}m", flush=True)
+            elements = _overpass_post(query, timeout=timeout)
+        except Exception as exc:
+            print(f"[surface] Overpass chunk {idx}/{n_chunks} FAILED (fail-open): {exc}", flush=True)
+            continue
+        for el in elements or []:
+            wid = el.get("id")
+            if wid is None:
+                ways_by_id[id(el)] = el
+            else:
+                ways_by_id[wid] = el
+    return list(ways_by_id.values())
+
+
+def _match_point_to_ways(lat, lon, ways, max_dist_m=150):
+    """Dla punktu GPS znajdz najblizszy node w geometrii ktoregokolwiek z way-ow.
+    Zwraca (tags_dict, dist_m) dla najblizszego way w promieniu max_dist_m,
+    albo None gdy brak dopasowania lub za daleko."""
+    best_tags = None
+    best_dist = float("inf")
+    for way in ways:
+        for node in way.get("geometry", []) or []:
+            try:
+                d = _haversine(lat, lon, node["lat"], node["lon"])
+            except Exception:
+                continue
+            if d < best_dist:
+                best_dist = d
+                best_tags = way.get("tags", {}) or {}
+    if best_tags is None or best_dist > max_dist_m:
+        return None
+    return (best_tags, best_dist)
+
+
 @mcp.tool()
 def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 80) -> str:
     """
@@ -1356,56 +1417,30 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 8
     MAX_MATCH_DIST_M = 150
     osm_errors: list[str] = []
 
-    for batch_idx, batch in enumerate(sample_batches):
-        # around:20m per punkt - pobiera droge najblizej punktu GPS
-        around_parts = "".join(
-            f"  way[highway](around:20,{pt[0]},{pt[1]});\n"
-            for pt in batch
-        )
-        batch_query = f"[out:json][timeout:25];(\n{around_parts});out tags geom;"
-        batch_ways = []
-        try:
-            batch_ways = _overpass_post(batch_query, timeout=30)
-        except Exception as exc:
-            osm_errors.append(f"batch {batch_idx + 1}/{len(sample_batches)}: {exc}")
-            unmatched += len(batch)
-            continue
-        if _OVERPASS_SLEEP > 0 and batch_idx + 1 < len(sample_batches):
-            _time.sleep(_OVERPASS_SLEEP)
+    all_ways = _fetch_ways_along_track(samples)
 
-        if not batch_ways:
-            unmatched += len(batch)
+    for _gidx, pt in enumerate(samples):
+        result = _match_point_to_ways(pt[0], pt[1], all_ways, max_dist_m=MAX_MATCH_DIST_M)
+        if result is None:
+            unmatched += 1
             continue
-
-        for _local_i, pt in enumerate(batch):
-            _gidx = batch_idx * BATCH_SIZE + _local_i
-            best_tags = {}
-            best_dist = float("inf")
-            for way in batch_ways:
-                for node in way.get("geometry", []):
-                    d = _dist_fast(pt[0], pt[1], node["lat"], node["lon"])
-                    if d < best_dist:
-                        best_dist = d
-                        best_tags = way.get("tags", {})
-            if best_dist > MAX_MATCH_DIST_M:
-                unmatched += 1
-                continue
-            matched += 1
-            raw_surf = best_tags.get("surface")
-            label = SURFACE_MAP.get(raw_surf, raw_surf or "nieznana")
-            surface_counts[label] = surface_counts.get(label, 0) + 1
-            if 0 <= _gidx < len(sample_surfaces):
-                sample_surfaces[_gidx] = label
-            hw = best_tags.get("highway")
-            if hw:
-                highway_counts[hw] = highway_counts.get(hw, 0) + 1
-            tt = best_tags.get("tracktype")
-            if tt:
-                tracktype_counts[tt] = tracktype_counts.get(tt, 0) + 1
-            sm = best_tags.get("smoothness")
-            if sm:
-                sm_label = SMOOTHNESS_MAP.get(sm, sm)
-                smoothness_counts[sm_label] = smoothness_counts.get(sm_label, 0) + 1
+        best_tags, best_dist = result
+        matched += 1
+        raw_surf = best_tags.get("surface")
+        label = SURFACE_MAP.get(raw_surf, raw_surf or "nieznana")
+        surface_counts[label] = surface_counts.get(label, 0) + 1
+        if 0 <= _gidx < len(sample_surfaces):
+            sample_surfaces[_gidx] = label
+        hw = best_tags.get("highway")
+        if hw:
+            highway_counts[hw] = highway_counts.get(hw, 0) + 1
+        tt = best_tags.get("tracktype")
+        if tt:
+            tracktype_counts[tt] = tracktype_counts.get(tt, 0) + 1
+        sm = best_tags.get("smoothness")
+        if sm:
+            sm_label = SMOOTHNESS_MAP.get(sm, sm)
+            smoothness_counts[sm_label] = smoothness_counts.get(sm_label, 0) + 1
 
     if not surface_counts and osm_errors:
         return json.dumps({"ok": False, "error": "OSM_UNAVAILABLE", "reason": f"Overpass API errors: {'; '.join(osm_errors[:3])}", "bounds": {"sw": [south, west], "ne": [north, east]}, "point_count": len(points), "sampled_points": len(samples)}, ensure_ascii=False)
