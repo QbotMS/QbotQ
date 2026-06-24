@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """TASK 08/09 - testy orkiestratora route_report (mock 6 narzedzi + LLM stub sekcji C)."""
+import re
 import unittest
 
 import qbot_route_report_tool as rr
@@ -338,6 +339,106 @@ class TestRouteReportTask10(unittest.TestCase):
         })
         self.assertIn("km", brief)
 
+
+class TestRouteReportTask12(unittest.TestCase):
+    """TASK 12 - dokument kontekstowy: kombinacje ryzyk, POI km, wnioskowanie, strefy, gap, sekcja C <=8 zdan."""
+
+    def setUp(self):
+        self.calls = []
+        self.canned = {
+            "route_plan_analysis": {"status": "OK", "data": {"analysis": (
+                "\U0001f4cb ANALIZA PLANOWANEJ TRASY\n"
+                "Dystans: 80.0 km | podjazdy: +900 m / zjazdy: -900 m\n"
+                "Stromizny: maks 8%, stromo (>=4%) na ~3.0 km\n"
+                "Nawierzchnia: 55% utwardzona | asfalt 55%, szuter 30%, nieznana 15%\n"
+                "\n"
+                "\U0001f324  Pogoda (prognoza): 28–30°C, opady ~0.0 mm na trasie\n"
+                "   \U0001f4a8 Pod wiatr (oszczedzaj sie wczesniej): km 50–60\n"
+                "   \U0001f343 Wiatr w plecy: km 5–10\n"
+                "\n"
+                "\U0001f4aa Forma (FitModel, 2026-06-20): FTP 260 W, 3.40 W/kg"
+            )}},
+            "route_profile_detail": {"status": "OK", "data": {"analysis": (
+                "SZCZEGOLOWY PROFIL TRASY (z ramek 80 m)\n"
+                "Dystans 80.0 km | 1000 ramek | +900 m / -900 m | max 8% | stromo(>=4%) ~3.0 km\n"
+                "\n"
+                "Nawierzchnia (odcinki >= 0.2 km):\n"
+                "  km 0.0-20.0 (20.0): asfalt\n"
+                "  km 20.0-23.0 (3.0): nieznana\n"
+                "  km 50.0-58.0 (8.0): szuter luzny\n"
+                "\n"
+                "Podjazdy (>= 3%, min 200 m):\n"
+                "  km 30.0-33.0 (3.0 km): +150 m, max 8%\n"
+            )}},
+            "route_time_estimate": {"status": "OK", "data": {"analysis":
+                "Szacowany czas trasy\nv 18.0 km/h -> 4:30"}},
+            "tire_pressure": {"status": "OK", "data": {"analysis":
+                "CISNIENIE OPON\naktywny zestaw: gravel\n#1 2.0 bar / 2.2 bar"}},
+            "route_fuel_plan": {"status": "OK", "data": {"analysis":
+                "- **60 g/h**\n- **0.85 L/h**"}},
+            "route_poi_analyze_readonly": {"status": "OK", "data": {
+                "analysis": "POI: km 5.0 woda; km 12.0 sklep; km 55.0 woda",
+                "counts": {"water": 2, "food": 1, "attractions": 0},
+                "report_path": "/opt/qbot/artifacts/poi.md"}},
+        }
+
+        def fake_call(name, args):
+            self.calls.append((name, dict(args)))
+            return self.canned[name]
+
+        self._orig_call = rr._call_tool
+        self._orig_dist = rr._resolve_distance_km
+        rr._call_tool = fake_call
+        rr._resolve_distance_km = lambda route_id: 80.0
+        import qgpt_client
+        self._orig_qgpt = qgpt_client.qgpt_text
+        qgpt_client.qgpt_text = _echo_section_c
+
+    def tearDown(self):
+        import qgpt_client
+        rr._call_tool = self._orig_call
+        rr._resolve_distance_km = self._orig_dist
+        qgpt_client.qgpt_text = self._orig_qgpt
+
+    def _doc(self):
+        return rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})["analysis"]
+
+    def test_document_has_risk_combinations(self):
+        a = self._doc()
+        self.assertIn("KOMBINACJE RYZYK", a)
+        idx = a.find("KOMBINACJE RYZYK")
+        block = a[idx:idx + 600]
+        self.assertRegex(block, r"km\s*\d+(?:\.\d+)?\s*[-–]\s*\d+")
+
+    def test_document_has_poi_km(self):
+        a = self._doc()
+        self.assertIn("PUNKTY UZUPELNIENIA", a)
+        idx = a.find("PUNKTY UZUPELNIENIA")
+        block = a[idx:idx + 300]
+        self.assertIn("km 5", block)
+        self.assertIn("km 12", block)
+
+    def test_document_has_unknown_inference(self):
+        a = self._doc()
+        self.assertIn("NIEZNANA NAWIERZCHNIA", a)
+        self.assertIn("piach", a.lower())
+
+    def test_document_has_zones(self):
+        a = self._doc()
+        for z in ("Z2", "Z3", "Z4"):
+            self.assertIn(z, a)
+        self.assertRegexpMatches(a, r"\d+–\d+ W") if hasattr(self, "assertRegexpMatches") else self.assertRegex(a, r"\d+–\d+ W")
+
+    def test_section_c_max_8_sentences(self):
+        a = self._doc()
+        idx = a.find("## C")
+        c = a[idx:] if idx >= 0 else ""
+        sentences = [s for s in re.split(r"[.!?]+", c) if s.strip()]
+        self.assertLessEqual(len(sentences), 8)
+
+    def test_gap_warning(self):
+        a = self._doc()
+        self.assertIn("⚠️ UWAGA: przerwa", a)
 
 if __name__ == "__main__":
     unittest.main()
