@@ -165,6 +165,7 @@ def build_detail(artifact_id=None, route_id=None, frame_size=80, climb_grade=3.0
     if not rows:
         print("Brak pudelek dla tej trasy — najpierw zbuduj siatke (route_frames).")
         return 2
+    _guess = _infer_unknown_frame_surfaces(rows, artifact_id, route_id, frame_size)
     total_km = rows[-1][2] / 1000.0
     ascent = sum(r[5] for r in rows if r[5] and r[5] > 0)
     descent = -sum(r[5] for r in rows if r[5] and r[5] < 0)
@@ -178,7 +179,7 @@ def build_detail(artifact_id=None, route_id=None, frame_size=80, climb_grade=3.0
         try:
             from tools.rwgps.surface_landcover import build_sectors as _bs, annotate_sectors as _an, render_sectors_text as _rt
             _sectors = _bs(artifact_id=artifact_id, route_id=route_id, frame_size=int(frame_size))
-            _an(_sectors, want_landcover=True, want_surface_cascade=False)
+            _an(_sectors, want_landcover=True, want_surface_cascade=True)
             lines.append("")
             lines.append("Nawierzchnia + pokrycie terenu (OSM):")
             lines.append(_rt(_sectors))
@@ -187,7 +188,7 @@ def build_detail(artifact_id=None, route_id=None, frame_size=80, climb_grade=3.0
             # --- Nawierzchnia odcinkami: scal sasiednie + absorbuj mikro-odcinki (kasuje szum "nieznana") ---
             merged = []
             for r in rows:
-                surf = r[7] or "nieznana"
+                surf = r[7] or _guess.get(r[0]) or "nieznana"
                 if merged and merged[-1][2] == surf:
                     merged[-1][1] = r[2]
                 else:
@@ -213,7 +214,7 @@ def build_detail(artifact_id=None, route_id=None, frame_size=80, climb_grade=3.0
         # --- Nawierzchnia odcinkami: scal sasiednie + absorbuj mikro-odcinki (kasuje szum "nieznana") ---
         merged = []
         for r in rows:
-            surf = r[7] or "nieznana"
+            surf = r[7] or _guess.get(r[0]) or "nieznana"
             if merged and merged[-1][2] == surf:
                 merged[-1][1] = r[2]
             else:
@@ -283,6 +284,45 @@ def build_detail(artifact_id=None, route_id=None, frame_size=80, climb_grade=3.0
         lines.append("  brak istotnych podjazdow — plasko")
     print("\n".join(lines))
     return 0
+
+
+def _map_guess_to_frames(rows, sectors):
+    """Mapuje surface_guess z sektorow OSM na ramki o NIEZNANEJ nawierzchni (po srodku ramki).
+    rows: krotki route_frames (frame_index, dist_start_m, dist_end_m, ele_start_m, ele_end_m,
+    elev_gain_m, avg_grade_pct, surface). Zwraca {frame_index: 'guess (szac.)'} tylko dla ramek
+    bez wlasnej nawierzchni. Funkcja czysta (bez sieci) — testowalna."""
+    guesses = [
+        (float(s["s_m"]), float(s["e_m"]), s.get("surface_guess"))
+        for s in sectors
+        if s.get("surface_guess") and s.get("s_m") is not None and s.get("e_m") is not None
+    ]
+    out: dict = {}
+    if not guesses:
+        return out
+    for r in rows:
+        if r[7]:  # ramka ma wlasna nawierzchnie z OSM 'surface'
+            continue
+        mid = (float(r[1]) + float(r[2])) / 2.0
+        for s0, e0, g in guesses:
+            if s0 <= mid < e0:
+                out[r[0]] = g
+                break
+    return out
+
+
+def _infer_unknown_frame_surfaces(rows, artifact_id=None, route_id=None, frame_size=80):
+    """Uzupelnia NIEZNANE nawierzchnie z typu drogi OSM (kaskada highway/tracktype, etykieta '(szac.)').
+    Sieciowo (Overpass przez surface_landcover) TYLKO gdy istnieja nieznane ramki; przy kazdym bledzie
+    zwraca {} (wtedy zostaje 'nieznana'). 'nieznana' pozostaje tylko gdy brak i surface, i highway/tracktype."""
+    if not any((r[7] in (None, "", "nieznana")) for r in rows):
+        return {}
+    try:
+        from tools.rwgps.surface_landcover import build_sectors as _bs, annotate_sectors as _an
+        sectors = _bs(artifact_id=artifact_id, route_id=route_id, frame_size=int(frame_size))
+        _an(sectors, want_landcover=False, want_surface_cascade=True)
+        return _map_guess_to_frames(rows, sectors)
+    except Exception:
+        return {}
 
 
 def main():
