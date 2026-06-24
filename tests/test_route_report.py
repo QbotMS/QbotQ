@@ -89,9 +89,13 @@ class TestRouteReport(unittest.TestCase):
         self.assertEqual(out["variant"], "pelny")
         a = out["analysis"]
         for marker in ("## A - DANE TRASY", "## A3", "## A7", "## A8",
-                       "### B4", "B2/B3", "### B5", "## C",
-                       "C1", "C2", "C3", "C4"):
+                       "### B4", "B2/B3", "### B5", "## C"):
             self.assertIn(marker, a, marker)
+        # C pisze Albert — narzedzie zwraca tylko kontekst dla sekcji C
+        ctx_c = out["context_for_section_c"]
+        self.assertIsNotNone(ctx_c)
+        for m in ("C1", "C2", "C3", "C4"):
+            self.assertIn(m, ctx_c, m)
         # forma/FTP zachowane w pelnym
         self.assertIn("FTP", a)
         # POI dostalo poprawne argumenty
@@ -110,9 +114,9 @@ class TestRouteReport(unittest.TestCase):
         out = rr._tool_route_report({"route_id": "55734589", "variant": "grupa"})
         self.assertEqual(out["variant"], "grupa")
         a = out["analysis"]
-        for marker in ("## A - DANE TRASY", "## A3", "## A8", "### B4",
-                       "## C", "C1", "C2", "C4"):
+        for marker in ("## A - DANE TRASY", "## A3", "## A8", "### B4", "## C"):
             self.assertIn(marker, a, marker)
+        self.assertIsNotNone(out["context_for_section_c"])
         # BEZ danych osobistych: forma/FTP, cisnienia, zywienie, sprzet, C3
         self.assertNotIn("FTP", a)
         self.assertNotIn("Forma", a)
@@ -227,8 +231,10 @@ class TestRouteReportTask09(unittest.TestCase):
         out = rr._tool_route_report({"route_id": "55734589", "variant": "pelny"})
         a = out["analysis"]
         self.assertIn("## C", a)
+        ctx_c = out["context_for_section_c"]
+        self.assertIsNotNone(ctx_c)
         for m in ("C1", "C2", "C3", "C4"):
-            self.assertIn(m, a)
+            self.assertIn(m, ctx_c)
         self.assertNotIn("model uzupelnia", a)
         self.assertNotIn("model uzupełnia", a)
 
@@ -236,6 +242,7 @@ class TestRouteReportTask09(unittest.TestCase):
         out = rr._tool_route_report({"route_id": "55734589", "variant": "skrocony"})
         a = out["analysis"]
         self.assertNotIn("## C", a)
+        self.assertIsNone(out["context_for_section_c"])
 
 
 def _echo_section_c(prompt, **kwargs):
@@ -311,17 +318,17 @@ class TestRouteReportTask10(unittest.TestCase):
 
     def test_section_c_has_watts(self):
         out = rr._tool_route_report({"route_id": "55734589", "variant": "pelny"})
-        c = self._section_c(out["analysis"])
+        c = out["context_for_section_c"]
         self.assertRegex(c, r"\d+\s*[–-]\s*\d+\s*W")
 
     def test_section_c_has_km_reference(self):
         out = rr._tool_route_report({"route_id": "55734589", "variant": "pelny"})
-        c = self._section_c(out["analysis"])
+        c = out["context_for_section_c"]
         self.assertIn("km", c)
 
     def test_section_c_no_generic_phrases(self):
         out = rr._tool_route_report({"route_id": "55734589", "variant": "pelny"})
-        c = self._section_c(out["analysis"]).lower()
+        c = out["context_for_section_c"].lower()
         self.assertNotIn("równe tempo", c)
         self.assertNotIn("rownomierne tempo", c)
 
@@ -401,7 +408,8 @@ class TestRouteReportTask12(unittest.TestCase):
         qgpt_client.qgpt_text = self._orig_qgpt
 
     def _doc(self):
-        return rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})["analysis"]
+        # TASK 13: dokument kontekstowy nie jest juz w 'analysis' — trafia do context_for_section_c
+        return rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})["context_for_section_c"]
 
     def test_document_has_risk_combinations(self):
         a = self._doc()
@@ -429,16 +437,65 @@ class TestRouteReportTask12(unittest.TestCase):
             self.assertIn(z, a)
         self.assertRegexpMatches(a, r"\d+–\d+ W") if hasattr(self, "assertRegexpMatches") else self.assertRegex(a, r"\d+–\d+ W")
 
-    def test_section_c_max_8_sentences(self):
-        a = self._doc()
-        idx = a.find("## C")
-        c = a[idx:] if idx >= 0 else ""
-        sentences = [s for s in re.split(r"[.!?]+", c) if s.strip()]
-        self.assertLessEqual(len(sentences), 8)
+    def test_section_c_instruction_caps_length(self):
+        # C pisze Albert; narzedzie przekazuje limit dlugosci w prompt_C (context_for_section_c)
+        ctx = self._doc()
+        self.assertIn("Max 8", ctx)
+
+    def test_a3_merged_surface_default(self):
+        a = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})["analysis"]
+        self.assertIn("zmiany nawierzchni", a)
+        self.assertNotIn("(odcinki", a)
+
+    def test_a3_full_surface_on_flag(self):
+        a = rr._tool_route_report(
+            {"route_id": "55798129", "variant": "pelny", "surface_detail": True}
+        )["analysis"]
+        self.assertIn("(odcinki", a)
+        self.assertNotIn("zmiany nawierzchni", a)
 
     def test_gap_warning(self):
         a = self._doc()
         self.assertIn("⚠️ UWAGA: przerwa", a)
+
+
+class TestRouteReportTask13(unittest.TestCase):
+    """TASK 13 - Opcja B: narzedzie zwraca context_for_section_c; sekcje C pisze Albert."""
+
+    def setUp(self):
+        self.calls = []
+
+        def fake_call(name, args):
+            self.calls.append((name, dict(args)))
+            return CANNED[name]
+
+        self._orig_call = rr._call_tool
+        self._orig_dist = rr._resolve_distance_km
+        rr._call_tool = fake_call
+        rr._resolve_distance_km = lambda route_id: 99.4
+
+    def tearDown(self):
+        rr._call_tool = self._orig_call
+        rr._resolve_distance_km = self._orig_dist
+
+    def test_returns_context_for_section_c(self):
+        out = rr._tool_route_report({"route_id": "55734589", "variant": "pelny"})
+        self.assertIn("context_for_section_c", out)
+        ctx = out["context_for_section_c"]
+        self.assertIsNotNone(ctx)
+        for m in ("C1", "C2", "C3", "C4"):
+            self.assertIn(m, ctx)
+
+    def test_skrocony_no_context_c(self):
+        out = rr._tool_route_report({"route_id": "55734589", "variant": "skrocony"})
+        self.assertIn("context_for_section_c", out)
+        self.assertIsNone(out["context_for_section_c"])
+
+    def test_no_llm_in_tool(self):
+        import inspect
+        src = inspect.getsource(rr)
+        self.assertNotIn("qgpt_text", src)
+        self.assertFalse(hasattr(rr, "qgpt_text"))
 
 if __name__ == "__main__":
     unittest.main()

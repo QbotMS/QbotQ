@@ -2945,6 +2945,7 @@ def _load_route_report_tool() -> dict[str, Any]:
                 "analysis": out.get("analysis", ""),
                 "variant": out.get("variant"),
                 "route_id": out.get("route_id"),
+                "context_for_section_c": out.get("context_for_section_c"),
                 "note": out.get("notes", ""),
             })
         return error_result("ROUTE_REPORT_FAILED",
@@ -2964,6 +2965,7 @@ def _load_route_report_tool() -> dict[str, Any]:
             "variant": {"type": "string", "description": "skrocony (domyslny) / pelny / grupa"},
             "route_id": {"type": "string", "description": "ID trasy RWGPS (opcjonalne; domyslnie najnowsza otrasowana)"},
             "start": {"type": "string", "description": "Start 'YYYY-MM-DD HH:MM' (opcjonalne; dolicza pogode i okno POI)"},
+            "surface_detail": {"type": "boolean", "description": "true = pelna tabela nawierzchni po ramkach 80 m; domyslnie false (scalone zmiany >=300 m)"},
         },
         "safety": "read",
         "mode": "read_only",

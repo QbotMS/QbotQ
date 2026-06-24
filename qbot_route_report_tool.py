@@ -233,6 +233,35 @@ def _merge_surface_segments(segs: list[tuple[float, float, str]], min_km: float 
     return [(a, b, s) for a, b, s in merged if (b - a) >= min_km]
 
 
+def _merge_surface_text(prof_txt: str | None, min_km: float = 0.3) -> str | None:
+    """Zamienia blok 'Nawierzchnia (odcinki ...)' (ramki 80 m) na SCALONE zmiany >= min_km.
+    Reszta profilu (naglowek, Wysokosci, Podjazdy) bez zmian. None -> None."""
+    if not prof_txt:
+        return prof_txt
+    lines = prof_txt.splitlines()
+    start = None
+    end = None
+    for i, ln in enumerate(lines):
+        if "Nawierzchnia (odcinki" in ln:
+            start = i
+            continue
+        if start is not None and (ln.strip() == "" or "Wysokosci" in ln or "Podjazdy" in ln):
+            end = i
+            break
+    if start is None:
+        return prof_txt
+    if end is None:
+        end = len(lines)
+    merged = _merge_surface_segments(_parse_surf_segments_doc(prof_txt), min_km=min_km)
+    new_block = [f"Nawierzchnia (zmiany nawierzchni, scalone >= {min_km * 1000:.0f} m):"]
+    if merged:
+        for a, b, s in merged:
+            new_block.append(f"  km {a:g}-{b:g} ({b - a:g}): {s}")
+    else:
+        new_block.append("  brak odcinkow >= progu po scaleniu / dane niedostepne")
+    return "\n".join(lines[:start] + new_block + lines[end:])
+
+
 def _parse_wind_head_blocks(plan_txt: str | None) -> list[tuple[float, float]]:
     """Bloki pod wiatr z analizy planu (A4): linia '... Pod wiatr ...: km 10-20; km 35-40'."""
     if not plan_txt:
@@ -592,45 +621,6 @@ def _build_section_c_brief(sections_data: dict[str, Any] | None) -> str:
     return "\n".join(out).rstrip()
 
 
-def _generate_section_c(context_doc: str, variant: str) -> str:
-    """TASK 12: Albert pisze TYLKO sekcje C na podstawie dokumentu kontekstowego.
-    pelny: C1-C4 (z C3 sprzet); grupa: C1/C2/C4 bez sprzetu. Max 8 zdan. Fallback: '(ocena niedostepna)'."""
-    if variant == "pelny":
-        zakres = (
-            "C1 TAKTYKA (2-3 zdania z konkretnymi km i watami), "
-            "C2 PUNKTY RYZYKA (max 3, kazdy 1 zdanie: km X–Y + powod), "
-            "C3 SPRZET (1-2 zdania: zestaw kol/opon + cisnienie), "
-            "C4 NAJWIEKSZE ZAGROZENIE (1 zdanie: km + powod + skutek)"
-        )
-    elif variant == "grupa":
-        zakres = (
-            "C1 TAKTYKA (2-3 zdania z konkretnymi km, bez watow i danych osobistych), "
-            "C2 PUNKTY RYZYKA (max 3, kazdy 1 zdanie: km X–Y + powod), "
-            "C4 NAJWIEKSZE ZAGROZENIE (1 zdanie: km + powod + skutek). Pomin ocene sprzetu."
-        )
-    else:
-        return ""
-    prompt = (
-        f"{context_doc}\n\n"
-        "Masz kompletne dane powyzej. Napisz TYLKO sekcje C: "
-        f"{zakres}. Oznaczaj „(ocena)”. "
-        "Kazdy punkt w osobnej linii zaczynajacej sie od '- '. "
-        "Uzywaj WYLACZNIE liczb z dokumentu powyzej (km, waty). "
-        "Max 8 zdan lacznie. Pisz po polsku."
-    )
-    system = (
-        "Jestes Albert - analityk tras rowerowych QBot. Piszesz wylacznie sekcje C (ocena) "
-        "na podstawie kompletnego dokumentu kontekstowego. Nie wymyslaj liczb spoza dokumentu. "
-        "Maksymalnie 8 zdan lacznie."
-    )
-    try:
-        from qgpt_client import qgpt_text
-        text = (qgpt_text(prompt, system=system, max_tokens=600, temperature=0) or "").strip()
-        return text or "(ocena niedostępna)"
-    except Exception:
-        return "(ocena niedostępna)"
-
-
 def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
     a = dict(args or {})
 
@@ -652,6 +642,7 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
     if route_id is not None:
         route_id = str(route_id).strip().split("/")[-1].split("?")[0] or None
     start = a.get("start")
+    surface_detail = bool(a.get("surface_detail"))
 
     base_args: dict[str, Any] = {}
     if route_id:
@@ -688,7 +679,8 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
         collected["prof"] = prof
         H("## A3 - NAWIERZCHNIA I PROFIL ODCINKAMI")
         if _ok(prof) and _analysis(prof):
-            H(_analysis(prof))
+            _prof_txt = _analysis(prof)
+            H(_prof_txt if surface_detail else (_merge_surface_text(_prof_txt, 0.3) or _prof_txt))
         else:
             H(f"_Szczegolowy profil niedostepny: {_reason(prof)}_")
         H("")
@@ -789,23 +781,28 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
             H(f"_B5 niedostepne: {_reason(tp)}_")
         H("")
 
-    # ---- DOKUMENT KONTEKSTOWY (TASK 12): jeden ustrukturyzowany dokument dla Alberta ----
     collected["forma"] = _build_forma_line(start) if variant == "pelny" else None
     context_doc = _build_context_document(
         collected.get("plan"), collected.get("prof"), collected.get("t"),
         collected.get("fuel"), collected.get("tp"), collected.get("poi"),
         collected.get("forma"), start,
     )
-    if context_doc:
-        H(context_doc)
-        H("")
-
-    # ---- C: ocena (Albert pisze TYLKO sekcje C na podstawie dokumentu kontekstowego) ----
+    # DOKUMENT KONTEKSTOWY nie idzie do widocznego raportu — tylko do context_for_section_c.
+    # ---- C: ocena (sam naglowek; tresc C dopisuje Albert deterministycznie w albert.py) ----
     if variant in ("pelny", "grupa"):
-        H("## C - OCENA (Albert pisze TYLKO sekcje C; oznaczona „(ocena)”; max 8 zdan)")
-        H(_generate_section_c(context_doc, variant))
+        H("## C - OCENA")
 
-    analysis_text = "\n".join(sections).rstrip() + "\n"
+    prompt_C = (
+        "Masz kompletne dane powyzej. Napisz TYLKO sekcję C: "
+        "C1 TAKTYKA (2-3 zdania z km i watami), "
+        "C2 PUNKTY RYZYKA (max 3, każdy 1 zdanie: km X–Y + powód), "
+        "C3 SPRZĘT (1-2 zdania, tylko pelny), "
+        "C4 NAJWIĘKSZE ZAGROŻENIE (1 zdanie: km + powód + skutek). "
+        "Oznaczaj '(ocena)'. Max 8 zdań łącznie."
+    )
+    context_for_c = f"{context_doc}\n\n{prompt_C}" if variant in ("pelny", "grupa") else None
+
+    analysis_text =  "\n".join(sections).rstrip() + "\n"
     note = ("Raport zlozony z gotowych narzedzi (orkiestracja). Sekcje A/B pochodza 1:1 "
             "z narzedzi - pokaz je w calosci. ")
     note += ("Wariant skrocony nie ma sekcji C." if variant == "skrocony"
@@ -816,5 +813,6 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
         "variant": variant,
         "route_id": route_id,
         "analysis": analysis_text,
+        "context_for_section_c": context_for_c,
         "notes": note,
     }

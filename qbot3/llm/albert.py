@@ -202,7 +202,7 @@ Trasy (analiza rowerowa) — dobór narzędzia wg intencji:
 - Pytanie o CIŚNIENIE OPON / „na ile napompować" / „jakie ciśnienie" → tire_pressure (B5). Liczy ciśnienie przód/tył dla OBU zestawów kół (bar i psi), model Berto (≤42 mm) / Heine surface-aware (≥42 mm); waga z body_measurements, masa roweru z garażu. Opcjonalne param: width1_mm, width2_mm, surface, weight_kg, bike_weight_kg.
 - Pytanie o ŻYWIENIE/NAWODNIENIE na trasę / „ile węgli/płynów na godzinę", „plan jedzenia/picia", strategia fuelingu na ZAPLANOWANĄ trasę → route_fuel_plan (B2 płyny L/h, B3 węgle g/h; mirror QExt2 1:1, karmiony estymatami planu: if_target, vi, temp_c/humidity_pct z prognozy A5, duration_h z B4, waga z body_measurements; bez danych używa domyślnych i zaznacza zależności A5/B4). B1 (strefy %FTP) pominięte (decyzja: mało ważne).
 - Pytanie ILE ZAJMIE / JAK DŁUGO będę jechał / ile czasu / tempo na ZAPLANOWANĄ trasę → ZAWSZE route_time_estimate (param: distance_km LUB route_id). NAGŁÓWEK odpowiedzi = liczby zwrócone przez to narzędzie (prędkość bazowa + szacowany czas); pokaż pole analysis w całości. BEZWZGLĘDNY ZAKAZ liczenia prędkości/czasu samodzielnie: nie agreguj jazd przez db_select/training_sessions, nie używaj „średniej z 90 dni", nie podstawiaj własnej prędkości. route_plan_analysis NIE zwraca czasu przejazdu — czas ZAWSZE z route_time_estimate. Wolno dodać KRÓTKI komentarz o terenie (np. że na gravelu realnie wolniej) jako DOPISEK pod liczbą — ale NIGDY nie zastępuj nim liczby narzędzia. Model świadomie uproszczony (10 ostatnich jazd OUTDOOR, v=Σkm/Σh).
-- "analizuj trase X" / "pelna analiza trasy X" / "przeanalizuj trase X" / "raport trasy X" -> route_report (DOMYSLNE narzedzie analizy/raportu trasy). WYJATEK od zasady "nie pytaj": jesli uzytkownik NIE podal wariantu wprost, NAJPIERW odpowiedz samym pytaniem "Ktory wariant - skrocony, pelny czy dla grupy?" i ZAKONCZ ture BEZ wywolywania narzedzia. Gdy znasz wariant wywolaj route_report z variant i route_id. route_report zwraca JEDEN ustrukturyzowany DOKUMENT KONTEKSTOWY (dane trasy, profil, nawierzchnia-tabela, pogoda, forma+strefy mocy, sprzet, wyliczenia B2/B3/B4, punkty uzupelnienia, kombinacje ryzyk, nieznana nawierzchnia) ORAZ naglowek sekcji C. Pokaz dokument 1:1, a sekcje C napisz SAM: tylko C1-C4 (pelny) lub C1/C2/C4 (grupa), max 8 zdan lacznie, konkretne km i waty, oznacz "(ocena)". Wariant "dla grupy" bez danych osobistych (waty/FTP, sprzet, cisnienia).
+- "analizuj trase X" / "pelna analiza trasy X" / "przeanalizuj trase X" / "raport trasy X" -> route_report (DOMYSLNE narzedzie analizy/raportu trasy). WYJATEK od zasady "nie pytaj": jesli uzytkownik NIE podal wariantu wprost, NAJPIERW odpowiedz samym pytaniem "Ktory wariant - skrocony, pelny czy dla grupy?" i ZAKONCZ ture BEZ wywolywania narzedzia. Gdy znasz wariant wywolaj route_report z variant i route_id. route_report zwraca JEDEN ustrukturyzowany DOKUMENT KONTEKSTOWY (dane trasy, profil, nawierzchnia-tabela, pogoda, forma+strefy mocy, sprzet, wyliczenia B2/B3/B4, punkty uzupelnienia, kombinacje ryzyk, nieznana nawierzchnia) ORAZ naglowek sekcji C. route_report sam buduje deterministyczny raport A+B — zostanie on doklejony do odpowiedzi automatycznie; Ty napisz WYLACZNIE sekcje C wg instrukcji z wiadomosci po tool call i NIE przepisuj A+B. Domyslnie nawierzchnia jest scalona w zmiany; pelna tabele po ramkach 80 m podaj tylko na wyrazna prosbe uzytkownika, wolajac route_report z surface_detail=true. Wariant "dla grupy" bez danych osobistych (waty/FTP, sprzet, cisnienia).
 - route_analysis pozostaje dostepne jako ALTERNATYWA (jednoprzebiegowa, czysto-LLM analiza A-F bez dokumentu kontekstowego) - uzyj TYLKO gdy uzytkownik wyraznie poprosi o "analize LLM" / "jedna spojna analize"; w innych przypadkach domyslnie route_report (powyzej).
 - Pytanie jak się NAZYWA trasa / jaka jest nazwa trasy (po route_id lub "najnowsza") → wywołaj route_plan_analysis (route_id); pole route_name w wyniku zawiera nazwę. ZAKAZ używania rwgps_route_fetch do szukania nazwy — nie ma tam nazwy i powoduje pętlę.
 
@@ -281,6 +281,9 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict,
     tool_results_log: list[dict] = []
     action_draft = None
     steps = 0
+    _route_report_analysis = None
+    _route_report_ctx_c = None
+    _max_completion = 5000
 
     _log.info(f"Albert start: model={_MODEL} base_url={_BASE_URL} tools={len(tools_spec)} question={question[:80]}")
 
@@ -294,7 +297,7 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict,
             kwargs: dict[str, Any] = {
                 "model": _eff_model,
                 "messages": messages,
-                **_gen_kwargs(_eff_model, _eff_url, 5000),
+                **_gen_kwargs(_eff_model, _eff_url, _max_completion),
             }
             if tools_spec:
                 kwargs["tools"] = tools_spec
@@ -328,6 +331,24 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict,
 
         # Albert zakończył — zwróć odpowiedź tekstem
         if finish == "stop" or not msg.tool_calls:
+            # TASK 13 / Opcja B: raport A+B sklejamy deterministycznie (nie przez LLM);
+            # model dostarcza wylacznie sekcje C.
+            if _route_report_analysis:
+                _c_body = (answer_text or "").strip()
+                if _route_report_ctx_c:
+                    _final = _route_report_analysis.rstrip() + "\n\n" + (_c_body or "(ocena niedostępna)")
+                else:
+                    _final = _route_report_analysis.rstrip() + "\n"
+                _log.info(
+                    f"Albert route_report assembly: analysis_len={len(_route_report_analysis)} c_len={len(_c_body)}"
+                )
+                return {
+                    "answer": _final,
+                    "status": "ok",
+                    "tool_results": tool_results_log,
+                    "steps": steps,
+                    "action_draft": action_draft,
+                }
             if not answer_text:
                 answer_text = "Brak danych do odpowiedzi."
 
@@ -446,6 +467,24 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict,
                 "tool_call_id": tc.id,
                 "content": json.dumps(tool_content, ensure_ascii=False, default=str)[:16000],
             })
+
+            if tool_name == "route_report" and isinstance(result, dict):
+                _rd = result.get("data", result) if isinstance(result.get("data"), dict) else result
+                _route_report_analysis = _rd.get("analysis")
+                _route_report_ctx_c = _rd.get("context_for_section_c")
+                if _route_report_ctx_c:
+                    messages.append({"role": "user", "content": (
+                        "Raport A+B zostanie dolaczony do odpowiedzi automatycznie (deterministycznie). "
+                        "NIE przepisuj A+B. Napisz WYLACZNIE sekcje C — bez naglowka, zacznij od 'C1'. "
+                        "Trzymaj sie danych i instrukcji ponizej, po polsku:\n\n" + _route_report_ctx_c
+                    )})
+                    _max_completion = 800
+                else:
+                    messages.append({"role": "user", "content": (
+                        "Raport (wariant skrocony) zostanie dolaczony automatycznie. "
+                        "Odpowiedz tylko slowem 'OK' — nic wiecej nie pisz."
+                    )})
+                    _max_completion = 80
 
             # Jeśli to WRITE_DRAFT, dodaj wymuszoną instrukcję po tool call
             if isinstance(result, dict) and result.get("status") == "WRITE_DRAFT":
