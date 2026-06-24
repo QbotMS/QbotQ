@@ -69,7 +69,16 @@ def _wind_stretches(rows, sign, thr=1.5, min_km=1.0):
     return out
 
 
-def build(artifact_id=None, route_id=None, frame_size=80):
+def _wind_speed_kmh_for_block(rows, a_km, b_km):
+    """Srednia predkosc wiatru (wind_speed_ms) dla ramek w bloku a_km..b_km → km/h.
+    rows: krotki (frame_index, dist_start_m, dist_end_m, ..., wind_speed_ms)  (indeks 9).
+    Zwraca float lub None gdy brak danych."""
+    speeds = [r[9] for r in rows if r[9] is not None
+              and r[1] >= a_km * 1000.0 and r[2] <= b_km * 1000.0]
+    return (sum(speeds) / len(speeds) * 3.6) if speeds else None
+
+
+def build(artifact_id=None, route_id=None, frame_size=80, climb_grade=5.0):
     conn = _db_connect()
     cur = conn.cursor()
     where = "f.route_artifact_id=%s" if artifact_id is not None else "f.route_id=%s"
@@ -92,7 +101,7 @@ def build(artifact_id=None, route_id=None, frame_size=80):
     total_km = rows[-1][2] / 1000.0
     ascent = sum(r[3] for r in rows if r[3] and r[3] > 0)
     descent = -sum(r[3] for r in rows if r[3] and r[3] < 0)
-    steep_m = sum((r[2] - r[1]) for r in rows if r[4] is not None and r[4] >= 4.0)
+    steep_m = sum((r[2] - r[1]) for r in rows if r[4] is not None and r[4] >= climb_grade)
     max_grade = max((r[4] for r in rows if r[4] is not None), default=None)
 
     surf_m = {}
@@ -106,7 +115,7 @@ def build(artifact_id=None, route_id=None, frame_size=80):
     lines.append(f"📋 ANALIZA PLANOWANEJ TRASY")
     lines.append(f"Dystans: {total_km:.1f} km | podjazdy: +{ascent:.0f} m / zjazdy: -{descent:.0f} m")
     if max_grade is not None:
-        lines.append(f"Stromizny: maks {max_grade:.0f}%, stromo (>=4%) na ~{steep_m/1000:.1f} km")
+        lines.append(f"Stromizny: maks {max_grade:.0f}%, stromo (>={climb_grade:.0f}%) na ~{steep_m/1000:.1f} km")
     top_surf = sorted(surf_m.items(), key=lambda kv: kv[1], reverse=True)[:3]
     surf_txt = ", ".join(f"{s} {m/total_m*100:.0f}%" for s, m in top_surf)
     lines.append(f"Nawierzchnia: {paved_m/total_m*100:.0f}% utwardzona | {surf_txt}")
@@ -121,13 +130,32 @@ def build(artifact_id=None, route_id=None, frame_size=80):
         head = _wind_stretches(rows, sign=-1)
         tail = _wind_stretches(rows, sign=+1)
         if head:
-            txt = "; ".join(f"km {a:.0f}–{b:.0f}" for a, b in head)
-            lines.append(f"   💨 Pod wiatr (oszczedzaj sie wczesniej): {txt}")
+            parts = []
+            for a, b in head:
+                kmh = _wind_speed_kmh_for_block(rows, a, b)
+                if kmh is not None:
+                    parts.append(f"km {a:.0f}–{b:.0f} (~{kmh:.0f} km/h)")
+                else:
+                    parts.append(f"km {a:.0f}–{b:.0f}")
+            lines.append(f"   💨 Pod wiatr (oszczedzaj sie wczesniej): {'; '.join(parts)}")
         if tail:
-            txt = "; ".join(f"km {a:.0f}–{b:.0f}" for a, b in tail)
-            lines.append(f"   🍃 Wiatr w plecy: {txt}")
+            parts = []
+            for a, b in tail:
+                kmh = _wind_speed_kmh_for_block(rows, a, b)
+                if kmh is not None:
+                    parts.append(f"km {a:.0f}–{b:.0f} (~{kmh:.0f} km/h)")
+                else:
+                    parts.append(f"km {a:.0f}–{b:.0f}")
+            lines.append(f"   🍃 Wiatr w plecy: {'; '.join(parts)}")
         if not head and not tail:
             lines.append("   Wiatr slaby / zmienny — bez istotnych odcinkow.")
+        all_speeds = [r[9] for r in rows if r[9] is not None]
+        if all_speeds:
+            avg_kmh = sum(all_speeds) / len(all_speeds) * 3.6
+            max_kmh = max(all_speeds) * 3.6
+            lines.append(f"   Sila wiatru: sr. {avg_kmh:.0f} km/h, maks {max_kmh:.0f} km/h")
+        else:
+            lines.append("   Sila wiatru: brak danych")
     else:
         lines.append("")
         lines.append("🌤  Pogoda: nie policzona — uruchom route_weather z data jazdy.")
@@ -150,7 +178,7 @@ def build(artifact_id=None, route_id=None, frame_size=80):
     return 0
 
 
-def build_detail(artifact_id=None, route_id=None, frame_size=80, climb_grade=3.0, climb_min_m=200.0, land_cover=False):
+def build_detail(artifact_id=None, route_id=None, frame_size=80, climb_grade=5.0, climb_min_m=200.0, land_cover=False):
     # FAZA A — SZCZEGOLOWY ale ZWIEZLY profil z ramek (mocno < 4000 znakow = limit relay Alberta). Tylko ODCZYT.
     conn = _db_connect()
     cur = conn.cursor()
@@ -171,10 +199,10 @@ def build_detail(artifact_id=None, route_id=None, frame_size=80, climb_grade=3.0
     descent = -sum(r[5] for r in rows if r[5] and r[5] < 0)
     grades = [r[6] for r in rows if r[6] is not None]
     max_grade = max(grades) if grades else 0.0
-    steep_m = sum((r[2] - r[1]) for r in rows if r[6] is not None and r[6] >= 4.0)
+    steep_m = sum((r[2] - r[1]) for r in rows if r[6] is not None and r[6] >= climb_grade)
     lines = []
     lines.append("SZCZEGOLOWY PROFIL TRASY (z ramek %d m)" % int(frame_size))
-    lines.append("Dystans %.1f km | %d ramek | +%.0f m / -%.0f m | max %.0f%% | stromo(>=4%%) ~%.1f km" % (total_km, len(rows), ascent, descent, max_grade, steep_m/1000.0))
+    lines.append("Dystans %.1f km | %d ramek | +%.0f m / -%.0f m | max %.0f%% | stromo(>=%.0f%%) ~%.1f km" % (total_km, len(rows), ascent, descent, max_grade, climb_grade, steep_m/1000.0))
     if land_cover:
         try:
             from tools.rwgps.surface_landcover import build_sectors as _bs, annotate_sectors as _an, render_sectors_text as _rt
@@ -282,6 +310,17 @@ def build_detail(artifact_id=None, route_id=None, frame_size=80, climb_grade=3.0
             lines.append("  km %.1f-%.1f (%.1f km): +%.0f m, max %.0f%%" % (s0/1000.0, e0/1000.0, (e0-s0)/1000.0, g, mx))
     else:
         lines.append("  brak istotnych podjazdow — plasko")
+    # --- Falistosc: odcinki w pasmie 3.0 - climb_grade ---
+    _wavy_low = 3.0
+    if _wavy_low < climb_grade:
+        _wavy_segs = [(r[2] - r[1]) for r in rows if r[6] is not None and _wavy_low <= r[6] < climb_grade]
+        _wavy_m = sum(_wavy_segs)
+        _wavy_n = len(_wavy_segs)
+        lines.append("")
+        if _wavy_n > 0:
+            lines.append("Falistosc: %d odcinkow %.0f-%.0f%% (~%.1f km lacznie)" % (_wavy_n, _wavy_low, climb_grade, _wavy_m / 1000.0))
+        else:
+            lines.append("Falistosc: brak odcinkow %.0f-%.0f%%" % (_wavy_low, climb_grade))
     print("\n".join(lines))
     return 0
 

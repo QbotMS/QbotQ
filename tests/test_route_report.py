@@ -497,5 +497,156 @@ class TestRouteReportTask13(unittest.TestCase):
         self.assertNotIn("qgpt_text", src)
         self.assertFalse(hasattr(rr, "qgpt_text"))
 
+class TestRouteReportTask16(unittest.TestCase):
+    """TASK 16 — dane zasilajace wzorce: wiatr km/h, POI z km, spojnosc podjazdow, kompletnosc nawierzchni."""
+
+    def setUp(self):
+        self.calls = []
+        self.canned = {
+            "route_plan_analysis": {"status": "OK", "data": {"analysis": (
+                "ANALIZA PLANOWANEJ TRASY\n"
+                "Dystans: 71.1 km | podjazdy: +800 m / zjazdy: -800 m\n"
+                "Stromizny: maks 7%, stromo(>=3.0%) ~2.5 km\n"
+                "Nawierzchnia: 60% utwardzona | asfalt 60%, szuter 30%\n"
+                "\n"
+                "🌤  Pogoda (prognoza): 22-28°C, opady ~0.0 mm na trasie\n"
+                "   \U0001f4a8 Pod wiatr (oszczedzaj sie wczesniej): km 40–50 (~22 km/h)\n"
+                "   Sila wiatru: sr. 18 km/h, maks 32 km/h\n"
+                "\n"
+                "\U0001f4aa Forma (FitModel, 2026-06-24): FTP 257 W, 2.55 W/kg"
+            )}},
+            "route_profile_detail": {"status": "OK", "data": {"analysis": (
+                "SZCZEGOLOWY PROFIL TRASY (z ramek 80 m)\n"
+                "Dystans 71.1 km | 889 ramek | +800 m / -800 m | max 7% | stromo(>=3.0%) ~2.5 km\n"
+                "\n"
+                "Nawierzchnia (odcinki >= 0.2 km):\n"
+                "  km 0.0-20.0 (20.0): asfalt\n"
+                "  km 20.0-30.0 (10.0): szuter luzny\n"
+                "  km 30.0-63.3 (33.3): asfalt\n"
+                "\n"
+                "Podjazdy (>= 3.0%, min 200 m):\n"
+                "  km 25.0-27.5 (2.5 km): +180 m, max 7%\n"
+            )}},
+            "route_time_estimate": {"status": "OK", "data": {"analysis":
+                "Szacowany czas trasy\nv 18.0 km/h -> 4:00"}},
+            "tire_pressure": {"status": "OK", "data": {"analysis":
+                "CISNIENIE OPON\n#1 2.0 bar / 2.2 bar"}},
+            "route_fuel_plan": {"status": "OK", "data": {"analysis":
+                "- **65 g/h**\n- **0.90 L/h**"}},
+            "route_poi_analyze_readonly": {"status": "OK", "data": {
+                "analysis": "POI: km 5.0 woda; km 45.0 sklep",
+                "counts": {"water": 1, "food": 1, "attractions": 0},
+                "report_path": "/opt/qbot/artifacts/poi.md"}},
+        }
+
+        def fake_call(name, args):
+            self.calls.append((name, dict(args)))
+            return self.canned[name]
+
+        self._orig_call = rr._call_tool
+        self._orig_dist = rr._resolve_distance_km
+        rr._call_tool = fake_call
+        rr._resolve_distance_km = lambda route_id: 71.1
+        import qgpt_client
+        self._orig_qgpt = qgpt_client.qgpt_text
+        qgpt_client.qgpt_text = lambda prompt, **kw: "- C1 taktyka (ocena): ok."
+
+    def tearDown(self):
+        import qgpt_client
+        rr._call_tool = self._orig_call
+        rr._resolve_distance_km = self._orig_dist
+        qgpt_client.qgpt_text = self._orig_qgpt
+
+    def _ctx(self, route_id="55798129"):
+        return rr._tool_route_report(
+            {"route_id": route_id, "variant": "pelny"}
+        )["context_for_section_c"]
+
+    def test_wind_kmh_in_context(self):
+        """16.d: plan zawiera 'Sila wiatru: sr. 18 km/h' -> dokument ma 'km/h'."""
+        ctx = self._ctx()
+        self.assertIn("POGODA", ctx)
+        self.assertIn("km/h", ctx)
+        self.assertNotIn("brak w analizie planu", ctx)
+
+    def test_poi_km_in_context(self):
+        """16.f: POI z km 5.0 i 45.0 -> lista + ostrzezenie o luce 40 km."""
+        ctx = self._ctx()
+        self.assertIn("PUNKTY UZUPELNIENIA", ctx)
+        self.assertIn("km 5", ctx)
+        self.assertIn("km 45", ctx)
+        # luka 40 km miedzy km 5 a km 45 > 20 km -> ostrzezenie
+        self.assertIn("UWAGA", ctx)
+        self.assertRegex(ctx, r"przerwa\s+4\d\s+km")
+
+    def test_climb_consistency(self):
+        """16.a-fix: build() i build_detail() uzywaja climb_grade=5.0;
+        oba raportuja '>=5%'; profil zawiera 'Falistosc' dla odcinkow 3-5%."""
+        import io
+        from unittest.mock import patch, MagicMock
+        from tools.rwgps.route_brief import build, build_detail
+
+        # Ramki build(): (idx, d0_m, d1_m, gain_m, grade_pct, surface, temp, precip, wind_comp, wind_ms)
+        def _br():
+            r = []
+            for i in range(25):   # km 0-2: 2% (plasko)
+                r.append((i, i*80, i*80+80, 1.6, 2.0, "asfalt", None, None, None, None))
+            for i in range(25):   # km 2-4: 4% (faldy 3-5%)
+                r.append((25+i, 2000+i*80, 2000+i*80+80, 3.2, 4.0, "asfalt", None, None, None, None))
+            for i in range(7):    # km 4.0-4.56: 6% (podjazd >5%, 560m > climb_min_m=200m)
+                r.append((50+i, 4000+i*80, 4000+i*80+80, 4.8, 6.0, "asfalt", None, None, None, None))
+            for i in range(55):   # km 4.56-8.96: 1% (plasko)
+                r.append((57+i, 4560+i*80, 4560+i*80+80, 0.8, 1.0, "asfalt", None, None, None, None))
+            return r
+
+        # Ramki build_detail(): (idx, d0_m, d1_m, ele0, ele1, gain_m, grade_pct, surface)
+        def _dr():
+            r = []
+            for i in range(25):
+                r.append((i, i*80, i*80+80, 100.0, 101.6, 1.6, 2.0, "asfalt"))
+            for i in range(25):
+                r.append((25+i, 2000+i*80, 2000+i*80+80, 100.0, 103.2, 3.2, 4.0, "asfalt"))
+            for i in range(7):
+                r.append((50+i, 4000+i*80, 4000+i*80+80, 100.0, 104.8, 4.8, 6.0, "asfalt"))
+            for i in range(55):
+                r.append((57+i, 4560+i*80, 4560+i*80+80, 100.0, 100.8, 0.8, 1.0, "asfalt"))
+            return r
+
+        # --- build() ---
+        mc = MagicMock()
+        mc.cursor.return_value.fetchall.return_value = _br()
+        mc.cursor.return_value.fetchone.return_value = None
+        with patch("tools.rwgps.route_brief._db_connect", return_value=mc):
+            buf = io.StringIO()
+            with patch("sys.stdout", buf):
+                build(route_id="test_r")
+        out_b = buf.getvalue()
+
+        # --- build_detail() ---
+        mc2 = MagicMock()
+        mc2.cursor.return_value.fetchall.return_value = _dr()
+        with patch("tools.rwgps.route_brief._db_connect", return_value=mc2):
+            with patch("tools.rwgps.route_brief._infer_unknown_frame_surfaces", return_value={}):
+                buf2 = io.StringIO()
+                with patch("sys.stdout", buf2):
+                    build_detail(route_id="test_r")
+        out_d = buf2.getvalue()
+
+        # oba progi >=5%
+        self.assertIn(">=5%", out_b, "build() brak '>=5%%': " + out_b[:300])
+        self.assertIn(">=5%", out_d, "build_detail() brak '>=5%%': " + out_d[:300])
+        # brak starego progu 4%
+        self.assertNotIn(">=4%", out_b, "build() ma stary prog >=4%")
+        self.assertNotIn(">=4%", out_d, "build_detail() ma stary prog >=4%")
+        # profil zawiera linie Falistosc (sa odcinki 3-5%)
+        self.assertIn("Falistosc", out_d, "build_detail() brak Falistosc: " + out_d[:300])
+
+    def test_surface_table_completeness(self):
+        """16.b: ostatni odcinek km 63.3, dystans 71.1 -> UWAGA o brakujacej nawierzchni."""
+        ctx = self._ctx()
+        self.assertIn("UWAGA: brak danych nawierzchni", ctx)
+        # musi podac zakres brakujacych danych
+        self.assertRegex(ctx, r"63[,.]3.*71[,.]1|km\s+63")
+
 if __name__ == "__main__":
     unittest.main()

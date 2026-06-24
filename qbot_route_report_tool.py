@@ -182,7 +182,18 @@ def _parse_fuel_rates(text: str | None) -> tuple[str | None, str | None]:
     return (g.group(0) if g else None, l.group(0) if l else None)
 
 
-# ── TASK 12: dokument kontekstowy + kombinacje ryzyk + wnioskowanie ────────
+def _parse_wind_speed_kmh(text):
+    """Wyciaga linie 'Sila wiatru: sr. X km/h, maks Y km/h' z tekstu briefu."""
+    if not text:
+        return None
+    for ln in text.splitlines():
+        ls = ln.strip()
+        if ls.lower().startswith("sila wiatru:"):
+            return ls
+    return None
+
+
+# ── TASK 12:
 def _parse_precip_mm(text: str | None) -> float | None:
     """Opady mm z analizy planu (A5)."""
     if not text:
@@ -276,9 +287,51 @@ def _parse_wind_head_blocks(plan_txt: str | None) -> list[tuple[float, float]]:
     return blocks
 
 
-def _parse_poi_km(poi_result: Any) -> list[tuple[float, str]]:
-    """Punkty uzupelnienia jako [(km, typ), ...]. Najpierw z _analysis(poi) ('km 12.5 woda'),
-    fallback: czyta report_json_path i bierze route_km z list water/food/attractions."""
+def _read_poi_positions_cache(route_id, start=None):
+    """Czyta cache poi_positions_{route_id}.json (TASK 15 FAZA C). Zwraca [] gdy brak."""
+    if not route_id:
+        return []
+    import json as _json
+    from pathlib import Path as _P
+    cache = _P(f"/opt/qbot/artifacts/reports/poi_positions_{route_id}.json")
+    if not cache.exists():
+        return []
+    try:
+        obj = _json.loads(cache.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    label_map = {"water": "woda", "hard_resupply": "sklep",
+                 "soft_food_stop": "jedzenie", "attractions": "atrakcja"}
+    out = []
+    for key, label in label_map.items():
+        v = obj.get(key)
+        if not isinstance(v, list):
+            continue
+        for it in v:
+            if not isinstance(it, dict):
+                continue
+            km = it.get("route_km")
+            if km is None:
+                continue
+            name = it.get("name") or ""
+            hours = it.get("open_hours") or it.get("hours") or ""
+            desc = f"{label} ({name})" if name else label
+            if hours and start:
+                desc = f"{desc}, {hours}"
+            try:
+                out.append((float(km), desc))
+            except (TypeError, ValueError):
+                continue
+    out.sort(key=lambda p: p[0])
+    return out
+
+
+def _parse_poi_km(poi_result: Any, route_id=None, start=None) -> list[tuple[float, str]]:
+    """Punkty uzupelnienia jako [(km, typ), ...]. 16.f: najpierw cache poi_positions_{route_id}.json,
+    potem _analysis(poi), potem report_json_path."""
+    cached = _read_poi_positions_cache(route_id, start)
+    if cached:
+        return cached
     out: list[tuple[float, str]] = []
     txt = _analysis(poi_result)
     if txt:
@@ -364,7 +417,7 @@ def _build_risk_combinations(surf_segments, wind_blocks_head, poi_list, dist_km)
     return combos
 
 
-def _build_context_document(plan, prof, t, fuel, tp, poi, wellness, start) -> str:
+def _build_context_document(plan, prof, t, fuel, tp, poi, wellness, start, route_id=None) -> str:
     """TASK 12: jeden ustrukturyzowany dokument kontekstowy dla Alberta.
     Sekcje osobiste (FORMA/SPRZET/B2B3) pojawiaja sie tylko gdy podano ich dane
     (wellness/tp/fuel) - dla wariantu 'grupa' sa None i sa pomijane."""
@@ -419,6 +472,13 @@ def _build_context_document(plan, prof, t, fuel, tp, poi, wellness, start) -> st
             out.append(f"| {a:g} | {b:g} | {s} | {b - a:g} km |")
     else:
         out.append("- brak odcinkow nawierzchni > 500 m / dane niedostepne")
+    # 16.b: asercja kompletnosci tabeli nawierzchni
+    if all_segs and dist_km is not None:
+        last_end = max(seg[1] for seg in all_segs)
+        if dist_km - last_end > 0.3:
+            out.append(f"⚠️ UWAGA: brak danych nawierzchni km {last_end:g}–{dist_km:g} (tabela niekompletna)")
+    elif not all_segs and dist_km is not None:
+        out.append(f"⚠️ UWAGA: brak danych nawierzchni na całej trasie (km 0–{dist_km:g})")
     out.append("")
 
     temp_c = _parse_temp_c(plan_txt)
@@ -431,7 +491,11 @@ def _build_context_document(plan, prof, t, fuel, tp, poi, wellness, start) -> st
     wind_lines = [ln.strip() for ln in (plan_txt or "").splitlines() if "wiatr" in ln.lower()]
     for wl in wind_lines:
         out.append(f"- {wl}")
-    out.append("- Sila wiatru (km/h): brak w analizie planu (dane kierunkowe powyzej)")
+    wind_kmh = _parse_wind_speed_kmh(plan_txt)
+    if wind_kmh:
+        out.append(f"- {wind_kmh}")
+    else:
+        out.append("- Wiatr (km/h): brak danych")
     if temp_c is None and precip_mm is None and not wind_lines:
         out.append("- brak danych pogodowych")
     out.append("")
@@ -480,7 +544,7 @@ def _build_context_document(plan, prof, t, fuel, tp, poi, wellness, start) -> st
     out.append("")
 
     out.append("### PUNKTY UZUPELNIENIA")
-    poi_pts = _parse_poi_km(poi)
+    poi_pts = _parse_poi_km(poi, route_id=route_id, start=start)
     if poi_pts:
         for km, typ in poi_pts:
             out.append(f"- km {km:g}: {typ}")
@@ -785,7 +849,7 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
     context_doc = _build_context_document(
         collected.get("plan"), collected.get("prof"), collected.get("t"),
         collected.get("fuel"), collected.get("tp"), collected.get("poi"),
-        collected.get("forma"), start,
+        collected.get("forma"), start, route_id=route_id,
     )
     # DOKUMENT KONTEKSTOWY nie idzie do widocznego raportu — tylko do context_for_section_c.
     # ---- C: ocena (sam naglowek; tresc C dopisuje Albert deterministycznie w albert.py) ----
