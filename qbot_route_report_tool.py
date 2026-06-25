@@ -417,6 +417,192 @@ def _build_risk_combinations(surf_segments, wind_blocks_head, poi_list, dist_km)
     return combos
 
 
+# ── TASK 17: detekcja blokow, fazy, tabela ryzyk ──────────────────
+
+def _parse_climbs_from_text(prof_txt):
+    """Podjazdy z bloku 'Podjazdy ...' -> [(km_start, km_end, max_grade%), ...].
+    Filtruje: dlugosc >= 0.2 km i max_grade >= 5.0%."""
+    if not prof_txt:
+        return []
+    climbs = []
+    in_block = False
+    for line in prof_txt.splitlines():
+        if "Podjazdy" in line and "%" in line:
+            in_block = True
+            continue
+        if in_block:
+            if not line.strip():
+                break
+            m = re.match(
+                r"\s*km\s+([0-9.]+)\s*[-–]\s*([0-9.]+)\s*\([0-9.]+ km\).*?max\s+([0-9.]+)%",
+                line,
+            )
+            if m:
+                a, b, grade = float(m.group(1)), float(m.group(2)), float(m.group(3))
+                if (b - a) >= 0.2 and grade >= 5.0:
+                    climbs.append((a, b, grade))
+    return climbs
+
+
+def _parse_wind_blocks_with_kmh(plan_txt):
+    """Bloki pod wiatr z analizy planu z km/h -> [(km_start, km_end, kmh), ...].
+    Filtruje: dlugosc >= 3 km."""
+    if not plan_txt:
+        return []
+    result = []
+    for line in plan_txt.splitlines():
+        if "Pod wiatr" not in line:
+            continue
+        after = line.split(":", 1)[1] if ":" in line else line
+        kmh_m = re.search(r"\(~?([0-9.]+)\s*km/h\)", after)
+        kmh = float(kmh_m.group(1)) if kmh_m else None
+        for m in re.finditer(r"([0-9]+(?:\.[0-9]+)?)\s*[-–]\s*([0-9]+(?:\.[0-9]+)?)", after):
+            a, b = float(m.group(1)), float(m.group(2))
+            if (b - a) >= 3.0:
+                result.append((a, b, kmh))
+    return result
+
+
+def _detect_blocks(surf_segments, climbs, wind_blocks, dist_km):
+    """Wykrywa istotne bloki trasy (TASK 17).
+    surf_segments: [(km_from, km_to, surf)], climbs: [(a, b, grade%)],
+    wind_blocks: [(a, b, kmh|None)], dist_km: float.
+    Zwraca list[dict] z km_start, km_end, factors, detail.
+    Progi: podjazd >=5%/>=200m; pod wiatr >=3km (juz odfiltrowane);
+    nieasfalt >2km (2.pol >1.5km); START 0-6km; KONIEC ostatnie ~10%."""
+    def _offroad(s):
+        low = s.lower()
+        return not any(p in low for p in _PAVED_SURF) and "nieznana" not in low and "unknown" not in low
+
+    raw = []
+    start_end = min(6.0, dist_km * 0.08)
+    raw.append({"km_start": 0.0, "km_end": start_end, "factors": ["start"],
+                 "detail": {"start": f"km 0–{start_end:.0f}: zachowawcze tempo"}})
+
+    for a, b, grade in climbs:
+        raw.append({"km_start": a, "km_end": b, "factors": ["podjazd"],
+                     "detail": {"podjazd": f"max {grade:.0f}%, {(b-a)*1000:.0f} m"}})
+
+    for a, b, kmh in wind_blocks:
+        kmh_str = f"~{kmh:.0f} km/h" if kmh is not None else ""
+        raw.append({"km_start": a, "km_end": b, "factors": ["pod wiatr"],
+                     "detail": {"pod wiatr": kmh_str}})
+
+    half = dist_km / 2.0
+    for x, y, surf in surf_segments:
+        if not _offroad(surf):
+            continue
+        threshold = 1.5 if x >= half else 2.0
+        if (y - x) > threshold:
+            raw.append({"km_start": x, "km_end": y, "factors": ["nawierzchnia"],
+                         "detail": {"nawierzchnia": surf.strip()}})
+
+    endcap_start = dist_km * 0.90
+    raw.append({"km_start": endcap_start, "km_end": dist_km, "factors": ["koncowka"],
+                 "detail": {"koncowka": f"ostatnie 10% (km {endcap_start:.0f}–{dist_km:.0f}), jedz wg RPE"}})
+
+    raw.sort(key=lambda blk: blk["km_start"])
+
+    merged = []
+    for blk in raw:
+        if not merged or blk["km_start"] >= merged[-1]["km_end"]:
+            merged.append({"km_start": blk["km_start"], "km_end": blk["km_end"],
+                            "factors": list(blk["factors"]), "detail": dict(blk["detail"])})
+        else:
+            prev = merged[-1]
+            prev["km_end"] = max(prev["km_end"], blk["km_end"])
+            for f in blk["factors"]:
+                if f not in prev["factors"]:
+                    prev["factors"].append(f)
+                    prev["detail"][f] = blk["detail"][f]
+    return merged
+
+
+def _build_phase_plan(blocks, ftp, dist_km, has_wavy=False):
+    """Plan jazdy po fazach (wzorzec 2). Kazdy blok = faza z taktykami per factor
+    i watami z FTP. Przerwy = faza toczna (tag 'falista' gdy has_wavy)."""
+    ftp = ftp or 250
+
+    def _w(lo, hi):
+        a, b = _power_zone(ftp, lo, hi)
+        return f"{a}–{b} W"
+
+    lines = ["### PLAN JAZDY PO FAZACH", ""]
+    prev_km = 0.0
+
+    def _rolling(km_a, km_b):
+        label = "FAZA TOCZNA"
+        if has_wavy:
+            label += " (falista, faldy 3–5%)"
+        z2 = _w(60, 75)
+        lines.append(f"**km {km_a:.0f}–{km_b:.0f}: {label}**")
+        note = " Faldy — nie forsuj, kontroluj kadencje." if has_wavy else ""
+        lines.append(f"  Jedz swobodnie Z2 {z2}.{note}")
+        lines.append("")
+
+    for blk in blocks:
+        a, b = blk["km_start"], blk["km_end"]
+        if a > prev_km + 0.5:
+            _rolling(prev_km, a)
+        parts = []
+        for f in blk["factors"]:
+            d = blk["detail"].get(f, "")
+            parts.append(f.upper() + (f" ({d})" if d else ""))
+        lines.append(f"**km {a:.0f}–{b:.0f}: {' + '.join(parts)}**")
+        for factor in blk["factors"]:
+            if factor == "start":
+                lines.append(f"  START: zachowaj sie, nie wchodz powyzej Z2. Moc: {_w(60,75)}.")
+            elif factor == "podjazd":
+                lines.append(f"  PODJAZD: trzymaj Z3/Z4 chwilowo ({_w(76,90)} / {_w(91,100)}), jedz pod moc i tetno.")
+            elif factor == "pod wiatr":
+                lines.append(f"  POD WIATR: aero, Z2 srodek ({_w(65,75)}). Nie scigaj sie ze stadem.")
+            elif factor == "nawierzchnia":
+                lines.append(f"  NAWIERZCHNIA: obniz moc do Z2 dol ({_w(60,70)}), kontroluj linie jazdy.")
+            elif factor == "koncowka":
+                lines.append(f"  KONCOWKA: jedz wg RPE, nie wg predkosci. Moc: {_w(55,70)} lub nizej.")
+        lines.append("")
+        prev_km = b
+
+    if dist_km > prev_km + 0.5:
+        _rolling(prev_km, dist_km)
+
+    lines.append("_Zasada: jedz pod koszt fizjologiczny (moc+tetno+RPE+temp), nie pod stala predkosc._")
+    return "\n".join(lines)
+
+
+def _build_risk_table(blocks):
+    """Tabela ryzyk (wzorzec 3) z tych samych blokow.
+    Poziom: >=2 factors lub nieasfalt+pod wiatr -> wysokie; 1 istotny -> srednie."""
+    _SKIP = {"start"}
+    lines = ["### TABELA RYZYK", ""]
+    lines.append("| km | poziom | powod |")
+    lines.append("|---|---|---|")
+    has_rows = False
+    for blk in blocks:
+        a, b = blk["km_start"], blk["km_end"]
+        factors = [f for f in blk["factors"] if f not in _SKIP]
+        if not factors:
+            continue
+        offroad = "nawierzchnia" in factors
+        wind = "pod wiatr" in factors
+        n = len(factors)
+        if n >= 2 or (offroad and wind):
+            level = "wysokie"
+        elif n == 1:
+            level = "srednie" if factors[0] in ("podjazd", "pod wiatr", "nawierzchnia", "koncowka") else "niskie"
+        else:
+            level = "niskie"
+        powod = " + ".join(factors)
+        details = [blk["detail"].get(f, "") for f in factors if blk["detail"].get(f)]
+        if details:
+            powod += f" ({'; '.join(details)})"
+        lines.append(f"| km {a:.0f}–{b:.0f} | {level} | {powod} |")
+        has_rows = True
+    if not has_rows:
+        lines.append("| – | – | brak istotnych blokow ryzyka |")
+    return "\n".join(lines)
+
+
 def _build_context_document(plan, prof, t, fuel, tp, poi, wellness, start, route_id=None) -> str:
     """TASK 12: jeden ustrukturyzowany dokument kontekstowy dla Alberta.
     Sekcje osobiste (FORMA/SPRZET/B2B3) pojawiaja sie tylko gdy podano ich dane
@@ -571,6 +757,29 @@ def _build_context_document(plan, prof, t, fuel, tp, poi, wellness, start, route
         km_list = "; ".join(f"km {a:g}–{b:g}" for a, b, _ in unknown_segs)
         out.append(f"- Odcinki nieznane: {km_list}")
     out.append(f"- Wnioskowanie: {_infer_unknown_surface(plan_txt, temp_c, precip_mm)}")
+    out.append("")
+
+    # ── TASK 17: PLAN JAZDY PO FAZACH + TABELA RYZYK
+    _blocks17: list = []
+    _ftp17 = _parse_ftp_w(plan_txt)
+    _climbs17 = _parse_climbs_from_text(prof_txt)
+    _wind17 = _parse_wind_blocks_with_kmh(plan_txt)
+    _has_wavy17 = "Falistosc:" in (prof_txt or "") and "brak odcinkow" not in (prof_txt or "")
+    if dist_km:
+        _blocks17 = _detect_blocks(merged, _climbs17, _wind17, dist_km)
+
+    if dist_km and _blocks17:
+        out.append(_build_phase_plan(_blocks17, _ftp17, dist_km, has_wavy=_has_wavy17))
+    else:
+        out.append("### PLAN JAZDY PO FAZACH")
+        out.append("- brak danych dystansu lub blokow")
+    out.append("")
+
+    if _blocks17:
+        out.append(_build_risk_table(_blocks17))
+    else:
+        out.append("### TABELA RYZYK")
+        out.append("- brak blokow ryzyka / dystans niedostepny")
     out.append("")
 
     return "\n".join(out).rstrip()

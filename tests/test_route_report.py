@@ -648,5 +648,105 @@ class TestRouteReportTask16(unittest.TestCase):
         # musi podac zakres brakujacych danych
         self.assertRegex(ctx, r"63[,.]3.*71[,.]1|km\s+63")
 
+
+class TestRouteReportTask17(unittest.TestCase):
+    """TASK 17 - bloki, fazy, tabela ryzyk."""
+
+    def test_detect_climb_block(self):
+        """Segment >=5%/>=200m daje blok z faktorem 'podjazd'."""
+        climbs = [(10.0, 12.0, 8.0)]
+        blocks = rr._detect_blocks([], climbs, [], 50.0)
+        all_factors = [f for b in blocks for f in b["factors"]]
+        self.assertIn("podjazd", all_factors)
+
+    def test_detect_overlap_merge(self):
+        """Climb + wind na tym samym km -> ONE blok z oboma faktorami."""
+        climbs = [(10.0, 14.0, 7.0)]
+        wind = [(12.0, 18.0, 25.0)]
+        blocks = rr._detect_blocks([], climbs, wind, 50.0)
+        overlap = [b for b in blocks
+                   if "podjazd" in b["factors"] and "pod wiatr" in b["factors"]]
+        self.assertEqual(len(overlap), 1, f"Oczekiwano 1 scalony blok, mamy: {blocks}")
+
+    def test_phase_has_watts(self):
+        """Faza wspinaczki zawiera watty z FTP (format liczba-liczba W)."""
+        blocks = [{"km_start": 10.0, "km_end": 14.0,
+                   "factors": ["podjazd"],
+                   "detail": {"podjazd": "max 8%, 2000 m"}}]
+        plan = rr._build_phase_plan(blocks, 250, 50.0)
+        self.assertRegex(plan, r"\d+[^\d]\d+ W")
+
+    def test_risk_table_levels(self):
+        """>=2 faktory -> 'wysokie'; sam 'start' -> brak 'wysokie'."""
+        bloks_hi = [{"km_start": 5.0, "km_end": 10.0,
+                     "factors": ["podjazd", "pod wiatr"],
+                     "detail": {"podjazd": "8%", "pod wiatr": "25 km/h"}}]
+        table_hi = rr._build_risk_table(bloks_hi)
+        self.assertIn("wysokie", table_hi)
+
+        bloks_skip = [{"km_start": 0.0, "km_end": 6.0,
+                       "factors": ["start"],
+                       "detail": {"start": "km 0-6: rozgrzewka"}}]
+        table_skip = rr._build_risk_table(bloks_skip)
+        self.assertNotIn("wysokie", table_skip)
+
+    def test_endcap_phase(self):
+        """Ostatnie 10% trasy zawsze daje osobny blok 'koncowka'."""
+        blocks = rr._detect_blocks([], [], [], 80.0)
+        endcap = [b for b in blocks if "koncowka" in b["factors"]]
+        self.assertEqual(len(endcap), 1)
+        self.assertAlmostEqual(endcap[0]["km_start"], 72.0, delta=1.0)
+
+    def test_rolling_phase_falista(self):
+        """has_wavy=True: faza toczna ma tag 'falista'; bez podjazdu brak 'PODJAZD'."""
+        blocks = rr._detect_blocks([], [], [], 30.0)
+        plan = rr._build_phase_plan(blocks, 250, 30.0, has_wavy=True)
+        self.assertIn("falista", plan)
+        self.assertNotIn("PODJAZD", plan)
+
+    def test_no_duplicate_headers(self):
+        """Bug 1: naglowki PLAN JAZDY i TABELA RYZYK maja wystapic dokladnie raz w ctx."""
+        plan_fake = {"status": "OK", "data": {"analysis": (
+            "ANALIZA PLANOWANEJ TRASY\n"
+            "Dystans: 50.0 km | podjazdy: +500 m\n"
+            "Nawierzchnia: 100% utwardzona\n"
+            "Pogoda: 20 C, wiatr w plecy\n"
+            "\U0001f4aa Forma (FitModel): FTP 250 W, 3.20 W/kg"
+        )}}
+        prof_fake = {"status": "OK", "data": {"analysis": (
+            "PROFIL ODCINKAMI\n"
+            "Nawierzchnia (odcinki scalone):\n"
+            "  km 0.0-50.0 (50.0): asfalt\n"
+            "Podjazdy (>=5%, min 200 m):\n"
+            "  km 10.0 - 12.0 (2.0 km) max 8%\n"
+            "\n"
+        )}}
+        t_fake = {"status": "OK", "data": {"analysis": "Szacowany czas\nv 18.0 km/h -> 2:45"}}
+        poi_fake = {"status": "OK", "data": {"counts": {}}}
+        ctx = rr._build_context_document(
+            plan_fake, prof_fake, t_fake, None, None, poi_fake, None, None
+        )
+        self.assertEqual(ctx.count("### PLAN JAZDY PO FAZACH"), 1,
+                         f"Naglowek PLAN JAZDY PO FAZACH zdublowany lub brak:\n{ctx[-800:]}")
+        self.assertEqual(ctx.count("### TABELA RYZYK"), 1,
+                         f"Naglowek TABELA RYZYK zdublowany lub brak:\n{ctx[-800:]}")
+
+    def test_has_wavy_logic(self):
+        """Bug 2: 'Falistosc: brak odcinkow' -> has_wavy False; prawdziwe faldy -> True."""
+        # profil z prawdziwymi faldami
+        prof_wavy = "PROFIL\nFalistosc: 3 odcinki 3-5% (~2 km lacznie)\n"
+        wavy = "Falistosc:" in prof_wavy and "brak odcinkow" not in prof_wavy
+        self.assertTrue(wavy, "Profil z falami powinien dawac has_wavy=True")
+
+        # profil plasy (linia istnieje, ale mowi 'brak odcinkow')
+        prof_flat = "PROFIL\nFalistosc: brak odcinkow 3-5%\n"
+        flat = "Falistosc:" in prof_flat and "brak odcinkow" not in prof_flat
+        self.assertFalse(flat, "Profil plaski ('brak odcinkow') powinien dawac has_wavy=False")
+
+        # end-to-end: has_wavy=False -> plan nie zawiera 'falista'
+        blocks = rr._detect_blocks([], [], [], 30.0)
+        plan = rr._build_phase_plan(blocks, 250, 30.0, has_wavy=flat)
+        self.assertNotIn("falista", plan)
+
 if __name__ == "__main__":
     unittest.main()
