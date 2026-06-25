@@ -21,6 +21,7 @@ from tools.rwgps.client import (
     summarize_rwgps_artifact as rwgps_summarize_rwgps_artifact,
     extract_artifact_points as rwgps_extract_artifact_points,
 )
+from tools.rwgps.surface_landcover import _infer_surface, SURFACE_LOGIC_VERSION, _CONF_RANK
 
 load_dotenv()
 db.init()
@@ -1324,7 +1325,7 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 8
     except Exception as exc:
         return json.dumps({"ok": False, "error": "WRITE_FAILED", "reason": str(exc), "path": str(file_path)}, ensure_ascii=False)
 
-    cache_name = f"surface_{file_path.stem}_{sample_distance_m}m.json"
+    cache_name = f"surface_{file_path.stem}_{sample_distance_m}m_{SURFACE_LOGIC_VERSION}.json"
     cache_path = CACHE_ROOT / cache_name
 
 
@@ -1375,6 +1376,7 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 8
     for _i in range(1, len(samples)):
         sample_dists.append(sample_dists[-1] + _dist_fast(samples[_i - 1][0], samples[_i - 1][1], samples[_i][0], samples[_i][1]))
     sample_surfaces = [None] * len(samples)
+    sample_conf: list[str | None] = [None] * len(samples)
 
     # Nie ograniczamy liczby probek - wiecej probek = lepsza jakosc
     # Batchujemy po 15 punktow, kazdy batch to osobne zapytanie Overpass around:20m
@@ -1423,14 +1425,18 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 8
         result = _match_point_to_ways(pt[0], pt[1], all_ways, max_dist_m=MAX_MATCH_DIST_M)
         if result is None:
             unmatched += 1
+            if 0 <= _gidx < len(sample_surfaces):
+                sample_surfaces[_gidx] = "nieznana"
+                sample_conf[_gidx] = "nieznana"
+            surface_counts["nieznana"] = surface_counts.get("nieznana", 0) + 1
             continue
         best_tags, best_dist = result
         matched += 1
-        raw_surf = best_tags.get("surface")
-        label = SURFACE_MAP.get(raw_surf, raw_surf or "nieznana")
+        label, confidence = _infer_surface(best_tags)
         surface_counts[label] = surface_counts.get(label, 0) + 1
         if 0 <= _gidx < len(sample_surfaces):
             sample_surfaces[_gidx] = label
+            sample_conf[_gidx] = confidence
         hw = best_tags.get("highway")
         if hw:
             highway_counts[hw] = highway_counts.get(hw, 0) + 1
@@ -1457,8 +1463,12 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 8
             _j += 1
         _start_d = sample_dists[_i] if _i < len(sample_dists) else 0.0
         _end_d = sample_dists[_j] if _j < len(sample_dists) else sample_dists[-1]
+        # confidence segmentu = najniższa w serii (zachowawczo)
+        _series_confs = [sample_conf[k] for k in range(_i, _j) if k < len(sample_conf) and sample_conf[k]]
+        _seg_conf = min(_series_confs, key=lambda c: _CONF_RANK.get(c, 0), default="nieznana")
         surface_segments.append({
             "surface": _lab,
+            "confidence": _seg_conf,
             "distance_m": round(max(0.0, _end_d - _start_d), 1),
             "source": "osm_overpass",
             "start_lat": samples[_i][0],
@@ -1471,6 +1481,10 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 8
     total = sum(surface_counts.values()) or 1
     dominated_by = max(surface_counts, key=surface_counts.get) if surface_counts else "nieznana"
     coverage_pct = round(matched / max(1, len(samples)) * 100, 1)
+    confidence_breakdown = {
+        lvl: round(sum(1 for c in sample_conf if c == lvl) / max(1, len(sample_conf)) * 100, 1)
+        for lvl in ("wysoka", "srednia", "niska", "nieznana")
+    }
 
     warnings_list = []
     if unmatched > matched:
@@ -1499,6 +1513,7 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 8
         "bounds": {"sw_lat": south + 0.005, "sw_lng": west + 0.005, "ne_lat": north - 0.005, "ne_lng": east - 0.005},
         "surface_percentages": {k: round(v / total * 100, 1) for k, v in sorted(surface_counts.items(), key=lambda x: -x[1])},
         "dominant_surface": dominated_by,
+        "confidence_breakdown": confidence_breakdown,
         "road_type_percentages": {k: round(v / total * 100, 1) for k, v in sorted(highway_counts.items(), key=lambda x: -x[1])} if highway_counts else {},
         "tracktype_percentages": {k.replace("grade", ""): round(v / total * 100, 1) for k, v in sorted(tracktype_counts.items())} if tracktype_counts else {},
         "smoothness_summary": {k: round(v / smoothness_total * 100, 1) for k, v in sorted(smoothness_counts.items(), key=lambda x: -x[1])} if smoothness_counts else {},

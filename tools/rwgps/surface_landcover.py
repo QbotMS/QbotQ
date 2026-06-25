@@ -398,6 +398,65 @@ def _highway_to_surface_label(highway: Any, tracktype: Any) -> str | None:
     return None
 
 
+ # ── TASK 20: wnioskowanie nawierzchni z tagów OSM + flaga pewności ──────────
+SURFACE_LOGIC_VERSION = "v2_infer"
+
+_HIGHWAY_PAVED_INFER = frozenset({
+    "motorway", "trunk", "primary", "secondary", "tertiary",
+    "unclassified", "residential", "living_street", "service",
+    "pedestrian", "cycleway",
+})
+
+_TRACKTYPE_INFER: dict[str, tuple[str, str]] = {
+    "grade1": ("ubita", "srednia"),
+    "grade2": ("ubita/zwir", "srednia"),
+    "grade3": ("zwir/luzna", "niska"),
+    "grade4": ("ziemia", "niska"),
+    "grade5": ("ziemia/trawa", "niska"),
+}
+
+_CONF_RANK: dict[str, int] = {"wysoka": 3, "srednia": 2, "niska": 1, "nieznana": 0}
+
+_SURFACE_MAP_INFER: dict[str, str] = {
+    "asphalt": "asfalt", "paved": "asfalt", "concrete": "beton",
+    "cobblestone": "kocie łby", "sett": "kocie łby",
+    "paving_stones": "kostka brukowa",
+    "gravel": "gravel/żwir", "fine_gravel": "gravel drobny",
+    "compacted": "ubita nawierzchnia",
+    "dirt": "ziemia/grunt", "ground": "grunt",
+    "grass": "trawa", "sand": "piasek", "unpaved": "nieutwardzona",
+}
+
+
+def _infer_surface(tags: dict) -> tuple[str, str]:
+    """Wnioskuje nawierzchnię z tagów OSM. Zwraca (label, confidence).
+
+    Realny tag surface ZAWSZE wygrywa (confidence='wysoka').
+    Brak surface -> wnioskowanie z highway/tracktype:
+      - utwardzone klasy highway -> ('asfalt', 'srednia')
+      - track + tracktype grade1-5 -> (label, 'srednia'/'niska') wg _TRACKTYPE_INFER
+      - track bez tracktype -> ('nieutwardzona nieokreslona', 'niska')
+      - path/footway/bridleway -> ('sciezka/nieutwardzona', 'niska')
+      - brak uzytecznego highway -> ('nieznana', 'nieznana')
+    """
+    raw_surf = tags.get("surface")
+    if raw_surf:
+        label = _SURFACE_MAP_INFER.get(str(raw_surf).strip().lower(), str(raw_surf))
+        return label, "wysoka"
+
+    hw = str(tags.get("highway", "")).strip().lower()
+    if hw in _HIGHWAY_PAVED_INFER:
+        return "asfalt", "srednia"
+    if hw == "track":
+        tt = str(tags.get("tracktype", "")).strip().lower()
+        if tt in _TRACKTYPE_INFER:
+            return _TRACKTYPE_INFER[tt]
+        return "nieutwardzona nieokreslona", "niska"
+    if hw in {"path", "footway", "bridleway"}:
+        return "sciezka/nieutwardzona", "niska"
+    return "nieznana", "nieznana"
+
+
 def _fetch_highway_for_point(lat: float, lon: float, radius: int = 30) -> str | None:
     """Map-match PUNKT PO PUNKCIE: pyta Overpass o drogi w promieniu `radius` m wokol punktu
     i zwraca etykiete PL nawierzchni (bez sufiksu '(szac.)') albo None.
