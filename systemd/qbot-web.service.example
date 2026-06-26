@@ -1,0 +1,18 @@
+[Unit]
+Description=qbot-web - publiczny serwis HTML (Faza 1)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=qbot
+Group=qbot
+WorkingDirectory=/opt/qbot/app
+ExecStart=/opt/qbot/app/.venv/bin/python /opt/qbot/app/qbot_web.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/opt/qbot/logs/qbot-web.log
+StandardError=append:/opt/qbot/logs/qbot-web.err.log
+
+[Install]
+WantedBy=multi-user.target
