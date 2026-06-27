@@ -1,0 +1,13 @@
+QBot instruction backup 2026-06-27
+Source root: /opt/qbot/app
+
+Created files:
+- AGENTS.md
+- QBOT_INSTRUCTIONS.md
+- PROJECT_STATE.md
+- QBOT_CURRENT_STATE.md
+- docs/CONTEXT.md
+- scripts/build_context.py
+- docs/architecture/QBOT_ARCHITEKTURA_V2.md
+
+Missing files: none
