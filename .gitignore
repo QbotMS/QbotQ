@@ -44,3 +44,10 @@ fit_rewrite_diff.txt
 _bak_archive/
 _session_notes/
 docs/CONTEXT.md
+
+# GitHub credentials (PAT)
+config/github_claude.cfg
+
+# Temporary scripts and scratch files
+tmp/
+tmp_*.py
