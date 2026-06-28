@@ -60,6 +60,16 @@ Nie istnieje aktualny `core/planner.py`.
 
 Nie opisuj domeny tras jako obsługiwanej przez Planner v2. Aktualna obsługa tras idzie przez QBot3/Albert/tool registry oraz narzędzia trasowe, m.in. analiza planowanej trasy, profil szczegółowy, nawierzchnia, POI i analiza wykonanej jazdy/FIT.
 
+### Nawierzchnia gravelowa — decyzja 2026-06-28
+
+Głównym silnikiem nawierzchni jest `tools/rwgps/route_surface_engine.py` (`route_surface_engine_v1`): analiza po rzeczywistym śladzie GPX/TCX/JSON/RWGPS, nie po `route_frames`.
+
+Parametry produkcyjne: surface sample 50 m, Overpass corridor 50/80 m, confidence match distance 25/50/80 m. Match 150 m nie jest normalnym źródłem surface, tylko debug/fallback z ostrzeżeniem.
+
+`route_frames` 80 m zostają jako legacy/fallback dla profilu, pogody, debug i agregacji. WEB, qbot.query, Telegram i MCP mają docelowo konsumować ten sam wynik `route_surface_analysis_v1`; WEB jest rendererem, nie źródłem prawdy.
+
+Refinementy: Valhalla tylko jako fallback/refinement; landcover jako contextual refinement; `geology_context` jako regionalny etap fail-open z próbkowaniem centroid+bbox+punkty kontrolne 5-10 km, nigdy co 50 m.
+
 ## Runtime prompt QBot
 
 `QBOT_INSTRUCTIONS.md` jest runtime promptem QBot używanym przez `qgpt_client.py`.

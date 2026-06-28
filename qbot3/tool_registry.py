@@ -1680,8 +1680,8 @@ def _load_route_artifact_enrich_dry_run_tool() -> dict[str, Any]:
         import json as _json
 
         route_id = str(args.get("route_id", "")).strip()
-        sample_every_m = int(args.get("sample_every_m", 500))
-        sample_every_m = max(100, min(sample_every_m, 5000))
+        sample_every_m = int(args.get("sample_every_m", 50))
+        sample_every_m = max(25, min(sample_every_m, 5000))
 
         if not route_id:
             return error_result(CONNECTOR_MISSING, "route_id required — podaj ID trasy RWGPS")
@@ -1733,6 +1733,7 @@ def _load_route_artifact_enrich_dry_run_tool() -> dict[str, Any]:
             "dry_run": True,
             "would_write_to": ["route_surface_profiles", "route_surface_segments"],
             "surface_analysis": {
+                "engine_version": surface_result.get("engine_version"),
                 "sample_distance_m": surface_result.get("sample_distance_m"),
                 "point_count": surface_result.get("point_count"),
                 "distance_km": surface_result.get("distance_km"),
@@ -1742,12 +1743,19 @@ def _load_route_artifact_enrich_dry_run_tool() -> dict[str, Any]:
                 "coverage_pct": surface_result.get("coverage_pct"),
                 "dominant_surface": surface_result.get("dominant_surface"),
                 "surface_percentages": surface_result.get("surface_percentages"),
+                "surface_percentages_raw": surface_result.get("surface_percentages_raw"),
+                "surface_percentages_refined": surface_result.get("surface_percentages_refined"),
+                "unknown_pct_raw": surface_result.get("unknown_pct_raw"),
+                "unknown_pct_refined": surface_result.get("unknown_pct_refined"),
+                "geology_context": surface_result.get("geology_context"),
+                "valhalla": surface_result.get("valhalla"),
+                "landcover_used": surface_result.get("landcover_used"),
                 "road_type_percentages": surface_result.get("road_type_percentages"),
                 "tracktype_percentages": surface_result.get("tracktype_percentages"),
                 "smoothness_summary": surface_result.get("smoothness_summary"),
                 "confidence": surface_result.get("confidence"),
                 "warnings": surface_result.get("warnings"),
-                "source": "rwgps_artifact + osm_overpass",
+                "source": "route_surface_engine_v1 + osm_overpass",
                 "cache_hit": surface_result.get("cache_hit", False),
             },
         }
@@ -1760,15 +1768,16 @@ def _load_route_artifact_enrich_dry_run_tool() -> dict[str, Any]:
         "category": "routes",
         "description": (
             "Diagnostyka nawierzchni trasy RWGPS przez OpenStreetMap/Overpass — DRY-RUN, bez zapisu do DB. "
-            "Używa istniejącego artifactu (GPX) i odczytuje tagi OSM: surface, highway, tracktype. "
-            "Pokazuje procentowy rozkład nawierzchni, dominujący typ, zasięg OSM. "
+            "2026-06-28: używa route_surface_engine_v1 po rzeczywistym śladzie, nie route_frames. "
+            "Odczytuje tagi OSM surface/highway/tracktype, dodaje landcover/geology_context fail-open. "
+            "Pokazuje raw/refined procenty, dominujący typ, zasięg OSM. "
             "NIE zapisuje do route_surface_profiles ani route_surface_segments. "
             "Parametry: route_id (wymagany, z rwgps_route_list), "
-            "sample_every_m (opcjonalny, 100-5000, domyślnie 500)."
+            "sample_every_m (opcjonalny, 25-5000, domyślnie 50)."
         ),
         "args_schema": {
             "route_id": {"type": "string", "description": "ID trasy RWGPS (liczba)"},
-            "sample_every_m": {"type": "integer", "default": 500, "description": "Odstęp próbkowania w metrach (100-5000)"},
+            "sample_every_m": {"type": "integer", "default": 50, "description": "Odstęp próbkowania nawierzchni w metrach (25-5000)"},
         },
         "safety": "read",
         "mode": "read_only",

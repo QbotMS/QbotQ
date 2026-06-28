@@ -1291,8 +1291,8 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 8
     """
     Analizuje nawierzchnię trasy z artefaktu RWGPS (GPX/JSON) przez OpenStreetMap/Overpass.
 
-    Wczytuje punkty z pliku GPX/TCX/JSON, próbkuje co sample_distance_m metrów,
-    odpytuje Overpass API o drogi i klasyfikuje nawierzchnię.
+    2026-06-28: adapter legacy do tools.rwgps.route_surface_engine.
+    Główna analiza nawierzchni jest po rzeczywistym śladzie, nie po route_frames.
 
     Zwraca: surface_percentages, dominant_surface, road_type_percentages,
     tracktype_percentages, coverage, bounds, point_count, sampled_points,
@@ -1300,234 +1300,26 @@ def analyze_rwgps_artifact_surface(path_or_name: str, sample_distance_m: int = 8
 
     Wynik jest cache'owany w /opt/qbot/artifacts/analysis/.
     """
-    import hashlib
-    import math
-    from urllib.parse import urlencode
+    try:
+        from tools.rwgps.route_surface_engine import analyze_route_surface, legacy_surface_shape
+    except Exception as exc:
+        return json.dumps({"ok": False, "error": "ENGINE_IMPORT_FAILED", "reason": str(exc)}, ensure_ascii=False)
 
     path_or_name = str(path_or_name).strip()
     if not path_or_name:
         return json.dumps({"ok": False, "error": "INVALID_PATH", "reason": "path_or_name must not be empty"}, ensure_ascii=False)
-
-    sample_distance_m = max(100, min(sample_distance_m, 5000))
-
-    CACHE_ROOT = Path("/opt/qbot/artifacts/analysis")
-    CACHE_ROOT.mkdir(parents=True, exist_ok=True)
-
-    # Determine file and sha256
     try:
-        from tools.rwgps.client import ARTIFACT_RWGPS_EXPORT_DIR, _resolve_artifact_for_summary
-        file_path = _resolve_artifact_for_summary(path_or_name)
+        result = analyze_route_surface(
+            artifact_path=path_or_name,
+            mode="gravel_detail",
+            sample_distance_m=sample_distance_m or 50,
+            use_valhalla=False,
+            use_landcover=True,
+            use_geology_context=True,
+        )
+        return json.dumps(legacy_surface_shape(result), ensure_ascii=False)
     except Exception as exc:
-        return json.dumps({"ok": False, "error": "NOT_FOUND", "reason": str(exc), "path_or_name": path_or_name}, ensure_ascii=False)
-
-    try:
-        file_sha = hashlib.sha256(file_path.read_bytes()).hexdigest()
-    except Exception as exc:
-        return json.dumps({"ok": False, "error": "WRITE_FAILED", "reason": str(exc), "path": str(file_path)}, ensure_ascii=False)
-
-    cache_name = f"surface_{file_path.stem}_{sample_distance_m}m_{SURFACE_LOGIC_VERSION}.json"
-    cache_path = CACHE_ROOT / cache_name
-
-
-    if cache_path.exists():
-        try:
-            cached = json.loads(cache_path.read_text(encoding="utf-8"))
-            if isinstance(cached, dict) and cached.get("ok"):
-                cached["cache_hit"] = True
-                return json.dumps(cached, ensure_ascii=False)
-        except Exception:
-            pass
-
-    # Extract points
-    try:
-        points = rwgps_extract_artifact_points(path_or_name)
-    except Exception as exc:
-        return json.dumps({"ok": False, "error": "RWGPS_EXPORT_FAILED", "reason": str(exc), "path_or_name": path_or_name}, ensure_ascii=False)
-
-    if len(points) < 2:
-        return json.dumps({"ok": False, "error": "NO_POINTS", "reason": "Artifact has fewer than 2 points", "path_or_name": path_or_name, "point_count": len(points)}, ensure_ascii=False)
-
-    # Compute cumulative distance and sample
-    def _dist_fast(lat1, lon1, lat2, lon2):
-        dlat = (lat2 - lat1) * 111320
-        dlon = (lon2 - lon1) * 111320 * math.cos(math.radians((lat1 + lat2) / 2))
-        return math.sqrt(dlat * dlat + dlon * dlon)
-
-    dists = [0.0]
-    for i in range(1, len(points)):
-        dists.append(dists[-1] + _dist_fast(points[i-1][0], points[i-1][1], points[i][0], points[i][1]))
-
-    samples = [points[0]]
-    next_target = sample_distance_m
-    for i in range(1, len(points)):
-        if dists[i] >= next_target:
-            samples.append(points[i])
-            next_target += sample_distance_m
-
-    if samples[-1] != points[-1]:
-        samples.append(points[-1])
-
-    _lats = [p[0] for p in points]
-    _lngs = [p[1] for p in points]
-    south, north = (min(_lats), max(_lats)) if _lats else (0.0, 0.0)
-    west, east = (min(_lngs), max(_lngs)) if _lngs else (0.0, 0.0)
-
-    sample_dists = [0.0]
-    for _i in range(1, len(samples)):
-        sample_dists.append(sample_dists[-1] + _dist_fast(samples[_i - 1][0], samples[_i - 1][1], samples[_i][0], samples[_i][1]))
-    sample_surfaces = [None] * len(samples)
-    sample_conf: list[str | None] = [None] * len(samples)
-
-    # Nie ograniczamy liczby probek - wiecej probek = lepsza jakosc
-    # Batchujemy po 15 punktow, kazdy batch to osobne zapytanie Overpass around:20m
-
-    # Bounding box — tylko do raportu (bounds w wyniku/bledach); sampling per-punkt around:20m
-    lats = [p[0] for p in samples]
-    lons = [p[1] for p in samples]
-    south = min(lats) - 0.005
-    north = max(lats) + 0.005
-    west = min(lons) - 0.005
-    east = max(lons) + 0.005
-
-    # Batch Overpass queries — around:20m per punkt (zamiast bbox)
-    BATCH_SIZE = 15
-    sample_batches = [samples[i:i + BATCH_SIZE] for i in range(0, len(samples), BATCH_SIZE)]
-
-    SURFACE_MAP = {
-        "asphalt": "asfalt", "paved": "asfalt", "concrete": "beton",
-        "cobblestone": "kocie łby", "sett": "kocie łby",
-        "paving_stones": "kostka brukowa",
-        "gravel": "gravel/żwir", "fine_gravel": "gravel drobny",
-        "compacted": "ubita nawierzchnia",
-        "dirt": "ziemia/grunt", "ground": "grunt",
-        "grass": "trawa", "sand": "piasek", "unpaved": "nieutwardzona",
-    }
-
-    SMOOTHNESS_MAP: dict[str, str] = {
-        "excellent": "doskonała", "good": "dobra", "intermediate": "średnia",
-        "bad": "słaba", "very_bad": "bardzo słaba",
-        "horrible": "okropna", "very_horrible": "bardzo okropna",
-        "impassable": "nieprzejezdna",
-    }
-
-    surface_counts: dict[str, int] = {}
-    highway_counts: dict[str, int] = {}
-    tracktype_counts: dict[str, int] = {}
-    smoothness_counts: dict[str, int] = {}
-    matched = 0
-    unmatched = 0
-    MAX_MATCH_DIST_M = 150
-    osm_errors: list[str] = []
-
-    all_ways = _fetch_ways_along_track(samples)
-
-    for _gidx, pt in enumerate(samples):
-        result = _match_point_to_ways(pt[0], pt[1], all_ways, max_dist_m=MAX_MATCH_DIST_M)
-        if result is None:
-            unmatched += 1
-            if 0 <= _gidx < len(sample_surfaces):
-                sample_surfaces[_gidx] = "nieznana"
-                sample_conf[_gidx] = "nieznana"
-            surface_counts["nieznana"] = surface_counts.get("nieznana", 0) + 1
-            continue
-        best_tags, best_dist = result
-        matched += 1
-        label, confidence = _infer_surface(best_tags)
-        surface_counts[label] = surface_counts.get(label, 0) + 1
-        if 0 <= _gidx < len(sample_surfaces):
-            sample_surfaces[_gidx] = label
-            sample_conf[_gidx] = confidence
-        hw = best_tags.get("highway")
-        if hw:
-            highway_counts[hw] = highway_counts.get(hw, 0) + 1
-        tt = best_tags.get("tracktype")
-        if tt:
-            tracktype_counts[tt] = tracktype_counts.get(tt, 0) + 1
-        sm = best_tags.get("smoothness")
-        if sm:
-            sm_label = SMOOTHNESS_MAP.get(sm, sm)
-            smoothness_counts[sm_label] = smoothness_counts.get(sm_label, 0) + 1
-
-    if not surface_counts and osm_errors:
-        return json.dumps({"ok": False, "error": "OSM_UNAVAILABLE", "reason": f"Overpass API errors: {'; '.join(osm_errors[:3])}", "bounds": {"sw": [south, west], "ne": [north, east]}, "point_count": len(points), "sampled_points": len(samples)}, ensure_ascii=False)
-    if not surface_counts:
-        return json.dumps({"ok": False, "error": "OSM_UNAVAILABLE", "reason": "No OSM data found for any batch", "bounds": {"sw": [south, west], "ne": [north, east]}, "point_count": len(points), "sampled_points": len(samples)}, ensure_ascii=False)
-
-    surface_segments = []
-    _n = len(samples)
-    _i = 0
-    while _i < _n:
-        _lab = sample_surfaces[_i] if (_i < len(sample_surfaces) and sample_surfaces[_i]) else "nieznana"
-        _j = _i + 1
-        while _j < _n and (sample_surfaces[_j] if sample_surfaces[_j] else "nieznana") == _lab:
-            _j += 1
-        _start_d = sample_dists[_i] if _i < len(sample_dists) else 0.0
-        _end_d = sample_dists[_j] if _j < len(sample_dists) else sample_dists[-1]
-        # confidence segmentu = najniższa w serii (zachowawczo)
-        _series_confs = [sample_conf[k] for k in range(_i, _j) if k < len(sample_conf) and sample_conf[k]]
-        _seg_conf = min(_series_confs, key=lambda c: _CONF_RANK.get(c, 0), default="nieznana")
-        surface_segments.append({
-            "surface": _lab,
-            "confidence": _seg_conf,
-            "distance_m": round(max(0.0, _end_d - _start_d), 1),
-            "source": "osm_overpass",
-            "start_lat": samples[_i][0],
-            "start_lon": samples[_i][1],
-            "end_lat": samples[_j - 1][0],
-            "end_lon": samples[_j - 1][1],
-        })
-        _i = _j
-
-    total = sum(surface_counts.values()) or 1
-    dominated_by = max(surface_counts, key=surface_counts.get) if surface_counts else "nieznana"
-    coverage_pct = round(matched / max(1, len(samples)) * 100, 1)
-    confidence_breakdown = {
-        lvl: round(sum(1 for c in sample_conf if c == lvl) / max(1, len(sample_conf)) * 100, 1)
-        for lvl in ("wysoka", "srednia", "niska", "nieznana")
-    }
-
-    warnings_list = []
-    if unmatched > matched:
-        warnings_list.append(f"Niski zasięg OSM: tylko {coverage_pct}% punktów dopasowanych")
-    if dominated_by == "nieznana":
-        warnings_list.append("Dominująca nawierzchnia nieznana — OSM może nie mieć tagów surface dla tej trasy")
-    if osm_errors:
-        warnings_list.append(f"Błędy Overpass: {len(osm_errors)}/{len(sample_batches)} batchy nieudane")
-
-    smoothness_total = sum(smoothness_counts.values()) or 1
-    result = {
-        "ok": True,
-        "status": "OK",
-        "source": "rwgps_artifact",
-        "artifact_path": str(file_path),
-        "artifact_name": file_path.name,
-        "artifact_sha256": file_sha,
-        "sample_distance_m": sample_distance_m,
-        "point_count": len(points),
-        "distance_km": round(dists[-1] / 1000, 3),
-        "sampled_points": len(samples),
-        "matched_points": matched,
-        "unmatched_points": unmatched,
-        "coverage_pct": coverage_pct,
-        "segments": surface_segments,
-        "bounds": {"sw_lat": south + 0.005, "sw_lng": west + 0.005, "ne_lat": north - 0.005, "ne_lng": east - 0.005},
-        "surface_percentages": {k: round(v / total * 100, 1) for k, v in sorted(surface_counts.items(), key=lambda x: -x[1])},
-        "dominant_surface": dominated_by,
-        "confidence_breakdown": confidence_breakdown,
-        "road_type_percentages": {k: round(v / total * 100, 1) for k, v in sorted(highway_counts.items(), key=lambda x: -x[1])} if highway_counts else {},
-        "tracktype_percentages": {k.replace("grade", ""): round(v / total * 100, 1) for k, v in sorted(tracktype_counts.items())} if tracktype_counts else {},
-        "smoothness_summary": {k: round(v / smoothness_total * 100, 1) for k, v in sorted(smoothness_counts.items(), key=lambda x: -x[1])} if smoothness_counts else {},
-        "confidence": "high" if coverage_pct >= 80 else "medium" if coverage_pct >= 50 else "low",
-        "warnings": warnings_list if warnings_list else None,
-        "cache_hit": False,
-    }
-
-    try:
-        cache_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    except Exception:
-        pass
-
-    return json.dumps(result, ensure_ascii=False)
+        return json.dumps({"ok": False, "error": "SURFACE_ENGINE_FAILED", "reason": str(exc), "path_or_name": path_or_name}, ensure_ascii=False)
 
 
 @mcp.tool()

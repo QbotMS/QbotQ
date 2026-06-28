@@ -499,18 +499,25 @@ grade5 — miękka niemal w całości, ryzyko piachu / gruntu / trawy
 
 ## F1. Pipeline
 
+Aktualizacja 2026-06-28: nawierzchnia ma być liczona w backendzie przez
+`tools/rwgps/route_surface_engine.py` (`route_surface_engine_v1`) po realnym śladzie.
+WEB konsumuje gotowy DATA JSON i renderuje wynik; nie liczy nawierzchni i nie jest
+źródłem prawdy.
+
 ```text
 route_id + rwgps_created_at + rwgps_updated_at + geometry_hash
     ↓
 RWGPS fetch/cache
     ↓
-route_profile
+route_surface_engine_v1 (surface sample 50 m, OSM corridor 50/80 m)
     ↓
-Valhalla trace_attributes → way_id / matched geometry / snap quality
+Valhalla trace_attributes → way_id / matched geometry / snap quality (fallback/refinement)
     ↓
 Overpass way(id) → surface / highway / tracktype / smoothness / mtb:scale
     ↓
-Landcover ingest/cache → forest / wood / meadow / farmland / sand
+Landcover ingest/cache → forest / wood / meadow / farmland / sand (contextual refinement)
+    ↓
+Geology context → centroid+bbox+5-10 km control points, fail-open, cache
     ↓
 Elevation / climbs → climbs.py / smoothed grade / optional Valhalla height
     ↓
@@ -520,7 +527,7 @@ route_run_context(planned_start_at)
     ↓
 route_weather.py → OWM + fallback → temp / opady / wiatr / słońce
     ↓
-Internal route frames / samples
+Internal samples; route_frames only legacy/profile/weather/debug
     ↓
 Surface composition
     ↓

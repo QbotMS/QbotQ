@@ -438,12 +438,12 @@ def _tool_qbot_route_artifact_enrich(_args: dict | None = None) -> dict[str, Any
 
     surface_requested = "surface" in enrich
     surface_source_input = str(_args.get("surface_source", "auto")).strip().lower() or "auto"
-    sample_every_m_raw = _args.get("sample_every_m", 100)
+    sample_every_m_raw = _args.get("sample_every_m", 50)
     try:
         sample_every_m = int(sample_every_m_raw)
     except (TypeError, ValueError):
-        sample_every_m = 100
-    sample_every_m = max(100, min(sample_every_m, 5000))
+        sample_every_m = 50
+    sample_every_m = max(25, min(sample_every_m, 5000))
 
     from tools.rwgps.client import summarize_rwgps_artifact as rwgps_summarize_rwgps_artifact
 
@@ -509,9 +509,17 @@ def _tool_qbot_route_artifact_enrich(_args: dict | None = None) -> dict[str, Any
                 payload["surface_source"] = "osm"
                 payload["surface_profile"] = {
                     "source": surface_result.get("source", "osm_overpass"),
+                    "engine_version": surface_result.get("engine_version"),
                     "confidence": surface_result.get("confidence", "unknown"),
                     "segments": segments,
                     "dominant_surface": surface_result.get("dominant_surface"),
+                    "surface_percentages_raw": surface_result.get("surface_percentages_raw"),
+                    "surface_percentages_refined": surface_result.get("surface_percentages_refined"),
+                    "unknown_pct_raw": surface_result.get("unknown_pct_raw"),
+                    "unknown_pct_refined": surface_result.get("unknown_pct_refined"),
+                    "geology_context": surface_result.get("geology_context"),
+                    "valhalla": surface_result.get("valhalla"),
+                    "landcover_used": surface_result.get("landcover_used"),
                     "coverage_pct": surface_result.get("coverage_pct"),
                     "sampled_points": surface_result.get("sampled_points"),
                     "matched_points": surface_result.get("matched_points"),
