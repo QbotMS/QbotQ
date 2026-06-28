@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 from datetime import datetime, timezone
 from time import perf_counter
@@ -72,6 +73,131 @@ _ACTION_EXECUTE_ALLOWLIST = (
 _ALLOWED_ACTIONS_DESCRIPTION = (
     ", ".join(_ACTION_EXECUTE_ALLOWLIST)
 )
+
+# 2026-06-28: VNEXT is only a narrow read-only fast path.
+# All writes, route analysis, architecture questions, multi-domain analysis,
+# ambiguous keyword hits and non-allowlisted intents must go to Albert.
+_QBOT_QUERY_VNEXT_FAST_PATH_INTENTS = {
+    "daily_balance",
+    "energy_day",
+    "nutrition_day",
+    "nutrition_range",
+    "nutrition_intake_logs_list",
+    "nutrition_status",
+    "sleep_day",
+    "weight_lookup",
+    "weight_trend",
+    "body_comp",
+    "body_measurements_range",
+    "wellness_day",
+    "xert_status",
+    "xert_snapshot_range",
+    "training_recent",
+    "garmin_last_activity",
+    "garmin_activity_detail",
+    "garmin_activity_streams",
+    "garmin_activity_export",
+    "garage_status",
+    "garage_search",
+    "trips_status",
+    "trip_summary",
+    "trip_stages",
+    "qbot_help",
+    "qbot_incidents",
+    "albert_model_status",
+    "planner_status",
+}
+_QBOT_QUERY_VNEXT_FAST_PATH_STATUSES = {"OK", "PARTIAL"}
+
+_QBOT_QUERY_WRITE_RE = re.compile(
+    r"\b(dodaj|zapisz|dopisz|usuń|usun|skasuj|popraw|skoryguj|zaloguj|utwórz|utworz)\b",
+    re.IGNORECASE,
+)
+_QBOT_QUERY_ARCHITECTURE_RE = re.compile(
+    r"\b(vnext|query_vnext|qbot3|albert|runtime|routing|router|mcp_adapter|migracj\w*|architektur\w*|artefakt\w*)\b",
+    re.IGNORECASE,
+)
+_QBOT_QUERY_ROUTE_RE = re.compile(
+    r"\b(rwgps|ridewithgps|tras\w*|route|nawierzchni\w*|podjazd\w*|profil\w*|\d{6,})\b",
+    re.IGNORECASE,
+)
+_QBOT_QUERY_NUTRITION_RE = re.compile(
+    r"\b(jedzen\w*|posił\w*|posilk\w*|kalori\w*|kcal|makro|nutrition|śniadan\w*|sniadan\w*|obiad\w*|kolacj\w*)\b",
+    re.IGNORECASE,
+)
+_QBOT_QUERY_ANALYSIS_RE = re.compile(
+    r"\b(analiz\w*|oceń|ocen|ocena|sprawdź|sprawdz|wystarczy|dlaczego|czemu|porównaj|porownaj|diagnostyk\w*)\b",
+    re.IGNORECASE,
+)
+_GARMIN_SIMPLE_LAST_RIDE_RE = re.compile(
+    r"\b(ostatni\w*|najnowsz\w*)\b.*\b(jazd\w*|aktywno\w*)\b.*\bgarmin\b|\bgarmin\b.*\b(ostatni\w*|najnowsz\w*)\b.*\b(jazd\w*|aktywno\w*)\b",
+    re.IGNORECASE,
+)
+
+
+def _classify_vnext_escalation(query: str, vnext_result: dict[str, Any] | None = None) -> str | None:
+    """Return explicit reason why query_vnext must not be the final engine."""
+    q = query or ""
+    if _QBOT_QUERY_WRITE_RE.search(q):
+        return "ACTION_REQUIRED"
+    if _QBOT_QUERY_ARCHITECTURE_RE.search(q):
+        return "ESCALATED_ARCHITECTURE"
+
+    has_route = bool(_QBOT_QUERY_ROUTE_RE.search(q))
+    if _GARMIN_SIMPLE_LAST_RIDE_RE.search(q):
+        has_route = False
+    has_nutrition = bool(_QBOT_QUERY_NUTRITION_RE.search(q))
+    has_analysis = bool(_QBOT_QUERY_ANALYSIS_RE.search(q))
+
+    if has_nutrition and has_route:
+        return "ESCALATED_MULTIDOMAIN"
+    if has_route:
+        return "ESCALATED_ROUTE"
+    if has_analysis:
+        return "ANALYSIS_REQUIRED"
+
+    if vnext_result:
+        status = str(vnext_result.get("status") or "")
+        intent = str(vnext_result.get("intent") or "")
+        if status == "ACTION_REQUIRED" or vnext_result.get("action_draft"):
+            return "ACTION_REQUIRED"
+        if status not in _QBOT_QUERY_VNEXT_FAST_PATH_STATUSES:
+            return "ANALYSIS_REQUIRED"
+        if intent not in _QBOT_QUERY_VNEXT_FAST_PATH_INTENTS:
+            return "ANALYSIS_REQUIRED"
+    return None
+
+
+def _should_accept_vnext_result(query: str, result: dict[str, Any]) -> bool:
+    """Accept VNEXT only for explicit, simple, single-domain read-only intents.
+
+    Special case: if VNEXT Router v2 already called Albert internally
+    (router_v2 contains 'engine=albert'), accept the result as-is to avoid
+    a double-Albert call. The inner Albert already produced a complete answer.
+    """
+    # 2026-06-28: Router v2 (QBOT_ROUTES_VIA_ALBERT=1) can call Albert inside
+    # qbot_query_handler for OPEN_DOMAIN_INTENTS. The result then has
+    # router_v2="open_domain intent=<X> conflict=<Y> engine=albert".
+    # Without this guard mcp_adapter would reject the result (intent=albert_routes
+    # is not in _QBOT_QUERY_VNEXT_FAST_PATH_INTENTS) and call Albert again.
+    router_v2 = str(result.get("router_v2") or "")
+    if "engine=albert" in router_v2:
+        # Inner Albert already answered — accept without re-calling.
+        if result.get("action_draft"):
+            return False
+        return True
+
+    if _classify_vnext_escalation(query, result):
+        return False
+    status = str(result.get("status") or "")
+    intent = str(result.get("intent") or "")
+    if status not in _QBOT_QUERY_VNEXT_FAST_PATH_STATUSES:
+        return False
+    if intent not in _QBOT_QUERY_VNEXT_FAST_PATH_INTENTS:
+        return False
+    if result.get("action_draft"):
+        return False
+    return True
 
 
 def list_allowed_actions() -> list[str]:
@@ -147,27 +273,32 @@ def _call_tool(req_id: Any, params: dict[str, Any]) -> dict[str, Any]:
         t0 = perf_counter()
         if os.getenv("QBOT_QUERY_VNEXT_ENABLED") == "1":
             try:
-                from qbot_query_handler import handle_query
-                vnext_result = handle_query(question=query, context=args.get("context"))
-                # Albert-first (2026-06-15): ACTION_REQUIRED (keyword zlapal
-                # write_meal, ale potrzebuje LLM do dokonczenia zapisu) traktuj
-                # jak UNRECOGNIZED - przekaz do Alberta, ktory wykona zapis
-                # naprawde (zobacz _execute_single_tool: nutrition_log_add).
-                if vnext_result.get("status") in ("UNRECOGNIZED", "ACTION_REQUIRED"):
-                    if not albert_hard_killed():
-                        result = orchestrate_query(query, context=args.get("context", ""))
-                        from qbot3.response_normalizer import normalize_response
-                        result = normalize_response(result)
-                        result["fallback_reason"] = "query_vnext UNRECOGNIZED — fell back to Albert"
-                    else:
-                        result = planner_unavailable_response(
-                            query,
-                            intent="unrecognized",
-                            source="qbot.query",
-                            fallback_reason="QBOT_ALBERT_HARD_KILL=1",
-                        )
+                # 2026-06-28: escalation/denylist runs before VNEXT.
+                # This prevents keyword hijacks such as architecture questions
+                # becoming artifact_search or route+nutrition analysis becoming
+                # nutrition_day. Only after that do we run the VNEXT allowlist.
+                pre_escalation_reason = _classify_vnext_escalation(query)
+                if pre_escalation_reason:
+                    vnext_result = {}
                 else:
+                    from qbot_query_handler import handle_query
+                    vnext_result = handle_query(question=query, context=args.get("context"))
+
+                fallback_reason = pre_escalation_reason or _classify_vnext_escalation(query, vnext_result)
+                if not fallback_reason and _should_accept_vnext_result(query, vnext_result):
                     result = vnext_result
+                elif not albert_hard_killed():
+                    result = orchestrate_query(query, context=args.get("context", ""))
+                    from qbot3.response_normalizer import normalize_response
+                    result = normalize_response(result)
+                    result["fallback_reason"] = fallback_reason or "ANALYSIS_REQUIRED"
+                else:
+                    result = planner_unavailable_response(
+                        query,
+                        intent="unrecognized",
+                        source="qbot.query",
+                        fallback_reason="QBOT_ALBERT_HARD_KILL=1",
+                    )
             except Exception as exc:
                 if not albert_hard_killed():
                     result = orchestrate_query(query, context=args.get("context", ""))
