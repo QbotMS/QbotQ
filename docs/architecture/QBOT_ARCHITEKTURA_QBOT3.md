@@ -76,6 +76,8 @@ Geology context 2026-06-28: `geology_context` jest stałym etapem JSON i działa
 
 EGDI audit 2026-06-28: w audycie potwierdzono stabilne `GetFeatureInfo` JSON na `GeologicUnitView_Lithology` w pan-europejskim WMS. OGC API `.../ogc/features` jest obecne, ale `collections/GeologicUnitView/items` z `bbox` dawało `500`, więc prototyp powinien startować od WMS JSON, nie od OGC API items. OneGeology nie daje praktycznego coverage dla punktów testowych poza UK, więc pozostaje tylko pomocniczym fallbackiem technicznym.
 
+Hook 2026-06-28: `build_geology_context()` najpierw odpytuje EGDI po punktach kontrolnych, a dopiero przy `WARN`/`UNAVAILABLE` przechodzi do `heuristic_region_v1`. To utrzymuje geology_context jako europejski etap kontekstowy, a nie listę ręcznych wyjątków krajowych; national enrichment zostaje TODO.
+
 `route_frames` 80 m zostają jako legacy/fallback dla profilu, pogody, debug i agregacji. WEB, qbot.query, Telegram i MCP mają docelowo konsumować ten sam wynik `route_surface_analysis_v1`; WEB jest rendererem, nie źródłem prawdy.
 
 Refinementy: Valhalla tylko jako fallback/refinement; landcover jako contextual refinement; `geology_context` jako europejski etap fail-open z próbkowaniem centroid+bbox+punkty kontrolne 5-10 km, nigdy co 50 m. Bazą jest EGDI, krajowe źródła są enrichmentem, a heuristic zostaje ostatnim fallbackiem.

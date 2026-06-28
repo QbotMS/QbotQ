@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Fail-open regional geology context for route surface analysis.
 
-2026-06-28 intent: keep geology_context as a stable JSON stage without
-connecting heavy external geology APIs. Real providers can be added behind the
-provider chain later; heuristic_region_v1 is the only active provider here.
+2026-06-28 intent: keep geology_context as a stable JSON stage with a real
+Europe-wide EGDI provider first, then national enrichment later, and
+heuristic_region_v1 as the last fail-open fallback.
 """
 from __future__ import annotations
 
 from typing import Any
+
+from tools.rwgps.egdi_geology_provider import get_egdi_geology_context
 
 
 SAMPLE_STRATEGY = "centroid+bbox+10km_control_points"
@@ -121,13 +123,14 @@ def _empty_context(enabled: bool, status: str, warning: str | None = None) -> di
         "sample_strategy": SAMPLE_STRATEGY,
         "explanation": None,
         "warnings": warnings,
-        "provider_chain": ["national_provider_stub", "european_provider_stub", "heuristic_region_v1"],
+        "provider_chain": ["egdi", "national_provider_stub", "heuristic_region_v1"],
     }
 
 
-def build_geology_context(samples: list[Any], enabled: bool = True) -> dict[str, Any]:
+def _heuristic_context(samples: list[Any], enabled: bool = True, warnings: list[str] | None = None) -> dict[str, Any]:
     if not enabled:
         return _empty_context(False, "DISABLED")
+    warnings = list(warnings or [])
     points = [_point(sample) for sample in samples]
     route_bbox = _bbox(points)
     route_centroid = _centroid(points)
@@ -147,6 +150,7 @@ def build_geology_context(samples: list[Any], enabled: bool = True) -> dict[str,
         context.update({
             "provider": "heuristic_region_v1",
             "source_resolution": "regional_heuristic",
+            "explanation": "no EGDI feature matched, using regional heuristic fallback",
             "route_bbox": {
                 "south": round(route_bbox[0], 7),
                 "west": round(route_bbox[1], 7),
@@ -155,6 +159,7 @@ def build_geology_context(samples: list[Any], enabled: bool = True) -> dict[str,
             },
             "centroid": {"lat": round(centroid_lat, 7), "lon": round(centroid_lon, 7)},
             "control_points": controls,
+            "warnings": warnings,
         })
         return context
 
@@ -180,8 +185,8 @@ def build_geology_context(samples: list[Any], enabled: bool = True) -> dict[str,
         "source_resolution": "regional_heuristic",
         "sample_strategy": SAMPLE_STRATEGY,
         "explanation": dominant["explanation"],
-        "warnings": [],
-        "provider_chain": ["national_provider_stub", "european_provider_stub", "heuristic_region_v1"],
+        "warnings": warnings,
+        "provider_chain": ["egdi", "national_provider_stub", "heuristic_region_v1"],
         "route_bbox": {
             "south": round(route_bbox[0], 7),
             "west": round(route_bbox[1], 7),
@@ -193,10 +198,100 @@ def build_geology_context(samples: list[Any], enabled: bool = True) -> dict[str,
     }
 
 
+def _egdi_probe_points(points: list[tuple[float, float, float]], controls: list[dict[str, float]], centroid: tuple[float, float]) -> list[dict[str, float]]:
+    probe_points: list[dict[str, float]] = []
+    seen: set[tuple[int, int]] = set()
+
+    def add(lat: float, lon: float) -> None:
+        key = (round(lat * 1_000_000), round(lon * 1_000_000))
+        if key in seen:
+            return
+        seen.add(key)
+        probe_points.append({"lat": round(lat, 7), "lon": round(lon, 7)})
+
+    add(centroid[0], centroid[1])
+    if points:
+        add(points[0][0], points[0][1])
+        add(points[-1][0], points[-1][1])
+    for control in controls:
+        add(float(control["lat"]), float(control["lon"]))
+    return probe_points
+
+
+def _egdi_context_context(egdi: dict[str, Any], route_bbox: tuple[float, float, float, float], route_centroid: tuple[float, float], controls: list[dict[str, float]]) -> dict[str, Any]:
+    warnings = [str(w) for w in egdi.get("warnings") or []]
+    confidence = str(egdi.get("confidence") or "unknown")
+    if confidence in {"low", "unknown"}:
+        warnings.append("EGDI confidence is low; regional hint only")
+    if egdi.get("status") == "WARN":
+        warnings.append("EGDI returned WARN; keeping it as best available Europe-wide hint")
+
+    context = {
+        "enabled": True,
+        "status": "OK",
+        "provider": "egdi",
+        "dominant_region": "egdi_pan_european_surface_geology",
+        "dominant_unit": egdi.get("dominant_unit"),
+        "units": egdi.get("units", []),
+        "sections": [],
+        "material_hint": str(egdi.get("material_hint") or "unknown"),
+        "confidence": confidence,
+        "source_resolution": egdi.get("source_resolution") or "EGDI 1:1M pan-European surface geology",
+        "sample_strategy": egdi.get("sample_strategy") or SAMPLE_STRATEGY,
+        "explanation": f"EGDI pan-European surface geology hint: {egdi.get('material_hint') or 'unknown'}",
+        "warnings": warnings,
+        "provider_chain": ["egdi", "national_provider_stub", "heuristic_region_v1"],
+        "route_bbox": {
+            "south": round(route_bbox[0], 7),
+            "west": round(route_bbox[1], 7),
+            "north": round(route_bbox[2], 7),
+            "east": round(route_bbox[3], 7),
+        },
+        "centroid": {"lat": round(route_centroid[0], 7), "lon": round(route_centroid[1], 7)},
+        "control_points": controls,
+    }
+    return context
+
+
+def build_geology_context(samples: list[Any], enabled: bool = True) -> dict[str, Any]:
+    if not enabled:
+        return _empty_context(False, "DISABLED")
+    points = [_point(sample) for sample in samples]
+    route_bbox = _bbox(points)
+    route_centroid = _centroid(points)
+    controls = _control_points(points)
+    if route_bbox is None or route_centroid is None:
+        return _empty_context(True, "UNAVAILABLE", "no route points available for geology heuristic")
+
+    egdi_points = _egdi_probe_points(points, controls, route_centroid)
+    try:
+        egdi = get_egdi_geology_context(egdi_points, bbox=route_bbox, timeout_sec=10)
+    except Exception as exc:
+        egdi = {
+            "provider": "egdi",
+            "status": "UNAVAILABLE",
+            "dominant_unit": None,
+            "units": [],
+            "material_hint": "unknown",
+            "confidence": "unknown",
+            "source_resolution": None,
+            "sample_strategy": SAMPLE_STRATEGY,
+            "raw_provider": {"endpoint": None, "layer": None, "method": None},
+            "warnings": [f"EGDI provider failed open: {exc}"],
+        }
+
+    if str(egdi.get("status") or "").upper() == "OK":
+        return _egdi_context_context(egdi, route_bbox, route_centroid, controls)
+
+    fallback_warnings = [f"EGDI unavailable; using heuristic_region_v1 fallback ({egdi.get('status')})"]
+    fallback_warnings.extend(str(w) for w in egdi.get("warnings") or [])
+    return _heuristic_context(samples, enabled=True, warnings=fallback_warnings)
+
+
 def risk_flags_for_segment(context: dict[str, Any], row: dict[str, Any]) -> list[str]:
     if not context.get("enabled") or context.get("status") not in {"OK", "WARN"}:
         return []
-    if context.get("provider") != "heuristic_region_v1":
+    if context.get("provider") not in {"heuristic_region_v1", "egdi"}:
         return []
     material_hint = str(context.get("material_hint") or "unknown")
     if material_hint == "unknown":
@@ -217,12 +312,15 @@ def risk_flags_for_segment(context: dict[str, Any], row: dict[str, Any]) -> list
     if not (candidate_surface and (candidate_source or candidate_highway or candidate_conf)):
         return []
 
-    if material_hint == "sand_loose_ground_possible":
+    hint = material_hint.lower()
+    if hint in {"sand_loose_ground_possible", "sand_loose_sand_possible"} or hint.startswith("sand") or hint == "alluvial_loose_wet_possible":
         return ["sand_possible", "loose_surface_possible"]
-    if material_hint == "rocky_stony_gravel_possible":
+    if hint in {"clay_mud_possible"} or "clay" in hint or "mud" in hint or "marl" in hint:
+        return ["mud_possible"]
+    if hint in {"rocky_stony_gravel_possible", "limestone_hardpack_white_gravel_possible", "granite_stony_hardpack_possible", "volcanic_stony_hardpack_possible", "sandstone_gravel_rocky_possible"} or "limestone" in hint or "carbonate" in hint or "granite" in hint or "volcan" in hint or "sandstone" in hint or "gravel" in hint:
         return ["rocky_possible", "stony_surface_possible"]
-    if material_hint == "compacted_gravel_white_road_possible":
+    if hint == "compacted_gravel_white_road_possible":
         return ["loose_gravel_possible", "dusty_hardpack_possible"]
-    if material_hint == "hardpack_loose_gravel_rocky_possible":
+    if hint == "hardpack_loose_gravel_rocky_possible":
         return ["loose_gravel_possible", "rocky_possible", "dry_hardpack_possible"]
     return []
