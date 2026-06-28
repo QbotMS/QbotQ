@@ -72,11 +72,11 @@ Diagnostyka mirrorów: `QBOT_OVERPASS_PROBE_ALL=1` albo `analyze_route_surface(.
 
 Metryki jakości 2026-06-28: wynik rozdziela jawne tagi OSM `surface` od inferencji. JSON zawiera `tagged_surface_pct`, `inferred_surface_pct`, `unknown_surface_pct`, `inference_sources_pct`, `inference_sources_m` oraz `problem_segments`. Segmenty mają `classification_source`, a `quality_status` rozróżnia `GOOD_TAGGED` i `GOOD_INFERRED`.
 
-Geology context 2026-06-28: `geology_context` jest stałym etapem JSON i działa fail-open. W tej fazie realny provider to `heuristic_region_v1`; `national_provider_stub` i `european_provider_stub` są miejscem pod przyszłe PIG-PIB/CBDG/GeoLOG, EGDI/INSPIRE/OneGeology, ISPRA i IGME/REDIAM. Geologia używa centroid+bbox+punkty kontrolne co 10 km, nigdy próbkowania surface 50 m. Segmenty mogą dostać `geology_material_hint`, `geology_hint_applied` i `risk_flags`, ale `surface_raw` nie jest nadpisywane.
+Geology context 2026-06-28: `geology_context` jest stałym etapem JSON i działa fail-open dla całej Europy. Bazowym providerem jest `EGDI`, który ma pokrywać dowolną trasę gravelową w Europie; krajowe providery są opcjonalnym enrichment/override po stronie krajowej, a `heuristic_region_v1` pozostaje ostatnim fallbackiem. Docelowy porządek: 1) EGDI, 2) national provider enrichment tam, gdzie kraj jest obsługiwany, 3) `heuristic_region_v1`. Nie modelujemy tego jako listy ręcznych krajowych wyjątków. Włochy i Hiszpania były tylko testami konkretnych krajów, nie granicą systemu. Geologia używa centroid+bbox+punkty kontrolne co 10 km, nigdy próbkowania surface 50 m. Segmenty mogą dostać `geology_material_hint`, `geology_hint_applied` i `risk_flags`, ale `surface_raw` nie jest nadpisywane.
 
 `route_frames` 80 m zostają jako legacy/fallback dla profilu, pogody, debug i agregacji. WEB, qbot.query, Telegram i MCP mają docelowo konsumować ten sam wynik `route_surface_analysis_v1`; WEB jest rendererem, nie źródłem prawdy.
 
-Refinementy: Valhalla tylko jako fallback/refinement; landcover jako contextual refinement; `geology_context` jako regionalny etap fail-open z próbkowaniem centroid+bbox+punkty kontrolne 5-10 km, nigdy co 50 m.
+Refinementy: Valhalla tylko jako fallback/refinement; landcover jako contextual refinement; `geology_context` jako europejski etap fail-open z próbkowaniem centroid+bbox+punkty kontrolne 5-10 km, nigdy co 50 m. Bazą jest EGDI, krajowe źródła są enrichmentem, a heuristic zostaje ostatnim fallbackiem.
 
 ## Runtime prompt QBot
 
