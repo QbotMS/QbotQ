@@ -21,6 +21,22 @@
 
 ---
 
+## 2026-06-28 — Geology context scaffold dla analizy nawierzchni
+
+**Status:** wdrożone w kodzie, bez restartu usług i bez migracji DB.
+
+**Intencja:** utrwalić `geology_context` jako stały etap produkcyjnego JSON analizy nawierzchni, ale bez ryzykownego podpinania zewnętrznych API w tej fazie. Geologia jest regionalnym kontekstem interpretacyjnym, nie źródłem prawdy surface.
+
+**Kontrakt JSON:** top-level `geology_context` zawsze zawiera `enabled`, `status`, `provider`, `dominant_region`, `dominant_unit`, `units`, `sections`, `material_hint`, `confidence`, `source_resolution`, `sample_strategy`, `explanation`, `warnings`. Segmenty mogą mieć `geology_hint_applied`, `geology_material_hint` i `risk_flags`.
+
+**Provider chain:** przygotowane miejsce na `national_provider_stub` i `european_provider_stub`; realnie działa tylko `heuristic_region_v1`. Źródła do kolejnej fazy: Polska PIG-PIB/CBDG/GeoLOG/WMS/WFS, Europa EGDI/INSPIRE/OneGeology, Włochy ISPRA/regional geoportals, Hiszpania IGME/REDIAM.
+
+**Próbkowanie:** geologia używa centroidu, bbox i punktów kontrolnych co 10 km; przy krótkich trasach minimum centroid + start + finish. Nigdy nie używa próbkowania 50 m, bo 50 m dotyczy wyłącznie nawierzchni.
+
+**Fail-open:** jeśli region nie pasuje albo provider zawiedzie, wynik zostaje `WARN`/`UNAVAILABLE`, material hint pozostaje `unknown`, a analiza nawierzchni działa dalej. Heurystyka może dodać tylko kontekst/ryzyka dla UNKNOWN, low confidence i inferowanych track/path/ground, bez nadpisywania `surface_raw`.
+
+---
+
 ## 2026-06-28 — Metryki jakości klasyfikacji nawierzchni
 
 **Status:** wdrożone w kodzie, bez restartu usług.

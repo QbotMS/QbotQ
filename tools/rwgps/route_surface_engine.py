@@ -21,6 +21,7 @@ from typing import Any
 import httpx
 
 from tools.rwgps.client import _resolve_artifact_for_summary, extract_artifact_points
+from tools.rwgps.geology_context import build_geology_context, risk_flags_for_segment
 
 try:
     from tools.rwgps.surface_landcover import _fetch_landuse, landcover_for_point
@@ -628,27 +629,27 @@ def _refine_context(surface: str, confidence: str, tags: dict[str, Any], landcov
 
 
 def _geology_context(samples: list[Sample], enabled: bool, warnings: list[str]) -> dict[str, Any]:
-    context = {
-        "enabled": bool(enabled),
-        "provider": None,
-        "status": "UNAVAILABLE" if enabled else "DISABLED",
-        "dominant_unit": None,
-        "units": [],
-        "sections": [],
-        "material_hint": "unknown",
-        "confidence": "unknown",
-        "source_resolution": None,
-        "sample_strategy": "centroid+bbox+10km_control_points",
-        "explanation": None,
-        "warnings": [],
-    }
-    if not enabled:
-        return context
-    # Provider chain is intentionally stubbed in phase 1. The engine keeps the
-    # geology stage in the JSON contract but never samples geology at 50 m.
-    msg = "geology provider chain not connected yet; fail-open without surface override"
-    context["warnings"].append(msg)
-    warnings.append(msg)
+    try:
+        context = build_geology_context(samples, enabled=enabled)
+    except Exception as exc:
+        context = {
+            "enabled": bool(enabled),
+            "status": "UNAVAILABLE" if enabled else "DISABLED",
+            "provider": None,
+            "dominant_region": None,
+            "dominant_unit": None,
+            "units": [],
+            "sections": [],
+            "material_hint": "unknown",
+            "confidence": "unknown",
+            "source_resolution": None,
+            "sample_strategy": "centroid+bbox+10km_control_points",
+            "explanation": None,
+            "warnings": [f"geology_context failed-open: {exc}"],
+            "provider_chain": ["national_provider_stub", "european_provider_stub", "heuristic_region_v1"],
+        }
+    for warning in context.get("warnings") or []:
+        warnings.append(str(warning))
     return context
 
 
@@ -698,6 +699,8 @@ def _segment_from_run(run: list[dict[str, Any]], next_dist: float | None = None)
     risk_flags = sorted({flag for item in run for flag in item.get("risk_flags", [])})
     source_counts = Counter(item.get("classification_source") or "unknown" for item in run)
     classification_source = source_counts.most_common(1)[0][0] if source_counts else first.get("classification_source", "unknown")
+    geology_hints = Counter(item.get("geology_material_hint") for item in run if item.get("geology_material_hint"))
+    geology_material_hint = geology_hints.most_common(1)[0][0] if geology_hints else None
     return {
         "km_from": round(first["dist_m"] / 1000.0, 3),
         "km_to": round(end_m / 1000.0, 3),
@@ -710,6 +713,7 @@ def _segment_from_run(run: list[dict[str, Any]], next_dist: float | None = None)
         "smoothness": first.get("smoothness"),
         "landcover": first.get("landcover"),
         "geology_hint_applied": any(item.get("geology_hint_applied") for item in run),
+        "geology_material_hint": geology_material_hint,
         "confidence": confidence,
         "source": first["source"],
         "classification_source": classification_source,
@@ -860,6 +864,10 @@ def analyze_route_surface(
                 required_quality_fields = {"tagged_surface_pct", "inferred_surface_pct", "unknown_surface_pct", "inference_sources_pct", "inference_sources_m", "problem_segments"}
                 if not required_quality_fields.issubset(cached):
                     raise ValueError("cached route_surface_analysis lacks surface quality metrics")
+                geology_context = cached.get("geology_context") if isinstance(cached.get("geology_context"), dict) else {}
+                required_geology_fields = {"enabled", "status", "provider", "dominant_region", "dominant_unit", "units", "sections", "material_hint", "confidence", "source_resolution", "sample_strategy", "warnings"}
+                if not required_geology_fields.issubset(geology_context):
+                    raise ValueError("cached route_surface_analysis lacks geology_context v1 contract")
                 cached["cache_hit"] = True
                 metrics = cached.setdefault("overpass_metrics", _new_overpass_metrics())
                 metrics["cache_hit_count"] = int(metrics.get("cache_hit_count", 0)) + 1
@@ -936,6 +944,22 @@ def analyze_route_surface(
                 classification_source = source_override
         if refined == "unknown":
             classification_source = "unknown"
+        geology_material_hint = None
+        geology_row = {
+            "surface_raw": surface_raw,
+            "surface_refined": refined,
+            "highway": tags.get("highway"),
+            "confidence": confidence,
+            "classification_source": classification_source,
+        }
+        geology_flags = risk_flags_for_segment(geology, geology_row)
+        if geology_flags:
+            for flag in geology_flags:
+                if flag not in risk_flags:
+                    risk_flags.append(flag)
+            geo_applied = True
+            geology_material_hint = str(geology.get("material_hint") or "unknown")
+            explanation = f"{explanation}; regional geology heuristic suggests {geology_material_hint}"
 
         sample_rows.append({
             "dist_m": sample.dist_m,
@@ -957,6 +981,7 @@ def analyze_route_surface(
             "warnings": row_warnings,
             "explanation": explanation,
             "geology_hint_applied": geo_applied,
+            "geology_material_hint": geology_material_hint,
         })
 
     coverage = sum(1 for row in sample_rows if row["match_distance_m"] is not None and row["match_distance_m"] <= FALLBACK_CORRIDOR_RADIUS_M)
@@ -1036,6 +1061,9 @@ def legacy_surface_shape(result: dict[str, Any]) -> dict[str, Any]:
             "km_to": seg.get("km_to"),
             "surface_raw": seg.get("surface_raw"),
             "method": seg.get("method"),
+            "geology_hint_applied": seg.get("geology_hint_applied"),
+            "geology_material_hint": seg.get("geology_material_hint"),
+            "risk_flags": seg.get("risk_flags"),
             "warnings": seg.get("warnings"),
         })
     out = dict(result)

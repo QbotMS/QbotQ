@@ -518,6 +518,14 @@ coverage. DATA JSON zawiera `tagged_surface_pct`, `inferred_surface_pct`,
 samej pewności jak `GOOD_TAGGED`; oznacza dobry coverage, ale wynik zależny od
 inferencji.
 
+Aktualizacja 2026-06-28: `geology_context` jest stałym elementem DATA JSON, ale
+działa fail-open. W tej fazie działa tylko `heuristic_region_v1`; realne API
+geologiczne są odłożone do kolejnej fazy. WEB może pokazać `dominant_region`,
+`material_hint`, `confidence`, `warnings` oraz segmentowe `risk_flags`, ale nie
+powinien prezentować heurystyki jako twardej klasyfikacji nawierzchni. Strategia
+geologii to centroid + bbox + punkty kontrolne co 10 km; próbkowanie 50 m dotyczy
+tylko nawierzchni.
+
 ```text
 route_id + rwgps_created_at + rwgps_updated_at + geometry_hash
     ↓
