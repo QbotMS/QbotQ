@@ -66,6 +66,10 @@ Głównym silnikiem nawierzchni jest `tools/rwgps/route_surface_engine.py` (`rou
 
 Parametry produkcyjne: surface sample 50 m, Overpass corridor 50/80 m, confidence match distance 25/50/80 m. Match 150 m nie jest normalnym źródłem surface, tylko debug/fallback z ostrzeżeniem.
 
+Overpass fallback 2026-06-28: default global endpoints dla Polski to `overpass-api.de`, `overpass.private.coffee`, `maps.mail.ru/osm/tools/overpass`; można nadpisać przez `QBOT_OVERPASS_ENDPOINTS`. Produkcyjny default to `first_success`: chunk zatrzymuje się na pierwszym HTTP 200. Silnik fail-open raportuje `overpass_metrics.mode` i `quality_status` (GOOD/PARTIAL/LOW_CONFIDENCE). Regionalne endpointy nie są defaultem.
+
+Diagnostyka mirrorów: `QBOT_OVERPASS_PROBE_ALL=1` albo `analyze_route_surface(..., overpass_probe_all=True)` włącza tryb `probe_all`. Ten tryb odpytuje każdy endpoint dla każdego chunka i zapisuje `overpass_probe.endpoint_comparison`; nie używać jako defaultu runtime.
+
 `route_frames` 80 m zostają jako legacy/fallback dla profilu, pogody, debug i agregacji. WEB, qbot.query, Telegram i MCP mają docelowo konsumować ten sam wynik `route_surface_analysis_v1`; WEB jest rendererem, nie źródłem prawdy.
 
 Refinementy: Valhalla tylko jako fallback/refinement; landcover jako contextual refinement; `geology_context` jako regionalny etap fail-open z próbkowaniem centroid+bbox+punkty kontrolne 5-10 km, nigdy co 50 m.

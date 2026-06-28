@@ -504,12 +504,19 @@ Aktualizacja 2026-06-28: nawierzchnia ma być liczona w backendzie przez
 WEB konsumuje gotowy DATA JSON i renderuje wynik; nie liczy nawierzchni i nie jest
 źródłem prawdy.
 
+Aktualizacja 2026-06-28: Overpass ma multi-endpoint fallback przez globalne
+instancje `overpass-api.de`, `overpass.private.coffee`, `maps.mail.ru`, z ENV
+`QBOT_OVERPASS_ENDPOINTS`. Default runtime to `first_success`; diagnostyczny
+`QBOT_OVERPASS_PROBE_ALL=1` / `overpass_probe_all=True` odpytuje wszystkie mirrory
+i zapisuje `overpass_probe.endpoint_comparison`. WEB powinien pokazywać/uwzględniać
+`quality_status` oraz `overpass_metrics`, szczególnie przy LOW_CONFIDENCE.
+
 ```text
 route_id + rwgps_created_at + rwgps_updated_at + geometry_hash
     ↓
 RWGPS fetch/cache
     ↓
-route_surface_engine_v1 (surface sample 50 m, OSM corridor 50/80 m)
+route_surface_engine_v1 (surface sample 50 m, OSM corridor 50/80 m, Overpass fallback)
     ↓
 Valhalla trace_attributes → way_id / matched geometry / snap quality (fallback/refinement)
     ↓

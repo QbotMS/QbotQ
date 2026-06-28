@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
 import time
 from collections import Counter
@@ -34,12 +35,16 @@ PRIMARY_CORRIDOR_RADIUS_M = 50
 FALLBACK_CORRIDOR_RADIUS_M = 80
 DEBUG_MAX_MATCH_DIST_M = 150
 CACHE_ROOT = Path("/opt/qbot/artifacts/analysis")
-OVERPASS_URLS = [
+DEFAULT_OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass.openstreetmap.ru/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ]
-USER_AGENT = "QBot/1.0 route_surface_engine_v1"
+USER_AGENT = os.getenv("QBOT_OVERPASS_USER_AGENT", "QBot/1.0 route_surface_engine_v1; contact=qbot-local")
+REFERER = os.getenv("QBOT_OVERPASS_REFERER", "https://qbot.local/route_surface_engine")
+OVERPASS_TIMEOUT_SEC = max(3, min(int(os.getenv("QBOT_OVERPASS_TIMEOUT_SEC", "10")), 60))
+OVERPASS_RETRIES = max(0, min(int(os.getenv("QBOT_OVERPASS_RETRIES", "1")), 3))
+OVERPASS_BACKOFF_SEC = max(0.0, min(float(os.getenv("QBOT_OVERPASS_BACKOFF_SEC", "0.8")), 10.0))
 
 
 SURFACE_CANONICAL = {
@@ -97,6 +102,109 @@ DIFFICULT_SURFACES = {
     "mud",
     "unknown",
 }
+
+
+def _configured_overpass_endpoints() -> list[str]:
+    raw = os.getenv("QBOT_OVERPASS_ENDPOINTS", "").strip()
+    if not raw:
+        return list(DEFAULT_OVERPASS_ENDPOINTS)
+    endpoints = [item.strip() for item in re.split(r"[,\s]+", raw) if item.strip()]
+    return endpoints or list(DEFAULT_OVERPASS_ENDPOINTS)
+
+
+def _new_overpass_metrics(chunks_total: int = 0) -> dict[str, Any]:
+    endpoints = _configured_overpass_endpoints()
+    return {
+        "endpoints_configured": endpoints,
+        "endpoints_tried": [],
+        "endpoint_stats": {
+            endpoint: {
+                "attempts": 0,
+                "ok": 0,
+                "timeouts": 0,
+                "http_errors": 0,
+                "status_codes": {},
+                "latencies_ms": [],
+                "last_error": None,
+            }
+            for endpoint in endpoints
+        },
+        "mode": "first_success",
+        "chunks_total": int(chunks_total),
+        "chunks_ok": 0,
+        "chunks_failed": 0,
+        "timeout_count": 0,
+        "http_error_count": 0,
+        "cache_hit_count": 0,
+        "selected_endpoint_per_chunk": [],
+    }
+
+
+def _record_endpoint_tried(metrics: dict[str, Any], endpoint: str) -> dict[str, Any]:
+    if endpoint not in metrics["endpoint_stats"]:
+        metrics["endpoint_stats"][endpoint] = {
+            "attempts": 0,
+            "ok": 0,
+            "timeouts": 0,
+            "http_errors": 0,
+            "status_codes": {},
+            "latencies_ms": [],
+            "last_error": None,
+        }
+    if endpoint not in metrics["endpoints_tried"]:
+        metrics["endpoints_tried"].append(endpoint)
+    return metrics["endpoint_stats"][endpoint]
+
+
+def _latency_summary(values: list[float]) -> dict[str, float | None]:
+    if not values:
+        return {"avg_latency_ms": None, "p95_latency_ms": None}
+    vals = sorted(float(v) for v in values)
+    p95_idx = min(len(vals) - 1, max(0, math.ceil(len(vals) * 0.95) - 1))
+    return {
+        "avg_latency_ms": round(sum(vals) / len(vals), 1),
+        "p95_latency_ms": round(vals[p95_idx], 1),
+    }
+
+
+def _element_counts(payload: dict[str, Any] | None) -> dict[str, int]:
+    elements = payload.get("elements", []) if isinstance(payload, dict) else []
+    counts = {"elements_total": len(elements), "ways_total": 0, "nodes_total": 0, "rels_total": 0}
+    for el in elements:
+        if not isinstance(el, dict):
+            continue
+        typ = el.get("type")
+        if typ == "way":
+            counts["ways_total"] += 1
+        elif typ == "node":
+            counts["nodes_total"] += 1
+        elif typ == "relation":
+            counts["rels_total"] += 1
+    return counts
+
+
+def _new_overpass_probe(enabled: bool) -> dict[str, Any]:
+    endpoints = _configured_overpass_endpoints()
+    return {
+        "enabled": bool(enabled),
+        "endpoint_comparison": {
+            endpoint: {
+                "ok_chunks": 0,
+                "failed_chunks": 0,
+                "timeout_count": 0,
+                "http_error_count": 0,
+                "latencies_ms": [],
+                "avg_latency_ms": None,
+                "p95_latency_ms": None,
+                "elements_total": 0,
+                "ways_total": 0,
+                "nodes_total": 0,
+                "rels_total": 0,
+                "status_per_chunk": [],
+            }
+            for endpoint in endpoints
+        },
+    }
 
 
 @dataclass(frozen=True)
@@ -211,34 +319,171 @@ def _bbox_for_samples(samples: list[Sample], pad_m: float = 120.0) -> tuple[floa
     return min(lats) - pad_lat, min(lons) - pad_lon, max(lats) + pad_lat, max(lons) + pad_lon
 
 
-def _overpass(query: str, timeout: int = 8) -> dict[str, Any]:
-    headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+def _overpass(query: str, metrics: dict[str, Any], timeout: int | None = None) -> tuple[dict[str, Any], str]:
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Referer": REFERER,
+        "Accept": "application/json",
+    }
     last: str | None = None
-    effective_timeout = max(3, min(int(timeout), 8))
-    for url in OVERPASS_URLS[:1]:
-        try:
-            response = httpx.post(url, data={"data": query}, headers=headers, timeout=effective_timeout)
-            if response.status_code == 200:
-                return response.json()
-            last = f"{response.status_code} @ {url}"
-        except Exception as exc:
-            last = f"{exc.__class__.__name__}: {exc}"
-        time.sleep(0.4)
+    effective_timeout = max(3, min(int(timeout or OVERPASS_TIMEOUT_SEC), 60))
+    retry_statuses = {429, 500, 502, 503, 504}
+
+    for endpoint in _configured_overpass_endpoints():
+        stats = _record_endpoint_tried(metrics, endpoint)
+        for attempt in range(OVERPASS_RETRIES + 1):
+            stats["attempts"] += 1
+            started = time.monotonic()
+            try:
+                response = httpx.post(endpoint, data={"data": query}, headers=headers, timeout=effective_timeout)
+            except httpx.TimeoutException as exc:
+                stats["latencies_ms"].append((time.monotonic() - started) * 1000.0)
+                metrics["timeout_count"] += 1
+                stats["timeouts"] += 1
+                stats["last_error"] = f"timeout: {exc}"
+                last = f"timeout @ {endpoint}"
+            except Exception as exc:
+                stats["latencies_ms"].append((time.monotonic() - started) * 1000.0)
+                stats["last_error"] = f"{exc.__class__.__name__}: {exc}"
+                last = f"{exc.__class__.__name__}: {exc} @ {endpoint}"
+            else:
+                stats["latencies_ms"].append((time.monotonic() - started) * 1000.0)
+                code = int(response.status_code)
+                status_codes = stats["status_codes"]
+                status_codes[str(code)] = int(status_codes.get(str(code), 0)) + 1
+                if code == 200:
+                    stats["ok"] += 1
+                    return response.json(), endpoint
+                metrics["http_error_count"] += 1
+                stats["http_errors"] += 1
+                stats["last_error"] = f"HTTP {code}"
+                last = f"HTTP {code} @ {endpoint}"
+                if code == 400:
+                    raise RuntimeError(f"Overpass query rejected with HTTP 400 @ {endpoint}; not retrying syntax errors")
+                if code not in retry_statuses:
+                    break
+
+            if attempt < OVERPASS_RETRIES:
+                time.sleep(OVERPASS_BACKOFF_SEC * (attempt + 1))
+        time.sleep(0.2)
     raise RuntimeError(f"Overpass unavailable: {last}")
 
 
-def _fetch_highways_along_track(samples: list[Sample], radius_m: int, warnings: list[str]) -> list[dict[str, Any]]:
+def _probe_all_overpass(query: str, chunk_idx: int, radius_m: int, probe: dict[str, Any], timeout: int | None = None) -> None:
+    if not probe.get("enabled"):
+        return
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Referer": REFERER,
+        "Accept": "application/json",
+    }
+    effective_timeout = max(3, min(int(timeout or OVERPASS_TIMEOUT_SEC), 60))
+    for endpoint in _configured_overpass_endpoints():
+        comp = probe["endpoint_comparison"].setdefault(endpoint, {
+            "ok_chunks": 0,
+            "failed_chunks": 0,
+            "timeout_count": 0,
+            "http_error_count": 0,
+            "latencies_ms": [],
+            "avg_latency_ms": None,
+            "p95_latency_ms": None,
+            "elements_total": 0,
+            "ways_total": 0,
+            "nodes_total": 0,
+            "rels_total": 0,
+            "status_per_chunk": [],
+        })
+        started = time.monotonic()
+        status = {
+            "chunk": int(chunk_idx),
+            "radius_m": int(radius_m),
+            "status": "FAILED",
+            "http_status": None,
+            "latency_ms": None,
+            "elements_total": 0,
+            "ways_total": 0,
+            "nodes_total": 0,
+            "rels_total": 0,
+            "error": None,
+        }
+        try:
+            response = httpx.post(endpoint, data={"data": query}, headers=headers, timeout=effective_timeout)
+            latency_ms = round((time.monotonic() - started) * 1000.0, 1)
+            status["latency_ms"] = latency_ms
+            comp["latencies_ms"].append(latency_ms)
+            status["http_status"] = int(response.status_code)
+            if response.status_code == 200:
+                payload = response.json()
+                counts = _element_counts(payload)
+                status.update(counts)
+                comp["ok_chunks"] += 1
+                for key, value in counts.items():
+                    comp[key] += value
+                status["status"] = "OK"
+            else:
+                comp["failed_chunks"] += 1
+                comp["http_error_count"] += 1
+                status["status"] = "HTTP_ERROR"
+                status["error"] = f"HTTP {response.status_code}"
+        except httpx.TimeoutException as exc:
+            latency_ms = round((time.monotonic() - started) * 1000.0, 1)
+            status["latency_ms"] = latency_ms
+            comp["latencies_ms"].append(latency_ms)
+            comp["failed_chunks"] += 1
+            comp["timeout_count"] += 1
+            status["status"] = "TIMEOUT"
+            status["error"] = str(exc)[:200]
+        except Exception as exc:
+            latency_ms = round((time.monotonic() - started) * 1000.0, 1)
+            status["latency_ms"] = latency_ms
+            comp["latencies_ms"].append(latency_ms)
+            comp["failed_chunks"] += 1
+            status["error"] = f"{exc.__class__.__name__}: {exc}"[:200]
+        comp["status_per_chunk"].append(status)
+
+
+def _finalize_overpass_metrics(metrics: dict[str, Any]) -> None:
+    for stats in (metrics.get("endpoint_stats") or {}).values():
+        latencies = stats.pop("latencies_ms", [])
+        stats.update(_latency_summary(latencies))
+
+
+def _finalize_overpass_probe(probe: dict[str, Any]) -> None:
+    for comp in (probe.get("endpoint_comparison") or {}).values():
+        latencies = comp.pop("latencies_ms", [])
+        comp.update(_latency_summary(latencies))
+
+
+def _fetch_highways_along_track(samples: list[Sample], radius_m: int, warnings: list[str], metrics: dict[str, Any], probe: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     ways: dict[int | str, dict[str, Any]] = {}
     chunk_size = 220
+    metrics["chunks_total"] += (len(samples) + chunk_size - 1) // chunk_size if samples else 0
     for chunk_idx, start in enumerate(range(0, len(samples), chunk_size), start=1):
         chunk = samples[start : start + chunk_size]
         south, west, north, east = _bbox_for_samples(chunk, pad_m=float(radius_m))
-        query = f'[out:json][timeout:8];way["highway"]({south:.7f},{west:.7f},{north:.7f},{east:.7f});out tags geom;'
+        query = f'[out:json][timeout:{int(OVERPASS_TIMEOUT_SEC)}];way["highway"]({south:.7f},{west:.7f},{north:.7f},{east:.7f});out tags geom;'
+        if probe and probe.get("enabled"):
+            _probe_all_overpass(query, chunk_idx, int(radius_m), probe, timeout=OVERPASS_TIMEOUT_SEC)
         try:
-            payload = _overpass(query, timeout=8)
+            payload, selected_endpoint = _overpass(query, metrics, timeout=OVERPASS_TIMEOUT_SEC)
         except Exception as exc:
+            metrics["chunks_failed"] += 1
+            metrics["selected_endpoint_per_chunk"].append({
+                "chunk": chunk_idx,
+                "radius_m": int(radius_m),
+                "endpoint": None,
+                "status": "FAILED",
+                "error": str(exc)[:240],
+            })
             warnings.append(f"Overpass highway chunk {chunk_idx} failed-open: {exc}")
             continue
+        metrics["chunks_ok"] += 1
+        metrics["selected_endpoint_per_chunk"].append({
+            "chunk": chunk_idx,
+            "radius_m": int(radius_m),
+            "endpoint": selected_endpoint,
+            "status": "OK",
+        })
         for el in payload.get("elements", []) if isinstance(payload, dict) else []:
             if el.get("type") != "way":
                 continue
@@ -494,6 +739,14 @@ def _percentages(rows: list[dict[str, Any]], key: str) -> dict[str, float]:
     return {name: round(count / total * 100.0, 1) for name, count in counts.most_common()}
 
 
+def _quality_status(coverage_pct: float, refined_unknown_pct: float) -> str:
+    if coverage_pct >= 85.0 and refined_unknown_pct <= 15.0:
+        return "GOOD"
+    if coverage_pct >= 60.0 and refined_unknown_pct <= 30.0:
+        return "PARTIAL"
+    return "LOW_CONFIDENCE"
+
+
 def _route_id_from_path(path: Path) -> str | None:
     m = re.search(r"rwgps_(\d+)", path.name)
     return m.group(1) if m else None
@@ -508,6 +761,7 @@ def analyze_route_surface(
     use_landcover: bool = True,
     use_geology_context: bool = True,
     refresh: bool = False,
+    overpass_probe_all: bool = False,
 ) -> dict[str, Any]:
     mode = mode if mode in {"gravel_detail", "overview", "debug"} else "gravel_detail"
     sample_distance_m = int(sample_distance_m or DEFAULT_SAMPLE_DISTANCE_M)
@@ -531,11 +785,16 @@ def analyze_route_surface(
     route_id_str = str(route_id) if route_id is not None else _route_id_from_path(file_path)
     CACHE_ROOT.mkdir(parents=True, exist_ok=True)
     cache_path = CACHE_ROOT / f"route_surface_engine_{file_path.stem}_{sample_distance_m}m_{ENGINE_VERSION}_{file_sha[:12]}.json"
-    if cache_path.exists() and not refresh:
+    probe_enabled = bool(overpass_probe_all) or os.getenv("QBOT_OVERPASS_PROBE_ALL", "").strip().lower() in {"1", "true", "yes", "on"}
+    if cache_path.exists() and not refresh and not probe_enabled:
         try:
             cached = json.loads(cache_path.read_text(encoding="utf-8"))
             if isinstance(cached, dict) and cached.get("ok"):
                 cached["cache_hit"] = True
+                metrics = cached.setdefault("overpass_metrics", _new_overpass_metrics())
+                metrics["cache_hit_count"] = int(metrics.get("cache_hit_count", 0)) + 1
+                if "quality_status" not in cached:
+                    cached["quality_status"] = _quality_status(float(cached.get("coverage_pct") or 0.0), float(cached.get("unknown_pct_refined") or 100.0))
                 return cached
         except Exception:
             pass
@@ -553,11 +812,14 @@ def analyze_route_surface(
     valhalla_info = _maybe_valhalla_refinement(samples, use_valhalla, warnings)
     geology = _geology_context(samples, use_geology_context, warnings)
     geology_hint = str(geology.get("material_hint") or "unknown")
+    overpass_metrics = _new_overpass_metrics()
+    overpass_metrics["mode"] = "probe_all" if probe_enabled else "first_success"
+    overpass_probe = _new_overpass_probe(probe_enabled)
 
-    ways = _fetch_highways_along_track(samples, PRIMARY_CORRIDOR_RADIUS_M, warnings)
+    ways = _fetch_highways_along_track(samples, PRIMARY_CORRIDOR_RADIUS_M, warnings, overpass_metrics, overpass_probe)
     if not ways:
         warnings.append("primary corridor returned no highways; trying fallback 80 m corridor")
-        ways = _fetch_highways_along_track(samples, FALLBACK_CORRIDOR_RADIUS_M, warnings)
+        ways = _fetch_highways_along_track(samples, FALLBACK_CORRIDOR_RADIUS_M, warnings, overpass_metrics, overpass_probe)
 
     polygons: list[dict[str, Any]] = []
     if use_landcover and _fetch_landuse is not None:
@@ -620,9 +882,13 @@ def analyze_route_surface(
     coverage = sum(1 for row in sample_rows if row["match_distance_m"] is not None and row["match_distance_m"] <= FALLBACK_CORRIDOR_RADIUS_M)
     raw_pct = _percentages(sample_rows, "surface_raw")
     refined_pct = _percentages(sample_rows, "surface_refined")
+    coverage_pct = round(coverage / max(1, len(samples)) * 100.0, 1)
+    unknown_pct_refined = refined_pct.get("unknown", 0.0)
     confidence_counts = Counter(row["confidence"] for row in sample_rows)
     confidence_breakdown = {k: round(v / max(1, len(sample_rows)) * 100.0, 1) for k, v in confidence_counts.most_common()}
     segments = _merge_samples(sample_rows, dists[-1])
+    _finalize_overpass_metrics(overpass_metrics)
+    _finalize_overpass_probe(overpass_probe)
 
     result = {
         "ok": True,
@@ -635,12 +901,15 @@ def analyze_route_surface(
         "point_count": len(points),
         "sample_distance_m": sample_distance_m,
         "sampled_points": len(samples),
-        "coverage_pct": round(coverage / max(1, len(samples)) * 100.0, 1),
+        "coverage_pct": coverage_pct,
         "unknown_pct_raw": raw_pct.get("unknown", 0.0),
-        "unknown_pct_refined": refined_pct.get("unknown", 0.0),
+        "unknown_pct_refined": unknown_pct_refined,
+        "quality_status": _quality_status(coverage_pct, unknown_pct_refined),
         "surface_percentages_raw": raw_pct,
         "surface_percentages_refined": refined_pct,
         "confidence_breakdown": confidence_breakdown,
+        "overpass_metrics": overpass_metrics,
+        "overpass_probe": overpass_probe,
         "geology_context": geology,
         "segments": segments,
         "valhalla": valhalla_info,
