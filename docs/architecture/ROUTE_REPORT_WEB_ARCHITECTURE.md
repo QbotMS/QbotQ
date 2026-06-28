@@ -511,6 +511,13 @@ instancje `overpass-api.de`, `overpass.private.coffee`, `maps.mail.ru`, z ENV
 i zapisuje `overpass_probe.endpoint_comparison`. WEB powinien pokazywać/uwzględniać
 `quality_status` oraz `overpass_metrics`, szczególnie przy LOW_CONFIDENCE.
 
+Aktualizacja 2026-06-28: WEB powinien renderować jakość klasyfikacji osobno od
+coverage. DATA JSON zawiera `tagged_surface_pct`, `inferred_surface_pct`,
+`unknown_surface_pct`, `inference_sources_pct`, `inference_sources_m` oraz
+`problem_segments.top_unknown/top_inferred`. `GOOD_INFERRED` nie oznacza takiej
+samej pewności jak `GOOD_TAGGED`; oznacza dobry coverage, ale wynik zależny od
+inferencji.
+
 ```text
 route_id + rwgps_created_at + rwgps_updated_at + geometry_hash
     ↓

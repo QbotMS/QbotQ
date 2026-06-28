@@ -547,26 +547,27 @@ def _canonical_surface(raw: Any) -> str | None:
     return "mixed"
 
 
-def _infer_from_tags(tags: dict[str, Any]) -> tuple[str, str, str]:
+def _infer_from_tags(tags: dict[str, Any]) -> tuple[str, str, str, str]:
     raw = _canonical_surface(tags.get("surface"))
     if raw:
-        return raw, "high", "explicit OSM surface tag"
+        return raw, "high", "explicit OSM surface tag", "tagged_surface"
     tracktype = str(tags.get("tracktype") or "").strip().lower()
     if tracktype in TRACKTYPE_SURFACE:
-        return TRACKTYPE_SURFACE[tracktype]
+        surface, confidence, explanation = TRACKTYPE_SURFACE[tracktype]
+        return surface, confidence, explanation, "inferred_tracktype"
     highway = str(tags.get("highway") or "").strip().lower()
     smoothness = str(tags.get("smoothness") or "").strip().lower()
     if highway in PAVED_HIGHWAYS:
         if smoothness in {"bad", "very_bad", "horrible", "very_horrible"}:
-            return "mixed", "medium", f"highway={highway} is usually paved but smoothness={smoothness}"
-        return "asphalt", "medium", f"highway={highway} usually implies paved surface"
+            return "mixed", "medium", f"highway={highway} is usually paved but smoothness={smoothness}", "inferred_highway"
+        return "asphalt", "medium", f"highway={highway} usually implies paved surface", "inferred_highway"
     if highway == "cycleway":
-        return "asphalt", "medium", "cycleway usually implies paved surface"
+        return "asphalt", "medium", "cycleway usually implies paved surface", "inferred_highway"
     if highway == "track":
-        return "ground", "low", "highway=track without surface/tracktype"
+        return "ground", "low", "highway=track without surface/tracktype", "inferred_highway"
     if highway in {"path", "footway", "bridleway"}:
-        return "dirt", "low", f"highway={highway} without surface"
-    return "unknown", "unknown", "no surface-relevant OSM tags"
+        return "dirt", "low", f"highway={highway} without surface", "inferred_highway"
+    return "unknown", "unknown", "no surface-relevant OSM tags", "unknown"
 
 
 def _landcover_label(lat: float, lon: float, polygons: list[dict[str, Any]]) -> str | None:
@@ -587,27 +588,32 @@ def _landcover_label(lat: float, lon: float, polygons: list[dict[str, Any]]) -> 
     }.get(str(pl), str(pl))
 
 
-def _refine_context(surface: str, confidence: str, tags: dict[str, Any], landcover: str | None, geology_hint: str) -> tuple[str, str, list[str], str, bool]:
+def _refine_context(surface: str, confidence: str, tags: dict[str, Any], landcover: str | None, geology_hint: str) -> tuple[str, str, list[str], str, bool, str | None]:
     highway = str(tags.get("highway") or "").strip().lower()
     tracktype = str(tags.get("tracktype") or "").strip().lower()
     refined = surface
     risk_flags: list[str] = []
     applied_geo = False
+    source_override: str | None = None
     explanation = "kept OSM-derived surface"
 
     if surface in {"unknown", "mixed"} or confidence in {"low", "very_low", "unknown"}:
         if highway == "track" and landcover == "forest":
             refined = "ground" if tracktype not in {"grade2", "grade3"} else surface
             explanation = "surface missing/weak; forest track context suggests ground/compacted"
+            source_override = "inferred_landcover"
         elif highway == "track" and landcover == "farmland":
             refined = "ground"
             explanation = "surface missing/weak; farmland track context suggests dirt/ground/grass"
+            source_override = "inferred_landcover"
         elif highway == "service" and landcover in {"residential", "industrial"}:
             refined = "asphalt"
             explanation = "service road in built-up context is probably paved"
+            source_override = "inferred_service_default"
         elif highway in {"path", "footway", "bridleway"} and landcover == "forest":
             refined = "dirt"
             explanation = "forest path context suggests dirt, with limited confidence"
+            source_override = "inferred_landcover"
 
     if geology_hint in {"sand", "alluvial"} and refined in {"unknown", "ground", "dirt", "grass"}:
         risk_flags.append("sand_possible")
@@ -618,7 +624,7 @@ def _refine_context(surface: str, confidence: str, tags: dict[str, Any], landcov
     elif geology_hint in {"limestone", "sandstone", "granite", "volcanic"} and refined in {"unknown", "ground", "dirt", "gravel", "compacted"}:
         risk_flags.append("stony_or_hardpack_possible")
         applied_geo = True
-    return refined, explanation, risk_flags, "osm_tags_plus_landcover_plus_geology_hint" if applied_geo or landcover else "osm_tags", applied_geo
+    return refined, explanation, risk_flags, "osm_tags_plus_landcover_plus_geology_hint" if applied_geo or landcover else "osm_tags", applied_geo, source_override
 
 
 def _geology_context(samples: list[Sample], enabled: bool, warnings: list[str]) -> dict[str, Any]:
@@ -690,6 +696,8 @@ def _segment_from_run(run: list[dict[str, Any]], next_dist: float | None = None)
     for item in run:
         warnings.extend(item.get("warnings") or [])
     risk_flags = sorted({flag for item in run for flag in item.get("risk_flags", [])})
+    source_counts = Counter(item.get("classification_source") or "unknown" for item in run)
+    classification_source = source_counts.most_common(1)[0][0] if source_counts else first.get("classification_source", "unknown")
     return {
         "km_from": round(first["dist_m"] / 1000.0, 3),
         "km_to": round(end_m / 1000.0, 3),
@@ -704,6 +712,8 @@ def _segment_from_run(run: list[dict[str, Any]], next_dist: float | None = None)
         "geology_hint_applied": any(item.get("geology_hint_applied") for item in run),
         "confidence": confidence,
         "source": first["source"],
+        "classification_source": classification_source,
+        "classification_sources": dict(source_counts),
         "method": first["method"],
         "match_distance_m_avg": round(sum(match_vals) / len(match_vals), 1) if match_vals else None,
         "match_distance_m_max": round(max(match_vals), 1) if match_vals else None,
@@ -722,7 +732,11 @@ def _merge_samples(sample_rows: list[dict[str, Any]], total_m: float) -> list[di
     run = [sample_rows[0]]
     for row in sample_rows[1:]:
         prev = run[-1]
-        same = row["surface_refined"] == prev["surface_refined"] and row["confidence"] == prev["confidence"]
+        same = (
+            row["surface_refined"] == prev["surface_refined"]
+            and row["confidence"] == prev["confidence"]
+            and row.get("classification_source") == prev.get("classification_source")
+        )
         difficult = row["surface_refined"] in DIFFICULT_SURFACES or prev["surface_refined"] in DIFFICULT_SURFACES
         if same and not (difficult and (row["dist_m"] - run[0]["dist_m"]) >= 150):
             run.append(row)
@@ -739,9 +753,62 @@ def _percentages(rows: list[dict[str, Any]], key: str) -> dict[str, float]:
     return {name: round(count / total * 100.0, 1) for name, count in counts.most_common()}
 
 
-def _quality_status(coverage_pct: float, refined_unknown_pct: float) -> str:
+def _distance_m_by_source(sample_rows: list[dict[str, Any]], total_m: float) -> dict[str, float]:
+    if not sample_rows:
+        return {}
+    meters: Counter[str] = Counter()
+    for idx, row in enumerate(sample_rows):
+        start_m = float(row.get("dist_m") or 0.0)
+        if idx + 1 < len(sample_rows):
+            end_m = float(sample_rows[idx + 1].get("dist_m") or start_m)
+        else:
+            end_m = float(total_m)
+        dist_m = max(0.0, end_m - start_m)
+        source = str(row.get("classification_source") or "unknown")
+        meters[source] += dist_m
+    return {key: round(value, 1) for key, value in meters.items() if value > 0}
+
+
+def _surface_quality_metrics(sample_rows: list[dict[str, Any]], total_m: float) -> dict[str, Any]:
+    source_m = _distance_m_by_source(sample_rows, total_m)
+    total = sum(source_m.values()) or 1.0
+    source_pct = {key: round(value / total * 100.0, 1) for key, value in sorted(source_m.items(), key=lambda item: -item[1])}
+    tagged_m = source_m.get("tagged_surface", 0.0)
+    unknown_m = source_m.get("unknown", 0.0)
+    inferred_m = sum(value for key, value in source_m.items() if key.startswith("inferred_"))
+    return {
+        "tagged_surface_pct": round(tagged_m / total * 100.0, 1),
+        "inferred_surface_pct": round(inferred_m / total * 100.0, 1),
+        "unknown_surface_pct": round(unknown_m / total * 100.0, 1),
+        "inference_sources_pct": source_pct,
+        "inference_sources_m": source_m,
+    }
+
+
+def _problem_segments(segments: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    def _brief(seg: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "km_from": seg.get("km_from"),
+            "km_to": seg.get("km_to"),
+            "distance_m": seg.get("distance_m"),
+            "surface": seg.get("surface_refined"),
+            "classification_source": seg.get("classification_source"),
+            "confidence": seg.get("confidence"),
+        }
+
+    unknown = [seg for seg in segments if seg.get("surface_refined") == "unknown" or seg.get("classification_source") == "unknown"]
+    inferred = [seg for seg in segments if str(seg.get("classification_source") or "").startswith("inferred_")]
+    return {
+        "top_unknown": [_brief(seg) for seg in sorted(unknown, key=lambda item: float(item.get("distance_m") or 0), reverse=True)[:5]],
+        "top_inferred": [_brief(seg) for seg in sorted(inferred, key=lambda item: float(item.get("distance_m") or 0), reverse=True)[:5]],
+    }
+
+
+def _quality_status(coverage_pct: float, refined_unknown_pct: float, inferred_surface_pct: float = 100.0) -> str:
     if coverage_pct >= 85.0 and refined_unknown_pct <= 15.0:
-        return "GOOD"
+        if inferred_surface_pct <= 20.0:
+            return "GOOD_TAGGED"
+        return "GOOD_INFERRED"
     if coverage_pct >= 60.0 and refined_unknown_pct <= 30.0:
         return "PARTIAL"
     return "LOW_CONFIDENCE"
@@ -790,11 +857,18 @@ def analyze_route_surface(
         try:
             cached = json.loads(cache_path.read_text(encoding="utf-8"))
             if isinstance(cached, dict) and cached.get("ok"):
+                required_quality_fields = {"tagged_surface_pct", "inferred_surface_pct", "unknown_surface_pct", "inference_sources_pct", "inference_sources_m", "problem_segments"}
+                if not required_quality_fields.issubset(cached):
+                    raise ValueError("cached route_surface_analysis lacks surface quality metrics")
                 cached["cache_hit"] = True
                 metrics = cached.setdefault("overpass_metrics", _new_overpass_metrics())
                 metrics["cache_hit_count"] = int(metrics.get("cache_hit_count", 0)) + 1
                 if "quality_status" not in cached:
-                    cached["quality_status"] = _quality_status(float(cached.get("coverage_pct") or 0.0), float(cached.get("unknown_pct_refined") or 100.0))
+                    cached["quality_status"] = _quality_status(
+                        float(cached.get("coverage_pct") or 0.0),
+                        float(cached.get("unknown_pct_refined") or 100.0),
+                        float(cached.get("inferred_surface_pct") or 100.0),
+                    )
                 return cached
         except Exception:
             pass
@@ -835,12 +909,13 @@ def analyze_route_surface(
             confidence = "unknown"
             tags: dict[str, Any] = {}
             source = "unmatched"
+            classification_source = "unknown"
             explanation = "no OSM highway matched within 80 m corridor"
             method = "unmatched"
         else:
             tags = {str(k): v for k, v in (way.get("tags") or {}).items()}
             surface_raw = _canonical_surface(tags.get("surface")) or "unknown"
-            inferred, tag_conf, tag_expl = _infer_from_tags(tags)
+            inferred, tag_conf, tag_expl, classification_source = _infer_from_tags(tags)
             dist_conf = _confidence_for_distance(float(dist_m or 9999))
             confidence = min([tag_conf, dist_conf], key=lambda c: {"unknown": 0, "very_low": 1, "low": 2, "medium": 3, "high": 4}.get(c, 0))
             if dist_conf == "very_low":
@@ -852,11 +927,15 @@ def analyze_route_surface(
         landcover = _landcover_label(sample.lat, sample.lon, polygons) if polygons else None
         if landcover:
             landcover_used = True
-        refined, context_expl, risk_flags, method2, geo_applied = _refine_context(inferred, confidence, tags, landcover, geology_hint)
+        refined, context_expl, risk_flags, method2, geo_applied, source_override = _refine_context(inferred, confidence, tags, landcover, geology_hint)
         if context_expl != "kept OSM-derived surface":
             explanation = f"{explanation}; {context_expl}"
             method = method2
             source = "osm_contextual"
+            if source_override:
+                classification_source = source_override
+        if refined == "unknown":
+            classification_source = "unknown"
 
         sample_rows.append({
             "dist_m": sample.dist_m,
@@ -869,6 +948,7 @@ def analyze_route_surface(
             "landcover": landcover,
             "confidence": confidence,
             "source": source,
+            "classification_source": classification_source,
             "method": method,
             "match_distance_m": dist_m,
             "way_id": way_id,
@@ -887,6 +967,8 @@ def analyze_route_surface(
     confidence_counts = Counter(row["confidence"] for row in sample_rows)
     confidence_breakdown = {k: round(v / max(1, len(sample_rows)) * 100.0, 1) for k, v in confidence_counts.most_common()}
     segments = _merge_samples(sample_rows, dists[-1])
+    quality_metrics = _surface_quality_metrics(sample_rows, dists[-1])
+    problem_segments = _problem_segments(segments)
     _finalize_overpass_metrics(overpass_metrics)
     _finalize_overpass_probe(overpass_probe)
 
@@ -904,10 +986,16 @@ def analyze_route_surface(
         "coverage_pct": coverage_pct,
         "unknown_pct_raw": raw_pct.get("unknown", 0.0),
         "unknown_pct_refined": unknown_pct_refined,
-        "quality_status": _quality_status(coverage_pct, unknown_pct_refined),
+        "quality_status": _quality_status(coverage_pct, unknown_pct_refined, float(quality_metrics.get("inferred_surface_pct") or 0.0)),
+        "tagged_surface_pct": quality_metrics["tagged_surface_pct"],
+        "inferred_surface_pct": quality_metrics["inferred_surface_pct"],
+        "unknown_surface_pct": quality_metrics["unknown_surface_pct"],
+        "inference_sources_pct": quality_metrics["inference_sources_pct"],
+        "inference_sources_m": quality_metrics["inference_sources_m"],
         "surface_percentages_raw": raw_pct,
         "surface_percentages_refined": refined_pct,
         "confidence_breakdown": confidence_breakdown,
+        "problem_segments": problem_segments,
         "overpass_metrics": overpass_metrics,
         "overpass_probe": overpass_probe,
         "geology_context": geology,
