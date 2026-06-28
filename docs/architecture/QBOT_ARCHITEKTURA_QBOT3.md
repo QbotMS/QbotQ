@@ -87,3 +87,29 @@ Nie traktuj tego pliku jako jedynego acceptance gate do czasu jego aktualizacji.
 - `docs/architecture/QBOT_ARCHITEKTURA_V2.md` — historyczne / częściowo nieaktualne.
 - `PROJECT_STATE.md` — historyczny handoff.
 - `QBOT_CURRENT_STATE.md` — deprecated redirect.
+
+## 2026-06-28 — VNEXT jako wąski fast-path, Albert jako ścieżka dla złożonych zapytań
+
+Intencja zmiany: ograniczyć przechwytywanie zapytań przez `query_vnext`, bo keywordowy router potrafił błędnie klasyfikować pytania architektoniczne, trasowe i wielodomenowe przed Albertem.
+
+Decyzja runtime:
+- `qbot3/adapters/mcp_adapter.py` nadal może użyć `qbot_query_handler.py`, ale tylko jako wąski, jednoznaczny fast-path dla prostych zapytań read-only.
+- Wszystkie zapisy, `ACTION_REQUIRED`, `UNRECOGNIZED`, zapytania trasowe, architektoniczne, analityczne, wielodomenowe oraz intencje spoza jawnej allowlisty VNEXT mają być kierowane do `qbot3.agent_runtime.orchestrate_query()`.
+- VNEXT nie jest warstwą decyzyjną QBot3. Decyzje dla nieprostych przypadków podejmuje Albert/QBot3.
+
+Ślad implementacji:
+- `qbot3/adapters/mcp_adapter.py`: dodano denylistę/eskalację przed VNEXT, allowlistę `_QBOT_QUERY_VNEXT_FAST_PATH_INTENTS`, `_classify_vnext_escalation()` i `_should_accept_vnext_result()`.
+- Cel: ograniczyć keyword hijack bez usuwania szybkiej ścieżki dla prostych odczytów.
+
+
+### 2026-06-28 — doprecyzowanie po testach publicznego `qbot.query`
+
+Intencja zmiany: VNEXT ma być tylko wąskim fast-pathem dla prostych read-only zapytań; nie może przejmować write, tras, architektury, analiz, wielodomenowych i niepewnych zapytań.
+
+Decyzja runtime:
+- Najpierw działa denylista/eskalacja w `qbot3/adapters/mcp_adapter.py`, dopiero potem allowlista prostych intentów VNEXT.
+- Pytania o `VNEXT`, `query_vnext`, `QBot3`, Alberta, runtime, routing, migrację i architekturę idą bezpośrednio do Alberta/QBot3 jako diagnostyka/architektura, bez pośredniego `artifact_search`.
+- Pytania mieszające żywienie z trasą/jazdą i oceną przygotowania idą do Alberta/QBot3 jako przypadek wielodomenowy.
+- Zapisy nadal są blokowane przed VNEXT i kierowane do Alberta/QBot3 jako `ACTION_REQUIRED`.
+
+Jawne powody eskalacji: `ESCALATED_ARCHITECTURE`, `ESCALATED_ROUTE`, `ESCALATED_MULTIDOMAIN`, `ANALYSIS_REQUIRED`, `ACTION_REQUIRED`.

@@ -2,7 +2,9 @@
 
 **Model formy, metabolizmu i zarządzania treningiem dla QBota.**
 Status: **wdrożony i żywy na prodzie** (E0–E9 + B1–B2 + T1–T2), w dziennym cronie i na endpoincie.
-Data dokumentu: 2026-06-19. Spec źródłowy: `FITMODEL_SPEC.md` v2.0, taski: `FITMODEL_CLI_TASKS.md`.
+Data dokumentu: 2026-06-19. Zweryfikowany: 2026-06-28 (treść aktualna, etapy kompletne).
+
+> **Uwagi 2026-06-28:** `FITMODEL_SPEC.md` i `FITMODEL_CLI_TASKS.md` nie istnieją w repo (usunięte lub nigdy nie były w `/opt/qbot/app`). Ten plik jest jedynym aktywnym źródłem dokumentacji ModelQ.
 
 > **Nazewnictwo.** Od 2026-06-19 model nazywamy **ModelQ**. To nazwa produktowa/koncepcyjna.
 > Implementacja w kodzie i bazie pozostaje pod historycznym id `fitmodel` (pakiet `fitmodel/`,
