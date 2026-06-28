@@ -534,11 +534,14 @@ def _load_artifact_save_tool() -> dict[str, Any]:
 
 
 def _load_canonical_docs_tool() -> dict[str, Any]:
-    _DOCS_DIR = Path("/opt/qbot/docs")
+    # 2026-06-28: QBOT_BIBLE/KNOWHOW/PROJECT_INSTRUCTION w /opt/qbot/docs/ to stuby (redirect).
+    # Aktualna architektura: docs/architecture/QBOT_ARCHITEKTURA_QBOT3.md
+    # Aktualne instrukcje pracy: CLAUDE.md
+    _APP_DIR = Path("/opt/qbot/app")
     _DOCS = {
-        "QBOT_BIBLE": _DOCS_DIR / "QBOT_BIBLE.md",
-        "QBOT_KNOWHOW": _DOCS_DIR / "QBOT_KNOWHOW.md",
-        "QBOT_PROJECT_INSTRUCTION": _DOCS_DIR / "QBOT_PROJECT_INSTRUCTION_LOCAL.md",
+        "QBOT_ARCHITEKTURA_QBOT3": _APP_DIR / "docs/architecture/QBOT_ARCHITEKTURA_QBOT3.md",
+        "CONTEXT": _APP_DIR / "docs/CONTEXT.md",
+        "CLAUDE": _APP_DIR / "CLAUDE.md",
     }
 
     def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
@@ -582,7 +585,7 @@ def _load_canonical_docs_tool() -> dict[str, Any]:
     return {
         "callable": _wrapper,
         "category": "docs",
-        "description": "Read canonical QBot documents (QBOT_BIBLE, QBOT_KNOWHOW) with excerpt matching",
+        "description": "Read canonical QBot architecture docs (QBOT_ARCHITEKTURA_QBOT3, CONTEXT, CLAUDE) with excerpt matching. Use when asked about QBot architecture, routing, tools, instructions.",
         "args_schema": {"query": {"type": "string", "description": "Search terms for excerpt matching"}},
         "safety": "read",
     }
