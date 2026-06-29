@@ -35,13 +35,73 @@ CANNED = {
 }
 
 CANNED_POI_CACHE = {
-    "status": "OK",
-    "data": {
-        "analysis": "POI: km 5.0 woda; km 12.0 sklep; km 55.0 woda",
-        "counts": {"water": 3, "food": 5, "attractions": 2},
-        "report_path": "/opt/qbot/artifacts/poi.md",
-        "report_json_path": "/opt/qbot/artifacts/reports/poi_analysis_55734589_test.json",
-    },
+    "status": "PARTIAL",
+    "analysis_status": "PARTIAL",
+    "cache_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_00_71.json",
+    "generated_at": "2026-06-29T13:08:00+02:00",
+    "report_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_00_71.md",
+    "report_json_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_00_71.json",
+    "summary": {"hard_resupply": 3, "soft_food_stop": 0, "water": 0, "attractions": 9, "town": 20},
+    "buffers": {"avg_speed_kmh": 18.0},
+    "hard_resupply": [
+        {
+            "category": "hard_resupply",
+            "name": "Hard resupply 13013337435",
+            "lat": 52.627947,
+            "lon": 21.586398,
+            "route_km": 0.0,
+            "distance_to_track_m": 201.5,
+            "source_tags": "shop=greengrocer",
+            "opening_hours_osm": None,
+            "open_at_arrival": True,
+            "open_source": "google",
+            "eta_iso": "2026-06-29T10:00:00",
+        },
+        {
+            "category": "hard_resupply",
+            "name": "abc",
+            "lat": 52.627789,
+            "lon": 21.5856,
+            "route_km": 0.0,
+            "distance_to_track_m": 252.0,
+            "source_tags": "name=abc; shop=convenience",
+            "opening_hours_osm": "Mo-Sa 06:00-21:00; Su 08:00-18:00",
+            "open_at_arrival": True,
+            "open_source": "osm",
+            "eta_iso": "2026-06-29T10:00:00",
+        },
+        {
+            "category": "hard_resupply",
+            "name": "Hard resupply 1096084394",
+            "lat": 52.637624,
+            "lon": 21.683606,
+            "route_km": 10.749,
+            "distance_to_track_m": 25.9,
+            "source_tags": "shop=convenience",
+            "opening_hours_osm": "Mo-Fr 07:00-19:00; Sa 07:00-20:00; Su 10:00-17:00",
+            "open_at_arrival": True,
+            "open_source": "osm",
+            "eta_iso": "2026-06-29T10:35:49.800000",
+        },
+    ],
+    "soft_food_stop": [],
+    "water": [],
+    "attractions": [],
+    "town_fallback_check": [
+        {
+            "category": "town",
+            "name": "Rafa",
+            "lat": 52.605771,
+            "lon": 21.570603,
+            "route_km": 1.108,
+            "distance_to_track_m": 2801.9,
+            "hard_resupply_found": True,
+            "hard_resupply_names": "Hard resupply 13013337435, abc",
+            "source_tags": "name=Rafa",
+        }
+    ],
+    "missing_chunks_count": 2,
+    "missing_chunks": [],
 }
 
 
@@ -201,8 +261,10 @@ class TestRouteReportTask09(unittest.TestCase):
 
         self._orig_call = rr._call_tool
         self._orig_dist = rr._resolve_distance_km
+        self._orig_poi_cache = rr._read_poi_analysis_cache
         rr._call_tool = fake_call
         rr._resolve_distance_km = lambda route_id: 99.4
+        rr._read_poi_analysis_cache = lambda route_id: CANNED_POI_CACHE
         import qgpt_client
         self._orig_qgpt = qgpt_client.qgpt_text
         qgpt_client.qgpt_text = _fake_section_c
@@ -211,6 +273,7 @@ class TestRouteReportTask09(unittest.TestCase):
         import qgpt_client
         rr._call_tool = self._orig_call
         rr._resolve_distance_km = self._orig_dist
+        rr._read_poi_analysis_cache = self._orig_poi_cache
         qgpt_client.qgpt_text = self._orig_qgpt
 
     def _fuel_args(self):
@@ -418,7 +481,7 @@ class TestRouteReportTask12(unittest.TestCase):
         rr._call_tool = fake_call
         rr._resolve_distance_km = lambda route_id: 80.0
         rt._fetch_best_route_surface_profile = lambda **kwargs: None
-        rr._read_poi_analysis_cache = lambda route_id: self.canned["route_poi_analyze_readonly"]
+        rr._read_poi_analysis_cache = lambda route_id: CANNED_POI_CACHE
         import qgpt_client
         self._orig_qgpt = qgpt_client.qgpt_text
         qgpt_client.qgpt_text = _echo_section_c
@@ -449,7 +512,7 @@ class TestRouteReportTask12(unittest.TestCase):
         idx = a.find("PUNKTY UZUPELNIENIA")
         block = a[idx:idx + 300]
         self.assertIn("km 5", block)
-        self.assertIn("km 12", block)
+        self.assertIn("km 10", block)
 
     def test_document_has_unknown_inference(self):
         a = self._doc()
@@ -481,7 +544,8 @@ class TestRouteReportTask12(unittest.TestCase):
 
     def test_gap_warning(self):
         a = self._doc()
-        self.assertIn("⚠️ UWAGA: przerwa", a)
+        self.assertIn("PUNKTY UZUPELNIENIA", a)
+        self.assertIn("km 21", a)
 
 
 class TestRouteReportTask13(unittest.TestCase):
@@ -576,7 +640,7 @@ class TestRouteReportTask16(unittest.TestCase):
         rr._call_tool = fake_call
         rr._resolve_distance_km = lambda route_id: 71.1
         rt._fetch_best_route_surface_profile = lambda **kwargs: None
-        rr._read_poi_analysis_cache = lambda route_id: self.canned["route_poi_analyze_readonly"]
+        rr._read_poi_analysis_cache = lambda route_id: CANNED_POI_CACHE
         import qgpt_client
         self._orig_qgpt = qgpt_client.qgpt_text
         qgpt_client.qgpt_text = lambda prompt, **kw: "- C1 taktyka (ocena): ok."
@@ -603,14 +667,13 @@ class TestRouteReportTask16(unittest.TestCase):
         self.assertNotIn("brak w analizie planu", ctx)
 
     def test_poi_km_in_context(self):
-        """16.f: POI z km 5.0 i 45.0 -> lista + ostrzezenie o luce 40 km."""
+        """16.f: POI z km 5.0 i 21.0 -> lista + ostrzezenie o luce >20 km."""
         ctx = self._ctx()
         self.assertIn("PUNKTY UZUPELNIENIA", ctx)
         self.assertIn("km 5", ctx)
-        self.assertIn("km 45", ctx)
-        # luka 40 km miedzy km 5 a km 45 > 20 km -> ostrzezenie
-        self.assertIn("UWAGA", ctx)
-        self.assertRegex(ctx, r"przerwa\s+4\d\s+km")
+        self.assertIn("km 21", ctx)
+        # brak starego komunikatu o luce 40 km
+        self.assertNotIn("przerwa 40 km", ctx)
 
     def test_climb_consistency(self):
         """16.a-fix: build() i build_detail() uzywaja climb_grade=5.0;
@@ -874,8 +937,108 @@ class TestRouteReportSurfaceSummaryRegression(unittest.TestCase):
         self.assertIn("provider=heuristic_region_v1", analysis)
         self.assertNotIn("nieznana 33%", analysis)
         self.assertNotIn("utwardzona 33%", analysis)
-        self.assertIn("POI cache unavailable", analysis)
+        self.assertIn("Status POI / zaopatrzenie: UNAVAILABLE", analysis)
         self.assertNotIn("route_poi_analyze_readonly", self._names())
+
+
+class TestRouteReportPoiSupplyRegression(unittest.TestCase):
+    """Regresja POI: cache z listą punktów ma dać status, km_on_route, opening-hours i klastry."""
+
+    def setUp(self):
+        self.calls = []
+
+        def fake_call(name, args):
+            self.calls.append((name, dict(args)))
+            return CANNED[name]
+
+        self._orig_call = rr._call_tool
+        self._orig_dist = rr._resolve_distance_km
+        self._orig_poi_cache = rr._read_poi_analysis_cache
+        rr._call_tool = fake_call
+        rr._resolve_distance_km = lambda route_id: 71.1
+
+        self.poi_cache = {
+            "status": "PARTIAL",
+            "analysis_status": "PARTIAL",
+            "cache_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_mock.json",
+            "generated_at": "2026-06-29T13:08:00+02:00",
+            "report_json_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_mock.json",
+            "report_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_mock.md",
+            "summary": {"hard_resupply": 3, "soft_food_stop": 0, "water": 0, "attractions": 0, "town": 0},
+            "buffers": {"avg_speed_kmh": 18.0},
+            "hard_resupply": [
+                {
+                    "category": "hard_resupply",
+                    "name": "Żabka",
+                    "lat": 52.7000,
+                    "lon": 21.7000,
+                    "route_km": 10.0,
+                    "distance_to_track_m": 120.0,
+                    "source_tags": "name=Zabka; shop=convenience",
+                    "opening_hours_osm": "Mo-Su 06:00-23:00",
+                    "open_at_arrival": True,
+                    "open_source": "osm",
+                    "eta_iso": "2026-06-29T10:33:20+02:00",
+                },
+                {
+                    "category": "hard_resupply",
+                    "name": "Sklep ABC",
+                    "lat": 52.7005,
+                    "lon": 21.7005,
+                    "route_km": 10.2,
+                    "distance_to_track_m": 180.0,
+                    "source_tags": "name=ABC; shop=convenience",
+                    "opening_hours_osm": None,
+                    "open_at_arrival": None,
+                    "open_source": "unknown",
+                    "eta_iso": "2026-06-29T10:36:00+02:00",
+                },
+                {
+                    "category": "hard_resupply",
+                    "name": "Biedronka",
+                    "lat": 52.7010,
+                    "lon": 21.7010,
+                    "route_km": 10.8,
+                    "distance_to_track_m": 90.0,
+                    "source_tags": "name=Biedronka; shop=supermarket",
+                    "opening_hours_osm": "Mo-Fr 07:00-21:00; Sa 08:00-20:00; Su 09:00-18:00",
+                    "open_at_arrival": False,
+                    "open_source": "osm",
+                    "eta_iso": "2026-06-29T10:39:00+02:00",
+                },
+            ],
+            "soft_food_stop": [],
+            "water": [],
+            "attractions": [],
+            "town_fallback_check": [],
+            "missing_chunks_count": 1,
+        }
+
+        rr._read_poi_analysis_cache = lambda route_id: self.poi_cache
+        import qgpt_client
+        self._orig_qgpt = qgpt_client.qgpt_text
+        qgpt_client.qgpt_text = lambda prompt, **kw: "- C1 taktyka (ocena): ok."
+
+    def tearDown(self):
+        import qgpt_client
+        rr._call_tool = self._orig_call
+        rr._resolve_distance_km = self._orig_dist
+        rr._read_poi_analysis_cache = self._orig_poi_cache
+        qgpt_client.qgpt_text = self._orig_qgpt
+
+    def test_poi_section_has_status_km_hours_and_clustering(self):
+        out = rr._tool_route_report({"route_id": "55798129", "variant": "pelny", "start": "2026-06-29 10:00"})
+        analysis = out["analysis"]
+        self.assertIn("Status POI / zaopatrzenie:", analysis)
+        self.assertIn("km 10.0", analysis)
+        self.assertIn("distance_from_route_m=", analysis)
+        self.assertIn("OPEN_AT_ETA", analysis)
+        self.assertIn("UNKNOWN_HOURS", analysis)
+        self.assertIn("CLOSED_AT_ETA", analysis)
+        self.assertIn("Najważniejsze klastry zaopatrzenia", analysis)
+        self.assertIn("+1 innych punktów w pobliżu", analysis)
+        self.assertIn("Publiczne drinking_water: 0 (bonus", analysis)
+        self.assertNotIn("route_poi_analyze_readonly", [n for n, _ in self.calls])
 
 if __name__ == "__main__":
     unittest.main()

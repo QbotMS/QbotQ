@@ -521,6 +521,15 @@ dodaje też jawny blok `Geologia / podłoże (geology_context)` z providerem,
 status, material_hint i interpretacją ryzyka, ale nie nadpisuje OSM surface.
 Storage i schema DB bez zmian; HikConnect/GATE poza zakresem i nietknięte.
 
+Aktualizacja 2026-06-29: sekcja `POI / zaopatrzenie` ma priorytet produktu dla
+Polski. Główne źródła to sklepy spożywcze, stacje paliw i punkty gastronomiczne;
+publiczne `drinking_water` jest tylko bonusem. Każdy punkt w raporcie musi mieć
+`km_on_route`, `distance_from_route_m`, `opening_hours` jeśli dostępne, ETA i
+status godzin (`OPEN_AT_ETA` / `UNKNOWN_HOURS` / `CLOSED_AT_ETA`). Publiczny
+path ma działać na cache/artifact, klastrować punkty w skupiska i nie wypisywać
+długiej listy sklepów z jednego miejsca. Brak cache POI nie może zatrzymać
+całego raportu i ma skutkować jawnym `UNAVAILABLE` albo `PARTIAL`.
+
 Regresja testowa w `tests/test_route_report.py` pilnuje tego read-pathu dla
 `55798129`, w tym brak powrotu do legacy `33%` i brak blokady całego raportu
 przez nieobecny cache POI.

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 _VARIANT_ALIASES = {
@@ -115,25 +116,318 @@ def _read_poi_analysis_cache(route_id: str | None) -> dict[str, Any] | None:
                 continue
             if not isinstance(obj, dict):
                 continue
-            counts = {
-                "water": len(obj.get("water") or []),
-                "food": len(obj.get("soft_food_stop") or []) + len(obj.get("hard_resupply") or []),
-                "attractions": len(obj.get("attractions") or []),
-            }
             report_md = path.with_suffix(".md")
             return {
                 "status": obj.get("status") or obj.get("analysis_status") or "OK",
-                "data": {
-                    "counts": counts,
-                    "report_path": str(report_md) if report_md.exists() else None,
-                    "report_json_path": str(path),
-                },
-                "cache_path": str(path),
                 "analysis_status": obj.get("analysis_status"),
+                "cache_path": str(path),
+                "generated_at": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(),
+                "report_path": str(report_md) if report_md.exists() else None,
+                "report_json_path": str(path),
+                "summary": obj.get("summary") or {},
+                "buffers": obj.get("buffers") or {},
+                "hard_resupply": obj.get("hard_resupply") or [],
+                "soft_food_stop": obj.get("soft_food_stop") or [],
+                "water": obj.get("water") or [],
+                "attractions": obj.get("attractions") or [],
+                "town_fallback_check": obj.get("town_fallback_check") or [],
+                "missing_chunks": obj.get("missing_chunks") or [],
+                "missing_chunks_count": obj.get("missing_chunks_count"),
+                "markdown": obj.get("markdown"),
             }
     except Exception:
         return None
     return None
+
+
+def _parse_source_tags(source_tags: Any) -> dict[str, str]:
+    if isinstance(source_tags, dict):
+        return {str(k).strip(): str(v).strip() for k, v in source_tags.items() if str(k).strip()}
+    if not isinstance(source_tags, str):
+        return {}
+    out: dict[str, str] = {}
+    for part in source_tags.split(";"):
+        part = part.strip()
+        if not part or "=" not in part:
+            continue
+        key, val = part.split("=", 1)
+        key = key.strip()
+        val = val.strip()
+        if key:
+            out[key] = val
+    return out
+
+
+def _parse_avg_speed_kmh(text: str | None) -> float | None:
+    if not text:
+        return None
+    m = re.search(r"v\s*([\d.]+)\s*km/h", text, re.IGNORECASE)
+    if m:
+        try:
+            return float(m.group(1))
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _supply_kind_from_tags(tags: dict[str, str], category: str, name: str) -> str:
+    if category == "hard_resupply":
+        shop = str(tags.get("shop") or "").lower()
+        amenity = str(tags.get("amenity") or "").lower()
+        if amenity == "fuel":
+            return "stacja paliw"
+        if amenity in {"restaurant", "cafe", "fast_food", "bar"}:
+            return "gastronomia"
+        if shop in {"supermarket", "convenience", "grocery", "general", "deli", "bakery", "greengrocer"}:
+            return "sklep"
+        return "zaopatrzenie"
+    if category == "soft_food_stop":
+        return "gastronomia"
+    if category == "water":
+        return "drinking_water"
+    if category == "town":
+        return "miejscowość"
+    if category == "attraction":
+        return "attraction"
+    raw_name = str(name or "").strip().lower()
+    if any(tok in raw_name for tok in ("zabka", "dino", "lewiatan", "delikates", "groszek", "abc", "biedronka", "lidl", "netto", "aldi", "carrefour", "kaufland")):
+        return "sklep"
+    return category or "poi"
+
+
+def _normalize_poi_supply_item(item: dict[str, Any], *, ride_start: Any = None, avg_speed_kmh: float | None = None) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    category = str(item.get("category") or "").strip()
+    if category not in {"hard_resupply", "soft_food_stop", "water", "attraction", "town"}:
+        return None
+    if category == "town" and not (item.get("hard_resupply_found") or str(item.get("hard_resupply_names") or "").strip()):
+        return None
+
+    tags = _parse_source_tags(item.get("source_tags"))
+    name = str(item.get("google_name") or item.get("name") or "").strip()
+    if not name and category == "town":
+        name = str(item.get("hard_resupply_names") or item.get("town_name") or item.get("name") or "").strip()
+    kind = _supply_kind_from_tags(tags, category, name)
+    km_on_route = item.get("route_km") if item.get("route_km") is not None else item.get("km_on_route")
+    distance_from_route_m = item.get("distance_to_track_m") if item.get("distance_to_track_m") is not None else item.get("distance_from_track_m")
+    opening_hours = item.get("opening_hours_osm") or item.get("opening_hours") or None
+    open_source = str(item.get("open_source") or "").strip().lower() or None
+    open_at_arrival = item.get("open_at_arrival")
+    eta_iso = item.get("eta_iso")
+
+    if eta_iso is None and ride_start is not None and km_on_route is not None:
+        try:
+            from datetime import datetime as _dt
+            start_dt = _dt.fromisoformat(str(ride_start).replace("Z", "+00:00"))
+            eta_iso = eta_at_km(float(km_on_route), start_dt, float(avg_speed_kmh or 18.0)).isoformat()
+        except Exception:
+            eta_iso = None
+
+    if open_at_arrival is None and opening_hours:
+        try:
+            from datetime import datetime as _dt
+            from tools.rwgps.poi_open_window import parse_osm_opening_hours, osm_open_at
+            if eta_iso:
+                eta_dt = _dt.fromisoformat(str(eta_iso).replace("Z", "+00:00"))
+                parsed = parse_osm_opening_hours(str(opening_hours))
+                open_at_arrival = osm_open_at(parsed, eta_dt)
+                open_source = "osm"
+        except Exception:
+            pass
+
+    if open_at_arrival is True:
+        open_status = "OPEN_AT_ETA"
+    elif open_at_arrival is False:
+        open_status = "CLOSED_AT_ETA"
+    else:
+        open_status = "UNKNOWN_HOURS"
+
+    if open_status == "OPEN_AT_ETA" and opening_hours:
+        confidence = "HIGH"
+    elif open_status == "OPEN_AT_ETA" and open_source == "google":
+        confidence = "MEDIUM"
+    elif category == "water" and not opening_hours:
+        confidence = "LOW"
+    else:
+        confidence = "MEDIUM" if opening_hours else "LOW"
+
+    return {
+        "category": category,
+        "kind": kind,
+        "name": name or kind,
+        "km_on_route": float(km_on_route) if km_on_route is not None else None,
+        "distance_from_route_m": float(distance_from_route_m) if distance_from_route_m is not None else None,
+        "opening_hours": opening_hours,
+        "open_at_arrival": open_at_arrival,
+        "open_status": open_status,
+        "eta_iso": eta_iso,
+        "confidence": confidence,
+        "open_source": open_source,
+        "note": str(item.get("note") or "").strip(),
+        "source_tags": tags,
+        "source_tags_raw": item.get("source_tags"),
+        "town_name": str(item.get("name") or "").strip() if category == "town" else None,
+        "hard_resupply_names": str(item.get("hard_resupply_names") or "").strip() if category == "town" else None,
+    }
+
+
+def _cluster_supply_items(items: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    ordered = sorted(
+        [item for item in items if item.get("km_on_route") is not None],
+        key=lambda item: (float(item.get("km_on_route") or 0.0), float(item.get("distance_from_route_m") or 9999.0)),
+    )
+    clusters: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
+    last_km: float | None = None
+    for item in ordered:
+        km = float(item["km_on_route"])
+        if current and last_km is not None and (km - last_km) > 1.0:
+            clusters.append(current)
+            current = []
+        current.append(item)
+        last_km = km
+    if current:
+        clusters.append(current)
+    return clusters
+
+
+def _render_poi_supply_section(poi_cache: dict[str, Any] | None, *, ride_start: Any = None, plan_text: str | None = None) -> list[str]:
+    if not isinstance(poi_cache, dict):
+        return [
+            "Status POI / zaopatrzenie: UNAVAILABLE",
+            "Źródło danych/cache: brak cache POI",
+            "Jawne ostrzeżenie: brak danych POI nie oznacza braku sklepów po drodze; raport nie uruchamia ciężkiego refreshu Overpass.",
+        ]
+
+    report_json_path = str(poi_cache.get("report_json_path") or poi_cache.get("cache_path") or "").strip() or "—"
+    generated_at = str(poi_cache.get("generated_at") or "—").strip()
+    analysis_status = str(poi_cache.get("analysis_status") or poi_cache.get("status") or "UNKNOWN").strip().upper()
+    summary = poi_cache.get("summary") if isinstance(poi_cache.get("summary"), dict) else {}
+    buffers = poi_cache.get("buffers") if isinstance(poi_cache.get("buffers"), dict) else {}
+    try:
+        avg_speed_buf = float(buffers.get("avg_speed_kmh")) if buffers.get("avg_speed_kmh") is not None else None
+    except (TypeError, ValueError):
+        avg_speed_buf = None
+    avg_speed_kmh = _parse_avg_speed_kmh(plan_text) or avg_speed_buf or 18.0
+
+    raw_items: list[dict[str, Any]] = []
+    for cat in ("hard_resupply", "soft_food_stop", "water", "town_fallback_check"):
+        for item in poi_cache.get(cat) or []:
+            norm = _normalize_poi_supply_item(item, ride_start=ride_start, avg_speed_kmh=avg_speed_kmh)
+            if norm is not None:
+                raw_items.append(norm)
+
+    supply_items = [item for item in raw_items if item.get("category") in {"hard_resupply", "soft_food_stop", "water", "town"}]
+    direct_items = [item for item in supply_items if item.get("category") != "town"]
+    water_items = [item for item in direct_items if item.get("category") == "water"]
+    open_items = [item for item in direct_items if item.get("open_status") == "OPEN_AT_ETA"]
+    unknown_items = [item for item in direct_items if item.get("open_status") == "UNKNOWN_HOURS"]
+    closed_items = [item for item in direct_items if item.get("open_status") == "CLOSED_AT_ETA"]
+    town_items = [item for item in raw_items if item.get("category") == "town" and item.get("hard_resupply_names")]
+
+    def _gap_stats(items: list[dict[str, Any]]) -> tuple[float | None, float | None]:
+        kms = sorted(float(i["km_on_route"]) for i in items if i.get("km_on_route") is not None)
+        if len(kms) < 2:
+            return (None, None)
+        gaps = [b - a for a, b in zip(kms, kms[1:])]
+        if not gaps:
+            return (None, None)
+        idx = max(range(len(gaps)), key=lambda i: gaps[i])
+        return (gaps[idx], kms[idx])
+
+    longest_gap, gap_from_km = _gap_stats(open_items)
+    temp_c = _parse_temp_c(plan_text)
+    status = "UNAVAILABLE"
+    if raw_items:
+        if open_items and longest_gap is not None and longest_gap >= 25:
+            status = "RISK"
+        elif not open_items:
+            status = "RISK"
+        elif unknown_items or closed_items or analysis_status == "PARTIAL" or (longest_gap is not None and longest_gap >= (20 if (temp_c or 0) >= 28 else 25)):
+            status = "PARTIAL"
+        else:
+            status = "OK"
+
+    supply_clusters = _cluster_supply_items(supply_items)
+    confidence_counts = {
+        "OPEN_AT_ETA": len(open_items),
+        "UNKNOWN_HOURS": len(unknown_items),
+        "CLOSED_AT_ETA": len(closed_items),
+    }
+    lines = [
+        f"Status POI / zaopatrzenie: {status}",
+        f"Źródło danych/cache: {report_json_path}",
+        f"Świeżość danych: {generated_at}",
+        f"Analiza cache: {analysis_status}",
+        f"Pewne punkty OPEN_AT_ETA do 500 m od trasy: {confidence_counts['OPEN_AT_ETA']}",
+        f"Potencjalne UNKNOWN_HOURS do 500 m od trasy: {confidence_counts['UNKNOWN_HOURS']}",
+        f"Punkty CLOSED_AT_ETA: {confidence_counts['CLOSED_AT_ETA']}",
+        f"Publiczne drinking_water: {len(water_items)} (bonus, nie główne źródło zaopatrzenia w Polsce)",
+    ]
+    if longest_gap is not None and gap_from_km is not None:
+        lines.append(f"Najdłuższy odcinek bez OPEN_AT_ETA: {longest_gap:.1f} km (od km {gap_from_km:.1f})")
+        if temp_c is not None and temp_c >= 28 and longest_gap >= 15:
+            lines.append("⚠️ Krytyczna luka przy upale: warto planować zakup wody wcześniej niż zwykle.")
+    if poi_cache.get("missing_chunks_count"):
+        lines.append(f"Braki w źródle: missing_chunks={poi_cache.get('missing_chunks_count')}")
+    if summary:
+        parts = [f"{k}={v}" for k, v in summary.items() if v is not None]
+        if parts:
+            lines.append("Podsumowanie cache: " + ", ".join(parts))
+    if town_items:
+        lines.append(f"Fallback miejscowości z wyłapanym zaopatrzeniem: {len(town_items)}")
+
+    if not supply_clusters:
+        lines.append("Brak pewnych klastrów zaopatrzenia w cache.")
+        lines.append("Jawne ostrzeżenie: brak publicznego drinking_water nie oznacza braku możliwości zakupu wody.")
+        return lines
+
+    lines.append("Najważniejsze klastry zaopatrzenia:")
+    for idx, cluster in enumerate(supply_clusters, start=1):
+        cluster_open = sum(1 for item in cluster if item.get("open_status") == "OPEN_AT_ETA")
+        cluster_unknown = sum(1 for item in cluster if item.get("open_status") == "UNKNOWN_HOURS")
+        cluster_closed = sum(1 for item in cluster if item.get("open_status") == "CLOSED_AT_ETA")
+        km_vals = [float(item["km_on_route"]) for item in cluster if item.get("km_on_route") is not None]
+        km_min = min(km_vals) if km_vals else None
+        km_max = max(km_vals) if km_vals else None
+        cluster_status = "OK" if cluster_open and not cluster_unknown and not cluster_closed else ("RISK" if not cluster_open else "PARTIAL")
+        best = sorted(
+            cluster,
+            key=lambda item: (
+                0 if item.get("open_status") == "OPEN_AT_ETA" else 1 if item.get("open_status") == "UNKNOWN_HOURS" else 2,
+                float(item.get("distance_from_route_m") or 9999.0),
+                0 if item.get("kind") in {"stacja paliw", "sklep"} else 1,
+                0 if item.get("category") == "hard_resupply" else 1,
+            ),
+        )[:2]
+        best_km = best[0].get("km_on_route") if best else None
+        loc = ""
+        if km_min is not None and km_max is not None:
+            loc = f"km {km_min:.1f}–{km_max:.1f}"
+        elif best_km is not None:
+            loc = f"km {float(best_km):.1f}"
+        town = next((item.get("town_name") for item in cluster if item.get("town_name")), None)
+        town_part = f" | miejscowość: {town}" if town else ""
+        other_count = max(0, len(cluster) - len(best))
+        lines.append(
+            f"{idx}. {loc or 'km ?'}{town_part} | status zaopatrzenia: {cluster_status} | "
+            f"{len(cluster)} punktów ({cluster_open} OPEN_AT_ETA, {cluster_unknown} UNKNOWN_HOURS, {cluster_closed} CLOSED_AT_ETA)"
+        )
+        if other_count:
+            lines.append(f"   +{other_count} innych punktów w pobliżu")
+        for item in best:
+            hours = item.get("opening_hours") or ("Google Places" if item.get("open_source") == "google" else "brak")
+            eta = str(item.get("eta_iso") or "brak").replace("T", " ")
+            dist_m = item.get("distance_from_route_m")
+            dist_s = f"{float(dist_m):.0f} m" if dist_m is not None else "brak"
+            lines.append(
+                f"   - {item.get('name')} | {item.get('kind')} | km {float(item.get('km_on_route') or 0.0):.1f} | "
+                f"distance_from_route_m={dist_s} | opening_hours={hours} | eta_at_poi={eta} | "
+                f"status_hours={item.get('open_status')} | confidence={item.get('confidence')}"
+            )
+    lines.append("Jawne ostrzeżenie: brak publicznego drinking_water nie oznacza braku możliwości zakupu wody.")
+    return lines
 
 
 def _surface_quality_lines(surface_profile: dict[str, Any] | None) -> list[str]:
@@ -1161,35 +1455,32 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
     if variant in ("pelny", "grupa"):
         H("## A8 - WODA / SKLEPY / REFILL")
         dist = _resolve_distance_km(route_id)
-        if route_id and dist:
-            poi = _read_poi_analysis_cache(route_id)
-            if not poi:
-                poi = {
-                    "status": "PARTIAL",
-                    "data": {
-                        "counts": {"water": None, "food": None, "attractions": None},
-                        "report_path": None,
-                        "report_json_path": None,
-                    },
-                    "warning": "POI cache unavailable; legacy route_poi_analyze_readonly intentionally skipped to avoid blocking public report",
-                }
-            collected["poi"] = poi
-            if _ok(poi):
-                pdata = poi.get("data") if isinstance(poi.get("data"), dict) else poi
-                pdata = pdata or {}
-                counts = pdata.get("counts") or {}
-                H(f"Zakres: km 0-{float(dist):.0f}")
-                H(f"- Woda (punkty): {counts.get('water')}")
-                H(f"- Jedzenie/sklepy (punkty): {counts.get('food')}")
-                H(f"- Atrakcje: {counts.get('attractions')}")
-                rep = pdata.get("report_path")
-                if rep:
-                    H(f"- Pelny raport POI (godziny otwarcia): {rep}")
-            else:
-                H(f"_POI niedostepne: {_reason(poi)}_")
+        poi = _read_poi_analysis_cache(route_id) if route_id else None
+        if poi is None:
+            poi = {
+                "status": "UNAVAILABLE",
+                "analysis_status": "UNAVAILABLE",
+                "cache_path": None,
+                "report_json_path": None,
+                "report_path": None,
+                "summary": {},
+                "buffers": {},
+                "hard_resupply": [],
+                "soft_food_stop": [],
+                "water": [],
+                "attractions": [],
+                "town_fallback_check": [],
+                "missing_chunks": [],
+                "missing_chunks_count": None,
+                "generated_at": None,
+            }
+        collected["poi"] = poi
+        for line in _render_poi_supply_section(poi, ride_start=start, plan_text=_analysis(plan)):
+            H(line)
+        if dist:
+            H(f"Zakres trasy dla POI: km 0-{float(dist):.0f}")
         else:
-            H("_A8 wymaga route_id z policzonym dystansem trasy (km_to). "
-              "Brak - pomijam bez zgadywania._")
+            H("Zakres trasy dla POI: brak policzonego dystansu")
         # ZMIANA 2: deterministyczna rekomendacja bidonow (temp z planu, dystans z helpera)
         temp_c = _parse_temp_c(_analysis(plan)) if _ok(plan) else None
         if temp_c is not None and temp_c >= 20 and dist and dist >= 50:
