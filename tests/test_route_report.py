@@ -106,6 +106,48 @@ CANNED_POI_CACHE = {
     "missing_chunks": [],
 }
 
+ACTIVE_ROUTE_VERSION = {
+    "route_id": "55798129",
+    "route_artifact_id": 306,
+    "created_at": "2026-06-23T22:26:01+02:00",
+    "updated_at": "2026-06-29T21:57:49+02:00",
+    "sha256": "46c7797c584016ee2278add44652cf8232ee7a1e0e9ae3b84caf6190c060823e",
+    "source_artifact_sha256": "46c7797c584016ee2278add44652cf8232ee7a1e0e9ae3b84caf6190c060823e",
+    "distance_m": 71137.0,
+    "distance_km": 71.137,
+    "track_points": 1278,
+    "elevation_gain_m": 519.8,
+}
+
+rr._fetch_route_version_record = lambda **kwargs: ACTIVE_ROUTE_VERSION
+
+MISMATCH_ROUTE_VERSION = {
+    "route_id": "55798129",
+    "route_artifact_id": 999,
+    "created_at": "2026-06-20T22:26:01+02:00",
+    "updated_at": "2026-06-27T21:57:49+02:00",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "source_artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "distance_m": 68000.0,
+    "distance_km": 68.0,
+    "track_points": 1200,
+    "elevation_gain_m": 450.0,
+}
+
+VERSIONED_POI_CACHE = {
+    **CANNED_POI_CACHE,
+    "route_id": "55798129",
+    "route_artifact_id": 306,
+    "created_at": "2026-06-23T22:26:01+02:00",
+    "updated_at": "2026-06-29T21:57:49+02:00",
+    "sha256": "46c7797c584016ee2278add44652cf8232ee7a1e0e9ae3b84caf6190c060823e",
+    "source_artifact_sha256": "46c7797c584016ee2278add44652cf8232ee7a1e0e9ae3b84caf6190c060823e",
+    "distance_m": 71137.0,
+    "distance_km": 71.137,
+    "track_points": 1278,
+    "elevation_gain_m": 519.8,
+}
+
 
 def _fake_section_c(prompt, **kwargs):
     """Stub LLM dla _generate_section_c: zwraca C1/C2/C4 zawsze, C3 tylko gdy proszono."""
@@ -136,18 +178,13 @@ class TestRouteReport(unittest.TestCase):
         rr._resolve_distance_km = lambda route_id: 99.4
         rt._fetch_best_route_surface_profile = lambda **kwargs: None
         rr._read_poi_analysis_cache = lambda route_id: CANNED_POI_CACHE
-        import qgpt_client
-        self._orig_qgpt = qgpt_client.qgpt_text
-        qgpt_client.qgpt_text = _fake_section_c
 
     def tearDown(self):
-        import qgpt_client
         import qbot_route_tools as rt
         rr._call_tool = self._orig_call
         rr._resolve_distance_km = self._orig_dist
         rt._fetch_best_route_surface_profile = self._orig_fetch_surface
         rr._read_poi_analysis_cache = self._orig_poi_cache
-        qgpt_client.qgpt_text = self._orig_qgpt
 
     def _names(self):
         return [n for n, _ in self.calls]
@@ -267,16 +304,11 @@ class TestRouteReportTask09(unittest.TestCase):
         rr._call_tool = fake_call
         rr._resolve_distance_km = lambda route_id: 99.4
         rr._read_poi_analysis_cache = lambda route_id: CANNED_POI_CACHE
-        import qgpt_client
-        self._orig_qgpt = qgpt_client.qgpt_text
-        qgpt_client.qgpt_text = _fake_section_c
 
     def tearDown(self):
-        import qgpt_client
         rr._call_tool = self._orig_call
         rr._resolve_distance_km = self._orig_dist
         rr._read_poi_analysis_cache = self._orig_poi_cache
-        qgpt_client.qgpt_text = self._orig_qgpt
 
     def _fuel_args(self):
         return next(args for n, args in self.calls if n == "route_fuel_plan")
@@ -384,15 +416,10 @@ class TestRouteReportTask10(unittest.TestCase):
         self._orig_dist = rr._resolve_distance_km
         rr._call_tool = fake_call
         rr._resolve_distance_km = lambda route_id: 99.4
-        import qgpt_client
-        self._orig_qgpt = qgpt_client.qgpt_text
-        qgpt_client.qgpt_text = _echo_section_c
 
     def tearDown(self):
-        import qgpt_client
         rr._call_tool = self._orig_call
         rr._resolve_distance_km = self._orig_dist
-        qgpt_client.qgpt_text = self._orig_qgpt
 
     def _section_c(self, a):
         idx = a.find("## C")
@@ -484,18 +511,13 @@ class TestRouteReportTask12(unittest.TestCase):
         rr._resolve_distance_km = lambda route_id: 80.0
         rt._fetch_best_route_surface_profile = lambda **kwargs: None
         rr._read_poi_analysis_cache = lambda route_id: CANNED_POI_CACHE
-        import qgpt_client
-        self._orig_qgpt = qgpt_client.qgpt_text
-        qgpt_client.qgpt_text = _echo_section_c
 
     def tearDown(self):
-        import qgpt_client
         import qbot_route_tools as rt
         rr._call_tool = self._orig_call
         rr._resolve_distance_km = self._orig_dist
         rt._fetch_best_route_surface_profile = self._orig_fetch_surface
         rr._read_poi_analysis_cache = self._orig_poi_cache
-        qgpt_client.qgpt_text = self._orig_qgpt
 
     def _doc(self):
         # TASK 13: dokument kontekstowy nie jest juz w 'analysis' — trafia do context_for_section_c
@@ -643,18 +665,13 @@ class TestRouteReportTask16(unittest.TestCase):
         rr._resolve_distance_km = lambda route_id: 71.1
         rt._fetch_best_route_surface_profile = lambda **kwargs: None
         rr._read_poi_analysis_cache = lambda route_id: CANNED_POI_CACHE
-        import qgpt_client
-        self._orig_qgpt = qgpt_client.qgpt_text
-        qgpt_client.qgpt_text = lambda prompt, **kw: "- C1 taktyka (ocena): ok."
 
     def tearDown(self):
-        import qgpt_client
         import qbot_route_tools as rt
         rr._call_tool = self._orig_call
         rr._resolve_distance_km = self._orig_dist
         rt._fetch_best_route_surface_profile = self._orig_fetch_surface
         rr._read_poi_analysis_cache = self._orig_poi_cache
-        qgpt_client.qgpt_text = self._orig_qgpt
 
     def _ctx(self, route_id="55798129"):
         return rr._tool_route_report(
@@ -863,15 +880,9 @@ class TestRouteReportSurfaceSummaryRegression(unittest.TestCase):
         rr._call_tool = fake_call
         rr._resolve_distance_km = lambda route_id: 99.4
 
-        import qgpt_client
-        self._orig_qgpt = qgpt_client.qgpt_text
-        qgpt_client.qgpt_text = _fake_section_c
-
     def tearDown(self):
-        import qgpt_client
         rr._call_tool = self._orig_call
         rr._resolve_distance_km = self._orig_dist
-        qgpt_client.qgpt_text = self._orig_qgpt
 
     def _names(self):
         return [n for n, _ in self.calls]
@@ -1021,16 +1032,11 @@ class TestRouteReportPoiSupplyRegression(unittest.TestCase):
         }
 
         rr._read_poi_analysis_cache = lambda route_id: self.poi_cache
-        import qgpt_client
-        self._orig_qgpt = qgpt_client.qgpt_text
-        qgpt_client.qgpt_text = lambda prompt, **kw: "- C1 taktyka (ocena): ok."
 
     def tearDown(self):
-        import qgpt_client
         rr._call_tool = self._orig_call
         rr._resolve_distance_km = self._orig_dist
         rr._read_poi_analysis_cache = self._orig_poi_cache
-        qgpt_client.qgpt_text = self._orig_qgpt
 
     def test_poi_section_has_status_km_hours_and_clustering(self):
         out = rr._tool_route_report({"route_id": "55798129", "variant": "pelny", "start": "2026-06-29 10:00"})
@@ -1285,6 +1291,118 @@ class TestRouteReportPoiSupplyRegression(unittest.TestCase):
         self.assertIn("Sklep spożywczo-przemysłowy Wanda Figat", analysis)
         self.assertIn("status_hours=CLOSED_AT_ETA_MARGIN_RISK", analysis)
         self.assertIn("eta_at_poi=2026-06-30 13:45:00+02:00", analysis)
+
+
+class TestRouteReportVersionGuard(unittest.TestCase):
+    def setUp(self):
+        self.calls = []
+
+        def fake_call(name, args):
+            self.calls.append((name, dict(args)))
+            return CANNED[name]
+
+        def fake_version_record(*, route_id=None, route_artifact_id=None):
+            if route_artifact_id is not None:
+                try:
+                    if int(route_artifact_id) == 999:
+                        return MISMATCH_ROUTE_VERSION
+                    if int(route_artifact_id) == 306:
+                        return ACTIVE_ROUTE_VERSION
+                except Exception:
+                    return None
+            if route_id == "55798129":
+                return ACTIVE_ROUTE_VERSION
+            return None
+
+        self._orig_call = rr._call_tool
+        self._orig_dist = rr._resolve_distance_km
+        self._orig_poi_cache = rr._read_poi_analysis_cache
+        self._orig_version_record = rr._fetch_route_version_record
+        self._orig_fetch_surface = None
+        rr._call_tool = fake_call
+        rr._resolve_distance_km = lambda route_id: 71.1
+        rr._read_poi_analysis_cache = lambda route_id: VERSIONED_POI_CACHE
+        rr._fetch_route_version_record = fake_version_record
+        import qbot_route_tools as rt
+        self._orig_fetch_surface = rt._fetch_best_route_surface_profile
+        self._rt = rt
+
+    def tearDown(self):
+        rr._call_tool = self._orig_call
+        rr._resolve_distance_km = self._orig_dist
+        rr._read_poi_analysis_cache = self._orig_poi_cache
+        rr._fetch_route_version_record = self._orig_version_record
+        self._rt._fetch_best_route_surface_profile = self._orig_fetch_surface
+
+    def _surface_profile(self, route_artifact_id=306):
+        return {
+            "id": 19 if route_artifact_id == 306 else 88,
+            "route_artifact_id": route_artifact_id,
+            "route_id": "55798129",
+            "enriched_at": "2026-06-29T12:34:56+02:00",
+            "quality_status": "GOOD_INFERRED",
+            "coverage_pct": 100.0,
+            "tagged_surface_pct": 70.8,
+            "inferred_surface_pct": 29.2,
+            "unknown_surface_pct": 0.0,
+            "surface_percentages_raw": {"asphalt": 34.9, "ground": 32.7},
+            "surface_percentages_refined": {"asphalt": 34.9, "ground": 32.7},
+            "surface_summary_json": {
+                "quality_status": "GOOD_INFERRED",
+                "coverage_pct": 100.0,
+                "tagged_surface_pct": 70.8,
+                "inferred_surface_pct": 29.2,
+                "unknown_surface_pct": 0.0,
+            },
+            "good_profile": True,
+        }
+
+    def test_matching_surface_profile_passes(self):
+        self._rt._fetch_best_route_surface_profile = lambda **kwargs: self._surface_profile(306)
+        out = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})
+        self.assertEqual(out["status"], "OK")
+        analysis = out["analysis"]
+        self.assertIn("surface_summary_json", analysis)
+        self.assertNotIn("ROUTE_VERSION_MISMATCH", analysis)
+
+    def test_surface_profile_mismatch_blocks_report(self):
+        self._rt._fetch_best_route_surface_profile = lambda **kwargs: self._surface_profile(999)
+        out = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})
+        analysis = out["analysis"]
+        self.assertEqual(out["status"], "ERROR")
+        self.assertIn("DATA_INTEGRITY_ERROR: ROUTE_VERSION_MISMATCH", analysis)
+        self.assertIn("legacy surface path", analysis)
+        self.assertNotIn("Źródło profilu: qbot_v2.route_surface_profiles.surface_summary_json", analysis)
+
+    def test_poi_cache_without_version_metadata_warns_legacy(self):
+        rr._read_poi_analysis_cache = lambda route_id: CANNED_POI_CACHE
+        self._rt._fetch_best_route_surface_profile = lambda **kwargs: None
+        out = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})
+        analysis = out["analysis"]
+        self.assertIn("WARN: SOURCE_VERSION_METADATA_MISSING", analysis)
+        self.assertIn("Status zaopatrzenia:", analysis)
+        self.assertNotIn("DATA_INTEGRITY_ERROR: ROUTE_VERSION_MISMATCH", analysis)
+
+    def test_poi_cache_version_mismatch_blocks_report(self):
+        rr._read_poi_analysis_cache = lambda route_id: {
+            **VERSIONED_POI_CACHE,
+            "route_artifact_id": 999,
+            "sha256": MISMATCH_ROUTE_VERSION["sha256"],
+            "source_artifact_sha256": MISMATCH_ROUTE_VERSION["source_artifact_sha256"],
+            "distance_m": MISMATCH_ROUTE_VERSION["distance_m"],
+            "distance_km": MISMATCH_ROUTE_VERSION["distance_km"],
+            "track_points": MISMATCH_ROUTE_VERSION["track_points"],
+            "elevation_gain_m": MISMATCH_ROUTE_VERSION["elevation_gain_m"],
+            "created_at": MISMATCH_ROUTE_VERSION["created_at"],
+            "updated_at": MISMATCH_ROUTE_VERSION["updated_at"],
+        }
+        self._rt._fetch_best_route_surface_profile = lambda **kwargs: self._surface_profile(306)
+        out = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})
+        analysis = out["analysis"]
+        self.assertEqual(out["status"], "ERROR")
+        self.assertIn("DATA_INTEGRITY_ERROR: ROUTE_VERSION_MISMATCH", analysis)
+        self.assertIn("poi_cache", analysis)
+        self.assertNotIn("surface_summary_json", analysis.split("## A8 - WODA / SKLEPY / REFILL")[-1])
 
 if __name__ == "__main__":
     unittest.main()

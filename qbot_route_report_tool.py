@@ -15,6 +15,7 @@ Warianty:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from datetime import datetime, timezone
@@ -66,6 +67,256 @@ def _resolve_distance_km(route_id: str | None) -> float | None:
         return dist
     except Exception:
         return None
+
+
+_ROUTE_VERSION_META_KEYS = (
+    "route_id",
+    "route_artifact_id",
+    "created_at",
+    "updated_at",
+    "sha256",
+    "source_artifact_sha256",
+    "distance_m",
+    "distance_km",
+    "track_points",
+    "elevation_gain_m",
+    "geometry_hash",
+    "points_hash",
+    "route_version_key",
+)
+
+_ROUTE_VERSION_EVIDENCE_KEYS = tuple(
+    key for key in _ROUTE_VERSION_META_KEYS if key not in {"route_id", "route_version_key"}
+)
+
+
+def _route_version_scalar(value: Any, *, key: str | None = None) -> Any:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except Exception:
+            pass
+    if key in {"route_artifact_id", "track_points"}:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+    if key in {"distance_m", "distance_km", "elevation_gain_m"}:
+        try:
+            return round(float(value), 6)
+        except (TypeError, ValueError):
+            return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value
+    text = str(value).strip()
+    return text or None
+
+
+def _route_version_payload(record: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(record, dict):
+        return {}
+    payload: dict[str, Any] = {}
+    for key in _ROUTE_VERSION_META_KEYS:
+        value = _route_version_scalar(record.get(key), key=key)
+        if value is not None:
+            payload[key] = value
+    return payload
+
+
+def _route_version_fingerprint(record: dict[str, Any] | None) -> dict[str, Any]:
+    payload = _route_version_payload(record)
+    has_evidence = any(payload.get(key) is not None for key in _ROUTE_VERSION_EVIDENCE_KEYS)
+    if not has_evidence:
+        return {"route_version_key": None, "route_version_payload": payload, "has_evidence": False}
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return {
+        "route_version_key": hashlib.sha256(raw.encode("utf-8")).hexdigest(),
+        "route_version_payload": payload,
+        "has_evidence": True,
+    }
+
+
+def _fetch_route_version_record(*, route_id: str | None = None, route_artifact_id: str | int | None = None) -> dict[str, Any] | None:
+    route_id_text = str(route_id).strip() if route_id is not None else None
+    route_artifact_text = str(route_artifact_id).strip() if route_artifact_id is not None else None
+    if not route_id_text and not route_artifact_text:
+        return None
+    try:
+        import os as _os
+        import psycopg
+        from psycopg.rows import dict_row
+
+        conn = psycopg.connect(
+            host=_os.getenv("PGHOST", "127.0.0.1"),
+            port=_os.getenv("PGPORT", "5432"),
+            dbname=_os.getenv("PGDATABASE", "qbot"),
+            user=_os.getenv("PGUSER", "qbot"),
+            password=_os.getenv("PGPASSWORD", ""),
+            row_factory=dict_row,
+            connect_timeout=5,
+        )
+        if route_artifact_text and route_artifact_text.isdigit():
+            sql = """
+                SELECT
+                    a.id AS route_artifact_id,
+                    a.route_id::text AS route_id,
+                    a.created_at,
+                    a.updated_at,
+                    a.sha256,
+                    a.source_artifact_sha256,
+                    a.metadata_json,
+                    p.parsed_at,
+                    p.distance_m,
+                    p.distance_km,
+                    p.track_points,
+                    p.elevation_gain_m
+                FROM qbot_v2.route_artifacts a
+                LEFT JOIN LATERAL (
+                    SELECT
+                        pr.parsed_at,
+                        pr.distance_m,
+                        pr.distance_km,
+                        pr.track_points,
+                        pr.elevation_gain_m
+                    FROM qbot_v2.route_parse_results pr
+                    WHERE pr.route_artifact_id = a.id
+                    ORDER BY pr.parsed_at DESC NULLS LAST, pr.id DESC
+                    LIMIT 1
+                ) p ON TRUE
+                WHERE a.id = %s
+                LIMIT 1
+            """
+            params = (int(route_artifact_text),)
+        else:
+            sql = """
+                SELECT
+                    a.id AS route_artifact_id,
+                    a.route_id::text AS route_id,
+                    a.created_at,
+                    a.updated_at,
+                    a.sha256,
+                    a.source_artifact_sha256,
+                    a.metadata_json,
+                    p.parsed_at,
+                    p.distance_m,
+                    p.distance_km,
+                    p.track_points,
+                    p.elevation_gain_m
+                FROM qbot_v2.route_artifacts a
+                LEFT JOIN LATERAL (
+                    SELECT
+                        pr.parsed_at,
+                        pr.distance_m,
+                        pr.distance_km,
+                        pr.track_points,
+                        pr.elevation_gain_m
+                    FROM qbot_v2.route_parse_results pr
+                    WHERE pr.route_artifact_id = a.id
+                    ORDER BY pr.parsed_at DESC NULLS LAST, pr.id DESC
+                    LIMIT 1
+                ) p ON TRUE
+                WHERE a.route_id::text = %s
+                ORDER BY a.updated_at DESC NULLS LAST, a.created_at DESC NULLS LAST, a.id DESC
+                LIMIT 1
+            """
+            params = (route_id_text,)
+        row = conn.execute(sql, params).fetchone()
+        conn.close()
+        if not row:
+            return None
+
+        metadata = row.get("metadata_json") or {}
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except Exception:
+                metadata = {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+
+        record: dict[str, Any] = {
+            "route_id": row.get("route_id"),
+            "route_artifact_id": row.get("route_artifact_id"),
+            "created_at": row.get("created_at"),
+            "updated_at": row.get("updated_at"),
+            "sha256": row.get("sha256"),
+            "source_artifact_sha256": row.get("source_artifact_sha256"),
+            "distance_m": row.get("distance_m") or metadata.get("distance_m"),
+            "distance_km": row.get("distance_km") or metadata.get("distance_km"),
+            "track_points": row.get("track_points") or metadata.get("point_count") or metadata.get("track_points"),
+            "elevation_gain_m": row.get("elevation_gain_m") or metadata.get("elevation_gain_m"),
+        }
+        record["route_version_key"] = _route_version_fingerprint(record).get("route_version_key")
+        return record
+    except Exception:
+        return None
+
+
+def _route_version_guard(
+    *,
+    active_version: dict[str, Any] | None,
+    block_version: dict[str, Any] | None,
+    source_name: str,
+) -> dict[str, Any]:
+    block_payload = _route_version_payload(block_version)
+    active_payload = _route_version_payload(active_version)
+    block_has_evidence = any(block_payload.get(key) is not None for key in _ROUTE_VERSION_EVIDENCE_KEYS)
+    active_has_evidence = any(active_payload.get(key) is not None for key in _ROUTE_VERSION_EVIDENCE_KEYS)
+
+    if not block_has_evidence or not active_has_evidence:
+        return {
+            "status": "WARN",
+            "code": "SOURCE_VERSION_METADATA_MISSING",
+            "source": source_name,
+            "message": f"{source_name}: brak wiarygodnych metadanych wersji",
+        }
+
+    mismatches: list[tuple[str, Any, Any]] = []
+    compared = 0
+    for key in _ROUTE_VERSION_EVIDENCE_KEYS:
+        block_value = block_payload.get(key)
+        if block_value is None:
+            continue
+        active_value = active_payload.get(key)
+        compared += 1
+        if active_value is None:
+            continue
+        if block_value != active_value:
+            mismatches.append((key, active_value, block_value))
+
+    if mismatches:
+        key, active_value, block_value = mismatches[0]
+        return {
+            "status": "ERROR",
+            "code": "ROUTE_VERSION_MISMATCH",
+            "source": source_name,
+            "field": key,
+            "active_value": active_value,
+            "block_value": block_value,
+            "message": (
+                f"{source_name}: {key}={block_value!r} != aktywne {active_value!r}"
+            ),
+        }
+
+    if compared == 0:
+        return {
+            "status": "WARN",
+            "code": "SOURCE_VERSION_METADATA_MISSING",
+            "source": source_name,
+            "message": f"{source_name}: brak porownywalnych metadanych wersji",
+        }
+
+    return {
+        "status": "OK",
+        "code": "OK",
+        "source": source_name,
+        "route_version_key": active_payload.get("route_version_key") or block_payload.get("route_version_key"),
+        "message": f"{source_name}: wersja zgodna",
+    }
 
 
 def _open_status_rank(status: str | None) -> int:
@@ -127,7 +378,7 @@ def _read_poi_analysis_cache(route_id: str | None) -> dict[str, Any] | None:
             if not isinstance(obj, dict):
                 continue
             report_md = path.with_suffix(".md")
-            return {
+            cache: dict[str, Any] = {
                 "status": obj.get("status") or obj.get("analysis_status") or "OK",
                 "analysis_status": obj.get("analysis_status"),
                 "cache_path": str(path),
@@ -151,6 +402,10 @@ def _read_poi_analysis_cache(route_id: str | None) -> dict[str, Any] | None:
                 "missing_chunks_count": obj.get("missing_chunks_count"),
                 "markdown": obj.get("markdown"),
             }
+            for key in _ROUTE_VERSION_META_KEYS:
+                if key in obj and obj.get(key) is not None:
+                    cache[key] = obj.get(key)
+            return cache
     except Exception:
         return None
     return None
@@ -1512,11 +1767,13 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
     collected: dict[str, Any] = {"variant": variant}
     sections: list[str] = []
     H = sections.append
+    integrity_errors: list[dict[str, Any]] = []
 
     H(f"# RAPORT TRASY - wariant {_VARIANT_TITLE[variant]}")
     if route_id:
         H(f"Trasa: {route_id} · {_RWGPS_URL.format(rid=route_id)}")
     H("")
+    active_route_version = _fetch_route_version_record(route_id=route_id) if route_id else None
 
     # ---- A: plan_analysis (A1 trasa, A2 profil, A3 nawierzchnia%, A4 wiatr, A5 pogoda, A6 forma) ----
     plan_args = dict(base_args)
@@ -1543,6 +1800,22 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
             surface_profile = _fetch_surface_profile(route_id=route_id, route_artifact_id=base_args.get("artifact_id"))
         except Exception:
             surface_profile = None
+
+        surface_guard = _route_version_guard(
+            active_version=active_route_version,
+            block_version=surface_profile,
+            source_name="surface_summary_json",
+        )
+        if surface_guard["status"] == "ERROR":
+            H(f"_DATA_INTEGRITY_ERROR: ROUTE_VERSION_MISMATCH — {surface_guard['message']}_")
+            collected["surface_version_guard"] = surface_guard
+            integrity_errors.append(surface_guard)
+            if isinstance(surface_profile, dict):
+                surface_profile = dict(surface_profile)
+                surface_profile["good_profile"] = False
+        elif surface_guard["status"] == "WARN":
+            H(f"_WARN: SOURCE_VERSION_METADATA_MISSING — {surface_guard['message']}_")
+            collected["surface_version_guard"] = surface_guard
 
         if surface_profile and surface_profile.get("good_profile"):
             surface_line = _surface_profile_render_line(surface_profile)
@@ -1615,6 +1888,18 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
                 "missing_chunks_count": None,
                 "generated_at": None,
             }
+        poi_guard = _route_version_guard(
+            active_version=active_route_version,
+            block_version=poi,
+            source_name="poi_cache",
+        )
+        if poi_guard["status"] == "ERROR":
+            H(f"_DATA_INTEGRITY_ERROR: ROUTE_VERSION_MISMATCH — {poi_guard['message']}_")
+            collected["poi_version_guard"] = poi_guard
+            integrity_errors.append(poi_guard)
+        elif poi_guard["status"] == "WARN":
+            H(f"_WARN: SOURCE_VERSION_METADATA_MISSING — {poi_guard['message']}_")
+            collected["poi_version_guard"] = poi_guard
         collected["poi"] = poi
         for line in _render_poi_supply_section(poi, ride_start=start, plan_text=_analysis(plan), route_distance_km=dist):
             H(line)
@@ -1710,7 +1995,7 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
              else "Sekcja C wygenerowana przez Alberta na podstawie dokumentu kontekstowego.")
 
     return {
-        "status": "OK",
+        "status": "ERROR" if integrity_errors else "OK",
         "variant": variant,
         "route_id": route_id,
         "analysis": analysis_text,
