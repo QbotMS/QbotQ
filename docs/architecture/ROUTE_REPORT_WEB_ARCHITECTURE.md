@@ -516,8 +516,10 @@ nawierzchni oraz pokazuje `surface_quality_status`, `tagged_surface_pct`,
 `inferred_surface_pct`, `unknown_surface_pct`, `geology_context`,
 `problem_segments`, `surface_percentages_raw` i `surface_percentages_refined`.
 Sekcja POI preferuje istniejący cache/raport, a ciężki refresh Overpass jest
-omijany w publicznym runtime, żeby nie blokować `qbot.query`. Storage i schema DB
-bez zmian; HikConnect/GATE poza zakresem i nietknięte.
+omijany w publicznym runtime, żeby nie blokować `qbot.query`. Publiczny raport
+dodaje też jawny blok `Geologia / podłoże (geology_context)` z providerem,
+status, material_hint i interpretacją ryzyka, ale nie nadpisuje OSM surface.
+Storage i schema DB bez zmian; HikConnect/GATE poza zakresem i nietknięte.
 
 Aktualizacja 2026-06-28: Overpass ma multi-endpoint fallback przez globalne
 instancje `overpass-api.de`, `overpass.private.coffee`, `maps.mail.ru`, z ENV

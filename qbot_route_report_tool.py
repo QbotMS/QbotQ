@@ -15,6 +15,7 @@ Warianty:
 """
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -133,6 +134,89 @@ def _read_poi_analysis_cache(route_id: str | None) -> dict[str, Any] | None:
     except Exception:
         return None
     return None
+
+
+def _surface_quality_lines(surface_profile: dict[str, Any] | None) -> list[str]:
+    if not isinstance(surface_profile, dict):
+        return [
+            "Źródło nawierzchni: legacy surface path (route_frames / route_surface_segments)",
+            "Profil jakości: brak danych z surface_summary_json",
+            "Ostrzeżenie: legacy fallback bez dobrego profilu surface_summary_json",
+        ]
+    quality_status = str(surface_profile.get("quality_status") or "UNKNOWN").strip().upper()
+    coverage_pct = surface_profile.get("coverage_pct")
+    tagged_surface_pct = surface_profile.get("tagged_surface_pct")
+    inferred_surface_pct = surface_profile.get("inferred_surface_pct")
+    unknown_surface_pct = surface_profile.get("unknown_surface_pct")
+    source = "surface_summary_json" if surface_profile.get("good_profile") else "legacy fallback"
+    lines = [
+        f"Źródło nawierzchni: {source}",
+        (
+            "Profil jakości: "
+            f"{quality_status} | coverage {coverage_pct:.0f}% | "
+            f"tagged {tagged_surface_pct:.1f}% | inferred {inferred_surface_pct:.1f}% | "
+            f"unknown {unknown_surface_pct:.1f}%"
+            if all(v is not None for v in (coverage_pct, tagged_surface_pct, inferred_surface_pct, unknown_surface_pct))
+            else f"Profil jakości: {quality_status}"
+        ),
+    ]
+    if not surface_profile.get("good_profile") or quality_status == "LOW_CONFIDENCE":
+        lines.append("Ostrzeżenie: legacy fallback albo LOW_CONFIDENCE — interpretacja nawierzchni wymaga ostrożności")
+    return lines
+
+
+def _geology_lines(surface_profile: dict[str, Any] | None) -> list[str]:
+    if not isinstance(surface_profile, dict):
+        return ["Geologia: brak danych w profilu, nie użyto do oceny nawierzchni"]
+    summary = surface_profile.get("surface_summary_json")
+    if not isinstance(summary, dict):
+        return ["Geologia: brak danych w profilu, nie użyto do oceny nawierzchni"]
+    geo = summary.get("geology_context")
+    if not isinstance(geo, dict) or not geo:
+        return ["Geologia: brak danych w profilu, nie użyto do oceny nawierzchni"]
+
+    provider = str(geo.get("provider") or "unknown").strip()
+    status = str(geo.get("status") or "UNKNOWN").strip().upper()
+    material_hint = str(geo.get("material_hint") or geo.get("dominant_material") or "—").strip()
+    dominant_region = str(geo.get("dominant_region") or "—").strip()
+    dominant_unit = str(geo.get("dominant_unit") or "—").strip()
+    confidence = str(geo.get("confidence") or "—").strip()
+    warnings = geo.get("warnings") if isinstance(geo.get("warnings"), list) else []
+    risk_flags = geo.get("risk_flags")
+    if isinstance(risk_flags, dict):
+        risk_flags_text = ", ".join(f"{k}={v}" for k, v in risk_flags.items()) or "brak"
+    elif isinstance(risk_flags, list):
+        risk_flags_text = ", ".join(str(v) for v in risk_flags if str(v).strip()) or "brak"
+    elif risk_flags:
+        risk_flags_text = str(risk_flags)
+    else:
+        risk_flags_text = "brak"
+
+    explanation = str(geo.get("explanation") or "").strip()
+    interpretation = "brak jednoznacznej interpretacji"
+    hint = material_hint.lower()
+    if any(token in hint for token in ("sand", "piasek", "loose")):
+        interpretation = "większe ryzyko piachu i luźnego podłoża na odcinkach inferred"
+    elif any(token in hint for token in ("gravel", "zwir", "szuter")):
+        interpretation = "luźny żwir / szuter może podbijać koszt i obniżać przyczepność"
+    elif any(token in hint for token in ("ground", "grunt", "earth", "dirt")):
+        interpretation = "grunt i ziemia mogą być bardziej wrażliwe na wilgoć i koleiny"
+    elif any(token in hint for token in ("rock", "stone", "kamien", "hardpack", "compact")):
+        interpretation = "twardsze podłoże zwykle daje stabilniejszą trakcję"
+
+    lines = [
+        f"Geologia / podłoże (geology_context): provider={provider} | status={status} | confidence={confidence}",
+        f"- dominant_region: {dominant_region}",
+        f"- dominant_unit: {dominant_unit}",
+        f"- material_hint: {material_hint}",
+        f"- risk_flags: {risk_flags_text}",
+        f"- interpretacja: {interpretation}",
+    ]
+    if explanation:
+        lines.append(f"- explain: {explanation}")
+    if warnings:
+        lines.append(f"- warnings: {', '.join(str(w) for w in warnings if str(w).strip())}")
+    return lines
 
 
 def _ok(result: dict[str, Any]) -> bool:
@@ -1054,6 +1138,16 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
                 H("_UWAGA: legacy surface path (route_frames / route_surface_segments) — brak dobrego profilu surface_summary_json._")
             else:
                 H(f"_Szczegolowy profil niedostepny: {_reason(prof)}_")
+        H("")
+
+        H("## A3B - DIAGNOSTYKA JAKOŚCI")
+        for line in _surface_quality_lines(surface_profile):
+            H(line)
+        H("")
+
+        H("## A3C - GEOLOGIA / PODŁOŻE")
+        for line in _geology_lines(surface_profile):
+            H(line)
         H("")
 
     # ---- A7 sprzet (tylko pelny) ----
