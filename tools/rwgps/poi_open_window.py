@@ -207,6 +207,77 @@ def parse_osm_opening_hours(s: str) -> dict[str, Any] | None:
     return {"raw": text, "always_open": False, "rules": rules}
 
 
+def classify_osm_open_status(parsed: dict[str, Any] | None, dt: datetime, *, margin_minutes: int = 30) -> str | None:
+    if parsed is None:
+        return None
+    if parsed.get("always_open"):
+        return "OPEN_AT_ETA"
+
+    rules = parsed.get("rules") or []
+    if not rules:
+        return None
+
+    try:
+        margin = max(0, int(margin_minutes))
+    except (TypeError, ValueError):
+        margin = 30
+
+    weekday = int(dt.weekday())
+    minute = dt.hour * 60 + dt.minute
+    prev_weekday = (weekday - 1) % 7
+
+    intervals: list[tuple[int, int]] = []
+    saw_rule_for_day = False
+    for rule in rules:
+        days = rule.get("days") or []
+        closed = bool(rule.get("closed"))
+        if weekday in days:
+            saw_rule_for_day = True
+            if closed:
+                continue
+            for start, end in rule.get("ranges") or []:
+                if end == 0 and start != 0:
+                    end = 24 * 60
+                if start <= end:
+                    intervals.append((start, end))
+                else:
+                    intervals.append((start, 24 * 60))
+        if prev_weekday in days and not closed:
+            for start, end in rule.get("ranges") or []:
+                if end == 0 and start != 0:
+                    end = 24 * 60
+                if start > end:
+                    intervals.append((start - 24 * 60, end))
+
+    if not intervals:
+        return "CLOSED_AT_ETA" if saw_rule_for_day or any(rule.get("closed") for rule in rules) else None
+
+    containing: list[tuple[int, int]] = []
+    for start, end in intervals:
+        if start <= minute < end:
+            containing.append((start, end))
+
+    if containing:
+        for start, end in containing:
+            if minute - start >= margin and end - minute >= margin:
+                return "OPEN_AT_ETA"
+        return "OPEN_AT_ETA_MARGIN_RISK"
+
+    next_start: int | None = None
+    prev_end: int | None = None
+    for start, end in intervals:
+        if start > minute and (next_start is None or start < next_start):
+            next_start = start
+        if end <= minute and (prev_end is None or end > prev_end):
+            prev_end = end
+
+    if next_start is not None and 0 < next_start - minute <= margin:
+        return "OPEN_SOON_MARGIN_RISK"
+    if prev_end is not None and 0 < minute - prev_end <= margin:
+        return "CLOSED_AT_ETA_MARGIN_RISK"
+    return "CLOSED_AT_ETA"
+
+
 def osm_open_at(parsed: dict[str, Any] | None, dt: datetime) -> bool | None:
     if parsed is None:
         return None

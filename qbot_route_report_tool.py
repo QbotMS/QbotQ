@@ -68,6 +68,16 @@ def _resolve_distance_km(route_id: str | None) -> float | None:
         return None
 
 
+def _open_status_rank(status: str | None) -> int:
+    if status == "OPEN_AT_ETA":
+        return 0
+    if status in {"OPEN_AT_ETA_MARGIN_RISK", "OPEN_SOON_MARGIN_RISK", "CLOSED_AT_ETA_MARGIN_RISK"}:
+        return 1
+    if status == "UNKNOWN_HOURS":
+        return 2
+    return 3
+
+
 def _surface_profile_render_line(profile: dict[str, Any]) -> str:
     refined = profile.get("surface_percentages_refined") if isinstance(profile, dict) else {}
     if not isinstance(refined, dict):
@@ -222,48 +232,37 @@ def _normalize_poi_supply_item(item: dict[str, Any], *, ride_start: Any = None, 
     open_at_arrival = item.get("open_at_arrival")
     eta_iso = item.get("eta_iso")
     render_eta_iso = eta_iso
+    open_status = None
 
     if ride_start is not None and km_on_route is not None:
         try:
             from datetime import datetime as _dt
-            from tools.rwgps.poi_open_window import eta_at_km
+            from tools.rwgps.poi_open_window import classify_osm_open_status, eta_at_km, parse_osm_opening_hours
             start_dt = _dt.fromisoformat(str(ride_start).replace("Z", "+00:00"))
             render_eta_iso = eta_at_km(float(km_on_route), start_dt, float(avg_speed_kmh or 18.0)).isoformat()
+            if render_eta_iso and opening_hours:
+                eta_dt = _dt.fromisoformat(str(render_eta_iso).replace("Z", "+00:00"))
+                parsed = parse_osm_opening_hours(str(opening_hours))
+                open_status = classify_osm_open_status(parsed, eta_dt)
         except Exception:
             render_eta_iso = eta_iso
 
-    if ride_start is not None and opening_hours:
-        try:
-            from datetime import datetime as _dt
-            from tools.rwgps.poi_open_window import parse_osm_opening_hours, osm_open_at
-            if render_eta_iso:
-                eta_dt = _dt.fromisoformat(str(render_eta_iso).replace("Z", "+00:00"))
-                parsed = parse_osm_opening_hours(str(opening_hours))
-                open_at_arrival = osm_open_at(parsed, eta_dt)
-                open_source = "osm"
-        except Exception:
-            pass
-    elif open_at_arrival is None and opening_hours:
-        try:
-            from datetime import datetime as _dt
-            from tools.rwgps.poi_open_window import parse_osm_opening_hours, osm_open_at
-            if render_eta_iso:
-                eta_dt = _dt.fromisoformat(str(render_eta_iso).replace("Z", "+00:00"))
-                parsed = parse_osm_opening_hours(str(opening_hours))
-                open_at_arrival = osm_open_at(parsed, eta_dt)
-                open_source = "osm"
-        except Exception:
-            pass
-
-    if open_at_arrival is True:
-        open_status = "OPEN_AT_ETA"
-    elif open_at_arrival is False:
-        open_status = "CLOSED_AT_ETA"
-    else:
+    if open_status is None and ride_start is not None and open_at_arrival is not None and not opening_hours:
         open_status = "UNKNOWN_HOURS"
+
+    if open_status == "OPEN_AT_ETA":
+        open_at_arrival = True
+    elif open_status in {"OPEN_AT_ETA_MARGIN_RISK", "OPEN_SOON_MARGIN_RISK", "CLOSED_AT_ETA", "CLOSED_AT_ETA_MARGIN_RISK"}:
+        open_at_arrival = False if open_status.startswith("CLOSED") or open_status == "OPEN_SOON_MARGIN_RISK" else True
+    else:
+        open_at_arrival = None
+        if opening_hours:
+            open_status = "UNKNOWN_HOURS"
 
     if open_status == "OPEN_AT_ETA" and opening_hours:
         confidence = "HIGH"
+    elif open_status == "OPEN_AT_ETA_MARGIN_RISK" and opening_hours:
+        confidence = "MEDIUM"
     elif open_status == "OPEN_AT_ETA" and open_source == "google":
         confidence = "MEDIUM"
     elif category == "water" and not opening_hours:
@@ -376,6 +375,7 @@ def _render_poi_supply_section(
             fallback_direct_items.append(item)
     water_items = [item for item in near_direct_items if item.get("category") == "water"]
     open_items = [item for item in near_direct_items if item.get("open_status") == "OPEN_AT_ETA"]
+    margin_items = [item for item in near_direct_items if str(item.get("open_status") or "").endswith("_MARGIN_RISK")]
     unknown_items = [item for item in near_direct_items if item.get("open_status") == "UNKNOWN_HOURS"]
     closed_items = [item for item in near_direct_items if item.get("open_status") == "CLOSED_AT_ETA"]
     town_items = [item for item in raw_items if item.get("category") == "town" and item.get("hard_resupply_names")]
@@ -420,6 +420,7 @@ def _render_poi_supply_section(
     supply_clusters = _cluster_supply_items([item for item in near_direct_items if item.get("category") in {"hard_resupply", "soft_food_stop", "water"}])
     confidence_counts = {
         "OPEN_AT_ETA": len(open_items),
+        "MARGIN_RISK": len(margin_items),
         "UNKNOWN_HOURS": len(unknown_items),
         "CLOSED_AT_ETA": len(closed_items),
     }
@@ -435,6 +436,7 @@ def _render_poi_supply_section(
         lines.append(f"Google Places kandydatów: {poi_cache.get('google_supply_count')}")
     lines += [
         f"Pewne punkty OPEN_AT_ETA do 500 m od trasy: {confidence_counts['OPEN_AT_ETA']}",
+        f"Punkty blisko okna otwarcia/zamknięcia: {confidence_counts['MARGIN_RISK']}",
         f"Potencjalne UNKNOWN_HOURS do 500 m od trasy: {confidence_counts['UNKNOWN_HOURS']}",
         f"Punkty CLOSED_AT_ETA: {confidence_counts['CLOSED_AT_ETA']}",
         f"Publiczne drinking_water: {len(water_items)} (bonus, nie główne źródło zaopatrzenia w Polsce)",
@@ -486,7 +488,7 @@ def _render_poi_supply_section(
             best = sorted(
                 candidates,
                 key=lambda item: (
-                    0 if item.get("open_status") == "OPEN_AT_ETA" else 1 if item.get("open_status") == "UNKNOWN_HOURS" else 2,
+                    _open_status_rank(str(item.get("open_status") or "")),
                     float(item.get("distance_from_route_m") or 9999.0),
                     0 if item.get("kind") in {"stacja paliw", "sklep"} else 1,
                     0 if item.get("category") == "hard_resupply" else 1,
@@ -506,6 +508,7 @@ def _render_poi_supply_section(
         lines.append("Najważniejsze klastry zaopatrzenia blisko trasy:")
     for idx, cluster in enumerate(supply_clusters, start=1):
         cluster_open = sum(1 for item in cluster if item.get("open_status") == "OPEN_AT_ETA")
+        cluster_margin = sum(1 for item in cluster if str(item.get("open_status") or "").endswith("_MARGIN_RISK"))
         cluster_unknown = sum(1 for item in cluster if item.get("open_status") == "UNKNOWN_HOURS")
         cluster_closed = sum(1 for item in cluster if item.get("open_status") == "CLOSED_AT_ETA")
         km_vals = [float(item["km_on_route"]) for item in cluster if item.get("km_on_route") is not None]
@@ -515,7 +518,7 @@ def _render_poi_supply_section(
         best = sorted(
             cluster,
             key=lambda item: (
-                0 if item.get("open_status") == "OPEN_AT_ETA" else 1 if item.get("open_status") == "UNKNOWN_HOURS" else 2,
+                _open_status_rank(str(item.get("open_status") or "")),
                 float(item.get("distance_from_route_m") or 9999.0),
                 0 if item.get("kind") in {"stacja paliw", "sklep"} else 1,
                 0 if item.get("category") == "hard_resupply" else 1,
@@ -532,7 +535,7 @@ def _render_poi_supply_section(
         other_count = max(0, len(cluster) - len(best))
         lines.append(
             f"{idx}. {loc or 'km ?'}{town_part} | status zaopatrzenia: {cluster_status} | "
-            f"{len(cluster)} punktów ({cluster_open} OPEN_AT_ETA, {cluster_unknown} UNKNOWN_HOURS, {cluster_closed} CLOSED_AT_ETA)"
+            f"{len(cluster)} punktów ({cluster_open} OPEN_AT_ETA, {cluster_margin} MARGIN_RISK, {cluster_unknown} UNKNOWN_HOURS, {cluster_closed} CLOSED_AT_ETA)"
         )
         if other_count:
             lines.append(f"   +{other_count} innych punktów w pobliżu")

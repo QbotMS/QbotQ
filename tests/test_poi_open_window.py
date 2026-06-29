@@ -4,7 +4,7 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timezone, timedelta
 
-from tools.rwgps.poi_open_window import osm_open_at, parse_osm_opening_hours
+from tools.rwgps.poi_open_window import classify_osm_open_status, osm_open_at, parse_osm_opening_hours
 
 
 WARSAW = timezone(timedelta(hours=2))
@@ -19,16 +19,30 @@ class TestPoiOpenWindowParsing(unittest.TestCase):
         parsed = parse_osm_opening_hours("wtorek 5:30–18:00")
         self.assertIsNotNone(parsed)
         self.assertTrue(osm_open_at(parsed, _dt("2026-06-30T12:00:00+02:00")))
+        self.assertEqual(classify_osm_open_status(parsed, _dt("2026-06-30T12:00:00+02:00")), "OPEN_AT_ETA")
 
     def test_polish_weekday_and_multi_window(self):
         parsed = parse_osm_opening_hours("wtorek 5:00–13:30 i 16:00–19:30")
         self.assertIsNotNone(parsed)
         self.assertFalse(osm_open_at(parsed, _dt("2026-06-30T13:45:00+02:00")))
+        self.assertEqual(
+            classify_osm_open_status(parsed, _dt("2026-06-30T13:45:00+02:00")),
+            "CLOSED_AT_ETA_MARGIN_RISK",
+        )
+        self.assertEqual(
+            classify_osm_open_status(parsed, _dt("2026-06-30T15:30:00+02:00")),
+            "OPEN_SOON_MARGIN_RISK",
+        )
+        self.assertEqual(
+            classify_osm_open_status(parsed, _dt("2026-06-30T16:35:00+02:00")),
+            "OPEN_AT_ETA",
+        )
 
     def test_midnight_close_is_open_until_end_of_day(self):
         parsed = parse_osm_opening_hours("wtorek 6:00–00:00")
         self.assertIsNotNone(parsed)
         self.assertTrue(osm_open_at(parsed, _dt("2026-06-30T14:19:00+02:00")))
+        self.assertEqual(classify_osm_open_status(parsed, _dt("2026-06-30T14:19:00+02:00")), "OPEN_AT_ETA")
 
     def test_english_abbreviation_still_works(self):
         parsed = parse_osm_opening_hours("Mo-Fr 07:00-19:00; Sa 07:00-20:00; Su 10:00-17:00")

@@ -1273,8 +1273,9 @@ class TestRouteReportPoiSupplyRegression(unittest.TestCase):
         )
 
         self.assertIn("Pewne punkty OPEN_AT_ETA do 500 m od trasy: 5", analysis)
+        self.assertIn("Punkty blisko okna otwarcia/zamknięcia: 1", analysis)
         self.assertIn("Potencjalne UNKNOWN_HOURS do 500 m od trasy: 0", analysis)
-        self.assertIn("Punkty CLOSED_AT_ETA: 1", analysis)
+        self.assertIn("Punkty CLOSED_AT_ETA: 0", analysis)
         self.assertIn("Topaz Express", analysis)
         self.assertIn("status_hours=OPEN_AT_ETA", analysis)
         self.assertIn("Wawie sp.j. Piekarnia", analysis)
@@ -1282,7 +1283,7 @@ class TestRouteReportPoiSupplyRegression(unittest.TestCase):
         self.assertIn("Sklep spożywczy GS Samopomoc Chłopska", analysis)
         self.assertIn("Sklep Delikatesy Rodzinne Somianka", analysis)
         self.assertIn("Sklep spożywczo-przemysłowy Wanda Figat", analysis)
-        self.assertIn("status_hours=CLOSED_AT_ETA", analysis)
+        self.assertIn("status_hours=CLOSED_AT_ETA_MARGIN_RISK", analysis)
         self.assertIn("eta_at_poi=2026-06-30 13:45:00+02:00", analysis)
 
 if __name__ == "__main__":
