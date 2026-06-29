@@ -611,7 +611,7 @@ class TestRouteReportTask13(unittest.TestCase):
         self.assertFalse(hasattr(rr, "qgpt_text"))
 
 class TestRouteReportTask16(unittest.TestCase):
-    """TASK 16 — dane zasilajace wzorce: wiatr km/h, POI z km, spojnosc podjazdow, kompletnosc nawierzchni."""
+    """TASK 16 — dane zasilajace wzorce: wiatr m/s, POI z km, spojnosc podjazdow, kompletnosc nawierzchni."""
 
     def setUp(self):
         self.calls = []
@@ -623,8 +623,8 @@ class TestRouteReportTask16(unittest.TestCase):
                 "Nawierzchnia: 60% utwardzona | asfalt 60%, szuter 30%\n"
                 "\n"
                 "🌤  Pogoda (prognoza): 22-28°C, opady ~0.0 mm na trasie\n"
-                "   \U0001f4a8 Pod wiatr (oszczedzaj sie wczesniej): km 40–50 (~22 km/h)\n"
-                "   Sila wiatru: sr. 18 km/h, maks 32 km/h\n"
+                "   \U0001f4a8 Pod wiatr (oszczedzaj sie wczesniej): km 40–50 (~6.1 m/s / 22 km/h)\n"
+                "   Sila wiatru: sr. 5.0 m/s (18 km/h), maks. 8.9 m/s (32 km/h)\n"
                 "\n"
                 "\U0001f4aa Forma (FitModel, 2026-06-24): FTP 257 W, 2.55 W/kg"
             )}},
@@ -678,11 +678,14 @@ class TestRouteReportTask16(unittest.TestCase):
             {"route_id": route_id, "variant": "pelny"}
         )["context_for_section_c"]
 
-    def test_wind_kmh_in_context(self):
-        """16.d: plan zawiera 'Sila wiatru: sr. 18 km/h' -> dokument ma 'km/h'."""
+    def test_wind_ms_in_context(self):
+        """16.d: plan zawiera m/s jako jednostke bazowa, km/h tylko pomocniczo."""
         ctx = self._ctx()
         self.assertIn("POGODA", ctx)
-        self.assertIn("km/h", ctx)
+        self.assertIn("m/s", ctx)
+        self.assertIn("(18 km/h)", ctx)
+        self.assertIn("km 40–50 (~6.1 m/s / 22 km/h)", ctx)
+        self.assertNotIn("Sila wiatru: sr. 18 km/h, maks 32 km/h", ctx)
         self.assertNotIn("brak w analizie planu", ctx)
 
     def test_poi_km_in_context(self):
@@ -796,7 +799,7 @@ class TestRouteReportTask17(unittest.TestCase):
         """>=2 faktory -> 'wysokie'; sam 'start' -> brak 'wysokie'."""
         bloks_hi = [{"km_start": 5.0, "km_end": 10.0,
                      "factors": ["podjazd", "pod wiatr"],
-                     "detail": {"podjazd": "8%", "pod wiatr": "25 km/h"}}]
+                     "detail": {"podjazd": "8%", "pod wiatr": "~6.9 m/s / 25 km/h"}}]
         table_hi = rr._build_risk_table(bloks_hi)
         self.assertIn("wysokie", table_hi)
 
@@ -805,6 +808,22 @@ class TestRouteReportTask17(unittest.TestCase):
                        "detail": {"start": "km 0-6: rozgrzewka"}}]
         table_skip = rr._build_risk_table(bloks_skip)
         self.assertNotIn("wysokie", table_skip)
+
+    def test_parse_wind_blocks_supports_ms(self):
+        """Parse nowego formatu wind -> m/s jako jednostka bazowa, km/h tylko pomocniczo."""
+        plan = (
+            "🌤  Pogoda (prognoza): 22–28°C, opady ~0.0 mm na trasie\n"
+            "   💨 Pod wiatr (oszczedzaj sie wczesniej): km 40–50 (~6.1 m/s / 22 km/h); km 55–59 (~5.0 m/s / 18 km/h)\n"
+            "   🍃 Wiatr w plecy: km 10–14 (~3.3 m/s / 12 km/h)\n"
+            "   Sila wiatru: sr. 5.0 m/s (18 km/h), maks. 8.9 m/s (32 km/h)\n"
+        )
+        wind_blocks = rr._parse_wind_blocks_with_kmh(plan)
+        self.assertEqual(wind_blocks, [(40.0, 50.0, 6.1, 22.0), (55.0, 59.0, 6.1, 22.0)])
+        blocks = rr._detect_blocks([], [], wind_blocks, 80.0)
+        phase = rr._build_phase_plan(blocks, 250, 80.0)
+        self.assertIn("m/s", phase)
+        self.assertIn("km/h", phase)
+        self.assertIn("POD WIATR", phase)
 
     def test_endcap_phase(self):
         """Ostatnie 10% trasy zawsze daje osobny blok 'koncowka'."""

@@ -1288,7 +1288,7 @@ def _parse_climbs_from_text(prof_txt):
 
 
 def _parse_wind_blocks_with_kmh(plan_txt):
-    """Bloki pod wiatr z analizy planu z km/h -> [(km_start, km_end, kmh), ...].
+    """Bloki pod wiatr z analizy planu z m/s i km/h -> [(km_start, km_end, wind_ms, wind_kmh), ...].
     Filtruje: dlugosc >= 3 km."""
     if not plan_txt:
         return []
@@ -1297,19 +1297,43 @@ def _parse_wind_blocks_with_kmh(plan_txt):
         if "Pod wiatr" not in line:
             continue
         after = line.split(":", 1)[1] if ":" in line else line
-        kmh_m = re.search(r"\(~?([0-9.]+)\s*km/h\)", after)
-        kmh = float(kmh_m.group(1)) if kmh_m else None
-        for m in re.finditer(r"([0-9]+(?:\.[0-9]+)?)\s*[-–]\s*([0-9]+(?:\.[0-9]+)?)", after):
+        ms = None
+        kmh = None
+        ms_m = re.search(r"\(~?([0-9.]+)\s*m/s(?:\s*/\s*([0-9.]+)\s*km/h)?\)", after)
+        if ms_m:
+            ms = float(ms_m.group(1))
+            if ms_m.group(2):
+                kmh = float(ms_m.group(2))
+            else:
+                kmh = ms * 3.6
+        else:
+            kmh_m = re.search(r"\(~?([0-9.]+)\s*km/h\)", after)
+            if kmh_m:
+                kmh = float(kmh_m.group(1))
+                ms = kmh / 3.6
+        for m in re.finditer(r"km\s*([0-9]+(?:\.[0-9]+)?)\s*[-–]\s*([0-9]+(?:\.[0-9]+)?)", after):
             a, b = float(m.group(1)), float(m.group(2))
             if (b - a) >= 3.0:
-                result.append((a, b, kmh))
+                result.append((a, b, ms, kmh))
     return result
+
+
+def _format_wind_block_detail(wind_ms: float | None, wind_kmh: float | None) -> str:
+    if wind_ms is None and wind_kmh is None:
+        return ""
+    if wind_ms is None and wind_kmh is not None:
+        wind_ms = wind_kmh / 3.6
+    if wind_ms is None:
+        return ""
+    if wind_kmh is None:
+        wind_kmh = wind_ms * 3.6
+    return f"~{wind_ms:.1f} m/s / {wind_kmh:.0f} km/h"
 
 
 def _detect_blocks(surf_segments, climbs, wind_blocks, dist_km):
     """Wykrywa istotne bloki trasy (TASK 17).
     surf_segments: [(km_from, km_to, surf)], climbs: [(a, b, grade%)],
-    wind_blocks: [(a, b, kmh|None)], dist_km: float.
+    wind_blocks: [(a, b, wind_ms|None, wind_kmh|None)], dist_km: float.
     Zwraca list[dict] z km_start, km_end, factors, detail.
     Progi: podjazd >=5%/>=200m; pod wiatr >=3km (juz odfiltrowane);
     nieasfalt >2km (2.pol >1.5km); START 0-6km; KONIEC ostatnie ~10%."""
@@ -1326,8 +1350,15 @@ def _detect_blocks(surf_segments, climbs, wind_blocks, dist_km):
         raw.append({"km_start": a, "km_end": b, "factors": ["podjazd"],
                      "detail": {"podjazd": f"max {grade:.0f}%, {(b-a)*1000:.0f} m"}})
 
-    for a, b, kmh in wind_blocks:
-        kmh_str = f"~{kmh:.0f} km/h" if kmh is not None else ""
+    for entry in wind_blocks:
+        if len(entry) == 4:
+            a, b, wind_ms, wind_kmh = entry
+        elif len(entry) == 3:
+            a, b, wind_kmh = entry
+            wind_ms = wind_kmh / 3.6 if wind_kmh is not None else None
+        else:
+            continue
+        kmh_str = _format_wind_block_detail(wind_ms, wind_kmh)
         raw.append({"km_start": a, "km_end": b, "factors": ["pod wiatr"],
                      "detail": {"pod wiatr": kmh_str}})
 

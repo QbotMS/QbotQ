@@ -69,13 +69,19 @@ def _wind_stretches(rows, sign, thr=1.5, min_km=1.0):
     return out
 
 
-def _wind_speed_kmh_for_block(rows, a_km, b_km):
-    """Srednia predkosc wiatru (wind_speed_ms) dla ramek w bloku a_km..b_km → km/h.
+def _wind_speed_ms_for_block(rows, a_km, b_km):
+    """Srednia predkosc wiatru (wind_speed_ms) dla ramek w bloku a_km..b_km → m/s.
     rows: krotki (frame_index, dist_start_m, dist_end_m, ..., wind_speed_ms)  (indeks 9).
     Zwraca float lub None gdy brak danych."""
     speeds = [r[9] for r in rows if r[9] is not None
               and r[1] >= a_km * 1000.0 and r[2] <= b_km * 1000.0]
-    return (sum(speeds) / len(speeds) * 3.6) if speeds else None
+    return (sum(speeds) / len(speeds)) if speeds else None
+
+
+def _wind_speed_text(speed_ms: float | None) -> str | None:
+    if speed_ms is None:
+        return None
+    return f"{speed_ms:.1f} m/s / {speed_ms * 3.6:.0f} km/h"
 
 
 def build(artifact_id=None, route_id=None, frame_size=80, climb_grade=5.0):
@@ -132,18 +138,18 @@ def build(artifact_id=None, route_id=None, frame_size=80, climb_grade=5.0):
         if head:
             parts = []
             for a, b in head:
-                kmh = _wind_speed_kmh_for_block(rows, a, b)
-                if kmh is not None:
-                    parts.append(f"km {a:.0f}–{b:.0f} (~{kmh:.0f} km/h)")
+                wind_txt = _wind_speed_text(_wind_speed_ms_for_block(rows, a, b))
+                if wind_txt is not None:
+                    parts.append(f"km {a:.0f}–{b:.0f} ({wind_txt})")
                 else:
                     parts.append(f"km {a:.0f}–{b:.0f}")
             lines.append(f"   💨 Pod wiatr (oszczedzaj sie wczesniej): {'; '.join(parts)}")
         if tail:
             parts = []
             for a, b in tail:
-                kmh = _wind_speed_kmh_for_block(rows, a, b)
-                if kmh is not None:
-                    parts.append(f"km {a:.0f}–{b:.0f} (~{kmh:.0f} km/h)")
+                wind_txt = _wind_speed_text(_wind_speed_ms_for_block(rows, a, b))
+                if wind_txt is not None:
+                    parts.append(f"km {a:.0f}–{b:.0f} ({wind_txt})")
                 else:
                     parts.append(f"km {a:.0f}–{b:.0f}")
             lines.append(f"   🍃 Wiatr w plecy: {'; '.join(parts)}")
@@ -151,9 +157,12 @@ def build(artifact_id=None, route_id=None, frame_size=80, climb_grade=5.0):
             lines.append("   Wiatr slaby / zmienny — bez istotnych odcinkow.")
         all_speeds = [r[9] for r in rows if r[9] is not None]
         if all_speeds:
-            avg_kmh = sum(all_speeds) / len(all_speeds) * 3.6
-            max_kmh = max(all_speeds) * 3.6
-            lines.append(f"   Sila wiatru: sr. {avg_kmh:.0f} km/h, maks {max_kmh:.0f} km/h")
+            avg_ms = sum(all_speeds) / len(all_speeds)
+            max_ms = max(all_speeds)
+            lines.append(
+                f"   Sila wiatru: sr. {avg_ms:.1f} m/s ({avg_ms * 3.6:.0f} km/h), "
+                f"maks. {max_ms:.1f} m/s ({max_ms * 3.6:.0f} km/h)"
+            )
         else:
             lines.append("   Sila wiatru: brak danych")
     else:
