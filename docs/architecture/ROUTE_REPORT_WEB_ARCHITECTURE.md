@@ -538,6 +538,13 @@ statusu zaopatrzenia do `PARTIAL`, jeśli Google Places primary znalazł realne
 `hard_resupply`. Pozostaje jednak dopuszczalny `RISK`, gdy luka kilometrowa
 między punktami `OPEN_AT_ETA` jest rzeczywiście zbyt duża.
 
+Aktualizacja 2026-06-29: w A8 główna lista `Najważniejsze klastry zaopatrzenia
+blisko trasy` obejmuje tylko punkty `hard_resupply` / `soft_food_stop` do
+500 m od śladu. Punkty 500-1000 m mogą być renderowane wyłącznie jako
+`AWARYJNY_FALLBACK_1KM` przy checkpointach 25% / 50% / 75% trasy i tylko wtedy,
+gdy w okolicy checkpointu nie ma żadnego `OPEN_AT_ETA` do 500 m. Punkty
+powyżej 1000 m nie są pokazywane w A8.
+
 Aktualizacja 2026-06-29: w route-poi analyzerze `hard_resupply` ma pierwszeństwo
 z Google Places, a Overpass/OSM jest fallbackiem i uzupełnieniem. Analiza
 przelatuje po całej trasie w samplach/korytarzu, deduplikuje po nazwie,

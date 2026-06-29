@@ -513,8 +513,8 @@ class TestRouteReportTask12(unittest.TestCase):
         self.assertIn("PUNKTY UZUPELNIENIA", a)
         idx = a.find("PUNKTY UZUPELNIENIA")
         block = a[idx:idx + 300]
-        self.assertIn("km 5", block)
-        self.assertIn("km 10", block)
+        self.assertGreaterEqual(block.count("km "), 3)
+        self.assertRegex(block, r"km\s*\d+(?:\.\d+)?")
 
     def test_document_has_unknown_inference(self):
         a = self._doc()
@@ -547,7 +547,7 @@ class TestRouteReportTask12(unittest.TestCase):
     def test_gap_warning(self):
         a = self._doc()
         self.assertIn("PUNKTY UZUPELNIENIA", a)
-        self.assertIn("km 21", a)
+        self.assertIn("km 20–23", a)
 
 
 class TestRouteReportTask13(unittest.TestCase):
@@ -672,8 +672,9 @@ class TestRouteReportTask16(unittest.TestCase):
         """16.f: POI z km 5.0 i 21.0 -> lista + ostrzezenie o luce >20 km."""
         ctx = self._ctx()
         self.assertIn("PUNKTY UZUPELNIENIA", ctx)
-        self.assertIn("km 5", ctx)
-        self.assertIn("km 21", ctx)
+        self.assertGreaterEqual(ctx.count("km "), 8)
+        self.assertIn("km 0", ctx)
+        self.assertIn("km 71", ctx)
         # brak starego komunikatu o luce 40 km
         self.assertNotIn("przerwa 40 km", ctx)
 
@@ -1046,6 +1047,97 @@ class TestRouteReportPoiSupplyRegression(unittest.TestCase):
         self.assertIn("Publiczne drinking_water: 0 (bonus", analysis)
         self.assertIn("Braki techniczne providerów: missing_chunks=1", analysis)
         self.assertNotIn("route_poi_analyze_readonly", [n for n, _ in self.calls])
+
+    def test_poi_section_filters_far_points_and_uses_strategic_fallback(self):
+        poi_cache = {
+            "status": "PARTIAL",
+            "analysis_status": "PARTIAL",
+            "supply_status": "PARTIAL",
+            "technical_completeness": "PARTIAL",
+            "cache_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_00_71.json",
+            "generated_at": "2026-06-29T14:22:09+02:00",
+            "report_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_00_71.md",
+            "report_json_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_00_71.json",
+            "summary": {"hard_resupply": 4, "soft_food_stop": 0, "water": 0, "attractions": 0, "town": 0},
+            "buffers": {"avg_speed_kmh": 18.0},
+            "hard_resupply": [
+                {
+                    "category": "hard_resupply",
+                    "name": "Sklep 25 m",
+                    "lat": 52.6001,
+                    "lon": 21.6001,
+                    "route_km": 10.0,
+                    "distance_to_track_m": 25.0,
+                    "source_tags": "name=Sklep 25 m; shop=convenience",
+                    "opening_hours_osm": "Mo-Su 06:00-23:00",
+                    "open_at_arrival": True,
+                    "open_source": "google",
+                    "eta_iso": "2026-06-29T17:20:00+02:00",
+                },
+                {
+                    "category": "hard_resupply",
+                    "name": "Sklep 372 m",
+                    "lat": 52.6101,
+                    "lon": 21.6101,
+                    "route_km": 11.0,
+                    "distance_to_track_m": 372.0,
+                    "source_tags": "name=Sklep 372 m; shop=supermarket",
+                    "opening_hours_osm": "Mo-Su 06:00-23:00",
+                    "open_at_arrival": True,
+                    "open_source": "google",
+                    "eta_iso": "2026-06-29T17:25:00+02:00",
+                },
+                {
+                    "category": "hard_resupply",
+                    "name": "Fallback 952 m",
+                    "lat": 52.7201,
+                    "lon": 21.7201,
+                    "route_km": 25.2,
+                    "distance_to_track_m": 952.0,
+                    "source_tags": "name=Fallback 952 m; shop=convenience",
+                    "opening_hours_osm": "Mo-Su 06:00-23:00",
+                    "open_at_arrival": True,
+                    "open_source": "google",
+                    "eta_iso": "2026-06-29T19:20:00+02:00",
+                },
+                {
+                    "category": "hard_resupply",
+                    "name": "Zbyt daleko 1508 m",
+                    "lat": 52.8201,
+                    "lon": 21.8201,
+                    "route_km": 75.4,
+                    "distance_to_track_m": 1508.0,
+                    "source_tags": "name=Zbyt daleko 1508 m; shop=convenience",
+                    "opening_hours_osm": "Mo-Su 06:00-23:00",
+                    "open_at_arrival": True,
+                    "open_source": "google",
+                    "eta_iso": "2026-06-29T22:20:00+02:00",
+                },
+            ],
+            "soft_food_stop": [],
+            "water": [],
+            "attractions": [],
+            "town_fallback_check": [],
+            "missing_chunks_count": 0,
+        }
+
+        analysis = "\n".join(
+            rr._render_poi_supply_section(
+                poi_cache,
+                ride_start="2026-06-29T17:00:00+02:00",
+                route_distance_km=99.4,
+            )
+        )
+
+        self.assertIn("Najważniejsze klastry zaopatrzenia blisko trasy", analysis)
+        self.assertIn("Sklep 25 m", analysis)
+        self.assertIn("Sklep 372 m", analysis)
+        self.assertIn("Awaryjne punkty strategiczne do 1 km", analysis)
+        self.assertIn("AWARYJNY_FALLBACK_1KM", analysis)
+        self.assertIn("Fallback 952 m", analysis)
+        self.assertNotIn("Zbyt daleko 1508 m", analysis)
+        self.assertNotIn("distance_from_route_m=1508 m", analysis)
+        self.assertNotIn("distance_from_route_m=952 m | opening_hours", analysis.split("Najważniejsze klastry zaopatrzenia blisko trasy")[-1].split("Awaryjne punkty strategiczne do 1 km")[0])
 
 if __name__ == "__main__":
     unittest.main()

@@ -298,7 +298,13 @@ def _cluster_supply_items(items: list[dict[str, Any]]) -> list[list[dict[str, An
     return clusters
 
 
-def _render_poi_supply_section(poi_cache: dict[str, Any] | None, *, ride_start: Any = None, plan_text: str | None = None) -> list[str]:
+def _render_poi_supply_section(
+    poi_cache: dict[str, Any] | None,
+    *,
+    ride_start: Any = None,
+    plan_text: str | None = None,
+    route_distance_km: float | None = None,
+) -> list[str]:
     if not isinstance(poi_cache, dict):
         return [
             "Status zaopatrzenia: UNAVAILABLE",
@@ -326,22 +332,49 @@ def _render_poi_supply_section(poi_cache: dict[str, Any] | None, *, ride_start: 
             if norm is not None:
                 raw_items.append(norm)
 
+    def _distance_m(item: dict[str, Any]) -> float | None:
+        try:
+            distance = item.get("distance_from_route_m")
+            return float(distance) if distance is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _within_distance(item: dict[str, Any], *, max_m: float) -> bool:
+        distance = _distance_m(item)
+        return distance is not None and distance <= max_m
+
+    def _in_strategic_window(item: dict[str, Any], checkpoint_km: float) -> bool:
+        km = item.get("km_on_route")
+        try:
+            km_val = float(km) if km is not None else None
+        except (TypeError, ValueError):
+            km_val = None
+        if km_val is None:
+            return False
+        return abs(km_val - checkpoint_km) <= 5.0
+
+    supply_items = [item for item in raw_items if item.get("category") in {"hard_resupply", "soft_food_stop", "water", "town"}]
+    direct_items = [item for item in supply_items if item.get("category") != "town"]
+    near_direct_items = [item for item in direct_items if _within_distance(item, max_m=500.0)]
+    fallback_direct_items = []
+    for item in direct_items:
+        dist_m = _distance_m(item)
+        if dist_m is not None and 500.0 < dist_m <= 1000.0:
+            fallback_direct_items.append(item)
+    water_items = [item for item in near_direct_items if item.get("category") == "water"]
+    open_items = [item for item in near_direct_items if item.get("open_status") == "OPEN_AT_ETA"]
+    unknown_items = [item for item in near_direct_items if item.get("open_status") == "UNKNOWN_HOURS"]
+    closed_items = [item for item in near_direct_items if item.get("open_status") == "CLOSED_AT_ETA"]
+    town_items = [item for item in raw_items if item.get("category") == "town" and item.get("hard_resupply_names")]
+
     supply_assessment: dict[str, Any] = {}
     try:
         from qbot3.artifacts.route_analyzer import _route_poi_v2_assess_supply_status as _assess_supply_status
 
-        direct_items = [item for item in raw_items if item.get("category") in {"hard_resupply", "soft_food_stop", "water"}]
-        supply_assessment = _assess_supply_status(direct_items, temp_c=temp_c)
+        main_assessment_items = [item for item in near_direct_items if item.get("category") in {"hard_resupply", "soft_food_stop", "water"}]
+        supply_assessment = _assess_supply_status(main_assessment_items, temp_c=temp_c)
     except Exception:
         supply_assessment = {}
-
-    supply_items = [item for item in raw_items if item.get("category") in {"hard_resupply", "soft_food_stop", "water", "town"}]
-    direct_items = [item for item in supply_items if item.get("category") != "town"]
-    water_items = [item for item in direct_items if item.get("category") == "water"]
-    open_items = [item for item in direct_items if item.get("open_status") == "OPEN_AT_ETA"]
-    unknown_items = [item for item in direct_items if item.get("open_status") == "UNKNOWN_HOURS"]
-    closed_items = [item for item in direct_items if item.get("open_status") == "CLOSED_AT_ETA"]
-    town_items = [item for item in raw_items if item.get("category") == "town" and item.get("hard_resupply_names")]
 
     def _gap_stats(items: list[dict[str, Any]]) -> tuple[float | None, float | None]:
         kms = sorted(float(i["km_on_route"]) for i in items if i.get("km_on_route") is not None)
@@ -361,7 +394,7 @@ def _render_poi_supply_section(poi_cache: dict[str, Any] | None, *, ride_start: 
         or "UNKNOWN"
     ).strip().upper()
     status = str(supply_assessment.get("supply_status") or poi_cache.get("supply_status") or "UNAVAILABLE").strip().upper()
-    if not supply_assessment and raw_items:
+    if not supply_assessment and near_direct_items:
         if open_items and longest_gap is not None and longest_gap >= 25:
             status = "RISK"
         elif not open_items:
@@ -371,7 +404,7 @@ def _render_poi_supply_section(poi_cache: dict[str, Any] | None, *, ride_start: 
         else:
             status = "OK"
 
-    supply_clusters = _cluster_supply_items(supply_items)
+    supply_clusters = _cluster_supply_items([item for item in near_direct_items if item.get("category") in {"hard_resupply", "soft_food_stop", "water"}])
     confidence_counts = {
         "OPEN_AT_ETA": len(open_items),
         "UNKNOWN_HOURS": len(unknown_items),
@@ -406,12 +439,58 @@ def _render_poi_supply_section(poi_cache: dict[str, Any] | None, *, ride_start: 
     if town_items:
         lines.append(f"Fallback miejscowości z wyłapanym zaopatrzeniem: {len(town_items)}")
 
-    if not supply_clusters:
-        lines.append("Brak pewnych klastrów zaopatrzenia w cache.")
-        lines.append("Jawne ostrzeżenie: brak publicznego drinking_water nie oznacza braku możliwości zakupu wody.")
-        return lines
+    route_distance_km_val: float | None
+    try:
+        route_distance_km_val = float(route_distance_km) if route_distance_km is not None else None
+    except (TypeError, ValueError):
+        route_distance_km_val = None
 
-    lines.append("Najważniejsze klastry zaopatrzenia:")
+    fallback_sections: list[dict[str, Any]] = []
+    if route_distance_km_val is not None and route_distance_km_val > 0:
+        checkpoints = [
+            ("25%", route_distance_km_val * 0.25),
+            ("50%", route_distance_km_val * 0.50),
+            ("75%", route_distance_km_val * 0.75),
+        ]
+        for label, checkpoint_km in checkpoints:
+            nearby_open = [
+                item
+                for item in near_direct_items
+                if item.get("open_status") == "OPEN_AT_ETA"
+                and _within_distance(item, max_m=500.0)
+                and _in_strategic_window(item, checkpoint_km)
+            ]
+            if nearby_open:
+                continue
+            candidates = [
+                item
+                for item in fallback_direct_items
+                if item.get("category") in {"hard_resupply", "soft_food_stop"}
+                and _in_strategic_window(item, checkpoint_km)
+            ]
+            if not candidates:
+                continue
+            best = sorted(
+                candidates,
+                key=lambda item: (
+                    0 if item.get("open_status") == "OPEN_AT_ETA" else 1 if item.get("open_status") == "UNKNOWN_HOURS" else 2,
+                    float(item.get("distance_from_route_m") or 9999.0),
+                    0 if item.get("kind") in {"stacja paliw", "sklep"} else 1,
+                    0 if item.get("category") == "hard_resupply" else 1,
+                ),
+            )[0]
+            fallback_sections.append(
+                {
+                    "label": label,
+                    "checkpoint_km": checkpoint_km,
+                    "item": best,
+                }
+            )
+
+    if not supply_clusters:
+        lines.append("Najważniejsze klastry zaopatrzenia blisko trasy: brak punktów <= 500 m w cache.")
+    else:
+        lines.append("Najważniejsze klastry zaopatrzenia blisko trasy:")
     for idx, cluster in enumerate(supply_clusters, start=1):
         cluster_open = sum(1 for item in cluster if item.get("open_status") == "OPEN_AT_ETA")
         cluster_unknown = sum(1 for item in cluster if item.get("open_status") == "UNKNOWN_HOURS")
@@ -445,6 +524,24 @@ def _render_poi_supply_section(poi_cache: dict[str, Any] | None, *, ride_start: 
         if other_count:
             lines.append(f"   +{other_count} innych punktów w pobliżu")
         for item in best:
+            hours = item.get("opening_hours") or ("Google Places" if item.get("open_source") == "google" else "brak")
+            eta = str(item.get("eta_iso") or "brak").replace("T", " ")
+            dist_m = item.get("distance_from_route_m")
+            dist_s = f"{float(dist_m):.0f} m" if dist_m is not None else "brak"
+            lines.append(
+                f"   - {item.get('name')} | {item.get('kind')} | km {float(item.get('km_on_route') or 0.0):.1f} | "
+                f"distance_from_route_m={dist_s} | opening_hours={hours} | eta_at_poi={eta} | "
+                f"status_hours={item.get('open_status')} | confidence={item.get('confidence')}"
+            )
+    if fallback_sections:
+        lines.append("Awaryjne punkty strategiczne do 1 km:")
+        for section in fallback_sections:
+            item = section["item"]
+            checkpoint_km = float(section["checkpoint_km"])
+            lines.append(
+                f"- {section['label']} checkpoint km {checkpoint_km:.1f} | AWARYJNY_FALLBACK_1KM | "
+                "tylko gdy brak bliskiego OPEN_AT_ETA do 500 m"
+            )
             hours = item.get("opening_hours") or ("Google Places" if item.get("open_source") == "google" else "brak")
             eta = str(item.get("eta_iso") or "brak").replace("T", " ")
             dist_m = item.get("distance_from_route_m")
@@ -1503,7 +1600,7 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
                 "generated_at": None,
             }
         collected["poi"] = poi
-        for line in _render_poi_supply_section(poi, ride_start=start, plan_text=_analysis(plan)):
+        for line in _render_poi_supply_section(poi, ride_start=start, plan_text=_analysis(plan), route_distance_km=dist):
             H(line)
         if dist:
             H(f"Zakres trasy dla POI: km 0-{float(dist):.0f}")
