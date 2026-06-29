@@ -13,7 +13,7 @@
 
 **Zgodność:** storage i schema DB pozostają bez zmian. HikConnect/GATE pozostają poza zakresem i nietknięte.
 
-**Następny krok:** sprawdzić, czy renderer/WEB używa nowych pól z danych raportu.
+**Następny krok:** potwierdzić na read-path, że pełny raport i skróty surface najpierw czytają `surface_summary_json`, a legacy segmenty zostają tylko fallbackiem.
 
 ## 2026-06-29 — Route surface writer path zapisuje pełny aktualny engine output
 

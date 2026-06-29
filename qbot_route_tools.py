@@ -100,6 +100,255 @@ def _list_glob_files(root: Path, pattern: str, *, max_files: int = 100) -> list[
     return results
 
 
+def _surface_profile_float(value: Any) -> float | None:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _surface_profile_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _surface_profile_is_good(profile: dict[str, Any] | None) -> bool:
+    if not isinstance(profile, dict):
+        return False
+    quality_status = _surface_profile_text(profile.get("quality_status")).upper()
+    coverage_pct = _surface_profile_float(profile.get("coverage_pct"))
+    unknown_surface_pct = _surface_profile_float(profile.get("unknown_surface_pct"))
+    return (
+        quality_status in {"GOOD_TAGGED", "GOOD_INFERRED"}
+        and coverage_pct is not None
+        and coverage_pct >= 90.0
+        and unknown_surface_pct is not None
+        and unknown_surface_pct <= 20.0
+    )
+
+
+def _surface_profile_label(key: Any) -> str:
+    raw = _surface_profile_text(key).lower()
+    return {
+        "asphalt": "asfalt",
+        "paved": "asfalt",
+        "concrete": "beton",
+        "concrete:plates": "płyty betonowe",
+        "cobblestone": "kostka brukowa",
+        "sett": "kostka brukowa",
+        "paving_stones": "kostka brukowa",
+        "gravel": "gravel/żwir",
+        "fine_gravel": "gravel drobny",
+        "compacted": "ubita nawierzchnia",
+        "dirt": "grunt",
+        "ground": "grunt",
+        "grass": "trawa",
+        "sand": "piasek",
+        "unpaved": "nieutwardzona",
+        "unhewn_cobblestone": "surowa kostka",
+        "unknown": "nieznana",
+    }.get(raw, raw.replace("_", " "))
+
+
+def _fetch_best_route_surface_profile(*, route_id: str | None = None, route_artifact_id: str | int | None = None) -> dict[str, Any] | None:
+    route_id_text = _surface_profile_text(route_id)
+    route_artifact_text = _surface_profile_text(route_artifact_id)
+    if not route_id_text and not route_artifact_text:
+        return None
+    try:
+        import os as _os
+        import psycopg
+        from psycopg.rows import dict_row
+
+        conn = psycopg.connect(
+            host=_os.getenv("PGHOST", "127.0.0.1"),
+            port=_os.getenv("PGPORT", "5432"),
+            dbname=_os.getenv("PGDATABASE", "qbot"),
+            user=_os.getenv("PGUSER", "qbot"),
+            password=_os.getenv("PGPASSWORD", ""),
+            row_factory=dict_row,
+            connect_timeout=5,
+        )
+        if route_artifact_text.isdigit():
+            sql = """
+                SELECT
+                    p.id,
+                    p.route_artifact_id,
+                    a.route_id::text AS route_id,
+                    p.enriched_at,
+                    p.coverage_pct,
+                    p.status,
+                    p.surface_summary_json
+                FROM qbot_v2.route_surface_profiles p
+                JOIN qbot_v2.route_artifacts a ON a.id = p.route_artifact_id
+                WHERE p.route_artifact_id = %s
+                  AND p.coverage_pct >= 90
+                  AND COALESCE(
+                        NULLIF(p.surface_summary_json->>'unknown_surface_pct', '')::double precision,
+                        NULLIF(p.surface_summary_json->>'unknown_pct_refined', '')::double precision,
+                        NULLIF(p.surface_summary_json->>'unknown_pct_raw', '')::double precision
+                      ) <= 20
+                  AND UPPER(COALESCE(NULLIF(p.surface_summary_json->>'quality_status', ''), p.status, '')) IN ('GOOD_TAGGED', 'GOOD_INFERRED')
+                ORDER BY p.enriched_at DESC NULLS LAST, p.id DESC
+                LIMIT 1
+            """
+            params = (int(route_artifact_text),)
+        else:
+            sql = """
+                SELECT
+                    p.id,
+                    p.route_artifact_id,
+                    a.route_id::text AS route_id,
+                    p.enriched_at,
+                    p.coverage_pct,
+                    p.status,
+                    p.surface_summary_json
+                FROM qbot_v2.route_surface_profiles p
+                JOIN qbot_v2.route_artifacts a ON a.id = p.route_artifact_id
+                WHERE a.route_id::text = %s
+                  AND p.coverage_pct >= 90
+                  AND COALESCE(
+                        NULLIF(p.surface_summary_json->>'unknown_surface_pct', '')::double precision,
+                        NULLIF(p.surface_summary_json->>'unknown_pct_refined', '')::double precision,
+                        NULLIF(p.surface_summary_json->>'unknown_pct_raw', '')::double precision
+                      ) <= 20
+                  AND UPPER(COALESCE(NULLIF(p.surface_summary_json->>'quality_status', ''), p.status, '')) IN ('GOOD_TAGGED', 'GOOD_INFERRED')
+                ORDER BY p.enriched_at DESC NULLS LAST, p.id DESC
+                LIMIT 1
+            """
+            params = (route_id_text,)
+        row = conn.execute(sql, params).fetchone()
+        conn.close()
+        if not row:
+            return None
+
+        summary = row.get("surface_summary_json") or {}
+        if isinstance(summary, str):
+            try:
+                summary = json.loads(summary)
+            except Exception:
+                summary = {}
+        if not isinstance(summary, dict):
+            summary = {}
+
+        def _summary_float(*keys: str) -> float | None:
+            for key in keys:
+                val = _surface_profile_float(summary.get(key))
+                if val is not None:
+                    return val
+            return None
+
+        refined = summary.get("surface_percentages_refined") or {}
+        raw = summary.get("surface_percentages_raw") or {}
+        if not isinstance(refined, dict):
+            refined = {}
+        if not isinstance(raw, dict):
+            raw = {}
+
+        quality_status = _surface_profile_text(summary.get("quality_status") or row.get("status") or "UNKNOWN").upper()
+        coverage_pct = _surface_profile_float(summary.get("coverage_pct") or row.get("coverage_pct"))
+        tagged_surface_pct = _summary_float("tagged_surface_pct")
+        inferred_surface_pct = _summary_float("inferred_surface_pct", "inferred_pct_refined", "inferred_pct_raw")
+        unknown_surface_pct = _summary_float("unknown_surface_pct", "unknown_pct_refined", "unknown_pct_raw")
+
+        return {
+            "id": row.get("id"),
+            "route_artifact_id": row.get("route_artifact_id"),
+            "route_id": row.get("route_id"),
+            "enriched_at": row.get("enriched_at"),
+            "quality_status": quality_status,
+            "coverage_pct": coverage_pct,
+            "tagged_surface_pct": tagged_surface_pct,
+            "inferred_surface_pct": inferred_surface_pct,
+            "unknown_surface_pct": unknown_surface_pct,
+            "surface_percentages_raw": raw,
+            "surface_percentages_refined": refined,
+            "dominant_surface": summary.get("dominant_surface"),
+            "surface_summary_json": summary,
+            "good_profile": _surface_profile_is_good({
+                "quality_status": quality_status,
+                "coverage_pct": coverage_pct,
+                "unknown_surface_pct": unknown_surface_pct,
+            }),
+        }
+    except Exception:
+        return None
+
+
+def _surface_profile_override_lines(profile: dict[str, Any]) -> list[str]:
+    refined = profile.get("surface_percentages_refined") if isinstance(profile, dict) else {}
+    if not isinstance(refined, dict):
+        refined = {}
+    aggregated: dict[str, float] = {}
+    for key, value in refined.items():
+        label = _surface_profile_label(key)
+        if label == "nieznana":
+            continue
+        pct = _surface_profile_float(value)
+        if pct is None:
+            continue
+        aggregated[label] = aggregated.get(label, 0.0) + pct
+    items = sorted(aggregated.items(), key=lambda item: (-item[1], item[0]))
+    if items:
+        surface_line = ", ".join(f"{label} {pct:.1f}%" for label, pct in items[:5])
+    else:
+        surface_line = "brak danych"
+
+    quality_status = _surface_profile_text(profile.get("quality_status") or "UNKNOWN")
+    coverage_pct = profile.get("coverage_pct")
+    tagged_surface_pct = profile.get("tagged_surface_pct")
+    inferred_surface_pct = profile.get("inferred_surface_pct")
+    unknown_surface_pct = profile.get("unknown_surface_pct")
+    source_bits = [
+        f"route_surface_profiles.id={profile.get('id')}",
+        f"route_artifact_id={profile.get('route_artifact_id')}",
+    ]
+    enriched_at = profile.get("enriched_at")
+    if enriched_at:
+        source_bits.append(f"enriched_at={enriched_at}")
+    return [
+        f"Nawierzchnia: {surface_line} (źródło: surface_summary_json)",
+        (
+            "Profil jakości: "
+            f"{quality_status} | coverage {coverage_pct:.0f}% | "
+            f"tagged {tagged_surface_pct:.1f}% | inferred {inferred_surface_pct:.1f}% | "
+            f"unknown {unknown_surface_pct:.1f}%"
+            if all(
+                value is not None
+                for value in (coverage_pct, tagged_surface_pct, inferred_surface_pct, unknown_surface_pct)
+            )
+            else f"Profil jakości: {quality_status}"
+        ),
+        f"Źródło profilu: qbot_v2.route_surface_profiles.surface_summary_json ({', '.join(source_bits)})",
+    ]
+
+
+def _surface_profile_priority_text(text: str, profile: dict[str, Any] | None) -> str:
+    if not text:
+        return text
+    lines = text.splitlines()
+    if not profile or not _surface_profile_is_good(profile):
+        warning = "UWAGA: legacy surface path (route_frames / route_surface_segments) — brak dobrego profilu surface_summary_json."
+        insert_at = 2 if len(lines) >= 2 else len(lines)
+        lines[insert_at:insert_at] = [warning, ""]
+        return "\n".join(lines).rstrip()
+
+    override_lines = _surface_profile_override_lines(profile)
+    replaced = False
+    out: list[str] = []
+    for line in lines:
+        if not replaced and line.startswith("Nawierzchnia:"):
+            out.extend(override_lines)
+            replaced = True
+        else:
+            out.append(line)
+    if not replaced:
+        insert_at = 2 if len(out) >= 2 else len(out)
+        out[insert_at:insert_at] = [""] + override_lines + [""]
+    return "\n".join(out).rstrip()
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  RWGPS TOOLS
 # ═══════════════════════════════════════════════════════════════════════
@@ -2156,8 +2405,10 @@ def _tool_qbot_route_plan_analysis(_args: dict | None = None) -> dict[str, Any]:
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             brief_build(artifact_id=aid, route_id=rid)
+        surface_profile = _fetch_best_route_surface_profile(route_id=rid, route_artifact_id=aid)
+        analysis_text = _surface_profile_priority_text(buf.getvalue(), surface_profile)
         return {"tool": "qbot_route_plan_analysis", "safety_class": "READ_ONLY", "status": "OK",
-                "analysis": buf.getvalue(),
+                "analysis": analysis_text,
                 "notes": "To jest PELNA, znormalizowana analiza trasy. Pokaz uzytkownikowi pole analysis w calosci (1:1). NIE przerabiaj, NIE dodawaj pogody ani przewyzszen z innych narzedzi — pogoda tutaj jest liczona po wspolrzednych trasy."}
     except Exception as exc:
         return {"tool": "qbot_route_plan_analysis", "safety_class": "READ_ONLY",
@@ -2225,6 +2476,9 @@ def _tool_qbot_route_profile_detail(_args: dict | None = None) -> dict[str, Any]
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             build_detail(artifact_id=int(artifact_id) if artifact_id else None, route_id=str(route_id) if route_id else None, land_cover=land_cover)
-        return {"tool": "qbot_route_profile_detail", "safety_class": "READ_ONLY", "status": "OK", "analysis": buf.getvalue(), "notes": "Szczegolowy profil z ramek. Pokaz pole analysis w calosci, 1:1, pokrycie terenu gdy land_cover."}
+        surface_profile = _fetch_best_route_surface_profile(route_id=str(route_id) if route_id else None,
+                                                            route_artifact_id=artifact_id if artifact_id else None)
+        analysis_text = _surface_profile_priority_text(buf.getvalue(), surface_profile)
+        return {"tool": "qbot_route_profile_detail", "safety_class": "READ_ONLY", "status": "OK", "analysis": analysis_text, "notes": "Szczegolowy profil z ramek. Pokaz pole analysis w calosci, 1:1, pokrycie terenu gdy land_cover."}
     except Exception as exc:
         return {"tool": "qbot_route_profile_detail", "safety_class": "READ_ONLY", "status": "ERROR", "error": repr(exc)}
