@@ -428,7 +428,10 @@ def _tool_qbot_ride_readiness_status(_args: dict | None = None) -> dict[str, Any
     if takeover_status == "ERROR":
         warnings.append("Legacy cutover status check failed")
     elif takeover_percent < 100 or not takeover.get("cutover_completed", False):
-        warnings.append(f"Legacy takeover not fully complete: {takeover_percent}%")
+        warnings.append(
+            f"Legacy takeover not fully complete: {takeover_percent}% "
+            "(legacy still enabled, not runtime failure)"
+        )
 
     if telegram_status == "ERROR":
         warnings.append("Telegram transport status check failed")
@@ -640,7 +643,8 @@ def _tool_qbot_project_guard_check(_args: dict | None = None) -> dict[str, Any]:
     if gate_path.exists():
         violations.append({
             "what": "gate_hikconnect.py exists as qbot_qlab_server.py dependency (gate unlock)",
-            "severity": "WARN",
+            "severity": "INFO",
+            "expected_dependency": True,
         })
 
     api_listening = subprocess.run(

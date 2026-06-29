@@ -558,6 +558,13 @@ Jeśli chunk nie zostanie przeanalizowany, payload zapisuje techniczny powód
 `analysis_timeout`, `overpass_timeout`, provider error lub `missing API/env`
 zamiast udawać kompletność.
 
+Aktualizacja 2026-06-29: diagnostyka readiness i cutover jest odszumiona,
+ale nie wpływa na runtime raportów. `qbot_error_summary` liczy tylko
+`active_errors` jako sygnał readiness, a wpisy historyczne/testowe/malformed są
+oddzielone dla operatora. `gate_hikconnect.py` jest traktowane jako oczekiwana
+zależność legacy/QLab, a probe RWGPS musi preferować `qbot_v2` nad `public`,
+żeby nie zgłaszać fałszywego missing schema dla tabel surface.
+
 Regresja testowa w `tests/test_route_report.py` pilnuje tego read-pathu dla
 `55798129`, w tym brak powrotu do legacy `33%` i brak blokady całego raportu
 przez nieobecny cache POI.

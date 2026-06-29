@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-06-29 — Readiness diagnostics rozdzielają aktywne błędy od szumu
+
+**Status:** wdrożone w diagnostyce, bez zmian runtime.
+
+**Intencja:** `qbot_error_summary` rozdziela teraz `active_errors`, `historical_errors`, `expected_test_errors` i `malformed_legacy_records`. Readiness bazuje wyłącznie na `active_errors`, a nie na historycznych/testowych wpisach w `tool_calls`.
+
+**Guard GATE:** `gate_hikconnect.py` pozostaje oczekiwaną zależnością legacy/QLab. Guard ma go raportować jako `INFO`/`expected_dependency`, nie jako warning blokujący readiness.
+
+**Probe RWGPS:** `rwgps_storage_overview()` preferuje schemat `qbot_v2` dla tabel `route_artifacts`, `route_parse_results`, `route_surface_profiles` i `route_surface_segments`. Brak tabel w `public` sam w sobie nie oznacza missing schema.
+
+**Cutover message:** `95%` w legacy cutover nadal oznacza, że legacy jest włączone. To nie jest błąd runtime, tylko stan przejściowy do pełnego cutoveru.
+
 ## 2026-06-29 — Route surface read-path passthrough dla raportu
 
 **Status:** wdrożone w read-path, bez zmian schematu DB i bez zmian WEB.

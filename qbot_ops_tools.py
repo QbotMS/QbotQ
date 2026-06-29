@@ -335,6 +335,11 @@ _TEST_ERROR_PATTERNS: dict[str, list[str]] = {
                            "insufficient permissions"],
 }
 _TEST_TOOLS: set[str] = {"unknown", "qbot_query", "qbot_operator_runbook"}
+_ACTION_EXECUTE_TEST_PATTERNS: tuple[str, ...] = (
+    "already exists",
+    "missing required payload fields",
+    "invalid input value for enum artifact_type",
+)
 _KNOWN_COMPATIBILITY_ERROR_TOOLS: set[str] = {
     "qbot_qlab_status",
     "qbot_overpass_status",
@@ -380,12 +385,16 @@ def _result_has_real_error(result: Any) -> bool:
     return True
 
 
-def _classify_error(error_text: str, tool: str) -> str:
+def _classify_error(error_text: str, tool: str, later_success_exists: bool = False) -> str:
     et = re.sub(r"[^a-z0-9]+", " ", str(error_text or "").lower()).strip()
     tool_name = re.sub(r"[^a-z0-9_]+", "", str(tool or "").lower())
+    if not tool_name or tool_name == "unknown":
+        return "malformed_legacy_records"
     if any(k in et for k in _TEST_ERROR_PATTERNS["permission_warning"]):
         return "permission_warning"
     if tool_name == "qbot_operator_runbook" and any(k in et for k in ("unknown tool", "unknown error", "not in registry")):
+        return "expected_test_error"
+    if tool_name == "qbot_action_execute" and any(k in et for k in _ACTION_EXECUTE_TEST_PATTERNS):
         return "expected_test_error"
     if "unknown capability" in et:
         return "validation_test"
@@ -394,9 +403,13 @@ def _classify_error(error_text: str, tool: str) -> str:
     for pattern in _TEST_ERROR_PATTERNS["validation_test"]:
         if pattern in et:
             return "validation_test"
+    if tool_name == "qbot_query" and any(k in et for k in ("unknown tool", "unknown error")):
+        return "historical_errors" if later_success_exists else "historical_errors"
+    if later_success_exists:
+        return "historical_errors"
     if any(k in et for k in _TEST_ERROR_PATTERNS["expected_test_error"]):
         return "expected_test_error"
-    return "real_error_candidate"
+    return "active_errors"
 
 
 def _tool_qbot_test_error_classification(args: dict | None = None) -> dict[str, Any]:
@@ -422,8 +435,10 @@ def _tool_qbot_test_error_classification(args: dict | None = None) -> dict[str, 
         }
 
     expected_test: list[dict[str, Any]] = []
+    historical_errors: list[dict[str, Any]] = []
+    malformed_legacy_records: list[dict[str, Any]] = []
     permission_warnings: list[dict[str, Any]] = []
-    real_candidates: list[dict[str, Any]] = []
+    active_errors: list[dict[str, Any]] = []
     successful_latest_by_tool: dict[str, datetime] = {}
     current_tools = _current_tool_registry_names()
 
@@ -470,13 +485,11 @@ def _tool_qbot_test_error_classification(args: dict | None = None) -> dict[str, 
             k in error_norm for k in ("unknown tool", "unknown error", "not in registry")
         ):
             category = "expected_test_error"
-        elif later_success_exists:
-            category = "expected_test_error"
         else:
-            category = _classify_error(error_text, tool_name)
+            category = _classify_error(error_text, tool_name, later_success_exists=later_success_exists)
 
-        if category == "real_error_candidate" and tool_name in current_tools and later_success_exists:
-            category = "expected_test_error"
+        if category == "active_errors" and tool_name in current_tools and later_success_exists:
+            category = "historical_errors"
 
         entry = {
             "id": r["id"],
@@ -486,27 +499,22 @@ def _tool_qbot_test_error_classification(args: dict | None = None) -> dict[str, 
             "created_at": r["created_at"].isoformat() if r.get("created_at") else None,
         }
 
-        if category == "real_error_candidate":
-            real_candidates.append(entry)
+        if category == "active_errors":
+            active_errors.append(entry)
+        elif category == "historical_errors":
+            historical_errors.append(entry)
+        elif category == "malformed_legacy_records":
+            malformed_legacy_records.append(entry)
         elif category == "permission_warning":
             permission_warnings.append(entry)
         else:
             expected_test.append(entry)
 
-    historical_runbook_candidates = [
-        e for e in real_candidates
-        if e["tool"] == "qbot_operator_runbook" and "unknown error" in str(e.get("error", "")).lower()
-    ]
-    if historical_runbook_candidates:
-        real_candidates = [
-            e for e in real_candidates
-            if e not in historical_runbook_candidates
-        ]
-        expected_test.extend({**e, "category": "expected_test_error"} for e in historical_runbook_candidates)
-
-    total = len(expected_test) + len(permission_warnings) + len(real_candidates)
+    total = len(expected_test) + len(permission_warnings) + len(active_errors) + len(historical_errors) + len(malformed_legacy_records)
     if total == 0:
         status = "OK"
+    elif active_errors:
+        status = "ERROR" if len(active_errors) >= 3 else "WARN"
     else:
         status = "WARN"
 
@@ -514,9 +522,15 @@ def _tool_qbot_test_error_classification(args: dict | None = None) -> dict[str, 
         "tool": "qbot_test_error_classification",
         "total_errors_checked": total,
         "expected_test_errors": len(expected_test),
+        "historical_errors": len(historical_errors),
+        "malformed_legacy_records": len(malformed_legacy_records),
         "permission_warnings": len(permission_warnings),
-        "real_error_candidates": len(real_candidates),
-        "real_error_candidate_samples": real_candidates[:10],
+        "active_errors": len(active_errors),
+        "real_error_candidates": len(active_errors),
+        "active_error_samples": active_errors[:10],
+        "real_error_candidate_samples": active_errors[:10],
+        "historical_error_samples": historical_errors[:10],
+        "malformed_legacy_record_samples": malformed_legacy_records[:10],
         "expected_test_error_categories": {
             "expected_test_error": len([e for e in expected_test if e["category"] == "expected_test_error"]),
             "unknown_tool_test": len([e for e in expected_test if e["category"] == "unknown_tool_test"]),

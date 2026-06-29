@@ -333,6 +333,7 @@ def _tool_qbot_legacy_cutover_status(_args: dict | None = None) -> dict[str, Any
         "takeover_readiness_percent": takeover,
         "status": "OK" if cutover_done else "WARN",
         "rollback_hint": "Use qbot_legacy_rollback_plan for rollback commands. Manual approval required.",
+        "readiness_note": "95% = legacy still enabled, not runtime failure" if not cutover_done else "100% = legacy disabled and qbot-api active",
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 

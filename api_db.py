@@ -347,40 +347,43 @@ def rwgps_storage_overview() -> dict:
         "route_surface_segments",
     ]
 
-    def _table_exists(conn, table_name: str) -> bool:
-        row = conn.execute(
-            "SELECT to_regclass(%s) IS NOT NULL AS exists",
-            (f"public.{table_name}",),
-        ).fetchone()
-        return bool(row["exists"]) if row else False
+    def _table_schema(conn, table_name: str) -> str | None:
+        for schema in ("qbot_v2", "public"):
+            row = conn.execute(
+                "SELECT to_regclass(%s) IS NOT NULL AS exists",
+                (f"{schema}.{table_name}",),
+            ).fetchone()
+            if row and row["exists"]:
+                return schema
+        return None
 
-    def _safe_count(conn, table_name: str) -> int | None:
+    def _safe_count(conn, schema: str, table_name: str) -> int | None:
         try:
-            return int(conn.execute(f"SELECT COUNT(*) AS cnt FROM {table_name}").fetchone()["cnt"])
+            return int(conn.execute(f"SELECT COUNT(*) AS cnt FROM {schema}.{table_name}").fetchone()["cnt"])
         except Exception:
             return None
 
-    def _latest_row(conn, table_name: str) -> dict | None:
+    def _latest_row(conn, schema: str, table_name: str) -> dict | None:
         try:
             if table_name == "route_artifacts":
                 query = (
-                    "SELECT id, route_id, artifact_path, filename, sha256, created_at, updated_at "
-                    "FROM route_artifacts ORDER BY id DESC LIMIT 1"
+                    f"SELECT id, route_id, artifact_path, filename, sha256, created_at, updated_at "
+                    f"FROM {schema}.route_artifacts ORDER BY id DESC LIMIT 1"
                 )
             elif table_name == "route_parse_results":
                 query = (
-                    "SELECT id, route_artifact_id, parser_version, source_artifact_sha256, parsed_at "
-                    "FROM route_parse_results ORDER BY id DESC LIMIT 1"
+                    f"SELECT id, route_artifact_id, parser_version, source_artifact_sha256, parsed_at "
+                    f"FROM {schema}.route_parse_results ORDER BY id DESC LIMIT 1"
                 )
             elif table_name == "route_surface_profiles":
                 query = (
-                    "SELECT id, route_artifact_id, enrichment_version, source_artifact_sha256, enriched_at, sample_every_m "
-                    "FROM route_surface_profiles ORDER BY id DESC LIMIT 1"
+                    f"SELECT id, route_artifact_id, enrichment_version, source_artifact_sha256, enriched_at, sample_every_m "
+                    f"FROM {schema}.route_surface_profiles ORDER BY id DESC LIMIT 1"
                 )
             else:
                 query = (
-                    "SELECT id, route_surface_profile_id, segment_index, surface, source "
-                    "FROM route_surface_segments ORDER BY id DESC LIMIT 1"
+                    f"SELECT id, route_surface_profile_id, segment_index, surface, source "
+                    f"FROM {schema}.route_surface_segments ORDER BY id DESC LIMIT 1"
                 )
             return _fetch_one_dict(conn, query)
         except Exception:
@@ -390,11 +393,13 @@ def rwgps_storage_overview() -> dict:
         tables = {}
         missing_tables: list[str] = []
         for table_name in table_names:
-            exists = _table_exists(conn, table_name)
+            schema = _table_schema(conn, table_name)
+            exists = schema is not None
             tables[table_name] = {
                 "exists": exists,
-                "count": _safe_count(conn, table_name) if exists else None,
-                "latest": _latest_row(conn, table_name) if exists else None,
+                "schema": schema,
+                "count": _safe_count(conn, schema, table_name) if exists and schema else None,
+                "latest": _latest_row(conn, schema, table_name) if exists and schema else None,
             }
             if not exists:
                 missing_tables.append(table_name)

@@ -95,35 +95,44 @@ def _tool_qbot_error_summary(args: dict | None = None) -> dict[str, Any]:
 
     errors_count = len(errors)
     if total > 0:
-        error_rate = round(errors_count / total * 100, 1)
+        raw_error_rate = round(errors_count / total * 100, 1)
     else:
-        error_rate = 0.0
-
-    if errors_count == 0:
-        report_status = "OK"
-    elif error_rate < 10:
-        report_status = "WARN"
-    else:
-        report_status = "ERROR"
+        raw_error_rate = 0.0
 
     recent = sorted(errors, key=lambda e: e["id"], reverse=True)[:20]
 
-    classified: dict[str, int] = {"real_error_candidates": errors_count, "expected_test_errors": 0}
+    classified: dict[str, Any] = {
+        "active_errors": errors_count,
+        "expected_test_errors": 0,
+        "historical_errors": 0,
+        "malformed_legacy_records": 0,
+        "permission_warnings": 0,
+    }
     try:
         from qbot_ops_tools import _tool_qbot_test_error_classification
         cls = _tool_qbot_test_error_classification({"limit": total})
         classified = {
-            "real_error_candidates": cls.get("real_error_candidates", errors_count),
+            "active_errors": cls.get("active_errors", cls.get("real_error_candidates", errors_count)),
             "expected_test_errors": cls.get("expected_test_errors", 0),
+            "historical_errors": cls.get("historical_errors", 0),
+            "malformed_legacy_records": cls.get("malformed_legacy_records", 0),
+            "permission_warnings": cls.get("permission_warnings", 0),
             "unknown_tool_test": cls.get("expected_test_error_categories", {}).get("unknown_tool_test", 0),
             "validation_test": cls.get("expected_test_error_categories", {}).get("validation_test", 0),
         }
     except Exception:
         pass
 
-    active_real = classified.get("real_error_candidates", 0)
+    active_real = classified.get("active_errors", 0)
+    expected_test = classified.get("expected_test_errors", 0)
+    historical_errors = classified.get("historical_errors", 0)
+    malformed_records = classified.get("malformed_legacy_records", 0)
+    permission_warnings = classified.get("permission_warnings", 0)
+    total_classified = active_real + expected_test + historical_errors + malformed_records + permission_warnings
+    active_error_rate = round(active_real / total * 100, 1) if total > 0 else 0.0
+
     if active_real == 0:
-        report_status = "OK"
+        report_status = "OK" if total_classified == 0 else "WARN"
     elif active_real <= 3:
         report_status = "WARN"
     else:
@@ -132,13 +141,18 @@ def _tool_qbot_error_summary(args: dict | None = None) -> dict[str, Any]:
     return {
         "tool": "qbot_error_summary",
         "total_checked": total,
-        "errors_count": errors_count,
-        "error_rate": error_rate,
+        "errors_count": total_classified,
+        "total_errors_count": total_classified,
+        "raw_error_count": errors_count,
+        "raw_error_rate": raw_error_rate,
+        "active_errors_count": active_real,
+        "active_error_rate": active_error_rate,
+        "historical_errors_count": historical_errors,
+        "expected_test_errors_count": expected_test,
+        "malformed_legacy_records_count": malformed_records,
         "tools_with_errors": dict(sorted(tools_with_errors.items(), key=lambda x: -x[1])),
         "recent_errors": recent,
         "last_error_at": recent[0]["created_at"] if recent else None,
-        "active_real_errors_count": active_real,
-        "expected_test_errors_count": classified.get("expected_test_errors", 0),
         "classified_errors": classified,
         "status": report_status,
     }
@@ -239,15 +253,15 @@ def _tool_qbot_readiness_report(_args: dict | None = None) -> dict[str, Any]:
         error_summary = _tool_qbot_error_summary({"limit": 50})
     except Exception as exc:
         error_summary = {"status": "error", "error": str(exc)}
-    error_count = error_summary.get("errors_count", 0)
-    error_rate = error_summary.get("error_rate", 0)
+    error_count = error_summary.get("active_errors_count", error_summary.get("active_real_errors_count", 0))
+    error_rate = error_summary.get("active_error_rate", error_summary.get("error_rate", 0))
 
     try:
         from qbot_ops_tools import _tool_qbot_test_error_classification
         test_cls = _tool_qbot_test_error_classification({"limit": 200})
     except Exception:
         test_cls = {"status": "error"}
-    real_cand = test_cls.get("real_error_candidates", 0)
+    real_cand = test_cls.get("active_errors", test_cls.get("real_error_candidates", 0))
     expected_test = test_cls.get("expected_test_errors", 0)
     checks.append({"name": "test_error_classification",
                    "status": "WARN" if real_cand > 0 else "OK",
@@ -257,17 +271,17 @@ def _tool_qbot_readiness_report(_args: dict | None = None) -> dict[str, Any]:
         pass  # all errors are expected test errors — not a readiness concern
 
     checks.append({"name": "error_summary", "status": "OK" if real_cand == 0 else error_summary.get("status", "UNKNOWN"),
-                   "detail": {"errors_count": error_count, "error_rate": error_rate,
+                   "detail": {"active_errors_count": error_count, "active_error_rate": error_rate,
                               "real_error_candidates": real_cand,
                               "expected_test_errors": expected_test}})
     if error_rate >= 50:
         if real_cand > 0:
-            blockers.append(f"High real error rate: {error_rate}% ({error_count} errors)")
+            blockers.append(f"High real error rate: {error_rate}% ({error_count} active errors)")
         else:
             pass  # expected test errors only — no blocker
     elif error_rate > 0:
         if real_cand > 0:
-            warnings.append(f"Errors detected: {error_rate}% ({error_count} errors)")
+            warnings.append(f"Errors detected: {error_rate}% ({error_count} active errors)")
         else:
             pass  # only expected test errors — don't flag as warning
 
