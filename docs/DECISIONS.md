@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-06-29 — Route surface writer path zapisuje pełny aktualny engine output
+
+**Status:** wdrożone w writer path, bez migracji DB i bez zmian WEB.
+
+**Intencja:** `tools/rwgps/client.py` zapisuje teraz do `qbot_v2.route_surface_profiles.surface_summary_json` pełny aktualny engine output z `analyze_route_surface()`, przy zachowaniu kompatybilności przez merge legacy `surface_profile` + current result. Wykorzystywany jest istniejący `JSONB`, więc migracja schematu nie jest wymagana.
+
+**Zapis segmentów:** `surface_segments_json` bierze segmenty z aktualnego wyniku engine, nie tylko z legacy payloadu. Testowo zapisano profile dla `55798129` i `55864231`.
+
+**Następny krok:** sprawdzić, czy WEB/raport czyta nowe pola z `surface_summary_json` bez zmian w rendererze.
+
 ## 2026-06-28 — Overpass multi-endpoint fallback dla route_surface_engine
 
 **Status:** wdrożone w kodzie, bez restartu usług i bez migracji DB.

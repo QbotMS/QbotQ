@@ -408,23 +408,32 @@ def _persist_route_surface_profile(file_path: Path, payload: dict[str, Any], sur
             return None
 
         surface_profile = payload.get("surface_profile") or {}
-        segments = surface_profile.get("segments") or []
+        surface_summary = dict(surface_profile)
+        if isinstance(surface_result, dict) and surface_result:
+            surface_summary.update(surface_result)
+        segments = surface_summary.get("segments") or []
         record = {
             "route_artifact_id": route_artifact["id"],
             "enrichment_version": RWGPS_SURFACE_ENRICHMENT_VERSION,
             "source_artifact_sha256": route_artifact.get("sha256"),
-            "surface_source": payload.get("surface_source", "unknown"),
-            "sample_every_m": payload.get("sample_every_m"),
-            "confidence": surface_profile.get("confidence"),
-            "coverage_pct": surface_profile.get("coverage_pct"),
-            "sampled_points": surface_profile.get("sampled_points"),
-            "matched_points": surface_profile.get("matched_points"),
-            "unmatched_points": surface_profile.get("unmatched_points"),
-            "dominant_surface": surface_profile.get("dominant_surface"),
-            "status": surface_profile.get("status", "ok" if surface_result and surface_result.get("ok") else "unknown"),
-            "surface_summary_json": surface_profile,
+            "surface_source": surface_summary.get("surface_source", payload.get("surface_source", "unknown")),
+            "sample_every_m": surface_summary.get(
+                "sample_every_m",
+                surface_summary.get("sample_distance_m", payload.get("sample_every_m")),
+            ),
+            "confidence": surface_summary.get("confidence", surface_profile.get("confidence")),
+            "coverage_pct": surface_summary.get("coverage_pct", surface_profile.get("coverage_pct")),
+            "sampled_points": surface_summary.get("sampled_points", surface_profile.get("sampled_points")),
+            "matched_points": surface_summary.get("matched_points", surface_profile.get("matched_points")),
+            "unmatched_points": surface_summary.get("unmatched_points", surface_profile.get("unmatched_points")),
+            "dominant_surface": surface_summary.get("dominant_surface", surface_profile.get("dominant_surface")),
+            "status": surface_summary.get(
+                "status",
+                surface_profile.get("status", "ok" if surface_result and surface_result.get("ok") else "unknown"),
+            ),
+            "surface_summary_json": surface_summary,
             "surface_segments_json": segments,
-            "surface_segments_path": surface_profile.get("surface_segments_path"),
+            "surface_segments_path": surface_summary.get("surface_segments_path"),
         }
         profile_row = api_db.upsert_route_surface_profile(record)
         if isinstance(segments, list):

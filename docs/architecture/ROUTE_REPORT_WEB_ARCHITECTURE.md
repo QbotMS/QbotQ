@@ -202,6 +202,8 @@ To nie jest jeszcze docelowa ścieżka WEB:
 Valhalla way_id → Overpass way(id) tags → landcover → frames → DATA JSON → WEB.
 ```
 
+Aktualizacja 2026-06-29: writer path w `tools/rwgps/client.py` zapisuje teraz do `qbot_v2.route_surface_profiles.surface_summary_json` pełny aktualny engine output z `analyze_route_surface()`, zachowując kompatybilność przez merge legacy `surface_profile` + current result. Nie wymaga to migracji DB, bo używany jest istniejący `JSONB`. `surface_segments_json` bierze segmenty z aktualnego wyniku, a testowo zapisano profile dla `55798129` i `55864231`. WEB nie był jeszcze zmieniany; następny krok to sprawdzenie, czy renderer/raport czyta nowe pola z `surface_summary_json`.
+
 ## B6. Artifact Store istnieje
 
 QBot ma dedykowany store:
