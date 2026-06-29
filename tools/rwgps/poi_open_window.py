@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import os
 import re
+import unicodedata
 from datetime import datetime, timedelta, time as dtime
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,51 @@ import httpx
 PLACES_URL = "https://places.googleapis.com/v1/places:searchNearby"
 _DAY_TO_IDX = {"Mo": 0, "Tu": 1, "We": 2, "Th": 3, "Fr": 4, "Sa": 5, "Su": 6}
 _IDX_TO_DAY = {v: k for k, v in _DAY_TO_IDX.items()}
+_DAY_ALIAS_TO_IDX = {
+    "mo": 0,
+    "mon": 0,
+    "monday": 0,
+    "pn": 0,
+    "pon": 0,
+    "poniedzialek": 0,
+    "tu": 1,
+    "tue": 1,
+    "tues": 1,
+    "tuesday": 1,
+    "wt": 1,
+    "wtorek": 1,
+    "we": 2,
+    "wed": 2,
+    "wednesday": 2,
+    "sr": 2,
+    "sro": 2,
+    "sroda": 2,
+    "th": 3,
+    "thu": 3,
+    "thurs": 3,
+    "thursday": 3,
+    "cz": 3,
+    "czw": 3,
+    "czwartek": 3,
+    "fr": 4,
+    "fri": 4,
+    "friday": 4,
+    "pt": 4,
+    "pia": 4,
+    "piat": 4,
+    "piatek": 4,
+    "sa": 5,
+    "sat": 5,
+    "saturday": 5,
+    "sob": 5,
+    "sobota": 5,
+    "su": 6,
+    "sun": 6,
+    "sunday": 6,
+    "nd": 6,
+    "niedz": 6,
+    "niedziela": 6,
+}
 
 
 def _load_env_local() -> None:
@@ -44,13 +90,43 @@ def _norm_text(value: Any) -> str:
     return text
 
 
+def _strip_accents(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
+
+def _normalize_day_token(token: str) -> str:
+    cleaned = _strip_accents(str(token or "").strip().lower())
+    cleaned = re.sub(r"^[\s,.:;()]+|[\s,.:;()]+$", "", cleaned)
+    return cleaned
+
+
+def _day_token_to_idx(token: str) -> int | None:
+    normalized = _normalize_day_token(token)
+    if not normalized:
+        return None
+    if normalized in _DAY_ALIAS_TO_IDX:
+        return _DAY_ALIAS_TO_IDX[normalized]
+    if normalized in _DAY_TO_IDX:
+        return _DAY_TO_IDX[normalized]
+    return None
+
+
 def _parse_time_token(token: str) -> int | None:
-    token = token.strip()
-    m = re.fullmatch(r"(\d{1,2}):(\d{2})", token)
+    token = re.sub(r"\s+", " ", token.strip())
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})(?:\s*([AP]M))?", token, re.IGNORECASE)
     if not m:
         return None
     hour = int(m.group(1))
     minute = int(m.group(2))
+    suffix = (m.group(3) or "").upper()
+    if suffix:
+        if hour < 1 or hour > 12:
+            return None
+        if suffix == "AM":
+            hour = 0 if hour == 12 else hour
+        elif suffix == "PM":
+            hour = 12 if hour == 12 else hour + 12
     if hour > 23 or minute > 59:
         return None
     return hour * 60 + minute
@@ -59,21 +135,24 @@ def _parse_time_token(token: str) -> int | None:
 def _expand_days(spec: str) -> list[int] | None:
     days: list[int] = []
     for token in [part.strip() for part in spec.split(",") if part.strip()]:
-        if "-" in token:
-            left, right = [part.strip() for part in token.split("-", 1)]
-            if left not in _DAY_TO_IDX or right not in _DAY_TO_IDX:
+        if "-" in token or "–" in token or "—" in token:
+            left, right = [part.strip() for part in re.split(r"\s*[-–—]\s*", token, maxsplit=1)]
+            left_idx = _day_token_to_idx(left)
+            right_idx = _day_token_to_idx(right)
+            if left_idx is None or right_idx is None:
                 return None
-            start = _DAY_TO_IDX[left]
-            end = _DAY_TO_IDX[right]
+            start = left_idx
+            end = right_idx
             if start <= end:
                 days.extend(range(start, end + 1))
             else:
                 days.extend(range(start, 7))
                 days.extend(range(0, end + 1))
             continue
-        if token not in _DAY_TO_IDX:
+        idx = _day_token_to_idx(token)
+        if idx is None:
             return None
-        days.append(_DAY_TO_IDX[token])
+        days.append(idx)
     return sorted(set(days))
 
 
@@ -93,24 +172,33 @@ def parse_osm_opening_hours(s: str) -> dict[str, Any] | None:
 
         day_part = ""
         time_part = clause
-        m = re.match(r"^((?:Mo|Tu|We|Th|Fr|Sa|Su)(?:\s*,\s*(?:Mo|Tu|We|Th|Fr|Sa|Su)|\s*-\s*(?:Mo|Tu|We|Th|Fr|Sa|Su))*)\s+(.*)$", clause)
-        if m:
-            day_part = m.group(1).strip()
-            time_part = m.group(2).strip()
+        first_time = re.search(r"\d{1,2}:\d{2}", clause)
+        if first_time:
+            prefix = clause[: first_time.start()].strip()
+            if prefix:
+                day_part = prefix.rstrip(":- ").strip()
+                time_part = clause[first_time.start():].strip()
 
         days = _expand_days(day_part) if day_part else list(range(7))
         if days is None:
             return None
 
+        if re.search(r"\b(?:closed|off)\b", time_part, re.IGNORECASE) and not re.search(r"\d", time_part):
+            rules.append({"days": days, "closed": True, "ranges": []})
+            continue
+
         ranges: list[tuple[int, int]] = []
-        for piece in [part.strip() for part in re.split(r"\s*,\s*", time_part) if part.strip()]:
-            m_range = re.fullmatch(r"(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})", piece)
-            if not m_range:
-                return None
+        for m_range in re.finditer(
+            r"(\d{1,2}:\d{2}(?:\s*[AP]M)?)\s*[-–—]\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)",
+            time_part,
+            re.IGNORECASE,
+        ):
             start = _parse_time_token(m_range.group(1))
             end = _parse_time_token(m_range.group(2))
             if start is None or end is None:
                 return None
+            if end == 0 and start != 0:
+                end = 24 * 60
             ranges.append((start, end))
         if not ranges:
             return None
@@ -139,6 +227,8 @@ def osm_open_at(parsed: dict[str, Any] | None, dt: datetime) -> bool | None:
         if rule.get("closed"):
             continue
         for start, end in rule.get("ranges") or []:
+            if end == 0 and start != 0:
+                end = 24 * 60
             if start <= end:
                 if start <= minute < end:
                     return True
@@ -155,6 +245,8 @@ def osm_open_at(parsed: dict[str, Any] | None, dt: datetime) -> bool | None:
             matched_day = True
             continue
         for start, end in rule.get("ranges") or []:
+            if end == 0 and start != 0:
+                end = 24 * 60
             if start > end and minute < end:
                 return True
 
@@ -285,7 +377,10 @@ def _google_open_on_day(period: dict[str, Any], dt: datetime) -> bool | None:
         return None
     close_dt = _day_to_sunday(dt) + timedelta(days=close_day, hours=close_hour, minutes=close_minute)
     if close_dt <= open_dt:
-        close_dt += timedelta(days=7)
+        if close_hour == 0 and close_minute == 0 and close_day == open_day:
+            close_dt = open_dt + timedelta(days=1)
+        else:
+            close_dt += timedelta(days=7)
     if dt < open_dt:
         return False
     return dt < close_dt

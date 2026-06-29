@@ -1183,5 +1183,107 @@ class TestRouteReportPoiSupplyRegression(unittest.TestCase):
         self.assertNotIn("eta_at_poi=2026-06-29 17:30:00+02:00", a10)
         self.assertNotIn("eta_at_poi=2026-06-29 10:30:00+02:00", a17)
 
+    def test_poi_section_uses_polish_hours_for_status_and_counts(self):
+        poi_cache = {
+            "status": "OK",
+            "analysis_status": "OK",
+            "supply_status": "OK",
+            "technical_completeness": "COMPLETE",
+            "cache_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_00_71.json",
+            "generated_at": "2026-06-29T13:08:00+02:00",
+            "report_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_00_71.md",
+            "report_json_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_00_71.json",
+            "summary": {"hard_resupply": 6, "soft_food_stop": 0, "water": 0, "attractions": 0, "town": 0},
+            "buffers": {"avg_speed_kmh": 18.0},
+            "hard_resupply": [
+                {
+                    "category": "hard_resupply",
+                    "name": "Topaz Express",
+                    "route_km": 0.0,
+                    "distance_to_track_m": 40.0,
+                    "source_tags": "name=Topaz Express; shop=convenience",
+                    "opening_hours_osm": "wtorek 5:30–18:00",
+                    "open_at_arrival": None,
+                    "open_source": "unknown",
+                },
+                {
+                    "category": "hard_resupply",
+                    "name": "Wawie sp.j. Piekarnia",
+                    "route_km": 0.1,
+                    "distance_to_track_m": 45.0,
+                    "source_tags": "name=Wawie sp.j. Piekarnia; shop=bakery",
+                    "opening_hours_osm": "wtorek 5:30–20:00",
+                    "open_at_arrival": None,
+                    "open_source": "unknown",
+                },
+                {
+                    "category": "hard_resupply",
+                    "name": "Sklep spożywczo-przemysłowy",
+                    "route_km": 39.0,
+                    "distance_to_track_m": 30.0,
+                    "source_tags": "name=Sklep spożywczo-przemysłowy; shop=convenience",
+                    "opening_hours_osm": "wtorek 6:00–19:00",
+                    "open_at_arrival": None,
+                    "open_source": "unknown",
+                },
+                {
+                    "category": "hard_resupply",
+                    "name": "Sklep spożywczy GS Samopomoc Chłopska",
+                    "route_km": 61.3,
+                    "distance_to_track_m": 55.0,
+                    "source_tags": "name=Sklep spożywczy GS Samopomoc Chłopska; shop=convenience",
+                    "opening_hours_osm": "wtorek 7:30–20:00",
+                    "open_at_arrival": None,
+                    "open_source": "unknown",
+                },
+                {
+                    "category": "hard_resupply",
+                    "name": "Sklep Delikatesy Rodzinne Somianka",
+                    "route_km": 71.1,
+                    "distance_to_track_m": 60.0,
+                    "source_tags": "name=Sklep Delikatesy Rodzinne Somianka; shop=convenience",
+                    "opening_hours_osm": "wtorek 6:00–21:00",
+                    "open_at_arrival": None,
+                    "open_source": "unknown",
+                },
+                {
+                    "category": "hard_resupply",
+                    "name": "Sklep spożywczo-przemysłowy Wanda Figat",
+                    "route_km": 31.5,
+                    "distance_to_track_m": 35.0,
+                    "source_tags": "name=Sklep spożywczo-przemysłowy Wanda Figat; shop=convenience",
+                    "opening_hours_osm": "wtorek 5:00–13:30 i 16:00–19:30",
+                    "open_at_arrival": None,
+                    "open_source": "unknown",
+                },
+            ],
+            "soft_food_stop": [],
+            "water": [],
+            "attractions": [],
+            "town_fallback_check": [],
+            "missing_chunks_count": 0,
+        }
+
+        analysis = "\n".join(
+            rr._render_poi_supply_section(
+                poi_cache,
+                ride_start="2026-06-30T12:00:00+02:00",
+                route_distance_km=71.1,
+            )
+        )
+
+        self.assertIn("Pewne punkty OPEN_AT_ETA do 500 m od trasy: 5", analysis)
+        self.assertIn("Potencjalne UNKNOWN_HOURS do 500 m od trasy: 0", analysis)
+        self.assertIn("Punkty CLOSED_AT_ETA: 1", analysis)
+        self.assertIn("Topaz Express", analysis)
+        self.assertIn("status_hours=OPEN_AT_ETA", analysis)
+        self.assertIn("Wawie sp.j. Piekarnia", analysis)
+        self.assertIn("Sklep spożywczo-przemysłowy", analysis)
+        self.assertIn("Sklep spożywczy GS Samopomoc Chłopska", analysis)
+        self.assertIn("Sklep Delikatesy Rodzinne Somianka", analysis)
+        self.assertIn("Sklep spożywczo-przemysłowy Wanda Figat", analysis)
+        self.assertIn("status_hours=CLOSED_AT_ETA", analysis)
+        self.assertIn("eta_at_poi=2026-06-30 13:45:00+02:00", analysis)
+
 if __name__ == "__main__":
     unittest.main()
