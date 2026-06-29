@@ -545,6 +545,11 @@ blisko trasy` obejmuje tylko punkty `hard_resupply` / `soft_food_stop` do
 gdy w okolicy checkpointu nie ma żadnego `OPEN_AT_ETA` do 500 m. Punkty
 powyżej 1000 m nie są pokazywane w A8.
 
+Aktualizacja 2026-06-29: `eta_at_poi` i status godzin w A8 są wyliczane przy
+renderowaniu z `ride_start` konkretnego raportu oraz `km_on_route`. Cache POI
+trzyma geometrię, godziny i kandydatów, ale nie może przenosić ETA między
+raportami z różnym startem.
+
 Aktualizacja 2026-06-29: w route-poi analyzerze `hard_resupply` ma pierwszeństwo
 z Google Places, a Overpass/OSM jest fallbackiem i uzupełnieniem. Analiza
 przelatuje po całej trasie w samplach/korytarzu, deduplikuje po nazwie,

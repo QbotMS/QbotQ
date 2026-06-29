@@ -221,21 +221,34 @@ def _normalize_poi_supply_item(item: dict[str, Any], *, ride_start: Any = None, 
     open_source = str(item.get("open_source") or "").strip().lower() or None
     open_at_arrival = item.get("open_at_arrival")
     eta_iso = item.get("eta_iso")
+    render_eta_iso = eta_iso
 
-    if eta_iso is None and ride_start is not None and km_on_route is not None:
+    if ride_start is not None and km_on_route is not None:
         try:
             from datetime import datetime as _dt
+            from tools.rwgps.poi_open_window import eta_at_km
             start_dt = _dt.fromisoformat(str(ride_start).replace("Z", "+00:00"))
-            eta_iso = eta_at_km(float(km_on_route), start_dt, float(avg_speed_kmh or 18.0)).isoformat()
+            render_eta_iso = eta_at_km(float(km_on_route), start_dt, float(avg_speed_kmh or 18.0)).isoformat()
         except Exception:
-            eta_iso = None
+            render_eta_iso = eta_iso
 
-    if open_at_arrival is None and opening_hours:
+    if ride_start is not None and opening_hours:
         try:
             from datetime import datetime as _dt
             from tools.rwgps.poi_open_window import parse_osm_opening_hours, osm_open_at
-            if eta_iso:
-                eta_dt = _dt.fromisoformat(str(eta_iso).replace("Z", "+00:00"))
+            if render_eta_iso:
+                eta_dt = _dt.fromisoformat(str(render_eta_iso).replace("Z", "+00:00"))
+                parsed = parse_osm_opening_hours(str(opening_hours))
+                open_at_arrival = osm_open_at(parsed, eta_dt)
+                open_source = "osm"
+        except Exception:
+            pass
+    elif open_at_arrival is None and opening_hours:
+        try:
+            from datetime import datetime as _dt
+            from tools.rwgps.poi_open_window import parse_osm_opening_hours, osm_open_at
+            if render_eta_iso:
+                eta_dt = _dt.fromisoformat(str(render_eta_iso).replace("Z", "+00:00"))
                 parsed = parse_osm_opening_hours(str(opening_hours))
                 open_at_arrival = osm_open_at(parsed, eta_dt)
                 open_source = "osm"
@@ -267,7 +280,7 @@ def _normalize_poi_supply_item(item: dict[str, Any], *, ride_start: Any = None, 
         "opening_hours": opening_hours,
         "open_at_arrival": open_at_arrival,
         "open_status": open_status,
-        "eta_iso": eta_iso,
+        "eta_iso": render_eta_iso,
         "confidence": confidence,
         "open_source": open_source,
         "note": str(item.get("note") or "").strip(),

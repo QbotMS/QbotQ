@@ -1139,5 +1139,49 @@ class TestRouteReportPoiSupplyRegression(unittest.TestCase):
         self.assertNotIn("distance_from_route_m=1508 m", analysis)
         self.assertNotIn("distance_from_route_m=952 m | opening_hours", analysis.split("Najważniejsze klastry zaopatrzenia blisko trasy")[-1].split("Awaryjne punkty strategiczne do 1 km")[0])
 
+    def test_poi_eta_is_recomputed_per_report_start(self):
+        poi_cache = {
+            "status": "OK",
+            "analysis_status": "OK",
+            "supply_status": "OK",
+            "technical_completeness": "COMPLETE",
+            "cache_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_00_71.json",
+            "generated_at": "2026-06-29T14:22:09+02:00",
+            "report_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_00_71.md",
+            "report_json_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_00_71.json",
+            "summary": {"hard_resupply": 1, "soft_food_stop": 0, "water": 0, "attractions": 0, "town": 0},
+            "buffers": {"avg_speed_kmh": 20.0},
+            "hard_resupply": [
+                {
+                    "category": "hard_resupply",
+                    "name": "Sklep ETA",
+                    "lat": 52.6001,
+                    "lon": 21.6001,
+                    "route_km": 10.0,
+                    "distance_to_track_m": 35.0,
+                    "source_tags": "name=Sklep ETA; shop=convenience",
+                    "opening_hours_osm": "Mo-Su 06:00-16:30",
+                    "open_at_arrival": False,
+                    "open_source": "google",
+                    "eta_iso": "2026-06-29T17:30:00+02:00",
+                }
+            ],
+            "soft_food_stop": [],
+            "water": [],
+            "attractions": [],
+            "town_fallback_check": [],
+            "missing_chunks_count": 0,
+        }
+
+        a10 = "\n".join(rr._render_poi_supply_section(poi_cache, ride_start="2026-06-29T10:00:00+02:00", route_distance_km=71.1))
+        a17 = "\n".join(rr._render_poi_supply_section(poi_cache, ride_start="2026-06-29T17:00:00+02:00", route_distance_km=71.1))
+
+        self.assertIn("eta_at_poi=2026-06-29 10:30:00+02:00", a10)
+        self.assertIn("status_hours=OPEN_AT_ETA", a10)
+        self.assertIn("eta_at_poi=2026-06-29 17:30:00+02:00", a17)
+        self.assertIn("status_hours=CLOSED_AT_ETA", a17)
+        self.assertNotIn("eta_at_poi=2026-06-29 17:30:00+02:00", a10)
+        self.assertNotIn("eta_at_poi=2026-06-29 10:30:00+02:00", a17)
+
 if __name__ == "__main__":
     unittest.main()

@@ -29,6 +29,8 @@
 
 **Prezentacja A8 2026-06-29:** główna lista `POI / zaopatrzenie` pokazuje tylko punkty `hard_resupply` / `soft_food_stop` do 500 m od śladu. Punkty 500-1000 m mogą pojawić się wyłącznie jako `AWARYJNY_FALLBACK_1KM` przy checkpointach 25% / 50% / 75% trasy, jeśli w okolicy checkpointu nie ma żadnego `OPEN_AT_ETA` do 500 m. Punkty powyżej 1000 m nie trafiają do A8.
 
+**ETA per raport 2026-06-29:** `eta_at_poi` i `OPEN_AT_ETA` / `CLOSED_AT_ETA` w A8 są liczone przy renderowaniu z `ride_start` raportu oraz `km_on_route`. Cache POI może zachować geometrię, godziny i kandydatów, ale nie może narzucać stałego ETA dla innego startu.
+
 **Regresja testowa:** `tests/test_route_report.py` pilnuje, że raport pokazuje jawny status POI, kilometraż punktów, status godzin i klastrowanie, a brak cache nie wywołuje ciężkiej analizy.
 
 ## 2026-06-29 — Google Places jest primary dla hard_resupply
