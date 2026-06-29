@@ -511,13 +511,18 @@ def _tool_qbot_route_artifact_enrich(_args: dict | None = None) -> dict[str, Any
                     "source": surface_result.get("source", "osm_overpass"),
                     "engine_version": surface_result.get("engine_version"),
                     "confidence": surface_result.get("confidence", "unknown"),
+                    "quality_status": surface_result.get("quality_status"),
                     "segments": segments,
                     "dominant_surface": surface_result.get("dominant_surface"),
+                    "tagged_surface_pct": surface_result.get("tagged_surface_pct"),
+                    "inferred_surface_pct": surface_result.get("inferred_surface_pct"),
+                    "unknown_surface_pct": surface_result.get("unknown_surface_pct"),
                     "surface_percentages_raw": surface_result.get("surface_percentages_raw"),
                     "surface_percentages_refined": surface_result.get("surface_percentages_refined"),
                     "unknown_pct_raw": surface_result.get("unknown_pct_raw"),
                     "unknown_pct_refined": surface_result.get("unknown_pct_refined"),
                     "geology_context": surface_result.get("geology_context"),
+                    "problem_segments": surface_result.get("problem_segments"),
                     "valhalla": surface_result.get("valhalla"),
                     "landcover_used": surface_result.get("landcover_used"),
                     "coverage_pct": surface_result.get("coverage_pct"),
@@ -526,6 +531,14 @@ def _tool_qbot_route_artifact_enrich(_args: dict | None = None) -> dict[str, Any
                     "unmatched_points": surface_result.get("unmatched_points"),
                     "warnings": surface_result.get("warnings"),
                 }
+                payload["surface_quality_status"] = surface_result.get("quality_status")
+                payload["tagged_surface_pct"] = surface_result.get("tagged_surface_pct")
+                payload["inferred_surface_pct"] = surface_result.get("inferred_surface_pct")
+                payload["unknown_surface_pct"] = surface_result.get("unknown_surface_pct")
+                payload["surface_percentages_raw"] = surface_result.get("surface_percentages_raw")
+                payload["surface_percentages_refined"] = surface_result.get("surface_percentages_refined")
+                payload["problem_segments"] = surface_result.get("problem_segments")
+                payload["geology_context"] = surface_result.get("geology_context")
             else:
                 payload["surface_profile"] = {
                     "source": "unknown",

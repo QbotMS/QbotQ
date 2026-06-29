@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-06-29 — Route surface read-path passthrough dla raportu
+
+**Status:** wdrożone w read-path, bez zmian schematu DB i bez zmian WEB.
+
+**Intencja:** `qbot_route_tools.py` przekazuje dalej aktualny `surface_summary_json` shape do danych raportu, wraz z `surface_quality_status`, `tagged_surface_pct`, `inferred_surface_pct`, `unknown_surface_pct`, `geology_context`, `problem_segments`, `surface_percentages_raw` i `surface_percentages_refined`.
+
+**Zgodność:** storage i schema DB pozostają bez zmian. HikConnect/GATE pozostają poza zakresem i nietknięte.
+
+**Następny krok:** sprawdzić, czy renderer/WEB używa nowych pól z danych raportu.
+
 ## 2026-06-29 — Route surface writer path zapisuje pełny aktualny engine output
 
 **Status:** wdrożone w writer path, bez migracji DB i bez zmian WEB.

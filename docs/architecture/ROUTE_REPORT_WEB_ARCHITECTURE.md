@@ -506,6 +506,13 @@ Aktualizacja 2026-06-28: nawierzchnia ma być liczona w backendzie przez
 WEB konsumuje gotowy DATA JSON i renderuje wynik; nie liczy nawierzchni i nie jest
 źródłem prawdy.
 
+Aktualizacja 2026-06-29: read-path raportu przez `qbot_route_tools.py` przekazuje
+aktualny `surface_summary_json` shape dalej do danych raportu, wraz z
+`surface_quality_status`, `tagged_surface_pct`, `inferred_surface_pct`,
+`unknown_surface_pct`, `geology_context`, `problem_segments`,
+`surface_percentages_raw` i `surface_percentages_refined`. Storage i schema DB
+bez zmian; WEB nie był jeszcze przepisywany.
+
 Aktualizacja 2026-06-28: Overpass ma multi-endpoint fallback przez globalne
 instancje `overpass-api.de`, `overpass.private.coffee`, `maps.mail.ru`, z ENV
 `QBOT_OVERPASS_ENDPOINTS`. Default runtime to `first_success`; diagnostyczny
