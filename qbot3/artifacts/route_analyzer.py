@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -20,12 +21,24 @@ import httpx
 ARTIFACTS_ROOT = Path("/opt/qbot/artifacts")
 NOMINATIM_URL = "https://nominatim.openstreetmap.org"
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+GOOGLE_PLACES_URL = "https://places.googleapis.com/v1/places:searchNearby"
 OVERPASS_URLS = [
     OVERPASS_URL,
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.openstreetmap.ru/api/interpreter",
 ]
 USER_AGENT = "QBot/1.0 (personal assistant; michal@qbot)"
+GOOGLE_SUPPLY_TYPES = [
+    "supermarket",
+    "grocery_store",
+    "convenience_store",
+    "bakery",
+    "restaurant",
+    "cafe",
+    "bar",
+]
+GOOGLE_HARD_TYPES = {"supermarket", "grocery_store", "convenience_store", "bakery"}
+GOOGLE_SOFT_TYPES = {"restaurant", "cafe", "bar"}
 
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -775,6 +788,10 @@ def _render_route_poi_markdown(result: dict[str, Any]) -> str:
     if result.get("artifact_id"):
         lines.append(f"- artifact_id: {result.get('artifact_id')}")
     lines.append(f"- source_path: {result.get('source_path')}")
+    if result.get("poi_source_mode"):
+        lines.append(f"- poi_source_mode: {result.get('poi_source_mode')}")
+    if result.get("google_supply_count") is not None:
+        lines.append(f"- google_supply_count: {result.get('google_supply_count')}")
     lines.append(f"- km_from: {result.get('km_from')}")
     lines.append(f"- km_to: {result.get('km_to')}")
     lines.append(
@@ -1111,7 +1128,12 @@ def analyze_route_poi_artifact(
             }
 
         bbox = _expand_bbox(_track_bbox(segment), max_buffer_m + 500.0)
-        query = _route_poi_v2_build_query(bbox, focus_mode, timeout_sec=overpass_timeout_sec)
+        query = _route_poi_v2_build_query(
+            bbox,
+            focus_mode,
+            timeout_sec=overpass_timeout_sec,
+            include_supply=not prefer_google_supply,
+        )
         last_exc: Exception | None = None
         for attempt in range(1, retry_attempts + 1):
             if time.perf_counter() > deadline_at:
@@ -1275,6 +1297,24 @@ def analyze_route_poi_artifact(
     timings["track_projection_ms"] = round((time.perf_counter() - t1) * 1000.0, 1)
     bbox = _track_bbox(points)
 
+    t_google = time.perf_counter()
+    google_api_key = _route_poi_v2_google_api_key()
+    google_supply_candidates: list[dict[str, Any]] = []
+    if google_api_key:
+        google_supply_candidates = _route_poi_v2_google_supply_candidates(
+            points,
+            projected,
+            km_from=km_from,
+            km_to=km_to,
+            sample_step_km=min(8.0, max(4.0, chunk_km)),
+            radius_m=max(max_buffer_m + 800.0, 1500.0),
+            ride_start_dt=ride_start_dt,
+            avg_speed_kmh=avg_speed_kmh,
+            api_key=google_api_key,
+        )
+    timings["google_ms"] = round((time.perf_counter() - t_google) * 1000.0, 1)
+    prefer_google_supply = bool(google_supply_candidates)
+
     t_overpass = time.perf_counter()
     chunk_start = float(km_from)
     chunk_end_limit = float(km_to)
@@ -1324,6 +1364,7 @@ def analyze_route_poi_artifact(
     timings["overpass_ms"] = round((time.perf_counter() - t_overpass) * 1000.0, 1)
 
     t_filter = time.perf_counter()
+    all_candidates.extend(google_supply_candidates)
     deduped = _route_poi_v2_dedupe(all_candidates)
     grouped: dict[str, list[dict[str, Any]]] = {"hard_resupply": [], "soft_food_stop": [], "water": [], "attraction": []}
     for item in deduped:
@@ -1430,6 +1471,8 @@ def analyze_route_poi_artifact(
         "missing_chunks_count": len(missing_chunks),
         "timings_ms": timings,
         "summary": summary,
+        "poi_source_mode": "google_places_primary" if prefer_google_supply else "overpass_primary",
+        "google_supply_count": len(google_supply_candidates),
         "hard_resupply": grouped.get("hard_resupply", [])[:15],
         "soft_food_stop": grouped.get("soft_food_stop", [])[:12],
         "water": grouped.get("water", [])[:12],
@@ -1582,7 +1625,211 @@ def _route_poi_v2_mark_clusters(items: list[dict[str, Any]], proximity_m: float 
     return items
 
 
-def _route_poi_v2_build_query(bbox: dict[str, float], focus: str | None = None, timeout_sec: float = 30.0) -> str:
+def _route_poi_v2_google_api_key() -> str | None:
+    key = os.environ.get("GOOGLE_PLACES_API_KEY")
+    return key.strip() if isinstance(key, str) and key.strip() else None
+
+
+def _route_poi_v2_google_search_nearby(
+    lat: float,
+    lon: float,
+    *,
+    radius_m: float,
+    api_key: str,
+) -> list[dict[str, Any]]:
+    payload = {
+        "includedTypes": list(GOOGLE_SUPPLY_TYPES),
+        "maxResultCount": 10,
+        "locationRestriction": {
+            "circle": {
+                "center": {"latitude": float(lat), "longitude": float(lon)},
+                "radius": float(radius_m),
+            }
+        },
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": api_key,
+        "X-Goog-FieldMask": (
+            "places.id,places.displayName,places.rating,places.userRatingCount,"
+            "places.location,places.types,places.currentOpeningHours,places.regularOpeningHours"
+        ),
+    }
+    resp = httpx.post(GOOGLE_PLACES_URL, json=payload, headers=headers, timeout=10.0)
+    resp.raise_for_status()
+    places = resp.json().get("places", [])
+    return list(places) if isinstance(places, list) else []
+
+
+def _route_poi_v2_google_place_to_candidate(
+    place: dict[str, Any],
+    *,
+    projected: list[dict[str, Any]],
+    ride_start_dt: datetime | None,
+    avg_speed_kmh: float,
+) -> dict[str, Any] | None:
+    if not isinstance(place, dict):
+        return None
+    loc = place.get("location") or {}
+    try:
+        lat = float(loc.get("latitude"))
+        lon = float(loc.get("longitude"))
+    except (TypeError, ValueError):
+        return None
+
+    nearest = _nearest_track_projection(projected, lat, lon)
+    route_km = nearest.get("route_km")
+    distance_to_track_m = nearest.get("distance_to_track_m")
+    if route_km is None or distance_to_track_m is None:
+        return None
+
+    display = place.get("displayName") or {}
+    name = str(display.get("text") or "").strip()
+    place_id = str(place.get("id") or "").strip() or None
+    types = [str(t).strip().lower() for t in (place.get("types") or []) if str(t).strip()]
+
+    category = None
+    kind_tags: dict[str, str] = {"name": name}
+    if any(t in GOOGLE_HARD_TYPES for t in types):
+        category = "hard_resupply"
+        if "supermarket" in types:
+            kind_tags["shop"] = "supermarket"
+        elif "grocery_store" in types:
+            kind_tags["shop"] = "grocery"
+        elif "convenience_store" in types:
+            kind_tags["shop"] = "convenience"
+        elif "bakery" in types:
+            kind_tags["shop"] = "bakery"
+    elif any(t in GOOGLE_SOFT_TYPES for t in types):
+        category = "soft_food_stop"
+        if "restaurant" in types:
+            kind_tags["amenity"] = "restaurant"
+        elif "cafe" in types:
+            kind_tags["amenity"] = "cafe"
+        elif "bar" in types:
+            kind_tags["amenity"] = "bar"
+        elif "fast_food" in types:
+            kind_tags["amenity"] = "fast_food"
+    else:
+        low_name = _route_poi_v2_norm_text(name)
+        if any(tok in low_name for tok in ("zabka", "biedronka", "lidl", "dino", "netto", "aldi", "kaufland", "carrefour", "lewiatan", "groszek", "abc")):
+            category = "hard_resupply"
+            kind_tags["shop"] = "convenience"
+
+    if category is None:
+        return None
+
+    eta_dt = None
+    if ride_start_dt is not None:
+        try:
+            from tools.rwgps.poi_open_window import eta_at_km, google_open_at
+
+            eta_dt = eta_at_km(float(route_km), ride_start_dt, avg_speed_kmh)
+            google_obj = {
+                "currentOpeningHours": place.get("currentOpeningHours"),
+                "regularOpeningHours": place.get("regularOpeningHours"),
+            }
+            open_at_arrival = google_open_at(google_obj, eta_dt)
+        except Exception:
+            eta_dt = None
+            open_at_arrival = None
+    else:
+        open_at_arrival = None
+
+    opening_hours = None
+    regular = place.get("regularOpeningHours") or {}
+    current = place.get("currentOpeningHours") or {}
+    weekday_descriptions = regular.get("weekdayDescriptions") or current.get("weekdayDescriptions") or []
+    if isinstance(weekday_descriptions, list) and weekday_descriptions:
+        opening_hours = "; ".join(str(line).strip() for line in weekday_descriptions if str(line).strip()) or None
+    elif regular or current:
+        opening_hours = "Google Places"
+
+    return {
+        "osm_type": "google_places",
+        "osm_id": place_id,
+        "google_place_id": place_id,
+        "google_name": name or None,
+        "name": name or f"Google {category}",
+        "category": category,
+        "lat": round(lat, 6),
+        "lon": round(lon, 6),
+        "route_km": float(route_km),
+        "distance_to_track_m": float(distance_to_track_m),
+        "source_tags": _route_poi_v2_source_tags(kind_tags | {"provider": "google_places", "google_type": ",".join(types[:5])}),
+        "opening_hours_osm": opening_hours,
+        "open_at_arrival": open_at_arrival,
+        "open_source": "google",
+        "eta_iso": eta_dt.isoformat() if eta_dt is not None else None,
+        "note": "google_primary",
+    }
+
+
+def _route_poi_v2_google_supply_candidates(
+    points: list[dict[str, Any]],
+    projected: list[dict[str, Any]],
+    *,
+    km_from: float,
+    km_to: float,
+    sample_step_km: float = 8.0,
+    radius_m: float = 2000.0,
+    ride_start_dt: datetime | None = None,
+    avg_speed_kmh: float = 18.0,
+    api_key: str | None = None,
+) -> list[dict[str, Any]]:
+    api_key = api_key or _route_poi_v2_google_api_key()
+    if not api_key or not points or not projected:
+        return []
+
+    try:
+        step_km = max(4.0, float(sample_step_km))
+    except (TypeError, ValueError):
+        step_km = 8.0
+
+    sample_km = float(km_from)
+    seen: dict[str, dict[str, Any]] = {}
+    while sample_km <= float(km_to) + 1e-9:
+        sample = _find_point_at_km(points, sample_km)
+        try:
+            places = _route_poi_v2_google_search_nearby(
+                float(sample["lat"]),
+                float(sample["lon"]),
+                radius_m=radius_m,
+                api_key=api_key,
+            )
+        except Exception as exc:
+            log.warning("route_poi_analyze google places error at km %.2f: %s", sample_km, exc)
+            sample_km += step_km
+            continue
+
+        for place in places:
+            candidate = _route_poi_v2_google_place_to_candidate(
+                place,
+                projected=projected,
+                ride_start_dt=ride_start_dt,
+                avg_speed_kmh=avg_speed_kmh,
+            )
+            if candidate is None:
+                continue
+            key = str(candidate.get("google_place_id") or candidate.get("osm_id") or candidate.get("name") or "").strip().lower()
+            if not key:
+                key = f"{candidate.get('category')}:{candidate.get('route_km')}:{candidate.get('distance_to_track_m')}"
+            existing = seen.get(key)
+            if existing is None or _route_poi_v2_is_better_candidate(candidate, existing):
+                seen[key] = candidate
+        sample_km += step_km
+        time.sleep(0.03)
+
+    return list(seen.values())
+
+
+def _route_poi_v2_build_query(
+    bbox: dict[str, float],
+    focus: str | None = None,
+    timeout_sec: float = 30.0,
+    *,
+    include_supply: bool = True,
+) -> str:
     bbox_s = _bbox_to_overpass_string(bbox)
     focus_mode = _route_poi_v2_focus_mode(focus)
     t = int(timeout_sec)
@@ -1590,9 +1837,10 @@ def _route_poi_v2_build_query(bbox: dict[str, float], focus: str | None = None, 
     if focus_mode != "logistics":
         parts.append(f'  nwr["tourism"~"attraction|artwork|gallery|museum|viewpoint|theme_park|zoo|aquarium|picnic_site"]({bbox_s});')
         parts.append(f'  nwr["historic"]({bbox_s});')
-    parts.append(f'  nwr["shop"~"supermarket|convenience|grocery|bakery|deli|butcher|greengrocer|pastry|farm|general"]({bbox_s});')
-    parts.append(f'  nwr["amenity"~"marketplace|fuel|cafe|bar|restaurant|fast_food|pub|ice_cream|drinking_water|fountain"]({bbox_s});')
-    parts.append(f'  nwr["vending"~"food|drinks"]({bbox_s});')
+    if include_supply:
+        parts.append(f'  nwr["shop"~"supermarket|convenience|grocery|bakery|deli|butcher|greengrocer|pastry|farm|general"]({bbox_s});')
+        parts.append(f'  nwr["amenity"~"marketplace|fuel|cafe|bar|restaurant|fast_food|pub|ice_cream|drinking_water|fountain"]({bbox_s});')
+        parts.append(f'  nwr["vending"~"food|drinks"]({bbox_s});')
     parts.append(f'  nwr["drinking_water"="yes"]({bbox_s});')
     parts.append(f'  nwr["man_made"="water_tap"]({bbox_s});')
     parts.append(f'  node["place"~"city|town|village|hamlet"]({bbox_s});')

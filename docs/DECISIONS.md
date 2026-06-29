@@ -29,6 +29,16 @@
 
 **Regresja testowa:** `tests/test_route_report.py` pilnuje, że raport pokazuje jawny status POI, kilometraż punktów, status godzin i klastrowanie, a brak cache nie wywołuje ciężkiej analizy.
 
+## 2026-06-29 — Google Places jest primary dla hard_resupply
+
+**Status:** wdrożone w route-poi analyzerze, bez zmian schematu DB i bez restartu usług.
+
+**Intencja:** w analizie POI dla tras w Polsce `hard_resupply` ma pierwszeństwo z Google Places, a Overpass/OSM pełni rolę fallbacku lub uzupełnienia. Analiza działa po całej trasie w punktach/korytarzu, deduplikuje kandydatów po nazwie, dystansie, klastrze i kilometrze oraz ocenia godziny względem ETA.
+
+**Zachowanie awaryjne:** jeśli Google nie daje kandydatów, Overpass nadal może podać punkt zaopatrzenia. Jeśli chunk się wywala, wynik ma jawne `PARTIAL` z technicznym powodem `analysis_timeout` / `overpass_timeout` / błędem providera.
+
+**Regresja testowa:** dodano syntetyczne testy, które pilnują kolejności providerów, fallbacku Overpass oraz technicznego `PARTIAL` dla route-poi.
+
 ## 2026-06-29 — Route surface writer path zapisuje pełny aktualny engine output
 
 **Status:** wdrożone w writer path, bez migracji DB i bez zmian WEB.

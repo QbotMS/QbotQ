@@ -530,6 +530,14 @@ path ma działać na cache/artifact, klastrować punkty w skupiska i nie wypisyw
 długiej listy sklepów z jednego miejsca. Brak cache POI nie może zatrzymać
 całego raportu i ma skutkować jawnym `UNAVAILABLE` albo `PARTIAL`.
 
+Aktualizacja 2026-06-29: w route-poi analyzerze `hard_resupply` ma pierwszeństwo
+z Google Places, a Overpass/OSM jest fallbackiem i uzupełnieniem. Analiza
+przelatuje po całej trasie w samplach/korytarzu, deduplikuje po nazwie,
+kilometrażu, odległości i klastrze oraz ocenia status godzin względem ETA.
+Jeśli chunk nie zostanie przeanalizowany, payload zapisuje techniczny powód
+`analysis_timeout`, `overpass_timeout`, provider error lub `missing API/env`
+zamiast udawać kompletność.
+
 Regresja testowa w `tests/test_route_report.py` pilnuje tego read-pathu dla
 `55798129`, w tym brak powrotu do legacy `33%` i brak blokady całego raportu
 przez nieobecny cache POI.

@@ -125,6 +125,8 @@ def _read_poi_analysis_cache(route_id: str | None) -> dict[str, Any] | None:
                 "report_path": str(report_md) if report_md.exists() else None,
                 "report_json_path": str(path),
                 "summary": obj.get("summary") or {},
+                "poi_source_mode": obj.get("poi_source_mode"),
+                "google_supply_count": obj.get("google_supply_count"),
                 "buffers": obj.get("buffers") or {},
                 "hard_resupply": obj.get("hard_resupply") or [],
                 "soft_food_stop": obj.get("soft_food_stop") or [],
@@ -360,6 +362,12 @@ def _render_poi_supply_section(poi_cache: dict[str, Any] | None, *, ride_start: 
         f"Źródło danych/cache: {report_json_path}",
         f"Świeżość danych: {generated_at}",
         f"Analiza cache: {analysis_status}",
+    ]
+    if poi_cache.get("poi_source_mode"):
+        lines.append(f"Źródła kandydatów: {poi_cache.get('poi_source_mode')}")
+    if poi_cache.get("google_supply_count") is not None:
+        lines.append(f"Google Places kandydatów: {poi_cache.get('google_supply_count')}")
+    lines += [
         f"Pewne punkty OPEN_AT_ETA do 500 m od trasy: {confidence_counts['OPEN_AT_ETA']}",
         f"Potencjalne UNKNOWN_HOURS do 500 m od trasy: {confidence_counts['UNKNOWN_HOURS']}",
         f"Punkty CLOSED_AT_ETA: {confidence_counts['CLOSED_AT_ETA']}",
