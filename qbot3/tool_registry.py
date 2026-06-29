@@ -2701,6 +2701,7 @@ def _init_registry():
         ("tire_pressure", _load_tire_pressure_tool),
         ("route_fuel_plan", _load_route_fuel_plan_tool),
         ("route_time_estimate", _load_route_time_estimate_tool),
+        ("route_wbgt", _load_route_wbgt_tool),
         ("route_artifact_enrich_dry_run", _load_route_artifact_enrich_dry_run_tool),
         ("route_poi_analyze", _load_route_poi_analyze_tool),
         ("route_poi_analyze_readonly", _load_route_poi_analyze_readonly_tool),
@@ -3065,3 +3066,41 @@ def tool_descriptions() -> list[dict[str, Any]]:
         for name, spec in sorted(_TOOL_REGISTRY.items())
         if "error" not in spec and spec.get("status") != "legacy"
     ]
+
+
+
+def _load_route_wbgt_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+    import qbot_wbgt_tools as _wbgt
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        out = _wbgt._tool_qbot_route_wbgt(args or {})
+        if out.get("status") == "OK":
+            return success_result({
+                "analysis": out.get("analysis", ""),
+                "note": out.get("notes", ""),
+                "summary": out.get("data", {}),
+            })
+        return error_result("ROUTE_WBGT_FAILED", out.get("error") or "blad WBGT")
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "WBGT (Wet Bulb Globe Temperature) - obciazenie cieplne na trasie w pelnym sloncu. "
+            "Uzyj przy pytaniu o upal / przegrzanie / obciazenie cieplne / czy bezpiecznie jechac w upale. "
+            "Model Liljegren (KNMI) z radiacja sloneczna z Open-Meteo - dokladniejszy niz feels_like. "
+            "Param: lat, lon (wymagane), date (YYYY-MM-DD UTC, domyslnie dzis), "
+            "from/to (HH:MM UTC, opcjonalne okno przejazdu). "
+            "Zwraca szczyt WBGT, strefe ryzyka (ACSM) i rozklad godzinowy. Czas UTC. Pokaz pole analysis."
+        ),
+        "args_schema": {
+            "lat": {"type": "number", "description": "szerokosc geograficzna punktu"},
+            "lon": {"type": "number", "description": "dlugosc geograficzna punktu"},
+            "date": {"type": "string", "description": "data YYYY-MM-DD (UTC), domyslnie dzis"},
+            "from": {"type": "string", "description": "poczatek okna przejazdu HH:MM (UTC)"},
+            "to": {"type": "string", "description": "koniec okna przejazdu HH:MM (UTC)"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+    }
