@@ -15,6 +15,8 @@
 
 **Następny krok:** potwierdzić na publicznym `qbot.query`, że pełny raport używa `surface_summary_json`, pokazuje `geology_context` jako kontekst ryzyka i cache POI bez ciężkiego refreshu Overpass, a legacy segmenty zostają tylko fallbackiem.
 
+**Regresja testowa:** `tests/test_route_report.py` pilnuje teraz, że full route report dla `55798129` renderuje `surface_summary_json` i `Geologia / podłoże`, nie wraca do legacy `33%`, a brak cache POI kończy się jawnym `PARTIAL` zamiast ciężkiego refreshu.
+
 ## 2026-06-29 — Route surface writer path zapisuje pełny aktualny engine output
 
 **Status:** wdrożone w writer path, bez migracji DB i bez zmian WEB.

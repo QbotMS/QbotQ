@@ -521,6 +521,10 @@ dodaje też jawny blok `Geologia / podłoże (geology_context)` z providerem,
 status, material_hint i interpretacją ryzyka, ale nie nadpisuje OSM surface.
 Storage i schema DB bez zmian; HikConnect/GATE poza zakresem i nietknięte.
 
+Regresja testowa w `tests/test_route_report.py` pilnuje tego read-pathu dla
+`55798129`, w tym brak powrotu do legacy `33%` i brak blokady całego raportu
+przez nieobecny cache POI.
+
 Aktualizacja 2026-06-28: Overpass ma multi-endpoint fallback przez globalne
 instancje `overpass-api.de`, `overpass.private.coffee`, `maps.mail.ru`, z ENV
 `QBOT_OVERPASS_ENDPOINTS`. Default runtime to `first_success`; diagnostyczny

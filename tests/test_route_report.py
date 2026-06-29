@@ -2,6 +2,7 @@
 """TASK 08/09 - testy orkiestratora route_report (mock 6 narzedzi + LLM stub sekcji C)."""
 import re
 import unittest
+from unittest.mock import patch
 
 import qbot_route_report_tool as rr
 
@@ -33,6 +34,16 @@ CANNED = {
     }},
 }
 
+CANNED_POI_CACHE = {
+    "status": "OK",
+    "data": {
+        "analysis": "POI: km 5.0 woda; km 12.0 sklep; km 55.0 woda",
+        "counts": {"water": 3, "food": 5, "attractions": 2},
+        "report_path": "/opt/qbot/artifacts/poi.md",
+        "report_json_path": "/opt/qbot/artifacts/reports/poi_analysis_55734589_test.json",
+    },
+}
+
 
 def _fake_section_c(prompt, **kwargs):
     """Stub LLM dla _generate_section_c: zwraca C1/C2/C4 zawsze, C3 tylko gdy proszono."""
@@ -56,16 +67,24 @@ class TestRouteReport(unittest.TestCase):
 
         self._orig_call = rr._call_tool
         self._orig_dist = rr._resolve_distance_km
+        import qbot_route_tools as rt
+        self._orig_fetch_surface = rt._fetch_best_route_surface_profile
+        self._orig_poi_cache = rr._read_poi_analysis_cache
         rr._call_tool = fake_call
         rr._resolve_distance_km = lambda route_id: 99.4
+        rt._fetch_best_route_surface_profile = lambda **kwargs: None
+        rr._read_poi_analysis_cache = lambda route_id: CANNED_POI_CACHE
         import qgpt_client
         self._orig_qgpt = qgpt_client.qgpt_text
         qgpt_client.qgpt_text = _fake_section_c
 
     def tearDown(self):
         import qgpt_client
+        import qbot_route_tools as rt
         rr._call_tool = self._orig_call
         rr._resolve_distance_km = self._orig_dist
+        rt._fetch_best_route_surface_profile = self._orig_fetch_surface
+        rr._read_poi_analysis_cache = self._orig_poi_cache
         qgpt_client.qgpt_text = self._orig_qgpt
 
     def _names(self):
@@ -98,15 +117,13 @@ class TestRouteReport(unittest.TestCase):
             self.assertIn(m, ctx_c, m)
         # forma/FTP zachowane w pelnym
         self.assertIn("FTP", a)
-        # POI dostalo poprawne argumenty
-        poi_args = dict(next(args for n, args in self.calls if n == "route_poi_analyze_readonly"))
-        self.assertEqual(poi_args["km_from"], 0.0)
-        self.assertEqual(poi_args["km_to"], 99.4)
-        self.assertTrue(poi_args["open_window"])
-        # wszystkie 6 narzedzi uzyte
+        # POI idzie z cache i nie odpala ciężkiego refreshu
+        self.assertNotIn("route_poi_analyze_readonly", self._names())
+        self.assertIn("POI", a)
+        # wszystkie wymagane narzedzia obliczeniowe uzyte
         self.assertEqual(set(self._names()), {
             "route_plan_analysis", "route_profile_detail", "route_time_estimate",
-            "tire_pressure", "route_fuel_plan", "route_poi_analyze_readonly",
+            "tire_pressure", "route_fuel_plan",
         })
 
     # ---- wariant grupa: bez danych osobistych ----
@@ -129,7 +146,7 @@ class TestRouteReport(unittest.TestCase):
         names = set(self._names())
         self.assertNotIn("tire_pressure", names)
         self.assertNotIn("route_fuel_plan", names)
-        self.assertIn("route_poi_analyze_readonly", names)
+        self.assertNotIn("route_poi_analyze_readonly", names)
 
     # ---- aliasy wariantow ----
     def test_variant_aliases(self):
@@ -395,16 +412,24 @@ class TestRouteReportTask12(unittest.TestCase):
 
         self._orig_call = rr._call_tool
         self._orig_dist = rr._resolve_distance_km
+        import qbot_route_tools as rt
+        self._orig_fetch_surface = rt._fetch_best_route_surface_profile
+        self._orig_poi_cache = rr._read_poi_analysis_cache
         rr._call_tool = fake_call
         rr._resolve_distance_km = lambda route_id: 80.0
+        rt._fetch_best_route_surface_profile = lambda **kwargs: None
+        rr._read_poi_analysis_cache = lambda route_id: self.canned["route_poi_analyze_readonly"]
         import qgpt_client
         self._orig_qgpt = qgpt_client.qgpt_text
         qgpt_client.qgpt_text = _echo_section_c
 
     def tearDown(self):
         import qgpt_client
+        import qbot_route_tools as rt
         rr._call_tool = self._orig_call
         rr._resolve_distance_km = self._orig_dist
+        rt._fetch_best_route_surface_profile = self._orig_fetch_surface
+        rr._read_poi_analysis_cache = self._orig_poi_cache
         qgpt_client.qgpt_text = self._orig_qgpt
 
     def _doc(self):
@@ -451,7 +476,7 @@ class TestRouteReportTask12(unittest.TestCase):
         a = rr._tool_route_report(
             {"route_id": "55798129", "variant": "pelny", "surface_detail": True}
         )["analysis"]
-        self.assertIn("(odcinki", a)
+        self.assertIn("z ramek 80 m", a)
         self.assertNotIn("zmiany nawierzchni", a)
 
     def test_gap_warning(self):
@@ -545,16 +570,24 @@ class TestRouteReportTask16(unittest.TestCase):
 
         self._orig_call = rr._call_tool
         self._orig_dist = rr._resolve_distance_km
+        import qbot_route_tools as rt
+        self._orig_fetch_surface = rt._fetch_best_route_surface_profile
+        self._orig_poi_cache = rr._read_poi_analysis_cache
         rr._call_tool = fake_call
         rr._resolve_distance_km = lambda route_id: 71.1
+        rt._fetch_best_route_surface_profile = lambda **kwargs: None
+        rr._read_poi_analysis_cache = lambda route_id: self.canned["route_poi_analyze_readonly"]
         import qgpt_client
         self._orig_qgpt = qgpt_client.qgpt_text
         qgpt_client.qgpt_text = lambda prompt, **kw: "- C1 taktyka (ocena): ok."
 
     def tearDown(self):
         import qgpt_client
+        import qbot_route_tools as rt
         rr._call_tool = self._orig_call
         rr._resolve_distance_km = self._orig_dist
+        rt._fetch_best_route_surface_profile = self._orig_fetch_surface
+        rr._read_poi_analysis_cache = self._orig_poi_cache
         qgpt_client.qgpt_text = self._orig_qgpt
 
     def _ctx(self, route_id="55798129"):
@@ -747,6 +780,102 @@ class TestRouteReportTask17(unittest.TestCase):
         blocks = rr._detect_blocks([], [], [], 30.0)
         plan = rr._build_phase_plan(blocks, 250, 30.0, has_wavy=flat)
         self.assertNotIn("falista", plan)
+
+
+class TestRouteReportSurfaceSummaryRegression(unittest.TestCase):
+    """Regresja: full route_report bierze surface_summary_json i nie blokuje się na POI refresh."""
+
+    def setUp(self):
+        self.calls = []
+
+        def fake_call(name, args):
+            self.calls.append((name, dict(args)))
+            return CANNED[name]
+
+        self._orig_call = rr._call_tool
+        self._orig_dist = rr._resolve_distance_km
+        rr._call_tool = fake_call
+        rr._resolve_distance_km = lambda route_id: 99.4
+
+        import qgpt_client
+        self._orig_qgpt = qgpt_client.qgpt_text
+        qgpt_client.qgpt_text = _fake_section_c
+
+    def tearDown(self):
+        import qgpt_client
+        rr._call_tool = self._orig_call
+        rr._resolve_distance_km = self._orig_dist
+        qgpt_client.qgpt_text = self._orig_qgpt
+
+    def _names(self):
+        return [n for n, _ in self.calls]
+
+    def test_full_report_uses_surface_summary_json_and_skips_heavy_poi_refresh(self):
+        synthetic_profile = {
+            "id": 19,
+            "route_artifact_id": 306,
+            "route_id": "55798129",
+            "enriched_at": "2026-06-29T12:34:56+02:00",
+            "quality_status": "GOOD_INFERRED",
+            "coverage_pct": 100.0,
+            "tagged_surface_pct": 70.8,
+            "inferred_surface_pct": 29.2,
+            "unknown_surface_pct": 0.0,
+            "surface_percentages_raw": {
+                "asphalt": 34.9,
+                "ground": 32.7,
+                "gravel_fine": 10.4,
+                "gravel": 7.7,
+                "grass": 7.3,
+                "unknown": 0.0,
+            },
+            "surface_percentages_refined": {
+                "asphalt": 34.9,
+                "ground": 32.7,
+                "gravel_fine": 10.4,
+                "gravel": 7.7,
+                "grass": 7.3,
+                "unknown": 0.0,
+            },
+            "surface_summary_json": {
+                "quality_status": "GOOD_INFERRED",
+                "coverage_pct": 100.0,
+                "tagged_surface_pct": 70.8,
+                "inferred_surface_pct": 29.2,
+                "unknown_surface_pct": 0.0,
+                "geology_context": {
+                    "provider": "heuristic_region_v1",
+                    "status": "OK",
+                    "confidence": "medium",
+                    "dominant_region": "mazowsze_sandy_lowland",
+                    "dominant_unit": "Mazowsze / niziny piaszczyste",
+                    "material_hint": "sand_loose_ground_possible",
+                    "risk_flags": [],
+                    "warnings": [],
+                    "explanation": "Kontekst geologiczny sugeruje większe ryzyko piachu na odcinkach inferred.",
+                },
+                "problem_segments": {
+                    "top_unknown": [],
+                    "top_inferred": [],
+                },
+            },
+            "good_profile": True,
+        }
+
+        with patch("qbot_route_tools._fetch_best_route_surface_profile", return_value=synthetic_profile), \
+                patch.object(rr, "_read_poi_analysis_cache", return_value=None):
+            out = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})
+
+        analysis = out["analysis"]
+        self.assertIn("surface_summary_json", analysis)
+        self.assertIn("GOOD_INFERRED", analysis)
+        self.assertRegex(analysis, r"unknown\s+0[,.]0%|Unknown:\s*0[,.]0%")
+        self.assertIn("Geologia / podłoże", analysis)
+        self.assertIn("provider=heuristic_region_v1", analysis)
+        self.assertNotIn("nieznana 33%", analysis)
+        self.assertNotIn("utwardzona 33%", analysis)
+        self.assertIn("POI cache unavailable", analysis)
+        self.assertNotIn("route_poi_analyze_readonly", self._names())
 
 if __name__ == "__main__":
     unittest.main()
