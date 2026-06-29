@@ -126,6 +126,137 @@ def _integration_status() -> dict[str, Any]:
     }
 
 
+def _surface_profile_quality_score(summary: dict[str, Any] | None) -> dict[str, Any]:
+    summary = summary or {}
+
+    def _float(value: Any) -> float | None:
+        try:
+            if value is None or value == "":
+                return None
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _int(value: Any) -> int:
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    coverage_pct = _float(summary.get("coverage_pct"))
+    unknown_surface_pct = _float(summary.get("unknown_surface_pct"))
+    if unknown_surface_pct is None:
+        unknown_surface_pct = _float(summary.get("unknown_pct_refined"))
+    if unknown_surface_pct is None:
+        unknown_surface_pct = _float(summary.get("unknown_pct_raw"))
+    quality_status = str(summary.get("quality_status") or summary.get("status") or "").strip().upper()
+
+    overpass_metrics = summary.get("overpass_metrics") if isinstance(summary.get("overpass_metrics"), dict) else {}
+    chunks_total = _int(overpass_metrics.get("chunks_total"))
+    chunks_ok = _int(overpass_metrics.get("chunks_ok"))
+    chunks_failed = _int(overpass_metrics.get("chunks_failed"))
+
+    suspicious_reasons: list[str] = []
+    if coverage_pct is not None and coverage_pct < 80.0:
+        suspicious_reasons.append("coverage_pct < 80")
+    if unknown_surface_pct is not None and unknown_surface_pct > 40.0:
+        suspicious_reasons.append("unknown_surface_pct > 40")
+    if quality_status == "LOW_CONFIDENCE":
+        suspicious_reasons.append("quality_status == LOW_CONFIDENCE")
+    if chunks_total > 0 and chunks_failed > 0 and chunks_ok < chunks_total:
+        suspicious_reasons.append("overpass partial/failing chunk coverage")
+
+    good = (
+        coverage_pct is not None
+        and coverage_pct >= 90.0
+        and unknown_surface_pct is not None
+        and unknown_surface_pct <= 20.0
+        and quality_status in {"GOOD_TAGGED", "GOOD_INFERRED"}
+    )
+    suspicious = bool(suspicious_reasons)
+
+    score = 0
+    if coverage_pct is not None:
+        score += int(round(max(0.0, min(coverage_pct, 100.0))))
+    if unknown_surface_pct is not None:
+        score -= int(round(max(0.0, min(unknown_surface_pct, 100.0))))
+    if quality_status in {"GOOD_TAGGED", "GOOD_INFERRED"}:
+        score += 25
+    elif quality_status == "LOW_CONFIDENCE":
+        score -= 25
+    if chunks_total > 0 and chunks_failed > 0 and chunks_ok < chunks_total:
+        score -= 15
+
+    return {
+        "score": score,
+        "coverage_pct": coverage_pct,
+        "unknown_surface_pct": unknown_surface_pct,
+        "quality_status": quality_status or "UNKNOWN",
+        "chunks_total": chunks_total,
+        "chunks_ok": chunks_ok,
+        "chunks_failed": chunks_failed,
+        "suspicious": suspicious,
+        "good": good,
+        "suspicious_reasons": suspicious_reasons,
+    }
+
+
+def _is_suspicious_surface_profile(summary: dict[str, Any] | None) -> bool:
+    return bool(_surface_profile_quality_score(summary).get("suspicious"))
+
+
+def _has_better_existing_surface_profile(route_id: str | None, summary: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not route_id or not _is_suspicious_surface_profile(summary):
+        return None
+    try:
+        import os as _os
+        import psycopg
+        from psycopg.rows import dict_row
+
+        conn = psycopg.connect(
+            host=_os.getenv("PGHOST", "127.0.0.1"),
+            port=_os.getenv("PGPORT", "5432"),
+            dbname=_os.getenv("PGDATABASE", "qbot"),
+            user=_os.getenv("PGUSER", "qbot"),
+            password=_os.getenv("PGPASSWORD", ""),
+            row_factory=dict_row,
+            connect_timeout=5,
+        )
+        row = conn.execute(
+            """
+            SELECT
+                p.id,
+                p.route_artifact_id,
+                a.route_id::text AS route_id,
+                p.enriched_at,
+                p.coverage_pct,
+                COALESCE(NULLIF(p.surface_summary_json->>'quality_status', ''), p.status) AS quality_status,
+                COALESCE(
+                    NULLIF(p.surface_summary_json->>'unknown_surface_pct', '')::double precision,
+                    NULLIF(p.surface_summary_json->>'unknown_pct_refined', '')::double precision,
+                    NULLIF(p.surface_summary_json->>'unknown_pct_raw', '')::double precision
+                ) AS unknown_surface_pct
+            FROM qbot_v2.route_surface_profiles p
+            JOIN qbot_v2.route_artifacts a ON a.id = p.route_artifact_id
+            WHERE a.route_id::text = %s
+              AND p.coverage_pct >= 90
+              AND COALESCE(
+                    NULLIF(p.surface_summary_json->>'unknown_surface_pct', '')::double precision,
+                    NULLIF(p.surface_summary_json->>'unknown_pct_refined', '')::double precision,
+                    NULLIF(p.surface_summary_json->>'unknown_pct_raw', '')::double precision
+                  ) <= 20
+              AND UPPER(COALESCE(NULLIF(p.surface_summary_json->>'quality_status', ''), p.status, '')) IN ('GOOD_TAGGED', 'GOOD_INFERRED')
+            ORDER BY p.coverage_pct DESC, unknown_surface_pct ASC NULLS LAST, p.enriched_at DESC NULLS LAST, p.id DESC
+            LIMIT 1
+            """,
+            (str(route_id),),
+        ).fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception:
+        return None
+
+
 def _integration_payload(
     source: str,
     *,
@@ -388,6 +519,7 @@ def _persist_route_surface_profile(file_path: Path, payload: dict[str, Any], sur
     try:
         import api_db
 
+        route_id = _artifact_route_id_from_path(file_path)
         _rname = None
         try:
             import re as _re
@@ -397,20 +529,42 @@ def _persist_route_surface_profile(file_path: Path, payload: dict[str, Any], sur
                 _rname = _nm.group(1).strip()
         except Exception:
             _rname = None
+
+        surface_profile = payload.get("surface_profile") or {}
+        surface_summary = dict(surface_profile)
+        if isinstance(surface_result, dict) and surface_result:
+            surface_summary.update(surface_result)
+        gate = _surface_profile_quality_score(surface_summary)
+        existing_good_profile = _has_better_existing_surface_profile(route_id, surface_summary)
+        if gate.get("suspicious") and existing_good_profile:
+            return {
+                "skipped": True,
+                "reason": "surface_quality_gate_rejected_partial_result",
+                "existing_profile_id": existing_good_profile.get("id"),
+                "existing_route_artifact_id": existing_good_profile.get("route_artifact_id"),
+                "new_quality_status": gate.get("quality_status"),
+                "new_coverage_pct": gate.get("coverage_pct"),
+                "new_unknown_surface_pct": gate.get("unknown_surface_pct"),
+                "quality_score": gate.get("score"),
+                "suspicious_reasons": gate.get("suspicious_reasons"),
+            }
+        if gate.get("suspicious") and not existing_good_profile:
+            warnings = surface_summary.get("warnings")
+            if not isinstance(warnings, list):
+                warnings = []
+            if "LOW_QUALITY_PROFILE_NO_BETTER_EXISTING_PROFILE" not in warnings:
+                warnings.append("LOW_QUALITY_PROFILE_NO_BETTER_EXISTING_PROFILE")
+            surface_summary["warnings"] = warnings
+
         route_artifact = _persist_route_artifact_record(
             file_path,
-            route_id=_artifact_route_id_from_path(file_path),
+            route_id=route_id,
             export_format=f"{file_path.suffix.lstrip('.')}_track" if file_path.suffix else "gpx_track",
             parser_version=RWGPS_PARSE_VERSION,
             metadata_json={"kind": "enrich_source", "route_name": _rname},
         )
         if not route_artifact:
             return None
-
-        surface_profile = payload.get("surface_profile") or {}
-        surface_summary = dict(surface_profile)
-        if isinstance(surface_result, dict) and surface_result:
-            surface_summary.update(surface_result)
         segments = surface_summary.get("segments") or []
         record = {
             "route_artifact_id": route_artifact["id"],

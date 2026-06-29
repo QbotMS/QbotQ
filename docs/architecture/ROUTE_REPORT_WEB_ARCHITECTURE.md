@@ -204,6 +204,8 @@ Valhalla way_id → Overpass way(id) tags → landcover → frames → DATA JSON
 
 Aktualizacja 2026-06-29: writer path w `tools/rwgps/client.py` zapisuje teraz do `qbot_v2.route_surface_profiles.surface_summary_json` pełny aktualny engine output z `analyze_route_surface()`, zachowując kompatybilność przez merge legacy `surface_profile` + current result. Nie wymaga to migracji DB, bo używany jest istniejący `JSONB`. `surface_segments_json` bierze segmenty z aktualnego wyniku, a testowo zapisano profile dla `55798129` i `55864231`. WEB nie był jeszcze zmieniany; następny krok to sprawdzenie, czy renderer/raport czyta nowe pola z `surface_summary_json`.
 
+Aktualizacja 2026-06-29: writer ma quality gate. Partial wynik Overpass lub `LOW_CONFIDENCE` nie nadpisuje dobrego profilu, jeśli dla tej samej trasy istnieje już profil `GOOD_TAGGED` albo `GOOD_INFERRED` z lepszą jakością. Bez lepszego istniejącego profilu zapis może przejść z warningiem w `surface_summary_json`, ale schemat DB pozostaje bez zmian. HikConnect/GATE pozostają poza zakresem i nietknięte.
+
 ## B6. Artifact Store istnieje
 
 QBot ma dedykowany store:
