@@ -13,7 +13,7 @@
 
 **Zgodność:** storage i schema DB pozostają bez zmian. HikConnect/GATE pozostają poza zakresem i nietknięte.
 
-**Następny krok:** potwierdzić na read-path, że pełny raport i skróty surface najpierw czytają `surface_summary_json`, a legacy segmenty zostają tylko fallbackiem.
+**Następny krok:** potwierdzić na publicznym `qbot.query`, że pełny raport używa `surface_summary_json` i cache POI bez ciężkiego refreshu Overpass, a legacy segmenty zostają tylko fallbackiem.
 
 ## 2026-06-29 — Route surface writer path zapisuje pełny aktualny engine output
 

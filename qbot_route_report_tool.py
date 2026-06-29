@@ -66,6 +66,75 @@ def _resolve_distance_km(route_id: str | None) -> float | None:
         return None
 
 
+def _surface_profile_render_line(profile: dict[str, Any]) -> str:
+    refined = profile.get("surface_percentages_refined") if isinstance(profile, dict) else {}
+    if not isinstance(refined, dict):
+        refined = {}
+    aggregated: dict[str, float] = {}
+    try:
+        from qbot_route_tools import _surface_profile_label as _label, _surface_profile_float as _float
+    except Exception:  # pragma: no cover - local fallback
+        def _label(value: Any) -> str:
+            return str(value or "").strip().replace("_", " ")
+        def _float(value: Any) -> float | None:
+            try:
+                return float(value)
+            except Exception:
+                return None
+    for key, value in refined.items():
+        label = _label(key)
+        if label == "nieznana":
+            continue
+        pct = _float(value)
+        if pct is None:
+            continue
+        aggregated[label] = aggregated.get(label, 0.0) + pct
+    items = sorted(aggregated.items(), key=lambda item: (-item[1], item[0]))
+    if items:
+        return ", ".join(f"{label} {pct:.1f}%" for label, pct in items[:5])
+    return "brak danych"
+
+
+def _read_poi_analysis_cache(route_id: str | None) -> dict[str, Any] | None:
+    if not route_id:
+        return None
+    try:
+        from pathlib import Path as _P
+        import json as _json
+
+        files = sorted(
+            _P("/opt/qbot/artifacts/reports").glob(f"poi_analysis_{route_id}_*.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for path in files:
+            try:
+                obj = _json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            counts = {
+                "water": len(obj.get("water") or []),
+                "food": len(obj.get("soft_food_stop") or []) + len(obj.get("hard_resupply") or []),
+                "attractions": len(obj.get("attractions") or []),
+            }
+            report_md = path.with_suffix(".md")
+            return {
+                "status": obj.get("status") or obj.get("analysis_status") or "OK",
+                "data": {
+                    "counts": counts,
+                    "report_path": str(report_md) if report_md.exists() else None,
+                    "report_json_path": str(path),
+                },
+                "cache_path": str(path),
+                "analysis_status": obj.get("analysis_status"),
+            }
+    except Exception:
+        return None
+    return None
+
+
 def _ok(result: dict[str, Any]) -> bool:
     return isinstance(result, dict) and result.get("status") in ("OK", "ok", "READY_WITH_WARNINGS")
 
@@ -948,14 +1017,43 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
 
     # ---- A2/A3 odcinkami: profile_detail (pelny + grupa) ----
     if variant in ("pelny", "grupa"):
-        prof = _call_tool("route_profile_detail", dict(base_args))
-        collected["prof"] = prof
         H("## A3 - NAWIERZCHNIA I PROFIL ODCINKAMI")
-        if _ok(prof) and _analysis(prof):
-            _prof_txt = _analysis(prof)
-            H(_prof_txt if surface_detail else (_merge_surface_text(_prof_txt, 0.3) or _prof_txt))
+        surface_profile = None
+        try:
+            from qbot_route_tools import _fetch_best_route_surface_profile as _fetch_surface_profile
+            surface_profile = _fetch_surface_profile(route_id=route_id, route_artifact_id=base_args.get("artifact_id"))
+        except Exception:
+            surface_profile = None
+
+        if surface_profile and surface_profile.get("good_profile"):
+            surface_line = _surface_profile_render_line(surface_profile)
+            H("SZCZEGOLOWY PROFIL TRASY (surface_summary_json)")
+            H(
+                "Nawierzchnia: "
+                f"{surface_line} (źródło: surface_summary_json)"
+            )
+            H(
+                "Profil jakości: "
+                f"{surface_profile.get('quality_status')} | coverage {surface_profile.get('coverage_pct'):.0f}% | "
+                f"tagged {surface_profile.get('tagged_surface_pct'):.1f}% | "
+                f"inferred {surface_profile.get('inferred_surface_pct'):.1f}% | "
+                f"unknown {surface_profile.get('unknown_surface_pct'):.1f}%"
+            )
+            H(
+                "Źródło profilu: qbot_v2.route_surface_profiles.surface_summary_json "
+                f"(route_surface_profiles.id={surface_profile.get('id')}, route_artifact_id={surface_profile.get('route_artifact_id')}, enriched_at={surface_profile.get('enriched_at')})"
+            )
+            collected["surface_profile"] = surface_profile
         else:
-            H(f"_Szczegolowy profil niedostepny: {_reason(prof)}_")
+            prof = _call_tool("route_profile_detail", dict(base_args))
+            collected["prof"] = prof
+            if _ok(prof) and _analysis(prof):
+                _prof_txt = _analysis(prof)
+                H(_prof_txt if surface_detail else (_merge_surface_text(_prof_txt, 0.3) or _prof_txt))
+                H("")
+                H("_UWAGA: legacy surface path (route_frames / route_surface_segments) — brak dobrego profilu surface_summary_json._")
+            else:
+                H(f"_Szczegolowy profil niedostepny: {_reason(prof)}_")
         H("")
 
     # ---- A7 sprzet (tylko pelny) ----
@@ -970,13 +1068,17 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
         H("## A8 - WODA / SKLEPY / REFILL")
         dist = _resolve_distance_km(route_id)
         if route_id and dist:
-            poi = _call_tool("route_poi_analyze_readonly", {
-                "route_id": route_id,
-                "km_from": 0.0,
-                "km_to": float(dist),
-                "open_window": True,
-                "ride_start": start,
-            })
+            poi = _read_poi_analysis_cache(route_id)
+            if not poi:
+                poi = {
+                    "status": "PARTIAL",
+                    "data": {
+                        "counts": {"water": None, "food": None, "attractions": None},
+                        "report_path": None,
+                        "report_json_path": None,
+                    },
+                    "warning": "POI cache unavailable; legacy route_poi_analyze_readonly intentionally skipped to avoid blocking public report",
+                }
             collected["poi"] = poi
             if _ok(poi):
                 pdata = poi.get("data") if isinstance(poi.get("data"), dict) else poi

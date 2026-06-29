@@ -508,15 +508,16 @@ Aktualizacja 2026-06-28: nawierzchnia ma być liczona w backendzie przez
 WEB konsumuje gotowy DATA JSON i renderuje wynik; nie liczy nawierzchni i nie jest
 źródłem prawdy.
 
-Aktualizacja 2026-06-29: read-path raportu przez `qbot_route_tools.py` najpierw
-szuka najnowszego dobrego profilu w `qbot_v2.route_surface_profiles.surface_summary_json`
-i dopiero potem spada do legacy `route_frames` / `route_surface_segments`.
-Gdy profil jest dobry, raport używa `surface_percentages_refined` jako głównego
-źródła skrótu nawierzchni oraz pokazuje `surface_quality_status`,
-`tagged_surface_pct`, `inferred_surface_pct`, `unknown_surface_pct`,
-`geology_context`, `problem_segments`, `surface_percentages_raw` i
-`surface_percentages_refined`. Storage i schema DB bez zmian; HikConnect/GATE
-poza zakresem i nietknięte.
+Aktualizacja 2026-06-29: publiczny `route_report` najpierw szuka najnowszego
+dobrego profilu w `qbot_v2.route_surface_profiles.surface_summary_json` i dopiero
+potem spada do legacy `route_frames` / `route_surface_segments`. Gdy profil jest
+dobry, raport używa `surface_percentages_refined` jako głównego źródła skrótu
+nawierzchni oraz pokazuje `surface_quality_status`, `tagged_surface_pct`,
+`inferred_surface_pct`, `unknown_surface_pct`, `geology_context`,
+`problem_segments`, `surface_percentages_raw` i `surface_percentages_refined`.
+Sekcja POI preferuje istniejący cache/raport, a ciężki refresh Overpass jest
+omijany w publicznym runtime, żeby nie blokować `qbot.query`. Storage i schema DB
+bez zmian; HikConnect/GATE poza zakresem i nietknięte.
 
 Aktualizacja 2026-06-28: Overpass ma multi-endpoint fallback przez globalne
 instancje `overpass-api.de`, `overpass.private.coffee`, `maps.mail.ru`, z ENV
