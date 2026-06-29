@@ -780,6 +780,50 @@ def _source_tags_text(tags: dict[str, Any]) -> str:
     return "; ".join(ordered)
 
 
+def _route_poi_v2_assess_supply_status(
+    items: list[dict[str, Any]],
+    *,
+    temp_c: float | None = None,
+) -> dict[str, Any]:
+    direct_items = [item for item in items if item.get("category") in {"hard_resupply", "soft_food_stop", "water"}]
+    water_items = [item for item in direct_items if item.get("category") == "water"]
+    open_items = [item for item in direct_items if item.get("open_status") == "OPEN_AT_ETA"]
+    unknown_items = [item for item in direct_items if item.get("open_status") == "UNKNOWN_HOURS"]
+    closed_items = [item for item in direct_items if item.get("open_status") == "CLOSED_AT_ETA"]
+
+    def _gap_stats(items_for_gap: list[dict[str, Any]]) -> tuple[float | None, float | None]:
+        kms = sorted(float(i["km_on_route"]) for i in items_for_gap if i.get("km_on_route") is not None)
+        if len(kms) < 2:
+            return (None, None)
+        gaps = [b - a for a, b in zip(kms, kms[1:])]
+        if not gaps:
+            return (None, None)
+        idx = max(range(len(gaps)), key=lambda i: gaps[i])
+        return (gaps[idx], kms[idx])
+
+    longest_gap, gap_from_km = _gap_stats(open_items)
+    status = "UNAVAILABLE"
+    if direct_items:
+        if open_items and longest_gap is not None and longest_gap >= 25:
+            status = "RISK"
+        elif not open_items:
+            status = "RISK"
+        elif unknown_items or closed_items or (longest_gap is not None and longest_gap >= (20 if (temp_c or 0) >= 28 else 25)):
+            status = "PARTIAL"
+        else:
+            status = "OK"
+
+    return {
+        "supply_status": status,
+        "longest_gap_km": longest_gap,
+        "gap_from_km": gap_from_km,
+        "open_count": len(open_items),
+        "unknown_count": len(unknown_items),
+        "closed_count": len(closed_items),
+        "water_count": len(water_items),
+    }
+
+
 def _render_route_poi_markdown(result: dict[str, Any]) -> str:
     lines: list[str] = []
     lines.append(f"# {result.get('report_title', 'Route POI analysis')}")
@@ -792,6 +836,10 @@ def _render_route_poi_markdown(result: dict[str, Any]) -> str:
         lines.append(f"- poi_source_mode: {result.get('poi_source_mode')}")
     if result.get("google_supply_count") is not None:
         lines.append(f"- google_supply_count: {result.get('google_supply_count')}")
+    if result.get("supply_status"):
+        lines.append(f"- supply_status: {result.get('supply_status')}")
+    if result.get("technical_completeness"):
+        lines.append(f"- technical_completeness: {result.get('technical_completeness')}")
     lines.append(f"- km_from: {result.get('km_from')}")
     lines.append(f"- km_to: {result.get('km_to')}")
     lines.append(
@@ -1270,7 +1318,16 @@ def analyze_route_poi_artifact(
         result["artifact_id"] = artifact_id
         result["source_path"] = result.get("source_path") or route_source_path
         result["focus"] = focus_mode
-        result["analysis_status"] = result.get("status")
+        result["technical_completeness"] = "PARTIAL" if result.get("missing_chunks") else "COMPLETE"
+        supply_assessment = _route_poi_v2_assess_supply_status(
+            list(result.get("hard_resupply") or [])
+            + list(result.get("soft_food_stop") or [])
+            + list(result.get("water") or [])
+        )
+        result["supply_status"] = supply_assessment["supply_status"]
+        result["supply_longest_gap_km"] = supply_assessment["longest_gap_km"]
+        result["supply_longest_gap_from_km"] = supply_assessment["gap_from_km"]
+        result["analysis_status"] = result.get("technical_completeness")
         result["report_tag"] = "FINAL"
         report_stem = _route_poi_v2_report_stem(source_slug, km_from, km_to, "FINAL")
         result["report_filename"] = f"{report_stem}.md"
@@ -1432,6 +1489,12 @@ def analyze_route_poi_artifact(
         "attraction": len(grouped.get("attraction", [])),
         "town": len(town_deduped),
     }
+    supply_assessment = _route_poi_v2_assess_supply_status(
+        list(grouped.get("hard_resupply", []))
+        + list(grouped.get("soft_food_stop", []))
+        + list(grouped.get("water", []))
+    )
+    technical_completeness = "PARTIAL" if missing_chunks else "COMPLETE"
 
     report_tag_effective = retry_chunk_id if retry_mode and retry_chunk_id else (
         "FINAL" if not missing_chunks and focus_mode == "logistics" and float(km_from) <= 0.0 and float(km_to) >= 80.0 else None
@@ -1471,6 +1534,13 @@ def analyze_route_poi_artifact(
         "missing_chunks_count": len(missing_chunks),
         "timings_ms": timings,
         "summary": summary,
+        "supply_status": supply_assessment["supply_status"],
+        "supply_longest_gap_km": supply_assessment["longest_gap_km"],
+        "supply_longest_gap_from_km": supply_assessment["gap_from_km"],
+        "technical_completeness": technical_completeness,
+        "supply_open_count": supply_assessment["open_count"],
+        "supply_unknown_count": supply_assessment["unknown_count"],
+        "supply_closed_count": supply_assessment["closed_count"],
         "poi_source_mode": "google_places_primary" if prefer_google_supply else "overpass_primary",
         "google_supply_count": len(google_supply_candidates),
         "hard_resupply": grouped.get("hard_resupply", [])[:15],
@@ -2381,6 +2451,10 @@ def _route_poi_v2_build_markdown(result: dict[str, Any]) -> str:
     lines.append(f"- distance_km: {result.get('distance_km')}")
     if result.get("status"):
         lines.append(f"- analysis_status: {result.get('status')}")
+    if result.get("supply_status"):
+        lines.append(f"- supply_status: {result.get('supply_status')}")
+    if result.get("technical_completeness"):
+        lines.append(f"- technical_completeness: {result.get('technical_completeness')}")
     lines.append(f"- missing_chunks_count: {len(result.get('missing_chunks') or [])}")
     if result.get("report_tag"):
         lines.append(f"- report_tag: {result.get('report_tag')}")

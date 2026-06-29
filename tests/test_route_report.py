@@ -37,6 +37,8 @@ CANNED = {
 CANNED_POI_CACHE = {
     "status": "PARTIAL",
     "analysis_status": "PARTIAL",
+    "supply_status": "PARTIAL",
+    "technical_completeness": "PARTIAL",
     "cache_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_00_71.json",
     "generated_at": "2026-06-29T13:08:00+02:00",
     "report_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_00_71.md",
@@ -937,7 +939,8 @@ class TestRouteReportSurfaceSummaryRegression(unittest.TestCase):
         self.assertIn("provider=heuristic_region_v1", analysis)
         self.assertNotIn("nieznana 33%", analysis)
         self.assertNotIn("utwardzona 33%", analysis)
-        self.assertIn("Status POI / zaopatrzenie: UNAVAILABLE", analysis)
+        self.assertIn("Status zaopatrzenia: UNAVAILABLE", analysis)
+        self.assertIn("Kompletność techniczna POI: UNAVAILABLE", analysis)
         self.assertNotIn("route_poi_analyze_readonly", self._names())
 
 
@@ -960,6 +963,8 @@ class TestRouteReportPoiSupplyRegression(unittest.TestCase):
         self.poi_cache = {
             "status": "PARTIAL",
             "analysis_status": "PARTIAL",
+            "supply_status": "PARTIAL",
+            "technical_completeness": "PARTIAL",
             "cache_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_mock.json",
             "generated_at": "2026-06-29T13:08:00+02:00",
             "report_json_path": "/opt/qbot/artifacts/reports/poi_analysis_55798129_mock.json",
@@ -1029,7 +1034,8 @@ class TestRouteReportPoiSupplyRegression(unittest.TestCase):
     def test_poi_section_has_status_km_hours_and_clustering(self):
         out = rr._tool_route_report({"route_id": "55798129", "variant": "pelny", "start": "2026-06-29 10:00"})
         analysis = out["analysis"]
-        self.assertIn("Status POI / zaopatrzenie:", analysis)
+        self.assertIn("Status zaopatrzenia:", analysis)
+        self.assertIn("Kompletność techniczna POI: PARTIAL", analysis)
         self.assertIn("km 10.0", analysis)
         self.assertIn("distance_from_route_m=", analysis)
         self.assertIn("OPEN_AT_ETA", analysis)
@@ -1038,6 +1044,7 @@ class TestRouteReportPoiSupplyRegression(unittest.TestCase):
         self.assertIn("Najważniejsze klastry zaopatrzenia", analysis)
         self.assertIn("+1 innych punktów w pobliżu", analysis)
         self.assertIn("Publiczne drinking_water: 0 (bonus", analysis)
+        self.assertIn("Braki techniczne providerów: missing_chunks=1", analysis)
         self.assertNotIn("route_poi_analyze_readonly", [n for n, _ in self.calls])
 
 if __name__ == "__main__":

@@ -127,6 +127,10 @@ def _read_poi_analysis_cache(route_id: str | None) -> dict[str, Any] | None:
                 "summary": obj.get("summary") or {},
                 "poi_source_mode": obj.get("poi_source_mode"),
                 "google_supply_count": obj.get("google_supply_count"),
+                "supply_status": obj.get("supply_status"),
+                "technical_completeness": obj.get("technical_completeness"),
+                "supply_longest_gap_km": obj.get("supply_longest_gap_km"),
+                "supply_longest_gap_from_km": obj.get("supply_longest_gap_from_km"),
                 "buffers": obj.get("buffers") or {},
                 "hard_resupply": obj.get("hard_resupply") or [],
                 "soft_food_stop": obj.get("soft_food_stop") or [],
@@ -297,7 +301,8 @@ def _cluster_supply_items(items: list[dict[str, Any]]) -> list[list[dict[str, An
 def _render_poi_supply_section(poi_cache: dict[str, Any] | None, *, ride_start: Any = None, plan_text: str | None = None) -> list[str]:
     if not isinstance(poi_cache, dict):
         return [
-            "Status POI / zaopatrzenie: UNAVAILABLE",
+            "Status zaopatrzenia: UNAVAILABLE",
+            "Kompletność techniczna POI: UNAVAILABLE",
             "Źródło danych/cache: brak cache POI",
             "Jawne ostrzeżenie: brak danych POI nie oznacza braku sklepów po drodze; raport nie uruchamia ciężkiego refreshu Overpass.",
         ]
@@ -312,6 +317,7 @@ def _render_poi_supply_section(poi_cache: dict[str, Any] | None, *, ride_start: 
     except (TypeError, ValueError):
         avg_speed_buf = None
     avg_speed_kmh = _parse_avg_speed_kmh(plan_text) or avg_speed_buf or 18.0
+    temp_c = _parse_temp_c(plan_text)
 
     raw_items: list[dict[str, Any]] = []
     for cat in ("hard_resupply", "soft_food_stop", "water", "town_fallback_check"):
@@ -319,6 +325,15 @@ def _render_poi_supply_section(poi_cache: dict[str, Any] | None, *, ride_start: 
             norm = _normalize_poi_supply_item(item, ride_start=ride_start, avg_speed_kmh=avg_speed_kmh)
             if norm is not None:
                 raw_items.append(norm)
+
+    supply_assessment: dict[str, Any] = {}
+    try:
+        from qbot3.artifacts.route_analyzer import _route_poi_v2_assess_supply_status as _assess_supply_status
+
+        direct_items = [item for item in raw_items if item.get("category") in {"hard_resupply", "soft_food_stop", "water"}]
+        supply_assessment = _assess_supply_status(direct_items, temp_c=temp_c)
+    except Exception:
+        supply_assessment = {}
 
     supply_items = [item for item in raw_items if item.get("category") in {"hard_resupply", "soft_food_stop", "water", "town"}]
     direct_items = [item for item in supply_items if item.get("category") != "town"]
@@ -339,14 +354,19 @@ def _render_poi_supply_section(poi_cache: dict[str, Any] | None, *, ride_start: 
         return (gaps[idx], kms[idx])
 
     longest_gap, gap_from_km = _gap_stats(open_items)
-    temp_c = _parse_temp_c(plan_text)
-    status = "UNAVAILABLE"
-    if raw_items:
+    technical_completeness = str(
+        poi_cache.get("technical_completeness")
+        or poi_cache.get("analysis_status")
+        or poi_cache.get("status")
+        or "UNKNOWN"
+    ).strip().upper()
+    status = str(supply_assessment.get("supply_status") or poi_cache.get("supply_status") or "UNAVAILABLE").strip().upper()
+    if not supply_assessment and raw_items:
         if open_items and longest_gap is not None and longest_gap >= 25:
             status = "RISK"
         elif not open_items:
             status = "RISK"
-        elif unknown_items or closed_items or analysis_status == "PARTIAL" or (longest_gap is not None and longest_gap >= (20 if (temp_c or 0) >= 28 else 25)):
+        elif unknown_items or closed_items or (longest_gap is not None and longest_gap >= (20 if (temp_c or 0) >= 28 else 25)):
             status = "PARTIAL"
         else:
             status = "OK"
@@ -358,10 +378,10 @@ def _render_poi_supply_section(poi_cache: dict[str, Any] | None, *, ride_start: 
         "CLOSED_AT_ETA": len(closed_items),
     }
     lines = [
-        f"Status POI / zaopatrzenie: {status}",
+        f"Status zaopatrzenia: {status}",
+        f"Kompletność techniczna POI: {technical_completeness}",
         f"Źródło danych/cache: {report_json_path}",
         f"Świeżość danych: {generated_at}",
-        f"Analiza cache: {analysis_status}",
     ]
     if poi_cache.get("poi_source_mode"):
         lines.append(f"Źródła kandydatów: {poi_cache.get('poi_source_mode')}")
@@ -378,7 +398,7 @@ def _render_poi_supply_section(poi_cache: dict[str, Any] | None, *, ride_start: 
         if temp_c is not None and temp_c >= 28 and longest_gap >= 15:
             lines.append("⚠️ Krytyczna luka przy upale: warto planować zakup wody wcześniej niż zwykle.")
     if poi_cache.get("missing_chunks_count"):
-        lines.append(f"Braki w źródle: missing_chunks={poi_cache.get('missing_chunks_count')}")
+        lines.append(f"Braki techniczne providerów: missing_chunks={poi_cache.get('missing_chunks_count')}")
     if summary:
         parts = [f"{k}={v}" for k, v in summary.items() if v is not None]
         if parts:

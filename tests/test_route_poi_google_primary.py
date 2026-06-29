@@ -151,6 +151,105 @@ class TestRoutePoiGooglePrimary(unittest.TestCase):
         reasons = {str(chunk.get("reason")) for chunk in result.get("missing_chunks") or []}
         self.assertTrue({"overpass_timeout", "analysis_timeout"} & reasons)
 
+    def test_google_supply_status_is_separate_from_overpass_completeness(self):
+        calls = {"count": 0}
+
+        google_candidates = [
+            {
+                "osm_type": "google_places",
+                "osm_id": "g-1",
+                "google_place_id": "g-1",
+                "google_name": "Sklep 5 km",
+                "name": "Sklep 5 km",
+                "category": "hard_resupply",
+                "lat": 52.6201,
+                "lon": 21.6201,
+                "route_km": 5.0,
+                "distance_to_track_m": 60.0,
+                "source_tags": "name=Sklep 5 km; provider=google_places",
+                "opening_hours_osm": "Mo-Su 06:00-23:00",
+                "open_at_arrival": True,
+                "open_source": "google",
+                "eta_iso": "2026-06-29T17:15:00+02:00",
+                "note": "google_primary",
+            },
+            {
+                "osm_type": "google_places",
+                "osm_id": "g-2",
+                "google_place_id": "g-2",
+                "google_name": "Sklep 15 km",
+                "name": "Sklep 15 km",
+                "category": "hard_resupply",
+                "lat": 52.6301,
+                "lon": 21.6301,
+                "route_km": 15.0,
+                "distance_to_track_m": 70.0,
+                "source_tags": "name=Sklep 15 km; provider=google_places",
+                "opening_hours_osm": "Mo-Su 06:00-23:00",
+                "open_at_arrival": True,
+                "open_source": "google",
+                "eta_iso": "2026-06-29T17:45:00+02:00",
+                "note": "google_primary",
+            },
+            {
+                "osm_type": "google_places",
+                "osm_id": "g-3",
+                "google_place_id": "g-3",
+                "google_name": "Sklep 25 km",
+                "name": "Sklep 25 km",
+                "category": "hard_resupply",
+                "lat": 52.6401,
+                "lon": 21.6401,
+                "route_km": 25.0,
+                "distance_to_track_m": 75.0,
+                "source_tags": "name=Sklep 25 km; provider=google_places",
+                "opening_hours_osm": "Mo-Su 06:00-23:00",
+                "open_at_arrival": True,
+                "open_source": "google",
+                "eta_iso": "2026-06-29T18:15:00+02:00",
+                "note": "google_primary",
+            },
+            {
+                "osm_type": "google_places",
+                "osm_id": "g-4",
+                "google_place_id": "g-4",
+                "google_name": "Sklep 35 km",
+                "name": "Sklep 35 km",
+                "category": "hard_resupply",
+                "lat": 52.6501,
+                "lon": 21.6501,
+                "route_km": 35.0,
+                "distance_to_track_m": 80.0,
+                "source_tags": "name=Sklep 35 km; provider=google_places",
+                "opening_hours_osm": "Mo-Su 06:00-23:00",
+                "open_at_arrival": True,
+                "open_source": "google",
+                "eta_iso": "2026-06-29T18:45:00+02:00",
+                "note": "google_primary",
+            },
+        ]
+
+        def fake_google_candidates(*args, **kwargs):
+            return list(google_candidates)
+
+        def fake_overpass(query, timeout_sec, bbox=None):
+            calls["count"] += 1
+            if calls["count"] >= 2:
+                raise TimeoutError("simulated read timeout")
+            return []
+
+        with patch.dict(os.environ, {"GOOGLE_PLACES_API_KEY": "test-key"}, clear=False), \
+             patch.object(ra, "_route_poi_v2_google_supply_candidates", side_effect=fake_google_candidates), \
+             patch.object(ra, "_route_poi_v2_overpass_candidates", side_effect=fake_overpass):
+            result = self._run()
+
+        self.assertEqual(result.get("poi_source_mode"), "google_places_primary")
+        self.assertNotEqual(result.get("supply_status"), "PARTIAL")
+        self.assertEqual(result.get("technical_completeness"), "PARTIAL")
+        self.assertEqual(result.get("analysis_status"), "PARTIAL")
+        self.assertGreater(result.get("missing_chunks_count", 0), 0)
+        self.assertGreaterEqual(len(result.get("hard_resupply") or []), 4)
+
 
 if __name__ == "__main__":
     unittest.main()

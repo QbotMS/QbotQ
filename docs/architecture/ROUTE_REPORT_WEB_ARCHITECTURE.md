@@ -530,6 +530,14 @@ path ma działać na cache/artifact, klastrować punkty w skupiska i nie wypisyw
 długiej listy sklepów z jednego miejsca. Brak cache POI nie może zatrzymać
 całego raportu i ma skutkować jawnym `UNAVAILABLE` albo `PARTIAL`.
 
+Aktualizacja 2026-06-29: raport rozdziela teraz `supply_status` od
+`technical_completeness`. `supply_status` opisuje realną dostępność zaopatrzenia
+na trasie, a `technical_completeness` mówi tylko o tym, czy pomocnicze providery
+POI domknęły wszystkie chunki. `missing_chunks` Overpass nie mogą same zaniżać
+statusu zaopatrzenia do `PARTIAL`, jeśli Google Places primary znalazł realne
+`hard_resupply`. Pozostaje jednak dopuszczalny `RISK`, gdy luka kilometrowa
+między punktami `OPEN_AT_ETA` jest rzeczywiście zbyt duża.
+
 Aktualizacja 2026-06-29: w route-poi analyzerze `hard_resupply` ma pierwszeństwo
 z Google Places, a Overpass/OSM jest fallbackiem i uzupełnieniem. Analiza
 przelatuje po całej trasie w samplach/korytarzu, deduplikuje po nazwie,
