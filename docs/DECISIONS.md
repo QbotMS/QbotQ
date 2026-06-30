@@ -5,6 +5,44 @@
 
 ---
 
+## 2026-06-30 — DECYZJA: 2C — silnik przewyższeń i podjazdów (elevation/climb)
+
+**Status:** decyzja architektoniczna zamknięta. Kod 2C jeszcze nie wdrożony (decyzja przed kodem). Osobna faza po 2B.5; orchestrator 2B.5 obejmuje TYLKO base/surface/landcover/poi.
+
+**Audyt źródeł (zweryfikowany na żywo, nie z pamięci):**
+- `tools/rwgps/climbs.py` = artefakt, błędny (trzy rozjeżdżające się logiki, martwy dla Alberta). NIE jest bazą. Do usunięcia po wejściu 2C.
+- `route_brief`/`route_frames` 80 m = legacy/fallback (potwierdza decyzja 2026-06-28).
+- `qbot3/artifacts/route_analyzer.analyze_stage_gpx` = dotąd najlepszy WŁASNY detektor (maszyna stanu z histerezą, max grade po oknie 100 m), ale próg ≥1 km/≥30 m → łapie tylko długie podjazdy. Baza algorytmu, nie gotowiec.
+- **RWGPS API NIE zwraca podjazdów** (sprawdzone na 55798129): route detail (`/api/v1/routes/{id}.json`) bez pola `climb`; `/routes/{id}/climbs.json` i `/elevation.json` → 404; `?include=climbs`/`?climbs=true` ignorowane; `course_points` to wyłącznie nawigacja (Left/Right/Uturn…). Z RWGPS mamy tylko sumy `elevation_gain/loss`, gęsty ślad (1278 pkt) i nawierzchnię.
+- Planowana trasa trafia na Karoo jako **GPX** — Hammerhead liczy Climbera sam na urządzeniu; nie ma gotowej listy do podebrania.
+- Wysokość Karoo = otwarty stos DEM: **SRTM/GMTED2010/3DEP + Mapzen/Valhalla terrain** (atrybucja Hammerhead). Climber: progi **≥400 m i ≥3%** (tryb „All Climbs"), profil dzielony **co 100 m**, kolor wg gradientu.
+- Valhalla `valhalla1.openstreetmap.de` `/height` = MARTWE (null wszędzie, też w Alpach) — to nie był błąd parsowania w poprzedniej sesji, instancja nie ma DEM. Nieużywalne.
+- Działające otwarte DEM (z VPS): **opentopodata `srtm30m`** (rodzina Karoo — WYBRANE) oraz Open-Meteo GLO-90 (Copernicus 90 m — grubszy, limit/min, do profilu analitycznego co najwyżej).
+
+**Źródło i metoda (przyjęte):**
+- Siatka **50 m**, wspólna z nawierzchnią (decyzja 2026-06-30).
+- `route_elevation_samples`: gęsty profil, źródło wysokości **SRTM30m (opentopodata)**. Surowe próbki trzymane wiernie + `source` + `smoothing_version`.
+- Grade/ascent/podjazdy liczone z **LOKALNIE wygładzonego** profilu SRTM oknem **~200 m** (NIE globalnie — 400 m ścianki przeżywają). Okno wyznaczone EMPIRYCZNIE (kalibracja device-vs-SRTM, 3 górzyste jazdy — Castagneto/Suchedniów/Skarżysko: najbliżej barometru 250/150/250 → ~200 m). Surowy SRTM 50 m zawyża ascent +336..+652 m i rozdrabnia podjazdy na fantomy (do 22 zamiast 12) — nieużywalny bez wygładzenia.
+- `route_climb_events` = **DWA POZIOMY**: (1) nagłówek podjazdu — start_m, end_m, length_m, elevation_gain_m, avg_gradient_pct, max_gradient_pct, severity, source, detection_version; (2) **segmenty 100 m z gradientem każdego** (profil ścianek, jak Climber) — liczone z WYGŁADZONEGO profilu (inaczej fantomowe ścianki z siatki 30 m). Sam `max_grade` nie mówi, czy ściana jest jedna czy pięć — dopiero rozkład 100 m to pokazuje.
+- Detekcja progami Karoo: **≥400 m i ≥3%**. Precyzja do metra/0,1% świadomie nieistotna (120 vs 140 m, 4,5 vs 5% w jeździe bez znaczenia) — liczy się sygnatura podjazdu i profil ścianek.
+- Idempotencja/wersjonowanie: `route_base_id + sample_index` / `route_base_id + event_index`, plus `route_version_key` (jak `route_base_store.py`). `smoothing_version`, `detection_version` jako stringi → wynik powtarzalny i wersjonowany.
+
+**Rozdział warstw (kluczowy):**
+- `route_elevation_samples` = fundament analityczny, budowany ZAWSZE (zasila ETA/wiatr/moc); może mieć własne wygładzanie.
+- `route_climb_events` = warstwa pod sekcję raportu „Przewyższenia" (właściwa dla górzystego terenu), strojona pod ujęcie Climbera.
+
+**Zastrzeżenia (uczciwie):**
+- SRTM strojony pod barometr (fizyczna prawda przejazdu); Karoo używa SRTM, ale z własnym nieznanym wygładzaniem → zgodność BLISKA, nie co do metra. Pełna zgodność z Climberem wymagałaby porównania z eksportem z Karoo — poza naszą stroną.
+- Pokrycie podjazdów device-vs-SRTM nigdy nie 100% w obie strony (inne źródło + barometr to faktyczna linia, SRTM to ślad GPS na siatce). Duże podjazdy zgadzają się zawsze; różnice na granicznych.
+- opentopodata limity (1000/dobę, 1/s, 100 pkt/req): sporadyczny precompute jednej trasy OK (~7 req); przy backfillu wielu tras → cache albo własna instancja SRTM (miejsce na dysku jest).
+
+**Granice 2C (czego NIE robi):** nie przepina raportu trasy; nie miesza elevation do `route_axis_segments`; nie używa 50 m jako jedynego kanonu dla podjazdów; nie rusza writerów 2B.1–2B.4; nie dodaje publicznych MCP tooli; nie zmienia `route_analysis_run`; nie odpala pełnych raportów. Orchestrator 2B.5 zostawia typowany, wyłączony punkt rozszerzenia na elevation/climb job.
+
+**Pliki docelowe:** `qbot3/routes/route_elevation_store.py` + `tests/test_route_elevation_store.py` (lustro `route_base_store.py`: ten sam `_db_conn`, wejście `ensure_route_elevation(route_id)`, upsert z `route_version_key`, CLI). Writer: czyta DEM, zapisuje oba poziomy, idempotentny; nie dotyka raportu/POI/weather.
+
+**Kalibracja jako powtarzalna metoda:** porównanie ramka-po-ramce device (`activity_record`, 1 Hz pozycja+wysokość, 335 jazd) vs SRTM na górzystych jazdach — stroi okno wygładzania i progi. Nie blokuje builda (okno ~200 m przyjęte).
+
+
 ## 2026-06-30 — DECYZJA: route_base, route_poi_layer i route_analysis_run jako rozdzielone warstwy trasy
 
 **Status:** aktywna decyzja architektoniczna.
