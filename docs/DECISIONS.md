@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-06-30 — DECYZJA: canonical reader wystawia surface summary z route_surface_layer
+
+**Status:** wdrożone w `qbot3/routes/route_canonical_read.py`.
+
+**Decyzja:** `read_canonical_route()` wystawia teraz `canonical_surface_summary` policzony z `qbot_v2.route_surface_layer`, aby kolejne przepięcie A3 mogło czytać canonical summary bez ruszania DB schema.
+
+**Zasada:** summary jest wyprowadzany z canonical rows, bez zmiany `layers["route_surface_layer"]` i bez zmiany `layer_counts`. Legacy `surface_summary_json` pozostaje osobnym fallbackiem do czasu pełnego przepięcia A3.
+
+**Kontrakt:** summary musi być bezpieczny przy brakujących `distance_m`, nie może rzucać wyjątkiem i ma pokazywać `segment_count`, `total_distance_m`, `coverage_pct`, `by_surface`, `by_source`, `by_confidence` oraz `problem_segments`.
+
 ## 2026-06-30 — DECYZJA: route_report pokazuje canonical marker POI w A8
 
 **Status:** wdrożone minimalnie w `qbot_route_report_tool.py`.

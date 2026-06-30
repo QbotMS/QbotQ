@@ -325,6 +325,108 @@ def _climb_rows(conn, route_base_id: int) -> list[dict[str, Any]]:
     )
 
 
+def _surface_summary(surface_rows: list[dict[str, Any]], route_base: dict[str, Any] | None = None) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "segment_count": len(surface_rows),
+        "total_distance_m": 0.0,
+        "coverage_pct": 0.0,
+        "route_distance_m": None,
+        "missing_distance_count": 0,
+        "by_surface": {},
+        "by_source": {},
+        "by_confidence": {},
+        "problem_segments": [],
+    }
+    if not surface_rows:
+        if route_base and route_base.get("distance_m") is not None:
+            try:
+                summary["route_distance_m"] = float(route_base.get("distance_m") or 0.0)
+            except (TypeError, ValueError):
+                summary["route_distance_m"] = None
+        return summary
+
+    route_distance_m = None
+    if route_base and route_base.get("distance_m") is not None:
+        try:
+            route_distance_m = float(route_base.get("distance_m") or 0.0)
+        except (TypeError, ValueError):
+            route_distance_m = None
+    summary["route_distance_m"] = route_distance_m
+
+    by_surface: dict[str, dict[str, Any]] = {}
+    by_source: dict[str, dict[str, Any]] = {}
+    by_confidence: dict[str, dict[str, Any]] = {}
+    problem_segments: list[dict[str, Any]] = []
+    missing_distance_count = 0
+    total_distance_m = 0.0
+    problem_surfaces = {"ground", "grass", "sand", "unknown", "unpaved"}
+    ok_statuses = {"GOOD", "GOOD_INFERRED"}
+
+    for row in surface_rows:
+        meta = row.get("surface_meta_json") if isinstance(row.get("surface_meta_json"), dict) else {}
+        surface = str(row.get("surface") or meta.get("surface_refined") or meta.get("surface_raw") or "unknown").strip() or "unknown"
+        source = str(row.get("source") or "unknown").strip() or "unknown"
+        confidence = str(row.get("confidence") or "unknown").strip() or "unknown"
+        coverage_status = str(row.get("coverage_status") or "UNKNOWN").strip() or "UNKNOWN"
+        try:
+            distance_m = float(meta.get("distance_m"))
+        except (TypeError, ValueError):
+            distance_m = None
+
+        surface_bucket = by_surface.setdefault(surface, {"segment_count": 0, "distance_m": 0.0, "pct": 0.0})
+        surface_bucket["segment_count"] += 1
+        if distance_m is None:
+            missing_distance_count += 1
+        else:
+            surface_bucket["distance_m"] += distance_m
+            total_distance_m += distance_m
+
+        by_source.setdefault(source, {"segment_count": 0})["segment_count"] += 1
+        by_confidence.setdefault(confidence, {"segment_count": 0})["segment_count"] += 1
+
+        reasons: list[str] = []
+        if confidence.lower() == "low":
+            reasons.append("low_confidence")
+        if surface.lower() in problem_surfaces:
+            reasons.append(f"surface={surface.lower()}")
+        if coverage_status.upper() not in ok_statuses:
+            reasons.append(f"coverage_status={coverage_status}")
+        if reasons:
+            problem_segments.append(
+                {
+                    "segment_index": row.get("segment_index"),
+                    "surface": surface,
+                    "source": source,
+                    "confidence": confidence,
+                    "coverage_status": coverage_status,
+                    "distance_m": distance_m,
+                    "reasons": reasons,
+                    "missing_distance": distance_m is None,
+                }
+            )
+
+    if total_distance_m > 0:
+        for bucket in by_surface.values():
+            bucket["pct"] = round(bucket["distance_m"] / total_distance_m * 100.0, 1)
+
+    coverage_pct = 0.0
+    if route_distance_m and route_distance_m > 0:
+        coverage_pct = round(total_distance_m / route_distance_m * 100.0, 1)
+
+    summary.update(
+        {
+            "total_distance_m": round(total_distance_m, 1),
+            "coverage_pct": coverage_pct,
+            "missing_distance_count": missing_distance_count,
+            "by_surface": by_surface,
+            "by_source": by_source,
+            "by_confidence": by_confidence,
+            "problem_segments": problem_segments,
+        }
+    )
+    return summary
+
+
 def read_canonical_route(
     *,
     route_id: str | int | None = None,
@@ -387,6 +489,7 @@ def read_canonical_route(
             "route_elevation_samples": _elevation_rows(conn, rb_id),
             "route_climb_events": _climb_rows(conn, rb_id),
         }
+        surface_summary = _surface_summary(layers["route_surface_layer"], base)
         layer_counts = {
             name: (1 if name == "route_base" and layers[name] else len(layers[name]))
             for name in _CANONICAL_LAYER_ORDER
@@ -412,5 +515,6 @@ def read_canonical_route(
             "route_shade_layer_count": shade_n,
             "shade_coverage_pct": round(shade_cov / shade_n * 100.0, 1) if shade_n else 0.0,
             "land_cover_preferred_source": land_cover_preferred_source,
+            "canonical_surface_summary": surface_summary,
             "layers": layers,
         }

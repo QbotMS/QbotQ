@@ -548,6 +548,12 @@ canonical store. Legacy cache i `route_poi_analyze_readonly` dalej domykają
 szczegóły logistyczne, godziny i listę kandydatów, więc A8 nie udaje jeszcze
 pełnej canonical listy POI, ale pokazuje, że primary read-path jest w DB.
 
+Aktualizacja 2026-06-30: `read_canonical_route()` wystawia także
+`canonical_surface_summary` wyliczany z `qbot_v2.route_surface_layer`. To jest
+kontrakt przygotowawczy pod pełne przepięcie A3: summary liczy segmenty,
+distances i problem segments po canonical rows, ale A3 nadal używa legacy
+`surface_summary_json` dopóki nie zostanie przepięte osobno.
+
 Aktualizacja 2026-06-29: sekcja `POI / zaopatrzenie` ma priorytet produktu dla
 Polski. Główne źródła to sklepy spożywcze, stacje paliw i punkty gastronomiczne;
 publiczne `drinking_water` jest tylko bonusem. Każdy punkt w raporcie musi mieć

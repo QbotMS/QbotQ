@@ -6,7 +6,7 @@ import unittest
 import psycopg
 from psycopg.rows import dict_row
 
-from qbot3.routes.route_canonical_read import read_canonical_route
+from qbot3.routes.route_canonical_read import _surface_summary, read_canonical_route
 
 
 def _live_db_enabled() -> bool:
@@ -29,6 +29,49 @@ def _db_conn():
 
 @unittest.skipUnless(_live_db_enabled(), "QBOT_LIVE_DB_TESTS=1 required for live DB helper smoke")
 class TestRouteCanonicalRead(unittest.TestCase):
+    def test_surface_summary_helper_aggregates_distance_and_problems(self) -> None:
+        rows = [
+            {
+                "segment_index": 0,
+                "surface": "asphalt",
+                "source": "osm_surface",
+                "confidence": "high",
+                "coverage_status": "GOOD_INFERRED",
+                "surface_meta_json": {"distance_m": 100.0},
+            },
+            {
+                "segment_index": 1,
+                "surface": "grass",
+                "source": "osm_contextual",
+                "confidence": "low",
+                "coverage_status": "GOOD_INFERRED",
+                "surface_meta_json": {"distance_m": 50.0},
+            },
+            {
+                "segment_index": 2,
+                "surface": "sand",
+                "source": "osm_contextual",
+                "confidence": "low",
+                "coverage_status": "PARTIAL",
+                "surface_meta_json": {},
+            },
+        ]
+        summary = _surface_summary(rows, {"distance_m": 200.0})
+
+        self.assertEqual(summary["segment_count"], 3)
+        self.assertEqual(summary["total_distance_m"], 150.0)
+        self.assertEqual(summary["coverage_pct"], 75.0)
+        self.assertEqual(summary["missing_distance_count"], 1)
+        self.assertEqual(summary["by_surface"]["asphalt"]["segment_count"], 1)
+        self.assertEqual(summary["by_surface"]["asphalt"]["distance_m"], 100.0)
+        self.assertEqual(summary["by_surface"]["asphalt"]["pct"], 66.7)
+        self.assertEqual(summary["by_surface"]["grass"]["segment_count"], 1)
+        self.assertEqual(summary["by_source"]["osm_contextual"]["segment_count"], 2)
+        self.assertEqual(summary["by_confidence"]["low"]["segment_count"], 2)
+        self.assertEqual(len(summary["problem_segments"]), 2)
+        self.assertEqual(summary["problem_segments"][0]["segment_index"], 1)
+        self.assertTrue(summary["problem_segments"][1]["missing_distance"])
+
     def test_route_55798129_canonical_read_is_complete(self) -> None:
         with _db_conn() as conn:
             before_jobs = conn.execute(
@@ -65,6 +108,11 @@ class TestRouteCanonicalRead(unittest.TestCase):
         self.assertEqual(first["layer_counts"]["route_poi_layer"], 38)
         self.assertEqual(first["layer_counts"]["route_elevation_samples"], 1424)
         self.assertEqual(first["layer_counts"]["route_climb_events"], 1)
+        self.assertIn("canonical_surface_summary", first)
+        self.assertEqual(first["canonical_surface_summary"]["segment_count"], 76)
+        self.assertGreater(first["canonical_surface_summary"]["total_distance_m"], 0.0)
+        self.assertTrue(first["canonical_surface_summary"]["by_surface"])
+        self.assertEqual(first["canonical_surface_summary"]["coverage_pct"], 100.0)
 
         self.assertEqual(len(first["layers"]["route_axis_segments"]), 1423)
         self.assertEqual(len(first["layers"]["route_surface_layer"]), 76)
@@ -90,4 +138,3 @@ class TestRouteCanonicalRead(unittest.TestCase):
             ).fetchone()["c"]
 
         self.assertEqual(int(before_jobs), int(after_jobs))
-
