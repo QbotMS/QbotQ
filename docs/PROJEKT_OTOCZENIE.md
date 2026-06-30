@@ -139,9 +139,12 @@ metoda kątów horyzontu). Tu świadomie nieobecne.
 
 - Flaga `QBOT_ROUTE_SHADE_ENABLED` **wyłączona** — warstwa nie liczy się w precompute, dopóki nie
   zostanie włączona + restart qbot-api.
-- **Konsument niewpięty.** Docelowo read-path (raport / `route_canonical_read`) ma preferować
-  shade_layer, a OSM land-cover zdegradować do fallbacku tam, gdzie `coverage_status='missing'`.
-  Jeszcze nie zrobione.
+- **Read-path wpięty** (`route_canonical_read.py`): warstwa otoczenia czytana ADDITIVELY (poza bramką
+  canonical/fallback — trasy bez shade nie regresują). Zwraca `route_shade_layer` w `layers`,
+  `route_shade_layer_count`, `shade_coverage_pct` oraz `land_cover_preferred_source`
+  (`worldcover_shade` gdy jest pokrycie, inaczej `osm_landcover_legacy` = OSM land-cover jako fallback).
+  POZOSTAJE: żeby sam RAPORT faktycznie czytał `land_cover_preferred_source` i wybierał źródło
+  (dziś read-path tylko wystawia preferencję; konsument raportu jeszcze jej nie używa).
 - **Niezacommitowane** (blокада: zawieszony connector Desktop Commander; commit jako qbot + naprawa
   własności `.git`/plików czeka na restart DC).
 - Pliki warstwy: `qbot3/routes/worldcover_tiles.py`, `qbot3/routes/route_shade_store.py`,
