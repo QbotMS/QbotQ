@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-06-30 — DECYZJA: kompletność RWGPS → precompute liczymy po aktywnych jobach orchestratora
+
+**Status:** wdrożone w triggerze precompute.
+
+**Decyzja:** `scripts/route_precompute_trigger.py` nie może już uznawać trasy za kompletną po stałych 4 jobach. Kompletność jest liczona dynamicznie zgodnie z aktywną sekwencją orchestratora (`route_base`, `route_surface`, `route_landcover`, `route_poi` plus opcjonalnie `route_shade` i `route_elevation`).
+
+**Reguła runtime:** `route_shade` jest wymagany, gdy `QBOT_ROUTE_SHADE_ENABLED=1`. `route_elevation` jest wymagany tylko wtedy, gdy `QBOT_ROUTE_ELEVATION_ENABLED=1`. Jeśli flaga jest OFF, dany job nie wchodzi do definicji kompletności.
+
+**Zasada:** precompute completion ma odzwierciedlać faktycznie aktywny canonical store, a nie starszą listę jobów. To domyka RWGPS → precompute → pełny canonical route store bez ruszania raportu, analizy ani promptów LLM.
+
 ## 2026-06-30 — DECYZJA: 2C.1 canonical read-helper dla warstw precompute
 
 **Status:** wdrozone jako helper odczytu, bez zmian w raportowaniu.

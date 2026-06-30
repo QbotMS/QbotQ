@@ -8,6 +8,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from scripts.route_precompute_trigger import ensure_route_precompute_trigger
+import scripts.route_precompute_trigger as route_precompute_trigger_module
 from qbot_api import rwgps_webhook
 
 
@@ -40,6 +41,32 @@ class _DummyRequest:
 
 
 class TestRoutePrecomputeTrigger(unittest.TestCase):
+    def test_precompute_complete_tracks_active_job_types(self) -> None:
+        rows_4 = [
+            {"job_type": "route_base", "status": "complete"},
+            {"job_type": "route_surface", "status": "complete"},
+            {"job_type": "route_landcover", "status": "complete"},
+            {"job_type": "route_poi", "status": "complete"},
+        ]
+        rows_5 = rows_4 + [{"job_type": "route_shade", "status": "complete"}]
+        rows_6 = rows_5 + [{"job_type": "route_elevation", "status": "complete"}]
+
+        env_4 = {"QBOT_ROUTE_SHADE_ENABLED": "0", "QBOT_ROUTE_ELEVATION_ENABLED": "0"}
+        env_5 = {"QBOT_ROUTE_SHADE_ENABLED": "1", "QBOT_ROUTE_ELEVATION_ENABLED": "0"}
+        env_6 = {"QBOT_ROUTE_SHADE_ENABLED": "1", "QBOT_ROUTE_ELEVATION_ENABLED": "1"}
+
+        self.assertTrue(route_precompute_trigger_module._precompute_complete(rows_4, env=env_4))
+        self.assertFalse(route_precompute_trigger_module._precompute_complete(rows_5, env=env_4))
+        self.assertFalse(route_precompute_trigger_module._precompute_complete(rows_6, env=env_4))
+
+        self.assertFalse(route_precompute_trigger_module._precompute_complete(rows_4, env=env_5))
+        self.assertTrue(route_precompute_trigger_module._precompute_complete(rows_5, env=env_5))
+        self.assertFalse(route_precompute_trigger_module._precompute_complete(rows_6, env=env_5))
+
+        self.assertFalse(route_precompute_trigger_module._precompute_complete(rows_4, env=env_6))
+        self.assertFalse(route_precompute_trigger_module._precompute_complete(rows_5, env=env_6))
+        self.assertTrue(route_precompute_trigger_module._precompute_complete(rows_6, env=env_6))
+
     def test_helper_runs_when_jobs_incomplete(self) -> None:
         with patch("scripts.route_precompute_trigger.ensure_route_base", return_value={
             "route_base": {"route_base_id": 1},

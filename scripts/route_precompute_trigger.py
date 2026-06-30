@@ -12,16 +12,16 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from typing import Mapping
 
 sys.path.insert(0, "/opt/qbot/app")
 
 from qbot3.routes.route_precompute_orchestrator import ensure_route_precompute
+from qbot3.routes.route_precompute_orchestrator import active_precompute_job_types
 from qbot3.routes.route_base_store import ensure_route_base
 import psycopg
 from psycopg.rows import dict_row
 import os
-
-EXPECTED_JOB_TYPES = ("route_base", "route_surface", "route_landcover", "route_poi")
 
 
 def _db_conn():
@@ -56,16 +56,22 @@ def _route_precompute_rows(conn, route_version_key: str) -> list[dict[str, objec
     return [dict(row) for row in rows]
 
 
-def _precompute_complete(rows: list[dict[str, object]]) -> bool:
-    if len(rows) != len(EXPECTED_JOB_TYPES):
+def _precompute_complete(rows: list[dict[str, object]], env: Mapping[str, str] | None = None) -> bool:
+    expected_job_types = active_precompute_job_types(env)
+    if len(rows) != len(expected_job_types):
         return False
     present = {str(row.get("job_type") or "") for row in rows}
-    if set(EXPECTED_JOB_TYPES) != present:
+    if set(expected_job_types) != present:
         return False
     return all(str(row.get("status") or "").strip() == "complete" for row in rows)
 
 
-def ensure_route_precompute_trigger(*, route_id: str | int, trigger_source: str = "rwgps_webhook") -> dict[str, object]:
+def ensure_route_precompute_trigger(
+    *,
+    route_id: str | int,
+    trigger_source: str = "rwgps_webhook",
+    env: Mapping[str, str] | None = None,
+) -> dict[str, object]:
     route_id_text = _normalize_route_id(route_id)
     base_result = ensure_route_base(route_id_text)
     route_base = base_result["route_base"]
@@ -75,7 +81,7 @@ def ensure_route_precompute_trigger(*, route_id: str | int, trigger_source: str 
 
     with _db_conn() as conn:
         rows = _route_precompute_rows(conn, route_version_key)
-        if _precompute_complete(rows):
+        if _precompute_complete(rows, env=env):
             return {
                 "status": "OK",
                 "trigger_status": "skipped",

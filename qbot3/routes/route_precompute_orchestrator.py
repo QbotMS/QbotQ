@@ -12,7 +12,7 @@ import argparse
 import json
 import os
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 import psycopg
 from psycopg.rows import dict_row
@@ -49,21 +49,32 @@ SHADE_JOB: tuple[str, Callable[..., dict[str, Any]], str] = (
 )
 
 
-def _route_elevation_enabled() -> bool:
-    return os.getenv("QBOT_ROUTE_ELEVATION_ENABLED", "0") == "1"
+def _env_get(env: Mapping[str, str] | None, key: str, default: str = "") -> str:
+    if env is None:
+        return os.getenv(key, default)
+    return env.get(key, default)
 
 
-def _route_shade_enabled() -> bool:
-    return os.getenv("QBOT_ROUTE_SHADE_ENABLED", "0") == "1"
+def _route_elevation_enabled(env: Mapping[str, str] | None = None) -> bool:
+    return _env_get(env, "QBOT_ROUTE_ELEVATION_ENABLED", "0") == "1"
 
 
-def _effective_job_sequence() -> tuple[tuple[str, Callable[..., dict[str, Any]], str], ...]:
+def _route_shade_enabled(env: Mapping[str, str] | None = None) -> bool:
+    return _env_get(env, "QBOT_ROUTE_SHADE_ENABLED", "0") == "1"
+
+
+def _effective_job_sequence(env: Mapping[str, str] | None = None) -> tuple[tuple[str, Callable[..., dict[str, Any]], str], ...]:
     sequence = JOB_SEQUENCE
-    if _route_elevation_enabled():
+    if _route_elevation_enabled(env):
         sequence = sequence + (ELEVATION_JOB,)
-    if _route_shade_enabled():
+    if _route_shade_enabled(env):
         sequence = sequence + (SHADE_JOB,)
     return sequence
+
+
+def active_precompute_job_types(env: Mapping[str, str] | None = None) -> tuple[str, ...]:
+    """Return the currently active canonical precompute job types."""
+    return tuple(job_type for job_type, _, _ in _effective_job_sequence(env))
 
 
 def _db_conn():
