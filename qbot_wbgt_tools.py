@@ -248,6 +248,29 @@ def cos_solar_zenith(dt_utc: datetime, lat: float, lon: float) -> float:
     return max(cz, 0.0)
 
 
+def solar_azimuth_deg(dt_utc: datetime, lat: float, lon: float) -> float:
+    """Azymut slonca [deg], zgodnie z ruchem wskazowek od polnocy (0=N,90=E,180=S,270=W).
+    Ta sama geometria NOAA co cos_solar_zenith (decl, eqtime, ha)."""
+    if dt_utc.tzinfo is None:
+        dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+    else:
+        dt_utc = dt_utc.astimezone(timezone.utc)
+    doy = dt_utc.timetuple().tm_yday
+    hour = dt_utc.hour + dt_utc.minute / 60 + dt_utc.second / 3600
+    g = 2 * math.pi / 365.0 * (doy - 1 + (hour - 12) / 24.0)
+    decl = (0.006918 - 0.399912 * math.cos(g) + 0.070257 * math.sin(g)
+            - 0.006758 * math.cos(2 * g) + 0.000907 * math.sin(2 * g)
+            - 0.002697 * math.cos(3 * g) + 0.00148 * math.sin(3 * g))
+    eqtime = 229.18 * (0.000075 + 0.001868 * math.cos(g) - 0.032077 * math.sin(g)
+                       - 0.014615 * math.cos(2 * g) - 0.040849 * math.sin(2 * g))
+    tst = hour * 60 + eqtime + 4 * lon
+    ha = math.radians(tst / 4.0 - 180.0)
+    latr = math.radians(lat)
+    sin_az = -math.sin(ha) * math.cos(decl)
+    cos_az = math.cos(latr) * math.sin(decl) - math.sin(latr) * math.cos(decl) * math.cos(ha)
+    return math.degrees(math.atan2(sin_az, cos_az)) % 360.0
+
+
 # ── Strefy ryzyka (ACSM, pod wytrzymalosc) ─────────────────────────────────
 _ZONES = [
     (18.0, "niskie",         "Brak ograniczen."),
