@@ -119,6 +119,41 @@ ACTIVE_ROUTE_VERSION = {
     "elevation_gain_m": 519.8,
 }
 
+LEGACY_COMPATIBLE_ROUTE_VERSION = {
+    **ACTIVE_ROUTE_VERSION,
+    "route_version_key": None,
+}
+
+MISMATCH_LAND_COVER_PROFILE = {
+    "id": 20,
+    "route_artifact_id": 361,
+    "route_id": "55798129",
+    "enriched_at": "2026-06-29T12:34:56+02:00",
+    "quality_status": "GOOD_INFERRED",
+    "coverage_pct": 100.0,
+    "tagged_surface_pct": 70.8,
+    "inferred_surface_pct": 29.2,
+    "unknown_surface_pct": 0.0,
+    "sha256": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+    "source_artifact_sha256": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+    "distance_m": 64000.0,
+    "distance_km": 64.0,
+    "track_points": 900,
+    "point_count": 900,
+    "elevation_gain_m": 410.0,
+    "surface_percentages_raw": {"asphalt": 28.0, "ground": 42.0},
+    "surface_percentages_refined": {"asphalt": 28.0, "ground": 42.0},
+    "surface_summary_json": {
+        "quality_status": "GOOD_INFERRED",
+        "coverage_pct": 100.0,
+        "tagged_surface_pct": 70.8,
+        "inferred_surface_pct": 29.2,
+        "unknown_surface_pct": 0.0,
+        "route_version_key": None,
+    },
+    "good_profile": True,
+}
+
 rr._fetch_route_version_record = lambda **kwargs: ACTIVE_ROUTE_VERSION
 
 MISMATCH_ROUTE_VERSION = {
@@ -1422,6 +1457,126 @@ class TestRouteReportVersionGuard(unittest.TestCase):
         self.assertIn("DATA_INTEGRITY_ERROR: ROUTE_VERSION_MISMATCH", analysis)
         self.assertIn("poi_cache", analysis)
         self.assertNotIn("surface_summary_json", analysis.split("## A8 - WODA / SKLEPY / REFILL")[-1])
+
+
+class TestRouteSurfaceVersionGuard(unittest.TestCase):
+    """TASK 1B - version guard dla land-cover / detailed profile bez losowego artefaktu."""
+
+    def setUp(self):
+        import qbot_route_tools as rt
+        self._rt = rt
+        self._orig_resolve = rt._resolve_active_route_artifact_id
+        self._orig_fetch_surface = rt._fetch_best_route_surface_profile
+        self._orig_build_detail = None
+
+    def tearDown(self):
+        import tools.rwgps.route_brief as rb
+        self._rt._resolve_active_route_artifact_id = self._orig_resolve
+        self._rt._fetch_best_route_surface_profile = self._orig_fetch_surface
+        if self._orig_build_detail is not None:
+            rb.build_detail = self._orig_build_detail
+
+    def _fake_build_detail(self, *args, **kwargs):
+        print(
+            "SZCZEGOLOWY PROFIL TRASY (z ramek 80 m)\n"
+            "Dystans 71.137 km | 889 ramek | +800 m / -800 m | max 7% | stromo(>=3.0%) ~2.5 km\n"
+            "\n"
+            "Nawierzchnia (odcinki >= 0.2 km):\n"
+            "  km 0.0-20.0 (20.0): asfalt\n"
+            "  km 20.0-30.0 (10.0): szuter luzny\n"
+            "  km 30.0-63.3 (33.3): asfalt\n"
+        )
+        return 0
+
+    def test_no_route_id_prompts_for_route_id(self):
+        self._rt._fetch_best_route_surface_profile = lambda **kwargs: (_ for _ in ()).throw(AssertionError("unexpected surface lookup without route_id"))
+        import tools.rwgps.route_brief as rb
+        self._orig_build_detail = rb.build_detail
+        rb.build_detail = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("unexpected build_detail without route_id"))
+        out = self._rt._tool_qbot_route_profile_detail({})
+        self.assertEqual(out["status"], "WARN")
+        self.assertIn("Podaj route_id", out["notes"])
+
+    def test_no_route_id_does_not_pick_latest_profile(self):
+        self._rt._fetch_best_route_surface_profile = lambda **kwargs: (_ for _ in ()).throw(AssertionError("unexpected surface lookup without route_id"))
+        import tools.rwgps.route_brief as rb
+        self._orig_build_detail = rb.build_detail
+        rb.build_detail = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("unexpected build_detail without route_id"))
+        out = self._rt._tool_qbot_route_plan_analysis({})
+        self.assertEqual(out["status"], "WARN")
+        self.assertIn("Podaj route_id", out["notes"])
+
+    def test_active_route_uses_active_artifact_id(self):
+        calls = []
+        self._rt._resolve_active_route_artifact_id = lambda route_id: 306 if str(route_id) == "55798129" else None
+
+        def fake_fetch(**kwargs):
+            calls.append(dict(kwargs))
+            return {
+                "id": 19,
+                "route_artifact_id": 306,
+                "route_id": "55798129",
+                "enriched_at": "2026-06-29T12:34:56+02:00",
+                "quality_status": "GOOD_INFERRED",
+                "coverage_pct": 100.0,
+                "tagged_surface_pct": 70.8,
+                "inferred_surface_pct": 29.2,
+                "unknown_surface_pct": 0.0,
+                "surface_percentages_raw": {"asphalt": 34.9, "ground": 32.7},
+                "surface_percentages_refined": {"asphalt": 34.9, "ground": 32.7},
+                "surface_summary_json": {
+                    "quality_status": "GOOD_INFERRED",
+                    "coverage_pct": 100.0,
+                    "tagged_surface_pct": 70.8,
+                    "inferred_surface_pct": 29.2,
+                    "unknown_surface_pct": 0.0,
+                    "route_version_key": "ok",
+                },
+                "route_version": ACTIVE_ROUTE_VERSION,
+                "good_profile": True,
+            }
+
+        self._rt._fetch_best_route_surface_profile = fake_fetch
+        import tools.rwgps.route_brief as rb
+        self._orig_build_detail = rb.build_detail
+        rb.build_detail = self._fake_build_detail
+        out = self._rt._tool_qbot_route_profile_detail({"route_id": "55798129"})
+        self.assertEqual(out["status"], "OK")
+        self.assertTrue(calls)
+        self.assertEqual(calls[0].get("route_artifact_id"), 306)
+        self.assertNotEqual(calls[0].get("route_artifact_id"), 361)
+        self.assertIn("Dystans 71.137 km", out["analysis"])
+        self.assertIn("route_artifact_id=306", out["analysis"])
+        self.assertNotIn("64.0 km", out["analysis"])
+
+    def test_legacy_compatible_cache_passes(self):
+        guard = self._rt._surface_profile_version_guard(
+            active_version=ACTIVE_ROUTE_VERSION,
+            block_version=LEGACY_COMPATIBLE_ROUTE_VERSION,
+            source_name="surface_summary_json",
+        )
+        self.assertEqual(guard["code"], "LAND_COVER_LEGACY_COMPATIBLE")
+        self.assertEqual(guard["status"], "WARN")
+
+    def test_mismatch_cache_blocks(self):
+        guard = self._rt._surface_profile_version_guard(
+            active_version=ACTIVE_ROUTE_VERSION,
+            block_version=MISMATCH_LAND_COVER_PROFILE,
+            source_name="surface_summary_json",
+        )
+        self.assertEqual(guard["code"], "LAND_COVER_VERSION_MISMATCH")
+        self.assertEqual(guard["status"], "ERROR")
+
+    def test_mismatched_profile_errors(self):
+        self._rt._resolve_active_route_artifact_id = lambda route_id: 306 if str(route_id) == "55798129" else None
+        self._rt._fetch_best_route_surface_profile = lambda **kwargs: MISMATCH_LAND_COVER_PROFILE
+        import tools.rwgps.route_brief as rb
+        self._orig_build_detail = rb.build_detail
+        rb.build_detail = self._fake_build_detail
+        out = self._rt._tool_qbot_route_profile_detail({"route_id": "55798129"})
+        self.assertEqual(out["status"], "ERROR")
+        self.assertIn("LAND_COVER_VERSION_MISMATCH", out["analysis"])
+        self.assertIn("qbot_route_profile_detail", out["tool"])
 
 if __name__ == "__main__":
     unittest.main()

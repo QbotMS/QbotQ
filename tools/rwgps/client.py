@@ -534,6 +534,19 @@ def _persist_route_surface_profile(file_path: Path, payload: dict[str, Any], sur
         surface_summary = dict(surface_profile)
         if isinstance(surface_result, dict) and surface_result:
             surface_summary.update(surface_result)
+        version_meta = {
+            "route_id": route_id,
+            "route_artifact_id": None,
+            "created_at": None,
+            "updated_at": None,
+            "sha256": None,
+            "source_artifact_sha256": None,
+            "distance_m": None,
+            "distance_km": None,
+            "track_points": None,
+            "point_count": None,
+            "elevation_gain_m": None,
+        }
         gate = _surface_profile_quality_score(surface_summary)
         existing_good_profile = _has_better_existing_surface_profile(route_id, surface_summary)
         if gate.get("suspicious") and existing_good_profile:
@@ -565,6 +578,21 @@ def _persist_route_surface_profile(file_path: Path, payload: dict[str, Any], sur
         )
         if not route_artifact:
             return None
+        version_meta.update({
+            "route_artifact_id": route_artifact.get("id"),
+            "created_at": route_artifact.get("created_at"),
+            "updated_at": route_artifact.get("updated_at"),
+            "sha256": route_artifact.get("sha256"),
+            "source_artifact_sha256": route_artifact.get("source_artifact_sha256") or route_artifact.get("sha256"),
+            "distance_km": surface_summary.get("distance_km"),
+            "distance_m": round(float(surface_summary.get("distance_km")) * 1000.0, 1) if surface_summary.get("distance_km") is not None else None,
+            "track_points": surface_summary.get("point_count") or surface_summary.get("sampled_points"),
+            "point_count": surface_summary.get("point_count") or surface_summary.get("sampled_points"),
+            "elevation_gain_m": surface_summary.get("elevation_gain_m"),
+        })
+        version_raw = json.dumps({k: v for k, v in version_meta.items() if v is not None}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        version_meta["route_version_key"] = hashlib.sha256(version_raw.encode("utf-8")).hexdigest()
+        surface_summary.update({k: v for k, v in version_meta.items() if v is not None})
         segments = surface_summary.get("segments") or []
         record = {
             "route_artifact_id": route_artifact["id"],

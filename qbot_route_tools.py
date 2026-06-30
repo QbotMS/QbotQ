@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv as _csv
 import io
+import hashlib
 import json
 import os
 import re
@@ -33,6 +34,81 @@ def _env_has(name: str) -> bool:
 
 def _env_presence(names: list[str]) -> dict[str, bool]:
     return {n: _env_has(n) for n in names}
+
+
+_ROUTE_VERSION_META_KEYS = (
+    "route_id",
+    "route_artifact_id",
+    "created_at",
+    "updated_at",
+    "sha256",
+    "source_artifact_sha256",
+    "distance_m",
+    "distance_km",
+    "track_points",
+    "point_count",
+    "elevation_gain_m",
+    "geometry_hash",
+    "points_hash",
+    "route_version_key",
+)
+
+
+def _route_version_scalar(value: Any, *, key: str | None = None) -> Any:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except Exception:
+            pass
+    if key in {"route_artifact_id", "track_points", "point_count"}:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+    if key in {"distance_m", "distance_km", "elevation_gain_m"}:
+        try:
+            return round(float(value), 6)
+        except (TypeError, ValueError):
+            return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value
+    text = str(value).strip()
+    return text or None
+
+
+def _route_version_payload(record: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(record, dict):
+        return {}
+    payload: dict[str, Any] = {}
+    for key in _ROUTE_VERSION_META_KEYS:
+        value = _route_version_scalar(record.get(key), key=key)
+        if value is not None:
+            payload[key] = value
+    return payload
+
+
+def _route_version_fingerprint(record: dict[str, Any] | None) -> dict[str, Any]:
+    payload = _route_version_payload(record)
+    evidence_keys = [key for key in _ROUTE_VERSION_META_KEYS if key not in {"route_id", "route_version_key"}]
+    has_evidence = any(payload.get(key) is not None for key in evidence_keys)
+    if not has_evidence:
+        return {"route_version_key": None, "route_version_payload": payload, "has_evidence": False}
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return {
+        "route_version_key": hashlib.sha256(raw.encode("utf-8")).hexdigest(),
+        "route_version_payload": payload,
+        "has_evidence": True,
+    }
+
+
+def _route_version_equal(left: dict[str, Any] | None, right: dict[str, Any] | None, key: str) -> bool:
+    lv = _route_version_scalar((left or {}).get(key), key=key)
+    rv = _route_version_scalar((right or {}).get(key), key=key)
+    return lv is None or rv is None or lv == rv
 
 
 def _resolve_rwgps_route_hint(name_hint: str, *, limit: int = 5, find_latest: bool = False) -> dict[str, Any]:
@@ -151,11 +227,166 @@ def _surface_profile_label(key: Any) -> str:
     }.get(raw, raw.replace("_", " "))
 
 
+def _resolve_active_route_artifact_id(route_id: str | None) -> int | None:
+    route_id_text = _surface_profile_text(route_id)
+    if not route_id_text:
+        return None
+    try:
+        import os as _os
+        import psycopg
+        from psycopg.rows import dict_row
+
+        conn = psycopg.connect(
+            host=_os.getenv("PGHOST", "127.0.0.1"),
+            port=_os.getenv("PGPORT", "5432"),
+            dbname=_os.getenv("PGDATABASE", "qbot"),
+            user=_os.getenv("PGUSER", "qbot"),
+            password=_os.getenv("PGPASSWORD", ""),
+            row_factory=dict_row,
+            connect_timeout=5,
+        )
+        row = conn.execute(
+            """
+            SELECT a.id AS route_artifact_id
+            FROM qbot_v2.route_artifacts a
+            WHERE a.route_id::text = %s
+            ORDER BY a.updated_at DESC NULLS LAST, a.created_at DESC NULLS LAST, a.id DESC
+            LIMIT 1
+            """,
+            (route_id_text,),
+        ).fetchone()
+        conn.close()
+        if not row:
+            return None
+        return int(row.get("route_artifact_id"))
+    except Exception:
+        return None
+
+
+def _fetch_active_route_version(*, route_id: str | None = None, route_artifact_id: str | int | None = None) -> dict[str, Any] | None:
+    route_id_text = _surface_profile_text(route_id)
+    route_artifact_text = _surface_profile_text(route_artifact_id)
+    if not route_id_text and not route_artifact_text:
+        return None
+    if not route_artifact_text and route_id_text:
+        resolved = _resolve_active_route_artifact_id(route_id_text)
+        if resolved is None:
+            return None
+        route_artifact_text = str(resolved)
+    try:
+        import os as _os
+        import psycopg
+        from psycopg.rows import dict_row
+
+        conn = psycopg.connect(
+            host=_os.getenv("PGHOST", "127.0.0.1"),
+            port=_os.getenv("PGPORT", "5432"),
+            dbname=_os.getenv("PGDATABASE", "qbot"),
+            user=_os.getenv("PGUSER", "qbot"),
+            password=_os.getenv("PGPASSWORD", ""),
+            row_factory=dict_row,
+            connect_timeout=5,
+        )
+        if route_artifact_text.isdigit():
+            row = conn.execute(
+                """
+                SELECT
+                    a.id AS route_artifact_id,
+                    a.route_id::text AS route_id,
+                    a.created_at,
+                    a.updated_at,
+                    a.sha256,
+                    a.source_artifact_sha256,
+                    pr.parsed_at,
+                    pr.distance_m,
+                    pr.distance_km,
+                    pr.track_points,
+                    pr.elevation_gain_m
+                FROM qbot_v2.route_artifacts a
+                LEFT JOIN LATERAL (
+                    SELECT
+                        parsed_at,
+                        distance_m,
+                        distance_km,
+                        track_points,
+                        elevation_gain_m
+                    FROM qbot_v2.route_parse_results pr
+                    WHERE pr.route_artifact_id = a.id
+                    ORDER BY pr.parsed_at DESC NULLS LAST, pr.id DESC
+                    LIMIT 1
+                ) pr ON TRUE
+                WHERE a.id = %s
+                LIMIT 1
+                """,
+                (int(route_artifact_text),),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT
+                    a.id AS route_artifact_id,
+                    a.route_id::text AS route_id,
+                    a.created_at,
+                    a.updated_at,
+                    a.sha256,
+                    a.source_artifact_sha256,
+                    pr.parsed_at,
+                    pr.distance_m,
+                    pr.distance_km,
+                    pr.track_points,
+                    pr.elevation_gain_m
+                FROM qbot_v2.route_artifacts a
+                LEFT JOIN LATERAL (
+                    SELECT
+                        parsed_at,
+                        distance_m,
+                        distance_km,
+                        track_points,
+                        elevation_gain_m
+                    FROM qbot_v2.route_parse_results pr
+                    WHERE pr.route_artifact_id = a.id
+                    ORDER BY pr.parsed_at DESC NULLS LAST, pr.id DESC
+                    LIMIT 1
+                ) pr ON TRUE
+                WHERE a.route_id::text = %s
+                ORDER BY a.updated_at DESC NULLS LAST, a.created_at DESC NULLS LAST, a.id DESC
+                LIMIT 1
+                """,
+                (route_id_text,),
+            ).fetchone()
+        conn.close()
+        if not row:
+            return None
+
+        payload = {
+            "route_id": row.get("route_id"),
+            "route_artifact_id": row.get("route_artifact_id"),
+            "created_at": row.get("created_at"),
+            "updated_at": row.get("updated_at"),
+            "sha256": row.get("sha256"),
+            "source_artifact_sha256": row.get("source_artifact_sha256"),
+            "distance_m": row.get("distance_m"),
+            "distance_km": row.get("distance_km"),
+            "track_points": row.get("track_points"),
+            "point_count": row.get("track_points"),
+            "elevation_gain_m": row.get("elevation_gain_m"),
+        }
+        payload.update(_route_version_fingerprint(payload))
+        return payload
+    except Exception:
+        return None
+
+
 def _fetch_best_route_surface_profile(*, route_id: str | None = None, route_artifact_id: str | int | None = None) -> dict[str, Any] | None:
     route_id_text = _surface_profile_text(route_id)
     route_artifact_text = _surface_profile_text(route_artifact_id)
     if not route_id_text and not route_artifact_text:
         return None
+    if not route_artifact_text and route_id_text:
+        resolved = _resolve_active_route_artifact_id(route_id_text)
+        if resolved is None:
+            return None
+        route_artifact_text = str(resolved)
     try:
         import os as _os
         import psycopg
@@ -176,12 +407,33 @@ def _fetch_best_route_surface_profile(*, route_id: str | None = None, route_arti
                     p.id,
                     p.route_artifact_id,
                     a.route_id::text AS route_id,
+                    a.created_at,
+                    a.updated_at,
+                    a.sha256,
+                    a.source_artifact_sha256,
                     p.enriched_at,
                     p.coverage_pct,
                     p.status,
-                    p.surface_summary_json
+                    p.surface_summary_json,
+                    pr.parsed_at,
+                    pr.distance_m,
+                    pr.distance_km,
+                    pr.track_points,
+                    pr.elevation_gain_m
                 FROM qbot_v2.route_surface_profiles p
                 JOIN qbot_v2.route_artifacts a ON a.id = p.route_artifact_id
+                LEFT JOIN LATERAL (
+                    SELECT
+                        parsed_at,
+                        distance_m,
+                        distance_km,
+                        track_points,
+                        elevation_gain_m
+                    FROM qbot_v2.route_parse_results pr
+                    WHERE pr.route_artifact_id = a.id
+                    ORDER BY pr.parsed_at DESC NULLS LAST, pr.id DESC
+                    LIMIT 1
+                ) pr ON TRUE
                 WHERE p.route_artifact_id = %s
                   AND p.coverage_pct >= 90
                   AND COALESCE(
@@ -200,12 +452,33 @@ def _fetch_best_route_surface_profile(*, route_id: str | None = None, route_arti
                     p.id,
                     p.route_artifact_id,
                     a.route_id::text AS route_id,
+                    a.created_at,
+                    a.updated_at,
+                    a.sha256,
+                    a.source_artifact_sha256,
                     p.enriched_at,
                     p.coverage_pct,
                     p.status,
-                    p.surface_summary_json
+                    p.surface_summary_json,
+                    pr.parsed_at,
+                    pr.distance_m,
+                    pr.distance_km,
+                    pr.track_points,
+                    pr.elevation_gain_m
                 FROM qbot_v2.route_surface_profiles p
                 JOIN qbot_v2.route_artifacts a ON a.id = p.route_artifact_id
+                LEFT JOIN LATERAL (
+                    SELECT
+                        parsed_at,
+                        distance_m,
+                        distance_km,
+                        track_points,
+                        elevation_gain_m
+                    FROM qbot_v2.route_parse_results pr
+                    WHERE pr.route_artifact_id = a.id
+                    ORDER BY pr.parsed_at DESC NULLS LAST, pr.id DESC
+                    LIMIT 1
+                ) pr ON TRUE
                 WHERE a.route_id::text = %s
                   AND p.coverage_pct >= 90
                   AND COALESCE(
@@ -251,6 +524,33 @@ def _fetch_best_route_surface_profile(*, route_id: str | None = None, route_arti
         tagged_surface_pct = _summary_float("tagged_surface_pct")
         inferred_surface_pct = _summary_float("inferred_surface_pct", "inferred_pct_refined", "inferred_pct_raw")
         unknown_surface_pct = _summary_float("unknown_surface_pct", "unknown_pct_refined", "unknown_pct_raw")
+        route_version = {
+            "route_id": row.get("route_id"),
+            "route_artifact_id": row.get("route_artifact_id"),
+            "created_at": row.get("created_at"),
+            "updated_at": row.get("updated_at"),
+            "sha256": row.get("sha256"),
+            "source_artifact_sha256": row.get("source_artifact_sha256"),
+            "distance_m": row.get("distance_m") or summary.get("distance_m"),
+            "distance_km": row.get("distance_km") or summary.get("distance_km"),
+            "track_points": row.get("track_points") or summary.get("track_points") or summary.get("point_count"),
+            "point_count": summary.get("point_count") or row.get("track_points"),
+            "elevation_gain_m": row.get("elevation_gain_m") or summary.get("elevation_gain_m"),
+        }
+        route_version.update(_route_version_fingerprint(route_version))
+        summary.setdefault("route_id", route_version.get("route_id"))
+        summary.setdefault("route_artifact_id", route_version.get("route_artifact_id"))
+        summary.setdefault("created_at", route_version.get("created_at"))
+        summary.setdefault("updated_at", route_version.get("updated_at"))
+        summary.setdefault("sha256", route_version.get("sha256"))
+        summary.setdefault("source_artifact_sha256", route_version.get("source_artifact_sha256"))
+        summary.setdefault("distance_m", route_version.get("distance_m"))
+        summary.setdefault("distance_km", route_version.get("distance_km"))
+        summary.setdefault("track_points", route_version.get("track_points"))
+        summary.setdefault("point_count", route_version.get("point_count"))
+        summary.setdefault("elevation_gain_m", route_version.get("elevation_gain_m"))
+        if route_version.get("route_version_key"):
+            summary.setdefault("route_version_key", route_version.get("route_version_key"))
 
         return {
             "id": row.get("id"),
@@ -266,6 +566,7 @@ def _fetch_best_route_surface_profile(*, route_id: str | None = None, route_arti
             "surface_percentages_refined": refined,
             "dominant_surface": summary.get("dominant_surface"),
             "surface_summary_json": summary,
+            "route_version": route_version,
             "good_profile": _surface_profile_is_good({
                 "quality_status": quality_status,
                 "coverage_pct": coverage_pct,
@@ -324,10 +625,101 @@ def _surface_profile_override_lines(profile: dict[str, Any]) -> list[str]:
     ]
 
 
+def _surface_profile_version_guard(
+    *,
+    active_version: dict[str, Any] | None,
+    block_version: dict[str, Any] | None,
+    source_name: str,
+) -> dict[str, Any]:
+    active_payload = _route_version_payload(active_version)
+    block_payload = _route_version_payload(block_version)
+
+    active_has_route_id = active_payload.get("route_id") is not None
+    block_has_route_id = block_payload.get("route_id") is not None
+    active_has_evidence = any(active_payload.get(key) is not None for key in _ROUTE_VERSION_META_KEYS if key not in {"route_id", "route_version_key"})
+    block_has_evidence = any(block_payload.get(key) is not None for key in _ROUTE_VERSION_META_KEYS if key not in {"route_id", "route_version_key"})
+    if not active_has_evidence or not block_has_evidence:
+        return {
+            "status": "WARN",
+            "code": "LAND_COVER_VERSION_METADATA_MISSING",
+            "source": source_name,
+            "message": f"{source_name}: brak wiarygodnych metadanych wersji",
+        }
+
+    for key in ("route_artifact_id", "sha256", "source_artifact_sha256", "distance_m", "distance_km", "track_points", "point_count", "elevation_gain_m"):
+        active_value = active_payload.get(key)
+        block_value = block_payload.get(key)
+        if active_value is None or block_value is None:
+            continue
+        if not _route_version_equal(active_payload, block_payload, key):
+            return {
+                "status": "ERROR",
+                "code": "LAND_COVER_VERSION_MISMATCH",
+                "source": source_name,
+                "field": key,
+                "active_value": active_value,
+                "block_value": block_value,
+                "message": f"{source_name}: {key}={block_value!r} != aktywne {active_value!r}",
+            }
+
+    if active_has_route_id and block_has_route_id and active_payload.get("route_id") != block_payload.get("route_id"):
+        return {
+            "status": "ERROR",
+            "code": "LAND_COVER_VERSION_MISMATCH",
+            "source": source_name,
+            "field": "route_id",
+            "active_value": active_payload.get("route_id"),
+            "block_value": block_payload.get("route_id"),
+            "message": f"{source_name}: route_id={block_payload.get('route_id')!r} != aktywne {active_payload.get('route_id')!r}",
+        }
+
+    route_version_key_active = active_payload.get("route_version_key")
+    route_version_key_block = block_payload.get("route_version_key")
+    if route_version_key_active and route_version_key_block and route_version_key_active == route_version_key_block:
+        return {
+            "status": "OK",
+            "code": "OK",
+            "source": source_name,
+            "route_version_key": route_version_key_active,
+            "message": f"{source_name}: wersja zgodna",
+        }
+
+    legacy_fields = ("route_id", "sha256", "source_artifact_sha256", "distance_m", "distance_km", "track_points", "point_count")
+    legacy_supported = all(
+        _route_version_equal(active_payload, block_payload, key)
+        for key in legacy_fields
+        if active_payload.get(key) is not None and block_payload.get(key) is not None
+    )
+    has_strong_legacy = any(
+        active_payload.get(key) is not None and block_payload.get(key) is not None
+        for key in ("sha256", "source_artifact_sha256", "distance_km", "distance_m", "track_points", "point_count")
+    )
+    if legacy_supported and has_strong_legacy:
+        return {
+            "status": "WARN",
+            "code": "LAND_COVER_LEGACY_COMPATIBLE",
+            "source": source_name,
+            "legacy_compatible": True,
+            "message": f"{source_name}: legacy-compatible bez route_version_key",
+        }
+
+    return {
+        "status": "WARN",
+        "code": "LAND_COVER_VERSION_METADATA_MISSING",
+        "source": source_name,
+        "message": f"{source_name}: brak porownywalnych metadanych wersji",
+    }
+
+
 def _surface_profile_priority_text(text: str, profile: dict[str, Any] | None) -> str:
     if not text:
         return text
     lines = text.splitlines()
+    version_guard = profile.get("version_guard") if isinstance(profile, dict) else None
+    if isinstance(version_guard, dict) and version_guard.get("status") == "WARN":
+        warning = f"UWAGA: {version_guard.get('code')} — {version_guard.get('message')}"
+        insert_at = 2 if len(lines) >= 2 else len(lines)
+        lines[insert_at:insert_at] = [warning, ""]
     if not profile or not _surface_profile_is_good(profile):
         warning = "UWAGA: legacy surface path (route_frames / route_surface_segments) — brak dobrego profilu surface_summary_json."
         insert_at = 2 if len(lines) >= 2 else len(lines)
@@ -2388,15 +2780,21 @@ def _tool_qbot_route_plan_analysis(_args: dict | None = None) -> dict[str, Any]:
         from tools.rwgps.route_brief import build as brief_build, _db_connect
         from tools.rwgps.route_weather import build as weather_build
         if not artifact_id and not route_id:
-            c = _db_connect(); cur = c.cursor()
-            cur.execute("SELECT route_artifact_id FROM qbot_v2.route_frames "
-                        "WHERE frame_size_m=80 ORDER BY route_artifact_id DESC LIMIT 1")
-            r = cur.fetchone(); c.close()
-            if r:
-                artifact_id = r[0]
-        if not artifact_id and not route_id:
-            return {"tool": "qbot_route_plan_analysis", "safety_class": "READ_ONLY",
-                    "status": "WARN", "notes": "Brak otrasowanych tras (route_frames)."}
+            return {
+                "tool": "qbot_route_plan_analysis",
+                "safety_class": "READ_ONLY",
+                "status": "WARN",
+                "notes": "Nie mogę jednoznacznie ustalić trasy do analizy otoczenia. Podaj route_id.",
+            }
+        if not artifact_id and route_id:
+            artifact_id = _resolve_active_route_artifact_id(str(route_id))
+            if artifact_id is None:
+                return {
+                    "tool": "qbot_route_plan_analysis",
+                    "safety_class": "READ_ONLY",
+                    "status": "WARN",
+                    "notes": "Nie mogę jednoznacznie ustalić trasy do analizy otoczenia. Podaj route_id.",
+                }
         aid = int(artifact_id) if artifact_id else None
         rid = str(route_id) if route_id else None
         if start:
@@ -2406,6 +2804,23 @@ def _tool_qbot_route_plan_analysis(_args: dict | None = None) -> dict[str, Any]:
         with contextlib.redirect_stdout(buf):
             brief_build(artifact_id=aid, route_id=rid)
         surface_profile = _fetch_best_route_surface_profile(route_id=rid, route_artifact_id=aid)
+        if surface_profile and rid:
+            active_version = _fetch_active_route_version(route_id=rid, route_artifact_id=aid)
+            block_version = None
+            if isinstance(surface_profile, dict):
+                block_version = surface_profile.get("route_version") or surface_profile
+            guard = _surface_profile_version_guard(
+                active_version=active_version,
+                block_version=block_version,
+                source_name="surface_summary_json",
+            )
+            if guard.get("status") == "ERROR":
+                surface_profile = None
+            else:
+                surface_profile = dict(surface_profile)
+                surface_profile["version_guard"] = guard
+                if guard.get("code") in {"LAND_COVER_VERSION_METADATA_MISSING", "LAND_COVER_LEGACY_COMPATIBLE"}:
+                    surface_profile["good_profile"] = False
         analysis_text = _surface_profile_priority_text(buf.getvalue(), surface_profile)
         return {"tool": "qbot_route_plan_analysis", "safety_class": "READ_ONLY", "status": "OK",
                 "analysis": analysis_text,
@@ -2464,20 +2879,48 @@ def _tool_qbot_route_profile_detail(_args: dict | None = None) -> dict[str, Any]
     try:
         from tools.rwgps.route_brief import build_detail, _db_connect
         if not artifact_id and not route_id:
-            c = _db_connect()
-            cur = c.cursor()
-            cur.execute("SELECT route_artifact_id FROM qbot_v2.route_frames WHERE frame_size_m=80 ORDER BY route_artifact_id DESC LIMIT 1")
-            r = cur.fetchone()
-            c.close()
-            if r:
-                artifact_id = r[0]
-        if not artifact_id and not route_id:
-            return {"tool": "qbot_route_profile_detail", "safety_class": "READ_ONLY", "status": "WARN", "notes": "Brak otrasowanych tras (route_frames)."}
+            return {
+                "tool": "qbot_route_profile_detail",
+                "safety_class": "READ_ONLY",
+                "status": "WARN",
+                "notes": "Nie mogę jednoznacznie ustalić trasy do analizy otoczenia. Podaj route_id.",
+            }
+        if not artifact_id and route_id:
+            artifact_id = _resolve_active_route_artifact_id(str(route_id))
+            if artifact_id is None:
+                return {
+                    "tool": "qbot_route_profile_detail",
+                    "safety_class": "READ_ONLY",
+                    "status": "WARN",
+                    "notes": "Nie mogę jednoznacznie ustalić trasy do analizy otoczenia. Podaj route_id.",
+                }
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             build_detail(artifact_id=int(artifact_id) if artifact_id else None, route_id=str(route_id) if route_id else None, land_cover=land_cover)
         surface_profile = _fetch_best_route_surface_profile(route_id=str(route_id) if route_id else None,
                                                             route_artifact_id=artifact_id if artifact_id else None)
+        if surface_profile and route_id:
+            active_version = _fetch_active_route_version(route_id=str(route_id), route_artifact_id=artifact_id if artifact_id else None)
+            block_version = None
+            if isinstance(surface_profile, dict):
+                block_version = surface_profile.get("route_version") or surface_profile
+            guard = _surface_profile_version_guard(
+                active_version=active_version,
+                block_version=block_version,
+                source_name="surface_summary_json",
+            )
+            if guard.get("status") == "ERROR":
+                return {
+                    "tool": "qbot_route_profile_detail",
+                    "safety_class": "READ_ONLY",
+                    "status": "ERROR",
+                    "error": guard.get("code", "LAND_COVER_VERSION_MISMATCH"),
+                    "analysis": f"LAND_COVER_VERSION_MISMATCH: {guard.get('message')}",
+                }
+            surface_profile = dict(surface_profile)
+            surface_profile["version_guard"] = guard
+            if guard.get("code") in {"LAND_COVER_VERSION_METADATA_MISSING", "LAND_COVER_LEGACY_COMPATIBLE"}:
+                surface_profile["good_profile"] = False
         analysis_text = _surface_profile_priority_text(buf.getvalue(), surface_profile)
         return {"tool": "qbot_route_profile_detail", "safety_class": "READ_ONLY", "status": "OK", "analysis": analysis_text, "notes": "Szczegolowy profil z ramek. Pokaz pole analysis w calosci, 1:1, pokrycie terenu gdy land_cover."}
     except Exception as exc:

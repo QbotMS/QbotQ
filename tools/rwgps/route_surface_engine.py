@@ -105,6 +105,23 @@ DIFFICULT_SURFACES = {
 }
 
 
+def _route_version_key(payload: dict[str, Any]) -> str | None:
+    version_payload = {
+        "route_id": payload.get("route_id"),
+        "artifact_sha256": payload.get("artifact_sha256"),
+        "source_artifact_sha256": payload.get("source_artifact_sha256") or payload.get("artifact_sha256"),
+        "distance_m": round(float(payload.get("distance_km")) * 1000.0, 1) if payload.get("distance_km") is not None else None,
+        "distance_km": payload.get("distance_km"),
+        "point_count": payload.get("point_count"),
+        "sample_distance_m": payload.get("sample_distance_m"),
+    }
+    evidence = [value for key, value in version_payload.items() if key != "route_id" and value is not None]
+    if not evidence:
+        return None
+    raw = json.dumps(version_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 def _configured_overpass_endpoints() -> list[str]:
     raw = os.getenv("QBOT_OVERPASS_ENDPOINTS", "").strip()
     if not raw:
@@ -1002,11 +1019,22 @@ def analyze_route_surface(
         "route_id": route_id_str,
         "artifact_path": str(file_path),
         "artifact_sha256": file_sha,
+        "source_artifact_sha256": file_sha,
         "engine_version": ENGINE_VERSION,
         "mode": mode,
         "distance_km": round(dists[-1] / 1000.0, 3),
         "point_count": len(points),
         "sample_distance_m": sample_distance_m,
+        "route_version_key": _route_version_key(
+            {
+                "route_id": route_id_str,
+                "artifact_sha256": file_sha,
+                "source_artifact_sha256": file_sha,
+                "distance_km": round(dists[-1] / 1000.0, 3),
+                "point_count": len(points),
+                "sample_distance_m": sample_distance_m,
+            }
+        ),
         "sampled_points": len(samples),
         "coverage_pct": coverage_pct,
         "unknown_pct_raw": raw_pct.get("unknown", 0.0),
