@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS route_landcover_layer (
     route_version_key TEXT NOT NULL,
     segment_index INTEGER NOT NULL,
     landuse TEXT,
-    natural TEXT,
+    osm_natural TEXT,
     forest_wood_context TEXT,
     building_context TEXT,
     water_context TEXT,
