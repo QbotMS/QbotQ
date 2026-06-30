@@ -5,6 +5,28 @@
 
 ---
 
+## 2026-06-30 — DECYZJA: route_axis_profile jako kanoniczna oś trasy dla meteo, nawierzchni, land-cover i raportów
+
+**Status:** aktywna decyzja architektoniczna.
+
+**Intencja:** QBot ma mieć jedno źródło prawdy dla przebiegu trasy: `route_axis_profile`. Wszystkie modele i raporty pracują względem tej osi, a nie względem osobnych, równoległych prawd lub tekstowych sekcji raportu.
+
+**Źródło wejściowe:** źródłem wejściowym pozostaje `route_artifact` / raw track z oryginalną geometrią RWGPS/GPX, `route_id`, `route_artifact_id`, `route_version_key` oraz surowymi punktami/polyline do ponownych przeliczeń.
+
+**Kanoniczna oś:** `route_axis_profile` jest wspólnym kontraktem analitycznym dla całej trasy, z segmentacją co 50 m. Zawiera co najmniej: `route_id`, `route_artifact_id`, `route_version_key`, `km_from`, `km_to`, geometrię segmentu, dystans, ETA oraz podstawowe `elevation` i `slope`.
+
+**Warstwy dopinane do osi:** surface, land-cover, sun/shade exposure, wind exposure, asphalt heat factor, weather at ETA, WBGT, cold-risk, POI/resupply, risk flags oraz per-layer quality/coverage. Warstwy zapisują wynik względem tej samej osi, nie jako osobne źródła prawdy.
+
+**Warstwy mikro i zdarzenia:** `elevation_micro_profile` jest osobną, gęstszą warstwą 5–10 m albo raw-points based i służy tylko do stromizn, krótkich ścianek, zjazdów oraz max grade. `climb_events` / `steep_ramp_events` są zdarzeniami przypiętymi do kilometrażu. Mogą pochodzić z GPX/RWGPS metadata albo z detekcji z `elevation_micro_profile` i nie mogą znikać przez wygładzenie osi 50 m.
+
+**Zasady modelowe:** WBGT i model niższych temperatur konsumują `route_axis_profile` + feature layers, nie tekst raportu. Brak warstwy daje `WARN`, `PARTIAL`, `LOW_CONFIDENCE` albo jawny status niskiej jakości, nigdy silent OK. Każda warstwa musi mieć `route_version_key` albo jawny status legacy / low-confidence.
+
+**Legacy i fallback:** `route_frames`, `route_frame_weather` oraz tekstowe sekcje raportu pozostają legacy fallbackiem lub rendererem, nie źródłem prawdy. Nie tworzymy osobnej, równoległej prawdy typu `route_environment_profile`. Nie rozbieramy GPX kilka razy na niezależne pipeline’y.
+
+**Route version guard:** guard wersji trasy obejmuje `route_axis_profile` oraz wszystkie warstwy pochodne, w tym land-cover, surface, weather i climb events. Mismatch musi kończyć się jawnym ostrzeżeniem lub błędem zgodności, a nie cichym przejściem na obcy cache.
+
+**Cel operacyjny:** pełny raport trasy jest rendererem i orkiestratorem, nie właścicielem obliczeń. Jego zadaniem jest złożyć wynik względem `route_axis_profile` i pokazać jakość oraz kompletność warstw, a nie tworzyć alternatywną geometrię analityczną.
+
 ## 2026-06-29 — Readiness diagnostics rozdzielają aktywne błędy od szumu
 
 **Status:** wdrożone w diagnostyce, bez zmian runtime.
