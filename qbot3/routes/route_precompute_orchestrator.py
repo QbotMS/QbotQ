@@ -21,6 +21,8 @@ from qbot3.routes.route_base_store import ensure_route_base
 from qbot3.routes.route_landcover_store import ensure_route_landcover
 from qbot3.routes.route_poi_store import ensure_route_poi
 from qbot3.routes.route_surface_store import ensure_route_surface
+from qbot3.routes.route_shade_store import ensure_route_shade
+# Warstwa otoczenia (route_shade_layer). Dokumentacja: docs/PROJEKT_OTOCZENIE.md
 from qbot3.routes.route_elevation_store import ensure_route_elevation
 
 
@@ -40,14 +42,28 @@ ELEVATION_JOB: tuple[str, Callable[..., dict[str, Any]], str] = (
 )
 
 
+# Faza 2D: warstwa oslony (ESA WorldCover), per-wezel osi. DOMYSLNIE WYLACZONA.
+# Wlaczana przez QBOT_ROUTE_SHADE_ENABLED=1; przy 0 sekwencja jest bajt-identyczna.
+SHADE_JOB: tuple[str, Callable[..., dict[str, Any]], str] = (
+    "route_shade", ensure_route_shade, "shade_layer_count",
+)
+
+
 def _route_elevation_enabled() -> bool:
     return os.getenv("QBOT_ROUTE_ELEVATION_ENABLED", "0") == "1"
 
 
+def _route_shade_enabled() -> bool:
+    return os.getenv("QBOT_ROUTE_SHADE_ENABLED", "0") == "1"
+
+
 def _effective_job_sequence() -> tuple[tuple[str, Callable[..., dict[str, Any]], str], ...]:
+    sequence = JOB_SEQUENCE
     if _route_elevation_enabled():
-        return JOB_SEQUENCE + (ELEVATION_JOB,)
-    return JOB_SEQUENCE
+        sequence = sequence + (ELEVATION_JOB,)
+    if _route_shade_enabled():
+        sequence = sequence + (SHADE_JOB,)
+    return sequence
 
 
 def _db_conn():
