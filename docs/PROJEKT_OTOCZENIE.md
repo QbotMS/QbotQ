@@ -1,7 +1,8 @@
 # WARSTWA OTOCZENIA TRASY (route_shade_layer) — dokumentacja
 
-Status: zbudowane i zweryfikowane na trasie 55798129. Domyślnie WYŁĄCZONE w precompute
-(flaga `QBOT_ROUTE_SHADE_ENABLED`). Niezacommitowane (czeka na restart DC). Data: 2026-06-30.
+Status: zbudowane, zweryfikowane (trasa 55798129) i **WŁĄCZONE w produkcji**. Zacommitowane jako qbot:
+`67bdac2` (warstwa + ten dokument), `b62454e` (read-path). Flaga `QBOT_ROUTE_SHADE_ENABLED=1` ustawiona
+w `/etc/qbot/qbot-api.env`, qbot-api zrestartowany (flaga potwierdzona w środowisku procesu). Data: 2026-06-30.
 
 ---
 
@@ -70,7 +71,15 @@ relacje multipolygon, próbkowanie tylko po osi co 80 m. Efekt: na tej samej tra
 **Wpięcie w precompute:**
 - `route_precompute_orchestrator.py` — `SHADE_JOB = ("route_shade", ensure_route_shade,
   "shade_layer_count")`, dokładany do sekwencji TYLKO gdy flaga `QBOT_ROUTE_SHADE_ENABLED` ustawiona.
-  Domyślnie sekwencja bez zmian: `[route_base, route_surface, route_landcover, route_poi]`.
+  Bez flagi sekwencja bez zmian: `[route_base, route_surface, route_landcover, route_poi]`.
+
+**Flaga aktywacji (gdzie i jak):**
+- `_route_shade_enabled()` zwraca True TYLKO gdy `os.getenv("QBOT_ROUTE_SHADE_ENABLED") == "1"`
+  (dokładnie "1"; default w kodzie = "0" = OFF).
+- W PRODUKCJI ustawiona na `1` w pliku env serwisu **`/etc/qbot/qbot-api.env`** (czytany przez systemd
+  unit qbot-api). Zmiana wymaga restartu: `systemctl restart qbot-api`.
+- Weryfikacja stanu live: odczytać `QBOT_ROUTE_SHADE_ENABLED` ze środowiska żywego procesu
+  (`/proc/<MainPID>/environ`, MainPID z `systemctl show -p MainPID --value qbot-api`).
 
 ---
 
@@ -101,8 +110,9 @@ Wynik weryfikacji (55798129): 1423 węzły, pokrycie ~100%, asymetria stron popr
 - **50 m / ±10 / ±20 m** — 50 m dziedziczone z osi kanonicznej; offsety dobrane do piksela 10 m
   (pas ±20 m pokrywa typową szerokość drogi + przydrożny pas).
 - **Cache kafli** — pobranie raz na region (3°×3°), reużycie na kolejnych trasach.
-- **Flaga, domyślnie OFF** — warstwa wchodzi do precompute dopiero świadomie (flip flagi + restart
-  qbot-api), żeby nie zmieniać istniejącego potoku bez decyzji.
+- **Flaga** — w kodzie default OFF (`QBOT_ROUTE_SHADE_ENABLED` domyślnie "0"), żeby nie zmieniać
+  potoku bez decyzji. W produkcji świadomie ustawiona `=1` (`/etc/qbot/qbot-api.env`) — warstwa liczy
+  się w precompute. Wyłączenie = ustawić `0` / usunąć linię w tym pliku + restart qbot-api.
 
 ---
 
@@ -137,15 +147,17 @@ metoda kątów horyzontu). Tu świadomie nieobecne.
 
 ## 7. STAN / CZEGO JESZCZE NIE MA (uczciwie)
 
-- Flaga `QBOT_ROUTE_SHADE_ENABLED` **wyłączona** — warstwa nie liczy się w precompute, dopóki nie
-  zostanie włączona + restart qbot-api.
+- Flaga `QBOT_ROUTE_SHADE_ENABLED` **WŁĄCZONA (=1)** w `/etc/qbot/qbot-api.env`, qbot-api
+  zrestartowany — potwierdzone w środowisku żywego procesu. Warstwa liczy się w precompute.
+  UWAGA: istniejące trasy NIE dostają jej wstecznie — dopiero przy następnym precompute/ingeście
+  danej trasy (backfill: puścić `ensure_route_shade` po istniejących `route_base`).
 - **Read-path wpięty** (`route_canonical_read.py`): warstwa otoczenia czytana ADDITIVELY (poza bramką
   canonical/fallback — trasy bez shade nie regresują). Zwraca `route_shade_layer` w `layers`,
   `route_shade_layer_count`, `shade_coverage_pct` oraz `land_cover_preferred_source`
   (`worldcover_shade` gdy jest pokrycie, inaczej `osm_landcover_legacy` = OSM land-cover jako fallback).
   POZOSTAJE: żeby sam RAPORT faktycznie czytał `land_cover_preferred_source` i wybierał źródło
   (dziś read-path tylko wystawia preferencję; konsument raportu jeszcze jej nie używa).
-- **Niezacommitowane** (blокада: zawieszony connector Desktop Commander; commit jako qbot + naprawa
-  własności `.git`/plików czeka na restart DC).
+- **Zacommitowane** jako qbot: `67bdac2` (warstwa: worldcover_tiles, route_shade_store, SQL,
+  orchestrator, ten dokument) + `b62454e` (read-path route_canonical_read).
 - Pliki warstwy: `qbot3/routes/worldcover_tiles.py`, `qbot3/routes/route_shade_store.py`,
   `sql/route_shade_store_v1.sql`, wpięcie w `route_precompute_orchestrator.py`.
