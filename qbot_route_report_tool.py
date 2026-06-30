@@ -211,6 +211,45 @@ def _route_surface_section_lines(route_source: dict[str, Any] | None) -> list[st
     return lines
 
 
+def _route_poi_section_lines(route_source: dict[str, Any] | None) -> list[str]:
+    if not isinstance(route_source, dict):
+        return []
+    if str(route_source.get("read_path") or "").strip() != "canonical":
+        return []
+
+    layer_counts = route_source.get("layer_counts") or {}
+    if not isinstance(layer_counts, dict):
+        layer_counts = {}
+
+    raw_count = route_source.get("route_poi_layer_count")
+    if raw_count is None:
+        raw_count = layer_counts.get("route_poi_layer")
+    if raw_count is None:
+        layers = route_source.get("layers") or {}
+        if isinstance(layers, dict):
+            raw_count = len(layers.get("route_poi_layer") or [])
+
+    try:
+        poi_count = int(raw_count or 0)
+    except (TypeError, ValueError):
+        poi_count = 0
+    if poi_count <= 0:
+        return []
+
+    route_base_id = route_source.get("route_base_id")
+    route_version_key = route_source.get("route_version_key")
+    lines = [
+        "Źródło POI: canonical route_poi_layer",
+        f"route_poi_layer_count={poi_count}",
+        "Opis: canonical route_poi_layer jest bazą A8; legacy cache / route_poi_analyze_readonly pozostają fallbackiem dla szczegółowej logistyki",
+    ]
+    if route_base_id is not None:
+        lines.append(f"route_base_id={route_base_id}")
+    if route_version_key:
+        lines.append(f"route_version_key={route_version_key}")
+    return lines
+
+
 _ROUTE_VERSION_META_KEYS = (
     "route_id",
     "route_artifact_id",
@@ -2080,6 +2119,11 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
     # ---- A8 woda/sklepy/refill: poi readonly (pelny + grupa) ----
     if variant in ("pelny", "grupa"):
         H("## A8 - WODA / SKLEPY / REFILL")
+        poi_canonical_lines = _route_poi_section_lines(route_source)
+        for line in poi_canonical_lines:
+            H(line)
+        if poi_canonical_lines:
+            H("")
         dist = _resolve_distance_km(route_id)
         poi = _read_poi_analysis_cache(route_id) if route_id else None
         if poi is None:

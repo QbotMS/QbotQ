@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-06-30 — DECYZJA: route_report pokazuje canonical marker POI w A8
+
+**Status:** wdrożone minimalnie w `qbot_route_report_tool.py`.
+
+**Decyzja:** jeśli `read_canonical_route(route_id)` zwraca canonical `route_poi_layer`, route_report pokazuje w A8 jawny marker źródła POI z liczbą punktów tej warstwy.
+
+**Zasada:** canonical `route_poi_layer` jest pierwszym sygnałem w A8, a legacy cache / `route_poi_analyze_readonly` pozostają fallbackiem dla szczegółowej logistyki, godzin i listy kandydatów. Brak canonical POI nie wywraca raportu i nie zmienia A0, A0B, A0C ani A3.
+
+**Kontrakt:** raport nie udaje jeszcze pełnej canonical listy logistycznej, jeśli helper zwraca tylko count; marker ma jedynie pokazać, że A8 czyta już canonical store.
+
 ## 2026-06-30 — DECYZJA: route_report pokazuje canonical marker nawierzchni w A3
 
 **Status:** wdrożone minimalnie w `qbot_route_report_tool.py`.

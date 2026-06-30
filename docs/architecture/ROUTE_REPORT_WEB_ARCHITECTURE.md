@@ -542,6 +542,12 @@ potwierdza canonical store. Pełny `surface_summary_json` pozostaje legacy
 fallbackiem dla szczegółowej klasyfikacji, więc A3 nie udaje jeszcze pełnego
 canonical summary, ale już pokazuje, że primary read-path jest w DB.
 
+Aktualizacja 2026-06-30: A8 renderuje teraz też jawny marker canonical
+`route_poi_layer` z liczbą punktów, jeśli `read_canonical_route()` potwierdza
+canonical store. Legacy cache i `route_poi_analyze_readonly` dalej domykają
+szczegóły logistyczne, godziny i listę kandydatów, więc A8 nie udaje jeszcze
+pełnej canonical listy POI, ale pokazuje, że primary read-path jest w DB.
+
 Aktualizacja 2026-06-29: sekcja `POI / zaopatrzenie` ma priorytet produktu dla
 Polski. Główne źródła to sklepy spożywcze, stacje paliw i punkty gastronomiczne;
 publiczne `drinking_water` jest tylko bonusem. Każdy punkt w raporcie musi mieć
