@@ -5,27 +5,41 @@
 
 ---
 
-## 2026-06-30 — DECYZJA: route_axis_profile jako kanoniczna oś trasy dla meteo, nawierzchni, land-cover i raportów
+## 2026-06-30 — DECYZJA: route_base, route_poi_layer i route_analysis_run jako rozdzielone warstwy trasy
 
 **Status:** aktywna decyzja architektoniczna.
 
-**Intencja:** QBot ma mieć jedno źródło prawdy dla przebiegu trasy: `route_axis_profile`. Wszystkie modele i raporty pracują względem tej osi, a nie względem osobnych, równoległych prawd lub tekstowych sekcji raportu.
+**Intencja:** QBot rozdziela fakty trasy, półstałe warstwy źródłowe i analizę konkretnego przejazdu. Nie mieszamy danych o trasie z overlayami zależnymi od `start_time`, prognozy i modelu ETA.
 
-**Źródło wejściowe:** źródłem wejściowym pozostaje `route_artifact` / raw track z oryginalną geometrią RWGPS/GPX, `route_id`, `route_artifact_id`, `route_version_key` oraz surowymi punktami/polyline do ponownych przeliczeń.
+**route_base / route_axis_base:** zawiera tylko fakty i półstałe dane źródłowe trasy: `route_id`, `route_artifact_id`, `route_version_key`, `route_modified_at` / `route_updated_at`, `geometry_hash`, raw geometry reference, kanoniczną oś 50 m, `km_from`, `km_to`, `distance`, bazowe `elevation/slope`, oraz obiektywne dane źródłowe: `surface`, `highway`, `tracktype`, `landuse`, `natural`, `forest/wood`, `building/settlement context`, `water/river/lake context`, plus `quality/coverage/status` per source layer.
 
-**Kanoniczna oś:** `route_axis_profile` jest wspólnym kontraktem analitycznym dla całej trasy, z segmentacją co 50 m. Zawiera co najmniej: `route_id`, `route_artifact_id`, `route_version_key`, `km_from`, `km_to`, geometrię segmentu, dystans, ETA oraz podstawowe `elevation` i `slope`.
+**route_base nie zawiera gotowych ocen ani modeli pochodnych:** nie przechowuje `asphalt_heat_factor`, `sun/shade exposure factor`, `wind exposure factor`, `route risk factor`, `WBGT`, `cold-risk`, `weather`, `open_at_eta`, `recommended stops`, `nutrition/hydration` ani `resupply decision`. Te wartości są liczone później w `route_analysis_run` / `route_report_run` na podstawie `route_base`, `route_poi_layer`, `start_time`, prognozy, ETA i modeli.
 
-**Warstwy dopinane do osi:** surface, land-cover, sun/shade exposure, wind exposure, asphalt heat factor, weather at ETA, WBGT, cold-risk, POI/resupply, risk flags oraz per-layer quality/coverage. Warstwy zapisują wynik względem tej samej osi, nie jako osobne źródła prawdy.
+**route_poi_layer:** może być półstałą warstwą przy `route_base`. Zawiera `poi_id` / `source_place_id`, `provider`, `name`, `category`, `lat/lon`, `km_on_route`, `distance_from_route_m`, `opening_hours`, `opening_hours_fetched_at`, `source_updated_at`, `confidence`, `validity_hint`, `stale_after`.
 
-**Warstwy mikro i zdarzenia:** `elevation_micro_profile` jest osobną, gęstszą warstwą 5–10 m albo raw-points based i służy tylko do stromizn, krótkich ścianek, zjazdów oraz max grade. `climb_events` / `steep_ramp_events` są zdarzeniami przypiętymi do kilometrażu. Mogą pochodzić z GPX/RWGPS metadata albo z detekcji z `elevation_micro_profile` i nie mogą znikać przez wygładzenie osi 50 m.
+**route_poi_layer nie zawiera decyzji dla konkretnego przejazdu:** nie przechowuje `open_at_eta`, `selected_store_in_town`, `recommended_stop`, `refill_priority`, `detour_worth_it` ani `risk_of_closed_at_arrival`.
 
-**Zasady modelowe:** WBGT i model niższych temperatur konsumują `route_axis_profile` + feature layers, nie tekst raportu. Brak warstwy daje `WARN`, `PARTIAL`, `LOW_CONFIDENCE` albo jawny status niskiej jakości, nigdy silent OK. Każda warstwa musi mieć `route_version_key` albo jawny status legacy / low-confidence.
+**route_analysis_run / route_report_run:** jest osobnym snapshotem analizy dla konkretnego `start_time`. Zawiera `route_id`, `route_artifact_id`, `route_version_key`, `start_time`, `assumed_speed_model`, `forecast_provider`, `forecast_fetched_at`, `report_generated_at`, `ETA` per segment, `weather_overlay` per segment, `WBGT_overlay` per segment, `cold_risk_overlay` per segment, `open_at_eta`, `selected POI stops`, `recommended_stop`, `refill_priority`, `enough_for_this_ride`, `selected_store_in_town`, `detour_worth_it`, `risk_of_closed_at_arrival`, `resupply plan` oraz ostrzeżenia o starych godzinach otwarcia.
 
-**Legacy i fallback:** `route_frames`, `route_frame_weather` oraz tekstowe sekcje raportu pozostają legacy fallbackiem lub rendererem, nie źródłem prawdy. Nie tworzymy osobnej, równoległej prawdy typu `route_environment_profile`. Nie rozbieramy GPX kilka razy na niezależne pipeline’y.
+**Pogoda i oceny czasowe jako overlay:** pogoda, WBGT i cold-risk nie są trwałymi cechami trasy. Są overlayem konkretnego uruchomienia raportu, zależnym od `start_time`, `forecast_fetched_at` i wybranego modelu ETA. Nie zapisujemy ich do `route_base` jako stałej prawdy.
 
-**Route version guard:** guard wersji trasy obejmuje `route_axis_profile` oraz wszystkie warstwy pochodne, w tym land-cover, surface, weather i climb events. Mismatch musi kończyć się jawnym ostrzeżeniem lub błędem zgodności, a nie cichym przejściem na obcy cache.
+**Półstałość i świeżość POI:** `route_poi_layer` i podstawowe `opening_hours` mogą być cache’owane przy wersji trasy, ale muszą mieć `fetched_at` i `stale_after`. Jeśli dane są stare, `route_analysis_run` ma pokazać `WARN` albo odświeżyć źródło przed użyciem.
 
-**Cel operacyjny:** pełny raport trasy jest rendererem i orkiestratorem, nie właścicielem obliczeń. Jego zadaniem jest złożyć wynik względem `route_axis_profile` i pokazać jakość oraz kompletność warstw, a nie tworzyć alternatywną geometrię analityczną.
+**Webhook / web-book event:** gdy QBot dostaje informację o nowej trasie albo nowej wersji istniejącej trasy, powinien automatycznie uruchomić precompute tylko stałej i półstałej bazy trasy.
+
+**Detekcja wersji:** nowa wersja trasy jest identyfikowana przez `route_id`, `route_modified_at` / `route_updated_at` ze źródła, `geometry_hash`, `route_artifact_id` oraz `route_version_key`.
+
+**Automatyczny precompute:** webhook tworzy lub odświeża `route_base`, raw geometry reference, kanoniczną oś 50 m, `elevation_micro_profile`, `climb_events` / `steep_ramp_events`, surface source layer, land-cover / source context layer, `route_poi_layer`, `opening_hours` dla POI oraz `quality/coverage/status` per layer.
+
+**Zakres precompute:** automatyczny precompute nie tworzy pełnego `route_analysis_run` zależnego od konkretnej daty i godziny. Nie tworzy `weather_overlay`, `WBGT_overlay`, `cold_risk_overlay`, `open_at_eta`, `selected_store_in_town`, `resupply plan`, `nutrition/hydration plan` ani final `route_report_run`, chyba że event jawnie zawiera `planned_start_time` i intencję przygotowania raportu dla konkretnego przejazdu.
+
+**Kiedy powstaje run analityczny:** pełna analiza przejazdu powstaje jako osobny `route_analysis_run` / `route_report_run` na żądanie użytkownika, albo automatycznie tylko wtedy, gdy event zawiera `planned_start_time` i jawnie oznacza intencję przygotowania raportu dla konkretnego przejazdu.
+
+**Idempotencja:** webhook dla tej samej `route_version_key` nie tworzy duplikatu. Może odświeżyć półstałe warstwy, jeśli są po terminie `stale_after`. Każdy przebieg zapisuje status: `pending`, `running`, `complete`, `failed`, `partial`.
+
+**Separacja odpowiedzialności:** `route_base` jest trwałą bazą faktów i półstałych danych. `route_analysis_run` jest kasowalnym snapshotem analizy. Cleanup analiz będzie osobnym modułem później.
+
+**Cel operacyjny:** pełny raport trasy składa `route_base`, `route_poi_layer` i `route_analysis_run`, zamiast mieszać dane stałe z czasowymi overlayami. Dzięki temu pogoda, WBGT, cold-risk i decyzje o POI są jednoznacznie przypięte do konkretnego startu, a nie do samej trasy.
 
 ## 2026-06-29 — Readiness diagnostics rozdzielają aktywne błędy od szumu
 
