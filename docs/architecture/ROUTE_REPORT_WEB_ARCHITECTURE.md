@@ -536,6 +536,12 @@ dodaje też jawny blok `Geologia / podłoże (geology_context)` z providerem,
 status, material_hint i interpretacją ryzyka, ale nie nadpisuje OSM surface.
 Storage i schema DB bez zmian; HikConnect/GATE poza zakresem i nietknięte.
 
+Aktualizacja 2026-06-30: A3 renderuje teraz też jawny marker canonical
+`route_surface_layer` z liczbą segmentów, jeśli `read_canonical_route()`
+potwierdza canonical store. Pełny `surface_summary_json` pozostaje legacy
+fallbackiem dla szczegółowej klasyfikacji, więc A3 nie udaje jeszcze pełnego
+canonical summary, ale już pokazuje, że primary read-path jest w DB.
+
 Aktualizacja 2026-06-29: sekcja `POI / zaopatrzenie` ma priorytet produktu dla
 Polski. Główne źródła to sklepy spożywcze, stacje paliw i punkty gastronomiczne;
 publiczne `drinking_water` jest tylko bonusem. Każdy punkt w raporcie musi mieć

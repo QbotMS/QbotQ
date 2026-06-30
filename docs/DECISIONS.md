@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-06-30 — DECYZJA: route_report pokazuje canonical marker nawierzchni w A3
+
+**Status:** wdrożone minimalnie w `qbot_route_report_tool.py`.
+
+**Decyzja:** jeśli `read_canonical_route(route_id)` zwraca canonical `route_surface_layer`, route_report pokazuje w A3 jawny marker źródła nawierzchni z liczbą segmentów tej warstwy.
+
+**Zasada:** canonical `route_surface_layer` jest pierwszym sygnałem w A3, a legacy `surface_summary_json` pozostaje fallbackiem dla szczegółowej klasyfikacji. Brak canonical surface nie wywraca raportu i nie zmienia A0, A0B ani A0C.
+
+**Kontrakt:** raport nie udaje pełnego canonical surface summary, jeśli helper zwraca tylko count; marker ma jedynie pokazać, że A3 czyta już canonical store.
+
 ## 2026-06-30 — DECYZJA: route_report pokazuje canonical profil wysokości i podjazdy
 
 **Status:** wdrożone minimalnie w `qbot_route_report_tool.py`.

@@ -172,6 +172,45 @@ def _route_elevation_section_lines(route_source: dict[str, Any] | None) -> list[
     ]
 
 
+def _route_surface_section_lines(route_source: dict[str, Any] | None) -> list[str]:
+    if not isinstance(route_source, dict):
+        return []
+    if str(route_source.get("read_path") or "").strip() != "canonical":
+        return []
+
+    layer_counts = route_source.get("layer_counts") or {}
+    if not isinstance(layer_counts, dict):
+        layer_counts = {}
+
+    raw_count = route_source.get("route_surface_layer_count")
+    if raw_count is None:
+        raw_count = layer_counts.get("route_surface_layer")
+    if raw_count is None:
+        layers = route_source.get("layers") or {}
+        if isinstance(layers, dict):
+            raw_count = len(layers.get("route_surface_layer") or [])
+
+    try:
+        surface_count = int(raw_count or 0)
+    except (TypeError, ValueError):
+        surface_count = 0
+    if surface_count <= 0:
+        return []
+
+    route_base_id = route_source.get("route_base_id")
+    route_version_key = route_source.get("route_version_key")
+    lines = [
+        "Źródło nawierzchni: canonical route_surface_layer",
+        f"route_surface_layer_count={surface_count}",
+        "Opis: canonical route_surface_layer jest bazą A3; legacy surface_summary_json pozostaje fallbackiem dla szczegółowej klasyfikacji",
+    ]
+    if route_base_id is not None:
+        lines.append(f"route_base_id={route_base_id}")
+    if route_version_key:
+        lines.append(f"route_version_key={route_version_key}")
+    return lines
+
+
 _ROUTE_VERSION_META_KEYS = (
     "route_id",
     "route_artifact_id",
@@ -1962,6 +2001,11 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
     # ---- A2/A3 odcinkami: profile_detail (pelny + grupa) ----
     if variant in ("pelny", "grupa"):
         H("## A3 - NAWIERZCHNIA I PROFIL ODCINKAMI")
+        surface_canonical_lines = _route_surface_section_lines(route_source)
+        for line in surface_canonical_lines:
+            H(line)
+        if surface_canonical_lines:
+            H("")
         surface_profile = None
         try:
             from qbot_route_tools import _fetch_best_route_surface_profile as _fetch_surface_profile
