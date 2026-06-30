@@ -4,6 +4,53 @@
 > Szczegóły i dowody: docs exchange CURRENT.md (wpisy TASK 22, TASK 23, „B4-v2 — POGODA…", decyzje 2026-06-30) oraz docs/DECISIONS.md.
 > Konwencja pracy: po polsku, bez spekulacji, „bez dowodu nie ma sukcesu", weryfikacja jako qbot, .bak przed zmianą.
 
+## ZAKRES SILNIKA METEO — aktualizacja 2026-06-30 (sesja weryfikacyjna)
+> Ta sekcja NADPISUJE wcześniejsze ujęcie „tylko WBGT". Wątki 1–3 poniżej to detale trybu UPAŁ.
+
+### Jeden silnik, wiele trybów
+Nie budujemy osobnych projektów na upał/opad/burzę/wiatr. Jeden SILNIK METEO; zagrożenia to jego TRYBY,
+dzielące wspólny szkielet: oś trasy (segmenty + km + przewyższenie) × ETA per segment (model czasu) ×
+Open-Meteo (godzinowo) × wzorzec alertu „najgorsze ciągłe okno".
+Tryby: (1) UPAŁ [najdalej; WBGT + cień + przewyższenie], (2) WIATR [route_weather._rel_wind, m/s, gotowe],
+(3) OPAD [Open-Meteo], (4) BURZA [proxy CAPE/kod/porywy, stopniowana z twardym sufitem NO-GO],
+w tle (5) ODCZUWALNE/ZIMNO [UTCI/operacyjna = Wątek 2, NIE zbudowane].
+
+### Granica QBot vs QExt2 (ważne — nie mieszać)
+- QBot = analiza/plan trasy: OSTRZEGA i doradza (kiedy gorąco, gdzie się nakłada, sugestia startu, plan picia).
+- „Heat-optimal power per segment" (rozpiska mocy / wskazania dynamiczne na żywo) → QExt2 / Karoo, NIE QBot.
+  Model bilansu cieplnego policzony i działa jako dowód fizyki; w QBocie służy tylko jako UZASADNIENIE alertów,
+  nie jako reżyser mocy.
+
+### Jedno źródło prawdy
+Jeden przebieg silnika → tabela co 30 min (per okno: zakres km, WBGT, Feel, opad, wiatr-vs-kierunek, burza,
+dominujące ryzyko). LLM i wszystkie odczyty (tekst, WEB) biorą dane Z TEJ TABELI — nic nie liczone osobno obok
+(lekcja z diagnozy raportu: sekcje w izolacji = sprzeczności i fałszywa pewność).
+ALE: analiza WBGT / punktów krytycznych liczona na PEŁNEJ rozdzielczości (~50 m / per segment), nie z okien 30 min
+— inaczej gubimy iglice (dowiedzione na makiecie). Zasada: licz gęsto, pokazuj rzadziej, alerty z gęstego.
+
+### Produkty
+- TEKST (teraz): alerty z ciągłej ekspozycji („X min nieprzerwanie w 'bardzo wysoka', km A–B, ~godz."),
+  SUGESTIA STARTU (przelicz kilka godzin startu, wybierz najlepsze okno względem WSZYSTKICH trybów —
+  np. burza o 14:00 to twarde ograniczenie, nie miękki koszt), lekki plan picia (z masy ciała). + alert_level jako flaga.
+- WEB (kolejny krok): dwie krzywe — temperatura termometr + WBGT — plus skala zagrożenia. Bez osobnej warstwy lasu
+  (cień siedzi już w WBGT; rysowanie lasu = przyczyna zamiast skutku).
+
+### Źródło danych
+Open-Meteo, tryb best_match (dla PL wybiera ICON-D2/ICON-EU na krótki termin — najlepsze na burze, globalne dalej).
+ECMWF dostępny w Open-Meteo gdyby trzeba (open-data od 2025-10). Radiacja (shortwave+direct) w tym samym zapytaniu
+— powód, dla którego NIE OpenWeatherMap (tam radiacja to osobny płatny produkt, a „ECMWF" to tylko dane referencyjne).
+Opcjonalnie: rozjazd modeli jako sygnał pewności.
+
+### Zrobione dziś (2026-06-30, zacommitowane jako qbot)
+- solar_azimuth_deg w qbot_wbgt_tools.py (solver nietknięty — dowód z diff).
+- qbot3/routes/route_shade_resolver.py: segment_tau() — reguła cienia oparta na danych trasy 55798129
+  (cień = klasa 10 drzewa; oba boki/środek → fdir×0.10 prześwit; jeden bok → azymut + taper wysokości;
+  zabudowa = brak cienia; cossza<CZA_MIN = pomiń; chmury obsłużone, bo tau mnoży fdir_base z radiacji z chmurami).
+
+### NIE zbudowane (kolejka)
+Feel/UTCI (Wątek 2); join „segment→godzina" + fdir_eff do solvera (silnik WBGT-w-czasie); pola alert_level/surface;
+tryby opad/burza + wiatr-jako-alert; tabela 30-min; sugestia startu; plan picia z masy.
+
 ## Cel projektu
 Dać QBotowi spójny, rowerowy obraz warunków atmosferycznych dla trasy:
 (a) ryzyko cieplne (WBGT), (b) całoroczne odczuwalne ze słońcem (UTCI / temperatura operacyjna),
