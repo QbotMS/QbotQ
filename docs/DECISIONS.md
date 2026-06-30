@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-06-30 — DECYZJA: 2C.1 canonical read-helper dla warstw precompute
+
+**Status:** wdrozone jako helper odczytu, bez zmian w raportowaniu.
+
+**Decyzja:** `qbot3/routes/route_canonical_read.py` czyta kanoniczne warstwy trasy z DB i zwraca jawne `read_path="canonical"` albo `read_path="legacy_fallback"` z `fallback_reason`, gdy brakuje danych.
+
+**Zakres odczytu:** helper korzysta z `qbot_v2.route_base`, `qbot_v2.route_axis_segments`, `qbot_v2.route_surface_layer`, `qbot_v2.route_landcover_layer`, `qbot_v2.route_poi_layer`, `qbot_v2.route_elevation_samples` i `qbot_v2.route_climb_events`. Nie renderuje raportu i nie uruchamia analyzers.
+
+**Zasada:** canonical precompute jest primary read-path dla danych trasy, a legacy/cache/analyzers pozostają fallbackiem. `route_analysis_run` nadal jest snapshotem zależnym od `start_time`, nie trwałym magazynem faktów trasy.
+
+**Test:** live smoke dla `55798129` ma potwierdzać obecność `route_base_id=1`, warstw surface/landcover/poi/elevation/climb oraz brak dodatkowych zapisów do `route_precompute_jobs`.
+
 ## 2026-06-30 — DECYZJA: 2C store wiring — route_elevation_samples + route_climb_events
 
 **Status:** WDROZONE (silnik + writer + DDL + testy + orchestrator disabled). Tabele utworzone na qbot_v2. Read-path 2C (raport) NIETKNIETY.
