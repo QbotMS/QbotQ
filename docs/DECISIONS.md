@@ -295,3 +295,44 @@ Narzędzia w `qbot3/tool_registry.py`: `route_plan_analysis` (zaplanowana trasa/
 _Uwaga (2026-06-28): ostatni wpis w tej sekcji zawierał notatkę „STAGED, niezacommitowane" — nieaktualne. Zmiany zostały zacommitowane w `2f5b62a` i `d8591c4`. HEAD: `9b44531`._
 
 Aktualizacja 2026-06-29: route surface writer ma quality gate w `tools/rwgps/client.py`. Partial wynik Overpass lub `LOW_CONFIDENCE` nie nadpisuje dobrego profilu dla tej samej trasy, jeśli istnieje już profil `GOOD_TAGGED` albo `GOOD_INFERRED` z lepszą jakością. Schemat DB bez zmian. Słaby wynik bez lepszego istniejącego profilu może być zapisany z warningiem `LOW_QUALITY_PROFILE_NO_BETTER_EXISTING_PROFILE`. HikConnect/GATE pozostają poza zakresem i nietknięte.
+## 2026-06-30 — DECYZJA: etapowanie DB route_base / route_axis / route_analysis_run
+
+**Status:** aktywna decyzja architektoniczna.
+
+**Intencja:** przed implementacją migracji QBot rozdziela docelowy schemat tras na etapy, żeby nie mieszać faktów trasy, półstałych warstw i snapshotów analiz przejazdu.
+
+**Faza 2A — minimalny fundament DB:** wdrażamy tylko tabele wymagane do poprawnego rozdziału bazy trasy od analiz:
+- `route_base`,
+- `route_axis_segments`,
+- `route_surface_layer`,
+- `route_landcover_layer`,
+- `route_poi_layer`,
+- `route_precompute_jobs`,
+- `route_analysis_run`.
+
+**Zakres Fazy 2A:** `route_base` i `route_axis_segments` są trwałym fundamentem wersji trasy. `route_surface_layer`, `route_landcover_layer` i `route_poi_layer` są półstałymi warstwami źródłowymi. `route_precompute_jobs` kontroluje automatyczne przeliczenia po webhooku lub backfillu. `route_analysis_run` jest kasowalnym snapshotem konkretnej analizy przejazdu.
+
+**Nie dublujemy bytów:** na tym etapie nie tworzymy osobnej tabeli `route_report_run`. Render raportu jest atrybutem `route_analysis_run` przez `rendered_report_artifact_id`.
+
+**Faza 2B / 2C — później:** odkładamy na kolejne etapy:
+- `elevation_micro_profile`,
+- `route_climb_events`,
+- znormalizowane segmentowe overlaye pogody / WBGT / cold-risk,
+- osobny `route_report_run`, jeśli raport zacznie mieć własny cykl życia i wersjonowanie.
+
+**Legacy:** `route_frames` i `route_frame_weather` pozostają legacy/fallbackiem. Nie są nowym modelem docelowym i nie mogą stać się drugą prawdą obok `route_axis_segments`.
+
+**Idempotencja:** `route_base` jest unikalne po `route_id + route_version_key`. Joby precompute są idempotentne po `route_version_key + job_type` albo jawnej wartości `idempotency_key`. `route_analysis_run` może mieć wiele rekordów dla tej samej wersji trasy, bo zależy od `requested_start_time`, prognozy i modelu prędkości.
+
+**Cleanup:** czyszczenie dotyczy tylko `route_analysis_run` i jego przyszłych child-overlayów. `route_base`, `route_axis_segments` i półstałe warstwy trasy nie są usuwane w ramach cleanupu analiz.
+
+**Reuse istniejących analyzerów:** Faza 2A nie tworzy nowych kalkulatorów powierzchni, land-cover, POI, pogody ani raportu. Nowy kod ma być głównie kontraktem DB, writerem wyników i orkiestratorem precompute. Źródłem obliczeń pozostają istniejące narzędzia:
+- `route_artifacts` i `route_parse_results` dla faktów trasy,
+- parser RWGPS/GPX dla artefaktu i geometrii,
+- `route_surface_engine` dla segmentacji 50 m i nawierzchni,
+- `_persist_route_surface_profile` / `route_surface_profiles` jako obecny zapis legacy surface,
+- `surface_landcover` oraz `route_brief.build_detail(..., land_cover=True)` dla land-cover/context,
+- obecny POI analyzer, Google Places, Overpass fallback i `poi_open_window` dla POI oraz `opening_hours`,
+- `qbot_route_report_tool`, `qbot_route_analysis_tool`, `route_weather`, WBGT toolchain, speed model i POI ETA/opening-hours evaluator dla `route_analysis_run`.
+
+**Zakaz dublowania:** Nie wolno pisać równoległego analyzera surface, land-cover, POI, weather, ETA/opening-hours ani raportu, jeśli istniejące narzędzie może zostać użyte jako źródło danych. Wyjątkiem jest tylko adapter/writer/orchestrator, który zapisuje wynik istniejącego toola do nowych tabel i pilnuje `route_version_key`.
