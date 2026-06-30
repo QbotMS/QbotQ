@@ -140,6 +140,11 @@ użytkownik
 
 `route_report` obecnie jest orkiestratorem istniejących narzędzi, nie nowego pipeline’u WEB.
 
+Aktualizacja 2026-06-30: `qbot_route_report_tool.py` dodaje teraz tylko marker
+diagnostyczny z `route_canonical_read` (`read_path`, `fallback_reason`,
+`land_cover_preferred_source`, `route_shade_layer_count`), ale sekcje A3/A8 i
+legacy fallback pozostają bez przebudowy.
+
 ## B2. Narzędzia obecnie składane przez route_report
 
 Obecny `qbot_route_report_tool.py` korzysta m.in. z:

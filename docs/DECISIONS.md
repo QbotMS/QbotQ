@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-06-30 — DECYZJA: route_report pokazuje canonical read-path jako marker, bez przebudowy sekcji A/B
+
+**Status:** wdrożone minimalnie w `qbot_route_report_tool.py`.
+
+**Decyzja:** publiczny route_report najpierw próbuje `read_canonical_route(route_id)` i zapisuje marker źródła danych trasy: `read_path`, `fallback_reason`, `layer_counts`, `route_shade_layer_count`, `shade_coverage_pct` oraz `land_cover_preferred_source`.
+
+**Zasada:** canonical store jest teraz widocznym źródłem diagnostycznym w raporcie, ale sekcje A3/A8/elevation nie zostały jeszcze przepięte na canonical read-path. Legacy fallback pozostaje bez zmian i brak canonical data nie może wywrócić raportu.
+
+**Kontrakt źródła landscape:** gdy helper zwraca `land_cover_preferred_source=worldcover_shade`, raport ma to pokazać jawnie; gdy helper zwraca fallback do OSM, raport ma pokazać ten wybór bez zgadywania.
+
 ## 2026-06-30 — DECYZJA: kompletność RWGPS → precompute liczymy po aktywnych jobach orchestratora
 
 **Status:** wdrożone w triggerze precompute.

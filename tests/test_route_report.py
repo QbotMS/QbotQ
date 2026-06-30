@@ -183,6 +183,50 @@ VERSIONED_POI_CACHE = {
     "elevation_gain_m": 519.8,
 }
 
+CANONICAL_ROUTE_SOURCE = {
+    "route_id": "55798129",
+    "route_base_id": 1,
+    "route_version_key": "7b11b5b73397923df2a433a285a97d5121b3f0d5e2af824541f742ba0a1d90fe",
+    "route_artifact_id": 306,
+    "read_path": "canonical",
+    "fallback_reason": None,
+    "layer_counts": {
+        "route_base": 1,
+        "route_axis_segments": 1423,
+        "route_surface_layer": 76,
+        "route_landcover_layer": 890,
+        "route_poi_layer": 38,
+        "route_shade_layer": 1423,
+        "route_elevation_samples": 1424,
+        "route_climb_events": 1,
+    },
+    "route_shade_layer_count": 1423,
+    "shade_coverage_pct": 100.0,
+    "land_cover_preferred_source": "worldcover_shade",
+}
+
+LEGACY_ROUTE_SOURCE = {
+    "route_id": "55798129",
+    "route_base_id": 1,
+    "route_version_key": "7b11b5b73397923df2a433a285a97d5121b3f0d5e2af824541f742ba0a1d90fe",
+    "route_artifact_id": 306,
+    "read_path": "legacy_fallback",
+    "fallback_reason": "route_base_missing",
+    "layer_counts": {
+        "route_base": 0,
+        "route_axis_segments": 0,
+        "route_surface_layer": 0,
+        "route_landcover_layer": 0,
+        "route_poi_layer": 0,
+        "route_shade_layer": 0,
+        "route_elevation_samples": 0,
+        "route_climb_events": 0,
+    },
+    "route_shade_layer_count": 0,
+    "shade_coverage_pct": 0.0,
+    "land_cover_preferred_source": "osm_landcover_legacy",
+}
+
 
 def _fake_section_c(prompt, **kwargs):
     """Stub LLM dla _generate_section_c: zwraca C1/C2/C4 zawsze, C3 tylko gdy proszono."""
@@ -1008,6 +1052,63 @@ class TestRouteReportSurfaceSummaryRegression(unittest.TestCase):
         self.assertIn("Status zaopatrzenia: UNAVAILABLE", analysis)
         self.assertIn("Kompletność techniczna POI: UNAVAILABLE", analysis)
         self.assertNotIn("route_poi_analyze_readonly", self._names())
+
+
+class TestRouteReportCanonicalReadPath(unittest.TestCase):
+    """Regresja: route_report pokazuje canonical read-path bez ruszania sekcji A/B."""
+
+    def setUp(self):
+        self.calls = []
+
+        def fake_call(name, args):
+            self.calls.append((name, dict(args)))
+            return CANNED[name]
+
+        self._orig_call = rr._call_tool
+        self._orig_dist = rr._resolve_distance_km
+        self._orig_poi_cache = rr._read_poi_analysis_cache
+        self._orig_version_record = rr._fetch_route_version_record
+        self._orig_fetch_surface = None
+        rr._call_tool = fake_call
+        rr._resolve_distance_km = lambda route_id: 99.4
+        rr._read_poi_analysis_cache = lambda route_id: CANNED_POI_CACHE
+        rr._fetch_route_version_record = lambda **kwargs: ACTIVE_ROUTE_VERSION
+        import qbot_route_tools as rt
+        self._rt = rt
+        self._orig_fetch_surface = rt._fetch_best_route_surface_profile
+        rt._fetch_best_route_surface_profile = lambda **kwargs: None
+
+    def tearDown(self):
+        import qbot_route_tools as rt
+        rr._call_tool = self._orig_call
+        rr._resolve_distance_km = self._orig_dist
+        rr._read_poi_analysis_cache = self._orig_poi_cache
+        rr._fetch_route_version_record = self._orig_version_record
+        rt._fetch_best_route_surface_profile = self._orig_fetch_surface
+
+    def test_canonical_marker_and_landscape_source_are_rendered(self):
+        with patch.object(rr, "read_canonical_route", return_value=CANONICAL_ROUTE_SOURCE):
+            out = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})
+        analysis = out["analysis"]
+        self.assertEqual(out["route_source"]["read_path"], "canonical")
+        self.assertEqual(out["route_source"]["land_cover_preferred_source"], "worldcover_shade")
+        self.assertEqual(out["route_source"]["route_shade_layer_count"], 1423)
+        self.assertIn("## A0 - ŹRÓDŁO DANYCH TRASY", analysis)
+        self.assertIn("źródło danych trasy: canonical", analysis)
+        self.assertIn("landscape_source: worldcover_shade", analysis)
+        self.assertIn("route_shade_layer_count=1423", analysis)
+        self.assertIn("shade_coverage_pct=100.0%", analysis)
+
+    def test_legacy_fallback_still_renders_when_canonical_missing(self):
+        with patch.object(rr, "read_canonical_route", return_value=LEGACY_ROUTE_SOURCE):
+            out = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})
+        analysis = out["analysis"]
+        self.assertEqual(out["route_source"]["read_path"], "legacy_fallback")
+        self.assertEqual(out["route_source"]["fallback_reason"], "route_base_missing")
+        self.assertIn("źródło danych trasy: legacy_fallback", analysis)
+        self.assertIn("fallback_reason: route_base_missing", analysis)
+        self.assertIn("landscape_source: osm_landcover_legacy", analysis)
+        self.assertIn("## A - DANE TRASY", analysis)
 
 
 class TestRouteReportPoiSupplyRegression(unittest.TestCase):

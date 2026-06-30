@@ -21,6 +21,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
+from qbot3.routes.route_canonical_read import read_canonical_route
+
 _VARIANT_ALIASES = {
     "skrocony": "skrocony", "skrócony": "skrocony", "krotki": "skrocony",
     "krótki": "skrocony", "short": "skrocony", "default": "skrocony",
@@ -67,6 +69,16 @@ def _resolve_distance_km(route_id: str | None) -> float | None:
         return dist
     except Exception:
         return None
+
+
+def _read_route_source(route_id: str | None) -> dict[str, Any] | None:
+    if not route_id:
+        return None
+    try:
+        data = read_canonical_route(route_id=route_id)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
 
 
 _ROUTE_VERSION_META_KEYS = (
@@ -1790,6 +1802,10 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
         route_id = str(route_id).strip().split("/")[-1].split("?")[0] or None
     start = a.get("start")
     surface_detail = bool(a.get("surface_detail"))
+    route_source = _read_route_source(route_id)
+    route_read_path = str((route_source or {}).get("read_path") or "legacy_fallback")
+    route_fallback_reason = (route_source or {}).get("fallback_reason")
+    route_landscape_source = (route_source or {}).get("land_cover_preferred_source")
 
     base_args: dict[str, Any] = {}
     if route_id:
@@ -1803,6 +1819,32 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
     H(f"# RAPORT TRASY - wariant {_VARIANT_TITLE[variant]}")
     if route_id:
         H(f"Trasa: {route_id} · {_RWGPS_URL.format(rid=route_id)}")
+    H("")
+    H("## A0 - ŹRÓDŁO DANYCH TRASY")
+    H(f"- źródło danych trasy: {route_read_path}")
+    if route_fallback_reason:
+        H(f"- fallback_reason: {route_fallback_reason}")
+    if route_landscape_source:
+        H(f"- landscape_source: {route_landscape_source}")
+    if route_source:
+        layer_counts = route_source.get("layer_counts") or {}
+        if isinstance(layer_counts, dict):
+            summary_bits = []
+            for key in ("route_surface_layer", "route_landcover_layer", "route_poi_layer", "route_shade_layer", "route_elevation_samples", "route_climb_events"):
+                value = layer_counts.get(key)
+                if value is not None:
+                    summary_bits.append(f"{key}={value}")
+            if summary_bits:
+                H("- layer_counts: " + ", ".join(summary_bits))
+        shade_count = route_source.get("route_shade_layer_count")
+        shade_cov = route_source.get("shade_coverage_pct")
+        if shade_count is not None or shade_cov is not None:
+            shade_bits = []
+            if shade_count is not None:
+                shade_bits.append(f"route_shade_layer_count={shade_count}")
+            if shade_cov is not None:
+                shade_bits.append(f"shade_coverage_pct={float(shade_cov):.1f}%")
+            H("- " + ", ".join(shade_bits))
     H("")
     active_route_version = _fetch_route_version_record(route_id=route_id) if route_id else None
 
@@ -2029,6 +2071,7 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
         "status": "ERROR" if integrity_errors else "OK",
         "variant": variant,
         "route_id": route_id,
+        "route_source": route_source,
         "analysis": analysis_text,
         "context_for_section_c": context_for_c,
         "notes": note,
