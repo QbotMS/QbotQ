@@ -150,6 +150,11 @@ Aktualizacja 2026-06-30: pierwszy merytoryczny krok canonical to sekcja
 jako przekrój lewo / środek / prawo względem osi trasy i nie zastępuje jeszcze
 całego A3/A8.
 
+Aktualizacja 2026-06-30: kolejnym addytywnym krokiem canonical jest sekcja
+„profil wysokości / podjazdy" oparta o `route_elevation_samples` i
+`route_climb_events`. Pokazuje liczby próbek i climb events bez przebudowy
+algorytmu time estimate ani legacy sekcji profilu raportowego.
+
 ## B2. Narzędzia obecnie składane przez route_report
 
 Obecny `qbot_route_report_tool.py` korzysta m.in. z:

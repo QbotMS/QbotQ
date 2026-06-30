@@ -53,3 +53,5 @@ Okno wygładzania i progi stroimy porównując **ramka po ramce** wysokość z u
 
 ## Granice
 Podsystem zasila tylko dwie tabele. Nie przepina raportu trasy, nie zmienia `route_analysis_run`, nie dodaje publicznych narzędzi Alberta. Integracja z samym raportem (read-path) to osobny krok.
+
+Aktualizacja 2026-06-30: route_report może teraz czytać canonical `route_elevation_samples` i `route_climb_events` addytywnie jako sekcję „profil wysokości / podjazdy", ale bez zmiany algorytmu wyceny czasu ani legacy sekcji A3/A8.

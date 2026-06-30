@@ -131,6 +131,40 @@ def _route_shade_section_lines(route_source: dict[str, Any] | None) -> list[str]
     ]
 
 
+def _route_elevation_section_lines(route_source: dict[str, Any] | None) -> list[str]:
+    if not isinstance(route_source, dict):
+        return []
+    try:
+        elevation_samples = int(route_source.get("route_elevation_samples") or 0)
+    except (TypeError, ValueError):
+        elevation_samples = 0
+    try:
+        climb_events = int(route_source.get("route_climb_events") or 0)
+    except (TypeError, ValueError):
+        climb_events = 0
+    if elevation_samples <= 0 and climb_events <= 0:
+        return []
+
+    route_base_id = route_source.get("route_base_id")
+    route_version_key = route_source.get("route_version_key")
+    return [
+        "## A0C - PROFIL WYSOKOŚCI / PODJAZDY (canonical route_elevation_samples / route_climb_events)",
+        "- źródło: canonical route_elevation_samples + route_climb_events",
+        f"- profil wysokości: {elevation_samples} próbek route_elevation_samples",
+        f"- podjazdy / ścianki: {climb_events} route_climb_events",
+        "- opis: to warstwa canonical, a nie legacy profil raportowy; służy do pokazywania sygnatury przewyższeń i podjazdów",
+        *(
+            [
+                f"- route_base_id={route_base_id}",
+                f"- route_version_key={route_version_key}",
+            ]
+            if route_base_id is not None or route_version_key is not None
+            else []
+        ),
+        "",
+    ]
+
+
 _ROUTE_VERSION_META_KEYS = (
     "route_id",
     "route_artifact_id",
@@ -1897,6 +1931,8 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
             H("- " + ", ".join(shade_bits))
     H("")
     for line in _route_shade_section_lines(route_source):
+        H(line)
+    for line in _route_elevation_section_lines(route_source):
         H(line)
     active_route_version = _fetch_route_version_record(route_id=route_id) if route_id else None
 

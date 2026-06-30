@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-06-30 — DECYZJA: route_report pokazuje canonical profil wysokości i podjazdy
+
+**Status:** wdrożone minimalnie w `qbot_route_report_tool.py`.
+
+**Decyzja:** gdy `read_canonical_route(route_id)` zwraca niezerowe `route_elevation_samples` lub `route_climb_events`, route_report pokazuje osobną krótką sekcję o profilu wysokości i podjazdach opartą o canonical store.
+
+**Zasada:** sekcja opisuje `profil wysokości` i `podjazdy / ścianki` jako warstwę canonical (`route_elevation_samples` + `route_climb_events`) i nie myli jej z legacy profilem raportowym. Brak canonical elevation nie wywraca raportu i nie zmienia A0/A0B ani A3/A8.
+
+**Kontrakt:** raport pokazuje liczby próbek i climb events, ale nie przebudowuje jeszcze algorytmu oceny przewyższeń ani time estimate.
+
 ## 2026-06-30 — DECYZJA: route_report pokazuje sekcję otoczenia z route_shade_layer / WorldCover
 
 **Status:** wdrożone minimalnie w `qbot_route_report_tool.py`.
