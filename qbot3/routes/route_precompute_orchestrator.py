@@ -21,6 +21,7 @@ from qbot3.routes.route_base_store import ensure_route_base
 from qbot3.routes.route_landcover_store import ensure_route_landcover
 from qbot3.routes.route_poi_store import ensure_route_poi
 from qbot3.routes.route_surface_store import ensure_route_surface
+from qbot3.routes.route_elevation_store import ensure_route_elevation
 
 
 JOB_SEQUENCE: tuple[tuple[str, Callable[..., dict[str, Any]], str], ...] = (
@@ -29,6 +30,24 @@ JOB_SEQUENCE: tuple[tuple[str, Callable[..., dict[str, Any]], str], ...] = (
     ("route_landcover", ensure_route_landcover, "landcover_layer_count"),
     ("route_poi", ensure_route_poi, "poi_layer_count"),
 )
+
+
+# Faza 2C: punkt rozszerzenia na elevation/climb. DOMYSLNIE WYLACZONY.
+# Wlaczany jawnie przez QBOT_ROUTE_ELEVATION_ENABLED=1; przy 0 zachowanie
+# orchestratora jest bajt-identyczne (job nie jest dodawany do sekwencji).
+ELEVATION_JOB: tuple[str, Callable[..., dict[str, Any]], str] = (
+    "route_elevation", ensure_route_elevation, "climb_events_count",
+)
+
+
+def _route_elevation_enabled() -> bool:
+    return os.getenv("QBOT_ROUTE_ELEVATION_ENABLED", "0") == "1"
+
+
+def _effective_job_sequence() -> tuple[tuple[str, Callable[..., dict[str, Any]], str], ...]:
+    if _route_elevation_enabled():
+        return JOB_SEQUENCE + (ELEVATION_JOB,)
+    return JOB_SEQUENCE
 
 
 def _db_conn():
@@ -254,7 +273,7 @@ def ensure_route_precompute(*, route_id: str | int, trigger_source: str = "manua
             raise LookupError(f"No route_base found for route_id={route_id_text!r}")
 
         job_results: dict[str, dict[str, Any]] = {}
-        for job_type, writer, count_key in JOB_SEQUENCE:
+        for job_type, writer, count_key in _effective_job_sequence():
             writer_kwargs = {"route_id": route_id_text} if job_type == "route_base" else {"route_base_id": route_base_id}
             job_results[job_type] = _run_job(
                 conn,

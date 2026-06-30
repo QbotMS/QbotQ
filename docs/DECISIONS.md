@@ -5,6 +5,30 @@
 
 ---
 
+## 2026-06-30 — DECYZJA: 2C store wiring — route_elevation_samples + route_climb_events
+
+**Status:** WDROZONE (silnik + writer + DDL + testy + orchestrator disabled). Tabele utworzone na qbot_v2. Read-path 2C (raport) NIETKNIETY.
+
+**Tabele (DDL: `sql/route_elevation_store_v1.sql`), dzieci `route_base` `ON DELETE CASCADE`, `route_version_key` niesiony jako kolumna; `route_base` BEZ zmian:**
+- `route_elevation_samples` — gesty profil 50 m, 1 wiersz/wezel. Surowa wysokosc trzymana wiernie (`elevation_m` NULL przy dziurze DEM); `source` + `smoothing_version`. Wygladzanie/podjazdy sa POCHODNE, nie materializowane tu. `UNIQUE (route_base_id, sample_index)`.
+- `route_climb_events` — naglowek podjazdu + segmenty 100 m jako `segments_json` JSONB (seg_index, start_m, end_m, length_m, gradient_pct, category). `UNIQUE (route_base_id, event_index)`.
+
+**Segmenty jako JSON** (nie osobna tabela) — zgodne z idiomem store (`segment_geojson`, `*_meta_json` to jsonb) i decyzja uzytkownika. Segmenty zawsze czytane razem z naglowkiem, zmienna licznosc, brak potrzeby zapytan po segmencie.
+
+**Writer `qbot3/routes/route_elevation_store.py`** (lustro `route_base_store`/`route_surface_store`): `_db_conn`, `ensure_route_elevation(route_base_id|route_id)`, geometria z `route_base.source_path` (GPX) -> SRTM30m -> silnik (`route_elevation_engine`). CLI z `--repeat`.
+- Idempotencja: `route_elevation_samples` upsert `ON CONFLICT (route_base_id, sample_index)` (liczba stala dla wersji); `route_climb_events` delete+insert (liczba zmienna), wszystko w jednej `conn.transaction()`.
+- `build_rows()` = czysta funkcja dataclasses->wiersze (testowalna offline). `content_hash` (odczyt z DB, posortowany) jako dowod idempotencji.
+
+**Orchestrator `route_precompute_orchestrator.py`:** dodany `ELEVATION_JOB` za bramka `QBOT_ROUTE_ELEVATION_ENABLED` (default `0`) przez `_effective_job_sequence()`. Przy `0` zachowanie BAJT-IDENTYCZNE (job nie wchodzi do sekwencji). Bez zmian w writerach 2B.1–2B.4, `route_analysis_run`, webhooku 2B.6.
+
+**Bramki (dowod, nie na slowo):**
+- testy offline: `tests.test_route_elevation_engine` 8/8, `tests.test_route_elevation_store` 3/3,
+- orchestrator: OFF=4 joby (bez `route_elevation`), ON=5 (`route_elevation` ostatni),
+- zywy zapis 55798129: `route_base_id=1`, 1424 probki, 1 podjazd; dwa przebiegi -> identyczny `content_hash`; `ascent_smoothed` 426.7 m vs RWGPS 403.
+
+**Granice:** tabele zasilane TYLKO przez writer (jawnie lub orchestrator po wlaczeniu bramki); brak publicznych MCP tooli; raport trasy bez zmian.
+
+
 ## 2026-06-30 — DECYZJA: 2C — silnik przewyższeń i podjazdów (elevation/climb)
 
 **Status:** decyzja architektoniczna zamknięta. Kod 2C jeszcze nie wdrożony (decyzja przed kodem). Osobna faza po 2B.5; orchestrator 2B.5 obejmuje TYLKO base/surface/landcover/poi.
