@@ -91,7 +91,9 @@ Dla przewyższeń docelowym modelem są osobne warstwy:
 
 `route_analysis_run` ma konsumować te warstwy, a nie zastępować ich trwałe przechowywanie.
 
-Refinementy: Valhalla tylko jako fallback/refinement; landcover jako contextual refinement; `geology_context` jako europejski etap fail-open z próbkowaniem centroid+bbox+punkty kontrolne 5-10 km, nigdy co 50 m. Bazą jest EGDI, krajowe źródła są enrichmentem, a heuristic zostaje ostatnim fallbackiem.
+**Wdrożone 2026-06-30:** obie warstwy istnieją w `qbot_v2` (DDL: `sql/route_elevation_store_v1.sql`). Źródłem wysokości jest opentopodata **SRTM30m** (rodzina DEM Karoo). Wygładzanie lokalne: ~200 m do sumy przewyższeń (kalibrowane pod barometr), ~100 m do detekcji granic i ścianek. Progi Karoo: podjazd ≥400 m i ≥3%; segmenty 100 m z gradientem każdego trzymane jako `segments_json` w `route_climb_events`. Writer: `qbot3/routes/route_elevation_store.py` (`ensure_route_elevation`); w orchestratorze za bramką `QBOT_ROUTE_ELEVATION_ENABLED` (domyślnie wyłączone). Pełne uzasadnienie i kalibracja: wpis „2C store wiring" w `docs/DECISIONS.md`.
+
+Refinementy: Valhalla `/height` została zweryfikowana 2026-06-30 jako niedostępna (zwraca null wszędzie, także w Alpach), więc źródłem wysokości jest SRTM30m, a Valhalla nieużywana; landcover jako contextual refinement; `geology_context` jako europejski etap fail-open z próbkowaniem centroid+bbox+punkty kontrolne 5-10 km, nigdy co 50 m. Bazą jest EGDI, krajowe źródła są enrichmentem, a heuristic zostaje ostatnim fallbackiem.
 
 ## Runtime prompt QBot
 
