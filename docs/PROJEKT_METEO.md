@@ -21,6 +21,12 @@ w tle (5) ODCZUWALNE/ZIMNO [UTCI/operacyjna = Wątek 2, NIE zbudowane].
   Model bilansu cieplnego policzony i działa jako dowód fizyki; w QBocie służy tylko jako UZASADNIENIE alertów,
   nie jako reżyser mocy.
 
+### Nawierzchnia poza WBGT (decyzja 2026-06-30, sesja weryfikacyjna 2)
+Nawierzchnia NIE wchodzi do WBGT. Opór toczenia (nawierzchnia) liczy model czasu/prędkości, a przewyższenia są
+osobno — żadne z nich nie zmienia stresu cieplnego. Jedyny realny dotyk nawierzchni do WBGT to albedo podłoża,
+a to siedzi już jako stała ALB_SFC w solverze. Skutek: pomysł `surface:bool` w route_wbgt ODRZUCONY na stałe
+(to była stara historia z Tier 2). `alert_level` (0–4) zostaje jedynym dodanym polem maszynowym.
+
 ### Jedno źródło prawdy
 Jeden przebieg silnika → tabela co 30 min (per okno: zakres km, WBGT, Feel, opad, wiatr-vs-kierunek, burza,
 dominujące ryzyko). LLM i wszystkie odczyty (tekst, WEB) biorą dane Z TEJ TABELI — nic nie liczone osobno obok
@@ -43,12 +49,14 @@ Opcjonalnie: rozjazd modeli jako sygnał pewności.
 
 ### Zrobione dziś (2026-06-30, zacommitowane jako qbot)
 - solar_azimuth_deg w qbot_wbgt_tools.py (solver nietknięty — dowód z diff).
+- alert_level (0–4) maszynowy w route_wbgt (qbot_wbgt_tools.py, commit 4285607) — lustro stref ACSM obok pola „zone";
+  solver nietknięty (dowód z diff: zmiany tylko w wbgt_level + 2 słownikach, zero w solverach).
 - qbot3/routes/route_shade_resolver.py: segment_tau() — reguła cienia oparta na danych trasy 55798129
   (cień = klasa 10 drzewa; oba boki/środek → fdir×0.10 prześwit; jeden bok → azymut + taper wysokości;
   zabudowa = brak cienia; cossza<CZA_MIN = pomiń; chmury obsłużone, bo tau mnoży fdir_base z radiacji z chmurami).
 
 ### NIE zbudowane (kolejka)
-Feel/UTCI (Wątek 2); join „segment→godzina" + fdir_eff do solvera (silnik WBGT-w-czasie); pola alert_level/surface;
+Feel/UTCI (Wątek 2); join „segment→godzina" + fdir_eff do solvera (silnik WBGT-w-czasie);
 tryby opad/burza + wiatr-jako-alert; tabela 30-min; sugestia startu; plan picia z masy.
 
 ## Cel projektu
@@ -61,6 +69,7 @@ Tani screen bramkuje drogą analizę; wszystko uczciwe co do pewności prognozy.
 - Wiatr ZAWSZE w m/s (nie km/h).
 - Pogoda to NAKŁADKA zależna od czasu startu (overlay w route_analysis_run), NIE cecha trasy.
 - Pogoda NIE wchodzi do modelu prędkości/czasu (decyzja 2026-06-30) — patrz Wątek 3.
+- Nawierzchnia NIE wchodzi do WBGT (decyzja 2026-06-30) — patrz „Nawierzchnia poza WBGT".
 - Liczenie WBGT/UTCI jest tanie → bramkuj ESKALACJĘ/pokazanie, nie samo liczenie.
 - Rowerowo = wiatr EFEKTYWNY (otoczenie + pozorny ~7–8 m/s przy 25–30 km/h), nie sam stacyjny.
 - Horyzont zaufania prognozy ograniczony; nie udawać precyzji, której nie ma.
@@ -77,9 +86,9 @@ Dług do domknięcia — ZAMKNIĘTY 2026-06-30 (zweryfikowane na żywym kodzie):
 TODO — wpięcie w analizę trasy (projekt zamknięty koncepcyjnie, kod NIE zaczęty), bramkowane warstwowo:
 - TIER 0 (darmowy): jeśli prognoza Tmax < ~20°C → pomiń WBGT całkowicie.
 - TIER 1 (tani, 1 zapytanie): WBGT w 1 punkcie rozłożony na OKNIE PRZEJAZDU (start + tempo z modelu czasu → godzina na km).
-  Wymaga: (a) join „segment → godzina" (route_time_estimate × szereg WBGT); (b) dodać do route_wbgt pole maszynowe
-  `alert_level` (0–4) + `surface:bool`, by raport/planner decydował bez parsowania polskich stringów; (c) próg/politykę
-  trzymać POZA fizycznym toolem (orkiestracja/planning_fact — regulowalne, personalizowane).
+  Wymaga: (a) join „segment → godzina" (route_time_estimate × szereg WBGT); (b) ZROBIONE — route_wbgt zwraca
+  `alert_level` (0–4) maszynowo (commit 4285607); `surface:bool` ODRZUCONE (nawierzchnia poza WBGT, patrz decyzja wyżej);
+  (c) próg/politykę trzymać POZA fizycznym toolem (orkiestracja/planning_fact — regulowalne, personalizowane).
 - TIER 2 (tylko gdy Tier 1 zaskoczy ORAZ trasa ma kontrast ekspozycji): WBGT per segment, podając TEMU SAMEMU solverowi
   lokalnie skorygowane wejścia (NIE nową pogodę): cień (las/wood z landcover → fdir≈0), odkryte/asfalt = baseline,
   bliskość wody → bump wilgotności. Wymaga ziarnistości klas landcover (zależność — patrz „Blokery").
@@ -142,8 +151,8 @@ WARUNKI POWROTU (czego brakuje, by skalibrować):
 
 ## Sugerowana kolejność dla nowej sesji
 1. ZROBIONE (2026-06-30, zweryfikowane): dług WBGT domknięty — wpis route_wbgt w _SYSTEM (albert.py) + rejestr (tool_registry.py) + commit jako qbot.
-2. Tier 0 + Tier 1: pole `alert_level`/`surface` w route_wbgt + join „segment→godzina" z modelem czasu + bramka progowa.
-   (Duża wartość, prawie gotowe; nie wymaga landcoveru.) ← NASTĘPNY KROK
+2. Tier 0 + Tier 1: `alert_level` w route_wbgt ZROBIONE (commit 4285607; `surface` odrzucone — nawierzchnia poza WBGT);
+   zostaje join „segment→godzina" z modelem czasu + bramka progowa. (Duża wartość; nie wymaga landcoveru.) ← NASTĘPNY KROK
 3. UTCI krok 0: zwracać Tg/Tmrt obok WBGT (tani, odblokowuje Wątek 2).
 4. UTCI/operacyjna: zwendorować wielomian Bröde 2012 + temperatura operacyjna; bramkowane reżimem obok WBGT.
 5. Tier 2 WBGT: po potwierdzeniu ziarnistości landcover (cień/woda + wiatr efektywny per segment).
