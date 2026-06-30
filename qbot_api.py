@@ -31,6 +31,20 @@ load_dotenv(Path(__file__).parent / ".env")
 DB_AVAILABLE = False
 
 
+def _spawn_route_precompute_worker(route_id: str) -> None:
+    import subprocess as _subprocess
+    import sys as _sys
+
+    _logf = open("/tmp/rwgps_precompute_" + route_id + ".log", "ab")
+    _subprocess.Popen(
+        [_sys.executable, "/opt/qbot/app/scripts/route_precompute_trigger.py", route_id],
+        stdout=_logf,
+        stderr=_subprocess.STDOUT,
+        cwd="/opt/qbot/app",
+        start_new_session=True,
+    )
+
+
 def _telegram_answer_general_qbot_question(text: str) -> str | None:
     """Answer general questions about Qbot capabilities — fast, no heavy tool calls."""
     q = (text or "").lower()
@@ -1174,14 +1188,7 @@ async def rwgps_webhook(webhook_secret: str, request: Request, x_rwgps_signature
             continue
         seen.add(route_id)
         try:
-            _logf = open("/tmp/rwgps_enrich_" + route_id + ".log", "ab")
-            _subprocess.Popen(
-                [_sys.executable, "/opt/qbot/app/scripts/surface_enrich_route.py", route_id],
-                stdout=_logf,
-                stderr=_subprocess.STDOUT,
-                cwd="/opt/qbot/app",
-                start_new_session=True,
-            )
+            _spawn_route_precompute_worker(route_id)
             spawned.append(route_id)
         except Exception:
             pass
