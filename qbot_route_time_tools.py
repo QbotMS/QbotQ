@@ -124,6 +124,17 @@ def _route_distance_km(route_id: str) -> tuple[float | None, str | None]:
     rid = str(route_id).strip().split("/")[-1].split("?")[0]
     if not rid:
         return None, None
+    try:
+        from qbot3.routes.route_canonical_read import read_canonical_route
+
+        canonical = read_canonical_route(route_id=rid)
+        route_base = canonical.get("route_base") if isinstance(canonical, dict) else None
+        if canonical.get("read_path") == "canonical" and isinstance(route_base, dict):
+            distance_km = route_base.get("distance_m")
+            if distance_km is not None:
+                return float(distance_km) / 1000.0, "route_base"
+    except Exception:
+        pass
     conn = _db_connect()
     try:
         with conn.cursor() as cur:
