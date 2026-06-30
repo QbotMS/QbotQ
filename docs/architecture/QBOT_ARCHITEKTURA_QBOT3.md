@@ -80,6 +80,17 @@ Hook 2026-06-28: `build_geology_context()` najpierw odpytuje EGDI po punktach ko
 
 `route_frames` 80 m zostają jako legacy/fallback dla profilu, pogody, debug i agregacji. WEB, qbot.query, Telegram i MCP mają docelowo konsumować ten sam wynik `route_surface_analysis_v1`; WEB jest rendererem, nie źródłem prawdy.
 
+### Wysokość i podjazdy
+
+Kanoniczna oś 50 m z `route_axis_segments` jest warstwą pomocniczą do joinów, agregacji i raportowania przekrojowego. Nie traktujemy jej jako jedynego źródła prawdy dla `elevation`, `climb` ani `gradient`.
+
+Dla przewyższeń docelowym modelem są osobne warstwy:
+
+- `route_elevation_samples` - gęsty profil wysokości po oryginalnym GPX/RWGPS albo najgęstszym dostępnym profilu.
+- `route_climb_events` - wykryte podjazdy, krótkie ścianki i strome rampy.
+
+`route_analysis_run` ma konsumować te warstwy, a nie zastępować ich trwałe przechowywanie.
+
 Refinementy: Valhalla tylko jako fallback/refinement; landcover jako contextual refinement; `geology_context` jako europejski etap fail-open z próbkowaniem centroid+bbox+punkty kontrolne 5-10 km, nigdy co 50 m. Bazą jest EGDI, krajowe źródła są enrichmentem, a heuristic zostaje ostatnim fallbackiem.
 
 ## Runtime prompt QBot
