@@ -288,6 +288,16 @@ def wbgt_zone(wbgt_c: float) -> tuple[str, str]:
     return _ZONES[-1][1], _ZONES[-1][2]
 
 
+def wbgt_level(wbgt_c: float) -> int:
+    """Maszynowy poziom alarmu 0-4, spojny ze strefami _ZONES.
+    0=niskie, 1=umiarkowane, 2=wysokie, 3=bardzo wysokie, 4=ekstremalne.
+    Lustro tej samej granicy progow co wbgt_zone (jedno zrodlo prawdy)."""
+    for i, (upper, _label, _advice) in enumerate(_ZONES):
+        if wbgt_c < upper:
+            return i
+    return len(_ZONES) - 1
+
+
 # ── Open-Meteo ─────────────────────────────────────────────────────────────
 def _fetch_openmeteo(lat, lon, start_date, end_date, timeout=15.0) -> dict:
     hourly = ["temperature_2m", "relative_humidity_2m", "wind_speed_10m",
@@ -330,7 +340,8 @@ def compute_wbgt_series(lat, lon, start_date=None, end_date=None,
         if math.isnan(w):
             continue
         label, advice = wbgt_zone(w)
-        hours.append({"time": t, "wbgt_c": round(w, 1), "zone": label, "advice": advice,
+        hours.append({"time": t, "wbgt_c": round(w, 1), "zone": label,
+                      "alert_level": wbgt_level(w), "advice": advice,
                       "t2m": round(float(t2m[i]), 1), "rh": round(float(rh[i])),
                       "wind_ms": round(float(wind[i]), 1), "ghi": round(float(ghi[i])),
                       "fdir": round(float(fdir[i]), 2)})
@@ -351,7 +362,8 @@ def compute_wbgt_series(lat, lon, start_date=None, end_date=None,
         peak = max(window, key=lambda x: x["wbgt_c"])
         label, advice = wbgt_zone(peak["wbgt_c"])
         summary = {"wbgt_max": peak["wbgt_c"], "wbgt_max_time": peak["time"],
-                   "zone": label, "advice": advice, "n_hours": len(window)}
+                   "zone": label, "alert_level": wbgt_level(peak["wbgt_c"]),
+                   "advice": advice, "n_hours": len(window)}
     return {"hours": hours, "summary": summary}
 
 
