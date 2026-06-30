@@ -81,6 +81,56 @@ def _read_route_source(route_id: str | None) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def _route_shade_section_lines(route_source: dict[str, Any] | None) -> list[str]:
+    if not isinstance(route_source, dict):
+        return []
+    if str(route_source.get("land_cover_preferred_source") or "").strip() != "worldcover_shade":
+        return []
+    try:
+        shade_count = int(route_source.get("route_shade_layer_count") or 0)
+    except (TypeError, ValueError):
+        shade_count = 0
+    if shade_count <= 0:
+        return []
+
+    try:
+        shade_coverage_pct = float(route_source.get("shade_coverage_pct") or 0.0)
+    except (TypeError, ValueError):
+        shade_coverage_pct = 0.0
+    layer_counts = route_source.get("layer_counts") or {}
+    route_base_id = route_source.get("route_base_id")
+    route_version_key = route_source.get("route_version_key")
+    return [
+        "## A0B - OTOCZENIE TRASY (WorldCover / route_shade_layer)",
+        "- źródło: WorldCover v200 przez route_shade_layer",
+        f"- route_shade_layer: {shade_count} próbek/przekrojów",
+        f"- pokrycie: {shade_coverage_pct:.1f}%",
+        "- opis: przekrój otoczenia lewo / środek / prawo względem osi trasy; warstwa jest czytana addytywnie i nie udaje starego landcover",
+        "- termin produktu: otoczenie trasy",
+        *(
+            [
+                f"- route_base_id={route_base_id}",
+                f"- route_version_key={route_version_key}",
+            ]
+            if route_base_id is not None or route_version_key is not None
+            else []
+        ),
+        *(
+            [
+                "- layer_counts: "
+                + ", ".join(
+                    f"{key}={layer_counts.get(key)}"
+                    for key in ("route_shade_layer",)
+                    if layer_counts.get(key) is not None
+                )
+            ]
+            if isinstance(layer_counts, dict)
+            else []
+        ),
+        "",
+    ]
+
+
 _ROUTE_VERSION_META_KEYS = (
     "route_id",
     "route_artifact_id",
@@ -1846,6 +1896,8 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
                 shade_bits.append(f"shade_coverage_pct={float(shade_cov):.1f}%")
             H("- " + ", ".join(shade_bits))
     H("")
+    for line in _route_shade_section_lines(route_source):
+        H(line)
     active_route_version = _fetch_route_version_record(route_id=route_id) if route_id else None
 
     # ---- A: plan_analysis (A1 trasa, A2 profil, A3 nawierzchnia%, A4 wiatr, A5 pogoda, A6 forma) ----

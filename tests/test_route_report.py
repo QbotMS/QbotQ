@@ -1098,6 +1098,10 @@ class TestRouteReportCanonicalReadPath(unittest.TestCase):
         self.assertIn("landscape_source: worldcover_shade", analysis)
         self.assertIn("route_shade_layer_count=1423", analysis)
         self.assertIn("shade_coverage_pct=100.0%", analysis)
+        self.assertIn("## A0B - OTOCZENIE TRASY (WorldCover / route_shade_layer)", analysis)
+        self.assertIn("WorldCover v200", analysis)
+        self.assertIn("otoczenie trasy", analysis)
+        self.assertIn("lewo / środek / prawo", analysis)
 
     def test_legacy_fallback_still_renders_when_canonical_missing(self):
         with patch.object(rr, "read_canonical_route", return_value=LEGACY_ROUTE_SOURCE):
@@ -1108,7 +1112,14 @@ class TestRouteReportCanonicalReadPath(unittest.TestCase):
         self.assertIn("źródło danych trasy: legacy_fallback", analysis)
         self.assertIn("fallback_reason: route_base_missing", analysis)
         self.assertIn("landscape_source: osm_landcover_legacy", analysis)
+        self.assertNotIn("## A0B - OTOCZENIE TRASY (WorldCover / route_shade_layer)", analysis)
         self.assertIn("## A - DANE TRASY", analysis)
+
+    def test_a0_marker_still_present(self):
+        with patch.object(rr, "read_canonical_route", return_value=CANONICAL_ROUTE_SOURCE):
+            out = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})
+        self.assertIn("## A0 - ŹRÓDŁO DANYCH TRASY", out["analysis"])
+        self.assertIn("źródło danych trasy: canonical", out["analysis"])
 
 
 class TestRouteReportPoiSupplyRegression(unittest.TestCase):

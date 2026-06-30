@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-06-30 — DECYZJA: route_report pokazuje sekcję otoczenia z route_shade_layer / WorldCover
+
+**Status:** wdrożone minimalnie w `qbot_route_report_tool.py`.
+
+**Decyzja:** gdy `read_canonical_route(route_id)` zwraca `land_cover_preferred_source=worldcover_shade` oraz niezerowy `route_shade_layer_count`, route_report pokazuje osobną krótką sekcję „otoczenie trasy" opartą o `route_shade_layer` / WorldCover.
+
+**Zasada:** sekcja otoczenia mówi o przekroju lewo / środek / prawo względem osi trasy i używa nazwy produktu `otoczenie trasy`, a nie samego „landscape" bez wyjaśnienia. Jeśli canonical brak albo preferencja spada do `osm_landcover_legacy`, raport nie udaje WorldCover i zostaje przy legacy fallback bez regresji.
+
+**Marker:** A0 canonical source pozostaje widoczny, ale sekcja otoczenia jest pierwszym merytorycznym przepięciem z canonical store do raportu.
+
 ## 2026-06-30 — DECYZJA: route_report pokazuje canonical read-path jako marker, bez przebudowy sekcji A/B
 
 **Status:** wdrożone minimalnie w `qbot_route_report_tool.py`.
