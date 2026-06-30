@@ -2760,14 +2760,20 @@ def _load_route_time_estimate_tool() -> dict[str, Any]:
         "callable": _wrapper,
         "category": "routes",
         "description": (
-            "Szacowany CZAS przejechania ZAPLANOWANEJ trasy (B4 uproszczony). "
-            "Pytania: 'ile zajmie trasa', 'jak dlugo bede jechal', 'ile czasu/tempo na trase'. "
-            "Predkosc BAZOWA = wazona czasem z 10 ostatnich jazd OUTDOOR (v_kmh=suma_km/suma_h); czas=dystans/v_kmh. "
-            "Param: distance_km LUB route_id. Model UPROSZCZONY - bez nawierzchni/przewyzszen/pogody/formy. Pokaz pole analysis w calosci."
+            "Szacowany CZAS przejechania ZAPLANOWANEJ trasy (model v2, z danych). "
+            "Pytania: 'ile zajmie trasa', 'jak dlugo bede jechal', 'ile czasu na trase'. "
+            "WYMAGA route_id z danymi kanonicznymi (grade 200m + nawierzchnia); bez fallbacku - brak danych => NEEDS_INPUT. "
+            "Predkosc moving z empirycznej tabeli nawierzchnia x nachylenie; poziom wg trybu: normalny(mediana,domyslny)/sport/wyscig. "
+            "Zwraca CZAS RUCHU i CZAS CALKOWITY OSOBNO + profil czasu zegarowego. Dokladnosc czesci tocznej ~+-15% (nieobciazona). "
+            "DLUGIE postoje (obiad/zwiedzanie) NIE sa zgadywane - podaje je uzytkownik (planned_long_stops + planned_long_stop_min). "
+            "Mikro i krotkie przerwy auto. Wiatr/pogoda osobno (meteo). Pokaz pole analysis w calosci."
         ),
         "args_schema": {
-            "distance_km": {"type": "number", "description": "Dystans trasy w km (alternatywa dla route_id)"},
-            "route_id": {"type": "string", "description": "ID zaplanowanej trasy RWGPS (gdy brak distance_km)"},
+            "route_id": {"type": "string", "description": "ID zaplanowanej trasy (wymagane; dane kanoniczne z bazy)"},
+            "mode": {"type": "string", "description": "Tryb/poziom: normalny (mediana, domyslny) / sport (asfalt p75) / wyscig (p90,p75)"},
+            "planned_long_stops": {"type": "number", "description": "Liczba planowanych dlugich postojow (obiad/zwiedzanie); domyslnie 0"},
+            "planned_long_stop_min": {"type": "number", "description": "Laczny czas dlugich postojow w minutach; domyslnie 0"},
+            "start_time": {"type": "string", "description": "Godzina startu HH:MM (opcjonalnie, profil czasu zegarowego)"},
         },
         "safety": "read",
     }
