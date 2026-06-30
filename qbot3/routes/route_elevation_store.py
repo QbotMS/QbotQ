@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Writer kanonicznej warstwy przewyzszen/podjazdow (2C).
 
+Dokumentacja: docs/architecture/ROUTE_ELEVATION_CLIMB.md
+
 Lustro route_base_store / route_surface_store: ten sam _db_conn, rozwiazanie
 route_base po route_base_id (lub route_id), transakcja, CLI z --repeat.
 

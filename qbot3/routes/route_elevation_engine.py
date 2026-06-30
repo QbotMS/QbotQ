@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Silnik przewyzszen i podjazdow (2C) — czysta logika, bez DB.
 
+Dokumentacja: docs/architecture/ROUTE_ELEVATION_CLIMB.md
+
 Buduje gesty profil wysokosci (ksztalt route_elevation_samples) z otwartego DEM
 oraz wykrywa podjazdy (ksztalt route_climb_events) progami Karoo.
 
