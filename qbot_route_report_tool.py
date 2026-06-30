@@ -134,14 +134,21 @@ def _route_shade_section_lines(route_source: dict[str, Any] | None) -> list[str]
 def _route_elevation_section_lines(route_source: dict[str, Any] | None) -> list[str]:
     if not isinstance(route_source, dict):
         return []
-    try:
-        elevation_samples = int(route_source.get("route_elevation_samples") or 0)
-    except (TypeError, ValueError):
-        elevation_samples = 0
-    try:
-        climb_events = int(route_source.get("route_climb_events") or 0)
-    except (TypeError, ValueError):
-        climb_events = 0
+    layer_counts = route_source.get("layer_counts") or {}
+    if not isinstance(layer_counts, dict):
+        layer_counts = {}
+
+    def _layer_count(key: str) -> int:
+        raw = route_source.get(key)
+        if raw is None:
+            raw = layer_counts.get(key)
+        try:
+            return int(raw or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    elevation_samples = _layer_count("route_elevation_samples")
+    climb_events = _layer_count("route_climb_events")
     if elevation_samples <= 0 and climb_events <= 0:
         return []
 

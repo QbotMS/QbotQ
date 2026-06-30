@@ -203,8 +203,6 @@ CANONICAL_ROUTE_SOURCE = {
     "route_shade_layer_count": 1423,
     "shade_coverage_pct": 100.0,
     "land_cover_preferred_source": "worldcover_shade",
-    "route_elevation_samples": 1424,
-    "route_climb_events": 1,
 }
 
 LEGACY_ROUTE_SOURCE = {
