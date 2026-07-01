@@ -15,6 +15,16 @@
 
 **Kontrakt:** A3 ma nie zmieniać A0/A0B/A0C ani A8. Brak canonical summary nie może wywrócić raportu.
 
+## 2026-07-01 — DECYZJA: A3 rozdziela coverage surface od tagów OSM
+
+**Status:** wdrożone w readerze canonical i renderze route_report.
+
+**Decyzja:** A3 pokazuje jawnie `coverage_pct`, `tagged_surface_pct`, `inferred_surface_pct` oraz metryki Overpass chunks, aby nie mylić pokrycia warstwy surface z kompletnością tagów `surface=*` w OSM.
+
+**Zasada:** `coverage_pct` oznacza pokrycie klasyfikacją nawierzchni dla trasy, a nie procent odcinków z bezpośrednim tagiem `surface=*`. `tagged_surface_pct` i `inferred_surface_pct` rozdzielają bezpośrednie odczyty z OSM od odcinków kontekstowych / inferowanych. Gdy dostępne są metryki Overpass, są one czytane z `qbot_v2.route_surface_profiles.surface_summary_json`; jeśli nie ma tego kontraktu, reader nie zgaduje.
+
+**Kontrakt:** brak nowych pól nie wywraca raportu. Legacy fallback pozostaje, a A0/A0B/A0C/A8 nie zmieniają się.
+
 ## 2026-06-30 — DECYZJA: canonical reader wystawia surface summary z route_surface_layer
 
 **Status:** wdrożone w `qbot3/routes/route_canonical_read.py`.

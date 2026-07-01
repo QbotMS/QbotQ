@@ -207,6 +207,18 @@ CANONICAL_ROUTE_SOURCE = {
         "segment_count": 76,
         "total_distance_m": 71136.8,
         "coverage_pct": 100.0,
+        "tagged_surface_distance_m": 50336.8,
+        "tagged_surface_pct": 70.8,
+        "tagged_surface_segment_count": 49,
+        "inferred_surface_distance_m": 20800.0,
+        "inferred_surface_pct": 29.2,
+        "inferred_surface_segment_count": 27,
+        "unknown_provenance_count": 0,
+        "overpass_chunks_total": 7,
+        "overpass_chunks_ok": 7,
+        "overpass_chunks_failed": 0,
+        "overpass_timeout_count": 3,
+        "overpass_http_error_count": 1,
         "missing_distance_count": 0,
         "by_surface": {
             "asphalt": {"segment_count": 15, "distance_m": 24836.8, "pct": 34.9},
@@ -234,6 +246,13 @@ CANONICAL_ROUTE_SOURCE = {
                 "missing_distance": False,
             }
         ],
+    },
+    "surface_profile_overpass_metrics": {
+        "chunks_total": 7,
+        "chunks_ok": 7,
+        "chunks_failed": 0,
+        "timeout_count": 3,
+        "http_error_count": 1,
     },
 }
 
@@ -666,16 +685,18 @@ class TestRouteReportTask12(unittest.TestCase):
         self.assertIn("Max 8", ctx)
 
     def test_a3_merged_surface_default(self):
-        a = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})["analysis"]
+        with patch.object(rr, "read_canonical_route", return_value=CANONICAL_ROUTE_SOURCE):
+            a = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})["analysis"]
         self.assertIn("canonical_surface_summary / route_surface_layer", a)
         self.assertIn("segment_count=76", a)
-        self.assertIn("problem_segments_count=31", a)
+        self.assertIn("problem_segments_count=1", a)
         self.assertNotIn("surface_summary_json", a.split("## A8 - WODA / SKLEPY / REFILL")[0])
 
     def test_a3_full_surface_on_flag(self):
-        a = rr._tool_route_report(
-            {"route_id": "55798129", "variant": "pelny", "surface_detail": True}
-        )["analysis"]
+        with patch.object(rr, "read_canonical_route", return_value=CANONICAL_ROUTE_SOURCE):
+            a = rr._tool_route_report(
+                {"route_id": "55798129", "variant": "pelny", "surface_detail": True}
+            )["analysis"]
         self.assertIn("canonical_surface_summary / route_surface_layer", a)
         self.assertIn("by_confidence: high=49, low=26, medium=1", a)
         self.assertNotIn("surface_summary_json", a.split("## A8 - WODA / SKLEPY / REFILL")[0])
@@ -1034,6 +1055,13 @@ class TestRouteReportSurfaceSummaryRegression(unittest.TestCase):
             "tagged_surface_pct": 70.8,
             "inferred_surface_pct": 29.2,
             "unknown_surface_pct": 0.0,
+            "overpass_metrics": {
+                "chunks_total": 7,
+                "chunks_ok": 7,
+                "chunks_failed": 0,
+                "timeout_count": 3,
+                "http_error_count": 1,
+            },
             "surface_percentages_raw": {
                 "asphalt": 34.9,
                 "ground": 32.7,
@@ -1056,6 +1084,13 @@ class TestRouteReportSurfaceSummaryRegression(unittest.TestCase):
                 "tagged_surface_pct": 70.8,
                 "inferred_surface_pct": 29.2,
                 "unknown_surface_pct": 0.0,
+                "overpass_metrics": {
+                    "chunks_total": 7,
+                    "chunks_ok": 7,
+                    "chunks_failed": 0,
+                    "timeout_count": 3,
+                    "http_error_count": 1,
+                },
                 "geology_context": {
                     "provider": "heuristic_region_v1",
                     "status": "OK",
@@ -1075,7 +1110,8 @@ class TestRouteReportSurfaceSummaryRegression(unittest.TestCase):
             "good_profile": True,
         }
 
-        with patch("qbot_route_tools._fetch_best_route_surface_profile", return_value=synthetic_profile), \
+        with patch.object(rr, "read_canonical_route", return_value=CANONICAL_ROUTE_SOURCE), \
+                patch("qbot_route_tools._fetch_best_route_surface_profile", return_value=synthetic_profile), \
                 patch.object(rr, "_read_poi_analysis_cache", return_value=None):
             out = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})
 
@@ -1083,8 +1119,11 @@ class TestRouteReportSurfaceSummaryRegression(unittest.TestCase):
         self.assertIn("canonical_surface_summary / route_surface_layer", analysis)
         self.assertIn("segment_count=76", analysis)
         self.assertIn("coverage_pct=100.0%", analysis)
+        self.assertIn("tagged_surface_pct=70.8% | inferred_surface_pct=29.2%", analysis)
+        self.assertIn("coverage_pct nie oznacza 100% tagów surface=* w OSM", analysis)
+        self.assertIn("overpass: chunks_total=7, chunks_ok=7, chunks_failed=0, timeout_count=3, http_error_count=1", analysis)
         self.assertIn("by_surface:", analysis)
-        self.assertIn("problem_segments_count=31", analysis)
+        self.assertIn("problem_segments_count=1", analysis)
         self.assertIn("Geologia / podłoże: brak danych w canonical_surface_summary", analysis)
         self.assertNotIn("surface_summary_json", analysis.split("## A8 - WODA / SKLEPY / REFILL")[0])
         self.assertIn("Status zaopatrzenia: UNAVAILABLE", analysis)
@@ -1148,9 +1187,12 @@ class TestRouteReportCanonicalReadPath(unittest.TestCase):
         self.assertIn("segment_count=76", analysis)
         self.assertIn("total_distance_m=71.1 km", analysis)
         self.assertIn("coverage_pct=100.0%", analysis)
+        self.assertIn("tagged_surface_pct=70.8% | inferred_surface_pct=29.2%", analysis)
+        self.assertIn("coverage_pct nie oznacza 100% tagów surface=* w OSM", analysis)
         self.assertIn("by_surface:", analysis)
         self.assertIn("- asphalt: 24.8 km | 34.9% | segments=15", analysis)
         self.assertIn("by_confidence: high=49, low=26, medium=1", analysis)
+        self.assertIn("overpass: chunks_total=7, chunks_ok=7, chunks_failed=0, timeout_count=3, http_error_count=1", analysis)
         self.assertIn("problem_segments_count=1", analysis)
         self.assertNotIn("SZCZEGOLOWY PROFIL TRASY (surface_summary_json)", analysis)
         self.assertNotIn("Źródło profilu: qbot_v2.route_surface_profiles.surface_summary_json", analysis)
@@ -1578,6 +1620,13 @@ class TestRouteReportVersionGuard(unittest.TestCase):
             "tagged_surface_pct": 70.8,
             "inferred_surface_pct": 29.2,
             "unknown_surface_pct": 0.0,
+            "overpass_metrics": {
+                "chunks_total": 7,
+                "chunks_ok": 7,
+                "chunks_failed": 0,
+                "timeout_count": 3,
+                "http_error_count": 1,
+            },
             "surface_percentages_raw": {"asphalt": 34.9, "ground": 32.7},
             "surface_percentages_refined": {"asphalt": 34.9, "ground": 32.7},
             "surface_summary_json": {
@@ -1586,6 +1635,13 @@ class TestRouteReportVersionGuard(unittest.TestCase):
                 "tagged_surface_pct": 70.8,
                 "inferred_surface_pct": 29.2,
                 "unknown_surface_pct": 0.0,
+                "overpass_metrics": {
+                    "chunks_total": 7,
+                    "chunks_ok": 7,
+                    "chunks_failed": 0,
+                    "timeout_count": 3,
+                    "http_error_count": 1,
+                },
             },
             "good_profile": True,
         }

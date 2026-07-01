@@ -155,6 +155,12 @@ Aktualizacja 2026-06-30: kolejnym addytywnym krokiem canonical jest sekcja
 `route_climb_events`. Pokazuje liczby próbek i climb events bez przebudowy
 algorytmu time estimate ani legacy sekcji profilu raportowego.
 
+Aktualizacja 2026-07-01: A3 pokazuje teraz osobno `coverage_pct`,
+`tagged_surface_pct`, `inferred_surface_pct` i metryki Overpass chunks. To
+rozróżnia pokrycie warstwy surface od kompletności tagów `surface=*` w OSM.
+Jeśli metryki Overpass są obecne, pochodzą z `route_surface_profiles.surface_summary_json`;
+jeśli nie ma tego kontraktu, raport nie zgaduje brakujących wartości.
+
 ## B2. Narzędzia obecnie składane przez route_report
 
 Obecny `qbot_route_report_tool.py` korzysta m.in. z:

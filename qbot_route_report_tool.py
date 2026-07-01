@@ -185,9 +185,24 @@ def _route_surface_summary_lines(summary: dict[str, Any] | None) -> list[str]:
 
     total_distance_m = summary.get("total_distance_m")
     coverage_pct = summary.get("coverage_pct")
+    tagged_surface_pct = summary.get("tagged_surface_pct")
+    inferred_surface_pct = summary.get("inferred_surface_pct")
+    tagged_surface_segment_count = summary.get("tagged_surface_segment_count")
+    inferred_surface_segment_count = summary.get("inferred_surface_segment_count")
     by_surface = summary.get("by_surface") if isinstance(summary.get("by_surface"), dict) else {}
     by_confidence = summary.get("by_confidence") if isinstance(summary.get("by_confidence"), dict) else {}
     problem_segments = summary.get("problem_segments") if isinstance(summary.get("problem_segments"), list) else []
+    overpass_bits = []
+    for key, label in (
+        ("overpass_chunks_total", "chunks_total"),
+        ("overpass_chunks_ok", "chunks_ok"),
+        ("overpass_chunks_failed", "chunks_failed"),
+        ("overpass_timeout_count", "timeout_count"),
+        ("overpass_http_error_count", "http_error_count"),
+    ):
+        value = summary.get(key)
+        if value is not None:
+            overpass_bits.append(f"{label}={value}")
     lines = [
         "Źródło nawierzchni: canonical_surface_summary / route_surface_layer",
         f"segment_count={segment_count}",
@@ -201,6 +216,21 @@ def _route_surface_summary_lines(summary: dict[str, Any] | None) -> list[str]:
             if coverage_pct is not None
             else "coverage_pct=brak"
         ),
+        (
+            "tagged_surface_pct="
+            f"{float(tagged_surface_pct or 0.0):.1f}% | "
+            f"inferred_surface_pct={float(inferred_surface_pct or 0.0):.1f}%"
+            if tagged_surface_pct is not None and inferred_surface_pct is not None
+            else "tagged_surface_pct=brak | inferred_surface_pct=brak"
+        ),
+        (
+            "tagged_surface_segments="
+            f"{int(tagged_surface_segment_count or 0)} | "
+            f"inferred_surface_segments={int(inferred_surface_segment_count or 0)}"
+            if tagged_surface_segment_count is not None and inferred_surface_segment_count is not None
+            else "tagged_surface_segments=brak | inferred_surface_segments=brak"
+        ),
+        "coverage_pct nie oznacza 100% tagów surface=* w OSM",
         "by_surface:",
     ]
     for surface, payload in sorted(by_surface.items()):
@@ -220,6 +250,8 @@ def _route_surface_summary_lines(summary: dict[str, Any] | None) -> list[str]:
                 conf_bits.append(f"{key}={int(payload.get('segment_count') or 0)}")
         if conf_bits:
             lines.append("by_confidence: " + ", ".join(conf_bits))
+    if overpass_bits:
+        lines.append("overpass: " + ", ".join(overpass_bits))
     lines.append(f"problem_segments_count={len(problem_segments)}")
     return lines
 
@@ -236,9 +268,27 @@ def _route_surface_quality_lines_from_summary(summary: dict[str, Any] | None) ->
     by_confidence = summary.get("by_confidence") if isinstance(summary.get("by_confidence"), dict) else {}
     problem_segments = summary.get("problem_segments") if isinstance(summary.get("problem_segments"), list) else []
     coverage_pct = summary.get("coverage_pct")
+    tagged_surface_pct = summary.get("tagged_surface_pct")
+    inferred_surface_pct = summary.get("inferred_surface_pct")
+    overpass_bits = []
+    for key, label in (
+        ("overpass_chunks_total", "chunks_total"),
+        ("overpass_chunks_ok", "chunks_ok"),
+        ("overpass_chunks_failed", "chunks_failed"),
+        ("overpass_timeout_count", "timeout_count"),
+        ("overpass_http_error_count", "http_error_count"),
+    ):
+        value = summary.get(key)
+        if value is not None:
+            overpass_bits.append(f"{label}={value}")
     lines = ["Źródło nawierzchni: canonical_surface_summary / route_surface_layer"]
     if coverage_pct is not None:
         lines.append(f"coverage_pct={float(coverage_pct or 0.0):.1f}%")
+    if tagged_surface_pct is not None and inferred_surface_pct is not None:
+        lines.append(
+            f"tagged_surface_pct={float(tagged_surface_pct or 0.0):.1f}% | "
+            f"inferred_surface_pct={float(inferred_surface_pct or 0.0):.1f}%"
+        )
     if by_confidence:
         conf_bits = []
         for key, payload in sorted(by_confidence.items()):
@@ -246,6 +296,9 @@ def _route_surface_quality_lines_from_summary(summary: dict[str, Any] | None) ->
                 conf_bits.append(f"{key}={int(payload.get('segment_count') or 0)}")
         if conf_bits:
             lines.append("by_confidence: " + ", ".join(conf_bits))
+    if overpass_bits:
+        lines.append("overpass: " + ", ".join(overpass_bits))
+    lines.append("coverage_pct nie oznacza 100% tagów surface=* w OSM")
     lines.append(f"problem_segments_count={len(problem_segments)}")
     return lines
 
@@ -1064,7 +1117,23 @@ def _surface_quality_lines(surface_profile: dict[str, Any] | None) -> list[str]:
     tagged_surface_pct = surface_profile.get("tagged_surface_pct")
     inferred_surface_pct = surface_profile.get("inferred_surface_pct")
     unknown_surface_pct = surface_profile.get("unknown_surface_pct")
+    overpass_metrics = surface_profile.get("overpass_metrics")
+    if not isinstance(overpass_metrics, dict):
+        summary = surface_profile.get("surface_summary_json")
+        overpass_metrics = summary.get("overpass_metrics") if isinstance(summary, dict) else None
     source = "surface_summary_json" if surface_profile.get("good_profile") else "legacy fallback"
+    overpass_bits = []
+    if isinstance(overpass_metrics, dict):
+        for key, label in (
+            ("chunks_total", "chunks_total"),
+            ("chunks_ok", "chunks_ok"),
+            ("chunks_failed", "chunks_failed"),
+            ("timeout_count", "timeout_count"),
+            ("http_error_count", "http_error_count"),
+        ):
+            value = overpass_metrics.get(key)
+            if value is not None:
+                overpass_bits.append(f"{label}={value}")
     lines = [
         f"Źródło nawierzchni: {source}",
         (
@@ -1076,6 +1145,9 @@ def _surface_quality_lines(surface_profile: dict[str, Any] | None) -> list[str]:
             else f"Profil jakości: {quality_status}"
         ),
     ]
+    if overpass_bits:
+        lines.append("overpass: " + ", ".join(overpass_bits))
+    lines.append("coverage_pct nie oznacza 100% tagów surface=* w OSM")
     if not surface_profile.get("good_profile") or quality_status == "LOW_CONFIDENCE":
         lines.append("Ostrzeżenie: legacy fallback albo LOW_CONFIDENCE — interpretacja nawierzchni wymaga ostrożności")
     return lines

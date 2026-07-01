@@ -325,7 +325,37 @@ def _climb_rows(conn, route_base_id: int) -> list[dict[str, Any]]:
     )
 
 
-def _surface_summary(surface_rows: list[dict[str, Any]], route_base: dict[str, Any] | None = None) -> dict[str, Any]:
+def _surface_profile_row(conn, route_artifact_id: int | None) -> dict[str, Any] | None:
+    if route_artifact_id is None:
+        return None
+    row = _fetch_one(
+        conn,
+        """
+        SELECT
+            p.id,
+            p.route_artifact_id,
+            p.enriched_at,
+            p.coverage_pct,
+            p.status,
+            p.enrichment_version AS route_version,
+            p.surface_summary_json,
+            p.surface_segments_json
+        FROM qbot_v2.route_surface_profiles p
+        JOIN qbot_v2.route_artifacts a ON a.id = p.route_artifact_id
+        WHERE p.route_artifact_id = %s
+        ORDER BY p.enriched_at DESC NULLS LAST, p.id DESC
+        LIMIT 1
+        """,
+        (route_artifact_id,),
+    )
+    return row
+
+
+def _surface_summary(
+    surface_rows: list[dict[str, Any]],
+    route_base: dict[str, Any] | None = None,
+    surface_profile_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "segment_count": len(surface_rows),
         "total_distance_m": 0.0,
@@ -336,6 +366,18 @@ def _surface_summary(surface_rows: list[dict[str, Any]], route_base: dict[str, A
         "by_source": {},
         "by_confidence": {},
         "problem_segments": [],
+        "tagged_surface_distance_m": 0.0,
+        "tagged_surface_pct": 0.0,
+        "tagged_surface_segment_count": 0,
+        "inferred_surface_distance_m": 0.0,
+        "inferred_surface_pct": 0.0,
+        "inferred_surface_segment_count": 0,
+        "unknown_provenance_count": 0,
+        "overpass_chunks_total": None,
+        "overpass_chunks_ok": None,
+        "overpass_chunks_failed": None,
+        "overpass_timeout_count": None,
+        "overpass_http_error_count": None,
     }
     if not surface_rows:
         if route_base and route_base.get("distance_m") is not None:
@@ -359,8 +401,22 @@ def _surface_summary(surface_rows: list[dict[str, Any]], route_base: dict[str, A
     problem_segments: list[dict[str, Any]] = []
     missing_distance_count = 0
     total_distance_m = 0.0
+    tagged_distance_m = 0.0
+    inferred_distance_m = 0.0
+    tagged_count = 0
+    inferred_count = 0
+    unknown_provenance_count = 0
     problem_surfaces = {"ground", "grass", "sand", "unknown", "unpaved"}
     ok_statuses = {"GOOD", "GOOD_INFERRED"}
+    tagged_sources = {"osm_surface", "osm"}
+    inferred_sources = {"osm_contextual", "derived-osm"}
+
+    def _provenance_kind(source: str, classification_source: str) -> str:
+        if classification_source == "tagged_surface" or source in tagged_sources:
+            return "tagged"
+        if classification_source.startswith("inferred_") or source in inferred_sources:
+            return "inferred"
+        return "unknown"
 
     for row in surface_rows:
         meta = row.get("surface_meta_json") if isinstance(row.get("surface_meta_json"), dict) else {}
@@ -368,6 +424,7 @@ def _surface_summary(surface_rows: list[dict[str, Any]], route_base: dict[str, A
         source = str(row.get("source") or "unknown").strip() or "unknown"
         confidence = str(row.get("confidence") or "unknown").strip() or "unknown"
         coverage_status = str(row.get("coverage_status") or "UNKNOWN").strip() or "UNKNOWN"
+        classification_source = str(meta.get("classification_source") or "").strip() or "unknown"
         try:
             distance_m = float(meta.get("distance_m"))
         except (TypeError, ValueError):
@@ -383,6 +440,18 @@ def _surface_summary(surface_rows: list[dict[str, Any]], route_base: dict[str, A
 
         by_source.setdefault(source, {"segment_count": 0})["segment_count"] += 1
         by_confidence.setdefault(confidence, {"segment_count": 0})["segment_count"] += 1
+
+        provenance_kind = _provenance_kind(source, classification_source)
+        if provenance_kind == "tagged":
+            tagged_count += 1
+            if distance_m is not None:
+                tagged_distance_m += distance_m
+        elif provenance_kind == "inferred":
+            inferred_count += 1
+            if distance_m is not None:
+                inferred_distance_m += distance_m
+        else:
+            unknown_provenance_count += 1
 
         reasons: list[str] = []
         if confidence.lower() == "low":
@@ -408,6 +477,13 @@ def _surface_summary(surface_rows: list[dict[str, Any]], route_base: dict[str, A
     if total_distance_m > 0:
         for bucket in by_surface.values():
             bucket["pct"] = round(bucket["distance_m"] / total_distance_m * 100.0, 1)
+        summary["tagged_surface_pct"] = round(tagged_distance_m / total_distance_m * 100.0, 1)
+        summary["inferred_surface_pct"] = round(inferred_distance_m / total_distance_m * 100.0, 1)
+    summary["tagged_surface_distance_m"] = round(tagged_distance_m, 1)
+    summary["inferred_surface_distance_m"] = round(inferred_distance_m, 1)
+    summary["tagged_surface_segment_count"] = tagged_count
+    summary["inferred_surface_segment_count"] = inferred_count
+    summary["unknown_provenance_count"] = unknown_provenance_count
 
     coverage_pct = 0.0
     if route_distance_m and route_distance_m > 0:
@@ -424,6 +500,16 @@ def _surface_summary(surface_rows: list[dict[str, Any]], route_base: dict[str, A
             "problem_segments": problem_segments,
         }
     )
+
+    profile_overpass = {}
+    if isinstance(surface_profile_summary, dict):
+        profile_overpass = surface_profile_summary.get("overpass_metrics") if isinstance(surface_profile_summary.get("overpass_metrics"), dict) else {}
+    if isinstance(profile_overpass, dict):
+        summary["overpass_chunks_total"] = profile_overpass.get("chunks_total")
+        summary["overpass_chunks_ok"] = profile_overpass.get("chunks_ok")
+        summary["overpass_chunks_failed"] = profile_overpass.get("chunks_failed")
+        summary["overpass_timeout_count"] = profile_overpass.get("timeout_count")
+        summary["overpass_http_error_count"] = profile_overpass.get("http_error_count")
     return summary
 
 
@@ -476,9 +562,18 @@ def read_canonical_route(
                 "route_base": base,
                 "layer_counts": {name: 0 for name in _CANONICAL_LAYER_ORDER},
                 "layers": {},
-            }
+        }
 
         rb_id = int(base["route_base_id"])
+        surface_profile = _surface_profile_row(conn, int(base["route_artifact_id"]) if base.get("route_artifact_id") is not None else None)
+        surface_profile_summary = surface_profile.get("surface_summary_json") if isinstance(surface_profile, dict) else None
+        if isinstance(surface_profile_summary, str):
+            try:
+                surface_profile_summary = json.loads(surface_profile_summary)
+            except Exception:
+                surface_profile_summary = {}
+        if not isinstance(surface_profile_summary, dict):
+            surface_profile_summary = {}
         layers = {
             "route_base": base,
             "route_axis_segments": _axis_rows(conn, rb_id),
@@ -489,7 +584,7 @@ def read_canonical_route(
             "route_elevation_samples": _elevation_rows(conn, rb_id),
             "route_climb_events": _climb_rows(conn, rb_id),
         }
-        surface_summary = _surface_summary(layers["route_surface_layer"], base)
+        surface_summary = _surface_summary(layers["route_surface_layer"], base, surface_profile_summary)
         layer_counts = {
             name: (1 if name == "route_base" and layers[name] else len(layers[name]))
             for name in _CANONICAL_LAYER_ORDER
@@ -516,5 +611,6 @@ def read_canonical_route(
             "shade_coverage_pct": round(shade_cov / shade_n * 100.0, 1) if shade_n else 0.0,
             "land_cover_preferred_source": land_cover_preferred_source,
             "canonical_surface_summary": surface_summary,
+            "surface_profile_overpass_metrics": surface_profile_summary.get("overpass_metrics") if isinstance(surface_profile_summary, dict) else None,
             "layers": layers,
         }
