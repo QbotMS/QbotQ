@@ -2698,6 +2698,9 @@ def _init_registry():
         ("route_plan_analysis", _load_route_plan_analysis_tool),
         ("ride_analysis", _load_ride_analysis_tool),
         ("route_profile_detail", _load_route_profile_detail_tool),
+        ("route_list", _load_route_list_tool),
+        ("route_recompute", _load_route_recompute_tool),
+        ("route_delete", _load_route_delete_tool),
         ("tire_pressure", _load_tire_pressure_tool),
         ("route_fuel_plan", _load_route_fuel_plan_tool),
         ("route_time_estimate", _load_route_time_estimate_tool),
@@ -2779,6 +2782,104 @@ def _load_route_time_estimate_tool() -> dict[str, Any]:
     }
 
 
+def _load_route_list_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        try:
+            from qbot3.routes.route_versions import list_all_routes, list_route_versions
+            rid = str((args or {}).get("route_id") or "").strip()
+            if rid:
+                return success_result(list_route_versions(rid))
+            return success_result({"routes": list_all_routes()})
+        except Exception as exc:
+            return error_result("ROUTE_LIST_FAILED", repr(exc))
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "Lista tras w bazie QBota (numer, nazwa, dystans, ile wersji, czy policzona). "
+            "Uzyj gdy trzeba pokazac lub wybrac istniejaca trase albo sprawdzic ktore sa policzone. "
+            "Z route_id zwraca wersje jednej trasy. NIE zmyslaj numerow tras - bierz je stad. Dok.: docs/ROUTE_STORE.md"
+        ),
+        "args_schema": {
+            "route_id": {"type": "string", "description": "Opcjonalne; podane = wersje jednej trasy, brak = wszystkie trasy"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+    }
+
+
+def _load_route_recompute_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        rid = str((args or {}).get("route_id") or "").strip()
+        if not rid:
+            return error_result("ROUTE_RECOMPUTE_NEEDS_ID", "Podaj route_id trasy do przeliczenia.")
+        try:
+            from qbot3.routes.route_precompute_orchestrator import ensure_route_precompute
+            out = ensure_route_precompute(route_id=rid, trigger_source="albert_manual")
+            return success_result({
+                "route_id": rid,
+                "route_version_key": out.get("route_version_key"),
+                "job_count": out.get("job_count"),
+                "retention": out.get("retention"),
+                "note": f"Przeliczono aktywna wersje trasy {rid}.",
+            })
+        except Exception as exc:
+            return error_result("ROUTE_RECOMPUTE_FAILED", repr(exc))
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "Recznie przelicza AKTYWNA (najnowsza) wersje wskazanej trasy: nawierzchnia, wysokosci, "
+            "podjazdy, cien, pokrycie, POI. Uzyj gdy uzytkownik chce przeliczyc lub odswiezyc trase "
+            "(np. po odmowie w Telegramie). WYMAGA route_id. Ciezka i zapisujaca; po sukcesie zostawia "
+            "3 najnowsze wersje. Przeliczanie STARSZEJ wersji bedzie osobno. Dok.: docs/ROUTE_STORE.md"
+        ),
+        "args_schema": {
+            "route_id": {"type": "string", "description": "ID trasy RWGPS do przeliczenia (wymagane)"},
+        },
+        "safety": "write",
+        "mode": "write",
+    }
+
+
+def _load_route_delete_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        rid = str((args or {}).get("route_id") or "").strip()
+        if not rid.isdigit():
+            return error_result("ROUTE_DELETE_NEEDS_ID", "Podaj numer trasy (route_id) do skasowania.")
+        confirm = bool((args or {}).get("confirm", False))
+        try:
+            from scripts.route_store_purge import purge_route
+            return success_result(purge_route(rid, confirm=confirm))
+        except Exception as exc:
+            return error_result("ROUTE_DELETE_FAILED", repr(exc))
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "NIEODWRACALNE kasowanie CALEJ trasy z bazy po numerze (wszystkie wersje, warstwy, surowka i pliki; "
+            "przejazdy zostaja, tylko odpiete). DWUSTOPNIOWO: BEZ confirm (domyslnie) zwraca PODGLAD co zniknie - "
+            "pokaz go uzytkownikowi i POCZEKAJ na wyrazne 'tak/kasuj'. Dopiero potem wywolaj z confirm=true. "
+            "WYMAGA route_id. Nie kasuj bez podgladu i zgody uzytkownika. Dok.: docs/ROUTE_STORE.md"
+        ),
+        "args_schema": {
+            "route_id": {"type": "string", "description": "ID trasy RWGPS do skasowania (wymagane)"},
+            "confirm": {"type": "boolean", "default": False, "description": "false=podglad; true=realne skasowanie (tylko po zgodzie uzytkownika)"},
+        },
+        "safety": "write",
+        "mode": "write",
+    }
+
+
 def _load_route_plan_analysis_tool() -> dict[str, Any]:
     from qbot3.errors import error_result, success_result
     import qbot_route_tools as _rt
@@ -2799,8 +2900,8 @@ def _load_route_plan_analysis_tool() -> dict[str, Any]:
             "PELNA, gotowa analiza ZAPLANOWANEJ trasy (jeszcze nieprzejechanej; track z RWGPS). "
             "To DOMYSLNE i jedyne narzedzie do ogolnej analizy/oceny/sprawdzenia trasy: "
             "'przeanalizuj trase', 'pelna analiza trasy', 'analiza techniczna trasy', 'sprawdz trase', 'ocen trase', 'analiza planowanej trasy'. "
-            "Zwraca komplet w jednym tekscie (pole analysis): nawierzchnia, podjazdy i przewyzszenie (siatka 80 m), "
-            "prognoza pogody liczona po WSPOLRZEDNYCH trasy, wiatr per kilometr, dopasowanie do aktualnej formy (FTP). "
+            "Zwraca komplet w jednym tekscie (pole analysis): nawierzchnia, podjazdy i przewyzszenie (kanoniczna os 50 m: DEM + warstwa nawierzchni), "
+            "dopasowanie do aktualnej formy (FTP). POGODA/WIATR NIE sa w tym narzedziu - sa w route_report (silnik METEO). "
             "NIE lacz tego z rwgps_route_fetch, rwgps_route_surface_analyze ani route_poi_analyze — to narzedzie juz zawiera nawierzchnie i przewyzszenie. "
             "Dla JUZ PRZEJECHANEJ jazdy (plik FIT) uzyj ride_analysis, nie tego. "
             "Bez route_id bierze najnowsza otrasowana trase. Pokaz uzytkownikowi pole analysis w calosci, bez przerabiania."
@@ -2866,7 +2967,7 @@ def _load_route_profile_detail_tool() -> dict[str, Any]:
         "callable": _wrapper,
         "category": "routes",
         "description": (
-            "SZCZEGOLOWY profil ZAPLANOWANEJ trasy z ramek 80 m: nawierzchnia ODCINKAMI (km od-do z typem), "
+            "SZCZEGOLOWY profil ZAPLANOWANEJ trasy z kanonicznej osi 50 m (DEM + warstwa nawierzchni): nawierzchnia ODCINKAMI (km od-do z typem), "
             "profil wysokosci po kilometrach (delta netto) i lista podjazdow. "
             "Uzyj gdy uzytkownik chce ROZBICIE / szczegoly nawierzchni i przewyzszen 'km po km' / 'odcinek po odcinku', "
             "a nie samo podsumowanie procentowe (od tego jest route_plan_analysis). Bez route_id bierze najnowsza otrasowana trase. "

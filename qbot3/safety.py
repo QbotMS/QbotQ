@@ -77,6 +77,8 @@ _LEGACY_EXTRA_ACTIONS = frozenset({
     "rwgps_route_export_gpx",
     "rwgps_route_surface_analyze",
     "fit_file_analyze",
+    "route_recompute",
+    "route_delete",
 })
 
 # Allowlist generowana z manifestow modulow (core/registry.py) + legacy

@@ -325,8 +325,16 @@ def ensure_route_precompute(*, route_id: str | int, trigger_source: str = "manua
             (route_version_key,),
         ).fetchall()
 
+    retention = None
+    try:
+        from qbot3.routes.route_versions import prune_route_versions
+        retention = prune_route_versions(route_id_text, keep=3, confirm=True)
+    except Exception as exc:
+        retention = {"status": "ERROR", "error": repr(exc)}
+
     return {
         "status": "OK",
+        "retention": retention,
         "route_id": route_id_text,
         "route_base_id": route_base_id,
         "route_artifact_id": route_artifact_id,

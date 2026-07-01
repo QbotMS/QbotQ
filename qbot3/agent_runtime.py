@@ -80,7 +80,7 @@ def _execute_real_write_tool(tool_name: str, args: dict) -> dict:
         write_result.setdefault("commit_executed", success)
         return write_result
 
-    if tool_name in ("planning_fact_add", "planning_fact_update", "memory_confirmed_fact_add", "garmin_workout_create", "route_poi_analyze", "rwgps_route_import_gpx"):
+    if tool_name in ("planning_fact_add", "planning_fact_update", "memory_confirmed_fact_add", "garmin_workout_create", "route_poi_analyze", "rwgps_route_import_gpx", "route_recompute", "route_delete"):
         from qbot3.tool_registry import lookup
         spec = lookup(tool_name)
         if spec and spec.get("callable"):
@@ -113,7 +113,8 @@ def _execute_single_tool(tool_name: str, args: dict) -> dict:
                      "calendar_event_add", "reminder_add",
                      "planning_fact_add", "planning_fact_update",
                      "memory_confirmed_fact_add", "garmin_workout_create",
-                     "route_poi_analyze", "rwgps_route_import_gpx"):
+                     "route_poi_analyze", "rwgps_route_import_gpx",
+                     "route_recompute", "route_delete"):
         return _execute_real_write_tool(tool_name, args)
 
     if tool_name in write_tools:
@@ -482,9 +483,20 @@ def _looks_like_nutrition_delete_request(question: str) -> bool:
     )
 
 
+def _looks_like_route_delete_request(question: str) -> bool:
+    ql = question.lower()
+    if not any(pat in ql for pat in ("usuń", "skasuj", "delete", "remove", "usun")):
+        return False
+    if any(pat in ql for pat in ("wszystko", "wszystkie", "all", "everything", "wyczyść", "wyczysc")):
+        return False
+    return any(hint in ql for hint in ("trasę", "trase", "trasy", "trasa", "route", "rwgps"))
+
+
 def _is_destructive_query(question: str) -> bool:
     ql = question.lower().strip()
     if _looks_like_nutrition_delete_request(ql):
+        return False
+    if _looks_like_route_delete_request(ql):
         return False
     for pat in _DESTRUCTIVE_PATTERNS:
         if ql.startswith(pat) or pat in ql.split()[:3]:

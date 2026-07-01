@@ -39,6 +39,25 @@ ALLOWED_EXPORT_FORMATS = frozenset({"gpx", "tcx", "json"})
 RWGPS_PARSE_VERSION = "gpx-summary-v1"
 RWGPS_SURFACE_ENRICHMENT_VERSION = "surface-profile-v1"
 
+
+def _archive_previous_gpx_version(artifact_path: Path, *, new_sha: str, fmt: str) -> str | None:
+    """Zanim nadpiszemy aktywny plik gpx, zachowaj poprzedni pod nazwa z odciskiem.
+    Tylko dla gpx i tylko gdy tresc geometrii sie zmienia. Nie nadpisuje istniejacego
+    archiwum. Zwraca sciezke archiwum albo None."""
+    if fmt != "gpx" or not artifact_path.exists():
+        return None
+    try:
+        prev = artifact_path.read_text(encoding="utf-8")
+    except Exception:
+        return None
+    prev_sha = hashlib.sha256(prev.encode("utf-8")).hexdigest()
+    if prev_sha == new_sha:
+        return None
+    archived = artifact_path.with_name(f"{artifact_path.stem}_{prev_sha[:10]}{artifact_path.suffix}")
+    if not archived.exists():
+        archived.write_text(prev, encoding="utf-8")
+    return str(archived)
+
 _ARTIFACT_PROJECT_NAME_MAP: dict[str, str] = {
     "toskania": "tuscany_2026",
     "tuscany": "tuscany_2026",
@@ -1753,6 +1772,7 @@ def export_route_to_artifact(route_id: str | int, fmt: str = "gpx", return_mode:
 
     filename = f"rwgps_{route_id_str}.{fmt}"
     artifact_path = ARTIFACT_RWGPS_EXPORT_DIR / filename
+    _archive_previous_gpx_version(artifact_path, new_sha=sha256_hash, fmt=fmt)
     artifact_path.write_text(content, encoding="utf-8")
     artifact_file = artifact_path if isinstance(artifact_path, Path) else Path(str(artifact_path))
 
