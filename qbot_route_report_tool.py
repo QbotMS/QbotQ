@@ -465,6 +465,185 @@ def _route_poi_section_lines(route_source: dict[str, Any] | None) -> list[str]:
     return lines
 
 
+def _parse_route_report_start(start: Any) -> tuple[str, str] | None:
+    if start is None:
+        return None
+    text = str(start).strip()
+    if not text:
+        return None
+    text = text.replace("T", " ")
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is not None:
+        try:
+            from zoneinfo import ZoneInfo
+            parsed = parsed.astimezone(ZoneInfo("Europe/Warsaw"))
+        except Exception:
+            parsed = parsed.astimezone(timezone.utc)
+    return parsed.date().isoformat(), parsed.strftime("%H:%M")
+
+
+def _meteo_status_label(result: dict[str, Any] | None) -> str:
+    if not isinstance(result, dict):
+        return "UNAVAILABLE"
+    if result.get("status") != "OK":
+        return "UNAVAILABLE"
+    per_segment = result.get("per_segment") if isinstance(result.get("per_segment"), list) else []
+    table = result.get("tabela_30min") if isinstance(result.get("tabela_30min"), list) else []
+    peak = result.get("peak") if isinstance(result.get("peak"), dict) else None
+    if not per_segment or not table or not peak:
+        return "LIMITED"
+    return "OK"
+
+
+def _meteo_summary_bits(result: dict[str, Any]) -> list[str]:
+    bits = []
+    alerts = result.get("alerts") if isinstance(result.get("alerts"), list) else []
+    counts: dict[str, int] = {}
+    for alert in alerts:
+        if not isinstance(alert, dict):
+            continue
+        typ = str(alert.get("typ") or "inne").strip() or "inne"
+        counts[typ] = counts.get(typ, 0) + 1
+    if counts:
+        order = ("upał", "deszcz", "burza", "zimno")
+        summary = []
+        for key in order:
+            if key in counts:
+                summary.append(f"{key}={counts[key]}")
+        for key in sorted(k for k in counts if k not in order):
+            summary.append(f"{key}={counts[key]}")
+        bits.append("alerty: " + ", ".join(summary))
+
+    per_segment = result.get("per_segment") if isinstance(result.get("per_segment"), list) else []
+    wind_vals = []
+    for seg in per_segment:
+        if not isinstance(seg, dict):
+            continue
+        try:
+            wind_vals.append(float(seg["wind_eff_ms"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if wind_vals:
+        bits.append(f"wiatr_eff_max={max(wind_vals):.1f} m/s")
+
+    if not result.get("alerts"):
+        bits.append("brak istotnych alertów w prognozie")
+    return bits
+
+
+def _load_route_meteo_engine() -> tuple[Any | None, str | None]:
+    try:
+        from qbot3.routes.route_meteo_engine import run_meteo_engine as _run_meteo_engine
+    except Exception as exc:  # noqa: BLE001
+        return None, f"meteo import failed: {str(exc)[:160]}"
+    return _run_meteo_engine, None
+
+
+def _meteo_section_lines(route_id: str | None, start: Any) -> list[str]:
+    lines = ["## A4 - METEO / route_run_context"]
+    parsed = _parse_route_report_start(start)
+    if not route_id:
+        lines.extend([
+            "- status: UNAVAILABLE",
+            "- powód: brak route_id",
+            "",
+        ])
+        return lines
+    if parsed is None:
+        lines.extend([
+            "- status: UNAVAILABLE",
+            "- powód: brak lub niepoprawny start",
+            "- źródło danych: route_meteo_engine (nieuruchomiony)",
+            "",
+        ])
+        return lines
+
+    date_str, start_time = parsed
+    run_meteo_engine, load_error = _load_route_meteo_engine()
+    if run_meteo_engine is None:
+        lines.extend([
+            "- status: UNAVAILABLE",
+            f"- powód: {load_error or 'meteo import failed'}",
+            "- źródło danych: route_meteo_engine (nieuruchomiony)",
+            "",
+        ])
+        return lines
+    try:
+        meteo = run_meteo_engine(route_id=route_id, date_str=date_str, start_time=start_time, mode="normalny")
+    except Exception as exc:  # noqa: BLE001
+        lines.extend([
+            "- status: UNAVAILABLE",
+            f"- powód: meteo run failed: {str(exc)[:160]}",
+            "- źródło danych: Open-Meteo + route_meteo_engine.run_meteo_engine",
+            f"- start_local: {date_str} {start_time}",
+            "",
+        ])
+        return lines
+
+    status = _meteo_status_label(meteo)
+    lines.append(f"- status: {status}")
+    lines.append("- źródło danych: Open-Meteo + route_meteo_engine.run_meteo_engine")
+    lines.append(f"- start_local: {date_str} {start_time}")
+    if status == "UNAVAILABLE":
+        err = str((meteo or {}).get("error") or "brak danych pogodowych").strip()
+        lines.append(f"- powód: {err}")
+        lines.append("")
+        return lines
+
+    peak = meteo.get("peak") if isinstance(meteo.get("peak"), dict) else {}
+    if peak:
+        lines.append(
+            "- peak WBGT: "
+            f"wbgt_eff={peak.get('wbgt_eff')} | km={peak.get('km')} | eta={peak.get('eta')} | "
+            f"alert_level={peak.get('alert_level')} | teren={peak.get('teren')}"
+        )
+    n_segments = meteo.get("n_segments")
+    n_windows = meteo.get("n_windows")
+    if n_segments is not None or n_windows is not None:
+        seg_bits = []
+        if n_segments is not None:
+            seg_bits.append(f"n_segments={n_segments}")
+        if n_windows is not None:
+            seg_bits.append(f"n_windows={n_windows}")
+        lines.append("- " + " | ".join(seg_bits))
+    lines.append("- temperatura powietrza: brak w obecnym kontrakcie METEO; raport pokazuje WBGT/Tmrt/UTCI")
+    lines.extend(f"- {bit}" for bit in _meteo_summary_bits(meteo))
+
+    alerts = meteo.get("alerts") if isinstance(meteo.get("alerts"), list) else []
+    if alerts:
+        lines.append("- najważniejsze alerty:")
+        for idx, alert in enumerate(alerts[:3], start=1):
+            if not isinstance(alert, dict):
+                continue
+            typ = alert.get("typ") or "inne"
+            severity = alert.get("severity") or "brak"
+            km_od = alert.get("km_od")
+            km_do = alert.get("km_do")
+            eta_od = alert.get("eta_od")
+            eta_do = alert.get("eta_do")
+            minuty = alert.get("minuty")
+            extra_bits = []
+            for key in ("wbgt_max", "opad_max_mm", "prawdopod", "kod_burzy", "cape_max",
+                        "porywy_max_ms", "utci_min", "kategoria", "czekanie_min"):
+                if alert.get(key) is not None:
+                    extra_bits.append(f"{key}={alert.get(key)}")
+            extra = f" | {'; '.join(extra_bits)}" if extra_bits else ""
+            lines.append(
+                f"  {idx}. {typ} | {severity} | km {km_od}–{km_do} | "
+                f"eta {eta_od}–{eta_do} | {minuty} min{extra}"
+            )
+    caveats = meteo.get("caveats") if isinstance(meteo.get("caveats"), list) else []
+    if caveats:
+        lines.append("- caveats:")
+        for caveat in caveats:
+            lines.append(f"  - {caveat}")
+    lines.append("")
+    return lines
+
+
 _ROUTE_VERSION_META_KEYS = (
     "route_id",
     "route_artifact_id",
@@ -2419,6 +2598,10 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
             rec = "2 bidony w ramie"
         H(f"💧 Bidony: {rec}. Zakładaj możliwość refill.")
         H("")
+
+    # ---- A4 meteo / route_run_context: read-only overlay dla startu ----
+    for line in _meteo_section_lines(route_id, start):
+        H(line)
 
     # ---- B: wyliczenia ----
     H("## B - WYLICZENIA")

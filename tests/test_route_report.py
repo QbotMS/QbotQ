@@ -1339,6 +1339,92 @@ class TestRouteReportCanonicalReadPath(unittest.TestCase):
         self.assertIn("route_climb_events", analysis)
         self.assertIn("profil wysokości", analysis)
 
+    def test_meteo_section_renders_for_start(self):
+        meteo = {
+            "status": "OK",
+            "route_id": "55798129",
+            "date": "2026-06-29",
+            "start": "10:00",
+            "mode": "normalny",
+            "n_segments": 76,
+            "n_windows": 14,
+            "peak": {"wbgt_eff": 26.4, "km": 41.2, "eta": "13:40", "alert_level": 2, "teren": "podjazd"},
+            "alerts": [
+                {"typ": "upał", "severity": "FLAGA", "km_od": 12.0, "km_do": 18.5,
+                 "eta_od": "11:00", "eta_do": "11:40", "minuty": 40, "wbgt_max": 26.4},
+                {"typ": "deszcz", "severity": "ALARM", "km_od": 31.0, "km_do": 34.0,
+                 "eta_od": "12:30", "eta_do": "12:50", "minuty": 20, "opad_max_mm": 7.9},
+            ],
+            "tabela_30min": [{"okno": "10:00"}],
+            "per_segment": [
+                {"km": 0.0, "eta": "10:00", "wind_eff_ms": 4.1, "wbgt_eff": 22.0},
+                {"km": 1.0, "eta": "10:10", "wind_eff_ms": 5.2, "wbgt_eff": 22.5},
+            ],
+            "caveats": ["caveat 1", "caveat 2"],
+        }
+
+        with patch.object(rr, "read_canonical_route", return_value=CANONICAL_ROUTE_SOURCE), \
+                patch.object(rr, "_load_route_meteo_engine", return_value=(lambda **kwargs: meteo, None)):
+            out = rr._tool_route_report({
+                "route_id": "55798129",
+                "variant": "pelny",
+                "start": "2026-06-29 10:00",
+            })
+
+        analysis = out["analysis"]
+        self.assertIn("## A4 - METEO / route_run_context", analysis)
+        self.assertIn("status: OK", analysis)
+        self.assertIn("Open-Meteo + route_meteo_engine.run_meteo_engine", analysis)
+        self.assertIn("start_local: 2026-06-29 10:00", analysis)
+        self.assertIn("peak WBGT: wbgt_eff=26.4 | km=41.2 | eta=13:40 | alert_level=2 | teren=podjazd", analysis)
+        self.assertIn("n_segments=76 | n_windows=14", analysis)
+        self.assertIn("temperatura powietrza: brak w obecnym kontrakcie METEO", analysis)
+        self.assertIn("alerty: upał=1, deszcz=1", analysis)
+        self.assertIn("wiatr_eff_max=5.2 m/s", analysis)
+        self.assertIn("najważniejsze alerty", analysis)
+        self.assertIn("caveat 1", analysis)
+        self.assertIn("caveat 2", analysis)
+        self.assertNotIn("run_meteo_engine", {n for n, _ in self.calls})
+
+    def test_meteo_section_skips_without_start(self):
+        with patch.object(rr, "read_canonical_route", return_value=CANONICAL_ROUTE_SOURCE), \
+                patch.object(rr, "_load_route_meteo_engine") as load_engine:
+            out = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})
+
+        analysis = out["analysis"]
+        self.assertIn("## A4 - METEO / route_run_context", analysis)
+        self.assertIn("status: UNAVAILABLE", analysis)
+        self.assertIn("brak lub niepoprawny start", analysis)
+        load_engine.assert_not_called()
+
+    def test_meteo_section_handles_loader_and_runtime_failures(self):
+        with patch.object(rr, "read_canonical_route", return_value=CANONICAL_ROUTE_SOURCE), \
+                patch.object(rr, "_load_route_meteo_engine", return_value=(None, "meteo import failed: boom")):
+            out = rr._tool_route_report({
+                "route_id": "55798129",
+                "variant": "pelny",
+                "start": "2026-06-29 10:00",
+            })
+
+        analysis = out["analysis"]
+        self.assertIn("status: UNAVAILABLE", analysis)
+        self.assertIn("meteo import failed: boom", analysis)
+
+        def boom(**kwargs):
+            raise RuntimeError("network down")
+
+        with patch.object(rr, "read_canonical_route", return_value=CANONICAL_ROUTE_SOURCE), \
+                patch.object(rr, "_load_route_meteo_engine", return_value=(boom, None)):
+            out = rr._tool_route_report({
+                "route_id": "55798129",
+                "variant": "pelny",
+                "start": "2026-06-29 10:00",
+            })
+
+        analysis = out["analysis"]
+        self.assertIn("status: UNAVAILABLE", analysis)
+        self.assertIn("meteo run failed: network down", analysis)
+
     def test_legacy_fallback_still_renders_when_canonical_missing(self):
         with patch.object(rr, "read_canonical_route", return_value=LEGACY_ROUTE_SOURCE):
             out = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})
