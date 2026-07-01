@@ -5,12 +5,16 @@ Jeden przebieg = jedno źródło prawdy. Dla każdego segmentu trasy liczy EFEKT
 z limitem zależnym od nachylenia (ACGIH: podjazd = wysiłek cięższy = niższy limit),
 i z gęstych danych wyznacza "najgorsze ciągłe okno" -> FLAGA / ALARM. Analogicznie liczy
 opad (moknięcie, wjeżdżasz/wyjeżdżasz) oraz burzę (kod burzy z prognozy = NO-GO; CAPE i
-porywy jako wsparcie/gradacja). Z tego samego przebiegu agreguje tabelę co 30 min.
+porywy jako wsparcie/gradacja). Przy burzy podaje FAKTY do decyzji rowerzysty: jak długo
+burza trwa w danym miejscu (z prognozy) i w jakiej miejscowości można ją przeczekać —
+BEZ werdyktu "jedź/nie jedź" (to zależy od typu wyprawy; rowerzysta decyduje sam).
+Z tego samego przebiegu agreguje tabelę co 30 min.
 
 Wejścia (żywe):
 - estimate_route_time_v2  -> km, ETA, grade, surface per segment (czas->miejsce->godzina),
 - qbot_v2.route_frames    -> mid_lat/mid_lon per segment (gdzie pytać o pogodę),
 - qbot_v2.route_shade_layer (oś 50 m) + segment_tau -> cień -> fdir_eff,
+- qbot_v2.route_poi_layer  -> miejscowości (town) na trasie -> gdzie przeczekać,
 - Open-Meteo w N punktach (= N okien 30 min) -> temp, RH, wiatr, ciśnienie, radiacja,
   opad, kod pogody, CAPE, porywy,
 - route_weather._rel_wind -> wiatr wzdłuż/w poprzek jazdy.
@@ -38,28 +42,29 @@ OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 TZ_NAME = "Europe/Warsaw"
 
 # --- Model UPAŁ (ACGIH; regulowalne) ---------------------------------------
-GRADE_CLIMB = 3.0          # > +3% = podjazd (wysiłek bardzo ciężki)
-GRADE_DESCENT = -3.0       # < -3% = zjazd (wysiłek lekki, plus wiatr pozorny)
-LIMIT_CLIMB_C = 23.0       # bardzo ciężka praca, zaaklimatyzowany (ACGIH)
-LIMIT_FLAT_C = 25.0        # ciężka praca
-LIMIT_DESCENT_C = 28.0     # umiarkowana/lekka
-WINDOW_MIN = 30            # okno tabeli [min]
+GRADE_CLIMB = 3.0
+GRADE_DESCENT = -3.0
+LIMIT_CLIMB_C = 23.0
+LIMIT_FLAT_C = 25.0
+LIMIT_DESCENT_C = 28.0
+WINDOW_MIN = 30
 
 # --- Model DESZCZ (klasy opadu, regulowalne) -------------------------------
-RAIN_LIGHT_MM = 2.5        # >= umiarkowany opad [mm/h]
-RAIN_HEAVY_MM = 7.6        # >= silny opad [mm/h]
-RAIN_WET_MM = 0.5          # od tego uznajemy, że realnie pada (moknięcie)
-RAIN_PROB_MIN = 40         # [%] poniżej: nie straszymy (za mała szansa)
-RAIN_TREND_MM = 0.5        # próg zmiany, by mówić że narasta/słabnie
+RAIN_LIGHT_MM = 2.5
+RAIN_HEAVY_MM = 7.6
+RAIN_WET_MM = 0.5
+RAIN_PROB_MIN = 40
+RAIN_TREND_MM = 0.5
 
 # --- Model BURZA (regulowalne) ---------------------------------------------
-STORM_CODES = {95, 96, 99}  # WMO: burza / burza z gradem -> twardy NO-GO
-CAPE_MOD_J = 1000.0        # >= umiarkowana niestabilność (możliwe burze) -> FLAGA
-CAPE_STRONG_J = 2500.0     # >= silna niestabilność -> ALARM
-CAPE_TREND_J = 200.0       # próg zmiany CAPE, by mówić że narasta/słabnie
-GUST_NOTE_MS = 14.0        # silne porywy [m/s] -> dopisek do opisu
-GUST_ALARM_MS = 17.0       # bardzo silne porywy -> co najmniej ALARM
+STORM_CODES = {95, 96, 99}
+CAPE_MOD_J = 1000.0
+CAPE_STRONG_J = 2500.0
+CAPE_TREND_J = 200.0
+GUST_NOTE_MS = 14.0
+GUST_ALARM_MS = 17.0
 _STORM_ORDER = {"FLAGA": 1, "ALARM": 2, "NO-GO": 3}
+TOWN_CATEGORY = "town"     # POI = miejscowość (gdzie można przeczekać)
 
 
 def metabolic_limit_c(grade_pct: float) -> float:
@@ -72,27 +77,25 @@ def metabolic_limit_c(grade_pct: float) -> float:
 
 
 def window_severity(exceed_c: float, minutes: float, max_alert_level: int) -> Optional[str]:
-    """UPAŁ: z przekroczenia limitu + długości ciągłego okna -> None / 'FLAGA' / 'ALARM'.
-    Im większe przekroczenie, tym krótszy tolerowany czas (logika praca/odpoczynek ACGIH)."""
-    if max_alert_level >= 4:           # strefa ekstremalna -> alarm bez względu na czas
+    """UPAŁ: z przekroczenia limitu + długości ciągłego okna -> None / 'FLAGA' / 'ALARM'."""
+    if max_alert_level >= 4:
         return "ALARM"
     if exceed_c <= 0:
         return None
-    if exceed_c > 6:                   # daleko nad limitem -> natychmiast
+    if exceed_c > 6:
         return "ALARM"
-    if exceed_c > 4:                   # 4-6 C
+    if exceed_c > 4:
         if minutes >= 15:
             return "ALARM"
         if minutes >= 7:
             return "FLAGA"
         return None
-    if exceed_c > 2:                   # 2-4 C
+    if exceed_c > 2:
         if minutes >= 60:
             return "ALARM"
         if minutes >= 30:
             return "FLAGA"
         return None
-    # 0-2 C
     if minutes >= 120:
         return "ALARM"
     if minutes >= 45:
@@ -102,11 +105,10 @@ def window_severity(exceed_c: float, minutes: float, max_alert_level: int) -> Op
 
 def rain_severity(max_precip_mm: float, minutes: float) -> Optional[str]:
     """DESZCZ: z natężenia opadu + długości ciągłego moknięcia -> None / 'FLAGA' / 'ALARM'."""
-    if max_precip_mm >= RAIN_HEAVY_MM:            # silny -> alarm
+    if max_precip_mm >= RAIN_HEAVY_MM:
         return "ALARM"
-    if max_precip_mm >= RAIN_LIGHT_MM:            # umiarkowany
+    if max_precip_mm >= RAIN_LIGHT_MM:
         return "ALARM" if minutes >= 90 else "FLAGA"
-    # lekki / mżawka: dopiero długie moknięcie warte flagi (ale musi realnie padać)
     if max_precip_mm >= RAIN_WET_MM and minutes >= 60:
         return "FLAGA"
     return None
@@ -145,6 +147,15 @@ def _trend(first: float, last: float, thr: float, up: str, down: str) -> str:
 def rain_trend(first_mm: float, last_mm: float) -> str:
     return _trend(first_mm, last_mm, RAIN_TREND_MM,
                   "narasta (wjeżdżasz w deszcz)", "słabnie (wychodzisz z deszczu)")
+
+
+def _nearest_town_before(towns: list[dict], km: float) -> Optional[dict]:
+    """Najbliższa miejscowość o km <= podanego (gdzie przeczekać przed burzą)."""
+    best = None
+    for t in towns:
+        if t["km"] <= km and (best is None or t["km"] > best["km"]):
+            best = t
+    return best
 
 
 def _terrain_label(grade_pct: float) -> str:
@@ -192,7 +203,7 @@ def _load_frame_geo(conn, route_id: str) -> list[dict]:
 
 
 def _load_shade(conn, route_id: str) -> list[dict]:
-    """Warstwa cienia (oś 50 m) posortowana po km. Każdy wiersz: km_from/km_to + dane do segment_tau."""
+    """Warstwa cienia (oś 50 m) posortowana po km. Wiersz: km_from/km_to + dane do segment_tau."""
     cur = conn.cursor()
     cur.execute("""SELECT a.km_from, a.km_to, s.heading_deg, s.class_center,
                           s.class_left_10, s.class_left_20, s.class_right_10, s.class_right_20,
@@ -211,6 +222,17 @@ def _load_shade(conn, route_id: str) -> list[dict]:
     return out
 
 
+def _load_towns(conn, route_id: str) -> list[dict]:
+    """Miejscowości na trasie (POI kategorii 'town') posortowane po km — gdzie przeczekać."""
+    cur = conn.cursor()
+    cur.execute("""SELECT p.name, p.km_on_route
+                   FROM qbot_v2.route_poi_layer p
+                   JOIN qbot_v2.route_base rb USING (route_base_id)
+                   WHERE rb.route_id=%s AND p.category=%s AND p.km_on_route IS NOT NULL
+                   ORDER BY p.km_on_route""", (route_id, TOWN_CATEGORY))
+    return [{"name": r[0], "km": round(float(r[1]), 1)} for r in cur.fetchall()]
+
+
 def _shade_for_km(shade: list[dict], km: float) -> Optional[dict]:
     if not shade:
         return None
@@ -224,7 +246,7 @@ def _shade_for_km(shade: list[dict], km: float) -> Optional[dict]:
             lo = mid + 1
         else:
             return r
-    return shade[min(max(lo, 0), len(shade) - 1)]  # poza zakresem -> najbliższy
+    return shade[min(max(lo, 0), len(shade) - 1)]
 
 
 # --- Open-Meteo -------------------------------------------------------------
@@ -265,6 +287,20 @@ def _nearest(times: list[_dt.datetime], vals: list, when: _dt.datetime):
     return vals[i]
 
 
+def _storm_clear_after(times: list, codes: list, capes: list, when: _dt.datetime) -> Optional[_dt.datetime]:
+    """Pierwsza godzina po `when`, gdy nie ma już burzy (kod poza STORM_CODES i CAPE < próg).
+    None = burza trwa do końca horyzontu prognozy (nie wiadomo jak długo)."""
+    for j in range(len(times)):
+        if times[j] <= when:
+            continue
+        cj = codes[j]
+        cj = int(cj) if cj is not None else None
+        capej = float(capes[j]) if capes[j] is not None else 0.0
+        if (cj not in STORM_CODES) and capej < CAPE_STRONG_J:
+            return times[j]
+    return None
+
+
 # --- Główny przebieg --------------------------------------------------------
 def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
                      mode: str = "normalny") -> dict:
@@ -285,6 +321,7 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
     try:
         geo = _load_frame_geo(conn, route_id)
         shade = _load_shade(conn, route_id)
+        towns = _load_towns(conn, route_id)
     finally:
         conn.close()
 
@@ -292,7 +329,6 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         return {"status": "ERROR",
                 "error": f"niespójność siatek: profil {len(profile)} != ramki z geo {len(geo)}"}
 
-    # per segment: ETA (lokalny+UTC), duracja segmentu, lat/lon
     segs = []
     prev_cum = 0.0
     for row, g in zip(profile, geo):
@@ -304,7 +340,6 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
                      "dur_min": max(0.0, (cum_h - prev_cum) * 60.0)})
         prev_cum = cum_h
 
-    # okna 30 min -> punkty pogody (= N punktów); jeden fetch na okno
     t0 = segs[0]["eta_utc"]
     t_end = segs[-1]["eta_utc"]
     n_win = max(1, int(math.ceil((t_end - t0).total_seconds() / 60.0 / WINDOW_MIN)))
@@ -326,7 +361,6 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         except Exception as exc:  # noqa
             return {"status": "ERROR", "error": f"Open-Meteo nieudane: {str(exc)[:160]}"}
 
-    # per segment: efektywny WBGT + limit + opad + burza + wiatr względny
     per_segment = []
     for s in segs:
         wi = _win_idx(s["eta_utc"])
@@ -365,6 +399,8 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         heading = sh["heading_deg"] if sh else None
         tail, cross, _ = _rel_wind(heading, wd, ws)
         storm = storm_segment_level(wcode, cape)
+        clear_utc = (_storm_clear_after(tms, h.get("weather_code", []), h.get("cape", []), when)
+                     if storm else None)
 
         per_segment.append({
             "km": round(s["km"], 2), "eta": s["eta_local"].strftime("%H:%M"),
@@ -378,9 +414,11 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
             "wind_tail_ms": round(tail, 1) if tail is not None else None,
             "wind_cross_ms": round(cross, 1) if cross is not None else None,
             "_dur_min": s["dur_min"], "_win": _win_idx(s["eta_utc"]),
+            "_eta_utc": s["eta_utc"], "_storm_clear_utc": clear_utc,
         })
 
-    alerts = _build_alerts(per_segment) + _build_rain_alerts(per_segment) + _build_storm_alerts(per_segment)
+    alerts = (_build_alerts(per_segment) + _build_rain_alerts(per_segment)
+              + _build_storm_alerts(per_segment, towns))
     order = {"NO-GO": 0, "ALARM": 1, "FLAGA": 2}
     alerts.sort(key=lambda a: (a["eta_od"], order.get(a["severity"], 9)))
     table = _build_table(per_segment, n_win, t0)
@@ -398,7 +436,9 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         "caveats": ["Limity ACGIH zakładają osobę zaaklimatyzowaną.",
                     "Wiatr pozorny rowerzysty jeszcze nie wpięty -> progi cieplne zachowawcze na płaskim/zjazdach.",
                     "Burza: 'szansa na piorun' nie jest wprost w darmowej prognozie -> bierzemy kod burzy + CAPE. "
-                    "Przy realnej burzy rządzi NO-GO + radar na żywo w dniu jazdy.",
+                    "Czas trwania z prognozy (kroki godzinne) = przybliżony. Miejscowość = ogólne schronienie "
+                    "(przystanek/wiata/sklep), nie konkretny otwarty budynek. Decyzję jedź/przeczekaj/odpuść "
+                    "podejmujesz sam wg typu wyprawy.",
                     "Odczuwalne (UTCI) jeszcze nie liczone."],
     }
 
@@ -475,8 +515,9 @@ def _build_rain_alerts(per_segment: list[dict]) -> list[dict]:
     return alerts
 
 
-def _build_storm_alerts(per_segment: list[dict]) -> list[dict]:
-    """BURZA: ciągłe okna ryzyka (kod burzy = NO-GO; CAPE >= progi = ALARM/FLAGA)."""
+def _build_storm_alerts(per_segment: list[dict], towns: list[dict]) -> list[dict]:
+    """BURZA: ciągłe okna ryzyka. Przy realnej burzy (NO-GO) dokłada FAKTY do decyzji:
+    ile trwa w tym miejscu (z prognozy) i w jakiej miejscowości przeczekać. Bez werdyktu jedź/nie."""
     alerts = []
 
     def flush(run):
@@ -491,7 +532,6 @@ def _build_storm_alerts(per_segment: list[dict]) -> list[dict]:
         capes = [x["cape"] for x in run if x["cape"] is not None]
         gusts = [x["gust_ms"] for x in run if x["gust_ms"] is not None]
         max_gust = max(gusts) if gusts else None
-        # bardzo silne porywy podbijają FLAGĘ do ALARMU
         if worst == "FLAGA" and max_gust is not None and max_gust >= GUST_ALARM_MS:
             worst = "ALARM"
         kod_burzy = any(x["burza_kod"] in STORM_CODES for x in run if x["burza_kod"] is not None)
@@ -500,13 +540,26 @@ def _build_storm_alerts(per_segment: list[dict]) -> list[dict]:
         trend = (_trend(cape_first, cape_last, CAPE_TREND_J,
                         "narasta (wjeżdżasz w warunki burzowe)", "słabnie (wychodzisz)")
                  if cape_first is not None and cape_last is not None else None)
-        alerts.append({
+
+        alert = {
             "typ": "burza", "severity": worst, "km_od": run[0]["km"], "km_do": run[-1]["km"],
             "eta_od": run[0]["eta"], "eta_do": run[-1]["eta"], "minuty": round(minutes),
             "kod_burzy": kod_burzy, "cape_max": (max(capes) if capes else None),
             "porywy_max_ms": max_gust, "trend": trend,
             "porywy_silne": (max_gust is not None and max_gust >= GUST_NOTE_MS),
-        })
+        }
+
+        if kod_burzy:  # realna burza -> fakty do decyzji rowerzysty
+            clears = [x["_storm_clear_utc"] for x in run]
+            if all(c is not None for c in clears) and clears:
+                wait = round((max(clears) - run[0]["_eta_utc"]).total_seconds() / 60.0)
+                alert["czekanie_min"] = max(0, wait)
+            else:
+                alert["czekanie_min"] = None  # burza poza horyzont prognozy
+            town = _nearest_town_before(towns, run[0]["km"])
+            alert["przeczekaj_w"] = ({"miejscowosc": town["name"], "km": town["km"]} if town else None)
+
+        alerts.append(alert)
 
     run = []
     for s in per_segment:
@@ -548,7 +601,7 @@ def _build_table(per_segment: list[dict], n_win: int, t0: _dt.datetime) -> list[
             "opad": {"mm": round(pmax["opad_mm"], 1), "prob": (max(probs) if probs else None)},
             "burza": {"poziom": storm_w, "cape": (max(capes) if capes else None),
                       "porywy_ms": (max(gusts) if gusts else None)},
-            "odczuwalna": None,  # placeholder
+            "odczuwalna": None,
         })
     return rows
 
