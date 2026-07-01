@@ -21,7 +21,6 @@ from tools.rwgps.client import (
     summarize_rwgps_artifact as rwgps_summarize_rwgps_artifact,
     extract_artifact_points as rwgps_extract_artifact_points,
 )
-from tools.rwgps.surface_landcover import _infer_surface, SURFACE_LOGIC_VERSION, _CONF_RANK
 
 load_dotenv()
 db.init()
@@ -1235,55 +1234,8 @@ def _haversine(lat1, lon1, lat2, lon2) -> float:
     return 2 * R * math.asin(math.sqrt(a))
 
 
-def _fetch_ways_along_track(samples, radius_m=30, timeout=60):
-    """Pobierz wszystkie drogi (highway) wzdluz calego sladu jednym zapytaniem
-    Overpass na kazdy chunk po 500 punktow. Deduplikuje way-e po id. Fail-open
-    per chunk: blad jednego chunku nie przerywa calosci. Zwraca liste way-ow."""
-    CHUNK = 500
-    ways_by_id = {}
-    n_chunks = (len(samples) + CHUNK - 1) // CHUNK if samples else 0
-    for ci in range(0, len(samples), CHUNK):
-        chunk = samples[ci:ci + CHUNK]
-        coords = ",".join(f"{pt[0]},{pt[1]}" for pt in chunk)
-        query = (
-            f"[out:json][timeout:{timeout}];"
-            f'way["highway"](around:{radius_m},{coords});'
-            f"out tags geom;"
-        )
-        idx = ci // CHUNK + 1
-        try:
-            print(f"[surface] Overpass chunk {idx}/{n_chunks}: {len(chunk)} pts, radius={radius_m}m", flush=True)
-            elements = _overpass_post(query, timeout=timeout)
-        except Exception as exc:
-            print(f"[surface] Overpass chunk {idx}/{n_chunks} FAILED (fail-open): {exc}", flush=True)
-            continue
-        for el in elements or []:
-            wid = el.get("id")
-            if wid is None:
-                ways_by_id[id(el)] = el
-            else:
-                ways_by_id[wid] = el
-    return list(ways_by_id.values())
 
 
-def _match_point_to_ways(lat, lon, ways, max_dist_m=150):
-    """Dla punktu GPS znajdz najblizszy node w geometrii ktoregokolwiek z way-ow.
-    Zwraca (tags_dict, dist_m) dla najblizszego way w promieniu max_dist_m,
-    albo None gdy brak dopasowania lub za daleko."""
-    best_tags = None
-    best_dist = float("inf")
-    for way in ways:
-        for node in way.get("geometry", []) or []:
-            try:
-                d = _haversine(lat, lon, node["lat"], node["lon"])
-            except Exception:
-                continue
-            if d < best_dist:
-                best_dist = d
-                best_tags = way.get("tags", {}) or {}
-    if best_tags is None or best_dist > max_dist_m:
-        return None
-    return (best_tags, best_dist)
 
 
 @mcp.tool()
