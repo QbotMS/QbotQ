@@ -314,37 +314,78 @@ def _route_poi_section_lines(route_source: dict[str, Any] | None) -> list[str]:
         return []
     if str(route_source.get("read_path") or "").strip() != "canonical":
         return []
-
-    layer_counts = route_source.get("layer_counts") or {}
-    if not isinstance(layer_counts, dict):
-        layer_counts = {}
-
-    raw_count = route_source.get("route_poi_layer_count")
-    if raw_count is None:
-        raw_count = layer_counts.get("route_poi_layer")
-    if raw_count is None:
-        layers = route_source.get("layers") or {}
-        if isinstance(layers, dict):
-            raw_count = len(layers.get("route_poi_layer") or [])
+    summary = route_source.get("canonical_poi_summary")
+    if not isinstance(summary, dict):
+        return []
 
     try:
-        poi_count = int(raw_count or 0)
+        poi_count = int(summary.get("poi_count") or 0)
     except (TypeError, ValueError):
         poi_count = 0
     if poi_count <= 0:
         return []
 
-    route_base_id = route_source.get("route_base_id")
-    route_version_key = route_source.get("route_version_key")
+    by_category = summary.get("by_category") if isinstance(summary.get("by_category"), dict) else {}
+    field_counts = summary.get("field_counts") if isinstance(summary.get("field_counts"), dict) else {}
+    clusters = summary.get("clusters") if isinstance(summary.get("clusters"), list) else []
+
+    def _field_count(key: str) -> int:
+        try:
+            return int(field_counts.get(key) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    cat_bits = []
+    for key, payload in sorted(by_category.items()):
+        if isinstance(payload, dict):
+            cat_bits.append(f"{key}={int(payload.get('count') or 0)}")
+
     lines = [
         "Źródło POI: canonical route_poi_layer",
         f"route_poi_layer_count={poi_count}",
-        "Opis: canonical route_poi_layer jest bazą A8; legacy cache / route_poi_analyze_readonly pozostają fallbackiem dla szczegółowej logistyki",
     ]
-    if route_base_id is not None:
-        lines.append(f"route_base_id={route_base_id}")
-    if route_version_key:
-        lines.append(f"route_version_key={route_version_key}")
+    if cat_bits:
+        lines.append("kategorie: " + ", ".join(cat_bits))
+    lines.append(
+        "dane dostępne: "
+        f"km={_field_count('km_on_route')}/{poi_count}, "
+        f"distance={_field_count('distance_from_route_m')}/{poi_count}, "
+        f"opening_hours={_field_count('opening_hours')}/{poi_count}, "
+        f"locality/town={_field_count('town_rows')}/{poi_count}"
+    )
+    if clusters:
+        lines.append("Najlepsze klastry canonical POI:")
+        for idx, cluster in enumerate(clusters[:3], start=1):
+            if not isinstance(cluster, dict):
+                continue
+            locality = str(cluster.get("locality") or "brak lokalizacji").strip() or "brak lokalizacji"
+            item_count = int(cluster.get("item_count") or 0)
+            km_min = cluster.get("km_min")
+            km_max = cluster.get("km_max")
+            other_count = int(cluster.get("other_count") or 0)
+            if km_min is not None and km_max is not None:
+                loc = f"km {float(km_min):.1f}–{float(km_max):.1f}"
+            else:
+                loc = "km ?"
+            lines.append(f"{idx}. {locality} | {item_count} punktów | {loc}")
+            if other_count:
+                lines.append(f"   +{other_count} innych punktów w pobliżu")
+            for item in cluster.get("best_items") or []:
+                if not isinstance(item, dict):
+                    continue
+                hours = item.get("opening_hours") or "brak"
+                dist_m = item.get("distance_from_route_m")
+                dist_s = f"{float(dist_m):.0f} m" if dist_m is not None else "brak"
+                km = item.get("km_on_route")
+                km_s = f"{float(km):.1f}" if km is not None else "brak"
+                lines.append(
+                    f"   - {item.get('name')} | {item.get('category')} | km {km_s} | "
+                    f"distance_from_route_m={dist_s} | opening_hours={hours}"
+                )
+    lines.append(
+        "Uwaga: canonical POI ma km/distance dla wszystkich punktów, ale opening_hours tylko dla części; "
+        "legacy cache nadal dostarcza pełniejszą logistykę ETA i godzin."
+    )
     return lines
 
 

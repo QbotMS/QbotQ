@@ -247,6 +247,84 @@ CANONICAL_ROUTE_SOURCE = {
             }
         ],
     },
+    "canonical_poi_summary": {
+        "poi_count": 38,
+        "by_category": {
+            "hard_resupply": {"count": 15, "km_count": 15, "distance_count": 15, "opening_hours_count": 13},
+            "soft_food_stop": {"count": 3, "km_count": 3, "distance_count": 3, "opening_hours_count": 2},
+            "town": {"count": 20, "km_count": 20, "distance_count": 20, "opening_hours_count": 0},
+        },
+        "field_counts": {
+            "km_on_route": 38,
+            "distance_from_route_m": 38,
+            "opening_hours": 15,
+            "town_rows": 20,
+        },
+        "clusters": [
+            {
+                "locality": "Morgi",
+                "item_count": 10,
+                "km_min": 39.037,
+                "km_max": 70.856,
+                "other_count": 8,
+                "best_items": [
+                    {
+                        "name": "Sklep spożywczy GS Samopomoc Chłopska",
+                        "category": "hard_resupply",
+                        "km_on_route": 61.3,
+                        "distance_from_route_m": 25.0,
+                        "opening_hours": "Monday: 7:30 AM – 8:00 PM",
+                    },
+                    {
+                        "name": "Sklep spożywczo-przemysłowy",
+                        "category": "hard_resupply",
+                        "km_on_route": 39.0,
+                        "distance_from_route_m": 21.0,
+                        "opening_hours": "Monday: 6:00 AM – 7:00 PM",
+                    },
+                ],
+            },
+            {
+                "locality": "Rafa",
+                "item_count": 5,
+                "km_min": 0.019,
+                "km_max": 7.815,
+                "other_count": 3,
+                "best_items": [
+                    {
+                        "name": "Wawie sp.j. Piekarnia",
+                        "category": "hard_resupply",
+                        "km_on_route": 0.052,
+                        "distance_from_route_m": 16.5,
+                        "opening_hours": "Monday: 5:30 AM – 8:00 PM",
+                    },
+                    {
+                        "name": "Topaz Express",
+                        "category": "hard_resupply",
+                        "km_on_route": 0.019,
+                        "distance_from_route_m": 25.1,
+                        "opening_hours": "Monday: 5:30 AM – 6:00 PM",
+                    },
+                ],
+            },
+            {
+                "locality": "Udrzyn",
+                "item_count": 2,
+                "km_min": 15.018,
+                "km_max": 15.018,
+                "other_count": 0,
+                "best_items": [
+                    {
+                        "name": "Sklep spożywczy GS Samopomoc Chłopska",
+                        "category": "hard_resupply",
+                        "km_on_route": 15.018,
+                        "distance_from_route_m": 1474.1,
+                        "opening_hours": "Monday: 8:00 AM – 5:00 PM",
+                    }
+                ],
+            },
+        ],
+    },
     "surface_profile_overpass_metrics": {
         "chunks_total": 7,
         "chunks_ok": 7,
@@ -1125,6 +1203,15 @@ class TestRouteReportSurfaceSummaryRegression(unittest.TestCase):
         self.assertIn("by_surface:", analysis)
         self.assertIn("problem_segments_count=1", analysis)
         self.assertIn("Geologia / podłoże: brak danych w canonical_surface_summary", analysis)
+        self.assertIn("Źródło POI: canonical route_poi_layer", analysis)
+        self.assertIn("route_poi_layer_count=38", analysis)
+        self.assertIn("kategorie: hard_resupply=15, soft_food_stop=3, town=20", analysis)
+        self.assertIn("dane dostępne: km=38/38, distance=38/38, opening_hours=15/38, locality/town=20/38", analysis)
+        self.assertIn("Najlepsze klastry canonical POI:", analysis)
+        self.assertIn("Morgi", analysis)
+        self.assertIn("Rafa", analysis)
+        self.assertIn("Udrzyn", analysis)
+        self.assertIn("Uwaga: canonical POI ma km/distance dla wszystkich punktów", analysis)
         self.assertNotIn("surface_summary_json", analysis.split("## A8 - WODA / SKLEPY / REFILL")[0])
         self.assertIn("Status zaopatrzenia: UNAVAILABLE", analysis)
         self.assertIn("Kompletność techniczna POI: UNAVAILABLE", analysis)
@@ -1198,6 +1285,12 @@ class TestRouteReportCanonicalReadPath(unittest.TestCase):
         self.assertNotIn("Źródło profilu: qbot_v2.route_surface_profiles.surface_summary_json", analysis)
         self.assertIn("Źródło POI: canonical route_poi_layer", analysis)
         self.assertIn("route_poi_layer_count=38", analysis)
+        self.assertIn("kategorie: hard_resupply=15, soft_food_stop=3, town=20", analysis)
+        self.assertIn("dane dostępne: km=38/38, distance=38/38, opening_hours=15/38, locality/town=20/38", analysis)
+        self.assertIn("Najlepsze klastry canonical POI:", analysis)
+        self.assertIn("Morgi", analysis)
+        self.assertIn("Rafa", analysis)
+        self.assertIn("Udrzyn", analysis)
         self.assertIn("route_elevation_samples", analysis)
         self.assertIn("route_climb_events", analysis)
         self.assertIn("profil wysokości", analysis)

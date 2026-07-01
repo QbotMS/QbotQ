@@ -275,6 +275,123 @@ def _poi_rows(conn, route_base_id: int) -> list[dict[str, Any]]:
     )
 
 
+def _poi_summary(poi_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "poi_count": len(poi_rows),
+        "by_category": {},
+        "field_counts": {
+            "km_on_route": 0,
+            "distance_from_route_m": 0,
+            "opening_hours": 0,
+            "town_rows": 0,
+        },
+        "clusters": [],
+    }
+    if not poi_rows:
+        return summary
+
+    by_category: dict[str, dict[str, Any]] = {}
+    field_counts = summary["field_counts"]
+    town_rows: list[dict[str, Any]] = []
+    supply_rows: list[dict[str, Any]] = []
+
+    for row in poi_rows:
+        category = str(row.get("category") or "unknown").strip() or "unknown"
+        bucket = by_category.setdefault(category, {"count": 0, "km_count": 0, "distance_count": 0, "opening_hours_count": 0})
+        bucket["count"] += 1
+        if row.get("km_on_route") is not None:
+            bucket["km_count"] += 1
+            field_counts["km_on_route"] += 1
+        if row.get("distance_from_route_m") is not None:
+            bucket["distance_count"] += 1
+            field_counts["distance_from_route_m"] += 1
+        if str(row.get("opening_hours") or "").strip():
+            bucket["opening_hours_count"] += 1
+            field_counts["opening_hours"] += 1
+        if category == "town":
+            field_counts["town_rows"] += 1
+            town_rows.append(row)
+        elif category in {"hard_resupply", "soft_food_stop", "water"}:
+            supply_rows.append(row)
+
+    summary["by_category"] = dict(sorted(by_category.items()))
+
+    def _km_value(row: dict[str, Any]) -> float | None:
+        try:
+            return float(row.get("km_on_route"))
+        except (TypeError, ValueError):
+            return None
+
+    def _distance_value(row: dict[str, Any]) -> float | None:
+        try:
+            return float(row.get("distance_from_route_m"))
+        except (TypeError, ValueError):
+            return None
+
+    def _sort_metric_value(value: Any) -> float:
+        if value is None:
+            return 999999.0
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 999999.0
+
+    town_rows_sorted = [row for row in town_rows if _km_value(row) is not None]
+    town_rows_sorted.sort(key=lambda row: (_km_value(row) or 0.0, str(row.get("name") or "")))
+
+    clusters: dict[str, list[dict[str, Any]]] = {}
+    for row in supply_rows:
+        km = _km_value(row)
+        locality = "brak lokalizacji"
+        if km is not None and town_rows_sorted:
+            nearest_town = min(town_rows_sorted, key=lambda town: abs((_km_value(town) or 0.0) - km))
+            locality = str(nearest_town.get("name") or locality).strip() or locality
+        clusters.setdefault(locality, []).append(row)
+
+    cluster_rows: list[dict[str, Any]] = []
+    for locality, items in sorted(
+        clusters.items(),
+        key=lambda item: (
+            -len(item[1]),
+            min((_km_value(row) if _km_value(row) is not None else 999999.0) for row in item[1]),
+            item[0],
+        ),
+    ):
+        km_vals = [value for row in items if (value := _km_value(row)) is not None]
+        best_items = sorted(
+            items,
+            key=lambda row: (
+                _sort_metric_value(_distance_value(row)),
+                _sort_metric_value(_km_value(row)),
+                str(row.get("name") or ""),
+            ),
+        )[:2]
+        cluster_rows.append(
+            {
+                "locality": locality,
+                "item_count": len(items),
+                "km_min": round(min(km_vals), 3) if km_vals else None,
+                "km_max": round(max(km_vals), 3) if km_vals else None,
+                "other_count": max(0, len(items) - len(best_items)),
+                "best_items": [
+                    {
+                        "name": item.get("name"),
+                        "category": item.get("category"),
+                        "km_on_route": item.get("km_on_route"),
+                        "distance_from_route_m": item.get("distance_from_route_m"),
+                        "opening_hours": item.get("opening_hours"),
+                        "provider": item.get("provider"),
+                        "confidence": item.get("confidence"),
+                        "status": item.get("status"),
+                    }
+                    for item in best_items
+                ],
+            }
+        )
+    summary["clusters"] = cluster_rows
+    return summary
+
+
 def _elevation_rows(conn, route_base_id: int) -> list[dict[str, Any]]:
     return _fetch_many(
         conn,
@@ -585,6 +702,7 @@ def read_canonical_route(
             "route_climb_events": _climb_rows(conn, rb_id),
         }
         surface_summary = _surface_summary(layers["route_surface_layer"], base, surface_profile_summary)
+        poi_summary = _poi_summary(layers["route_poi_layer"])
         layer_counts = {
             name: (1 if name == "route_base" and layers[name] else len(layers[name]))
             for name in _CANONICAL_LAYER_ORDER
@@ -611,6 +729,7 @@ def read_canonical_route(
             "shade_coverage_pct": round(shade_cov / shade_n * 100.0, 1) if shade_n else 0.0,
             "land_cover_preferred_source": land_cover_preferred_source,
             "canonical_surface_summary": surface_summary,
+            "canonical_poi_summary": poi_summary,
             "surface_profile_overpass_metrics": surface_profile_summary.get("overpass_metrics") if isinstance(surface_profile_summary, dict) else None,
             "layers": layers,
         }
