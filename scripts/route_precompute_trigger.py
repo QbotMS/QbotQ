@@ -56,6 +56,70 @@ def _route_precompute_rows(conn, route_version_key: str) -> list[dict[str, objec
     return [dict(row) for row in rows]
 
 
+def _route_import_state(conn, route_id_text: str) -> dict[str, object]:
+    row = conn.execute(
+        """
+        SELECT
+            a.id AS route_artifact_id,
+            pr.id AS route_parse_result_id
+        FROM qbot_v2.route_artifacts a
+        LEFT JOIN qbot_v2.route_parse_results pr
+            ON pr.route_artifact_id = a.id
+        WHERE a.route_id::text = %s
+        ORDER BY a.updated_at DESC NULLS LAST, a.created_at DESC NULLS LAST, a.id DESC
+        LIMIT 1
+        """,
+        (route_id_text,),
+    ).fetchone()
+    if not row:
+        return {
+            "has_artifact": False,
+            "has_parse_result": False,
+            "route_artifact_id": None,
+            "route_parse_result_id": None,
+        }
+    return {
+        "has_artifact": bool(row.get("route_artifact_id")),
+        "has_parse_result": bool(row.get("route_parse_result_id")),
+        "route_artifact_id": row.get("route_artifact_id"),
+        "route_parse_result_id": row.get("route_parse_result_id"),
+    }
+
+
+def _ensure_rwgps_route_artifact(route_id_text: str, *, force: bool = False) -> dict[str, object]:
+    with _db_conn() as conn:
+        state = _route_import_state(conn, route_id_text)
+    if state["has_artifact"] and state["has_parse_result"] and not force:
+        return {
+            "status": "OK",
+            "import_status": "skipped",
+            "route_id": route_id_text,
+            "route_artifact_id": state["route_artifact_id"],
+            "route_parse_result_id": state["route_parse_result_id"],
+        }
+
+    from tools.rwgps.client import export_route_to_artifact
+
+    export_result = export_route_to_artifact(route_id_text, fmt="gpx", return_mode="metadata")
+    if not export_result.get("ok"):
+        raise RuntimeError(
+            export_result.get("reason")
+            or export_result.get("error")
+            or f"RWGPS export failed for route_id={route_id_text}"
+        )
+
+    with _db_conn() as conn:
+        refreshed = _route_import_state(conn, route_id_text)
+    return {
+        "status": "OK",
+        "import_status": "imported",
+        "route_id": route_id_text,
+        "route_artifact_id": refreshed["route_artifact_id"],
+        "route_parse_result_id": refreshed["route_parse_result_id"],
+        "export_result": export_result,
+    }
+
+
 def _precompute_complete(rows: list[dict[str, object]], env: Mapping[str, str] | None = None) -> bool:
     expected_job_types = active_precompute_job_types(env)
     if len(rows) != len(expected_job_types):
@@ -73,6 +137,7 @@ def ensure_route_precompute_trigger(
     env: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     route_id_text = _normalize_route_id(route_id)
+    import_result = _ensure_rwgps_route_artifact(route_id_text)
     base_result = ensure_route_base(route_id_text)
     route_base = base_result["route_base"]
     route_base_id = int(route_base["route_base_id"])
@@ -91,6 +156,7 @@ def ensure_route_precompute_trigger(
                 "route_version_key": route_version_key,
                 "route_precompute_jobs_count": len(rows),
                 "job_types": [row["job_type"] for row in rows],
+                "route_import": import_result,
             }
 
     result = ensure_route_precompute(route_id=route_id_text, trigger_source=trigger_source)
@@ -104,6 +170,7 @@ def ensure_route_precompute_trigger(
         "route_precompute_jobs_count": len(result.get("job_rows") or []),
         "job_types": sorted((row.get("job_type") for row in result.get("job_rows") or [] if isinstance(row, dict))),
         "result": result,
+        "route_import": import_result,
     }
 
 

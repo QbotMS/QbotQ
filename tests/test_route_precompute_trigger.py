@@ -8,6 +8,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from scripts.route_precompute_trigger import ensure_route_precompute_trigger
+from scripts.route_precompute_trigger import _ensure_rwgps_route_artifact
 import scripts.route_precompute_trigger as route_precompute_trigger_module
 from qbot_api import rwgps_webhook
 
@@ -68,7 +69,13 @@ class TestRoutePrecomputeTrigger(unittest.TestCase):
         self.assertTrue(route_precompute_trigger_module._precompute_complete(rows_6, env=env_6))
 
     def test_helper_runs_when_jobs_incomplete(self) -> None:
-        with patch("scripts.route_precompute_trigger.ensure_route_base", return_value={
+        with patch("scripts.route_precompute_trigger._ensure_rwgps_route_artifact", return_value={
+            "status": "OK",
+            "import_status": "imported",
+            "route_id": "55798129",
+            "route_artifact_id": 306,
+            "route_parse_result_id": 17,
+        }) as mock_import, patch("scripts.route_precompute_trigger.ensure_route_base", return_value={
             "route_base": {"route_base_id": 1},
             "route_artifact_id": 306,
             "route_version_key": "rk-1",
@@ -91,8 +98,50 @@ class TestRoutePrecomputeTrigger(unittest.TestCase):
             result = ensure_route_precompute_trigger(route_id="55798129")
 
         self.assertEqual(result["trigger_status"], "ran")
+        self.assertEqual(result["route_import"]["import_status"], "imported")
         self.assertEqual(result["route_version_key"], "rk-1")
+        mock_import.assert_called_once_with("55798129")
         mock_precompute.assert_called_once_with(route_id="55798129", trigger_source="rwgps_webhook")
+
+    def test_ensure_rwgps_route_artifact_exports_when_missing(self) -> None:
+        missing_state = {
+            "has_artifact": False,
+            "has_parse_result": False,
+            "route_artifact_id": None,
+            "route_parse_result_id": None,
+        }
+        ready_state = {
+            "has_artifact": True,
+            "has_parse_result": True,
+            "route_artifact_id": 777,
+            "route_parse_result_id": 778,
+        }
+
+        with patch("scripts.route_precompute_trigger._route_import_state", side_effect=[missing_state, ready_state]), patch(
+            "tools.rwgps.client.export_route_to_artifact",
+            return_value={"ok": True, "status": "OK", "artifact_store_id": "abc"},
+        ) as mock_export:
+            result = _ensure_rwgps_route_artifact("55911618")
+
+        self.assertEqual(result["import_status"], "imported")
+        self.assertEqual(result["route_artifact_id"], 777)
+        self.assertEqual(result["route_parse_result_id"], 778)
+        mock_export.assert_called_once_with("55911618", fmt="gpx", return_mode="metadata")
+
+    def test_ensure_rwgps_route_artifact_skips_when_ready(self) -> None:
+        ready_state = {
+            "has_artifact": True,
+            "has_parse_result": True,
+            "route_artifact_id": 777,
+            "route_parse_result_id": 778,
+        }
+        with patch("scripts.route_precompute_trigger._route_import_state", return_value=ready_state), patch(
+            "tools.rwgps.client.export_route_to_artifact",
+        ) as mock_export:
+            result = _ensure_rwgps_route_artifact("55911618")
+
+        self.assertEqual(result["import_status"], "skipped")
+        mock_export.assert_not_called()
 
     @unittest.skipUnless(_live_db_enabled(), "QBOT_LIVE_DB_TESTS=1 required for live DB trigger smoke")
     def test_route_55798129_trigger_idempotent(self) -> None:

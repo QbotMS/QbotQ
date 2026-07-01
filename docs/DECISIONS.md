@@ -5,6 +5,14 @@
 
 ---
 
+## 2026-07-01 — DECYZJA: RWGPS webhook najpierw materializuje artefakt, a Telegram używa publicznego qbot.query wrappera
+
+**Status:** wdrożone w workerze precompute i w Telegram gateway.
+
+**Decyzja:** `scripts/route_precompute_trigger.py` ma najpierw upewnić się, że nowa trasa RWGPS ma zapisany `route_artifact` / `route_parse_result`, a dopiero potem uruchamiać canonical `route_base` i `route_precompute_jobs`. Telegramowy gateway ma natomiast korzystać z aktualnego `qbot.query` wrappera, żeby pełny route_report po imporcie widział ten sam publiczny route_report path co MCP / qbot.query.
+
+**Zasada:** RWGPS import jest read-side materializacją canonical stores, a route_report pozostaje oddzielnym read-only renderem. Brak importu nie może wywrócić raportu, ale nowa trasa ma zostać przygotowana bez ręcznej operacji w legacy dumpach.
+
 ## 2026-06-30 — DECYZJA: route_report pokazuje canonical surface summary w A3
 
 **Status:** wdrożone minimalnie w `qbot_route_report_tool.py`.

@@ -299,8 +299,13 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
                 text = f"{prior_query} od {df_val}" + (f" do {dt_val}" if dt_val else "")
 
     try:
-        from qbot_query_router import query as qbot_query
-        result = qbot_query(question=text, mode="read_only", scope="all", context=json.dumps(context))
+        from qbot_tools import _tool_qbot_query as qbot_query
+        result = qbot_query({
+            "query": text,
+            "mode": "read_only",
+            "scope": "all",
+            "context": json.dumps(context),
+        })
 
         intent = result.get("intents_detected",[])
         answer = str(result.get("answer", "") or "").strip()

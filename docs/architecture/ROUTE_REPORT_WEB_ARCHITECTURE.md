@@ -145,6 +145,11 @@ diagnostyczny z `route_canonical_read` (`read_path`, `fallback_reason`,
 `land_cover_preferred_source`, `route_shade_layer_count`), ale sekcje A3/A8 i
 legacy fallback pozostają bez przebudowy.
 
+Aktualizacja 2026-07-01: Telegramowy gateway ma używać tego samego publicznego
+`qbot.query` wrappera co MCP, a nie legacy `qbot_query_router`, żeby route_report
+po imporcie widział aktualny bypass na canonical route_report i nie wracał do
+starej ścieżki raportu.
+
 Aktualizacja 2026-06-30: pierwszy merytoryczny krok canonical to sekcja
 „otoczenie trasy" oparta o `route_shade_layer` / WorldCover. Jest opisana
 jako przekrój lewo / środek / prawo względem osi trasy i nie zastępuje jeszcze

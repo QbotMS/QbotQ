@@ -19,6 +19,43 @@ _SERVICES = [
 
 _GIT_REPO = Path("/opt/qbot/app")
 
+_ROUTE_REPORT_QUERY_RE = re.compile(
+    r"\b("
+    r"pełna analiza trasy|pelna analiza trasy|analizuj trase|analizuj trasę|"
+    r"przeanalizuj trase|przeanalizuj trasę|raport trasy|ocen trase|oceń trasę|"
+    r"co mnie czeka na trasie"
+    r")\b",
+    re.IGNORECASE,
+)
+_ROUTE_ID_RE = re.compile(r"\b(\d{6,8})\b")
+_ROUTE_START_RE = re.compile(
+    r"(?:start\s*)?(\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2})?)",
+    re.IGNORECASE,
+)
+
+
+def _parse_route_report_query(query: str) -> dict[str, str]:
+    route_id_match = _ROUTE_ID_RE.search(query or "")
+    start_match = _ROUTE_START_RE.search(query or "")
+    ql = (query or "").lower()
+    if "dla grupy" in ql or "grupa" in ql or "group" in ql:
+        variant = "grupa"
+    elif "skrócon" in ql or "skrocon" in ql or "krótk" in ql or "krotk" in ql or "short" in ql:
+        variant = "skrocony"
+    else:
+        variant = "pelny"
+    payload: dict[str, str] = {"variant": variant}
+    if route_id_match:
+        payload["route_id"] = route_id_match.group(1)
+    if start_match:
+        payload["start"] = start_match.group(1)
+    return payload
+
+
+def _is_route_report_query(query: str) -> bool:
+    ql = (query or "").lower()
+    return bool(_ROUTE_REPORT_QUERY_RE.search(query or "")) and bool(_ROUTE_ID_RE.search(query or "")) and ("start" in ql or "pełna" in ql or "pelna" in ql or "analiz" in ql or "raport" in ql)
+
 
 def _service_status(svc: str) -> dict[str, Any]:
     try:
@@ -693,6 +730,35 @@ def _tool_qbot_query(args: dict | None = None) -> dict[str, Any]:
     query = str(payload.get("query", "")).strip()
     if not query:
         return {"tool": "qbot_query", "status": "error", "error": "empty query"}
+
+    if _is_route_report_query(query):
+        try:
+            import qbot_route_report_tool as _route_report
+            report_args = _parse_route_report_query(query)
+            out = _route_report._tool_route_report(report_args)
+            if out.get("status") == "OK":
+                return {
+                    "tool": "qbot_query",
+                    "safety_class": "READ_ONLY",
+                    "mode": "read_only",
+                    "query": query,
+                    "status": "ok",
+                    "answer": out.get("analysis", ""),
+                    "human_answer": out.get("analysis", ""),
+                    "confidence": "medium",
+                    "missing_fields": [],
+                    "limitations": [
+                        "pre_routed",
+                        "route_report",
+                    ],
+                    "route_report": {
+                        "variant": out.get("variant"),
+                        "route_id": out.get("route_id"),
+                        "context_for_section_c": out.get("context_for_section_c"),
+                    },
+                }
+        except Exception:
+            pass
 
     from qbot_query_router import query as qbot_query
 
