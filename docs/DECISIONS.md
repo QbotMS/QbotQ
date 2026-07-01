@@ -5,6 +5,56 @@
 
 ---
 
+## 2026-07-01 — DECYZJA: route store — wersjonowanie, retencja (keep=3), purge i narzedzia tras Alberta (list/recompute/delete)
+
+**Status:** wdrozone i zweryfikowane na zywo. Pelna dok.: docs/ROUTE_STORE.md.
+
+**Wersjonowanie:** aktywny plik GPX ma STALA nazwe `rwgps_<id>.gpx`; przy zmianie tresci poprzednia wersja archiwizowana jako `rwgps_<id>_<sha10>.gpx` (`tools/rwgps/client.py`). Nowy `route_version_key` = nowy `route_base` (stare zostaja), aktywna = najnowsza. Odrzucono zmiane nazw po sha (dotknelaby ~9 zywych plikow).
+
+**Retencja:** `qbot3/routes/route_versions.py` (`prune_route_versions keep=3`, dry-run domyslnie, aktywna nigdy nie kasowana) + auto-hook po precompute w `route_precompute_orchestrator.py`. CLI: `scripts/route_versions_cli.py`.
+
+**Purge:** `scripts/route_store_purge.py` `purge_route(route_id, confirm)` — dwustopniowo (podglad / realne kasowanie), kasuje route_base+artifacts (kaskady) + surowka + pliki. Kanal admin: `dev_route_store_purge` w `/root/qbot-dev-mcp/server.py` (poza repo).
+
+**Narzedzia Alberta:** `route_list` (odczyt), `route_recompute` (write, aktywna wersja), `route_delete` (write, DWUSTOPNIOWO: podglad -> confirm=true po zgodzie). Rejestr `tool_registry.py`, prompt `albert.py`.
+
+**Trzy warstwy bezpieczenstwa zapisow otwarte WASKO dla tras** (masowe kasowanie i inne destrukcje dalej blokowane): (1) straznik destrukcji `agent_runtime._is_destructive_query` + wyjatek `_looks_like_route_delete_request`; (2) whitelista realnych zapisow w `agent_runtime` (`_execute_single_tool` + `_execute_real_write_tool`); (3) allowlista walidatora `safety._ACTION_ALLOWLIST` (przez `_LEGACY_EXTRA_ACTIONS`). Zabezpieczenie kasowania trzyma dwustopniowy `route_delete`.
+
+**Uzasadnienie kasowania z czatu:** trase zawsze mozna ponownie pobrac z RWGPS.
+
+## 2026-07-01 — DECYZJA: Telegram — koncowe powiadomienie po potwierdzeniu rowniez dla "juz policzone", z czasem liczenia
+
+**Status:** naprawione i zweryfikowane (28 testow zielonych; live #21 i #22). Pelna dok.: docs/TELEGRAM_ROUTE_CONFIRM.md.
+
+**Przyczyna buga:** worker `route_precompute_trigger.py` wysylal koncowe powiadomienie tylko na sciezce "faktycznie przeliczono". Gdy trasa byla juz policzona, funkcja wychodzila w galezi "already complete -> skipped" PRZED wysylka -> brak powiadomienia (ani sent, ani failed).
+
+**Naprawa:** koncowe powiadomienie wysylane TAKZE na sciezce skipped (sukces, tekst "byla juz kompletna"). Idempotencja po `launch_audit_turn_id`.
+
+**Czas liczenia (wariant B):** z metek jobow (`route_precompute_jobs.layer_status_json`: min `started_at` -> max `finished_at`), formatowany `_format_duration_pl`, wstrzykiwany do tekstu ("Czas liczenia: X"). Odrzucono wariant A (czas od TAK) jako mylacy przy "juz policzone".
+
+**action_id audytu:** gdy wynik nie niesie `pending_action_id` (worker CLI), brany z wiersza launch audit -> wpis finalny wiaze sie z numerem akcji.
+
+**Wdrozenie:** worker to swiezy podproces przy kazdym TAK -> poprawka dziala bez restartu qbot-api.
+
+## 2026-07-01 — DECYZJA: RWGPS nowej trasy najpierw pyta przez Telegram, a analiza startuje dopiero po potwierdzeniu
+
+**Status:** wdrożone w webhooku RWGPS, workerze precompute i Telegram gateway.
+
+**Decyzja:** po wykryciu nowej trasy RWGPS worker w trybie `--await-confirmation` materializuje tylko import i tworzy jawny `telegram_pending_actions` o `action_type=confirm_route_analysis`, a następnie wysyła pytanie do aktywnego `chat_id` przez Telegram. Dopiero odpowiedź `tak` uruchamia pełny canonical precompute tej konkretnej trasy.
+
+**Zasada:** ten sam `route_id` / wersja artefaktu nie może spamować Telegrama wielokrotnie. Idempotencja jest oparta o `confirm_route_analysis` + `route_artifact_sha256` / `route_version_key`, a stan jest widoczny w `telegram_pending_actions`, `telegram_conversations` i `telegram_conversation_turns`.
+
+**Naprawa runtime:** cache WorldCover / shade został przeniesiony na writable default `QBOT_WORLDCOVER_DIR=/opt/qbot/artifacts/worldcover`, bo stary `data/worldcover` był root-owned i wywracał `route_shade` podczas precompute.
+
+**Aktualizacja:** pytanie Telegram teraz niesie jawny numer pending action (`#18 ...`), a odświeżenie `expires_at` dzieje się tuż przed realnym `sendMessage`, żeby użytkownik nie potwierdzał wygasłej akcji i żeby odpowiedzi `18 TAK` / `#18 NIE` były jednoznaczne.
+
+**Doprecyzowanie runtime:** odpowiedzi Telegram i renderer kontekstu nie mogą zakładać, że `date_resolution` albo wynik writera zawsze jest słownikiem; `None` ma być traktowane jako brak danych, a nie wyjątek.
+
+**Doprecyzowanie stanu:** `confirm_route_analysis` może przejść do `executed` dopiero po zapisaniu trwałego launch-audytu w DB. Samo `Popen()` bez audytu oznacza `failed`, a numerowane odpowiedzi Telegram nie mogą spadać do ogólnego `qbot.query` fallbacku.
+
+**Doprecyzowanie logów:** log worker-a dla Telegram confirm nie może wskazywać na `/tmp`; używa katalogu kontrolowanego przez QBot pod `/opt/qbot/artifacts/logs/rwgps_confirmations/`, tworzonego bezpiecznie przy pierwszym użyciu.
+
+**Doprecyzowanie uruchomienia:** worker po zakończeniu precompute czeka krótko na trwały `route_precompute_launch_audit`, bo zapis audytu i start procesu mogą się minąć o ułamek sekundy; finalny Telegram jest wysyłany dopiero po znalezieniu tego śladu.
+
 ## 2026-07-01 — DECYZJA: modul naprawy tras (naprawa-trasy.html) zaparkowany na zewnetrznej awarii Valhalli
 
 **Status:** wdrozone i dziala na WEB (qbot-web, /naprawa-trasy.html + 4 nowe

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -345,7 +346,7 @@ class TestRoutePrecomputeTrigger(unittest.TestCase):
         finally:
             conn.close()
 
-    def test_webhook_spawns_precompute_worker(self) -> None:
+    def test_webhook_spawns_confirmation_worker(self) -> None:
         payload = {
             "notifications": [
                 {"item_type": "route", "action": "created", "item_id": "55798129"},
@@ -369,6 +370,190 @@ class TestRoutePrecomputeTrigger(unittest.TestCase):
         self.assertEqual(mock_popen.call_count, 1)
         args, kwargs = mock_popen.call_args
         self.assertIn("/opt/qbot/app/scripts/route_precompute_trigger.py", args[0])
-        self.assertEqual(args[0][-1], "55798129")
+        self.assertEqual(args[0][2], "55798129")
+        self.assertIn("--await-confirmation", args[0])
+        self.assertIn("--trigger-source", args[0])
+        self.assertIn("rwgps_webhook", args[0])
         self.assertEqual(kwargs["cwd"], "/opt/qbot/app")
         self.assertTrue(kwargs["start_new_session"])
+
+    def test_await_confirmation_skips_full_precompute(self) -> None:
+        with patch("scripts.route_precompute_trigger._ensure_rwgps_route_artifact", return_value={
+            "status": "OK",
+            "import_status": "imported",
+            "route_id": "55918401",
+            "route_artifact_id": 418,
+            "route_parse_result_id": 33,
+        }) as mock_import, patch("scripts.route_precompute_trigger._send_route_confirmation_prompt", return_value={
+            "status": "OK",
+            "route_id": "55918401",
+            "pending_action_id": 99,
+            "chat_id": "358008451",
+        }) as mock_prompt, patch("scripts.route_precompute_trigger.ensure_route_base") as mock_base, patch(
+            "scripts.route_precompute_trigger.ensure_route_precompute",
+        ) as mock_precompute:
+            result = ensure_route_precompute_trigger(route_id="55918401", trigger_source="rwgps_webhook", await_confirmation=True)
+
+        self.assertEqual(result["trigger_status"], "awaiting_confirmation")
+        self.assertEqual(result["confirmation"]["pending_action_id"], 99)
+        mock_import.assert_called_once_with("55918401")
+        mock_prompt.assert_called_once_with("55918401", trigger_source="rwgps_webhook")
+        mock_base.assert_not_called()
+        mock_precompute.assert_not_called()
+
+    def test_confirmation_prompt_refreshes_ttl_and_numbers_action(self) -> None:
+        details = {
+            "route_id": "55918401",
+            "route_artifact_id": 418,
+            "route_artifact_sha256": "sha-123",
+            "route_parse_result_id": 33,
+            "route_name": "BIOM2",
+            "distance_m": 22018.0,
+            "distance_km": 22.018,
+            "elevation_gain_m": 137.8,
+            "route_version_key": "rk-123",
+        }
+
+        fake_tg = unittest.mock.Mock()
+        fake_tg.upsert_pending_action.return_value = {
+            "status": "pending",
+            "created": True,
+            "pending_action_id": 18,
+            "action_status": "pending",
+        }
+        fake_tg._refresh_pending_expires_at.return_value = {"status": "ok", "expires_at": "2030-01-01T00:30:00Z"}
+        fake_tg.send_message.return_value = {"ok": True, "result": {"message_id": 722}}
+        fake_tg._turn_add = unittest.mock.Mock()
+        fake_tg._conv_upsert = unittest.mock.Mock()
+
+        with patch("scripts.route_precompute_trigger._route_confirmation_details", return_value=details), \
+                patch("scripts.route_precompute_trigger._route_confirmation_chat_id", return_value="358008451"), \
+                patch("scripts.route_precompute_trigger._route_confirmation_idempotency_key", return_value="confirm_route_analysis:abc"), \
+                patch.dict(sys.modules, {"qbot_qcal_telegram": fake_tg}):
+            result = route_precompute_trigger_module._send_route_confirmation_prompt("55918401", trigger_source="rwgps_webhook")
+
+        self.assertEqual(result["status"], "OK")
+        self.assertEqual(result["prompt_text"], "#18 Znalazłem nową trasę RWGPS: BIOM2, 22.0 km, +138 m.\nUruchomić pełną analizę?\n\nOdpowiedz: 18 TAK albo 18 NIE")
+        fake_tg.upsert_pending_action.assert_called_once()
+        fake_tg._refresh_pending_expires_at.assert_called_once_with("358008451", 18, expires_minutes=30)
+        fake_tg.send_message.assert_called_once()
+        sent_text = fake_tg.send_message.call_args.args[1]
+        self.assertIn("#18", sent_text)
+        self.assertIn("18 TAK albo 18 NIE", sent_text)
+        fake_tg._turn_add.assert_called_once()
+        self.assertEqual(fake_tg._turn_add.call_args.kwargs["intent"], "route_confirmation_prompt_sent")
+        self.assertEqual(fake_tg._turn_add.call_args.kwargs["action_id"], 18)
+        self.assertEqual(fake_tg._turn_add.call_args.kwargs["response_json"], {"ok": True, "result": {"message_id": 722}})
+        fake_tg._conv_upsert.assert_called_once_with("358008451", state="awaiting_confirmation", pending_action_id=18)
+
+    def test_final_notification_sent_after_real_precompute(self) -> None:
+        details = {
+            "route_id": "55918401",
+            "route_name": "BIOM2",
+        }
+        fake_tg = unittest.mock.Mock()
+        fake_tg.send_message.return_value = {"ok": True, "result": {"message_id": 900}}
+        fake_tg._turn_add = unittest.mock.Mock()
+
+        with patch("scripts.route_precompute_trigger._route_confirmation_details", return_value=details), \
+                patch("scripts.route_precompute_trigger._route_confirmation_chat_id", return_value="358008451"), \
+                patch("scripts.route_precompute_trigger._route_confirmation_launch_audit_row", return_value={"id": 209, "action_id": 19, "qbot_response_json": {"route_id": "55918401"}}), \
+                patch("scripts.route_precompute_trigger._route_confirmation_final_notification_sent", return_value=False), \
+                patch.dict(sys.modules, {"qbot_qcal_telegram": fake_tg}):
+            result = route_precompute_trigger_module._send_route_confirmation_final_notification(
+                {
+                    "status": "OK",
+                    "trigger_status": "ran",
+                    "route_id": "55918401",
+                    "confirmation": {"pending_action_id": 19},
+                },
+                trigger_source="telegram_confirm",
+            )
+
+        self.assertEqual(result["status"], "OK")
+        self.assertEqual(result["launch_audit_turn_id"], 209)
+        fake_tg.send_message.assert_called_once()
+        sent_text = fake_tg.send_message.call_args.args[1]
+        self.assertIn("Analiza trasy BIOM2 zakończona", sent_text)
+        fake_tg._turn_add.assert_called_once()
+        self.assertEqual(fake_tg._turn_add.call_args.kwargs["intent"], "route_confirmation_final_notification_sent")
+        self.assertEqual(fake_tg._turn_add.call_args.kwargs["action_id"], 19)
+
+    def test_final_notification_uses_failure_message_on_failed_run(self) -> None:
+        fake_tg = unittest.mock.Mock()
+        fake_tg.send_message.return_value = {"ok": True, "result": {"message_id": 901}}
+        fake_tg._turn_add = unittest.mock.Mock()
+
+        with patch("scripts.route_precompute_trigger._route_confirmation_details", return_value={"route_id": "55918401", "route_name": "BIOM2"}), \
+                patch("scripts.route_precompute_trigger._route_confirmation_chat_id", return_value="358008451"), \
+                patch("scripts.route_precompute_trigger._route_confirmation_launch_audit_row", return_value={"id": 210, "action_id": 19, "qbot_response_json": {"route_id": "55918401"}}), \
+                patch("scripts.route_precompute_trigger._route_confirmation_final_notification_sent", return_value=False), \
+                patch.dict(sys.modules, {"qbot_qcal_telegram": fake_tg}):
+            result = route_precompute_trigger_module._send_route_confirmation_final_notification(
+                {
+                    "status": "ERROR",
+                    "trigger_status": "failed",
+                    "route_id": "55918401",
+                    "confirmation": {"pending_action_id": 19},
+                },
+                trigger_source="telegram_confirm",
+            )
+
+        self.assertEqual(result["status"], "OK")
+        sent_text = fake_tg.send_message.call_args.args[1]
+        self.assertIn("zakończyła się błędem", sent_text)
+        fake_tg._turn_add.assert_called_once()
+        self.assertEqual(fake_tg._turn_add.call_args.kwargs["intent"], "route_confirmation_final_notification_failed")
+
+    def test_final_notification_is_idempotent_for_same_launch_audit(self) -> None:
+        fake_tg = unittest.mock.Mock()
+        fake_tg.send_message = unittest.mock.Mock()
+        fake_tg._turn_add = unittest.mock.Mock()
+
+        with patch("scripts.route_precompute_trigger._route_confirmation_details", return_value={"route_id": "55918401", "route_name": "BIOM2"}), \
+                patch("scripts.route_precompute_trigger._route_confirmation_chat_id", return_value="358008451"), \
+                patch("scripts.route_precompute_trigger._route_confirmation_launch_audit_row", return_value={"id": 211, "action_id": 19, "qbot_response_json": {"route_id": "55918401"}}), \
+                patch("scripts.route_precompute_trigger._route_confirmation_final_notification_sent", return_value=True), \
+                patch.dict(sys.modules, {"qbot_qcal_telegram": fake_tg}):
+            result = route_precompute_trigger_module._send_route_confirmation_final_notification(
+                {
+                    "status": "OK",
+                    "trigger_status": "ran",
+                    "route_id": "55918401",
+                    "confirmation": {"pending_action_id": 19},
+                },
+                trigger_source="telegram_confirm",
+            )
+
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["reason"], "already_notified")
+        fake_tg.send_message.assert_not_called()
+        fake_tg._turn_add.assert_not_called()
+
+    def test_final_notification_retries_until_launch_audit_appears(self) -> None:
+        fake_tg = unittest.mock.Mock()
+        fake_tg.send_message.return_value = {"ok": True, "result": {"message_id": 902}}
+        fake_tg._turn_add = unittest.mock.Mock()
+        launch_row = {"id": 212, "action_id": 20, "qbot_response_json": {"route_id": "55918401"}}
+
+        with patch("scripts.route_precompute_trigger._route_confirmation_details", return_value={"route_id": "55918401", "route_name": "BIOM2"}), \
+                patch("scripts.route_precompute_trigger._route_confirmation_chat_id", return_value="358008451"), \
+                patch("scripts.route_precompute_trigger._route_confirmation_launch_audit_row", side_effect=[None, None, launch_row]), \
+                patch("scripts.route_precompute_trigger._route_confirmation_final_notification_sent", return_value=False), \
+                patch("scripts.route_precompute_trigger.time.sleep", return_value=None) as mock_sleep, \
+                patch.dict(sys.modules, {"qbot_qcal_telegram": fake_tg}):
+            result = route_precompute_trigger_module._send_route_confirmation_final_notification(
+                {
+                    "status": "OK",
+                    "trigger_status": "ran",
+                    "route_id": "55918401",
+                    "confirmation": {"pending_action_id": 20},
+                },
+                trigger_source="telegram_confirm",
+            )
+
+        self.assertEqual(result["status"], "OK")
+        self.assertEqual(result["launch_audit_turn_id"], 212)
+        self.assertGreaterEqual(mock_sleep.call_count, 2)
+        fake_tg.send_message.assert_called_once()
+        fake_tg._turn_add.assert_called_once()
