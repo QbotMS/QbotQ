@@ -227,6 +227,33 @@ def wbgt_liljegren_k(t2_k, rh, pressure, va, ssrd, fdir, cossza) -> np.ndarray:
     return (0.1 * t2_c + 0.2 * tg_c + 0.7 * tnwb_c) + 273.15
 
 
+def mean_radiant_temp_c(t2_k, rh, pressure, va, ssrd, fdir, cossza) -> np.ndarray:
+    """Srednia temperatura promieniowania Tmrt [C] - wejscie do UTCI.
+
+    Zwraca temperature kuli (globe) z TEGO SAMEGO solvera co WBGT. Dla malej,
+    szybko reagujacej kuli Liljegrena Tg jest dobrym, OGRANICZONYM przyblizeniem
+    Tmrt (slonce: Ta+~15..20, noc: ~Ta, slabe slonce zima: Ta+~5). Konwersja
+    globusowa ISO 7726 przy tej srednicy dawalaby absurdy (>90 C), dlatego
+    uzywamy Tg bezposrednio. Preprocessing wejsc identyczny jak w wbgt_liljegren_k;
+    ten sam solver kuli (spojnosc z WBGT). Solverow NIE zmienia.
+    """
+    t2_k = np.asarray(t2_k, dtype=float)
+    rh = np.asarray(rh, dtype=float)
+    pressure = np.asarray(pressure, dtype=float)
+    ssrd = np.asarray(ssrd, dtype=float)
+    fdir = np.asarray(fdir, dtype=float)
+    cossza = np.asarray(cossza, dtype=float)
+
+    va = np.maximum(np.asarray(va, dtype=float), MIN_WIND_10M)
+    speed = _wind_speed_2m(va, cossza, ssrd)
+
+    rh_frac = rh / 100.0
+    fdir = np.clip(fdir, 0.0, 0.9)
+    fdir = np.where(cossza < CZA_MIN, 0.0, fdir)
+
+    return _solve_globe(t2_k, rh_frac, pressure, speed, ssrd, fdir, cossza)
+
+
 # ── Geometria slonca ──────────────────────────────────────────────────────
 def cos_solar_zenith(dt_utc: datetime, lat: float, lon: float) -> float:
     if dt_utc.tzinfo is None:
