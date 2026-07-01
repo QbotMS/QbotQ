@@ -5,6 +5,31 @@
 
 ---
 
+## 2026-07-01 — DECYZJA: modul naprawy tras (naprawa-trasy.html) zaparkowany na zewnetrznej awarii Valhalli
+
+**Status:** wdrozone i dziala na WEB (qbot-web, /naprawa-trasy.html + 4 nowe
+endpointy w qbot_web.py). Zatrzymane na przejsciowej awarii publicznej Valhalli
+(nginx 502) - do dokonczenia weryfikacji odcinka przy drodze S8 po powrocie uslugi.
+
+**Decyzja:** pelne podsumowanie architektury, wszystkich decyzji (dopasowanie po
+km nie po segment_index, kotwice cofniete w dobra nawierzchnie, progresywne
+probkowanie promienia 0.3/1.0/2.0/3.0km, use_roads=0.7, brak limitu dlugosci
+per-kandydat, regula "przyzwoity grade" dla tracktype, min. 200m na alert) oraz
+otwartych problemow (dwa niezgodne systemy oceny nawierzchni A/B - do rozstrzygniecia
+w sesji "generator tras", detekcja slepych zaulkow, cap na cala trase) jest w
+docs/PROJEKT_NAPRAWA_TRAS.md - NIE duplikowac tutaj, czytac tamten plik jako
+zrodlo prawdy dla tego modulu.
+
+**Zasada:** modul to dzis czysty PODGLAD (Valhalla + trace_attributes), bez
+zapisu/zszycia zaakceptowanego objazdu z powrotem do trasy - eksport zlozonej
+trasy to niezbudowany, naturalny nastepny krok.
+
+**Kontrakt:** kod w qbot_web.py jest w duzej czesci uncommitted (jak i inne pliki
+z rownoleglej sesji Cowork - patrz `git status`) - przed commitem zweryfikowac
+liste plikow, nie robic zbiorczego `git commit -a`.
+
+---
+
 ## 2026-07-01 — DECYZJA: RWGPS webhook najpierw materializuje artefakt, a Telegram używa publicznego qbot.query wrappera
 
 **Status:** wdrożone w workerze precompute i w Telegram gateway.
