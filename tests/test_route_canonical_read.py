@@ -6,7 +6,8 @@ import unittest
 import psycopg
 from psycopg.rows import dict_row
 
-from qbot3.routes.route_canonical_read import _poi_summary, _surface_summary, read_canonical_route
+from qbot3.routes.route_canonical_read import _elevation_summary, _poi_summary, _surface_summary, read_canonical_route
+from qbot3.routes.route_elevation_engine import ElevationSample, summarize as summarize_elevation_profile
 
 
 def _live_db_enabled() -> bool:
@@ -149,6 +150,88 @@ class TestRouteCanonicalRead(unittest.TestCase):
         self.assertEqual(cluster["best_items"][1]["name"], "Farther")
         self.assertNotIn("Missing distance", [item["name"] for item in cluster["best_items"]])
 
+    def test_elevation_summary_derives_profile_and_climb_preview(self) -> None:
+        elevation_rows = [
+            {"sample_index": 0, "distance_m": 0.0, "elevation_m": 100.0},
+            {"sample_index": 1, "distance_m": 50.0, "elevation_m": 104.0},
+            {"sample_index": 2, "distance_m": 100.0, "elevation_m": 101.0},
+            {"sample_index": 3, "distance_m": 150.0, "elevation_m": 110.0},
+        ]
+        climb_rows = [
+            {
+                "event_index": 1,
+                "start_m": 1000.0,
+                "end_m": 1600.0,
+                "length_m": 600.0,
+                "elevation_gain_m": 42.0,
+                "avg_gradient_pct": 7.0,
+                "max_gradient_pct": 11.0,
+                "severity": "umiarkowany",
+                "source": "srtm30m_opentopodata",
+                "detection_version": "v1",
+            },
+            {
+                "event_index": 0,
+                "start_m": 200.0,
+                "end_m": 300.0,
+                "length_m": 100.0,
+                "elevation_gain_m": 8.0,
+                "avg_gradient_pct": 8.0,
+                "max_gradient_pct": 8.0,
+                "severity": "lekki",
+                "source": "srtm30m_opentopodata",
+                "detection_version": "v1",
+            },
+        ]
+
+        summary = _elevation_summary(elevation_rows, climb_rows)
+        expected = summarize_elevation_profile(
+            [
+                ElevationSample(0, 0.0, 0.0, 0.0, 100.0, ""),
+                ElevationSample(1, 50.0, 0.0, 0.0, 104.0, ""),
+                ElevationSample(2, 100.0, 0.0, 0.0, 101.0, ""),
+                ElevationSample(3, 150.0, 0.0, 0.0, 110.0, ""),
+            ]
+        )
+
+        self.assertEqual(summary["sample_count"], 4)
+        self.assertEqual(summary["climb_event_count"], 2)
+        self.assertEqual(summary["min_elevation_m"], 100.0)
+        self.assertEqual(summary["max_elevation_m"], 110.0)
+        self.assertEqual(summary["elevation_range_m"], 10.0)
+        self.assertEqual(summary["ascent_smoothed_m"], expected["ascent_smoothed_m"])
+        self.assertEqual(summary["descent_smoothed_m"], expected["descent_smoothed_m"])
+        self.assertEqual(summary["smoothing_version"], expected["smoothing_version"])
+        self.assertEqual(summary["smoothing_method"], "route_elevation_engine.summarize(window_m=200.0)")
+        self.assertEqual(summary["smoothing_window_m"], 200.0)
+        self.assertEqual(summary["max_climb_event_gradient_pct"], 11.0)
+        self.assertEqual(summary["raw_sample_max_grade_pct"], 18.0)
+        self.assertTrue(summary["short_wall_detection_limited"])
+        self.assertIn("krótkie strome rampy", summary["short_wall_detection_note"])
+        self.assertEqual(summary["top_climb_events"][0]["event_index"], 1)
+        self.assertEqual(summary["top_climb_events"][0]["elevation_gain_m"], 42.0)
+        self.assertEqual(summary["top_climb_events"][1]["event_index"], 0)
+
+    def test_elevation_summary_handles_missing_climb_events(self) -> None:
+        summary = _elevation_summary(
+            [
+                {"sample_index": 0, "distance_m": 0.0, "elevation_m": 100.0},
+                {"sample_index": 1, "distance_m": None, "elevation_m": 102.0},
+                {"sample_index": 2, "distance_m": 100.0, "elevation_m": None},
+            ],
+            [],
+        )
+
+        self.assertEqual(summary["sample_count"], 3)
+        self.assertEqual(summary["climb_event_count"], 0)
+        self.assertEqual(summary["min_elevation_m"], 100.0)
+        self.assertEqual(summary["max_elevation_m"], 102.0)
+        self.assertEqual(summary["ascent_smoothed_m"], 0.0)
+        self.assertEqual(summary["descent_smoothed_m"], 0.0)
+        self.assertEqual(summary["max_climb_event_gradient_pct"], None)
+        self.assertEqual(summary["raw_sample_max_grade_pct"], None)
+        self.assertEqual(summary["top_climb_events"], [])
+
     def test_route_55798129_canonical_read_is_complete(self) -> None:
         with _db_conn() as conn:
             before_jobs = conn.execute(
@@ -187,6 +270,7 @@ class TestRouteCanonicalRead(unittest.TestCase):
         self.assertEqual(first["layer_counts"]["route_climb_events"], 1)
         self.assertIn("canonical_surface_summary", first)
         self.assertIn("canonical_poi_summary", first)
+        self.assertIn("canonical_elevation_summary", first)
         self.assertEqual(first["canonical_surface_summary"]["segment_count"], 76)
         self.assertGreater(first["canonical_surface_summary"]["total_distance_m"], 0.0)
         self.assertTrue(first["canonical_surface_summary"]["by_surface"])
@@ -207,6 +291,26 @@ class TestRouteCanonicalRead(unittest.TestCase):
         self.assertEqual(first["canonical_poi_summary"]["by_category"]["soft_food_stop"]["count"], 3)
         self.assertEqual(first["canonical_poi_summary"]["by_category"]["town"]["count"], 20)
         self.assertTrue(first["canonical_poi_summary"]["clusters"])
+        self.assertEqual(first["canonical_elevation_summary"]["sample_count"], 1424)
+        self.assertEqual(first["canonical_elevation_summary"]["climb_event_count"], 1)
+        self.assertEqual(first["canonical_elevation_summary"]["min_elevation_m"], 81.0)
+        self.assertEqual(first["canonical_elevation_summary"]["max_elevation_m"], 134.0)
+        self.assertEqual(first["canonical_elevation_summary"]["elevation_range_m"], 53.0)
+        self.assertEqual(first["canonical_elevation_summary"]["ascent_smoothed_m"], 426.7)
+        self.assertEqual(first["canonical_elevation_summary"]["descent_smoothed_m"], 425.0)
+        self.assertEqual(first["canonical_elevation_summary"]["smoothing_version"], "asc200_det100_50_v1")
+        self.assertEqual(first["canonical_elevation_summary"]["smoothing_window_m"], 200.0)
+        self.assertEqual(first["canonical_elevation_summary"]["max_climb_event_gradient_pct"], 7.3)
+        self.assertEqual(first["canonical_elevation_summary"]["raw_sample_max_grade_pct"], 16.0)
+        self.assertTrue(first["canonical_elevation_summary"]["short_wall_detection_limited"])
+        self.assertEqual(first["canonical_elevation_summary"]["top_climb_events"][0]["event_index"], 0)
+        self.assertEqual(first["canonical_elevation_summary"]["top_climb_events"][0]["km_from"], 15.4)
+        self.assertEqual(first["canonical_elevation_summary"]["top_climb_events"][0]["km_to"], 15.9)
+        self.assertEqual(first["canonical_elevation_summary"]["top_climb_events"][0]["length_m"], 500.0)
+        self.assertEqual(first["canonical_elevation_summary"]["top_climb_events"][0]["elevation_gain_m"], 19.3)
+        self.assertEqual(first["canonical_elevation_summary"]["top_climb_events"][0]["avg_gradient_pct"], 3.9)
+        self.assertEqual(first["canonical_elevation_summary"]["top_climb_events"][0]["max_gradient_pct"], 7.3)
+        self.assertEqual(first["canonical_elevation_summary"]["top_climb_events"][0]["severity"], "umiarkowany")
 
         self.assertEqual(len(first["layers"]["route_axis_segments"]), 1423)
         self.assertEqual(len(first["layers"]["route_surface_layer"]), 76)

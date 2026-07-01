@@ -65,6 +65,14 @@
 
 **Kontrakt:** raport pokazuje liczby próbek i climb events, ale nie przebudowuje jeszcze algorytmu oceny przewyższeń ani time estimate.
 
+## 2026-07-01 — DECYZJA: A0C pokazuje canonical elevation summary i ograniczenie detekcji krótkich ramp
+
+**Status:** wdrożone w `qbot3/routes/route_canonical_read.py` i `qbot_route_report_tool.py`.
+
+**Decyzja:** sekcja A0C ma pokazywać canonical `elevation_summary` z `route_elevation_samples` i `route_climb_events`: `sample_count`, `climb_event_count`, `min_elevation_m`, `max_elevation_m`, `elevation_range_m`, `ascent_smoothed_m`, `descent_smoothed_m`, `smoothing_version`, `max_climb_event_gradient_pct`, `top_climb_events` oraz jawny limit detekcji krótkich ramp. Diagnostyka surowych próbek może zostać pokazana osobno, ale nie jako oficjalna ścianka.
+
+**Zasada:** `route_elevation_samples` jest 50 m profilem, `route_elevation_engine.summarize()` daje smoothed ascent/descent, a `route_climb_events` są segmentowane w 100 m i dostarczają głównej metryki stromizny. Raport ma wprost mówić, że bardzo krótkie strome rampy mogą umknąć. Brak danych nie wywraca raportu i nie zmienia A0/A0B/A3/A8.
+
 ## 2026-06-30 — DECYZJA: route_report pokazuje sekcję otoczenia z route_shade_layer / WorldCover
 
 **Status:** wdrożone minimalnie w `qbot_route_report_tool.py`.

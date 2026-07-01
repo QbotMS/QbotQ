@@ -18,6 +18,8 @@ from typing import Any
 import psycopg
 from psycopg.rows import dict_row
 
+from qbot3.routes.route_elevation_engine import ElevationSample, summarize as summarize_elevation_profile
+
 
 _CANONICAL_LAYER_ORDER = (
     "route_base",
@@ -442,6 +444,167 @@ def _climb_rows(conn, route_base_id: int) -> list[dict[str, Any]]:
     )
 
 
+def _raw_sample_max_grade_pct(elevation_rows: list[dict[str, Any]]) -> float | None:
+    grades: list[float] = []
+    last_point: tuple[float, float] | None = None
+    for row in elevation_rows:
+        try:
+            distance_m = float(row.get("distance_m"))
+        except (TypeError, ValueError):
+            distance_m = None
+        try:
+            elevation_m = float(row.get("elevation_m"))
+        except (TypeError, ValueError):
+            elevation_m = None
+        if last_point is not None and distance_m is not None and elevation_m is not None:
+            prev_distance_m, prev_elevation_m = last_point
+            delta_distance_m = distance_m - prev_distance_m
+            if delta_distance_m > 0:
+                grades.append((elevation_m - prev_elevation_m) / delta_distance_m * 100.0)
+        if distance_m is not None and elevation_m is not None:
+            last_point = (distance_m, elevation_m)
+    return round(max(grades), 1) if grades else None
+
+
+def _elevation_summary(
+    elevation_rows: list[dict[str, Any]],
+    climb_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "sample_count": len(elevation_rows),
+        "climb_event_count": len(climb_rows),
+        "min_elevation_m": None,
+        "max_elevation_m": None,
+        "elevation_range_m": None,
+        "ascent_smoothed_m": None,
+        "descent_smoothed_m": None,
+        "smoothing_version": None,
+        "smoothing_method": "route_elevation_engine.summarize(window_m=200.0)",
+        "smoothing_window_m": 200.0,
+        "max_climb_event_gradient_pct": None,
+        "raw_sample_max_grade_pct": None,
+        "top_climb_events": [],
+        "short_wall_detection_limited": False,
+        "short_wall_detection_note": None,
+    }
+    if not elevation_rows and not climb_rows:
+        return summary
+
+    elevations: list[float] = []
+    engine_samples: list[ElevationSample] = []
+    for idx, row in enumerate(elevation_rows):
+        try:
+            distance_m = float(row.get("distance_m"))
+        except (TypeError, ValueError):
+            distance_m = None
+        try:
+            elevation_m = float(row.get("elevation_m"))
+        except (TypeError, ValueError):
+            elevation_m = None
+        if elevation_m is not None:
+            elevations.append(elevation_m)
+        if distance_m is None or elevation_m is None:
+            continue
+        try:
+            lat = float(row.get("lat") or 0.0)
+        except (TypeError, ValueError):
+            lat = 0.0
+        try:
+            lon = float(row.get("lon") or 0.0)
+        except (TypeError, ValueError):
+            lon = 0.0
+        engine_samples.append(
+            ElevationSample(
+                sample_index=int(row.get("sample_index") or idx),
+                distance_m=distance_m,
+                lat=lat,
+                lon=lon,
+                elevation_m=elevation_m,
+                source=str(row.get("source") or ""),
+                smoothing_version=str(row.get("smoothing_version") or ""),
+            )
+        )
+
+    if elevations:
+        summary["min_elevation_m"] = round(min(elevations), 1)
+        summary["max_elevation_m"] = round(max(elevations), 1)
+        summary["elevation_range_m"] = round(max(elevations) - min(elevations), 1)
+    if engine_samples:
+        engine_summary = summarize_elevation_profile(engine_samples)
+        summary["ascent_smoothed_m"] = engine_summary.get("ascent_smoothed_m")
+        summary["descent_smoothed_m"] = engine_summary.get("descent_smoothed_m")
+        summary["smoothing_version"] = engine_summary.get("smoothing_version")
+    summary["max_climb_event_gradient_pct"] = (
+        round(max((float(row.get("max_gradient_pct")) for row in climb_rows if row.get("max_gradient_pct") is not None), default=0.0), 1)
+        if climb_rows
+        else None
+    )
+    summary["raw_sample_max_grade_pct"] = _raw_sample_max_grade_pct(elevation_rows)
+    summary["short_wall_detection_limited"] = True
+    summary["short_wall_detection_note"] = (
+        "profil 50 m i climb events z segmentami 100 m mogą pokazywać sygnaturę podjazdów, "
+        "ale bardzo krótkie strome rampy mogą umknąć"
+    )
+
+    def _event_key(row: dict[str, Any]) -> tuple[float, float, float, int]:
+        def _num(value: Any) -> float:
+            if value is None:
+                return -1.0
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return -1.0
+
+        gain = _num(row.get("elevation_gain_m"))
+        max_gradient = _num(row.get("max_gradient_pct"))
+        length = _num(row.get("length_m"))
+        event_index = int(row.get("event_index") or 0)
+        return (-gain, -max_gradient, -length, event_index)
+
+    top_events: list[dict[str, Any]] = []
+    for row in sorted(climb_rows, key=_event_key)[:3]:
+        try:
+            start_m = float(row.get("start_m"))
+        except (TypeError, ValueError):
+            start_m = None
+        try:
+            end_m = float(row.get("end_m"))
+        except (TypeError, ValueError):
+            end_m = None
+        try:
+            length_m = float(row.get("length_m"))
+        except (TypeError, ValueError):
+            length_m = None
+        try:
+            gain_m = float(row.get("elevation_gain_m"))
+        except (TypeError, ValueError):
+            gain_m = None
+        try:
+            avg_gradient_pct = float(row.get("avg_gradient_pct"))
+        except (TypeError, ValueError):
+            avg_gradient_pct = None
+        try:
+            max_gradient_pct = float(row.get("max_gradient_pct"))
+        except (TypeError, ValueError):
+            max_gradient_pct = None
+        top_events.append(
+            {
+                "event_index": row.get("event_index"),
+                "km_from": round(start_m / 1000.0, 3) if start_m is not None else None,
+                "km_to": round(end_m / 1000.0, 3) if end_m is not None else None,
+                "length_m": round(length_m, 1) if length_m is not None else None,
+                "elevation_gain_m": round(gain_m, 1) if gain_m is not None else None,
+                "avg_gradient_pct": round(avg_gradient_pct, 1) if avg_gradient_pct is not None else None,
+                "max_gradient_pct": round(max_gradient_pct, 1) if max_gradient_pct is not None else None,
+                "severity": row.get("severity"),
+                "source": row.get("source"),
+                "detection_version": row.get("detection_version"),
+            }
+        )
+        summary["top_climb_events"] = top_events
+    return summary
+
+
 def _surface_profile_row(conn, route_artifact_id: int | None) -> dict[str, Any] | None:
     if route_artifact_id is None:
         return None
@@ -703,6 +866,7 @@ def read_canonical_route(
         }
         surface_summary = _surface_summary(layers["route_surface_layer"], base, surface_profile_summary)
         poi_summary = _poi_summary(layers["route_poi_layer"])
+        elevation_summary = _elevation_summary(layers["route_elevation_samples"], layers["route_climb_events"])
         layer_counts = {
             name: (1 if name == "route_base" and layers[name] else len(layers[name]))
             for name in _CANONICAL_LAYER_ORDER
@@ -730,6 +894,7 @@ def read_canonical_route(
             "land_cover_preferred_source": land_cover_preferred_source,
             "canonical_surface_summary": surface_summary,
             "canonical_poi_summary": poi_summary,
+            "canonical_elevation_summary": elevation_summary,
             "surface_profile_overpass_metrics": surface_profile_summary.get("overpass_metrics") if isinstance(surface_profile_summary, dict) else None,
             "layers": layers,
         }

@@ -155,6 +155,14 @@ Aktualizacja 2026-06-30: kolejnym addytywnym krokiem canonical jest sekcja
 `route_climb_events`. Pokazuje liczby próbek i climb events bez przebudowy
 algorytmu time estimate ani legacy sekcji profilu raportowego.
 
+Aktualizacja 2026-07-01: A0C pokazuje dodatkowo canonical `elevation_summary`
+z `min/max elevation`, `ascent_smoothed_m`, `descent_smoothed_m`,
+`smoothing_version`, `max_climb_event_gradient_pct`, `top_climb_events`
+i jawną informację, że profil 50 m oraz segmenty 100 m mogą pominąć bardzo
+krótkie strome rampy. Diagnostyka raw sample grade może zostać pokazana,
+ale nie jako oficjalna ścianka. To nadal jest addytywna sekcja, nie nowy
+algorytm oceny przewyższeń.
+
 Aktualizacja 2026-07-01: A3 pokazuje teraz osobno `coverage_pct`,
 `tagged_surface_pct`, `inferred_surface_pct` i metryki Overpass chunks. To
 rozróżnia pokrycie warstwy surface od kompletności tagów `surface=*` w OSM.

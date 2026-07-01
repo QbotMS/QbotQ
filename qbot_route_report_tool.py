@@ -152,13 +152,34 @@ def _route_elevation_section_lines(route_source: dict[str, Any] | None) -> list[
     if elevation_samples <= 0 and climb_events <= 0:
         return []
 
+    summary = route_source.get("canonical_elevation_summary")
+    if not isinstance(summary, dict):
+        summary = {}
+
+    def _fmt_m(value: Any) -> str:
+        try:
+            return f"{float(value):.1f} m"
+        except (TypeError, ValueError):
+            return "brak"
+
+    def _fmt_pct(value: Any) -> str:
+        try:
+            return f"{float(value):.1f}%"
+        except (TypeError, ValueError):
+            return "brak"
+
+    def _fmt_km(value: Any) -> str:
+        try:
+            return f"{float(value):.3f}"
+        except (TypeError, ValueError):
+            return "brak"
+
     route_base_id = route_source.get("route_base_id")
     route_version_key = route_source.get("route_version_key")
-    return [
+    lines = [
         "## A0C - PROFIL WYSOKOŚCI / PODJAZDY (canonical route_elevation_samples / route_climb_events)",
         "- źródło: canonical route_elevation_samples + route_climb_events",
-        f"- profil wysokości: {elevation_samples} próbek route_elevation_samples",
-        f"- podjazdy / ścianki: {climb_events} route_climb_events",
+        f"- profil wysokości: sample_count={int(summary.get('sample_count') or elevation_samples)} | climb_event_count={int(summary.get('climb_event_count') or climb_events)}",
         "- opis: to warstwa canonical, a nie legacy profil raportowy; służy do pokazywania sygnatury przewyższeń i podjazdów",
         *(
             [
@@ -168,8 +189,63 @@ def _route_elevation_section_lines(route_source: dict[str, Any] | None) -> list[
             if route_base_id is not None or route_version_key is not None
             else []
         ),
-        "",
     ]
+    if summary:
+        min_elevation = summary.get("min_elevation_m")
+        max_elevation = summary.get("max_elevation_m")
+        elevation_range = summary.get("elevation_range_m")
+        ascent_smoothed = summary.get("ascent_smoothed_m")
+        descent_smoothed = summary.get("descent_smoothed_m")
+        smoothing_version = summary.get("smoothing_version")
+        smoothing_method = summary.get("smoothing_method")
+        max_climb_event_gradient = summary.get("max_climb_event_gradient_pct")
+        raw_sample_max_grade = summary.get("raw_sample_max_grade_pct")
+        lines.extend(
+            [
+                "- elevation: "
+                f"min={_fmt_m(min_elevation)} | max={_fmt_m(max_elevation)} | range={_fmt_m(elevation_range)}",
+                "- smoothing: "
+                f"ascent_smoothed={_fmt_m(ascent_smoothed)} | "
+                f"descent_smoothed={_fmt_m(descent_smoothed)} | "
+                f"smoothing_version={smoothing_version or 'brak'} | "
+                f"smoothing_method={smoothing_method or 'brak'}",
+            ]
+        )
+        if max_climb_event_gradient is not None:
+            lines.append(f"- climb_events: max_gradient={_fmt_pct(max_climb_event_gradient)}")
+        if raw_sample_max_grade is not None:
+            lines.append(
+                "- raw sample diagnostics: "
+                f"max_grade={_fmt_pct(raw_sample_max_grade)} "
+                "(diagnostyka próbek, nie oficjalna ścianka)"
+            )
+        top_events = summary.get("top_climb_events") if isinstance(summary.get("top_climb_events"), list) else []
+        if top_events:
+            lines.append("- top climb_events:")
+            for idx, event in enumerate(top_events[:3], start=1):
+                if not isinstance(event, dict):
+                    continue
+                km_from = _fmt_km(event.get("km_from"))
+                km_to = _fmt_km(event.get("km_to"))
+                length_m = _fmt_m(event.get("length_m"))
+                gain_m = _fmt_m(event.get("elevation_gain_m"))
+                avg_gradient_pct = _fmt_pct(event.get("avg_gradient_pct"))
+                max_gradient_pct = _fmt_pct(event.get("max_gradient_pct"))
+                severity = str(event.get("severity") or "brak").strip() or "brak"
+                lines.append(
+                    f"  {idx}. km {km_from}–{km_to} | length={length_m} | gain={gain_m} | "
+                    f"avg={avg_gradient_pct} | max={max_gradient_pct} | severity={severity}"
+                )
+        note = summary.get("short_wall_detection_note")
+        if note:
+            lines.append(f"- limitation: {note}")
+    else:
+        lines.append(
+            "- limitation: profil 50 m / climb events mogą pokazywać sygnaturę podjazdów, "
+            "ale bardzo krótkie strome rampy mogą umknąć"
+        )
+    lines.append("")
+    return lines
 
 
 def _route_surface_summary_lines(summary: dict[str, Any] | None) -> list[str]:

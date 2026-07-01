@@ -325,6 +325,36 @@ CANONICAL_ROUTE_SOURCE = {
             },
         ],
     },
+    "canonical_elevation_summary": {
+        "sample_count": 1424,
+        "climb_event_count": 1,
+        "min_elevation_m": 81.0,
+        "max_elevation_m": 134.0,
+        "elevation_range_m": 53.0,
+        "ascent_smoothed_m": 426.7,
+        "descent_smoothed_m": 425.0,
+        "smoothing_version": "asc200_det100_50_v1",
+        "smoothing_method": "route_elevation_engine.summarize(window_m=200.0)",
+        "smoothing_window_m": 200.0,
+        "max_climb_event_gradient_pct": 7.3,
+        "raw_sample_max_grade_pct": 16.0,
+        "top_climb_events": [
+            {
+                "event_index": 0,
+                "km_from": 15.4,
+                "km_to": 15.9,
+                "length_m": 500.0,
+                "elevation_gain_m": 19.3,
+                "avg_gradient_pct": 3.9,
+                "max_gradient_pct": 7.3,
+                "severity": "umiarkowany",
+                "source": "srtm30m_opentopodata",
+                "detection_version": "karoo_400_3_v1",
+            }
+        ],
+        "short_wall_detection_limited": True,
+        "short_wall_detection_note": "profil 50 m i climb events z segmentami 100 m mogą pokazywać sygnaturę podjazdów, ale bardzo krótkie strome rampy mogą umknąć",
+    },
     "surface_profile_overpass_metrics": {
         "chunks_total": 7,
         "chunks_ok": 7,
@@ -1271,6 +1301,20 @@ class TestRouteReportCanonicalReadPath(unittest.TestCase):
         self.assertIn("lewo / środek / prawo", analysis)
         self.assertIn("## A0C - PROFIL WYSOKOŚCI / PODJAZDY (canonical route_elevation_samples / route_climb_events)", analysis)
         self.assertIn("Źródło nawierzchni: canonical_surface_summary / route_surface_layer", analysis)
+        self.assertIn("sample_count=1424", analysis)
+        self.assertIn("climb_event_count=1", analysis)
+        self.assertIn("min=81.0 m | max=134.0 m | range=53.0 m", analysis)
+        self.assertIn(
+            "ascent_smoothed=426.7 m | descent_smoothed=425.0 m | "
+            "smoothing_version=asc200_det100_50_v1 | "
+            "smoothing_method=route_elevation_engine.summarize(window_m=200.0)",
+            analysis,
+        )
+        self.assertIn("climb_events: max_gradient=7.3%", analysis)
+        self.assertIn("raw sample diagnostics: max_grade=16.0%", analysis)
+        self.assertIn("top climb_events:", analysis)
+        self.assertIn("km 15.400–15.900 | length=500.0 m | gain=19.3 m | avg=3.9% | max=7.3% | severity=umiarkowany", analysis)
+        self.assertIn("limitation: profil 50 m i climb events z segmentami 100 m mogą pokazywać sygnaturę podjazdów", analysis)
         self.assertIn("segment_count=76", analysis)
         self.assertIn("total_distance_m=71.1 km", analysis)
         self.assertIn("coverage_pct=100.0%", analysis)
