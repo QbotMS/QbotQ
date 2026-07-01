@@ -1,29 +1,23 @@
-"""Silnik METEO trasy — tryby UPAŁ (WBGT) + DESZCZ + BURZA + wiatr względem kierunku jazdy.
+"""Silnik METEO trasy — tryby UPAŁ (WBGT) + DESZCZ + BURZA + ODCZUWALNA (UTCI) + wiatr.
 
-Jeden przebieg = jedno źródło prawdy. Dla każdego segmentu trasy liczy EFEKTYWNY WBGT
-(z cieniem wpiętym w radiację) w momencie przejazdu (ETA z modelu czasu), porównuje go
-z limitem zależnym od nachylenia (ACGIH: podjazd = wysiłek cięższy = niższy limit),
-i z gęstych danych wyznacza "najgorsze ciągłe okno" -> FLAGA / ALARM. Analogicznie liczy
-opad (moknięcie, wjeżdżasz/wyjeżdżasz) oraz burzę (kod burzy z prognozy = NO-GO; CAPE i
-porywy jako wsparcie/gradacja). Przy burzy podaje FAKTY do decyzji rowerzysty: jak długo
-burza trwa w danym miejscu (z prognozy) i w jakiej miejscowości można ją przeczekać —
-BEZ werdyktu "jedź/nie jedź" (to zależy od typu wyprawy; rowerzysta decyduje sam).
-Z tego samego przebiegu agreguje tabelę co 30 min.
+Jeden przebieg = jedno źródło prawdy. Dla każdego segmentu trasy w momencie przejazdu
+(ETA z modelu czasu) liczy: efektywny WBGT (cień wpięty w radiację) vs limit wg nachylenia
+(ACGIH), opad (moknięcie, wjeżdżasz/wyjeżdżasz), burzę (kod=NO-GO + CAPE/porywy, z faktami
+do decyzji: ile trwa + gdzie przeczekać), oraz odczuwalną temperaturę UTCI (całoroczną:
+ciepło i zimno). Z gęstych danych wyznacza najgorsze ciągłe okna -> FLAGA/ALARM/NO-GO
+i agreguje tabelę co 30 min.
 
-Wejścia (żywe):
-- estimate_route_time_v2  -> km, ETA, grade, surface per segment (czas->miejsce->godzina),
-- qbot_v2.route_frames    -> mid_lat/mid_lon per segment (gdzie pytać o pogodę),
-- qbot_v2.route_shade_layer (oś 50 m) + segment_tau -> cień -> fdir_eff,
-- qbot_v2.route_poi_layer  -> miejscowości (town) na trasie -> gdzie przeczekać,
-- Open-Meteo w N punktach (= N okien 30 min) -> temp, RH, wiatr, ciśnienie, radiacja,
-  opad, kod pogody, CAPE, porywy,
-- route_weather._rel_wind -> wiatr wzdłuż/w poprzek jazdy.
+UTCI: wejścia = temperatura powietrza, temperatura promieniowania (Tmrt~Tg z solvera kuli),
+wilgotność i WIATR EFEKTYWNY = wiatr otoczenia (wektor vs kierunek jazdy) + wiatr pozorny
+z prędkości jazdy (v_kmh z modelu czasu, prosto w twarz). Zakres UTCI dla wiatru 0.5..17 m/s
+-> przycinamy z flagą (zwykle na szybkich zjazdach). Alerty z UTCI: tylko ZIMNO (ciepło
+pokrywa WBGT). Wiatr pozorny na razie tylko do UTCI (nie do WBGT).
 
-Odczuwalne (UTCI) = jeszcze nie liczone (osobny krok).
-Progi/polityka = parametry (regulowalne), nie fizyka. Fizyka: qbot_wbgt_tools (Liljegren).
+Wejścia (żywe): estimate_route_time_v2 (km/ETA/grade/surface/v_kmh), qbot_v2.route_frames
+(mid_lat/mid_lon), route_shade_layer+segment_tau (cień), route_poi_layer (miejscowości),
+Open-Meteo w N punktach (temp/RH/wiatr/ciśnienie/radiacja/opad/kod/CAPE/porywy).
 
-NIE wpięte do tool_registry ani promptu Alberta (najpierw walidacja silnika).
-Dok.: docs/PROJEKT_METEO.md.
+NIE wpięte do tool_registry ani promptu Alberta. Dok.: docs/PROJEKT_METEO.md.
 """
 from __future__ import annotations
 
@@ -35,8 +29,9 @@ import urllib.parse
 import urllib.request
 from typing import Any, Optional
 
-from qbot_wbgt_tools import (CZA_MIN, cos_solar_zenith, wbgt_level,
-                             wbgt_liljegren_k)
+from qbot_wbgt_tools import (CZA_MIN, cos_solar_zenith, mean_radiant_temp_c,
+                             wbgt_level, wbgt_liljegren_k)
+from qbot3.routes.route_utci import utci_c, utci_category
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 TZ_NAME = "Europe/Warsaw"
@@ -64,7 +59,14 @@ CAPE_TREND_J = 200.0
 GUST_NOTE_MS = 14.0
 GUST_ALARM_MS = 17.0
 _STORM_ORDER = {"FLAGA": 1, "ALARM": 2, "NO-GO": 3}
-TOWN_CATEGORY = "town"     # POI = miejscowość (gdzie można przeczekać)
+TOWN_CATEGORY = "town"
+
+# --- Model ODCZUWALNA / ZIMNO (UTCI; regulowalne) --------------------------
+UTCI_SLIGHT_COLD = 9.0      # < 9 C = lagodny stres zimna (poczatek)
+UTCI_MODERATE_COLD = 0.0    # < 0 C = umiarkowany
+UTCI_STRONG_COLD = -13.0    # < -13 C = silny
+UTCI_VSTRONG_COLD = -27.0   # < -27 C = bardzo silny/ekstremalny
+V_UTCI_MIN, V_UTCI_MAX = 0.5, 17.0  # zakres waznosci wiatru w UTCI
 
 
 def metabolic_limit_c(grade_pct: float) -> float:
@@ -127,6 +129,23 @@ def storm_segment_level(weather_code: Optional[int], cape: Optional[float]) -> O
     return None
 
 
+def cold_severity(min_utci: float, minutes: float) -> Optional[str]:
+    """ZIMNO (z UTCI): z odczuwalnej + długości ciągłej ekspozycji -> None/'FLAGA'/'ALARM'."""
+    if min_utci < UTCI_VSTRONG_COLD:            # bardzo silny/ekstremalny -> od razu
+        return "ALARM"
+    if min_utci < UTCI_STRONG_COLD:             # silny
+        return "ALARM" if minutes >= 15 else "FLAGA"
+    if min_utci < UTCI_MODERATE_COLD:           # umiarkowany
+        if minutes >= 60:
+            return "ALARM"
+        if minutes >= 30:
+            return "FLAGA"
+        return None
+    if min_utci < UTCI_SLIGHT_COLD:             # lagodny -> tylko dluga ekspozycja
+        return "FLAGA" if minutes >= 60 else None
+    return None
+
+
 def _storm_worse(a: Optional[str], b: Optional[str]) -> Optional[str]:
     if a is None:
         return b
@@ -164,6 +183,17 @@ def _terrain_label(grade_pct: float) -> str:
     if grade_pct < GRADE_DESCENT:
         return "zjazd"
     return "płasko"
+
+
+def effective_wind_ms(v_kmh: float, ws: float, tail: Optional[float],
+                      cross: Optional[float]) -> float:
+    """Wiatr efektywny [m/s] dla UTCI = wiatr pozorny (pęd jazdy, prosto w twarz)
+    złożony z wiatrem otoczenia względem kierunku jazdy.
+    tail>0 = z tyłu (zmniejsza czoło), cross = z boku. Brak heading -> pełne czoło."""
+    v_ride = max(0.0, v_kmh) / 3.6
+    if tail is None or cross is None:
+        return v_ride + max(0.0, ws)
+    return math.hypot(v_ride - tail, cross)
 
 
 # --- Czas / strefa czasowa --------------------------------------------------
@@ -304,7 +334,7 @@ def _storm_clear_after(times: list, codes: list, capes: list, when: _dt.datetime
 # --- Główny przebieg --------------------------------------------------------
 def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
                      mode: str = "normalny") -> dict:
-    """Jeden przebieg silnika METEO (UPAŁ + DESZCZ + BURZA + wiatr). date=YYYY-MM-DD, start=HH:MM (lokalny)."""
+    """Jeden przebieg silnika METEO. date=YYYY-MM-DD, start=HH:MM (lokalny)."""
     from qbot_route_time_tools import estimate_route_time_v2
     from qbot3.routes.route_shade_resolver import segment_tau
     from tools.rwgps.route_weather import _rel_wind
@@ -335,7 +365,8 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         cum_h = float(row.get("moving_h", 0.0)) + float(row.get("stop_h", 0.0))
         eta_local = start_local + _dt.timedelta(hours=cum_h)
         segs.append({"km": float(row["km"]), "grade_pct": float(row["grade_pct"]),
-                     "surface": row.get("surface"), "lat": g["lat"], "lon": g["lon"],
+                     "surface": row.get("surface"), "v_kmh": float(row.get("v_kmh", 0.0)),
+                     "lat": g["lat"], "lon": g["lon"],
                      "eta_local": eta_local, "eta_utc": eta_local.astimezone(_dt.timezone.utc),
                      "dur_min": max(0.0, (cum_h - prev_cum) * 60.0)})
         prev_cum = cum_h
@@ -402,6 +433,13 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         clear_utc = (_storm_clear_after(tms, h.get("weather_code", []), h.get("cape", []), when)
                      if storm else None)
 
+        # ODCZUWALNA (UTCI): Tmrt z solvera (cień wpięty), wiatr efektywny (otoczenie + ped jazdy)
+        tmrt = float(mean_radiant_temp_c(ta + 273.15, rh, pres, ws, ghi, fdir_eff, cza))
+        eff = effective_wind_ms(s["v_kmh"], ws, tail, cross)
+        wind_oob = eff > V_UTCI_MAX or eff < V_UTCI_MIN
+        eff_c = min(max(eff, V_UTCI_MIN), V_UTCI_MAX)
+        utci = utci_c(ta, tmrt, eff_c, rh)
+
         per_segment.append({
             "km": round(s["km"], 2), "eta": s["eta_local"].strftime("%H:%M"),
             "grade_pct": round(s["grade_pct"], 1), "teren": _terrain_label(s["grade_pct"]),
@@ -411,6 +449,8 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
             "burza": storm, "burza_kod": wcode,
             "cape": (round(cape) if cape is not None else None),
             "gust_ms": (round(gust, 1) if gust is not None else None),
+            "tmrt": round(tmrt, 1), "utci": round(utci, 1), "utci_kat": utci_category(utci),
+            "wind_eff_ms": round(eff_c, 1), "wind_oob": wind_oob,
             "wind_tail_ms": round(tail, 1) if tail is not None else None,
             "wind_cross_ms": round(cross, 1) if cross is not None else None,
             "_dur_min": s["dur_min"], "_win": _win_idx(s["eta_utc"]),
@@ -418,7 +458,7 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         })
 
     alerts = (_build_alerts(per_segment) + _build_rain_alerts(per_segment)
-              + _build_storm_alerts(per_segment, towns))
+              + _build_storm_alerts(per_segment, towns) + _build_cold_alerts(per_segment))
     order = {"NO-GO": 0, "ALARM": 1, "FLAGA": 2}
     alerts.sort(key=lambda a: (a["eta_od"], order.get(a["severity"], 9)))
     table = _build_table(per_segment, n_win, t0)
@@ -433,13 +473,14 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         "alerts": alerts,
         "tabela_30min": table,
         "per_segment": [{k: v for k, v in s.items() if not k.startswith("_")} for s in per_segment],
-        "caveats": ["Limity ACGIH zakładają osobę zaaklimatyzowaną.",
-                    "Wiatr pozorny rowerzysty jeszcze nie wpięty -> progi cieplne zachowawcze na płaskim/zjazdach.",
-                    "Burza: 'szansa na piorun' nie jest wprost w darmowej prognozie -> bierzemy kod burzy + CAPE. "
-                    "Czas trwania z prognozy (kroki godzinne) = przybliżony. Miejscowość = ogólne schronienie "
-                    "(przystanek/wiata/sklep), nie konkretny otwarty budynek. Decyzję jedź/przeczekaj/odpuść "
-                    "podejmujesz sam wg typu wyprawy.",
-                    "Odczuwalne (UTCI) jeszcze nie liczone."],
+        "caveats": ["Limity ACGIH (upał) zakładają osobę zaaklimatyzowaną.",
+                    "WBGT liczony z wiatrem otoczenia; wiatr pozorny jazdy na razie tylko w UTCI.",
+                    "Burza: 'szansa na piorun' nie jest wprost w darmowej prognozie -> kod burzy + CAPE. "
+                    "Czas trwania z prognozy (kroki godzinne) = przybliżony. Miejscowość = ogólne "
+                    "schronienie. Decyzję jedź/przeczekaj/odpuść podejmujesz sam.",
+                    "Odczuwalna (UTCI): wiatr efektywny = otoczenie + pęd jazdy; > 17 m/s (zwykle "
+                    "szybkie zjazdy) przycięte do 17 z flagą wind_oob. Zakłada standardowy ubiór "
+                    "-> wartość poglądowa, kierunek pewny."],
     }
 
 
@@ -549,13 +590,13 @@ def _build_storm_alerts(per_segment: list[dict], towns: list[dict]) -> list[dict
             "porywy_silne": (max_gust is not None and max_gust >= GUST_NOTE_MS),
         }
 
-        if kod_burzy:  # realna burza -> fakty do decyzji rowerzysty
+        if kod_burzy:
             clears = [x["_storm_clear_utc"] for x in run]
             if all(c is not None for c in clears) and clears:
                 wait = round((max(clears) - run[0]["_eta_utc"]).total_seconds() / 60.0)
                 alert["czekanie_min"] = max(0, wait)
             else:
-                alert["czekanie_min"] = None  # burza poza horyzont prognozy
+                alert["czekanie_min"] = None
             town = _nearest_town_before(towns, run[0]["km"])
             alert["przeczekaj_w"] = ({"miejscowosc": town["name"], "km": town["km"]} if town else None)
 
@@ -572,8 +613,39 @@ def _build_storm_alerts(per_segment: list[dict], towns: list[dict]) -> list[dict
     return alerts
 
 
+def _build_cold_alerts(per_segment: list[dict]) -> list[dict]:
+    """ZIMNO (z UTCI): ciągłe okna stresu zimna (odczuwalna < prog lagodnego zimna)."""
+    alerts = []
+
+    def flush(run):
+        if not run:
+            return
+        minutes = sum(x["_dur_min"] for x in run)
+        min_u = min(x["utci"] for x in run)
+        sev = cold_severity(min_u, minutes)
+        if not sev:
+            return
+        cold_seg = min(run, key=lambda x: x["utci"])
+        alerts.append({
+            "typ": "zimno", "severity": sev, "km_od": run[0]["km"], "km_do": run[-1]["km"],
+            "eta_od": run[0]["eta"], "eta_do": run[-1]["eta"], "minuty": round(minutes),
+            "utci_min": cold_seg["utci"], "kategoria": cold_seg["utci_kat"],
+            "uwaga_zjazd": any(x["wind_oob"] for x in run),  # wiatr pozorny zjazdu podbija chlod
+        })
+
+    run = []
+    for s in per_segment:
+        if s["utci"] < UTCI_SLIGHT_COLD:
+            run.append(s)
+        else:
+            flush(run)
+            run = []
+    flush(run)
+    return alerts
+
+
 def _build_table(per_segment: list[dict], n_win: int, t0: _dt.datetime) -> list[dict]:
-    """Agregacja co 30 min (jedno źródło do wyświetlania). Kolumna odczuwalna = placeholder."""
+    """Agregacja co 30 min (jedno źródło do wyświetlania)."""
     buckets: dict[int, list[dict]] = {}
     for s in per_segment:
         buckets.setdefault(s["_win"], []).append(s)
@@ -589,6 +661,8 @@ def _build_table(per_segment: list[dict], n_win: int, t0: _dt.datetime) -> list[
         probs = [x["opad_prob"] for x in b if x["opad_prob"] is not None]
         capes = [x["cape"] for x in b if x["cape"] is not None]
         gusts = [x["gust_ms"] for x in b if x["gust_ms"] is not None]
+        umin = min(x["utci"] for x in b)
+        umax = max(x["utci"] for x in b)
         storm_w = None
         for x in b:
             storm_w = _storm_worse(storm_w, x["burza"])
@@ -601,7 +675,7 @@ def _build_table(per_segment: list[dict], n_win: int, t0: _dt.datetime) -> list[
             "opad": {"mm": round(pmax["opad_mm"], 1), "prob": (max(probs) if probs else None)},
             "burza": {"poziom": storm_w, "cape": (max(capes) if capes else None),
                       "porywy_ms": (max(gusts) if gusts else None)},
-            "odczuwalna": None,
+            "odczuwalna": {"od": round(umin), "do": round(umax), "kat": utci_category(umin)},
         })
     return rows
 

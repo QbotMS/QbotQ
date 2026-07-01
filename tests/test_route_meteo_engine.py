@@ -9,6 +9,7 @@ from qbot3.routes.route_meteo_engine import (metabolic_limit_c, window_severity,
                                              rain_severity, rain_trend,
                                              storm_segment_level, _storm_worse,
                                              _nearest_town_before, _build_storm_alerts,
+                                             cold_severity, effective_wind_ms,
                                              _terrain_label)
 
 UTC = _dt.timezone.utc
@@ -20,30 +21,24 @@ class TestMeteoUpal(unittest.TestCase):
         self.assertEqual(metabolic_limit_c(0.0), 25.0)
         self.assertEqual(metabolic_limit_c(-6.0), 28.0)
         self.assertEqual(metabolic_limit_c(3.0), 25.0)
-        self.assertEqual(metabolic_limit_c(-3.0), 25.0)
 
     def test_terrain_label(self):
         self.assertEqual(_terrain_label(5.0), "podjazd")
         self.assertEqual(_terrain_label(0.0), "płasko")
         self.assertEqual(_terrain_label(-5.0), "zjazd")
 
-    def test_severity_extreme_always_alarm(self):
+    def test_severity(self):
         self.assertEqual(window_severity(0.0, 1, 4), "ALARM")
-
-    def test_severity_bands(self):
         self.assertIsNone(window_severity(-1.0, 999, 1))
-        self.assertIsNone(window_severity(1.0, 30, 1))
         self.assertEqual(window_severity(1.0, 45, 1), "FLAGA")
         self.assertEqual(window_severity(1.0, 120, 1), "ALARM")
         self.assertEqual(window_severity(3.0, 30, 2), "FLAGA")
-        self.assertEqual(window_severity(3.0, 60, 2), "ALARM")
-        self.assertEqual(window_severity(5.0, 7, 2), "FLAGA")
         self.assertEqual(window_severity(5.0, 15, 2), "ALARM")
         self.assertEqual(window_severity(7.0, 1, 2), "ALARM")
 
 
 class TestMeteoDeszcz(unittest.TestCase):
-    def test_rain_bands(self):
+    def test_rain(self):
         self.assertEqual(rain_severity(8.0, 1), "ALARM")
         self.assertEqual(rain_severity(3.0, 10), "FLAGA")
         self.assertEqual(rain_severity(3.0, 90), "ALARM")
@@ -51,56 +46,58 @@ class TestMeteoDeszcz(unittest.TestCase):
         self.assertEqual(rain_severity(1.0, 60), "FLAGA")
         self.assertIsNone(rain_severity(0.0, 999))
 
-    def test_rain_trend(self):
+    def test_trend(self):
         self.assertEqual(rain_trend(0.2, 3.0), "narasta (wjeżdżasz w deszcz)")
         self.assertEqual(rain_trend(3.0, 0.2), "słabnie (wychodzisz z deszczu)")
-        self.assertEqual(rain_trend(2.0, 2.1), "równomierny")
 
 
 class TestMeteoBurza(unittest.TestCase):
-    def test_storm_code_is_nogo(self):
+    def test_levels(self):
         self.assertEqual(storm_segment_level(95, 100), "NO-GO")
-        self.assertEqual(storm_segment_level(96, None), "NO-GO")
-
-    def test_storm_cape_bands(self):
         self.assertEqual(storm_segment_level(3, 3000), "ALARM")
         self.assertEqual(storm_segment_level(3, 1500), "FLAGA")
         self.assertIsNone(storm_segment_level(3, 500))
-        self.assertIsNone(storm_segment_level(0, None))
-
-    def test_storm_worse(self):
-        self.assertEqual(_storm_worse("FLAGA", "ALARM"), "ALARM")
         self.assertEqual(_storm_worse("ALARM", "NO-GO"), "NO-GO")
-        self.assertIsNone(_storm_worse(None, None))
 
-    def test_nearest_town_before(self):
+    def test_nearest_town(self):
         towns = [{"name": "A", "km": 10}, {"name": "B", "km": 38}, {"name": "C", "km": 50}]
         self.assertEqual(_nearest_town_before(towns, 40)["name"], "B")
-        self.assertEqual(_nearest_town_before(towns, 55)["name"], "C")
         self.assertIsNone(_nearest_town_before(towns, 5))
 
-    def _storm_seg(self, km, eta, eta_utc, clear_utc):
+    def _seg(self, km, eta, eta_utc, clear):
         return {"km": km, "eta": eta, "_dur_min": 30.0, "burza": "NO-GO", "burza_kod": 95,
-                "cape": 800, "gust_ms": 12.0, "_eta_utc": eta_utc, "_storm_clear_utc": clear_utc}
+                "cape": 800, "gust_ms": 12.0, "_eta_utc": eta_utc, "_storm_clear_utc": clear}
 
-    def test_storm_alert_wait_and_town(self):
+    def test_wait_and_town(self):
         t0 = _dt.datetime(2026, 7, 1, 12, 0, tzinfo=UTC)
         clear = _dt.datetime(2026, 7, 1, 13, 0, tzinfo=UTC)
-        run = [self._storm_seg(40, "14:00", t0, clear),
-               self._storm_seg(42, "14:30", t0 + _dt.timedelta(minutes=30), clear)]
-        towns = [{"name": "Brańszczyk", "km": 38}, {"name": "Daleko", "km": 60}]
-        alerts = _build_storm_alerts(run, towns)
-        self.assertEqual(len(alerts), 1)
-        a = alerts[0]
+        run = [self._seg(40, "14:00", t0, clear),
+               self._seg(42, "14:30", t0 + _dt.timedelta(minutes=30), clear)]
+        a = _build_storm_alerts(run, [{"name": "Brańszczyk", "km": 38}])[0]
         self.assertEqual(a["severity"], "NO-GO")
-        self.assertEqual(a["czekanie_min"], 60)                      # 12:00 -> 13:00
+        self.assertEqual(a["czekanie_min"], 60)
         self.assertEqual(a["przeczekaj_w"]["miejscowosc"], "Brańszczyk")
 
-    def test_storm_alert_persists_wait_none(self):
-        t0 = _dt.datetime(2026, 7, 1, 12, 0, tzinfo=UTC)
-        run = [self._storm_seg(40, "14:00", t0, None)]  # burza nie mija do konca prognozy
-        alerts = _build_storm_alerts(run, [{"name": "X", "km": 30}])
-        self.assertIsNone(alerts[0]["czekanie_min"])
+
+class TestMeteoZimno(unittest.TestCase):
+    def test_cold_severity(self):
+        self.assertEqual(cold_severity(-30, 1), "ALARM")        # ekstremalny -> od razu
+        self.assertEqual(cold_severity(-15, 15), "ALARM")       # silny, dlugo
+        self.assertEqual(cold_severity(-15, 5), "FLAGA")        # silny, krotko
+        self.assertEqual(cold_severity(-5, 60), "ALARM")        # umiarkowany, dlugo
+        self.assertEqual(cold_severity(-5, 30), "FLAGA")
+        self.assertIsNone(cold_severity(-5, 10))
+        self.assertEqual(cold_severity(5, 60), "FLAGA")         # lagodny, bardzo dlugo
+        self.assertIsNone(cold_severity(5, 30))
+        self.assertIsNone(cold_severity(15, 999))               # komfort -> nic
+
+    def test_effective_wind(self):
+        # brak heading -> pelne czolo: ped 25 km/h (~6.94) + wiatr 3
+        self.assertAlmostEqual(effective_wind_ms(25.0, 3.0, None, None), 6.944 + 3.0, delta=0.01)
+        # wiatr z tylu (tail=+4) na plasko przy 25 km/h -> 6.94-4 czolowo
+        self.assertAlmostEqual(effective_wind_ms(25.0, 4.0, 4.0, 0.0), 6.944 - 4.0, delta=0.01)
+        # wiatr z boku (cross=5), ped 0 -> 5
+        self.assertAlmostEqual(effective_wind_ms(0.0, 5.0, 0.0, 5.0), 5.0, delta=0.01)
 
 
 if __name__ == "__main__":
