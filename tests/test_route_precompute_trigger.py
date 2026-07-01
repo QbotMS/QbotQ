@@ -9,6 +9,8 @@ from psycopg.rows import dict_row
 
 from scripts.route_precompute_trigger import ensure_route_precompute_trigger
 from scripts.route_precompute_trigger import _ensure_rwgps_route_artifact
+from scripts.route_precompute_trigger import _ensure_rwgps_surface_profile
+from scripts.route_precompute_trigger import _ensure_rwgps_route_frames
 import scripts.route_precompute_trigger as route_precompute_trigger_module
 from qbot_api import rwgps_webhook
 
@@ -75,11 +77,26 @@ class TestRoutePrecomputeTrigger(unittest.TestCase):
             "route_id": "55798129",
             "route_artifact_id": 306,
             "route_parse_result_id": 17,
-        }) as mock_import, patch("scripts.route_precompute_trigger.ensure_route_base", return_value={
+        }) as mock_import, patch("scripts.route_precompute_trigger._ensure_rwgps_surface_profile", return_value={
+            "status": "OK",
+            "surface_status": "imported",
+            "route_id": "55798129",
+            "route_artifact_id": 306,
+            "surface_profile_id": 19,
+        }) as mock_surface, patch("scripts.route_precompute_trigger.ensure_route_base", return_value={
             "route_base": {"route_base_id": 1},
             "route_artifact_id": 306,
             "route_version_key": "rk-1",
         }), patch("scripts.route_precompute_trigger._route_precompute_rows", return_value=[]), patch(
+            "scripts.route_precompute_trigger._ensure_rwgps_route_frames",
+            return_value={
+                "status": "OK",
+                "frames_status": "built",
+                "route_id": "55798129",
+                "route_artifact_id": 306,
+                "frame_count": 271,
+            },
+        ) as mock_frames, patch(
             "scripts.route_precompute_trigger.ensure_route_precompute",
             return_value={
                 "status": "OK",
@@ -99,9 +116,107 @@ class TestRoutePrecomputeTrigger(unittest.TestCase):
 
         self.assertEqual(result["trigger_status"], "ran")
         self.assertEqual(result["route_import"]["import_status"], "imported")
+        self.assertEqual(result["route_surface"]["surface_status"], "imported")
+        self.assertEqual(result["route_frames"]["frames_status"], "built")
         self.assertEqual(result["route_version_key"], "rk-1")
         mock_import.assert_called_once_with("55798129")
+        mock_surface.assert_called_once_with("55798129", route_artifact_id=306)
+        mock_frames.assert_called_once_with("55798129", route_artifact_id=306)
         mock_precompute.assert_called_once_with(route_id="55798129", trigger_source="rwgps_webhook")
+
+    def test_ensure_rwgps_surface_profile_runs_when_missing(self) -> None:
+        with patch("scripts.route_precompute_trigger._route_import_state", return_value={
+            "has_artifact": True,
+            "has_parse_result": True,
+            "route_artifact_id": 402,
+            "route_parse_result_id": 28,
+        }), patch("scripts.route_precompute_trigger._route_surface_profile_state", side_effect=[
+            {"has_profile": False, "surface_profile_id": None},
+            {"has_profile": False, "surface_profile_id": None},
+            {"has_profile": True, "surface_profile_id": 19},
+        ]), patch("scripts.route_precompute_trigger._route_artifact_path", return_value="/opt/qbot/artifacts/exports/rwgps/rwgps_55911618.gpx"), patch(
+            "qbot_route_tools._tool_qbot_route_artifact_enrich",
+            return_value={"ok": True, "status": "OK", "surface_profile": {"id": 19}},
+        ) as mock_enrich, patch("scripts.route_precompute_trigger._persist_surface_profile_from_enrich_result", return_value={"id": 19}), patch(
+            "tools.rwgps.route_frames.build",
+            return_value=0,
+        ) as mock_build:
+            result = _ensure_rwgps_surface_profile("55911618", route_artifact_id=402)
+
+        self.assertEqual(result["status"], "OK")
+        self.assertEqual(result["surface_status"], "imported")
+        self.assertEqual(result["surface_profile_id"], 19)
+        mock_enrich.assert_called_once()
+        mock_build.assert_called_once_with(route_id="55911618", frame_size=80.0, dry_run=False, show=0)
+
+    def test_ensure_rwgps_surface_profile_skips_when_ready(self) -> None:
+        with patch("scripts.route_precompute_trigger._route_import_state", return_value={
+            "has_artifact": True,
+            "has_parse_result": True,
+            "route_artifact_id": 402,
+            "route_parse_result_id": 28,
+        }), patch("scripts.route_precompute_trigger._route_surface_profile_state", return_value={
+            "has_profile": True,
+            "surface_profile_id": 19,
+        }), patch("scripts.route_precompute_trigger._route_artifact_path") as mock_path, patch(
+            "qbot_route_tools._tool_qbot_route_artifact_enrich",
+        ) as mock_enrich:
+            result = _ensure_rwgps_surface_profile("55911618", route_artifact_id=402)
+
+        self.assertEqual(result["surface_status"], "skipped")
+        mock_path.assert_not_called()
+        mock_enrich.assert_not_called()
+
+    def test_ensure_rwgps_route_frames_runs_when_missing(self) -> None:
+        with patch("scripts.route_precompute_trigger._route_import_state", return_value={
+            "has_artifact": True,
+            "has_parse_result": True,
+            "route_artifact_id": 402,
+            "route_parse_result_id": 28,
+        }), patch("scripts.route_precompute_trigger._route_frames_state", side_effect=[
+            {"has_frames": False, "frame_count": 0},
+            {"has_frames": True, "frame_count": 271},
+        ]), patch("tools.rwgps.route_frames.build", return_value=0) as mock_build:
+            result = _ensure_rwgps_route_frames("55911618", route_artifact_id=402)
+
+        self.assertEqual(result["status"], "OK")
+        self.assertEqual(result["frames_status"], "built")
+        self.assertEqual(result["frame_count"], 271)
+        mock_build.assert_called_once_with(route_id="55911618", frame_size=80.0, dry_run=False, show=0)
+
+    def test_ensure_rwgps_route_frames_skips_when_ready(self) -> None:
+        with patch("scripts.route_precompute_trigger._route_import_state", return_value={
+            "has_artifact": True,
+            "has_parse_result": True,
+            "route_artifact_id": 402,
+            "route_parse_result_id": 28,
+        }), patch("scripts.route_precompute_trigger._route_frames_state", return_value={
+            "has_frames": True,
+            "frame_count": 271,
+        }), patch("tools.rwgps.route_frames.build") as mock_build:
+            result = _ensure_rwgps_route_frames("55911618", route_artifact_id=402)
+
+        self.assertEqual(result["frames_status"], "skipped")
+        mock_build.assert_not_called()
+
+    def test_ensure_rwgps_surface_profile_reports_failure(self) -> None:
+        with patch("scripts.route_precompute_trigger._route_import_state", return_value={
+            "has_artifact": True,
+            "has_parse_result": True,
+            "route_artifact_id": 402,
+            "route_parse_result_id": 28,
+        }), patch("scripts.route_precompute_trigger._route_surface_profile_state", return_value={
+            "has_profile": False,
+            "surface_profile_id": None,
+        }), patch("scripts.route_precompute_trigger._route_artifact_path", return_value="/opt/qbot/artifacts/exports/rwgps/rwgps_55911618.gpx"), patch(
+            "qbot_route_tools._tool_qbot_route_artifact_enrich",
+            return_value={"ok": False, "status": "ERROR", "reason": "surface failed"},
+        ):
+            result = _ensure_rwgps_surface_profile("55911618", route_artifact_id=402)
+
+        self.assertEqual(result["status"], "ERROR")
+        self.assertEqual(result["surface_status"], "failed")
+        self.assertIn("surface failed", result["error"])
 
     def test_ensure_rwgps_route_artifact_exports_when_missing(self) -> None:
         missing_state = {
