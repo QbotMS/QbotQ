@@ -17,7 +17,7 @@ Wejścia (żywe): estimate_route_time_v2 (km/ETA/grade/surface/v_kmh), qbot_v2.r
 (mid_lat/mid_lon), route_shade_layer+segment_tau (cień), route_poi_layer (miejscowości),
 Open-Meteo w N punktach (temp/RH/wiatr/ciśnienie/radiacja/opad/kod/CAPE/porywy).
 
-NIE wpięte do tool_registry ani promptu Alberta. Dok.: docs/PROJEKT_METEO.md.
+NIE wpięte do tool_registry ani promptu Alberta. Pelna dokumentacja (kontrakt): docs/METEO_ENGINE.md. Kontekst projektu: docs/PROJEKT_METEO.md.
 """
 from __future__ import annotations
 
@@ -334,7 +334,10 @@ def _storm_clear_after(times: list, codes: list, capes: list, when: _dt.datetime
 # --- Główny przebieg --------------------------------------------------------
 def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
                      mode: str = "normalny") -> dict:
-    """Jeden przebieg silnika METEO. date=YYYY-MM-DD, start=HH:MM (lokalny)."""
+    """Jeden przebieg silnika METEO. date=YYYY-MM-DD, start=HH:MM (lokalny).
+
+    Pelna dokumentacja (kontrakt wejscia/wyjscia): docs/METEO_ENGINE.md.
+    """
     from qbot_route_time_tools import estimate_route_time_v2
     from qbot3.routes.route_shade_resolver import segment_tau
     from tools.rwgps.route_weather import _rel_wind
