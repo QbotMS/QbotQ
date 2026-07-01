@@ -73,6 +73,14 @@
 
 **Zasada:** `route_elevation_samples` jest 50 m profilem, `route_elevation_engine.summarize()` daje smoothed ascent/descent, a `route_climb_events` są segmentowane w 100 m i dostarczają głównej metryki stromizny. Raport ma wprost mówić, że bardzo krótkie strome rampy mogą umknąć. Brak danych nie wywraca raportu i nie zmienia A0/A0B/A3/A8.
 
+## 2026-07-01 — DECYZJA: route_report pokazuje końcowy werdykt trasy jako syntetyczny blok
+
+**Status:** wdrożone w `qbot_route_report_tool.py`.
+
+**Decyzja:** pełny `route_report` pokazuje dodatkową sekcję `WERDYKT TRASY / DECYZJA`, która syntetyzuje już dostępne dane z A0/A0B/A0C/A3/A4/A8 oraz B2/B5 w krótką decyzję dla rowerzysty gravelowego.
+
+**Zasada:** werdykt nie liczy nowych danych i nie dubluje całych sekcji. Ma jawnie mówić, kiedy dane są ograniczone, kiedy nawierzchnia jest częściowo inferowana, kiedy METEO jest unavailable, i kiedy POI/godziny są niepełne. Brak dowolnej warstwy nie wywraca raportu, ale może obniżyć decyzję do `BRAK PEŁNYCH DANYCH`.
+
 ## 2026-06-30 — DECYZJA: route_report pokazuje sekcję otoczenia z route_shade_layer / WorldCover
 
 **Status:** wdrożone minimalnie w `qbot_route_report_tool.py`.

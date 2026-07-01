@@ -543,7 +543,20 @@ def _load_route_meteo_engine() -> tuple[Any | None, str | None]:
 
 
 def _meteo_section_lines(route_id: str | None, start: Any) -> list[str]:
-    lines = ["## A4 - METEO / route_run_context"]
+    payload = _meteo_report_payload(route_id, start)
+    return payload["lines"]
+
+
+def _meteo_report_payload(route_id: str | None, start: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "status": "UNAVAILABLE",
+        "reason": None,
+        "result": None,
+        "date_str": None,
+        "start_time": None,
+        "lines": ["## A4 - METEO / route_run_context"],
+    }
+    lines = payload["lines"]
     parsed = _parse_route_report_start(start)
     if not route_id:
         lines.extend([
@@ -551,7 +564,8 @@ def _meteo_section_lines(route_id: str | None, start: Any) -> list[str]:
             "- powód: brak route_id",
             "",
         ])
-        return lines
+        payload["reason"] = "brak route_id"
+        return payload
     if parsed is None:
         lines.extend([
             "- status: UNAVAILABLE",
@@ -559,9 +573,12 @@ def _meteo_section_lines(route_id: str | None, start: Any) -> list[str]:
             "- źródło danych: route_meteo_engine (nieuruchomiony)",
             "",
         ])
-        return lines
+        payload["reason"] = "brak lub niepoprawny start"
+        return payload
 
     date_str, start_time = parsed
+    payload["date_str"] = date_str
+    payload["start_time"] = start_time
     run_meteo_engine, load_error = _load_route_meteo_engine()
     if run_meteo_engine is None:
         lines.extend([
@@ -570,7 +587,8 @@ def _meteo_section_lines(route_id: str | None, start: Any) -> list[str]:
             "- źródło danych: route_meteo_engine (nieuruchomiony)",
             "",
         ])
-        return lines
+        payload["reason"] = load_error or "meteo import failed"
+        return payload
     try:
         meteo = run_meteo_engine(route_id=route_id, date_str=date_str, start_time=start_time, mode="normalny")
     except Exception as exc:  # noqa: BLE001
@@ -581,9 +599,12 @@ def _meteo_section_lines(route_id: str | None, start: Any) -> list[str]:
             f"- start_local: {date_str} {start_time}",
             "",
         ])
-        return lines
+        payload["reason"] = f"meteo run failed: {str(exc)[:160]}"
+        return payload
 
     status = _meteo_status_label(meteo)
+    payload["status"] = status
+    payload["result"] = meteo
     lines.append(f"- status: {status}")
     lines.append("- źródło danych: Open-Meteo + route_meteo_engine.run_meteo_engine")
     lines.append(f"- start_local: {date_str} {start_time}")
@@ -591,7 +612,8 @@ def _meteo_section_lines(route_id: str | None, start: Any) -> list[str]:
         err = str((meteo or {}).get("error") or "brak danych pogodowych").strip()
         lines.append(f"- powód: {err}")
         lines.append("")
-        return lines
+        payload["reason"] = err
+        return payload
 
     peak = meteo.get("peak") if isinstance(meteo.get("peak"), dict) else {}
     if peak:
@@ -640,6 +662,225 @@ def _meteo_section_lines(route_id: str | None, start: Any) -> list[str]:
         lines.append("- caveats:")
         for caveat in caveats:
             lines.append(f"  - {caveat}")
+    lines.append("")
+    return payload
+
+
+def _fmt_pct(value: Any) -> str:
+    try:
+        return f"{float(value):.1f}%"
+    except (TypeError, ValueError):
+        return "brak"
+
+
+def _fmt_m(value: Any) -> str:
+    try:
+        return f"{float(value):.1f} m"
+    except (TypeError, ValueError):
+        return "brak"
+
+
+def _route_verdict_section_lines(route_source: dict[str, Any] | None, meteo_payload: dict[str, Any] | None,
+                                 collected: dict[str, Any]) -> list[str]:
+    lines = ["## WERDYKT TRASY / DECYZJA"]
+    if not isinstance(route_source, dict):
+        lines.extend([
+            "- decyzja: BRAK PEŁNYCH DANYCH",
+            "- główny powód: brak canonical route_source",
+            "",
+        ])
+        return lines
+
+    surface = route_source.get("canonical_surface_summary") if isinstance(route_source.get("canonical_surface_summary"), dict) else None
+    poi = route_source.get("canonical_poi_summary") if isinstance(route_source.get("canonical_poi_summary"), dict) else None
+    elevation = route_source.get("canonical_elevation_summary") if isinstance(route_source.get("canonical_elevation_summary"), dict) else None
+    meteo_ok = bool(isinstance(meteo_payload, dict) and meteo_payload.get("status") == "OK" and isinstance(meteo_payload.get("result"), dict))
+    meteo_result = meteo_payload.get("result") if meteo_ok else None
+    fuel_txt = _analysis(collected.get("fuel")) if collected.get("fuel") else None
+    tp_txt = _analysis(collected.get("tp")) if collected.get("tp") else None
+
+    missing_layers = []
+    if surface is None:
+        missing_layers.append("nawierzchnia")
+    if elevation is None:
+        missing_layers.append("przewyższenia")
+    if poi is None:
+        missing_layers.append("POI")
+    if not meteo_ok:
+        missing_layers.append("METEO")
+
+    surface_risks: list[str] = []
+    if surface:
+        try:
+            inferred_pct = float(surface.get("inferred_surface_pct") or 0.0)
+        except (TypeError, ValueError):
+            inferred_pct = 0.0
+        if inferred_pct > 0:
+            surface_risks.append("nawierzchnia częściowo inferowana")
+        if (surface.get("unknown_provenance_count") or 0) > 0:
+            surface_risks.append("nieznana proweniencja")
+    elevation_risks: list[str] = []
+    if elevation:
+        if elevation.get("short_wall_detection_note"):
+            elevation_risks.append("krótkie rampy mogą umknąć")
+        if elevation.get("max_climb_event_gradient_pct") is not None:
+            elevation_risks.append(
+                f"max_gradient={float(elevation.get('max_climb_event_gradient_pct')):.1f}%"
+            )
+    poi_risks: list[str] = []
+    if poi:
+        try:
+            poi_count = int(poi.get("poi_count") or 0)
+        except (TypeError, ValueError):
+            poi_count = 0
+        field_counts = poi.get("field_counts") if isinstance(poi.get("field_counts"), dict) else {}
+        try:
+            opening_hours_count = int(field_counts.get("opening_hours") or 0)
+        except (TypeError, ValueError):
+            opening_hours_count = 0
+        if poi_count and opening_hours_count < poi_count:
+            poi_risks.append("brak pełnych godzin POI")
+
+    meteo_risks: list[str] = []
+    if meteo_result:
+        alerts = meteo_result.get("alerts") if isinstance(meteo_result.get("alerts"), list) else []
+        alert_severities = [str(a.get("severity") or "").upper() for a in alerts if isinstance(a, dict)]
+        if "NO-GO" in alert_severities:
+            meteo_risks.append("burza NO-GO")
+        elif "ALARM" in alert_severities:
+            meteo_risks.append("METEO ALARM")
+        peak = meteo_result.get("peak") if isinstance(meteo_result.get("peak"), dict) else {}
+        try:
+            peak_wbgt = float(peak.get("wbgt_eff")) if peak.get("wbgt_eff") is not None else None
+        except (TypeError, ValueError):
+            peak_wbgt = None
+        try:
+            peak_alert_level = int(peak.get("alert_level")) if peak.get("alert_level") is not None else None
+        except (TypeError, ValueError):
+            peak_alert_level = None
+        if peak_wbgt is not None and peak_wbgt >= 30.0 and "upał" not in " ".join(meteo_risks):
+            meteo_risks.append(f"WBGT={peak_wbgt:.1f}")
+        elif peak_alert_level is not None and peak_alert_level >= 3:
+            meteo_risks.append(f"alert_level={peak_alert_level}")
+
+    if missing_layers:
+        decision = "BRAK PEŁNYCH DANYCH"
+        reason = "brak " + ", ".join(missing_layers)
+        biggest_risk = reason
+    elif "burza NO-GO" in meteo_risks:
+        decision = "PRZEŁÓŻ"
+        reason = "burza NO-GO"
+        biggest_risk = reason
+    elif surface_risks or elevation_risks or poi_risks or meteo_risks:
+        decision = "JEDŹ OSTROŻNIE"
+        reason = "; ".join((meteo_risks or surface_risks or elevation_risks or poi_risks)[:2])
+        biggest_risk = "; ".join((meteo_risks + surface_risks + elevation_risks + poi_risks)[:3])
+    else:
+        decision = "JEDŹ"
+        reason = "brak istotnych ryzyk w dostępnych danych"
+        biggest_risk = reason
+
+    lines.append(f"- decyzja: {decision}")
+    lines.append(f"- główny powód: {reason}")
+    lines.append(f"- największe ryzyko: {biggest_risk}")
+
+    if surface:
+        try:
+            top_surfaces = sorted(
+                (surface.get("by_surface") or {}).items(),
+                key=lambda item: (-float((item[1] or {}).get("pct") or 0.0), str(item[0])),
+            )[:4]
+        except Exception:
+            top_surfaces = []
+        mix_bits = [f"{name} {_fmt_pct((payload or {}).get('pct'))}" for name, payload in top_surfaces]
+        surface_bits = [
+            f"coverage={_fmt_pct(surface.get('coverage_pct'))}",
+            f"tagged={_fmt_pct(surface.get('tagged_surface_pct'))}",
+            f"inferred={_fmt_pct(surface.get('inferred_surface_pct'))}",
+        ]
+        if mix_bits:
+            surface_bits.append("mix: " + ", ".join(mix_bits))
+        if surface.get("problem_segments") is not None:
+            try:
+                surface_bits.append(f"problem_segments={len(surface.get('problem_segments') or [])}")
+            except Exception:
+                pass
+        lines.append("- nawierzchnia: " + "; ".join(surface_bits))
+    else:
+        lines.append("- nawierzchnia: dane ograniczone")
+
+    if elevation:
+        elev_bits = [
+            f"ascent_smoothed={_fmt_m(elevation.get('ascent_smoothed_m'))}",
+            f"descent_smoothed={_fmt_m(elevation.get('descent_smoothed_m'))}",
+            f"climb_events={elevation.get('climb_event_count')}",
+            f"max_gradient={_fmt_pct(elevation.get('max_climb_event_gradient_pct'))}",
+        ]
+        if elevation.get("short_wall_detection_note"):
+            elev_bits.append("limit: bardzo krótkie strome rampy mogą umknąć")
+        lines.append("- przewyższenia: " + "; ".join(elev_bits))
+    else:
+        lines.append("- przewyższenia: dane ograniczone")
+
+    if meteo_ok and meteo_result:
+        peak = meteo_result.get("peak") if isinstance(meteo_result.get("peak"), dict) else {}
+        alerts = meteo_result.get("alerts") if isinstance(meteo_result.get("alerts"), list) else []
+        alert_bits = []
+        for alert in alerts:
+            if not isinstance(alert, dict):
+                continue
+            typ = str(alert.get("typ") or "").strip()
+            severity = str(alert.get("severity") or "").strip()
+            if typ and severity:
+                alert_bits.append(f"{typ}={severity}")
+        meteo_bits = [
+            f"status={meteo_payload.get('status')}",
+            f"peak_WBGT={peak.get('wbgt_eff')}",
+            f"alerts={', '.join(alert_bits) if alert_bits else 'brak'}",
+        ]
+        caveats = meteo_result.get("caveats") if isinstance(meteo_result.get("caveats"), list) else []
+        if caveats:
+            meteo_bits.append("caveats=obecne")
+        lines.append("- meteo: " + "; ".join(meteo_bits))
+    else:
+        lines.append("- meteo: METEO unavailable / dane ograniczone")
+
+    if poi:
+        by_category = poi.get("by_category") if isinstance(poi.get("by_category"), dict) else {}
+        cat_bits = []
+        for key in ("hard_resupply", "soft_food_stop", "water", "town"):
+            payload = by_category.get(key)
+            if isinstance(payload, dict):
+                cat_bits.append(f"{key}={int(payload.get('count') or 0)}")
+        field_counts = poi.get("field_counts") if isinstance(poi.get("field_counts"), dict) else {}
+        poi_bits = [
+            f"poi_count={int(poi.get('poi_count') or 0)}",
+            f"km={int(field_counts.get('km_on_route') or 0)}/{int(poi.get('poi_count') or 0)}",
+            f"distance={int(field_counts.get('distance_from_route_m') or 0)}/{int(poi.get('poi_count') or 0)}",
+            f"opening_hours={int(field_counts.get('opening_hours') or 0)}/{int(poi.get('poi_count') or 0)}",
+        ]
+        if cat_bits:
+            poi_bits.append("kategorie: " + ", ".join(cat_bits))
+        lines.append("- logistyka/POI: " + "; ".join(poi_bits))
+        if poi_risks:
+            lines.append("- logistyka/POI uwaga: " + "; ".join(poi_risks))
+    else:
+        lines.append("- logistyka/POI: dane ograniczone")
+
+    if tp_txt:
+        lines.append("- sprzęt/opony: B5 dostępne; ciśnienie policzone")
+    else:
+        lines.append("- sprzęt/opony: dane ograniczone")
+
+    if fuel_txt:
+        g, l = _parse_fuel_rates(fuel_txt)
+        fuel_bits = [bit for bit in (g, l) if bit]
+        if fuel_bits:
+            lines.append("- żywienie/woda: " + ", ".join(fuel_bits))
+        else:
+            lines.append("- żywienie/woda: B2/B3 dostępne")
+    else:
+        lines.append("- żywienie/woda: dane ograniczone")
     lines.append("")
     return lines
 
@@ -2600,7 +2841,9 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
         H("")
 
     # ---- A4 meteo / route_run_context: read-only overlay dla startu ----
-    for line in _meteo_section_lines(route_id, start):
+    meteo_report = _meteo_report_payload(route_id, start)
+    collected["meteo"] = meteo_report
+    for line in meteo_report["lines"]:
         H(line)
 
     # ---- B: wyliczenia ----
@@ -2651,6 +2894,10 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
         else:
             H(f"_B5 niedostepne: {_reason(tp)}_")
         H("")
+
+    # ---- WERDYKT TRASY / DECYZJA: synthesize route layers for rider-facing summary ----
+    for line in _route_verdict_section_lines(route_source, meteo_report, collected):
+        H(line)
 
     collected["forma"] = _build_forma_line(start) if variant == "pelny" else None
     context_doc = _build_context_document(

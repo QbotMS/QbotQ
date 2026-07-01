@@ -1425,6 +1425,84 @@ class TestRouteReportCanonicalReadPath(unittest.TestCase):
         self.assertIn("status: UNAVAILABLE", analysis)
         self.assertIn("meteo run failed: network down", analysis)
 
+    def test_verdict_section_renders_and_is_cautious(self):
+        meteo = {
+            "status": "OK",
+            "route_id": "55798129",
+            "date": "2026-06-30",
+            "start": "15:00",
+            "mode": "normalny",
+            "n_segments": 890,
+            "n_windows": 9,
+            "peak": {"wbgt_eff": 31.0, "km": 0.08, "eta": "15:00", "alert_level": 3, "teren": "płasko"},
+            "alerts": [
+                {"typ": "upał", "severity": "ALARM", "km_od": 0.08, "km_do": 21.28, "eta_od": "15:00", "eta_do": "16:18", "minuty": 79, "wbgt_max": 31.0},
+                {"typ": "upał", "severity": "ALARM", "km_od": 21.76, "km_do": 27.84, "eta_od": "16:20", "eta_do": "16:44", "minuty": 24, "wbgt_max": 27.7},
+                {"typ": "upał", "severity": "FLAGA", "km_od": 38.32, "km_do": 48.72, "eta_od": "17:25", "eta_do": "18:02", "minuty": 38, "wbgt_max": 26.4},
+            ],
+            "tabela_30min": [{"okno": "15:00"}],
+            "per_segment": [
+                {"km": 0.0, "eta": "15:00", "wind_eff_ms": 9.2, "wbgt_eff": 31.0},
+                {"km": 1.0, "eta": "15:10", "wind_eff_ms": 7.0, "wbgt_eff": 29.0},
+            ],
+            "caveats": ["caveat 1", "caveat 2"],
+        }
+
+        with patch.object(rr, "read_canonical_route", return_value=CANONICAL_ROUTE_SOURCE), \
+                patch.object(rr, "_load_route_meteo_engine", return_value=(lambda **kwargs: meteo, None)):
+            out = rr._tool_route_report({
+                "route_id": "55798129",
+                "variant": "pelny",
+                "start": "2026-06-30 15:00",
+            })
+
+        analysis = out["analysis"]
+        self.assertIn("## WERDYKT TRASY / DECYZJA", analysis)
+        self.assertIn("decyzja: JEDŹ OSTROŻNIE", analysis)
+        self.assertIn("główny powód:", analysis)
+        self.assertIn("nawierzchnia częściowo inferowana", analysis)
+        self.assertIn("przewyższenia:", analysis)
+        self.assertIn("meteo:", analysis)
+        self.assertIn("logistyka/POI:", analysis)
+        self.assertIn("sprzęt/opony:", analysis)
+        self.assertIn("żywienie/woda:", analysis)
+        self.assertIn("coverage=100.0%", analysis)
+        self.assertIn("tagged=70.8%", analysis)
+        self.assertIn("inferred=29.2%", analysis)
+        self.assertIn("ascent_smoothed=426.7 m", analysis)
+        self.assertIn("max_gradient=7.3%", analysis)
+        self.assertIn("peak_WBGT=31.0", analysis)
+        self.assertIn("opening_hours=15/38", analysis)
+        self.assertIn("0.6 L/h", analysis)
+        self.assertIn("60 g/h", analysis)
+        self.assertIn("## A0 - ŹRÓDŁO DANYCH TRASY", analysis)
+        self.assertIn("## A0B - OTOCZENIE TRASY (WorldCover / route_shade_layer)", analysis)
+        self.assertIn("## A0C - PROFIL WYSOKOŚCI / PODJAZDY (canonical route_elevation_samples / route_climb_events)", analysis)
+        self.assertIn("## A3 - NAWIERZCHNIA I PROFIL ODCINKAMI", analysis)
+        self.assertIn("## A4 - METEO / route_run_context", analysis)
+        self.assertIn("## A8 - WODA / SKLEPY / REFILL", analysis)
+
+    def test_verdict_survives_missing_meteo_and_poi(self):
+        source = dict(CANONICAL_ROUTE_SOURCE)
+        source["canonical_poi_summary"] = None
+
+        with patch.object(rr, "read_canonical_route", return_value=source), \
+                patch.object(rr, "_load_route_meteo_engine", return_value=(None, "meteo import failed: boom")):
+            out = rr._tool_route_report({
+                "route_id": "55798129",
+                "variant": "pelny",
+                "start": "2026-06-30 15:00",
+            })
+
+        analysis = out["analysis"]
+        self.assertIn("## WERDYKT TRASY / DECYZJA", analysis)
+        self.assertIn("decyzja: BRAK PEŁNYCH DANYCH", analysis)
+        self.assertIn("METEO unavailable", analysis)
+        self.assertIn("logistyka/POI: dane ograniczone", analysis)
+        self.assertIn("## A0 - ŹRÓDŁO DANYCH TRASY", analysis)
+        self.assertIn("## A4 - METEO / route_run_context", analysis)
+        self.assertIn("## A8 - WODA / SKLEPY / REFILL", analysis)
+
     def test_legacy_fallback_still_renders_when_canonical_missing(self):
         with patch.object(rr, "read_canonical_route", return_value=LEGACY_ROUTE_SOURCE):
             out = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})

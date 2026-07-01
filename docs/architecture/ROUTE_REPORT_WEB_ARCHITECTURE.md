@@ -359,6 +359,8 @@ Raport ma mieć trzy główne warstwy:
 3. NARRACJA STRATEGII — plan jazdy z danych.
 ```
 
+Aktualizacja 2026-07-01: pełny raport zawiera też krótki blok `WERDYKT TRASY / DECYZJA`, który syntetyzuje A0/A0B/A0C/A3/A4/A8 do jednej użytkowej odpowiedzi bez dublowania całych sekcji.
+
 Mapa jest warstwą wizualną.
 
 ## C5. Alarmy
