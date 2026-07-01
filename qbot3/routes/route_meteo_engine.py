@@ -1,19 +1,20 @@
-"""Silnik METEO trasy — tryb UPAŁ (WBGT) + wiatr względem kierunku jazdy.
+"""Silnik METEO trasy — tryby UPAŁ (WBGT) + DESZCZ + wiatr względem kierunku jazdy.
 
 Jeden przebieg = jedno źródło prawdy. Dla każdego segmentu trasy liczy EFEKTYWNY WBGT
 (z cieniem wpiętym w radiację) w momencie przejazdu (ETA z modelu czasu), porównuje go
 z limitem zależnym od nachylenia (ACGIH: podjazd = wysiłek cięższy = niższy limit),
-i z gęstych danych wyznacza "najgorsze ciągłe okno" -> FLAGA / ALARM. Z tego samego
-przebiegu agreguje tabelę co 30 min (do wyświetlania / LLM).
+i z gęstych danych wyznacza "najgorsze ciągłe okno" -> FLAGA / ALARM. Analogicznie liczy
+opad per segment (ile pada + prawdopodobieństwo) i alerty deszczu (długie moknięcie,
+wjeżdżasz/wyjeżdżasz z deszczu). Z tego samego przebiegu agreguje tabelę co 30 min.
 
 Wejścia (żywe):
 - estimate_route_time_v2  -> km, ETA, grade, surface per segment (czas->miejsce->godzina),
 - qbot_v2.route_frames    -> mid_lat/mid_lon per segment (gdzie pytać o pogodę),
 - qbot_v2.route_shade_layer (oś 50 m) + segment_tau -> cień -> fdir_eff,
-- Open-Meteo w N punktach (= N okien 30 min) -> temp, RH, wiatr, ciśnienie, radiacja,
+- Open-Meteo w N punktach (= N okien 30 min) -> temp, RH, wiatr, ciśnienie, radiacja, opad,
 - route_weather._rel_wind -> wiatr wzdłuż/w poprzek jazdy.
 
-Tryby opad/burza/odczuwalne (UTCI) = kolumny-placeholdery (dobudowa później).
+Tryb burza (pioruny, NO-GO) i odczuwalne (UTCI) = jeszcze nie liczone (osobne kroki).
 Progi/polityka = parametry (regulowalne), nie fizyka. Fizyka: qbot_wbgt_tools (Liljegren).
 
 NIE wpięte do tool_registry ani promptu Alberta (najpierw walidacja silnika).
@@ -35,13 +36,20 @@ from qbot_wbgt_tools import (CZA_MIN, cos_solar_zenith, wbgt_level,
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 TZ_NAME = "Europe/Warsaw"
 
-# --- Model zagrożenia (ACGIH; regulowalne) ---------------------------------
+# --- Model UPAŁ (ACGIH; regulowalne) ---------------------------------------
 GRADE_CLIMB = 3.0          # > +3% = podjazd (wysiłek bardzo ciężki)
 GRADE_DESCENT = -3.0       # < -3% = zjazd (wysiłek lekki, plus wiatr pozorny)
 LIMIT_CLIMB_C = 23.0       # bardzo ciężka praca, zaaklimatyzowany (ACGIH)
 LIMIT_FLAT_C = 25.0        # ciężka praca
 LIMIT_DESCENT_C = 28.0     # umiarkowana/lekka
 WINDOW_MIN = 30            # okno tabeli [min]
+
+# --- Model DESZCZ (klasy opadu, regulowalne) -------------------------------
+RAIN_LIGHT_MM = 2.5        # >= umiarkowany opad [mm/h]
+RAIN_HEAVY_MM = 7.6        # >= silny opad [mm/h]
+RAIN_WET_MM = 0.5          # od tego uznajemy, że realnie pada (moknięcie)
+RAIN_PROB_MIN = 40         # [%] poniżej: nie straszymy (za mała szansa)
+RAIN_TREND_MM = 0.5        # próg zmiany, by mówić że narasta/słabnie
 
 
 def metabolic_limit_c(grade_pct: float) -> float:
@@ -80,6 +88,28 @@ def window_severity(exceed_c: float, minutes: float, max_alert_level: int) -> Op
     if minutes >= 45:
         return "FLAGA"
     return None
+
+
+def rain_severity(max_precip_mm: float, minutes: float) -> Optional[str]:
+    """Z natężenia opadu + długości ciągłego moknięcia -> None / 'FLAGA' / 'ALARM'."""
+    if max_precip_mm >= RAIN_HEAVY_MM:            # silny -> alarm
+        return "ALARM"
+    if max_precip_mm >= RAIN_LIGHT_MM:            # umiarkowany
+        return "ALARM" if minutes >= 90 else "FLAGA"
+    # lekki / mżawka: dopiero długie moknięcie warte flagi (ale musi realnie padać)
+    if max_precip_mm >= RAIN_WET_MM and minutes >= 60:
+        return "FLAGA"
+    return None
+
+
+def rain_trend(first_mm: float, last_mm: float) -> str:
+    """Czy w trakcie okna deszcz narasta (wjeżdżasz) czy słabnie (wychodzisz)."""
+    d = last_mm - first_mm
+    if d > RAIN_TREND_MM:
+        return "narasta (wjeżdżasz w deszcz)"
+    if d < -RAIN_TREND_MM:
+        return "słabnie (wychodzisz z deszczu)"
+    return "równomierny"
 
 
 def _terrain_label(grade_pct: float) -> str:
@@ -165,7 +195,8 @@ def _shade_for_km(shade: list[dict], km: float) -> Optional[dict]:
 # --- Open-Meteo -------------------------------------------------------------
 def _fetch_point(lat: float, lon: float, date_str: str, timeout: float = 15.0) -> dict:
     hourly = ["temperature_2m", "relative_humidity_2m", "wind_speed_10m", "wind_direction_10m",
-              "surface_pressure", "shortwave_radiation_instant", "direct_radiation_instant"]
+              "surface_pressure", "shortwave_radiation_instant", "direct_radiation_instant",
+              "precipitation", "precipitation_probability"]
     params = {"latitude": round(lat, 3), "longitude": round(lon, 3), "hourly": ",".join(hourly),
               "windspeed_unit": "ms", "timezone": "UTC", "start_date": date_str, "end_date": date_str}
     url = OPEN_METEO_URL + "?" + urllib.parse.urlencode(params)
@@ -178,23 +209,25 @@ def _fetch_point(lat: float, lon: float, date_str: str, timeout: float = 15.0) -
 
 
 def _interp(times: list[_dt.datetime], vals: list, when: _dt.datetime) -> float:
+    def _v(x):
+        return float(x) if x is not None else 0.0
     if when <= times[0]:
-        return float(vals[0])
+        return _v(vals[0])
     if when >= times[-1]:
-        return float(vals[-1])
+        return _v(vals[-1])
     for i in range(1, len(times)):
         if when <= times[i]:
             t0, t1 = times[i - 1], times[i]
-            v0, v1 = float(vals[i - 1]), float(vals[i])
+            v0, v1 = _v(vals[i - 1]), _v(vals[i])
             f = (when - t0).total_seconds() / max((t1 - t0).total_seconds(), 1.0)
             return v0 + f * (v1 - v0)
-    return float(vals[-1])
+    return _v(vals[-1])
 
 
 # --- Główny przebieg --------------------------------------------------------
 def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
                      mode: str = "normalny") -> dict:
-    """Jeden przebieg silnika METEO (tryb UPAŁ + wiatr). date_str=YYYY-MM-DD, start_time=HH:MM (lokalny)."""
+    """Jeden przebieg silnika METEO (UPAŁ + DESZCZ + wiatr). date=YYYY-MM-DD, start=HH:MM (lokalny)."""
     from qbot_route_time_tools import estimate_route_time_v2
     from qbot3.routes.route_shade_resolver import segment_tau
     from tools.rwgps.route_weather import _rel_wind
@@ -253,7 +286,7 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         except Exception as exc:  # noqa
             return {"status": "ERROR", "error": f"Open-Meteo nieudane: {str(exc)[:160]}"}
 
-    # per segment: efektywny WBGT + limit + wiatr względny
+    # per segment: efektywny WBGT + limit + opad + wiatr względny
     per_segment = []
     for s in segs:
         wi = _win_idx(s["eta_utc"])
@@ -267,6 +300,9 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         pres = _interp(tms, h["surface_pressure"], when)
         ghi = _interp(tms, h["shortwave_radiation_instant"], when)
         dir_ = _interp(tms, h["direct_radiation_instant"], when)
+        prec = _interp(tms, h["precipitation"], when) if "precipitation" in h else 0.0
+        prob = (_interp(tms, h["precipitation_probability"], when)
+                if h.get("precipitation_probability") else None)
 
         cza = cos_solar_zenith(when, s["lat"], s["lon"])
         fdir_base = (max(0.0, min(dir_ / ghi, 0.9)) if ghi > 1.0 else 0.0)
@@ -290,12 +326,14 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
             "grade_pct": round(s["grade_pct"], 1), "teren": _terrain_label(s["grade_pct"]),
             "surface": s["surface"], "wbgt_eff": round(wbgt, 1), "alert_level": lvl,
             "limit": limit, "exceed": exceed, "tau": round(tau, 2),
+            "opad_mm": round(prec, 1), "opad_prob": (round(prob) if prob is not None else None),
             "wind_tail_ms": round(tail, 1) if tail is not None else None,
             "wind_cross_ms": round(cross, 1) if cross is not None else None,
             "_dur_min": s["dur_min"], "_win": _win_idx(s["eta_utc"]),
         })
 
-    alerts = _build_alerts(per_segment)
+    alerts = _build_alerts(per_segment) + _build_rain_alerts(per_segment)
+    alerts.sort(key=lambda a: a["eta_od"])
     table = _build_table(per_segment, n_win, t0)
     peak = max(per_segment, key=lambda x: x["wbgt_eff"])
 
@@ -309,13 +347,13 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         "tabela_30min": table,
         "per_segment": [{k: v for k, v in s.items() if not k.startswith("_")} for s in per_segment],
         "caveats": ["Limity ACGIH zakładają osobę zaaklimatyzowaną.",
-                    "Wiatr pozorny rowerzysty jeszcze nie wpięty -> progi zachowawcze na płaskim/zjazdach.",
-                    "Tryby opad/burza/odczuwalne (UTCI) jeszcze nie liczone."],
+                    "Wiatr pozorny rowerzysty jeszcze nie wpięty -> progi cieplne zachowawcze na płaskim/zjazdach.",
+                    "Tryb burza (pioruny, NO-GO) i odczuwalne (UTCI) jeszcze nie liczone."],
     }
 
 
 def _build_alerts(per_segment: list[dict]) -> list[dict]:
-    """Najgorsze ciągłe okna z gęstych danych (exceed>0 lub strefa ekstremalna)."""
+    """UPAŁ: najgorsze ciągłe okna z gęstych danych (exceed>0 lub strefa ekstremalna)."""
     alerts = []
 
     def flush(run):
@@ -335,7 +373,7 @@ def _build_alerts(per_segment: list[dict]) -> list[dict]:
         if driver["tau"] >= 0.9:
             powod.append("odkryte")  # pełne słońce = czynnik nasilający
         alerts.append({
-            "severity": sev, "km_od": run[0]["km"], "km_do": run[-1]["km"],
+            "typ": "upał", "severity": sev, "km_od": run[0]["km"], "km_do": run[-1]["km"],
             "eta_od": run[0]["eta"], "eta_do": run[-1]["eta"], "minuty": round(minutes),
             "wbgt_max": peak_seg["wbgt_eff"], "alert_level": max_lvl,
             "powod": ", ".join(powod) or "upał",
@@ -353,8 +391,41 @@ def _build_alerts(per_segment: list[dict]) -> list[dict]:
     return alerts
 
 
+def _build_rain_alerts(per_segment: list[dict]) -> list[dict]:
+    """DESZCZ: ciągłe okna moknięcia (opad >= próg i prawdopodobieństwo dostateczne)."""
+    alerts = []
+
+    def flush(run):
+        if not run:
+            return
+        minutes = sum(x["_dur_min"] for x in run)
+        max_precip = max(x["opad_mm"] for x in run)
+        sev = rain_severity(max_precip, minutes)
+        if not sev:
+            return
+        probs = [x["opad_prob"] for x in run if x["opad_prob"] is not None]
+        alerts.append({
+            "typ": "deszcz", "severity": sev, "km_od": run[0]["km"], "km_do": run[-1]["km"],
+            "eta_od": run[0]["eta"], "eta_do": run[-1]["eta"], "minuty": round(minutes),
+            "opad_max_mm": round(max_precip, 1),
+            "prawdopod": (max(probs) if probs else None),
+            "trend": rain_trend(run[0]["opad_mm"], run[-1]["opad_mm"]),
+        })
+
+    run = []
+    for s in per_segment:
+        wet = s["opad_mm"] >= RAIN_WET_MM and (s["opad_prob"] is None or s["opad_prob"] >= RAIN_PROB_MIN)
+        if wet:
+            run.append(s)
+        else:
+            flush(run)
+            run = []
+    flush(run)
+    return alerts
+
+
 def _build_table(per_segment: list[dict], n_win: int, t0: _dt.datetime) -> list[dict]:
-    """Agregacja co 30 min (jedno źródło do wyświetlania). Kolumny opad/burza/feel = placeholder."""
+    """Agregacja co 30 min (jedno źródło do wyświetlania). Kolumny burza/feel = placeholder."""
     buckets: dict[int, list[dict]] = {}
     for s in per_segment:
         buckets.setdefault(s["_win"], []).append(s)
@@ -366,13 +437,16 @@ def _build_table(per_segment: list[dict], n_win: int, t0: _dt.datetime) -> list[
             continue
         wmax = max(b, key=lambda x: x["wbgt_eff"])
         tails = [x["wind_tail_ms"] for x in b if x["wind_tail_ms"] is not None]
+        pmax = max(b, key=lambda x: x["opad_mm"])
+        probs = [x["opad_prob"] for x in b if x["opad_prob"] is not None]
         win_start = (t0 + _dt.timedelta(minutes=WINDOW_MIN * w)).astimezone(tz)
         rows.append({
             "okno": win_start.strftime("%H:%M"),
             "km_od": b[0]["km"], "km_do": b[-1]["km"],
             "wbgt_max": wmax["wbgt_eff"], "alert_level": wmax["alert_level"],
             "wiatr_wzdluz_ms": round(sum(tails) / len(tails), 1) if tails else None,
-            "opad": None, "burza": None, "odczuwalna": None,  # placeholdery
+            "opad": {"mm": round(pmax["opad_mm"], 1), "prob": (max(probs) if probs else None)},
+            "burza": None, "odczuwalna": None,  # placeholdery
         })
     return rows
 

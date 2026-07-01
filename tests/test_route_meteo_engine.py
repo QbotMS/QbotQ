@@ -5,16 +5,16 @@ import unittest
 sys.path.insert(0, "/opt/qbot/app")
 
 from qbot3.routes.route_meteo_engine import (metabolic_limit_c, window_severity,
-                                             _terrain_label)
+                                             rain_severity, rain_trend, _terrain_label)
 
 
-class TestMeteoModel(unittest.TestCase):
+class TestMeteoUpal(unittest.TestCase):
     def test_limit_by_grade(self):
         self.assertEqual(metabolic_limit_c(6.0), 23.0)    # podjazd -> bardzo ciezka
         self.assertEqual(metabolic_limit_c(0.0), 25.0)    # plasko -> ciezka
         self.assertEqual(metabolic_limit_c(-6.0), 28.0)   # zjazd -> umiarkowana
         self.assertEqual(metabolic_limit_c(3.0), 25.0)    # granica: 3% to jeszcze plasko
-        self.assertEqual(metabolic_limit_c(-3.0), 25.0)   # granica: -3% to jeszcze plasko
+        self.assertEqual(metabolic_limit_c(-3.0), 25.0)
 
     def test_terrain_label(self):
         self.assertEqual(_terrain_label(5.0), "podjazd")
@@ -22,7 +22,7 @@ class TestMeteoModel(unittest.TestCase):
         self.assertEqual(_terrain_label(-5.0), "zjazd")
 
     def test_severity_extreme_always_alarm(self):
-        self.assertEqual(window_severity(0.0, 1, 4), "ALARM")   # strefa ekstremalna bez wzgledu na czas
+        self.assertEqual(window_severity(0.0, 1, 4), "ALARM")
 
     def test_severity_under_limit_none(self):
         self.assertIsNone(window_severity(-1.0, 999, 1))
@@ -45,6 +45,27 @@ class TestMeteoModel(unittest.TestCase):
 
     def test_severity_band_over_6(self):
         self.assertEqual(window_severity(7.0, 1, 2), "ALARM")
+
+
+class TestMeteoDeszcz(unittest.TestCase):
+    def test_rain_heavy_always_alarm(self):
+        self.assertEqual(rain_severity(8.0, 1), "ALARM")   # silny opad -> alarm od razu
+
+    def test_rain_moderate(self):
+        self.assertEqual(rain_severity(3.0, 10), "FLAGA")
+        self.assertEqual(rain_severity(3.0, 90), "ALARM")  # umiarkowany, ale dlugo -> alarm
+
+    def test_rain_light(self):
+        self.assertIsNone(rain_severity(1.0, 30))          # lekki, krotko -> nic
+        self.assertEqual(rain_severity(1.0, 60), "FLAGA")  # lekki, ale dlugie moknięcie
+
+    def test_rain_none(self):
+        self.assertIsNone(rain_severity(0.0, 999))
+
+    def test_rain_trend(self):
+        self.assertEqual(rain_trend(0.2, 3.0), "narasta (wjeżdżasz w deszcz)")
+        self.assertEqual(rain_trend(3.0, 0.2), "słabnie (wychodzisz z deszczu)")
+        self.assertEqual(rain_trend(2.0, 2.1), "równomierny")
 
 
 if __name__ == "__main__":
