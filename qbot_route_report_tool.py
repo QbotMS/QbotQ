@@ -172,43 +172,88 @@ def _route_elevation_section_lines(route_source: dict[str, Any] | None) -> list[
     ]
 
 
+def _route_surface_summary_lines(summary: dict[str, Any] | None) -> list[str]:
+    if not isinstance(summary, dict):
+        return []
+
+    try:
+        segment_count = int(summary.get("segment_count") or 0)
+    except (TypeError, ValueError):
+        segment_count = 0
+    if segment_count <= 0:
+        return []
+
+    total_distance_m = summary.get("total_distance_m")
+    coverage_pct = summary.get("coverage_pct")
+    by_surface = summary.get("by_surface") if isinstance(summary.get("by_surface"), dict) else {}
+    by_confidence = summary.get("by_confidence") if isinstance(summary.get("by_confidence"), dict) else {}
+    problem_segments = summary.get("problem_segments") if isinstance(summary.get("problem_segments"), list) else []
+    lines = [
+        "Źródło nawierzchni: canonical_surface_summary / route_surface_layer",
+        f"segment_count={segment_count}",
+        (
+            f"total_distance_m={float(total_distance_m or 0.0) / 1000.0:.1f} km"
+            if total_distance_m is not None
+            else "total_distance_m=brak"
+        ),
+        (
+            f"coverage_pct={float(coverage_pct or 0.0):.1f}%"
+            if coverage_pct is not None
+            else "coverage_pct=brak"
+        ),
+        "by_surface:",
+    ]
+    for surface, payload in sorted(by_surface.items()):
+        if not isinstance(payload, dict):
+            continue
+        distance_m = payload.get("distance_m")
+        pct = payload.get("pct")
+        segment_ct = payload.get("segment_count")
+        lines.append(
+            f"- {surface}: {float(distance_m or 0.0) / 1000.0:.1f} km | "
+            f"{float(pct or 0.0):.1f}% | segments={int(segment_ct or 0)}"
+        )
+    if by_confidence:
+        conf_bits = []
+        for key, payload in sorted(by_confidence.items()):
+            if isinstance(payload, dict):
+                conf_bits.append(f"{key}={int(payload.get('segment_count') or 0)}")
+        if conf_bits:
+            lines.append("by_confidence: " + ", ".join(conf_bits))
+    lines.append(f"problem_segments_count={len(problem_segments)}")
+    return lines
+
+
 def _route_surface_section_lines(route_source: dict[str, Any] | None) -> list[str]:
     if not isinstance(route_source, dict):
         return []
-    if str(route_source.get("read_path") or "").strip() != "canonical":
+    return _route_surface_summary_lines(route_source.get("canonical_surface_summary"))
+
+
+def _route_surface_quality_lines_from_summary(summary: dict[str, Any] | None) -> list[str]:
+    if not isinstance(summary, dict):
         return []
-
-    layer_counts = route_source.get("layer_counts") or {}
-    if not isinstance(layer_counts, dict):
-        layer_counts = {}
-
-    raw_count = route_source.get("route_surface_layer_count")
-    if raw_count is None:
-        raw_count = layer_counts.get("route_surface_layer")
-    if raw_count is None:
-        layers = route_source.get("layers") or {}
-        if isinstance(layers, dict):
-            raw_count = len(layers.get("route_surface_layer") or [])
-
-    try:
-        surface_count = int(raw_count or 0)
-    except (TypeError, ValueError):
-        surface_count = 0
-    if surface_count <= 0:
-        return []
-
-    route_base_id = route_source.get("route_base_id")
-    route_version_key = route_source.get("route_version_key")
-    lines = [
-        "Źródło nawierzchni: canonical route_surface_layer",
-        f"route_surface_layer_count={surface_count}",
-        "Opis: canonical route_surface_layer jest bazą A3; legacy surface_summary_json pozostaje fallbackiem dla szczegółowej klasyfikacji",
-    ]
-    if route_base_id is not None:
-        lines.append(f"route_base_id={route_base_id}")
-    if route_version_key:
-        lines.append(f"route_version_key={route_version_key}")
+    by_confidence = summary.get("by_confidence") if isinstance(summary.get("by_confidence"), dict) else {}
+    problem_segments = summary.get("problem_segments") if isinstance(summary.get("problem_segments"), list) else []
+    coverage_pct = summary.get("coverage_pct")
+    lines = ["Źródło nawierzchni: canonical_surface_summary / route_surface_layer"]
+    if coverage_pct is not None:
+        lines.append(f"coverage_pct={float(coverage_pct or 0.0):.1f}%")
+    if by_confidence:
+        conf_bits = []
+        for key, payload in sorted(by_confidence.items()):
+            if isinstance(payload, dict):
+                conf_bits.append(f"{key}={int(payload.get('segment_count') or 0)}")
+        if conf_bits:
+            lines.append("by_confidence: " + ", ".join(conf_bits))
+    lines.append(f"problem_segments_count={len(problem_segments)}")
     return lines
+
+
+def _route_surface_geology_lines_from_summary(summary: dict[str, Any] | None) -> list[str]:
+    if not isinstance(summary, dict):
+        return []
+    return ["Geologia / podłoże: brak danych w canonical_surface_summary"]
 
 
 def _route_poi_section_lines(route_source: dict[str, Any] | None) -> list[str]:
@@ -2040,74 +2085,86 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
     # ---- A2/A3 odcinkami: profile_detail (pelny + grupa) ----
     if variant in ("pelny", "grupa"):
         H("## A3 - NAWIERZCHNIA I PROFIL ODCINKAMI")
-        surface_canonical_lines = _route_surface_section_lines(route_source)
-        for line in surface_canonical_lines:
-            H(line)
+        surface_summary = route_source.get("canonical_surface_summary") if isinstance(route_source, dict) else None
+        surface_canonical_lines = _route_surface_summary_lines(surface_summary)
         if surface_canonical_lines:
+            for line in surface_canonical_lines:
+                H(line)
             H("")
-        surface_profile = None
-        try:
-            from qbot_route_tools import _fetch_best_route_surface_profile as _fetch_surface_profile
-            surface_profile = _fetch_surface_profile(route_id=route_id, route_artifact_id=base_args.get("artifact_id"))
-        except Exception:
-            surface_profile = None
-
-        surface_guard = _route_version_guard(
-            active_version=active_route_version,
-            block_version=surface_profile,
-            source_name="surface_summary_json",
-        )
-        if surface_guard["status"] == "ERROR":
-            H(f"_DATA_INTEGRITY_ERROR: ROUTE_VERSION_MISMATCH — {surface_guard['message']}_")
-            collected["surface_version_guard"] = surface_guard
-            integrity_errors.append(surface_guard)
-            if isinstance(surface_profile, dict):
-                surface_profile = dict(surface_profile)
-                surface_profile["good_profile"] = False
-        elif surface_guard["status"] == "WARN":
-            H(f"_WARN: SOURCE_VERSION_METADATA_MISSING — {surface_guard['message']}_")
-            collected["surface_version_guard"] = surface_guard
-
-        if surface_profile and surface_profile.get("good_profile"):
-            surface_line = _surface_profile_render_line(surface_profile)
-            H("SZCZEGOLOWY PROFIL TRASY (surface_summary_json)")
-            H(
-                "Nawierzchnia: "
-                f"{surface_line} (źródło: surface_summary_json)"
-            )
-            H(
-                "Profil jakości: "
-                f"{surface_profile.get('quality_status')} | coverage {surface_profile.get('coverage_pct'):.0f}% | "
-                f"tagged {surface_profile.get('tagged_surface_pct'):.1f}% | "
-                f"inferred {surface_profile.get('inferred_surface_pct'):.1f}% | "
-                f"unknown {surface_profile.get('unknown_surface_pct'):.1f}%"
-            )
-            H(
-                "Źródło profilu: qbot_v2.route_surface_profiles.surface_summary_json "
-                f"(route_surface_profiles.id={surface_profile.get('id')}, route_artifact_id={surface_profile.get('route_artifact_id')}, enriched_at={surface_profile.get('enriched_at')})"
-            )
-            collected["surface_profile"] = surface_profile
+        if surface_canonical_lines:
+            collected["surface_summary"] = surface_summary
+            H("## A3B - DIAGNOSTYKA JAKOŚCI")
+            for line in _route_surface_quality_lines_from_summary(surface_summary):
+                H(line)
+            H("")
+            H("## A3C - GEOLOGIA / PODŁOŻE")
+            for line in _route_surface_geology_lines_from_summary(surface_summary):
+                H(line)
+            H("")
         else:
-            prof = _call_tool("route_profile_detail", dict(base_args))
-            collected["prof"] = prof
-            if _ok(prof) and _analysis(prof):
-                _prof_txt = _analysis(prof)
-                H(_prof_txt if surface_detail else (_merge_surface_text(_prof_txt, 0.3) or _prof_txt))
-                H("")
-                H("_UWAGA: legacy surface path (route_frames / route_surface_segments) — brak dobrego profilu surface_summary_json._")
+            surface_profile = None
+            try:
+                from qbot_route_tools import _fetch_best_route_surface_profile as _fetch_surface_profile
+                surface_profile = _fetch_surface_profile(route_id=route_id, route_artifact_id=base_args.get("artifact_id"))
+            except Exception:
+                surface_profile = None
+
+            surface_guard = _route_version_guard(
+                active_version=active_route_version,
+                block_version=surface_profile,
+                source_name="surface_summary_json",
+            )
+            if surface_guard["status"] == "ERROR":
+                H(f"_DATA_INTEGRITY_ERROR: ROUTE_VERSION_MISMATCH — {surface_guard['message']}_")
+                collected["surface_version_guard"] = surface_guard
+                integrity_errors.append(surface_guard)
+                if isinstance(surface_profile, dict):
+                    surface_profile = dict(surface_profile)
+                    surface_profile["good_profile"] = False
+            elif surface_guard["status"] == "WARN":
+                H(f"_WARN: SOURCE_VERSION_METADATA_MISSING — {surface_guard['message']}_")
+                collected["surface_version_guard"] = surface_guard
+
+            if surface_profile and surface_profile.get("good_profile"):
+                surface_line = _surface_profile_render_line(surface_profile)
+                H("SZCZEGOLOWY PROFIL TRASY (surface_summary_json)")
+                H(
+                    "Nawierzchnia: "
+                    f"{surface_line} (źródło: surface_summary_json)"
+                )
+                H(
+                    "Profil jakości: "
+                    f"{surface_profile.get('quality_status')} | coverage {surface_profile.get('coverage_pct'):.0f}% | "
+                    f"tagged {surface_profile.get('tagged_surface_pct'):.1f}% | "
+                    f"inferred {surface_profile.get('inferred_surface_pct'):.1f}% | "
+                    f"unknown {surface_profile.get('unknown_surface_pct'):.1f}%"
+                )
+                H(
+                    "Źródło profilu: qbot_v2.route_surface_profiles.surface_summary_json "
+                    f"(route_surface_profiles.id={surface_profile.get('id')}, route_artifact_id={surface_profile.get('route_artifact_id')}, enriched_at={surface_profile.get('enriched_at')})"
+                )
+                collected["surface_profile"] = surface_profile
             else:
-                H(f"_Szczegolowy profil niedostepny: {_reason(prof)}_")
-        H("")
+                prof = _call_tool("route_profile_detail", dict(base_args))
+                collected["prof"] = prof
+                if _ok(prof) and _analysis(prof):
+                    _prof_txt = _analysis(prof)
+                    H(_prof_txt if surface_detail else (_merge_surface_text(_prof_txt, 0.3) or _prof_txt))
+                    H("")
+                    H("_UWAGA: legacy surface path (route_frames / route_surface_segments) — brak dobrego profilu surface_summary_json._")
+                else:
+                    H(f"_Szczegolowy profil niedostepny: {_reason(prof)}_")
+            H("")
 
-        H("## A3B - DIAGNOSTYKA JAKOŚCI")
-        for line in _surface_quality_lines(surface_profile):
-            H(line)
-        H("")
+            H("## A3B - DIAGNOSTYKA JAKOŚCI")
+            for line in _surface_quality_lines(surface_profile):
+                H(line)
+            H("")
 
-        H("## A3C - GEOLOGIA / PODŁOŻE")
-        for line in _geology_lines(surface_profile):
-            H(line)
-        H("")
+            H("## A3C - GEOLOGIA / PODŁOŻE")
+            for line in _geology_lines(surface_profile):
+                H(line)
+            H("")
 
     # ---- A7 sprzet (tylko pelny) ----
     if variant == "pelny":

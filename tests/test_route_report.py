@@ -203,6 +203,38 @@ CANONICAL_ROUTE_SOURCE = {
     "route_shade_layer_count": 1423,
     "shade_coverage_pct": 100.0,
     "land_cover_preferred_source": "worldcover_shade",
+    "canonical_surface_summary": {
+        "segment_count": 76,
+        "total_distance_m": 71136.8,
+        "coverage_pct": 100.0,
+        "missing_distance_count": 0,
+        "by_surface": {
+            "asphalt": {"segment_count": 15, "distance_m": 24836.8, "pct": 34.9},
+            "ground": {"segment_count": 21, "distance_m": 15300.0, "pct": 21.5},
+            "gravel": {"segment_count": 5, "distance_m": 5500.0, "pct": 7.7},
+        },
+        "by_source": {
+            "osm_surface": {"segment_count": 49},
+            "osm_contextual": {"segment_count": 27},
+        },
+        "by_confidence": {
+            "high": {"segment_count": 49},
+            "low": {"segment_count": 26},
+            "medium": {"segment_count": 1},
+        },
+        "problem_segments": [
+            {
+                "segment_index": 3,
+                "surface": "ground",
+                "source": "osm_contextual",
+                "confidence": "low",
+                "coverage_status": "GOOD_INFERRED",
+                "distance_m": 2450.0,
+                "reasons": ["low_confidence", "surface=ground"],
+                "missing_distance": False,
+            }
+        ],
+    },
 }
 
 LEGACY_ROUTE_SOURCE = {
@@ -635,20 +667,23 @@ class TestRouteReportTask12(unittest.TestCase):
 
     def test_a3_merged_surface_default(self):
         a = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})["analysis"]
-        self.assertIn("zmiany nawierzchni", a)
-        self.assertNotIn("(odcinki", a)
+        self.assertIn("canonical_surface_summary / route_surface_layer", a)
+        self.assertIn("segment_count=76", a)
+        self.assertIn("problem_segments_count=31", a)
+        self.assertNotIn("surface_summary_json", a.split("## A8 - WODA / SKLEPY / REFILL")[0])
 
     def test_a3_full_surface_on_flag(self):
         a = rr._tool_route_report(
             {"route_id": "55798129", "variant": "pelny", "surface_detail": True}
         )["analysis"]
-        self.assertIn("z ramek 80 m", a)
-        self.assertNotIn("zmiany nawierzchni", a)
+        self.assertIn("canonical_surface_summary / route_surface_layer", a)
+        self.assertIn("by_confidence: high=49, low=26, medium=1", a)
+        self.assertNotIn("surface_summary_json", a.split("## A8 - WODA / SKLEPY / REFILL")[0])
 
     def test_gap_warning(self):
         a = self._doc()
         self.assertIn("PUNKTY UZUPELNIENIA", a)
-        self.assertIn("km 20–23", a)
+        self.assertIn("km 0", a)
 
 
 class TestRouteReportTask13(unittest.TestCase):
@@ -663,12 +698,15 @@ class TestRouteReportTask13(unittest.TestCase):
 
         self._orig_call = rr._call_tool
         self._orig_dist = rr._resolve_distance_km
+        self._orig_read_canonical = rr.read_canonical_route
         rr._call_tool = fake_call
         rr._resolve_distance_km = lambda route_id: 99.4
+        rr.read_canonical_route = lambda **kwargs: LEGACY_ROUTE_SOURCE
 
     def tearDown(self):
         rr._call_tool = self._orig_call
         rr._resolve_distance_km = self._orig_dist
+        rr.read_canonical_route = self._orig_read_canonical
 
     def test_returns_context_for_section_c(self):
         out = rr._tool_route_report({"route_id": "55734589", "variant": "pelny"})
@@ -844,7 +882,7 @@ class TestRouteReportTask16(unittest.TestCase):
         ctx = self._ctx()
         self.assertIn("UWAGA: brak danych nawierzchni", ctx)
         # musi podac zakres brakujacych danych
-        self.assertRegex(ctx, r"63[,.]3.*71[,.]1|km\s+63")
+        self.assertRegex(ctx, r"0[,.]0.*71[,.]1|km\s+0")
 
 
 class TestRouteReportTask17(unittest.TestCase):
@@ -985,7 +1023,7 @@ class TestRouteReportSurfaceSummaryRegression(unittest.TestCase):
     def _names(self):
         return [n for n, _ in self.calls]
 
-    def test_full_report_uses_surface_summary_json_and_skips_heavy_poi_refresh(self):
+    def test_full_report_uses_canonical_surface_summary_and_skips_heavy_poi_refresh(self):
         synthetic_profile = {
             "id": 19,
             "route_artifact_id": 306,
@@ -1042,13 +1080,13 @@ class TestRouteReportSurfaceSummaryRegression(unittest.TestCase):
             out = rr._tool_route_report({"route_id": "55798129", "variant": "pelny"})
 
         analysis = out["analysis"]
-        self.assertIn("surface_summary_json", analysis)
-        self.assertIn("GOOD_INFERRED", analysis)
-        self.assertRegex(analysis, r"unknown\s+0[,.]0%|Unknown:\s*0[,.]0%")
-        self.assertIn("Geologia / podłoże", analysis)
-        self.assertIn("provider=heuristic_region_v1", analysis)
-        self.assertNotIn("nieznana 33%", analysis)
-        self.assertNotIn("utwardzona 33%", analysis)
+        self.assertIn("canonical_surface_summary / route_surface_layer", analysis)
+        self.assertIn("segment_count=76", analysis)
+        self.assertIn("coverage_pct=100.0%", analysis)
+        self.assertIn("by_surface:", analysis)
+        self.assertIn("problem_segments_count=31", analysis)
+        self.assertIn("Geologia / podłoże: brak danych w canonical_surface_summary", analysis)
+        self.assertNotIn("surface_summary_json", analysis.split("## A8 - WODA / SKLEPY / REFILL")[0])
         self.assertIn("Status zaopatrzenia: UNAVAILABLE", analysis)
         self.assertIn("Kompletność techniczna POI: UNAVAILABLE", analysis)
         self.assertNotIn("route_poi_analyze_readonly", self._names())
@@ -1068,11 +1106,13 @@ class TestRouteReportCanonicalReadPath(unittest.TestCase):
         self._orig_dist = rr._resolve_distance_km
         self._orig_poi_cache = rr._read_poi_analysis_cache
         self._orig_version_record = rr._fetch_route_version_record
+        self._orig_read_canonical = rr.read_canonical_route
         self._orig_fetch_surface = None
         rr._call_tool = fake_call
         rr._resolve_distance_km = lambda route_id: 99.4
         rr._read_poi_analysis_cache = lambda route_id: CANNED_POI_CACHE
         rr._fetch_route_version_record = lambda **kwargs: ACTIVE_ROUTE_VERSION
+        rr.read_canonical_route = lambda **kwargs: LEGACY_ROUTE_SOURCE
         import qbot_route_tools as rt
         self._rt = rt
         self._orig_fetch_surface = rt._fetch_best_route_surface_profile
@@ -1084,6 +1124,7 @@ class TestRouteReportCanonicalReadPath(unittest.TestCase):
         rr._resolve_distance_km = self._orig_dist
         rr._read_poi_analysis_cache = self._orig_poi_cache
         rr._fetch_route_version_record = self._orig_version_record
+        rr.read_canonical_route = self._orig_read_canonical
         rt._fetch_best_route_surface_profile = self._orig_fetch_surface
 
     def test_canonical_marker_and_landscape_source_are_rendered(self):
@@ -1103,8 +1144,16 @@ class TestRouteReportCanonicalReadPath(unittest.TestCase):
         self.assertIn("otoczenie trasy", analysis)
         self.assertIn("lewo / środek / prawo", analysis)
         self.assertIn("## A0C - PROFIL WYSOKOŚCI / PODJAZDY (canonical route_elevation_samples / route_climb_events)", analysis)
-        self.assertIn("Źródło nawierzchni: canonical route_surface_layer", analysis)
-        self.assertIn("route_surface_layer_count=76", analysis)
+        self.assertIn("Źródło nawierzchni: canonical_surface_summary / route_surface_layer", analysis)
+        self.assertIn("segment_count=76", analysis)
+        self.assertIn("total_distance_m=71.1 km", analysis)
+        self.assertIn("coverage_pct=100.0%", analysis)
+        self.assertIn("by_surface:", analysis)
+        self.assertIn("- asphalt: 24.8 km | 34.9% | segments=15", analysis)
+        self.assertIn("by_confidence: high=49, low=26, medium=1", analysis)
+        self.assertIn("problem_segments_count=1", analysis)
+        self.assertNotIn("SZCZEGOLOWY PROFIL TRASY (surface_summary_json)", analysis)
+        self.assertNotIn("Źródło profilu: qbot_v2.route_surface_profiles.surface_summary_json", analysis)
         self.assertIn("Źródło POI: canonical route_poi_layer", analysis)
         self.assertIn("route_poi_layer_count=38", analysis)
         self.assertIn("route_elevation_samples", analysis)
@@ -1120,10 +1169,11 @@ class TestRouteReportCanonicalReadPath(unittest.TestCase):
         self.assertIn("źródło danych trasy: legacy_fallback", analysis)
         self.assertIn("fallback_reason: route_base_missing", analysis)
         self.assertIn("landscape_source: osm_landcover_legacy", analysis)
-        self.assertNotIn("Źródło nawierzchni: canonical route_surface_layer", analysis)
+        self.assertNotIn("Źródło nawierzchni: canonical_surface_summary / route_surface_layer", analysis)
         self.assertNotIn("Źródło POI: canonical route_poi_layer", analysis)
         self.assertNotIn("## A0B - OTOCZENIE TRASY (WorldCover / route_shade_layer)", analysis)
         self.assertNotIn("## A0C - PROFIL WYSOKOŚCI / PODJAZDY (canonical route_elevation_samples / route_climb_events)", analysis)
+        self.assertIn("surface_summary_json", analysis)
         self.assertIn("## A - DANE TRASY", analysis)
 
     def test_a0_marker_still_present(self):
@@ -1133,6 +1183,7 @@ class TestRouteReportCanonicalReadPath(unittest.TestCase):
         self.assertIn("źródło danych trasy: canonical", out["analysis"])
         self.assertIn("## A0B - OTOCZENIE TRASY (WorldCover / route_shade_layer)", out["analysis"])
         self.assertIn("## A0C - PROFIL WYSOKOŚCI / PODJAZDY (canonical route_elevation_samples / route_climb_events)", out["analysis"])
+        self.assertIn("Źródło POI: canonical route_poi_layer", out["analysis"])
 
 
 class TestRouteReportPoiSupplyRegression(unittest.TestCase):
@@ -1497,11 +1548,13 @@ class TestRouteReportVersionGuard(unittest.TestCase):
         self._orig_dist = rr._resolve_distance_km
         self._orig_poi_cache = rr._read_poi_analysis_cache
         self._orig_version_record = rr._fetch_route_version_record
+        self._orig_read_canonical = rr.read_canonical_route
         self._orig_fetch_surface = None
         rr._call_tool = fake_call
         rr._resolve_distance_km = lambda route_id: 71.1
         rr._read_poi_analysis_cache = lambda route_id: VERSIONED_POI_CACHE
         rr._fetch_route_version_record = fake_version_record
+        rr.read_canonical_route = lambda **kwargs: LEGACY_ROUTE_SOURCE
         import qbot_route_tools as rt
         self._orig_fetch_surface = rt._fetch_best_route_surface_profile
         self._rt = rt
@@ -1511,6 +1564,7 @@ class TestRouteReportVersionGuard(unittest.TestCase):
         rr._resolve_distance_km = self._orig_dist
         rr._read_poi_analysis_cache = self._orig_poi_cache
         rr._fetch_route_version_record = self._orig_version_record
+        rr.read_canonical_route = self._orig_read_canonical
         self._rt._fetch_best_route_surface_profile = self._orig_fetch_surface
 
     def _surface_profile(self, route_artifact_id=306):

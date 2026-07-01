@@ -554,6 +554,11 @@ kontrakt przygotowawczy pod pełne przepięcie A3: summary liczy segmenty,
 distances i problem segments po canonical rows, ale A3 nadal używa legacy
 `surface_summary_json` dopóki nie zostanie przepięte osobno.
 
+Aktualizacja 2026-06-30: A3 może już renderować `canonical_surface_summary`
+z `read_canonical_route()`. Jeśli summary jest dostępne, ma pokazać źródło,
+segment_count, total_distance_m, coverage_pct, by_surface i by_confidence oraz
+problem_segments_count. Legacy `surface_summary_json` pozostaje fallbackiem.
+
 Aktualizacja 2026-06-29: sekcja `POI / zaopatrzenie` ma priorytet produktu dla
 Polski. Główne źródła to sklepy spożywcze, stacje paliw i punkty gastronomiczne;
 publiczne `drinking_water` jest tylko bonusem. Każdy punkt w raporcie musi mieć

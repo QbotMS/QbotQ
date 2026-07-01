@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-06-30 — DECYZJA: route_report pokazuje canonical surface summary w A3
+
+**Status:** wdrożone minimalnie w `qbot_route_report_tool.py`.
+
+**Decyzja:** gdy `read_canonical_route(route_id)` zwraca `canonical_surface_summary`, route_report pokazuje w A3 canonical summary wyliczony z `qbot_v2.route_surface_layer`, zamiast opierać się wyłącznie na `surface_summary_json`.
+
+**Zasada:** canonical summary ma pokazać `segment_count`, `total_distance_m`, `coverage_pct`, `by_surface`, `by_confidence` i `problem_segments_count`. Legacy `surface_summary_json` zostaje fallbackiem, jeśli canonical summary brak.
+
+**Kontrakt:** A3 ma nie zmieniać A0/A0B/A0C ani A8. Brak canonical summary nie może wywrócić raportu.
+
 ## 2026-06-30 — DECYZJA: canonical reader wystawia surface summary z route_surface_layer
 
 **Status:** wdrożone w `qbot3/routes/route_canonical_read.py`.
