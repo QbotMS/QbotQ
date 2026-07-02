@@ -807,6 +807,63 @@ def _surface_summary(
     return summary
 
 
+def _surface_context_rows(conn, route_base_id: int) -> list[dict[str, Any]]:
+    return _fetch_many(
+        conn,
+        """
+        SELECT segment_index, km_from, km_to, highway, tracktype,
+               dominant_class, dominant_pl, agreement_pct, n_nodes, shade_coverage,
+               geology_sand, surface_estimate, estimate_confidence, sand_risk, reason, source
+        FROM qbot_v2.route_surface_context
+        WHERE route_base_id = %s
+        ORDER BY km_from, segment_index
+        """,
+        (route_base_id,),
+    )
+
+
+_SAND_RISK_ELEVATED = ("WYSOKIE", "SREDNIE")
+
+
+def _surface_context_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Podsumowanie warstwy route_surface_context (odcinki bez tagu). Additive, poza bramka kompletnosci."""
+    if not rows:
+        return {"source": "route_surface_context_v1", "segment_count": 0,
+                "risk_counts": {}, "sand_km_high": 0.0, "sand_km_medium": 0.0, "elevated": []}
+    risk_counts: dict[str, int] = {}
+    sand_km_high = 0.0
+    sand_km_medium = 0.0
+    elevated: list[dict[str, Any]] = []
+    for r in rows:
+        risk = str(r.get("sand_risk") or "?")
+        risk_counts[risk] = risk_counts.get(risk, 0) + 1
+        try:
+            length = float(r.get("km_to") or 0.0) - float(r.get("km_from") or 0.0)
+        except (TypeError, ValueError):
+            length = 0.0
+        if risk == "WYSOKIE":
+            sand_km_high += max(length, 0.0)
+        elif risk == "SREDNIE":
+            sand_km_medium += max(length, 0.0)
+        if risk in _SAND_RISK_ELEVATED:
+            elevated.append({
+                "km_from": r.get("km_from"), "km_to": r.get("km_to"),
+                "sand_risk": risk, "surface_estimate": r.get("surface_estimate"),
+                "dominant_pl": r.get("dominant_pl"), "agreement_pct": r.get("agreement_pct"),
+                "reason": r.get("reason"),
+            })
+    order = {"WYSOKIE": 0, "SREDNIE": 1}
+    elevated.sort(key=lambda e: (order.get(e["sand_risk"], 9), e.get("km_from") or 0.0))
+    return {
+        "source": "route_surface_context_v1",
+        "segment_count": len(rows),
+        "risk_counts": risk_counts,
+        "sand_km_high": round(sand_km_high, 2),
+        "sand_km_medium": round(sand_km_medium, 2),
+        "elevated": elevated,
+    }
+
+
 def read_canonical_route(
     *,
     route_id: str | int | None = None,
@@ -880,6 +937,7 @@ def read_canonical_route(
         surface_summary = _surface_summary(layers["route_surface_layer"], base, surface_profile_summary)
         poi_summary = _poi_summary(layers["route_poi_layer"])
         poi_meta = _poi_meta_row(conn, rb_id)
+        surface_context_summary = _surface_context_summary(_surface_context_rows(conn, rb_id))
         elevation_summary = _elevation_summary(layers["route_elevation_samples"], layers["route_climb_events"])
         layer_counts = {
             name: (1 if name == "route_base" and layers[name] else len(layers[name]))
@@ -910,6 +968,7 @@ def read_canonical_route(
             "canonical_surface_summary": surface_summary,
             "canonical_poi_summary": poi_summary,
             "canonical_poi_meta": poi_meta,
+            "canonical_surface_context": surface_context_summary,
             "canonical_elevation_summary": elevation_summary,
             "surface_profile_overpass_metrics": surface_profile_summary.get("overpass_metrics") if isinstance(surface_profile_summary, dict) else None,
             "layers": layers,

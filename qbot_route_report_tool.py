@@ -385,6 +385,40 @@ def _route_surface_geology_lines_from_summary(summary: dict[str, Any] | None) ->
     return ["Geologia / podłoże: brak danych w canonical_surface_summary"]
 
 
+def _route_surface_context_lines(route_source: dict[str, Any] | None) -> list[str]:
+    """Renderuje warstwe route_surface_context: odcinki BEZ tagu -> szacunek ryzyka piachu."""
+    if not isinstance(route_source, dict):
+        return []
+    ctx = route_source.get("canonical_surface_context")
+    if not isinstance(ctx, dict) or int(ctx.get("segment_count") or 0) <= 0:
+        return []
+    risk_counts = ctx.get("risk_counts") if isinstance(ctx.get("risk_counts"), dict) else {}
+    elevated = ctx.get("elevated") if isinstance(ctx.get("elevated"), list) else []
+    sand_high = float(ctx.get("sand_km_high") or 0.0)
+    sand_med = float(ctx.get("sand_km_medium") or 0.0)
+    lines = [
+        "Źródło: route_surface_context (odcinki BEZ tagu OSM — szacunek z otoczenia WorldCover + geologii)",
+        "UWAGA: tag OSM zawsze wygrywa; poniższe odcinki nie mają tagu — to szacunek ryzyka, nie pomiar",
+    ]
+    order = ("WYSOKIE", "SREDNIE", "UMIARK.", "NISKO-SR", "NISKIE", "?")
+    counts_bits = [f"{k}={risk_counts[k]}" for k in order if risk_counts.get(k)]
+    lines.append("Odcinki bez tagu: " + str(int(ctx.get("segment_count") or 0)) +
+                 " | ryzyko piachu: " + (", ".join(counts_bits) if counts_bits else "brak"))
+    high_segs = [e for e in elevated if e.get("sand_risk") == "WYSOKIE"]
+    if high_segs:
+        ranges = ", ".join(f"km {float(e['km_from']):g}–{float(e['km_to']):g}" for e in high_segs)
+        lines.append(f"⚠️ MOŻLIWY GŁĘBOKI PIACH (~{sand_high:.1f} km): {ranges} — rozważ objazd")
+    if sand_med > 0:
+        lines.append(f"Możliwy piach / luźna nawierzchnia (średnie, ~{sand_med:.1f} km) — patrz odcinki niżej")
+    if elevated:
+        lines.append("Odcinki podwyższonego ryzyka:")
+        for e in elevated:
+            km = f"km {float(e['km_from']):g}–{float(e['km_to']):g}"
+            env = f"{e.get('dominant_pl') or '?'} {int(e.get('agreement_pct') or 0)}%"
+            lines.append(f"- {km} [{e.get('sand_risk')}]: {e.get('surface_estimate')} ({env}) — {e.get('reason')}")
+    return lines
+
+
 def _route_poi_section_lines(route_source: dict[str, Any] | None) -> list[str]:
     if not isinstance(route_source, dict):
         return []
@@ -719,6 +753,15 @@ def _route_verdict_section_lines(route_source: dict[str, Any] | None, meteo_payl
             surface_risks.append("nawierzchnia częściowo inferowana")
         if (surface.get("unknown_provenance_count") or 0) > 0:
             surface_risks.append("nieznana proweniencja")
+    ctx_v = route_source.get("canonical_surface_context") if isinstance(route_source.get("canonical_surface_context"), dict) else None
+    if ctx_v:
+        elev_v = ctx_v.get("elevated") if isinstance(ctx_v.get("elevated"), list) else []
+        high_v = [e for e in elev_v if e.get("sand_risk") == "WYSOKIE"]
+        if high_v:
+            km_h = float(ctx_v.get("sand_km_high") or 0.0)
+            rng = ", ".join(f"km {float(e['km_from']):g}–{float(e['km_to']):g}" for e in high_v[:4])
+            more = "…" if len(high_v) > 4 else ""
+            surface_risks.insert(0, f"możliwy głęboki piach ~{km_h:.1f} km ({rng}{more})")
     elevation_risks: list[str] = []
     if elevation:
         if elevation.get("short_wall_detection_note"):
@@ -2791,6 +2834,13 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
             for line in _route_surface_geology_lines_from_summary(surface_summary):
                 H(line)
             H("")
+            _ctx_lines = _route_surface_context_lines(route_source)
+            if _ctx_lines:
+                H("## A3D - RYZYKO NAWIERZCHNI (odcinki bez tagu OSM)")
+                for line in _ctx_lines:
+                    H(line)
+                H("")
+                collected["surface_context"] = route_source.get("canonical_surface_context")
         else:
             surface_profile = None
             try:
