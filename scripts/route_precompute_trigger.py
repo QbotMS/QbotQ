@@ -691,7 +691,10 @@ def _ensure_rwgps_surface_profile(
 
     with _db_conn() as conn:
         refreshed = _route_surface_profile_state(conn, int(effective_route_artifact_id) if effective_route_artifact_id is not None else None)
-    if not refreshed["has_profile"] and effective_route_artifact_id is not None:
+    # force=True: nadpisz istniejacy profil swiezym enrichem (upsert). Bez tego
+    # wymuszony re-enrich liczyl poprawne segmenty, ale nie zapisywal ich
+    # (prowieniencja nie trafiala do route_surface_profiles). Audyt 2026-07-02.
+    if (force or not refreshed["has_profile"]) and effective_route_artifact_id is not None:
         with _db_conn() as conn:
             artifact_path = _route_artifact_path(conn, int(effective_route_artifact_id))
         if artifact_path:
