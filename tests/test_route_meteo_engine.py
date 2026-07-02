@@ -9,7 +9,7 @@ from qbot3.routes.route_meteo_engine import (metabolic_limit_c, window_severity,
                                              rain_severity, rain_trend,
                                              storm_segment_level, _storm_worse,
                                              _nearest_town_before, _build_storm_alerts,
-                                             cold_severity, effective_wind_ms,
+                                             cold_severity, cold_severity_cyclist, effective_wind_ms,
                                              _terrain_label)
 
 UTC = _dt.timezone.utc
@@ -45,6 +45,10 @@ class TestMeteoDeszcz(unittest.TestCase):
         self.assertIsNone(rain_severity(1.0, 30))
         self.assertEqual(rain_severity(1.0, 60), "FLAGA")
         self.assertIsNone(rain_severity(0.0, 999))
+        # prawdopodobienstwo jako wyzwalacz (mzawka, niskie mm)
+        self.assertEqual(rain_severity(0.1, 60, 96), "ALARM")
+        self.assertEqual(rain_severity(0.1, 60, 35), "FLAGA")
+        self.assertIsNone(rain_severity(0.1, 60, 20))
 
     def test_trend(self):
         self.assertEqual(rain_trend(0.2, 3.0), "narasta (wjeżdżasz w deszcz)")
@@ -90,6 +94,13 @@ class TestMeteoZimno(unittest.TestCase):
         self.assertEqual(cold_severity(5, 60), "FLAGA")         # lagodny, bardzo dlugo
         self.assertIsNone(cold_severity(5, 30))
         self.assertIsNone(cold_severity(15, 999))               # komfort -> nic
+
+    def test_cold_severity_cyclist(self):
+        self.assertEqual(cold_severity_cyclist(-10, 20), "ALARM")
+        self.assertEqual(cold_severity_cyclist(-3, 30), "FLAGA")
+        self.assertIsNone(cold_severity_cyclist(-3, 20))
+        self.assertIsNone(cold_severity_cyclist(5, 999))
+        self.assertIsNone(cold_severity_cyclist(0.5, 999))
 
     def test_effective_wind(self):
         # brak heading -> pelne czolo: ped 25 km/h (~6.94) + wiatr 3

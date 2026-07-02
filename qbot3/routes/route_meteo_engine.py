@@ -49,6 +49,8 @@ RAIN_LIGHT_MM = 2.5
 RAIN_HEAVY_MM = 7.6
 RAIN_WET_MM = 0.5
 RAIN_PROB_MIN = 40
+RAIN_PROB_RISK = 30       # >= 30% = ryzyko deszczu (FLAGA), niezaleznie od mm
+RAIN_PROB_SERIOUS = 60    # >= 60% = powazne ryzyko deszczu (ALARM)
 RAIN_TREND_MM = 0.5
 
 # --- Model BURZA (regulowalne) ---------------------------------------------
@@ -67,6 +69,10 @@ UTCI_MODERATE_COLD = 0.0    # < 0 C = umiarkowany
 UTCI_STRONG_COLD = -13.0    # < -13 C = silny
 UTCI_VSTRONG_COLD = -27.0   # < -27 C = bardzo silny/ekstremalny
 V_UTCI_MIN, V_UTCI_MAX = 0.5, 17.0  # zakres waznosci wiatru w UTCI
+COLD_FLAG_C = 0.0          # srednia odczuwalna OTOCZENIA < 0 C -> FLAGA (kalibracja kolarska)
+COLD_ALARM_C = -8.0        # < -8 C -> ALARM
+SHELTER_FOREST = 0.4       # WorldCover 10 (las): tlumi wiatr
+SHELTER_BUILT = 0.6        # WorldCover 50 (zabudowa): tlumi wiatr
 
 
 def metabolic_limit_c(grade_pct: float) -> float:
@@ -105,12 +111,20 @@ def window_severity(exceed_c: float, minutes: float, max_alert_level: int) -> Op
     return None
 
 
-def rain_severity(max_precip_mm: float, minutes: float) -> Optional[str]:
-    """DESZCZ: z natężenia opadu + długości ciągłego moknięcia -> None / 'FLAGA' / 'ALARM'."""
+def rain_severity(max_precip_mm: float, minutes: float, max_prob: Optional[float] = None) -> Optional[str]:
+    """DESZCZ: z natezenia (mm) LUB prawdopodobienstwa (%) + dlugosci -> None/'FLAGA'/'ALARM'.
+
+    Prawdopodobienstwo jest rownorzednym wyzwalaczem: mzawka/przelotne przy wysokim
+    prob (niskie mm) tez ostrzega. >=60% = powazne (ALARM), >=30% = ryzyko (FLAGA).
+    """
     if max_precip_mm >= RAIN_HEAVY_MM:
+        return "ALARM"
+    if max_prob is not None and max_prob >= RAIN_PROB_SERIOUS and minutes >= 15:
         return "ALARM"
     if max_precip_mm >= RAIN_LIGHT_MM:
         return "ALARM" if minutes >= 90 else "FLAGA"
+    if max_prob is not None and max_prob >= RAIN_PROB_RISK and minutes >= 15:
+        return "FLAGA"
     if max_precip_mm >= RAIN_WET_MM and minutes >= 60:
         return "FLAGA"
     return None
@@ -143,6 +157,20 @@ def cold_severity(min_utci: float, minutes: float) -> Optional[str]:
         return None
     if min_utci < UTCI_SLIGHT_COLD:             # lagodny -> tylko dluga ekspozycja
         return "FLAGA" if minutes >= 60 else None
+    return None
+
+
+def cold_severity_cyclist(avg_utci: float, minutes: float) -> Optional[str]:
+    """ZIMNO (kalibracja kolarska): ze SREDNIEJ odczuwalnej OTOCZENIA + dlugosci.
+
+    Kolarz pedalujac produkuje 2-3x wiecej ciepla niz spacerowicz z definicji UTCI
+    (135 W/m2, 2.3 MET), a wind chill slabnie w cieplym powietrzu -> prog przesuniety
+    w dol: FLAGA < 0 C, ALARM < -8 C. Latem przy normalnym wietrze NIE odpala.
+    """
+    if avg_utci < COLD_ALARM_C and minutes >= 15:
+        return "ALARM"
+    if avg_utci < COLD_FLAG_C and minutes >= 30:
+        return "FLAGA"
     return None
 
 
@@ -183,6 +211,15 @@ def _terrain_label(grade_pct: float) -> str:
     if grade_pct < GRADE_DESCENT:
         return "zjazd"
     return "płasko"
+
+
+def _wind_shelter(wc_class: Optional[int]) -> float:
+    """Tlumienie wiatru przez pokrycie terenu (WorldCover): las 0.4, zabudowa 0.6, reszta 1.0."""
+    if wc_class == 10:
+        return SHELTER_FOREST
+    if wc_class == 50:
+        return SHELTER_BUILT
+    return 1.0
 
 
 def effective_wind_ms(v_kmh: float, ws: float, tail: Optional[float],
@@ -443,6 +480,11 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         wind_oob = eff > V_UTCI_MAX or eff < V_UTCI_MIN
         eff_c = min(max(eff, V_UTCI_MIN), V_UTCI_MAX)
         utci = utci_c(ta, tmrt, eff_c, rh)
+        # ODCZUWALNA OTOCZENIA (do alertu zimna): wiatr 10 m tlumiony oslona terenu,
+        # BEZ wiatru pozornego jazdy. utci (wyzej) zostaje do notki na zjazdy/postoje.
+        shelter = _wind_shelter(sh["class_center"] if sh else None)
+        ws_amb = min(max(ws * shelter, V_UTCI_MIN), V_UTCI_MAX)
+        utci_amb = utci_c(ta, tmrt, ws_amb, rh)
 
         per_segment.append({
             "km": round(s["km"], 2), "eta": s["eta_local"].strftime("%H:%M"),
@@ -454,6 +496,8 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
             "cape": (round(cape) if cape is not None else None),
             "gust_ms": (round(gust, 1) if gust is not None else None),
             "tmrt": round(tmrt, 1), "utci": round(utci, 1), "utci_kat": utci_category(utci),
+            "utci_amb": round(utci_amb, 1), "utci_amb_kat": utci_category(utci_amb),
+            "shelter": round(shelter, 2),
             "wind_eff_ms": round(eff_c, 1), "wind_oob": wind_oob,
             "wind_tail_ms": round(tail, 1) if tail is not None else None,
             "wind_cross_ms": round(cross, 1) if cross is not None else None,
@@ -482,9 +526,11 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
                     "Burza: 'szansa na piorun' nie jest wprost w darmowej prognozie -> kod burzy + CAPE. "
                     "Czas trwania z prognozy (kroki godzinne) = przybliżony. Miejscowość = ogólne "
                     "schronienie. Decyzję jedź/przeczekaj/odpuść podejmujesz sam.",
-                    "Odczuwalna (UTCI): wiatr efektywny = otoczenie + pęd jazdy; > 17 m/s (zwykle "
-                    "szybkie zjazdy) przycięte do 17 z flagą wind_oob. Zakłada standardowy ubiór "
-                    "-> wartość poglądowa, kierunek pewny."],
+                    "Odczuwalna (UTCI) = odczuwalna OTOCZENIA: wiatr z 10 m tlumiony oslona terenu "
+                    "(las 0.4 / zabudowa 0.6), usredniona po oknie. Prog zimna skalibrowany pod "
+                    "kolarza (FLAGA <0 C, ALARM <-8 C) - pedalujac produkujesz 2-3x wiecej ciepla "
+                    "niz spacerowicz z definicji UTCI (135 W/m2). Wiatr pozorny jazdy NIE jest "
+                    "alarmem: na dlugich zjazdach i postojach dorzuc warstwe."],
     }
 
 
@@ -536,21 +582,26 @@ def _build_rain_alerts(per_segment: list[dict]) -> list[dict]:
             return
         minutes = sum(x["_dur_min"] for x in run)
         max_precip = max(x["opad_mm"] for x in run)
-        sev = rain_severity(max_precip, minutes)
+        probs = [x["opad_prob"] for x in run if x["opad_prob"] is not None]
+        max_prob = max(probs) if probs else None
+        sev = rain_severity(max_precip, minutes, max_prob)
         if not sev:
             return
-        probs = [x["opad_prob"] for x in run if x["opad_prob"] is not None]
+        if max_precip < RAIN_LIGHT_MM and max_prob is not None:
+            opis = f"prawdopodobienstwo do {round(max_prob)}% (mzawka/przelotne, malo mm)"
+        else:
+            opis = f"opad do {round(max_precip, 1)} mm" + (f", prawdop. {round(max_prob)}%" if max_prob is not None else "")
         alerts.append({
             "typ": "deszcz", "severity": sev, "km_od": run[0]["km"], "km_do": run[-1]["km"],
             "eta_od": run[0]["eta"], "eta_do": run[-1]["eta"], "minuty": round(minutes),
             "opad_max_mm": round(max_precip, 1),
-            "prawdopod": (max(probs) if probs else None),
+            "prawdopod": (max(probs) if probs else None), "opis": opis,
             "trend": rain_trend(run[0]["opad_mm"], run[-1]["opad_mm"]),
         })
 
     run = []
     for s in per_segment:
-        wet = s["opad_mm"] >= RAIN_WET_MM and (s["opad_prob"] is None or s["opad_prob"] >= RAIN_PROB_MIN)
+        wet = (s["opad_prob"] is not None and s["opad_prob"] >= RAIN_PROB_RISK) or s["opad_mm"] >= RAIN_WET_MM
         if wet:
             run.append(s)
         else:
@@ -618,28 +669,32 @@ def _build_storm_alerts(per_segment: list[dict], towns: list[dict]) -> list[dict
 
 
 def _build_cold_alerts(per_segment: list[dict]) -> list[dict]:
-    """ZIMNO (z UTCI): ciągłe okna stresu zimna (odczuwalna < prog lagodnego zimna)."""
+    """ZIMNO (kalibracja kolarska): okna, gdzie SREDNIA odczuwalna OTOCZENIA < 0 C.
+
+    utci_amb = wiatr 10 m z oslona terenu, bez wiatru pozornego jazdy; usredniane po
+    oknie -> nie strasi zimnem od zimnego piksela ani od pedu roweru w cieple lato.
+    Wiatr pozorny (zjazdy/postoje) idzie jako notka w caveats, nie jako alarm.
+    """
     alerts = []
 
     def flush(run):
         if not run:
             return
         minutes = sum(x["_dur_min"] for x in run)
-        min_u = min(x["utci"] for x in run)
-        sev = cold_severity(min_u, minutes)
+        avg_amb = sum(x["utci_amb"] for x in run) / len(run)
+        sev = cold_severity_cyclist(avg_amb, minutes)
         if not sev:
             return
-        cold_seg = min(run, key=lambda x: x["utci"])
         alerts.append({
             "typ": "zimno", "severity": sev, "km_od": run[0]["km"], "km_do": run[-1]["km"],
             "eta_od": run[0]["eta"], "eta_do": run[-1]["eta"], "minuty": round(minutes),
-            "utci_min": cold_seg["utci"], "kategoria": cold_seg["utci_kat"],
-            "uwaga_zjazd": any(x["wind_oob"] for x in run),  # wiatr pozorny zjazdu podbija chlod
+            "utci_avg": round(avg_amb, 1), "kategoria": utci_category(avg_amb),
+            "opis": "srednia odczuwalna otoczenia (wiatr z oslona terenu, bez pedu jazdy)",
         })
 
     run = []
     for s in per_segment:
-        if s["utci"] < UTCI_SLIGHT_COLD:
+        if s["utci_amb"] < COLD_FLAG_C:
             run.append(s)
         else:
             flush(run)
@@ -665,8 +720,8 @@ def _build_table(per_segment: list[dict], n_win: int, t0: _dt.datetime) -> list[
         probs = [x["opad_prob"] for x in b if x["opad_prob"] is not None]
         capes = [x["cape"] for x in b if x["cape"] is not None]
         gusts = [x["gust_ms"] for x in b if x["gust_ms"] is not None]
-        umin = min(x["utci"] for x in b)
-        umax = max(x["utci"] for x in b)
+        amb = [x["utci_amb"] for x in b]
+        u_avg = sum(amb) / len(amb)
         storm_w = None
         for x in b:
             storm_w = _storm_worse(storm_w, x["burza"])
@@ -679,7 +734,8 @@ def _build_table(per_segment: list[dict], n_win: int, t0: _dt.datetime) -> list[
             "opad": {"mm": round(pmax["opad_mm"], 1), "prob": (max(probs) if probs else None)},
             "burza": {"poziom": storm_w, "cape": (max(capes) if capes else None),
                       "porywy_ms": (max(gusts) if gusts else None)},
-            "odczuwalna": {"od": round(umin), "do": round(umax), "kat": utci_category(umin)},
+            "odczuwalna": {"od": round(u_avg), "do": round(u_avg),
+                           "kat": utci_category(u_avg), "srednia": round(u_avg)},
         })
     return rows
 
