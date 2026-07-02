@@ -63,14 +63,16 @@ def infer_context(highway: str | None, tracktype: str | None, wc_class: int | No
     if hw == "track":
         if tt in {"grade1", "grade2", "grade3", "grade4", "grade5"}:
             base = {"grade1": "utwardzona", "grade2": "drobny szuter", "grade3": "szuter",
-                    "grade4": "grunt", "grade5": "trawa/grunt"}[tt]
+                    "grade4": "grunt", "grade5": "grunt (grade5)"}[tt]
             risk = "SREDNIE" if (tt in {"grade4", "grade5"} and geology_sand) else "NISKO-SR"
             return r(base, "sr", risk, f"track {tt} (ocena jakosci z OSM)")
         if openland and geology_sand:
-            return r("MOZLIWY GLEBOKI PIACH", "ni", "WYSOKIE",
-                     "polna droga nietagowana na piaszczystym podlozu -> rozwaz objazd")
+            return r("droga polna / grunt", "ni", "WNIOSK.",
+                     "polna droga (pola/laki) bez tagu OSM; latem/susza na Podlasiu mozliwe "
+                     "piaszczyste fragmenty — wnioskowanie z otoczenia, nie z tagu; wiosna zwykle grunt")
         if openland:
-            return r("grunt/szuter", "ni", "SREDNIE", "polna droga bez opisu")
+            return r("droga polna / grunt", "ni", "SREDNIE",
+                     "polna droga (pola/laki) bez tagu OSM; grunt (otoczenie != nawierzchnia)")
         if forest:
             return r("grunt/ubity", "ni-sr" if forest_sure else "ni", "UMIARK.",
                      "lesna droga gospodarcza bez oceny jakosci")

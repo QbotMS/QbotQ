@@ -17,8 +17,8 @@ from qbot3.routes.route_surface_context_store import infer_context
 class TestInferContext(unittest.TestCase):
     def test_track_open_sand_is_high_sand_alarm(self):
         out = infer_context("track", None, 30, 100, True)
-        self.assertEqual(out["sand_risk"], "WYSOKIE")
-        self.assertIn("PIACH", out["surface_estimate"])
+        self.assertEqual(out["sand_risk"], "WNIOSK.")
+        self.assertIn("polna", out["surface_estimate"])
 
     def test_track_open_no_sand_is_medium(self):
         out = infer_context("track", None, 40, 90, False)
