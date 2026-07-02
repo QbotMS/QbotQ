@@ -44,7 +44,7 @@ _NOMINATIM = "https://nominatim.openstreetmap.org/reverse"
 
 
 def cache_dir() -> Path:
-    d = Path(os.getenv("QBOT_WORLDCOVER_DIR", "/opt/qbot/app/data/worldcover"))
+    d = Path(os.getenv("QBOT_WORLDCOVER_DIR", "/opt/qbot/artifacts/worldcover"))
     d.mkdir(parents=True, exist_ok=True)
     return d
 

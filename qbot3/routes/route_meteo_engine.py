@@ -13,8 +13,8 @@ z prędkości jazdy (v_kmh z modelu czasu, prosto w twarz). Zakres UTCI dla wiat
 -> przycinamy z flagą (zwykle na szybkich zjazdach). Alerty z UTCI: tylko ZIMNO (ciepło
 pokrywa WBGT). Wiatr pozorny na razie tylko do UTCI (nie do WBGT).
 
-Wejścia (żywe): estimate_route_time_v2 (km/ETA/grade/surface/v_kmh), qbot_v2.route_frames
-(mid_lat/mid_lon), route_shade_layer+segment_tau (cień), route_poi_layer (miejscowości),
+Wejścia (żywe): estimate_route_time_v2 (km/ETA/grade/surface/v_kmh), kanoniczna siatka 50 m
+(route_segments_50m: mid_lat/mid_lon), route_shade_layer+segment_tau (cień), route_poi_layer (miejscowości),
 Open-Meteo w N punktach (temp/RH/wiatr/ciśnienie/radiacja/opad/kod/CAPE/porywy).
 
 NIE wpięte do tool_registry ani promptu Alberta. Pelna dokumentacja (kontrakt): docs/METEO_ENGINE.md. Kontekst projektu: docs/PROJEKT_METEO.md.
@@ -220,16 +220,17 @@ def _pg_connect():
 
 
 def _load_frame_geo(conn, route_id: str) -> list[dict]:
-    """Per ramka (len>0, w kolejności): mid_lat/mid_lon. 1:1 z profilem modelu czasu."""
-    cur = conn.cursor()
-    cur.execute("""SELECT frame_index, frame_len_m, mid_lat, mid_lon
-                   FROM qbot_v2.route_frames WHERE route_id=%s ORDER BY frame_index""", (route_id,))
-    out = []
-    for r in cur.fetchall():
-        if float(r[1] or 0.0) <= 0:
-            continue
-        out.append({"lat": float(r[2] or 0.0), "lon": float(r[3] or 0.0)})
-    return out
+    """Per segment osi 50 m (w kolejnosci): mid_lat/mid_lon. 1:1 z profilem modelu czasu.
+    Zrodlo: kanoniczny czytnik 50 m (route_segments_50m) - TA SAMA siatka co model czasu,
+    zastepuje stare qbot_v2.route_frames (80 m). Param conn zachowany dla zgodnosci wywolania."""
+    from qbot3.routes.route_segments_50m import load_canonical_segments_50m
+    out = load_canonical_segments_50m(route_id=str(route_id))
+    if out.get("status") != "OK":
+        return []
+    res = []
+    for s in out.get("segments") or []:
+        res.append({"lat": float(s.get("mid_lat") or 0.0), "lon": float(s.get("mid_lon") or 0.0)})
+    return res
 
 
 def _load_shade(conn, route_id: str) -> list[dict]:

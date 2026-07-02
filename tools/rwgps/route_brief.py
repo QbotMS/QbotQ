@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """FAZA A — briefing planowanej trasy (czytelna analiza przed jazda).
 
-Spina pudelka (route_frames) + prognoze (route_frame_weather) + forme (fitmodel_daily)
-w plain-language podsumowanie: droga, nawierzchnia, podjazdy, pogoda, wiatr per km
-(ktore kilometry w twarz), forma. Tylko ODCZYT.
+Czyta kanoniczna os 50 m (route_axis_segments + route_elevation_samples DEM +
+route_surface_layer) + forme (fitmodel_daily) i sklada plain-language podsumowanie:
+droga, nawierzchnia, podjazdy. Pogoda: wylacznie silnik METEO (tu nie liczona).
+Tylko ODCZYT. route_frames = jedynie fallback gdy brak kanonu.
 
 Uzycie:
   .venv/bin/python -m tools.rwgps.route_brief --artifact-id 274
@@ -50,38 +51,109 @@ def _db_connect():
     return psycopg2.connect(**kwargs)
 
 
-def _wind_stretches(rows, sign, thr=1.5, min_km=1.0):
-    """Znajdz ciagle odcinki wiatru. sign=-1 w twarz, +1 w plecy."""
-    out = []
-    run_start = None
-    last_dist = None
-    for (_fi, d0, d1, _eg, _gr, _sf, _t, _p, comp, _ws) in rows:
-        hit = comp is not None and ((sign < 0 and comp <= -thr) or (sign > 0 and comp >= thr))
-        if hit and run_start is None:
-            run_start = d0
-        if not hit and run_start is not None:
-            if (last_dist - run_start) / 1000.0 >= min_km:
-                out.append((run_start / 1000.0, last_dist / 1000.0))
-            run_start = None
-        last_dist = d1
-    if run_start is not None and (last_dist - run_start) / 1000.0 >= min_km:
-        out.append((run_start / 1000.0, last_dist / 1000.0))
-    return out
-
-
-def _wind_speed_ms_for_block(rows, a_km, b_km):
-    """Srednia predkosc wiatru (wind_speed_ms) dla ramek w bloku a_km..b_km → m/s.
-    rows: krotki (frame_index, dist_start_m, dist_end_m, ..., wind_speed_ms)  (indeks 9).
-    Zwraca float lub None gdy brak danych."""
-    speeds = [r[9] for r in rows if r[9] is not None
-              and r[1] >= a_km * 1000.0 and r[2] <= b_km * 1000.0]
-    return (sum(speeds) / len(speeds)) if speeds else None
-
-
-def _wind_speed_text(speed_ms: float | None) -> str | None:
-    if speed_ms is None:
+def _canon_surface_lookup(route_id):
+    """km -> nawierzchnia z kanonicznej warstwy 50 m (route_surface_layer via
+    route_segments_50m). Zwraca funkcje km->surface lub None (brak route_id /
+    danych kanonicznych -> fallback do surface z route_frames). TASK 26 krok 4a.
+    Nachylenie/ascent/wiatr NIE tykane (kubel 4b)."""
+    if not route_id:
         return None
-    return f"{speed_ms:.1f} m/s / {speed_ms * 3.6:.0f} km/h"
+    try:
+        from qbot3.routes.route_segments_50m import load_canonical_segments_50m
+        out = load_canonical_segments_50m(route_id=str(route_id))
+        if out.get("status") != "OK":
+            return None
+        ranges = [(float(s["km_from"]), float(s["km_to"]), s["surface"])
+                  for s in (out.get("segments") or [])]
+        if not ranges:
+            return None
+    except Exception:
+        return None
+
+    def lookup(km):
+        for kf, kt, surf in ranges:
+            if kf <= km < kt:
+                return surf
+        if km >= ranges[-1][1]:
+            return ranges[-1][2]
+        if km < ranges[0][0]:
+            return ranges[0][2]
+        return None
+    return lookup
+
+
+def _canon_geom_all(route_id):
+    """(grade_fn km->grade, summary) z kanonicznego czytnika 50 m (DEM 50 m, okno 200 m).
+    TASK 26 4b: geometria z route_elevation_samples, nie z ramek 80 m. None -> fallback do ramek."""
+    if not route_id:
+        return None
+    try:
+        from qbot3.routes.route_segments_50m import load_canonical_segments_50m
+        out = load_canonical_segments_50m(route_id=str(route_id))
+        if out.get("status") != "OK":
+            return None
+        segs = out.get("segments") or []
+        if not segs:
+            return None
+    except Exception:
+        return None
+    ranges = [(float(s["km_from"]), float(s["km_to"]), s.get("grade_pct") or 0.0) for s in segs]
+
+    def grade_fn(km):
+        for kf, kt, g in ranges:
+            if kf <= km < kt:
+                return g
+        if km >= ranges[-1][1]:
+            return ranges[-1][2]
+        if km < ranges[0][0]:
+            return ranges[0][2]
+        return None
+    return grade_fn, out.get("summary", {})
+
+
+def _axis_rows_build(route_id):
+    """Wiersze w ukladzie build() z osi 50 m (route_segments_50m). None -> fallback do ramek.
+    Uklad: (frame_index, dist_start_m, dist_end_m, elev_gain_m, avg_grade_pct, surface)."""
+    if not route_id:
+        return None
+    try:
+        from qbot3.routes.route_segments_50m import load_canonical_segments_50m
+        out = load_canonical_segments_50m(route_id=str(route_id))
+        if out.get("status") != "OK":
+            return None
+        segs = out.get("segments") or []
+        if not segs:
+            return None
+    except Exception:
+        return None
+    return [[s["segment_index"], s["km_from"] * 1000.0, s["km_to"] * 1000.0,
+             s.get("elev_gain_m") or 0.0, s.get("grade_pct") or 0.0, s.get("surface")]
+            for s in segs]
+
+
+def _axis_rows_detail(route_id):
+    """Wiersze w ukladzie build_detail() z osi 50 m. None -> fallback do ramek.
+    Uklad: (frame_index, dist_start_m, dist_end_m, ele_start_m, ele_end_m, elev_gain_m, avg_grade_pct, surface)."""
+    if not route_id:
+        return None
+    try:
+        from qbot3.routes.route_segments_50m import load_canonical_segments_50m
+        out = load_canonical_segments_50m(route_id=str(route_id))
+        if out.get("status") != "OK":
+            return None
+        segs = out.get("segments") or []
+        if not segs:
+            return None
+    except Exception:
+        return None
+    rows = []
+    for s in segs:
+        e0 = s.get("elevation_m")
+        gain = s.get("elev_gain_m") or 0.0
+        e1 = (e0 + gain) if e0 is not None else None
+        rows.append([s["segment_index"], s["km_from"] * 1000.0, s["km_to"] * 1000.0,
+                     e0, e1, gain, s.get("grade_pct") or 0.0, s.get("surface")])
+    return rows
 
 
 def build(artifact_id=None, route_id=None, frame_size=80, climb_grade=5.0):
@@ -89,24 +161,42 @@ def build(artifact_id=None, route_id=None, frame_size=80, climb_grade=5.0):
     cur = conn.cursor()
     where = "f.route_artifact_id=%s" if artifact_id is not None else "f.route_id=%s"
     key = artifact_id if artifact_id is not None else route_id
-    cur.execute(
-        f"SELECT f.frame_index, f.dist_start_m, f.dist_end_m, f.elev_gain_m, f.avg_grade_pct, f.surface, "
-        f"       w.temp_c, w.precip_mm, w.wind_component_ms, w.wind_speed_ms "
-        f"FROM qbot_v2.route_frames f "
-        f"LEFT JOIN qbot_v2.route_frame_weather w "
-        f"  ON w.route_artifact_id=f.route_artifact_id AND w.frame_size_m=f.frame_size_m "
-        f"     AND w.frame_index=f.frame_index AND w.kind='forecast' "
-        f"WHERE {where} AND f.frame_size_m=%s ORDER BY f.frame_index",
-        (key, int(frame_size)),
-    )
-    rows = cur.fetchall()
+    rows = _axis_rows_build(route_id)   # PRIMARY: os 50 m (route_axis_segments), NIE czyta route_frames
+    if rows is None:                     # fallback: stare ramki 80 m
+        cur.execute(
+            f"SELECT f.frame_index, f.dist_start_m, f.dist_end_m, f.elev_gain_m, f.avg_grade_pct, f.surface "
+            f"FROM qbot_v2.route_frames f "
+            f"WHERE {where} AND f.frame_size_m=%s ORDER BY f.frame_index",
+            (key, int(frame_size)),
+        )
+        rows = cur.fetchall()
     if not rows:
         print("Brak pudelek dla tej trasy — najpierw zbuduj siatke (route_frames).")
         return 2
 
+    _canon = _canon_surface_lookup(route_id)
+    if _canon:
+        rows = [list(r) for r in rows]
+        for r in rows:
+            cs = _canon(((r[1] or 0.0) + (r[2] or 0.0)) / 2000.0)
+            if cs:
+                r[5] = cs
+
     total_km = rows[-1][2] / 1000.0
-    ascent = sum(r[3] for r in rows if r[3] and r[3] > 0)
-    descent = -sum(r[3] for r in rows if r[3] and r[3] < 0)
+    # 4b: geometria kanoniczna z DEM 50 m (okno 200 m), nie z ramek 80 m
+    _cg = _canon_geom_all(route_id)
+    if _cg:
+        _grade_fn, _gsum = _cg
+        rows = [r if isinstance(r, list) else list(r) for r in rows]
+        for r in rows:
+            g = _grade_fn(((r[1] or 0.0) + (r[2] or 0.0)) / 2000.0)
+            if g is not None:
+                r[4] = g
+        ascent = _gsum.get("ascent_m") or 0.0
+        descent = _gsum.get("descent_m") or 0.0
+    else:
+        ascent = sum(r[3] for r in rows if r[3] and r[3] > 0)
+        descent = -sum(r[3] for r in rows if r[3] and r[3] < 0)
     steep_m = sum((r[2] - r[1]) for r in rows if r[4] is not None and r[4] >= climb_grade)
     max_grade = max((r[4] for r in rows if r[4] is not None), default=None)
 
@@ -114,7 +204,8 @@ def build(artifact_id=None, route_id=None, frame_size=80, climb_grade=5.0):
     for r in rows:
         seg = r[2] - r[1]
         surf_m[r[5] or "nieznana"] = surf_m.get(r[5] or "nieznana", 0.0) + seg
-    paved_m = sum(m for s, m in surf_m.items() if s in PAVED)
+    from qbot_route_time_tools import surface_class as _surf_cls
+    paved_m = sum(m for s, m in surf_m.items() if _surf_cls(s) == "paved")
     total_m = sum(surf_m.values()) or 1.0
 
     lines = []
@@ -126,48 +217,8 @@ def build(artifact_id=None, route_id=None, frame_size=80, climb_grade=5.0):
     surf_txt = ", ".join(f"{s} {m/total_m*100:.0f}%" for s, m in top_surf)
     lines.append(f"Nawierzchnia: {paved_m/total_m*100:.0f}% utwardzona | {surf_txt}")
 
-    have_weather = any(r[6] is not None for r in rows)
-    if have_weather:
-        temps = [r[6] for r in rows if r[6] is not None]
-        precip = sum(r[7] for r in rows if r[7] is not None)
-        lines.append("")
-        lines.append(f"🌤  Pogoda (prognoza): {min(temps):.0f}–{max(temps):.0f}°C, "
-                     f"opady ~{precip:.1f} mm na trasie")
-        head = _wind_stretches(rows, sign=-1)
-        tail = _wind_stretches(rows, sign=+1)
-        if head:
-            parts = []
-            for a, b in head:
-                wind_txt = _wind_speed_text(_wind_speed_ms_for_block(rows, a, b))
-                if wind_txt is not None:
-                    parts.append(f"km {a:.0f}–{b:.0f} ({wind_txt})")
-                else:
-                    parts.append(f"km {a:.0f}–{b:.0f}")
-            lines.append(f"   💨 Pod wiatr (oszczedzaj sie wczesniej): {'; '.join(parts)}")
-        if tail:
-            parts = []
-            for a, b in tail:
-                wind_txt = _wind_speed_text(_wind_speed_ms_for_block(rows, a, b))
-                if wind_txt is not None:
-                    parts.append(f"km {a:.0f}–{b:.0f} ({wind_txt})")
-                else:
-                    parts.append(f"km {a:.0f}–{b:.0f}")
-            lines.append(f"   🍃 Wiatr w plecy: {'; '.join(parts)}")
-        if not head and not tail:
-            lines.append("   Wiatr slaby / zmienny — bez istotnych odcinkow.")
-        all_speeds = [r[9] for r in rows if r[9] is not None]
-        if all_speeds:
-            avg_ms = sum(all_speeds) / len(all_speeds)
-            max_ms = max(all_speeds)
-            lines.append(
-                f"   Sila wiatru: sr. {avg_ms:.1f} m/s ({avg_ms * 3.6:.0f} km/h), "
-                f"maks. {max_ms:.1f} m/s ({max_ms * 3.6:.0f} km/h)"
-            )
-        else:
-            lines.append("   Sila wiatru: brak danych")
-    else:
-        lines.append("")
-        lines.append("🌤  Pogoda: nie policzona — uruchom route_weather z data jazdy.")
+    # POGODA/WIATR: USUNIETE z route_brief (TASK 26). Jedyne zrodlo pogody = silnik METEO
+    # (run_meteo_engine, os 50 m, pod date jazdy). route_brief = geometria (nawierzchnia + profil).
 
     # forma — ostatni sensowny wiersz fitmodel_daily
     cur.execute("SELECT day, ftp_est_w, w_per_kg, glycogen_g, glycogen_pct "
@@ -193,25 +244,49 @@ def build_detail(artifact_id=None, route_id=None, frame_size=80, climb_grade=5.0
     cur = conn.cursor()
     where = "route_artifact_id=%s" if artifact_id is not None else "route_id=%s"
     key = artifact_id if artifact_id is not None else route_id
-    cur.execute(
-        f"SELECT frame_index, dist_start_m, dist_end_m, ele_start_m, ele_end_m, elev_gain_m, avg_grade_pct, surface "
-        f"FROM qbot_v2.route_frames WHERE {where} AND frame_size_m=%s ORDER BY frame_index",
-        (key, int(frame_size)),
-    )
-    rows = cur.fetchall()
+    rows = _axis_rows_detail(route_id)   # PRIMARY: os 50 m, NIE czyta route_frames
+    _from_axis = rows is not None
+    if rows is None:                     # fallback: stare ramki 80 m
+        cur.execute(
+            f"SELECT frame_index, dist_start_m, dist_end_m, ele_start_m, ele_end_m, elev_gain_m, avg_grade_pct, surface "
+            f"FROM qbot_v2.route_frames WHERE {where} AND frame_size_m=%s ORDER BY frame_index",
+            (key, int(frame_size)),
+        )
+        rows = cur.fetchall()
     if not rows:
         print("Brak pudelek dla tej trasy — najpierw zbuduj siatke (route_frames).")
         return 2
-    _guess = _infer_unknown_frame_surfaces(rows, artifact_id, route_id, frame_size)
+    _canon = _canon_surface_lookup(route_id)
+    if _canon:
+        rows = [list(r) for r in rows]
+        for r in rows:
+            cs = _canon(((r[1] or 0.0) + (r[2] or 0.0)) / 2000.0)
+            if cs:
+                r[7] = cs
+        _guess = {}
+    else:
+        _guess = _infer_unknown_frame_surfaces(rows, artifact_id, route_id, frame_size)
     total_km = rows[-1][2] / 1000.0
-    ascent = sum(r[5] for r in rows if r[5] and r[5] > 0)
-    descent = -sum(r[5] for r in rows if r[5] and r[5] < 0)
+    # 4b: geometria kanoniczna z DEM 50 m; nadpisz grade ramek (r[6]) -> spojne climbs/falistosc + naglowek
+    _cg = _canon_geom_all(route_id)
+    if _cg:
+        _grade_fn, _gsum = _cg
+        rows = [r if isinstance(r, list) else list(r) for r in rows]
+        for r in rows:
+            g = _grade_fn(((r[1] or 0.0) + (r[2] or 0.0)) / 2000.0)
+            if g is not None:
+                r[6] = g
+        ascent = _gsum.get("ascent_m") or 0.0
+        descent = _gsum.get("descent_m") or 0.0
+    else:
+        ascent = sum(r[5] for r in rows if r[5] and r[5] > 0)
+        descent = -sum(r[5] for r in rows if r[5] and r[5] < 0)
     grades = [r[6] for r in rows if r[6] is not None]
     max_grade = max(grades) if grades else 0.0
     steep_m = sum((r[2] - r[1]) for r in rows if r[6] is not None and r[6] >= climb_grade)
     lines = []
-    lines.append("SZCZEGOLOWY PROFIL TRASY (z ramek %d m)" % int(frame_size))
-    lines.append("Dystans %.1f km | %d ramek | +%.0f m / -%.0f m | max %.0f%% | stromo(>=%.0f%%) ~%.1f km" % (total_km, len(rows), ascent, descent, max_grade, climb_grade, steep_m/1000.0))
+    lines.append("SZCZEGOLOWY PROFIL TRASY (%s)" % ("os 50 m" if _from_axis else ("ramki %d m" % int(frame_size))))
+    lines.append("Dystans %.1f km | %d %s | +%.0f m / -%.0f m | max %.0f%% | stromo(>=%.0f%%) ~%.1f km" % (total_km, len(rows), ("odcinkow 50m" if _from_axis else "ramek"), ascent, descent, max_grade, climb_grade, steep_m/1000.0))
     if land_cover:
         try:
             from tools.rwgps.surface_landcover import build_sectors as _bs, annotate_sectors as _an, render_sectors_text as _rt

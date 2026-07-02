@@ -190,41 +190,24 @@ def _pg_connect():
 
 
 def _load_route_segments(route_id: str) -> Optional[list[dict]]:
-    """Buduje segmenty z qbot_v2.route_frames: nawierzchnia + grade 200 m (z wysokosci ramek,
-    wygladzone oknem 200 m - spojnie z kalibracja). Zwraca None gdy brak danych kanonicznych.
-
-    UWAGA: do weryfikacji przy wpieciu wzgledem schematu 'nowych zasad' uploadu.
-    Preferowane zrodlo wysokosci to route_elevation_samples (DEM 50 m); tu uzyto
-    route_frames bo jest szeroko zapelnione i ma nawierzchnie w jednym miejscu.
+    """Buduje segmenty z KANONICZNEJ siatki 50 m (route_segments_50m):
+    nawierzchnia z route_surface_layer (rzut po km) + grade oknem 200 m z
+    route_elevation_samples (DEM 50 m). Zastepuje stare route_frames (80 m) -
+    architektura 50 m (patrz CURRENT.md TASK 26). Zwraca None gdy brak danych
+    kanonicznych (os 50 m / warstwa nawierzchni).
     """
     import sys
     sys.path.insert(0, "/opt/qbot/app")
-    from qbot3.routes.route_elevation_engine import ElevationSample, smooth_elevation, _frame_grades  # type: ignore
+    from qbot3.routes.route_segments_50m import load_canonical_segments_50m  # type: ignore
 
-    conn = _pg_connect()
-    cur = conn.cursor()
-    cur.execute("""SELECT frame_index, dist_start_m, dist_end_m, frame_len_m,
-                          mid_lat, mid_lon, ele_start_m, ele_end_m, surface
-                   FROM qbot_v2.route_frames WHERE route_id=%s ORDER BY frame_index""", (route_id,))
-    rows = cur.fetchall()
-    conn.close()
-    if not rows:
+    out = load_canonical_segments_50m(route_id=str(route_id))
+    if out.get("status") != "OK":
         return None
-    # seria wysokosci po dystansie (start kazdej ramki) + domkniecie koncem ostatniej
-    samples = []
-    for i, r in enumerate(rows):
-        d = float(r[1] or 0.0)
-        ele = r[6]
-        samples.append(ElevationSample(i, d, float(r[4] or 0.0), float(r[5] or 0.0),
-                                       (float(ele) if ele is not None else None), "route_frames"))
-    dists = [s.distance_m for s in samples]
-    grades = _frame_grades(smooth_elevation(samples, 200.0), dists)  # len = len-1
-    segs = []
-    for i, r in enumerate(rows):
-        ln = float(r[3] or 0.0)
-        g = grades[i] if i < len(grades) and grades[i] is not None else (grades[-1] if grades else 0.0)
-        segs.append({"len_m": ln, "grade_pct": float(g or 0.0), "surface": r[8]})
-    return segs
+    segs = out.get("segments") or []
+    if not segs:
+        return None
+    return [{"len_m": s["len_m"], "grade_pct": s["grade_pct"], "surface": s["surface"]}
+            for s in segs]
 
 
 # ============================================================= WEJSCIE NARZEDZIA

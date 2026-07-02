@@ -486,7 +486,7 @@ _reader("weather_forecast", "weather", "qbot_weather_forecast", {"location": "st
 _reader("rwgps_route_get", "rwgps", "qbot_rwgps_route_get", {"route_id": "str"}, ["rwgps_api", "rwgps_cache"])
 _reader("rwgps_route_list", "rwgps", "qbot_rwgps_route_list", {"limit": "int"}, ["rwgps_api", "rwgps_cache"])
 _reader("rwgps_route_search", "rwgps", "qbot_rwgps_route_search", {"query": "str"}, ["rwgps_api", "rwgps_cache", "rwgps_manifest"])
-_reader("route_plan_analysis", "rwgps", "qbot_route_plan_analysis", {"artifact_id": "str", "route_id": "str", "start": "str", "speed_kmh": "int"}, ["route_frames", "route_frame_weather", "fitmodel_daily"])
+_reader("route_plan_analysis", "rwgps", "qbot_route_plan_analysis", {"artifact_id": "str", "route_id": "str", "start": "str", "speed_kmh": "int"}, ["route_axis_segments", "route_elevation_samples", "route_surface_layer", "fitmodel_daily"])
 _reader("ride_analysis", "rwgps", "qbot_ride_analysis", {"fit": "str", "ride": "str"}, ["ride_frames", "route_frames", "fit"])
 _reader("rwgps_export_links", "rwgps", "qbot_rwgps_route_export_links", {"route_id": "str"}, ["rwgps_api"])
 _reader("rwgps_export_file", "rwgps", "qbot_rwgps_route_export_file", {"route_id": "str", "format": "str", "return_mode": "str"}, ["rwgps_api", "filesystem"])

@@ -31,13 +31,16 @@ load_dotenv(Path(__file__).parent / ".env")
 DB_AVAILABLE = False
 
 
-def _spawn_route_precompute_worker(route_id: str) -> None:
+def _spawn_route_precompute_worker(route_id: str, *, trigger_source: str = "rwgps_webhook", await_confirmation: bool = False) -> None:
     import subprocess as _subprocess
     import sys as _sys
 
     _logf = open("/tmp/rwgps_precompute_" + route_id + ".log", "ab")
+    args = [_sys.executable, "/opt/qbot/app/scripts/route_precompute_trigger.py", route_id, "--trigger-source", trigger_source]
+    if await_confirmation:
+        args.append("--await-confirmation")
     _subprocess.Popen(
-        [_sys.executable, "/opt/qbot/app/scripts/route_precompute_trigger.py", route_id],
+        args,
         stdout=_logf,
         stderr=_subprocess.STDOUT,
         cwd="/opt/qbot/app",
@@ -1142,11 +1145,12 @@ async def q_endpoint(request: Request):
 
 @app.post("/rwgps-webhook/{webhook_secret}")
 async def rwgps_webhook(webhook_secret: str, request: Request, x_rwgps_signature: Optional[str] = Header(None)):
-    """RWGPS webhook (B3): route created/updated -> background surface enrichment.
+    """RWGPS webhook (B3): route created/updated -> confirmation prompt, then background analysis.
 
     Auth: path secret must equal QBOT_RWGPS_WEBHOOK_SECRET. If QBOT_RWGPS_API_CLIENT_SECRET
     is set and an x-rwgps-signature header is present, the HMAC-SHA256 of the raw body is
-    also verified. Responds 200 fast (<1s); enrichment runs in a detached worker process.
+    also verified. Responds 200 fast (<1s); the detached worker first asks Telegram for
+    confirmation and only then proceeds with canonical route precompute.
     """
     import hmac as _hmac
     import hashlib as _hashlib
@@ -1188,7 +1192,7 @@ async def rwgps_webhook(webhook_secret: str, request: Request, x_rwgps_signature
             continue
         seen.add(route_id)
         try:
-            _spawn_route_precompute_worker(route_id)
+            _spawn_route_precompute_worker(route_id, await_confirmation=True)
             spawned.append(route_id)
         except Exception:
             pass
