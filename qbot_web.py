@@ -7,6 +7,7 @@ from psycopg.rows import dict_row
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 
 WEB_ROOT = os.environ.get("QBOT_WEB_ROOT", "/opt/qbot/web/public")
 HOST = os.environ.get("QBOT_WEB_HOST", "0.0.0.0")
@@ -751,6 +752,103 @@ def route_segment_candidate(
         "confidence": confidence,
         "no_real_alternative": bool(still_risky),
     }
+
+
+
+import re as _re
+import html as _htmlmod
+
+
+def _kanon_inline(s: str) -> str:
+    s = _htmlmod.escape(s)
+    s = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s)
+    s = _re.sub(r"_(.+?)_", r"<em>\1</em>", s)
+    return s
+
+
+def _kanon_md_to_html(md: str) -> str:
+    lines = md.split("\n")
+    out, i, n = [], 0, len(md.split("\n"))
+
+    def is_row(l):
+        return l.strip().startswith("|")
+
+    def cells(row):
+        return [c.strip() for c in row.strip().strip("|").split("|")]
+
+    while i < n:
+        l = lines[i]
+        s = l.strip()
+        if is_row(l):
+            block = []
+            while i < n and is_row(lines[i]):
+                block.append(lines[i])
+                i += 1
+            header = cells(block[0])
+            data = block[1:]
+            if data:
+                probe = data[0].replace("|", "").replace(":", "").replace("-", "").replace(" ", "")
+                if probe == "":
+                    data = data[1:]
+            t = ["<table><thead><tr>"]
+            t += [f"<th>{_kanon_inline(c)}</th>" for c in header]
+            t.append("</tr></thead><tbody>")
+            for r in data:
+                t.append("<tr>" + "".join(f"<td>{_kanon_inline(c)}</td>" for c in cells(r)) + "</tr>")
+            t.append("</tbody></table>")
+            out.append("".join(t))
+            continue
+        if s.startswith("### "):
+            out.append(f"<h3>{_kanon_inline(s[4:])}</h3>"); i += 1; continue
+        if s.startswith("## "):
+            out.append(f"<h2>{_kanon_inline(s[3:])}</h2>"); i += 1; continue
+        if s.startswith("# "):
+            out.append(f"<h1>{_kanon_inline(s[2:])}</h1>"); i += 1; continue
+        if s.startswith("- "):
+            items = []
+            while i < n and lines[i].strip().startswith("- "):
+                items.append(f"<li>{_kanon_inline(lines[i].strip()[2:])}</li>"); i += 1
+            out.append("<ul>" + "".join(items) + "</ul>"); continue
+        if s == "":
+            i += 1; continue
+        out.append(f"<p>{_kanon_inline(s)}</p>"); i += 1
+    return "\n".join(out)
+
+
+_KANON_PAGE = """<!doctype html><html lang="pl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Raport kanoniczny __RID__</title>
+<style>
+:root{color-scheme:light dark}
+body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:920px;margin:0 auto;padding:16px;line-height:1.45}
+h1{font-size:1.5rem;border-bottom:2px solid #888;padding-bottom:6px}
+h2{font-size:1.15rem;margin-top:1.6em;border-bottom:1px solid #ccc;padding-bottom:3px}
+h3{font-size:1rem;margin-top:1.2em}
+table{border-collapse:collapse;width:100%;margin:10px 0;font-size:.9rem}
+th,td{border:1px solid #bbb;padding:5px 8px;text-align:left;vertical-align:top}
+th{background:rgba(128,128,128,.15)}
+tr:nth-child(even) td{background:rgba(128,128,128,.06)}
+em{opacity:.75;font-style:italic}
+ul{margin:.4em 0}
+.foot{margin-top:24px;font-size:.8rem;opacity:.6}
+</style></head><body>
+__BODY__
+<div class="foot">qbot-web · raport kanoniczny (WIP) · /kanon?route_id=__RID__&start=YYYY-MM-DD+HH:MM</div>
+</body></html>"""
+
+
+@app.get("/kanon", response_class=HTMLResponse)
+def kanon_report(route_id: str = Query(...), start: str | None = Query(None)):
+    for _k, _v in _env().items():
+        os.environ.setdefault(_k, _v)
+    try:
+        from qbot3.routes.route_report_canonical import build_canonical_report_v1
+        md = build_canonical_report_v1(route_id, start=start)
+    except Exception as exc:  # noqa: BLE001
+        md = f"# Blad\n\nNie udalo sie zbudowac raportu dla {route_id}: {exc}"
+    body = _kanon_md_to_html(md)
+    page = _KANON_PAGE.replace("__BODY__", body).replace("__RID__", str(route_id))
+    return HTMLResponse(page)
 
 
 app.mount("/", StaticFiles(directory=WEB_ROOT, html=True), name="static")
