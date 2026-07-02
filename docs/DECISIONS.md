@@ -738,3 +738,71 @@ Aktualizacja 2026-06-29: route surface writer ma quality gate w `tools/rwgps/cli
 - `qbot_route_report_tool`, `qbot_route_analysis_tool`, `route_weather`, WBGT toolchain, speed model i POI ETA/opening-hours evaluator dla `route_analysis_run`.
 
 **Zakaz dublowania:** Nie wolno pisać równoległego analyzera surface, land-cover, POI, weather, ETA/opening-hours ani raportu, jeśli istniejące narzędzie może zostać użyte jako źródło danych. Wyjątkiem jest tylko adapter/writer/orchestrator, który zapisuje wynik istniejącego toola do nowych tabel i pilnuje `route_version_key`.
+
+---
+
+## 2026-07-02 — Fix: koncowe powiadomienie Telegram po potwierdzeniu trasy (trigger_source)
+
+**Objaw:** po `NN TAK` (analiza #23, trasa 55930010 "Male Gosie") analiza wykonala sie
+poprawnie i dane trafily do DB (6 warstw complete), ale uzytkownik NIE dostal koncowego
+powiadomienia na Telegram. W `telegram_conversation_turns` brak zarowno
+`route_confirmation_final_notification_sent`, jak i `_failed`.
+
+**Przyczyna (root cause):** akcja oczekujaca `confirm_route_analysis` byla tworzona przez
+webhook RWGPS, ktory zapisywal w jej payloadzie `trigger_source="rwgps_webhook"`
+(`route_precompute_trigger._send_route_confirmation_prompt`, payload). Po potwierdzeniu
+bramka (`qbot_qcal_telegram._execute_writer`, galaz `confirm_route_analysis`) odczytywala
+ten payload i uruchamiala workera z `--trigger-source rwgps_webhook`. Worker liczyl
+poprawnie, ale koncowe powiadomienie ma gate: wysyla sie TYLKO dla
+`trigger_source == "telegram_confirm"` (`_send_route_confirmation_final_notification`),
+wiec bylo po cichu pomijane (`skipped: non_telegram_confirm_trigger`) — bez wpisu audytu.
+
+**Decyzja:** wykonanie akcji `confirm_route_analysis` jest z definicji potwierdzeniem z
+Telegrama, wiec w bramce wymuszamy na sztywno `trigger_source = "telegram_confirm"`
+(zamiast czytac z payloadu). Naprawia to rowniez akcje juz oczekujace z bledna etykieta.
+
+**Zmiany:** `qbot_qcal_telegram.py` (galaz `confirm_route_analysis`) + test regresyjny
+`tests/test_qbot_qcal_telegram.py::test_confirm_route_analysis_forces_telegram_confirm_trigger`
+(payload `rwgps_webhook` -> worker startuje z `telegram_confirm`). Testy: 12 + 17 zielone.
+
+**Wdrozenie:** wymaga restartu `qbot-api` (zmiana w gatewayu) — wykonany, usluga active.
+
+**Uwaga poboczna (do osobnego watku):** w `logs/telegram_reply.log` co ~2 min
+`409 Conflict` na `getUpdates` = dwoch konsumentow czyta Telegram naraz. Nie jest
+przyczyna tego buga (dotyczy odbioru, nie wysylki), ale warto rozdzielic.
+
+
+## 2026-07-02 — Raport kanoniczny trasy (V1): nowy wariant „kanon"
+
+**Co:** nowy moduł `qbot3/routes/route_report_canonical.py` (`build_canonical_report_v1`)
+— jeden, stały 10-sekcyjny układ raportu (makieta 1:1) budowany wyłącznie z żywych,
+strukturalnych źródeł. Podpięty jako NOWY wariant `route_report` = „kanon"
+(aliasy: kanon/kanoniczny/v2/nowy).
+
+**Warianty pełny/skrócony/grupa NIETKNIĘTE** — 64 testy `tests.test_route_report` przechodzą.
+
+**Źródła sekcji:** route_source (canonical_surface/elevation/poi_summary),
+route_surface_layer (highway/tracktype → reguła ryzyka), run_meteo_engine
+(WBGT/UTCI/opad/wiatr — tabela 30 min), estimate_route_time_v2, fitmodel_daily
+(FTP_est/W-kg/glikogen), route_poi_layer (zaopatrzenie + atrakcje),
+Nominatim reverse-geocode (gmina/powiat/województwo, cache).
+
+**Reguła ryzyka nawierzchni (potwierdzona 55798129, zaszyta w module):**
+highway=track z tracktype grade1-4 → NIE ryzyko; track bez tracktype / grade5 → ryzyko;
+piach → ryzyko. Tag OSM wygrywa nad wnioskowaniem. Zniknął heurystyczny szum
+„loose_surface_possible".
+
+**Atrakcje:** włączone per-trasa dla 55930010 (`route_poi_prefs.attractions_enabled=true`),
+POI przeliczone na żywo (161 pkt, w tym 39 atrakcji). Uwaga operacyjna: fetch POI
+wymaga klucza Google z `/etc/qbot/*.env` — standalone run bez tego env daje
+supply_status=UNAVAILABLE i degraduje warstwę; zawsze ładować `/etc/qbot/*.env`.
+
+**Nowe tabele:** `qbot_v2.route_admin_cache` (cache reverse-geocode gmina/powiat/woj.).
+
+**tool_registry NIEZMIENIONY** (kanon to wariant wewnątrz istniejącego route_report),
+więc twarda reguła „zmiana narzędzia = wpis w _SYSTEM" nie jest naruszona. Kanon
+CELOWO nie jest jeszcze w prompcie Alberta (WIP) — docelowo zastąpi „pełny" po
+osiągnięciu parytetu i przepisaniu asercji testów.
+
+**Świadomie zostawione do dopieszczenia:** gęstość sekcji 4 (strategia) — wierna
+trasie (Małe Gosie realnie przeplata asfalt z nieotagowanymi trackami).

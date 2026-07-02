@@ -30,11 +30,12 @@ _VARIANT_ALIASES = {
     "full": "pelny",
     "grupa": "grupa", "dla grupy": "grupa", "grupowy": "grupa",
     "group": "grupa", "znajomi": "grupa", "dla znajomych": "grupa",
+    "kanon": "kanon", "kanoniczny": "kanon", "v2": "kanon", "nowy": "kanon",
 }
 
 _RWGPS_URL = "https://ridewithgps.com/routes/{rid}"
 
-_VARIANT_TITLE = {"skrocony": "SKRÓCONY", "pelny": "PEŁNY", "grupa": "DLA GRUPY"}
+_VARIANT_TITLE = {"skrocony": "SKRÓCONY", "pelny": "PEŁNY", "grupa": "DLA GRUPY", "kanon": "KANONICZNY"}
 
 
 def _norm_variant(value: Any) -> str | None:
@@ -2756,6 +2757,18 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
         route_id = str(route_id).strip().split("/")[-1].split("?")[0] or None
     start = a.get("start")
     surface_detail = bool(a.get("surface_detail"))
+
+    if variant == "kanon":
+        if not route_id:
+            return {"status": "OK", "variant": "kanon",
+                    "analysis": "Podaj route_id dla raportu kanonicznego (variant=kanon)."}
+        try:
+            from qbot3.routes.route_report_canonical import build_canonical_report_v1
+            return {"status": "OK", "variant": "kanon",
+                    "analysis": build_canonical_report_v1(route_id, start=start)}
+        except Exception as exc:  # noqa: BLE001
+            return {"status": "OK", "variant": "kanon",
+                    "analysis": f"KANON raport blad: {str(exc)[:220]}"}
     route_source = _read_route_source(route_id)
     route_read_path = str((route_source or {}).get("read_path") or "legacy_fallback")
     route_fallback_reason = (route_source or {}).get("fallback_reason")
