@@ -1071,33 +1071,40 @@ def analyze_route_surface_json(**kwargs: Any) -> str:
 
 
 def legacy_surface_shape(result: dict[str, Any]) -> dict[str, Any]:
-    """Compatibility layer for existing analyze_rwgps_artifact_surface callers."""
+    """Presentation layer for analyze_rwgps_artifact_surface callers.
+
+    2026-07-02 decyzja: przestajemy okrajac segmenty. Wczesniej ta funkcja
+    budowala od nowa liste "segments" i po drodze gubila explanation, highway,
+    tracktype, smoothness, classification_source/classification_sources,
+    way_id, match_distance_m_avg/max, valhalla_snap_quality — pola, ktorych
+    kanoniczny writer (qbot3/routes/route_surface_store.py) potrzebuje do
+    route_surface_layer.surface_meta_json. Zbadano na zywo (trasy 55864231,
+    55918401): wszystkie zapisy przez ta funkcje mialy explanation=null dla
+    KAZDEGO segmentu, podczas gdy trasa policzona bezposrednio silnikiem
+    (bez tej funkcji) miala je wypelnione w 100%. Zaden realny odbiorca nie
+    czyta okrojonego ksztaltu segmentu — sprawdzono oba miejsca, ktore czytaja
+    wynik tej funkcji (diagnostyka dry-run w qbot3/tool_registry.py, test
+    scripts/qbot_smoke_tests.py::test_analyze_rwgps_artifact_surface) i obie
+    patrza tylko na pola zbiorcze (dominant_surface, surface_percentages,
+    confidence, matched_points), nigdy w segments[i].explanation/highway/itd.
+    Segmenty sa teraz przepuszczane w pelni (silnik + wzbogacenie ponizej),
+    zamiast byc budowane od nowa z okrojonym zestawem kluczy.
+    """
     if not result.get("ok"):
         return result
     segs = []
     for seg in result.get("segments") or []:
-        segs.append({
-            "surface": seg.get("surface_refined") or seg.get("surface_raw") or "unknown",
-            "confidence": seg.get("confidence"),
-            "distance_m": seg.get("distance_m"),
-            "source": seg.get("source"),
-            "start_lat": None,
-            "start_lon": None,
-            "end_lat": None,
-            "end_lon": None,
-            "km_from": seg.get("km_from"),
-            "km_to": seg.get("km_to"),
-            "surface_raw": seg.get("surface_raw"),
-            "method": seg.get("method"),
-            "geology_hint_applied": seg.get("geology_hint_applied"),
-            "geology_material_hint": seg.get("geology_material_hint"),
-            "risk_flags": seg.get("risk_flags"),
-            "warnings": seg.get("warnings"),
-        })
+        enriched = dict(seg)
+        enriched.setdefault("start_lat", None)
+        enriched.setdefault("start_lon", None)
+        enriched.setdefault("end_lat", None)
+        enriched.setdefault("end_lon", None)
+        enriched["surface"] = seg.get("surface_refined") or seg.get("surface_raw") or "unknown"
+        segs.append(enriched)
     out = dict(result)
     out.update({
         "status": "OK",
-        "source": "route_surface_engine_v1",
+        "source": "rwgps_artifact",
         "surface_percentages": result.get("surface_percentages_refined") or {},
         "dominant_surface": next(iter((result.get("surface_percentages_refined") or {"unknown": 100}).keys())),
         "segments": segs,
