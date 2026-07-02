@@ -23,11 +23,9 @@ import httpx
 from tools.rwgps.client import _resolve_artifact_for_summary, extract_artifact_points
 from tools.rwgps.geology_context import build_geology_context, risk_flags_for_segment
 
-try:
-    from tools.rwgps.surface_landcover import _fetch_landuse, landcover_for_point
-except Exception:  # pragma: no cover - import fallback only
-    _fetch_landuse = None
-    landcover_for_point = None
+# landcover-Overpass (surface_landcover) usuniety z silnika — audyt 2026-07-02
+# (martwy kod: refinement byl wylaczony po timeoutach; polygons zawsze puste).
+# Uszczelnianie odcinkow bez tagu -> osobny przebieg DB->DB (WorldCover).
 
 
 ENGINE_VERSION = "route_surface_engine_v1"
@@ -588,61 +586,13 @@ def _infer_from_tags(tags: dict[str, Any]) -> tuple[str, str, str, str]:
     return "unknown", "unknown", "no surface-relevant OSM tags", "unknown"
 
 
-def _landcover_label(lat: float, lon: float, polygons: list[dict[str, Any]]) -> str | None:
-    if not polygons or landcover_for_point is None:
-        return None
-    try:
-        pl = landcover_for_point(lat, lon, polygons)
-    except Exception:
-        return None
-    return {
-        "las": "forest",
-        "pola": "farmland",
-        "laki/zielen": "meadow",
-        "zabudowa": "residential",
-        "surowa": "bare",
-        "woda": "water",
-        "teren otwarty": "open",
-    }.get(str(pl), str(pl))
-
-
-def _refine_context(surface: str, confidence: str, tags: dict[str, Any], landcover: str | None, geology_hint: str) -> tuple[str, str, list[str], str, bool, str | None]:
-    highway = str(tags.get("highway") or "").strip().lower()
-    tracktype = str(tags.get("tracktype") or "").strip().lower()
-    refined = surface
-    risk_flags: list[str] = []
-    applied_geo = False
-    source_override: str | None = None
-    explanation = "kept OSM-derived surface"
-
-    if surface in {"unknown", "mixed"} or confidence in {"low", "very_low", "unknown"}:
-        if highway == "track" and landcover == "forest":
-            refined = "ground" if tracktype not in {"grade2", "grade3"} else surface
-            explanation = "surface missing/weak; forest track context suggests ground/compacted"
-            source_override = "inferred_landcover"
-        elif highway == "track" and landcover == "farmland":
-            refined = "ground"
-            explanation = "surface missing/weak; farmland track context suggests dirt/ground/grass"
-            source_override = "inferred_landcover"
-        elif highway == "service" and landcover in {"residential", "industrial"}:
-            refined = "asphalt"
-            explanation = "service road in built-up context is probably paved"
-            source_override = "inferred_service_default"
-        elif highway in {"path", "footway", "bridleway"} and landcover == "forest":
-            refined = "dirt"
-            explanation = "forest path context suggests dirt, with limited confidence"
-            source_override = "inferred_landcover"
-
-    if geology_hint in {"sand", "alluvial"} and refined in {"unknown", "ground", "dirt", "grass"}:
-        risk_flags.append("sand_possible")
-        applied_geo = True
-    elif geology_hint in {"clay"} and refined in {"unknown", "ground", "dirt"}:
-        risk_flags.append("mud_possible")
-        applied_geo = True
-    elif geology_hint in {"limestone", "sandstone", "granite", "volcanic"} and refined in {"unknown", "ground", "dirt", "gravel", "compacted"}:
-        risk_flags.append("stony_or_hardpack_possible")
-        applied_geo = True
-    return refined, explanation, risk_flags, "osm_tags_plus_landcover_plus_geology_hint" if applied_geo or landcover else "osm_tags", applied_geo, source_override
+def _refine_context(surface: str, confidence: str, tags: dict[str, Any], geology_hint: str) -> tuple[str, str, list[str], str, bool, str | None]:
+    # Audyt 2026-07-02 (decyzje 1-2): usunieto martwe galezie landcover (polygons
+    # zawsze puste -> landcover nigdy nie odpalal) oraz martwy blok geologii (tokeny
+    # "sand"/"clay"/... nie pasowaly do realnego material_hint). Flagi ryzyka
+    # geologicznego pochodza z risk_flags_for_segment w petli glownej. geology_hint
+    # zachowany w sygnaturze jako punkt rozszerzen. Obecnie: passthrough OSM-derived.
+    return surface, "kept OSM-derived surface", [], "osm_tags", False, None
 
 
 def _geology_context(samples: list[Sample], enabled: bool, warnings: list[str]) -> dict[str, Any]:
@@ -728,7 +678,6 @@ def _segment_from_run(run: list[dict[str, Any]], next_dist: float | None = None)
         "highway": first.get("highway"),
         "tracktype": first.get("tracktype"),
         "smoothness": first.get("smoothness"),
-        "landcover": first.get("landcover"),
         "geology_hint_applied": any(item.get("geology_hint_applied") for item in run),
         "geology_material_hint": geology_material_hint,
         "confidence": confidence,
@@ -907,7 +856,6 @@ def analyze_route_surface(
 
     dists = _cumulative_distances(points)
     samples = _sample_track(points, dists, sample_distance_m)
-    landcover_used = False
     valhalla_info = _maybe_valhalla_refinement(samples, use_valhalla, warnings)
     geology = _geology_context(samples, use_geology_context, warnings)
     geology_hint = str(geology.get("material_hint") or "unknown")
@@ -919,10 +867,6 @@ def analyze_route_surface(
     if not ways:
         warnings.append("primary corridor returned no highways; trying fallback 80 m corridor")
         ways = _fetch_highways_along_track(samples, FALLBACK_CORRIDOR_RADIUS_M, warnings, overpass_metrics, overpass_probe)
-
-    polygons: list[dict[str, Any]] = []
-    if use_landcover and _fetch_landuse is not None:
-        warnings.append("landcover network refinement disabled in phase 1 after timeout tests; chunked landcover cache needed")
 
     sample_rows: list[dict[str, Any]] = []
     for sample in samples:
@@ -949,10 +893,7 @@ def analyze_route_surface(
             explanation = tag_expl
             method = "osm_tags"
 
-        landcover = _landcover_label(sample.lat, sample.lon, polygons) if polygons else None
-        if landcover:
-            landcover_used = True
-        refined, context_expl, risk_flags, method2, geo_applied, source_override = _refine_context(inferred, confidence, tags, landcover, geology_hint)
+        refined, context_expl, risk_flags, method2, geo_applied, source_override = _refine_context(inferred, confidence, tags, geology_hint)
         if context_expl != "kept OSM-derived surface":
             explanation = f"{explanation}; {context_expl}"
             method = method2
@@ -986,7 +927,6 @@ def analyze_route_surface(
             "highway": tags.get("highway"),
             "tracktype": tags.get("tracktype"),
             "smoothness": tags.get("smoothness"),
-            "landcover": landcover,
             "confidence": confidence,
             "source": source,
             "classification_source": classification_source,
@@ -1054,7 +994,6 @@ def analyze_route_surface(
         "geology_context": geology,
         "segments": segments,
         "valhalla": valhalla_info,
-        "landcover_used": landcover_used,
         "warnings": warnings,
         "cache_hit": False,
         "cache_path": str(cache_path),
