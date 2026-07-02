@@ -38,10 +38,10 @@ class TestRoutePrecomputeOrchestrator(unittest.TestCase):
         self.assertEqual(first["route_base_id"], 1)
         self.assertEqual(first["route_artifact_id"], 306)
         self.assertEqual(first["route_version_key"], second["route_version_key"])
-        self.assertEqual(first["job_count"], 4)
-        self.assertEqual(second["job_count"], 4)
+        self.assertEqual(first["job_count"], 3)
+        self.assertEqual(second["job_count"], 3)
 
-        for job_type in ("route_base", "route_surface", "route_landcover", "route_poi"):
+        for job_type in ("route_base", "route_surface", "route_poi"):
             self.assertIn(job_type, first["jobs"])
             self.assertIn(job_type, second["jobs"])
             self.assertEqual(first["jobs"][job_type]["status"], "completed")
@@ -51,7 +51,6 @@ class TestRoutePrecomputeOrchestrator(unittest.TestCase):
 
         self.assertEqual(first["jobs"]["route_base"]["job_result"]["route_axis_segments_count"], second["jobs"]["route_base"]["job_result"]["route_axis_segments_count"])
         self.assertEqual(first["jobs"]["route_surface"]["job_result"]["surface_layer_count"], second["jobs"]["route_surface"]["job_result"]["surface_layer_count"])
-        self.assertEqual(first["jobs"]["route_landcover"]["job_result"]["landcover_layer_count"], second["jobs"]["route_landcover"]["job_result"]["landcover_layer_count"])
         self.assertEqual(first["jobs"]["route_poi"]["job_result"]["poi_layer_count"], second["jobs"]["route_poi"]["job_result"]["poi_layer_count"])
 
         with _db_conn() as conn:
@@ -73,12 +72,6 @@ class TestRoutePrecomputeOrchestrator(unittest.TestCase):
             ).fetchone()["c"]
             self.assertEqual(int(surface_count), 76)
 
-            landcover_count = conn.execute(
-                "SELECT count(*) AS c FROM qbot_v2.route_landcover_layer WHERE route_base_id = %s",
-                (1,),
-            ).fetchone()["c"]
-            self.assertEqual(int(landcover_count), 890)
-
             poi_count = conn.execute(
                 "SELECT count(*) AS c FROM qbot_v2.route_poi_layer WHERE route_base_id = %s",
                 (1,),
@@ -94,7 +87,7 @@ class TestRoutePrecomputeOrchestrator(unittest.TestCase):
                 """,
                 (first["route_version_key"],),
             ).fetchall()
-            self.assertEqual({row["job_type"] for row in job_rows}, {"route_base", "route_surface", "route_landcover", "route_poi"})
+            self.assertEqual({row["job_type"] for row in job_rows}, {"route_base", "route_surface", "route_poi"})
             self.assertTrue(all(row["status"] == "complete" for row in job_rows))
             self.assertTrue(all(row["display_status"] == "completed" for row in job_rows))
 

@@ -46,10 +46,11 @@ class _DummyRequest:
 
 class TestRoutePrecomputeTrigger(unittest.TestCase):
     def test_precompute_complete_tracks_active_job_types(self) -> None:
+        # route_landcover usuniety 2026-07-02 (zastapiony przez route_shade/WorldCover).
+        # Baza sekwencja: base + surface + poi.
         rows_4 = [
             {"job_type": "route_base", "status": "complete"},
             {"job_type": "route_surface", "status": "complete"},
-            {"job_type": "route_landcover", "status": "complete"},
             {"job_type": "route_poi", "status": "complete"},
         ]
         rows_5 = rows_4 + [{"job_type": "route_shade", "status": "complete"}]

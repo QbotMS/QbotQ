@@ -99,11 +99,6 @@ class TestRoutePoiStore(unittest.TestCase):
             ).fetchone()["c"]
             self.assertEqual(int(surface_count), 76)
 
-            landcover_count = conn.execute(
-                "SELECT count(*) AS c FROM qbot_v2.route_landcover_layer WHERE route_base_id = %s",
-                (1,),
-            ).fetchone()["c"]
-            self.assertEqual(int(landcover_count), 890)
             conn.commit()
         finally:
             conn.close()

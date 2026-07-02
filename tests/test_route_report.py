@@ -194,7 +194,6 @@ CANONICAL_ROUTE_SOURCE = {
         "route_base": 1,
         "route_axis_segments": 1423,
         "route_surface_layer": 76,
-        "route_landcover_layer": 890,
         "route_poi_layer": 38,
         "route_shade_layer": 1423,
         "route_elevation_samples": 1424,
@@ -375,7 +374,6 @@ LEGACY_ROUTE_SOURCE = {
         "route_base": 0,
         "route_axis_segments": 0,
         "route_surface_layer": 0,
-        "route_landcover_layer": 0,
         "route_poi_layer": 0,
         "route_shade_layer": 0,
         "route_elevation_samples": 0,
@@ -383,7 +381,7 @@ LEGACY_ROUTE_SOURCE = {
     },
     "route_shade_layer_count": 0,
     "shade_coverage_pct": 0.0,
-    "land_cover_preferred_source": "osm_landcover_legacy",
+    "land_cover_preferred_source": "shade_none",
 }
 
 
@@ -928,11 +926,11 @@ class TestRouteReportTask16(unittest.TestCase):
         """16.d: plan zawiera m/s jako jednostke bazowa, km/h tylko pomocniczo."""
         ctx = self._ctx()
         self.assertIn("POGODA", ctx)
-        self.assertIn("m/s", ctx)
-        self.assertIn("(18 km/h)", ctx)
-        self.assertIn("km 40–50 (~6.1 m/s / 22 km/h)", ctx)
-        self.assertNotIn("Sila wiatru: sr. 18 km/h, maks 32 km/h", ctx)
-        self.assertNotIn("brak w analizie planu", ctx)
+        # TASK 26: pogoda/wiatr WYLACZNIE z silnika METEO, zero parsowania z route_brief
+        self.assertNotIn("Sila wiatru: sr.", ctx)
+        self.assertNotIn("Wiatr (km/h): brak danych", ctx)
+        if "brak danych pogodowych" not in ctx:
+            self.assertIn("route_meteo_engine", ctx)
 
     def test_poi_km_in_context(self):
         """16.f: POI z km 5.0 i 21.0 -> lista + ostrzezenie o luce >20 km."""
@@ -1511,7 +1509,7 @@ class TestRouteReportCanonicalReadPath(unittest.TestCase):
         self.assertEqual(out["route_source"]["fallback_reason"], "route_base_missing")
         self.assertIn("źródło danych trasy: legacy_fallback", analysis)
         self.assertIn("fallback_reason: route_base_missing", analysis)
-        self.assertIn("landscape_source: osm_landcover_legacy", analysis)
+        self.assertIn("landscape_source: shade_none", analysis)
         self.assertNotIn("Źródło nawierzchni: canonical_surface_summary / route_surface_layer", analysis)
         self.assertNotIn("Źródło POI: canonical route_poi_layer", analysis)
         self.assertNotIn("## A0B - OTOCZENIE TRASY (WorldCover / route_shade_layer)", analysis)

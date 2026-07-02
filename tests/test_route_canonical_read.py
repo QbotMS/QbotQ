@@ -264,7 +264,6 @@ class TestRouteCanonicalRead(unittest.TestCase):
         self.assertEqual(first["layer_counts"]["route_base"], 1)
         self.assertEqual(first["layer_counts"]["route_axis_segments"], 1423)
         self.assertEqual(first["layer_counts"]["route_surface_layer"], 76)
-        self.assertEqual(first["layer_counts"]["route_landcover_layer"], 890)
         self.assertEqual(first["layer_counts"]["route_poi_layer"], 38)
         self.assertEqual(first["layer_counts"]["route_elevation_samples"], 1424)
         self.assertEqual(first["layer_counts"]["route_climb_events"], 1)
@@ -314,7 +313,6 @@ class TestRouteCanonicalRead(unittest.TestCase):
 
         self.assertEqual(len(first["layers"]["route_axis_segments"]), 1423)
         self.assertEqual(len(first["layers"]["route_surface_layer"]), 76)
-        self.assertEqual(len(first["layers"]["route_landcover_layer"]), 890)
         self.assertEqual(len(first["layers"]["route_poi_layer"]), 38)
         self.assertEqual(len(first["layers"]["route_elevation_samples"]), 1424)
         self.assertEqual(len(first["layers"]["route_climb_events"]), 1)

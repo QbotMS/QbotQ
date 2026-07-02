@@ -1844,13 +1844,6 @@ def _parse_surface_segments(text: str | None) -> list[tuple[float, float, float,
     return segs[:5]
 
 
-def _extract_wind(text: str | None) -> list[str]:
-    """Bloki pod wiatr / w plecy z analizy planu (A4) - linie zawierajace 'wiatr'."""
-    if not text:
-        return []
-    return [ln.strip() for ln in text.splitlines() if "wiatr" in ln.lower()]
-
-
 def _parse_fuel_rates(text: str | None) -> tuple[str | None, str | None]:
     """Zywienie g/h i L/h z B2/B3. Zwraca (np. '60 g/h', '0.85 L/h')."""
     if not text:
@@ -1858,17 +1851,6 @@ def _parse_fuel_rates(text: str | None) -> tuple[str | None, str | None]:
     g = re.search(r"(\d+(?:\.\d+)?)\s*g/h", text)
     l = re.search(r"(\d+(?:\.\d+)?)\s*[lL]/h", text)
     return (g.group(0) if g else None, l.group(0) if l else None)
-
-
-def _parse_wind_speed_kmh(text):
-    """Wyciaga linie 'Sila wiatru: sr. X km/h, maks Y km/h' z tekstu briefu."""
-    if not text:
-        return None
-    for ln in text.splitlines():
-        ls = ln.strip()
-        if ls.lower().startswith("sila wiatru:"):
-            return ls
-    return None
 
 
 # ── TASK 12:
@@ -1949,20 +1931,6 @@ def _merge_surface_text(prof_txt: str | None, min_km: float = 0.3) -> str | None
     else:
         new_block.append("  brak odcinkow >= progu po scaleniu / dane niedostepne")
     return "\n".join(lines[:start] + new_block + lines[end:])
-
-
-def _parse_wind_head_blocks(plan_txt: str | None) -> list[tuple[float, float]]:
-    """Bloki pod wiatr z analizy planu (A4): linia '... Pod wiatr ...: km 10-20; km 35-40'."""
-    if not plan_txt:
-        return []
-    blocks: list[tuple[float, float]] = []
-    for line in plan_txt.splitlines():
-        if "Pod wiatr" not in line:
-            continue
-        after = line.split(":", 1)[1] if ":" in line else line
-        for m in re.finditer(r"(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)", after):
-            blocks.append((float(m.group(1)), float(m.group(2))))
-    return blocks
 
 
 def _read_poi_positions_cache(route_id, start=None):
@@ -2312,7 +2280,58 @@ def _build_risk_table(blocks):
     return "\n".join(lines)
 
 
-def _build_context_document(plan, prof, t, fuel, tp, poi, wellness, start, route_id=None) -> str:
+def _meteo_wind_blocks(meteo_result, thr: float = 1.5, min_km: float = 1.0):
+    """Bloki 'pod wiatr' z wyniku METEO (per_segment.wind_tail_ms < 0 = czolo).
+    JEDYNE zrodlo wiatru w raporcie (TASK 26) - zero parsowania z tekstu route_brief.
+    Zwraca:
+      head_km:  [(km_a, km_b), ...]                     -> _build_risk_combinations
+      head_kmh: [(km_a, km_b, wind_ms, wind_kmh), ...]  -> _detect_blocks
+    wind_ms = srednia sila wiatru otoczenia = hypot(tail, cross) po segmentach bloku."""
+    import math
+    if not isinstance(meteo_result, dict):
+        return [], []
+    ps = meteo_result.get("per_segment") if isinstance(meteo_result.get("per_segment"), list) else []
+    segs = []
+    for s in ps:
+        if not isinstance(s, dict):
+            continue
+        tail = s.get("wind_tail_ms")
+        if tail is None:
+            continue
+        try:
+            km = float(s.get("km"))
+            tail = float(tail)
+        except (TypeError, ValueError):
+            continue
+        cross = s.get("wind_cross_ms") or 0.0
+        try:
+            amb = math.hypot(tail, float(cross))
+        except (TypeError, ValueError):
+            amb = abs(tail)
+        segs.append((km, tail, amb))
+    segs.sort(key=lambda x: x[0])
+    runs = []
+    cur = []
+    for km, tail, amb in segs:
+        if tail <= -thr:
+            cur.append((km, tail, amb))
+        elif cur:
+            runs.append(cur)
+            cur = []
+    if cur:
+        runs.append(cur)
+    head_km, head_kmh = [], []
+    for r in runs:
+        a, b = r[0][0], r[-1][0]
+        if (b - a) < min_km:
+            continue
+        amb_avg = sum(x[2] for x in r) / len(r)
+        head_km.append((round(a, 1), round(b, 1)))
+        head_kmh.append((round(a, 1), round(b, 1), round(amb_avg, 1), round(amb_avg * 3.6)))
+    return head_km, head_kmh
+
+
+def _build_context_document(plan, prof, t, fuel, tp, poi, wellness, start, route_id=None, meteo_result=None) -> str:
     """TASK 12: jeden ustrukturyzowany dokument kontekstowy dla Alberta.
     Sekcje osobiste (FORMA/SPRZET/B2B3) pojawiaja sie tylko gdy podano ich dane
     (wellness/tp/fuel) - dla wariantu 'grupa' sa None i sa pomijane."""
@@ -2376,23 +2395,24 @@ def _build_context_document(plan, prof, t, fuel, tp, poi, wellness, start, route
         out.append(f"⚠️ UWAGA: brak danych nawierzchni na całej trasie (km 0–{dist_km:g})")
     out.append("")
 
+    # temp/precip zostaja tylko dla _infer_unknown_surface (heurystyka nawierzchni, nie pogoda)
     temp_c = _parse_temp_c(plan_txt)
     precip_mm = _parse_precip_mm(plan_txt)
+    # POGODA i WIATR: jedyne zrodlo = silnik METEO (TASK 26). Zero parsowania z route_brief.
+    _mwind_head, _mwind_kmh = _meteo_wind_blocks(meteo_result)
     out.append("### POGODA")
-    if temp_c is not None:
-        out.append(f"- Temperatura: ~{temp_c:.0f}°C")
-    if precip_mm is not None:
-        out.append(f"- Opady: ~{precip_mm:.1f} mm na trasie")
-    wind_lines = [ln.strip() for ln in (plan_txt or "").splitlines() if "wiatr" in ln.lower()]
-    for wl in wind_lines:
-        out.append(f"- {wl}")
-    wind_kmh = _parse_wind_speed_kmh(plan_txt)
-    if wind_kmh:
-        out.append(f"- {wind_kmh}")
+    if isinstance(meteo_result, dict) and meteo_result.get("status") == "OK":
+        _peak = meteo_result.get("peak") if isinstance(meteo_result.get("peak"), dict) else {}
+        if isinstance(_peak, dict) and _peak.get("wbgt_eff") is not None:
+            out.append(f"- WBGT szczyt: {_peak.get('wbgt_eff')}°C (km {_peak.get('km')}, {_peak.get('eta')})")
+        for _bit in _meteo_summary_bits(meteo_result):
+            out.append(f"- {_bit}")
+        if _mwind_head:
+            _wtxt = "; ".join(f"km {a:g}–{b:g}" for a, b in _mwind_head)
+            out.append(f"- pod wiatr: {_wtxt}")
+        out.append("- źrodlo pogody: route_meteo_engine (Open-Meteo, os 50 m)")
     else:
-        out.append("- Wiatr (km/h): brak danych")
-    if temp_c is None and precip_mm is None and not wind_lines:
-        out.append("- brak danych pogodowych")
+        out.append("- brak danych pogodowych (METEO nieuruchomione)")
     out.append("")
 
     if wellness:
@@ -2451,7 +2471,7 @@ def _build_context_document(plan, prof, t, fuel, tp, poi, wellness, start, route
     out.append("")
 
     out.append("### KOMBINACJE RYZYK")
-    wind_blocks = _parse_wind_head_blocks(plan_txt)
+    wind_blocks = _mwind_head
     poi_km_list = [k for k, _ in poi_pts]
     combos = _build_risk_combinations(all_segs, wind_blocks, poi_km_list, dist_km)
     if combos:
@@ -2472,7 +2492,7 @@ def _build_context_document(plan, prof, t, fuel, tp, poi, wellness, start, route
     _blocks17: list = []
     _ftp17 = _parse_ftp_w(plan_txt)
     _climbs17 = _parse_climbs_from_text(prof_txt)
-    _wind17 = _parse_wind_blocks_with_kmh(plan_txt)
+    _wind17 = _mwind_kmh
     _has_wavy17 = "Falistosc:" in (prof_txt or "") and "brak odcinkow" not in (prof_txt or "")
     if dist_km:
         _blocks17 = _detect_blocks(merged, _climbs17, _wind17, dist_km)
@@ -2559,12 +2579,14 @@ def _build_section_c_brief(sections_data: dict[str, Any] | None) -> str:
         out.append("NAWIERZCHNIA: brak odcinkow off-road >1 km w profilu.")
     out.append("")
 
-    winds = _extract_wind(plan_txt)
-    if winds:
-        out.append("WIATR (bloki z planu):")
-        out.extend(f"- {w}" for w in winds)
+    # TASK 26: wiatr z silnika METEO (sections_data["meteo"]), nie z tekstu route_brief
+    _mres = (sd.get("meteo") or {}).get("result") if isinstance(sd.get("meteo"), dict) else None
+    _mhead, _ = _meteo_wind_blocks(_mres)
+    if _mhead:
+        out.append("WIATR - pod wiatr (METEO):")
+        out.extend(f"- km {a:g}–{b:g}" for a, b in _mhead)
     else:
-        out.append("WIATR: brak wyroznionych blokow wiatru w planie.")
+        out.append("WIATR: brak istotnych blokow pod wiatr (METEO).")
     out.append("")
 
     dur = _parse_duration_h(t_txt)
@@ -2653,7 +2675,7 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
         layer_counts = route_source.get("layer_counts") or {}
         if isinstance(layer_counts, dict):
             summary_bits = []
-            for key in ("route_surface_layer", "route_landcover_layer", "route_poi_layer", "route_shade_layer", "route_elevation_samples", "route_climb_events"):
+            for key in ("route_surface_layer", "route_poi_layer", "route_shade_layer", "route_elevation_samples", "route_climb_events"):
                 value = layer_counts.get(key)
                 if value is not None:
                     summary_bits.append(f"{key}={value}")
@@ -2904,6 +2926,7 @@ def _tool_route_report(args: dict[str, Any] | None = None) -> dict[str, Any]:
         collected.get("plan"), collected.get("prof"), collected.get("t"),
         collected.get("fuel"), collected.get("tp"), collected.get("poi"),
         collected.get("forma"), start, route_id=route_id,
+        meteo_result=(collected.get("meteo") or {}).get("result"),
     )
     # DOKUMENT KONTEKSTOWY nie idzie do widocznego raportu — tylko do context_for_section_c.
     # ---- C: ocena (sam naglowek; tresc C dopisuje Albert deterministycznie w albert.py) ----

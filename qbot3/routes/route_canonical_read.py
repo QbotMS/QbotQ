@@ -6,7 +6,8 @@ fallback without re-computing anything.
 
 Warstwa otoczenia (route_shade_layer, ESA WorldCover) czytana jest ADDITIVELY — nie wchodzi do
 bramki canonical/fallback. Pole land_cover_preferred_source mowi konsumentowi: 'worldcover_shade'
-gdy jest pokrycie, inaczej 'osm_landcover_legacy'. Dokumentacja: docs/PROJEKT_OTOCZENIE.md
+gdy jest pokrycie, inaczej 'shade_none'. Legacy warstwa route_landcover_layer (OSM land-cover)
+usunieta 2026-07-02 — zastapiona przez WorldCover/shade. Dokumentacja: docs/PROJEKT_OTOCZENIE.md
 """
 
 from __future__ import annotations
@@ -25,7 +26,6 @@ _CANONICAL_LAYER_ORDER = (
     "route_base",
     "route_axis_segments",
     "route_surface_layer",
-    "route_landcover_layer",
     "route_poi_layer",
     "route_elevation_samples",
     "route_climb_events",
@@ -181,32 +181,6 @@ def _surface_rows(conn, route_base_id: int) -> list[dict[str, Any]]:
             created_at,
             updated_at
         FROM qbot_v2.route_surface_layer
-        WHERE route_base_id = %s
-        ORDER BY segment_index
-        """,
-        (route_base_id,),
-    )
-
-
-def _landcover_rows(conn, route_base_id: int) -> list[dict[str, Any]]:
-    return _fetch_many(
-        conn,
-        """
-        SELECT
-            segment_index,
-            landuse,
-            osm_natural,
-            forest_wood_context,
-            building_context,
-            water_context,
-            source,
-            confidence,
-            coverage_status,
-            fetched_at,
-            landcover_meta_json,
-            created_at,
-            updated_at
-        FROM qbot_v2.route_landcover_layer
         WHERE route_base_id = %s
         ORDER BY segment_index
         """,
@@ -858,7 +832,6 @@ def read_canonical_route(
             "route_base": base,
             "route_axis_segments": _axis_rows(conn, rb_id),
             "route_surface_layer": _surface_rows(conn, rb_id),
-            "route_landcover_layer": _landcover_rows(conn, rb_id),
             "route_shade_layer": _shade_rows(conn, rb_id),
             "route_poi_layer": _poi_rows(conn, rb_id),
             "route_elevation_samples": _elevation_rows(conn, rb_id),
@@ -875,8 +848,9 @@ def read_canonical_route(
         shade_rows = layers.get("route_shade_layer", [])
         shade_n = len(shade_rows)
         shade_cov = sum(1 for r in shade_rows if r.get("coverage_status") in ("ok", "partial"))
-        # Otoczenie: preferuj WorldCover (route_shade_layer) gdy jest pokrycie; inaczej OSM land-cover (legacy).
-        land_cover_preferred_source = "worldcover_shade" if shade_cov > 0 else "osm_landcover_legacy"
+        # Otoczenie: WorldCover (route_shade_layer). Legacy OSM land-cover (route_landcover_layer)
+        # usuniety 2026-07-02 — zastapiony przez WorldCover; przy braku pokrycia zwracamy shade_none.
+        land_cover_preferred_source = "worldcover_shade" if shade_cov > 0 else "shade_none"
         read_path = "canonical" if not missing else "legacy_fallback"
         fallback_reason = None if not missing else f"missing_canonical_layers:{','.join(missing)}"
 

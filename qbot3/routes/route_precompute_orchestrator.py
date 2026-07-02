@@ -18,7 +18,6 @@ import psycopg
 from psycopg.rows import dict_row
 
 from qbot3.routes.route_base_store import ensure_route_base
-from qbot3.routes.route_landcover_store import ensure_route_landcover
 from qbot3.routes.route_poi_store import ensure_route_poi
 from qbot3.routes.route_surface_store import ensure_route_surface
 from qbot3.routes.route_shade_store import ensure_route_shade
@@ -29,9 +28,9 @@ from qbot3.routes.route_elevation_store import ensure_route_elevation
 JOB_SEQUENCE: tuple[tuple[str, Callable[..., dict[str, Any]], str], ...] = (
     ("route_base", ensure_route_base, "route_axis_segments_count"),
     ("route_surface", ensure_route_surface, "surface_layer_count"),
-    ("route_landcover", ensure_route_landcover, "landcover_layer_count"),
     ("route_poi", ensure_route_poi, "poi_layer_count"),
 )
+# route_landcover (OSM land-cover) usuniety 2026-07-02 — zastapiony przez route_shade (WorldCover).
 
 
 # Faza 2C: punkt rozszerzenia na elevation/climb. DOMYSLNIE WYLACZONY.

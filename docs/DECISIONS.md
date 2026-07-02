@@ -5,6 +5,25 @@
 
 ---
 
+## 2026-07-02 — DECYZJA: usuniecie warstwy route_landcover_layer (OSM land-cover) — zastapiona przez WorldCover/shade
+
+**Status:** wdrozone. Kod usuniety, tabela qbot_v2.route_landcover_layer ZOSTAJE (usuniemy przy pelnym przeliczaniu wszystkich tras).
+
+**Powod:** route_landcover_layer (OSM land-use przez Overpass) i route_shade_layer (ESA WorldCover, lewo/srodek/prawo od osi) opisuja to samo — otoczenie trasy. WorldCover wygral: dokladniejszy, aktualny, uzywany w raporcie (sekcja A0B). Legacy landcover trafial do raportu WYLACZNIE jako liczba w liczniku warstw, zadna jego tresc nie byla renderowana. Dodatkowo jego job pobieral z Overpass ~48 s przy kazdym przeliczeniu trasy (zbadano na zywo, trasa 55864231: landcover job 23:06:45->23:07:33). Decyzja uzytkownika: nie zostawiac martwych warstw ("za tydzien znow bedziemy analizowac co to jest").
+
+**Co usunieto:**
+- qbot3/routes/route_landcover_store.py (writer) + tests/test_route_landcover_store.py — pliki skasowane.
+- route_precompute_orchestrator.py: route_landcover usuniety z JOB_SEQUENCE (+ import). Sekwencja bazowa: route_base, route_surface, route_poi (+ opcjonalnie route_shade, route_elevation za bramkami).
+- route_canonical_read.py: route_landcover_layer usuniety z _CANONICAL_LAYER_ORDER (bramka kompletnosci) i z budowanego slownika layers; funkcja _landcover_rows skasowana.
+- qbot_route_report_tool.py: route_landcover_layer usuniety z licznika warstw A0.
+- Testy zaktualizowane: test_route_report, test_route_precompute_trigger, test_route_precompute_orchestrator, test_route_canonical_read, test_route_poi_store.
+
+**Zmiana kontraktu land_cover_preferred_source:** wczesniej "worldcover_shade" gdy pokrycie shade, inaczej "osm_landcover_legacy". Po usunieciu legacy: "worldcover_shade" gdy pokrycie, inaczej "shade_none". Raport renderuje te wartosc verbatim (landscape_source: ...).
+
+**Granica (wazne):** to NIE dotyczy landcover jako kontekstu WEWNATRZ silnika nawierzchni (route_surface_engine._refine_context uzywa landcover/geologii do wnioskowania surface na odcinkach bez tagu OSM). To osobna logika w pamieci, nietknieta. Usunieta zostala tylko osobna, materializowana warstwa-tabela route_landcover_layer.
+
+---
+
 ## 2026-07-01 — DECYZJA: route store — wersjonowanie, retencja (keep=3), purge i narzedzia tras Alberta (list/recompute/delete)
 
 **Status:** wdrozone i zweryfikowane na zywo. Pelna dok.: docs/ROUTE_STORE.md.
