@@ -5,6 +5,24 @@
 
 ---
 
+## 2026-07-02 — DECYZJA: zasilanie route_poi_layer ZAWSZE na zywo; usuniety przeciek czytania cudzych plikow z dysku + mechanizm 14-dni
+
+**Status:** wdrozone i zweryfikowane (import OK, funkcja/stala usuniete, testy zielone: test_route_poi_store, test_poi_open_window, test_route_report 64).
+
+**Problem (przeciek granicy):** ensure_route_poi (writer warstwy route_poi_layer, krok 3 — telegram_confirm/precompute) mial funkcje _cached_route_poi_analysis, ktora ZANIM zapytala Google/OSM, przeszukiwala /opt/qbot/artifacts/reports/ (i /old/reports/) po plikach poi_analysis_<route_id>_*.json i podnosila najnowszy pasujacy PO SAMYM NUMERZE TRASY. To lamie zasade granicy: writer bazy wolno zasilac WYLACZNIE z jego wlasciwego zrodla (tu: Google Places + Overpass na zywo, przez analyze_route_poi_artifact), nigdy z cudzych, niekontrolowanych artefaktow lezacych we wspolnym folderze raportow. Zbadano na zywo (trasa 55864231): job route_poi w precompute trwal 71 ms (odczyt pliku), nie kilka-kilkanascie s (realny fetch) — dowod, ze krok 3 recyklingowal plik z 2026-06-30 zamiast pobrac swieze dane. Plik mial nawet metke project_id="tuscany_2026" (inny projekt).
+
+**Zasada (doprecyzowana wczesniej z uzytkownikiem):** autorytet zrodla jest PER WARSTWA. Kazde dziecko trasy wolno zasilac tylko z jego zadeklarowanego zrodla — zewnetrzne API (Overpass/Google/opentopodata) ALBO wewnetrzne narzedzie QBot na lokalnych kaflach (WorldCover). Lokalny cache Overpass w analyze_route_poi_artifact (_geofabrik_cache_candidates, /artifacts/overpass_cache) jest DOZWOLONY — to wewnetrzne zrodlo warstwy, nie cudzy raport. Zakazane bylo tylko podnoszenie gotowych poi_analysis_*.json z /artifacts/reports.
+
+**Co zrobiono w qbot3/routes/route_poi_store.py:**
+- Usunieto funkcje _cached_route_poi_analysis w calosci.
+- ensure_route_poi ZAWSZE wola analyze_route_poi_artifact (zywe Google+Overpass) -> route_poi_layer. fetched_at = moment tego pobrania (uczciwe; wczesniej bywalo klamstwem "teraz" nad starym plikiem).
+- Usunieto stala POI_CACHE_MAX_AGE_DAYS=14 i cala logike auto-refresh po 14 dniach (cofniete z commita 3ded59b). Powod: auto-odswiezanie po cichu generowaloby platne zapytania Google przy samym otwarciu starego raportu, bez wiedzy uzytkownika. Odswiezenie ma byc JAWNA decyzja uzytkownika (route_recompute), a raport ma pokazywac date danych POI.
+- Zostawiono status="stale" per punkt (_stale_after_for_item, timedelta) jako uczciwy znacznik wieku pojedynczego POI.
+
+**Zwiazane / do zrobienia:** (krok 5) raport route_report nadal czyta POI bezposrednio z pliku (_read_poi_analysis_cache) zamiast z route_poi_layer — osobny przeciek tej samej granicy, do naprawy w nastepnej kolejnosci. Pytanie otwarte: czy route_recompute umie zawezic zakres do samego POI.
+
+---
+
 ## 2026-07-02 — DECYZJA: usuniecie warstwy route_landcover_layer (OSM land-cover) — zastapiona przez WorldCover/shade
 
 **Status:** wdrozone. Kod usuniety, tabela qbot_v2.route_landcover_layer ZOSTAJE (usuniemy przy pelnym przeliczaniu wszystkich tras).

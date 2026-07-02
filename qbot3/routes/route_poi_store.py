@@ -23,11 +23,6 @@ from qbot3.artifacts.route_analyzer import analyze_route_poi_artifact
 
 ARTIFACTS_ROOT = Path("/opt/qbot/artifacts")
 
-# Najciasniejszy TTL wsrod dostawcow (google_places=14 dni, patrz _stale_after_for_item).
-# Cache starszy niz to NIE jest juz uzywany biernie — ensure_route_poi wymusza
-# swiezy fetch zamiast go przepisywac z falszywa data "teraz".
-POI_CACHE_MAX_AGE_DAYS = 14
-
 
 def _db_conn():
     return psycopg.connect(
@@ -104,43 +99,6 @@ def _resolve_source_path(route_base: dict[str, Any], conn) -> Path:
                     return candidate
 
     raise FileNotFoundError(f"Could not resolve source GPX for route_base_id={route_base['route_base_id']}")
-
-
-def _cached_route_poi_analysis(route_id: str) -> tuple[dict[str, Any], datetime] | None:
-    """Zwraca (payload, prawdziwa_data_pliku_na_dysku) albo None gdy brak cache.
-
-    2026-07-02 decyzja: fetched_at zapisywany do route_poi_layer MUSI odzwierciedlac
-    kiedy dane naprawde przyszly z Google/OSM, nie moment wywolania ensure_route_poi.
-    Wczesniej kazde wywolanie ensure_route_poi wstawialo tu datetime.now(), wiec
-    stale_after (licznik przeterminowania) nigdy sie nie zbliezal — zbadano na zywo:
-    trasa 55864231 miala w bazie fetched_at=2026-07-01, a prawdziwy plik cache byl
-    z 2026-06-30 (prawie 2 dni klamstwa, ktore urosloby przy kazdym kolejnym wywolaniu).
-    Zgodnie z docs/DECISIONS.md ("Polstalosc i swiezosc POI"): fetched_at ma byc
-    prawdziwe, a gdy dane sa stare — system ma odswiezyc zrodlo albo ostrzec.
-    """
-    patterns = [
-        ARTIFACTS_ROOT / "reports" / f"poi_analysis_{route_id}_*.json",
-        ARTIFACTS_ROOT / "reports" / f"tuscany_2026_stage_01_poi_analysis_{route_id}_*.json",
-        ARTIFACTS_ROOT / "old" / "reports" / f"poi_analysis_{route_id}_*.json",
-        ARTIFACTS_ROOT / "old" / "reports" / f"tuscany_2026_stage_01_poi_analysis_{route_id}_*.json",
-    ]
-    candidates: list[Path] = []
-    for pattern in patterns:
-        candidates.extend(sorted(pattern.parent.glob(pattern.name)))
-    if not candidates:
-        return None
-
-    latest = max(candidates, key=lambda path: path.stat().st_mtime)
-    try:
-        payload = json.loads(latest.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    if isinstance(payload, dict) and str(payload.get("route_id") or "").strip() == route_id:
-        payload.setdefault("source_report_path", str(latest))
-        payload.setdefault("analysis_cache_path", str(latest))
-        real_fetched_at = datetime.fromtimestamp(latest.stat().st_mtime, tz=timezone.utc)
-        return payload, real_fetched_at
-    return None
 
 
 def _provider_for_item(item: dict[str, Any]) -> str:
@@ -394,34 +352,28 @@ def ensure_route_poi(*, route_id: str | int | None = None, route_base_id: int | 
             raise ValueError(f"route_base_id={route_base['route_base_id']} has no usable distance_m")
 
         route_id = str(route_base["route_id"])
-        cached = _cached_route_poi_analysis(route_id)
-        analysis: dict[str, Any] | None = None
-        fetched_at: datetime | None = None
-        if cached is not None:
-            cached_payload, cached_fetched_at = cached
-            cache_age = datetime.now(timezone.utc) - cached_fetched_at
-            if cache_age <= timedelta(days=POI_CACHE_MAX_AGE_DAYS):
-                analysis = cached_payload
-                fetched_at = cached_fetched_at
-            # cache istnieje ale jest przeterminowany (> POI_CACHE_MAX_AGE_DAYS) ->
-            # traktujemy jak brak cache i lecimy w dol po swieze dane (refresh, nie WARN)
-
-        if analysis is None:
-            analysis = analyze_route_poi_artifact(
-                str(source_path),
-                route_id=route_id,
-                artifact_id=str(route_base["route_artifact_id"]) if route_base.get("route_artifact_id") is not None else None,
-                project_id=None,
-                km_from=0.0,
-                km_to=route_distance_km,
-                buffers={
-                    "google_hours": True,
-                    "open_window": False,
-                },
-                focus="all",
-                output_format="json",
-            )
-            fetched_at = datetime.now(timezone.utc)
+        # 2026-07-02 decyzja: zasilanie route_poi_layer ZAWSZE pobiera na zywo
+        # (Google Places + Overpass przez analyze_route_poi_artifact). Zadnego czytania
+        # starych plikow z /artifacts/reports/ — to byl przeciek granicy (writer bazy
+        # wsysal cudze, niekontrolowane artefakty po samym numerze trasy). fetched_at
+        # jest teraz uczciwe: to naprawde moment tego pobrania. Zniesiono mechanizm
+        # POI_CACHE_MAX_AGE_DAYS (auto-refresh po 14 dniach) — odswiezenie jest jawna
+        # decyzja uzytkownika (route_recompute), a raport pokazuje date danych POI.
+        analysis = analyze_route_poi_artifact(
+            str(source_path),
+            route_id=route_id,
+            artifact_id=str(route_base["route_artifact_id"]) if route_base.get("route_artifact_id") is not None else None,
+            project_id=None,
+            km_from=0.0,
+            km_to=route_distance_km,
+            buffers={
+                "google_hours": True,
+                "open_window": False,
+            },
+            focus="all",
+            output_format="json",
+        )
+        fetched_at = datetime.now(timezone.utc)
         analysis_status = str(analysis.get("status") or "UNKNOWN").upper()
         categories = (
             ("hard_resupply", "hard_resupply"),
