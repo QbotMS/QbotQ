@@ -5,6 +5,57 @@
 
 ---
 
+## 2026-07-02 — DECYZJA: ATRAKCJE jako opcjonalna warstwa POI (Google, ≤1,5 km) z przełącznikiem per-trasa + polecenie Alberta
+
+**Status:** aktywna decyzja architektoniczna.
+
+**Problem:** po przejściu na Google-only + GeoNames (patrz wpis niżej) atrakcje znikły z warstwy (pochodziły z Overpass). Atrakcje nie są krytyczne dla większości tras (trening), ale bywają potrzebne na wyprawy/zwiedzanie.
+
+**Decyzja:** atrakcje to OPCJONALNA warstwa, domyślnie WYŁĄCZONA, sterowana TRWAŁYM przełącznikiem per-trasa i poleceniem Alberta.
+- **Źródło:** Google Places (searchNearby), typy: `tourist_attraction, historical_landmark, museum, art_gallery, church` (kościoły traktowane jako zabytki). BEZ zoo, parków, wesołych miasteczek, akwariów.
+- **Promień:** twardo ≤ 1,5 km od śladu (`attractions_m=1500`); próbkowanie co ~3 km, radius 2 km, potem filtr do 1,5 km.
+- **Przełącznik steruje POBIERANIEM, nie tylko wyświetlaniem:** gdy OFF (domyślnie) atrakcje nie są w ogóle odpytywane w Google ani zapisywane; gdy ON — każde przeliczenie POI dociąga je do `route_poi_layer` i raport pokazuje sekcję atrakcji. Baza trzyma tylko to, co świadomie włączone.
+- **Trwałość:** nowa tabela `qbot_v2.route_poi_prefs (route_id PK, attractions_enabled bool, updated_at)`. `ensure_route_poi` czyta preferencję przy KAŻDYM przeliczeniu (przeżywa pełny recompute; klucz po route_id, więc przeżywa też re-import trasy).
+
+**Polecenie Alberta:** nowe narzędzie `route_attractions(route_id, enable)` — ustawia preferencję i od razu odświeża POI (scope=poi), więc zmiana widoczna natychmiast. Rejestr narzędzi i instrukcja Alberta (`_SYSTEM`) zaktualizowane w tym samym commicie (twarda zasada synchronizacji).
+
+**Skutek uboczny naprawiony przy okazji — płaskie trasy w raporcie:** `read_canonical_route` traktowało 0 wierszy w KAŻDEJ warstwie kanonicznej jako „brak" → cały raport spadał na `legacy_fallback`, chowając sekcje kanoniczne (nawierzchnia, POI, atrakcje, przewyższenia). Płaska trasa (Mazowsze) ma legalnie 0 `route_climb_events`, więc ZAWSZE leciała fallbackiem. Wprowadzono `_CANONICAL_OPTIONAL_LAYERS = {route_climb_events}` — pusta warstwa pochodna nie degraduje już raportu. Trasa 55864231 czyta się teraz jako `canonical`.
+
+**Dowód (55864231):** przełącznik ON → 69 atrakcji w bazie, WSZYSTKIE ≤ 1,5 km, na całej trasie; OFF → 0 (delete+insert czyści). Raport (`read_path=canonical`) pokazuje linię „Atrakcje (zabytki/muzea/turystyczne, ≤1,5 km): 69 — źródło: Google Places". Komenda Alberta ON/OFF przetestowana end-to-end.
+
+**Atrybucja:** atrakcje pochodzą z Google Places (adnotacja w raporcie).
+
+## 2026-07-02 — DECYZJA: POI — miejscowości z lokalnego GeoNames, Overpass w POI wyłączony domyślnie (Opcja 1)
+
+**Status:** aktywna decyzja architektoniczna.
+
+**Choroba (root cause):** aktywny analizator POI (`analyze_route_poi_artifact`, ścieżka v2) liczył chunki sekwencyjnie pod JEDNYM globalnym budżetem czasu (`deadline_sec`≈80 s). Wąskim gardłem było Overpass (rzędu ~88 s na trasę, agresywny throttling z tego serwera), więc po przekroczeniu budżetu cały OGON trasy lądował jako `missing_chunks` (status PARTIAL). Efekt: każdy wolniejszy przejazd miał ucięte POI od pewnego km w górę. Overpass w POI dostarczał NIE nawierzchnię, lecz: miejscowości (`place=*`), wodę (`drinking_water`/`water_tap`), część zaopatrzenia OSM i atrakcje.
+
+**Decyzja (Opcja 1):** Overpass w pipeline POI **wyłączony domyślnie** (`buffers["overpass_enabled"]=False`). Domyślna ścieżka: zaopatrzenie z Google Places + miejscowości z lokalnego **GeoNames** (offline). Overpass wraca tylko świadomie, flagą, na wyprawę.
+
+**Miejscowości → GeoNames (offline, CC-BY):**
+- Dane: dumpy GeoNames per kraj, przefiltrowane do klasy cech `P` (miasto/wieś), zapisane jako lekkie TSV w `/opt/qbot/artifacts/geonames/` (`PL_places.tsv`: 47 930 miejscowości). BEZ progu populacji — każde miejsce klasy P jest dobre.
+- Nowy moduł `qbot3/routes/geonames_places.py` (bez importów z qbot3 → zero cykli). Skanuje WSZYSTKIE `*_places.tsv`, więc dołożenie `IT_places.tsv`/`ES_places.tsv` na wyprawę nie wymaga zmiany kodu.
+- Projekcja w `route_analyzer._geonames_town_candidates`: **lokalne minima** odległości do trasy, nie globalnie najbliższy punkt. Dzięki temu na trasie-pętli miejscowość dostaje wpis przy KAŻDYM przejściu obok niej (noga wyjazdowa i powrotna) → METEO ma pokrycie schronienia na całej długości. Próg `town_max_m` domyślnie 3000 m (parametryzowalny).
+
+**Woda:** za flagą `include_water` (domyślnie OFF). W PL brak wody w warstwie jest zgodny z projektem; docelowo offline OSM na południe Europy.
+
+**Zaopatrzenie:** Google jest primary (bez zmian). Linie shop/amenity Overpass zostają tylko dla trybu z włączonym Overpass.
+
+**Atrakcje:** znikają z warstwy domyślnie (pochodziły z Overpass; analizator nie dociąga atrakcji z Google do `route_poi_layer`). Niekrytyczne — do ewentualnej osobnej decyzji (re-enable flagą na wyprawę albo dodać fetch Google attractions).
+
+**Strażniki (defense-in-depth):**
+- `ensure_route_poi`: wynik gorszy niż COMPLETE (PARTIAL/ERROR) **nie nadpisuje** istniejącego COMPLETE (rollback, status `SKIPPED_KEPT_COMPLETE`). Pełny wynik zawsze wygrywa.
+- Recompute **zastępuje** całą warstwę POI trasy: `DELETE route_poi_layer WHERE route_base_id` przed insertem. Wcześniej UPSERT po `(route_base_id, poi_key)` tylko doklejał — stare punkty z poprzedniego źródła zostawały (stąd narastanie 20→40→60 i utrzymywanie się Overpassowych townów po migracji).
+- Zdjęty cap `town_deduped[:20]` (brał 20 NAJNIŻSZYCH km → gubił całą tylną połowę trasy).
+
+**Dowód (trasa 55864231, 64 km, pętla):** recompute ~1,9 s (było ~90 s), `technical_completeness=COMPLETE`, `missing_chunks=0`, miejscowości 0,0–62,9 km (58 szt., 28 za km 33, 10 za km 50). METEO `_nearest_town_before`: km40→Michałów(39,3), km50→Leśniakowizna(47,9), km55→Kobylak(54,7), km60→Siwki(59,1). Przed poprawką wszystkie cofały do ≤ km 32,85.
+
+**Bez zmian w rejestrze narzędzi:** `tool_registry.py` nietknięty → instrukcja Alberta (`_SYSTEM`) nie wymaga aktualizacji.
+
+**Atrybucja:** dane miejscowości pochodzą z GeoNames (https://www.geonames.org, licencja CC-BY 4.0). Stopka raportu tras zawiera adnotację.
+
+
 ## 2026-07-02 — DECYZJA: route_recompute z parametrem scope (all | poi)
 
 **Status:** wdrozone. Testy zielone (test_route_precompute_orchestrator: 3 nowe routingu + 1 live skip; test_route_precompute_trigger 17). Okablowanie zweryfikowane na zywo (narzedzie ma arg scope, prompt Alberta zawiera scope='poi', sygnatura orkiestratora zaktualizowana).

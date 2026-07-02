@@ -2700,6 +2700,7 @@ def _init_registry():
         ("route_profile_detail", _load_route_profile_detail_tool),
         ("route_list", _load_route_list_tool),
         ("route_recompute", _load_route_recompute_tool),
+        ("route_attractions", _load_route_attractions_tool),
         ("route_delete", _load_route_delete_tool),
         ("tire_pressure", _load_tire_pressure_tool),
         ("route_fuel_plan", _load_route_fuel_plan_tool),
@@ -2854,6 +2855,58 @@ def _load_route_recompute_tool() -> dict[str, Any]:
         "args_schema": {
             "route_id": {"type": "string", "description": "ID trasy RWGPS do przeliczenia (wymagane)"},
             "scope": {"type": "string", "description": "'all' = pelny przelicz (domyslnie) | 'poi' = odswiez tylko POI istniejacej, juz przeliczonej trasy"},
+        },
+        "safety": "write",
+        "mode": "write",
+    }
+
+
+def _load_route_attractions_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        rid = str((args or {}).get("route_id") or "").strip()
+        if not rid.isdigit():
+            return error_result("ROUTE_ATTRACTIONS_NEEDS_ID", "Podaj numer trasy (route_id).")
+        raw = (args or {}).get("enable", True)
+        if isinstance(raw, bool):
+            enabled = raw
+        else:
+            enabled = str(raw).strip().lower() in {"on", "true", "1", "tak", "wlacz", "w\u0142\u0105cz", "yes", "enable", "pokaz", "poka\u017c"}
+        try:
+            from qbot3.routes.route_poi_store import set_route_poi_attractions
+            pref = set_route_poi_attractions(rid, enabled)
+            from qbot3.routes.route_precompute_orchestrator import ensure_route_precompute
+            out = ensure_route_precompute(route_id=rid, trigger_source="albert_manual", scope="poi")
+            note = (
+                f"Wlaczono atrakcje (zabytki/muzea/turystyczne, do 1,5 km) dla trasy {rid} i odswiezono POI."
+                if enabled
+                else f"Wylaczono atrakcje dla trasy {rid} i odswiezono POI (atrakcje znikaja z bazy i raportu)."
+            )
+            return success_result({
+                "route_id": rid,
+                "attractions_enabled": pref.get("attractions_enabled"),
+                "scope": out.get("scope", "poi"),
+                "route_version_key": out.get("route_version_key"),
+                "note": note,
+            })
+        except Exception as exc:
+            return error_result("ROUTE_ATTRACTIONS_FAILED", repr(exc))
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "Wlacza lub wylacza ATRAKCJE (turystyczne, zabytki, muzea, galerie; koscioly jako zabytki) "
+            "dla wskazanej trasy. Zrodlo: Google Places, tylko w promieniu 1,5 km od trasy. "
+            "Trwaly przelacznik per-trasa: gdy ON, kazde przeliczenie POI dociaga atrakcje do bazy i raport "
+            "pokazuje sekcje atrakcji; gdy OFF (domyslnie) atrakcje nie sa pobierane ani pokazywane. "
+            "Od razu odswieza POI, wiec zmiana jest widoczna natychmiast. WYMAGA route_id. Uzyj gdy user mowi "
+            "np. 'wlacz/pokaz atrakcje dla trasy X' albo 'wylacz atrakcje dla trasy X'."
+        ),
+        "args_schema": {
+            "route_id": {"type": "string", "description": "ID trasy RWGPS (wymagane)"},
+            "enable": {"type": "boolean", "description": "true = wlacz atrakcje (domyslnie) | false = wylacz"},
         },
         "safety": "write",
         "mode": "write",

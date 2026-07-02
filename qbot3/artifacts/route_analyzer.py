@@ -39,6 +39,9 @@ GOOGLE_SUPPLY_TYPES = [
 ]
 GOOGLE_HARD_TYPES = {"supermarket", "grocery_store", "convenience_store", "bakery"}
 GOOGLE_SOFT_TYPES = {"restaurant", "cafe", "bar"}
+# Atrakcje (opcjonalne, za flaga attractions_enabled): tylko turystyczne, zabytki,
+# muzea, galerie; koscioly traktowane jako zabytki. Bez zoo/parkow/wesolych miasteczek.
+GOOGLE_ATTRACTION_TYPES = {"tourist_attraction", "historical_landmark", "museum", "art_gallery", "church"}
 
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -1372,6 +1375,22 @@ def analyze_route_poi_artifact(
     timings["google_ms"] = round((time.perf_counter() - t_google) * 1000.0, 1)
     prefer_google_supply = bool(google_supply_candidates)
 
+    attractions_enabled = bool(buffers.get("attractions_enabled", False))
+    google_attraction_candidates: list[dict[str, Any]] = []
+    if attractions_enabled and google_api_key:
+        t_attr = time.perf_counter()
+        google_attraction_candidates = _route_poi_v2_google_attraction_candidates(
+            points,
+            projected,
+            km_from=km_from,
+            km_to=km_to,
+            max_dist_m=attractions_m,
+            ride_start_dt=ride_start_dt,
+            avg_speed_kmh=avg_speed_kmh,
+            api_key=google_api_key,
+        )
+        timings["google_attractions_ms"] = round((time.perf_counter() - t_attr) * 1000.0, 1)
+
     t_overpass = time.perf_counter()
     chunk_start = float(km_from)
     chunk_end_limit = float(km_to)
@@ -1384,7 +1403,11 @@ def analyze_route_poi_artifact(
     missing_chunks: list[dict[str, Any]] = []
     partial = False
 
-    while chunk_start <= chunk_end_limit + 1e-9:
+    # 2026-07-02 (Opcja 1): Overpass w POI wylaczony domyslnie. Miejscowosci
+    # z lokalnego GeoNames (nizej), zaopatrzenie z Google. Overpass tylko
+    # swiadomie: buffers["overpass_enabled"]=True.
+    overpass_enabled = bool(buffers.get("overpass_enabled", False))
+    while overpass_enabled and chunk_start <= chunk_end_limit + 1e-9:
         if time.perf_counter() > deadline_at:
             partial = True
             remaining_from = chunk_start
@@ -1420,8 +1443,22 @@ def analyze_route_poi_artifact(
 
     timings["overpass_ms"] = round((time.perf_counter() - t_overpass) * 1000.0, 1)
 
+    # Miejscowosci (kategoria 'town') z lokalnego GeoNames — offline, na calej
+    # dlugosci trasy, niezalezne od Overpass. Zasila METEO (przeczekaj burze).
+    t_geonames = time.perf_counter()
+    town_candidates = _geonames_town_candidates(
+        projected,
+        _expand_bbox(_track_bbox(projected), max_buffer_m + 500.0),
+        town_max_m=float(buffers.get("town_max_m", 3000.0)),
+        km_from=float(km_from),
+        km_to=float(km_to),
+    )
+    timings["geonames_towns_ms"] = round((time.perf_counter() - t_geonames) * 1000.0, 1)
+
     t_filter = time.perf_counter()
     all_candidates.extend(google_supply_candidates)
+    if google_attraction_candidates:
+        all_candidates.extend(google_attraction_candidates)
     deduped = _route_poi_v2_dedupe(all_candidates)
     grouped: dict[str, list[dict[str, Any]]] = {"hard_resupply": [], "soft_food_stop": [], "water": [], "attraction": []}
     for item in deduped:
@@ -1546,8 +1583,8 @@ def analyze_route_poi_artifact(
         "hard_resupply": grouped.get("hard_resupply", [])[:15],
         "soft_food_stop": grouped.get("soft_food_stop", [])[:12],
         "water": grouped.get("water", [])[:12],
-        "attractions": grouped.get("attraction", [])[:15],
-        "town_fallback_check": town_deduped[:20],
+        "attractions": grouped.get("attraction", []),
+        "town_fallback_check": town_deduped,
         "report_title": f"POI analysis — route {source_slug}",
         "report_tag": report_tag_effective,
         "report_filename": f"{report_stem}.md",
@@ -1706,9 +1743,10 @@ def _route_poi_v2_google_search_nearby(
     *,
     radius_m: float,
     api_key: str,
+    included_types: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     payload = {
-        "includedTypes": list(GOOGLE_SUPPLY_TYPES),
+        "includedTypes": list(included_types or GOOGLE_SUPPLY_TYPES),
         "maxResultCount": 10,
         "locationRestriction": {
             "circle": {
@@ -1780,6 +1818,9 @@ def _route_poi_v2_google_place_to_candidate(
             kind_tags["amenity"] = "bar"
         elif "fast_food" in types:
             kind_tags["amenity"] = "fast_food"
+    elif any(t in GOOGLE_ATTRACTION_TYPES for t in types):
+        category = "attraction"
+        kind_tags["tourism"] = "attraction"
     else:
         low_name = _route_poi_v2_norm_text(name)
         if any(tok in low_name for tok in ("zabka", "biedronka", "lidl", "dino", "netto", "aldi", "kaufland", "carrefour", "lewiatan", "groszek", "abc")):
@@ -1893,12 +1934,142 @@ def _route_poi_v2_google_supply_candidates(
     return list(seen.values())
 
 
+def _route_poi_v2_google_attraction_candidates(
+    points: list[dict[str, Any]],
+    projected: list[dict[str, Any]],
+    *,
+    km_from: float,
+    km_to: float,
+    max_dist_m: float = 1500.0,
+    sample_step_km: float = 3.0,
+    radius_m: float = 2000.0,
+    ride_start_dt: datetime | None = None,
+    avg_speed_kmh: float = 18.0,
+    api_key: str | None = None,
+) -> list[dict[str, Any]]:
+    """Atrakcje z Google Places (opcjonalne, za flaga attractions_enabled).
+
+    Typy: tourist_attraction/historical_landmark/museum/art_gallery/church
+    (koscioly jako zabytki). Zwraca tylko punkty w promieniu max_dist_m od
+    sladu (domyslnie 1,5 km). Zrodlo: Google Places.
+    """
+    api_key = api_key or _route_poi_v2_google_api_key()
+    if not api_key or not points or not projected:
+        return []
+    try:
+        step_km = max(1.5, float(sample_step_km))
+    except (TypeError, ValueError):
+        step_km = 3.0
+    sample_km = float(km_from)
+    seen: dict[str, dict[str, Any]] = {}
+    while sample_km <= float(km_to) + 1e-9:
+        sample = _find_point_at_km(points, sample_km)
+        try:
+            places = _route_poi_v2_google_search_nearby(
+                float(sample["lat"]),
+                float(sample["lon"]),
+                radius_m=radius_m,
+                api_key=api_key,
+                included_types=list(GOOGLE_ATTRACTION_TYPES),
+            )
+        except Exception as exc:
+            log.warning("route_poi_analyze google attractions error at km %.2f: %s", sample_km, exc)
+            sample_km += step_km
+            continue
+        for place in places:
+            candidate = _route_poi_v2_google_place_to_candidate(
+                place,
+                projected=projected,
+                ride_start_dt=ride_start_dt,
+                avg_speed_kmh=avg_speed_kmh,
+            )
+            if candidate is None or candidate.get("category") != "attraction":
+                continue
+            if float(candidate.get("distance_to_track_m") or 10**9) > float(max_dist_m):
+                continue
+            key = str(candidate.get("google_place_id") or candidate.get("name") or "").strip().lower()
+            if not key:
+                key = f"attraction:{candidate.get('route_km')}:{candidate.get('distance_to_track_m')}"
+            existing = seen.get(key)
+            if existing is None or _route_poi_v2_is_better_candidate(candidate, existing):
+                seen[key] = candidate
+        sample_km += step_km
+        time.sleep(0.03)
+    return list(seen.values())
+
+
+def _geonames_town_candidates(
+    projected: list[dict[str, Any]],
+    bbox: dict[str, float],
+    *,
+    town_max_m: float = 3000.0,
+    km_from: float = 0.0,
+    km_to: float = 1e9,
+) -> list[dict[str, Any]]:
+    """Kandydaci 'town' z lokalnego GeoNames (offline), wzdluz CALEJ trasy.
+
+    Dla kazdej miejscowosci szukamy LOKALNYCH MINIMOW odleglosci do trasy:
+    na trasie-petli miejscowosc dostaje wpis przy KAZDYM przejsciu obok niej
+    (noga wyjazdowa i powrotna), nie tylko jeden globalnie najblizszy punkt.
+    Dzieki temu METEO ma pokrycie schronienia na calej dlugosci. Zwraca ten
+    sam ksztalt co dawni kandydaci town. Zrodlo danych: GeoNames (CC-BY).
+    """
+    try:
+        from qbot3.routes import geonames_places
+    except Exception:
+        return []
+    if not projected:
+        return []
+
+    def _emit(out, rec, run_min_d, run_min_km, km_from, km_to):
+        if run_min_km is None or not (km_from <= run_min_km <= km_to):
+            return
+        out.append({
+            "osm_type": "geonames",
+            "osm_id": None,
+            "name": rec["name"],
+            "category": "town",
+            "lat": round(float(rec["lat"]), 6),
+            "lon": round(float(rec["lon"]), 6),
+            "route_km": round(float(run_min_km), 3),
+            "distance_to_track_m": round(float(run_min_d), 1),
+            "source_tags": "source=geonames",
+            "note": "geonames_place",
+        })
+
+    out: list[dict[str, Any]] = []
+    for rec in geonames_places.places_in_bbox(bbox):
+        t_lat = float(rec["lat"]); t_lon = float(rec["lon"])
+        in_run = False
+        run_min_d = None
+        run_min_km = None
+        for p in projected:
+            d = _haversine_km(t_lat, t_lon, p["lat"], p["lon"]) * 1000.0
+            if d <= town_max_m:
+                if run_min_d is None or d < run_min_d:
+                    run_min_d = d
+                    run_min_km = float(p["cum_m"]) / 1000.0
+                in_run = True
+            else:
+                if in_run:
+                    _emit(out, rec, run_min_d, run_min_km, km_from, km_to)
+                in_run = False
+                run_min_d = None
+                run_min_km = None
+        if in_run:
+            _emit(out, rec, run_min_d, run_min_km, km_from, km_to)
+
+    out.sort(key=lambda x: (float(x["route_km"]), float(x["distance_to_track_m"])))
+    return out
+
+
 def _route_poi_v2_build_query(
     bbox: dict[str, float],
     focus: str | None = None,
     timeout_sec: float = 30.0,
     *,
     include_supply: bool = True,
+    include_water: bool = False,
 ) -> str:
     bbox_s = _bbox_to_overpass_string(bbox)
     focus_mode = _route_poi_v2_focus_mode(focus)
@@ -1909,11 +2080,11 @@ def _route_poi_v2_build_query(
         parts.append(f'  nwr["historic"]({bbox_s});')
     if include_supply:
         parts.append(f'  nwr["shop"~"supermarket|convenience|grocery|bakery|deli|butcher|greengrocer|pastry|farm|general"]({bbox_s});')
-        parts.append(f'  nwr["amenity"~"marketplace|fuel|cafe|bar|restaurant|fast_food|pub|ice_cream|drinking_water|fountain"]({bbox_s});')
+        parts.append(f'  nwr["amenity"~"marketplace|fuel|cafe|bar|restaurant|fast_food|pub|ice_cream"]({bbox_s});')
         parts.append(f'  nwr["vending"~"food|drinks"]({bbox_s});')
-    parts.append(f'  nwr["drinking_water"="yes"]({bbox_s});')
-    parts.append(f'  nwr["man_made"="water_tap"]({bbox_s});')
-    parts.append(f'  node["place"~"city|town|village|hamlet"]({bbox_s});')
+    if include_water:
+        parts.append(f'  nwr["drinking_water"="yes"]({bbox_s});')
+        parts.append(f'  nwr["man_made"="water_tap"]({bbox_s});')
     parts.append(");")
     parts.append("out center tags;")
     return chr(10).join(parts) + chr(10)
@@ -2730,7 +2901,7 @@ def _analyze_route_poi_artifact_legacy(
         "soft_food_stop": grouped.get("soft_food_stop", [])[:12],
         "water": grouped.get("water", [])[:12],
         "attraction": grouped.get("attraction", [])[:15],
-        "town_fallback_check": town_deduped[:20],
+        "town_fallback_check": town_deduped,
     }
 
     result: dict[str, Any] = {

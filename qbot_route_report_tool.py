@@ -453,9 +453,16 @@ def _route_poi_section_lines(route_source: dict[str, Any] | None) -> list[str]:
     lines = [
         "Źródło POI: canonical route_poi_layer",
         f"route_poi_layer_count={poi_count}",
+        "Miejscowości (locality/town): GeoNames — CC-BY 4.0 (offline)",
     ]
     if cat_bits:
         lines.append("kategorie: " + ", ".join(cat_bits))
+    attr_payload = by_category.get("attraction") if isinstance(by_category.get("attraction"), dict) else None
+    if attr_payload and int(attr_payload.get("count") or 0) > 0:
+        lines.append(
+            f"Atrakcje (zabytki/muzea/turystyczne, \u22641,5 km): {int(attr_payload.get('count') or 0)} "
+            "\u2014 \u017ar\u00f3d\u0142o: Google Places (przel\u0105cznik per-trasa: route_attractions)"
+        )
     lines.append(
         "dane dostępne: "
         f"km={_field_count('km_on_route')}/{poi_count}, "

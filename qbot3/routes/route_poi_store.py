@@ -452,6 +452,52 @@ def _upsert_route_poi_meta(conn, meta_row: dict[str, Any]) -> None:
     )
 
 
+def _ensure_poi_prefs_table(conn) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS qbot_v2.route_poi_prefs (
+            route_id text PRIMARY KEY,
+            attractions_enabled boolean NOT NULL DEFAULT false,
+            updated_at timestamptz NOT NULL DEFAULT now()
+        )
+        """
+    )
+
+
+def get_route_poi_prefs(conn, route_id: str | int) -> dict[str, Any]:
+    """Preferencje POI per-trasa (trwaly przelacznik). Domyslnie atrakcje OFF."""
+    _ensure_poi_prefs_table(conn)
+    row = conn.execute(
+        "SELECT attractions_enabled FROM qbot_v2.route_poi_prefs WHERE route_id = %s",
+        (str(route_id),),
+    ).fetchone()
+    if not row:
+        return {"attractions_enabled": False}
+    val = row[0] if not isinstance(row, dict) else row.get("attractions_enabled")
+    return {"attractions_enabled": bool(val)}
+
+
+def set_route_poi_attractions(route_id: str | int, enabled: bool) -> dict[str, Any]:
+    """Ustawia trwaly przelacznik atrakcji dla trasy (uzywane przez narzedzie Alberta)."""
+    conn = _db_conn()
+    try:
+        _ensure_poi_prefs_table(conn)
+        conn.execute(
+            """
+            INSERT INTO qbot_v2.route_poi_prefs (route_id, attractions_enabled, updated_at)
+            VALUES (%s, %s, now())
+            ON CONFLICT (route_id) DO UPDATE SET
+                attractions_enabled = EXCLUDED.attractions_enabled,
+                updated_at = now()
+            """,
+            (str(route_id), bool(enabled)),
+        )
+        conn.commit()
+        return {"route_id": str(route_id), "attractions_enabled": bool(enabled)}
+    finally:
+        conn.close()
+
+
 def ensure_route_poi(*, route_id: str | int | None = None, route_base_id: int | None = None) -> dict[str, Any]:
     if route_id is None and route_base_id is None:
         raise ValueError("route_id or route_base_id required")
@@ -469,6 +515,7 @@ def ensure_route_poi(*, route_id: str | int | None = None, route_base_id: int | 
             raise ValueError(f"route_base_id={route_base['route_base_id']} has no usable distance_m")
 
         route_id = str(route_base["route_id"])
+        poi_prefs = get_route_poi_prefs(conn, route_id)
         # 2026-07-02 decyzja: zasilanie route_poi_layer ZAWSZE pobiera na zywo
         # (Google Places + Overpass przez analyze_route_poi_artifact). Zadnego czytania
         # starych plikow z /artifacts/reports/ — to byl przeciek granicy (writer bazy
@@ -486,6 +533,8 @@ def ensure_route_poi(*, route_id: str | int | None = None, route_base_id: int | 
             buffers={
                 "google_hours": True,
                 "open_window": False,
+                "attractions_enabled": bool(poi_prefs.get("attractions_enabled")),
+                "attractions_m": 1500.0,
             },
             focus="all",
             output_format="json",
@@ -512,7 +561,39 @@ def ensure_route_poi(*, route_id: str | int | None = None, route_base_id: int | 
             )
 
         poi_meta_row = _build_poi_meta_row(route_base, analysis, fetched_at)
+
+        # 2026-07-02 straznik zapisu: nie nadpisuj istniejacego COMPLETE wynikiem
+        # gorszym (PARTIAL/ERROR). Chroni baze przed zdegradowaniem, gdy pobranie
+        # akurat sie nie domknelo. Pelny wynik zawsze wygrywa.
+        new_complete = str(poi_meta_row.get("technical_completeness") or "").upper() == "COMPLETE"
+        if not new_complete:
+            existing = conn.execute(
+                "SELECT technical_completeness FROM qbot_v2.route_poi_meta WHERE route_base_id = %s",
+                (int(route_base["route_base_id"]),),
+            ).fetchone()
+            existing_tc = ""
+            if existing:
+                cell = existing[0] if not isinstance(existing, dict) else existing.get("technical_completeness")
+                existing_tc = str(cell or "").upper()
+            if existing_tc == "COMPLETE":
+                conn.rollback()
+                return {
+                    "status": "SKIPPED_KEPT_COMPLETE",
+                    "route_id": route_base["route_id"],
+                    "route_base_id": int(route_base["route_base_id"]),
+                    "reason": "nowy wynik nie jest COMPLETE; zachowano istniejacy pelny wynik POI",
+                    "new_technical_completeness": poi_meta_row.get("technical_completeness"),
+                }
+
         with conn.transaction():
+            # 2026-07-02: recompute ZASTEPUJE cala warstwe POI trasy (idempotencja).
+            # Wczesniej UPSERT po (route_base_id, poi_key) tylko doklejal — stare
+            # punkty z poprzedniego zrodla/przebiegu zostawaly (np. Overpassowe
+            # towny po przejsciu na GeoNames). Najpierw kasujemy, potem wstawiamy.
+            conn.execute(
+                "DELETE FROM qbot_v2.route_poi_layer WHERE route_base_id = %s",
+                (int(route_base["route_base_id"]),),
+            )
             poi_layer_count = _upsert_route_poi_layer(conn, rows)
             _upsert_route_poi_meta(conn, poi_meta_row)
         conn.commit()

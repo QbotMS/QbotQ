@@ -30,6 +30,9 @@ _CANONICAL_LAYER_ORDER = (
     "route_elevation_samples",
     "route_climb_events",
 )
+# Warstwy pochodne/opcjonalne: pusta zawartosc to LEGALNY stan (plaska trasa ma
+# 0 podjazdow), wiec brak wierszy NIE degraduje raportu do legacy_fallback.
+_CANONICAL_OPTIONAL_LAYERS = frozenset({"route_climb_events"})
 
 
 def _db_conn():
@@ -943,7 +946,7 @@ def read_canonical_route(
             name: (1 if name == "route_base" and layers[name] else len(layers[name]))
             for name in _CANONICAL_LAYER_ORDER
         }
-        missing = [name for name in _CANONICAL_LAYER_ORDER if layer_counts.get(name, 0) <= 0]
+        missing = [name for name in _CANONICAL_LAYER_ORDER if name not in _CANONICAL_OPTIONAL_LAYERS and layer_counts.get(name, 0) <= 0]
         shade_rows = layers.get("route_shade_layer", [])
         shade_n = len(shade_rows)
         shade_cov = sum(1 for r in shade_rows if r.get("coverage_status") in ("ok", "partial"))
