@@ -261,48 +261,46 @@ def _seg_risk(seg, ctx):
     return "wnioskowane", (c.get("reason") if c else "brak tagu OSM")
 
 
-def _macro_blocks(segs, ctx, min_km=1.0):
-    """Bloki wg klasy jazdy; polyka krotkie nie-ryzykowne wtracenia -> ~5-8 odcinkow."""
+def _macro_blocks(segs, ctx, min_km=3.0):
+    """Grube bloki strategii: asfalt(szybko) / grunt(szuter+wnioskowane) / ryzyko.
+    Scala mocno i polyka krotkie (<min_km) nie-ryzykowne wtracenia -> ~5-9 odcinkow na 100 km."""
+    COARSE = {"ryzyko": "ryzyko", "twarde": "szybko", "gravel": "grunt", "wnioskowane": "grunt"}
     raw = []
     for s in segs:
-        cls, _ = _seg_risk(s, ctx)
-        if raw and raw[-1]["c"] == cls:
-            raw[-1]["km_to"] = s["km_to"]
-            raw[-1]["surfs"].append(s["surface"])
+        fine, _ = _seg_risk(s, ctx)
+        coarse = COARSE.get(fine, "grunt")
+        if raw and raw[-1]["c"] == coarse:
+            raw[-1]["km_to"] = s["km_to"]; raw[-1]["surfs"].append(s["surface"]); raw[-1]["fines"].append(fine)
         else:
-            raw.append({"km_from": s["km_from"], "km_to": s["km_to"], "c": cls, "surfs": [s["surface"]]})
-    merged = []
-    for b in raw:
-        length = b["km_to"] - b["km_from"]
-        if merged and length < min_km and b["c"] not in ("ryzyko",):
-            merged[-1]["km_to"] = b["km_to"]
-            merged[-1]["surfs"] += b["surfs"]
-        elif merged and merged[-1]["c"] == b["c"]:
-            merged[-1]["km_to"] = b["km_to"]
-            merged[-1]["surfs"] += b["surfs"]
-        else:
-            merged.append(b)
-    out = []
-    for b in merged:
-        if out and out[-1]["c"] == b["c"]:
-            out[-1]["km_to"] = b["km_to"]
-            out[-1]["surfs"] += b["surfs"]
-        else:
-            out.append(b)
-    label = {"ryzyko": "ryzyko", "twarde": "szybko", "gravel": "gravel", "wnioskowane": "wniosk."}
+            raw.append({"km_from": s["km_from"], "km_to": s["km_to"], "c": coarse,
+                        "surfs": [s["surface"]], "fines": [fine]})
+
+    def coalesce(blocks):
+        out = []
+        for b in blocks:
+            length = b["km_to"] - b["km_from"]
+            if out and length < min_km and b["c"] != "ryzyko":
+                out[-1]["km_to"] = b["km_to"]; out[-1]["surfs"] += b["surfs"]; out[-1]["fines"] += b["fines"]
+            elif out and out[-1]["c"] == b["c"]:
+                out[-1]["km_to"] = b["km_to"]; out[-1]["surfs"] += b["surfs"]; out[-1]["fines"] += b["fines"]
+            else:
+                out.append(dict(b))
+        return out
+
+    blocks = coalesce(coalesce(raw))
+    label = {"ryzyko": "ryzyko", "szybko": "asfalt/szybko", "grunt": "grunt/szuter"}
     tip = {
         "ryzyko": "ostroznie: piach/grade5 — trzymaj rezerwe, w razie czego prowadz",
-        "twarde": "utwardzone — tempo dyktuje wiatr",
-        "gravel": "rowne tempo, lekko na kierownice",
-        "wnioskowane": "polna/grunt (z pokrycia terenu); latem mozliwe piaszczyste fragmenty",
+        "szybko": "utwardzone — tempo dyktuje wiatr",
+        "grunt": "grunt/szuter — rowne tempo; odcinki bez tagu = polna (latem mozliwy piach)",
     }
-    for b in out:
+    for b in blocks:
         surfs = [x for x in b["surfs"] if x]
         b["surface"] = max(set(surfs), key=surfs.count) if surfs else "unknown"
         b["klasa"] = label.get(b["c"], b["c"])
         b["tip"] = tip.get(b["c"], "")
-    return out
-
+        b["ma_wniosk"] = "wnioskowane" in b["fines"]
+    return blocks
 
 def _wind_at_km(meteo, km):
     if not isinstance(meteo, dict):
@@ -358,6 +356,104 @@ def _water_rec(moving_h, peak_wbgt):
     else:
         rec = "buklak 1,5 l + 1 bidon 0,5 l"
     return demand, rec
+
+
+
+def _modelq(conn):
+    """Najnowszy snapshot ModelQ (Xert): FTP/LTP/W'/peak + obciazenie."""
+    try:
+        return conn.execute(
+            "SELECT snapshot_at, ftp_power_w, ltp_power_w, w_prime_kj, peak_power_w, "
+            "training_load, recovery_load FROM qbot_v2.xert_profile_snapshots "
+            "ORDER BY snapshot_at DESC LIMIT 1").fetchone()
+    except Exception:
+        return None
+
+
+def _climb_power(grade_pct, v_kmh, mass=100.0):
+    """Zgrubna moc na podjezdzie [W]: grawitacja + toczenie + powietrze."""
+    v = max(1.0, float(v_kmh)) / 3.6
+    grav = mass * 9.81 * (float(grade_pct) / 100.0) * v
+    roll = mass * 9.81 * 0.008 * v
+    air = 0.5 * 1.2 * 0.4 * v ** 3
+    return max(0.0, grav + roll + air)
+
+
+_WD_EN = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+_ATTR_GENERIC = {"kaplica", "kaplica cmentarna", "krzyz", "krzyż", "cmentarz",
+                 "kosciol", "kościół", "kapliczka", "figura", "krzyz przydrozny"}
+
+
+def _parse_hm(tok):
+    tok = tok.strip().replace("\u202f", " ").replace("\u2009", " ")
+    ap = None
+    t = tok.lower()
+    if t.endswith("am"):
+        ap = "am"; tok = tok[:-2].strip()
+    elif t.endswith("pm"):
+        ap = "pm"; tok = tok[:-2].strip()
+    tok = tok.strip()
+    hh, mm = (tok.split(":")[:2] + ["0"])[:2] if ":" in tok else (tok, "0")
+    try:
+        h = int(hh); m = int(mm)
+    except ValueError:
+        return None
+    if ap == "pm" and h < 12:
+        h += 12
+    if ap == "am" and h == 12:
+        h = 0
+    return h + m / 60.0
+
+
+def _oh_open_at(oh, weekday_name, hour_float):
+    """(otwarte?, godziny_str) dla dnia z formatu Google. None gdy nieznane."""
+    if not oh:
+        return None, None
+    seg = None
+    for part in str(oh).split(";"):
+        part = part.strip()
+        if part.lower().startswith(weekday_name.lower() + ":"):
+            seg = part.split(":", 1)[1].strip()
+            break
+    if seg is None:
+        return None, None
+    low = seg.lower()
+    if "24 hour" in low or "calodob" in low:
+        return True, "24h"
+    if "closed" in low or "zamk" in low:
+        return False, "zamkniete"
+    for dash in ("–", "—", "-"):
+        if dash in seg:
+            a, b = seg.split(dash, 1)
+            oa, ob = _parse_hm(a), _parse_hm(b)
+            if oa is not None and ob is not None and hour_float is not None:
+                return (oa <= hour_float <= ob), seg.strip()
+            return None, seg.strip()
+    return None, seg.strip()
+
+
+def _eta_at_km(meteo, km):
+    ps = meteo.get("per_segment") if isinstance(meteo, dict) else None
+    if not ps:
+        return None, None
+    best = min(ps, key=lambda x: abs(float(x.get("km", 0)) - km))
+    eta = best.get("eta")
+    try:
+        hh, mm = str(eta).split(":")
+        return eta, int(hh) + int(mm) / 60.0
+    except (ValueError, AttributeError):
+        return eta, None
+
+
+def _attr_worth(name):
+    """Kuracja: pomijaj generyczne (byle kaplica/krzyz). (warto?, ranga)."""
+    n = (name or "").strip().lower()
+    if not n or n in _ATTR_GENERIC:
+        return False, 9
+    t = _attr_type(name)
+    if t == "zabytek" and len(name.split()) < 3:
+        return False, 9
+    return True, {"widok": 0, "przyroda": 1, "muzeum": 1, "jezioro": 1, "zabytek": 2}.get(t, 3)
 
 
 # ---- GLOWNA FUNKCJA -------------------------------------------------------
@@ -448,33 +544,58 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny"):
         H("")
 
         # ---------- 2 ----------
-        H("## 2. FitModel — odniesienie tej jazdy do formy")
+        mq = _modelq(conn)
+        mass = float(fit["weight_kg"]) if (fit and fit.get("weight_kg")) else 100.0
+        H("## 2. FitModel (ModelQ) — odniesienie tej jazdy do formy")
         H("")
-        if fit:
-            gly = fit.get("glycogen_pct")
-            gly_txt = f"{_f(gly, 0)} %" if (gly is not None and float(gly) > 0) else "b/d"
-            H("**Twoja forma (fitmodel_daily):**")
+        ftp = None
+        if mq:
+            ftp = mq.get("ftp_power_w")
+            H("**Twoja forma (ModelQ / Xert):**")
             H("")
             H("| Parametr | Wartosc |")
             H("|---|---|")
-            H(f"| FTP_est (wlasny, submax) | {_f(fit.get('ftp_est_w'), 0)} W |")
+            H(f"| FTP | {_f(ftp, 0)} W |")
+            H(f"| W/kg (~{_f(mass, 0)} kg) | {_f((ftp / mass) if ftp else None, 2)} |")
+            H(f"| LTP (prog tlenowy) | {_f(mq.get('ltp_power_w'), 0)} W |")
+            H(f"| W′ (zapas beztlenowy) | {_f(mq.get('w_prime_kj'), 1)} kJ |")
+            H(f"| Peak power | {_f(mq.get('peak_power_w'), 0)} W |")
+            H(f"| Obciazenie / regeneracja | {_f(mq.get('training_load'), 0)} / {_f(mq.get('recovery_load'), 0)} |")
+            H(f"| Snapshot ModelQ | {str(mq.get('snapshot_at'))[:10]} |")
+        elif fit:
+            ftp = fit.get("ftp_est_w")
+            H("**Twoja forma (fitmodel_daily — brak ModelQ):**")
+            H("")
+            H("| Parametr | Wartosc |")
+            H("|---|---|")
+            H(f"| FTP_est | {_f(ftp, 0)} W |")
             H(f"| W/kg | {_f(fit.get('w_per_kg'), 2)} |")
-            H(f"| Glikogen dzis | {gly_txt} |")
-            H(f"| Data FitModel | {fit.get('day')} |")
         else:
-            H("- forma: b/d (brak fitmodel_daily)")
+            H("- forma: b/d")
         H("")
-        cho = round((moving_h or 0) * 50) if moving_h else None
+        cho = round((moving_h or 0) * 55) if moving_h else None
+        if_est = 0.62
+        tss = round((moving_h or 0) * (if_est ** 2) * 100) if moving_h else None
+        wprime_txt = "b/d"
+        if climbs and ftp:
+            steep = max(climbs, key=lambda e: float(e.get("avg_gradient_pct") or 0))
+            pw = _climb_power(float(steep.get("avg_gradient_pct") or 0), 12.0, mass)
+            if pw <= float(ftp):
+                wprime_txt = f"pelna — podjazdy krotkie/lagodne (~{_f(pw, 0)} W < FTP), nie ruszasz zapasu"
+            else:
+                wprime_txt = f"czesciowa — najstromszy ~{_f(pw, 0)} W (> FTP o {_f(pw - float(ftp), 0)} W), krotkie dziury w W′"
+        elif not climbs:
+            wprime_txt = "pelna — trasa plaska, brak istotnych podjazdow"
         H("**Ta trasa kontra forma:**")
         H("")
         H("| Miara | Szacunek trasy | Ocena |")
         H("|---|---|---|")
-        H(f"| Zapotrzebowanie CHO | ~50 g/h -> ~{cho if cho is not None else 'b/d'} g | tankuj 40–60 g/h |")
-        H(f"| Zapotrzebowanie woda | ~{_f(dem)} l ({_hms(moving_h)} ruchu) | pokryjesz z refilami |")
-        H("| Obciazenie (strain) | b/d | _do wpiecia: route_fuel_plan / strain buckets_ |")
-        H("| Rezerwa W′ na podjazdach | b/d | _do wpiecia: route_fuel_plan_ |")
+        H(f"| Obciazenie (szac. TSS) | ~{tss if tss is not None else 'b/d'} ({_hms(moving_h)}, IF~{if_est}) | dlugi endurance, nie interwaly |")
+        H(f"| Zapotrzebowanie CHO | ~{cho if cho is not None else 'b/d'} g (55 g/h) | tankuj 40–70 g/h |")
+        H(f"| Zapotrzebowanie woda | ~{_f(dem)} l | pokryjesz z refilami |")
+        H(f"| Rezerwa W′ na podjazdach | {wprime_txt} | — |")
         H("")
-        H("**Fueling:** sniadanie weglowodanowe + tankuj w trasie 40–60 g CHO/h; nie zjezdzaj na rezerwie glikogenu.")
+        H("**Fueling:** sniadanie weglowodanowe + w trasie 40–70 g CHO/h; na dlugiej jezdzie nie zjezdzaj na rezerwie.")
         H("")
         H("**Woda — rekomendacja (uwzglednia refile i limity pojemnikow):**")
         H("")
@@ -523,11 +644,22 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny"):
           f"{_f(100*sum(_kmlen(s) for s in infr)/tot)} %)** — to WNIOSKOWANIE, nie dane:")
         H("")
         if ctx:
+            crows = []
+            for sg in sorted(infr, key=lambda x: x["km_from"]):
+                c = _ctx_at_km(ctx, (sg["km_from"] + sg["km_to"]) / 2.0)
+                terr = (c.get("dominant_pl") if c else None) or "b/d"
+                est = (c.get("surface_estimate") if c else None) or "grunt (brak tagu)"
+                sand = (c.get("sand_risk") if c else None) or "—"
+                key = (terr, est, sand)
+                if crows and crows[-1]["key"] == key and abs(crows[-1]["km_to"] - sg["km_from"]) < 0.35:
+                    crows[-1]["km_to"] = sg["km_to"]
+                else:
+                    crows.append({"km_from": sg["km_from"], "km_to": sg["km_to"], "key": key})
             H("| km od–do | teren (WorldCover) | interpretacja nawierzchni | piach? |")
             H("|---|---|---|---|")
-            for c in ctx:
-                H(f"| {_f(c['km_from'])}–{_f(c['km_to'])} | {c.get('dominant_pl') or 'b/d'} ({c.get('agreement_pct')}%) "
-                  f"| {c.get('surface_estimate')} | {c.get('sand_risk')} |")
+            for r in crows:
+                terr, est, sand = r["key"]
+                H(f"| {_f(r['km_from'])}–{_f(r['km_to'])} | {terr} | {est} | {sand} |")
             H("")
             H("_Teren = OTOCZENIE (pole/laka/las), nie sama nawierzchnia. Nietagowany track przez pola/laki "
               "to zwykle droga polna/grunt. „WNIOSK.\" = latem/susza na Podlasiu mozliwe piaszczyste fragmenty "
@@ -545,11 +677,14 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny"):
             H("|---|---|---|---|---|---|")
             for b in blocks:
                 mid = (b["km_from"] + b["km_to"]) / 2.0
-                H(f"| {_f(b['km_from'])}–{_f(b['km_to'])} | {_SURF_PL.get(b['surface'], b['surface'])} ({b['klasa']}) "
+                surf = _SURF_PL.get(b["surface"], b["surface"])
+                if b.get("ma_wniosk") and b["c"] == "grunt":
+                    surf += ", cz. wnioskowana"
+                H(f"| {_f(b['km_from'])}–{_f(b['km_to'])} | {surf} ({b['klasa']}) "
                   f"| {_profil_at(b['km_from'], b['km_to'], climbs)} | {_wind_at_km(meteo, mid)} "
                   f"| {_supply_in(b['km_from'], b['km_to'], supply)} | {b['tip']} |")
             H("")
-            H("_Klasy: szybko=utwardzone · gravel=szuter/tracktype · wniosk.=grunt/polna z pokrycia terenu · ryzyko=piach/grade5._")
+            H("_Klasy: asfalt/szybko=utwardzone · grunt/szuter=szuter+polna (część wnioskowana z pokrycia terenu) · ryzyko=piach/grade5. Pewnosc nawierzchni w sek. 3._")
         else:
             H("- b/d")
         H("")
@@ -596,7 +731,7 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny"):
             H("| Burza | " + " | ".join(_bz(w) for w in tab) + " |")
             H("")
             H(f"Peak WBGT: {_f(peak_wbgt)} C @ km {(peak or {}).get('km')} ({(peak or {}).get('eta')}). "
-              "Strzalka: + tylny ↑ / − czolowy ↓. Odczuwalna = reprezentatywna (mediana okna), nie min-max.")
+              "Strzalka: + tylny ↑ / − czolowy ↓. Odczuwalna = srednia okna, wiatr OTOCZENIA z oslona terenu (nie ped jazdy).")
             for a in (alerts or []):
                 H(f"- ALERT {a.get('typ','?').upper()} [{a.get('severity')}] km {_f(a.get('km_od'))}–"
                   f"{_f(a.get('km_do'))} ({a.get('eta_od')}–{a.get('eta_do')})")
@@ -636,11 +771,11 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny"):
             if b["c"] == "ryzyko":
                 rows7.append(("Nawierzchnia", _f(b["km_from"]), _f(b["km_to"]), "flaga",
                               "piach/grade5 — luzna nawierzchnia", "—"))
-            elif b["c"] == "wnioskowane":
-                c = _ctx_at_km(ctx, (b["km_from"] + b["km_to"]) / 2.0)
-                terr = (c.get("dominant_pl") if c else None) or "otwarte"
-                rows7.append(("Nawierzchnia", _f(b["km_from"]), _f(b["km_to"]), "info",
-                              "nietagowany track — grunt wg pokrycia; latem mozliwy piach (wniosk.)", terr))
+        _infr_km = sum(_kmlen(sg) for sg in infr)
+        if _infr_km > 0:
+            rows7.append(("Nawierzchnia", "—", "—", "info",
+                          f"{_f(_infr_km)} km nietagowanych trackow — grunt/polna wg pokrycia terenu; "
+                          "latem mozliwy piach (wnioskowanie, nie fakt)", "pola/laki/las"))
         if rows7:
             H("| Zrodlo | km od | km do | Poziom | Powod | Srodowisko |")
             H("|---|---|---|---|---|---|")
@@ -655,29 +790,60 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny"):
         H("")
         poi_date = poi.get("_fetched_at")
         poi_date_s = poi_date.date().isoformat() if hasattr(poi_date, "date") else (str(poi_date)[:10] if poi_date else "b/d")
-        H("| Kategoria | Info |")
-        H("|---|---|")
-        supply_pts = ", ".join(f"km {_f(k)}" for k in resupply_km[:8]) or "—"
-        H(f"| Woda / sklepy (punkty) | {supply_pts} |")
-        H(f"| Zaopatrzenie/jedzenie | {len(supply)} pkt |")
-        H(f"| Miejscowosci | {len(towns)} |")
-        H(f"| Najdluzsza luka zaopatrz. | ~{_f(_gap_km(resupply_km, dist_km))} km |")
-        H(f"| Dane POI z dnia | {poi_date_s} |")
+        try:
+            weekday = _WD_EN[_dt.date.fromisoformat(date_str).weekday()]
+        except Exception:
+            weekday = "Saturday"
+        seen = set()
+        sup_rows = []
+        for x in supply:
+            km = x.get("km_on_route")
+            if km is None:
+                continue
+            key = (round(float(km), 1), (x.get("name") or "")[:24])
+            if key in seen:
+                continue
+            seen.add(key)
+            eta, hf = _eta_at_km(meteo, float(km))
+            openq, hrs = _oh_open_at(x.get("opening_hours"), weekday, hf)
+            status = "otwarte" if openq is True else ("ZAMKNIETE" if openq is False else "godz.?")
+            sup_rows.append((float(km), x.get("name"), eta or "b/d", status, hrs or "—"))
+        sup_rows.sort(key=lambda r: r[0])
+        H("**Zaopatrzenie — czy otwarte w Twoim oknie przejazdu (%s)?**" % weekday)
         H("")
-        atr = [a for a in (poi.get("attraction") or [])
-               if a.get("distance_from_route_m") is None or float(a["distance_from_route_m"]) <= 800]
-        atr = sorted(atr, key=lambda a: (a.get("km_on_route") is None, a.get("km_on_route") or 0))[:15]
+        H("| km | Punkt | ETA | Status | Godziny |")
+        H("|---|---|---|---|---|")
+        for km, nm, eta, status, hrs in sup_rows[:14]:
+            H(f"| {_f(km)} | {nm} | {eta} | {status} | {hrs} |")
+        H("")
+        H(f"Najdluzsza luka zaopatrzenia: ~{_f(_gap_km(resupply_km, dist_km))} km · Dane POI z dnia: {poi_date_s}")
+        H("")
+        H("_„godz.?\" = brak godzin w danych (czesto OSM). Miejscowosci -> patrz sekcja burz (schronienie), nie tu._")
+        H("")
+        atr = []
+        for a in (poi.get("attraction") or []):
+            d = a.get("distance_from_route_m")
+            if d is not None and float(d) > 800:
+                continue
+            worth, rank = _attr_worth(a.get("name"))
+            if not worth:
+                continue
+            atr.append((rank, a))
+        atr.sort(key=lambda ra: (ra[0], ra[1].get("km_on_route") or 0))
+        H("**Atrakcje warte zajazdu (kuracja wg typu/nazwy):**")
+        H("")
         if atr:
-            H("**Atrakcje (z kilometrazem, miejscowoscia i typem):**")
-            H("")
             H("| km | Atrakcja | Miejscowosc | Typ | Odl. |")
             H("|---|---|---|---|---|")
-            for a in atr:
+            for rank, a in atr[:10]:
                 km = a.get("km_on_route")
                 H(f"| {_f(km)} | {a.get('name')} | {_nearest_town(float(km), towns) if km is not None else 'b/d'} "
                   f"| {_attr_type(a.get('name'))} | {_f(a.get('distance_from_route_m'), 0)} m |")
+            H("")
+            H("_Brak ocen Google w danych POI (zrodlo OSM) — kuracja wg typu/nazwy; pominieto bezimienne kaplice/krzyze. "
+              "Prawdziwe oceny/rekomendacje wymagaja pobrania z Google Places (osobne zadanie)._")
         else:
-            H("- Atrakcje: brak w promieniu 800 m.")
+            H("- Brak wyroznionych atrakcji w promieniu 800 m.")
         H("")
 
         # ---------- 9 ----------
@@ -685,13 +851,17 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny"):
         H("")
         hard_pct = 100 * sum(_kmlen(s) for s in hard if s["surface"] in _HARD) / tot
         infr_pct = 100 * sum(_kmlen(s) for s in infr) / tot
-        if infr_pct >= 25:
-            tyre = ("Duzo nietagowanych tracktow ({}%) przez pola/laki/las -> **G-One Pro RS (Zipp 303 S)** "
-                    "jako bezpieczniejszy uniwersal; Thunder Burt tylko jesli wiesz ze grunt twardy.").format(round(infr_pct))
-        elif hard_pct >= 60:
-            tyre = "Przewaga asfaltu -> szybsza guma OK (Thunder Burt / G-One Pro RS na Zipp 303 S)."
+        sand_tag = any(s["surface"] == "sand" for s in segs)
+        if infr_pct >= 25 or sand_tag:
+            tyre = ("Duzo luznego/nietagowanego gruntu (~{}%{}) -> **Thunder Burt 2.1 (Zipp 303 S XPLR)** — "
+                    "wieksza objetosc i przyczepnosc na piachu/luznym. G-One tylko gdy wiesz, ze sucho i twardo."
+                    ).format(round(infr_pct), " + tag piachu" if sand_tag else "")
+        elif hard_pct >= 65:
+            tyre = ("Przewaga asfaltu (~{}%) -> **G-One Pro RS (Zipp 303 S)** — szybsze i gladsze; "
+                    "Thunder Burt zbedny.").format(round(hard_pct))
         else:
-            tyre = "Mieszanka szuter/grunt -> **G-One Pro RS (Zipp 303 S)** uniwersalnie."
+            tyre = ("Mieszanka asfalt + szuter -> **G-One Pro RS (Zipp 303 S)** uniwersalnie; "
+                    "Thunder Burt gdy spodziewasz sie luznego/piachu.")
         H(tyre)
         H("")
 
