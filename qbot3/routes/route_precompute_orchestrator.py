@@ -23,6 +23,7 @@ from qbot3.routes.route_surface_store import ensure_route_surface
 from qbot3.routes.route_shade_store import ensure_route_shade
 # Warstwa otoczenia (route_shade_layer). Dokumentacja: docs/PROJEKT_OTOCZENIE.md
 from qbot3.routes.route_elevation_store import ensure_route_elevation
+from qbot3.routes.route_surface_context_store import ensure_route_surface_context
 
 
 JOB_SEQUENCE: tuple[tuple[str, Callable[..., dict[str, Any]], str], ...] = (
@@ -48,6 +49,13 @@ SHADE_JOB: tuple[str, Callable[..., dict[str, Any]], str] = (
 )
 
 
+# Faza 2E: warstwa kontekstu/ryzyka nawierzchni (route_surface_context) dla odcinkow BEZ tagu.
+# DOMYSLNIE WYLACZONA. Wlaczana przez QBOT_ROUTE_SURFACE_CONTEXT_ENABLED=1. Wymaga route_surface + route_shade.
+SURFACE_CONTEXT_JOB: tuple[str, Callable[..., dict[str, Any]], str] = (
+    "route_surface_context", ensure_route_surface_context, "context_rows",
+)
+
+
 def _env_get(env: Mapping[str, str] | None, key: str, default: str = "") -> str:
     if env is None:
         return os.getenv(key, default)
@@ -62,12 +70,18 @@ def _route_shade_enabled(env: Mapping[str, str] | None = None) -> bool:
     return _env_get(env, "QBOT_ROUTE_SHADE_ENABLED", "0") == "1"
 
 
+def _route_surface_context_enabled(env: Mapping[str, str] | None = None) -> bool:
+    return _env_get(env, "QBOT_ROUTE_SURFACE_CONTEXT_ENABLED", "0") == "1"
+
+
 def _effective_job_sequence(env: Mapping[str, str] | None = None) -> tuple[tuple[str, Callable[..., dict[str, Any]], str], ...]:
     sequence = JOB_SEQUENCE
     if _route_elevation_enabled(env):
         sequence = sequence + (ELEVATION_JOB,)
     if _route_shade_enabled(env):
         sequence = sequence + (SHADE_JOB,)
+    if _route_surface_context_enabled(env):
+        sequence = sequence + (SURFACE_CONTEXT_JOB,)
     return sequence
 
 
