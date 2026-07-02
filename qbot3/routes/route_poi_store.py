@@ -23,6 +23,11 @@ from qbot3.artifacts.route_analyzer import analyze_route_poi_artifact
 
 ARTIFACTS_ROOT = Path("/opt/qbot/artifacts")
 
+# Najciasniejszy TTL wsrod dostawcow (google_places=14 dni, patrz _stale_after_for_item).
+# Cache starszy niz to NIE jest juz uzywany biernie — ensure_route_poi wymusza
+# swiezy fetch zamiast go przepisywac z falszywa data "teraz".
+POI_CACHE_MAX_AGE_DAYS = 14
+
 
 def _db_conn():
     return psycopg.connect(
@@ -101,7 +106,18 @@ def _resolve_source_path(route_base: dict[str, Any], conn) -> Path:
     raise FileNotFoundError(f"Could not resolve source GPX for route_base_id={route_base['route_base_id']}")
 
 
-def _cached_route_poi_analysis(route_id: str) -> dict[str, Any] | None:
+def _cached_route_poi_analysis(route_id: str) -> tuple[dict[str, Any], datetime] | None:
+    """Zwraca (payload, prawdziwa_data_pliku_na_dysku) albo None gdy brak cache.
+
+    2026-07-02 decyzja: fetched_at zapisywany do route_poi_layer MUSI odzwierciedlac
+    kiedy dane naprawde przyszly z Google/OSM, nie moment wywolania ensure_route_poi.
+    Wczesniej kazde wywolanie ensure_route_poi wstawialo tu datetime.now(), wiec
+    stale_after (licznik przeterminowania) nigdy sie nie zbliezal — zbadano na zywo:
+    trasa 55864231 miala w bazie fetched_at=2026-07-01, a prawdziwy plik cache byl
+    z 2026-06-30 (prawie 2 dni klamstwa, ktore urosloby przy kazdym kolejnym wywolaniu).
+    Zgodnie z docs/DECISIONS.md ("Polstalosc i swiezosc POI"): fetched_at ma byc
+    prawdziwe, a gdy dane sa stare — system ma odswiezyc zrodlo albo ostrzec.
+    """
     patterns = [
         ARTIFACTS_ROOT / "reports" / f"poi_analysis_{route_id}_*.json",
         ARTIFACTS_ROOT / "reports" / f"tuscany_2026_stage_01_poi_analysis_{route_id}_*.json",
@@ -122,7 +138,8 @@ def _cached_route_poi_analysis(route_id: str) -> dict[str, Any] | None:
     if isinstance(payload, dict) and str(payload.get("route_id") or "").strip() == route_id:
         payload.setdefault("source_report_path", str(latest))
         payload.setdefault("analysis_cache_path", str(latest))
-        return payload
+        real_fetched_at = datetime.fromtimestamp(latest.stat().st_mtime, tz=timezone.utc)
+        return payload, real_fetched_at
     return None
 
 
@@ -227,8 +244,8 @@ def _poi_rows_for_items(
         opening_hours_fetched_at = fetched_at if opening_hours is not None else None
         confidence = _confidence_for_item(provider, source_place_id, item)
         validity_hint = str(item.get("note") or provider).strip() or provider
-        status = "active"
         stale_after = _stale_after_for_item(provider, fetched_at)
+        status = "active" if datetime.now(timezone.utc) <= stale_after else "stale"
 
         meta = {
             "route_base_id": route_base_id,
@@ -377,7 +394,18 @@ def ensure_route_poi(*, route_id: str | int | None = None, route_base_id: int | 
             raise ValueError(f"route_base_id={route_base['route_base_id']} has no usable distance_m")
 
         route_id = str(route_base["route_id"])
-        analysis = _cached_route_poi_analysis(route_id)
+        cached = _cached_route_poi_analysis(route_id)
+        analysis: dict[str, Any] | None = None
+        fetched_at: datetime | None = None
+        if cached is not None:
+            cached_payload, cached_fetched_at = cached
+            cache_age = datetime.now(timezone.utc) - cached_fetched_at
+            if cache_age <= timedelta(days=POI_CACHE_MAX_AGE_DAYS):
+                analysis = cached_payload
+                fetched_at = cached_fetched_at
+            # cache istnieje ale jest przeterminowany (> POI_CACHE_MAX_AGE_DAYS) ->
+            # traktujemy jak brak cache i lecimy w dol po swieze dane (refresh, nie WARN)
+
         if analysis is None:
             analysis = analyze_route_poi_artifact(
                 str(source_path),
@@ -393,8 +421,7 @@ def ensure_route_poi(*, route_id: str | int | None = None, route_base_id: int | 
                 focus="all",
                 output_format="json",
             )
-
-        fetched_at = datetime.now(timezone.utc)
+            fetched_at = datetime.now(timezone.utc)
         analysis_status = str(analysis.get("status") or "UNKNOWN").upper()
         categories = (
             ("hard_resupply", "hard_resupply"),
