@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-07-02 — DECYZJA: route_recompute z parametrem scope (all | poi)
+
+**Status:** wdrozone. Testy zielone (test_route_precompute_orchestrator: 3 nowe routingu + 1 live skip; test_route_precompute_trigger 17). Okablowanie zweryfikowane na zywo (narzedzie ma arg scope, prompt Alberta zawiera scope='poi', sygnatura orkiestratora zaktualizowana).
+
+**Problem/potrzeba (2 scenariusze uzytkownika):**
+1. Pobralem trase z RWGPS, ale nie zdecydowalem sie jej przeliczyc — chce uruchomic pelny przelicz recznie.
+2. Wracam do JUZ przeliczonej trasy po ~pol roku — chce odswiezyc TYLKO POI (sklepy/woda/godziny), bo reszta danych (osie, nawierzchnia, wysokosci) sie nie zmienia.
+
+Dotychczas route_recompute robil ZAWSZE pelny przelicz (przebudowa route_base od GPX + cala sekwencja). Brak zawezania.
+
+**Decyzja:** route_recompute dostaje opcjonalny scope. Pelny przelicz pozostaje DOMYSLNY (scenariusz 1); dokladamy tryb POI-only (scenariusz 2). NIE zawezamy calkowicie do POI — oba tryby potrzebne.
+
+**Implementacja:**
+- route_precompute_orchestrator.ensure_route_precompute(): nowy arg scope="all"|"poi" (walidacja ValueError dla innych). scope="all" = dotychczasowa sciezka (przebudowa base + _effective_job_sequence + pruning do 3 wersji). scope="poi" -> nowa funkcja _ensure_route_precompute_poi_only.
+- _ensure_route_precompute_poi_only(): NIE wola ensure_route_base (nie parsuje GPX), odczytuje istniejacy aktywny route_base (_route_base_row); jesli brak -> LookupError z podpowiedzia "uruchom pelny przelicz scope='all'". Uruchamia WYLACZNIE job route_poi (ensure_route_poi, ktory od 2026-07-02 pobiera POI na zywo + zapisuje route_poi_meta). Rejestruje w route_precompute_jobs. NIE przycina wersji (POI-only nie tworzy nowej wersji). Zwrotka: scope="poi", retention=None.
+- Zwrotka pelnego przeliczu dostala pole scope="all".
+- tool_registry._load_route_recompute_tool: arg scope w args_schema + opis kiedy 'all' a kiedy 'poi'; wrapper mapuje warianty (poi/tylko_poi/...) na "poi", reszta -> "all"; note zalezny od scope.
+- Prompt Alberta (qbot3/llm/albert.py _SYSTEM): zaktualizowany w TYM SAMYM commicie (twarda zasada: zmiana narzedzia = zmiana promptu razem) — opisuje kiedy scope='all' (trasa pobrana lecz nieprzeliczona / po odmowie w Telegramie), a kiedy scope='poi' (odswiezenie samego POI juz policzonej trasy).
+- Testy: TestRoutePrecomputeScopeRouting (bez zywej bazy) — walidacja scope, scope='poi' omija ensure_route_base, scope='all' domyslnie do niej siega.
+
+**Dowod na zywo (POI-only fetch) ODLOZONY:** sciezka POI-only wola ensure_route_poi = realny fetch Google Places/Overpass (koszt API). Nie uruchamiano automatycznie — to czesc osobno oczekujacego "finalnego przeliczenia trasy testowej", ktore przy okazji zapelni route_poi_meta.
+
+**Nastepne (zatwierdzone, osobno):** ozywienie landcover w ocenie nawierzchni przez WorldCover (lokalne kafle zamiast Overpass) — wymaga osobnego doprecyzowania (mapowanie klas, weryfikacja na trasie); tylko dla odcinkow bez tagu OSM (tag wygrywa).
+
+---
+
 ## 2026-07-02 — DECYZJA: nowa tabela route_poi_meta + raport czyta POI WYLACZNIE z bazy (przeciek nr 2)
 
 **Status:** wdrozone. DDL zaaplikowany na zywo (23 kolumny), writer/kanoniczny odczyt/raport podlaczone, testy zielone (test_route_report 64, test_route_poi_store, test_route_canonical_read, test_poi_open_window 5). Dowod na zywo (trasa 55864231): raport czyta 13+12+2+20 POI z route_poi_layer, version-guard=OK.

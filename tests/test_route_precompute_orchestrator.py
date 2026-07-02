@@ -105,3 +105,56 @@ class TestRoutePrecomputeOrchestrator(unittest.TestCase):
                 (first["route_version_key"],),
             ).fetchone()["c"]
             self.assertEqual(int(dup_count), 0)
+
+
+
+class TestRoutePrecomputeScopeRouting(unittest.TestCase):
+    """Routing parametru scope (bez zywej bazy) — 2026-07-02."""
+
+    def test_invalid_scope_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            ensure_route_precompute(route_id="55798129", scope="bogus")
+
+    def test_scope_poi_skips_base_rebuild(self) -> None:
+        import qbot3.routes.route_precompute_orchestrator as orch
+        calls = {"base": 0, "poi_only": 0}
+        orig_base = orch.ensure_route_base
+        orig_poi = orch._ensure_route_precompute_poi_only
+
+        def fake_base(*a, **k):
+            calls["base"] += 1
+            raise AssertionError("ensure_route_base nie moze byc wolane dla scope='poi'")
+
+        def fake_poi(route_id_text, *, trigger_source):
+            calls["poi_only"] += 1
+            return {"status": "OK", "scope": "poi", "route_id": route_id_text, "trigger_source": trigger_source}
+
+        orch.ensure_route_base = fake_base
+        orch._ensure_route_precompute_poi_only = fake_poi
+        try:
+            out = ensure_route_precompute(route_id="55798129", scope="poi", trigger_source="test")
+        finally:
+            orch.ensure_route_base = orig_base
+            orch._ensure_route_precompute_poi_only = orig_poi
+
+        self.assertEqual(out["scope"], "poi")
+        self.assertEqual(calls["poi_only"], 1)
+        self.assertEqual(calls["base"], 0)
+
+    def test_scope_all_default_reaches_base(self) -> None:
+        import qbot3.routes.route_precompute_orchestrator as orch
+        calls = {"base": 0}
+        orig_base = orch.ensure_route_base
+
+        def fake_base(route_id_text):
+            calls["base"] += 1
+            raise RuntimeError("stop-after-base")
+
+        orch.ensure_route_base = fake_base
+        try:
+            with self.assertRaises(RuntimeError):
+                ensure_route_precompute(route_id="55798129")
+        finally:
+            orch.ensure_route_base = orig_base
+
+        self.assertEqual(calls["base"], 1)

@@ -285,8 +285,77 @@ def _run_job(
     }
 
 
-def ensure_route_precompute(*, route_id: str | int, trigger_source: str = "manual") -> dict[str, Any]:
+def _ensure_route_precompute_poi_only(route_id_text: str, *, trigger_source: str) -> dict[str, Any]:
+    """Odswieza WYLACZNIE warstwe POI istniejacej, juz przeliczonej wersji trasy.
+
+    Scenariusz: powrot do policzonej trasy po dluzszym czasie — POI (sklepy/woda/godziny)
+    moglo sie zdezaktualizowac, reszta danych (osie, nawierzchnia, wysokosci) nie. NIE
+    przebudowuje route_base (nie parsuje GPX od nowa), nie rusza innych warstw, nie przycina
+    wersji. Wymaga istniejacego aktywnego route_base (inaczej: pelny przelicz scope='all')."""
+    poi_job = next(job for job in JOB_SEQUENCE if job[0] == "route_poi")
+    job_type, writer, count_key = poi_job
+
+    with _db_conn() as conn:
+        route_base_row = _route_base_row(conn, route_id_text)
+        if not route_base_row:
+            raise LookupError(
+                f"No route_base for route_id={route_id_text!r}; "
+                "uruchom najpierw pelny przelicz (scope='all')"
+            )
+        route_base_id = int(route_base_row["route_base_id"])
+        artifact_raw = route_base_row.get("route_artifact_id")
+        route_artifact_id = int(artifact_raw) if artifact_raw is not None else None
+        route_version_key = str(route_base_row["route_version_key"])
+
+        job_results: dict[str, dict[str, Any]] = {}
+        job_results[job_type] = _run_job(
+            conn,
+            route_id=route_id_text,
+            route_artifact_id=route_artifact_id,
+            route_version_key=route_version_key,
+            route_base_id=route_base_id,
+            trigger_source=trigger_source,
+            job_type=job_type,
+            writer=writer,
+            writer_kwargs={"route_base_id": route_base_id},
+            count_key=count_key,
+        )
+
+        job_rows = conn.execute(
+            """
+            SELECT job_type, status, layer_status_json, idempotency_key
+            FROM qbot_v2.route_precompute_jobs
+            WHERE route_version_key = %s AND job_type = %s
+            ORDER BY job_type
+            """,
+            (route_version_key, job_type),
+        ).fetchall()
+
+    return {
+        "status": "OK",
+        "scope": "poi",
+        "retention": None,
+        "route_id": route_id_text,
+        "route_base_id": route_base_id,
+        "route_artifact_id": route_artifact_id,
+        "route_version_key": route_version_key,
+        "jobs": job_results,
+        "job_rows": [dict(row) for row in job_rows],
+        "job_count": len(job_rows),
+        "route_base": route_base_row,
+        "trigger_source": trigger_source,
+    }
+
+
+def ensure_route_precompute(*, route_id: str | int, trigger_source: str = "manual", scope: str = "all") -> dict[str, Any]:
     route_id_text = _normalize_route_id(route_id)
+    scope_norm = (scope or "all").strip().lower()
+    if scope_norm not in {"all", "poi"}:
+        raise ValueError(f"unsupported scope={scope!r} (expected 'all' or 'poi')")
+
+    if scope_norm == "poi":
+        return _ensure_route_precompute_poi_only(route_id_text, trigger_source=trigger_source)
+
     base_result = ensure_route_base(route_id_text)
     route_base = base_result["route_base"]
     route_base_id = int(route_base["route_base_id"])
@@ -333,6 +402,7 @@ def ensure_route_precompute(*, route_id: str | int, trigger_source: str = "manua
 
     return {
         "status": "OK",
+        "scope": "all",
         "retention": retention,
         "route_id": route_id_text,
         "route_base_id": route_base_id,

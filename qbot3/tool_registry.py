@@ -2818,15 +2818,23 @@ def _load_route_recompute_tool() -> dict[str, Any]:
         rid = str((args or {}).get("route_id") or "").strip()
         if not rid:
             return error_result("ROUTE_RECOMPUTE_NEEDS_ID", "Podaj route_id trasy do przeliczenia.")
+        scope_raw = str((args or {}).get("scope") or "all").strip().lower()
+        scope = "poi" if scope_raw in {"poi", "poi_only", "poi-only", "tylko_poi", "tylko poi"} else "all"
         try:
             from qbot3.routes.route_precompute_orchestrator import ensure_route_precompute
-            out = ensure_route_precompute(route_id=rid, trigger_source="albert_manual")
+            out = ensure_route_precompute(route_id=rid, trigger_source="albert_manual", scope=scope)
+            note = (
+                f"Odswiezono TYLKO POI aktywnej wersji trasy {rid} (reszta warstw nietknieta)."
+                if scope == "poi"
+                else f"Przeliczono cala aktywna wersje trasy {rid}."
+            )
             return success_result({
                 "route_id": rid,
+                "scope": out.get("scope", scope),
                 "route_version_key": out.get("route_version_key"),
                 "job_count": out.get("job_count"),
                 "retention": out.get("retention"),
-                "note": f"Przeliczono aktywna wersje trasy {rid}.",
+                "note": note,
             })
         except Exception as exc:
             return error_result("ROUTE_RECOMPUTE_FAILED", repr(exc))
@@ -2835,13 +2843,17 @@ def _load_route_recompute_tool() -> dict[str, Any]:
         "callable": _wrapper,
         "category": "routes",
         "description": (
-            "Recznie przelicza AKTYWNA (najnowsza) wersje wskazanej trasy: nawierzchnia, wysokosci, "
-            "podjazdy, cien, pokrycie, POI. Uzyj gdy uzytkownik chce przeliczyc lub odswiezyc trase "
-            "(np. po odmowie w Telegramie). WYMAGA route_id. Ciezka i zapisujaca; po sukcesie zostawia "
-            "3 najnowsze wersje. Przeliczanie STARSZEJ wersji bedzie osobno. Dok.: docs/ROUTE_STORE.md"
+            "Recznie przelicza wskazana trase. scope='all' (domyslnie): PELNY przelicz aktywnej "
+            "(najnowszej) wersji — osie, nawierzchnia, POI (+ opcj. cien/wysokosci); uzyj gdy trasa "
+            "pobrana z RWGPS nie zostala jeszcze przeliczona albo po odmowie w Telegramie. "
+            "scope='poi': odswieza WYLACZNIE POI (sklepy/woda/godziny) istniejacej, JUZ przeliczonej "
+            "trasy, bez ruszania reszty warstw i bez przycinania wersji; uzyj gdy wracasz do "
+            "policzonej trasy po czasie i chcesz tylko aktualne POI. WYMAGA route_id. Ciezka i "
+            "zapisujaca; scope='all' zostawia 3 najnowsze wersje. Dok.: docs/ROUTE_STORE.md"
         ),
         "args_schema": {
             "route_id": {"type": "string", "description": "ID trasy RWGPS do przeliczenia (wymagane)"},
+            "scope": {"type": "string", "description": "'all' = pelny przelicz (domyslnie) | 'poi' = odswiez tylko POI istniejacej, juz przeliczonej trasy"},
         },
         "safety": "write",
         "mode": "write",
