@@ -1175,56 +1175,115 @@ def _surface_profile_render_line(profile: dict[str, Any]) -> str:
 
 
 def _read_poi_analysis_cache(route_id: str | None) -> dict[str, Any] | None:
+    """POI dla raportu — WYLACZNIE z kanonicznej bazy (route_poi_layer + route_poi_meta)
+    przez read_canonical_route. 2026-07-02: zlikwidowano czytanie starych plikow z
+    /opt/qbot/artifacts/reports/ (poi_analysis_<id>_*.json) — to byl przeciek granicy:
+    raport wsysal cudze artefakty po samym numerze trasy, z pominieciem bazy. Teraz raport
+    czyta ta sama kanoniczna baze co reszta. Zwraca ten sam ksztalt co dawny cache dyskowy,
+    wiec render POI dziala bez zmian. generated_at = route_poi_meta.fetched_at (prawdziwa
+    data pobrania POI = 'dane POI z dnia'). Wersje kotwiczymy na aktywnym route_base
+    (route_artifact_id + sha256), bo dane POI sa Z DEFINICJI z aktywnej wersji trasy."""
     if not route_id:
         return None
     try:
-        from pathlib import Path as _P
-        import json as _json
-
-        files = sorted(
-            _P("/opt/qbot/artifacts/reports").glob(f"poi_analysis_{route_id}_*.json"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )
-        for path in files:
-            try:
-                obj = _json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            if not isinstance(obj, dict):
-                continue
-            report_md = path.with_suffix(".md")
-            cache: dict[str, Any] = {
-                "status": obj.get("status") or obj.get("analysis_status") or "OK",
-                "analysis_status": obj.get("analysis_status"),
-                "cache_path": str(path),
-                "generated_at": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(),
-                "report_path": str(report_md) if report_md.exists() else None,
-                "report_json_path": str(path),
-                "summary": obj.get("summary") or {},
-                "poi_source_mode": obj.get("poi_source_mode"),
-                "google_supply_count": obj.get("google_supply_count"),
-                "supply_status": obj.get("supply_status"),
-                "technical_completeness": obj.get("technical_completeness"),
-                "supply_longest_gap_km": obj.get("supply_longest_gap_km"),
-                "supply_longest_gap_from_km": obj.get("supply_longest_gap_from_km"),
-                "buffers": obj.get("buffers") or {},
-                "hard_resupply": obj.get("hard_resupply") or [],
-                "soft_food_stop": obj.get("soft_food_stop") or [],
-                "water": obj.get("water") or [],
-                "attractions": obj.get("attractions") or [],
-                "town_fallback_check": obj.get("town_fallback_check") or [],
-                "missing_chunks": obj.get("missing_chunks") or [],
-                "missing_chunks_count": obj.get("missing_chunks_count"),
-                "markdown": obj.get("markdown"),
-            }
-            for key in _ROUTE_VERSION_META_KEYS:
-                if key in obj and obj.get(key) is not None:
-                    cache[key] = obj.get(key)
-            return cache
+        canonical = read_canonical_route(route_id=route_id)
     except Exception:
         return None
-    return None
+    if not isinstance(canonical, dict):
+        return None
+    layers = canonical.get("layers") if isinstance(canonical.get("layers"), dict) else {}
+    poi_rows = layers.get("route_poi_layer") or []
+    meta = canonical.get("canonical_poi_meta") if isinstance(canonical.get("canonical_poi_meta"), dict) else {}
+    if not poi_rows and not meta:
+        return None
+
+    def _open_source(provider: Any) -> str | None:
+        p = str(provider or "").strip().lower()
+        if "google" in p:
+            return "google"
+        if "osm" in p or "overpass" in p:
+            return "osm"
+        return p or None
+
+    def _source_tags(row: dict[str, Any]) -> Any:
+        mj = row.get("poi_meta_json")
+        if isinstance(mj, str):
+            try:
+                mj = json.loads(mj)
+            except Exception:
+                mj = None
+        if isinstance(mj, dict):
+            return mj.get("source_tags")
+        return None
+
+    buckets: dict[str, list[dict[str, Any]]] = {
+        "hard_resupply": [], "soft_food_stop": [], "water": [], "attraction": [], "town": [],
+    }
+    for row in poi_rows:
+        cat = str(row.get("category") or "").strip()
+        if cat not in buckets:
+            continue
+        buckets[cat].append({
+            "category": cat,
+            "name": row.get("name"),
+            "route_km": row.get("km_on_route"),
+            "distance_to_track_m": row.get("distance_from_route_m"),
+            "opening_hours_osm": row.get("opening_hours"),
+            "open_source": _open_source(row.get("provider")),
+            "source_tags": _source_tags(row),
+            "lat": row.get("lat"),
+            "lon": row.get("lon"),
+        })
+
+    fetched_at = meta.get("fetched_at")
+    if hasattr(fetched_at, "isoformat"):
+        generated_at = fetched_at.isoformat()
+    else:
+        generated_at = str(fetched_at) if fetched_at else None
+
+    buffers = meta.get("buffers_json") if isinstance(meta.get("buffers_json"), dict) else {}
+    missing_chunks = meta.get("missing_chunks_json") if isinstance(meta.get("missing_chunks_json"), list) else []
+
+    cache: dict[str, Any] = {
+        "status": meta.get("analysis_status") or ("OK" if poi_rows else "UNAVAILABLE"),
+        "analysis_status": meta.get("analysis_status"),
+        "source": "canonical_db",
+        "cache_path": "qbot_v2.route_poi_layer",
+        "report_json_path": "qbot_v2.route_poi_layer + route_poi_meta",
+        "report_path": None,
+        "generated_at": generated_at,
+        "summary": {
+            "hard_resupply": len(buckets["hard_resupply"]),
+            "soft_food_stop": len(buckets["soft_food_stop"]),
+            "water": len(buckets["water"]),
+            "attractions": len(buckets["attraction"]),
+            "town": len(buckets["town"]),
+        },
+        "poi_source_mode": meta.get("poi_source_mode"),
+        "google_supply_count": meta.get("google_supply_count"),
+        "supply_status": meta.get("supply_status"),
+        "technical_completeness": meta.get("technical_completeness"),
+        "supply_longest_gap_km": meta.get("supply_longest_gap_km"),
+        "supply_longest_gap_from_km": meta.get("supply_longest_gap_from_km"),
+        "buffers": buffers,
+        "hard_resupply": buckets["hard_resupply"],
+        "soft_food_stop": buckets["soft_food_stop"],
+        "water": buckets["water"],
+        "attractions": buckets["attraction"],
+        "town_fallback_check": buckets["town"],
+        "missing_chunks": missing_chunks,
+        "missing_chunks_count": meta.get("missing_chunks_count"),
+        "markdown": None,
+    }
+    base = canonical.get("route_base") if isinstance(canonical.get("route_base"), dict) else {}
+    if base.get("route_artifact_id") is not None:
+        cache["route_artifact_id"] = base.get("route_artifact_id")
+    if base.get("sha256") is not None:
+        cache["sha256"] = base.get("sha256")
+    if base.get("route_version_key") is not None:
+        cache["route_version_key"] = base.get("route_version_key")
+    cache["route_id"] = str(canonical.get("route_id") or route_id)
+    return cache
 
 
 def _parse_source_tags(source_tags: Any) -> dict[str, str]:
@@ -1499,6 +1558,7 @@ def _render_poi_supply_section(
         f"Status zaopatrzenia: {status}",
         f"Kompletność techniczna POI: {technical_completeness}",
         f"Źródło danych/cache: {report_json_path}",
+        f"Dane POI z dnia: {(generated_at[:10] if isinstance(generated_at, str) and generated_at[:1].isdigit() else generated_at)}",
         f"Świeżość danych: {generated_at}",
     ]
     if poi_cache.get("poi_source_mode"):
@@ -1934,40 +1994,39 @@ def _merge_surface_text(prof_txt: str | None, min_km: float = 0.3) -> str | None
 
 
 def _read_poi_positions_cache(route_id, start=None):
-    """Czyta cache poi_positions_{route_id}.json (TASK 15 FAZA C). Zwraca [] gdy brak."""
+    """Pozycje POI (km, opis) z kanonicznej bazy (route_poi_layer). 2026-07-02: bylo
+    czytanie poi_positions_{route_id}.json z /artifacts/reports/ — usuniete (przeciek
+    granicy). Raport czyta wylacznie z bazy."""
     if not route_id:
         return []
-    import json as _json
-    from pathlib import Path as _P
-    cache = _P(f"/opt/qbot/artifacts/reports/poi_positions_{route_id}.json")
-    if not cache.exists():
-        return []
     try:
-        obj = _json.loads(cache.read_text(encoding="utf-8"))
+        canonical = read_canonical_route(route_id=route_id)
     except Exception:
         return []
+    if not isinstance(canonical, dict):
+        return []
+    layers = canonical.get("layers") if isinstance(canonical.get("layers"), dict) else {}
+    poi_rows = layers.get("route_poi_layer") or []
     label_map = {"water": "woda", "hard_resupply": "sklep",
-                 "soft_food_stop": "jedzenie", "attractions": "atrakcja"}
+                 "soft_food_stop": "jedzenie", "attraction": "atrakcja"}
     out = []
-    for key, label in label_map.items():
-        v = obj.get(key)
-        if not isinstance(v, list):
+    for row in poi_rows:
+        cat = str(row.get("category") or "").strip()
+        label = label_map.get(cat)
+        if not label:
             continue
-        for it in v:
-            if not isinstance(it, dict):
-                continue
-            km = it.get("route_km")
-            if km is None:
-                continue
-            name = it.get("name") or ""
-            hours = it.get("open_hours") or it.get("hours") or ""
-            desc = f"{label} ({name})" if name else label
-            if hours and start:
-                desc = f"{desc}, {hours}"
-            try:
-                out.append((float(km), desc))
-            except (TypeError, ValueError):
-                continue
+        km = row.get("km_on_route")
+        if km is None:
+            continue
+        name = str(row.get("name") or "").strip()
+        hours = str(row.get("opening_hours") or "").strip()
+        desc = f"{label} ({name})" if name else label
+        if hours and start:
+            desc = f"{desc}, {hours}"
+        try:
+            out.append((float(km), desc))
+        except (TypeError, ValueError):
+            continue
     out.sort(key=lambda p: p[0])
     return out
 

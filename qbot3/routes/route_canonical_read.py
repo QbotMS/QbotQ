@@ -251,6 +251,46 @@ def _poi_rows(conn, route_base_id: int) -> list[dict[str, Any]]:
     )
 
 
+def _poi_meta_row(conn, route_base_id: int) -> dict[str, Any] | None:
+    """Metadane JAKOSCI analizy POI (poziom trasy) z route_poi_meta. None gdy brak wiersza."""
+    row = _fetch_one(
+        conn,
+        """
+        SELECT
+            route_base_id,
+            route_version_key,
+            analysis_status,
+            supply_status,
+            technical_completeness,
+            supply_longest_gap_km,
+            supply_longest_gap_from_km,
+            supply_open_count,
+            supply_unknown_count,
+            supply_closed_count,
+            poi_source_mode,
+            google_supply_count,
+            missing_chunks_count,
+            km_from,
+            km_to,
+            avg_speed_kmh,
+            fetched_at,
+            missing_chunks_json,
+            buffers_json,
+            created_at,
+            updated_at
+        FROM qbot_v2.route_poi_meta
+        WHERE route_base_id = %s
+        LIMIT 1
+        """,
+        (route_base_id,),
+    )
+    if not row:
+        return None
+    row["missing_chunks_json"] = _normalize_json(row.get("missing_chunks_json"))
+    row["buffers_json"] = _normalize_json(row.get("buffers_json"))
+    return row
+
+
 def _poi_summary(poi_rows: list[dict[str, Any]]) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "poi_count": len(poi_rows),
@@ -839,6 +879,7 @@ def read_canonical_route(
         }
         surface_summary = _surface_summary(layers["route_surface_layer"], base, surface_profile_summary)
         poi_summary = _poi_summary(layers["route_poi_layer"])
+        poi_meta = _poi_meta_row(conn, rb_id)
         elevation_summary = _elevation_summary(layers["route_elevation_samples"], layers["route_climb_events"])
         layer_counts = {
             name: (1 if name == "route_base" and layers[name] else len(layers[name]))
@@ -868,6 +909,7 @@ def read_canonical_route(
             "land_cover_preferred_source": land_cover_preferred_source,
             "canonical_surface_summary": surface_summary,
             "canonical_poi_summary": poi_summary,
+            "canonical_poi_meta": poi_meta,
             "canonical_elevation_summary": elevation_summary,
             "surface_profile_overpass_metrics": surface_profile_summary.get("overpass_metrics") if isinstance(surface_profile_summary, dict) else None,
             "layers": layers,

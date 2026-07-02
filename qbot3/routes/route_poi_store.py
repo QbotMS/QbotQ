@@ -335,6 +335,123 @@ def _upsert_route_poi_layer(conn, rows: list[dict[str, Any]]) -> int:
     return upserted
 
 
+def _build_poi_meta_row(route_base: dict[str, Any], analysis: dict[str, Any], fetched_at: datetime) -> dict[str, Any]:
+    """Zbiera metadane JAKOSCI analizy POI (poziom trasy) do jednego wiersza route_poi_meta.
+
+    Wszystkie pola pochodza z analyze_route_poi_artifact (pobranie na zywo). "Braki chunkow"
+    (missing_chunks) sa artefaktem momentu pobrania - nie da sie ich odtworzyc z zapisanych
+    punktow, dlatego utrwalamy je tu, zeby raport mogl uczciwie ostrzec o niepelnym pokryciu.
+    """
+    buffers = dict(analysis.get("buffers") or {})
+    missing_chunks = list(analysis.get("missing_chunks") or [])
+
+    def _num(value: Any) -> float | None:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _int(value: Any) -> int | None:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    return {
+        "route_base_id": int(route_base["route_base_id"]),
+        "route_version_key": route_base["route_version_key"],
+        "analysis_status": str(analysis.get("status") or analysis.get("analysis_status") or "UNKNOWN").upper(),
+        "supply_status": analysis.get("supply_status"),
+        "technical_completeness": analysis.get("technical_completeness"),
+        "supply_longest_gap_km": _num(analysis.get("supply_longest_gap_km")),
+        "supply_longest_gap_from_km": _num(analysis.get("supply_longest_gap_from_km")),
+        "supply_open_count": _int(analysis.get("supply_open_count")),
+        "supply_unknown_count": _int(analysis.get("supply_unknown_count")),
+        "supply_closed_count": _int(analysis.get("supply_closed_count")),
+        "poi_source_mode": analysis.get("poi_source_mode"),
+        "google_supply_count": _int(analysis.get("google_supply_count")),
+        "missing_chunks_count": _int(analysis.get("missing_chunks_count")) if analysis.get("missing_chunks_count") is not None else len(missing_chunks),
+        "km_from": _num(analysis.get("km_from")),
+        "km_to": _num(analysis.get("km_to")),
+        "avg_speed_kmh": _num(buffers.get("avg_speed_kmh")),
+        "fetched_at": fetched_at,
+        "missing_chunks_json": json.dumps(missing_chunks, ensure_ascii=False, default=str),
+        "buffers_json": json.dumps(buffers, ensure_ascii=False, default=str),
+    }
+
+
+def _upsert_route_poi_meta(conn, meta_row: dict[str, Any]) -> None:
+    conn.execute(
+        """
+        INSERT INTO qbot_v2.route_poi_meta (
+            route_base_id,
+            route_version_key,
+            analysis_status,
+            supply_status,
+            technical_completeness,
+            supply_longest_gap_km,
+            supply_longest_gap_from_km,
+            supply_open_count,
+            supply_unknown_count,
+            supply_closed_count,
+            poi_source_mode,
+            google_supply_count,
+            missing_chunks_count,
+            km_from,
+            km_to,
+            avg_speed_kmh,
+            fetched_at,
+            missing_chunks_json,
+            buffers_json
+        )
+        VALUES (
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb
+        )
+        ON CONFLICT (route_base_id) DO UPDATE SET
+            route_version_key = EXCLUDED.route_version_key,
+            analysis_status = EXCLUDED.analysis_status,
+            supply_status = EXCLUDED.supply_status,
+            technical_completeness = EXCLUDED.technical_completeness,
+            supply_longest_gap_km = EXCLUDED.supply_longest_gap_km,
+            supply_longest_gap_from_km = EXCLUDED.supply_longest_gap_from_km,
+            supply_open_count = EXCLUDED.supply_open_count,
+            supply_unknown_count = EXCLUDED.supply_unknown_count,
+            supply_closed_count = EXCLUDED.supply_closed_count,
+            poi_source_mode = EXCLUDED.poi_source_mode,
+            google_supply_count = EXCLUDED.google_supply_count,
+            missing_chunks_count = EXCLUDED.missing_chunks_count,
+            km_from = EXCLUDED.km_from,
+            km_to = EXCLUDED.km_to,
+            avg_speed_kmh = EXCLUDED.avg_speed_kmh,
+            fetched_at = EXCLUDED.fetched_at,
+            missing_chunks_json = EXCLUDED.missing_chunks_json,
+            buffers_json = EXCLUDED.buffers_json,
+            updated_at = now()
+        """,
+        (
+            meta_row["route_base_id"],
+            meta_row["route_version_key"],
+            meta_row["analysis_status"],
+            meta_row["supply_status"],
+            meta_row["technical_completeness"],
+            meta_row["supply_longest_gap_km"],
+            meta_row["supply_longest_gap_from_km"],
+            meta_row["supply_open_count"],
+            meta_row["supply_unknown_count"],
+            meta_row["supply_closed_count"],
+            meta_row["poi_source_mode"],
+            meta_row["google_supply_count"],
+            meta_row["missing_chunks_count"],
+            meta_row["km_from"],
+            meta_row["km_to"],
+            meta_row["avg_speed_kmh"],
+            meta_row["fetched_at"],
+            meta_row["missing_chunks_json"],
+            meta_row["buffers_json"],
+        ),
+    )
+
+
 def ensure_route_poi(*, route_id: str | int | None = None, route_base_id: int | None = None) -> dict[str, Any]:
     if route_id is None and route_base_id is None:
         raise ValueError("route_id or route_base_id required")
@@ -394,8 +511,10 @@ def ensure_route_poi(*, route_id: str | int | None = None, route_base_id: int | 
                 )
             )
 
+        poi_meta_row = _build_poi_meta_row(route_base, analysis, fetched_at)
         with conn.transaction():
             poi_layer_count = _upsert_route_poi_layer(conn, rows)
+            _upsert_route_poi_meta(conn, poi_meta_row)
         conn.commit()
 
     except Exception:
@@ -415,6 +534,10 @@ def ensure_route_poi(*, route_id: str | int | None = None, route_base_id: int | 
         "analysis_status": analysis_status,
         "summary": summary,
         "route_distance_km": round(route_distance_km, 3),
+        "supply_status": poi_meta_row.get("supply_status"),
+        "technical_completeness": poi_meta_row.get("technical_completeness"),
+        "missing_chunks_count": poi_meta_row.get("missing_chunks_count"),
+        "fetched_at": fetched_at.isoformat(),
     }
 
 

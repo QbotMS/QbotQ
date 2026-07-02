@@ -5,6 +5,29 @@
 
 ---
 
+## 2026-07-02 — DECYZJA: nowa tabela route_poi_meta + raport czyta POI WYLACZNIE z bazy (przeciek nr 2)
+
+**Status:** wdrozone. DDL zaaplikowany na zywo (23 kolumny), writer/kanoniczny odczyt/raport podlaczone, testy zielone (test_route_report 64, test_route_poi_store, test_route_canonical_read, test_poi_open_window 5). Dowod na zywo (trasa 55864231): raport czyta 13+12+2+20 POI z route_poi_layer, version-guard=OK.
+
+**Problem (przeciek nr 2 — krok 5 / raport):** qbot_route_report_tool czytal POI z DWOCH miejsc: licznik z bazy, ale TRESC (nazwy sklepow, godziny, luki, klastry) bezposrednio z plikow /opt/qbot/artifacts/reports/poi_analysis_<id>_*.json oraz poi_positions_<id>.json (funkcje _read_poi_analysis_cache i _read_poi_positions_cache globowaly dysk po numerze trasy). To ten sam typ przecieku co krok 3 — raport ma czytac z kanonicznej bazy, nie z przypadkowych artefaktow.
+
+**Brakujace dane (opcja B, wybrana przez uzytkownika):** metadane JAKOSCI analizy POI sa liczone na poziomie CALEJ trasy (nie per-punkt) przez analyze_route_poi_artifact: supply_status, technical_completeness, najdluzsza luka, liczniki open/unknown/closed, poi_source_mode, google_supply_count, missing_chunks (ktore chunki nie pobraly sie z Overpass). Te nie mieszcza sie w per-punktowej route_poi_layer i nie da sie ich odtworzyc z zapisanych punktow (missing_chunks to artefakt momentu pobrania). Decyzja: nowa tabela.
+
+**Nowa tabela qbot_v2.route_poi_meta** (sql/route_poi_meta_v1.sql): jeden wiersz na wersje trasy (UNIQUE route_base_id), dziecko route_base ON DELETE CASCADE (zero sierot, kasuje sie z trasa jak reszta warstw). Kolumny: analysis_status, supply_status, technical_completeness, supply_longest_gap_km/_from_km, supply_open/unknown/closed_count, poi_source_mode, google_supply_count, missing_chunks_count, km_from/km_to, avg_speed_kmh, fetched_at, missing_chunks_json, buffers_json.
+
+**Zmiany:**
+- route_poi_store.py: _build_poi_meta_row + _upsert_route_poi_meta; ensure_route_poi zapisuje meta w TEJ SAMEJ transakcji co punkty (fetched_at = moment pobrania). Zwrotka dostala supply_status/technical_completeness/missing_chunks_count/fetched_at.
+- route_canonical_read.py: _poi_meta_row czyta route_poi_meta; read_canonical_route wystawia canonical_poi_meta.
+- qbot_route_report_tool.py: _read_poi_analysis_cache i _read_poi_positions_cache przepisane — czytaja WYLACZNIE z bazy przez read_canonical_route (route_poi_layer + canonical_poi_meta), zero globowania dysku. Zwracaja ten sam ksztalt co dawny cache dyskowy (mapowanie km_on_route->route_km, distance_from_route_m->distance_to_track_m, opening_hours->opening_hours_osm, provider->open_source), wiec render POI bez zmian. generated_at = route_poi_meta.fetched_at. Dodano linie raportu "Dane POI z dnia: RRRR-MM-DD".
+
+**Version-guard:** dane POI sa Z DEFINICJI z aktywnej wersji trasy (czytane z route_poi_layer pod aktywnym route_base), wiec kotwiczymy blok na route_artifact_id + sha256 z route_base (identyczne z aktywna wersja) -> guard OK. NIE kopiujemy created_at/updated_at (inne zrodlo dat -> falszywy mismatch).
+
+**Do domkniecia przy finalnym przeliczaniu:** route_poi_meta zapelni sie dla istniejacych tras dopiero przy recompute (writer zweryfikowany testami + na zywo, ale realny wiersz meta powstanie przy pobraniu). Do 55864231 obecnie meta=NULL -> raport pokazuje POI z bazy, ale supply_status/generated_at puste do przeliczenia.
+
+**Otwarte (pytanie uzytkownika):** czy route_recompute umie zawezic zakres do samego POI (bez pelnego przeliczania) — do zbadania osobno.
+
+---
+
 ## 2026-07-02 — DECYZJA: zasilanie route_poi_layer ZAWSZE na zywo; usuniety przeciek czytania cudzych plikow z dysku + mechanizm 14-dni
 
 **Status:** wdrozone i zweryfikowane (import OK, funkcja/stala usuniete, testy zielone: test_route_poi_store, test_poi_open_window, test_route_report 64).
