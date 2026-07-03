@@ -102,16 +102,18 @@ def routes_ready():
     try:
         rows = conn.execute(
             """
-            SELECT rb.route_id, rb.distance_m,
-                   a.metadata_json->>'route_name' AS name,
-                   j.finished_at
-            FROM qbot_v2.route_base rb
-            JOIN qbot_v2.route_precompute_jobs j
-                ON j.route_base_id = rb.route_base_id
-               AND j.job_type = 'route_surface'
-               AND j.status = 'complete'
-            LEFT JOIN qbot_v2.route_artifacts a ON a.id = rb.route_artifact_id
-            ORDER BY j.finished_at DESC
+            SELECT route_id, distance_m, name, finished_at FROM (
+                SELECT DISTINCT ON (rb.route_id) rb.route_id, rb.distance_m,
+                       a.metadata_json->>'route_name' AS name,
+                       j.finished_at
+                FROM qbot_v2.route_base rb
+                JOIN qbot_v2.route_precompute_jobs j
+                    ON j.route_base_id = rb.route_base_id
+                   AND j.job_type = 'route_surface'
+                   AND j.status = 'complete'
+                LEFT JOIN qbot_v2.route_artifacts a ON a.id = rb.route_artifact_id
+                ORDER BY rb.route_id, j.finished_at DESC
+            ) t ORDER BY finished_at DESC
             """
         ).fetchall()
     finally:
@@ -937,6 +939,182 @@ def kanon_report(route_id: str = Query(...), start: str | None = Query(None)):
     body = _kanon_md_to_html(md)
     page = _KANON_PAGE.replace("__BODY__", body).replace("__RID__", str(route_id))
     return HTMLResponse(page)
+
+
+# ---------------------------------------------------------------------------
+# Generator danych raportu trasy (raport-v2). Jedno zrodlo prawdy dla DATA:
+# kazda trasa liczona samodzielnie z bazy + silnikow. Front (raport-render.js)
+# tylko rysuje to, co tu policzone. Zmiany danych raportu = TYLKO tutaj.
+# ---------------------------------------------------------------------------
+def _report_sev(c):
+    c = int(c or 0)
+    if c >= 95: return 6
+    if c in (80, 81, 82) or 61 <= c <= 67: return 5
+    if 51 <= c <= 57 or 71 <= c <= 77: return 4
+    if c in (45, 48) or c == 3: return 2
+    if c in (1, 2): return 1
+    return 0
+
+
+def _report_icon(code, prob):
+    c = int(code or 0)
+    if c >= 95: return "storm"
+    if c in (80, 81, 82) or 61 <= c <= 67 or 51 <= c <= 57: return "rain"
+    if 71 <= c <= 77: return "snow"
+    if c in (45, 48) or c == 3: return "cloud"
+    if c in (1, 2): return "partcloud"
+    if c == 0: return "cloud" if (prob or 0) >= 55 else "sun"
+    return "cloud"
+
+
+def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_stop_min=0):
+    """Buduje pelny blok DATA (route/start/time/chart) dla jednej trasy."""
+    base = conn.execute(
+        "SELECT rb.route_base_id, rb.distance_m, a.metadata_json->>'route_name' AS name "
+        "FROM qbot_v2.route_base rb "
+        "LEFT JOIN qbot_v2.route_artifacts a ON a.id=rb.route_artifact_id "
+        "WHERE rb.route_id=%s", (route_id,)).fetchone()
+    if not base:
+        raise HTTPException(status_code=404, detail="Trasa nie znaleziona w routes store")
+    rbid = base["route_base_id"]
+    dist_km = round((base["distance_m"] or 0) / 1000.0, 1)
+    name = base["name"] or f"Trasa {route_id}"
+
+    # --- profil wysokosci (downsample ~220) ---
+    erows = conn.execute(
+        "SELECT distance_m, elevation_m FROM qbot_v2.route_elevation_samples "
+        "WHERE route_base_id=%s ORDER BY sample_index", (rbid,)).fetchall()
+    if not erows:
+        raise HTTPException(status_code=422, detail="Brak profilu wysokosci dla tej trasy")
+    step = max(1, len(erows) // 220)
+    ele = []
+    for i in range(0, len(erows), step):
+        ele.append([round(erows[i]["distance_m"] / 1000.0, 3), round(erows[i]["elevation_m"], 1)])
+    last_km = round(erows[-1]["distance_m"] / 1000.0, 3)
+    if ele[-1][0] != last_km:
+        ele.append([last_km, round(erows[-1]["elevation_m"], 1)])
+    emin = min(p[1] for p in ele)
+    emax = max(p[1] for p in ele)
+    km_total = round(erows[-1]["distance_m"] / 1000.0, 1)
+
+    # --- nawierzchnia: 5 kategorii (parytet z endpointem) ---
+    ribbon = _coalesce_categories(_load_surface_buckets(conn, rbid))
+    surface_cat = [
+        {"a": round(float(r["km_from"]), 2), "b": round(float(r["km_to"]), 2),
+         "k": r["category"], "label": r.get("label"), "reason": r.get("reason")}
+        for r in ribbon if r.get("category") is not None
+    ]
+
+    # --- lokalizacja startu (reverse-geocode + cache) ---
+    latlon = None
+    try:
+        g = route_geometry(route_id)
+        if g.get("coordinates"):
+            latlon = (g["coordinates"][0][0], g["coordinates"][0][1])
+    except Exception:
+        pass
+    from qbot3.routes import route_report_canonical as _rc
+    adm = _rc._admin(conn, route_id, latlon) if latlon else \
+        {"miejscowosc": None, "gmina": None, "powiat": None, "wojewodztwo": None}
+
+    # --- przewyzszenie (kanoniczne, z fallbackiem z profilu) ---
+    ascent = None
+    try:
+        from qbot_route_report_tool import _read_route_source
+        rs = _read_route_source(route_id) or {}
+        ascent = (rs.get("canonical_elevation_summary") or {}).get("ascent_smoothed_m")
+    except Exception:
+        pass
+    if ascent is None:
+        asc = 0.0
+        for i in range(1, len(ele)):
+            d = ele[i][1] - ele[i - 1][1]
+            if d > 0:
+                asc += d
+        ascent = round(asc)
+    else:
+        ascent = round(float(ascent))
+
+    # --- czas przejazdu (z deklaracja dlugich przerw) ---
+    tmoving = ttotal = stops_min = stops_cnt = None
+    long_min_val = None
+    try:
+        from qbot_route_time_tools import estimate_route_time_v2
+        tt = estimate_route_time_v2(
+            route_id=route_id, mode="normalny",
+            planned_long_stops=int(long_stops or 0),
+            planned_long_stop_min=float(long_stops or 0) * float(long_stop_min or 0), start_time=start_time)
+        if isinstance(tt, dict):
+            tmoving = tt.get("moving_h")
+            ttotal = tt.get("total_h")
+            stp = tt.get("stops") or {}
+            stops_min = round((stp.get("mikro_min") or 0) + (stp.get("krotkie_min") or 0), 1)
+            stops_cnt = stp.get("krotkie_liczba") or stp.get("liczba")
+            dm = stp.get("dlugie_min") or 0
+            long_min_val = dm if dm > 0 else None
+    except Exception:
+        pass
+
+    # --- meteo: pogoda per okno + odczuwalna + wiatr gesty + ETA ---
+    from qbot3.routes.route_meteo_engine import run_meteo_engine
+    m = run_meteo_engine(route_id=route_id, date_str=date_str, start_time=start_time)
+    per = m["per_segment"]
+    weather = []
+    for w in m["tabela_30min"]:
+        a = float(w["km_od"]); b = float(w["km_do"])
+        inwin = [pp for pp in per if a <= float(pp["km"]) <= b]
+        codes = [pp.get("burza_kod") for pp in inwin if pp.get("burza_kod") is not None]
+        code = max(codes, key=_report_sev) if codes else 0
+        prob = (w.get("opad", {}) or {}).get("prob")
+        tails = [pp.get("wind_tail_ms") for pp in inwin if pp.get("wind_tail_ms") is not None]
+        crs = [abs(pp.get("wind_cross_ms")) for pp in inwin if pp.get("wind_cross_ms") is not None]
+        fe = [float(pp["feels"]) for pp in inwin if pp.get("feels") is not None]
+        weather.append({
+            "t": w["okno"], "a": round(a, 2), "b": round(b, 2),
+            "wbgt": round(float(w["wbgt_max"]), 1),
+            "rain": int(prob) if prob is not None else None,
+            "mm": round(float((w.get("opad", {}) or {}).get("mm") or 0), 1),
+            "code": int(code), "icon": _report_icon(code, prob),
+            "w_along": round(sum(tails) / len(tails), 1) if tails else None,
+            "w_cross": round(sum(crs) / len(crs), 1) if crs else None,
+            "feels": round(sum(fe) / len(fe), 1) if fe else None,
+        })
+    eta = [[w["a"], w["t"]] for w in weather]
+    perw = [pp for pp in per if pp.get("wind_tail_ms") is not None]
+    stepw = max(1, len(perw) // 200)
+    wind = []
+    for i in range(0, len(perw), stepw):
+        pp = perw[i]
+        wind.append([round(float(pp["km"]), 2), round(float(pp["wind_tail_ms"]), 1),
+                     round(abs(float(pp.get("wind_cross_ms") or 0)), 1)])
+    if perw and wind[-1][0] != round(float(perw[-1]["km"]), 2):
+        pp = perw[-1]
+        wind.append([round(float(pp["km"]), 2), round(float(pp["wind_tail_ms"]), 1),
+                     round(abs(float(pp.get("wind_cross_ms") or 0)), 1)])
+
+    return {
+        "route": {"id": route_id, "name": name, "distance_km": dist_km,
+                  "ascent_m": ascent, "source": "RWGPS GPX"},
+        "start": {"date": date_str, "time": start_time,
+                  "miejscowosc": adm.get("miejscowosc"), "gmina": adm.get("gmina"),
+                  "powiat": adm.get("powiat"), "wojewodztwo": adm.get("wojewodztwo")},
+        "time": {"moving_h": tmoving, "total_h": ttotal, "stops_auto_min": stops_min,
+                 "stops_count": stops_cnt, "long_stops_min": long_min_val, "accuracy_pct": 15},
+        "chart": {"km_total": km_total, "ele": ele, "ele_min": emin, "ele_max": emax,
+                  "surface_cat": surface_cat, "weather": weather, "eta": eta, "wind": wind},
+    }
+
+
+@app.get("/api/report/data")
+def report_data(route_id: str = Query(...), date: str = Query(...),
+                time: str = Query("10:00"), long_stops: int = Query(0),
+                long_stop_min: int = Query(0)):
+    """Zwraca blok DATA raportu trasy (JSON) - generator w QBocie."""
+    conn = _db_conn()
+    try:
+        return _build_report_data(conn, route_id, date, time, long_stops, long_stop_min)
+    finally:
+        conn.close()
 
 
 app.mount("/", StaticFiles(directory=WEB_ROOT, html=True), name="static")
