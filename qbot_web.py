@@ -225,7 +225,7 @@ def route_tiles(route_id: str, margin: int = 3):
         return {"x": x, "y": y, "status": status, "bounds": [[s, w], [n, e]]}
 
     tiles = [feat(x, y, "new" if (x, y) not in owned else "keep") for (x, y) in rt]
-    tiles += [feat(x, y, "owned") for (x, y) in border if (x, y) in owned]
+    tiles += [feat(x, y, "owned" if (x, y) in owned else "empty") for (x, y) in border]
     return {"route_id": route_id, "zoom": 14, "margin": margin,
             "counts": {"route": len(rt),
                        "new": sum(1 for t in tiles if t["status"] == "new"),
