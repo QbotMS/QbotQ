@@ -1,4 +1,4 @@
-"""Silnik METEO trasy — tryby UPAŁ (WBGT) + DESZCZ + BURZA + ODCZUWALNA (UTCI) + wiatr.
+"""Silnik METEO trasy — tryby UPAŁ (WBGT) + DESZCZ + BURZA + ODCZUWALNA (Steadman) + wiatr.
 
 Jeden przebieg = jedno źródło prawdy. Dla każdego segmentu trasy w momencie przejazdu
 (ETA z modelu czasu) liczy: efektywny WBGT (cień wpięty w radiację) vs limit wg nachylenia
@@ -31,7 +31,7 @@ from typing import Any, Optional
 
 from qbot_wbgt_tools import (CZA_MIN, cos_solar_zenith, mean_radiant_temp_c,
                              wbgt_level, wbgt_liljegren_k)
-from qbot3.routes.route_utci import utci_c, utci_category
+from qbot3.routes.route_utci import utci_c, utci_category, apparent_temp_steadman
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 TZ_NAME = "Europe/Warsaw"
@@ -485,6 +485,10 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         shelter = _wind_shelter(sh["class_center"] if sh else None)
         ws_amb = min(max(ws * shelter, V_UTCI_MIN), V_UTCI_MAX)
         utci_amb = utci_c(ta, tmrt, ws_amb, rh)
+        # ODCZUWALNA (headline) = Steadman + radiacja: wiatr OTOCZENIA 10 m (surowy,
+        # bez oslony i bez pedu jazdy) + slonce z Tmrt (cap radiacji +8 C).
+        # utci/utci_amb zostaja wylacznie do flagi zimna.
+        feels = apparent_temp_steadman(ta, rh, ws, tmrt)
 
         per_segment.append({
             "km": round(s["km"], 2), "eta": s["eta_local"].strftime("%H:%M"),
@@ -495,7 +499,8 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
             "burza": storm, "burza_kod": wcode,
             "cape": (round(cape) if cape is not None else None),
             "gust_ms": (round(gust, 1) if gust is not None else None),
-            "tmrt": round(tmrt, 1), "utci": round(utci, 1), "utci_kat": utci_category(utci),
+            "tmrt": round(tmrt, 1), "feels": round(feels, 1),
+            "utci": round(utci, 1), "utci_kat": utci_category(utci),
             "utci_amb": round(utci_amb, 1), "utci_amb_kat": utci_category(utci_amb),
             "shelter": round(shelter, 2),
             "wind_eff_ms": round(eff_c, 1), "wind_oob": wind_oob,
@@ -526,11 +531,11 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
                     "Burza: 'szansa na piorun' nie jest wprost w darmowej prognozie -> kod burzy + CAPE. "
                     "Czas trwania z prognozy (kroki godzinne) = przybliżony. Miejscowość = ogólne "
                     "schronienie. Decyzję jedź/przeczekaj/odpuść podejmujesz sam.",
-                    "Odczuwalna (UTCI) = odczuwalna OTOCZENIA: wiatr z 10 m tlumiony oslona terenu "
-                    "(las 0.4 / zabudowa 0.6), usredniona po oknie. Prog zimna skalibrowany pod "
-                    "kolarza (FLAGA <0 C, ALARM <-8 C) - pedalujac produkujesz 2-3x wiecej ciepla "
-                    "niz spacerowicz z definicji UTCI (135 W/m2). Wiatr pozorny jazdy NIE jest "
-                    "alarmem: na dlugich zjazdach i postojach dorzuc warstwe."],
+                    "Odczuwalna = Steadman (temperatura + wilgotnosc + wiatr 10 m + slonce z Tmrt, "
+                    "cap radiacji +8 C), usredniona po oknie. UTCI sluzy WYLACZNIE do flagi ZIMNA: "
+                    "prog skalibrowany pod kolarza (FLAGA <0 C, ALARM <-8 C, wiatr otoczenia z oslona "
+                    "terenu, bez pedu jazdy). Wiatr pozorny jazdy NIE jest alarmem: na dlugich "
+                    "zjazdach i postojach dorzuc warstwe."],
     }
 
 
@@ -720,8 +725,8 @@ def _build_table(per_segment: list[dict], n_win: int, t0: _dt.datetime) -> list[
         probs = [x["opad_prob"] for x in b if x["opad_prob"] is not None]
         capes = [x["cape"] for x in b if x["cape"] is not None]
         gusts = [x["gust_ms"] for x in b if x["gust_ms"] is not None]
-        amb = [x["utci_amb"] for x in b]
-        u_avg = sum(amb) / len(amb)
+        feels_vals = [x["feels"] for x in b]
+        u_avg = sum(feels_vals) / len(feels_vals)
         storm_w = None
         for x in b:
             storm_w = _storm_worse(storm_w, x["burza"])
@@ -734,8 +739,7 @@ def _build_table(per_segment: list[dict], n_win: int, t0: _dt.datetime) -> list[
             "opad": {"mm": round(pmax["opad_mm"], 1), "prob": (max(probs) if probs else None)},
             "burza": {"poziom": storm_w, "cape": (max(capes) if capes else None),
                       "porywy_ms": (max(gusts) if gusts else None)},
-            "odczuwalna": {"od": round(u_avg), "do": round(u_avg),
-                           "kat": utci_category(u_avg), "srednia": round(u_avg)},
+            "odczuwalna": {"od": round(u_avg), "do": round(u_avg), "srednia": round(u_avg)},
         })
     return rows
 

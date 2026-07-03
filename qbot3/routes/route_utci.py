@@ -280,3 +280,41 @@ def utci_category(u: float) -> str:
         if u < thr:
             return label
     return "ekstremalny stres ciepla"
+
+
+
+# --- Steadman Apparent Temperature (odczuwalna "feels like") ----------------
+# R. G. Steadman (1984) / Australian BOM. Wiatr = 10 m [m/s]. Radiacja wpieta
+# przez Tmrt (globe solver) -> Q netto (liniowy wspolczynnik wymiany radiacyjnej);
+# czlon radiacyjny ograniczony do <= +RAD_CAP_C (BOM: pelne slonce ~ +8 C).
+# e liczone wzorem BOM (6.105*exp) - pod ten wzor dobrano stale Steadmana.
+_STEFAN = 5.67e-8      # W/m2/K4
+_EMISS = 0.95          # emisyjnosc ciala/ubrania
+RAD_CAP_C = 8.0        # gorny cap bonusu radiacyjnego [C]
+
+
+def _e_hpa_bom(ta: float, rh: float) -> float:
+    """Cisnienie pary [hPa] wg wzoru BOM (pod niego dobrano stale Steadmana)."""
+    return (rh / 100.0) * 6.105 * math.exp(17.27 * ta / (237.7 + ta))
+
+
+def q_net_from_tmrt(ta: float, tmrt: float) -> float:
+    """Netto radiacja pochlaniana [W/m2] z (Tmrt-Ta), liniowy wspolczynnik h_r."""
+    tm_k = (ta + tmrt) / 2.0 + 273.15
+    h_r = 4.0 * _EMISS * _STEFAN * tm_k ** 3
+    return h_r * (tmrt - ta)
+
+
+def apparent_temp_steadman(ta: float, rh: float, ws: float,
+                           tmrt: Optional[float] = None,
+                           rad_cap: float = RAD_CAP_C) -> float:
+    """Odczuwalna [C] wg Steadmana. ta[C], rh[%], ws=wiatr 10 m [m/s].
+    tmrt=None -> wersja bez radiacji (temperatura+wilgotnosc+wiatr).
+    tmrt podane -> dodaje czlon radiacyjny (slonce), ograniczony do +rad_cap."""
+    e = _e_hpa_bom(ta, rh)
+    if tmrt is None:
+        return ta + 0.33 * e - 0.70 * ws - 4.00
+    rad = 0.70 * q_net_from_tmrt(ta, tmrt) / (ws + 10.0)
+    if rad > rad_cap:
+        rad = rad_cap
+    return ta + 0.348 * e - 0.70 * ws + rad - 4.25
