@@ -1276,6 +1276,7 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
                  "stops_count": stops_cnt, "long_stops_min": long_min_val, "accuracy_pct": 15,
                  "speed_net_kmh": speed_net_kmh, "speed_gross_kmh": speed_gross_kmh},
         "weather_head": weather_head,
+        "alerts": m.get("alerts") or [],
         "chart": {"km_total": km_total, "ele": ele, "ele_min": emin, "ele_max": emax,
                   "surface_cat": surface_cat, "weather": weather, "eta": eta, "wind": wind},
     }
