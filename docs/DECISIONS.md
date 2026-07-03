@@ -806,3 +806,301 @@ osiągnięciu parytetu i przepisaniu asercji testów.
 
 **Świadomie zostawione do dopieszczenia:** gęstość sekcji 4 (strategia) — wierna
 trasie (Małe Gosie realnie przeplata asfalt z nieotagowanymi trackami).
+
+
+---
+
+## 2026-07-03 — Model nawierzchni: 5 kategorii + smoothness-degrader + flagi (SPEC, decyzja przed kodem)
+
+Kontekst: rozmowa o wykorzystaniu tagow OSM poza surface/tracktype. Zweryfikowano
+na zywo pokrycie tagow (Overpass, probki co 50 m) na trasach 55930010, 55864231,
+55918401. Skrypt tymczasowy, self-delete.
+
+### Wyniki pokrycia (pamietac: 3 trasy, NIE reprezentatywne)
+| tag              | 55930010 | 55864231 | 55918401 |
+|------------------|----------|----------|----------|
+| surface          | 53.7%    | 86.3%    | 79.9%    |
+| tracktype        | 18.0%    | 47.2%    | 50.9%    |
+| smoothness       | 32.6%    | 50.2%    | 19.7%    |
+| mtb:scale        | 0%       | 7.6%     | 0%       |
+| trail_visibility | 0%       | 0%       | 0%       |
+| width            | 0%       | 1.1%     | 0.5%     |
+| bicycle          | 2.8%     | 43.9%    | 17.6%    |
+| access           | 0%       | 0.1%     | 2.0%     |
+| incline          | 0%       | 0.1%     | 0%       |
+
+Kandydaci "kat.5" (brak surface I brak tracktype): 34.1% / 11.9% / 14.0% trasy,
+wg highway prawie wylacznie track+path. Z tych odcinkow tag weryfikujacy
+(mtb/vis/width) mial: 0% / 0% / 0%. Gole (zero czegokolwiek): 100% / 90.5% / 100%.
+
+### Wnioski empiryczne
+- mtb:scale/trail_visibility/width jako "ktos potwierdzil droge" NIE dziala na tych
+  danych: tam gdzie sa, way ma juz surface/tracktype; nigdy nie ratuja nieznanego.
+- Dziala strona ODWROTNA: brak wszystkiego = czerwona flaga (duzy udzial trasy).
+- smoothness ma realne pokrycie (20-50%) — najlepszy z "dodatkowych" tagow.
+- incline ~0% -> odrzucone, stromizna wylacznie z DEM.
+- Decyzja Michala: reguly zostaja mimo slabego pokrycia — czasem pomoga, nigdy nie
+  szkodza (dzialaja tylko w jedna strone), a 3 trasy to za malo by je skreslic.
+
+### MODEL BAZOWY (backup przed zmiana) — obecny stan route_report_canonical.py
+- _seg_risk: klasy twarde/gravel/wnioskowane/ryzyko.
+  * sand -> ryzyko; track grade5 -> ryzyko; ctx sand_risk=WYSOKIE -> ryzyko
+  * tagged_surface -> twarde(_HARD) / gravel
+  * inferred_tracktype lub track+grade1-4 -> gravel
+  * reszta -> wnioskowane (z WorldCover)
+- _macro_blocks: coarse szybko/grunt/ryzyko.
+- smoothness: NIE uzywany w raporcie (choc jest w surface_meta_json).
+
+### NOWY MODEL (do wdrozenia, ocena w raporcie, potem decyzja)
+5 kategorii (skala szybko->ryzyko):
+1. Twarda szybka  — asphalt, concrete, paving_stones
+2. Dobry gravel   — compacted, fine_gravel; tracktype grade1-2
+3. Zwykly gravel  — gravel, dirt, ground; tracktype grade3; cobblestone (DO POTW.)
+4. Trudna/wolna   — grass, mixed(unpaved surowe); tracktype grade4
+5. Ryzyko/niepewne— sand, mud, rocky, stony, unknown; tracktype grade5;
+                    goly track/path bez tagu; ctx sand_risk=WYSOKIE
+
+Kolejnosc ustalania kategorii bazowej (seg ma surface, cls, highway, tracktype):
+  a) cls=inferred_tracktype / track+tracktype -> kategoria wprost z grade
+     (grade1->2, grade2->2, grade3->3, grade4->4, grade5->5) — wierniej niz label.
+  b) cls=tagged_surface -> tabela surface->kategoria.
+  c) brak (goly track/path, inferred_highway) -> kat.5 (czerwona flaga); jesli
+     jest kontekst WorldCover las/pole -> zlagodzenie do kat.4 (DO POTW.).
+
+SMOOTHNESS-DEGRADER (nakladany PO kategorii bazowej):
+- grunt (kat.2-4): smoothness bad/very_bad -> -1 oczko (min kat.4).
+- utwardzone (kat.1): smoothness bad/very_bad -> WPROST kat.4 (nie -1).
+- dowolna: smoothness horrible/very_horrible/impassable -> WPROST kat.5.
+- smoothness dobry/brak -> bez zmian.
+- Uzasadnienie asymetrii: grunt z definicji nierowny (info juz w tracktype ->
+  podwojne karanie), asfalt startuje "rowno" -> bad to wylom.
+- OTWARTE (decyzja z 2026-07-02): czy degrader dziala tez na segmentach z jawnym
+  tagiem surface (dzis _infer_from_tags konczy sie wczesniej). Do rozstrzygniecia.
+
+FLAGI (osobna warstwa, NIE mieszaja sie do kategorii nawierzchni):
+- bicycle=no / access=private/no -> flaga "zakaz/prywatne".
+- bicycle=dismount -> flaga "prowadzenie".
+- Obecnosc mtb:scale/trail_visibility -> modyfikator TYLKO w jedna strone:
+  moze sciagnac odcinek z kat.5 nizej ("ktos przejechal"); nigdy nie zaostrza.
+- width: tylko obecnosc = potwierdzenie drogi; NIGDY wartosc jako kara (waska != zla).
+- Zasada nadrzedna: te tagi nigdy nie tworza ryzyka same z siebie ani nie nadpisuja
+  surface/tracktype. Najgorszy przypadek = regula sie nie odpala (bezczynnosc).
+
+### STATUS WDROZENIA
+- FAZA 1 (report-only, bez zmian silnika): 5 kategorii + smoothness-degrader.
+  Dane dostepne (surface, cls, highway, tracktype juz sa; smoothness dodac do
+  _surface_segments). Backup: stare _seg_risk/_macro_blocks zostaja jako *_legacy.
+- FAZA 2 (pozniej, wymaga zmiany silnika): persist mtb:scale/trail_visibility/
+  width/bicycle/access w surface_meta_json -> wlaczenie FLAG. Odlozone.
+- Nastepny krok: potwierdzic komorki DO POTW. (cobblestone kat.3?, mixed kat.3/4?,
+  WorldCover-lagodzenie kat.5->4?, degrader na tagged surface?) -> wtedy kod.
+
+
+### 2026-07-03 (uzup.) — decyzje domkniete + zweryfikowany pipeline + wybor Opcji 2
+
+Rozstrzygniete komorki DO POTW.:
+- cobblestone -> kat.3
+- mixed (surowe unpaved) -> kat.4
+- goly track/path z kontekstem WorldCover: las/pole -> kat.4; piach lub
+  nieprzejezdnosc -> kat.5
+- degrader smoothness dziala TEZ na segmentach z jawnym tagiem surface -> TAK
+  (lapie rozbity asfalt i zryty grade1)
+
+WYBOR ARCHITEKTURY: Opcja 2 — ocena (kategoria) liczona i ZAPISYWANA do DB per
+odcinek; raport tylko czyta i wyswietla. Uzasadnienie Michala: "prawda o odcinku"
+w bazie; raport dowolnie modelowalny bez utraty mechaniki oceny.
+
+Zweryfikowany pipeline (na zywo, route 55930010 / route_base_id=66):
+  silnik (route_surface_engine)
+    -> route_surface_profiles.surface_segments_json  [MA smoothness=good, way_id,
+       classification_source, tracktype, highway, surface, risk_flags — pelne dane]
+    -> [writer route_surface_store.py] -> route_surface_layer.surface_meta_json
+       [GUBI smoothness! writer nie kopiuje tego pola]
+    -> [Faza 2E] route_surface_context (WorldCover/sand) — ODDZIELNA tabela, 21 wierszy,
+       pisana PO route_surface_layer
+    -> raport czyta route_surface_layer + route_surface_context
+route_surface_layer: brak kolumny kategorii; wszystko poza surface/highway/tracktype
+siedzi w surface_meta_json (jsonb).
+
+KLUCZOWA ZALEZNOSC KOLEJNOSCI (orchestrator route_precompute_orchestrator.py):
+route_surface (2) -> ... -> route_surface_context (2E). Kontekst piachu/WorldCover
+POWSTAJE PO warstwie nawierzchni. Wiec kategorii z regula piachu NIE da sie policzyc
+w ensure_route_surface (kontekstu jeszcze nie ma).
+
+PLAN Opcji 2 (do zatwierdzenia, decyzja przed kodem):
+1. route_surface_store.py: przeniesc `smoothness` do surface_meta_json (1 linia) —
+   potrzebny wsad dla kategoryzatora.
+2. NOWY modul route_surface_category_store.py: ensure_route_surface_category(rbid) —
+   czyta route_surface_layer (surface, tracktype, highway, smoothness,
+   classification_source, risk_flags) + route_surface_context (sand_risk, reason),
+   liczy surface_category 1-5 + label + reason + smoothness-degrader, dopisuje do
+   surface_meta_json klucze: surface_category, surface_category_label,
+   surface_category_reason. (Kolumna realna — opcjonalnie pozniej, DDL.)
+3. NOWY krok orkiestratora Faza 2F: route_surface_category, PO route_surface_context.
+4. Raport: czyta surface_category z DB i wyswietla (osobny krok, pozniej).
+5. Backup: kategoryzator jest ADITYWNY (tylko dodaje klucze) -> stara logika raportu
+   _seg_risk/_macro_blocks zostaje nietknieta do momentu przelaczenia raportu na
+   odczyt z DB. Rewert = wywalenie kroku 2F.
+
+WLASNOSC WARTA ODNOTOWANIA: krok kategoryzatora to przebieg DB->DB (bez Overpass).
+Iteracja progow kategorii = re-run TYLKO tego kroku, tani, bez przeliczania trasy.
+To godzi Opcje 2 (trwalosc w DB) z tania iteracja (obawa, ktora ciagnela ku Opcji 1).
+
+
+### 2026-07-03 (wdrozenie) — FAZA 1 gotowa (niezacommitowane)
+
+Zbudowano (Opcja 2, zapis kategorii do DB; przebieg DB->DB bez Overpass):
+1. qbot3/routes/route_surface_store.py — smoothness przenoszony do surface_meta_json
+   (patch io.open, bez .bak zrodla).
+2. qbot3/routes/route_surface_category_store.py — NOWY. compute_category(...) +
+   ensure_route_surface_category(route_id/route_base_id). Dopisuje do
+   route_surface_layer.surface_meta_json: surface_category (1-5), _label, _reason.
+3. qbot3/routes/route_precompute_orchestrator.py — Faza 2F: krok route_surface_category
+   za flaga QBOT_ROUTE_SURFACE_CATEGORY_ENABLED=1, PO route_surface_context.
+   Domyslna sekwencja bajt-identyczna gdy flaga=0 (zweryfikowane).
+4. tests/test_route_surface_category.py — 17 testow, wszystkie OK.
+
+BUG znaleziony i naprawiony w trakcie: inferred_highway z surface=asphalt/concrete
+to WNIOSKOWANA UTWARDZONA (z klasy drogi), NIE goly odcinek. Rozdzielono:
+inferred_paved (asphalt/concrete/paving_stones -> tabela; mixed -> kat.4) vs
+bare (ground/dirt/unknown z track/path -> kat.5 + kontekst). Bez tego drogi
+dojazdowe (service) ladowaly bledne w kat.4.
+
+Dowody na zywo (route_base 66, "Male Gosie"):
+- ensure_route_surface(66) -> 58 rows, smoothness w 23 odc.
+- ensure_route_surface_category(66) -> 58/58, histogram:
+  twarda szybka 21 / dobry gravel 6 / zwykly gravel 4 / trudna 20 / ryzyko 7.
+- inferred_highway: 2x asphalt(service)->k1, 15x ground->k4 (zlagodzone WorldCover).
+- tagged sand -> k5; grade3 (inferred_tracktype) -> k3; compacted -> k2; mixed -> k4.
+
+NIE zrobione (swiadomie, osobne kroki):
+- Przelaczenie RAPORTU na odczyt surface_category z DB (stare _seg_risk/_macro_blocks
+  nietkniete = backup dziala). To nastepny krok do oceny w raporcie.
+- Wlaczenie flagi QBOT_ROUTE_SURFACE_CATEGORY_ENABLED w env produkcji.
+- FAZA 2: flagi bicycle/access/mtb (wymaga persist tagow w silniku).
+- COMMIT: sesja weryfikacyjna (build niezacommitowany, zgodnie z modelem pracy).
+
+DEBRIS do sprzatniecia (DC, rm zablokowany w DEV MCP):
+- scripts/_tmp_livecat.py.bak.1783061229
+
+
+### 2026-07-03 (raport - krok danych) — /surface-categories na zywo
+
+Przelaczenie raportu na kategorie z DB, krok 1 (dane, addytywny, backup-safe):
+- qbot_web.py: _load_surface_buckets dostaje pola surface_category/_label/_reason
+  z surface_meta_json (addytywnie). Istniejacy /surface-segments (ryzyko binarne)
+  NIETKNIETY.
+- NOWY endpoint GET /api/routes/{id}/surface-categories: wstazka scalonych odcinkow
+  tej samej kategorii + surowe bucket-y + km_by_category + has_category.
+  Zrodlo: route_surface_layer (przebieg DB->DB, bez Overpass).
+- qbot-web zrestartowany (systemctl restart qbot-web).
+
+Dowod na zywo (55930010 Male Gosie, 99.5km):
+  km_by_category: k1=41.8 / k2=14.5 / k3=7.0 / k4=35.3 / k5=1.0
+  ribbon: 38 scalonych odcinkow; k5 = tag sand 50.2-51.2.
+  inferred asphalt (service) poprawnie w k1; gole ground w k4 (WorldCover).
+
+NIE zrobione (nastepny krok, wymaga zgody - edycja WIP raport-v2.html):
+- wizualna wstazka 5 kolorow + tooltip w raport-v2.html (frontend). Dzis tylko API.
+- ewentualne przelaczenie starego /surface-segments lub sekcji MD na kategorie.
+
+
+### 2026-07-03 (raport-v2) — drugi wykres: wstazka 5 kategorii pod analiza
+
+- raport-v2.html: dodana sekcja "Nawierzchnia — 5 kategorii" POD istniejacym
+  wykresem analizy (przed .stub). Addytywnie: nowy div #catwrap/#cat-body +
+  #cat-legend + <script> ktory na window.load fetchuje
+  /api/routes/{DATA.route.id}/surface-categories i rysuje kolorowa wstazke
+  (proporcja km) + os + legende km/%. Style reuzywaja klas strony (chartwrap,
+  chart-legend). Istniejacy renderChart/#chart/DATA NIETKNIETE.
+- Backup WIP: /opt/qbot/web/public/raport-v2.html.bak.20260703_102102
+- Kolory kat: k1 #3f7a4d, k2 #9ccc5a, k3 #d9a441, k4 #d67a2c, k5 #c2452f.
+- Zweryfikowane: HTTP 200, #cat-body obecny, renderChart/#chart/stub nienaruszone.
+
+UWAGA architektoniczna (dlug techniczny do decyzji): ta wstazka pobiera dane
+przez fetch z API, a nie z wypalonego bloku DATA (kontrakt "wszystkie liczby z
+generatora"). Swiadome, bo: (a) generatora DATA nie ruszamy, (b) dane sa z DB
+(deterministyczne). Gdy model kategorii sie ustabilizuje -> zapiec do generatora
+DATA jako chart.surface_cat i renderowac w glownym SVG (docelowo), zamiast fetch.
+
+DEBRIS do sprzatniecia (DC): scripts/_tmp_livecat.py.bak.1783061229 (wczesniej).
+
+
+### 2026-07-03 (korekta) — porownanie modeli na surface-kat.html; raport-v2 przywrocony
+
+- NIEPOROZUMIENIE: poprzednio dodalem wstazke 5-kat do raport-v2.html. Uzytkownik
+  chcial porownania na surface-kat.html. -> raport-v2.html PRZYWROCONY z backupu
+  (raport-v2.html.bak.20260703_102102), bez zmian (renderChart obecny, cat-body brak).
+- surface-kat.html przebudowany na STRONE POROWNAWCZA (3 warstwy, wyrownane po km):
+  1) Przewyzszenia — profil z raport-v2 (DATA.chart.ele),
+  2) NOWY model 5 kat. — z /api/routes/{id}/surface-categories,
+  3) WCZESNIEJSZY model — z raport-v2 (DATA.chart.surface, klasy asfalt/szuter/grunt/ryzyko).
+  Dane starego modelu + przewyzszenia pobierane przez fetch raport-v2.html i ekstrakcje
+  bloku DATA (new Function) — te SAME liczby co widzi stary raport, bez zmian backendu
+  i bez zgadywania generatora DATA. Dziala tylko dla 55930010 (raport-v2 jest baked na te trase).
+- Zweryfikowane: surface-kat.html 200; ekstrakcja DATA z raport-v2 poprawna
+  (slice ma km_total/ele/surface, start "{ route:{id:55930010...").
+
+DEBRIS (.bak, do DC): raport-v2.html.bak.20260703_102102, surface-kat.html.bak.1783067513,
+  scripts/_tmp_livecat.py.bak.1783061229.
+
+
+### 2026-07-03 — KANONICZNA paleta kolorow nawierzchni (5 kat.)
+Uzgodnione z Michalem, obowiazuje w KAZDEJ wizualizacji (surface-kat, docelowo raport-v2):
+- k1 twarda szybka  / asfalt        -> ciemny szary  #3a3f47
+- k2 dobry gravel   / szuter        -> jasny szary   #9aa3ad
+- k3 zwykly gravel  / grunt         -> jasnozielony  #8bc34a
+- k4 trudna/wolna                   -> pomaranczowy  #e07b1a
+- k5 ryzyko/niepewne                -> czerwony      #c2452f
+Stary model (4 klasy) mapowany na te same kolory: asfalt=k1, szuter=k2, grunt=k3, ryzyko=k5
+(pomaranczowy k4 nie wystepuje w starym modelu — to celowa roznica do porownania).
+
+
+### 2026-07-03 (krok 1) — flaga kategorii WLACZONA w produkcji
+
+- /etc/qbot/qbot-api.env: dodano QBOT_ROUTE_SURFACE_CATEGORY_ENABLED=1
+  (backup: /etc/qbot/qbot-api.env.bak.20260703_104701).
+- systemctl restart qbot-api (uslugi active x3 po restarcie; chwilowy zanik MCP - przejsciowy).
+- DOWOD (realny env): active_precompute_job_types() = route_base, route_surface, route_poi,
+  route_elevation, route_shade, route_surface_context, route_surface_category (7, ostatni=category).
+  => kazdy pelny przelicz (scope=all) bedzie od teraz liczyl i zapisywal surface_category do DB.
+- NIE zrobione: pelny end-to-end recompute realnej trasy (Overpass/Valhalla/Google + prune) -
+  do uruchomienia na zyczenie. Wiring potwierdzony deterministycznie.
+- POZOSTAJE (krok 2): przelaczyc RAPORT (kanoniczny i/lub raport-v2 generator DATA) na odczyt
+  surface_category, zeby raport realnie pokazywal nowy model.
+
+
+### 2026-07-03 (raport → nowy model nawierzchni) — Cz.A raport-v2 + Cz.B kanoniczny
+
+**Cz.A — raport-v2.html** (poza repo, /opt/qbot/web/public, deploy na żywo, backup .bak.*):
+- Nawierzchnia pod profilem + mapa + dymek (label+reason) + legenda → 5 kategorii
+  (surface_category z DB), paleta KANONICZNA k1 #3a3f47 / k2 #9aa3ad / k3 #8bc34a /
+  k4 #e07b1a / k5 #c2452f. Wykres profil/wiatr/pogoda NIETKNIĘTY.
+- DATA dostaje `chart.surface_cat` przez NOWY generator
+  `scripts/build_raport_v2_surface_cat.py` (import z qbot_web._load_surface_buckets/
+  _coalesce_categories → parytet z endpointem /surface-categories; przebieg DB→DATA,
+  BEZ fetch w przeglądarce). Stary `chart.surface` ZACHOWANY (czyta go surface-kat.html).
+
+**Cz.B — route_report_canonical.py** → raport kanoniczny na nowy model, 4 koszyki strategii:
+- `_surface_segments`: +surface_category/_label/_reason z surface_meta_json.
+- `_seg_risk`: klasa z surface_category (szybko k1 / gravel k2+k3 / trudna k4 / ryzyko k5),
+  powód = surface_category_reason. Brak kategorii → "nieznane" (sygnał przelicz).
+- `_macro_blocks`: 4 koszyki; **trudna NIE połykana** (jak ryzyko) → k4 zawsze widoczna.
+  ma_wniosk liczony z cls.
+- NOWY helper `_km_by_category(segs)`: dokładny udział km z DB. Werdykt (sek.1) i sek.7
+  liczą trudna/ryzyko z PRAWDY per-segment (nie ze scalonych bloków) → werdykt spójny z tabelą.
+- Sek.4: legenda 4 koszyki; dopisek "cz. wnioskowana" dla gravel/trudna.
+- Sek.7: +wiersz info k4 "trudna/wolna ~X km".
+- Usunięto osierocone `_GRADE_OK` (po zmianie _seg_risk). `_HARD` zostaje (sek.3).
+  `_GRAVEL` był już nieużywany wcześniej (pre-existing) — DO SPRZĄTNIĘCIA (nie ruszane).
+- **DECYZJA:** Sekcja 3 (pewność: tag/tracktype/wnioskowane) NIE reframowana na kategorie —
+  to osobna oś (fakt vs interpretacja); reframe by ją zepsuł. Odejście od wcześniejszego
+  planu "3C/7 też".
+- Bez flagi (model włączony w prod), git = backup, bez *_legacy w kodzie.
+
+**Dowody na żywo (55930010):** km_by_cat k1 41.8 / k2 14.4 / k3 7.0 / k4 35.3 / k5 1.0;
+werdykt "trudna ~35.3 km"; strategia 15 bloków (4 szybko / 3 gravel / 7 trudna / 1 ryzyko);
+testy kategorii 17/17; render bez błędu.
+
+**Dług techniczny:** (a) generator raport-v2 baked tylko dla 55930010 (jak cały DATA);
+(b) `_GRAVEL` do usunięcia; (c) surface-kat.html nadal fetch (znany dług).

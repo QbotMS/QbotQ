@@ -37,7 +37,6 @@ _SURF_PL = {
 }
 _HARD = {"asphalt", "concrete", "paving_stones"}
 _GRAVEL = {"gravel", "fine_gravel", "compacted"}
-_GRADE_OK = {"grade1", "grade2", "grade3", "grade4"}
 
 
 def _db():
@@ -149,6 +148,9 @@ def _surface_segments(conn, route_base_id):
                 "surface_raw": m.get("surface_raw"),
                 "cls": m.get("classification_source"),
                 "risk": list(m.get("risk_flags") or []),
+                "surface_category": m.get("surface_category"),
+                "surface_category_label": m.get("surface_category_label"),
+                "surface_category_reason": m.get("surface_category_reason"),
                 "highway": r.get("highway"), "tracktype": r.get("tracktype"),
                 "coverage_status": r.get("coverage_status"), "confidence": r.get("confidence"),
             })
@@ -237,70 +239,73 @@ def _attr_type(name):
 # ---- KLASYFIKACJA JAZDY (3 poziomy pewnosci) -----------------------------
 
 def _seg_risk(seg, ctx):
-    """Zwraca (klasa_jazdy, powod). Klasy: twarde/gravel/wnioskowane/ryzyko.
+    """Zwraca (klasa_strategii, powod) na bazie surface_category (model 2026-07-03, z DB).
 
-    RYZYKO (twarde) tylko: tag sand, track grade5, lub kontekst sand_risk WYSOKIE.
-    WNIOSKOWANE: goly track bez tagu (interpretacja z pokrycia terenu) - nie fakt.
+    4 koszyki: szybko(k1) / gravel(k2+k3) / trudna(k4) / ryzyko(k5).
+    Powod = surface_category_reason (route_surface_category_store). Brak kategorii ->
+    "nieznane" z sygnalem do przeliczenia (bez zgadywania).
     """
-    surf = seg.get("surface")
-    hw = str(seg.get("highway") or "").lower().strip()
-    tt = str(seg.get("tracktype") or "").lower().strip()
-    cls = seg.get("cls")
-    if surf == "sand":
-        return "ryzyko", "piach (tag OSM)"
-    if hw == "track" and tt == "grade5":
-        return "ryzyko", "track grade5 (luzny)"
-    c = _ctx_at_km(ctx, (seg["km_from"] + seg["km_to"]) / 2.0) if ctx else None
-    if c and str(c.get("sand_risk")) == "WYSOKIE":
-        return "ryzyko", "otwarty teren + geologia: mozliwy gleboki piach"
-    if cls == "tagged_surface":
-        return ("twarde" if surf in _HARD else "gravel"), ""
-    if cls == "inferred_tracktype" or (hw == "track" and tt in _GRADE_OK):
-        return "gravel", "z tracktype (grade1-4)"
-    # goly track / inferred_highway -> wnioskowane z pokrycia terenu
-    return "wnioskowane", (c.get("reason") if c else "brak tagu OSM")
+    k = seg.get("surface_category")
+    reason = seg.get("surface_category_reason") or ""
+    _MAP = {1: "szybko", 2: "gravel", 3: "gravel", 4: "trudna", 5: "ryzyko"}
+    if k in _MAP:
+        return _MAP[k], reason
+    return "nieznane", (reason or "brak kategorii — przelicz trase")
 
 
 def _macro_blocks(segs, ctx, min_km=3.0):
-    """Grube bloki strategii: asfalt(szybko) / grunt(szuter+wnioskowane) / ryzyko.
-    Scala mocno i polyka krotkie (<min_km) nie-ryzykowne wtracenia -> ~5-9 odcinkow na 100 km."""
-    COARSE = {"ryzyko": "ryzyko", "twarde": "szybko", "gravel": "grunt", "wnioskowane": "grunt"}
+    """Grube bloki strategii (model 2026-07-03, 4 koszyki):
+    szybko(k1) / gravel(k2+k3) / trudna(k4) / ryzyko(k5). Scala i polyka krotkie
+    (<min_km) nie-ryzykowne wtracenia. ryzyko nigdy nie polykane."""
     raw = []
     for s in segs:
-        fine, _ = _seg_risk(s, ctx)
-        coarse = COARSE.get(fine, "grunt")
-        if raw and raw[-1]["c"] == coarse:
-            raw[-1]["km_to"] = s["km_to"]; raw[-1]["surfs"].append(s["surface"]); raw[-1]["fines"].append(fine)
+        c, _ = _seg_risk(s, ctx)
+        if raw and raw[-1]["c"] == c:
+            raw[-1]["km_to"] = s["km_to"]; raw[-1]["surfs"].append(s["surface"]); raw[-1]["clss"].append(s.get("cls"))
         else:
-            raw.append({"km_from": s["km_from"], "km_to": s["km_to"], "c": coarse,
-                        "surfs": [s["surface"]], "fines": [fine]})
+            raw.append({"km_from": s["km_from"], "km_to": s["km_to"], "c": c,
+                        "surfs": [s["surface"]], "clss": [s.get("cls")]})
 
     def coalesce(blocks):
         out = []
         for b in blocks:
             length = b["km_to"] - b["km_from"]
-            if out and length < min_km and b["c"] != "ryzyko":
-                out[-1]["km_to"] = b["km_to"]; out[-1]["surfs"] += b["surfs"]; out[-1]["fines"] += b["fines"]
+            if out and length < min_km and b["c"] not in ("ryzyko", "trudna"):
+                out[-1]["km_to"] = b["km_to"]; out[-1]["surfs"] += b["surfs"]; out[-1]["clss"] += b["clss"]
             elif out and out[-1]["c"] == b["c"]:
-                out[-1]["km_to"] = b["km_to"]; out[-1]["surfs"] += b["surfs"]; out[-1]["fines"] += b["fines"]
+                out[-1]["km_to"] = b["km_to"]; out[-1]["surfs"] += b["surfs"]; out[-1]["clss"] += b["clss"]
             else:
                 out.append(dict(b))
         return out
 
     blocks = coalesce(coalesce(raw))
-    label = {"ryzyko": "ryzyko", "szybko": "asfalt/szybko", "grunt": "grunt/szuter"}
+    label = {"szybko": "asfalt/szybko", "gravel": "gravel/szuter", "trudna": "trudna/wolna",
+             "ryzyko": "ryzyko", "nieznane": "b/d"}
     tip = {
-        "ryzyko": "ostroznie: piach/grade5 — trzymaj rezerwe, w razie czego prowadz",
         "szybko": "utwardzone — tempo dyktuje wiatr",
-        "grunt": "grunt/szuter — rowne tempo; odcinki bez tagu = polna (latem mozliwy piach)",
+        "gravel": "dobry/zwykly szuter — rowne tempo",
+        "trudna": "trawa/mixed/grade4 lub polna bez tagu — wolniej, oszczedzaj nogi; po deszczu ciezko",
+        "ryzyko": "ostroznie: piach/grade5 — trzymaj rezerwe, w razie czego prowadz",
+        "nieznane": "brak danych kategorii — przelicz trase",
     }
     for b in blocks:
         surfs = [x for x in b["surfs"] if x]
         b["surface"] = max(set(surfs), key=surfs.count) if surfs else "unknown"
         b["klasa"] = label.get(b["c"], b["c"])
         b["tip"] = tip.get(b["c"], "")
-        b["ma_wniosk"] = "wnioskowane" in b["fines"]
+        b["ma_wniosk"] = any(cl not in ("tagged_surface", "inferred_tracktype") for cl in b["clss"])
     return blocks
+
+
+def _km_by_category(segs):
+    """Dokladny udzial km wg surface_category (z DB, bez scalania) -> {1:..,..,5:..}."""
+    d = {}
+    for s in segs:
+        k = s.get("surface_category")
+        if k is None:
+            continue
+        d[k] = d.get(k, 0.0) + (float(s["km_to"]) - float(s["km_from"]))
+    return {k: round(v, 1) for k, v in d.items()}
 
 def _wind_at_km(meteo, km):
     if not isinstance(meteo, dict):
@@ -456,9 +461,64 @@ def _attr_worth(name):
     return True, {"widok": 0, "przyroda": 1, "muzeum": 1, "jezioro": 1, "zabytek": 2}.get(t, 3)
 
 
+def _surface_svg(p_hard, p_ttk, p_infr, hard_km, ttk_km, infr_km, risky_blocks):
+    """Wektorowy (SVG) pasek pewnosci nawierzchni do raportu HTML (/kanon).
+    Kolory ciemne + bialy tekst -> czytelne w light i dark mode. Samodzielny (bez CSS)."""
+    W, x0, y, h = 648.0, 16.0, 34.0, 46.0
+    wh = W * p_hard / 100.0
+    wt = W * p_ttk / 100.0
+    wi = max(0.0, W - wh - wt)
+    xh, xt, xi = x0, x0 + wh, x0 + wh + wt
+    P = []
+    P.append('<svg viewBox="0 0 680 150" xmlns="http://www.w3.org/2000/svg" role="img" '
+             'aria-label="Pewnosc klasyfikacji nawierzchni" style="max-width:680px;width:100%">')
+    P.append('<defs><pattern id="hatch" width="7" height="7" patternTransform="rotate(45)" '
+             'patternUnits="userSpaceOnUse"><rect width="7" height="7" fill="#5F5E5A"/>'
+             '<line x1="0" y1="0" x2="0" y2="7" stroke="#ffffff" stroke-width="1.6" opacity="0.35"/></pattern></defs>')
+    P.append('<text x="16" y="20" font-size="14" fill="#888780">Nawierzchnia \u2014 pewnosc klasyfikacji</text>')
+    P.append(f'<rect x="{xh:.1f}" y="{y}" width="{wh:.1f}" height="{h}" rx="6" fill="#3B6D11"/>')
+    P.append(f'<rect x="{xt:.1f}" y="{y}" width="{wt:.1f}" height="{h}" rx="6" fill="#854F0B"/>')
+    P.append(f'<rect x="{xi:.1f}" y="{y}" width="{wi:.1f}" height="{h}" rx="6" fill="url(#hatch)"/>')
+
+    def two(cx, title, pct, km):
+        return (f'<text x="{cx:.0f}" y="54" text-anchor="middle" font-size="14" fill="#ffffff" '
+                f'font-weight="500">{title}</text>'
+                f'<text x="{cx:.0f}" y="71" text-anchor="middle" font-size="12.5" fill="#ffffff">'
+                f'{round(pct)}% \u00b7 {_f(km)} km</text>')
+
+    def one(cx, pct):
+        return (f'<text x="{cx:.0f}" y="62" text-anchor="middle" font-size="12.5" fill="#ffffff" '
+                f'font-weight="500">{round(pct)}%</text>')
+
+    P.append(two(xh + wh / 2, "tag OSM (fakt)", p_hard, hard_km) if wh >= 110 else (one(xh + wh / 2, p_hard) if wh >= 30 else ""))
+    P.append(two(xt + wt / 2, "tracktype", p_ttk, ttk_km) if wt >= 110 else (one(xt + wt / 2, p_ttk) if wt >= 30 else ""))
+    P.append(two(xi + wi / 2, "z terenu (wniosk.)", p_infr, infr_km) if wi >= 110 else (one(xi + wi / 2, p_infr) if wi >= 30 else ""))
+
+    P.append('<g font-size="12.5">'
+             '<rect x="16" y="100" width="12" height="12" rx="2" fill="#3B6D11"/>'
+             '<text x="34" y="110" fill="#888780">tag OSM \u2014 fakt z mapy</text>'
+             '<rect x="196" y="100" width="12" height="12" rx="2" fill="#854F0B"/>'
+             '<text x="214" y="110" fill="#888780">tracktype grade1\u20134 \u2014 przejezdne</text>'
+             '<rect x="430" y="100" width="12" height="12" rx="2" fill="url(#hatch)"/>'
+             '<text x="448" y="110" fill="#888780">z pokrycia terenu \u2014 wnioskowane</text></g>')
+
+    rkm = sum(b["km_to"] - b["km_from"] for b in risky_blocks) if risky_blocks else 0.0
+    if risky_blocks:
+        zak = ", ".join(f"km {_f(b['km_from'])}\u2013{_f(b['km_to'])}" for b in risky_blocks[:2])
+        rtxt = f"ryzyko: piach ~{_f(rkm)} km ({zak}, tag OSM) \u2014 reszta gruntu przejezdna"
+        rcol = "#C0392B"
+    else:
+        rtxt = "brak twardych odcinkow ryzyka \u2014 nietagowany grunt to przejezdna polna"
+        rcol = "#3B6D11"
+    P.append(f'<g font-size="12.5"><rect x="16" y="124" width="12" height="12" rx="2" fill="{rcol}"/>'
+             f'<text x="34" y="134" fill="{rcol}" font-weight="500">{rtxt}</text></g>')
+    P.append('</svg>')
+    return "".join(P)
+
+
 # ---- GLOWNA FUNKCJA -------------------------------------------------------
 
-def build_canonical_report_v1(route_id, start=None, mode="normalny"):
+def build_canonical_report_v1(route_id, start=None, mode="normalny", fmt="md"):
     from qbot_route_report_tool import _read_route_source, _parse_route_report_start
     from qbot3.routes.route_meteo_engine import run_meteo_engine
     from qbot_route_time_tools import estimate_route_time_v2
@@ -527,7 +587,9 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny"):
         H("")
 
         # ---------- 1 ----------
-        risky_blocks = [b for b in _macro_blocks(segs, ctx) if b["c"] == "ryzyko"]
+        _macro = _macro_blocks(segs, ctx)
+        risky_blocks = [b for b in _macro if b["c"] == "ryzyko"]
+        kmcat = _km_by_category(segs)
         alert_types = sorted({a.get("typ") for a in (alerts or [])})
         H("## 1. Werdykt")
         H("")
@@ -537,6 +599,9 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny"):
             v += "Odcinki do uwagi: " + ", ".join(f"km {_f(b['km_from'])}–{_f(b['km_to'])}" for b in risky_blocks[:3]) + " (piach/grade5). "
         else:
             v += "Brak twardych odcinkow ryzyka (nietagowane tracki = grunt/polna wg pokrycia terenu, przejezdne). "
+        _trudna_km_v = kmcat.get(4, 0.0)
+        if _trudna_km_v >= 3:
+            v += f"Trudna/wolna ~{_f(_trudna_km_v)} km — wolniejsze tempo. "
         v += ("METEO: " + ", ".join(alert_types) + ". ") if alert_types else "Pogoda bez alarmow. "
         dem, rec = _water_rec(moving_h, peak_wbgt)
         v += f"Woda: {rec.split('(')[0].strip()}. Czas ~{_hms(total_h)}."
@@ -608,64 +673,61 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny"):
         H("")
 
         # ---------- 3 ----------
-        H("## 3. Nawierzchnia — twarde dane vs interpretacja")
+        H("## 3. Nawierzchnia — pewnosc i sklad (twarde dane vs interpretacja)")
         H("")
-        # 3 poziomy pewnosci z segmentow
         def _kmlen(s):
             return max(0.0, float(s["km_to"]) - float(s["km_from"]))
         hard = [s for s in segs if s.get("cls") == "tagged_surface"]
         ttk = [s for s in segs if s.get("cls") == "inferred_tracktype"]
         infr = [s for s in segs if s.get("cls") not in ("tagged_surface", "inferred_tracktype")]
         tot = sum(_kmlen(s) for s in segs) or (dist_km or 1)
+        hard_km = sum(_kmlen(s) for s in hard)
+        ttk_km = sum(_kmlen(s) for s in ttk)
+        infr_km = sum(_kmlen(s) for s in infr)
+        p_hard, p_ttk, p_infr = 100 * hard_km / tot, 100 * ttk_km / tot, 100 * infr_km / tot
 
-        def _bysurf(rs):
+        def _bysurf(rs, top=None):
             d = {}
             for s in rs:
                 d[s["surface"]] = d.get(s["surface"], 0.0) + _kmlen(s)
-            return sorted(d.items(), key=lambda kv: -kv[1])
-        H(f"**A. Twarde dane — tag OSM `surface` ({_f(sum(_kmlen(s) for s in hard))} km · "
-          f"{_f(100*sum(_kmlen(s) for s in hard)/tot)} %)** — tym ufasz:")
-        H("")
-        H("| Nawierzchnia | km |")
-        H("|---|---|")
-        for k, v2 in _bysurf(hard):
-            H(f"| {_SURF_PL.get(k, k)} | {_f(v2)} |")
-        H("")
-        if ttk:
-            H(f"**B. Interpretacja z `tracktype` (grade1-4) ({_f(sum(_kmlen(s) for s in ttk))} km · "
-              f"{_f(100*sum(_kmlen(s) for s in ttk)/tot)} %)** — przejezdne, dosc pewne:")
+            items = sorted(d.items(), key=lambda kv: -kv[1])
+            return items[:top] if top else items
+
+        if segs:
+            if fmt == "html":
+                H("<!--RAW-->")
+                H(_surface_svg(p_hard, p_ttk, p_infr, hard_km, ttk_km, infr_km, risky_blocks))
+                H("<!--/RAW-->")
+            else:
+                H(f"Pewnosc: tag OSM **{round(p_hard)}%** · tracktype **{round(p_ttk)}%** · z terenu (wnioskowane) **{round(p_infr)}%**")
             H("")
-            H("| km od–do | z tracktype -> nawierzchnia |")
-            H("|---|---|")
-            for s in ttk:
-                H(f"| {_f(s['km_from'])}–{_f(s['km_to'])} | {s.get('tracktype')} -> {_SURF_PL.get(s['surface'], s['surface'])} |")
-            H("")
-        H(f"**C. Interpretacja z pokrycia terenu — WorldCover ({_f(sum(_kmlen(s) for s in infr))} km · "
-          f"{_f(100*sum(_kmlen(s) for s in infr)/tot)} %)** — to WNIOSKOWANIE, nie dane:")
-        H("")
-        if ctx:
-            crows = []
-            for sg in sorted(infr, key=lambda x: x["km_from"]):
+            hard_txt = " · ".join(f"{_SURF_PL.get(k, k)} {_f(v)}" + (" ⚠" if k == "sand" else "")
+                                  for k, v in _bysurf(hard, 6)) or "—"
+            ttk_txt = " · ".join(f"{_SURF_PL.get(k, k)} {_f(v)}" for k, v in _bysurf(ttk, 4)) or "—"
+            terr_ct = {}
+            for sg in infr:
                 c = _ctx_at_km(ctx, (sg["km_from"] + sg["km_to"]) / 2.0)
-                terr = (c.get("dominant_pl") if c else None) or "b/d"
-                est = (c.get("surface_estimate") if c else None) or "grunt (brak tagu)"
-                sand = (c.get("sand_risk") if c else None) or "—"
-                key = (terr, est, sand)
-                if crows and crows[-1]["key"] == key and abs(crows[-1]["km_to"] - sg["km_from"]) < 0.35:
-                    crows[-1]["km_to"] = sg["km_to"]
-                else:
-                    crows.append({"km_from": sg["km_from"], "km_to": sg["km_to"], "key": key})
-            H("| km od–do | teren (WorldCover) | interpretacja nawierzchni | piach? |")
+                t = (c.get("dominant_pl") if c else None) or "teren"
+                terr_ct[t] = terr_ct.get(t, 0.0) + _kmlen(sg)
+            terr_top = ", ".join(t for t, _ in sorted(terr_ct.items(), key=lambda kv: -kv[1])[:3]) or "pola/laki/las"
+            H("| Zrodlo | km | udzial | Co to znaczy |")
             H("|---|---|---|---|")
-            for r in crows:
-                terr, est, sand = r["key"]
-                H(f"| {_f(r['km_from'])}–{_f(r['km_to'])} | {terr} | {est} | {sand} |")
+            H(f"| █ tag OSM (fakt) | {_f(hard_km)} | {round(p_hard)}% | z mapy: {hard_txt} |")
+            if ttk_km > 0:
+                H(f"| ▓ tracktype grade1-4 | {_f(ttk_km)} | {round(p_ttk)}% | jakosc drogi z OSM → {ttk_txt}; przejezdne |")
+            H(f"| ░ z pokrycia terenu | {_f(infr_km)} | {round(p_infr)}% | brak tagu → grunt/polna wg WorldCover ({terr_top}); latem mozliwy piach — wnioskowanie |")
             H("")
-            H("_Teren = OTOCZENIE (pole/laka/las), nie sama nawierzchnia. Nietagowany track przez pola/laki "
-              "to zwykle droga polna/grunt. „WNIOSK.\" = latem/susza na Podlasiu mozliwe piaszczyste fragmenty "
-              "(wnioskowanie z otoczenia+geologii), wiosna zwykle grunt — brak tagu OSM, nie brak przejezdnosci._")
+            if risky_blocks:
+                zak = ", ".join(f"km {_f(b['km_from'])}–{_f(b['km_to'])}" for b in risky_blocks[:3])
+                rkm = sum(b["km_to"] - b["km_from"] for b in risky_blocks)
+                H(f"⚠ **Ryzyko:** piach/luzne ~{_f(rkm)} km ({zak}; tag OSM). Reszta „z terenu\" to przejezdna polna, nie piach.")
+            else:
+                H("✓ **Brak twardych odcinkow ryzyka** — nietagowany grunt = przejezdna polna, nie piach.")
+            H("")
+            H("_█ tag = fakt z mapy · ░ „z terenu\" = wnioskowanie z pokrycia (WorldCover), nie pomiar — "
+              "latem/susza mozliwe piaszczyste fragmenty. Gdzie dokladnie co jest — sekcja 4 (strategia)._")
         else:
-            H("_Brak warstwy route_surface_context — przelicz trase._")
+            H("- b/d (brak warstwy nawierzchni)")
         H("")
 
         # ---------- 4 ----------
@@ -678,13 +740,13 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny"):
             for b in blocks:
                 mid = (b["km_from"] + b["km_to"]) / 2.0
                 surf = _SURF_PL.get(b["surface"], b["surface"])
-                if b.get("ma_wniosk") and b["c"] == "grunt":
+                if b.get("ma_wniosk") and b["c"] in ("gravel", "trudna"):
                     surf += ", cz. wnioskowana"
                 H(f"| {_f(b['km_from'])}–{_f(b['km_to'])} | {surf} ({b['klasa']}) "
                   f"| {_profil_at(b['km_from'], b['km_to'], climbs)} | {_wind_at_km(meteo, mid)} "
                   f"| {_supply_in(b['km_from'], b['km_to'], supply)} | {b['tip']} |")
             H("")
-            H("_Klasy: asfalt/szybko=utwardzone · grunt/szuter=szuter+polna (część wnioskowana z pokrycia terenu) · ryzyko=piach/grade5. Pewnosc nawierzchni w sek. 3._")
+            H("_Klasy: asfalt/szybko=utwardzone · gravel/szuter=dobry+zwykly szuter · trudna/wolna=trawa/mixed/grade4/polna · ryzyko=piach/grade5. Pewnosc nawierzchni (tag vs wnioskowane) w sek. 3._")
         else:
             H("- b/d")
         H("")
@@ -716,8 +778,7 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny"):
             H("|---|" + "---|" * len(okna))
             H("| km od–do | " + " | ".join(f"{_f(w.get('km_od'))}–{_f(w.get('km_do'))}" for w in tab) + " |")
             H("| WBGT (C) | " + " | ".join(_f(w.get("wbgt_max")) for w in tab) + " |")
-            H("| Odczuw. UTCI (C) | " + " | ".join(_utci_repr(w.get("odczuwalna") or {}) for w in tab) + " |")
-            H("| Kat. UTCI | " + " | ".join(str((w.get("odczuwalna") or {}).get("kat") or "—") for w in tab) + " |")
+            H("| Odczuwalna (C) | " + " | ".join(_utci_repr(w.get("odczuwalna") or {}) for w in tab) + " |")
             H("| Wiatr wzdluz | " + " | ".join(_wind_arrow(w.get("wiatr_wzdluz_ms")) for w in tab) + " |")
             H("| Opad (mm/%) | " + " | ".join(f"{_f((w.get('opad') or {}).get('mm'))}/{(w.get('opad') or {}).get('prob')}" for w in tab) + " |")
             def _bz(w):
@@ -731,7 +792,7 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny"):
             H("| Burza | " + " | ".join(_bz(w) for w in tab) + " |")
             H("")
             H(f"Peak WBGT: {_f(peak_wbgt)} C @ km {(peak or {}).get('km')} ({(peak or {}).get('eta')}). "
-              "Strzalka: + tylny ↑ / − czolowy ↓. Odczuwalna = srednia okna, wiatr OTOCZENIA z oslona terenu (nie ped jazdy).")
+              "Strzalka: + tylny ↑ / − czolowy ↓. Odczuwalna = Steadman (temp + wilg + wiatr 10 m + slonce z Tmrt, cap +8 C), srednia okna.")
             for a in (alerts or []):
                 H(f"- ALERT {a.get('typ','?').upper()} [{a.get('severity')}] km {_f(a.get('km_od'))}–"
                   f"{_f(a.get('km_do'))} ({a.get('eta_od')}–{a.get('eta_do')})")
@@ -771,6 +832,9 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny"):
             if b["c"] == "ryzyko":
                 rows7.append(("Nawierzchnia", _f(b["km_from"]), _f(b["km_to"]), "flaga",
                               "piach/grade5 — luzna nawierzchnia", "—"))
+        if kmcat.get(4, 0.0) > 0:
+            rows7.append(("Nawierzchnia", "—", "—", "info",
+                          f"trudna/wolna ~{_f(kmcat.get(4, 0.0))} km (trawa/mixed/grade4/polna) — wolniej, po deszczu ciezko", "—"))
         _infr_km = sum(_kmlen(sg) for sg in infr)
         if _infr_km > 0:
             rows7.append(("Nawierzchnia", "—", "—", "info",
@@ -874,7 +938,7 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny"):
         H("| OSM surface_layer | nawierzchnia + tag/tracktype | live |")
         H("| WorldCover (route_surface_context) | interpretacja gruntu nietagowanego | 2021 (ESA) |")
         H("| SRTM 30m | wysokosci (wygl. 200 m) | statyczne |")
-        H("| run_meteo_engine (Open-Meteo) | WBGT/UTCI/opad/wiatr | live |")
+        H("| run_meteo_engine (Open-Meteo) | WBGT/odczuwalna(Steadman)/opad/wiatr | live |")
         H(f"| fitmodel_daily | forma | {fit.get('day') if fit else 'b/d'} |")
         H(f"| GeoNames + Google Places | miejscowosci/zaopatrzenie/atrakcje | {poi_date_s} |")
         H("| Nominatim | gmina/powiat/woj. | cache |")

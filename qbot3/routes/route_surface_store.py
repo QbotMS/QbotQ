@@ -128,6 +128,7 @@ def _surface_layers_for_route(route_base: dict[str, Any], profile: dict[str, Any
                     "surface_raw": segment.get("surface_raw"),
                     "surface_inferred": segment.get("surface_inferred"),
                     "surface_refined": segment.get("surface_refined"),
+                    "smoothness": segment.get("smoothness"),
                     "classification_source": segment.get("classification_source"),
                     "classification_sources": segment.get("classification_sources"),
                     "risk_flags": segment.get("risk_flags"),

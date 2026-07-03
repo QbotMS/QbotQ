@@ -230,6 +230,9 @@ def _load_surface_buckets(conn, route_base_id: int) -> list[dict]:
             "explanation": meta.get("explanation") or "",
             "highway": highway,
             "tracktype": tracktype,
+            "surface_category": meta.get("surface_category"),
+            "surface_category_label": meta.get("surface_category_label"),
+            "surface_category_reason": meta.get("surface_category_reason"),
         })
     buckets.sort(key=lambda b: b["km_from"])
     return buckets
@@ -483,6 +486,83 @@ def route_surface_segments(route_id: str):
         "name": base.get("name") or f"Trasa {route_id}",
         "distance_km": round((base["distance_m"] or 0) / 1000, 1),
         "segments": runs,
+    }
+
+
+def _coalesce_categories(buckets: list[dict]) -> list[dict]:
+    """Scala sasiednie bucket-y o tej samej surface_category w ciagle odcinki (wstazka 5-kat.)."""
+    runs: list[dict] = []
+    for b in buckets:
+        cat = b.get("surface_category")
+        if runs and runs[-1]["category"] == cat:
+            runs[-1]["km_to"] = b["km_to"]
+            runs[-1]["_surfs"].append(b.get("surface"))
+        else:
+            runs.append({
+                "category": cat,
+                "label": b.get("surface_category_label"),
+                "km_from": b["km_from"],
+                "km_to": b["km_to"],
+                "reason": b.get("surface_category_reason"),
+                "_surfs": [b.get("surface")],
+            })
+    for r in runs:
+        surfs = [x for x in r.pop("_surfs") if x]
+        r["dominant_surface"] = max(set(surfs), key=surfs.count) if surfs else None
+        r["km_from"] = round(r["km_from"], 2)
+        r["km_to"] = round(r["km_to"], 2)
+    return runs
+
+
+@app.get("/api/routes/{route_id}/surface-categories")
+def route_surface_categories(route_id: str):
+    """Nawierzchnia jako 5 kategorii (surface_category z route_surface_layer, model 2026-07-03).
+
+    Zrodlo: route_surface_layer.surface_meta_json (pole surface_category liczone przez
+    route_surface_category_store, przebieg DB->DB). Zwraca wstazke (scalone odcinki
+    tej samej kategorii) + surowe bucket-y + histogram. Addytywny wzgledem
+    /surface-segments (ryzyko binarne) - ten nie jest ruszany."""
+    conn = _db_conn()
+    try:
+        base = conn.execute(
+            "SELECT rb.route_base_id, rb.distance_m, "
+            "a.metadata_json->>'route_name' AS name "
+            "FROM qbot_v2.route_base rb "
+            "LEFT JOIN qbot_v2.route_artifacts a ON a.id = rb.route_artifact_id "
+            "WHERE rb.route_id = %s",
+            (route_id,),
+        ).fetchone()
+        if not base:
+            raise HTTPException(status_code=404, detail="Trasa nie znaleziona w routes store")
+        buckets = _load_surface_buckets(conn, base["route_base_id"])
+    finally:
+        conn.close()
+
+    ribbon = _coalesce_categories(buckets)
+    histogram: dict[int, float] = {}
+    for b in buckets:
+        cat = b.get("surface_category")
+        if cat is None:
+            continue
+        histogram[cat] = round(histogram.get(cat, 0.0) + (b["km_to"] - b["km_from"]), 2)
+    has_cat = any(b.get("surface_category") is not None for b in buckets)
+    return {
+        "route_id": route_id,
+        "name": base.get("name") or f"Trasa {route_id}",
+        "distance_km": round((base["distance_m"] or 0) / 1000, 1),
+        "has_category": has_cat,
+        "ribbon": ribbon,
+        "km_by_category": histogram,
+        "segments": [
+            {
+                "km_from": b["km_from"], "km_to": b["km_to"],
+                "category": b.get("surface_category"),
+                "label": b.get("surface_category_label"),
+                "reason": b.get("surface_category_reason"),
+                "surface": b.get("surface"),
+            }
+            for b in buckets
+        ],
     }
 
 
@@ -779,6 +859,14 @@ def _kanon_md_to_html(md: str) -> str:
     while i < n:
         l = lines[i]
         s = l.strip()
+        if s == "<!--RAW-->":
+            i += 1
+            raw = []
+            while i < n and lines[i].strip() != "<!--/RAW-->":
+                raw.append(lines[i]); i += 1
+            i += 1
+            out.append("\n".join(raw))
+            continue
         if is_row(l):
             block = []
             while i < n and is_row(lines[i]):
@@ -843,7 +931,7 @@ def kanon_report(route_id: str = Query(...), start: str | None = Query(None)):
         os.environ.setdefault(_k, _v)
     try:
         from qbot3.routes.route_report_canonical import build_canonical_report_v1
-        md = build_canonical_report_v1(route_id, start=start)
+        md = build_canonical_report_v1(route_id, start=start, fmt="html")
     except Exception as exc:  # noqa: BLE001
         md = f"# Blad\n\nNie udalo sie zbudowac raportu dla {route_id}: {exc}"
     body = _kanon_md_to_html(md)

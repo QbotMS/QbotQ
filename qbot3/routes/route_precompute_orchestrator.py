@@ -24,6 +24,7 @@ from qbot3.routes.route_shade_store import ensure_route_shade
 # Warstwa otoczenia (route_shade_layer). Dokumentacja: docs/PROJEKT_OTOCZENIE.md
 from qbot3.routes.route_elevation_store import ensure_route_elevation
 from qbot3.routes.route_surface_context_store import ensure_route_surface_context
+from qbot3.routes.route_surface_category_store import ensure_route_surface_category
 
 
 JOB_SEQUENCE: tuple[tuple[str, Callable[..., dict[str, Any]], str], ...] = (
@@ -56,6 +57,15 @@ SURFACE_CONTEXT_JOB: tuple[str, Callable[..., dict[str, Any]], str] = (
 )
 
 
+# Faza 2F: kategoryzacja nawierzchni (5 kat.) -> route_surface_layer.surface_meta_json.
+# Przebieg DB->DB (bez Overpass). DOMYSLNIE WYLACZONA. Wlaczana przez
+# QBOT_ROUTE_SURFACE_CATEGORY_ENABLED=1. Wymaga route_surface (+ route_surface_context
+# dla zlagodzenia golych odcinkow). MUSI byc PO route_surface_context.
+SURFACE_CATEGORY_JOB: tuple[str, Callable[..., dict[str, Any]], str] = (
+    "route_surface_category", ensure_route_surface_category, "category_rows",
+)
+
+
 def _env_get(env: Mapping[str, str] | None, key: str, default: str = "") -> str:
     if env is None:
         return os.getenv(key, default)
@@ -74,6 +84,10 @@ def _route_surface_context_enabled(env: Mapping[str, str] | None = None) -> bool
     return _env_get(env, "QBOT_ROUTE_SURFACE_CONTEXT_ENABLED", "0") == "1"
 
 
+def _route_surface_category_enabled(env: Mapping[str, str] | None = None) -> bool:
+    return _env_get(env, "QBOT_ROUTE_SURFACE_CATEGORY_ENABLED", "0") == "1"
+
+
 def _effective_job_sequence(env: Mapping[str, str] | None = None) -> tuple[tuple[str, Callable[..., dict[str, Any]], str], ...]:
     sequence = JOB_SEQUENCE
     if _route_elevation_enabled(env):
@@ -82,6 +96,8 @@ def _effective_job_sequence(env: Mapping[str, str] | None = None) -> tuple[tuple
         sequence = sequence + (SHADE_JOB,)
     if _route_surface_context_enabled(env):
         sequence = sequence + (SURFACE_CONTEXT_JOB,)
+    if _route_surface_category_enabled(env):
+        sequence = sequence + (SURFACE_CATEGORY_JOB,)
     return sequence
 
 
