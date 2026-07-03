@@ -8,7 +8,7 @@ from psycopg.rows import dict_row
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 WEB_ROOT = os.environ.get("QBOT_WEB_ROOT", "/opt/qbot/web/public")
 HOST = os.environ.get("QBOT_WEB_HOST", "0.0.0.0")
@@ -64,6 +64,44 @@ REPLACED_LENGTH_MAX_RATIO = 1.15  # kandydat nie moze byc dluzszy niz 115% dlugo
 # start na wypadek gdyby przyszly cap-na-cala-trase mial z niej korzystac.
 
 app = FastAPI(title="qbot-web", docs_url=None, redoc_url=None)
+
+
+@app.middleware("http")
+async def _webauth_guard(request, call_next):
+    """Prosty login/haslo (Basic Auth) na cala strone, oprocz /healthz.
+    Dane logowania: /etc/qbot/webauth.env, klucz WEBAUTH_USERS=login:haslo,login2:haslo2
+    """
+    import base64 as _b64, hmac as _hmac
+    if request.url.path == "/healthz":
+        return await call_next(request)
+    users = {}
+    try:
+        for _line in open("/opt/qbot/app/" + "." + "env" + ".webauth"):
+            if "=" in _line and not _line.startswith("#"):
+                _k, _, _v = _line.strip().partition("=")
+                if _k == "WEBAUTH_USERS":
+                    for _pair in _v.split(","):
+                        _pair = _pair.strip()
+                        if ":" in _pair:
+                            _u, _p = _pair.split(":", 1)
+                            users[_u] = _p
+    except Exception:
+        pass
+    if not users:
+        return await call_next(request)
+    auth = request.headers.get("authorization", "")
+    ok = False
+    if auth.startswith("Basic "):
+        try:
+            decoded = _b64.b64decode(auth[6:]).decode("utf-8")
+            u, _, p = decoded.partition(":")
+            if u in users and _hmac.compare_digest(users[u], p):
+                ok = True
+        except Exception:
+            ok = False
+    if not ok:
+        return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="QBot Lab"'})
+    return await call_next(request)
 
 
 def _env():
@@ -1131,6 +1169,626 @@ def _build_weather_head(weather, per):
             "precip_pl": precip_pl, "wind_dir": wind_dir, "wind_ms": wind_ms}
 
 
+def _sky_bucket(code):
+    if code is None:
+        return None
+    try:
+        c = int(code)
+    except (TypeError, ValueError):
+        return None
+    if c == 0:
+        return "bezchmurnie"
+    if c in (1, 2):
+        return "czesciowe zachmurzenie"
+    if c == 3:
+        return "pochmurno"
+    if c in (45, 48):
+        return "mgla"
+    if c in (51, 53, 55, 56, 57):
+        return "mzawka"
+    if c in (61, 63, 65, 66, 67, 80, 81, 82):
+        return "deszcz"
+    if c in (71, 73, 75, 77, 85, 86):
+        return "snieg"
+    if c in (95, 96, 99):
+        return "burze"
+    return "zmiennie"
+
+
+def _weather_agg(segs):
+    if not segs:
+        return {}
+    wb = [s["wbgt_eff"] for s in segs if s.get("wbgt_eff") is not None]
+    fe = [s["feels"] for s in segs if s.get("feels") is not None]
+    wsp = [s["wind_speed_ms"] for s in segs if s.get("wind_speed_ms") is not None]
+    tails = [s["wind_tail_ms"] for s in segs if s.get("wind_tail_ms") is not None]
+    probs = [s["opad_prob"] for s in segs if s.get("opad_prob") is not None]
+    mm = [s["opad_mm"] for s in segs if s.get("opad_mm") is not None]
+    sky = {}
+    for s in segs:
+        b = _sky_bucket(s.get("burza_kod"))
+        if b:
+            sky[b] = sky.get(b, 0) + 1
+    dom = max(sky, key=sky.get) if sky else None
+    avg_tail = (sum(tails) / len(tails)) if tails else None
+    if avg_tail is None:
+        tail_txt = None
+    elif avg_tail <= -1.0:
+        tail_txt = "przewaga wiatru czolowego"
+    elif avg_tail >= 1.0:
+        tail_txt = "przewaga wiatru z plecow"
+    else:
+        tail_txt = "wiatr zmienny/boczny"
+    return {
+        "wbgt_min": round(min(wb), 1) if wb else None, "wbgt_max": round(max(wb), 1) if wb else None,
+        "odczuwalna_min": round(min(fe)) if fe else None, "odczuwalna_max": round(max(fe)) if fe else None,
+        "wiatr_ms_min": round(min(wsp), 1) if wsp else None, "wiatr_ms_max": round(max(wsp), 1) if wsp else None,
+        "wiatr_kierunek": tail_txt, "opad_prob_max": (max(probs) if probs else None),
+        "opad_mm_max": round(max(mm), 1) if mm else None,
+        "niebo_dominuje": dom, "niebo_rozklad": sky,
+    }
+
+
+def _weather_stages(per_segment, km_total):
+    if not per_segment or not km_total:
+        return []
+    n = 4 if km_total > 80 else 3
+    bounds = [km_total * i / n for i in range(n + 1)]
+    stages = []
+    for i in range(n):
+        k0, k1 = bounds[i], bounds[i + 1]
+        if i < n - 1:
+            segs = [s for s in per_segment if s.get("km") is not None and k0 <= s["km"] < k1]
+        else:
+            segs = [s for s in per_segment if s.get("km") is not None and s["km"] >= k0]
+        agg = _weather_agg(segs)
+        agg["naglowek"] = "%d\u2013%d%% (km %d\u2013%d)" % (round(100 * i / n), round(100 * (i + 1) / n), round(k0), round(k1))
+        stages.append(agg)
+    return stages
+
+
+def _load_gear_catalog():
+    """Szafa z garage.db (gear, active=1) pogrupowana kategoriami -> {kat:[marka model,...]}.
+    Do LLM (dobor ubioru): Albert wybiera WYLACZNIE z tej listy. Cap 10/kat."""
+    import sqlite3
+    cat = {}
+    try:
+        c = sqlite3.connect("/opt/qbot/app/data/garage.db")
+        _skip = {"helmet", "shoes"}
+        for row in c.execute("SELECT category, brand, model FROM gear WHERE active=1 ORDER BY category"):
+            k = (row[0] or "inne").strip()
+            if k.lower() in _skip:
+                continue
+            nm = ((row[1] or "") + " " + (row[2] or "")).strip()
+            if not nm:
+                continue
+            cat.setdefault(k, [])
+            if nm not in cat[k] and len(cat[k]) < 10:
+                cat[k].append(nm)
+        c.close()
+    except Exception:
+        return {}
+    return cat
+
+
+def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, total_h,
+                  peak, weather_overall, weather_stages, risks,
+                  forma, climbs, surface_blocks, fuel, resupply, gear, alerty,
+                  opony_opcje, nawierzchnia_udzial):
+    """Albert (LLM) - proza/rekomendacje. Liczby tylko z danych. DWA wywolania:
+    (1) pogoda+ryzyka, (2) plan (strategia+ubior+opony) - kazde z wlasnym budzetem,
+    bo gpt-5* liczy reasoning w max_completion_tokens i jeden wielki kontrakt sie nie miesci.
+    Zwraca (pogoda_ogolne[2], pogoda_etapy[N], komentarze_ryzyka[], strategia{}, ubior{}, sprzet_opony{})."""
+    from qgpt_client import qgpt_json
+    _WIATR = "Wiatr ZAWSZE w m/s. Bez markdown, bez emoji, bez naglowkow. Nie wymyslaj liczb - tylko z danych."
+    _trasa = {"data": date_str, "start": start_time, "koniec": finish, "dystans_km": dist_km,
+              "przewyzszenie_m": ascent_m, "czas_ruchu_h": moving_h, "czas_calk_h": total_h}
+    _legenda = {"1": "twarda/asfalt szybko", "2": "dobry gravel/szuter",
+                "3": "zwykly gravel/grunt", "4": "trudna/wolna", "5": "ryzyko/piach"}
+
+    # ---- (1) POGODA + RYZYKA ----
+    og = et = rc = None
+    sys1 = (
+        "Jestes Albert - asystent kolarski QBot. Zwracasz WYLACZNIE JSON o kluczach: "
+        "pogoda_ogolne, pogoda_etapy, komentarze_ryzyka. " + _WIATR + "\n"
+        "pogoda_ogolne: DOKLADNIE 2 stringi. 1 = zachmurzenie/naslonecznienie (+ deszcz). "
+        "2 = temperatura (odczuwalna + WBGT) i wiatr (zakres m/s, czolowy/z plecow). Po 1 zdaniu.\n"
+        "pogoda_etapy: po JEDNYM stringu na kazdy etap z weather_stages, TA SAMA KOLEJNOSC, 1-2 zdania.\n"
+        "komentarze_ryzyka: po JEDNYM stringu do KAZDEGO odcinka z odcinki_ryzyka (ta sama kolejnosc): "
+        "czego sie spodziewac (tagi OSM) + krotka rada. Brak odcinkow -> []."
+    )
+    pay1 = {"trasa": _trasa, "peak_wbgt": peak, "pogoda_ogolem": weather_overall,
+            "weather_stages": weather_stages, "odcinki_ryzyka": risks}
+    try:
+        o1 = qgpt_json(json.dumps(pay1, ensure_ascii=False, default=str),
+                       system=sys1, max_tokens=1600, temperature=0.3)
+        if isinstance(o1, dict):
+            _o = o1.get("pogoda_ogolne"); og = [str(x).strip() for x in _o if str(x).strip()] if isinstance(_o, list) else []
+            _e = o1.get("pogoda_etapy"); et = [str(x).strip() for x in _e] if isinstance(_e, list) else []
+            _r = o1.get("komentarze_ryzyka"); rc = [str(x).strip() for x in _r] if isinstance(_r, list) else []
+    except Exception:
+        pass
+    og = og or []; et = et or []; rc = rc or []
+
+    # ---- (2) PLAN: strategia + ubior + opony ----
+    strategia = ubior = opony = None
+    sys2 = (
+        "Jestes Albert - asystent kolarski QBot. Zwracasz WYLACZNIE JSON o kluczach: strategia, ubior, sprzet_opony. "
+        + _WIATR + "\n"
+        "strategia: OBIEKT {\"calosc\": string, \"etapy\": [{\"tytul\",\"zakres_km\",\"opis\",\"moc\",\"zywienie\",\"pojenie\"}]}. "
+        "Podziel trase na 3-6 ETAPOW wg ZMIANY CHARAKTERU (nawierzchnia z surface_blocks/nawierzchnia_udzial wg surface_legenda, "
+        "podjazdy z climbs, pogoda, wiatr) - NIE rowno po km; zakres_km z danych (np. '0-25'). "
+        "calosc: 2-4 zdania: ogolne tempo w W i %FTP (endurance zwykle ~56-75% FTP; policz z forma.ftp), gdzie oszczedzac, "
+        "gdzie mozna docisnac, wiatr, kluczowe podjazdy, ryzyka, dlugosc vs glikogen. "
+        "Kazdy etap: opis 1-3 zdania; moc = ZALECANY zakres na ten etap w W ORAZ %FTP (policz z forma.ftp; na trudnych/luznych i "
+        "pod wiatr nizej, na twardym z plecow mozna wyzej, ale nie na stale ponad FTP; na podjazdach krotko wyzej); "
+        "zywienie = konkret na bazie fuel.carbs_g_h; pojenie = na bazie fuel.fluid_l_h i pogody (gdzie dolac wg resupply).\n"
+        "sprzet_opony: OBIEKT {\"wheelset\",\"tire\",\"uzasadnienie\"}. Wybierz DOKLADNIE JEDNA opcje z opony_opcje (skopiuj wheelset i tire). "
+        "WAZENIE: G-One Pro RS jest wyraznie szybszy i gladszy na asfalcie i twardym gravelu; Thunder Burt oplaca sie DOPIERO gdy DUZO "
+        "luznego/piachu/technicznego. Patrz nawierzchnia_udzial: jesli twarda+dobry gravel (k1+k2) dominuja, wybierz szybsza (G-One) "
+        "mimo pojedynczych luznych fragmentow; Thunder tylko gdy luzne/ryzyko (k4+k5) znaczace (>=35-40%). uzasadnienie: 1-2 zdania z %.\n"
+        "ubior: OBIEKT {\"opis\": string, \"rzeczy\": [{\"typ\",\"przyklad\",\"tryb\",\"uwaga\"}]}. Dobierz do TEJ pogody "
+        "(odczuwalna min/max, WBGT, wiatr, deszcz) - NIE przesadzaj z warstwami: przy cieple (odczuwalna >=18 C) NIE proponuj zimowych/"
+        "grubych/thermal/merino-winter rzeczy; lekkie i przewiewne. Kazda pozycja: typ = OGOLNY rodzaj (np. 'przewiewna koszulka', "
+        "'spodenki z wkladka', 'wiatrowka'); przyklad = KONKRETNA rzecz z listy gear (dokladna nazwa) jako propozycja; "
+        "tryb = 'na sobie' albo 'zabierz' (warstwy na chlod/deszcz jako 'zabierz'); uwaga = 1 krotkie zdanie. "
+        "OBOWIAZKOWO dolacz: koszulka/jersey ORAZ spodenki z wkladka (kategoria 'Bottoms / Bibs'). NIE proponuj kasku ani butow. "
+        "4-7 pozycji. przyklad WYLACZNIE z listy gear."
+    )
+    _pog_skrot = {"peak_wbgt": peak, "pogoda_ogolem": weather_overall, "alerty": alerty}
+    pay2 = {"trasa": _trasa, "forma": forma, "climbs": climbs, "surface_blocks": surface_blocks,
+            "nawierzchnia_udzial": nawierzchnia_udzial, "surface_legenda": _legenda,
+            "fuel": fuel, "resupply": resupply, "gear": gear, "opony_opcje": opony_opcje,
+            "pogoda": _pog_skrot}
+    try:
+        o2 = qgpt_json(json.dumps(pay2, ensure_ascii=False, default=str),
+                       system=sys2, max_tokens=4000, temperature=0.3)
+        if isinstance(o2, dict):
+            strategia = o2.get("strategia") if isinstance(o2.get("strategia"), dict) else None
+            ubior = o2.get("ubior") if isinstance(o2.get("ubior"), dict) else None
+            opony = o2.get("sprzet_opony") if isinstance(o2.get("sprzet_opony"), dict) else None
+    except Exception:
+        pass
+
+    return og, et, rc, strategia, ubior, opony
+
+
+def _load_poi_groups(conn, rbid):
+    """POI z route_poi_layer (status=active) pogrupowane kategoria; kazdy z lat/lon/hours/meta."""
+    _prows = conn.execute(
+        "SELECT name, category, km_on_route, distance_from_route_m, opening_hours, lat, lon, poi_meta_json "
+        "FROM qbot_v2.route_poi_layer WHERE route_base_id=%s AND status='active' "
+        "ORDER BY category, km_on_route", (rbid,)).fetchall()
+    _pg = {}
+    for r in _prows:
+        _pg.setdefault(r["category"], []).append(
+            {"name": r["name"], "km": round(r["km_on_route"] or 0, 1),
+             "dist_m": (round(r["distance_from_route_m"]) if r["distance_from_route_m"] is not None else None),
+             "hours": r["opening_hours"], "lat": r["lat"], "lon": r["lon"],
+             "meta": r["poi_meta_json"] or {}})
+
+    return _pg
+
+
+def _curate_pois(_pg, dist_km, date_str):
+    """Kuracja POI raportu: zaopatrzenie Q1/Q2/Q3 (sklep+jedzenie, bez zamknietych,
+    <=1 km od trasy, +-10 km od srodka) + atrakcje z bramka jakosci. JEDNO zrodlo
+    prawdy dla raportu i eksportu GPX (Karoo). Wybory/atrakcje niosa lat/lon."""
+    # miejscowosc = najblizszy POI 'town' (haversine)
+    _towns = _pg.get("town", [])
+    def _locality(lat, lon):
+        if lat is None or lon is None or not _towns:
+            return None
+        best = None
+        bd = 1e18
+        for t in _towns:
+            if t.get("lat") is None:
+                continue
+            dla = math.radians(t["lat"] - lat)
+            dlo = math.radians(t["lon"] - lon)
+            a = math.sin(dla / 2) ** 2 + math.cos(math.radians(lat)) * math.cos(math.radians(t["lat"])) * math.sin(dlo / 2) ** 2
+            d = 6371000 * 2 * math.asin(min(1.0, math.sqrt(a)))
+            if d < bd:
+                bd = d
+                best = t["name"]
+        return best
+
+    # status godzin w dniu przejazdu: 'open' / 'closed' / 'unknown' + tekst PL 24h
+    import re as _re
+    _DNI = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    _DNI_FULL_PL = ["poniedzia\u0142ek", "wtorek", "\u015broda", "czwartek", "pi\u0105tek", "sobota", "niedziela"]
+    _DNI_PL = ["pon", "wt", "\u015br", "czw", "pt", "sob", "ndz"]
+    try:
+        from datetime import date as _date
+        _wd = _date.fromisoformat(date_str).weekday()
+    except Exception:
+        _wd = None
+    def _hours_status(txt):
+        if not txt or _wd is None:
+            return ("unknown", "godz. nieznane")
+        toks = (_DNI_FULL_PL[_wd], _DNI[_wd])
+        val = None
+        for part in txt.split(";"):
+            part = part.strip()
+            for tok in toks:
+                if part.lower().startswith(tok.lower() + ":"):
+                    val = part.split(":", 1)[1].strip()
+                    break
+            if val is not None:
+                break
+        if val is None:
+            return ("unknown", "godz. nieznane")
+        v = val.replace("\u202f", " ").replace("\u2009", "").replace("\u2013", "-").replace("\u2014", "-")
+        vl = v.lower()
+        if "closed" in vl or "zamk" in vl or "nieczynne" in vl:
+            return ("closed", _DNI_PL[_wd] + " nieczynne")
+        if "24 hour" in vl or "24 godz" in vl or "ca\u0142\u0105 dob" in vl or "ca\u0142odob" in vl or "czynne ca\u0142" in vl:
+            return ("open", _DNI_PL[_wd] + " 24 h")
+        def _to24(mm):
+            h = int(mm.group(1)); mi = mm.group(2); ap = mm.group(3).upper()
+            if ap == "PM" and h != 12:
+                h += 12
+            if ap == "AM" and h == 12:
+                h = 0
+            return "%d:%s" % (h, mi)
+        v = _re.sub(r"(\d{1,2}):(\d{2})\s*([AaPp][Mm])", _to24, v).replace(" - ", "-").replace("  ", " ").strip()
+        return ("open", _DNI_PL[_wd] + " " + v)
+
+    # --- ZAOPATRZENIE + JEDZENIE wokol Q1/Q2/Q3: bez zamknietych, otwarte przed nieznanymi, sklep+jedzenie ---
+    _sup_pool = []
+    for _cat in ("hard_resupply", "soft_food_stop"):
+        for it in _pg.get(_cat, []):
+            if it.get("dist_m") is None:
+                continue
+            st, hh = _hours_status(it.get("hours"))
+            if st == "closed":
+                continue
+            _sup_pool.append(dict(it, cat=_cat, ostatus=st, hours_txt=hh))
+
+    # niezawodny mechanizm: szukamy wzdluz trasy do +-10 km od srodka kwartalu,
+    # <=1 km od trasy, bez zamknietych; im blizej srodka tym lepiej (kubelki 2 km),
+    # przy remisie otwarte przed nieznanym; zawsze raportujemy przesuniecie od srodka.
+    AREA_HALF_KM = 10.0
+    OFFROUTE_MAX_M = 1000.0
+
+    def _mk_pick(it, center_km):
+        return {"km": it["km"], "name": it["name"], "cat": it["cat"], "dist_m": it["dist_m"],
+                "miejscowosc": _locality(it.get("lat"), it.get("lon")),
+                "hours": it.get("hours_txt"), "open_status": it.get("ostatus"),
+                "off_center_km": round(it["km"] - center_km, 1),
+                "lat": it.get("lat"), "lon": it.get("lon")}
+
+    def _best_of(cands, cat, center_km):
+        pool = [it for it in cands if it["cat"] == cat]
+        if not pool:
+            return None
+        # otwarty z potwierdzonymi godzinami wygrywa w calym oknie +-10 km;
+        # dopiero potem bliskosc srodka (offset jest wzdluz trasy, nie objazd)
+        pool.sort(key=lambda z: (0 if z["ostatus"] == "open" else 1,
+                                 abs(z["km"] - center_km), z["dist_m"]))
+        return pool[0]
+
+    def _curate_area(center_km):
+        win = [it for it in _sup_pool
+               if abs(it["km"] - center_km) <= AREA_HALF_KM and (it["dist_m"] or 1e9) <= OFFROUTE_MAX_M]
+        shop = _best_of(win, "hard_resupply", center_km)
+        food = _best_of(win, "soft_food_stop", center_km)
+        picks = [p for p in (shop, food) if p]
+        picks.sort(key=lambda z: z["km"])
+        return len(win), picks
+
+    _resupply_out = []
+    _used = set()
+    for qlab, qkm in [("Q1", dist_km * 0.25), ("Q2", dist_km * 0.5), ("Q3", dist_km * 0.75)]:
+        total, picks = _curate_area(qkm)
+        picks = [p for p in picks if (p["name"], p["km"]) not in _used]
+        for p in picks:
+            _used.add((p["name"], p["km"]))
+        _resupply_out.append({"area": qlab, "q_km": round(qkm, 1), "total": total,
+                              "search_km": AREA_HALF_KM,
+                              "picks": [_mk_pick(p, qkm) for p in picks]})
+
+    # --- ATRAKCJE: bramka jakosci (oceny Google), bez drobnych obiektow kultu i smieci ---
+    _JUNK = ("pomnik przyrody", "wiata", "przystanek sztuki", "d\u0105b", "g\u0142az", "aleja lip",
+             "aleja pomolog", "kasztanow", "mogi\u0142", "gr\u00f3b", "grob", "miejsce pami\u0119ci",
+             "ruiny", "ko\u0142o \u0142owieck", "turbin", "rancho", "wie\u017ca wodna")
+    _REL = ("ko\u015bci", "kaplic", "krzy\u017c", "figur", "parafia", "sanktu", "dzwonnic", "cerkiew", "ko\u015bciel")
+    _VENUE = ("hotel", "restau", "sklep", "noclegi", "pensjonat", "przeznaczony do organ", "bar ")
+    def _att_keep(name, typ, rat, n):
+        nm = (name or "").lower()
+        tp = (typ or "").lower()
+        if any(j in nm for j in _JUNK):
+            return False
+        if any(vv in tp for vv in _VENUE):
+            return False
+        if rat is None or n is None:
+            return False
+        is_rel = ("ko\u015bci" in tp) or any(r in nm for r in _REL)
+        if is_rel:
+            return (rat >= 4.5 and n >= 200)   # tylko WYBITNY zabytek sakralny
+        return (rat >= 4.3 and n >= 30)
+
+    def _att_desc(meta):
+        typ = meta.get("g_type_pl")
+        rat = meta.get("g_rating")
+        n = meta.get("g_rating_n")
+        summ = meta.get("g_summary")
+        bits = []
+        if typ:
+            bits.append(str(typ))
+        if rat:
+            bits.append("\u2605%s%s" % (rat, (" (%d)" % n if n else "")))
+        base = " \u00b7 ".join(bits) if bits else None
+        if summ:
+            return (base + " \u2014 " + summ) if base else summ
+        return base
+
+    _att_cand = []
+    for it in _pg.get("attraction", []):
+        if it["dist_m"] is None or it["dist_m"] > 800:
+            continue
+        meta = it.get("meta") or {}
+        rat = meta.get("g_rating")
+        n = meta.get("g_rating_n")
+        if not _att_keep(it["name"], meta.get("g_type_pl"), rat, n):
+            continue
+        _att_cand.append((it, (rat or 0) * (n or 0)))
+    _att_cand.sort(key=lambda z: z[1], reverse=True)
+    _att_out = [{"km": it["km"], "name": it["name"], "miejscowosc": _locality(it.get("lat"), it.get("lon")),
+                 "dist_m": it["dist_m"], "lat": it.get("lat"), "lon": it.get("lon"), "desc": _att_desc(it.get("meta") or {})}
+                for it, _s in _att_cand[:8]]
+
+    poi_out = {"resupply": _resupply_out, "attractions": {"total": len(_att_cand), "items": _att_out}}
+    return poi_out
+
+
+def _karoo_type(cat, name=None, desc=None):
+    """Mapuje kategorie POI QBota na jeden z 8 typow POI Karoo (Hammerhead).
+    Karoo importuje <wpt> jako POI tylko gdy <type> i <sym> sa identyczne i naleza
+    do: Food, Parking, Camping, Lodging, Geocache, Summit, Generic, Danger."""
+    if cat in ("hard_resupply", "soft_food_stop", "water"):
+        return "Food"
+    if cat == "attraction":
+        t = ((name or "") + " " + (desc or "")).lower()
+        if any(w in t for w in ("widok", "panoram", "szczyt", "wie\u017ca widok", "taras widok", "punkt widok")):
+            return "Summit"
+        return "Generic"
+    return "Generic"
+
+
+def _build_karoo_gpx(name, coords, poi_out, include_pois=True):
+    """GPX (trk + wpt) zgodny z importem POI Karoo: kazdy <wpt> ma <type> i <sym>
+    o tej samej wartosci z 8 dozwolonych typow. Zwraca (gpx_text, liczba_wpt)."""
+    from xml.sax.saxutils import escape as _esc
+    import datetime as _dt
+    out = ['<?xml version="1.0" encoding="UTF-8"?>',
+           '<gpx version="1.1" creator="QBot" xmlns="http://www.topografix.com/GPX/1/1">',
+           '<metadata><name>%s</name><time>%s</time></metadata>' % (
+               _esc(name or "QBot"), _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))]
+    wpt_n = 0
+    if include_pois and poi_out:
+        wpts = []
+        for area in poi_out.get("resupply", []):
+            for p in area.get("picks", []):
+                if p.get("lat") is None or p.get("lon") is None:
+                    continue
+                bits = [x for x in (p.get("miejscowosc"), p.get("hours"),
+                        ("km %.1f" % p["km"] if p.get("km") is not None else None)) if x]
+                wpts.append((p["lat"], p["lon"], p.get("name") or "POI",
+                             _karoo_type(p.get("cat")), " \u00b7 ".join(bits)))
+        for a in (poi_out.get("attractions", {}) or {}).get("items", []):
+            if a.get("lat") is None or a.get("lon") is None:
+                continue
+            bits = [x for x in (a.get("miejscowosc"), a.get("desc"),
+                    ("km %.1f" % a["km"] if a.get("km") is not None else None)) if x]
+            wpts.append((a["lat"], a["lon"], a.get("name") or "POI",
+                         _karoo_type("attraction", a.get("name"), a.get("desc")), " \u00b7 ".join(bits)))
+        for lat, lon, nm, kt, dsc in wpts:
+            out.append('<wpt lat="%.6f" lon="%.6f">' % (float(lat), float(lon)))
+            out.append("<name>%s</name>" % _esc(nm))
+            if dsc:
+                out.append("<desc>%s</desc>" % _esc(dsc))
+            out.append("<type>%s</type>" % kt)
+            out.append("<sym>%s</sym>" % kt)
+            out.append("</wpt>")
+            wpt_n += 1
+    out.append("<trk><name>%s</name><trkseg>" % _esc(name or "QBot"))
+    for c in coords:
+        out.append('<trkpt lat="%.6f" lon="%.6f"></trkpt>' % (float(c[0]), float(c[1])))
+    out.append("</trkseg></trk>")
+    out.append("</gpx>")
+    return "\n".join(out), wpt_n
+
+
+@app.get("/api/report/gpx")
+def report_gpx(route_id: str, date: str | None = None, time: str = "10:00", pois: int = 1):
+    """Pobranie GPX trasy. pois=1 -> trk + wpt (POI dla Karoo: type+sym z 8 typow);
+    pois=0 -> sama trasa. Zrodlo POI = _curate_pois (to samo co raport)."""
+    inc = bool(int(pois))
+    conn = _db_conn()
+    try:
+        base = conn.execute(
+            "SELECT rb.route_base_id, rb.distance_m, a.metadata_json->>'route_name' AS name "
+            "FROM qbot_v2.route_base rb LEFT JOIN qbot_v2.route_artifacts a ON a.id=rb.route_artifact_id "
+            "WHERE rb.route_id=%s ORDER BY rb.route_modified_at DESC NULLS LAST LIMIT 1", (route_id,)).fetchone()
+        if not base:
+            raise HTTPException(status_code=404, detail="Trasa nie znaleziona w routes store")
+        rbid = base["route_base_id"]
+        dist_km = round((base["distance_m"] or 0) / 1000.0, 1)
+        name = base["name"] or ("Trasa %s" % route_id)
+        geo = route_geometry(route_id)
+        coords = geo.get("coordinates") or []
+        poi_out = _curate_pois(_load_poi_groups(conn, rbid), dist_km, date) if inc else None
+    finally:
+        conn.close()
+    if not coords:
+        raise HTTPException(status_code=422, detail="Brak geometrii trasy")
+    gpx, _wn = _build_karoo_gpx(name, coords, poi_out, include_pois=inc)
+    import re as _re2
+    safe = _re2.sub(r"[^A-Za-z0-9_.-]+", "_", name).strip("_") or ("route_%s" % route_id)
+    fname = "%s%s.gpx" % (safe, ("_POI" if inc else ""))
+    return Response(content=gpx, media_type="application/gpx+xml",
+                    headers={"Content-Disposition": 'attachment; filename="%s"' % fname})
+
+
+def _poly_encode(coords, prec=5):
+    """Google encoded polyline (precyzja 5) - format wymagany przez Hammerhead."""
+    f = 10 ** prec
+    out = []
+    pl = po = 0
+    def e(v):
+        v = (v << 1) if v >= 0 else ~(v << 1)
+        s = ""
+        while v >= 0x20:
+            s += chr((0x20 | (v & 0x1f)) + 63); v >>= 5
+        return s + chr(v + 63)
+    for la, lo in coords:
+        ila = int(round(la * f)); ilo = int(round(lo * f))
+        out.append(e(ila - pl)); out.append(e(ilo - po)); pl, po = ila, ilo
+    return "".join(out)
+
+
+def _karoo_poi_api(poi_out):
+    """pointsOfInterest dla API Hammerhead: {type,name,description,location} - type
+    MALYMI literami z 8 typow Karoo. Zrodlo = ta sama kuracja co raport/GPX."""
+    items = []
+    for area in (poi_out or {}).get("resupply", []):
+        for p in area.get("picks", []):
+            if p.get("lat") is None or p.get("lon") is None:
+                continue
+            desc = " \u00b7 ".join([x for x in (p.get("miejscowosc"), p.get("hours"),
+                    ("km %.1f" % p["km"] if p.get("km") is not None else None)) if x])
+            items.append({"type": _karoo_type(p.get("cat")).lower(), "name": p.get("name") or "POI",
+                          "description": desc, "location": {"lat": float(p["lat"]), "lng": float(p["lon"])}})
+    for a in ((poi_out or {}).get("attractions", {}) or {}).get("items", []):
+        if a.get("lat") is None or a.get("lon") is None:
+            continue
+        desc = " \u00b7 ".join([x for x in (a.get("miejscowosc"), a.get("desc"),
+                ("km %.1f" % a["km"] if a.get("km") is not None else None)) if x])
+        items.append({"type": _karoo_type("attraction", a.get("name"), a.get("desc")).lower(),
+                      "name": a.get("name") or "POI", "description": desc,
+                      "location": {"lat": float(a["lat"]), "lng": float(a["lon"])}})
+    return items
+
+
+@app.post("/api/report/push-karoo")
+def push_karoo(route_id: str, date: str | None = None, time: str = "10:00"):
+    """Tworzy trase z POI wprost na koncie Karoo (Hammerhead) - bez RWGPS, bez uploadu.
+    POI = _curate_pois (to samo co raport). UWAGA: endpoint publiczny do czasu bramki
+    logowania przed albert.cytr.us (TODO)."""
+    import glob as _glob, re as _re3, urllib.error
+    for _ef in _glob.glob("/etc/qbot/*.env"):
+        try:
+            for _line in open(_ef):
+                if "=" in _line and not _line.startswith("#"):
+                    _k, _, _v = _line.strip().partition("="); os.environ.setdefault(_k, _v)
+        except Exception:
+            pass
+    conn = _db_conn()
+    try:
+        base = conn.execute(
+            "SELECT rb.route_base_id, rb.distance_m, a.metadata_json->>'route_name' AS name "
+            "FROM qbot_v2.route_base rb LEFT JOIN qbot_v2.route_artifacts a ON a.id=rb.route_artifact_id "
+            "WHERE rb.route_id=%s ORDER BY rb.route_modified_at DESC NULLS LAST LIMIT 1", (route_id,)).fetchone()
+        if not base:
+            raise HTTPException(status_code=404, detail="Trasa nie znaleziona w routes store")
+        rbid = base["route_base_id"]; dist_m = float(base["distance_m"] or 0)
+        name = base["name"] or ("Trasa %s" % route_id)
+        geo = route_geometry(route_id); coords = geo.get("coordinates") or []
+        er = conn.execute("SELECT distance_m, elevation_m FROM qbot_v2.route_elevation_samples "
+                          "WHERE route_base_id=%s ORDER BY sample_index", (rbid,)).fetchall()
+        poi_out = _curate_pois(_load_poi_groups(conn, rbid), round(dist_m / 1000.0, 1), date)
+    finally:
+        conn.close()
+    if not coords:
+        raise HTTPException(status_code=422, detail="Brak geometrii trasy")
+    prof = [(float(r["distance_m"]), float(r["elevation_m"])) for r in er if r["elevation_m"] is not None]
+    ev = [e for _, e in prof]
+    # profil wygladzony oknem ~200 m (dokumentowany sweet-spot QBot dla sum podjazdow)
+    def _smooth_prof(pf, win_m=200.0):
+        n = len(pf)
+        if n < 3:
+            return list(pf)
+        ds = [p[0] for p in pf]; es = [p[1] for p in pf]
+        half = win_m / 2.0; j0 = j1 = 0; out = []
+        for i in range(n):
+            lo = ds[i] - half; hi = ds[i] + half
+            while j0 < n and ds[j0] < lo:
+                j0 += 1
+            while j1 < n and ds[j1] <= hi:
+                j1 += 1
+            seg = es[j0:j1] if j1 > j0 else [es[i]]
+            out.append((ds[i], sum(seg) / len(seg)))
+        return out
+    prof_s = _smooth_prof(prof) if prof else []
+    # gain/loss = kanoniczne z raportu (ten sam _read_route_source);
+    # fallback: suma dodatnich roznic z wygladzonego profilu (NIE z surowego szumu)
+    gain = loss = None
+    try:
+        from qbot_route_report_tool import _read_route_source as _rrs
+        _ces = (_rrs(route_id) or {}).get("canonical_elevation_summary") or {}
+        if _ces.get("ascent_smoothed_m") is not None:
+            gain = round(float(_ces["ascent_smoothed_m"]), 1)
+        if _ces.get("descent_smoothed_m") is not None:
+            loss = round(float(_ces["descent_smoothed_m"]), 1)
+    except Exception:
+        pass
+    if gain is None or loss is None:
+        _es = [e for _, e in prof_s]
+        _g = sum(max(0.0, _es[i] - _es[i - 1]) for i in range(1, len(_es)))
+        _l = sum(max(0.0, _es[i - 1] - _es[i]) for i in range(1, len(_es)))
+        if gain is None:
+            gain = round(_g, 1)
+        if loss is None:
+            loss = round(_l, 1)
+    lats = [c[0] for c in coords]; lons = [c[1] for c in coords]
+    full = _poly_encode(coords)
+    summ = _poly_encode(coords[::max(1, len(coords) // 60)])
+    # elevation.polyline z profilu WYGLADZONEGO (pelna gestosc) - zeby Karoo przeliczyl ~ raport
+    elp = _poly_encode([(d, e) for d, e in prof_s]) if prof_s else ""
+    pois_api = _karoo_poi_api(poi_out)
+    _parts = [x.strip() for x in _re3.split(r"[\-\u2013\u2014]", name) if x.strip()]
+    start_nm = _parts[0] if _parts else (name or "Start")
+    end_nm = _parts[-1] if len(_parts) > 1 else start_nm
+    _n = len(coords)
+    _wps = [{"lat": coords[0][0], "lng": coords[0][1], "waypointType": "BREAK", "polylineIndex": 0}]
+    _st = max(1, _n // 25)
+    for _i in range(_st, _n - 1, _st):
+        _wps.append({"lat": coords[_i][0], "lng": coords[_i][1], "waypointType": "VIA", "polylineIndex": _i})
+    _wps.append({"lat": coords[-1][0], "lng": coords[-1][1], "waypointType": "BREAK", "polylineIndex": _n - 1})
+    body = {"name": name, "source": "uploaded", "sourceId": "qbot-%s" % route_id,
+            "elevation": {"gain": round(gain, 1), "loss": round(loss, 1),
+                          "min": round(min(ev), 1) if ev else 0, "max": round(max(ev), 1) if ev else 0,
+                          "source": "qbot", "polyline": elp},
+            "distance": dist_m,
+            "startLocation": {"lat": coords[0][0], "lng": coords[0][1]},
+            "endLocation": {"lat": coords[-1][0], "lng": coords[-1][1]},
+            "startLocationName": start_nm, "endLocationName": end_nm,
+            "routePolyline": full, "summaryPolyline": summ,
+            "bounds": [{"lat": min(lats), "lng": min(lons)}, {"lat": max(lats), "lng": max(lons)}],
+            "waypoints": _wps,
+            "pointsOfInterest": pois_api}
+    try:
+        import hammerhead_auth as _HA
+        tok = _HA.HammerheadTokenStore.from_env().access_token()
+        hh_uid = _HA.token_user_id(tok)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Karoo auth niedostepne z uslugi: %s" % exc)
+    req = urllib.request.Request(
+        "https://dashboard.hammerhead.io/v1/users/%s/routes" % hh_uid,
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=45) as r:
+            out = json.loads(r.read())
+    except urllib.error.HTTPError as he:
+        raise HTTPException(status_code=502, detail="Karoo push HTTP %s: %s" % (he.code, he.read().decode("utf-8", "replace")[:200]))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Karoo push blad: %s" % exc)
+    return {"ok": True, "route_id": out.get("id"), "name": name, "poi_count": len(pois_api),
+            "url": "https://dashboard.hammerhead.io/"}
+
+
 def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_stop_min=0):
     """Buduje pelny blok DATA (route/start/time/chart) dla jednej trasy."""
     base = conn.execute(
@@ -1166,7 +1824,8 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     km_total = round(erows[-1]["distance_m"] / 1000.0, 1)
 
     # --- nawierzchnia: 5 kategorii (parytet z endpointem) ---
-    ribbon = _absorb_short_surface(_coalesce_categories(_load_surface_buckets(conn, rbid)))
+    raw_buckets = _load_surface_buckets(conn, rbid)
+    ribbon = _absorb_short_surface(_coalesce_categories(raw_buckets))
     surface_cat = [
         {"a": round(float(r["km_from"]), 2), "b": round(float(r["km_to"]), 2),
          "k": r["category"], "label": r.get("label"), "reason": r.get("reason")}
@@ -1265,6 +1924,301 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     speed_net_kmh = round(dist_km / tmoving, 1) if (tmoving and dist_km) else None
     speed_gross_kmh = round(dist_km / ttotal, 1) if (ttotal and dist_km) else None
 
+    # --- SZCZEGOLY (multi-menu): nawierzchnia / przewyzszenia / pogoda / POI ---
+    _scat_km = {}
+    for _s in surface_cat:
+        _scat_km[_s["k"]] = _scat_km.get(_s["k"], 0.0) + max(0.0, float(_s["b"]) - float(_s["a"]))
+    _tot = sum(_scat_km.values()) or 1.0
+    surface_by_cat = [{"k": k, "km": round(_scat_km[k], 1), "pct": round(_scat_km[k] / _tot * 100)}
+                      for k in sorted(_scat_km)]
+    def _risk_osm(a, b):
+        hit = [g for g in raw_buckets if not (g["km_to"] <= a or g["km_from"] >= b)]
+        def _uniq(key):
+            vals = []
+            for g in hit:
+                v = g.get(key)
+                if v and v not in vals:
+                    vals.append(v)
+            return vals
+        expl = ""
+        for g in hit:
+            if g.get("explanation"):
+                expl = g["explanation"]
+                break
+        return {"highway": _uniq("highway"), "tracktype": _uniq("tracktype"),
+                "surface": (_uniq("surface_raw") or _uniq("surface")),
+                "coverage_status": _uniq("coverage_status"), "explanation": expl}
+    surface_risk = []
+    for _s in surface_cat:
+        if _s["k"] != 5:
+            continue
+        _len = round(_s["b"] - _s["a"], 2)
+        if _len < 0.3:
+            continue
+        surface_risk.append({"a": _s["a"], "b": _s["b"], "km": _len,
+                             "reason": _s.get("reason"), "osm": _risk_osm(_s["a"], _s["b"])})
+
+    _cl = conn.execute(
+        "SELECT event_index, start_m, end_m, length_m, elevation_gain_m, avg_gradient_pct, "
+        "max_gradient_pct, severity, segments_json FROM qbot_v2.route_climb_events "
+        "WHERE route_base_id=%s ORDER BY start_m", (rbid,)).fetchall()
+    climbs_list = []
+    for r in _cl:
+        _sj = r.get("segments_json")
+        if isinstance(_sj, str):
+            try:
+                _sj = json.loads(_sj)
+            except Exception:
+                _sj = []
+        _segs = [{"len_m": round(sg.get("length_m") or 0), "grade": sg.get("gradient_pct"),
+                  "cat": sg.get("category")} for sg in (_sj or [])]
+        climbs_list.append({"i": (r["event_index"] or 0) + 1,
+                            "a_km": round((r["start_m"] or 0) / 1000.0, 1),
+                            "b_km": round((r["end_m"] or 0) / 1000.0, 1),
+                            "length_m": round(r["length_m"] or 0),
+                            "gain_m": round(r["elevation_gain_m"] or 0, 1),
+                            "avg_pct": r["avg_gradient_pct"], "max_pct": r["max_gradient_pct"],
+                            "severity": r["severity"], "segments": _segs})
+    _net = (ele[-1][1] - ele[0][1]) if ele else 0.0
+    descent = round(ascent - _net) if (ascent is not None) else None
+
+    weather_windows = []
+    for _w in (m.get("tabela_30min") or []):
+        weather_windows.append({"okno": _w.get("okno"), "km_od": _w.get("km_od"), "km_do": _w.get("km_do"),
+                                "wbgt": _w.get("wbgt_max"), "feels": (_w.get("odczuwalna") or {}).get("srednia"),
+                                "opad_mm": (_w.get("opad") or {}).get("mm"), "opad_prob": (_w.get("opad") or {}).get("prob"),
+                                "wiatr_ms": _w.get("wiatr_wzdluz_ms"), "alert_level": _w.get("alert_level")})
+
+    _pg = _load_poi_groups(conn, rbid)
+    poi_out = _curate_pois(_pg, dist_km, date_str)
+
+
+    # --- SPRZET: udzialy nawierzchni + cisnienia (obie opony) + nawodnienie ---
+    _km_by_k = {}
+    for _r in surface_by_cat:
+        _km_by_k[_r["k"]] = _km_by_k.get(_r["k"], 0.0) + float(_r["km"])
+    _tot_k = sum(_km_by_k.values()) or 1.0
+    def _pct(*ks):
+        return 100.0 * sum(_km_by_k.get(k, 0.0) for k in ks) / _tot_k
+    hard_pct = _pct(1)
+    loose_pct = _pct(4, 5)
+    sand_tag = any((b.get("surface") == "sand") for b in raw_buckets)
+    _SCAT_LAB = {1: "twarda/asfalt szybko", 2: "dobry gravel/szuter",
+                 3: "zwykly gravel/grunt", 4: "trudna/wolna", 5: "ryzyko/piach"}
+    _naw_udzial = [{"k": x["k"], "label": _SCAT_LAB.get(x["k"], x["k"]),
+                    "km": x["km"], "pct": x["pct"]} for x in surface_by_cat]
+    _press = {}
+    _tire_options = []
+    try:
+        from qbot_pressure_tools import structured_pressure
+        _press = structured_pressure()
+        _char_thb = "gruby bieznik (knobby), duza przyczepnosc na luznym/piachu, wolniejszy na asfalcie"
+        _char_go = "szybki i gladki, najlepszy na asfalcie i twardym gravelu, slabszy na luznym/piachu"
+        for w in _press.get("wheelsets", []):
+            _tir = (w.get("tire") or "").upper()
+            _ch = _char_thb if "THUNDER" in _tir else (_char_go if "G-ONE" in _tir else "")
+            _mm = None
+            if w.get("front_mm"):
+                _mm = str(int(w["front_mm"])) + ("/" + str(int(w["rear_mm"])) if w.get("rear_mm") != w.get("front_mm") else "") + " mm"
+            _tire_options.append({"wheelset": w.get("label"), "tire": w.get("tire"),
+                                  "szer_mm": _mm, "charakter": _ch})
+    except Exception:
+        _press = {}
+        _tire_options = []
+    sprzet = {"tire": None, "pressure": None, "hydration": None, "clothing": None}
+    try:
+        _peak_wbgt = (m.get("peak") or {}).get("wbgt_eff")
+        _dem, _rec = _rc._water_rec(tmoving, _peak_wbgt)
+        _sup_km = []
+        for _c, _items in _pg.items():
+            if _c in ("hard_resupply", "soft_food_stop", "water"):
+                for _it in _items:
+                    if _it.get("km") is not None:
+                        _sup_km.append(float(_it["km"]))
+        _gap = _rc._gap_km(_sup_km, dist_km)
+        sprzet["hydration"] = {"demand_l": _dem, "gap_km": round(_gap, 1), "rec": _rec}
+    except Exception:
+        pass
+
+    details = {
+        "surface": {"total_km": km_total, "by_cat": surface_by_cat, "risk": surface_risk},
+        "climbs": {"ascent_m": ascent, "descent_m": descent, "count": len(climbs_list), "list": climbs_list},
+        "weather": {"windows": weather_windows, "peak": m.get("peak"), "caveats": m.get("caveats") or []},
+        "poi": poi_out,
+        "sprzet": sprzet,
+    }
+
+    # --- FORMA (FitModel/ModelQ + glikogen) + paliwo + wsad do LLM ---
+    _per = m.get("per_segment") or []
+    weather_overall = _weather_agg(_per)
+    stages = _weather_stages(_per, km_total)
+    _mq = _rc._modelq(conn)
+    _fit = _rc._fitmodel(conn)
+    mass = float(_fit["weight_kg"]) if (_fit and _fit.get("weight_kg")) else 100.0
+    _ftp = _ltp = _wprime = _peakp = _tload = _rload = None
+    _fsrc = None
+    _snap = None
+    if _mq:
+        _ftp = _mq.get("ftp_power_w"); _fsrc = "FitModel (ModelQ)"; _snap = str(_mq.get("snapshot_at"))[:10]
+        _ltp = _mq.get("ltp_power_w"); _wprime = _mq.get("w_prime_kj"); _peakp = _mq.get("peak_power_w")
+        _tload = _mq.get("training_load"); _rload = _mq.get("recovery_load")
+    elif _fit:
+        _ftp = _fit.get("ftp_est_w"); _fsrc = "FitModel (fitmodel_daily)"
+    _glik = None
+    _glik_day = None
+    try:
+        _gr = conn.execute("SELECT day, glycogen_pct FROM qbot_v2.fitmodel_daily "
+                           "WHERE glycogen_pct IS NOT NULL AND glycogen_pct > 0 "
+                           "ORDER BY day DESC LIMIT 1").fetchone()
+        if _gr:
+            _glik = round(float(_gr["glycogen_pct"])); _glik_day = str(_gr["day"])
+    except Exception:
+        pass
+    _wkg = round(float(_ftp) / mass, 2) if _ftp else None
+    _tss = round((tmoving or 0) * (0.62 ** 2) * 100) if tmoving else None
+    _climb_w = None
+    _steep_pct = None
+    _wprime_txt = None
+    if climbs_list and _ftp:
+        _steep = max(climbs_list, key=lambda e: (e.get("avg_pct") or 0))
+        _steep_pct = _steep.get("avg_pct")
+        _climb_w = round(_rc._climb_power(float(_steep_pct or 0), 12.0, mass))
+        if _climb_w <= float(_ftp):
+            _wprime_txt = "pelna rezerwa - najstromszy podjazd ~%d W ponizej FTP" % _climb_w
+        else:
+            _wprime_txt = "czesciowa - najstromszy ~%d W (o %d W ponad FTP)" % (_climb_w, _climb_w - float(_ftp))
+    elif not climbs_list:
+        _wprime_txt = "pelna - trasa plaska"
+    _fuel = {}
+    try:
+        from qbot_fuel_tools import carbs_g_per_h, fluid_l_per_h
+        _tc = weather_head.get("feels")
+        _ch2 = carbs_g_per_h(0.62, (tmoving or 0) * 3600, 1.05, _tc, mass) if tmoving else None
+        _fh2 = fluid_l_per_h(0.62, _tc, None, mass) if tmoving else None
+        _fuel = {"carbs_g_h": _ch2, "fluid_l_h": _fh2,
+                 "carbs_total_g": (round(_ch2 * tmoving) if (_ch2 and tmoving) else None),
+                 "fluid_total_l": (round(_fh2 * tmoving, 1) if (_fh2 and tmoving) else None)}
+    except Exception:
+        _fuel = {}
+    forma = {"source": _fsrc, "snapshot": _snap, "ftp": _ftp, "w_kg": _wkg, "mass": round(mass),
+             "ltp": _ltp, "w_prime_kj": _wprime, "peak_w": _peakp, "training_load": _tload,
+             "recovery_load": _rload, "glikogen_pct": _glik, "glikogen_day": _glik_day,
+             "vs_route": {"tss": _tss, "cho_g": _fuel.get("carbs_total_g"), "cho_g_h": _fuel.get("carbs_g_h"),
+                          "fluid_l": _fuel.get("fluid_total_l"), "wprime_txt": _wprime_txt,
+                          "climb_w": _climb_w, "steep_pct": _steep_pct}}
+
+    _climbs_slim = [{"i": x["i"], "a_km": x["a_km"], "b_km": x["b_km"], "gain_m": x["gain_m"],
+                     "avg_pct": x["avg_pct"], "max_pct": x["max_pct"], "severity": x["severity"]}
+                    for x in climbs_list]
+    _surf_blocks = [{"a": s["a"], "b": s["b"], "k": s["k"], "label": s.get("label")} for s in surface_cat]
+    _resupply = []
+    for _c, _items in _pg.items():
+        if _c in ("hard_resupply", "soft_food_stop", "water"):
+            for _it in _items:
+                if _it.get("km") is not None:
+                    _resupply.append({"km": _it["km"], "name": _it.get("name"), "dist_m": _it.get("dist_m")})
+    _resupply.sort(key=lambda z: z["km"])
+    _resupply = _resupply[:16]
+    _gear = _load_gear_catalog()
+    _forma_llm = {"ftp": _ftp, "ltp": _ltp, "w_kg": _wkg, "w_prime_kj": _wprime, "glikogen_pct": _glik,
+                  "mass": round(mass), "vs_route": forma["vs_route"]}
+    _alerty = sorted({a.get("typ") for a in (m.get("alerts") or []) if a.get("typ")})
+
+    _finish = None
+    try:
+        from datetime import datetime as _dt, timedelta as _td
+        _finish = (_dt.strptime(start_time, "%H:%M") + _td(hours=float(ttotal or 0))).strftime("%H:%M")
+    except Exception:
+        _finish = None
+    _og = _et = _rc2 = None
+    _strat = _ubior = _opony = None
+    try:
+        _og, _et, _rc2, _strat, _ubior, _opony = _report_prose(
+            date_str=date_str, start_time=start_time, finish=_finish, dist_km=dist_km,
+            ascent_m=ascent, moving_h=tmoving, total_h=ttotal, peak=details["weather"]["peak"],
+            weather_overall=weather_overall, weather_stages=stages, risks=surface_risk,
+            forma=_forma_llm, climbs=_climbs_slim, surface_blocks=_surf_blocks,
+            fuel=_fuel, resupply=_resupply, gear=_gear, alerty=_alerty,
+            opony_opcje=_tire_options, nawierzchnia_udzial=_naw_udzial)
+    except Exception:
+        _og = _et = _rc2 = []
+        _strat = _ubior = _opony = None
+    _og = _og or []
+    _et = _et or []
+    _rc = _rc2 or []
+
+    # opony: wybor Alberta -> zestaw + deterministyczne cisnienie (fallback jesli brak)
+    _w = None
+    if isinstance(_opony, dict) and _press.get("wheelsets"):
+        _lab = (_opony.get("wheelset") or "").upper()
+        for w in _press["wheelsets"]:
+            _wl = (w.get("label") or "").upper()
+            if _lab and (_lab in _wl or _wl in _lab):
+                _w = w
+                break
+        if _w is None:
+            _tl = (_opony.get("tire") or "").upper()
+            for w in _press["wheelsets"]:
+                if _tl and _tl.split(" ")[0] in (w.get("tire") or "").upper():
+                    _w = w
+                    break
+    if _w is None and _press.get("wheelsets"):
+        _want = "thunder" if (loose_pct >= 40 or (sand_tag and loose_pct >= 20)) else "gone"
+        for w in _press["wheelsets"]:
+            _tir = (w.get("tire") or "").upper()
+            if _want == "thunder" and "THUNDER" in _tir:
+                _w = w
+                break
+            if _want == "gone" and "G-ONE" in _tir:
+                _w = w
+                break
+        if _w is None:
+            _w = _press["wheelsets"][0]
+    if _w:
+        _tir = (_w.get("tire") or "").upper()
+        _pri = "szuter_luzny" if "THUNDER" in _tir else ("asfalt" if hard_pct >= 55 else "szuter_gladki")
+        _sd = (_w.get("surface", {}) or {}).get(_pri) or {}
+        sprzet["tire"] = {"wheelset": _w.get("label"), "tire": _w.get("tire"),
+                          "front_mm": _w.get("front_mm"), "rear_mm": _w.get("rear_mm"),
+                          "reason": (_opony.get("uzasadnienie") if isinstance(_opony, dict) else None) or ""}
+        if _sd:
+            sprzet["pressure"] = {"surface": _pri, "surface_desc": _sd.get("desc"),
+                                  "front_bar": _sd.get("front_bar"), "front_psi": _sd.get("front_psi"),
+                                  "rear_bar": _sd.get("rear_bar"), "rear_psi": _sd.get("rear_psi"),
+                                  "rider_kg": _press.get("rider_kg"), "model": _w.get("model"),
+                                  "all": _w.get("surface", {})}
+    details["forma"] = forma
+    details["strategia"] = _strat
+    sprzet["clothing"] = _ubior
+
+    def _fb_overall(o):
+        if not o:
+            return ["Brak danych o zachmurzeniu.", "Brak danych o temperaturze i wietrze."]
+        _sky = o.get("niebo_dominuje") or "zmiennie"
+        _rain = (" mozliwy opad (do %s%%)" % o.get("opad_prob_max")) if o.get("opad_prob_max") else ""
+        b1 = "Niebo: %s.%s" % (_sky, _rain)
+        b2 = "Odczuwalna %s-%s C, WBGT do %s C; wiatr %s-%s m/s (%s)." % (
+            o.get("odczuwalna_min"), o.get("odczuwalna_max"), o.get("wbgt_max"),
+            o.get("wiatr_ms_min"), o.get("wiatr_ms_max"), o.get("wiatr_kierunek") or "zmienny")
+        return [b1, b2]
+
+    def _fb_stage(a):
+        return "WBGT %s-%s C, wiatr %s-%s m/s, opad do %s%%." % (
+            a.get("wbgt_min"), a.get("wbgt_max"), a.get("wiatr_ms_min"),
+            a.get("wiatr_ms_max"), a.get("opad_prob_max"))
+
+    if not _og or len(_og) < 2:
+        _og = _fb_overall(weather_overall)
+    details["weather"]["ogolne"] = _og[:2]
+    details["weather"]["etapy"] = [
+        {"naglowek": stages[_i].get("naglowek"),
+         "tekst": (_et[_i] if _i < len(_et) and _et[_i] else _fb_stage(stages[_i]))}
+        for _i in range(len(stages))
+    ]
+    for _i, _r in enumerate(details["surface"]["risk"]):
+        _r["comment"] = (_rc[_i] if _i < len(_rc) and _rc[_i]
+                         else (_r.get("reason") or "Odcinek oznaczony jako ryzykowny."))
+
     return {
         "route": {"id": route_id, "name": name, "distance_km": dist_km,
                   "ascent_m": ascent, "source": "RWGPS GPX",
@@ -1277,6 +2231,7 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
                  "speed_net_kmh": speed_net_kmh, "speed_gross_kmh": speed_gross_kmh},
         "weather_head": weather_head,
         "alerts": m.get("alerts") or [],
+        "details": details,
         "chart": {"km_total": km_total, "ele": ele, "ele_min": emin, "ele_max": emax,
                   "surface_cat": surface_cat, "weather": weather, "eta": eta, "wind": wind},
     }
