@@ -462,6 +462,16 @@ def _upsert_route_base(conn, source: RouteBaseSource) -> dict[str, Any]:
             json.dumps(source.source_meta_json, ensure_ascii=False),
         ),
     ).fetchone()
+    # Dezaktywuj pozostale wersje tej samej trasy: dokladnie jedna wersja
+    # 'active' per route_id. Klucz konfliktu upsertu to (route_id,
+    # route_version_key), wiec nowa wersja tworzy NOWY wiersz - bez tego
+    # stara zostawala 'active' (naliczanie dubli). Ta sama transakcja.
+    if str(row.get("status")) == "active":
+        conn.execute(
+            "UPDATE qbot_v2.route_base SET status = 'disabled', updated_at = now() "
+            "WHERE route_id = %s AND route_base_id <> %s AND status = 'active'",
+            (row["route_id"], row["route_base_id"]),
+        )
     return dict(row)
 
 
