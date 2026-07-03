@@ -113,3 +113,30 @@ sesje nadpisywaly sie nawzajem z backupow; (b) kazda trasa = osobny wypalony pli
 Przebudowa 2026-07-03: DANE -> endpoint /api/report/data, RENDER -> raport-render.js,
 STYL -> raport.css, WYBOR -> raport-trasy.html. Stary przeplyw base64-mapowy i
 korupcja przez heredoc: NIEAKTUALNE.
+
+
+## Kwadraty (StatsHunters) — warstwa kafli na mapie (2026-07-03)
+Nakladka explorer-tiles (z14, jak VeloViewer/Squadrats): ktore kwadraty trasa
+zdobywa (nowe), ktore juz masz, plus otoczka kontekstu.
+
+- DANE: endpoint `GET /api/routes/{route_id}/tiles?margin=N` (qbot_web.py). Liczy kafle
+  z14 z geometrii trasy (interpolacja ~90 m, by nie przeskoczyc kafla ~1,5 km), pobiera
+  posiadane ze StatsHunters przez `tools/tile_store.fetch_tiles` (share w env
+  STATSHUNTERS_SHARE_ID; cache 24h w /opt/qbot/artifacts/tiles). Statusy: new (trasa, nie
+  masz) / keep (trasa, masz) / owned (otoczka, masz) / empty (otoczka, wolne). margin =
+  szerokosc pasa otoczki w kaflach (domyslnie 3). Zwraca bounds [[S,W],[N,E]] + counts.
+  REPO -> restart qbot-web + commit.
+- RENDER: raport-render.js, funkcja setupTiles w initMap. Osobny pane "tiles" (zIndex 350,
+  pod linia trasy). L.rectangle per kafel: new zielony, keep niebieski, owned szary (lekki
+  fill), empty sam obrys. Przycisk "Kwadraty: wl/wyl" w pasku .map-ctl (obok Wysrodkuj /
+  Mapa B-W) + licznik span.map-ctl-info. Poza repo -> zywe od razu.
+- STYL: raport.css, klasa .map-ctl-info (wyszarzony licznik).
+
+UWAGA (dwa uklady kafli): tools/tile_store.py uzywa slippy z14 (zgodne ze StatsHunters).
+tools/gpx_history_loader.py uzywa INNEJ siatki 0,01 stopnia — NIE mieszac; do tej warstwy
+tylko tile_store + SH.
+
+UWAGA (cache Cloudflare): raport-trasy.html laduje raport-render.js i raport.css z `?v=DATA`.
+Edge cache'uje po pelnym URL, wiec KAZDA zmiana js/css wymaga PODBICIA `?v=` w
+raport-trasy.html — inaczej Cloudflare poda stare bajty (twardy reload NIE pomaga). To bylo
+zrodlo objawu "zmiany nie widac na mapie".

@@ -5,6 +5,20 @@
 
 ---
 
+## 2026-07-03 — DECYZJA: Raport web — warstwa kwadratow StatsHunters na mapie
+
+**Status:** aktywna.
+
+**Problem:** brak podgladu na mapie raportu, ktore kwadraty explorer-tiles (z14) trasa zdobywa, a ktore juz mam.
+
+**Decyzja:** osobny endpoint `GET /api/routes/{route_id}/tiles?margin=N` (qbot_web.py) liczy kafle z14 z geometrii trasy i porownuje z posiadanymi ze StatsHunters (`tools/tile_store.fetch_tiles`, share w env `STATSHUNTERS_SHARE_ID`, cache 24h). Statusy: `new` (trasa, nie mam) / `keep` (trasa, mam) / `owned` (otoczka, mam) / `empty` (otoczka, wolne); `margin` = szerokosc pasa otoczki w kaflach (domyslnie 3). Render w `raport-render.js` (funkcja `setupTiles`): osobny pane `tiles` pod linia trasy, `L.rectangle` per kafel, przycisk "Kwadraty: wl/wyl" w pasku `.map-ctl` + licznik `.map-ctl-info`.
+
+**Pulapka (udokumentowana):** `tools/tile_store.py` uzywa slippy z14 (zgodne ze StatsHunters), a `tools/gpx_history_loader.py` INNEJ siatki 0,01 st. — NIE mieszac; do tej warstwy tylko `tile_store` + SH.
+
+**Cache Cloudflare:** `raport-trasy.html` laduje js/css z `?v=DATA`. Edge cache'uje po pelnym URL -> kazda zmiana js/css wymaga PODBICIA `?v=` w `raport-trasy.html` (to bylo zrodlo "zmiany nie widac"; twardy reload nie pomaga).
+
+**Dowod (trasa 55945214):** endpoint 200, `route=85, new=71, keep=14, owned_total=10803`, z otoczka empty lacznie 331 kafli. Commity `qbot_web.py`: `f333b54` (endpoint), `cdbd0a7` (empty). Pliki js/css/html poza repo. Pelna dok.: `docs/RAPORT_WEB.md`.
+
 ## 2026-07-02 — DECYZJA: ATRAKCJE jako opcjonalna warstwa POI (Google, ≤1,5 km) z przełącznikiem per-trasa + polecenie Alberta
 
 **Status:** aktywna decyzja architektoniczna.
