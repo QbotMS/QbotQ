@@ -72,10 +72,39 @@ Po wdrozeniu ZAWSZE weryfikuj na zywo (bez dowodu nie ma sukcesu):
 
 ## Konwencje
 - Wiatr ZAWSZE w m/s.
+- Cache-bust: raport-trasy.html linkuje css/js z `?v=NNNN`; przy KAZDEJ zmianie .css/.js
+  podbij token (inaczej przegladarka trzyma stara wersje). Aktualny token: 2026070305.
 - Determinizm: liczby i grafika TYLKO z kodu (endpoint/generator). LLM daje wylacznie
   proze w wyznaczonych miejscach — nigdy liczb ani geometrii.
 - Pliki .bak w /opt/qbot/web/public sa .gitignore; sprzataj przez SSH (`rm`), bo
   dev_shell_exec nie ma rm.
+
+## Funkcje raportu — stan 2026-07-03 (po zmianach)
+Elementy zaimplementowane w warstwach jw. (weryfikuj na zywo):
+
+- Chip pogoda/wiatr w naglowku: DANE `_build_weather_head(weather, per)` -> `DATA.weather_head`
+  (ikona nieba; odczuwalna ~C + komfort: zimno <6 / chlodno 6-12 / komfort 13-25 / goraco >=26;
+  opady; wiatr KIERUNEK + m/s). Render `renderWx()` w raport-render.js, styl `.wxchip` w raport.css.
+- Wersja trasy w naglowku: `route.version_modified` = `route_modified_at` ("YYYY-MM-DD HH:MM").
+  Wybor wersji DETERMINISTYCZNY — lookupy route_base w qbot_web.py sortuja
+  `ORDER BY route_modified_at DESC NULLS LAST LIMIT 1` (najnowsza).
+- Wchlanianie krotkich odcinkow nawierzchni: `_absorb_short_surface(runs, min_km=0.3)` (qbot_web.py)
+  — odcinek <300 m wchlaniany do sasiada o NAJBLIZSZEJ kategorii (remis -> dluzszy sasiad).
+  Kategoria 5 (ryzyko) nietykalna: nigdy nie wchlaniana ani nie wchlania.
+- Mapa B/W (jak StatsHunters): kafelki OSM `tile.openstreetmap.org` + filtr skali szarosci w CSS
+  `#map.bw .leaflet-tile-pane{filter:grayscale(1) contrast(1.05)}`; element #map ma klase `bw`.
+- Przyciski pod mapa (`.map-ctl`; struktura w raport-render.js, styl w raport.css):
+  * "Wysrodkuj trase" -> `MAPX.fitAll()` (fitBounds calej trasy);
+  * "Mapa: B/W <-> kolor" -> przelacza klase bw/color na #map. Tryb kolor:
+    `#map.color .leaflet-tile-pane{opacity:.8;filter:contrast(.9)}` (80% krycia + kontrast -10%).
+- Klik w segment nawierzchni na wykresie -> zoom mapy na ten odcinek (`MAPX.fitKm(a,b)`).
+- Kolory nawierzchni (SCAT w raport-render.js; wspolne wykres + mapa + legenda):
+  1 asfalt `#000000`, 2 dobry gravel/szuter `#2e7d32` (ciemnozielony), 3 zwykly gravel `#8bc34a`,
+  4 trudna/wolna `#e07b1a`, 5 ryzyko `#c2452f`. Linia trasy z biala obwodka (7px bialy pod 4px kolor).
+- Wiatr na wstedze: boczno-przedni = bladorozowy, boczno-tylny = zielony (legenda 2 wpisy);
+  chmury bez deszczu = szare (poprawka `glyph()`).
+- METEO wystawia wiatr otoczenia per segment: `wind_dir_deg` / `wind_speed_ms` (route_meteo_engine.py)
+  — zasila chip naglowka.
 
 ## Historia / lekcja
 Wczesniej raport byl JEDNYM wypalanym index.html z blokiem DATA i mapa w base64.

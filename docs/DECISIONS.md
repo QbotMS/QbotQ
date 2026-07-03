@@ -1104,3 +1104,29 @@ testy kategorii 17/17; render bez błędu.
 
 **Dług techniczny:** (a) generator raport-v2 baked tylko dla 55930010 (jak cały DATA);
 (b) `_GRAVEL` do usunięcia; (c) surface-kat.html nadal fetch (znany dług).
+
+## 2026-07-03 — Fix: route_base — dokładnie jedna aktywna wersja na trasę (dezaktywacja starych)
+
+Objaw: wiele wierszy `route_base` ze `status='active'` na ten sam `route_id`
+(55864231: 3, 55798129: 2, 55918401: 2). Rozkład statusów w tabeli: wyłącznie `active`.
+
+Przyczyna: klucz konfliktu upsertu to `(route_id, route_version_key)`, więc każda nowa geometria
+(nowy `route_version_key`) tworzy NOWY wiersz `route_base`, a stary zostawał `active` — nigdzie
+nie było kroku dezaktywacji poprzednich wersji.
+
+Decyzja/naprawa (commit `e334cb7`):
+- Kod `route_base_store._upsert_route_base`: po zapisie nowej wersji, w TEJ SAMEJ transakcji
+  ustaw `status='disabled'` dla pozostałych wersji tego `route_id` (gdy nowa jest `active`).
+- Status `disabled` (nie `stale`): CHECK `route_base_status_chk` dopuszcza tylko
+  `active/stale/disabled/failed`; `stale` znaczy zły parse, więc dla ważnej-ale-starej wersji
+  właściwe jest `disabled`.
+- Dane: jednorazowy UPDATE — najnowsza per `route_id` (max `route_modified_at`) zostaje `active`,
+  starsze → `disabled`. Wynik: 6 tras = 6 `active`, 4 `disabled`.
+
+Bezpieczeństwo: `route_base.status` nie jest źródłem wyboru wersji. Raport/geometria/nawierzchnia
+wybierają po `route_id` + `ORDER BY route_modified_at DESC` (commit `84c543f`); `_fetch_active_route_version`
+działa na `route_artifacts`. Dlatego dezaktywacja starych wierszy niczego nie psuje w read-path.
+
+Powiązane: ten sam commit `84c543f` dodał deterministyczny wybór najnowszej wersji w qbot_web.py oraz
+funkcje raportu web (chip pogoda/wiatr, wersja trasy, mapa B/W + przyciski, kolory, wchłanianie
+odcinków <300 m) — szczegóły w RAPORT_WEB.md; zmiana store w ROUTE_STORE.md (2a).

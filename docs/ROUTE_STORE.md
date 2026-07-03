@@ -13,12 +13,31 @@ Zasada nadrzędna: **trasę zawsze można ponownie pobrać z RWGPS**, dlatego ka
 
 ## 2. Model danych (skrót)
 - `route_artifacts` — jeden wiersz na trasę (plik GPX ma STAŁĄ nazwę `rwgps_<id>.gpx`, upsert po `artifact_path`).
-- `route_base` — jeden wiersz na `route_version_key` (upsert po `route_id + route_version_key`). Nowy klucz = NOWY wiersz bazowy (stare zostają). Aktywna wersja = najnowsza po `updated_at`.
+- `route_base` — jeden wiersz na `route_version_key` (upsert po `route_id + route_version_key`). Nowy klucz = NOWY wiersz bazowy. Przy zapisie nowej AKTYWNEJ wersji poprzednie wersje tego `route_id` są dezaktywowane (`status='disabled'`) — dokładnie JEDNA `active` na `route_id` (patrz 2a). Czytelnicy i tak biorą najnowszą po `route_modified_at`.
 - `route_version_key` — odcisk (sha256) geometrii (sha256+dystans+track_points), liczony w `qbot3/routes/route_base_store` / `qbot_route_tools`.
 - Warstwy child kasowane kaskadowo z `route_base`: `route_axis_segments`, `route_climb_events`, `route_elevation_samples`, `route_landcover_layer`, `route_poi_layer`, `route_shade_layer`, `route_surface_layer`, `route_analysis_run`, `route_precompute_jobs`.
 - Warstwy child kasowane kaskadowo z `route_artifacts`: `route_frames`, `route_frame_weather`, `route_parse_results`, `route_surface_profiles` → `route_surface_segments`.
 - `ride_frames.route_artifact_id` = ON DELETE SET NULL (przejazdy zostają, tylko odpięte).
 - Surówka eksportu RWGPS: tabela `qbot_v2.artifacts` (`idempotency_key` typu `rwgps_export:<id>:<fmt>:<data>`).
+
+## 2a. Jedna aktywna wersja na trasę (2026-07-03)
+Klucz konfliktu upsertu to `(route_id, route_version_key)`, więc każda nowa geometria to NOWY
+wiersz `route_base`. Wcześniej stary wiersz zostawał `status='active'` → narastały 2–3 „aktywne”
+wersje tej samej trasy.
+
+Poprawka (`route_base_store._upsert_route_base`, commit `e334cb7`): po zapisie nowej wersji,
+w TEJ SAMEJ transakcji (`ensure_route_base` → `conn.transaction()`):
+`UPDATE qbot_v2.route_base SET status='disabled' WHERE route_id=%s AND route_base_id<>%s AND status='active'`.
+Dzięki temu jest dokładnie JEDNA `active` na `route_id`.
+
+- Dozwolone statusy (CHECK `route_base_status_chk`): `active`, `stale`, `disabled`, `failed`.
+  Dla wygaszonej-ale-poprawnej starej wersji użyto `disabled` (nie `stale` — `stale` = zły parse,
+  patrz `route_status` w writerze: `active` gdy `looks_valid`, inaczej `stale`).
+- `route_base.status` NIE jest źródłem wyboru wersji: raport/geometria/nawierzchnia biorą wersję po
+  `route_id` + `ORDER BY route_modified_at DESC`; `_fetch_active_route_version` działa na `route_artifacts`.
+  Dlatego dezaktywacja starych jest bezpieczna (nic jej nie czyta do selekcji).
+- Jednorazowe sprzątnięcie istniejących dubli wykonane (najnowsza per `route_id` zostaje `active`,
+  starsze → `disabled`): 55864231 3→1, 55798129 2→1, 55918401 2→1.
 
 ## 3. Wersjonowanie pliku GPX (archiwizacja)
 `tools/rwgps/client.py` → `_archive_previous_gpx_version()` (wołane tuż przed nadpisaniem pliku):
