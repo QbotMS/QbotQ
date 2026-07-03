@@ -142,6 +142,7 @@ def route_geometry(route_id: str):
             FROM qbot_v2.route_base rb
             LEFT JOIN qbot_v2.route_artifacts a ON a.id = rb.route_artifact_id
             WHERE rb.route_id = %s
+            ORDER BY rb.route_modified_at DESC NULLS LAST LIMIT 1
             """,
             (route_id,),
         ).fetchone()
@@ -394,6 +395,7 @@ def route_surface_segments(route_id: str):
             FROM qbot_v2.route_base rb
             LEFT JOIN qbot_v2.route_artifacts a ON a.id = rb.route_artifact_id
             WHERE rb.route_id = %s
+            ORDER BY rb.route_modified_at DESC NULLS LAST LIMIT 1
             """,
             (route_id,),
         ).fetchone()
@@ -531,7 +533,7 @@ def route_surface_categories(route_id: str):
             "a.metadata_json->>'route_name' AS name "
             "FROM qbot_v2.route_base rb "
             "LEFT JOIN qbot_v2.route_artifacts a ON a.id = rb.route_artifact_id "
-            "WHERE rb.route_id = %s",
+            "WHERE rb.route_id = %s ORDER BY rb.route_modified_at DESC NULLS LAST LIMIT 1",
             (route_id,),
         ).fetchone()
         if not base:
@@ -743,7 +745,7 @@ def route_segment_candidate(
     conn = _db_conn()
     try:
         base = conn.execute(
-            "SELECT route_base_id, distance_m FROM qbot_v2.route_base WHERE route_id = %s",
+            "SELECT route_base_id, distance_m FROM qbot_v2.route_base WHERE route_id = %s ORDER BY route_modified_at DESC NULLS LAST LIMIT 1",
             (route_id,),
         ).fetchone()
         if not base:
@@ -964,21 +966,130 @@ def _report_icon(code, prob):
     if c in (45, 48) or c == 3: return "cloud"
     if c in (1, 2): return "partcloud"
     if c == 0: return "cloud" if (prob or 0) >= 55 else "sun"
-    return "cloud"
+_COMPASS8 = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+_SKY_PL = {"sun": "słonecznie", "partcloud": "częściowe zachmurzenie",
+           "cloud": "pochmurno", "rain": "deszcz", "storm": "burza",
+           "snow": "śnieg", "fog": "mgła"}
+
+
+def _comfort_cat(feels):
+    if feels is None:
+        return None
+    if feels < 6:
+        return "zimno"
+    if feels < 13:
+        return "chłodno"
+    if feels < 26:
+        return "komfort"
+    return "gorąco"
+
+
+def _absorb_short_surface(runs, min_km=0.3):
+    """Wchlania krotkie (<min_km) odcinki nawierzchni w sasiada najblizszego
+    KATEGORIA (remis -> dluzszy). Kategoria 5 (ryzyko/niepewne) nietykalna:
+    nigdy nie wchlaniana i nigdy nie wchlania (sciana). Powtarza az nie ma
+    wchlanialnego odcinka. Krok wizualny - te same dane co wykres i mapa."""
+    runs = [dict(r) for r in runs]
+
+    def length(r):
+        return r["km_to"] - r["km_from"]
+
+    def absorbable(r):
+        c = r.get("category")
+        return c is not None and c != 5 and length(r) < min_km
+
+    guard = 0
+    while True:
+        guard += 1
+        if guard > 10000:
+            break
+        idxs = sorted([i for i in range(len(runs)) if absorbable(runs[i])],
+                      key=lambda i: length(runs[i]))
+        if not idxs:
+            break
+        merged = False
+        for i in idxs:
+            cand = []
+            for j in (i - 1, i + 1):
+                if 0 <= j < len(runs):
+                    cj = runs[j].get("category")
+                    if cj is not None and cj != 5:
+                        cand.append(j)
+            if not cand:
+                continue
+            ci = runs[i]["category"]
+            best = min(cand, key=lambda j: (abs(runs[j]["category"] - ci), -length(runs[j])))
+            b = runs[best]
+            b["km_from"] = min(b["km_from"], runs[i]["km_from"])
+            b["km_to"] = max(b["km_to"], runs[i]["km_to"])
+            del runs[i]
+            merged = True
+            break
+        if not merged:
+            break
+    out = []
+    for r in runs:
+        if out and out[-1].get("category") == r.get("category"):
+            out[-1]["km_to"] = max(out[-1]["km_to"], r["km_to"])
+            out[-1]["km_from"] = min(out[-1]["km_from"], r["km_from"])
+        else:
+            out.append(dict(r))
+    return out
+
+
+def _build_weather_head(weather, per):
+    """Chip pogodowy do naglowka: ikona nieba, srednia odczuwalna + komfort,
+    opady, wiatr bezwzgledny (kierunek 8-punktowy + m/s z METEO)."""
+    import math as _m
+    feels_vals = [w["feels"] for w in weather if w.get("feels") is not None]
+    feels_avg = round(sum(feels_vals) / len(feels_vals), 1) if feels_vals else None
+    icons = [w["icon"] for w in weather]
+    if "storm" in icons:
+        sky_icon = "storm"
+    elif icons:
+        sky_icon = max(set(icons), key=icons.count)
+    else:
+        sky_icon = "cloud"
+    max_mm = max((w.get("mm") or 0) for w in weather) if weather else 0
+    max_prob = max((w.get("rain") or 0) for w in weather) if weather else 0
+    if "storm" in icons:
+        precip_pl = "burza"
+    elif max_mm >= 0.5:
+        precip_pl = "deszcz"
+    elif max_prob >= 40:
+        precip_pl = "możliwy deszcz"
+    else:
+        precip_pl = "bez opadów"
+    dirs = [(pp.get("wind_dir_deg"), pp.get("wind_speed_ms")) for pp in per
+            if pp.get("wind_dir_deg") is not None and pp.get("wind_speed_ms") is not None]
+    wind_dir = wind_ms = None
+    if dirs:
+        sx = sum(_m.sin(_m.radians(d)) * sp for d, sp in dirs)
+        sy = sum(_m.cos(_m.radians(d)) * sp for d, sp in dirs)
+        ang = (_m.degrees(_m.atan2(sx, sy)) + 360) % 360
+        wind_dir = _COMPASS8[int((ang + 22.5) // 45) % 8]
+        wind_ms = round(sum(sp for _, sp in dirs) / len(dirs), 1)
+    return {"icon": sky_icon, "sky_pl": _SKY_PL.get(sky_icon, sky_icon),
+            "feels": feels_avg, "comfort": _comfort_cat(feels_avg),
+            "precip_pl": precip_pl, "wind_dir": wind_dir, "wind_ms": wind_ms}
 
 
 def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_stop_min=0):
     """Buduje pelny blok DATA (route/start/time/chart) dla jednej trasy."""
     base = conn.execute(
-        "SELECT rb.route_base_id, rb.distance_m, a.metadata_json->>'route_name' AS name "
+        "SELECT rb.route_base_id, rb.distance_m, rb.route_modified_at, "
+        "a.metadata_json->>'route_name' AS name "
         "FROM qbot_v2.route_base rb "
         "LEFT JOIN qbot_v2.route_artifacts a ON a.id=rb.route_artifact_id "
-        "WHERE rb.route_id=%s", (route_id,)).fetchone()
+        "WHERE rb.route_id=%s "
+        "ORDER BY rb.route_modified_at DESC NULLS LAST LIMIT 1", (route_id,)).fetchone()
     if not base:
         raise HTTPException(status_code=404, detail="Trasa nie znaleziona w routes store")
     rbid = base["route_base_id"]
     dist_km = round((base["distance_m"] or 0) / 1000.0, 1)
     name = base["name"] or f"Trasa {route_id}"
+    vmod = base.get("route_modified_at")
+    version_modified = vmod.strftime("%Y-%m-%d %H:%M") if vmod else None
 
     # --- profil wysokosci (downsample ~220) ---
     erows = conn.execute(
@@ -998,7 +1109,7 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     km_total = round(erows[-1]["distance_m"] / 1000.0, 1)
 
     # --- nawierzchnia: 5 kategorii (parytet z endpointem) ---
-    ribbon = _coalesce_categories(_load_surface_buckets(conn, rbid))
+    ribbon = _absorb_short_surface(_coalesce_categories(_load_surface_buckets(conn, rbid)))
     surface_cat = [
         {"a": round(float(r["km_from"]), 2), "b": round(float(r["km_to"]), 2),
          "k": r["category"], "label": r.get("label"), "reason": r.get("reason")}
@@ -1092,14 +1203,18 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
         wind.append([round(float(pp["km"]), 2), round(float(pp["wind_tail_ms"]), 1),
                      round(abs(float(pp.get("wind_cross_ms") or 0)), 1)])
 
+    weather_head = _build_weather_head(weather, per)
+
     return {
         "route": {"id": route_id, "name": name, "distance_km": dist_km,
-                  "ascent_m": ascent, "source": "RWGPS GPX"},
+                  "ascent_m": ascent, "source": "RWGPS GPX",
+                  "version_modified": version_modified},
         "start": {"date": date_str, "time": start_time,
                   "miejscowosc": adm.get("miejscowosc"), "gmina": adm.get("gmina"),
                   "powiat": adm.get("powiat"), "wojewodztwo": adm.get("wojewodztwo")},
         "time": {"moving_h": tmoving, "total_h": ttotal, "stops_auto_min": stops_min,
                  "stops_count": stops_cnt, "long_stops_min": long_min_val, "accuracy_pct": 15},
+        "weather_head": weather_head,
         "chart": {"km_total": km_total, "ele": ele, "ele_min": emin, "ele_max": emax,
                   "surface_cat": surface_cat, "weather": weather, "eta": eta, "wind": wind},
     }
