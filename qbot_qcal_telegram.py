@@ -426,7 +426,12 @@ def _execute_writer(atype: str, payload: dict, idem_key: str, chat_id: str | Non
             route_id = str(payload.get("route_id") or "").strip()
             if not route_id:
                 return {"status": "error", "error": "missing route_id for route analysis confirmation"}
-            trigger_source = str(payload.get("trigger_source") or "telegram_confirm")
+            # confirm_route_analysis jest ZAWSZE wykonywane jako potwierdzenie z Telegrama,
+            # wiec wymuszamy telegram_confirm. Payload moze niesc trigger_source="rwgps_webhook"
+            # (z fazy tworzenia pytania przez webhook) — a wtedy koncowe powiadomienie bylo
+            # po cichu pomijane przez gate w route_precompute_trigger
+            # ._send_route_confirmation_final_notification (trigger_source != "telegram_confirm").
+            trigger_source = "telegram_confirm"
             import subprocess as _subprocess
             import sys as _sys
 

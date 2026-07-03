@@ -116,6 +116,28 @@ class TestQbotQcalTelegramRouteQuery(unittest.TestCase):
         self.assertEqual(kwargs["cwd"], "/opt/qbot/app")
         self.assertTrue(kwargs["start_new_session"])
 
+    def test_confirm_route_analysis_forces_telegram_confirm_trigger(self) -> None:
+        # Regresja: payload z fazy webhooka niesie trigger_source="rwgps_webhook";
+        # wykonanie MUSI wymusic telegram_confirm, inaczej koncowe powiadomienie
+        # jest po cichu pomijane (gate w route_precompute_trigger
+        # ._send_route_confirmation_final_notification).
+        with patch("builtins.open", unittest.mock.mock_open()), patch("subprocess.Popen") as mock_popen, \
+                patch("qbot_qcal_telegram._turn_add", return_value=77):
+            result = qbot_qcal_telegram._execute_writer(
+                "confirm_route_analysis",
+                {"route_id": "55930010", "trigger_source": "rwgps_webhook"},
+                "confirm_route_analysis:def456",
+                chat_id="358008451",
+                action_id=23,
+            )
+
+        self.assertEqual(result["status"], "OK")
+        self.assertEqual(result["trigger_source"], "telegram_confirm")
+        args, _ = mock_popen.call_args
+        self.assertIn("--trigger-source", args[0])
+        self.assertIn("telegram_confirm", args[0])
+        self.assertNotIn("rwgps_webhook", args[0])
+
     def test_route_confirm_log_path_uses_artifacts_logs(self) -> None:
         with patch.dict("os.environ", {"QBOT_ROUTE_CONFIRM_LOG_DIR": "/opt/qbot/artifacts/logs"}, clear=False):
             path = qbot_qcal_telegram._route_confirm_log_path("55918401")
