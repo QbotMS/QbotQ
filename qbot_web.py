@@ -1,6 +1,7 @@
 """qbot-web - publiczny serwis HTML (Faza 1: statyczna strona + proste API tras)."""
 import os
 import json
+import math
 import urllib.request
 import psycopg
 from psycopg.rows import dict_row
@@ -175,6 +176,62 @@ def route_geometry(route_id: str):
         "distance_km": round((base["distance_m"] or 0) / 1000, 1),
         "coordinates": coords,
     }
+
+
+def _tile_poly_bounds(x, y, z=14):
+    n = 2 ** z
+    lon_w = x / n * 360.0 - 180.0
+    lon_e = (x + 1) / n * 360.0 - 180.0
+    lat_n = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * y / n))))
+    lat_s = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + 1) / n))))
+    return lat_s, lon_w, lat_n, lon_e  # SW, NE
+
+
+@app.get("/api/routes/{route_id}/tiles")
+def route_tiles(route_id: str, margin: int = 3):
+    """Kafle z14 na trasie (new/keep) + pas otoczki owned wzgledem StatsHunters."""
+    from tools.tile_store import fetch_tiles, get_tile_set, _latlon_to_tile
+    g = route_geometry(route_id)
+    coords = g["coordinates"]
+    if not coords:
+        return {"route_id": route_id, "zoom": 14, "margin": margin,
+                "counts": {"route": 0, "new": 0, "keep": 0, "owned_total": 0},
+                "tile_error": None, "tiles": []}
+    rt = set()
+    for i in range(len(coords) - 1):
+        (la1, lo1), (la2, lo2) = coords[i], coords[i + 1]
+        steps = max(1, int(math.hypot(la2 - la1, lo2 - lo1) / 0.0008))
+        for s in range(steps + 1):
+            t = s / steps
+            rt.add(_latlon_to_tile(la1 + (la2 - la1) * t, lo1 + (lo2 - lo1) * t, 14))
+    share = os.getenv("STATSHUNTERS_SHARE_ID", _env().get("STATSHUNTERS_SHARE_ID", ""))
+    owned, tile_err = set(), None
+    if share:
+        td = fetch_tiles(share)
+        tile_err = td.get("_error")
+        owned = get_tile_set(td.get("tiles", []))
+    else:
+        tile_err = "brak STATSHUNTERS_SHARE_ID"
+    border = set()
+    for (x, y) in rt:
+        for dx in range(-margin, margin + 1):
+            for dy in range(-margin, margin + 1):
+                c = (x + dx, y + dy)
+                if c not in rt:
+                    border.add(c)
+
+    def feat(x, y, status):
+        s, w, n, e = _tile_poly_bounds(x, y, 14)
+        return {"x": x, "y": y, "status": status, "bounds": [[s, w], [n, e]]}
+
+    tiles = [feat(x, y, "new" if (x, y) not in owned else "keep") for (x, y) in rt]
+    tiles += [feat(x, y, "owned") for (x, y) in border if (x, y) in owned]
+    return {"route_id": route_id, "zoom": 14, "margin": margin,
+            "counts": {"route": len(rt),
+                       "new": sum(1 for t in tiles if t["status"] == "new"),
+                       "keep": sum(1 for t in tiles if t["status"] == "keep"),
+                       "owned_total": len(owned)},
+            "tile_error": tile_err, "tiles": tiles}
 
 
 _PROBLEM_SURFACES = {"ground", "grass", "sand", "unknown", "unpaved"}
