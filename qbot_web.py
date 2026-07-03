@@ -1262,6 +1262,9 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
 
     weather_head = _build_weather_head(weather, per)
 
+    speed_net_kmh = round(dist_km / tmoving, 1) if (tmoving and dist_km) else None
+    speed_gross_kmh = round(dist_km / ttotal, 1) if (ttotal and dist_km) else None
+
     return {
         "route": {"id": route_id, "name": name, "distance_km": dist_km,
                   "ascent_m": ascent, "source": "RWGPS GPX",
@@ -1270,7 +1273,8 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
                   "miejscowosc": adm.get("miejscowosc"), "gmina": adm.get("gmina"),
                   "powiat": adm.get("powiat"), "wojewodztwo": adm.get("wojewodztwo")},
         "time": {"moving_h": tmoving, "total_h": ttotal, "stops_auto_min": stops_min,
-                 "stops_count": stops_cnt, "long_stops_min": long_min_val, "accuracy_pct": 15},
+                 "stops_count": stops_cnt, "long_stops_min": long_min_val, "accuracy_pct": 15,
+                 "speed_net_kmh": speed_net_kmh, "speed_gross_kmh": speed_gross_kmh},
         "weather_head": weather_head,
         "chart": {"km_total": km_total, "ele": ele, "ele_min": emin, "ele_max": emax,
                   "surface_cat": surface_cat, "weather": weather, "eta": eta, "wind": wind},
