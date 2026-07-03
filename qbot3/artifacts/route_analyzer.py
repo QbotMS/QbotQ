@@ -1580,8 +1580,8 @@ def analyze_route_poi_artifact(
         "supply_closed_count": supply_assessment["closed_count"],
         "poi_source_mode": "google_places_primary" if prefer_google_supply else "overpass_primary",
         "google_supply_count": len(google_supply_candidates),
-        "hard_resupply": grouped.get("hard_resupply", [])[:15],
-        "soft_food_stop": grouped.get("soft_food_stop", [])[:12],
+        "hard_resupply": grouped.get("hard_resupply", [])[:200],
+        "soft_food_stop": grouped.get("soft_food_stop", [])[:200],
         "water": grouped.get("water", [])[:12],
         "attractions": grouped.get("attraction", []),
         "town_fallback_check": town_deduped,
@@ -1748,6 +1748,7 @@ def _route_poi_v2_google_search_nearby(
     payload = {
         "includedTypes": list(included_types or GOOGLE_SUPPLY_TYPES),
         "maxResultCount": 10,
+        "languageCode": "pl",
         "locationRestriction": {
             "circle": {
                 "center": {"latitude": float(lat), "longitude": float(lon)},
@@ -1760,7 +1761,8 @@ def _route_poi_v2_google_search_nearby(
         "X-Goog-Api-Key": api_key,
         "X-Goog-FieldMask": (
             "places.id,places.displayName,places.rating,places.userRatingCount,"
-            "places.location,places.types,places.currentOpeningHours,places.regularOpeningHours"
+            "places.location,places.types,places.currentOpeningHours,places.regularOpeningHours,"
+            "places.primaryTypeDisplayName"
         ),
     }
     resp = httpx.post(GOOGLE_PLACES_URL, json=payload, headers=headers, timeout=10.0)
@@ -1795,6 +1797,9 @@ def _route_poi_v2_google_place_to_candidate(
     name = str(display.get("text") or "").strip()
     place_id = str(place.get("id") or "").strip() or None
     types = [str(t).strip().lower() for t in (place.get("types") or []) if str(t).strip()]
+    g_rating = place.get("rating")
+    g_rating_n = place.get("userRatingCount")
+    g_type_pl = (place.get("primaryTypeDisplayName") or {}).get("text")
 
     category = None
     kind_tags: dict[str, str] = {"name": name}
@@ -1872,6 +1877,9 @@ def _route_poi_v2_google_place_to_candidate(
         "open_at_arrival": open_at_arrival,
         "open_source": "google",
         "eta_iso": eta_dt.isoformat() if eta_dt is not None else None,
+        "g_type_pl": g_type_pl,
+        "g_rating": g_rating,
+        "g_rating_n": g_rating_n,
         "note": "google_primary",
     }
 
@@ -2579,10 +2587,10 @@ def _route_poi_v2_merge_analysis_payloads(payloads: list[dict[str, Any]]) -> dic
         "missing_chunks_count": len(missing_list),
         "timings_ms": timings,
         "summary": summary,
-        "hard_resupply": merged_items["hard_resupply"][:15],
-        "soft_food_stop": merged_items["soft_food_stop"][:12],
+        "hard_resupply": merged_items["hard_resupply"][:200],
+        "soft_food_stop": merged_items["soft_food_stop"][:200],
         "water": merged_items["water"][:12],
-        "attractions": merged_items["attraction"][:15],
+        "attractions": merged_items["attraction"][:200],
         "town_fallback_check": town_items[:20],
         "report_title": f"POI analysis — route {merged_route_id or merged_artifact_id or merged_source_path}",
         "warnings": [
@@ -2897,10 +2905,10 @@ def _analyze_route_poi_artifact_legacy(
         "town": len(town_deduped),
     }
     limited = {
-        "hard_resupply": grouped.get("hard_resupply", [])[:15],
-        "soft_food_stop": grouped.get("soft_food_stop", [])[:12],
+        "hard_resupply": grouped.get("hard_resupply", [])[:200],
+        "soft_food_stop": grouped.get("soft_food_stop", [])[:200],
         "water": grouped.get("water", [])[:12],
-        "attraction": grouped.get("attraction", [])[:15],
+        "attraction": grouped.get("attraction", [])[:200],
         "town_fallback_check": town_deduped,
     }
 

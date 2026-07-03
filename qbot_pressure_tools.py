@@ -446,3 +446,60 @@ def _tool_qbot_tire_pressure(args: dict | None = None) -> dict[str, Any]:
     )
     analysis = "\n".join(head) + "\n\n".join(blocks) + "\n\n_" + notes + "_"
     return {"status": "OK", "analysis": analysis, "notes": notes}
+
+
+def structured_pressure(surface=None, weight_kg=None, bike_weight_kg=None,
+                        extra_load_kg=0.0, weight_distribution=(40, 60)):
+    """Struktura liczb cisnien dla raportu HTML (ADDYTYWNE, nie rusza modelu B5).
+
+    Reuzywa te same stale/funkcje co _wheelset_block: _rh_lookup / _berto_psi /
+    _SURFACE / _FRONT_FACTOR / _psi. Zwraca liczby (bar+psi) per zestaw kol i per
+    nawierzchnia - do deterministycznej sekcji SPRZET. Model bez zmian.
+    """
+    weight = weight_kg
+    wdate = None
+    if weight is None:
+        weight, wdate = _athlete_weight()
+    if weight is None:
+        return {"status": "DATA_MISSING", "error": "brak wagi zawodnika"}
+    weight = float(weight)
+    bike = bike_weight_kg
+    bike_default = False
+    if bike is None:
+        bike, bike_default = _bike_weight()
+    bike = float(bike)
+    extra = float(extra_load_kg or 0)
+    ff = weight_distribution[0] / 100.0
+    rf = weight_distribution[1] / 100.0
+    wheelsets = _read_wheelsets({})
+    out = []
+    for ws in wheelsets:
+        width = ws.get("width")
+        if not width or width[0] is None or width[1] is None:
+            out.append({"idx": ws["idx"], "label": ws["label"], "tire": ws.get("tire"),
+                        "front_mm": None, "rear_mm": None, "surface": {}})
+            continue
+        front_mm, rear_mm = width
+        combined = weight + bike + float(ws.get("wheelset_kg") or 0.0) + extra
+
+        def _base(side_w, load):
+            if side_w <= 42:
+                return _berto_psi(load, side_w) / _PSI_PER_BAR, "Berto"
+            soft, _f = _rh_lookup(side_w, combined)
+            return soft, "Heine"
+
+        rear_base, rmodel = _base(rear_mm, combined * rf)
+        front_base, fmodel = _base(front_mm, combined * ff)
+        smap = {}
+        for key, mult, desc in _SURFACE:
+            if surface and key != surface:
+                continue
+            rear = rear_base * mult if rmodel == "Heine" else rear_base
+            front = front_base * mult * _FRONT_FACTOR if fmodel == "Heine" else front_base
+            smap[key] = {"desc": desc,
+                         "front_bar": round(front, 1), "front_psi": _psi(front),
+                         "rear_bar": round(rear, 1), "rear_psi": _psi(rear)}
+        out.append({"idx": ws["idx"], "label": ws["label"], "tire": ws.get("tire"),
+                    "front_mm": front_mm, "rear_mm": rear_mm, "model": rmodel, "surface": smap})
+    return {"status": "OK", "rider_kg": round(weight, 1), "rider_date": wdate,
+            "bike_kg": round(bike, 1), "bike_default": bike_default, "wheelsets": out}

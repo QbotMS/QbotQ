@@ -223,6 +223,9 @@ def _poi_rows_for_items(
             "distance_from_route_m": float(distance_from_route_m) if distance_from_route_m is not None else None,
             "source_tags": item.get("source_tags"),
             "note": item.get("note"),
+            "g_type_pl": item.get("g_type_pl"),
+            "g_rating": item.get("g_rating"),
+            "g_rating_n": item.get("g_rating_n"),
         }
         meta = {key: value for key, value in meta.items() if value is not None}
 
