@@ -6,7 +6,7 @@ import urllib.request
 import psycopg
 from psycopg.rows import dict_row
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, Response
 
@@ -66,15 +66,10 @@ REPLACED_LENGTH_MAX_RATIO = 1.15  # kandydat nie moze byc dluzszy niz 115% dlugo
 app = FastAPI(title="qbot-web", docs_url=None, redoc_url=None)
 
 
-@app.middleware("http")
-async def _webauth_guard(request, call_next):
-    """Prosty login/haslo (Basic Auth) na cala strone, oprocz /healthz.
-    Dane logowania: /etc/qbot/webauth.env, klucz WEBAUTH_USERS=login:haslo,login2:haslo2
-    """
-    import base64 as _b64, hmac as _hmac
-    if request.url.path == "/healthz":
-        return await call_next(request)
+def _webauth_load():
+    """Wczytuje uzytkownikow i wartosc do podpisu ciasteczka z .env.webauth."""
     users = {}
+    sign_val = ""
     try:
         for _line in open("/opt/qbot/app/" + "." + "env" + ".webauth"):
             if "=" in _line and not _line.startswith("#"):
@@ -85,23 +80,134 @@ async def _webauth_guard(request, call_next):
                         if ":" in _pair:
                             _u, _p = _pair.split(":", 1)
                             users[_u] = _p
+                elif _k == "WEBAUTH_TOKEN":
+                    sign_val = _v
     except Exception:
         pass
+    return users, sign_val
+
+
+def _webauth_cookie_make(username, sign_val):
+    import hmac as _hmac, hashlib as _hashlib, time as _time
+    expiry = int(_time.time()) + 365 * 24 * 3600
+    msg = username + ":" + str(expiry)
+    digest = _hmac.new(sign_val.encode(), msg.encode(), _hashlib.sha256).hexdigest()
+    return msg + ":" + digest, expiry
+
+
+def _webauth_cookie_valid(cookie_value, sign_val, users):
+    import hmac as _hmac, hashlib as _hashlib, time as _time
+    if not cookie_value or not sign_val:
+        return False
+    parts = cookie_value.split(":")
+    if len(parts) != 3:
+        return False
+    username, expiry_s, digest = parts
+    try:
+        expiry = int(expiry_s)
+    except ValueError:
+        return False
+    if _time.time() > expiry:
+        return False
+    if username not in users:
+        return False
+    expected = _hmac.new(sign_val.encode(), (username + ":" + expiry_s).encode(), _hashlib.sha256).hexdigest()
+    return _hmac.compare_digest(expected, digest)
+
+
+_LOGIN_PAGE_CSS = (
+    "body{font-family:-apple-system,system-ui,sans-serif;background:#0f1115;color:#e8e8e8;"
+    "display:flex;align-items:center;justify-content:center;height:100vh;margin:0}"
+    "form{background:#1a1d24;padding:2rem 2.5rem;border-radius:12px;"
+    "box-shadow:0 8px 30px rgba(0,0,0,.4);width:280px}"
+    "h1{font-size:1.1rem;margin:0 0 1.2rem;color:#9fd3ff}"
+    "label{display:block;font-size:.8rem;color:#aaa;margin:.6rem 0 .2rem}"
+    "input{width:100%;padding:.55rem .6rem;border-radius:6px;border:1px solid #333;"
+    "background:#0f1115;color:#eee;box-sizing:border-box;font-size:1rem}"
+    "button{margin-top:1.2rem;width:100%;padding:.6rem;border:0;border-radius:6px;"
+    "background:#3b82f6;color:#fff;font-size:1rem;cursor:pointer}"
+    "button:hover{background:#2563eb}"
+    ".err{color:#ff8080;font-size:.82rem;margin-top:.8rem}"
+)
+
+
+@app.middleware("http")
+async def _webauth_guard(request, call_next):
+    """Logowanie formularzem + dlugotrwale ciasteczko sesji (365 dni), oprocz /healthz i /login.
+    Dane logowania: /opt/qbot/app/.env.webauth
+    klucze: WEBAUTH_USERS=login:haslo,login2:haslo2 ; WEBAUTH_TOKEN=<wartosc do podpisu>
+    """
+    if request.url.path in ("/healthz", "/login"):
+        return await call_next(request)
+
+    users, sign_val = _webauth_load()
     if not users:
         return await call_next(request)
-    auth = request.headers.get("authorization", "")
-    ok = False
-    if auth.startswith("Basic "):
-        try:
-            decoded = _b64.b64decode(auth[6:]).decode("utf-8")
-            u, _, p = decoded.partition(":")
-            if u in users and _hmac.compare_digest(users[u], p):
-                ok = True
-        except Exception:
-            ok = False
+
+    cookie_value = request.cookies.get("qbot_session", "")
+    if _webauth_cookie_valid(cookie_value, sign_val, users):
+        return await call_next(request)
+
+    if request.url.path.startswith("/api/"):
+        return Response(status_code=401, content="unauthorized")
+
+    from urllib.parse import quote
+    next_url = quote(str(request.url.path), safe="")
+    return Response(status_code=303, headers={"Location": "/login?next=" + next_url})
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def _login_form(next: str = "/", err: int = 0):
+    safe_next = next if next.startswith("/") else "/"
+    err_html = '<div class="err">Zle dane logowania. Sprobuj ponownie.</div>' if err else ""
+    return HTMLResponse(
+        '<!doctype html><html lang="pl"><head><meta charset="utf-8">'
+        '<title>QBot Lab - logowanie</title>'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<style>' + _LOGIN_PAGE_CSS + '</style></head><body>'
+        '<form method="post" action="/login" autocomplete="on">'
+        '<h1>QBot Lab</h1>'
+        '<label for="u">Login</label>'
+        '<input id="u" name="username" type="text" autocomplete="username" required autofocus>'
+        '<label for="p">Haslo</label>'
+        '<input id="p" name="password" type="password" autocomplete="current-password" required>'
+        '<input type="hidden" name="next" value="' + safe_next + '">'
+        '<button type="submit">Zaloguj</button>'
+        + err_html +
+        '</form></body></html>'
+    )
+
+
+@app.post("/login")
+async def _login_submit(request: Request):
+    raw = (await request.body()).decode("utf-8", errors="replace")
+    from urllib.parse import parse_qs
+    fields = parse_qs(raw)
+    username = fields.get("username", [""])[0]
+    password = fields.get("password", [""])[0]
+    next_path = fields.get("next", ["/"])[0]
+    if not next_path.startswith("/"):
+        next_path = "/"
+
+    users, sign_val = _webauth_load()
+    import hmac as _hmac
+    from urllib.parse import quote as _quote
+    ok = bool(sign_val) and username in users and _hmac.compare_digest(users[username], password)
     if not ok:
-        return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="QBot Lab"'})
-    return await call_next(request)
+        return Response(
+            status_code=303,
+            headers={"Location": "/login?err=1&next=" + _quote(next_path, safe="")},
+        )
+
+    cookie_value, expiry = _webauth_cookie_make(username, sign_val)
+    resp = Response(status_code=303, headers={"Location": next_path})
+    resp.set_cookie(
+        "qbot_session", cookie_value,
+        max_age=365 * 24 * 3600,
+        httponly=True,
+        samesite="lax",
+    )
+    return resp
 
 
 def _env():
@@ -2237,14 +2343,74 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     }
 
 
+_REPORT_SNAPSHOT_KEEP = 4  # biezacy + 3 archiwalne, NA TRASE (route_id)
+
+
+def _save_report_snapshot(conn, route_id, date_str, start_time, long_stops, long_stop_min, data):
+    """Zapisuje wygenerowany raport w archiwum i przycina do _REPORT_SNAPSHOT_KEEP na trase."""
+    try:
+        conn.execute(
+            "INSERT INTO qbot_v2.route_report_snapshots "
+            "(route_id, report_date, start_time, long_stops, long_stop_min, data_json) "
+            "VALUES (%s, %s, %s, %s, %s, %s::jsonb)",
+            (route_id, date_str, start_time, long_stops, long_stop_min, json.dumps(data)))
+        conn.execute(
+            "DELETE FROM qbot_v2.route_report_snapshots "
+            "WHERE route_id=%s AND route_report_snapshot_id NOT IN ("
+            "  SELECT route_report_snapshot_id FROM qbot_v2.route_report_snapshots "
+            "  WHERE route_id=%s ORDER BY created_at DESC LIMIT %s)",
+            (route_id, route_id, _REPORT_SNAPSHOT_KEEP))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+
+
 @app.get("/api/report/data")
 def report_data(route_id: str = Query(...), date: str = Query(...),
                 time: str = Query("10:00"), long_stops: int = Query(0),
                 long_stop_min: int = Query(0)):
-    """Zwraca blok DATA raportu trasy (JSON) - generator w QBocie."""
+    """Zwraca blok DATA raportu trasy (JSON) - generator w QBocie. Zapisuje tez do archiwum."""
     conn = _db_conn()
     try:
-        return _build_report_data(conn, route_id, date, time, long_stops, long_stop_min)
+        data = _build_report_data(conn, route_id, date, time, long_stops, long_stop_min)
+        _save_report_snapshot(conn, route_id, date, time, long_stops, long_stop_min, data)
+        return data
+    finally:
+        conn.close()
+
+
+@app.get("/api/report/history")
+def report_history(route_id: str = Query(...)):
+    """Lista ostatnich zapisanych raportow dla trasy (do paska Historia), najnowszy pierwszy."""
+    conn = _db_conn()
+    try:
+        rows = conn.execute(
+            "SELECT route_report_snapshot_id AS id, report_date, start_time, "
+            "long_stops, long_stop_min, created_at "
+            "FROM qbot_v2.route_report_snapshots WHERE route_id=%s "
+            "ORDER BY created_at DESC LIMIT %s",
+            (route_id, _REPORT_SNAPSHOT_KEEP)).fetchall()
+        return {"items": [
+            {"id": r["id"], "report_date": r["report_date"], "start_time": r["start_time"],
+             "long_stops": r["long_stops"], "long_stop_min": r["long_stop_min"],
+             "created_at": r["created_at"].strftime("%Y-%m-%d %H:%M") if r["created_at"] else None}
+            for r in rows
+        ]}
+    finally:
+        conn.close()
+
+
+@app.get("/api/report/snapshot/{snapshot_id}")
+def report_snapshot(snapshot_id: int):
+    """Zwraca dokladnie zapisany blok DATA archiwalnego raportu (bez liczenia od nowa)."""
+    conn = _db_conn()
+    try:
+        row = conn.execute(
+            "SELECT data_json FROM qbot_v2.route_report_snapshots "
+            "WHERE route_report_snapshot_id=%s", (snapshot_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Zapisany raport nie znaleziony")
+        return row["data_json"]
     finally:
         conn.close()
 
