@@ -1188,3 +1188,74 @@ zwraca identyczny blok DATA co przy oryginalnym generowaniu (nazwa trasy, data s
 store (route_report_snapshots nie ma FK do route_base, klucz to tekstowy route_id) - do
 rozwazenia przy okazji `route_delete`/`route_store_purge`, jesli kiedys bedzie to problemem
 (malo prawdopodobne przy 4 wierszach/trase).
+
+
+## 2026-07-04 (2) — Wysylka uproszczonego raportu mailem (mapa+wykres jako zrzuty, GPX w zalaczniku)
+
+Cel: mozliwosc wyslania trasy znajomemu mailem - jedno pole (adres) + przycisk, bez
+interaktywnosci, tresc czytelna w kazdym kliencie poczty.
+
+**Sekcje mailu (jedna pod druga):** trasa/dystans/przewyzszenie, start, szacowany czas,
+mapa (obrazek), pogoda (ogolnie + etapy), profil trasy (obrazek), nawierzchnia (km/%% per
+kategoria + opis ryzykownych odcinkow), ostrzezenia. W zalaczniku plik GPX (z POI, ten sam
+generator co Karoo).
+
+**DECYZJA (mapa/wykres w mailu):** rozwazono 3 warianty - (A) rysowanie wlasne bez tla ulic
+(Pillow), (B) Google Static Maps, (C) zrzut prawdziwej interaktywnej mapy/wykresu przez
+headless przegladarke. Google odpada: klucz `GOOGLE_PLACES_API_KEY` nie ma wlaczonego
+Static Maps (403 "API not activated"), wlaczenie wymagaloby akcji uzytkownika w Google
+Cloud. Wybrano **C** (decyzja uzytkownika, mimo wiekszego kosztu infrastruktury) - realne
+ulice/wyglad identyczny z appka, bez zaleznosci od plaskiego API.
+
+**Jak dziala zrzut (C):**
+- Nowy plik `/opt/qbot/web/public/raport-print.html` - "cichy" wariant raportu: bez
+  formularza, czyta `route_id`/`date`/`time`/... LUB `snapshot_id` z query string, woła
+  `/api/report/data` albo `/api/report/snapshot/{id}`, i od razu `window.renderReport(...)`.
+  Ten sam `raport-render.js`/`raport.css` co normalny raport - zero duplikacji logiki
+  mapy/wykresu.
+- `raport-render.js`: dodany sygnal gotowosci kafli mapy - `_tl.once("load", ...)` ustawia
+  `window.__QBOT_MAP_READY=true` (plus fallback timeout 4s, gdyby event nie odpalil).
+  `raport-print.html` ustawia `window.__QBOT_RENDER_DONE` po zakonczeniu renderReport.
+- `qbot_web.py`, `_capture_report_images(snapshot_id)`: Playwright (sync API), headless
+  Chromium, otwiera `raport-print.html?snapshot_id=...` z wstrzykniętym ciasteczkiem sesji
+  (ten sam HMAC co logowanie - `_webauth_cookie_make`), czeka na oba sygnaly gotowosci,
+  robi 2 zrzuty elementow: `#map` i `#chart` (SVG) -> PNG bytes.
+- Endpoint zawsze najpierw liczy `_build_report_data` + zapisuje snapshot (uzywa
+  `_save_report_snapshot`, ktora teraz zwraca `id` nowego wpisu - potrzebne dla
+  raport-print.html, zeby zrzut renderowal DOKLADNIE te same dane co tresc maila, nie
+  osobne przeliczenie z ryzykiem driftu np. pogody miedzy dwoma wywolaniami).
+
+**Infrastruktura (jednorazowo, przez Desktop Commander SSH jako root):**
+- `pip install playwright` do `.venv` + `playwright install --with-deps chromium`
+  (dociaga tez zaleznosci systemowe apt - fonty, libnss, mesa itp., ~76 MB + ~290 MB miejsca).
+- Binarki Chromium ladowaly sie domyslnie do `/root/.cache/ms-playwright` - NIEDOSTEPNE dla
+  usera `qbot` (usluga qbot-web dziala jako `qbot`, `/root` ma uprawnienia 700). Przeniesione
+  do `/opt/qbot/app/.ms-playwright` (chown qbot:qbot) + `Environment=PLAYWRIGHT_BROWSERS_PATH=
+  /opt/qbot/app/.ms-playwright` dopisane do `/etc/systemd/system/qbot-web.service` +
+  `daemon-reload` + restart. Katalog w `.gitignore` (binarny, ~300 MB, nie do repo).
+- Zasoby serwera sprawdzone przed instalacja: 27 GB wolnego dysku, ~3.5 GB dostepnej
+  pamieci - bezpieczne dla jednorazowego headless renderu na żądanie (nie stały proces).
+
+**Wysylka:** `smtplib.SMTP_SSL('smtp.gmail.com', 465)`, to samo konto co poranny raport
+(`qbot_config.GMAIL_USER`/`GMAIL_APP_PASSWORD`) - nic nowego do zakladania. Obrazki jako
+inline (`Content-ID`, `cid:reportmap`/`cid:reportchart`), GPX jako zwykly zalacznik.
+Walidacja adresu: prosty regex (`^[^@\s]+@[^@\s]+\.[^@\s]+$`).
+
+**Nowy endpoint:** `POST /api/report/send-email?route_id=&date=&time=&long_stops=&
+long_stop_min=&to=`. Zwraca `{status, to, has_map, has_chart, has_gpx}` - front pokazuje
+blad jesli ktorys sie nie udal, ale wysylke i tak probuje (np. brak mapy nie blokuje maila).
+
+**Dowod na zywo:** trasa 55957534, wyslano testowo na wlasny adres (z konfiguracji, nie
+na obcy) - `{"status":"ok","has_map":true,"has_chart":true,"has_gpx":true}`, calosc (liczenie
++ zrzuty + wysylka) ~32 s.
+
+**Front (raport-trasy.html, poza repo):** drugi wiersz paska - pole e-mail + przycisk
+"Wyslij mailem" (`.row-mail`, `.btn-ghost`, `.fld.mail` w raport.css, cache-bust
+`?v=2026070403`). Uzywa biezacych wartosci formularza (trasa/data/godzina/przerwy) - te
+same co przy Generuj.
+
+**Dlug techniczny / do obserwowania:** headless render dodaje ~5-10 s do czasu wysylki
+(oprocz ~20 s liczenia danych) - akceptowalne dla akcji na żądanie, ale gdyby ta funkcja
+kiedys mialaby dzialac masowo/w tle, warto rozwazyc pool przegladarek zamiast odpalania
+nowej za kazdym razem. Brak retry przy niepowodzeniu zrzutu (map_png/chart_png=None) -
+mail i tak leci, tylko bez obrazka/ow.

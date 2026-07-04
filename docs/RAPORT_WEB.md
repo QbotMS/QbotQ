@@ -130,6 +130,19 @@ zmiana wygladu (raport-render.js/raport.css) automatycznie obejmuje tez stare za
   Generuj). Klik Generuj zawsze liczy swiezy raport i dopisuje do archiwum.
 - Szczegoly decyzji: docs/DECISIONS.md, wpis 2026-07-04.
 
+## Wysylka raportu mailem (uproszczona wersja + zrzuty, 2026-07-04)
+`POST /api/report/send-email?route_id=&date=&time=&long_stops=&long_stop_min=&to=` liczy
+raport (jak `/api/report/data`, zapisuje tez snapshot), robi zrzuty PNG mapy i wykresu
+przez headless Chromium (Playwright) i wysyla mailem (sekcje tekstowe jedna pod druga +
+2 obrazki inline + GPX w zalaczniku). Nowy "cichy" plik `raport-print.html` (bez
+formularza) renderuje dane przez ten sam `raport-render.js`/`raport.css` co normalny
+raport - zrzut = dokladnie to co widac w interaktywnym raporcie. Sygnal gotowosci kafli
+mapy: `window.__QBOT_MAP_READY` (ustawiany w raport-render.js). SMTP = to samo konto
+Gmail co poranny raport (`qbot_config`). Playwright/Chromium zainstalowane w
+`/opt/qbot/app/.ms-playwright` (PLAYWRIGHT_BROWSERS_PATH w systemd unit qbot-web -
+katalog `/root/.cache` nie jest widoczny dla usera `qbot`). Szczegoly: docs/DECISIONS.md,
+wpis 2026-07-04 (2).
+
 ## Kwadraty (StatsHunters) — warstwa kafli na mapie (2026-07-03)
 Nakladka explorer-tiles (z14, jak VeloViewer/Squadrats): ktore kwadraty trasa
 zdobywa (nowe), ktore juz masz, plus otoczka kontekstu.

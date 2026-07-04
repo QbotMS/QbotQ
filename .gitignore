@@ -12,6 +12,7 @@ config/profiles/*.env
 
 # Python/runtime
 .venv/
+.ms-playwright/
 __pycache__/
 *.py[cod]
 .pytest_cache/

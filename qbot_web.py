@@ -9,6 +9,13 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, Response
+import re as _re_email
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+from email.mime.application import MIMEApplication
+import qbot_config as _cfg
 
 WEB_ROOT = os.environ.get("QBOT_WEB_ROOT", "/opt/qbot/web/public")
 HOST = os.environ.get("QBOT_WEB_HOST", "0.0.0.0")
@@ -2345,13 +2352,16 @@ _REPORT_SNAPSHOT_KEEP = 4  # biezacy + 3 archiwalne, NA TRASE (route_id)
 
 
 def _save_report_snapshot(conn, route_id, date_str, start_time, long_stops, long_stop_min, data):
-    """Zapisuje wygenerowany raport w archiwum i przycina do _REPORT_SNAPSHOT_KEEP na trase."""
+    """Zapisuje wygenerowany raport w archiwum, przycina do _REPORT_SNAPSHOT_KEEP na trase.
+    Zwraca id nowego wpisu (albo None przy bledzie)."""
     try:
-        conn.execute(
+        row = conn.execute(
             "INSERT INTO qbot_v2.route_report_snapshots "
             "(route_id, report_date, start_time, long_stops, long_stop_min, data_json) "
-            "VALUES (%s, %s, %s, %s, %s, %s::jsonb)",
-            (route_id, date_str, start_time, long_stops, long_stop_min, json.dumps(data)))
+            "VALUES (%s, %s, %s, %s, %s, %s::jsonb) "
+            "RETURNING route_report_snapshot_id",
+            (route_id, date_str, start_time, long_stops, long_stop_min, json.dumps(data))).fetchone()
+        new_id = row["route_report_snapshot_id"] if row else None
         conn.execute(
             "DELETE FROM qbot_v2.route_report_snapshots "
             "WHERE route_id=%s AND route_report_snapshot_id NOT IN ("
@@ -2359,8 +2369,10 @@ def _save_report_snapshot(conn, route_id, date_str, start_time, long_stops, long
             "  WHERE route_id=%s ORDER BY created_at DESC LIMIT %s)",
             (route_id, route_id, _REPORT_SNAPSHOT_KEEP))
         conn.commit()
+        return new_id
     except Exception:
         conn.rollback()
+        return None
 
 
 @app.get("/api/report/data")
@@ -2411,6 +2423,248 @@ def report_snapshot(snapshot_id: int):
         return row["data_json"]
     finally:
         conn.close()
+
+
+_SCAT_LABEL = {1: "Asfalt", 2: "Dobry gravel/szuter", 3: "Zwykly gravel", 4: "Trudna/wolna", 5: "Ryzyko"}
+_SCAT_COLOR = {1: "#000000", 2: "#2e7d32", 3: "#8bc34a", 4: "#e07b1a", 5: "#c2452f"}
+_ALERT_TYP_LABEL = {"upa\u0142": "UPA\u0141", "upal": "UPA\u0141", "deszcz": "DESZCZ", "burza": "BURZA", "zimno": "ZIMNO"}
+_EMAIL_RE = _re_email.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _esc(x):
+    import html as _html
+    return _html.escape(str(x)) if x is not None else ""
+
+
+def _fmt_h(h):
+    if h is None:
+        return "?"
+    hh = int(h)
+    mm = round((h - hh) * 60)
+    if mm == 60:
+        hh += 1
+        mm = 0
+    return "%dh%02dm" % (hh, mm)
+
+
+def _alert_line(a):
+    t = a.get("typ")
+    lab = _ALERT_TYP_LABEL.get(t, (t or "").upper())
+    sev = a.get("severity") or ""
+    km = "km %s\u2013%s" % (a.get("km_od"), a.get("km_do"))
+    detail = ""
+    if t in ("upa\u0142", "upal"):
+        if a.get("wbgt_max") is not None:
+            detail = "WBGT do %s\u00b0C" % a["wbgt_max"]
+        if a.get("powod"):
+            detail += (" \u00b7 " if detail else "") + str(a["powod"])
+    elif t == "deszcz":
+        if a.get("opad_max_mm") is not None:
+            detail = "do %s mm" % a["opad_max_mm"]
+        if a.get("prawdopod") is not None:
+            detail += (" \u00b7 " if detail else "") + "ryzyko %s%%" % a["prawdopod"]
+    elif t == "burza":
+        pw = a.get("przeczekaj_w") or {}
+        if pw.get("miejscowosc"):
+            detail = "przeczekaj w %s (km %s)" % (pw["miejscowosc"], pw.get("km"))
+        if a.get("czekanie_min") is not None:
+            detail += (" \u00b7 " if detail else "") + "~%s min oczekiwania" % a["czekanie_min"]
+        if not detail:
+            detail = a.get("opis") or ""
+    elif t == "zimno":
+        if a.get("utci_avg") is not None:
+            detail = "odczuwalna ~%s\u00b0C" % a["utci_avg"]
+        if a.get("kategoria"):
+            detail += (" \u00b7 " if detail else "") + str(a["kategoria"])
+    return "%s (%s, %s)%s" % (lab, sev, km, (": " + detail) if detail else "")
+
+
+def _build_report_email_html(data, has_map, has_chart):
+    """Uproszczony raport - sekcje jedna pod drugą, do maila (bez interaktywnej mapy/wykresu)."""
+    r = data.get("route", {}) or {}
+    st = data.get("start", {}) or {}
+    tm = data.get("time", {}) or {}
+    det = data.get("details", {}) or {}
+    surf = det.get("surface", {}) or {}
+    wea = det.get("weather", {}) or {}
+    alerts = data.get("alerts") or []
+    H = '<h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#7a838c;margin:22px 0 6px">'
+
+    p = []
+    p.append('<div style="font-family:-apple-system,Arial,sans-serif;color:#1c2024;max-width:640px;line-height:1.5">')
+    p.append('<h1 style="font-size:22px;margin:0 0 4px">%s</h1>' % _esc(r.get("name") or ("Trasa %s" % r.get("id", ""))))
+    sub = "%.1f km" % (r.get("distance_km") or 0)
+    if r.get("ascent_m") is not None:
+        sub += " \u00b7 %s m w g\u00f3r\u0119" % r["ascent_m"]
+    if det.get("climbs", {}).get("descent_m") is not None:
+        sub += " \u00b7 %s m w d\u00f3\u0142" % det["climbs"]["descent_m"]
+    p.append('<p style="color:#555;margin:0 0 18px">%s</p>' % sub)
+
+    miejsce = ", ".join([x for x in [st.get("miejscowosc"), st.get("gmina")] if x])
+    p.append(H + 'Start</h2>')
+    p.append('<p style="margin:0">%s, godz. %s%s</p>' % (
+        _esc(st.get("date") or ""), _esc(st.get("time") or ""),
+        (" \u00b7 " + _esc(miejsce)) if miejsce else ""))
+
+    p.append(H + 'Szacowany czas</h2>')
+    spd = (" \u00b7 %s km/h" % tm.get("speed_net_kmh")) if tm.get("speed_net_kmh") else ""
+    p.append('<p style="margin:0">w ruchu %s \u00b7 ca\u0142kowity %s%s</p>' % (
+        _fmt_h(tm.get("moving_h")), _fmt_h(tm.get("total_h")), spd))
+
+    if has_map:
+        p.append(H + 'Mapa</h2>')
+        p.append('<img src="cid:reportmap" style="width:100%;max-width:600px;border-radius:8px;border:1px solid #e3ddd2" alt="mapa trasy">')
+
+    p.append(H + 'Pogoda</h2>')
+    for line in (wea.get("ogolne") or []):
+        p.append('<p style="margin:0 0 4px">%s</p>' % _esc(line))
+    etapy = wea.get("etapy") or []
+    if etapy:
+        p.append('<ul style="margin:8px 0 0;padding-left:18px">')
+        for e in etapy:
+            p.append('<li style="margin:0 0 4px"><b>%s:</b> %s</li>' % (_esc(e.get("naglowek") or ""), _esc(e.get("tekst") or "")))
+        p.append('</ul>')
+
+    if has_chart:
+        p.append(H + 'Profil trasy</h2>')
+        p.append('<img src="cid:reportchart" style="width:100%;max-width:600px;border-radius:8px;border:1px solid #e3ddd2" alt="profil trasy">')
+
+    p.append(H + 'Nawierzchnia</h2>')
+    by_cat = surf.get("by_cat") or []
+    if by_cat:
+        p.append('<ul style="margin:0;padding-left:0;list-style:none">')
+        for c in by_cat:
+            col = _SCAT_COLOR.get(c.get("k"), "#999")
+            lab = _SCAT_LABEL.get(c.get("k"), "kat. %s" % c.get("k"))
+            p.append('<li style="margin:0 0 4px"><span style="display:inline-block;width:10px;height:10px;'
+                      'background:%s;border-radius:2px;margin-right:6px"></span>%s: %s km (%s%%)</li>' % (
+                          col, _esc(lab), c.get("km"), c.get("pct")))
+        p.append('</ul>')
+    risk = surf.get("risk") or []
+    if risk:
+        p.append('<p style="margin:14px 0 4px"><b>Odcinki ryzykowne:</b></p>')
+        p.append('<ul style="margin:0;padding-left:18px">')
+        for rr in risk:
+            p.append('<li style="margin:0 0 4px">km %s\u2013%s (%s km): %s</li>' % (
+                rr.get("a"), rr.get("b"), rr.get("km"), _esc(rr.get("comment") or rr.get("reason") or "")))
+        p.append('</ul>')
+
+    if alerts:
+        p.append('<h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#b0402c;margin:22px 0 6px">Ostrze\u017cenia</h2>')
+        p.append('<ul style="margin:0;padding-left:18px">')
+        for a in alerts:
+            p.append('<li style="margin:0 0 4px">%s</li>' % _esc(_alert_line(a)))
+        p.append('</ul>')
+
+    p.append('<p style="margin:26px 0 0;color:#7a838c;font-size:12px">W za\u0142\u0105czniku plik GPX trasy (do wgrania w nawigacji/zegarku).</p>')
+    p.append('</div>')
+    return "".join(p)
+
+
+def _capture_report_images(snapshot_id):
+    """Renderuje raport-print.html w headless Chromium (Playwright) i robi zrzuty mapy + wykresu.
+    Zwraca (map_png_bytes, chart_png_bytes) - dowolne moze byc None przy niepowodzeniu."""
+    map_png = chart_png = None
+    try:
+        from playwright.sync_api import sync_playwright
+        users, sign_val = _webauth_load()
+        cookie_value = None
+        if users and sign_val:
+            username = next(iter(users))
+            cookie_value, _exp = _webauth_cookie_make(username, sign_val)
+        url = "http://127.0.0.1:%d/raport-print.html?snapshot_id=%s" % (PORT, snapshot_id)
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(args=["--no-sandbox"])
+            try:
+                context = browser.new_context(viewport={"width": 900, "height": 700})
+                if cookie_value:
+                    context.add_cookies([{"name": "qbot_session", "value": cookie_value,
+                                           "url": "http://127.0.0.1:%d" % PORT}])
+                page = context.new_page()
+                page.goto(url, wait_until="networkidle", timeout=30000)
+                page.wait_for_function("window.__QBOT_RENDER_DONE === true", timeout=20000)
+                try:
+                    page.wait_for_function("window.__QBOT_MAP_READY === true", timeout=8000)
+                except Exception:
+                    pass
+                page.wait_for_timeout(300)
+                map_el = page.query_selector("#map")
+                if map_el:
+                    map_png = map_el.screenshot()
+                chart_el = page.query_selector("#chart")
+                if chart_el:
+                    chart_png = chart_el.screenshot()
+            finally:
+                browser.close()
+    except Exception as _e:
+        print("_capture_report_images error:", _e)
+    return map_png, chart_png
+
+
+@app.post("/api/report/send-email")
+def report_send_email(route_id: str = Query(...), date: str = Query(...),
+                      time: str = Query("10:00"), long_stops: int = Query(0),
+                      long_stop_min: int = Query(0), to: str = Query(...)):
+    """Liczy raport (zapisuje do archiwum), robi zrzuty mapy+wykresu, dolacza GPX,
+    wysyla uproszczony raport mailem (to samo konto co poranny raport)."""
+    to = (to or "").strip()
+    if not _EMAIL_RE.match(to):
+        raise HTTPException(status_code=400, detail="Nieprawidlowy adres e-mail")
+
+    conn = _db_conn()
+    try:
+        data = _build_report_data(conn, route_id, date, time, long_stops, long_stop_min)
+        snap_id = _save_report_snapshot(conn, route_id, date, time, long_stops, long_stop_min, data)
+        geo = route_geometry(route_id)
+        coords = geo.get("coordinates") or []
+    finally:
+        conn.close()
+
+    map_png = chart_png = None
+    if snap_id:
+        map_png, chart_png = _capture_report_images(snap_id)
+
+    gpx_xml = None
+    try:
+        gpx_xml, _wn = _build_karoo_gpx(data["route"]["name"], coords,
+                                         (data.get("details") or {}).get("poi"), include_pois=True)
+    except Exception as _e:
+        print("gpx build error:", _e)
+
+    html_body = _build_report_email_html(data, has_map=bool(map_png), has_chart=bool(chart_png))
+
+    msg = MIMEMultipart("related")
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(html_body, "html", "utf-8"))
+    msg.attach(alt)
+    if map_png:
+        img = MIMEImage(map_png)
+        img.add_header("Content-ID", "<reportmap>")
+        img.add_header("Content-Disposition", "inline", filename="mapa.png")
+        msg.attach(img)
+    if chart_png:
+        img2 = MIMEImage(chart_png)
+        img2.add_header("Content-ID", "<reportchart>")
+        img2.add_header("Content-Disposition", "inline", filename="profil.png")
+        msg.attach(img2)
+    if gpx_xml:
+        safe = _re_email.sub(r"[^A-Za-z0-9_.-]+", "_", data["route"]["name"] or route_id).strip("_") or ("route_%s" % route_id)
+        gpx_att = MIMEApplication(gpx_xml.encode("utf-8"), _subtype="gpx+xml")
+        gpx_att.add_header("Content-Disposition", "attachment", filename="%s.gpx" % safe)
+        msg.attach(gpx_att)
+
+    msg["Subject"] = "Raport trasy: %s - %s %s" % (data["route"]["name"], date, time)
+    msg["From"] = _cfg.GMAIL_USER
+    msg["To"] = to
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+            s.login(_cfg.GMAIL_USER, _cfg.GMAIL_APP_PASSWORD)
+            s.send_message(msg)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Nie udalo sie wyslac maila: %s" % e)
+
+    return {"status": "ok", "to": to, "has_map": bool(map_png), "has_chart": bool(chart_png), "has_gpx": bool(gpx_xml)}
 
 
 app.mount("/", StaticFiles(directory=WEB_ROOT, html=True), name="static")
