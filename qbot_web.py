@@ -1850,8 +1850,6 @@ def push_karoo(route_id: str, date: str | None = None, time: str = "10:00"):
     lats = [c[0] for c in coords]; lons = [c[1] for c in coords]
     full = _poly_encode(coords)
     summ = _poly_encode(coords[::max(1, len(coords) // 60)])
-    # elevation.polyline z profilu WYGLADZONEGO (pelna gestosc) - zeby Karoo przeliczyl ~ raport
-    elp = _poly_encode([(d, e) for d, e in prof_s]) if prof_s else ""
     pois_api = _karoo_poi_api(poi_out)
     _parts = [x.strip() for x in _re3.split(r"[\-\u2013\u2014]", name) if x.strip()]
     start_nm = _parts[0] if _parts else (name or "Start")
@@ -1865,7 +1863,7 @@ def push_karoo(route_id: str, date: str | None = None, time: str = "10:00"):
     body = {"name": name, "source": "uploaded", "sourceId": "qbot-%s" % route_id,
             "elevation": {"gain": round(gain, 1), "loss": round(loss, 1),
                           "min": round(min(ev), 1) if ev else 0, "max": round(max(ev), 1) if ev else 0,
-                          "source": "qbot", "polyline": elp},
+                          "source": "qbot"},
             "distance": dist_m,
             "startLocation": {"lat": coords[0][0], "lng": coords[0][1]},
             "endLocation": {"lat": coords[-1][0], "lng": coords[-1][1]},
