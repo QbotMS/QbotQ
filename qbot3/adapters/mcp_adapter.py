@@ -483,6 +483,10 @@ def _execute_nutrition_write(action_type: str, payload: dict[str, Any], idem_key
                 return {
                     "tool": "qbot.action_execute",
                     "status": "DUPLICATE_SKIPPED",
+                    "user_message": (
+                        f"\u26a0\ufe0f NIE zapisano: '{meal_name}' wyglada na duplikat zapisu "
+                        "z ostatnich 2 minut. Jesli to celowo drugi posilek, odczekaj chwile i powtorz."
+                    ),
                     "execution_mode": "real_write",
                     "write_committed": False,
                     "commit_executed": False,
@@ -664,6 +668,7 @@ def _execute_nutrition_write(action_type: str, payload: dict[str, Any], idem_key
         if verification_error or public_v1_count:
             return {
                 "tool": "qbot.action_execute", "status": "WRITE_INCONSISTENT",
+                "user_message": f"\u274c NIE zapisano poprawnie: {verification_error or 'niezgodnosc zapisu'}. Sprobuj ponownie.",
                 "execution_mode": "smoke_test" if smoke_test else "real_write",
                 "write_committed": False,
                 "commit_executed": commit_executed,
@@ -691,6 +696,12 @@ def _execute_nutrition_write(action_type: str, payload: dict[str, Any], idem_key
             "meal_log_id": meal_id,
             "storage_backend": "qbot_v2.intake_logs via qbot_nutrition_db.intake_log_create",
             "note": "Posiłek zapisany w qbot_v2.intake_logs",
+            "user_message": (
+                "\u2705 Zapisano: " + meal_name
+                + (f" ({int(round(float(payload.get('kcal_total') or 0)))} kcal)" if payload.get("kcal_total") else "")
+                + f". Dzien {target_date}: "
+                + (f"{int(round(float((after_summary or {}).get('kcal_total', 0) or 0)))} kcal lacznie." if after_summary else "suma nieprzeliczona.")
+            ),
             "before_summary": before_summary,
             "after_summary": after_summary,
         }

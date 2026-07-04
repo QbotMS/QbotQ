@@ -140,7 +140,12 @@ def _flatten_tool_result(tool_name: str, result: Any) -> dict:
             or (result.get("data", {}).get("error") if isinstance(result.get("data"), dict) else None)
             or str(status)
         )
-        return {"tool": tool_name, "status": status, "error": error_msg}
+        _flat_err = {"tool": tool_name, "status": status, "error": error_msg}
+        if result.get("user_message"):
+            _flat_err["user_message"] = result.get("user_message")
+        if "write_committed" in result:
+            _flat_err["write_committed"] = result.get("write_committed")
+        return _flat_err
 
     # Sukces — wykryj format i wypłaszcz
     data = result.get("data")
@@ -179,6 +184,12 @@ Zasady bezpieczeństwa:
 - Operacje destrukcyjne (usuń, skasuj, wyczyść wszystko) są zablokowane.
 - Zapis danych → zwróć draft, poinformuj że wymaga qbot.action_execute.
 - NIGDY nie mów "dodano", "zapisano", "wykonano" bez realnego qbot.action_execute.
+
+Zapis żywienia (nutrition_log_add / nutrition_log_delete / nutrition_log_correct) — twarde reguły:
+- Potwierdzaj zapis WYŁĄCZNIE gdy wynik toola ma write_committed=true. Inaczej NIE wolno pisać "zapisano/dodano/usunięto".
+- Jeśli wynik ma pole user_message → zacytuj je DOSŁOWNIE jako całe potwierdzenie; nie dodawaj własnych słów o zapisie ani wymyślonych sum kcal.
+- Gdy status to DUPLICATE_SKIPPED, WRITE_INCONSISTENT, WRITE_ERROR lub BLOCKED → powiedz wprost, że NIE zapisano, i podaj powód z pola error/user_message. Nie ponawiaj tego samego zapisu automatycznie.
+- Sumy kcal dnia nie zgaduj — używaj wyłącznie after_summary.kcal_total z wyniku toola.
 - Jeśli tool zwrócił WRITE_DRAFT → to NIE JEST zapis. To tylko draft.
 - Odczyt danych → wywołaj narzędzia i odpowiedz na podstawie wyników.
 - Nie wymyślaj wartości których nie ma w wynikach narzędzi.
