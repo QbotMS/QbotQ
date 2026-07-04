@@ -2480,84 +2480,169 @@ def _alert_line(a):
 
 
 def _build_report_email_html(data, has_map, has_chart):
-    """Uproszczony raport - sekcje jedna pod drugą, do maila (bez interaktywnej mapy/wykresu)."""
+    """Ladny, uproszczony raport - sekcje jedna pod druga (tabelowy layout HTML,
+    dziala w kazdym kliencie poczty). Kolejnosc: hero -> start/czas -> ostrzezenia ->
+    mapa -> pogoda -> profil -> nawierzchnia -> strategia jazdy -> POI."""
     r = data.get("route", {}) or {}
     st = data.get("start", {}) or {}
     tm = data.get("time", {}) or {}
     det = data.get("details", {}) or {}
     surf = det.get("surface", {}) or {}
     wea = det.get("weather", {}) or {}
+    strat = det.get("strategia") or {}
+    poi = det.get("poi") or {}
     alerts = data.get("alerts") or []
-    H = '<h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#7a838c;margin:22px 0 6px">'
+
+    ACCENT = "#3f6f9a"
+    LINE = "#e3ddd2"
+    MUTED = "#7a838c"
+    INK = "#1c2024"
+    INK2 = "#41484f"
+
+    def SEC(text, color=MUTED):
+        return ('<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;'
+                'color:%s;margin:26px 0 10px;padding-top:18px;border-top:1px solid %s">%s</div>') % (
+                    color, LINE, _esc(text))
+
+    def STAT(value, label):
+        return ('<td width="33%%" valign="top" style="background:#ffffff;border:1px solid %s;'
+                'border-radius:10px;padding:12px 8px;text-align:center">'
+                '<div style="font-size:20px;font-weight:750;color:%s;line-height:1.1">%s</div>'
+                '<div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:%s;'
+                'margin-top:4px">%s</div></td>') % (LINE, INK, value, MUTED, _esc(label))
 
     p = []
-    p.append('<div style="font-family:-apple-system,Arial,sans-serif;color:#1c2024;max-width:640px;line-height:1.5">')
-    p.append('<h1 style="font-size:22px;margin:0 0 4px">%s</h1>' % _esc(r.get("name") or ("Trasa %s" % r.get("id", ""))))
-    sub = "%.1f km" % (r.get("distance_km") or 0)
-    if r.get("ascent_m") is not None:
-        sub += " \u00b7 %s m w g\u00f3r\u0119" % r["ascent_m"]
-    if det.get("climbs", {}).get("descent_m") is not None:
-        sub += " \u00b7 %s m w d\u00f3\u0142" % det["climbs"]["descent_m"]
-    p.append('<p style="color:#555;margin:0 0 18px">%s</p>' % sub)
+    p.append('<div style="background:#f6f2ea;padding:22px 10px;'
+              'font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">')
+    p.append('<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" '
+              'style="max-width:640px;margin:0 auto;background:#fffdf8;border-radius:14px;'
+              'border:1px solid %s">' % LINE)
+    p.append('<tr><td style="background:%s;border-radius:14px 14px 0 0;height:6px;'
+              'line-height:6px;font-size:0">&nbsp;</td></tr>' % ACCENT)
+    p.append('<tr><td style="padding:26px 30px 6px">')
+
+    p.append('<div style="font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;'
+              'color:%s;margin-bottom:6px">Raport trasy &middot; QBot</div>' % MUTED)
+    p.append('<div style="font-size:23px;font-weight:750;color:%s;margin-bottom:16px">%s</div>' % (
+        INK, _esc(r.get("name") or ("Trasa %s" % r.get("id", "")))))
+
+    stats = [STAT("%.1f km" % (r.get("distance_km") or 0), "Dystans")]
+    stats.append(STAT(("%s m" % r["ascent_m"]) if r.get("ascent_m") is not None else "?", "Przewyzszenie +"))
+    dsc = (det.get("climbs") or {}).get("descent_m")
+    stats.append(STAT(("%s m" % dsc) if dsc is not None else "?", "Przewyzszenie -"))
+    p.append('<table role="presentation" width="100%%" cellpadding="0" cellspacing="6"><tr>%s</tr></table>' %
+              "".join(stats))
 
     miejsce = ", ".join([x for x in [st.get("miejscowosc"), st.get("gmina")] if x])
-    p.append(H + 'Start</h2>')
-    p.append('<p style="margin:0">%s, godz. %s%s</p>' % (
-        _esc(st.get("date") or ""), _esc(st.get("time") or ""),
-        (" \u00b7 " + _esc(miejsce)) if miejsce else ""))
-
-    p.append(H + 'Szacowany czas</h2>')
-    spd = (" \u00b7 %s km/h" % tm.get("speed_net_kmh")) if tm.get("speed_net_kmh") else ""
-    p.append('<p style="margin:0">w ruchu %s \u00b7 ca\u0142kowity %s%s</p>' % (
-        _fmt_h(tm.get("moving_h")), _fmt_h(tm.get("total_h")), spd))
-
-    if has_map:
-        p.append(H + 'Mapa</h2>')
-        p.append('<img src="cid:reportmap" style="width:100%;max-width:600px;border-radius:8px;border:1px solid #e3ddd2" alt="mapa trasy">')
-
-    p.append(H + 'Pogoda</h2>')
-    for line in (wea.get("ogolne") or []):
-        p.append('<p style="margin:0 0 4px">%s</p>' % _esc(line))
-    etapy = wea.get("etapy") or []
-    if etapy:
-        p.append('<ul style="margin:8px 0 0;padding-left:18px">')
-        for e in etapy:
-            p.append('<li style="margin:0 0 4px"><b>%s:</b> %s</li>' % (_esc(e.get("naglowek") or ""), _esc(e.get("tekst") or "")))
-        p.append('</ul>')
-
-    if has_chart:
-        p.append(H + 'Profil trasy</h2>')
-        p.append('<img src="cid:reportchart" style="width:100%;max-width:600px;border-radius:8px;border:1px solid #e3ddd2" alt="profil trasy">')
-
-    p.append(H + 'Nawierzchnia</h2>')
-    by_cat = surf.get("by_cat") or []
-    if by_cat:
-        p.append('<ul style="margin:0;padding-left:0;list-style:none">')
-        for c in by_cat:
-            col = _SCAT_COLOR.get(c.get("k"), "#999")
-            lab = _SCAT_LABEL.get(c.get("k"), "kat. %s" % c.get("k"))
-            p.append('<li style="margin:0 0 4px"><span style="display:inline-block;width:10px;height:10px;'
-                      'background:%s;border-radius:2px;margin-right:6px"></span>%s: %s km (%s%%)</li>' % (
-                          col, _esc(lab), c.get("km"), c.get("pct")))
-        p.append('</ul>')
-    risk = surf.get("risk") or []
-    if risk:
-        p.append('<p style="margin:14px 0 4px"><b>Odcinki ryzykowne:</b></p>')
-        p.append('<ul style="margin:0;padding-left:18px">')
-        for rr in risk:
-            p.append('<li style="margin:0 0 4px">km %s\u2013%s (%s km): %s</li>' % (
-                rr.get("a"), rr.get("b"), rr.get("km"), _esc(rr.get("comment") or rr.get("reason") or "")))
-        p.append('</ul>')
+    p.append(SEC("Start i czas"))
+    p.append('<p style="margin:0 0 4px;color:%s">%s, godz. %s%s</p>' % (
+        INK2, _esc(st.get("date") or ""), _esc(st.get("time") or ""),
+        (" &middot; " + _esc(miejsce)) if miejsce else ""))
+    spd = (" &middot; %s km/h" % tm.get("speed_net_kmh")) if tm.get("speed_net_kmh") else ""
+    p.append('<p style="margin:0;color:%s">w ruchu <b>%s</b> &middot; calkowity <b>%s</b>%s</p>' % (
+        INK2, _fmt_h(tm.get("moving_h")), _fmt_h(tm.get("total_h")), spd))
 
     if alerts:
-        p.append('<h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#b0402c;margin:22px 0 6px">Ostrze\u017cenia</h2>')
-        p.append('<ul style="margin:0;padding-left:18px">')
+        _SEV_COLOR = {"NO-GO": "#c2452f", "ALARM": "#e07b1a", "FLAGA": "#e0a72e"}
+        p.append(SEC("Ostrzezenia", color="#b0402c"))
         for a in alerts:
-            p.append('<li style="margin:0 0 4px">%s</li>' % _esc(_alert_line(a)))
-        p.append('</ul>')
+            col = _SEV_COLOR.get(a.get("severity"), "#b0402c")
+            p.append('<div style="border-left:4px solid %s;background:#fff6f3;'
+                      'border-radius:0 8px 8px 0;padding:8px 12px;margin:0 0 8px;color:%s;'
+                      'font-size:13.5px">%s</div>' % (col, INK2, _esc(_alert_line(a))))
 
-    p.append('<p style="margin:26px 0 0;color:#7a838c;font-size:12px">W za\u0142\u0105czniku plik GPX trasy (do wgrania w nawigacji/zegarku).</p>')
-    p.append('</div>')
+    if has_map:
+        p.append(SEC("Mapa"))
+        p.append('<img src="cid:reportmap" width="580" style="width:100%%;max-width:580px;'
+                  'border-radius:10px;border:1px solid %s;display:block" alt="mapa trasy">' % LINE)
+
+    p.append(SEC("Pogoda"))
+    for line in (wea.get("ogolne") or []):
+        p.append('<p style="margin:0 0 6px;color:%s">%s</p>' % (INK2, _esc(line)))
+    etapy = wea.get("etapy") or []
+    for e in etapy:
+        p.append('<p style="margin:0 0 6px;color:%s"><b style="color:%s">%s:</b> %s</p>' % (
+            INK2, INK, _esc(e.get("naglowek") or ""), _esc(e.get("tekst") or "")))
+
+    if has_chart:
+        p.append(SEC("Profil trasy"))
+        p.append('<img src="cid:reportchart" width="580" style="width:100%%;max-width:580px;'
+                  'border-radius:10px;border:1px solid %s;display:block" alt="profil trasy">' % LINE)
+
+    p.append(SEC("Nawierzchnia"))
+    by_cat = surf.get("by_cat") or []
+    for c in by_cat:
+        col = _SCAT_COLOR.get(c.get("k"), "#999")
+        lab = _SCAT_LABEL.get(c.get("k"), "kat. %s" % c.get("k"))
+        p.append('<div style="margin:0 0 5px;color:%s;font-size:13.5px">'
+                  '<span style="display:inline-block;width:11px;height:11px;background:%s;'
+                  'border-radius:3px;margin-right:8px;vertical-align:middle"></span>'
+                  '%s: <b>%s km</b> (%s%%)</div>' % (INK2, col, _esc(lab), c.get("km"), c.get("pct")))
+    risk = surf.get("risk") or []
+    if risk:
+        p.append('<p style="margin:14px 0 6px;color:%s"><b>Odcinki ryzykowne:</b></p>' % INK)
+        for rr in risk:
+            p.append('<p style="margin:0 0 6px;color:%s;font-size:13.5px">km %s&ndash;%s (%s km): %s</p>' % (
+                INK2, rr.get("a"), rr.get("b"), rr.get("km"), _esc(rr.get("comment") or rr.get("reason") or "")))
+
+    if strat.get("calosc") or strat.get("etapy"):
+        p.append(SEC("Strategia jazdy"))
+        if strat.get("calosc"):
+            p.append('<p style="margin:0 0 12px;color:%s">%s</p>' % (INK2, _esc(strat["calosc"])))
+        for i, e in enumerate(strat.get("etapy") or [], 1):
+            p.append('<div style="background:#fff;border:1px solid %s;border-radius:10px;'
+                      'padding:10px 14px;margin:0 0 8px">' % LINE)
+            tytul = e.get("tytul") or ("Etap %d" % i)
+            zakres = e.get("zakres_km")
+            p.append('<div style="font-weight:700;color:%s;margin-bottom:3px">%s%s</div>' % (
+                INK, _esc(tytul), (" &middot; km " + _esc(zakres)) if zakres else ""))
+            if e.get("opis"):
+                p.append('<div style="color:%s;font-size:13.5px;margin-bottom:4px">%s</div>' % (
+                    INK2, _esc(e["opis"])))
+            bits = []
+            if e.get("moc"):
+                bits.append("moc: " + str(e["moc"]))
+            if e.get("zywienie"):
+                bits.append("zywienie: " + str(e["zywienie"]))
+            if e.get("pojenie"):
+                bits.append("pojenie: " + str(e["pojenie"]))
+            if bits:
+                p.append('<div style="color:%s;font-size:12px">%s</div>' % (MUTED, _esc(" &middot; ".join(bits))))
+            p.append('</div>')
+
+    resupply = poi.get("resupply") or []
+    attractions = (poi.get("attractions") or {}).get("items") or []
+    if resupply or attractions:
+        p.append(SEC("Punkty POI"))
+    if resupply:
+        any_pick = False
+        for area in resupply:
+            for pk in (area.get("picks") or []):
+                any_pick = True
+                bits = [x for x in [
+                    ("km %.1f" % pk["km"]) if pk.get("km") is not None else None,
+                    pk.get("miejscowosc"), pk.get("hours")] if x]
+                p.append('<p style="margin:0 0 4px;color:%s;font-size:13.5px">'
+                          '<b>%s</b> &middot; %s</p>' % (
+                              INK2, _esc(pk.get("name") or "POI"), _esc(" · ".join(bits))))
+        if not any_pick:
+            resupply = []
+    if attractions:
+        p.append('<p style="margin:14px 0 6px;color:%s"><b>Atrakcje:</b></p>' % INK)
+        for a in attractions:
+            bits = [x for x in [
+                ("km %.1f" % a["km"]) if a.get("km") is not None else None, a.get("miejscowosc")] if x]
+            line = "<b>%s</b>" % _esc(a.get("name") or "POI")
+            if bits:
+                line += " (%s)" % _esc(" · ".join(bits))
+            if a.get("desc"):
+                line += " &mdash; %s" % _esc(a["desc"])
+            p.append('<p style="margin:0 0 4px;color:%s;font-size:13.5px">%s</p>' % (INK2, line))
+
+    p.append('<p style="margin:24px 0 4px;color:%s;font-size:11.5px;border-top:1px solid %s;'
+              'padding-top:12px">W zalaczniku plik GPX trasy (do wgrania w nawigacji/zegarku). '
+              'Raport wygenerowany przez QBot.</p>' % (MUTED, LINE))
+    p.append('</td></tr></table></div>')
     return "".join(p)
 
 
@@ -2576,7 +2661,7 @@ def _capture_report_images(snapshot_id):
         with sync_playwright() as pw:
             browser = pw.chromium.launch(args=["--no-sandbox"])
             try:
-                context = browser.new_context(viewport={"width": 900, "height": 700})
+                context = browser.new_context(viewport={"width": 1040, "height": 820}, device_scale_factor=2)
                 if cookie_value:
                     context.add_cookies([{"name": "qbot_session", "value": cookie_value,
                                            "url": "http://127.0.0.1:%d" % PORT}])
