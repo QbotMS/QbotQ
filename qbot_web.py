@@ -2504,7 +2504,9 @@ def _rain_summary(windows):
 def _build_report_email_html(data, has_map, has_chart):
     """Ladny, uproszczony raport - sekcje jedna pod druga (tabelowy layout HTML,
     dziala w kazdym kliencie poczty). Kolejnosc: hero -> start/czas -> ostrzezenia ->
-    mapa -> pogoda -> profil -> nawierzchnia -> przewyzszenia -> strategia -> POI."""
+    mapa -> pogoda -> profil -> nawierzchnia -> przewyzszenia -> strategia -> POI.
+    Wszystkie naglowki sekcji CZARNE (INK) - spojnosc; jeden font-size na tekst tresci,
+    jeden na tekst pomocniczy/meta."""
     r = data.get("route", {}) or {}
     st = data.get("start", {}) or {}
     tm = data.get("time", {}) or {}
@@ -2522,13 +2524,15 @@ def _build_report_email_html(data, has_map, has_chart):
     MUTED = "#7a838c"
     INK = "#1c2024"
     INK2 = "#41484f"
+    SZ = 14      # tekst tresci
+    SZ_M = 12.5  # tekst pomocniczy / meta
 
-    def SEC(text, color=MUTED):
+    def SEC(text):
         return ('<div style="font-family:%s;font-size:12px;font-weight:700;text-transform:uppercase;'
                 'letter-spacing:.08em;color:%s;margin:26px 0 10px;padding-top:18px;'
-                'border-top:1px solid %s">%s</div>') % (FONT, color, LINE, _esc(text))
+                'border-top:1px solid %s">%s</div>') % (FONT, INK, LINE, _esc(text))
 
-    def TXT(html, size=14, color=INK2, extra=""):
+    def TXT(html, size=SZ, color=INK2, extra=""):
         return '<p style="margin:0 0 6px;font-family:%s;font-size:%spx;color:%s;%s">%s</p>' % (
             FONT, size, color, extra, html)
 
@@ -2569,15 +2573,24 @@ def _build_report_email_html(data, has_map, has_chart):
     spd = (" &middot; %s km/h" % tm.get("speed_net_kmh")) if tm.get("speed_net_kmh") else ""
     p.append(TXT("w ruchu <b>%s</b> &middot; calkowity <b>%s</b>%s" % (
         _fmt_h(tm.get("moving_h")), _fmt_h(tm.get("total_h")), spd)))
+    finish = None
+    try:
+        from datetime import datetime as _dt, timedelta as _td
+        finish = (_dt.strptime(st.get("time") or "10:00", "%H:%M") +
+                  _td(hours=float(tm.get("total_h") or 0))).strftime("%H:%M")
+    except Exception:
+        finish = None
+    if finish:
+        p.append(TXT("odjazd <b>%s</b> &rarr; przyjazd ok. <b>%s</b>" % (_esc(st.get("time") or ""), finish)))
 
     if alerts:
         _SEV_COLOR = {"NO-GO": "#c2452f", "ALARM": "#e07b1a", "FLAGA": "#e0a72e"}
-        p.append(SEC("Ostrzezenia", color="#b0402c"))
+        p.append(SEC("Ostrzezenia"))
         for a in alerts:
             col = _SEV_COLOR.get(a.get("severity"), "#b0402c")
             p.append('<div style="font-family:%s;border-left:4px solid %s;background:#fff6f3;'
                       'border-radius:0 8px 8px 0;padding:8px 12px;margin:0 0 8px;color:%s;'
-                      'font-size:13.5px">%s</div>' % (FONT, col, INK2, _esc(_alert_line(a))))
+                      'font-size:%spx">%s</div>' % (FONT, col, INK2, SZ, _esc(_alert_line(a))))
 
     if has_map:
         p.append(SEC("Mapa"))
@@ -2604,16 +2617,16 @@ def _build_report_email_html(data, has_map, has_chart):
     for c in by_cat:
         col = _SCAT_COLOR.get(c.get("k"), "#999")
         lab = _SCAT_LABEL.get(c.get("k"), "kat. %s" % c.get("k"))
-        p.append('<div style="font-family:%s;margin:0 0 5px;color:%s;font-size:13.5px">'
+        p.append('<div style="font-family:%s;margin:0 0 5px;color:%s;font-size:%spx">'
                   '<span style="display:inline-block;width:11px;height:11px;background:%s;'
                   'border-radius:3px;margin-right:8px;vertical-align:middle"></span>'
-                  '%s: <b>%s km</b> (%s%%)</div>' % (FONT, INK2, col, _esc(lab), c.get("km"), c.get("pct")))
+                  '%s: <b>%s km</b> (%s%%)</div>' % (FONT, INK2, SZ, col, _esc(lab), c.get("km"), c.get("pct")))
     risk = surf.get("risk") or []
     if risk:
         p.append(TXT("<b>Odcinki ryzykowne:</b>", extra="margin-top:8px"))
         for rr in risk:
             p.append(TXT("km %s&ndash;%s (%s km): %s" % (
-                rr.get("a"), rr.get("b"), rr.get("km"), _esc(rr.get("comment") or rr.get("reason") or "")), size=13.5))
+                rr.get("a"), rr.get("b"), rr.get("km"), _esc(rr.get("comment") or rr.get("reason") or "")), size=SZ_M))
 
     p.append(SEC("Przewyzszenia"))
     asc = climbs.get("ascent_m")
@@ -2624,17 +2637,17 @@ def _build_report_email_html(data, has_map, has_chart):
     if clist:
         for x in clist:
             p.append('<div style="font-family:%s;background:#fff;border:1px solid %s;border-radius:8px;'
-                      'padding:8px 12px;margin:0 0 6px;font-size:13px;color:%s">'
+                      'padding:8px 12px;margin:0 0 6px;font-size:%spx;color:%s">'
                       '#%s &middot; km %s&ndash;%s &middot; %s m &middot; +%s m &middot; '
                       '\u015br %s%% / max %s%% &middot; %s</div>' % (
-                          FONT, LINE, INK2, x.get("i"), x.get("a_km"), x.get("b_km"),
+                          FONT, LINE, SZ_M, INK2, x.get("i"), x.get("a_km"), x.get("b_km"),
                           round(x.get("length_m") or 0), round(x.get("gain_m") or 0),
                           x.get("avg_pct"), x.get("max_pct"), _esc(x.get("severity") or "")))
     else:
         p.append(TXT("Trasa plaska &mdash; brak wydzielonych podjazdow."))
 
+    p.append(SEC("Strategia jazdy"))
     if strat.get("calosc") or strat.get("etapy"):
-        p.append(SEC("Strategia jazdy"))
         if strat.get("calosc"):
             p.append(TXT(_esc(strat["calosc"]), extra="margin-bottom:12px"))
         for i, e in enumerate(strat.get("etapy") or [], 1):
@@ -2645,21 +2658,20 @@ def _build_report_email_html(data, has_map, has_chart):
             p.append('<div style="font-family:%s;font-weight:700;color:%s;margin-bottom:3px">%s%s</div>' % (
                 FONT, INK, _esc(tytul), (" &middot; km " + _esc(zakres)) if zakres else ""))
             if e.get("opis"):
-                p.append('<div style="font-family:%s;color:%s;font-size:13.5px;margin-bottom:4px">%s</div>' % (
-                    FONT, INK2, _esc(e["opis"])))
+                p.append('<div style="font-family:%s;color:%s;font-size:%spx;margin-bottom:4px">%s</div>' % (
+                    FONT, INK2, SZ_M, _esc(e["opis"])))
             bits = []
             if e.get("moc"):
-                bits.append("moc: " + str(e["moc"]))
+                bits.append("moc: " + _esc(str(e["moc"])))
             if e.get("zywienie"):
-                bits.append("zywienie: " + str(e["zywienie"]))
+                bits.append("zywienie: " + _esc(str(e["zywienie"])))
             if e.get("pojenie"):
-                bits.append("pojenie: " + str(e["pojenie"]))
+                bits.append("pojenie: " + _esc(str(e["pojenie"])))
             if bits:
-                p.append('<div style="font-family:%s;color:%s;font-size:12px">%s</div>' % (
-                    FONT, MUTED, _esc(" &middot; ".join(bits))))
+                p.append('<div style="font-family:%s;color:%s;font-size:%spx">%s</div>' % (
+                    FONT, MUTED, SZ_M, " &middot; ".join(bits)))
             p.append('</div>')
     else:
-        p.append(SEC("Strategia jazdy"))
         p.append(TXT("Strategia nie wygenerowala sie dla tego raportu (chwilowy blad LLM) "
                       "&mdash; wygeneruj raport ponownie, jesli jest potrzebna.", color=MUTED))
 
@@ -2676,7 +2688,7 @@ def _build_report_email_html(data, has_map, has_chart):
                     ("km %.1f" % pk["km"]) if pk.get("km") is not None else None,
                     pk.get("miejscowosc"), pk.get("hours")] if x]
                 p.append(TXT("<b>%s</b> &middot; %s" % (
-                    _esc(pk.get("name") or "POI"), _esc(" \u00b7 ".join(bits))), size=13.5))
+                    _esc(pk.get("name") or "POI"), _esc(" \u00b7 ".join(bits))), size=SZ_M))
     if attractions:
         p.append(TXT("<b>Atrakcje:</b>", extra="margin-top:10px"))
         for a in attractions:
@@ -2687,7 +2699,7 @@ def _build_report_email_html(data, has_map, has_chart):
                 line += " (%s)" % _esc(" \u00b7 ".join(bits))
             if a.get("desc"):
                 line += " &mdash; %s" % _esc(a["desc"])
-            p.append(TXT(line, size=13.5))
+            p.append(TXT(line, size=SZ_M))
 
     p.append('<p style="font-family:%s;margin:24px 0 4px;color:%s;font-size:11.5px;'
               'border-top:1px solid %s;padding-top:12px">W zalaczniku plik GPX trasy '
