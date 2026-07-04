@@ -1306,3 +1306,42 @@ trasy -> Generuj -> klik zakladki "Udostepnij" -> wpisanie maila -> klik "Wyslij
 -> potwierdzenie "Wyslano na ...", zero bledow JS w konsoli. Tresc maila zweryfikowana
 programowo: obecne wszystkie 3 kafle, sekcja Przewyzszenia, linijka Opady, Strategia,
 POI, 72 wystapienia font-family (spojna czcionka).
+
+
+## 2026-07-04 (4) — Poprawki po 2. probce maila: escaping, kolory, czas przyjazdu, % nachylenia
+
+**Bug: podwojne escapowanie "&middot;"** w linii moc/zywienie/pojenie strategii (email) -
+`_esc(" &middot; ".join(bits))` zamienialo `&` na `&amp;`, wiec w mailu bylo widac
+literalny tekst "&middot;" zamiast kropki. Naprawa: escapowac TYLKO pojedyncze elementy
+PRZED join, nie caly juz-zbudowany string z encja HTML w srodku.
+
+**Kolory naglowkow sekcji ujednolicone na czarny (INK)** - wczesniej SEC() mial domyslnie
+szary (MUTED), a naglowek "Ostrzezenia" specjalnie czerwony -> wygladalo niespojnie.
+Teraz WSZYSTKIE naglowki sekcji (Start i czas / Ostrzezenia / Mapa / Pogoda / Profil /
+Nawierzchnia / Przewyzszenia / Strategia / POI) sa czarne; kolor ostrzegawczy zostaje
+tylko na samych kartach alertow (border-left + tlo), nie na tekscie naglowka.
+
+**Rozmiary czcionek skonsolidowane** do 8 celowych wartosci (bylo wiecej przypadkowych
+"prawie takich samych" rozmiarow: 13/13.5 itp.) - kazdy rozmiar ma jedna, jasna role:
+eyebrow 10.5 / stat-label 9.5 / naglowek sekcji 12 / meta (SZ_M) 12.5 / tresc (SZ) 14 /
+stat-value 19 / tytul 22 / stopka 11.5.
+
+**Godzina przyjazdu przeniesiona do "Start i czas"**: nowa linia "odjazd HH:MM -> przyjazd
+ok. HH:MM" (liczona z `start.time` + `time.total_h`, ten sam wzor co `_finish` w
+`_report_prose`). Wczesniej ta informacja byla tylko w interaktywnej appce (hero, sub pod
+"Czas (z postojami)"), w mailu jej brakowalo.
+
+**% nachylenia nad wykresami w zakladce Przewyzszenia** (raport-render.js,
+`climbProfileSVG`): etykieta segmentu pokazywala samo `Math.round(gg)` bez znaku - np.
+"8" zamiast "8%". Naprawione: `Math.round(gg)+'%'`.
+
+**Sprawdzone i NIE jest bledem:** "zapisany raport gubi tresci LLM po odswiezeniu" -
+zweryfikowano programowo (fresh generacja vs pozniejszy fetch tego samego snapshotu):
+`details` dict identyczny 1:1 (strategia, pogoda.ogolne/etapy, sprzet.clothing - wszystko
+zgodne). Zapis/odczyt snapshotu dziala poprawnie. Prawdopodobne wyjasnienie: LLM w
+`_report_prose` bywa zawodny (2 wywolania, kazde moze sie nie udac) - jesli KONKRETNA
+generacja nie dostala strategii/prozy pogodowej, TA WERSJA zostaje zapisana pusta w tych
+polach i przy pozniejszym wczytaniu (w tym autoload po odswiezeniu) widac ten sam brak -
+to nie jest utrata przy zapisie/odczycie, tylko odziedziczony stan z momentu generowania.
+Do potwierdzenia z uzytkownikiem: czy twardy refresh/nowe okno dalej to pokazuje (mozliwe
+tez, ze obserwacja byla na starej wersji z cache Cloudflare, jak wczesniej w tej sesji).
