@@ -1387,7 +1387,7 @@ def _load_gear_catalog():
 def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, total_h,
                   peak, weather_overall, weather_stages, risks,
                   forma, climbs, surface_blocks, fuel, resupply, gear, alerty,
-                  opony_opcje, nawierzchnia_udzial):
+                  opony_opcje, nawierzchnia_udzial, opady_historia=None):
     """Albert (LLM) - proza/rekomendacje. Liczby tylko z danych. DWA wywolania:
     (1) pogoda+ryzyka, (2) plan (strategia+ubior+opony) - kazde z wlasnym budzetem,
     bo gpt-5* liczy reasoning w max_completion_tokens i jeden wielki kontrakt sie nie miesci.
@@ -1407,11 +1407,25 @@ def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, 
         "pogoda_ogolne: DOKLADNIE 2 stringi. 1 = zachmurzenie/naslonecznienie (+ deszcz). "
         "2 = temperatura (odczuwalna + WBGT) i wiatr (zakres m/s, czolowy/z plecow). Po 1 zdaniu.\n"
         "pogoda_etapy: po JEDNYM stringu na kazdy etap z weather_stages, TA SAMA KOLEJNOSC, 1-2 zdania.\n"
-        "komentarze_ryzyka: po JEDNYM stringu do KAZDEGO odcinka z odcinki_ryzyka (ta sama kolejnosc): "
-        "czego sie spodziewac (tagi OSM) + krotka rada. Brak odcinkow -> []."
+        "komentarze_ryzyka: po JEDNYM stringu do KAZDEGO odcinka z odcinki_ryzyka (ta sama kolejnosc). "
+        "Kazdy odcinek ma pole osm (tagi: highway/tracktype/surface/coverage_status) ORAZ pole reason "
+        "(uzasadnienie kategorii - dla odcinkow bez tagu OSM moze zawierac wnioskowanie z otoczenia: "
+        "las/pole/otwarta przestrzen, ryzyko piachu wg WorldCover). WYWNIOSKUJ z WSZYSTKICH dostepnych "
+        "sygnalow naraz (nie tylko tagow) co to realnie oznacza dla jazdy - np. otwarty teren + susza + "
+        "piaszczysty kontekst sugeruje sypki piach, las + wilgoc sugeruje twardsze, korzenie/blotniste "
+        "miejsca. Pisz naturalnym zdaniem wniosek + krotka rade, NIE wyliczaj mechanicznie zrodel "
+        "(nie pisz \"wg tagu\" / \"wg WorldCover\"). Jesli sygnalow brak lub sa niejednoznaczne, badz "
+        "ostrozny w sformulowaniu. DODATKOWO: jesli w danych jest pole opady_przed_jazda "
+        "(ocena: susza/mokro/normalnie, total_mm, last2_mm, stale), wywnioskuj jego wplyw na TE "
+        "KONKRETNE odcinki - susza zwykle oznacza bardziej sypki/luzny piach na piaszczystych/"
+        "otwartych odcinkach, niedawne intensywne opady (mokro) zwykle oznaczaja rozmokly grunt/"
+        "blotniste koleiny na gruntowych/lesnych odcinkach; brak wplywu na nawierzchnie utwardzona. "
+        "Jesli stale=true, zaznacz ze to stan na dzis i moze sie zmienic do wyjazdu. Jesli "
+        "opady_przed_jazda jest null lub ocena=normalnie, pomin ten watek. Brak odcinkow -> []."
     )
     pay1 = {"trasa": _trasa, "peak_wbgt": peak, "pogoda_ogolem": weather_overall,
-            "weather_stages": weather_stages, "odcinki_ryzyka": risks}
+            "weather_stages": weather_stages, "odcinki_ryzyka": risks,
+            "opady_przed_jazda": opady_historia}
     try:
         o1 = qgpt_json(json.dumps(pay1, ensure_ascii=False, default=str),
                        system=sys1, max_tokens=1600, temperature=0.3)
@@ -1900,6 +1914,48 @@ def push_karoo(route_id: str, date: str | None = None, time: str = "10:00"):
             "url": "https://dashboard.hammerhead.io/"}
 
 
+def _fetch_precip_history(lat, lon, ride_date_str, days_back=10):
+    """Suma opadow z okresu PRZED dniem jazdy (Open-Meteo archive/ERA5 - to samo API co
+    juz uzywane w tools/rwgps/ride_verdict.py do analizy zrealizowanych przejazdow).
+    Jesli jazda jest zaplanowana w przyszlosci, okno konczy sie 'dzisiaj' (nie da sie
+    znac przyszlych opadow) - wtedy stale=True (stan moze sie zmienic do wyjazdu).
+    Zwraca None przy braku danych/bledzie sieci - wtedy czynnik jest po prostu pomijany."""
+    from datetime import date as _date, timedelta as _td
+    try:
+        ride_d = _date.fromisoformat(ride_date_str)
+    except Exception:
+        return None
+    today = _date.today()
+    end_d = min(ride_d - _td(days=1), today)
+    start_d = end_d - _td(days=days_back - 1)
+    if start_d > end_d:
+        return None
+    stale = ride_d > today
+    url = ("https://archive-api.open-meteo.com/v1/archive?latitude=%.4f&longitude=%.4f"
+           "&start_date=%s&end_date=%s&daily=precipitation_sum&timezone=auto") % (
+               lat, lon, start_d.isoformat(), end_d.isoformat())
+    try:
+        with urllib.request.urlopen(url, timeout=12) as r:
+            j = json.loads(r.read().decode("utf-8"))
+        vals = (j.get("daily") or {}).get("precipitation_sum") or []
+        vals = [float(v) for v in vals if v is not None]
+        if not vals:
+            return None
+        total = round(sum(vals), 1)
+        last2 = round(sum(vals[-2:]), 1) if len(vals) >= 2 else total
+        if total < 3:
+            ocena = "susza"
+        elif last2 > 8 or total > 20:
+            ocena = "mokro"
+        else:
+            ocena = "normalnie"
+        return {"total_mm": total, "days": len(vals), "last2_mm": last2,
+                "ocena": ocena, "as_of": end_d.isoformat(), "stale": stale}
+    except Exception as _e:
+        print("_fetch_precip_history error:", _e)
+        return None
+
+
 def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_stop_min=0):
     """Buduje pelny blok DATA (route/start/time/chart) dla jednej trasy."""
     base = conn.execute(
@@ -2061,13 +2117,21 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
                 "coverage_status": _uniq("coverage_status"), "explanation": expl}
     surface_risk = []
     for _s in surface_cat:
-        if _s["k"] != 5:
+        if _s["k"] not in (4, 5):
             continue
         _len = round(_s["b"] - _s["a"], 2)
         if _len < 0.3:
             continue
-        surface_risk.append({"a": _s["a"], "b": _s["b"], "km": _len,
+        surface_risk.append({"a": _s["a"], "b": _s["b"], "km": _len, "k": _s["k"],
                              "reason": _s.get("reason"), "osm": _risk_osm(_s["a"], _s["b"])})
+
+    # --- czynnik pogodowy dla najgorszych odcinkow (kat.4+5): susza/opady PRZED jazda ---
+    # Kategoria nawierzchni NIE jest zmieniana - to tylko dodatkowy kontekst do komentarzy
+    # LLM i osobny alert terenowy (decyzja uzytkownika 2026-07-04).
+    _risk45_km = sum(x["km"] for x in surface_risk)
+    precip_history = None
+    if _risk45_km >= 2.0 and latlon:
+        precip_history = _fetch_precip_history(latlon[0], latlon[1], date_str, days_back=10)
 
     _cl = conn.execute(
         "SELECT event_index, start_m, end_m, length_m, elevation_gain_m, avg_gradient_pct, "
@@ -2250,7 +2314,8 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
             weather_overall=weather_overall, weather_stages=stages, risks=surface_risk,
             forma=_forma_llm, climbs=_climbs_slim, surface_blocks=_surf_blocks,
             fuel=_fuel, resupply=_resupply, gear=_gear, alerty=_alerty,
-            opony_opcje=_tire_options, nawierzchnia_udzial=_naw_udzial)
+            opony_opcje=_tire_options, nawierzchnia_udzial=_naw_udzial,
+            opady_historia=precip_history)
     except Exception:
         _og = _et = _rc2 = []
         _strat = _ubior = _opony = None
@@ -2330,6 +2395,24 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
         _r["comment"] = (_rc[_i] if _i < len(_rc) and _rc[_i]
                          else (_r.get("reason") or "Odcinek oznaczony jako ryzykowny."))
 
+    # --- deterministyczny alert terenowy (susza/opady przed jazda, kat.4+5) ---
+    _alerts_out = list(m.get("alerts") or [])
+    if precip_history and _risk45_km >= 2.0 and precip_history.get("ocena") in ("susza", "mokro"):
+        _a_km = min(x["a"] for x in surface_risk)
+        _b_km = max(x["b"] for x in surface_risk)
+        if precip_history["ocena"] == "susza":
+            _opis = ("Susza (~%s mm opadow w %s dni przed jazda) - odcinki trudne/ryzykowne "
+                      "(lacznie ~%s km) moga byc bardziej sypkie/luzne (piach)." % (
+                          precip_history["total_mm"], precip_history["days"], round(_risk45_km, 1)))
+        else:
+            _opis = ("Niedawne opady (~%s mm w ostatnich 2 dniach przed jazda) - odcinki trudne/"
+                      "ryzykowne (lacznie ~%s km) moga byc rozmokle/blotniste." % (
+                          precip_history["last2_mm"], round(_risk45_km, 1)))
+        if precip_history.get("stale"):
+            _opis += " Stan na %s - moze sie zmienic do wyjazdu." % precip_history["as_of"]
+        _alerts_out.append({"typ": "nawierzchnia", "severity": "FLAGA",
+                             "km_od": _a_km, "km_do": _b_km, "opis": _opis})
+
     return {
         "route": {"id": route_id, "name": name, "distance_km": dist_km,
                   "ascent_m": ascent, "source": "RWGPS GPX",
@@ -2341,7 +2424,7 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
                  "stops_count": stops_cnt, "long_stops_min": long_min_val, "accuracy_pct": 15,
                  "speed_net_kmh": speed_net_kmh, "speed_gross_kmh": speed_gross_kmh},
         "weather_head": weather_head,
-        "alerts": m.get("alerts") or [],
+        "alerts": _alerts_out,
         "details": details,
         "chart": {"km_total": km_total, "ele": ele, "ele_min": emin, "ele_max": emax,
                   "surface_cat": surface_cat, "weather": weather, "eta": eta, "wind": wind},
@@ -2431,7 +2514,7 @@ def report_snapshot(snapshot_id: int):
 
 _SCAT_LABEL = {1: "Asfalt", 2: "Dobry gravel/szuter", 3: "Zwykly gravel", 4: "Trudna/wolna", 5: "Ryzyko"}
 _SCAT_COLOR = {1: "#000000", 2: "#2e7d32", 3: "#8bc34a", 4: "#e07b1a", 5: "#c2452f"}
-_ALERT_TYP_LABEL = {"upa\u0142": "UPA\u0141", "upal": "UPA\u0141", "deszcz": "DESZCZ", "burza": "BURZA", "zimno": "ZIMNO"}
+_ALERT_TYP_LABEL = {"upa\u0142": "UPA\u0141", "upal": "UPA\u0141", "deszcz": "DESZCZ", "burza": "BURZA", "zimno": "ZIMNO", "nawierzchnia": "NAWIERZCHNIA"}
 _EMAIL_RE = _re_email.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -2457,7 +2540,9 @@ def _alert_line(a):
     sev = a.get("severity") or ""
     km = "km %s\u2013%s" % (a.get("km_od"), a.get("km_do"))
     detail = ""
-    if t in ("upa\u0142", "upal"):
+    if t == "nawierzchnia":
+        detail = a.get("opis") or ""
+    elif t in ("upa\u0142", "upal"):
         if a.get("wbgt_max") is not None:
             detail = "WBGT do %s\u00b0C" % a["wbgt_max"]
         if a.get("powod"):
