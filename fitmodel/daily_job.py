@@ -4,7 +4,8 @@ from __future__ import annotations
 
 Uruchamia po kolei, z ODPORNOSCIA WARSTWOWA (awaria jednego kroku nie blokuje
 reszty -- spec sek. 1): ingest nowych FIT -> resolver (fitmodel_daily) ->
-glikogen -> tagowanie nawierzchni (+kalibracja) -> ride_buckets -> benchmark Xert.
+CP/W' z krzywej mocy -> glikogen -> tagowanie nawierzchni (+kalibracja) ->
+ride_buckets -> benchmark Xert.
 
 Kazdy krok ma wlasny try/except i raport czasu. Jedno wspolne polaczenie DB.
 Wpiety w cron (codziennie). Log: /opt/qbot/logs/fitmodel_daily.log
@@ -53,6 +54,12 @@ def main() -> None:
             return run_weekly_job(conn)
         _step("ftp_resolver", _resolver)
 
+        # 2b. CP/W' z krzywej mocy (Garmin MMP, training_sessions) -> fitmodel_daily
+        def _cp_wprime():
+            from fitmodel.cp_wprime import run_daily
+            return run_daily(conn, dry_run=False)
+        _step("cp_wprime", _cp_wprime)
+
         # 3. Glikogen -> fitmodel_daily
         def _glyco():
             from fitmodel.glycogen import update_glycogen_in_daily
@@ -75,7 +82,7 @@ def main() -> None:
             return {"nowe_jazdy": len(res)}
         _step("ride_buckets", _buckets)
 
-        # 6. Benchmark Xert (UPSERT biezacy tydzien)
+        # 6. Benchmark Xert (UPSERT biezacy tydzien; FTP vs TP + CP vs LTP + W' vs HIE)
         def _xert():
             from fitmodel.xert_bench import run_weekly_benchmark
             return run_weekly_benchmark(conn, dry_run=False)
