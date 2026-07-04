@@ -1144,3 +1144,47 @@ działa na `route_artifacts`. Dlatego dezaktywacja starych wierszy niczego nie p
 Powiązane: ten sam commit `84c543f` dodał deterministyczny wybór najnowszej wersji w qbot_web.py oraz
 funkcje raportu web (chip pogoda/wiatr, wersja trasy, mapa B/W + przyciski, kolory, wchłanianie
 odcinków <300 m) — szczegóły w RAPORT_WEB.md; zmiana store w ROUTE_STORE.md (2a).
+
+
+## 2026-07-04 — Archiwum wygenerowanych raportow trasy (persist + historia)
+
+Objaw: raport trasy liczyl sie tylko w pamieci przegladarki - odswiezenie strony = utrata
+wyniku, trzeba bylo klikac Generuj od nowa za kazdym razem.
+
+Decyzja: kazde wygenerowanie `/api/report/data` zapisuje pelny blok DATA do nowej tabeli
+`qbot_v2.route_report_snapshots` (data/godzina zapisu + parametry formularza + dane).
+Retencja: 4 najnowsze NA TRASE (route_id) - biezacy + 3 archiwalne: starsze kasowane
+automatycznie przy kazdym nowym zapisie (`_save_report_snapshot` w qbot_web.py).
+
+**DECYZJA (dane, nie gotowy HTML):** archiwizujemy surowe dane raportu, nie wyrenderowana
+strone. Konsekwencja: gdy w przyszlosci zmieni sie wyglad (raport-render.js/raport.css),
+stare zapisane raporty tez skorzystaja z nowego wygladu - "zamrozone" sa tylko liczby
+z momentu generowania, nie prezentacja.
+
+**DECYZJA (zakres historii):** archiwum osobne PER TRASA (nie jedna wspolna lista globalna) -
+uzytkownik jednoznacznie wybral ten wariant.
+
+Nowe endpointy (qbot_web.py):
+- `GET /api/report/history?route_id=` - lista ostatnich zapisow danej trasy (id, data/godzina
+  jazdy, dlugie przerwy, kiedy wygenerowano), najnowszy pierwszy.
+- `GET /api/report/snapshot/{id}` - dokladnie zapisany blok DATA (bez liczenia od nowa).
+
+Front (raport-trasy.html, poza repo):
+- Pasek "Historia" pod paskiem generatora (`#f-history`, styl `.hist-bar`/`.hist-chip` w
+  raport.css) - klik na date wczytuje zapisany raport przez `/api/report/snapshot/{id}`.
+- Wybor trasy zapamietywany w `localStorage` (`qbot_report_last_route`). Po odswiezeniu
+  strony i po kazdej zmianie trasy w dropdownie: automatyczne wczytanie NAJNOWSZEGO zapisu
+  tej trasy (bez klikania Generuj) - pola formularza (data/godzina/przerwy) odtwarzane z
+  zapisu. Klikniecie Generuj zawsze liczy swiezy raport i dopisuje go do archiwum.
+- raport.css bump `?v=2026070401` (nowe klasy .hist-*); raport-render.js BEZ ZMIAN - ten sam
+  `window.renderReport(data, mount)` renderuje zarowno swiezo policzone dane jak i zapisany
+  snapshot.
+
+**Dowod na zywo:** trasa 55957534 - 5x wygenerowano z roznymi datami, `GET .../history`
+zwraca stale dokladnie 4 wpisy (najstarsze automatycznie odpadaja); `GET .../snapshot/{id}`
+zwraca identyczny blok DATA co przy oryginalnym generowaniu (nazwa trasy, data startu zgodne).
+
+**Dlug techniczny:** brak sprzatania osieroconych snapshotow po skasowaniu trasy z routes
+store (route_report_snapshots nie ma FK do route_base, klucz to tekstowy route_id) - do
+rozwazenia przy okazji `route_delete`/`route_store_purge`, jesli kiedys bedzie to problemem
+(malo prawdopodobne przy 4 wierszach/trase).

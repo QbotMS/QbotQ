@@ -115,6 +115,21 @@ STYL -> raport.css, WYBOR -> raport-trasy.html. Stary przeplyw base64-mapowy i
 korupcja przez heredoc: NIEAKTUALNE.
 
 
+## Archiwum raportow (historia, 2026-07-04)
+Kazde wygenerowanie `/api/report/data` zapisuje pelny blok DATA do
+`qbot_v2.route_report_snapshots` (tabela: sql/route_report_snapshots_v1.sql).
+Retencja: 4 najnowsze NA TRASE (route_id), starsze kasowane automatycznie
+(`_save_report_snapshot` w qbot_web.py). Zapisujemy DANE, nie wyrenderowany HTML -
+zmiana wygladu (raport-render.js/raport.css) automatycznie obejmuje tez stare zapisy.
+
+- `GET /api/report/history?route_id=` -> lista ostatnich zapisow (id + kiedy + parametry).
+- `GET /api/report/snapshot/{id}` -> dokladny zapisany blok DATA (bez liczenia od nowa).
+- Front (raport-trasy.html): pasek "Historia" (`#f-history`, styl `.hist-bar`/`.hist-chip`
+  w raport.css) + `localStorage.qbot_report_last_route` - po wejsciu na strone / zmianie
+  trasy w dropdownie automatycznie doladowuje NAJNOWSZY zapis danej trasy (bez klikania
+  Generuj). Klik Generuj zawsze liczy swiezy raport i dopisuje do archiwum.
+- Szczegoly decyzji: docs/DECISIONS.md, wpis 2026-07-04.
+
 ## Kwadraty (StatsHunters) — warstwa kafli na mapie (2026-07-03)
 Nakladka explorer-tiles (z14, jak VeloViewer/Squadrats): ktore kwadraty trasa
 zdobywa (nowe), ktore juz masz, plus otoczka kontekstu.
