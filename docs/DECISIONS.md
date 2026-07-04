@@ -1259,3 +1259,50 @@ same co przy Generuj.
 kiedys mialaby dzialac masowo/w tle, warto rozwazyc pool przegladarek zamiast odpalania
 nowej za kazdym razem. Brak retry przy niepowodzeniu zrzutu (map_png/chart_png=None) -
 mail i tak leci, tylko bez obrazka/ow.
+
+
+## 2026-07-04 (3) — Zakladka "Udostepnij", poprawki maila, zoom mapy, opady w mm
+
+Feedback po 2 probkach maila -> lista poprawek:
+
+**Wysylka mailem oparta o snapshot_id (nie route_id+parametry):** `POST /api/report/send-email`
+zmieniony na `?snapshot_id=&to=`. Powod pytania uzytkownika "skoro tresc jest w raporcie,
+czemu problem z przeniesieniem do maila" - odpowiedz: NIE MA problemu, mail bierze
+DOKLADNIE ten sam zapisany raport co jest na ekranie (zero ponownego liczenia, zero
+drugiego strzalu do LLM). `/api/report/data` i `/api/report/snapshot/{id}` teraz
+dokladaja `data.snapshot_id` do odpowiedzi - front zna go bez dodatkowych zapytan.
+
+**Nowa zakladka "Udostepnij"** (raport-render.js, MULTI array, po "Sprzet"): pole e-mail +
+"Wyslij mailem" (woła `/api/report/send-email?snapshot_id=...`), 2 przyciski GPX (z POI /
+bez), "Wyslij na Karoo". Usuniety stary pasek pod mapa (`#r-dl`, GPX+Karoo) i stary wiersz
+w formularzu raport-trasy.html (`.row-mail`) - wszystko w jednym miejscu, zero duplikacji.
+
+**Email - poprawki tresci:**
+- Kafle hero: Dystans / Podjazdy / **Czas w ruchu** (bylo: Dystans / Podjazdy / Zjazdy -
+  dwa kafle "przewyzszenie" mylily, brakowalo czasu).
+- Nowa sekcja **Przewyzszenia** (podjazdy/zjazdy/liczba + lista, jak w interaktywnym
+  raporcie) - wczesniej brakowalo jej calkowicie w mailu.
+- **Strategia jazdy**: gdy LLM nie wygenerowal (zdarza sie, dwa wywolania LLM w
+  `_report_prose` moga zawiesc) - czytelny komunikat zamiast cichego braku sekcji.
+- **Czcionki**: dodano `font-family` na KAZDYM elemencie (wczesniej tabelka z kaflami
+  hero nie miala wymuszonej czcionki -> w czesci klientow poczty pokazywala sie Times
+  New Roman zamiast reszty tekstu - klasyczna pulapka email HTML, tabele/td nie
+  dziedzicza fontu tak jak divy).
+- **Opady w mm** (nie tylko %): nowa funkcja `_rain_summary(windows)` - deterministyczna
+  (Python, NIE LLM - zgodnie z regula "liczby tylko z kodu"), bierze najgorsze okno
+  30-min z `details.weather.windows` (`opad_mm`), pokazuje "Opady: do X mm (~Y%, km A-B)".
+  Ten sam mechanizm (`rainSummary()`) dodany do interaktywnej zakladki Pogoda
+  (raport-render.js) - dotad NIGDZIE (ani appka, ani mail) nie pokazywalo mm, tylko %.
+
+**Zoom mapy (jeden kod, dwa miejsca - appka i mail-print, bo raport-print.html uzywa
+tego samego raport-render.js):** `L.map(...)` dostal `zoomSnap:0.25, zoomDelta:0.5`
+(bylo domyslne 1 - skok +/- byl za mocny, cale podwojenie skali za jednym klikiem).
+Padding `fitBounds` zmniejszony z 25px na 12px (trasa lepiej wypelnia okno mapy przy
+wstepnym dopasowaniu). Nie ruszane: `fitKm` (zoom na wybrany odcinek nawierzchni) -
+tam wiekszy padding 30px jest celowy (kontekst wokol odcinka).
+
+**Dowod na zywo:** pelny przeplyw przez Playwright (jak prawdziwy uzytkownik) - wybor
+trasy -> Generuj -> klik zakladki "Udostepnij" -> wpisanie maila -> klik "Wyslij mailem"
+-> potwierdzenie "Wyslano na ...", zero bledow JS w konsoli. Tresc maila zweryfikowana
+programowo: obecne wszystkie 3 kafle, sekcja Przewyzszenia, linijka Opady, Strategia,
+POI, 72 wystapienia font-family (spojna czcionka).

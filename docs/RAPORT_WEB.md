@@ -143,6 +143,15 @@ Gmail co poranny raport (`qbot_config`). Playwright/Chromium zainstalowane w
 katalog `/root/.cache` nie jest widoczny dla usera `qbot`). Szczegoly: docs/DECISIONS.md,
 wpis 2026-07-04 (2).
 
+## Zakladka "Udostepnij" + wysylka mailem po snapshot_id (2026-07-04, aktualizacja)
+Wysylka mailem NIE liczy raportu od nowa - `/api/report/send-email?snapshot_id=&to=`
+czyta zapisany `data_json` ze `qbot_v2.route_report_snapshots` i wysyla dokladnie to.
+`/api/report/data` i `/api/report/snapshot/{id}` dokladaja `snapshot_id` do odpowiedzi.
+Zakladka "Udostepnij" (MULTI w raport-render.js, ostatnia po "Sprzet") grupuje: wysylke
+mailem, pobranie GPX (2 warianty) i "Wyslij na Karoo" - wczesniej byly rozrzucone
+(pasek pod mapa + osobny wiersz w formularzu raport-trasy.html), teraz w jednym miejscu.
+Szczegoly: docs/DECISIONS.md, wpis 2026-07-04 (3).
+
 ## Kwadraty (StatsHunters) — warstwa kafli na mapie (2026-07-03)
 Nakladka explorer-tiles (z14, jak VeloViewer/Squadrats): ktore kwadraty trasa
 zdobywa (nowe), ktore juz masz, plus otoczka kontekstu.

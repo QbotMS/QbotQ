@@ -2383,7 +2383,8 @@ def report_data(route_id: str = Query(...), date: str = Query(...),
     conn = _db_conn()
     try:
         data = _build_report_data(conn, route_id, date, time, long_stops, long_stop_min)
-        _save_report_snapshot(conn, route_id, date, time, long_stops, long_stop_min, data)
+        snap_id = _save_report_snapshot(conn, route_id, date, time, long_stops, long_stop_min, data)
+        data["snapshot_id"] = snap_id
         return data
     finally:
         conn.close()
@@ -2420,7 +2421,10 @@ def report_snapshot(snapshot_id: int):
             "WHERE route_report_snapshot_id=%s", (snapshot_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Zapisany raport nie znaleziony")
-        return row["data_json"]
+        out = row["data_json"]
+        if isinstance(out, dict):
+            out["snapshot_id"] = snapshot_id
+        return out
     finally:
         conn.close()
 
@@ -2479,20 +2483,40 @@ def _alert_line(a):
     return "%s (%s, %s)%s" % (lab, sev, km, (": " + detail) if detail else "")
 
 
+def _rain_summary(windows):
+    """Deterministyczna linijka o ilosci opadow (mm) - NIE z LLM, zeby liczby sie zgadzaly."""
+    if not windows:
+        return None
+    best = max(windows, key=lambda w: (w.get("opad_mm") or 0))
+    mm = best.get("opad_mm") or 0
+    if mm <= 0.05:
+        return "Bez istotnych opadow w prognozie."
+    bits = ["do %.1f mm" % mm]
+    if best.get("opad_prob") is not None:
+        bits.append("~%s%%" % best["opad_prob"])
+    if best.get("km_od") is not None and best.get("km_do") is not None:
+        bits.append("km %.0f\u2013%.0f" % (best["km_od"], best["km_do"]))
+    if best.get("okno"):
+        bits.append("ok. %s" % best["okno"])
+    return "Opady: " + ", ".join(bits) + "."
+
+
 def _build_report_email_html(data, has_map, has_chart):
     """Ladny, uproszczony raport - sekcje jedna pod druga (tabelowy layout HTML,
     dziala w kazdym kliencie poczty). Kolejnosc: hero -> start/czas -> ostrzezenia ->
-    mapa -> pogoda -> profil -> nawierzchnia -> strategia jazdy -> POI."""
+    mapa -> pogoda -> profil -> nawierzchnia -> przewyzszenia -> strategia -> POI."""
     r = data.get("route", {}) or {}
     st = data.get("start", {}) or {}
     tm = data.get("time", {}) or {}
     det = data.get("details", {}) or {}
     surf = det.get("surface", {}) or {}
     wea = det.get("weather", {}) or {}
+    climbs = det.get("climbs", {}) or {}
     strat = det.get("strategia") or {}
     poi = det.get("poi") or {}
     alerts = data.get("alerts") or []
 
+    FONT = "-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif"
     ACCENT = "#3f6f9a"
     LINE = "#e3ddd2"
     MUTED = "#7a838c"
@@ -2500,56 +2524,60 @@ def _build_report_email_html(data, has_map, has_chart):
     INK2 = "#41484f"
 
     def SEC(text, color=MUTED):
-        return ('<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;'
-                'color:%s;margin:26px 0 10px;padding-top:18px;border-top:1px solid %s">%s</div>') % (
-                    color, LINE, _esc(text))
+        return ('<div style="font-family:%s;font-size:12px;font-weight:700;text-transform:uppercase;'
+                'letter-spacing:.08em;color:%s;margin:26px 0 10px;padding-top:18px;'
+                'border-top:1px solid %s">%s</div>') % (FONT, color, LINE, _esc(text))
+
+    def TXT(html, size=14, color=INK2, extra=""):
+        return '<p style="margin:0 0 6px;font-family:%s;font-size:%spx;color:%s;%s">%s</p>' % (
+            FONT, size, color, extra, html)
 
     def STAT(value, label):
         return ('<td width="33%%" valign="top" style="background:#ffffff;border:1px solid %s;'
-                'border-radius:10px;padding:12px 8px;text-align:center">'
-                '<div style="font-size:20px;font-weight:750;color:%s;line-height:1.1">%s</div>'
+                'border-radius:10px;padding:12px 8px;text-align:center;font-family:%s">'
+                '<div style="font-size:19px;font-weight:750;color:%s;line-height:1.1;'
+                'font-family:%s">%s</div>'
                 '<div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:%s;'
-                'margin-top:4px">%s</div></td>') % (LINE, INK, value, MUTED, _esc(label))
+                'margin-top:4px;font-family:%s">%s</div></td>') % (
+                    LINE, FONT, INK, FONT, value, MUTED, FONT, _esc(label))
 
     p = []
-    p.append('<div style="background:#f6f2ea;padding:22px 10px;'
-              'font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">')
+    p.append('<div style="background:#f6f2ea;padding:22px 10px;font-family:%s">' % FONT)
     p.append('<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" '
               'style="max-width:640px;margin:0 auto;background:#fffdf8;border-radius:14px;'
-              'border:1px solid %s">' % LINE)
+              'border:1px solid %s;font-family:%s">' % (LINE, FONT))
     p.append('<tr><td style="background:%s;border-radius:14px 14px 0 0;height:6px;'
               'line-height:6px;font-size:0">&nbsp;</td></tr>' % ACCENT)
-    p.append('<tr><td style="padding:26px 30px 6px">')
+    p.append('<tr><td style="padding:26px 30px 6px;font-family:%s">' % FONT)
 
-    p.append('<div style="font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;'
-              'color:%s;margin-bottom:6px">Raport trasy &middot; QBot</div>' % MUTED)
-    p.append('<div style="font-size:23px;font-weight:750;color:%s;margin-bottom:16px">%s</div>' % (
-        INK, _esc(r.get("name") or ("Trasa %s" % r.get("id", "")))))
+    p.append('<div style="font-family:%s;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;'
+              'color:%s;margin-bottom:6px">Raport trasy &middot; QBot</div>' % (FONT, MUTED))
+    p.append('<div style="font-family:%s;font-size:22px;font-weight:750;color:%s;margin-bottom:16px">%s</div>' % (
+        FONT, INK, _esc(r.get("name") or ("Trasa %s" % r.get("id", "")))))
 
     stats = [STAT("%.1f km" % (r.get("distance_km") or 0), "Dystans")]
-    stats.append(STAT(("%s m" % r["ascent_m"]) if r.get("ascent_m") is not None else "?", "Przewyzszenie +"))
-    dsc = (det.get("climbs") or {}).get("descent_m")
-    stats.append(STAT(("%s m" % dsc) if dsc is not None else "?", "Przewyzszenie -"))
-    p.append('<table role="presentation" width="100%%" cellpadding="0" cellspacing="6"><tr>%s</tr></table>' %
-              "".join(stats))
+    stats.append(STAT(("+%s m" % r["ascent_m"]) if r.get("ascent_m") is not None else "?", "Podjazdy"))
+    stats.append(STAT(_fmt_h(tm.get("moving_h")), "Czas w ruchu"))
+    p.append('<table role="presentation" width="100%%" cellpadding="0" cellspacing="6" '
+              'style="font-family:%s"><tr>%s</tr></table>' % (FONT, "".join(stats)))
 
     miejsce = ", ".join([x for x in [st.get("miejscowosc"), st.get("gmina")] if x])
     p.append(SEC("Start i czas"))
-    p.append('<p style="margin:0 0 4px;color:%s">%s, godz. %s%s</p>' % (
-        INK2, _esc(st.get("date") or ""), _esc(st.get("time") or ""),
-        (" &middot; " + _esc(miejsce)) if miejsce else ""))
+    p.append(TXT("%s, godz. %s%s" % (
+        _esc(st.get("date") or ""), _esc(st.get("time") or ""),
+        (" &middot; " + _esc(miejsce)) if miejsce else "")))
     spd = (" &middot; %s km/h" % tm.get("speed_net_kmh")) if tm.get("speed_net_kmh") else ""
-    p.append('<p style="margin:0;color:%s">w ruchu <b>%s</b> &middot; calkowity <b>%s</b>%s</p>' % (
-        INK2, _fmt_h(tm.get("moving_h")), _fmt_h(tm.get("total_h")), spd))
+    p.append(TXT("w ruchu <b>%s</b> &middot; calkowity <b>%s</b>%s" % (
+        _fmt_h(tm.get("moving_h")), _fmt_h(tm.get("total_h")), spd)))
 
     if alerts:
         _SEV_COLOR = {"NO-GO": "#c2452f", "ALARM": "#e07b1a", "FLAGA": "#e0a72e"}
         p.append(SEC("Ostrzezenia", color="#b0402c"))
         for a in alerts:
             col = _SEV_COLOR.get(a.get("severity"), "#b0402c")
-            p.append('<div style="border-left:4px solid %s;background:#fff6f3;'
+            p.append('<div style="font-family:%s;border-left:4px solid %s;background:#fff6f3;'
                       'border-radius:0 8px 8px 0;padding:8px 12px;margin:0 0 8px;color:%s;'
-                      'font-size:13.5px">%s</div>' % (col, INK2, _esc(_alert_line(a))))
+                      'font-size:13.5px">%s</div>' % (FONT, col, INK2, _esc(_alert_line(a))))
 
     if has_map:
         p.append(SEC("Mapa"))
@@ -2557,12 +2585,14 @@ def _build_report_email_html(data, has_map, has_chart):
                   'border-radius:10px;border:1px solid %s;display:block" alt="mapa trasy">' % LINE)
 
     p.append(SEC("Pogoda"))
+    rs = _rain_summary(wea.get("windows"))
+    if rs:
+        p.append(TXT(_esc(rs), extra="font-weight:600"))
     for line in (wea.get("ogolne") or []):
-        p.append('<p style="margin:0 0 6px;color:%s">%s</p>' % (INK2, _esc(line)))
+        p.append(TXT(_esc(line)))
     etapy = wea.get("etapy") or []
     for e in etapy:
-        p.append('<p style="margin:0 0 6px;color:%s"><b style="color:%s">%s:</b> %s</p>' % (
-            INK2, INK, _esc(e.get("naglowek") or ""), _esc(e.get("tekst") or "")))
+        p.append(TXT('<b style="color:%s">%s:</b> %s' % (INK, _esc(e.get("naglowek") or ""), _esc(e.get("tekst") or ""))))
 
     if has_chart:
         p.append(SEC("Profil trasy"))
@@ -2574,31 +2604,49 @@ def _build_report_email_html(data, has_map, has_chart):
     for c in by_cat:
         col = _SCAT_COLOR.get(c.get("k"), "#999")
         lab = _SCAT_LABEL.get(c.get("k"), "kat. %s" % c.get("k"))
-        p.append('<div style="margin:0 0 5px;color:%s;font-size:13.5px">'
+        p.append('<div style="font-family:%s;margin:0 0 5px;color:%s;font-size:13.5px">'
                   '<span style="display:inline-block;width:11px;height:11px;background:%s;'
                   'border-radius:3px;margin-right:8px;vertical-align:middle"></span>'
-                  '%s: <b>%s km</b> (%s%%)</div>' % (INK2, col, _esc(lab), c.get("km"), c.get("pct")))
+                  '%s: <b>%s km</b> (%s%%)</div>' % (FONT, INK2, col, _esc(lab), c.get("km"), c.get("pct")))
     risk = surf.get("risk") or []
     if risk:
-        p.append('<p style="margin:14px 0 6px;color:%s"><b>Odcinki ryzykowne:</b></p>' % INK)
+        p.append(TXT("<b>Odcinki ryzykowne:</b>", extra="margin-top:8px"))
         for rr in risk:
-            p.append('<p style="margin:0 0 6px;color:%s;font-size:13.5px">km %s&ndash;%s (%s km): %s</p>' % (
-                INK2, rr.get("a"), rr.get("b"), rr.get("km"), _esc(rr.get("comment") or rr.get("reason") or "")))
+            p.append(TXT("km %s&ndash;%s (%s km): %s" % (
+                rr.get("a"), rr.get("b"), rr.get("km"), _esc(rr.get("comment") or rr.get("reason") or "")), size=13.5))
+
+    p.append(SEC("Przewyzszenia"))
+    asc = climbs.get("ascent_m")
+    dsc = climbs.get("descent_m")
+    p.append(TXT("Podjazdy <b>+%s m</b> &middot; Zjazdy <b>&minus;%s m</b> &middot; <b>%s</b> podjazdow" % (
+        asc if asc is not None else "?", dsc if dsc is not None else "?", climbs.get("count") or 0)))
+    clist = climbs.get("list") or []
+    if clist:
+        for x in clist:
+            p.append('<div style="font-family:%s;background:#fff;border:1px solid %s;border-radius:8px;'
+                      'padding:8px 12px;margin:0 0 6px;font-size:13px;color:%s">'
+                      '#%s &middot; km %s&ndash;%s &middot; %s m &middot; +%s m &middot; '
+                      '\u015br %s%% / max %s%% &middot; %s</div>' % (
+                          FONT, LINE, INK2, x.get("i"), x.get("a_km"), x.get("b_km"),
+                          round(x.get("length_m") or 0), round(x.get("gain_m") or 0),
+                          x.get("avg_pct"), x.get("max_pct"), _esc(x.get("severity") or "")))
+    else:
+        p.append(TXT("Trasa plaska &mdash; brak wydzielonych podjazdow."))
 
     if strat.get("calosc") or strat.get("etapy"):
         p.append(SEC("Strategia jazdy"))
         if strat.get("calosc"):
-            p.append('<p style="margin:0 0 12px;color:%s">%s</p>' % (INK2, _esc(strat["calosc"])))
+            p.append(TXT(_esc(strat["calosc"]), extra="margin-bottom:12px"))
         for i, e in enumerate(strat.get("etapy") or [], 1):
-            p.append('<div style="background:#fff;border:1px solid %s;border-radius:10px;'
-                      'padding:10px 14px;margin:0 0 8px">' % LINE)
+            p.append('<div style="font-family:%s;background:#fff;border:1px solid %s;border-radius:10px;'
+                      'padding:10px 14px;margin:0 0 8px">' % (FONT, LINE))
             tytul = e.get("tytul") or ("Etap %d" % i)
             zakres = e.get("zakres_km")
-            p.append('<div style="font-weight:700;color:%s;margin-bottom:3px">%s%s</div>' % (
-                INK, _esc(tytul), (" &middot; km " + _esc(zakres)) if zakres else ""))
+            p.append('<div style="font-family:%s;font-weight:700;color:%s;margin-bottom:3px">%s%s</div>' % (
+                FONT, INK, _esc(tytul), (" &middot; km " + _esc(zakres)) if zakres else ""))
             if e.get("opis"):
-                p.append('<div style="color:%s;font-size:13.5px;margin-bottom:4px">%s</div>' % (
-                    INK2, _esc(e["opis"])))
+                p.append('<div style="font-family:%s;color:%s;font-size:13.5px;margin-bottom:4px">%s</div>' % (
+                    FONT, INK2, _esc(e["opis"])))
             bits = []
             if e.get("moc"):
                 bits.append("moc: " + str(e["moc"]))
@@ -2607,41 +2655,44 @@ def _build_report_email_html(data, has_map, has_chart):
             if e.get("pojenie"):
                 bits.append("pojenie: " + str(e["pojenie"]))
             if bits:
-                p.append('<div style="color:%s;font-size:12px">%s</div>' % (MUTED, _esc(" &middot; ".join(bits))))
+                p.append('<div style="font-family:%s;color:%s;font-size:12px">%s</div>' % (
+                    FONT, MUTED, _esc(" &middot; ".join(bits))))
             p.append('</div>')
+    else:
+        p.append(SEC("Strategia jazdy"))
+        p.append(TXT("Strategia nie wygenerowala sie dla tego raportu (chwilowy blad LLM) "
+                      "&mdash; wygeneruj raport ponownie, jesli jest potrzebna.", color=MUTED))
 
     resupply = poi.get("resupply") or []
     attractions = (poi.get("attractions") or {}).get("items") or []
-    if resupply or attractions:
+    any_pick = any((area.get("picks") for area in resupply))
+    if any_pick or attractions:
         p.append(SEC("Punkty POI"))
-    if resupply:
-        any_pick = False
+    if any_pick:
+        p.append(TXT("<b>Zaopatrzenie:</b>"))
         for area in resupply:
             for pk in (area.get("picks") or []):
-                any_pick = True
                 bits = [x for x in [
                     ("km %.1f" % pk["km"]) if pk.get("km") is not None else None,
                     pk.get("miejscowosc"), pk.get("hours")] if x]
-                p.append('<p style="margin:0 0 4px;color:%s;font-size:13.5px">'
-                          '<b>%s</b> &middot; %s</p>' % (
-                              INK2, _esc(pk.get("name") or "POI"), _esc(" · ".join(bits))))
-        if not any_pick:
-            resupply = []
+                p.append(TXT("<b>%s</b> &middot; %s" % (
+                    _esc(pk.get("name") or "POI"), _esc(" \u00b7 ".join(bits))), size=13.5))
     if attractions:
-        p.append('<p style="margin:14px 0 6px;color:%s"><b>Atrakcje:</b></p>' % INK)
+        p.append(TXT("<b>Atrakcje:</b>", extra="margin-top:10px"))
         for a in attractions:
             bits = [x for x in [
                 ("km %.1f" % a["km"]) if a.get("km") is not None else None, a.get("miejscowosc")] if x]
             line = "<b>%s</b>" % _esc(a.get("name") or "POI")
             if bits:
-                line += " (%s)" % _esc(" · ".join(bits))
+                line += " (%s)" % _esc(" \u00b7 ".join(bits))
             if a.get("desc"):
                 line += " &mdash; %s" % _esc(a["desc"])
-            p.append('<p style="margin:0 0 4px;color:%s;font-size:13.5px">%s</p>' % (INK2, line))
+            p.append(TXT(line, size=13.5))
 
-    p.append('<p style="margin:24px 0 4px;color:%s;font-size:11.5px;border-top:1px solid %s;'
-              'padding-top:12px">W zalaczniku plik GPX trasy (do wgrania w nawigacji/zegarku). '
-              'Raport wygenerowany przez QBot.</p>' % (MUTED, LINE))
+    p.append('<p style="font-family:%s;margin:24px 0 4px;color:%s;font-size:11.5px;'
+              'border-top:1px solid %s;padding-top:12px">W zalaczniku plik GPX trasy '
+              '(do wgrania w nawigacji/zegarku). Raport wygenerowany przez QBot.</p>' % (
+                  FONT, MUTED, LINE))
     p.append('</td></tr></table></div>')
     return "".join(p)
 
@@ -2687,27 +2738,29 @@ def _capture_report_images(snapshot_id):
 
 
 @app.post("/api/report/send-email")
-def report_send_email(route_id: str = Query(...), date: str = Query(...),
-                      time: str = Query("10:00"), long_stops: int = Query(0),
-                      long_stop_min: int = Query(0), to: str = Query(...)):
-    """Liczy raport (zapisuje do archiwum), robi zrzuty mapy+wykresu, dolacza GPX,
-    wysyla uproszczony raport mailem (to samo konto co poranny raport)."""
+def report_send_email(snapshot_id: int = Query(...), to: str = Query(...)):
+    """Wysyla mailem DOKLADNIE zapisany raport (snapshot) - bez ponownego liczenia,
+    wiec tresc maila jest 1:1 tym co widac na ekranie (ta sama strategia, pogoda itd).
+    Robi zrzuty mapy+wykresu z tej samej wersji danych, dolacza GPX (z tej samej trasy)."""
     to = (to or "").strip()
     if not _EMAIL_RE.match(to):
         raise HTTPException(status_code=400, detail="Nieprawidlowy adres e-mail")
 
     conn = _db_conn()
     try:
-        data = _build_report_data(conn, route_id, date, time, long_stops, long_stop_min)
-        snap_id = _save_report_snapshot(conn, route_id, date, time, long_stops, long_stop_min, data)
+        row = conn.execute(
+            "SELECT data_json FROM qbot_v2.route_report_snapshots "
+            "WHERE route_report_snapshot_id=%s", (snapshot_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Zapisany raport nie znaleziony")
+        data = row["data_json"]
+        route_id = data["route"]["id"]
         geo = route_geometry(route_id)
         coords = geo.get("coordinates") or []
     finally:
         conn.close()
 
-    map_png = chart_png = None
-    if snap_id:
-        map_png, chart_png = _capture_report_images(snap_id)
+    map_png, chart_png = _capture_report_images(snapshot_id)
 
     gpx_xml = None
     try:
@@ -2733,12 +2786,13 @@ def report_send_email(route_id: str = Query(...), date: str = Query(...),
         img2.add_header("Content-Disposition", "inline", filename="profil.png")
         msg.attach(img2)
     if gpx_xml:
-        safe = _re_email.sub(r"[^A-Za-z0-9_.-]+", "_", data["route"]["name"] or route_id).strip("_") or ("route_%s" % route_id)
+        safe = _re_email.sub(r"[^A-Za-z0-9_.-]+", "_", data["route"]["name"] or str(route_id)).strip("_") or ("route_%s" % route_id)
         gpx_att = MIMEApplication(gpx_xml.encode("utf-8"), _subtype="gpx+xml")
         gpx_att.add_header("Content-Disposition", "attachment", filename="%s.gpx" % safe)
         msg.attach(gpx_att)
 
-    msg["Subject"] = "Raport trasy: %s - %s %s" % (data["route"]["name"], date, time)
+    st = data.get("start", {}) or {}
+    msg["Subject"] = "Raport trasy: %s - %s %s" % (data["route"]["name"], st.get("date", ""), st.get("time", ""))
     msg["From"] = _cfg.GMAIL_USER
     msg["To"] = to
 
