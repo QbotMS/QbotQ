@@ -1051,12 +1051,6 @@ async def nutrition_intake_text(request: Request):
     return JSONResponse(content=result, status_code=status_code)
 
 
-@app.post("/nutrition/intake/telegram")
-async def nutrition_intake_telegram(request: Request):
-    """POST /nutrition/intake/telegram — same as /text but tailored for Telegram webhook."""
-    return await nutrition_intake_text(request)
-
-
 @app.post("/nutrition/foods")
 async def nutrition_foods_create(request: Request):
     """POST /nutrition/foods — add a food item."""
