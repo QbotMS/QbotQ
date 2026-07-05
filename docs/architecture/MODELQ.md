@@ -74,7 +74,7 @@ ZARZĄDZANIE            tryb × budżet czasu × focus → targety wiader → en
 | `surface_tag.py` | E6 | Tag nawierzchni per segment (GPS z FIT → Overpass → słownik) + kalibracja `mult=EF_asfalt/EF_typ` z bramką n≥10. |
 | `buckets.py` | B1 | Czysta funkcja: strumień mocy + FTP → (low/high/peak/d_strain). strain=i⁴·(100/3600). |
 | `ride_buckets.py` | B2 | Uruchamia B1 na historii → `fitmodel_ride_buckets`. |
-| `cp_wprime.py` | K1 | CP (krotkie okna 120/300/600 s) i LTP (dlugie 300/600/1200/1800 s) z krzywej mocy MMP (envelope 90d) -> `fitmodel_daily`. CP~=FTP, LTP~=Xert LTP. W' z intercepta LTP (niepewne -> Krok 2). |
+| `cp_wprime.py` | K1 | CP (krotkie okna 120/300/600 s) i LTP (dlugie 300/600/1200/1800 s) z krzywej mocy MMP (envelope 90d) -> `fitmodel_daily`. CP~=FTP, LTP~=Xert LTP. W' NIE liczone tu od Kroku 2 (przeniesione do harvestu near-max; patrz wprime_* w fitmodel_daily + DECISIONS Krok 2). |
 | `xert_bench.py` | E7 | Tygodniowy log (ftp_est, xert_tp, delta) → `fitmodel_xert_bench`. |
 | `week_planner.py` | T1 | Plan tygodnia: budżet czasu × tryb × focus → `fitmodel_week_plan`. Tryb = propozycja do zatwierdzenia. |
 | `focus.py` | T2 | Auto-focus: Stan A (profil trasy) / Stan B (deficyt → najsłabsze wiadro). |
