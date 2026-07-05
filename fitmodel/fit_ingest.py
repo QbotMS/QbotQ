@@ -25,6 +25,13 @@ HR_JUMP_DELTA = 15
 HR_LOCK_SECONDS = 30
 POWER_JUMP_DELTA = 5
 
+# WATEK 2 (Strona B): developer fields zapisywane przez QExt2 do FIT.
+# KONTRAKT z QExt2 (Strona A) — nazwy MUSZA sie zgadzac po obu stronach:
+_QEXT2_FIELDS = (
+    "qext2_wbal_pct", "qext2_cp_eff_w", "qext2_wprime_eff_kj",
+    "qext2_cf", "qext2_wbal_zero", "qext2_readiness", "qext2_rsrv_pct",
+)
+
 
 def extract_ride_id(fit_path: str) -> str:
     return Path(fit_path).stem
@@ -230,6 +237,144 @@ def _stable_window_ok(window_rows: list[dict[str, Any]], hr_max: float) -> bool:
     return hr_low <= hr_mean <= hr_high
 
 
+def parse_fit_qext2_records(fit_path: str) -> list[dict]:
+    """Odczyt developer fields QExt2 z rekordow FIT (WATEK 2, Strona B).
+
+    Zwraca tylko rekordy, ktore MAJA cokolwiek z QExt2. Puste, gdy plik ich nie
+    zawiera (stare pliki / przed wdrozeniem Strony A) -> nic sie nie dzieje.
+    """
+    recs: list[dict[str, Any]] = []
+    try:
+        fit = FitFile(fit_path)
+        for message in fit.get_messages("record"):
+            vals = {f: _get_field_value(message, f) for f in _QEXT2_FIELDS}
+            if any(v is not None for v in vals.values()):
+                vals["timestamp"] = _get_field_value(message, "timestamp")
+                recs.append(vals)
+    except Exception:
+        return []
+    return recs
+
+
+def summarize_qext2(recs: list[dict], first_ts: Any) -> dict | None:
+    """Podsumowanie per jazda z rekordow QExt2 (min/max/final + zdarzenie 0%)."""
+    if not recs:
+        return None
+
+    def series(key: str) -> list[float]:
+        out: list[float] = []
+        for r in recs:
+            v = r.get(key)
+            if v is not None:
+                try:
+                    out.append(float(v))
+                except (TypeError, ValueError):
+                    pass
+        return out
+
+    wbal = series("qext2_wbal_pct")
+    cp = series("qext2_cp_eff_w")
+    wp = series("qext2_wprime_eff_kj")
+    cf = series("qext2_cf")
+    rdy = series("qext2_readiness")
+    rsrv = series("qext2_rsrv_pct")
+
+    zero_recs: list[dict] = []
+    for r in recs:
+        z = r.get("qext2_wbal_zero")
+        w = r.get("qext2_wbal_pct")
+        try:
+            is_zero = (z is not None and float(z) >= 1) or (w is not None and float(w) <= 0)
+        except (TypeError, ValueError):
+            is_zero = False
+        if is_zero:
+            zero_recs.append(r)
+
+    first_zero_offset = None
+    if zero_recs and isinstance(first_ts, datetime):
+        for r in zero_recs:
+            ts = r.get("timestamp")
+            if isinstance(ts, datetime):
+                first_zero_offset = int((ts - first_ts).total_seconds())
+                break
+
+    def _med(a: list[float]):
+        if not a:
+            return None
+        b = sorted(a)
+        n = len(b)
+        return b[n // 2] if n % 2 else (b[n // 2 - 1] + b[n // 2]) / 2
+
+    return {
+        "n_records": len(recs),
+        "wbal_min": min(wbal) if wbal else None,
+        "wbal_final": wbal[-1] if wbal else None,
+        "wbal_zero_seconds": len(zero_recs),
+        "wbal_zero_first_offset_s": first_zero_offset,
+        "cp_eff_min": min(cp) if cp else None,
+        "cp_eff_max": max(cp) if cp else None,
+        "cp_eff_final": cp[-1] if cp else None,
+        "wprime_eff_min": min(wp) if wp else None,
+        "wprime_eff_max": max(wp) if wp else None,
+        "wprime_eff_final": wp[-1] if wp else None,
+        "cf_min": min(cf) if cf else None,
+        "cf_max": max(cf) if cf else None,
+        "readiness": _med(rdy),
+        "rsrv_min": min(rsrv) if rsrv else None,
+        "rsrv_final": rsrv[-1] if rsrv else None,
+    }
+
+
+def ensure_qext2_table(db_conn) -> None:
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS qbot_v2.fitmodel_qext2_ride (
+                ride_id text PRIMARY KEY,
+                n_records integer,
+                wbal_min numeric, wbal_final numeric,
+                wbal_zero_seconds integer,
+                wbal_zero_first_offset_s integer,
+                cp_eff_min numeric, cp_eff_max numeric, cp_eff_final numeric,
+                wprime_eff_min numeric, wprime_eff_max numeric, wprime_eff_final numeric,
+                cf_min numeric, cf_max numeric,
+                readiness numeric,
+                rsrv_min numeric, rsrv_final numeric,
+                ingested_at timestamptz DEFAULT now()
+            )
+            """
+        )
+    db_conn.commit()
+
+
+def upsert_qext2_ride(db_conn, ride_id: str, s: dict) -> None:
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO qbot_v2.fitmodel_qext2_ride (
+                ride_id, n_records, wbal_min, wbal_final, wbal_zero_seconds,
+                wbal_zero_first_offset_s, cp_eff_min, cp_eff_max, cp_eff_final,
+                wprime_eff_min, wprime_eff_max, wprime_eff_final, cf_min, cf_max,
+                readiness, rsrv_min, rsrv_final, ingested_at
+            ) VALUES (
+                %(ride_id)s, %(n_records)s, %(wbal_min)s, %(wbal_final)s, %(wbal_zero_seconds)s,
+                %(wbal_zero_first_offset_s)s, %(cp_eff_min)s, %(cp_eff_max)s, %(cp_eff_final)s,
+                %(wprime_eff_min)s, %(wprime_eff_max)s, %(wprime_eff_final)s, %(cf_min)s, %(cf_max)s,
+                %(readiness)s, %(rsrv_min)s, %(rsrv_final)s, now()
+            )
+            ON CONFLICT (ride_id) DO UPDATE SET
+                n_records=EXCLUDED.n_records, wbal_min=EXCLUDED.wbal_min, wbal_final=EXCLUDED.wbal_final,
+                wbal_zero_seconds=EXCLUDED.wbal_zero_seconds, wbal_zero_first_offset_s=EXCLUDED.wbal_zero_first_offset_s,
+                cp_eff_min=EXCLUDED.cp_eff_min, cp_eff_max=EXCLUDED.cp_eff_max, cp_eff_final=EXCLUDED.cp_eff_final,
+                wprime_eff_min=EXCLUDED.wprime_eff_min, wprime_eff_max=EXCLUDED.wprime_eff_max, wprime_eff_final=EXCLUDED.wprime_eff_final,
+                cf_min=EXCLUDED.cf_min, cf_max=EXCLUDED.cf_max, readiness=EXCLUDED.readiness,
+                rsrv_min=EXCLUDED.rsrv_min, rsrv_final=EXCLUDED.rsrv_final, ingested_at=now()
+            """,
+            {"ride_id": ride_id, **s},
+        )
+    db_conn.commit()
+
+
 def ingest_fit_file(fit_path: str, db_conn) -> dict:
     ride_id = extract_ride_id(fit_path)
     rows = parse_fit_to_seconds(fit_path)
@@ -317,10 +462,23 @@ def ingest_fit_file(fit_path: str, db_conn) -> dict:
             saved = cur.rowcount if cur.rowcount != -1 else len(insert_rows)
         db_conn.commit()
 
+    # --- WATEK 2 Strona B: developer fields QExt2 (bezpiecznie, no-op gdy brak) ---
+    qext2_saved = False
+    try:
+        ensure_qext2_table(db_conn)
+        q_recs = parse_fit_qext2_records(fit_path)
+        q_summary = summarize_qext2(q_recs, rows[0]["timestamp"] if rows else None)
+        if q_summary is not None:
+            upsert_qext2_ride(db_conn, ride_id, q_summary)
+            qext2_saved = True
+    except Exception:
+        pass
+
     return {
         "segments_found": len(segments),
         "segments_saved": saved,
         "ride_id": ride_id,
+        "qext2_saved": qext2_saved,
     }
 
 

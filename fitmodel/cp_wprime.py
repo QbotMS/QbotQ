@@ -16,9 +16,9 @@ DWA DOPASOWANIA (od Kroku 1, 2026-07-05):
 Wczesniej pojedyncze dlugie dopasowanie zapisywalo LTP mylnie jako cp_modelq_w
 (cp_modelq_w == Xert LTP, delta ~0). Rozdzielone -- patrz DECISIONS.md 2026-07-05.
 
-W' (wprime_modelq_kj): brany z intercepta dopasowania DLUGIEGO, bez zmian wzgledem
-stanu sprzed Kroku 1. Traktowany jako NIEWIARYGODNY (submaksymalny artefakt) --
-poprawne W' (null + range + confidence) to osobny Krok 2.
+W' (wprime_modelq_kj): od Kroku 2 -- oportunistyczny harvest near-max z okien
+{60,120,300} (patrz _wprime_harvest). Brak swiezego twardego fragmentu -> null +
+przedzial 13-22 kJ + confidence:low. Zawyzony intercept LTP (~34.8 kJ) porzucony.
 
 UWAGA (uczciwie): to sa najlepsze fragmenty ZWYKLYCH jazd, nie testy maksymalne.
 Moze to nieco zanizac realne CP/LTP. Traktowac jako estymator, nie pomiar.
@@ -38,6 +38,15 @@ LTP_DURATIONS = (300, 600, 1200, 1800)  # dlugie okna  -> LTP (asymptota trwala)
 CP_MIN_POINTS = 3
 LTP_MIN_POINTS = 3
 WINDOW_DAYS = 90
+
+# --- W' harvest (Krok 2) ---
+WPRIME_WINDOWS = (60, 120, 300)   # okna do W' (30s psuje fit -- inna fizjologia)
+WPRIME_NEARMAX_FRAC = 0.92        # jazda 'twarda' gdy P60 lub P120 >= frac*best w oknie
+WPRIME_FRESH_DAYS = 60            # <= tyle dni -> uzywalne; wyzej -> przedzial
+WPRIME_HIGH_DAYS = 30
+WPRIME_HIGH_FRAC = 0.95           # high: swieza <=30d i P120 >= frac*best
+WPRIME_RANGE_LO = 13.0
+WPRIME_RANGE_HI = 22.0
 
 
 def _envelope_curve(db_conn, as_of: date, window_days: int, durations: tuple[int, ...]) -> tuple[dict[int, float], int]:
@@ -96,6 +105,85 @@ def _fit_model(curve: dict[int, float], min_points: int) -> tuple[float | None, 
     return slope, wprime, r2
 
 
+def _wprime_harvest(db_conn, as_of: date, window_days: int = WINDOW_DAYS) -> dict[str, Any]:
+    """W' z oportunistycznego harvestu near-max (warstwa 2) + przedzial (warstwa 3).
+
+    Szuka w oknie jazd z prawdziwie twardym krotkim fragmentem (P60/P120 blisko
+    najlepszego w oknie), liczy W' z {60,120,300} i bierze NAJWYZSZE (W' ujawnia sie
+    tylko przy pelnym wyczerpaniu). Brak swiezego twardego fragmentu -> null + przedzial.
+    Warstwa 1 (kotwica z drogi: zdarzenie QExt2 W'bal=0%) dojdzie ze Strona B -- tu nie ma.
+    """
+    out: dict[str, Any] = {
+        "wprime_modelq_kj": None, "wprime_lo_kj": None, "wprime_hi_kj": None,
+        "wprime_confidence": "low", "wprime_source": None,
+    }
+
+    def _range(reason: str) -> dict[str, Any]:
+        out["wprime_lo_kj"] = WPRIME_RANGE_LO
+        out["wprime_hi_kj"] = WPRIME_RANGE_HI
+        out["wprime_source"] = f"przedzial {WPRIME_RANGE_LO:.0f}-{WPRIME_RANGE_HI:.0f} ({reason})"
+        return out
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT date, mmp_60_w, mmp_120_w, mmp_300_w
+            FROM qbot_v2.training_sessions
+            WHERE date >= %s AND date <= %s
+              AND mmp_60_w > 0 AND mmp_120_w > 0 AND mmp_300_w > 0
+              AND (sport_type IS NULL OR sport_type NOT LIKE %s)
+            ORDER BY date
+            """,
+            (as_of - timedelta(days=window_days), as_of, "%virtual%"),
+        )
+        rides = cur.fetchall()
+
+    if not rides:
+        return _range(f"brak danych MMP w oknie {window_days}d")
+
+    best60 = max(float(r[1]) for r in rides)
+    best120 = max(float(r[2]) for r in rides)
+
+    def _wprime_kj(p60, p120, p300):
+        pts = [(60.0, float(p60)), (120.0, float(p120)), (300.0, float(p300))]
+        ts = [t for t, _ in pts]
+        ws = [pw * t for t, pw in pts]
+        n = 3
+        mt = sum(ts) / n
+        mw = sum(ws) / n
+        sxx = sum((t - mt) ** 2 for t in ts)
+        if sxx == 0:
+            return None
+        cp = sum((t - mt) * (w - mw) for t, w in zip(ts, ws)) / sxx
+        return (mw - cp * mt) / 1000.0
+
+    nearmax = []
+    for d, p60, p120, p300 in rides:
+        if float(p60) >= WPRIME_NEARMAX_FRAC * best60 or float(p120) >= WPRIME_NEARMAX_FRAC * best120:
+            wp = _wprime_kj(p60, p120, p300)
+            if wp is not None and wp > 0:
+                nearmax.append((wp, d, float(p120)))
+
+    if not nearmax:
+        return _range(f"brak twardego fragmentu w oknie {window_days}d")
+
+    nearmax.sort(reverse=True)
+    best_wp, best_day, best_p120 = nearmax[0]
+    age = (as_of - best_day).days
+
+    if age > WPRIME_FRESH_DAYS:
+        return _range(f"ostatni twardy fragment {best_day} przestarzaly ({age}d > {WPRIME_FRESH_DAYS}d)")
+
+    conf = "high" if (age <= WPRIME_HIGH_DAYS and best_p120 >= WPRIME_HIGH_FRAC * best120) else "medium"
+    out["wprime_modelq_kj"] = round(best_wp, 2)
+    out["wprime_confidence"] = conf
+    out["wprime_source"] = (
+        f"harvest 60/120/300, jazda {best_day} ({age}d temu), "
+        f"{len(nearmax)} twardych w oknie {window_days}d"
+    )
+    return out
+
+
 def compute_cp_wprime(db_conn, as_of: date | None = None, window_days: int = WINDOW_DAYS) -> dict[str, Any]:
     """Policz CP (krotkie okna) i LTP (dlugie okna) na dzien as_of (bez zapisu)."""
     as_of = _coerce_date(as_of)
@@ -104,7 +192,8 @@ def compute_cp_wprime(db_conn, as_of: date | None = None, window_days: int = WIN
         "day": as_of,
         "cp_modelq_w": None, "cp_wprime_r2": None, "cp_wprime_note": None,
         "ltp_modelq_w": None, "ltp_modelq_r2": None, "ltp_modelq_note": None,
-        "wprime_modelq_kj": None,
+        "wprime_modelq_kj": None, "wprime_lo_kj": None, "wprime_hi_kj": None,
+        "wprime_confidence": "low", "wprime_source": None,
     }
 
     # --- CP: krotkie okna 120/300/600 ---
@@ -136,7 +225,7 @@ def compute_cp_wprime(db_conn, as_of: date | None = None, window_days: int = WIN
             f"(mam {len(ltp_curve)}/{len(LTP_DURATIONS)}: {sorted(ltp_curve.keys())}, min={LTP_MIN_POINTS}, n_jazd={ltp_n})"
         )
     else:
-        ltp, ltp_wp_j, ltp_r2 = _fit_model(ltp_curve, LTP_MIN_POINTS)
+        ltp, _ltp_wp_j, ltp_r2 = _fit_model(ltp_curve, LTP_MIN_POINTS)
         if ltp is None or ltp <= 0:
             out["ltp_modelq_r2"] = round(ltp_r2, 3) if ltp_r2 is not None else None
             out["ltp_modelq_note"] = f"fit LTP niewiarygodny (ltp={ltp}) -- odrzucony"
@@ -148,9 +237,9 @@ def compute_cp_wprime(db_conn, as_of: date | None = None, window_days: int = WIN
                 f"n_jazd={ltp_n}, r2={round(ltp_r2, 3) if ltp_r2 is not None else 'n/a'} "
                 f"-- odpowiednik Xert LTP"
             )
-            # W' -- intercept dlugiego dopasowania, bez zmian (NIEWIARYGODNY, patrz Krok 2)
-            if ltp_wp_j is not None and ltp_wp_j > 0:
-                out["wprime_modelq_kj"] = round(ltp_wp_j / 1000.0, 2)
+
+    # --- W' -- harvest near-max + przedzial (Krok 2), zastepuje intercept LTP ---
+    out.update(_wprime_harvest(db_conn, as_of, window_days))
 
     return out
 
@@ -162,10 +251,12 @@ def upsert_into_daily(db_conn, row: dict[str, Any]) -> None:
             """
             INSERT INTO qbot_v2.fitmodel_daily
                 (day, cp_modelq_w, wprime_modelq_kj, cp_wprime_r2, cp_wprime_note,
-                 ltp_modelq_w, ltp_modelq_r2, ltp_modelq_note)
+                 ltp_modelq_w, ltp_modelq_r2, ltp_modelq_note,
+                 wprime_lo_kj, wprime_hi_kj, wprime_confidence, wprime_source)
             VALUES
                 (%(day)s, %(cp_modelq_w)s, %(wprime_modelq_kj)s, %(cp_wprime_r2)s, %(cp_wprime_note)s,
-                 %(ltp_modelq_w)s, %(ltp_modelq_r2)s, %(ltp_modelq_note)s)
+                 %(ltp_modelq_w)s, %(ltp_modelq_r2)s, %(ltp_modelq_note)s,
+                 %(wprime_lo_kj)s, %(wprime_hi_kj)s, %(wprime_confidence)s, %(wprime_source)s)
             ON CONFLICT (day) DO UPDATE SET
                 cp_modelq_w = EXCLUDED.cp_modelq_w,
                 wprime_modelq_kj = EXCLUDED.wprime_modelq_kj,
@@ -173,7 +264,11 @@ def upsert_into_daily(db_conn, row: dict[str, Any]) -> None:
                 cp_wprime_note = EXCLUDED.cp_wprime_note,
                 ltp_modelq_w = EXCLUDED.ltp_modelq_w,
                 ltp_modelq_r2 = EXCLUDED.ltp_modelq_r2,
-                ltp_modelq_note = EXCLUDED.ltp_modelq_note
+                ltp_modelq_note = EXCLUDED.ltp_modelq_note,
+                wprime_lo_kj = EXCLUDED.wprime_lo_kj,
+                wprime_hi_kj = EXCLUDED.wprime_hi_kj,
+                wprime_confidence = EXCLUDED.wprime_confidence,
+                wprime_source = EXCLUDED.wprime_source
             """,
             row,
         )

@@ -94,7 +94,8 @@ fitmodel_daily ( day PK, ftp_est_w, ef_med_28d, weight_kg, w_per_kg,
   glycogen_pct, glycogen_g, sleep_h, hrv_night, rhr, notes,
   cp_modelq_w, cp_wprime_r2, cp_wprime_note,        -- CP: krotkie okna 120/300/600 s (~FTP)
   ltp_modelq_w, ltp_modelq_r2, ltp_modelq_note,     -- LTP: dlugie okna 300/600/1200/1800 s (~Xert LTP)
-  wprime_modelq_kj )                                 -- W' z intercepta LTP; NIEPEWNE (Krok 2)
+  wprime_modelq_kj,                                  -- W' harvest near-max; null gdy brak swiezego twardego fragmentu
+  wprime_lo_kj, wprime_hi_kj, wprime_confidence, wprime_source )  -- W' przedzial + pewnosc + zrodlo (Krok 2)
 
 fitmodel_xert_bench ( week PK, ftp_est_w, xert_tp_w, delta_w, xert_breakthrough, note )
 

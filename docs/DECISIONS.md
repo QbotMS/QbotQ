@@ -1399,3 +1399,54 @@ warning="ftp/ltp z ModelQ; W' z Xert". Fallback: gdy ModelQ puste -> zostaje Xer
 
 Pozostaje (TODO): po Kroku 2 przepiac tez W' na ModelQ i wtedy usunac zywe wywolanie Xerta
 z endpointu (pelne odciecie Xerta).
+
+
+## 2026-07-05 (3) -- WATEK 2 Strona B: QBot czyta developer fields QExt2 z FIT + KONTRAKT pol
+
+Feasibility potwierdzona: `fit_ingest.py` czyta SUROWE pliki FIT z Karoo
+(`outgoing/michal/hammerhead_originals/`), nie dane z API Garmina -> developer fields
+QExt2 realnie dotra do QBota ta droga.
+
+Dodano (Strona B, po stronie QBota):
+- Tabela `qbot_v2.fitmodel_qext2_ride` (podsumowanie per jazda; self-create przez ensure_qext2_table).
+- `parse_fit_qext2_records` + `summarize_qext2` + `upsert_qext2_ride` w fit_ingest.py.
+- Hook w `ingest_fit_file` (bezpieczny: no-op gdy plik nie ma pol QExt2).
+Weryfikacja: py_compile OK; stary FIT -> 0 rekordow QExt2, qext2_saved=False, segmenty
+nietkniete, tabela powstala. Pelny test end-to-end dopiero po wdrozeniu Strony A + jezdzie.
+
+KONTRAKT POL (developer data fields, developerDataIndex=0) -- Strona A (QExt2) MUSI pisac
+DOKLADNIE te nazwy, B je czyta:
+- qext2_wbal_pct     (uint8,  %)      W'bal 0-100
+- qext2_cp_eff_w     (uint16, W)      efektywne CP (per tick)
+- qext2_wprime_eff_kj(float32, kJ)    efektywne W' (per tick)
+- qext2_cf           (float32, factor) readiness*upal*ostre zmeczenie
+- qext2_wbal_zero    (uint8,  bool)   1 gdy W'bal==0 w tym rekordzie
+- qext2_readiness    (float32, factor) todayFactor uzyty w jezdzie
+- qext2_rsrv_pct     (uint8,  %)      RSRV zapas calej jazdy 0-100
+Odrzucone swiadomie: wiatr (inne zrodlo niz kanoniczne Open-Meteo QBota -> unikamy 2 zrodel),
+fueling (na razie). NP/IF/TSS/decoupling NIE zapisujemy -- QBot policzy z surowej mocy/HR.
+
+
+## 2026-07-05 (4) -- Krok 2: W' z harvestu near-max + przedzial + pewnosc (koniec z 34.8 kJ)
+
+Zawyzony W' z intercepta LTP (~34.8 kJ, submaks artefakt) PORZUCONY. Nowa metoda W' =
+3 warstwy; wdrozone warstwy 2 i 3:
+- (1, PENDING) kotwica z drogi: zdarzenie QExt2 W'bal=0% -- dojdzie ze Strona B (FIT).
+- (2) HARVEST: w oknie 90d szukamy jazd z prawdziwie twardym krotkim fragmentem
+  (mmp_60 LUB mmp_120 >= 0.92*best w oknie), liczymy W' z {60,120,300} (Work=CP*t+W'),
+  bierzemy NAJWYZSZE (W' ujawnia sie tylko przy pelnym wyczerpaniu). Okno 30s odrzucone
+  (inna fizjologia, zaniza fit).
+- (3) brak swiezego (<=60d) twardego fragmentu -> wprime_modelq_kj=NULL + przedzial
+  13-22 kJ + confidence:low. Zero zgadywania.
+Pewnosc: high (<=30d i P120>=0.95*best), medium (<=60d), low (stara/brak -> przedzial).
+
+Kolumny fitmodel_daily: wprime_modelq_kj (harvest lub NULL), wprime_lo_kj, wprime_hi_kj,
+wprime_confidence, wprime_source. W' znika z dopasowania LTP w cp_wprime.py.
+
+Weryfikacja (live): dzis W'=20.31 kJ, confidence=high, zrodlo "jazda 2026-06-05 (30d),
+4 twarde w oknie" -- zgodne z kotwica z drogi (~22 kJ). Backfill 107 dni (high 90, medium 17).
+py_compile OK, import ride_report_builder OK.
+
+Raport jazdy: blok "forma" pokazuje teraz W' + pewnosc + przedzial. Wykres W'bal NADAL
+uzywa W' z Xerta (~22) -- przelaczenie na ModelQ razem z Karoo w jednej przebudowie QExt2
+(zeby QBot i Karoo sie nie rozjechaly). Karoo /ride-readiness W' tez przelaczymy wtedy.
