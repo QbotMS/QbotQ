@@ -17,7 +17,7 @@ def _allowed() -> set[str]:
 def is_authorized(chat_id: str) -> bool:
     return str(chat_id).strip() in _allowed()
 
-_ALLOWED_ACTIONS = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add", "reminder_add", "calendar_event_add", "confirm_route_analysis"}
+_ALLOWED_ACTIONS = {"qcal_reminder_add", "qcal_event_add", "reminder_add", "calendar_event_add", "confirm_route_analysis"}  # nutrition_log_add usuniete 2026-07-05: logowanie jedzenia przez Telegram wylaczone
 _CONFIRM_WORDS = {"tak", "yes", "ok", "potwierdzam", "zapisz", "dodaj", "confirm", "/confirm", "/yes", "t", "y"}
 _DECLINE_WORDS = {"nie", "no", "anuluj", "cancel", "/cancel", "/no", "n"}
 _CONFIRM_NUMERIC_RE = re.compile(r"^\s*#?\s*(\d+)\s+(.+?)\s*$", re.IGNORECASE)
@@ -413,10 +413,7 @@ def _execute_writer(atype: str, payload: dict, idem_key: str, chat_id: str | Non
     if atype not in _ALLOWED_ACTIONS:
         return {"status": "not_allowed", "action_type": atype, "allowlist": sorted(_ALLOWED_ACTIONS)}
     try:
-        if atype == "nutrition_log_add":
-            from qbot_mcp_adapter import _handle_nutrition_add
-            return _handle_nutrition_add({**payload, "idempotency_key": idem_key, "confirm": True})
-        elif atype in ("qcal_reminder_add", "reminder_add"):
+        if atype in ("qcal_reminder_add", "reminder_add"):
             from qbot_mcp_adapter import _handle_qcal_reminder_add
             return _handle_qcal_reminder_add({**payload, "idempotency_key": idem_key, "confirm": True})
         elif atype in ("qcal_event_add", "calendar_event_add"):
