@@ -659,17 +659,18 @@ def build_snapshot(date_str: str) -> dict[str, Any]:
         missing_tables.append("nutrition_daily_summary")
 
     # Meals
-    if _table_exists("meal_logs"):
+    # Meals - Etap 3b (2026-07-05): kanon = qbot_v2.intake_logs (legacy meal_logs szczatkowe, pomijane).
+    if _table_exists("intake_logs", schema="qbot_v2"):
         meals = _safe_query(
-            "SELECT ml.*, COUNT(mli.id) AS item_count FROM meal_logs ml LEFT JOIN meal_log_items mli ON mli.meal_log_id=ml.id WHERE ml.eaten_at::date=%s GROUP BY ml.id ORDER BY ml.eaten_at",
+            "SELECT il.*, COUNT(ii.id) AS item_count FROM qbot_v2.intake_logs il LEFT JOIN qbot_v2.intake_items ii ON ii.intake_log_id=il.id WHERE il.date=%s GROUP BY il.id ORDER BY il.eaten_at",
             (date_str,))
         snap["meals"] = meals
-        source_tables.append("meal_logs")
+        source_tables.append("qbot_v2.intake_logs")
         total_fields += 1
         if meals:
             found_fields += 1
     else:
-        missing_tables.append("meal_logs")
+        missing_tables.append("qbot_v2.intake_logs")
 
     # Nutrition plans
     if _table_exists("nutrition_day_plans"):
