@@ -1382,3 +1382,20 @@ pustych rekordow. Wynik: CP 210-242 W, LTP 191-211 W.
 **Weryfikacja.** Dry-run cp_wprime: CP=241.9 (r2=0.999), LTP=192.9 (r2=0.996), W'=34.84.
 Benchmark: LTP 192.9 vs 192.8 (delta 0.1) OK; FTP 252.8 vs 249.2 (delta 3.6) OK.
 py_compile OK dla 3 plikow, import ride_report_builder OK.
+
+
+## 2026-07-05 (2) -- Karoo przepiete na ModelQ dla FTP+LTP (W' nadal Xert)
+
+Endpoint `/ride-readiness` (qbot_api.py) dawal Karoo (QExt2) FTP/LTP/W' z ZYWEGO Xerta.
+Dodano `_modelq_ftp_ltp()`: FTP=`ftp_est_w`, LTP=`ltp_modelq_w` z `fitmodel_daily` nadpisuja
+wartosci Xerta tuz przed obliczeniem gotowosci. W' CELOWO zostaje z Xerta (~22 kJ,
+zweryfikowane na drodze zdarzeniem W'bal=0%) -- ModelQ W' jest jeszcze niewiarygodne (Krok 2).
+
+QExt2 czyta z tego endpointu pola `ftpWatts`/`ltpWatts`/`wPrimeKj` (JSON), wiec przepiecie
+NIE wymagalo przebudowy apki ani wgrywania na Karoo -- czysta zmiana po stronie QBota.
+
+Weryfikacja live: ftpWatts=252.8, ltpWatts=192.9, wPrimeKj=22.5, status=READY,
+warning="ftp/ltp z ModelQ; W' z Xert". Fallback: gdy ModelQ puste -> zostaje Xert.
+
+Pozostaje (TODO): po Kroku 2 przepiac tez W' na ModelQ i wtedy usunac zywe wywolanie Xerta
+z endpointu (pelne odciecie Xerta).

@@ -552,6 +552,46 @@ def _xert_sync_fetch(xert_email: str, xert_password: str) -> dict:
     }
 
 
+def _modelq_ftp_ltp() -> dict:
+    """FTP i LTP z ModelQ (qbot_v2.fitmodel_daily) dla Karoo -- zamiast Xerta.
+
+    FTP = ftp_est_w (prog ~= CP), LTP = ltp_modelq_w. W' celowo NIE stad:
+    ModelQ W' jest jeszcze niewiarygodne (Krok 2), wiec W' zostaje z Xerta.
+    Zwraca {'ftp_watts': float|None, 'ltp_watts': float|None}; blad -> None (fallback do Xerta).
+    """
+    import psycopg
+    from psycopg.rows import dict_row
+
+    out = {"ftp_watts": None, "ltp_watts": None}
+    try:
+        with psycopg.connect(
+            host=os.getenv("PGHOST", "localhost"),
+            port=os.getenv("PGPORT", "5432"),
+            dbname=os.getenv("PGDATABASE", "qbot"),
+            user=os.getenv("PGUSER", "qbot"),
+            password=os.getenv("PGPASSWORD", ""),
+            row_factory=dict_row,
+            connect_timeout=3,
+        ) as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT ftp_est_w FROM qbot_v2.fitmodel_daily "
+                "WHERE ftp_est_w IS NOT NULL ORDER BY day DESC LIMIT 1"
+            )
+            r = cur.fetchone()
+            if r and r.get("ftp_est_w"):
+                out["ftp_watts"] = round(float(r["ftp_est_w"]), 1)
+            cur.execute(
+                "SELECT ltp_modelq_w FROM qbot_v2.fitmodel_daily "
+                "WHERE ltp_modelq_w IS NOT NULL ORDER BY day DESC LIMIT 1"
+            )
+            r = cur.fetchone()
+            if r and r.get("ltp_modelq_w"):
+                out["ltp_watts"] = round(float(r["ltp_modelq_w"]), 1)
+    except Exception:
+        pass
+    return out
+
+
 def _intervals_weight_sync() -> dict:
     import base64, httpx
     from datetime import date
@@ -876,6 +916,22 @@ async def ride_readiness():
             qbot_core = "WARN"
 
         # Core readiness: athlete data present AND DB online
+        # ModelQ override: FTP + LTP z wlasnego modelu (Karoo na ModelQ, nie Xert).
+        # W' celowo NIE stad -- ModelQ W' jeszcze niewiarygodne (Krok 2), zostaje z Xerta.
+        try:
+            _mq = await asyncio.get_running_loop().run_in_executor(
+                ThreadPoolExecutor(max_workers=1), _modelq_ftp_ltp
+            )
+            if isinstance(_mq, dict):
+                if _mq.get("ftp_watts"):
+                    ftp_watts = _mq["ftp_watts"]
+                if _mq.get("ltp_watts"):
+                    ltp_watts = _mq["ltp_watts"]
+                if _mq.get("ftp_watts") or _mq.get("ltp_watts"):
+                    warnings.append("ftp/ltp z ModelQ; W' z Xert")
+        except Exception as _mq_exc:
+            warnings.append(f"modelq_override_error: {_mq_exc}")
+
         xert_ok = bool(ftp_watts and ltp_watts and w_prime_kj)
         core_ok = xert_ok and db_ok
 
