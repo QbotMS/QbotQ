@@ -198,30 +198,6 @@ def compute_readiness_weight(db_conn, day, params) -> float:
     return float(weight)
 
 
-def _fetch_daily_wellness(db_conn, day_value: date) -> dict[str, Any]:
-    with db_conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT sleep_duration_min, hrv_ms, resting_hr_bpm, weight_kg
-            FROM qbot_v2.qbot_wellness_daily
-            WHERE date = %s
-            ORDER BY source_priority ASC, imported_at DESC
-            LIMIT 1
-            """,
-            (day_value,),
-        )
-        row = cur.fetchone()
-        if not row:
-            return {}
-        sleep_duration_min, hrv_ms, resting_hr_bpm, weight_kg = row
-        return {
-            "sleep_h": float(sleep_duration_min) / 60.0 if sleep_duration_min is not None else None,
-            "hrv_night": float(hrv_ms) / 1000.0 if hrv_ms is not None else None,
-            "rhr": int(resting_hr_bpm) if resting_hr_bpm is not None else None,
-            "weight_kg": float(weight_kg) if weight_kg is not None else None,
-        }
-
-
 def _fetch_last_weight(db_conn, day_value: date) -> float | None:
     with db_conn.cursor() as cur:
         cur.execute(
@@ -302,7 +278,7 @@ def update_fitmodel_daily(db_conn, day=None) -> dict:
                 weight_kg,
                 w_per_kg,
                 daily.get("sleep_h"),
-                daily.get("hrv_night"),
+                daily.get("hrv_ms"),
                 daily.get("rhr"),
                 notes,
             ),
