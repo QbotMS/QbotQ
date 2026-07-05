@@ -1345,3 +1345,40 @@ polach i przy pozniejszym wczytaniu (w tym autoload po odswiezeniu) widac ten sa
 to nie jest utrata przy zapisie/odczycie, tylko odziedziczony stan z momentu generowania.
 Do potwierdzenia z uzytkownikiem: czy twardy refresh/nowe okno dalej to pokazuje (mozliwe
 tez, ze obserwacja byla na starej wersji z cache Cloudflare, jak wczesniej w tej sesji).
+
+
+## 2026-07-05 (1) -- ModelQ Krok 1: rozdzielenie CP (krotkie okna) od LTP (dlugie okna)
+
+**Diagnoza (zweryfikowana na zywo).** Kolumna `fitmodel_daily.cp_modelq_w` liczyla sie
+z DLUGICH okien (300/600/1200/1800 s) i dawala 192.9 W -- co jest LTP, nie CP. Benchmark
+potwierdzil: `cp_modelq_w` 192.9 vs Xert LTP 192.8 -> delta 0.1 W. Prawdziwy prog siedzi
+w `ftp_est_w` = 252.8 W (Xert TP 249.2). Czyli "CP" bylo zle nazwane.
+
+**Dowod danych (Krok 0).** training_sessions ma komplet krotkich okien MMP (mmp_30/60/120/
+300/600_w) dla 267-268 jazd -- skalary z Garmina, NIE zaleza od zepsutego ingestu
+activity_record 1Hz (stanal 28.06). Na twardych jazdach CP z okien 120/300/600 laduje przy
+FTP (top ~246-256 W). W' z tych okien niewiarygodne (4-10 kJ, nie ~22) -> osobny Krok 2.
+
+**Decyzja.** Rozdzielenie na dwie wielkosci w `fitmodel_daily`:
+- `cp_modelq_w` (+ `cp_wprime_r2`, `cp_wprime_note`) = PRAWDZIWE CP z KROTKICH okien
+  120/300/600 s (envelope 90d, regresja Work=CP*t+W'). Wartosc ~= FTP.
+- `ltp_modelq_w` (+ `ltp_modelq_r2`, `ltp_modelq_note`) = LTP z DLUGICH okien
+  300/600/1200/1800 s (dawna zawartosc cp_modelq_w). Odpowiednik Xert LTP.
+- `wprime_modelq_kj` bez zmian (intercept dopasowania LTP) -- nadal NIEWIARYGODNE, jawnie
+  zostawione dla Kroku 2 (null + range 13-22 kJ + confidence:low).
+
+**Zmiany kodu.** `fitmodel/cp_wprime.py`: dwa dopasowania (CP krotkie / LTP dlugie).
+`fitmodel/xert_bench.py`: porownanie LTP<->LTP bierze teraz `ltp_modelq_w` (nie
+`cp_modelq_w`); prawdziwe CP jest juz benchmarkowane przez `ftp_est_w` vs `xert_tp_w`
+(kolumna bench `cp_modelq_w` zachowuje historyczna nazwe, ale trzyma LTP ModelQ).
+`qbot3/rides/ride_report_builder.py`: blok "forma" pokazuje CP i LTP (obie z metkami r2);
+benchmark: klucze cp_* -> ltp_* (uczciwa etykieta porownania LTP-do-LTP).
+
+**Backfill.** Dodane kolumny ltp_* (ALTER ADD, addytywne). Przeliczono cp_modelq_w/
+ltp_modelq_w dla wszystkich istniejacych wierszy `fitmodel_daily` od 2025-10-01 (107 dni;
+najstarszy realny wiersz to 2026-03-21). Tylko UPDATE istniejacych wierszy -- bez tworzenia
+pustych rekordow. Wynik: CP 210-242 W, LTP 191-211 W.
+
+**Weryfikacja.** Dry-run cp_wprime: CP=241.9 (r2=0.999), LTP=192.9 (r2=0.996), W'=34.84.
+Benchmark: LTP 192.9 vs 192.8 (delta 0.1) OK; FTP 252.8 vs 249.2 (delta 3.6) OK.
+py_compile OK dla 3 plikow, import ride_report_builder OK.

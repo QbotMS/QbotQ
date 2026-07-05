@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""FITMODEL -- CP/W' z krzywej mocy (MMP) wykonanych jazd.
+"""FITMODEL -- CP i LTP z krzywej mocy (MMP) wykonanych jazd.
 
 Zrodlo: qbot_v2.training_sessions.mmp_*_w (Garmin API, maxAvgPower_N, juz
 pobierane co 15 min przez import_garmin_training.py -- zero nowych wywolan API).
@@ -9,13 +9,19 @@ Metoda: envelope (najlepsza wartosc per duracja w oknie, NIE z jednej jazdy)
 -> model 2-parametrowy Monod-Scherrer P(t) = W'/t + CP, linearyzowany jako
 Work(t) = P(t)*t = CP*t + W' -> regresja liniowa najmniejszych kwadratow.
 
-Duracje 300/600/1200/1800 s (5/10/20/30 min) -- zakres gdzie model CP jest
-wiarygodny (krotsze <2min zaklamuje beztlenowe, dluzsze >30-40min zaklamuje
-zmeczenie/tankowanie). Prog: min. 3 z 4 duracji obecne w oknie, inaczej None+reason
-(przy turystyce czesto brak wysilkow maksymalnych -- nie zgadujemy).
+DWA DOPASOWANIA (od Kroku 1, 2026-07-05):
+- CP  z KROTKICH okien 120/300/600 s -> prawdziwe CP (~= FTP). Kolumna cp_modelq_w.
+- LTP z DLUGICH  okien 300/600/1200/1800 s -> asymptota trwala (Long Term Power),
+  odpowiednik Xert LTP. Kolumna ltp_modelq_w.
+Wczesniej pojedyncze dlugie dopasowanie zapisywalo LTP mylnie jako cp_modelq_w
+(cp_modelq_w == Xert LTP, delta ~0). Rozdzielone -- patrz DECISIONS.md 2026-07-05.
+
+W' (wprime_modelq_kj): brany z intercepta dopasowania DLUGIEGO, bez zmian wzgledem
+stanu sprzed Kroku 1. Traktowany jako NIEWIARYGODNY (submaksymalny artefakt) --
+poprawne W' (null + range + confidence) to osobny Krok 2.
 
 UWAGA (uczciwie): to sa najlepsze fragmenty ZWYKLYCH jazd, nie testy maksymalne.
-Moze to nieco zanizac realne CP/W'. Traktowac jako estymator, nie pomiar.
+Moze to nieco zanizac realne CP/LTP. Traktowac jako estymator, nie pomiar.
 """
 
 import sys
@@ -27,18 +33,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fitmodel.ftp_resolver import _db_connect, _coerce_date
 
-DURATIONS = (300, 600, 1200, 1800)
-MIN_POINTS = 3
+CP_DURATIONS = (120, 300, 600)          # krotkie okna -> prawdziwe CP (~FTP)
+LTP_DURATIONS = (300, 600, 1200, 1800)  # dlugie okna  -> LTP (asymptota trwala)
+CP_MIN_POINTS = 3
+LTP_MIN_POINTS = 3
 WINDOW_DAYS = 90
 
 
-def _envelope_curve(db_conn, as_of: date, window_days: int) -> tuple[dict[int, float], int]:
+def _envelope_curve(db_conn, as_of: date, window_days: int, durations: tuple[int, ...]) -> tuple[dict[int, float], int]:
     """Najlepsza (max) wartosc mmp_{d}_w w oknie [as_of-window_days, as_of], per duracja.
 
     Envelope = najlepszy fragment SPOSROD WIELU jazd, nie pojedyncza jazda --
     tak buduje sie realna krzywa mocy w oknie czasowym.
     """
-    cols = ",".join(f"max(mmp_{d}_w)" for d in DURATIONS)
+    cols = ",".join(f"max(mmp_{d}_w)" for d in durations)
     with db_conn.cursor() as cur:
         cur.execute(
             f"""
@@ -51,15 +59,18 @@ def _envelope_curve(db_conn, as_of: date, window_days: int) -> tuple[dict[int, f
         )
         row = cur.fetchone()
     n_rides = row[-1] or 0
-    curve = {d: float(v) for d, v in zip(DURATIONS, row[:-1]) if v is not None}
+    curve = {d: float(v) for d, v in zip(durations, row[:-1]) if v is not None}
     return curve, n_rides
 
 
-def _fit_cp_wprime(curve: dict[int, float]) -> tuple[float | None, float | None, float | None]:
-    """Regresja Work(t) = CP*t + W' na punktach envelope. Zwraca (cp_w, wprime_j, r2)."""
+def _fit_model(curve: dict[int, float], min_points: int) -> tuple[float | None, float | None, float | None]:
+    """Regresja Work(t) = P*t + W' na punktach envelope. Zwraca (asymptota_w, wprime_j, r2).
+
+    asymptota_w = nachylenie (CP dla krotkich okien / LTP dla dlugich).
+    """
     pts = sorted(curve.items())
     n = len(pts)
-    if n < MIN_POINTS:
+    if n < min_points:
         return None, None, None
 
     ts = [float(t) for t, _ in pts]
@@ -72,74 +83,97 @@ def _fit_cp_wprime(curve: dict[int, float]) -> tuple[float | None, float | None,
     if sxx == 0:
         return None, None, None
 
-    cp = sxy / sxx
-    wprime = mean_w - cp * mean_t
+    slope = sxy / sxx           # asymptota (CP / LTP)
+    wprime = mean_w - slope * mean_t
 
     ss_tot = sum((w - mean_w) ** 2 for w in ws)
     if ss_tot == 0:
         r2 = None
     else:
-        ss_res = sum((w - (cp * t + wprime)) ** 2 for t, w in zip(ts, ws))
+        ss_res = sum((w - (slope * t + wprime)) ** 2 for t, w in zip(ts, ws))
         r2 = 1 - ss_res / ss_tot
 
-    return cp, wprime, r2
+    return slope, wprime, r2
 
 
 def compute_cp_wprime(db_conn, as_of: date | None = None, window_days: int = WINDOW_DAYS) -> dict[str, Any]:
-    """Policz CP/W' na dzien as_of (bez zapisu)."""
+    """Policz CP (krotkie okna) i LTP (dlugie okna) na dzien as_of (bez zapisu)."""
     as_of = _coerce_date(as_of)
-    curve, n_rides = _envelope_curve(db_conn, as_of, window_days)
 
-    if len(curve) < MIN_POINTS:
-        have = sorted(curve.keys())
-        return {
-            "day": as_of,
-            "cp_modelq_w": None,
-            "wprime_modelq_kj": None,
-            "cp_wprime_r2": None,
-            "cp_wprime_note": (
-                f"za malo wysilkow maksymalnych w oknie {window_days}d "
-                f"(mam {len(curve)}/{len(DURATIONS)} duracji: {have}, min={MIN_POINTS}, n_jazd={n_rides})"
-            ),
-        }
-
-    cp, wprime_j, r2 = _fit_cp_wprime(curve)
-    if cp is None or cp <= 0 or wprime_j is None or wprime_j <= 0:
-        return {
-            "day": as_of,
-            "cp_modelq_w": None,
-            "wprime_modelq_kj": None,
-            "cp_wprime_r2": round(r2, 3) if r2 is not None else None,
-            "cp_wprime_note": f"fit niewiarygodny (cp={cp}, wprime_j={wprime_j}) -- odrzucony",
-        }
-
-    note = (
-        f"okno {window_days}d, {len(curve)} duracji {sorted(curve.keys())}, "
-        f"n_jazd={n_rides}, r2={round(r2, 3) if r2 is not None else 'n/a'} "
-        f"-- z najlepszych fragmentow zwyklych jazd, nie testow maksymalnych"
-    )
-
-    return {
+    out: dict[str, Any] = {
         "day": as_of,
-        "cp_modelq_w": round(cp, 1),
-        "wprime_modelq_kj": round(wprime_j / 1000.0, 2),
-        "cp_wprime_r2": round(r2, 3) if r2 is not None else None,
-        "cp_wprime_note": note,
+        "cp_modelq_w": None, "cp_wprime_r2": None, "cp_wprime_note": None,
+        "ltp_modelq_w": None, "ltp_modelq_r2": None, "ltp_modelq_note": None,
+        "wprime_modelq_kj": None,
     }
+
+    # --- CP: krotkie okna 120/300/600 ---
+    cp_curve, cp_n = _envelope_curve(db_conn, as_of, window_days, CP_DURATIONS)
+    if len(cp_curve) < CP_MIN_POINTS:
+        out["cp_wprime_note"] = (
+            f"za malo krotkich wysilkow w oknie {window_days}d "
+            f"(mam {len(cp_curve)}/{len(CP_DURATIONS)}: {sorted(cp_curve.keys())}, min={CP_MIN_POINTS}, n_jazd={cp_n})"
+        )
+    else:
+        cp, _cp_wp_j, cp_r2 = _fit_model(cp_curve, CP_MIN_POINTS)
+        if cp is None or cp <= 0:
+            out["cp_wprime_r2"] = round(cp_r2, 3) if cp_r2 is not None else None
+            out["cp_wprime_note"] = f"fit CP niewiarygodny (cp={cp}) -- odrzucony"
+        else:
+            out["cp_modelq_w"] = round(cp, 1)
+            out["cp_wprime_r2"] = round(cp_r2, 3) if cp_r2 is not None else None
+            out["cp_wprime_note"] = (
+                f"prawdziwe CP z krotkich okien {sorted(cp_curve.keys())}, okno {window_days}d, "
+                f"n_jazd={cp_n}, r2={round(cp_r2, 3) if cp_r2 is not None else 'n/a'} "
+                f"-- najlepsze fragmenty zwyklych jazd, nie testy maksymalne"
+            )
+
+    # --- LTP: dlugie okna 300/600/1200/1800 (+ W' z intercepta, niewiarygodne) ---
+    ltp_curve, ltp_n = _envelope_curve(db_conn, as_of, window_days, LTP_DURATIONS)
+    if len(ltp_curve) < LTP_MIN_POINTS:
+        out["ltp_modelq_note"] = (
+            f"za malo dlugich wysilkow w oknie {window_days}d "
+            f"(mam {len(ltp_curve)}/{len(LTP_DURATIONS)}: {sorted(ltp_curve.keys())}, min={LTP_MIN_POINTS}, n_jazd={ltp_n})"
+        )
+    else:
+        ltp, ltp_wp_j, ltp_r2 = _fit_model(ltp_curve, LTP_MIN_POINTS)
+        if ltp is None or ltp <= 0:
+            out["ltp_modelq_r2"] = round(ltp_r2, 3) if ltp_r2 is not None else None
+            out["ltp_modelq_note"] = f"fit LTP niewiarygodny (ltp={ltp}) -- odrzucony"
+        else:
+            out["ltp_modelq_w"] = round(ltp, 1)
+            out["ltp_modelq_r2"] = round(ltp_r2, 3) if ltp_r2 is not None else None
+            out["ltp_modelq_note"] = (
+                f"LTP (asymptota trwala) z dlugich okien {sorted(ltp_curve.keys())}, okno {window_days}d, "
+                f"n_jazd={ltp_n}, r2={round(ltp_r2, 3) if ltp_r2 is not None else 'n/a'} "
+                f"-- odpowiednik Xert LTP"
+            )
+            # W' -- intercept dlugiego dopasowania, bez zmian (NIEWIARYGODNY, patrz Krok 2)
+            if ltp_wp_j is not None and ltp_wp_j > 0:
+                out["wprime_modelq_kj"] = round(ltp_wp_j / 1000.0, 2)
+
+    return out
 
 
 def upsert_into_daily(db_conn, row: dict[str, Any]) -> None:
-    """Zapisz cp/wprime do istniejacego (lub nowego) wiersza fitmodel_daily.day."""
+    """Zapisz cp/ltp/wprime do istniejacego (lub nowego) wiersza fitmodel_daily.day."""
     with db_conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO qbot_v2.fitmodel_daily (day, cp_modelq_w, wprime_modelq_kj, cp_wprime_r2, cp_wprime_note)
-            VALUES (%(day)s, %(cp_modelq_w)s, %(wprime_modelq_kj)s, %(cp_wprime_r2)s, %(cp_wprime_note)s)
+            INSERT INTO qbot_v2.fitmodel_daily
+                (day, cp_modelq_w, wprime_modelq_kj, cp_wprime_r2, cp_wprime_note,
+                 ltp_modelq_w, ltp_modelq_r2, ltp_modelq_note)
+            VALUES
+                (%(day)s, %(cp_modelq_w)s, %(wprime_modelq_kj)s, %(cp_wprime_r2)s, %(cp_wprime_note)s,
+                 %(ltp_modelq_w)s, %(ltp_modelq_r2)s, %(ltp_modelq_note)s)
             ON CONFLICT (day) DO UPDATE SET
                 cp_modelq_w = EXCLUDED.cp_modelq_w,
                 wprime_modelq_kj = EXCLUDED.wprime_modelq_kj,
                 cp_wprime_r2 = EXCLUDED.cp_wprime_r2,
-                cp_wprime_note = EXCLUDED.cp_wprime_note
+                cp_wprime_note = EXCLUDED.cp_wprime_note,
+                ltp_modelq_w = EXCLUDED.ltp_modelq_w,
+                ltp_modelq_r2 = EXCLUDED.ltp_modelq_r2,
+                ltp_modelq_note = EXCLUDED.ltp_modelq_note
             """,
             row,
         )
@@ -156,7 +190,7 @@ def run_daily(db_conn, as_of: date | None = None, window_days: int = WINDOW_DAYS
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="FITMODEL CP/W' z krzywej mocy (MMP)")
+    parser = argparse.ArgumentParser(description="FITMODEL CP (krotkie okna) i LTP (dlugie okna) z krzywej mocy (MMP)")
     parser.add_argument("--as-of", default=None, help="data odniesienia YYYY-MM-DD (domyslnie dzis)")
     parser.add_argument("--window-days", type=int, default=WINDOW_DAYS)
     parser.add_argument("--dry-run", action="store_true")

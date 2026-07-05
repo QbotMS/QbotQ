@@ -74,6 +74,7 @@ ZARZĄDZANIE            tryb × budżet czasu × focus → targety wiader → en
 | `surface_tag.py` | E6 | Tag nawierzchni per segment (GPS z FIT → Overpass → słownik) + kalibracja `mult=EF_asfalt/EF_typ` z bramką n≥10. |
 | `buckets.py` | B1 | Czysta funkcja: strumień mocy + FTP → (low/high/peak/d_strain). strain=i⁴·(100/3600). |
 | `ride_buckets.py` | B2 | Uruchamia B1 na historii → `fitmodel_ride_buckets`. |
+| `cp_wprime.py` | K1 | CP (krotkie okna 120/300/600 s) i LTP (dlugie 300/600/1200/1800 s) z krzywej mocy MMP (envelope 90d) -> `fitmodel_daily`. CP~=FTP, LTP~=Xert LTP. W' z intercepta LTP (niepewne -> Krok 2). |
 | `xert_bench.py` | E7 | Tygodniowy log (ftp_est, xert_tp, delta) → `fitmodel_xert_bench`. |
 | `week_planner.py` | T1 | Plan tygodnia: budżet czasu × tryb × focus → `fitmodel_week_plan`. Tryb = propozycja do zatwierdzenia. |
 | `focus.py` | T2 | Auto-focus: Stan A (profil trasy) / Stan B (deficyt → najsłabsze wiadro). |
@@ -90,7 +91,10 @@ fitmodel_segment ( id, ride_id, started_at, dur_s, np_w, hr_avg, cadence_avg,
   temp_c, surface_type, ef_raw, ef_norm, hr_quality_ok, readiness_weight, created_at )
 
 fitmodel_daily ( day PK, ftp_est_w, ef_med_28d, weight_kg, w_per_kg,
-  glycogen_pct, glycogen_g, sleep_h, hrv_night, rhr, notes )
+  glycogen_pct, glycogen_g, sleep_h, hrv_night, rhr, notes,
+  cp_modelq_w, cp_wprime_r2, cp_wprime_note,        -- CP: krotkie okna 120/300/600 s (~FTP)
+  ltp_modelq_w, ltp_modelq_r2, ltp_modelq_note,     -- LTP: dlugie okna 300/600/1200/1800 s (~Xert LTP)
+  wprime_modelq_kj )                                 -- W' z intercepta LTP; NIEPEWNE (Krok 2)
 
 fitmodel_xert_bench ( week PK, ftp_est_w, xert_tp_w, delta_w, xert_breakthrough, note )
 
@@ -157,10 +161,11 @@ durability: dur_mult = 1 + clip((kJ−kj_gate)/kj_gate, 0, 1); D += strain·(dur
 
 ## 7. Dzienny pipeline (cron 04:45)
 
-`fitmodel/daily_job.py` — orkiestrator z **odpornością warstwową** (try/except per krok, awaria jednego nie blokuje reszty). 7 kroków, w kolejności:
+`fitmodel/daily_job.py` — orkiestrator z **odpornością warstwową** (try/except per krok, awaria jednego nie blokuje reszty). 8 kroków, w kolejności:
 
 1. **ingest_fit** — nowe FIT → `fitmodel_segment`
 2. **ftp_resolver** — FTP_est → `fitmodel_daily`
+2b. **cp_wprime** -- CP (krotkie okna 120/300/600) + LTP (dlugie 300/600/1200/1800) z MMP -> `fitmodel_daily`
 3. **glycogen** — bilans glikogenu → `fitmodel_daily`
 4. **surface_tag** — tag nowych segmentów + kalibracja `fitmodel_surface_cal`
 5. **ride_buckets** — nowe jazdy → `fitmodel_ride_buckets`

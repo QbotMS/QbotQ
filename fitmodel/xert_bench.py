@@ -8,9 +8,11 @@ nie recznie. To porownanie dwoch estymatorow, nie estymatora z prawda.
 
 Dwie osobne pary (koncepcyjnie rozne metryki Xerta):
 - ftp_est_w (FitModel, ~1h prog) vs xert_tp_w (Xert Threshold Power, ~1h prog)
-- cp_modelq_w (FitModel, asymptota trwala) vs ltp_xert_w (Xert Long Term Power,
-  ich odpowiednik trwalej mocy -- ZWERYFIKOWANE 2026-07-04: 192.9 vs 192.9 W,
-  niemal identyczne mimo niezaleznych metod)
+- ltp_modelq_w (FitModel LTP, asymptota trwala z dlugich okien) vs ltp_xert_w
+  (Xert Long Term Power) -- ZWERYFIKOWANE 2026-07-04: 192.9 vs 192.9 W, niemal
+  identyczne. Od Kroku 1 (2026-07-05) zrodlem jest ltp_modelq_w, NIE cp_modelq_w
+  (ktore od Kroku 1 = prawdziwe CP z krotkich okien, benchmarkowane przez ftp_est).
+  Kolumna bench cp_modelq_w zachowuje historyczna nazwe, ale trzyma LTP ModelQ
 - wprime_modelq_kj (FitModel, z krzywej mocy) vs hie_xert_kj (Xert High Intensity
   Energy, ich odpowiednik W') -- oczekiwana wieksza rozbieznosc, inne modele
 """
@@ -57,13 +59,17 @@ def _latest_ftp_est(db_conn, as_of: date) -> tuple[date | None, float | None]:
 
 
 def _latest_cp_wprime(db_conn, as_of: date) -> tuple[date | None, float | None, float | None]:
-    """Najswiezszy NIEPUSTY cp_modelq_w/wprime_modelq_kj z fitmodel_daily na dzien <= as_of."""
+    """Najswiezszy NIEPUSTY ltp_modelq_w (LTP) + wprime_modelq_kj z fitmodel_daily na dzien <= as_of.
+
+    Od Kroku 1 porownujemy LTP-do-LTP (ltp_modelq_w vs Xert LTP); prawdziwe CP
+    (cp_modelq_w, krotkie okna) benchmarkuje ftp_est_w vs xert_tp_w.
+    """
     with db_conn.cursor() as cur:
         cur.execute(
             """
-            SELECT day, cp_modelq_w, wprime_modelq_kj
+            SELECT day, ltp_modelq_w, wprime_modelq_kj
             FROM qbot_v2.fitmodel_daily
-            WHERE cp_modelq_w IS NOT NULL
+            WHERE ltp_modelq_w IS NOT NULL
               AND day <= %s
             ORDER BY day DESC
             LIMIT 1
@@ -140,7 +146,7 @@ def compute_benchmark(db_conn, as_of: date | None = None) -> dict[str, Any]:
     note_bits = []
     note_bits.append(f"ftp_est z {ftp_day.isoformat()}" if ftp_day else "brak ftp_est")
     note_bits.append(f"xert_tp z {xert_day.isoformat()}" if xert_day else "brak xert_tp")
-    note_bits.append(f"cp_modelq z {cp_day.isoformat()}" if cp_day else "brak cp_modelq")
+    note_bits.append(f"ltp_modelq z {cp_day.isoformat()}" if cp_day else "brak ltp_modelq")
     note_bits.append(f"xert_ltp/hie z {xert2_day.isoformat()}" if xert2_day else "brak xert_ltp/hie")
     note = "; ".join(note_bits)
 
