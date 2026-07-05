@@ -575,36 +575,21 @@ def fueling_list(date_str: str | None = None, limit: int = 50) -> list[dict]:
 def daily_summary_compute(date_str: str) -> dict:
     day = date.fromisoformat(date_str)
     with _conn() as conn:
-        intake_count = conn.execute(
-            "SELECT COUNT(*) AS n FROM qbot_v2.intake_logs WHERE date = %s",
+        # Etap 3a (2026-07-05): kanon = intake_logs. Suma dnia liczona WYLACZNIE z intake_items.
+        # Usunieto galaz else na meal_log_items (zrodlo regime-switch 11.C.1). Legacy meal_logs
+        # jest szczatkowe; 0 dni wystepuje wylacznie w nim (zweryfikowane) -> nic nie tracimy.
+        meals = conn.execute(
+            """SELECT COALESCE(SUM(ii.kcal), 0) AS kcal,
+               COALESCE(SUM(ii.carbs_g), 0) AS carbs,
+               COALESCE(SUM(ii.protein_g), 0) AS protein,
+               COALESCE(SUM(ii.fat_g), 0) AS fat,
+               COALESCE(SUM(ii.fiber_g), 0) AS fiber,
+               COALESCE(SUM(ii.sodium_mg), 0) AS sodium
+               FROM qbot_v2.intake_items ii
+               JOIN qbot_v2.intake_logs il ON il.id = ii.intake_log_id
+               WHERE il.date = %s""",
             (day,),
-        ).fetchone()["n"]
-        if intake_count:
-            meals = conn.execute(
-                """SELECT COALESCE(SUM(ii.kcal), 0) AS kcal,
-                   COALESCE(SUM(ii.carbs_g), 0) AS carbs,
-                   COALESCE(SUM(ii.protein_g), 0) AS protein,
-                   COALESCE(SUM(ii.fat_g), 0) AS fat,
-                   COALESCE(SUM(ii.fiber_g), 0) AS fiber,
-                   COALESCE(SUM(ii.sodium_mg), 0) AS sodium
-                   FROM qbot_v2.intake_items ii
-                   JOIN qbot_v2.intake_logs il ON il.id = ii.intake_log_id
-                   WHERE il.date = %s""",
-                (day,),
-            ).fetchone()
-        else:
-            meals = conn.execute(
-                """SELECT COALESCE(SUM(mli.kcal), 0) AS kcal,
-                   COALESCE(SUM(mli.carbs_g), 0) AS carbs,
-                   COALESCE(SUM(mli.protein_g), 0) AS protein,
-                   COALESCE(SUM(mli.fat_g), 0) AS fat,
-                   COALESCE(SUM(mli.fiber_g), 0) AS fiber,
-                   COALESCE(SUM(mli.sodium_mg), 0) AS sodium
-                   FROM qbot_v2.meal_log_items mli
-                   JOIN qbot_v2.meal_logs ml ON ml.id = mli.meal_log_id
-                   WHERE ml.eaten_at::date = %s""",
-                (day,),
-            ).fetchone()
+        ).fetchone()
 
         hyd = conn.execute(
             """SELECT COALESCE(SUM(fluid_ml), 0) AS fluids,
