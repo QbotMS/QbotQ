@@ -72,3 +72,17 @@ POZOSTALO (kazdy krok osobno "decyzja przed kodem"):
 3. **Uczciwy komunikat Telegram:** ✅ tylko po przejściu bramki; inaczej ⚠️ z konkretem („zaopatrzenie tylko do 48/106 km", „POI: brak w Q3"); pokazywać realne liczby (sklepy X, atrakcje Y, % nawierzchni), nie suche „Dane zapisane w DB".
 
 **Zakres plików:** `qbot3/routes/route_precompute_orchestrator.py`, `qbot3/artifacts/route_analyzer.py` (retry/merge już są), `scripts/route_precompute_trigger.py` (komunikat + gating). Decyzja przed kodem: najpierw plan progów.
+
+
+---
+
+## [ZYWIENIE] Pozostale drobiazgi po naprawie zapisu (dodane 2026-07-05)
+
+Kontekst: glowna naprawa "jedzenie znika" zrobiona i zweryfikowana (DECISIONS.md 2026-07-05 (6)).
+Zostaly 3 drobne, NIEBLOKUJACE plasterki ze spec TS-2026-07-05-NUTRITION-WRITE-FIX.md:
+
+1. Usunac walidacje sugar-type w `_validate_and_fix_meal_items` (qbot_nutrition_db.py) -- zeruje
+   makra/kcal niezaleznie od reszty (trzecia, potwierdzona przyczyna objawu "zera w makrach").
+2. Sierota w starym `meal_logs` (id=16) -- do sprzatniecia.
+3. `_action_exec_nutrition_delete/correct` (qbot_mcp_adapter.py) robi UPDATE bez filtra `source`
+   -- tor martwy, ale moze po cichu nadpisac cudze wiersze; posprzatac przy okazji.

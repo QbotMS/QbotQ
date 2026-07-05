@@ -1479,3 +1479,82 @@ POZOSTALO (osobne decyzje, nie zrobione): (a) przelaczyc W' na Karoo /ride-readi
 ModelQ (ModelQ W' juz wiarygodne, ~20.3 kJ high); (b) wykres W'bal w raporcie z Xerta na ModelQ;
 (c) kosmetyczna etykieta zrodla w QExt2 (xertStatus -> ModelQ); (d) pierwszy realny test end-to-end:
 po jezdzie z tym APK Strona B odczyta 7 pol z FIT do fitmodel_qext2_ride.
+
+
+## 2026-07-05 (6) -- Naprawa zapisu zywienia: znikajace/podwojnie liczone posilki
+
+**Diagnoza (4 rundy audytu, task_specs/TS-2026-07-05-NUTRITION-WRITE-FIX.md).** Objaw "jedzenie
+znika" mial TRZY niezalezne przyczyny:
+1. `daily_summary_compute` liczyl if/else (albo `intake_items` albo stary `meal_log_items`, NIGDY
+   oba) -> pierwszy zapis dnia przelaczal "zeszyt" -> weryfikacja zapisu porownujaca sume dnia
+   przed/po widziala spadek i kasowala poprawnie wstawiony wiersz.
+2. Sprzeczny fragment promptu Alberta sugerowal nieistniejacy tryb draft/action_execute
+   (sporadyczny, potwierdzony realnym zgloszeniem z ChatGPT).
+3. Walidacja sugar-type w `_validate_and_fix_meal_items` zerowala makra/kcal niezaleznie od
+   powyzszych dwoch przyczyn.
+
+**Decyzja (P1 = wariant B).** Weryfikacja zapisu PO ID WSTAWIONEGO WIERSZA (istnienie + suma kcal
+tego wiersza zgodna z oczekiwana), NIE po porownaniu sumy dnia przed/po. `daily_summary_compute`
+liczy juz WYLACZNIE z `intake_items` (koniec przelaczania zeszytu).
+
+**Zmiany i commity:**
+- `e8f6b3a` -- P1 wariant B + hotfix: `meal_log_delete` przelicza cache po kasowaniu.
+- `fb2290b` -- Etap 1: usunieta sprzeczna regula draft/action_execute z promptu Alberta;
+  potwierdzenie tylko po `write_committed=true`.
+- `532e2b4` -- watchdog: alert gdy kcal dnia < 50% mediany z 14 dni (lapie czesciowa utrate
+  posilkow, nie tylko puste dni).
+- `3813fdd` -- Etap 3a: `daily_summary_compute` tylko z `intake_items`.
+- `b482076` -- Etap 3b: `build_snapshot` czyta z `qbot_v2.intake_logs` zamiast legacy (snapshot
+  widzial 5 z 153 pozycji przed fixem).
+- `c44e8a4` + `80dc5d6` -- wylaczenie nieuzywanego/nierzetelnego kanalu logowania jedzenia przez
+  Telegram (kod martwy, potwierdzone 0 wpisow za ostatni tydzien).
+
+**Pozostale (NIE zrobione, patrz TODO.md):** usuniecie walidacji sugar-type (przyczyna 3, plaster
+zostaje), sierota w starym `meal_logs` (id=16), `_action_exec_nutrition_delete/correct`
+(qbot_mcp_adapter.py) robi UPDATE bez filtra `source` (tor martwy, ale moze nadpisac cudze wiersze).
+
+
+## 2026-07-04 (5) -- Logowanie do panelu qbot-web: formularz HTML + sesja HMAC
+
+Cloudflare Access niedostepny na tym serwerze. Wdrozone dwuetapowo:
+1. Basic Auth (login+haslo) na cala strone albert.cytr.us, /healthz bez zmian (commit c1a0ed0).
+2. Formularz HTML logowania (autofill Keychain/Passwords: autocomplete="username"/
+   "current-password") + ciasteczko sesji podpisane HMAC, wazne 365 dni (HttpOnly,
+   SameSite=Lax). Token podpisu w .env.webauth jako WEBAUTH_TOKEN. Wszystkie trasy chronione
+   oprocz /healthz i /login; endpointy /api/* zwracaja 401 JSON zamiast przekierowania.
+
+**Weryfikacja na zywo:** pelny przeplyw potwierdzony -- brak sesji -> redirect /login; zle dane ->
+blad; dobre dane -> ciasteczko + powrot; kolejne wejscie z ciasteczkiem -> bez ponownego
+logowania; /api/* bez sesji -> 401.
+
+**Uwaga dokumentacyjna:** kod jest obecny i aktywny na HEAD (_webauth_cookie_make w qbot_web.py),
+ale dokladny numer commita etapu 2 (sam formularz HTML, w odroznieniu od Basic Auth c1a0ed0) nie
+zostal jednoznacznie potwierdzony w historii gita przy pisaniu tego wpisu -- sesja wdrozeniowa
+miala zawieszenie Desktop Commandera przy koncowym commicie. Jesli kiedys wazne, sprawdzic przez
+przegladanie diffow wokol tego fragmentu.
+
+
+## 2026-07-05 (7) -- Raport z jazdy: W1 automatyczny przy imporcie (Krok B) + W2 na zadanie + nowa lista jazd
+
+**Ustalenie architektoniczne (koryguje wczesniejsze zalozenie).** Garmin Connect jest JEDYNYM
+kanonicznym zrodlem danych jazdy (FIT z Garmina = te same dane co z Karoo + wylaczna analityka
+Firstbeat: Training Load, MMP, strefy). Most Karoo->Garmin sluzy WYLACZNIE do dostarczenia jazdy
+do Garmina, NIE jest wyzwalaczem dalszych krokow. `external_id` (numer Garmina) = klucz wiazacy
+`activity_fit_raw`, `activity_record`, `training_sessions`, `ride_report_data`.
+
+**Zrobione:**
+- Backfill 3 brakujacych jazd w activity_record (01.07, 02.07, 04.07): ingested=3 skipped=335
+  errors=0.
+- Krok B: `_build_report_safe(aid)` wpiete w `ingest_one` (with_report=True) -- raport W1 (liczby)
+  liczy sie AUTOMATYCZNIE przy kazdym imporcie jazdy i zapisuje pod external_id (ON CONFLICT DO
+  UPDATE, jeden raport na jazde, nadpisywany).
+- Cron co 15 min (9-23) na serwerze: backfill 20 0 2025-01-01 report.
+- `/api/rides/ready` przepisany z ride_frames+blokada testowa na activity_fit_raw JOIN
+  training_sessions (50 ostatnich jazd, numer Garmina, nazwa, flaga has_report).
+- W2 (analiza LLM nad W1) zweryfikowana dla jazdy 23475899142 (Tarczyn) -- generowana WYLACZNIE
+  na zadanie (rebuild=1), nie automatycznie (koszt LLM przy kazdym otwarciu).
+
+**Commity:** e0f153e (Krok B), 78aa3b3 (Faza 3 W2 + /api/rides/ready).
+
+**Odlozone:** historyczny backfill raportow wstecz (backfill 2000 0 2025-01-01 report) --
+jednorazowe zadanie na pozniej.
