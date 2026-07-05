@@ -502,6 +502,13 @@ def meal_log_delete(meal_id: int) -> dict | None:
         conn.execute("DELETE FROM qbot_v2.meal_log_items WHERE meal_log_id = %s", (meal_id,))
         conn.execute("DELETE FROM qbot_v2.meal_logs WHERE id = %s", (meal_id,))
         conn.commit()
+        # Hotfix 14.3: przelicz cache dnia po kasowaniu — inaczej daily_summary_get zawyza before (11.C.1).
+        try:
+            _d = str(meal.get("eaten_at") or "")[:10]
+            if _d:
+                daily_summary_compute(_d)
+        except Exception:
+            pass
         return meal
 
 

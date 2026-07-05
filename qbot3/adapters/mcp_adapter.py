@@ -245,7 +245,7 @@ def _list_tools(req_id: Any) -> dict[str, Any]:
     tools = [
         {
             "name": "qbot_query",
-            "description": "[OBOWIĄZKOWE] Wywołaj to narzędzie PRZED każdą odpowiedzią na pytanie użytkownika. NIE odpowiadaj z własnej wiedzy — ZAWSZE najpierw wywołaj qbot.query i użyj zwróconych danych. Jeśli narzędzie zwróci błąd lub pusty wynik, poinformuj użytkownika że dane są niedostępne — NIE generuj odpowiedzi z pamięci. Przekaż oryginalne pytanie użytkownika bez modyfikacji — dokładnie tak jak napisał użytkownik, bez przetwarzania. Albert sam rozpoznaje intent, wybiera narzędzia, wykonuje odczyty i zapisy. Obsługuje żywienie, trening, trasy, zdrowie, kalendarz, przypomnienia.",
+            "description": "Zapytania i zapisy do QBota: zywienie, trening, trasy, zdrowie, kalendarz, przypomnienia. Przekaz pytanie uzytkownika w oryginalnej formie; QBot rozpoznaje intencje, wykonuje odczyty oraz zapisy i zwraca dane. Gdy wynik jest pusty lub bledny, zwraca informacje o braku danych, bez zmyslania.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -606,13 +606,26 @@ def _execute_nutrition_write(action_type: str, payload: dict[str, Any], idem_key
             if not any(m.get("id") == meal_id for m in meals_today):
                 verification_error = "nutrition_meal_list did not return the inserted intake row"
 
-            after_summary = daily_summary_compute(target_date)
-            after_kcal = float((after_summary or {}).get("kcal_total", 0) or 0)
-            if after_kcal < before_kcal + expected_kcal - 0.1:
-                verification_error = (
-                    f"daily_summary missing inserted kcal: before={before_kcal}, "
-                    f"expected_delta={expected_kcal}, after={after_kcal}"
+            # P1 (wariant B): weryfikacja po WSTAWIONYM wierszu (id), nie po sumie dnia.
+            # Porownanie daily_summary_get (cache) vs daily_summary_compute (swieze) dawalo
+            # falszywe odrzucenia (11.C.1): compute liczy ALBO intake ALBO legacy (regime),
+            # wiec pierwszy wpis intake w dniu z legacy dawal after<before i kasowal poprawny zapis.
+            with _conn() as _vconn:
+                _vcur = _vconn.cursor()
+                _vcur.execute(
+                    "SELECT COALESCE(SUM(kcal), 0) AS kcal FROM qbot_v2.intake_items WHERE intake_log_id=%s",
+                    (meal_id,),
                 )
+                _vrow = _vcur.fetchone()
+                row_kcal = float((_vrow["kcal"] if _vrow else 0) or 0)
+            if expected_kcal > 0 and row_kcal <= 0:
+                verification_error = f"wstawiony wiersz {meal_id} ma 0 kcal (oczekiwano {expected_kcal})"
+            elif expected_kcal > 0 and abs(row_kcal - expected_kcal) > max(1.0, expected_kcal * 0.02):
+                verification_error = (
+                    f"wstawiony wiersz {meal_id} kcal niezgodne: oczekiwano {expected_kcal}, jest {row_kcal}"
+                )
+            # cache odswiezamy dla ODCZYTOW, ale NIE uzywamy do decyzji o odrzuceniu
+            after_summary = daily_summary_compute(target_date)
 
             with _conn() as conn:
                 cur = conn.cursor()
