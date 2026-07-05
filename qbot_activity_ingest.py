@@ -222,13 +222,29 @@ def store(conn, aid, summary, fit_bytes, records, laps, events):
             "has_position": has_pos, "fit_bytes": len(fit_bytes)}
 
 
-def ingest_one(gc, conn, summary) -> dict:
+def _build_report_safe(aid: str) -> str:
+    """Policz i zapisz raport W1 dla jazdy (ride_key=external_id). Bez wywalania ingestu."""
+    try:
+        from qbot3.rides.ride_report_builder import build_w1, save_report
+        fit_path = os.path.join(FIT_DIR, f"{aid}.fit")
+        if not os.path.exists(fit_path):
+            return "no-fit"
+        w1 = build_w1(fit_path, ride_key=str(aid))
+        save_report(str(aid), fit_path, {}, w1)
+        return "ok"
+    except Exception as e:
+        return f"report-err:{type(e).__name__}:{str(e)[:120]}"
+
+
+def ingest_one(gc, conn, summary, with_report: bool = False) -> dict:
     aid = str(summary.get("activityId"))
     fit_bytes = download_fit(gc, aid)
     records, laps, events = parse_fit(fit_bytes)
     res = store(conn, aid, summary, fit_bytes, records, laps, events)
     res["aid"] = aid
     res["name"] = summary.get("activityName")
+    if with_report:
+        res["report"] = _build_report_safe(aid)
     return res
 
 
@@ -238,7 +254,7 @@ def _already(conn, aid) -> bool:
         return cur.fetchone() is not None
 
 
-def backfill(limit=2000, start=0, since=SINCE):
+def backfill(limit=2000, start=0, since=SINCE, with_report=False):
     cutoff = datetime.strptime(since, "%Y-%m-%d").date()
     gc = garmin_client()
     conn = _db()
@@ -261,9 +277,10 @@ def backfill(limit=2000, start=0, since=SINCE):
                 skipped += 1
                 continue
             try:
-                r = ingest_one(gc, conn, a)
+                r = ingest_one(gc, conn, a, with_report=with_report)
                 done += 1
-                print(f"OK {aid} {r['name']!r} rec={r['records']} lap={r['laps']} ev={r['events']} pos={r['has_position']}")
+                _rep = f" report={r['report']}" if with_report else ""
+                print(f"OK {aid} {r['name']!r} rec={r['records']} lap={r['laps']} ev={r['events']} pos={r['has_position']}{_rep}")
             except Exception as e:
                 errors += 1
                 conn.rollback()
@@ -286,7 +303,7 @@ def _one():
     cyc = next((a for a in acts if isinstance(a, dict) and _is_cycling(a)), None)
     if not cyc:
         print("brak jazdy w 15 ostatnich"); return
-    r = ingest_one(gc, conn, cyc)
+    r = ingest_one(gc, conn, cyc, with_report=True)
     print("INGESTED:", json.dumps(r, default=str))
     with conn.cursor() as cur:
         cur.execute("SELECT count(*), count(lat) FROM qbot_v2.activity_record WHERE external_id=%s", (r["aid"],))
@@ -307,6 +324,7 @@ if __name__ == "__main__":
         lim = int(sys.argv[2]) if len(sys.argv) > 2 else 2000
         st = int(sys.argv[3]) if len(sys.argv) > 3 else 0
         sn = sys.argv[4] if len(sys.argv) > 4 else SINCE
-        backfill(lim, st, sn)
+        wr = (len(sys.argv) > 5 and sys.argv[5].lower() in ("report", "1", "true", "yes"))
+        backfill(lim, st, sn, with_report=wr)
     else:
         _one()
