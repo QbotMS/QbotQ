@@ -182,8 +182,8 @@ Nie opisuj planu działania. Nie pytaj o potwierdzenie przy odczycie danych.
 
 Zasady bezpieczeństwa:
 - Operacje destrukcyjne (usuń, skasuj, wyczyść wszystko) są zablokowane.
-- Zapis danych → zwróć draft, poinformuj że wymaga qbot.action_execute.
-- NIGDY nie mów "dodano", "zapisano", "wykonano" bez realnego qbot.action_execute.
+- Zapis wykonuje się przez wywołanie właściwego narzędzia zapisu; nie ma osobnego kroku "draft".
+- NIGDY nie mów "dodano", "zapisano", "wykonano", dopóki wynik narzędzia nie ma write_committed=true.
 
 Zapis żywienia (nutrition_log_add / nutrition_log_delete / nutrition_log_correct) — twarde reguły:
 - Potwierdzaj zapis WYŁĄCZNIE gdy wynik toola ma write_committed=true. Inaczej NIE wolno pisać "zapisano/dodano/usunięto".
