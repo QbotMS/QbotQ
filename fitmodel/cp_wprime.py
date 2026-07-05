@@ -48,6 +48,11 @@ WPRIME_HIGH_FRAC = 0.95           # high: swieza <=30d i P120 >= frac*best
 WPRIME_RANGE_LO = 13.0
 WPRIME_RANGE_HI = 22.0
 
+# --- Peak Power (Krok "a", warstwa 1 sygnatury) ---
+PP_MAIN_WINDOW = 5      # mmp_5_w -> glowna PP (stabilna, standard sprintu)
+PP_INSTANT_WINDOW = 1   # mmp_1_w -> PP instant (obok, moze byc artefakt)
+PP_FRESH_DAYS = 60      # najlepszy sprint 5s <= tyle dni -> high, wyzej -> low
+
 
 def _envelope_curve(db_conn, as_of: date, window_days: int, durations: tuple[int, ...]) -> tuple[dict[int, float], int]:
     """Najlepsza (max) wartosc mmp_{d}_w w oknie [as_of-window_days, as_of], per duracja.
@@ -184,6 +189,66 @@ def _wprime_harvest(db_conn, as_of: date, window_days: int = WINDOW_DAYS) -> dic
     return out
 
 
+def _peak_power(db_conn, as_of: date, window_days: int = WINDOW_DAYS) -> dict[str, Any]:
+    """Peak Power = max sprint z envelope. Glowna 5s (stabilna), instant 1s (obok).
+
+    Flaga swiezosci: gdy najlepszy sprint 5s w oknie jest swiezy (<=PP_FRESH_DAYS),
+    PP jest wiarygodne (high). Bez swiezego sprintu -> zanizone (low), bo PP ujawnia
+    sie tylko przy realnym maksymalnym wysilku.
+    """
+    out: dict[str, Any] = {
+        "pp_modelq_w": None, "pp_instant_w": None,
+        "pp_confidence": "low", "pp_note": None,
+    }
+    start = as_of - timedelta(days=window_days)
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT max(mmp_5_w), max(mmp_1_w), count(*)
+            FROM qbot_v2.training_sessions
+            WHERE date >= %s AND date <= %s
+              AND (sport_type IS NULL OR sport_type NOT LIKE %s)
+            """,
+            (start, as_of, "%virtual%"),
+        )
+        pp5, pp1, n = cur.fetchone()
+        # data najlepszego sprintu 5s -> swiezosc
+        cur.execute(
+            """
+            SELECT date, mmp_5_w FROM qbot_v2.training_sessions
+            WHERE date >= %s AND date <= %s AND mmp_5_w IS NOT NULL
+              AND (sport_type IS NULL OR sport_type NOT LIKE %s)
+            ORDER BY mmp_5_w DESC LIMIT 1
+            """,
+            (start, as_of, "%virtual%"),
+        )
+        bestrow = cur.fetchone()
+
+    if pp5 is None:
+        out["pp_note"] = f"brak sprintow 5s w oknie {window_days}d (n_jazd={n or 0})"
+        return out
+
+    out["pp_modelq_w"] = round(float(pp5), 1)
+    out["pp_instant_w"] = round(float(pp1), 1) if pp1 is not None else None
+
+    if bestrow:
+        best_date, best_val = bestrow
+        age = (as_of - best_date).days
+        if age <= PP_FRESH_DAYS:
+            out["pp_confidence"] = "high"
+            out["pp_note"] = (
+                f"PP 5s={round(float(pp5))} W (instant 1s={round(float(pp1)) if pp1 else 'n/a'} W); "
+                f"najlepszy sprint {age}d temu -> swiezy, wiarygodny"
+            )
+        else:
+            out["pp_confidence"] = "low"
+            out["pp_note"] = (
+                f"PP 5s={round(float(pp5))} W; najlepszy sprint {age}d temu (>{PP_FRESH_DAYS}d) "
+                f"-> prawdopodobnie zanizone, brak swiezego maksa"
+            )
+    return out
+
+
 def compute_cp_wprime(db_conn, as_of: date | None = None, window_days: int = WINDOW_DAYS) -> dict[str, Any]:
     """Policz CP (krotkie okna) i LTP (dlugie okna) na dzien as_of (bez zapisu)."""
     as_of = _coerce_date(as_of)
@@ -194,6 +259,8 @@ def compute_cp_wprime(db_conn, as_of: date | None = None, window_days: int = WIN
         "ltp_modelq_w": None, "ltp_modelq_r2": None, "ltp_modelq_note": None,
         "wprime_modelq_kj": None, "wprime_lo_kj": None, "wprime_hi_kj": None,
         "wprime_confidence": "low", "wprime_source": None,
+        "pp_modelq_w": None, "pp_instant_w": None,
+        "pp_confidence": "low", "pp_note": None,
     }
 
     # --- CP: krotkie okna 120/300/600 ---
@@ -241,6 +308,9 @@ def compute_cp_wprime(db_conn, as_of: date | None = None, window_days: int = WIN
     # --- W' -- harvest near-max + przedzial (Krok 2), zastepuje intercept LTP ---
     out.update(_wprime_harvest(db_conn, as_of, window_days))
 
+    # --- Peak Power (Krok "a") -- domkniecie Fitness Signature ---
+    out.update(_peak_power(db_conn, as_of, window_days))
+
     return out
 
 
@@ -252,11 +322,13 @@ def upsert_into_daily(db_conn, row: dict[str, Any]) -> None:
             INSERT INTO qbot_v2.fitmodel_daily
                 (day, cp_modelq_w, wprime_modelq_kj, cp_wprime_r2, cp_wprime_note,
                  ltp_modelq_w, ltp_modelq_r2, ltp_modelq_note,
-                 wprime_lo_kj, wprime_hi_kj, wprime_confidence, wprime_source)
+                 wprime_lo_kj, wprime_hi_kj, wprime_confidence, wprime_source,
+                 pp_modelq_w, pp_instant_w, pp_confidence, pp_note)
             VALUES
                 (%(day)s, %(cp_modelq_w)s, %(wprime_modelq_kj)s, %(cp_wprime_r2)s, %(cp_wprime_note)s,
                  %(ltp_modelq_w)s, %(ltp_modelq_r2)s, %(ltp_modelq_note)s,
-                 %(wprime_lo_kj)s, %(wprime_hi_kj)s, %(wprime_confidence)s, %(wprime_source)s)
+                 %(wprime_lo_kj)s, %(wprime_hi_kj)s, %(wprime_confidence)s, %(wprime_source)s,
+                 %(pp_modelq_w)s, %(pp_instant_w)s, %(pp_confidence)s, %(pp_note)s)
             ON CONFLICT (day) DO UPDATE SET
                 cp_modelq_w = EXCLUDED.cp_modelq_w,
                 wprime_modelq_kj = EXCLUDED.wprime_modelq_kj,
@@ -268,7 +340,11 @@ def upsert_into_daily(db_conn, row: dict[str, Any]) -> None:
                 wprime_lo_kj = EXCLUDED.wprime_lo_kj,
                 wprime_hi_kj = EXCLUDED.wprime_hi_kj,
                 wprime_confidence = EXCLUDED.wprime_confidence,
-                wprime_source = EXCLUDED.wprime_source
+                wprime_source = EXCLUDED.wprime_source,
+                pp_modelq_w = EXCLUDED.pp_modelq_w,
+                pp_instant_w = EXCLUDED.pp_instant_w,
+                pp_confidence = EXCLUDED.pp_confidence,
+                pp_note = EXCLUDED.pp_note
             """,
             row,
         )
