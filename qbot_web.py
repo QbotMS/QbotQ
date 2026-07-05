@@ -2903,7 +2903,107 @@ def report_send_email(snapshot_id: int = Query(...), to: str = Query(...)):
     return {"status": "ok", "to": to, "has_map": bool(map_png), "has_chart": bool(chart_png), "has_gpx": bool(gpx_xml)}
 
 
+# TEST (budowa raportu z jazdy): lista pokazuje tylko te jedna jazde.
+@app.get("/api/rides/ready")
+def rides_ready(response: Response):
+    """Lista jazd do raportu: activity_fit_raw (rozlozone) JOIN training_sessions
+    (data/nazwa/typ) po external_id (numer Garmina). Flaga has_report z ride_report_data."""
+    response.headers["Cache-Control"] = "no-store"
+    conn = _db_conn()
+    try:
+        rows = conn.execute(
+            "SELECT afr.external_id AS ride_key, afr.fit_path AS fit_path, "
+            "ts.started_at AS t_start, ts.activity_name AS name, ts.sport_type AS sport, "
+            "(rrd.built_at IS NOT NULL) AS has_report "
+            "FROM qbot_v2.activity_fit_raw afr "
+            "JOIN qbot_v2.training_sessions ts ON ts.external_id = afr.external_id "
+            "LEFT JOIN qbot_v2.ride_report_data rrd ON rrd.ride_key = afr.external_id "
+            "WHERE afr.parse_error IS NULL "
+            "ORDER BY ts.started_at DESC NULLS LAST LIMIT 50"
+        ).fetchall()
+        out = []
+        for r in rows:
+            ts = r["t_start"]
+            out.append({
+                "ride_key": r["ride_key"], "fit_path": r["fit_path"],
+                "name": r["name"], "sport": r["sport"],
+                "date": ts.date().isoformat() if ts else None,
+                "time": ts.strftime("%H:%M") if ts else None,
+                "has_report": bool(r["has_report"]),
+            })
+        return {"rides": out}
+    finally:
+        conn.close()
+
+
+@app.get("/api/ride-report/data")
+def ride_report_data(response: Response, ride: str = Query(...), rebuild: int = Query(0)):
+    """W1 raportu z jazdy. Zwraca zapisany JSON, albo buduje z FIT (ModelQ+Garmin) i zapisuje.
+
+    Wiatr i nawierzchnia sa WTYCZKAMI (status 'parked') do decyzji uzytkownika.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    from qbot3.rides import ride_report_builder as _rrb
+    conn = _db_conn()
+    try:
+        row = conn.execute(
+            "SELECT fit_path, w1_json FROM qbot_v2.ride_report_data "
+            "WHERE ride_key=%s AND schema_version=%s",
+            (ride, _rrb.SCHEMA_VERSION)).fetchone()
+        if row and row.get("w1_json") and not rebuild:
+            return row["w1_json"]
+        fit = (row or {}).get("fit_path")
+        if not fit:
+            fr = conn.execute(
+                "SELECT fit_path FROM qbot_v2.ride_frames "
+                "WHERE ride_key=%s AND fit_path IS NOT NULL LIMIT 1",
+                (ride,)).fetchone()
+            fit = fr["fit_path"] if fr else None
+    finally:
+        conn.close()
+    if not fit or not os.path.exists(fit):
+        raise HTTPException(status_code=404, detail="Brak pliku FIT dla tej jazdy")
+    w1 = _rrb.build_w1(fit, ride)
+    _rrb.save_report(ride, fit, {}, w1)
+    return w1
+
+
+@app.get("/api/ride-report/w2")
+def ride_report_w2(response: Response, ride: str = Query(...), rebuild: int = Query(0)):
+    """Analiza W2 (LLM czyta tylko W1). Zwraca zapisana; generuje wylacznie gdy rebuild=1."""
+    response.headers["Cache-Control"] = "no-store"
+    conn = _db_conn()
+    try:
+        row = conn.execute(
+            "SELECT w1_json, w2_json FROM qbot_v2.ride_report_data "
+            "WHERE ride_key=%s AND schema_version=%s", (ride, 1)).fetchone()
+    finally:
+        conn.close()
+    if not row or not row.get("w1_json"):
+        raise HTTPException(status_code=404, detail="Brak raportu W1 - najpierw wygeneruj raport")
+    if row.get("w2_json") and not rebuild:
+        return row["w2_json"]
+    if not rebuild:
+        return {"status": "empty"}
+    from qbot3.rides.ride_report_w2 import build_w2
+    try:
+        w2 = build_w2(row["w1_json"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="W2 generacja nieudana: %s" % e)
+    conn = _db_conn()
+    try:
+        conn.execute(
+            "UPDATE qbot_v2.ride_report_data SET w2_json=%s "
+            "WHERE ride_key=%s AND schema_version=%s",
+            (json.dumps(w2, ensure_ascii=False), ride, 1))
+        conn.commit()
+    finally:
+        conn.close()
+    return w2
+
+
 app.mount("/", StaticFiles(directory=WEB_ROOT, html=True), name="static")
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host=HOST, port=PORT)
