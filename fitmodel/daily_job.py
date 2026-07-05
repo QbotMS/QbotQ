@@ -60,6 +60,12 @@ def main() -> None:
             return run_daily(conn, dry_run=False)
         _step("cp_wprime", _cp_wprime)
 
+        # 2c. Wskaznik gotowosci (HRV+RHR+sen, baseline 60d) -> fitmodel_daily
+        def _readiness():
+            from fitmodel.readiness import save_readiness
+            return save_readiness(conn)
+        _step("readiness", _readiness)
+
         # 3. Glikogen -> fitmodel_daily
         def _glyco():
             from fitmodel.glycogen import update_glycogen_in_daily
