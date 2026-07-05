@@ -1450,3 +1450,32 @@ py_compile OK, import ride_report_builder OK.
 Raport jazdy: blok "forma" pokazuje teraz W' + pewnosc + przedzial. Wykres W'bal NADAL
 uzywa W' z Xerta (~22) -- przelaczenie na ModelQ razem z Karoo w jednej przebudowie QExt2
 (zeby QBot i Karoo sie nie rozjechaly). Karoo /ride-readiness W' tez przelaczymy wtedy.
+
+
+## 2026-07-05 (5) -- WATEK 2 Strona A: QExt2 pisze pola do FIT (deploy key + CI build)
+
+Strona A domknieta: rozszerzenie QExt2 (Kotlin, Karoo) zapisuje 7 developer data fields
+@1Hz do pliku FIT jazdy -- te same nazwy/typy co KONTRAKT ze Strony B (wpis (3) wyzej).
+Zmiany w QExt2 (OSOBNE repo github.com/QbotMS/QExt2, NIE /opt/qbot/app), commit 0b4ee18, +54/-2:
+- extension_info.xml: fitFile="true" (rozszerzenie deklaruje zapis do FIT).
+- StatsCalculator: gettery effectiveCpW()/effectiveWPrimeKj().
+- RideDataAggregator + StatsRideSnapshot: +4 pola snapshotu (cfEff, cpEffW, wPrimeEffKj, readiness).
+- QExt2PrimaryExtension.startFit(): emituje WriteToRecordMesg @1Hz (7 pol), tylko gdy W'bal>=0.
+Marker 0%-zdarzenia jako osobny WriteEventMesg swiadomie POMINIETY w v1 (niepewne enumy) --
+per-rekord flaga qext2_wbal_zero wystarcza.
+
+DROGA WDROZENIA (bez tokena w jawnej postaci -- twarda granica Claude):
+- deploy key ED25519 na serwerze (/root/.ssh/qext2_github_ed25519, alias SSH github-qext2),
+  czesc publiczna autoryzowana przez Michala na GitHub (write access). Sekret nigdy nie przechodzi przez Claude.
+- push: ssh q 'git -C /opt/qbot/qext2_deploy ...' (klon QExt2 na serwerze /opt/qbot/qext2_deploy, do reuzycia).
+- APK buduje GitHub Actions (.github/workflows/build.yml, on: push main -> gradlew assembleDebug,
+  JDK17, SDK na runnerze) -- lokalnie sie nie da (serwer i Mac bez Android SDK/Javy). Push = automatyczny build.
+
+DOWOD: push 92ba3e4..0b4ee18 -> CI run #140 SUCCESS -> Release "QExt2 Auto Build" tag build-140,
+app-debug.apk 4.35 MB. Kod skompilowal sie czysto za pierwszym razem mimo braku lokalnego builda.
+Michal pobiera APK z Release i sideloaduje na Karoo.
+
+POZOSTALO (osobne decyzje, nie zrobione): (a) przelaczyc W' na Karoo /ride-readiness z Xerta na
+ModelQ (ModelQ W' juz wiarygodne, ~20.3 kJ high); (b) wykres W'bal w raporcie z Xerta na ModelQ;
+(c) kosmetyczna etykieta zrodla w QExt2 (xertStatus -> ModelQ); (d) pierwszy realny test end-to-end:
+po jezdzie z tym APK Strona B odczyta 7 pol z FIT do fitmodel_qext2_ride.

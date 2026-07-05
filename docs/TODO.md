@@ -5,45 +5,38 @@
 
 ---
 
-## [MODELQ / KAROO / QExt2] Pozostale kroki odciecia Xerta i zapisu do FIT (dodane 2026-07-05)
+## [MODELQ / KAROO / QExt2] Odciecie Xerta + zapis QExt2 do FIT (aktualizacja 2026-07-05)
 
-Kontekst: Krok 1 zrobiony (CP z krotkich okien vs LTP z dlugich rozdzielone). Karoo przepiete
-na ModelQ dla FTP+LTP przez endpoint `/ride-readiness` (W' na razie zostaje z Xerta ~22 kJ,
-bo ModelQ W' jest jeszcze niewiarygodne). Ponizej co zostalo, w kolejnosci, z celem.
+Kontekst: budujemy odciecie Xerta (ModelQ jako jedyne zrodlo formy) i most QExt2<->QBot przez
+plik FIT. Stan po sesji 2026-07-05 (szczegoly: DECISIONS.md wpisy 2026-07-05 (1)-(5)).
 
-1. **Krok 2 — W' w ModelQ (null + range 13-22 kJ + confidence:low).**
-   Po co: dzis `wprime_modelq_kj` = ~35 kJ to zawyzony artefakt (submaks). Potrzebne uczciwe W',
-   zeby (a) raport nie klamal, (b) mozna bylo przepiac W' na Karoo z Xerta na ModelQ.
-   Metoda: oportunistyczny harvest near-max z istniejacych MMP (mmp_30/60/120), plus kotwica
-   z drogi (zdarzenie W'bal=0% na Karoo). Bez swiezego twardego momentu -> W'=null+range+low.
+ZROBIONE:
+- [x] Krok 1 -- CP z krotkich okien (120/300/600 s, ~242 W) rozdzielone od LTP z dlugich (~193 W).
+- [x] Karoo /ride-readiness przepiete na ModelQ dla FTP+LTP (W' NADAL z Xerta ~22 kJ).
+- [x] Krok 2 -- W' z harvestu near-max (koniec z artefaktem 34.8 kJ). Live: 20.3 kJ, confidence high.
+      Bez swiezego twardego fragmentu -> NULL + przedzial 13-22 kJ + low.
+- [x] Strona B -- QBot czyta 7 developer fields QExt2 z surowego FIT (tabela fitmodel_qext2_ride;
+      no-op gdy plik ich nie ma).
+- [x] Strona A -- QExt2 pisze te 7 pol @1Hz do FIT. Push przez deploy key, CI build #140 SUCCESS,
+      APK build-140 (github.com/QbotMS/QExt2 Releases). Bez tokena w jawnej postaci (twarda granica).
+- [x] Deploy key do QExt2 skonfigurowany i dziala (alias github-qext2, klon /opt/qbot/qext2_deploy).
 
-2. **Przepiac W' na Karoo z Xerta na ModelQ (PO Kroku 2).**
-   Po co: domkniecie pelnego odciecia Xerta -> Karoo w 100% na ModelQ. Miejsce: override w
-   `qbot_api.py` `_modelq_ftp_ltp` / `/ride-readiness` (dzis W' celowo omija ModelQ).
-   Wtedy mozna tez wywalic zywe wywolanie Xerta z endpointu.
+POZOSTALO (kazdy krok osobno "decyzja przed kodem"):
+1. **Przelaczyc W' na Karoo /ride-readiness z Xerta na ModelQ.** ODBLOKOWANE (ModelQ W' wiarygodne).
+   Miejsce: qbot_api.py `_modelq_ftp_ltp` / `/ride-readiness`. Wtedy usunac zywe wywolanie Xerta z endpointu.
+2. **Wykres W'bal w raporcie jazdy z Xerta na ModelQ.** Blok "forma" ma juz W' z ModelQ, ale sam WYKRES
+   W'bal liczy sie na W' Xerta -- przelaczyc RAZEM z pkt 1 (zeby QBot i Karoo sie nie rozjechaly).
+3. **Kosmetyczna etykieta zrodla w QExt2 (xertStatus -> ModelQ).** Wymaga kolejnego pushu QExt2 + CI
+   (droga jak Strona A). Drobne -- moze isc z pierwsza poprawka po tescie jazdy.
+4. **Pierwszy realny test end-to-end Strona A<->B.** Po jezdzie z APK build-140: sprawdzic, czy Strona B
+   odczytala 7 pol z FIT (fitmodel_qext2_ride). Pierwszy dowod calego mostu.
+5. **W' warstwa 1 -- kotwica z drogi.** Po tescie: zdarzenia W'bal=0% z QExt2 (przez Strone B) jako
+   realny pomiar wyczerpania -> podniesienie pewnosci W'. Wpina sie gdy sa dane z jazd.
+6. **Krok 3 -- zrownanie W'bal w QBot (W1) z algorytmem QExt2** (dynamiczne tau + skalowanie readiness).
+   Potrzebuje tick-po-ticku 1Hz -> zalezy od pkt 7.
+7. **Naprawic ingest activity_record 1Hz (stanal 2026-06-28) albo liczyc W'bal z FIT.** Blokuje TYLKO
+   Krok 3. Skalarne MMP (CP/W' harvest) tego NIE potrzebuja -- jada z training_sessions.mmp_*.
 
-3. **WATEK 2 — QExt2 zapisuje swoje liczby do pliku FIT (developer data fields).**
-   Po co: (a) domyka Krok 3 bez klonowania Kotlina, (b) daje etykietowane kotwice do harvestu W'.
-   Pola: W'bal %, efektywne CP/W', wspolczynnik cf, znacznik zdarzenia 0%.
-   Wymaga PO STRONIE QExt2: `fitFile="true"` w extension_info.xml + wypelnic pusty `startFit`
-   (emisja FitEffect) -> przebudowa APK + wgranie na Karoo (fizyczny krok Michala).
-   Wymaga PO STRONIE QBota: dopisac odczyt developer fields w `fitmodel/fit_ingest.py`
-   (dzis czyta tylko standardowe pola: moc/tetno/kadencja/temp/predkosc/dystans/wysokosc;
-   biblioteka fitparse te pola udostepnia). Wymaga przepustki (deploy key) do QExt2.
-
-4. **Krok 3 — zrownanie W'bal w QBot (W1) z algorytmem QExt2 (dynamiczne tau + skalowanie readiness).**
-   Po co: zeby liczby W'bal po stronie QBota zgadzaly sie z tym, co Karoo pokazuje na drodze
-   (rozjazd 0% na Karoo vs 12% minimum w W1). Latwiejsze, gdy WATEK 2 dostarczy pola z FIT.
-
-5. **Naprawic ingest `activity_record` 1Hz (stanal 2026-06-28) albo liczyc MMP z plikow FIT.**
-   Po co: tick-po-ticku W'bal (Krok 3) tego potrzebuje. UWAGA: skalarne MMP (Krok 0/1/2)
-   tego NIE potrzebuja -- to blokuje tylko Krok 3.
-
-6. **Przepustka do zapisu QExt2 (deploy key) -- dokonczyc setup.**
-   Po co: zeby Claude mogl sam pushowac zmiany do QExt2 (potrzebne do WATKU 2), bez tokena.
-   Status: user wkleil czesc publiczna klucza (qext2-deploy). Zostalo: dodac na GitHub
-   (repo QExt2 -> Settings -> Deploy keys -> Allow write access), alias `github-qext2` w
-   ~/.ssh/config na `q`, test `ssh -T git@github-qext2`.
 
 ---
 
