@@ -209,10 +209,11 @@ def store(conn, aid, summary, fit_bytes, records, laps, events):
             "(external_id,activity_name,sport_type,started_at,summary,fit_path,fit_sha256,fit_bytes,"
             "n_records,n_laps,n_events,has_position,parse_error,fetched_at) "
             "VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,NULL,now()) "
-            "ON CONFLICT (external_id) DO UPDATE SET summary=EXCLUDED.summary,fit_path=EXCLUDED.fit_path,"
-            "fit_sha256=EXCLUDED.fit_sha256,fit_bytes=EXCLUDED.fit_bytes,n_records=EXCLUDED.n_records,"
-            "n_laps=EXCLUDED.n_laps,n_events=EXCLUDED.n_events,has_position=EXCLUDED.has_position,"
-            "parse_error=NULL,fetched_at=now()",
+            "ON CONFLICT (external_id) DO UPDATE SET activity_name=EXCLUDED.activity_name,"
+            "sport_type=EXCLUDED.sport_type,started_at=EXCLUDED.started_at,summary=EXCLUDED.summary,"
+            "fit_path=EXCLUDED.fit_path,fit_sha256=EXCLUDED.fit_sha256,fit_bytes=EXCLUDED.fit_bytes,"
+            "n_records=EXCLUDED.n_records,n_laps=EXCLUDED.n_laps,n_events=EXCLUDED.n_events,"
+            "has_position=EXCLUDED.has_position,parse_error=NULL,fetched_at=now()",
             (aid, (summary.get("activityName") or "")[:200],
              (summary.get("activityType") or {}).get("typeKey", "other"),
              start_ts, json.dumps(summary, default=str), fit_path, sha, len(fit_bytes),
