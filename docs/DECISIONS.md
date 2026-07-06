@@ -6,6 +6,49 @@
 ---
 
 
+## 2026-07-06 -- DECYZJA: Krok 3 W'bal -- moc 3s zamiast surowej + walidacja na zywej jezdzie
+
+**Status:** gotowe, zwalidowane, `fitmodel/wbal_replay.py`.
+
+**Kontekst:** pierwsza prawdziwa jazda z build-140 QExt2 (2026-07-06 09:30-10:34,
+external_id 23496824503) -- Strona A dziala w 100%, wszystkie 7 pol FIT
+(qext2_wbal_pct, qext2_cp_eff_w, qext2_wprime_eff_kj, qext2_cf, qext2_wbal_zero,
+qext2_readiness, qext2_rsrv_pct) obecne w kazdym z 3783 rekordow.
+
+**Problem:** pierwsza wersja repliki (surowa moc z activity_record) dawala
+srednia|diff|=5.6pp, max=13.9pp wzgledem prawdziwego qext2_wbal_pct z FIT-a.
+
+**Przyczyna (potwierdzona w zrodle QExt2, RideDataAggregator.kt):** W'bal na
+Karoo NIE jest karmiony surowa moca z sekundy -- subskrybuje
+`DataType.Type.SMOOTHED_3S_AVERAGE_POWER` z SDK Karoo (log "PWR_3S"). To
+usredniona moc 3-sekundowa, nie chwilowa.
+
+**Decyzja:** replika usrednia ostatnie do 3 sekund `power_w` (rosnace okno na
+starcie, potem trailing 3) PRZED podaniem do wzoru rozniczkowego Skiby.
+Bufor 3s czyszczony na kazdej duzej dziurze (>=30s, postoj/dropout) -- nie
+usredniac przez przerwe.
+
+**Wynik walidacji na FIT (surowe cp_eff_w/wprime_eff_kj z urzadzenia, izolowany
+test samego wzoru):** srednia|diff|=0.49pp, max=2.73pp (bylo 5.6pp/13.9pp).
+
+**Wynik walidacji end-to-end (pelny potok: baza activity_record + ModelQ
+FTP/W' z fitmodel_daily + moc 3s + bramka postoj/dropout, BEZ podgladania
+wartosci z urzadzenia):** replika min W'bal=0.0% (prawdziwe: 0%), koncowe
+W'bal=33.5% (prawdziwe: 33%). Roznica <1pp na koncu 64-minutowej jazdy.
+
+**Przy okazji odkryte i wyjasnione (Michal, 2026-07-06):** `qext2_readiness`
+na tej jezdzie = 0.9826 (nie domyslne 1.0). Zrodlo: `AthleteData.
+applyBaroAdjustment()` mnozy todayFactor przez baroMultiplier (0.80-1.00,
+korekta z cisnienia atmosferycznego) przy wczytaniu danych sportowca PRZED
+jazda (RideDataAggregator.kt:234) -- "setup" liczony przed startem, nie blad
+i nie stary cache.
+
+**Uwaga do Kroku 3 dalej:** ingest `activity_record` (memo z wczesniej: "halted
+2026-06-28") w rzeczywistosci DZIALA -- 5 aktywnosci po tej dacie w bazie,
+najnowsza dokladnie do konca dzisiejszej jazdy (10:34:51). Wczesniejsza notatka
+o zatrzymaniu ingestu byla nieaktualna/bledna -- zweryfikowane live 2026-07-06.
+
+
 ## 2026-07-06 -- DECYZJA: Rozroznianie POSTOJ vs ODPADNIECIE MIERNIKA W LOCIE (Krok 0, W'bal)
 
 **Status:** aktywna, gotowe do wdrozenia w Kroku 3.
