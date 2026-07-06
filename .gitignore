@@ -52,3 +52,6 @@ config/github_claude.cfg
 # Temporary scripts and scratch files
 tmp/
 tmp_*.py
+
+.komoot_session
+outgoing/komoot/

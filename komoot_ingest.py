@@ -2,7 +2,7 @@
 """Wejscie trasy z Komoot do bazy QBota (droga A - natywnie).
 
 punkty Komoot -> GPX -> upsert_route_artifact(source="komoot") -> parse (route_parse_results)
--> ensure_route_base -> (opcjonalnie) ensure_route_precompute -> push_karoo.
+-> ensure_route_base -> profil nawierzchni -> ensure_route_precompute -> (push_karoo osobno).
 
 route_id = "komoot-<tour_id>". Pliki GPX ida do outgoing/komoot/.
 """
@@ -18,6 +18,7 @@ from tools.rwgps.client import _parse_gpx_for_summary, RWGPS_PARSE_VERSION
 from qbot3.routes.route_base_store import ensure_route_base
 
 OUT_DIR = Path("/opt/qbot/app/outgoing/komoot")
+KOMOOT_TAG = "[Q] "  # widoczny znacznik trasy wzbogaconej przez QBot (odroznia od golej kopii z Komoot)
 
 
 def _esc(s):
@@ -92,7 +93,7 @@ def ensure_komoot_route_artifact(tour_id, session=None):
         "sha256": sha,
         "status": "ok",
         "metadata_json": {
-            "route_name": meta.get("name"),
+            "route_name": (KOMOOT_TAG + (meta.get("name") or "")).strip(),
             "source_tour_id": str(tour_id),
             "changed_at": meta.get("changed_at"),
             "komoot_status": meta.get("status"),
@@ -106,13 +107,22 @@ def ensure_komoot_route_artifact(tour_id, session=None):
 
 
 def ingest_komoot_tour(tour_id, session=None, precompute=False):
+    """Pelne wejscie trasy: artefakt+parse -> route_base -> (opcjonalnie) nawierzchnia + precompute."""
     session = session or komoot_auth.KomootSession()
     art = ensure_komoot_route_artifact(tour_id, session)
     base = ensure_route_base(art["route_id"])
-    out = {"artifact": art, "route_base_id": base.get("route_base_id") if isinstance(base, dict) else None}
+    out = {"artifact": art, "route_base": base if isinstance(base, dict) else None}
     if precompute:
+        from scripts.route_precompute_trigger import _ensure_rwgps_surface_profile
+        surf = _ensure_rwgps_surface_profile(art["route_id"], route_artifact_id=art["artifact_id"], force=True)
+        out["surface"] = {"status": surf.get("status"), "surface_profile_id": surf.get("surface_profile_id")}
+        from qbot3.routes.route_elevation_store import ensure_route_elevation
+        elev = ensure_route_elevation(route_id=art["route_id"])
+        out["elevation"] = {"status": elev.get("status")}
         from qbot3.routes.route_precompute_orchestrator import ensure_route_precompute
-        out["precompute"] = ensure_route_precompute(route_id=art["route_id"], trigger_source="komoot", scope="all")
+        pc = ensure_route_precompute(route_id=art["route_id"], trigger_source="komoot", scope="all")
+        out["precompute"] = {"status": pc.get("status"),
+                             "jobs": {k: v.get("status") for k, v in (pc.get("jobs") or {}).items()}}
     return out
 
 
@@ -120,6 +130,7 @@ if __name__ == "__main__":
     import json
     s = komoot_auth.KomootSession()
     tid = sys.argv[1] if len(sys.argv) > 1 else kclient.list_planned_tours(s, limit=1)["tours"][0]["id"]
-    print("INGEST trasy Komoot:", tid)
-    res = ingest_komoot_tour(tid, s, precompute=False)
-    print(json.dumps(res, ensure_ascii=False, indent=2))
+    do_pc = "--precompute" in sys.argv
+    print("INGEST trasy Komoot:", tid, "| precompute:", do_pc)
+    res = ingest_komoot_tour(tid, s, precompute=do_pc)
+    print(json.dumps(res, ensure_ascii=False, indent=2, default=str))

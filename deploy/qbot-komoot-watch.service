@@ -1,0 +1,12 @@
+[Unit]
+Description=QBot Komoot -> Karoo watcher (nowe/zmienione trasy Komoot -> ingest + push)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=qbot
+Group=qbot
+WorkingDirectory=/opt/qbot/app
+ExecStart=/opt/qbot/app/.venv/bin/python /opt/qbot/app/komoot_watch.py --push
+TimeoutStartSec=300

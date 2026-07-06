@@ -1,0 +1,10 @@
+[Unit]
+Description=Uruchamia qbot-komoot-watch co 5 minut (polling tras Komoot)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+Unit=qbot-komoot-watch.service
+
+[Install]
+WantedBy=timers.target

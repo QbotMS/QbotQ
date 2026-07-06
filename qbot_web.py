@@ -1798,6 +1798,21 @@ def _karoo_poi_api(poi_out):
     return items
 
 
+def _poly_encode_1d(vals, factor=100000):
+    out = []
+    prev = 0
+    for v in vals:
+        cur = int(round(v * factor))
+        d = cur - prev
+        prev = cur
+        d = ~(d << 1) if d < 0 else (d << 1)
+        while d >= 0x20:
+            out.append(chr((0x20 | (d & 0x1f)) + 63))
+            d >>= 5
+        out.append(chr(d + 63))
+    return "".join(out)
+
+
 @app.post("/api/report/push-karoo")
 def push_karoo(route_id: str, date: str | None = None, time: str = "10:00"):
     """Tworzy trase z POI wprost na koncie Karoo (Hammerhead) - bez RWGPS, bez uploadu.
@@ -1884,6 +1899,7 @@ def push_karoo(route_id: str, date: str | None = None, time: str = "10:00"):
     body = {"name": name, "source": "uploaded", "sourceId": "qbot-%s" % route_id,
             "elevation": {"gain": round(gain, 1), "loss": round(loss, 1),
                           "min": round(min(ev), 1) if ev else 0, "max": round(max(ev), 1) if ev else 0,
+                          "polyline": _poly_encode_1d(ev),
                           "source": "qbot"},
             "distance": dist_m,
             "startLocation": {"lat": coords[0][0], "lng": coords[0][1]},
