@@ -266,8 +266,135 @@ def replay_wbal(external_id: str, verbose: bool = True) -> dict:
     return result
 
 
+
+# ---------- Persystencja + uruchamianie wsadowe (wpiete w daily_job.py) ----------
+
+import json as _json
+
+
+def _get_ride_date(external_id: str):
+    """Lekki lookup daty jazdy (bez ciagniecia calego 1Hz) -- do wczesnego
+    odsiania jazd bez dostepnego baseline ModelQ (przed 2026-05-21)."""
+    conn = _db_connect()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT MIN(ts) FROM qbot_v2.activity_record WHERE external_id = %s",
+        (external_id,),
+    )
+    r = cur.fetchone()
+    conn.close()
+    return r[0].date() if r and r[0] else None
+
+
+def ensure_wbal_table(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS qbot_v2.fitmodel_wbal_ride (
+                external_id text PRIMARY KEY,
+                status text,
+                ride_date date,
+                ftp_base_w numeric,
+                wprime_base_kj numeric,
+                final_wbal_pct numeric,
+                min_wbal_pct numeric,
+                n_normal_ticks integer,
+                n_frozen_s integer,
+                n_rest_recovered_s integer,
+                n_big_segments integer,
+                segments_json jsonb,
+                computed_at timestamptz DEFAULT now()
+            )
+            """
+        )
+    conn.commit()
+
+
+def upsert_wbal_ride(conn, result: dict) -> None:
+    row = {
+        "external_id": result.get("external_id"),
+        "status": result.get("status"),
+        "ride_date": result.get("ride_date"),
+        "ftp_base_w": result.get("ftp_base_w"),
+        "wprime_base_kj": result.get("wprime_base_kj"),
+        "final_wbal_pct": result.get("final_wbal_pct"),
+        "min_wbal_pct": result.get("min_wbal_pct"),
+        "n_normal_ticks": result.get("n_normal_ticks"),
+        "n_frozen_s": result.get("n_frozen_s"),
+        "n_rest_recovered_s": result.get("n_rest_recovered_s"),
+        "n_big_segments": result.get("n_big_segments"),
+        "segments_json": _json.dumps(result.get("segments") or []),
+    }
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO qbot_v2.fitmodel_wbal_ride (
+                external_id, status, ride_date, ftp_base_w, wprime_base_kj,
+                final_wbal_pct, min_wbal_pct, n_normal_ticks, n_frozen_s,
+                n_rest_recovered_s, n_big_segments, segments_json, computed_at
+            ) VALUES (
+                %(external_id)s, %(status)s, %(ride_date)s, %(ftp_base_w)s, %(wprime_base_kj)s,
+                %(final_wbal_pct)s, %(min_wbal_pct)s, %(n_normal_ticks)s, %(n_frozen_s)s,
+                %(n_rest_recovered_s)s, %(n_big_segments)s, %(segments_json)s::jsonb, now()
+            )
+            ON CONFLICT (external_id) DO UPDATE SET
+                status=EXCLUDED.status, ride_date=EXCLUDED.ride_date,
+                ftp_base_w=EXCLUDED.ftp_base_w, wprime_base_kj=EXCLUDED.wprime_base_kj,
+                final_wbal_pct=EXCLUDED.final_wbal_pct, min_wbal_pct=EXCLUDED.min_wbal_pct,
+                n_normal_ticks=EXCLUDED.n_normal_ticks, n_frozen_s=EXCLUDED.n_frozen_s,
+                n_rest_recovered_s=EXCLUDED.n_rest_recovered_s, n_big_segments=EXCLUDED.n_big_segments,
+                segments_json=EXCLUDED.segments_json, computed_at=now()
+            """,
+            row,
+        )
+    conn.commit()
+
+
+def run_for_new_rides(conn=None, limit: int | None = None) -> dict:
+    """Policz W'bal dla jazd jeszcze nieobecnych w fitmodel_wbal_ride (KAZDY status
+    -- OK/NO_DATA/NO_BASELINE -- zapisany, zeby NIE probowac w kolko tych samych
+    jazd bez baseline (patrz DECISIONS.md 2026-07-06 -- ta sama pulapka co w
+    fit_ingest.ingest_all_new, tu naprawiona od razu)."""
+    own_conn = conn is None
+    if own_conn:
+        conn = _db_connect()
+    ensure_wbal_table(conn)
+    cur = conn.cursor()
+    cur.execute("SELECT DISTINCT external_id FROM qbot_v2.activity_record")
+    all_ids = [r[0] for r in cur.fetchall()]
+    cur.execute("SELECT external_id FROM qbot_v2.fitmodel_wbal_ride")
+    done_ids = {r[0] for r in cur.fetchall()}
+    todo = [i for i in all_ids if i not in done_ids]
+    if limit:
+        todo = todo[:limit]
+
+    counts = {"OK": 0, "NO_DATA": 0, "NO_BASELINE": 0}
+    for eid in todo:
+        ride_date = _get_ride_date(eid)
+        if ride_date is None:
+            upsert_wbal_ride(conn, {"external_id": eid, "status": "NO_DATA"})
+            counts["NO_DATA"] += 1
+            continue
+        ftp_base, wprime_base_kj = _fetch_daily_baseline(ride_date)
+        if not ftp_base or not wprime_base_kj:
+            upsert_wbal_ride(conn, {"external_id": eid, "status": "NO_BASELINE", "ride_date": ride_date})
+            counts["NO_BASELINE"] += 1
+            continue
+        result = replay_wbal(eid, verbose=False)
+        upsert_wbal_ride(conn, result)
+        counts[result.get("status", "OK")] = counts.get(result.get("status", "OK"), 0) + 1
+
+    if own_conn:
+        conn.close()
+    return {"total_candidates": len(todo), **counts}
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Uzycie: python3 fitmodel/wbal_replay.py <external_id>")
+        print("Uzycie: python3 fitmodel/wbal_replay.py <external_id> | --batch [limit]")
         sys.exit(1)
-    _res = replay_wbal(sys.argv[1])
+    if sys.argv[1] == "--batch":
+        _limit = int(sys.argv[2]) if len(sys.argv) > 2 else None
+        print(run_for_new_rides(limit=_limit))
+    else:
+        _res = replay_wbal(sys.argv[1])

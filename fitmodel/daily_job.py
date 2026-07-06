@@ -66,6 +66,12 @@ def main() -> None:
             return save_readiness(conn)
         _step("readiness", _readiness)
 
+        # 2d. Krok 3 -- W'bal tick-po-ticku dla nowych jazd -> fitmodel_wbal_ride
+        def _wbal_replay():
+            from fitmodel.wbal_replay import run_for_new_rides
+            return run_for_new_rides()
+        _step("wbal_replay", _wbal_replay)
+
         # 3. Glikogen -> fitmodel_daily
         def _glyco():
             from fitmodel.glycogen import update_glycogen_in_daily

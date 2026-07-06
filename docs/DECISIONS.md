@@ -6,6 +6,34 @@
 ---
 
 
+## 2026-07-06 -- DECYZJA: wbal_replay.py wpiety na stale -> fitmodel_wbal_ride
+
+**Status:** gotowe, dziala w `daily_job.py` (krok 2d, po cp_wprime/readiness).
+
+**Kontekst:** `fitmodel/wbal_replay.py` (Krok 3, zwalidowany wczesniej dzisiaj:
+0.49pp roznicy vs prawdziwe QExt2) byl samodzielnym skryptem diagnostycznym --
+wyniki widoczne tylko przy recznym odpaleniu.
+
+**Decyzja:** nowa tabela `qbot_v2.fitmodel_wbal_ride` (per external_id):
+status (OK/NO_DATA/NO_BASELINE), ftp_base_w, wprime_base_kj, final_wbal_pct,
+min_wbal_pct, liczniki tickow/zamrozen/postojow, pelny `segments_json`.
+Funkcja `run_for_new_rides()` liczy TYLKO nowe jazdy (nie w tabeli), zapisuje
+KAZDY status (nie tylko OK) -- unika pulapki z `fit_ingest.ingest_all_new`
+(tam jazdy bez segmentu byly liczone w kolko, bo "przetworzone" bylo mylone
+z "ma segment"; tu rozroznione od razu). Wpiete jako krok 2d w `daily_job.py`
+(raz dziennie 4:45, po cp_wprime zeby miec swiezy FTP/W').
+
+**Backfill wykonany dzisiaj:** 325 kandydatow (cala historia activity_record),
+30 sekund. 22 jazdy OK (od 2026-05-21, kiedy zaczyna sie ftp_est_w), 303
+NO_BASELINE (starsze, nie beda juz probowane w kolko). Dzisiejsza jazda
+(23496824503): final=33.5%, min=0.0% -- zgadza sie z wczesniejszym recznym
+testem co do przecinka.
+
+**Nie zrobione dzisiaj (out of scope):** wyswietlanie tych danych gdziekolwiek
+(raport jazdy, Telegram) -- na razie to tylko tabela w bazie, cichy backend
+zbierajacy dane do przyszlej analizy/walidacji.
+
+
 ## 2026-07-06 -- DECYZJA: todayFactor z ModelQ (nigdy wczesniej nie bylo wysylane)
 
 **Status:** gotowe, `qbot_api.py`, live-tested.

@@ -45,8 +45,10 @@ POZOSTALO (kazdy krok osobno "decyzja przed kodem"):
    (SDK Karoo, nie surowa moc) -- z tym poprawiono srednia|diff| z 5.6pp do 0.49pp (izolowany test
    formuly) wzgledem prawdziwego qext2_wbal_pct z FIT-a. Walidacja end-to-end (pelny potok: baza +
    ModelQ FTP/W' + bramka postoj/dropout, BEZ podgladania urzadzenia): koncowe W'bal 33.5% (prawdziwe
-   33%). DO ZROBIENIA: wpiac wbal_replay.py na stale gdzies (daily_job? ride_report_w2?) -- na razie
-   to samodzielny skrypt diagnostyczny, wyniki widoczne tylko przy recznym odpaleniu.
+   33%). [x] [ZROBIONE 2026-07-06] wpieto jako krok 2d w daily_job.py -> tabela
+   fitmodel_wbal_ride (status/min/final/segments_json per jazda). Backfill 325
+   kandydatow, 22 OK. Wyswietlanie w raporcie/Telegramie to OSOBNA, niezrobiona
+   sprawa (na razie cichy backend zbierajacy dane).
 7. **[ZROBIONE 2026-07-05, skorygowano 2026-07-06] Ingest activity_record 1Hz JUZ NIE STOI.**
    DECISIONS.md wpis 2026-07-05 (7): dopiety cron co 15 min (9-23), backfill przyrostowy
    (`backfill 20 0 2025-01-01 report`). Zweryfikowane na zywo 2026-07-06: `activity_record`/
