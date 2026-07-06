@@ -30,6 +30,7 @@ POWER_JUMP_DELTA = 5
 _QEXT2_FIELDS = (
     "qext2_wbal_pct", "qext2_cp_eff_w", "qext2_wprime_eff_kj",
     "qext2_cf", "qext2_wbal_zero", "qext2_readiness", "qext2_rsrv_pct",
+    "qext2_xss",
 )
 
 
@@ -278,6 +279,7 @@ def summarize_qext2(recs: list[dict], first_ts: Any) -> dict | None:
     cf = series("qext2_cf")
     rdy = series("qext2_readiness")
     rsrv = series("qext2_rsrv_pct")
+    xss = series("qext2_xss")
 
     zero_recs: list[dict] = []
     for r in recs:
@@ -322,6 +324,7 @@ def summarize_qext2(recs: list[dict], first_ts: Any) -> dict | None:
         "readiness": _med(rdy),
         "rsrv_min": min(rsrv) if rsrv else None,
         "rsrv_final": rsrv[-1] if rsrv else None,
+        "xss_final": xss[-1] if xss else None,
     }
 
 
@@ -340,9 +343,13 @@ def ensure_qext2_table(db_conn) -> None:
                 cf_min numeric, cf_max numeric,
                 readiness numeric,
                 rsrv_min numeric, rsrv_final numeric,
+                xss_final numeric,
                 ingested_at timestamptz DEFAULT now()
             )
             """
+        )
+        cur.execute(
+            "ALTER TABLE qbot_v2.fitmodel_qext2_ride ADD COLUMN IF NOT EXISTS xss_final numeric"
         )
     db_conn.commit()
 
@@ -355,12 +362,12 @@ def upsert_qext2_ride(db_conn, ride_id: str, s: dict) -> None:
                 ride_id, n_records, wbal_min, wbal_final, wbal_zero_seconds,
                 wbal_zero_first_offset_s, cp_eff_min, cp_eff_max, cp_eff_final,
                 wprime_eff_min, wprime_eff_max, wprime_eff_final, cf_min, cf_max,
-                readiness, rsrv_min, rsrv_final, ingested_at
+                readiness, rsrv_min, rsrv_final, xss_final, ingested_at
             ) VALUES (
                 %(ride_id)s, %(n_records)s, %(wbal_min)s, %(wbal_final)s, %(wbal_zero_seconds)s,
                 %(wbal_zero_first_offset_s)s, %(cp_eff_min)s, %(cp_eff_max)s, %(cp_eff_final)s,
                 %(wprime_eff_min)s, %(wprime_eff_max)s, %(wprime_eff_final)s, %(cf_min)s, %(cf_max)s,
-                %(readiness)s, %(rsrv_min)s, %(rsrv_final)s, now()
+                %(readiness)s, %(rsrv_min)s, %(rsrv_final)s, %(xss_final)s, now()
             )
             ON CONFLICT (ride_id) DO UPDATE SET
                 n_records=EXCLUDED.n_records, wbal_min=EXCLUDED.wbal_min, wbal_final=EXCLUDED.wbal_final,
@@ -368,7 +375,7 @@ def upsert_qext2_ride(db_conn, ride_id: str, s: dict) -> None:
                 cp_eff_min=EXCLUDED.cp_eff_min, cp_eff_max=EXCLUDED.cp_eff_max, cp_eff_final=EXCLUDED.cp_eff_final,
                 wprime_eff_min=EXCLUDED.wprime_eff_min, wprime_eff_max=EXCLUDED.wprime_eff_max, wprime_eff_final=EXCLUDED.wprime_eff_final,
                 cf_min=EXCLUDED.cf_min, cf_max=EXCLUDED.cf_max, readiness=EXCLUDED.readiness,
-                rsrv_min=EXCLUDED.rsrv_min, rsrv_final=EXCLUDED.rsrv_final, ingested_at=now()
+                rsrv_min=EXCLUDED.rsrv_min, rsrv_final=EXCLUDED.rsrv_final, xss_final=EXCLUDED.xss_final, ingested_at=now()
             """,
             {"ride_id": ride_id, **s},
         )
