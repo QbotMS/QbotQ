@@ -412,6 +412,184 @@ def _weather_from_fit(recs):
         "sun_pct":_plugin("cien — wymaga trasy (parked)"),
     }
 
+SC_DEG = 180.0 / (2 ** 31)
+
+def _deg(v):
+    """FIT position (semicircles) -> stopnie. None jesli brak."""
+    return v * SC_DEG if v is not None else None
+
+def _haversine_m(lat1, lon1, lat2, lon2):
+    R = 6371000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+def _bearing_deg(lat1, lon1, lat2, lon2):
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dl = math.radians(lon2 - lon1)
+    x = math.sin(dl) * math.cos(p2)
+    y = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
+    return (math.degrees(math.atan2(x, y)) + 360.0) % 360.0
+
+def _find_matching_route(cur, lat0, lon0, ride_start_ts, max_dist_m=500.0,
+                         lookback_days=30, grace_min=10):
+    """Heurystyka dopasowania: czy ta jazda zaczyna sie blisko poczatku jakiejs
+    juz przeliczonej trasy (route_elevation_samples, punkt startowy) ORAZ czy
+    ta trasa istniala PRZED startem jazdy (inaczej nie mogla byc planem na ta
+    jazde -- np. ktos przeliczyl inna trase w tej samej okolicy PO fakcie).
+    Malo tras w route_base (rzedu kilkunastu) -> pelny skan jest tani."""
+    try:
+        cur.execute("""SELECT DISTINCT ON (route_id) route_id, route_base_id, updated_at
+                       FROM qbot_v2.route_base ORDER BY route_id, updated_at DESC""")
+        candidates = cur.fetchall()
+        cutoff_late = ride_start_ts + __import__("datetime").timedelta(minutes=grace_min)
+        cutoff_early = ride_start_ts - __import__("datetime").timedelta(days=lookback_days)
+        best_route, best_dist = None, max_dist_m
+        for c in candidates:
+            ua = c.get("updated_at")
+            if ua is None or ua > cutoff_late or ua < cutoff_early:
+                continue  # trasa nie istniala jeszcze w momencie startu (albo zbyt stara)
+            cur.execute("""SELECT lat, lon FROM qbot_v2.route_elevation_samples
+                           WHERE route_base_id=%s ORDER BY sample_index ASC LIMIT 1""",
+                        (c["route_base_id"],))
+            r = cur.fetchone()
+            if not r or r.get("lat") is None:
+                continue
+            d = _haversine_m(lat0, lon0, r["lat"], r["lon"])
+            if d < best_dist:
+                best_dist, best_route = d, c["route_id"]
+        return best_route
+    except Exception:
+        return None
+
+def _surface_wind_from_route(cur, route_id, day, start_time):
+    """Jazda pasuje do juz przeliczonej trasy -> reuzycie: nawierzchnia z
+    kanonicznej warstwy 50 m (bez Overpass), wiatr z silnika METEO liczony
+    na PRAWDZIWYM czasie startu tej jazdy (nie na planowanym)."""
+    reason_prefix = f"reuzycie trasy {route_id}"
+    surface = _plugin(f"{reason_prefix}: nawierzchnia niedostepna")
+    wind = _plugin(f"{reason_prefix}: wiatr niedostepny")
+    try:
+        from qbot3.routes.route_segments_50m import load_canonical_segments_50m
+        seg = load_canonical_segments_50m(route_id=route_id)
+        rows = seg.get("segments") or []
+        tot = sum(r.get("len_m") or 0 for r in rows) or 1.0
+        paved = sum(r.get("len_m") or 0 for r in rows if r.get("surface_class") == "paved")
+        unpaved = sum(r.get("len_m") or 0 for r in rows if r.get("surface_class") == "unpaved")
+        unknown = max(tot - paved - unpaved, 0.0)
+        surface = _tag({"paved_pct": round(100 * paved / tot, 1),
+                        "unpaved_pct": round(100 * unpaved / tot, 1),
+                        "unknown_pct": round(100 * unknown / tot, 1)},
+                       "A", f"route_match:{route_id}",
+                       note="dopasowano do juz przeliczonej trasy (start < 500 m)")
+    except Exception as exc:
+        surface = _plugin(f"{reason_prefix}: nawierzchnia - blad ({exc})")
+    try:
+        from qbot3.routes.route_meteo_engine import run_meteo_engine
+        mres = run_meteo_engine(route_id, day, start_time=start_time)
+        segs = mres.get("per_segment") or []
+        tails = [s.get("wind_tail_ms") for s in segs if s.get("wind_tail_ms") is not None]
+        if tails:
+            wind = _tag({"avg_tail_ms": round(sum(tails) / len(tails), 2),
+                        "min_tail_ms": round(min(tails), 2),
+                        "max_tail_ms": round(max(tails), 2)},
+                       "A", f"route_match:{route_id}",
+                       note="METEO liczone na prawdziwym czasie startu tej jazdy")
+        else:
+            wind = _plugin(f"{reason_prefix}: METEO bez danych wiatru")
+    except Exception as exc:
+        wind = _plugin(f"{reason_prefix}: wiatr - blad ({exc})")
+    return surface, wind
+
+def _export_gpx(points, path):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">',
+             "<trk><trkseg>"]
+    for lat, lon in points:
+        lines.append('<trkpt lat="%.7f" lon="%.7f"></trkpt>' % (lat, lon))
+    lines.append("</trkseg></trk></gpx>")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+def _surface_wind_from_track(have_pos, ride_key, day):
+    """Brak dopasowania do zaplanowanej trasy -> liczymy z GPS tej jazdy:
+    silnik nawierzchni (slad -> GPX -> route_surface_engine) + Open-Meteo
+    z kierunkiem jazdy (jak POC 2026-07-06)."""
+    surface = _plugin("silnik nawierzchni nie zwrocil wyniku")
+    try:
+        from tools.rwgps.route_surface_engine import analyze_route_surface
+        gpx_path = f"/opt/qbot/artifacts/analysis/exec_gpx/{ride_key}.gpx"
+        _export_gpx([(_deg(r["lat"]), _deg(r["lon"])) for r in have_pos], gpx_path)
+        surf = analyze_route_surface(artifact_path=gpx_path, mode="gravel_detail",
+                                     sample_distance_m=50, use_landcover=True)
+        if surf.get("ok"):
+            surface = _tag({"tagged_pct": surf.get("tagged_surface_pct"),
+                           "inferred_pct": surf.get("inferred_surface_pct"),
+                           "unknown_pct": surf.get("unknown_surface_pct"),
+                           "types_pct": surf.get("surface_percentages_refined")},
+                          "B", "route_surface_engine (slad GPS tej jazdy)")
+        else:
+            surface = _plugin(f"silnik nawierzchni: {surf.get('error')}")
+    except Exception as exc:
+        surface = _plugin(f"silnik nawierzchni nie powiodl sie: {exc}")
+
+    wind = _plugin("brak danych pogodowych")
+    try:
+        from tools.rwgps.route_weather import _fetch_open_meteo, _rel_wind
+        lat0, lon0 = _deg(have_pos[0]["lat"]), _deg(have_pos[0]["lon"])
+        hourly = _fetch_open_meteo(lat0, lon0, day)
+        buckets = []
+        start = have_pos[0]
+        last_d = have_pos[0].get("dist") or 0.0
+        for r in have_pos[1:]:
+            d = r.get("dist") or 0.0
+            if d - last_d >= 1000.0:
+                buckets.append((start, r))
+                start, last_d = r, d
+        if start is not have_pos[-1]:
+            buckets.append((start, have_pos[-1]))
+        tails = []
+        for a, b in buckets:
+            if a is b:
+                continue
+            hdg = _bearing_deg(_deg(a["lat"]), _deg(a["lon"]), _deg(b["lat"]), _deg(b["lon"]))
+            hourkey = b["ts"].strftime("%Y-%m-%dT%H")
+            wx = hourly.get(hourkey) or {}
+            tail, _cross, _delta = _rel_wind(hdg, wx.get("wdir"), wx.get("wspeed"))
+            if tail is not None:
+                tails.append(tail)
+        if tails:
+            wind = _tag({"avg_tail_ms": round(sum(tails) / len(tails), 2),
+                        "min_tail_ms": round(min(tails), 2),
+                        "max_tail_ms": round(max(tails), 2)},
+                       "B", "open-meteo + kierunek GPS tej jazdy")
+        else:
+            wind = _plugin("brak godzin pogodowych dla tej jazdy")
+    except Exception as exc:
+        wind = _plugin(f"pogoda nie powiodla sie: {exc}")
+    return surface, wind
+
+def _surface_and_wind(cur, recs, day, ride_key):
+    """Punkt wejscia: najpierw sprawdz czy jazda pasuje do juz przeliczonej
+    trasy (reuzycie, tanie); jesli nie -> licz z GPS tej jazdy (kosztowniejsze,
+    Overpass+Open-Meteo, ale dziala samodzielnie bez zaplanowanej trasy)."""
+    have_pos = [r for r in recs if r.get("lat") is not None and r.get("lon") is not None]
+    if not have_pos:
+        reason = "brak pozycji GPS w FIT"
+        return _plugin(reason), _plugin(reason)
+    lat0, lon0 = _deg(have_pos[0]["lat"]), _deg(have_pos[0]["lon"])
+    route_id = _find_matching_route(cur, lat0, lon0, have_pos[0]["ts"])
+    if route_id:
+        start_time = have_pos[0]["ts"].strftime("%H:%M")
+        surface, wind = _surface_wind_from_route(cur, route_id, day, start_time)
+        if surface.get("status") == "parked" and wind.get("status") == "parked":
+            return _surface_wind_from_track(have_pos, ride_key, day)
+        return surface, wind
+    return _surface_wind_from_track(have_pos, ride_key, day)
+
 DISABLED=[
     {"blok":"Bilans L/P, torque, pedal smoothness","powod":"AXS = moc calkowita, brak pomiaru L/P"},
     {"blok":"TSB/CTL/ATL, durability","powod":"profil turysty / za malo wysilkow max"},
@@ -486,6 +664,7 @@ def build_w1(fit_path, ride_key, inputs=None):
     day = str(recs[0]["ts"].date())
     form=_modelq_form(cur); Wp,wp_source=_modelq_wprime(cur, day); efa=_ef_anchor(cur)
     wellness=_wellness(cur, day); rhr_base=_rhr_base(cur)
+    _surf_block, _wind_block = _surface_and_wind(cur, recs, day, ride_key)
     w1={
         "schema_version":SCHEMA_VERSION,
         "ride_key":ride_key,
@@ -493,9 +672,9 @@ def build_w1(fit_path, ride_key, inputs=None):
         "inputs":inputs or {},
         "load":_load(recs, form, efa),
         "wprime":_wprime(recs, form["cp_w"], Wp, wp_source),
-        "wind":_plugin("zrodlo pogody — decyzja uzytkownika (osobna sesja)"),
+        "wind":_wind_block,
         "weather":_weather_from_fit(recs),
-        "surface":_plugin("dopasowanie trasy — decyzja uzytkownika (Ad2)"),
+        "surface":_surf_block,
         "drivetrain":_drivetrain(recs, events),
         "physio":_physio(recs, wellness, rhr_base),
         "energy":_energy(recs),
