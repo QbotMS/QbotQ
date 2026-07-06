@@ -6,6 +6,49 @@
 ---
 
 
+## 2026-07-06 -- DECYZJA: raport jazdy na W' z ModelQ + auto-ingest Strony B co 30 min
+
+**Status:** gotowe.
+
+**1) Wykres W'bal w raporcie jazdy (`qbot3/rides/ride_report_builder.py`):**
+byl liczony na W' z Xerta (`_xert_wprime`). Dodano `_modelq_wprime(cur, ride_day)`
+-- W' z `fitmodel_daily.wprime_modelq_kj` dla dnia jazdy, fallback do Xerta TYLKO
+gdy ModelQ nie ma wartosci (per-pole, jak w `/ride-readiness`). Tagi w raporcie
+(`wprime_j`, `wbal_min_pct`) pokazuja prawdziwe zrodlo (`modelq` lub `xert`),
+nie zawsze "xert".
+
+**Przy okazji naprawiony bug:** `_wprime()` nigdy nie mial dolnego ograniczenia
+`bal>=0` (byl tylko gorny `bal<=Wp`). Ujawnilo sie to na jezdzie 2026-07-06
+(`wbal_min_pct=-33%`) po podmianie na mniejsze, dokladniejsze W' z ModelQ
+(20.31 vs 22.4 kJ Xert) -- ten sam wysilek stanowi wiekszy % ubytku przy
+mniejszej pojemnosci. Dodano `if bal<0: bal=0`. Po naprawie: 0% (zgadza sie
+z niezaleznym pomiarem z Kroku 3 / wbal_replay.py dla tej samej jazdy).
+
+**Uwaga:** ten wykres nadal uzywa PROSTSZEGO modelu niz Krok 3 (`wbal_replay.py`)
+-- jeden usredniony tau na cala jazde (nie dynamiczny co sekunde), surowa moc
+(bez usredniania 3s), brak bramki postoj/dropout. To wystarczylo do zgodnego
+zrodla W', ale NIE jest tym samym silnikiem co QExt2/Krok 3. Pelne zrownanie
+tych dwoch silnikow to oddzielna sprawa (patrz TODO.md punkt 5 -- integracja
+wbal_replay.py na stale).
+
+**2) Strona B (`fitmodel_qext2_ride`) nie mial automatycznego triggera:**
+`ingest_all_new()` jest wywolywane w `daily_job.py`, ale ten job leci RAZ
+dziennie o 4:45 -- jazda z 09:30 nie pojawilaby sie w tabeli do nastepnego
+dnia. Dodano osobny, lekki skrypt `fitmodel/ingest_qext2_fit.py` (TYLKO
+ingest_all_new, bez reszty daily_job -- xert_bench/week_planner nie maja sensu
+czesciej niz raz dziennie) w cronie roota co 30 minut. Tania operacja (pomija
+jazdy juz w bazie), ~58s na pelny katalog.
+
+**Znana, nieblokujaca nieefektywnosc (nie naprawiona dzis):** `ingest_all_new`
+sprawdza "juz przetworzone" przez obecnosc w `fitmodel_segment` -- jazdy bez
+ani jednego stabilnego segmentu (MIN_START_OFFSET_SECONDS=1200, progi EF) NIGDY
+tam nie trafiaja, wiec sa przetwarzane PONOWNIE przy kazdym uruchomieniu
+(zweryfikowane: 16-17 plikow za kazdym razem, nie male malejace). Nieszkodliwe
+(ON CONFLICT DO UPDATE/DO NOTHING), ale marnuje ~1 min co 30 min. Do poprawy
+przy okazji (osobna flaga/tabela "processed_fit_files" zamiast polegania na
+fitmodel_segment).
+
+
 ## 2026-07-06 -- DECYZJA: Krok 3 W'bal -- moc 3s zamiast surowej + walidacja na zywej jezdzie
 
 **Status:** gotowe, zwalidowane, `fitmodel/wbal_replay.py`.
