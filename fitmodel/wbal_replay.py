@@ -50,6 +50,16 @@ MOVING_SPEED_THRESHOLD_MPS = 0.5
 DECOUPLE_MAXLEN = 3600
 DECOUPLE_MIN_N = 120
 
+# --- XSS (odpowiednik Xert Strain Score, liczony z ModelQ) ---
+# Praca wzgledem CP_eff wazona zmeczeniem (1 - wBal/W'), tak by:
+#   * 1h dokladnie na CP = 100 XSS (kotwica z definicji -- fatigue~0 gdy moc=CP),
+#   * ta sama moc liczy sie WIECEJ pod zmeczeniem (pusty bak) -- jak MPA u Xerta.
+# Wspolczynnik XSS_BETA=1.0 skalibrowany na danych: nasza EWMA-CTL (tau=42) z
+# tych XSS = 59.6 vs Xert training_load 62.4 (patrz DECISIONS.md 2026-07-06).
+# strain_rate = (moc/CP_eff) * (1 + XSS_BETA*fatigue) * (100/3600) * dt
+XSS_BETA = 1.0
+XSS_STRAIN_UNIT = 100.0 / 3600.0
+
 
 def _temp_factor(temp_c: float | None) -> float:
     if temp_c is None:
@@ -149,6 +159,8 @@ def replay_wbal(external_id: str, verbose: bool = True) -> dict:
     n_frozen_s = 0.0
     n_rest_recovered_s = 0.0
     min_wbal_pct = 100.0
+    xss_sum = 0.0  # akumulator XSS (patrz XSS_BETA)
+    xss_active_s = 0.0
 
     prev = None
     for row in rows:
@@ -225,6 +237,13 @@ def replay_wbal(external_id: str, verbose: bool = True) -> dict:
             pw3s_buf.append(power_raw)  # decoupling/NP nadal na surowej -- W'bal na 3s
             power = sum(pw3s_buf) / len(pw3s_buf)
             p = float(power)
+            # -- XSS: praca wzgledem CP wazona zmeczeniem (przed wydatkiem tej sekundy) --
+            if cp_eff > 0 and wprime_eff_j > 0:
+                fatigue = 1.0 - (wbal_j / wprime_eff_j)  # 0 pelny bak -> 1 pusty
+                if fatigue < 0.0:
+                    fatigue = 0.0
+                xss_sum += (p / cp_eff) * (1.0 + XSS_BETA * fatigue) * XSS_STRAIN_UNIT * dt
+                xss_active_s += dt
             if p > cp_eff:
                 wbal_j -= (p - cp_eff) * dt
             else:
@@ -253,6 +272,8 @@ def replay_wbal(external_id: str, verbose: bool = True) -> dict:
         "n_frozen_s": round(n_frozen_s, 0),
         "n_rest_recovered_s": round(n_rest_recovered_s, 0),
         "n_big_segments": len(segments_log),
+        "xss": round(xss_sum, 1),
+        "xss_per_h": round(xss_sum / (xss_active_s / 3600.0), 1) if xss_active_s > 0 else 0.0,
         "segments": segments_log,
     }
     if verbose:
@@ -261,6 +282,7 @@ def replay_wbal(external_id: str, verbose: bool = True) -> dict:
         print(f"  min W'bal w trakcie: {result['min_wbal_pct']}%  koncowe: {result['final_wbal_pct']}%")
         print(f"  normalne ticki: {n_normal_ticks}  zamrozone (s): {n_frozen_s}  "
               f"odpoczynek-doliczony (s): {n_rest_recovered_s}")
+        print(f"  XSS: {result['xss']} (={result['xss_per_h']}/h)")
         for seg in segments_log:
             print("  ", seg)
     return result
@@ -302,11 +324,15 @@ def ensure_wbal_table(conn) -> None:
                 n_frozen_s integer,
                 n_rest_recovered_s integer,
                 n_big_segments integer,
+                xss numeric,
+                xss_per_h numeric,
                 segments_json jsonb,
                 computed_at timestamptz DEFAULT now()
             )
             """
         )
+        cur.execute("ALTER TABLE qbot_v2.fitmodel_wbal_ride ADD COLUMN IF NOT EXISTS xss numeric")
+        cur.execute("ALTER TABLE qbot_v2.fitmodel_wbal_ride ADD COLUMN IF NOT EXISTS xss_per_h numeric")
     conn.commit()
 
 
@@ -323,6 +349,8 @@ def upsert_wbal_ride(conn, result: dict) -> None:
         "n_frozen_s": result.get("n_frozen_s"),
         "n_rest_recovered_s": result.get("n_rest_recovered_s"),
         "n_big_segments": result.get("n_big_segments"),
+        "xss": result.get("xss"),
+        "xss_per_h": result.get("xss_per_h"),
         "segments_json": _json.dumps(result.get("segments") or []),
     }
     with conn.cursor() as cur:
@@ -331,11 +359,11 @@ def upsert_wbal_ride(conn, result: dict) -> None:
             INSERT INTO qbot_v2.fitmodel_wbal_ride (
                 external_id, status, ride_date, ftp_base_w, wprime_base_kj,
                 final_wbal_pct, min_wbal_pct, n_normal_ticks, n_frozen_s,
-                n_rest_recovered_s, n_big_segments, segments_json, computed_at
+                n_rest_recovered_s, n_big_segments, xss, xss_per_h, segments_json, computed_at
             ) VALUES (
                 %(external_id)s, %(status)s, %(ride_date)s, %(ftp_base_w)s, %(wprime_base_kj)s,
                 %(final_wbal_pct)s, %(min_wbal_pct)s, %(n_normal_ticks)s, %(n_frozen_s)s,
-                %(n_rest_recovered_s)s, %(n_big_segments)s, %(segments_json)s::jsonb, now()
+                %(n_rest_recovered_s)s, %(n_big_segments)s, %(xss)s, %(xss_per_h)s, %(segments_json)s::jsonb, now()
             )
             ON CONFLICT (external_id) DO UPDATE SET
                 status=EXCLUDED.status, ride_date=EXCLUDED.ride_date,
@@ -343,6 +371,7 @@ def upsert_wbal_ride(conn, result: dict) -> None:
                 final_wbal_pct=EXCLUDED.final_wbal_pct, min_wbal_pct=EXCLUDED.min_wbal_pct,
                 n_normal_ticks=EXCLUDED.n_normal_ticks, n_frozen_s=EXCLUDED.n_frozen_s,
                 n_rest_recovered_s=EXCLUDED.n_rest_recovered_s, n_big_segments=EXCLUDED.n_big_segments,
+                xss=EXCLUDED.xss, xss_per_h=EXCLUDED.xss_per_h,
                 segments_json=EXCLUDED.segments_json, computed_at=now()
             """,
             row,

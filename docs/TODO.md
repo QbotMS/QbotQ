@@ -1,5 +1,25 @@
 # QBot — TODO
 
+
+## [XSS] Port XSS do QExt2 + wyswietlanie (dodane 2026-07-06)
+
+**Zrobione w QBot 2026-07-06:** XSS (odpowiednik Xert Strain Score) liczony z
+ModelQ (MPA/wBal), wzor `(moc/CP)*(1+1.0*fatigue)*(100/3600)`, kotwica 1h@CP=100,
+BETA=1.0 skalibrowane do Xert training_load (EWMA-CTL 59.6 vs 62.4). Kolumny
+xss/xss_per_h w fitmodel_wbal_ride, backfill 22 jazd, wpiete w daily_job (2d).
+Patrz DECISIONS.md 2026-07-06.
+
+**DO ZROBIENIA:**
+1. **Port do QExt2** -- ten sam wzor jako funkcja obok tssValue()/rideReservePercent()
+   w StatsCalculator.kt, karmiona CP_eff + wBal (juz sa on-device co sekunde).
+   Zero dodatkowych zapytan do serwera w trakcie jazdy. Wymaga build+CI+sideload.
+   Rekomendacja: dopiero gdy QBot XSS pochodzi kilka dni w produkcji ("zywy
+   system wygrywa").
+2. **Wyswietlanie XSS** w raporcie jazdy / Telegramie (dzis tylko kolumna w bazie).
+3. **(Opcjonalnie) CTL/forma z XSS** -- gdy uzbiera sie wiecej danych (EWMA dopiero
+   sie rozpedza na ~7 tyg danych).
+
+---
 > Rzeczy do zrobienia, żeby nie uciekły. Najnowsze na górze.
 > To NIE jest CONTEXT.md (auto-gen) ani DECISIONS.md (decyzje). Tu leżą otwarte zadania.
 

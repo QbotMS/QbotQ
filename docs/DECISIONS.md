@@ -6,6 +6,56 @@
 ---
 
 
+## 2026-07-06 -- DECYZJA: XSS (odpowiednik Xert Strain Score) liczony z ModelQ
+
+**Status:** gotowe w QBot (walidacja + backfill), wpiete w wbal_replay/daily_job.
+Port do QExt2 -- OSOBNA sprawa (nastepny krok, wymaga build+CI).
+
+**Po co:** XSS ma pokazywac "jak ciezka byla jazda" wzgledem chwilowego pulapu
+mocy (MPA), nie wzgledem stalego FTP. To rozni go od TSS: ta sama moc liczy
+sie WIECEJ pod zmeczeniem. QExt2 potrzebuje tego on-device (jak ciezko juz
+pojechales), operujac na danych pobranych na starcie jazdy (CP, W') -- co juz
+dostaje. Wiec da sie policzyc bez dostepu do serwera w trakcie.
+
+**Dlaczego NIE z TSS:** TSS to jedna zagregowana liczba (NP/FTP) -- nie zachowuje
+momentu zmeczenia. XSS wymaga mocy sekunda-po-sekundzie + stanu W'bal w kazdej
+chwili. To DOKLADNIE to, co liczy Krok 3 (wbal_replay.py) -- stad XSS dopisany
+do tej samej petli, bez duplikacji.
+
+**Sprawdzone:** QBot mial juz silnik strain (fitmodel/buckets.py: (P/FTP)^4) --
+ale to jest wzgledem STALEGO FTP, blizej TSS, NIE XSS. XSS potrzebuje MPA.
+Xert per-jazda strain/XSS NIE jest dostepny w bazie (xert_profile_snapshots.
+strain = NULL; raw_json ma tylko dzienny completedXSS/xss_goal, nie per aktywnosc).
+
+**Wzor (finalny):**
+    fatigue(t) = 1 - wBal(t)/W'_eff        # 0 pelny bak -> 1 pusty
+    strain_rate = (moc_3s/CP_eff) * (1 + XSS_BETA*fatigue) * (100/3600) * dt
+    XSS = suma strain_rate przez cala jazde
+- Kotwica 1h @ CP = 100 XSS Z DEFINICJI (przy moc=CP fatigue~0, wiec baza=100
+  niezaleznie od BETA). Zweryfikowane syntetycznie: 100.0 dla BETA in {0.5,1,2}.
+- fatigue liczony ze STANU wBal PRZED wydatkiem danej sekundy (spojnie z W'bal).
+- moc: ta sama usredniona 3s co W'bal (spojnosc silnika).
+
+**Kalibracja BETA (nie zgadywanie -- dopasowanie do Xerta):** brak per-jazda
+Xert XSS, wiec kotwica = Xert `training_load` (=EWMA dziennego XSS, tau~42).
+Policzono nasza EWMA-CTL (tau=42) z naszych XSS dla obu wariantow:
+    BETA=0.5 -> EWMA-CTL 53.9
+    BETA=1.0 -> EWMA-CTL 59.6   <-- wybrane
+    Xert training_load (odniesienie) = 62.4
+BETA=1.0 trafia ~4% (i nasza EWMA jeszcze sie "rozpedza" -- dane dopiero od
+2026-05-21, ~7 tyg -- wiec realnie bedzie jeszcze blizej). BETA=0.5 zanizal.
+
+**Zakres:** tylko TOTAL XSS (jedna liczba), bez podzialu Low/High/Peak
+(decyzja Michal -- podzial wymagalby PP na Karoo, dzis nie wysylamy). Kolumny
+`xss`, `xss_per_h` w fitmodel_wbal_ride. Backfill 22 jazd OK. Dzisiejsza jazda
+(23496824503): XSS=100.4 (94.1/h). Liczy sie automatycznie z W'bal (krok 2d
+daily_job) -- zero dodatkowej roboty per jazda.
+
+**NIE zrobione (swiadomie):** (a) port do QExt2 -- osobny krok; (b) wyswietlanie
+XSS w raporcie/Telegramie; (c) CTL/forma z XSS (mozna, gdy uzbiera sie wiecej
+danych -- na razie EWMA rozpedza sie na 7 tyg).
+
+
 ## 2026-07-06 -- DECYZJA: wbal_replay.py wpiety na stale -> fitmodel_wbal_ride
 
 **Status:** gotowe, dziala w `daily_job.py` (krok 2d, po cp_wprime/readiness).
