@@ -22,20 +22,46 @@ ZROBIONE:
 - [x] Deploy key do QExt2 skonfigurowany i dziala (alias github-qext2, klon /opt/qbot/qext2_deploy).
 
 POZOSTALO (kazdy krok osobno "decyzja przed kodem"):
-1. **Przelaczyc W' na Karoo /ride-readiness z Xerta na ModelQ.** ODBLOKOWANE (ModelQ W' wiarygodne).
-   Miejsce: qbot_api.py `_modelq_ftp_ltp` / `/ride-readiness`. Wtedy usunac zywe wywolanie Xerta z endpointu.
+1. [x] **[ZROBIONE 2026-07-06]** Przelaczono W' na Karoo /ride-readiness z Xerta na ModelQ
+   (`_modelq_ftp_ltp`, commit 79e2fe4). Kazde pole (ftp/ltp/w') nadpisuje Xerta osobno, tylko
+   gdy ModelQ ma wartosc. Zweryfikowane live: wPrimeKj=20.31 (bylo 22.4 z Xerta).
 2. **Wykres W'bal w raporcie jazdy z Xerta na ModelQ.** Blok "forma" ma juz W' z ModelQ, ale sam WYKRES
-   W'bal liczy sie na W' Xerta -- przelaczyc RAZEM z pkt 1 (zeby QBot i Karoo sie nie rozjechaly).
+   W'bal liczy sie na W' Xerta -- przelaczyc (byla razem z pkt 1, ale to osobny plik/miejsce
+   w kodzie -- NIE zrobione jeszcze, sprawdzic ride_report_w2.py).
 3. **Kosmetyczna etykieta zrodla w QExt2 (xertStatus -> ModelQ).** Wymaga kolejnego pushu QExt2 + CI
-   (droga jak Strona A). Drobne -- moze isc z pierwsza poprawka po tescie jazdy.
-4. **Pierwszy realny test end-to-end Strona A<->B.** Po jezdzie z APK build-140: sprawdzic, czy Strona B
-   odczytala 7 pol z FIT (fitmodel_qext2_ride). Pierwszy dowod calego mostu.
-5. **W' warstwa 1 -- kotwica z drogi.** Po tescie: zdarzenia W'bal=0% z QExt2 (przez Strone B) jako
-   realny pomiar wyczerpania -> podniesienie pewnosci W'. Wpina sie gdy sa dane z jazd.
-6. **Krok 3 -- zrownanie W'bal w QBot (W1) z algorytmem QExt2** (dynamiczne tau + skalowanie readiness).
-   Potrzebuje tick-po-ticku 1Hz -> zalezy od pkt 7.
-7. **Naprawic ingest activity_record 1Hz (stanal 2026-06-28) albo liczyc W'bal z FIT.** Blokuje TYLKO
-   Krok 3. Skalarne MMP (CP/W' harvest) tego NIE potrzebuja -- jada z training_sessions.mmp_*.
+   (droga jak Strona A). Drobne -- nadal nie zrobione.
+4. [x] **[ZROBIONE 2026-07-06]** Pierwszy realny test end-to-end Strona A<->B. Jazda 2026-07-06
+   09:30-10:34 (build-140), external_id 23496824503 / plik hammerhead_44954.activity.e3cad43b...fit.
+   Wszystkie 7 pol obecne w kazdym z 3783 rekordow od pierwszej sekundy. WAZNE: `ingest_all_new()`
+   NIE odpala sie automatycznie -- trzeba go wywolac recznie/cronem na katalog
+   outgoing/michal/hammerhead_originals (brak crona = fitmodel_qext2_ride zostaje pusta mimo
+   gotowych danych w FIT). Uzupelniono recznie 2026-07-06 (17 plikow, w tym ta jazda) -- DO ZROBIENIA:
+   dodac to do cyklicznego joba (daily_job.py?), zeby nie trzeba bylo robic tego recznie za kazdym razem.
+5. **W' warstwa 1 -- kotwica z drogi.** Dane juz sa (fitmodel_qext2_ride.wbal_zero_seconds=82,
+   wbal_zero_first_offset_s=3610 dla jazdy 2026-07-06) -- ZROBIC: wpiac to zdarzenie W'bal=0% jako
+   realny pomiar wyczerpania do podniesienia pewnosci W' w Kroku 2.
+6. [x] **[ZROBIONE 2026-07-06]** Krok 3 -- zrownanie W'bal w QBot z algorytmem QExt2. Nowy modul
+   `fitmodel/wbal_replay.py`. Kluczowe dostrojenie: QExt2 karmi wzor moca SMOOTHED_3S_AVERAGE_POWER
+   (SDK Karoo, nie surowa moc) -- z tym poprawiono srednia|diff| z 5.6pp do 0.49pp (izolowany test
+   formuly) wzgledem prawdziwego qext2_wbal_pct z FIT-a. Walidacja end-to-end (pelny potok: baza +
+   ModelQ FTP/W' + bramka postoj/dropout, BEZ podgladania urzadzenia): koncowe W'bal 33.5% (prawdziwe
+   33%). DO ZROBIENIA: wpiac wbal_replay.py na stale gdzies (daily_job? ride_report_w2?) -- na razie
+   to samodzielny skrypt diagnostyczny, wyniki widoczne tylko przy recznym odpaleniu.
+7. **[ZROBIONE 2026-07-05, skorygowano 2026-07-06] Ingest activity_record 1Hz JUZ NIE STOI.**
+   DECISIONS.md wpis 2026-07-05 (7): dopiety cron co 15 min (9-23), backfill przyrostowy
+   (`backfill 20 0 2025-01-01 report`). Zweryfikowane na zywo 2026-07-06: `activity_record`/
+   `activity_fit_raw` siegaja do 2026-07-04 (329 jazd, 2.35 mln rekordow 1Hz) -- TYLE SAMO co
+   `training_sessions` (Garmin co 15 min) ma dla cyklingu; brak nowszych jazd = jeszcze nie ma ich
+   w Garmincie (opoznienie Karoo->Garmin, NIE ingest QBota). Krok 3 (W'bal tick-po-ticku z QExt2)
+   jest wiec ODBLOKOWANY danymi -- do zrobienia jak dojdzie czas.
+   DROBNA ZASZLOSC (nieblokujaca): 9 plikow FIT z 30.06 w `/opt/qbot/artifacts/fit/` nie ma wiersza
+   w `activity_fit_raw` (0 z nich ma parse_error) -- do wyjasnienia przy okazji, nie dzis.
+   KANONICZNE ZRODLO SUROWEGO FIT dla wykonanych jazd (Garmin, 338 plikow na dysku, ~18 mies. wstecz)
+   = `/opt/qbot/artifacts/fit/<external_id>.fit` + tabela `qbot_v2.activity_record`.
+   `outgoing/michal/hammerhead_originals/` to INNY, WASKI katalog (bezposredni sync Hammerhead->dysk,
+   ~9 tygodni wstecz, tylko do mostu QExt2 Strona B / fitmodel_qext2_ride) -- NIE uzywac go jako
+   zamiennika activity_record/aktywnosci wykonanych jazd. Skalarne MMP (CP/W'/LTP/Peak Power,
+   Warstwa 1) i tak nie potrzebuja zadnego z tych katalogow -- jada z training_sessions.mmp_*.
 
 
 ---
