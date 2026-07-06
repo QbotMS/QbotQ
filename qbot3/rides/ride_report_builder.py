@@ -5,7 +5,7 @@ Zasady kontraktu:
 - Liczy WYLACZNIE fakty (moc/HR/biegi z FIT, forma z ModelQ, wellness z Garmin).
 - Kazda wartosc ma tier (A=twarde z FIT / B=estymata / C=brak) i source.
 - Wiatr i nawierzchnia = WTYCZKI: zwracaja status 'parked' i value=None do decyzji uzytkownika.
-- Temperatura z FIT (pomiar). Forma: FTP=CP z ModelQ. W' tymczasowo z Xerta (oznaczone 'external').
+- Temperatura z FIT (pomiar). Forma: FTP=CP i W' z ModelQ (dzienny fitmodel_daily); Xert tylko jako fallback per-pole, gdy ModelQ nie ma swiezej wartosci (patrz DECISIONS.md 2026-07-06).
 - Ta sama jazda -> ten sam W1 (brak losowosci, brak czasu 'teraz' w liczbach).
 """
 import os, math, collections
@@ -64,6 +64,24 @@ def _xert_wprime(cur):
         return float(r["w_prime_kj"])*1000.0 if r and r.get("w_prime_kj") is not None else None
     except Exception:
         return None
+
+def _modelq_wprime(cur, ride_day):
+    """W' z ModelQ (fitmodel_daily.wprime_modelq_kj) dla dnia jazdy -- najblizszy
+    dostepny dzien <= data jazdy. Fallback do Xerta TYLKO gdy ModelQ nie ma
+    wartosci (np. brak swiezego twardego fragmentu -- Krok 2, confidence low).
+    Zwraca (wartosc_w_dzulach, zrodlo) -- zrodlo do uczciwego taga w raporcie."""
+    try:
+        cur.execute(
+            "SELECT wprime_modelq_kj FROM qbot_v2.fitmodel_daily "
+            "WHERE day<=%s AND wprime_modelq_kj IS NOT NULL ORDER BY day DESC LIMIT 1",
+            (ride_day,),
+        )
+        r = cur.fetchone()
+        if r and r.get("wprime_modelq_kj") is not None:
+            return float(r["wprime_modelq_kj"])*1000.0, "modelq"
+    except Exception:
+        pass
+    return _xert_wprime(cur), "xert"
 
 def _ef_anchor(cur):
     try:
@@ -219,7 +237,7 @@ def _load(recs, form, ef_anchor):
         "mmp":_tag(mmp,"A","fit"),
     }
 
-def _wprime(recs, cp, Wp):
+def _wprime(recs, cp, Wp, wp_source="xert"):
     if not cp or not Wp:
         return {"_meta":{"tier":"C","source":"modelq/xert","reason":"brak CP lub W'"}}
     P=[r["p"] for r in recs]
@@ -231,6 +249,7 @@ def _wprime(recs, cp, Wp):
         if p>=cp: bal-=(p-cp)
         else: bal+=(Wp-bal)*k
         if bal>Wp: bal=Wp
+        if bal<0: bal=0  # brakujacy dolny clamp -- ujawnil sie przy mniejszym, dokladniejszym W' z ModelQ
         series.append(bal)
     mn=min(series); mn_i=series.index(mn)
     # seria do wykresu: min % W' w koszykach 5 km
@@ -256,8 +275,9 @@ def _wprime(recs, cp, Wp):
     efforts.sort(key=lambda e:-e["cost_kj"])
     return {
         "cp_w":_tag(round(cp),"A","modelq"),
-        "wprime_j":_tag(round(Wp),"B","xert",note="zewnetrzne — do odlaczenia po ModelQ"),
-        "wbal_min_pct":_tag(round(100*mn/Wp),"B","modelq_cp+xert_wprime"),
+        "wprime_j":_tag(round(Wp),"A" if wp_source=="modelq" else "B",wp_source,
+                       note=None if wp_source=="modelq" else "fallback Xert -- ModelQ bez swiezej wartosci"),
+        "wbal_min_pct":_tag(round(100*mn/Wp),"A" if wp_source=="modelq" else "B",f"modelq_cp+{wp_source}_wprime"),
         "time_lt50_min":_tag(round(lt50/60),"B","derived"),
         "time_lt25_min":_tag(round(lt25/60),"B","derived"),
         "tau_s":_tag(round(tau),"B","skiba"),
@@ -464,7 +484,7 @@ def build_w1(fit_path, ride_key, inputs=None):
     recs, events, session = _parse_fit(fit_path)
     conn=_connect(); cur=conn.cursor()
     day = str(recs[0]["ts"].date())
-    form=_modelq_form(cur); Wp=_xert_wprime(cur); efa=_ef_anchor(cur)
+    form=_modelq_form(cur); Wp,wp_source=_modelq_wprime(cur, day); efa=_ef_anchor(cur)
     wellness=_wellness(cur, day); rhr_base=_rhr_base(cur)
     w1={
         "schema_version":SCHEMA_VERSION,
@@ -472,7 +492,7 @@ def build_w1(fit_path, ride_key, inputs=None):
         "ride":{"date":day,"dist_km":round(recs[-1]["dist"]/1000.0,1)},
         "inputs":inputs or {},
         "load":_load(recs, form, efa),
-        "wprime":_wprime(recs, form["cp_w"], Wp),
+        "wprime":_wprime(recs, form["cp_w"], Wp, wp_source),
         "wind":_plugin("zrodlo pogody — decyzja uzytkownika (osobna sesja)"),
         "weather":_weather_from_fit(recs),
         "surface":_plugin("dopasowanie trasy — decyzja uzytkownika (Ad2)"),
