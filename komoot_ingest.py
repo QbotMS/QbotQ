@@ -82,6 +82,9 @@ def ensure_komoot_route_artifact(tour_id, session=None):
     data = gpx.encode("utf-8")
     sha = hashlib.sha256(data).hexdigest()
     route_id = "komoot-%s" % tour_id
+    _nm = meta.get("name") or ("Komoot " + str(tour_id))
+    _d10 = (meta.get("date") or "")[:10]
+    route_name = (KOMOOT_TAG + _nm + ((" \u00b7 " + _d10) if _d10 else "") + " \u00b7 #" + str(tour_id)).strip()
     artifact = api_db.upsert_route_artifact({
         "artifact_path": str(fpath),
         "artifact_relative_path": "outgoing/komoot/" + fname,
@@ -93,7 +96,8 @@ def ensure_komoot_route_artifact(tour_id, session=None):
         "sha256": sha,
         "status": "ok",
         "metadata_json": {
-            "route_name": (KOMOOT_TAG + (meta.get("name") or "")).strip(),
+            "route_name": route_name,
+            "created_date": meta.get("date"),
             "source_tour_id": str(tour_id),
             "changed_at": meta.get("changed_at"),
             "komoot_status": meta.get("status"),
@@ -101,9 +105,17 @@ def ensure_komoot_route_artifact(tour_id, session=None):
         },
     })
     parse = _store_parse_result(fpath, artifact)
-    return {"route_id": route_id, "points": len(points), "name": meta.get("name"),
+    return {"route_id": route_id, "points": len(points), "name": meta.get("name"), "route_name": route_name,
             "artifact_id": artifact.get("id"), "parse_id": parse.get("id") if parse else None,
             "sha256": sha[:12]}
+
+
+def _reassert_route_name(route_id, route_name):
+    if not route_name:
+        return
+    with api_db._conn() as c:
+        c.execute("UPDATE qbot_v2.route_artifacts SET metadata_json = jsonb_set(metadata_json, '{route_name}', to_jsonb(%s::text)) WHERE route_id=%s", (route_name, route_id))
+        c.commit()
 
 
 def ingest_komoot_tour(tour_id, session=None, precompute=False):
@@ -116,13 +128,16 @@ def ingest_komoot_tour(tour_id, session=None, precompute=False):
         from scripts.route_precompute_trigger import _ensure_rwgps_surface_profile
         surf = _ensure_rwgps_surface_profile(art["route_id"], route_artifact_id=art["artifact_id"], force=True)
         out["surface"] = {"status": surf.get("status"), "surface_profile_id": surf.get("surface_profile_id")}
-        from qbot3.routes.route_elevation_store import ensure_route_elevation
-        elev = ensure_route_elevation(route_id=art["route_id"])
-        out["elevation"] = {"status": elev.get("status")}
         from qbot3.routes.route_precompute_orchestrator import ensure_route_precompute
         pc = ensure_route_precompute(route_id=art["route_id"], trigger_source="komoot", scope="all")
         out["precompute"] = {"status": pc.get("status"),
                              "jobs": {k: v.get("status") for k, v in (pc.get("jobs") or {}).items()}}
+        # wysokosci NA FINALNEJ bazie (precompute tworzy nowa wersje) - inaczej push nie ma Elevation.Polyline
+        from qbot3.routes.route_elevation_store import ensure_route_elevation
+        elev = ensure_route_elevation(route_id=art["route_id"])
+        out["elevation"] = {"status": elev.get("status")}
+    # surface/precompute nadpisuja route_name gola nazwa - przywroc sygnature na koncu
+    _reassert_route_name(art["route_id"], art.get("route_name"))
     return out
 
 

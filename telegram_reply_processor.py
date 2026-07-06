@@ -233,6 +233,67 @@ def process_message(text: str):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def tg_send_plain(text):
+    try:
+        httpx.post(f"{TG_BASE}/sendMessage", json={"chat_id": CHAT_ID, "text": text}, timeout=10)
+    except Exception as _e:
+        log(f"   tg_send_plain blad: {_e}")
+
+
+def tg_answer_callback(cq_id, text=""):
+    try:
+        httpx.post(f"{TG_BASE}/answerCallbackQuery", json={"callback_query_id": cq_id, "text": text}, timeout=10)
+    except Exception:
+        pass
+
+
+def tg_edit_markup(chat_id, message_id):
+    try:
+        httpx.post(f"{TG_BASE}/editMessageReplyMarkup",
+                   json={"chat_id": chat_id, "message_id": message_id, "reply_markup": {"inline_keyboard": []}},
+                   timeout=10)
+    except Exception:
+        pass
+
+
+def handle_komoot_callback(cq):
+    data = cq.get("data") or ""
+    cq_id = cq.get("id")
+    m = cq.get("message") or {}
+    chat_id = str((m.get("chat") or {}).get("id", ""))
+    message_id = m.get("message_id")
+    if chat_id != CHAT_ID:
+        tg_answer_callback(cq_id, "Brak dostepu")
+        return
+    if not data.startswith("kmt:"):
+        tg_answer_callback(cq_id)
+        return
+    parts = data.split(":")
+    action = parts[1] if len(parts) > 1 else ""
+    tour_id = parts[2] if len(parts) > 2 else ""
+    import komoot_watch
+    if action == "y":
+        tg_answer_callback(cq_id, "Analizuje...")
+        try:
+            res = komoot_watch.analyze_tour(tour_id)
+            nm = res.get("name") or ("#" + tour_id)
+            tg_send_plain("\u2705 Zanalizowano: " + str(nm) + "\nGotowe w QBot - wygeneruj raport i wyslij na Karoo.")
+        except Exception as e:
+            log(f"   analyze_tour blad: {e}")
+            tg_send_plain("\u26a0\ufe0f Analiza #" + tour_id + " nie powiodla sie: " + str(e)[:200])
+    elif action == "n":
+        tg_answer_callback(cq_id, "Pominieto")
+        try:
+            komoot_watch.skip_tour(tour_id)
+        except Exception as e:
+            log(f"   skip_tour blad: {e}")
+        tg_send_plain("\u274c Pominieto trase #" + tour_id + ".")
+    else:
+        tg_answer_callback(cq_id)
+    if message_id:
+        tg_edit_markup(chat_id, message_id)
+
+
 def main():
     log("🔍 Sprawdzam Telegram...")
 
@@ -253,6 +314,16 @@ def main():
 
     for upd in updates:
         update_id = upd.get("update_id", 0)
+
+        cq = upd.get("callback_query")
+        if cq:
+            state["last_update_id"] = update_id
+            save_state(state)
+            try:
+                handle_komoot_callback(cq)
+            except Exception as e:
+                log(f"   callback blad: {e}")
+            continue
 
         msg = upd.get("message") or upd.get("edited_message")
         if not msg:

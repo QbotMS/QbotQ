@@ -57,6 +57,7 @@ def get_tour_meta(tour_id, session=None):
         "name": d.get("name"),
         "status": d.get("status"),
         "changed_at": d.get("changed_at"),
+        "date": d.get("date"),
         "distance_m": d.get("distance"),
         "routing_version": d.get("routing_version"),
     }

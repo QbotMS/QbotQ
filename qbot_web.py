@@ -1915,6 +1915,25 @@ def push_karoo(route_id: str, date: str | None = None, time: str = "10:00"):
         hh_uid = _HA.token_user_id(tok)
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Karoo auth niedostepne z uslugi: %s" % exc)
+    # WARIANT A: jedna kopia QBota na trase - skasuj poprzednia (po sourceId) przed utworzeniem nowej
+    _sid = "qbot-%s" % route_id
+    try:
+        _lreq = urllib.request.Request(
+            "https://dashboard.hammerhead.io/v1/users/%s/routes?per_page=200" % hh_uid,
+            headers={"Authorization": "Bearer " + tok, "Accept": "application/json"})
+        with urllib.request.urlopen(_lreq, timeout=30) as _lr:
+            _ld = json.loads(_lr.read())
+        for _rt in (_ld.get("data") or _ld.get("routes") or []):
+            if str(_rt.get("sourceId") or "") == _sid:
+                _dreq = urllib.request.Request(
+                    "https://dashboard.hammerhead.io/v1/users/%s/routes/%s" % (hh_uid, _rt.get("id")),
+                    headers={"Authorization": "Bearer " + tok, "Accept": "application/json"}, method="DELETE")
+                try:
+                    urllib.request.urlopen(_dreq, timeout=30).read()
+                except Exception:
+                    pass
+    except Exception:
+        pass
     req = urllib.request.Request(
         "https://dashboard.hammerhead.io/v1/users/%s/routes" % hh_uid,
         data=json.dumps(body).encode("utf-8"),
