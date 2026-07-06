@@ -553,16 +553,20 @@ def _xert_sync_fetch(xert_email: str, xert_password: str) -> dict:
 
 
 def _modelq_ftp_ltp() -> dict:
-    """FTP i LTP z ModelQ (qbot_v2.fitmodel_daily) dla Karoo -- zamiast Xerta.
+    """FTP, LTP i W' z ModelQ (qbot_v2.fitmodel_daily) dla Karoo -- zamiast Xerta.
 
-    FTP = ftp_est_w (prog ~= CP), LTP = ltp_modelq_w. W' celowo NIE stad:
-    ModelQ W' jest jeszcze niewiarygodne (Krok 2), wiec W' zostaje z Xerta.
-    Zwraca {'ftp_watts': float|None, 'ltp_watts': float|None}; blad -> None (fallback do Xerta).
+    FTP = ftp_est_w (prog W'bal na Karoo), LTP = ltp_modelq_w (info -- w QExt2
+    NIE wchodzi do wzoru W'bal, tylko FTP tam wchodzi). W' = wprime_modelq_kj
+    (Krok 2 gotowy: harvest near-max + przedzial + pewnosc).
+    Kazde pole nadpisuje Xerta TYLKO gdy ModelQ ma wartosc (np. brak swiezego
+    twardego fragmentu -> wprime_modelq_kj bywa null) -- wtedy Xert zostaje
+    jako fallback DLA TEGO POLA, nie dla calosci.
+    Zwraca {'ftp_watts', 'ltp_watts', 'wprime_kj'}: float|None kazde; blad -> same None.
     """
     import psycopg
     from psycopg.rows import dict_row
 
-    out = {"ftp_watts": None, "ltp_watts": None}
+    out = {"ftp_watts": None, "ltp_watts": None, "wprime_kj": None}
     try:
         with psycopg.connect(
             host=os.getenv("PGHOST", "localhost"),
@@ -587,6 +591,13 @@ def _modelq_ftp_ltp() -> dict:
             r = cur.fetchone()
             if r and r.get("ltp_modelq_w"):
                 out["ltp_watts"] = round(float(r["ltp_modelq_w"]), 1)
+            cur.execute(
+                "SELECT wprime_modelq_kj FROM qbot_v2.fitmodel_daily "
+                "WHERE wprime_modelq_kj IS NOT NULL ORDER BY day DESC LIMIT 1"
+            )
+            r = cur.fetchone()
+            if r and r.get("wprime_modelq_kj"):
+                out["wprime_kj"] = round(float(r["wprime_modelq_kj"]), 2)
     except Exception:
         pass
     return out
@@ -916,19 +927,30 @@ async def ride_readiness():
             qbot_core = "WARN"
 
         # Core readiness: athlete data present AND DB online
-        # ModelQ override: FTP + LTP z wlasnego modelu (Karoo na ModelQ, nie Xert).
-        # W' celowo NIE stad -- ModelQ W' jeszcze niewiarygodne (Krok 2), zostaje z Xerta.
+        # ModelQ override: FTP + LTP + W' z wlasnego modelu (Karoo na ModelQ, nie Xert).
+        # Krok 2 (W' harvest) gotowy -- kazde pole nadpisuje TYLKO gdy ModelQ ma
+        # wartosc; brak wartosci dla danego pola -> Xert zostaje jako fallback TYLKO
+        # dla tego pola (nie dla calosci).
         try:
             _mq = await asyncio.get_running_loop().run_in_executor(
                 ThreadPoolExecutor(max_workers=1), _modelq_ftp_ltp
             )
             if isinstance(_mq, dict):
+                _mq_fields = []
                 if _mq.get("ftp_watts"):
                     ftp_watts = _mq["ftp_watts"]
+                    _mq_fields.append("ftp")
                 if _mq.get("ltp_watts"):
                     ltp_watts = _mq["ltp_watts"]
-                if _mq.get("ftp_watts") or _mq.get("ltp_watts"):
-                    warnings.append("ftp/ltp z ModelQ; W' z Xert")
+                    _mq_fields.append("ltp")
+                if _mq.get("wprime_kj"):
+                    w_prime_kj = _mq["wprime_kj"]
+                    _mq_fields.append("w'")
+                if _mq_fields:
+                    _mq_note = "/".join(_mq_fields) + " z ModelQ"
+                    if len(_mq_fields) < 3:
+                        _mq_note += "; reszta z Xert"
+                    warnings.append(_mq_note)
         except Exception as _mq_exc:
             warnings.append(f"modelq_override_error: {_mq_exc}")
 
