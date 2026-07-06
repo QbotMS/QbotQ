@@ -5,6 +5,26 @@
 
 ---
 
+
+## 2026-07-06 -- DECYZJA: Rozroznianie POSTOJ vs ODPADNIECIE MIERNIKA W LOCIE (Krok 0, W'bal)
+
+**Status:** aktywna, gotowe do wdrozenia w Kroku 3.
+
+**Problem:** duze dziury w mocy (np. 38,9% pokrycia liczonego na caly czas trwania) moga miec dwie rozne przyczyny: (a) urzadzenie przestalo nagrywac (postoj -- jedzenie, awaria, swiadoma pauza) albo (b) miernik mocy odpadl, ale jazda i nagrywanie trwaly dalej (analogia: niewlaczony HR). Traktowanie obu tak samo psuje model W'bal -- (a) uzasadnia pelna odbudowe W', (b) NIE (sportowiec dalej pracowal).
+
+**Dowod na zywo (activity_record, qbot_v2):**
+- Postoj: jazda `18856959904` (2025-04-17), dziura 7280s. Zero wierszy w bazie w trakcie przerwy. Dystans przed i po dziurze identyczny co do metra (6787,27 m), predkosc przed = 0,0 m/s. -> 100% pewny postoj.
+- Odpadniecie w locie: jazda `20142319334` (2025-08-22), 6 osobnych odcinkow bez mocy, ale urzadzenie CALY CZAS pisalo wiersze (gestosc ok. 1/s). Dwa odcinki: 795s/4432m i 947s/5257m przy 6-7 m/s. -> jazda trwala, miernik po prostu nie raportowal mocy.
+- Skala: rekordy "jade, ale bez mocy" to ok. 1,4% wszystkich wierszy w calej bazie (33 366 / 2 350 120) -- rzadkie, zgodnie z oczekiwaniem Michala.
+
+**Decyzja (regula klasyfikacji dziury):**
+1. Policz gestosc wierszy w dziurze = liczba_wierszy_w_dziurze / czas_trwania_dziury_s.
+2. Gestosc ok. 0 (brak wierszy) + dystans niezmieniony (delta ponizej progu szumu) + predkosc przed ok. 0 -> **POSTOJ** -> pelna odbudowa W' po przerwie (wysoka pewnosc).
+3. Gestosc ok. 1 (wiersze sa, tylko power=NULL) + dystans rosnie w trakcie -> **ODPADNIECIE MIERNIKA W LOCIE** -> W'bal ZAMROZONY na czas dziury (bez odejmowania, bez odbudowy); odcinek WYLACZONY z dopasowania CP/W' w Kroku 1.
+4. Wszystko pomiedzy (niejednoznaczne) -> NIEPEWNE, bez darmowego bonusu za odpoczynek, traktowac konserwatywnie.
+
+**Do zrobienia w Kroku 3:** wdrozyc powyzsza regule jako bramke przed liczeniem W'bal tick-po-ticku (zamiast jednego progu >=30s traktowanego zawsze jako "stan nieznany").
+
 ## 2026-07-03 — DECYZJA: Raport web — warstwa kwadratow StatsHunters na mapie
 
 **Status:** aktywna.
