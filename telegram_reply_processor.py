@@ -272,6 +272,7 @@ def handle_komoot_callback(cq):
     action = parts[1] if len(parts) > 1 else ""
     tour_id = parts[2] if len(parts) > 2 else ""
     import komoot_watch
+    _clear = True
     if action == "y":
         tg_answer_callback(cq_id, "Analizuje...")
         try:
@@ -281,6 +282,7 @@ def handle_komoot_callback(cq):
         except Exception as e:
             log(f"   analyze_tour blad: {e}")
             tg_send_plain("\u26a0\ufe0f Analiza #" + tour_id + " nie powiodla sie: " + str(e)[:200])
+            _clear = False
     elif action == "n":
         tg_answer_callback(cq_id, "Pominieto")
         try:
@@ -290,7 +292,7 @@ def handle_komoot_callback(cq):
         tg_send_plain("\u274c Pominieto trase #" + tour_id + ".")
     else:
         tg_answer_callback(cq_id)
-    if message_id:
+    if message_id and _clear:
         tg_edit_markup(chat_id, message_id)
 
 
