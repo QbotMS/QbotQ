@@ -33,6 +33,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fitmodel.ftp_resolver import _db_connect, _coerce_date
 
+try:
+    import fitparse as _fitparse
+except Exception:
+    _fitparse = None
+
 CP_DURATIONS = (120, 300, 600)          # krotkie okna -> prawdziwe CP (~FTP)
 LTP_DURATIONS = (300, 600, 1200, 1800)  # dlugie okna  -> LTP (asymptota trwala)
 CP_MIN_POINTS = 3
@@ -47,6 +52,16 @@ WPRIME_HIGH_DAYS = 30
 WPRIME_HIGH_FRAC = 0.95           # high: swieza <=30d i P120 >= frac*best
 WPRIME_RANGE_LO = 13.0
 WPRIME_RANGE_HI = 22.0
+
+# --- Kotwica z drogi (Warstwa 1, Krok 2 domkniecie) ---
+# Zdarzenie QExt2 W'bal=0% NIE jest niezaleznym dowodem na wartosc W' (Karoo
+# dostaje ta sama liczbe z /ride-readiness) -- ale moc PO zdarzeniu JEST
+# niezalezna: jesli rider dalej ciagnie powyzej CP dlugo po "0%", W' bylo
+# niedoszacowane. Jesli moc realnie spadla do/ponizej CP -- model sie zgadza.
+ROAD_ANCHOR_FRESH_DAYS = 14        # tylko bardzo swieze zdarzenie (test na zywo, nie archiwum)
+ROAD_ANCHOR_WINDOW_S = 90          # ile sekund po zdarzeniu 0% sprawdzamy moc
+ROAD_ANCHOR_MARGIN = 1.05          # >5% nad CP w oknie -> uznane za "dalej ciagnal"
+FIT_DIR_FOR_ANCHOR = "/opt/qbot/app/outgoing/michal/hammerhead_originals"
 
 # --- Peak Power (Krok "a", warstwa 1 sygnatury) ---
 PP_MAIN_WINDOW = 5      # mmp_5_w -> glowna PP (stabilna, standard sprintu)
@@ -189,6 +204,117 @@ def _wprime_harvest(db_conn, as_of: date, window_days: int = WINDOW_DAYS) -> dic
     return out
 
 
+
+def _robust_qext2_records(fit_path: str) -> list[dict[str, Any]]:
+    """Parsuj rekordy FIT odporne na dev-field bledy fitparse (patrz DECISIONS.md
+    2026-07-06 -- naiwne fit.get_messages('record') moze wywalic sie/zwrocic pusto
+    na plikach z developer fields QExt2). Zwraca timestamp/power/qext2_* per sekunda."""
+    if _fitparse is None:
+        return []
+    try:
+        fit = _fitparse.FitFile(fit_path)
+    except Exception:
+        return []
+    recs: list[dict[str, Any]] = []
+    while not fit._complete:
+        try:
+            msg = fit._parse_message()
+        except Exception:
+            continue
+        if msg is None or getattr(msg, "name", None) != "record":
+            continue
+        if type(msg).__name__ != "DataMessage":
+            continue
+        d: dict[str, Any] = {}
+        try:
+            for f in msg:
+                try:
+                    d[f.name] = f.value
+                except Exception:
+                    continue
+        except Exception:
+            continue
+        if "timestamp" in d:
+            recs.append(d)
+    return recs
+
+
+def _road_anchor_check(db_conn, as_of: date, fresh_days: int = ROAD_ANCHOR_FRESH_DAYS) -> dict[str, Any] | None:
+    """Sprawdz najswiezsze zdarzenie QExt2 W'bal=0% (Strona B): czy moc PO zdarzeniu
+    realnie spadla do/ponizej CP (model potwierdzony), czy rider dalej ciagnal powyzej
+    CP (W' prawdopodobnie niedoszacowane). Zwraca None gdy brak swiezego zdarzenia."""
+    if _fitparse is None:
+        return None
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT ride_id, wbal_zero_seconds, cp_eff_final
+            FROM qbot_v2.fitmodel_qext2_ride
+            WHERE wbal_zero_seconds > 0
+            ORDER BY ingested_at DESC LIMIT 5
+            """
+        )
+        candidates = cur.fetchall()
+    if not candidates:
+        return None
+
+    for ride_id, wbal_zero_seconds, cp_eff_final in candidates:
+        fit_path = f"{FIT_DIR_FOR_ANCHOR}/{ride_id}.fit"
+        recs = _robust_qext2_records(fit_path)
+        if not recs:
+            continue
+        recs.sort(key=lambda r: r["timestamp"])
+        ride_date = recs[0]["timestamp"].date()
+        age = (as_of - ride_date).days
+        if age > fresh_days or age < 0:
+            continue  # nie ten kandydat -- za stary (albo z przyszlosci wzgledem as_of)
+
+        first_idx = None
+        for i, r in enumerate(recs):
+            z = r.get("qext2_wbal_zero")
+            if z is not None and float(z) >= 1:
+                first_idx = i
+                break
+        if first_idx is None:
+            continue
+
+        cp_eff = recs[first_idx].get("qext2_cp_eff_w") or cp_eff_final
+        if not cp_eff:
+            continue
+        window = recs[first_idx: first_idx + ROAD_ANCHOR_WINDOW_S]
+        powers = [r.get("power") for r in window if r.get("power") is not None]
+        if len(powers) < ROAD_ANCHOR_WINDOW_S * 0.5:
+            continue  # za malo danych mocy w oknie -- nie ufaj
+
+        avg_p = sum(powers) / len(powers)
+        cp_eff = float(cp_eff)
+        event_ts = recs[first_idx]["timestamp"]
+
+        if avg_p > cp_eff * ROAD_ANCHOR_MARGIN:
+            excess_kj = round((avg_p - cp_eff) * len(powers) / 1000.0, 1)
+            return {
+                "status": "contradicted", "ride_id": ride_id, "ride_date": str(ride_date),
+                "event_ts": str(event_ts), "cp_eff_w": round(cp_eff), "avg_power_after_w": round(avg_p),
+                "window_s": len(powers), "excess_kj": excess_kj,
+                "note": (
+                    f"kotwica z drogi {ride_date}: PO zdarzeniu W'bal=0% moc srednio "
+                    f"{round(avg_p)}W przez {len(powers)}s (CP_eff={round(cp_eff)}W) -- rider dalej "
+                    f"ciagnal powyzej CP, ~{excess_kj}kJ ponad model -> W' PRAWDOPODOBNIE NIEDOSZACOWANE"
+                ),
+            }
+        else:
+            return {
+                "status": "confirmed", "ride_id": ride_id, "ride_date": str(ride_date),
+                "event_ts": str(event_ts), "cp_eff_w": round(cp_eff), "avg_power_after_w": round(avg_p),
+                "window_s": len(powers),
+                "note": (
+                    f"kotwica z drogi {ride_date}: PO zdarzeniu W'bal=0% moc spadla do "
+                    f"{round(avg_p)}W (<=CP_eff={round(cp_eff)}W) przez {len(powers)}s -- model potwierdzony"
+                ),
+            }
+    return None
+
+
 def _peak_power(db_conn, as_of: date, window_days: int = WINDOW_DAYS) -> dict[str, Any]:
     """Peak Power = max sprint z envelope. Glowna 5s (stabilna), instant 1s (obok).
 
@@ -307,6 +433,17 @@ def compute_cp_wprime(db_conn, as_of: date | None = None, window_days: int = WIN
 
     # --- W' -- harvest near-max + przedzial (Krok 2), zastepuje intercept LTP ---
     out.update(_wprime_harvest(db_conn, as_of, window_days))
+
+    # --- Kotwica z drogi (Warstwa 1) -- weryfikacja mocy PO zdarzeniu QExt2 W'bal=0% ---
+    anchor = _road_anchor_check(db_conn, as_of)
+    out["wprime_road_anchor"] = anchor
+    if anchor is not None:
+        if anchor["status"] == "confirmed" and out.get("wprime_confidence") == "medium":
+            out["wprime_confidence"] = "high"
+            out["wprime_source"] = f"{out.get('wprime_source') or ''}; {anchor['note']} -> pewnosc podniesiona"
+        elif anchor["status"] == "contradicted":
+            # NIE obnizamy automatycznie ani nie zmieniamy liczby -- tylko jawna flaga do przegladu.
+            out["wprime_source"] = f"{out.get('wprime_source') or ''}; UWAGA: {anchor['note']}"
 
     # --- Peak Power (Krok "a") -- domkniecie Fitness Signature ---
     out.update(_peak_power(db_conn, as_of, window_days))

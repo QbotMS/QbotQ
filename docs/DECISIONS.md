@@ -6,6 +6,46 @@
 ---
 
 
+## 2026-07-06 -- DECYZJA: kotwica W' z drogi -- weryfikacja mocy PO zdarzeniu W'bal=0%
+
+**Status:** gotowe, `fitmodel/cp_wprime.py`, live-tested.
+
+**Problem z prosta wersja (odrzucona):** zdarzenie QExt2 W'bal=0% NIE jest
+niezaleznym dowodem numerycznym -- Karoo liczy to z TEJ SAMEJ liczby W', ktora
+mu wyslalismy z `/ride-readiness`. Samo "doszlo do zera" nie potwierdza, ze
+20.31 kJ to poprawna wartosc -- potwierdza tylko, ze urzadzenie poprawnie
+liczy do zera to, co mu podalismy (obwodowe rozumowanie).
+
+**Rzetelna wersja (wdrozona):** sprawdz MOC PO zdarzeniu 0% -- to jest
+niezalezne od naszej liczby. Jesli rider realnie musial zwolnic do/ponizej CP,
+model (CP+W') jest potwierdzony. Jesli dalej ciagnal wyraznie powyzej CP przez
+`ROAD_ANCHOR_WINDOW_S=90` sekund (margines >5%), to fizyczny dowod, ze mial
+jeszcze zapas ktorego model nie widzial -> W' PRAWDOPODOBNIE NIEDOSZACOWANE.
+
+**Wynik na zywej jezdzie (2026-07-06, zdarzenie 0% o 10:30:44, CP_eff=241W):**
+srednia moc w kolejne 90s = 307W -- WYRAZNIE powyzej CP. Nadwyzka pracy: ~6.0 kJ
+ponad obecny model (20.31 kJ) -- sugeruje realne W' blizej ~26 kJ, nie 20.3 kJ.
+**Status: CONTRADICTED** (nie CONFIRMED) -- czyli obecny estymator raczej
+zanizony, nie zawyzony.
+
+**Decyzja o dzialaniu (celowo konserwatywna):** kotwica NIGDY nie zmienia
+automatycznie samej liczby `wprime_modelq_kj` -- tylko:
+- status="confirmed" + obecna pewnosc="medium" -> podnosi do "high" + notatka.
+- status="contradicted" -> NIE zmienia pewnosci w dol ani w gore, tylko dopisuje
+  jawne UWAGA do `wprime_source` z konkretnym ~kJ niedoszacowania, do przegladu
+  czlowieka. Jedno zdarzenie to za malo, zeby automatycznie przestrajac model.
+
+**Zakres:** tylko BARDZO swieze zdarzenia (`ROAD_ANCHOR_FRESH_DAYS=14`) --
+to sygnal z live-testu, nie archiwum. Parsowanie FIT odporne na dev-field bug
+fitparse (ta sama technika co przy diagnozie 20142319334 -- patrz wczesniejszy
+wpis 2026-07-06 o postoj/dropout).
+
+**Do rozwazenia w przyszlosci (nie dzis):** po kilku takich zdarzeniach (nie
+jednym) mozna by rozwazyc uzycie mediany "kotwic z drogi" jako trzeciej,
+niezaleznej metody estymacji W' obok harvestu MMP -- ale to wymaga wiecej
+danych niz jedna jazda.
+
+
 ## 2026-07-06 -- DECYZJA: raport jazdy na W' z ModelQ + auto-ingest Strony B co 30 min
 
 **Status:** gotowe.
