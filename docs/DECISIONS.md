@@ -6,6 +6,58 @@
 ---
 
 
+## 2026-07-06 -- DECYZJA: Komoot -> Karoo (wariant A) z bramka Telegram (przyciski)
+
+**Status:** dziala end-to-end na zywo (test 2963663831 "TEST 18.05"). Commit 0e7bc29
+(6 plikow) + poprawka telegram_reply_processor (przyciski zostaja przy bledzie)
++ handler webhooka w qbot_api.py (rownolegla sesja, uspiony).
+
+**Po co:** trasy planowane w Komoot maja same trafiac do QBota (analiza nawierzchni/
+POI/wysokosci) i na Karoo, bez recznego eksportu GPX.
+
+**Model (wariant A, 1:1 jak RWGPS + bramka):**
+1. Planujesz w Komoot -> natywny sync Komoot wrzuca gola trase na Karoo.
+2. Timer co 5 min (komoot_watch.check_once) wykrywa nowa/zmieniona trase.
+3. Telegram: powiadomienie z przyciskami [Analizuj]/[Pomin] + sygnatura.
+4. [Analizuj] -> pelny ingest (komoot_watch.analyze_tour), material czeka w web.
+   [Pomin] -> oznacz jako pominiete (do nastepnej zmiany changed_at).
+5. Raport (LLM) + POI generujesz w web.
+6. RECZNIE "Wyslij na Karoo" -> push kopii [Q]; poprzednia kopia QBota tej trasy
+   jest kasowana (delete-before-create). Jedna kopia QBota per trasa.
+
+**Sygnatura nazwy na Karoo:** `[Q] <nazwa> · <data utworzenia RRRR-MM-DD> · #<tour_id>`.
+Zrodlo daty = swieze meta z Komoot (pole `date`), nie tabela stanu.
+
+**Dedup (wariant A):** przed POST push_karoo robi GET listy tras Hammerhead i DELETE
+kazdej z sourceId == "qbot-<route_id>". Push zawsze RECZNY (jak RWGPS).
+
+**Watcher = tylko powiadamiaj:** komoot_watch sam NIE ingestuje i NIE pushuje. Analiza
+dopiero po klikniet. przycisku. Pierwszy przebieg (pusta tabela) = SEED (~598 tras
+oznaczonych jako widziane, bez pytania). Stan: qbot_v2.komoot_seen_tours.
+
+**Ponowne pytanie (doprecyzowane 2026-07-06):** TYLKO przy zmianie GEOMETRII. Kolumna
+`komoot_geo_sig` = hash zaokraglonych wspolrzednych; przy zmianie `changed_at` watcher
+pobiera geometrie i porownuje -- taka sama (edycja nazwy/meta) => cicha aktualizacja bez
+powiadomienia; inna albo brak bazy => pyta. Baza sig zakladana leniwie (seed nie liczy).
+
+**Transport Telegrama:** callback z przyciskow dociera do AKTYWNEGO odbiornika updateow.
+W trakcie sesji cron telegram_reply_processor dlugo dostawal 409 (inny konsument
+getUpdates); po restartach 409 znikl i to on odbiera callbacki
+(telegram_reply_processor.handle_komoot_callback). Rownolegle qbot_api.py ma handler
+dla WEBHOOKA (uspiony, bo webhook niezarejestrowany). Oba wspolistnieja bezpiecznie:
+Telegram to webhook ALBO polling -- po wlaczeniu webhooka polling milknie (409),
+a handler qbot_api przejmuje. **Zablokowane 2026-07-06:** webhook jawnie usuniety (deleteWebhook), polling = transport kanoniczny.
+
+**Prawa plikow:** outgoing/komoot musi nalezec do usera qbot (handler dziala jako qbot).
+Jednorazowo: chown -R qbot:qbot outgoing/komoot (pliki zrobione przez DEV jako root
+blokowaly nadpisanie -> [Errno 13]).
+
+**Pliki:** komoot_auth.py, tools/komoot/client.py, komoot_ingest.py, komoot_watch.py,
+qbot_web.py (push_karoo: encoder 1D elevation.polyline + dedup), telegram_reply_processor.py
+(callback polling), qbot_api.py (callback webhook), deploy/qbot-komoot-watch.service (+ timer 5 min).
+
+---
+
 ## 2026-07-06 -- DECYZJA: XSS (odpowiednik Xert Strain Score) liczony z ModelQ
 
 **Status:** gotowe w QBot (walidacja + backfill), wpiete w wbal_replay/daily_job.

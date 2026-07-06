@@ -1,6 +1,21 @@
 # QBot — TODO
 
 
+## [KOMOOT -> KAROO] Wariant A + bramka Telegram -- ZROBIONE (2026-07-06)
+
+Pelny obieg dziala na zywo (test "TEST 18.05" #2963663831). Szczegoly: DECISIONS.md
+2026-07-06 "Komoot -> Karoo (wariant A)". Commit 0e7bc29 + poprawka
+telegram_reply_processor + handler webhooka qbot_api.py.
+
+DOROBIONE 2026-07-06 (wszystkie 3, zweryfikowane):
+1. Transport zablokowany na POLLING -- webhook jawnie usuniety (deleteWebhook, url puste);
+   handler webhooka w qbot_api.py zostaje jako uspiony zapas.
+2. Pytanie ponowne TYLKO przy zmianie geometrii -- kolumna komoot_geo_sig (hash
+   wspolrzednych); edycja samej nazwy/meta = cicha aktualizacja bez powiadomienia.
+3. created_date -- backfill 598/598 z listy tras (bez zapytan per-trasa).
+
+---
+
 ## [XSS] Port XSS do QExt2 + wyswietlanie (dodane 2026-07-06)
 
 **Zrobione w QBot 2026-07-06:** XSS (odpowiednik Xert Strain Score) liczony z

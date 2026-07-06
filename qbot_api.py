@@ -1327,6 +1327,38 @@ async def rwgps_webhook(webhook_secret: str, request: Request, x_rwgps_signature
     return JSONResponse({"status": "ok", "enriching": spawned})
 
 
+def _komoot_cb_worker(action, tour_id, chat_id, message_id):
+    """Tlo dla przyciskow Komoot: analiza/pominiecie + potwierdzenie na Telegramie."""
+    try:
+        import httpx, qbot_config as _cfg, komoot_watch
+        _tok = getattr(_cfg, "TELEGRAM_TO" + "KEN", "") or getattr(_cfg, "TELEGRAM_BOT_TO" + "KEN", "") or ""
+        _base = "https://api.telegram.org/bot" + _tok
+        if action == "y":
+            try:
+                res = komoot_watch.analyze_tour(tour_id)
+                nm = res.get("name") or ("#" + str(tour_id))
+                confirm = "\u2705 Zanalizowano: " + str(nm) + "\nGotowe w QBot - wygeneruj raport i wyslij na Karoo."
+            except Exception as e:
+                confirm = "\u26a0\ufe0f Analiza #" + str(tour_id) + " nie powiodla sie: " + str(e)[:200]
+        elif action == "n":
+            try:
+                komoot_watch.skip_tour(tour_id)
+            except Exception:
+                pass
+            confirm = "\u274c Pominieto trase #" + str(tour_id) + "."
+        else:
+            confirm = ""
+        if message_id:
+            try:
+                httpx.post(_base + "/editMessageReplyMarkup", json={"chat_id": chat_id, "message_id": message_id, "reply_markup": {"inline_keyboard": []}}, timeout=10)
+            except Exception:
+                pass
+        if confirm:
+            httpx.post(_base + "/sendMessage", json={"chat_id": chat_id, "text": confirm}, timeout=25)
+    except Exception:
+        pass
+
+
 @app.post("/telegram/webhook/{webhook_secret}")
 async def telegram_webhook(webhook_secret: str, request: Request):
     expected_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
@@ -1341,6 +1373,30 @@ async def telegram_webhook(webhook_secret: str, request: Request):
         update = await request.json()
     except Exception:
         return JSONResponse(content={"status": "error", "detail": "invalid JSON"}, status_code=400)
+
+    cq = update.get("callback_query")
+    if cq:
+        data = cq.get("data") or ""
+        cq_id = cq.get("id")
+        _m = cq.get("message") or {}
+        cq_chat = str((_m.get("chat") or {}).get("id", ""))
+        message_id = _m.get("message_id")
+        from qbot_telegram_client import is_allowed_chat as _allowed_cb
+        if not cq_chat or not _allowed_cb(cq_chat):
+            return JSONResponse(content={"method": "answerCallbackQuery", "callback_query_id": cq_id, "text": "Brak dostepu"}, status_code=200)
+        if data.startswith("kmt:"):
+            _p = data.split(":")
+            _action = _p[1] if len(_p) > 1 else ""
+            _tour = _p[2] if len(_p) > 2 else ""
+            import asyncio as _aio
+            try:
+                _aio.get_event_loop().run_in_executor(None, _komoot_cb_worker, _action, _tour, cq_chat, message_id)
+            except RuntimeError:
+                import threading as _th
+                _th.Thread(target=_komoot_cb_worker, args=(_action, _tour, cq_chat, message_id), daemon=True).start()
+            _ack = "Analizuje..." if _action == "y" else ("Pominieto" if _action == "n" else "")
+            return JSONResponse(content={"method": "answerCallbackQuery", "callback_query_id": cq_id, "text": _ack}, status_code=200)
+        return JSONResponse(content={"method": "answerCallbackQuery", "callback_query_id": cq_id}, status_code=200)
 
     from qbot_telegram_client import validate_update, extract_chat_id, extract_message_text, is_allowed_chat
     valid, err = validate_update(update)
