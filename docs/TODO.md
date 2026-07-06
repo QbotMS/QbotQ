@@ -66,6 +66,27 @@ POZOSTALO (kazdy krok osobno "decyzja przed kodem"):
 
 ---
 
+## [MODELQ / QExt2] RSRV -- ocena i mozliwe przestrojenie po realnych danych (dodane 2026-07-06)
+
+**Kontekst:** RSRV mial byc odpowiednikiem Garmin Stamina ("ile baku zostalo na dzis").
+Silnik w QExt2 (`rideReservePercent`) juz jest sensownie zaprojektowany pod ten cel:
+start = `todayFactor*100`, odejmuje TSS (wzgledem budzetu z CTL) + kara za rozjazd
+HR/moc, powolna odbudowa (tau=30min) na postojach. PROBLEM: nigdy nie dostawal
+prawdziwego `todayFactor` (zawsze default 1.0 z `/ride-readiness`) -- wiec RSRV
+zawsze "pelne" bez wzgledu na realna forme dnia.
+
+**Zrobione 2026-07-06:** wpieto `readiness_score` (ModelQ, HRV+RHR+sen) jako
+`todayFactor` w `/ride-readiness` (patrz DECISIONS.md). To naprawia WEJSCIE.
+
+**DO ZROBIENIA (nie teraz -- po obejrzeniu kilku prawdziwych jazd z realnym
+todayFactor):** ocenic czy sam WZOR RSRV w QExt2 (tempo TSS-penalty, tempo
+odbudowy 30min, kara za decoupling) faktycznie "czuje sie" jak Stamina, czy
+wymaga przestrojenia. To wymaga danych z obserwacji (nie zgadywania na sucho)
+i prawdopodobnie kolejnego pushu QExt2 + CI, jesli cos trzeba zmienic w kodzie
+kotlinowym (nie tylko w danych wejsciowych z serwera).
+
+---
+
 ## [SPRZATANIE] Usunac martwy `qbot_mcp_adapter.py` (legacy konektor) (dodane 2026-07-04)
 
 **Kontekst (potwierdzone na zywo):** `/mcp` (qbot.cytr.us/mcp, serwuje `qbot-api`) rozgalezia sie na fladze `QBOT3_ENABLED`. Flaga **=1** we wszystkich aktywnych env (`qbot-api.env`, `.env`, `.env.local`) => `/mcp` zawsze wola `handle_qbot3_mcp` (qbot3 -> `intake_log_create`, nowy zeszyt `intake_logs`). Legacy `handle_mcp_request` z `qbot_mcp_adapter.py` (-> `meal_log_create` -> stary `meal_logs` + kopia do intake w `try/except: pass`) odpala sie TYLKO przy fladze =0 => obecnie **martwy kod**. Potwierdzone: ChatGPT i Claude uzywaja tego samego `https://qbot.cytr.us/mcp/`. W bazie 0 wpisow w starym `meal_logs` za ost. tydzien = legacy droga nieuzywana.

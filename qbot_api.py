@@ -603,6 +603,47 @@ def _modelq_ftp_ltp() -> dict:
     return out
 
 
+def _modelq_today_factor() -> float | None:
+    """todayFactor z ModelQ readiness_score (HRV+RHR+sen, z-score) dla Karoo.
+
+    Wczesniej: pole NIGDY nie bylo wysylane (potwierdzone -- brak w historii
+    gita), QExt2 zawsze uzywal defaultu 1.0. Mapping: liniowy, ostrozny
+    wspolczynnik 0.05 na jednostke z-score (podglad na 30 dniach: zakres
+    wynikowy 0.934-1.048, nigdy nie dotyka twardych granic poza jednym
+    prawie-dotknieciem). Zacisk SZEROKI (0.5-1.1), bo to samo co i tak zrobi
+    AthleteDataStore przy odbiorze -- todayFactor karmi DWIE rzeczy w QExt2 o
+    roznych wlasnych zaciskach: W'bal cf (przyciete tam do 0.85-1.05) i RSRV
+    (baseReserve = todayFactor*100, BEZ dodatkowego zacisku) -- wysylanie juz
+    przycietego do 0.85-1.05 zubozyloby sygnal dla RSRV. Patrz DECISIONS.md
+    2026-07-06.
+    """
+    import psycopg
+    from psycopg.rows import dict_row
+
+    try:
+        with psycopg.connect(
+            host=os.getenv("PGHOST", "localhost"),
+            port=os.getenv("PGPORT", "5432"),
+            dbname=os.getenv("PGDATABASE", "qbot"),
+            user=os.getenv("PGUSER", "qbot"),
+            password=os.getenv("PGPASSWORD", ""),
+            row_factory=dict_row,
+            connect_timeout=3,
+        ) as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT readiness_score FROM qbot_v2.fitmodel_daily "
+                "WHERE readiness_score IS NOT NULL ORDER BY day DESC LIMIT 1"
+            )
+            r = cur.fetchone()
+            if r and r.get("readiness_score") is not None:
+                score = float(r["readiness_score"])
+                tf = 1.0 + 0.05 * score
+                return round(min(max(tf, 0.5), 1.1), 3)
+    except Exception:
+        pass
+    return None
+
+
 def _intervals_weight_sync() -> dict:
     import base64, httpx
     from datetime import date
@@ -954,6 +995,18 @@ async def ride_readiness():
         except Exception as _mq_exc:
             warnings.append(f"modelq_override_error: {_mq_exc}")
 
+        # todayFactor: NIGDY wczesniej nie bylo wysylane (default 1.0 w QExt2).
+        # Teraz z ModelQ readiness_score -- karmi W'bal cf ORAZ RSRV na Karoo.
+        today_factor = None
+        try:
+            today_factor = await asyncio.get_running_loop().run_in_executor(
+                ThreadPoolExecutor(max_workers=1), _modelq_today_factor
+            )
+            if today_factor is not None:
+                warnings.append(f"todayFactor={today_factor} z ModelQ readiness_score")
+        except Exception as _tf_exc:
+            warnings.append(f"today_factor_error: {_tf_exc}")
+
         xert_ok = bool(ftp_watts and ltp_watts and w_prime_kj)
         core_ok = xert_ok and db_ok
 
@@ -987,6 +1040,8 @@ async def ride_readiness():
             payload["wPrimeKj"] = w_prime_kj
             payload["ltpWatts"] = ltp_watts
             payload["ftpWatts"] = ftp_watts
+            if today_factor is not None:
+                payload["todayFactor"] = today_factor
         else:
             reasons: list[str] = []
             if not ftp_watts:

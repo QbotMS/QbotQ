@@ -6,6 +6,41 @@
 ---
 
 
+## 2026-07-06 -- DECYZJA: todayFactor z ModelQ (nigdy wczesniej nie bylo wysylane)
+
+**Status:** gotowe, `qbot_api.py`, live-tested.
+
+**Odkrycie (Michal):** RSRV na Karoo mial byc odpowiednikiem Garmin Stamina.
+Sprawdzone w historii gita -- pole `todayFactor` NIGDY nie istnialo w
+`/ride-readiness` (zero commitow je dodajacych/usuwajacych). QExt2 zawsze
+dostawal default 1.0 z `json.optDouble("todayFactor", 1.0)`. To znaczy W'bal
+`cf` i RSRV `baseReserve` ZAWSZE dzialaly na sztywnej 1.0, bez wzgledu na
+realna forme dnia -- silniki byly gotowe, wejscie nigdy nie bylo podlaczone.
+
+**Decyzja:** `todayFactor` = ModelQ `readiness_score` (HRV+RHR+sen, z-score,
+juz istniejacy, wczesniej "backstage, nic go nie uzywalo") przez liniowy
+mapping: `todayFactor = clamp(1.0 + 0.05*readiness_score, 0.5, 1.1)`.
+
+**Zacisk SZEROKI (0.5-1.1), nie 0.85-1.05:** sprawdzony kod QExt2
+(`rideReservePercent`) -- RSRV startuje z `todayFactor*100` BEZ dodatkowego
+zacisku, podczas gdy W'bal `cf` przycina `readiness` do 0.85-1.05 SAM, w
+miejscu uzycia (`RideDataAggregator.kt`). Wysylanie juz przycietego do
+0.85-1.05 zubozyloby sygnal dla RSRV. Kazdy odbiorca przycina po swojemu.
+
+**Wspolczynnik 0.05 -- sprawdzony na 30 dniach realnych danych przed wdrozeniem:**
+zakres wynikowy 0.934-1.048, nigdy nie dotyka twardych granic (poza jednym
+prawie-dotknieciem na gorze). Najgorszy dzien (score -1.31, "zmeczony") ->
+0.934; najlepszy (score ~0.95, "swiezy") -> 1.048.
+
+**Zweryfikowane live:** `/ride-readiness` zwraca teraz `todayFactor` (dzis:
+0.982, z readiness_score=-0.36).
+
+**WAZNE -- nie mylic z RSRV formula:** to naprawia tylko WEJSCIE do RSRV/W'bal
+na Karoo. Czy sam WZOR RSRV (tempo TSS-penalty, tempo odbudowy 30min) faktycznie
+"czuje sie" jak Stamina -- do oceny PO obejrzeniu kilku prawdziwych jazd z
+realnym todayFactor, nie teraz na sucho. Patrz TODO.md sekcja RSRV.
+
+
 ## 2026-07-06 -- DECYZJA: kotwica W' z drogi -- weryfikacja mocy PO zdarzeniu W'bal=0%
 
 **Status:** gotowe, `fitmodel/cp_wprime.py`, live-tested.
