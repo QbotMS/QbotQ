@@ -97,62 +97,6 @@ def _envelope_curve(db_conn, as_of: date, window_days: int, durations: tuple[int
     return curve, n_rides
 
 
-def _ensure_cp_records_table(db_conn) -> None:
-    """Ratchet: najlepszy wynik W CALEJ HISTORII per dlugosc wysilku + data ustanowienia.
-    Nie cofa sie sam -- tylko rosnie lub trwa. Starzenie liczone OSOBNO wg wieku rekordu
-    (patrz _decayed_value), nie przez usuwanie/nadpisywanie wiersza w dol."""
-    with db_conn.cursor() as cur:
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS qbot_v2.fitmodel_cp_records (
-                duration_s INTEGER PRIMARY KEY,
-                best_w NUMERIC NOT NULL,
-                best_date DATE NOT NULL,
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-            )
-            """
-        )
-    db_conn.commit()
-
-
-def _update_cp_records(db_conn, as_of: date) -> None:
-    """Aktualizuje ratchet -- wywolywac raz dziennie PRZED liczeniem CP/LTP
-    (compute_cp_wprime czyta z tej tabeli, nie z surowego MAX() w oknie)."""
-    _ensure_cp_records_table(db_conn)
-    all_durations = sorted(set(CP_DURATIONS) | set(LTP_DURATIONS))
-    with db_conn.cursor() as cur:
-        for d in all_durations:
-            cur.execute(
-                f"""
-                SELECT date, mmp_{d}_w FROM qbot_v2.training_sessions
-                WHERE mmp_{d}_w IS NOT NULL AND date <= %s
-                  AND (sport_type IS NULL OR sport_type NOT LIKE %s)
-                ORDER BY mmp_{d}_w DESC LIMIT 1
-                """,
-                (as_of, "%virtual%"),
-            )
-            row = cur.fetchone()
-            if not row or row[1] is None:
-                continue
-            cand_date, cand_w = row[0], float(row[1])
-            cur.execute(
-                "SELECT best_w FROM qbot_v2.fitmodel_cp_records WHERE duration_s=%s",
-                (d,),
-            )
-            existing = cur.fetchone()
-            if existing is None or cand_w >= float(existing[0]):
-                cur.execute(
-                    """
-                    INSERT INTO qbot_v2.fitmodel_cp_records (duration_s, best_w, best_date, updated_at)
-                    VALUES (%s, %s, %s, now())
-                    ON CONFLICT (duration_s) DO UPDATE SET
-                        best_w = EXCLUDED.best_w, best_date = EXCLUDED.best_date, updated_at = now()
-                    """,
-                    (d, cand_w, cand_date),
-                )
-    db_conn.commit()
-
-
 def _current_ftp_floor(db_conn, as_of: date) -> float | None:
     """Ostatnia znana wartosc FTP_est (<=as_of) -- podloga zaniku CP/LTP. Brak -> None
     (wolajacy spada na ftp_anchor_w z fitmodel_param)."""
@@ -179,22 +123,37 @@ def _decayed_value(value: float, set_on: date, as_of: date, floor: float,
     return value - (value - floor) * frac
 
 
-def _envelope_curve_decayed(db_conn, as_of: date, durations: tuple[int, ...],
-                             floor_w: float | None) -> tuple[dict[int, float], int]:
-    """Krzywa envelope z ratchetu (fitmodel_cp_records) + zanik wg wieku rekordu,
-    zamiast surowego MAX() w oknie 90 dni. Zastepuje _envelope_curve() dla CP/LTP."""
+def _best_effort_asof(db_conn, duration_s: int, as_of: date) -> tuple[float, date] | None:
+    """Najlepszy wynik mmp_{d}_w W CALEJ HISTORII <= as_of, bez okna czasowego. To samo w sobie
+    jest ratchetem -- MAX() nad rosnacym zakresem dat moze tylko rosnac albo trwac, nigdy spadac
+    -- wiec NIE trzeba trzymac osobnej tabeli z rekordami. Liczone na zywo za kazdym razem, zeby
+    dzialalo poprawnie tez przy przeliczaniu historii (backfill) -- bez podgladania przyszlosci."""
     with db_conn.cursor() as cur:
         cur.execute(
-            "SELECT duration_s, best_w, best_date FROM qbot_v2.fitmodel_cp_records "
-            "WHERE duration_s = ANY(%s)",
-            (list(durations),),
+            f"""
+            SELECT date, mmp_{duration_s}_w FROM qbot_v2.training_sessions
+            WHERE mmp_{duration_s}_w IS NOT NULL AND date <= %s
+              AND (sport_type IS NULL OR sport_type NOT LIKE %s)
+            ORDER BY mmp_{duration_s}_w DESC LIMIT 1
+            """,
+            (as_of, "%virtual%"),
         )
-        rows = {r[0]: (float(r[1]), r[2]) for r in cur.fetchall()}
+        row = cur.fetchone()
+    if not row or row[1] is None:
+        return None
+    return float(row[1]), row[0]
+
+
+def _envelope_curve_decayed(db_conn, as_of: date, durations: tuple[int, ...],
+                             floor_w: float | None) -> tuple[dict[int, float], int]:
+    """Krzywa envelope BEZ OKNA (najlepszy wynik w calej historii <=as_of) + zanik wg wieku
+    rekordu wzgledem as_of. Zastepuje _envelope_curve() (okno 90d) dla CP/LTP."""
     curve: dict[int, float] = {}
     for d in durations:
-        if d not in rows:
+        found = _best_effort_asof(db_conn, d, as_of)
+        if found is None:
             continue
-        best_w, best_date = rows[d]
+        best_w, best_date = found
         curve[d] = best_w if floor_w is None else _decayed_value(best_w, best_date, as_of, floor_w)
     return curve, len(curve)
 
@@ -536,6 +495,14 @@ def compute_cp_wprime(db_conn, as_of: date | None = None, window_days: int = WIN
             out["cp_wprime_r2"] = round(cp_r2, 3) if cp_r2 is not None else None
             out["cp_wprime_note"] = f"fit CP niewiarygodny (cp={cp}) -- odrzucony"
         else:
+            clamp_note = ""
+            if floor_w is not None and cp < floor_w:
+                clamp_note = (
+                    f" [UWAGA: surowy fit {round(cp, 1)}W ponizej podlogi -- "
+                    f"niefizjologiczne gdy czesc punktow krzywej jest juz w pelni zdryfowana "
+                    f"do tej samej podlogi (degenerowany fit); podniesione do FTP_est]"
+                )
+                cp = floor_w
             out["cp_modelq_w"] = round(cp, 1)
             out["cp_wprime_r2"] = round(cp_r2, 3) if cp_r2 is not None else None
             out["cp_wprime_note"] = (
@@ -543,7 +510,7 @@ def compute_cp_wprime(db_conn, as_of: date | None = None, window_days: int = WIN
                 f"+ {CP_LTP_DECAY_DAYS}d liniowy zanik do FTP_est="
                 f"{round(floor_w, 1) if floor_w is not None else 'brak'}W), "
                 f"r2={round(cp_r2, 3) if cp_r2 is not None else 'n/a'} "
-                f"-- najlepsze fragmenty zwyklych jazd, nie testy maksymalne"
+                f"-- najlepsze fragmenty zwyklych jazd, nie testy maksymalne{clamp_note}"
             )
 
     # --- LTP: dlugie okna 300/600/1200/1800 (ratchet + zanik, DECISIONS.md 2026-07-07 (3)) ---
@@ -559,6 +526,14 @@ def compute_cp_wprime(db_conn, as_of: date | None = None, window_days: int = WIN
             out["ltp_modelq_r2"] = round(ltp_r2, 3) if ltp_r2 is not None else None
             out["ltp_modelq_note"] = f"fit LTP niewiarygodny (ltp={ltp}) -- odrzucony"
         else:
+            clamp_note = ""
+            if floor_w is not None and ltp < floor_w:
+                clamp_note = (
+                    f" [UWAGA: surowy fit {round(ltp, 1)}W ponizej podlogi -- "
+                    f"niefizjologiczne gdy czesc punktow krzywej jest juz w pelni zdryfowana "
+                    f"do tej samej podlogi (degenerowany fit); podniesione do FTP_est]"
+                )
+                ltp = floor_w
             out["ltp_modelq_w"] = round(ltp, 1)
             out["ltp_modelq_r2"] = round(ltp_r2, 3) if ltp_r2 is not None else None
             out["ltp_modelq_note"] = (
@@ -566,7 +541,7 @@ def compute_cp_wprime(db_conn, as_of: date | None = None, window_days: int = WIN
                 f"+ {CP_LTP_DECAY_DAYS}d liniowy zanik do FTP_est="
                 f"{round(floor_w, 1) if floor_w is not None else 'brak'}W), "
                 f"r2={round(ltp_r2, 3) if ltp_r2 is not None else 'n/a'} "
-                f"-- odpowiednik Xert LTP"
+                f"-- odpowiednik Xert LTP{clamp_note}"
             )
 
     # --- W' -- harvest near-max + przedzial (Krok 2), zastepuje intercept LTP ---
@@ -627,10 +602,7 @@ def upsert_into_daily(db_conn, row: dict[str, Any]) -> None:
 
 
 def run_daily(db_conn, as_of: date | None = None, window_days: int = WINDOW_DAYS, dry_run: bool = False) -> dict[str, Any]:
-    as_of_d = _coerce_date(as_of)
-    if not dry_run:
-        _update_cp_records(db_conn, as_of_d)
-    row = compute_cp_wprime(db_conn, as_of_d, window_days)
+    row = compute_cp_wprime(db_conn, as_of, window_days)
     if not dry_run:
         upsert_into_daily(db_conn, row)
     return row

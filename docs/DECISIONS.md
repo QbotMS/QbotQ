@@ -2054,3 +2054,35 @@ Commit `cd1ce29`, push potwierdzony (`fb18c50..cd1ce29`).
 (`fitmodel_cp_records`) jest juz zasiany z pelnej historii `training_sessions`, wiec backfill
 dotyczylby tylko przepisania kolumn `ftp_est_w`/`cp_modelq_w`/`ltp_modelq_w`/`wprime_*` w starych
 wierszach `fitmodel_daily`.
+
+
+## 2026-07-07 (5) -- Backfill FTP/CP/LTP/W': decyzja Michala + zakres + wdrozenie
+
+**Decyzja (Michal, 2026-07-07):** przeliczyc historie nowa logika (nie zostawiac jak jest).
+
+**Znaleziona niezacommitowana zmiana w `fitmodel/cp_wprime.py` (przed backfillem):**
+Ratchet oparty o tabele `fitmodel_cp_records` (najlepszy wynik W CALEJ HISTORII, bez granicy
+czasowej) psulby przeliczanie starych dni -- dzien X widzialby rekordy ustanowione PO dniu X
+(podgladanie przyszlosci). Zastapione `_best_effort_asof()`: liczy najlepszy wynik na zywo
+`WHERE date <= as_of`, poprawne dla kazdego dnia backfillu z osobna. Dodatkowo: clamp -- gdy
+surowy fit CP/LTP wychodzi PONIZEJ podlogi FTP_est (zdegenerowany fit przy w pelni zdryfowanych
+punktach krzywej), podnoszony do podlogi z jawna notatka UWAGA. `fitmodel_cp_records` zostaje w
+bazie jako nieuzywana (juz nieczytana) -- do ewentualnego pozniejszego dropu, nie pilne.
+Zweryfikowane: pelny pytest przed commitem -- 425 testow, 14 niepowiazanych failow (te same co
+przed zmiana), zero w fitmodel/ftp_resolver/cp_wprime. Commit `<UZUPELNIC>`.
+
+**Zakres backfillu (zweryfikowany na zywo):** `fitmodel_daily` ma dane od 2022-03-02 (1589 dni),
+ale kolumna `ftp_est_w` jest wypelniona dopiero od 2025-01-01 (553 dni) -- to jedyny sensowny
+zakres do przeliczenia (przed tym brak segmentow/danych zrodlowych, przeliczanie byloby no-opem).
+W ramach tych 553 dni: 2025-01-01..2025-05-31 (151 dni) maja dane do FTP (tlumienie), ale za malo
+historii `training_sessions.mmp_*` (zaczyna sie 2025-05-01) dla sensownego CP/LTP -- te dni dostana
+tylko przeliczone FTP, CP/LTP zostana null/za malo punktow (oczekiwane, nie blad). Od 2025-06-01
+(402 dni) do dzis -- pelne przeliczenie FTP+CP/LTP/W'.
+
+**Metoda:** chronologicznie (rosnaco po dacie), dla kazdego dnia: `update_fitmodel_daily(conn, day)`
+(FTP z tlumieniem -- MUSI byc chronologicznie, bo czyta poprzedni ZAPISANY dzien) nastepnie
+`cp_wprime.run_daily(conn, as_of=day, dry_run=False)` (CP/LTP/W' z podloga = swiezo przeliczony
+FTP_est tego dnia). Skrypt jednorazowy, bez zapisu do repo (`scripts/_tmp_backfill_fitmodel.py`,
+self-cleanup po uruchomieniu).
+
+**Wynik:** <UZUPELNIC PO URUCHOMIENIU>
