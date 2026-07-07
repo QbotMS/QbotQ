@@ -2190,3 +2190,27 @@ do dodania w fitmodel_param dla strojenia. notes zawiera mode=ride|decay|bootstr
 (problem kalibracji EF<->FTP na danych submaksymalnych, nie ten bug); (b) dedup w ingescie
 (UNIQUE started_at + ON CONFLICT) zamiast recznej kwarantanny 2 plikow; (c) zdegenerowany
 CP/LTP przy rzadkich MMP -- oddzielny watek.
+
+
+## 2026-07-07 (9) -- FTP_est: EF jednostronne (jazda tylko w gore, w dol tylko zanik) -- domkniecie (8)
+
+**Problem po wpisie (8).** Zanik usunal KLIF, ale zjazd 262->230 przez wiosne zostal. Przyczyna
+(zweryfikowana na danych): dni z JAZDA. Prawie kazdy dzien z jazda ciagnal FTP w DOL, bo spokojne
+turystyczne jazdy maja niskie EF -> cel EF ponizej biezacego FTP -> tlumienie zjezdzalo w dol.
+ftp_raw (EF) na latwych segmentach spadal nawet do 219 W. Model KARAL za spokojna jazde.
+
+**Fix -- EF jednostronne (jak Xert).** W dzien z jazda: jazda moze tylko PODBIC FTP (gdy damped
+cel EF >= biezacy FTP -> mode ride-up). Latwa jazda (EF ponizej biezacego) NIE ciagnie w dol --
+zamiast tego lagodny zanik czasowy (mode ride-flat). W dol FTP idzie WYLACZNIE przez zanik
+(detrening), nigdy przez fakt spokojnej jazdy. Xert dziala tak samo: sygnatura rosnie na
+wysilku, spada na czasie, nie na latwej jezdzie. Wspolny helper _decay_toward_floor uzywany
+przez ride-flat i dni bez jazdy. Tryby w notes: ride-up / ride-flat / decay / bootstrap.
+
+**Wynik (backfill 2026-05-01..dzis).** 259 (30.04) -> ~244 (poczatek czerwca, sam zanik) ->
+252 (lipiec, podbite realnymi wysilkami 20/28.06, 01-06.07). Zgodnosc z Xert TP w tym oknie:
+model 29.05=247.6 vs Xert 245.1; 02.06=245.6 vs 244.7 (~1-2 W). Koniec zjazdu, koniec klifu,
+FTP rosnie na wysilku. cp_wprime przeliczone razem (run_daily per dzien).
+
+**Uwaga:** kwiecien (<2026-05-01) nieprzeliczony -- stara logika, kosmetyczne dolki; rozszerzyc
+backfill wstecz jesli bedzie przeszkadzac. Osobne watki bez zmian: (a->rozwiazane tu),
+dedup w ingescie, zdegenerowane CP/LTP przy rzadkich MMP.

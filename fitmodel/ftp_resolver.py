@@ -279,6 +279,14 @@ def _has_qualifying_segment_on_day(db_conn, day_value: date) -> bool:
         return cur.fetchone() is not None
 
 
+def _decay_toward_floor(prev_ftp: float | None, floor: float, k: float) -> float | None:
+    """Lagodny wykladniczy zanik prev_ftp w strone podlogi aerobowej (floor).
+    Uzywane w dni bez jazdy ORAZ w dni z latwa jazda (EF ponizej biezacego FTP)."""
+    if prev_ftp is None:
+        return None
+    return float(floor) + (float(prev_ftp) - float(floor)) * (1.0 - float(k))
+
+
 def update_fitmodel_daily(db_conn, day=None) -> dict:
     day_value = _coerce_date(day)
     params = load_params(db_conn)
@@ -290,23 +298,29 @@ def update_fitmodel_daily(db_conn, day=None) -> dict:
     prev_ftp_est = _fetch_last_ftp_est(db_conn, day_value)
     damping_factor = params.get("ftp_damping_factor", 0.5)
     decay_k = params.get("ftp_decay_k", 0.009)
+    decay_floor = params.get("ftp_decay_floor_w", 193.0)
     has_ride_today = _has_qualifying_segment_on_day(db_conn, day_value) and readiness_weight != 0.0
     if has_ride_today and ftp_est_raw is not None:
-        # DZIEN Z JAZDA: aktualizacja w strone sygnalu EF (mediana + tlumienie)
-        ftp_est_w = apply_ftp_damping(ftp_est_raw, prev_ftp_est, damping_factor)
-        ftp_mode = "ride"
+        # DZIEN Z JAZDA: EF jednostronne (jak Xert) -- jazda moze tylko PODBIC FTP gdy
+        # pokazala moc. Latwa/turystyczna jazda o niskim EF NIE ciagnie FTP w dol;
+        # w dol idzie wylacznie powolny zanik czasowy (detrening).
+        damped = apply_ftp_damping(ftp_est_raw, prev_ftp_est, damping_factor)
+        if prev_ftp_est is None or damped >= prev_ftp_est:
+            ftp_est_w = damped
+            ftp_mode = "ride-up"
+        else:
+            ftp_est_w = _decay_toward_floor(prev_ftp_est, decay_floor, decay_k)
+            ftp_mode = "ride-flat"
     else:
-        # DZIEN BEZ JAZDY: lagodny wykladniczy zanik w strone LTP (kalibracja z Xerta,
-        # ~0.5 W/d na obecnym poziomie). Brak twardego okna 28 dni = brak zjazdu z klifu.
-        # ltp_modelq_w jest tu zdegenerowane (= FTP przez clamp cp_wprime na rzadkich
-        # danych), wiec podloga zaniku to stabilna, zmierzona podloga aerobowa z param
-        # (LTP ~193 W z Xerta, benchmark 192.9).
-        decay_floor = params.get("ftp_decay_floor_w", 193.0)
-        if prev_ftp_est is None:
+        # DZIEN BEZ JAZDY: lagodny wykladniczy zanik w strone podlogi aerobowej.
+        # ltp_modelq_w jest zdegenerowane (= FTP przez clamp cp_wprime na rzadkich danych),
+        # wiec podloga to stabilna, zmierzona podloga z param (LTP ~193 W, Xert 192.9).
+        dv = _decay_toward_floor(prev_ftp_est, decay_floor, decay_k)
+        if dv is None:
             ftp_est_w = ftp_est_raw
             ftp_mode = "bootstrap"
         else:
-            ftp_est_w = decay_floor + (prev_ftp_est - decay_floor) * (1.0 - float(decay_k))
+            ftp_est_w = dv
             ftp_mode = "decay"
     daily = _fetch_wellness_row(db_conn, day_value)
     weight_kg = _fetch_last_weight(db_conn, day_value)
