@@ -3037,6 +3037,81 @@ def ride_report_w2(response: Response, ride: str = Query(...), rebuild: int = Qu
     return w2
 
 
+_FORMA_FIELDS = [
+    "ftp_est_w", "w_per_kg", "cp_modelq_w", "ltp_modelq_w",
+    "wprime_modelq_kj", "wprime_lo_kj", "wprime_hi_kj", "wprime_confidence",
+    "glycogen_pct", "sleep_h", "hrv_night", "rhr",
+    "readiness_score", "readiness_label", "readiness_note",
+]
+
+
+def _forma_num(v):
+    return float(v) if v is not None else None
+
+
+def _forma_row_out(r):
+    out = {"day": r["day"].isoformat()}
+    for f in _FORMA_FIELDS:
+        v = r[f]
+        out[f] = v if f in ("wprime_confidence", "readiness_label", "readiness_note") else _forma_num(v)
+    return out
+
+
+def _build_forma_data(conn, start_str, end_str):
+    """Dane pod kafelek 'Forma (ModelQ)'. Zywy stan (2026-07-07): CP/LTP/W'/readiness
+    gesto wypelnione od 2026-05-01, FTP_est/W_per_kg/sen/RHR/glikogen dziurawe -
+    frontend renderuje je jako punkty, nie linie (patrz forma-render.js).
+    Prawdziwe CTL/ATL/TSB (trening load) NIE ISTNIEJE jeszcze w silniku - pole
+    training_load zostaje null jako kontrakt pod pozniejsze wpiecie (patrz DECISIONS.md
+    2026-07-07 (2))."""
+    from datetime import date as _dt_date, timedelta as _dt_timedelta
+    cols = ", ".join(_FORMA_FIELDS)
+    rows = conn.execute(
+        f"SELECT day, {cols} FROM qbot_v2.fitmodel_daily "
+        "WHERE day BETWEEN %s AND %s ORDER BY day",
+        (start_str, end_str),
+    ).fetchall()
+    series = [_forma_row_out(r) for r in rows]
+
+    # "dzis" - ostatnia NIE-NULL wartosc kazdego pola, niezaleznie od wybranego zakresu
+    # (zeby waskie okno w wykresie nie psulo kart z aktualna forma).
+    latest_rows = conn.execute(
+        f"SELECT day, {cols} FROM qbot_v2.fitmodel_daily "
+        "WHERE day BETWEEN %s AND %s ORDER BY day",
+        ((_dt_date.fromisoformat(end_str) - _dt_timedelta(days=400)).isoformat(), end_str),
+    ).fetchall()
+    latest_series = [_forma_row_out(r) for r in latest_rows]
+    latest = {}
+    for f in _FORMA_FIELDS:
+        found = None
+        for r in reversed(latest_series):
+            if r[f] is not None:
+                found = {"value": r[f], "day": r["day"]}
+                break
+        latest[f] = found or {"value": None, "day": None}
+
+    return {
+        "range": {"start": start_str, "end": end_str},
+        "series": series,
+        "latest": latest,
+        "training_load": None,  # CTL/ATL/TSB - w budowie osobno, kontrakt gotowy do wpiecia
+    }
+
+
+@app.get("/api/forma/data")
+def forma_data(response: Response, start: str | None = Query(None), end: str | None = Query(None)):
+    """Forma (ModelQ): dane 'dzis' + szereg czasowy do wykresu. Domyslny zakres 90 dni."""
+    response.headers["Cache-Control"] = "no-store"
+    from datetime import date as _dt_date, timedelta as _dt_timedelta
+    end_d = _dt_date.fromisoformat(end) if end else _dt_date.today()
+    start_d = _dt_date.fromisoformat(start) if start else (end_d - _dt_timedelta(days=90))
+    conn = _db_conn()
+    try:
+        return _build_forma_data(conn, start_d.isoformat(), end_d.isoformat())
+    finally:
+        conn.close()
+
+
 app.mount("/", StaticFiles(directory=WEB_ROOT, html=True), name="static")
 
 
