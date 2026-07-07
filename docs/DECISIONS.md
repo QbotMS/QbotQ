@@ -1943,3 +1943,72 @@ schematu). FTP_est 37/68, sen/RHR 34/68, glikogen 50/68, W/kg tylko 14/68 -- dzi
 
 **NIE zrobione (swiadomie, nastepny krok):** sekcja CTL/ATL/TSB (czeka na osobna sesje Michala);
 ewentualne dopisanie `readiness_score/label/note` do schematu w `MODELQ.md` (dokument stary).
+
+
+## 2026-07-07 (3) -- FTP/CP/LTP/W': diagnoza "absurdalnej zmiennosci" + decyzja tlumienia i zaniku (SPECYFIKACJA, KOD NIE PISANY)
+
+**Kontekst:** przy budowie kafelka Forma Michal zauwazyl skoki FTP_est (+27W w jeden dzien,
+5->6 marca 2026) i spadek (-9W, 11->12 kwietnia). Zbadano zywy kod i dane -- rozszerzono na
+CP/LTP (podobne, gorsze) i W' (juz czesciowo zaadresowane).
+
+### FTP_est -- wina modelu (brakujaca implementacja)
+
+Mechanizm: `EF_med_28d` to mediana z segmentow w oknie 28 dni. Zywy dowod (`ftp_resolver.py`,
+`compute_ef_median`): 5.03->5.06.2026 mediana skoczyla 1.473->1.651 bo z okna wypadly 4 slabsze
+segmenty z 5.02 (EF ~1.29-1.45), zostaly glownie mocne segmenty z grupowej jazdy 4-5.03
+(EF ~1.6-1.8). Analogicznie spadek 11->12.04 (wypadly 2 mocne segmenty z 14.03).
+
+MODELQ.md par.4.3 opisuje tlumienie "zmiana_tyg = clip(+/-0.5*delta), tlumienie 50%,
+anti-jitter" -- **sprawdzono grepem w `ftp_resolver.py`: tego tlumienia NIE MA w kodzie**.
+FTP_est leci 1:1 za skladem mediany, bez wygladzenia.
+
+**Decyzja:** dopisac brakujace tlumienie zgodnie z JUZ ISTNIEJACYM opisem w MODELQ.md 4.3
+(to przywrocenie udokumentowanego zachowania, nie nowy projekt). Ograniczyc dzienna zmiane
+FTP_est do +/-50% delty wzgledem dnia poprzedniego.
+
+### CP/LTP -- wina modelu (zla konstrukcja, gorsza niz FTP)
+
+Mechanizm: `_envelope_curve()` bierze `MAX(mmp_{d}_w)` per dlugosc (CP: 120/300/600s, LTP:
+300/600/1200/1800s) w oknie 90 dni, z ROZNYCH jazd, i dopasowuje linia prosta przez raptem
+3 (CP, wszystkie wymagane) albo 3-4 (LTP, min 3) punkty. Zywy dowod: 19->20.06.2026 najlepszy
+wynik 10-min wszedl do okna (242W->266W z jednej zwyklej jazdy) -> CP 210->242W (+31W/dzien).
+8->9.06 najlepszy 10-min WYPADL z okna (251W->242W) -> CP 222->210W (-12W). r^2~1.0 przy kazdym
+skoku -- przy n=3 to nic nie mowi o jakosci (linia przez 3 punkty prawie zawsze "pasuje idealnie").
+Zero tlumienia w `cp_wprime.py` (sprawdzone grepem).
+
+**Rozstrzygniecie filozoficzne (Michal):** skok W GORE po mocnym wysilku jest zasadny (twardy
+dowod zdolnosci, natychmiastowa rewizja w gore OK). Spadek z dnia na dzien TYLKO dlatego ze stary
+rekord wypadl z okna -- NIE jest zasadny (detrening to tygodnie, nie przelacznik). Model
+potrzebuje asymetrii: szybko w gore na nowym dowodzie, wolno w dol przy braku dowodu.
+
+**Decyzja (potwierdzona):**
+1. Grace period 60 dni pelnego zaufania od dnia ustanowienia rekordu (zgodnie z juz istniejacym
+   `PP_FRESH_DAYS=60` dla Peak Power -- ten sam prog, spojnosc).
+2. Dni 60-120: **liniowy** zanik od wartosci rekordu do podlogi (nie wykladniczy -- brak podstaw
+   fizjologicznych do konkretnego ksztaltu, liniowy jest prosty do wytlumaczenia i debugowania,
+   spojny z filozofia ModelQ "prostota ponad wyrafinowanie" -- por. tlumienie FTP=stala 0.5,
+   LTHR na sztywno).
+3. Po dniu 120: trzyma podloge, dopoki nie pojawi sie nowy twardy wynik.
+4. **Podloga CP i LTP = FTP_est** (biezacy, z czestszego silnika EF) -- brak swiezego dowodu na
+   cos wiecej -> wracamy do tego, co wiemy na pewno.
+5. Architektura: dzisiejsze `MAX()` w oknie 90 dni trzeba ROZDZIELIC od wygasania -- szukanie
+   rekordu bez sztywnego okna (albo dlugie, np. 365 dni, zeby stare rekordy sprzed lat nie liczyly
+   sie wiecznie), a wiek/zanik liczony WYLACZNIE z daty ustanowienia rekordu, nie z granicy okna
+   zapytania. Otwarte do wdrozenia: gdzie trzymac (wartosc, data) per dlugosc -- nowe kolumny czy
+   osobna tabela `fitmodel_cp_records` (per duration, per metric).
+
+### W' -- juz czesciowo zaadresowane, brakuje zaniku
+
+`_wprime_harvest()` juz ma `WPRIME_FRESH_DAYS=60` (ten sam prog!) -- ale po przekroczeniu 60 dni
+skacze NATYCHMIAST z konkretnej liczby na staly przedzial 13-22 kJ (`_range()`), bez zaniku.
+
+**Decyzja:** dodac ten sam wzorzec co CP/LTP -- dni 60-120 liniowy zanik z wartosci harvestu do
+podlogi. **Podloga W' = 13 kJ (dolna granica przedzialu, NIE srodek 17.5 kJ)** -- swiadomie
+zachowawczo, bo W' steruje pacingiem/rezerwa (Karoo) i lepiej zanizyc niz przeszacowac ("zero
+wysilkow do trupa", spojne z filozofia ModelQ).
+
+### Status
+
+**SPECYFIKACJA ZATWIERDZONA (Michal), KOD NIE PISANY.** Dotyka `fitmodel/ftp_resolver.py` (FTP
+tlumienie) i `fitmodel/cp_wprime.py` (CP/LTP ratchet+zanik, W' zanik) + prawdopodobnie nowa
+tabela/kolumny na (wartosc, data) rekordu per dlugosc. Pelny opis w `TODO.md` sekcja [FORMA-MODEL].

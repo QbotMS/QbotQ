@@ -276,3 +276,22 @@ jako punkty. Kafelek w `index.html`. Zweryfikowane na zywych danych (patrz DECIS
 - Do rozwazenia pozniej: normalizacja skal na wykresie (dzis dwie osie Y, W i "inne" -- przy
   wlaczeniu kilku serii z prawej osi jednoczesnie moze byc nieczytelnie, np. HRV (ms) i
   readiness_score (-1..1) na tej samej osi). Nie blokujace na start.
+
+
+## [FORMA-MODEL] FTP tlumienie + CP/LTP ratchet-zanik + W' zanik (dodane 2026-07-07)
+
+Pelna diagnoza i decyzja: `DECISIONS.md` 2026-07-07 (3). Skrot zadan do wdrozenia:
+
+1. **FTP_est** (`fitmodel/ftp_resolver.py`): dopisac brakujace tlumienie z MODELQ.md 4.3
+   (`zmiana_tyg = clip(+/-0.5*delta)`) -- dzis nie istnieje w kodzie mimo ze opisane w dokumencie.
+2. **CP/LTP** (`fitmodel/cp_wprime.py`, `_envelope_curve`): dodac ratchet (rekord = wartosc+data,
+   bez sztywnego okna 90d -- rozwazyc dlugie okno np. 365d albo osobna tabele) + liniowy zanik
+   60->120 dni od daty rekordu do podlogi = biezacy FTP_est. Po 120 dniach trzyma podloge.
+3. **W'** (`fitmodel/cp_wprime.py`, `_wprime_harvest`): dodac liniowy zanik 60->120 dni (dzis
+   `WPRIME_FRESH_DAYS=60` skacze prosto na przedzial 13-22 kJ) do podlogi = 13 kJ (dolna granica,
+   nie srodek -- zachowawczo, bo steruje pacingiem).
+4. Do rozstrzygniecia PRZED kodem: gdzie trzymac (wartosc, data) rekordu per dlugosc -- nowe
+   kolumny w `fitmodel_daily` czy osobna tabela `fitmodel_cp_records`. Sugestia: osobna tabela
+   (per duration: 120/300/600/1200/1800s), bo `fitmodel_daily` jest per-dzien a rekord to
+   per-dlugosc-wysilku, niezalezny od dnia.
+5. Po wdrozeniu: przeliczyc historycznie (backfill) czy tylko od teraz -- do ustalenia z Michalem.
