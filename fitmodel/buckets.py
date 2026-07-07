@@ -148,7 +148,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="FITMODEL B1 -- walidacja silnika strainu na jazdach")
     ap.add_argument("--ftp", type=float, default=None, help="FTP [W] (domyslnie ftp_anchor_w z param)")
     ap.add_argument("--kj-gate", type=float, default=1500.0)
-    ap.add_argument("--dir", default="/opt/qbot/app/outgoing/michal/hammerhead_originals")
+    ap.add_argument("--dir", default="/opt/qbot/artifacts/fit")
     ap.add_argument("--limit", type=int, default=12, help="ile jazd policzyc")
     args = ap.parse_args()
 

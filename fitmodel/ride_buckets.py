@@ -24,7 +24,7 @@ from fitparse import FitFile
 from fitmodel.ftp_resolver import _db_connect
 from fitmodel.buckets import compute_buckets
 
-FIT_DIR = Path("/opt/qbot/app/outgoing/michal/hammerhead_originals")
+FIT_DIR = Path("/opt/qbot/artifacts/fit")
 
 
 # ── Czytnik FIT (skopiowany 1:1 z fit_ingest.py, bez zaleznosci od psycopg2) ──

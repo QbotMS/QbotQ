@@ -66,7 +66,7 @@ WPRIME_DECAY_DAYS = 60   # dni 60->120 liniowy zanik do podlogi WPRIME_RANGE_LO
 ROAD_ANCHOR_FRESH_DAYS = 14        # tylko bardzo swieze zdarzenie (test na zywo, nie archiwum)
 ROAD_ANCHOR_WINDOW_S = 90          # ile sekund po zdarzeniu 0% sprawdzamy moc
 ROAD_ANCHOR_MARGIN = 1.05          # >5% nad CP w oknie -> uznane za "dalej ciagnal"
-FIT_DIR_FOR_ANCHOR = "/opt/qbot/app/outgoing/michal/hammerhead_originals"
+FIT_DIR_FOR_ANCHOR = "/opt/qbot/artifacts/fit"
 
 # --- Peak Power (Krok "a", warstwa 1 sygnatury) ---
 PP_MAIN_WINDOW = 5      # mmp_5_w -> glowna PP (stabilna, standard sprintu)

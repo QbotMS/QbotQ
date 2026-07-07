@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fitmodel.ftp_resolver import _db_connect
 
-FIT_DIR = "/opt/qbot/app/outgoing/michal/hammerhead_originals"
+FIT_DIR = "/opt/qbot/artifacts/fit"
 
 
 def main() -> None:

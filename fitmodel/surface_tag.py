@@ -42,7 +42,7 @@ except ModuleNotFoundError:
 
 from fitmodel.ftp_resolver import _db_connect, _coerce_date
 
-FIT_DIR = Path("/opt/qbot/app/outgoing/michal/hammerhead_originals")
+FIT_DIR = Path("/opt/qbot/artifacts/fit")
 CACHE_PATH = Path("/opt/qbot/app/data/fitmodel_surface_cache.json")
 SEMICIRCLE_TO_DEG = 180.0 / (2 ** 31)
 

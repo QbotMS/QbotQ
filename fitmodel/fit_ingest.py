@@ -535,7 +535,7 @@ def _connect_db():
 
 
 if __name__ == "__main__":
-    fit_dir = "/opt/qbot/app/outgoing/michal/hammerhead_originals/"
+    fit_dir = "/opt/qbot/artifacts/fit/"
     conn = _connect_db()
     try:
         result = ingest_all_new(fit_dir, conn)

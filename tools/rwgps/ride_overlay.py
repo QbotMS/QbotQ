@@ -31,7 +31,7 @@ except ModuleNotFoundError:
 from fitparse import FitFile
 
 SEMI = 180.0 / (2 ** 31)
-FIT_DIR = "/opt/qbot/app/outgoing/michal/hammerhead_originals"
+FIT_DIR = "/opt/qbot/artifacts/fit"
 BUILDER_VERSION = "ride_overlay-v1"
 OFF_PLAN_M = 60.0
 MATCH_START_MAX_M = 2000.0

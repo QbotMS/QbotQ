@@ -2117,3 +2117,38 @@ zywej bazie -- zwraca `{"day": "2026-07-07", "ctl": 81.49, "atl": 66.52, "tsb": 
 MacOS-MCP Shell i Desktop Commander zawiesily sie ta sesje, oba kanaly SSH niedostepne).
 Pelny pytest po zmianie: 425 testow, 14 niepowiazanych failow (te same co przed zmiana), zero
 w qbot_web/fitmodel.
+
+
+## 2026-07-07 (7) -- fitmodel: zrodlo FIT hammerhead -> archiwum Garmina (koniec duplikacji segmentow)
+
+**Root cause "absurdalnej zmiennosci" FTP/CP (uzupelnia wpis (3)).** Warstwa segmentow EF
+karmila sie z DWOCH zrodel: outgoing/michal/hammerhead_originals (Karoo) ORAZ archiwum
+Garmina (jednorazowy backfill). Ta sama jazda ma dwa rozne ride_id (Karoo: nazwa pliku
+"hammerhead_...", Garmin: numer) -> UNIQUE INDEX (ride_id, started_at) oraz test istniejacej
+jazdy po ride_id (fit_ingest.ingest_all_new) NIE lapaly duplikatu miedzy zrodlami.
+Efekt: 66 grup duplikatow (72 nadmiarowe wiersze) na 415, ~33% tabeli fitmodel_segment,
+zakres 2026-05-02..2026-07-06 (nadal aktywne). W dolku maja (19/23/27.05) dni raportujace
+n=2 to byly pojedyncze segmenty zdublowane (n=1) -> mediana EF z jednego latwego segmentu +
+10-dniowa dziura danych -> FTP_est zjechal 250->220 mimo braku spadku formy.
+
+**Weryfikacja (na zywo):** garminowy FIT ZACHOWUJE developer fields QExt2 (most Karoo->Garmin
+przepuszcza plik 1:1). Parowanie po czasie startu wszystkich 33 karoowych jazd: 0 jazd
+tylko-hammerhead, 0 przypadkow "hammerhead ma qext2, garmin nie" -> przelaczenie niczego nie
+traci. Jazd wirtualnych: 0; archiwum Garmina pobierane wylacznie dla kolarstwa
+(qbot_activity_ingest _is_cycling) -> brak ryzyka trenazera/nie-kolarstwa.
+
+**Decyzja (Michal):** hammerhead wylaczony jako zrodlo danych WSZEDZIE poza rola mostka
+(konwersja/wysylka FIT do Garmina, poza QBotem). Dane jazd wylacznie z Garmin API.
+
+**Zrobione (krok 1):** FIT_DIR przepiety z hammerhead_originals na /opt/qbot/artifacts/fit
+w 10 plikach: fitmodel/{daily_job,ingest_qext2_fit,fit_ingest,cp_wprime,buckets,glycogen,
+ride_buckets,surface_tag}.py, tools/rwgps/ride_overlay.py, qbot_query_handler.py. Zostawione
+(mostek/porzadki): qbot3/capabilities/system/hammerhead_sync_status.py, qbot_route_tools.py,
+scripts/prune_qbot_artifacts.py. Zweryfikowane: import OK, stale wskazuja archiwum Garmina,
+zero konsumenta na hammerheadzie. UWAGA: ingest_qext2_fit.py nazwa/docstring mylaca (czyta
+teraz Garmina) -- do poprawy przy centralizacji stalej.
+
+**Do zrobienia:** (2) kopia + DELETE 66 grup duplikatow; (3) doczyt brakujacych garminowych
+jazd do fitmodel_segment; (4) przeliczenie FTP/CP od zera; (5) centralizacja stalej FIT_DIR +
+utwardzenie modelu (asymetryczny bezpiecznik dol max ~2%/tydz, waga swiezosci, defensywny
+filtr virtual/indoor w ingescie).

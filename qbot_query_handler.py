@@ -2040,7 +2040,7 @@ def _handle_garmin_activity_detail(text: str) -> dict:
     return _envelope("garmin_activity_detail", answer, data=data, sources_used=["garmin_connect_api"])
 
 
-_FIT_BASE_DIR = "/opt/qbot/app/outgoing/michal/hammerhead_originals"
+_FIT_BASE_DIR = "/opt/qbot/artifacts/fit"
 _FIT_EN_MONTHS = {
     "jan": 1, "january": 1,
     "feb": 2, "february": 2,

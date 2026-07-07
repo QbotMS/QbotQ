@@ -342,7 +342,7 @@ def update_glycogen_in_daily(db_conn, fit_dir: str, days: int = 30) -> dict:
 if __name__ == "__main__":
     conn = _db_connect()
     try:
-        result = update_glycogen_in_daily(conn, "outgoing/michal/hammerhead_originals/", days=30)
+        result = update_glycogen_in_daily(conn, "/opt/qbot/artifacts/fit/", days=30)
         print("RESULT:", result)
         with conn.cursor() as cur:
             cur.execute("SELECT day, glycogen_pct, glycogen_g FROM qbot_v2.fitmodel_daily ORDER BY day DESC LIMIT 7")
