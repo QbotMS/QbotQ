@@ -281,7 +281,7 @@ jako punkty. Kafelek w `index.html`. Zweryfikowane na zywych danych (patrz DECIS
   readiness_score (-1..1) na tej samej osi). Nie blokujace na start.
 
 
-## [FORMA-MODEL] FTP tlumienie + CP/LTP ratchet-zanik + W' zanik (dodane 2026-07-07)
+## [FORMA-MODEL] FTP tlumienie + CP/LTP ratchet-zanik + W' zanik -- WDROZONE 2026-07-07, patrz DECISIONS.md (4)
 
 Pelna diagnoza i decyzja: `DECISIONS.md` 2026-07-07 (3). Skrot zadan do wdrozenia:
 
@@ -297,4 +297,4 @@ Pelna diagnoza i decyzja: `DECISIONS.md` 2026-07-07 (3). Skrot zadan do wdrozeni
    kolumny w `fitmodel_daily` czy osobna tabela `fitmodel_cp_records`. Sugestia: osobna tabela
    (per duration: 120/300/600/1200/1800s), bo `fitmodel_daily` jest per-dzien a rekord to
    per-dlugosc-wysilku, niezalezny od dnia.
-5. Po wdrozeniu: przeliczyc historycznie (backfill) czy tylko od teraz -- do ustalenia z Michalem.
+5. **OTWARTE:** przeliczyc historycznie (backfill) cala `fitmodel_daily` nowa logika, czy zostawic historie i dzialac tylko od teraz. Ratchet (`fitmodel_cp_records`) juz zasiany z pelnej historii -- backfill dotyczylby tylko przepisania starych wierszy `fitmodel_daily`.
