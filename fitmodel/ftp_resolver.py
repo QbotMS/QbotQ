@@ -112,6 +112,32 @@ def compute_ftp_est(ef_med, params) -> float | None:
     return float(ftp_anchor * (float(ef_med) / float(ef_anchor)))
 
 
+def _fetch_last_ftp_est(db_conn, day_value: date) -> float | None:
+    """Ostatnia zapisana wartosc ftp_est_w SPRZED day_value (nie liczac dzisiejszej,
+    zeby tlumienie porownywalo do ostatniego ZAMKNIETEGO dnia, nawet przy ponownym
+    uruchomieniu joba dla tego samego dnia)."""
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT ftp_est_w FROM qbot_v2.fitmodel_daily "
+            "WHERE day < %s AND ftp_est_w IS NOT NULL ORDER BY day DESC LIMIT 1",
+            (day_value,),
+        )
+        row = cur.fetchone()
+    return float(row[0]) if row and row[0] is not None else None
+
+
+def apply_ftp_damping(raw_ftp: float | None, prev_ftp: float | None, damping_factor) -> float | None:
+    """Tlumienie anti-jitter z MODELQ.md 4.3 (opisane w dokumencie, nigdy niezaimplementowane --
+    patrz DECISIONS.md 2026-07-07 (3)). Nowa wartosc = poprzednia + damping*(surowa-poprzednia).
+    Brak poprzedniej wartosci (pierwszy pomiar w historii) -> surowa wprost, bez tlumienia."""
+    if raw_ftp is None:
+        return None
+    if prev_ftp is None:
+        return raw_ftp
+    factor = float(damping_factor) if damping_factor is not None else 0.5
+    return float(prev_ftp) + factor * (float(raw_ftp) - float(prev_ftp))
+
+
 def _table_has_column(db_conn, table_schema: str, table_name: str, column_name: str) -> bool:
     with db_conn.cursor() as cur:
         cur.execute(
@@ -244,14 +270,20 @@ def update_fitmodel_daily(db_conn, day=None) -> dict:
     readiness_weight = compute_readiness_weight(db_conn, day_value, params)
     exclude_days = [day_value] if readiness_weight == 0.0 else None
     ef_med_28d = compute_ef_median(db_conn, day_value, window_days=window_days, exclude_days=exclude_days)
-    ftp_est_w = compute_ftp_est(ef_med_28d, params)
+    ftp_est_raw = compute_ftp_est(ef_med_28d, params)
+    prev_ftp_est = _fetch_last_ftp_est(db_conn, day_value)
+    damping_factor = params.get("ftp_damping_factor", 0.5)
+    ftp_est_w = apply_ftp_damping(ftp_est_raw, prev_ftp_est, damping_factor)
     daily = _fetch_wellness_row(db_conn, day_value)
     weight_kg = _fetch_last_weight(db_conn, day_value)
     if weight_kg is None and daily.get("weight_kg") is not None:
         weight_kg = float(daily["weight_kg"])
     w_per_kg = float(ftp_est_w / weight_kg) if ftp_est_w is not None and weight_kg not in (None, 0) else None
     segment_count = _count_segments_in_window(db_conn, day_value, window_days)
-    notes = f"segments={segment_count}; window_days={window_days}; readiness={readiness_weight}"
+    notes = (
+        f"segments={segment_count}; window_days={window_days}; readiness={readiness_weight}; "
+        f"ftp_raw={round(ftp_est_raw, 1) if ftp_est_raw is not None else None}; damping={damping_factor}"
+    )
 
     with db_conn.cursor() as cur:
         cur.execute(
