@@ -14,28 +14,55 @@ samego Karoo, nie AXS); trzecia komorka (dzis tv_wprime, etykieta "D BAT", pokaz
 -> zamieniona na 3 pionowe kolumny-slupki, kolory z istniejacej palety (#4ADE80 Low / #FACC15
 High / #FF5252 Peak).
 
-OTWARTA DECYZJA (NIE rozstrzygnieta, zanim ruszymy z kodem):
-Co oznacza "wypelnienie" slupka?
-  (a) PROSTY: % udzialu danego wiadra w SUMIE strainu narastajacego w trakcie jazdy (Low+High+Peak
-      = 100% caly czas). Gotowe do wdrozenia od razu -- zero nowego modelowania, sama matematyka
-      z buckets.py przeniesiona sekunda-po-sekundzie (addytywna, wiec dziala live tak samo jak
-      offline).
-  (b) ZAAWANSOWANY: % wykonania PRZEWIDZIANEGO celu dla KONKRETNEJ zaplanowanej trasy (np. z
-      profilu wysokosci/dystansu). SPRAWDZONE 2026-07-07: taki model NIE ISTNIEJE dzisiaj w
-      kodzie (grep po predicted_tss/route_load -- zero wynikow). To osobny, niezbudowany projekt:
-      przewidywanie rozkladu low/high/peak z samego profilu trasy, zanim sie ja pojedzie.
+OTWARTA DECYZJA (NIE rozstrzygnieta, zanim ruszymy z kodem) -- historia rozwazan 2026-07-07:
 
-Michal nie wybral jeszcze (a) czy (b) -- sesja wstrzymana na tej decyzji.
+Pytanie: co oznacza "wypelnienie" slupka, tzn. skad bierze sie pojemnosc (100%) wiaderek?
 
-DO ZROBIENIA (dopiero po decyzji a/b):
-1. Jesli (a): Kotlin `StrainBucketEngine` (nowy plik) -- mirror `fitmodel/buckets.py` 1:1,
-   zasilany moca 1s z Karoo SDK. UWAGA: potwierdzic dokladna nazwe pola raw-power w SDK (W'bal
-   dzis uzywa SMOOTHED_3S_AVERAGE_POWER -- do wiader user chce SUROWEJ mocy 1s, to INNE pole,
-   trzeba dopiac osobna subskrypcje). FTP juz dostepne on-device (AthleteDataStore).
-2. Jesli (b): najpierw osobna sesja projektowa -- model przewidywania rozkladu wysilku z
-   profilu trasy (nowy projekt, nie doklejka).
+  (a) PROSTY -- % udzialu danego wiadra w SUMIE strainu narastajacego w trakcie jazdy
+      (Low+High+Peak = 100% caly czas, wzgledem samych siebie). Gotowe do wdrozenia od razu,
+      zero modelowania. WADA (uwaga Michala): nie pokazuje nic o tym, czy jazda jest "duza" czy
+      "mala" wzgledem realnej potrzeby -- tylko wewnetrzna proporcje.
+
+  (b) ROUTE TARGET (pierwotny pomysl) -- % wykonania przewidzianego celu dla KONKRETNEJ
+      zaplanowanej trasy z profilu wysokosci/dystansu. SPRAWDZONE: taki model nie istnieje w
+      kodzie dzis (grep po predicted_tss/route_load -- zero wynikow).
+
+  (c) BUDZET DZIENNY (CTL) -- rozwazono skalowanie pojemnosci wiaderek do tego samego dziennego
+      budzetu, ktorego juz uzywa RSRV (`dailyBudgetTss = CTL*5.4`, patrz sekcja [MODELQ / QExt2]
+      RSRV nizej). ODRZUCONE przez Michala 2026-07-07: "jesli wyskalujemy wiaderka pod RSRV to
+      bez sensu -- nie pokaza uzytkowo wiecej niz RSRV". Redundancja z istniejacym polem, nie
+      wnosi nowej informacji.
+
+USTALENIE (2026-07-07, wciaz niedokonczone): pojemnosc wiaderek powinna pochodzic z MINIMALNEGO
+UZYTECZNEGO BUDZETU TRENINGOWEGO dla KONKRETNEJ trasy (nie dziennego budzetu formy, nie prostego
+% udzialu) -- czyli w praktyce zawezona, bardziej konkretna wersja (b). Kluczowa konsekwencja
+wprost od Michala: JESLI trasa NIE jest wgrana na Karoo (brak zaplanowanej trasy) -> NIE MA
+budzetu -> NIE MA pojemnosci wiaderek. JESLI trasa jest wgrana -> mamy pojemnosc.
+
+NIEROZSTRZYGNIETE, do dogadania w kolejnej sesji:
+- Jak dokladnie liczyc "minimalny uzyteczny budzet treningowy" z profilu trasy (dystans/
+  przewyzszenie/spodziewany czas)? To wciaz niezbudowany model (jak w (b) wyzej), tylko teraz z
+  jasniejsza definicja tego, co ma liczyc.
+- Co pokazuje pole WIADRA, gdy trasa NIE jest wgrana (brak budzetu)? Warianty do przedyskutowania:
+  ukryte pole / powrot do trybu (a) jako fallback / inny placeholder. Michal jeszcze tego nie
+  zdecydowal.
+- Zwiazane: potrzebny podzial dziennego/trasowego budzetu na 3 osobne cele Low/High/Peak (nie
+  tylko jedna suma) -- patrz researchu nad Xert Adaptive Training Advisor (dzieli target XSS na
+  Low/High/Peak indywidualnie, na podstawie improvement rate + deficyt/nadwyzka + dostepny czas,
+  NIE na podstawie trasy -- to inny mechanizm niz to, czego szukamy tutaj, ale potwierdza, ze
+  taki rozklad na 3 liczby ma sens i jest robiony gdzie indziej).
+
+DO ZROBIENIA (dopiero po pelnej decyzji z powyzszego):
+1. Zaprojektowac (osobna sesja, decyzja przed kodem) model "minimalny uzyteczny budzet
+   treningowy" z profilu wgranej trasy + fallback dla braku trasy.
+2. Kotlin `StrainBucketEngine` (nowy plik) -- mirror `fitmodel/buckets.py` 1:1 na liczenie
+   surowego low/high/peak, zasilany moca 1s z Karoo SDK. UWAGA: potwierdzic dokladna nazwe pola
+   raw-power w SDK (W'bal dzis uzywa SMOOTHED_3S_AVERAGE_POWER -- do wiader Michal chce SUROWEJ
+   mocy 1s, to INNE pole, trzeba dopiac osobna subskrypcje). FTP juz dostepne on-device
+   (AthleteDataStore).
 3. UI: `field_stats_3x3.xml`, trzecia komorka ostatniego wiersza -> 3 kolumny (layout gotowy
-   w mockupie, do przeniesienia 1:1 na XML + RemoteViews w `StatsDataType.kt`).
+   w mockupie mockup_wiadra_stats.html, do przeniesienia 1:1 na XML + RemoteViews w
+   `StatsDataType.kt`).
 4. Reset wiader na starcie kazdej nowej jazdy.
 5. Build + CI + sideload (ta sama droga co Strona A / HR zones).
 
@@ -165,6 +192,20 @@ odbudowy 30min, kara za decoupling) faktycznie "czuje sie" jak Stamina, czy
 wymaga przestrojenia. To wymaga danych z obserwacji (nie zgadywania na sucho)
 i prawdopodobnie kolejnego pushu QExt2 + CI, jesli cos trzeba zmienic w kodzie
 kotlinowym (nie tylko w danych wejsciowych z serwera).
+
+**DO ZROBIENIA (dodane 2026-07-07): przepiac RSRV z TSS na XSS.** Dzis
+`rideReservePercent` w QExt2 liczy `tssPenalty = tss * (100/dailyBudgetTss)` --
+wejsciem jest TSS, NIE XSS (mimo ze XSS juz istnieje w ModelQ i jest kalibrowany
+na ta sama skale, 1h@prog=100). Ustalone przy okazji rozmowy o wiaderkach
+Low/High/Peak (patrz sekcja [WIADRA] wyzej i DECISIONS.md 2026-07-07): RSRV
+powinien czerpac z XSS, nie z TSS. Zakres: `StatsCalculator.kt`
+(`rideReservePercent`, dziala na parametrze `tss: Float`) + cokolwiek na
+serwerze wysyla dzisiejsza wartosc TSS do Karoo (sprawdzic `/ride-readiness` i
+gdziekolwiek liczony jest input do tej funkcji). Wymaga: (1) potwierdzic ze
+XSS jest liczone/dostepne on-device rownolegle z tym co dzis karmi RSRV, (2)
+podmienic wejscie funkcji, (3) build + CI + sideload. Decyzja przed kodem:
+najpierw potwierdzic na zywo, skad dzis dokladnie pochodzi wartosc `tss`
+przekazywana do `rideReservePercent` (czy z serwera, czy liczona on-device).
 
 ---
 
