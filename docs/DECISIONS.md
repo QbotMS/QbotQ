@@ -2012,3 +2012,45 @@ wysilkow do trupa", spojne z filozofia ModelQ).
 **SPECYFIKACJA ZATWIERDZONA (Michal), KOD NIE PISANY.** Dotyka `fitmodel/ftp_resolver.py` (FTP
 tlumienie) i `fitmodel/cp_wprime.py` (CP/LTP ratchet+zanik, W' zanik) + prawdopodobnie nowa
 tabela/kolumny na (wartosc, data) rekordu per dlugosc. Pelny opis w `TODO.md` sekcja [FORMA-MODEL].
+
+
+## 2026-07-07 (4) -- FTP/CP/LTP/W': WDROZONE + zweryfikowane na zywo
+
+Implementacja specyfikacji z 2026-07-07 (3). Zmiany w `fitmodel/ftp_resolver.py` i
+`fitmodel/cp_wprime.py`, nowa tabela `qbot_v2.fitmodel_cp_records` (ratchet: duration_s PK,
+best_w, best_date, updated_at).
+
+**FTP tlumienie:** `apply_ftp_damping()` + `_fetch_last_ftp_est()`, uzywa istniejacego
+`ftp_damping_factor=0.5` z `fitmodel_param` (byl w bazie, nigdy nieczytany). Test na znanym
+przypadku 5->6 marca: surowy skok +27,2W -> po tlumieniu +13,6W. `notes` w `fitmodel_daily`
+teraz pokazuje `ftp_raw=...; damping=0.5` dla przejrzystosci.
+
+**CP/LTP ratchet+zanik:** `_update_cp_records()` (ratchet, wolane z `run_daily` przed liczeniem,
+pomijane przy `dry_run`), `_envelope_curve_decayed()` zastepuje surowy `_envelope_curve()` w
+`compute_cp_wprime`. Podloga = biezacy `ftp_est_w` (fallback `ftp_anchor_w`). Zasiew ratchetu na
+zywej bazie: 120s=367W(05.06), 300s=280W(20.06), 600s=266W(20.06) -- wszystkie < 60d, bez zaniku,
+CP=241,9W (identyczne z wynikiem sprzed zmiany -- brak regresji na swiezych danych). 1200s=248W
+(10.09.2025!) i 1800s=232W(24.09.2025) -- >300d, w pelni zdryfowane do podlogi. Symulacja w przod
+(bez zapisu): 07.09->08.09 bez zmian (w grace), 03.09.2026 czesciowy zanik (CP 241,9->250,9,
+krzywa 367/280/266 -> 309,6/273,1/262,6), 01.11.2026 pelny zanik (curve = {252.3,252.3,252.3},
+CP=252,3=floor dokladnie). Mechanizm dziala zgodnie ze specyfikacja: brak wiecej "urwiska".
+
+**W' zanik:** analogiczny liniowy zanik 60->120d do podlogi `WPRIME_RANGE_LO=13kJ` (zamiast
+natychmiastowego skoku do przedzialu 13-22). Dzisiejszy przypadek (32d) nadal w grace period,
+bez zmiany (20,31 kJ, confidence medium) -- brak regresji.
+
+**Zapis na zywo (prawdziwy, nie dry-run):** `update_fitmodel_daily` + `cp_wprime.run_daily`
+uruchomione dla 2026-07-07, zapisane do `fitmodel_daily`. `qbot-api` zrestartowany, smoke
+`/fitmodel/buckets/active` OK (`ftp_w=252.3`).
+
+**Testy:** `pytest` (425 testow) -- 14 niepowiazanych failow w innych modulach (route POI, nutrition,
+capabilities) sprzed tej zmiany, zero dotyczy fitmodel/ftp_resolver/cp_wprime (brak dedykowanych
+testow jednostkowych dla tego pakietu -- do rozwazenia osobno).
+
+Commit `cd1ce29`, push potwierdzony (`fb18c50..cd1ce29`).
+
+**NIE ZROBIONE (do decyzji z Michalem):** czy przeliczyc historycznie (backfill) cala
+`fitmodel_daily` nowa logika, czy zostawic historie jak jest i dzialac tylko od teraz. Ratchet
+(`fitmodel_cp_records`) jest juz zasiany z pelnej historii `training_sessions`, wiec backfill
+dotyczylby tylko przepisania kolumn `ftp_est_w`/`cp_modelq_w`/`ltp_modelq_w`/`wprime_*` w starych
+wierszach `fitmodel_daily`.
