@@ -193,19 +193,22 @@ wymaga przestrojenia. To wymaga danych z obserwacji (nie zgadywania na sucho)
 i prawdopodobnie kolejnego pushu QExt2 + CI, jesli cos trzeba zmienic w kodzie
 kotlinowym (nie tylko w danych wejsciowych z serwera).
 
-**DO ZROBIENIA (dodane 2026-07-07): przepiac RSRV z TSS na XSS.** Dzis
-`rideReservePercent` w QExt2 liczy `tssPenalty = tss * (100/dailyBudgetTss)` --
-wejsciem jest TSS, NIE XSS (mimo ze XSS juz istnieje w ModelQ i jest kalibrowany
-na ta sama skale, 1h@prog=100). Ustalone przy okazji rozmowy o wiaderkach
-Low/High/Peak (patrz sekcja [WIADRA] wyzej i DECISIONS.md 2026-07-07): RSRV
-powinien czerpac z XSS, nie z TSS. Zakres: `StatsCalculator.kt`
-(`rideReservePercent`, dziala na parametrze `tss: Float`) + cokolwiek na
-serwerze wysyla dzisiejsza wartosc TSS do Karoo (sprawdzic `/ride-readiness` i
-gdziekolwiek liczony jest input do tej funkcji). Wymaga: (1) potwierdzic ze
-XSS jest liczone/dostepne on-device rownolegle z tym co dzis karmi RSRV, (2)
-podmienic wejscie funkcji, (3) build + CI + sideload. Decyzja przed kodem:
-najpierw potwierdzic na zywo, skad dzis dokladnie pochodzi wartosc `tss`
-przekazywana do `rideReservePercent` (czy z serwera, czy liczona on-device).
+**[ZROBIONE 2026-07-07] Przepieto RSRV z TSS na XSS.** Odkryto na zywo, ze XSS
+byl juz policzony on-device (`StatsCalculator.kt: xssAccum`/`xssValue()`) --
+TODO nizej ([XSS] Port XSS do QExt2) bylo NIEAKTUALNE, port juz istnial.
+Zmiana: `rideReservePercent` dostaje teraz `effectiveXss` (baza dzienna + sesja,
+z `statsCalc.xssValue()`) zamiast `effectiveTss`. TSS/`tssValue()` NIETKNIETE --
+zostaja wylacznie dla wlasnego pola statystyk "TSS", juz nie karmia RSRV.
+Nowe klucze persystencji w `AthleteDataStore` (`ReserveDailyXssBase(Date)`) --
+CELOWO nie nadpisano starych TSS-owych, zeby wczorajszy zapisany TSS nie zostal
+pomylony z dzisiejszym XSS po aktualizacji. Ta sama logika resetu (nowy
+dzien / sleep refresh / cleanup >500) zreplikowana 1:1 dla XSS. Budzet dzienny
+w `rideReservePercent` (`CTL*5.4`) zostal BEZ ZMIAN -- to przyblizenie (TSS i
+XSS maja te sama kotwice 1h@prog=100, ale to nie identyczna liczba dla tej
+samej jazdy) -- do obejrzenia na zywych jazdach, czy RSRV "czuje sie" dobrze
+w nowym tempie wyczerpywania (XSS mocniej kara zrywy przez zmeczenie niz TSS).
+Pliki: `AthleteDataStore.kt`, `RideDataAggregator.kt`. Commit `406f9d4` w
+`QbotMS/QExt2` main, push potwierdzony. Michal: build+CI+sideload jak zawsze.
 
 ---
 
