@@ -263,6 +263,22 @@ def _count_segments_in_window(db_conn, day_value: date, window_days: int) -> int
     return int(row[0]) if row and row[0] is not None else 0
 
 
+def _has_qualifying_segment_on_day(db_conn, day_value: date) -> bool:
+    """Czy w dniu day_value jest przynajmniej jeden kwalifikujacy segment
+    (hr_quality_ok, ef_norm != NULL) -- czyli czy tego dnia byla realna jazda
+    dajaca sygnal EF. Odroznia dzien z jazda (aktualizacja) od odpoczynku (zanik)."""
+    start_ts = datetime.combine(day_value, time.min)
+    end_ts = datetime.combine(day_value + timedelta(days=1), time.min)
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM qbot_v2.fitmodel_segment "
+            "WHERE hr_quality_ok IS TRUE AND ef_norm IS NOT NULL "
+            "AND started_at >= %s AND started_at < %s LIMIT 1",
+            (start_ts, end_ts),
+        )
+        return cur.fetchone() is not None
+
+
 def update_fitmodel_daily(db_conn, day=None) -> dict:
     day_value = _coerce_date(day)
     params = load_params(db_conn)
@@ -273,7 +289,25 @@ def update_fitmodel_daily(db_conn, day=None) -> dict:
     ftp_est_raw = compute_ftp_est(ef_med_28d, params)
     prev_ftp_est = _fetch_last_ftp_est(db_conn, day_value)
     damping_factor = params.get("ftp_damping_factor", 0.5)
-    ftp_est_w = apply_ftp_damping(ftp_est_raw, prev_ftp_est, damping_factor)
+    decay_k = params.get("ftp_decay_k", 0.009)
+    has_ride_today = _has_qualifying_segment_on_day(db_conn, day_value) and readiness_weight != 0.0
+    if has_ride_today and ftp_est_raw is not None:
+        # DZIEN Z JAZDA: aktualizacja w strone sygnalu EF (mediana + tlumienie)
+        ftp_est_w = apply_ftp_damping(ftp_est_raw, prev_ftp_est, damping_factor)
+        ftp_mode = "ride"
+    else:
+        # DZIEN BEZ JAZDY: lagodny wykladniczy zanik w strone LTP (kalibracja z Xerta,
+        # ~0.5 W/d na obecnym poziomie). Brak twardego okna 28 dni = brak zjazdu z klifu.
+        # ltp_modelq_w jest tu zdegenerowane (= FTP przez clamp cp_wprime na rzadkich
+        # danych), wiec podloga zaniku to stabilna, zmierzona podloga aerobowa z param
+        # (LTP ~193 W z Xerta, benchmark 192.9).
+        decay_floor = params.get("ftp_decay_floor_w", 193.0)
+        if prev_ftp_est is None:
+            ftp_est_w = ftp_est_raw
+            ftp_mode = "bootstrap"
+        else:
+            ftp_est_w = decay_floor + (prev_ftp_est - decay_floor) * (1.0 - float(decay_k))
+            ftp_mode = "decay"
     daily = _fetch_wellness_row(db_conn, day_value)
     weight_kg = _fetch_last_weight(db_conn, day_value)
     if weight_kg is None and daily.get("weight_kg") is not None:
@@ -282,7 +316,8 @@ def update_fitmodel_daily(db_conn, day=None) -> dict:
     segment_count = _count_segments_in_window(db_conn, day_value, window_days)
     notes = (
         f"segments={segment_count}; window_days={window_days}; readiness={readiness_weight}; "
-        f"ftp_raw={round(ftp_est_raw, 1) if ftp_est_raw is not None else None}; damping={damping_factor}"
+        f"ftp_raw={round(ftp_est_raw, 1) if ftp_est_raw is not None else None}; damping={damping_factor}; "
+        f"mode={ftp_mode}; decay_k={decay_k}"
     )
 
     with db_conn.cursor() as cur:

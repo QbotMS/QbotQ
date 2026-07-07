@@ -2152,3 +2152,41 @@ teraz Garmina) -- do poprawy przy centralizacji stalej.
 jazd do fitmodel_segment; (4) przeliczenie FTP/CP od zera; (5) centralizacja stalej FIT_DIR +
 utwardzenie modelu (asymetryczny bezpiecznik dol max ~2%/tydz, waga swiezosci, defensywny
 filtr virtual/indoor w ingescie).
+
+
+## 2026-07-07 (8) -- FTP_est: zanik w dni bez jazdy zamiast twardego okna 28 dni (kalibracja z Xerta)
+
+**Problem (koryguje wpisy (3) i (7)).** Dolek FTP 250->220 w kilka dni NIE byl spowodowany
+duplikatami (mediana z identycznych duplikatow = mediana z pojedynczych, bez zmian -- to byla
+moja pomylka w diagnozie). Prawdziwa przyczyna: twarde okno 28 dni. W 10-dniowej dziurze bez
+jazdy (28.05-05.06) dobre segmenty z poczatku maja wypadaly zza krawedzi okna, mediana EF
+zjezdzala sama z siebie, a tlumienie gonilo ja w dol: FTP lecial 237->219 (-18 W) MIMO braku
+jakiejkolwiek jazdy. Fizjologicznie niemozliwe.
+
+**Slad z Xerta (surowe qbot_v2.xert_profile_snapshots, nie benchmark).** W dni bez jazdy Xert TP
+zanika lagodnie ~0.5 W/dzien; ciag 21-27.06: 253.0->249.7 (dzienny spadek maleje monotonicznie
+0.559->0.514 w miare zblizania do LTP). Dopasowanie: model staly (dTP) i proporcjonalny
+(k=dTP/(TP-LTP)) na waskim zakresie luki (52-58 W) daja niemal rowne CV (0.270 vs 0.263) --
+statystycznie remis. Rozstrzyga KSZTALT (malejacy dzienny spadek) + fizjologia (staly zanik w W
+przebilby LTP w dol): wybrany model WYKLADNICZY w strone LTP, k~0.009/dzien z luki (TP-LTP).
+
+**Podloga zaniku.** ltp_modelq_w jest tu ZDEGENEROWANE: na rzadkich danych fit CP/LTP pada,
+clamp cp_wprime dociaga CP i LTP do podlogi = FTP_est -> w bazie FTP=CP=LTP co do dziesiatej
+(potwierdzone 20.05-10.06). Wiec ltp_modelq_w nie nadaje sie na podloge (luka=0, brak zaniku).
+Uzyta stabilna, zmierzona podloga aerobowa z param: ftp_decay_floor_w=193 (Xert LTP, benchmark
+192.9 vs 192.9).
+
+**Wdrozone (ftp_resolver.update_fitmodel_daily).** Rozgalezienie:
+- DZIEN Z JAZDA (kwalifikujacy segment tego dnia AND readiness!=0): mediana EF + tlumienie (bez zmian).
+- DZIEN BEZ JAZDY: ftp_est = floor + (prev - floor) * (1 - k), floor=193, k=0.009.
+Nowe pomocnicze: _has_qualifying_segment_on_day. Usunieto _fetch_last_ltp (zdegenerowane).
+Parametry jako defaulty w kodzie (params.get): ftp_decay_k=0.009, ftp_decay_floor_w=193 --
+do dodania w fitmodel_param dla strojenia. notes zawiera mode=ride|decay|bootstrap oraz decay_k.
+
+**Wynik (backfill 2026-05-01..dzis, 68 dni, 0 bledow).** Dziura 28.05-05.06: 237.6->234.5
+(-3 W, ~0.4 W/d) zamiast 237->219. Dni z jazda bez zmian.
+
+**Pozostaje (osobne):** (a) w dni z jazda EF zanizza FTP na latwych jazdach turystycznych
+(problem kalibracji EF<->FTP na danych submaksymalnych, nie ten bug); (b) dedup w ingescie
+(UNIQUE started_at + ON CONFLICT) zamiast recznej kwarantanny 2 plikow; (c) zdegenerowany
+CP/LTP przy rzadkich MMP -- oddzielny watek.
