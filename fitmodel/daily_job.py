@@ -72,6 +72,13 @@ def main() -> None:
             return run_for_new_rides()
         _step("wbal_replay", _wbal_replay)
 
+        # 2e. CTL/ATL/TSB z XSS (raw + plus skorygowany o readiness_score) -> fitmodel_daily
+        def _training_load():
+            from datetime import date
+            from fitmodel.training_load import compute_and_store
+            return compute_and_store(conn, date(2025, 5, 1), date.today())
+        _step("training_load", _training_load)
+
         # 3. Glikogen -> fitmodel_daily
         def _glyco():
             from fitmodel.glycogen import update_glycogen_in_daily
