@@ -270,10 +270,9 @@ jako punkty. Kafelek w `index.html`. Zweryfikowane na zywych danych (patrz DECIS
 2026-07-07 (2)).
 
 **Otwarte / nastepny krok:**
-- Sekcja CTL/ATL/TSB -- pole `training_load` w API jest juz `null`-kontraktem; gdy Michal
-  skonczy silnik CTL/ATL/TSB (osobna sesja, dzis), front podepnie sie automatycznie po
-  wypelnieniu tego pola -- BEZ zmian w HTML/JS. Do weryfikacji po stronie silnika: ksztalt
-  pola (`{"ctl":.., "atl":.., "tsb":..}` czy inny) -- ustalic przed wpieciem.
+- [x] **[ZROBIONE 2026-07-07]** Sekcja CTL/ATL/TSB podpieta -- `_build_training_load_latest()`
+  w `qbot_web.py`, warianty "raw" jako glowne ctl/atl/tsb, "plus" jako dodatkowe pola w
+  payloadzie (front ich jeszcze nie czyta). Szczegoly: DECISIONS.md 2026-07-07 (6).
 - MODELQ.md nie opisuje `readiness_score/readiness_label/readiness_note` (kolumny sa w live
   DB i uzywane w tym kafelku) -- dopisac przy okazji do dokumentu.
 - Do rozwazenia pozniej: normalizacja skal na wykresie (dzis dwie osie Y, W i "inne" -- przy

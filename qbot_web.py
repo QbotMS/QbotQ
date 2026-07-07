@@ -3060,13 +3060,39 @@ def _forma_row_out(r):
     return out
 
 
+def _build_training_load_latest(conn, end_str, lookback_days=400):
+    """Ostatnia NIE-NULL wartosc CTL/ATL/TSB (fitmodel/training_load.py, silnik gotowy
+    od 2026-07-07 -- patrz DECISIONS.md 2026-07-07 (6)). Pokazujemy warianty 'raw'
+    (ctl/atl/tsb bez korekty -- standardowy Bannister/Coggan, porownywalny z innymi
+    narzedziami) jako glowne ctl/atl/tsb w banerze; 'plus' (skorygowane readiness_score)
+    dolaczone jako dodatkowe pola na przyszlosc, frontend ich dzis nie uzywa."""
+    from datetime import date as _dt_date, timedelta as _dt_timedelta
+    start_str = (_dt_date.fromisoformat(end_str) - _dt_timedelta(days=lookback_days)).isoformat()
+    rows = conn.execute(
+        "SELECT day, ctl_xss, atl_raw, atl_plus, tsb_raw, tsb_plus "
+        "FROM qbot_v2.fitmodel_daily WHERE day BETWEEN %s AND %s "
+        "AND ctl_xss IS NOT NULL ORDER BY day DESC LIMIT 1",
+        (start_str, end_str),
+    ).fetchall()
+    if not rows:
+        return None
+    r = rows[0]
+    return {
+        "day": r["day"].isoformat(),
+        "ctl": _forma_num(r["ctl_xss"]),
+        "atl": _forma_num(r["atl_raw"]),
+        "tsb": _forma_num(r["tsb_raw"]),
+        "atl_plus": _forma_num(r["atl_plus"]),
+        "tsb_plus": _forma_num(r["tsb_plus"]),
+    }
+
+
 def _build_forma_data(conn, start_str, end_str):
     """Dane pod kafelek 'Forma (ModelQ)'. Zywy stan (2026-07-07): CP/LTP/W'/readiness
     gesto wypelnione od 2026-05-01, FTP_est/W_per_kg/sen/RHR/glikogen dziurawe -
     frontend renderuje je jako punkty, nie linie (patrz forma-render.js).
-    Prawdziwe CTL/ATL/TSB (trening load) NIE ISTNIEJE jeszcze w silniku - pole
-    training_load zostaje null jako kontrakt pod pozniejsze wpiecie (patrz DECISIONS.md
-    2026-07-07 (2))."""
+    CTL/ATL/TSB (trening load, fitmodel/training_load.py) wpiete 2026-07-07 -- patrz
+    DECISIONS.md 2026-07-07 (6)."""
     from datetime import date as _dt_date, timedelta as _dt_timedelta
     cols = ", ".join(_FORMA_FIELDS)
     rows = conn.execute(
@@ -3097,7 +3123,7 @@ def _build_forma_data(conn, start_str, end_str):
         "range": {"start": start_str, "end": end_str},
         "series": series,
         "latest": latest,
-        "training_load": None,  # CTL/ATL/TSB - w budowie osobno, kontrakt gotowy do wpiecia
+        "training_load": _build_training_load_latest(conn, end_str),
     }
 
 

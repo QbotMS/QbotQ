@@ -2093,3 +2093,27 @@ FTP_est skoczylby z 225.5W do 252.8W (+27,3W), po tlumieniu 0.5 wyszlo 222.95W -
 (151 dni) maja poprawnie przeliczone samo FTP -- CP/LTP tam null/za malo punktow, zgodnie z
 przewidywaniem (brak historii `training_sessions.mmp_*` przed 2025-05-01). TODO.md wpis (5)
 oznaczony jako zrobiony.
+
+
+## 2026-07-07 (6) -- CTL/ATL/TSB wpiete do kafelka WEB "Forma"
+
+Silnik (`fitmodel/training_load.py`) juz gotowy i ma dane (433 dni) -- API `/api/forma/data`
+mialo pole `training_load` na sztywno `None` jako placeholder (patrz TODO.md, DECISIONS.md
+2026-07-07 (2)). Front (`forma-render.js`) czeka na ksztalt `{"ctl":.., "atl":.., "tsb":..}`.
+
+**Decyzja (domyslna, do korekty jesli Michal chce inaczej):** w banerze pokazujemy warianty
+"raw" (ctl_xss/atl_raw/tsb_raw -- standardowy Bannister/Coggan, porownywalny z innymi
+narzedziami typu TrainingPeaks) jako glowne ctl/atl/tsb. Warianty "plus" (skorygowane
+readiness_score) dolaczone w payloadzie jako `atl_plus`/`tsb_plus` -- gotowe do pokazania
+pozniej, front ich dzis nie czyta (bez zmian w JS/HTML, zgodnie z pierwotnym kontraktem).
+
+**Zmiana:** `qbot_web.py`, nowa funkcja `_build_training_load_latest()` -- ostatnia NIE-NULL
+wartosc z `fitmodel_daily` (okno 400 dni wstecz, ta sama konwencja co reszta kafelka "Dzis").
+`_build_forma_data()` woa ja zamiast zwracac `None`.
+
+**Zweryfikowane:** wywolanie `_build_forma_data()` bezposrednio (z pominieciem HTTP/auth) na
+zywej bazie -- zwraca `{"day": "2026-07-07", "ctl": 81.49, "atl": 66.52, "tsb": 5.87,
+"atl_plus": 58.91, "tsb_plus": 14.74}`. Restart `qbot-web` wykonany (przez Qbot DEV MCP --
+MacOS-MCP Shell i Desktop Commander zawiesily sie ta sesje, oba kanaly SSH niedostepne).
+Pelny pytest po zmianie: 425 testow, 14 niepowiazanych failow (te same co przed zmiana), zero
+w qbot_web/fitmodel.
