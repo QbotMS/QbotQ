@@ -1869,3 +1869,77 @@ do Garmina, NIE jest wyzwalaczem dalszych krokow. `external_id` (numer Garmina) 
 
 **Odlozone:** historyczny backfill raportow wstecz (backfill 2000 0 2025-01-01 report) --
 jednorazowe zadanie na pozniej.
+
+
+## 2026-07-07 (1) -- Strefy HR na Karoo (Coggan %LTHR) + wiadra Low/High/Peak (zaplanowane, nie zrobione)
+
+**Strefy HR (ZROBIONE i wypchniete):** poprzednia sesja (przerwana) ustalila LTHR=132 bpm
+(32 odcinki 170-240W >=4min z 8 jazd, maj-lipiec, stabilne 5 miesiecy -- srednia 133.6, mediana
+133.4, wazona dlugoscia 133.3, same >=8min: 130.1). Wybrany model: Coggan %LTHR (nie prostszy
+wariant "te same progi co dzis tylko od LTHR") -- lepiej rozdziela mocne wysilki, poprawnie
+klasyfikuje zdarzenie W'bal=0% jako Z5 (bylo Z3 w starym %maxHR).
+
+Wdrozenie: `PrimaryRideSnapshot.kt` (`hrDisplay`), stala `LTHR_BPM = 132` (hardcode w companion
+object, NIE z serwera/AthleteDataStore -- swiadomie prosciej na start, do rozwazenia pozniej jesli
+LTHR bedzie trzeba przeliczac czesciej). Progi: Z1<107 / Z2 107-119 / Z3 119-125 / Z4 125-140 /
+Z5>140 (81/90/95/106% LTHR). Commit `f13cd6b` w `QbotMS/QExt2` (main), push potwierdzony
+(origin/main = HEAD). Michal: pobrac nowy APK z Releases po zakonczeniu builda CI i sideload przez
+Hammerhead Companion, jak przy Stronie A.
+
+**Wiadra Low/High/Peak (ZAPLANOWANE, KOD NIE PISANY):** odkryto ze silnik juz istnieje --
+`fitmodel/buckets.py` (`compute_buckets`, i=moc/FTP, strain=i^4*100/3600, progi 0.90/1.20 +
+przelew 10/10/5%), dzis liczony tylko offline po jezdzie (`fitmodel/ride_buckets.py`). Cel: to
+samo live na Karoo. UI zatwierdzone przez Michala (mockup `mockup_wiadra_stats.html`): dolny
+wiersz field_stats_3x3 -- BAT/h + BLEFT zostaja (to bateria Karoo, NIE AXS -- pierwotne zalozenie
+bledne, skorygowane przez Michala), trzecia komorka (dzis "D BAT"/W' balance) -> 3 pionowe slupki
+kolorowe (Low zielony #4ADE80 / High zolty #FACC15 / Peak czerwony #FF5252).
+
+OTWARTE, NIE ROZSTRZYGNIETE: czy wypelnienie slupka = (a) % udzial w sumie strainu narastajacym w
+jezdzie (prosty, gotowy do wdrozenia od reki) czy (b) % realizacji przewidzianego celu dla
+KONKRETNEJ trasy (wymaga nowego, niezbudowanego modelu przewidywania rozkladu wysilku z profilu
+trasy -- potwierdzono grepem, ze taki model dzis nie istnieje w kodzie). Michal nie zdecydowal --
+pelny opis i TODO w `TODO.md` sekcja [WIADRA] (dodana 2026-07-07).
+
+
+## 2026-07-07 (2) -- Kafelek WEB "Forma (ModelQ)": dane + zakres 90 dni + wykres, baner CTL/ATL
+
+**Kontekst:** Michal poprosil o kafelek WEB dot. formy (jak raport trasy/jazdy), oparty o ModelQ:
+forma aktualna, forma w definiowanym okresie, interaktywny wykres kluczowych parametrow.
+
+**Zywy stan danych (sprawdzone, nie zgadywane):** `fitmodel_daily` ma 1589 dni (od 2022), ale
+ModelQ realnie liczy od 2026-05-01. Od tej daty (68 dni, stan 2026-07-07): CP/LTP/W'(+pewnosc)
+i `readiness_score/label/note` (gotowosc z HRV+RHR+sen, z-score vs baseline 60d) sa wypelnione
+gesto (67-68/68) -- i NIEUDOKUMENTOWANE w MODELQ.md (dopisac przy okazji, dokument stary wzgledem
+schematu). FTP_est 37/68, sen/RHR 34/68, glikogen 50/68, W/kg tylko 14/68 -- dziurawe.
+
+**Decyzje (Michal, 2026-07-07):**
+1. Geste serie (CP/LTP/W'/readiness/HRV) -> linie ciagle na wykresie. Dziurawe serie
+   (FTP_est, W/kg, sen, RHR, glikogen) -> renderowane jako PUNKTY bez laczenia linia przez
+   dziury (`showLine:false`/`spanGaps:false`), zeby nie sugerowac ciaglosci ktorej nie ma.
+   Karta "Dzis" pokazuje dla kazdego pola ostatnia znana wartosc + date, jesli nie jest
+   z dzisiaj (np. "W/kg: 2.49 (dane z 6 lipca)").
+2. Domyslny zakres wykresu: 90 dni (presety 7/30/90/365 + wlasny zakres dat).
+3. Gotowosc pokazuje tez pelny tekst uzasadnienia (readiness_note, z-score HRV/RHR/sen),
+   nie tylko etykiete.
+4. Prawdziwe CTL/ATL/TSB (forma w sensie TrainingPeaks) NIE ISTNIEJE jeszcze w silniku
+   (patrz DECYZJA 2026-07-06 "XSS" -- EWMA-CTL swiadomie odlozone, za malo tygodni danych).
+   Strona ma baner "W budowie" zamiast tej sekcji + gotowy kontrakt pod pozniejsze wpiecie
+   (patrz Wdrozenie).
+
+**Wdrozenie:**
+- Endpoint `GET /api/forma/data?start=&end=` (`qbot_web.py`, funkcje `_build_forma_data` +
+  `forma_data`) -- czyta `qbot_v2.fitmodel_daily` w podanym zakresie (`series`) + osobno ostatnia
+  nie-null wartosc kazdego pola z ostatnich 400 dni niezaleznie od zakresu (`latest`), zeby waskie
+  okno wykresu nie psulo karty "Dzis". Pole `training_load` zawsze `null` -- KONTRAKT: gdy silnik
+  CTL/ATL/TSB (osobna sesja, dzis) bedzie gotowy, wystarczy wypelnic to pole (np.
+  `{"ctl":.., "atl":.., "tsb":..}`) -- front automatycznie przelaczy sie z banera na wlasciwa
+  karte formy, bez zmian w HTML/JS.
+- Strona `forma.html` + `forma-render.js` w `/opt/qbot/web/public/` (POZA repo, zywe od razu,
+  wzor jak `raport-jazdy.html` -- ten sam Chart.js 4.4.1 z CDN, ta sama paleta CSS).
+- Kafelek w `index.html` ("Forma (ModelQ)", badge "na zywo").
+- Zweryfikowane na zywo: wywolanie `_build_forma_data` bezposrednio na produkcyjnej bazie
+  (zakres 2026-06-08 -> 2026-07-07) zwraca poprawny, JSON-serializowalny wynik; `qbot-web`
+  zrestartowany po zmianie `qbot_web.py`, usluga `active`.
+
+**NIE zrobione (swiadomie, nastepny krok):** sekcja CTL/ATL/TSB (czeka na osobna sesje Michala);
+ewentualne dopisanie `readiness_score/label/note` do schematu w `MODELQ.md` (dokument stary).

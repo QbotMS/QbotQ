@@ -1,6 +1,50 @@
 # QBot — TODO
 
 
+## [WIADRA] Low/High/Peak strain na Karoo (dodane 2026-07-07)
+
+Kontekst: silnik juz istnieje po stronie serwera -- `fitmodel/buckets.py` (`compute_buckets`),
+uzywany dzis tylko offline po jezdzie (`fitmodel/ride_buckets.py` -> tabela
+`fitmodel_ride_buckets`). Wzor: `i = moc/FTP`, `strain = i^4 * (100/3600)` (1h@FTP=100),
+progi `i<0.90` Low / `0.90-1.20` High / `i>=1.20` Peak, + lekki przelew w dol (10%/10%/5%).
+
+Cel: to samo na zywo na Karoo (QExt2), w polu STATS. UI ZATWIERDZONE (mockup
+mockup_wiadra_stats.html): dolny wiersz field_stats_3x3 -- BAT/h i BLEFT BEZ ZMIAN (to bateria
+samego Karoo, nie AXS); trzecia komorka (dzis tv_wprime, etykieta "D BAT", pokazuje W' balance)
+-> zamieniona na 3 pionowe kolumny-slupki, kolory z istniejacej palety (#4ADE80 Low / #FACC15
+High / #FF5252 Peak).
+
+OTWARTA DECYZJA (NIE rozstrzygnieta, zanim ruszymy z kodem):
+Co oznacza "wypelnienie" slupka?
+  (a) PROSTY: % udzialu danego wiadra w SUMIE strainu narastajacego w trakcie jazdy (Low+High+Peak
+      = 100% caly czas). Gotowe do wdrozenia od razu -- zero nowego modelowania, sama matematyka
+      z buckets.py przeniesiona sekunda-po-sekundzie (addytywna, wiec dziala live tak samo jak
+      offline).
+  (b) ZAAWANSOWANY: % wykonania PRZEWIDZIANEGO celu dla KONKRETNEJ zaplanowanej trasy (np. z
+      profilu wysokosci/dystansu). SPRAWDZONE 2026-07-07: taki model NIE ISTNIEJE dzisiaj w
+      kodzie (grep po predicted_tss/route_load -- zero wynikow). To osobny, niezbudowany projekt:
+      przewidywanie rozkladu low/high/peak z samego profilu trasy, zanim sie ja pojedzie.
+
+Michal nie wybral jeszcze (a) czy (b) -- sesja wstrzymana na tej decyzji.
+
+DO ZROBIENIA (dopiero po decyzji a/b):
+1. Jesli (a): Kotlin `StrainBucketEngine` (nowy plik) -- mirror `fitmodel/buckets.py` 1:1,
+   zasilany moca 1s z Karoo SDK. UWAGA: potwierdzic dokladna nazwe pola raw-power w SDK (W'bal
+   dzis uzywa SMOOTHED_3S_AVERAGE_POWER -- do wiader user chce SUROWEJ mocy 1s, to INNE pole,
+   trzeba dopiac osobna subskrypcje). FTP juz dostepne on-device (AthleteDataStore).
+2. Jesli (b): najpierw osobna sesja projektowa -- model przewidywania rozkladu wysilku z
+   profilu trasy (nowy projekt, nie doklejka).
+3. UI: `field_stats_3x3.xml`, trzecia komorka ostatniego wiersza -> 3 kolumny (layout gotowy
+   w mockupie, do przeniesienia 1:1 na XML + RemoteViews w `StatsDataType.kt`).
+4. Reset wiader na starcie kazdej nowej jazdy.
+5. Build + CI + sideload (ta sama droga co Strona A / HR zones).
+
+Powiazane, juz zrobione w tej samej sesji (patrz DECISIONS.md 2026-07-07):
+- Strefy HR na Karoo przepiete z %maxHR na Coggan %LTHR (LTHR=132bpm) -- ZROBIONE, wypchniete,
+  commit f13cd6b.
+
+---
+
 ## [KOMOOT -> KAROO] Wariant A + bramka Telegram -- ZROBIONE (2026-07-06)
 
 Pelny obieg dziala na zywo (test "TEST 18.05" #2963663831). Szczegoly: DECISIONS.md
@@ -170,3 +214,24 @@ Zostaly 3 drobne, NIEBLOKUJACE plasterki ze spec TS-2026-07-05-NUTRITION-WRITE-F
 2. Sierota w starym `meal_logs` (id=16) -- do sprzatniecia.
 3. `_action_exec_nutrition_delete/correct` (qbot_mcp_adapter.py) robi UPDATE bez filtra `source`
    -- tor martwy, ale moze po cichu nadpisac cudze wiersze; posprzatac przy okazji.
+
+
+## [FORMA] Kafelek WEB "Forma (ModelQ)" -- szkielet gotowy, czeka na CTL/ATL/TSB (dodane 2026-07-07)
+
+**Zrobione:** `/forma.html` + `/forma-render.js` (poza repo, `/opt/qbot/web/public/`) + endpoint
+`GET /api/forma/data?start=&end=` (`qbot_web.py`: `_build_forma_data`, `forma_data`). Karta "Dzis"
+(FTP_est, CP, LTP, W'+pewnosc, W/kg, glikogen, HRV, RHR, sen, gotowosc z pelnym uzasadnieniem),
+wykres 90 dni domyslnie (presety 7/30/90/365 + wlasny zakres), gestre serie jako linie, dziurawe
+jako punkty. Kafelek w `index.html`. Zweryfikowane na zywych danych (patrz DECISIONS.md
+2026-07-07 (2)).
+
+**Otwarte / nastepny krok:**
+- Sekcja CTL/ATL/TSB -- pole `training_load` w API jest juz `null`-kontraktem; gdy Michal
+  skonczy silnik CTL/ATL/TSB (osobna sesja, dzis), front podepnie sie automatycznie po
+  wypelnieniu tego pola -- BEZ zmian w HTML/JS. Do weryfikacji po stronie silnika: ksztalt
+  pola (`{"ctl":.., "atl":.., "tsb":..}` czy inny) -- ustalic przed wpieciem.
+- MODELQ.md nie opisuje `readiness_score/readiness_label/readiness_note` (kolumny sa w live
+  DB i uzywane w tym kafelku) -- dopisac przy okazji do dokumentu.
+- Do rozwazenia pozniej: normalizacja skal na wykresie (dzis dwie osie Y, W i "inne" -- przy
+  wlaczeniu kilku serii z prawej osi jednoczesnie moze byc nieczytelnie, np. HRV (ms) i
+  readiness_score (-1..1) na tej samej osi). Nie blokujace na start.
