@@ -3045,6 +3045,7 @@ _FORMA_FIELDS = [
     "wprime_modelq_kj", "wprime_lo_kj", "wprime_hi_kj", "wprime_confidence",
     "glycogen_pct", "sleep_h", "hrv_night", "rhr",
     "readiness_score", "readiness_label", "readiness_note",
+    "ctl_xss", "atl_raw", "tsb_raw",
 ]
 
 
