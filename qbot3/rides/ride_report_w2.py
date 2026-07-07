@@ -21,7 +21,7 @@ Dostajesz dane W1 jako JSON — to fakty policzone deterministycznie z pliku FIT
 
 TWARDE ZASADY:
 - Analizuj WYLACZNIE na podstawie W1. Nie wymyslaj zadnych liczb ani faktow spoza W1.
-- Kazde twierdzenie opieraj na konkretnych polach W1 i wypisuj te pola w "cytaty" (np. "load.tss", "wprime.cutoff", "modelq.ride_impact").
+- Kazde twierdzenie opieraj na konkretnych polach W1 i wypisuj te pola w "cytaty" (np. "load.xss", "wprime.cutoff", "modelq.ride_impact").
 - Pola ze statusem "parked" (wind, surface) oznaczaja BRAK DANYCH — nie twierdz niczego o wietrze ani nawierzchni jako fakt; mozesz najwyzej zaznaczyc, ze dane niedostepne.
 - Zrodlem formy jest ModelQ (FTP/CP/W' z bloku "modelq"). Xert to TYLKO benchmark — nigdy nie podawaj Xerta jako zrodla formy.
 - W' w bloku "wprime" jest oznaczone jako zewnetrzne (Xert) — jesli o nim mowisz, zaznacz ze to wartosc tymczasowa z Xerta.

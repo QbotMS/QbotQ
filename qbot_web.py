@@ -2285,7 +2285,10 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     except Exception:
         pass
     _wkg = round(float(_ftp) / mass, 2) if _ftp else None
-    _tss = round((tmoving or 0) * (0.62 ** 2) * 100) if tmoving else None
+    _climbs_for_xss = [{"km_from": c.get("a_km"), "km_to": c.get("b_km"),
+                       "avg_gradient_pct": c.get("avg_pct")} for c in climbs_list]
+    _ftp_mq, _wprime_mq_kj = _rc._modelq_form_for_xss(conn)
+    _xss = _rc._estimate_route_xss(tmoving, dist_km, _climbs_for_xss, _ftp_mq, _wprime_mq_kj, mass, 0.62)
     _climb_w = None
     _steep_pct = None
     _wprime_txt = None
@@ -2313,7 +2316,7 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     forma = {"source": _fsrc, "snapshot": _snap, "ftp": _ftp, "w_kg": _wkg, "mass": round(mass),
              "ltp": _ltp, "w_prime_kj": _wprime, "peak_w": _peakp, "training_load": _tload,
              "recovery_load": _rload, "glikogen_pct": _glik, "glikogen_day": _glik_day,
-             "vs_route": {"tss": _tss, "cho_g": _fuel.get("carbs_total_g"), "cho_g_h": _fuel.get("carbs_g_h"),
+             "vs_route": {"xss": _xss, "cho_g": _fuel.get("carbs_total_g"), "cho_g_h": _fuel.get("carbs_g_h"),
                           "fluid_l": _fuel.get("fluid_total_l"), "wprime_txt": _wprime_txt,
                           "climb_w": _climb_w, "steep_pct": _steep_pct}}
 

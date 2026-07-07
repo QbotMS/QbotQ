@@ -176,7 +176,7 @@ def _np(P):
         s+=P[i]-P[i-30]; roll.append(s/30)
     return (sum(x**4 for x in roll)/len(roll))**0.25
 
-def _load(recs, form, ef_anchor):
+def _load(recs, form, ef_anchor, xss_block):
     P=[r["p"] for r in recs]; n=len(recs)
     dur=recs[-1]["sec"]-recs[0]["sec"]
     dur_ride=len(recs)  # 1 Hz -> sekundy realnego nagrywania (bez postojow)
@@ -186,7 +186,6 @@ def _load(recs, form, ef_anchor):
     np_=_np(P); avg=sum(P)/n
     ftp=form["ftp_w"]; mass=form["weight_kg"] or 101.0
     if_=np_/ftp if ftp else None
-    tss=(dur_ride*np_*(if_ or 0))/(ftp*3600)*100 if ftp else None
     ef=(np_/(sum(hr)/len(hr))) if hr else None
     kj=sum(P)/1000.0
     # strefy mocy (Coggan %FTP)
@@ -220,7 +219,7 @@ def _load(recs, form, ef_anchor):
         "np_w":_tag(round(np_),"A","fit"),
         "avg_p_w":_tag(round(avg),"A","fit"),
         "if":_tag(round(if_,2) if if_ else None,"A","fit+modelq"),
-        "tss":_tag(round(tss) if tss else None,"A","fit+modelq"),
+        "xss":xss_block,
         "vi":_tag(round(np_/avg,2) if avg else None,"A","fit"),
         "ef":_tag(round(ef,2) if ef else None,"A","fit"),
         "kj":_tag(round(kj),"A","fit"),
@@ -657,6 +656,40 @@ def _modelq_block(cur, ride_date):
             "_meta": {"tier": "A", "source": "ModelQ (fitmodel) + benchmark Xert"}}
 
 
+def _ride_xss(conn, ride_key):
+    """XSS tej jazdy z fitmodel_wbal_ride (Skiba W'bal replay). Jesli jeszcze
+    nie policzone (nowa jazda) -- liczymy na zywo i zapisujemy, zeby kolejne
+    odczyty byly juz z cache. XSS ZASTEPUJE TSS w calym raporcie (2026-07-07,
+    patrz DECISIONS.md) -- TSS to zgrubny wzor Coggana (NP/IF), XSS to realna
+    fizyka W'bal (moc wzgledem CP + zmeczenie z W' w czasie)."""
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT status, xss, xss_per_h FROM qbot_v2.fitmodel_wbal_ride WHERE external_id=%s",
+        (ride_key,),
+    )
+    row = cur.fetchone()
+    if row is None:
+        try:
+            from fitmodel.wbal_replay import replay_wbal, upsert_wbal_ride, ensure_wbal_table
+            ensure_wbal_table(conn)
+            result = replay_wbal(ride_key, verbose=False)
+            upsert_wbal_ride(conn, result)
+            row = result
+        except Exception as exc:
+            return _plugin(f"XSS: przeliczenie na zywo nie powiodlo sie ({exc})")
+    status = row.get("status")
+    if status != "OK" or row.get("xss") is None:
+        reason = {
+            "NO_BASELINE": "brak dziennego CP/W' z ModelQ na ten dzien",
+            "NO_DATA": "brak danych GPS/mocy do przeliczenia",
+        }.get(status, f"status={status}")
+        return _plugin(f"XSS niedostepne: {reason}")
+    return _tag(
+        round(float(row["xss"]), 1), "A", "wbal_replay",
+        xss_per_h=round(float(row["xss_per_h"]), 1) if row.get("xss_per_h") is not None else None,
+    )
+
+
 # ---------- API ----------
 def build_w1(fit_path, ride_key, inputs=None):
     recs, events, session = _parse_fit(fit_path)
@@ -665,12 +698,13 @@ def build_w1(fit_path, ride_key, inputs=None):
     form=_modelq_form(cur); Wp,wp_source=_modelq_wprime(cur, day); efa=_ef_anchor(cur)
     wellness=_wellness(cur, day); rhr_base=_rhr_base(cur)
     _surf_block, _wind_block = _surface_and_wind(cur, recs, day, ride_key)
+    _xss_block = _ride_xss(conn, ride_key)
     w1={
         "schema_version":SCHEMA_VERSION,
         "ride_key":ride_key,
         "ride":{"date":day,"dist_km":round(recs[-1]["dist"]/1000.0,1)},
         "inputs":inputs or {},
-        "load":_load(recs, form, efa),
+        "load":_load(recs, form, efa, _xss_block),
         "wprime":_wprime(recs, form["cp_w"], Wp, wp_source),
         "wind":_wind_block,
         "weather":_weather_from_fit(recs),

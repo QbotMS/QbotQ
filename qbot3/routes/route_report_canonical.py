@@ -384,6 +384,80 @@ def _climb_power(grade_pct, v_kmh, mass=100.0):
     return max(0.0, grav + roll + air)
 
 
+def _modelq_form_for_xss(conn):
+    """FTP + W' WYLACZNIE z ModelQ (fitmodel_daily) -- niezaleznie od zmiennej
+    `ftp`/`mq` uzywanej wyzej w tej funkcji (ktora dziala Xert-first, legacy
+    sprzed ustalenia zasady 'Xert = tylko benchmark'). Nowy szacunek XSS ma
+    byc spojny z raportem po jezdzie (ride_report_builder.py), ktory zawsze
+    bierze forme z ModelQ. Nie zmieniam tu istniejacej tabeli 'Twoja forma'
+    (osobna, wieksza decyzja) -- tylko zrodlo dla XSS. Patrz DECISIONS.md 2026-07-07."""
+    try:
+        row = conn.execute(
+            "SELECT ftp_est_w, wprime_modelq_kj FROM qbot_v2.fitmodel_daily "
+            "WHERE ftp_est_w IS NOT NULL ORDER BY day DESC LIMIT 1").fetchone()
+    except Exception:
+        return None, None
+    if not row:
+        return None, None
+    return row.get("ftp_est_w"), row.get("wprime_modelq_kj")
+
+
+def _estimate_route_xss(moving_h, dist_km, climbs, ftp, wprime_kj, mass=100.0, if_est=0.62):
+    """Zgrubny szacunek XSS dla PLANOWANEJ trasy (jeszcze nie przejechanej).
+    Nie ma tu prawdziwego pomiaru mocy, wiec dzielimy trase na segmenty:
+    podjazdy (z `climbs`, moc z _climb_power) + reszta (plasko/falisto, moc
+    stala IF_est*FTP) i puszczamy TEN SAM wzor fizyki W'bal/XSS co dla
+    wykonanych jazd (fitmodel/wbal_replay.py -- (p/CP)*(1+BETA*zmeczenie)*
+    (100/3600)*dt), tylko w grubszym kroku (per-segment, nie per-sekunda).
+    To estymata, nie pomiar -- stad tier B, nie A."""
+    import math
+    if not ftp or not wprime_kj or not moving_h or moving_h <= 0 or not dist_km:
+        return None
+    cp = float(ftp)
+    wprime_j = float(wprime_kj) * 1000.0
+    baseline_p = if_est * cp
+
+    segs = []
+    cursor_km = 0.0
+    climb_list = sorted(
+        [(float(c.get("km_from") or 0), float(c.get("km_to") or 0), float(c.get("avg_gradient_pct") or 0))
+         for c in (climbs or []) if c.get("km_to") is not None],
+        key=lambda x: x[0],
+    )
+    for cf, ct, grade in climb_list:
+        cf, ct = max(cf, cursor_km), max(ct, cursor_km)
+        if cf > cursor_km:
+            segs.append((cursor_km, cf, baseline_p))
+        if ct > cf:
+            v_climb_kmh = max(6.0, 22.0 - grade * 1.5)  # zgrubna predkosc na podjezdzie
+            segs.append((cf, ct, _climb_power(grade, v_climb_kmh, mass)))
+        cursor_km = max(cursor_km, ct)
+    if cursor_km < dist_km:
+        segs.append((cursor_km, dist_km, baseline_p))
+    if not segs:
+        segs = [(0.0, dist_km, baseline_p)]
+
+    total_seg_km = sum(t - f for f, t, _ in segs) or dist_km
+    wbal = wprime_j
+    xss_sum = 0.0
+    BETA = 1.0
+    RECOVERY_TAU_S = 400.0  # uproszczenie -- bez zaleznosci od dcp jak w replayu realnych jazd
+    for f, t, p in segs:
+        seg_km = t - f
+        if seg_km <= 0:
+            continue
+        dt = moving_h * 3600.0 * (seg_km / total_seg_km)
+        fatigue = max(0.0, 1.0 - (wbal / wprime_j))
+        xss_sum += (p / cp) * (1.0 + BETA * fatigue) * (100.0 / 3600.0) * dt
+        if p > cp:
+            wbal -= (p - cp) * dt
+        else:
+            k = 1 - math.exp(-dt / RECOVERY_TAU_S)
+            wbal += (wprime_j - wbal) * k
+        wbal = max(0.0, min(wprime_j, wbal))
+    return round(xss_sum, 1)
+
+
 _WD_EN = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 _ATTR_GENERIC = {"kaplica", "kaplica cmentarna", "krzyz", "krzyż", "cmentarz",
                  "kosciol", "kościół", "kapliczka", "figura", "krzyz przydrozny"}
@@ -640,7 +714,8 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny", fmt="md"):
         H("")
         cho = round((moving_h or 0) * 55) if moving_h else None
         if_est = 0.62
-        tss = round((moving_h or 0) * (if_est ** 2) * 100) if moving_h else None
+        ftp_mq, wprime_mq_kj = _modelq_form_for_xss(conn)
+        xss_est = _estimate_route_xss(moving_h, dist_km, climbs, ftp_mq, wprime_mq_kj, mass, if_est)
         wprime_txt = "b/d"
         if climbs and ftp:
             steep = max(climbs, key=lambda e: float(e.get("avg_gradient_pct") or 0))
@@ -655,7 +730,7 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny", fmt="md"):
         H("")
         H("| Miara | Szacunek trasy | Ocena |")
         H("|---|---|---|")
-        H(f"| Obciazenie (szac. TSS) | ~{tss if tss is not None else 'b/d'} ({_hms(moving_h)}, IF~{if_est}) | dlugi endurance, nie interwaly |")
+        H(f"| Obciazenie (szac. XSS) | ~{xss_est if xss_est is not None else 'b/d'} ({_hms(moving_h)}, IF~{if_est}) | dlugi endurance, nie interwaly |")
         H(f"| Zapotrzebowanie CHO | ~{cho if cho is not None else 'b/d'} g (55 g/h) | tankuj 40–70 g/h |")
         H(f"| Zapotrzebowanie woda | ~{_f(dem)} l | pokryjesz z refilami |")
         H(f"| Rezerwa W′ na podjazdach | {wprime_txt} | — |")
