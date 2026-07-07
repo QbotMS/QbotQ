@@ -79,6 +79,13 @@ def main() -> None:
             return compute_and_store(conn, date(2025, 5, 1), date.today())
         _step("training_load", _training_load)
 
+        # 2e2. cp_v3 -- prog CP (+W') z krzywej mocy 1Hz: kotwica + zanik + dryf CTL.
+        # MUSI biec PO training_load (czyta swiezy ctl_xss). Zastapil cp_v2 (EF).
+        def _cp_v3():
+            from fitmodel.cp_v3 import run_daily as cp_v3_run_daily
+            return cp_v3_run_daily(conn)
+        _step("cp_v3", _cp_v3)
+
         # 3. Glikogen -> fitmodel_daily
         def _glyco():
             from fitmodel.glycogen import update_glycogen_in_daily

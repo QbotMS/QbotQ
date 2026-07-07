@@ -3041,7 +3041,7 @@ def ride_report_w2(response: Response, ride: str = Query(...), rebuild: int = Qu
 
 
 _FORMA_FIELDS = [
-    "ftp_est_w", "w_per_kg", "cp_modelq_w", "ltp_modelq_w",
+    "ftp_est_w", "w_per_kg", "cp_modelq_w", "cp_v3_w", "wprime_v3_kj", "ltp_modelq_w",
     "wprime_modelq_kj", "wprime_lo_kj", "wprime_hi_kj", "wprime_confidence",
     "glycogen_pct", "sleep_h", "hrv_night", "rhr",
     "readiness_score", "readiness_label", "readiness_note",
