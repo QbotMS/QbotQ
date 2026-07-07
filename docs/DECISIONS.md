@@ -2069,7 +2069,7 @@ surowy fit CP/LTP wychodzi PONIZEJ podlogi FTP_est (zdegenerowany fit przy w pel
 punktach krzywej), podnoszony do podlogi z jawna notatka UWAGA. `fitmodel_cp_records` zostaje w
 bazie jako nieuzywana (juz nieczytana) -- do ewentualnego pozniejszego dropu, nie pilne.
 Zweryfikowane: pelny pytest przed commitem -- 425 testow, 14 niepowiazanych failow (te same co
-przed zmiana), zero w fitmodel/ftp_resolver/cp_wprime. Commit `<UZUPELNIC>`.
+przed zmiana), zero w fitmodel/ftp_resolver/cp_wprime. Commit `32bbe6e`.
 
 **Zakres backfillu (zweryfikowany na zywo):** `fitmodel_daily` ma dane od 2022-03-02 (1589 dni),
 ale kolumna `ftp_est_w` jest wypelniona dopiero od 2025-01-01 (553 dni) -- to jedyny sensowny
@@ -2085,4 +2085,11 @@ tylko przeliczone FTP, CP/LTP zostana null/za malo punktow (oczekiwane, nie blad
 FTP_est tego dnia). Skrypt jednorazowy, bez zapisu do repo (`scripts/_tmp_backfill_fitmodel.py`,
 self-cleanup po uruchomieniu).
 
-**Wynik:** <UZUPELNIC PO URUCHOMIENIU>
+**Wynik:** Backfill wykonany w calosci -- 553/553 dni (2025-01-01..2026-07-07), 0 bledow.
+Wykonany w kilku partiach (limit czasu pojedynczego polaczenia), zweryfikowany po kazdej
+partii zapytaniem do bazy. Test 5->6 marca 2026 potwierdzony na realnych danych: surowy
+FTP_est skoczylby z 225.5W do 252.8W (+27,3W), po tlumieniu 0.5 wyszlo 222.95W -> 237.85W
+(+14,9W) -- zgodne z formula (poprzednia + 0.5*(surowa-poprzednia)). Dni 2025-01-01..2025-05-31
+(151 dni) maja poprawnie przeliczone samo FTP -- CP/LTP tam null/za malo punktow, zgodnie z
+przewidywaniem (brak historii `training_sessions.mmp_*` przed 2025-05-01). TODO.md wpis (5)
+oznaczony jako zrobiony.

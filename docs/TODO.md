@@ -297,4 +297,4 @@ Pelna diagnoza i decyzja: `DECISIONS.md` 2026-07-07 (3). Skrot zadan do wdrozeni
    kolumny w `fitmodel_daily` czy osobna tabela `fitmodel_cp_records`. Sugestia: osobna tabela
    (per duration: 120/300/600/1200/1800s), bo `fitmodel_daily` jest per-dzien a rekord to
    per-dlugosc-wysilku, niezalezny od dnia.
-5. **OTWARTE:** przeliczyc historycznie (backfill) cala `fitmodel_daily` nowa logika, czy zostawic historie i dzialac tylko od teraz. Ratchet (`fitmodel_cp_records`) juz zasiany z pelnej historii -- backfill dotyczylby tylko przepisania starych wierszy `fitmodel_daily`.
+5. **ZROBIONE (2026-07-07):** backfill `fitmodel_daily` wykonany -- 553/553 dni (2025-01-01..2026-07-07), 0 bledow. FTP tlumienie + CP/LTP/W' ratchet+zanik przeliczone na zywo (bez tabeli `fitmodel_cp_records`, ktora okazala sie psuc przeliczanie starych dni -- patrz DECISIONS.md 2026-07-07 (5)). Test 5->6 marca potwierdzony: +27,3W surowo -> +14,9W po tlumieniu.
