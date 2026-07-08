@@ -37,7 +37,8 @@ class DecayAnchor:
 
 # ograniczniki dryfu (sygnatura nie moze odjechac za daleko od kotwicy bez przebic)
 HIE_DRIFT_MIN, HIE_DRIFT_MAX = 0.80, 1.20    # +-20% (HIE oddycha z forma)
-PP_DRIFT_MIN, PP_DRIFT_MAX = 0.96, 1.04      # +-4% (PP Xerta prawie stale, 984-1043)
+PP_DRIFT_MIN, PP_DRIFT_MAX = 0.93, 1.07      # miekki bezpiecznik (PP Xerta 984-1043)
+PP_K = 0.10                                   # tlumienie: PP dryfuje 10% amplitudy HIE (PP prawie stale, jak Xert sd~15)
 TP_DRIFT_MIN, TP_DRIFT_MAX = 0.90, 1.12
 
 
@@ -57,8 +58,11 @@ def daily_signature(load: DayLoad, anchor: DecayAnchor,
         hie_ratio = 1.0
     hie = anchor.sig.hie_j * hie_ratio
 
-    # PP idzie za HIE (korelacja 0.75 > TL_peak 0.65), waski clamp bo PP prawie stale
-    pp_ratio = _clamp(hie_ratio, PP_DRIFT_MIN, PP_DRIFT_MAX)
+    # PP dryfuje LAGODNIE za HIE (tlumiona amplituda), symetrycznie wokol kotwicy -- BEZ podlogi.
+    # HIE waha ~+-12%, PP Xerta ~+-2-3% -> tlumienie PP_K=0.2. Wczesniej twardy clamp 0.96
+    # przycinal wiekszosc dni do dolnej krawedzi (efekt "podloga + szpilki") -- poprawione.
+    pp_drift = 1.0 + PP_K * (hie_ratio - 1.0)
+    pp_ratio = _clamp(pp_drift, PP_DRIFT_MIN, PP_DRIFT_MAX)
     pp = anchor.sig.pp_w * pp_ratio
 
     # TP: z override (cp_v3) lub dryf za TL_low
