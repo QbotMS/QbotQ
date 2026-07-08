@@ -63,3 +63,105 @@ Kazdy modul = jeden filar. Zero importow ze starego fitmodel (poza wspoldzielony
   MPA t->0 kalibrowana do Xert, nie surowe MMP.
 - tau: stale Skiba (untrained) vs personalizacja Michala. Zaczac od Skiba, kalibrowac potem.
 - margin/filtr przebicia: dobrac na 6.07+20.06 tak by dac liczbe zdarzen zgodna z Xert MaxEff.
+
+
+---
+
+## KOREKTA (2026-07-08) -- MPA liniowe ZOSTAJE; przebicie = jazda nad MPA po wyczerpaniu
+
+Badanie na 6.07 (ground truth: rider CZUL przebicie W' w sprincie ~10:30, Xert MaxEff 00:19):
+- wbal dochodzi do 0 DOKLADNIE RAZ, o 10:30:45, w oknie odczutego przebicia -- niezaleznie
+  od ksztaltu MPA (k w (wbal/W')^k nie zmienia KIEDY wbal=0, bo to bilans energii).
+- Wczesniejszy trop "liniowe MPA zle, trzeba nieliniowe" byl PRZEDWCZESNY: ksztalt zmienia
+  max_exceed tylko 232->184W, nie usuwa go. To NIE problem ksztaltu.
+- Prawdziwy obraz: max_exceed (+184W) wystepuje ~10:31:55, PO wyczerpaniu W' (10:30:45).
+  Czyli: po oproznieniu W' rider dalej ciagnie ~430W, a model (MPA=TP=244 przy pustym baku)
+  mowi "za duzo o 184W". To jest FIZJOLOGICZNY SYGNAL PRZEBICIA: rider pojechal powyzej tego,
+  co sygnatura tlumaczy -> HIE (a moze i TP/PP) sa za niskie. Zgodne z odczuciem ridera.
+
+WNIOSEK:
+- MPA liniowe (mpa.py) ZOSTAJE na tym etapie. Nie przepisujemy.
+- Definicja przebicia (breakthrough.py): ciagle wyczerpanie = JEDNO zdarzenie (nie liczyc
+  kazdej sekundy). Dodatkowo: exceed>0 PO wyczerpaniu W' = sygnal "podnies sygnature".
+- Krok 3 (extract): podnos HIE (potem TP/PP) az moc miesci sie w MPA (exceed~0) w najmocniejszym
+  wysilku. To da prawdziwe HIE z przebic (rozwiazuje 8 vs 22 od strony danych ridera, nie MMP).
+- Ksztalt MPA (nieliniowy) -- ewentualnie pozniej, gdy wiecej dni z przebiciami do kalibracji.
+  Na teraz brak dowodu ze potrzebny.
+
+
+---
+
+## ZMIANA KOLEJNOSCI (2026-07-08) -- forma PRZED W' (decyzja Michala: "optymalnie, nigdy na skroty")
+
+DOWOD ze stara kolejnosc byla zla: probowano wyekstrahowac W' z pojedynczej jazdy (krok 3),
+ale kalibracja tau na 2 dniach pokazala SPRZECZNOSC:
+  6.07 (rider mial ZAPAS): zeby min_wbal>0 trzeba mult<=0.25
+  20.06 (byl MAX effort):  zeby min_wbal~0 trzeba mult>=0.5
+Zaden pojedynczy tau nie spelnia obu -> bo to NIE problem tau.
+
+PRAWDZIWA PRZYCZYNA: 6.07 i 20.06 to DWA ROZNE STANY FORMY, nie jedna sygnatura.
+Xert ma dla nich rozne sygnatury (20.06: TP=251/HIE=22.7 swiezy; 6.07: TP=244/HIE=20.5 po bloku).
+Sygnatura danego dnia = funkcja FORMY (Training Load + Signature Decay), ktora zalezy od
+tygodni wczesniej. Nie da sie czytac W' z jazdy w izolacji, bo bak startowy tego dnia
+zalezy od historii.
+
+NOWA KOLEJNOSC:
+  5(pierwszy). training_load.py -- 3 systemy XSS Low/High/Peak -> 3 Training Loads (EWMA).
+  6(drugi).    decay.py -- dzienna sygnatura podaza za forma (jak cp_v3, rozszerzone na HIE, PP).
+               Efekt: dzienna baza (TP,HIE,PP) rozna 20.06 vs 6.07, zgodna z forma.
+  3(trzeci).   extract.py -- DOPIERO teraz W' z przebic, wzgledem WLASCIWEGO stanu dnia.
+  4.           xss.py -- rozbicie potwierdzone vs Xert CSV (Low/High/Peak per jazda).
+  progression -> walidacja calej krzywej vs Xert.
+
+Zasada bez zmian: kazdy krok waliduje sie na danych przed nastepnym. tau: NIE stale-na-sile;
+wroci jako parametr do kalibracji DOPIERO gdy forma daje wlasciwa dzienna baze.
+
+
+---
+
+## USTALENIA Z DANYCH (2026-07-08) -- mechanizm formy potwierdzony na Xert snapshots
+
+Dane xert_profile_snapshots (dzienne, 2026-05-29..07-08) DOWODZA mechanizmu "sygnatura podaza za TL":
+- 20-21.06: Training Load 65->70 -> TP 248->253, HIE 21.7->23.2, PP 1009->1015 (cala sygn W GORE).
+- 21.06->04.07: TL 70->60 -> TP 253->248, HIE 23.2->22.0 (sygn opada za TL, Signature Decay).
+- Form (TSB) = TL - RecoveryLoad: 21.06 RL=105 -> Form=-0.49 (przemeczenie po ciezkim dniu).
+
+WNIOSKI dla MQ2:
+1. HIE NIE jest jedna liczba -- oddycha z forma (20.6<->23.2 kJ, ~3kJ zakres), jak TP.
+   "Prawdziwe W'" = dzienna wartosc podazajaca za TL, zakotwiczona w przebiciach. Jak cp_v3 dla TP.
+2. TP w danych: 244-253 (9W) w rytm TL. cp_v3 juz to robi dobrze -> rozszerzyc mechanizm na HIE, PP.
+3. Xert eksport daje ZBIORCZY training_load (nie 3 osobne w snapshot). Mamy benchmark dla sumy TL.
+   Rozbicie Low/High/Peak liczymy sami z naszego XSS; walidacja posrednia (suma ~ Xert TL).
+4. Kotwica z 20.06 (swiezy, TP=253/HIE=23.2) i 6.07 (po bloku, TP=244/HIE=20.6) to DWA stany
+   tej samej krzywej forma-TL, nie sprzecznosc. To rozwiazuje problem "tau nie godzi 2 dni".
+
+PROJEKT training_load.py:
+- wejscie: dzienny XSS rozbity Low/High/Peak (z xss.py -- ale najpierw uproszczenie: uzyj
+  istniejacego dziennego XSS jako proxy Low, dopoki xss.py 3-system nie gotowy; H/P malutkie u Michala).
+- EWMA (jak CTL): TL_sys(d) = TL_sys(d-1)*(1-1/tau_tl) + XSS_sys(d)/tau_tl. tau_tl~42 dni (jak Xert/cp_v3).
+- RecoveryLoad: szybsze EWMA (tau~7). Form = TL - RL.
+- wyjscie: dzienne TL_low/high/peak + RL + form. Do modelq2_signature.
+PROJEKT decay.py:
+- dzienna sygnatura: TP<-cp_v3 (juz dobre); HIE i PP dryfuja za swoim TL wokol kotwicy z przebic.
+- na teraz (brak extract): HIE_day = HIE_anchor * (TL_high/TL_high_anchor) -- proporcja jak Xert.
+
+
+---
+
+## WALIDACJA Filaru 4+5 (2026-07-08) -- Training Load zgodny z Xert
+
+Backfill: policzono XSS z 312 jazd 1Hz (activity_record, 2025-01-01..2026-07-06) do modelq2_ride.
+Sygnatura per jazda = Xert benchmark z dnia jazdy. EWMA rozpedzona na pelnej historii.
+
+WYNIK (nasz tl_total vs Xert training_load):
+  29.05: 58.8 vs 57 | 19.06: 69.7 vs 66 | 28.06: 66.6 vs 62 | 03.07: 61.8 vs 61 | 06.07: 65.3 vs 62
+  Sredni blad ~2-3 pkt na wartosciach ~60 = ~4%. Dynamika (skok 20.06 blok, opadanie) sledzi Xerta.
+
+WNIOSEK: caly lancuch dziala -- replay MPA -> XSS Low/High/Peak -> EWMA TL daje TL zgodny z Xert,
+liczony OD ZERA z wlasnych danych 1Hz. Fundament pod decay.py gotowy (wiarygodny TL do dryfu sygnatury).
+
+Tabele: modelq2_ride (312 jazd, XSS+min_wbal per jazda), modelq2_xert_bench (759 dni benchmark).
+Narzedzie: scripts/mq2_backfill.py (przeliczenie XSS porcjami po datach; uruchamiac po zmianie wag XSS).
+
+NASTEPNE: decay.py -- dzienna sygnatura. TP<-cp_v3; HIE,PP dryfuja za swoim TL wokol kotwicy.
+Potem extract.py (W' z przebic wzgledem dziennego stanu). Potem strojenie wag XSS (Peak zanizony).
