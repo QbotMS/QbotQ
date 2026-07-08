@@ -49,11 +49,13 @@ def _modelq_form(cur):
                    ORDER BY day DESC LIMIT 1""")
     r = cur.fetchone() or {}
     ftp = float(r["ftp_est_w"]) if r.get("ftp_est_w") else None
+    weight = float(r["weight_kg"]) if r.get("weight_kg") else _garmin_weight(cur)
+    wkg = float(r["w_per_kg"]) if r.get("w_per_kg") else (round(ftp/weight,2) if (ftp and weight) else None)
     return {
-        "ftp_w": ftp, "cp_w": ftp,  # CP=FTP z ModelQ
+        "ftp_w": ftp, "cp_w": ftp,  # CP=FTP z ModelQ (=TP w MQ2)
         "ef_med_28d": float(r["ef_med_28d"]) if r.get("ef_med_28d") else None,
-        "weight_kg": float(r["weight_kg"]) if r.get("weight_kg") else None,
-        "wkg": float(r["w_per_kg"]) if r.get("w_per_kg") else None,
+        "weight_kg": weight,
+        "wkg": wkg,
         "as_of": str(r.get("day")),
     }
 
@@ -62,6 +64,15 @@ def _xert_wprime(cur):
         cur.execute("SELECT w_prime_kj FROM qbot_v2.xert_profile_snapshots ORDER BY 1 DESC LIMIT 1")
         r = cur.fetchone()
         return float(r["w_prime_kj"])*1000.0 if r and r.get("w_prime_kj") is not None else None
+    except Exception:
+        return None
+
+def _garmin_weight(cur):
+    """Najswiezsza waga z Garmina (body_latest_weight)."""
+    try:
+        cur.execute("SELECT weight_kg FROM qbot_v2.body_latest_weight ORDER BY date DESC LIMIT 1")
+        r = cur.fetchone()
+        return float(r["weight_kg"]) if r and r.get("weight_kg") is not None else None
     except Exception:
         return None
 
@@ -176,7 +187,7 @@ def _np(P):
         s+=P[i]-P[i-30]; roll.append(s/30)
     return (sum(x**4 for x in roll)/len(roll))**0.25
 
-def _load(recs, form, ef_anchor, xss_block):
+def _load(recs, form, ef_anchor, xss_block, buckets=None):
     P=[r["p"] for r in recs]; n=len(recs)
     dur=recs[-1]["sec"]-recs[0]["sec"]
     dur_ride=len(recs)  # 1 Hz -> sekundy realnego nagrywania (bez postojow)
@@ -220,6 +231,7 @@ def _load(recs, form, ef_anchor, xss_block):
         "avg_p_w":_tag(round(avg),"A","fit"),
         "if":_tag(round(if_,2) if if_ else None,"A","fit+modelq"),
         "xss":xss_block,
+        "wiadra":_tag(buckets,"A" if buckets else "C","modelq2"),
         "vi":_tag(round(np_/avg,2) if avg else None,"A","fit"),
         "ef":_tag(round(ef,2) if ef else None,"A","fit"),
         "kj":_tag(round(kj),"A","fit"),
@@ -236,9 +248,130 @@ def _load(recs, form, ef_anchor, xss_block):
         "mmp":_tag(mmp,"A","fit"),
     }
 
-def _wprime(recs, cp, Wp, wp_source="xert"):
+def _last_ef(cur):
+    """Ostatnia zapisana EF 28d z fitmodel_daily (carry-forward, gdy dzien pusty)."""
+    try:
+        cur.execute("SELECT ef_med_28d FROM qbot_v2.fitmodel_daily WHERE ef_med_28d IS NOT NULL ORDER BY day DESC LIMIT 1")
+        r=cur.fetchone()
+        return float(r["ef_med_28d"]) if r and r.get("ef_med_28d") is not None else None
+    except Exception:
+        return None
+
+def _mq2_sig_before(cur, day):
+    """Sygnatura MQ2 z dnia <= day (kauzalnie sprzed jazdy) do replay W'bal."""
+    try:
+        from fitmodel.modelq2.signature import Signature
+        cur.execute("SELECT tp_w,hie_kj,pp_w FROM qbot_v2.modelq2_signature WHERE day<=%s ORDER BY day DESC LIMIT 1",(day,))
+        r=cur.fetchone()
+        if not r: return None
+        return Signature.from_kj(tp_w=float(r["tp_w"]), hie_kj=float(r["hie_kj"]), pp_w=float(r["pp_w"]))
+    except Exception:
+        return None
+
+def _mq2_buckets(cur, day):
+    """Wiadra XSS (Low/High/Peak) tej jazdy z modelq2_ride (po dacie)."""
+    try:
+        cur.execute("""SELECT xss_low,xss_high,xss_peak,xss_total,min_wbal_pct
+                       FROM qbot_v2.modelq2_ride WHERE ride_date=%s
+                       ORDER BY xss_total DESC NULLS LAST LIMIT 1""",(day,))
+        r=cur.fetchone()
+        if not r: return None
+        g=lambda k: float(r[k]) if r.get(k) is not None else None
+        return {"low":g("xss_low"),"high":g("xss_high"),"peak":g("xss_peak"),
+                "total":g("xss_total"),"min_wbal_pct":g("min_wbal_pct")}
+    except Exception:
+        return None
+
+def _mq2_ride_row(cur, day):
+    """Kanoniczny wiersz MQ2 tej jazdy (po dacie): external_id, sygnatura uzyta
+    do replay, wiadra XSS, min W'bal. Zrodlo prawdy = modelq2_ride."""
+    try:
+        from fitmodel.modelq2.signature import Signature
+        cur.execute("""SELECT external_id,sig_tp_w,sig_hie_kj,sig_pp_w,
+                              xss_low,xss_high,xss_peak,xss_total,min_wbal_pct
+                       FROM qbot_v2.modelq2_ride WHERE ride_date=%s
+                       ORDER BY xss_total DESC NULLS LAST LIMIT 1""",(day,))
+        r=cur.fetchone()
+        if not r: return None
+        g=lambda k: float(r[k]) if r.get(k) is not None else None
+        sig=None
+        if r.get("sig_tp_w") and r.get("sig_hie_kj") and r.get("sig_pp_w"):
+            sig=Signature.from_kj(tp_w=float(r["sig_tp_w"]), hie_kj=float(r["sig_hie_kj"]), pp_w=float(r["sig_pp_w"]))
+        return {"external_id": r["external_id"], "sig": sig,
+                "buckets":{"low":g("xss_low"),"high":g("xss_high"),"peak":g("xss_peak"),
+                           "total":g("xss_total"),"min_wbal_pct":g("min_wbal_pct")}}
+    except Exception:
+        return None
+
+def _fetch_activity_rows(cur, external_id):
+    """1Hz z activity_record (KANONICZNE dane) + dystans do koszykow 5 km."""
+    try:
+        cur.execute("SELECT ts, power_w, distance_m FROM qbot_v2.activity_record WHERE external_id=%s ORDER BY ts",(external_id,))
+        out=[]
+        for r in cur.fetchall():
+            out.append({"ts":r["ts"],
+                        "p":(float(r["power_w"]) if r["power_w"] is not None else 0.0),
+                        "dist":(float(r["distance_m"]) if r["distance_m"] is not None else 0.0)})
+        return out or None
+    except Exception:
+        return None
+
+def _wprime(recs, mq_rows, sig, cp_fallback=None, wp_fallback=None, wp_source="xert"):
+    """W'bal JEDNYM silnikiem MQ2 (replay_mpa) na KANONICZNYCH danych
+    (activity_record) i sygnaturze z modelq2_ride -> min W'bal IDENTYCZNY jak
+    modelq2_ride. Kolejnosc: activity_record -> FIT (fallback) -> stary inline."""
+    def _run(rows_dd, cp, Wp, data_tag):
+        from fitmodel.modelq2.mpa import replay_mpa
+        rows=[(x["ts"], x["p"]) for x in rows_dd]
+        res=replay_mpa(rows, sig, smooth=True, keep_series=True)
+        S=res.series
+        if not S: return None
+        by_ts={x["ts"]:x for x in rows_dd}
+        _bins={}
+        for pt in S:
+            xx=by_ts.get(pt["ts"]); d=(xx["dist"] if xx else 0.0)
+            _k=int(d//5000); _bins[_k]=min(_bins.get(_k,1e9),100*pt["wbal"]/Wp)
+        wbal_series=[{"km":_k*5+5,"min_pct":round(_v)} for _k,_v in sorted(_bins.items())]
+        lt50=sum(1 for pt in S if pt["wbal"]<0.5*Wp)
+        lt25=sum(1 for pt in S if pt["wbal"]<0.25*Wp)
+        mn_pt=min(S,key=lambda p:p["wbal"]); mn=mn_pt["wbal"]; mr=by_ts.get(mn_pt["ts"])
+        efforts=[]; i=0; N=len(S)
+        while i<N:
+            if S[i]["power_eff"]>=cp:
+                j=i; cost=0.0
+                while j<N and S[j]["power_eff"]>=cp:
+                    cost+=S[j]["power_eff"]-cp; j+=1
+                x0=by_ts.get(S[i]["ts"])
+                efforts.append({"km":round((x0["dist"] if x0 else 0.0)/1000.0,1),"dur_s":j-i,
+                                "avg_w":round(sum(p["power_eff"] for p in S[i:j])/(j-i)),
+                                "cost_kj":round(cost/1000.0,1)})
+                i=j
+            else: i+=1
+        efforts.sort(key=lambda e:-e["cost_kj"])
+        tau_ref=round(546*math.exp(-0.01*cp)+316)
+        return {
+            "cp_w":_tag(round(cp),"A","modelq2 (TP)"),
+            "wprime_j":_tag(round(Wp),"A","modelq2 (HIE)"),
+            "wbal_min_pct":_tag(round(100*mn/Wp),"A",f"modelq2_replay ({data_tag})"),
+            "time_lt50_min":_tag(round(lt50/60),"B","derived"),
+            "time_lt25_min":_tag(round(lt25/60),"B","derived"),
+            "tau_s":_tag(tau_ref,"B","mq2 dyn (ref @rest)"),
+            "cutoff":_tag({"km":round((mr["dist"] if mr else 0.0)/1000.0,1),
+                           "grade":None,"speed_kmh":None,
+                           "surface":None,"wind_ms":None},"B",data_tag),
+            "wbal_series":_tag(wbal_series,"A",f"modelq2_replay ({data_tag})"),
+            "top_efforts":_tag(efforts[:3],"A","fit"),
+        }
+    if sig is not None and mq_rows:
+        out=_run(mq_rows, sig.tp_w, sig.hie_j, "activity_record")
+        if out: return out
+    if sig is not None and recs:
+        out=_run(recs, sig.tp_w, sig.hie_j, "fit")
+        if out: return out
+    # --- ostatni fallback: stary inline ---
+    cp=cp_fallback; Wp=wp_fallback
     if not cp or not Wp:
-        return {"_meta":{"tier":"C","source":"modelq/xert","reason":"brak CP lub W'"}}
+        return {"_meta":{"tier":"C","source":"modelq2","reason":"brak danych/sygnatury MQ2 i CP/W'"}}
     P=[r["p"] for r in recs]
     below=[p for p in P if p<cp]
     dcp=cp-(sum(below)/len(below) if below else cp)
@@ -248,19 +381,16 @@ def _wprime(recs, cp, Wp, wp_source="xert"):
         if p>=cp: bal-=(p-cp)
         else: bal+=(Wp-bal)*k
         if bal>Wp: bal=Wp
-        if bal<0: bal=0  # brakujacy dolny clamp -- ujawnil sie przy mniejszym, dokladniejszym W' z ModelQ
+        if bal<0: bal=0
         series.append(bal)
     mn=min(series); mn_i=series.index(mn)
-    # seria do wykresu: min % W' w koszykach 5 km
     _bins={}
     for _i,_b in enumerate(series):
         _k=int(recs[_i]["dist"]//5000)
-        _pct=100*_b/Wp
-        _bins[_k]=min(_bins.get(_k,1e9),_pct)
+        _bins[_k]=min(_bins.get(_k,1e9),100*_b/Wp)
     wbal_series=[{"km":_k*5+5,"min_pct":round(_v)} for _k,_v in sorted(_bins.items())]
     lt50=sum(1 for b in series if b<0.5*Wp)
     lt25=sum(1 for b in series if b<0.25*Wp)
-    # top efforty > CP (grupowanie ciagle)
     efforts=[]; i=0
     while i<len(P):
         if P[i]>=cp:
@@ -273,17 +403,16 @@ def _wprime(recs, cp, Wp, wp_source="xert"):
         else: i+=1
     efforts.sort(key=lambda e:-e["cost_kj"])
     return {
-        "cp_w":_tag(round(cp),"A","modelq"),
-        "wprime_j":_tag(round(Wp),"A" if wp_source=="modelq" else "B",wp_source,
-                       note=None if wp_source=="modelq" else "fallback Xert -- ModelQ bez swiezej wartosci"),
-        "wbal_min_pct":_tag(round(100*mn/Wp),"A" if wp_source=="modelq" else "B",f"modelq_cp+{wp_source}_wprime"),
+        "cp_w":_tag(round(cp),"B","legacy_inline"),
+        "wprime_j":_tag(round(Wp),"B","legacy_inline"),
+        "wbal_min_pct":_tag(round(100*mn/Wp),"B","legacy_inline"),
         "time_lt50_min":_tag(round(lt50/60),"B","derived"),
         "time_lt25_min":_tag(round(lt25/60),"B","derived"),
         "tau_s":_tag(round(tau),"B","skiba"),
         "cutoff":_tag({"km":round(recs[mn_i]["dist"]/1000.0,1),
                        "grade":recs[mn_i]["grade"],"speed_kmh":round(recs[mn_i]["spd"]*3.6,1),
                        "surface":None,"wind_ms":None},"B","fit+plugins"),
-        "wbal_series":_tag(wbal_series,"B","derived"),
+        "wbal_series":_tag(wbal_series,"B","legacy_inline"),
         "top_efforts":_tag(efforts[:3],"A","fit"),
     }
 
@@ -608,7 +737,7 @@ def _modelq_block(cur, ride_date):
         cur_row = cur.fetchone()
     bench=None
     try:
-        cur.execute("SELECT * FROM qbot_v2.fitmodel_xert_bench ORDER BY week DESC LIMIT 1"); bench=cur.fetchone()
+        cur.execute("SELECT day,tp_w,ltp_w,hie_kj,pp_w FROM qbot_v2.modelq2_xert_bench ORDER BY day DESC LIMIT 1"); bench=cur.fetchone()
     except Exception: pass
     bucket=None
     try:
@@ -619,18 +748,26 @@ def _modelq_block(cur, ride_date):
         cur.execute("SELECT AVG(ef_norm) AS ef, COUNT(*) AS n FROM qbot_v2.fitmodel_segment WHERE started_at::date=%s", (ride_date,)); seg=cur.fetchone()
     except Exception: pass
     cr = cur_row or {}
+    _gw = _garmin_weight(cur)
+    _ef28 = f(cr.get("ef_med_28d")) or _last_ef(cur)
+    _weight = f(cr.get("weight_kg")) or _gw
+    _ftp = f(cr.get("ftp_est_w"))
+    _wkg = round(f(cr.get("w_per_kg")),2) if cr.get("w_per_kg") else (round(_ftp/_weight,2) if (_ftp and _weight) else None)
     current = {
         "as_of": str(cr.get("day")),
-        "ftp_w": round(f(cr.get("ftp_est_w")),1) if cr.get("ftp_est_w") else None,
+        "ftp_w": round(_ftp,1) if _ftp else None,
         "cp_w": round(f(cr.get("cp_modelq_w")),1) if cr.get("cp_modelq_w") else None,
+        "pp_w": round(f(cr.get("pp_modelq_w")),1) if cr.get("pp_modelq_w") else None,
         "wprime_kj": round(f(cr.get("wprime_modelq_kj")),1) if cr.get("wprime_modelq_kj") else None,
         "wprime_lo_kj": round(f(cr.get("wprime_lo_kj")),1) if cr.get("wprime_lo_kj") else None,
         "wprime_hi_kj": round(f(cr.get("wprime_hi_kj")),1) if cr.get("wprime_hi_kj") else None,
         "wprime_confidence": cr.get("wprime_confidence"),
         "wprime_source": cr.get("wprime_source"),
-        "ef_28d": round(f(cr.get("ef_med_28d")),3) if cr.get("ef_med_28d") else None,
-        "weight_kg": f(cr.get("weight_kg")),
-        "wkg": round(f(cr.get("w_per_kg")),2) if cr.get("w_per_kg") else None,
+        "ef_28d": round(_ef28,3) if _ef28 else None,
+        "ef_28d_stale": (cr.get("ef_med_28d") is None and _ef28 is not None),
+        "weight_kg": _weight,
+        "weight_source": (None if cr.get("weight_kg") else ("garmin" if _gw else None)),
+        "wkg": _wkg,
         "cp_r2": f(cr.get("cp_wprime_r2")),
         "cp_note": cr.get("cp_wprime_note"),
         "ltp_w": round(f(cr.get("ltp_modelq_w")),1) if cr.get("ltp_modelq_w") else None,
@@ -647,10 +784,15 @@ def _modelq_block(cur, ride_date):
     impact["ride_segments"] = seg["n"] if seg else None
     benchmark=None
     if bench:
+        _d = lambda a,b,nd=1: round(a-b,nd) if (a is not None and b is not None) else None
+        _mtp=f(cr.get("ftp_est_w")); _mltp=f(cr.get("ltp_modelq_w")); _mhie=f(cr.get("wprime_modelq_kj")); _mpp=f(cr.get("pp_modelq_w"))
+        _xtp=f(bench.get("tp_w")); _xltp=f(bench.get("ltp_w")); _xhie=f(bench.get("hie_kj")); _xpp=f(bench.get("pp_w"))
         benchmark={
-            "ftp_modelq": f(bench.get("ftp_est_w")), "ftp_xert": f(bench.get("xert_tp_w")), "ftp_delta": f(bench.get("delta_w")),
-            "ltp_modelq": f(bench.get("cp_modelq_w")), "ltp_xert": f(bench.get("ltp_xert_w")), "ltp_delta": f(bench.get("delta_cp_w")),
-            "wprime_modelq": f(bench.get("wprime_modelq_kj")), "wprime_xert": f(bench.get("hie_xert_kj")), "wprime_delta": f(bench.get("delta_wprime_kj")),
+            "as_of": str(bench.get("day")),
+            "ftp_modelq": _mtp, "ftp_xert": _xtp, "ftp_delta": _d(_mtp,_xtp),
+            "ltp_modelq": _mltp, "ltp_xert": _xltp, "ltp_delta": _d(_mltp,_xltp),
+            "wprime_modelq": _mhie, "wprime_xert": _xhie, "wprime_delta": _d(_mhie,_xhie,2),
+            "pp_modelq": _mpp, "pp_xert": _xpp, "pp_delta": _d(_mpp,_xpp),
         }
     return {"current": current, "ride_impact": impact, "benchmark_xert": benchmark,
             "_meta": {"tier": "A", "source": "ModelQ (fitmodel) + benchmark Xert"}}
@@ -696,6 +838,10 @@ def build_w1(fit_path, ride_key, inputs=None):
     conn=_connect(); cur=conn.cursor()
     day = str(recs[0]["ts"].date())
     form=_modelq_form(cur); Wp,wp_source=_modelq_wprime(cur, day); efa=_ef_anchor(cur)
+    _mqr=_mq2_ride_row(cur, day)
+    _buckets=_mqr["buckets"] if _mqr else None
+    _sig=_mqr["sig"] if (_mqr and _mqr.get("sig")) else _mq2_sig_before(cur, day)
+    _mq_rows=_fetch_activity_rows(cur, _mqr["external_id"]) if _mqr else None
     wellness=_wellness(cur, day); rhr_base=_rhr_base(cur)
     _surf_block, _wind_block = _surface_and_wind(cur, recs, day, ride_key)
     _xss_block = _ride_xss(conn, ride_key)
@@ -704,8 +850,8 @@ def build_w1(fit_path, ride_key, inputs=None):
         "ride_key":ride_key,
         "ride":{"date":day,"dist_km":round(recs[-1]["dist"]/1000.0,1)},
         "inputs":inputs or {},
-        "load":_load(recs, form, efa, _xss_block),
-        "wprime":_wprime(recs, form["cp_w"], Wp, wp_source),
+        "load":_load(recs, form, efa, _xss_block, _buckets),
+        "wprime":_wprime(recs, _mq_rows, _sig, form["cp_w"], Wp, wp_source),
         "wind":_wind_block,
         "weather":_weather_from_fit(recs),
         "surface":_surf_block,
