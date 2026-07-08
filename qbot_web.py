@@ -3158,7 +3158,8 @@ def modelq2_data(response: Response, start: str | None = Query(None), end: str |
     conn = _db_conn()
     try:
         mq = conn.execute(
-            "SELECT day, tp_w, hie_kj, pp_w, ltp_w FROM qbot_v2.modelq2_signature "
+            "SELECT day, tp_w, hie_kj, pp_w, ltp_w, ctl, atl, tsb, tl_low, tl_high, tl_peak "
+            "FROM qbot_v2.modelq2_signature "
             "WHERE day BETWEEN %s AND %s ORDER BY day",
             (start_d.isoformat(), end_d.isoformat()),
         ).fetchall()
@@ -3172,7 +3173,10 @@ def modelq2_data(response: Response, start: str | None = Query(None), end: str |
             return {k: (float(v) if isinstance(v, (int, float)) or (v is not None and k != "day" and k != "max_effort") else v)
                     for k, v in r.items()}
         mq_series = [{"day": r["day"].isoformat(), "tp": _f(r["tp_w"]), "hie": _f(r["hie_kj"]),
-                      "pp": _f(r["pp_w"]), "ltp": _f(r["ltp_w"])} for r in mq]
+                      "pp": _f(r["pp_w"]), "ltp": _f(r["ltp_w"]),
+                      "ctl": _f(r["ctl"]), "atl": _f(r["atl"]), "tsb": _f(r["tsb"]),
+                      "tl_low": _f(r["tl_low"]), "tl_high": _f(r["tl_high"]), "tl_peak": _f(r["tl_peak"])}
+                     for r in mq]
         xb_series = [{"day": r["day"].isoformat(), "tp": _f(r["tp_w"]), "hie": _f(r["hie_kj"]),
                       "pp": _f(r["pp_w"]), "bt": r["max_effort"]} for r in xb]
 
