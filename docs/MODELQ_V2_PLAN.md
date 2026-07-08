@@ -189,3 +189,31 @@ DO DOSTROJENIA (nie psuje rdzenia):
 
 NASTEPNE: extract.py -- W' z przebic wzgledem dziennej bazy (teraz gdy baza istnieje).
 Potem: strojenie (PP clamp, wagi XSS Peak), progression.py (pelny szereg), walidacja calego okna.
+
+
+---
+
+## MQ2 KOMPLETNY -- 9/9 modulow (2026-07-08)
+
+progression.py: spina caly lancuch i zapisuje dzienna sygnature do modelq2_signature.
+  activity_record 1Hz -> XSS (modelq2_ride) -> Training Load 3x EWMA -> decay -> modelq2_signature.
+Wypelnione: 552 dni (2025-01-01..2026-07-06). Odpowiednik cp_v3, ale pelna sygnatura (TP+HIE+PP)
+z dzienna forma.
+
+STAN KONCOWY MQ2:
+  Moduly (fitmodel/modelq2/): signature, mpa, breakthrough, io, xss, training_load, decay,
+    progression (+ extract POMINIETY -- decyzja B: rider nie robi przebic, decay wystarcza).
+  Tabele: modelq2_ride (312 jazd XSS), modelq2_xert_bench (759 dni), modelq2_signature (552 dni).
+  Narzedzie: scripts/mq2_backfill.py.
+
+WALIDACJA vs Xert (272 dni wspolne):
+  HIE ~2.4 kJ | TP mediana ~7W (biezace okna 2-7W; historyczny ogon maj2025 z cp_v3 pominiety)
+  PP ~31W | CEL rozroznienia stanow: 20.06 (253/22.7) vs 6.07 (241/20.5) = jak Xert.
+
+STROJENIE NA PRZYSZLOSC (opcjonalne, nie blokuje uzycia):
+- druga kotwica w 2025 -> mniejszy blad HIE na duzych dystansach od kotwicy.
+- wagi XSS Peak (Peak zanizony vs Xert -- kosmetyka, u Michala Peak sladowy).
+- tau regeneracji: personalizacja gdy pojawia sie realne przebicia (dzis brak).
+
+MIGRACJA (strangler, gdy zdecydowane): modelq2_signature moze zasilic raporty/Karoo/wykres
+zamiast starego cp_v3+ftp_est. Stary model NIETKNIETY do tego czasu.
