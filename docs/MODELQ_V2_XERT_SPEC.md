@@ -385,3 +385,48 @@ NAPRAWY WYMAGANE PRZED ModelQ v2 (kolejnosc):
    v2 potrzebuje JEDNEGO XSS rozbitego na Low/High/Peak, spojnego z MPA.
 3. **3 Training Loads** zamiast jednego ctl_xss.
 4. **Zweryfikowac PP** = Xert PP (ktore okno).
+
+
+---
+
+## DECYZJA ARCHITEKTONICZNA (2026-07-08) — MQ2 OD NOWA, OBOK, BEZ DZIEDZICZENIA BLEDOW
+
+WIAZACE dla wszystkich przyszlych sesji. Decyzja Michala, wprost:
+
+### Zasada nadrzedna: CZYSTY START
+- ModelQ v2 (MQ2) budowany OD ZERA, OBOK istniejacego ModelQ. Rownolegle.
+- Stary ModelQ jest NIEKOMPLETNY i ma bledy (patrz Audyt Poprawnosci). NIE jest zrodlem
+  kodu dla MQ2. Jest tylko REFERENCJA "czego nie robic" + benchmark do porownania wynikow.
+- **NIE kopiowac starego kodu do MQ2.** Nawet jesli "80% gotowe" (np. wbal_replay).
+  Kopiowanie = import bledow (zly CP=ftp_est, cf-oddychanie, XSS zmieszany z W'bal,
+  dwa silniki XSS). Piszemy kazdy filar czysto wg tej specyfikacji.
+- Stary kod ZOSTAJE NIETKNIETY i dziala dalej (raporty, Karoo, wykres, /ride-readiness).
+  Nie grzebiemy w nim. MQ2 nic w nim nie zmienia.
+
+### Co to znaczy konkretnie (koryguje wczesniejsze notatki "mamy w kodzie 80%"):
+- Filar 1 MPA: NIE przerabiamy wbal_replay.py. Piszemy modelq2/mpa.py OD NOWA, z
+  poprawnym CP od poczatku (z sygnatury MQ2, nie z ftp_est). Stary W'bal = tylko do
+  porownania wynikow tick-po-tick.
+- XSS: NIE uzywamy ani wbal_replay XSS, ani buckets.py wprost. JEDEN nowy silnik w MQ2,
+  rozbity na Low/High/Peak od poczatku, spojny z MPA.
+- Sygnatura: nowa tabela, nowe kolumny. Zero kolizji ze starymi (cp_v3_w, ftp_est_w itd.).
+- Peak Power: liczony w MQ2 wlasna metoda zgodna z Xert (nie surowe mmp jak dzis).
+
+### Izolacja (pelna, wybor Michala):
+- Osobny pakiet: fitmodel/modelq2/ (signature.py, mpa.py, breakthrough.py,
+  training_load.py, decay.py, xss.py) -- struktura do zaprojektowania.
+- Osobna tabela: qbot_v2.modelq2_signature (day, tp, hie, pp, wbal_*, xss_low/high/peak,
+  tl_low/high/peak, form_*, ...) -- schemat do zaprojektowania.
+- Osobny job / uruchamianie -- NIE dopinac do istniejacego daily_job na czas kalibracji.
+- Czyta activity_record 1Hz (read-only). Niczego w starych danych nie zmienia.
+
+### Kryterium sukcesu MQ2 (kiedy zastapi stary):
+- MQ2 sygnatura (TP/HIE/PP) zgodna z Xert benchmark (CSV) w calym oknie, nie tylko dzis.
+- Dopiero gdy udowodniona -> przelaczanie konsumentow PO KOLEI (raport, Karoo, wykres),
+  kazdy osobno. Stary usuwany dopiero po pelnej migracji. Wzorzec "strangler".
+
+### Co przenosimy ze starego: TYLKO WIEDZE, nie kod.
+- Ta specyfikacja (logika Xerta) = fundament MQ2.
+- Audyt bledow starego = lista pulapek do unikniecia.
+- Dane wejsciowe (activity_record) = te same, wspoldzielone read-only.
+- Benchmark Xert (CSV + xert_profile_snapshots) = walidacja.
