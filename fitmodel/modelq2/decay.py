@@ -13,6 +13,8 @@ Model dziennej sygnatury:
             bo PP Xerta prawie stale. To naprawia glowny blad walidacji (PP 83W -> male).
 
 Kotwica = punkt odniesienia (dzien z wiarygodna sygnatura). Dryf LAGODNY (TL zmienia sie wolno).
+WIELE KOTWIC: dla kazdego dnia wybieramy najblizsza czasowo kotwice -> mniejszy dryf, mniejszy blad
+na duzych dystansach (styczen 2025 z jedna letnia kotwica miel 5.9kJ bledu HIE).
 decay bez przebic = ostrozne oszacowanie z formy. HIE/TP zwalidowane (~2.4kJ / ~10W na 272 dniach).
 """
 from __future__ import annotations
@@ -77,13 +79,43 @@ def daily_signature(load: DayLoad, anchor: DecayAnchor,
 
 def build_signature_series(xss_by_day: dict, anchor: DecayAnchor,
                            tp_by_day: dict | None = None) -> dict:
-    """Buduje dzienna sygnature dla calego okna z XSS.
+    """Buduje dzienna sygnature dla calego okna z JEDNA kotwica.
     xss_by_day: {date:(low,high,peak)}; tp_by_day: opcjonalnie {date: cp_v3_tp}.
     Zwraca {date: Signature}.
     """
     loads = build_load_series(xss_by_day)
     out = {}
     for dl in loads:
+        tp_ov = None
+        if tp_by_day:
+            cand = [d for d in tp_by_day if d <= dl.day]
+            if cand:
+                tp_ov = tp_by_day[max(cand)]
+        out[dl.day] = daily_signature(dl, anchor, tp_override=tp_ov)
+    return out
+
+
+def make_anchor(day: dt.date, sig: Signature, loads_by_day: dict) -> DecayAnchor:
+    """Tworzy kotwice z dnia + poziomow TL tego dnia (z gotowej mapy loads)."""
+    dl = loads_by_day[day]
+    return DecayAnchor(day=day, sig=sig, tl_low=dl.low.tl, tl_high=dl.high.tl, tl_peak=dl.peak.tl)
+
+
+def build_signature_series_multi(xss_by_day: dict, anchors: list,
+                                 tp_by_day: dict | None = None) -> dict:
+    """Buduje dzienna sygnature z WIELOMA kotwicami. Dla kazdego dnia uzywa
+    kotwicy NAJBLIZSZEJ czasowo (min |dzien - kotwica|). Zmniejsza dryf na duzych
+    dystansach. anchors: lista DecayAnchor.
+    """
+    if not anchors:
+        return {}
+    loads = build_load_series(xss_by_day)
+    anchor_days = [a.day for a in anchors]
+    out = {}
+    for dl in loads:
+        # najblizsza kotwica w czasie
+        best_i = min(range(len(anchors)), key=lambda i: abs((dl.day - anchor_days[i]).days))
+        anchor = anchors[best_i]
         tp_ov = None
         if tp_by_day:
             cand = [d for d in tp_by_day if d <= dl.day]

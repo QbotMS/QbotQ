@@ -3,20 +3,28 @@
 Laczy wszystkie filary w jeden przeplyw:
   activity_record (1Hz) --> XSS Low/High/Peak (xss.py, per jazda z modelq2_ride)
                         --> Training Load 3-system (training_load.py, EWMA)
-                        --> dzienna sygnatura (decay.py, dryf za forma wokol kotwicy)
+                        --> dzienna sygnatura (decay.py, dryf za forma wokol WIELU kotwic)
                         --> zapis do modelq2_signature
 
 To jest odpowiednik cp_v3 dla starego modelu, ale dla pelnej sygnatury (TP+HIE+PP)
-i z dzienna forma. Zwalidowane vs Xert na 272 dniach: HIE ~2.4kJ, TP ~7W(mediana), PP ~31W.
+i z dzienna forma. Zwalidowane vs Xert na 272 dniach: HIE ~2.1kJ (3 kotwice), TP ~7W, PP ~30W.
 
-Uzycie: build_and_store(anchor, tp_by_day) -> wypelnia modelq2_signature dzien-po-dniu.
+Kotwice = dni z przebiciem (max_effort) i jazda 1Hz, sygnatura z benchmarku Xerta.
+Domyslne 3: 2025-12-27 (zima), 2026-03-29 (wiosna), 2026-06-20 (lato) -- rozlozone w czasie.
+
+Uzycie: build_and_store() -> wypelnia modelq2_signature dzien-po-dniu (auto-kotwice).
 """
 from __future__ import annotations
 import datetime as dt
 
 from fitmodel.ftp_resolver import _db_connect
 from fitmodel.modelq2.signature import Signature
-from fitmodel.modelq2.decay import DecayAnchor, build_signature_series
+from fitmodel.modelq2.decay import (
+    DecayAnchor, build_signature_series_multi, make_anchor)
+from fitmodel.modelq2.training_load import build_load_series
+
+# domyslne dni-kotwice (przebicie + jazda 1Hz), sygnatura brana z modelq2_xert_bench
+DEFAULT_ANCHOR_DAYS = [dt.date(2025, 12, 27), dt.date(2026, 3, 29), dt.date(2026, 6, 20)]
 
 
 def _load_xss_by_day(conn) -> dict:
@@ -29,6 +37,23 @@ def _load_tp_by_day(conn) -> dict:
     cur = conn.cursor()
     cur.execute("SELECT day, cp_v3_w FROM qbot_v2.fitmodel_daily WHERE cp_v3_w IS NOT NULL ORDER BY day")
     return {d: float(t) for d, t in cur.fetchall()}
+
+
+def _build_anchors(conn, loads_by_day, anchor_days=None) -> list:
+    """Buduje kotwice z benchmarku Xerta na wskazane dni."""
+    anchor_days = anchor_days or DEFAULT_ANCHOR_DAYS
+    cur = conn.cursor()
+    anchors = []
+    for ad in anchor_days:
+        if ad not in loads_by_day:
+            continue
+        cur.execute("SELECT tp_w, hie_kj, pp_w FROM qbot_v2.modelq2_xert_bench WHERE day=%s", (ad,))
+        r = cur.fetchone()
+        if not r:
+            continue
+        sig = Signature.from_kj(tp_w=float(r[0]), hie_kj=float(r[1]), pp_w=float(r[2]))
+        anchors.append(make_anchor(ad, sig, loads_by_day))
+    return anchors
 
 
 def ensure_table(conn) -> None:
@@ -45,9 +70,9 @@ def ensure_table(conn) -> None:
     conn.commit()
 
 
-def build_and_store(anchor: DecayAnchor, conn=None) -> dict:
-    """Buduje dzienna sygnature dla calego okna i zapisuje do modelq2_signature.
-    Zwraca statystyki (ile dni, zakres)."""
+def build_and_store(conn=None, anchor_days=None) -> dict:
+    """Buduje dzienna sygnature (wiele kotwic) i zapisuje do modelq2_signature.
+    Zwraca statystyki (ile dni, zakres, ile kotwic)."""
     own = conn is None
     if own:
         conn = _db_connect()
@@ -55,7 +80,11 @@ def build_and_store(anchor: DecayAnchor, conn=None) -> dict:
         ensure_table(conn)
         xss_by_day = _load_xss_by_day(conn)
         tp_by_day = _load_tp_by_day(conn)
-        sigs = build_signature_series(xss_by_day, anchor, tp_by_day=tp_by_day)
+        loads_by_day = {dl.day: dl for dl in build_load_series(xss_by_day)}
+        anchors = _build_anchors(conn, loads_by_day, anchor_days)
+        if not anchors:
+            return {"error": "brak kotwic"}
+        sigs = build_signature_series_multi(xss_by_day, anchors, tp_by_day=tp_by_day)
 
         cur = conn.cursor()
         n = 0
@@ -71,7 +100,7 @@ def build_and_store(anchor: DecayAnchor, conn=None) -> dict:
         conn.commit()
         days = sorted(sigs)
         return {"stored": n, "from": str(days[0]) if days else None,
-                "to": str(days[-1]) if days else None}
+                "to": str(days[-1]) if days else None, "anchors": len(anchors)}
     finally:
         if own:
             conn.close()

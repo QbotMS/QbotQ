@@ -217,3 +217,18 @@ STROJENIE NA PRZYSZLOSC (opcjonalne, nie blokuje uzycia):
 
 MIGRACJA (strangler, gdy zdecydowane): modelq2_signature moze zasilic raporty/Karoo/wykres
 zamiast starego cp_v3+ftp_est. Stary model NIETKNIETY do tego czasu.
+
+
+---
+
+## DOPIESZCZENIE (2026-07-08) -- wiele kotwic
+
+decay.py: dodano build_signature_series_multi -- dla kazdego dnia najblizsza czasowo kotwica.
+progression.py: build_and_store uzywa 3 kotwic (27.12.2025 zima, 29.03.2026 wiosna, 20.06.2026 lato),
+sygnatury z benchmarku Xerta. modelq2_signature przeliczone (552 dni, 3 kotwice).
+
+Efekt walidacji: HIE sredni 2.40 -> 2.11 kJ (3 kotwice). PP 31.5 -> 29.6 W. Kotwice trafiaja
+dokladnie w wartosci Xerta. Glebsze strojenie (wagi XSS_high) daloby malo -- gonimy juz szum Xerta
+(HIE ~10% = w granicach wlasnej zmiennosci Xerta ~3kJ). MQ2 uznany za dopieszczony.
+
+STAN: HIE 2.1kJ | TP ~7W biezaco (hist. ogon cp_v3 pominiety) | PP 30W | rozroznienie stanow OK.
