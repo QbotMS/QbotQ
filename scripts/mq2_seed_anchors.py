@@ -1,6 +1,6 @@
 """Seed zamrozonych kotwic ModelQ v2 -> qbot_v2.modelq2_anchor.
 
-Kotwice przepisane RAZ z Xerta (2025-12-27, 2026-03-29, 2026-05-16, 2026-06-20) i ZAMROZONE
+Kotwice przepisane RAZ z Xerta (2025-12-27, 2026-02-22, 2026-03-29, 2026-05-16, 2026-06-20) i ZAMROZONE
 jako wlasny parametr MQ2. Od tego momentu MQ2 nie potrzebuje zywego Xerta do dzialania:
 TP dryfuje za NASZYM CTL wokol tych kotwic, HIE/PP za wlasnym TL. Zero v1, zero zywego Xerta.
 
@@ -19,6 +19,7 @@ from fitmodel.ftp_resolver import _db_connect
 ANCHORS = [
     # day,        tp_w, hie_kj, pp_w, ctl_anchor
     ("2025-12-27", 244, 20.6, 1002, 44.0),
+    ("2026-02-22", 239, 20.2, 986, 32.6),   # luka zima-wiosna (marzec zanizal, niskie CTL)
     ("2026-03-29", 245, 22.5, 1030, 61.8),
     ("2026-05-16", 245, 21.3, 1006, 59.6),  # luka wiosna-lato (maj daleko od obu kotwic)
     ("2026-06-20", 251, 22.7, 1009, 76.1),
