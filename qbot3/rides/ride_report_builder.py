@@ -720,7 +720,7 @@ def _surface_and_wind(cur, recs, day, ride_key):
 
 DISABLED=[
     {"blok":"Bilans L/P, torque, pedal smoothness","powod":"AXS = moc calkowita, brak pomiaru L/P"},
-    {"blok":"TSB/CTL/ATL, durability","powod":"profil turysty / za malo wysilkow max"},
+    {"blok":"Durability (fade)","powod":"za malo wysilkow max w profilu"},
 ]
 
 def _modelq_block(cur, ride_date):
@@ -765,6 +765,9 @@ def _modelq_block(cur, ride_date):
         "wprime_source": cr.get("wprime_source"),
         "ef_28d": round(_ef28,3) if _ef28 else None,
         "ef_28d_stale": (cr.get("ef_med_28d") is None and _ef28 is not None),
+        "ctl": round(f(cr.get("ctl_xss")),1) if cr.get("ctl_xss") is not None else None,
+        "atl": round(f(cr.get("atl_raw")),1) if cr.get("atl_raw") is not None else None,
+        "tsb": round(f(cr.get("tsb_raw")),1) if cr.get("tsb_raw") is not None else None,
         "weight_kg": _weight,
         "weight_source": (None if cr.get("weight_kg") else ("garmin" if _gw else None)),
         "wkg": _wkg,
