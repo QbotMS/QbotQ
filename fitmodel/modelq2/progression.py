@@ -85,6 +85,15 @@ def build_and_store(conn=None, anchor_days=None) -> dict:
     try:
         ensure_table(conn)
         xss_by_day = _load_xss_by_day(conn)
+        # rozszerz szereg do DZISIAJ: dni bez jazdy = XSS 0 (forma dryfuje w odpoczynku).
+        # Bez tego MQ2 konczy na ostatniej jezdzie, a najnowszy dzien fitmodel_daily
+        # zostaje ze stara wartoscia (adapter go nie nadpisze).
+        if xss_by_day:
+            _today = dt.date.today()
+            _d = max(xss_by_day) + dt.timedelta(days=1)
+            while _d <= _today:
+                xss_by_day[_d] = (0.0, 0.0, 0.0)
+                _d += dt.timedelta(days=1)
         loads_by_day = {dl.day: dl for dl in build_load_series(xss_by_day)}
         anchors = _build_anchors(conn, loads_by_day, anchor_days)
         if not anchors:
