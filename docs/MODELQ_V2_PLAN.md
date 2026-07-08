@@ -165,3 +165,27 @@ Narzedzie: scripts/mq2_backfill.py (przeliczenie XSS porcjami po datach; urucham
 
 NASTEPNE: decay.py -- dzienna sygnatura. TP<-cp_v3; HIE,PP dryfuja za swoim TL wokol kotwicy.
 Potem extract.py (W' z przebic wzgledem dziennego stanu). Potem strojenie wag XSS (Peak zanizony).
+
+
+---
+
+## PRZELOM: decay.py dziala -- dzienna sygnatura rozroznia stany formy (2026-07-08)
+
+decay.py (Filar 3+6): dzienna sygnatura dryfuje za Training Load wokol kotwicy.
+Korelacje potwierdzone na 272 dniach vs Xert: TP~TL_low r=0.77, PP~TL_peak r=0.65, HIE~TL_high r=0.50.
+Kotwica: 20.06 (swiezy, przebicie 00:35, Xert TP=251/HIE=22.7). TP z cp_v3 override.
+
+WYNIK -- CEL OSIAGNIETY (rozroznienie stanow formy jedna sygnatura):
+  20.06 (swiezy):   MQ2 HIE=22.7 TP=253 | Xert HIE=22.7 TP=251
+  06.07 (po bloku): MQ2 HIE=20.5 TP=241 | Xert HIE=20.5 TP=244
+  -> MQ2 daje ROZNE HIE dla roznych stanow, zgodnie z Xert. To rozwiazuje pierwotny problem
+     "tau nie godzi 2 dni" -- bo przyczyna byla jedna sygnatura na oba; teraz kazdy dzien swoja.
+Sredni blad HIE ~1.8 kJ na przekroju roku (dni blisko kotwicy ~0; dalej rosnie -> wiecej kotwic z przebic).
+
+DO DOSTROJENIA (nie psuje rdzenia):
+- PP dryfuje za mocno w dol przy niskim TL_peak (6.07 PP=948 vs Xert 1000). Clamp PP za luzny.
+- Dryf od jednej kotwicy rozjezdza sie na duzych dystansach (4.05 dHIE=+4.2). Rozwiazanie: extract.py
+  doda kotwice z przebic (95 dni z max_effort w benchmarku) -> wielokotwicowy dryf.
+
+NASTEPNE: extract.py -- W' z przebic wzgledem dziennej bazy (teraz gdy baza istnieje).
+Potem: strojenie (PP clamp, wagi XSS Peak), progression.py (pelny szereg), walidacja calego okna.
