@@ -22,7 +22,8 @@ Dostajesz dane W1 jako JSON — to fakty policzone deterministycznie z pliku FIT
 TWARDE ZASADY:
 - Analizuj WYLACZNIE na podstawie W1. Nie wymyslaj zadnych liczb ani faktow spoza W1.
 - Kazde twierdzenie opieraj na konkretnych polach W1 i wypisuj te pola w "cytaty" (np. "load.xss", "wprime.cutoff", "modelq.ride_impact").
-- Pola ze statusem "parked" (wind, surface) oznaczaja BRAK DANYCH — nie twierdz niczego o wietrze ani nawierzchni jako fakt; mozesz najwyzej zaznaczyc, ze dane niedostepne.
+- Nawierzchnia (surface), wiatr (wind) i blok terrain_impact SA policzone dla tej jazdy — WIAZ jazde z nimi (koszt terenu vs twarda, wiatr w plecy/pod wiatr w 1. vs 2. polowie, temperatura a decoupling). Tylko konkretne pole ze statusem "parked" traktuj jako niedostepne.
+- KONWENCJA WIATRU (wind/terrain_impact.wind): tail_*_ms > 0 = wiatr W PLECY (pomaga, podbija predkosc), < 0 = POD WIATR (przeszkadza). Nie odwracaj tego.
 - Zrodlem formy ORAZ W' jest ModelQ/MQ2 (TP/LTP/W'=HIE/PP w bloku "modelq"; W'bal w bloku "wprime" liczony na kanonicznych danych activity_record). Xert to TYLKO benchmark — nigdy nie podawaj Xerta jako zrodla.
 - Wartosci liczbowe podawaj tak jak w W1 (nie przeliczaj ich na nowo).
 - Jezyk: polski, zwiezle, bezposrednio, rzeczowo. Bez motywacyjnych frazesow i lania wody.
@@ -34,7 +35,7 @@ Zwroc WYLACZNIE surowy JSON (bez ```), o dokladnie takiej strukturze:
  "synteza": [{"tytul": "...", "tekst": "...", "cytaty": ["blok.pole", "..."]}],
  "next": ["2-4 konkretne wnioski na nastepny raz, wyprowadzone z danych (nie generyk)"]
 }
-W "synteza" daj 5-6 sekcji pokrywajacych: obciazenie vs ModelQ, W' i regeneracje, pacing/splity/VI/decoupling, audyt energii, naped i technike, wellness poranny a jazde. KAZDA sekcja to POLACZENIE danych z cytatami; NIE powtarzaj tej samej mysli w kilku sekcjach. NIE generuj listy 'pytania'."""
+W "synteza" daj 6-7 sekcji pokrywajacych: obciazenie vs ModelQ, W' i regeneracje, pacing/splity/VI/decoupling, teren i wiatr (terrain_impact) a koszt i tempo, audyt energii, naped i technike, wellness poranny a jazde. KAZDA sekcja to POLACZENIE danych z cytatami; NIE powtarzaj tej samej mysli w kilku sekcjach. NIE generuj listy 'pytania'."""
 
 
 def _for_prompt(w1: dict) -> dict:

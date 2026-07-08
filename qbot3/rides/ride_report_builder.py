@@ -647,6 +647,8 @@ def _surface_wind_from_track(have_pos, ride_key, day):
     silnik nawierzchni (slad -> GPX -> route_surface_engine) + Open-Meteo
     z kierunkiem jazdy (jak POC 2026-07-06)."""
     surface = _plugin("silnik nawierzchni nie zwrocil wyniku")
+    _segments = []
+    km_tails = []
     try:
         from tools.rwgps.route_surface_engine import analyze_route_surface
         gpx_path = f"/opt/qbot/artifacts/analysis/exec_gpx/{ride_key}.gpx"
@@ -659,6 +661,7 @@ def _surface_wind_from_track(have_pos, ride_key, day):
                            "unknown_pct": surf.get("unknown_surface_pct"),
                            "types_pct": surf.get("surface_percentages_refined")},
                           "B", "route_surface_engine (slad GPS tej jazdy)")
+            _segments = surf.get("segments") or []
         else:
             surface = _plugin(f"silnik nawierzchni: {surf.get('error')}")
     except Exception as exc:
@@ -679,7 +682,7 @@ def _surface_wind_from_track(have_pos, ride_key, day):
                 start, last_d = r, d
         if start is not have_pos[-1]:
             buckets.append((start, have_pos[-1]))
-        tails = []
+        tails = []; km_tails = []
         for a, b in buckets:
             if a is b:
                 continue
@@ -689,6 +692,7 @@ def _surface_wind_from_track(have_pos, ride_key, day):
             tail, _cross, _delta = _rel_wind(hdg, wx.get("wdir"), wx.get("wspeed"))
             if tail is not None:
                 tails.append(tail)
+                km_tails.append(((a.get("dist") or 0.0)/1000.0, (b.get("dist") or 0.0)/1000.0, tail))
         if tails:
             wind = _tag({"avg_tail_ms": round(sum(tails) / len(tails), 2),
                         "min_tail_ms": round(min(tails), 2),
@@ -698,7 +702,82 @@ def _surface_wind_from_track(have_pos, ride_key, day):
             wind = _plugin("brak godzin pogodowych dla tej jazdy")
     except Exception as exc:
         wind = _plugin(f"pogoda nie powiodla sie: {exc}")
-    return surface, wind
+    return surface, wind, {"segments": _segments, "km_tails": km_tails}
+
+def _terrain_impact(recs, raw, splits, wprime, physio, weather):
+    """Odniesienie jazdy do nawierzchni/wiatru/temperatury (analiza, nie opis).
+    A: koszt terenu (twarda vs teren -> predkosc/moc/kJ). B: wiatr 1. vs 2. polowa
+    + przy zejsciu W'. C: temperatura (FIT) a decoupling."""
+    import bisect
+    raw = raw or {}
+    HARD = {"asphalt","paved","paved_smooth","concrete","paving_stones","cobblestone"}
+    out = {"_meta": {"tier": "B", "source": "teren+wiatr x moc/predkosc"}}
+
+    segs = [s for s in (raw.get("segments") or []) if s.get("km_to") is not None]
+    surf_impact = None
+    if segs:
+        segs.sort(key=lambda s: s.get("km_from") or 0.0)
+        starts = [s.get("km_from") or 0.0 for s in segs]
+        def _surf_at(km, _s=segs, _st=starts):
+            i = bisect.bisect_right(_st, km) - 1
+            if 0 <= i < len(_s) and (_s[i].get("km_from") or 0) <= km < (_s[i].get("km_to") or 0):
+                return _s[i].get("surface_refined")
+            return None
+        B = {"twarda": {"n":0,"sp":0.0,"spn":0,"pw":0.0,"kj":0.0},
+             "teren":  {"n":0,"sp":0.0,"spn":0,"pw":0.0,"kj":0.0}}
+        for r in recs:
+            sc = _surf_at((r.get("dist") or 0.0)/1000.0)
+            if not sc: continue
+            b = B["twarda"] if sc in HARD else B["teren"]
+            b["n"] += 1; b["pw"] += r["p"]; b["kj"] += r["p"]/1000.0
+            if r["spd"] > 0.5: b["sp"] += r["spd"]; b["spn"] += 1
+        tot_n = B["twarda"]["n"] + B["teren"]["n"]
+        tot_kj = B["twarda"]["kj"] + B["teren"]["kj"]
+        def _pack(b):
+            return {"pct_dist": round(100*b["n"]/tot_n,1) if tot_n else None,
+                    "avg_speed_kmh": round(3.6*b["sp"]/b["spn"],1) if b["spn"] else None,
+                    "avg_power_w": round(b["pw"]/b["n"]) if b["n"] else None,
+                    "kj": round(b["kj"]),
+                    "kj_pct": round(100*b["kj"]/tot_kj,1) if tot_kj else None}
+        surf_impact = {"twarda": _pack(B["twarda"]), "teren": _pack(B["teren"])}
+        te = (wprime or {}).get("top_efforts")
+        te = te.get("value") if isinstance(te, dict) else te
+        if te:
+            soft = sum(1 for e in te if (_surf_at(e.get("km",0)) not in HARD and _surf_at(e.get("km",0))))
+            surf_impact["top_efforts_teren"] = soft
+            surf_impact["top_efforts_total"] = len(te)
+    out["surface"] = surf_impact
+
+    kt = raw.get("km_tails") or []
+    wind_impact = None
+    if kt:
+        total_km = (recs[-1].get("dist") or 0.0)/1000.0
+        mid = total_km/2.0
+        def _m(x): return round(sum(x)/len(x),2) if x else None
+        first = [t for (a,b,t) in kt if b <= mid]
+        second = [t for (a,b,t) in kt if a >= mid]
+        wind_impact = {"tail_first_ms": _m(first), "tail_second_ms": _m(second)}
+        sp = splits.get("value") if isinstance(splits, dict) else splits
+        if isinstance(sp, dict):
+            wind_impact["speed_first_kmh"] = (sp.get("first") or {}).get("v_kmh")
+            wind_impact["speed_second_kmh"] = (sp.get("second") or {}).get("v_kmh")
+        cut = (wprime or {}).get("cutoff")
+        cut = cut.get("value") if isinstance(cut, dict) else cut
+        if isinstance(cut, dict) and cut.get("km") is not None:
+            ck = cut["km"]
+            here = [t for (a,b,t) in kt if a <= ck <= b]
+            wind_impact["tail_at_cutoff_ms"] = round(here[0],2) if here else None
+    out["wind"] = wind_impact
+
+    t = (weather or {}).get("temp_c"); t = t.get("value") if isinstance(t, dict) else t
+    dc = (physio or {}).get("decoupling_pct"); dc = dc.get("value") if isinstance(dc, dict) else dc
+    if isinstance(t, dict) or dc is not None:
+        out["weather"] = {"temp_avg_c": (t or {}).get("avg") if isinstance(t, dict) else None,
+                          "temp_max_c": (t or {}).get("max") if isinstance(t, dict) else None,
+                          "decoupling_pct": dc}
+    else:
+        out["weather"] = None
+    return out
 
 def _surface_and_wind(cur, recs, day, ride_key):
     """Punkt wejscia: najpierw sprawdz czy jazda pasuje do juz przeliczonej
@@ -707,7 +786,7 @@ def _surface_and_wind(cur, recs, day, ride_key):
     have_pos = [r for r in recs if r.get("lat") is not None and r.get("lon") is not None]
     if not have_pos:
         reason = "brak pozycji GPS w FIT"
-        return _plugin(reason), _plugin(reason)
+        return _plugin(reason), _plugin(reason), None
     lat0, lon0 = _deg(have_pos[0]["lat"]), _deg(have_pos[0]["lon"])
     route_id = _find_matching_route(cur, lat0, lon0, have_pos[0]["ts"])
     if route_id:
@@ -715,7 +794,7 @@ def _surface_and_wind(cur, recs, day, ride_key):
         surface, wind = _surface_wind_from_route(cur, route_id, day, start_time)
         if surface.get("status") == "parked" and wind.get("status") == "parked":
             return _surface_wind_from_track(have_pos, ride_key, day)
-        return surface, wind
+        return surface, wind, None
     return _surface_wind_from_track(have_pos, ride_key, day)
 
 DISABLED=[
@@ -846,7 +925,7 @@ def build_w1(fit_path, ride_key, inputs=None):
     _sig=_mqr["sig"] if (_mqr and _mqr.get("sig")) else _mq2_sig_before(cur, day)
     _mq_rows=_fetch_activity_rows(cur, _mqr["external_id"]) if _mqr else None
     wellness=_wellness(cur, day); rhr_base=_rhr_base(cur)
-    _surf_block, _wind_block = _surface_and_wind(cur, recs, day, ride_key)
+    _surf_block, _wind_block, _terr_raw = _surface_and_wind(cur, recs, day, ride_key)
     _xss_block = _ride_xss(conn, ride_key)
     w1={
         "schema_version":SCHEMA_VERSION,
@@ -868,6 +947,7 @@ def build_w1(fit_path, ride_key, inputs=None):
         "modelq":_modelq_block(cur, day),
         "form_context":form,
     }
+    w1["terrain_impact"] = _terrain_impact(recs, _terr_raw, w1["splits"], w1["wprime"], w1["physio"], w1["weather"])
     conn.close()
     return w1
 
