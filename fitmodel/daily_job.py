@@ -21,9 +21,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fitmodel.ftp_resolver import _db_connect
 
-import os as _os
-# Cutover ModelQ: v2 = ModelQ v2 zasila fitmodel_daily (adapter); v1 = stary model (rollback).
-MODELQ = _os.environ.get("QBOT_MODELQ", "v2")
+# ModelQ v2 jest jedynym modelem zasilajacym fitmodel_daily (adapter fitmodel.modelq2.publish).
+# Silniki poprzedniej generacji sa w archiwum /opt/qbot/archive/modelq_v1/.
+# Rollback: patrz docs/architecture/MODELQ_V2.md + tabele qbot_v2.*_v1_backup.
 
 FIT_DIR = "/opt/qbot/artifacts/fit"
 
@@ -52,20 +52,6 @@ def main() -> None:
             return ingest_all_new(FIT_DIR, conn)
         _step("ingest_fit", _ingest)
 
-        # 2. Resolver FTP_est -> fitmodel_daily
-        def _resolver():
-            from fitmodel.ftp_resolver import run_weekly_job
-            return run_weekly_job(conn)
-        if MODELQ == "v1":
-            _step("ftp_resolver", _resolver)
-
-        # 2b. CP/W' z krzywej mocy (Garmin MMP, training_sessions) -> fitmodel_daily
-        def _cp_wprime():
-            from fitmodel.cp_wprime import run_daily
-            return run_daily(conn, dry_run=False)
-        if MODELQ == "v1":
-            _step("cp_wprime", _cp_wprime)
-
         # 2c. Wskaznik gotowosci (HRV+RHR+sen, baseline 60d) -> fitmodel_daily
         def _readiness():
             from fitmodel.readiness import save_readiness
@@ -78,30 +64,13 @@ def main() -> None:
             return run_for_new_rides()
         _step("wbal_replay", _wbal_replay)
 
-        # 2e. CTL/ATL/TSB z XSS (raw + plus skorygowany o readiness_score) -> fitmodel_daily
-        def _training_load():
-            from datetime import date
-            from fitmodel.training_load import compute_and_store
-            return compute_and_store(conn, date(2025, 5, 1), date.today())
-        if MODELQ == "v1":
-            _step("training_load", _training_load)
-
-        # 2e2. cp_v3 -- prog CP (+W') z krzywej mocy 1Hz: kotwica + zanik + dryf CTL.
-        # MUSI biec PO training_load (czyta swiezy ctl_xss). Zastapil cp_v2 (EF).
-        def _cp_v3():
-            from fitmodel.cp_v3 import run_daily as cp_v3_run_daily
-            return cp_v3_run_daily(conn)
-        if MODELQ == "v1":
-            _step("cp_v3", _cp_v3)
-
-        # 2f. ModelQ v2 (CUTOVER): XSS nowych jazd + sygnatura MQ2 + publish -> fitmodel_daily.
+        # 2b. ModelQ v2 -- jedyne zrodlo prawdy: XSS nowych jazd + sygnatura MQ2 + publish -> fitmodel_daily.
         # Zastepuje ftp_resolver/cp_wprime/training_load/cp_v3. Konsumenci czytaja te same
         # kolumny (ftp_est_w, cp_modelq_w, ltp_modelq_w, wprime_modelq_kj, ctl_xss/atl/tsb) z MQ2.
         def _modelq2():
             from fitmodel.modelq2.publish import run_daily_v2
             return run_daily_v2(conn)
-        if MODELQ == "v2":
-            _step("modelq2_v2", _modelq2)
+        _step("modelq2_v2", _modelq2)
 
         # 3. Glikogen -> fitmodel_daily
         def _glyco():
