@@ -4,10 +4,17 @@ Laczy wszystkie filary w jeden przeplyw:
   activity_record (1Hz) --> XSS Low/High/Peak (xss.py, per jazda z modelq2_ride)
                         --> Training Load 3-system (training_load.py, EWMA)
                         --> dzienna sygnatura (decay.py, dryf za forma wokol WIELU kotwic)
-                        --> zapis do modelq2_signature
+                        --> zapis do modelq2_signature (sygnatura + CTL/ATL/TSB)
 
 To jest odpowiednik cp_v3 dla starego modelu, ale dla pelnej sygnatury (TP+HIE+PP)
 i z dzienna forma. Zwalidowane vs Xert na 272 dniach: HIE ~2.1kJ (3 kotwice), TP ~7W, PP ~30W.
+
+FORMA (CTL/ATL/TSB) -- wlasna logika MQ2 (nie stary agregat):
+  CTL = tl_total  (suma TL Low+High+Peak, chroniczne, tau=42) -- odpowiednik CTL/fitness
+  ATL = rl_total  (suma RL Low+High+Peak, ostre, tau=7)       -- odpowiednik ATL/zmeczenie
+  TSB = CTL - ATL                                              -- odpowiednik TSB/forma
+  + rozbicie tl_low/tl_high/tl_peak (wyroznik MQ2 -- 3 systemy energetyczne osobno).
+tl_total zwalidowane vs Xert training_load (~4% bledu, dynamika sledzi).
 
 Kotwice = dni z przebiciem (max_effort) i jazda 1Hz, sygnatura z benchmarku Xerta.
 Domyslne 3: 2025-12-27 (zima), 2026-03-29 (wiosna), 2026-06-20 (lato) -- rozlozone w czasie.
@@ -67,11 +74,15 @@ def ensure_table(conn) -> None:
         source text DEFAULT 'decay',
         updated_at timestamptz DEFAULT now()
     )""")
+    # forma (CTL/ATL/TSB) + rozbicie 3-system -- dokladane do istniejacej tabeli
+    for col in ("ctl real", "atl real", "tsb real",
+                "tl_low real", "tl_high real", "tl_peak real"):
+        cur.execute(f"ALTER TABLE qbot_v2.modelq2_signature ADD COLUMN IF NOT EXISTS {col}")
     conn.commit()
 
 
 def build_and_store(conn=None, anchor_days=None) -> dict:
-    """Buduje dzienna sygnature (wiele kotwic) i zapisuje do modelq2_signature.
+    """Buduje dzienna sygnature + forme (wiele kotwic) i zapisuje do modelq2_signature.
     Zwraca statystyki (ile dni, zakres, ile kotwic)."""
     own = conn is None
     if own:
@@ -90,12 +101,30 @@ def build_and_store(conn=None, anchor_days=None) -> dict:
         n = 0
         for day in sorted(sigs):
             s = sigs[day]
-            cur.execute("""INSERT INTO qbot_v2.modelq2_signature (day, tp_w, hie_kj, pp_w, ltp_w, source)
-                VALUES (%s,%s,%s,%s,%s,'decay')
+            dl = loads_by_day.get(day)
+            # forma z Training Load (suma 3 systemow)
+            if dl:
+                ctl = dl.low.tl + dl.high.tl + dl.peak.tl
+                atl = dl.low.rl + dl.high.rl + dl.peak.rl
+                tsb = ctl - atl
+                tl_low, tl_high, tl_peak = dl.low.tl, dl.high.tl, dl.peak.tl
+            else:
+                ctl = atl = tsb = tl_low = tl_high = tl_peak = None
+            cur.execute("""INSERT INTO qbot_v2.modelq2_signature
+                (day, tp_w, hie_kj, pp_w, ltp_w, ctl, atl, tsb, tl_low, tl_high, tl_peak, source)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'decay')
                 ON CONFLICT (day) DO UPDATE SET
                   tp_w=EXCLUDED.tp_w, hie_kj=EXCLUDED.hie_kj, pp_w=EXCLUDED.pp_w,
-                  ltp_w=EXCLUDED.ltp_w, source='decay', updated_at=now()""",
-                (day, round(s.tp_w, 1), round(s.hie_kj, 2), round(s.pp_w, 1), round(s.ltp_w, 1)))
+                  ltp_w=EXCLUDED.ltp_w, ctl=EXCLUDED.ctl, atl=EXCLUDED.atl, tsb=EXCLUDED.tsb,
+                  tl_low=EXCLUDED.tl_low, tl_high=EXCLUDED.tl_high, tl_peak=EXCLUDED.tl_peak,
+                  source='decay', updated_at=now()""",
+                (day, round(s.tp_w, 1), round(s.hie_kj, 2), round(s.pp_w, 1), round(s.ltp_w, 1),
+                 round(ctl, 1) if ctl is not None else None,
+                 round(atl, 1) if atl is not None else None,
+                 round(tsb, 1) if tsb is not None else None,
+                 round(tl_low, 1) if tl_low is not None else None,
+                 round(tl_high, 2) if tl_high is not None else None,
+                 round(tl_peak, 3) if tl_peak is not None else None))
             n += 1
         conn.commit()
         days = sorted(sigs)
