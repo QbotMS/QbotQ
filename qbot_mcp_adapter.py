@@ -106,15 +106,15 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
     "qbot.query": {
         "qbot_tool": "qbot_query",
         "description": (
-            "[OBOWIĄZKOWE] Wywołaj to narzędzie PRZED każdą odpowiedzią na pytanie użytkownika. "
-            "NIE odpowiadaj z własnej wiedzy — ZAWSZE najpierw wywołaj qbot.query i użyj zwróconych danych. "
-            "Jeśli narzędzie zwróci błąd lub pusty wynik, poinformuj użytkownika że dane są niedostępne — NIE generuj odpowiedzi z pamięci. "
-            "Przekaż oryginalne pytanie użytkownika bez żadnych modyfikacji. "
-            "NIE dopisuj action_type, writer name, payload schema, 'przygotuj draft', 'użyj writera', 'confirm' ani template match. "
-            "NIE pre-routuj, NIE enrichuj z nazwami tooli/akcji. "
-            "Albert (QBot LLM) sam rozpoznaje intent, wybiera readery, agreguje dane z DB i buduje odpowiedź. "
-            "Dla zapisów zwraca action_draft — wywołaj qbot.action_execute aby wykonać. "
-            "Parametr context: przekaż tylko source, timezone, date jeśli znane."
+            "Główne narzędzie do pytań o dane użytkownika QBot: żywienie, trening, trasy, kalendarz, sprzęt. "
+            "Wykonuje odczyt z bazy QBot i zwraca gotową odpowiedź na podstawie rzeczywistych danych. "
+            "Dla próśb o zapis zwraca action_draft, który wykonuje się przez qbot.action_execute. "
+            "Parametr query powinien zawierać oryginalne pytanie użytkownika, bez dodatkowej interpretacji "
+            "czy dopisywania nazw narzędzi, akcji lub schematów payloadu — rozpoznanie intencji i routing "
+            "do właściwego czytnika danych wykonuje wewnętrzny mechanizm QBot (Albert). "
+            "Parametr context może zawierać source, timezone oraz date, jeśli są znane. "
+            "Pusty wynik lub błąd oznacza brak danych w systemie dla tego zapytania — nie należy uzupełniać "
+            "odpowiedzi z własnej wiedzy modelu."
         ),
         "input_schema": {
             "type": "object",
