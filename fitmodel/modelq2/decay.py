@@ -1,19 +1,19 @@
 """Filar 3+6 -- Signature Decay: dzienna sygnatura podazajaca za forma.
 
-Sygnatura danego dnia NIE jest stala -- oddycha z Training Load (dowod: TP~TL_low r=0.77,
-PP~TL_peak r=0.65, HIE~TL_high r=0.50 na 272 dniach vs Xert). Zima TL_low=29 -> TP=238;
-lato TL_low=80 -> TP=262. To Filar 3 Xerta (decay + follow training loads).
+Sygnatura danego dnia NIE jest stala -- oddycha z Training Load (dowod na 272 dniach vs Xert):
+  TP  ~ TL_low  r=0.77
+  HIE ~ TL_high r=0.50
+  PP  ~ HIE_xert r=0.75 (silniejsze niz ~TL_peak 0.65!) i PP bardzo STABILNE (984-1043, +-3%).
+Zima TL_low=29 -> TP=238; lato TL_low=80 -> TP=262.
 
 Model dziennej sygnatury:
-  TP_day  = kotwica_TP * (TL_low_day / TL_low_anchor) ... ale prosciej: TP z cp_v3 (juz dryfuje).
-  HIE_day = HIE_anchor * (TL_high_day / TL_high_anchor)   -- proporcja do obciazenia VO2
-  PP_day  = PP_anchor  * (TL_peak_day / TL_peak_anchor)   -- proporcja do obciazenia sprint
+  TP_day  = z cp_v3 (juz dryfuje z forma) -- override.
+  HIE_day = HIE_anchor * clamp(TL_high_day / TL_high_anchor, +-20%)
+  PP_day  = PP_anchor  * clamp(HIE_ratio, +-4%)  -- PP idzie za HIE (nie TL_peak), waski clamp,
+            bo PP Xerta prawie stale. To naprawia glowny blad walidacji (PP 83W -> male).
 
-Kotwica = punkt odniesienia (dzien z wiarygodna sygnatura, np. z przebicia lub seed).
-Dryf jest LAGODNY (ograniczony), bo TL zmienia sie wolno (EWMA tau=42).
-
-WAZNE: to daje BAZE dzienna. Przebicia (extract.py) koryguja ja w GORE gdy rider pokaze
-wiecej niz baza przewiduje. decay bez przebic = ostrozne oszacowanie z formy.
+Kotwica = punkt odniesienia (dzien z wiarygodna sygnatura). Dryf LAGODNY (TL zmienia sie wolno).
+decay bez przebic = ostrozne oszacowanie z formy. HIE/TP zwalidowane (~2.4kJ / ~10W na 272 dniach).
 """
 from __future__ import annotations
 from dataclasses import dataclass
@@ -34,8 +34,9 @@ class DecayAnchor:
 
 
 # ograniczniki dryfu (sygnatura nie moze odjechac za daleko od kotwicy bez przebic)
-HIE_DRIFT_MIN, HIE_DRIFT_MAX = 0.80, 1.20    # +-20%
-PP_DRIFT_MIN, PP_DRIFT_MAX = 0.90, 1.10      # +-10% (PP stabilniejsze)
+HIE_DRIFT_MIN, HIE_DRIFT_MAX = 0.80, 1.20    # +-20% (HIE oddycha z forma)
+PP_DRIFT_MIN, PP_DRIFT_MAX = 0.96, 1.04      # +-4% (PP Xerta prawie stale, 984-1043)
+TP_DRIFT_MIN, TP_DRIFT_MAX = 0.90, 1.12
 
 
 def _clamp(x, lo, hi):
@@ -54,11 +55,8 @@ def daily_signature(load: DayLoad, anchor: DecayAnchor,
         hie_ratio = 1.0
     hie = anchor.sig.hie_j * hie_ratio
 
-    # PP dryfuje za TL_peak
-    if anchor.tl_peak > 0.0001:
-        pp_ratio = _clamp(load.peak.tl / anchor.tl_peak, PP_DRIFT_MIN, PP_DRIFT_MAX)
-    else:
-        pp_ratio = 1.0
+    # PP idzie za HIE (korelacja 0.75 > TL_peak 0.65), waski clamp bo PP prawie stale
+    pp_ratio = _clamp(hie_ratio, PP_DRIFT_MIN, PP_DRIFT_MAX)
     pp = anchor.sig.pp_w * pp_ratio
 
     # TP: z override (cp_v3) lub dryf za TL_low
@@ -66,7 +64,7 @@ def daily_signature(load: DayLoad, anchor: DecayAnchor,
         tp = tp_override
     else:
         if anchor.tl_low > 0.01:
-            tp_ratio = _clamp(load.low.tl / anchor.tl_low, 0.90, 1.12)
+            tp_ratio = _clamp(load.low.tl / anchor.tl_low, TP_DRIFT_MIN, TP_DRIFT_MAX)
         else:
             tp_ratio = 1.0
         tp = anchor.sig.tp_w * tp_ratio
@@ -88,7 +86,6 @@ def build_signature_series(xss_by_day: dict, anchor: DecayAnchor,
     for dl in loads:
         tp_ov = None
         if tp_by_day:
-            # najblizszy cp_v3 <= dzien
             cand = [d for d in tp_by_day if d <= dl.day]
             if cand:
                 tp_ov = tp_by_day[max(cand)]
