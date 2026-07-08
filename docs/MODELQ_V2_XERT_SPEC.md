@@ -229,3 +229,87 @@ to jest dokladnie Signature Decay Method Xerta. Mamy wiekszosc klockow. Glowna l
 - TP=244 W, HIE=20.6 kJ, PP~1000 W, LTP=192 W.
 - HIE bardzo stabilne 90d: 20.5-22.7 kJ (mediana 22.1).
 - PP stabilne: ~1000-1030 W.
+
+
+---
+
+## AUDYT KOMPLETNOSCI (2026-07-08) — wszystkie komponenty Xert, status pokrycia
+
+Przeglad pelnego glosariusza Xert. [OK]=w spec, [DODANE]=uzupelnione ponizej, [POMIJAMY]=poza zakresem ModelQ.
+
+### Rdzen (mielismy):
+- [OK] Fitness Signature (TP/HIE/PP) — Filar 0
+- [OK] MPA sekunda-po-sekundzie — Filar 1 (W'bal + tau Skiba)
+- [OK] Breakthrough / near-BT / medale — Filar 2
+- [OK] Signature Decay + predykcja z TL — Filar 3
+- [OK] XSS Low/High/Peak — Filar 4
+- [OK] LTP = TP - HIE/400 — Filar 4
+
+### BRAKUJACE — uzupelnione teraz:
+
+#### [DODANE] Focus & Specificity (charakterystyka jazdy)
+- **Focus** = czas trwania LUB typ zawodnika opisujacy, JAKI system byl najbardziej cwiczony.
+  "Focus Power = najwyzsza moc na dany czas, jak MMP, liczona z sygnatury." Mowi: jaki
+  aspekt fitnessu byl trenowany (np. 8-min W/kg = GC Specialist).
+- **Specificity Rating** = jak bardzo high-intensity strain byl SKUPIONY blisko Focus power.
+  Pure (wysoki %) = skoncentrowany; Polar (niski %) = krotkie mocne + dlugie latwe, malo w Focus.
+- Liczone z ratio Low:High:Peak XSS. (zrodlo: baronbiosys "Work Allocation", "Using Xert to Evaluate")
+- ModelQ: mamy Low/High/Peak (buckets) -> mozemy policzyc Focus/Specificity tak samo.
+
+#### [DODANE] Training Load + Recovery Load -> Form (petla obciazenia, 3 systemy)
+KLUCZOWE brakujace ogniwo dynamiki:
+- **Training Load (TL)** = wykladniczo wazona suma XSS (jak CTL), OSOBNO dla Low/High/Peak.
+- **Recovery Load (RL)** = miara potrzebnej regeneracji (jak ATL), tez per system. Ukryta domyslnie.
+- **Form** = bilans TL - RL (jak TSB). Kolor gwiazdek = Form; liczba gwiazdek = suma TL.
+- Kazdy z 3 systemow ma WLASNY Impulse Response -> napedza dryf SWOJEGO parametru sygnatury:
+    Low TL  -> dryf TP
+    High TL -> dryf HIE
+    Peak TL -> dryf PP
+  To domyka petle z Filarem 3: "predykcja sygnatury z Training Loads" = kazdy parametr
+  podaza za swoim TL. (zrodlo: baronbiosys "Training Status and Form", "XPMC", "Xert Strain Score")
+- ModelQ dzis: ma JEDEN ctl_xss/atl_raw. ModelQ v2 potrzebuje TRZECH (Low/High/Peak).
+  Recovery time per system: Xert pokazuje dni regeneracji osobno dla L/H/P.
+
+#### [DODANE] Difficulty Score + XEP (Xert Equivalent Power)
+- **Difficulty** = jak blisko MPA byla praca, chwila po chwili (szary obszar na wykresie).
+  Rosnie gdy MPA spada blisko mocy. "Hardness" = zdolnosc wielokrotnego sciagania MPA w dol.
+- **XEP (Xert Equivalent Power)** = odpowiednik NP/mocy znormalizowanej, ale liczony przez
+  pryzmat sygnatury/MPA (nie 30s rolling jak NP). Uzywany do XSS.
+- ModelQ: do rozwazenia jako pochodna, gdy MPA bedzie liczone.
+
+#### [DODANE] Focus Power / krzywa mocy z sygnatury (kierunek ODWROTNY)
+- Majac sygnature (TP/HIE/PP) mozna WYGENEROWAC cala krzywa mocy (Focus Power dla dowolnego t).
+  To odwrotnosc ekstrakcji. Przydatne do: predykcji ETA, targetow treningowych, wizualizacji.
+- ModelQ: to jest "za darmo" gdy mamy sygnature + model MPA.
+
+#### [DODANE] Trickle-down recalculation
+- Nowa/zmieniona aktywnosc -> Xert przelicza sygnature i CALA progresje do przodu.
+- ModelQ v2 musi to obsluzyc: zmiana starej jazdy = przeliczenie lancucha (jak nasz backfill).
+
+#### [DODANE] Improvement Rate / Athlete Type / Adaptive Training Advisor (XATA)
+- Improvement Rate = docelowe tempo wzrostu TL (ramp rate XSS/tydzien). Off-Season..Extreme-2.
+- Athlete Type = profil (GC Specialist, Sprinter, etc.) -> docelowe ratio L/H/P.
+- XATA = silnik rekomendacji treningu. [POMIJAMY na teraz — to warstwa DORADCZA, nie modelujaca
+  fitness. ModelQ v2 = model fitnessu; doradztwo pozniej.]
+
+### [POMIJAMY] (peryferia, nie wplywaja na sygnature/fitness):
+- HRDM (Heart Rate Derived Metrics) — TYLKO dla jazd BEZ mocy. Michal ma moc zawsze. Pomijamy.
+- Fat/Carb utilization — informacyjne, nie wplywa na sygnature.
+- Strava Segment / Advanced Stats — narzedzie analizy, nie model.
+- Fitness Planner / Workout Designer / SMART workouts — warstwa treningowa, nie model fitnessu.
+
+### WNIOSEK AUDYTU:
+Rdzen modelu fitnessu Xert = 6 elementow, wszystkie teraz w spec:
+  1. Sygnatura (TP/HIE/PP)
+  2. MPA (W'bal + tau)
+  3. Przebicia (P dotyka MPA)
+  4. XSS -> 3 systemy (work allocation / buckets)
+  5. Training/Recovery Load per system -> Form (3 Impulse Response)
+  6. Signature Decay (predykcja z TL + zanik) domyka petle: TL napedza dryf sygnatury
+Pochodne: LTP, Focus, Specificity, Difficulty, XEP, Focus Power — wszystkie liczone z (1)+(2)+(4)+(5).
+Warstwa doradcza (XATA, Athlete Type, Improvement Rate) — POZA ModelQ v2 (model, nie trener).
+
+DANE DO WALIDACJI (CSV Jul 8th): per jazda mamy Low/High/Peak XSS + Maximal Effort Time.
+- Low/High/Peak XSS -> walidacja naszego rozbicia (buckets vs Xert work-allocation).
+- Maximal Effort Time != 00:00 -> marker near-BT/BT. W danych: tylko 20.06 (00:35) i 6.07 (00:19)
+  maja niezerowy -> potwierdza ze przebic jest MALO (sygnatura zyje z dryfu, nie z przebic).
