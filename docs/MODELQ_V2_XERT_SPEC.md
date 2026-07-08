@@ -313,3 +313,75 @@ DANE DO WALIDACJI (CSV Jul 8th): per jazda mamy Low/High/Peak XSS + Maximal Effo
 - Low/High/Peak XSS -> walidacja naszego rozbicia (buckets vs Xert work-allocation).
 - Maximal Effort Time != 00:00 -> marker near-BT/BT. W danych: tylko 20.06 (00:35) i 6.07 (00:19)
   maja niezerowy -> potwierdza ze przebic jest MALO (sygnatura zyje z dryfu, nie z przebic).
+
+
+---
+
+## AUDYT POPRAWNOSCI istniejacych elementow (2026-07-08) — CZY LICZA DOBRZE
+
+Cel: zanim ModelQ v2 uzyje istniejacych klockow, sprawdzic ze licza POPRAWNIE (blad tu
+= katastrofa pozniej). Weryfikacja na zywym kodzie + danych (jazda 6.07, benchmark Xert).
+
+### 1. W'bal / MPA (wbal_replay.py) — RDZEN
+STATUS: wzor POPRAWNY, ale ZLY INPUT (CP).
+- [OK] Wydatek: wbal -= (P-CP)*dt gdy P>CP. Zgodny ze Skiba.
+- [OK] Regeneracja: deficit*exp(-dt/tau), tau=546*exp(-0.01*dcp)+316. Matematycznie
+  rownowazne formie roznicowej dla dt=1s. Zgodne ze spec Filar 1.
+- [OK] Postoje (gap>=30s): analityczna regeneracja przez dt. Poprawne.
+- [OK] 3s smoothing power dla W'bal (Karoo SMOOTHED_3S). min_wbal_pct=0 na 6.07 zgadza
+  sie z Xert MaxEffort 00:19 (wykryl wyczerpanie tam gdzie bylo).
+- [!! BLAD KRYTYCZNY] Input CP: _fetch_daily_baseline bierze **ftp_est_w** (EF-owy, 252 na
+  6.07), NIE cp_v3 (239) ani Xert TP (244). W'bal wisi na STARYM, najwyzszym progu.
+  Skutek dla v2: MPA/przebicia liczone z ftp_est=252 wypadna w zlych miejscach ->
+  sygnatura zle sie skalibruje. MUSI byc naprawione PRZED budowa MPA.
+  Fix: baseline ma czytac wlasciwy CP (docelowo sygnatura ModelQ v2, na teraz cp_v3).
+- [DO ZBADANIA] deficit0 liczony od wprime_eff_j (skalowane przez cf tick-po-ticku) --
+  przy zmiennym cf target regeneracji "oddycha", mozliwy dryf. Niekrytyczne, ale sprawdzic.
+
+### 2. XSS (wbal_replay.py) — NIEKOMPLETNY dla v2
+STATUS: liczy sie, ale JEDNA liczba zamiast 3 systemow.
+- [OK] Wzor: (P/CP)*(1+beta*fatigue)*(100/3600)*dt, beta=1, 1h@CP=100. Uwzglednia
+  zmeczenie (fatigue z W'bal) -- zgodne z zasada Xerta (strain wzgledem MPA).
+- [ROZJAZD] 6.07: nasz XSS=100.7 vs Xert total=92.0 (+9%). Do zbadania czy z CP=252
+  (zawyzony CP -> inny strain) czy z metody.
+- [BRAK dla v2] NIE ma rozbicia Low/High/Peak. Xert 6.07: 82.6/7.9/1.5. ModelQ v2
+  wymaga 3 systemow (Filar 5: osobne TL na kazdy parametr). buckets.py to liczy osobno --
+  do scalenia/uzgodnienia z XSS z wbal_replay (dzis dwa rozne silniki!).
+
+### 3. TP / CP (cp_v3, cp_wprime) — OK po naprawach z tej sesji
+- [OK] cp_v3 = 239 (Xert TP=244, delta 5). Kotwica+zanik+dryf CTL. Dobre.
+- [OK] cp_modelq = 242 (Xert 244, delta 2). Okno 90d po naprawie clampu. Dobre.
+- [UWAGA] ftp_est_w = 252 (EF-owy) ZAWYZONY o 8-13 W vs Xert/cp_v3. To go uzywa W'bal (bug #1).
+  ftp_est to najstarsza, najmniej wiarygodna warstwa. v2 powinien go wycofac jako input.
+
+### 4. PP / Peak Power (cp_wprime._peak_power) — ROZJAZD + nie zapisywane
+- [!! nie w bazie] fitmodel_daily NIE MA kolumny peak_power_w. _peak_power liczy, ale
+  wynik nigdzie nie ladzie. Dla v2 PP musi byc trwale w sygnaturze.
+- [!! ROZJAZD wartosci] mmp_5_w=822 W, mmp_1_w=1194 W. Xert PP=~1000-1030.
+  Ani 822 (5s) ani 1194 (1s surowe) nie rowna sie Xert 1000. Xert PP to prawdopodobnie
+  NIE surowe MMP, tylko punkt krzywej mocy z modelu (ekstrapolacja do t->0 z sygnatury),
+  lub 1s po odfiltrowaniu artefaktow. DO USTALENIA jak Xert liczy PP zanim uzyjemy w v2.
+  (1194 na 1s bywa artefaktem miernika; 822 na 5s jest submaks). Bezpieczne: PP z krzywej
+  3-param jako granica t->0, kalibrowane by ~=Xert.
+
+### 5. CTL/ATL (training_load -> ctl_xss/atl_raw) — OK jako jeden system, BRAK 3
+- [OK] ctl_xss ciagle 433 dni, dryf cp_v3 na nim dziala, banner/wykres OK.
+- [BRAK dla v2] JEDEN CTL. Xert ma 3 (Low/High/Peak TL) -> osobny dryf TP/HIE/PP.
+  ModelQ v2 wymaga rozbicia: XSS Low->CTL_low->dryf TP, itd.
+
+### PODSUMOWANIE AUDYTU POPRAWNOSCI:
+| element | wzor | input | kompletnosc v2 |
+|---------|------|-------|----------------|
+| W'bal   | OK   | ZLY CP (ftp_est 252) | rdzen ok |
+| XSS     | OK   | zalezy od CP | BRAK 3 systemow |
+| TP      | OK (cp_v3 239) | — | ok |
+| PP      | ROZJAZD (822/1194 vs Xert 1000) | nie w bazie | ustalic metode |
+| CTL     | OK   | — | BRAK 3 systemow |
+
+NAPRAWY WYMAGANE PRZED ModelQ v2 (kolejnosc):
+1. **W'bal input CP**: odpiac od ftp_est_w (252), podpiac wlasciwy CP (cp_v3 / docelowo
+   sygnatura v2). BEZ TEGO MPA i przebicia beda na zlym progu. NAJPILNIEJSZE.
+2. **Zunifikowac XSS**: dzis 2 silniki (wbal_replay XSS jednoliczbowy + buckets 3-system).
+   v2 potrzebuje JEDNEGO XSS rozbitego na Low/High/Peak, spojnego z MPA.
+3. **3 Training Loads** zamiast jednego ctl_xss.
+4. **Zweryfikowac PP** = Xert PP (ktore okno).
