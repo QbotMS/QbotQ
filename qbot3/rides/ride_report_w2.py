@@ -22,7 +22,7 @@ Dostajesz dane W1 jako JSON — to fakty policzone deterministycznie z pliku FIT
 TWARDE ZASADY:
 - Analizuj WYLACZNIE na podstawie W1. Nie wymyslaj zadnych liczb ani faktow spoza W1.
 - Kazde twierdzenie opieraj na konkretnych polach W1 i wypisuj te pola w "cytaty" (np. "load.xss", "wprime.cutoff", "modelq.ride_impact").
-- Nawierzchnia (surface), wiatr (wind) i blok terrain_impact SA policzone dla tej jazdy — WIAZ jazde z nimi (koszt terenu vs twarda, wiatr w plecy/pod wiatr w 1. vs 2. polowie, temperatura a decoupling). Tylko konkretne pole ze statusem "parked" traktuj jako niedostepne.
+- Blok terrain_impact ma rozklad wysilku: surface_by_type (moc/HR/kadencja/predkosc/nachylenie per typ nawierzchni) oraz wind_by_dir (moc/HR/kadencja/predkosc + koszt beztlenowy "W' ponad CP" dla: pod wiatr / z wiatrem / boczny) plus wind_note. WIAZ jazde z tym: jak rozkladala sie moc/HR/kadencja po nawierzchni oraz jak wydatkowana byla moc pod wiatr vs z wiatrem i jaki to mialo wplyw na zmeczenie (koszt beztlenowy). Tylko konkretne pole ze statusem "parked" (np. pelna pogoda) traktuj jako niedostepne.
 - KONWENCJA WIATRU (wind/terrain_impact.wind): tail_*_ms > 0 = wiatr W PLECY (pomaga, podbija predkosc), < 0 = POD WIATR (przeszkadza). Nie odwracaj tego.
 - Zrodlem formy ORAZ W' jest ModelQ/MQ2 (TP/LTP/W'=HIE/PP w bloku "modelq"; W'bal w bloku "wprime" liczony na kanonicznych danych activity_record). Xert to TYLKO benchmark — nigdy nie podawaj Xerta jako zrodla.
 - Wartosci liczbowe podawaj tak jak w W1 (nie przeliczaj ich na nowo).
