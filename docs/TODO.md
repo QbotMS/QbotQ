@@ -1,6 +1,37 @@
 # QBot — TODO
 
 
+## [W-PRIME] W' zanizone w ModelQ vs Xert (zaparkowane 2026-07-08)
+
+Kontekst: przy budowie cp_v3 W' liczone z par okien 120/600 s zwyklych jazd wychodzi
+~8 kJ. Xert (HIE) konsekwentnie pokazuje 20-23 kJ przez cale 90 dni (potwierdzone w
+pliku Xert_Activities CSV: HIE 20.5-23.2 kJ per jazda). To 2.5x rozjazd, systematyczny.
+
+Diagnoza wstepna: jezdzimy submaksymalnie, wiec 2-min fragmenty rzadko sa maksymalne ->
+roznica moc(120)-moc(600) mala -> W' male. Xert lapie W' z prawdziwych przebic (Peak Power
+do 1000 W) + near-max. Zgodne z wczesniejsza notatka Michala "kotwica W' z drogi: Wbal=0%
+-> CP≈FTP, W'≈22 kJ" (Krok 2 harvest dawal ~6 kJ niedoszacowania -- ten sam problem).
+
+Benchmark do naprawy: kolumna HIE w Xert_Activities CSV (per jazda) + fizyczna kotwica
+Wbal=0% z jazdy 6.07 (min_wbal_pct=0 potwierdzone, wprime_base_kj=20.31 w fitmodel_wbal_ride).
+
+Cel przyszlej sesji: policzyc W' zgodne z ~20-22 kJ (nie 8). Opcje: harvest near-max z
+krotkich przebic + Peak Power, albo kotwica z Wbal=0% jak w notatkach. NIE ruszac cp_v3 CP
+(ten jest OK, 242 vs Xert 244) -- tylko tor W'.
+
+
+
+NAPRAWA W' == NAPRAWA LTP (odkrycie 2026-07-08): LTP u Xerta to POCHODNA sygnatury,
+nie osobny pomiar (nie ma go w Xert CSV -- liczony w locie). Wzor odtworzony z forum Xert:
+  LTP = TP - HIE/400   (HIE w dzulach)
+Weryfikacja na danych: TP=244, HIE=20.6kJ -> 244 - 20600/400 = 192.5 W = dokladnie Xert LTP.
+Nasz obecny LTP (193) trafia PRZYPADKIEM przez niezalezny fit okien 300-1800s (stad schodki).
+Wlasciwa architektura: sygnatura (CP, W', PP) -> LTP = CP - W'/400 jako pochodna.
+ALE wymaga poprawnego W': z W'=8kJ wyjdzie LTP=222 (zle); z W'=20.6kJ -> LTP=191 (dobrze).
+WNIOSEK: najpierw napraw W' (ta sekcja), potem LTP policz wzorem CP-W'/400 -- bedzie gladki,
+bez schodkow, bez osobnego fitu. To JEDEN pakiet, nie dwa problemy.
+
+
 ## [WIADRA] Low/High/Peak strain na Karoo (dodane 2026-07-07)
 
 Kontekst: silnik juz istnieje po stronie serwera -- `fitmodel/buckets.py` (`compute_buckets`),
