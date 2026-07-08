@@ -3142,6 +3142,67 @@ def forma_data(response: Response, start: str | None = Query(None), end: str | N
         conn.close()
 
 
+def _f(v):
+    return float(v) if v is not None else None
+
+
+@app.get("/api/modelq2/data")
+def modelq2_data(response: Response, start: str | None = Query(None), end: str | None = Query(None)):
+    """ModelQ v2: dzienna sygnatura (TP/HIE/PP/LTP) z qbot_v2.modelq2_signature,
+    nalozona na benchmark Xerta (qbot_v2.modelq2_xert_bench). Domyslny zakres 180 dni.
+    Zwraca serie dzienne MQ2 + punkty Xerta + statystyki zgodnosci (blad na wspolnych dniach)."""
+    response.headers["Cache-Control"] = "no-store"
+    from datetime import date as _dt_date, timedelta as _dt_timedelta
+    end_d = _dt_date.fromisoformat(end) if end else _dt_date.today()
+    start_d = _dt_date.fromisoformat(start) if start else (end_d - _dt_timedelta(days=180))
+    conn = _db_conn()
+    try:
+        mq = conn.execute(
+            "SELECT day, tp_w, hie_kj, pp_w, ltp_w FROM qbot_v2.modelq2_signature "
+            "WHERE day BETWEEN %s AND %s ORDER BY day",
+            (start_d.isoformat(), end_d.isoformat()),
+        ).fetchall()
+        xb = conn.execute(
+            "SELECT day, tp_w, hie_kj, pp_w, max_effort FROM qbot_v2.modelq2_xert_bench "
+            "WHERE day BETWEEN %s AND %s ORDER BY day",
+            (start_d.isoformat(), end_d.isoformat()),
+        ).fetchall()
+
+        def _d(r):
+            return {k: (float(v) if isinstance(v, (int, float)) or (v is not None and k != "day" and k != "max_effort") else v)
+                    for k, v in r.items()}
+        mq_series = [{"day": r["day"].isoformat(), "tp": _f(r["tp_w"]), "hie": _f(r["hie_kj"]),
+                      "pp": _f(r["pp_w"]), "ltp": _f(r["ltp_w"])} for r in mq]
+        xb_series = [{"day": r["day"].isoformat(), "tp": _f(r["tp_w"]), "hie": _f(r["hie_kj"]),
+                      "pp": _f(r["pp_w"]), "bt": r["max_effort"]} for r in xb]
+
+        # zgodnosc na wspolnych dniach
+        xb_by = {r["day"]: r for r in xb}
+        eh = []; et = []; ep = []
+        for r in mq:
+            xr = xb_by.get(r["day"])
+            if xr:
+                if r["hie_kj"] is not None and xr["hie_kj"] is not None:
+                    eh.append(abs(float(r["hie_kj"]) - float(xr["hie_kj"])))
+                if r["tp_w"] is not None and xr["tp_w"] is not None:
+                    et.append(abs(float(r["tp_w"]) - float(xr["tp_w"])))
+                if r["pp_w"] is not None and xr["pp_w"] is not None:
+                    ep.append(abs(float(r["pp_w"]) - float(xr["pp_w"])))
+        def _avg(a):
+            return round(sum(a) / len(a), 2) if a else None
+        latest = mq_series[-1] if mq_series else None
+        return {
+            "range": {"start": start_d.isoformat(), "end": end_d.isoformat()},
+            "mq": mq_series,
+            "xert": xb_series,
+            "latest": latest,
+            "agreement": {"hie_kj": _avg(eh), "tp_w": _avg(et), "pp_w": _avg(ep),
+                          "n_common": len(et)},
+        }
+    finally:
+        conn.close()
+
+
 app.mount("/", StaticFiles(directory=WEB_ROOT, html=True), name="static")
 
 
