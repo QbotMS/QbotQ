@@ -6,7 +6,7 @@ Laczy wszystkie filary w jeden przeplyw:
                         --> dzienna sygnatura (decay.py, dryf za forma wokol WIELU kotwic)
                         --> zapis do modelq2_signature (sygnatura + CTL/ATL/TSB)
 
-To jest odpowiednik cp_v3 dla starego modelu, ale dla pelnej sygnatury (TP+HIE+PP)
+Pelna sygnatura (TP+HIE+PP) z dzienna forma -- samodzielny silnik MQ2 (bez v1)
 i z dzienna forma. Zwalidowane vs Xert na 272 dniach: HIE ~2.1kJ (3 kotwice), TP ~7W, PP ~30W.
 
 FORMA (CTL/ATL/TSB) -- wlasna logika MQ2 (nie stary agregat):
@@ -16,7 +16,7 @@ FORMA (CTL/ATL/TSB) -- wlasna logika MQ2 (nie stary agregat):
   + rozbicie tl_low/tl_high/tl_peak (wyroznik MQ2 -- 3 systemy energetyczne osobno).
 tl_total zwalidowane vs Xert training_load (~4% bledu, dynamika sledzi).
 
-Kotwice = dni z przebiciem (max_effort) i jazda 1Hz, sygnatura z benchmarku Xerta.
+Kotwice = zamrozone w qbot_v2.modelq2_anchor (przepisane z Xerta RAZ). Zywy Xert niepotrzebny.
 Domyslne 3: 2025-12-27 (zima), 2026-03-29 (wiosna), 2026-06-20 (lato) -- rozlozone w czasie.
 
 Uzycie: build_and_store() -> wypelnia modelq2_signature dzien-po-dniu (auto-kotwice).
@@ -30,7 +30,7 @@ from fitmodel.modelq2.decay import (
     DecayAnchor, build_signature_series_multi, make_anchor)
 from fitmodel.modelq2.training_load import build_load_series
 
-# domyslne dni-kotwice (przebicie + jazda 1Hz), sygnatura brana z modelq2_xert_bench
+# domyslne dni-kotwice (fallback dokumentacyjny) -- realne wartosci w tabeli modelq2_anchor
 DEFAULT_ANCHOR_DAYS = [dt.date(2025, 12, 27), dt.date(2026, 3, 29), dt.date(2026, 6, 20)]
 
 
@@ -40,26 +40,21 @@ def _load_xss_by_day(conn) -> dict:
     return {d: (float(l), float(h), float(p)) for d, l, h, p in cur.fetchall()}
 
 
-def _load_tp_by_day(conn) -> dict:
-    cur = conn.cursor()
-    cur.execute("SELECT day, cp_v3_w FROM qbot_v2.fitmodel_daily WHERE cp_v3_w IS NOT NULL ORDER BY day")
-    return {d: float(t) for d, t in cur.fetchall()}
-
-
 def _build_anchors(conn, loads_by_day, anchor_days=None) -> list:
-    """Buduje kotwice z benchmarku Xerta na wskazane dni."""
-    anchor_days = anchor_days or DEFAULT_ANCHOR_DAYS
+    """Kotwice z ZAMROZONEJ tabeli modelq2_anchor -- wlasny parametr MQ2, niezalezny
+    od zywego Xerta ani v1. TL-e i CTL w dniu kotwicy liczone z NASZEGO XSS (make_anchor)."""
     cur = conn.cursor()
+    if anchor_days:
+        cur.execute("SELECT day, tp_w, hie_kj, pp_w FROM qbot_v2.modelq2_anchor "
+                    "WHERE day = ANY(%s) ORDER BY day", (list(anchor_days),))
+    else:
+        cur.execute("SELECT day, tp_w, hie_kj, pp_w FROM qbot_v2.modelq2_anchor ORDER BY day")
     anchors = []
-    for ad in anchor_days:
-        if ad not in loads_by_day:
+    for day, tp, hie, pp in cur.fetchall():
+        if day not in loads_by_day:
             continue
-        cur.execute("SELECT tp_w, hie_kj, pp_w FROM qbot_v2.modelq2_xert_bench WHERE day=%s", (ad,))
-        r = cur.fetchone()
-        if not r:
-            continue
-        sig = Signature.from_kj(tp_w=float(r[0]), hie_kj=float(r[1]), pp_w=float(r[2]))
-        anchors.append(make_anchor(ad, sig, loads_by_day))
+        sig = Signature.from_kj(tp_w=float(tp), hie_kj=float(hie), pp_w=float(pp))
+        anchors.append(make_anchor(day, sig, loads_by_day))
     return anchors
 
 
@@ -90,12 +85,12 @@ def build_and_store(conn=None, anchor_days=None) -> dict:
     try:
         ensure_table(conn)
         xss_by_day = _load_xss_by_day(conn)
-        tp_by_day = _load_tp_by_day(conn)
         loads_by_day = {dl.day: dl for dl in build_load_series(xss_by_day)}
         anchors = _build_anchors(conn, loads_by_day, anchor_days)
         if not anchors:
             return {"error": "brak kotwic"}
-        sigs = build_signature_series_multi(xss_by_day, anchors, tp_by_day=tp_by_day)
+        # tp_by_day=None -> TP dryfuje za NASZYM CTL wokol kotwicy (bez cp_v3/v1)
+        sigs = build_signature_series_multi(xss_by_day, anchors, tp_by_day=None)
 
         cur = conn.cursor()
         n = 0

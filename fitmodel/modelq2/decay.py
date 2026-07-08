@@ -7,7 +7,7 @@ Sygnatura danego dnia NIE jest stala -- oddycha z Training Load (dowod na 272 dn
 Zima TL_low=29 -> TP=238; lato TL_low=80 -> TP=262.
 
 Model dziennej sygnatury:
-  TP_day  = z cp_v3 (juz dryfuje z forma) -- override.
+  TP_day  = TP_anchor - 0.15*age + 0.66*(CTL_day - CTL_anchor)  -- dryf za NASZYM CTL (bez v1).
   HIE_day = HIE_anchor * clamp(TL_high_day / TL_high_anchor, +-20%)
   PP_day  = PP_anchor  * clamp(HIE_ratio, +-4%)  -- PP idzie za HIE (nie TL_peak), waski clamp,
             bo PP Xerta prawie stale. To naprawia glowny blad walidacji (PP 83W -> male).
@@ -33,6 +33,7 @@ class DecayAnchor:
     tl_low: float
     tl_high: float
     tl_peak: float
+    ctl: float = 0.0
 
 
 # ograniczniki dryfu (sygnatura nie moze odjechac za daleko od kotwicy bez przebic)
@@ -40,6 +41,8 @@ HIE_DRIFT_MIN, HIE_DRIFT_MAX = 0.80, 1.20    # +-20% (HIE oddycha z forma)
 PP_DRIFT_MIN, PP_DRIFT_MAX = 0.93, 1.07      # miekki bezpiecznik (PP Xerta 984-1043)
 PP_K = 0.10                                   # tlumienie: PP dryfuje 10% amplitudy HIE (PP prawie stale, jak Xert sd~15)
 TP_DRIFT_MIN, TP_DRIFT_MAX = 0.90, 1.12
+TP_K_DRIFT = 0.66                             # W na 1 pkt CTL (dryf TP miedzy kotwicami, jak cp_v3)
+TP_DECAY_W_PER_DAY = 0.15                     # zanik kotwicy bez treningu (jak cp_v3)
 
 
 def _clamp(x, lo, hi):
@@ -65,15 +68,15 @@ def daily_signature(load: DayLoad, anchor: DecayAnchor,
     pp_ratio = _clamp(pp_drift, PP_DRIFT_MIN, PP_DRIFT_MAX)
     pp = anchor.sig.pp_w * pp_ratio
 
-    # TP: z override (cp_v3) lub dryf za TL_low
+    # TP dryfuje za NASZYM CTL wokol kotwicy (odtworzenie cp_v3, ale BEZ v1 -- CTL z wlasnego XSS).
+    # tp_override zostaje tylko dla wstecznej kompatybilnosci; produkcja MQ2 go NIE podaje.
     if tp_override is not None:
         tp = tp_override
     else:
-        if anchor.tl_low > 0.01:
-            tp_ratio = _clamp(load.low.tl / anchor.tl_low, TP_DRIFT_MIN, TP_DRIFT_MAX)
-        else:
-            tp_ratio = 1.0
-        tp = anchor.sig.tp_w * tp_ratio
+        ctl_day = load.low.tl + load.high.tl + load.peak.tl
+        age = abs((load.day - anchor.day).days)
+        tp = anchor.sig.tp_w - TP_DECAY_W_PER_DAY * age + TP_K_DRIFT * (ctl_day - anchor.ctl)
+        tp = _clamp(tp, anchor.sig.tp_w * TP_DRIFT_MIN, anchor.sig.tp_w * TP_DRIFT_MAX)
 
     # PP musi byc > TP
     if pp <= tp:
@@ -102,7 +105,8 @@ def build_signature_series(xss_by_day: dict, anchor: DecayAnchor,
 def make_anchor(day: dt.date, sig: Signature, loads_by_day: dict) -> DecayAnchor:
     """Tworzy kotwice z dnia + poziomow TL tego dnia (z gotowej mapy loads)."""
     dl = loads_by_day[day]
-    return DecayAnchor(day=day, sig=sig, tl_low=dl.low.tl, tl_high=dl.high.tl, tl_peak=dl.peak.tl)
+    return DecayAnchor(day=day, sig=sig, tl_low=dl.low.tl, tl_high=dl.high.tl,
+                       tl_peak=dl.peak.tl, ctl=dl.low.tl + dl.high.tl + dl.peak.tl)
 
 
 def build_signature_series_multi(xss_by_day: dict, anchors: list,
