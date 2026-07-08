@@ -482,12 +482,12 @@ def compute_cp_wprime(db_conn, as_of: date | None = None, window_days: int = WIN
     if floor_w is None:
         floor_w = load_params(db_conn).get("ftp_anchor_w")
 
-    # --- CP: krotkie okna 120/300/600 (ratchet + zanik, DECISIONS.md 2026-07-07 (3)) ---
-    cp_curve, cp_n = _envelope_curve_decayed(db_conn, as_of, CP_DURATIONS, floor_w)
+    # --- CP: krotkie okna 120/300/600 (okno 90d, DECISIONS.md 2026-07-08) ---
+    cp_curve, cp_n = _envelope_curve(db_conn, as_of, WINDOW_DAYS, CP_DURATIONS)
     if len(cp_curve) < CP_MIN_POINTS:
         out["cp_wprime_note"] = (
-            f"za malo krotkich rekordow w ratchecie "
-            f"(mam {len(cp_curve)}/{len(CP_DURATIONS)}: {sorted(cp_curve.keys())}, min={CP_MIN_POINTS})"
+            f"za malo krotkich wysilkow w oknie {WINDOW_DAYS}d "
+            f"(mam {len(cp_curve)}/{len(CP_DURATIONS)}: {sorted(cp_curve.keys())}, min={CP_MIN_POINTS}, n_jazd={cp_n})"
         )
     else:
         cp, _cp_wp_j, cp_r2 = _fit_model(cp_curve, CP_MIN_POINTS)
@@ -495,30 +495,21 @@ def compute_cp_wprime(db_conn, as_of: date | None = None, window_days: int = WIN
             out["cp_wprime_r2"] = round(cp_r2, 3) if cp_r2 is not None else None
             out["cp_wprime_note"] = f"fit CP niewiarygodny (cp={cp}) -- odrzucony"
         else:
-            clamp_note = ""
-            if floor_w is not None and cp < floor_w:
-                clamp_note = (
-                    f" [UWAGA: surowy fit {round(cp, 1)}W ponizej podlogi -- "
-                    f"niefizjologiczne gdy czesc punktow krzywej jest juz w pelni zdryfowana "
-                    f"do tej samej podlogi (degenerowany fit); podniesione do FTP_est]"
-                )
-                cp = floor_w
             out["cp_modelq_w"] = round(cp, 1)
             out["cp_wprime_r2"] = round(cp_r2, 3) if cp_r2 is not None else None
             out["cp_wprime_note"] = (
-                f"CP z ratchetu (rekordy {sorted(cp_curve.keys())}, {CP_LTP_GRACE_DAYS}d pelne zaufanie "
-                f"+ {CP_LTP_DECAY_DAYS}d liniowy zanik do FTP_est="
+                f"CP z okna {WINDOW_DAYS}d (okna {sorted(cp_curve.keys())}, n_jazd={cp_n}, floor="
                 f"{round(floor_w, 1) if floor_w is not None else 'brak'}W), "
                 f"r2={round(cp_r2, 3) if cp_r2 is not None else 'n/a'} "
-                f"-- najlepsze fragmenty zwyklych jazd, nie testy maksymalne{clamp_note}"
+                f"-- najlepsze fragmenty zwyklych jazd, nie testy maksymalne"
             )
 
-    # --- LTP: dlugie okna 300/600/1200/1800 (ratchet + zanik, DECISIONS.md 2026-07-07 (3)) ---
-    ltp_curve, ltp_n = _envelope_curve_decayed(db_conn, as_of, LTP_DURATIONS, floor_w)
+    # --- LTP: dlugie okna 300/600/1200/1800 (okno 90d, DECISIONS.md 2026-07-08) ---
+    ltp_curve, ltp_n = _envelope_curve(db_conn, as_of, WINDOW_DAYS, LTP_DURATIONS)
     if len(ltp_curve) < LTP_MIN_POINTS:
         out["ltp_modelq_note"] = (
-            f"za malo dlugich rekordow w ratchecie "
-            f"(mam {len(ltp_curve)}/{len(LTP_DURATIONS)}: {sorted(ltp_curve.keys())}, min={LTP_MIN_POINTS})"
+            f"za malo dlugich wysilkow w oknie {WINDOW_DAYS}d "
+            f"(mam {len(ltp_curve)}/{len(LTP_DURATIONS)}: {sorted(ltp_curve.keys())}, min={LTP_MIN_POINTS}, n_jazd={ltp_n})"
         )
     else:
         ltp, _ltp_wp_j, ltp_r2 = _fit_model(ltp_curve, LTP_MIN_POINTS)
@@ -526,22 +517,13 @@ def compute_cp_wprime(db_conn, as_of: date | None = None, window_days: int = WIN
             out["ltp_modelq_r2"] = round(ltp_r2, 3) if ltp_r2 is not None else None
             out["ltp_modelq_note"] = f"fit LTP niewiarygodny (ltp={ltp}) -- odrzucony"
         else:
-            clamp_note = ""
-            if floor_w is not None and ltp < floor_w:
-                clamp_note = (
-                    f" [UWAGA: surowy fit {round(ltp, 1)}W ponizej podlogi -- "
-                    f"niefizjologiczne gdy czesc punktow krzywej jest juz w pelni zdryfowana "
-                    f"do tej samej podlogi (degenerowany fit); podniesione do FTP_est]"
-                )
-                ltp = floor_w
             out["ltp_modelq_w"] = round(ltp, 1)
             out["ltp_modelq_r2"] = round(ltp_r2, 3) if ltp_r2 is not None else None
             out["ltp_modelq_note"] = (
-                f"LTP z ratchetu (rekordy {sorted(ltp_curve.keys())}, {CP_LTP_GRACE_DAYS}d pelne zaufanie "
-                f"+ {CP_LTP_DECAY_DAYS}d liniowy zanik do FTP_est="
+                f"LTP z okna {WINDOW_DAYS}d (okna {sorted(ltp_curve.keys())}, n_jazd={ltp_n}, floor="
                 f"{round(floor_w, 1) if floor_w is not None else 'brak'}W), "
                 f"r2={round(ltp_r2, 3) if ltp_r2 is not None else 'n/a'} "
-                f"-- odpowiednik Xert LTP{clamp_note}"
+                f"-- odpowiednik Xert LTP"
             )
 
     # --- W' -- harvest near-max + przedzial (Krok 2), zastepuje intercept LTP ---
