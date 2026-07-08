@@ -3169,6 +3169,15 @@ def modelq2_data(response: Response, start: str | None = Query(None), end: str |
             (start_d.isoformat(), end_d.isoformat()),
         ).fetchall()
 
+        # Xert LTP dzienny ze snapshotow (gestsze niz benchmark, ktory ma tylko dni-jazdy)
+        xltp = conn.execute(
+            "SELECT date, ltp_power_w FROM qbot_v2.xert_profile_snapshots "
+            "WHERE ltp_power_w IS NOT NULL AND date BETWEEN %s AND %s ORDER BY date",
+            (start_d.isoformat(), end_d.isoformat()),
+        ).fetchall()
+        xert_ltp_series = [{"day": r["date"].isoformat(), "ltp": _f(r["ltp_power_w"])} for r in xltp]
+        xltp_by = {r["date"]: float(r["ltp_power_w"]) for r in xltp}
+
         def _d(r):
             return {k: (float(v) if isinstance(v, (int, float)) or (v is not None and k != "day" and k != "max_effort") else v)
                     for k, v in r.items()}
@@ -3192,8 +3201,10 @@ def modelq2_data(response: Response, start: str | None = Query(None), end: str |
                     et.append(abs(float(r["tp_w"]) - float(xr["tp_w"])))
                 if r["pp_w"] is not None and xr["pp_w"] is not None:
                     ep.append(abs(float(r["pp_w"]) - float(xr["pp_w"])))
-                if r["ltp_w"] is not None and xr["ltp_w"] is not None:
-                    el.append(abs(float(r["ltp_w"]) - float(xr["ltp_w"])))
+            # LTP: porownaj z dziennym snapshotem Xerta (gestsze niz benchmark)
+            xl = xltp_by.get(r["day"])
+            if r["ltp_w"] is not None and xl is not None:
+                el.append(abs(float(r["ltp_w"]) - xl))
         def _avg(a):
             return round(sum(a) / len(a), 2) if a else None
         latest = mq_series[-1] if mq_series else None
@@ -3201,6 +3212,7 @@ def modelq2_data(response: Response, start: str | None = Query(None), end: str |
             "range": {"start": start_d.isoformat(), "end": end_d.isoformat()},
             "mq": mq_series,
             "xert": xb_series,
+            "xert_ltp": xert_ltp_series,
             "latest": latest,
             "agreement": {"hie_kj": _avg(eh), "tp_w": _avg(et), "pp_w": _avg(ep),
                           "ltp_w": _avg(el), "n_common": len(et), "n_ltp": len(el)},
