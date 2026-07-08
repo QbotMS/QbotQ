@@ -232,3 +232,23 @@ dokladnie w wartosci Xerta. Glebsze strojenie (wagi XSS_high) daloby malo -- gon
 (HIE ~10% = w granicach wlasnej zmiennosci Xerta ~3kJ). MQ2 uznany za dopieszczony.
 
 STAN: HIE 2.1kJ | TP ~7W biezaco (hist. ogon cp_v3 pominiety) | PP 30W | rozroznienie stanow OK.
+
+
+---
+
+## LTP -- domkniete i zwalidowane (2026-07-08)
+
+LTP w MQ2 = pochodna sygnatury: LTP = TP - HIE/400 (wzor Xerta, HIE w J). Dryfuje z forma
+(bo HIE dryfuje). Nie liczone niezaleznie -- ale skoro TP i HIE zgodne z Xertem, LTP wychodzi zgodne.
+
+WALIDACJA vs prawdziwy Xert LTP (xert_profile_snapshots.ltp_power_w):
+  22 wspolnych dni: sredni blad 2.3W, mediana 1.4W, max 8W. Biezaco MQ2 189-195 vs Xert 193-194.
+  Wzor TP-HIE/400 potwierdzony na danych.
+
+Benchmark: dodano kolumne modelq2_xert_bench.ltp_w, wypelniona z prawdziwych snapshotow Xerta
+(UPDATE po dacie). 8 dni (dni-jazdy z profilem + snapshot). Xert LTP zbierany dopiero od 29.05.2026,
+stad mniej dni niz TP/HIE/PP. Benchmark wymaga tp_w NOT NULL -> nie da sie dodac dni z samym LTP
+(dni bez jazdy). Prawdziwe zrodlo LTP = snapshots (dzienne), benchmark pokazuje przeciecie.
+
+Wystawione: endpoint /api/modelq2/data zwraca ltp w mq + xert + agreement.ltp_w. Strona mq2.html:
+chip LTP na wykresie (MQ2 linia + Xert kropki) + LTP w pasku zgodnosci.

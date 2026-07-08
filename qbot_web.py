@@ -3164,7 +3164,7 @@ def modelq2_data(response: Response, start: str | None = Query(None), end: str |
             (start_d.isoformat(), end_d.isoformat()),
         ).fetchall()
         xb = conn.execute(
-            "SELECT day, tp_w, hie_kj, pp_w, max_effort FROM qbot_v2.modelq2_xert_bench "
+            "SELECT day, tp_w, hie_kj, pp_w, ltp_w, max_effort FROM qbot_v2.modelq2_xert_bench "
             "WHERE day BETWEEN %s AND %s ORDER BY day",
             (start_d.isoformat(), end_d.isoformat()),
         ).fetchall()
@@ -3178,11 +3178,11 @@ def modelq2_data(response: Response, start: str | None = Query(None), end: str |
                       "tl_low": _f(r["tl_low"]), "tl_high": _f(r["tl_high"]), "tl_peak": _f(r["tl_peak"])}
                      for r in mq]
         xb_series = [{"day": r["day"].isoformat(), "tp": _f(r["tp_w"]), "hie": _f(r["hie_kj"]),
-                      "pp": _f(r["pp_w"]), "bt": r["max_effort"]} for r in xb]
+                      "pp": _f(r["pp_w"]), "ltp": _f(r["ltp_w"]), "bt": r["max_effort"]} for r in xb]
 
         # zgodnosc na wspolnych dniach
         xb_by = {r["day"]: r for r in xb}
-        eh = []; et = []; ep = []
+        eh = []; et = []; ep = []; el = []
         for r in mq:
             xr = xb_by.get(r["day"])
             if xr:
@@ -3192,6 +3192,8 @@ def modelq2_data(response: Response, start: str | None = Query(None), end: str |
                     et.append(abs(float(r["tp_w"]) - float(xr["tp_w"])))
                 if r["pp_w"] is not None and xr["pp_w"] is not None:
                     ep.append(abs(float(r["pp_w"]) - float(xr["pp_w"])))
+                if r["ltp_w"] is not None and xr["ltp_w"] is not None:
+                    el.append(abs(float(r["ltp_w"]) - float(xr["ltp_w"])))
         def _avg(a):
             return round(sum(a) / len(a), 2) if a else None
         latest = mq_series[-1] if mq_series else None
@@ -3201,7 +3203,7 @@ def modelq2_data(response: Response, start: str | None = Query(None), end: str |
             "xert": xb_series,
             "latest": latest,
             "agreement": {"hie_kj": _avg(eh), "tp_w": _avg(et), "pp_w": _avg(ep),
-                          "n_common": len(et)},
+                          "ltp_w": _avg(el), "n_common": len(et), "n_ltp": len(el)},
         }
     finally:
         conn.close()
