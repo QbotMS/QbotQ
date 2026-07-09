@@ -188,8 +188,19 @@ def check_once(session=None, seed_if_empty=True):
         if not session.is_fresh():
             session.refresh()
     except komoot_auth.KomootAuthError as e:
-        _alert("Sesja Komoot padla - przeloguj (ciasteczka). %s" % e)
-        return {"error": "auth", "detail": str(e)}
+        if getattr(e, "transient", False):
+            # chwilowa awaria Komoota (np. HTTP 500) - jedna szybka proba,
+            # potem czekamy na nastepny przebieg (~5 min). NIE straszymy "przeloguj".
+            import time as _t
+            _t.sleep(3)
+            try:
+                session.refresh()
+            except komoot_auth.KomootAuthError as e2:
+                print("[KOMOOT-WATCH] chwilowy blad Komoota, ponowie za ~5 min:", e2)
+                return {"error": "transient", "detail": str(e2)}
+        else:
+            _alert("Sesja Komoot padla - przeloguj (ciasteczka). %s" % e)
+            return {"error": "auth", "detail": str(e)}
     with api_db._conn() as c:
         seen = _seen_map(c)
     if not seen and seed_if_empty:

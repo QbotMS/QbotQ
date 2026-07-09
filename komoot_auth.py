@@ -20,7 +20,10 @@ REFRESH_SKEW = 300
 
 
 class KomootAuthError(RuntimeError):
-    pass
+    def __init__(self, msg, *, transient=False, http_code=None):
+        super().__init__(msg)
+        self.transient = transient
+        self.http_code = http_code
 
 
 def _parse_jar(raw):
@@ -61,7 +64,13 @@ class KomootSession:
         try:
             resp = urllib.request.urlopen(req, timeout=25)
         except urllib.error.HTTPError as e:
-            raise KomootAuthError("Komoot refresh HTTP %s" % e.code)
+            # 5xx = chwilowa awaria serwera Komoot (do ponowienia), nie martwa sesja
+            raise KomootAuthError("Komoot refresh HTTP %s" % e.code,
+                                  transient=(e.code >= 500), http_code=e.code)
+        except urllib.error.URLError as e:
+            # brak sieci / timeout / DNS = chwilowe
+            raise KomootAuthError("Komoot refresh blad sieci: %s" % getattr(e, "reason", e),
+                                  transient=True)
         fresh = {}
         for h in (resp.headers.get_all("Set-Cookie") or []):
             part = h.split(";", 1)[0]
@@ -69,7 +78,7 @@ class KomootSession:
             if val and val not in ("deleted", ""):
                 fresh[name.strip()] = val
         if "koa_at" not in fresh:
-            raise KomootAuthError("Komoot refresh: brak nowego koa_at (sesja wygasla? przeloguj)")
+            raise KomootAuthError("Komoot refresh: brak nowego koa_at (sesja wygasla? przeloguj)", transient=False)
         self.jar.update(fresh)
         self._save()
         return True
