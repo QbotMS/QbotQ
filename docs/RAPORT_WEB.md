@@ -177,3 +177,81 @@ UWAGA (cache Cloudflare): raport-trasy.html laduje raport-render.js i raport.css
 Edge cache'uje po pelnym URL, wiec KAZDA zmiana js/css wymaga PODBICIA `?v=` w
 raport-trasy.html — inaczej Cloudflare poda stare bajty (twardy reload NIE pomaga). To bylo
 zrodlo objawu "zmiany nie widac na mapie".
+
+
+---
+
+# RAPORT Z JAZDY (raport-jazdy) — osobny raport, inne pliki niz raport trasy
+
+Raport z JAZDY (zrealizowany przejazd z FIT) to inny produkt niz raport TRASY (plan).
+Nie mylic plikow.
+
+## Pliki i role
+- FRONT (poza repo, zywe od razu): `/opt/qbot/web/public/raport-jazdy.html` +
+  `/opt/qbot/web/public/raport-jazdy-render.js`.
+- BUILDER W1 (repo -> restart qbot-web + commit): `qbot3/rides/ride_report_builder.py`
+  (`build_w1`, `_trace`, `save_report`). Liczy blok W1 z FIT (ModelQ + Garmin).
+- ENDPOINTY (qbot_web.py, repo -> restart): `/api/ride-report/data` (W1),
+  `/api/ride-report/w2` (narracja LLM), `/api/ride-report/correlate` (komentarze AI),
+  `/api/rides/ready` (lista jazd).
+
+## Dane W1: trace
+- Klucze trace: t, km, power, hr, cad, alt, temp, ef, wbal_pct, tail, cross, lat, lon, n, window_s.
+- ride: {date, time, dist_km}.
+- lat/lon dodane do `_trace` (usredniane w oknach, `_deg` z semicircles, round 6).
+- WAZNE: `/api/ride-report/data` zwraca ZAPISANY w1_json gdy istnieje i NIE ma `rebuild`.
+  Front przy "Generuj" wola BEZ rebuild -> raporty zbudowane PRZED dodaniem lat/lon do
+  buildera NIE maja wspolrzednych, wiec NIE dostana mapy. Przebudowa: `rebuild=1` albo cron.
+  Stan na 2026-07-09: tylko ride_key 23496824503 ma lat/lon (381 pkt); starych nie ruszamy.
+
+## Mapa Leaflet w raporcie jazdy (belka "Jazda")
+
+### Leaflet hostowany LOKALNIE
+- Przegladarka Michala NIE ma dostepu do zewnetrznych CDN (unpkg/cdnjs) — Leaflet pobrany
+  PRZEZ SERWER z cdnjs do `/opt/qbot/web/public/vendor/leaflet.js` (147552 B, 1.9.4) i
+  `/vendor/leaflet.css` (14806 B). HTML laduje z `/vendor/`, nie z CDN.
+
+### PULAPKA #1 (glowna przyczyna serii "mapy nie widac", rozwiazana 2026-07-09)
+- W `render(d)` jest `const L=d.load, W=d.wprime, ...` — lokalne `L` (dane obciazenia)
+  PRZESLANIA globalny `L` z Leaflet. Blok mapy sprawdzajacy `L.map` faktycznie czytal
+  `d.load.map` (undefined) -> guard robil CICHY `return`. Zero bledu, mapa nigdy nie
+  powstawala, sonda w konsoli mylila (bo w globalnym scope `L` = Leaflet, a w render()
+  `L` = dane).
+- REGULA: w bloku mapy (i wszedzie w render, gdzie potrzebny Leaflet) uzywac `window.L`,
+  nigdy golego `L`. W kodzie: `const LF=window.L;` i dalej `LF.map/tileLayer/polyline/...`.
+
+### PULAPKA #2 — fitBounds przed zmierzeniem rozmiaru kontenera
+- `fitBounds` wywolane synchronicznie zaraz po `L.map` (gdy kontener nie ma jeszcze
+  policzonego layoutu) rzuca/psuje mape. Wzorzec z ANALIZY TRASY, ktory dziala niezawodnie:
+  `L.map(div,{...}).setView([srodek], zoom)` NAJPIERW (nie wymaga rozmiaru), a `fitBounds`
+  dopiero w `setTimeout` po `invalidateSize` (u nas 80/300/700 ms, z `allB.isValid()`).
+
+### PULAPKA #3 — wysokosc kontenera z CSS vs inline
+- Jesli wysokosc mapy bierze sie z klasy CSS w HTML, a przegladarka ma swiezy JS przy
+  starym HTML z cache (bez tej reguly), kontener ma 0 px -> mapa niewidoczna, bez bledu.
+  DLATEGO wysokosc mapy wpisana INLINE w JS (`mapDiv.style.cssText="height:400px;..."`),
+  niezalezna od CSS w HTML.
+
+### Zarzadzanie instancja
+- `window._qmapJazda` + `.remove()` przy re-renderze (jak `window._qmap` w analizie trasy) —
+  inaczej ponowne "Generuj" zostawia wiszace instancje/handlery.
+
+### Powiazanie z wykresem (sync)
+- hover wykres -> znacznik (`L.circleMarker` `mk`) biegnie po trasie (markAtIndex/hoverIdx,
+  plugin `hovline` rysuje pionowa linie na wykresie).
+- hover mapa -> najblizszy punkt -> linia na wykresie.
+- zoom wykresu (drag-zoom, min/max osi X) -> `_jmapSync()` robi `fitBounds` do widocznego
+  zakresu km/czasu; brak zoomu -> `fitBounds(allB)`.
+
+## Cache (te same zasady co raport trasy)
+- Podbijac `?v=` przy `raport-jazdy-render.js` w raport-jazdy.html przy KAZDEJ zmianie JS
+  (Cloudflare/Cytrus cache'uje po pelnym URL — twardy reload nie pomaga; nowe ?v = nowy URL).
+- Dodatkowo w qbot_web.py middleware `_webauth_guard` ustawia `Cache-Control:
+  no-cache, no-store, must-revalidate` dla .html/.js/.css (helper `_no_cache_static`).
+
+## Diagnostyka (srodowisko Michala)
+- Michal uzywa Safari; Chrome zwykle zamkniety -> narzedzia "Control Chrome" moga nie dzialac.
+- Sondy w konsoli Safari: bez top-level `await` (owijac `(async()=>{ ... })()`), wynik przez
+  `alert(JSON.stringify(...))` (return z IIFE nie pokazuje sie sam).
+- Kluczowe: `typeof L` w KONSOLI = Leaflet (global), ale w `render()` `L` = dane — ta roznica
+  maskowala pulapke #1.

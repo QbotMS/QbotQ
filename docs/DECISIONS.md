@@ -6,6 +6,44 @@
 ---
 
 
+## 2026-07-09 -- DECYZJA: mapa Leaflet w raporcie z jazdy + pulapka shadowingu `L`
+
+**Status:** dziala na zywo (mapa + kafle OSM + trasa 23496824503, potwierdzone zrzutem).
+Szczegoly techniczne: docs/RAPORT_WEB.md (sekcja "RAPORT Z JAZDY").
+
+**Przyczyna glowna (dlugo szukana):** w `raport-jazdy-render.js`, w `render(d)`, jest
+`const L=d.load` -- lokalne `L` przeslania globalny obiekt Leaflet `L`. Blok mapy przez
+`L.map` czytal `d.load.map` (undefined) i robil cichy `return`. Zadnego bledu; sonda w
+konsoli mylila, bo w globalnym scope `L` = Leaflet.
+**Decyzja/regula:** do Leaflet w render() zawsze `window.L` (np. `const LF=window.L`),
+nigdy golego `L`. Dotyczy kazdego przyszlego kodu mapy w tym pliku.
+
+**Wzorzec mapy (skopiowany z niezawodnej mapy w raporcie TRASY):**
+- `L.map(div,{...}).setView([srodek], zoom)` NAJPIERW; `fitBounds` dopiero w `setTimeout`
+  po `invalidateSize` (nie synchronicznie -- kontener nie ma jeszcze rozmiaru).
+- wysokosc kontenera INLINE w JS, nie z klasy CSS (odpornosc na stary HTML w cache).
+- `window._qmapJazda.remove()` przed ponownym utworzeniem.
+- Spiecie z wykresem: hover dwukierunkowy (marker <-> pionowa linia), zoom wykresu ->
+  `fitBounds` do widocznego zakresu.
+
+**Leaflet lokalnie:** przegladarka Michala nie ma dostepu do zewnetrznych CDN
+(unpkg/cdnjs) -- Leaflet 1.9.4 pobrany PRZEZ SERWER z cdnjs do /vendor/leaflet.{js,css};
+HTML laduje z /vendor/.
+
+**Cache:** (1) `?v=` przy raport-jazdy-render.js podbijac przy kazdej zmianie JS (edge
+cache po pelnym URL); (2) dodany middleware `_no_cache_static` (qbot_web.py, _webauth_guard)
+ustawia `Cache-Control: no-cache, no-store, must-revalidate` dla .html/.js/.css.
+
+**Dane:** `/api/ride-report/data` zwraca zapisany w1_json bez `rebuild` -> raporty
+zbudowane przed dodaniem lat/lon do buildera nie maja mapy. Nie przebudowujemy starych;
+nowe/`rebuild=1` dostaja lat/lon. Stan: tylko 23496824503 ma wspolrzedne (381 pkt).
+
+**Do commitu (repo, root):** qbot_web.py (restart wymagany, zrobiony), docs/RAPORT_WEB.md,
+docs/CURRENT.md, docs/DECISIONS.md. Front (.js/.html) poza repo.
+
+---
+
+
 ## 2026-07-06 -- DECYZJA: Komoot -> Karoo (wariant A) z bramka Telegram (przyciski)
 
 **Status:** dziala end-to-end na zywo (test 2963663831 "TEST 18.05"). Commit 0e7bc29

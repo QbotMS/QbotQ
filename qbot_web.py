@@ -138,6 +138,17 @@ _LOGIN_PAGE_CSS = (
 )
 
 
+def _no_cache_static(resp, path):
+    """Statyki labu (html/js/css) maja byc zawsze swieze - wymus rewalidacje,
+    zeby przegladarka nie trzymala starego raportu/skryptu po deployu."""
+    try:
+        if path == "/" or path.endswith((".html", ".js", ".css")):
+            resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    except Exception:
+        pass
+    return resp
+
+
 @app.middleware("http")
 async def _webauth_guard(request, call_next):
     """Logowanie formularzem + dlugotrwale ciasteczko sesji (365 dni), oprocz /healthz i /login.
@@ -149,11 +160,11 @@ async def _webauth_guard(request, call_next):
 
     users, sign_val = _webauth_load()
     if not users:
-        return await call_next(request)
+        return _no_cache_static(await call_next(request), request.url.path)
 
     cookie_value = request.cookies.get("qbot_session", "")
     if _webauth_cookie_valid(cookie_value, sign_val, users):
-        return await call_next(request)
+        return _no_cache_static(await call_next(request), request.url.path)
 
     if request.url.path.startswith("/api/"):
         return Response(status_code=401, content="unauthorized")
@@ -3038,6 +3049,118 @@ def ride_report_w2(response: Response, ride: str = Query(...), rebuild: int = Qu
     finally:
         conn.close()
     return w2
+
+
+def _ride_context_json(ride_key):
+    """Zwiezly kontekst calej jazdy (W1) do oceny normy przez LLM. Pusty string, gdy brak."""
+    try:
+        conn = _db_conn()
+        try:
+            row = conn.execute(
+                "SELECT w1_json FROM qbot_v2.ride_report_data WHERE ride_key=%s AND schema_version=%s",
+                (ride_key, 1)).fetchone()
+        finally:
+            conn.close()
+        if not row or not row.get("w1_json"):
+            return ""
+        w1 = row["w1_json"]
+        if isinstance(w1, str):
+            w1 = json.loads(w1)
+        vv = lambda x: (x.get("value") if isinstance(x, dict) and "value" in x else x)
+        L = w1.get("load") or {}
+        W = w1.get("wprime") or {}
+        PH = w1.get("physio") or {}
+        MQ = (w1.get("modelq") or {}).get("current") or {}
+        ti = w1.get("terrain_impact") or {}
+        ctx = {
+            "dystans_km": vv(L.get("dist_km")), "czas_ruchu_s": vv(L.get("dur_moving_s")),
+            "FTP_w": vv(L.get("ftp_w")), "NP_w": vv(L.get("np_w")), "IF": vv(L.get("if")),
+            "VI": vv(L.get("vi")), "EF": vv(L.get("ef")), "EF_anchor": vv(L.get("ef_anchor")),
+            "XSS": vv(L.get("xss")), "kJ": vv(L.get("kj")), "avg_p_w": vv(L.get("avg_p_w")),
+            "CP_w": vv(W.get("cp_w")), "Wprime_J": vv(W.get("wprime_j")),
+            "Wbal_min_pct": vv(W.get("wbal_min_pct")), "tau_s": vv(W.get("tau_s")),
+            "HR_avg": vv(PH.get("hr_avg")), "HR_max": vv(PH.get("hr_max")),
+            "pct_HRmax": vv(PH.get("pct_hrmax")), "decoupling_pct": vv(PH.get("decoupling_pct")),
+            "ModelQ_TP": MQ.get("ftp_w"), "ModelQ_LTP": MQ.get("ltp_w"),
+            "ModelQ_Wprime_kj": MQ.get("wprime_kj"), "ModelQ_PP": MQ.get("pp_w"), "ModelQ_wkg": MQ.get("wkg"),
+            "strefy_mocy_pct": vv(L.get("zones_power_pct")), "strefy_hr_pct": vv(L.get("zones_hr_pct")),
+            "wind_by_dir": ti.get("wind_by_dir"), "surface_by_type": ti.get("surface_by_type"),
+        }
+        return json.dumps(ctx, ensure_ascii=False, default=str)
+    except Exception:
+        return ""
+
+
+@app.post("/api/ride-report/correlate")
+async def ride_report_correlate(request: Request):
+    """Komentarz AI dla raportu z jazdy: 2-3 wartosci (vals), caly wiersz (row),
+    albo aktualnie wyswietlany odcinek wykresu (live). Odnosi sie do kontekstu calej jazdy
+    i ocenia, czy relacja miesci sie w granicach akceptacji. Nic nie zapisuje - liczone na zywo."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    ride = (str(body.get("ride") or "")).strip()[:40]
+    vals = body.get("vals")
+    if isinstance(vals, list):
+        vals = [str(x).strip()[:200] for x in vals if str(x).strip()][:3]
+    else:
+        vals = []
+    row = (str(body.get("row") or "")).strip()[:500]
+    live = (str(body.get("live") or "")).strip()[:900]
+
+    ctx_json = _ride_context_json(ride) if ride else ""
+    ctx_block = ("\n\nKONTEKST RAPORTU (cala jazda, do oceny normy):\n" + ctx_json) if ctx_json else ""
+
+    _ACCEPT = (
+        " Na podstawie KONTEKSTU RAPORTU (FTP/CP/W', profil calej jazdy, strefy, wiatr, nawierzchnia) "
+        "ocen, czy ta relacja lub te wartosci MIESZCZA SIE w granicach akceptacji dla tego zawodnika i "
+        "tego typu jazdy gravelowej. Jesli tak - napisz krotko, ze to w normie. Jesli NIE (odbiega) - "
+        "powiedz wprost, ze wykracza poza norme, i wyjasnij jak to interpretowac oraz co moze oznaczac."
+    )
+    _BASE = (
+        " PO POLSKU. Wiatr w m/s. Opieraj sie na podanych liczbach i kontekscie raportu - nie wymyslaj "
+        "innych. Bez motywacyjnych frazesow, bez markdown i gwiazdek - od razu do meritum."
+    )
+
+    from qgpt_client import qgpt_text
+    if live:
+        system = (
+            "Jestes doswiadczonym analitykiem treningu kolarskiego (fizjologia wysilku, model mocy "
+            "krytycznej CP/W'). Dostajesz opis AKTUALNIE WYSWIETLANEGO fragmentu wykresu przebiegu jazdy "
+            "(widoczne serie i ich statystyki na widocznym zakresie km lub czasu). Skomentuj, co dzieje "
+            "sie na tym odcinku: pacing, sprzezenie tetno-moc (ekonomia, decoupling), kadencja, wplyw "
+            "wiatru, rezerwa W'. 3-5 zdan." + _ACCEPT + _BASE)
+        prompt = "Wyswietlany odcinek:\n" + live + ctx_block + "\n\nSkomentuj ten fragment jazdy."
+        mt = 440
+    elif row:
+        system = (
+            "Jestes doswiadczonym analitykiem treningu kolarskiego (fizjologia wysilku, model mocy "
+            "krytycznej CP/W'). Dostajesz PELNY profil jednego wiersza raportu (jeden kierunek wiatru "
+            "albo jeden typ nawierzchni ze wszystkimi metrykami). Napisz zwarta analize (3-5 zdan) jak "
+            "zawodnik radzil sobie w tych warunkach; powiaz metryki ze soba (moc vs tetno = ekonomia i "
+            "sprzezenie, kadencja vs nachylenie = dobor przelozen, koszt beztlenowy = obciazenie ponad "
+            "prog)." + _ACCEPT + _BASE)
+        prompt = "Profil wiersza: " + row + ctx_block + "\n\nZanalizuj ten wiersz."
+        mt = 400
+    elif len(vals) >= 2:
+        ile = "DWIE" if len(vals) == 2 else "TRZY"
+        system = (
+            "Jestes doswiadczonym analitykiem treningu kolarskiego (model mocy krytycznej CP/W'). "
+            "Dostajesz " + ile + " wartosci z jednego raportu z jazdy gravelowej tego samego zawodnika, "
+            "kazda z opisem co przedstawia. Napisz rzeczowy komentarz (2-4 zdania) o zwiazku miedzy nimi: "
+            "nazwij mechanizm fizjologiczny lub biomechaniczny, ktory je laczy, i ocen czy relacja jest "
+            "spojna." + _ACCEPT + _BASE)
+        prompt = "Wartosci:\n" + "\n".join("- " + v for v in vals) + ctx_block + "\n\nSkoreluj te wartosci."
+        mt = 320
+    else:
+        raise HTTPException(status_code=400, detail="Podaj 2-3 wartosci, wiersz albo widok")
+
+    try:
+        txt = qgpt_text(prompt, system=system, max_tokens=mt, temperature=0.35)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="LLM niedostepny: %s" % e)
+    return {"text": (txt or "").strip().replace("**", "").replace("__", "")}
 
 
 _FORMA_FIELDS = [
