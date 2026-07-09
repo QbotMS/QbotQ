@@ -332,6 +332,11 @@ def _wprime(recs, mq_rows, sig, cp_fallback=None, wp_fallback=None, wp_source="x
             xx=by_ts.get(pt["ts"]); d=(xx["dist"] if xx else 0.0)
             _k=int(d//5000); _bins[_k]=min(_bins.get(_k,1e9),100*pt["wbal"]/Wp)
         wbal_series=[{"km":_k*5+5,"min_pct":round(_v)} for _k,_v in sorted(_bins.items())]
+        _cstep=max(1,len(S)//1500)
+        wbal_curve=[]
+        for _ci in range(0,len(S),_cstep):
+            _pt=S[_ci]; _xx=by_ts.get(_pt["ts"]); _dk=((_xx["dist"] if _xx else 0.0)/1000.0)
+            wbal_curve.append([round(_dk,3), round(100*_pt["wbal"]/Wp)])
         lt50=sum(1 for pt in S if pt["wbal"]<0.5*Wp)
         lt25=sum(1 for pt in S if pt["wbal"]<0.25*Wp)
         mn_pt=min(S,key=lambda p:p["wbal"]); mn=mn_pt["wbal"]; mr=by_ts.get(mn_pt["ts"])
@@ -360,6 +365,7 @@ def _wprime(recs, mq_rows, sig, cp_fallback=None, wp_fallback=None, wp_source="x
                            "grade":None,"speed_kmh":None,
                            "surface":None,"wind_ms":None},"B",data_tag),
             "wbal_series":_tag(wbal_series,"A",f"modelq2_replay ({data_tag})"),
+            "wbal_curve":_tag(wbal_curve,"A",f"modelq2_replay ({data_tag})"),
             "top_efforts":_tag(efforts[:3],"A","fit"),
         }
     if sig is not None and mq_rows:
@@ -389,6 +395,10 @@ def _wprime(recs, mq_rows, sig, cp_fallback=None, wp_fallback=None, wp_source="x
         _k=int(recs[_i]["dist"]//5000)
         _bins[_k]=min(_bins.get(_k,1e9),100*_b/Wp)
     wbal_series=[{"km":_k*5+5,"min_pct":round(_v)} for _k,_v in sorted(_bins.items())]
+    _cstep=max(1,len(series)//1500)
+    wbal_curve=[]
+    for _ci in range(0,len(series),_cstep):
+        wbal_curve.append([round(recs[_ci]["dist"]/1000.0,3), round(100*series[_ci]/Wp)])
     lt50=sum(1 for b in series if b<0.5*Wp)
     lt25=sum(1 for b in series if b<0.25*Wp)
     efforts=[]; i=0
@@ -413,6 +423,7 @@ def _wprime(recs, mq_rows, sig, cp_fallback=None, wp_fallback=None, wp_source="x
                        "grade":recs[mn_i]["grade"],"speed_kmh":round(recs[mn_i]["spd"]*3.6,1),
                        "surface":None,"wind_ms":None},"B","fit+plugins"),
         "wbal_series":_tag(wbal_series,"B","legacy_inline"),
+        "wbal_curve":_tag(wbal_curve,"B","legacy_inline"),
         "top_efforts":_tag(efforts[:3],"A","fit"),
     }
 
@@ -650,6 +661,7 @@ def _surface_wind_from_track(have_pos, ride_key, day):
     _segments = []
     km_tails = []
     tick_tails = {}
+    tick_cross = {}
     try:
         from tools.rwgps.route_surface_engine import analyze_route_surface
         gpx_path = f"/opt/qbot/artifacts/analysis/exec_gpx/{ride_key}.gpx"
@@ -703,6 +715,8 @@ def _surface_wind_from_track(have_pos, ride_key, day):
                 _t, _c, _d = _rel_wind(_h, _wx.get("wdir"), _wx.get("wspeed"))
                 if _t is not None:
                     tick_tails[have_pos[_i]["ts"]] = _t
+                    if _c is not None:
+                        tick_cross[have_pos[_i]["ts"]] = _c
         except Exception:
             pass
         if tails:
@@ -714,7 +728,97 @@ def _surface_wind_from_track(have_pos, ride_key, day):
             wind = _plugin("brak godzin pogodowych dla tej jazdy")
     except Exception as exc:
         wind = _plugin(f"pogoda nie powiodla sie: {exc}")
-    return surface, wind, {"segments": _segments, "km_tails": km_tails, "tick_tails": tick_tails}
+    return surface, wind, {"segments": _segments, "km_tails": km_tails, "tick_tails": tick_tails, "tick_cross": tick_cross}
+
+def _trace(recs, tick_tails=None, tick_cross=None, wbal_curve=None, target_pts=1200, min_window_s=10):
+    """Przebieg jazdy usredniony w oknach czasowych (bloki). Serie: moc, HR, kadencja,
+    wysokosc, temperatura, EF kroczace (moc30s/HR30s), W'bal% (interpol. z MQ2 po km),
+    tail (skladowa wiatru wzdluz jazdy) do paska pod wykresem. Moc wygladzona 3-blok."""
+    import math as _m, bisect as _bi
+    from collections import deque as _dq
+    if not recs:
+        return None
+    total_s = (recs[-1].get("sec") or 0) - (recs[0].get("sec") or 0)
+    if total_s <= 0:
+        total_s = len(recs)
+    win = max(min_window_s, int(_m.ceil(total_s / max(1, target_pts))))
+
+    def _roll(arr, w):
+        out=[None]*len(arr); q=_dq(); s=0.0; c=0
+        for i,v in enumerate(arr):
+            q.append(v)
+            if v is not None: s+=v; c+=1
+            if len(q)>w:
+                o=q.popleft()
+                if o is not None: s-=o; c-=1
+            out[i]=(s/c) if c else None
+        return out
+    Pr=_roll([(x.get("p") or 0) for x in recs], 300)
+    Hr=_roll([x.get("hr") for x in recs], 300)
+    ef_tick=[(Pr[i]/Hr[i]) if (Pr[i] is not None and Hr[i]) else None for i in range(len(recs))]
+
+    bins={}; order=[]
+    for idx,c in enumerate(recs):
+        b=int((c.get("sec") or 0)//win)
+        g=bins.get(b)
+        if g is None:
+            g={"sec":[],"dist":[],"p":[],"hr":[],"cad":[],"alt":[],"temp":[],"ef":[],"tail":[],"cross":[],"lat":[],"lon":[]}
+            bins[b]=g; order.append(b)
+        g["sec"].append(c.get("sec") or 0)
+        if c.get("dist") is not None: g["dist"].append(c["dist"])
+        if c.get("p") is not None: g["p"].append(c["p"])
+        if c.get("hr"): g["hr"].append(c["hr"])
+        if c.get("cad") is not None: g["cad"].append(c["cad"])
+        if c.get("alt") is not None: g["alt"].append(c["alt"])
+        if c.get("temp") is not None: g["temp"].append(c["temp"])
+        if c.get("lat") is not None:
+            _la=_deg(c["lat"])
+            if _la is not None: g["lat"].append(_la)
+        if c.get("lon") is not None:
+            _lo=_deg(c["lon"])
+            if _lo is not None: g["lon"].append(_lo)
+        if ef_tick[idx] is not None: g["ef"].append(ef_tick[idx])
+        if tick_tails:
+            tv=tick_tails.get(c.get("ts"))
+            if tv is not None: g["tail"].append(tv)
+        if tick_cross:
+            cvv=tick_cross.get(c.get("ts"))
+            if cvv is not None: g["cross"].append(cvv)
+    order.sort()
+    def av(a): return (sum(a)/len(a)) if a else None
+    t=[]; km=[]; power=[]; hr=[]; cad=[]; alt=[]; temp=[]; ef=[]; tail=[]; cross=[]; lat=[]; lon=[]
+    for b in order:
+        g=bins[b]
+        t.append(int(round(av(g["sec"]) or 0)))
+        km.append(round((g["dist"][-1] if g["dist"] else 0.0)/1000.0, 3))
+        power.append(int(round(av(g["p"]))) if g["p"] else None)
+        hr.append(int(round(av(g["hr"]))) if g["hr"] else None)
+        cad.append(int(round(av(g["cad"]))) if g["cad"] else None)
+        alt.append(int(round(av(g["alt"]))) if g["alt"] else None)
+        temp.append(round(av(g["temp"]),1) if g["temp"] else None)
+        ef.append(round(av(g["ef"]),3) if g["ef"] else None)
+        tail.append(round(av(g["tail"]),2) if g["tail"] else None)
+        cross.append(round(av(g["cross"]),2) if g["cross"] else None)
+        lat.append(round(av(g["lat"]),6) if g["lat"] else None)
+        lon.append(round(av(g["lon"]),6) if g["lon"] else None)
+    sp=list(power)
+    for i in range(len(power)):
+        vals=[power[j] for j in (i-1,i,i+1) if 0<=j<len(power) and power[j] is not None]
+        if vals: sp[i]=int(round(sum(vals)/len(vals)))
+    wbal=[None]*len(km)
+    if wbal_curve:
+        cur=sorted((float(x[0]),float(x[1])) for x in wbal_curve if x and x[0] is not None and x[1] is not None)
+        if cur:
+            xs=[a for a,_ in cur]
+            for i,kk in enumerate(km):
+                j=_bi.bisect_left(xs,kk)
+                if j<=0: v=cur[0][1]
+                elif j>=len(cur): v=cur[-1][1]
+                else:
+                    x0,y0=cur[j-1]; x1,y1=cur[j]; v=y0+(y1-y0)*((kk-x0)/((x1-x0) or 1))
+                wbal[i]=round(v)
+    return {"t":t,"km":km,"power":sp,"hr":hr,"cad":cad,"alt":alt,"temp":temp,
+            "ef":ef,"wbal_pct":wbal,"tail":tail,"cross":cross,"lat":lat,"lon":lon,"n":len(t),"window_s":win}
 
 def _terrain_impact(recs, raw, splits, wprime, physio, weather):
     """Rozklad wysilku: (1) moc/HR/kadencja/predkosc per typ nawierzchni,
@@ -954,12 +1058,18 @@ def build_w1(fit_path, ride_key, inputs=None):
     _sig=_mqr["sig"] if (_mqr and _mqr.get("sig")) else _mq2_sig_before(cur, day)
     _mq_rows=_fetch_activity_rows(cur, _mqr["external_id"]) if _mqr else None
     wellness=_wellness(cur, day); rhr_base=_rhr_base(cur)
+    try:
+        cur.execute("SELECT started_at FROM qbot_v2.training_sessions WHERE external_id=%s",(ride_key,))
+        _sr=cur.fetchone()
+        _stime=_sr["started_at"].strftime("%H:%M") if (_sr and _sr.get("started_at")) else recs[0]["ts"].strftime("%H:%M")
+    except Exception:
+        _stime=recs[0]["ts"].strftime("%H:%M")
     _surf_block, _wind_block, _terr_raw = _surface_and_wind(cur, recs, day, ride_key)
     _xss_block = _ride_xss(conn, ride_key)
     w1={
         "schema_version":SCHEMA_VERSION,
         "ride_key":ride_key,
-        "ride":{"date":day,"dist_km":round(recs[-1]["dist"]/1000.0,1)},
+        "ride":{"date":day,"time":_stime,"dist_km":round(recs[-1]["dist"]/1000.0,1)},
         "inputs":inputs or {},
         "load":_load(recs, form, efa, _xss_block, _buckets),
         "wprime":_wprime(recs, _mq_rows, _sig, form["cp_w"], Wp, wp_source),
@@ -977,6 +1087,7 @@ def build_w1(fit_path, ride_key, inputs=None):
         "form_context":form,
     }
     w1["terrain_impact"] = _terrain_impact(recs, _terr_raw, w1["splits"], w1["wprime"], w1["physio"], w1["weather"])
+    w1["trace"] = _trace(recs, (_terr_raw or {}).get("tick_tails"), (_terr_raw or {}).get("tick_cross"), ((w1["wprime"] or {}).get("wbal_curve") or {}).get("value"))
     conn.close()
     return w1
 
