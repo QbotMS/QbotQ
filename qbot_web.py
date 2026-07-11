@@ -1372,14 +1372,15 @@ def _weather_stages(per_segment, km_total):
 
 
 def _load_gear_catalog():
-    """Szafa z garage.db (gear, active=1) pogrupowana kategoriami -> {kat:[marka model,...]}.
-    Do LLM (dobor ubioru): Albert wybiera WYLACZNIE z tej listy. Cap 10/kat."""
+    """Szafa z garage.db (gear, active=1) pogrupowana kategoriami -> {kat:[{nazwa,opis}]}.
+    'opis' = notes (zakres temp / ocena ★ / tagi GLOWNA/ULUBIONY/WYCOFANE) do rankingu.
+    Do LLM (dobor ubioru): Albert wybiera WYLACZNIE z tej listy (pole 'nazwa'). Cap 10/kat."""
     import sqlite3
     cat = {}
     try:
         c = sqlite3.connect("/opt/qbot/app/data/garage.db")
         _skip = {"helmet", "shoes"}
-        for row in c.execute("SELECT category, brand, model FROM gear WHERE active=1 ORDER BY category"):
+        for row in c.execute("SELECT category, brand, model, notes FROM gear WHERE active=1 ORDER BY category"):
             k = (row[0] or "inne").strip()
             if k.lower() in _skip:
                 continue
@@ -1387,18 +1388,39 @@ def _load_gear_catalog():
             if not nm:
                 continue
             cat.setdefault(k, [])
-            if nm not in cat[k] and len(cat[k]) < 10:
-                cat[k].append(nm)
+            if len(cat[k]) < 10 and not any(e.get("nazwa") == nm for e in cat[k]):
+                cat[k].append({"nazwa": nm, "opis": (row[3] or "").strip()[:200]})
         c.close()
     except Exception:
         return {}
     return cat
 
 
+def _load_outfit_rules():
+    """Reguly kompletow/priorytetow ubioru z garage.db (tabela memories): pary
+    koszulka+spodenki, warstwy, styl. Pomija tematy trip-specific. Do LLM przy doborze ubioru."""
+    import sqlite3
+    _KEYS = ("outfit", "komplet", "kombinacj", "gobik", "styl", "mood",
+             "warstw", "layer", "docieplacz", "spodenk")
+    out = []
+    try:
+        c = sqlite3.connect("/opt/qbot/app/data/garage.db")
+        for topic, content in c.execute("SELECT topic, content FROM memories ORDER BY id"):
+            t = (topic or "").lower()
+            if ("toskania" in t) or ("tuscany" in t):
+                continue
+            if any(kk in t for kk in _KEYS):
+                out.append({"temat": topic, "tresc": (content or "").strip()[:700]})
+        c.close()
+    except Exception:
+        return []
+    return out[:8]
+
+
 def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, total_h,
                   peak, weather_overall, weather_stages, risks,
                   forma, climbs, surface_blocks, fuel, resupply, gear, alerty,
-                  opony_opcje, nawierzchnia_udzial, opady_historia=None):
+                  opony_opcje, nawierzchnia_udzial, opady_historia=None, outfit_rules=None):
     """Albert (LLM) - proza/rekomendacje. Liczby tylko z danych. DWA wywolania:
     (1) pogoda+ryzyka, (2) plan (strategia+ubior+opony) - kazde z wlasnym budzetem,
     bo gpt-5* liczy reasoning w max_completion_tokens i jeden wielki kontrakt sie nie miesci.
@@ -1465,22 +1487,22 @@ def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, 
         "WAZENIE: G-One Pro RS jest wyraznie szybszy i gladszy na asfalcie i twardym gravelu; Thunder Burt oplaca sie DOPIERO gdy DUZO "
         "luznego/piachu/technicznego. Patrz nawierzchnia_udzial: jesli twarda+dobry gravel (k1+k2) dominuja, wybierz szybsza (G-One) "
         "mimo pojedynczych luznych fragmentow; Thunder tylko gdy luzne/ryzyko (k4+k5) znaczace (>=35-40%). uzasadnienie: 1-2 zdania z %.\n"
-        "ubior: OBIEKT {\"opis\": string, \"rzeczy\": [{\"typ\",\"przyklad\",\"tryb\",\"uwaga\"}]}. Dobierz do TEJ pogody "
-        "(odczuwalna min/max, WBGT, wiatr, deszcz) - NIE przesadzaj z warstwami: przy cieple (odczuwalna >=18 C) NIE proponuj zimowych/"
-        "grubych/thermal/merino-winter rzeczy; lekkie i przewiewne. Kazda pozycja: typ = OGOLNY rodzaj (np. 'przewiewna koszulka', "
-        "'spodenki z wkladka', 'wiatrowka'); przyklad = KONKRETNA rzecz z listy gear (dokladna nazwa) jako propozycja; "
-        "tryb = 'na sobie' albo 'zabierz' (warstwy na chlod/deszcz jako 'zabierz'); uwaga = 1 krotkie zdanie. "
-        "OBOWIAZKOWO dolacz: koszulka/jersey ORAZ spodenki z wkladka (kategoria 'Bottoms / Bibs'). NIE proponuj kasku ani butow. "
-        "4-7 pozycji. przyklad WYLACZNIE z listy gear."
+        "ubior: OBIEKT {\"opis\": string, \"zestawy\": [{\"nazwa\": string, \"rzeczy\": [{\"typ\",\"przyklad\",\"tryb\",\"uwaga\"}]}]}. "
+        "Podaj CO NAJMNIEJ 2 kompletne, osobne zestawy (np. 'Lzejszy/szybszy' i 'Cieplejszy/na zapas', albo 'na sucho' i 'na deszcz') - kazdy zestaw to pelny outfit. "
+        "Dobierz do TEJ pogody (odczuwalna min/max, WBGT, wiatr, deszcz) - NIE przesadzaj z warstwami: przy cieple (odczuwalna >=18 C) NIE proponuj zimowych/grubych/thermal/merino-winter rzeczy; lekkie i przewiewne. "
+        "RANKING: kazda rzecz w gear ma pole 'opis' (zakres temp, ocena gwiazdkowa ★, tagi). Przy rownorzednych wybieraj WYZEJ OCENIONE oraz oznaczone GLOWNA/ULUBIONY; NIE proponuj oznaczonych WYCOFANE / 'za mala' / 'WISI W SZAFIE'; szanuj zakres temp z opisu. "
+        "KOMPLETY: jesli reguly_outfitu wskazuja pary (dana koszulka -> konkretne spodenki/warstwy), trzymaj sie ich. "
+        "Kazda pozycja: typ = OGOLNY rodzaj (np. 'przewiewna koszulka','spodenki z wkladka','wiatrowka'); przyklad = pole 'nazwa' z listy gear (dokladnie, BEZ opisu); tryb = 'na sobie' albo 'zabierz'; uwaga = 1 krotkie zdanie. "
+        "W KAZDYM zestawie OBOWIAZKOWO: koszulka/jersey ORAZ spodenki z wkladka (kategoria 'Bottoms / Bibs'). NIE proponuj kasku ani butow. 4-7 pozycji na zestaw. przyklad WYLACZNIE z listy gear."
     )
     _pog_skrot = {"peak_wbgt": peak, "pogoda_ogolem": weather_overall, "alerty": alerty}
     pay2 = {"trasa": _trasa, "forma": forma, "climbs": climbs, "surface_blocks": surface_blocks,
             "nawierzchnia_udzial": nawierzchnia_udzial, "surface_legenda": _legenda,
             "fuel": fuel, "resupply": resupply, "gear": gear, "opony_opcje": opony_opcje,
-            "pogoda": _pog_skrot}
+            "reguly_outfitu": outfit_rules, "pogoda": _pog_skrot}
     try:
         o2 = qgpt_json(json.dumps(pay2, ensure_ascii=False, default=str),
-                       system=sys2, max_tokens=4000, temperature=0.3)
+                       system=sys2, max_tokens=5000, temperature=0.3)
         if isinstance(o2, dict):
             strategia = o2.get("strategia") if isinstance(o2.get("strategia"), dict) else None
             ubior = o2.get("ubior") if isinstance(o2.get("ubior"), dict) else None
@@ -2372,7 +2394,7 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
             forma=_forma_llm, climbs=_climbs_slim, surface_blocks=_surf_blocks,
             fuel=_fuel, resupply=_resupply, gear=_gear, alerty=_alerty,
             opony_opcje=_tire_options, nawierzchnia_udzial=_naw_udzial,
-            opady_historia=precip_history)
+            opady_historia=precip_history, outfit_rules=_load_outfit_rules())
     except Exception:
         _og = _et = _rc2 = []
         _strat = _ubior = _opony = None
