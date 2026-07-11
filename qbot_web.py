@@ -1583,10 +1583,10 @@ def _curate_pois(_pg, dist_km, date_str):
                 continue
             _sup_pool.append(dict(it, cat=_cat, ostatus=st, hours_txt=hh))
 
-    # niezawodny mechanizm: szukamy wzdluz trasy do +-10 km od srodka kwartalu,
-    # <=1 km od trasy, bez zamknietych; im blizej srodka tym lepiej (kubelki 2 km),
-    # przy remisie otwarte przed nieznanym; zawsze raportujemy przesuniecie od srodka.
-    AREA_HALF_KM = 10.0
+    # niezawodny mechanizm: trasa dzielona na 3 ciagle odcinki (tercje) pokrywajace
+    # 0..dystans BEZ martwych stref; w kazdym odcinku <=1 km od trasy, bez zamknietych;
+    # im blizej srodka kwartalu tym lepiej; przy remisie otwarte przed nieznanym;
+    # zawsze raportujemy przesuniecie od srodka kwartalu.
     OFFROUTE_MAX_M = 1000.0
 
     def _mk_pick(it, center_km):
@@ -1606,9 +1606,9 @@ def _curate_pois(_pg, dist_km, date_str):
                                  abs(z["km"] - center_km), z["dist_m"]))
         return pool[0]
 
-    def _curate_area(center_km):
+    def _curate_area(lo_km, hi_km, center_km):
         win = [it for it in _sup_pool
-               if abs(it["km"] - center_km) <= AREA_HALF_KM and (it["dist_m"] or 1e9) <= OFFROUTE_MAX_M]
+               if lo_km <= it["km"] <= hi_km and (it["dist_m"] or 1e9) <= OFFROUTE_MAX_M]
         shop = _best_of(win, "hard_resupply", center_km)
         food = _best_of(win, "soft_food_stop", center_km)
         picks = [p for p in (shop, food) if p]
@@ -1617,13 +1617,16 @@ def _curate_pois(_pg, dist_km, date_str):
 
     _resupply_out = []
     _used = set()
-    for qlab, qkm in [("Q1", dist_km * 0.25), ("Q2", dist_km * 0.5), ("Q3", dist_km * 0.75)]:
-        total, picks = _curate_area(qkm)
+    _third = dist_km / 3.0
+    for qlab, qkm, _lo, _hi in [("Q1", dist_km * 0.25, 0.0, _third),
+                                ("Q2", dist_km * 0.5, _third, 2.0 * _third),
+                                ("Q3", dist_km * 0.75, 2.0 * _third, dist_km)]:
+        total, picks = _curate_area(_lo, _hi, qkm)
         picks = [p for p in picks if (p["name"], p["km"]) not in _used]
         for p in picks:
             _used.add((p["name"], p["km"]))
         _resupply_out.append({"area": qlab, "q_km": round(qkm, 1), "total": total,
-                              "search_km": AREA_HALF_KM,
+                              "search_km": round(_hi - _lo, 1),
                               "picks": [_mk_pick(p, qkm) for p in picks]})
 
     # --- ATRAKCJE: bramka jakosci (oceny Google), bez drobnych obiektow kultu i smieci ---
@@ -1676,7 +1679,7 @@ def _curate_pois(_pg, dist_km, date_str):
                  "dist_m": it["dist_m"], "lat": it.get("lat"), "lon": it.get("lon"), "desc": _att_desc(it.get("meta") or {})}
                 for it, _s in _att_cand[:8]]
 
-    poi_out = {"resupply": _resupply_out, "attractions": {"total": len(_att_cand), "items": _att_out}}
+    poi_out = {"resupply": _resupply_out, "attractions": {"total": len(_att_cand), "raw_total": len(_pg.get("attraction", [])), "items": _att_out}}
     return poi_out
 
 
@@ -2212,6 +2215,11 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
 
     _pg = _load_poi_groups(conn, rbid)
     poi_out = _curate_pois(_pg, dist_km, date_str)
+    try:
+        from qbot3.routes.route_poi_store import get_route_poi_prefs
+        poi_out["attractions"]["enabled"] = bool(get_route_poi_prefs(conn, route_id).get("attractions_enabled"))
+    except Exception:
+        poi_out["attractions"]["enabled"] = None
 
 
     # --- SPRZET: udzialy nawierzchni + cisnienia (obie opony) + nawodnienie ---

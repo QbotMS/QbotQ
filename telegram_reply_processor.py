@@ -283,6 +283,18 @@ def handle_komoot_callback(cq):
             log(f"   analyze_tour blad: {e}")
             tg_send_plain("\u26a0\ufe0f Analiza #" + tour_id + " nie powiodla sie: " + str(e)[:200])
             _clear = False
+    elif action == "ya":
+        tg_answer_callback(cq_id, "Analizuje + atrakcje...")
+        try:
+            from qbot3.routes.route_poi_store import set_route_poi_attractions
+            set_route_poi_attractions("komoot-" + tour_id, True)
+            res = komoot_watch.analyze_tour(tour_id)
+            nm = res.get("name") or ("#" + tour_id)
+            tg_send_plain("\u2705 Zanalizowano z atrakcjami: " + str(nm) + "\nGotowe w QBot - wygeneruj raport i wyslij na Karoo.")
+        except Exception as e:
+            log(f"   analyze_tour(+atrakcje) blad: {e}")
+            tg_send_plain("\u26a0\ufe0f Analiza #" + tour_id + " (+atrakcje) nie powiodla sie: " + str(e)[:200])
+            _clear = False
     elif action == "n":
         tg_answer_callback(cq_id, "Pominieto")
         try:

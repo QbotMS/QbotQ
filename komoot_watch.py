@@ -99,6 +99,8 @@ def _notify(t):
     kb = {"inline_keyboard": [[
         {"text": "\u2705 Analizuj", "callback_data": "kmt:y:" + tid},
         {"text": "\u274C Pomin", "callback_data": "kmt:n:" + tid},
+    ], [
+        {"text": "\U0001F39F Analizuj + atrakcje", "callback_data": "kmt:ya:" + tid},
     ]]}
     from qbot_telegram_client import _api
     r = _api("sendMessage", {"chat_id": str(chat), "text": text, "parse_mode": "HTML", "reply_markup": kb})
