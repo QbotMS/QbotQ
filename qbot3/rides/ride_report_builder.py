@@ -719,6 +719,33 @@ def _export_gpx(points, path):
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
+def _cat_pct_by_km(segments):
+    """Rozklad 5 kategorii nawierzchni po dystansie (km) - kanonicznie jak analiza trasy."""
+    try:
+        from qbot3.routes.route_surface_category_store import compute_category
+    except Exception:
+        return None
+    km = {}
+    for sg in segments or []:
+        a = sg.get("km_from"); z = sg.get("km_to")
+        if a is None or z is None:
+            continue
+        d = z - a
+        if d <= 0:
+            continue
+        try:
+            _c, lab, _ = compute_category(surface=sg.get("surface_refined"), tracktype=sg.get("tracktype"),
+                                          highway=sg.get("highway"), classification_source=sg.get("classification_source"),
+                                          smoothness=sg.get("smoothness"), ctx=None)
+        except Exception:
+            continue
+        km[lab] = km.get(lab, 0.0) + d
+    if not km:
+        return None
+    tot = sum(km.values()) or 1.0
+    return {lab: round(100.0 * v / tot, 1) for lab, v in sorted(km.items())}
+
+
 def _surface_wind_from_track(have_pos, ride_key, day):
     """Brak dopasowania do zaplanowanej trasy -> liczymy z GPS tej jazdy:
     silnik nawierzchni (slad -> GPX -> route_surface_engine) + Open-Meteo
@@ -738,8 +765,8 @@ def _surface_wind_from_track(have_pos, ride_key, day):
             surface = _tag({"tagged_pct": surf.get("tagged_surface_pct"),
                            "inferred_pct": surf.get("inferred_surface_pct"),
                            "unknown_pct": surf.get("unknown_surface_pct"),
-                           "types_pct": surf.get("surface_percentages_refined")},
-                          "B", "route_surface_engine (slad GPS tej jazdy)")
+                           "types_pct": _cat_pct_by_km(surf.get("segments")) or surf.get("surface_percentages_refined")},
+                          "B", "route_surface_engine 5-kat (slad GPS tej jazdy)")
             _segments = surf.get("segments") or []
         else:
             surface = _plugin(f"silnik nawierzchni: {surf.get('error')}")
@@ -905,14 +932,33 @@ def _terrain_impact(recs, raw, splits, wprime, physio, weather):
         def _sa(km, _s=segs, _st=starts):
             i = bisect.bisect_right(_st, km) - 1
             if 0 <= i < len(_s) and (_s[i].get("km_from") or 0) <= km < (_s[i].get("km_to") or 0):
-                return _s[i].get("surface_refined")
+                return _s[i]
             return None
         acc = {}
+        _prevd = None
+        from qbot3.routes.route_surface_category_store import compute_category as _cc, LABELS as _CATLAB
+        _catcache = {}
+        def _seg_cat(_sg):
+            _k = id(_sg)
+            if _k in _catcache: return _catcache[_k]
+            try:
+                _c, _l, _ = _cc(surface=_sg.get("surface_refined"), tracktype=_sg.get("tracktype"),
+                                highway=_sg.get("highway"), classification_source=_sg.get("classification_source"),
+                                smoothness=_sg.get("smoothness"), ctx=None)
+            except Exception:
+                _c, _l = None, None
+            _catcache[_k] = (_c, _l); return (_c, _l)
         for r in recs:
-            sc = _sa((r.get("dist") or 0.0)/1000.0)
-            if not sc: continue
-            b = acc.setdefault(sc, {"n":0,"p":0.0,"hr":0.0,"hrn":0,"cad":0.0,"cadn":0,"sp":0.0,"spn":0,"gr":0.0,"grn":0})
-            b["n"]+=1; b["p"]+=r["p"]
+            _d = (r.get("dist") or 0.0)
+            _sg = _sa(_d/1000.0)
+            _dm = (_d - _prevd) if (_prevd is not None) else 0.0
+            _prevd = _d
+            if _dm < 0 or _dm > 200.0: _dm = 0.0
+            if not _sg: continue
+            cat, lab = _seg_cat(_sg)
+            if cat is None: continue
+            b = acc.setdefault(cat, {"lab":lab,"n":0,"m":0.0,"p":0.0,"hr":0.0,"hrn":0,"cad":0.0,"cadn":0,"sp":0.0,"spn":0,"gr":0.0,"grn":0})
+            b["n"]+=1; b["m"]+=_dm; b["p"]+=r["p"]
             if r.get("hr"): b["hr"]+=r["hr"]; b["hrn"]+=1
             if r.get("cad"): b["cad"]+=r["cad"]; b["cadn"]+=1
             if r["spd"]>0.5: b["sp"]+=r["spd"]; b["spn"]+=1
@@ -920,24 +966,18 @@ def _terrain_impact(recs, raw, splits, wprime, physio, weather):
             if g is not None:
                 try: b["gr"]+=float(g); b["grn"]+=1
                 except Exception: pass
-        tot = sum(b["n"] for b in acc.values()) or 1
+        tot_m = sum(b["m"] for b in acc.values()) or 1
         MIN = 60
-        def _pack(name, b):
-            return {"surface": name, "pct_dist": round(100*b["n"]/tot,1),
+        def _pack(cat, b):
+            return {"surface": b.get("lab") or _CATLAB.get(cat) or str(cat),
+                    "category": cat,
+                    "pct_dist": round(100*b["m"]/tot_m,1),
                     "avg_power_w": round(b["p"]/b["n"]) if b["n"] else None,
                     "avg_hr": round(b["hr"]/b["hrn"]) if b["hrn"] else None,
                     "avg_cad": round(b["cad"]/b["cadn"]) if b["cadn"] else None,
                     "avg_speed_kmh": round(3.6*b["sp"]/b["spn"],1) if b["spn"] else None,
                     "avg_grade": round(b["gr"]/b["grn"],1) if b["grn"] else None}
-        big = [(sc,b) for sc,b in acc.items() if b["n"]>=MIN]
-        big.sort(key=lambda kv: -kv[1]["n"])
-        surface_by_type = [_pack(sc,b) for sc,b in big]
-        other = {"n":0,"p":0.0,"hr":0.0,"hrn":0,"cad":0.0,"cadn":0,"sp":0.0,"spn":0,"gr":0.0,"grn":0}
-        for sc,b in acc.items():
-            if b["n"] < MIN:
-                for k in other: other[k]+=b[k]
-        if other["n"] > 0:
-            surface_by_type.append(_pack("inne (n<%d)" % MIN, other))
+        surface_by_type = [_pack(cat,acc[cat]) for cat in sorted(acc.keys())]
     out["surface_by_type"] = surface_by_type
 
     tt = raw.get("tick_tails") or {}
