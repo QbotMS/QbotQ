@@ -551,6 +551,72 @@ def _weather_from_fit(recs):
         "sun_pct":_plugin("cien — wymaga trasy (parked)"),
     }
 
+def _wbgt(ta, rh, solar, wind):
+    """WBGT na otwartym (przyblizenie): baza ACSM 'w cieniu' + dodatek od naslonecznienia,
+    tlumiony przez wiatr. Zwraca stopnie C. To estymata dla kolarza, nie pomiar."""
+    if ta is None or rh is None:
+        return None
+    import math
+    e = (rh / 100.0) * 6.105 * math.exp(17.27 * ta / (237.7 + ta))
+    wbgt_shade = 0.567 * ta + 0.393 * e + 3.94
+    s = max(solar or 0.0, 0.0)
+    w = max(wind or 0.5, 0.5)
+    solar_term = min(min(s, 1200.0) / 1000.0, 1.2) * 4.0 / math.sqrt(w)
+    return wbgt_shade + min(solar_term, 6.0)
+
+
+def _weather_block(recs, day):
+    """Pogoda jazdy: temperatura z FIT (pomiar, tier A) + wilgotnosc/zachmurzenie/
+    cisnienie/odczuwalna/WBGT z open-meteo dla godzin jazdy (tier B). sun_pct parked."""
+    t = [r["temp"] for r in recs if r["temp"] is not None]
+    temp_fit = {"min": min(t), "max": max(t), "avg": round(sum(t) / len(t), 1)} if t else None
+    out = {
+        "temp_c": _tag(temp_fit, "A", "fit"),
+        "apparent_c": _plugin("open-meteo - brak danych"),
+        "rh_pct": _plugin("open-meteo - brak danych"),
+        "pressure_hpa": _plugin("open-meteo - brak danych"),
+        "cloud_pct": _plugin("open-meteo - brak danych"),
+        "wbgt_max": _plugin("open-meteo - brak danych"),
+        "sun_pct": _plugin("cien - wymaga trasy (parked)"),
+    }
+    pos = [r for r in recs if r.get("lat") is not None and r.get("lon") is not None]
+    if not pos:
+        return out
+    try:
+        from tools.rwgps.route_weather import _fetch_open_meteo
+        lat0, lon0 = _deg(pos[0]["lat"]), _deg(pos[0]["lon"])
+        hourly = _fetch_open_meteo(lat0, lon0, day)
+        keys = sorted({r["ts"].strftime("%Y-%m-%dT%H") for r in recs})
+        rows = [hourly[k] for k in keys if k in hourly]
+        if not rows:
+            return out
+        SRC = "open-meteo + GPS tej jazdy"
+        def _avg(field):
+            v = [x[field] for x in rows if x.get(field) is not None]
+            return round(sum(v) / len(v), 1) if v else None
+        rh = _avg("rh"); cloud = _avg("cloud"); press = _avg("pressure")
+        if rh is not None:
+            out["rh_pct"] = _tag(rh, "B", SRC)
+        if cloud is not None:
+            out["cloud_pct"] = _tag(cloud, "B", SRC)
+        if press is not None:
+            out["pressure_hpa"] = _tag(press, "B", SRC)
+        app = [x["apparent"] for x in rows if x.get("apparent") is not None]
+        if app:
+            out["apparent_c"] = _tag({"min": round(min(app), 1), "max": round(max(app), 1),
+                                      "avg": round(sum(app) / len(app), 1)}, "B", SRC)
+        wbgts = []
+        for x in rows:
+            wb = _wbgt(x.get("temp"), x.get("rh"), x.get("solar"), x.get("wspeed"))
+            if wb is not None:
+                wbgts.append(wb)
+        if wbgts:
+            out["wbgt_max"] = _tag(round(max(wbgts), 1), "B", "open-meteo WBGT (T+RH+slonce+wiatr)")
+    except Exception:
+        pass
+    return out
+
+
 SC_DEG = 180.0 / (2 ** 31)
 
 def _deg(v):
@@ -1074,7 +1140,7 @@ def build_w1(fit_path, ride_key, inputs=None):
         "load":_load(recs, form, efa, _xss_block, _buckets),
         "wprime":_wprime(recs, _mq_rows, _sig, form["cp_w"], Wp, wp_source),
         "wind":_wind_block,
-        "weather":_weather_from_fit(recs),
+        "weather":_weather_block(recs, day),
         "surface":_surf_block,
         "drivetrain":_drivetrain(recs, events),
         "physio":_physio(recs, wellness, rhr_base),

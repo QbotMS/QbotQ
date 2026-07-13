@@ -98,7 +98,7 @@ def _fetch_owm(lat, lon, key):
 
 def _fetch_open_meteo(lat, lon, day: str):
     params = {"latitude": round(lat, 4), "longitude": round(lon, 4),
-              "hourly": "temperature_2m,precipitation,wind_speed_10m,wind_direction_10m",
+              "hourly": "temperature_2m,precipitation,wind_speed_10m,wind_direction_10m,relative_humidity_2m,cloud_cover,surface_pressure,apparent_temperature,shortwave_radiation",
               "wind_speed_unit": "ms", "timezone": "auto", "start_date": day, "end_date": day}
     r = httpx.get(OM_URL, params=params, timeout=20.0)
     r.raise_for_status()
@@ -107,6 +107,11 @@ def _fetch_open_meteo(lat, lon, day: str):
     out = {}
     for i, ts in enumerate(times):
         out[ts[:13]] = {"temp": h.get("temperature_2m", [None] * len(times))[i],
+                        "rh": h.get("relative_humidity_2m", [None] * len(times))[i],
+                        "cloud": h.get("cloud_cover", [None] * len(times))[i],
+                        "pressure": h.get("surface_pressure", [None] * len(times))[i],
+                        "apparent": h.get("apparent_temperature", [None] * len(times))[i],
+                        "solar": h.get("shortwave_radiation", [None] * len(times))[i],
                         "precip": h.get("precipitation", [None] * len(times))[i],
                         "wspeed": h.get("wind_speed_10m", [None] * len(times))[i],
                         "wdir": h.get("wind_direction_10m", [None] * len(times))[i]}
