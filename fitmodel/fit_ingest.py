@@ -14,6 +14,7 @@ try:
 except ModuleNotFoundError:
     import psycopg as psycopg2
 from fitparse import FitFile
+from fitmodel import _fitparse_compat  # noqa: F401  (patch dev-fields, efekt uboczny)
 
 
 WINDOW_SECONDS = 60

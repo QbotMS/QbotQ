@@ -20,6 +20,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fitparse import FitFile
+from fitmodel import _fitparse_compat  # noqa: F401  (patch dev-fields, efekt uboczny)
 
 from fitmodel.ftp_resolver import _db_connect
 from fitmodel.buckets import compute_buckets
