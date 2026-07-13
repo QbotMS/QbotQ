@@ -319,6 +319,32 @@ def _one():
     conn.close()
 
 
+def rebuild_stale_reports(days: int = 7) -> int:
+    """Przebuduj W1 dla jazd, ktorych raport jest starszy niz import sesji
+    (ride_report_data.built_at < training_sessions.imported_at) -- np. raport
+    zbudowany przed pelnym importem i przeliczeniem ModelQ. Okno: ostatnie `days` dni."""
+    conn = _db()
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT ts.external_id FROM qbot_v2.training_sessions ts "
+            "JOIN qbot_v2.ride_report_data rr "
+            "  ON rr.ride_key = ts.external_id AND rr.schema_version = 1 "
+            "WHERE ts.imported_at IS NOT NULL "
+            "  AND rr.built_at < ts.imported_at "
+            "  AND ts.date >= (current_date - %s)",
+           (days,))
+        stale = [r[0] for r in cur.fetchall()]
+    conn.close()
+    rebuilt = 0
+    for aid in stale:
+        st = _build_report_safe(str(aid))
+        print(f"REBUILD {aid} -> {st}")
+        if st == "ok":
+            rebuilt += 1
+    print(f"REBUILD DONE: rebuilt={rebuilt}/{len(stale)}")
+    return rebuilt
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "one"
     if cmd == "backfill":
@@ -327,5 +353,7 @@ if __name__ == "__main__":
         sn = sys.argv[4] if len(sys.argv) > 4 else SINCE
         wr = (len(sys.argv) > 5 and sys.argv[5].lower() in ("report", "1", "true", "yes"))
         backfill(lim, st, sn, with_report=wr)
+        if wr:
+            rebuild_stale_reports()
     else:
         _one()
