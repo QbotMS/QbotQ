@@ -1083,23 +1083,68 @@ def _terrain_impact(recs, raw, splits, wprime, physio, weather):
     out["wind_note"] = wind_note
     return out
 
+def _surface_from_route_canonical(cur, route_id):
+    """Nawierzchnia z kanonicznej warstwy 50 m dopasowanej trasy (System A):
+    karty 5-kat (compute_category na resolved surface) + segmenty do tabeli D.
+    Wiatr NIE stad -- zostaje per-tick z GPS tej jazdy."""
+    try:
+        from qbot3.routes.route_segments_50m import load_canonical_segments_50m
+        seg = load_canonical_segments_50m(route_id=route_id)
+        rows = seg.get("segments") or []
+        if not rows:
+            return None, None
+        segs_r = []
+        for r in rows:
+            a = r.get("km_from"); z = r.get("km_to")
+            if a is None or z is None:
+                continue
+            sv = r.get("surface")
+            segs_r.append({"km_from": a, "km_to": z, "surface_refined": sv,
+                           "tracktype": None, "highway": None,
+                           "classification_source": ("tagged_surface" if sv else None),
+                           "smoothness": None})
+        if not segs_r:
+            return None, None
+        types5 = _cat_pct_by_km(segs_r)
+        tot = sum((r.get("len_m") or 0.0) for r in rows) or 1.0
+        with_s = sum((r.get("len_m") or 0.0) for r in rows if r.get("surface"))
+        tagged = round(100.0 * with_s / tot, 1)
+        unknown = round(100.0 * (tot - with_s) / tot, 1)
+        surface = _tag({"types_pct": types5, "tagged_pct": tagged,
+                        "inferred_pct": None, "unknown_pct": unknown},
+                       "A", f"kanoniczna 50m (trasa {route_id})",
+                       note="nawierzchnia z dopasowanej trasy; wiatr per-tick z GPS tej jazdy")
+        return surface, segs_r
+    except Exception:
+        return None, None
+
+
 def _surface_and_wind(cur, recs, day, ride_key):
-    """Punkt wejscia: najpierw sprawdz czy jazda pasuje do juz przeliczonej
-    trasy (reuzycie, tanie); jesli nie -> licz z GPS tej jazdy (kosztowniejsze,
-    Overpass+Open-Meteo, ale dziala samodzielnie bez zaplanowanej trasy)."""
+    """Punkt wejscia. Nawierzchnia: jesli jazda pasuje do przeliczonej trasy ->
+    z kanonicznej warstwy 50 m (System A); inaczej z GPS (Overpass). Wiatr ZAWSZE
+    per-tick z GPS tej jazdy (tick_tails/tick_cross zachowane dla wykresu)."""
     have_pos = [r for r in recs if r.get("lat") is not None and r.get("lon") is not None]
     if not have_pos:
         reason = "brak pozycji GPS w FIT"
         return _plugin(reason), _plugin(reason), None
     lat0, lon0 = _deg(have_pos[0]["lat"]), _deg(have_pos[0]["lon"])
-    route_id = _find_matching_route(cur, lat0, lon0, have_pos[0]["ts"])
+    _mts = have_pos[0]["ts"]
+    try:
+        cur.execute("SELECT lat, lon, ts FROM qbot_v2.activity_record WHERE external_id=%s AND lat IS NOT NULL ORDER BY sec ASC LIMIT 1", (ride_key,))
+        _p = cur.fetchone()
+        if _p and _p.get("lat") is not None:
+            lat0, lon0, _mts = float(_p["lat"]), float(_p["lon"]), _p["ts"]
+    except Exception:
+        pass
+    route_id = _find_matching_route(cur, lat0, lon0, _mts)
+    surf_t, wind_t, terr_t = _surface_wind_from_track(have_pos, ride_key, day)
     if route_id:
-        start_time = have_pos[0]["ts"].strftime("%H:%M")
-        surface, wind = _surface_wind_from_route(cur, route_id, day, start_time)
-        if surface.get("status") == "parked" and wind.get("status") == "parked":
-            return _surface_wind_from_track(have_pos, ride_key, day)
-        return surface, wind, None
-    return _surface_wind_from_track(have_pos, ride_key, day)
+        surf_r, segs_r = _surface_from_route_canonical(cur, route_id)
+        if surf_r is not None:
+            terr = dict(terr_t or {})
+            terr["segments"] = segs_r
+            return surf_r, wind_t, terr
+    return surf_t, wind_t, terr_t
 
 DISABLED=[
     {"blok":"Bilans L/P, torque, pedal smoothness","powod":"AXS = moc calkowita, brak pomiaru L/P"},
