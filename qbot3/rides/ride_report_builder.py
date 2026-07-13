@@ -154,6 +154,71 @@ def _plan_snapshot(cur, route_id="55957534"):
     except Exception:
         return None
 
+def _plan_vs_actual(cur, recs, ride_key):
+    """Plan vs realizacja: dopasowuje jazde do zaplanowanej trasy (_find_matching_route)
+    i zestawia strukturalne liczby planu (dystans, przewyzszenie, cel mocy z prozy)
+    z realnymi (dystans, przewyzszenie, NP, TSS, srednia predkosc). Brak dopasowania
+    -> _matched False (renderer pokaze tylko realnie)."""
+    import re
+    P = [r["p"] for r in recs]
+    dist_km = round(recs[-1]["dist"] / 1000.0, 1) if recs else None
+    asc = 0.0; prev = None
+    for r in recs:
+        a = r.get("alt")
+        if a is None:
+            continue
+        if prev is not None and a > prev:
+            asc += (a - prev)
+        prev = a
+    dur_mov = sum(1 for r in recs if r["spd"] > 0.5)
+    v_kmh = round(dist_km / (dur_mov / 3600.0), 1) if (dist_km and dur_mov) else None
+    np_w = round(_np(P)) if P else None
+    tss = None
+    try:
+        cur.execute("SELECT tss FROM qbot_v2.training_sessions WHERE external_id=%s", (ride_key,))
+        _t = cur.fetchone()
+        if _t and _t.get("tss") is not None:
+            tss = round(float(_t["tss"]))
+    except Exception:
+        pass
+    real = {"dist_km": dist_km, "ascent_m": round(asc), "np_w": np_w, "tss": tss, "v_kmh": v_kmh}
+    matched = None
+    try:
+        cur.execute("SELECT lat, lon, ts FROM qbot_v2.activity_record WHERE external_id=%s AND lat IS NOT NULL ORDER BY sec ASC LIMIT 1", (ride_key,))
+        _p = cur.fetchone()
+        if _p and _p.get("lat") is not None:
+            matched = _find_matching_route(cur, float(_p["lat"]), float(_p["lon"]), _p["ts"])
+    except Exception:
+        matched = None
+    if not matched:
+        return {"_matched": False, "_real": real}
+    plan = None; strat = None; rname = None
+    try:
+        cur.execute("SELECT data_json FROM qbot_v2.route_report_snapshots WHERE route_id=%s ORDER BY 1 DESC LIMIT 1", (matched,))
+        rr = cur.fetchone()
+        dj = rr["data_json"] if rr else None
+        if isinstance(dj, str):
+            import json as _j
+            dj = _j.loads(dj)
+        dj = dj or {}
+        ro = dj.get("route") or {}
+        rname = ro.get("name")
+        strat = (dj.get("details", {}) or {}).get("strategia")
+        pw = None
+        cal = (strat or {}).get("calosc") if isinstance(strat, dict) else None
+        if isinstance(cal, str):
+            mm = re.search(r"([0-9]{2,3}) *- *([0-9]{2,3}) *W", cal)
+            if mm:
+                pw = mm.group(1) + "-" + mm.group(2) + " W"
+        plan = {"dist_km": ro.get("distance_km"), "ascent_m": ro.get("ascent_m"), "power_note": pw}
+    except Exception:
+        pass
+    out = {"_matched": True, "_route_id": matched, "_route_name": rname, "_plan": plan, "_real": real}
+    if isinstance(strat, dict):
+        out["etapy"] = strat.get("etapy"); out["calosc"] = strat.get("calosc")
+    return out
+
+
 # ---------- FIT ----------
 def _parse_fit(path):
     ff = FitFile(path); recs=[]; t0=None; laps=[]; session={}
@@ -1186,7 +1251,7 @@ def build_w1(fit_path, ride_key, inputs=None):
         "physio":_physio(recs, wellness, rhr_base),
         "energy":_energy(recs),
         "splits":_splits(recs),
-        "plan_vs_actual":_tag(_plan_snapshot(cur),"A","snapshot"),
+        "plan_vs_actual":_tag(_plan_vs_actual(cur, recs, ride_key),"A","plan vs realnie"),
         "nutrition":_tag(_nutrition(cur),"A","nutrition_daily"),
         "disabled":DISABLED,
         "modelq":_modelq_block(cur, day),
