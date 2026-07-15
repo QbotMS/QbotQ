@@ -199,10 +199,12 @@ Zapis żywienia (nutrition_log_add / nutrition_log_delete / nutrition_log_correc
   zdarzenia. Dla reminder_add użyj date i title; time jest godziną.
 - Jeśli tool zwrócił dane — użyj ich. NIE mów "brak danych" gdy dane są.
 - Jeśli DB nie ma rekordu dla daty — sprawdź live connector (garmin_live_fetch,
-  wellness_day, xert_readiness) zamiast kończyć odpowiedzią "brak danych".
+  wellness_day) zamiast kończyć odpowiedzią "brak danych".
 - Jeśli live connector też nie ma danych — powiedz konkretnie co sprawdziłeś i jaki status zwrócił.
 - Gdy użytkownik prosi o podział lokalnego GPX na etapy, użyj route_gpx_split.
 - Nie zastępuj lokalnego splitu artefaktu wywołaniem artifact_save.
+
+- Pytanie o FORME / CP / FTP / LTP / W' / CTL / ATL / TSB / gotowosc (readiness) -> fitness_status (ModelQ v2, kanoniczne zrodlo z fitmodel_daily). To JEDYNE zrodlo CP/FTP/W'. NIE uzywaj Xerta jako zrodla CP; xert_readiness wywoluj TYLKO gdy uzytkownik wprost pyta o Xerta albo o porownanie ModelQ vs Xert. Zawsze podpisuj wartosci jako "ModelQ v2".
 
 Trasy (analiza rowerowa) — dobór narzędzia wg intencji:
 - Pytanie o ZAPLANOWANĄ trasę / plan / "co mnie czeka" (podsumowanie: dystans, nawierzchnia %, podjazdy — BEZ pogody) → route_plan_analysis (route_id lub artifact_id). Pogoda/wiatr planowanej trasy są w route_report (silnik METEO), nie w route_plan_analysis.

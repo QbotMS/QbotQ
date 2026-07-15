@@ -295,6 +295,20 @@ def backfill(limit=2000, start=0, since=SINCE, with_report=False):
         off += len(acts)
     conn.close()
     print(f"\nDONE: ingested={done} skipped={skipped} errors={errors} (cutoff={since})")
+    if done > 0:
+        _recompute_fitmodel(f"backfill ingested={done}")
+
+
+def _recompute_fitmodel(reason: str = "") -> None:
+    """Po zaingestowaniu NOWEJ jazdy przelicz ModelQ v2 (fitmodel_daily -> web Forma).
+    Odporne warstwowo: awaria przeliczenia NIE moze wywrocic ingestu jazdy."""
+    try:
+        from fitmodel.daily_job import main as _fm_daily
+        print(f"[fitmodel] recompute start ({reason})")
+        _fm_daily()
+        print("[fitmodel] recompute done")
+    except Exception as e:
+        print(f"[fitmodel] recompute FAILED: {type(e).__name__}: {str(e)[:200]}")
 
 
 def _one():
@@ -304,6 +318,7 @@ def _one():
     cyc = next((a for a in acts if isinstance(a, dict) and _is_cycling(a)), None)
     if not cyc:
         print("brak jazdy w 15 ostatnich"); return
+    was_new = not _already(conn, str(cyc.get("activityId")))
     r = ingest_one(gc, conn, cyc, with_report=True)
     print("INGESTED:", json.dumps(r, default=str))
     with conn.cursor() as cur:
@@ -317,6 +332,10 @@ def _one():
     print(f"DB: records={c} with_pos={cp} timer_events={timers}")
     print("sample:", sample)
     conn.close()
+    if was_new:
+        _recompute_fitmodel(f"_one aid={r.get('aid')}")
+    else:
+        print("[fitmodel] recompute skipped (jazda juz w bazie)")
 
 
 def rebuild_stale_reports(days: int = 7) -> int:

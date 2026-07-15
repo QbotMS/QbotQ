@@ -90,6 +90,7 @@ _QBOT_QUERY_VNEXT_FAST_PATH_INTENTS = {
     "body_comp",
     "body_measurements_range",
     "wellness_day",
+    "fitness_status",
     "xert_status",
     "xert_snapshot_range",
     "training_recent",

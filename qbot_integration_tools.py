@@ -1737,3 +1737,66 @@ __all__ = [
     "_tool_qbot_openmaps_config_status",
     "_tool_qbot_openmaps_legacy_status",
 ]
+
+
+# =========================================================================
+#  MODELQ v2 FITNESS TOOL (kanoniczne CP/FTP/W'/forma z fitmodel_daily)
+# =========================================================================
+
+def _tool_qbot_fitness_status(args: dict | None = None) -> dict[str, Any]:
+    """Kanoniczny stan formy z ModelQ v2 (qbot_v2.fitmodel_daily).
+
+    JEDYNE zrodlo CP/FTP/LTP/W' + CTL/ATL/TSB + readiness. Domyslnie najnowszy
+    dzien; opcjonalny arg date (ISO). Xert = tylko benchmark (xert_readiness).
+    """
+    args = args or {}
+    day = args.get("date")
+    try:
+        try:
+            import psycopg2 as pg
+        except ModuleNotFoundError:
+            import psycopg as pg
+        conn = pg.connect(host="127.0.0.1", dbname="qbot", user="qbot", password="")
+    except Exception as exc:
+        return {
+            "tool": "qbot_fitness_status", "status": "ERROR",
+            "safety_class": "READ_ONLY", "source": "ModelQ v2",
+            "error": type(exc).__name__,
+            "notes": f"Brak polaczenia z baza: {type(exc).__name__}",
+        }
+    cols = ("day, ftp_est_w, cp_modelq_w, ltp_modelq_w, wprime_modelq_kj, "
+            "wprime_lo_kj, wprime_hi_kj, wprime_confidence, wprime_source, "
+            "ctl_xss, atl_plus, tsb_plus, readiness_score, readiness_label")
+    try:
+        with conn.cursor() as cur:
+            if day:
+                cur.execute(f"SELECT {cols} FROM qbot_v2.fitmodel_daily "
+                            "WHERE day<=%s ORDER BY day DESC LIMIT 1", (day,))
+            else:
+                cur.execute(f"SELECT {cols} FROM qbot_v2.fitmodel_daily "
+                            "ORDER BY day DESC LIMIT 1")
+            row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return {
+            "tool": "qbot_fitness_status", "status": "NO_DATA",
+            "safety_class": "READ_ONLY", "source": "ModelQ v2",
+            "notes": "Brak wiersza w qbot_v2.fitmodel_daily.",
+        }
+
+    def _f(v):
+        return round(float(v), 1) if v is not None else None
+
+    return {
+        "tool": "qbot_fitness_status", "status": "OK",
+        "safety_class": "READ_ONLY", "source": "ModelQ v2",
+        "day": str(row[0]),
+        "ftp_w": _f(row[1]), "cp_w": _f(row[2]), "ltp_w": _f(row[3]),
+        "wprime_kj": _f(row[4]), "wprime_lo_kj": _f(row[5]), "wprime_hi_kj": _f(row[6]),
+        "wprime_confidence": row[7], "wprime_source": row[8],
+        "ctl": _f(row[9]), "atl": _f(row[10]), "tsb": _f(row[11]),
+        "readiness_score": _f(row[12]), "readiness_label": row[13],
+        "notes": "Kanoniczne CP/FTP/W' = ModelQ v2. Xert tylko benchmark.",
+    }

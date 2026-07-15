@@ -512,7 +512,7 @@ INTENT_KEYWORDS: list[tuple[list[str], str]] = [
     (["podjazdy", "climbs", "wzniesienia", "podejscia", "podjazd", "climb", "ile podjazdow", "trudne miejsca", "kategoria podjazdu", "hc", "cat 1", "cat 2", "cat 3", "cat 4"], "route_climbs"),
     (["wyslij poi", "dodaj poi", "wrzuc poi", "poi do rwgps", "wyslij do rwgps", "dodaj do trasy", "zatwierdz poi", "potwierdz poi", "wykonaj poi"], "rwgps_poi_push"),
     (["przeanalizuj poi", "analiza poi", "poi na trasie", "atrakcje na trasie", "atrakcje na etapie", "nawierzchnia trasy", "nawierzchnia etapu", "surface trasy", "analiza nawierzchni", "route_poi", "route_surface", "co po drodze", "sklepy na trasie", "woda na trasie", "jedzenie na trasie", "stacje na trasie", "stacja benzynowa", "paliwo na trasie", "fuel", "ładowanie na trasie", "poi etap", "poi trasy", "km trasy"], "route_poi_analyze"),
-    (["xert", "forma", "gotowość", "readiness", "freshness", "fatigue", "ftp", "ltp", "w'", "w_prime", "w prime"], "xert_status"),
+    (["xert"], "xert_status"),  # forma/ftp/ltp/w' -> fitness_status (ModelQ) via _looks_like_fitness_query
     # ── Artifact lookup intents (must precede garage_search) ──
     (["artefakt", "artifact", "artifact store", "artifact_id",
       "metadane", "metadata", "zarejestrowany artefakt", "zarejestrowane artefakty",
@@ -766,6 +766,23 @@ def _classify_domain(question: str) -> str:
     return "closed"
 
 
+_FITNESS_RE = re.compile(
+    r"(?<![\w])(cp|ftp|ltp|ctl|atl|tsb|wprime|w_prime|w prime|w'|w’|critical power|"
+    r"forma|forme|formę|formie|formy|"
+    r"gotowość|gotowosc|readiness|freshness|fatigue)(?![\w])",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_fitness_query(question: str) -> bool:
+    """Twarda regula: pytania o forme/CP/FTP/W'/CTL... -> ModelQ (fitness_status).
+    Gdy pada slowo 'xert' -> przepusc do xert_status (jawne pytanie o Xerta)."""
+    ql = question.lower()
+    if "xert" in ql:
+        return False
+    return bool(_FITNESS_RE.search(ql))
+
+
 def _resolve_intent(question: str) -> str:
     ql = question.lower()
     garmin_req = _resolve_garmin_activity_from_question(question)
@@ -783,6 +800,8 @@ def _resolve_intent(question: str) -> str:
         return "rwgps_route_find"
     if _parse_profile_request(question) is not None:
         return "rwgps_route_profile_sample"
+    if _looks_like_fitness_query(question):
+        return "fitness_status"
     for keywords, intent in INTENT_KEYWORDS:
         if intent == "nutrition_range" and "xert" in ql:
             continue
@@ -2525,6 +2544,52 @@ def _handle_xert_live_fetch(text: str) -> dict:
     answer = "\n".join(parts)
     return _envelope("xert_live_fetch", answer, data=live_data,
                      sources_used=["xert_api", "qbot_v2.xert_profile_snapshots"])
+
+
+def _handle_fitness_status(text: str) -> dict:
+    """Twarda regula: forma/CP/FTP/W'/CTL/ATL/TSB = ModelQ v2 (agregat jazda+wellness
+    Garmin), NIE Xert. Czyta qbot_v2.fitmodel_daily przez narzedzie fitness_status."""
+    try:
+        from qbot_integration_tools import _tool_qbot_fitness_status
+        r = _tool_qbot_fitness_status()
+    except Exception as exc:
+        return _envelope("fitness_status", f"Blad odczytu ModelQ: {exc}", status_override="ERROR")
+
+    if r.get("status") != "OK":
+        return _envelope("fitness_status",
+                         "Brak danych ModelQ w qbot_v2.fitmodel_daily.",
+                         missing_sources=["qbot_v2.fitmodel_daily"],
+                         status_override="PARTIAL")
+
+    parts = [f"Forma na {r.get('day')} (ModelQ v2):"]
+    if r.get("ftp_w") is not None:
+        parts.append(f"FTP: {r['ftp_w']:.0f} W")
+    if r.get("cp_w") is not None:
+        parts.append(f"CP: {r['cp_w']:.0f} W")
+    if r.get("ltp_w") is not None:
+        parts.append(f"LTP: {r['ltp_w']:.0f} W")
+    if r.get("wprime_kj") is not None:
+        _wp = f"W': {r['wprime_kj']:.1f} kJ"
+        if r.get("wprime_confidence"):
+            _wp += f" (pewnosc: {r['wprime_confidence']})"
+        parts.append(_wp)
+    if r.get("ctl") is not None:
+        parts.append(f"CTL: {r['ctl']:.1f}")
+    if r.get("atl") is not None:
+        parts.append(f"ATL: {r['atl']:.1f}")
+    if r.get("tsb") is not None:
+        parts.append(f"TSB: {r['tsb']:.1f}")
+    if r.get("readiness_label"):
+        _rl = f"Gotowosc: {r['readiness_label']}"
+        if r.get("readiness_score") is not None:
+            _rl += f" ({r['readiness_score']:.1f})"
+        parts.append(_rl)
+    parts.append("zrodlo: ModelQ v2 (agregat jazda + wellness Garmin). Xert = tylko benchmark.")
+
+    answer = "\n".join(parts)
+    return _envelope("fitness_status", answer, data=r,
+                     sources_used=["qbot_v2.fitmodel_daily"],
+                     freshness={"fitmodel_day": str(r.get("day"))})
 
 
 def _handle_xert_status(text: str) -> dict:
@@ -5136,6 +5201,8 @@ def handle_query(question: str, context: dict | None = None) -> dict:
         return _handle_fit_file_analyze(question, context)
     elif intent == "training_recent":
         return _handle_training_recent(question)
+    elif intent == "fitness_status":
+        return _handle_fitness_status(question)
     elif intent == "xert_status":
         return _handle_xert_status(question)
     elif intent == "xert_live_fetch":

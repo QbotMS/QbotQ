@@ -286,10 +286,29 @@ def _load_xert_readiness_tool() -> dict[str, Any]:
             "Live fetch danych treningowych z Xert API — pobiera bezpośrednio, "
             "nie z cache DB. Używaj gdy DB (training_sessions, xert_metrics) nie ma "
             "rekordu lub użytkownik pyta o aktualny stan. "
+            "BENCHMARK Xert (NIE zrodlo CP/FTP) - kanoniczne CP/FTP/W'/forma bierz z fitness_status (ModelQ v2). "
             "Zwraca: ftp_watts, ltp_watts, w_prime_kj, form_status. "
             "Parametry: brak (zawsze bieżący stan)."
         ),
         "args_schema": {},
+        "safety": "read",
+    }
+
+
+def _load_fitness_status_tool() -> dict[str, Any]:
+    from qbot_integration_tools import _tool_qbot_fitness_status
+    return {
+        "callable": _safe_call,
+        "wrapped": _tool_qbot_fitness_status,
+        "category": "fitness",
+        "description": (
+            "Kanoniczny stan formy z ModelQ v2 (fitmodel_daily) - JEDYNE zrodlo "
+            "CP/FTP/W'/formy. Uzyj dla pytan o CP, FTP, LTP, W', CTL/ATL/TSB, "
+            "gotowosc/readiness. Zwraca: ftp_w, cp_w, ltp_w, wprime_kj (+lo/hi/confidence), "
+            "ctl, atl, tsb, readiness_score/label, source. Xert NIE jest zrodlem CP "
+            "(benchmark: xert_readiness). Parametr: date (ISO, domyslnie najnowszy dzien)."
+        ),
+        "args_schema": {"date": {"type": "string"}},
         "safety": "read",
     }
 
@@ -2667,6 +2686,7 @@ def _init_registry():
         ("wellness_day", _load_wellness_day_tool),
         ("sleep_day", _load_sleep_day_tool),
         ("xert_readiness", _load_xert_readiness_tool),
+        ("fitness_status", _load_fitness_status_tool),
         ("garmin_diagnostics", _load_garmin_diagnostics_tool),
         ("garmin_live_fetch", _load_garmin_live_fetch_tool),
         ("rwgps_route_list", _load_rwgps_list_tool),
