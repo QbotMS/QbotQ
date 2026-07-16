@@ -1492,6 +1492,7 @@ def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, 
         "Dobierz do TEJ pogody (odczuwalna min/max, WBGT, wiatr, deszcz) - NIE przesadzaj z warstwami: przy cieple (odczuwalna >=18 C) NIE proponuj zimowych/grubych/thermal/merino-winter rzeczy; lekkie i przewiewne. "
         "RANKING: kazda rzecz w gear ma pole 'opis' (zakres temp, ocena gwiazdkowa ★, tagi). Przy rownorzednych wybieraj WYZEJ OCENIONE oraz oznaczone GLOWNA/ULUBIONY; NIE proponuj oznaczonych WYCOFANE / 'za mala' / 'WISI W SZAFIE'; szanuj zakres temp z opisu. "
         "KOMPLETY: jesli reguly_outfitu wskazuja pary (dana koszulka -> konkretne spodenki/warstwy), trzymaj sie ich. "
+        "SPOJNOSC MARKI (WSKAZOWKA, nie twarda regula - logika doboru i pogoda moga ja nadpisac): w miare mozliwosci trzymaj zestaw w jednej marce - do koszulki PEdALED dobieraj spodenki PEdALED, do koszulki Albion - spodenki Albion. Wyjatek: gdy koszulka to Rapha Explore (LS lub SS) i w garderobie nie ma ulubionych spodenek Rapha, uzyj spodenek PEdALED albo Albion. "
         "Kazda pozycja: typ = OGOLNY rodzaj (np. 'przewiewna koszulka','spodenki z wkladka','wiatrowka'); przyklad = pole 'nazwa' z listy gear (dokladnie, BEZ opisu); tryb = 'na sobie' albo 'zabierz'; uwaga = 1 krotkie zdanie. "
         "W KAZDYM zestawie OBOWIAZKOWO: koszulka/jersey ORAZ spodenki z wkladka (kategoria 'Bottoms / Bibs'). NIE proponuj kasku ani butow. 4-7 pozycji na zestaw. przyklad WYLACZNIE z listy gear."
     )
@@ -2445,6 +2446,11 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     details["forma"] = forma
     details["strategia"] = _strat
     sprzet["clothing"] = _ubior
+    # kompatybilnosc wstecz: gdy sa 'zestawy' a nie ma 'rzeczy', dorzuc splaszczony
+    # 1. zestaw jako 'rzeczy', by starszy (zcache'owany) frontend tez cos pokazal
+    if isinstance(_ubior, dict) and _ubior.get("zestawy") and not _ubior.get("rzeczy"):
+        _z0 = _ubior["zestawy"][0] if _ubior["zestawy"] else {}
+        _ubior["rzeczy"] = _z0.get("rzeczy") or []
 
     def _fb_overall(o):
         if not o:
@@ -3272,6 +3278,14 @@ def _build_forma_data(conn, start_str, end_str):
                 found = {"value": r[f], "day": r["day"]}
                 break
         latest[f] = found or {"value": None, "day": None}
+
+    # Glikogen: pokazuj stan DNIA KONCOWEGO (bez przenoszenia ostatniej niepustej w przod).
+    # Brak wpisow zywienia => None => kafel "brak danych", nie mylace stare 0%/21%.
+    _endrow = next((r for r in reversed(latest_series) if r["day"] == end_str), None)
+    for _gf in ("glycogen_pct", "glycogen_g"):
+        if _gf in _FORMA_FIELDS:
+            _gv = _endrow.get(_gf) if _endrow else None
+            latest[_gf] = {"value": _gv, "day": (end_str if _gv is not None else None)}
 
     return {
         "range": {"start": start_str, "end": end_str},

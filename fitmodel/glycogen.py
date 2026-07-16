@@ -165,6 +165,13 @@ def load_cho_intake(db_conn, day: date) -> float:
     return float(row[0])
 
 
+def _has_intake_log(db_conn, day: date) -> bool:
+    """Czy dla dnia jest JAKIKOLWIEK wpis zywienia (odroznia 'brak logu' od '0 g')."""
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM qbot_v2.intake_logs WHERE date=%s LIMIT 1", (day,))
+        return cur.fetchone() is not None
+
+
 def _fit_day_from_rows(rows: list[dict[str, Any]], fit_path: str) -> date | None:
     if rows:
         first_ts = rows[0].get("timestamp")
@@ -292,6 +299,16 @@ def compute_glycogen_balance(db_conn, fit_dir: str, start_day: date, end_day: da
         cho_in = load_cho_intake(db_conn, current) * cho_absorption
 
         cho_burn = float(ride_burn_by_day.get(current, 0.0))
+
+        if not _has_intake_log(db_conn, current):
+            # brak wpisow zywienia -> nie zgadujemy bilansu; brak danych, stan wstrzymany
+            results.append({
+                "day": current, "glycogen_g": None, "glycogen_pct": None,
+                "cho_in": None, "cho_burn": float(cho_burn), "capacity_g": float(capacity_g),
+            })
+            state_weight_kg = weight_kg
+            current += timedelta(days=1)
+            continue
 
         if cho_in > 5.5 * weight_kg and cho_burn < 50.0:
             state_g = capacity_g
