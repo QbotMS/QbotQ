@@ -3444,9 +3444,53 @@ def calendar_entries(start: str = Query(...), end: str = Query(...)):
             "ORDER BY day, id",
             (start, end, end, start),
         ).fetchall()
+        frows = conn.execute(
+            "SELECT day::text AS day, cp_modelq_w, ctl_xss, atl_raw, tsb_raw, "
+            "ftp_est_w, wprime_modelq_kj, w_per_kg, readiness_score, readiness_label, "
+            "hrv_night, rhr, sleep_h, glycogen_pct "
+            "FROM qbot_v2.fitmodel_daily WHERE day BETWEEN %s AND %s ORDER BY day",
+            (start, end),
+        ).fetchall()
+        rrows = conn.execute(
+            "SELECT date::text AS day, external_id, activity_name, sport_type, "
+            "distance_m, duration_s, tss, normalized_power_w, "
+            "started_at::text AS started_at, activity_training_load "
+            "FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s "
+            "ORDER BY date, started_at",
+            (start, end),
+        ).fetchall()
     finally:
         conn.close()
-    return {"start": start, "end": end, "entries": rows}
+
+    def _n(v, d=0):
+        if v is None:
+            return None
+        return round(float(v), d) if d else round(float(v))
+
+    days = {}
+    for r in frows:
+        days[r["day"]] = {
+            "cp": _n(r["cp_modelq_w"]), "ctl": _n(r["ctl_xss"], 1),
+            "atl": _n(r["atl_raw"], 1), "tsb": _n(r["tsb_raw"], 1),
+            "ftp": _n(r["ftp_est_w"]), "wprime": _n(r["wprime_modelq_kj"], 1),
+            "wkg": _n(r["w_per_kg"], 2), "readiness": _n(r["readiness_score"], 2),
+            "readiness_label": r["readiness_label"], "hrv": _n(r["hrv_night"]),
+            "rhr": _n(r["rhr"]), "sleep": _n(r["sleep_h"], 1), "glyc": _n(r["glycogen_pct"]),
+        }
+    rides = {}
+    for r in rrows:
+        st = r["started_at"]
+        rides.setdefault(r["day"], []).append({
+            "ride_key": r["external_id"],
+            "name": r["activity_name"] or (r["sport_type"] or "jazda"),
+            "sport": r["sport_type"],
+            "dist_km": _n((r["distance_m"] or 0) / 1000.0, 1),
+            "dur_h": _n((r["duration_s"] or 0) / 3600.0, 2),
+            "tss": _n(r["tss"]), "np": _n(r["normalized_power_w"]),
+            "strain": _n(r["activity_training_load"]),
+            "time": (st[11:16] if st and len(st) >= 16 else None),
+        })
+    return {"start": start, "end": end, "entries": rows, "days": days, "rides": rides}
 
 
 @app.post("/api/calendar/entry")
@@ -3515,6 +3559,56 @@ async def calendar_delete(request: Request):
     finally:
         conn.close()
     return {"ok": True}
+
+
+@app.post("/api/calendar/edit")
+async def calendar_edit(request: Request):
+    """Edytuje wpis kalendarza po id. body: {id, title?, feel?, severity?, end_day?, note?}.
+    Zmienia tylko tresc (title/feel/severity/end_day/note); day i kind pozostaja bez zmian."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    try:
+        eid = int(body.get("id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Wymagane: id (liczba)")
+
+    def _s(key, n):
+        v = body.get(key)
+        if v in (None, ""):
+            return None
+        return str(v).strip()[:n]
+
+    title = _s("title", 200)
+    note = _s("note", 2000)
+    severity = _s("severity", 20)
+    end_day = _s("end_day", 10)
+    feel = body.get("feel")
+    if feel is not None and feel != "":
+        try:
+            feel = max(-2, min(2, int(feel)))
+        except (TypeError, ValueError):
+            feel = None
+    else:
+        feel = None
+
+    conn = _db_conn()
+    try:
+        row = conn.execute(
+            "UPDATE qbot_v2.calendar_entry SET title=%s, feel=%s, severity=%s, end_day=%s, note=%s "
+            "WHERE id=%s RETURNING id",
+            (title, feel, severity, end_day, note, eid),
+        ).fetchone()
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail="Zapis nieudany: %s" % e)
+    finally:
+        conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Nie ma wpisu o tym id")
+    return {"ok": True, "id": row["id"]}
 
 
 _FORMA_FIELDS = [
