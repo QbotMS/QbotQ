@@ -256,6 +256,17 @@ def tg_edit_markup(chat_id, message_id):
         pass
 
 
+def _spawn_komoot_analyze_worker(tour_id, atrakcje=False):
+    """Odpala analize trasy Komoot w odlaczonym procesie (nie blokuje crona)."""
+    import subprocess, sys
+    args = [sys.executable, "/opt/qbot/app/scripts/komoot_analyze_worker.py", str(tour_id)]
+    if atrakcje:
+        args.append("--atrakcje")
+    logf = open("/opt/qbot/logs/komoot_analyze_" + str(tour_id) + ".log", "ab")
+    subprocess.Popen(args, stdout=logf, stderr=subprocess.STDOUT,
+                     cwd="/opt/qbot/app", start_new_session=True)
+
+
 def handle_komoot_callback(cq):
     data = cq.get("data") or ""
     cq_id = cq.get("id")
@@ -275,26 +286,12 @@ def handle_komoot_callback(cq):
     _clear = True
     if action == "y":
         tg_answer_callback(cq_id, "Analizuje...")
-        try:
-            res = komoot_watch.analyze_tour(tour_id)
-            nm = res.get("name") or ("#" + tour_id)
-            tg_send_plain("\u2705 Zanalizowano: " + str(nm) + "\nGotowe w QBot - wygeneruj raport i wyslij na Karoo.")
-        except Exception as e:
-            log(f"   analyze_tour blad: {e}")
-            tg_send_plain("\u26a0\ufe0f Analiza #" + tour_id + " nie powiodla sie: " + str(e)[:200])
-            _clear = False
+        tg_send_plain("\U0001F504 Przyjeto. Uruchamiam analize trasy #" + tour_id + " w tle - chwile to potrwa, przysle wynik.")
+        _spawn_komoot_analyze_worker(tour_id, atrakcje=False)
     elif action == "ya":
         tg_answer_callback(cq_id, "Analizuje + atrakcje...")
-        try:
-            from qbot3.routes.route_poi_store import set_route_poi_attractions
-            set_route_poi_attractions("komoot-" + tour_id, True)
-            res = komoot_watch.analyze_tour(tour_id)
-            nm = res.get("name") or ("#" + tour_id)
-            tg_send_plain("\u2705 Zanalizowano z atrakcjami: " + str(nm) + "\nGotowe w QBot - wygeneruj raport i wyslij na Karoo.")
-        except Exception as e:
-            log(f"   analyze_tour(+atrakcje) blad: {e}")
-            tg_send_plain("\u26a0\ufe0f Analiza #" + tour_id + " (+atrakcje) nie powiodla sie: " + str(e)[:200])
-            _clear = False
+        tg_send_plain("\U0001F504 Przyjeto. Uruchamiam analize trasy #" + tour_id + " (+atrakcje) w tle - chwile to potrwa, przysle wynik.")
+        _spawn_komoot_analyze_worker(tour_id, atrakcje=True)
     elif action == "n":
         tg_answer_callback(cq_id, "Pominieto")
         try:
