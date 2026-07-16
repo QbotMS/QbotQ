@@ -5,6 +5,7 @@ Nie rejestruje narzedzia Alberta (brak sprzezenia z _SYSTEM). Uzywa wspolnego kl
 (qgpt_json) — tego samego, ktorym posluguje sie reszta QBota.
 """
 import json
+import re
 
 W2_QUESTIONS = [
     "Jak ciezka byla ta jazda na tle Twoich mozliwosci (ModelQ)?",
@@ -35,7 +36,7 @@ Zwroc WYLACZNIE surowy JSON (bez ```), o dokladnie takiej strukturze:
  "synteza": [{"tytul": "...", "tekst": "...", "cytaty": ["blok.pole", "..."]}],
  "next": ["2-4 konkretne wnioski na nastepny raz, wyprowadzone z danych (nie generyk)"]
 }
-W "synteza" daj 6-7 sekcji pokrywajacych: obciazenie vs ModelQ, W' i regeneracje, pacing/splity/VI/decoupling, teren i wiatr (terrain_impact) a koszt i tempo, audyt energii, naped i technike, wellness poranny a jazde. KAZDA sekcja to POLACZENIE danych z cytatami; NIE powtarzaj tej samej mysli w kilku sekcjach. NIE generuj listy 'pytania'."""
+W "synteza" daj 6-7 sekcji pokrywajacych: obciazenie vs ModelQ, W' i regeneracje, pacing/splity/VI/decoupling, teren i wiatr (terrain_impact) a koszt i tempo, audyt energii, naped i technike, wellness poranny a jazde. KAZDA sekcja to POLACZENIE danych z cytatami; NIE powtarzaj tej samej mysli w kilku sekcjach. NIE generuj listy 'pytania'.\n\nPRZYKLAD (tak NIE wolno / tak MA byc):\nZLE: \"Jazda weszla w obciazenie: \\\"load.if\\\" 0.77, \\\"load.kj\\\" 639.\"\nDOBRZE: \"Jazda weszla w obciazenie: IF 0.77, praca 639 kJ.\" (a w \"cytaty\": [\"load.if\",\"load.kj\"]).\nZamieniaj KAZDY identyfikator blok.pole na ludzka etykiete z jednostka. Dotyczy verdict, highlights, tekst ORAZ next. Zaden z tych czterech nie moze zawierac kropkowanych nazw pol."""
 
 
 def _for_prompt(w1: dict) -> dict:
@@ -50,16 +51,80 @@ def _for_prompt(w1: dict) -> dict:
     return d
 
 
+_ID_RE = re.compile(r'["\u201e\u201d\u201c\u2019\u2018]?\b[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+\b["\u201e\u201d\u201c\u2019\u2018]?')
+
+def _iter_texts(out):
+    yield ("verdict", out.get("verdict", "") or "")
+    for i, h in enumerate(out.get("highlights", []) or []):
+        yield ("highlights[%d]" % i, h if isinstance(h, str) else "")
+    for i, sec in enumerate(out.get("synteza", []) or []):
+        if isinstance(sec, dict):
+            yield ("synteza[%d].tytul" % i, sec.get("tytul", "") or "")
+            yield ("synteza[%d].tekst" % i, sec.get("tekst", "") or "")
+    for i, nx in enumerate(out.get("next", []) or []):
+        yield ("next[%d]" % i, nx if isinstance(nx, str) else "")
+
+def _has_ids(out):
+    for _, t in _iter_texts(out):
+        if t and _ID_RE.search(t):
+            return True
+    return False
+
+def _scrub(t):
+    if not t:
+        return t
+    t = _ID_RE.sub("", t)
+    t = re.sub(r'["\u201e\u201d\u201c]{1,2}', "", t)
+    t = re.sub(r'\s+([,.;:])', r'\1', t)
+    t = re.sub(r'([,:])\s*(?=[,.;:])', "", t)
+    t = re.sub(r'\(\s*\)', "", t)
+    t = re.sub(r'\s{2,}', " ", t).strip()
+    t = re.sub(r'\s+([,.;:])', r'\1', t)
+    return t
+
+def _scrub_out(out):
+    if isinstance(out.get("verdict"), str):
+        out["verdict"] = _scrub(out["verdict"])
+    out["highlights"] = [_scrub(h) if isinstance(h, str) else h for h in (out.get("highlights") or [])]
+    for sec in (out.get("synteza") or []):
+        if isinstance(sec, dict):
+            if isinstance(sec.get("tytul"), str):
+                sec["tytul"] = _scrub(sec["tytul"])
+            if isinstance(sec.get("tekst"), str):
+                sec["tekst"] = _scrub(sec["tekst"])
+    out["next"] = [_scrub(n) if isinstance(n, str) else n for n in (out.get("next") or [])]
+    return out
+
+
 def build_w2(w1: dict, *, max_tokens: int = 4096) -> dict:
     from qgpt_client import qgpt_json
-    prompt = (
+    base = (
         "Zanalizuj ta jazde na podstawie danych W1. Zwroc verdict, highlights, synteza, next.\n\n"
         "Dane W1 (JSON):\n"
         + json.dumps(_for_prompt(w1), ensure_ascii=False, default=str)
     )
-    out = qgpt_json(prompt, system=W2_SYSTEM, max_tokens=max_tokens, temperature=0)
+    out = qgpt_json(base, system=W2_SYSTEM, max_tokens=max_tokens, temperature=0)
     if not isinstance(out, dict):
         raise ValueError("W2: model nie zwrocil obiektu JSON")
+    # walidacja: pola tekstowe nie moga zawierac identyfikatorow blok.pole -> jedna korekta
+    if _has_ids(out):
+        bad = [f"{p}: {t}" for p, t in _iter_texts(out) if t and _ID_RE.search(t)][:8]
+        corr = (
+            base
+            + "\n\nUWAGA: poprzednia odpowiedz miala BLAD - w polach tekstowych byly nazwy pol W1 (np. load.if). "
+            "Przepisz CALOSC tak, by verdict/highlights/tekst/next NIE zawieraly ZADNYCH identyfikatorow typu "
+            "blok.pole - zamien je na ludzkie etykiety z jednostka (IF 0.77, praca 639 kJ, XSS 98.1). "
+            "Identyfikatory wylacznie w \"cytaty\". Bledne fragmenty:\n- "
+            + "\n- ".join(bad)
+        )
+        try:
+            out2 = qgpt_json(corr, system=W2_SYSTEM, max_tokens=max_tokens, temperature=0)
+            if isinstance(out2, dict):
+                out = out2
+        except Exception:
+            pass
+    if _has_ids(out):
+        out = _scrub_out(out)  # ostatnia deska ratunku (deterministycznie)
     out.setdefault("verdict", "")
     out.setdefault("highlights", [])
     out.setdefault("synteza", [])

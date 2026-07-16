@@ -233,7 +233,10 @@ def _parse_fit(path):
             alt=(d.get("enhanced_altitude") if d.get("enhanced_altitude") is not None else d.get("altitude")),
             grade=d.get("grade"), dist=(d.get("distance") or 0),
             hr=d.get("heart_rate"), temp=d.get("temperature"),
-            lat=d.get("position_lat"), lon=d.get("position_long")))
+            lat=d.get("position_lat"), lon=d.get("position_long"),
+            kwbal=d.get("qext2_wbal_pct"), kcp=d.get("qext2_cp_eff_w"),
+            kwe=d.get("qext2_wprime_eff_kj"), kzero=d.get("qext2_wbal_zero"),
+            kcf=d.get("qext2_cf")))
     events=[]
     for m in ff.get_messages("event"):
         d={f.name:f.value for f in m}
@@ -381,6 +384,54 @@ def _fetch_activity_rows(cur, external_id):
     except Exception:
         return None
 
+def _wprime_karoo(recs):
+    """Realna krzywa W'bal z Karoo (pola developerskie QExt2 w FIT). Pomiar Z ROWERU,
+    skalowany gotowoscia dnia (cf/todayFactor) -> blizszy prawdzie niz statyczny replay."""
+    K=[r for r in recs if r.get("kwbal") is not None]
+    if not K: return None
+    wb=[float(r["kwbal"]) for r in K]; mn=min(wb)
+    step=max(1,len(K)//1500); curve=[]
+    for i in range(0,len(K),step):
+        curve.append([round((K[i].get("dist") or 0)/1000.0,3), round(float(K[i]["kwbal"]))])
+    bins={}
+    for r in K:
+        kk=int((r.get("dist") or 0)//5000); bins[kk]=min(bins.get(kk,1e9), float(r["kwbal"]))
+    series=[{"km":kk*5+5,"min_pct":round(v)} for kk,v in sorted(bins.items())]
+    cpv=[float(r["kcp"]) for r in K if r.get("kcp") is not None]
+    wev=[float(r["kwe"]) for r in K if r.get("kwe") is not None]
+    cfv=[float(r["kcf"]) for r in K if r.get("kcf") is not None]
+    return {
+        "cp_avg": round(sum(cpv)/len(cpv)) if cpv else None,
+        "cp_min": round(min(cpv)) if cpv else None,
+        "we_avg_j": round(sum(wev)/len(wev)*1000) if wev else None,
+        "cf_avg": round(sum(cfv)/len(cfv),2) if cfv else None,
+        "min_pct": round(mn), "zero": any(bool(r.get("kzero")) for r in K),
+        "lt50": sum(1 for v in wb if v<50), "lt25": sum(1 for v in wb if v<25),
+        "series": series, "curve": curve,
+    }
+
+def _overlay_karoo(out, recs):
+    """Jesli FIT ma realna krzywa W'bal z Karoo -> nadpisz nia pola W'bal, zachowujac
+    statyczny min do porownania (wbal_min_static_pct) oraz top_efforts z replayu."""
+    if not out: return out
+    kar=_wprime_karoo(recs)
+    if not kar: return out
+    out["wbal_min_static_pct"]=out.get("wbal_min_pct")
+    out["wbal_min_pct"]=_tag(kar["min_pct"],"A","karoo (QExt2)")
+    out["wbal_series"]=_tag(kar["series"],"A","karoo (QExt2)")
+    out["wbal_curve"]=_tag(kar["curve"],"A","karoo (QExt2)")
+    out["wbal_zero"]=_tag(kar["zero"],"A","karoo (QExt2)")
+    if kar["cp_avg"] is not None:
+        out["cp_eff_w"]=_tag(kar["cp_avg"],"A","karoo cp_eff (QExt2)", cp_min_w=kar["cp_min"])
+    if kar["we_avg_j"] is not None:
+        out["wprime_eff_j"]=_tag(kar["we_avg_j"],"A","karoo w'_eff (QExt2)")
+    if kar["cf_avg"] is not None:
+        out["cf_avg"]=_tag(kar["cf_avg"],"A","karoo todayFactor")
+    out["time_lt50_min"]=_tag(round(kar["lt50"]/60),"B","karoo")
+    out["time_lt25_min"]=_tag(round(kar["lt25"]/60),"B","karoo")
+    out["source_note"]=_tag("W'bal = realny pomiar z Karoo (QExt2), skalowany gotowoscia dnia (cf). Statyczny replay w wbal_min_static_pct.","A","karoo")
+    return out
+
 def _wprime(recs, mq_rows, sig, cp_fallback=None, wp_fallback=None, wp_source="xert"):
     """W'bal JEDNYM silnikiem MQ2 (replay_mpa) na KANONICZNYCH danych
     (activity_record) i sygnaturze z modelq2_ride -> min W'bal IDENTYCZNY jak
@@ -433,12 +484,13 @@ def _wprime(recs, mq_rows, sig, cp_fallback=None, wp_fallback=None, wp_source="x
             "wbal_curve":_tag(wbal_curve,"A",f"modelq2_replay ({data_tag})"),
             "top_efforts":_tag(efforts[:3],"A","fit"),
         }
+    _out=None
     if sig is not None and mq_rows:
-        out=_run(mq_rows, sig.tp_w, sig.hie_j, "activity_record")
-        if out: return out
-    if sig is not None and recs:
-        out=_run(recs, sig.tp_w, sig.hie_j, "fit")
-        if out: return out
+        _out=_run(mq_rows, sig.tp_w, sig.hie_j, "activity_record")
+    if _out is None and sig is not None and recs:
+        _out=_run(recs, sig.tp_w, sig.hie_j, "fit")
+    if _out is not None:
+        return _overlay_karoo(_out, recs)
     # --- ostatni fallback: stary inline ---
     cp=cp_fallback; Wp=wp_fallback
     if not cp or not Wp:
@@ -477,7 +529,7 @@ def _wprime(recs, mq_rows, sig, cp_fallback=None, wp_fallback=None, wp_source="x
             i=j
         else: i+=1
     efforts.sort(key=lambda e:-e["cost_kj"])
-    return {
+    return _overlay_karoo({
         "cp_w":_tag(round(cp),"B","legacy_inline"),
         "wprime_j":_tag(round(Wp),"B","legacy_inline"),
         "wbal_min_pct":_tag(round(100*mn/Wp),"B","legacy_inline"),
@@ -490,7 +542,7 @@ def _wprime(recs, mq_rows, sig, cp_fallback=None, wp_fallback=None, wp_source="x
         "wbal_series":_tag(wbal_series,"B","legacy_inline"),
         "wbal_curve":_tag(wbal_curve,"B","legacy_inline"),
         "top_efforts":_tag(efforts[:3],"A","fit"),
-    }
+    }, recs)
 
 def _drivetrain(recs, events):
     events=sorted(events,key=lambda x:x[0])
@@ -1196,6 +1248,7 @@ def _modelq_block(cur, ride_date):
         "ctl": round(f(cr.get("ctl_xss")),1) if cr.get("ctl_xss") is not None else None,
         "atl": round(f(cr.get("atl_raw")),1) if cr.get("atl_raw") is not None else None,
         "tsb": round(f(cr.get("tsb_raw")),1) if cr.get("tsb_raw") is not None else None,
+        "readiness": round(f(cr.get("readiness_score")),2) if cr.get("readiness_score") is not None else None,
         "weight_kg": _weight,
         "weight_source": (None if cr.get("weight_kg") else ("garmin" if _gw else None)),
         "wkg": _wkg,
