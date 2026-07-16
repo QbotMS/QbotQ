@@ -155,7 +155,7 @@ async def _webauth_guard(request, call_next):
     Dane logowania: /opt/qbot/app/.env.webauth
     klucze: WEBAUTH_USERS=login:haslo,login2:haslo2 ; WEBAUTH_TOKEN=<wartosc do podpisu>
     """
-    if request.url.path in ("/healthz", "/login"):
+    if request.url.path in ("/healthz", "/login", "/favicon.ico", "/favicon.svg"):
         return await call_next(request)
 
     users, sign_val = _webauth_load()
@@ -180,7 +180,7 @@ async def _login_form(next: str = "/", err: int = 0):
     err_html = '<div class="err">Zle dane logowania. Sprobuj ponownie.</div>' if err else ""
     return HTMLResponse(
         '<!doctype html><html lang="pl"><head><meta charset="utf-8">'
-        '<title>QBot Lab - logowanie</title>'
+        '<link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate icon" href="/favicon.ico"><title>QBot Lab - logowanie</title>'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         '<style>' + _LOGIN_PAGE_CSS + '</style></head><body>'
         '<form method="post" action="/login" autocomplete="on">'
@@ -383,6 +383,48 @@ def api_noclegi(lat: float, lon: float, radius_m: int = 3000):
         })
     items.sort(key=lambda x: x["dist_m"])
     return {"status": "OK", "count": len(items), "radius_m": radius_m, "items": items}
+
+
+@app.get("/api/planer/opis")
+def api_planer_opis(route_id: str, rebuild: int = 0):
+    """Opis-tlo trasy dla Planera wyprawy (cache w qbot_v2.planer_route_opis;
+    rebuild=1 wymusza regeneracje, inwalidacja po geometry_hash)."""
+    try:
+        from qbot3.routes.planer_opis import build_opis
+    except Exception as e:
+        return {"status": "ERROR", "error": "modul niedostepny: " + str(e)[:120]}
+    try:
+        data = build_opis(route_id, rebuild=bool(rebuild))
+    except Exception as e:
+        return {"status": "ERROR", "error": str(e)[:200]}
+    if isinstance(data, dict) and data.get("error"):
+        return {"status": "ERROR", "error": data.get("error"), "detail": data.get("raw")}
+    return {"status": "OK", **data}
+
+
+@app.post("/api/planer/opis-dni")
+async def api_planer_opis_dni(request: Request):
+    """Opis LLM per dzien wg podzialu. Body: {route_id, cuts:[km,...], rebuild?}."""
+    try:
+        body = await request.json()
+    except Exception:
+        return {"status": "ERROR", "error": "bledny JSON w body"}
+    rid = body.get("route_id")
+    cuts = body.get("cuts") or []
+    rebuild = bool(body.get("rebuild"))
+    if not rid:
+        return {"status": "ERROR", "error": "brak route_id"}
+    try:
+        from qbot3.routes.planer_opis import build_opis_dni
+    except Exception as e:
+        return {"status": "ERROR", "error": "modul niedostepny: " + str(e)[:120]}
+    try:
+        data = build_opis_dni(rid, cuts, rebuild=rebuild)
+    except Exception as e:
+        return {"status": "ERROR", "error": str(e)[:200]}
+    if isinstance(data, dict) and data.get("error"):
+        return {"status": "ERROR", "error": data.get("error")}
+    return data
 
 
 def _tile_poly_bounds(x, y, z=14):
@@ -3437,7 +3479,7 @@ def calendar_entries(start: str = Query(...), end: str = Query(...)):
     try:
         rows = conn.execute(
             "SELECT id, day::text AS day, kind, title, feel, severity, "
-            "end_day::text AS end_day, note "
+            "end_day::text AS end_day, note, color, event_type, at_time::text AS at_time, remind_offsets "
             "FROM qbot_v2.calendar_entry "
             "WHERE (day BETWEEN %s AND %s) "
             "   OR (end_day IS NOT NULL AND day <= %s AND end_day >= %s) "
@@ -3457,6 +3499,11 @@ def calendar_entries(start: str = Query(...), end: str = Query(...)):
             "started_at::text AS started_at, activity_training_load "
             "FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s "
             "ORDER BY date, started_at",
+            (start, end),
+        ).fetchall()
+        troute = conn.execute(
+            "SELECT entry_id, day::text AS day, route_id, route_name "
+            "FROM qbot_v2.calendar_day_route WHERE day BETWEEN %s AND %s",
             (start, end),
         ).fetchall()
     finally:
@@ -3490,7 +3537,13 @@ def calendar_entries(start: str = Query(...), end: str = Query(...)):
             "strain": _n(r["activity_training_load"]),
             "time": (st[11:16] if st and len(st) >= 16 else None),
         })
-    return {"start": start, "end": end, "entries": rows, "days": days, "rides": rides}
+    entry_routes = [
+        {"entry_id": r["entry_id"], "day": r["day"],
+         "route_id": r["route_id"], "route_name": r["route_name"]}
+        for r in troute
+    ]
+    return {"start": start, "end": end, "entries": rows, "days": days,
+            "rides": rides, "entry_routes": entry_routes}
 
 
 @app.post("/api/calendar/entry")
@@ -3510,8 +3563,8 @@ async def calendar_add(request: Request):
 
     day = _s("day", 10)
     kind = (str(body.get("kind") or "")).strip()
-    if not day or kind not in ("event", "feel", "illness"):
-        raise HTTPException(status_code=400, detail="Wymagane: day + kind (event|feel|illness)")
+    if not day or kind not in ("event", "feel", "illness", "reminder"):
+        raise HTTPException(status_code=400, detail="Wymagane: day + kind (event|feel|illness|reminder)")
     title = _s("title", 200)
     note = _s("note", 2000)
     severity = _s("severity", 20)
@@ -3528,9 +3581,9 @@ async def calendar_add(request: Request):
     conn = _db_conn()
     try:
         row = conn.execute(
-            "INSERT INTO qbot_v2.calendar_entry (day, kind, title, feel, severity, end_day, note) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
-            (day, kind, title, feel, severity, end_day, note),
+            "INSERT INTO qbot_v2.calendar_entry (day, kind, title, feel, severity, end_day, note, color, event_type, at_time, remind_offsets) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            (day, kind, title, feel, severity, end_day, note, _s("color", 20), _s("event_type", 20), _s("at_time", 8), _s("remind_offsets", 20)),
         ).fetchone()
         conn.commit()
     except Exception as e:
@@ -3596,9 +3649,9 @@ async def calendar_edit(request: Request):
     conn = _db_conn()
     try:
         row = conn.execute(
-            "UPDATE qbot_v2.calendar_entry SET title=%s, feel=%s, severity=%s, end_day=%s, note=%s "
+            "UPDATE qbot_v2.calendar_entry SET title=%s, feel=%s, severity=%s, end_day=%s, note=%s, color=%s, event_type=%s, at_time=%s, remind_offsets=%s "
             "WHERE id=%s RETURNING id",
-            (title, feel, severity, end_day, note, eid),
+            (title, feel, severity, end_day, note, _s("color", 20), _s("event_type", 20), _s("at_time", 8), _s("remind_offsets", 20), eid),
         ).fetchone()
         conn.commit()
     except Exception as e:
@@ -3609,6 +3662,48 @@ async def calendar_edit(request: Request):
     if not row:
         raise HTTPException(status_code=404, detail="Nie ma wpisu o tym id")
     return {"ok": True, "id": row["id"]}
+
+
+@app.post("/api/calendar/route")
+async def calendar_route(request: Request):
+    """Przypina/odpina trase do konkretnego dnia eventu. body: {entry_id, day, route_id?, route_name?}.
+    Pusty route_id => odpiecie (usuniecie wiersza)."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    try:
+        entry_id = int(body.get("entry_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Wymagane: entry_id (liczba)")
+    day = (str(body.get("day") or "")).strip()[:10]
+    if not day:
+        raise HTTPException(status_code=400, detail="Wymagane: day")
+    route_id = body.get("route_id")
+    route_id = (str(route_id).strip()[:64]) if route_id not in (None, "") else None
+    route_name = body.get("route_name")
+    route_name = (str(route_name).strip()[:200]) if route_name not in (None, "") else None
+    conn = _db_conn()
+    try:
+        if route_id is None:
+            conn.execute(
+                "DELETE FROM qbot_v2.calendar_day_route WHERE entry_id=%s AND day=%s",
+                (entry_id, day),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO qbot_v2.calendar_day_route (entry_id, day, route_id, route_name) "
+                "VALUES (%s, %s, %s, %s) "
+                "ON CONFLICT (entry_id, day) DO UPDATE SET route_id=EXCLUDED.route_id, route_name=EXCLUDED.route_name",
+                (entry_id, day, route_id, route_name),
+            )
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail="Zapis nieudany: %s" % e)
+    finally:
+        conn.close()
+    return {"ok": True}
 
 
 _FORMA_FIELDS = [

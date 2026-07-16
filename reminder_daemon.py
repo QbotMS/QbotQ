@@ -22,6 +22,67 @@ def log(m: str):
         f.write(f"[{ts}] {m}\n")
 
 
+def _fire_calendar_reminders(TOKEN, CHAT_ID, log):
+    """Przypomnienia z kalendarza (qbot_v2.calendar_entry kind=reminder). Odpala co minute."""
+    import os as _os, sys as _sys
+    from datetime import datetime, timedelta
+    _os.environ.setdefault("QBOT3_ENABLED", "1")
+    if "/opt/qbot/app" not in _sys.path:
+        _sys.path.insert(0, "/opt/qbot/app")
+    from fitmodel.api import _db_connect
+    import requests
+    now = datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    curmin = now.strftime("%Y-%m-%d %H:%M")
+    conn = _db_connect(); cur = conn.cursor()
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS qbot_v2.calendar_reminder_fired("
+        "entry_id bigint NOT NULL, target_key text NOT NULL, "
+        "sent_at timestamptz NOT NULL DEFAULT now(), UNIQUE(entry_id, target_key))")
+    conn.commit()
+    cur.execute(
+        "SELECT id, title, at_time::text, remind_offsets, note "
+        "FROM qbot_v2.calendar_entry WHERE kind='reminder' AND day=%s", (today,))
+    rows = cur.fetchall()
+    sent = 0
+    for r in rows:
+        eid, title, at_time, offs, note = r[0], r[1], r[2], r[3], r[4]
+        if not at_time:
+            tgt = now.replace(hour=8, minute=0, second=0, microsecond=0); off = None
+        else:
+            hh, mm = int(at_time[0:2]), int(at_time[3:5])
+            try:
+                off = int((offs or "0").strip() or "0")
+            except Exception:
+                off = 0
+            tgt = now.replace(hour=hh, minute=mm, second=0, microsecond=0) - timedelta(minutes=off)
+        tkey = tgt.strftime("%Y-%m-%d %H:%M")
+        if tkey != curmin:
+            continue
+        cur.execute("SELECT 1 FROM qbot_v2.calendar_reminder_fired WHERE entry_id=%s AND target_key=%s", (eid, tkey))
+        if cur.fetchone():
+            continue
+        when = "całodzienne (08:00)" if not at_time else at_time[0:5]
+        lead = ""
+        if at_time and off:
+            lead = {60: " · 1 h przed", 240: " · 4 h przed", 480: " · 8 h przed"}.get(off, "")
+        desc = ("\n" + note) if note else ""
+        text = "🔔 <b>Przypomnienie</b>\n\n📅 " + (title or "") + "\n🕒 " + when + lead + desc
+        try:
+            resp = requests.post(
+                "https://api.telegram.org/bot%s/sendMessage" % TOKEN,
+                json={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}, timeout=10)
+            if resp.ok:
+                cur.execute("INSERT INTO qbot_v2.calendar_reminder_fired (entry_id, target_key) VALUES (%s, %s) ON CONFLICT DO NOTHING", (eid, tkey))
+                conn.commit(); sent += 1; log("CAL OK [%s] %s" % (eid, title))
+            else:
+                log("CAL TELEGRAM_ERR [%s]: HTTP %s" % (eid, resp.status_code))
+        except Exception as e:
+            log("CAL EXC [%s]: %s" % (eid, e))
+    conn.close()
+    return sent
+
+
 def main():
     if not TOKEN or not CHAT_ID:
         log("BLOCKED: TELEGRAM_TOKEN or TELEGRAM_CHAT_ID not set")
@@ -91,6 +152,10 @@ def main():
     )
     conn.commit()
     conn.close()
+    try:
+        sent += _fire_calendar_reminders(TOKEN, CHAT_ID, log)
+    except Exception as e:
+        log("CAL_STEP_EXC: %s" % e)
     if sent == 0:
         log("— brak przypomnień do wysłania")
 
