@@ -340,6 +340,51 @@ def route_geometry(route_id: str):
     }
 
 
+def _haversine_m(lat1, lon1, lat2, lon2):
+    p = math.pi / 180.0
+    a = (0.5 - math.cos((lat2 - lat1) * p) / 2
+         + math.cos(lat1 * p) * math.cos(lat2 * p) * (1 - math.cos((lon2 - lon1) * p)) / 2)
+    return 2 * 6371000.0 * math.asin(math.sqrt(a))
+
+
+@app.get("/api/noclegi")
+def api_noclegi(lat: float, lon: float, radius_m: int = 3000):
+    """Noclegi w promieniu — Google Places (to samo zrodlo co POI trasy)."""
+    try:
+        from qbot3.artifacts.route_analyzer import (
+            _route_poi_v2_google_search_nearby as _g_nearby,
+            _route_poi_v2_google_api_key as _g_key,
+        )
+    except Exception as e:
+        return {"status": "ERROR", "error": "integracja niedostepna: " + str(e)[:120], "items": []}
+    gkey = _g_key()
+    if not gkey:
+        return {"status": "NO_KEY", "error": "brak klucza w srodowisku qbot-web", "items": []}
+    lodging_types = ["hotel", "motel", "bed_and_breakfast", "guest_house", "hostel",
+                     "resort_hotel", "extended_stay_hotel", "campground", "cottage", "farmstay"]
+    try:
+        places = _g_nearby(float(lat), float(lon), radius_m=float(radius_m),
+                           api_key=gkey, included_types=lodging_types)
+    except Exception as e:
+        return {"status": "ERROR", "error": str(e)[:160], "items": []}
+    items = []
+    for pl in places:
+        loc = pl.get("location") or {}
+        plat, plon = loc.get("latitude"), loc.get("longitude")
+        if plat is None or plon is None:
+            continue
+        items.append({
+            "name": (pl.get("displayName") or {}).get("text") or "(bez nazwy)",
+            "type": (pl.get("primaryTypeDisplayName") or {}).get("text") or "",
+            "rating": pl.get("rating"),
+            "ratings": pl.get("userRatingCount"),
+            "lat": plat, "lon": plon,
+            "dist_m": round(_haversine_m(float(lat), float(lon), float(plat), float(plon))),
+        })
+    items.sort(key=lambda x: x["dist_m"])
+    return {"status": "OK", "count": len(items), "radius_m": radius_m, "items": items}
+
+
 def _tile_poly_bounds(x, y, z=14):
     n = 2 ** z
     lon_w = x / n * 360.0 - 180.0
@@ -3199,8 +3244,193 @@ async def ride_report_correlate(request: Request):
     return {"text": (txt or "").strip().replace("**", "").replace("__", "")}
 
 
+@app.post("/api/forma/analyze")
+async def forma_analyze(request: Request):
+    """Analiza LLM formy. mode='today' -> stan na dzis + zmiany 7/30/90 dni;
+    mode='chart' -> widoczne okno wykresu (zakres dat + wybrane serie). Na zywo, nic nie zapisuje."""
+    from datetime import date as _dt_date, timedelta as _dt_timedelta
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    mode = (str(body.get("mode") or "today")).strip()
+
+    _MAP = {
+        "ftp": ("cp_modelq_w", "FTP/CP", "W", 0),
+        "ltp": ("ltp_modelq_w", "LTP", "W", 0),
+        "wp": ("wprime_modelq_kj", "W'", "kJ", 1),
+        "wkg": ("w_per_kg", "W/kg", "W/kg", 2),
+        "ctl": ("ctl_xss", "CTL", "", 1),
+        "atl": ("atl_raw", "ATL", "", 1),
+        "tsb": ("tsb_raw", "TSB", "", 1),
+        "hrv": ("hrv_night", "HRV", "ms", 0),
+        "rhr": ("rhr", "RHR", "bpm", 0),
+        "slp": ("sleep_h", "Sen", "h", 1),
+        "rdy": ("readiness_score", "Gotowosc", "", 2),
+        "glyc": ("glycogen_pct", "Glikogen", "%", 0),
+    }
+
+    def _rr(x, d):
+        if x is None:
+            return None
+        return round(x, d) if d else int(round(x))
+
+    def _last(series, field, cutoff=None):
+        for row in reversed(series):
+            if cutoff is not None and (row.get("day") or "") > cutoff:
+                continue
+            if row.get(field) is not None:
+                return row[field]
+        return None
+
+    _PROFILE = (
+        "Zawodnik: kolarz gravel/touring, ~100 kg, prog ModelQ ~240 W, LTHR 132, NIE sciga sie - "
+        "cel to dlugie jazdy w terenie, pojemnosc tlenowa i trwalosc, nie krotkie wyscigi. "
+    )
+    _STYLE = (
+        " PO POLSKU, zwiezle (3-5 zdan), rzeczowo, bez frazesow, bez markdown i gwiazdek. "
+        "ZAKAZ OPISU DANYCH: nie pisz zdan typu 'X rosnie, Y spada' ani nie wyliczaj liczb - zawodnik widzi to na "
+        "wykresie, to bezuzyteczne. Twoja rola to INTERPRETACJA. Pracuj na KORELACJACH miedzy seriami "
+        "(prog CP/LTP/W'/W/kg  <->  obciazenie CTL/ATL/TSB  <->  regeneracja HRV/RHR/sen). "
+        "Zrob DWIE rzeczy: (a) DIAGNOZA TRENDU - dokad to realnie zmierza i jaka jest najprawdopodobniejsza "
+        "PRZYCZYNA; (b) ANOMALIE/SPRZECZNOSCI - wskaz co nie pasuje do siebie miedzy sygnalami i wyjasnij dlaczego "
+        "to istotne (np. prog spada mimo swiezosci i dobrej regeneracji => przyczyna nie jest zmeczenie, lecz brak "
+        "bodzca progowego lub deficyt energii). Powiedz co to znaczy DLA TEGO zawodnika (gravel/trwalosc). "
+        "NIE dawaj zalecen 'co robic' ani planu - to ustalane osobno. Liczbe podawaj tylko jako DOWOD tezy, nie jako "
+        "tresc. Nazwij tez czego dane NIE rozstrzygaja. Nie zmyslaj - tylko z podanych danych."
+    )
+
+    conn = _db_conn()
+    try:
+        if mode == "chart":
+            start = (str(body.get("start") or "")).strip()[:10]
+            end = (str(body.get("end") or "")).strip()[:10]
+            keys = body.get("series") or []
+            if not isinstance(keys, list):
+                keys = []
+            keys = [k for k in keys if k in _MAP][:12]
+            if not (start and end):
+                raise HTTPException(status_code=400, detail="Brak zakresu dat")
+            if not keys:
+                raise HTTPException(status_code=400, detail="Wlacz przynajmniej jedna serie")
+            data = _build_forma_data(conn, start, end)
+            series = data.get("series") or []
+            try:
+                ndays = (_dt_date.fromisoformat(end) - _dt_date.fromisoformat(start)).days + 1
+            except Exception:
+                ndays = len(series)
+            lines = []
+            for k in keys:
+                field, label, unit, dec = _MAP[k]
+                vals = [row[field] for row in series if row.get(field) is not None]
+                if not vals:
+                    lines.append("- %s: brak danych w oknie" % label)
+                    continue
+                first, last = vals[0], vals[-1]
+                mn, mx = min(vals), max(vals)
+                avg = sum(vals) / len(vals)
+                dv = last - first
+                trend = "rosnie" if dv > 0 else ("spada" if dv < 0 else "plasko")
+                u = (" " + unit) if unit else ""
+                lines.append(
+                    "- %s: start %s%s -> koniec %s%s (zmiana %s%s%s, %s); min %s%s, max %s%s, srednia %s%s; %d pkt"
+                    % (label, _rr(first, dec), u, _rr(last, dec), u,
+                       ("+" if dv > 0 else ""), _rr(dv, dec), u, trend,
+                       _rr(mn, dec), u, _rr(mx, dec), u, _rr(avg, dec), u, len(vals))
+                )
+            system = (
+                "Jestes doswiadczonym fizjologiem wysilku i analitykiem treningu kolarskiego (model CP/W', "
+                "periodyzacja). " + _PROFILE +
+                "Dostajesz statystyki serii widocznych na wykresie w wybranym oknie czasu - jako material do OCENY, "
+                "nie do opisania. Zdiagnozuj trend w tym oknie i jego przyczyne oraz wychwyc anomalie i sprzecznosci "
+                "miedzy widocznymi seriami." + _STYLE
+            )
+            prompt = ("OKNO WYKRESU: %s -> %s (%d dni)\nWIDOCZNE SERIE:\n%s\n\nZinterpretuj to okno: diagnoza trendu i jego przyczyny + anomalie/sprzecznosci miedzy seriami. Bez zalecen co robic."
+                      % (start, end, ndays, "\n".join(lines)))
+            mt = 500
+        else:
+            end_d = _dt_date.today()
+            start_d = end_d - _dt_timedelta(days=90)
+            data = _build_forma_data(conn, start_d.isoformat(), end_d.isoformat())
+            series = data.get("series") or []
+            latest = data.get("latest") or {}
+            if not series:
+                return {"text": "Brak danych do analizy."}
+            end_day = series[-1].get("day") or end_d.isoformat()
+
+            def _cut(nd):
+                return (_dt_date.fromisoformat(end_day) - _dt_timedelta(days=nd)).isoformat()
+
+            order = ["tsb", "ctl", "atl", "ftp", "ltp", "wp", "wkg", "rdy", "hrv", "rhr", "slp", "glyc"]
+            lines = []
+            for k in order:
+                field, label, unit, dec = _MAP[k]
+                cur = (latest.get(field) or {}).get("value")
+                if cur is None and k != "glyc":
+                    cur = _last(series, field)
+                if cur is None:
+                    continue
+                u = (" " + unit) if unit else ""
+                seg = "%s: %s%s" % (label, _rr(cur, dec), u)
+                parts = []
+                for nd in (7, 30, 90):
+                    past = _last(series, field, _cut(nd))
+                    if past is not None:
+                        dv = cur - past
+                        parts.append("d%d %s%s" % (nd, ("+" if dv >= 0 else ""), _rr(dv, dec)))
+                if parts:
+                    seg += " (zmiana: " + ", ".join(parts) + ")"
+                lines.append("- " + seg)
+            rl = (latest.get("readiness_label") or {}).get("value")
+            rn = (latest.get("readiness_note") or {}).get("value")
+            wc = (latest.get("wprime_confidence") or {}).get("value")
+            extra = []
+            if rl:
+                extra.append("gotowosc: %s" % rl)
+            if wc:
+                extra.append("pewnosc W': %s" % wc)
+            if rn:
+                extra.append("nota: %s" % str(rn)[:160])
+            _snap = ("STAN NA DZIS (" + end_day + "):\n" + "\n".join(lines)
+                     + (("\n" + " | ".join(extra)) if extra else ""))
+            if mode == "coach":
+                system = (
+                    "Jestes doswiadczonym trenerem kolarstwa i fizjologiem wysilku (model CP/W', periodyzacja). "
+                    + _PROFILE +
+                    "Dostajesz aktualny stan formy i zmiany 7/30/90 dni. Daj KONKRETNA, wykonalna PORADE co robic "
+                    "lepiej: (1) na NAJBLIZSZEJ jezdzie, (2) w NAJBLIZSZYCH 7 DNIACH. Wyjdz od aktualnego obciazenia, "
+                    "regeneracji i kierunku formy progowej, i dopasuj do celu (gravel/trwalosc, nie sciganie). Badz "
+                    "konkretny: charakter i czas trwania jazdy, intensywnosc wzgledem progu (strefy lub W), ile dni "
+                    "mocnych vs latwych w tygodniu, oraz regeneracja/odzywianie jesli to waskie gardlo. Realnie i "
+                    "wykonalnie, bez frazesow, bez markdown i gwiazdek. PO POLSKU. Format: dwa krotkie akapity "
+                    "zaczynajace sie doslownie od 'Najblizsza jazda:' oraz 'Najblizsze 7 dni:'. Opieraj sie na "
+                    "danych, nie zmyslaj."
+                )
+                prompt = _snap + "\n\nDoradz co robic lepiej na najblizszej jezdzie i w najblizszych 7 dniach."
+                mt = 560
+            else:
+                system = (
+                    "Jestes doswiadczonym fizjologiem wysilku i analitykiem treningu kolarskiego (model CP/W', "
+                    "periodyzacja). " + _PROFILE +
+                    "Dostajesz aktualny stan formy i zmiany w oknach 7/30/90 dni - jako material do OCENY, nie do "
+                    "opisania. Zdiagnozuj gdzie realnie jest ten zawodnik w cyklu (co ten uklad sygnalow oznacza), skad "
+                    "sie to bierze, i wychwyc sprzecznosci (np. rozjazd progu ze swiezoscia/regeneracja)." + _STYLE
+                )
+                prompt = _snap + "\n\nZinterpretuj te dane: diagnoza trendu i sprzecznosci miedzy sygnalami. Bez zalecen co robic."
+                mt = 520
+    finally:
+        conn.close()
+
+    from qgpt_client import qgpt_text
+    try:
+        txt = qgpt_text(prompt, system=system, max_tokens=mt, temperature=0.35)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="LLM niedostepny: %s" % e)
+    return {"text": (txt or "").strip().replace("**", "").replace("__", "")}
+
+
 _FORMA_FIELDS = [
-    "ftp_est_w", "w_per_kg", "cp_modelq_w", "cp_v3_w", "wprime_v3_kj", "ltp_modelq_w",
+    "ftp_est_w", "w_per_kg", "cp_modelq_w", "ltp_modelq_w",
     "wprime_modelq_kj", "wprime_lo_kj", "wprime_hi_kj", "wprime_confidence",
     "glycogen_pct", "sleep_h", "hrv_night", "rhr",
     "readiness_score", "readiness_label", "readiness_note",
