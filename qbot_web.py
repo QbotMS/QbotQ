@@ -3429,6 +3429,94 @@ async def forma_analyze(request: Request):
     return {"text": (txt or "").strip().replace("**", "").replace("__", "")}
 
 
+@app.get("/api/calendar")
+def calendar_entries(start: str = Query(...), end: str = Query(...)):
+    """Wpisy kalendarza w zakresie [start, end] (ISO YYYY-MM-DD). Zwraca event/feel/illness,
+    z uwzglednieniem wpisow wielodniowych (end_day) nakladajacych sie na zakres."""
+    conn = _db_conn()
+    try:
+        rows = conn.execute(
+            "SELECT id, day::text AS day, kind, title, feel, severity, "
+            "end_day::text AS end_day, note "
+            "FROM qbot_v2.calendar_entry "
+            "WHERE (day BETWEEN %s AND %s) "
+            "   OR (end_day IS NOT NULL AND day <= %s AND end_day >= %s) "
+            "ORDER BY day, id",
+            (start, end, end, start),
+        ).fetchall()
+    finally:
+        conn.close()
+    return {"start": start, "end": end, "entries": rows}
+
+
+@app.post("/api/calendar/entry")
+async def calendar_add(request: Request):
+    """Dodaje wpis kalendarza. body: {day, kind, title?, feel?, severity?, end_day?, note?}.
+    kind: 'event' | 'feel' (samopoczucie -2..2) | 'illness' (choroba)."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+
+    def _s(key, n):
+        v = body.get(key)
+        if v in (None, ""):
+            return None
+        return str(v).strip()[:n]
+
+    day = _s("day", 10)
+    kind = (str(body.get("kind") or "")).strip()
+    if not day or kind not in ("event", "feel", "illness"):
+        raise HTTPException(status_code=400, detail="Wymagane: day + kind (event|feel|illness)")
+    title = _s("title", 200)
+    note = _s("note", 2000)
+    severity = _s("severity", 20)
+    end_day = _s("end_day", 10)
+    feel = body.get("feel")
+    if feel is not None and feel != "":
+        try:
+            feel = max(-2, min(2, int(feel)))
+        except (TypeError, ValueError):
+            feel = None
+    else:
+        feel = None
+
+    conn = _db_conn()
+    try:
+        row = conn.execute(
+            "INSERT INTO qbot_v2.calendar_entry (day, kind, title, feel, severity, end_day, note) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            (day, kind, title, feel, severity, end_day, note),
+        ).fetchone()
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail="Zapis nieudany: %s" % e)
+    finally:
+        conn.close()
+    return {"ok": True, "id": (row["id"] if row else None)}
+
+
+@app.post("/api/calendar/delete")
+async def calendar_delete(request: Request):
+    """Usuwa wpis kalendarza po id. body: {id}."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    try:
+        eid = int(body.get("id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Wymagane: id (liczba)")
+    conn = _db_conn()
+    try:
+        conn.execute("DELETE FROM qbot_v2.calendar_entry WHERE id=%s", (eid,))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
 _FORMA_FIELDS = [
     "ftp_est_w", "w_per_kg", "cp_modelq_w", "ltp_modelq_w",
     "wprime_modelq_kj", "wprime_lo_kj", "wprime_hi_kj", "wprime_confidence",
