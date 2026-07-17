@@ -73,7 +73,7 @@ Po wdrozeniu ZAWSZE weryfikuj na zywo (bez dowodu nie ma sukcesu):
 ## Konwencje
 - Wiatr ZAWSZE w m/s.
 - Cache-bust: raport-trasy.html linkuje css/js z `?v=NNNN`; przy KAZDEJ zmianie .css/.js
-  podbij token (inaczej przegladarka trzyma stara wersje). Aktualny token: 2026070305.
+  podbij token (inaczej przegladarka trzyma stara wersje). Aktualny token: 2026071718.
 - Determinizm: liczby i grafika TYLKO z kodu (endpoint/generator). LLM daje wylacznie
   proze w wyznaczonych miejscach — nigdy liczb ani geometrii.
 - Pliki .bak w /opt/qbot/web/public sa .gitignore; sprzataj przez SSH (`rm`), bo
@@ -177,6 +177,39 @@ UWAGA (cache Cloudflare): raport-trasy.html laduje raport-render.js i raport.css
 Edge cache'uje po pelnym URL, wiec KAZDA zmiana js/css wymaga PODBICIA `?v=` w
 raport-trasy.html — inaczej Cloudflare poda stare bajty (twardy reload NIE pomaga). To bylo
 zrodlo objawu "zmiany nie widac na mapie".
+
+## Proza LLM raportu (_report_prose) — split + retry (2026-07-17)
+Warstwa DANE (qbot_web.py): `_build_report_data` zawsze wola `_report_prose`, ktora generuje CALA
+proze raportu przez `qgpt_json` (qgpt_client). Podzial na zapytania:
+- Call #1 (max_tokens 1600): pogoda_ogolne, pogoda_etapy, komentarze_ryzyka. MA fallback
+  (_fb_overall/_fb_stage) -> etapy pogody sa ZAWSZE wypelnione, nawet gdy LLM zawiedzie.
+- Call #2 rozbity (2026-07-17) na DWA mniejsze (po max_tokens 4000), kazdy z 1x retry:
+  * A: `strategia` (calosc + etapy),
+  * B: `ubior` + `sprzet_opony`.
+  Wczesniej byl jeden duzy call bez fallbacku, w try/except -> przy urwaniu odpowiedzi (model
+  rozumujacy liczy reasoning do budzetu) cala proza planu leciala na None i zakladki Strategia/
+  Ubior/Opony byly puste. Helper `_ask_plan(system, keys, max_tokens)`: retry gdy ktorys wymagany
+  klucz nie jest dict, salvage czesciowy. Prompty A/B wycinane z istniejacego `sys2` po markerach
+  ("strategia: OBIEKT", "sprzet_opony: OBIEKT", "ubior: OBIEKT") -- jedno zrodlo promptu.
+- Wazne: proza jest zapisywana w snapshotcie (route_report_snapshots). Stary snapshot z pusta
+  strategia ZOSTANIE pusty -- trzeba przegenerowac (Parametry -> Generuj). Zapisujemy DANE.
+- REPO -> restart qbot-web + commit.
+
+## Zakladka "Szczegoly trasy" — scroll-lock + typografia (2026-07-17)
+STYL (raport.css) + STRONA (raport-trasy.html). Panel Szczegoly = `.multi` (nav 190px +
+`.multi-pane` -> `.multi-head` + `.multi-body`).
+- Scroll-lock: gdy aktywna zakladka Szczegoly, strona nie scrolluje -- scrolluje tylko okno
+  zakladki. JS `sizeSzczegoly()` (w IIFE applyRTab w raport-trasy.html) dodaje klase
+  `body.rtab-szczegoly` i ustawia wysokosc panelu = `innerHeight - panel.top - 16`. Wolane w
+  applyRTab, na `resize` i po kliknieciu "Parametry" (belka zmienia wysokosc). CSS pod
+  `body.rtab-szczegoly`: overflow:hidden na body, panel overflow:hidden, `.multi` height:100%,
+  `.multi-pane` flex-column, `.multi-body` flex:1 + wlasny scroll (padding-bottom 14 px).
+  Zakladka Mapa i raport dnia bez zmian (reguly scoped do body.rtab-szczegoly).
+- Typografia: delikatne +1 px na tekstach paneli + line-height ~1.6-1.7 + wiekszy padding wierszy
+  tabel. Bloki DOPISANE na koncu raport.css (pozniejsza regula wygrywa).
+- Czytelnosc w ciemnym motywie: `.press-cur` (wyrozniony wiersz tabeli cisnien) mial zaszyte jasne
+  tlo #f3efe6 -> jasny tekst znikal. Teraz `rgba(60,107,71,.16)` + `color:var(--ink)`.
+- Cache-bust raport.css: przy KAZDEJ zmianie podbijac `?v=` w raport-trasy.html (aktualnie 2026071718).
 
 
 ---

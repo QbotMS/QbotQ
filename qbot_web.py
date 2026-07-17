@@ -4362,11 +4362,10 @@ def _build_nutrition_data(conn, start_str, end_str):
 
 @app.get("/api/nutrition/preset/values")
 async def nutrition_preset_values(day: str = Query(...)):
-    """3 presety bilansu z wyliczonym kcal dla danego dnia (wydatek +/- offset)."""
+    """3 poziomy typowego spozycia (malo/normalnie/popuscilem). Niezalezne od spalenia."""
     conn = _db_conn()
     try:
         pres = _presets.compute_presets(conn)
-        erow = conn.execute("SELECT total_kcal, is_partial_snapshot FROM qbot_v2.energy_daily WHERE date=%s", (day,)).fetchone()
         real = conn.execute(
             "SELECT 1 FROM qbot_v2.intake_logs WHERE date=%s "
             "AND COALESCE(quality_status::text,'')<>'estimated' AND source NOT ILIKE '%%preset%%' LIMIT 1",
@@ -4376,39 +4375,30 @@ async def nutrition_preset_values(day: str = Query(...)):
             (day,)).fetchone()
     finally:
         conn.close()
-    _partial = bool(erow["is_partial_snapshot"]) if erow else False
-    exp = float(erow["total_kcal"]) if (erow and erow["total_kcal"] is not None and not _partial) else None
-    out = {"day": day, "expenditure_kcal": (round(exp) if exp is not None else None),
-           "available": exp is not None, "day_incomplete": _partial, "has_real_intake": bool(real),
-           "already_preset": bool(applied), "generated_from_days": pres["generated_from_days"],
-           "options": []}
-    if exp is not None:
-        for name, lv in pres["levels"].items():
-            out["options"].append({
-                "level": name, "kcal": round(exp + lv["offset_kcal"]),
-                "offset_kcal": lv["offset_kcal"], "carbs_g": lv["carbs_g"],
-                "protein_g": lv["protein_g"], "fat_g": lv["fat_g"], "n_days": lv["n_days"]})
+    out = {"day": day, "model": pres["model"], "available": True,
+           "has_real_intake": bool(real), "already_preset": bool(applied),
+           "generated_from_days": pres["generated_from_days"], "options": []}
+    for key, lv in pres["levels"].items():
+        out["options"].append({
+            "level": key, "label": lv["label"], "kcal": lv["kcal"],
+            "carbs_g": lv["carbs_g"], "protein_g": lv["protein_g"], "fat_g": lv["fat_g"],
+            "n_days": lv["n_days"], "low_confidence": lv["low_confidence"]})
     return out
 
 
 @app.post("/api/nutrition/preset/apply")
 async def nutrition_preset_apply(request: Request):
-    """Zapisuje szacunek spozycia z presetu dla dnia. body: {day, level}."""
+    """Zapisuje szacunek spozycia z presetu. body: {day, level}. level: malo|normalnie|popuscilem."""
     try:
         body = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Bledny JSON")
     day = str(body.get("day") or "").strip()[:10]
-    level = str(body.get("level") or "").strip().upper()
-    if not day or level not in ("DEFICYT", "ZERO", "NADWYZKA"):
-        raise HTTPException(status_code=400, detail="Wymagane: day + level (DEFICYT|ZERO|NADWYZKA)")
+    level = str(body.get("level") or "").strip().lower()
+    if not day or level not in _presets.ANCHORS_KCAL:
+        raise HTTPException(status_code=400, detail="Wymagane: day + level (malo|normalnie|popuscilem)")
     conn = _db_conn()
     try:
-        erow = conn.execute("SELECT total_kcal, is_partial_snapshot FROM qbot_v2.energy_daily WHERE date=%s", (day,)).fetchone()
-        if not erow or erow["total_kcal"] is None:
-            raise HTTPException(status_code=409, detail="Brak wydatku Garmina dla tego dnia - preset niedostepny")
-        if erow["is_partial_snapshot"]:
-            raise HTTPException(status_code=409, detail="Dzien jeszcze niedomkniety - preset po domknieciu")
         real = conn.execute(
             "SELECT 1 FROM qbot_v2.intake_logs WHERE date=%s "
             "AND COALESCE(quality_status::text,'')<>'estimated' AND source NOT ILIKE '%%preset%%' LIMIT 1",
@@ -4417,8 +4407,6 @@ async def nutrition_preset_apply(request: Request):
             raise HTTPException(status_code=409, detail="Sa juz realne wpisy tego dnia - preset pominiety")
         pres = _presets.compute_presets(conn)
         lv = pres["levels"][level]
-        exp = float(erow["total_kcal"])
-        kcal = round(exp + lv["offset_kcal"])
         old = conn.execute("SELECT id FROM qbot_v2.intake_logs WHERE date=%s AND source ILIKE '%%preset%%'", (day,)).fetchall()
         for o in old:
             conn.execute("DELETE FROM qbot_v2.intake_items WHERE intake_log_id=%s", (o["id"],))
@@ -4426,15 +4414,15 @@ async def nutrition_preset_apply(request: Request):
         logid = conn.execute(
             "INSERT INTO qbot_v2.intake_logs (date, eaten_at, meal_type, note, source, quality_status) "
             "VALUES (%s, %s, 'meal', %s, 'preset_estimate', 'estimated') RETURNING id",
-            (day, day + " 12:00", "Szacunek z presetu: " + level)).fetchone()["id"]
+            (day, day + " 12:00", "Szacunek z presetu: " + lv["label"])).fetchone()["id"]
         conn.execute(
             "INSERT INTO qbot_v2.intake_items (intake_log_id, food_name, amount, unit, kcal, protein_g, carbs_g, fat_g, source) "
             "VALUES (%s, %s, 1, 'dzien', %s, %s, %s, %s, 'preset_estimate')",
-            (logid, "Preset " + level + " (szacunek)", kcal, lv["protein_g"], lv["carbs_g"], lv["fat_g"]))
+            (logid, "Preset: " + lv["label"] + " (szacunek)", lv["kcal"], lv["protein_g"], lv["carbs_g"], lv["fat_g"]))
         conn.commit()
     finally:
         conn.close()
-    return {"ok": True, "day": day, "level": level, "kcal": kcal,
+    return {"ok": True, "day": day, "level": level, "kcal": lv["kcal"],
             "carbs_g": lv["carbs_g"], "protein_g": lv["protein_g"], "fat_g": lv["fat_g"]}
 
 

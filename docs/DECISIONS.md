@@ -6,6 +6,166 @@
 ---
 
 
+## 2026-07-17 -- DECYZJA: ustawienia UI po stronie serwera (ui_prefs) + przebudowa zakladki Odzywianie + konfigurowalny DZIS
+
+**Status:** dziala na zywo. Stan: docs/CURRENT.md (sesja 2026-07-17). UI: docs/FORMA_UI_LAYOUT.md (sekcje 5/9). Dane zakladki: docs/PROJEKT_ODZYWIANIE.md.
+
+**1) Zakladka Odzywianie -- z placeholdera do pelnej.**
+- Zrodlo SKLADU CIALA ZMIENIONE: `body_daily` bylo NIEAKTUALNE (ostatni pomiar 2026-05-31). Kanon = widoki `qbot_v2.body_trend_full_composition` (seria) + `body_latest_full_composition` (ostatnie): Garmin INDEX_SCALE, waga biezaca, fat%/miesnie(kg)/woda% swieze. Kolumny: weight_kg, bmi, body_fat_pct, body_water_pct, muscle_mass_kg, bone_mass_kg (BRAK visceral, BRAK fat_mass_kg). UWAGA: muscle_mass_kg w widoku to realne kg (~68), inaczej niz stare ~32 w body_daily (zmiana zrodla/skali).
+- `_build_nutrition_data` przepiete na te widoki. Energia/intake/bilans nadal z albert_day_view, waga z fitmodel_daily.
+- Wykres: 9 NIEZALEZNYCH chipow -- Spalone (slupki akt+pas), Zjedzone (LINIA z kropkami, bursztyn), Waga (LINIA czerwona, os prawa), %tluszczu / Miesnie / Woda (kazde wlasna skala, kreskowane), Bialko / Wegle / Tluszcze (linie na WSPOLNEJ skali gramow). ZMIANA wzgl. pierwotnego planu: "zjedzone" to LINIA, nie overlay slupka. Etykieta bilansu nad slupkami tylko dla okna <=31 dni.
+- Karta bilansu: uklad POZIOMY IN/OUT (duze kcal na zewnatrz), srodek Bilans (deficyt zielony / nadwyzka czerwony); po stronie PRZYJETE pasek makro + 3 wiersze B/W/T z UDZIALEM % w diecie (liczony po kcal) i TRENDEM w oknie (strzalka + %, 1. vs 2. polowa okna).
+- Pasek "Sklad ciala": JEDNOLINIJKOWE kafle etykieta / wartosc / DELTA w oknie (ostatni - pierwszy pomiar) / data; badge "nieaktualne" gdy >30 dni. Strzalki delty neutralne (bez oceny dobre/zle).
+- Kolory kategorii rozdzielone (zaden sie nie powtarza): bialko fiolet, wegle zolty, tluszcz(dieta) braz; sklad ciala: tluszcz% roz, miesnie indygo, woda turkus.
+
+**2) DZIS = konfigurowalny panel.**
+- Uzytkownik wybiera kafle/widzety w "Dostosuj" (chipy on/off; grupy Panel / Moc / Obciazenie / Wellness / Zywienie). DZIS renderuje hero (opcjonalny) + wybrane kafle wskaznikow (reuzycie `tile()`) + widzety zywienia.
+- Widzety zywienia w DZIS: modul nutrition-render.js wystawia `window.QNut{ready, balanceHTML, bodyHTML}`; jego renderCards notyfikuje `window.renderTodayNut`. DZIS osadza Bilans i/lub Sklad ciala; uzywaja WLASNEGO okna odzywiania. Tokeny CSS tych widzetow sa globalne w forma.html, wiec renderuja sie poprawnie poza swoja zakladka.
+- Kafle wskaznikow w DZIS wspoldziela globalne WIN/TREND z zakladki Wskazniki.
+
+**3) Ustawienia UI po stronie serwera (idzie za kontem).**
+- Nowa tabela `qbot_v2.ui_prefs(username, pref_key, value jsonb, updated_at, PK(username,pref_key))`. Migracja: `sql/ui_prefs_v1.sql` (idempotentna). Ogolna -- kolejne ustawienia = nowy pref_key, bez zmian schematu.
+- Endpointy (qbot_web.py, REPO -> restart+commit): `GET /api/prefs?key=` -> {key,value|null}; `POST /api/prefs {key,value}` -> upsert. Uzytkownik z ciasteczka sesji webauth (`_current_user`, format `username:expiry:digest`).
+- Front: przy starcie DZIS dociaga prefs z serwera i nadpisuje lokalne; kazda zmiana zapisuje sie na serwer (debounce 400ms) + localStorage jako natychmiastowy cache i fallback offline. Obecny pref_key='dzis' -> {hero:bool, keys:[...]}. Uwaga: przy wczytywaniu przepuszczamy klucze z `M` ORAZ tokeny zywienia (nut_balance/nut_body).
+
+**Wdrozenie:** statyki (forma.html, forma-render.js v23, nutrition-render.js v8) zywe od razu; qbot_web.py + sql/ui_prefs_v1.sql = REPO -> restart qbot-web (zrobiony) + commit jawnych sciezek (bez -a).
+
+---
+
+## 2026-07-16 -- DECYZJA: WEBOWY kalendarz (nowy modul, qbot_v2.calendar_entry)
+
+**Status:** dziala na zywo (siatka miesiaca + wysuwany przeglad dnia + dodawanie/usuwanie wpisow).
+Szczegoly stanu: docs/CURRENT.md (sesja 2026-07-16).
+
+**Po co:** dziennik dnia w web (wydarzenia, samopoczucie, choroba) + przeglad "co bylo tego dnia"
+(odczyty konca dnia z ModelQ/fitmodel + jazdy). Samopoczucie ma docelowo zasilic model kondycji dnia.
+
+**Model danych:** jedna tabela `qbot_v2.calendar_entry(id, day, kind IN ('event','feel','illness'),
+title, feel smallint (-2..2), severity, end_day, note, created_at)` + index po `day`. Wpisy
+wielodniowe przez `end_day`. Samopoczucie = kind='feel', skala -2..2 (fatalnie..swietnie).
+
+**Backend (qbot_web.py):** GET /api/calendar?start&end (calendar_entries) zwraca entries[] +
+days{} (CP/CTL/ATL/TSB/FTP/W'/W-kg/gotowosc/HRV/RHR/sen/glikogen z fitmodel_daily) + rides{}
+(z training_sessions po kolumnie `date`, ride_key=external_id). POST /api/calendar/entry
+(calendar_add), POST /api/calendar/delete (calendar_delete). Zapis: INSERT ... RETURNING + commit.
+
+**Front:** /opt/qbot/web/public/kalendarz.html + kalendarz-render.js (poza repo, ?v= przy zmianie).
+Komorka: CP + CTL/ATL + pill TSB (zielony >=5 / czerwony <=-8 / niebieski) + znaczniki jazd/wpisow.
+Klik -> panel z prawej: Forma(koniec dnia)/Jazdy/Wpisy/Dodaj (formularz inline, bez osobnego okna).
+
+**Rozdzial od czesci tylko-do-odczytu:** forma i jazdy w panelu czytaja te same kanoniczne tabele
+co reszta systemu (fitmodel_daily, training_sessions). Rozjazd ze STARYM kalendarzem dotyczy tylko
+recznych wpisow (patrz decyzja "zaorac stary kalendarz" nizej).
+
+---
+
+## 2026-07-16 -- DECYZJA: model "kondycji dnia" (subiektyw) L1+L2+L3 -- ZATWIERDZONY, do wdrozenia
+
+**Status:** decyzja projektowa podjeta, KOD jeszcze nie napisany (osobna sesja, PO kalendarzu).
+**L1 WDROZONE 2026-07-16:** forma_analyze (qbot_web.py, tryby today/coach/chart) dostaje subiektyw z qbot_v2.calendar_entry: samopoczucie feel (fallback: ostatni wpis z 3 dni; brak=0=neutralnie) + aktywna choroba (day<=ref<=COALESCE(end_day,day)). Doklejane WYLACZNIE do promptu LLM + rozszerzony _STYLE/coach system. Matematyka, kolumny i readiness NIETKNIETE. Helpery: _forma_feel_illness_for_day / _forma_subjective_block / _forma_feel_illness_window / _forma_subjective_window_lines. Dowod na zywo: 4 testy (dzien z feel, dzien pusty=neutralnie, fallback 3 dni, okno chart). L3 (ukryte ATL) nadal do zrobienia.
+**L2 WDROZONE 2026-07-16:** nowe kolumny fitmodel_daily: readiness_effective, readiness_effective_label, readiness_subj_delta, readiness_effective_note (DDL na zywo, IF NOT EXISTS). Wzor DODATKOWY: subj_delta = clamp(feel*0.15 + (choroba? -0.30 : 0), -0.50, +0.50); readiness_effective = readiness_score + subj_delta (feel=0 i brak choroby => eff==score). Zrodlo feel dla ZAPISU dziennego = wpis z DOKLADNIE tego dnia (brak=0), choroba aktywna gdy day<=d<=COALESCE(end_day,day). Liczy fitmodel/readiness.py::_subjective_for_day + rozszerzone save_readiness (compute_readiness OBIEKTYW NIETKNIETY). Nocny daily_job liczy sam (save_readiness 8 dni). Baza 60d bezpieczna Z DEFINICJI (liczona z qbot_wellness_daily, nie z fitmodel_daily). Backfill od 2026-05-01 (77 dni). Wyswietlanie: readiness_effective + label/delta/note w _FORMA_FIELDS -> series/latest; banner Forma pokazuje 'gotowosc obiektywna vs efektywna' + note; nowa metryka rdye w forma-render.js (kafel 'Gotowosc (efekt.)' + seria wykresu; forma.html ?v=13). NIE dotyka readiness_score/CP/FTP/W'. Dowod: 12.07 score 0.258->eff 0.408 (neutralny->swiezy, feel+1), 15.07 0.087->-0.063 (feel-1), dni bez wpisu eff==score. Odwracalne: kolumny mozna wyzerowac bez utraty obiektywu.
+**L3 WDROZONE 2026-07-16:** ukryte zmeczenie (subiektywny koszt jazdy) -> atl_plus/tsb_plus (dotad kopie raw). Nowy modul fitmodel/modelq2/hidden_fatigue.py::apply_hidden_fatigue, wpiety w daily_job PO kroku modelq2 (ktory ustawia baze atl_plus=atl_raw). Nowe kolumny audytu: xss_hidden_subj, atl_hidden_subj, atl_plus_note. Wzor (tylko dni z jazda, jednokierunkowo feel<0/choroba): narzut = clamp(max(0,-feel)*0.10 + (choroba? 0.15), 0, 0.35); xss_ukryty = modelq2_ride.xss_total * narzut; atl_ukryty = EWMA(tau=7) z xss_ukryty; atl_plus = atl_raw + atl_ukryty; tsb_plus = tsb_raw - atl_ukryty (gwarantuje atl_plus==atl_raw i tsb_plus==tsb_raw w dni bez korekty). feel>0 NIE odejmuje ATL. atl_raw/ctl_xss/tsb_raw/XSS/CP/FTP/W' NIETKNIETE. Przelacznik QBOT_L3_HIDDEN_FATIGUE=0 => pelna odwracalnosc (atl_plus wraca do atl_raw). Backfill wykonany. Wyswietlanie: atl_plus/tsb_plus + audyt w _FORMA_FIELDS; _MAP atlp/tsbp; metryki atlp/tsbp w forma-render.js (kafle 'ATL+ (ukryte)'/'TSB+ (ukryte)' + serie; forma.html ?v=14). Dowod: 15.07 feel-1 jazda 75 XSS -> +10% -> +7.5 xss -> atl_plus 73.4 vs atl_raw 72.3, TSB+ -7.6 vs -6.5, rozpad ~tydzien; 12.07 feel+1 duza jazda -> 0 narzutu; toggle OFF -> atl_plus==atl_raw. CALY model kondycji dnia L1+L2+L3 ZAMKNIETY.
+Wejscie = wpisy kalendarza kind='feel' (-2..2) oraz kind='illness'.
+
+**Cel:** pozwolic Michalowi powiedziec systemowi "jest gorzej/lepiej niz mowia dane" (jak suwak
+Xert) i zeby to REALNIE wplywalo na obraz STANU -- ale NIGDY na obiektywna sygnature sprawnosci.
+
+**Zasada nadrzedna:** subiektyw i choroba modyfikuja STAN (swiezosc/zmeczenie), a NIE: (a) obiektywna
+gotowosc `readiness_score` ani 60-dniowa baze z ktorej sie liczy, (b) sygnature CP/FTP/W' (ModelQ).
+
+**Zakres (pelny, etapami):**
+- L1: podac subiektyw/chorobe do LLM Analiza/Doradca (forma_analyze w qbot_web.py, tryby
+  today/chart/coach) jako kontekst -- bez zmiany matematyki.
+- L2: NOWA kolumna `readiness_effective` (NIE nadpisywac readiness_score). Obiektyw liczy
+  fitmodel/readiness.py::compute_readiness (z-score HRV40/RHR35/sen25 vs baza 60d, mediana 3d),
+  zapis save_readiness. Subiektyw: waga ~0.3 z capem, trzymany OSOBNO, by nie zanieczyscil bazy.
+  (Zweryfikowane 2026-07-16: kolumny readiness_effective jeszcze NIE ma.)
+- L3: subiektywny koszt jazdy -> "ukryte zmeczenie" -> ATL, jako warstwa AUDYTOWALNA i ODWRACALNA
+  (osobny addytywny skladnik, NIE nadpisywanie XSS/atl_raw).
+
+Skala -2..2 symetryczna. Wpiecie do liczenia nocnego: fitmodel/daily_job.py.
+
+---
+
+## 2026-07-16 -- DECYZJA: zaorac STARY kalendarz (public.calendar_*, qbot_calendar_core)
+
+**Status:** decyzja podjeta (Michal: stary jest nieprzydatny), WYCIECIE w osobnej sesji
+(weryfikacja -> plan -> akceptacja -> backup -> usuniecie). Nic jeszcze nie usuniete.
+
+**Co usunac:** podsystem qbot_calendar_core.py + qbot_calendar_cli.py + qbot_qcal_cli.py
+(+ czesc kalendarzowa qbot_qcal_telegram.py) oraz tabele: public.calendar_events (3),
+public.calendar_days (45), public.reminders, public.calendar_daily_snapshots, public.qcal_write_audit,
+oraz sprawdzic sierote qbot_v2.calendar_events. NIE ruszac tabel czytanych przez build_snapshot
+(training_sessions, intake_logs, nutrition_*, wellness/sleep/body_*, xert_metrics) ani
+archive.health_events bez weryfikacji.
+
+**ZOSTAWIC (to nowy webowy kalendarz):** qbot_v2.calendar_entry + pliki kalendarz.html/
+kalendarz-render.js + endpointy /api/calendar* w qbot_web.py. Zweryfikowane: qbot_web.py NIE dotyka
+zadnej starej tabeli kalendarza.
+
+**PULAPKI (dlatego ostroznie, z mapowaniem zaleznosci):**
+1. qbot_qcal_telegram to NIE tylko kalendarz -- to transport Telegramu do POTWIERDZANIA ANALIZY
+   TRAS (scripts/route_precompute_trigger.py, qbot_api.py). Ubicie = zepsute potwierdzenia tras.
+2. build_snapshot z qbot_calendar_core jest ogolnym agregatorem dnia wolanym przez
+   qbot_mcp_adapter.py (wiele miejsc), qbot3/tool_registry.py, daily_report_adapter.py,
+   qbot_nutrition_cli.py, qbot_query_router.py, qbot_ask_cli.py -- kazdy call-site rozstrzygnac
+   (usunac funkcje/narzedzie vs odpiac sama czesc kalendarzowa).
+3. Zmiany w tool_registry -> aktualizacja promptu _SYSTEM Alberta w tym samym commicie.
+
+## 2026-07-16 -- DECYZJA: zaoranie starego podsystemu KALENDARZA (wariant B)
+
+**Status:** wykonane na zywo. Kod odpiety + zweryfikowany (14 modulow importuje sie
+czysto), 6 tabel DROP po backupie, uslugi active. Backup:
+`_bak_archive/20260716_190931_calendar_tables_backup.json` (6 tabel, DDL+wiersze).
+
+**Co usunieto:**
+- Pliki-rdzen (do _bak_archive przez DC): qbot_calendar_core.py, qbot_calendar_cli.py,
+  qbot_qcal_cli.py.
+- Narzedzia Alberta (tool_registry + prompt _SYSTEM, jeden commit): calendar_snapshot,
+  qcal_events_range, qcal_events_upcoming, qcal_reminders_upcoming, calendar_event_add,
+  reminder_add. Rejestr: 68 narzedzi, zero kalendarza.
+- Handlery qcal + _action_exec_* + allowlisty w qbot_mcp_adapter.py (konektor ChatGPT);
+  4 akcje qcal z core/registry._BASE_ALLOWLIST.
+- Tabele (DROP): public.calendar_events(8), public.calendar_days(45),
+  public.calendar_daily_snapshots(44), public.qcal_write_audit(27), public.reminders(3),
+  qbot_v2.calendar_events(3).
+
+**Co ODPIETO (WSPOLNE, zostaje dzialac):**
+- build_snapshot: usuniete wywolania z handlerow posilkow (mcp_adapter, ask_cli,
+  nutrition_cli); reader zneutralizowany w query_router; galezie w query_planner.
+- safety.py: usuniety dedup po qcal_write_audit.
+- daily_report_adapter.get_events -> [] (raport dzienny dziala, bez sekcji wydarzen).
+- agent_runtime: usuniete mapowania kalendarz/reminder w routerze db_select.
+
+**Co ZOSTALO nietkniete:**
+- Transport Telegrama (qbot_qcal_telegram.py): send_message, poll_once, _pending_*,
+  upsert_pending_action, _conv_*, _turn_add + galaz confirm_route_analysis. _ALLOWED_ACTIONS
+  = {confirm_route_analysis}. Potwierdzenia tras dzialaja (smoke OK).
+- NOWY kalendarz web: qbot_v2.calendar_entry (nietkniety, 1 wiersz).
+
+**KLUCZOWE ODKRYCIE (wariant B):** qbot_v2.calendar_events NIE byla nieuzywana — czytaly ja
+event_morning_report.py i tools/trip_stages.py (event bikepackingowy "Bikepacking w Toskanii").
+Oba PRZEPIETO na qbot_v2.qbot_planning_facts (fact_type='route_stages') przed DROP. Zrodlo
+daty eventu = fact.date / min-max dat etapow. Zweryfikowane: _get_event_start_date('Toskan')
+= 2026-06-05 (jak wczesniej), _fetch_active_event zwraca okno 06-05..06-11.
+
+**Schema uwaga:** search_path=qbot_v2,public,archive -> niekwalifikowane 'calendar_events'
+rozwiazywalo sie do qbot_v2 (zywa), NIE public (public byla martwa). Odwrotnie niz w planie.
+
+**Do dokonczenia (recznie/DC):** mv 3 plikow-rdzeni do _bak_archive; commit+push.
+TESTY: test_qbot_qcal_telegram 12/12 PASS bez zmian, test_route_precompute_trigger
+17/17 PASS; w test_qbot3_acceptance naniesiono 2 poprawki (test_table_describe ->
+training_sessions; usunieto asercje qcal_events_range/qcal_reminders_upcoming). 3
+pozostale faile acceptance sa wczesniejsze i niezwiazane (mcp_adapter naming; core.planner
+nieistniejacy; nutrition WRITE_INCONSISTENT w nieedytowanym qbot3/adapters/mcp_adapter.py).
+
+**Sprzatanie pozostalosci (runda 2) + DECYZJA A:** doczyszczono izolowane pozostalosci produkcyjne (qbot_capabilities: 6 wpisow qcal; core/change_log; openai_provider prompt; context_builder; query_decomposer) oraz testowe (mock_provider + 6 testow kalendarza/qcal w test_qbot3_acceptance). Pozostale odwolania qcal w ZYWYM klasyfikatorze (qbot_query_router ~40, write_router ~8, qbot_orchestrator ~9) ZOSTAWIONE swiadomie (decyzja A): sa martwe i bezpieczne (readery NO_DATA, writery poza allowlista, tools wyrejestrowane, zero SQL na skasowanych tabelach); pelne wyciecie = refaktor zywej sciezki klasyfikacji, niski zysk / wieksze ryzyko. grep 'qcal' celowo nie jest czysty.
+Pomniejsze metadane (qbot_capabilities qcal-entries, openai_provider/mock_provider prompt,
+change_log, orchestrator list) - opcjonalne sprzatanie, nie wykonuja SQL na skasowanych tabelach.
+
+---
+
+
 ## 2026-07-09 -- DECYZJA: mapa Leaflet w raporcie z jazdy + pulapka shadowingu `L`
 
 **Status:** dziala na zywo (mapa + kafle OSM + trasa 23496824503, potwierdzone zrzutem).
@@ -2252,3 +2412,59 @@ FTP rosnie na wysilku. cp_wprime przeliczone razem (run_daily per dzien).
 **Uwaga:** kwiecien (<2026-05-01) nieprzeliczony -- stara logika, kosmetyczne dolki; rozszerzyc
 backfill wstecz jesli bedzie przeszkadzac. Osobne watki bez zmian: (a->rozwiazane tu),
 dedup w ingescie, zdegenerowane CP/LTP przy rzadkich MMP.
+
+
+## 2026-07-17 — LAYOUT stron web (Forma & Wellness = wzorzec)
+Spisano koncepcje ukladu/UI stron qbot-web opartych na tokenach do **docs/FORMA_UI_LAYOUT.md** (dolaczone tez jako bullet WEB/FORMA w build_context.py -> CONTEXT.md).
+Skrot decyzji z tej sesji:
+- Wzorzec = forma.html; warstwy DANE (/api/forma/data) / ANALIZA (/api/forma/analyze, _STYLE prosty jezyk) / RYSOWANIE (forma-render.js) / STRUKTURA+paleta (forma.html).
+- Komponenty wielokrotnego uzytku: theme.css (motyw ciemny), nav.css/js (rail+przelacznik motywu), tabs.css/js (<section data-qtab>, montaz #qtabs-mount), aside.css (prawy drawer AI).
+- Tokeny bazowe + NOCNE --frame/--side/--btnoff/--chart-bg/--chart-border (dzien dziedziczy). Paleta: dzien bez/zielen, noc lesna zielen + bez/tan. Panele boczne i tlo wykresu ciemniejsze niz tlo strony.
+- Naglowek STICKY .qhead (tytul + wskazniki zrodel #qsrc: kropka zielona<=1d/pomaranczowa<=3d/czerwona + #qtabs-mount) - tytul i zakladki nie scrolluja; cel: zakladki bez scrolla (kafle zwarte, bez stopki foot).
+- Wykres: M{} serie (col+dash), 3 tryby norm/panels/abs, belka pigulek #chartlegend nad wykresem. Konwencja: kolor=kategoria, dash=2. os; brak duplikatu koloru miedzy kategoriami; Wellness = rozne przerywane.
+- Dane: Sen=sleep_score (join qbot_wellness_daily max/dzien), Waga=weight_kg dodane do /api/forma/data.
+
+
+## 2026-07-17 (2) — Raport trasy: proza LLM split+retry; Szczegoly UI; kalendarz dzwonek
+
+**Raport trasy -- pusta Strategia/Ubior/Opony (przyczyna + fix).** _build_report_data zawsze wola
+_report_prose (qbot_web.py), ktora robila dwa zapytania LLM (qgpt_json): #1 pogoda/etapy/ryzyko
+(ma fallback -> etapy zawsze pelne) i #2 DUZY (strategia + ubior + sprzet_opony, katalog sprzetu
+w payloadzie), bez fallbacku, cale w try/except -> przy urwaniu (model rozumujacy wlicza reasoning
+do budzetu tokenow) proza planu = None. Objaw: w historii snapshotow czesc zapisow ma
+strategia=false/clothing=false (np. snapshot 29 "Male Gosie"), inne OK -> LLM dziala, tylko ten
+call sie urywal (dowod z bazy: route_report_snapshots).
+Decyzja (1+2, zatwierdzona): (1) ROZBIC #2 na dwa mniejsze zapytania -- A: strategia, B: ubior +
+sprzet_opony -- po max_tokens=4000; (2) RETRY 1x gdy wynik niepelny. Odrzucono podbicie budzetu
+jako fix glowny. Implementacja: sys2a/sys2b wyprowadzone przez ciecie istniejacego sys2 po markerach
+("strategia: OBIEKT", "sprzet_opony: OBIEKT", "ubior: OBIEKT") -- jedno zrodlo promptu, bez
+przepisywania. Helper _ask_plan(system, keys, max_tokens): qgpt_json, retry gdy ktorys wymagany
+klucz nie jest dict, salvage czesciowy. Sygnatura zwrotu _report_prose bez zmian
+(og, et, rc, strategia, ubior, opony). Weryfikacja na zywo (bez zapisu snapshotu):
+_build_report_data(55930010) -> strategia dict (calosc + 5 etapow), ubior dict (2 zestawy),
+opony dict (wheelset), etapy pogody = 4. Stare puste snapshoty zostaja puste (zapisujemy DANE,
+nie liczymy od nowa) -- przegenerowac recznie. REPO: qbot_web.py (restart + commit).
+
+**Zakladka "Szczegoly trasy" -- UI (raport.css + raport-trasy.html, statyki poza repo).**
+- Scroll-lock: na aktywnej zakladce Szczegoly strona ma stac, scrollowac ma sie tylko okno
+  zakladki. body.rtab-szczegoly{overflow:hidden}; panel .r-tabpanel[data-rtab=szczegoly] dostaje
+  wysokosc liczona w JS (sizeSzczegoly: innerHeight - rect.top - 16), .multi=100%, .multi-pane
+  flex-column, .multi-body flex:1 z wlasnym overflow. Przeliczane w applyRTab, na window resize
+  i po kliknieciu "Parametry" (zmiana wysokosci belki). Zakladka Mapa i raport dnia nietkniete
+  (reguly tylko pod body.rtab-szczegoly).
+- Margines dolny: 16 px pod panelem + 14 px padding-bottom w .multi-body.
+- Typografia: delikatne +1 px na kluczowych klasach tekstu paneli (strat-*, risk-cmt, wx-*, ms-*,
+  press-main, mtable, forma-tab, spq-why, poi-desc, ubior-uw, climb-hd); line-height ~1.6-1.7 +
+  wiekszy padding wierszy tabel. Bloki dopisane na koncu raport.css (pozniejsza regula wygrywa).
+- FIX czytelnosci .press-cur: wyrozniony wiersz tabeli cisnien mial zaszyte jasne tlo #f3efe6;
+  w ciemnym motywie jasny tekst na jasnym tle znikal. Zmiana na polprzezroczysty akcent
+  rgba(60,107,71,.16) + color:var(--ink) -- czytelne w obu motywach.
+- Cache-bust raport.css podbity krokowo do ?v=2026071718.
+
+**Kalendarz -- przypomnienie jako dzwonek w rogu (kalendarz-render.js + kalendarz.html).** Problem:
+gdy w komorce dnia pojawiala sie JAZDA, belka przypomnienia wypychana byla poza komorke. Decyzja:
+gdy dzien ma jazde I przypomnienie(-a) -> zamiast belki maly dzwonek 🔔 w prawym dolnym rogu
+(span.rem-corner, position:absolute; liczba .rc-n gdy >1; tooltip z trescia). Klik w komorke
+(istniejacy onclick=openDay) otwiera dzien. Bez jazdy -- belka jak dotad (jest miejsce). Rezerwa
+.day.has-rem .marks{padding-right:20px}, by dzwonek nie nachodzil na kafelek jazdy. JS ?v=17.
+Statyki poza repo.
