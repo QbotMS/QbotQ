@@ -1,3 +1,15 @@
+-- =====================================================================
+-- !!! DEPRECATED / HISTORYCZNE — zastapione przez refaktor kalendarza 2026-07-16 !!!
+-- Ponizsze tabele (calendar_days, calendar_daily_snapshots, calendar_events,
+-- reminders, reminder_channels, import_jobs) NIE sa juz zywym schematem.
+-- Zywe tabele kalendarza: calendar_entry (kolumna: day), calendar_day_route,
+-- calendar_reminder_fired.
+-- W SZCZEGOLNOSCI: calendar_events JUZ NIE ISTNIEJE. NIE uruchamiaj tego pliku
+-- na slepo — odtworzylby martwe tabele. Zostawione wylacznie dla historii.
+-- Trigger refresh_day_flags() wskazuje teraz calendar_entry(day)
+-- — patrz sql/refresh_day_flags_fix.sql.
+-- =====================================================================
+
 -- QBot Calendar Core v1 — daily timeline, snapshots, events, reminders
 BEGIN;
 
