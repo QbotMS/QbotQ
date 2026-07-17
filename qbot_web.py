@@ -3682,6 +3682,49 @@ def _forma_subjective_window_lines(rows):
     return out
 
 
+def _forma_planned_events(conn, days_ahead=14):
+    """Zaplanowane wpisy kalendarza (kind='event') od dzis do dzis+days_ahead.
+    Linie do promptu Doradcy - co zawodnik ma zaplanowane."""
+    from datetime import date as _d
+    rows = conn.execute(
+        "SELECT day, day::text AS day_s, title, event_type, at_time::text AS at_time, "
+        "end_day, end_day::text AS end_day_s, note "
+        "FROM qbot_v2.calendar_entry "
+        "WHERE kind='event' AND ("
+        "  (day BETWEEN CURRENT_DATE AND CURRENT_DATE + %s) "
+        "  OR (end_day IS NOT NULL AND end_day >= CURRENT_DATE AND day <= CURRENT_DATE + %s)) "
+        "ORDER BY day",
+        (days_ahead, days_ahead),
+    ).fetchall()
+    today = _d.today()
+    out2 = []
+    for r in rows:
+        try:
+            dd = (r["day"] - today).days
+        except Exception:
+            dd = None
+        if dd == 0:
+            rel = "dzis"
+        elif dd == 1:
+            rel = "jutro"
+        elif dd is not None and dd > 1:
+            rel = "za %d dni" % dd
+        else:
+            rel = ""
+        when = r["day_s"]
+        if r.get("end_day_s") and r["end_day_s"] != r["day_s"]:
+            when = "%s-%s" % (r["day_s"], r["end_day_s"])
+        seg = "- %s%s: %s" % (when, (" (%s)" % rel) if rel else "", (r.get("title") or "(bez nazwy)"))
+        if r.get("at_time"):
+            seg += " o %s" % str(r["at_time"])[:5]
+        if r.get("event_type"):
+            seg += " [%s]" % r["event_type"]
+        if r.get("note"):
+            seg += " - %s" % str(r["note"])[:100]
+        out2.append(seg)
+    return out2
+
+
 @app.post("/api/forma/analyze")
 async def forma_analyze(request: Request):
     """Analiza LLM formy. mode='today' -> stan na dzis + zmiany 7/30/90 dni;
@@ -3867,8 +3910,14 @@ async def forma_analyze(request: Request):
                     "zaczynajace sie doslownie od 'Najblizsza jazda:' oraz 'Najblizsze 7 dni:'. Opieraj sie na "
                     "danych, nie zmyslaj. Jesli zawodnik zglosil samopoczucie/chorobe - uwzglednij to w doradztwie (obciazenie/regeneracja), ale nie zmieniaj oceny progu CP/FTP/W'."
                 )
-                prompt = _snap + "\n\nDoradz co robic lepiej na najblizszej jezdzie i w najblizszych 7 dniach."
-                mt = 560
+                _plan = _forma_planned_events(conn, days_ahead=21)
+                prompt = _snap
+                if _plan:
+                    prompt = prompt + "\n\nPLAN W KALENDARZU (najblizsze ~2 tyg., zaplanowany przez zawodnika):\n" + "\n".join(_plan)
+                    prompt = prompt + ("\n\nUWZGLEDNIJ TEN PLAN: rozpisz najblizsza jazde i 7 dni tak, by dowiezc forme na zaplanowane cele "
+                                       "(np. lzejszy dzien lub tapering przed dluga jazda/zawodami; przy wyjezdzie/urlopie/delegacji trening moze byc ograniczony - zaplanuj wokol tego).")
+                prompt = prompt + "\n\nDoradz co robic lepiej na najblizszej jezdzie i w najblizszych 7 dniach."
+                mt = 620
             else:
                 system = (
                     "Jestes doswiadczonym fizjologiem wysilku i analitykiem treningu kolarskiego (model CP/W', "
