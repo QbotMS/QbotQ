@@ -2630,6 +2630,201 @@ def _save_report_snapshot(conn, route_id, date_str, start_time, long_stops, long
         return None
 
 
+_ATT_JUNK = ("pomnik przyrody", "wiata", "przystanek sztuki", "d\u0105b", "g\u0142az", "aleja lip",
+             "aleja pomolog", "kasztanow", "mogi\u0142", "gr\u00f3b", "grob", "miejsce pami\u0119ci",
+             "ruiny", "ko\u0142o \u0142owieck", "turbin", "rancho", "wie\u017ca wodna")
+_ATT_REL = ("ko\u015bci", "kaplic", "krzy\u017c", "figur", "parafia", "sanktu", "dzwonnic", "cerkiew", "ko\u015bciel")
+_ATT_VENUE = ("hotel", "restau", "sklep", "noclegi", "pensjonat", "przeznaczony do organ", "bar ")
+
+
+def _att_quality_keep(name, typ, rat, n):
+    nm = (name or "").lower()
+    tp = (typ or "").lower()
+    if any(j in nm for j in _ATT_JUNK):
+        return False
+    if any(vv in tp for vv in _ATT_VENUE):
+        return False
+    if rat is None or n is None:
+        return False
+    is_rel = ("ko\u015bci" in tp) or any(r in nm for r in _ATT_REL)
+    if is_rel:
+        return (rat >= 4.5 and n >= 200)
+    return (rat >= 4.3 and n >= 30)
+
+
+def _att_build_desc(meta):
+    typ = meta.get("g_type_pl"); rat = meta.get("g_rating"); n = meta.get("g_rating_n"); summ = meta.get("g_summary")
+    bits = []
+    if typ:
+        bits.append(str(typ))
+    if rat:
+        bits.append("\u2605%s%s" % (rat, (" (%d)" % n if n else "")))
+    base = " \u00b7 ".join(bits) if bits else None
+    if summ:
+        return (base + " \u2014 " + summ) if base else summ
+    return base
+
+
+def _build_day_data(conn, route_id, km_from, km_to):
+    """Okrojony DATA dla jednego dnia (zakres km) - bez pogody/forma/strategia/sprzet.
+    Reuzywa helperow raportu (surface/climbs/poi), wszystko przyciete do [km_from, km_to].
+    chart w skali dnia (offset do 0); listy climbs/poi w km ABSOLUTNYCH trasy."""
+    base = conn.execute(
+        "SELECT rb.route_base_id, rb.distance_m, "
+        "a.metadata_json->>'route_name' AS name "
+        "FROM qbot_v2.route_base rb "
+        "LEFT JOIN qbot_v2.route_artifacts a ON a.id=rb.route_artifact_id "
+        "WHERE rb.route_id=%s "
+        "ORDER BY (rb.status='active') DESC, rb.route_modified_at DESC NULLS LAST LIMIT 1",
+        (route_id,)).fetchone()
+    if not base:
+        raise HTTPException(status_code=404, detail="Trasa nie znaleziona")
+    rbid = base["route_base_id"]
+    a0, b0 = float(km_from), float(km_to)
+    dist_day = round(b0 - a0, 1)
+
+    # profil w zakresie, offset do 0
+    erows = conn.execute(
+        "SELECT distance_m, elevation_m FROM qbot_v2.route_elevation_samples "
+        "WHERE route_base_id=%s ORDER BY sample_index", (rbid,)).fetchall()
+    sel = [(r["distance_m"] / 1000.0, r["elevation_m"]) for r in erows
+           if a0 <= r["distance_m"] / 1000.0 <= b0]
+    if not sel:
+        raise HTTPException(status_code=422, detail="Brak profilu wysokosci w zakresie")
+    step = max(1, len(sel) // 220)
+    ele = []
+    for i in range(0, len(sel), step):
+        ele.append([round(sel[i][0] - a0, 3), round(sel[i][1], 1)])
+    if ele[-1][0] != round(sel[-1][0] - a0, 3):
+        ele.append([round(sel[-1][0] - a0, 3), round(sel[-1][1], 1)])
+    emin = min(p[1] for p in ele)
+    emax = max(p[1] for p in ele)
+    day_asc = 0.0
+    for i in range(1, len(ele)):
+        d = ele[i][1] - ele[i - 1][1]
+        if d > 0:
+            day_asc += d
+
+    # nawierzchnia - ribbon przyciety do [a0,b0], offset do 0
+    raw_buckets = _load_surface_buckets(conn, rbid)
+    ribbon = _absorb_short_surface(_coalesce_categories(raw_buckets))
+    surface_cat = []
+    for r in ribbon:
+        if r.get("category") is None:
+            continue
+        ra, rb = float(r["km_from"]), float(r["km_to"])
+        if rb <= a0 or ra >= b0:
+            continue
+        ca, cb = max(ra, a0), min(rb, b0)
+        surface_cat.append({"a": round(ca - a0, 2), "b": round(cb - a0, 2),
+                            "k": r["category"], "label": r.get("label"), "reason": r.get("reason")})
+    _scat = {}
+    for _s in surface_cat:
+        _scat[_s["k"]] = _scat.get(_s["k"], 0.0) + max(0.0, _s["b"] - _s["a"])
+    _tot = sum(_scat.values()) or 1.0
+    surface_by_cat = [{"k": k, "km": round(_scat[k], 1), "pct": round(_scat[k] / _tot * 100)}
+                      for k in sorted(_scat)]
+    surface_risk = [{"a": round(_s["a"] + a0, 2), "b": round(_s["b"] + a0, 2),
+                     "km": round(_s["b"] - _s["a"], 2), "k": _s["k"], "reason": _s.get("reason")}
+                    for _s in surface_cat if _s["k"] in (4, 5) and (_s["b"] - _s["a"]) >= 0.3]
+
+    # podjazdy w zakresie (km absolutne)
+    _cl = conn.execute(
+        "SELECT event_index, start_m, end_m, length_m, elevation_gain_m, avg_gradient_pct, "
+        "max_gradient_pct, severity FROM qbot_v2.route_climb_events "
+        "WHERE route_base_id=%s AND start_m/1000.0 >= %s AND start_m/1000.0 < %s ORDER BY start_m",
+        (rbid, a0, b0)).fetchall()
+    climbs_list = []
+    for r in _cl:
+        climbs_list.append({"i": (r["event_index"] or 0) + 1,
+                            "a_km": round((r["start_m"] or 0) / 1000.0, 1),
+                            "b_km": round((r["end_m"] or 0) / 1000.0, 1),
+                            "length_m": round(r["length_m"] or 0),
+                            "gain_m": round(r["elevation_gain_m"] or 0),
+                            "avg_pct": r["avg_gradient_pct"], "max_pct": r["max_gradient_pct"],
+                            "severity": r["severity"]})
+
+    # POI w zakresie (km absolutne)
+    _pg = _load_poi_groups(conn, rbid)
+    for cat in list(_pg.keys()):
+        _pg[cat] = [p for p in _pg[cat] if a0 <= (p.get("km") or 0) <= b0]
+    # zaopatrzenie: _curate_pois dzieli trase od 0, wiec offset km->skala dnia, potem przywroc absolutne
+    _pg_local = {}
+    for _cat, _lst in _pg.items():
+        _pg_local[_cat] = [dict(_p, km=round((_p.get("km") or 0) - a0, 1)) for _p in _lst]
+    try:
+        _cur = _curate_pois(_pg_local, dist_day, None)
+        _resupply = _cur.get("resupply", []) or []
+        for _area in _resupply:
+            if _area.get("q_km") is not None:
+                _area["q_km"] = round(_area["q_km"] + a0, 1)
+            for _pk in (_area.get("picks", []) or []):
+                if _pk.get("km") is not None:
+                    _pk["km"] = round(_pk["km"] + a0, 1)
+    except Exception:
+        _resupply = []
+    # atrakcje: wlasna selekcja rozlozona po km (bramka jakosci jak w raporcie), sort po km
+    _att = []
+    for _it in _pg.get("attraction", []):
+        if _it.get("dist_m") is None or _it["dist_m"] > 800:
+            continue
+        _m = _it.get("meta") or {}
+        if not _att_quality_keep(_it["name"], _m.get("g_type_pl"), _m.get("g_rating"), _m.get("g_rating_n")):
+            continue
+        _att.append((_it, (_m.get("g_rating") or 0) * (_m.get("g_rating_n") or 0)))
+    _picked = []
+    if _att:
+        _nbin = max(1, min(8, int(round(dist_day / 12.0)) or 1))
+        _binw = (b0 - a0) / _nbin if _nbin else (b0 - a0)
+        _bins = {}
+        for _it, _sc in _att:
+            _bi = min(_nbin - 1, int((_it["km"] - a0) / _binw)) if _binw > 0 else 0
+            _bins.setdefault(_bi, []).append((_it, _sc))
+        for _bi in sorted(_bins):
+            _top = sorted(_bins[_bi], key=lambda z: z[1], reverse=True)[:1]
+            _picked.extend([t[0] for t in _top])
+        if len(_picked) < 10:
+            _ids = set(id(x) for x in _picked)
+            _rest = sorted([z for z in _att if id(z[0]) not in _ids], key=lambda z: z[1], reverse=True)
+            _picked.extend([z[0] for z in _rest[:10 - len(_picked)]])
+        _picked.sort(key=lambda it: it["km"])
+    _att_items = [{"km": _it["km"], "name": _it["name"], "dist_m": _it.get("dist_m"),
+                   "lat": _it.get("lat"), "lon": _it.get("lon"),
+                   "desc": _att_build_desc(_it.get("meta") or {})} for _it in _picked]
+    poi_out = {"resupply": _resupply, "attractions": {"total": len(_att), "items": _att_items}}
+
+    return {
+        "route": {"id": route_id,
+                  "name": (base["name"] or ("Trasa " + str(route_id)))
+                          + (" \u2014 dzie\u0144 %s\u2013%s km" % (round(a0), round(b0)))},
+        "day": {"km_from": round(a0, 1), "km_to": round(b0, 1), "dist_km": dist_day, "ascent_m": round(day_asc)},
+        "chart": {"km_total": dist_day, "ele": ele, "ele_min": emin, "ele_max": emax,
+                  "surface_cat": surface_cat},
+        "details": {
+            "surface": {"total_km": dist_day, "by_cat": surface_by_cat, "risk": surface_risk},
+            "climbs": {"ascent_m": round(day_asc), "descent_m": None,
+                       "count": len(climbs_list), "list": climbs_list},
+            "poi": poi_out,
+        },
+        "day_mode": True,
+    }
+
+
+@app.get("/api/planer/dzien")
+def api_planer_dzien(route_id: str = Query(...), from_km: float = Query(..., alias="from"),
+                     to_km: float = Query(..., alias="to")):
+    """Analiza jednego dnia (zakres km) - okrojony DATA bez pogody. Do zakladek planera."""
+    conn = _db_conn()
+    try:
+        return _build_day_data(conn, route_id, from_km, to_km)
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"status": "ERROR", "error": str(e)[:200]}
+    finally:
+        conn.close()
+
+
 @app.get("/api/report/data")
 def report_data(route_id: str = Query(...), date: str = Query(...),
                 time: str = Query("10:00"), long_stops: int = Query(0),
@@ -3286,6 +3481,75 @@ async def ride_report_correlate(request: Request):
     return {"text": (txt or "").strip().replace("**", "").replace("__", "")}
 
 
+_FEEL_WORDS = {-2: "fatalnie", -1: "gorzej niz zwykle", 0: "neutralnie", 1: "dobrze", 2: "swietnie"}
+
+
+def _forma_feel_illness_for_day(conn, ref_day):
+    """L1 subiektyw: ostatni wpis feel z okna [ref_day-2, ref_day] (3 dni) + aktywna choroba
+    obejmujaca ref_day. Brak feel -> None = neutralnie/0. NIE dotyka liczb ani kolumn obiektywnych."""
+    feel = None
+    feel_note = None
+    row = conn.execute(
+        "SELECT feel, note FROM qbot_v2.calendar_entry "
+        "WHERE kind='feel' AND feel IS NOT NULL "
+        "AND day <= %s AND day >= (%s::date - INTERVAL '2 days') "
+        "ORDER BY day DESC, id DESC LIMIT 1",
+        (ref_day, ref_day),
+    ).fetchone()
+    if row:
+        feel = row["feel"]
+        feel_note = row["note"]
+    ill = conn.execute(
+        "SELECT severity, note FROM qbot_v2.calendar_entry "
+        "WHERE kind='illness' AND day <= %s AND COALESCE(end_day, day) >= %s "
+        "ORDER BY day DESC, id DESC LIMIT 1",
+        (ref_day, ref_day),
+    ).fetchone()
+    return feel, feel_note, ill
+
+
+def _forma_subjective_block(feel, feel_note, ill):
+    """Blok tekstowy do promptu today/coach (pusty string gdy brak sygnalu subiektywnego)."""
+    parts = []
+    if feel is not None and feel != 0:
+        w = _FEEL_WORDS.get(feel, "")
+        s = "ZGLOSZENIE ZAWODNIKA (subiektyw, NIE z czujnikow): samopoczucie %+d w skali -2..+2 (-2 fatalnie .. +2 swietnie)" % feel
+        if w:
+            s += " - " + w
+        if feel_note:
+            s += '; nota: "%s"' % str(feel_note)[:160]
+        parts.append(s)
+    if ill:
+        s = "CHOROBA zgloszona przez zawodnika (aktywna)"
+        if ill.get("severity"):
+            s += " - nasilenie: %s" % str(ill["severity"])[:60]
+        if ill.get("note"):
+            s += '; nota: "%s"' % str(ill["note"])[:160]
+        parts.append(s)
+    return "\n".join(parts)
+
+
+def _forma_feel_illness_window(conn, start, end):
+    return conn.execute(
+        "SELECT day::text AS day, kind, feel, severity, note FROM qbot_v2.calendar_entry "
+        "WHERE kind IN ('feel','illness') AND day BETWEEN %s AND %s ORDER BY day",
+        (start, end),
+    ).fetchall()
+
+
+def _forma_subjective_window_lines(rows):
+    out = []
+    for r in rows:
+        if r["kind"] == "feel" and r.get("feel") is not None:
+            note = (' "%s"' % str(r["note"])[:100]) if r.get("note") else ""
+            out.append("%s: samopoczucie %+d%s" % (r["day"], r["feel"], note))
+        elif r["kind"] == "illness":
+            sev = (" nasilenie %s" % r["severity"]) if r.get("severity") else ""
+            note = (' "%s"' % str(r["note"])[:100]) if r.get("note") else ""
+            out.append("%s: CHOROBA%s%s" % (r["day"], sev, note))
+    return out
+
+
 @app.post("/api/forma/analyze")
 async def forma_analyze(request: Request):
     """Analiza LLM formy. mode='today' -> stan na dzis + zmiany 7/30/90 dni;
@@ -3305,10 +3569,13 @@ async def forma_analyze(request: Request):
         "ctl": ("ctl_xss", "CTL", "", 1),
         "atl": ("atl_raw", "ATL", "", 1),
         "tsb": ("tsb_raw", "TSB", "", 1),
+        "atlp": ("atl_plus", "ATL+", "", 1),
+        "tsbp": ("tsb_plus", "TSB+", "", 1),
         "hrv": ("hrv_night", "HRV", "ms", 0),
         "rhr": ("rhr", "RHR", "bpm", 0),
-        "slp": ("sleep_h", "Sen", "h", 1),
+        "slp": ("sleep_score", "Sen (scoring)", "", 0),
         "rdy": ("readiness_score", "Gotowosc", "", 2),
+        "rdye": ("readiness_effective", "Gotowosc(efekt)", "", 2),
         "glyc": ("glycogen_pct", "Glikogen", "%", 0),
     }
 
@@ -3330,16 +3597,20 @@ async def forma_analyze(request: Request):
         "cel to dlugie jazdy w terenie, pojemnosc tlenowa i trwalosc, nie krotkie wyscigi. "
     )
     _STYLE = (
-        " PO POLSKU, zwiezle (3-5 zdan), rzeczowo, bez frazesow, bez markdown i gwiazdek. "
-        "ZAKAZ OPISU DANYCH: nie pisz zdan typu 'X rosnie, Y spada' ani nie wyliczaj liczb - zawodnik widzi to na "
-        "wykresie, to bezuzyteczne. Twoja rola to INTERPRETACJA. Pracuj na KORELACJACH miedzy seriami "
-        "(prog CP/LTP/W'/W/kg  <->  obciazenie CTL/ATL/TSB  <->  regeneracja HRV/RHR/sen). "
-        "Zrob DWIE rzeczy: (a) DIAGNOZA TRENDU - dokad to realnie zmierza i jaka jest najprawdopodobniejsza "
-        "PRZYCZYNA; (b) ANOMALIE/SPRZECZNOSCI - wskaz co nie pasuje do siebie miedzy sygnalami i wyjasnij dlaczego "
-        "to istotne (np. prog spada mimo swiezosci i dobrej regeneracji => przyczyna nie jest zmeczenie, lecz brak "
-        "bodzca progowego lub deficyt energii). Powiedz co to znaczy DLA TEGO zawodnika (gravel/trwalosc). "
-        "NIE dawaj zalecen 'co robic' ani planu - to ustalane osobno. Liczbe podawaj tylko jako DOWOD tezy, nie jako "
-        "tresc. Nazwij tez czego dane NIE rozstrzygaja. Nie zmyslaj - tylko z podanych danych."
+        " Odpowiadaj PO POLSKU, prostym, ludzkim jezykiem - jak do kolegi rowerzysty (hobbysty), "
+        "nie do naukowca. Krotkie zdania. Bez markdown i gwiazdek. Zargon rozwijaj w nawiasie przy "
+        "pierwszym uzyciu, np. 'TSB (swiezosc)', 'CTL (baza kondycji)', \"W' (zapas na zrywy)\". "
+        "TRZYMAJ SIE FORMATU: pierwszy wiersz = JEDNO zdanie werdyktu (jak jest i co to praktycznie "
+        "znaczy dla zawodnika); potem 2-3 punkty, kazdy w osobnej linii zaczynajacej sie od '- ', "
+        "kazdy to jedna prosta mysl: co widac + co z tego wynika. Maksymalnie okolo 6 linii lacznie. "
+        "Nie opisuj oczywistosci ('X rosnie') - to widac na wykresie; twoja rola to POWIEDZIEC CO TO ZNACZY. "
+        "Pracuj na zaleznosciach: prog (CP/LTP/W') <-> obciazenie (CTL kondycja / ATL zmeczenie / TSB swiezosc) "
+        "<-> regeneracja (HRV, tetno spoczynkowe, sen). Wychwyc sprzecznosci i wyjasnij je po ludzku "
+        "(np. 'prog spada mimo swiezosci -> to nie zmeczenie, tylko brak mocnych bodzcow albo za malo jedzenia'). "
+        "Liczby tylko jako krotki dowod tezy, nie zamiast tezy. Nie zmyslaj - korzystaj tylko z podanych danych; "
+        "jesli czegos nie da sie rozstrzygnac, powiedz to jednym zdaniem. "
+        "Jesli zawodnik zglosil samopoczucie (-2..+2) lub chorobe rozbiezne z danymi - potraktuj to jako realny "
+        "sygnal STANU (swiezosc/zmeczenie), nazwij rozjazd; subiektyw NIE zmienia oceny progu CP/FTP/W'."
     )
 
     conn = _db_conn()
@@ -3389,6 +3660,10 @@ async def forma_analyze(request: Request):
             )
             prompt = ("OKNO WYKRESU: %s -> %s (%d dni)\nWIDOCZNE SERIE:\n%s\n\nZinterpretuj to okno: diagnoza trendu i jego przyczyny + anomalie/sprzecznosci miedzy seriami. Bez zalecen co robic."
                       % (start, end, ndays, "\n".join(lines)))
+            _subj_rows = _forma_feel_illness_window(conn, start, end)
+            _subj_lines = _forma_subjective_window_lines(_subj_rows)
+            if _subj_lines:
+                prompt = prompt + "\n\nWPISY SAMOPOCZUCIA/CHOROBY W OKNIE (subiektyw zawodnika, NIE z czujnikow):\n" + "\n".join(_subj_lines)
             mt = 500
         else:
             end_d = _dt_date.today()
@@ -3403,7 +3678,7 @@ async def forma_analyze(request: Request):
             def _cut(nd):
                 return (_dt_date.fromisoformat(end_day) - _dt_timedelta(days=nd)).isoformat()
 
-            order = ["tsb", "ctl", "atl", "ftp", "ltp", "wp", "wkg", "rdy", "hrv", "rhr", "slp", "glyc"]
+            order = ["tsb", "tsbp", "ctl", "atl", "atlp", "ftp", "ltp", "wp", "wkg", "rdy", "rdye", "hrv", "rhr", "slp", "glyc"]
             lines = []
             for k in order:
                 field, label, unit, dec = _MAP[k]
@@ -3427,14 +3702,24 @@ async def forma_analyze(request: Request):
             rn = (latest.get("readiness_note") or {}).get("value")
             wc = (latest.get("wprime_confidence") or {}).get("value")
             extra = []
+            rle = (latest.get("readiness_effective_label") or {}).get("value")
+            ren = (latest.get("readiness_effective_note") or {}).get("value")
             if rl:
-                extra.append("gotowosc: %s" % rl)
+                extra.append("gotowosc obiektywna: %s" % rl)
+            if rle:
+                extra.append("gotowosc efektywna: %s" % rle)
+            if ren and ("feel" in str(ren) or "choroba" in str(ren)):
+                extra.append(str(ren)[:140])
             if wc:
                 extra.append("pewnosc W': %s" % wc)
             if rn:
                 extra.append("nota: %s" % str(rn)[:160])
             _snap = ("STAN NA DZIS (" + end_day + "):\n" + "\n".join(lines)
                      + (("\n" + " | ".join(extra)) if extra else ""))
+            _feel, _feel_note, _ill = _forma_feel_illness_for_day(conn, end_day)
+            _subj = _forma_subjective_block(_feel, _feel_note, _ill)
+            if _subj:
+                _snap = _snap + "\n" + _subj
             if mode == "coach":
                 system = (
                     "Jestes doswiadczonym trenerem kolarstwa i fizjologiem wysilku (model CP/W', periodyzacja). "
@@ -3444,9 +3729,10 @@ async def forma_analyze(request: Request):
                     "regeneracji i kierunku formy progowej, i dopasuj do celu (gravel/trwalosc, nie sciganie). Badz "
                     "konkretny: charakter i czas trwania jazdy, intensywnosc wzgledem progu (strefy lub W), ile dni "
                     "mocnych vs latwych w tygodniu, oraz regeneracja/odzywianie jesli to waskie gardlo. Realnie i "
-                    "wykonalnie, bez frazesow, bez markdown i gwiazdek. PO POLSKU. Format: dwa krotkie akapity "
+                    "wykonalnie, bez frazesow, bez markdown i gwiazdek. PO POLSKU, prostym jezykiem, krotkie zdania, "
+                    "zargon rozwijaj w nawiasie. Format: dwa krotkie akapity "
                     "zaczynajace sie doslownie od 'Najblizsza jazda:' oraz 'Najblizsze 7 dni:'. Opieraj sie na "
-                    "danych, nie zmyslaj."
+                    "danych, nie zmyslaj. Jesli zawodnik zglosil samopoczucie/chorobe - uwzglednij to w doradztwie (obciazenie/regeneracja), ale nie zmieniaj oceny progu CP/FTP/W'."
                 )
                 prompt = _snap + "\n\nDoradz co robic lepiej na najblizszej jezdzie i w najblizszych 7 dniach."
                 mt = 560
@@ -3709,9 +3995,11 @@ async def calendar_route(request: Request):
 _FORMA_FIELDS = [
     "ftp_est_w", "w_per_kg", "cp_modelq_w", "ltp_modelq_w",
     "wprime_modelq_kj", "wprime_lo_kj", "wprime_hi_kj", "wprime_confidence",
-    "glycogen_pct", "sleep_h", "hrv_night", "rhr",
+    "glycogen_pct", "sleep_h", "sleep_score", "hrv_night", "rhr",
     "readiness_score", "readiness_label", "readiness_note",
+    "readiness_effective", "readiness_effective_label", "readiness_subj_delta", "readiness_effective_note",
     "ctl_xss", "atl_raw", "tsb_raw",
+    "atl_plus", "tsb_plus", "xss_hidden_subj", "atl_hidden_subj", "atl_plus_note",
 ]
 
 
@@ -3723,7 +4011,7 @@ def _forma_row_out(r):
     out = {"day": r["day"].isoformat()}
     for f in _FORMA_FIELDS:
         v = r[f]
-        out[f] = v if f in ("wprime_confidence", "readiness_label", "readiness_note") else _forma_num(v)
+        out[f] = v if f in ("wprime_confidence", "readiness_label", "readiness_note", "readiness_effective_label", "readiness_effective_note", "atl_plus_note") else _forma_num(v)
     return out
 
 
@@ -3761,10 +4049,12 @@ def _build_forma_data(conn, start_str, end_str):
     CTL/ATL/TSB (trening load, fitmodel/training_load.py) wpiete 2026-07-07 -- patrz
     DECISIONS.md 2026-07-07 (6)."""
     from datetime import date as _dt_date, timedelta as _dt_timedelta
-    cols = ", ".join(_FORMA_FIELDS)
+    _dbcols = [c for c in _FORMA_FIELDS if c != "sleep_score"]
+    cols = ", ".join("f." + c for c in _dbcols)
+    _sleep_sub = "(SELECT max(w.sleep_score) FROM qbot_v2.qbot_wellness_daily w WHERE w.date=f.day) AS sleep_score"
     rows = conn.execute(
-        f"SELECT day, {cols} FROM qbot_v2.fitmodel_daily "
-        "WHERE day BETWEEN %s AND %s ORDER BY day",
+        f"SELECT f.day AS day, {cols}, {_sleep_sub} FROM qbot_v2.fitmodel_daily f "
+        "WHERE f.day BETWEEN %s AND %s ORDER BY f.day",
         (start_str, end_str),
     ).fetchall()
     series = [_forma_row_out(r) for r in rows]
@@ -3772,8 +4062,8 @@ def _build_forma_data(conn, start_str, end_str):
     # "dzis" - ostatnia NIE-NULL wartosc kazdego pola, niezaleznie od wybranego zakresu
     # (zeby waskie okno w wykresie nie psulo kart z aktualna forma).
     latest_rows = conn.execute(
-        f"SELECT day, {cols} FROM qbot_v2.fitmodel_daily "
-        "WHERE day BETWEEN %s AND %s ORDER BY day",
+        f"SELECT f.day AS day, {cols}, {_sleep_sub} FROM qbot_v2.fitmodel_daily f "
+        "WHERE f.day BETWEEN %s AND %s ORDER BY f.day",
         ((_dt_date.fromisoformat(end_str) - _dt_timedelta(days=400)).isoformat(), end_str),
     ).fetchall()
     latest_series = [_forma_row_out(r) for r in latest_rows]
