@@ -3577,6 +3577,7 @@ async def forma_analyze(request: Request):
         "rdy": ("readiness_score", "Gotowosc", "", 2),
         "rdye": ("readiness_effective", "Gotowosc(efekt)", "", 2),
         "glyc": ("glycogen_pct", "Glikogen", "%", 0),
+        "wgt": ("weight_kg", "Waga", "kg", 1),
     }
 
     def _rr(x, d):
@@ -3993,7 +3994,7 @@ async def calendar_route(request: Request):
 
 
 _FORMA_FIELDS = [
-    "ftp_est_w", "w_per_kg", "cp_modelq_w", "ltp_modelq_w",
+    "ftp_est_w", "w_per_kg", "weight_kg", "cp_modelq_w", "ltp_modelq_w",
     "wprime_modelq_kj", "wprime_lo_kj", "wprime_hi_kj", "wprime_confidence",
     "glycogen_pct", "sleep_h", "sleep_score", "hrv_night", "rhr",
     "readiness_score", "readiness_label", "readiness_note",
@@ -4104,6 +4105,163 @@ def forma_data(response: Response, start: str | None = Query(None), end: str | N
         return _build_forma_data(conn, start_d.isoformat(), end_d.isoformat())
     finally:
         conn.close()
+
+
+# ---------- ODZYWIANIE (zywienie + body composition) ----------
+def _build_nutrition_data(conn, start_str, end_str):
+    """Dane dzienne odzywiania: energia (albert_day_view), waga (fitmodel_daily),
+    sklad ciala (body_trend_full_composition = Garmin INDEX_SCALE, do lipca). Zwraca series + latest."""
+    from datetime import date as _dt_date
+    today = _dt_date.today().isoformat()
+    rows = conn.execute(
+        "SELECT date::text AS day, intake_kcal, intake_protein_g, intake_carbs_g, intake_fat_g, "
+        "active_kcal, resting_kcal, expenditure_kcal, balance_kcal, has_intake, intake_source "
+        "FROM qbot_v2.albert_day_view WHERE date BETWEEN %s AND %s AND date <= %s ORDER BY date",
+        (start_str, end_str, today),
+    ).fetchall()
+    wrows = conn.execute(
+        "SELECT day::text AS day, weight_kg FROM qbot_v2.fitmodel_daily "
+        "WHERE day BETWEEN %s AND %s ORDER BY day",
+        (start_str, end_str),
+    ).fetchall()
+    wmap = {r["day"]: _forma_num(r["weight_kg"]) for r in wrows}
+    brows = conn.execute(
+        "SELECT date::text AS day, max(body_fat_pct) AS body_fat_pct, "
+        "max(muscle_mass_kg) AS muscle_mass_kg, max(body_water_pct) AS body_water_pct, "
+        "max(bmi) AS bmi "
+        "FROM qbot_v2.body_trend_full_composition WHERE date BETWEEN %s AND %s GROUP BY date ORDER BY date",
+        (start_str, end_str),
+    ).fetchall()
+    bmap = {r["day"]: r for r in brows}
+    series = []
+    for r in rows:
+        d = r["day"]
+        b = bmap.get(d)
+        series.append({
+            "day": d,
+            "kcal_total": _forma_num(r["expenditure_kcal"]),
+            "kcal_active": _forma_num(r["active_kcal"]),
+            "kcal_passive": _forma_num(r["resting_kcal"]),
+            "intake_kcal": _forma_num(r["intake_kcal"]),
+            "protein_g": _forma_num(r["intake_protein_g"]),
+            "carbs_g": _forma_num(r["intake_carbs_g"]),
+            "fat_g": _forma_num(r["intake_fat_g"]),
+            "balance_kcal": _forma_num(r["balance_kcal"]),
+            "weight_kg": wmap.get(d),
+            "body_fat_pct": _forma_num(b["body_fat_pct"]) if b else None,
+            "muscle_mass_kg": _forma_num(b["muscle_mass_kg"]) if b else None,
+            "body_water_pct": _forma_num(b["body_water_pct"]) if b else None,
+            "intake_source": r["intake_source"],
+        })
+    _fields = ["kcal_total", "kcal_active", "kcal_passive", "intake_kcal", "protein_g",
+               "carbs_g", "fat_g", "balance_kcal", "weight_kg", "body_fat_pct",
+               "muscle_mass_kg", "body_water_pct"]
+    latest = {}
+    for f in _fields:
+        found = {"value": None, "day": None}
+        for row in reversed(series):
+            if row.get(f) is not None:
+                found = {"value": row[f], "day": row["day"]}
+                break
+        latest[f] = found
+    body_latest = {}
+    for col in ("body_fat_pct", "muscle_mass_kg", "body_water_pct"):
+        rr = conn.execute(
+            "SELECT date::text AS day, max(%s) AS v FROM qbot_v2.body_trend_full_composition "
+            "WHERE %s IS NOT NULL GROUP BY date ORDER BY date DESC LIMIT 1" % (col, col)
+        ).fetchone()
+        body_latest[col] = {"value": _forma_num(rr["v"]), "day": rr["day"]} if rr else {"value": None, "day": None}
+    rw = conn.execute(
+        "SELECT day::text AS day, weight_kg FROM qbot_v2.fitmodel_daily "
+        "WHERE weight_kg IS NOT NULL ORDER BY day DESC LIMIT 1"
+    ).fetchone()
+    body_latest["weight_kg"] = {"value": _forma_num(rw["weight_kg"]), "day": rw["day"]} if rw else {"value": None, "day": None}
+    return {"series": series, "latest": latest, "body_latest": body_latest}
+
+
+@app.get("/api/nutrition/data")
+def nutrition_data(response: Response, start: str | None = Query(None), end: str | None = Query(None)):
+    """Odzywianie: szereg dzienny (energia/intake/makro/bilans + waga + sklad ciala). Domyslnie 90 dni."""
+    response.headers["Cache-Control"] = "no-store"
+    from datetime import date as _dt_date, timedelta as _dt_timedelta
+    end_d = _dt_date.fromisoformat(end) if end else _dt_date.today()
+    start_d = _dt_date.fromisoformat(start) if start else (end_d - _dt_timedelta(days=90))
+    conn = _db_conn()
+    try:
+        return _build_nutrition_data(conn, start_d.isoformat(), end_d.isoformat())
+    finally:
+        conn.close()
+
+
+@app.post("/api/nutrition/analyze")
+async def nutrition_analyze(request: Request):
+    """Analiza AI odzywiania: mode 'cards' (kafle/okno) lub 'chart' (zaleznosci na wykresie)."""
+    body = await request.json()
+    mode = (str(body.get("mode") or "cards")).strip()
+    start = (str(body.get("start") or "")).strip()[:10]
+    end = (str(body.get("end") or "")).strip()[:10]
+    from datetime import date as _dt_date, timedelta as _dt_timedelta
+    end_d = _dt_date.fromisoformat(end) if end else _dt_date.today()
+    start_d = _dt_date.fromisoformat(start) if start else (end_d - _dt_timedelta(days=30))
+    conn = _db_conn()
+    try:
+        data = _build_nutrition_data(conn, start_d.isoformat(), end_d.isoformat())
+    finally:
+        conn.close()
+    series = data.get("series") or []
+    if not series:
+        return {"text": "Brak danych odzywiania w tym oknie."}
+
+    def _avg(f):
+        vals = [r[f] for r in series if r.get(f) is not None]
+        return round(sum(vals) / len(vals)) if vals else None
+
+    intake_days = sum(1 for r in series if r.get("intake_kcal") is not None)
+    lines = [
+        "OKNO: %s -> %s (%d dni; wpisy jedzenia w %d dniach)" % (
+            series[0]["day"], series[-1]["day"], len(series), intake_days),
+        "Srednio/dzien: spalone total %s (aktywne %s / pasywne %s), zjedzone %s, bilans %s kcal." % (
+            _avg("kcal_total"), _avg("kcal_active"), _avg("kcal_passive"),
+            _avg("intake_kcal"), _avg("balance_kcal")),
+        "Makro srednio/dzien: bialko %s g, wegle %s g, tluszcz %s g." % (
+            _avg("protein_g"), _avg("carbs_g"), _avg("fat_g")),
+    ]
+    w0 = next((r["weight_kg"] for r in series if r.get("weight_kg") is not None), None)
+    wl = next((r["weight_kg"] for r in reversed(series) if r.get("weight_kg") is not None), None)
+    if w0 is not None and wl is not None:
+        lines.append("Waga: %s -> %s kg (zmiana %s)." % (round(w0, 1), round(wl, 1), round(wl - w0, 1)))
+    bf = None
+    bf_day = None
+    for r in reversed(series):
+        if r.get("body_fat_pct") is not None:
+            bf = r["body_fat_pct"]; bf_day = r["day"]; break
+    if bf is not None:
+        lines.append("Ostatni %%tluszczu: %s (pomiar %s; sklad ciala moze byc nieaktualny)." % (round(bf, 1), bf_day))
+    snap = "\n".join(lines)
+
+    _PROF = ("Zawodnik: kolarz gravel/touring, ~100 kg, cel dlugie jazdy w terenie, trwalosc/pojemnosc "
+             "tlenowa, NIE sciganie. ")
+    _ST = (" Odpowiadaj PO POLSKU, prostym ludzkim jezykiem, krotkie zdania, bez markdown i gwiazdek. "
+           "Format: pierwszy wiersz = jedno zdanie werdyktu; potem 2-3 punkty od '- '. Max ~6 linii. "
+           "Nie wyliczaj liczb bez sensu - powiedz CO TO ZNACZY. Nie zmyslaj - tylko z podanych danych.")
+    if mode == "chart":
+        system = ("Jestes dietetykiem sportowym i fizjologiem wysilku. " + _PROF +
+                  "Patrzysz na WYKRES odzywiania: slupki spalone (aktywne+pasywne) vs zjedzone per dzien, "
+                  "bilans dnia oraz krzywe wagi i skladu ciala. Zinterpretuj ZALEZNOSCI: zwiazek "
+                  "deficytu/nadwyzki ze zmiana wagi/skladu, regularnosc jedzenia, dni bez wpisow." + _ST)
+        prompt = snap + "\n\nZinterpretuj zaleznosci widoczne na wykresie odzywiania."
+    else:
+        system = ("Jestes dietetykiem sportowym i fizjologiem wysilku. " + _PROF +
+                  "Dostajesz podsumowanie okna odzywiania (energia, makro, bilans, waga). Odczytaj gdzie "
+                  "realnie jest bilans energetyczny i jakosc odzywiania wzgledem celu; wskaz 1-2 rzeczy "
+                  "najwazniejsze (np. za malo bialka, chroniczny deficyt/nadwyzka, nieregularne wpisy)." + _ST)
+        prompt = snap + "\n\nZinterpretuj te dane odzywiania: bilans, makro, jakosc. Krotko."
+    from qgpt_client import qgpt_text
+    try:
+        txt = qgpt_text(prompt, system=system, max_tokens=520, temperature=0.35)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"text": txt}
 
 
 def _f(v):
