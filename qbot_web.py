@@ -353,6 +353,8 @@ def api_forma_activity(request: Request, external_id: str = Query(...)):
         for k in r.keys():
             v = r[k]
             out[k] = v.isoformat() if k in ("date", "started_at") and v is not None else v
+        cur.execute("SELECT EXISTS(SELECT 1 FROM qbot_v2.ride_report_data d WHERE d.ride_key=%s) AS h", (external_id,))
+        out["has_report"] = bool(cur.fetchone()["h"])
         return {"activity": out}
     finally:
         conn.close()
