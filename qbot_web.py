@@ -253,6 +253,54 @@ def _db_conn():
     )
 
 
+def _current_user(request):
+    users, sign_val = _webauth_load()
+    cookie_value = request.cookies.get("qbot_session", "")
+    if not _webauth_cookie_valid(cookie_value, sign_val, users):
+        return None
+    return cookie_value.split(":")[0]
+
+
+@app.get("/api/prefs")
+def api_prefs_get(request: Request, key: str = Query(...)):
+    user = _current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    conn = _db_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM qbot_v2.ui_prefs WHERE username=%s AND pref_key=%s", (user, key))
+        row = cur.fetchone()
+        return {"key": key, "value": (row["value"] if row else None)}
+    finally:
+        conn.close()
+
+
+@app.post("/api/prefs")
+async def api_prefs_set(request: Request):
+    user = _current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    body = await request.json()
+    key = (body or {}).get("key")
+    value = (body or {}).get("value")
+    if not isinstance(key, str) or not key or len(key) > 64:
+        raise HTTPException(status_code=400, detail="bad key")
+    conn = _db_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO qbot_v2.ui_prefs(username,pref_key,value,updated_at) "
+            "VALUES(%s,%s,%s::jsonb,now()) "
+            "ON CONFLICT(username,pref_key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()",
+            (user, key, json.dumps(value)),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
