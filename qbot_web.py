@@ -16,6 +16,7 @@ from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 from email.mime.application import MIMEApplication
 import qbot_config as _cfg
+import qbot_nutrition_presets as _presets
 
 WEB_ROOT = os.environ.get("QBOT_WEB_ROOT", "/opt/qbot/web/public")
 HOST = os.environ.get("QBOT_WEB_HOST", "0.0.0.0")
@@ -144,6 +145,8 @@ def _no_cache_static(resp, path):
     try:
         if path == "/" or path.endswith((".html", ".js", ".css")):
             resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        elif path.startswith("/api/"):
+            resp.headers["Cache-Control"] = "no-store"
     except Exception:
         pass
     return resp
@@ -297,6 +300,60 @@ async def api_prefs_set(request: Request):
         )
         conn.commit()
         return {"ok": True}
+    finally:
+        conn.close()
+
+
+@app.get("/api/forma/activities")
+def api_forma_activities(request: Request, n: int = Query(3)):
+    n = max(1, min(20, n))
+    conn = _db_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT date, started_at, sport_type, activity_name, distance_m, duration_s, elevation_m, tss, external_id "
+            "FROM qbot_v2.training_sessions "
+            "ORDER BY COALESCE(started_at, date::timestamptz) DESC LIMIT %s",
+            (n,),
+        )
+        out = []
+        for r in cur.fetchall():
+            out.append({
+                "date": r["date"].isoformat() if r["date"] else None,
+                "started_at": r["started_at"].isoformat() if r["started_at"] else None,
+                "sport_type": r["sport_type"],
+                "name": r["activity_name"],
+                "distance_m": r["distance_m"],
+                "duration_s": r["duration_s"],
+                "elevation_m": r["elevation_m"],
+                "tss": r["tss"],
+                "external_id": r["external_id"],
+            })
+        return {"activities": out}
+    finally:
+        conn.close()
+
+
+@app.get("/api/forma/activity")
+def api_forma_activity(request: Request, external_id: str = Query(...)):
+    conn = _db_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT date, started_at, sport_type, activity_name, distance_m, duration_s, "
+            "elevation_m, tss, avg_power_w, normalized_power_w, intensity_factor, "
+            "avg_hr_bpm, max_hr_bpm, max_power_w, avg_cadence_rpm, calories, external_id "
+            "FROM qbot_v2.training_sessions WHERE external_id=%s LIMIT 1",
+            (external_id,),
+        )
+        r = cur.fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail="not found")
+        out = {}
+        for k in r.keys():
+            v = r[k]
+            out[k] = v.isoformat() if k in ("date", "started_at") and v is not None else v
+        return {"activity": out}
     finally:
         conn.close()
 
@@ -1636,15 +1693,40 @@ def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, 
             "nawierzchnia_udzial": nawierzchnia_udzial, "surface_legenda": _legenda,
             "fuel": fuel, "resupply": resupply, "gear": gear, "opony_opcje": opony_opcje,
             "reguly_outfitu": outfit_rules, "pogoda": _pog_skrot}
-    try:
-        o2 = qgpt_json(json.dumps(pay2, ensure_ascii=False, default=str),
-                       system=sys2, max_tokens=5000, temperature=0.3)
-        if isinstance(o2, dict):
-            strategia = o2.get("strategia") if isinstance(o2.get("strategia"), dict) else None
-            ubior = o2.get("ubior") if isinstance(o2.get("ubior"), dict) else None
-            opony = o2.get("sprzet_opony") if isinstance(o2.get("sprzet_opony"), dict) else None
-    except Exception:
-        pass
+    # sys2 rozbite na dwa mniejsze wywolania (strategia | ubior+opony): jeden
+    # wielki kontrakt bywal obcinany przez budzet reasoningu i cicho gubil
+    # strategia/ubior. Tresc promptu wyciagana z sys2 (jedno zrodlo prawdy).
+    _i_strat = sys2.find("strategia: OBIEKT")
+    _i_opony = sys2.find("sprzet_opony: OBIEKT")
+    _i_ubior = sys2.find("ubior: OBIEKT")
+    _hdr = "Jestes Albert - asystent kolarski QBot. "
+    if _i_strat >= 0 and _i_opony > _i_strat and _i_ubior > _i_opony:
+        sys2a = (_hdr + "Zwracasz WYLACZNIE JSON o kluczu: strategia. " + _WIATR + chr(10)
+                 + sys2[_i_strat:_i_opony].strip())
+        sys2b = (_hdr + "Zwracasz WYLACZNIE JSON o kluczach: ubior, sprzet_opony. " + _WIATR + chr(10)
+                 + sys2[_i_opony:_i_ubior].strip() + chr(10) + sys2[_i_ubior:].strip())
+    else:
+        sys2a = sys2b = sys2
+    _pay2_json = json.dumps(pay2, ensure_ascii=False, default=str)
+
+    def _ask_plan(_system, _keys, _max_tokens):
+        _last = None
+        for _ in range(2):
+            try:
+                _o = qgpt_json(_pay2_json, system=_system, max_tokens=_max_tokens, temperature=0.3)
+            except Exception:
+                _o = None
+            if isinstance(_o, dict):
+                _last = _o
+                if all(isinstance(_o.get(_k), dict) for _k in _keys):
+                    return _o
+        return _last if isinstance(_last, dict) else {}
+
+    _oa = _ask_plan(sys2a, ("strategia",), 4000)
+    strategia = _oa.get("strategia") if isinstance(_oa.get("strategia"), dict) else None
+    _ob = _ask_plan(sys2b, ("ubior", "sprzet_opony"), 4000)
+    ubior = _ob.get("ubior") if isinstance(_ob.get("ubior"), dict) else None
+    opony = _ob.get("sprzet_opony") if isinstance(_ob.get("sprzet_opony"), dict) else None
 
     return og, et, rc, strategia, ubior, opony
 
@@ -4225,6 +4307,84 @@ def _build_nutrition_data(conn, start_str, end_str):
     ).fetchone()
     body_latest["weight_kg"] = {"value": _forma_num(rw["weight_kg"]), "day": rw["day"]} if rw else {"value": None, "day": None}
     return {"series": series, "latest": latest, "body_latest": body_latest}
+
+
+@app.get("/api/nutrition/preset/values")
+async def nutrition_preset_values(day: str = Query(...)):
+    """3 presety bilansu z wyliczonym kcal dla danego dnia (wydatek +/- offset)."""
+    conn = _db_conn()
+    try:
+        pres = _presets.compute_presets(conn)
+        erow = conn.execute("SELECT total_kcal, is_partial_snapshot FROM qbot_v2.energy_daily WHERE date=%s", (day,)).fetchone()
+        real = conn.execute(
+            "SELECT 1 FROM qbot_v2.intake_logs WHERE date=%s "
+            "AND COALESCE(quality_status::text,'')<>'estimated' AND source NOT ILIKE '%%preset%%' LIMIT 1",
+            (day,)).fetchone()
+        applied = conn.execute(
+            "SELECT 1 FROM qbot_v2.intake_logs WHERE date=%s AND source ILIKE '%%preset%%' LIMIT 1",
+            (day,)).fetchone()
+    finally:
+        conn.close()
+    _partial = bool(erow["is_partial_snapshot"]) if erow else False
+    exp = float(erow["total_kcal"]) if (erow and erow["total_kcal"] is not None and not _partial) else None
+    out = {"day": day, "expenditure_kcal": (round(exp) if exp is not None else None),
+           "available": exp is not None, "day_incomplete": _partial, "has_real_intake": bool(real),
+           "already_preset": bool(applied), "generated_from_days": pres["generated_from_days"],
+           "options": []}
+    if exp is not None:
+        for name, lv in pres["levels"].items():
+            out["options"].append({
+                "level": name, "kcal": round(exp + lv["offset_kcal"]),
+                "offset_kcal": lv["offset_kcal"], "carbs_g": lv["carbs_g"],
+                "protein_g": lv["protein_g"], "fat_g": lv["fat_g"], "n_days": lv["n_days"]})
+    return out
+
+
+@app.post("/api/nutrition/preset/apply")
+async def nutrition_preset_apply(request: Request):
+    """Zapisuje szacunek spozycia z presetu dla dnia. body: {day, level}."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    day = str(body.get("day") or "").strip()[:10]
+    level = str(body.get("level") or "").strip().upper()
+    if not day or level not in ("DEFICYT", "ZERO", "NADWYZKA"):
+        raise HTTPException(status_code=400, detail="Wymagane: day + level (DEFICYT|ZERO|NADWYZKA)")
+    conn = _db_conn()
+    try:
+        erow = conn.execute("SELECT total_kcal, is_partial_snapshot FROM qbot_v2.energy_daily WHERE date=%s", (day,)).fetchone()
+        if not erow or erow["total_kcal"] is None:
+            raise HTTPException(status_code=409, detail="Brak wydatku Garmina dla tego dnia - preset niedostepny")
+        if erow["is_partial_snapshot"]:
+            raise HTTPException(status_code=409, detail="Dzien jeszcze niedomkniety - preset po domknieciu")
+        real = conn.execute(
+            "SELECT 1 FROM qbot_v2.intake_logs WHERE date=%s "
+            "AND COALESCE(quality_status::text,'')<>'estimated' AND source NOT ILIKE '%%preset%%' LIMIT 1",
+            (day,)).fetchone()
+        if real:
+            raise HTTPException(status_code=409, detail="Sa juz realne wpisy tego dnia - preset pominiety")
+        pres = _presets.compute_presets(conn)
+        lv = pres["levels"][level]
+        exp = float(erow["total_kcal"])
+        kcal = round(exp + lv["offset_kcal"])
+        old = conn.execute("SELECT id FROM qbot_v2.intake_logs WHERE date=%s AND source ILIKE '%%preset%%'", (day,)).fetchall()
+        for o in old:
+            conn.execute("DELETE FROM qbot_v2.intake_items WHERE intake_log_id=%s", (o["id"],))
+            conn.execute("DELETE FROM qbot_v2.intake_logs WHERE id=%s", (o["id"],))
+        logid = conn.execute(
+            "INSERT INTO qbot_v2.intake_logs (date, eaten_at, meal_type, note, source, quality_status) "
+            "VALUES (%s, %s, 'meal', %s, 'preset_estimate', 'estimated') RETURNING id",
+            (day, day + " 12:00", "Szacunek z presetu: " + level)).fetchone()["id"]
+        conn.execute(
+            "INSERT INTO qbot_v2.intake_items (intake_log_id, food_name, amount, unit, kcal, protein_g, carbs_g, fat_g, source) "
+            "VALUES (%s, %s, 1, 'dzien', %s, %s, %s, %s, 'preset_estimate')",
+            (logid, "Preset " + level + " (szacunek)", kcal, lv["protein_g"], lv["carbs_g"], lv["fat_g"]))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "day": day, "level": level, "kcal": kcal,
+            "carbs_g": lv["carbs_g"], "protein_g": lv["protein_g"], "fat_g": lv["fat_g"]}
 
 
 @app.get("/api/nutrition/data")
