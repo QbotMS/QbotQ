@@ -77,3 +77,11 @@ def test_google_names_enter_the_same_semantic_gate_not_a_separate_whitelist():
     result = rank_candidates(rows, raw, {}, 100)
     assert [row["name"] for row in result["candidates"]] == ["Pałac testowy"]
     assert result["candidates"][0]["candidate_key"] == "google:palace"
+
+
+def test_palace_ancillary_objects_and_village_article_mentions_are_noise():
+    assert classify(_row("Taras Pałacowy", 10, pageid=None, tags={"tourism": "attraction"}), {})[0] is None
+    assert classify(_row("Oficyna pałacowa z XIX wieku", 10, pageid=None, tags={"tourism": "attraction"}), {})[0] is None
+    assert classify(_row("Pałac", 10, pageid=None, tags={"tourism": "attraction"}), {})[0] is None
+    village = _row("Kozielno", 10, extract="Kozielno – wieś w Polsce. We wsi znajduje się pałac.")
+    assert classify(village, {})[0] is None

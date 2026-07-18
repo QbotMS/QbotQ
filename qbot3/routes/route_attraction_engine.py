@@ -215,6 +215,10 @@ def classify(row: dict[str, Any], entity: dict[str, Any]) -> tuple[str | None, s
                     "szkola wyzsza", "nadlesnictwo", "parafia rzymskokatolicka")
     if is_admin or any(marker in text for marker in institutions):
         return None, "jednostka administracyjna lub instytucja"
+    if name_text in {"palac", "dwor", "zamek", "fort"}:
+        return None, "zbyt ogólna nazwa obiektu"
+    if any(marker in name_text for marker in ("oficyna", "wozownia", "fontanna", "fontanny", "taras palacowy")):
+        return None, "obiekt pomocniczy zespołu zabytkowego"
     if any(marker in text for marker in ("zoo", "ogrod zoologiczny", "theme park", "park rozrywki", "aquapark")):
         return None, "zoo / park rozrywki"
     if tags.get("historic") in {"memorial", "wayside_cross", "wayside_shrine", "tomb"}:
@@ -234,6 +238,9 @@ def classify(row: dict[str, Any], entity: dict[str, Any]) -> tuple[str | None, s
         return "sacred_exception", "wyjątkowy obiekt sakralny"
     if wiki and is_city:
         return "historic_town", "miasto z własnym opisem encyklopedycznym"
+    title_attraction = ("zamek", "palac", "dwor", "fort", "ruin", "grodzisk", "muzeum", "skansen")
+    if re.search(r"\bwies w polsce\b", text) and not any(marker in name_text for marker in title_attraction):
+        return None, "miejscowość bez wskazanej atrakcji"
     tests = [
         ("open_air_museum", ("skansen", "open air museum")),
         ("castle_palace", ("zamek", "palac", "dwor", "castle", "palace", "manor", "schloss", "chateau")),
@@ -248,8 +255,6 @@ def classify(row: dict[str, Any], entity: dict[str, Any]) -> tuple[str | None, s
     for category, markers in tests:
         if any(marker in text for marker in markers):
             return category, CATEGORY[category][1]
-    if re.search(r"\bwies w polsce\b", text):
-        return None, "miejscowość bez wskazanej atrakcji"
     historic = tags.get("historic")
     if historic and historic not in {"memorial", "wayside_cross", "wayside_shrine", "tomb"}:
         return "historic_site", f"OSM historic={historic}"
