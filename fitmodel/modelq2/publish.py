@@ -82,9 +82,10 @@ def publish_to_daily(conn) -> int:
     for day, tp, hie, pp, ltp, ctl, atl, tsb in cur.fetchall():
         cur.execute("""UPDATE qbot_v2.fitmodel_daily SET
             ftp_est_w=%s, cp_modelq_w=%s, ltp_modelq_w=%s, wprime_modelq_kj=%s, pp_modelq_w=%s,
-            ctl_xss=%s, atl_raw=%s, tsb_raw=%s, atl_plus=%s, tsb_plus=%s
+            ctl_xss=%s, atl_raw=%s, tsb_raw=%s, atl_plus=%s, tsb_plus=%s,
+            w_per_kg=CASE WHEN weight_kg IS NOT NULL AND weight_kg>0 THEN %s::numeric/weight_kg ELSE w_per_kg END
             WHERE day=%s""",
-            (tp, tp, ltp, hie, pp, ctl, atl, tsb, atl, tsb, day))
+            (tp, tp, ltp, hie, pp, ctl, atl, tsb, atl, tsb, tp, day))
         n += cur.rowcount
     conn.commit()
     return n

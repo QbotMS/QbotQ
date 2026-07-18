@@ -55,7 +55,13 @@ def main() -> None:
         # 2c. Wskaznik gotowosci (HRV+RHR+sen, baseline 60d) -> fitmodel_daily
         def _readiness():
             from fitmodel.readiness import save_readiness
-            return save_readiness(conn)
+            from datetime import date, timedelta
+            # ostatnie 8 dni: dopina spozniony wellness (Garmin sync z opoznieniem)
+            today = date.today()
+            out = None
+            for i in range(7, -1, -1):
+                out = save_readiness(conn, today - timedelta(days=i))
+            return out
         _step("readiness", _readiness)
 
         # 2d. Krok 3 -- W'bal tick-po-ticku dla nowych jazd -> fitmodel_wbal_ride
@@ -71,6 +77,20 @@ def main() -> None:
             from fitmodel.modelq2.publish import run_daily_v2
             return run_daily_v2(conn)
         _step("modelq2_v2", _modelq2)
+
+        # 2b1. L3 -- ukryte zmeczenie (subiektywny koszt jazdy) -> atl_plus/tsb_plus
+        # (addytywne, audytowalne, odwracalne). PO modelq2 (baza atl_plus=atl_raw).
+        # Przelacznik: QBOT_L3_HIDDEN_FATIGUE=0.
+        def _hidden_fatigue():
+            from fitmodel.modelq2.hidden_fatigue import apply_hidden_fatigue
+            return apply_hidden_fatigue(conn)
+        _step("hidden_fatigue", _hidden_fatigue)
+
+        # 2b2. Kotwica W' z drogi (#3a): Wbal=0%% z QExt2 -> pewnosc W' 'high'.
+        def _wprime_anchor():
+            from fitmodel.wprime_anchor import apply_road_anchor
+            return apply_road_anchor(conn)
+        _step("wprime_anchor", _wprime_anchor)
 
         # 3. Glikogen -> fitmodel_daily
         def _glyco():

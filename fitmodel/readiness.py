@@ -37,6 +37,11 @@ MIN_BASELINE_N = 20
 FRESH_THR = 0.4
 TIRED_THR = -0.4
 
+# L2 subiektyw (feel/choroba) -> readiness_effective (osobne kolumny; obiektyw nietkniety)
+W_SUBJ_FEEL = 0.15   # na 1 punkt feel (feel -2..+2 -> +-0.30)
+ILLNESS_DELTA = -0.30  # aktywna choroba danego dnia
+SUBJ_CAP = 0.50        # limit laczny |subj_delta|
+
 
 def _db_connect():
     kwargs: dict[str, Any] = {
@@ -138,18 +143,114 @@ def compute_readiness(db_conn, as_of: date | None = None) -> dict[str, Any]:
     return out
 
 
+def _raw_wellness_for_day(cur, as_of: date) -> dict[str, Any]:
+    """Surowe wartosci wellness dnia -> kolumny fitmodel_daily. Waga: carry-forward."""
+    cur.execute(
+        """SELECT sleep_duration_min, hrv_ms, resting_hr_bpm, weight_kg
+           FROM qbot_v2.qbot_wellness_daily WHERE date=%s
+           ORDER BY source_priority ASC, imported_at DESC LIMIT 1""",
+        (as_of,),
+    )
+    r = cur.fetchone()
+    sleep_h = hrv = rhr = weight = None
+    if r:
+        sd, hv, rh, wt = r
+        sleep_h = float(sd) / 60.0 if sd is not None else None
+        hrv = float(hv) if hv is not None else None
+        rhr = int(rh) if rh is not None else None
+        weight = float(wt) if wt is not None else None
+    if weight is None:
+        cur.execute(
+            """SELECT weight_kg FROM qbot_v2.qbot_wellness_daily
+               WHERE weight_kg IS NOT NULL AND date<=%s
+               ORDER BY date DESC LIMIT 1""",
+            (as_of,),
+        )
+        w2 = cur.fetchone()
+        weight = float(w2[0]) if w2 and w2[0] is not None else None
+    return {"sleep_h": sleep_h, "hrv_night": hrv, "rhr": rhr, "weight_kg": weight}
+
+
+def _subjective_for_day(cur, as_of: date):
+    """L2 subiektyw dla ZAPISU dziennego: feel z DOKLADNIE tego dnia (brak=0) +
+    aktywna choroba obejmujaca ten dzien. Zwraca (subj_delta_zaokr, note|None).
+    NIE dotyka readiness_score ani bazy 60d (ta liczy sie z qbot_wellness_daily)."""
+    cur.execute(
+        "SELECT feel FROM qbot_v2.calendar_entry "
+        "WHERE kind='feel' AND feel IS NOT NULL AND day=%s "
+        "ORDER BY id DESC LIMIT 1",
+        (as_of,),
+    )
+    r = cur.fetchone()
+    feel = int(r[0]) if r and r[0] is not None else 0
+    cur.execute(
+        "SELECT 1 FROM qbot_v2.calendar_entry "
+        "WHERE kind='illness' AND day<=%s AND COALESCE(end_day, day)>=%s LIMIT 1",
+        (as_of, as_of),
+    )
+    ill = cur.fetchone() is not None
+
+    feel_delta = feel * W_SUBJ_FEEL
+    illness_delta = ILLNESS_DELTA if ill else 0.0
+    raw = feel_delta + illness_delta
+    subj = max(-SUBJ_CAP, min(SUBJ_CAP, raw))
+    if feel == 0 and not ill:
+        return 0.0, None
+    bits = []
+    if feel != 0:
+        bits.append("feel %+d (%+.2f)" % (feel, feel_delta))
+    if ill:
+        bits.append("choroba (%+.2f)" % illness_delta)
+    capped = (" [cap %+.2f]" % subj) if abs(raw) > SUBJ_CAP + 1e-9 else ""
+    note = "subiektyw: " + ", ".join(bits) + capped
+    return round(subj, 3), note
+
+
 def save_readiness(db_conn, as_of: date | None = None) -> dict[str, Any]:
-    """Policz i zapisz gotowosc do fitmodel_daily (upsert po day)."""
-    row = compute_readiness(db_conn, as_of)
+    """Policz i zapisz gotowosc + surowe wellness (sen/HRV/RHR/waga) do fitmodel_daily."""
+    d = _coerce_date(as_of)
+    row = compute_readiness(db_conn, d)
     with db_conn.cursor() as cur:
+        row.update(_raw_wellness_for_day(cur, d))
+        subj_delta, subj_note = _subjective_for_day(cur, d)
+        base = row.get("readiness_score")
+        if base is not None:
+            eff = round(float(base) + subj_delta, 3)
+            if eff >= FRESH_THR:
+                eff_label = "swiezy"
+            elif eff <= TIRED_THR:
+                eff_label = "zmeczony"
+            else:
+                eff_label = "neutralny"
+            eff_note = subj_note if subj_note else "subiektyw neutralny (brak wpisu)"
+        else:
+            eff = None
+            eff_label = None
+            eff_note = "brak obiektywnej bazy readiness"
+        row["readiness_effective"] = eff
+        row["readiness_effective_label"] = eff_label
+        row["readiness_subj_delta"] = subj_delta
+        row["readiness_effective_note"] = eff_note
         cur.execute(
             """
-            INSERT INTO qbot_v2.fitmodel_daily (day, readiness_score, readiness_label, readiness_note)
-            VALUES (%(day)s, %(readiness_score)s, %(readiness_label)s, %(readiness_note)s)
+            INSERT INTO qbot_v2.fitmodel_daily (day, readiness_score, readiness_label, readiness_note,
+                sleep_h, hrv_night, rhr, weight_kg,
+                readiness_effective, readiness_effective_label, readiness_subj_delta, readiness_effective_note)
+            VALUES (%(day)s, %(readiness_score)s, %(readiness_label)s, %(readiness_note)s,
+                %(sleep_h)s, %(hrv_night)s, %(rhr)s, %(weight_kg)s,
+                %(readiness_effective)s, %(readiness_effective_label)s, %(readiness_subj_delta)s, %(readiness_effective_note)s)
             ON CONFLICT (day) DO UPDATE SET
                 readiness_score = EXCLUDED.readiness_score,
                 readiness_label = EXCLUDED.readiness_label,
-                readiness_note = EXCLUDED.readiness_note
+                readiness_note = EXCLUDED.readiness_note,
+                readiness_effective = EXCLUDED.readiness_effective,
+                readiness_effective_label = EXCLUDED.readiness_effective_label,
+                readiness_subj_delta = EXCLUDED.readiness_subj_delta,
+                readiness_effective_note = EXCLUDED.readiness_effective_note,
+                sleep_h = EXCLUDED.sleep_h,
+                hrv_night = EXCLUDED.hrv_night,
+                rhr = EXCLUDED.rhr,
+                weight_kg = COALESCE(EXCLUDED.weight_kg, qbot_v2.fitmodel_daily.weight_kg)
             """,
             row,
         )
