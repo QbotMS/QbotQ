@@ -216,7 +216,7 @@ def discover_sources(source_path: Path, *, route_id: str, route_distance_km: flo
     analysis = analyze_route_poi_artifact(
         str(source_path), route_id=route_id, km_from=0.0, km_to=route_distance_km,
         buffers={"google_hours": False, "open_window": False, "attractions_enabled": True,
-                 "attractions_m": 2050.0, "analysis_timeout_sec": 180.0},
+                 "overpass_enabled": True, "attractions_m": 2050.0, "analysis_timeout_sec": 180.0},
         focus="attractions_only", output_format="json",
     )
     open_rows, google_rows = normalize_analyzer_candidates(analysis.get("attractions") or [])

@@ -100,3 +100,8 @@ def test_route_attractions_tool_accepts_canonical_komoot_route_ids():
     section = registry.split("def _load_route_attractions_tool", 1)[1].split("\ndef _", 1)[0]
     assert "rid.isdigit()" not in section
     assert "A-Za-z0-9._:-" in section
+
+
+def test_canonical_source_explicitly_enables_osm_discovery():
+    source = (Path(__file__).parents[1] / "qbot3" / "routes" / "route_attraction_sources.py").read_text()
+    assert '"overpass_enabled": True' in source
