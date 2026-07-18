@@ -701,6 +701,32 @@ async def api_planer_opis_dni(request: Request):
     return data
 
 
+@app.post("/api/planer/dodaj-do-qbot")
+async def api_planer_dodaj_do_qbot(request: Request):
+    """Create all day GPX routes from one accepted Planner split.
+
+    Day routes keep lineage to the parent attraction run, so this endpoint
+    never repeats Wikipedia/Wikidata/Google attraction discovery.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return {"status": "ERROR", "error": "bledny JSON w body"}
+    route_id = str(body.get("route_id") or "").strip()
+    cuts = body.get("cuts") or []
+    if not route_id:
+        return {"status": "ERROR", "error": "brak route_id"}
+    if not isinstance(cuts, list):
+        return {"status": "ERROR", "error": "cuts musi byc lista"}
+    try:
+        from qbot3.routes.planer_stage_export import create_planer_day_routes
+        return create_planer_day_routes(route_id=route_id, cuts=cuts)
+    except (ValueError, LookupError) as exc:
+        return {"status": "ERROR", "error": str(exc)[:240]}
+    except Exception as exc:
+        return {"status": "ERROR", "error": repr(exc)[:300]}
+
+
 def _tile_poly_bounds(x, y, z=14):
     n = 2 ** z
     lon_w = x / n * 360.0 - 180.0

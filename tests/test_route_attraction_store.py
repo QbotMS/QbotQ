@@ -19,15 +19,20 @@ class _Result:
 
 
 class _Conn:
-    def __init__(self, *, enabled=True, rows=None, schema=True, published=True):
+    def __init__(self, *, enabled=True, rows=None, schema=True, published=True, lineage=None):
         self.enabled = enabled
         self.rows = rows or []
         self.schema = schema
         self.published = published
+        self.lineage = lineage or {}
         self.queries = []
 
     def execute(self, query, params=()):
         self.queries.append((" ".join(query.split()), params))
+        if "to_regclass('qbot_v2.route_stage_lineage')" in query:
+            return _Result(("qbot_v2.route_stage_lineage",))
+        if "FROM qbot_v2.route_stage_lineage" in query:
+            return _Result(self.lineage.get(int(params[0])))
         if "to_regclass('qbot_v2.route_attraction_run')" in query:
             value = "qbot_v2.route_attraction_run" if self.schema else None
             return _Result({"run_table": value, "layer_table": value})
@@ -93,6 +98,20 @@ def test_enabled_route_without_published_run_uses_legacy_fallback():
 
 def test_published_empty_result_does_not_resurrect_legacy_attractions():
     assert get_route_attractions(_Conn(enabled=True, published=True, rows=[]), 10) == []
+
+
+def test_planner_day_inherits_parent_run_without_new_discovery_and_remaps_km():
+    row = _row()
+    row["km_on_route"] = 187.7
+    conn = _Conn(
+        rows=[row],
+        lineage={20: {"parent_route_base_id": 10, "parent_km_from": 180.0, "parent_km_to": 220.0}},
+    )
+    rows = get_route_attractions(conn, 20, km_from=0, km_to=40, tier="recommended")
+    assert rows[0]["km"] == 7.7
+    assert rows[0]["parent_km"] == 187.7
+    assert rows[0]["inherited_from_route_base_id"] == 10
+    assert not any("route_attraction_sources" in query for query, _ in conn.queries)
 
 
 def test_attraction_writer_is_separate_and_publish_schema_has_one_active_run():

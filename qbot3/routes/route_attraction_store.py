@@ -29,6 +29,53 @@ def get_route_attractions(
     tier: str = "candidates",
 ) -> list[dict[str, Any]] | None:
     """Read one published version. None means schema/data absent: use legacy."""
+    # A Planner day is only a geometry slice. Reuse the parent's published
+    # attraction run and remap km to the beginning of the day. This is the
+    # important no-refetch boundary: no Wikipedia/Wikidata/Google call occurs.
+    try:
+        lineage_table = conn.execute("SELECT to_regclass('qbot_v2.route_stage_lineage')").fetchone()
+        lineage_value = next(iter(lineage_table.values())) if isinstance(lineage_table, dict) else (lineage_table[0] if lineage_table else None)
+        lineage = None
+        if lineage_value:
+            lineage = conn.execute(
+                "SELECT parent_route_base_id, parent_km_from, parent_km_to "
+                "FROM qbot_v2.route_stage_lineage "
+                "WHERE stage_route_base_id=%s AND active=true LIMIT 1",
+                (int(route_base_id),),
+            ).fetchone()
+        if lineage:
+            inherited = dict(lineage) if isinstance(lineage, dict) else {
+                "parent_route_base_id": lineage[0], "parent_km_from": lineage[1], "parent_km_to": lineage[2],
+            }
+            parent_start = float(inherited["parent_km_from"])
+            parent_end = float(inherited["parent_km_to"])
+            child_from = max(0.0, float(km_from)) if km_from is not None else 0.0
+            child_to = min(parent_end - parent_start, float(km_to)) if km_to is not None else parent_end - parent_start
+            rows = get_route_attractions(
+                conn,
+                int(inherited["parent_route_base_id"]),
+                km_from=parent_start + child_from,
+                km_to=parent_start + child_to,
+                tier=tier,
+            )
+            if rows is None:
+                return None
+            output = []
+            for original in rows:
+                row = dict(original)
+                row["parent_km"] = row.get("km")
+                row["km"] = round(float(row["km"]) - parent_start, 1)
+                row["inherited_from_route_base_id"] = int(inherited["parent_route_base_id"])
+                output.append(row)
+            return output
+    except Exception as exc:
+        if getattr(exc, "sqlstate", None) not in {"42P01", "42703"}:
+            raise
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
     where = ["r.route_base_id=%s", "r.status='complete'", "r.published=true"]
     params: list[Any] = [int(route_base_id)]
     if tier == "recommended":
