@@ -14,6 +14,7 @@ import os
 import re
 import time
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -29,7 +30,8 @@ from qbot3.routes.route_attraction_engine import (
 
 WIKIPEDIA_API = "https://pl.wikipedia.org/w/api.php"
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
-USER_AGENT = "QBot-route-attractions/2.1 (private cycling route planner)"
+OVERPASS_APIS = ("https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter")
+USER_AGENT = "QBot-route-attractions/2.2 (private cycling route planner)"
 DEFAULT_CACHE_ROOT = Path(os.getenv("QBOT_ATTRACTION_CACHE_ROOT", "/opt/qbot/artifacts/attraction_cache"))
 
 
@@ -212,11 +214,104 @@ def discover_wikidata(session: requests.Session, qids: Iterable[str], *, cache_r
     return entities
 
 
+def discover_osm_landmarks(
+    session: requests.Session,
+    points: list[tuple[float, float, float]],
+    *,
+    cache_root: Path = DEFAULT_CACHE_ROOT,
+    corridor_m: float = 2050.0,
+) -> tuple[list[dict[str, Any]], int]:
+    """Fetch only landmark-like OSM objects; never run the general POI query."""
+    route = _samples(points, 0.1)
+    found: dict[str, dict[str, Any]] = {}
+    missing_chunks = 0
+    samples = _samples(points, 2.0)
+    chunks = [samples[index:index + 11] for index in range(0, len(samples), 10)]
+
+    def query_for(chunk: list[tuple[float, float, float]]) -> str:
+        path_coordinates = ",".join(f"{lat:.6f},{lon:.6f}" for _, lat, lon in chunk)
+        around = f"around:{int(corridor_m)},{path_coordinates}"
+        return f"""[out:json][timeout:12];(
+          nwr({around})[\"historic\"];
+          nwr({around})[\"heritage\"];
+          nwr({around})[\"military\"~\"bunker|fort|trench\",i];
+          nwr({around})[\"tourism\"~\"attraction|museum\",i];
+          nwr({around})[\"man_made\"][\"wikipedia\"];
+          nwr({around})[\"man_made\"][\"wikidata\"];
+        );out center tags;"""
+
+    queries = [query_for(chunk) for chunk in chunks]
+
+    def fetch(query: str) -> None:
+        key = hashlib.sha256(query.encode()).hexdigest()[:24]
+        path = cache_root / f"osm-landmarks-{key}.json"
+        try:
+            if path.exists():
+                json.loads(path.read_text(encoding="utf-8"))
+                return
+        except (OSError, ValueError):
+            pass
+        for endpoint in OVERPASS_APIS:
+            try:
+                response = requests.post(endpoint, data={"data": query}, timeout=15, headers={"User-Agent": USER_AGENT})
+                response.raise_for_status()
+                data = response.json()
+                try:
+                    cache_root.mkdir(parents=True, exist_ok=True)
+                    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+                except OSError:
+                    pass
+                return
+            except (requests.RequestException, ValueError):
+                continue
+
+    with ThreadPoolExecutor(max_workers=min(4, len(queries))) as executor:
+        list(executor.map(fetch, queries))
+
+    for query in queries:
+        key = hashlib.sha256(query.encode()).hexdigest()[:24]
+        path = cache_root / f"osm-landmarks-{key}.json"
+        try:
+            data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+        except (OSError, ValueError):
+            data = None
+        if data is None:
+            missing_chunks += 1
+            continue
+        for element in data.get("elements") or []:
+            tags = {str(k): str(v) for k, v in (element.get("tags") or {}).items()}
+            center = element.get("center") or element
+            if center.get("lat") is None or center.get("lon") is None:
+                continue
+            elat, elon = float(center["lat"]), float(center["lon"])
+            route_km, distance = _nearest(route, elat, elon)
+            if distance > corridor_m:
+                continue
+            osm_id = f"{element.get('type')}:{element.get('id')}"
+            name = str(tags.get("name") or tags.get("name:pl") or "").strip()
+            if not name and (tags.get("historic") == "bunker" or tags.get("military") == "bunker"):
+                name = "Schron bojowy" + (f" {tags['ref']}" if tags.get("ref") else "")
+            if not name:
+                continue
+            wiki = tags.get("wikipedia")
+            if wiki and not wiki.startswith("http"):
+                language, _, title = wiki.partition(":")
+                wiki = f"https://{language or 'pl'}.wikipedia.org/wiki/{title.replace(' ', '_')}"
+            found[osm_id] = {
+                "name": name, "lat": elat, "lon": elon, "km": route_km, "dist": distance,
+                "sources": {"osm"}, "pageid": None, "wiki": wiki,
+                "qid": tags.get("wikidata"), "extract": tags.get("description") or tags.get("inscription") or "",
+                "image": tags.get("image"), "tags": tags, "osm_ids": [osm_id],
+            }
+    return list(found.values()), missing_chunks
+
+
 def discover_sources(source_path: Path, *, route_id: str, route_distance_km: float) -> dict[str, Any]:
     session = requests.Session()
     session.headers.update({"User-Agent": USER_AGENT, "Accept": "application/json"})
     points = _route_points(source_path)
     wikipedia = discover_wikipedia(session, points)
+    osm_rows, osm_missing = discover_osm_landmarks(session, points)
     google_analysis = analyze_route_poi_artifact(
         str(source_path), route_id=route_id, km_from=0.0, km_to=route_distance_km,
         buffers={"google_hours": False, "open_window": False, "attractions_enabled": True,
@@ -224,9 +319,12 @@ def discover_sources(source_path: Path, *, route_id: str, route_distance_km: flo
         focus="attractions_only", output_format="json",
     )
     _, google_rows = normalize_analyzer_candidates(google_analysis.get("attractions") or [])
-    combined = wikipedia + normalize_google_source_candidates(google_rows)
+    combined = wikipedia + osm_rows + normalize_google_source_candidates(google_rows)
     wikidata = discover_wikidata(session, (row.get("qid") for row in combined))
-    status = "COMPLETE"
+    # Wikipedia is the complete semantic baseline. OSM is additive and may be
+    # temporarily degraded; keep the honest missing-chunk count and retry those
+    # chunks on the next fetch instead of suppressing all valid attractions.
+    status = "COMPLETE" if osm_missing == 0 else "DEGRADED_OSM"
     return {
         "status": status,
         "complete": True,
@@ -234,8 +332,8 @@ def discover_sources(source_path: Path, *, route_id: str, route_distance_km: flo
         "google_rows": google_rows,
         "wikidata": wikidata,
         "source_status": {
-            "wikipedia": len(wikipedia), "osm": 0, "google": len(google_rows),
+            "wikipedia": len(wikipedia), "osm": len(osm_rows), "google": len(google_rows),
             "wikidata": len(wikidata), "analyzer_status": status,
-            "missing_chunks": 0,
+            "missing_chunks": osm_missing,
         },
     }

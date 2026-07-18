@@ -16,7 +16,7 @@ from difflib import SequenceMatcher
 from typing import Any, Iterable
 
 
-ALGORITHM_VERSION = "route_attractions_v2.1"
+ALGORITHM_VERSION = "route_attractions_v2.2"
 CANDIDATES_PER_100_KM = 12.0
 RECOMMENDED_PER_100_KM = 2.5
 
@@ -29,6 +29,7 @@ CATEGORY = {
     "open_air_museum": (23, "skansen", 50, 9),
     "historic_town": (28, "historyczne miejsce / rynek", 25, 8),
     "historic_site": (21, "miejsce historyczne", 20, 6),
+    "cultural_landmark": (24, "wyjątkowe miejsce / konstrukcja", 25, 9),
     "unusual_local": (18, "nietypowe miejsce lokalne", 20, 8),
     "sacred_exception": (12, "wyjątkowy zabytek sakralny", 20, 4),
     "museum": (10, "muzeum", 55, 4),
@@ -209,7 +210,8 @@ def classify(row: dict[str, Any], entity: dict[str, Any]) -> tuple[str | None, s
     entity_kind = norm(entity_text(entity))
     name_text = norm(row.get("name"))
     is_city = ("miasto" in entity_kind or "city of poland" in entity_kind
-               or "town in poland" in entity_kind or bool(re.search(r"\bmiasto w polsce\b", text)))
+               or "town in poland" in entity_kind or bool(re.search(
+                   r"\b(miasto w polsce|city|town|stadt|ciudad|citt[aà]|ville)\b", entity_kind)))
     is_admin = bool(re.search(r"\b(gmina|powiat|wojewodztwo)\b", name_text)) and not is_city
     institutions = ("urzad gmin", "starostwo", "diecezja", "uniwersytet", "akademia nauk",
                     "szkola wyzsza", "nadlesnictwo", "parafia rzymskokatolicka")
@@ -232,6 +234,15 @@ def classify(row: dict[str, Any], entity: dict[str, Any]) -> tuple[str | None, s
         return None, "drobny obiekt"
     if any(marker in name_text for marker in ("altana", "glorieta", "gazebo")) and not (wiki or heritage):
         return None, "samodzielna mała architektura"
+    # Strong site-level evidence wins over incidental words in an article.  A
+    # battlefield article may mention a church or chapel without being a
+    # sacred attraction itself (e.g. Góra Strękowa / defence of Wizna).
+    historic_landmark = (
+        "pole bitwy", "battlefield", "bitwa", "battle of", "obrona ", "defence of", "defense of",
+        "linia obron", "stanowisko bojowe", "war position", "miejsce pamieci narodowej",
+    )
+    if any(marker in text for marker in historic_landmark):
+        return "historic_site", "ważne miejsce wydarzeń historycznych"
     sacred = any(marker in text for marker in ("kosciol", "kaplica", "parafia", "sanktuarium", "cerkiew",
                                                 "church", "chapel", "cathedral", "basilica"))
     exceptional = any(marker in text for marker in ("unesco", "katedra", "cathedral", "bazylika", "basilica", "drewniany kosciol"))
@@ -248,10 +259,15 @@ def classify(row: dict[str, Any], entity: dict[str, Any]) -> tuple[str | None, s
         ("open_air_museum", ("skansen", "open air museum")),
         ("castle_palace", ("zamek", "palac", "dwor", "castle", "palace", "manor", "schloss", "chateau")),
         ("archaeology", ("archeolog", "grodzisk", "kurhan", "megalit", "archaeological", "prehistor")),
-        ("fortification", ("fort ", "twierd", "fortress", "bunkier", "bunker", "city gate", "brama miejska")),
+        ("fortification", ("fort ", "twierd", "fortress", "bunkier", "bunker", "schron", "pillbox", "casemate", "city gate", "brama miejska")),
         ("industrial_heritage", ("zabytek techniki", "kopaln", "huta", "fabryk", "browar", "mlyn", "wiatrak", "water tower", "wieza wodna", "industrial")),
         ("historic_town", ("rynek", "stare miasto", "old town", "market square", "ratusz", "town hall", "zabytkowe centrum")),
         ("historic_site", ("reduta", "bastion", "most kamienny", "dom wagi miejskiej")),
+        ("cultural_landmark", (
+            "historic route", "historic road", "historyczna droga", "walkway", "boardwalk", "footbridge",
+            "pasarela", "kładka", "kladka", "caminito", "aqueduct", "acueducto", "viaduct", "wiadukt",
+            "engineering landmark", "heritage railway", "kolej zabytkowa", "scenic route",
+        )),
         ("museum", ("muzeum", "museum", "gallery", "galeria")),
         ("nature", ("rezerwat", "nature reserve", "park krajobrazowy")),
     ]
@@ -262,8 +278,12 @@ def classify(row: dict[str, Any], entity: dict[str, Any]) -> tuple[str | None, s
     if historic and historic not in {"memorial", "wayside_cross", "wayside_shrine", "tomb"}:
         return "historic_site", f"OSM historic={historic}"
     unusual = ("unikat", "jedyny", "nietypow", "zabytek", "atrakcja turystyczna", "osobliw")
-    if wiki and (heritage or tags.get("tourism") in {"attraction", "museum"} or any(marker in text for marker in unusual)):
-        return "unusual_local", "opisane miejsce lokalne"
+    major_types = ("tourist attraction", "cultural heritage", "historic site", "landmark",
+                   "heritage site", "monumento", "sehenswurdigkeit")
+    if wiki and (heritage or tags.get("tourism") in {"attraction", "museum"}
+                 or any(marker in text for marker in unusual)
+                 or any(marker in entity_kind for marker in major_types)):
+        return "unusual_local", "opisane miejsce o potwierdzonej wartości"
     return None, "za mało dowodów wartości"
 
 
@@ -335,7 +355,9 @@ def score(row: dict[str, Any], entity: dict[str, Any], google_rows: Iterable[dic
     total = base + history + bike + quality + google_value + uniqueness - distance_penalty - time_penalty
     if visit_min > 60:
         return None
-    if float(row["dist"]) > 800 and total + distance_penalty < 72:
+    # Discovery owns the 2.05 km corridor. Distance is a ranking penalty, not
+    # a second hard 800 m gate that can erase an exceptional short detour.
+    if float(row["dist"]) > 2050:
         return None
     out = dict(row)
     out.update(

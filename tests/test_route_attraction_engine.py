@@ -106,3 +106,35 @@ def test_candidate_pool_keeps_nearby_quality_while_recommendations_use_spacing()
     result = rank_candidates(rows, [], {}, 10)
     assert len(result["candidates"]) == 2  # ceil(1.2)
     assert all(row["selection_score"] == row["score"] for row in result["candidates"])
+
+
+def test_wizna_battlefield_is_not_rejected_by_incidental_sacred_text():
+    defence = _row(
+        "Obrona Wizny", 64.9,
+        extract="Bitwa pod Wizną. Walki toczyły się również w pobliżu kościoła.",
+        lat=50.0,
+    )
+    hill = _row(
+        "Góra Strękowa", 64.1,
+        extract="Miejsce bitwy i linia obrony; w opisie wspomniano również kaplicę.",
+        lat=50.01,
+    )
+    result = rank_candidates([defence, hill], [], {}, 100)
+    assert {row["name"] for row in result["candidates"]} == {defence["name"], hill["name"]}
+    assert all(row["category"] == "historic_site" for row in result["candidates"])
+
+
+def test_global_engineering_landmark_survives_without_polish_fort_keywords():
+    caminito = _row(
+        "Caminito del Rey", 45, extract="A historic walkway fixed to the walls of a gorge in Andalusia.",
+        tags={"tourism": "attraction", "man_made": "bridge"},
+    )
+    result = rank_candidates([caminito], [], {}, 100)
+    assert result["candidates"][0]["category"] == "cultural_landmark"
+
+
+def test_exceptional_place_up_to_two_km_uses_penalty_instead_of_hard_rejection():
+    landmark = _row("Historic aqueduct", 50, extract="engineering landmark", tags={"heritage": "yes"})
+    landmark["dist"] = 1900.0
+    result = rank_candidates([landmark], [], {}, 100)
+    assert [row["name"] for row in result["candidates"]] == [landmark["name"]]

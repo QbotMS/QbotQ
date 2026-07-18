@@ -136,6 +136,10 @@ def test_canonical_source_keeps_google_separate_from_semantic_ranking():
     source = (Path(__file__).parents[1] / "qbot3" / "routes" / "route_attraction_sources.py").read_text()
     assert "google_analysis" in source
     assert '"overpass_enabled": False' in source
+    assert "discover_osm_landmarks" in source
+    assert "wikipedia + osm_rows + normalize_google_source_candidates" in source
+    assert '"complete": True' in source
+    assert '"DEGRADED_OSM"' in source
 
 
 def test_store_publishes_any_nonempty_quality_result_without_density_gate():
