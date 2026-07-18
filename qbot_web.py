@@ -2334,7 +2334,9 @@ def api_report_attractions_fetch(route_id: str):
             "enabled": pref.get("attractions_enabled"),
             "status": out.get("status"),
             "run_id": out.get("run_id"),
-            "route_version_key": out.get("route_version_key")}
+            "route_version_key": out.get("route_version_key"),
+            "summary": out.get("summary"),
+            "source_status": out.get("source_status")}
 
 
 @app.post("/api/report/push-karoo")
@@ -3394,7 +3396,7 @@ def _rain_summary(windows):
     return "Opady: " + ", ".join(bits) + "."
 
 
-def _build_report_email_html(data, has_map, has_chart):
+def _build_report_email_html(data, has_map, has_chart, att_imgs=None):
     """Ladny, uproszczony raport - sekcje jedna pod druga (tabelowy layout HTML,
     dziala w kazdym kliencie poczty). Kolejnosc: hero -> start/czas -> ostrzezenia ->
     mapa -> pogoda -> profil -> nawierzchnia -> przewyzszenia -> strategia -> POI.
@@ -3539,35 +3541,7 @@ def _build_report_email_html(data, has_map, has_chart):
     else:
         p.append(TXT("Trasa plaska &mdash; brak wydzielonych podjazdow."))
 
-    p.append(SEC("Strategia jazdy"))
-    if strat.get("calosc") or strat.get("etapy"):
-        if strat.get("calosc"):
-            p.append(TXT(_esc(strat["calosc"]), extra="margin-bottom:12px"))
-        for i, e in enumerate(strat.get("etapy") or [], 1):
-            p.append('<div style="font-family:%s;background:#fff;border:1px solid %s;border-radius:10px;'
-                      'padding:10px 14px;margin:0 0 8px">' % (FONT, LINE))
-            tytul = e.get("tytul") or ("Etap %d" % i)
-            zakres = e.get("zakres_km")
-            p.append('<div style="font-family:%s;font-weight:700;color:%s;margin-bottom:3px">%s%s</div>' % (
-                FONT, INK, _esc(tytul), (" &middot; km " + _esc(zakres)) if zakres else ""))
-            if e.get("opis"):
-                p.append('<div style="font-family:%s;color:%s;font-size:%spx;margin-bottom:4px">%s</div>' % (
-                    FONT, INK2, SZ_M, _esc(e["opis"])))
-            bits = []
-            if e.get("moc"):
-                bits.append("moc: " + _esc(str(e["moc"])))
-            if e.get("zywienie"):
-                bits.append("zywienie: " + _esc(str(e["zywienie"])))
-            if e.get("pojenie"):
-                bits.append("pojenie: " + _esc(str(e["pojenie"])))
-            if bits:
-                p.append('<div style="font-family:%s;color:%s;font-size:%spx">%s</div>' % (
-                    FONT, MUTED, SZ_M, " &middot; ".join(bits)))
-            p.append('</div>')
-    else:
-        p.append(TXT("Strategia nie wygenerowala sie dla tego raportu (chwilowy blad LLM) "
-                      "&mdash; wygeneruj raport ponownie, jesli jest potrzebna.", color=MUTED))
-
+    # Strategia jazdy: usunieta z maila (2026-07-18) - mail ma pogode, nie strategie.
     resupply = poi.get("resupply") or []
     attractions = (poi.get("attractions") or {}).get("items") or []
     any_pick = any((area.get("picks") for area in resupply))
@@ -3587,12 +3561,21 @@ def _build_report_email_html(data, has_map, has_chart):
         for a in attractions:
             bits = [x for x in [
                 ("km %.1f" % a["km"]) if a.get("km") is not None else None, a.get("miejscowosc")] if x]
-            line = "<b>%s</b>" % _esc(a.get("name") or "POI")
+            head = "<b>%s</b>" % _esc(a.get("name") or "POI")
             if bits:
-                line += " (%s)" % _esc(" \u00b7 ".join(bits))
-            if a.get("desc"):
-                line += " &mdash; %s" % _esc(a["desc"])
-            p.append(TXT(line, size=SZ_M))
+                head += " (%s)" % _esc(" · ".join(bits))
+            opis = (a.get("extract") or "").strip() or (a.get("desc") or "").strip()
+            if len(opis) > 420:
+                opis = opis[:417].rstrip() + "…"
+            _pid = a.get("place_id") or a.get("candidate_key")
+            _cid = (att_imgs or {}).get(_pid, {}).get("cid") if _pid else None
+            cell = ('<div style="font-family:%s;font-size:%spx;color:%s;font-weight:700;margin-bottom:3px">%s</div>' % (FONT, SZ_M, INK, head))
+            if opis:
+                cell += ('<div style="font-family:%s;font-size:%spx;color:%s">%s</div>' % (FONT, SZ_M, INK2, _esc(opis)))
+            if _cid:
+                p.append('<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="margin:0 0 12px;font-family:%s"><tr><td width="152" valign="top"><img src="cid:%s" width="140" style="width:140px;border-radius:8px;border:1px solid %s;display:block" alt=""></td><td valign="top" style="padding-left:12px">%s</td></tr></table>' % (FONT, _cid, LINE, cell))
+            else:
+                p.append('<div style="margin:0 0 8px">%s</div>' % cell)
 
     p.append('<p style="font-family:%s;margin:24px 0 4px;color:%s;font-size:11.5px;'
               'border-top:1px solid %s;padding-top:12px">W zalaczniku plik GPX trasy '
@@ -3642,6 +3625,36 @@ def _capture_report_images(snapshot_id):
     return map_png, chart_png
 
 
+def _fetch_attraction_images(poi, limit=24, max_bytes=3000000, timeout=6.0):
+    """Pobiera zdjecia atrakcji do wbudowania w mail (CID). Zwraca
+    {place_id: {"cid","bytes","subtype"}} tylko dla udanych pobran."""
+    out = {}
+    items = (poi.get("attractions") or {}).get("items") or []
+    idx = 0
+    for a in items:
+        url = a.get("image_url")
+        pid = a.get("place_id") or a.get("candidate_key")
+        if not url or not pid or pid in out:
+            continue
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "QBot/1.0 (+raport trasy)"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                ctype = (resp.headers.get("Content-Type") or "").lower()
+                if "image" not in ctype:
+                    continue
+                raw = resp.read(max_bytes + 1)
+            if not raw or len(raw) > max_bytes:
+                continue
+            subtype = "png" if "png" in ctype else "gif" if "gif" in ctype else "webp" if "webp" in ctype else "jpeg"
+            idx += 1
+            out[pid] = {"cid": "att%d" % idx, "bytes": raw, "subtype": subtype}
+        except Exception:
+            continue
+        if idx >= limit:
+            break
+    return out
+
+
 @app.post("/api/report/send-email")
 def report_send_email(snapshot_id: int = Query(...), to: str = Query(...)):
     """Wysyla mailem DOKLADNIE zapisany raport (snapshot) - bez ponownego liczenia,
@@ -3674,7 +3687,8 @@ def report_send_email(snapshot_id: int = Query(...), to: str = Query(...)):
     except Exception as _e:
         print("gpx build error:", _e)
 
-    html_body = _build_report_email_html(data, has_map=bool(map_png), has_chart=bool(chart_png))
+    att_imgs = _fetch_attraction_images((data.get("details") or {}).get("poi") or {})
+    html_body = _build_report_email_html(data, has_map=bool(map_png), has_chart=bool(chart_png), att_imgs=att_imgs)
 
     msg = MIMEMultipart("related")
     alt = MIMEMultipart("alternative")
@@ -3690,6 +3704,11 @@ def report_send_email(snapshot_id: int = Query(...), to: str = Query(...)):
         img2.add_header("Content-ID", "<reportchart>")
         img2.add_header("Content-Disposition", "inline", filename="profil.png")
         msg.attach(img2)
+    for _pid, _im in (att_imgs or {}).items():
+        _ai = MIMEImage(_im["bytes"], _subtype=_im["subtype"])
+        _ai.add_header("Content-ID", "<%s>" % _im["cid"])
+        _ai.add_header("Content-Disposition", "inline", filename="%s.%s" % (_im["cid"], _im["subtype"]))
+        msg.attach(_ai)
     if gpx_xml:
         safe = _re_email.sub(r"[^A-Za-z0-9_.-]+", "_", data["route"]["name"] or str(route_id)).strip("_") or ("route_%s" % route_id)
         gpx_att = MIMEApplication(gpx_xml.encode("utf-8"), _subtype="gpx+xml")
