@@ -3443,7 +3443,7 @@ def _build_report_email_html(data, has_map, has_chart, att_imgs=None):
     p = []
     p.append('<div style="background:#f6f2ea;padding:22px 10px;font-family:%s">' % FONT)
     p.append('<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" '
-              'style="max-width:640px;margin:0 auto;background:#fffdf8;border-radius:14px;'
+              'style="max-width:760px;margin:0 auto;background:#fffdf8;border-radius:14px;'
               'border:1px solid %s;font-family:%s">' % (LINE, FONT))
     p.append('<tr><td style="background:%s;border-radius:14px 14px 0 0;height:6px;'
               'line-height:6px;font-size:0">&nbsp;</td></tr>' % ACCENT)
@@ -3489,8 +3489,13 @@ def _build_report_email_html(data, has_map, has_chart, att_imgs=None):
 
     if has_map:
         p.append(SEC("Mapa"))
-        p.append('<img src="cid:reportmap" width="580" style="width:100%%;max-width:580px;'
+        p.append('<img src="cid:reportmap" width="700" style="width:100%%;max-width:700px;'
                   'border-radius:10px;border:1px solid %s;display:block" alt="mapa trasy">' % LINE)
+
+    if has_chart:
+        p.append(SEC("Profil trasy"))
+        p.append('<img src="cid:reportchart" width="700" style="width:100%%;max-width:700px;'
+                  'border-radius:10px;border:1px solid %s;display:block" alt="profil trasy">' % LINE)
 
     p.append(SEC("Pogoda"))
     rs = _rain_summary(wea.get("windows"))
@@ -3501,11 +3506,6 @@ def _build_report_email_html(data, has_map, has_chart, att_imgs=None):
     etapy = wea.get("etapy") or []
     for e in etapy:
         p.append(TXT('<b style="color:%s">%s:</b> %s' % (INK, _esc(e.get("naglowek") or ""), _esc(e.get("tekst") or ""))))
-
-    if has_chart:
-        p.append(SEC("Profil trasy"))
-        p.append('<img src="cid:reportchart" width="580" style="width:100%%;max-width:580px;'
-                  'border-radius:10px;border:1px solid %s;display:block" alt="profil trasy">' % LINE)
 
     p.append(SEC("Nawierzchnia"))
     by_cat = surf.get("by_cat") or []
