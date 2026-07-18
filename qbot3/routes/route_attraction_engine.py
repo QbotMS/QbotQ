@@ -217,7 +217,10 @@ def classify(row: dict[str, Any], entity: dict[str, Any]) -> tuple[str | None, s
         return None, "jednostka administracyjna lub instytucja"
     if name_text in {"palac", "dwor", "zamek", "fort"}:
         return None, "zbyt ogólna nazwa obiektu"
-    if any(marker in name_text for marker in ("oficyna", "wozownia", "fontanna", "fontanny", "taras palacowy", "park przypalacowy")):
+    if any(marker in name_text for marker in (
+        "oficyna", "wozownia", "fontanna", "fontanny", "taras palacowy", "park przypalacowy",
+        "budynek gospodarczy", "stajnia", "folwark",
+    )):
         return None, "obiekt pomocniczy zespołu zabytkowego"
     if any(marker in text for marker in ("zoo", "ogrod zoologiczny", "theme park", "park rozrywki", "aquapark")):
         return None, "zoo / park rozrywki"
@@ -354,11 +357,15 @@ def score(row: dict[str, Any], entity: dict[str, Any], google_rows: Iterable[dic
 
 def collapse_stops(scored: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     stops: list[dict[str, Any]] = []
+    tangible = {"castle_palace", "fortification", "industrial_heritage", "open_air_museum"}
     for source in sorted(scored, key=lambda row: (-float(row["score"]), candidate_key(row))):
         row = dict(source)
         match = None
         for old in stops:
             if abs(float(row["km"]) - float(old["km"])) <= 1.5 and haversine_m(row["lat"], row["lon"], old["lat"], old["lon"]) <= 450:
+                if ((row["category"] == "historic_town" and old["category"] in tangible)
+                        or (old["category"] == "historic_town" and row["category"] in tangible)):
+                    continue
                 match = old
                 break
         if match is None:

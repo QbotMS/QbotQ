@@ -84,5 +84,14 @@ def test_palace_ancillary_objects_and_village_article_mentions_are_noise():
     assert classify(_row("Oficyna pałacowa z XIX wieku", 10, pageid=None, tags={"tourism": "attraction"}), {})[0] is None
     assert classify(_row("Pałac", 10, pageid=None, tags={"tourism": "attraction"}), {})[0] is None
     assert classify(_row("Park przypałacowy", 10, pageid=None, tags={"tourism": "attraction"}), {})[0] is None
+    assert classify(_row("Dawny budynek gospodarczy przy pałacu", 10, pageid=None, tags={"tourism": "attraction"}), {})[0] is None
     village = _row("Kozielno", 10, extract="Kozielno – wieś w Polsce. We wsi znajduje się pałac.")
     assert classify(village, {})[0] is None
+
+
+def test_tangible_landmark_is_not_absorbed_by_nearby_historic_town():
+    town = _row("Kamieniec Ząbkowicki", 138.0, qid="Q1", lat=50.45)
+    palace = _row("Pałac Marianny Orańskiej", 138.2, pageid=None,
+                  tags={"tourism": "attraction"}, lat=50.4505)
+    result = rank_candidates([town, palace], [], {"Q1": _city_entity(town["name"])}, 100)
+    assert {row["name"] for row in result["candidates"]} == {town["name"], palace["name"]}
