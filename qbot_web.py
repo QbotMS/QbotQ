@@ -492,6 +492,170 @@ def api_noclegi(lat: float, lon: float, radius_m: int = 3000):
     return {"status": "OK", "count": len(items), "radius_m": radius_m, "items": items}
 
 
+# ---- Planer: opis + zdjecie atrakcji z Google Places (New), cache na dysku ----
+PLANER_POI_CACHE = os.environ.get("QBOT_PLANER_POI_CACHE", "/opt/qbot/artifacts/planer_poi_cache")
+_PLACE_ID_RE = _re_email.compile(r"^[A-Za-z0-9_\-]+$")
+
+
+def _planer_poi_cache_paths(place_id):
+    return (os.path.join(PLANER_POI_CACHE, place_id + ".json"),
+            os.path.join(PLANER_POI_CACHE, place_id + ".jpg"))
+
+
+def _planer_google_detail(place_id, gkey):
+    import httpx
+    r = httpx.get("https://places.googleapis.com/v1/places/" + place_id,
+                  headers={"X-Goog-Api-Key": gkey,
+                           "X-Goog-FieldMask": "id,editorialSummary,generativeSummary,photos"},
+                  params={"languageCode": "pl"}, timeout=10.0)
+    r.raise_for_status()
+    d = r.json()
+    desc = (d.get("editorialSummary") or {}).get("text") or None
+    desc_src = "editorial" if desc else None
+    if not desc:
+        _gen = ((d.get("generativeSummary") or {}).get("overview") or {}).get("text") or None
+        if _gen:
+            desc, desc_src = _gen, "gemini"
+    photos = d.get("photos") or []
+    return desc, desc_src, (photos[0].get("name") if photos else None)
+
+
+def _planer_google_photo(photo_name, gkey, dest_path):
+    import httpx
+    r = httpx.get("https://places.googleapis.com/v1/" + photo_name + "/media",
+                  headers={"X-Goog-Api-Key": gkey},
+                  params={"maxHeightPx": 480, "maxWidthPx": 640},
+                  timeout=15.0, follow_redirects=True)
+    r.raise_for_status()
+    with open(dest_path, "wb") as f:
+        f.write(r.content)
+
+
+def _planer_wikipedia_desc(name, lat, lon):
+    """Opis atrakcji z polskiej Wikipedii: geosearch po wspolrzednych -> najlepszy
+    artykul (dopasowanie po nazwie + odleglosc) -> wstep (3 zdania). Zwraca (tekst, url).
+    Rzuca wyjatkiem przy bledzie sieci/429 - wtedy wolajacy NIE cache'uje wyniku."""
+    import httpx, re as _re, unicodedata as _ud
+    if lat is None or lon is None:
+        return None, None
+    API = "https://pl.wikipedia.org/w/api.php"
+    UA = {"User-Agent": "QBot/1.0 (osobisty planer rowerowy; albert.cytr.us)"}
+
+    def _norm(x):
+        x = _ud.normalize("NFKD", str(x or "").lower())
+        x = "".join(c for c in x if not _ud.combining(c))
+        return set(_re.findall(r"[a-z0-9]+", x))
+
+    r = httpx.get(API, params={"action": "query", "format": "json", "list": "geosearch",
+                  "gscoord": "%f|%f" % (float(lat), float(lon)), "gsradius": 800, "gslimit": 8},
+                  timeout=8.0, headers=UA)
+    r.raise_for_status()
+    hits = (((r.json() or {}).get("query") or {}).get("geosearch") or [])
+    if not hits:
+        return None, None
+    nt = _norm(name)
+    best = None
+    bs = -1e18
+    for h in hits:
+        ov = len(nt & _norm(h.get("title")))
+        dist = h.get("dist") or 9999
+        sc = ov * 1000 - dist
+        if sc > bs:
+            bs = sc
+            best = h
+    if not best:
+        return None, None
+    ov = len(nt & _norm(best.get("title")))
+    if ov < 1 and (best.get("dist") or 9999) > 150:
+        return None, None
+    pid = best.get("pageid")
+    r2 = httpx.get(API, params={"action": "query", "format": "json", "prop": "extracts|info",
+                   "inprop": "url", "exintro": 1, "explaintext": 1, "exsentences": 3,
+                   "redirects": 1, "pageids": pid}, timeout=8.0, headers=UA)
+    r2.raise_for_status()
+    pg = (((r2.json() or {}).get("query") or {}).get("pages") or {}).get(str(pid)) or {}
+    ex = (pg.get("extract") or "").strip()
+    if not ex or len(ex) < 25:
+        return None, None
+    if len(ex) > 400:
+        ex = ex[:397].rstrip() + "\u2026"
+    return ex, pg.get("fullurl")
+
+
+@app.get("/api/planer/atrakcja")
+def api_planer_atrakcja(place_id: str, name: str = None, lat: float = None, lon: float = None):
+    """Opis + zdjecie atrakcji. Google Places (editorial/AI + zdjecie), a gdy Google
+    nie ma opisu - polska Wikipedia (po wspolrzednych). Cache raz na dysku."""
+    if not place_id or not _PLACE_ID_RE.match(place_id):
+        return {"status": "SKIP", "desc": None, "photo_url": None}
+    jpath, ppath = _planer_poi_cache_paths(place_id)
+    if os.path.exists(jpath):
+        try:
+            cached = json.load(open(jpath, encoding="utf-8"))
+            hp = os.path.exists(ppath)
+            return {"status": "OK", "desc": cached.get("desc"), "desc_src": cached.get("desc_src"),
+                    "desc_url": cached.get("desc_url"),
+                    "photo_url": ("/api/planer/foto/" + place_id) if hp else None, "cached": True}
+        except Exception:
+            pass
+    desc = None
+    desc_src = None
+    desc_url = None
+    photo_name = None
+    gkey = None
+    is_google = not place_id.isdigit()
+    if is_google:
+        try:
+            from qbot3.artifacts.route_analyzer import _route_poi_v2_google_api_key as _g_key
+            gkey = _g_key()
+        except Exception:
+            gkey = None
+        if gkey:
+            try:
+                desc, desc_src, photo_name = _planer_google_detail(place_id, gkey)
+            except Exception:
+                pass
+    hp = False
+    if photo_name and gkey:
+        try:
+            os.makedirs(PLANER_POI_CACHE, exist_ok=True)
+            _planer_google_photo(photo_name, gkey, ppath)
+            hp = os.path.exists(ppath) and os.path.getsize(ppath) > 0
+        except Exception:
+            hp = False
+    _skip_cache = False
+    if not desc and name and lat is not None and lon is not None:
+        try:
+            _wd, _wu = _planer_wikipedia_desc(name, lat, lon)
+            if _wd:
+                desc, desc_src, desc_url = _wd, "wikipedia", _wu
+        except Exception:
+            _skip_cache = True
+    if not _skip_cache:
+        try:
+            os.makedirs(PLANER_POI_CACHE, exist_ok=True)
+            with open(jpath, "w", encoding="utf-8") as f:
+                json.dump({"desc": desc, "desc_src": desc_src, "desc_url": desc_url,
+                           "photo": bool(hp)}, f, ensure_ascii=False)
+        except Exception:
+            pass
+    return {"status": "OK", "desc": desc, "desc_src": desc_src, "desc_url": desc_url,
+            "photo_url": ("/api/planer/foto/" + place_id) if hp else None}
+
+
+@app.get("/api/planer/foto/{place_id}")
+def api_planer_foto(place_id: str):
+    if not _PLACE_ID_RE.match(place_id or ""):
+        raise HTTPException(status_code=404)
+    _, ppath = _planer_poi_cache_paths(place_id)
+    if not os.path.exists(ppath):
+        raise HTTPException(status_code=404)
+    with open(ppath, "rb") as f:
+        data = f.read()
+    return Response(content=data, media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=2592000"})
+
+
 @app.get("/api/planer/opis")
 def api_planer_opis(route_id: str, rebuild: int = 0):
     """Opis-tlo trasy dla Planera wyprawy (cache w qbot_v2.planer_route_opis;
@@ -2863,21 +3027,43 @@ def _build_day_data(conn, route_id, km_from, km_to):
     # podjazdy w zakresie (km absolutne)
     _cl = conn.execute(
         "SELECT event_index, start_m, end_m, length_m, elevation_gain_m, avg_gradient_pct, "
-        "max_gradient_pct, severity FROM qbot_v2.route_climb_events "
+        "max_gradient_pct, severity, segments_json FROM qbot_v2.route_climb_events "
         "WHERE route_base_id=%s AND start_m/1000.0 >= %s AND start_m/1000.0 < %s ORDER BY start_m",
         (rbid, a0, b0)).fetchall()
     climbs_list = []
     for r in _cl:
+        _sj = r.get("segments_json")
+        if isinstance(_sj, str):
+            try:
+                _sj = json.loads(_sj)
+            except Exception:
+                _sj = []
+        _segs = [{"len_m": round(sg.get("length_m") or 0), "grade": sg.get("gradient_pct"),
+                  "cat": sg.get("category")} for sg in (_sj or [])]
         climbs_list.append({"i": (r["event_index"] or 0) + 1,
                             "a_km": round((r["start_m"] or 0) / 1000.0, 1),
                             "b_km": round((r["end_m"] or 0) / 1000.0, 1),
                             "length_m": round(r["length_m"] or 0),
                             "gain_m": round(r["elevation_gain_m"] or 0),
                             "avg_pct": r["avg_gradient_pct"], "max_pct": r["max_gradient_pct"],
-                            "severity": r["severity"]})
+                            "severity": r["severity"], "segments": _segs})
 
     # POI w zakresie (km absolutne)
     _pg = _load_poi_groups(conn, rbid)
+    _towns_all = list(_pg.get("town", []))
+    def _loc(lat, lon):
+        if lat is None or lon is None or not _towns_all:
+            return None
+        best = None; bd = 1e18
+        for _tw in _towns_all:
+            if _tw.get("lat") is None:
+                continue
+            _dla = math.radians(_tw["lat"] - lat); _dlo = math.radians(_tw["lon"] - lon)
+            _a = math.sin(_dla / 2) ** 2 + math.cos(math.radians(lat)) * math.cos(math.radians(_tw["lat"])) * math.sin(_dlo / 2) ** 2
+            _d = 6371000 * 2 * math.asin(min(1.0, math.sqrt(_a)))
+            if _d < bd:
+                bd = _d; best = _tw["name"]
+        return best
     for cat in list(_pg.keys()):
         _pg[cat] = [p for p in _pg[cat] if a0 <= (p.get("km") or 0) <= b0]
     # zaopatrzenie: _curate_pois dzieli trase od 0, wiec offset km->skala dnia, potem przywroc absolutne
@@ -2922,8 +3108,16 @@ def _build_day_data(conn, route_id, km_from, km_to):
         _picked.sort(key=lambda it: it["km"])
     _att_items = [{"km": _it["km"], "name": _it["name"], "dist_m": _it.get("dist_m"),
                    "lat": _it.get("lat"), "lon": _it.get("lon"),
+                   "miejscowosc": _loc(_it.get("lat"), _it.get("lon")),
+                   "place_id": (_it.get("meta") or {}).get("source_place_id"),
                    "desc": _att_build_desc(_it.get("meta") or {})} for _it in _picked]
-    poi_out = {"resupply": _resupply, "attractions": {"total": len(_att), "items": _att_items}}
+    _resupply_points = []
+    for _rcat in ("hard_resupply", "soft_food_stop"):
+        for _rp in _pg.get(_rcat, []):
+            if _rp.get("km") is not None:
+                _resupply_points.append({"km": round(_rp["km"], 1), "cat": _rcat, "name": _rp.get("name")})
+    _resupply_points.sort(key=lambda z: z["km"])
+    poi_out = {"resupply": _resupply, "resupply_points": _resupply_points, "attractions": {"total": len(_att), "items": _att_items}}
 
     return {
         "route": {"id": route_id,
@@ -4358,6 +4552,62 @@ def _build_nutrition_data(conn, start_str, end_str):
     ).fetchone()
     body_latest["weight_kg"] = {"value": _forma_num(rw["weight_kg"]), "day": rw["day"]} if rw else {"value": None, "day": None}
     return {"series": series, "latest": latest, "body_latest": body_latest}
+
+
+@app.get("/api/nutrition/status")
+async def nutrition_status(start: str = Query(...), end: str = Query(...)):
+    """Status zywienia dla zakresu dni: {date: 'logged'|'preset'}. Puste dni pominiete."""
+    conn = _db_conn()
+    try:
+        rows = conn.execute(
+            "SELECT l.date, bool_or(l.source NOT ILIKE '%%preset%%') has_real, "
+            "bool_or(l.source ILIKE '%%preset%%') has_preset "
+            "FROM qbot_v2.intake_logs l JOIN qbot_v2.intake_items i ON i.intake_log_id=l.id "
+            "WHERE l.date BETWEEN %s AND %s GROUP BY l.date", (start, end)).fetchall()
+    finally:
+        conn.close()
+    out = {}
+    for r in rows:
+        out[str(r["date"])] = "logged" if r["has_real"] else ("preset" if r["has_preset"] else "empty")
+    return {"status": out}
+
+
+@app.get("/api/nutrition/day-summary")
+async def nutrition_day_summary(day: str = Query(...)):
+    """Podsumowanie zywienia dnia: logged / preset / empty + kcal + makra + pozycje."""
+    conn = _db_conn()
+    try:
+        rows = conn.execute(
+            "SELECT l.source, l.note, i.food_name, i.kcal, i.carbs_g, i.protein_g, i.fat_g "
+            "FROM qbot_v2.intake_logs l JOIN qbot_v2.intake_items i ON i.intake_log_id=l.id "
+            "WHERE l.date=%s ORDER BY l.id, i.id", (day,)).fetchall()
+    finally:
+        conn.close()
+    real, preset = [], []
+    for r in rows:
+        (preset if "preset" in (r["source"] or "").lower() else real).append(r)
+
+    def _agg(rs):
+        return {
+            "kcal": round(sum(float(x["kcal"] or 0) for x in rs)),
+            "carbs_g": round(sum(float(x["carbs_g"] or 0) for x in rs)),
+            "protein_g": round(sum(float(x["protein_g"] or 0) for x in rs)),
+            "fat_g": round(sum(float(x["fat_g"] or 0) for x in rs)),
+            "items": [{"name": x["food_name"], "kcal": round(float(x["kcal"] or 0))} for x in rs],
+        }
+
+    if real:
+        return {"day": day, "kind": "logged", **_agg(real)}
+    if preset:
+        a = _agg(preset)
+        lbl = None
+        for r in preset:
+            n = r["note"] or ""
+            if "presetu:" in n:
+                lbl = n.split("presetu:", 1)[1].strip()
+                break
+        return {"day": day, "kind": "preset", "preset_label": lbl, **a}
+    return {"day": day, "kind": "empty", "kcal": 0, "carbs_g": 0, "protein_g": 0, "fat_g": 0, "items": []}
 
 
 @app.get("/api/nutrition/preset/values")
