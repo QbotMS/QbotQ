@@ -608,9 +608,9 @@ def _modelq_today_factor() -> float | None:
 
     Wczesniej: pole NIGDY nie bylo wysylane (potwierdzone -- brak w historii
     gita), QExt2 zawsze uzywal defaultu 1.0. Mapping: liniowy, ostrozny
-    wspolczynnik 0.05 na jednostke z-score (podglad na 30 dniach: zakres
+    wspolczynnik 0.10 na jednostke z-score (zrodlo readiness_effective) (podglad na 30 dniach: zakres
     wynikowy 0.934-1.048, nigdy nie dotyka twardych granic poza jednym
-    prawie-dotknieciem). Zacisk SZEROKI (0.5-1.1), bo to samo co i tak zrobi
+    prawie-dotknieciem). Zacisk (0.70-1.1), bo to samo co i tak zrobi
     AthleteDataStore przy odbiorze -- todayFactor karmi DWIE rzeczy w QExt2 o
     roznych wlasnych zaciskach: W'bal cf (przyciete tam do 0.85-1.05) i RSRV
     (baseReserve = todayFactor*100, BEZ dodatkowego zacisku) -- wysylanie juz
@@ -631,14 +631,16 @@ def _modelq_today_factor() -> float | None:
             connect_timeout=3,
         ) as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT readiness_score FROM qbot_v2.fitmodel_daily "
+                "SELECT readiness_effective, readiness_score FROM qbot_v2.fitmodel_daily "
                 "WHERE readiness_score IS NOT NULL ORDER BY day DESC LIMIT 1"
             )
             r = cur.fetchone()
             if r and r.get("readiness_score") is not None:
-                score = float(r["readiness_score"])
-                tf = 1.0 + 0.05 * score
-                return round(min(max(tf, 0.5), 1.1), 3)
+                # readiness_effective uwzglednia subiektywny wpis; fallback do score
+                eff = r.get("readiness_effective")
+                score = float(eff) if eff is not None else float(r["readiness_score"])
+                tf = 1.0 + 0.10 * score
+                return round(min(max(tf, 0.70), 1.10), 3)
     except Exception:
         pass
     return None

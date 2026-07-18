@@ -5,6 +5,127 @@
 
 ---
 
+## 2026-07-18 -- DECYZJA: RSRV -- kara za dryf "przy tej samej mocy" + todayFactor z readiness_effective
+
+**Status:** zatwierdzone na danych (16 jazd), do wdrozenia. Serwer: `qbot_api.py`. Urzadzenie: QExt2 `StatsCalculator`.
+
+**Problem:** RSRV spadalo do 44% na godzinnej LEKKIEJ jezdzie (17.07 Marki, IF 0,56, XSS 56 -> kara XSS tylko 16 pkt). Winna kara za decoupling liczona metoda 1. vs 2. polowa (HR/moc). Ta metoda myli "spadek mocy z powodu tempa" z "dryfem tetna": na jezdzie lekkiej/szarpanej (duzo lania, wysokie VI) stosunek HR/moc rosnie sam z siebie, choc serce nie drifuje. Dowod na 16 jazdach: 17.07 latwa stara 21,7% -> prawdziwy +1,6%; Poggibonsi VI 1,51 stara 40,8% -> prawdziwy -3,3%; 14.07 (zmeczony, readiness -0,62) stara **0,0% (przegapila)** -> prawdziwy **+8,1%**. Stara metoda jednoczesnie ZMYSLA (latwe/szarpane) i GUBI (realne zle dni).
+
+**Decyzja 1 -- metryka dryfu:** zastapic decoupling metryka "wzrost HR przy tej samej mocy" (biny mocy 15 W; HR w binie 2. polowa vs 1.; offline). Na urzadzeniu (na zywo): baza HR-po-mocy z pierwszych ~20 min aktywnej jazdy, potem biezace odchylenie "teraz vs baza". Ponizej progu wspolnej mocy -> brak kary (niewiarygodne).
+
+**Decyzja 2 -- skala kary:** `kara = clamp((dryf% - 3) * 3, 0, 18)`. Prog 3%, mnoznik 3, limit 18 pkt (nigdy nie dominuje nad XSS). Efekt: +2%->0, +5%->6, +8%->15. Kalibrowane na prawdziwym dryfie (realny zakres ~0-8%). Stary prog 5%/x1,5 byl dopasowany do zawyzonych liczb -- porzucony.
+
+**Decyzja 3 -- todayFactor:** zrodlo `readiness_score` -> `readiness_effective` (uwzglednia subiektywny wpis, dzis IGNOROWANY), mapa `tf = 1,0 + 0,10 * readiness_effective` (2x stromiej niz 0,05), zacisk [0,70, 1,10]. Efekt: dzien zmeczony (z -0,62) baza 94 (bylo 97); dzien fatalny (z -2) baza ~80. UWAGA: dzien ciezki PSYCHICZNIE ujawni sie w RSRV tylko na tyle, na ile uzytkownik oznaczy go subiektywnie (15.07: poprawka tylko -0,15 -> baza wciaz ~99). Dryf HR NIE lapie ostrego stresu (15.07: dryf -2,9%, HR vs norma +2,2%) -- to nie sygnal fizjologiczny.
+
+**Bez zmian:** kara XSS (dobrze skalibrowana; budzet = clamp(CTL*5,4, 300, 600)). todayFactor karmi tez cf W'bal (zacisk 0,85-1,05 na urzadzeniu) -- stromsza mapa OK, cf clampuje wewnetrznie, RSRV dostaje pelny sygnal.
+
+**Odrzucone:** (a) bramkowanie dryfu po IF/VI (V4) -- gubiloby realne zle dni przy niskim IF; (b) "HR vs osobista norma miedzyjazdowa" jako detektor zlego dnia -- nie separuje (wskazal normalny 17.07 jako najgorszy, zmeczony 14.07 jako najlepszy).
+
+---
+
+## 2026-07-18 -- DECYZJA: atrakcje v2.2 = szerokie źródła, ogólna wartość i miękki korytarz 2 km
+
+**Status:** wdrożone produkcyjnie, commity `ef2d82c` i `eea9287`, wypchnięte do `origin/main`.
+
+**Problem:** trasa `Małe Gosie NEW` znalazła 26 stron Wikipedii, ale stary klasyfikator odrzucił Obronę Wizny jako „za mało dowodów wartości”, Górę Strękową jako zwykły obiekt sakralny, a schronów w większości nie widział, ponieważ ogólny OSM był wyłączony. Osobna bramka publikacji dodatkowo potrafiła ukryć każdy uczciwy wynik mniejszy od arbitralnej normy kandydatów/km. WEB pokazywał tylko nazwę i `desc`, ignorując zapisane `extract`, `image_url` i `wiki`.
+
+**Decyzja:**
+
+- wersja algorytmu `route_attractions_v2.2`;
+- Wikipedia = pełna baza semantyczna, Wikidata = typy/dziedzictwo, Google = pomocniczy dowód;
+- osobny lekki adapter OSM pobiera tylko `historic`, `heritage`, fortyfikacje/schrony, atrakcje/muzea i opisane konstrukcje w korytarzu 2050 m; nie uruchamia ogólnego Overpass POI i nie rusza zaopatrzenia;
+- bitwa, obrona i linia umocnień mają pierwszeństwo przed przypadkową wzmianką sakralną w treści;
+- `cultural_landmark` obejmuje globalne, wyjątkowe konstrukcje i trasy inżynieryjne, aby obiekt typu Caminito del Rey nie zależał od polskiej listy „zamek/fort/bunkier”;
+- 800 m przestaje być twardą bramką; do 2050 m działa progresywna kara rankingowa;
+- liczba kandydatów/km jest celem i limitem, nigdy minimum publikacji; pełny wynik z co najmniej jednym kandydatem jest publikowany;
+- OSM jest addytywny: `DEGRADED_OSM` i `missing_chunks` są jawne, udane fragmenty trafiają do cache, a następne pobranie ponawia brakujące bez ukrywania pełnego wyniku Wikipedii;
+- WEB pokazuje zdjęcie, skrócony `extract` i bezpieczny link źródłowy, jeśli źródło je dostarcza; brakujących treści nie generuje.
+
+**Granice:** kandydaci nadal przechodzą deterministyczną bramkę jakości i limit 60 min. Zwykłe kościoły, kapliczki, zoo oraz drobne pomniki pozostają odrzucane. Sklepy, jedzenie i woda pozostają w osobnej `route_poi_layer`.
+
+**Dowód produkcyjny:** run 15 dla `komoot-3120318768` (96 km) zakończył się `COMPLETE`, `missing_chunks=0`, źródła: Wikipedia 26, OSM 58, Wikidata 55; ranking opublikował 9 kandydatów, w tym schron „Sulin” i Obronę Wizny. Migawka raportu 37 potwierdziła wspólny odczyt oraz opis i link źródłowy. Testy atrakcji: 22/22.
+
+---
+
+## 2026-07-18 -- DECYZJA: IF na zywo = IF-od-CP_eff (prog efektywny), zamiast NP/FTP
+
+**Status:** DECYZJA modelowa. Wdrozenie przed nami (kod pozniej). W tej sesji nie ruszano zadnych plikow modelu ani frontendu -- tylko analiza + ten zapis.
+
+**Problem.** W raporcie jazdy (blok A "Obciazenie -- koszt vs mozliwosci") oraz na Karoo intensywnosc pokazywalo IF = NP / FTP. NP mierzy WYNIK (ile watow wyprodukowales), nie KOSZT. Mianownik (FTP) jest staly, wiec IF jest **slepe na zmeczenie**: zmeczona noga = nizsze waty = nizszy NP => ta sama trasa wyglada na LATWIEJSZA, choc byla trudniejsza. "NP z trasy nic nie mowi" o wysilku, gdy zmeczenie narasta godzinami (gravel/turystyka).
+
+Dodatkowo po konwersji do standardu Xert (koszt = XSS fatigue-aware, sygnatura CP/W'/PP) FTP zostalo "sierota": jedyna rola byl IF, a liczbowo zlalo sie z CP (`fitmodel_daily`: `ftp_est_w == cp_modelq_w`, 2026-07-18 oba 237,7 W).
+
+**Decyzja.** Zastepujemy IF wskaznikiem, ktorego MIANOWNIK maleje razem ze zmeczeniem:
+
+- **CP_eff = LTP + (W'bal%) x (CP - LTP)** (interpolacja LINIOWA).
+  - pelny bak W' (100%) => CP_eff = CP (prog swiezy);
+  - pusty bak (0%) => CP_eff = LTP (aerobowy dol).
+- **IF_eff = moc_okna / CP_eff.** Odczyt jak stare IF (~1,0 = na progu), ale prog jest "na teraz".
+- **Okno mocy: 5 min, przesuwane, liczone TYLKO z czasu ruchu** (pauza okna przy postoju, zeby liczba nie mrugala falszywie nisko po kawie).
+- **Mianownik:** W'bal z biezacej sekundy (tick-po-ticku z `activity_record`); CP, W' i LTP z `fitmodel_daily` (MQ2).
+
+**Rola starego IF/NP.** Zostaje jako "znane odniesienie / porownanie miedzy trasami", ale JAWNIE oznaczone jako slepe na zmeczenie. Bohaterem wysilku jest IF_eff. %MPA opcjonalnie jako trzecie pole ("zapas na atak").
+
+**FTP-sierota rozwiazana: jeden prog, dwa dialekty.** FTP = nazwa progu w jezyku TP/NP/IF (pacing, porownania). CP = nazwa progu w jezyku Xerta (W'bal/XSS/MPA). Ta sama liczba, dwa slowa dla dwoch pytan czytelnika. Reguła "TP -> IF, CP -> W'bal/XSS" zostaje, ale kazde pole ma czytac SWOJA nazwana kolumne (koniec z `form.ftp_w` udajacym jednoczesnie CP w `_modelq_form`).
+
+---
+
+**Argumentacja wyborow (co odrzucono i dlaczego):**
+
+1. **IF-od-CP zamiast IF-od-FTP? NIE -- to no-op.** W MQ2 dzis CP == FTP == 237,7 W, wiec sama zmiana mianownika nie zmienia liczby. Problem nie jest w tym CZYM dzielisz, tylko ze mianownik jest STALY.
+
+2. **%MPA (czysta hiperbola Xerta)? NIE jako glowny pacer.** Hiperbola MPA = CP + W'/t modeluje SUFIT, a jej asymptota to CP -- nigdy nie schodzi ponizej progu. To, czego szukamy (erozja progu przez godziny, "durability"), zyje PONIZEJ CP, gdzie hiperbola milczy. Ponadto %MPA jest skoczne (MPA odbija sie w sekundy) i **niedoszacowuje swiezego twardego tempa**: dowod -- 260 W przez 10 min na swiezo => IF_eff 1,16 ("mocno") vs %MPA 33% ("luz"). %MPA odpowiada na inne pytanie ("ile zostalo na zryw"), nie "jak ciezko orze jak na prog".
+
+3. **Okno 10 min? NIE -- za wolne.** Na realnych danych (Wyszogrod 20.06): po starcie wysilku i po kazdym postoju 10-min budzi sie z opoznieniem (0,68 zamiast 0,90 przy 3-min). 3 min = za nerwowe na trzesacym gravelu. **5 min = zloty srodek** (skoro zmeczenie wchodzi mianownikiem, okno ma tylko wygladzac).
+
+4. **Ksztalt LIN, nie SAG(f^2) ani HUG.** Na realnych danych (Jakubow 12.07) roznica ksztaltow zyje w SRODKU jazdy (40-64% W'), na dnie wszystkie zbiegaja do LTP.
+   - HUG (trzyma prog przy CP, nurkuje pod koniec) brzmi najladniej fizjologicznie, ale przez caly srodek jazdy czyta sie prawie jak stary IF => powrot do "trasa nic nie mowi" tam, gdzie chcielismy to naprawic.
+   - SAG (f^2) scina prog juz przy ~90% baku (praktycznie swiezy) => arbitralna surowosc.
+   - LIN jest jedyny BEZ ukrytego zalozenia o krzywiznie durability, ktorego i tak nie mamy jak zweryfikowac z danych. Zgodnie z zasada "bez dowodu nie ma sukcesu" -- wybieramy wariant z najmniejsza liczba niesprawdzalnych zalozen.
+
+**Dowody liczbowe (realne jazdy 1 Hz z `activity_record`, W'bal Skiba z dynamicznym tau=546*e^(-0.01*DCP)+316):**
+
+| Jazda | Moment | Ta sama moc 5 min | Stary IF (NP/CP) | Nowy IF_eff | Odczucie |
+|---|---|---|---|---|---|
+| Jakubow 12.07 (IF calej trasy 0,76) | 110 min, W'bal 3% | 195 W | 0,81 "luz" | 1,05 "nad progiem" | orzesz |
+| Wyszogrod 20.06 | 130 min, W'bal 0% | 251 W | 1,00 "na progu" | 1,29 "orzesz" | dno |
+
+Stary IF w tych momentach mowil "spokojnie", model IF_eff pokazuje realny wysilek. To potwierdza sedno decyzji.
+
+**Otwarte do rozstrzygniecia PRZY WDROZENIU (nie tu):**
+- detekcja "czas ruchu" do okna 5 min (pauza vs wypelnianie zerami);
+- gdzie liczyc: raport W1 (blok A) oraz Karoo (QExt2 Strona A) -- spojnosc z W'bal QExt2 (3 s wygladzanie mocy, dynamiczny tau, skalowanie readiness);
+- nazwa pola w UI i schemacie;
+- sanity kotwicy PP (~1000 W = 10 W/kg) -- istotne tylko dla MPA, nie dla CP_eff.
+
+**Weryfikacja tej sesji:** grep frontend (`raport-jazdy-render.js` l.117), backend (`ride_report_builder.py`: `_np` klasyczny 30 s/4. potega; `_modelq_form` l.46-55 pobiera tylko `ftp_est_w`, ustawia cp_w=ftp), DB (`fitmodel_daily` 2026-07-18: ftp_est_w=cp_modelq_w=237,7; ltp_modelq_w=185,8; wprime=20,77 kJ "high"), oraz obliczenia CP_eff/W'bal na dwoch realnych jazdach.
+
+**Odpowiednik urzadzeniowy (QExt2 -- OSOBNY projekt, nie rdzen; tu tylko cross-ref).**
+
+Ta sama decyzja paradygmatyczna na Karoo, zatwierdzone kierunki A/B/C:
+- **A.** Nowe pole IF na Karoo: mianownik = czyste LIN **CP_eff = LTP + W'bal% x (CP - LTP)** (jak serwer). Istniejacy w QExt2 `cf` (readiness x upal x decoupling, clamp 0.88-1.06) ZOSTAJE, ale WYLACZNIE jako prog zuzycia W'bal w silniku -- NIE jako mianownik IF. Dwa "efektywne CP" o rozdzielnych rolach; IF_eff to warstwa WYSWIETLANIA, nie sprzega sie zwrotnie z W'bal (unika lawiny W' -> CP_eff -> szybsze zuzycie W').
+- **B.** Licznik = **5 min ruchome** (nowy bufor). Dzis IF na Karoo = NP CALEJ jazdy / stale FTP (kumulatywne) -> bezuzyteczne jako "jak mocno TERAZ".
+- **C.** Dane JUZ SA na urzadzeniu (KOREKTA wczesniejszego zalozenia -- LTP jest synchronizowane): `AthleteData.ltpWatts` (AthleteDataStore KEY_LTP, load l.101 / save l.131) + `RideDataAggregator.baseLtpWattsRef` (set z data.ltpWatts, l.1527) trzyma REALNY LTP. CP_eff ma uzywac RAW baseLtp + baseCp(=FTP), tylko wBal% eroduje -- NIE `getEffectiveLtpWatts()` (=LTP x readiness x temp, to sluzy RSRV). PULAPKA NAZW: `StatsCalculator.ltpWatts` to NIE LTP, tylko efektywne CP (prog W'bal = FTP x cf). Realny LTP siedzi w RideDataAggregator.
+
+Stan kodu QExt2 (zweryfikowany ssh 2026-07-18, klon `qext2_deploy`): `RideDataAggregator.kt` l.915-930 (`cf`, `setEffectiveWPrime`); `StatsCalculator.kt` (`effectiveCpW()`=`ltpWatts`, `ifValue`=np/ftp, `npWatts` kumulatywne 4. potega, brak okna > 30 s; W'bal% i XSS juz sa). Pelny plan wdrozenia + commit -> repo QExt2 (`QbotMS/QExt2`), NIE w rdzeniu; kanal ssh + deploy key `github-qext2` (DEV MCP jest zablokowane na qext2_deploy -- granica projektow).
+
+Ustalone 2026-07-18 (ssh): pierwszostronowe "IF 10" to POLE QExt2, NIE SDK -- `if10Calc` w `BpActiveStaticDataType.kt` (render `if10Text` l.308, calc l.371) i `CompositeActiveDataType.kt` (l.500/670): bufor do 600 probek (=10 min), wygladzanie 30 s, wynik = smooth / FTP. Zmieniamy JE W MIEJSCU: mianownik FTP -> CP_eff (podac przez snapshot; `wBalancePercent` juz jest w snapshocie). UWAGA: `if10Calc` jest ZDUBLOWANE w obu klasach -- zmienic obie albo zrefaktoryzowac do wspolnego. Osobne pole whole-ride IF w StatsDataType (`ifWholeRide`, log "sdk_or_local") to NIE to pole.
+
+USTALONE 2026-07-18: okno = **5 min** (spojnie z serwerem; 10-min laguje na podjazdach/po postojach, a zmeczenie i tak wchodzi mianownikiem CP_eff). Konkret zmian w `if10Calc` (obie klasy: BpActiveStaticDataType, CompositeActiveDataType):
+- bufor probek 600 -> **300** (raw>300 usuwaj; smooth 570 -> 270),
+- mianownik FTP -> **CP_eff** (= baseLtp + wBal% x (baseCp - baseLtp); baseCp=FTP; podac przez snapshot),
+- **ETYKIETA pola -> "CpE 5"** (dzis if10Text/label 'IF 10'),
+- tylko czas ruchu (activeSample) trafia do bufora.
+
+Kolejny krok = KOD w repo QExt2 (`QbotMS/QExt2`) przez ssh + deploy key `github-qext2`; DEV MCP nie ma tam dostepu. Brama jakosci przed 'na ekran': porownac wBal% urzadzenia vs serwer na jednej realnej jezdzie (cale IF_eff stoi na dokladnosci wBal%).
+
+**WDROZONE 2026-07-18 (repo QExt2, publiczne):** silnik CP_eff LIN w StatsCalculator (realLtpWatts osobno, bo ltpWatts=cf-CP), snapshot ifEff5Live/ifEffWholeRide/cpEffLinW, formatter ifEff(). Pola wpiete W KOMORKI istniejacych pol zespolonych (NIE osobne): ACTIVE komorka 'IF 10' -> 'CpE 5' (snap.ifEff5Live) w BpActiveStaticDataType + CompositeActiveDataType; STATS komorka 'D BAT' (tv_wprime, dolny prawy) -> 'IFe' (snap.ifEffWholeRide) w StatsDataType. Pierwsze podejscie (2 osobne pola qext2-cpe5/ife) bylo BLEDEM -> cofniete. Commity: ea47ec3 (silnik+bledne pola) -> 71dd4cb (poprawka). CI success, APK build-145.
+
+**Kod:** brak (decyzja przed kodem).
+
+---
+
+
 ## 2026-07-18 -- DECYZJA: jedna warstwa atrakcji dla wyprawy; dni dziedziczą; stare podziały są usuwane
 
 **Status:** wdrożone produkcyjnie. Pełna dokumentacja: `docs/PLANER_WYPRAW_ATRAKCJE.md`.
