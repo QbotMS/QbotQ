@@ -2306,6 +2306,37 @@ def _poly_encode_1d(vals, factor=100000):
     return "".join(out)
 
 
+@app.post("/api/report/attractions/fetch")
+def api_report_attractions_fetch(route_id: str):
+    """Wlacza i pobiera kanoniczne atrakcje dla trasy (route_attraction_store.
+    ensure_route_attractions). Uzywane przez przycisk POBIERZ w zakladce Atrakcje -
+    to samo co narzedzie Alberta route_attractions, ale wprost z raportu web.
+    Odpytuje Wikipedia/Wikidata/Google, wiec trwa kilkanascie sekund."""
+    import glob as _glob
+    for _ef in _glob.glob("/etc/qbot/*.env"):
+        try:
+            for _line in open(_ef):
+                if "=" in _line and not _line.startswith("#"):
+                    _k, _, _v = _line.strip().partition("="); os.environ.setdefault(_k, _v)
+        except Exception:
+            pass
+    rid = str(route_id or "").strip()
+    if not _re_email.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", rid):
+        raise HTTPException(status_code=400, detail="Podaj poprawny numer trasy.")
+    try:
+        from qbot3.routes.route_poi_store import set_route_poi_attractions
+        from qbot3.routes.route_attraction_store import ensure_route_attractions
+        pref = set_route_poi_attractions(rid, True)
+        out = ensure_route_attractions(route_id=rid)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Blad pobierania atrakcji: %s" % str(exc)[:300])
+    return {"route_id": rid,
+            "enabled": pref.get("attractions_enabled"),
+            "status": out.get("status"),
+            "run_id": out.get("run_id"),
+            "route_version_key": out.get("route_version_key")}
+
+
 @app.post("/api/report/push-karoo")
 def push_karoo(route_id: str, date: str | None = None, time: str = "10:00"):
     """Tworzy trase z POI wprost na koncie Karoo (Hammerhead) - bez RWGPS, bez uploadu.
