@@ -213,25 +213,32 @@ def discover_sources(source_path: Path, *, route_id: str, route_distance_km: flo
     session.headers.update({"User-Agent": USER_AGENT, "Accept": "application/json"})
     points = _route_points(source_path)
     wikipedia = discover_wikipedia(session, points)
-    analysis = analyze_route_poi_artifact(
+    open_analysis = analyze_route_poi_artifact(
         str(source_path), route_id=route_id, km_from=0.0, km_to=route_distance_km,
-        buffers={"google_hours": False, "open_window": False, "attractions_enabled": True,
+        buffers={"google_hours": False, "open_window": False, "attractions_enabled": False,
                  "overpass_enabled": True, "attractions_m": 2050.0, "analysis_timeout_sec": 180.0},
         focus="attractions_only", output_format="json",
     )
-    open_rows, google_rows = normalize_analyzer_candidates(analysis.get("attractions") or [])
+    google_analysis = analyze_route_poi_artifact(
+        str(source_path), route_id=route_id, km_from=0.0, km_to=route_distance_km,
+        buffers={"google_hours": False, "open_window": False, "attractions_enabled": True,
+                 "overpass_enabled": False, "attractions_m": 2050.0, "analysis_timeout_sec": 120.0},
+        focus="attractions_only", output_format="json",
+    )
+    open_rows, _ = normalize_analyzer_candidates(open_analysis.get("attractions") or [])
+    _, google_rows = normalize_analyzer_candidates(google_analysis.get("attractions") or [])
     combined = wikipedia + open_rows
     wikidata = discover_wikidata(session, (row.get("qid") for row in combined))
-    status = str(analysis.get("technical_completeness") or analysis.get("status") or "UNKNOWN").upper()
+    status = str(open_analysis.get("technical_completeness") or open_analysis.get("status") or "UNKNOWN").upper()
     return {
         "status": status,
-        "complete": status == "COMPLETE" and not analysis.get("missing_chunks"),
+        "complete": status == "COMPLETE" and not open_analysis.get("missing_chunks"),
         "source_rows": combined,
         "google_rows": google_rows,
         "wikidata": wikidata,
         "source_status": {
             "wikipedia": len(wikipedia), "osm": len(open_rows), "google": len(google_rows),
             "wikidata": len(wikidata), "analyzer_status": status,
-            "missing_chunks": len(analysis.get("missing_chunks") or []),
+            "missing_chunks": len(open_analysis.get("missing_chunks") or []),
         },
     }

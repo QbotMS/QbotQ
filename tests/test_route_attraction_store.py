@@ -105,3 +105,6 @@ def test_route_attractions_tool_accepts_canonical_komoot_route_ids():
 def test_canonical_source_explicitly_enables_osm_discovery():
     source = (Path(__file__).parents[1] / "qbot3" / "routes" / "route_attraction_sources.py").read_text()
     assert '"overpass_enabled": True' in source
+    assert "open_analysis" in source and "google_analysis" in source
+    assert '"attractions_enabled": False' in source
+    assert '"overpass_enabled": False' in source
