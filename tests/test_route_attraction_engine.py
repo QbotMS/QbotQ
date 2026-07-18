@@ -83,5 +83,6 @@ def test_palace_ancillary_objects_and_village_article_mentions_are_noise():
     assert classify(_row("Taras Pałacowy", 10, pageid=None, tags={"tourism": "attraction"}), {})[0] is None
     assert classify(_row("Oficyna pałacowa z XIX wieku", 10, pageid=None, tags={"tourism": "attraction"}), {})[0] is None
     assert classify(_row("Pałac", 10, pageid=None, tags={"tourism": "attraction"}), {})[0] is None
+    assert classify(_row("Park przypałacowy", 10, pageid=None, tags={"tourism": "attraction"}), {})[0] is None
     village = _row("Kozielno", 10, extract="Kozielno – wieś w Polsce. We wsi znajduje się pałac.")
     assert classify(village, {})[0] is None

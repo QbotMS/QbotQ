@@ -17,6 +17,10 @@ class TestRoutePoiGooglePrimary(unittest.TestCase):
     def test_google_helpers_have_module_logger_for_fail_open_errors(self):
         self.assertIsNotNone(ra.log)
 
+    def test_google_attraction_samples_have_bounded_retries(self):
+        source = __import__("inspect").getsource(ra._route_poi_v2_google_attraction_candidates)
+        self.assertIn("for attempt in range(3)", source)
+
     def test_attractions_only_query_cannot_fetch_logistics(self):
         self.assertEqual(ra._route_poi_v2_requested_categories("attractions_only"), ["attraction"])
         query = ra._route_poi_v2_build_query(

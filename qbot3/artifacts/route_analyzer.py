@@ -1976,16 +1976,23 @@ def _route_poi_v2_google_attraction_candidates(
     seen: dict[str, dict[str, Any]] = {}
     while sample_km <= float(km_to) + 1e-9:
         sample = _find_point_at_km(points, sample_km)
-        try:
-            places = _route_poi_v2_google_search_nearby(
-                float(sample["lat"]),
-                float(sample["lon"]),
-                radius_m=radius_m,
-                api_key=api_key,
-                included_types=list(GOOGLE_ATTRACTION_TYPES),
-            )
-        except Exception as exc:
-            log.warning("route_poi_analyze google attractions error at km %.2f: %s", sample_km, exc)
+        places = None
+        for attempt in range(3):
+            try:
+                places = _route_poi_v2_google_search_nearby(
+                    float(sample["lat"]),
+                    float(sample["lon"]),
+                    radius_m=radius_m,
+                    api_key=api_key,
+                    included_types=list(GOOGLE_ATTRACTION_TYPES),
+                )
+                break
+            except Exception as exc:
+                if attempt == 2:
+                    log.warning("route_poi_analyze google attractions error at km %.2f: %s", sample_km, exc)
+                else:
+                    time.sleep(0.3 * (attempt + 1))
+        if places is None:
             sample_km += step_km
             continue
         for place in places:

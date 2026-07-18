@@ -217,7 +217,7 @@ def classify(row: dict[str, Any], entity: dict[str, Any]) -> tuple[str | None, s
         return None, "jednostka administracyjna lub instytucja"
     if name_text in {"palac", "dwor", "zamek", "fort"}:
         return None, "zbyt ogólna nazwa obiektu"
-    if any(marker in name_text for marker in ("oficyna", "wozownia", "fontanna", "fontanny", "taras palacowy")):
+    if any(marker in name_text for marker in ("oficyna", "wozownia", "fontanna", "fontanny", "taras palacowy", "park przypalacowy")):
         return None, "obiekt pomocniczy zespołu zabytkowego"
     if any(marker in text for marker in ("zoo", "ogrod zoologiczny", "theme park", "park rozrywki", "aquapark")):
         return None, "zoo / park rozrywki"
