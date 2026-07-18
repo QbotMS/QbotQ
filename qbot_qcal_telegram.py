@@ -17,7 +17,7 @@ def _allowed() -> set[str]:
 def is_authorized(chat_id: str) -> bool:
     return str(chat_id).strip() in _allowed()
 
-_ALLOWED_ACTIONS = {"qcal_reminder_add", "qcal_event_add", "reminder_add", "calendar_event_add", "confirm_route_analysis"}  # nutrition_log_add usuniete 2026-07-05: logowanie jedzenia przez Telegram wylaczone
+_ALLOWED_ACTIONS = {"confirm_route_analysis"}  # kalendarz qcal_* usuniety 2026-07-16; nutrition_log_add usuniete 2026-07-05
 _CONFIRM_WORDS = {"tak", "yes", "ok", "potwierdzam", "zapisz", "dodaj", "confirm", "/confirm", "/yes", "t", "y"}
 _DECLINE_WORDS = {"nie", "no", "anuluj", "cancel", "/cancel", "/no", "n"}
 _CONFIRM_NUMERIC_RE = re.compile(r"^\s*#?\s*(\d+)\s+(.+?)\s*$", re.IGNORECASE)
@@ -413,13 +413,7 @@ def _execute_writer(atype: str, payload: dict, idem_key: str, chat_id: str | Non
     if atype not in _ALLOWED_ACTIONS:
         return {"status": "not_allowed", "action_type": atype, "allowlist": sorted(_ALLOWED_ACTIONS)}
     try:
-        if atype in ("qcal_reminder_add", "reminder_add"):
-            from qbot_mcp_adapter import _handle_qcal_reminder_add
-            return _handle_qcal_reminder_add({**payload, "idempotency_key": idem_key, "confirm": True})
-        elif atype in ("qcal_event_add", "calendar_event_add"):
-            from qbot_mcp_adapter import _handle_qcal_event_add
-            return _handle_qcal_event_add({**payload, "idempotency_key": idem_key, "confirm": True})
-        elif atype == "confirm_route_analysis":
+        if atype == "confirm_route_analysis":
             route_id = str(payload.get("route_id") or "").strip()
             if not route_id:
                 return {"status": "error", "error": "missing route_id for route analysis confirmation"}
@@ -517,9 +511,7 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
     # ── Simple slash commands ──
     if text.startswith("/"):
         cmd = text.split()[0].lower()
-        if cmd == "/today": return _today_response(chat_id)
-        if cmd == "/reminders": return _reminders_response(chat_id)
-        if cmd in ("/help","/start"): return {"response": "QBot Telegram:\n/today /reminders /status\nPisz naturalnie np. 'pokaż bilans za ostatnie 7 dni'"}
+        if cmd in ("/help","/start"): return {"response": "QBot Telegram:\n/status\nPisz naturalnie np. 'pokaż bilans za ostatnie 7 dni'"}
         if cmd == "/status":
             return {"response": f"QBot v1 — {date.today().isoformat()}"}
 
@@ -662,28 +654,6 @@ def _format_answer(answer: str, tables: list) -> str:
             if len(rows) > max_rows:
                 lines.append(f"... +{len(rows)-max_rows} więcej wierszy")
     return "\n".join(lines)[:3800]
-
-
-def _today_response(chat_id: str) -> dict:
-    try:
-        from qbot_query_router import query
-        r = query(question="Pokaż wszystko co QBot wie o dzisiejszym dniu", mode="read_only", scope="all")
-        response = _telegram_result_text(r)
-        return {"response": response or "Nie mogę teraz odpowiedzieć.", "status": "ok"}
-    except: return {"response": f"Today: {date.today().isoformat()}", "status": "ok"}
-
-def _reminders_response(chat_id: str) -> dict:
-    try:
-        c = _db(); cur = c.cursor()
-        cur.execute("SELECT id, title, reminder_type, time, status FROM reminders WHERE date=%s AND status='pending' ORDER BY time", (date.today().isoformat(),))
-        rows = cur.fetchall(); c.close()
-        if not rows: return {"response": "Brak przypomnień na dziś.", "status": "ok"}
-        lines = [f"Przypomnienia ({len(rows)}):"]
-        for r in rows:
-            t = str(r.get("time","") or "")[:5]
-            lines.append(f"[{r['id']}] {t} {r['title']} ({r['reminder_type']})")
-        return {"response": "\n".join(lines), "status": "ok"}
-    except: return {"response": "Nie można sprawdzić przypomnień.", "status": "error"}
 
 
 # ── CLI entry points ──
