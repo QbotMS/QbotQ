@@ -1,6 +1,45 @@
 # QBot -- CURRENT (handoff sesji)
 
 
+## Sesja 2026-07-17/18 -- Presety zywienia + kafelek/ikonka jedzenia w kalendarzu + rekonstrukcja dni + fix bialych pol
+
+Pelna decyzja: docs/DECISIONS.md (wpis 2026-07-17/18 presety zywienia). Model/dane: docs/PROJEKT_ODZYWIANIE.md (sekcja "Presety szybkiego szacunku").
+
+WYKONANE (na zywo, zweryfikowane):
+- BUG KRYTYCZNY: trigger qbot_v2.refresh_day_flags() wskazywal na skasowana tabele calendar_events -> BLOKOWAL wszystkie zapisy do intake_logs/energy_daily/sleep_daily/training_sessions/wellness_daily (zrodlo WRITE_INCONSISTENT). Fix: CREATE OR REPLACE, has_calendar z calendar_entry(day). Utrwalone: sql/refresh_day_flags_fix.sql + naglowek DEPRECATED w sql/calendar_core_v1.sql (commit 65a3edb).
+- PRESETY ZYWIENIA (3 poziomy, model ABSOLUTNY): malo=2200, normalnie=2700, popuscilem=3100 kcal (kotwice percepcji, edytowalne: ANCHORS_KCAL w qbot_nutrition_presets.py). Makra = mediana realnych logowanych dni w pasmie wokol kotwicy (auto-aktualizacja; popuscilem = low_confidence). Pierwsza wersja liczyla expenditure+-offset -- BLAD (intake nie zalezy od spalania danego dnia), przebudowane na absolutne kotwice.
+  - Modul qbot_nutrition_presets.py -> compute_presets(conn): {label,kcal,carbs_g,protein_g,fat_g,n_days,low_confidence}. Filtry: tylko realne dni (bez source ILIKE %preset%/%recovery%, bez quality='estimated'), kcal>=1200, ostatnie 30 probek.
+  - Endpointy qbot_web.py: GET /api/nutrition/preset/values?day=, POST /api/nutrition/preset/apply {day,level}, GET /api/nutrition/day-summary?day=, GET /api/nutrition/status?start=&end=.
+  - apply: intake_logs source='preset_estimate' quality='estimated' + 1 pozycja; ODMAWIA gdy jest realne jedzenie; ponowny klik kasuje poprzedni preset.
+- KALENDARZ UI (statyki poza repo: kalendarz-render.js, kalendarz.html):
+  - Kafelek "Zywienie" w otwartym dniu (loadNutriTile/#nutriBox): ZALOGOWANE (kcal+makra+lista) / SZACUNEK+etykieta / brak. Odswieza sie po apply/dodaniu (load->buildDrawer).
+  - Ikonka przy dacie w SIATCE: emoji 🍽 (to samo co przycisk sidebar) + kropka statusu: zielona=zalogowane, niebieska=preset, czerwona=brak. Status z GET /api/nutrition/status -> NUTRI w load(). (Emoji nie da sie przefarbowac -> status niesie kropka, nie kolor talerza; odrzucono kolorowany SVG - brzydki maly.)
+  - Przyciski "Dodaj" NA GORE (nad Forme), TYLKO IKONY 48x48 + tooltip (title). Sekcja "Wpisy dziennika" pod przyciski, nad Forme. Kolejnosc dbody: Dodaj -> Wpisy -> Forma -> Jazdy -> Zywienie -> Trasa.
+  - Etykiety .frm label --muted->--ink. FIX bialych pol: input/textarea/select/date color var(--ink) jasny -> #17251b ciemny + ::placeholder #9aa39a.
+  - Cache-bust kalendarz-render.js ?v=17 -> ?v=22.
+- REKONSTRUKCJA DNI (zapisane w bazie):
+  - 27.06: 7 pozycji 3292 kcal (W468/B123/T97, source='user_estimate' quality='manual') + RECZNA korekta wydatku o mecz (zegarek nie zlapal): energy_daily active 740->2090, total 3021->4371, source='garmin_live+manual_pilka'. Bilans -1079. ZALOZENIE: pelne 1350 na wierzch 740 (mozliwe drobne dublowanie z krokami).
+  - 09.07: preset "popuscilem" 3100 kcal -- potwierdzony ze wszedl.
+  - Wczesniej: 14.06 (660), 15.06 (2011), 16.07 (re-final 2429), 25.06 (2950), 26.06 (3426), 17.07 (2381).
+
+PUSTE DNI ZYWIENIA (do uzupelnienia): 10-16.07 (7 dni; 09.07 ma preset).
+
+DO DOKONCZENIA (recznie -- brak commit/push w DEV MCP):
+1. Commit JAWNYCH sciezek (bez -a):
+   qbot_web.py + qbot_nutrition_presets.py + sql/refresh_day_flags_fix.sql + sql/calendar_core_v1.sql + docs/CURRENT.md docs/DECISIONS.md docs/PROJEKT_ODZYWIANIE.md
+   msg np.: "zywienie: presety szacunku (2200/2700/3100) + /api/nutrition/{preset,day-summary,status}; fix trigger refresh_day_flags; kalendarz kafelek+ikonka (+docs)"
+   Statyki POZA repo: kalendarz-render.js, kalendarz.html
+
+ODLOZONE (decyzja przed kodem):
+- choroba -> event (zmiana modelu: choroba ma nasilenie + end_day). NIE ruszone.
+- auto-przypisanie presetu pustym dniom.
+- eviction presetu przy pozniejszym recznym wpisaniu realnego jedzenia (apply pilnuje tylko jednej strony).
+- pelne DDL calendar_entry do sql/ (osobna sesja).
+
+UWAGA porzadkowa: duzo scripts/_tmp_*.py z tej sesji + .bak w web/public i docs -- do usuniecia recznie (rm niedostepny w DEV MCP).
+
+---
+
 ## Sesja 2026-07-17 (2) -- Raport trasy: proza LLM (split+retry) + Szczegoly UI + kalendarz dzwonek
 
 Pelna decyzja: docs/DECISIONS.md (wpis 2026-07-17 (2)). Raport: docs/RAPORT_WEB.md
@@ -37,6 +76,28 @@ DO DOKONCZENIA (recznie -- brak commit/push w DEV MCP):
    docs/CURRENT.md + docs/DECISIONS.md + docs/RAPORT_WEB.md
    msg np.: "raport trasy: proza LLM split+retry; szczegoly UI; kalendarz dzwonek (+docs)"
    Statyki POZA repo (bez commitu): raport.css, raport-trasy.html, kalendarz-render.js, kalendarz.html
+
+---
+
+## Sesja 2026-07-17 (cz.2) -- DZIS hero split + aktywnosci + panel jazdy, no-store /api, Doradca+plan, zoom kafla
+
+Pelna decyzja: docs/DECISIONS.md (2026-07-17 cz.2). UI: docs/FORMA_UI_LAYOUT.md (sekcje 1/9/10).
+
+WYKONANE (na zywo, zweryfikowane):
+- Hero DZIS podzielony na 2: stan dnia | "Ostatnie aktywnosci" (3). Endpoint GET /api/forma/activities?n=3 (training_sessions). Aktywnosc 2-wierszowa: dyscyplina+kiedy / nazwa(link)+dystans+TSS. "Gdzie" z activity_name (brak kolumny lokalizacji).
+- Panel szczegolow jazdy: GET /api/forma/activity?external_id= (moc/NP/IF/HR/kadencja/kalorie/TSS + has_report). Klik nazwy -> asideShow(rideDetailHtml); DRUGI klik zamyka (toggle). has_report -> przycisk "Otworz raport trasy" -> /raport-jazdy.html?ride=<eid> w nowej karcie. Test: 23633651158 has_report=True.
+- Naprawa "wykresy nie odswiezaja sie po jezdzie": _no_cache_static ustawia Cache-Control: no-store dla /api/ (dane w bazie byly swieze; winny cache przegladarki). Zweryfikowane naglowki. UWAGA: mozliwa druga przyczyna = nocne przeliczanie fitmodel_daily biezacego dnia (osobne zadanie).
+- Doradca (coach) czyta plan: _forma_planned_events(conn, days_ahead=21) z calendar_entry kind='event'; doklejane do promptu coach + instrukcja periodyzacji. Dowod: Doradca sam rozpisal taper pod "dluga jazde 2026-07-19 >100km".
+- DZIS bez scrolla: .qtab-panel[data-qtab=Dziś] max-height calc(100dvh-168px)+overflow hidden, #dzis-board overflow hidden, .wrap padding-bottom 80->24, ciasniejszy hero.
+- Aktywnosci 2-wierszowe (dystans+TSS po prawej nazwy) -> nizszy hero.
+- Powiekszanie kafla: .tile[data-k] + openTileZoom -> modal .tilez (duza wartosc, delta, powiekszony wykres, opis+interp). Zamkniecie klik gdziekolwiek lub Esc.
+- qbot-web zrestartowany (active). Statyki: forma.html, forma-render.js ?v=32 (poza repo).
+
+DO DOKONCZENIA (recznie -- brak commit/push w DEV MCP):
+1. Commit JAWNYCH sciezek (bez -a):
+   qbot_web.py + docs/FORMA_UI_LAYOUT.md docs/DECISIONS.md docs/CURRENT.md docs/CONTEXT.md
+   msg: "forma: /api/forma/activities+activity(has_report), no-store /api, Doradca+plan, DZIS hero split + zoom kafla + docs"
+   (statyki forma.html/forma-render.js sa POZA repo -- bez commitu)
 
 ---
 

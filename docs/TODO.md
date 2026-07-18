@@ -1,330 +1,190 @@
 # QBot — TODO
 
+> Otwarte zadania. Najnowsze na gorze. To NIE jest CONTEXT.md (auto-gen) ani DECISIONS.md (decyzje).
+> Ostatnie porzadki: 2026-07-16 (usunieto rzeczy zamkniete przy/po cutoverze ModelQ v2 08.07;
+> pelna historia zamknietych pozycji w poprzedniej wersji: TODO.md.bak.* oraz DECISIONS.md).
 
-## [W-PRIME] W' zanizone w ModelQ vs Xert (zaparkowane 2026-07-08)
+---
 
-Kontekst: przy budowie cp_v3 W' liczone z par okien 120/600 s zwyklych jazd wychodzi
-~8 kJ. Xert (HIE) konsekwentnie pokazuje 20-23 kJ przez cale 90 dni (potwierdzone w
-pliku Xert_Activities CSV: HIE 20.5-23.2 kJ per jazda). To 2.5x rozjazd, systematyczny.
+# OTWARTE
 
-Diagnoza wstepna: jezdzimy submaksymalnie, wiec 2-min fragmenty rzadko sa maksymalne ->
-roznica moc(120)-moc(600) mala -> W' male. Xert lapie W' z prawdziwych przebic (Peak Power
-do 1000 W) + near-max. Zgodne z wczesniejsza notatka Michala "kotwica W' z drogi: Wbal=0%
--> CP≈FTP, W'≈22 kJ" (Krok 2 harvest dawal ~6 kJ niedoszacowania -- ten sam problem).
+## [KALENDARZ-WEB] Webowy kalendarz -- kontynuacja (dodane 2026-07-16)
 
-Benchmark do naprawy: kolumna HIE w Xert_Activities CSV (per jazda) + fizyczna kotwica
-Wbal=0% z jazdy 6.07 (min_wbal_pct=0 potwierdzone, wprime_base_kj=20.31 w fitmodel_wbal_ride).
+BAZA GOTOWA (DECISIONS.md 2026-07-16 + CURRENT.md): siatka miesiaca z odczytem konca dnia
+(CP/CTL/ATL/TSB) + jazdy + wysuwany przeglad dnia + dodawanie/usuwanie wpisow (event/feel/illness)
+w qbot_v2.calendar_entry. Endpointy /api/calendar* w qbot_web.py (NIEZACOMMITOWANE).
 
-Cel przyszlej sesji: policzyc W' zgodne z ~20-22 kJ (nie 8). Opcje: harvest near-max z
-krotkich przebic + Peak Power, albo kotwica z Wbal=0% jak w notatkach. NIE ruszac cp_v3 CP
-(ten jest OK, 242 vs Xert 244) -- tylko tor W'.
+DO ZROBIENIA (decyzja przed kodem, po jednym):
+- Podlinkowanie kart jazd w panelu -> "Raport z jazdy" (sprawdzic deep-link po external_id).
+- Nawigacja miedzy dniami wewnatrz panelu (bez zamykania).
+- Edycja istniejacych wpisow (dzis tylko dodawanie/usuwanie).
+- (po modelu kondycji) pokazanie wplywu samopoczucia/choroby w kalendarzu.
+- Commit qbot_web.py jawnymi sciezkami (robi Michal).
 
+## [KONDYCJA-DNIA] Model subiektywnej kondycji dnia -- L1/L2/L3 (dodane 2026-07-16)
 
+Decyzja zatwierdzona (DECISIONS.md 2026-07-16). Robic PO kalendarzu (wejscie = wpisy feel/illness
+z qbot_v2.calendar_entry). L1: subiektyw do LLM Analiza/Doradca (forma_analyze). L2: NOWA kolumna
+readiness_effective (osobna, waga ~0.3, NIE rusza readiness_score ani bazy 60d). L3: ukryte
+zmeczenie -> ATL (audytowalne, odwracalne). NIGDY nie rusza CP/FTP/W'. Wpiecie nocne:
+fitmodel/daily_job.py. Decyzja przed kodem KAZDEGO etapu.
 
-NAPRAWA W' == NAPRAWA LTP (odkrycie 2026-07-08): LTP u Xerta to POCHODNA sygnatury,
-nie osobny pomiar (nie ma go w Xert CSV -- liczony w locie). Wzor odtworzony z forum Xert:
-  LTP = TP - HIE/400   (HIE w dzulach)
-Weryfikacja na danych: TP=244, HIE=20.6kJ -> 244 - 20600/400 = 192.5 W = dokladnie Xert LTP.
-Nasz obecny LTP (193) trafia PRZYPADKIEM przez niezalezny fit okien 300-1800s (stad schodki).
-Wlasciwa architektura: sygnatura (CP, W', PP) -> LTP = CP - W'/400 jako pochodna.
-ALE wymaga poprawnego W': z W'=8kJ wyjdzie LTP=222 (zle); z W'=20.6kJ -> LTP=191 (dobrze).
-WNIOSEK: najpierw napraw W' (ta sekcja), potem LTP policz wzorem CP-W'/400 -- bedzie gladki,
-bez schodkow, bez osobnego fitu. To JEDEN pakiet, nie dwa problemy.
+## [ZAORAJ-STARY-KALENDARZ] Usunac stary podsystem kalendarza (dodane 2026-07-16)
 
+Decyzja: usunac (DECISIONS.md 2026-07-16). OSOBNA, ostrozna sesja: weryfikacja -> plan -> akceptacja
+-> backup (kod -> _bak_archive, DB -> zrzut) -> usuniecie. Cel: qbot_calendar_core.py +
+qbot_calendar_cli + qbot_qcal_cli (+ czesc kalendarzowa qcal_telegram) + tabele
+public.calendar_events/calendar_days/reminders/calendar_daily_snapshots/qcal_write_audit
+(+ sprawdzic sierote qbot_v2.calendar_events). ZOSTAWIC nowy webowy (qbot_v2.calendar_entry).
+PULAPKI: qcal_telegram = transport POTWIERDZEN TRAS (nie ubijac); build_snapshot = agregator dnia
+wolany przez MCP/Albert/daily_report/nutrition_cli; tool_registry -> _SYSTEM Alberta w tym samym commicie.
+
+## [W-PRIME-KOTWICA-B] Kalibracja WARTOSCI W' z kotwicy z drogi (dodane 2026-07-16)
+
+Wariant **a** (podniesienie PEWNOSCI z Wbal=0%) -- **ZROBIONE 2026-07-16**: modul
+`fitmodel/wprime_anchor.py`, krok `wprime_anchor` w `daily_job` (po modelq2_v2). Czysta kotwica
+(Wbal=0 >= 10 s, z `fitmodel_qext2_ride`) w oknie 42 dni -> `wprime_confidence='high'`; dzien z W'
+bez kotwicy -> `'medium'`; bez W' -> bez zmian. NIE zmienia wartosci `wprime_modelq_kj`.
+
+**DO ZROBIENIA -- wariant b (decyzja przed kodem):** z mocy i czasu trwania wysilku w momencie,
+gdy W'bal zszedl do 0, wstecznie policzyc ILE W' naprawde musialo byc, i USTAWIC te wartosc
+(dzis kotwica rusza tylko pewnosc, nie liczbe). Bezpieczniki konieczne: min. dlugosc/twardosc
+wysilku, usrednianie z kilku kotwic (pojedyncze zdarzenie jest zaszumione) -- dlatego b dopiero,
+gdy uzbiera sie kilka czystych kotwic. Dane wejsciowe: `fitmodel_qext2_ride.wbal_zero_first_offset_s`
+-> moc z `activity_record` wokol tego offsetu.
 
 ## [WIADRA] Low/High/Peak strain na Karoo (dodane 2026-07-07)
 
-Kontekst: silnik juz istnieje po stronie serwera -- `fitmodel/buckets.py` (`compute_buckets`),
-uzywany dzis tylko offline po jezdzie (`fitmodel/ride_buckets.py` -> tabela
-`fitmodel_ride_buckets`). Wzor: `i = moc/FTP`, `strain = i^4 * (100/3600)` (1h@FTP=100),
-progi `i<0.90` Low / `0.90-1.20` High / `i>=1.20` Peak, + lekki przelew w dol (10%/10%/5%).
+Silnik serwerowy jest (`fitmodel/buckets.py`, wzor `i=moc/FTP`, `strain=i^4*(100/3600)`, progi
+0.90/1.20, lekki przelew). UI Karoo ZATWIERDZONE (mockup `mockup_wiadra_stats.html`: 3 pionowe
+slupki #4ADE80/#FACC15/#FF5252 w miejsce `tv_wprime`). **Blokada = definicja pojemnosci (100%)
+slupka.** USTALENIE 2026-07-07 (niedokonczone): pojemnosc z MINIMALNEGO UZYTECZNEGO BUDZETU
+TRENINGOWEGO dla konkretnej WGRANEJ trasy (wariant b zawezony). Reguła: brak wgranej trasy -> brak
+budzetu -> brak pojemnosci; jest trasa -> jest pojemnosc. (Warianty a=% udzialu i c=budzet CTL
+odrzucone -- patrz historia w TODO.md.bak.*)
 
-Cel: to samo na zywo na Karoo (QExt2), w polu STATS. UI ZATWIERDZONE (mockup
-mockup_wiadra_stats.html): dolny wiersz field_stats_3x3 -- BAT/h i BLEFT BEZ ZMIAN (to bateria
-samego Karoo, nie AXS); trzecia komorka (dzis tv_wprime, etykieta "D BAT", pokazuje W' balance)
--> zamieniona na 3 pionowe kolumny-slupki, kolory z istniejacej palety (#4ADE80 Low / #FACC15
-High / #FF5252 Peak).
+NIEROZSTRZYGNIETE (do dogadania, potem kod):
+- Wzor "minimalnego uzytecznego budzetu" z profilu trasy (dystans/przewyzszenie/czas) -- model
+  jeszcze nie istnieje.
+- Co pokazac, gdy brak wgranej trasy (ukryte pole / fallback (a) / placeholder)?
+- Podzial budzetu na 3 osobne cele Low/High/Peak (nie tylko suma).
+UWAGA: wyswietlacz jest na Karoo = **QExt2 (osobny projekt)**; serwerowa czesc (pojemnosc z trasy)
+mozna zrobic w QBot, ale wyswietlanie to osobna sesja QExt2 (StrainBucketEngine + field_stats_3x3
++ SUROWA moc 1s, nie SMOOTHED_3S).
 
-OTWARTA DECYZJA (NIE rozstrzygnieta, zanim ruszymy z kodem) -- historia rozwazan 2026-07-07:
+### Ustalenia 2026-07-16 (research, BEZ decyzji -- Michal nie decyduje dzis; pole Karoo tez jeszcze nie zaprojektowane)
 
-Pytanie: co oznacza "wypelnienie" slupka, tzn. skad bierze sie pojemnosc (100%) wiaderek?
+PODSTAWA POJEMNOSCI (znaleziona): `_estimate_route_xss` w `qbot3/routes/route_report_canonical.py`
+(:405) juz liczy zgrubne obciazenie PLANOWANEJ trasy -- tnie ja na segmenty (podjazdy z
+`_climb_power`, reszta = IF_est*CP) i puszcza TEN SAM wzor W'bal/XSS co jazdy wykonane
+(per-segment, tier B = estymata, nie pomiar). Plan: te sama per-segmentowa serie mocy przepuscic
+przez `fitmodel/buckets.py` (progi 0.90/1.20 FTP) -> przewidywane Low/High/Peak trasy = trzy
+POJEMNOSCI wiader. Reuse istniejacego kodu, drobny refactor (oddac serie mocy, nie tylko sume XSS).
 
-  (a) PROSTY -- % udzialu danego wiadra w SUMIE strainu narastajacego w trakcie jazdy
-      (Low+High+Peak = 100% caly czas, wzgledem samych siebie). Gotowe do wdrozenia od razu,
-      zero modelowania. WADA (uwaga Michala): nie pokazuje nic o tym, czy jazda jest "duza" czy
-      "mala" wzgledem realnej potrzeby -- tylko wewnetrzna proporcje.
+KLUCZOWY HACZYK (przesadza architekture): **serwer NIE wie, ktora trase masz wgrana na Karoo.**
+`komoot_watch.py` analizuje trasy (zapisuje `route_id` w `komoot_seen_tours`) ale SAM NIE pushuje --
+trasa trafia na urzadzenie natywnym syncem Komoot->Karoo. "Ktora trasa zaladowana" wie tylko
+QExt2 (Karoo SDK). WNIOSEK: #4 NIE jest czysto serwerowe -- wymaga kontraktu z QExt2: urzadzenie
+musi podac `route_id` zaladowanej trasy do `/ride-readiness` (i schowac slupki, gdy go brak).
 
-  (b) ROUTE TARGET (pierwotny pomysl) -- % wykonania przewidzianego celu dla KONKRETNEJ
-      zaplanowanej trasy z profilu wysokosci/dystansu. SPRAWDZONE: taki model nie istnieje w
-      kodzie dzis (grep po predicted_tss/route_load -- zero wynikow).
+TIMING estymacji -- 2 opcje (NIEZDECYDOWANE):
+  (1) przy analizie trasy (precompute): policz raz, zapisz per route_id. Prosto, ale uzywa FTP
+      z dnia analizy (starzeje sie).
+  (2) przy starcie jazdy w `/ride-readiness`: QExt2 podaje route_id, serwer bierze SWIEZE FTP/CP
+      z ModelQ + zapisany profil trasy, liczy {cap_low,cap_high,cap_peak} na zywo. REKOMENDACJA
+      -- bo klasyfikacja segmentu na L/H/P zalezy od progu FTP (i=moc/FTP), a `_estimate_route_xss`
+      jest tani.
 
-  (c) BUDZET DZIENNY (CTL) -- rozwazono skalowanie pojemnosci wiaderek do tego samego dziennego
-      budzetu, ktorego juz uzywa RSRV (`dailyBudgetTss = CTL*5.4`, patrz sekcja [MODELQ / QExt2]
-      RSRV nizej). ODRZUCONE przez Michala 2026-07-07: "jesli wyskalujemy wiaderka pod RSRV to
-      bez sensu -- nie pokaza uzytkowo wiecej niz RSRV". Redundancja z istniejacym polem, nie
-      wnosi nowej informacji.
+BRAK WGRANEJ TRASY (NIEZDECYDOWANE): rekomendacja = **chowac 3 slupki** (komorka wraca do W'bal /
+`tv_wprime`), spojne z regula "brak trasy = brak pojemnosci". Alternatywy: fallback do trybu (a)
+wzglednego / placeholder "brak trasy". UWAGA praktyczna: jesli duzo jazd jest BEZ wgranej trasy,
+wiadra beda pokazywac sie rzadko -- do swiadomego zaakceptowania albo przemyslenia fallbacku.
 
-USTALENIE (2026-07-07, wciaz niedokonczone): pojemnosc wiaderek powinna pochodzic z MINIMALNEGO
-UZYTECZNEGO BUDZETU TRENINGOWEGO dla KONKRETNEJ trasy (nie dziennego budzetu formy, nie prostego
-% udzialu) -- czyli w praktyce zawezona, bardziej konkretna wersja (b). Kluczowa konsekwencja
-wprost od Michala: JESLI trasa NIE jest wgrana na Karoo (brak zaplanowanej trasy) -> NIE MA
-budzetu -> NIE MA pojemnosci wiaderek. JESLI trasa jest wgrana -> mamy pojemnosc.
+POJEMNOSC = pelne przewidywane L/H/P trasy, czy UŁAMEK ("minimalny uzyteczny budzet", np. 70%)?
+NIEZDECYDOWANE.
 
-NIEROZSTRZYGNIETE, do dogadania w kolejnej sesji:
-- Jak dokladnie liczyc "minimalny uzyteczny budzet treningowy" z profilu trasy (dystans/
-  przewyzszenie/spodziewany czas)? To wciaz niezbudowany model (jak w (b) wyzej), tylko teraz z
-  jasniejsza definicja tego, co ma liczyc.
-- Co pokazuje pole WIADRA, gdy trasa NIE jest wgrana (brak budzetu)? Warianty do przedyskutowania:
-  ukryte pole / powrot do trybu (a) jako fallback / inny placeholder. Michal jeszcze tego nie
-  zdecydowal.
-- Zwiazane: potrzebny podzial dziennego/trasowego budzetu na 3 osobne cele Low/High/Peak (nie
-  tylko jedna suma) -- patrz researchu nad Xert Adaptive Training Advisor (dzieli target XSS na
-  Low/High/Peak indywidualnie, na podstawie improvement rate + deficyt/nadwyzka + dostepny czas,
-  NIE na podstawie trasy -- to inny mechanizm niz to, czego szukamy tutaj, ale potwierdza, ze
-  taki rozklad na 3 liczby ma sens i jest robiony gdzie indziej).
+PODZIAL PRACY (gdy juz beda decyzje):
+- QBot-core: funkcja `capacity(route_id, ModelQ) -> {cap_low,cap_high,cap_peak}` (reuse
+  `_estimate_route_xss` + `buckets.py`) + wystawienie w `/ride-readiness`, gdy przyjdzie route_id.
+- QExt2 (osobny projekt, osobna sesja): odczyt zaladowanej trasy z SDK, przekazanie route_id do
+  `/ride-readiness`, akumulacja realnego L/H/P (SUROWA moc 1s), rysowanie slupkow.
+  **UWAGA: pole/UI wiader na Karoo JESZCZE NIE ZAPROJEKTOWANE** -- to blokuje czesc QExt2
+  niezaleznie od decyzji serwerowych.
 
-DO ZROBIENIA (dopiero po pelnej decyzji z powyzszego):
-1. Zaprojektowac (osobna sesja, decyzja przed kodem) model "minimalny uzyteczny budzet
-   treningowy" z profilu wgranej trasy + fallback dla braku trasy.
-2. Kotlin `StrainBucketEngine` (nowy plik) -- mirror `fitmodel/buckets.py` 1:1 na liczenie
-   surowego low/high/peak, zasilany moca 1s z Karoo SDK. UWAGA: potwierdzic dokladna nazwe pola
-   raw-power w SDK (W'bal dzis uzywa SMOOTHED_3S_AVERAGE_POWER -- do wiader Michal chce SUROWEJ
-   mocy 1s, to INNE pole, trzeba dopiac osobna subskrypcje). FTP juz dostepne on-device
-   (AthleteDataStore).
-3. UI: `field_stats_3x3.xml`, trzecia komorka ostatniego wiersza -> 3 kolumny (layout gotowy
-   w mockupie mockup_wiadra_stats.html, do przeniesienia 1:1 na XML + RemoteViews w
-   `StatsDataType.kt`).
-4. Reset wiader na starcie kazdej nowej jazdy.
-5. Build + CI + sideload (ta sama droga co Strona A / HR zones).
+3 DECYZJE DO PODJECIA (nie 2026-07-16): brak-trasy (chowac vs fallback) | timing (readiness vs
+precompute) | pojemnosc (pelne L/H/P vs ulamek).
 
-Powiazane, juz zrobione w tej samej sesji (patrz DECISIONS.md 2026-07-07):
-- Strefy HR na Karoo przepiete z %maxHR na Coggan %LTHR (LTHR=132bpm) -- ZROBIONE, wypchniete,
-  commit f13cd6b.
+## [FORMA-WEB] Redesign strony Forma (dodane 2026-07-16)
 
----
+Cel: wejscie -> szybka orientacja o stanie AKTUALNYM i ZMIANIE w okresie, dla formy ORAZ wellness.
+Kierunek uzgodniony (mockup v2 zaakceptowany): hero-werdykt (kolor wg TSB), kafelki "stan + zmiana"
+z przelacznikiem 1D/7D/30D/90D (Δ + sparkline, kolor wg kierunku dobrego per metryka), JEDEN wykres
+z wlaczaniem serii (checkboxy). Dane juz sa w `/api/forma/data` (`series` -> Δ i sparkline licza sie
+na froncie; backend prawie nietkniety). Do zrobienia: przepisac `forma.html` + `forma-render.js`
+(bump `?v=`). Kafelek FTP/CP = jeden (CP=FTP w MQ2 z zalozenia). Rozstrzygniete: przelacznik Δ
+wspolny czy per-kafelek; sparkline zostaje czy nie.
 
-## [KOMOOT -> KAROO] Wariant A + bramka Telegram -- ZROBIONE (2026-07-06)
+**Zrobione tej sesji (2026-07-16, czesciowo):** kafel+naglowek -> "Forma & Wellness"; wykres z interaktywnoscia (hover+tooltip, drag-zoom po X, klik=reset); LLM "Analiza" (interpretacja, nie opis) i "Doradca" (co robic) -- forma_analyze w qbot_web.py, tryby today/chart/coach; fix przestarzalego glikogenu. Do sprawdzenia: czy pelny redesign hero+kafelki-delta jest juz kompletny.
 
-Pelny obieg dziala na zywo (test "TEST 18.05" #2963663831). Szczegoly: DECISIONS.md
-2026-07-06 "Komoot -> Karoo (wariant A)". Commit 0e7bc29 + poprawka
-telegram_reply_processor + handler webhooka qbot_api.py.
+## [SPRZATANIE-MCP] Usunac martwy `qbot_mcp_adapter.py` (legacy) (dodane 2026-07-04)
 
-DOROBIONE 2026-07-06 (wszystkie 3, zweryfikowane):
-1. Transport zablokowany na POLLING -- webhook jawnie usuniety (deleteWebhook, url puste);
-   handler webhooka w qbot_api.py zostaje jako uspiony zapas.
-2. Pytanie ponowne TYLKO przy zmianie geometrii -- kolumna komoot_geo_sig (hash
-   wspolrzednych); edycja samej nazwy/meta = cicha aktualizacja bez powiadomienia.
-3. created_date -- backfill 598/598 z listy tras (bez zapytan per-trasa).
+Legacy `handle_mcp_request` (stary `meal_logs`) odpala sie tylko przy `QBOT3_ENABLED=0` -- dzis
+martwy kod, ale `qbot_api.py` importuje go na starcie (galezie `else` w POST/GET `/mcp`,
+`/mcp/health`, `/mcp/tools`). Kolejnosc (decyzja przed kodem): 1) usunac uzycia+importy w
+`qbot_api.py` (albo twardy 4xx "legacy off"); 2) skasowac plik; 3) sprawdzic `meal_log_create`
+gdzie indziej; 4) zaktualizowac CONTEXT.md + DECISIONS.md. Nie naprawia zawodnosci zapisu z ChatGPT
+(to blokady konektora OpenAI) -- usuwa mylaca martwa sciezke.
 
----
+## [POI] Bramka walidacji tresci warstw + auto-wznawianie (odlozone 2026-07-03)
 
-## [XSS] Port XSS do QExt2 + wyswietlanie (dodane 2026-07-06)
+Telegram melduje "zapisane w DB" nawet gdy dane uciete/smieciowe (writer nie rzucil wyjatku !=
+tresc OK). Do zbudowania: 1) bramka walidacji z odczytem zwrotnym z DB per warstwa (POI: zaopatrzenie
+>=~90% dystansu, >=1 pkt/tercja; nawierzchnia ~100% wezlow, frames>0); 2) auto-wznawianie tylko dla
+brakow transientnych (missing_chunks) -- gdy COMPLETE-ale-zly-content: eskalacja do czlowieka, NIE
+retry; 3) uczciwy komunikat Telegram (realne liczby, nie "zapisane w DB"). Pliki:
+`route_precompute_orchestrator.py`, `route_analyzer.py`, `scripts/route_precompute_trigger.py`.
 
-**Zrobione w QBot 2026-07-06:** XSS (odpowiednik Xert Strain Score) liczony z
-ModelQ (MPA/wBal), wzor `(moc/CP)*(1+1.0*fatigue)*(100/3600)`, kotwica 1h@CP=100,
-BETA=1.0 skalibrowane do Xert training_load (EWMA-CTL 59.6 vs 62.4). Kolumny
-xss/xss_per_h w fitmodel_wbal_ride, backfill 22 jazd, wpiete w daily_job (2d).
-Patrz DECISIONS.md 2026-07-06.
+## [ZYWIENIE] Drobiazgi po naprawie zapisu (dodane 2026-07-05)
 
-**DO ZROBIENIA:**
-1. **Port do QExt2** -- ten sam wzor jako funkcja obok tssValue()/rideReservePercent()
-   w StatsCalculator.kt, karmiona CP_eff + wBal (juz sa on-device co sekunde).
-   Zero dodatkowych zapytan do serwera w trakcie jazdy. Wymaga build+CI+sideload.
-   Rekomendacja: dopiero gdy QBot XSS pochodzi kilka dni w produkcji ("zywy
-   system wygrywa").
-2. **Wyswietlanie XSS** w raporcie jazdy / Telegramie (dzis tylko kolumna w bazie).
-3. **(Opcjonalnie) CTL/forma z XSS** -- gdy uzbiera sie wiecej danych (EWMA dopiero
-   sie rozpedza na ~7 tyg danych).
+1. Usunac walidacje sugar-type w `_validate_and_fix_meal_items` (`qbot_nutrition_db.py`) -- zeruje
+   makra/kcal.
+2. Sierota w starym `meal_logs` (id=16) -- do skasowania.
+3. `_action_exec_nutrition_delete/correct` (`qbot_mcp_adapter.py`) robi UPDATE bez filtra `source`
+   (tor martwy, ale moze nadpisac cudze wiersze) -- posprzatac razem z [SPRZATANIE-MCP].
 
----
-> Rzeczy do zrobienia, żeby nie uciekły. Najnowsze na górze.
-> To NIE jest CONTEXT.md (auto-gen) ani DECISIONS.md (decyzje). Tu leżą otwarte zadania.
+## [RSRV] Ocena wzoru po realnych danych (dodane 2026-07-06)
 
----
+Wejscie naprawione (todayFactor = readiness_score; RSRV na XSS). DO ZROBIENIA (po kilku jazdach z
+realnym todayFactor): ocenic czy sam WZOR RSRV w QExt2 (tempo XSS-penalty, odbudowa 30 min, kara za
+decoupling, budzet `CTL*5.4`) "czuje sie" jak Stamina, czy wymaga przestrojenia. Wymaga obserwacji
+na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 
-## [MODELQ / KAROO / QExt2] Odciecie Xerta + zapis QExt2 do FIT (aktualizacja 2026-07-05)
+## [DOK] MODELQ.md / dokumentacja (drobne)
 
-Kontekst: budujemy odciecie Xerta (ModelQ jako jedyne zrodlo formy) i most QExt2<->QBot przez
-plik FIT. Stan po sesji 2026-07-05 (szczegoly: DECISIONS.md wpisy 2026-07-05 (1)-(5)).
-
-ZROBIONE:
-- [x] Krok 1 -- CP z krotkich okien (120/300/600 s, ~242 W) rozdzielone od LTP z dlugich (~193 W).
-- [x] Karoo /ride-readiness przepiete na ModelQ dla FTP+LTP (W' NADAL z Xerta ~22 kJ).
-- [x] Krok 2 -- W' z harvestu near-max (koniec z artefaktem 34.8 kJ). Live: 20.3 kJ, confidence high.
-      Bez swiezego twardego fragmentu -> NULL + przedzial 13-22 kJ + low.
-- [x] Strona B -- QBot czyta 7 developer fields QExt2 z surowego FIT (tabela fitmodel_qext2_ride;
-      no-op gdy plik ich nie ma).
-- [x] Strona A -- QExt2 pisze te 7 pol @1Hz do FIT. Push przez deploy key, CI build #140 SUCCESS,
-      APK build-140 (github.com/QbotMS/QExt2 Releases). Bez tokena w jawnej postaci (twarda granica).
-- [x] Deploy key do QExt2 skonfigurowany i dziala (alias github-qext2, klon /opt/qbot/qext2_deploy).
-
-POZOSTALO (kazdy krok osobno "decyzja przed kodem"):
-1. [x] **[ZROBIONE 2026-07-06]** Przelaczono W' na Karoo /ride-readiness z Xerta na ModelQ
-   (`_modelq_ftp_ltp`, commit 79e2fe4). Kazde pole (ftp/ltp/w') nadpisuje Xerta osobno, tylko
-   gdy ModelQ ma wartosc. Zweryfikowane live: wPrimeKj=20.31 (bylo 22.4 z Xerta).
-2. **Wykres W'bal w raporcie jazdy z Xerta na ModelQ.** Blok "forma" ma juz W' z ModelQ, ale sam WYKRES
-   W'bal liczy sie na W' Xerta -- przelaczyc (byla razem z pkt 1, ale to osobny plik/miejsce
-   w kodzie -- NIE zrobione jeszcze, sprawdzic ride_report_w2.py).
-3. **Kosmetyczna etykieta zrodla w QExt2 (xertStatus -> ModelQ).** Wymaga kolejnego pushu QExt2 + CI
-   (droga jak Strona A). Drobne -- nadal nie zrobione.
-4. [x] **[ZROBIONE 2026-07-06]** Pierwszy realny test end-to-end Strona A<->B. Jazda 2026-07-06
-   09:30-10:34 (build-140), external_id 23496824503 / plik hammerhead_44954.activity.e3cad43b...fit.
-   Wszystkie 7 pol obecne w kazdym z 3783 rekordow od pierwszej sekundy. WAZNE: `ingest_all_new()`
-   NIE odpala sie automatycznie -- trzeba go wywolac recznie/cronem na katalog
-   outgoing/michal/hammerhead_originals (brak crona = fitmodel_qext2_ride zostaje pusta mimo
-   gotowych danych w FIT). Uzupelniono recznie 2026-07-06 (17 plikow, w tym ta jazda) -- DO ZROBIENIA:
-   dodac to do cyklicznego joba (daily_job.py?), zeby nie trzeba bylo robic tego recznie za kazdym razem.
-5. **W' warstwa 1 -- kotwica z drogi.** Dane juz sa (fitmodel_qext2_ride.wbal_zero_seconds=82,
-   wbal_zero_first_offset_s=3610 dla jazdy 2026-07-06) -- ZROBIC: wpiac to zdarzenie W'bal=0% jako
-   realny pomiar wyczerpania do podniesienia pewnosci W' w Kroku 2.
-6. [x] **[ZROBIONE 2026-07-06]** Krok 3 -- zrownanie W'bal w QBot z algorytmem QExt2. Nowy modul
-   `fitmodel/wbal_replay.py`. Kluczowe dostrojenie: QExt2 karmi wzor moca SMOOTHED_3S_AVERAGE_POWER
-   (SDK Karoo, nie surowa moc) -- z tym poprawiono srednia|diff| z 5.6pp do 0.49pp (izolowany test
-   formuly) wzgledem prawdziwego qext2_wbal_pct z FIT-a. Walidacja end-to-end (pelny potok: baza +
-   ModelQ FTP/W' + bramka postoj/dropout, BEZ podgladania urzadzenia): koncowe W'bal 33.5% (prawdziwe
-   33%). [x] [ZROBIONE 2026-07-06] wpieto jako krok 2d w daily_job.py -> tabela
-   fitmodel_wbal_ride (status/min/final/segments_json per jazda). Backfill 325
-   kandydatow, 22 OK. Wyswietlanie w raporcie/Telegramie to OSOBNA, niezrobiona
-   sprawa (na razie cichy backend zbierajacy dane).
-7. **[ZROBIONE 2026-07-05, skorygowano 2026-07-06] Ingest activity_record 1Hz JUZ NIE STOI.**
-   DECISIONS.md wpis 2026-07-05 (7): dopiety cron co 15 min (9-23), backfill przyrostowy
-   (`backfill 20 0 2025-01-01 report`). Zweryfikowane na zywo 2026-07-06: `activity_record`/
-   `activity_fit_raw` siegaja do 2026-07-04 (329 jazd, 2.35 mln rekordow 1Hz) -- TYLE SAMO co
-   `training_sessions` (Garmin co 15 min) ma dla cyklingu; brak nowszych jazd = jeszcze nie ma ich
-   w Garmincie (opoznienie Karoo->Garmin, NIE ingest QBota). Krok 3 (W'bal tick-po-ticku z QExt2)
-   jest wiec ODBLOKOWANY danymi -- do zrobienia jak dojdzie czas.
-   DROBNA ZASZLOSC (nieblokujaca): 9 plikow FIT z 30.06 w `/opt/qbot/artifacts/fit/` nie ma wiersza
-   w `activity_fit_raw` (0 z nich ma parse_error) -- do wyjasnienia przy okazji, nie dzis.
-   KANONICZNE ZRODLO SUROWEGO FIT dla wykonanych jazd (Garmin, 338 plikow na dysku, ~18 mies. wstecz)
-   = `/opt/qbot/artifacts/fit/<external_id>.fit` + tabela `qbot_v2.activity_record`.
-   `outgoing/michal/hammerhead_originals/` to INNY, WASKI katalog (bezposredni sync Hammerhead->dysk,
-   ~9 tygodni wstecz, tylko do mostu QExt2 Strona B / fitmodel_qext2_ride) -- NIE uzywac go jako
-   zamiennika activity_record/aktywnosci wykonanych jazd. Skalarne MMP (CP/W'/LTP/Peak Power,
-   Warstwa 1) i tak nie potrzebuja zadnego z tych katalogow -- jada z training_sessions.mmp_*.
-
+- MODELQ.md nie opisuje `readiness_score/readiness_label/readiness_note` (kolumny sa w live DB i
+  uzywane) -- dopisac.
+- (opcjonalnie) usunac martwe kolumny `cp_v3_w`/`wprime_v3_kj` z samej tabeli `fitmodel_daily`
+  (z payloadu Formy juz usuniete 2026-07-16). Usuniecie kolumn = decyzja przed kodem (destrukcja).
 
 ---
 
-## [MODELQ / QExt2] RSRV -- ocena i mozliwe przestrojenie po realnych danych (dodane 2026-07-06)
+# ZROBIONE (skrot; szczegoly w DECISIONS.md i TODO.md.bak.*)
 
-**Kontekst:** RSRV mial byc odpowiednikiem Garmin Stamina ("ile baku zostalo na dzis").
-Silnik w QExt2 (`rideReservePercent`) juz jest sensownie zaprojektowany pod ten cel:
-start = `todayFactor*100`, odejmuje TSS (wzgledem budzetu z CTL) + kara za rozjazd
-HR/moc, powolna odbudowa (tau=30min) na postojach. PROBLEM: nigdy nie dostawal
-prawdziwego `todayFactor` (zawsze default 1.0 z `/ride-readiness`) -- wiec RSRV
-zawsze "pelne" bez wzgledu na realna forme dnia.
-
-**Zrobione 2026-07-06:** wpieto `readiness_score` (ModelQ, HRV+RHR+sen) jako
-`todayFactor` w `/ride-readiness` (patrz DECISIONS.md). To naprawia WEJSCIE.
-
-**DO ZROBIENIA (nie teraz -- po obejrzeniu kilku prawdziwych jazd z realnym
-todayFactor):** ocenic czy sam WZOR RSRV w QExt2 (tempo TSS-penalty, tempo
-odbudowy 30min, kara za decoupling) faktycznie "czuje sie" jak Stamina, czy
-wymaga przestrojenia. To wymaga danych z obserwacji (nie zgadywania na sucho)
-i prawdopodobnie kolejnego pushu QExt2 + CI, jesli cos trzeba zmienic w kodzie
-kotlinowym (nie tylko w danych wejsciowych z serwera).
-
-**[ZROBIONE 2026-07-07] Przepieto RSRV z TSS na XSS.** Odkryto na zywo, ze XSS
-byl juz policzony on-device (`StatsCalculator.kt: xssAccum`/`xssValue()`) --
-TODO nizej ([XSS] Port XSS do QExt2) bylo NIEAKTUALNE, port juz istnial.
-Zmiana: `rideReservePercent` dostaje teraz `effectiveXss` (baza dzienna + sesja,
-z `statsCalc.xssValue()`) zamiast `effectiveTss`. TSS/`tssValue()` NIETKNIETE --
-zostaja wylacznie dla wlasnego pola statystyk "TSS", juz nie karmia RSRV.
-Nowe klucze persystencji w `AthleteDataStore` (`ReserveDailyXssBase(Date)`) --
-CELOWO nie nadpisano starych TSS-owych, zeby wczorajszy zapisany TSS nie zostal
-pomylony z dzisiejszym XSS po aktualizacji. Ta sama logika resetu (nowy
-dzien / sleep refresh / cleanup >500) zreplikowana 1:1 dla XSS. Budzet dzienny
-w `rideReservePercent` (`CTL*5.4`) zostal BEZ ZMIAN -- to przyblizenie (TSS i
-XSS maja te sama kotwice 1h@prog=100, ale to nie identyczna liczba dla tej
-samej jazdy) -- do obejrzenia na zywych jazdach, czy RSRV "czuje sie" dobrze
-w nowym tempie wyczerpywania (XSS mocniej kara zrywy przez zmeczenie niz TSS).
-Pliki: `AthleteDataStore.kt`, `RideDataAggregator.kt`. Commit `406f9d4` w
-`QbotMS/QExt2` main, push potwierdzony. Michal: build+CI+sideload jak zawsze.
-
----
-
-## [SPRZATANIE] Usunac martwy `qbot_mcp_adapter.py` (legacy konektor) (dodane 2026-07-04)
-
-**Kontekst (potwierdzone na zywo):** `/mcp` (qbot.cytr.us/mcp, serwuje `qbot-api`) rozgalezia sie na fladze `QBOT3_ENABLED`. Flaga **=1** we wszystkich aktywnych env (`qbot-api.env`, `.env`, `.env.local`) => `/mcp` zawsze wola `handle_qbot3_mcp` (qbot3 -> `intake_log_create`, nowy zeszyt `intake_logs`). Legacy `handle_mcp_request` z `qbot_mcp_adapter.py` (-> `meal_log_create` -> stary `meal_logs` + kopia do intake w `try/except: pass`) odpala sie TYLKO przy fladze =0 => obecnie **martwy kod**. Potwierdzone: ChatGPT i Claude uzywaja tego samego `https://qbot.cytr.us/mcp/`. W bazie 0 wpisow w starym `meal_logs` za ost. tydzien = legacy droga nieuzywana.
-
-**Do zrobienia (decyzja przed kodem):**
-1. UWAGA (sprawdzone 2026-07-04): `qbot_api.py` importuje z `qbot_mcp_adapter` NA STARCIE (`handle_mcp_request`, `_tool_qbot_mcp_status`, `_tool_qbot_mcp_tools_list`, `_validate_mcp_access`) i uzywa ich w gałęziach `else` (flaga=0) w: POST `/mcp` (1413), GET `/mcp` (mcp_root), `/mcp/health`, `/mcp/tools`. Samo skasowanie pliku => ImportError => CRASHLOOP qbot-api. Najpierw usunac WSZYSTKIE te uzycia/importy.
-2. Usunac import + gałąź legacy w `qbot_api.py` (albo zostawic twardy 4xx "legacy off").
-3. Usunac `qbot_mcp_adapter.py`; sprawdzic czy `meal_log_create` uzywane gdziekolwiek indziej zanim tkniemy.
-4. Zaktualizowac `CONTEXT.md` (znika wzmianka o "oddzielnym adapterze ChatGPT") i `DECISIONS.md`.
-
-**Uwaga:** to NIE naprawia zawodnosci zapisu z ChatGPT (ta jest po stronie blokad konektora OpenAI). To usuwa mylaca martwa sciezke i trwale kasuje ryzyko "dwoch zeszytow".
-
----
-
-## Bramka walidacji treści POI/warstw + auto-wznawianie pobierania (odłożone 2026-07-03)
-
-**Kontekst / dlaczego:** Telegram melduje „✅ Analiza zakończona. Dane zapisane w DB", nawet gdy dane są ucięte/śmieciowe. Przyczyna (potwierdzona na kodzie):
-- `route_precompute_orchestrator._run_job` oznacza warstwę `complete`, jeśli writer NIE rzucił wyjątku — nie sprawdza treści.
-- `route_precompute_trigger._precompute_complete` → ✅, gdy wszystkie warstwy `complete` (+ surface/frames OK). Zero walidacji zawartości.
-- `technical_completeness=COMPLETE` mierzy tylko pokrycie fragmentów pobierania (missing_chunks), nie poprawność treści.
-- Liczniki `summary` liczą listę PRZED obcięciem — mogą się rozjeżdżać z tym, co realnie w DB (był bug `[:15]/[:12]` w analizatorze, już podniesiony do `[:200]`).
-
-**Do zbudowania:**
-1. **Bramka walidacji z odczytem zwrotnym z DB** po każdej warstwie (progi per warstwa):
-   - POI: zaopatrzenie sięga ~≥90% dystansu trasy; ≥1 punkt w każdej tercji; atrakcje po bramce jakości.
-   - nawierzchnia: pokrycie ~100% węzłów osi; frames > 0.
-2. **Auto-wznawianie (ograniczone) — tylko braki transientne:**
-   - Jeśli `missing_chunks` obecne (sieć/timeout/throttle) → pętla celowanego retry (analizator MA już: retry ×3 + backoff, bisekcję, `retry_payload_json`, `merge`, wejście `retry_mode`/`retry_chunk_id`) + scalanie; limit np. 2–3 rundy.
-   - Jeśli bramka nie przechodzi, a `missing_chunks` puste (COMPLETE-ale-zły-content = BŁĄD LOGIKI, jak dawny cap) → NIE wznawiać (odtworzy ten sam bubel); **eskalować do człowieka**.
-3. **Uczciwy komunikat Telegram:** ✅ tylko po przejściu bramki; inaczej ⚠️ z konkretem („zaopatrzenie tylko do 48/106 km", „POI: brak w Q3"); pokazywać realne liczby (sklepy X, atrakcje Y, % nawierzchni), nie suche „Dane zapisane w DB".
-
-**Zakres plików:** `qbot3/routes/route_precompute_orchestrator.py`, `qbot3/artifacts/route_analyzer.py` (retry/merge już są), `scripts/route_precompute_trigger.py` (komunikat + gating). Decyzja przed kodem: najpierw plan progów.
-
-
----
-
-## [ZYWIENIE] Pozostale drobiazgi po naprawie zapisu (dodane 2026-07-05)
-
-Kontekst: glowna naprawa "jedzenie znika" zrobiona i zweryfikowana (DECISIONS.md 2026-07-05 (6)).
-Zostaly 3 drobne, NIEBLOKUJACE plasterki ze spec TS-2026-07-05-NUTRITION-WRITE-FIX.md:
-
-1. Usunac walidacje sugar-type w `_validate_and_fix_meal_items` (qbot_nutrition_db.py) -- zeruje
-   makra/kcal niezaleznie od reszty (trzecia, potwierdzona przyczyna objawu "zera w makrach").
-2. Sierota w starym `meal_logs` (id=16) -- do sprzatniecia.
-3. `_action_exec_nutrition_delete/correct` (qbot_mcp_adapter.py) robi UPDATE bez filtra `source`
-   -- tor martwy, ale moze po cichu nadpisac cudze wiersze; posprzatac przy okazji.
-
-
-## [FORMA] Kafelek WEB "Forma (ModelQ)" -- szkielet gotowy, czeka na CTL/ATL/TSB (dodane 2026-07-07)
-
-**Zrobione:** `/forma.html` + `/forma-render.js` (poza repo, `/opt/qbot/web/public/`) + endpoint
-`GET /api/forma/data?start=&end=` (`qbot_web.py`: `_build_forma_data`, `forma_data`). Karta "Dzis"
-(FTP_est, CP, LTP, W'+pewnosc, W/kg, glikogen, HRV, RHR, sen, gotowosc z pelnym uzasadnieniem),
-wykres 90 dni domyslnie (presety 7/30/90/365 + wlasny zakres), gestre serie jako linie, dziurawe
-jako punkty. Kafelek w `index.html`. Zweryfikowane na zywych danych (patrz DECISIONS.md
-2026-07-07 (2)).
-
-**Otwarte / nastepny krok:**
-- [x] **[ZROBIONE 2026-07-07]** Sekcja CTL/ATL/TSB podpieta -- `_build_training_load_latest()`
-  w `qbot_web.py`, warianty "raw" jako glowne ctl/atl/tsb, "plus" jako dodatkowe pola w
-  payloadzie (front ich jeszcze nie czyta). Szczegoly: DECISIONS.md 2026-07-07 (6).
-- MODELQ.md nie opisuje `readiness_score/readiness_label/readiness_note` (kolumny sa w live
-  DB i uzywane w tym kafelku) -- dopisac przy okazji do dokumentu.
-- Do rozwazenia pozniej: normalizacja skal na wykresie (dzis dwie osie Y, W i "inne" -- przy
-  wlaczeniu kilku serii z prawej osi jednoczesnie moze byc nieczytelnie, np. HRV (ms) i
-  readiness_score (-1..1) na tej samej osi). Nie blokujace na start.
-
-
-## [FORMA-MODEL] FTP tlumienie + CP/LTP ratchet-zanik + W' zanik -- WDROZONE 2026-07-07, patrz DECISIONS.md (4)
-
-Pelna diagnoza i decyzja: `DECISIONS.md` 2026-07-07 (3). Skrot zadan do wdrozenia:
-
-1. **FTP_est** (`fitmodel/ftp_resolver.py`): dopisac brakujace tlumienie z MODELQ.md 4.3
-   (`zmiana_tyg = clip(+/-0.5*delta)`) -- dzis nie istnieje w kodzie mimo ze opisane w dokumencie.
-2. **CP/LTP** (`fitmodel/cp_wprime.py`, `_envelope_curve`): dodac ratchet (rekord = wartosc+data,
-   bez sztywnego okna 90d -- rozwazyc dlugie okno np. 365d albo osobna tabele) + liniowy zanik
-   60->120 dni od daty rekordu do podlogi = biezacy FTP_est. Po 120 dniach trzyma podloge.
-3. **W'** (`fitmodel/cp_wprime.py`, `_wprime_harvest`): dodac liniowy zanik 60->120 dni (dzis
-   `WPRIME_FRESH_DAYS=60` skacze prosto na przedzial 13-22 kJ) do podlogi = 13 kJ (dolna granica,
-   nie srodek -- zachowawczo, bo steruje pacingiem).
-4. Do rozstrzygniecia PRZED kodem: gdzie trzymac (wartosc, data) rekordu per dlugosc -- nowe
-   kolumny w `fitmodel_daily` czy osobna tabela `fitmodel_cp_records`. Sugestia: osobna tabela
-   (per duration: 120/300/600/1200/1800s), bo `fitmodel_daily` jest per-dzien a rekord to
-   per-dlugosc-wysilku, niezalezny od dnia.
-5. **ZROBIONE (2026-07-07):** backfill `fitmodel_daily` wykonany -- 553/553 dni (2025-01-01..2026-07-07), 0 bledow. FTP tlumienie + CP/LTP/W' ratchet+zanik przeliczone na zywo (bez tabeli `fitmodel_cp_records`, ktora okazala sie psuc przeliczanie starych dni -- patrz DECISIONS.md 2026-07-07 (5)). Test 5->6 marca potwierdzony: +27,3W surowo -> +14,9W po tlumieniu.
+- **2026-07-16 (kalendarz WEB):** nowy modul kalendarza (qbot_v2.calendar_entry) -- siatka
+  miesiaca z odczytem konca dnia (CP/CTL/ATL/TSB) + jazdy + wysuwany przeglad dnia +
+  dodawanie/usuwanie wpisow (event/feel/illness); endpointy /api/calendar* (qbot_web.py).
+  Forma: rename "Forma & Wellness" + interaktywny wykres + LLM Analiza/Doradca (forma_analyze).
+- **2026-07-16:** #3a kotwica W' (pewnosc z Wbal=0%); sprzatanie `cp_v3_w`/`wprime_v3_kj` z
+  `_FORMA_FIELDS`; auto-przeliczenie ModelQ po ingescie jazdy (`qbot_activity_ingest`); Albert +
+  deterministyczny routing pytan o CP/FTP/W'/forme -> ModelQ (`fitness_status`), Xert = benchmark.
+- **2026-07-14..16:** raport jazdy (W'bal z QExt2/ModelQ + realny pomiar z FIT, wind bar,
+  decoupling, chipy readiness/TSB/CP_eff); FORMA wellness (writer sleep/hrv/rhr/weight w MQ2,
+  reprocess 8 dni); glikogen NULL vs 0.
+- **2026-07-08 (CUTOVER):** ModelQ v2 jedynym modelem (v1 -> archive/modelq_v1). Krok 1 (CP z
+  krotkich okien, oddzielony od LTP), Krok 2 (W' harvest ~20 kJ), Krok 3 (W'bal = algorytm QExt2).
+- **Karoo/raport na ModelQ:** `/ride-readiness` FTP+LTP+W' z ModelQ (Xert tylko fallback);
+  wykres W'bal w raporcie jazdy na modelq2 + realny QExt2.
+- **Komoot->Karoo** (wariant A + bramka Telegram, polling). **Ingest activity_record 1Hz** (cron 15 min).
+- **XSS** policzony w QBot i on-device (QExt2); **RSRV** na XSS + todayFactor z readiness_score.
+- **FORMA tile** + CTL/ATL/TSB (`_build_training_load_latest`). **Strefy HR** Coggan %LTHR=132 na Karoo.
+- **QExt2 Strona A<->B**: 7 developer fields @1Hz do/z FIT (deploy key, CI, sideload).
