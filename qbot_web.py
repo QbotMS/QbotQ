@@ -3655,6 +3655,19 @@ def _fetch_attraction_images(poi, limit=24, max_bytes=3000000, timeout=6.0):
     return out
 
 
+@app.get("/api/report/mail-recipients")
+def report_mail_recipients():
+    """Ostatnio uzyte adresy odbiorcow raportu (historia po stronie serwera)."""
+    conn = _db_conn()
+    try:
+        rows = conn.execute(
+            "SELECT email FROM qbot_v2.report_mail_recipients ORDER BY last_used DESC LIMIT 12"
+        ).fetchall()
+    finally:
+        conn.close()
+    return {"items": [(r["email"] if isinstance(r, dict) else r[0]) for r in rows]}
+
+
 @app.post("/api/report/send-email")
 def report_send_email(snapshot_id: int = Query(...), to: str = Query(...)):
     """Wysyla mailem DOKLADNIE zapisany raport (snapshot) - bez ponownego liczenia,
@@ -3727,6 +3740,19 @@ def report_send_email(snapshot_id: int = Query(...), to: str = Query(...)):
     except Exception as e:
         raise HTTPException(status_code=502, detail="Nie udalo sie wyslac maila: %s" % e)
 
+    try:
+        _rc = _db_conn()
+        try:
+            _rc.execute(
+                "INSERT INTO qbot_v2.report_mail_recipients (email, last_used, use_count) "
+                "VALUES (%s, now(), 1) ON CONFLICT (email) DO UPDATE "
+                "SET last_used=now(), use_count=qbot_v2.report_mail_recipients.use_count+1",
+                (to,))
+            _rc.commit()
+        finally:
+            _rc.close()
+    except Exception as _re:
+        print("recipient save error:", _re)
     return {"status": "ok", "to": to, "has_map": bool(map_png), "has_chart": bool(chart_png), "has_gpx": bool(gpx_xml)}
 
 
