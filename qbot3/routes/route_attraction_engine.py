@@ -239,8 +239,9 @@ def classify(row: dict[str, Any], entity: dict[str, Any]) -> tuple[str | None, s
         ("castle_palace", ("zamek", "palac", "dwor", "castle", "palace", "manor", "schloss", "chateau")),
         ("archaeology", ("archeolog", "grodzisk", "kurhan", "megalit", "archaeological", "prehistor")),
         ("fortification", ("fort ", "twierd", "fortress", "bunkier", "bunker", "city gate", "brama miejska")),
-        ("industrial_heritage", ("zabytek techniki", "kopaln", "huta", "fabryk", "mlyn", "wiatrak", "water tower", "wieza wodna", "industrial")),
+        ("industrial_heritage", ("zabytek techniki", "kopaln", "huta", "fabryk", "browar", "mlyn", "wiatrak", "water tower", "wieza wodna", "industrial")),
         ("historic_town", ("rynek", "stare miasto", "old town", "market square", "ratusz", "town hall", "zabytkowe centrum")),
+        ("historic_site", ("reduta", "bastion", "most kamienny", "dom wagi miejskiej")),
         ("museum", ("muzeum", "museum", "gallery", "galeria")),
         ("nature", ("rezerwat", "nature reserve", "park krajobrazowy")),
     ]

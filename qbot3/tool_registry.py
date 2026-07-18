@@ -2701,8 +2701,8 @@ def _load_route_attractions_tool() -> dict[str, Any]:
         "callable": _wrapper,
         "category": "routes",
         "description": (
-            "Wlacza lub wylacza kanoniczne ATRAKCJE dla wskazanej trasy. Zrodla: Wikipedia, Wikidata i OSM; "
-            "Google jest tylko pomocniczym sygnalem rankingu. Korytarz do ok. 2 km, preferowane krotkie postoje "
+            "Wlacza lub wylacza kanoniczne ATRAKCJE dla wskazanej trasy. Wikipedia i Wikidata sa pierwszym sitem; "
+            "Google dostarcza lokalizacje i pomocniczy sygnal rankingu. Korytarz do ok. 2 km, preferowane krotkie postoje "
             "historyczne. Wlaczenie przelicza tylko osobna warstwe atrakcji; nie odswieza sklepow, wody ani "
             "jedzenia. Wylaczenie tylko ukrywa atrakcje i takze nie rusza logistyki. WYMAGA route_id. Uzyj gdy user mowi "
             "np. 'wlacz/pokaz atrakcje dla trasy X' albo 'wylacz atrakcje dla trasy X'."

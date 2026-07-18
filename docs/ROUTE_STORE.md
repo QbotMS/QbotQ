@@ -69,7 +69,7 @@ Kanał admin/DEV: narzędzie `dev_route_store_purge` w `/root/qbot-dev-mcp/serve
 Rejestr: `qbot3/tool_registry.py`; prompt: `qbot3/llm/albert.py` (twarda reguła: zmiana narzędzia = aktualizacja promptu w tym samym kroku).
 - `route_list` (odczyt) — wypisuje trasy w bazie / stan wersji.
 - `route_recompute` (write) — przeliczenie AKTYWNEJ wersji (woła `ensure_route_precompute`). Starsza wersja = najpierw promote+recompute (odłożone).
-- `route_attractions` (write) — włącza/wyłącza osobną kanoniczną warstwę atrakcji. Włączenie pobiera Wikipedię/Wikidane/OSM i publikuje wynik atomowo; Google jest tylko sygnałem pomocniczym. Operacja nie przelicza `route_poi_layer`, więc nie rusza sklepów, jedzenia ani wody. Analiza Trasy i Planer czytają ten sam opublikowany ranking; bez migracji lub pełnego wyniku działają na starym źródle.
+- `route_attractions` (write) — włącza/wyłącza osobną kanoniczną warstwę atrakcji. Wikipedia/Wikidane są pierwszym sitem, a Google lokalizuje i wspiera ranking kandydatów przechodzących wspólną bramkę semantyczną. Wynik publikuje się atomowo i tylko przy gęstości co najmniej 10 kandydatów/100 km. Operacja nie przelicza `route_poi_layer`, więc nie rusza sklepów, jedzenia ani wody. Analiza Trasy i Planer czytają ten sam opublikowany ranking; bez migracji lub pełnego wyniku działają na starym źródle.
 - `route_delete` (write, **dwustopniowo**) — bez `confirm` zwraca PODGLĄD; realne kasowanie dopiero po `confirm=true` (po wyraźnej zgodzie użytkownika). Prompt wymusza: najpierw podgląd, pytanie, potem kasowanie.
 
 ## 7. Trzy warstwy bezpieczeństwa zapisów (otwarte WĄSKO dla tras)

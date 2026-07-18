@@ -102,9 +102,13 @@ def test_route_attractions_tool_accepts_canonical_komoot_route_ids():
     assert "A-Za-z0-9._:-" in section
 
 
-def test_canonical_source_explicitly_enables_osm_discovery():
+def test_canonical_source_keeps_google_separate_from_semantic_ranking():
     source = (Path(__file__).parents[1] / "qbot3" / "routes" / "route_attraction_sources.py").read_text()
-    assert '"overpass_enabled": True' in source
-    assert "open_analysis" in source and "google_analysis" in source
-    assert '"attractions_enabled": False' in source
+    assert "google_analysis" in source
     assert '"overpass_enabled": False' in source
+
+
+def test_store_requires_candidate_density_before_publish():
+    source = inspect.getsource(store.ensure_route_attractions)
+    assert "required_candidates" in source
+    assert "publishable" in source

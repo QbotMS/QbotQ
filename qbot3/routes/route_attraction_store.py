@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from datetime import datetime, timezone
 from typing import Any
 
@@ -146,6 +147,11 @@ def ensure_route_attractions(*, route_id: str | int | None = None, route_base_id
             raise ValueError("route has no usable distance")
         discovered = discover_sources(source_path, route_id=str(base["route_id"]), route_distance_km=distance_km)
         ranked = rank_candidates(discovered["source_rows"], discovered["google_rows"], discovered["wikidata"], distance_km)
+        required_candidates = max(1, math.floor(distance_km / 100.0 * 10.0))
+        candidate_count = int(ranked["summary"].get("candidates") or 0)
+        publishable = bool(discovered["complete"] and candidate_count >= required_candidates)
+        discovered["source_status"]["required_candidates"] = required_candidates
+        discovered["source_status"]["candidate_count"] = candidate_count
         digest = result_hash(ranked)
 
         with conn.transaction():
@@ -158,14 +164,14 @@ def ensure_route_attractions(*, route_id: str | int | None = None, route_base_id
                 RETURNING run_id
                 """,
                 (int(base["route_base_id"]), str(base["route_version_key"]), ALGORITHM_VERSION,
-                 "complete" if discovered["complete"] else "partial", digest,
+                 "complete" if publishable else "partial", digest,
                  json.dumps(discovered["source_status"], ensure_ascii=False),
                  json.dumps(ranked["summary"], ensure_ascii=False), datetime.now(timezone.utc),
                  datetime.now(timezone.utc)),
             ).fetchone()
             run_id = int(created["run_id"] if isinstance(created, dict) else created[0])
             _insert_layer(conn, run_id, int(base["route_base_id"]), ranked["candidates"])
-            if discovered["complete"]:
+            if publishable:
                 conn.execute(
                     "UPDATE qbot_v2.route_attraction_run SET published=false "
                     "WHERE route_base_id=%s AND published=true",
@@ -177,7 +183,7 @@ def ensure_route_attractions(*, route_id: str | int | None = None, route_base_id
                 )
         conn.commit()
         return {
-            "status": "PUBLISHED" if discovered["complete"] else "PARTIAL_KEPT_PREVIOUS",
+            "status": "PUBLISHED" if publishable else "QUALITY_PARTIAL_KEPT_PREVIOUS",
             "route_id": base["route_id"], "route_base_id": int(base["route_base_id"]),
             "route_version_key": str(base["route_version_key"]),
             "run_id": run_id, "algorithm_version": ALGORITHM_VERSION,
