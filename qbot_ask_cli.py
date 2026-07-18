@@ -5,7 +5,6 @@ Uses existing:
 - qbot_query_router.query() for read queries + action_draft + planning_fact_drafts
 - qbot_capabilities.CAPABILITIES for capability registry
 - qbot_nutrition_db.meal_log_create / daily_summary_compute for nutrition writes
-- qbot_calendar_core.reminder_create / event_create / build_snapshot for QCal writes
 """
 
 import argparse
@@ -18,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # ── Allowed action types ────────────────────────────────────────────────
 
-ALLOWED_ACTION_TYPES = {"nutrition_log_add", "qcal_reminder_add", "qcal_event_add"}
+ALLOWED_ACTION_TYPES = {"nutrition_log_add"}
 
 
 # ── Safety check ─────────────────────────────────────────────────────────
@@ -57,10 +56,6 @@ def evaluate_action_safety(action_draft: dict) -> dict:
         required = ["date", "kcal_total"]
         if not payload.get("meal_name") and not payload.get("raw_text"):
             required.append("meal_name_or_raw_text")
-    elif action_type == "qcal_reminder_add":
-        required = ["date", "title"]
-    elif action_type == "qcal_event_add":
-        required = ["date_start", "title"]
 
     missing = [f for f in required if not payload.get(f)]
 
@@ -137,71 +132,11 @@ def _exec_nutrition_log(payload: dict, idem_key: str) -> dict:
 
     summary = daily_summary_compute(day)
 
-    try:
-        from qbot_calendar_core import build_snapshot
-        build_snapshot(day)
-    except Exception:
-        pass
-
     return {
         "status": "ok",
         "record": {"id": meal.get("id"), "meal_name": meal_name, "kcal": kcal, "date": day},
         "summary": summary,
     }
-
-
-def _exec_qcal_reminder(payload: dict, idem_key: str) -> dict:
-    from qbot_calendar_core import reminder_create, build_snapshot
-
-    day = payload.get("date") or __import__("datetime").date.today().isoformat()
-    title = payload.get("title") or payload.get("message", "") or "przypomnienie"
-    time_str = payload.get("time")
-    rem_type = payload.get("reminder_type", "custom")
-    channel = payload.get("channel", "cli")
-    recurrence = payload.get("recurrence_rule")
-
-    reminder = reminder_create(
-        date_str=day,
-        title=title,
-        time_str=time_str,
-        reminder_type=rem_type,
-        message=title,
-        channel=channel,
-        recurrence=recurrence,
-    )
-
-    try:
-        build_snapshot(day)
-    except Exception:
-        pass
-
-    return {"status": "ok", "record": reminder}
-
-
-def _exec_qcal_event(payload: dict, idem_key: str) -> dict:
-    from qbot_calendar_core import event_create, build_snapshot
-
-    date_start = payload.get("date_start") or payload.get("date") or __import__("datetime").date.today().isoformat()
-    title = payload.get("title", "wydarzenie")
-    time_start = payload.get("time_start") or payload.get("time")
-    event_type = payload.get("event_type", "note")
-    description = payload.get("description")
-    date_end = payload.get("date_end")
-
-    event = event_create(
-        date_start=date_start,
-        title=title,
-        event_type=event_type,
-        description=description,
-        date_end=date_end,
-    )
-
-    try:
-        build_snapshot(date_start)
-    except Exception:
-        pass
-
-    return {"status": "ok", "record": event}
 
 
 def execute_action(action_draft: dict) -> dict:
@@ -212,10 +147,6 @@ def execute_action(action_draft: dict) -> dict:
 
     if action_type == "nutrition_log_add":
         return _exec_nutrition_log(payload, idem_key)
-    elif action_type == "qcal_reminder_add":
-        return _exec_qcal_reminder(payload, idem_key)
-    elif action_type == "qcal_event_add":
-        return _exec_qcal_event(payload, idem_key)
     else:
         return {"status": "error", "error": f"Unknown action_type: {action_type}"}
 

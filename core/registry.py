@@ -24,10 +24,6 @@ _REGISTERED_MODULES: list[str] = [
 
 # Akcje nie należące jeszcze do żadnego modułu — usuwać w miarę dodawania modułów
 _BASE_ALLOWLIST: set[str] = {
-    "qcal_reminder_add",
-    "qcal_event_add",
-    "qcal_event_update",
-    "qcal_event_cancel",
     "planning_fact_add",
     "planning_fact_update",
     "garmin_workout_create",

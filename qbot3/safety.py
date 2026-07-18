@@ -322,12 +322,6 @@ def _check_duplicate(action_type: str, idem_key: str) -> dict[str, Any] | None:
             if cur.fetchone():
                 return {"status": "DUPLICATE", "action_type": action_type, "idempotency_key": idem_key, "note": "already processed"}
             cur.execute(
-                "SELECT id FROM qcal_write_audit WHERE idempotency_key=%s LIMIT 1",
-                (idem_key,),
-            )
-            if cur.fetchone():
-                return {"status": "DUPLICATE", "action_type": action_type, "idempotency_key": idem_key, "note": "already processed"}
-            cur.execute(
                 "SELECT id FROM garmin_workout_write_audit WHERE idempotency_key=%s LIMIT 1",
                 (idem_key,),
             )

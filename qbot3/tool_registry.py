@@ -85,23 +85,6 @@ def _load_readiness_tool() -> dict[str, Any]:
     }
 
 
-def _load_calendar_snapshot_tool() -> dict[str, Any]:
-    from qbot_calendar_core import build_snapshot
-    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
-        date_str = args.get("date", _today())
-        q = args.get("_question", "")
-        if not args.get("date"):
-            d, _ = _resolve_date(q)
-            date_str = d.isoformat()
-        snap = build_snapshot(date_str)
-        return snap
-    return {
-        "callable": _wrapper,
-        "category": "calendar",
-        "description": "Dashboard dnia: calendar events, reminders, meals, wellness, health data. Use only for explicit day-summary / dashboard / snapshot / status-day requests.",
-        "args_schema": {"date": {"type": "string", "description": "ISO date (optional, default: today or resolved from question)"}},
-        "safety": "read",
-    }
 
 
 def _load_planning_facts_tool() -> dict[str, Any]:
@@ -735,82 +718,8 @@ def _load_nutrition_range_summary_tool() -> dict[str, Any]:
     }
 
 
-def _load_qcal_events_range_tool() -> dict[str, Any]:
-    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
-        from qbot3.errors import OK, DATA_MISSING, CONNECTOR_MISSING, SCHEMA_MISMATCH, error_result, success_result
-        import psycopg
-        from psycopg.rows import dict_row
-        try:
-            c = psycopg.connect(
-                host=os.getenv("PGHOST", "127.0.0.1"), port=os.getenv("PGPORT", "5432"),
-                dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
-                password=os.getenv("PGPASSWORD", ""), row_factory=dict_row, connect_timeout=5,
-            )
-            cur = c.cursor()
-            date_from = args.get("date_from", date.today().isoformat())
-            date_to = args.get("date_to", date_from)
-            # Discover actual columns to avoid schema mismatch
-            try:
-                cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='calendar_events' AND table_schema='public'")
-                actual_cols = {r["column_name"] for r in cur.fetchall()}
-            except Exception:
-                actual_cols = set()
-            safe_cols = ["id", "date_start", "date_end", "time_start", "title", "event_type", "status"]
-            available = [c for c in safe_cols + ["all_day"] if c in actual_cols] or safe_cols
-            cols_sql = ", ".join(available)
-            cur.execute(
-                f"SELECT {cols_sql} FROM calendar_events WHERE date_start >= %s AND date_start <= %s ORDER BY date_start",
-                (date_from, date_to),
-            )
-            rows = cur.fetchall()
-            c.close()
-            if not rows:
-                return error_result(DATA_MISSING, f"Brak wydarzeń w okresie {date_from}–{date_to}")
-            return success_result({"events": rows, "count": len(rows), "date_from": date_from, "date_to": date_to, "columns_used": available})
-        except psycopg.errors.UndefinedColumn as exc:
-            return error_result(SCHEMA_MISMATCH, f"Reader query references non-existent column: {exc}. Use db_table_describe to discover actual columns.")
-        except Exception as exc:
-            return error_result(READER_ERROR, str(exc)[:200])
-    return {
-        "callable": _wrapper,
-        "category": "calendar",
-        "description": "Raw QCal event rows for a date range. Prefer db_schema_list / db_table_describe / db_select_readonly for ordinary calendar questions. Parameters: date_from (ISO), date_to (ISO)",
-        "args_schema": {"date_from": {"type": "string"}, "date_to": {"type": "string"}},
-        "safety": "read",
-    }
 
 
-def _load_qcal_reminders_upcoming_tool() -> dict[str, Any]:
-    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
-        from qbot3.errors import OK, DATA_MISSING, CONNECTOR_MISSING, error_result, success_result
-        try:
-            import psycopg
-            from psycopg.rows import dict_row
-            c = psycopg.connect(
-                host=os.getenv("PGHOST", "127.0.0.1"), port=os.getenv("PGPORT", "5432"),
-                dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
-                password=os.getenv("PGPASSWORD", ""), row_factory=dict_row, connect_timeout=5,
-            )
-            cur = c.cursor()
-            today = date.today().isoformat()
-            cur.execute(
-                "SELECT id, date, time, title, message, status, reminder_type FROM reminders WHERE date >= %s AND status='pending' ORDER BY date, time LIMIT 20",
-                (today,),
-            )
-            rows = cur.fetchall()
-            c.close()
-            if not rows:
-                return error_result(DATA_MISSING, "Brak nadchodzących przypomnień.")
-            return success_result({"reminders": rows, "count": len(rows)})
-        except Exception as exc:
-            return error_result(CONNECTOR_MISSING, str(exc)[:200])
-    return {
-        "callable": _wrapper,
-        "category": "calendar",
-        "description": "Upcoming pending reminders. No parameters required.",
-        "args_schema": {},
-        "safety": "read",
-    }
 
 
 def _load_rwgps_route_fetch_tool() -> dict[str, Any]:
@@ -1553,61 +1462,6 @@ def _load_garmin_sync_status_tool() -> dict[str, Any]:
     }
 
 
-def _load_qcal_events_upcoming_tool() -> dict[str, Any]:
-    from qbot3.errors import OK, DATA_MISSING, CONNECTOR_MISSING, SCHEMA_MISMATCH, error_result, success_result
-    import psycopg
-    from psycopg.rows import dict_row
-    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
-        try:
-            c = psycopg.connect(
-                host=os.getenv("PGHOST", "127.0.0.1"), port=os.getenv("PGPORT", "5432"),
-                dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
-                password=os.getenv("PGPASSWORD", ""), row_factory=dict_row, connect_timeout=5,
-            )
-            cur = c.cursor()
-            today = date.today().isoformat()
-            limit = int(args.get("limit", 30))
-            # Discover actual columns to avoid schema mismatch
-            try:
-                cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='calendar_events' AND table_schema='public'")
-                actual_cols = {r["column_name"] for r in cur.fetchall()}
-            except Exception:
-                actual_cols = set()
-            safe_cols = ["id", "date_start", "date_end", "time_start", "title", "event_type", "status", "all_day"]
-            available = [c for c in safe_cols if c in actual_cols] or [c for c in safe_cols if c not in ("all_day",)]
-            cols_sql = ", ".join(available)
-            cur.execute(
-                f"SELECT {cols_sql} FROM calendar_events "
-                f"WHERE date_start >= %s AND status NOT IN ('cancelled', 'deleted') "
-                f"ORDER BY date_start LIMIT %s",
-                (today, limit),
-            )
-            rows = cur.fetchall()
-            c.close()
-            if not rows:
-                return error_result(DATA_MISSING, "Brak nadchodzących wydarzeń")
-            return success_result({"events": rows, "count": len(rows), "columns_used": available})
-        except psycopg.errors.UndefinedColumn as exc:
-            return error_result(SCHEMA_MISMATCH, f"Reader query references non-existent column: {exc}. Use db_table_describe to discover actual columns.")
-        except Exception as exc:
-            return error_result(CONNECTOR_MISSING, str(exc)[:200])
-    return {
-        "callable": _wrapper,
-        "category": "calendar",
-        "description": (
-            "Upcoming calendar events from today forward. "
-            "Returns events with status 'planned', 'active', 'confirmed' (excludes 'cancelled'/'deleted'). "
-            "Parameters: limit (default 30, max 100). "
-            "Use qcal_events_range for a specific date range."
-        ),
-        "args_schema": {
-            "limit": {"type": "integer", "default": 30, "description": "Max events to return (default 30)"},
-        },
-        "safety": "read",
-        "mode": "read_only",
-        "status": "implemented",
-        "notes": "Queries calendar_events table for non-cancelled future events",
-    }
 
 
 def _load_rwgps_route_last_tool() -> dict[str, Any]:
@@ -2331,73 +2185,8 @@ def _load_garmin_workout_create_tool() -> dict[str, Any]:
     }
 
 
-def _load_calendar_event_add_tool() -> dict[str, Any]:
-    TOOL_FUNC = None
-    try:
-        from qbot_mcp_adapter import _action_exec_event
-        TOOL_FUNC = _action_exec_event
-    except ImportError:
-        def _fallback(args: dict[str, Any]) -> dict[str, Any]:
-            return {"status": "BLOCKED", "error": "calendar event writer not available"}
-        TOOL_FUNC = _fallback
-    return {
-        "callable": lambda args: _safe_call(TOOL_FUNC, args),
-        "category": "calendar",
-        "description": (
-            "Add a calendar event. Use for natural requests like 'dodaj do kalendarza'. "
-            "Required: date_start (ISO), title. Optional: time_start, date_end, event_type, description, all_day."
-        ),
-        "args_schema": {
-            "type": "object",
-            "properties": {
-                "date_start": {"type": "string", "description": "ISO date or datetime start"},
-                "time_start": {"type": "string", "description": "Optional HH:MM start time"},
-                "title": {"type": "string", "description": "Event title"},
-                "description": {"type": "string", "description": "Optional event description"},
-                "event_type": {"type": "string", "description": "Optional event type"},
-                "date_end": {"type": "string", "description": "Optional ISO end date"},
-                "all_day": {"type": "boolean", "description": "Optional all-day flag"},
-            },
-            "required": ["date_start", "title"],
-            "additionalProperties": False,
-        },
-        "safety": "write",
-    }
 
 
-def _load_reminder_add_tool() -> dict[str, Any]:
-    TOOL_FUNC = None
-    try:
-        from qbot_mcp_adapter import _action_exec_reminder
-        TOOL_FUNC = _action_exec_reminder
-    except ImportError:
-        def _fallback(args: dict[str, Any]) -> dict[str, Any]:
-            return {"status": "BLOCKED", "error": "reminder writer not available"}
-        TOOL_FUNC = _fallback
-    return {
-        "callable": lambda args: _safe_call(TOOL_FUNC, args),
-        "category": "calendar",
-        "description": (
-            "Add a reminder. Use for natural requests like 'dodaj przypomnienie'. "
-            "Required: date (ISO), title. Optional: time, message, reminder_type, priority, channel, recurrence_rule."
-        ),
-        "args_schema": {
-            "type": "object",
-            "properties": {
-                "date": {"type": "string", "description": "ISO reminder date"},
-                "time": {"type": "string", "description": "Optional HH:MM reminder time"},
-                "title": {"type": "string", "description": "Reminder title"},
-                "message": {"type": "string", "description": "Optional reminder message"},
-                "reminder_type": {"type": "string", "description": "Optional reminder type"},
-                "priority": {"type": "string", "description": "Optional priority"},
-                "channel": {"type": "string", "description": "Optional channel"},
-                "recurrence_rule": {"type": "string", "description": "Optional recurrence rule"},
-            },
-            "required": ["date", "title"],
-            "additionalProperties": False,
-        },
-        "safety": "write",
-    }
 
 
 def _load_planning_fact_add_tool() -> dict[str, Any]:
@@ -2673,7 +2462,6 @@ def _init_registry():
         ("status", _load_status_tool),
         ("readiness", _load_readiness_tool),
         ("system_env_status", _load_system_env_status_tool),
-        ("calendar_snapshot", _load_calendar_snapshot_tool),
         ("planning_facts", _load_planning_facts_tool),
         ("planning_fact_lookup", _load_planning_fact_lookup_tool),
         ("weather_forecast", _load_weather_forecast_tool),
@@ -2695,8 +2483,6 @@ def _init_registry():
         ("route_gpx_split", _load_route_gpx_split_tool),
         ("stage_gpx_analyze", _load_stage_gpx_analyze_tool),
         ("rwgps_route_surface_analyze", _load_rwgps_route_surface_analyze_tool),
-        ("qcal_events_range", _load_qcal_events_range_tool),
-        ("qcal_reminders_upcoming", _load_qcal_reminders_upcoming_tool),
         ("garage_status", _load_garage_status_tool),
         ("artifacts_list", _load_artifacts_list_tool),
         ("artifact_save", _load_artifact_save_tool),
@@ -2711,7 +2497,6 @@ def _init_registry():
         ("nutrition_balance_today", _load_nutrition_balance_today_tool),
         ("garmin_energy_today", _load_garmin_energy_today_tool),
         ("garmin_sync_status", _load_garmin_sync_status_tool),
-        ("qcal_events_upcoming", _load_qcal_events_upcoming_tool),
         ("rwgps_route_last", _load_rwgps_route_last_tool),
         ("rwgps_artifact_status", _load_rwgps_artifact_status_tool),
         ("rwgps_route_find", _load_rwgps_route_find_tool),
@@ -2744,8 +2529,6 @@ def _init_registry():
         ("nutrition_log_delete", _load_nutrition_log_delete_tool),
         ("nutrition_log_correct", _load_nutrition_log_correct_tool),
         ("garmin_workout_create", _load_garmin_workout_create_tool),
-        ("calendar_event_add", _load_calendar_event_add_tool),
-        ("reminder_add", _load_reminder_add_tool),
         ("planning_fact_add", _load_planning_fact_add_tool),
         ("planning_fact_update", _load_planning_fact_update_tool),
         ("memory_confirmed_fact_add", _load_memory_write_tool),

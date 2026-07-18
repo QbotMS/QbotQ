@@ -202,8 +202,6 @@ def is_payload_contaminated(payload: dict[str, Any], decomposition: dict[str, An
     # Fields to check for contamination
     sensitive_fields = {
         "nutrition_log_add": ["meal_name", "food_name"],
-        "calendar_event_add": ["title", "description"],
-        "reminder_add": ["title", "message"],
         "planning_fact_add": ["title"],
         "qbot_doc_append": ["content_markdown"],
     }
@@ -235,8 +233,6 @@ def clean_payload(payload: dict[str, Any], contamination_warnings: list[str], ac
     cleaned = dict(payload)
     sensitive_fields = {
         "nutrition_log_add": ["meal_name", "food_name"],
-        "calendar_event_add": ["title", "description"],
-        "reminder_add": ["title", "message"],
         "planning_fact_add": ["title"],
         "qbot_doc_append": ["content_markdown"],
     }

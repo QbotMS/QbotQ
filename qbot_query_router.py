@@ -1200,13 +1200,9 @@ def _read_planning_constraints(args: dict | None = None) -> dict[str, Any]:
 
 
 def _read_calendar_snapshot(args: dict | None = None) -> dict[str, Any]:
-    from qbot_calendar_core import build_snapshot
-    day = (args or {}).get("date", date.today().isoformat())
-    snap = build_snapshot(day)
-    snap["tool"] = "qbot_calendar_snapshot"
-    snap["safety_class"] = "READ_ONLY"
-    snap["status"] = "OK"
-    return snap
+    # Stary podsystem kalendarza/snapshotu usuniety 2026-07-16 (DECISIONS.md).
+    return {"tool": "qbot_calendar_snapshot", "safety_class": "READ_ONLY",
+            "status": "NO_DATA", "note": "calendar subsystem removed"}
 
 
 _QBOT_CANONICAL_DOCS: list[dict[str, Any]] = [

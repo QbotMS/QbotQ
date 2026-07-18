@@ -236,7 +236,6 @@ Schemat DB — krytyczne fakty:
   Dla LISTY poszczególnych posiłków/produktów dnia (każdy produkt + kcal/B/W/T): użyj nutrition_meal_list(date). NIE odpowiadaj samym bilansem gdy użytkownik prosi o listę/produkty/co jadł.
 - Tabela wydatku: daily_energy_expenditure (kolumny: total_kcal_out, active_kcal_out, resting_kcal_out)
   NIE istnieje: kolumna kcal_burned
-- Kalendarz: calendar_events (statusy: planned, active, confirmed — NIE tylko active)
 - Nowa baza: qbot_v2 (search_path priorytetyzuje qbot_v2 przed public)
 
 Dokumentacja i architektura QBot:

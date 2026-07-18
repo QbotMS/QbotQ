@@ -85,15 +85,7 @@ class TestRoutePlannerFallbackPolicy(unittest.TestCase):
     def test_route_queries_call_albert_in_qbot3_adapter(self):
         from qbot3.adapters.mcp_adapter import handle_qbot3_mcp
 
-        with patch.dict(os.environ, {"QBOT_QUERY_VNEXT_ENABLED": "1", "QBOT_DISABLE_ALBERT_FALLBACK": "1"}, clear=False),              patch("qbot_query_handler.handle_query", return_value={"status": "UNRECOGNIZED"}),              patch("core.planner._run_openai_tool_loop", return_value={
-                 "status": "OK",
-                 "answer": "stub planner",
-                 "intent": "planner_routes",
-                 "planner": "stub",
-                 "steps": 1,
-                 "tool_calls": ["rwgps_route_list"],
-                 "sources_used": ["rwgps_route_list"],
-             }),              patch("qbot3.adapters.mcp_adapter.orchestrate_query", return_value={
+        with patch.dict(os.environ, {"QBOT_QUERY_VNEXT_ENABLED": "1", "QBOT_DISABLE_ALBERT_FALLBACK": "1"}, clear=False),              patch("qbot_query_handler.handle_query", return_value={"status": "UNRECOGNIZED"}),              patch("qbot3.adapters.mcp_adapter.orchestrate_query", return_value={
                  "status": "OK",
                  "engine": "qbot3",
                  "intent": "planner_routes",
@@ -351,7 +343,7 @@ class TestDBIntrospection(unittest.TestCase):
 
     def test_table_describe(self):
         """db_table_describe returns columns"""
-        result = db_table_describe({"table": "calendar_events"})
+        result = db_table_describe({"table": "training_sessions"})
         self.assertIn("status", result)
         if result["status"] == "OK":
             self.assertIn("columns", result)
@@ -645,7 +637,9 @@ class TestActionExecuteSemantics(unittest.TestCase):
 
             def execute(self, sql, params=None):
                 self._step += 1
-                if "to_regclass" in sql:
+                if "nutrition_write_audit" in sql:
+                    self._fetchone = None
+                elif "to_regclass" in sql:
                     self._fetchone = {"exists_flag": "public.meal_logs"}
                 elif "public.meal_logs" in sql:
                     self._fetchone = {"n": 1}
@@ -741,21 +735,7 @@ class TestWriteDraftWithoutSave(unittest.TestCase):
 class TestRegression(unittest.TestCase):
     """Existing features must still work."""
 
-    def test_mock_calendar_uses_db_readonly(self):
-        """'pokaż kalendarz' → db_schema_list + db_table_describe + db_select_readonly, no snapshot"""
-        provider = MockProvider()
-        plan = provider.plan(build_context("pokaż kalendarz"), [], "pokaż kalendarz")
-        self.assertIn("db_select_readonly", plan.tools_to_call)
-        self.assertIn("db_table_describe", plan.tools_to_call)
-        self.assertNotIn("calendar_snapshot", plan.tools_to_call)
-        self.assertEqual(plan.parameters.get("table"), "calendar_events")
 
-    def test_mock_dashboard_uses_snapshot(self):
-        """'pokaż dzisiejszy dashboard' → calendar_snapshot"""
-        provider = MockProvider()
-        plan = provider.plan(build_context("pokaż dzisiejszy dashboard"), [], "pokaż dzisiejszy dashboard")
-        self.assertIn("calendar_snapshot", plan.tools_to_call)
-        self.assertNotIn("db_select_readonly", plan.tools_to_call)
 
     def test_mock_nutrition_uses_db_readonly(self):
         """'co dziś jadłem' → db_schema_list + db_table_describe + db_select_readonly"""
@@ -771,27 +751,17 @@ class TestRegression(unittest.TestCase):
         tools = tool_descriptions()
         names = [t["name"] for t in tools]
         self.assertIn("nutrition_log_add", names)
-        self.assertIn("qcal_events_range", names)
-        self.assertIn("qcal_reminders_upcoming", names)
         self.assertIn("db_schema_list", names)
         self.assertIn("db_select_readonly", names)
 
-    def test_only_two_public_tools(self):
-        """Only qbot.query + qbot.action_execute public tools"""
+    def test_only_one_public_tool(self):
+        """Only qbot_query is publicly listed (writes finalized server-side by Albert)."""
         from qbot3.adapters.mcp_adapter import _list_tools
         tools_list = _list_tools("test")
         tools = tools_list["result"]["tools"]
         names = [t["name"] for t in tools]
-        self.assertEqual(names, ["qbot.query", "qbot.action_execute"])
+        self.assertEqual(names, ["qbot_query"])
 
-    def test_calendar_missing_title(self):
-        """'zapisz event' → draft incomplete, pending_task"""
-        q = "zapisz event"
-        from qbot3.write_router import build_draft
-        payload = {}
-        draft = build_draft("calendar_event_add", payload, q)
-        self.assertFalse(draft["ready_for_execute"])
-        self.assertTrue(draft.get("pending_task", False))
 
 
 class TestDBIntrospectionFallback(unittest.TestCase):
@@ -865,28 +835,6 @@ class TestDBIntrospectionFallback(unittest.TestCase):
             "sql_audit": "SELECT ... FROM calendar_events ...",
         }
 
-    @patch('qbot3.db_introspection.db_schema_list')
-    @patch('qbot3.db_introspection.db_table_describe')
-    @patch('qbot3.db_introspection.db_select_readonly')
-    def test_db_introspection_fallback_calendar(self, mock_select, mock_describe, mock_schema_list):
-        """DB introspection fallback for calendar queries"""
-        mock_schema_list.return_value = {"status": "OK", "schemas": {"public": ["calendar_events"]}, "schema_count": 1}
-        mock_describe.side_effect = self._mock_db_table_describe_flexible
-        mock_select.side_effect = self._mock_db_select_readonly_flexible
-        plan = {"intent": "calendar", "tools_to_call": ["qcal_events_range"]}
-        results = _try_db_introspection_fallback(plan, "zobacz wydarzenia w kalendarzu")
-        if results:
-            readers = [r.get("reader", "") for r in results]
-            # Must include db_table_describe and db_select_readonly
-            self.assertIn("db_table_describe", readers)
-            self.assertIn("db_select_readonly", readers)
-            # Must include combined fallback result with rows
-            fallback_results = [r for r in results if r["status"] == "OK" and "db_introspection_fallback" in r.get("reader", "")]
-            if fallback_results:
-                data = fallback_results[0]["data"]
-                self.assertIn("table", data)
-                self.assertEqual(data["table"], "calendar_events")
-                self.assertIn("rows", data)
 
     def test_db_introspection_fallback_no_match(self):
         """No relevant tables → no results"""
@@ -1044,76 +992,7 @@ class TestDBIntrospectionFallbackIntegration(unittest.TestCase):
             "safety": "read",
         }
 
-    @patch('qbot3.db_introspection.db_schema_list')
-    @patch('qbot3.db_introspection.db_table_describe')
-    @patch('qbot3.db_introspection.db_select_readonly')
-    def test_reader_query_uses_direct_db_readonly(self, mock_select, mock_describe, mock_schema_list):
-        """Ordinary calendar question → direct db_schema_list + db_table_describe + db_select_readonly, no snapshot/fallback."""
-        from qbot3.tool_registry import _TOOL_REGISTRY
-        _TOOL_REGISTRY["db_schema_list"] = self._mock_db_schema_tool()
-        _TOOL_REGISTRY["db_table_describe"] = self._mock_db_table_tool()
-        _TOOL_REGISTRY["db_select_readonly"] = self._mock_db_select_tool()
-        schema_mismatch_tool = self._make_schema_mismatch_tool()
-        _TOOL_REGISTRY["qcal_events_range"] = schema_mismatch_tool
 
-        question = (
-            "Zobacz, czy w QCal/kalendarzu jest event bikepacking w Toskanii "
-            "od 4.06.2026 do 13.06.2026. Jeśli reader QCal ma błąd, użyj DB introspection/read-only."
-        )
-        result = orchestrate_query(question)
-
-        tool_results = result.get("tool_results", [])
-        readers = [r.get("reader", "") for r in tool_results]
-        readers_str = ", ".join(readers)
-
-        # REQUIREMENT 1: direct DB tools must appear in tool_results
-        self.assertIn("db_table_describe", readers,
-                      f"db_table_describe missing from tool_results. Got: {readers_str}")
-        self.assertIn("db_select_readonly", readers,
-                      f"db_select_readonly missing from tool_results. Got: {readers_str}")
-
-        # REQUIREMENT 2: no fallback should be needed
-        self.assertNotIn("db_introspection_fallback", readers_str,
-                         f"Unexpected fallback in tool_results. Got: {readers_str}")
-
-        # REQUIREMENT 3: plan must not mark db_introspection_used
-        plan = result.get("plan", {})
-        self.assertFalse(plan.get("db_introspection_used", False),
-                         "plan.db_introspection_used must be False for direct DB reads")
-
-        # REQUIREMENT 4: direct rows must contain future events from calendar_events
-        select_entries = [r for r in tool_results if r.get("reader") == "db_select_readonly"]
-        self.assertTrue(select_entries, f"No db_select_readonly entries. Got: {readers_str}")
-        select_data = select_entries[0].get("data", {})
-        self.assertEqual(select_data.get("status"), "OK")
-        self.assertIn("rows", select_data)
-        self.assertGreater(len(select_data.get("rows", [])), 0)
-
-    @patch('qbot3.db_introspection.db_schema_list')
-    @patch('qbot3.db_introspection.db_table_describe')
-    @patch('qbot3.db_introspection.db_select_readonly')
-    def test_reader_error_fallback_only_when_needed(self, mock_select, mock_describe, mock_schema_list):
-        """OK reader → NO DB introspection fallback."""
-        from qbot3.tool_registry import _TOOL_REGISTRY
-        _TOOL_REGISTRY["db_schema_list"] = self._mock_db_schema_tool()
-        _TOOL_REGISTRY["db_table_describe"] = self._mock_db_table_tool()
-        _TOOL_REGISTRY["db_select_readonly"] = self._mock_db_select_tool()
-        _TOOL_REGISTRY.pop("qcal_events_range", None)
-
-        question = "Zobacz wydarzenia w kalendarzu na dzisiaj"
-        result = orchestrate_query(question)
-
-        tool_results = result.get("tool_results", [])
-        readers = [r.get("reader", "") for r in tool_results]
-        readers_str = ", ".join(readers)
-
-        # Direct DB path should still be used
-        self.assertIn("db_table_describe", readers,
-                      f"db_table_describe missing from tool_results. Got: {readers_str}")
-        self.assertIn("db_select_readonly", readers,
-                      f"db_select_readonly missing from tool_results. Got: {readers_str}")
-        self.assertNotIn("db_introspection_fallback", readers_str,
-                         "Should not have fallback when direct DB read succeeds")
 
 
 class TestToolParameterValidation(unittest.TestCase):

@@ -90,8 +90,6 @@ def _extract_entity_ref(action_type: str | None, result: dict[str, Any]) -> str 
     # Typowe pola id zwracane przez handlery
     candidates = (
         ("intake_logs", result.get("meal_id")),
-        ("calendar_events", result.get("event_id")),
-        ("reminders", result.get("reminder_id")),
         ("qbot_planning_facts", result.get("planning_fact_id")),
     )
     for table, val in candidates:

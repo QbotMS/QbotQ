@@ -44,7 +44,7 @@ def _get_stage_date(stage, event_keyword="Toskan"):
 
 
 def _get_event_start_date(event_keyword="Toskan"):
-    """Pobierz date startu eventu z calendar_events."""
+    """Pobierz date startu eventu z qbot_planning_facts (route_stages)."""
     try:
         import psycopg
         conn = psycopg.connect(
@@ -58,9 +58,9 @@ def _get_event_start_date(event_keyword="Toskan"):
         cur = conn.cursor()
         kw = "%" + event_keyword + "%"
         cur.execute(
-            "SELECT date_start FROM calendar_events "
-            "WHERE title ILIKE %s "
-            "ORDER BY date_start LIMIT 1",
+            "SELECT date FROM qbot_planning_facts "
+            "WHERE fact_type='route_stages' AND title ILIKE %s "
+            "ORDER BY date LIMIT 1",
             (kw,)
         )
         row = cur.fetchone()

@@ -23,7 +23,7 @@ SAFE_TABLES = {
     "training_sessions", "weight_history", "body_composition",
     "body_daily",
     "qbot_sleep_daily", "qbot_wellness_daily",
-    "xert_metrics", "calendar_daily_snapshots", "calendar_events",
+    "xert_metrics",
     "health_events", "health_risk_notes", "health_goals",
     "supplement_inventory", "supplement_protocols", "supplement_intake_log",
 }
@@ -89,13 +89,8 @@ def plan(canonical: dict) -> dict[str, Any]:
     has_weight = "weight" in domains
     has_body = "body_comp" in domains
 
-    # ── Calendar day context ──
+    # ── Calendar day context ── (stary snapshot usuniety 2026-07-16, DECISIONS.md)
     if itype == "calendar_day_context":
-        plan_obj["queries"].append({
-            "domain": "calendar_snapshot",
-            "sql": "SELECT * FROM calendar_daily_snapshots WHERE date=%(df)s",
-            "params": {"df": df},
-        })
         return plan_obj
 
     # ── Route list ──
@@ -162,12 +157,7 @@ def plan(canonical: dict) -> dict[str, Any]:
                ORDER BY date DESC LIMIT 3""",
             "params": {},
         })
-        # Also check today's snapshot for context
-        plan_obj["queries"].append({
-            "domain": "today_snapshot",
-            "sql": "SELECT * FROM calendar_daily_snapshots WHERE date=%(df)s",
-            "params": {"df": dt_date.today().isoformat()},
-        })
+        # Snapshot dnia usuniety 2026-07-16 (DECISIONS.md)
         return plan_obj
 
     # ── Food product catalog ──

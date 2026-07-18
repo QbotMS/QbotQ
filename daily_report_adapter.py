@@ -15,19 +15,9 @@ from qbot3.errors import OK, DATA_MISSING, CONNECTOR_MISSING, error_result, succ
 
 
 def get_events(oldest: str | None = None, newest: str | None = None) -> list[dict[str, Any]]:
-    """Internal replacement for mcp_call('get_events')."""
-    try:
-        from qbot_calendar_core import event_list
-        today_s = oldest or date.today().isoformat()
-        end_s = newest or (date.fromisoformat(today_s) + timedelta(days=4)).isoformat()
-        events = event_list(date_from=today_s, date_to=end_s, limit=50)
-        return events or []
-    except ImportError:
-        print("  ⚠️  get_events: qbot_calendar_core not available")
-        return []
-    except Exception as exc:
-        print(f"  ⚠️  get_events: {exc}")
-        return []
+    """Stary lokalny kalendarz usuniety 2026-07-16 (patrz DECISIONS.md).
+    Wydarzenia z Intervals.icu ida osobna sciezka mcp_call('get_events')."""
+    return []
 
 
 def get_weather(days: int = 2, location: str = "Marki") -> dict[str, Any]:

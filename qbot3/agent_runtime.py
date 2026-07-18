@@ -33,8 +33,6 @@ def _execute_real_write_tool(tool_name: str, args: dict) -> dict:
         "nutrition_log_add": "nutr",
         "nutrition_log_delete": "nutr",
         "nutrition_log_correct": "nutr",
-        "calendar_event_add": "cal",
-        "reminder_add": "rem",
     }.get(tool_name, tool_name[:8] or "wr")
     idem_key = _idempotency_key(idem_prefix, json.dumps(args, sort_keys=True, default=str))
 
@@ -60,24 +58,6 @@ def _execute_real_write_tool(tool_name: str, args: dict) -> dict:
         else:
             write_result = _execute_nutrition_correct(tool_name, payload, idem_key)
         write_result.setdefault("status", "OK" if write_result.get("write_committed") else "WRITE_ERROR")
-        return write_result
-
-    if tool_name == "calendar_event_add":
-        from qbot_mcp_adapter import _action_exec_event
-        write_result = _action_exec_event(payload, idem_key, source="albert")
-        success = write_result.get("status") == "OK"
-        write_result.setdefault("execution_mode", "real_write")
-        write_result.setdefault("write_committed", success)
-        write_result.setdefault("commit_executed", success)
-        return write_result
-
-    if tool_name == "reminder_add":
-        from qbot_mcp_adapter import _action_exec_reminder
-        write_result = _action_exec_reminder(payload, idem_key, source="albert")
-        success = write_result.get("status") == "OK"
-        write_result.setdefault("execution_mode", "real_write")
-        write_result.setdefault("write_committed", success)
-        write_result.setdefault("commit_executed", success)
         return write_result
 
     if tool_name in ("planning_fact_add", "planning_fact_update", "memory_confirmed_fact_add", "garmin_workout_create", "route_poi_analyze", "rwgps_route_import_gpx", "route_recompute", "route_delete"):
@@ -697,10 +677,8 @@ def _try_db_introspection_fallback(plan: dict[str, Any], question: str) -> list[
     # 1. Determine which tables might be relevant from the query
     #    Only known domain → table mappings, no guessing.
     domain_table_map: list[tuple[list[str], str, str]] = [
-        (["kalendarz", "event", "wydarzen", "calendar", "toskan", "bikepack", "qcal"], "public", "calendar_events"),
         (["jadł", "jedzeni", "posiłk", "meal", "nutrition", "kalor"], "qbot_v2", "intake_logs"),
         (["jadł", "jedzeni", "posiłk", "meal", "nutrition", "kalor"], "qbot_v2", "intake_items"),
-        (["reminder", "przypomn"], "public", "reminders"),
         (["xert", "readiness", "ftp", "training", "fitness"], "public", "training_sessions"),
         (["xert", "readiness", "ftp", "training", "fitness"], "public", "xert_metrics"),
     ]
@@ -716,9 +694,6 @@ def _try_db_introspection_fallback(plan: dict[str, Any], question: str) -> list[
     if not table_candidates:
         # Map known tool names to database tables
         tool_to_table: dict[str, tuple[str, str]] = {
-            "qcal_events_range": ("public", "calendar_events"),
-            "qcal_events_upcoming": ("public", "calendar_events"),
-            "qcal_reminders_upcoming": ("public", "reminders"),
             "nutrition_day_summary": ("qbot_v2", "intake_logs"),
             "nutrition_log_add": ("qbot_v2", "intake_logs"),
             "xert_readiness": ("public", "training_sessions"),
@@ -801,7 +776,7 @@ def _try_db_introspection_fallback(plan: dict[str, Any], question: str) -> list[
 
         # Detect date range from query for calendar tables
         where_clause = ""
-        if "calendar_events" in table:
+        if "calendar_entry" in table:
             date_from = None
             date_to = None
             m = re.search(r'(\d{1,2})[./](\d{1,2})[./](\d{4})', question)
@@ -818,10 +793,10 @@ def _try_db_introspection_fallback(plan: dict[str, Any], question: str) -> list[
                 if len(parts) == 3:
                     date_to = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
 
-            if date_from and date_to and "date_start" in cols:
-                where_clause = f" WHERE date_start >= '{date_from}' AND date_start <= '{date_to}'"
-            elif date_from and "date_start" in cols:
-                where_clause = f" WHERE date_start >= '{date_from}'"
+            if date_from and date_to and "day" in cols:
+                where_clause = f" WHERE day >= '{date_from}' AND day <= '{date_to}'"
+            elif date_from and "day" in cols:
+                where_clause = f" WHERE day >= '{date_from}'"
 
         cols_sql = ", ".join(cols[:20])
         sql = f"SELECT {cols_sql} FROM \"{table}\"{where_clause} ORDER BY 1 LIMIT 50"

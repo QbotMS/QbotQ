@@ -70,26 +70,27 @@ def _fetch_route_stages(trip_hint: str = None) -> list[dict]:
     return results
 
 def _fetch_active_event(ref_date: date = None) -> Optional[dict]:
-    """Zwraca aktywny event z calendar_events dla danej daty."""
+    """Zwraca aktywny event dla danej daty z qbot_planning_facts (route_stages).
+
+    Stary calendar_events usuniety 2026-07-16 (DECISIONS.md) — okno eventu
+    wyprowadzamy z planu etapow: date_start/date_end = min/max daty etapow.
+    """
     if ref_date is None:
         ref_date = date.today()
-    conn = _pg()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT id, date_start, date_end, title, event_type, status "
-            "FROM calendar_events "
-            "WHERE date_start <= %s AND date_end >= %s AND event_type IN ('travel','bikepacking','race','event') "
-            "ORDER BY date_start LIMIT 1",
-            (ref_date, ref_date)
-        )
-        row = cur.fetchone()
-    finally:
-        conn.close()
-    if not row:
-        return None
-    return {"id":row[0],"date_start":row[1],"date_end":row[2],
-            "title":row[3],"event_type":row[4],"status":row[5]}
+    for plan in _fetch_route_stages():
+        stage_dates = [s.get("date") for s in plan.get("stages", []) if s.get("date")]
+        if not stage_dates:
+            continue
+        try:
+            ds = date.fromisoformat(min(stage_dates))
+            de = date.fromisoformat(max(stage_dates))
+        except Exception:
+            continue
+        if ds <= ref_date <= de:
+            return {"id": plan.get("id"), "date_start": ds, "date_end": de,
+                    "title": plan.get("title"), "event_type": "bikepacking",
+                    "status": plan.get("status")}
+    return None
 
 # ---------------------------------------------------------------------------
 # Logika etapów
@@ -204,7 +205,7 @@ def handle_trip_stages(question: str) -> dict:
         answer = _format_stage(stage, plan["title"]) + event_info
         return {"answer": answer,
                 "data": {"stage": stage, "plan_title": plan["title"], "event": event},
-                "sources":["qbot_planning_facts","calendar_events"]}
+                "sources":["qbot_planning_facts"]}
 
     # Brak etapu na dziś — sprawdź czy event jest aktywny
     event = _fetch_active_event(ref_date)
@@ -231,7 +232,7 @@ def handle_trip_stages(question: str) -> dict:
             answer = f"Brak etapu na {ref_date} i brak nadchodzących etapów w planie '{plan['title']}'."
 
     return {"answer": answer, "data": {"ref_date": ref_date.isoformat(), "plan_title": plan["title"]},
-            "sources":["qbot_planning_facts","calendar_events"]}
+            "sources":["qbot_planning_facts"]}
 
 
 if __name__ == "__main__":

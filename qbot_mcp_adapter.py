@@ -178,7 +178,7 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "qbot_tool": "qbot_action_execute",
         "description": (
             "WYKONAJ action_draft z qbot.query. Przyjmuje action_type z allowlisty "
-            "(nutrition_log_add, qcal_reminder_add, qcal_event_add, qcal_event_update, qcal_event_cancel, "
+            "(nutrition_log_add, "
             "planning_fact_add, garmin_workout_create, qbot_doc_append, qbot_doc_replace_section, qbot_doc_update, route_poi_analyze, rwgps_route_profile_sample, rwgps_route_profile_export_csv). "
             "Dla route_poi_analyze payload_json powinien zawierać route_id, artifact_id albo path, km_from, km_to "
             "oraz opcjonalnie buffers: attractions_m, hard_resupply_m, soft_food_m, water_m, chunk_km, chunk_overlap_km, "
@@ -190,7 +190,7 @@ _MCP_TOOL_MAP: dict[str, dict[str, Any]] = {
         "input_schema": {
             "type": "object",
             "properties": {
-                "action_type": {"type": "string", "enum": ["nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct", "qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel", "planning_fact_add", "planning_fact_update", "garmin_workout_create", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update", "rwgps_gpx_import", "route_poi_analyze", "rwgps_route_profile_sample", "rwgps_route_profile_export_csv", "qbot_artifact_put", "qbot_artifact_get"]},
+                "action_type": {"type": "string", "enum": ["nutrition_log_add", "nutrition_log_delete", "nutrition_log_correct", "planning_fact_add", "planning_fact_update", "garmin_workout_create", "qbot_doc_append", "qbot_doc_replace_section", "qbot_doc_update", "rwgps_gpx_import", "route_poi_analyze", "rwgps_route_profile_sample", "rwgps_route_profile_export_csv", "qbot_artifact_put", "qbot_artifact_get"]},
                 "payload_json": {"type": "object", "description": "Kompletny obiekt payload (tak jak w action_draft z qbot.query)"},
                 "idempotency_key": {"type": "string", "description": "Unikalny klucz — zapobiega duplikatom."},
                 "confirm": {"type": "boolean", "description": "MUSI być true, żeby zapisać."},
@@ -754,20 +754,6 @@ def handle_mcp_request(
             result = _handle_nutrition_delete(clean_args)
         elif name == "qbot.nutrition_log_replace":
             result = _handle_nutrition_replace(clean_args)
-        elif name == "qbot.qcal_event_preview":
-            result = _handle_qcal_event_preview(clean_args)
-        elif name == "qbot.qcal_event_add":
-            result = _handle_qcal_event_add(clean_args)
-        elif name == "qbot.qcal_event_cancel":
-            result = _handle_qcal_event_cancel(clean_args)
-        elif name == "qbot.qcal_reminder_preview":
-            result = _handle_qcal_reminder_preview(clean_args)
-        elif name == "qbot.qcal_reminder_add":
-            result = _handle_qcal_reminder_add(clean_args)
-        elif name == "qbot.qcal_reminder_done":
-            result = _handle_qcal_reminder_done(clean_args)
-        elif name == "qbot.qcal_reminder_cancel":
-            result = _handle_qcal_reminder_cancel(clean_args)
         elif name == "qbot.artifact_get":
             identifier = str(clean_args.get("identifier", "")).strip()
             if not identifier:
@@ -976,12 +962,6 @@ def _handle_nutrition_add(args: dict) -> dict[str, Any]:
         except Exception:
             pass  # audit table may not exist
 
-        # Rebuild snapshot
-        try:
-            from qbot_calendar_core import build_snapshot
-            build_snapshot(day)
-        except Exception:
-            pass
 
         return {
             "tool": "qbot.nutrition_log_add",
@@ -1102,12 +1082,6 @@ def _handle_nutrition_delete(args: dict) -> dict[str, Any]:
 
         summary = daily_summary_compute(date_str)
 
-        # Rebuild snapshot
-        try:
-            from qbot_calendar_core import build_snapshot
-            build_snapshot(date_str)
-        except Exception:
-            pass
 
         return {
             "tool": "qbot.nutrition_log_delete",
@@ -1202,10 +1176,6 @@ def _handle_nutrition_replace(args: dict) -> dict[str, Any]:
         c.close()
 
         summary = daily_summary_compute(date_str)
-        try:
-            from qbot_calendar_core import build_snapshot
-            build_snapshot(date_str)
-        except: pass
 
         return {"tool": "qbot.nutrition_log_replace", "safety_class": "WRITE_NUTRITION_ONLY", "status": "OK",
                 "old_meal_log_id": old_meal_id, "new_meal_log_id": new_meal.get("id"), "date": date_str,
@@ -1216,143 +1186,16 @@ def _handle_nutrition_replace(args: dict) -> dict[str, Any]:
 
 # ── QCal Event + Reminder handlers ──────────────────────────────────────────
 
-def _qcal_audit(idem_key: str, operation: str, entity_type: str, entity_id: int | None, date_str: str | None, payload: dict, result: dict):
-    try:
-        import psycopg, os, json
-        from psycopg.rows import dict_row
-        c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
-        cur = c.cursor()
-        cur.execute("INSERT INTO qcal_write_audit (idempotency_key,operation,entity_type,entity_id,date,source,payload_json,result_json) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-            (idem_key, operation, entity_type, entity_id, date_str, "chatgpt_mcp", json.dumps(payload), json.dumps(result)))
-        c.commit(); c.close()
-    except: pass
 
 
-def _qcal_check_idem(idem_key: str) -> bool:
-    try:
-        from qbot_nutrition_db import _conn as nut_conn
-        c = nut_conn(); cur = c.cursor()
-        cur.execute("SELECT 1 FROM qcal_write_audit WHERE idempotency_key=%s",(idem_key,))
-        exists = cur.fetchone() is not None; c.close()
-        return exists
-    except: return False
 
 
-def _handle_qcal_event_preview(args: dict) -> dict:
-    import hashlib
-    d = args.get("date_start","") or "?"
-    t = args.get("title","") or ""
-    payload = f"event|{d}|{t}"
-    return {"tool":"qbot.qcal_event_preview","safety_class":"READ_ONLY","status":"DRY_RUN",
-            "draft":{"date_start":d,"title":t,"event_type":args.get("event_type","note")},
-            "idempotency_key":hashlib.sha256(payload.encode()).hexdigest()[:16],
-            "next_action":"Call qbot.qcal_event_add with confirm=true and idempotency_key."}
 
-def _handle_qcal_event_add(args: dict) -> dict:
-    from qbot_calendar_core import qcal_event_add_controlled
-    r = qcal_event_add_controlled(
-        date_start=args.get("date_start",""), title=args.get("title","?"),
-        date_end=args.get("date_end"), time_start=args.get("time_start"),
-        event_type=args.get("event_type","note"), description=args.get("description"),
-        source=args.get("source","chatgpt_mcp"),
-        idempotency_key=args.get("idempotency_key"),
-        confirm=(args.get("confirm") == True or str(args.get("confirm","")).lower()=="true"),
-    )
-    # Map to MCP-style response
-    mcp_status = r["status"].upper() if r["status"] in ("ok","duplicate","refused","error") else "ERROR"
-    if mcp_status == "OK":
-        return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"OK","event_id":r["event_id"],"record":r.get("record"),"idempotency_key":r.get("idempotency_key"),"snapshot_rebuilt":r.get("snapshot_rebuilt")}
-    elif mcp_status == "DUPLICATE":
-        return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"DUPLICATE","event_id":r["event_id"],"record":r.get("record")}
-    elif mcp_status == "REFUSED":
-        return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":r.get("message","refused")}
-    else:
-        return {"tool":"qbot.qcal_event_add","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":r.get("message","unknown error")}
 
-def _handle_qcal_event_cancel(args: dict) -> dict:
-    from qbot_calendar_core import qcal_event_cancel_controlled
-    r = qcal_event_cancel_controlled(
-        event_id=args.get("event_id"), match=args.get("match"),
-        reason=args.get("reason"),
-        idempotency_key=args.get("idempotency_key") or f"mcp-cancel-{args.get('event_id','?')}",
-        confirm=(args.get("confirm") == True or str(args.get("confirm","")).lower()=="true"),
-    )
-    smap = {"ok":"OK","duplicate":"DUPLICATE","refused":"BLOCKED","not_found":"NOT_FOUND","ambiguous_match":"AMBIGUOUS","error":"ERROR"}
-    return {"tool":"qbot.qcal_event_cancel","safety_class":"WRITE_QCAL_ONLY","status":smap.get(r["status"],"ERROR"),
-            "event_id":r.get("event_id"),"cancelled":r.get("cancelled",False),
-            "before":r.get("before"),"after":r.get("after"),"message":r.get("message","")}
 
-def _handle_qcal_reminder_preview(args: dict) -> dict:
-    import hashlib
-    d = args.get("date","?"); t = args.get("title","") or args.get("raw_text","") or ""
-    payload = f"reminder|{d}|{t}"
-    return {"tool":"qbot.qcal_reminder_preview","safety_class":"READ_ONLY","status":"DRY_RUN",
-            "draft":{"date":d,"title":t,"reminder_type":args.get("reminder_type","custom"),"time":args.get("time","")},
-            "idempotency_key":hashlib.sha256(payload.encode()).hexdigest()[:16],
-            "next_action":"Call qbot.qcal_reminder_add with confirm=true and idempotency_key."}
 
-def _handle_qcal_reminder_add(args: dict) -> dict:
-    if not (args.get("confirm") == True or str(args.get("confirm","")).lower()=="true"):
-        return {"tool":"qbot.qcal_reminder_add","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":"confirm must be true."}
-    idem = str(args.get("idempotency_key",""))
-    if not idem: return {"tool":"qbot.qcal_reminder_add","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":"idempotency_key required."}
-    if _qcal_check_idem(idem): return {"tool":"qbot.qcal_reminder_add","safety_class":"WRITE_QCAL_ONLY","status":"DUPLICATE"}
-    try:
-        import psycopg, os, json; from psycopg.rows import dict_row
-        c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
-        cur = c.cursor()
-        # Build metadata_json from deadline_task fields + any extra fields
-        meta = {}
-        for k in ("task_kind","deadline_date","start_date","repeat_until_done","source"):
-            v = args.get(k)
-            if v is not None:
-                meta[k] = v
-        metadata_json = json.dumps(meta, default=str) if meta else None
-        cur.execute("""INSERT INTO reminders (date,time,timezone,title,message,reminder_type,status,priority,channel,recurrence_rule,metadata_json)
-            VALUES (%s,%s,'Europe/Warsaw',%s,%s,%s,'pending',%s,%s,%s,%s) RETURNING id""",
-            (args.get("date"),args.get("time"),args.get("title","?"),args.get("message",""),args.get("reminder_type","custom"),args.get("priority","normal"),args.get("channel","cli"),args.get("recurrence_rule"),metadata_json))
-        rid = cur.fetchone()["id"]; c.commit(); c.close()
-        _qcal_audit(idem, "reminder_add", "reminder", rid, args.get("date"), dict(args), {"id":rid})
-        try: from qbot_calendar_core import build_snapshot; build_snapshot(args.get("date",""))
-        except: pass
-        return {"tool":"qbot.qcal_reminder_add","safety_class":"WRITE_QCAL_ONLY","status":"OK","reminder_id":rid}
-    except Exception as e: return {"tool":"qbot.qcal_reminder_add","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
 
-def _handle_qcal_reminder_done(args: dict) -> dict:
-    if not (args.get("confirm") == True or str(args.get("confirm","")).lower()=="true"):
-        return {"tool":"qbot.qcal_reminder_done","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":"confirm must be true."}
-    rid = int(args.get("reminder_id",0))
-    try:
-        import psycopg, os; from psycopg.rows import dict_row
-        c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
-        cur = c.cursor()
-        cur.execute("SELECT date FROM reminders WHERE id=%s",(rid,)); r = cur.fetchone()
-        if not r: c.close(); return {"tool":"qbot.qcal_reminder_done","safety_class":"WRITE_QCAL_ONLY","status":"NOT_FOUND"}
-        d = str(r["date"])[:10]
-        cur.execute("UPDATE reminders SET status='done', sent_at=now(), updated_at=now() WHERE id=%s",(rid,)); c.commit(); c.close()
-        _qcal_audit("done_"+str(rid), "reminder_done", "reminder", rid, d, dict(args), {"done":True})
-        try: from qbot_calendar_core import build_snapshot; build_snapshot(d)
-        except: pass
-        return {"tool":"qbot.qcal_reminder_done","safety_class":"WRITE_QCAL_ONLY","status":"OK","reminder_id":rid}
-    except Exception as e: return {"tool":"qbot.qcal_reminder_done","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
 
-def _handle_qcal_reminder_cancel(args: dict) -> dict:
-    if not (args.get("confirm") == True or str(args.get("confirm","")).lower()=="true"):
-        return {"tool":"qbot.qcal_reminder_cancel","safety_class":"WRITE_QCAL_ONLY","status":"BLOCKED","error":"confirm must be true."}
-    rid = int(args.get("reminder_id",0))
-    try:
-        import psycopg, os; from psycopg.rows import dict_row
-        c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
-        cur = c.cursor()
-        cur.execute("SELECT date FROM reminders WHERE id=%s",(rid,)); r = cur.fetchone()
-        if not r: c.close(); return {"tool":"qbot.qcal_reminder_cancel","safety_class":"WRITE_QCAL_ONLY","status":"NOT_FOUND"}
-        d = str(r["date"])[:10]
-        cur.execute("UPDATE reminders SET status='cancelled', updated_at=now() WHERE id=%s",(rid,)); c.commit(); c.close()
-        _qcal_audit("cancel_"+str(rid), "reminder_cancel", "reminder", rid, d, dict(args), {"cancelled":True})
-        try: from qbot_calendar_core import build_snapshot; build_snapshot(d)
-        except: pass
-        return {"tool":"qbot.qcal_reminder_cancel","safety_class":"WRITE_QCAL_ONLY","status":"OK","reminder_id":rid}
-    except Exception as e: return {"tool":"qbot.qcal_reminder_cancel","safety_class":"WRITE_QCAL_ONLY","status":"ERROR","error":str(e)[:200]}
 
 
 # Allowlista generowana z manifestów modułów — jedyne źródło prawdy.
@@ -1363,8 +1206,7 @@ try:
 except Exception:
     # fallback hard-coded na wypadek błędu importu registry
     _ACTION_EXECUTE_ALLOWLIST = {
-        "nutrition_log_add", "qcal_reminder_add", "qcal_event_add",
-        "qcal_event_update", "qcal_event_cancel", "planning_fact_add",
+        "nutrition_log_add", "planning_fact_add",
         "garmin_workout_create", "qbot_doc_append", "qbot_doc_replace_section",
         "qbot_doc_update", "rwgps_gpx_import", "route_poi_analyze",
         "rwgps_route_profile_sample", "rwgps_route_profile_export_csv",
@@ -1373,10 +1215,6 @@ except Exception:
 
 _ACTION_REQUIRED_PAYLOAD_FIELDS: dict[str, list[str]] = {
     "nutrition_log_add": ["date", "kcal_total"],
-    "qcal_reminder_add": ["date", "title"],
-    "qcal_event_add": ["date_start", "title"],
-    "qcal_event_update": ["event_id", "updates"],
-    "qcal_event_cancel": ["event_id"],
     "planning_fact_add": ["fact_type", "date", "title"],
     "planning_fact_update": ["id"],
     "garmin_workout_create": [],
@@ -1547,14 +1385,6 @@ def _handle_action_execute(args: dict) -> dict[str, Any]:
         return _action_exec_nutrition_correct(payload, idem_key)
     elif action_type == "nutrition_log_add":
         return _action_exec_nutrition(payload, idem_key, source)
-    elif action_type == "qcal_reminder_add":
-        return _action_exec_reminder(payload, idem_key, source)
-    elif action_type == "qcal_event_add":
-        return _action_exec_event(payload, idem_key, source)
-    elif action_type == "qcal_event_update":
-        return _action_exec_event_update(payload, idem_key, source)
-    elif action_type == "qcal_event_cancel":
-        return _action_exec_event_cancel(payload, idem_key, source)
     elif action_type == "rwgps_gpx_import":
         return _action_exec_rwgps_gpx_import(payload, idem_key, source)
     elif action_type == "route_poi_analyze":
@@ -1604,39 +1434,6 @@ def _action_check_duplicate(idem_key: str, action_type: str) -> dict | None:
                 if existing_id:
                     return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "created": False, "action_type": action_type, "idempotency_key": idem_key, "meal_id": existing_id, "existing_id": existing_id, "note": "idempotency_key already exists (nutrition_write_audit)."}
             c.close()
-        except Exception:
-            pass
-        return None
-
-    # QCal actions: only check QCal audit, validate linked record
-    if action_type in ("qcal_reminder_add", "qcal_event_add", "qcal_event_update", "qcal_event_cancel"):
-        try:
-            import psycopg, os
-            from psycopg.rows import dict_row
-            c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
-            cur = c.cursor()
-            cur.execute("SELECT entity_id, entity_type FROM qcal_write_audit WHERE idempotency_key=%s", (idem_key,))
-            row = cur.fetchone()
-            if row:
-                existing_id = row["entity_id"]
-                entity_type = row["entity_type"]
-                target_table = "calendar_events" if entity_type == "event" else "reminders"
-                # Fetch full record
-                cur.execute("SELECT * FROM %s WHERE id=%%s" % target_table, (existing_id,))
-                target = cur.fetchone()
-                active = target and target["status"] not in ("cancelled", "deleted", "done")
-                record = {k: str(v) if hasattr(v, "isoformat") or isinstance(v, type) else v for k, v in dict(target).items()} if target else None
-                c.close()
-                if active:
-                    return {"tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST", "status": "DUPLICATE", "created": False, "action_type": action_type, "idempotency_key": idem_key, "event_id": existing_id, "existing_id": existing_id, "record": record, "note": "Linked record is active."}
-                # Stale audit: cleanup and let caller re-execute
-                c2 = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
-                cur2 = c2.cursor()
-                cur2.execute("DELETE FROM qcal_write_audit WHERE idempotency_key=%s", (idem_key,))
-                c2.commit()
-                c2.close()
-            else:
-                c.close()
         except Exception:
             pass
         return None
@@ -1783,12 +1580,6 @@ def _action_exec_nutrition(payload: dict, idem_key: str, source: str) -> dict:
     except Exception:
         pass
 
-    # Snapshot
-    try:
-        from qbot_calendar_core import build_snapshot
-        build_snapshot(day)
-    except Exception:
-        pass
 
     return {
         "tool": "qbot.action_execute",
@@ -1801,110 +1592,12 @@ def _action_exec_nutrition(payload: dict, idem_key: str, source: str) -> dict:
     }
 
 
-def _action_exec_reminder(payload: dict, idem_key: str, source: str) -> dict:
-    """Execute qcal_reminder_add."""
-    import json, psycopg, os
-    from psycopg.rows import dict_row
-
-    c = psycopg.connect(host=os.getenv("PGHOST","127.0.0.1"),port=os.getenv("PGPORT","5432"),dbname=os.getenv("PGDATABASE","qbot"),user=os.getenv("PGUSER","qbot"),password=os.getenv("PGPASSWORD",""),row_factory=dict_row,connect_timeout=5)
-    cur = c.cursor()
-
-    meta = {}
-    for k in ("task_kind","deadline_date","start_date","repeat_until_done"):
-        v = payload.get(k)
-        if v is not None:
-            meta[k] = v
-    if source:
-        meta["source"] = source
-    metadata_json = json.dumps(meta, default=str) if meta else None
-
-    cur.execute("""INSERT INTO reminders (date,time,timezone,title,message,reminder_type,status,priority,channel,recurrence_rule,metadata_json)
-        VALUES (%s,%s,'Europe/Warsaw',%s,%s,%s,'pending',%s,%s,%s,%s) RETURNING id""",
-        (payload.get("date"), payload.get("time"), payload.get("title","?"), payload.get("message",""),
-         payload.get("reminder_type","custom"), payload.get("priority","normal"),
-         payload.get("channel","cli"), payload.get("recurrence_rule"), metadata_json))
-    rid = cur.fetchone()["id"]
-    cur.execute("SELECT * FROM reminders WHERE id=%s", (rid,))
-    row = cur.fetchone()
-    record = {k: str(v) if hasattr(v, "isoformat") or isinstance(v, type) else v for k, v in dict(row).items()} if row else {}
-    c.commit()
-    c.close()
-
-    _qcal_audit(idem_key, "reminder_add", "reminder", rid, payload.get("date",""), payload, {"id": rid, "action_execute": True})
-    snap_ok = False
-    try:
-        from qbot_calendar_core import build_snapshot
-        build_snapshot(payload.get("date",""))
-        snap_ok = True
-    except Exception:
-        pass
-
-    return {
-        "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
-        "status": "OK", "action_type": "qcal_reminder_add",
-        "idempotency_key": idem_key, "created": True,
-        "reminder_id": rid, "record": record,
-        "message": f"Utworzono przypomnienie: {record.get('title','?')} (id={rid}, {record.get('date','?')} {record.get('time','')})",
-        "snapshot_rebuilt": snap_ok,
-    }
 
 
-def _action_exec_event_update(payload: dict, idem_key: str, source: str) -> dict:
-    from qbot_calendar_core import qcal_event_update_controlled
-    r = qcal_event_update_controlled(
-        event_id=payload.get("event_id"), match=payload.get("match"),
-        updates=payload.get("updates", {}),
-        idempotency_key=idem_key, confirm=True, source=source,
-    )
-    status_map = {"ok": "OK", "duplicate": "DUPLICATE", "refused": "REFUSED",
-                  "not_found": "NOT_FOUND", "ambiguous_match": "AMBIGUOUS", "error": "ERROR"}
-    return {
-        "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
-        "status": status_map.get(r["status"], "ERROR"),
-        "action_type": "qcal_event_update",
-        "idempotency_key": idem_key, "updated": r.get("updated", False),
-        "event_id": r.get("event_id"), "before": r.get("before"), "after": r.get("after"),
-        "message": r.get("message", ""),
-    }
 
 
-def _action_exec_event_cancel(payload: dict, idem_key: str, source: str) -> dict:
-    from qbot_calendar_core import qcal_event_cancel_controlled
-    r = qcal_event_cancel_controlled(
-        event_id=payload.get("event_id"), match=payload.get("match"),
-        reason=payload.get("reason"), idempotency_key=idem_key, confirm=True, source=source,
-    )
-    status_map = {"ok": "OK", "duplicate": "DUPLICATE", "refused": "REFUSED",
-                  "not_found": "NOT_FOUND", "ambiguous_match": "AMBIGUOUS", "error": "ERROR"}
-    return {
-        "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
-        "status": status_map.get(r["status"], "ERROR"),
-        "action_type": "qcal_event_cancel",
-        "idempotency_key": idem_key, "cancelled": r.get("cancelled", False),
-        "event_id": r.get("event_id"), "before": r.get("before"), "after": r.get("after"),
-        "message": r.get("message", ""),
-    }
 
 
-def _action_exec_event(payload: dict, idem_key: str, source: str) -> dict:
-    """Execute qcal_event_add via shared writer."""
-    from qbot_calendar_core import qcal_event_add_controlled
-    r = qcal_event_add_controlled(
-        date_start=payload.get("date_start",""), title=payload.get("title","?"),
-        date_end=payload.get("date_end"), time_start=payload.get("time_start"),
-        event_type=payload.get("event_type","note"), description=payload.get("description", payload.get("title","")),
-        source=source, idempotency_key=idem_key, confirm=True,
-    )
-    status_map = {"ok": "OK", "duplicate": "DUPLICATE", "refused": "BLOCKED", "error": "ERROR"}
-    return {
-        "tool": "qbot.action_execute", "safety_class": "WRITE_ONLY_ALLOWLIST",
-        "status": status_map.get(r["status"], "ERROR"),
-        "action_type": "qcal_event_add",
-        "idempotency_key": idem_key, "created": r.get("created", False),
-        "event_id": r.get("event_id"), "record": r.get("record"),
-        "message": r.get("message", ""),
-        "snapshot_rebuilt": r.get("snapshot_rebuilt", False),
-    }
 
 
 def _action_exec_rwgps_gpx_import(payload: dict, idem_key: str, source: str) -> dict:

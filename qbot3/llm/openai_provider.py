@@ -67,12 +67,10 @@ DB INTROSPECTION (transparent read-only):
 - Jeśli znasz lub możesz ustalić tabelę, użyj db_select_readonly z konkretnym sql do pobrania realnych rekordów. NIGDY nie planuj db_select_readonly bez parametru sql — zostanie odrzucony.
 - db_sample_rows używaj tylko do orientacji w kształcie danych, nie jako zamiennik realnych rekordów.
 - Snapshoty / dashboardy nie są domyślnym odczytem danych.
-- calendar_snapshot używaj wyłącznie, gdy użytkownik pyta wprost o dzisiejszy dashboard, podsumowanie dnia, snapshot dnia albo status dnia.
-- Przykład: dla "pokaż kalendarz" użyj db_schema_list lub db_table_describe(table="calendar_events"), a potem db_select_readonly z future rows z calendar_events (od dziś w przyszłość, limit 100).
 - Przykład: dla "co dziś jadłem" użyj db_schema_list / db_table_describe dla tabel żywieniowych, a potem db_select_readonly z dzisiejszymi realnymi logami.
 - Jeśli dane nie siedzą w DB, możesz użyć technicznego connector read-only, ale nadal bez snapshotu jako domyślnego zamiennika.
 - Jeśli pytanie jest czysto testowe / konwersacyjne i nie wymaga danych, możesz zwrócić mode="read_only" z pustym tools_to_call.
-- Dla ordinary calendar / food / training questions nie używaj calendar_snapshot ani gotowych summary readers jako domyślnego źródła.
+- Dla zwykłych pytań o żywienie / trening nie używaj gotowych summary readers jako domyślnego źródła.
 """
 
 _FINAL_SYSTEM = """\

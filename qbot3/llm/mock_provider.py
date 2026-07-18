@@ -45,8 +45,6 @@ class MockProvider(LLMProvider):
             tools = []
             if "przypomnij" in ql:
                 intent = "reminder_add"
-            elif "wydarzenie" in ql or "event" in ql or "kalendarz" in ql or "bikepack" in ql:
-                intent = "calendar_event_add"
             elif subtractive_nutrition_write:
                 intent = "nutrition_log_add"
             else:
@@ -61,26 +59,10 @@ class MockProvider(LLMProvider):
         elif any(k in ql for k in ("readiness", "gotowoś")):
             intent = "readiness"
             tools = ["readiness"]
-        elif any(k in ql for k in ("dashboard", "podsumowanie dnia", "snapshot dnia", "status dnia", "dzisiejszy dashboard")):
-            intent = "calendar_snapshot"
-            tools = ["calendar_snapshot"]
         elif any(k in ql for k in ("pokaż listę projektów", "lista projektów", "projekty", "artefakt", "artifacts")):
             intent = "artifacts_list"
             tools = ["artifacts_list"]
             parameters = {"list_projects": True}
-        elif any(k in ql for k in ("kalendarz", "calendar", "wydarzeń", "wydarzen", "event", "eventy", "zaplanowane", "spotkan")):
-            intent = "calendar"
-            tools = ["db_schema_list", "db_table_describe", "db_select_readonly"]
-            parameters = {
-                "schema": "public",
-                "table": "calendar_events",
-                "sql": (
-                    "SELECT * FROM calendar_events "
-                    "WHERE date_start >= CURRENT_DATE "
-                    "ORDER BY date_start, time_start NULLS LAST, id "
-                    "LIMIT 100"
-                ),
-            }
         elif any(k in ql for k in ("pogoda", "weather", "temperatur")):
             intent = "weather"
             tools = ["weather_forecast"]
