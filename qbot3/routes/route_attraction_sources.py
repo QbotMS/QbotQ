@@ -20,7 +20,11 @@ from typing import Any, Iterable
 import requests
 
 from qbot3.artifacts.route_analyzer import analyze_route_poi_artifact
-from qbot3.routes.route_attraction_engine import haversine_m, normalize_analyzer_candidates
+from qbot3.routes.route_attraction_engine import (
+    haversine_m,
+    normalize_analyzer_candidates,
+    normalize_google_source_candidates,
+)
 
 
 WIKIPEDIA_API = "https://pl.wikipedia.org/w/api.php"
@@ -227,7 +231,7 @@ def discover_sources(source_path: Path, *, route_id: str, route_distance_km: flo
     )
     open_rows, _ = normalize_analyzer_candidates(open_analysis.get("attractions") or [])
     _, google_rows = normalize_analyzer_candidates(google_analysis.get("attractions") or [])
-    combined = wikipedia + open_rows
+    combined = wikipedia + open_rows + normalize_google_source_candidates(google_rows)
     wikidata = discover_wikidata(session, (row.get("qid") for row in combined))
     status = str(open_analysis.get("technical_completeness") or open_analysis.get("status") or "UNKNOWN").upper()
     return {

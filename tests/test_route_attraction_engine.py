@@ -1,6 +1,6 @@
 import math
 
-from qbot3.routes.route_attraction_engine import classify, rank_candidates
+from qbot3.routes.route_attraction_engine import classify, normalize_google_source_candidates, rank_candidates
 
 
 def _row(name, km, *, extract="", tags=None, qid=None, pageid=1, lat=None):
@@ -64,3 +64,16 @@ def test_candidate_keys_and_ranking_are_stable():
     assert [(row["candidate_key"], row["score"]) for row in first["candidates"]] == [
         (row["candidate_key"], row["score"]) for row in second["candidates"]
     ]
+
+
+def test_google_names_enter_the_same_semantic_gate_not_a_separate_whitelist():
+    raw = [
+        {"name": "Pałac testowy", "lat": 50.0, "lon": 17.0, "route_km": 10,
+         "distance_to_track_m": 200, "google_place_id": "palace", "source_tags": "tourism=attraction"},
+        {"name": "Super Atrakcja", "lat": 50.1, "lon": 17.0, "route_km": 30,
+         "distance_to_track_m": 200, "google_place_id": "generic", "source_tags": "tourism=attraction"},
+    ]
+    rows = normalize_google_source_candidates(raw)
+    result = rank_candidates(rows, raw, {}, 100)
+    assert [row["name"] for row in result["candidates"]] == ["Pałac testowy"]
+    assert result["candidates"][0]["candidate_key"] == "google:palace"

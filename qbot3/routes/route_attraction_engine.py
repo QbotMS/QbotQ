@@ -107,6 +107,36 @@ def normalize_analyzer_candidates(items: Iterable[dict[str, Any]]) -> tuple[list
     return open_rows, google_rows
 
 
+def normalize_google_source_candidates(items: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert Google rows to semantic candidates; classify() remains the gate."""
+    rows: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict) or item.get("lat") is None or item.get("lon") is None:
+            continue
+        name = str(item.get("name") or item.get("google_name") or "").strip()
+        if not name:
+            continue
+        place_id = str(item.get("google_place_id") or item.get("osm_id") or "").strip() or None
+        tags = parse_source_tags(item.get("source_tags"))
+        rows.append({
+            "name": name,
+            "lat": float(item["lat"]),
+            "lon": float(item["lon"]),
+            "km": float(item.get("route_km") or 0.0),
+            "dist": float(item.get("distance_to_track_m") or 0.0),
+            "sources": {"google"},
+            "pageid": None,
+            "wiki": None,
+            "qid": None,
+            "extract": str(item.get("g_type_pl") or ""),
+            "image": None,
+            "tags": tags,
+            "osm_ids": [],
+            "google_place_id": place_id,
+        })
+    return rows
+
+
 def entity_text(entity: dict[str, Any]) -> str:
     values: list[str] = []
     for group in (entity.get("labels") or {}, entity.get("descriptions") or {}):
@@ -367,6 +397,8 @@ def _mmr_select(rows: Iterable[dict[str, Any]], target: int, *, min_score: float
 def candidate_key(row: dict[str, Any]) -> str:
     if row.get("qid"):
         return f"wikidata:{row['qid']}"
+    if row.get("google_place_id"):
+        return f"google:{row['google_place_id']}"
     if row.get("osm_ids"):
         return f"osm:{row['osm_ids'][0]}"
     payload = f"{norm(row.get('name'))}|{float(row.get('lat') or 0):.5f}|{float(row.get('lon') or 0):.5f}"
