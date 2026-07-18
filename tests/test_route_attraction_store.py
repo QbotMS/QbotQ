@@ -91,6 +91,8 @@ def test_attraction_writer_is_separate_and_publish_schema_has_one_active_run():
     migration = (Path(__file__).parents[1] / "sql" / "route_attraction_store_v1.sql").read_text()
     assert "route_attraction_one_published_uq" in migration
     assert "WHERE published" in migration
+    assert "GRANT SELECT, INSERT, UPDATE, DELETE" in migration
+    assert "GRANT USAGE, SELECT ON SEQUENCE" in migration
 
 
 def test_route_attractions_tool_accepts_canonical_komoot_route_ids():

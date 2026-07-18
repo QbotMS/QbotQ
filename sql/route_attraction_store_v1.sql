@@ -63,4 +63,9 @@ CREATE INDEX IF NOT EXISTS route_attraction_layer_run_rank_idx
 CREATE INDEX IF NOT EXISTS route_attraction_layer_recommended_idx
     ON qbot_v2.route_attraction_layer(run_id, recommended_rank) WHERE is_recommended;
 
+GRANT SELECT, INSERT, UPDATE, DELETE ON qbot_v2.route_attraction_run TO qbot;
+GRANT SELECT, INSERT, UPDATE, DELETE ON qbot_v2.route_attraction_layer TO qbot;
+GRANT USAGE, SELECT ON SEQUENCE qbot_v2.route_attraction_run_run_id_seq TO qbot;
+GRANT USAGE, SELECT ON SEQUENCE qbot_v2.route_attraction_layer_attraction_id_seq TO qbot;
+
 COMMIT;
