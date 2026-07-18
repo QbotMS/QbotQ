@@ -30,7 +30,7 @@ class _Conn:
         self.queries.append((" ".join(query.split()), params))
         if "to_regclass('qbot_v2.route_attraction_run')" in query:
             value = "qbot_v2.route_attraction_run" if self.schema else None
-            return _Result((value, value))
+            return _Result({"run_table": value, "layer_table": value})
         if "to_regclass('qbot_v2.route_poi_prefs')" in query:
             return _Result(("qbot_v2.route_poi_prefs",))
         if "SELECT attractions_enabled" in query:

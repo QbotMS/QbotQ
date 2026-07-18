@@ -49,8 +49,8 @@ def get_route_attractions(
     )
     try:
         available = conn.execute(
-            "SELECT to_regclass('qbot_v2.route_attraction_run'), "
-            "to_regclass('qbot_v2.route_attraction_layer')"
+            "SELECT to_regclass('qbot_v2.route_attraction_run') AS run_table, "
+            "to_regclass('qbot_v2.route_attraction_layer') AS layer_table"
         ).fetchone()
         values = list(available.values()) if isinstance(available, dict) else list(available or [])
         if len(values) < 2 or not all(values):
