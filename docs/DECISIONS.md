@@ -5,6 +5,28 @@
 
 ---
 
+## 2026-07-18 -- DECYZJA: jedna warstwa atrakcji dla wyprawy; dni dziedziczą; stare podziały są usuwane
+
+**Status:** wdrożone produkcyjnie. Pełna dokumentacja: `docs/PLANER_WYPRAW_ATRAKCJE.md`.
+
+**Jedno źródło:** Planer Wypraw i Analiza Trasy czytają `route_attraction_run/layer`. Dzienny GPX nie uruchamia wyszukiwania atrakcji, tylko czyta zakres km publikacji rodzica przez `route_stage_lineage`.
+
+**Ranking:** około 12 kandydatów i 2,5 rekomendacji na 100 km. Preferowane historyczne miasta, zamki, pałace, fortyfikacje i zabytki techniki. Archeologia bez widocznego elementu jest karana. Zwykłe obiekty sakralne, pomniki, zoo oraz postoje ponad 60 min są odrzucane. Google jest dowodem, nie bramką semantyczną.
+
+**Logistyka osobno:** sklepy, jedzenie i woda pozostają w `route_poi_layer`; dzienny odcinek dziedziczy ich wycinek, ale nie miesza ich z atrakcjami.
+
+**Eksport dni:** `POST /api/planer/dodaj-do-qbot` przyjmuje `route_id` i `cuts`, tworzy 1–12 kanonicznych GPX oraz kompletne wpisy gotowe dla Analizy Trasy.
+
+**Retencja dziennych podziałów:** wybrano natychmiastowe sprzątanie zamiast odkładania niewidocznych wersji. Najpierw powstaje pełny nowy zestaw. Następnie w osobnej transakcji usuwany jest poprzedni zestaw tego samego rodzica, a po commit dokładne GPX. Zakres jest ograniczony przez lineage, inny `split_key`, źródło `planer` i ścisły format route_id. Identyczne zatwierdzenie jest idempotentne. Trasy ręczne i rodzic są chronione.
+
+**Bez testowych zapisów:** testy są jednostkowe; nie utworzono sztucznych tras w produkcyjnej bazie.
+
+**Weryfikacja:** Planer 15/15, attraction engine 8/8, attraction store 11/11; `qbot-web` active, frontend `v27`.
+
+**Commity:** `f577e34`, `692b029`, `c972a5a`, `74e31d2`, `d4238e3`.
+
+---
+
 
 ## 2026-07-17/18 -- DECYZJA: presety szybkiego szacunku zywienia (model absolutny) + status jedzenia w kalendarzu + fix trigger refresh_day_flags
 

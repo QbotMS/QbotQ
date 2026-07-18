@@ -1,6 +1,26 @@
 # QBot -- CURRENT (handoff sesji)
 
 
+## Sesja 2026-07-18 -- wspólne atrakcje + Planer Wypraw -> dzienne GPX + sprzątanie
+
+Pełna dokumentacja: `docs/PLANER_WYPRAW_ATRAKCJE.md`. Decyzja: `docs/DECISIONS.md`.
+
+WYKONANE I WDROŻONE:
+- Planer Wypraw i Analiza Trasy czytają jeden opublikowany ranking atrakcji.
+- Ranking `route_attractions_v2.1` skalibrowany pod historyczne miasta, zamki, pałace, fortyfikacje i zabytki techniki; widoczna archeologia premiowana, niewidoczne grodziska karane; zwykłe obiekty sakralne, pomniki, zoo i postoje ponad 60 min odrzucane.
+- Przywrócone zdjęcia, krótkie opisy i linki źródłowe atrakcji.
+- `POST /api/planer/dodaj-do-qbot` tworzy wszystkie dzienne GPX jednym żądaniem.
+- `route_stage_lineage` wiąże dzień z rodzicem i zakresem km. Atrakcje dnia są wycinkiem publikacji rodzica, bez zapytań zewnętrznych; nawierzchnia i POI logistyczne również są dziedziczone.
+- Zmieniony podział usuwa poprzednie dzienne rekordy, artefakty, warstwy i dokładne GPX dopiero po poprawnym zapisaniu nowego zestawu. Identyczny podział jest idempotentny; trasy ręczne są chronione.
+- Produkcja: `qbot-web` active, frontend Planera `v27`, migracja zastosowana.
+- Testy: Planer 15/15, silnik atrakcji 8/8, store atrakcji 11/11.
+
+COMMITY: `f577e34`, `692b029`, `c972a5a`, `74e31d2`, `d4238e3`.
+
+OTWARTE: pierwszy realny zapis przez UI jest celowo pierwszym testem integracyjnym na prawdziwej wyprawie; monitorować `cleanup_warnings`. Commity czekają na osobny świadomy push do `origin/main`.
+
+---
+
 ## Sesja 2026-07-17/18 -- Presety zywienia + kafelek/ikonka jedzenia w kalendarzu + rekonstrukcja dni + fix bialych pol
 
 Pelna decyzja: docs/DECISIONS.md (wpis 2026-07-17/18 presety zywienia). Model/dane: docs/PROJEKT_ODZYWIANIE.md (sekcja "Presety szybkiego szacunku").

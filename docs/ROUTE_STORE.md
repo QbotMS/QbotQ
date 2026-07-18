@@ -2,6 +2,14 @@
 
 _Utworzono 2026-07-01. Dokumentuje zmiany z sesji „route store cleanup/repair + narzędzia tras Alberta". Żywy system wygrywa — weryfikuj na kodzie._
 
+## Aktualizacja 2026-07-18 — trasy dzienne Planera
+
+Planer tworzy deterministyczne dzieci trasy nadrzędnej i zapisuje relację w `qbot_v2.route_stage_lineage`. Dzieci dziedziczą wycinki nawierzchni, POI logistycznych i wspólnej publikacji atrakcji. Nie wykonują osobnego discovery atrakcji.
+
+Dla tras dziennych obowiązuje retencja „tylko aktualny podział”: po poprawnym utworzeniu nowego zestawu poprzednie dzieci tego samego rodzica są usuwane z route store, a dokładne pliki GPX są kasowane dopiero po commit transakcji. Pełny kontrakt i zabezpieczenia: `docs/PLANER_WYPRAW_ATRAKCJE.md`.
+
+---
+
 ## 1. Po co to jest
 Trasa (RWGPS) może być wielokrotnie modyfikowana i wielokrotnie przeliczana. Ten obszar pilnuje, żeby:
 - każda wersja geometrii trasy miała własny, spójny zestaw danych,
