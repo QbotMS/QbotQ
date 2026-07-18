@@ -6,6 +6,77 @@
 ---
 
 
+## 2026-07-17/18 -- DECYZJA: presety szybkiego szacunku zywienia (model absolutny) + status jedzenia w kalendarzu + fix trigger refresh_day_flags
+
+**Status:** dziala na zywo. Stan sesji: docs/CURRENT.md. Model/dane: docs/PROJEKT_ODZYWIANIE.md.
+
+**0) BUG: trigger refresh_day_flags blokowal WSZYSTKIE zapisy dnia.**
+- qbot_v2.refresh_day_flags() (trigger na intake_logs/energy_daily/sleep_daily/training_sessions/wellness_daily) odwolywal sie do skasowanej (refaktor 2026-07-16) tabeli calendar_events -> kazdy INSERT/UPDATE rzucal blad = zrodlo WRITE_INCONSISTENT.
+- Fix: CREATE OR REPLACE FUNCTION, has_calendar z calendar_entry(day). Utrwalone: sql/refresh_day_flags_fix.sql; sql/calendar_core_v1.sql = DEPRECATED. Dzienne tabele Garmina bez utraty danych -- bug blokowal tylko NOWE zapisy.
+
+**1) Presety = ABSOLUTNE kotwice kcal (nie offset od spalania).**
+- Odrzucono expenditure+-offset: spozycie nie zalezy od spalania TEGO dnia. Kotwice: malo=2200, normalnie=2700, popuscilem=3100 kcal (ANCHORS_KCAL w qbot_nutrition_presets.py).
+- Makra poziomu = MEDIANA realnych logowanych dni w pasmie wokol kotwicy (auto z historia). popuscilem = low_confidence (malo dni).
+- Filtry: bez source ILIKE %preset%/%recovery%, bez quality='estimated', kcal>=1200, ostatnie 30 probek.
+- Bilans do wagi liczony DOWNSTREAM (intake - realny wydatek), niezaleznie od presetu.
+
+**2) Zapis presetu + ochrona przed dublowaniem.**
+- POST /api/nutrition/preset/apply {day,level}: intake_logs source='preset_estimate' quality='estimated' + 1 pozycja. ODMAWIA gdy dzien ma realne jedzenie. Ponowny klik kasuje poprzedni preset.
+- ODLOZONE: eviction presetu przy pozniejszym RECZNYM realnym wpisie (dzis jeden kierunek -> ryzyko dublowania).
+
+**3) Endpointy (qbot_web.py, _db_conn dict_row, %% w ILIKE param).**
+- GET /api/nutrition/preset/values?day= -> 3 opcje + has_real_intake + already_preset.
+- POST /api/nutrition/preset/apply -> jw.
+- GET /api/nutrition/day-summary?day= -> kind logged/preset/empty + kcal + makra + pozycje + preset_label.
+- GET /api/nutrition/status?start=&end= -> mapa {date: 'logged'|'preset'} dla siatki (puste pominiete).
+
+**4) Kalendarz: widocznosc statusu jedzenia.**
+- Kafelek "Zywienie" w dniu (loadNutriTile). Ikonka przy dacie: emoji 🍽 (jak przycisk sidebar) + KROPKA statusu (zielona/niebieska/czerwona). DECYZJA: emoji nieprzefarbowywalne -> status niesie kropka, nie kolor talerza (odrzucono kolorowany SVG: brzydki maly).
+- Przyciski Dodaj na gore, tylko ikony + tooltip. Wpisy dziennika pod przyciski, nad Forme.
+- FIX czytelnosci: .frm label --muted->--ink; tekst w bialych polach var(--ink) jasny -> #17251b ciemny (+placeholder).
+
+**5) Reczna korekta wydatku dla niezarejestrowanej aktywnosci (27.06 mecz).**
+- Zegarek nie zlapal meczu. DECYZJA: dopisac spalanie do energy_daily (active+total +1350), source='garmin_live+manual_pilka' (NIE do intake -- to wydatek). Garmin = kanon, ale gdy DANE BRAKUJA reczna korekta uprawniona i oznaczona w source. ZALOZENIE: mozliwe drobne dublowanie z krokami.
+
+**Wdrozenie:** statyki (kalendarz-render.js v22, kalendarz.html) zywe od razu; qbot_web.py + qbot_nutrition_presets.py + sql/ = REPO -> restart qbot-web (zrobiony) + commit jawnych sciezek.
+
+**ODLOZONE (decyzja przed kodem):** choroba->event (model danych), auto-przypisanie presetu pustym dniom, eviction presetu, pelne DDL calendar_entry do sql/.
+
+---
+
+## 2026-07-17 (cz.2) -- DECYZJA: DZIS hero split + ostatnie aktywnosci + panel szczegolow jazdy; no-store /api; Doradca czyta plan; powiekszanie kafla
+
+**Status:** dziala na zywo. UI: docs/FORMA_UI_LAYOUT.md (sekcje 1/9/10). Stan sesji: docs/CURRENT.md (2026-07-17 cz.2).
+
+**1) Hero DZIS podzielony na 2 + ostatnie aktywnosci.**
+- `renderHero` -> `.hero-split` (grid 1fr 1fr): lewo stan dnia (TSB + HRV/RHR + Analiza/Doradca), prawo "Ostatnie aktywnosci" (3).
+- Nowy endpoint `GET /api/forma/activities?n=3` z `qbot_v2.training_sessions` (sort po COALESCE(started_at,date)): date, started_at, sport_type, name(=activity_name), distance_m, duration_s, elevation_m, tss, external_id.
+- Aktywnosc = 2 wiersze: (1) dyscyplina + kiedy (dzis HH:MM / wczoraj / dd.mm), (2) nazwa(link) + po prawej dystans km (lub czas dla nie-dystansowych) + TSS. "Gdzie" bierzemy z `activity_name` (BRAK osobnej kolumny lokalizacji). Mapa PL: `SPORTPL`/`sportLabel`.
+
+**2) Panel szczegolow jazdy (reuzycie prawego drawera Analiza AI).**
+- Nowy endpoint `GET /api/forma/activity?external_id=` -> pelne pola jazdy (moc sr/NP/max, IF, HR sr/max, kadencja, kalorie, TSS, przewyzszenie) + `has_report` = EXISTS w `qbot_v2.ride_report_data` po `ride_key`=external_id.
+- Klik w nazwe -> `openRide()` -> `asideShow` z `rideDetailHtml` (puste wiersze pomijane). DRUGI klik w te sama jazde ZAMYKA panel (toggle `_openRideEid`); `runAnalyze()` czysci `_openRideEid`.
+- Jesli `has_report` -> przycisk `.rd-btn` "Otworz raport trasy" -> `/raport-jazdy.html?ride=<external_id>` w NOWEJ karcie (target=_blank rel=noopener). Raport czyta `?ride=<ride_key>`.
+
+**3) Naprawa "wykresy nie odswiezaja sie po jezdzie".**
+- Dane w bazie byly swieze (training_sessions + fitmodel_daily maja biezacy dzien). Przyczyna: odpowiedzi `/api/` nie mialy Cache-Control -> przegladarka podawala stary JSON.
+- Fix: `_no_cache_static` ustawia teraz `Cache-Control: no-store` dla wszystkich sciezek `/api/` (obok istniejacego no-cache dla .html/.js/.css). Zweryfikowane naglowki na forma/data, activities, activity.
+- OTWARTE (mozliwa druga przyczyna, NIErozwiazana): krzywe CTL/ATL/TSB dla BIEZACEGO dnia finalizuje nocne przeliczenie fitmodel_daily; jazda z tego samego dnia moze nie ruszyc krzywych do nastepnego przeliczenia. Ewentualny trigger po imporcie jazdy / czestszy job = osobne zadanie (decyzja przed kodem). Brak wgladu w cron/timery przez DEV MCP.
+
+**4) Doradca (coach) uwzglednia PLAN z kalendarza.**
+- Helper `_forma_planned_events(conn, days_ahead=21)`: `qbot_v2.calendar_entry` kind='event' od dzis do dzis+21 (takze wielodniowe przez end_day). Linie: data (+ "za N dni"/dzis/jutro), tytul, godzina (at_time), typ (event_type: urlop/delegacja/rest), notatka.
+- Doraczane do promptu trybu `coach` + instrukcja: rozpisz najblizsza jazde i 7 dni pod zaplanowane cele (tapering przed dluga jazda/zawodami; przy urlopie/delegacji trening ograniczony). mt=620. Dowod na zywo: Doradca sam napisal "odswiezenie pod dluga jazde 2026-07-19 (>100 km) jako glowny akcent".
+
+**5) DZIS bez scrolla.**
+- `.qtab-panel[data-qtab="Dziś"]{max-height:calc(100dvh - 168px);overflow:hidden}` (+ fallback vh), `#dzis-board{overflow:hidden}`, dolny padding `.wrap` 80->24, ciasniejszy hero. 168 px ~ naglowek + pasek zakladek + paddingi. Kompromis: nadmiar kafli/widzetow jest PRZYCINANY (nie scroll); dymki hover w gornym rzedzie moga byc przyciete.
+
+**6) Powiekszanie kafla (podglad danych).**
+- Kazdy `.tile` ma `data-k`; delegowany klik -> `openTileZoom(k)` -> modal `.tilez` (fixed, z-index 200): duza wartosc+jednostka, delta w oknie, powiekszony mini-wykres (`.tilez-chart .mini{height:170px}`), opis + interpretacja. Zamkniecie: klik GDZIEKOLWIEK (tlo/karta/x) lub Esc. Dotyczy Wskaznikow i DZIS (widzety zywienia to nie kafle).
+
+**Wdrozenie:** statyki (forma.html, forma-render.js v32) zywe od razu; `qbot_web.py` (activities, activity+has_report, no-store /api, _forma_planned_events) = REPO -> restart qbot-web (zrobiony) + commit jawnych sciezek.
+
+---
+
 ## 2026-07-17 -- DECYZJA: ustawienia UI po stronie serwera (ui_prefs) + przebudowa zakladki Odzywianie + konfigurowalny DZIS
 
 **Status:** dziala na zywo. Stan: docs/CURRENT.md (sesja 2026-07-17). UI: docs/FORMA_UI_LAYOUT.md (sekcje 5/9). Dane zakladki: docs/PROJEKT_ODZYWIANIE.md.
@@ -2468,3 +2539,10 @@ gdy dzien ma jazde I przypomnienie(-a) -> zamiast belki maly dzwonek 🔔 w praw
 (istniejacy onclick=openDay) otwiera dzien. Bez jazdy -- belka jak dotad (jest miejsce). Rezerwa
 .day.has-rem .marks{padding-right:20px}, by dzwonek nie nachodzil na kafelek jazdy. JS ?v=17.
 Statyki poza repo.
+
+## 2026-07-18 — Weryfikacja web przez HTTP: helper scripts/dev_fetch.py (nie goly urlopen)
+**Problem:** qbot-web (FastAPI, port 30181) trzyma KAZDA sciezke za brama logowania (middleware, ciasteczko qbot_session; wyjatki: /healthz, /login, favicon). Weryfikacja tresci przez goly urllib/urlopen bez ciasteczka zwracala strone 'QBot Lab - logowanie' -> falszywe negatywy (pliki byly poprawne, ale odczyt byl slepy). Powtarzalny falstart.
+**Decyzja (wariant A, zatwierdzony):** staly helper `scripts/dev_fetch.py`, ktory sam liczy poprawne ciasteczko sesji i dolacza je do zadania. Bez zmian w bramie logowania, bez restartu, bez nowej powierzchni ataku. Odrzucono wariant B (bypass dla 127.0.0.1 w middleware) — dziala, ale oslabia gate dla kazdego procesu na VPS.
+**Jak dziala trwale:** helper preferuje funkcje samej aplikacji (qbot_web._webauth_load / _webauth_cookie_make), a jako zapas ma lokalna kopie logiki czytajaca biezacy plik .env.webauth. Dzieki temu zmiana hasla/tokenu jest podchwytywana automatycznie — nic nie trzeba synchronizowac. Sekret NIGDY nie jest drukowany (uzyty tylko do HMAC podpisu ciasteczka).
+**Uzycie:** `.venv/bin/python3 scripts/dev_fetch.py /nav.js?v=3 --grep TEKST` (opcje: --max N, --head, --user NAME; sciezka lub pelny http://). Zwraca status + tresc; wykrywa i sygnalizuje, gdy dostal strone logowania.
+**Reguła:** NIE weryfikuj web samym urlopem — zawsze przez dev_fetch.py. Zapisane rowniez w CONTEXT.md (sekcja 'Jak pracowac') przez scripts/build_context.py, wiec widoczne na starcie kazdej sesji.
