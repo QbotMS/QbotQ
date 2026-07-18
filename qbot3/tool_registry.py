@@ -2669,7 +2669,7 @@ def _load_route_attractions_tool() -> dict[str, Any]:
 
     def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
         rid = str((args or {}).get("route_id") or "").strip()
-        if not rid.isdigit():
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", rid):
             return error_result("ROUTE_ATTRACTIONS_NEEDS_ID", "Podaj numer trasy (route_id).")
         raw = (args or {}).get("enable", True)
         if isinstance(raw, bool):

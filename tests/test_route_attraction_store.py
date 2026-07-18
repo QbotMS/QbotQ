@@ -91,3 +91,10 @@ def test_attraction_writer_is_separate_and_publish_schema_has_one_active_run():
     migration = (Path(__file__).parents[1] / "sql" / "route_attraction_store_v1.sql").read_text()
     assert "route_attraction_one_published_uq" in migration
     assert "WHERE published" in migration
+
+
+def test_route_attractions_tool_accepts_canonical_komoot_route_ids():
+    registry = (Path(__file__).parents[1] / "qbot3" / "tool_registry.py").read_text()
+    section = registry.split("def _load_route_attractions_tool", 1)[1].split("\ndef _", 1)[0]
+    assert "rid.isdigit()" not in section
+    assert "A-Za-z0-9._:-" in section
