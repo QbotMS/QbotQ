@@ -14,6 +14,9 @@ class TestRoutePoiGooglePrimary(unittest.TestCase):
     def setUp(self):
         self.overpass_queries: list[str] = []
 
+    def test_google_helpers_have_module_logger_for_fail_open_errors(self):
+        self.assertIsNotNone(ra.log)
+
     def test_attractions_only_query_cannot_fetch_logistics(self):
         self.assertEqual(ra._route_poi_v2_requested_categories("attractions_only"), ["attraction"])
         query = ra._route_poi_v2_build_query(

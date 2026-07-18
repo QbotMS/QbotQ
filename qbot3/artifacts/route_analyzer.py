@@ -18,6 +18,8 @@ from typing import Any
 
 import httpx
 
+log = logging.getLogger("route_poi_analyze")
+
 ARTIFACTS_ROOT = Path("/opt/qbot/artifacts")
 NOMINATIM_URL = "https://nominatim.openstreetmap.org"
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
