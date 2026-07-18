@@ -27,7 +27,7 @@ Planer Wypraw i Analiza Trasy czytają ten sam opublikowany wynik z tabel `qbot_
 
 Ranking znajduje się w `qbot3/routes/route_attraction_engine.py`. Aktualna wersja: `route_attractions_v2.1`. Wikipedia, Wikidata i OSM tworzą bramkę semantyczną. Google jest dodatkowym dowodem jakości i lokalizacji, ale sam nie decyduje, czy miejsce jest atrakcją.
 
-Publikacja jest atomowa. Niepełny lub zbyt ubogi wynik nie zastępuje poprzedniej publikacji. Minimalna bramka to 10 kandydatów na 100 km, cel rankingu to 12 kandydatów i 2,5 rekomendacji na 100 km.
+Publikacja jest atomowa. Niekompletne źródła nie zastępują poprzedniej publikacji. Każdy kompletny, niepusty wynik jest publikowany — nawet jeśli trasa ma tylko jedną atrakcję spełniającą próg jakości. Gęstość 12 kandydatów i 2,5 rekomendacji na 100 km jest celem oraz limitem rankingu, a nie minimalnym warunkiem publikacji.
 
 Warstwa przechowuje nazwę, kategorię, kilometr, odległość od śladu, wynik i jego składowe, czas postoju, opis, zdjęcie, link źródłowy, dopasowaną ocenę Google i flagę rekomendacji.
 

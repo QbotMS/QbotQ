@@ -14,6 +14,7 @@ WYKONANE I WDROŻONE:
 - Zmieniony podział usuwa poprzednie dzienne rekordy, artefakty, warstwy i dokładne GPX dopiero po poprawnym zapisaniu nowego zestawu. Identyczny podział jest idempotentny; trasy ręczne są chronione.
 - Produkcja: `qbot-web` active, frontend Planera `v27`, migracja zastosowana.
 - Testy: Planer 15/15, silnik atrakcji 8/8, store atrakcji 11/11.
+- FIX 2026-07-18: usunięto błędną minimalną gęstość publikacji `floor(km/100*10)`. Kompletny wynik z co najmniej jednym kandydatem jakościowym jest publikowany; norma per 100 km pozostaje tylko celem/limitem rankingu.
 
 COMMITY: `f577e34`, `692b029`, `c972a5a`, `74e31d2`, `d4238e3`.
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 from datetime import datetime, timezone
 from typing import Any
 
@@ -18,6 +17,10 @@ def _description(row: dict[str, Any]) -> str:
     if row.get("nearby"):
         parts.append("w pobliżu: " + ", ".join(row["nearby"][:3]))
     return " · ".join(str(part) for part in parts if part)
+
+
+def _publishable_attraction_run(*, sources_complete: bool, candidate_count: int) -> bool:
+    return bool(sources_complete and int(candidate_count) >= 1)
 
 
 def get_route_attractions(
@@ -200,9 +203,14 @@ def ensure_route_attractions(*, route_id: str | int | None = None, route_base_id
             raise ValueError("route has no usable distance")
         discovered = discover_sources(source_path, route_id=str(base["route_id"]), route_distance_km=distance_km)
         ranked = rank_candidates(discovered["source_rows"], discovered["google_rows"], discovered["wikidata"], distance_km)
-        required_candidates = max(1, math.floor(distance_km / 100.0 * 10.0))
+        # Density is a target/cap for ranking, never a publication gate. A rural
+        # route with one genuinely good place must publish that honest result.
+        required_candidates = 1
         candidate_count = int(ranked["summary"].get("candidates") or 0)
-        publishable = bool(discovered["complete"] and candidate_count >= required_candidates)
+        publishable = _publishable_attraction_run(
+            sources_complete=bool(discovered["complete"]),
+            candidate_count=candidate_count,
+        )
         discovered["source_status"]["required_candidates"] = required_candidates
         discovered["source_status"]["candidate_count"] = candidate_count
         digest = result_hash(ranked)

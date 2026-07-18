@@ -138,7 +138,8 @@ def test_canonical_source_keeps_google_separate_from_semantic_ranking():
     assert '"overpass_enabled": False' in source
 
 
-def test_store_requires_candidate_density_before_publish():
-    source = inspect.getsource(store.ensure_route_attractions)
-    assert "required_candidates" in source
-    assert "publishable" in source
+def test_store_publishes_any_nonempty_quality_result_without_density_gate():
+    assert store._publishable_attraction_run(sources_complete=True, candidate_count=0) is False
+    assert store._publishable_attraction_run(sources_complete=True, candidate_count=1) is True
+    assert store._publishable_attraction_run(sources_complete=True, candidate_count=5) is True
+    assert store._publishable_attraction_run(sources_complete=False, candidate_count=5) is False
