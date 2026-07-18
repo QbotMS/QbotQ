@@ -1015,12 +1015,6 @@ def cmd_log_add(args: argparse.Namespace) -> int:
         except Exception:
             pass
 
-        # Snapshot
-        try:
-            from qbot_calendar_core import build_snapshot
-            build_snapshot(day)
-        except Exception:
-            pass
 
         print(f"✓ Saved: id={meal.get('id')} — {meal_name} ({kcal:.0f} kcal)")
         print(f"  Daily summary ({day}): kcal_total={summary.get('kcal_total',0):.0f}, P={summary.get('protein_total',0):.0f}g, C={summary.get('carbs_total',0):.0f}g, F={summary.get('fat_total',0):.0f}g")
