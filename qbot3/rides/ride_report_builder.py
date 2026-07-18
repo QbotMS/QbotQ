@@ -1263,6 +1263,14 @@ def _modelq_block(cur, ride_date):
         impact["ftp_delta"] = round(f(cr["ftp_est_w"])-f(prev["ftp_est_w"]),1)
     if prev and cr.get("ef_med_28d") and prev.get("ef_med_28d"):
         impact["ef_delta"] = round(f(cr["ef_med_28d"])-f(prev["ef_med_28d"]),3)
+    if prev and cr.get("cp_modelq_w") and prev.get("cp_modelq_w"):
+        impact["cp_delta"] = round(f(cr["cp_modelq_w"])-f(prev["cp_modelq_w"]),1)
+    if prev and cr.get("ltp_modelq_w") and prev.get("ltp_modelq_w"):
+        impact["ltp_delta"] = round(f(cr["ltp_modelq_w"])-f(prev["ltp_modelq_w"]),1)
+    if prev and cr.get("wprime_modelq_kj") and prev.get("wprime_modelq_kj"):
+        impact["wprime_delta"] = round(f(cr["wprime_modelq_kj"])-f(prev["wprime_modelq_kj"]),1)
+    if prev and cr.get("pp_modelq_w") and prev.get("pp_modelq_w"):
+        impact["pp_delta"] = round(f(cr["pp_modelq_w"])-f(prev["pp_modelq_w"]),1)
     impact["ride_strain"] = round(f(bucket["total_strain"]),0) if (bucket and bucket.get("total_strain")) else None
     impact["ride_ef_mean"] = round(f(seg["ef"]),2) if (seg and seg.get("ef")) else None
     impact["ride_segments"] = seg["n"] if seg else None
