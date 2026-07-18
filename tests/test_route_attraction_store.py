@@ -76,6 +76,13 @@ def test_reader_uses_published_layer_and_maps_existing_web_contract():
     assert params == (10, 100.0, 200.0)
 
 
+def test_reader_supports_tuple_rows_used_by_planer_connection():
+    values = list(_row().values())
+    rows = get_route_attractions(_Conn(rows=[tuple(values)]), 10)
+    assert rows[0]["name"] == "Nysa"
+    assert rows[0]["candidate_key"] == "wikidata:Q1"
+
+
 def test_enabled_route_without_published_run_uses_legacy_fallback():
     assert get_route_attractions(_Conn(enabled=True, published=False), 10) is None
 

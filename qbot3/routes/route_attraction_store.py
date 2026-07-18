@@ -41,6 +41,12 @@ def get_route_attractions(
     if km_to is not None:
         where.append("a.km_on_route <= %s")
         params.append(float(km_to))
+    columns = (
+        "candidate_key", "name", "category", "category_label", "km_on_route",
+        "distance_from_route_m", "lat", "lon", "visit_min", "score", "selection_score",
+        "candidate_rank", "is_recommended", "recommended_rank", "why", "extract",
+        "wiki_url", "wikidata_id", "image_url", "rating", "rating_count", "nearby_json",
+    )
     try:
         available = conn.execute(
             "SELECT to_regclass('qbot_v2.route_attraction_run'), "
@@ -91,7 +97,7 @@ def get_route_attractions(
         return []
     output = []
     for original in rows:
-        row = dict(original)
+        row = dict(original) if isinstance(original, dict) else dict(zip(columns, original))
         row.update({
             "km": round(float(row.pop("km_on_route")), 1),
             "dist_m": round(float(row.pop("distance_from_route_m"))) if row.get("distance_from_route_m") is not None else None,
