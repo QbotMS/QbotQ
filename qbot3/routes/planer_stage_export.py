@@ -26,6 +26,7 @@ from qbot3.routes.route_poi_store import _db_conn, _resolve_source_path, _route_
 
 
 EXPORT_ROOT = Path("/opt/qbot/artifacts/exports/rwgps")
+_PLANNER_CHILD_ROUTE_RE = re.compile(r"^planer-[0-9a-f]{8}-[0-9a-f]{10}-d\d{2}$")
 
 
 def _validated_bounds(cuts: list[Any], total_km: float) -> list[tuple[float, float]]:
@@ -63,6 +64,13 @@ def _split_key(parent_version_key: str, stages: list[tuple[float, float]]) -> st
 def _child_route_id(parent_route_id: str, split_key: str, day_index: int) -> str:
     parent_key = hashlib.sha256(parent_route_id.encode("utf-8")).hexdigest()[:8]
     return f"planer-{parent_key}-{split_key[:10]}-d{day_index:02d}"
+
+
+def _planer_child_export_path(route_id: str) -> Path | None:
+    route_id = str(route_id or "").strip()
+    if not _PLANNER_CHILD_ROUTE_RE.fullmatch(route_id):
+        return None
+    return EXPORT_ROOT / f"rwgps_{route_id}.gpx"
 
 
 def _parent_name(conn, route_base: dict[str, Any]) -> str:
@@ -241,6 +249,194 @@ def _inherit_parent_baseline(
     return {"axis_rows": axis_count, "surface_rows": int(surface_rows or 0), "poi_rows": int(poi_rows or 0)}
 
 
+def _cleanup_superseded_planer_day_route_files(
+    file_targets: list[tuple[str, Path]],
+) -> dict[str, Any]:
+    warnings: list[str] = []
+    removed_file_paths: list[str] = []
+    missing_file_paths: list[str] = []
+    for route_id, file_path in file_targets:
+        try:
+            file_path.unlink()
+            removed_file_paths.append(str(file_path))
+        except FileNotFoundError:
+            missing_file_paths.append(str(file_path))
+        except Exception as exc:
+            warnings.append(f"failed to remove planner child GPX {route_id}: {exc}")
+    return {
+        "removed_file_count": len(removed_file_paths),
+        "removed_file_paths": removed_file_paths,
+        "missing_file_count": len(missing_file_paths),
+        "missing_file_paths": missing_file_paths,
+        "warnings": warnings,
+    }
+
+
+def _cleanup_superseded_planer_day_routes(
+    conn,
+    *,
+    parent_route_base_id: int,
+    current_split_key: str,
+) -> dict[str, Any]:
+    rows = conn.execute(
+        """
+        SELECT
+            l.stage_route_base_id,
+            l.stage_route_id,
+            l.split_key,
+            l.day_index,
+            rb.route_artifact_id,
+            rb.route_parse_result_id
+        FROM qbot_v2.route_stage_lineage l
+        JOIN qbot_v2.route_base rb
+          ON rb.route_base_id = l.stage_route_base_id
+        JOIN qbot_v2.route_artifacts ra
+          ON ra.id = rb.route_artifact_id
+        WHERE l.parent_route_base_id=%s
+          AND l.active=true
+          AND l.split_key<>%s
+          AND l.stage_route_id ~ %s
+          AND ra.source='planer'
+        ORDER BY l.day_index, l.stage_route_base_id
+        """,
+        (int(parent_route_base_id), current_split_key, _PLANNER_CHILD_ROUTE_RE.pattern),
+    ).fetchall()
+    candidates = [dict(row) if not isinstance(row, dict) else row for row in rows]
+    if not candidates:
+        return {
+            "removed_route_count": 0,
+            "removed_artifact_count": 0,
+            "removed_parse_result_count": 0,
+            "removed_surface_profile_count": 0,
+            "removed_surface_segment_count": 0,
+            "removed_file_count": 0,
+            "removed_route_ids": [],
+            "removed_artifact_ids": [],
+            "removed_file_paths": [],
+            "missing_file_count": 0,
+            "missing_file_paths": [],
+            "warnings": [],
+            "file_targets": [],
+        }
+
+    warnings: list[str] = []
+    file_targets: list[tuple[str, Path]] = []
+    deleted_route_ids: list[str] = []
+    deleted_route_base_ids: list[int] = []
+    deleted_artifact_ids: list[int] = []
+    for row in candidates:
+        route_id = str(row.get("stage_route_id") or "").strip()
+        route_base_id = int(row["stage_route_base_id"])
+        artifact_id = int(row["route_artifact_id"])
+        path = _planer_child_export_path(route_id)
+        if path is None:
+            warnings.append(f"skipped invalid planner child route_id: {route_id}")
+            continue
+        file_targets.append((route_id, path))
+        deleted_route_ids.append(route_id)
+        deleted_route_base_ids.append(route_base_id)
+        deleted_artifact_ids.append(artifact_id)
+
+    if not deleted_route_ids:
+        return {
+            "removed_route_count": 0,
+            "removed_artifact_count": 0,
+            "removed_parse_result_count": 0,
+            "removed_surface_profile_count": 0,
+            "removed_surface_segment_count": 0,
+            "removed_file_count": 0,
+            "removed_route_ids": [],
+            "removed_artifact_ids": [],
+            "removed_file_paths": [],
+            "missing_file_count": 0,
+            "missing_file_paths": [],
+            "warnings": warnings,
+            "file_targets": [],
+        }
+
+    try:
+        parse_result_count_row = conn.execute(
+            """
+            SELECT count(*) AS n
+            FROM qbot_v2.route_parse_results
+            WHERE route_artifact_id = ANY(%s)
+            """,
+            (deleted_artifact_ids,),
+        ).fetchone()
+        surface_profile_count_row = conn.execute(
+            """
+            SELECT count(*) AS n
+            FROM qbot_v2.route_surface_profiles
+            WHERE route_artifact_id = ANY(%s)
+            """,
+            (deleted_artifact_ids,),
+        ).fetchone()
+        surface_segment_count_row = conn.execute(
+            """
+            SELECT count(*) AS n
+            FROM qbot_v2.route_surface_segments seg
+            JOIN qbot_v2.route_surface_profiles prof
+              ON prof.id = seg.route_surface_profile_id
+            WHERE prof.route_artifact_id = ANY(%s)
+            """,
+            (deleted_artifact_ids,),
+        ).fetchone()
+        removed_parse_result_count = int(
+            parse_result_count_row.get("n") if isinstance(parse_result_count_row, dict) else parse_result_count_row[0]
+        )
+        removed_surface_profile_count = int(
+            surface_profile_count_row.get("n") if isinstance(surface_profile_count_row, dict) else surface_profile_count_row[0]
+        )
+        removed_surface_segment_count = int(
+            surface_segment_count_row.get("n") if isinstance(surface_segment_count_row, dict) else surface_segment_count_row[0]
+        )
+        removed_artifact_count = conn.execute(
+            "DELETE FROM qbot_v2.route_artifacts WHERE id = ANY(%s) AND source='planer'",
+            (deleted_artifact_ids,),
+        ).rowcount
+        removed_route_count = conn.execute(
+            "DELETE FROM qbot_v2.route_stage_lineage WHERE stage_route_base_id = ANY(%s)",
+            (deleted_route_base_ids,),
+        ).rowcount
+        conn.execute(
+            "DELETE FROM qbot_v2.route_base WHERE route_base_id = ANY(%s)",
+            (deleted_route_base_ids,),
+        )
+    except Exception as exc:
+        warnings.append(f"db cleanup failed: {exc}")
+        return {
+            "removed_route_count": 0,
+            "removed_artifact_count": 0,
+            "removed_parse_result_count": 0,
+            "removed_surface_profile_count": 0,
+            "removed_surface_segment_count": 0,
+            "removed_file_count": 0,
+            "removed_route_ids": [],
+            "removed_artifact_ids": [],
+            "removed_file_paths": [],
+            "missing_file_count": 0,
+            "missing_file_paths": [],
+            "warnings": warnings,
+            "file_targets": [],
+        }
+
+    return {
+        "removed_route_count": int(removed_route_count),
+        "removed_artifact_count": int(removed_artifact_count),
+        "removed_parse_result_count": int(removed_parse_result_count),
+        "removed_surface_profile_count": int(removed_surface_profile_count),
+        "removed_surface_segment_count": int(removed_surface_segment_count),
+        "removed_file_count": 0,
+        "removed_route_ids": deleted_route_ids,
+        "removed_artifact_ids": deleted_artifact_ids,
+        "removed_file_paths": [],
+        "missing_file_count": 0,
+        "missing_file_paths": [],
+        "warnings": warnings,
+        "file_targets": file_targets,
+    }
+
+
 def create_planer_day_routes(*, route_id: str, cuts: list[Any]) -> dict[str, Any]:
     route_id = str(route_id or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", route_id):
@@ -305,21 +501,23 @@ def create_planer_day_routes(*, route_id: str, cuts: list[Any]) -> dict[str, Any
             **{key: registered[key] for key in ("route_artifact_id", "route_base_id", "route_version_key")},
         })
 
+    cleanup: dict[str, Any] = {
+        "removed_route_count": 0,
+        "removed_artifact_count": 0,
+        "removed_parse_result_count": 0,
+        "removed_surface_profile_count": 0,
+        "removed_surface_segment_count": 0,
+        "removed_file_count": 0,
+        "removed_route_ids": [],
+        "removed_artifact_ids": [],
+        "removed_file_paths": [],
+        "missing_file_count": 0,
+        "missing_file_paths": [],
+        "warnings": [],
+    }
+
     with _db_conn() as conn:
         with conn.transaction():
-            conn.execute(
-                "UPDATE qbot_v2.route_base SET status='disabled', updated_at=now() "
-                "WHERE route_base_id IN ("
-                "SELECT stage_route_base_id FROM qbot_v2.route_stage_lineage "
-                "WHERE parent_route_base_id=%s AND split_key<>%s AND active=true"
-                ")",
-                (int(parent["route_base_id"]), split_key),
-            )
-            conn.execute(
-                "UPDATE qbot_v2.route_stage_lineage SET active=false, updated_at=now() "
-                "WHERE parent_route_base_id=%s AND split_key<>%s AND active=true",
-                (int(parent["route_base_id"]), split_key),
-            )
             for stage in created:
                 conn.execute(
                     "UPDATE qbot_v2.route_base SET status='active', updated_at=now() WHERE route_base_id=%s",
@@ -346,6 +544,37 @@ def create_planer_day_routes(*, route_id: str, cuts: list[Any]) -> dict[str, Any
                     stage=stage,
                 )
 
+    try:
+        with _db_conn() as cleanup_conn:
+            with cleanup_conn.transaction():
+                cleanup = _cleanup_superseded_planer_day_routes(
+                    cleanup_conn,
+                    parent_route_base_id=int(parent["route_base_id"]),
+                    current_split_key=split_key,
+                )
+    except Exception as exc:
+        cleanup = {
+            "removed_route_count": 0,
+            "removed_artifact_count": 0,
+            "removed_parse_result_count": 0,
+            "removed_surface_profile_count": 0,
+            "removed_surface_segment_count": 0,
+            "removed_file_count": 0,
+            "removed_route_ids": [],
+            "removed_artifact_ids": [],
+            "removed_file_paths": [],
+            "missing_file_count": 0,
+            "missing_file_paths": [],
+            "warnings": [f"db cleanup failed: {exc}"],
+        }
+    else:
+        file_cleanup = _cleanup_superseded_planer_day_route_files(cleanup.pop("file_targets", []))
+        cleanup["removed_file_count"] = file_cleanup["removed_file_count"]
+        cleanup["removed_file_paths"] = file_cleanup["removed_file_paths"]
+        cleanup["missing_file_count"] = file_cleanup["missing_file_count"]
+        cleanup["missing_file_paths"] = file_cleanup["missing_file_paths"]
+        cleanup["warnings"] = [*cleanup["warnings"], *file_cleanup["warnings"]]
+
     return {
         "status": "OK",
         "parent_route_id": route_id,
@@ -353,6 +582,13 @@ def create_planer_day_routes(*, route_id: str, cuts: list[Any]) -> dict[str, Any
         "split_key": split_key,
         "day_count": len(created),
         "days": created,
+        "cleanup": cleanup,
+        "removed_route_count": cleanup["removed_route_count"],
+        "removed_artifact_count": cleanup["removed_artifact_count"],
+        "removed_parse_result_count": cleanup["removed_parse_result_count"],
+        "removed_file_count": cleanup["removed_file_count"],
+        "missing_file_count": cleanup["missing_file_count"],
+        "cleanup_warnings": cleanup["warnings"],
         "attractions_source": "parent_route_attraction_run",
         "external_attraction_requests": 0,
     }
