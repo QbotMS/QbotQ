@@ -95,3 +95,14 @@ def test_tangible_landmark_is_not_absorbed_by_nearby_historic_town():
                   tags={"tourism": "attraction"}, lat=50.4505)
     result = rank_candidates([town, palace], [], {"Q1": _city_entity(town["name"])}, 100)
     assert {row["name"] for row in result["candidates"]} == {town["name"], palace["name"]}
+
+
+def test_candidate_pool_keeps_nearby_quality_while_recommendations_use_spacing():
+    rows = [
+        _row("Fort Alpha", 20.0, pageid=None, tags={"historic": "fort"}, lat=50.0),
+        _row("Fort Beta", 21.0, pageid=None, tags={"historic": "fort"}, lat=50.01),
+        _row("Fort Gamma", 22.0, pageid=None, tags={"historic": "fort"}, lat=50.02),
+    ]
+    result = rank_candidates(rows, [], {}, 10)
+    assert len(result["candidates"]) == 2  # ceil(1.2)
+    assert all(row["selection_score"] == row["score"] for row in result["candidates"])

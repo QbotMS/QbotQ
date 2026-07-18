@@ -379,7 +379,13 @@ def collapse_stops(scored: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     return stops
 
 
-def _mmr_select(rows: Iterable[dict[str, Any]], target: int, *, min_score: float = 48.0) -> list[dict[str, Any]]:
+def _mmr_select(
+    rows: Iterable[dict[str, Any]],
+    target: int,
+    *,
+    min_score: float = 48.0,
+    proximity_weight: float = 1.0,
+) -> list[dict[str, Any]]:
     pool = sorted(
         [dict(row) for row in rows if float(row["score"]) >= min_score],
         key=candidate_key,
@@ -396,7 +402,7 @@ def _mmr_select(rows: Iterable[dict[str, Any]], target: int, *, min_score: float
                 if float(row["score"]) >= 80:
                     penalty *= 0.5
                 proximity = max(proximity, penalty)
-            value = float(row["score"]) - proximity
+            value = float(row["score"]) - proximity * proximity_weight
             if value > best_value:
                 best, best_value = row, value
         assert best is not None
@@ -428,7 +434,9 @@ def rank_candidates(
     scored = [value for row in merged if (value := score(row, wikidata.get(row.get("qid"), {}), google_rows))]
     stops = collapse_stops(scored)
     candidate_target = max(1, math.ceil(route_distance_km / 100.0 * CANDIDATES_PER_100_KM))
-    candidates = _mmr_select(stops, candidate_target)
+    # Kandydaci sa lista do decyzji TAK/NIE, wiec pobliskie dobre obiekty nie
+    # konkuruja ze soba. Rozlozenie po trasie dotyczy dopiero rekomendacji.
+    candidates = _mmr_select(stops, candidate_target, proximity_weight=0.0)
     recommendation_target = max(1, math.ceil(route_distance_km / 100.0 * RECOMMENDED_PER_100_KM))
     recommended = _mmr_select(candidates, recommendation_target)
     recommended_keys = {candidate_key(row) for row in recommended}
