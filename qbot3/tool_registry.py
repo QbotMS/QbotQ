@@ -2679,17 +2679,18 @@ def _load_route_attractions_tool() -> dict[str, Any]:
         try:
             from qbot3.routes.route_poi_store import set_route_poi_attractions
             pref = set_route_poi_attractions(rid, enabled)
-            from qbot3.routes.route_precompute_orchestrator import ensure_route_precompute
-            out = ensure_route_precompute(route_id=rid, trigger_source="albert_manual", scope="poi")
-            note = (
-                f"Wlaczono atrakcje (zabytki/muzea/turystyczne, do 1,5 km) dla trasy {rid} i odswiezono POI."
-                if enabled
-                else f"Wylaczono atrakcje dla trasy {rid} i odswiezono POI (atrakcje znikaja z bazy i raportu)."
-            )
+            if enabled:
+                from qbot3.routes.route_attraction_store import ensure_route_attractions
+                out = ensure_route_attractions(route_id=rid)
+                note = f"Wlaczono i przeliczono kanoniczne atrakcje (do 2 km) dla trasy {rid}."
+            else:
+                out = {"status": "DISABLED"}
+                note = f"Wylaczono pokazywanie atrakcji dla trasy {rid}; sklepy, woda i jedzenie pozostaly bez zmian."
             return success_result({
                 "route_id": rid,
                 "attractions_enabled": pref.get("attractions_enabled"),
-                "scope": out.get("scope", "poi"),
+                "attractions_status": out.get("status"),
+                "attractions_run_id": out.get("run_id"),
                 "route_version_key": out.get("route_version_key"),
                 "note": note,
             })
@@ -2700,11 +2701,10 @@ def _load_route_attractions_tool() -> dict[str, Any]:
         "callable": _wrapper,
         "category": "routes",
         "description": (
-            "Wlacza lub wylacza ATRAKCJE (turystyczne, zabytki, muzea, galerie; koscioly jako zabytki) "
-            "dla wskazanej trasy. Zrodlo: Google Places, tylko w promieniu 1,5 km od trasy. "
-            "Trwaly przelacznik per-trasa: gdy ON, kazde przeliczenie POI dociaga atrakcje do bazy i raport "
-            "pokazuje sekcje atrakcji; gdy OFF (domyslnie) atrakcje nie sa pobierane ani pokazywane. "
-            "Od razu odswieza POI, wiec zmiana jest widoczna natychmiast. WYMAGA route_id. Uzyj gdy user mowi "
+            "Wlacza lub wylacza kanoniczne ATRAKCJE dla wskazanej trasy. Zrodla: Wikipedia, Wikidata i OSM; "
+            "Google jest tylko pomocniczym sygnalem rankingu. Korytarz do ok. 2 km, preferowane krotkie postoje "
+            "historyczne. Wlaczenie przelicza tylko osobna warstwe atrakcji; nie odswieza sklepow, wody ani "
+            "jedzenia. Wylaczenie tylko ukrywa atrakcje i takze nie rusza logistyki. WYMAGA route_id. Uzyj gdy user mowi "
             "np. 'wlacz/pokaz atrakcje dla trasy X' albo 'wylacz atrakcje dla trasy X'."
         ),
         "args_schema": {

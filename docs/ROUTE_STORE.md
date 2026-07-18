@@ -15,7 +15,7 @@ Zasada nadrzędna: **trasę zawsze można ponownie pobrać z RWGPS**, dlatego ka
 - `route_artifacts` — jeden wiersz na trasę (plik GPX ma STAŁĄ nazwę `rwgps_<id>.gpx`, upsert po `artifact_path`).
 - `route_base` — jeden wiersz na `route_version_key` (upsert po `route_id + route_version_key`). Nowy klucz = NOWY wiersz bazowy. Przy zapisie nowej AKTYWNEJ wersji poprzednie wersje tego `route_id` są dezaktywowane (`status='disabled'`) — dokładnie JEDNA `active` na `route_id` (patrz 2a). Czytelnicy i tak biorą najnowszą po `route_modified_at`.
 - `route_version_key` — odcisk (sha256) geometrii (sha256+dystans+track_points), liczony w `qbot3/routes/route_base_store` / `qbot_route_tools`.
-- Warstwy child kasowane kaskadowo z `route_base`: `route_axis_segments`, `route_climb_events`, `route_elevation_samples`, `route_landcover_layer`, `route_poi_layer`, `route_shade_layer`, `route_surface_layer`, `route_analysis_run`, `route_precompute_jobs`.
+- Warstwy child kasowane kaskadowo z `route_base`: `route_axis_segments`, `route_climb_events`, `route_elevation_samples`, `route_landcover_layer`, `route_poi_layer`, `route_attraction_run` + `route_attraction_layer`, `route_shade_layer`, `route_surface_layer`, `route_analysis_run`, `route_precompute_jobs`.
 - Warstwy child kasowane kaskadowo z `route_artifacts`: `route_frames`, `route_frame_weather`, `route_parse_results`, `route_surface_profiles` → `route_surface_segments`.
 - `ride_frames.route_artifact_id` = ON DELETE SET NULL (przejazdy zostają, tylko odpięte).
 - Surówka eksportu RWGPS: tabela `qbot_v2.artifacts` (`idempotency_key` typu `rwgps_export:<id>:<fmt>:<data>`).
@@ -69,6 +69,7 @@ Kanał admin/DEV: narzędzie `dev_route_store_purge` w `/root/qbot-dev-mcp/serve
 Rejestr: `qbot3/tool_registry.py`; prompt: `qbot3/llm/albert.py` (twarda reguła: zmiana narzędzia = aktualizacja promptu w tym samym kroku).
 - `route_list` (odczyt) — wypisuje trasy w bazie / stan wersji.
 - `route_recompute` (write) — przeliczenie AKTYWNEJ wersji (woła `ensure_route_precompute`). Starsza wersja = najpierw promote+recompute (odłożone).
+- `route_attractions` (write) — włącza/wyłącza osobną kanoniczną warstwę atrakcji. Włączenie pobiera Wikipedię/Wikidane/OSM i publikuje wynik atomowo; Google jest tylko sygnałem pomocniczym. Operacja nie przelicza `route_poi_layer`, więc nie rusza sklepów, jedzenia ani wody. Analiza Trasy i Planer czytają ten sam opublikowany ranking; bez migracji lub pełnego wyniku działają na starym źródle.
 - `route_delete` (write, **dwustopniowo**) — bez `confirm` zwraca PODGLĄD; realne kasowanie dopiero po `confirm=true` (po wyraźnej zgodzie użytkownika). Prompt wymusza: najpierw podgląd, pytanie, potem kasowanie.
 
 ## 7. Trzy warstwy bezpieczeństwa zapisów (otwarte WĄSKO dla tras)

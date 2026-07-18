@@ -141,6 +141,10 @@ def _climbs(conn, base_id):
 
 
 def _pois(conn, base_id):
+    from qbot3.routes.route_attraction_store import get_route_attractions
+    canonical = get_route_attractions(conn, base_id, tier="recommended")
+    if canonical is not None:
+        return [{"name": row["name"], "km": row["km"]} for row in canonical]
     rows = conn.execute(
         "SELECT name, category, km_on_route FROM qbot_v2.route_poi_layer "
         "WHERE route_base_id=%s AND category IN ('town','attraction') "

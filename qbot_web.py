@@ -1914,6 +1914,41 @@ def _load_poi_groups(conn, rbid):
     return _pg
 
 
+def _canonical_attractions(conn, rbid, towns, km_from=None, km_to=None, tier="candidates"):
+    """Wspolny odczyt dla Analizy Trasy, Planera i eksportow; None = legacy fallback."""
+    from qbot3.routes.route_attraction_store import get_route_attractions
+    rows = get_route_attractions(conn, rbid, km_from=km_from, km_to=km_to, tier=tier)
+    if rows is None:
+        return None
+
+    def _locality(lat, lon):
+        if lat is None or lon is None:
+            return None
+        best = None
+        best_distance = 1e18
+        for town in towns or []:
+            if town.get("lat") is None or town.get("lon") is None:
+                continue
+            dla = math.radians(town["lat"] - lat)
+            dlo = math.radians(town["lon"] - lon)
+            value = math.sin(dla / 2) ** 2 + math.cos(math.radians(lat)) * math.cos(math.radians(town["lat"])) * math.sin(dlo / 2) ** 2
+            distance = 6371000 * 2 * math.asin(min(1.0, math.sqrt(value)))
+            if distance < best_distance:
+                best, best_distance = town.get("name"), distance
+        return best
+
+    items = []
+    for row in rows:
+        items.append({
+            "km": row["km"], "name": row["name"], "miejscowosc": _locality(row.get("lat"), row.get("lon")),
+            "dist_m": row.get("dist_m"), "lat": row.get("lat"), "lon": row.get("lon"),
+            "desc": row.get("desc"), "place_id": row.get("place_id"), "category": row.get("category"),
+            "score": row.get("score"), "visit_min": row.get("visit_min"),
+            "is_recommended": row.get("is_recommended"), "wiki": row.get("wiki_url"),
+        })
+    return {"total": len(items), "raw_total": len(items), "items": items, "source": "route_attractions_v2"}
+
+
 def _curate_pois(_pg, dist_km, date_str):
     """Kuracja POI raportu: zaopatrzenie Q1/Q2/Q3 (sklep+jedzenie, bez zamknietych,
     <=1 km od trasy, +-10 km od srodka) + atrakcje z bramka jakosci. JEDNO zrodlo
@@ -2165,7 +2200,14 @@ def report_gpx(route_id: str, date: str | None = None, time: str = "10:00", pois
         name = base["name"] or ("Trasa %s" % route_id)
         geo = route_geometry(route_id)
         coords = geo.get("coordinates") or []
-        poi_out = _curate_pois(_load_poi_groups(conn, rbid), dist_km, date) if inc else None
+        if inc:
+            _pg = _load_poi_groups(conn, rbid)
+            poi_out = _curate_pois(_pg, dist_km, date)
+            _canon = _canonical_attractions(conn, rbid, _pg.get("town", []))
+            if _canon is not None:
+                poi_out["attractions"] = _canon
+        else:
+            poi_out = None
     finally:
         conn.close()
     if not coords:
@@ -2259,7 +2301,11 @@ def push_karoo(route_id: str, date: str | None = None, time: str = "10:00"):
         geo = route_geometry(route_id); coords = geo.get("coordinates") or []
         er = conn.execute("SELECT distance_m, elevation_m FROM qbot_v2.route_elevation_samples "
                           "WHERE route_base_id=%s ORDER BY sample_index", (rbid,)).fetchall()
-        poi_out = _curate_pois(_load_poi_groups(conn, rbid), round(dist_m / 1000.0, 1), date)
+        _pg = _load_poi_groups(conn, rbid)
+        poi_out = _curate_pois(_pg, round(dist_m / 1000.0, 1), date)
+        _canon = _canonical_attractions(conn, rbid, _pg.get("town", []))
+        if _canon is not None:
+            poi_out["attractions"] = _canon
     finally:
         conn.close()
     if not coords:
@@ -2621,6 +2667,9 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
 
     _pg = _load_poi_groups(conn, rbid)
     poi_out = _curate_pois(_pg, dist_km, date_str)
+    _canon = _canonical_attractions(conn, rbid, _pg.get("town", []))
+    if _canon is not None:
+        poi_out["attractions"] = _canon
     try:
         from qbot3.routes.route_poi_store import get_route_poi_prefs
         poi_out["attractions"]["enabled"] = bool(get_route_poi_prefs(conn, route_id).get("attractions_enabled"))
@@ -3081,7 +3130,7 @@ def _build_day_data(conn, route_id, km_from, km_to):
                     _pk["km"] = round(_pk["km"] + a0, 1)
     except Exception:
         _resupply = []
-    # atrakcje: wlasna selekcja rozlozona po km (bramka jakosci jak w raporcie), sort po km
+    # Legacy fallback. Przy opublikowanej warstwie v2 nie wykonujemy drugiego rankingu.
     _att = []
     for _it in _pg.get("attraction", []):
         if _it.get("dist_m") is None or _it["dist_m"] > 800:
@@ -3111,13 +3160,17 @@ def _build_day_data(conn, route_id, km_from, km_to):
                    "miejscowosc": _loc(_it.get("lat"), _it.get("lon")),
                    "place_id": (_it.get("meta") or {}).get("source_place_id"),
                    "desc": _att_build_desc(_it.get("meta") or {})} for _it in _picked]
+    _canonical = _canonical_attractions(conn, rbid, _towns_all, km_from=a0, km_to=b0)
+    if _canonical is not None:
+        _att_items = _canonical["items"]
     _resupply_points = []
     for _rcat in ("hard_resupply", "soft_food_stop"):
         for _rp in _pg.get(_rcat, []):
             if _rp.get("km") is not None:
                 _resupply_points.append({"km": round(_rp["km"], 1), "cat": _rcat, "name": _rp.get("name")})
     _resupply_points.sort(key=lambda z: z["km"])
-    poi_out = {"resupply": _resupply, "resupply_points": _resupply_points, "attractions": {"total": len(_att), "items": _att_items}}
+    poi_out = {"resupply": _resupply, "resupply_points": _resupply_points,
+               "attractions": (_canonical if _canonical is not None else {"total": len(_att), "items": _att_items})}
 
     return {
         "route": {"id": route_id,

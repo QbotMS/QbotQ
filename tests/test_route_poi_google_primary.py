@@ -14,6 +14,18 @@ class TestRoutePoiGooglePrimary(unittest.TestCase):
     def setUp(self):
         self.overpass_queries: list[str] = []
 
+    def test_attractions_only_query_cannot_fetch_logistics(self):
+        self.assertEqual(ra._route_poi_v2_requested_categories("attractions_only"), ["attraction"])
+        query = ra._route_poi_v2_build_query(
+            {"min_lat": 50.0, "min_lon": 17.0, "max_lat": 50.1, "max_lon": 17.1},
+            "attractions_only", include_supply=False, include_water=False,
+        )
+        self.assertIn('["historic"]', query)
+        self.assertIn('["tourism"', query)
+        self.assertNotIn('["shop"', query)
+        self.assertNotIn('["amenity"', query)
+        self.assertNotIn('["drinking_water"', query)
+
     def _run(self):
         return ra.analyze_route_poi_artifact(
             ROUTE_GPX,

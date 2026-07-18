@@ -5,7 +5,8 @@ Domyslnie DRY-RUN (tylko raport). Realne kasowanie wymaga --confirm.
 
 Kasuje (dzieki ON DELETE CASCADE wystarcza skasowac korzenie):
   - route_base   (WHERE route_id) -> kaskada: axis_segments, climb_events,
-                 elevation_samples, landcover_layer, poi_layer, shade_layer,
+                 elevation_samples, landcover_layer, poi_layer, attraction_run,
+                 attraction_layer, shade_layer,
                  surface_layer, analysis_run, precompute_jobs
   - route_artifacts (WHERE route_id) -> kaskada: route_frames, route_frame_weather,
                  route_parse_results, route_surface_profiles -> route_surface_segments
@@ -30,7 +31,8 @@ ARTIFACTS_ROOT = Path("/opt/qbot/artifacts")
 # tabele kaskadowane po route_base_id
 BASE_CHILDREN = [
     "route_axis_segments", "route_climb_events", "route_elevation_samples",
-    "route_landcover_layer", "route_poi_layer", "route_shade_layer",
+    "route_landcover_layer", "route_poi_layer", "route_attraction_run",
+    "route_attraction_layer", "route_shade_layer",
     "route_surface_layer", "route_analysis_run", "route_precompute_jobs",
 ]
 # tabele kaskadowane po route_artifact_id

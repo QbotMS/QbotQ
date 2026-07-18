@@ -1183,7 +1183,7 @@ def analyze_route_poi_artifact(
             bbox,
             focus_mode,
             timeout_sec=overpass_timeout_sec,
-            include_supply=not prefer_google_supply,
+            include_supply=focus_mode != "attractions_only" and not prefer_google_supply,
         )
         last_exc: Exception | None = None
         for attempt in range(1, retry_attempts + 1):
@@ -1211,6 +1211,8 @@ def analyze_route_poi_artifact(
                     if not category:
                         continue
                     if focus_mode == "logistics" and category == "attraction":
+                        continue
+                    if focus_mode == "attractions_only" and category != "attraction":
                         continue
                     nearest = _nearest_track_projection(projected, lat, lon)
                     route_km = nearest.get("route_km")
@@ -1360,7 +1362,7 @@ def analyze_route_poi_artifact(
     t_google = time.perf_counter()
     google_api_key = _route_poi_v2_google_api_key()
     google_supply_candidates: list[dict[str, Any]] = []
-    if google_api_key:
+    if google_api_key and focus_mode != "attractions_only":
         google_supply_candidates = _route_poi_v2_google_supply_candidates(
             points,
             projected,
@@ -2199,12 +2201,16 @@ def _route_poi_v2_focus_mode(focus: str | None) -> str:
     focus_norm = _route_poi_v2_norm_text(focus)
     if focus_norm in {"food_only", "hard_resupply", "logistics"}:
         return "logistics"
+    if focus_norm in {"attractions_only", "attraction_only"}:
+        return "attractions_only"
     if focus_norm in {"all", "attractions", ""}:
         return "all"
     return focus_norm or "all"
 
 
 def _route_poi_v2_requested_categories(focus: str | None) -> list[str]:
+    if _route_poi_v2_focus_mode(focus) == "attractions_only":
+        return ["attraction"]
     categories = ["hard_resupply", "soft_food_stop", "water", "town_fallback_check"]
     if _route_poi_v2_focus_mode(focus) != "logistics":
         categories.insert(3, "attraction")
