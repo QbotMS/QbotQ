@@ -37,6 +37,7 @@ def test_export_does_not_call_attraction_discovery():
     assert "parent_route_slice" in source
     assert "route_surface_layer" in source
     assert "route_poi_layer" in source
+    assert "status='disabled'" in source
 
 
 def test_lineage_schema_pins_parent_and_km_range():

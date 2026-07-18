@@ -308,11 +308,23 @@ def create_planer_day_routes(*, route_id: str, cuts: list[Any]) -> dict[str, Any
     with _db_conn() as conn:
         with conn.transaction():
             conn.execute(
+                "UPDATE qbot_v2.route_base SET status='disabled', updated_at=now() "
+                "WHERE route_base_id IN ("
+                "SELECT stage_route_base_id FROM qbot_v2.route_stage_lineage "
+                "WHERE parent_route_base_id=%s AND split_key<>%s AND active=true"
+                ")",
+                (int(parent["route_base_id"]), split_key),
+            )
+            conn.execute(
                 "UPDATE qbot_v2.route_stage_lineage SET active=false, updated_at=now() "
                 "WHERE parent_route_base_id=%s AND split_key<>%s AND active=true",
                 (int(parent["route_base_id"]), split_key),
             )
             for stage in created:
+                conn.execute(
+                    "UPDATE qbot_v2.route_base SET status='active', updated_at=now() WHERE route_base_id=%s",
+                    (stage["route_base_id"],),
+                )
                 conn.execute(
                     "INSERT INTO qbot_v2.route_stage_lineage ("
                     "stage_route_base_id, stage_route_id, parent_route_base_id, parent_route_id, "

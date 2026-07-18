@@ -382,6 +382,7 @@ def routes_ready():
                    AND j.job_type = 'route_surface'
                    AND j.status = 'complete'
                 LEFT JOIN qbot_v2.route_artifacts a ON a.id = rb.route_artifact_id
+                WHERE rb.status = 'active'
                 ORDER BY rb.route_id, j.finished_at DESC
             ) t ORDER BY finished_at DESC
             """
