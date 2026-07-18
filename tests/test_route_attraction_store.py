@@ -49,8 +49,10 @@ def _row():
         "distance_from_route_m": 100.0, "lat": 50.47, "lon": 17.33, "visit_min": 25,
         "score": 81.0, "selection_score": 81.0, "candidate_rank": 1,
         "is_recommended": True, "recommended_rank": 1, "why": "miasto",
-        "extract": "", "wiki_url": "https://example.test", "wikidata_id": "Q1",
-        "image_url": None, "rating": None, "rating_count": None, "nearby_json": [],
+        "extract": "Historyczne miasto z zachowanym rynkiem.",
+        "wiki_url": "https://example.test", "wikidata_id": "Q1",
+        "image_url": "https://upload.wikimedia.org/nysa.jpg",
+        "rating": None, "rating_count": None, "nearby_json": [],
     }
 
 
@@ -71,6 +73,8 @@ def test_reader_uses_published_layer_and_maps_existing_web_contract():
     assert rows[0]["km"] == 187.7
     assert rows[0]["dist_m"] == 100
     assert rows[0]["place_id"] == "wikidata:Q1"
+    assert rows[0]["extract"] == "Historyczne miasto z zachowanym rynkiem."
+    assert rows[0]["image_url"] == "https://upload.wikimedia.org/nysa.jpg"
     query, params = conn.queries[-1]
     assert "r.published=true" in query and "a.is_recommended=true" in query
     assert params == (10, 100.0, 200.0)

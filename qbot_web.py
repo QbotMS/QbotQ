@@ -494,7 +494,7 @@ def api_noclegi(lat: float, lon: float, radius_m: int = 3000):
 
 # ---- Planer: opis + zdjecie atrakcji z Google Places (New), cache na dysku ----
 PLANER_POI_CACHE = os.environ.get("QBOT_PLANER_POI_CACHE", "/opt/qbot/artifacts/planer_poi_cache")
-_PLACE_ID_RE = _re_email.compile(r"^[A-Za-z0-9_\-]+$")
+_PLACE_ID_RE = _re_email.compile(r"^[A-Za-z0-9_:\-]+$")
 
 
 def _planer_poi_cache_paths(place_id):
@@ -603,7 +603,8 @@ def api_planer_atrakcja(place_id: str, name: str = None, lat: float = None, lon:
     desc_url = None
     photo_name = None
     gkey = None
-    is_google = not place_id.isdigit()
+    google_place_id = place_id.split(":", 1)[1] if place_id.startswith("google:") else place_id
+    is_google = place_id.startswith("google:") or not (place_id.isdigit() or place_id.startswith("wikidata:"))
     if is_google:
         try:
             from qbot3.artifacts.route_analyzer import _route_poi_v2_google_api_key as _g_key
@@ -612,7 +613,9 @@ def api_planer_atrakcja(place_id: str, name: str = None, lat: float = None, lon:
             gkey = None
         if gkey:
             try:
-                desc, desc_src, photo_name = _planer_google_detail(place_id, gkey)
+                desc, desc_src, photo_name = _planer_google_detail(google_place_id, gkey)
+                if desc:
+                    desc_url = "https://www.google.com/maps/place/?q=place_id:" + google_place_id
             except Exception:
                 pass
     hp = False
@@ -1945,6 +1948,7 @@ def _canonical_attractions(conn, rbid, towns, km_from=None, km_to=None, tier="ca
             "desc": row.get("desc"), "place_id": row.get("place_id"), "category": row.get("category"),
             "score": row.get("score"), "visit_min": row.get("visit_min"),
             "is_recommended": row.get("is_recommended"), "wiki": row.get("wiki_url"),
+            "extract": row.get("extract"), "image_url": row.get("image_url"),
         })
     return {"total": len(items), "raw_total": len(items), "items": items, "source": "route_attractions_v2"}
 
