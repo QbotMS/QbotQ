@@ -20,6 +20,7 @@ CRR = 0.010         # estymata: srednia gravel
 RHO = 1.22
 G = 9.81
 BIKE_KG = 9.0       # rower+bidon+sprzet (estymata do audytu energii)
+REAR_COG_COUNT = 13  # kaseta SRAM AXS, zawsze 13-rzedowa (2026-07-19, na zyczenie uzytkownika)
 
 def _tag(value, tier, source, **extra):
     d = {"value": value, "tier": tier, "source": source}
@@ -559,7 +560,7 @@ def _drivetrain(recs, events):
         g=gear_at(r["ts"])
         if g is not None: cog[g]+=1
     tot=sum(cog.values()) or 1
-    cog_pct={str(c):round(100*cog[c]/tot) for c in sorted(cog)}
+    cog_pct={str(c):round(100*cog.get(c,0)/tot) for c in range(1, REAR_COG_COUNT+1)}
     rears=[e[2] for e in events if e[2] is not None]
     hardest=min(rears) if rears else None
     spin=sum(1 for r in recs if gear_at(r["ts"])==hardest and r["cad"]>95 and r["p"]<120 and (r["grade"] or 0)<-1)
