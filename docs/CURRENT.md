@@ -7,18 +7,21 @@ Pełna dokumentacja: `docs/PLANER_WYPRAW_ATRAKCJE.md`. Decyzja: `docs/DECISIONS.
 
 WYKONANE I WDROŻONE:
 - Planer Wypraw i Analiza Trasy czytają jeden opublikowany ranking atrakcji.
-- Ranking `route_attractions_v2.1` skalibrowany pod historyczne miasta, zamki, pałace, fortyfikacje i zabytki techniki; widoczna archeologia premiowana, niewidoczne grodziska karane; zwykłe obiekty sakralne, pomniki, zoo i postoje ponad 60 min odrzucane.
+- Ranking `route_attractions_v2.2`: pełna baza Wikipedia/Wikidata + selektywny, globalny OSM dla historii, dziedzictwa, fortyfikacji i wartościowych konstrukcji. Dodano pola bitew, obronę, schrony oraz `cultural_landmark` dla miejsc typu Caminito del Rey; widoczna archeologia jest premiowana, a niewidoczne grodziska karane.
 - Przywrócone zdjęcia, krótkie opisy i linki źródłowe atrakcji.
 - `POST /api/planer/dodaj-do-qbot` tworzy wszystkie dzienne GPX jednym żądaniem.
 - `route_stage_lineage` wiąże dzień z rodzicem i zakresem km. Atrakcje dnia są wycinkiem publikacji rodzica, bez zapytań zewnętrznych; nawierzchnia i POI logistyczne również są dziedziczone.
 - Zmieniony podział usuwa poprzednie dzienne rekordy, artefakty, warstwy i dokładne GPX dopiero po poprawnym zapisaniu nowego zestawu. Identyczny podział jest idempotentny; trasy ręczne są chronione.
 - Produkcja: `qbot-web` active, frontend Planera `v27`, migracja zastosowana.
-- Testy: Planer 15/15, silnik atrakcji 8/8, store atrakcji 11/11.
+- Korytarz atrakcji wynosi 2050 m. Odległość jest miękką karą rankingu; usunięto twardą bramkę 800 m.
+- OSM działa w oddzielnych, cache'owanych fragmentach. `DEGRADED_OSM` nie ukrywa kompletnego wyniku Wikipedii; kolejne pobranie ponawia brakujące fragmenty.
+- Test produkcyjny `Małe Gosie NEW`: run 15 `COMPLETE`, Wikipedia 26, OSM 58, 9 kandydatów; w wyniku są schron „Sulin” i Obrona Wizny.
+- Testy: Planer 15/15, silnik atrakcji 11/11, store atrakcji 11/11.
 - FIX 2026-07-18: usunięto błędną minimalną gęstość publikacji `floor(km/100*10)`. Kompletny wynik z co najmniej jednym kandydatem jakościowym jest publikowany; norma per 100 km pozostaje tylko celem/limitem rankingu.
 
-COMMITY: `f577e34`, `692b029`, `c972a5a`, `74e31d2`, `d4238e3`.
+COMMITY: `f577e34`, `692b029`, `c972a5a`, `74e31d2`, `d4238e3`, `ef2d82c`, `eea9287`. Dwa ostatnie są w `origin/main`.
 
-OTWARTE: pierwszy realny zapis przez UI jest celowo pierwszym testem integracyjnym na prawdziwej wyprawie; monitorować `cleanup_warnings`. Commity czekają na osobny świadomy push do `origin/main`.
+OTWARTE: monitorować `cleanup_warnings` oraz `source_status_json.missing_chunks` dla publicznych instancji OSM. Zdjęcie i dłuższy opis są pokazywane tylko wtedy, gdy Wikipedia/Wikidata/OSM udostępniają te dane; silnik ich nie zmyśla.
 
 ---
 

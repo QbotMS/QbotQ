@@ -8,6 +8,23 @@
 
 # OTWARTE
 
+## [PROFIL-3D] Obracany profil 3D trasy (VeloViewer-style) (dodane 2026-07-18)
+
+Pomysl Michala: obracany mysza model 3D profilu trasy jak w VeloViewer (bryla
+wysokosci kolorowana nachyleniem; opcjonalnie mapa pod spodem). USTALONE: VeloViewer
+NIE ma silnika do pozyczenia -- to autorski kod Ben Lowe; wersja z mapa pod spodem =
+trik CSS3. Standard do tego efektu = biblioteka three.js (WebGL, darmowa, w przegladarce).
+
+Dane JUZ SA: geometria trasy (/api/routes/{id}/geometry), wysokosci + nachylenia co 50 m
+(route_profile_detail / route_axis_segments + route_elevation_samples). Brakuje tylko
+warstwy rysujacej. Wzorzec UI: strona lab (forma.html / raport), statyki poza repo (zywe od razu).
+
+Poziomy (do decyzji, po jednym, decyzja przed kodem):
+1) profil 2D kolorowany nachyleniem -- najprosciej, ~90% czytelnosci VeloViewera;
+2) pseudo-3D scianka na mapie (jak zrzuty od Michala) -- ladne, wiecej dlubaniny (SVG/canvas);
+3) pelne 3D three.js obracane mysza (marzenie Michala) -- osobny, cizszy kawalek.
+Rekomendacja: prototyp poziomu 3 na jednej trasie (sama obracana bryla), potem rozbudowa.
+
 ## [KALENDARZ-WEB] Webowy kalendarz -- kontynuacja (dodane 2026-07-16)
 
 BAZA GOTOWA (DECISIONS.md 2026-07-16 + CURRENT.md): siatka miesiaca z odczytem konca dnia

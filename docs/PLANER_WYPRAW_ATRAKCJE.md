@@ -25,22 +25,24 @@ Kalibrację przeprowadzono na Oppelner Gravelzug. Feedback wykazał potrzebę mo
 
 Planer Wypraw i Analiza Trasy czytają ten sam opublikowany wynik z tabel `qbot_v2.route_attraction_run` i `qbot_v2.route_attraction_layer` przez `qbot3/routes/route_attraction_store.py`.
 
-Ranking znajduje się w `qbot3/routes/route_attraction_engine.py`. Aktualna wersja: `route_attractions_v2.1`. Wikipedia, Wikidata i OSM tworzą bramkę semantyczną. Google jest dodatkowym dowodem jakości i lokalizacji, ale sam nie decyduje, czy miejsce jest atrakcją.
+Ranking znajduje się w `qbot3/routes/route_attraction_engine.py`. Aktualna wersja: `route_attractions_v2.2`. Wikipedia jest pełną bazą semantyczną, Wikidata dostarcza typy i deklaracje dziedzictwa, a osobny lekki adapter OSM pobiera globalnie wyłącznie obiekty potencjalnie wartościowe: `historic`, `heritage`, fortyfikacje, schrony, atrakcje, muzea oraz opisane konstrukcje. Google jest dodatkowym dowodem jakości i lokalizacji, ale sam nie decyduje, czy miejsce jest atrakcją. Ogólny analizator POI pozostaje dla tej warstwy z `overpass_enabled=false`; sklepy, jedzenie i woda nie są przeliczane.
 
-Publikacja jest atomowa. Niekompletne źródła nie zastępują poprzedniej publikacji. Każdy kompletny, niepusty wynik jest publikowany — nawet jeśli trasa ma tylko jedną atrakcję spełniającą próg jakości. Gęstość 12 kandydatów i 2,5 rekomendacji na 100 km jest celem oraz limitem rankingu, a nie minimalnym warunkiem publikacji.
+Publikacja jest atomowa. Każdy niepusty wynik pełnej bazy Wikipedii jest publikowany — nawet jeśli trasa ma tylko jedną atrakcję spełniającą próg jakości. Gęstość 12 kandydatów i 2,5 rekomendacji na 100 km jest celem oraz limitem rankingu, a nie minimalnym warunkiem publikacji. OSM jest źródłem addytywnym: brakujące fragmenty zapisują status `DEGRADED_OSM` i licznik `missing_chunks`, ale nie ukrywają poprawnego wyniku podstawowego. Udane fragmenty są cache'owane, a kolejne pobranie ponawia tylko brakujące; po domknięciu status wraca do `COMPLETE`.
 
 Warstwa przechowuje nazwę, kategorię, kilometr, odległość od śladu, wynik i jego składowe, czas postoju, opis, zdjęcie, link źródłowy, dopasowaną ocenę Google i flagę rekomendacji.
 
 ## 3. Najważniejsze reguły rankingu
 
-Najwyższe wagi bazowe mają historyczne miasta oraz zamki i pałace. Wysoko oceniane są fortyfikacje i zabytki techniki. Muzea oraz przyroda mają niskie wagi.
+Najwyższe wagi bazowe mają historyczne miasta oraz zamki i pałace. Wysoko oceniane są fortyfikacje, zabytki techniki, pola bitew i ważne miejsca wydarzeń historycznych. Wersja 2.2 dodaje ogólną kategorię `cultural_landmark` dla wyjątkowych konstrukcji i tras inżynieryjnych (np. historyczna kładka, akwedukt, wiadukt, Caminito del Rey), aby klasyfikacja nie zależała wyłącznie od polskich słów „zamek” lub „bunkier”. Muzea oraz przyroda mają niskie wagi.
+
+Silny dowód wartości całego miejsca — bitwa, obrona, linia umocnień — ma pierwszeństwo przed przypadkową wzmianką o kościele lub kaplicy w tekście artykułu. Zapobiega to błędowi, który odrzucał Górę Strękową jako zwykły obiekt sakralny i Obronę Wizny jako miejsce bez wystarczających dowodów.
 
 Archeologia ma dwa przypadki:
 
 - ruiny, wieża, wały, mury lub rekonstrukcja dostają premię;
 - sam wpis o grodzisku bez elementu do zobaczenia dostaje silną karę.
 
-Odległość jest karana progresywnie. Kandydat oddalony ponad 800 m przechodzi tylko przy wysokiej wartości bazowej. Granica źródłowego wyszukiwania pozostaje do około 2 km.
+Odległość jest karana progresywnie, ale 800 m nie jest już twardą drugą bramką. Źródła i ranking pracują w korytarzu do 2050 m; wyjątkowe miejsce może wejść do selektora przy krótkim zjeździe, płacąc karę punktową za odległość.
 
 Rekomendacje są rozkładane wzdłuż trasy mechanizmem MMR. Lista TAK/NIE nie karze dwóch pobliskich dobrych miejsc, bo ma stanowić szerszą wspólną bazę wyboru.
 
@@ -77,7 +79,7 @@ Dzienna trasa jest wycinkiem geometrii, a nie nowym źródłem atrakcji. `get_ro
 
 Skutki:
 
-- Wikipedia, Wikidata i Google są pytane raz dla całej wyprawy;
+- Wikipedia, Wikidata, selektywny OSM i Google są pytane raz dla całej wyprawy;
 - każdy dzień widzi atrakcje tylko ze swojego zakresu;
 - eksport raportuje `external_attraction_requests: 0`;
 - dodanie daty i pogody nie uruchamia ponownego wyszukiwania atrakcji.
@@ -104,6 +106,8 @@ Statyki są poza repozytorium aplikacji:
 
 - `/opt/qbot/web/public/planer-wyprawy-render.js`, cache `v27`;
 - `/opt/qbot/web/public/planer-wyprawy.html`.
+- `/opt/qbot/web/public/raport-render.js`, cache `v2026071823` — karta używa `extract`, `image_url` i `wiki`;
+- `/opt/qbot/web/public/raport.css`, cache `v2026071823` — układ zdjęcia, opisu i linku źródłowego.
 
 Najważniejsze pliki repozytorium:
 
@@ -130,15 +134,17 @@ Stan produkcyjny:
 Testy związane z mechanizmem:
 
 - Planer i sprzątanie: 15/15;
-- silnik atrakcji: 8/8;
+- silnik atrakcji: 11/11;
 - wspólny store/reader atrakcji: 11/11.
+
+Walidacja produkcyjna `Małe Gosie NEW` (`komoot-3120318768`, 96 km): przebieg 15 zakończył się `COMPLETE`, `missing_chunks=0`, zebrał 26 wpisów Wikipedii i 58 obiektów OSM, a po rankingu opublikował 9 kandydatów. Wynik zawiera m.in. lekki schron bojowy „Sulin” i Obronę Wizny; ta druga ma krótki opis, zdjęcie (jeśli źródło je udostępnia) i link do Wikipedii. Migawka raportu 37 potwierdziła odczyt wspólnej publikacji w Analizie Trasy.
 
 Pełny pytest zebrał 456 testów. Powyższe zestawy przeszły w całości; pełny projekt nadal ma wcześniejsze, niezwiązane błędy kolektorów, raportów i testów Google POI.
 
-Commity sesji: `f577e34`, `692b029`, `c972a5a`, `74e31d2`, `d4238e3`.
+Commity sesji: `f577e34`, `692b029`, `c972a5a`, `74e31d2`, `d4238e3`, `ef2d82c`, `eea9287`.
 
 ## 9. Granice i dalsze kroki
 
 - Pierwsze realne kliknięcie użytkownika jest testem integracyjnym pełnego zapisu; produkcji nie zanieczyszczano trasami testowymi.
 - Należy monitorować `cleanup_warnings`.
-- Commity są w produkcyjnym repozytorium; synchronizacja z `origin/main` wymaga osobnego `git push origin main`.
+- Commity `ef2d82c` i `eea9287` są wypchnięte do `origin/main`.

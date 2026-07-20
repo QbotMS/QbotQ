@@ -206,3 +206,35 @@ Awaryjny powrot do v1:
 
 `ftp_resolver.py` pozostaje w `fitmodel/` (zawiera `_db_connect` uzywany globalnie);
 jego `run_weekly_job` (FTP v1) jest martwym kodem.
+
+
+---
+
+## 12. Intensywnosc na zywo -- IF-od-CP_eff (zamiennik IF)
+
+**Status:** DECYZJA 2026-07-18 (patrz DECISIONS.md). Wdrozenie przed nami.
+
+Stare IF = NP / FTP jest slepe na zmeczenie (staly mianownik). Zastepujemy je
+wskaznikiem z mianownikiem, ktory maleje wraz z wyczerpaniem W':
+
+    CP_eff = LTP + (W'bal%) * (CP - LTP)      # liniowo
+    IF_eff = moc_okna(5 min, tylko ruch) / CP_eff
+
+- W'bal 100% -> CP_eff = CP (prog swiezy); W'bal 0% -> CP_eff = LTP (aerobowy dol).
+- Mianownik: W'bal z biezacej sekundy (Filar 1, mpa.py). CP/W'/LTP z sygnatury MQ2.
+- ~1,0 = "na progu na teraz". Zmeczone te same waty czytaja sie WYZEJ (o to chodzi).
+
+Odrzucono: IF-od-CP (no-op, bo CP==FTP w MQ2); %MPA jako glowny pacer (hiperbola ma
+dno=CP, nie schodzi pod prog; skoczna; niedoszacowuje swiezego twardego tempa --
+260 W/10 min swiezo: IF_eff 1,16 vs %MPA 33%); okno 10 min (za wolne po postojach);
+ksztalt SAG/HUG (HUG zabija sygnal w srodku jazdy, SAG przesadza u gory; LIN bez
+niesprawdzalnych zalozen o krzywiznie durability).
+
+Dowod (realne 1 Hz): Jakubow 12.07, 110 min, W'bal 3%, 195 W -> stary IF 0,81 vs
+IF_eff 1,05. Wyszogrod 20.06, 130 min, W'bal 0%, 251 W -> stary IF 1,00 vs IF_eff 1,29.
+
+Jeden prog, dwa dialekty: FTP = jezyk TP/pacing (IF/porownania miedzy trasami,
+oznaczone jako slepe na zmeczenie), CP = jezyk Xerta (W'bal/XSS/MPA). Ta sama liczba.
+
+Do wdrozenia: detekcja czasu ruchu do okna; spojnosc raport W1 <-> Karoo QExt2;
+nazwa pola. NP/IF zostaje jako linia odniesienia, IF_eff jest bohaterem wysilku.

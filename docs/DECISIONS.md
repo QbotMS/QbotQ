@@ -4,6 +4,108 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-07-19 -- DECYZJA: jazda 23654350826 (19.07) -- bledna kalibracja miernika mocy 0-74,9km, wylaczenie z MMP/CP/FTP
+
+**Status:** zatwierdzone i wdrozone. Zrodlo: sesja analizy + weryfikacji (multi-turn, z korekta modelu HR+czas, walidacja grouped CV + chronologiczna).
+
+**Problem.** Jazda 19.07.2026 (ext_id 23654350826, 102,5 km) miala zawyzona moc na odcinku 0-74,9 km (do postoju 135s przy 74,9km / 11:59:32, gdzie nastapila rekalibracja miernika). Przy tym samym HR miernik pokazywal przed granica o 40-70 W wiecej niz po. Nr bledengo ustawienia miernika nieznany, nieodzyskiwalny -- prawdziwej mocy tick-po-ticku NIE DA SIE zrekonstruowac (test model HR+czas na poziomie sekundy: R2=0,08).
+
+**Metoda estymacji (agregaty, nie tick-po-tick).** Model regresji (HR+czas) wytrenowany na 328 czystych jazdach (okna 150s), zwalidowany grouped CV (5-fold po jazdach) + split chronologiczny (66 jazd test, w tym n=22 dlugie >=180min). Segment 0-74,9km oszacowany:
+- praca: **2105 kJ** (wariant B, model zastosowany do wszystkich okien z HR w tym 17 niepelnych) / kontrolnie 2071 kJ (wariant A)
+- NP-equivalent: **206,6 W** / kontrolnie 210,4 W
+- obwiednia (P10-P90, unia wariantow A/B): praca 1823-2459 kJ, NP 188,5-225,5 W
+- kazde okno MMP (1s-1200s) calej jazdy spadlo po korekcie => szczytowe wysilki (mmp_1..mmp_1200) POCHODZA z zepsutego segmentu, nie z czystej czesci po 75km -- nie sa wiarygodnymi rekordami osobistymi.
+
+**Decyzja 1 -- activity_record (surowy 1Hz):** NIETKNIETY. Kanon "zywy system = surowe dane sensora" nie zlamany.
+
+**Decyzja 2 -- training_sessions (ten wiersz, id=4052):** `mmp_1_w..mmp_7200_w` ustawione na NULL (kontaminacja potwierdzona powyzej -- zaden MMP tej jazdy nie moze byc uzyty jako kotwica CP/W' ani rekord osobisty). `avg_power_w` (186->163), `normalized_power_w` (227->202) zaktualizowane -- to wartosci pewne, przeliczone wprost z poprawionego strumienia FIT calej jazdy. `tss` i `activity_training_load` swiadomie NIETKNIETE: proba weryfikacji formuly TSS (klasyczny Coggan z FTP=247, total_elapsed_time) nie odtworzyla zapisanej wartosci 407.1 (wyszlo 529.17) -- pipeline uzywa innej/wlasnej formuly (prawdopodobnie XSS-owa, nie czysty Coggan), ktorej nie znam z pewnoscia. Zgadywanie nowej wartosci byloby wprowadzeniem NOWEGO bledu do bazy. `tss`/`activity_training_load` tej jazdy pozostaja z wartosciami liczonymi ze starego (zawyzonego) NP=227, dopoki nie przeliczy ich wlasciwy pipeline (daily_job.py) lub przyszla sesja ze znajomoscia dokladnej formuly.
+
+**Decyzja 3 -- FIT plik:** wygenerowano poprawiony FIT (P_corr = max(0, 1,0*P_raw - 42,6768W) dla rekordow przed 11:59:32, zrodlo hammerhead_originals, nie garmin_proxy ktory mial nadpisane developer fields tak samo). Lap/session agregaty przeliczone tylko dla lapow pokrywajacych sie z segmentem (0-14), lapy 15-20 nietkniete. UWAGA: przeliczenie lap/session NP uzywa wlasnej konwencji (okno 29s po czasie), NIE jest identyczne z algorytmem Garmina (dowiedzione na nietknietym lapie: 149->203W przy identycznych danych) -- Garmin prawdopodobnie przeliczy je sam przy imporcie z poprawionego strumienia. Plik przekazany uzytkownikowi do recznego wgrania (usuniecie oryginalu z Garmin Connect wymagane, poza zakresem automatyzacji).
+
+**Decyzja 4 -- raport z jazdy (W1/ride_report_data):** odkryto, ze `/api/ride-report/data` NIE czyta training_sessions ani activity_record -- buduje W1 bezposrednio z pliku FIT pod `activity_fit_raw.fit_path` (tu: `/opt/qbot/artifacts/fit/23654350826.fit`, bajt-w-bajt identyczny z `garmin_proxy`, sha potwierdzone, ROZNY od `hammerhead_originals`). Ten plik zostal POPRAWIONY tym samym algorytmem (a=1,0, b=42,6768W, laps 0-14 przeliczone, 15-20 nietkniete), oryginal zbackupowany (`*.bak.20260719_201035`). `activity_fit_raw.fit_sha256`/`fit_bytes` zaktualizowane na nowe wartosci. Zcache'owany wiersz `ride_report_data` (schema_version=1, built_at 20:00:38 -- ZAWIERAL zawyzone dane) USUNIETY, zeby wymusic przebudowe. Zweryfikowano wywolaniem `ride_report_builder.build_w1()` wprost: avg_p_w=163, np_w=201, kj=2845 (zgodne z reszta analizy), xss=668.6, ftp_w=243 (wlasny resolver FTP, inny niz threshold_power=247 z FIT -- rozbieznosc znana, nie tego dotyczy ta poprawka).
+
+**KOREKTA BLEDU (ta sama sesja, po zgloszeniu przez uzytkownika):** plik pierwotnie przekazany uzytkownikowi do recznego wgrania na Garmina (~/Downloads) byl zbudowany z `outgoing/hammerhead_originals/...` (surowy Karoo) -- BEZ przepisania metadanych manufacturer/product/software_version na Garmin-kompatybilne, ktore normalnie wykonuje osobny mechanizm `/opt/qbot/app/qbot-fit-rewrite` (wywolywany przez `qbot-hammerhead-sync`, cron co 10 min, `run_hammerhead_garmin_sync*.sh`) i zapisuje do `outgoing/garmin_proxy/`. Bez tego rewrite'u Garmin moze nie przyjac/zle zinterpretowac pliku od nieznanego urzadzenia (Karoo/Hammerhead). Poprawka: skorygowany plik zbudowany na bazie JUZ przepisanej wersji `garmin_proxy` (ta sama co artifacts/fit, potwierdzone SHA), z potwierdzeniem ze manufacturer/product/software_version pozostaly nietkniete po mojej edycji mocy (identyczne w oryginale i po korekcie). `outgoing/garmin_proxy/...` rowniez zsynchronizowany z poprawiona wersja (backup oryginalu zrobiony). Nowy plik podmieniony userowi na Macu.
+
+**Decyzja 5 -- NAJWAZNIEJSZA (znaleziona po zgloszeniu uzytkownika "TRASA=FIT", tj. statystyki formy):** odkryto, ze `training_sessions.tss`/`activity_training_load` (ktore swiadomie zostawilem nietkniete w Decyzji 2) NIE SA w ogole zrodlem CTL/ATL/TSB -- prawdziwy pipeline to `activity_record` (surowy, nietkniety) -> `fitmodel/modelq2/xss.py::compute_xss` (via `ingest_new_rides_xss`, uruchamiane co ~15 min przez `qbot_activity_ingest.py`) -> `modelq2_ride.xss_total` -> `progression.build_and_store()` (EWMA, tau_tl=42d/tau_rl=7d) -> `modelq2_signature` -> `publish.publish_to_daily()` -> `fitmodel_daily.ctl_xss/atl_raw/atl_plus/tsb_raw/tsb_plus`.
+
+Ten pipeline JUZ przetworzyl jazde (obliczono 2026-07-19 16:17:38, `modelq2_ride.xss_total=425.5` z surowej, zawyzonej mocy) i JUZ zanieczyscil `fitmodel_daily`: ATL skoczylo 51.8->105.2 (dwukrotnie), CTL 62.4->71, TSB spadlo do -34.2/-35.3 -- falszywa "katastrofa formy".
+
+**Naprawa (uzyto PRAWDZIWYCH funkcji pipeline'u, nie reimplementacji):**
+1. Sygnatura ateltyczna dnia (`sig_tp_w=236.6W, sig_hie_kj=20.28kJ, sig_pp_w=998.2W` z `modelq2_ride`) pozostawiona BEZ ZMIAN -- to fitness sprzed jazdy, nie dotyczy korekty.
+2. `io.fetch_ride_rows()` -> surowe (ts,power_w) z `activity_record` -> zastosowano TA SAMA korekte co w plikach FIT (a=1.0, b=42.6768 dla t<11:59:32) w PAMIECI (activity_record nadal nietkniety w bazie).
+3. `xss.compute_xss()` na skorygowanych rows z ta sama sygnatura -> xss_total: **425.5 -> 349.3** (low 330.4->302.2, high 91.43->45.52, peak 3.678->1.614).
+4. UPDATE `modelq2_ride` (xss_low/high/peak/total, min_wbal_pct) dla external_id=23654350826.
+5. `progression.build_and_store(conn)` -- przebudowal cala sygnature/forme 2025-01-01..2026-07-19 (565 dni, 5 kotwic) z poprawionym wejsciem.
+6. `publish.publish_to_daily(conn)` -- opublikowal do `fitmodel_daily` (565 dni zaktualizowanych, ale tylko 2026-07-19 realnie sie zmienil -- wczesniejsze dni maja te same wejscia).
+
+**Wynik (fitmodel_daily 2026-07-19):** ATL 105.2->94.3, CTL 71->69.2, TSB -34.2/-35.3 -> -25.1 (nadal ciezki dzien -- to byla realnie wymagajaca jazda -- ale bez sztucznej katastrofy).
+
+**Dlaczego to jest "zabezpieczone na zawsze":** `ingest_new_rides_xss()` ma logike `if cur.fetchone(): continue` -- SKIPUJE jazdy ktore juz maja wpis w `modelq2_ride`, wiec zaden przyszly automatyczny przebieg pipeline'u NIE nadpisze tej poprawki surowym przeliczeniem. Jedyne ryzyko: gdyby ktos recznie USUNAL wiersz `modelq2_ride` dla tej jazdy, ingest przeliczylby go na nowo z surowego (zawyzonego) `activity_record` -- NIE USUWAC tego wiersza.
+
+**Cron sync-hammerhead-garmin dzialajacy co 10 min NIE nadpisal poprawki** -- log potwierdza "No unprocessed ride/cycling activity found" na kazdym uruchomieniu od 16:10 do 20:10, co oznacza ze ta aktywnosc byla juz oznaczona jako przetworzona/wyslana (upload nastapil wczesniej, prawdopodobnie zaraz po zakonczeniu jazdy, dlugo przed rozpoczeciem tej analizy) -- czyli oryginalne (zawyzone) dane sa juz na Garmin Connect, i korekta wymaga REC RECZNEGO ponownego wgrania przez uzytkownika (po usunieciu oryginalnej aktywnosci z Garmin Connect), nie da sie tego cofnac automatycznie przez QBot.
+
+**RYZYKO na przyszlosc:** jesli istnieje nocny/okresowy job synchronizujacy `activity_fit_raw` na nowo z Garmin Connect API (re-download po zmianie/re-check sha), moze CICHO NADPISAC ta poprawke oryginalnym (zawyzonym) plikiem z Garmina. Nie zweryfikowano istnienia takiego joba w tej sesji -- do sprawdzenia w kolejnej.
+
+**KAZDA przyszla praca nad CP/W' (patrz "W' / CP model completion" w TODO)** MUSI pomijac ta jazde/segment jako kotwice -- mmp_* juz NULL, wiec standardowe MAX()-owe skanowanie training_sessions automatycznie ja wyklucza. Jesli przyszly kod czyta activity_record bezposrednio (kanon: "kotwice CP/W' licz WPROST z activity_record"), musi explicite wykluczyc external_id='23654350826' segment ts<'2026-07-19 11:59:32' albo cala jazde z okresu budowy MMP curve.
+
+---
+
+
+## 2026-07-19 (cd.) -- DEDUPLIKACJA: 3 aktywnosci Garmina dla jednej jazdy (19.07)
+
+**Status:** wykonane. Nastepstwo Decyzji 1-5 powyzej (korekta mocy 19.07).
+
+**Problem:** po recznym usunieciu oryginalnej (zawyzonej) aktywnosci z Garmin Connect i ponownym wgraniu poprawionego pliku FIT przez uzytkownika, powstaly TRZY osobne external_id w QBocie dla tej samej fizycznej jazdy:
+- `23654350826` -- oryginal (pierwszy auto-sync 15:45, potem recznie skorygowany w tej sesji: mmp NULL, XSS/CTL/ATL naprawione)
+- `23657514018` -- duplikat ponownego wgrania (auto-zaimportowany 20:15 przez `import_garmin_training.py`)
+- `23657683068` -- drugi duplikat ponownego wgrania (auto-zaimportowany 20:30)
+
+Oba nowe wpisy mialy JUZ poprawna moc (avg_power_w=163W) -- Garmin faktycznie przeliczyl z wgranego poprawionego pliku -- ale `mmp_30_w=453` (NIE NULL), co przy pozostawieniu wszystkich trzech grozilo (a) podwojnym/potrojnym liczeniem XSS/TSS tej samej jazdy w `fitmodel_daily` przy kolejnym uruchomieniu `ingest_new_rides_xss` (ktore wybralaby losowo jeden z 3 identycznych rekordow na dany dzien), (b) trzykrotnym wliczeniem szczytowych MMP do przyszlych kotwic CP/W'.
+
+**Decyzja (na wyrazne zyczenie uzytkownika "ma byc tylko jedna"):** zachowano `23657683068` (najpozniejszy, najpewniej finalny upload) jako kanoniczny. USUNIETO calkowicie z bazy (`activity_event`, `activity_fit_raw`, `activity_lap`, `activity_record`, `training_sessions`, `modelq2_ride`, `ride_report_data`) oba pozostale: `23654350826` i `23657514018`.
+
+Dla ocalalego `23657683068`: `mmp_*_w` rowniez ustawione na NULL (ta sama ostroznosc co Decyzja 2 -- korekta mocy to nadal estymacja, nie pomiar, mimo ze przeszla przez Garmina). Pipeline formy przeliczony NATURALNIE (bez recznej korekty w pamieci -- activity_record tego external_id juz ma poprawna moc, bo pochodzi z ponownie wgranego pliku): `ingest_new_rides_xss` -> xss_total=335.8 (low=297.8 high=36.76 peak=1.232) -> `build_and_store` -> `publish_to_daily`. Wynik fitmodel_daily 2026-07-19: CTL=68.9 ATL=92.4 TSB=-23.5 (spojne z wczesniejsza reczna naprawa 69.2/94.3/-25.1 z Decyzji 5, drobna roznica bo teraz plynie przez caly pipeline bez obejscia).
+
+**Do sprawdzenia w przyszlosci:** czy istnieja jeszcze 2 aktywnosci na samym Garmin Connect (usuniete tylko z QBota) -- jesli tak, `import_garmin_training.py` (cron co 15 min) prawdopodobnie ZAIMPORTUJE JE PONOWNIE przy nastepnym uruchomieniu, bo Garmin API nie wie o naszej deduplikacji lokalnej. Uzytkownik powinien recznie usunac zbedne duplikaty (23657514018 rownowaznik) rowniez z Garmin Connect, inaczej problem odtworzy sie automatycznie.
+
+---
+
+## 2026-07-19 (cd. 2) -- Panel W'bal w raporcie z jazdy nadal pokazywal Karoo (stale)
+
+**Status:** naprawione, dla external_id kanonicznego `23657683068`.
+
+**Problem:** po deduplikacji (Decyzja powyzej) uzytkownik zauwazyl, ze panel "Rezerwa beztlenowa W' + tempo regeneracji" nadal pokazuje zawyzone/dziwne dane (W' wielokrotnie zerujace sie do 0%, "najdroszsze wysilki" itp.), mimo ze `activity_record`/`training_sessions.avg_power_w` byly juz poprawne.
+
+**Przyczyna:** `ride_report_builder.py::_wprime_karoo()` czyta W'bal WPROST z pol deweloperskich FIT `qext2_wbal_pct` (i pokrewnych: `qext2_cp_eff_w`, `qext2_wprime_eff_kj`, `qext2_wbal_zero`, `qext2_cf`) -- to REALNY POMIAR zrobiony na zywo przez zegarek Karoo (QExt2) PODCZAS jazdy, z ówczesnie (jeszcze nieznanej jako bledna) mocy. `_overlay_karoo()` CELOWO nadpisuje nimi wlasny replay (`_wprime()`, liczony z kanonicznego `activity_record` przez `replay_mpa`) -- normalnie slusznie, bo pomiar z urzadzenia > statyczny replay. W tym jednym przypadku odwracalo to sytuacje na gorsze, bo urzadzenie liczylo na zywo z zepsutej mocy.
+
+Te pola deweloperskie PRZETRWALY caly cykl (nasza edycja FIT -> wgranie na Garmina -> pobranie z powrotem przez `import_garmin_training.py`) bez zmian -- korekta `record.power` nigdy ich nie dotykala.
+
+**Naprawa (BEZ zmiany wspoldzielonego kodu -- dziala poprawnie dla wszystkich innych jazd):** w pliku `/opt/qbot/artifacts/fit/23657683068.fit` wyzerowano (sentinel FIT UINT8 invalid=255, nie usuniecie pola -- usuniecie psulo serializacje przez fit_tool przy stalym rozmiarze pola w definicji rekordu) wartosci `qext2_wbal_pct` we WSZYSTKICH 17472 rekordach. Skutek: `_wprime_karoo()` zwraca `None` (K puste), `_overlay_karoo()` przechodzi przez wczesny `return out` bez zadnej zmiany -- naturalnie uzywany jest wlasny, poprawny replay z `activity_record`.
+
+**Backup:** `/opt/qbot/artifacts/fit/23657683068.fit.bak.20260719_221625` (przed usunieciem qext2_wbal_pct, zawiera oryginalne dane Karoo -- do wykorzystania gdyby trzeba bylo porownac).
+
+**Weryfikacja:** przebudowany W1 (`build_w1` + `save_report`) pokazuje `wbal_min_pct.source == "modelq2_replay (activity_record)"` (bylo: "karoo (QExt2)", wartosc 0%->23%). Brak kluczy `cp_eff_w`/`wprime_eff_j`/`cf_avg`/`wbal_zero` w wyniku (potwierdza pelne pominiecie overlay). `wbal_curve` fizjologicznie sensowna (wahania 40-100%, bez wielokrotnego zerowania jak wczesniej). `top_efforts` (342W/88s, 339W/60s, 546W/16s) juz i tak byly poprawne -- licza sie z `record.power` (kanon "fit"), nie z Karoo.
+
+**Nierozwiazane, drugorzedne:** pole `cutoff` (km 77.9, source "activity_record") to OSOBNY, wewnetrzny mechanizm detekcji w `ride_report_builder.py`, niezalezny od naszej analizy (my ustalilismy granice 74.9km / 11:59:32). Nie badano dokladnego algorytmu -- do sprawdzenia jesli bedzie mylace w przyszlosci.
+
+## 2026-07-19 (cd. 3) -- Wykres "Czas w kasecie" pokazywal tylko uzyte biegi (11 z 13)
+
+**Status:** wdrozone, commit lokalny zrobiony, PUSH DO GITHUB NIEUKONCZONY (patrz ryzyko ponizej).
+
+**Problem:** wykres cog_time_pct w raporcie z jazdy pokazywal tylko biegi kasety ktore realnie wystapily w zdarzeniach zmiany biegu (`rear_gear_num` z FIT event messages) -- jesli caly bieg nigdy nie zostal uzyty w danej jezdzie, po prostu znikal z wykresu zamiast pokazac sie jako 0%. Dla tej jazdy: kaseta SRAM AXS 13-rzedowa, ale wykres pokazywal tylko 11 pozycji (1-11), bo biegi 12-13 nie zostaly uzyte. Sprawdzono w surowych danych FIT (282 eventy zmiany biegu) -- to nie byl blad odczytu, biegi 12/13 naprawde nigdy sie nie pojawily w strumieniu zdarzen tej jazdy. Uzytkownik potwierdzil: ma WYLACZNIE kasety 13-rzedowe (AXS), wiec chce zawsze 13 pozycji na wykresie.
+
+**Sprawdzono i odrzucono automatyczna detekcje:** FIT device_info dla SRAM nie zawiera pola z liczba biegow kasety -- nie da sie tego wykryc automatycznie z pliku.
+
+**Decyzja:** dodano stala `REAR_COG_COUNT = 13` w `qbot3/rides/ride_report_builder.py` (kolo innych stalych sprzetowych: HR_MAX, CDA, CRR, BIKE_KG). Zmieniono `cog_pct` w `_drivetrain()`: zamiast `{c: ... for c in sorted(cog)}` (tylko uzyte biegi) -> `{c: ... for c in range(1, REAR_COG_COUNT+1)}` (zawsze 1-13, zerem dla nieuzytych).
+
+**RYZYKO udokumentowane swiadomie:** to zalozenie na sztywno w kodzie WSPOLDZIELONYM (kazda jazda). Jesli kiedykolwiek pojawi sie rower/kaseta o innej liczbie biegow (np. 12-rzedowa), ten wykres bedzie BLEDNIE pokazywal 13 pozycji. Uzytkownik potwierdzil ze uzywa wylacznie kaset 13-rzedowych -- akceptowalne dzis, do rewizji gdyby to sie zmienilo.
+
+**Weryfikacja:** przebudowano W1 dla `23657683068` -- cog_time_pct teraz {'1':0,'2':2,...,'11':4,'12':0,'13':0} (bylo: brak kluczy 12,13).
+
+**Wdrozenie:**
+- Commit lokalny jako `qbot` wykonany: `12d4227 ride_report: cog_time_pct pokazuje wszystkie 13 pozycji kasety AXS...` (przez SSH/MacOS-MCP, zanim kanal sie zawiesil).
+- `systemctl restart qbot-web` wykonany przez DEV MCP -- serwis dziala juz z nowym kodem (zweryfikowano `systemctl is-active` -> active).
+- **PUSH DO GITHUB NIE WYKONANY** -- oba kanaly routowane przez komputer uzytkownika (MacOS-MCP Shell, Desktop Commander) przestaly odpowiadac w trakcie tej sesji (4-min timeout, brak jakiejkolwiek odpowiedzi nawet na `echo ok`). `git status` pokazuje lokalny `main` jako `ahead 1` wzgledem `origin/main`. **DO ZROBIENIA W KOLEJNEJ SESJI:** `git -C /opt/qbot/app -c safe.directory=/opt/qbot/app push origin main` (jako root), gdy kanaly SSH/DC beda dzialac -- inaczej zmiana zyje tylko na serwerze, nie w repo GitHub.
 
 ## 2026-07-18 -- DECYZJA: RSRV -- kara za dryf "przy tej samej mocy" + todayFactor z readiness_effective
 
