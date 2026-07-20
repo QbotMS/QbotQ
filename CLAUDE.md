@@ -5,9 +5,11 @@ Primary instructions for Claude working in `/opt/qbot/app`.
 ## Read first
 
 1. `CLAUDE.md`
-2. `docs/CONTEXT.md`
+2. `docs/CURRENT.md` (session handoff) and `docs/DECISIONS.md` (decision log) — both are in the repo.
 3. `docs/architecture/QBOT_ARCHITEKTURA_QBOT3.md`
 4. `QBOT_INSTRUCTIONS.md` only when changing the QBot runtime prompt.
+
+Note on `docs/CONTEXT.md`: it is the full live source of truth, but it is auto-generated (`scripts/build_context.py`) and intentionally git-ignored (`.gitignore`), so it lives only on the server, not in the repo. When working on the server/SSH, read it from `/opt/qbot/app/docs/CONTEXT.md`. When docs disagree with code, the live system wins.
 
 `PROJECT_STATE.md` is historical. `QBOT_CURRENT_STATE.md` is deprecated.
 
