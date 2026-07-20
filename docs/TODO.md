@@ -205,3 +205,5 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - **XSS** policzony w QBot i on-device (QExt2); **RSRV** na XSS + todayFactor z readiness_score.
 - **FORMA tile** + CTL/ATL/TSB (`_build_training_load_latest`). **Strefy HR** Coggan %LTHR=132 na Karoo.
 - **QExt2 Strona A<->B**: 7 developer fields @1Hz do/z FIT (deploy key, CI, sideload).
+
+- [2026-07-20] ZROBIONE: Scheduled -- scripts/verify_dupes.py (poranna weryfikacja duplikatow jazd, tylko zglasza; cron root 05:30; Telegram tylko o nowych grupach; stan data/verify_dupes_seen.json). Wykryto 9 starych par do ewentualnego recznego wyczyszczenia.

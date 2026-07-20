@@ -203,3 +203,22 @@ PLIKI ZMIENIONE (repo, do commitu):
   docs/DECISIONS.md, docs/CURRENT.md, docs/CONTEXT.md
   USUNIETE z repo (przeniesione do _bak_archive/20260716_calendar_core/):
   qbot_calendar_core.py, qbot_calendar_cli.py, qbot_qcal_cli.py
+
+
+---
+
+## Sesja 2026-07-20 -- Scheduled: poranna weryfikacja duplikatow jazd (tylko zglasza)
+
+WYKONANE (na zywo, zweryfikowane):
+- Nowy skrypt scripts/verify_dupes.py -- wykrywa zdublowane jazdy i TYLKO raportuje (nic nie kasuje).
+- Duplikat (qbot_v2.training_sessions): (1) same_start = ten sam start do minuty + dystans +-1% + czas +-2% pod >1 external_id (podwojny import); (2) row_dupe = to samo external_id w >1 wierszu.
+- Dla kazdego ID pokazuje slad w tabelach (activity_record/qext2_ride/wbal_ride/segment/ride_buckets) -> widac, ktora kopia ma strumienie 1Hz, a ktora jest pusta.
+- Anty-spam: pelny obraz zawsze do logu; Telegram TYLKO o NOWYCH grupach. Stan: data/verify_dupes_seen.json.
+- Flagi: --dry-run (test bez wysylki i bez zapisu stanu), --force-telegram.
+- Cron root (obok pipeline/raportow): 30 5 * * * -> po nocnym fitmodel.daily_job (04:45). Log: /opt/qbot/logs/verify_dupes.log.
+- Weryfikacja na zywo: 9 realnych par (maj, garmin_live, podwojny import); w kazdej parze dokladnie jedna kopia ma 1Hz. Pierwszy Telegram wyslany, drugi bieg = cisza (anty-spam OK).
+- Commit: 7fb7aaa (origin/main).
+
+OTWARTE / DECYZJA UZYTKOWNIKA:
+- 9 par to STARE duplikaty -- do ewentualnego recznego wyczyszczenia (zostawic kopie z 1Hz, skasowac pusta). Skrypt sam NIE kasuje.
+- Sprzatanie .bak: dorzucic scripts/verify_dupes.py.bak.1784579684 do listy .bak do usuniecia (rm blokowany w dev_shell_exec).
