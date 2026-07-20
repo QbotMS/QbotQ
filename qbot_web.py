@@ -3268,6 +3268,245 @@ def api_planer_dzien(route_id: str = Query(...), from_km: float = Query(..., ali
         conn.close()
 
 
+def _wind_clim_for_route(conn, seg_in, month):
+    """Klimatologia wiatru dla rejonu trasy w danym miesiacu (wielolecie ERA5,
+    open-meteo archive). Zwraca (ws_efektywny_na_wysokosci_jezdzca, kierunek_z_ktorego).
+    Cache w qbot_v2.route_wind_clim per (centroid~1km, miesiac). None gdy brak danych."""
+    import math as _m, json as _j, urllib.request as _u, urllib.parse as _up, calendar as _cal
+    WIND_FACTOR = 0.65   # 10 m -> ~1.5 m (wysokosc jezdzca)
+    YEARS = [2023, 2024, 2025]
+    lats = [float(s.get("mid_lat") or 0.0) for s in seg_in if s.get("mid_lat")]
+    lons = [float(s.get("mid_lon") or 0.0) for s in seg_in if s.get("mid_lon")]
+    if not lats or not lons:
+        return None
+    lat_k = round(sorted(lats)[len(lats) // 2], 2)
+    lon_k = round(sorted(lons)[len(lons) // 2], 2)
+    try:
+        conn.execute("""CREATE TABLE IF NOT EXISTS qbot_v2.route_wind_clim(
+            lat_key double precision, lon_key double precision, month int,
+            mean_ws double precision, prevail_deg double precision,
+            updated_at timestamptz DEFAULT now(),
+            PRIMARY KEY(lat_key, lon_key, month))""")
+        conn.commit()
+        r = conn.execute("SELECT mean_ws, prevail_deg FROM qbot_v2.route_wind_clim "
+                         "WHERE lat_key=%s AND lon_key=%s AND month=%s", (lat_k, lon_k, month)).fetchone()
+        if r:
+            return (float(r["mean_ws"]) * WIND_FACTOR, float(r["prevail_deg"]))
+    except Exception:
+        try: conn.rollback()
+        except Exception: pass
+    ARCH = "https://archive-api.open-meteo.com/v1/archive"
+    ws_all = []; u = 0.0; vv = 0.0
+    for y in YEARS:
+        last = _cal.monthrange(y, month)[1]
+        p = {"latitude": lat_k, "longitude": lon_k,
+             "hourly": "wind_speed_10m,wind_direction_10m", "windspeed_unit": "ms",
+             "timezone": "UTC", "start_date": "%04d-%02d-01" % (y, month),
+             "end_date": "%04d-%02d-%02d" % (y, month, last)}
+        try:
+            req = _u.Request(ARCH + "?" + _up.urlencode(p), headers={"User-Agent": "QBot/1.0"})
+            with _u.urlopen(req, timeout=25) as rr:
+                d = _j.loads(rr.read().decode())
+            h = d["hourly"]
+            for sp, dr in zip(h["wind_speed_10m"], h["wind_direction_10m"]):
+                if sp is None or dr is None:
+                    continue
+                ws_all.append(sp); u += sp * _m.sin(_m.radians(dr)); vv += sp * _m.cos(_m.radians(dr))
+        except Exception:
+            continue
+    if not ws_all:
+        return None
+    mean_ws = sum(ws_all) / len(ws_all)
+    prevail = (_m.degrees(_m.atan2(u, vv)) + 360) % 360
+    try:
+        conn.execute("""INSERT INTO qbot_v2.route_wind_clim(lat_key,lon_key,month,mean_ws,prevail_deg)
+            VALUES(%s,%s,%s,%s,%s) ON CONFLICT(lat_key,lon_key,month)
+            DO UPDATE SET mean_ws=EXCLUDED.mean_ws, prevail_deg=EXCLUDED.prevail_deg, updated_at=now()""",
+            (lat_k, lon_k, month, mean_ws, prevail))
+        conn.commit()
+    except Exception:
+        try: conn.rollback()
+        except Exception: pass
+    return (mean_ws * WIND_FACTOR, prevail)
+
+
+def _estimate_route_xss_phys(seg_in, sig, mass, mode="normalny", wind=None):
+    """XSS PLANOWANEJ trasy z FIZYKI (bez IF, bez kotwic):
+    per segment 50 m: predkosc v2 (segment_speed_kmh) -> moc z fizyki
+    (grawitacja + toczenie z Crr wg nawierzchni + opor powietrza z WIATREM wg
+    azymutu ramki; zjazd -> 0 = luz) -> prawdziwy compute_xss. Ta sama waluta co CTL.
+    Zwalidowane: Castagneto 238/242 (1.7%), 12.07 gravel 325/328 (Crr 0.015)."""
+    from datetime import datetime, timedelta
+    import math as _m
+    from qbot_route_time_tools import segment_speed_kmh, surface_class
+    from fitmodel.modelq2.xss import compute_xss
+    from tools.rwgps.route_weather import _rel_wind
+    if sig is None or not seg_in:
+        return None
+    CRR = {"paved": 0.010, "unpaved": 0.018}   # kalibr. na jazdach: asfalt~0.010, gravel~0.018; nieznana->0.014
+    RHO, CDA, EFF, G = 1.2, 0.4, 0.97, 9.81
+    ws_eff = prevail = None
+    if wind:
+        ws_eff, prevail = wind
+    lats = [float(s.get("mid_lat") or 0.0) for s in seg_in]
+    lons = [float(s.get("mid_lon") or 0.0) for s in seg_in]
+    n = len(seg_in)
+
+    def _bearing(a1, o1, a2, o2):
+        la1, lo1, la2, lo2 = map(_m.radians, [a1, o1, a2, o2]); dl = lo2 - lo1
+        x = _m.sin(dl) * _m.cos(la2)
+        y = _m.cos(la1) * _m.sin(la2) - _m.sin(la1) * _m.cos(la2) * _m.cos(dl)
+        return (_m.degrees(_m.atan2(x, y)) + 360) % 360
+
+    powers = []
+    for i, s in enumerate(seg_in):
+        ln = float(s.get("len_m") or 0.0)
+        if ln <= 0:
+            continue
+        g = float(s.get("grade_pct") or 0.0)
+        sc = s.get("surface")
+        sc = sc if sc in ("paved", "unpaved") else surface_class(sc)
+        crr = CRR.get(sc, 0.014)
+        v = max(0.5, float(segment_speed_kmh(g, sc, mode)) / 3.6)
+        tail = None
+        if ws_eff and prevail is not None:
+            j = min(n - 1, i + 3)
+            if lats[i] and lats[j] and (lats[i] != lats[j] or lons[i] != lons[j]):
+                hd = _bearing(lats[i], lons[i], lats[j], lons[j])
+                tail, _cross, _delta = _rel_wind(hd, prevail, ws_eff)
+        vair = v if tail is None else (v - tail)   # tail>0 = z tylu -> mniejsze czolo
+        grav = mass * G * (g / 100.0) * v
+        roll = mass * G * crr * v
+        aero = 0.5 * RHO * CDA * vair * abs(vair) * v
+        p = max(0.0, (grav + roll + aero) / EFF)
+        dt = int(round(ln / v))
+        if dt < 1:
+            dt = 1
+        powers.extend([p] * dt)
+    if not powers:
+        return None
+    base = datetime(2020, 1, 1)
+    rows = [(base + timedelta(seconds=i), powers[i]) for i in range(len(powers))]
+    x = compute_xss(rows, sig)
+    return x.low + x.high + x.peak
+
+
+def _planer_stage_xss(conn, route_id, cuts, mode="normalny", month=None):
+    """XSS per etap dla podzialu wyprawy (reuse, jedno zrodlo):
+    - kanoniczna siatka 50 m (grade+surface) -> czas ruchu ta sama krzywa co model czasu,
+    - _estimate_route_xss (kanon XSS trasy) per etap; podjazdy przyciete do etapu (km rebase).
+    Zwraca (total_km, [ {idx, from_km, to_km, dist_km, moving_h, xss} ])."""
+    import sys
+    sys.path.insert(0, "/opt/qbot/app")
+    from qbot3.routes.route_segments_50m import load_canonical_segments_50m
+    from qbot_route_time_tools import moving_time_h
+    from qbot3.routes import route_report_canonical as _rc
+
+    out = load_canonical_segments_50m(route_id=str(route_id))
+    if out.get("status") != "OK" or not out.get("segments"):
+        raise HTTPException(status_code=422, detail="Brak kanonicznej siatki 50 m dla trasy")
+    segs = out["segments"]
+    total_km = round(float(segs[-1]["km_to"]), 2)
+
+    cuts = sorted(float(c) for c in (cuts or []) if c is not None and 0.0 < float(c) < total_km)
+    bounds = []
+    prev = 0.0
+    for c in cuts:
+        bounds.append((prev, c)); prev = c
+    bounds.append((prev, total_km))
+
+    ftp, wprime_kj = _rc._modelq_form_for_xss(conn)
+    _fit = _rc._fitmodel(conn)
+    mass = float(_fit["weight_kg"]) if (_fit and _fit.get("weight_kg")) else 100.0
+
+    sig = None
+    if ftp and wprime_kj:
+        try:
+            from fitmodel.modelq2.signature import Signature
+            _pk = conn.execute("SELECT max(mmp_1_w) AS pp FROM qbot_v2.training_sessions "
+                               "WHERE mmp_1_w IS NOT NULL").fetchone()
+            _pp = float(_pk["pp"]) if (_pk and _pk.get("pp")) else float(ftp) * 2.5
+            if _pp <= float(ftp):
+                _pp = float(ftp) * 2.5
+            sig = Signature.from_kj(float(ftp), float(wprime_kj), _pp)
+        except Exception:
+            sig = None
+
+    rb = conn.execute(
+        "SELECT route_base_id FROM qbot_v2.route_base WHERE route_id=%s "
+        "ORDER BY (status='active') DESC, route_modified_at DESC NULLS LAST LIMIT 1",
+        (route_id,)).fetchone()
+    rbid = rb["route_base_id"] if rb else None
+    climbs_all = []
+    if rbid is not None:
+        for r in conn.execute(
+            "SELECT start_m, end_m, avg_gradient_pct FROM qbot_v2.route_climb_events "
+            "WHERE route_base_id=%s ORDER BY start_m", (rbid,)).fetchall():
+            climbs_all.append((float(r["start_m"] or 0) / 1000.0,
+                               float(r["end_m"] or 0) / 1000.0,
+                               float(r["avg_gradient_pct"] or 0)))
+
+    wind = _wind_clim_for_route(conn, segs, month) if month else None
+    stages = []
+    for i, (a, b) in enumerate(bounds):
+        seg_in = [s for s in segs if s["km_to"] > a + 1e-9 and s["km_from"] < b - 1e-9]
+        mv_h, _unk = moving_time_h(
+            [{"len_m": s["len_m"], "grade_pct": s["grade_pct"], "surface": s["surface"]}
+             for s in seg_in], mode)
+        dist = round(b - a, 2)
+        st_climbs = []
+        for cf, ct, gr in climbs_all:
+            lo, hi = max(cf, a), min(ct, b)
+            if hi - lo > 0.05:
+                st_climbs.append({"km_from": round(lo - a, 3), "km_to": round(hi - a, 3),
+                                  "avg_gradient_pct": gr})
+        xss = _estimate_route_xss_phys(seg_in, sig, mass, mode, wind)
+        stages.append({"idx": i, "from_km": round(a, 2), "to_km": round(b, 2),
+                       "dist_km": dist, "moving_h": round(mv_h, 2),
+                       "xss": (round(xss, 1) if xss is not None else None)})
+    return total_km, stages
+
+
+@app.post("/api/planer/wykonalnosc")
+async def api_planer_wykonalnosc(request: Request):
+    """XSS per etap + OCENA FORMY (silnik fitmodel.expedition_feasibility).
+    body: {route_id, cuts:[km...], departure?:'YYYY-MM-DD', mode?}.
+    Bez 'departure' zwraca same XSS etapow + biezaca forme (data jeszcze nieustalona)."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    route_id = str(body.get("route_id") or "").strip()
+    if not route_id:
+        raise HTTPException(status_code=400, detail="Wymagane: route_id")
+    cuts = body.get("cuts") or []
+    mode = (str(body.get("mode") or "normalny")).strip() or "normalny"
+    departure = body.get("departure")
+    conn = _db_conn()
+    try:
+        _month = None
+        if departure:
+            try:
+                _month = int(str(departure)[5:7])
+            except Exception:
+                _month = None
+        total_km, stages = _planer_stage_xss(conn, route_id, cuts, mode, _month)
+        import sys
+        sys.path.insert(0, "/opt/qbot/app")
+        from fitmodel import expedition_feasibility as _ef
+        feas = None
+        if departure:
+            xss_list = [(s["xss"] or 0.0) for s in stages]
+            feas = _ef.assess(conn, departure, xss_list)
+        else:
+            feas = {"ok": False, "reason": "brak_daty", "form": _ef.load_form_context(conn),
+                    "thresholds": _ef.load_tsb_thresholds(conn)}
+        return {"ok": True, "route_id": route_id, "total_km": total_km,
+                "stages": stages, "feasibility": feas}
+    finally:
+        conn.close()
+
+
 @app.get("/api/report/data")
 def report_data(route_id: str = Query(...), date: str = Query(...),
                 time: str = Query("10:00"), long_stops: int = Query(0),
