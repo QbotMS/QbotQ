@@ -715,7 +715,18 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny", fmt="md"):
         cho = round((moving_h or 0) * 55) if moving_h else None
         if_est = 0.62
         ftp_mq, wprime_mq_kj = _modelq_form_for_xss(conn)
-        xss_est = _estimate_route_xss(moving_h, dist_km, climbs, ftp_mq, wprime_mq_kj, mass, if_est)
+        _month_xss = None
+        try:
+            if start:
+                _month_xss = int(str(start)[5:7])
+        except Exception:
+            _month_xss = None
+        from qbot3.routes.route_xss_phys import _route_physics_xss as _rpx
+        xss_est = _rpx(conn, route_id, ftp_mq, wprime_mq_kj, mass, mode, _month_xss)
+        _xss_src = "fizyka 50m"
+        if xss_est is None:  # fallback: stary estymator IF gdy brak kanonicznej siatki 50 m
+            xss_est = _estimate_route_xss(moving_h, dist_km, climbs, ftp_mq, wprime_mq_kj, mass, if_est)
+            _xss_src = f"IF~{if_est} fallback"
         wprime_txt = "b/d"
         if climbs and ftp:
             steep = max(climbs, key=lambda e: float(e.get("avg_gradient_pct") or 0))
@@ -730,7 +741,7 @@ def build_canonical_report_v1(route_id, start=None, mode="normalny", fmt="md"):
         H("")
         H("| Miara | Szacunek trasy | Ocena |")
         H("|---|---|---|")
-        H(f"| Obciazenie (szac. XSS) | ~{xss_est if xss_est is not None else 'b/d'} ({_hms(moving_h)}, IF~{if_est}) | dlugi endurance, nie interwaly |")
+        H(f"| Obciazenie (szac. XSS) | ~{round(xss_est, 1) if xss_est is not None else 'b/d'} ({_hms(moving_h)}, {_xss_src}) | dlugi endurance, nie interwaly |")
         H(f"| Zapotrzebowanie CHO | ~{cho if cho is not None else 'b/d'} g (55 g/h) | tankuj 40–70 g/h |")
         H(f"| Zapotrzebowanie woda | ~{_f(dem)} l | pokryjesz z refilami |")
         H(f"| Rezerwa W′ na podjazdach | {wprime_txt} | — |")

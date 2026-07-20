@@ -1,24 +1,26 @@
 from __future__ import annotations
 
-"""Silnik wykonalnosci wyprawy (Planer Wypraw).
+"""Silnik wykonalnosci wyprawy (Planer Wypraw) -- MODEL DWOCH SCIAN (2026-07-20).
 
-Cel: ocenic, na ile wielodniowy podzial wyprawy jest wykonalny przy OBECNEJ
-formie i jej trendzie z ostatnich 30 dni, zrzutowanej do przodu na date wyjazdu
-(planowanie nie pokrywa sie z dniem startu). Jesli plan przekracza forme --
-policzyc, ile treningu tygodniowo trzeba dolozyc, albo powiedziec wprost, ze w
-tym oknie sie nie da bezpiecznie (przesun date / skroc plan).
+Cel: ocenic, na ile wielodniowy podzial wyprawy jest wykonalny. STARY werdykt stal
+na progu swiezosci TSB (p05 z historii) -- odrzucony: realnie UKONCZONY blok
+(Toskania 7 dni, XSS 179/294/242/149/208/246/186) dostawalby "nie jedz", bo TSB
+schodzi glęboko na kazdej wielodniowce. TSB nie jest miara wykonalnosci wielodniowki.
 
-WALUTA: wszystko w XSS. CTL liczone jest z XSS (qbot_v2.fitmodel_daily.ctl_xss),
-a XSS etapu pochodzi z tego samego wzoru fizyki co dla trasy
-(route_report_canonical._estimate_route_xss). Nie mieszamy XSS z TSS.
+WYKONALNOSC = dwie fizyczne SCIANY, liczy sie ta ktora uderzy pierwsza:
+- SCIANA 1-DNIA: rekord demonstrowany (max pojedyncza jazda, modelq2_ride.xss_total)
+  oraz sciana metaboliczna (3.5xBMR - NONEX) / kcal_per_XSS = limit wchlaniania jelit.
+- SUFIT TYGODNIOWY (srednia/dzien): (3.0xBMR - NONEX)/kcal_per_XSS.
+- SUFIT WIELOTYGODNIOWY: (2.5xBMR - NONEX)/kcal_per_XSS.
+Mnoznik xBMR = limit WCHLANIANIA (uniwersalny), NIE galka wytrenowania -- nie podkrecac
+za forme. Wytrenowanie wchodzi przez sklad ciala (BMR), glikogen i DEMONSTROWANA POJEMNOSC.
 
-PROGI = Z WLASNEJ HISTORII (nie z podrecznika): zolty = p10, czerwony = p05
-rozkladu tsb_raw z ostatniego roku. Michal nie ocenia abstrakcyjnych liczb --
-skala jest jego wlasna i sama sie aktualizuje. Fallback podrecznikowy (-20/-30)
-tylko gdy za malo historii.
+Narastajace zmeczenie (symulacja TSB) = INFORMACJA obok werdyktu, nie pass/fail.
+BMR = Mifflin-St Jeor z qbot_v2.athlete_profile (sex/wzrost/rok ur.) + biezaca waga.
 
-Czesc czysta (bez DB) jest testowalna offline. Czesc "na zywo" czyta
-fitmodel_daily przez fitmodel.api._db_connect.
+WALUTA: XSS. XSS etapu z fizyki trasy (route_xss_phys._route_physics_xss).
+Czesc czysta (bez DB) testowalna offline. Czesc "na zywo" czyta fitmodel_daily /
+athlete_profile / modelq2_ride przez fitmodel.api._db_connect.
 """
 
 import math
@@ -27,11 +29,18 @@ from typing import Any, Optional
 
 TAU_CTL = 42.0
 TAU_ATL = 7.0
-TSB_YELLOW = -20.0             # fallback podrecznikowy (gdy za malo historii)
-TSB_RED = -30.0               # fallback podrecznikowy
-SAFE_CTL_RAMP_PER_WEEK = 6.0   # podrecznikowy bezpieczny przyrost CTL/tydz (ostrzezenie, nie zakaz)
+TSB_YELLOW = -20.0             # fallback podrecznikowy (info)
+TSB_RED = -30.0               # fallback podrecznikowy (info)
+SAFE_CTL_RAMP_PER_WEEK = 6.0   # (legacy, nieuzywane w werdykcie dwoch scian)
 _K_CTL = 1.0 - math.exp(-1.0 / TAU_CTL)
 _K_ATL = 1.0 - math.exp(-1.0 / TAU_ATL)
+
+# --- kotwice modelu dwoch scian (z DECISIONS/CURRENT 2026-07-20) ---
+KCAL_PER_XSS = 9.3            # mediana dlugich jazd (kcal na 1 XSS)
+NONEX_MULT = 1.4             # TEE poza jazda = 1.4 x BMR
+CEIL_DAY_MULT = 3.5         # sciana metaboliczna 1-dnia (izolowany dzien)
+CEIL_WEEK_MULT = 3.0        # srednia/dzien - tydzien
+CEIL_MULTIWEEK_MULT = 2.5   # srednia/dzien - wielotygodniowa
 
 
 # ---- CZESC CZYSTA (testowalna offline) ------------------------------------
@@ -71,8 +80,7 @@ def percentile(sorted_vals, p):
 
 def project_ctl(today_ctl, slope_per_day, days_ahead, cap_ramp_per_week=SAFE_CTL_RAMP_PER_WEEK):
     """Rzutuje CTL do przodu wg trendu, przycinajac tempo WZROSTU do bezpiecznego.
-    Nie ekstrapoluje w kosmos: dodatni trend ograniczony do cap_ramp/7 na dzien;
-    spadek (roztrenowanie) dozwolony bez ograniczenia."""
+    Dodatni trend ograniczony do cap_ramp/7 na dzien; spadek dozwolony bez ograniczenia."""
     if today_ctl is None:
         return None
     cap_day = cap_ramp_per_week / 7.0
@@ -84,19 +92,26 @@ def project_ctl(today_ctl, slope_per_day, days_ahead, cap_ramp_per_week=SAFE_CTL
 
 
 def simulate_expedition(start_ctl, start_atl, stage_xss_list, yellow=TSB_YELLOW, red=TSB_RED):
-    """Forward-symulacja dzien po dniu. Kazdy dzien = obciazenie = XSS etapu.
-    TSB "poranny" dnia d = CTL_{d-1} - ATL_{d-1} (swiezosc, z ktora zaczynasz dzien).
-    Zwraca liste per-dzien {idx, xss, tsb_morning, ctl_after, atl_after, color}
-    + min_tsb. color: green / yellow / red wg progow (z historii)."""
+    """Forward-symulacja dzien po dniu (INFORMACJA o narastajacym zmeczeniu, nie werdykt).
+
+    KOLEJNOSC (fix 2026-07-20): najpierw NOCNA/miedzydniowa regeneracja (decay EWMA
+    ku 0), POTEM odczyt porannego TSB, POTEM obciazenie dnia. Koniec dnia identyczny
+    jak przy jednokrokowym EWMA, ale poranny TSB nie jest zawyzony o niezregenerowane
+    ATL. Dowod: Toskania min TSB -64 (stara kolejnosc) -> ~-47 (poprawna)."""
     ctl = float(start_ctl or 0.0)
     atl = float(start_atl if start_atl is not None else start_ctl or 0.0)
     days = []
     min_tsb = None
     for i, xss in enumerate(stage_xss_list):
         load = float(xss or 0.0)
+        # 1) regeneracja przed rankiem (obciazenie nocy = 0 -> czysty decay)
+        ctl = ctl * (1.0 - _K_CTL)
+        atl = atl * (1.0 - _K_ATL)
+        # 2) poranny TSB (swiezosc, z ktora zaczynasz dzien)
         tsb_morning = ctl - atl
-        ctl = ctl + (load - ctl) * _K_CTL
-        atl = atl + (load - atl) * _K_ATL
+        # 3) obciazenie dnia (dopelnienie EWMA -> koniec dnia == jednokrokowe EWMA)
+        ctl = ctl + load * _K_CTL
+        atl = atl + load * _K_ATL
         if min_tsb is None or tsb_morning < min_tsb:
             min_tsb = tsb_morning
         if tsb_morning < red:
@@ -114,9 +129,8 @@ def simulate_expedition(start_ctl, start_atl, stage_xss_list, yellow=TSB_YELLOW,
 
 
 def min_start_ctl_feasible(stage_xss_list, red=TSB_RED):
-    """Najmniejsze startowe CTL (przy zalozeniu swiezosci TSB=0 -> ATL=CTL),
-    przy ktorym min. poranny TSB nie schodzi ponizej progu 'red'.
-    Zwraca (min_ctl, min_tsb_at_that_ctl)."""
+    """(legacy, nieuzywane w werdykcie dwoch scian) Najmniejsze startowe CTL, przy
+    ktorym min. poranny TSB nie schodzi ponizej 'red'. Zostawione dla zgodnosci."""
     if not stage_xss_list:
         return (0.0, 0.0)
     hi = max(float(x or 0.0) for x in stage_xss_list) * 2.0 + 10.0
@@ -133,51 +147,127 @@ def min_start_ctl_feasible(stage_xss_list, red=TSB_RED):
 
 
 def required_weekly_ramp(projected_ctl, ctl_needed, weeks_to_departure):
-    """Ile XSS/tydzien trzeba dolozyc do treningu, by z projected_ctl dobic do
-    ctl_needed na date wyjazdu. Zwraca dict z ocena wykonalnosci samego rampu."""
+    """(legacy, nieuzywane) Ile XSS/tydzien dolozyc, by dobic ctl_needed."""
     gap = float(ctl_needed) - float(projected_ctl)
     weeks = max(0.1, float(weeks_to_departure))
     ramp_per_week = gap / weeks if gap > 0 else 0.0
     extra_weekly_xss = ramp_per_week * 7.0 if ramp_per_week > 0 else 0.0
     safe = ramp_per_week <= SAFE_CTL_RAMP_PER_WEEK + 1e-9
-    return {
-        "gap_ctl": round(gap, 1),
-        "ramp_per_week": round(ramp_per_week, 1),
-        "extra_weekly_xss": round(extra_weekly_xss, 0),
-        "safe": bool(safe),
-        "safe_cap_per_week": SAFE_CTL_RAMP_PER_WEEK,
-    }
+    return {"gap_ctl": round(gap, 1), "ramp_per_week": round(ramp_per_week, 1),
+            "extra_weekly_xss": round(extra_weekly_xss, 0), "safe": bool(safe),
+            "safe_cap_per_week": SAFE_CTL_RAMP_PER_WEEK}
 
 
 def verdict_text(sim, projected_ctl, ctl_needed, ramp, weeks, yellow=TSB_YELLOW, red=TSB_RED):
-    """Sklada jedno zdanie werdyktu po polsku. Progi = z historii (yellow/red)."""
+    """(legacy, fallback gdy brak BMR/scian) Jedno zdanie wg progu TSB."""
     min_tsb = sim["min_tsb"]
     if min_tsb is not None and min_tsb >= yellow:
-        return ("Wyprawa wygląda na wykonalną przy obecnej formie i trendzie — "
-                "TSB nie schodzi w Twoją strefę zmęczenia (poniżej %.0f)." % yellow)
+        return ("Wyprawa wyglada na wykonalna przy obecnej formie -- TSB nie schodzi "
+                "w Twoja strefe zmeczenia (ponizej %.0f)." % yellow)
     if min_tsb is not None and min_tsb >= red:
-        return ("Wyprawa na granicy: TSB spada do %.0f, czyli w Twoje 10%% "
-                "najcięższych dni. Do zniesienia, ale zaplanuj lżejszy dzień "
-                "lub dodatkowy nocleg." % min_tsb)
-    # ponizej czerwonego = tam, gdzie bywasz rzadko (dolne ~5%)
-    base = ("Plan zbyt ciężki: TSB spadłoby do %.0f — niżej niż %.0f byłeś tylko "
-            "w ~5%% najcięższych dni." % (min_tsb, red))
-    if ramp is None:
-        return base
-    if ramp["safe"]:
-        return (base + " Do wyjazdu ~%d tyg. — aby był bezpieczny, podnieś trening tak, "
-                "by CTL rosło o ~%.0f/tydz (≈ +%.0f XSS tygodniowo)."
-                % (round(weeks), ramp["ramp_per_week"], ramp["extra_weekly_xss"]))
-    return (base + " Wymagany przyrost formy (~%.0f/tydz) jest duży. W tym oknie "
-            "trudno to bezpiecznie nadrobić — rozważ przesunięcie daty lub "
-            "rozłożenie trasy na więcej dni." % ramp["ramp_per_week"])
+        return ("Wyprawa na granicy: TSB spada do %.0f. Do zniesienia, ale zaplanuj "
+                "lzejszy dzien lub dodatkowy nocleg." % min_tsb)
+    return ("Ciezki plan: TSB spadloby do %.0f. Narastajace zmeczenie -- rozwaz "
+            "lzejszy dzien." % (min_tsb if min_tsb is not None else 0.0))
+
+
+# --- MODEL DWOCH SCIAN (czyste) ---
+
+def mifflin_bmr(weight_kg, height_cm, age_years, sex="M"):
+    """BMR wg Mifflin-St Jeor [kcal/d]. sex 'M'/'K'."""
+    base = 10.0 * float(weight_kg) + 6.25 * float(height_cm) - 5.0 * float(age_years)
+    return base + (5.0 if str(sex or "M").upper().startswith("M") else -161.0)
+
+
+def compute_ceilings(bmr, demonstrated_max):
+    """Cztery kotwice XSS z BMR + demonstrowany rekord dnia. None gdy brak BMR."""
+    if not bmr:
+        return None
+    nonex = NONEX_MULT * float(bmr)
+
+    def _ceil(mult):
+        return round((mult * float(bmr) - nonex) / KCAL_PER_XSS, 0)
+
+    return {
+        "bmr": round(float(bmr), 0),
+        "kcal_per_xss": KCAL_PER_XSS,
+        "day_metabolic": _ceil(CEIL_DAY_MULT),
+        "week_avg": _ceil(CEIL_WEEK_MULT),
+        "multiweek_avg": _ceil(CEIL_MULTIWEEK_MULT),
+        "day_demonstrated": (round(float(demonstrated_max), 0) if demonstrated_max else None),
+    }
+
+
+def day_wall(xss, ceilings):
+    """Kolor dnia wg scian: red = powyzej sciany metabolicznej 1-dnia; yellow =
+    powyzej demonstrowanego rekordu (ale ponizej metabolicznej); green = w normie."""
+    x = float(xss or 0.0)
+    met = ceilings.get("day_metabolic") if ceilings else None
+    dem = ceilings.get("day_demonstrated") if ceilings else None
+    if met is not None and x > met:
+        return "red", "powyzej sciany 1-dnia"
+    if dem is not None and x > dem:
+        return "yellow", "powyzej rekordu dnia"
+    return "green", "w normie"
+
+
+def verdict_two_walls(stage_xss_list, ceilings, min_tsb=None):
+    """Werdykt tekstowy modelu dwoch scian (po polsku, 2-4 zdania)."""
+    n = len(stage_xss_list)
+    if n == 0 or not ceilings:
+        return "Brak danych do oceny scian."
+    xs = [float(x or 0.0) for x in stage_xss_list]
+    avg = sum(xs) / n
+    met = ceilings.get("day_metabolic")
+    dem = ceilings.get("day_demonstrated")
+    wk = ceilings.get("week_avg")
+    mw = ceilings.get("multiweek_avg")
+    reds = [i + 1 for i, x in enumerate(xs) if met is not None and x > met]
+    yellows = [i + 1 for i, x in enumerate(xs) if met is not None and dem is not None and dem < x <= met]
+
+    if reds:
+        head = "Plan przeladowany."
+    elif yellows:
+        head = "Plan ambitny, ale w granicach."
+    else:
+        head = "Plan wykonalny."
+
+    parts = [head]
+    if reds:
+        dni = ", ".join(str(i) for i in reds)
+        parts.append("Dzien %s przebija sciane 1-dnia (~%.0f XSS = limit wchlaniania jelit) -- "
+                      "podziel ten dzien." % (dni, met))
+    if yellows:
+        dni = ", ".join(str(i) for i in yellows)
+        parts.append("Dzien %s powyzej Twojego rekordu dnia (%.0f), ale ponizej sciany "
+                      "metabolicznej -- da sie, trzymaj tempo i dojadaj." % (dni, dem))
+    if wk is not None and avg > wk:
+        parts.append("Srednia %.0f/dzien przewyzsza Twoj sufit tygodniowy (~%.0f) -- przy "
+                     "dluzszym bloku dlug glikogenowy narasta." % (avg, wk))
+    elif n >= 7 and mw is not None and avg > mw:
+        parts.append("Srednia %.0f/dzien OK na tydzien, ale powyzej sufitu wielotygodniowego "
+                     "(~%.0f) -- nie przedluzaj bez dnia lzejszego." % (avg, mw))
+    elif wk is not None:
+        parts.append("Srednia %.0f/dzien miesci sie w suficie tygodniowym (~%.0f)." % (avg, wk))
+    if min_tsb is not None:
+        parts.append("Narastajace zmeczenie: min. poranny TSB ~%.0f (informacja, nie stop)." % min_tsb)
+    return " ".join(parts)
 
 
 # ---- CZESC NA ZYWO (DB) ---------------------------------------------------
 
+def _rget(r, key, idx):
+    try:
+        return r[key]
+    except Exception:
+        try:
+            return r[idx]
+        except Exception:
+            return None
+
+
 def load_tsb_thresholds(conn, today=None, window_days=365, min_days=60):
-    """Progi TSB z WLASNEJ historii: zolty=p10, czerwony=p05 rozkladu tsb_raw
-    w oknie window_days. Za malo danych -> fallback podrecznikowy (-20/-30)."""
+    """Progi TSB z historii (info do symulacji): zolty=p10, czerwony=p05 tsb_raw."""
     end = today or _date.today()
     start = end - _timedelta(days=window_days)
     rows = conn.execute(
@@ -185,22 +275,16 @@ def load_tsb_thresholds(conn, today=None, window_days=365, min_days=60):
         "WHERE day BETWEEN %s AND %s AND tsb_raw IS NOT NULL",
         (start.isoformat(), end.isoformat()),
     ).fetchall()
-    def _g(r):
-        try:
-            return r["tsb_raw"]
-        except Exception:
-            return r[0]
-    vals = sorted(float(_g(r)) for r in rows if _g(r) is not None)
+    vals = sorted(float(_rget(r, "tsb_raw", 0)) for r in rows if _rget(r, "tsb_raw", 0) is not None)
     if len(vals) < min_days:
         return {"yellow": TSB_YELLOW, "red": TSB_RED,
-                "source": "domyślne podręcznikowe (za mało historii)", "n": len(vals)}
+                "source": "domyslne podrecznikowe (za malo historii)", "n": len(vals)}
     return {"yellow": round(percentile(vals, 10)), "red": round(percentile(vals, 5)),
             "source": "z Twojej historii (p10 / p05)", "n": len(vals)}
 
 
 def load_form_context(conn, today=None, lookback_days=30):
-    """Dzisiejsze CTL/ATL/TSB + trend z ostatnich lookback_days (z fitmodel_daily).
-    Zwraca dict lub None gdy brak danych CTL."""
+    """Dzisiejsze CTL/ATL/TSB + trend z ostatnich lookback_days. None gdy brak CTL."""
     end = today or _date.today()
     start = end - _timedelta(days=lookback_days)
     rows = conn.execute(
@@ -210,26 +294,21 @@ def load_form_context(conn, today=None, lookback_days=30):
     ).fetchall()
     if not rows:
         return None
-    def _g(r, k, i):
-        try:
-            return r[k]
-        except Exception:
-            return r[i]
     series = []
     base = None
     for r in rows:
-        d = _g(r, "day", 0)
-        c = _g(r, "ctl_xss", 1)
+        d = _rget(r, "day", 0)
+        c = _rget(r, "ctl_xss", 1)
         if base is None:
             base = d
         series.append(((d - base).days, float(c) if c is not None else None))
     last = rows[-1]
-    today_ctl = float(_g(last, "ctl_xss", 1))
-    atl = _g(last, "atl_raw", 2)
-    tsb = _g(last, "tsb_raw", 3)
+    today_ctl = float(_rget(last, "ctl_xss", 1))
+    atl = _rget(last, "atl_raw", 2)
+    tsb = _rget(last, "tsb_raw", 3)
     slope = ctl_trend_slope(series)
     return {
-        "as_of": _g(last, "day", 0).isoformat(),
+        "as_of": _rget(last, "day", 0).isoformat(),
         "ctl": round(today_ctl, 1),
         "atl": (round(float(atl), 1) if atl is not None else None),
         "tsb": (round(float(tsb), 1) if tsb is not None else None),
@@ -238,10 +317,50 @@ def load_form_context(conn, today=None, lookback_days=30):
     }
 
 
+def load_athlete_bmr(conn, today=None):
+    """BMR (Mifflin) z athlete_profile (sex/wzrost/rok ur.) + biezaca waga
+    (fitmodel_daily.weight_kg). None gdy brak profilu/wagi."""
+    today = today or _date.today()
+    try:
+        prof = conn.execute(
+            "SELECT sex, height_cm, birth_year FROM qbot_v2.athlete_profile WHERE id=1").fetchone()
+    except Exception:
+        prof = None
+    if not prof:
+        return None
+    sex = _rget(prof, "sex", 0)
+    height = _rget(prof, "height_cm", 1)
+    byear = _rget(prof, "birth_year", 2)
+    try:
+        wr = conn.execute(
+            "SELECT weight_kg FROM qbot_v2.fitmodel_daily "
+            "WHERE weight_kg IS NOT NULL ORDER BY day DESC LIMIT 1").fetchone()
+    except Exception:
+        wr = None
+    weight = _rget(wr, "weight_kg", 0) if wr else None
+    if not (height and byear and weight):
+        return None
+    age = today.year - int(byear)
+    bmr = mifflin_bmr(float(weight), float(height), age, sex)
+    return {"bmr": round(bmr, 0), "weight_kg": round(float(weight), 1),
+            "height_cm": float(height), "age": age, "sex": sex}
+
+
+def load_demonstrated_max_day(conn):
+    """Najwiekszy XSS pojedynczej jazdy (modelq2_ride.xss_total) = demonstrowany
+    rekord 1-dnia. None gdy brak."""
+    try:
+        r = conn.execute("SELECT max(xss_total) AS mx FROM qbot_v2.modelq2_ride").fetchone()
+    except Exception:
+        return None
+    v = _rget(r, "mx", 0) if r else None
+    return round(float(v), 1) if v is not None else None
+
+
 def assess(conn, departure_date, stage_xss_list, today=None):
-    """Pelna ocena wykonalnosci wyprawy na date wyjazdu.
-    stage_xss_list: lista XSS per dzien (kolejno). departure_date: date lub 'YYYY-MM-DD'.
-    Progi TSB brane z WLASNEJ historii. Zwraca dict gotowy dla frontendu."""
+    """Ocena wykonalnosci wg MODELU DWOCH SCIAN. stage_xss_list: XSS per dzien.
+    Zachowuje klucze czytane przez frontend (form/simulation/thresholds/verdict/...)
+    + dodaje ceilings/walls/block. Kolor dni w simulation = SCIANA (nie TSB)."""
     if isinstance(departure_date, str):
         departure_date = _date.fromisoformat(departure_date[:10])
     today = today or _date.today()
@@ -253,14 +372,51 @@ def assess(conn, departure_date, stage_xss_list, today=None):
     days_ahead = max(0, (departure_date - today).days)
     weeks = days_ahead / 7.0
     proj_ctl = project_ctl(ctx["ctl"], ctx["slope_per_day"], days_ahead)
-    # na wyjezdzie zakladamy forme utrzymana treningiem: TSB~0 -> ATL=CTL (bez taperu).
+    # symulacja TSB = INFORMACJA (narastajace zmeczenie), nie werdykt
     sim = simulate_expedition(proj_ctl, proj_ctl, stage_xss_list, yellow=yellow, red=red)
-    ctl_needed, _ = min_start_ctl_feasible(stage_xss_list, red=red)
-    ramp = None
-    if sim["min_tsb"] is not None and sim["min_tsb"] < red and ctl_needed > proj_ctl:
-        ramp = required_weekly_ramp(proj_ctl, ctl_needed, weeks if weeks > 0 else 0.1)
-    txt = verdict_text(sim, proj_ctl, ctl_needed, ramp, weeks, yellow=yellow, red=red)
+
+    bmr_info = load_athlete_bmr(conn, today=today)
+    demonstrated = load_demonstrated_max_day(conn)
+    ceilings = compute_ceilings(bmr_info["bmr"], demonstrated) if bmr_info else None
+
     total_xss = round(sum(float(x or 0.0) for x in stage_xss_list), 1)
+    n = len(stage_xss_list)
+    avg = round(total_xss / n, 1) if n else None
+
+    walls = []
+    if ceilings:
+        for i, x in enumerate(stage_xss_list):
+            c, lab = day_wall(x, ceilings)
+            walls.append({"idx": i, "xss": round(float(x or 0.0), 1), "color": c, "label": lab})
+            if i < len(sim["days"]):
+                sim["days"][i]["color"] = c        # kropka dnia = SCIANA
+                sim["days"][i]["wall"] = lab
+        txt = verdict_two_walls(stage_xss_list, ceilings, sim.get("min_tsb"))
+    else:
+        txt = verdict_text(sim, proj_ctl, None, None, weeks, yellow=yellow, red=red)
+
+    block = None
+    if ceilings and avg is not None:
+        block = {"avg_daily": avg, "week_ceiling": ceilings["week_avg"],
+                 "multiweek_ceiling": ceilings["multiweek_avg"],
+                 "over_week": bool(ceilings["week_avg"] is not None and avg > ceilings["week_avg"]),
+                 "n_days": n}
+
+    caveats = [
+        "Narastajace zmeczenie (TSB w symulacji) = informacja, nie pass/fail.",
+        "XSS etapu to estymata fizyczna (predkosc v2 -> moc), nie pomiar.",
+        "Projekcja formy zaklada utrzymanie obecnego trendu treningu.",
+    ]
+    if ceilings:
+        caveats.insert(0,
+            "Wykonalnosc = model dwoch scian: dzien vs rekord (~%s) i sciana metaboliczna "
+            "(~%s XSS = 3.5xBMR), srednia vs sufit tygodniowy (~%s)." % (
+                (round(ceilings["day_demonstrated"]) if ceilings["day_demonstrated"] else "b/d"),
+                round(ceilings["day_metabolic"]), round(ceilings["week_avg"])))
+        caveats.insert(1,
+            "Sciana metaboliczna = limit wchlaniania jelit (~uniwersalny), NIE galka wytrenowania. "
+            "Glikogen (bufor) tlumaczy roznice sciany 1-dnia vs tygodniowej; dlug narasta dzien po dniu.")
+
     return {
         "ok": True,
         "form": ctx,
@@ -268,20 +424,17 @@ def assess(conn, departure_date, stage_xss_list, today=None):
         "days_ahead": days_ahead,
         "weeks_to_departure": round(weeks, 1),
         "projected_ctl": (round(proj_ctl, 1) if proj_ctl is not None else None),
-        "ctl_needed": ctl_needed,
         "total_xss": total_xss,
-        "avg_daily_xss": (round(total_xss / len(stage_xss_list), 1) if stage_xss_list else None),
+        "avg_daily_xss": avg,
         "simulation": sim,
-        "ramp": ramp,
+        "ramp": None,
+        "ceilings": ceilings,
+        "walls": walls,
+        "block": block,
         "verdict": txt,
-        "caveats": [
-            "XSS etapu to estymata (tier B), zależna od założonej intensywności — nie pomiar.",
-            "Projekcja formy zakłada utrzymanie obecnego trendu treningu; odpuszczenie = spadek CTL.",
-            "Na dzień wyjazdu przyjęto TSB≈0 (bez taperu); realny taper poprawi świeżość.",
-        ],
+        "caveats": caveats,
         "thresholds": {"tsb_yellow": yellow, "tsb_red": red,
-                       "source": thr["source"], "n": thr["n"],
-                       "safe_ramp_per_week": SAFE_CTL_RAMP_PER_WEEK},
+                       "source": thr["source"], "n": thr["n"]},
     }
 
 
@@ -293,11 +446,13 @@ if __name__ == "__main__":
     from fitmodel.api import _db_connect
     conn = _db_connect()
     try:
+        import json
         print("PROGI:", load_tsb_thresholds(conn))
         print("FORMA:", load_form_context(conn))
-        demo = [140.0, 160.0, 130.0]
+        print("BMR:", load_athlete_bmr(conn))
+        print("DEMO_MAX:", load_demonstrated_max_day(conn))
+        tosk = [179.0, 294.0, 242.0, 149.0, 208.0, 246.0, 186.0]
         dep = (_date.today() + _timedelta(days=21)).isoformat()
-        import json
-        print(json.dumps(assess(conn, dep, demo), ensure_ascii=False, indent=2, default=str))
+        print(json.dumps(assess(conn, dep, tosk), ensure_ascii=False, indent=2, default=str))
     finally:
         conn.close()
