@@ -92,6 +92,14 @@ def main() -> None:
             return apply_road_anchor(conn)
         _step("wprime_anchor", _wprime_anchor)
 
+        # 2b3. Kotwica W' z drogi -- WARTOSC (Wariant b): dolna granica W' z doła
+        # Wbal=0 (replay_deficit) -> fitmodel_daily.wprime_road_kj. NIE rusza
+        # wprime_modelq_kj; konsument bierze max(MQ2, road).
+        def _wprime_road():
+            from fitmodel.wprime_road import compute_road_wprime
+            return compute_road_wprime(conn)
+        _step("wprime_road", _wprime_road)
+
         # 3. Glikogen -> fitmodel_daily
         def _glyco():
             from fitmodel.glycogen import update_glycogen_in_daily

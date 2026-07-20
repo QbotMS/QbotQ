@@ -591,13 +591,17 @@ def _modelq_ftp_ltp() -> dict:
             r = cur.fetchone()
             if r and r.get("ltp_modelq_w"):
                 out["ltp_watts"] = round(float(r["ltp_modelq_w"]), 1)
+            # W' = max(MQ2 harvest, dolna granica z drogi -- Wariant b). GREATEST pomija
+            # NULL w PG, wiec brak road -> samo MQ2. road > MQ2 = dowod z jazdy (Wbal=0
+            # pod zero) ze MQ2 zaniza -> Karoo dostaje wyzsza, udowodniona wartosc.
             cur.execute(
-                "SELECT wprime_modelq_kj FROM qbot_v2.fitmodel_daily "
+                "SELECT GREATEST(wprime_modelq_kj, wprime_road_kj) AS wprime "
+                "FROM qbot_v2.fitmodel_daily "
                 "WHERE wprime_modelq_kj IS NOT NULL ORDER BY day DESC LIMIT 1"
             )
             r = cur.fetchone()
-            if r and r.get("wprime_modelq_kj"):
-                out["wprime_kj"] = round(float(r["wprime_modelq_kj"]), 2)
+            if r and r.get("wprime"):
+                out["wprime_kj"] = round(float(r["wprime"]), 2)
     except Exception:
         pass
     return out

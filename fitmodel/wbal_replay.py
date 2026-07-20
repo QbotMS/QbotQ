@@ -289,6 +289,128 @@ def replay_wbal(external_id: str, verbose: bool = True) -> dict:
 
 
 
+def replay_deficit(external_id: str, verbose: bool = False) -> dict:
+    """Wariant b (kotwica W' z drogi -- WARTOSC): ten sam model Skiba co replay_wbal,
+    ale balans NIE jest podlogowany na 0 -- moze zejsc ponizej zera. Szczyt tego
+    "nieograniczonego deficytu" (jak gleboko balans zszedl ponizej pelnego baku) =
+    najmniejsze W', ktore w ogole tlumaczy jazde -> PEWNA DOLNA GRANICA realnego W'.
+
+    Praca ponad CP wykonana, gdy zwykly (podlogowany) model juz pokazuje 0%, spycha
+    tu balans pod zero -> to wlasnie ten sygnal (np. 1302 s "na pustym" 2026-07-19).
+
+    NIE jest pomiarem, tylko dolnym oszacowaniem. Uzywa CP/W' dnia z ModelQ
+    (cp=ftp_est_w) i tej samej bramki postojow (>=30 s) co replay_wbal.
+    """
+    rows = _fetch_ride_rows(external_id)
+    if not rows:
+        return {"status": "NO_DATA", "external_id": external_id}
+    ride_date = rows[0]["ts"].date()
+    ftp_base, wprime_base_kj = _fetch_daily_baseline(ride_date)
+    if not ftp_base or not wprime_base_kj:
+        return {"status": "NO_BASELINE", "external_id": external_id, "ride_date": str(ride_date)}
+
+    wprime_base_j = wprime_base_kj * 1000.0
+    hr_buf: list[int] = []
+    pw_buf: list[int] = []
+    pw3s_buf: deque = deque(maxlen=3)
+
+    wbal_j = wprime_base_j          # start pelny (odpoczety start)
+    min_bal_j = wbal_j              # najnizszy punkt balansu (moze byc ujemny)
+    n_normal_ticks = 0
+
+    prev = None
+    for row in rows:
+        dt = (row["ts"] - prev["ts"]).total_seconds() if prev is not None else 1.0
+        if dt <= 0:
+            dt = 1.0
+
+        heat = _temp_factor(row.get("temperature_c"))
+        decoupling_pct = _decoupling_percent(hr_buf, pw_buf)
+        drift = min(max(decoupling_pct - 5.0, 0.0), 15.0) * 0.0027
+        acute = min(max(1.0 - drift, 0.96), 1.0)
+        cf = min(max(1.0 * heat * acute, 0.88), 1.06)
+        cp_eff = ftp_base * cf
+        wprime_eff_j = wprime_base_j * cf
+        # gora balansu nie moze przekroczyc efektywnego pelnego baku; dolu NIE ograniczamy
+        if wbal_j > wprime_eff_j:
+            wbal_j = wprime_eff_j
+
+        if dt >= GAP_THRESHOLD_S and prev is not None:
+            dist_before = prev.get("distance_m")
+            dist_after = row.get("distance_m")
+            speed_before = prev.get("speed_mps") or 0.0
+            dist_delta = None
+            if dist_before is not None and dist_after is not None:
+                dist_delta = abs(float(dist_after) - float(dist_before))
+            is_rest = (
+                dist_delta is not None
+                and dist_delta <= REST_DISTANCE_TOLERANCE_M
+                and speed_before <= REST_SPEED_THRESHOLD_MPS
+            )
+            if is_rest:
+                dcp = max(cp_eff - 0.0, 0.0)
+                tau = 546.0 * math.exp(-0.01 * dcp) + 316.0
+                deficit0 = wprime_eff_j - wbal_j
+                deficit_n = deficit0 * math.exp(-dt / tau)
+                wbal_j = wprime_eff_j - deficit_n
+            if wbal_j > wprime_eff_j:
+                wbal_j = wprime_eff_j
+            if wbal_j < min_bal_j:
+                min_bal_j = wbal_j
+            pw3s_buf.clear()
+            prev = row
+            continue
+
+        power_raw = row.get("power_w")
+        power_fresh = power_raw is not None
+        speed = row.get("speed_mps") or 0.0
+        hr = row.get("hr_bpm")
+        moving_advanced = speed > MOVING_SPEED_THRESHOLD_MPS
+        has_power = power_fresh and power_raw > 0
+        active_sample = moving_advanced and has_power and power_fresh
+        if active_sample and hr is not None and hr > 0:
+            hr_buf.append(int(hr))
+            pw_buf.append(int(power_raw))
+            if len(hr_buf) > DECOUPLE_MAXLEN:
+                hr_buf.pop(0)
+                pw_buf.pop(0)
+
+        if power_fresh:
+            pw3s_buf.append(power_raw)
+            p = float(sum(pw3s_buf) / len(pw3s_buf))
+            if p > cp_eff:
+                wbal_j -= (p - cp_eff) * dt          # BEZ podlogi -- moze zejsc < 0
+            else:
+                dcp = max(cp_eff - p, 0.0)
+                tau = 546.0 * math.exp(-0.01 * dcp) + 316.0
+                deficit0 = wprime_eff_j - wbal_j
+                deficit_n = deficit0 * math.exp(-dt / tau)
+                wbal_j = wprime_eff_j - deficit_n
+            n_normal_ticks += 1
+
+        if wbal_j > wprime_eff_j:
+            wbal_j = wprime_eff_j
+        if wbal_j < min_bal_j:
+            min_bal_j = wbal_j
+        prev = row
+
+    wprime_lower_kj = round((wprime_base_j - min_bal_j) / 1000.0, 2)
+    result = {
+        "status": "OK",
+        "external_id": external_id,
+        "ride_date": str(ride_date),
+        "wprime_base_kj": round(wprime_base_kj, 2),
+        "min_bal_kj": round(min_bal_j / 1000.0, 2),
+        "wprime_lower_kj": wprime_lower_kj,
+        "n_normal_ticks": n_normal_ticks,
+    }
+    if verbose:
+        print("Jazda %s (%s): W_bazowe=%skJ min_bal=%skJ W_dolne=%skJ" % (
+            external_id, ride_date, result["wprime_base_kj"],
+            result["min_bal_kj"], wprime_lower_kj))
+    return result
+
+
 # ---------- Persystencja + uruchamianie wsadowe (wpiete w daily_job.py) ----------
 
 import json as _json

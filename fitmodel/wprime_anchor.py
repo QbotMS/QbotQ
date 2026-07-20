@@ -24,16 +24,19 @@ def apply_road_anchor(conn, window_days: int = WINDOW_DAYS, min_zero_s: int = MI
     Nie rusza wprime_modelq_kj.
     """
     cur = conn.cursor()
-    # 1) kotwice z rozwiazywalna data (ride_id -> training_sessions.external_id -> date)
+    # 1) kotwice z rozwiazywalna data. Data z ROZLOZONEGO 1 Hz (activity_record.MIN(ts)),
+    #    NIE z JOIN do training_sessions.external_id -- utwardzenie 2026-07-20: duplikaty
+    #    aktywnosci Garmin / natywne pliki Karoo bez 1 Hz same odpadaja (redundantne wobec
+    #    kanonicznej jazdy, ktora 1 Hz ma). Zdarzenie bez strumienia -> ride_date=None -> skip.
     cur.execute(
-        "SELECT t.date, q.wbal_zero_seconds "
+        "SELECT (SELECT MIN(a.ts)::date FROM qbot_v2.activity_record a "
+        "        WHERE a.external_id = q.ride_id) AS ride_date, "
+        "       q.wbal_zero_seconds "
         "FROM qbot_v2.fitmodel_qext2_ride q "
-        "JOIN qbot_v2.training_sessions t ON t.external_id = q.ride_id "
-        "WHERE q.wbal_zero_seconds >= %s AND t.date IS NOT NULL "
-        "ORDER BY t.date",
+        "WHERE q.wbal_zero_seconds >= %s",
         (min_zero_s,),
     )
-    anchors = [(r[0], int(r[1])) for r in cur.fetchall()]
+    anchors = [(r[0], int(r[1])) for r in cur.fetchall() if r[0] is not None]
 
     # 2) dni w fitmodel_daily + czy maja policzone W'
     cur.execute(
