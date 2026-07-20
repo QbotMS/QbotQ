@@ -59,6 +59,13 @@ def get_git_head() -> str:
         return "unknown"
 
 
+def get_git_recent(n: int = 8) -> str:
+    raw = run_cmd(["git", "log", f"-{n}", "--pretty=%h %ad %s", "--date=short"])
+    if raw == "unknown" or not raw.strip():
+        return "- (brak danych z gita)"
+    return chr(10).join("- " + ln for ln in raw.splitlines() if ln.strip())
+
+
 def get_service_state(unit: str) -> str:
     try:
         import shutil
@@ -95,6 +102,7 @@ def get_timestamp() -> str:
 
 def build_document(signals: LiveSignals, timestamp: str) -> str:
     services = signals.services or {}
+    recent = get_git_recent()
     return "\n".join(
         [
             "# QBot — Kontekst projektu (auto-generowany)",
@@ -106,6 +114,8 @@ def build_document(signals: LiveSignals, timestamp: str) -> str:
             f"- HEAD: {signals.head}",
             "- Uslugi: "
             + ", ".join(f"{unit}={services.get(unit, 'unknown')}" for unit in SERVICE_UNITS),
+            "## Ostatnie commity (z gita -- zawsze aktualne; NIE przepisuj recznie do CURRENT):",
+            recent,
             "## Architektura (skrot — kanon ponizej, ZAWSZE weryfikuj na zywo)",
             "- Publiczny kanal MCP wystawia obecnie tylko qbot_query. Zapisy finalizuje Albert po stronie serwera. qbot.action_execute istnieje w kodzie jako legacy/admin/internal path, ale nie jest publicznie listowany w tools/list.",
             "- Aktywny handler MCP dla Claude: qbot3/adapters/mcp_adapter.py (handle_qbot3_mcp, QBOT3_ENABLED=1). app/qbot_mcp_adapter.py to ODDZIELNY adapter konektora ChatGPT — nie mylic.",
@@ -125,6 +135,7 @@ def build_document(signals: LiveSignals, timestamp: str) -> str:
             "- OBOWIAZKOWO (twarda regula): kazda zmiana narzedzi (dodanie/zmiana/usuniecie w qbot3/tool_registry.py) LUB nowej domeny/intencji MUSI byc w TYM SAMYM kroku odzwierciedlona w prompcie Alberta (_SYSTEM w qbot3/llm/albert.py) — ktore narzedzie do czego i kiedy. Bez aktualnego promptu Albert nie wie ze narzedzie istnieje i myli intencje. Zmiana narzedzia bez aktualizacji promptu = NIEUKONCZONA. Opisy narzedzi trzymaj < 500 znakow (build_tools_spec obcina).",
             "- GIT: commit jako qbot (runuser -u qbot -- git -C /opt/qbot/app -c user.name=qbot -c user.email=qbot@olga181.mikrus.xyz commit); PUSH tylko jako root (klucz deploy ~/.ssh/qbot_github_ed25519; qbot NIE ma ~/.ssh). Repo nalezy do qbota -> git jako root z -c safe.directory=/opt/qbot/app. Remote: git@github.com:QbotMS/QbotQ.git, branch main.",
             "- WIELOSESYJNOSC (tablica robocza): PRZED edycja pliku uruchom .venv/bin/python3 scripts/worklock.py claim --who <sesja> --task <opis> --files <sciezki>. Jesli wynik ZAJETE (kod 2) — NIE edytuj tego pliku, uzgodnij lub poczekaj. Po skonczeniu edycji: worklock.py release --who <sesja>. Czytanie i analiza NIE wymagaja claim. Podglad: worklock.py status. Zajecia starsze niz 30 min sa ignorowane. To OSTRZEZENIE, nie fizyczny zamek — dziala bo sesje sprawdzaja tablice przed edycja.",
+            "- AKTUALIZACJA PRAC (higiena TODO/CURRENT): (1) skonczyles prace pasujaca do pozycji w docs/TODO.md -> PRZENIES ja do sekcji # ZROBIONE na dole z data [RRRR-MM-DD], nie zostawiaj dopisku w OTWARTE; (2) zrobiles cos czego w TODO nie bylo -> dopisz linijke, chocby po fakcie; (3) na koniec sesji -> dopisz swiezy datowany wpis do docs/CURRENT.md i USUN martwe statusy (np. czeka na push po wypchnieciu). Co ZROBIONO bierz z sekcji Ostatnie commity powyzej (git), nie z prozy.",
             "",
         ]
     )
