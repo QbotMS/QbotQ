@@ -533,12 +533,12 @@ def _planer_google_photo(photo_name, gkey, dest_path):
 
 
 def _planer_wikipedia_desc(name, lat, lon):
-    """Opis atrakcji z polskiej Wikipedii: geosearch po wspolrzednych -> najlepszy
-    artykul (dopasowanie po nazwie + odleglosc) -> wstep (3 zdania). Zwraca (tekst, url).
+    """Opis + zdjecie wiodace atrakcji z polskiej Wikipedii: geosearch -> najlepszy
+    artykul -> wstep (3 zdania) + thumbnail. Zwraca (tekst, url, img_url).
     Rzuca wyjatkiem przy bledzie sieci/429 - wtedy wolajacy NIE cache'uje wyniku."""
     import httpx, re as _re, unicodedata as _ud
     if lat is None or lon is None:
-        return None, None
+        return None, None, None
     API = "https://pl.wikipedia.org/w/api.php"
     UA = {"User-Agent": "QBot/1.0 (osobisty planer rowerowy; albert.cytr.us)"}
 
@@ -553,7 +553,7 @@ def _planer_wikipedia_desc(name, lat, lon):
     r.raise_for_status()
     hits = (((r.json() or {}).get("query") or {}).get("geosearch") or [])
     if not hits:
-        return None, None
+        return None, None, None
     nt = _norm(name)
     best = None
     bs = -1e18
@@ -565,25 +565,44 @@ def _planer_wikipedia_desc(name, lat, lon):
             bs = sc
             best = h
     if not best:
-        return None, None
+        return None, None, None
     ov = len(nt & _norm(best.get("title")))
     if ov < 1 and (best.get("dist") or 9999) > 150:
-        return None, None
+        return None, None, None
     pid = best.get("pageid")
-    r2 = httpx.get(API, params={"action": "query", "format": "json", "prop": "extracts|info",
+    r2 = httpx.get(API, params={"action": "query", "format": "json",
+                   "prop": "extracts|info|pageimages",
                    "inprop": "url", "exintro": 1, "explaintext": 1, "exsentences": 3,
+                   "piprop": "thumbnail", "pithumbsize": 800,
                    "redirects": 1, "pageids": pid}, timeout=8.0, headers=UA)
     r2.raise_for_status()
     pg = (((r2.json() or {}).get("query") or {}).get("pages") or {}).get(str(pid)) or {}
     ex = (pg.get("extract") or "").strip()
+    img = ((pg.get("thumbnail") or {}).get("source")) or None
     if not ex or len(ex) < 25:
-        return None, None
+        return None, pg.get("fullurl"), img
     if len(ex) > 400:
         ex = ex[:397].rstrip() + "\u2026"
-    return ex, pg.get("fullurl")
+    return ex, pg.get("fullurl"), img
 
 
 @app.get("/api/planer/atrakcja")
+def _planer_photo_to_jpeg(url, ppath):
+    """Pobiera dowolny URL zdjecia i zapisuje jako JPEG w cache serwerowym (PLANER_POI_CACHE)."""
+    import httpx, io
+    from PIL import Image
+    try:
+        rr = httpx.get(url, timeout=12.0, follow_redirects=True,
+                       headers={"User-Agent": "QBot/1.0 (osobisty planer rowerowy; albert.cytr.us)"})
+        rr.raise_for_status()
+        im = Image.open(io.BytesIO(rr.content)).convert("RGB")
+        im.thumbnail((1000, 1000))
+        im.save(ppath, "JPEG", quality=85)
+        return os.path.exists(ppath) and os.path.getsize(ppath) > 0
+    except Exception:
+        return False
+
+
 def api_planer_atrakcja(place_id: str, name: str = None, lat: float = None, lon: float = None):
     """Opis + zdjecie atrakcji. Google Places (editorial/AI + zdjecie), a gdy Google
     nie ma opisu - polska Wikipedia (po wspolrzednych). Cache raz na dysku."""
@@ -628,11 +647,15 @@ def api_planer_atrakcja(place_id: str, name: str = None, lat: float = None, lon:
         except Exception:
             hp = False
     _skip_cache = False
-    if not desc and name and lat is not None and lon is not None:
+    if (not desc or not hp) and name and lat is not None and lon is not None:
         try:
-            _wd, _wu = _planer_wikipedia_desc(name, lat, lon)
-            if _wd:
+            _wd, _wu, _wimg = _planer_wikipedia_desc(name, lat, lon)
+            if _wd and not desc:
                 desc, desc_src, desc_url = _wd, "wikipedia", _wu
+            if _wimg and not hp:
+                os.makedirs(PLANER_POI_CACHE, exist_ok=True)
+                if _planer_photo_to_jpeg(_wimg, ppath):
+                    hp = True
         except Exception:
             _skip_cache = True
     if not _skip_cache:
@@ -1828,21 +1851,15 @@ def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, 
         "pogoda_ogolne: DOKLADNIE 2 stringi. 1 = zachmurzenie/naslonecznienie (+ deszcz). "
         "2 = temperatura (odczuwalna + WBGT) i wiatr (zakres m/s, czolowy/z plecow). Po 1 zdaniu.\n"
         "pogoda_etapy: po JEDNYM stringu na kazdy etap z weather_stages, TA SAMA KOLEJNOSC, 1-2 zdania.\n"
-        "komentarze_ryzyka: po JEDNYM stringu do KAZDEGO odcinka z odcinki_ryzyka (ta sama kolejnosc). "
-        "Kazdy odcinek ma pole osm (tagi: highway/tracktype/surface/coverage_status) ORAZ pole reason "
-        "(uzasadnienie kategorii - dla odcinkow bez tagu OSM moze zawierac wnioskowanie z otoczenia: "
-        "las/pole/otwarta przestrzen, ryzyko piachu wg WorldCover). WYWNIOSKUJ z WSZYSTKICH dostepnych "
-        "sygnalow naraz (nie tylko tagow) co to realnie oznacza dla jazdy - np. otwarty teren + susza + "
-        "piaszczysty kontekst sugeruje sypki piach, las + wilgoc sugeruje twardsze, korzenie/blotniste "
-        "miejsca. Pisz naturalnym zdaniem wniosek + krotka rade, NIE wyliczaj mechanicznie zrodel "
-        "(nie pisz \"wg tagu\" / \"wg WorldCover\"). Jesli sygnalow brak lub sa niejednoznaczne, badz "
-        "ostrozny w sformulowaniu. DODATKOWO: jesli w danych jest pole opady_przed_jazda "
-        "(ocena: susza/mokro/normalnie, total_mm, last2_mm, stale), wywnioskuj jego wplyw na TE "
-        "KONKRETNE odcinki - susza zwykle oznacza bardziej sypki/luzny piach na piaszczystych/"
-        "otwartych odcinkach, niedawne intensywne opady (mokro) zwykle oznaczaja rozmokly grunt/"
-        "blotniste koleiny na gruntowych/lesnych odcinkach; brak wplywu na nawierzchnie utwardzona. "
-        "Jesli stale=true, zaznacz ze to stan na dzis i moze sie zmienic do wyjazdu. Jesli "
-        "opady_przed_jazda jest null lub ocena=normalnie, pomin ten watek. Brak odcinkow -> []."
+        "komentarze_ryzyka: po JEDNYM krotkim stringu do KAZDEGO odcinka z odcinki_ryzyka (ta sama kolejnosc). "
+        "TYLKO identyfikacja i opis ryzyka - co to za odcinek i jakie zagrozenie. Kazdy odcinek ma pole osm "
+        "(highway/tracktype/surface/coverage_status) oraz reason. Nazwij nawierzchnie i realne ryzyko, "
+        "np. 'Odcinek lesny, prawdopodobny sypki piach' albo 'Grunt/koleiny, mozliwe bloto'. Gdy odcinek "
+        "nie ma tagu OSM, mozesz krotko wskazac kontekst (las/pole/otwarty teren) jako podstawe "
+        "prawdopodobienstwa. Jesli opady_przed_jazda realnie zmieniaja stan odcinka, dodaj to jako fakt "
+        "(np. 'po deszczu grunt rozmokly'); jesli null lub ocena=normalnie, pomin. Jesli sygnaly "
+        "niejednoznaczne - napisz wprost, ze ryzyko niepewne. NIE dawaj zadnych rad ani zalecen. "
+        "Bez metafor i przymiotnikow nastrojowych. Maks. ~15 slow. Brak odcinkow -> []."
     )
     pay1 = {"trasa": _trasa, "peak_wbgt": peak, "pogoda_ogolem": weather_overall,
             "weather_stages": weather_stages, "odcinki_ryzyka": risks,
@@ -5125,6 +5142,180 @@ def modelq2_data(response: Response, start: str | None = Query(None), end: str |
         }
     finally:
         conn.close()
+
+
+import os as _os_wpr
+_WYPRAWA_DIR = _os_wpr.path.join(WEB_ROOT, "reports")
+
+
+def _wyprawa_pdf_bytes(route_id, cuts, date, name):
+    # 1:1 widok Planera wyprawy: steruje prawdziwa strona /planer-wyprawy.html w trybie druku,
+    # zrzuca widok ALL + panel kazdego dnia i sklada w jeden PDF (Pillow).
+    import io
+    from urllib.parse import quote
+    from PIL import Image
+    from playwright.sync_api import sync_playwright
+    users, sign_val = _webauth_load()
+    cookie_value = None
+    if users and sign_val:
+        username = next(iter(users))
+        cookie_value, _exp = _webauth_cookie_make(username, sign_val)
+    ncuts = [c for c in (cuts or "").split(",") if c.strip()]
+    ndays = len(ncuts) + 1
+    url = ("http://127.0.0.1:%d/planer-wyprawy.html?print=1&route=%s&cuts=%s&nDays=%d"
+           % (PORT, quote(route_id), quote(cuts or ""), ndays))
+    parts = []
+    pdf_bytes = None
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox"])
+        try:
+            context = browser.new_context(viewport={"width": 1000, "height": 1400})
+            if cookie_value:
+                context.add_cookies([{"name": "qbot_session", "value": cookie_value,
+                                      "url": "http://127.0.0.1:%d" % PORT}])
+            page = context.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_function("window.__planerPrint && window.__planerPrint.ready()", timeout=90000)
+            try:
+                page.evaluate("window.__planerPrint.dostosuj()")
+                page.wait_for_function("window.__planerPrint.dniReady()", timeout=45000)
+            except Exception:
+                pass
+            ndays = int(page.evaluate("window.__planerPrint.nDays()") or ndays)
+
+            def _wait_imgs():
+                try:
+                    page.wait_for_function(
+                        "document.querySelectorAll('.attr-loading').length===0 && "
+                        "Array.prototype.every.call("
+                        "document.querySelectorAll('.attr-photo'),"
+                        "function(i){return i.complete;})", timeout=22000)
+                except Exception:
+                    pass
+                page.wait_for_timeout(600)
+
+            # widok ALL (opis rozwiniety) -> snapshot HTML
+            page.evaluate("window.__planerPrint.view(null)")
+            page.wait_for_timeout(1600)
+            try:
+                page.evaluate("window.__planerPrint.expandAll()")
+            except Exception:
+                pass
+            _wait_imgs()
+            parts.append(page.evaluate("window.__planerPrint.snap()"))
+
+            # kazdy dzien: rozwiniete podjazdy (profile) + atrakcje (zdjecia+opisy) -> snapshot
+            for i in range(ndays):
+                page.evaluate("window.__planerPrint.view(%d)" % i)
+                page.wait_for_timeout(700)
+                try:
+                    page.evaluate("window.__planerPrint.cleanupDayUI()")
+                except Exception:
+                    pass
+                page.wait_for_timeout(900)
+                try:
+                    page.evaluate("window.__planerPrint.expandAll()")
+                except Exception:
+                    pass
+                _wait_imgs()
+                parts.append(page.evaluate("window.__planerPrint.snap()"))
+
+            # zloz jeden dokument i drukuj WEKTOROWO (klikalne linki, zaznaczalny tekst)
+            page.evaluate("(p) => window.__planerPrint.assemble(p)", parts)
+            page.wait_for_timeout(1200)
+            try:
+                page.wait_for_function(
+                    "Array.prototype.every.call(document.querySelectorAll('img'),"
+                    "function(i){return i.complete;})", timeout=15000)
+            except Exception:
+                pass
+            page.wait_for_timeout(800)
+            # PDF CIAGLY: jedna strona o wysokosci calej tresci (bez ciecia na A4)
+            dims = page.evaluate("() => ({w: document.body.scrollWidth, h: document.body.scrollHeight})")
+            _w = int((dims or {}).get("w") or 1000)
+            _h = int((dims or {}).get("h") or 1400) + 40
+            pdf_bytes = page.pdf(print_background=True,
+                                 width="%dpx" % _w, height="%dpx" % _h,
+                                 margin={"top": "0", "bottom": "0", "left": "0", "right": "0"})
+        finally:
+            browser.close()
+    if not pdf_bytes:
+        raise RuntimeError("Pusty PDF")
+    return pdf_bytes
+
+
+def _wyprawa_cleanup_old(max_age_s=3600):
+    import time as _t
+    try:
+        now = _t.time()
+        for f in _os_wpr.listdir(_WYPRAWA_DIR):
+            p = _os_wpr.path.join(_WYPRAWA_DIR, f)
+            try:
+                if now - _os_wpr.path.getmtime(p) > max_age_s:
+                    _os_wpr.remove(p)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _wyprawa_worker(path, route_id, cuts, date, name):
+    try:
+        b = _wyprawa_pdf_bytes(route_id, cuts, date, name)
+        tmp = path + ".part"
+        with open(tmp, "wb") as fh:
+            fh.write(b)
+        _os_wpr.replace(tmp, path)
+    except Exception as e:
+        try:
+            with open(path + ".err", "w", encoding="utf-8") as fh:
+                fh.write(str(e)[:400])
+        except Exception:
+            pass
+
+
+@app.get("/api/wyprawa/pdf-start")
+def api_wyprawa_pdf_start(route_id: str = Query(...), cuts: str = Query(""),
+                          date: str = Query(None), name: str = Query(None)):
+    # Startuje generowanie w tle -> zwraca statyczny URL do odpytywania (proxy tnie dlugie requesty).
+    # Cache: jesli swiezy PDF (<15 min) dla tej trasy+ciec juz jest -> zwracamy od razu (bez regeneracji).
+    import hashlib, time, threading
+    _os_wpr.makedirs(_WYPRAWA_DIR, exist_ok=True)
+    _wyprawa_cleanup_old()
+    key = hashlib.md5(("%s|%s" % (route_id, cuts)).encode()).hexdigest()[:10]
+    fn = "wyprawa-%s.pdf" % key
+    path = _os_wpr.path.join(_WYPRAWA_DIR, fn)
+    fresh = False
+    try:
+        fresh = _os_wpr.path.exists(path) and (time.time() - _os_wpr.path.getmtime(path) < 900)
+    except Exception:
+        fresh = False
+    if not fresh:
+        # regeneracja: usun stary plik i blad, zeby polling nie zlapal nieaktualnego
+        for p in (path, path + ".err"):
+            try:
+                if _os_wpr.path.exists(p):
+                    _os_wpr.remove(p)
+            except Exception:
+                pass
+        th = threading.Thread(target=_wyprawa_worker, args=(path, route_id, cuts, date, name), daemon=True)
+        th.start()
+    return {"url": "/reports/" + fn, "err_url": "/reports/" + fn + ".err", "cached": fresh}
+
+
+@app.get("/api/wyprawa/pdf")
+def api_wyprawa_pdf(route_id: str = Query(...), cuts: str = Query(""),
+                    date: str = Query(None), name: str = Query(None)):
+    # Synchroniczny wariant (test/localhost); UI uzywa pdf-start.
+    try:
+        pdf_bytes = _wyprawa_pdf_bytes(route_id, cuts, date, name)
+    except HTTPException:
+        raise
+    except Exception as _e:
+        raise HTTPException(status_code=500, detail="PDF error: " + str(_e)[:200])
+    fn = "raport-wyprawy-%s.pdf" % str(route_id).replace("/", "_")
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": 'inline; filename="%s"' % fn})
 
 
 app.mount("/", StaticFiles(directory=WEB_ROOT, html=True), name="static")
