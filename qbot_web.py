@@ -547,10 +547,17 @@ def _planer_wikipedia_desc(name, lat, lon):
         x = "".join(c for c in x if not _ud.combining(c))
         return set(_re.findall(r"[a-z0-9]+", x))
 
-    r = httpx.get(API, params={"action": "query", "format": "json", "list": "geosearch",
-                  "gscoord": "%f|%f" % (float(lat), float(lon)), "gsradius": 800, "gslimit": 8},
-                  timeout=8.0, headers=UA)
-    r.raise_for_status()
+    def _wget(_params):
+        import time as _tt
+        _rr = None
+        for _try in range(3):
+            _rr = httpx.get(API, params=_params, timeout=8.0, headers=UA)
+            if _rr.status_code == 429 and _try < 2:
+                _tt.sleep(1.5 * (_try + 1)); continue
+            _rr.raise_for_status(); return _rr
+        _rr.raise_for_status(); return _rr
+    r = _wget({"action": "query", "format": "json", "list": "geosearch",
+               "gscoord": "%f|%f" % (float(lat), float(lon)), "gsradius": 800, "gslimit": 8})
     hits = (((r.json() or {}).get("query") or {}).get("geosearch") or [])
     if not hits:
         return None, None, None
@@ -570,12 +577,11 @@ def _planer_wikipedia_desc(name, lat, lon):
     if ov < 1 and (best.get("dist") or 9999) > 150:
         return None, None, None
     pid = best.get("pageid")
-    r2 = httpx.get(API, params={"action": "query", "format": "json",
-                   "prop": "extracts|info|pageimages",
-                   "inprop": "url", "exintro": 1, "explaintext": 1, "exsentences": 3,
-                   "piprop": "thumbnail", "pithumbsize": 800,
-                   "redirects": 1, "pageids": pid}, timeout=8.0, headers=UA)
-    r2.raise_for_status()
+    r2 = _wget({"action": "query", "format": "json",
+                "prop": "extracts|info|pageimages",
+                "inprop": "url", "exintro": 1, "explaintext": 1, "exsentences": 3,
+                "piprop": "thumbnail", "pithumbsize": 800,
+                "redirects": 1, "pageids": pid})
     pg = (((r2.json() or {}).get("query") or {}).get("pages") or {}).get(str(pid)) or {}
     ex = (pg.get("extract") or "").strip()
     img = ((pg.get("thumbnail") or {}).get("source")) or None
@@ -657,7 +663,9 @@ def api_planer_atrakcja(place_id: str, name: str = None, lat: float = None, lon:
                 if _planer_photo_to_jpeg(_wimg, ppath):
                     hp = True
         except Exception:
-            _skip_cache = True
+            # blad sieci/429 z Wikipedii NIE moze wyrzucic calego wpisu, jesli mamy juz
+            # zdjecie (hp) albo opis (desc) — inaczej atrakcja re-fetchuje sie w nieskonczonosc
+            _skip_cache = not (desc or hp)
     if not _skip_cache:
         try:
             os.makedirs(PLANER_POI_CACHE, exist_ok=True)
@@ -1852,17 +1860,20 @@ def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, 
         "2 = temperatura (odczuwalna + WBGT) i wiatr (zakres m/s, czolowy/z plecow). Po 1 zdaniu.\n"
         "pogoda_etapy: po JEDNYM stringu na kazdy etap z weather_stages, TA SAMA KOLEJNOSC, 1-2 zdania.\n"
         "komentarze_ryzyka: po JEDNYM krotkim stringu do KAZDEGO odcinka z odcinki_ryzyka (ta sama kolejnosc). "
-        "WYWNIOSKUJ i opisz odcinek po ludzku: najpierw KONTEKST terenu (np. droga przez las, przez pola "
-        "uprawne, przez laki/teren otwarty, przez teren zabudowany), potem WNIOSEK o nawierzchni i ryzyku "
-        "(np. prawdopodobny sypki piach, grunt z koleinami, mozliwe bloto). Kontekst i ryzyko czerp z pola "
-        "reason (zawiera pokrycie terenu: las/trawy/uprawy/zabudowa oraz ocene ryzyka piachu) oraz z osm. "
-        "NIE cytuj surowych tagow ani kodow - ZAKAZ slow: 'track', 'path', 'grade3', 'grade4', 'grade5', "
-        "'surface=sand', 'smoothness', 'WorldCover', 'sand_risk', 'wg tagu'. Pisz jednym naturalnym zdaniem, "
-        "np. 'Droga przez las, prawdopodobny sypki piach' albo 'Odcinek przez pola, grunt z mozliwymi koleinami'. "
-        "Gdy odcinek jest jawnie piaszczysty, napisz wprost 'wyrazne ryzyko piachu'. Jesli opady_przed_jazda "
-        "realnie zmieniaja stan (susza -> bardziej sypko, mokro -> rozmokly grunt), dodaj to jako fakt; przy "
-        "null lub ocena=normalnie pomin. Jesli kontekst niejednoznaczny - napisz, ze ryzyko niepewne. "
-        "NIE dawaj rad ani zalecen. Bez metafor i przymiotnikow nastrojowych. Maks. ~20 slow. Brak odcinkow -> []."
+        "WYWNIOSKUJ z sygnalow TEGO odcinka, co najpewniej jest pod kolami, i opisz po ludzku - z uczciwa "
+        "niepewnoscia. Sygnaly: teren.teren (pokrycie: las/pola/laki/uprawy/zabudowa), teren.nawierzchnia_szac "
+        "(szacowana nawierzchnia), teren.pewnosc_szac, teren.sand_risk (poziom ryzyka piachu), "
+        "teren.piach_z_regionu (bool), osm (tagi highway/tracktype/surface) oraz reason. WAZ je wg PEWNOSCI: "
+        "(1) jawny tag surface=sand -> piach to FAKT, stwierdz wprost 'nawierzchnia piaszczysta'. "
+        "(2) brak tagu piachu, ale teren.piach_z_regionu=true albo sand_risk sredni/wysoki -> piach to REGIONALNA "
+        "MOZLIWOSC, nie fakt: najwyzej 'w tym rejonie miejscami mozliwy luzny piach', nigdy jako naglowek; przy "
+        "niskim sand_risk mozesz pominac. (3) prowadz opis KONKRETEM: najpierw teren + szacowana nawierzchnia "
+        "(np. 'Lesna droga, prawdopodobnie szuter/grunt'); na sciezce lesnej dopusc 'mozliwe korzenie'. "
+        "NIE cytuj surowych kodow (grade3, surface=sand, smoothness, WorldCover, sand_risk, geology) - tlumacz "
+        "na ludzki jezyk. NIE forsuj jednego materialu na sile; gdy sygnaly slabe lub sprzeczne, rozroznij co "
+        "PRAWDOPODOBNE a co tylko MOZLIWE. Jesli opady_przed_jazda realnie zmieniaja stan (susza -> bardziej "
+        "sypko/kurz, mokro -> rozmokly grunt), dodaj krotko jako fakt; przy null lub ocena=normalnie pomin. "
+        "NIE dawaj rad ani zalecen. Bez metafor i przymiotnikow nastrojowych. Maks. ~22 slowa. Brak odcinkow -> []."
     )
     pay1 = {"trasa": _trasa, "peak_wbgt": peak, "pogoda_ogolem": weather_overall,
             "weather_stages": weather_stages, "odcinki_ryzyka": risks,
@@ -2700,6 +2711,42 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
         return {"highway": _uniq("highway"), "tracktype": _uniq("tracktype"),
                 "surface": (_uniq("surface_raw") or _uniq("surface")),
                 "coverage_status": _uniq("coverage_status"), "explanation": expl}
+    # --- kontekst terenu (WorldCover + geologia) per odcinek ryzyka: pokrycie (las/pola),
+    #     szacowana nawierzchnia, poziom ryzyka piachu ORAZ czy piach pochodzi z regionalnego
+    #     heurystyka (geology_sand) czy z tagu. Zasila WNIOSKOWANIE LLM. Dane sa w
+    #     route_surface_context - raport wczesniej ich nie czytal (dziura).
+    _ctx_rows = []
+    try:
+        _cc = conn.execute(
+            "SELECT km_from, km_to, dominant_pl, surface_estimate, estimate_confidence, "
+            "sand_risk, geology_sand FROM qbot_v2.route_surface_context "
+            "WHERE route_base_id=%s ORDER BY km_from", (rbid,)
+        )
+        for _r in _cc.fetchall():
+            # polaczenie aplikacji uzywa dict_row -> wiersze to slowniki
+            _ctx_rows.append({"km_from": _r["km_from"], "km_to": _r["km_to"],
+                              "dominant_pl": _r["dominant_pl"], "surface_estimate": _r["surface_estimate"],
+                              "estimate_confidence": _r["estimate_confidence"],
+                              "sand_risk": _r["sand_risk"], "geology_sand": _r["geology_sand"]})
+    except Exception:
+        _ctx_rows = []
+
+    def _risk_teren(a, b):
+        hit = [c for c in _ctx_rows if not (c["km_to"] <= a or c["km_from"] >= b)]
+        if not hit:
+            return None
+        def _first(key):
+            for c in hit:
+                if c.get(key):
+                    return c.get(key)
+            return None
+        terreny = []
+        for c in hit:
+            if c.get("dominant_pl") and c["dominant_pl"] not in terreny:
+                terreny.append(c["dominant_pl"])
+        return {"teren": terreny, "nawierzchnia_szac": _first("surface_estimate"),
+                "pewnosc_szac": _first("estimate_confidence"), "sand_risk": _first("sand_risk"),
+                "piach_z_regionu": any(bool(c.get("geology_sand")) for c in hit)}
     surface_risk = []
     for _s in surface_cat:
         if _s["k"] not in (4, 5):
@@ -2708,7 +2755,8 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
         if _len < 0.3:
             continue
         surface_risk.append({"a": _s["a"], "b": _s["b"], "km": _len, "k": _s["k"],
-                             "reason": _s.get("reason"), "osm": _risk_osm(_s["a"], _s["b"])})
+                             "reason": _s.get("reason"), "osm": _risk_osm(_s["a"], _s["b"]),
+                             "teren": _risk_teren(_s["a"], _s["b"])})
 
     # --- czynnik pogodowy dla najgorszych odcinkow (kat.4+5): susza/opady PRZED jazda ---
     # Kategoria nawierzchni NIE jest zmieniana - to tylko dodatkowy kontekst do komentarzy
@@ -5151,6 +5199,51 @@ import os as _os_wpr
 _WYPRAWA_DIR = _os_wpr.path.join(WEB_ROOT, "reports")
 
 
+def _wyprawa_prewarm_pois(route_id, cuts):
+    # Wstepne pobranie opisow+zdjec WSZYSTKICH atrakcji na serwer (cache) z OGRANICZONA
+    # liczba watkow, zeby nie wywolac 429 z Wikipedii/Google. Po tym render = same cache-hity.
+    import concurrent.futures as _cf, time as _t
+    ncuts = sorted(float(c) for c in (cuts or "").split(",") if c.strip())
+    conn = _db_conn()
+    try:
+        base = conn.execute(
+            "SELECT distance_m FROM qbot_v2.route_base WHERE route_id=%s "
+            "ORDER BY (status='active') DESC, route_modified_at DESC NULLS LAST LIMIT 1",
+            (route_id,)).fetchone()
+        total = ((base["distance_m"] or 0) / 1000.0) if base else 0.0
+        bounds = []
+        prev = 0.0
+        for c in ncuts:
+            bounds.append((prev, c)); prev = c
+        bounds.append((prev, total or (ncuts[-1] if ncuts else 0.0)))
+        pois = {}
+        for a, b in bounds:
+            try:
+                d = _build_day_data(conn, route_id, a, b)
+            except Exception:
+                continue
+            items = ((((d or {}).get("details") or {}).get("poi") or {}).get("attractions") or {}).get("items") or []
+            for it in items:
+                pid = it.get("place_id")
+                if pid and pid not in pois:
+                    pois[pid] = (it.get("name"), it.get("lat"), it.get("lon"))
+    finally:
+        conn.close()
+
+    def _one(kv):
+        pid, meta = kv
+        nm, la, lo = meta
+        try:
+            api_planer_atrakcja(pid, nm, la, lo)
+        except Exception:
+            pass
+        _t.sleep(0.35)
+
+    if pois:
+        with _cf.ThreadPoolExecutor(max_workers=2) as ex:
+            list(ex.map(_one, list(pois.items())))
+
+
 def _wyprawa_pdf_bytes(route_id, cuts, date, name):
     # 1:1 widok Planera wyprawy: steruje prawdziwa strona /planer-wyprawy.html w trybie druku,
     # zrzuca widok ALL + panel kazdego dnia i sklada w jeden PDF (Pillow).
@@ -5167,6 +5260,10 @@ def _wyprawa_pdf_bytes(route_id, cuts, date, name):
     ndays = len(ncuts) + 1
     url = ("http://127.0.0.1:%d/planer-wyprawy.html?print=1&route=%s&cuts=%s&nDays=%d"
            % (PORT, quote(route_id), quote(cuts or ""), ndays))
+    try:
+        _wyprawa_prewarm_pois(route_id, cuts)  # napelnij cache atrakcji zanim renderujemy
+    except Exception:
+        pass
     parts = []
     pdf_bytes = None
     with sync_playwright() as pw:
@@ -5187,15 +5284,22 @@ def _wyprawa_pdf_bytes(route_id, cuts, date, name):
             ndays = int(page.evaluate("window.__planerPrint.nDays()") or ndays)
 
             def _wait_imgs():
+                # 1) poczekaj az znikna spinnery "Ladowanie" (fetche opisow/zdjec zakonczone)
                 try:
                     page.wait_for_function(
-                        "document.querySelectorAll('.attr-loading').length===0 && "
-                        "Array.prototype.every.call("
-                        "document.querySelectorAll('.attr-photo'),"
-                        "function(i){return i.complete;})", timeout=22000)
+                        "document.querySelectorAll('.attr-loading').length===0", timeout=22000)
                 except Exception:
                     pass
-                page.wait_for_timeout(600)
+                page.wait_for_timeout(800)
+                # 2) poczekaj az WSZYSTKIE obrazki (zdjecia atrakcji + kafle mapy) sie domaluja
+                try:
+                    page.wait_for_function(
+                        "Array.prototype.every.call(document.querySelectorAll('img'),"
+                        "function(i){return i.complete && (i.naturalWidth>0 || i.getAttribute('src')===null);})",
+                        timeout=15000)
+                except Exception:
+                    pass
+                page.wait_for_timeout(1500)
 
             # widok ALL (opis rozwiniety) -> snapshot HTML
             page.evaluate("window.__planerPrint.view(null)")
@@ -5237,6 +5341,16 @@ def _wyprawa_pdf_bytes(route_id, cuts, date, name):
 
             # zloz jeden dokument i drukuj WEKTOROWO (klikalne linki, zaznaczalny tekst)
             page.evaluate("(p) => window.__planerPrint.assemble(p)", parts)
+            # BANNER diagnostyczny: znacznik czasu generowania na serwerze (na samej gorze PDF)
+            import datetime as _dtb
+            _stamp = _dtb.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            page.evaluate(
+                "(t) => { var d = document.createElement('div');"
+                "d.style.cssText = 'background:#3f7a4d;color:#fff;padding:8px 14px;"
+                "font:600 14px sans-serif;text-align:center;letter-spacing:.02em';"
+                "d.textContent = 'Raport wygenerowany na serwerze: ' + t + '  \u00b7  generator v8';"
+                "var w = document.querySelector('.wrap') || document.body;"
+                "w.insertBefore(d, w.firstChild); }", _stamp)
             page.wait_for_timeout(1200)
             try:
                 page.wait_for_function(
@@ -5318,6 +5432,23 @@ def api_wyprawa_pdf(route_id: str = Query(...), cuts: str = Query(""),
     fn = "raport-wyprawy-%s.pdf" % str(route_id).replace("/", "_")
     return Response(content=pdf_bytes, media_type="application/pdf",
                     headers={"Content-Disposition": 'inline; filename="%s"' % fn})
+
+
+@app.get("/reports/{fn}")
+def api_reports_nostore(fn: str):
+    # Serwuje PDF-y raportow wyprawy z twardym no-store (zaden cache przegladarki/proxy).
+    import re as _re2
+    if not _re2.match(r"^[A-Za-z0-9._:-]+$", fn or ""):
+        raise HTTPException(status_code=404)
+    p = _os_wpr.path.join(_WYPRAWA_DIR, fn)
+    if not _os_wpr.path.exists(p):
+        raise HTTPException(status_code=404)
+    with open(p, "rb") as f:
+        data = f.read()
+    ct = "application/pdf" if fn.endswith(".pdf") else "text/plain; charset=utf-8"
+    return Response(content=data, media_type=ct,
+                    headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                             "Pragma": "no-cache", "Expires": "0"})
 
 
 app.mount("/", StaticFiles(directory=WEB_ROOT, html=True), name="static")
