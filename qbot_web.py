@@ -1852,14 +1852,17 @@ def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, 
         "2 = temperatura (odczuwalna + WBGT) i wiatr (zakres m/s, czolowy/z plecow). Po 1 zdaniu.\n"
         "pogoda_etapy: po JEDNYM stringu na kazdy etap z weather_stages, TA SAMA KOLEJNOSC, 1-2 zdania.\n"
         "komentarze_ryzyka: po JEDNYM krotkim stringu do KAZDEGO odcinka z odcinki_ryzyka (ta sama kolejnosc). "
-        "TYLKO identyfikacja i opis ryzyka - co to za odcinek i jakie zagrozenie. Kazdy odcinek ma pole osm "
-        "(highway/tracktype/surface/coverage_status) oraz reason. Nazwij nawierzchnie i realne ryzyko, "
-        "np. 'Odcinek lesny, prawdopodobny sypki piach' albo 'Grunt/koleiny, mozliwe bloto'. Gdy odcinek "
-        "nie ma tagu OSM, mozesz krotko wskazac kontekst (las/pole/otwarty teren) jako podstawe "
-        "prawdopodobienstwa. Jesli opady_przed_jazda realnie zmieniaja stan odcinka, dodaj to jako fakt "
-        "(np. 'po deszczu grunt rozmokly'); jesli null lub ocena=normalnie, pomin. Jesli sygnaly "
-        "niejednoznaczne - napisz wprost, ze ryzyko niepewne. NIE dawaj zadnych rad ani zalecen. "
-        "Bez metafor i przymiotnikow nastrojowych. Maks. ~15 slow. Brak odcinkow -> []."
+        "WYWNIOSKUJ i opisz odcinek po ludzku: najpierw KONTEKST terenu (np. droga przez las, przez pola "
+        "uprawne, przez laki/teren otwarty, przez teren zabudowany), potem WNIOSEK o nawierzchni i ryzyku "
+        "(np. prawdopodobny sypki piach, grunt z koleinami, mozliwe bloto). Kontekst i ryzyko czerp z pola "
+        "reason (zawiera pokrycie terenu: las/trawy/uprawy/zabudowa oraz ocene ryzyka piachu) oraz z osm. "
+        "NIE cytuj surowych tagow ani kodow - ZAKAZ slow: 'track', 'path', 'grade3', 'grade4', 'grade5', "
+        "'surface=sand', 'smoothness', 'WorldCover', 'sand_risk', 'wg tagu'. Pisz jednym naturalnym zdaniem, "
+        "np. 'Droga przez las, prawdopodobny sypki piach' albo 'Odcinek przez pola, grunt z mozliwymi koleinami'. "
+        "Gdy odcinek jest jawnie piaszczysty, napisz wprost 'wyrazne ryzyko piachu'. Jesli opady_przed_jazda "
+        "realnie zmieniaja stan (susza -> bardziej sypko, mokro -> rozmokly grunt), dodaj to jako fakt; przy "
+        "null lub ocena=normalnie pomin. Jesli kontekst niejednoznaczny - napisz, ze ryzyko niepewne. "
+        "NIE dawaj rad ani zalecen. Bez metafor i przymiotnikow nastrojowych. Maks. ~20 slow. Brak odcinkow -> []."
     )
     pay1 = {"trasa": _trasa, "peak_wbgt": peak, "pogoda_ogolem": weather_overall,
             "weather_stages": weather_stages, "odcinki_ryzyka": risks,
@@ -5207,12 +5210,24 @@ def _wyprawa_pdf_bytes(route_id, cuts, date, name):
             # kazdy dzien: rozwiniete podjazdy (profile) + atrakcje (zdjecia+opisy) -> snapshot
             for i in range(ndays):
                 page.evaluate("window.__planerPrint.view(%d)" % i)
-                page.wait_for_timeout(700)
+                page.wait_for_timeout(500)
+                # czekaj az dane dnia sie wypelnia (atrakcje + podjazdy), zanim rozwiniemy
+                try:
+                    page.wait_for_function(
+                        "(function(){var a=document.getElementById('d-attr'),"
+                        "c=document.getElementById('d-climbs');"
+                        "if(!a||!c) return false;"
+                        "var aok=a.querySelectorAll('.attr-row').length>0 || a.textContent.indexOf('Brak')>=0;"
+                        "var cok=c.querySelectorAll('.climb-row').length>0 || c.textContent.indexOf('Brak')>=0"
+                        " || /\\+\\d+ m/.test(c.textContent);"
+                        "return aok && cok;})()", timeout=20000)
+                except Exception:
+                    pass
                 try:
                     page.evaluate("window.__planerPrint.cleanupDayUI()")
                 except Exception:
                     pass
-                page.wait_for_timeout(900)
+                page.wait_for_timeout(300)
                 try:
                     page.evaluate("window.__planerPrint.expandAll()")
                 except Exception:
@@ -5277,30 +5292,17 @@ def _wyprawa_worker(path, route_id, cuts, date, name):
 @app.get("/api/wyprawa/pdf-start")
 def api_wyprawa_pdf_start(route_id: str = Query(...), cuts: str = Query(""),
                           date: str = Query(None), name: str = Query(None)):
-    # Startuje generowanie w tle -> zwraca statyczny URL do odpytywania (proxy tnie dlugie requesty).
-    # Cache: jesli swiezy PDF (<15 min) dla tej trasy+ciec juz jest -> zwracamy od razu (bez regeneracji).
+    # Startuje generowanie w tle. UNIKALNA nazwa pliku per wywolanie -> zaden cache (proxy/przegladarka)
+    # nie poda starej wersji, bo sciezka jest za kazdym razem inna.
     import hashlib, time, threading
     _os_wpr.makedirs(_WYPRAWA_DIR, exist_ok=True)
     _wyprawa_cleanup_old()
-    key = hashlib.md5(("%s|%s" % (route_id, cuts)).encode()).hexdigest()[:10]
-    fn = "wyprawa-%s.pdf" % key
+    key = hashlib.md5(("%s|%s" % (route_id, cuts)).encode()).hexdigest()[:8]
+    fn = "wyprawa-%s-%d.pdf" % (key, int(time.time()))
     path = _os_wpr.path.join(_WYPRAWA_DIR, fn)
-    fresh = False
-    try:
-        fresh = _os_wpr.path.exists(path) and (time.time() - _os_wpr.path.getmtime(path) < 900)
-    except Exception:
-        fresh = False
-    if not fresh:
-        # regeneracja: usun stary plik i blad, zeby polling nie zlapal nieaktualnego
-        for p in (path, path + ".err"):
-            try:
-                if _os_wpr.path.exists(p):
-                    _os_wpr.remove(p)
-            except Exception:
-                pass
-        th = threading.Thread(target=_wyprawa_worker, args=(path, route_id, cuts, date, name), daemon=True)
-        th.start()
-    return {"url": "/reports/" + fn, "err_url": "/reports/" + fn + ".err", "cached": fresh}
+    th = threading.Thread(target=_wyprawa_worker, args=(path, route_id, cuts, date, name), daemon=True)
+    th.start()
+    return {"url": "/reports/" + fn, "err_url": "/reports/" + fn + ".err", "cached": False}
 
 
 @app.get("/api/wyprawa/pdf")
