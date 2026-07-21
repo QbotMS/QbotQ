@@ -372,7 +372,11 @@ def _prompt_dzien(idx, a, b, surf, seg_pois, nocleg, is_last):
         '  "intro": "2-3 zdania o charakterze tego dnia: teren, nawierzchnia, klimat odcinka",\n'
         '  "punkty": ["najwazniejsze miejsca dnia z listy, po jednym zwiezlym zdaniu; max 4"]\n'
         "}\n"
-        "Jesli brak obiektow - daj pusta liste punktow, a intro oprzyj na terenie i nawierzchni."
+        "Jesli brak obiektow - daj pusta liste punktow, a intro oprzyj na terenie i nawierzchni.\n"
+        "WAZNE: to PLAN przyszlej wyprawy, NIE relacja z przejechanej trasy. Pisz w czasie "
+        "TERAZNIEJSZYM/PRZYSZLYM (np. 'Dzien prowadzi przez...', 'Trasa jest pofalowana...', "
+        "'Nawierzchnia to w wiekszosci asfalt...'). NIE uzywaj czasu przeszlego (zadnych 'byl', "
+        "'dominowal', 'prowadzil', 'mial')."
     )
 
 
@@ -451,3 +455,93 @@ if __name__ == "__main__":
         print(json.dumps(build_opis_dni(rid, dni_arg, rebuild=rebuild), ensure_ascii=False, indent=2))
     else:
         print(json.dumps(build_opis(rid, rebuild=rebuild), ensure_ascii=False, indent=2))
+
+
+# =========================== TLO HISTORYCZNE + GEOGRAFICZNE (Planer ALL) ======
+
+_SYS_TLO = (
+    "Jestes krajoznawca i historykiem regionalnym. Piszesz po polsku, rzeczowo i "
+    "konkretnie. Na podstawie listy miejscowosci, przez ktore przebiega rowerowa "
+    "trasa, opisujesz TLO regionu. Korzystasz z ogolnej wiedzy o tym konkretnym "
+    "obszarze (historia osadnictwa, geografia, przyroda). Trzymasz sie realiow "
+    "tego regionu - nie przenosisz faktow z innych czesci kraju. Zwracasz "
+    "WYLACZNIE JSON."
+)
+
+
+def _prompt_tlo(region_line, towns):
+    tn = ", ".join(t["name"] for t in towns[:40]) or "(brak listy miejscowosci)"
+    return (
+        "Rowerowa trasa wieloetapowa przebiega przez teren opisany ponizej.\n"
+        + (region_line + "\n" if region_line else "")
+        + "MIEJSCOWOSCI NA TRASIE (kolejno): " + tn + "\n\n"
+        "Napisz dwa bloki tla dla TEGO terenu i zwroc DOKLADNIE taki JSON (bez markdown):\n"
+        "{\n"
+        '  "historia": ["od 8 do 14 punktow, chronologicznie, od poczatkow osadnictwa '
+        'do 1945 r.; kazdy punkt to jedno zwiezle zdanie, na poczatku przyblizona '
+        'data lub okres"],\n'
+        '  "geografia_intro": "1 akapit (3-5 zdan): polozenie, ukształtowanie terenu, '
+        'rzeki, klimat obszaru",\n'
+        '  "geografia": ["3-6 punktow: przyroda, lasy, gleby, formy terenu, obszary '
+        'chronione charakterystyczne dla tego regionu"]\n'
+        "}\n"
+        "WAZNE: historia KONCZY sie na 1945 r. - nie pisz o okresie powojennym ani "
+        "wspolczesnym. Rozpoznaj region po miejscowosciach i pisz o nim. Jesli nie "
+        "masz pewnosci co do konkretu, ujmij rzecz ogolniej zamiast zmyslac."
+    )
+
+
+def build_tlo(route_id, rebuild=False, model_label="qgpt"):
+    """Tlo historyczne (do 1945) + geograficzno-przyrodnicze regionu trasy.
+
+    Cache: qbot_v2.planer_route_tlo, invalidacja po geometry_hash.
+    Zwraca {historia[], geografia_intro, geografia[], generated_at, geom_hash}.
+    """
+    conn = _db()
+    try:
+        base = _resolve_base(conn, route_id)
+        if not base:
+            return {"error": "route_not_found", "route_id": route_id}
+        gh = base["geometry_hash"]
+        if not rebuild:
+            cur = conn.execute(
+                "SELECT tlo_json, geometry_hash, generated_at::text "
+                "FROM qbot_v2.planer_route_tlo WHERE route_id=%s", (route_id,),
+            ).fetchone()
+            if cur and cur[1] == gh and cur[0]:
+                data = cur[0] if isinstance(cur[0], dict) else json.loads(cur[0])
+                data["cached"] = True
+                data["generated_at"] = cur[2]
+                data["geom_hash"] = gh
+                return data
+        towns = _towns(conn, base["base_id"]) or _pois(conn, base["base_id"])
+        region_line = ""
+        if towns:
+            region_line = "OBSZAR: od %s do %s (dystans %.0f km)." % (
+                towns[0]["name"], towns[-1]["name"], base["distance_km"])
+        from qgpt_client import qgpt_json
+        data = qgpt_json(_prompt_tlo(region_line, towns), system=_SYS_TLO,
+                         max_tokens=3000, temperature=0.4)
+        if not isinstance(data, dict) or "historia" not in data:
+            return {"error": "llm_bad_output", "raw": str(data)[:400]}
+        hist = data.get("historia") if isinstance(data.get("historia"), list) else []
+        geo = data.get("geografia") if isinstance(data.get("geografia"), list) else []
+        data["historia"] = [str(x).strip() for x in hist if str(x).strip()][:16]
+        data["geografia"] = [str(x).strip() for x in geo if str(x).strip()][:8]
+        gi = data.get("geografia_intro")
+        data["geografia_intro"] = str(gi).strip() if gi else ""
+        conn.execute(
+            "INSERT INTO qbot_v2.planer_route_tlo "
+            "(route_id, route_base_id, geometry_hash, tlo_json, model) "
+            "VALUES (%s,%s,%s,%s,%s) "
+            "ON CONFLICT (route_id) DO UPDATE SET "
+            "route_base_id=EXCLUDED.route_base_id, geometry_hash=EXCLUDED.geometry_hash, "
+            "tlo_json=EXCLUDED.tlo_json, model=EXCLUDED.model, generated_at=now()",
+            (route_id, base["base_id"], gh, json.dumps(data, ensure_ascii=False), model_label),
+        )
+        conn.commit()
+        data["cached"] = False
+        data["geom_hash"] = gh
+        return data
+    finally:
+        conn.close()
