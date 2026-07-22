@@ -158,7 +158,7 @@ async def _webauth_guard(request, call_next):
     Dane logowania: /opt/qbot/app/.env.webauth
     klucze: WEBAUTH_USERS=login:haslo,login2:haslo2 ; WEBAUTH_TOKEN=<wartosc do podpisu>
     """
-    if request.url.path in ("/healthz", "/login", "/favicon.ico", "/favicon.svg"):
+    if request.url.path in ("/healthz", "/login", "/favicon.ico", "/favicon.svg", "/wyprawa-rsvp", "/api/wyprawa/rsvp"):
         return await call_next(request)
 
     users, sign_val = _webauth_load()
@@ -592,7 +592,6 @@ def _planer_wikipedia_desc(name, lat, lon):
     return ex, pg.get("fullurl"), img
 
 
-@app.get("/api/planer/atrakcja")
 def _planer_photo_to_jpeg(url, ppath):
     """Pobiera dowolny URL zdjecia i zapisuje jako JPEG w cache serwerowym (PLANER_POI_CACHE)."""
     import httpx, io
@@ -609,6 +608,7 @@ def _planer_photo_to_jpeg(url, ppath):
         return False
 
 
+@app.get("/api/planer/atrakcja")
 def api_planer_atrakcja(place_id: str, name: str = None, lat: float = None, lon: float = None):
     """Opis + zdjecie atrakcji. Google Places (editorial/AI + zdjecie), a gdy Google
     nie ma opisu - polska Wikipedia (po wspolrzednych). Cache raz na dysku."""
@@ -708,6 +708,23 @@ def api_planer_opis(route_id: str, rebuild: int = 0):
     return {"status": "OK", **data}
 
 
+@app.get("/api/planer/tlo")
+def api_planer_tlo(route_id: str, rebuild: int = 0):
+    """Tlo historyczne (do 1945) + geograficzno-przyrodnicze regionu trasy
+    dla Planera wyprawy (cache w qbot_v2.planer_route_tlo; rebuild=1 wymusza)."""
+    try:
+        from qbot3.routes.planer_opis import build_tlo
+    except Exception as e:
+        return {"status": "ERROR", "error": "modul niedostepny: " + str(e)[:120]}
+    try:
+        data = build_tlo(route_id, rebuild=bool(rebuild))
+    except Exception as e:
+        return {"status": "ERROR", "error": str(e)[:200]}
+    if isinstance(data, dict) and data.get("error"):
+        return {"status": "ERROR", "error": data.get("error"), "detail": data.get("raw")}
+    return {"status": "OK", **data}
+
+
 @app.post("/api/planer/opis-dni")
 async def api_planer_opis_dni(request: Request):
     """Opis LLM per dzien wg podzialu. Body: {route_id, cuts:[km,...], rebuild?}."""
@@ -757,6 +774,36 @@ async def api_planer_dodaj_do_qbot(request: Request):
         return {"status": "ERROR", "error": str(exc)[:240]}
     except Exception as exc:
         return {"status": "ERROR", "error": repr(exc)[:300]}
+
+
+@app.get("/api/planer/dzien/gpx")
+def api_planer_dzien_gpx(route_id: str = Query(...),
+                         from_km: float = Query(..., alias="from"),
+                         to_km: float = Query(..., alias="to"),
+                         day: int = Query(1),
+                         name: str = Query("")):
+    """GPX pojedynczego dnia wyprawy: geometria trasy przycieta do [from_km, to_km].
+    Bez POI (czysta trasa dnia) - do wgrania na urzadzenie/Karoo."""
+    geo = route_geometry(route_id)  # rzuca 404 gdy brak trasy
+    coords = geo.get("coordinates") or []
+    if not coords:
+        raise HTTPException(status_code=422, detail="Brak geometrii trasy")
+    cum = [0.0]
+    for i in range(1, len(coords)):
+        cum.append(cum[-1] + _haversine_m(coords[i - 1][0], coords[i - 1][1],
+                                          coords[i][0], coords[i][1]) / 1000.0)
+    lo = min(float(from_km), float(to_km))
+    hi = max(float(from_km), float(to_km))
+    day_coords = [coords[i] for i in range(len(coords)) if lo - 0.05 <= cum[i] <= hi + 0.05]
+    if len(day_coords) < 2:
+        raise HTTPException(status_code=422, detail="Zakres dnia nie zawiera geometrii")
+    base_name = name or geo.get("name") or ("Trasa %s" % route_id)
+    day_name = "%s - Dzien %d (%d-%d km)" % (base_name, int(day), round(lo), round(hi))
+    gpx, _wn = _build_karoo_gpx(day_name, day_coords, None, include_pois=False)
+    import re as _re2
+    safe = _re2.sub(r"[^A-Za-z0-9_.-]+", "_", day_name).strip("_") or ("dzien_%d" % int(day))
+    return Response(content=gpx, media_type="application/gpx+xml",
+                    headers={"Content-Disposition": 'attachment; filename="%s.gpx"' % safe})
 
 
 def _tile_poly_bounds(x, y, z=14):
@@ -3239,6 +3286,46 @@ def _build_day_data(conn, route_id, km_from, km_to):
     # POI w zakresie (km absolutne)
     _pg = _load_poi_groups(conn, rbid)
     _towns_all = list(_pg.get("town", []))
+    def _place_at_km(_target):
+        _c = [t for t in _towns_all if t.get("km") is not None and t.get("lat") is not None]
+        if not _c:
+            return None
+        _t = min(_c, key=lambda t: abs(float(t["km"]) - float(_target)))
+        _lat = round(float(_t["lat"]), 4)
+        _lon = round(float(_t["lon"]), 4)
+        try:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS qbot_v2.route_point_geo_cache ("
+                "lat double precision, lon double precision, name text, "
+                "PRIMARY KEY (lat, lon))")
+            _r = conn.execute("SELECT name FROM qbot_v2.route_point_geo_cache "
+                              "WHERE lat=%s AND lon=%s", (_lat, _lon)).fetchone()
+            if _r:
+                return _r["name"] or _t.get("name")
+        except Exception:
+            pass
+        _name = _t.get("name")
+        try:
+            import urllib.parse as _up
+            import urllib.request as _ur
+            _q = _up.urlencode({"format": "json", "lat": _lat, "lon": _lon,
+                                "zoom": 10, "addressdetails": 1, "accept-language": "pl"})
+            _req = _ur.Request("https://nominatim.openstreetmap.org/reverse?" + _q,
+                               headers={"User-Agent": "qbot-planer/1.0"})
+            _d = json.loads(_ur.urlopen(_req, timeout=12).read().decode("utf-8"))
+            _a = _d.get("address", {})
+            _nm = _a.get("city") or _a.get("town") or _a.get("village") or _a.get("hamlet")
+            if _nm:
+                _name = _nm
+            conn.execute("INSERT INTO qbot_v2.route_point_geo_cache (lat, lon, name) "
+                         "VALUES (%s,%s,%s) ON CONFLICT (lat, lon) DO NOTHING",
+                         (_lat, _lon, _name))
+            conn.commit()
+        except Exception:
+            pass
+        return _name
+    _from_place = _place_at_km(a0)
+    _to_place = _place_at_km(b0)
     def _loc(lat, lon):
         if lat is None or lon is None or not _towns_all:
             return None
@@ -3315,7 +3402,7 @@ def _build_day_data(conn, route_id, km_from, km_to):
         "route": {"id": route_id,
                   "name": (base["name"] or ("Trasa " + str(route_id)))
                           + (" \u2014 dzie\u0144 %s\u2013%s km" % (round(a0), round(b0)))},
-        "day": {"km_from": round(a0, 1), "km_to": round(b0, 1), "dist_km": dist_day, "ascent_m": round(day_asc)},
+        "day": {"km_from": round(a0, 1), "km_to": round(b0, 1), "dist_km": dist_day, "ascent_m": round(day_asc), "from_place": _from_place, "to_place": _to_place},
         "chart": {"km_total": dist_day, "ele": ele, "ele_min": emin, "ele_max": emax,
                   "surface_cat": surface_cat},
         "details": {
@@ -5199,6 +5286,104 @@ import os as _os_wpr
 _WYPRAWA_DIR = _os_wpr.path.join(WEB_ROOT, "reports")
 
 
+_PL_MONTHS = ["stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca",
+              "lipca", "sierpnia", "wrzesnia", "pazdziernika", "listopada", "grudnia"]
+
+
+def _wyprawa_masthead(route_id, cuts):
+    """Zwraca (css, html) naglowka-gazety (wariant B) na realnych danych:
+    nazwa trasy, dystans, liczba dni, DATA WYPRAWY z kalendarza QBot, DATA WYDANIA = teraz."""
+    import datetime as _dt, html as _html, re as _re
+    ncuts = [c for c in (cuts or "").split(",") if c.strip()]
+    ndays = len(ncuts) + 1
+    name, km = "Wyprawa", None
+    trip = None
+    conn = _db_conn()
+    try:
+        base = conn.execute(
+            "SELECT rb.distance_m, a.metadata_json->>'route_name' AS nm FROM qbot_v2.route_base rb "
+            "LEFT JOIN qbot_v2.route_artifacts a ON a.id=rb.route_artifact_id WHERE rb.route_id=%s "
+            "ORDER BY (rb.status='active') DESC, rb.route_modified_at DESC NULLS LAST LIMIT 1",
+            (route_id,)).fetchone()
+        if base:
+            if base.get("distance_m"):
+                km = base["distance_m"] / 1000.0
+            nm = base.get("nm") or ""
+            nm = _re.sub(r"^\s*\[[^\]]*\]\s*", "", nm)   # usun prefiks [Q]
+            nm = nm.split("\u00b7")[0].strip()               # do pierwszego middot
+            if nm:
+                name = nm
+        rid_num = route_id.split("-")[-1] if route_id else ""
+        cal = None
+        if rid_num:
+            # wyprawa dodana do kalendarza jako wydarzenie: tytul zawiera numer trasy (#<id>)
+            cal = conn.execute(
+                "SELECT day::text AS d0, COALESCE(end_day, day)::text AS d1 "
+                "FROM qbot_v2.calendar_entry WHERE title LIKE %s ORDER BY day DESC LIMIT 1",
+                ("%" + rid_num + "%",)).fetchone()
+        if not (cal and cal.get("d0")):
+            # fallback: per-dzienne przypiecie trasy w kalendarzu
+            cal = conn.execute(
+                "SELECT MIN(day)::text AS d0, MAX(day)::text AS d1 FROM qbot_v2.calendar_day_route "
+                "WHERE route_id=%s", (route_id,)).fetchone()
+        if cal and cal.get("d0"):
+            trip = (cal["d0"], cal.get("d1") or cal["d0"])
+    finally:
+        conn.close()
+
+    def _fmt(iso):
+        y, m, d = iso.split("-")
+        return "%d %s %s" % (int(d), _PL_MONTHS[int(m) - 1], y)
+
+    if trip:
+        d0, d1 = trip
+        if d0 == d1:
+            trip_str = _fmt(d0)
+        else:
+            a0 = d0.split("-"); a1 = d1.split("-")
+            if a0[0] == a1[0] and a0[1] == a1[1]:
+                trip_str = "%d\u2013%s" % (int(a0[2]), _fmt(d1))   # 21-23 lipca 2026
+            else:
+                trip_str = "%s \u2013 %s" % (_fmt(d0), _fmt(d1))
+    else:
+        trip_str = "termin nieustalony"
+
+    gen = _dt.datetime.now().strftime("%d.%m.%Y, %H:%M")
+    rid = route_id.split("-")[-1] if route_id else ""
+    km_str = ("%.1f" % km).replace(".", ",") if km else "\u2014"
+
+    css = (
+        '@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900'
+        '&family=Cormorant+Garamond:wght@500;600&display=swap");'
+        '.qmast{font-family:"Cormorant Garamond",Georgia,serif;color:#201c14;'
+        'padding:2px 0 16px;margin:0 0 10px;border-bottom:2px solid #6b6446}'
+        '.qmast .dl{display:flex;align-items:center;gap:14px;color:#6b6446}'
+        '.qmast .dl .l{flex:1;height:0;border-top:2px solid #6b6446}'
+        '.qmast .dl .d{color:#7c2b22;letter-spacing:.3em;font-size:12px;text-transform:uppercase}'
+        '.qmast h1{text-align:center;font-family:"Playfair Display",Georgia,serif;font-weight:900;'
+        'font-size:54px;line-height:1.02;letter-spacing:.01em;color:#201c14;margin:12px 0 4px;text-transform:uppercase}'
+        '.qmast h1 .sm{display:block;font-family:"Cormorant Garamond",serif;font-weight:600;'
+        'font-size:15px;letter-spacing:.32em;color:#7c2b22;text-transform:uppercase;margin-top:10px}'
+        '.qmast .meta{display:flex;justify-content:center;flex-wrap:wrap;gap:8px 16px;margin-top:12px;'
+        'font-size:15px;letter-spacing:.16em;text-transform:uppercase;color:#5a5140}'
+        '.qmast .meta b{color:#201c14}'
+        '.qmast .corn{display:flex;justify-content:space-between;font-size:11px;letter-spacing:.24em;'
+        'text-transform:uppercase;color:#6b6446;margin-top:8px}'
+    )
+    e = _html.escape
+    html = (
+        '<div class="qmast">'
+        '<div class="dl"><span class="l"></span><span class="d">\u2726 Raport wyprawy \u2726</span><span class="l"></span></div>'
+        '<h1>' + e(name) + '<span class="sm">Kurier wyprawowy QBot \u00b7 Nr ' + e(rid) + '</span></h1>'
+        '<div class="meta"><span><b>' + km_str + ' km</b></span><span><b>' + str(ndays) + ' dni</b></span>'
+        '<span>Wyprawa: <b>' + e(trip_str) + '</b></span></div>'
+        '<div class="dl" style="margin-top:12px"><span class="l"></span><span class="d">\u25c6</span><span class="l"></span></div>'
+        '<div class="corn"><span>Gravel / touring</span></div>'
+        '</div>'
+    )
+    return css, html
+
+
 def _wyprawa_prewarm_pois(route_id, cuts):
     # Wstepne pobranie opisow+zdjec WSZYSTKICH atrakcji na serwer (cache) z OGRANICZONA
     # liczba watkow, zeby nie wywolac 429 z Wikipedii/Google. Po tym render = same cache-hity.
@@ -5244,6 +5429,32 @@ def _wyprawa_prewarm_pois(route_id, cuts):
             list(ex.map(_one, list(pois.items())))
 
 
+_WYPRAWA_PHOTO_DOWNSCALE_JS = """
+async () => {
+  var imgs = Array.prototype.slice.call(document.querySelectorAll('img.attr-photo'));
+  var CAP = 480, Q = 0.72, done = 0;
+  for (var k = 0; k < imgs.length; k++) {
+    var im = imgs[k];
+    try {
+      if (!im.src || im.src.indexOf('data:') === 0) continue;
+      if (!im.complete || !im.naturalWidth) {
+        await new Promise(function(res){ im.onload = res; im.onerror = res; setTimeout(res, 3000); });
+      }
+      var nw = im.naturalWidth, nh = im.naturalHeight;
+      if (!nw || !nh) continue;
+      var scale = nw > CAP ? CAP / nw : 1;
+      var cw = Math.max(1, Math.round(nw * scale)), ch = Math.max(1, Math.round(nh * scale));
+      var cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+      cv.getContext('2d').drawImage(im, 0, 0, cw, ch);
+      var d = cv.toDataURL('image/jpeg', Q);
+      if (d && d.indexOf('data:image/jpeg') === 0) { im.src = d; done++; }
+    } catch (e) { /* cross-origin/tainted -> zostaw oryginal */ }
+  }
+  return done;
+}
+"""
+
+
 def _wyprawa_pdf_bytes(route_id, cuts, date, name):
     # 1:1 widok Planera wyprawy: steruje prawdziwa strona /planer-wyprawy.html w trybie druku,
     # zrzuca widok ALL + panel kazdego dnia i sklada w jeden PDF (Pillow).
@@ -5262,6 +5473,10 @@ def _wyprawa_pdf_bytes(route_id, cuts, date, name):
            % (PORT, quote(route_id), quote(cuts or ""), ndays))
     try:
         _wyprawa_prewarm_pois(route_id, cuts)  # napelnij cache atrakcji zanim renderujemy
+    except Exception:
+        pass
+    try:
+        api_planer_tlo(route_id)  # napelnij cache Tla historycznego/geograficznego (LLM) zanim renderujemy
     except Exception:
         pass
     parts = []
@@ -5301,6 +5516,24 @@ def _wyprawa_pdf_bytes(route_id, cuts, date, name):
                     pass
                 page.wait_for_timeout(1500)
 
+            import base64 as _b64m
+
+            def _bake_map():
+                # zrzuca #map (z zaladowanymi kaflami + kolorowe etapy) do obrazka data-URI
+                # i podmienia mape na ten obrazek -> po assemble kafle NIE przeladowuja sie z OSM.
+                try:
+                    mp = page.locator("#map")
+                    if mp.count() > 0:
+                        shot = mp.screenshot(type="jpeg", quality=80)
+                        durl = "data:image/jpeg;base64," + _b64m.b64encode(shot).decode()
+                        page.evaluate(
+                            "(d) => { var m=document.getElementById('map'); if(!m) return;"
+                            "m.innerHTML=''; var img=new Image(); img.src=d;"
+                            "img.style.cssText='width:100%;height:auto;display:block;border-radius:12px';"
+                            "m.appendChild(img); m.style.height='auto'; }", durl)
+                except Exception:
+                    pass
+
             # widok ALL (opis rozwiniety) -> snapshot HTML
             page.evaluate("window.__planerPrint.view(null)")
             page.wait_for_timeout(1600)
@@ -5308,7 +5541,18 @@ def _wyprawa_pdf_bytes(route_id, cuts, date, name):
                 page.evaluate("window.__planerPrint.expandAll()")
             except Exception:
                 pass
+            # doczekaj az doladuja sie sekcje Tlo historyczne / geograficzno-przyrodnicze (LLM)
+            try:
+                page.wait_for_function(
+                    "(function(){var h=document.getElementById('tlo-historia'),"
+                    "g=document.getElementById('tlo-geografia');"
+                    "if(!h||!g) return true;"
+                    "return (h.textContent||'').indexOf('adowanie')<0 "
+                    "&& (g.textContent||'').indexOf('adowanie')<0;})()", timeout=55000)
+            except Exception:
+                pass
             _wait_imgs()
+            _bake_map()
             parts.append(page.evaluate("window.__planerPrint.snap()"))
 
             # kazdy dzien: rozwiniete podjazdy (profile) + atrakcje (zdjecia+opisy) -> snapshot
@@ -5337,20 +5581,34 @@ def _wyprawa_pdf_bytes(route_id, cuts, date, name):
                 except Exception:
                     pass
                 _wait_imgs()
+                _bake_map()
                 parts.append(page.evaluate("window.__planerPrint.snap()"))
 
             # zloz jeden dokument i drukuj WEKTOROWO (klikalne linki, zaznaczalny tekst)
             page.evaluate("(p) => window.__planerPrint.assemble(p)", parts)
-            # BANNER diagnostyczny: znacznik czasu generowania na serwerze (na samej gorze PDF)
-            import datetime as _dtb
-            _stamp = _dtb.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # MASTHEAD (wariant B) na gorze PDF: data wydania=teraz, data wyprawy=kalendarz QBot
+            _mast_css, _mast_html = _wyprawa_masthead(route_id, cuts)
             page.evaluate(
-                "(t) => { var d = document.createElement('div');"
-                "d.style.cssText = 'background:#3f7a4d;color:#fff;padding:8px 14px;"
-                "font:600 14px sans-serif;text-align:center;letter-spacing:.02em';"
-                "d.textContent = 'Raport wygenerowany na serwerze: ' + t + '  \u00b7  generator v8';"
-                "var w = document.querySelector('.wrap') || document.body;"
-                "w.insertBefore(d, w.firstChild); }", _stamp)
+                "(p) => { var st = document.createElement('style'); st.textContent = p.css;"
+                " document.head.appendChild(st);"
+                " var h = document.createElement('div'); h.innerHTML = p.html;"
+                " var w = document.querySelector('.wrap') || document.body;"
+                " if (h.firstElementChild) w.insertBefore(h.firstElementChild, w.firstChild); }",
+                {"css": _mast_css, "html": _mast_html})
+            import datetime as _dtf
+            _gen_txt = _dtf.datetime.now().strftime("%d.%m.%Y, %H:%M")
+            page.evaluate(
+                "(t) => { var w = document.querySelector('.wrap') || document.body;"
+                " var f = document.createElement('div');"
+                " f.style.cssText = 'margin-top:26px;padding-top:12px;border-top:1px solid #d8ceb6;"
+                "text-align:center;font-size:11px;letter-spacing:.2em;text-transform:uppercase;"
+                "color:#8c8168;font-family:Georgia,serif';"
+                " f.textContent = 'QBot · Kurier wyprawowy · Wydano: ' + t;"
+                " w.appendChild(f); }", _gen_txt)
+            try:
+                page.evaluate("async () => { if (document.fonts) await document.fonts.ready; }")
+            except Exception:
+                pass
             page.wait_for_timeout(1200)
             try:
                 page.wait_for_function(
@@ -5359,6 +5617,12 @@ def _wyprawa_pdf_bytes(route_id, cuts, date, name):
             except Exception:
                 pass
             page.wait_for_timeout(800)
+            # DOWNSCALE zdjec atrakcji: osadzamy ~480px JPEG q72 (pokazywane ~240px) -> lzejszy PDF
+            try:
+                page.evaluate(_WYPRAWA_PHOTO_DOWNSCALE_JS)
+            except Exception:
+                pass
+            page.wait_for_timeout(700)
             # PDF CIAGLY: jedna strona o wysokosci calej tresci (bez ciecia na A4)
             dims = page.evaluate("() => ({w: document.body.scrollWidth, h: document.body.scrollHeight})")
             _w = int((dims or {}).get("w") or 1000)
@@ -5388,19 +5652,104 @@ def _wyprawa_cleanup_old(max_age_s=3600):
         pass
 
 
-def _wyprawa_worker(path, route_id, cuts, date, name):
+def _wyprawa_worker(path, route_id, cuts, date, name, source_hash=None):
     try:
         b = _wyprawa_pdf_bytes(route_id, cuts, date, name)
         tmp = path + ".part"
         with open(tmp, "wb") as fh:
             fh.write(b)
         _os_wpr.replace(tmp, path)
+        try:
+            _wyprawa_store_put(route_id, cuts, _wyprawa_source_hash(route_id, cuts, date), b)
+        except Exception:
+            pass
     except Exception as e:
         try:
             with open(path + ".err", "w", encoding="utf-8") as fh:
                 fh.write(str(e)[:400])
         except Exception:
             pass
+
+
+def _wyprawa_source_hash(route_id, cuts, date):
+    """Odcisk pragmatyczny danych wejsciowych raportu wyprawy. Zmienia sie, gdy
+    zmieni sie cokolwiek widocznego w PDF: wersja/geometria trasy, podzial (cuts),
+    data z kalendarza, tlo/opis dni (LLM cache) albo atrakcje. Ten sam odcisk =>
+    podajemy zapisany PDF z bazy zamiast liczyc od nowa (~3 min)."""
+    import hashlib as _hl
+    parts = ["v2", str(route_id or ""), str(cuts or ""), str(date or "")]
+    conn = _db_conn()
+    try:
+        base = conn.execute(
+            "SELECT route_base_id, route_version_key, geometry_hash, route_modified_at::text AS mod "
+            "FROM qbot_v2.route_base WHERE route_id=%s "
+            "ORDER BY (status='active') DESC, route_modified_at DESC NULLS LAST LIMIT 1",
+            (route_id,)).fetchone()
+        rbid = None
+        if base:
+            rbid = base.get("route_base_id")
+            parts += [str(base.get("route_version_key") or ""), str(base.get("geometry_hash") or ""), str(base.get("mod") or "")]
+        rid_num = route_id.split("-")[-1] if route_id else ""
+        cal = None
+        if rid_num:
+            cal = conn.execute(
+                "SELECT day::text AS d0, COALESCE(end_day, day)::text AS d1 "
+                "FROM qbot_v2.calendar_entry WHERE title LIKE %s ORDER BY day DESC LIMIT 1",
+                ("%" + rid_num + "%",)).fetchone()
+        if not (cal and cal.get("d0")):
+            cal = conn.execute(
+                "SELECT MIN(day)::text AS d0, MAX(day)::text AS d1 FROM qbot_v2.calendar_day_route "
+                "WHERE route_id=%s", (route_id,)).fetchone()
+        if cal:
+            parts += [str(cal.get("d0") or ""), str(cal.get("d1") or "")]
+        for tab in ("planer_route_tlo", "planer_route_opis"):
+            r = conn.execute(
+                "SELECT generated_at::text AS g, geometry_hash AS gh FROM qbot_v2." + tab +
+                " WHERE route_id=%s ORDER BY generated_at DESC NULLS LAST LIMIT 1", (route_id,)).fetchone()
+            parts += [str((r or {}).get("g") or ""), str((r or {}).get("gh") or "")]
+        r = conn.execute(
+            "SELECT MAX(generated_at)::text AS g FROM qbot_v2.planer_route_opis_dni WHERE route_id=%s",
+            (route_id,)).fetchone()
+        parts.append(str((r or {}).get("g") or ""))
+        if rbid is not None:
+            r = conn.execute(
+                "SELECT result_hash FROM qbot_v2.route_attraction_run WHERE route_base_id=%s "
+                "ORDER BY finished_at DESC NULLS LAST, created_at DESC NULLS LAST LIMIT 1", (rbid,)).fetchone()
+            parts.append(str((r or {}).get("result_hash") or ""))
+    finally:
+        conn.close()
+    return _hl.sha256("|".join(parts).encode("utf-8")).hexdigest()[:32]
+
+
+def _wyprawa_store_get(route_id, cuts):
+    """(pdf_bytes, source_hash) z bazy albo None."""
+    conn = _db_conn()
+    try:
+        r = conn.execute(
+            "SELECT pdf, source_hash FROM qbot_v2.wyprawa_report WHERE route_id=%s AND cuts=%s",
+            (route_id, cuts or "")).fetchone()
+    finally:
+        conn.close()
+    if not r:
+        return None
+    pdf = r["pdf"]
+    if isinstance(pdf, memoryview):
+        pdf = pdf.tobytes()
+    return bytes(pdf), r["source_hash"]
+
+
+def _wyprawa_store_put(route_id, cuts, source_hash, pdf_bytes):
+    conn = _db_conn()
+    try:
+        conn.execute(
+            "INSERT INTO qbot_v2.wyprawa_report(route_id, cuts, source_hash, pdf, size_bytes, built_at) "
+            "VALUES(%s,%s,%s,%s,%s, now()) "
+            "ON CONFLICT (route_id, cuts) DO UPDATE SET source_hash=EXCLUDED.source_hash, "
+            "pdf=EXCLUDED.pdf, size_bytes=EXCLUDED.size_bytes, built_at=now()",
+            (route_id, cuts or "", source_hash, pdf_bytes, len(pdf_bytes)))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 @app.get("/api/wyprawa/pdf-start")
@@ -5414,7 +5763,18 @@ def api_wyprawa_pdf_start(route_id: str = Query(...), cuts: str = Query(""),
     key = hashlib.md5(("%s|%s" % (route_id, cuts)).encode()).hexdigest()[:8]
     fn = "wyprawa-%s-%d.pdf" % (key, int(time.time()))
     path = _os_wpr.path.join(_WYPRAWA_DIR, fn)
-    th = threading.Thread(target=_wyprawa_worker, args=(path, route_id, cuts, date, name), daemon=True)
+    # cache: jesli w bazie jest PDF o tym samym odcisku danych -> podaj od reki (bez ~3 min renderu)
+    sh = None
+    try:
+        sh = _wyprawa_source_hash(route_id, cuts, date)
+        stored = _wyprawa_store_get(route_id, cuts)
+        if stored and stored[1] == sh:
+            with open(path, "wb") as fh:
+                fh.write(stored[0])
+            return {"url": "/reports/" + fn, "err_url": "/reports/" + fn + ".err", "cached": True}
+    except Exception:
+        pass
+    th = threading.Thread(target=_wyprawa_worker, args=(path, route_id, cuts, date, name, sh), daemon=True)
     th.start()
     return {"url": "/reports/" + fn, "err_url": "/reports/" + fn + ".err", "cached": False}
 
@@ -5424,7 +5784,21 @@ def api_wyprawa_pdf(route_id: str = Query(...), cuts: str = Query(""),
                     date: str = Query(None), name: str = Query(None)):
     # Synchroniczny wariant (test/localhost); UI uzywa pdf-start.
     try:
-        pdf_bytes = _wyprawa_pdf_bytes(route_id, cuts, date, name)
+        pdf_bytes = None
+        sh = None
+        try:
+            sh = _wyprawa_source_hash(route_id, cuts, date)
+            stored = _wyprawa_store_get(route_id, cuts)
+            if stored and stored[1] == sh:
+                pdf_bytes = stored[0]
+        except Exception:
+            pass
+        if pdf_bytes is None:
+            pdf_bytes = _wyprawa_pdf_bytes(route_id, cuts, date, name)
+            try:
+                _wyprawa_store_put(route_id, cuts, _wyprawa_source_hash(route_id, cuts, date), pdf_bytes)
+            except Exception:
+                pass
     except HTTPException:
         raise
     except Exception as _e:
@@ -5432,6 +5806,385 @@ def api_wyprawa_pdf(route_id: str = Query(...), cuts: str = Query(""),
     fn = "raport-wyprawy-%s.pdf" % str(route_id).replace("/", "_")
     return Response(content=pdf_bytes, media_type="application/pdf",
                     headers={"Content-Disposition": 'inline; filename="%s"' % fn})
+
+
+# ============ WYPRAWA: wysylka e-mailem + RSVP (Wezme udzial / Nie dam rady) ============
+_WYPRAWA_PUBLIC_BASE = os.getenv("PUBLIC_BASE_URL", "https://albert.cytr.us")
+
+
+def _wyprawa_day_bounds(cuts, total_km):
+    pts = []
+    for c in (cuts or "").split(","):
+        c = c.strip()
+        if not c:
+            continue
+        try:
+            v = float(c)
+        except Exception:
+            continue
+        if 0 < v < total_km:
+            pts.append(v)
+    pts = sorted(set(pts))
+    bnds = [0.0] + pts + [float(total_km)]
+    return [(i + 1, bnds[i], bnds[i + 1]) for i in range(len(bnds) - 1)]
+
+
+def _wyprawa_geo_cum(route_id):
+    geo = route_geometry(route_id)
+    coords = geo.get("coordinates") or []
+    cum = [0.0]
+    for i in range(1, len(coords)):
+        cum.append(cum[-1] + _haversine_m(coords[i - 1][0], coords[i - 1][1],
+                                          coords[i][0], coords[i][1]) / 1000.0)
+    return geo, coords, cum
+
+
+def _wyprawa_day_gpx_list(route_id, cuts, name):
+    geo, coords, cum = _wyprawa_geo_cum(route_id)
+    if not coords:
+        return []
+    total = cum[-1]
+    base_name = name or geo.get("name") or ("Trasa %s" % route_id)
+    import re as _re3
+    out = []
+    for (d, lo, hi) in _wyprawa_day_bounds(cuts, total):
+        day_coords = [coords[i] for i in range(len(coords)) if lo - 0.05 <= cum[i] <= hi + 0.05]
+        if len(day_coords) < 2:
+            continue
+        day_name = "%s - Dzien %d (%d-%d km)" % (base_name, d, round(lo), round(hi))
+        try:
+            gpx, _wn = _build_karoo_gpx(day_name, day_coords, None, include_pois=False)
+        except Exception:
+            continue
+        safe = _re3.sub(r"[^A-Za-z0-9_.-]+", "_", day_name).strip("_") or ("dzien_%d" % d)
+        out.append((d, day_name, safe, gpx))
+    return out
+
+
+def _wyprawa_place_at_km(conn, towns, km):
+    c = [t for t in towns if t.get("km") is not None and t.get("lat") is not None]
+    if not c:
+        return None
+    t = min(c, key=lambda x: abs(float(x["km"]) - float(km)))
+    lat = round(float(t["lat"]), 4)
+    lon = round(float(t["lon"]), 4)
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS qbot_v2.route_point_geo_cache ("
+                     "lat double precision, lon double precision, name text, PRIMARY KEY (lat, lon))")
+        r = conn.execute("SELECT name FROM qbot_v2.route_point_geo_cache WHERE lat=%s AND lon=%s",
+                         (lat, lon)).fetchone()
+        if r:
+            return r["name"] or t.get("name")
+    except Exception:
+        pass
+    return t.get("name")
+
+
+def _wyprawa_facts(route_id, cuts):
+    import re as _re4
+    geo, coords, cum = _wyprawa_geo_cum(route_id)
+    total = cum[-1] if cum else 0.0
+    name = geo.get("name") or "Wyprawa"
+    rbid = None
+    trip = None
+    conn = _db_conn()
+    try:
+        base = conn.execute(
+            "SELECT rb.route_base_id, rb.distance_m, a.metadata_json->>'route_name' AS nm "
+            "FROM qbot_v2.route_base rb LEFT JOIN qbot_v2.route_artifacts a ON a.id=rb.route_artifact_id "
+            "WHERE rb.route_id=%s ORDER BY (rb.status='active') DESC, rb.route_modified_at DESC NULLS LAST LIMIT 1",
+            (route_id,)).fetchone()
+        if base:
+            rbid = base.get("route_base_id")
+            if base.get("distance_m"):
+                total = base["distance_m"] / 1000.0
+            nm = base.get("nm") or ""
+            nm = _re4.sub(r"^\s*\[[^\]]*\]\s*", "", nm).split("\u00b7")[0].strip()
+            if nm:
+                name = nm
+        rid_num = route_id.split("-")[-1] if route_id else ""
+        cal = None
+        if rid_num:
+            cal = conn.execute("SELECT day::text AS d0, COALESCE(end_day, day)::text AS d1 "
+                               "FROM qbot_v2.calendar_entry WHERE title LIKE %s ORDER BY day DESC LIMIT 1",
+                               ("%" + rid_num + "%",)).fetchone()
+        if not (cal and cal.get("d0")):
+            cal = conn.execute("SELECT MIN(day)::text AS d0, MAX(day)::text AS d1 "
+                               "FROM qbot_v2.calendar_day_route WHERE route_id=%s", (route_id,)).fetchone()
+        if cal and cal.get("d0"):
+            trip = (cal["d0"], cal.get("d1") or cal["d0"])
+        towns = []
+        if rbid is not None:
+            try:
+                towns = list(_load_poi_groups(conn, rbid).get("town", []))
+            except Exception:
+                towns = []
+        days = []
+        for (d, lo, hi) in _wyprawa_day_bounds(cuts, total):
+            days.append({"d": d, "lo": lo, "hi": hi,
+                         "from": _wyprawa_place_at_km(conn, towns, lo),
+                         "to": _wyprawa_place_at_km(conn, towns, hi)})
+        conn.commit()
+    finally:
+        conn.close()
+
+    def _fmt(iso):
+        y, m, dd = iso.split("-")
+        return "%d %s %s" % (int(dd), _PL_MONTHS[int(m) - 1], y)
+    if trip:
+        d0, d1 = trip
+        if d0 == d1:
+            trip_str = _fmt(d0)
+        else:
+            a0 = d0.split("-")
+            a1 = d1.split("-")
+            if a0[0] == a1[0] and a0[1] == a1[1]:
+                trip_str = "%d\u2013%s" % (int(a0[2]), _fmt(d1))
+            else:
+                trip_str = "%s \u2013 %s" % (_fmt(d0), _fmt(d1))
+    else:
+        trip_str = "termin nieustalony"
+    return {"name": name, "km": total, "ndays": len(days) or 1, "trip_str": trip_str, "days": days}
+
+
+def _wyprawa_tg_notify(text):
+    try:
+        chat = os.getenv("TELEGRAM_CHAT_ID", "")
+        if not chat:
+            return
+        import qbot_telegram_client as _tg
+        _tg.send_message(chat, text)
+    except Exception as _e:
+        print("wyprawa tg notify:", _e)
+
+
+def _wyprawa_rsvp_email_html(facts, token):
+    import html as _h
+    e = _h.escape
+    link = _WYPRAWA_PUBLIC_BASE.rstrip("/") + "/wyprawa-rsvp?t=" + token
+    km_str = ("%.1f" % facts["km"]).replace(".", ",")
+    rows = ""
+    for d in facts["days"]:
+        seg = "km " + str(round(d["lo"])) + "\u2013" + str(round(d["hi"]))
+        dist = " &middot; " + str(round(d["hi"] - d["lo"])) + " km"
+        rt = ""
+        if d.get("from") or d.get("to"):
+            rt = " &middot; " + e(d.get("from") or "?") + " \u2192 " + e(d.get("to") or "?")
+        rows += ('<tr><td style="padding:6px 0;border-bottom:1px solid #e6dcc4;color:#201c14;font-size:15px">'
+                 '<b>Dzie\u0144 ' + str(d["d"]) + '</b>' + rt + '<span style="color:#8c8168">' + " &middot; " + seg + dist + '</span></td></tr>')
+    btn = ("font-family:Georgia,serif;font-size:16px;font-weight:bold;text-decoration:none;"
+           "display:inline-block;padding:13px 26px;border-radius:9px;letter-spacing:.04em")
+    yes = '<a href="' + link + '&v=yes" style="' + btn + ';background:#2f5d3a;color:#f5efe0">\u2714 WEZM\u0118 UDZIA\u0141!</a>'
+    no = '<a href="' + link + '&v=no" style="' + btn + ';background:#efe7d4;color:#7c2b22;border:1px solid #cdbb99">Nie dam rady</a>'
+    html = (
+        '<div style="max-width:600px;margin:0 auto;background:#f7f1e3;padding:26px 28px;'
+        'font-family:Georgia,serif;color:#201c14;border:1px solid #d8ceb6">'
+        '<div style="text-align:center;color:#7c2b22;letter-spacing:.28em;font-size:12px;'
+        'text-transform:uppercase">\u2726 Zaproszenie na wypraw\u0119 \u2726</div>'
+        '<h1 style="text-align:center;font-size:32px;margin:10px 0 4px;text-transform:uppercase;'
+        'letter-spacing:.01em">' + e(facts["name"]) + '</h1>'
+        '<div style="text-align:center;color:#5a5140;letter-spacing:.14em;text-transform:uppercase;'
+        'font-size:14px">' + km_str + ' km &middot; ' + str(facts["ndays"]) + ' dni &middot; ' + e(facts["trip_str"]) + '</div>'
+        '<hr style="border:none;border-top:2px solid #6b6446;margin:16px 0">'
+        '<p style="font-size:15px;line-height:1.5">Plan wyprawy w za\u0142\u0105czonym raporcie PDF. Skr\u00f3t etap\u00f3w:</p>'
+        '<table style="width:100%;border-collapse:collapse;margin:6px 0 14px">' + rows + '</table>'
+        '<div style="background:#efe7d4;border:1px solid #d8ceb6;border-radius:8px;padding:12px 15px;margin:14px 0">'
+        '<div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#7c2b22;margin-bottom:7px">W za\u0142\u0105czeniu</div>'
+        '<div style="font-size:15px;line-height:1.65;color:#201c14">'
+        '\u2022 <b>Raport wyprawy (PDF)</b> \u2014 ca\u0142y plan: mapy, profile podjazd\u00f3w, atrakcje i zaopatrzenie.<br>'
+        '\u2022 <b>' + str(len(facts["days"])) + ' \u00d7 GPX</b> \u2014 trasa ka\u017cdego dnia osobno, gotowa do wgrania na Karoo lub inn\u0105 nawigacj\u0119.'
+        '</div></div>'
+        '<p style="font-size:14px;line-height:1.55;color:#5a5140;background:#f2ead6;border-left:3px solid #7c2b22;padding:9px 13px;margin:12px 0">'
+        '<b>Wskaz\u00f3wka:</b> raport najlepiej otworzy\u0107 w <b>przegl\u0105darce</b> lub czytniku PDF \u2014 nie w ma\u0142ym podgl\u0105dzie poczty. '
+        'To jedna d\u0142uga strona z mapami i opisami; w przegl\u0105darce wida\u0107 wszystko wyra\u017anie.</p>'
+        '<div style="text-align:center;margin:22px 0 10px">' + yes + '&nbsp;&nbsp;&nbsp;' + no + '</div>'
+        '<p style="text-align:center;color:#8c8168;font-size:12px;margin-top:14px">'
+        'Klikni\u0119cie otwiera stron\u0119 potwierdzenia \u2014 Twoja odpowied\u017a wr\u00f3ci do organizatora.</p>'
+        '<hr style="border:none;border-top:1px solid #d8ceb6;margin:16px 0 8px">'
+        '<div style="text-align:center;color:#8c8168;font-size:11px;letter-spacing:.2em;text-transform:uppercase">'
+        'QBot &middot; Kurier wyprawowy</div></div>')
+    return html
+
+
+def _wyprawa_rsvp_shell(inner):
+    return ('<!doctype html><html lang="pl"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            '<title>Wyprawa \u2014 potwierdzenie</title></head>'
+            '<body style="margin:0;background:#efe7d4;font-family:Georgia,serif;color:#201c14">'
+            '<div style="max-width:520px;margin:40px auto;background:#f7f1e3;border:1px solid #d8ceb6;'
+            'border-radius:12px;padding:30px 28px;text-align:center">' + inner +
+            '<div style="margin-top:22px;color:#8c8168;font-size:11px;letter-spacing:.2em;'
+            'text-transform:uppercase">QBot &middot; Kurier wyprawowy</div></div></body></html>')
+
+
+@app.get("/wyprawa-rsvp", response_class=HTMLResponse)
+def wyprawa_rsvp_page(t: str = Query(""), v: str = Query("")):
+    import html as _h
+    e = _h.escape
+    conn = _db_conn()
+    try:
+        row = conn.execute("SELECT email, wyprawa_name, status FROM qbot_v2.wyprawa_rsvp WHERE token=%s",
+                           (t,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return HTMLResponse(_wyprawa_rsvp_shell(
+            '<h2 style="color:#7c2b22">Nieprawid\u0142owy link</h2>'
+            '<p>Ten link do potwierdzenia jest nieznany lub wygas\u0142.</p>'), status_code=404)
+    wn = e(row["wyprawa_name"] or "wyprawa")
+    choice = "no" if v == "no" else "yes"
+    if choice == "yes":
+        q_txt = "Potwierdzasz, \u017ce <b>we\u017amiesz udzia\u0142</b> w wyprawie \u201e" + wn + "\u201d?"
+        primary = ('<button type="submit" name="choice" value="yes" '
+                   'style="font-family:Georgia,serif;font-size:17px;font-weight:bold;cursor:pointer;'
+                   'background:#2f5d3a;color:#f5efe0;border:none;padding:14px 30px;border-radius:9px">'
+                   '\u2714 Tak, wezm\u0119 udzia\u0142</button>')
+        switch = '<a href="?t=' + e(t) + '&v=no" style="color:#7c2b22;font-size:13px">\u2026 jednak nie dam rady</a>'
+    else:
+        q_txt = "Potwierdzasz, \u017ce <b>nie we\u017amiesz udzia\u0142u</b> w wyprawie \u201e" + wn + "\u201d?"
+        primary = ('<button type="submit" name="choice" value="no" '
+                   'style="font-family:Georgia,serif;font-size:17px;font-weight:bold;cursor:pointer;'
+                   'background:#7c2b22;color:#f5efe0;border:none;padding:14px 30px;border-radius:9px">'
+                   'Potwierdzam: nie dam rady</button>')
+        switch = '<a href="?t=' + e(t) + '&v=yes" style="color:#2f5d3a;font-size:13px">\u2026 a jednak wezm\u0119 udzia\u0142</a>'
+    already = ""
+    if row["status"] in ("yes", "no"):
+        was = "wezm\u0119 udzia\u0142" if row["status"] == "yes" else "nie dam rady"
+        already = ('<p style="color:#8c8168;font-size:13px">Wcze\u015bniej zaznaczono: <b>' + was +
+                   '</b>. Mo\u017cesz zmieni\u0107 odpowied\u017a poni\u017cej.</p>')
+    inner = ('<h2 style="margin:0 0 8px">\u201e' + wn + '\u201d</h2>' + already +
+             '<p style="font-size:16px;line-height:1.5">' + q_txt + '</p>'
+             '<form method="post" action="/api/wyprawa/rsvp" style="margin:18px 0 6px">'
+             '<input type="hidden" name="token" value="' + e(t) + '">' + primary + '</form>' + switch)
+    return HTMLResponse(_wyprawa_rsvp_shell(inner))
+
+
+@app.post("/api/wyprawa/rsvp", response_class=HTMLResponse)
+async def api_wyprawa_rsvp(request: Request):
+    import html as _h
+    e = _h.escape
+    form = await request.form()
+    t = (form.get("token") or "").strip()
+    choice = (form.get("choice") or "").strip()
+    if choice not in ("yes", "no"):
+        return HTMLResponse(_wyprawa_rsvp_shell('<h2 style="color:#7c2b22">B\u0142\u0105d</h2>'
+                            '<p>Brak wyboru.</p>'), status_code=400)
+    conn = _db_conn()
+    try:
+        row = conn.execute("SELECT email, wyprawa_name FROM qbot_v2.wyprawa_rsvp WHERE token=%s",
+                           (t,)).fetchone()
+        if not row:
+            return HTMLResponse(_wyprawa_rsvp_shell('<h2 style="color:#7c2b22">Nieprawid\u0142owy link</h2>'),
+                                status_code=404)
+        conn.execute("UPDATE qbot_v2.wyprawa_rsvp SET status=%s, responded_at=now() WHERE token=%s",
+                     (choice, t))
+        conn.commit()
+    finally:
+        conn.close()
+    wn = row["wyprawa_name"] or "wyprawa"
+    email = row["email"] or "?"
+    if choice == "yes":
+        _wyprawa_tg_notify("\u2705 " + email + " \u2014 WEZM\u0118 UDZIA\u0141 \u00b7 " + wn)
+        inner = ('<h2 style="color:#2f5d3a">Dzi\u0119ki! Zapisali\u015bmy Tw\u00f3j udzia\u0142.</h2>'
+                 '<p style="font-size:16px">Do zobaczenia na trasie \u201e' + e(wn) + '\u201d.</p>')
+    else:
+        _wyprawa_tg_notify("\u274c " + email + " \u2014 nie dam rady \u00b7 " + wn)
+        inner = ('<h2>Dzi\u0119ki za odpowied\u017a.</h2>'
+                 '<p style="font-size:16px">Szkoda, \u017ce nie tym razem \u2014 mo\u017ce nast\u0119pnym!</p>')
+    return HTMLResponse(_wyprawa_rsvp_shell(inner))
+
+
+@app.post("/api/wyprawa/send-email")
+def api_wyprawa_send_email(route_id: str = Query(...), cuts: str = Query(""),
+                           to: str = Query(...), name: str = Query(None), date: str = Query(None)):
+    to = (to or "").strip()
+    if not _EMAIL_RE.match(to):
+        raise HTTPException(status_code=400, detail="Nieprawidlowy adres e-mail")
+    # PDF: z bazy (ten sam odcisk) albo zbuduj + zapisz
+    pdf_bytes = None
+    try:
+        _sh = _wyprawa_source_hash(route_id, cuts, date)
+        _stored = _wyprawa_store_get(route_id, cuts)
+        if _stored and _stored[1] == _sh:
+            pdf_bytes = _stored[0]
+    except Exception:
+        pass
+    if pdf_bytes is None:
+        pdf_bytes = _wyprawa_pdf_bytes(route_id, cuts, date, name)
+        try:
+            _wyprawa_store_put(route_id, cuts, _wyprawa_source_hash(route_id, cuts, date), pdf_bytes)
+        except Exception:
+            pass
+    facts = _wyprawa_facts(route_id, cuts)
+    gpxs = _wyprawa_day_gpx_list(route_id, cuts, name or facts["name"])
+    import secrets as _sec, re as _re5
+    token = _sec.token_urlsafe(24)
+    conn = _db_conn()
+    try:
+        conn.execute("INSERT INTO qbot_v2.wyprawa_rsvp (token, route_id, cuts, email, wyprawa_name, status, created_at) "
+                     "VALUES (%s,%s,%s,%s,%s,'pending', now())",
+                     (token, route_id, cuts or "", to, facts["name"]))
+        conn.commit()
+    finally:
+        conn.close()
+    html_body = _wyprawa_rsvp_email_html(facts, token)
+    msg = MIMEMultipart("mixed")
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(html_body, "html", "utf-8"))
+    msg.attach(alt)
+    safe_pdf = _re5.sub(r"[^A-Za-z0-9_.-]+", "_", facts["name"]).strip("_") or "wyprawa"
+    pdf_att = MIMEApplication(pdf_bytes, _subtype="pdf")
+    pdf_att.add_header("Content-Disposition", "attachment", filename="%s.pdf" % safe_pdf)
+    msg.attach(pdf_att)
+    for (d, day_name, safe, gpx) in gpxs:
+        ga = MIMEApplication(gpx.encode("utf-8"), _subtype="gpx+xml")
+        ga.add_header("Content-Disposition", "attachment", filename="%s.gpx" % safe)
+        msg.attach(ga)
+    msg["Subject"] = "Wyprawa: %s - %s" % (facts["name"], facts["trip_str"])
+    msg["From"] = _cfg.GMAIL_USER
+    msg["To"] = to
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+            s.login(_cfg.GMAIL_USER, _cfg.GMAIL_APP_PASSWORD)
+            s.send_message(msg)
+    except Exception as ex:
+        raise HTTPException(status_code=502, detail="Nie udalo sie wyslac maila: %s" % ex)
+    try:
+        _rc = _db_conn()
+        try:
+            _rc.execute("INSERT INTO qbot_v2.report_mail_recipients (email, last_used, use_count) "
+                        "VALUES (%s, now(), 1) ON CONFLICT (email) DO UPDATE "
+                        "SET last_used=now(), use_count=qbot_v2.report_mail_recipients.use_count+1", (to,))
+            _rc.commit()
+        finally:
+            _rc.close()
+    except Exception:
+        pass
+    return {"status": "ok", "to": to, "gpx_days": len(gpxs), "pdf_mb": round(len(pdf_bytes) / 1048576.0, 2)}
+
+
+@app.get("/api/wyprawa/rsvp-list")
+def api_wyprawa_rsvp_list(route_id: str = Query(...)):
+    """Lista zaproszen dla danej trasy: po jednym wpisie na adres (najswiezszy), ze statusem."""
+    conn = _db_conn()
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT ON (email) email, status, "
+            "responded_at::text AS responded_at, created_at::text AS created_at "
+            "FROM qbot_v2.wyprawa_rsvp WHERE route_id=%s ORDER BY email, responded_at DESC NULLS LAST, created_at DESC",
+            (route_id,)).fetchall()
+    finally:
+        conn.close()
+    items = sorted(
+        [{"email": r["email"], "status": r["status"],
+          "responded_at": r["responded_at"], "created_at": r["created_at"]} for r in rows],
+        key=lambda x: x["created_at"] or "", reverse=True)
+    counts = {"yes": 0, "no": 0, "pending": 0}
+    for it in items:
+        counts[it["status"]] = counts.get(it["status"], 0) + 1
+    return {"items": items, "counts": counts}
+
+
 
 
 @app.get("/reports/{fn}")

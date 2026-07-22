@@ -477,9 +477,11 @@ def _prompt_tlo(region_line, towns):
         + "MIEJSCOWOSCI NA TRASIE (kolejno): " + tn + "\n\n"
         "Napisz dwa bloki tla dla TEGO terenu i zwroc DOKLADNIE taki JSON (bez markdown):\n"
         "{\n"
+        '  "historia_tytul": "krotki trafny tytul (3-7 slow) tla historycznego, oddaje charakter regionu, bez kropki",\n'
         '  "historia": ["od 8 do 14 punktow, chronologicznie, od poczatkow osadnictwa '
         'do 1945 r.; kazdy punkt to jedno zwiezle zdanie, na poczatku przyblizona '
         'data lub okres"],\n'
+        '  "geografia_tytul": "krotki trafny tytul (3-7 slow) tla geograficzno-przyrodniczego regionu, bez kropki",\n'
         '  "geografia_intro": "1 akapit (3-5 zdan): polozenie, ukształtowanie terenu, '
         'rzeki, klimat obszaru",\n'
         '  "geografia": ["3-6 punktow: przyroda, lasy, gleby, formy terenu, obszary '
@@ -530,6 +532,8 @@ def build_tlo(route_id, rebuild=False, model_label="qgpt"):
         data["geografia"] = [str(x).strip() for x in geo if str(x).strip()][:8]
         gi = data.get("geografia_intro")
         data["geografia_intro"] = str(gi).strip() if gi else ""
+        data["historia_tytul"] = str(data.get("historia_tytul") or "").strip()
+        data["geografia_tytul"] = str(data.get("geografia_tytul") or "").strip()
         conn.execute(
             "INSERT INTO qbot_v2.planer_route_tlo "
             "(route_id, route_base_id, geometry_hash, tlo_json, model) "
