@@ -455,9 +455,26 @@ def _haversine_m(lat1, lon1, lat2, lon2):
     return 2 * 6371000.0 * math.asin(math.sqrt(a))
 
 
+import time as _time_nocl
+NOCLEGI_CACHE = os.environ.get("QBOT_PLANER_NOCLEGI_CACHE", "/opt/qbot/artifacts/planer_noclegi_cache")
+NOCLEGI_CACHE_TTL_S = 60 * 24 * 3600  # 60 dni
+def _noclegi_cache_path(lat, lon, radius_m):
+    key = "nocl_%.3f_%.3f_%d" % (float(lat), float(lon), int(radius_m))
+    return os.path.join(NOCLEGI_CACHE, key.replace("-", "m") + ".json")
+
 @app.get("/api/noclegi")
-def api_noclegi(lat: float, lon: float, radius_m: int = 3000):
-    """Noclegi w promieniu — Google Places (to samo zrodlo co POI trasy)."""
+def api_noclegi(lat: float, lon: float, radius_m: int = 3000, fresh: int = 0):
+    """Noclegi w promieniu — Google Places. Cache dyskowy 60 dni (klucz lat/lon do 3 miejsc + promien); ?fresh=1 wymusza swieze."""
+    cpath = _noclegi_cache_path(lat, lon, radius_m)
+    if not fresh:
+        try:
+            if os.path.exists(cpath) and (_time_nocl.time() - os.path.getmtime(cpath)) < NOCLEGI_CACHE_TTL_S:
+                with open(cpath, "r", encoding="utf-8") as _fh:
+                    _c = json.load(_fh)
+                _c["cached"] = True
+                return _c
+        except Exception:
+            pass
     try:
         from qbot3.artifacts.route_analyzer import (
             _route_poi_v2_google_search_nearby as _g_nearby,
@@ -490,7 +507,14 @@ def api_noclegi(lat: float, lon: float, radius_m: int = 3000):
             "dist_m": round(_haversine_m(float(lat), float(lon), float(plat), float(plon))),
         })
     items.sort(key=lambda x: x["dist_m"])
-    return {"status": "OK", "count": len(items), "radius_m": radius_m, "items": items}
+    result = {"status": "OK", "count": len(items), "radius_m": radius_m, "items": items, "cached": False}
+    try:
+        os.makedirs(NOCLEGI_CACHE, exist_ok=True)
+        with open(cpath, "w", encoding="utf-8") as _fh:
+            json.dump(result, _fh, ensure_ascii=False)
+    except Exception:
+        pass
+    return result
 
 
 # ---- Planer: opis + zdjecie atrakcji z Google Places (New), cache na dysku ----
@@ -2915,18 +2939,27 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     _per = m.get("per_segment") or []
     weather_overall = _weather_agg(_per)
     stages = _weather_stages(_per, km_total)
-    _mq = _rc._modelq(conn)
     _fit = _rc._fitmodel(conn)
     mass = float(_fit["weight_kg"]) if (_fit and _fit.get("weight_kg")) else 100.0
     _ftp = _ltp = _wprime = _peakp = _tload = _rload = None
     _fsrc = None
     _snap = None
-    if _mq:
-        _ftp = _mq.get("ftp_power_w"); _fsrc = "FitModel (ModelQ)"; _snap = str(_mq.get("snapshot_at"))[:10]
-        _ltp = _mq.get("ltp_power_w"); _wprime = _mq.get("w_prime_kj"); _peakp = _mq.get("peak_power_w")
-        _tload = _mq.get("training_load"); _rload = _mq.get("recovery_load")
+    # ZRODLO FORMY: wylacznie ModelQ (fitmodel_daily). Xert NIE jest zrodlem karty
+    # (2026-07-23, decyzja uzytkownika: cala forma z ModelQ). Xert = tylko benchmark.
+    _mqd = None
+    try:
+        _mqd = conn.execute(
+            "SELECT day, ftp_est_w, w_per_kg, ltp_modelq_w, wprime_modelq_kj, "
+            "pp_modelq_w, ctl_xss, atl_raw FROM qbot_v2.fitmodel_daily "
+            "WHERE ftp_est_w IS NOT NULL ORDER BY day DESC LIMIT 1").fetchone()
+    except Exception:
+        _mqd = None
+    if _mqd:
+        _ftp = _mqd.get("ftp_est_w"); _fsrc = "ModelQ (fitmodel_daily)"; _snap = str(_mqd.get("day"))[:10]
+        _ltp = _mqd.get("ltp_modelq_w"); _wprime = _mqd.get("wprime_modelq_kj"); _peakp = _mqd.get("pp_modelq_w")
+        _tload = _mqd.get("ctl_xss"); _rload = _mqd.get("atl_raw")
     elif _fit:
-        _ftp = _fit.get("ftp_est_w"); _fsrc = "FitModel (fitmodel_daily)"
+        _ftp = _fit.get("ftp_est_w"); _fsrc = "ModelQ (fitmodel_daily)"
     _glik = None
     _glik_day = None
     try:
@@ -2937,7 +2970,7 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
             _glik = round(float(_gr["glycogen_pct"])); _glik_day = str(_gr["day"])
     except Exception:
         pass
-    _wkg = round(float(_ftp) / mass, 2) if _ftp else None
+    _wkg = round(float(_mqd["w_per_kg"]), 2) if (_mqd and _mqd.get("w_per_kg")) else (round(float(_ftp) / mass, 2) if _ftp else None)
     _climbs_for_xss = [{"km_from": c.get("a_km"), "km_to": c.get("b_km"),
                        "avg_gradient_pct": c.get("avg_pct")} for c in climbs_list]
     _ftp_mq, _wprime_mq_kj = _rc._modelq_form_for_xss(conn)
@@ -2976,7 +3009,7 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     forma = {"source": _fsrc, "snapshot": _snap, "ftp": _ftp, "w_kg": _wkg, "mass": round(mass),
              "ltp": _ltp, "w_prime_kj": _wprime, "peak_w": _peakp, "training_load": _tload,
              "recovery_load": _rload, "glikogen_pct": _glik, "glikogen_day": _glik_day,
-             "vs_route": {"xss": _xss, "cho_g": _fuel.get("carbs_total_g"), "cho_g_h": _fuel.get("carbs_g_h"),
+             "vs_route": {"xss": (round(_xss) if _xss is not None else None), "cho_g": _fuel.get("carbs_total_g"), "cho_g_h": _fuel.get("carbs_g_h"),
                           "fluid_l": _fuel.get("fluid_total_l"), "wprime_txt": _wprime_txt,
                           "climb_w": _climb_w, "steep_pct": _steep_pct}}
 
