@@ -4,6 +4,19 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-07-23 -- DECYZJA: bezpiecznik kosztow Google Places (200/dobe, 1000/miesiac) + guard atrakcji
+
+**Status:** zatwierdzone i wdrozone (commit aef6cce, push origin/main). Weryfikacja na zywo.
+
+**Problem.** Skok kosztow Google Places w lipcu (~164 zl netto, szczyt 18.07). Przyczyna: kazdy przebieg analizy trasy probkuje Places NA ZYWO (route_analyzer: zaopatrzenie co 8 km, atrakcje co 3 km + retry x3, promien 2 km) => ~150 zapytan na trase 327 km. Silnik NIE mial cache; testy z 18.07 (przycisk POBIERZ atrakcje + przeliczenia) bily wielokrotnie w Google. Raport i planer czytaja z bazy route_poi_layer (nie kosztuja) -- winny byl wielokrotny live-fetch w testach.
+
+**Decyzja 1 -- twardy bezpiecznik.** Nowy modul `qbot3/routes/google_places_budget.py` + tabela `qbot_v2.google_places_usage` (usage_date, calls). Limity (env: `GOOGLE_PLACES_DAILY_LIMIT=200`, `GOOGLE_PLACES_MONTHLY_LIMIT=1000`) liczone na dobe i miesiac kalendarzowy. `check_and_reserve(n)` sprawdza OBA PRZED zapytaniem; przekroczenie => `PlacesBudgetExceeded`, zero wywolan. Wpiete: `route_analyzer` (petle supply + atrakcje, break po wyczerpaniu) oraz `tools/rwgps/google_places._search_nearby` (jedzenie).
+
+**Decyzja 2 -- guard na pobieraniu atrakcji.** `ensure_route_attractions(force=False)`: gdy istnieje opublikowany run w `route_attraction_run` -> zwraca go (status `CACHED_KEPT`) BEZ Google. Swieze pobranie tylko `force=True`. Endpoint `/api/report/attractions/fetch?force=1`; front `raport-render.js` (v=2026072301): domyslny przycisk czyta z bazy, osobny "Odswiez z Google (pobiera na nowo, kosztuje)" pod lista atrakcji.
+
+**Uwaga (poza zakresem).** 4 stare skrypty `fetch_google_*.py` w katalogu glownym (Toskania, czerwiec) dzwonia do Places bezposrednio, bez cache i bez bezpiecznika -- odpalane recznie; do sprzatniecia.
+
+---
 ## 2026-07-19 -- DECYZJA: jazda 23654350826 (19.07) -- bledna kalibracja miernika mocy 0-74,9km, wylaczenie z MMP/CP/FTP
 
 **Status:** zatwierdzone i wdrozone. Zrodlo: sesja analizy + weryfikacji (multi-turn, z korekta modelu HR+czas, walidacja grouped CV + chronologiczna).

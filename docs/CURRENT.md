@@ -1,6 +1,21 @@
 # QBot -- CURRENT (handoff sesji)
 
 
+## Sesja 2026-07-23 -- bezpiecznik kosztow Google Places + guard atrakcji
+
+Decyzja: docs/DECISIONS.md (wpis 2026-07-23).
+
+WYKONANE I WDROZONE (na zywo, zweryfikowane):
+- Bezpiecznik Places: modul `qbot3/routes/google_places_budget.py` + tabela `qbot_v2.google_places_usage`. Limity 200/dobe, 1000/miesiac (env-owalne). Wpiety przed KAZDYM searchNearby (route_analyzer supply+atrakcje, tools/rwgps/google_places). Przekroczenie => zero wywolan. Test na zywo: limit 0 blokuje bez naliczenia.
+- Guard atrakcji: `ensure_route_attractions(force=False)` zwraca opublikowany run z bazy (`CACHED_KEPT`) bez Google. Test: komoot-3088315688 -> CACHED_KEPT run 8, licznik 0/200, 0/1000 bez zmian.
+- Endpoint `/api/report/attractions/fetch?force=1`; front `raport-render.js` v=2026072301 (raport-trasy.html, raport-print.html): domyslny przycisk z bazy, osobny "Odswiez z Google".
+
+COMMIT: aef6cce (push origin/main).
+
+OTWARTE: sprzatnac stare fetch_google_*.py (Toskania) i stare .bak w katalogu glownym; ew. podglad zuzycia licznika Places w UI.
+
+---
+
 ## Sesja 2026-07-18 -- wspólne atrakcje + Planer Wypraw -> dzienne GPX + sprzątanie
 
 Pełna dokumentacja: `docs/PLANER_WYPRAW_ATRAKCJE.md`. Decyzja: `docs/DECISIONS.md`.
