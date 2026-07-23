@@ -14,6 +14,8 @@ def _api_key():
 def _search_nearby(lat, lon, radius_m, api_key):
     payload = {"includedTypes": ["restaurant","cafe","bar","bakery"],"maxResultCount": 5,"locationRestriction": {"circle": {"center": {"latitude": lat, "longitude": lon},"radius": radius_m}}}
     headers = {"Content-Type": "application/json","X-Goog-Api-Key": api_key,"X-Goog-FieldMask": "places.id,places.displayName,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours"}
+    from qbot3.routes.google_places_budget import check_and_reserve
+    check_and_reserve(1)
     resp = httpx.post(PLACES_URL, json=payload, headers=headers, timeout=10.0)
     resp.raise_for_status()
     return resp.json().get("places", [])

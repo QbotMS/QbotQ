@@ -2385,7 +2385,7 @@ def _poly_encode_1d(vals, factor=100000):
 
 
 @app.post("/api/report/attractions/fetch")
-def api_report_attractions_fetch(route_id: str):
+def api_report_attractions_fetch(route_id: str, force: bool = False):
     """Wlacza i pobiera kanoniczne atrakcje dla trasy (route_attraction_store.
     ensure_route_attractions). Uzywane przez przycisk POBIERZ w zakladce Atrakcje -
     to samo co narzedzie Alberta route_attractions, ale wprost z raportu web.
@@ -2405,7 +2405,7 @@ def api_report_attractions_fetch(route_id: str):
         from qbot3.routes.route_poi_store import set_route_poi_attractions
         from qbot3.routes.route_attraction_store import ensure_route_attractions
         pref = set_route_poi_attractions(rid, True)
-        out = ensure_route_attractions(route_id=rid)
+        out = ensure_route_attractions(route_id=rid, force=force)
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Blad pobierania atrakcji: %s" % str(exc)[:300])
     return {"route_id": rid,
@@ -5268,6 +5268,49 @@ def modelq2_data(response: Response, start: str | None = Query(None), end: str |
                 el.append(abs(float(r["ltp_w"]) - xl))
         def _avg(a):
             return round(sum(a) / len(a), 2) if a else None
+        # --- Tabela okien 90/30/7/1 dni (ZAWSZE wzgledem DZIS, niezaleznie od start/end) ---
+        _today = _dt_date.today()
+        _w90 = (_today - _dt_timedelta(days=89)).isoformat()
+        _wmq = conn.execute(
+            "SELECT day, tp_w, hie_kj, pp_w, ltp_w FROM qbot_v2.modelq2_signature "
+            "WHERE day BETWEEN %s AND %s ORDER BY day",
+            (_w90, _today.isoformat()),
+        ).fetchall()
+        _wxb = conn.execute(
+            "SELECT day, tp_w, hie_kj, pp_w FROM qbot_v2.modelq2_xert_bench "
+            "WHERE day BETWEEN %s AND %s ORDER BY day",
+            (_w90, _today.isoformat()),
+        ).fetchall()
+        _wxl = conn.execute(
+            "SELECT date, ltp_power_w FROM qbot_v2.xert_profile_snapshots "
+            "WHERE ltp_power_w IS NOT NULL AND date BETWEEN %s AND %s ORDER BY date",
+            (_w90, _today.isoformat()),
+        ).fetchall()
+
+        def _wmean(vals):
+            vv = [float(v) for v in vals if v is not None]
+            return round(sum(vv) / len(vv), 2) if vv else None
+
+        def _win(rows, days, keys, dkey="day"):
+            lo = _today - _dt_timedelta(days=days - 1)
+            sel = [r for r in rows if r[dkey] >= lo]
+            out = {"n": len(sel)}
+            for k in keys:
+                out[k] = _wmean([r[k] for r in sel])
+            return out
+
+        windows = {}
+        for _wd in (90, 30, 7, 1):
+            _mqw = _win(_wmq, _wd, ["tp_w", "hie_kj", "pp_w", "ltp_w"])
+            _xbw = _win(_wxb, _wd, ["tp_w", "hie_kj", "pp_w"])
+            _xlw = _win(_wxl, _wd, ["ltp_power_w"], dkey="date")
+            windows[str(_wd)] = {
+                "mq": {"tp": _mqw["tp_w"], "hie": _mqw["hie_kj"], "pp": _mqw["pp_w"],
+                       "ltp": _mqw["ltp_w"], "n": _mqw["n"]},
+                "xert": {"tp": _xbw["tp_w"], "hie": _xbw["hie_kj"], "pp": _xbw["pp_w"],
+                         "ltp": _xlw["ltp_power_w"], "n": _xbw["n"], "n_ltp": _xlw["n"]},
+            }
+
         latest = mq_series[-1] if mq_series else None
         return {
             "range": {"start": start_d.isoformat(), "end": end_d.isoformat()},
@@ -5277,9 +5320,50 @@ def modelq2_data(response: Response, start: str | None = Query(None), end: str |
             "latest": latest,
             "agreement": {"hie_kj": _avg(eh), "tp_w": _avg(et), "pp_w": _avg(ep),
                           "ltp_w": _avg(el), "n_common": len(et), "n_ltp": len(el)},
+            "windows": windows,
         }
     finally:
         conn.close()
+
+
+@app.post("/api/modelq2/recompute")
+def modelq2_recompute(response: Response):
+    """Wymusza pelne przeliczenie sygnatury ModelQ v2 (XSS nowych jazd ->
+    build_and_store -> publish do fitmodel_daily). To samo co nocny krok
+    modelq2_v2 w daily_job. Zwraca statystyki i czas."""
+    response.headers["Cache-Control"] = "no-store"
+    import time as _time_mq
+    # Wyrownaj poswiadczenia PG w procesie: fitmodel.* (io, ftp_resolver) laczy sie
+    # przez psycopg2 + os.getenv/setdefault, wiec bez tego wzialoby (puste) PGPASSWORD
+    # ze srodowiska uslugi qbot-web i psycopg2 by nie polaczyl (500). Uzywamy DOKLADNIE
+    # tych samych wartosci co _db_conn (data endpoint dziala), tylko wpychamy je do env.
+    _e = _env()
+    for _k, _dv in (("PGHOST", "127.0.0.1"), ("PGPORT", "5432"),
+                    ("PGDATABASE", "qbot"), ("PGUSER", "qbot"), ("PGPASSWORD", "")):
+        _v = os.getenv(_k) or _e.get(_k, _dv)
+        if _v != "":
+            os.environ[_k] = str(_v)
+    os.environ["QBOT3_ENABLED"] = "1"
+    import fitmodel.ftp_resolver as _ftpres
+    # qbot-web NIE ma prawa czytac /etc/qbot/qbot-api.env; _load_env_file() rzucaloby
+    # PermissionError. Env PG mamy juz ustawione z _env() powyzej, wiec wylaczamy
+    # doczytywanie pliku dla WSZYSTKICH polaczen fitmodel.* (io + ftp_resolver dziela
+    # ten sam _db_connect, ktory odwoluje sie do modul-globalnego _load_env_file).
+    _ftpres._load_env_file = lambda *a, **k: None
+    _mq_db = _ftpres._db_connect
+    from fitmodel.modelq2.publish import run_daily_v2
+    t0 = _time_mq.time()
+    try:
+        conn = _mq_db()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="DB connect: " + str(exc))
+    try:
+        stats = run_daily_v2(conn)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="recompute: " + str(exc))
+    finally:
+        conn.close()
+    return {"ok": True, "elapsed_s": round(_time_mq.time() - t0, 1), "stats": stats}
 
 
 import os as _os_wpr
@@ -5484,7 +5568,7 @@ def _wyprawa_pdf_bytes(route_id, cuts, date, name):
     with sync_playwright() as pw:
         browser = pw.chromium.launch(args=["--no-sandbox"])
         try:
-            context = browser.new_context(viewport={"width": 1000, "height": 1400})
+            context = browser.new_context(viewport={"width": 1000, "height": 1400}, device_scale_factor=2)
             if cookie_value:
                 context.add_cookies([{"name": "qbot_session", "value": cookie_value,
                                       "url": "http://127.0.0.1:%d" % PORT}])
@@ -5518,21 +5602,17 @@ def _wyprawa_pdf_bytes(route_id, cuts, date, name):
 
             import base64 as _b64m
 
-            def _bake_map():
-                # zrzuca #map (z zaladowanymi kaflami + kolorowe etapy) do obrazka data-URI
-                # i podmienia mape na ten obrazek -> po assemble kafle NIE przeladowuja sie z OSM.
+            def _map_datauri():
+                # zrzuca #map (kafle + kolorowe etapy) do data-URI, NIE niszczac zywej mapy
+                # -> Leaflet zostaje aktywny, wiec kazdy dzien moze wyzoomowac sie do swojego etapu.
                 try:
                     mp = page.locator("#map")
                     if mp.count() > 0:
-                        shot = mp.screenshot(type="jpeg", quality=80)
-                        durl = "data:image/jpeg;base64," + _b64m.b64encode(shot).decode()
-                        page.evaluate(
-                            "(d) => { var m=document.getElementById('map'); if(!m) return;"
-                            "m.innerHTML=''; var img=new Image(); img.src=d;"
-                            "img.style.cssText='width:100%;height:auto;display:block;border-radius:12px';"
-                            "m.appendChild(img); m.style.height='auto'; }", durl)
+                        shot = mp.screenshot(type="jpeg", quality=88)
+                        return "data:image/jpeg;base64," + _b64m.b64encode(shot).decode()
                 except Exception:
                     pass
+                return ""
 
             # widok ALL (opis rozwiniety) -> snapshot HTML
             page.evaluate("window.__planerPrint.view(null)")
@@ -5552,8 +5632,7 @@ def _wyprawa_pdf_bytes(route_id, cuts, date, name):
             except Exception:
                 pass
             _wait_imgs()
-            _bake_map()
-            parts.append(page.evaluate("window.__planerPrint.snap()"))
+            parts.append(page.evaluate("(d) => window.__planerPrint.snapBaked(d)", _map_datauri()))
 
             # kazdy dzien: rozwiniete podjazdy (profile) + atrakcje (zdjecia+opisy) -> snapshot
             for i in range(ndays):
@@ -5581,8 +5660,7 @@ def _wyprawa_pdf_bytes(route_id, cuts, date, name):
                 except Exception:
                     pass
                 _wait_imgs()
-                _bake_map()
-                parts.append(page.evaluate("window.__planerPrint.snap()"))
+                parts.append(page.evaluate("(d) => window.__planerPrint.snapBaked(d)", _map_datauri()))
 
             # zloz jeden dokument i drukuj WEKTOROWO (klikalne linki, zaznaczalny tekst)
             page.evaluate("(p) => window.__planerPrint.assemble(p)", parts)

@@ -184,7 +184,7 @@ def _insert_layer(conn, run_id: int, route_base_id: int, rows: list[dict[str, An
         )
 
 
-def ensure_route_attractions(*, route_id: str | int | None = None, route_base_id: int | None = None) -> dict[str, Any]:
+def ensure_route_attractions(*, route_id: str | int | None = None, route_base_id: int | None = None, force: bool = False) -> dict[str, Any]:
     if route_id is None and route_base_id is None:
         raise ValueError("route_id or route_base_id required")
     # Heavy HTTP/DB adapters stay outside the shared WEB read path.
@@ -197,6 +197,29 @@ def ensure_route_attractions(*, route_id: str | int | None = None, route_base_id
         base = _route_base_row(conn, route_base_id=route_base_id, route_id=str(route_id) if route_id is not None else None)
         if not base:
             raise LookupError(f"No route_base found for {route_id or route_base_id}")
+        if not force:
+            _existing = conn.execute(
+                "SELECT run_id, algorithm_version, summary_json, fetched_at "
+                "FROM qbot_v2.route_attraction_run "
+                "WHERE route_base_id=%s AND published=true "
+                "ORDER BY finished_at DESC NULLS LAST, run_id DESC LIMIT 1",
+                (int(base["route_base_id"]),),
+            ).fetchone()
+            if _existing:
+                _row = _existing if isinstance(_existing, dict) else {
+                    "run_id": _existing[0], "algorithm_version": _existing[1],
+                    "summary_json": _existing[2], "fetched_at": _existing[3]}
+                return {
+                    "status": "CACHED_KEPT",
+                    "route_id": base["route_id"],
+                    "route_base_id": int(base["route_base_id"]),
+                    "route_version_key": str(base["route_version_key"]),
+                    "run_id": int(_row["run_id"]),
+                    "algorithm_version": _row["algorithm_version"],
+                    "summary": _row["summary_json"],
+                    "fetched_at": _row["fetched_at"],
+                    "note": "istnieje opublikowany run atrakcji; pobranie z Google pominiete (force=false)",
+                }
         source_path = _resolve_source_path(base, conn)
         distance_km = float(base.get("distance_m") or 0.0) / 1000.0
         if distance_km <= 0:

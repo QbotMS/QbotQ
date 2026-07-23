@@ -18,6 +18,8 @@ from typing import Any
 
 import httpx
 
+from qbot3.routes import google_places_budget as _places_budget
+
 log = logging.getLogger("route_poi_analyze")
 
 ARTIFACTS_ROOT = Path("/opt/qbot/artifacts")
@@ -1912,6 +1914,11 @@ def _route_poi_v2_google_supply_candidates(
     sample_km = float(km_from)
     seen: dict[str, dict[str, Any]] = {}
     while sample_km <= float(km_to) + 1e-9:
+        try:
+            _places_budget.check_and_reserve(1)
+        except _places_budget.PlacesBudgetExceeded as _bexc:
+            log.warning("Google Places: %s -- przerywam probkowanie zaopatrzenia", _bexc)
+            break
         sample = _find_point_at_km(points, sample_km)
         try:
             places = _route_poi_v2_google_search_nearby(
@@ -1975,6 +1982,11 @@ def _route_poi_v2_google_attraction_candidates(
     sample_km = float(km_from)
     seen: dict[str, dict[str, Any]] = {}
     while sample_km <= float(km_to) + 1e-9:
+        try:
+            _places_budget.check_and_reserve(1)
+        except _places_budget.PlacesBudgetExceeded as _bexc:
+            log.warning("Google Places: %s -- przerywam probkowanie atrakcji", _bexc)
+            break
         sample = _find_point_at_km(points, sample_km)
         places = None
         for attempt in range(3):
