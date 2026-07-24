@@ -458,6 +458,7 @@ def _haversine_m(lat1, lon1, lat2, lon2):
 import time as _time_nocl
 NOCLEGI_CACHE = os.environ.get("QBOT_PLANER_NOCLEGI_CACHE", "/opt/qbot/artifacts/planer_noclegi_cache")
 NOCLEGI_CACHE_TTL_S = 60 * 24 * 3600  # 60 dni
+NOCLEGI_OFFLINE_FLAG = os.environ.get("QBOT_NOCLEGI_OFFLINE_FLAG", "/opt/qbot/artifacts/noclegi_offline.flag")
 def _noclegi_cache_path(lat, lon, radius_m):
     key = "nocl_%.3f_%.3f_%d" % (float(lat), float(lon), int(radius_m))
     return os.path.join(NOCLEGI_CACHE, key.replace("-", "m") + ".json")
@@ -475,6 +476,8 @@ def api_noclegi(lat: float, lon: float, radius_m: int = 3000, fresh: int = 0):
                 return _c
         except Exception:
             pass
+    if os.path.exists(NOCLEGI_OFFLINE_FLAG):
+        return {"status": "OFFLINE", "count": None, "radius_m": radius_m, "items": [], "cached": False, "offline": True}
     try:
         from qbot3.artifacts.route_analyzer import (
             _route_poi_v2_google_search_nearby as _g_nearby,
