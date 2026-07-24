@@ -2787,6 +2787,43 @@ def _compute_today_factor(hrv_dev, bb, form, sleep_dev, hr_dev):
     raw = 0.55*hrv_norm + 0.10*hr_norm + 0.15*bb_norm + 0.10*form_norm + 0.10*sleep_norm
     return round(_clamp(raw, 0.70, 1.10), 3)
 
+def _modelq_ctl_xss() -> float | None:
+    """CTL wyrazone w XSS (qbot_v2.fitmodel_daily.ctl_xss) dla Karoo/QExt2.
+
+    Pole "ctl" w tym payloadzie pochodzi z Intervals.icu i jest liczone w TSS.
+    QExt2 obciaza dzienny budzet RSRV wartoscia XSS -- to inna skala (mediana
+    XSS/TSS = 1.21 na 41 jazdach sparowanych z ModelQ2), wiec budzet zbudowany
+    z CTL-TSS systematycznie przeklamuje kare. Dosylamy ctlXss, zeby obie strony
+    rownania byly w XSS i zeby budzet szedl z ModelQ (kanon), a nie z
+    zewnetrznego Intervals.
+    Pokrycie ModelQ2 dla jazd z ostatnich 42 dni = 100% (puste xss_daily to dni
+    bez jazdy, nie luki w danych). Patrz DECISIONS.md 2026-07-24.
+    """
+    import psycopg
+    from psycopg.rows import dict_row
+
+    try:
+        with psycopg.connect(
+            host=os.getenv("PGHOST", "localhost"),
+            port=os.getenv("PGPORT", "5432"),
+            dbname=os.getenv("PGDATABASE", "qbot"),
+            user=os.getenv("PGUSER", "qbot"),
+            password=os.getenv("PGPASSWORD", ""),
+            row_factory=dict_row,
+            connect_timeout=3,
+        ) as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT ctl_xss FROM qbot_v2.fitmodel_daily "
+                "WHERE ctl_xss IS NOT NULL ORDER BY day DESC LIMIT 1"
+            )
+            r = cur.fetchone()
+            if r and r.get("ctl_xss") is not None:
+                return round(float(r["ctl_xss"]), 1)
+    except Exception as exc:
+        print(f"⚠️  ride-readiness: ctl_xss error: {exc}")
+    return None
+
+
 @mcp.custom_route("/ride-readiness", methods=["GET"])
 async def ride_readiness(request):
     """Return ride-readiness context for Karoo/QExt2.
@@ -2996,6 +3033,7 @@ async def ride_readiness(request):
         "maxHrBpm":           RIDER_MAX_HR_BPM,
         "maxHrSource":        RIDER_MAX_HR_SOURCE if RIDER_MAX_HR_BPM else None,
         "ctl":                round(ctl, 1) if ctl is not None else None,
+        "ctlXss":             _modelq_ctl_xss(),
         "atl":                round(atl, 1) if atl is not None else None,
         "signals": {
             "hrvToday":        hrv_today,

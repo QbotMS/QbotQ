@@ -237,3 +237,12 @@ WYKONANE (na zywo, zweryfikowane):
 OTWARTE / DECYZJA UZYTKOWNIKA:
 - 9 par to STARE duplikaty -- do ewentualnego recznego wyczyszczenia (zostawic kopie z 1Hz, skasowac pusta). Skrypt sam NIE kasuje.
 - Sprzatanie .bak: dorzucic scripts/verify_dupes.py.bak.1784579684 do listy .bak do usuniecia (rm blokowany w dev_shell_exec).
+
+## 2026-07-24 -- ctlXss dla Karoo (audyt pol QExt2, pkt 3)
+
+- `mcp_server.py`: helper `_modelq_ctl_xss()` + pole `ctlXss` w payloadzie
+  `/ride-readiness`. Zweryfikowane na zywo (63.9). Restart `q-bot.service`.
+- Ustalona sciezka zywa endpointu (patrz DECISIONS): most `/root/qbot-mcp`
+  proxuje na `q-bot.service` -> `/opt/qbot/app/mcp_server.py`.
+  `qbot_api.py` zawiera martwy duplikat `/ride-readiness`.
+- Strona Karoo (repo QExt2): budzet RSRV natywnie w XSS z `ctlXss`.

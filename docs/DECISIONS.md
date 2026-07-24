@@ -2804,3 +2804,31 @@ Statyki poza repo.
 **Jak dziala trwale:** helper preferuje funkcje samej aplikacji (qbot_web._webauth_load / _webauth_cookie_make), a jako zapas ma lokalna kopie logiki czytajaca biezacy plik .env.webauth. Dzieki temu zmiana hasla/tokenu jest podchwytywana automatycznie — nic nie trzeba synchronizowac. Sekret NIGDY nie jest drukowany (uzyty tylko do HMAC podpisu ciasteczka).
 **Uzycie:** `.venv/bin/python3 scripts/dev_fetch.py /nav.js?v=3 --grep TEKST` (opcje: --max N, --head, --user NAME; sciezka lub pelny http://). Zwraca status + tresc; wykrywa i sygnalizuje, gdy dostal strone logowania.
 **Reguła:** NIE weryfikuj web samym urlopem — zawsze przez dev_fetch.py. Zapisane rowniez w CONTEXT.md (sekcja 'Jak pracowac') przez scripts/build_context.py, wiec widoczne na starcie kazdej sesji.
+
+## 2026-07-24 -- /ride-readiness wysyla ctlXss (budzet RSRV na Karoo w XSS)
+
+**Problem.** QExt2 liczy dzienny budzet rezerwy jako `CTL * 5.4` i obciaza go
+wartoscia XSS. Wysylane pole `ctl` pochodzi z Intervals.icu i jest w TSS -- inna
+skala. Mediana XSS/TSS = **1.21** na 41 jazdach sparowanych z ModelQ2
+(`modelq2_ride.xss_total` vs `training_sessions.tss`).
+
+**Decyzja.** Payload `/ride-readiness` dostaje pole **`ctlXss`** z
+`qbot_v2.fitmodel_daily.ctl_xss` (nowy helper `_modelq_ctl_xss()` w
+`mcp_server.py`). QExt2 buduje budzet wylacznie z `ctlXss`; pola `ctl`
+NIE uzywa jako fallbacku (to TSS z zewnetrznego Intervals, nie kanon).
+Brak `ctlXss` => stala 470 XSS po stronie Karoo.
+
+**Dlaczego mozna ufac ctl_xss.** Pokrycie ModelQ2 dla jazd z ostatnich 42 dni =
+100%. Puste `xss_daily` to dni bez jazdy, nie luki w danych.
+
+**Weryfikacja na zywo.** `curl https://qbot.cytr.us/ride-readiness` ->
+`ctlXss=63.9` (obok `ctl=66.6` z Intervals). Restart: `q-bot.service`.
+
+**WAZNE dla nastepnych sesji -- sciezka zywa endpointu.** Sa TRZY
+implementacje `/ride-readiness`. Dziala jedna:
+`qbot.cytr.us` -> most `/root/qbot-mcp/server.py` (port 20181, osobne repo
+lokalne BEZ remote) -> **proxy** na `127.0.0.1:8000` -> **`q-bot.service`** ->
+`/opt/qbot/app/mcp_server.py`.
+Martwe duplikaty: `qbot_api.py` (port 8002) ma wlasny, ubozszy
+`/ride-readiness`. Zmiana tam NIE dociera do Karoo.
+`q-bot.service` NIE jest wymieniona na liscie uslug w CONTEXT.md -- do uzupelnienia.
