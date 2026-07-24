@@ -4139,6 +4139,71 @@ def ride_report_data(response: Response, ride: str = Query(...), rebuild: int = 
     return w1
 
 
+@app.get("/api/ride-report/tiles")
+def ride_report_tiles(ride: str = Query(...), margin: int = 3):
+    """Kafle z14 na TRACKU wykonanej jazdy (new/keep) + otoczka owned wzgledem StatsHunters.
+    Zrodlo geometrii = trace.lat/lon z zapisanego W1 raportu jazdy (ten sam track co na mapie)."""
+    from tools.tile_store import fetch_tiles, get_tile_set, _latlon_to_tile
+    from qbot3.rides import ride_report_builder as _rrb
+    conn = _db_conn()
+    try:
+        row = conn.execute(
+            "SELECT w1_json FROM qbot_v2.ride_report_data "
+            "WHERE ride_key=%s AND schema_version=%s",
+            (ride, _rrb.SCHEMA_VERSION)).fetchone()
+    finally:
+        conn.close()
+    w1 = (row or {}).get("w1_json") or {}
+    if isinstance(w1, str):
+        try:
+            w1 = json.loads(w1)
+        except Exception:
+            w1 = {}
+    tr = (w1.get("trace") or {})
+    lats = tr.get("lat") or []
+    lons = tr.get("lon") or []
+    coords = [(la, lo) for la, lo in zip(lats, lons) if la is not None and lo is not None]
+    if len(coords) < 2:
+        return {"ride": ride, "zoom": 14, "margin": margin,
+                "counts": {"route": 0, "new": 0, "keep": 0, "owned_total": 0},
+                "tile_error": None, "tiles": []}
+    rt = set()
+    for i in range(len(coords) - 1):
+        (la1, lo1), (la2, lo2) = coords[i], coords[i + 1]
+        steps = max(1, int(math.hypot(la2 - la1, lo2 - lo1) / 0.0008))
+        for stp in range(steps + 1):
+            t = stp / steps
+            rt.add(_latlon_to_tile(la1 + (la2 - la1) * t, lo1 + (lo2 - lo1) * t, 14))
+    share = os.getenv("STATSHUNTERS_SHARE_ID", _env().get("STATSHUNTERS_SHARE_ID", ""))
+    owned, tile_err = set(), None
+    if share:
+        td = fetch_tiles(share)
+        tile_err = td.get("_error")
+        owned = get_tile_set(td.get("tiles", []))
+    else:
+        tile_err = "brak STATSHUNTERS_SHARE_ID"
+    border = set()
+    for (x, y) in rt:
+        for dx in range(-margin, margin + 1):
+            for dy in range(-margin, margin + 1):
+                c = (x + dx, y + dy)
+                if c not in rt:
+                    border.add(c)
+
+    def feat(x, y, status):
+        s2, w2, n2, e2 = _tile_poly_bounds(x, y, 14)
+        return {"x": x, "y": y, "status": status, "bounds": [[s2, w2], [n2, e2]]}
+
+    tiles = [feat(x, y, "new" if (x, y) not in owned else "keep") for (x, y) in rt]
+    tiles += [feat(x, y, "owned" if (x, y) in owned else "empty") for (x, y) in border]
+    return {"ride": ride, "zoom": 14, "margin": margin,
+            "counts": {"route": len(rt),
+                       "new": sum(1 for t in tiles if t["status"] == "new"),
+                       "keep": sum(1 for t in tiles if t["status"] == "keep"),
+                       "owned_total": len(owned)},
+            "tile_error": tile_err, "tiles": tiles}
+
+
 @app.get("/api/ride-report/w2")
 def ride_report_w2(response: Response, ride: str = Query(...), rebuild: int = Query(0)):
     """Analiza W2 (LLM czyta tylko W1). Zwraca zapisana; generuje wylacznie gdy rebuild=1."""
