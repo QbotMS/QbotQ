@@ -1,6 +1,17 @@
 # QBot -- CURRENT (handoff sesji)
 
 
+## Sesja 2026-07-24 -- raport trasy: asfalt niebieski + zoom wykresu przy zaznaczeniu
+
+WYKONANE I WDROZONE (na zywo; statyk POZA repo -- brak commita kodu):
+- Kolor asfaltu: SCAT[1] #000000 -> #1565c0 w /opt/qbot/web/public/raport-render.js. Niebieski na wykresie, mapie, legendzie i paskach udzialu (jedno zrodlo). CSS .cx-asf/.d.asf w raport.css celowo nietkniety (zakres = wykres+mapa).
+- Zoom wykresu: zaznaczenie fragmentu wykresu zoomuje teraz WYKRES (okno widoku VIEW; os km/siatka/profil/wiatr/pogoda przeliczane do zakresu) ORAZ mape (jak dotad). Klik bez przeciagniecia = reset do calej trasy. Dodany clipPath na polu wykresu (dane nie wychodza na opisy osi). Podpowiedz legendy -> 'zoom wykresu i mapy'. Dotyczy TYLKO pojedynczej trasy; renderDayChart (wielodniowy) nietkniety.
+- Weryfikacja na zywo: dev_fetch /raport-render.js => 200 + marker 'zoom wykresu i mapy'; grupy <g clip-path> zbilansowane; skrypty-latki _tmp_patch_* samo-usuniete.
+
+UWAGA: raport-render.js jest poza repo (zywy natychmiast) -- ten commit obejmuje wylacznie wpis CURRENT.
+
+---
+
 ## Sesja 2026-07-23 -- bezpiecznik kosztow Google Places + guard atrakcji
 
 Decyzja: docs/DECISIONS.md (wpis 2026-07-23).
