@@ -1,6 +1,7 @@
 """qbot-web - publiczny serwis HTML (Faza 1: statyczna strona + proste API tras)."""
 import os
 import json
+from decimal import Decimal
 import math
 import urllib.request
 import psycopg
@@ -750,6 +751,123 @@ def api_planer_tlo(route_id: str, rebuild: int = 0):
     if isinstance(data, dict) and data.get("error"):
         return {"status": "ERROR", "error": data.get("error"), "detail": data.get("raw")}
     return {"status": "OK", **data}
+
+
+_HH_FORM_HTML = """<!doctype html>
+<html lang="pl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dostep Hammerhead - QBot</title>
+<style>
+ body{background:#14161a;color:#e8e8e8;font:16px/1.5 system-ui,sans-serif;margin:0;padding:24px}
+ .box{max-width:520px;margin:0 auto}
+ h1{font-size:20px;margin:0 0 4px}
+ p{color:#9aa0a8;font-size:14px;margin:0 0 20px}
+ input{width:100%;box-sizing:border-box;padding:14px;font:15px monospace;
+       background:#1e2126;color:#e8e8e8;border:1px solid #333;border-radius:8px}
+ button{width:100%;margin-top:12px;padding:14px;font-size:16px;font-weight:600;
+        background:#e8622c;color:#fff;border:0;border-radius:8px}
+ button:disabled{opacity:.5}
+ #out{margin-top:18px;padding:14px;border-radius:8px;font-size:14px;display:none;white-space:pre-wrap}
+ .ok{background:#14331e;border:1px solid #2c6b3f}
+ .err{background:#3a1a1a;border:1px solid #7a2b2b}
+ ol{color:#9aa0a8;font-size:13px;padding-left:20px}
+</style></head><body><div class="box">
+<h1>Dostep Hammerhead</h1>
+<p>Wklej swieza wartosc <code>jwt:refresh</code> z dashboardu Karoo.</p>
+<input id="rt" type="text" placeholder="wklej tutaj" autocomplete="off" autocapitalize="off" spellcheck="false">
+<button id="go">Zapisz i sprawdz</button>
+<div id="out"></div>
+<ol>
+<li>Wejdz na dashboard.hammerhead.io i zaloguj sie.</li>
+<li>Konsola przegladarki: <code>localStorage.getItem('jwt:refresh')</code></li>
+<li>Skopiuj wartosc bez cudzyslowow i wklej wyzej.</li>
+</ol>
+</div><script>
+const out=document.getElementById('out'),btn=document.getElementById('go'),inp=document.getElementById('rt');
+btn.onclick=async()=>{
+  const v=inp.value.trim();
+  out.style.display='block';
+  if(!v){out.className='err';out.textContent='Puste pole.';return;}
+  btn.disabled=true;out.className='';out.textContent='Sprawdzam u Hammerheada...';
+  try{
+    const r=await fetch('/api/hammerhead/refresh-token',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',body:JSON.stringify({refresh_token:v})});
+    const j=await r.json();
+    if(r.ok&&j.ok){
+      out.className='ok';
+      out.textContent=['OK - zapisane.','Waznosc do: '+(j.expires_at||'?'),'Sync ruszy przy najblizszym przebiegu.'].join(String.fromCharCode(10));
+      inp.value='';
+    }else{
+      out.className='err';
+      out.textContent='Odrzucone: '+(j.detail||r.status);
+    }
+  }catch(e){out.className='err';out.textContent='Blad polaczenia: '+e;}
+  btn.disabled=false;
+};
+</script></body></html>"""
+
+
+@app.get("/hammerhead-dostep", response_class=HTMLResponse)
+async def hammerhead_access_form(request: Request):
+    user = _current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    return HTMLResponse(_HH_FORM_HTML)
+
+
+@app.post("/api/hammerhead/refresh-token")
+async def api_hammerhead_refresh(request: Request):
+    """Przyjmuje swieza wartosc refresh z przegladarki, weryfikuje ja u Hammerheada
+    i zapisuje w magazynie. Zadna wartosc nie trafia do logow."""
+    user = _current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    body = await request.json()
+    rt = str((body or {}).get("refresh_token") or "").strip()
+    if not (16 <= len(rt) <= 512):
+        raise HTTPException(status_code=400, detail="zly format")
+
+    import hammerhead_auth as _HA
+    try:
+        tokens = _HA.refresh_tokens(rt)
+    except _HA.HammerheadAuthError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    except Exception:
+        raise HTTPException(status_code=502, detail="blad polaczenia z Hammerhead")
+
+    # Zapis do WSZYSTKICH magazynow: domyslnego oraz kazdego wskazanego
+    # przez HAMMERHEAD_TOKENSTORE w profilach (sync per-profil czyta wlasny plik).
+    from pathlib import Path as _P
+    _targets = [_P(_HA.DEFAULT_TOKENSTORE)]
+    _prof = _P("/opt/qbot/app/config/profiles")
+    if _prof.is_dir():
+        for _f in sorted(_prof.glob("*.env")):
+            try:
+                for _ln in _f.read_text(encoding="utf-8").splitlines():
+                    _ln = _ln.strip()
+                    if _ln.startswith("HAMMERHEAD_TOKENSTORE="):
+                        _targets.append(_P(_ln.split("=", 1)[1].strip()))
+            except OSError:
+                continue
+    _saved = []
+    for _t in list(dict.fromkeys(_targets)):
+        try:
+            _HA.HammerheadTokenStore(_t).save(tokens)
+            _saved.append(_t.name)
+        except OSError:
+            pass
+    if not _saved:
+        raise HTTPException(status_code=500, detail="nie udalo sie zapisac zadnego magazynu")
+    meta = tokens.public_metadata()
+    exp = meta.get("accessTokenExpiresAt")
+    import datetime as _dt
+    return {
+        "ok": True,
+        "user_id": meta.get("userId"),
+        "expires_at": _dt.datetime.fromtimestamp(exp).isoformat(" ", "seconds") if exp else None,
+        "stores": _saved,
+    }
 
 
 @app.post("/api/planer/opis-dni")
@@ -3173,6 +3291,13 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
 _REPORT_SNAPSHOT_KEEP = 4  # biezacy + 3 archiwalne, NA TRASE (route_id)
 
 
+def _json_default(o):
+    """Serializacja typow z bazy (psycopg zwraca Decimal) do JSON."""
+    if isinstance(o, Decimal):
+        return float(o)
+    raise TypeError("Object of type %s is not JSON serializable" % type(o).__name__)
+
+
 def _save_report_snapshot(conn, route_id, date_str, start_time, long_stops, long_stop_min, data):
     """Zapisuje wygenerowany raport w archiwum, przycina do _REPORT_SNAPSHOT_KEEP na trase.
     Zwraca id nowego wpisu (albo None przy bledzie)."""
@@ -3182,7 +3307,7 @@ def _save_report_snapshot(conn, route_id, date_str, start_time, long_stops, long
             "(route_id, report_date, start_time, long_stops, long_stop_min, data_json) "
             "VALUES (%s, %s, %s, %s, %s, %s::jsonb) "
             "RETURNING route_report_snapshot_id",
-            (route_id, date_str, start_time, long_stops, long_stop_min, json.dumps(data))).fetchone()
+            (route_id, date_str, start_time, long_stops, long_stop_min, json.dumps(data, default=_json_default))).fetchone()
         new_id = row["route_report_snapshot_id"] if row else None
         conn.execute(
             "DELETE FROM qbot_v2.route_report_snapshots "
