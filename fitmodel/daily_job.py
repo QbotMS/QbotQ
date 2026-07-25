@@ -141,5 +141,62 @@ def main() -> None:
     print("=== koniec ===")
 
 
+def run_after_ride(reason: str = "") -> None:
+    """Lekki recompute ModelQ po NOWEJ jezdzie (podzbior main()).
+
+    Wchodzi tylko to, co zalezy od jazdy: ingest FIT -> gotowosc (tylko dzis) ->
+    W'bal replay -> ModelQ v2 (XSS+sygnatura+publish) -> kotwice W' -> ukryte
+    zmeczenie -> glikogen (okno 3 dni). NIE rusza nawierzchni/wiader/Xert/planu --
+    to zostaje w nocnym main() jako niezalezny pelny sweep. Odpornosc warstwowa
+    jak w main(): awaria kroku nie blokuje reszty ani ingestu jazdy.
+    """
+    print(f"=== FITMODEL after_ride {datetime.now().isoformat(timespec='seconds')} ({reason}) ===")
+    conn = _db_connect()
+    try:
+        def _ingest():
+            from fitmodel.fit_ingest import ingest_all_new
+            return ingest_all_new(FIT_DIR, conn)
+        _step("ingest_fit", _ingest)
+
+        def _readiness():
+            from fitmodel.readiness import save_readiness
+            from datetime import date
+            return save_readiness(conn, date.today())
+        _step("readiness_today", _readiness)
+
+        def _wbal_replay():
+            from fitmodel.wbal_replay import run_for_new_rides
+            return run_for_new_rides()
+        _step("wbal_replay", _wbal_replay)
+
+        def _modelq2():
+            from fitmodel.modelq2.publish import run_daily_v2
+            return run_daily_v2(conn)
+        _step("modelq2_v2", _modelq2)
+
+        def _hidden_fatigue():
+            from fitmodel.modelq2.hidden_fatigue import apply_hidden_fatigue
+            return apply_hidden_fatigue(conn)
+        _step("hidden_fatigue", _hidden_fatigue)
+
+        def _wprime_anchor():
+            from fitmodel.wprime_anchor import apply_road_anchor
+            return apply_road_anchor(conn)
+        _step("wprime_anchor", _wprime_anchor)
+
+        def _wprime_road():
+            from fitmodel.wprime_road import compute_road_wprime
+            return compute_road_wprime(conn)
+        _step("wprime_road", _wprime_road)
+
+        def _glyco():
+            from fitmodel.glycogen import update_glycogen_in_daily
+            return update_glycogen_in_daily(conn, FIT_DIR, days=3)
+        _step("glycogen", _glyco)
+    finally:
+        conn.close()
+    print("=== after_ride koniec ===")
+
+
 if __name__ == "__main__":
     main()

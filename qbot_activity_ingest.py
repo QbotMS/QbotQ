@@ -300,12 +300,13 @@ def backfill(limit=2000, start=0, since=SINCE, with_report=False):
 
 
 def _recompute_fitmodel(reason: str = "") -> None:
-    """Po zaingestowaniu NOWEJ jazdy przelicz ModelQ v2 (fitmodel_daily -> web Forma).
+    """Po zaingestowaniu NOWEJ jazdy odpal LEKKI recompute ModelQ v2 (run_after_ride,
+    fitmodel_daily -> web Forma). Pelny sweep zostaje w nocnym daily_job.main().
     Odporne warstwowo: awaria przeliczenia NIE moze wywrocic ingestu jazdy."""
     try:
-        from fitmodel.daily_job import main as _fm_daily
+        from fitmodel.daily_job import run_after_ride as _fm_after
         print(f"[fitmodel] recompute start ({reason})")
-        _fm_daily()
+        _fm_after(reason)
         print("[fitmodel] recompute done")
     except Exception as e:
         print(f"[fitmodel] recompute FAILED: {type(e).__name__}: {str(e)[:200]}")
