@@ -4475,6 +4475,127 @@ async def ride_report_correlate(request: Request):
     return {"text": (txt or "").strip().replace("**", "").replace("__", "")}
 
 
+# --- Sprzet tej jazdy: log odziezy / kola / kaseta per ride_key (garage.db SQLite) ---
+GARAGE_DB = os.environ.get("QBOT_GARAGE_DB", "/opt/qbot/app/data/garage.db")
+
+# Kolejnosc slotow w panelu (jedna, caloroczna lista; z buty/kask/kurtka).
+RIDE_GEAR_SLOTS = [
+    "Base Layer Top", "Base Layer Bottom", "Jersey", "Bottoms / Bibs",
+    "Mid Layer", "Mid Layer Bottom", "Vest / Gilet", "Jacket / Shell",
+    "Warmers", "Gloves", "Headwear", "Neckwear", "Socks", "Overshoes",
+    "Shoes", "Helmet", "Accessories",
+]
+RIDE_GEAR_CASSETTES = ["Garbaruk 10-52T (13rz)", "SRAM Force E1 10-46T"]
+_RIDE_GEAR_ALLOWED = set(RIDE_GEAR_SLOTS) | {"wheels", "cassette"}
+
+
+def _garage_conn():
+    import sqlite3
+    conn = sqlite3.connect(GARAGE_DB)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _gear_label(r):
+    parts = [p for p in [r["brand"], r["model"]] if p]
+    lab = " ".join(parts) if parts else ("#" + str(r["id"]))
+    extra = [x for x in [r["size"], r["color"]] if x]
+    if extra:
+        lab += " * " + " / ".join(extra)
+    return lab
+
+
+@app.get("/api/ride-gear/options")
+def ride_gear_options(ride: str = Query("")):
+    """Opcje panelu 'Sprzet tej jazdy': pozycje z garazu per slot + zapisany wybor
+    dla ride_key + ostatni log (do 'Jak ostatnio'). Czyta garage.db (SQLite)."""
+    ride = (ride or "").strip()[:64]
+    gc = _garage_conn()
+    try:
+        by_cat = {}
+        for r in gc.execute(
+            "SELECT id, category, brand, model, size, color FROM gear "
+            "WHERE active=1 ORDER BY brand, model").fetchall():
+            by_cat.setdefault(r["category"], []).append(
+                {"id": r["id"], "label": _gear_label(r)})
+        slots = [{"slot": cat, "items": by_cat.get(cat, [])} for cat in RIDE_GEAR_SLOTS]
+        wheels = [
+            {"value": str(r["id"]), "label": r["model"]}
+            for r in gc.execute(
+                "SELECT id, model FROM components "
+                "WHERE category='wheels' AND active=1 ORDER BY id").fetchall()]
+        cassettes = [{"value": c, "label": c} for c in RIDE_GEAR_CASSETTES]
+        saved = {}
+        if ride:
+            for r in gc.execute(
+                "SELECT slot, gear_id, value FROM ride_gear_log WHERE ride_key=?",
+                (ride,)).fetchall():
+                saved[r["slot"]] = {"gear_id": r["gear_id"], "value": r["value"]}
+        last = {}
+        lr = gc.execute(
+            "SELECT ride_key FROM ride_gear_log WHERE ride_key != ? "
+            "ORDER BY updated_at DESC, id DESC LIMIT 1", (ride,)).fetchone()
+        if lr:
+            for r in gc.execute(
+                "SELECT slot, gear_id, value FROM ride_gear_log WHERE ride_key=?",
+                (lr["ride_key"],)).fetchall():
+                last[r["slot"]] = {"gear_id": r["gear_id"], "value": r["value"]}
+        return {"ride": ride, "slots": slots,
+                "bike": {"wheels": wheels, "cassette": cassettes},
+                "saved": saved, "last": last}
+    finally:
+        gc.close()
+
+
+@app.post("/api/ride-gear/save")
+async def ride_gear_save(request: Request):
+    """Zapis wyboru sprzetu dla ride_key. Body: {ride, items:{slot:{gear_id|value}}}.
+    Pusty slot => usuwa wiersz. Jeden wybor na slot (bez przebieranek)."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    ride = (str(body.get("ride") or "")).strip()[:64]
+    if not ride:
+        raise HTTPException(status_code=400, detail="Brak ride")
+    items = body.get("items") or {}
+    if not isinstance(items, dict):
+        raise HTTPException(status_code=400, detail="items musi byc obiektem")
+    gc = _garage_conn()
+    try:
+        saved_n = 0
+        for slot, sel in items.items():
+            if slot not in _RIDE_GEAR_ALLOWED:
+                continue
+            gear_id = None
+            value = None
+            if isinstance(sel, dict):
+                gid = sel.get("gear_id")
+                if gid not in (None, "", 0, "0"):
+                    try:
+                        gear_id = int(gid)
+                    except (TypeError, ValueError):
+                        gear_id = None
+                v = sel.get("value")
+                if v not in (None, ""):
+                    value = str(v)[:120]
+            if gear_id is None and value is None:
+                gc.execute("DELETE FROM ride_gear_log WHERE ride_key=? AND slot=?",
+                           (ride, slot))
+                continue
+            gc.execute(
+                "INSERT INTO ride_gear_log (ride_key, slot, gear_id, value, updated_at) "
+                "VALUES (?,?,?,?, datetime('now')) "
+                "ON CONFLICT(ride_key, slot) DO UPDATE SET "
+                "gear_id=excluded.gear_id, value=excluded.value, updated_at=datetime('now')",
+                (ride, slot, gear_id, value))
+            saved_n += 1
+        gc.commit()
+        return {"ok": True, "ride": ride, "saved": saved_n}
+    finally:
+        gc.close()
+
+
 _FEEL_WORDS = {-2: "fatalnie", -1: "gorzej niz zwykle", 0: "neutralnie", 1: "dobrze", 2: "swietnie"}
 
 
