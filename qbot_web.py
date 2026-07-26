@@ -4596,6 +4596,122 @@ async def ride_gear_save(request: Request):
         gc.close()
 
 
+# --- Serwis Garaz: showroom + CRUD bazy rzeczy (garage.db gear) ---
+GARAGE_CONDITIONS = ["New", "Good", "Worn", "Retired"]
+
+
+@app.get("/api/garage/list")
+def garage_list(all: int = Query(0), q: str = Query(""), cat: str = Query("")):
+    """Showroom garazu: lista rzeczy (domyslnie aktywne; all=1 z archiwum),
+    plus kanoniczne listy kategorii i stanow do formularza."""
+    ql = (q or "").strip().lower()
+    cat = (cat or "").strip()
+    gc = _garage_conn()
+    try:
+        rows = gc.execute("SELECT * FROM gear ORDER BY category, brand, model").fetchall()
+        items = []
+        for r in rows:
+            d = dict(r)
+            if not all and not d.get("active"):
+                continue
+            if cat and d.get("category") != cat:
+                continue
+            if ql:
+                hay = " ".join(str(d.get(k) or "") for k in ("brand", "model", "size", "color", "notes")).lower()
+                if ql not in hay:
+                    continue
+            items.append(d)
+        return {"items": items, "categories": RIDE_GEAR_SLOTS, "conditions": GARAGE_CONDITIONS}
+    finally:
+        gc.close()
+
+
+def _gs(v, n=200):
+    if v is None:
+        return None
+    v = str(v).strip()
+    return v[:n] if v else None
+
+
+@app.post("/api/garage/save")
+async def garage_save(request: Request):
+    """Dodaj (bez id) albo edytuj (z id) rzecz w garazu. Zwraca id."""
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    category = _gs(b.get("category"), 60)
+    brand = _gs(b.get("brand"), 80)
+    model = _gs(b.get("model"), 160)
+    if not category or not (brand or model):
+        raise HTTPException(status_code=400, detail="Wymagane: kategoria oraz marka lub model")
+    size = _gs(b.get("size"), 40)
+    color = _gs(b.get("color"), 60)
+    purchase_date = _gs(b.get("purchase_date"), 20)
+    condition = _gs(b.get("condition"), 30) or "Good"
+    notes = _gs(b.get("notes"), 4000)
+    weight_src = _gs(b.get("weight_src"), 20)
+
+    def _num(x):
+        if x in (None, ""):
+            return None
+        try:
+            return float(x)
+        except (TypeError, ValueError):
+            return None
+    price = _num(b.get("purchase_price"))
+    wg = b.get("weight_g")
+    try:
+        weight_g = int(wg) if wg not in (None, "") else None
+    except (TypeError, ValueError):
+        weight_g = None
+    if weight_g is not None and weight_src is None:
+        weight_src = "manual"
+    gid = b.get("id")
+    gc = _garage_conn()
+    try:
+        if gid not in (None, "", 0, "0"):
+            gid = int(gid)
+            gc.execute(
+                "UPDATE gear SET category=?, brand=?, model=?, size=?, color=?, "
+                "purchase_date=?, purchase_price=?, condition=?, notes=?, "
+                "weight_g=?, weight_src=? WHERE id=?",
+                (category, brand, model, size, color, purchase_date, price,
+                 condition, notes, weight_g, weight_src, gid))
+        else:
+            cur = gc.execute(
+                "INSERT INTO gear (category, brand, model, size, color, purchase_date, "
+                "purchase_price, condition, notes, weight_g, weight_src, active) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,1)",
+                (category, brand, model, size, color, purchase_date, price,
+                 condition, notes, weight_g, weight_src))
+            gid = cur.lastrowid
+        gc.commit()
+        return {"ok": True, "id": gid}
+    finally:
+        gc.close()
+
+
+@app.post("/api/garage/toggle")
+async def garage_toggle(request: Request):
+    """Schowaj do archiwum (active=0) albo przywroc (active=1)."""
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    gid = b.get("id")
+    if gid in (None, "", 0, "0"):
+        raise HTTPException(status_code=400, detail="Brak id")
+    active = 1 if b.get("active") else 0
+    gc = _garage_conn()
+    try:
+        gc.execute("UPDATE gear SET active=? WHERE id=?", (active, int(gid)))
+        gc.commit()
+        return {"ok": True, "id": int(gid), "active": active}
+    finally:
+        gc.close()
+
+
 _FEEL_WORDS = {-2: "fatalnie", -1: "gorzej niz zwykle", 0: "neutralnie", 1: "dobrze", 2: "swietnie"}
 
 
