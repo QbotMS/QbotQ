@@ -4651,6 +4651,8 @@ async def garage_save(request: Request):
     condition = _gs(b.get("condition"), 30) or "Good"
     notes = _gs(b.get("notes"), 4000)
     weight_src = _gs(b.get("weight_src"), 20)
+    ean = _gs(b.get("ean"), 20)
+    sku = _gs(b.get("sku"), 60)
 
     def _num(x):
         if x in (None, ""):
@@ -4675,16 +4677,16 @@ async def garage_save(request: Request):
             gc.execute(
                 "UPDATE gear SET category=?, brand=?, model=?, size=?, color=?, "
                 "purchase_date=?, purchase_price=?, condition=?, notes=?, "
-                "weight_g=?, weight_src=? WHERE id=?",
+                "weight_g=?, weight_src=?, ean=?, sku=? WHERE id=?",
                 (category, brand, model, size, color, purchase_date, price,
-                 condition, notes, weight_g, weight_src, gid))
+                 condition, notes, weight_g, weight_src, ean, sku, gid))
         else:
             cur = gc.execute(
                 "INSERT INTO gear (category, brand, model, size, color, purchase_date, "
-                "purchase_price, condition, notes, weight_g, weight_src, active) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,1)",
+                "purchase_price, condition, notes, weight_g, weight_src, ean, sku, active) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1)",
                 (category, brand, model, size, color, purchase_date, price,
-                 condition, notes, weight_g, weight_src))
+                 condition, notes, weight_g, weight_src, ean, sku))
             gid = cur.lastrowid
         gc.commit()
         return {"ok": True, "id": gid}
