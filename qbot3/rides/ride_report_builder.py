@@ -1253,10 +1253,14 @@ def _modelq_block(cur, ride_date):
         "weight_kg": _weight,
         "weight_source": (None if cr.get("weight_kg") else ("garmin" if _gw else None)),
         "wkg": _wkg,
-        "cp_r2": f(cr.get("cp_wprime_r2")),
+        # 2026-07-26: usuniete "cp_r2"/"ltp_r2". Kolumny *_r2 wypelnial ModelQ v1
+        # (regresja krzywej mocy); od cutoveru MQ2 2026-07-08 stoja puste, bo MQ2
+        # wyprowadza sygnature z dryfu wokol kotwicy, a nie z dopasowania -- r2 nie
+        # istnieje. Raport pokazywal wiec puste pole po nieistniejacym modelu.
+        # "ltp_note" zasila teraz publish.py (proweniencja MQ2).
+        # "cp_note" nadal puste -- do domkniecia razem z zadaniem "CP mislabeled".
         "cp_note": cr.get("cp_wprime_note"),
         "ltp_w": round(f(cr.get("ltp_modelq_w")),1) if cr.get("ltp_modelq_w") else None,
-        "ltp_r2": f(cr.get("ltp_modelq_r2")),
         "ltp_note": cr.get("ltp_modelq_note"),
     }
     impact = {"prev_day": str(prev["day"]) if prev else None}

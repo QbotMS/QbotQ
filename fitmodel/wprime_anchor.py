@@ -14,6 +14,24 @@ from __future__ import annotations
 MIN_ZERO_S = 10       # min. sekund z W'bal=0, by odrzucic pojedyncze glitche czujnika
 WINDOW_DAYS = 42      # jak dlugo kotwica podtrzymuje 'high' (pamiec formy ~6 tyg)
 
+# --- ZAKRES W' ZMIERZONY Z DROGI (wariant b, policzony 2026-07-26) -------------
+# Metoda: dla kazdej jazdy, na ktorej model doprowadzil W'bal do <=5%, szukamy
+# najwiekszego CIAGLEGO wysilku powyzej TP wykonanego juz przy pustym baku.
+# Praca tego wysilku to energia, ktorej modelowi zabraklo -> niedomiar W'.
+# Wymagane W' danej jazdy = HIE modelu tego dnia + niedomiar.
+#
+# Wynik na 11 wyplukaniach z roku (6 z realnym niedomiarem):
+#   2025-12-27  20.60 + 1.4 = 22.0     2026-06-05  18.16 + 4.6 = 22.8
+#   2026-03-10  24.24 + 0.1 = 24.3     2026-07-06  20.50 + 4.9 = 25.4
+#   2026-03-22  19.75 + 2.5 = 22.3     2026-06-20  22.70 + 3.4 = 26.1
+#
+# Zakres 22-26 kJ, srodek ~24. Zastapil dotychczasowe "13-22, confidence low",
+# ktore bylo zalozeniem, nie pomiarem. Kazdy punkt mierzy DOLNY brzeg (ile
+# trzeba bylo miec), wiec prawda moze lezec wyzej niz 26 -- nigdy nizej niz 22.
+# Uwaga: 6 zdarzen to malo. Przeliczyc, gdy przybeda kolejne wyplukania.
+WPRIME_MEASURED_LO_KJ = 22.0
+WPRIME_MEASURED_HI_KJ = 26.0
+
 
 def apply_road_anchor(conn, window_days: int = WINDOW_DAYS, min_zero_s: int = MIN_ZERO_S) -> dict:
     """Ustawia wprime_confidence/source w qbot_v2.fitmodel_daily wg kotwic z drogi.
@@ -66,8 +84,18 @@ def apply_road_anchor(conn, window_days: int = WINDOW_DAYS, min_zero_s: int = MI
             "UPDATE qbot_v2.fitmodel_daily SET wprime_confidence=%s, wprime_source=%s WHERE day=%s",
             (conf, src, day),
         )
+
+    # Zakres zmierzony z drogi na kazdy dzien z policzonym W'. Pola lo/hi pisal
+    # dotad wylacznie ModelQ v1 (archive/) i od cutoveru 2026-07-08 staly puste.
+    cur.execute(
+        "UPDATE qbot_v2.fitmodel_daily SET wprime_lo_kj=%s, wprime_hi_kj=%s "
+        "WHERE wprime_modelq_kj IS NOT NULL",
+        (WPRIME_MEASURED_LO_KJ, WPRIME_MEASURED_HI_KJ),
+    )
+    n_range = cur.rowcount
     conn.commit()
 
     n_high = sum(1 for u in updates if u[0] == "high")
     return {"updated": len(updates), "high": n_high, "medium": len(updates) - n_high,
-            "anchors": len(anchors)}
+            "anchors": len(anchors), "range_days": n_range,
+            "range_kj": [WPRIME_MEASURED_LO_KJ, WPRIME_MEASURED_HI_KJ]}

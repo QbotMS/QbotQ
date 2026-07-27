@@ -7,7 +7,8 @@ Sygnatura danego dnia NIE jest stala -- oddycha z Training Load (dowod na 272 dn
 Zima TL_low=29 -> TP=238; lato TL_low=80 -> TP=262.
 
 Model dziennej sygnatury:
-  TP_day  = TP_anchor - 0.15*age + 0.66*(CTL_day - CTL_anchor)  -- dryf za NASZYM CTL (bez v1).
+  TP_day  = TP_anchor + 0.66*(CTL_day - CTL_anchor)  -- dryf za NASZYM CTL (bez v1).
+            (czlon -0.15*age usuniety 2026-07-26: podwojne liczenie roztrenowania)
   HIE_day = HIE_anchor * clamp(TL_high_day / TL_high_anchor, +-20%)
   PP_day  = PP_anchor  * clamp(HIE_ratio, +-4%)  -- PP idzie za HIE (nie TL_peak), waski clamp,
             bo PP Xerta prawie stale. To naprawia glowny blad walidacji (PP 83W -> male).
@@ -42,7 +43,6 @@ PP_DRIFT_MIN, PP_DRIFT_MAX = 0.93, 1.07      # miekki bezpiecznik (PP Xerta 984-
 PP_K = 0.10                                   # tlumienie: PP dryfuje 10% amplitudy HIE (PP prawie stale, jak Xert sd~15)
 TP_DRIFT_MIN, TP_DRIFT_MAX = 0.90, 1.12
 TP_K_DRIFT = 0.66                             # W na 1 pkt CTL (dryf TP miedzy kotwicami, jak cp_v3)
-TP_DECAY_W_PER_DAY = 0.15                     # zanik kotwicy bez treningu (jak cp_v3)
 
 
 def _clamp(x, lo, hi):
@@ -74,8 +74,12 @@ def daily_signature(load: DayLoad, anchor: DecayAnchor,
         tp = tp_override
     else:
         ctl_day = load.low.tl + load.high.tl + load.peak.tl
-        age = abs((load.day - anchor.day).days)
-        tp = anchor.sig.tp_w - TP_DECAY_W_PER_DAY * age + TP_K_DRIFT * (ctl_day - anchor.ctl)
+        # 2026-07-26: czlon wieku (-TP_DECAY_W_PER_DAY * age) USUNIETY -- liczyl
+        # roztrenowanie drugi raz. Spadek formy siedzi juz w CTL (czlon TP_K_DRIFT),
+        # a kara za wiek odejmowala go ponownie, bezwarunkowo i bez konca
+        # (36 dni od kotwicy = -5.4 W niezaleznie od tego czy trenujesz).
+        # Walidacja vs Xert na 42 dniach: MAE LTP 4.08 -> 2.97 W, MAE TP 5.20 -> 3.18 W.
+        tp = anchor.sig.tp_w + TP_K_DRIFT * (ctl_day - anchor.ctl)
         tp = _clamp(tp, anchor.sig.tp_w * TP_DRIFT_MIN, anchor.sig.tp_w * TP_DRIFT_MAX)
 
     # PP musi byc > TP

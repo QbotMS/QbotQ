@@ -63,7 +63,17 @@ Wariant **a** (podniesienie PEWNOSCI z Wbal=0%) -- **ZROBIONE 2026-07-16**: modu
 (Wbal=0 >= 10 s, z `fitmodel_qext2_ride`) w oknie 42 dni -> `wprime_confidence='high'`; dzien z W'
 bez kotwicy -> `'medium'`; bez W' -> bez zmian. NIE zmienia wartosci `wprime_modelq_kj`.
 
-**DO ZROBIENIA -- wariant b (decyzja przed kodem):** z mocy i czasu trwania wysilku w momencie,
+**CZESCIOWO ZROBIONE 2026-07-26 -- zmierzony ZAKRES (nie wartosc).** Metoda: na kazdej jezdzie,
+gdzie model doprowadzil Wbal do <=5%, szukamy najwiekszego CIAGLEGO wysilku powyzej TP wykonanego
+juz przy pustym baku; jego praca = energia, ktorej modelowi zabraklo. Wymagane W' = HIE dnia +
+niedomiar. Na 11 wyplukaniach z roku (6 z realnym niedomiarem) wyszlo **22-26 kJ, srodek ~24**:
+22.0 / 22.3 / 22.8 / 24.3 / 25.4 / 26.1. Zapisane jako `WPRIME_MEASURED_LO/HI_KJ` w
+`fitmodel/wprime_anchor.py`, ktory wypelnia teraz `wprime_lo_kj`/`wprime_hi_kj` (573 dni).
+Zastapilo zalozeniowe "13-22, confidence low". Kazdy punkt mierzy DOLNY brzeg -- prawda moze
+lezec wyzej niz 26, nigdy nizej niz 22. Biezace `wprime_modelq_kj` (~23.2) miesci sie w zakresie,
+wiec wartosci NIE zmieniano.
+
+**ZOSTAJE -- wariant b wlasciwy (decyzja przed kodem):** z mocy i czasu trwania wysilku w momencie,
 gdy W'bal zszedl do 0, wstecznie policzyc ILE W' naprawde musialo byc, i USTAWIC te wartosc
 (dzis kotwica rusza tylko pewnosc, nie liczbe). Bezpieczniki konieczne: min. dlugosc/twardosc
 wysilku, usrednianie z kilku kotwic (pojedyncze zdarzenie jest zaszumione) -- dlatego b dopiero,

@@ -20,6 +20,7 @@ from __future__ import annotations
 import bisect, datetime as dt
 
 from fitmodel.modelq2.signature import Signature
+from fitmodel.ltp_hrdrift import LTP_MEASURED_NOTE
 from fitmodel.modelq2 import io
 from fitmodel.modelq2.xss import compute_xss
 from fitmodel.modelq2.mpa import replay_mpa
@@ -77,15 +78,35 @@ def publish_to_daily(conn) -> int:
     """Zapisuje sygnature MQ2 -> stare kolumny fitmodel_daily (UPDATE po dniu).
     Zwraca liczbe zaktualizowanych dni."""
     cur = conn.cursor()
-    cur.execute("SELECT day,tp_w,hie_kj,pp_w,ltp_w,ctl,atl,tsb FROM qbot_v2.modelq2_signature ORDER BY day")
+    cur.execute("SELECT day,tp_w,hie_kj,pp_w,ltp_w,ctl,atl,tsb,source "
+                "FROM qbot_v2.modelq2_signature ORDER BY day")
     n = 0
-    for day, tp, hie, pp, ltp, ctl, atl, tsb in cur.fetchall():
+    for day, tp, hie, pp, ltp, ctl, atl, tsb, src in cur.fetchall():
+        # 2026-07-26: MQ2 zapisuje wlasna notke proweniencyjna do ltp_modelq_note.
+        # Kolumny *_r2 pochodzily z ModelQ v1 (regresja krzywej mocy) i od cutoveru
+        # 2026-07-08 stoja puste. MQ2 nie dopasowuje krzywej -- LTP wychodzi ze wzoru
+        # na sygnaturze -- wiec r2 nie ma tu sensu i jest jawnie zerowane, zeby
+        # raport nie pokazywal pustego pola po nieistniejacym modelu.
+        note = ("LTP = TP - HIE/400 (wzor Xert). Zrodlo MQ2: %s "
+                "(TP dryfuje za CTL wokol kotwicy, HIE za TL_high). "
+                "To nie jest dopasowanie krzywej -- r2 nie wystepuje. "
+                "TP=%.1f W, HIE=%.2f kJ. || %s"
+                % (src or "decay", float(tp), float(hie), LTP_MEASURED_NOTE))
+        # cp_modelq_w niesie TP, nie CP i nie LTP -- historyczna nazwa kolumny.
+        # Notka mowi to wprost, zeby raport nie sugerowal osobno wyznaczonego CP.
+        cp_note = ("UWAGA: kolumna cp_modelq_w niesie TP (prog) z sygnatury MQ2, "
+                   "nie osobno wyznaczone CP i nie LTP -- nazwa jest historyczna. "
+                   "Zrodlo MQ2: %s. TP=%.1f W. Prawdziwe CP z okien 120-600 s "
+                   "nie jest jeszcze liczone (zadanie otwarte)."
+                   % (src or "decay", float(tp)))
         cur.execute("""UPDATE qbot_v2.fitmodel_daily SET
             ftp_est_w=%s, cp_modelq_w=%s, ltp_modelq_w=%s, wprime_modelq_kj=%s, pp_modelq_w=%s,
+            ltp_modelq_note=%s, ltp_modelq_r2=NULL,
+            cp_wprime_note=%s, cp_wprime_r2=NULL,
             ctl_xss=%s, atl_raw=%s, tsb_raw=%s, atl_plus=%s, tsb_plus=%s,
             w_per_kg=CASE WHEN weight_kg IS NOT NULL AND weight_kg>0 THEN %s::numeric/weight_kg ELSE w_per_kg END
             WHERE day=%s""",
-            (tp, tp, ltp, hie, pp, ctl, atl, tsb, atl, tsb, tp, day))
+            (tp, tp, ltp, hie, pp, note, cp_note, ctl, atl, tsb, atl, tsb, tp, day))
         n += cur.rowcount
     conn.commit()
     return n

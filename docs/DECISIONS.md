@@ -4,6 +4,66 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-07-25 -- DECYZJA: poswiadczenia integracji -- jeden magazyn, glosna awaria, duplikat to sukces
+
+**Status:** zatwierdzone i wdrozone. Weryfikacja na zywo (jazda 23731387812 w bazie 22:15,
+sync zwraca `duplicate` zamiast `failed` o 22:40).
+
+**Problem.** Lancuch Karoo -> Hammerhead -> Garmin -> baza stanal, bo wygasly DWA niezalezne
+poswiadczenia (Hammerhead 24.07 13:10, Garmin sesja profilowa). Awaria byla CICHA -- siedziala
+w plikach logow, ktorych nikt nie czyta. Uzytkownik dowiedzial sie po dobie i przez niewlasciwy
+objaw: alarm "raport nie zostal wygenerowany" powtarzany co 30 min. Diagnoza szla wiec od skutku,
+a nie od przyczyny.
+
+**Decyzja 1 -- magazyn poswiadczen: koniec z osobna kopia per profil tam, gdzie konto jest to samo.**
+Wzorzec "magazyn DOMYSLNY obok magazynu PROFILOWEGO" wylozyl system dwukrotnie tego samego wieczoru:
+proces utrzymujacy sesje przy zyciu pisze do domyslnego, a sync czyta profilowy, ktory po cichu gnije
+(`.garmin_tokens/michal/` nietkniety od 19 maja, bo odswiezanie dzialalo wylacznie w pamieci).
+`GARMIN_TOKENSTORE` profilu michal przepiety na wspolny `.garmin_tokens` po potwierdzeniu na zywo,
+ze to to samo konto (get_full_name="Michal", id=63697126). Magazyny per profil zostaja WYLACZNIE
+tam, gdzie konta sa rozne. Zapis nowego poswiadczenia Hammerheada idzie do WSZYSTKICH magazynow
+(domyslny + kazdy `HAMMERHEAD_TOKENSTORE` z config/profiles/*.env).
+REGULA: przed zmiana poswiadczen ustalic, ktory plik realnie czyta dany proces.
+
+**Decyzja 2 -- odnowienie dostepu Hammerheada robi UZYTKOWNIK, przez wlasny serwer.**
+Logowanie idzie przez SRAM ID (SSO), wiec `grant_type=password` nie zadziala nigdy -- hasla do
+Hammerheada po prostu nie ma, mimo ze `login_from_env()` istnieje w kodzie (nigdy nie bylo uzyte
+w produkcji; `HAMMERHEAD_EMAIL` wystepuje tylko w `.env.example`). Jedyna droga to swiezy
+`jwt:refresh` z localStorage przegladarki. Zamiast przekazywac go przez czat/asystenta powstal
+`GET /hammerhead-dostep` + `POST /api/hammerhead/refresh-token` za sesja: wartosc idzie z przegladarki
+PROSTO na serwer i nie przechodzi przez zadne posrednie zapisy. Odswiezenie zajmuje ~30 s z telefonu.
+UZASADNIENIE: rozszerzenie przegladarki celowo blokuje odczyt kluczy wygladajacych na poswiadczenia
+i tego bezpiecznika sie nie obchodzi -- buduje sie droge, ktora go nie potrzebuje.
+
+**Decyzja 3 -- awaria integracji ma byc GLOSNA, ale nie halasliwa.**
+`qbot-hammerhead-sync` wysyla JEDEN komunikat na Telegram przy realnej awarii, z wyciszeniem 6 h
+(`state/sync_alert_state.json`) i linkiem do /hammerhead-dostep; udany przebieg kasuje wyciszenie,
+wiec kolejna awaria alarmuje natychmiast. Symetrycznie `ride_report.py` wysyla alert
+"brak danych aktywnosci" RAZ na aktywnosc (`data/missing_data_alerts.json`), a nie co 30 min.
+Rowniez: nieudany refresh w `hammerhead_auth.py::get_tokens` nie przerywa juz procesu wyjatkiem.
+
+**Decyzja 4 -- Garmin `409 Duplicate Activity` to SUKCES, nie blad.**
+Cel wysylki to obecnosc jazdy na Garminie. Jesli Garmin ja ma, cel jest osiagniety. Traktowanie 409
+jako porazki powodowalo, ze sync w nieskonczonosc podnosil te sama aktywnosc i meldowal blad co
+10 minut -- co po wdrozeniu Decyzji 3 zamienialoby sie w falszywe alarmy. Status `duplicate`,
+exit_code 0, aktywnosc odznaczona jako `uploaded`.
+
+**Decyzja 5 -- Garmin zostaje obowiazkowym przystankiem (odrzucono skrot przez plik lokalny).**
+Rozwazano ingest wprost z `hammerhead_originals/` (plik i tak lezy na serwerze), co uodporniloby
+system na awarie Garmina. ODRZUCONE: `import_garmin_training.py` bierze z API Garmina pola LICZONE
+PRZEZ GARMINA (`aerobicTrainingEffect`, `anaerobicTrainingEffect`, `intensityFactor`), ktorych plik
+z Karoo nie zawiera, a `qbot_activity_ingest.py` pobiera FIT z powrotem z Garmina i nie ma zadnego
+odwolania do Hammerheada. Plik z Hammerheada jest UBOZSZY -- to kopia robocza, nie zrodlo bazy.
+UWAGA DOKUMENTACYJNA: `docs/archive/MODELQ_V1.md` twierdzi przeciwnie (strumienie 1 Hz z
+`hammerhead_originals`) -- dokument zarchiwizowany, NIEAKTUALNY. Obowiazuje zywy kod.
+
+**Otwarte.** (1) Nieustalone, ktora droga jazda z 25.07 trafila na Garmina -- jedyna zalogowana
+proba zwrocila 409. (2) `qbot-hammerhead-sync` nie ma monkey-patcha `_safe_get_dev_type` na pola
+developerskie QExt2 (warning `No such field 6 for dev_data_index 3`), ktory ma
+`qbot_activity_ingest.py`. (3) Przeglad wzorca "magazyn domyslny vs profilowy" w pozostalych
+integracjach.
+
+---
 ## 2026-07-23 -- DECYZJA: bezpiecznik kosztow Google Places (200/dobe, 1000/miesiac) + guard atrakcji
 
 **Status:** zatwierdzone i wdrozone (commit aef6cce, push origin/main). Weryfikacja na zywo.
@@ -2832,3 +2892,105 @@ lokalne BEZ remote) -> **proxy** na `127.0.0.1:8000` -> **`q-bot.service`** ->
 Martwe duplikaty: `qbot_api.py` (port 8002) ma wlasny, ubozszy
 `/ride-readiness`. Zmiana tam NIE dociera do Karoo.
 `q-bot.service` NIE jest wymieniona na liscie uslug w CONTEXT.md -- do uzupelnienia.
+
+## 2026-07-26 -- ModelQ: LTP, podwojnie liczone roztrenowanie, slepa sciezka przebic
+
+**Punkt wyjscia.** LTP w ModelQ 180,6 W vs Xert 190,2 W. Do 8.07 oba modele mowily
+to samo (roznica <1 W); od 9.07 ModelQ zjechal o ~10 W i tam stanal.
+
+**Ustalenie 1 -- Xert liczy LTP TYM SAMYM wzorem, nie mierzy go z dlugich jazd.**
+Zweryfikowane na jego wlasnych danych, 8 dni z rzedu, zgodnosc do 4 miejsca po
+przecinku: `LTP_xert = TP - ATC/400` (ATC z `raw_json.advice.signature.atc`).
+Wniosek: nie ma u Xerta zadnej lepszej metody LTP do podpatrzenia. Roznica
+brala sie wylacznie z jakosci TP i HIE. NIE budowac estymatora progu tlenowego
+"jak u Xerta" -- Xert tego nie robi.
+
+**Ustalenie 2 -- rozjazd 9.07 to zmiana metody, nie fizjologia.**
+Do 8.07 LTP liczyl ModelQ v1 (regresja 90 dni, r2=0,996). Od 9.07 publikuje MQ2
+z `modelq2_signature` (wzor na sygnaturze). Kolumny `*_r2` / `*_note` wypelnial
+WYLACZNIE v1 (`archive/modelq_v1/cp_wprime.py`), wiec od cutoveru stoja puste --
+to nie awaria, MQ2 nie dopasowuje krzywej.
+
+**Ustalenie 3 (POPRAWKA) -- roztrenowanie liczylo sie dwa razy.**
+`decay.py::daily_signature` liczyl
+`TP = TP_kotwica - 0,15*wiek + 0,66*(CTL_dzien - CTL_kotwica)`.
+Spadek formy siedzi juz w czlonie CTL; czlon wieku odejmowal go PONOWNIE,
+bezwarunkowo, takze gdy CTL stalo lub roslo -- czyli ~1 W/tydzien w nieskonczonosc
+niezaleznie od treningu. Na 2026-07-26 (kotwica 20.06, wiek 36 dni) dawalo
+to -5,4 W. Rozbicie calego spadku TP o 14,6 W od kotwicy: 5,4 W wiek + 9,2 W CTL.
+**Decyzja: czlon wieku usuniety.** Zanik przy braku treningu zapewnia czlon CTL
+(przy CTL->0 TP siada do dolnego clampa 0,90*TP_kotwicy).
+Efekt: TP 240,1 -> 245,5 W, LTP 180,7 -> 186,1 W. Rozjazd z Xertem 9,5 -> 4,1 W.
+Stala `TP_DECAY_W_PER_DAY` zostaje martwa -- do usuniecia.
+
+**Ustalenie 4 (POPRAWKA) -- proweniencja LTP zamiast pustego pola.**
+`publish.py` zapisuje teraz `ltp_modelq_note` (wzor + zrodlo MQ2 + TP/HIE dnia)
+i jawnie zeruje `ltp_modelq_r2`. Z `ride_report_builder.py` usuniete klucze
+`cp_r2` i `ltp_r2`. Konwencja zgodna z istniejacym `wprime_source`.
+
+**Ustalenie 5 (SLEPA SCIEZKA -- NIE POWTARZAC).** Sprawdzono pomysl
+"przebicia -> HIE" (brakujacy `extract.py`, wolany w docstringu `breakthrough.py`,
+ktory nigdy nie powstal).
+- Detektor DZIALA: przebicia na 4 z 19 jazd z 45 dni, przekroczenia MPA 31-304 W.
+- To NIE sa artefakty mocomierza na starcie -- offsety 3556-15015 s, czyli 1-4 h
+  w jazde (sprawdzone; poczatkowe podejrzenie bylo bledne).
+- ALE: wszystkie 29 zdarzen trwa <=69 s. To stromy, beztlenowy koniec krzywej.
+  TP jest asymptota dlugich czasow -- z wysilkow 3-69 s praktycznie niewidoczna.
+- Solver (bisekcja: najmniejsze HIE domykajace przebicie) zwraca
+  **44,3 / 66,7 / 35,7 / 49,3 kJ** przy sensownych 13-22 kJ.
+- Powod: `MPA = TP + (PP-TP)*(Wbal/W')` to interpolacja LINIOWA. Zeby wytlumaczyc
+  sprint 745 W po 4 h jazdy, Wbal musialby byc w 66% pelny, wiec solver rozdyma bak.
+  Sprint neuromiesniowy nie bierze sie z W' w ten sposob.
+**Decyzja: NIE pisac `extract.py` bez wczesniejszej zmiany ksztaltu MPA.**
+Zbudowany na obecnym ksztalcie systematycznie zawyzalby W' i zanizal LTP.
+
+**Ustalenie 6 (OTWARTE, do przemyslenia).** `qbot_v2.modelq2_anchor` to wartosci
+"przepisane z Xerta RAZ". Czyli Xert, ktory wg wlasnej zasady ma byc WYLACZNIE
+benchmarkiem, jest fundamentem calego MQ2. Sprzecznosc do rozstrzygniecia.
+Dodatkowo: na 2026-06-20 (dzien kotwicy) wlasna jazda przebija kotwicowa sygnature
+8 razy, Wbal do zera -- kotwica jest za niska wzgledem jazdy, na ktorej stoi.
+
+**Falszywy trop wyjasniony.** Skok HIE 19.07 (20,77 -> 24,82 kJ) NIE pochodzi
+z zanieczyszczonych danych. Jazda z 19.07 jest w bazie w wersji POPRAWIONEJ
+(avg 163,4 / mmp30 453 / mmp60 366 / mmp120 334; oryginal: 188,2 / 496 / 409 / 377).
+Skok to realny mocny wysilek. Pokazuje jednak wade modelu: mocny wysilek beztlenowy
+podnosi HIE, TP nie drga, wiec LTP SPADA -- model karze za dobra jazde.
+U Xerta TP i HIE sa parametrami jednego dopasowania (korelacja zmian +0,984),
+wiec bledy sie znosza; w MQ2 pochodza z osobnych torow i sie dodaja.
+
+## 2026-07-26 -- W' zmierzone z drogi (22-26 kJ) i ZMIANA RAMY dla LTP
+
+**W' przestaje byc zalozeniem.** Policzone z 11 wyplukan (Wbal<=5%) z roku metoda
+"ile energii zabraklo modelowi przy pustym baku" -- szczegoly i tabela w
+`docs/TODO.md` [W-PRIME-KOTWICA-B] oraz w naglowku `fitmodel/wprime_anchor.py`.
+Wynik: **22-26 kJ, srodek ~24**, zamiast dotychczasowego zalozeniowego
+"13-22, confidence low". Biezace `wprime_modelq_kj` ~23.2 miesci sie w zakresie,
+wiec wartosci nie ruszano -- pomiar POTWIERDZIL model, nie obalil.
+
+**Poprawka wlasnego bledu z tej samej sesji.** Na probce 3 jazd (tylko 90 dni)
+wyszedl niedomiar 5-6 kJ i wniosek "W' = 26 kJ". Na pelnym roku mediana niedomiaru
+to 2.9 kJ. Probka 90-dniowa zawierala akurat trzy najwieksze zdarzenia. 26 kJ to
+GORNY kraniec (wartosc tlumaczaca kazda jazde), nie srodek.
+
+**ZMIANA RAMY -- rownanie z Xertem przestaje byc miara sukcesu.**
+Cala sesja gonila LTP Xerta jako wzorzec. Ale LTP nie jest nigdzie ZMIERZONE --
+ani u nas, ani u Xerta. Oba to ta sama formula `TP - HIE/400` policzona na roznych
+zalozeniach o W':
+  Xert:              242.0 - 20.7/0.4 = 190
+  ModelQ dzis:       245.5 - 23.8/0.4 = 186
+  przy W' = 26 kJ:   245.5 - 65.0     = 180
+Trzy liczby z jednego wzoru i trzech roznych W'. Zblizanie sie do Xerta nie bylo
+zblizaniem sie do prawdy, tylko do cudzej zgadywanki. Jesli realne W' Michala jest
+wyzsze niz 20.7, to Xert zaniza je tak samo i jego 190 stoi na tym samym bledzie.
+
+**Wniosek kierunkowy:** LTP potrzebuje WLASNEGO, niezaleznego pomiaru, a nie
+lepszego dopasowania do Xerta. Kandydat: prog tlenowy jako najwyzsza moc utrzymana
+bez ucieczki tetna (dryf tetna przy dopasowanej mocy jest juz policzony w QExt2).
+Dopiero majac zmierzone LTP i zmierzone W', TP wyliczamy z nich -- odwrotnie niz
+dzis, gdzie TP i W' sa wsadem, a LTP wypada ze wzoru. To tez droga do uniezaleznienia
+sie od kotwic `modelq2_anchor` przepisanych z Xerta.
+
+**Zasada potwierdzona przy okazji:** zadnych testow maksymalnych. Wczesniejsza
+propozycja "zrob wysilek 20-30 min, zeby zweryfikowac TP" byla bledem sprzecznym
+z zalozeniem fundamentalnym ModelQ. Wszystkie powyzsze pomiary pochodza z jazd,
+ktore i tak zostaly zrobione.
