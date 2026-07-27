@@ -365,6 +365,38 @@ def rebuild_stale_reports(days: int = 7) -> int:
     return rebuilt
 
 
+def _one_if_new():
+    # Trigger po synchronizacji Karoo->Garmin: ingest + recompute ModelQ TYLKO
+    # gdy najnowsza jazda jest NOWA. Gdy nic nowego -> tani no-op (bez ponownego
+    # ingestu 16k rekordow). Uzywane przez wrapper syncu dla profilu michal, w
+    # krotkiej petli retry (Garmin bywa opozniony po uploadzie).
+    # Exit: 10=NEW (zaingestowano+przeliczono), 0=nic nowego, 1=blad.
+    try:
+        gc = garmin_client()
+        conn = _db()
+        acts = gc.get_activities(0, 15)
+        cyc = next((a for a in acts if isinstance(a, dict) and _is_cycling(a)), None)
+        if not cyc:
+            print('NOOP: brak jazdy w 15 ostatnich')
+            conn.close()
+            return 0
+        aid = str(cyc.get('activityId'))
+        if _already(conn, aid):
+            print(f'NOOP: najnowsza jazda juz w bazie (aid={aid})')
+            conn.close()
+            return 0
+        print(f'NEW: ingest aid={aid}')
+        r = ingest_one(gc, conn, cyc, with_report=True)
+        print('INGESTED:', json.dumps(r, default=str))
+        conn.close()
+        _recompute_fitmodel(f"one_if_new aid={r.get('aid')}")
+        print(f"NEW-DONE aid={r.get('aid')}")
+        return 10
+    except Exception as e:
+        print(f'one_if_new FAILED: {type(e).__name__}: {str(e)[:200]}')
+        return 1
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "one"
     if cmd == "backfill":
@@ -375,5 +407,7 @@ if __name__ == "__main__":
         backfill(lim, st, sn, with_report=wr)
         if wr:
             rebuild_stale_reports()
+    elif cmd == "one_if_new":
+        raise SystemExit(_one_if_new())
     else:
         _one()

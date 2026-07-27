@@ -47,4 +47,21 @@ mkdir -p "$APP_DIR/logs"
   fi
 
   echo "[$(date -Is)] qbot-hammerhead-sync done profile=$PROFILE"
+
+  # ModelQ fast-path (tylko profil michal): po udanym syncu odpal ingest+recompute
+  # od razu, zamiast czekac na okresowy cron. Skrypt jest idempotentny, ma wlasny
+  # lock i retry na opoznienie Garmina. Odpalany w tle (setsid) -> nie blokuje cyklu.
+  if [[ "$PROFILE" == "michal" ]]; then
+    PROXY_DIR="$APP_DIR/outgoing/garmin_proxy"
+    # Odpal trigger TYLKO gdy sync faktycznie przetworzyl nowa jazde (swiezy proxy FIT).
+    # "already processed"/"No unprocessed" nie tworza nowego proxy FIT -> brak triggera,
+    # zero zbednego walenia w API Garmina co 10 min.
+    if [[ -n "$(find "$PROXY_DIR" -maxdepth 1 -type f -name '*.fit' -mmin -3 2>/dev/null)" ]]; then
+      echo "[$(date -Is)] trigger ModelQ launch profile=$PROFILE (nowy proxy FIT)"
+      setsid "$APP_DIR/.venv/bin/python" "$APP_DIR/scripts/trigger_modelq_after_ride.py" \
+        >> "$APP_DIR/logs/activity-ingest-trigger.log" 2>&1 &
+    else
+      echo "[$(date -Is)] trigger ModelQ pominiety profile=$PROFILE (brak nowej jazdy)"
+    fi
+  fi
 } >> "$LOG_FILE" 2>&1
