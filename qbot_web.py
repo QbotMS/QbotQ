@@ -6176,17 +6176,16 @@ def api_wyposazenie_garage_options(category: str = Query(...), season: str = Que
 
 @app.post("/api/planer/wyposazenie/save")
 async def api_wyposazenie_save(request: Request):
-    """Zapisuje/aktualizuje liste pakowania dla wyprawy. Jedna lista na entry_id.
-    body: {entry_id, style, days, name?, groups:[{group, items:[
+    """Zapisuje/aktualizuje liste pakowania dla wyprawy. Jedna lista na route_id.
+    body: {route_id, style, days, name?, groups:[{group, items:[
       {item, qty, garage_category?, gear_id?, bag_id?, packed?, notes?}]}]}."""
     try:
         body = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Bledny JSON")
-    try:
-        entry_id = int(body.get("entry_id"))
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Wymagane: entry_id (liczba)")
+    route_id = (str(body.get("route_id") or "")).strip()
+    if not route_id:
+        raise HTTPException(status_code=400, detail="Wymagane: route_id")
     style = (str(body.get("style") or "")).strip().lower()
     if style not in ("lekko", "ciezko", ""):
         raise HTTPException(status_code=400, detail="style musi byc 'lekko' lub 'ciezko'")
@@ -6202,15 +6201,15 @@ async def api_wyposazenie_save(request: Request):
 
     con = _wyposazenie_db()
     try:
-        row = con.execute("SELECT id FROM packing_lists WHERE entry_id=?", (entry_id,)).fetchone()
+        row = con.execute("SELECT id FROM packing_lists WHERE route_id=?", (route_id,)).fetchone()
         if row:
             list_id = row["id"]
             con.execute("UPDATE packing_lists SET style=?, days=?, name=? WHERE id=?",
                         (style or None, days, name, list_id))
         else:
             cur = con.execute(
-                "INSERT INTO packing_lists(entry_id, style, days, name, created_at) "
-                "VALUES(?,?,?,?,datetime('now'))", (entry_id, style or None, days, name))
+                "INSERT INTO packing_lists(route_id, style, days, name, created_at) "
+                "VALUES(?,?,?,?,datetime('now'))", (route_id, style or None, days, name))
             list_id = cur.lastrowid
         con.execute("DELETE FROM packing_items WHERE list_id=?", (list_id,))
         n = 0
@@ -6243,19 +6242,19 @@ async def api_wyposazenie_save(request: Request):
         con.commit()
     finally:
         con.close()
-    return {"ok": True, "entry_id": entry_id, "list_id": list_id, "items_saved": n}
+    return {"ok": True, "route_id": route_id, "list_id": list_id, "items_saved": n}
 
 
 @app.get("/api/planer/wyposazenie/list")
-def api_wyposazenie_list(entry_id: int = Query(...)):
+def api_wyposazenie_list(route_id: str = Query(...)):
     """Zwraca zapisana liste pakowania dla wyprawy (pogrupowana). Gdy brak -> exists=False."""
     con = _wyposazenie_db()
     try:
         lst = con.execute(
-            "SELECT id, entry_id, style, days, name, created_at "
-            "FROM packing_lists WHERE entry_id=?", (entry_id,)).fetchone()
+            "SELECT id, route_id, style, days, name, created_at "
+            "FROM packing_lists WHERE route_id=?", (route_id,)).fetchone()
         if not lst:
-            return {"exists": False, "entry_id": entry_id, "groups": []}
+            return {"exists": False, "route_id": route_id, "groups": []}
         items = con.execute(
             "SELECT id, category, item, quantity, packed, from_garage, gear_id, "
             "garage_category, bag_id, notes FROM packing_items WHERE list_id=? ORDER BY id",
@@ -6274,7 +6273,7 @@ def api_wyposazenie_list(entry_id: int = Query(...)):
             "gear_id": it["gear_id"], "bag_id": it["bag_id"], "notes": it["notes"],
         })
     return {
-        "exists": True, "entry_id": entry_id, "list_id": lst["id"],
+        "exists": True, "route_id": route_id, "list_id": lst["id"],
         "style": lst["style"], "days": lst["days"], "name": lst["name"],
         "created_at": lst["created_at"],
         "groups": [{"group": g, "items": groups[g]} for g in order],
@@ -6307,15 +6306,15 @@ def api_wyposazenie_bags():
 
 
 @app.get("/api/planer/wyposazenie/summary")
-def api_wyposazenie_summary(entry_id: int = Query(...)):
+def api_wyposazenie_summary(route_id: str = Query(...)):
     """Podsumowanie pakowania per torba: przypisane rzeczy, ich liczba, suma ZNANEJ
     wagi (z gear, qty x waga) oraz liczba rzeczy bez wagi. Rzeczy bez przypisanej
     torby -> kubelek 'Nieprzypisane'. Wag czesto brak - to normalne (dolny brzeg)."""
     con = _wyposazenie_db()
     try:
-        lst = con.execute("SELECT id FROM packing_lists WHERE entry_id=?", (entry_id,)).fetchone()
+        lst = con.execute("SELECT id FROM packing_lists WHERE route_id=?", (route_id,)).fetchone()
         if not lst:
-            return {"exists": False, "entry_id": entry_id, "bags": [], "unassigned": None}
+            return {"exists": False, "route_id": route_id, "bags": [], "unassigned": None}
         items = con.execute(
             "SELECT pi.item, pi.quantity, pi.gear_id, pi.bag_id, "
             "COALESCE(g.weight_g, g.weight_est_g) AS w "
@@ -6364,7 +6363,7 @@ def api_wyposazenie_summary(entry_id: int = Query(...)):
         data["total_est_g"] = data["known_weight_g"] + empty  # torba + znane rzeczy = dolny brzeg
         out_bags.append(data)
     out_bags.sort(key=lambda d: (0 if d.get("role") == "main" else 1, -(d.get("capacity_l") or 0)))
-    return {"exists": True, "entry_id": entry_id, "bags": out_bags, "unassigned": unassigned}
+    return {"exists": True, "route_id": route_id, "bags": out_bags, "unassigned": unassigned}
 
 
 @app.get("/api/calendar")
