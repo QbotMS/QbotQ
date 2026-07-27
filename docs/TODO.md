@@ -196,6 +196,7 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 ---
 
 # ZROBIONE (skrot; szczegoly w DECISIONS.md i TODO.md.bak.*)
+- [2026-07-27] ZROBIONE: Planowane obciazenie (XSS/dzien) z Planera Wypraw. Nowa tabela qbot_v2.planned_load_daily (day+source PK; osobno od fitmodel_daily). XSS/dzien liczony z podzialu Planera (dni_json) + fizyka trasy (_planer_stage_xss). Zapis auto przy /api/calendar/route (best-effort) + endpoint POST /api/planer/planned-load/recompute. Konsumenci: Doradca formy (_forma_planned_events dokleja XSS/dzien) + /api/calendar (days[d].planned_xss + lista planned) + badge w kalendarz-render.js (komorka + chip szuflady). Backfill wyprawy 1-3.08 (entry 13): 372/305/231 XSS.
 
 - **2026-07-16 (kalendarz WEB):** nowy modul kalendarza (qbot_v2.calendar_entry) -- siatka
   miesiaca z odczytem konca dnia (CP/CTL/ATL/TSB) + jazdy + wysuwany przeglad dnia +
