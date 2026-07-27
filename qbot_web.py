@@ -4480,7 +4480,7 @@ GARAGE_DB = os.environ.get("QBOT_GARAGE_DB", "/opt/qbot/app/data/garage.db")
 
 # Kolejnosc slotow w panelu (jedna, caloroczna lista; z buty/kask/kurtka).
 RIDE_GEAR_SLOTS = [
-    "Base Layer Top", "Base Layer Bottom", "Jersey", "Jersey Long Sleeve",
+    "Base Layer Top", "Base Layer Bottom", "Jersey", "T-Shirt", "Jersey Long Sleeve",
     "Bottoms / Bibs", "Mid Layer Bottom", "Vest / Gilet", "Jacket / Shell",
     "Warmers", "Gloves", "Headwear", "Neckwear", "Socks", "Overshoes",
     "Shoes", "Helmet", "Glasses", "Accessories",
@@ -4599,6 +4599,9 @@ async def ride_gear_save(request: Request):
 # --- Serwis Garaz: showroom + CRUD bazy rzeczy (garage.db gear) ---
 GARAGE_CONDITIONS = ["New", "Good", "Worn", "Retired"]
 GARAGE_SEASONS = ["zima", "przejsciowy", "lato"]
+# Material: mocno wplywa na zastosowanie (merino grzeje mokre i nie smierdzi,
+# syntetyk szybciej schnie i lepiej odprowadza przy wysokiej intensywnosci).
+GARAGE_FABRICS = ["merino", "merino blend", "techniczna", "inna"]
 GARAGE_PALETTE = ["BLACK", "GREY", "WHITE", "BEIGE", "BROWN", "GREEN", "OLIVE",
                   "BLUE", "NAVY", "RED", "ORANGE", "YELLOW", "MULTI"]
 GARAGE_RATING_COLS = ["r_intensity", "r_breath", "r_dry", "r_insul",
@@ -4668,6 +4671,7 @@ def garage_list(all: int = Query(0), q: str = Query(""), cat: str = Query("")):
             items.append(d)
         return {"items": items, "categories": RIDE_GEAR_SLOTS,
                 "conditions": GARAGE_CONDITIONS, "seasons": GARAGE_SEASONS,
+                "fabrics": GARAGE_FABRICS,
                 "palette": GARAGE_PALETTE, "rating_cols": GARAGE_RATING_COLS,
                 "rating_labels": GARAGE_RATING_LABELS}
     finally:
@@ -4743,6 +4747,9 @@ async def garage_save(request: Request):
             color_qv = None
     if not color_qv and color:
         color_qv = _color_q(color)
+    fabric = _gs(b.get("fabric"), 20)
+    if fabric not in GARAGE_FABRICS:
+        fabric = None
     ratings_status = _gs(b.get("ratings_status"), 10)
     if ratings_status not in ("draft", "ok"):
         ratings_status = None
@@ -4753,6 +4760,7 @@ async def garage_save(request: Request):
         "condition": condition, "notes": notes, "weight_g": weight_g,
         "weight_src": weight_src, "ean": ean, "sku": sku, "url": url,
         "season": season, "rating": rating, "color_q": color_qv,
+        "fabric": fabric,
     }
     for rc in GARAGE_RATING_COLS:
         cols[rc] = _int_rng(b.get(rc), 0, 5)
