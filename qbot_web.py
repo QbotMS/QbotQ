@@ -4922,6 +4922,25 @@ async def garage_save(request: Request):
     if ratings_status not in ("draft", "ok"):
         ratings_status = None
 
+    # ZESTAW (apteczka / narzedzia): flaga + sklad jako JSON [{name, qty, note}]
+    is_set = 1 if b.get("is_set") in (1, "1", True, "true", "on") else 0
+    _si = b.get("set_items")
+    set_items = None
+    if is_set and isinstance(_si, (list, tuple)):
+        _clean = []
+        for _row in _si:
+            if not isinstance(_row, dict):
+                continue
+            _nm = _gs(_row.get("name"), 120)
+            if not _nm:
+                continue
+            try:
+                _rq = int(_row.get("qty")) if _row.get("qty") not in (None, "") else None
+            except (TypeError, ValueError):
+                _rq = None
+            _clean.append({"name": _nm, "qty": _rq, "note": _gs(_row.get("note"), 200)})
+        set_items = json.dumps(_clean, ensure_ascii=False) if _clean else None
+
     cols = {
         "category": category, "brand": brand, "model": model, "size": size,
         "color": color, "purchase_date": purchase_date, "purchase_price": price,
@@ -4929,6 +4948,7 @@ async def garage_save(request: Request):
         "weight_src": weight_src, "ean": ean, "sku": sku, "url": url,
         "season": season, "rating": rating, "color_q": color_qv,
         "fabric": fabric, "qty": qty_val,
+        "is_set": is_set, "set_items": set_items,
     }
     for rc in GARAGE_RATING_COLS:
         cols[rc] = _int_rng(b.get(rc), 0, 5)
@@ -6122,6 +6142,25 @@ def api_wyposazenie_pogoda(route_id: str = Query(...), start: str = Query(...),
             "season_hint": hint, "wet": wet, "cold_wet": cold_wet, "text": text}
 
 
+_SET_KEYWORDS = ("srub", "opask", "gazik", "rekawiczki nitryl", "lyzki do opon",
+                 "zestaw", "komplet", "paski", "plastry", "latki", "spinka lancucha",
+                 "bandaz", "chusteczki", "tasma")
+
+
+def _wyp_norm(s):
+    s = (s or "").lower()
+    for _a, _b in (("\u0142", "l"), ("\u017c", "z"), ("\u017a", "z"), ("\u00f3", "o"),
+                   ("\u0105", "a"), ("\u0119", "e"), ("\u015b", "s"), ("\u0107", "c"),
+                   ("\u0144", "n")):
+        s = s.replace(_a, _b)
+    return s.strip()
+
+
+def _wyp_is_set(name):
+    n = _wyp_norm(name)
+    return any(k in n for k in _SET_KEYWORDS)
+
+
 _GROUP_ORDER = {
     "odziez rowerowa": 1, "warstwy i pogoda": 2, "naprawa roweru": 3, "elektronika": 4,
     "woda": 5, "jedzenie na rower": 6, "apteczka i leki": 7, "apteczka i bezpieczenstwo": 7,
@@ -6337,13 +6376,8 @@ async def api_wyposazenie_generate(request: Request):
             if un not in ("piece", "set", "count"):
                 un = "piece"
             # to sa komplety, nie sztuki - niezaleznie co powie model
-            _nm = _norm_grp(str(it.get("item") or ""))
-            for _kw in ("srub", "opask", "gazik", "rekawiczki nitryl", "lyzki do opon",
-                        "zestaw", "komplet", "paski", "plastry", "latki", "spinka lancucha",
-                        "bandaz", "chusteczki", "tasma"):
-                if _kw in _nm:
-                    un = "set"
-                    break
+            if _wyp_is_set(it.get("item")):
+                un = "set"
             if un == "set" or is_task:
                 q = 1
             gitems.append({"item": str(it.get("item"))[:80], "qty": max(1, min(30, q)),
@@ -6603,20 +6637,35 @@ def api_wyposazenie_list(route_id: str = Query(...)):
     finally:
         con.close()
     groups, order = {}, []
+    seen_sets = {}
     for it in items:
         grp = it["category"] or "Inne"
         if grp not in groups:
             groups[grp] = []
             order.append(grp)
+        # stare listy (sprzed wprowadzenia kompletow) maja komplet rozbity na sztuki
+        # -> scalamy w jedna pozycje zamiast pokazywac 4x "opaski zaciskowe"
+        if _wyp_is_set(it["item"]):
+            k = (grp, _wyp_norm(it["item"]))
+            if k in seen_sets:
+                tgt = seen_sets[k]
+                if it["packed"]:
+                    tgt["packed"] = True
+                if it["gear_id"] and not tgt.get("gear_id"):
+                    tgt["gear_id"] = it["gear_id"]
+                continue
         groups[grp].append({
             "id": it["id"], "item": it["item"], "qty": it["quantity"],
             "packed": bool(it["packed"]), "garage_category": it["garage_category"],
             "gear_id": it["gear_id"], "bag_id": it["bag_id"], "notes": it["notes"],
             "prio": (it["prio"] or 2), "worn": bool(it["worn"]),
             "skipped": bool(it["skipped"]), "is_task": bool(it["is_task"]),
-            "equip_id": it["equip_id"], "unit": (it["unit"] or "piece"),
+            "equip_id": it["equip_id"],
+            "unit": ("set" if _wyp_is_set(it["item"]) else (it["unit"] or "piece")),
             "have": bool(it["have"]),
         })
+        if _wyp_is_set(it["item"]):
+            seen_sets[(grp, _wyp_norm(it["item"]))] = groups[grp][-1]
     return {
         "exists": True, "route_id": route_id, "list_id": lst["id"],
         "style": lst["style"], "days": lst["days"], "name": lst["name"],
