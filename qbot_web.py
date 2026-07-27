@@ -6176,7 +6176,9 @@ async def api_wyposazenie_generate(request: Request):
         "GRUPY (uzywaj dokladnie tych nazw): 'Odziez rowerowa', 'Warstwy i pogoda', 'Ubranie do obozu', "
         "'Nocleg', 'Gotowanie', 'Woda', 'Jedzenie na rower', 'Higiena', 'Elektronika', "
         "'Apteczka i leki', 'Naprawa roweru', 'Dokumenty i pieniadze', 'Przed wyjazdem'. "
-        "ZASADY: (1) zuzywalne/na zmiane (skarpetki, base layer, bielizna, biby) skaluj liczba dni "
+        "ZASADY: (1) odziez zmieniana codziennie MUSI byc skalowana dniami - przy wyprawie dluzszej "
+        "niz 1 dzien podaj CO NAJMNIEJ 2 koszulki kolarskie i 2 spodenki z wkladka, a skarpetek tyle "
+        "co dni; to nie jest opcjonalne. Zuzywalne (skarpetki, base layer, bielizna, biby) skaluj dniami "
         "rozsadnie; (2) wielorazowe (kurtka, kask, okulary, buty, narzedzia) qty=1; (3) warstwy dobierz "
         "do pory roku i pogody z parametrow; (4) jedzenie kaloryczne skalowane dniami, mniej gdy trasa "
         "prowadzi przez miasta z zaopatrzeniem; (5) bez zapychaczy - tylko to co naprawde uzyteczne. "
@@ -6251,8 +6253,10 @@ async def api_wyposazenie_generate(request: Request):
             "  DOBIERZ WARSTWY DO TEJ PROGNOZY, nie do kalendarza: przy dolnej temperaturze "
             "ponizej 12 C dodaj warstwe przejsciowa (rekawki/nogawki, dluga koszulka, cieplejsze "
             "rekawiczki); przy opadach od 1 mm dodaj kurtke przeciwdeszczowa i ochrone na stopy; "
-            "przy wietrze powyzej 8 m/s dodaj wiatrowke/gilet. Gdy ciepło i sucho - NIE dokladaj "
-            "zimowych ani przeciwdeszczowych rzeczy. W polu reason powolaj sie na te liczby.\n"
+            "przy wietrze powyzej 8 m/s dodaj wiatrowke/gilet. Przy opadach od 1 mm dodaj TEZ "
+            "czapeczke z daszkiem pod kask (chroni okulary przed woda) - nawet gdy jest ciepło. "
+            "Gdy ciepło i sucho - NIE dokladaj zimowych rzeczy. "
+            "W polu reason powolaj sie na te liczby.\n"
         )
     prompt += (
         "\nKATEGORIE GARAZU (uzywaj DOKLADNIE tych nazw w garage_category): %s\n"
@@ -6352,6 +6356,39 @@ async def api_wyposazenie_generate(request: Request):
             gitems.sort(key=lambda x: (x["prio"], x["item"].lower()))
             clean.append({"group": grp, "items": gitems})
     clean.sort(key=lambda g: _GROUP_ORDER.get(_norm_grp(g["group"]), 50))
+
+    # --- minimum sztuk odziezy zmienianej codziennie (model potrafi dac 1 na 3 dni) ---
+    def _min_qty(cat):
+        if days < 2:
+            return 1
+        if cat in ("Socks", "Base Layer Top", "Base Layer Bottom"):
+            return min(days, 5)
+        if cat in ("Jersey", "Jersey Long Sleeve", "Bottoms / Bibs", "T-Shirt"):
+            return min(max(2, days - 1), 4)
+        return 1
+
+    for g in clean:
+        for it in g["items"]:
+            if it.get("is_task") or it.get("unit") != "piece":
+                continue
+            need = _min_qty(it.get("garage_category"))
+            if need > (it.get("qty") or 1):
+                it["qty"] = need
+
+    # --- "na sobie" tylko RAZ na kategorie i tylko dla rzeczy, ktore da sie miec na sobie ---
+    WORN_OK = {"Helmet", "Glasses", "Shoes", "Jersey", "Jersey Long Sleeve",
+               "Bottoms / Bibs", "Socks", "Gloves", "Headwear"}
+    seen_worn = set()
+    for g in clean:
+        for it in g["items"]:
+            cat = it.get("garage_category")
+            if not it.get("worn"):
+                continue
+            if cat not in WORN_OK or cat in seen_worn:
+                it["worn"] = False
+            else:
+                seen_worn.add(cat)
+
     return {"days": days, "style": style, "season": season or None, "groups": clean}
 
 
