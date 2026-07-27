@@ -6074,7 +6074,7 @@ async def api_wyposazenie_generate(request: Request):
         "do pory roku i pogody z parametrow; (4) jedzenie kaloryczne skalowane dniami, mniej gdy trasa "
         "prowadzi przez miasta z zaopatrzeniem; (5) bez zapychaczy - tylko to co naprawde uzyteczne. "
         "Kazda pozycja to obiekt: item (krotka nazwa PL), qty (liczba sztuk), garage_category (DOKLADNIE "
-        "jedna z podanych kategorii garazu albo null gdy to nie jest ubranie/akcesorium z garazu, np. "
+        "jedna z podanych kategorii garazu - ale WYPELNIAJ JA TYLKO dla grup odziezowych (Odziez rowerowa / Warstwy i pogoda / Ubranie do obozu); dla naprawy, czesci, noclegu, gotowania, wody, elektroniki, apteczki, higieny i dokumentow ZAWSZE null. Przyklady null: "
         "namiot, palnik, apteczka, zywnosc, powerbank), reason (JEDNO krotkie zdanie po polsku: po co to "
         "i dlaczego akurat tyle lub czemu wlasnie na tej wyprawie - konkret, nie oczywistosc)."
     )
@@ -6097,40 +6097,54 @@ async def api_wyposazenie_generate(request: Request):
     )
 
     from qgpt_client import qgpt_text
-    try:
-        raw = qgpt_text(prompt, system=system, max_tokens=3000, temperature=0.3)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail="LLM niedostepny: %s" % e)
-    raw = (raw or "").strip()
-    if raw.startswith("```"):
-        raw = raw.strip("`")
-        if raw[:4].lower() == "json":
-            raw = raw[4:]
-        raw = raw.strip()
-    parsed = None
-    try:
-        parsed = _json.loads(raw)
-    except Exception:
-        i, j = raw.find("{"), raw.rfind("}")
-        if i >= 0 and j > i:
-            try:
-                parsed = _json.loads(raw[i:j + 1])
-            except Exception:
-                parsed = None
+
+    def _gen_once(temp):
+        try:
+            r = qgpt_text(prompt, system=system, max_tokens=3000, temperature=temp)
+        except Exception:
+            return None
+        r = (r or "").strip()
+        if r.startswith("```"):
+            r = r.strip("`")
+            if r[:4].lower() == "json":
+                r = r[4:]
+            r = r.strip()
+        try:
+            return _json.loads(r)
+        except Exception:
+            a, b = r.find("{"), r.rfind("}")
+            if a >= 0 and b > a:
+                try:
+                    return _json.loads(r[a:b + 1])
+                except Exception:
+                    return None
+        return None
+
+    parsed = _gen_once(0.2)
     if not isinstance(parsed, dict):
-        raise HTTPException(status_code=502, detail="LLM zwrocil nie-JSON")
+        parsed = _gen_once(0.0)
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=502, detail="LLM nie zwrocil poprawnego JSON - sprobuj ponownie")
     valid = set(cats)
+    def _norm_grp(s):
+        s = (s or "").lower()
+        for _a, _b in (("ł","l"),("ż","z"),("ź","z"),("ó","o"),("ą","a"),("ę","e"),("ś","s"),("ć","c"),("ń","n")):
+            s = s.replace(_a, _b)
+        return s.strip()
+    CLOTHING_GROUPS = {"odziez rowerowa", "warstwy i pogoda", "ubranie do obozu"}
     groups = parsed.get("groups") or []
     clean = []
     for g in groups:
         if not isinstance(g, dict):
             continue
+        grp = str(g.get("group") or "Inne")[:40]
+        is_cloth = _norm_grp(grp) in CLOTHING_GROUPS
         gitems = []
         for it in (g.get("items") or []):
             if not isinstance(it, dict) or not it.get("item"):
                 continue
             gc = it.get("garage_category")
-            if gc not in valid:
+            if (not is_cloth) or (gc not in valid):
                 gc = None
             try:
                 q = int(it.get("qty") or 1)
@@ -6140,7 +6154,7 @@ async def api_wyposazenie_generate(request: Request):
                            "garage_category": gc,
                            "reason": (str(it.get("reason"))[:240] if it.get("reason") else None)})
         if gitems:
-            clean.append({"group": str(g.get("group") or "Inne")[:40], "items": gitems})
+            clean.append({"group": grp, "items": gitems})
     return {"days": days, "style": style, "season": season or None, "groups": clean}
 
 
