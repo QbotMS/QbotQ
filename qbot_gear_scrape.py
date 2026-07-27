@@ -129,6 +129,7 @@ def _num(v):
 def parse_structured(html, base_url):
     soup = BeautifulSoup(html, "html.parser")
     res = {k: None for k in FIELDS}
+    res["images"] = []
 
     prod = None
     for d in _iter_jsonld(soup):
@@ -144,9 +145,11 @@ def parse_structured(html, base_url):
         res["ean"] = _strf(prod.get("gtin13") or prod.get("gtin") or prod.get("gtin8")
                            or prod.get("gtin12") or prod.get("gtin14"))
         img = prod.get("image")
-        if isinstance(img, list):
-            img = next((x for x in img if x), None)
-        res["image"] = _strf(img)
+        if isinstance(img, str):
+            res["images"] = [img]
+        elif isinstance(img, list):
+            res["images"] = [x for x in img if isinstance(x, str) and x]
+        res["image"] = res["images"][0] if res.get("images") else None
         offers = prod.get("offers")
         if isinstance(offers, list):
             offers = offers[0] if offers else None
@@ -169,6 +172,8 @@ def parse_structured(html, base_url):
     og_title = meta("og:title")
     og_image = meta("og:image")
     if og_image:
+        if og_image not in res["images"]:
+            res["images"].insert(0, og_image)
         res["image"] = og_image
     if not res["model"]:
         res["model"] = og_title or _strf(soup.title.string if soup.title else None)
@@ -184,6 +189,7 @@ def parse_structured(html, base_url):
                 res["color"] = cand
     if res["image"]:
         res["image"] = urljoin(base_url, res["image"])
+    res["images"] = [urljoin(base_url, u) for u in res.get("images") or []]
     return res, soup
 
 
@@ -259,7 +265,74 @@ def llm_extract(text, url, categories=None):
 
 # ---------------- scalanie ----------------
 
-def scrape(url, use_llm=True, categories=None, render=False):
+# ---------------- wybor zdjecia: TYLKO PRODUKT, bez modela ----------------
+
+IMG_MAX_CHECK = 4
+IMG_MIN_PX = 200
+
+
+def _fetch_image(url, timeout=8, max_bytes=4_000_000):
+    r = requests.get(url, headers={"User-Agent": UA}, timeout=timeout, stream=True)
+    r.raise_for_status()
+    raw = b""
+    for ch in r.iter_content(8192):
+        raw += ch
+        if len(raw) > max_bytes:
+            break
+    return raw
+
+
+def _thumb_b64(raw, px=320):
+    import io, base64
+    from PIL import Image
+    im = Image.open(io.BytesIO(raw)).convert("RGB")
+    if min(im.size) < IMG_MIN_PX:
+        return None, im.size
+    im.thumbnail((px, px))
+    b = io.BytesIO()
+    im.save(b, "JPEG", quality=80)
+    return base64.b64encode(b.getvalue()).decode(), im.size
+
+
+def pick_product_image(urls):
+    """Z listy zdjec wybiera packshot: sam produkt, bez modela/scenerii.
+    Ocena przez model widzacy obrazy. Zwraca (url, powod)."""
+    from concurrent.futures import ThreadPoolExecutor
+    todo = list(urls or [])[:IMG_MAX_CHECK]
+
+    def _one(u):
+        try:
+            b64, _size = _thumb_b64(_fetch_image(u))
+            return (u, b64) if b64 else None
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        cands = [x for x in ex.map(_one, todo) if x]
+    if not cands:
+        return (urls[0] if urls else None), "brak kandydatow do oceny"
+    if len(cands) == 1:
+        return cands[0][0], "jedno zdjecie"
+    content = [{"type": "text", "text":
+                "Ktore z tych zdjec pokazuje WYLACZNIE sam produkt (packshot na jednolitym tle, "
+                "bez czlowieka, bez modela, bez scenerii)? Zdjecia sa ponumerowane od 1. "
+                "Odpowiedz SAMA LICZBA. Jesli zadne nie jest packshotem, odpowiedz 0."}]
+    for i, (_u, b64) in enumerate(cands, 1):
+        content.append({"type": "text", "text": "Zdjecie %d:" % i})
+        content.append({"type": "image_url",
+                        "image_url": {"url": "data:image/jpeg;base64," + b64}})
+    try:
+        from qgpt_client import qgpt_chat
+        out = qgpt_chat([{"role": "user", "content": content}], max_tokens=10, temperature=0)
+        n = int(re.search(r"\d+", (out or "")).group(0))
+    except Exception as e:
+        return cands[0][0], "ocena niedostepna (%s)" % str(e)[:60]
+    if 1 <= n <= len(cands):
+        return cands[n - 1][0], "packshot wybrany z %d zdjec" % len(cands)
+    return cands[0][0], "brak packshotu wsrod %d zdjec - pierwsze z galerii" % len(cands)
+
+
+def scrape(url, use_llm=True, categories=None, render=False, pick_image=True):
     """render=True wlacza doczytanie przegladarka (wolne ~30-45 s) - do batcha,
     nie do interaktywnego klikniecia."""
     html, final = fetch_html(url)
@@ -283,6 +356,8 @@ def scrape(url, use_llm=True, categories=None, render=False):
                 for k in FIELDS:
                     if s1.get(k) in (None, "") and s2.get(k) not in (None, ""):
                         s1[k] = s2[k]
+                if not s1.get("images") and s2.get("images"):
+                    s1["images"] = s2["images"]
         except Exception as e:
             render_error = str(e)[:200]
 
@@ -310,7 +385,16 @@ def scrape(url, use_llm=True, categories=None, render=False):
         if fields["model"].lower().startswith(b + " "):
             fields["model"] = fields["model"][len(b):].strip()
 
+    images = s1.get("images") or ([fields["image"]] if fields.get("image") else [])
+    image_note = None
+    if pick_image and len(images) > 1:
+        best, image_note = pick_product_image(images)
+        if best:
+            fields["image"] = best
+            src["image"] = "packshot"
+
     return {"url": final, "fields": fields, "sources": src,
+            "images": images, "image_note": image_note,
             "llm_used": bool(llm), "llm_error": llm_error,
             "rendered": rendered, "render_error": render_error,
             "js_page": js_page, "text_len": len(text)}
