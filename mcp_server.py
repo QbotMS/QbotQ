@@ -52,6 +52,7 @@ def _env_int(name: str):
         return None
 
 RIDER_MAX_HR_BPM = _env_int("RIDER_MAX_HR_BPM")
+RIDER_LTHR_BPM   = _env_int("RIDER_LTHR_BPM")
 RIDER_MAX_HR_SOURCE = os.getenv("RIDER_MAX_HR_SOURCE", "").strip() or None
 ROUTE_SURFACE_CACHE = Path("/opt/qbot/app/data/route_surface_cache.json")
 ARTIFACT_ROOT = Path("/opt/qbot/artifacts")
@@ -3031,6 +3032,7 @@ async def ride_readiness(request):
         "restingHrToday":     rhr_today,
         "restingHrBaseline":  rhr_baseline,
         "maxHrBpm":           RIDER_MAX_HR_BPM,
+        "lthrBpm":            RIDER_LTHR_BPM,
         "maxHrSource":        RIDER_MAX_HR_SOURCE if RIDER_MAX_HR_BPM else None,
         "ctl":                round(ctl, 1) if ctl is not None else None,
         "ctlXss":             _modelq_ctl_xss(),
@@ -3050,6 +3052,7 @@ async def ride_readiness(request):
             "sleepDataDate":     sleep_data_date,
             "recoverySource":    recovery_source,
             "maxHrBpm":         RIDER_MAX_HR_BPM,
+            "lthrBpm":            RIDER_LTHR_BPM,
             "maxHrSource":      RIDER_MAX_HR_SOURCE if RIDER_MAX_HR_BPM else None,
             "formScore":       form_score,
             "xertStatus":      xert_status,
