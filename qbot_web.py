@@ -5599,6 +5599,152 @@ def _forma_planned_events(conn, days_ahead=14):
     return out2
 
 
+def _event_prep_taper(days_until, n_days, avg_xss, ceilings):
+    """Deterministyczny plan dojazdu do celu (bez LLM) - 2-4 krotkie kroki.
+    Opiera sie na liczbie dni do startu i skali imprezy, nie na zgadywaniu."""
+    d = int(days_until or 0)
+    steps = []
+    big = bool(ceilings and avg_xss and ceilings.get("week_avg")
+               and avg_xss > float(ceilings["week_avg"]))
+    if d <= 0:
+        steps.append("Start dzis - nic juz nie zbudujesz. Zjedz porzadne sniadanie i rozkrec sie spokojnie.")
+        steps.append("Tempo pierwszej godziny trzymaj nizej niz chce glowa - to placi sie w kolejnych dniach.")
+        return steps
+    if d == 1:
+        steps.append("Jutro start. Dzis maksymalnie 40-60 min bardzo lekko (rozjazd), zero mocnych odcinkow.")
+        steps.append("Dzis jedz wiecej weglowodanow niz zwykle i pij - zaczynasz z pelnym bakiem.")
+        return steps
+    if d <= 3:
+        steps.append("Zostaly %d dni - forma jest juz zrobiona. Teraz tylko ja dowozisz." % d)
+        steps.append("Jazdy krotkie (do 1 h), lekkie, z kilkoma krotkimi przyspieszeniami dla czucia.")
+        steps.append("Ostatni dzien przed startem: wolne albo 30 min rozjazdu.")
+        return steps
+    if d <= 7:
+        steps.append("Zostal tydzien. Jeden akcent najpozniej %d dni przed startem, potem juz schodzisz." % (d - 3))
+        steps.append("Najblizsze 2-3 dni: normalnie, ale bez kopania dolka - nie rob najciezszego tygodnia teraz.")
+        steps.append("Ostatnie 3 dni: krotko i lekko, zeby wjechac swiezym.")
+        return steps
+    if d <= 14:
+        steps.append("Zostalo %d dni - jest jeszcze czas na ostatni mocny blok." % d)
+        steps.append("Zrob go w najblizszych %d dniach, potem stopniowo luzuj." % max(1, d - 7))
+        steps.append("Priorytet: dlugie jazdy w tempie wyprawy, nie krotkie mocne interwaly.")
+    else:
+        steps.append("Zostalo %d dni - spokojnie zdazysz sie przygotowac." % d)
+        steps.append("Do konca przedostatniego tygodnia buduj dlugimi jazdami (trwalosc), potem tydzien luzowania.")
+    if big:
+        steps.append("Uwaga: srednia dnia wyprawy (~%d XSS) przekracza Twoj sufit tygodniowy (~%d) - "
+                     "przyzwyczajaj organizm dniami po sobie (2 dluzsze jazdy pod rzad), nie jednym dlugim."
+                     % (round(avg_xss), round(float(ceilings["week_avg"]))))
+    if n_days and int(n_days) >= 2:
+        steps.append("Przetrenuj jedzenie w jezdzie - przy %d dniach pod rzad to jelita sa waskim gardlem, nie nogi."
+                     % int(n_days))
+    return steps[:4]
+
+
+def _event_prep_payload(conn):
+    """Dane do kafla 'Najblizszy cel' w DZIS.
+
+    'event'  = najblizszy wpis z kalendarza (pomijamy 'rest').
+    'target' = najblizszy event majacy PLANOWANE OBCIAZENIE (planned_load_daily) - to on jest
+    celem treningowym. Delegacja/urlop to OGRANICZENIE, nie cel: nie liczymy do nich taperu.
+    Przygotowanie (taper/ocena) liczymy zawsze dla 'target', jesli istnieje."""
+    from datetime import date as _d
+    _SEL = ("SELECT id, day, day::text AS day_s, end_day, end_day::text AS end_day_s, "
+            "title, event_type, note FROM qbot_v2.calendar_entry ")
+    ev = conn.execute(
+        _SEL + "WHERE kind='event' AND COALESCE(event_type,'') <> 'rest' "
+        "  AND COALESCE(end_day, day) >= CURRENT_DATE ORDER BY day LIMIT 1"
+    ).fetchone()
+    if not ev:
+        return {"ok": True, "event": None, "target": None}
+    tgt = conn.execute(
+        _SEL + "e WHERE kind='event' AND COALESCE(event_type,'') <> 'rest' "
+        "  AND COALESCE(end_day, day) >= CURRENT_DATE "
+        "  AND EXISTS (SELECT 1 FROM qbot_v2.planned_load_daily p "
+        "              WHERE p.entry_id = e.id AND p.xss IS NOT NULL) "
+        "ORDER BY day LIMIT 1"
+    ).fetchone()
+    today = _d.today()
+
+    def _evout(r):
+        if not r:
+            return None
+        return {"id": r["id"], "title": r["title"], "day": r["day_s"],
+                "end_day": r["end_day_s"], "event_type": r["event_type"],
+                "note": r["note"], "days_until": (r["day"] - today).days,
+                "running": bool((r["day"] - today).days <= 0)}
+
+    prep = tgt or None
+    stages = []
+    if prep:
+        for r in conn.execute(
+            "SELECT day::text AS day, xss, dist_km, moving_h, stage_idx "
+            "FROM qbot_v2.planned_load_daily WHERE entry_id=%s ORDER BY day", (prep["id"],)
+        ).fetchall():
+            stages.append({
+                "day": r["day"],
+                "xss": (round(float(r["xss"]), 1) if r["xss"] is not None else None),
+                "dist_km": (round(float(r["dist_km"]), 1) if r["dist_km"] is not None else None),
+                "moving_h": (round(float(r["moving_h"]), 2) if r["moving_h"] is not None else None),
+                "stage_idx": r["stage_idx"],
+            })
+    xss_list = [x["xss"] for x in stages if x["xss"] is not None]
+    total_xss = round(sum(xss_list), 1) if xss_list else None
+    avg_xss = round(total_xss / len(xss_list), 1) if xss_list else None
+    feas = None
+    if xss_list and prep:
+        try:
+            import sys
+            sys.path.insert(0, "/opt/qbot/app")
+            from fitmodel import expedition_feasibility as _ef
+            feas = _ef.assess(conn, prep["day"], xss_list, today=today)
+        except Exception:
+            feas = None
+    ceilings = (feas or {}).get("ceilings")
+    taper = []
+    if prep:
+        taper = _event_prep_taper((prep["day"] - today).days, len(stages), avg_xss, ceilings)
+    limits = []
+    _upto = prep["day"] if prep else ev["day"]
+    for c in conn.execute(
+        "SELECT day::text AS day, end_day::text AS end_day, title, event_type "
+        "FROM qbot_v2.calendar_entry WHERE kind='event' "
+        "  AND COALESCE(event_type,'') IN ('urlop','delegacja') "
+        "  AND COALESCE(end_day, day) >= CURRENT_DATE AND day <= %s "
+        "ORDER BY day LIMIT 4", (_upto,)
+    ).fetchall():
+        limits.append({"day": c["day"], "when": (c["day"][5:] if c["day"] else ""),
+                       "label": (c["title"] or c["event_type"] or "event"),
+                       "event_type": c["event_type"]})
+    return {
+        "ok": True,
+        "event": _evout(ev),
+        "target": _evout(prep),
+        "target_is_other": bool(prep and prep["id"] != ev["id"]),
+        "stages": stages,
+        "n_days": (len(stages) or None),
+        "total_xss": total_xss,
+        "avg_xss": avg_xss,
+        "verdict": (feas or {}).get("verdict"),
+        "ceilings": ceilings,
+        "walls": (feas or {}).get("walls"),
+        "simulation": (feas or {}).get("simulation"),
+        "taper": taper,
+        "limits": limits,
+        "context_events": limits,
+    }
+
+
+@app.get("/api/forma/event-prep")
+def api_forma_event_prep():
+    """Kafel 'Najblizszy cel' w DZIS: nadchodzacy event + planowane obciazenie + ocena przygotowania."""
+    conn = _db_conn()
+    try:
+        return _event_prep_payload(conn)
+    finally:
+        conn.close()
+
+
 @app.post("/api/forma/analyze")
 async def forma_analyze(request: Request):
     """Analiza LLM formy. mode='today' -> stan na dzis + zmiany 7/30/90 dni;
@@ -5770,7 +5916,57 @@ async def forma_analyze(request: Request):
             _subj = _forma_subjective_block(_feel, _feel_note, _ill)
             if _subj:
                 _snap = _snap + "\n" + _subj
-            if mode == "coach":
+            if mode == "event":
+                _ep = _event_prep_payload(conn)
+                _e = (_ep or {}).get("event")
+                if not _e:
+                    return {"text": "Brak nadchodzacego celu w kalendarzu."}
+                system = (
+                    "Jestes doswiadczonym trenerem kolarstwa i fizjologiem wysilku (model CP/W', periodyzacja). "
+                    + _PROFILE +
+                    "Dostajesz aktualny stan formy oraz NAJBLIZSZY CEL zawodnika z kalendarza wraz z planowanym "
+                    "obciazeniem kazdego dnia (XSS) i ocena wykonalnosci. Twoje zadanie: powiedziec jak DOWIEZC "
+                    "forme na ten konkretny cel. Badz konkretny: co robic w pozostalych dniach do startu "
+                    "(charakter i dlugosc jazd, kiedy ostatni mocny akcent, kiedy luzowac), oraz na co uwazac "
+                    "na samej imprezie (tempo, jedzenie/picie, rozlozenie sil na kolejne dni). "
+                    "Bez frazesow, bez markdown i gwiazdek. PO POLSKU, prostym jezykiem, krotkie zdania, zargon "
+                    "rozwijaj w nawiasie. Format: dwa krotkie akapity zaczynajace sie doslownie od "
+                    "'Do startu:' oraz 'Na imprezie:'. Opieraj sie na danych, nie zmyslaj."
+                )
+                _el = []
+                _nm = _e.get("title") or "cel"
+                _when = _e.get("day") + (("-" + _e["end_day"]) if _e.get("end_day") and _e["end_day"] != _e["day"] else "")
+                _du = _e.get("days_until")
+                _el.append("CEL: %s (%s), do startu %s" % (
+                    _nm, _when, ("dzis/trwa" if (_du is not None and _du <= 0) else ("%d dni" % _du))))
+                for st in (_ep.get("stages") or []):
+                    _el.append("- %s: ~%s XSS, %s km, ~%s h ruchu" % (
+                        st.get("day"), (round(st["xss"]) if st.get("xss") is not None else "b/d"),
+                        st.get("dist_km"), st.get("moving_h")))
+                if _ep.get("total_xss"):
+                    _el.append("Razem ~%d XSS, srednia dnia ~%s XSS." % (
+                        round(_ep["total_xss"]), _ep.get("avg_xss")))
+                _c = _ep.get("ceilings") or {}
+                if _c:
+                    _el.append("Twoje sufity (model dwoch scian): rekord dnia ~%s, sciana metaboliczna dnia ~%s, "
+                               "sufit sredniej tygodniowej ~%s XSS." % (
+                                   _c.get("day_demonstrated"), _c.get("day_metabolic"), _c.get("week_avg")))
+                if _ep.get("verdict"):
+                    _el.append("Ocena wykonalnosci silnika: %s" % str(_ep["verdict"])[:300])
+                _sim = (_ep.get("simulation") or {}).get("min_tsb")
+                if _sim is not None:
+                    _el.append("Prognoza swiezosci: najnizszy poranny TSB w trakcie ~%s." % _sim)
+                for _ce in (_ep.get("context_events") or []):
+                    _el.append("Po drodze: %s - %s" % (_ce.get("when"), _ce.get("label")))
+                _dtxt = ("dzis/trwa" if (_du is not None and _du <= 0) else ("%d dni" % _du))
+                prompt = (_snap + "\n\nNAJBLIZSZY CEL I JEGO OBCIAZENIE:\n" + "\n".join(_el)
+                          + ("\n\nUWAGA NA LICZBE DNI: do startu celu '%s' zostalo DOKLADNIE %s. "
+                             "Rozpisz plan na te dni. Wpisy 'Po drodze' (delegacja/urlop) to NIE jest start "
+                             "celu - to tylko ograniczenia czasowe, nie myl ich dat z data startu."
+                             % (_nm, _dtxt))
+                          + "\n\nDoradz jak dowiezc forme na ten cel: co do startu, na co uwazac na imprezie.")
+                mt = 640
+            elif mode == "coach":
                 system = (
                     "Jestes doswiadczonym trenerem kolarstwa i fizjologiem wysilku (model CP/W', periodyzacja). "
                     + _PROFILE +
