@@ -6067,12 +6067,20 @@ async def api_wyposazenie_generate(request: Request):
         "Ma licznik Hammerhead Karoo (nawigacja GPS) i lampki, wiec NIE dubluj nawigacji ani "
         "podstawowych swiatel - dodaj powerbank i kable do ladowania. "
         "GRUPY (uzywaj dokladnie tych nazw): 'Odziez rowerowa', 'Warstwy i pogoda', 'Ubranie do obozu', "
-        "'Nocleg', 'Gotowanie', 'Woda', 'Higiena', 'Elektronika', 'Apteczka i bezpieczenstwo', "
-        "'Naprawa roweru', 'Dokumenty i pieniadze'. "
+        "'Nocleg', 'Gotowanie', 'Woda', 'Jedzenie na rower', 'Higiena', 'Elektronika', "
+        "'Apteczka i leki', 'Naprawa roweru', 'Dokumenty i pieniadze'. "
         "ZASADY: (1) zuzywalne/na zmiane (skarpetki, base layer, bielizna, biby) skaluj liczba dni "
         "rozsadnie; (2) wielorazowe (kurtka, kask, okulary, buty, narzedzia) qty=1; (3) warstwy dobierz "
         "do pory roku i pogody z parametrow; (4) jedzenie kaloryczne skalowane dniami, mniej gdy trasa "
         "prowadzi przez miasta z zaopatrzeniem; (5) bez zapychaczy - tylko to co naprawde uzyteczne. "
+        "OBOWIAZKOWO uwzglednij (jesli pasuje do stylu i pogody): kamizelke hydracyjna oraz "
+        "bidony/softflaski (grupa Woda); buty rowerowe (Odziez rowerowa) ORAZ lekkie obuwie na "
+        "po jezdzie - klapki/sandaly (Ubranie do obozu); kosmetyki i pielegnacje w grupie Higiena: "
+        "krem do wkladki (chamois), krem z filtrem, balsam do ust, dezodorant, chusteczki; grupe "
+        "'Jedzenie na rower' - zapas na jazde skalowany dniami i dystansem (batony, zele, orzechy, "
+        "elektrolity) z KONKRETNYMI ilosciami; grupe 'Apteczka i leki' - leki wg sytuacji BEZ "
+        "dawkowania: przeciwbolowe/przeciwgoraczkowe, na zoladek i biegunke, antyhistaminowy (alergia), "
+        "na otarcia, oraz pozycje 'leki wlasne / na recepte' jako przypomnienie. "
         "Kazda pozycja to obiekt: item (krotka nazwa PL), qty (liczba sztuk), garage_category (DOKLADNIE "
         "jedna z podanych kategorii garazu - ale WYPELNIAJ JA TYLKO dla grup odziezowych (Odziez rowerowa / Warstwy i pogoda / Ubranie do obozu); dla naprawy, czesci, noclegu, gotowania, wody, elektroniki, apteczki, higieny i dokumentow ZAWSZE null. Przyklady null: "
         "namiot, palnik, apteczka, zywnosc, powerbank), reason (JEDNO krotkie zdanie po polsku: po co to "
@@ -6100,7 +6108,7 @@ async def api_wyposazenie_generate(request: Request):
 
     def _gen_once(temp):
         try:
-            r = qgpt_text(prompt, system=system, max_tokens=3000, temperature=temp)
+            r = qgpt_text(prompt, system=system, max_tokens=6000, temperature=temp)
         except Exception:
             return None
         r = (r or "").strip()
@@ -6132,6 +6140,7 @@ async def api_wyposazenie_generate(request: Request):
             s = s.replace(_a, _b)
         return s.strip()
     CLOTHING_GROUPS = {"odziez rowerowa", "warstwy i pogoda", "ubranie do obozu"}
+    EXPED_CAT = "Sprzęt wyprawowy"
     groups = parsed.get("groups") or []
     clean = []
     for g in groups:
@@ -6144,8 +6153,11 @@ async def api_wyposazenie_generate(request: Request):
             if not isinstance(it, dict) or not it.get("item"):
                 continue
             gc = it.get("garage_category")
-            if (not is_cloth) or (gc not in valid):
-                gc = None
+            if is_cloth:
+                if gc not in valid:
+                    gc = EXPED_CAT
+            else:
+                gc = EXPED_CAT
             try:
                 q = int(it.get("qty") or 1)
             except (TypeError, ValueError):
@@ -6168,35 +6180,64 @@ def _wyposazenie_db():
 
 @app.get("/api/planer/wyposazenie/garage-options")
 def api_wyposazenie_garage_options(category: str = Query(...), season: str = Query("")):
-    """Rzeczy z garazu (gear, active=1) dla danej kategorii - zrodlo dropdownu przy
-    pozycji listy. season (opcjonalnie) = 'zima'/'przejsciowy'/'lato': nie odfiltrowuje,
-    tylko oznacza dopasowanie (matches_season) i sortuje pasujace na gore."""
-    cat = (category or "").strip()
-    if not cat:
+    """Rzeczy z garazu (gear, active=1) dla PODANYCH kategorii (moze byc kilka po przecinku -
+    rodzina, np. koszulka: Jersey,Jersey Long Sleeve,T-Shirt). season oznacza dopasowanie
+    (matches_season) i sortuje pasujace na gore. Kazda pozycja niesie swoja category."""
+    cats_q = [c.strip() for c in (category or "").split(",") if c.strip()]
+    if not cats_q:
         raise HTTPException(status_code=400, detail="Wymagane: category")
     seas = (season or "").strip().lower().split(",")[0].strip()[:20]
+    ph = ",".join(["?"] * len(cats_q))
     con = _wyposazenie_db()
     try:
         rows = con.execute(
-            "SELECT id, brand, model, size, color, season, fabric, "
+            "SELECT id, category, brand, model, size, color, season, fabric, "
             "COALESCE(weight_g, weight_est_g) AS weight_g "
-            "FROM gear WHERE active=1 AND category=? ORDER BY brand, model",
-            (cat,)).fetchall()
+            "FROM gear WHERE active=1 AND category IN (" + ph + ") ORDER BY brand, model",
+            tuple(cats_q)).fetchall()
     finally:
         con.close()
+    multi = len(cats_q) > 1
     out = []
     for r in rows:
         s = (r["season"] or "").lower()
         matches = (not seas) or (seas in s) or (s == "")
-        label = " ".join([x for x in [r["brand"], r["model"]] if x]).strip() or "(bez nazwy)"
+        base = " ".join([x for x in [r["brand"], r["model"]] if x]).strip() or "(bez nazwy)"
+        label = ("[" + str(r["category"]) + "] " + base) if multi else base
         out.append({
-            "gear_id": r["id"], "label": label, "size": r["size"], "color": r["color"],
-            "season": r["season"], "fabric": r["fabric"],
+            "gear_id": r["id"], "label": label, "category": r["category"],
+            "size": r["size"], "color": r["color"], "season": r["season"], "fabric": r["fabric"],
             "weight_g": (int(r["weight_g"]) if r["weight_g"] is not None else None),
             "matches_season": bool(matches),
         })
     out.sort(key=lambda x: (not x["matches_season"], x["label"].lower()))
-    return {"category": cat, "season": seas or None, "count": len(out), "items": out}
+    return {"category": category, "season": seas or None, "count": len(out), "items": out}
+
+
+@app.post("/api/planer/wyposazenie/garage-add")
+async def api_wyposazenie_garage_add(request: Request):
+    """Dopisuje nowa rzecz do garazu (gear, active=1) w podanej kategorii - dla 'DODAJ'
+    przy pozycji listy, gdy w bazie brak kandydata. body: {category, name, season?}."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    category = (str(body.get("category") or "")).strip()[:60]
+    name = (str(body.get("name") or "")).strip()[:120]
+    season = (str(body.get("season") or "")).strip()[:40] or None
+    if not category or not name:
+        raise HTTPException(status_code=400, detail="Wymagane: category i name")
+    con = _wyposazenie_db()
+    try:
+        cur = con.execute(
+            "INSERT INTO gear(category, brand, model, season, active, created_at) "
+            "VALUES(?,?,?,?,1,datetime('now'))", (category, None, name, season))
+        gid = cur.lastrowid
+        con.commit()
+    finally:
+        con.close()
+    return {"ok": True, "gear_id": gid, "category": category, "label": name,
+            "matches_season": True}
 
 
 @app.post("/api/planer/wyposazenie/save")
