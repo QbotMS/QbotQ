@@ -6095,6 +6095,8 @@ async def api_wyposazenie_generate(request: Request):
         "rozsadnie; (2) wielorazowe (kurtka, kask, okulary, buty, narzedzia) qty=1; (3) warstwy dobierz "
         "do pory roku i pogody z parametrow; (4) jedzenie kaloryczne skalowane dniami, mniej gdy trasa "
         "prowadzi przez miasta z zaopatrzeniem; (5) bez zapychaczy - tylko to co naprawde uzyteczne. "
+        "Kategorii 'Accessories' UZYWAJ takze poza grupami odziezowymi, ale WYLACZNIE dla rzeczy "
+        "noszonych na sobie lub plecach: kamizelka hydracyjna, musette, ochraniacze. "
         "NAZWY JEDNOZNACZNE: jedna pozycja = jedna rzecz. NIGDY 'bluza lub gilet', nigdy ogolnej "
         "'bielizny rowerowej' obok spodenek z wkladka (to samo liczone dwa razy) - napisz wprost co to jest. "
         "OBOWIAZKOWO uwzglednij (jesli pasuje do stylu i pogody): kamizelke hydracyjna oraz bidony/softflaski "
@@ -6113,6 +6115,12 @@ async def api_wyposazenie_generate(request: Request):
         "polisa/EKUZ gdy trasa wychodzi za granice, maly zamek do roweru, klucze do domu/auta. "
         "JEDZENIE: NIE podawaj sztywnej liczby na cala wyprawe (nie znasz punktow zaopatrzenia) - daj zapas NA "
         "PIERWSZY ETAP plus male rezerwowe kalorie awaryjne, i napisz to w reason. "
+        "POMPKI: ZAWSZE dwie osobne pozycje - pompka elektryczna oraz mala pompka reczna jako backup. "
+        "SWIATLA: oprocz lampki przedniej i tylnej dodaj ZAPASOWA lampke przednia i ZAPASOWA tylna. "
+        "LADOWANIE: NIE rozpisuj pojedynczych kabli - daj JEDNA pozycje 'Zestaw do ladowania' (unit=set), "
+        "obok osobno powerbank i ladowarke sieciowa. "
+        "BAGAZ: dodaj paski gumowe/mocujace do bagazu (unit=set). "
+        "UBRANIE DO OBOZU musi zawierac bielizne na zmiane (bokserki) - skalowana liczba dni. "
         "GRUPA 'Przed wyjazdem' to NIE rzeczy tylko ZADANIA do wykonania: naladowac Karoo/lampki/powerbank/telefon, "
         "pobrac trase offline do Karoo i kopie do telefonu, zapisac offline adresy i telefony noclegow, sprawdzic "
         "uszczelniacz i cisnienie, sprawdzic klocki, dokrecic sruby bagazu. Dla tych pozycji zawsze qty=1. "
@@ -6128,8 +6136,14 @@ async def api_wyposazenie_generate(request: Request):
         "jedna z podanych kategorii garazu - ale WYPELNIAJ JA TYLKO dla grup odziezowych (Odziez rowerowa / Warstwy i pogoda / Ubranie do obozu); dla naprawy, czesci, noclegu, gotowania, wody, elektroniki, apteczki, higieny i dokumentow ZAWSZE null. Przyklady null: "
         "namiot, palnik, apteczka, zywnosc, powerbank), reason (JEDNO krotkie zdanie po polsku: po co to "
         "i dlaczego akurat tyle lub czemu wlasnie na tej wyprawie - konkret, nie oczywistosc), "
-        "prio (1=konieczne, 2=zalecane, 3=zalezne od pogody/opcjonalne) oraz worn (true tylko dla rzeczy "
-        "ktore masz NA SOBIE na starcie - kask, okulary, buty, jeden komplet stroju; reszta false)."
+        "prio (1=konieczne, 2=zalecane, 3=zalezne od pogody/opcjonalne), worn (true tylko dla rzeczy "
+        "ktore masz NA SOBIE na starcie - kask, okulary, buty, jeden komplet stroju; reszta false) "
+        "oraz unit: 'piece' gdy kazda sztuka to OSOBNA rzecz wybierana z garazu (ubrania, buty, pompki, "
+        "lampki) - wtedy qty = liczba sztuk; 'set' gdy to KOMPLET pakowany razem (lyzki do opon, opaski "
+        "zaciskowe, sruby, gaziki jalowe, rekawiczki nitrylowe, zestaw do ladowania, paski do bagazu, "
+        "zestaw tubeless) - wtedy ZAWSZE qty=1; 'count' dla rzeczy liczonych sztukami ale NIEwybieranych "
+        "pojedynczo z garazu (batony, zele, tabletki elektrolitowe, tabletki z sola, kartusze) - wtedy "
+        "qty = ile sztuk zabrac. NIGDY nie rozbijaj kompletu na sztuki."
     )
     prompt = (
         "PARAMETRY WYPRAWY:\n"
@@ -6145,7 +6159,8 @@ async def api_wyposazenie_generate(request: Request):
         "\nKATEGORIE GARAZU (uzywaj DOKLADNIE tych nazw w garage_category): %s\n"
         "\nZwroc dokladnie taki JSON:\n"
         "{\"groups\": [{\"group\": \"<grupa>\", \"items\": [{\"item\": \"...\", \"qty\": 1, "
-        "\"garage_category\": \"...\"|null, \"reason\": \"...\", \"prio\": 1, \"worn\": false}]}]}"
+        "\"garage_category\": \"...\"|null, \"reason\": \"...\", \"prio\": 1, \"worn\": false, "
+        "\"unit\": \"piece\"}]}]}"
         % cats_str
     )
 
@@ -6202,6 +6217,8 @@ async def api_wyposazenie_generate(request: Request):
             if is_cloth:
                 if gc not in valid:
                     gc = EXPED_CAT
+            elif gc == "Accessories":
+                pass  # noszone akcesoria (kamizelka hydracyjna, musette) sa w garazu
             else:
                 gc = EXPED_CAT
             try:
@@ -6213,7 +6230,21 @@ async def api_wyposazenie_generate(request: Request):
             except (TypeError, ValueError):
                 pr = 2
             pr = pr if pr in (1, 2, 3) else 2
-            gitems.append({"item": str(it.get("item"))[:80], "qty": max(1, min(20, q)),
+            un = str(it.get("unit") or "piece").strip().lower()
+            if un not in ("piece", "set", "count"):
+                un = "piece"
+            # to sa komplety, nie sztuki - niezaleznie co powie model
+            _nm = _norm_grp(str(it.get("item") or ""))
+            for _kw in ("srub", "opask", "gazik", "rekawiczki nitryl", "lyzki do opon",
+                        "zestaw", "komplet", "paski", "plastry", "latki", "spinka lancucha",
+                        "bandaz", "chusteczki", "tasma"):
+                if _kw in _nm:
+                    un = "set"
+                    break
+            if un == "set" or is_task:
+                q = 1
+            gitems.append({"item": str(it.get("item"))[:80], "qty": max(1, min(30, q)),
+                           "unit": ("set" if is_task else un),
                            "garage_category": (None if is_task else gc),
                            "reason": (str(it.get("reason"))[:240] if it.get("reason") else None),
                            "prio": pr, "worn": bool(it.get("worn")) and not is_task,
@@ -6234,7 +6265,8 @@ def _wyposazenie_db():
 
 
 @app.get("/api/planer/wyposazenie/garage-options")
-def api_wyposazenie_garage_options(category: str = Query(...), season: str = Query("")):
+def api_wyposazenie_garage_options(category: str = Query(...), season: str = Query(""),
+                                   q: str = Query(""), all_seasons: int = Query(0)):
     """Rzeczy z garazu (gear, active=1) dla PODANYCH kategorii (moze byc kilka po przecinku -
     rodzina, np. koszulka: Jersey,Jersey Long Sleeve,T-Shirt). season oznacza dopasowanie
     (matches_season) i sortuje pasujace na gore. Kazda pozycja niesie swoja category."""
@@ -6260,11 +6292,48 @@ def api_wyposazenie_garage_options(category: str = Query(...), season: str = Que
         base = " ".join([x for x in [r["brand"], r["model"]] if x]).strip() or "(bez nazwy)"
         label = ("[" + str(r["category"]) + "] " + base) if multi else base
         out.append({
+            "src": "gear",
             "gear_id": r["id"], "label": label, "category": r["category"],
             "size": r["size"], "color": r["color"], "season": r["season"], "fabric": r["fabric"],
             "weight_g": (int(r["weight_g"]) if r["weight_g"] is not None else None),
             "matches_season": bool(matches),
         })
+    # sprzet z tabeli equipment (lampki, Karoo, radar, torby) - dopasowanie po nazwie pozycji
+    qname = (q or "").strip().lower()
+    if qname:
+        words = [w for w in _re_email.split(r"[^\w\u00c0-\u017f]+", qname) if len(w) > 3]
+        _SYN = {"lampka": ["light", "lighting"], "lampki": ["light", "lighting"],
+                "swiatlo": ["light"], "przednia": ["front"], "tylna": ["rear", "tail"],
+                "komputer": ["karoo", "computer"], "nawigacja": ["karoo"],
+                "torba": ["bag", "pack"], "sakwa": ["bag", "pack"],
+                "radar": ["radar"], "licznik": ["karoo"]}
+        for w in list(words):
+            words.extend(_SYN.get(w, []))
+        con2 = _wyposazenie_db()
+        try:
+            erows = con2.execute(
+                "SELECT id, category, brand, model, capacity_l, mount, "
+                "COALESCE(weight_g, weight_est_g) AS weight_g FROM equipment").fetchall()
+        finally:
+            con2.close()
+        for r in erows:
+            hay = (" ".join([str(r["brand"] or ""), str(r["model"] or ""),
+                             str(r["category"] or "")])).lower()
+            if not any(w in hay for w in words):
+                continue
+            base = " ".join([x for x in [r["brand"], r["model"]] if x]).strip() or "(bez nazwy)"
+            out.append({
+                "src": "equip", "equip_id": r["id"], "gear_id": None,
+                "label": "[sprzet] " + base, "category": r["category"], "size": r["mount"],
+                "color": None, "season": None, "fabric": None,
+                "weight_g": (int(r["weight_g"]) if r["weight_g"] is not None else None),
+                "matches_season": True,
+            })
+    # sezon: domyslnie POKAZUJEMY tylko pasujace (bez zimowych kurtek w lipcu)
+    if seas and not all_seasons:
+        keep = [x for x in out if x["matches_season"]]
+        if keep:
+            out = keep
     out.sort(key=lambda x: (not x["matches_season"], x["label"].lower()))
     return {"category": category, "season": seas or None, "count": len(out), "items": out}
 
@@ -6357,16 +6426,21 @@ async def api_wyposazenie_save(request: Request):
                 worn = 1 if it.get("worn") else 0
                 skipped = 1 if it.get("skipped") else 0
                 is_task = 1 if it.get("is_task") else 0
+                have = 1 if it.get("have") else 0
+                unit = str(it.get("unit") or "piece")[:10]
+                eq = it.get("equip_id")
+                equip_id = int(eq) if isinstance(eq, (int, float)) or (isinstance(eq, str) and eq.isdigit()) else None
                 try:
                     prio = int(it.get("prio") or 2)
                 except (TypeError, ValueError):
                     prio = 2
                 con.execute(
                     "INSERT INTO packing_items(list_id, category, item, quantity, packed, "
-                    "from_garage, gear_id, garage_category, bag_id, notes, prio, worn, skipped, is_task) "
-                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "from_garage, gear_id, garage_category, bag_id, notes, prio, worn, skipped, is_task, "
+                    "equip_id, unit, have) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (list_id, grp, item, qty, packed, 1 if gear_id else 0, gear_id, gc, bag_id,
-                     notes, prio, worn, skipped, is_task))
+                     notes, prio, worn, skipped, is_task, equip_id, unit, have))
                 n += 1
         con.commit()
     finally:
@@ -6386,7 +6460,7 @@ def api_wyposazenie_list(route_id: str = Query(...)):
             return {"exists": False, "route_id": route_id, "groups": []}
         items = con.execute(
             "SELECT id, category, item, quantity, packed, from_garage, gear_id, "
-            "garage_category, bag_id, notes, prio, worn, skipped, is_task "
+            "garage_category, bag_id, notes, prio, worn, skipped, is_task, equip_id, unit, have "
             "FROM packing_items WHERE list_id=? ORDER BY id",
             (lst["id"],)).fetchall()
     finally:
@@ -6403,6 +6477,8 @@ def api_wyposazenie_list(route_id: str = Query(...)):
             "gear_id": it["gear_id"], "bag_id": it["bag_id"], "notes": it["notes"],
             "prio": (it["prio"] or 2), "worn": bool(it["worn"]),
             "skipped": bool(it["skipped"]), "is_task": bool(it["is_task"]),
+            "equip_id": it["equip_id"], "unit": (it["unit"] or "piece"),
+            "have": bool(it["have"]),
         })
     return {
         "exists": True, "route_id": route_id, "list_id": lst["id"],
