@@ -7,7 +7,7 @@ import urllib.request
 import psycopg
 from psycopg.rows import dict_row
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, Response
 import re as _re_email
@@ -4598,6 +4598,51 @@ async def ride_gear_save(request: Request):
 
 # --- Serwis Garaz: showroom + CRUD bazy rzeczy (garage.db gear) ---
 GARAGE_CONDITIONS = ["New", "Good", "Worn", "Retired"]
+GARAGE_SEASONS = ["zima", "przejsciowy", "lato"]
+GARAGE_PALETTE = ["BLACK", "GREY", "WHITE", "BEIGE", "BROWN", "GREEN", "OLIVE",
+                  "BLUE", "NAVY", "RED", "ORANGE", "YELLOW", "MULTI"]
+GARAGE_RATING_COLS = ["r_intensity", "r_breath", "r_dry", "r_insul",
+                      "r_wind", "r_water", "r_pack"]
+GARAGE_RATING_LABELS = {
+    "r_intensity": "Intensywnosc jazdy", "r_breath": "Oddychalnosc",
+    "r_dry": "Szybkoschniecie", "r_insul": "Izolacja",
+    "r_wind": "Wiatroszczelnosc", "r_water": "Wodoodpornosc",
+    "r_pack": "Pakownosc"}
+
+
+def _color_q(color):
+    """Uproszczony kolor QBot: najpierw slownik color_map, potem LLM (i dopis do slownika)."""
+    c = (color or "").strip()
+    if not c:
+        return None
+    gc = _garage_conn()
+    try:
+        row = gc.execute("SELECT q FROM color_map WHERE raw=?", (c,)).fetchone()
+        if row:
+            return row["q"]
+    finally:
+        gc.close()
+    try:
+        from qgpt_client import qgpt_text
+        out = qgpt_text(
+            "Nazwa koloru: %s\nOdpowiedz JEDNYM slowem z listy: %s"
+            % (c, ", ".join(GARAGE_PALETTE)),
+            system="Normalizujesz marketingowe nazwy kolorow odziezy. "
+                   "Odpowiadasz WYLACZNIE jednym slowem z podanej listy, bez kropki.",
+            max_tokens=10, temperature=0)
+        q = (out or "").strip().upper().strip(".")
+    except Exception:
+        return None
+    if q not in GARAGE_PALETTE:
+        return None
+    gc = _garage_conn()
+    try:
+        gc.execute("INSERT OR REPLACE INTO color_map (raw,q,src,updated_at) "
+                   "VALUES (?,?, 'llm', datetime('now'))", (c, q))
+        gc.commit()
+    finally:
+        gc.close()
+    return q
 
 
 @app.get("/api/garage/list")
@@ -4621,7 +4666,10 @@ def garage_list(all: int = Query(0), q: str = Query(""), cat: str = Query("")):
                 if ql not in hay:
                     continue
             items.append(d)
-        return {"items": items, "categories": RIDE_GEAR_SLOTS, "conditions": GARAGE_CONDITIONS}
+        return {"items": items, "categories": RIDE_GEAR_SLOTS,
+                "conditions": GARAGE_CONDITIONS, "seasons": GARAGE_SEASONS,
+                "palette": GARAGE_PALETTE, "rating_cols": GARAGE_RATING_COLS,
+                "rating_labels": GARAGE_RATING_LABELS}
     finally:
         gc.close()
 
@@ -4653,6 +4701,7 @@ async def garage_save(request: Request):
     weight_src = _gs(b.get("weight_src"), 20)
     ean = _gs(b.get("ean"), 20)
     sku = _gs(b.get("sku"), 60)
+    url = _gs(b.get("url"), 400)
 
     def _num(x):
         if x in (None, ""):
@@ -4669,29 +4718,109 @@ async def garage_save(request: Request):
         weight_g = None
     if weight_g is not None and weight_src is None:
         weight_src = "manual"
+    # sezon: lista/CSV z dozwolonych wartosci
+    season = b.get("season")
+    if isinstance(season, (list, tuple)):
+        sv = [str(x).strip().lower() for x in season]
+    else:
+        sv = [x.strip().lower() for x in str(season or "").split(",")]
+    season = ",".join([x for x in GARAGE_SEASONS if x in set(sv)]) or None
+
+    def _int_rng(v, lo, hi):
+        if v in (None, "", "null"):
+            return None
+        try:
+            i = int(float(str(v).replace(",", ".")))
+        except (TypeError, ValueError):
+            return None
+        return i if lo <= i <= hi else None
+
+    rating = _int_rng(b.get("rating"), 1, 5)
+    color_qv = _gs(b.get("color_q"), 20)
+    if color_qv:
+        color_qv = color_qv.upper()
+        if color_qv not in GARAGE_PALETTE:
+            color_qv = None
+    if not color_qv and color:
+        color_qv = _color_q(color)
+    ratings_status = _gs(b.get("ratings_status"), 10)
+    if ratings_status not in ("draft", "ok"):
+        ratings_status = None
+
+    cols = {
+        "category": category, "brand": brand, "model": model, "size": size,
+        "color": color, "purchase_date": purchase_date, "purchase_price": price,
+        "condition": condition, "notes": notes, "weight_g": weight_g,
+        "weight_src": weight_src, "ean": ean, "sku": sku, "url": url,
+        "season": season, "rating": rating, "color_q": color_qv,
+    }
+    for rc in GARAGE_RATING_COLS:
+        cols[rc] = _int_rng(b.get(rc), 0, 5)
+    if ratings_status:
+        cols["ratings_status"] = ratings_status
+
     gid = b.get("id")
     gc = _garage_conn()
     try:
+        keys = list(cols.keys())
         if gid not in (None, "", 0, "0"):
             gid = int(gid)
-            gc.execute(
-                "UPDATE gear SET category=?, brand=?, model=?, size=?, color=?, "
-                "purchase_date=?, purchase_price=?, condition=?, notes=?, "
-                "weight_g=?, weight_src=?, ean=?, sku=? WHERE id=?",
-                (category, brand, model, size, color, purchase_date, price,
-                 condition, notes, weight_g, weight_src, ean, sku, gid))
+            sets = ", ".join("%s=?" % k for k in keys)
+            gc.execute("UPDATE gear SET %s WHERE id=?" % sets,
+                       [cols[k] for k in keys] + [gid])
         else:
+            ph = ",".join("?" for _ in keys)
             cur = gc.execute(
-                "INSERT INTO gear (category, brand, model, size, color, purchase_date, "
-                "purchase_price, condition, notes, weight_g, weight_src, ean, sku, active) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1)",
-                (category, brand, model, size, color, purchase_date, price,
-                 condition, notes, weight_g, weight_src, ean, sku))
+                "INSERT INTO gear (%s, active) VALUES (%s, 1)" % (", ".join(keys), ph),
+                [cols[k] for k in keys])
             gid = cur.lastrowid
         gc.commit()
-        return {"ok": True, "id": gid}
+        return {"ok": True, "id": gid, "color_q": color_qv}
     finally:
         gc.close()
+
+
+@app.post("/api/garage/ratings")
+async def garage_ratings(request: Request):
+    """Zapis SAMYCH ocen 0-5 (ankieta). Nie rusza pozostalych pol rzeczy.
+    Body: {id, r_intensity.., status: 'draft'|'ok'}. Wartosc null = nie dotyczy."""
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    gid = b.get("id")
+    if gid in (None, "", 0, "0"):
+        raise HTTPException(status_code=400, detail="Brak id")
+    gid = int(gid)
+    status = b.get("status")
+    if status not in ("draft", "ok"):
+        status = "ok"
+    sets, vals = [], []
+    for rc in GARAGE_RATING_COLS:
+        if rc not in b:
+            continue
+        v = b.get(rc)
+        if v in (None, "", "null"):
+            iv = None
+        else:
+            try:
+                iv = int(float(str(v).replace(",", ".")))
+            except (TypeError, ValueError):
+                iv = None
+            if iv is not None and not (0 <= iv <= 5):
+                iv = None
+        sets.append("%s=?" % rc)
+        vals.append(iv)
+    sets.append("ratings_status=?")
+    vals.append(status)
+    gc = _garage_conn()
+    try:
+        gc.execute("UPDATE gear SET %s WHERE id=?" % ", ".join(sets), vals + [gid])
+        gc.commit()
+        row = gc.execute("SELECT ratings_status FROM gear WHERE id=?", (gid,)).fetchone()
+    finally:
+        gc.close()
+    return {"ok": True, "id": gid, "status": row["ratings_status"] if row else status}
 
 
 @app.post("/api/garage/toggle")
@@ -4712,6 +4841,145 @@ async def garage_toggle(request: Request):
         return {"ok": True, "id": int(gid), "active": active}
     finally:
         gc.close()
+
+
+# --- Garaz: zdjecie + miniatura rzeczy (pliki w /gear, odnosniki w bazie) ---
+GEAR_IMG_DIR = os.path.join(WEB_ROOT, "gear")
+GEAR_IMG_MAX_BYTES = 12 * 1024 * 1024
+
+
+@app.post("/api/garage/photo")
+async def garage_photo(id: int = Form(...), file: UploadFile = File(...)):
+    """Zapisuje zdjecie rzeczy: oryginal (do 1600px) + miniature (240px).
+    Zwraca odnosniki i wpisuje je do gear.photo/thumb."""
+    import io, time
+    from PIL import Image, ImageOps
+    ct = (file.content_type or "")
+    if not ct.startswith("image/"):
+        raise HTTPException(status_code=400, detail="To nie jest obraz")
+    raw = await file.read()
+    if not raw or len(raw) > GEAR_IMG_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="Pusty plik albo za duzy (max 12 MB)")
+    try:
+        im = Image.open(io.BytesIO(raw))
+        im = ImageOps.exif_transpose(im)
+        im = im.convert("RGB")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Nie moge odczytac obrazu")
+    os.makedirs(GEAR_IMG_DIR, exist_ok=True)
+    full = im.copy(); full.thumbnail((1600, 1600))
+    thumb = im.copy(); thumb.thumbnail((240, 240))
+    full.save(os.path.join(GEAR_IMG_DIR, "%d.jpg" % id), "JPEG", quality=85)
+    thumb.save(os.path.join(GEAR_IMG_DIR, "%d_thumb.jpg" % id), "JPEG", quality=82)
+    v = int(time.time())
+    photo_url = "/gear/%d.jpg?v=%d" % (id, v)
+    thumb_url = "/gear/%d_thumb.jpg?v=%d" % (id, v)
+    gc = _garage_conn()
+    try:
+        gc.execute("UPDATE gear SET photo=?, thumb=? WHERE id=?", (photo_url, thumb_url, id))
+        gc.commit()
+    finally:
+        gc.close()
+    return {"ok": True, "id": id, "photo": photo_url, "thumb": thumb_url}
+
+
+@app.post("/api/garage/photo/delete")
+async def garage_photo_delete(request: Request):
+    """Usuwa zdjecie rzeczy (pliki + odnosniki w bazie)."""
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    gid = b.get("id")
+    if gid in (None, "", 0, "0"):
+        raise HTTPException(status_code=400, detail="Brak id")
+    gid = int(gid)
+    for suffix in ("%d.jpg" % gid, "%d_thumb.jpg" % gid):
+        p = os.path.join(GEAR_IMG_DIR, suffix)
+        try:
+            if os.path.isfile(p):
+                os.remove(p)
+        except Exception:
+            pass
+    gc = _garage_conn()
+    try:
+        gc.execute("UPDATE gear SET photo=NULL, thumb=NULL WHERE id=?", (gid,))
+        gc.commit()
+    finally:
+        gc.close()
+    return {"ok": True, "id": gid}
+
+
+# --- Garaz: zaciaganie danych z URL + zdjecie z URL ---
+def _gear_store_image(gid, raw):
+    import io, time
+    from PIL import Image, ImageOps
+    im = Image.open(io.BytesIO(raw)); im = ImageOps.exif_transpose(im); im = im.convert("RGB")
+    os.makedirs(GEAR_IMG_DIR, exist_ok=True)
+    full = im.copy(); full.thumbnail((1600, 1600))
+    thumb = im.copy(); thumb.thumbnail((240, 240))
+    full.save(os.path.join(GEAR_IMG_DIR, "%d.jpg" % gid), "JPEG", quality=85)
+    thumb.save(os.path.join(GEAR_IMG_DIR, "%d_thumb.jpg" % gid), "JPEG", quality=82)
+    v = int(time.time())
+    return "/gear/%d.jpg?v=%d" % (gid, v), "/gear/%d_thumb.jpg?v=%d" % (gid, v)
+
+
+@app.post("/api/garage/scrape")
+async def garage_scrape(request: Request):
+    """Zaciaga dane rzeczy ze strony produktu (dane strukturalne). Nic nie zapisuje."""
+    try:
+        bd = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    url = (str(bd.get("url") or "")).strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(status_code=400, detail="Podaj adres http(s)")
+    import qbot_gear_scrape as _scr
+    try:
+        return _scr.scrape(url, categories=RIDE_GEAR_SLOTS)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Nie udalo sie pobrac strony: %s" % e)
+
+
+@app.post("/api/garage/photo/from-url")
+async def garage_photo_from_url(request: Request):
+    """Pobiera zdjecie z podanego URL i zapisuje jako foto+miniature rzeczy."""
+    try:
+        bd = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    gid = bd.get("id")
+    url = (str(bd.get("url") or "")).strip()
+    if gid in (None, "", 0, "0"):
+        raise HTTPException(status_code=400, detail="Brak id")
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(status_code=400, detail="Zly adres obrazu")
+    gid = int(gid)
+    import requests as _rq
+    try:
+        r = _rq.get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; QBotGear/1.0)"},
+                    timeout=15, stream=True)
+        r.raise_for_status()
+        raw = b""
+        for ch in r.iter_content(8192):
+            raw += ch
+            if len(raw) > GEAR_IMG_MAX_BYTES:
+                raise HTTPException(status_code=400, detail="Obraz za duzy")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Nie pobralem obrazu: %s" % e)
+    try:
+        photo_url, thumb_url = _gear_store_image(gid, raw)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Nie moge przetworzyc obrazu")
+    gc = _garage_conn()
+    try:
+        gc.execute("UPDATE gear SET photo=?, thumb=? WHERE id=?", (photo_url, thumb_url, gid))
+        gc.commit()
+    finally:
+        gc.close()
+    return {"ok": True, "id": gid, "photo": photo_url, "thumb": thumb_url}
 
 
 _FEEL_WORDS = {-2: "fatalnie", -1: "gorzej niz zwykle", 0: "neutralnie", 1: "dobrze", 2: "swietnie"}
@@ -5581,6 +5849,149 @@ async def nutrition_preset_apply(request: Request):
         conn.close()
     return {"ok": True, "day": day, "level": level, "kcal": lv["kcal"],
             "carbs_g": lv["carbs_g"], "protein_g": lv["protein_g"], "fat_g": lv["fat_g"]}
+
+
+@app.get("/api/nutrition/items")
+def nutrition_items(request: Request, limit: int = Query(5000)):
+    """Baza posilkow: lista WSZYSTKICH zarejestrowanych pozycji jedzenia.
+    Jeden wiersz = jedna pozycja (intake_items) + data posilku z intake_logs.
+    Filtrowanie/sortowanie/szukanie robi front (kilkaset wierszy)."""
+    limit = max(1, min(50000, limit))
+    conn = _db_conn()
+    try:
+        rows = conn.execute(
+            "SELECT i.id AS id, i.intake_log_id AS log_id, l.date AS date, "
+            "i.food_name AS food_name, i.amount AS amount, i.unit AS unit, "
+            "i.kcal AS kcal, i.protein_g AS protein_g, i.carbs_g AS carbs_g, i.fat_g AS fat_g, "
+            "i.created_at AS created_at, l.meal_type AS meal_type, l.source AS source, "
+            "(SELECT COUNT(*) FROM qbot_v2.intake_items x WHERE x.intake_log_id=l.id) AS log_items "
+            "FROM qbot_v2.intake_items i JOIN qbot_v2.intake_logs l ON l.id=i.intake_log_id "
+            "ORDER BY l.date DESC, i.created_at DESC, i.id DESC LIMIT %s",
+            (limit,)).fetchall()
+        out = []
+        for r in rows:
+            out.append({
+                "id": r["id"], "log_id": r["log_id"],
+                "date": (r["date"].isoformat() if r["date"] else None),
+                "food_name": r["food_name"],
+                "amount": (float(r["amount"]) if r["amount"] is not None else None),
+                "unit": r["unit"],
+                "kcal": (float(r["kcal"]) if r["kcal"] is not None else None),
+                "protein_g": (float(r["protein_g"]) if r["protein_g"] is not None else None),
+                "carbs_g": (float(r["carbs_g"]) if r["carbs_g"] is not None else None),
+                "fat_g": (float(r["fat_g"]) if r["fat_g"] is not None else None),
+                "created_at": (r["created_at"].isoformat() if r["created_at"] else None),
+                "meal_type": r["meal_type"], "source": r["source"],
+                "log_items": r["log_items"],
+            })
+        return {"items": out, "count": len(out)}
+    finally:
+        conn.close()
+
+
+@app.post("/api/nutrition/item/update")
+async def nutrition_item_update(request: Request):
+    """Edycja jednej pozycji jedzenia.
+    body: {id, date, food_name, amount, unit, kcal, protein_g, carbs_g, fat_g}.
+    Data siedzi na logu: gdy log ma 1 pozycje - zmieniamy date logu; gdy wiecej -
+    wydzielamy te pozycje do nowego logu z nowa data (spojnosc pozostalych zachowana)."""
+    import re as _re_nut
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    try:
+        item_id = int(body.get("id"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Brak lub bledne id pozycji")
+    name = str(body.get("food_name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Nazwa nie moze byc pusta")
+    name = name[:500]
+    date = str(body.get("date") or "").strip()[:10]
+    if not _re_nut.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        raise HTTPException(status_code=400, detail="Data w formacie RRRR-MM-DD")
+
+    def _num(key, mx=1000000.0):
+        v = body.get(key)
+        if v is None or v == "":
+            return None
+        try:
+            f = float(v)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Bledna liczba w polu: " + key)
+        if f < 0 or f > mx:
+            raise HTTPException(status_code=400, detail="Wartosc poza zakresem: " + key)
+        return f
+
+    amount = _num("amount")
+    kcal = _num("kcal")
+    protein = _num("protein_g")
+    carbs = _num("carbs_g")
+    fat = _num("fat_g")
+    unit = (str(body.get("unit") or "").strip()[:32]) or None
+
+    conn = _db_conn()
+    try:
+        cur = conn.execute("SELECT intake_log_id FROM qbot_v2.intake_items WHERE id=%s", (item_id,)).fetchone()
+        if not cur:
+            raise HTTPException(status_code=404, detail="Nie ma takiej pozycji")
+        log_id = cur["intake_log_id"]
+        conn.execute(
+            "UPDATE qbot_v2.intake_items SET food_name=%s, amount=%s, unit=%s, kcal=%s, "
+            "protein_g=%s, carbs_g=%s, fat_g=%s WHERE id=%s",
+            (name, amount, unit, kcal, protein, carbs, fat, item_id))
+        log = conn.execute(
+            "SELECT date, meal_type, note, source, quality_status FROM qbot_v2.intake_logs WHERE id=%s",
+            (log_id,)).fetchone()
+        cur_date = log["date"].isoformat() if log and log["date"] else None
+        if cur_date != date:
+            conn.execute("INSERT INTO qbot_v2.days (date) VALUES (%s) ON CONFLICT (date) DO NOTHING", (date,))
+            n_items = conn.execute(
+                "SELECT COUNT(*) AS c FROM qbot_v2.intake_items WHERE intake_log_id=%s", (log_id,)).fetchone()["c"]
+            if n_items <= 1:
+                conn.execute(
+                    "UPDATE qbot_v2.intake_logs SET date=%s, eaten_at=%s WHERE id=%s",
+                    (date, date + " 12:00", log_id))
+            else:
+                newid = conn.execute(
+                    "INSERT INTO qbot_v2.intake_logs (date, eaten_at, meal_type, note, source, quality_status) "
+                    "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+                    (date, date + " 12:00", log["meal_type"], log["note"], log["source"], log["quality_status"])
+                ).fetchone()["id"]
+                conn.execute("UPDATE qbot_v2.intake_items SET intake_log_id=%s WHERE id=%s", (newid, item_id))
+        conn.commit()
+        return {"ok": True, "id": item_id}
+    finally:
+        conn.close()
+
+
+@app.post("/api/nutrition/item/delete")
+async def nutrition_item_delete(request: Request):
+    """Usuwa jedna pozycje jedzenia. Gdy jej log zostaje pusty - kasuje tez log."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    try:
+        item_id = int(body.get("id"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Brak lub bledne id pozycji")
+    conn = _db_conn()
+    try:
+        row = conn.execute("SELECT intake_log_id FROM qbot_v2.intake_items WHERE id=%s", (item_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Nie ma takiej pozycji")
+        log_id = row["intake_log_id"]
+        conn.execute("DELETE FROM qbot_v2.intake_items WHERE id=%s", (item_id,))
+        left = conn.execute(
+            "SELECT COUNT(*) AS c FROM qbot_v2.intake_items WHERE intake_log_id=%s", (log_id,)).fetchone()["c"]
+        if left == 0:
+            conn.execute("DELETE FROM qbot_v2.intake_logs WHERE id=%s", (log_id,))
+        conn.commit()
+        return {"ok": True, "id": item_id, "log_deleted": (left == 0)}
+    finally:
+        conn.close()
 
 
 @app.get("/api/nutrition/data")
