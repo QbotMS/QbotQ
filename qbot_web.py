@@ -5017,6 +5017,14 @@ EQUIP_STATUS = ["uzywany", "zapas", "wycofany"]
 EQUIP_MOUNTS = ["kierownica", "gorna rura", "rama", "dolna rura", "siodlo",
                 "widelec", "bagaznik", "plecak", "nie dotyczy"]
 COMPONENT_STATUS = ["zamontowany", "zapas", "wycofany"]
+# Kanoniczne typy czesci - podpowiedzi w formularzu i lista dla zaciagania z URL.
+# Kategoria komponentu pozostaje polem tekstowym, wiec mozna wpisac wlasna.
+BIKE_COMPONENT_CATEGORIES = [
+    "frame", "fork", "headset", "stem", "handlebar", "aero bars", "seatpost",
+    "saddle", "wheels", "tires", "cassette", "chain", "crankset", "drivetrain",
+    "brakes", "pedals", "bottom bracket", "electronics", "rack", "mudguards",
+    "bottle cages", "spare parts", "other",
+]
 
 EQUIP_FIELDS_TXT = ("category", "brand", "model", "size", "color", "condition",
                     "status", "mount", "ean", "sku", "url", "notes", "purchase_date")
@@ -5126,9 +5134,11 @@ def bike_config(all: int = Query(0)):
         tires = [dict(r) for r in gc.execute(
             "SELECT * FROM tires ORDER BY fits_wheelset, position, id").fetchall()]
         fit = [dict(r) for r in gc.execute("SELECT * FROM fitting ORDER BY id").fetchall()]
-        cats = sorted({c["category"] for c in comps if c.get("category")})
+        used = {c["category"] for c in comps if c.get("category")}
+        cats = BIKE_COMPONENT_CATEGORIES + sorted(used - set(BIKE_COMPONENT_CATEGORIES))
         return {"bikes": bikes, "components": comps, "tires": tires, "fitting": fit,
-                "component_categories": cats, "statuses": COMPONENT_STATUS}
+                "component_categories": cats, "used_categories": sorted(used),
+                "statuses": COMPONENT_STATUS}
     finally:
         gc.close()
 
