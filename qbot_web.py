@@ -4483,7 +4483,7 @@ RIDE_GEAR_SLOTS = [
     "Base Layer Top", "Base Layer Bottom", "Jersey", "Jersey Long Sleeve",
     "Bottoms / Bibs", "Mid Layer Bottom", "Vest / Gilet", "Jacket / Shell",
     "Warmers", "Gloves", "Headwear", "Neckwear", "Socks", "Overshoes",
-    "Shoes", "Helmet", "Accessories",
+    "Shoes", "Helmet", "Glasses", "Accessories",
 ]
 RIDE_GEAR_CASSETTES = ["Garbaruk 10-52T (13rz)", "SRAM Force E1 10-46T"]
 _RIDE_GEAR_ALLOWED = set(RIDE_GEAR_SLOTS) | {"wheels", "cassette"}
