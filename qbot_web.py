@@ -6027,8 +6027,8 @@ def _wyposazenie_garage_categories():
 @app.post("/api/planer/wyposazenie/generate")
 async def api_wyposazenie_generate(request: Request):
     """Generator LLM listy pakowania. Wejscie: {days, style('lekko'|'ciezko'),
-    season?, route_summary?}. Wyjscie: grupy pozycji; kazda pozycja z sugerowana
-    kategoria garazu (albo null). Na zywo, nic nie zapisuje."""
+    season?, route_summary?}. Wyjscie: grupy pozycji; kazda pozycja z qty, sugerowana
+    kategoria garazu (albo null) i uzasadnieniem (reason). Nic nie zapisuje."""
     import json as _json
     try:
         body = await request.json()
@@ -6043,52 +6043,62 @@ async def api_wyposazenie_generate(request: Request):
     style = (str(body.get("style") or "")).strip().lower()
     if style not in ("lekko", "ciezko"):
         raise HTTPException(status_code=400, detail="Wymagane: style = 'lekko' lub 'ciezko'")
-    season = (str(body.get("season") or "")).strip()[:40]
+    season = (str(body.get("season") or "")).strip()[:60]
     route = (str(body.get("route_summary") or "")).strip()[:400]
 
     cats = _wyposazenie_garage_categories()
     cats_str = ", ".join(cats) if cats else "(brak)"
-    style_desc = ("nocleg w hotelach/pensjonatach - BEZ wlasnego sprzetu do spania i gotowania"
+    style_desc = ("LEKKO: noclegi w hotelach/pensjonatach. NIE dodawaj grup Nocleg ani Gotowanie, "
+                  "ani filtra do wody. Minimalizm: ubranie na zmiane + cos wieczorowego."
                   if style == "lekko" else
-                  "biwak wlasny - Z pelnym sprzetem do spania (namiot/spiwor/karimata) "
-                  "i gotowania (palnik/garnek/zywnosc)")
+                  "CIEZKO: biwak wlasny. Pelny nocleg (namiot lub bivy, spiwor, karimata, poduszka) "
+                  "i gotowanie (palnik, kartusz, garnek, sztucce, zapalniczka), woda z filtrem lub "
+                  "tabletkami, ubranie do obozu + bielizna na zmiane.")
 
     system = (
-        "Jestes asystentem pakowania na wyprawe rowerowa (gravel/touring, zawodnik ~100 kg). "
-        "Tworzysz liste rzeczy do zabrania. Odpowiadasz WYLACZNIE surowym JSON, "
-        "bez markdown, bez wstepu, bez komentarza. "
-        "Uzywaj tylko tych grup: 'Odziez rowerowa', 'Warstwy i pogoda', 'Nocleg', "
-        "'Gotowanie', 'Higiena', 'Elektronika', 'Apteczka i bezpieczenstwo', "
+        "Jestes doswiadczonym asystentem pakowania na wyprawy rowerowe (bikepacking/touring). "
+        "Robisz KONKRETNA, przemyslana liste, nie ogolniki. Odpowiadasz WYLACZNIE surowym JSON "
+        "(bez markdown, bez wstepu, bez komentarza). "
+        "PROFIL ROWERZYSTY (dopasuj liste): Canyon Grizl, gravel/touring, ~100 kg, dlugie jazdy "
+        "w terenie, NIE wyscigi. Opony TUBELESS - dlatego naprawa opon to: zestaw tubeless "
+        "(wtyczki/korki typu Dynaplug + narzedzie do wbijania), JEDNA zapasowa detka TYLKO jako "
+        "ostatecznosc, latki, lyzki do opon, mini-pompka lub CO2, multitool z wyciagaczem lancucha, "
+        "spinka lancucha, kilka zapasowych srub, tasma. NIGDY nie dawaj detek jako podstawy naprawy. "
+        "Ma licznik Hammerhead Karoo (nawigacja GPS) i lampki, wiec NIE dubluj nawigacji ani "
+        "podstawowych swiatel - dodaj powerbank i kable do ladowania. "
+        "GRUPY (uzywaj dokladnie tych nazw): 'Odziez rowerowa', 'Warstwy i pogoda', 'Ubranie do obozu', "
+        "'Nocleg', 'Gotowanie', 'Woda', 'Higiena', 'Elektronika', 'Apteczka i bezpieczenstwo', "
         "'Naprawa roweru', 'Dokumenty i pieniadze'. "
-        "Przy stylu 'lekko' NIE dodawaj grup 'Nocleg' ani 'Gotowanie'. "
-        "Kazda pozycja to obiekt: item (krotka nazwa po polsku), qty (liczba sztuk, "
-        "rozsadna wzgledem liczby dni), garage_category (DOKLADNIE jedna z podanych "
-        "kategorii garazu, albo null gdy rzecz nie jest ubraniem/akcesorium z garazu - "
-        "np. apteczka, krem SPF, zywnosc, powerbank, namiot). "
-        "Nie wymyslaj kategorii spoza listy. Rzeczy wielorazowe (kurtka, kask, okulary, "
-        "buty) maja qty=1; zuzywalne/na zmiane (skarpetki, base layer, bielizna) skaluj "
-        "liczba dni z rozsadkiem."
+        "ZASADY: (1) zuzywalne/na zmiane (skarpetki, base layer, bielizna, biby) skaluj liczba dni "
+        "rozsadnie; (2) wielorazowe (kurtka, kask, okulary, buty, narzedzia) qty=1; (3) warstwy dobierz "
+        "do pory roku i pogody z parametrow; (4) jedzenie kaloryczne skalowane dniami, mniej gdy trasa "
+        "prowadzi przez miasta z zaopatrzeniem; (5) bez zapychaczy - tylko to co naprawde uzyteczne. "
+        "Kazda pozycja to obiekt: item (krotka nazwa PL), qty (liczba sztuk), garage_category (DOKLADNIE "
+        "jedna z podanych kategorii garazu albo null gdy to nie jest ubranie/akcesorium z garazu, np. "
+        "namiot, palnik, apteczka, zywnosc, powerbank), reason (JEDNO krotkie zdanie po polsku: po co to "
+        "i dlaczego akurat tyle lub czemu wlasnie na tej wyprawie - konkret, nie oczywistosc)."
     )
     prompt = (
         "PARAMETRY WYPRAWY:\n"
         "- liczba dni: %d\n"
-        "- styl: %s (%s)\n" % (days, style, style_desc)
+        "- styl: %s\n"
+        "- %s\n" % (days, style, style_desc)
     )
     if season:
         prompt += "- pora roku / warunki: %s\n" % season
     if route:
         prompt += "- profil trasy: %s\n" % route
     prompt += (
-        "\nKATEGORIE GARAZU (uzywaj DOKLADNIE tych nazw w polu garage_category): %s\n"
+        "\nKATEGORIE GARAZU (uzywaj DOKLADNIE tych nazw w garage_category): %s\n"
         "\nZwroc dokladnie taki JSON:\n"
-        "{\"groups\": [{\"group\": \"<nazwa grupy>\", \"items\": "
-        "[{\"item\": \"...\", \"qty\": 1, \"garage_category\": \"...\"|null}]}]}"
+        "{\"groups\": [{\"group\": \"<grupa>\", \"items\": [{\"item\": \"...\", \"qty\": 1, "
+        "\"garage_category\": \"...\"|null, \"reason\": \"...\"}]}]}"
         % cats_str
     )
 
     from qgpt_client import qgpt_text
     try:
-        raw = qgpt_text(prompt, system=system, max_tokens=1400, temperature=0.3)
+        raw = qgpt_text(prompt, system=system, max_tokens=3000, temperature=0.3)
     except Exception as e:
         raise HTTPException(status_code=502, detail="LLM niedostepny: %s" % e)
     raw = (raw or "").strip()
@@ -6126,8 +6136,9 @@ async def api_wyposazenie_generate(request: Request):
                 q = int(it.get("qty") or 1)
             except (TypeError, ValueError):
                 q = 1
-            gitems.append({"item": str(it.get("item"))[:80], "qty": max(1, q),
-                           "garage_category": gc})
+            gitems.append({"item": str(it.get("item"))[:80], "qty": max(1, min(20, q)),
+                           "garage_category": gc,
+                           "reason": (str(it.get("reason"))[:240] if it.get("reason") else None)})
         if gitems:
             clean.append({"group": str(g.get("group") or "Inne")[:40], "items": gitems})
     return {"days": days, "style": style, "season": season or None, "groups": clean}
