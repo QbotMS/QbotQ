@@ -205,9 +205,9 @@ def day_wall(xss, ceilings):
     met = ceilings.get("day_metabolic") if ceilings else None
     dem = ceilings.get("day_demonstrated") if ceilings else None
     if met is not None and x > met:
-        return "red", "powyzej sciany 1-dnia"
+        return "red", "powyżej ściany 1-dnia"
     if dem is not None and x > dem:
-        return "yellow", "powyzej rekordu dnia"
+        return "yellow", "powyżej rekordu dnia"
     return "green", "w normie"
 
 
@@ -215,7 +215,7 @@ def verdict_two_walls(stage_xss_list, ceilings, min_tsb=None):
     """Werdykt tekstowy modelu dwoch scian (po polsku, 2-4 zdania)."""
     n = len(stage_xss_list)
     if n == 0 or not ceilings:
-        return "Brak danych do oceny scian."
+        return "Brak danych do oceny ścian."
     xs = [float(x or 0.0) for x in stage_xss_list]
     avg = sum(xs) / n
     met = ceilings.get("day_metabolic")
@@ -235,22 +235,22 @@ def verdict_two_walls(stage_xss_list, ceilings, min_tsb=None):
     parts = [head]
     if reds:
         dni = ", ".join(str(i) for i in reds)
-        parts.append("Dzien %s przebija sciane 1-dnia (~%.0f XSS = limit wchlaniania jelit) -- "
-                      "podziel ten dzien." % (dni, met))
+        parts.append("Dzień %s przebija ścianę 1-dnia (~%.0f XSS = limit wchłaniania jelit) — "
+                      "podziel ten dzień." % (dni, met))
     if yellows:
         dni = ", ".join(str(i) for i in yellows)
-        parts.append("Dzien %s powyzej Twojego rekordu dnia (%.0f), ale ponizej sciany "
-                      "metabolicznej -- da sie, trzymaj tempo i dojadaj." % (dni, dem))
+        parts.append("Dzień %s powyżej Twojego rekordu dnia (%.0f), ale poniżej ściany "
+                      "metabolicznej — da się, trzymaj tempo i dojadaj." % (dni, dem))
     if wk is not None and avg > wk:
-        parts.append("Srednia %.0f/dzien przewyzsza Twoj sufit tygodniowy (~%.0f) -- przy "
-                     "dluzszym bloku dlug glikogenowy narasta." % (avg, wk))
+        parts.append("Średnia %.0f/dzień przewyższa Twój sufit tygodniowy (~%.0f) — przy "
+                     "dłuższym bloku dług glikogenowy narasta." % (avg, wk))
     elif n >= 7 and mw is not None and avg > mw:
-        parts.append("Srednia %.0f/dzien OK na tydzien, ale powyzej sufitu wielotygodniowego "
-                     "(~%.0f) -- nie przedluzaj bez dnia lzejszego." % (avg, mw))
+        parts.append("Średnia %.0f/dzień OK na tydzień, ale powyżej sufitu wielotygodniowego "
+                     "(~%.0f) — nie przedłużaj bez dnia lżejszego." % (avg, mw))
     elif wk is not None:
-        parts.append("Srednia %.0f/dzien miesci sie w suficie tygodniowym (~%.0f)." % (avg, wk))
+        parts.append("Średnia %.0f/dzień mieści się w suficie tygodniowym (~%.0f)." % (avg, wk))
     if min_tsb is not None:
-        parts.append("Narastajace zmeczenie: min. poranny TSB ~%.0f (informacja, nie stop)." % min_tsb)
+        parts.append("Narastające zmęczenie: min. poranny TSB ~%.0f (informacja, nie stop)." % min_tsb)
     return " ".join(parts)
 
 
@@ -415,7 +415,7 @@ def assess(conn, departure_date, stage_xss_list, today=None):
                 round(ceilings["day_metabolic"]), round(ceilings["week_avg"])))
         caveats.insert(1,
             "Sciana metaboliczna = limit wchlaniania jelit (~uniwersalny), NIE galka wytrenowania. "
-            "Glikogen (bufor) tlumaczy roznice sciany 1-dnia vs tygodniowej; dlug narasta dzien po dniu.")
+            "Glikogen (bufor) tłumaczy różnicę ściany 1-dnia vs tygodniowej; dług narasta dzień po dniu.")
 
     return {
         "ok": True,

@@ -7169,7 +7169,7 @@ def _wyprawa_source_hash(route_id, cuts, date):
     data z kalendarza, tlo/opis dni (LLM cache) albo atrakcje. Ten sam odcisk =>
     podajemy zapisany PDF z bazy zamiast liczyc od nowa (~3 min)."""
     import hashlib as _hl
-    parts = ["v2", str(route_id or ""), str(cuts or ""), str(date or "")]
+    parts = ["v3", str(route_id or ""), str(cuts or ""), str(date or "")]
     conn = _db_conn()
     try:
         base = conn.execute(
