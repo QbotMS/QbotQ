@@ -449,6 +449,47 @@ def route_geometry(route_id: str):
     }
 
 
+@app.get("/api/routes/{route_id}/spine")
+def route_spine(route_id: str, mode: str = "normalny"):
+    """Profil trasy (siatka 50 m) liczony NA ZYWO z route store - zastepuje dawne
+    statyczne /data/spine_<id>.json. Zrodlo kanoniczne: route_axis_segments +
+    route_elevation_samples + route_surface_layer (ten sam kanon co raport i
+    model czasu). Zwraca {route_id, summary, spine:[{k,la,lo,g,s,t}]}."""
+    _e = _env()
+    for _k in ("PGHOST", "PGPORT", "PGUSER", "PGDATABASE", "PGPASSWORD"):
+        if not os.getenv(_k) and _e.get(_k):
+            os.environ[_k] = _e[_k]
+    os.environ.setdefault("QBOT3_ENABLED", "1")
+    try:
+        from qbot3.routes.route_segments_50m import load_canonical_segments_50m
+        from qbot_route_time_tools import segment_speed_kmh
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="modul niedostepny: " + str(exc)[:120])
+    try:
+        data = load_canonical_segments_50m(route_id=route_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)[:200])
+    if data.get("status") != "OK":
+        raise HTTPException(status_code=404, detail="Profil niedostepny (" + str(data.get("status")) + ")")
+    spine = []
+    for seg in data.get("segments", []):
+        grade = float(seg.get("grade_pct") or 0.0)
+        sc = seg.get("surface_class")
+        s = sc if sc in ("paved", "unpaved") else "unknown"
+        ln_km = float(seg.get("len_m") or 0.0) / 1000.0
+        v = segment_speed_kmh(grade, sc, mode)
+        t = round(ln_km / v * 3600.0, 1) if v and v > 0 else 0.0
+        spine.append({
+            "k": round(float(seg.get("km_from") or 0.0), 3),
+            "la": seg.get("mid_lat"),
+            "lo": seg.get("mid_lon"),
+            "g": round(float(seg.get("elev_gain_m") or 0.0), 2),
+            "s": s,
+            "t": t,
+        })
+    return {"route_id": route_id, "summary": data.get("summary", {}), "spine": spine}
+
+
 def _haversine_m(lat1, lon1, lat2, lon2):
     p = math.pi / 180.0
     a = (0.5 - math.cos((lat2 - lat1) * p) / 2
@@ -5274,6 +5315,49 @@ async def equipment_delete(request: Request):
 async def bike_component_delete(request: Request):
     """TWARDE usuniecie komponentu roweru (nieodwracalne)."""
     return await _delete_request(request, "component")
+
+
+@app.get("/api/garage/prefs")
+def garage_prefs_get(key: str = Query("")):
+    """Odczyt ustawien interfejsu Garazu (np. wybrane kolumny tabeli)."""
+    key = (key or "").strip()[:80]
+    if not key:
+        raise HTTPException(status_code=400, detail="Brak key")
+    gc = _garage_conn()
+    try:
+        row = gc.execute("SELECT value FROM ui_prefs WHERE key=?", (key,)).fetchone()
+    finally:
+        gc.close()
+    if not row:
+        return {"key": key, "value": None}
+    try:
+        return {"key": key, "value": json.loads(row["value"])}
+    except Exception:
+        return {"key": key, "value": row["value"]}
+
+
+@app.post("/api/garage/prefs")
+async def garage_prefs_set(request: Request):
+    """Zapis ustawien interfejsu Garazu. Body: {key, value}."""
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    key = (str(b.get("key") or "")).strip()[:80]
+    if not key:
+        raise HTTPException(status_code=400, detail="Brak key")
+    val = json.dumps(b.get("value"), ensure_ascii=False)
+    if len(val) > 20000:
+        raise HTTPException(status_code=400, detail="Za duza wartosc")
+    gc = _garage_conn()
+    try:
+        gc.execute("INSERT INTO ui_prefs (key, value, updated_at) VALUES (?,?, datetime('now')) "
+                   "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')",
+                   (key, val))
+        gc.commit()
+    finally:
+        gc.close()
+    return {"ok": True, "key": key}
 
 
 _FEEL_WORDS = {-2: "fatalnie", -1: "gorzej niz zwykle", 0: "neutralnie", 1: "dobrze", 2: "swietnie"}
