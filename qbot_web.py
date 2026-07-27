@@ -4480,8 +4480,8 @@ GARAGE_DB = os.environ.get("QBOT_GARAGE_DB", "/opt/qbot/app/data/garage.db")
 
 # Kolejnosc slotow w panelu (jedna, caloroczna lista; z buty/kask/kurtka).
 RIDE_GEAR_SLOTS = [
-    "Base Layer Top", "Base Layer Bottom", "Jersey", "Bottoms / Bibs",
-    "Mid Layer", "Mid Layer Bottom", "Vest / Gilet", "Jacket / Shell",
+    "Base Layer Top", "Base Layer Bottom", "Jersey", "Jersey Long Sleeve",
+    "Bottoms / Bibs", "Mid Layer Bottom", "Vest / Gilet", "Jacket / Shell",
     "Warmers", "Gloves", "Headwear", "Neckwear", "Socks", "Overshoes",
     "Shoes", "Helmet", "Accessories",
 ]
@@ -5202,6 +5202,70 @@ async def bike_component_toggle(request: Request):
         return {"ok": True, "id": int(gid), "active": active}
     finally:
         gc.close()
+
+
+def _garage_hard_delete(entity, gid):
+    """Twarde usuniecie rzeczy: pliki zdjec + powiazania + wiersz.
+    Zwraca slownik z licznikami tego, co faktycznie zniklo."""
+    table, pref = _photo_target(entity)
+    gid = int(gid)
+    out = {"entity": entity, "id": gid, "pliki": 0, "log_jazd": 0, "usunieto": 0}
+
+    for suffix in ("%s%d.jpg" % (pref, gid), "%s%d_thumb.jpg" % (pref, gid)):
+        p = os.path.join(GEAR_IMG_DIR, suffix)
+        try:
+            if os.path.isfile(p):
+                os.remove(p)
+                out["pliki"] += 1
+        except Exception:
+            pass
+
+    gc = _garage_conn()
+    try:
+        row = gc.execute("SELECT brand, model FROM %s WHERE id=?" % table, (gid,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Nie ma takiej pozycji")
+        out["nazwa"] = " ".join([x for x in (row["brand"], row["model"]) if x]) or ("#%d" % gid)
+        if table == "gear":
+            cur = gc.execute("DELETE FROM ride_gear_log WHERE gear_id=?", (gid,))
+            out["log_jazd"] = cur.rowcount or 0
+        cur = gc.execute("DELETE FROM %s WHERE id=?" % table, (gid,))
+        out["usunieto"] = cur.rowcount or 0
+        gc.commit()
+    finally:
+        gc.close()
+    return out
+
+
+async def _delete_request(request, entity):
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    gid = b.get("id")
+    if gid in (None, "", 0, "0"):
+        raise HTTPException(status_code=400, detail="Brak id")
+    if not b.get("confirm"):
+        raise HTTPException(status_code=400, detail="Brak potwierdzenia")
+    return _garage_hard_delete(entity, gid)
+
+
+@app.post("/api/garage/delete")
+async def garage_delete(request: Request):
+    """TWARDE usuniecie rzeczy z odziezy (nieodwracalne)."""
+    return await _delete_request(request, "gear")
+
+
+@app.post("/api/equipment/delete")
+async def equipment_delete(request: Request):
+    """TWARDE usuniecie sprzetu (nieodwracalne)."""
+    return await _delete_request(request, "equipment")
+
+
+@app.post("/api/bike/component/delete")
+async def bike_component_delete(request: Request):
+    """TWARDE usuniecie komponentu roweru (nieodwracalne)."""
+    return await _delete_request(request, "component")
 
 
 _FEEL_WORDS = {-2: "fatalnie", -1: "gorzej niz zwykle", 0: "neutralnie", 1: "dobrze", 2: "swietnie"}
