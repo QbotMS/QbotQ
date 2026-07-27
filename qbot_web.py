@@ -3492,7 +3492,7 @@ def _build_day_data(conn, route_id, km_from, km_to):
         _c = [t for t in _towns_all if t.get("km") is not None and t.get("lat") is not None]
         if not _c:
             return None
-        _t = min(_c, key=lambda t: abs(float(t["km"]) - float(_target)))
+        _t = min(_c, key=lambda t: abs(float(t["km"]) - float(_target)) + 3.0 * ((t.get("dist_m") or 0.0) / 1000.0))
         _lat = round(float(_t["lat"]), 4)
         _lon = round(float(_t["lon"]), 4)
         try:
@@ -3748,6 +3748,119 @@ async def api_planer_wykonalnosc(request: Request):
                     "thresholds": _ef.load_tsb_thresholds(conn)}
         return {"ok": True, "route_id": route_id, "total_km": total_km,
                 "stages": stages, "feasibility": feas}
+    finally:
+        conn.close()
+
+
+def _dni_cuts_for_route(conn, route_id):
+    """Granice km miedzy dniami z podzialu Planera (planer_route_opis_dni.dni_json).
+    Zwraca liste km_to dni POZA ostatnim (= cuts dla _planer_stage_xss), None gdy brak podzialu."""
+    row = conn.execute(
+        "SELECT dni_json FROM qbot_v2.planer_route_opis_dni WHERE route_id=%s "
+        "ORDER BY generated_at DESC NULLS LAST LIMIT 1",
+        (route_id,),
+    ).fetchone()
+    if not row:
+        return None
+    dni = row["dni_json"] if isinstance(row, dict) else row[0]
+    if isinstance(dni, str):
+        try:
+            dni = json.loads(dni)
+        except Exception:
+            return None
+    if not isinstance(dni, list) or len(dni) < 1:
+        return None
+    cuts = []
+    for d in dni[:-1]:
+        if not isinstance(d, dict) or d.get("km_to") is None:
+            return None
+        try:
+            cuts.append(round(float(d["km_to"]), 3))
+        except (TypeError, ValueError):
+            return None
+    return cuts
+
+
+def _recompute_planned_load_for_entry(conn, entry_id):
+    """Liczy planowane XSS na kazdy dzien wyprawy z Planera i zapisuje do planned_load_daily
+    (source='planer_wyprawy'). Idempotentne: najpierw czysci wiersze tego eventu.
+    Bezpieczne dla wywolania w tle - przy braku danych zwraca 0, nie rzuca dalej.
+    Dzien N wyprawy -> data = calendar_entry.day + (N-1). Zwraca liczbe zapisanych dni."""
+    from datetime import timedelta as _td
+    ent = conn.execute(
+        "SELECT id, day, end_day, kind FROM qbot_v2.calendar_entry WHERE id=%s",
+        (entry_id,),
+    ).fetchone()
+    if not ent or ent["kind"] != "event" or not ent["day"]:
+        return 0
+    start_day = ent["day"]
+    rr = conn.execute(
+        "SELECT route_id FROM qbot_v2.calendar_day_route WHERE entry_id=%s ORDER BY day LIMIT 1",
+        (entry_id,),
+    ).fetchone()
+    # recompute idempotentny: zawsze czyscimy stare planowane obciazenie tego eventu
+    conn.execute(
+        "DELETE FROM qbot_v2.planned_load_daily WHERE entry_id=%s AND source='planer_wyprawy'",
+        (entry_id,),
+    )
+    if not rr or not rr["route_id"]:
+        conn.commit()
+        return 0
+    route_id = rr["route_id"]
+    cuts = _dni_cuts_for_route(conn, route_id)
+    if cuts is None:
+        cuts = []  # brak podzialu -> cala trasa jako 1 dzien
+    month = start_day.month if start_day else None
+    try:
+        _total_km, stages = _planer_stage_xss(conn, route_id, cuts, "normalny", month)
+    except Exception:
+        conn.commit()
+        return 0
+    n = 0
+    for i, s in enumerate(stages):
+        d = start_day + _td(days=i)
+        note = "Planer: %s, etap %d (%.0f-%.0f km)" % (
+            route_id, i + 1, float(s.get("from_km") or 0), float(s.get("to_km") or 0))
+        conn.execute(
+            "INSERT INTO qbot_v2.planned_load_daily "
+            "(day, source, entry_id, route_id, stage_idx, xss, dist_km, moving_h, note, updated_at) "
+            "VALUES (%s, 'planer_wyprawy', %s, %s, %s, %s, %s, %s, %s, now()) "
+            "ON CONFLICT (day, source) DO UPDATE SET entry_id=EXCLUDED.entry_id, "
+            "route_id=EXCLUDED.route_id, stage_idx=EXCLUDED.stage_idx, xss=EXCLUDED.xss, "
+            "dist_km=EXCLUDED.dist_km, moving_h=EXCLUDED.moving_h, note=EXCLUDED.note, updated_at=now()",
+            (d, entry_id, route_id, i + 1, s.get("xss"), s.get("dist_km"),
+             s.get("moving_h"), note[:2000]),
+        )
+        n += 1
+    conn.commit()
+    return n
+
+
+@app.post("/api/planer/planned-load/recompute")
+async def api_planned_load_recompute(request: Request):
+    """Reczne przeliczenie planowanego obciazenia (XSS/dzien) dla eventu-wyprawy.
+    body: {entry_id}. Zwraca zapisane dni. Uzywane tez jako backfill dla istniejacych wypraw."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    try:
+        entry_id = int(body.get("entry_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Wymagane: entry_id (liczba)")
+    conn = _db_conn()
+    try:
+        n = _recompute_planned_load_for_entry(conn, entry_id)
+        rows = conn.execute(
+            "SELECT day::text AS day, xss, dist_km, moving_h, route_id, stage_idx "
+            "FROM qbot_v2.planned_load_daily WHERE entry_id=%s ORDER BY day",
+            (entry_id,),
+        ).fetchall()
+        out = [{"day": r["day"], "xss": (float(r["xss"]) if r["xss"] is not None else None),
+                "dist_km": (float(r["dist_km"]) if r["dist_km"] is not None else None),
+                "moving_h": (float(r["moving_h"]) if r["moving_h"] is not None else None),
+                "route_id": r["route_id"], "stage_idx": r["stage_idx"]} for r in rows]
+        return {"ok": True, "entry_id": entry_id, "days_written": n, "days": out}
     finally:
         conn.close()
 
@@ -5434,7 +5547,7 @@ def _forma_planned_events(conn, days_ahead=14):
     Linie do promptu Doradcy - co zawodnik ma zaplanowane."""
     from datetime import date as _d
     rows = conn.execute(
-        "SELECT day, day::text AS day_s, title, event_type, at_time::text AS at_time, "
+        "SELECT id, day, day::text AS day_s, title, event_type, at_time::text AS at_time, "
         "end_day, end_day::text AS end_day_s, note "
         "FROM qbot_v2.calendar_entry "
         "WHERE kind='event' AND ("
@@ -5468,6 +5581,20 @@ def _forma_planned_events(conn, days_ahead=14):
             seg += " [%s]" % r["event_type"]
         if r.get("note"):
             seg += " - %s" % str(r["note"])[:100]
+        _eid = r.get("id")
+        if _eid is not None:
+            try:
+                _pl = conn.execute(
+                    "SELECT day::text AS day, xss FROM qbot_v2.planned_load_daily "
+                    "WHERE entry_id=%s AND xss IS NOT NULL ORDER BY day", (_eid,)
+                ).fetchall()
+            except Exception:
+                _pl = []
+            if _pl:
+                _tot = sum(float(p["xss"]) for p in _pl)
+                _parts = ["%s ~%d XSS" % (p["day"][5:], round(float(p["xss"]))) for p in _pl]
+                seg += (" | planowane obciazenie (XSS = dawka wysilku dnia): "
+                        + ", ".join(_parts) + (" (razem ~%d XSS)" % round(_tot)))
         out2.append(seg)
     return out2
 
@@ -5662,7 +5789,8 @@ async def forma_analyze(request: Request):
                 if _plan:
                     prompt = prompt + "\n\nPLAN W KALENDARZU (najblizsze ~2 tyg., zaplanowany przez zawodnika):\n" + "\n".join(_plan)
                     prompt = prompt + ("\n\nUWZGLEDNIJ TEN PLAN: rozpisz najblizsza jazde i 7 dni tak, by dowiezc forme na zaplanowane cele "
-                                       "(np. lzejszy dzien lub tapering przed dluga jazda/zawodami; przy wyjezdzie/urlopie/delegacji trening moze byc ograniczony - zaplanuj wokol tego).")
+                                       "(np. lzejszy dzien lub tapering przed dluga jazda/zawodami; przy wyjezdzie/urlopie/delegacji trening moze byc ograniczony - zaplanuj wokol tego). "
+                                       "Jesli dzien ma podane planowane obciazenie (XSS), traktuj je jak realny trening tego dnia - zadbaj o swiezosc przed i regeneracje po, a w dniach wczesniejszych nie kop dolka zmeczenia.")
                 prompt = prompt + "\n\nDoradz co robic lepiej na najblizszej jezdzie i w najblizszych 7 dniach."
                 mt = 620
             else:
@@ -5721,6 +5849,11 @@ def calendar_entries(start: str = Query(...), end: str = Query(...)):
             "FROM qbot_v2.calendar_day_route WHERE day BETWEEN %s AND %s",
             (start, end),
         ).fetchall()
+        prows = conn.execute(
+            "SELECT day::text AS day, xss, dist_km, moving_h, route_id, stage_idx, source "
+            "FROM qbot_v2.planned_load_daily WHERE day BETWEEN %s AND %s ORDER BY day",
+            (start, end),
+        ).fetchall()
     finally:
         conn.close()
 
@@ -5757,8 +5890,17 @@ def calendar_entries(start: str = Query(...), end: str = Query(...)):
          "route_id": r["route_id"], "route_name": r["route_name"]}
         for r in troute
     ]
+    planned = []
+    for r in prows:
+        px = _n(r["xss"], 1)
+        d = r["day"]
+        days.setdefault(d, {})["planned_xss"] = px
+        planned.append({"day": d, "xss": px,
+                        "dist_km": _n(r["dist_km"], 1), "moving_h": _n(r["moving_h"], 2),
+                        "route_id": r["route_id"], "stage_idx": r["stage_idx"],
+                        "source": r["source"]})
     return {"start": start, "end": end, "entries": rows, "days": days,
-            "rides": rides, "entry_routes": entry_routes}
+            "rides": rides, "entry_routes": entry_routes, "planned": planned}
 
 
 @app.post("/api/calendar/entry")
@@ -5913,6 +6055,14 @@ async def calendar_route(request: Request):
                 (entry_id, day, route_id, route_name),
             )
         conn.commit()
+        # planowane obciazenie (XSS/dzien) wyprawy: best-effort po zapisie mapowania trasy
+        try:
+            _recompute_planned_load_for_entry(conn, entry_id)
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail="Zapis nieudany: %s" % e)
@@ -6809,6 +6959,8 @@ def _wyprawa_pdf_bytes(route_id, cuts, date, name):
     ndays = len(ncuts) + 1
     url = ("http://127.0.0.1:%d/planer-wyprawy.html?print=1&route=%s&cuts=%s&nDays=%d"
            % (PORT, quote(route_id), quote(cuts or ""), ndays))
+    if date:
+        url += "&departure=" + quote(str(date))
     try:
         _wyprawa_prewarm_pois(route_id, cuts)  # napelnij cache atrakcji zanim renderujemy
     except Exception:
@@ -6885,6 +7037,14 @@ def _wyprawa_pdf_bytes(route_id, cuts, date, name):
                     "&& (g.textContent||'').indexOf('adowanie')<0;})()", timeout=55000)
             except Exception:
                 pass
+            if date:
+                try:
+                    page.wait_for_function(
+                        "(function(){var o=document.getElementById('ocena-formy');"
+                        "if(!o) return true; var t=o.textContent||'';"
+                        "return t.indexOf('Liczenie')<0;})()", timeout=30000)
+                except Exception:
+                    pass
             _wait_imgs()
             parts.append(page.evaluate("(d) => window.__planerPrint.snapBaked(d)", _map_datauri()))
 
@@ -7197,7 +7357,7 @@ def _wyprawa_place_at_km(conn, towns, km):
     c = [t for t in towns if t.get("km") is not None and t.get("lat") is not None]
     if not c:
         return None
-    t = min(c, key=lambda x: abs(float(x["km"]) - float(km)))
+    t = min(c, key=lambda x: abs(float(x["km"]) - float(km)) + 3.0 * ((x.get("dist_m") or 0.0) / 1000.0))
     lat = round(float(t["lat"]), 4)
     lon = round(float(t["lon"]), 4)
     try:

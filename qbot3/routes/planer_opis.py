@@ -197,7 +197,7 @@ _SYS = (
     "ZELAZNE ZASADY: (1) uzywaj wylacznie nazw miejsc i obiektow podanych w danych - "
     "nie dodawaj zadnych wlasnych zabytkow, miast ani faktow historycznych, ktorych "
     "nie ma w danych; (2) liczby (km, %, metry) przepisuj z danych bez zmian; "
-    "(3) jesli czegos nie ma w danych - nie wymyslaj. Zwracasz WYLACZNIE JSON."
+    "(3) jesli czegos nie ma w danych - nie wymyslaj. Pisz poprawną polszczyzną z PEŁNYMI znakami diakrytycznymi (ą ć ę ł ń ó ś ź ż) — nie pomijaj ogonków (np. 'Dzień', 'przewyższenie', 'większość', 'więc', 'nawierzchnia', 'część', 'trasę'). Zwracasz WYLACZNIE JSON."
 )
 
 
@@ -288,16 +288,16 @@ def build_opis(route_id, rebuild=False, model_label="qgpt"):
 
 def _towns(conn, base_id):
     rows = conn.execute(
-        "SELECT name, km_on_route FROM qbot_v2.route_poi_layer "
+        "SELECT name, km_on_route, distance_from_route_m FROM qbot_v2.route_poi_layer "
         "WHERE route_base_id=%s AND category='town' ORDER BY km_on_route", (base_id,),
     ).fetchall()
-    return [{"name": r[0], "km": round(_f(r[1]), 1)} for r in rows if r[0]]
+    return [{"name": r[0], "km": round(_f(r[1]), 1), "dist_m": _f(r[2])} for r in rows if r[0]]
 
 
 def _nearest_town(towns, km):
     best, bd = None, 1e18
     for t in towns:
-        d = abs(t["km"] - km)
+        d = abs(t["km"] - km) + 3.0 * ((t.get("dist_m") or 0.0) / 1000.0)
         if d < bd:
             bd = d
             best = t
@@ -345,7 +345,7 @@ _SYS_DZIEN = (
     "Jestes przewodnikiem rowerowym. Opisujesz JEDEN dzien wielodniowej wyprawy "
     "gravelowej po polsku, zwiezle i rzeczowo. ZASADY: uzywaj wylacznie nazw "
     "obiektow podanych w danych (nie dodawaj wlasnych), liczby przepisuj bez zmian, "
-    "nie wymyslaj. Zwracasz WYLACZNIE JSON."
+    "nie wymyslaj. Pisz poprawną polszczyzną z PEŁNYMI znakami diakrytycznymi (ą ć ę ł ń ó ś ź ż) — nie pomijaj ogonków (np. 'Dzień', 'przewyższenie', 'większość', 'więc', 'nawierzchnia', 'część', 'trasę'). Zwracasz WYLACZNIE JSON."
 )
 
 
@@ -464,7 +464,7 @@ _SYS_TLO = (
     "konkretnie. Na podstawie listy miejscowosci, przez ktore przebiega rowerowa "
     "trasa, opisujesz TLO regionu. Korzystasz z ogolnej wiedzy o tym konkretnym "
     "obszarze (historia osadnictwa, geografia, przyroda). Trzymasz sie realiow "
-    "tego regionu - nie przenosisz faktow z innych czesci kraju. Zwracasz "
+    "tego regionu - nie przenosisz faktow z innych czesci kraju. Pisz poprawną polszczyzną z PEŁNYMI znakami diakrytycznymi (ą ć ę ł ń ó ś ź ż) — nie pomijaj ogonków (np. 'Dzień', 'przewyższenie', 'większość', 'więc', 'nawierzchnia', 'część', 'trasę'). Zwracasz "
     "WYLACZNIE JSON."
 )
 
