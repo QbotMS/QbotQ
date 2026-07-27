@@ -6010,6 +6010,129 @@ async def forma_analyze(request: Request):
     return {"text": (txt or "").strip().replace("**", "").replace("__", "")}
 
 
+# --- Planner Wyposazenia: generator listy pakowania (LLM) ---
+def _wyposazenie_garage_categories():
+    """Aktywne kategorie z gear (garage.db) - kanoniczna lista do mapowania pozycji."""
+    import sqlite3 as _sq
+    con = _sq.connect(GARAGE_DB)
+    try:
+        rows = con.execute(
+            "SELECT category, COUNT(*) c FROM gear WHERE active=1 "
+            "GROUP BY category ORDER BY c DESC").fetchall()
+        return [r[0] for r in rows if r[0]]
+    finally:
+        con.close()
+
+
+@app.post("/api/planer/wyposazenie/generate")
+async def api_wyposazenie_generate(request: Request):
+    """Generator LLM listy pakowania. Wejscie: {days, style('lekko'|'ciezko'),
+    season?, route_summary?}. Wyjscie: grupy pozycji; kazda pozycja z sugerowana
+    kategoria garazu (albo null). Na zywo, nic nie zapisuje."""
+    import json as _json
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    try:
+        days = int(body.get("days"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Wymagane: days (liczba)")
+    if days < 1 or days > 60:
+        raise HTTPException(status_code=400, detail="days poza zakresem 1..60")
+    style = (str(body.get("style") or "")).strip().lower()
+    if style not in ("lekko", "ciezko"):
+        raise HTTPException(status_code=400, detail="Wymagane: style = 'lekko' lub 'ciezko'")
+    season = (str(body.get("season") or "")).strip()[:40]
+    route = (str(body.get("route_summary") or "")).strip()[:400]
+
+    cats = _wyposazenie_garage_categories()
+    cats_str = ", ".join(cats) if cats else "(brak)"
+    style_desc = ("nocleg w hotelach/pensjonatach - BEZ wlasnego sprzetu do spania i gotowania"
+                  if style == "lekko" else
+                  "biwak wlasny - Z pelnym sprzetem do spania (namiot/spiwor/karimata) "
+                  "i gotowania (palnik/garnek/zywnosc)")
+
+    system = (
+        "Jestes asystentem pakowania na wyprawe rowerowa (gravel/touring, zawodnik ~100 kg). "
+        "Tworzysz liste rzeczy do zabrania. Odpowiadasz WYLACZNIE surowym JSON, "
+        "bez markdown, bez wstepu, bez komentarza. "
+        "Uzywaj tylko tych grup: 'Odziez rowerowa', 'Warstwy i pogoda', 'Nocleg', "
+        "'Gotowanie', 'Higiena', 'Elektronika', 'Apteczka i bezpieczenstwo', "
+        "'Naprawa roweru', 'Dokumenty i pieniadze'. "
+        "Przy stylu 'lekko' NIE dodawaj grup 'Nocleg' ani 'Gotowanie'. "
+        "Kazda pozycja to obiekt: item (krotka nazwa po polsku), qty (liczba sztuk, "
+        "rozsadna wzgledem liczby dni), garage_category (DOKLADNIE jedna z podanych "
+        "kategorii garazu, albo null gdy rzecz nie jest ubraniem/akcesorium z garazu - "
+        "np. apteczka, krem SPF, zywnosc, powerbank, namiot). "
+        "Nie wymyslaj kategorii spoza listy. Rzeczy wielorazowe (kurtka, kask, okulary, "
+        "buty) maja qty=1; zuzywalne/na zmiane (skarpetki, base layer, bielizna) skaluj "
+        "liczba dni z rozsadkiem."
+    )
+    prompt = (
+        "PARAMETRY WYPRAWY:\n"
+        "- liczba dni: %d\n"
+        "- styl: %s (%s)\n" % (days, style, style_desc)
+    )
+    if season:
+        prompt += "- pora roku / warunki: %s\n" % season
+    if route:
+        prompt += "- profil trasy: %s\n" % route
+    prompt += (
+        "\nKATEGORIE GARAZU (uzywaj DOKLADNIE tych nazw w polu garage_category): %s\n"
+        "\nZwroc dokladnie taki JSON:\n"
+        "{\"groups\": [{\"group\": \"<nazwa grupy>\", \"items\": "
+        "[{\"item\": \"...\", \"qty\": 1, \"garage_category\": \"...\"|null}]}]}"
+        % cats_str
+    )
+
+    from qgpt_client import qgpt_text
+    try:
+        raw = qgpt_text(prompt, system=system, max_tokens=1400, temperature=0.3)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="LLM niedostepny: %s" % e)
+    raw = (raw or "").strip()
+    if raw.startswith("```"):
+        raw = raw.strip("`")
+        if raw[:4].lower() == "json":
+            raw = raw[4:]
+        raw = raw.strip()
+    parsed = None
+    try:
+        parsed = _json.loads(raw)
+    except Exception:
+        i, j = raw.find("{"), raw.rfind("}")
+        if i >= 0 and j > i:
+            try:
+                parsed = _json.loads(raw[i:j + 1])
+            except Exception:
+                parsed = None
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=502, detail="LLM zwrocil nie-JSON")
+    valid = set(cats)
+    groups = parsed.get("groups") or []
+    clean = []
+    for g in groups:
+        if not isinstance(g, dict):
+            continue
+        gitems = []
+        for it in (g.get("items") or []):
+            if not isinstance(it, dict) or not it.get("item"):
+                continue
+            gc = it.get("garage_category")
+            if gc not in valid:
+                gc = None
+            try:
+                q = int(it.get("qty") or 1)
+            except (TypeError, ValueError):
+                q = 1
+            gitems.append({"item": str(it.get("item"))[:80], "qty": max(1, q),
+                           "garage_category": gc})
+        if gitems:
+            clean.append({"group": str(g.get("group") or "Inne")[:40], "items": gitems})
+    return {"days": days, "style": style, "season": season or None, "groups": clean}
+
+
 @app.get("/api/calendar")
 def calendar_entries(start: str = Query(...), end: str = Query(...)):
     """Wpisy kalendarza w zakresie [start, end] (ISO YYYY-MM-DD). Zwraca event/feel/illness,
