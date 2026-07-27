@@ -6038,6 +6038,90 @@ def _wyposazenie_garage_categories():
         con.close()
 
 
+@app.get("/api/planer/wyposazenie/pogoda")
+def api_wyposazenie_pogoda(route_id: str = Query(...), start: str = Query(...),
+                           days: int = Query(1)):
+    """Prognoza dla wyprawy: bierze punkt startu trasy i dni od 'start'.
+    Zrodlo: OWM (5 dni) -> Open-Meteo (16 dni), przez tools.rwgps.route_weather.
+    Gdy prognoza nie siega (data w przeszlosci albo za daleko) -> ok=False i
+    uczciwa informacja, zamiast zmyslania pogody."""
+    import datetime as _dt
+    try:
+        d0 = _dt.date.fromisoformat((start or "").strip()[:10])
+    except ValueError:
+        raise HTTPException(status_code=400, detail="start musi byc RRRR-MM-DD")
+    n = max(1, min(16, int(days or 1)))
+    dates = [(d0 + _dt.timedelta(days=i)).isoformat() for i in range(n)]
+
+    geo = route_geometry(route_id)
+    coords = geo.get("coordinates") or []
+    if not coords:
+        raise HTTPException(status_code=404, detail="Brak geometrii trasy")
+    lat, lon = coords[0][0], coords[0][1]
+
+    try:
+        from tools.rwgps.route_weather import _fetch_weather
+        wx, source = _fetch_weather(lat, lon, dates)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Pogoda niedostepna: %s" % e)
+
+    per_day, all_t, all_p, all_w = [], [], [], []
+    for d in dates:
+        temps, precs, winds = [], [], []
+        for k, v in (wx or {}).items():
+            if not k.startswith(d):
+                continue
+            if v.get("temp") is not None:
+                temps.append(float(v["temp"]))
+            if v.get("precip") is not None:
+                precs.append(float(v["precip"]))
+            if v.get("wspeed") is not None:
+                winds.append(float(v["wspeed"]))
+        if not temps:
+            per_day.append({"date": d, "brak": True})
+            continue
+        row = {"date": d, "brak": False,
+               "tmin": round(min(temps), 1), "tmax": round(max(temps), 1),
+               "precip_mm": round(sum(precs), 1) if precs else 0.0,
+               "wind_max_ms": round(max(winds), 1) if winds else None}
+        per_day.append(row)
+        all_t += temps
+        all_p += precs
+        if winds:
+            all_w.append(max(winds))
+
+    covered = [r for r in per_day if not r.get("brak")]
+    if not covered:
+        return {"ok": False, "route_id": route_id, "start": d0.isoformat(), "days": n,
+                "source": source, "days_detail": per_day,
+                "reason": "Prognoza nie obejmuje tych dat (przeszlosc albo dalej niz ok. 16 dni)."}
+
+    tmin, tmax = round(min(all_t), 1), round(max(all_t), 1)
+    precip = round(sum(all_p), 1)
+    wind = round(max(all_w), 1) if all_w else None
+
+    # podpowiedz sezonu do filtra garazu - z PROGNOZY, nie z kalendarza
+    if tmin < 2:
+        hint = "zima"
+    elif tmin < 12 or tmax < 17:
+        hint = "przejsciowy"
+    else:
+        hint = "lato"
+    wet = precip >= 1.0
+    cold_wet = wet and tmin <= 12
+
+    parts = ["temperatura %.0f-%.0f C" % (tmin, tmax)]
+    parts.append(("opady ok. %.1f mm" % precip) if wet else "bez znaczacych opadow")
+    if wind is not None:
+        parts.append("wiatr do %.1f m/s" % wind)
+    text = "; ".join(parts)
+
+    return {"ok": True, "route_id": route_id, "start": d0.isoformat(), "days": n,
+            "source": source, "days_detail": per_day,
+            "tmin": tmin, "tmax": tmax, "precip_mm": precip, "wind_max_ms": wind,
+            "season_hint": hint, "wet": wet, "cold_wet": cold_wet, "text": text}
+
+
 _GROUP_ORDER = {
     "odziez rowerowa": 1, "warstwy i pogoda": 2, "naprawa roweru": 3, "elektronika": 4,
     "woda": 5, "jedzenie na rower": 6, "apteczka i leki": 7, "apteczka i bezpieczenstwo": 7,
@@ -6067,6 +6151,7 @@ async def api_wyposazenie_generate(request: Request):
         raise HTTPException(status_code=400, detail="Wymagane: style = 'lekko' lub 'ciezko'")
     season = (str(body.get("season") or "")).strip()[:60]
     route = (str(body.get("route_summary") or "")).strip()[:400]
+    wx = body.get("weather") if isinstance(body.get("weather"), dict) else None
 
     cats = _wyposazenie_garage_categories()
     cats_str = ", ".join(cats) if cats else "(brak)"
@@ -6155,6 +6240,20 @@ async def api_wyposazenie_generate(request: Request):
         prompt += "- pora roku / warunki: %s\n" % season
     if route:
         prompt += "- profil trasy: %s\n" % route
+    if wx and wx.get("ok"):
+        prompt += (
+            "- PROGNOZA POGODY na te dni (zrodlo: %s): temperatura %s-%s C, opady %s mm, "
+            "wiatr do %s m/s\n"
+            % (wx.get("source"), wx.get("tmin"), wx.get("tmax"),
+               wx.get("precip_mm"), wx.get("wind_max_ms"))
+        )
+        prompt += (
+            "  DOBIERZ WARSTWY DO TEJ PROGNOZY, nie do kalendarza: przy dolnej temperaturze "
+            "ponizej 12 C dodaj warstwe przejsciowa (rekawki/nogawki, dluga koszulka, cieplejsze "
+            "rekawiczki); przy opadach od 1 mm dodaj kurtke przeciwdeszczowa i ochrone na stopy; "
+            "przy wietrze powyzej 8 m/s dodaj wiatrowke/gilet. Gdy ciepło i sucho - NIE dokladaj "
+            "zimowych ani przeciwdeszczowych rzeczy. W polu reason powolaj sie na te liczby.\n"
+        )
     prompt += (
         "\nKATEGORIE GARAZU (uzywaj DOKLADNIE tych nazw w garage_category): %s\n"
         "\nZwroc dokladnie taki JSON:\n"
@@ -6273,7 +6372,8 @@ def api_wyposazenie_garage_options(category: str = Query(...), season: str = Que
     cats_q = [c.strip() for c in (category or "").split(",") if c.strip()]
     if not cats_q:
         raise HTTPException(status_code=400, detail="Wymagane: category")
-    seas = (season or "").strip().lower().split(",")[0].strip()[:20]
+    seas_list = [s.strip() for s in (season or "").lower().split(",") if s.strip()][:3]
+    seas = seas_list[0] if seas_list else ""
     ph = ",".join(["?"] * len(cats_q))
     con = _wyposazenie_db()
     try:
@@ -6288,7 +6388,7 @@ def api_wyposazenie_garage_options(category: str = Query(...), season: str = Que
     out = []
     for r in rows:
         s = (r["season"] or "").lower()
-        matches = (not seas) or (seas in s) or (s == "")
+        matches = (not seas_list) or (s == "") or any(x in s for x in seas_list)
         base = " ".join([x for x in [r["brand"], r["model"]] if x]).strip() or "(bez nazwy)"
         label = ("[" + str(r["category"]) + "] " + base) if multi else base
         out.append({
