@@ -4846,10 +4846,21 @@ async def garage_toggle(request: Request):
 # --- Garaz: zdjecie + miniatura rzeczy (pliki w /gear, odnosniki w bazie) ---
 GEAR_IMG_DIR = os.path.join(WEB_ROOT, "gear")
 GEAR_IMG_MAX_BYTES = 12 * 1024 * 1024
+PHOTO_TABLES = {"gear": "gear", "equipment": "equipment", "component": "components"}
+PHOTO_PREFIX = {"gear": "", "equipment": "eq", "component": "cmp"}
+
+
+def _photo_target(entity):
+    """Zwraca (tabela, prefiks pliku) dla zdjec. Domyslnie odziez (gear)."""
+    e = (entity or "gear").strip().lower()
+    if e not in PHOTO_TABLES:
+        raise HTTPException(status_code=400, detail="Nieznany rodzaj: %s" % e)
+    return PHOTO_TABLES[e], PHOTO_PREFIX[e]
 
 
 @app.post("/api/garage/photo")
-async def garage_photo(id: int = Form(...), file: UploadFile = File(...)):
+async def garage_photo(id: int = Form(...), file: UploadFile = File(...),
+                       entity: str = Form("gear")):
     """Zapisuje zdjecie rzeczy: oryginal (do 1600px) + miniature (240px).
     Zwraca odnosniki i wpisuje je do gear.photo/thumb."""
     import io, time
@@ -4866,17 +4877,20 @@ async def garage_photo(id: int = Form(...), file: UploadFile = File(...)):
         im = im.convert("RGB")
     except Exception:
         raise HTTPException(status_code=400, detail="Nie moge odczytac obrazu")
+    table, pref = _photo_target(entity)
     os.makedirs(GEAR_IMG_DIR, exist_ok=True)
+    base = "%s%d" % (pref, id)
     full = im.copy(); full.thumbnail((1600, 1600))
     thumb = im.copy(); thumb.thumbnail((240, 240))
-    full.save(os.path.join(GEAR_IMG_DIR, "%d.jpg" % id), "JPEG", quality=85)
-    thumb.save(os.path.join(GEAR_IMG_DIR, "%d_thumb.jpg" % id), "JPEG", quality=82)
+    full.save(os.path.join(GEAR_IMG_DIR, "%s.jpg" % base), "JPEG", quality=85)
+    thumb.save(os.path.join(GEAR_IMG_DIR, "%s_thumb.jpg" % base), "JPEG", quality=82)
     v = int(time.time())
-    photo_url = "/gear/%d.jpg?v=%d" % (id, v)
-    thumb_url = "/gear/%d_thumb.jpg?v=%d" % (id, v)
+    photo_url = "/gear/%s.jpg?v=%d" % (base, v)
+    thumb_url = "/gear/%s_thumb.jpg?v=%d" % (base, v)
     gc = _garage_conn()
     try:
-        gc.execute("UPDATE gear SET photo=?, thumb=? WHERE id=?", (photo_url, thumb_url, id))
+        gc.execute("UPDATE %s SET photo=?, thumb=? WHERE id=?" % table,
+                   (photo_url, thumb_url, id))
         gc.commit()
     finally:
         gc.close()
@@ -4894,7 +4908,9 @@ async def garage_photo_delete(request: Request):
     if gid in (None, "", 0, "0"):
         raise HTTPException(status_code=400, detail="Brak id")
     gid = int(gid)
-    for suffix in ("%d.jpg" % gid, "%d_thumb.jpg" % gid):
+    table, pref = _photo_target(b.get("entity"))
+    base = "%s%d" % (pref, gid)
+    for suffix in ("%s.jpg" % base, "%s_thumb.jpg" % base):
         p = os.path.join(GEAR_IMG_DIR, suffix)
         try:
             if os.path.isfile(p):
@@ -4903,7 +4919,7 @@ async def garage_photo_delete(request: Request):
             pass
     gc = _garage_conn()
     try:
-        gc.execute("UPDATE gear SET photo=NULL, thumb=NULL WHERE id=?", (gid,))
+        gc.execute("UPDATE %s SET photo=NULL, thumb=NULL WHERE id=?" % table, (gid,))
         gc.commit()
     finally:
         gc.close()
@@ -4911,17 +4927,18 @@ async def garage_photo_delete(request: Request):
 
 
 # --- Garaz: zaciaganie danych z URL + zdjecie z URL ---
-def _gear_store_image(gid, raw):
+def _gear_store_image(gid, raw, pref=""):
     import io, time
     from PIL import Image, ImageOps
     im = Image.open(io.BytesIO(raw)); im = ImageOps.exif_transpose(im); im = im.convert("RGB")
     os.makedirs(GEAR_IMG_DIR, exist_ok=True)
     full = im.copy(); full.thumbnail((1600, 1600))
     thumb = im.copy(); thumb.thumbnail((240, 240))
-    full.save(os.path.join(GEAR_IMG_DIR, "%d.jpg" % gid), "JPEG", quality=85)
-    thumb.save(os.path.join(GEAR_IMG_DIR, "%d_thumb.jpg" % gid), "JPEG", quality=82)
+    base = "%s%d" % (pref, gid)
+    full.save(os.path.join(GEAR_IMG_DIR, "%s.jpg" % base), "JPEG", quality=85)
+    thumb.save(os.path.join(GEAR_IMG_DIR, "%s_thumb.jpg" % base), "JPEG", quality=82)
     v = int(time.time())
-    return "/gear/%d.jpg?v=%d" % (gid, v), "/gear/%d_thumb.jpg?v=%d" % (gid, v)
+    return "/gear/%s.jpg?v=%d" % (base, v), "/gear/%s_thumb.jpg?v=%d" % (base, v)
 
 
 @app.post("/api/garage/scrape")
@@ -4934,9 +4951,14 @@ async def garage_scrape(request: Request):
     url = (str(bd.get("url") or "")).strip()
     if not (url.startswith("http://") or url.startswith("https://")):
         raise HTTPException(status_code=400, detail="Podaj adres http(s)")
+    cats_in = bd.get("categories")
+    if isinstance(cats_in, list) and cats_in:
+        cats = [str(x)[:60] for x in cats_in][:40]
+    else:
+        cats = RIDE_GEAR_SLOTS
     import qbot_gear_scrape as _scr
     try:
-        return _scr.scrape(url, categories=RIDE_GEAR_SLOTS)
+        return _scr.scrape(url, categories=cats)
     except Exception as e:
         raise HTTPException(status_code=502, detail="Nie udalo sie pobrac strony: %s" % e)
 
@@ -4969,17 +4991,204 @@ async def garage_photo_from_url(request: Request):
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail="Nie pobralem obrazu: %s" % e)
+    table, pref = _photo_target(bd.get("entity"))
     try:
-        photo_url, thumb_url = _gear_store_image(gid, raw)
+        photo_url, thumb_url = _gear_store_image(gid, raw, pref)
     except Exception:
         raise HTTPException(status_code=400, detail="Nie moge przetworzyc obrazu")
     gc = _garage_conn()
     try:
-        gc.execute("UPDATE gear SET photo=?, thumb=? WHERE id=?", (photo_url, thumb_url, gid))
+        gc.execute("UPDATE %s SET photo=?, thumb=? WHERE id=?" % table,
+                   (photo_url, thumb_url, gid))
         gc.commit()
     finally:
         gc.close()
     return {"ok": True, "id": gid, "photo": photo_url, "thumb": thumb_url}
+
+
+# --- Garaz: zakladka SPRZET (equipment) + ROWER (bikes/components/tires/fitting) ---
+EQUIP_CATEGORIES = [
+    "Torby bikepackingowe", "Bagazniki i mocowania", "Elektronika",
+    "Nawigacja i swiatla", "Narzedzia i serwis", "Kuchnia", "Spanie",
+    "Higiena", "Apteczka", "Dokumenty", "Inne",
+]
+EQUIP_STATUS = ["uzywany", "zapas", "wycofany"]
+COMPONENT_STATUS = ["zamontowany", "zapas", "wycofany"]
+
+EQUIP_FIELDS_TXT = ("category", "brand", "model", "size", "color", "condition",
+                    "status", "ean", "sku", "url", "notes", "purchase_date")
+EQUIP_FIELDS_NUM = ("purchase_price", "capacity_l")
+EQUIP_FIELDS_INT = ("weight_g", "rating")
+
+
+@app.get("/api/equipment/list")
+def equipment_list(all: int = Query(0)):
+    """Sprzet wyprawowy: torby, elektronika, narzedzia, kuchnia, spanie itd."""
+    gc = _garage_conn()
+    try:
+        rows = [dict(r) for r in gc.execute(
+            "SELECT * FROM equipment ORDER BY category, brand, model").fetchall()]
+        if not all:
+            rows = [r for r in rows if r.get("active")]
+        return {"items": rows, "categories": EQUIP_CATEGORIES,
+                "conditions": GARAGE_CONDITIONS, "statuses": EQUIP_STATUS,
+                "palette": GARAGE_PALETTE}
+    finally:
+        gc.close()
+
+
+@app.post("/api/equipment/save")
+async def equipment_save(request: Request):
+    """Dodaj (bez id) albo edytuj (z id) sprzet."""
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    cols = {}
+    for k in EQUIP_FIELDS_TXT:
+        cols[k] = _gs(b.get(k), 4000 if k == "notes" else 200)
+    if not cols.get("category"):
+        raise HTTPException(status_code=400, detail="Wymagana kategoria")
+    if not (cols.get("brand") or cols.get("model")):
+        raise HTTPException(status_code=400, detail="Wymagana marka lub model")
+    for k in EQUIP_FIELDS_NUM:
+        v = b.get(k)
+        try:
+            cols[k] = float(str(v).replace(",", ".")) if v not in (None, "") else None
+        except (TypeError, ValueError):
+            cols[k] = None
+    for k in EQUIP_FIELDS_INT:
+        v = b.get(k)
+        try:
+            cols[k] = int(float(str(v).replace(",", "."))) if v not in (None, "") else None
+        except (TypeError, ValueError):
+            cols[k] = None
+    cq = _gs(b.get("color_q"), 20)
+    cq = cq.upper() if cq else None
+    if cq not in GARAGE_PALETTE:
+        cq = None
+    if not cq and cols.get("color"):
+        cq = _color_q(cols["color"])
+    cols["color_q"] = cq
+
+    gid = b.get("id")
+    gc = _garage_conn()
+    try:
+        keys = list(cols.keys())
+        if gid not in (None, "", 0, "0"):
+            gid = int(gid)
+            gc.execute("UPDATE equipment SET %s WHERE id=?" % ", ".join("%s=?" % k for k in keys),
+                       [cols[k] for k in keys] + [gid])
+        else:
+            cur = gc.execute(
+                "INSERT INTO equipment (%s, active) VALUES (%s, 1)"
+                % (", ".join(keys), ",".join("?" for _ in keys)),
+                [cols[k] for k in keys])
+            gid = cur.lastrowid
+        gc.commit()
+        return {"ok": True, "id": gid, "color_q": cq}
+    finally:
+        gc.close()
+
+
+@app.post("/api/equipment/toggle")
+async def equipment_toggle(request: Request):
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    gid = b.get("id")
+    if gid in (None, "", 0, "0"):
+        raise HTTPException(status_code=400, detail="Brak id")
+    active = 1 if b.get("active") else 0
+    gc = _garage_conn()
+    try:
+        gc.execute("UPDATE equipment SET active=? WHERE id=?", (active, int(gid)))
+        gc.commit()
+        return {"ok": True, "id": int(gid), "active": active}
+    finally:
+        gc.close()
+
+
+@app.get("/api/bike/config")
+def bike_config(all: int = Query(0)):
+    """Konfiguracja roweru: rower(y), komponenty, opony, fitting (warianty)."""
+    gc = _garage_conn()
+    try:
+        bikes = [dict(r) for r in gc.execute("SELECT * FROM bikes ORDER BY id").fetchall()]
+        comps = [dict(r) for r in gc.execute(
+            "SELECT * FROM components ORDER BY category, position, id").fetchall()]
+        if not all:
+            comps = [c for c in comps if c.get("active")]
+        tires = [dict(r) for r in gc.execute(
+            "SELECT * FROM tires ORDER BY fits_wheelset, position, id").fetchall()]
+        fit = [dict(r) for r in gc.execute("SELECT * FROM fitting ORDER BY id").fetchall()]
+        cats = sorted({c["category"] for c in comps if c.get("category")})
+        return {"bikes": bikes, "components": comps, "tires": tires, "fitting": fit,
+                "component_categories": cats, "statuses": COMPONENT_STATUS}
+    finally:
+        gc.close()
+
+
+@app.post("/api/bike/component/save")
+async def bike_component_save(request: Request):
+    """Dodaj/edytuj komponent roweru."""
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    cols = {}
+    for k in ("category", "position", "brand", "model", "spec", "status",
+              "serial_number", "sku", "url", "color", "notes", "purchase_date"):
+        cols[k] = _gs(b.get(k), 4000 if k == "notes" else 200)
+    if not cols.get("category"):
+        raise HTTPException(status_code=400, detail="Wymagana kategoria")
+    for k, cast in (("weight_g", int), ("purchase_price", float), ("mileage_km", float)):
+        v = b.get(k)
+        try:
+            cols[k] = cast(float(str(v).replace(",", "."))) if v not in (None, "") else None
+        except (TypeError, ValueError):
+            cols[k] = None
+    bid = b.get("bike_id")
+    cols["bike_id"] = int(bid) if str(bid or "").strip().isdigit() else None
+
+    gid = b.get("id")
+    gc = _garage_conn()
+    try:
+        keys = list(cols.keys())
+        if gid not in (None, "", 0, "0"):
+            gid = int(gid)
+            gc.execute("UPDATE components SET %s WHERE id=?" % ", ".join("%s=?" % k for k in keys),
+                       [cols[k] for k in keys] + [gid])
+        else:
+            cur = gc.execute(
+                "INSERT INTO components (%s, active) VALUES (%s, 1)"
+                % (", ".join(keys), ",".join("?" for _ in keys)),
+                [cols[k] for k in keys])
+            gid = cur.lastrowid
+        gc.commit()
+        return {"ok": True, "id": gid}
+    finally:
+        gc.close()
+
+
+@app.post("/api/bike/component/toggle")
+async def bike_component_toggle(request: Request):
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    gid = b.get("id")
+    if gid in (None, "", 0, "0"):
+        raise HTTPException(status_code=400, detail="Brak id")
+    active = 1 if b.get("active") else 0
+    gc = _garage_conn()
+    try:
+        gc.execute("UPDATE components SET active=? WHERE id=?", (active, int(gid)))
+        gc.commit()
+        return {"ok": True, "id": int(gid), "active": active}
+    finally:
+        gc.close()
 
 
 _FEEL_WORDS = {-2: "fatalnie", -1: "gorzej niz zwykle", 0: "neutralnie", 1: "dobrze", 2: "swietnie"}
