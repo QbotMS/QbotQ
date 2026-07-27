@@ -6133,6 +6133,240 @@ async def api_wyposazenie_generate(request: Request):
     return {"days": days, "style": style, "season": season or None, "groups": clean}
 
 
+def _wyposazenie_db():
+    """Polaczenie do garage.db z dostepem po nazwach kolumn."""
+    import sqlite3 as _sq
+    con = _sq.connect(GARAGE_DB)
+    con.row_factory = _sq.Row
+    return con
+
+
+@app.get("/api/planer/wyposazenie/garage-options")
+def api_wyposazenie_garage_options(category: str = Query(...), season: str = Query("")):
+    """Rzeczy z garazu (gear, active=1) dla danej kategorii - zrodlo dropdownu przy
+    pozycji listy. season (opcjonalnie) = 'zima'/'przejsciowy'/'lato': nie odfiltrowuje,
+    tylko oznacza dopasowanie (matches_season) i sortuje pasujace na gore."""
+    cat = (category or "").strip()
+    if not cat:
+        raise HTTPException(status_code=400, detail="Wymagane: category")
+    seas = (season or "").strip().lower().split(",")[0].strip()[:20]
+    con = _wyposazenie_db()
+    try:
+        rows = con.execute(
+            "SELECT id, brand, model, size, color, season, fabric, "
+            "COALESCE(weight_g, weight_est_g) AS weight_g "
+            "FROM gear WHERE active=1 AND category=? ORDER BY brand, model",
+            (cat,)).fetchall()
+    finally:
+        con.close()
+    out = []
+    for r in rows:
+        s = (r["season"] or "").lower()
+        matches = (not seas) or (seas in s) or (s == "")
+        label = " ".join([x for x in [r["brand"], r["model"]] if x]).strip() or "(bez nazwy)"
+        out.append({
+            "gear_id": r["id"], "label": label, "size": r["size"], "color": r["color"],
+            "season": r["season"], "fabric": r["fabric"],
+            "weight_g": (int(r["weight_g"]) if r["weight_g"] is not None else None),
+            "matches_season": bool(matches),
+        })
+    out.sort(key=lambda x: (not x["matches_season"], x["label"].lower()))
+    return {"category": cat, "season": seas or None, "count": len(out), "items": out}
+
+
+@app.post("/api/planer/wyposazenie/save")
+async def api_wyposazenie_save(request: Request):
+    """Zapisuje/aktualizuje liste pakowania dla wyprawy. Jedna lista na entry_id.
+    body: {entry_id, style, days, name?, groups:[{group, items:[
+      {item, qty, garage_category?, gear_id?, bag_id?, packed?, notes?}]}]}."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    try:
+        entry_id = int(body.get("entry_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Wymagane: entry_id (liczba)")
+    style = (str(body.get("style") or "")).strip().lower()
+    if style not in ("lekko", "ciezko", ""):
+        raise HTTPException(status_code=400, detail="style musi byc 'lekko' lub 'ciezko'")
+    days = body.get("days")
+    try:
+        days = int(days) if days is not None else None
+    except (TypeError, ValueError):
+        days = None
+    name = (str(body.get("name") or "")).strip()[:120] or None
+    groups = body.get("groups") or []
+    if not isinstance(groups, list):
+        raise HTTPException(status_code=400, detail="groups musi byc lista")
+
+    con = _wyposazenie_db()
+    try:
+        row = con.execute("SELECT id FROM packing_lists WHERE entry_id=?", (entry_id,)).fetchone()
+        if row:
+            list_id = row["id"]
+            con.execute("UPDATE packing_lists SET style=?, days=?, name=? WHERE id=?",
+                        (style or None, days, name, list_id))
+        else:
+            cur = con.execute(
+                "INSERT INTO packing_lists(entry_id, style, days, name, created_at) "
+                "VALUES(?,?,?,?,datetime('now'))", (entry_id, style or None, days, name))
+            list_id = cur.lastrowid
+        con.execute("DELETE FROM packing_items WHERE list_id=?", (list_id,))
+        n = 0
+        for g in groups:
+            if not isinstance(g, dict):
+                continue
+            grp = (str(g.get("group") or "Inne")).strip()[:40]
+            for it in (g.get("items") or []):
+                if not isinstance(it, dict) or not it.get("item"):
+                    continue
+                item = str(it.get("item"))[:120]
+                try:
+                    qty = max(1, int(it.get("qty") or 1))
+                except (TypeError, ValueError):
+                    qty = 1
+                gc = it.get("garage_category")
+                gc = str(gc)[:60] if gc else None
+                gear_id = it.get("gear_id")
+                gear_id = int(gear_id) if isinstance(gear_id, (int, float)) or (isinstance(gear_id, str) and gear_id.isdigit()) else None
+                bag_id = it.get("bag_id")
+                bag_id = int(bag_id) if isinstance(bag_id, (int, float)) or (isinstance(bag_id, str) and bag_id.isdigit()) else None
+                packed = 1 if it.get("packed") else 0
+                notes = (str(it.get("notes") or "")).strip()[:200] or None
+                con.execute(
+                    "INSERT INTO packing_items(list_id, category, item, quantity, packed, "
+                    "from_garage, gear_id, garage_category, bag_id, notes) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (list_id, grp, item, qty, packed, 1 if gear_id else 0, gear_id, gc, bag_id, notes))
+                n += 1
+        con.commit()
+    finally:
+        con.close()
+    return {"ok": True, "entry_id": entry_id, "list_id": list_id, "items_saved": n}
+
+
+@app.get("/api/planer/wyposazenie/list")
+def api_wyposazenie_list(entry_id: int = Query(...)):
+    """Zwraca zapisana liste pakowania dla wyprawy (pogrupowana). Gdy brak -> exists=False."""
+    con = _wyposazenie_db()
+    try:
+        lst = con.execute(
+            "SELECT id, entry_id, style, days, name, created_at "
+            "FROM packing_lists WHERE entry_id=?", (entry_id,)).fetchone()
+        if not lst:
+            return {"exists": False, "entry_id": entry_id, "groups": []}
+        items = con.execute(
+            "SELECT id, category, item, quantity, packed, from_garage, gear_id, "
+            "garage_category, bag_id, notes FROM packing_items WHERE list_id=? ORDER BY id",
+            (lst["id"],)).fetchall()
+    finally:
+        con.close()
+    groups, order = {}, []
+    for it in items:
+        grp = it["category"] or "Inne"
+        if grp not in groups:
+            groups[grp] = []
+            order.append(grp)
+        groups[grp].append({
+            "id": it["id"], "item": it["item"], "qty": it["quantity"],
+            "packed": bool(it["packed"]), "garage_category": it["garage_category"],
+            "gear_id": it["gear_id"], "bag_id": it["bag_id"], "notes": it["notes"],
+        })
+    return {
+        "exists": True, "entry_id": entry_id, "list_id": lst["id"],
+        "style": lst["style"], "days": lst["days"], "name": lst["name"],
+        "created_at": lst["created_at"],
+        "groups": [{"group": g, "items": groups[g]} for g in order],
+    }
+
+
+@app.get("/api/planer/wyposazenie/bags")
+def api_wyposazenie_bags():
+    """Katalog toreb (equipment, bikepacking) do przypisywania rzeczy. Glowne
+    (role='main', alias AeroPack/BarPack) na gorze, potem pomocnicze wg pojemnosci."""
+    con = _wyposazenie_db()
+    try:
+        rows = con.execute(
+            "SELECT id, brand, model, alias, role, capacity_l, mount, "
+            "COALESCE(weight_g, weight_est_g) AS weight_g "
+            "FROM equipment WHERE category='Torby bikepackingowe' "
+            "ORDER BY CASE role WHEN 'main' THEN 0 ELSE 1 END, capacity_l DESC").fetchall()
+    finally:
+        con.close()
+    out = []
+    for r in rows:
+        full = " ".join([x for x in [r["brand"], r["model"]] if x]).strip()
+        out.append({
+            "bag_id": r["id"], "name": (r["alias"] or full), "full_name": full,
+            "alias": r["alias"], "role": r["role"], "capacity_l": r["capacity_l"],
+            "mount": r["mount"],
+            "weight_g": (int(r["weight_g"]) if r["weight_g"] is not None else None),
+        })
+    return {"count": len(out), "bags": out}
+
+
+@app.get("/api/planer/wyposazenie/summary")
+def api_wyposazenie_summary(entry_id: int = Query(...)):
+    """Podsumowanie pakowania per torba: przypisane rzeczy, ich liczba, suma ZNANEJ
+    wagi (z gear, qty x waga) oraz liczba rzeczy bez wagi. Rzeczy bez przypisanej
+    torby -> kubelek 'Nieprzypisane'. Wag czesto brak - to normalne (dolny brzeg)."""
+    con = _wyposazenie_db()
+    try:
+        lst = con.execute("SELECT id FROM packing_lists WHERE entry_id=?", (entry_id,)).fetchone()
+        if not lst:
+            return {"exists": False, "entry_id": entry_id, "bags": [], "unassigned": None}
+        items = con.execute(
+            "SELECT pi.item, pi.quantity, pi.gear_id, pi.bag_id, "
+            "COALESCE(g.weight_g, g.weight_est_g) AS w "
+            "FROM packing_items pi LEFT JOIN gear g ON g.id=pi.gear_id "
+            "WHERE pi.list_id=?", (lst["id"],)).fetchall()
+        bags = con.execute(
+            "SELECT id, alias, brand, model, role, capacity_l, mount, "
+            "COALESCE(weight_g, weight_est_g) AS bw "
+            "FROM equipment WHERE category='Torby bikepackingowe'").fetchall()
+    finally:
+        con.close()
+    bag_meta = {b["id"]: b for b in bags}
+
+    def _blank(meta=None):
+        return {"items": [], "n_items": 0, "known_weight_g": 0, "n_no_weight": 0,
+                "empty_weight_g": (int(meta["bw"]) if (meta and meta["bw"] is not None) else None),
+                "capacity_l": (meta["capacity_l"] if meta else None),
+                "mount": (meta["mount"] if meta else None),
+                "role": (meta["role"] if meta else None)}
+
+    buckets, unassigned = {}, _blank()
+    unassigned["name"] = "Nieprzypisane"
+    for it in items:
+        if it["bag_id"] and it["bag_id"] in bag_meta:
+            key = it["bag_id"]
+            if key not in buckets:
+                buckets[key] = _blank(bag_meta[key])
+            tgt = buckets[key]
+        else:
+            tgt = unassigned
+        qty = it["quantity"] or 1
+        tgt["items"].append({"item": it["item"], "qty": qty, "gear_id": it["gear_id"]})
+        tgt["n_items"] += 1
+        if it["w"] is not None:
+            tgt["known_weight_g"] += int(it["w"]) * qty
+        else:
+            tgt["n_no_weight"] += 1
+
+    out_bags = []
+    for bid, data in buckets.items():
+        b = bag_meta[bid]
+        data["bag_id"] = bid
+        data["name"] = b["alias"] or " ".join([x for x in [b["brand"], b["model"]] if x]).strip()
+        empty = data["empty_weight_g"] or 0
+        data["gear_weight_g"] = data["known_weight_g"]
+        data["total_est_g"] = data["known_weight_g"] + empty  # torba + znane rzeczy = dolny brzeg
+        out_bags.append(data)
+    out_bags.sort(key=lambda d: (0 if d.get("role") == "main" else 1, -(d.get("capacity_l") or 0)))
+    return {"exists": True, "entry_id": entry_id, "bags": out_bags, "unassigned": unassigned}
+
+
 @app.get("/api/calendar")
 def calendar_entries(start: str = Query(...), end: str = Query(...)):
     """Wpisy kalendarza w zakresie [start, end] (ISO YYYY-MM-DD). Zwraca event/feel/illness,
