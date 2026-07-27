@@ -4802,8 +4802,11 @@ def _color_q(color):
     return q
 
 
+EXPED_CATEGORY = "Sprzęt wyprawowy"
+
+
 @app.get("/api/garage/list")
-def garage_list(all: int = Query(0), q: str = Query(""), cat: str = Query("")):
+def garage_list(all: int = Query(0), q: str = Query(""), cat: str = Query(""), kind: str = Query("")):
     """Showroom garazu: lista rzeczy (domyslnie aktywne; all=1 z archiwum),
     plus kanoniczne listy kategorii i stanow do formularza."""
     ql = (q or "").strip().lower()
@@ -4817,6 +4820,12 @@ def garage_list(all: int = Query(0), q: str = Query(""), cat: str = Query("")):
             if not all and not d.get("active"):
                 continue
             if cat and d.get("category") != cat:
+                continue
+            # zakladka Odziez nie pokazuje sprzetu wyprawowego (i odwrotnie)
+            if (kind or "").strip() == "wyprawowy":
+                if d.get("category") != EXPED_CATEGORY:
+                    continue
+            elif d.get("category") == EXPED_CATEGORY:
                 continue
             if ql:
                 hay = " ".join(str(d.get(k) or "") for k in ("brand", "model", "size", "color", "notes")).lower()
@@ -4853,6 +4862,11 @@ async def garage_save(request: Request):
         raise HTTPException(status_code=400, detail="Wymagane: kategoria oraz marka lub model")
     size = _gs(b.get("size"), 40)
     color = _gs(b.get("color"), 60)
+    _q = b.get("qty")
+    try:
+        qty_val = int(_q) if _q not in (None, "") else None
+    except (TypeError, ValueError):
+        qty_val = None
     purchase_date = _gs(b.get("purchase_date"), 20)
     condition = _gs(b.get("condition"), 30) or "Good"
     notes = _gs(b.get("notes"), 4000)
@@ -4914,7 +4928,7 @@ async def garage_save(request: Request):
         "condition": condition, "notes": notes, "weight_g": weight_g,
         "weight_src": weight_src, "ean": ean, "sku": sku, "url": url,
         "season": season, "rating": rating, "color_q": color_qv,
-        "fabric": fabric,
+        "fabric": fabric, "qty": qty_val,
     }
     for rc in GARAGE_RATING_COLS:
         cols[rc] = _int_rng(b.get(rc), 0, 5)
@@ -6024,6 +6038,14 @@ def _wyposazenie_garage_categories():
         con.close()
 
 
+_GROUP_ORDER = {
+    "odziez rowerowa": 1, "warstwy i pogoda": 2, "naprawa roweru": 3, "elektronika": 4,
+    "woda": 5, "jedzenie na rower": 6, "apteczka i leki": 7, "apteczka i bezpieczenstwo": 7,
+    "dokumenty i pieniadze": 8, "nocleg": 9, "gotowanie": 10, "ubranie do obozu": 11,
+    "higiena": 12, "przed wyjazdem": 13,
+}
+
+
 @app.post("/api/planer/wyposazenie/generate")
 async def api_wyposazenie_generate(request: Request):
     """Generator LLM listy pakowania. Wejscie: {days, style('lekko'|'ciezko'),
@@ -6068,11 +6090,32 @@ async def api_wyposazenie_generate(request: Request):
         "podstawowych swiatel - dodaj powerbank i kable do ladowania. "
         "GRUPY (uzywaj dokladnie tych nazw): 'Odziez rowerowa', 'Warstwy i pogoda', 'Ubranie do obozu', "
         "'Nocleg', 'Gotowanie', 'Woda', 'Jedzenie na rower', 'Higiena', 'Elektronika', "
-        "'Apteczka i leki', 'Naprawa roweru', 'Dokumenty i pieniadze'. "
+        "'Apteczka i leki', 'Naprawa roweru', 'Dokumenty i pieniadze', 'Przed wyjazdem'. "
         "ZASADY: (1) zuzywalne/na zmiane (skarpetki, base layer, bielizna, biby) skaluj liczba dni "
         "rozsadnie; (2) wielorazowe (kurtka, kask, okulary, buty, narzedzia) qty=1; (3) warstwy dobierz "
         "do pory roku i pogody z parametrow; (4) jedzenie kaloryczne skalowane dniami, mniej gdy trasa "
         "prowadzi przez miasta z zaopatrzeniem; (5) bez zapychaczy - tylko to co naprawde uzyteczne. "
+        "NAZWY JEDNOZNACZNE: jedna pozycja = jedna rzecz. NIGDY 'bluza lub gilet', nigdy ogolnej "
+        "'bielizny rowerowej' obok spodenek z wkladka (to samo liczone dwa razy) - napisz wprost co to jest. "
+        "OBOWIAZKOWO uwzglednij (jesli pasuje do stylu i pogody): kamizelke hydracyjna oraz bidony/softflaski "
+        "(Woda); buty rowerowe (Odziez rowerowa) ORAZ lekkie obuwie po jezdzie - klapki/sandaly (Ubranie do obozu); "
+        "TELEFON, lampke przednia i tylna, ladowarke sieciowa i komplet kabli (Elektronika) - to checklista, wiec "
+        "wypisuj je MIMO ze rowerzysta je ma; kosmetyki (Higiena): krem do wkladki (chamois), krem z filtrem SPF, "
+        "balsam do ust, dezodorant, chusteczki, szczoteczka i pasta, srodek na owady gdy warunki tego wymagaja. "
+        "NAPRAWA - konkrety zamiast ogolnikow: rozpisz zawartosc zestawu tubeless (wtyczki/korki, narzedzie, "
+        "ew. uszczelniacz), hak przerzutki, zapasowy rdzen wentyla z kluczykiem, tire boot na rozciety bok opony, "
+        "opaski zaciskowe, mala porcja smaru do lancucha, szmatka, 2x spinka lancucha. Opony to Schwalbe 45-54 mm "
+        "tubeless, wiec zapasowa detka MUSI byc opisana rozmiarem i dlugim wentylem. Hamulce Hope RX4 - klocki "
+        "tylko jako pozycja warunkowa (duze zuzycie / bloto / dlugie zjazdy). Zamiast 'zapasowe sruby' podaj "
+        "NAZWANE sruby: sruba koszyka na bidon, sruby mocowania bagazu/Tailfina, sruba bloku pedala. "
+        "APTECZKA dodatkowo: rekawiczki nitrylowe, gaziki jalowe, bandaz elastyczny, plastry na otarcia i pecherze, "
+        "male nozyczki, karta ICE z numerem alarmowym. DOKUMENTY dodatkowo: rezerwacje noclegow zapisane offline, "
+        "polisa/EKUZ gdy trasa wychodzi za granice, maly zamek do roweru, klucze do domu/auta. "
+        "JEDZENIE: NIE podawaj sztywnej liczby na cala wyprawe (nie znasz punktow zaopatrzenia) - daj zapas NA "
+        "PIERWSZY ETAP plus male rezerwowe kalorie awaryjne, i napisz to w reason. "
+        "GRUPA 'Przed wyjazdem' to NIE rzeczy tylko ZADANIA do wykonania: naladowac Karoo/lampki/powerbank/telefon, "
+        "pobrac trase offline do Karoo i kopie do telefonu, zapisac offline adresy i telefony noclegow, sprawdzic "
+        "uszczelniacz i cisnienie, sprawdzic klocki, dokrecic sruby bagazu. Dla tych pozycji zawsze qty=1. "
         "OBOWIAZKOWO uwzglednij (jesli pasuje do stylu i pogody): kamizelke hydracyjna oraz "
         "bidony/softflaski (grupa Woda); buty rowerowe (Odziez rowerowa) ORAZ lekkie obuwie na "
         "po jezdzie - klapki/sandaly (Ubranie do obozu); kosmetyki i pielegnacje w grupie Higiena: "
@@ -6084,7 +6127,9 @@ async def api_wyposazenie_generate(request: Request):
         "Kazda pozycja to obiekt: item (krotka nazwa PL), qty (liczba sztuk), garage_category (DOKLADNIE "
         "jedna z podanych kategorii garazu - ale WYPELNIAJ JA TYLKO dla grup odziezowych (Odziez rowerowa / Warstwy i pogoda / Ubranie do obozu); dla naprawy, czesci, noclegu, gotowania, wody, elektroniki, apteczki, higieny i dokumentow ZAWSZE null. Przyklady null: "
         "namiot, palnik, apteczka, zywnosc, powerbank), reason (JEDNO krotkie zdanie po polsku: po co to "
-        "i dlaczego akurat tyle lub czemu wlasnie na tej wyprawie - konkret, nie oczywistosc)."
+        "i dlaczego akurat tyle lub czemu wlasnie na tej wyprawie - konkret, nie oczywistosc), "
+        "prio (1=konieczne, 2=zalecane, 3=zalezne od pogody/opcjonalne) oraz worn (true tylko dla rzeczy "
+        "ktore masz NA SOBIE na starcie - kask, okulary, buty, jeden komplet stroju; reszta false)."
     )
     prompt = (
         "PARAMETRY WYPRAWY:\n"
@@ -6100,7 +6145,7 @@ async def api_wyposazenie_generate(request: Request):
         "\nKATEGORIE GARAZU (uzywaj DOKLADNIE tych nazw w garage_category): %s\n"
         "\nZwroc dokladnie taki JSON:\n"
         "{\"groups\": [{\"group\": \"<grupa>\", \"items\": [{\"item\": \"...\", \"qty\": 1, "
-        "\"garage_category\": \"...\"|null, \"reason\": \"...\"}]}]}"
+        "\"garage_category\": \"...\"|null, \"reason\": \"...\", \"prio\": 1, \"worn\": false}]}]}"
         % cats_str
     )
 
@@ -6148,6 +6193,7 @@ async def api_wyposazenie_generate(request: Request):
             continue
         grp = str(g.get("group") or "Inne")[:40]
         is_cloth = _norm_grp(grp) in CLOTHING_GROUPS
+        is_task = _norm_grp(grp) == "przed wyjazdem"
         gitems = []
         for it in (g.get("items") or []):
             if not isinstance(it, dict) or not it.get("item"):
@@ -6162,11 +6208,20 @@ async def api_wyposazenie_generate(request: Request):
                 q = int(it.get("qty") or 1)
             except (TypeError, ValueError):
                 q = 1
+            try:
+                pr = int(it.get("prio") or 2)
+            except (TypeError, ValueError):
+                pr = 2
+            pr = pr if pr in (1, 2, 3) else 2
             gitems.append({"item": str(it.get("item"))[:80], "qty": max(1, min(20, q)),
-                           "garage_category": gc,
-                           "reason": (str(it.get("reason"))[:240] if it.get("reason") else None)})
+                           "garage_category": (None if is_task else gc),
+                           "reason": (str(it.get("reason"))[:240] if it.get("reason") else None),
+                           "prio": pr, "worn": bool(it.get("worn")) and not is_task,
+                           "is_task": is_task})
         if gitems:
+            gitems.sort(key=lambda x: (x["prio"], x["item"].lower()))
             clean.append({"group": grp, "items": gitems})
+    clean.sort(key=lambda g: _GROUP_ORDER.get(_norm_grp(g["group"]), 50))
     return {"days": days, "style": style, "season": season or None, "groups": clean}
 
 
@@ -6298,12 +6353,20 @@ async def api_wyposazenie_save(request: Request):
                 bag_id = it.get("bag_id")
                 bag_id = int(bag_id) if isinstance(bag_id, (int, float)) or (isinstance(bag_id, str) and bag_id.isdigit()) else None
                 packed = 1 if it.get("packed") else 0
-                notes = (str(it.get("notes") or "")).strip()[:200] or None
+                notes = (str(it.get("notes") or "")).strip()[:400] or None
+                worn = 1 if it.get("worn") else 0
+                skipped = 1 if it.get("skipped") else 0
+                is_task = 1 if it.get("is_task") else 0
+                try:
+                    prio = int(it.get("prio") or 2)
+                except (TypeError, ValueError):
+                    prio = 2
                 con.execute(
                     "INSERT INTO packing_items(list_id, category, item, quantity, packed, "
-                    "from_garage, gear_id, garage_category, bag_id, notes) "
-                    "VALUES(?,?,?,?,?,?,?,?,?,?)",
-                    (list_id, grp, item, qty, packed, 1 if gear_id else 0, gear_id, gc, bag_id, notes))
+                    "from_garage, gear_id, garage_category, bag_id, notes, prio, worn, skipped, is_task) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (list_id, grp, item, qty, packed, 1 if gear_id else 0, gear_id, gc, bag_id,
+                     notes, prio, worn, skipped, is_task))
                 n += 1
         con.commit()
     finally:
@@ -6323,7 +6386,8 @@ def api_wyposazenie_list(route_id: str = Query(...)):
             return {"exists": False, "route_id": route_id, "groups": []}
         items = con.execute(
             "SELECT id, category, item, quantity, packed, from_garage, gear_id, "
-            "garage_category, bag_id, notes FROM packing_items WHERE list_id=? ORDER BY id",
+            "garage_category, bag_id, notes, prio, worn, skipped, is_task "
+            "FROM packing_items WHERE list_id=? ORDER BY id",
             (lst["id"],)).fetchall()
     finally:
         con.close()
@@ -6337,6 +6401,8 @@ def api_wyposazenie_list(route_id: str = Query(...)):
             "id": it["id"], "item": it["item"], "qty": it["quantity"],
             "packed": bool(it["packed"]), "garage_category": it["garage_category"],
             "gear_id": it["gear_id"], "bag_id": it["bag_id"], "notes": it["notes"],
+            "prio": (it["prio"] or 2), "worn": bool(it["worn"]),
+            "skipped": bool(it["skipped"]), "is_task": bool(it["is_task"]),
         })
     return {
         "exists": True, "route_id": route_id, "list_id": lst["id"],
