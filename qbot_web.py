@@ -5013,10 +5013,13 @@ EQUIP_CATEGORIES = [
     "Higiena", "Apteczka", "Dokumenty", "Inne",
 ]
 EQUIP_STATUS = ["uzywany", "zapas", "wycofany"]
+# Miejsce montazu - kluczowe przy automatycznym doborze toreb do wyprawy.
+EQUIP_MOUNTS = ["kierownica", "gorna rura", "rama", "dolna rura", "siodlo",
+                "widelec", "bagaznik", "plecak", "nie dotyczy"]
 COMPONENT_STATUS = ["zamontowany", "zapas", "wycofany"]
 
 EQUIP_FIELDS_TXT = ("category", "brand", "model", "size", "color", "condition",
-                    "status", "ean", "sku", "url", "notes", "purchase_date")
+                    "status", "mount", "ean", "sku", "url", "notes", "purchase_date")
 EQUIP_FIELDS_NUM = ("purchase_price", "capacity_l")
 EQUIP_FIELDS_INT = ("weight_g", "rating")
 
@@ -5032,7 +5035,7 @@ def equipment_list(all: int = Query(0)):
             rows = [r for r in rows if r.get("active")]
         return {"items": rows, "categories": EQUIP_CATEGORIES,
                 "conditions": GARAGE_CONDITIONS, "statuses": EQUIP_STATUS,
-                "palette": GARAGE_PALETTE}
+                "mounts": EQUIP_MOUNTS, "palette": GARAGE_PALETTE}
     finally:
         gc.close()
 

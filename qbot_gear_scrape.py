@@ -19,13 +19,13 @@ from bs4 import BeautifulSoup
 
 UA = "Mozilla/5.0 (compatible; QBotGear/1.0; +https://albert.cytr.us)"
 MAX_BYTES = 3_000_000
-LLM_TEXT_CHARS = 9000
+LLM_TEXT_CHARS = 18000
 # Ponizej tego progu uznajemy strone za renderowana JavaScriptem i doczytujemy
 # ja prawdziwa przegladarka (Playwright). Regula generyczna, nie per-sklep.
 THIN_TEXT_CHARS = 2500
 
 FIELDS = ("category", "brand", "model", "color", "price", "currency", "sku", "ean",
-          "weight_g", "image")
+          "weight_g", "capacity_l", "image")
 
 
 def fetch_html(url, timeout=12):
@@ -206,7 +206,7 @@ def page_text(soup, limit=LLM_TEXT_CHARS):
 _LLM_SYSTEM = (
     "Jestes precyzyjnym ekstraktorem danych produktowych ze stron sklepow rowerowych. "
     "Dostajesz TEKST strony produktu. Zwracasz WYLACZNIE obiekt JSON, bez markdown, bez komentarza. "
-    "Klucze: category, brand, model, color, price, currency, sku, ean, weight_g. "
+    "Klucze: category, brand, model, color, price, currency, sku, ean, weight_g, capacity_l. "
     "category = dopasuj produkt do JEDNEJ z dozwolonych kategorii podanych w zapytaniu; "
     "przepisz ja DOKLADNIE tak jak podano. Jesli produkt nie pasuje do zadnej - null. "
     "brand = producent odziezy/sprzetu (NIE nazwa sklepu). "
@@ -214,6 +214,8 @@ _LLM_SYSTEM = (
     "price = sama liczba; currency = kod waluty (PLN/EUR/USD/GBP...). "
     "weight_g = masa produktu w GRAMACH jako liczba calkowita (przelicz z kg jesli trzeba); "
     "jesli podano mase dla konkretnego rozmiaru, wez ja. "
+    "capacity_l = pojemnosc w LITRACH (torby, sakwy, plecaki) jako liczba; "
+    "jesli podano zakres (np. 10-20L) wez wartosc maksymalna; dla rzeczy bez pojemnosci null. "
     "KRYTYCZNE: jesli czegos NIE MA wprost w tekscie - wpisz null. NIE ZGADUJ, nie szacuj, "
     "nie uzupelniaj z wiedzy wlasnej o marce. Lepiej null niz zmyslona wartosc."
 )
@@ -225,7 +227,8 @@ def llm_extract(text, url, categories=None):
     cat_block = ("\n\nDOZWOLONE KATEGORIE (wybierz dokladnie jedna albo null):\n- "
                  + "\n- ".join(cats)) if cats else ""
     prompt = ("Adres strony: %s\n\nTEKST STRONY:\n%s%s\n\n"
-              "Zwroc JSON z polami: category, brand, model, color, price, currency, sku, ean, weight_g."
+              "Zwroc JSON z polami: category, brand, model, color, price, currency, sku, ean, "
+              "weight_g, capacity_l."
               % (url, text, cat_block))
     raw = qgpt_text(prompt, system=_LLM_SYSTEM, max_tokens=400, temperature=0)
     raw = (raw or "").strip()
@@ -258,6 +261,14 @@ def llm_extract(text, url, categories=None):
             wi = int(round(float(str(w).replace(",", "."))))
             if 1 <= wi <= 20000:
                 out["weight_g"] = wi
+    except (TypeError, ValueError):
+        pass
+    cap = d.get("capacity_l")
+    try:
+        if cap not in (None, "", "null"):
+            cv = float(str(cap).replace(",", "."))
+            if 0 < cv <= 300:
+                out["capacity_l"] = cv
     except (TypeError, ValueError):
         pass
     return out
