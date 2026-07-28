@@ -1,5 +1,38 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-07-28] Porzadki: commity, push, sprzatanie plikow
+
+STAN PO SESJI (zweryfikowany na zywo):
+- Repo czyste: `git status` bez zmian, `main` == `origin/main`.
+- Commit 1bf0b34 (push origin/main): hammerhead - odpornosc na wygasly refresh token
+  (fallback do logowania zamiast wyjatku, hammerhead_auth.py) + antyspam alertu
+  "brak danych lokalnych" w ride_report.py (znacznik data/missing_data_alerts.json,
+  alert leci RAZ na aktywnosc, nie przy kazdym cronie) + qbot-hammerhead-sync
+  + .gitignore (docs/audit/enrich_trigger.json). Kod dzialal na zywo od wczesniejszej
+  sesji, ale nie byl w repo.
+
+SKASOWANE (DC/SSH):
+- scripts/qext2_fresh.patch, qext2_rsrv_batt.patch, qext2_tf_session.patch - QExt2 to
+  OSOBNY projekt, nie nalezy do repo QBota.
+- docs/CURRENT.md.bak, docs/DECISIONS.md.bak, docs/architecture/MODELQ_V2.md.bak.
+- qbot3/routes/planer_stage_export.py.bak (2 szt.), route_attraction_store.py.bak.
+- data/garage.db.bak - 7 starych kopii; ZOSTAJE najnowsza garage.db.bak.20260728_081025.
+
+ZOSTAWIONE SWIADOMIE:
+- .env*.bak (3 szt.: _bak_archive/.env.bak, _bak_archive/.env.local.bak,
+  config/profiles/michal.env.bak) - sekrety, nie kasowane bez osobnej decyzji.
+- outgoing/garmin_proxy/hammerhead_44954...fit.bak.20260719_201939 - powiazany
+  z niedokonczona korekta FIT z 19.07.
+
+ZAMKNIETE STARE STATUSY:
+- Wszystkie wczesniejsze "[ZAMKNIETE 2026-07-28] DO DOKONCZENIA (recznie -- brak commit/push w DEV MCP)" oraz
+  "DO ZROBIENIA: qbot_web.py niezacommitowany" sa NIEAKTUALNE - oznaczone prefiksem
+  [ZAMKNIETE 2026-07-28]. Nic nie czeka na commit ani na push.
+- scripts/_tmp_*.py, scripts/_new_block_planned_load.txt oraz .bak w /opt/qbot/web/public:
+  sprawdzone - juz ich nie ma.
+- Tablica robocza (worklock) pusta - zadna sesja nic nie trzyma.
+
+
 
 ## Sesja 2026-07-27 -- Planer wyprawy: data trwala, PDF (tresc+FORMA), ogonki, nazwy postojow
 
@@ -200,7 +233,7 @@ WYKONANE (na zywo, zweryfikowane):
 
 PUSTE DNI ZYWIENIA (do uzupelnienia): 10-16.07 (7 dni; 09.07 ma preset).
 
-DO DOKONCZENIA (recznie -- brak commit/push w DEV MCP):
+[ZAMKNIETE 2026-07-28] DO DOKONCZENIA (recznie -- brak commit/push w DEV MCP):
 1. Commit JAWNYCH sciezek (bez -a):
    qbot_web.py + qbot_nutrition_presets.py + sql/refresh_day_flags_fix.sql + sql/calendar_core_v1.sql + docs/CURRENT.md docs/DECISIONS.md docs/PROJEKT_ODZYWIANIE.md
    msg np.: "zywienie: presety szacunku (2200/2700/3100) + /api/nutrition/{preset,day-summary,status}; fix trigger refresh_day_flags; kalendarz kafelek+ikonka (+docs)"
@@ -247,7 +280,7 @@ WYKONANE (na zywo, zweryfikowane):
   dolnym rogu (liczba gdy >1, tooltip z trescia; klik w komorke otwiera dzien). Bez jazdy --
   belka jak dotad. Rezerwa .day.has-rem .marks{padding-right:20px}. JS ?v=17.
 
-DO DOKONCZENIA (recznie -- brak commit/push w DEV MCP):
+[ZAMKNIETE 2026-07-28] DO DOKONCZENIA (recznie -- brak commit/push w DEV MCP):
 1. Commit JAWNYCH sciezek (bez -a): qbot_web.py (_report_prose split+retry) +
    docs/CURRENT.md + docs/DECISIONS.md + docs/RAPORT_WEB.md
    msg np.: "raport trasy: proza LLM split+retry; szczegoly UI; kalendarz dzwonek (+docs)"
@@ -269,7 +302,7 @@ WYKONANE (na zywo, zweryfikowane):
 - Powiekszanie kafla: .tile[data-k] + openTileZoom -> modal .tilez (duza wartosc, delta, powiekszony wykres, opis+interp). Zamkniecie klik gdziekolwiek lub Esc.
 - qbot-web zrestartowany (active). Statyki: forma.html, forma-render.js ?v=32 (poza repo).
 
-DO DOKONCZENIA (recznie -- brak commit/push w DEV MCP):
+[ZAMKNIETE 2026-07-28] DO DOKONCZENIA (recznie -- brak commit/push w DEV MCP):
 1. Commit JAWNYCH sciezek (bez -a):
    qbot_web.py + docs/FORMA_UI_LAYOUT.md docs/DECISIONS.md docs/CURRENT.md docs/CONTEXT.md
    msg: "forma: /api/forma/activities+activity(has_report), no-store /api, Doradca+plan, DZIS hero split + zoom kafla + docs"
@@ -287,7 +320,7 @@ WYKONANE (na zywo, zweryfikowane):
 - Prefs na serwerze: tabela qbot_v2.ui_prefs + sql/ui_prefs_v1.sql (idempotentny, sprawdzony na bazie); endpointy GET/POST /api/prefs (_current_user z ciasteczka webauth). Round-trip GET->POST->GET OK (user=admin, wiersz testowy posprzatany). Front: zapis na serwer (debounce 400ms) + localStorage fallback; DZIS dociaga prefs przy starcie i nadpisuje lokalne.
 - qbot-web zrestartowany (active). Statyki: forma.html, forma-render.js ?v=23, nutrition-render.js ?v=8 (poza repo, zywe od razu).
 
-DO DOKONCZENIA (recznie -- brak commit/push w DEV MCP):
+[ZAMKNIETE 2026-07-28] DO DOKONCZENIA (recznie -- brak commit/push w DEV MCP):
 1. Commit JAWNYCH sciezek (bez -a): qbot_web.py + sql/ui_prefs_v1.sql
    msg: "DZIS: server-side prefs (ui_prefs + /api/prefs GET/POST)"
    (statyki w web/public sa POZA repo -- bez commitu)
@@ -338,7 +371,7 @@ TESTY (uruchamiane programowo przez unittest; DEV MCP blokuje pytest z argumenta
   -> training_sessions), test_tool_registry_includes_all (usuniete asercje qcal_*), usuniete
   6 testow kalendarza/qcal. Pozostale 3 faile WCZESNIEJSZE/niezwiazane (patrz DECISIONS).
 
-DO DOKONCZENIA (recznie / Desktop Commander -- brak commit/push w DEV MCP):
+[ZAMKNIETE 2026-07-28] DO DOKONCZENIA (recznie / Desktop Commander -- brak commit/push w DEV MCP):
 1. Commit (qbot przez runuser) + push (root). tool_registry.py i albert.py MUSZA byc
    w tym samym commicie (juz zmienione razem). Pliki-rdzen: git zobaczy jako usuniete
    (przeniesione do _bak_archive) -- podac jawnie lub osobny 'git rm'.
@@ -391,7 +424,7 @@ Cel: system ma widziec planowane obciazenie na kolejne dni (wyprawy z Planera).
 - qbot_web.py: _dni_cuts_for_route + _recompute_planned_load_for_entry (XSS/dzien = podzial Planera dni_json -> cuts -> _planer_stage_xss; dzien N = event.day + N-1; idempotentne, best-effort). Endpoint POST /api/planer/planned-load/recompute. Hook w POST /api/calendar/route (po zapisie mapowania trasy, w try/except -- nie psuje zapisu).
 - Widocznosc: _forma_planned_events dokleja 'planowane obciazenie: MM-DD ~X XSS ... (razem ~T)'; prompt Doradcy traktuje XSS jak realny trening. /api/calendar zwraca days[d].planned_xss + liste 'planned'. kalendarz-render.js: badge w komorce dnia + chip 'Planowane XSS' w szufladzie (statyk poza repo, zywe od razu).
 - Backfill wyprawy 1-3.08 (entry_id=13, komoot-3088315688): 01.08 ~372 XSS / 02.08 ~305 / 03.08 ~231 (razem ~908). Zweryfikowane na zywym kodzie.
-- DO ZROBIENIA (poza kanalem DEV): commit qbot_web.py + sql/planned_load_daily_v1.sql jawnymi sciezkami (qbot/runuser, push root). Sprzatanie przez DC/SSH: scripts/_new_block_planned_load.txt + stare .bak (_tmp_check_plan_events.py.bak.*, _tmp_inspect_planer_schema.py.bak.*).
+- [ZAMKNIETE 2026-07-28] DO ZROBIENIA (poza kanalem DEV): commit qbot_web.py + sql/planned_load_daily_v1.sql jawnymi sciezkami (qbot/runuser, push root). Sprzatanie przez DC/SSH: scripts/_new_block_planned_load.txt + stare .bak (_tmp_check_plan_events.py.bak.*, _tmp_inspect_planer_schema.py.bak.*).
 - MOZLIWE DALEJ (Krok 3, nie robione): projekcja TSB/ATL do przodu na wykresie Formy z planned_load_daily (silnik simulate_expedition juz jest).
 
 ## [2026-07-27] Kafel 'Najblizszy cel' w DZIS (wariant C)
@@ -416,4 +449,4 @@ Cel: system ma widziec planowane obciazenie na kolejne dni (wyprawy z Planera).
   6. `FAM` w Plannerze: `Bibs shorts`→[Bibs shorts]; `Trousers`→[Trousers, Mid Layer Bottom, Base Layer Bottom]
 - **Dowód na żywo:** oba sloty w API zakładki Odzież; stara kategoria zniknęła; generator Plannera widzi obie; endpoint kategorii zwraca obie. Podział pozycji zweryfikowany po nazwach (9 aktywnych Bibs shorts + 2 archiwalne, 10 Trousers).
 - **Kanał:** Qbot DEV MCP wypadł z sesji — praca przez `ssh q` (MacOS-MCP). UWAGA: **heredoc przez ssh dwukrotnie zawiesił kanał na ~4 min**, mimo czysto ASCII treści. Działający wzorzec: zapis skryptu lokalnie → `scp` → `ssh python3`.
-- **DO ZROBIENIA:** `qbot_web.py` NADAL NIEZACOMMITOWANY — teraz już trzy zmiany: (1) is_set/set_items, (2) rejestr kategorii wyprawowych, (3) rozbicie Bottoms/Bibs. Commit jako qbot + push jako root.
+- **[ZAMKNIETE 2026-07-28] DO ZROBIENIA:** `qbot_web.py` NADAL NIEZACOMMITOWANY — teraz już trzy zmiany: (1) is_set/set_items, (2) rejestr kategorii wyprawowych, (3) rozbicie Bottoms/Bibs. Commit jako qbot + push jako root.
