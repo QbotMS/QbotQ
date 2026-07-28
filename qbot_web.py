@@ -5533,6 +5533,126 @@ async def garage_prefs_set(request: Request):
     return {"ok": True, "key": key}
 
 
+# --- Garaz: INSTRUKCJE bikepackingowe (zasady do generatora wyposazenia) ---
+INSTR_SEASONS = ["zima", "przejsciowy", "lato"]
+INSTR_WEATHER = ["snieg", "deszcz", "upal", "zimno"]
+INSTR_TRIP = ["lekko", "ciezko"]
+
+
+def _csv_z_listy(wart, dozwolone):
+    # Przyjmuje liste albo CSV; zwraca CSV z samych dozwolonych wartosci,
+    # w stalej kolejnosci slownika (nie w kolejnosci klikania).
+    if isinstance(wart, (list, tuple)):
+        pod = [str(x).strip().lower() for x in wart]
+    else:
+        pod = [x.strip().lower() for x in str(wart or "").split(",")]
+    wybrane = [x for x in dozwolone if x in set(pod)]
+    return ",".join(wybrane) or None
+
+
+@app.get("/api/instructions/list")
+def instructions_list(all: int = Query(0)):
+    # Wykaz instrukcji + slowniki kwalifikatorow dla formularza.
+    gc = _garage_conn()
+    try:
+        rows = [dict(r) for r in gc.execute(
+            "SELECT * FROM instructions ORDER BY priority, id").fetchall()]
+        if not all:
+            rows = [r for r in rows if r.get("active")]
+        return {"items": rows, "seasons": INSTR_SEASONS, "weather": INSTR_WEATHER,
+                "trip_types": INSTR_TRIP, "priorities": [1, 2, 3]}
+    finally:
+        gc.close()
+
+
+@app.post("/api/instructions/save")
+async def instructions_save(request: Request):
+    # Dodaj (bez id) albo popraw (z id) instrukcje.
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    title = _gs(b.get("title"), 300)
+    if not title:
+        raise HTTPException(status_code=400, detail="Wymagana tresc instrukcji")
+    try:
+        pri = int(b.get("priority") or 2)
+    except (TypeError, ValueError):
+        pri = 2
+    if pri not in (1, 2, 3):
+        pri = 2
+    cols = {
+        "title": title,
+        "body": _gs(b.get("body"), 4000),
+        "season": _csv_z_listy(b.get("season"), INSTR_SEASONS),
+        "weather": _csv_z_listy(b.get("weather"), INSTR_WEATHER),
+        "trip_type": _csv_z_listy(b.get("trip_type"), INSTR_TRIP),
+        "priority": pri,
+    }
+    gid = b.get("id")
+    gc = _garage_conn()
+    try:
+        keys = list(cols.keys())
+        if gid not in (None, "", 0, "0"):
+            gid = int(gid)
+            gc.execute("UPDATE instructions SET %s, updated_at=datetime('now') WHERE id=?"
+                       % ", ".join("%s=?" % k for k in keys),
+                       [cols[k] for k in keys] + [gid])
+        else:
+            cur = gc.execute(
+                "INSERT INTO instructions (%s, active) VALUES (%s, 1)"
+                % (", ".join(keys), ",".join("?" for _ in keys)),
+                [cols[k] for k in keys])
+            gid = cur.lastrowid
+        gc.commit()
+        return {"ok": True, "id": gid}
+    finally:
+        gc.close()
+
+
+@app.post("/api/instructions/toggle")
+async def instructions_toggle(request: Request):
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    gid = b.get("id")
+    if gid in (None, "", 0, "0"):
+        raise HTTPException(status_code=400, detail="Brak id")
+    aktywna = 1 if b.get("active") else 0
+    gc = _garage_conn()
+    try:
+        gc.execute("UPDATE instructions SET active=?, updated_at=datetime('now') WHERE id=?",
+                   (aktywna, int(gid)))
+        gc.commit()
+        return {"ok": True, "id": int(gid), "active": aktywna}
+    finally:
+        gc.close()
+
+
+@app.post("/api/instructions/delete")
+async def instructions_delete(request: Request):
+    # Trwale usuniecie - wymaga potwierdzenia, tak jak w pozostalych tabelach.
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    gid = b.get("id")
+    if gid in (None, "", 0, "0"):
+        raise HTTPException(status_code=400, detail="Brak id")
+    if not b.get("confirm"):
+        raise HTTPException(status_code=400, detail="Brak potwierdzenia")
+    gc = _garage_conn()
+    try:
+        cur = gc.execute("DELETE FROM instructions WHERE id=?", (int(gid),))
+        gc.commit()
+        if not cur.rowcount:
+            raise HTTPException(status_code=404, detail="Nie ma takiej instrukcji")
+        return {"ok": True, "id": int(gid)}
+    finally:
+        gc.close()
+
+
 _FEEL_WORDS = {-2: "fatalnie", -1: "gorzej niz zwykle", 0: "neutralnie", 1: "dobrze", 2: "swietnie"}
 
 
@@ -6266,6 +6386,74 @@ _EQ_FOR = {
 }
 
 
+_WEATHER_KINDS = {"snieg", "deszcz", "upal", "zimno"}
+
+
+def _wyp_weather_tokens(wx):
+    """Zamienia prognoze na etykiety pogodowe uzywane w instrukcjach z garazu."""
+    t = []
+    if not (wx and wx.get("ok")):
+        return t
+    try:
+        if float(wx.get("precip_mm") or 0) >= 1.0:
+            t.append("deszcz")
+        if float(wx.get("tmax") or -99) >= 28:
+            t.append("upal")
+        tmin = float(wx.get("tmin") or 99)
+        if tmin <= 8:
+            t.append("zimno")
+        if tmin <= 0:
+            t.append("snieg")
+    except (TypeError, ValueError):
+        pass
+    return t
+
+
+def _wyp_instructions(season, style, wx):
+    """INSTRUKCJE z Garazu (tabela instructions) dopasowane do sezonu, pogody i stylu.
+    Pusta kolumna = pasuje zawsze. Wypisane wszystkie rodzaje pogody = pasuje zawsze."""
+    seasons = [x.strip() for x in (season or "").lower().split(",") if x.strip()]
+    style_n = (style or "").strip().lower()
+    wtoks = _wyp_weather_tokens(wx)
+
+    def _list(v):
+        v = (v or "").strip().lower()
+        if not v or v == "none":
+            return []
+        return [x.strip() for x in v.split(",") if x.strip()]
+
+    try:
+        con = _wyposazenie_db()
+        try:
+            rows = con.execute(
+                "SELECT title, body, season, weather, trip_type, priority "
+                "FROM instructions WHERE active=1 ORDER BY priority, id").fetchall()
+        finally:
+            con.close()
+    except Exception:
+        return []
+
+    out = []
+    for r in rows:
+        sl = _list(r["season"])
+        if sl and seasons and not any(x in sl for x in seasons):
+            continue
+        tl = _list(r["trip_type"])
+        if tl and style_n and style_n not in tl:
+            continue
+        wl = _list(r["weather"])
+        if wl and not _WEATHER_KINDS.issubset(set(wl)):
+            if not any(x in wl for x in wtoks):
+                continue
+        txt = (r["title"] or "").strip()
+        b = (r["body"] or "").strip() if r["body"] else ""
+        if b and b.lower() != txt.lower():
+            txt = txt + " - " + b
+        if txt:
+            out.append(txt)
+    return out
+
+
 def _wyp_cat_from_name(name, valid):
     """Kategoria garazu wyprowadzona z nazwy pozycji - pewniejsza niz zgadywanie modelu."""
     n = _wyp_norm(name)
@@ -6427,15 +6615,7 @@ async def api_wyposazenie_generate(request: Request):
     if wx and wx.get("ok"):
         _wxk = "|".join(str(wx.get(k)) for k in
                         ("tmin", "tmax", "precip_mm", "wind_max_ms", "season_hint"))
-    try:
-        _rc = _wyposazenie_db()
-        try:
-            _rk = "||".join(r["text"] for r in _rc.execute(
-                "SELECT text FROM packing_rules WHERE active=1 ORDER BY id"))
-        finally:
-            _rc.close()
-    except Exception:
-        _rk = ""
+    _rk = "||".join(_wyp_instructions(season, style, wx))
     _ckey = _hl.sha1(("|".join([str(days), style, season, route, _wxk, _rk])
                       ).encode("utf-8")).hexdigest()
     _force = str(body.get("force") or "") in ("1", "true", "True")
@@ -6451,18 +6631,11 @@ async def api_wyposazenie_generate(request: Request):
             _out["cached"] = True
             return _out
 
-    # --- wlasne zasady pakowania (INSTRUKCJE) ---
-    try:
-        _rcon = _wyposazenie_db()
-        try:
-            _rules = [r["text"] for r in _rcon.execute(
-                "SELECT text FROM packing_rules WHERE active=1 ORDER BY id")]
-        finally:
-            _rcon.close()
-    except Exception:
-        _rules = []
+    # --- INSTRUKCJE z Garazu (tabela instructions) - maja pierwszenstwo ---
+    _rules = _wyp_instructions(season, style, wx)
     if _rules:
-        prompt += ("\nMOJE WLASNE ZASADY PAKOWANIA (maja pierwszenstwo przed ogolnymi):\n"
+        prompt += ("\nMOJE INSTRUKCJE Z GARAZU (bezwzglednie ich przestrzegaj, maja "
+                   "pierwszenstwo przed regulami ogolnymi):\n"
                    + "\n".join("- " + r for r in _rules) + "\n")
 
     from qgpt_client import qgpt_text
@@ -6573,7 +6746,8 @@ async def api_wyposazenie_generate(request: Request):
             # wyjezdzie, gdy mocno pada i nie ma szans na wyschniecie.
             return 3 if (_hard_rain and days >= 4) else 2
         if cat == "Socks":
-            return 3 if (_hard_rain and days >= 4) else 2
+            # instrukcja z garazu: do 3 dni 2 pary, powyzej 3 dni 3 pary
+            return 2 if days <= 3 else 3
         if cat in ("Base Layer Top", "Base Layer Bottom"):
             return 2
         if cat in ("Bielizna (nierowerowa)",):
@@ -6616,8 +6790,8 @@ async def api_wyposazenie_generate(request: Request):
             keep, basic, exped, spare = [], [], [], []
             for it in g["items"]:
                 n = _wyp_norm(it["item"])
-                if "pompk" in n:                      # pompki zostaja osobno (dwie sztuki)
-                    keep.append(it)
+                if "pompk" in n or "multitool" in n or "noz" in n:
+                    keep.append(it)   # pompki i multitool: osobne wiersze do wyboru
                 elif any(k in n for k in ("detk", "hak przerzutki", "rdzen wentyla",
                                           "klocki", "tire boot", "opona", "linka")):
                     spare.append(it["item"])
@@ -6634,6 +6808,39 @@ async def api_wyposazenie_generate(request: Request):
             if spare:
                 out.append(_mk_set("Czesci zamienne wyprawowe", "Naprawa i narz\u0119dzia", spare, 2))
             g["items"] = out
+
+    # bluza/polar to ubranie OBOZOWE i jedna sztuka - nie odziez rowerowa x2
+    _camp = None
+    for g in clean:
+        if _norm_grp(g["group"]) == "ubranie do obozu":
+            _camp = g
+            break
+    for g in clean:
+        if g is _camp:
+            continue
+        _move = [it for it in g["items"]
+                 if ("bluza" in _wyp_norm(it["item"]) or "polar" in _wyp_norm(it["item"]))]
+        if not _move:
+            continue
+        g["items"] = [it for it in g["items"] if it not in _move]
+        for it in _move:
+            it["qty"] = 1
+            if _camp is not None:
+                _camp["items"].append(it)
+            else:
+                g["items"].append(it)
+
+    # ta sama rzecz nie moze wystepowac w dwoch roznych grupach (np. czapka)
+    _seen_names = {}
+    for g in clean:
+        kept = []
+        for it in g["items"]:
+            k = _wyp_norm(it["item"])
+            if k in _seen_names and _seen_names[k] is not g:
+                continue
+            _seen_names[k] = g
+            kept.append(it)
+        g["items"] = kept
 
     # ladowarka sieciowa jest CZESCIA zestawu do ladowania - nie dublujemy
     for g in clean:
@@ -6875,50 +7082,27 @@ def api_wyposazenie_kategorie():
 
 
 @app.get("/api/planer/wyposazenie/zasady")
-def api_wyposazenie_zasady_get():
-    """Moje wlasne zasady pakowania (INSTRUKCJE) - wchodza do promptu generatora."""
+def api_wyposazenie_zasady_get(season: str = Query(""), style: str = Query(""),
+                               tmin: str = Query(""), tmax: str = Query(""),
+                               precip: str = Query("")):
+    """Podglad INSTRUKCJI z Garazu dzialajacych przy tych warunkach.
+    Zrodlem jest WYLACZNIE tabela instructions - tutaj nic sie nie edytuje."""
+    def _f(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+    wx = None
+    if _f(tmin) is not None or _f(tmax) is not None or _f(precip) is not None:
+        wx = {"ok": True, "tmin": _f(tmin), "tmax": _f(tmax), "precip_mm": _f(precip)}
+    applied = _wyp_instructions(season, style, wx)
     con = _wyposazenie_db()
     try:
-        rows = con.execute("SELECT id, text, active FROM packing_rules ORDER BY id").fetchall()
+        total = con.execute("SELECT COUNT(*) FROM instructions WHERE active=1").fetchone()[0]
     finally:
         con.close()
-    return {"count": len(rows),
-            "rules": [{"id": r["id"], "text": r["text"], "active": bool(r["active"])}
-                      for r in rows]}
-
-
-@app.post("/api/planer/wyposazenie/zasady")
-async def api_wyposazenie_zasady_post(request: Request):
-    """Dodaj / wlacz / wylacz / usun zasade. body: {action:add|toggle|delete, text?, id?}."""
-    try:
-        b = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Bledny JSON")
-    action = (str(b.get("action") or "")).strip().lower()
-    con = _wyposazenie_db()
-    try:
-        if action == "add":
-            txt = (str(b.get("text") or "")).strip()[:300]
-            if not txt:
-                raise HTTPException(status_code=400, detail="Pusta zasada")
-            cur = con.execute("INSERT INTO packing_rules(text, active, created_at) "
-                              "VALUES(?,1,datetime('now'))", (txt,))
-            con.commit()
-            return {"ok": True, "id": cur.lastrowid}
-        rid = int(b.get("id") or 0)
-        if not rid:
-            raise HTTPException(status_code=400, detail="Brak id")
-        if action == "toggle":
-            con.execute("UPDATE packing_rules SET active = 1 - COALESCE(active,0) WHERE id=?",
-                        (rid,))
-        elif action == "delete":
-            con.execute("DELETE FROM packing_rules WHERE id=?", (rid,))
-        else:
-            raise HTTPException(status_code=400, detail="Nieznana akcja")
-        con.commit()
-    finally:
-        con.close()
-    return {"ok": True}
+    return {"source": "garage.instructions", "active_total": total,
+            "count": len(applied), "rules": applied}
 
 
 @app.post("/api/planer/wyposazenie/garage-add")
