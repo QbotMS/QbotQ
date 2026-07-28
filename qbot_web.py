@@ -6231,9 +6231,39 @@ _NAME2CAT = (
     ("dresow", "Spodnie d\u0142ugie / dresowe"),
     ("recznik", "R\u0119cznik / str\u00f3j k\u0105pielowy"),
     ("stroj kapielowy", "R\u0119cznik / str\u00f3j k\u0105pielowy"),
+    ("bluza", "Jersey Long Sleeve"),
+    ("longsleeve", "Jersey Long Sleeve"),
+    ("dlugi rekaw", "Jersey Long Sleeve"),
+    ("multitool", "Naprawa i narz\u0119dzia"),
+    ("noz", "Naprawa i narz\u0119dzia"),
+    ("lampka", "O\u015bwietlenie osobiste"),
+    ("swiatlo", "O\u015bwietlenie osobiste"),
     ("kamizelka hydracyjna", "Accessories"),
     ("musette", "Accessories"),
 )
+
+
+_CAT_EXPAND = {
+    "Naprawa i narz\u0119dzia": ["Naprawa i narz\u0119dzia", "Sprz\u0119t wyprawowy"],
+    "Sprz\u0119t wyprawowy": ["Sprz\u0119t wyprawowy", "Naprawa i narz\u0119dzia",
+                              "Zasilanie i \u0142adowanie", "Apteczka", "Higiena i kosmetyki"],
+    "Zasilanie i \u0142adowanie": ["Zasilanie i \u0142adowanie", "Sprz\u0119t wyprawowy"],
+    "Apteczka": ["Apteczka", "Sprz\u0119t wyprawowy"],
+    "Higiena i kosmetyki": ["Higiena i kosmetyki", "Sprz\u0119t wyprawowy"],
+    "T-Shirt": ["T-Shirt", "Jersey Long Sleeve", "Jersey"],
+    "Jersey": ["Jersey", "Jersey Long Sleeve", "T-Shirt"],
+    "Jersey Long Sleeve": ["Jersey Long Sleeve", "Jersey", "T-Shirt"],
+    "Bielizna (nierowerowa)": ["Bielizna (nierowerowa)", "Base Layer Bottom"],
+}
+
+# ktore kategorie ze SPRZETU (equipment) dolozyc do danej kategorii garazu
+_EQ_FOR = {
+    "Zasilanie i \u0142adowanie": ["Elektronika", "Nawigacja i swiatla"],
+    "O\u015bwietlenie osobiste": ["Nawigacja i swiatla", "Elektronika"],
+    "Elektronika": ["Elektronika", "Nawigacja i swiatla"],
+    "Sprz\u0119t wyprawowy": ["Elektronika", "Nawigacja i swiatla"],
+    "Naprawa i narz\u0119dzia": ["Elektronika"],
+}
 
 
 def _wyp_cat_from_name(name, valid):
@@ -6665,27 +6695,41 @@ def _wyposazenie_db():
 
 
 @app.get("/api/planer/wyposazenie/garage-options")
-def api_wyposazenie_garage_options(category: str = Query(...), season: str = Query(""),
-                                   q: str = Query(""), all_seasons: int = Query(0)):
+def api_wyposazenie_garage_options(category: str = Query(""), season: str = Query(""),
+                                   q: str = Query(""), all_seasons: int = Query(0),
+                                   all_cats: int = Query(0)):
     """Rzeczy z garazu (gear, active=1) dla PODANYCH kategorii (moze byc kilka po przecinku -
     rodzina, np. koszulka: Jersey,Jersey Long Sleeve,T-Shirt). season oznacza dopasowanie
     (matches_season) i sortuje pasujace na gore. Kazda pozycja niesie swoja category."""
     cats_q = [c.strip() for c in (category or "").split(",") if c.strip()]
-    if not cats_q:
+    if not cats_q and not all_cats:
         raise HTTPException(status_code=400, detail="Wymagane: category")
+    # dolacz kategorie pokrewne (np. narzedzia + sprzet wyprawowy, t-shirt + long sleeve)
+    _exp = list(cats_q)
+    for c in cats_q:
+        for extra in _CAT_EXPAND.get(c, []):
+            if extra not in _exp:
+                _exp.append(extra)
+    cats_q = _exp
     seas_list = [s.strip() for s in (season or "").lower().split(",") if s.strip()][:3]
     seas = seas_list[0] if seas_list else ""
-    ph = ",".join(["?"] * len(cats_q))
     con = _wyposazenie_db()
     try:
-        rows = con.execute(
-            "SELECT id, category, brand, model, size, color, season, fabric, "
-            "COALESCE(weight_g, weight_est_g) AS weight_g "
-            "FROM gear WHERE active=1 AND category IN (" + ph + ") ORDER BY brand, model",
-            tuple(cats_q)).fetchall()
+        if all_cats:
+            rows = con.execute(
+                "SELECT id, category, brand, model, size, color, season, fabric, "
+                "COALESCE(weight_g, weight_est_g) AS weight_g "
+                "FROM gear WHERE active=1 ORDER BY category, brand, model").fetchall()
+        else:
+            ph = ",".join(["?"] * len(cats_q))
+            rows = con.execute(
+                "SELECT id, category, brand, model, size, color, season, fabric, "
+                "COALESCE(weight_g, weight_est_g) AS weight_g "
+                "FROM gear WHERE active=1 AND category IN (" + ph + ") ORDER BY brand, model",
+                tuple(cats_q)).fetchall()
     finally:
         con.close()
-    multi = len(cats_q) > 1
+    multi = all_cats or len(cats_q) > 1
     out = []
     for r in rows:
         s = (r["season"] or "").lower()
@@ -6699,6 +6743,37 @@ def api_wyposazenie_garage_options(category: str = Query(...), season: str = Que
             "weight_g": (int(r["weight_g"]) if r["weight_g"] is not None else None),
             "matches_season": bool(matches),
         })
+    # sprzet z equipment dobrany po KATEGORII (lampki, radar, pompka elektryczna, Karoo)
+    _eqcats = []
+    if all_cats:
+        _eqcats = ["Elektronika", "Nawigacja i swiatla", "Torby bikepackingowe"]
+    else:
+        for c in cats_q:
+            for e in _EQ_FOR.get(c, []):
+                if e not in _eqcats:
+                    _eqcats.append(e)
+    if _eqcats:
+        _ph2 = ",".join(["?"] * len(_eqcats))
+        _c2 = _wyposazenie_db()
+        try:
+            _er = _c2.execute(
+                "SELECT id, category, brand, model, mount, "
+                "COALESCE(weight_g, weight_est_g) AS weight_g FROM equipment "
+                "WHERE category IN (" + _ph2 + ") ORDER BY brand, model",
+                tuple(_eqcats)).fetchall()
+        finally:
+            _c2.close()
+        for r in _er:
+            base = " ".join([x for x in [r["brand"], r["model"]] if x]).strip() or "(bez nazwy)"
+            out.append({
+                "src": "equip", "equip_id": r["id"], "gear_id": None,
+                "label": "[" + str(r["category"]) + "] " + base,
+                "category": r["category"], "size": r["mount"], "color": None,
+                "season": None, "fabric": None,
+                "weight_g": (int(r["weight_g"]) if r["weight_g"] is not None else None),
+                "matches_season": True,
+            })
+
     # dopasowanie po nazwie w CALYM garazu (gear poza wskazanymi kategoriami)
     qname0 = (q or "").strip().lower()
     if qname0:
@@ -6761,8 +6836,18 @@ def api_wyposazenie_garage_options(category: str = Query(...), season: str = Que
                 "weight_g": (int(r["weight_g"]) if r["weight_g"] is not None else None),
                 "matches_season": True,
             })
+    # usun powtorki (ten sam sprzet moze trafic i po kategorii, i po nazwie)
+    _seen_ids, _dedup = set(), []
+    for x in out:
+        k = ("e", x.get("equip_id")) if x.get("src") == "equip" else ("g", x.get("gear_id"))
+        if k in _seen_ids:
+            continue
+        _seen_ids.add(k)
+        _dedup.append(x)
+    out = _dedup
+
     # sezon: domyslnie POKAZUJEMY tylko pasujace (bez zimowych kurtek w lipcu)
-    if seas and not all_seasons:
+    if seas and not all_seasons and not all_cats:
         keep = [x for x in out if x["matches_season"]]
         if keep:
             out = keep
