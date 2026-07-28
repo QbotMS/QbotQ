@@ -6205,6 +6205,46 @@ def _wyp_is_set(name):
     return any(k in n for k in _SET_KEYWORDS)
 
 
+_NAME2CAT = (
+    ("zestaw do ladowania", "Zasilanie i \u0142adowanie"),
+    ("ladowark", "Zasilanie i \u0142adowanie"),
+    ("powerbank", "Zasilanie i \u0142adowanie"),
+    ("kabel", "Zasilanie i \u0142adowanie"),
+    ("apteczka", "Apteczka"),
+    ("kosmetyk", "Higiena i kosmetyki"),
+    ("higien", "Higiena i kosmetyki"),
+    ("narzedzia", "Naprawa i narz\u0119dzia"),
+    ("czesci zamienne", "Naprawa i narz\u0119dzia"),
+    ("pompk", "Naprawa i narz\u0119dzia"),
+    ("klapki", "Obuwie zapasowe / klapki"),
+    ("sandal", "Obuwie zapasowe / klapki"),
+    ("obuwie zapasowe", "Obuwie zapasowe / klapki"),
+    ("bielizna", "Bielizna (nierowerowa)"),
+    ("bokserki", "Bielizna (nierowerowa)"),
+    ("majtki", "Bielizna (nierowerowa)"),
+    ("skarpety zwykle", "Socks"),
+    ("skarpetki zwykle", "Socks"),
+    ("koszulka na wieczor", "T-Shirt"),
+    ("koszulka po jezdzie", "T-Shirt"),
+    ("t-shirt", "T-Shirt"),
+    ("spodnie", "Spodnie d\u0142ugie / dresowe"),
+    ("dresow", "Spodnie d\u0142ugie / dresowe"),
+    ("recznik", "R\u0119cznik / str\u00f3j k\u0105pielowy"),
+    ("stroj kapielowy", "R\u0119cznik / str\u00f3j k\u0105pielowy"),
+    ("kamizelka hydracyjna", "Accessories"),
+    ("musette", "Accessories"),
+)
+
+
+def _wyp_cat_from_name(name, valid):
+    """Kategoria garazu wyprowadzona z nazwy pozycji - pewniejsza niz zgadywanie modelu."""
+    n = _wyp_norm(name)
+    for kw, cat in _NAME2CAT:
+        if kw in n and cat in valid:
+            return cat
+    return None
+
+
 _GROUP_ORDER = {
     "odziez rowerowa": 1, "warstwy i pogoda": 2, "naprawa roweru": 3, "elektronika": 4,
     "woda": 5, "jedzenie na rower": 6, "apteczka i leki": 7, "apteczka i bezpieczenstwo": 7,
@@ -6357,7 +6397,16 @@ async def api_wyposazenie_generate(request: Request):
     if wx and wx.get("ok"):
         _wxk = "|".join(str(wx.get(k)) for k in
                         ("tmin", "tmax", "precip_mm", "wind_max_ms", "season_hint"))
-    _ckey = _hl.sha1(("|".join([str(days), style, season, route, _wxk])
+    try:
+        _rc = _wyposazenie_db()
+        try:
+            _rk = "||".join(r["text"] for r in _rc.execute(
+                "SELECT text FROM packing_rules WHERE active=1 ORDER BY id"))
+        finally:
+            _rc.close()
+    except Exception:
+        _rk = ""
+    _ckey = _hl.sha1(("|".join([str(days), style, season, route, _wxk, _rk])
                       ).encode("utf-8")).hexdigest()
     _force = str(body.get("force") or "") in ("1", "true", "True")
     if not _force:
@@ -6371,6 +6420,20 @@ async def api_wyposazenie_generate(request: Request):
             _out = _json.loads(_row["payload"])
             _out["cached"] = True
             return _out
+
+    # --- wlasne zasady pakowania (INSTRUKCJE) ---
+    try:
+        _rcon = _wyposazenie_db()
+        try:
+            _rules = [r["text"] for r in _rcon.execute(
+                "SELECT text FROM packing_rules WHERE active=1 ORDER BY id")]
+        finally:
+            _rcon.close()
+    except Exception:
+        _rules = []
+    if _rules:
+        prompt += ("\nMOJE WLASNE ZASADY PAKOWANIA (maja pierwszenstwo przed ogolnymi):\n"
+                   + "\n".join("- " + r for r in _rules) + "\n")
 
     from qgpt_client import qgpt_text
 
@@ -6425,7 +6488,10 @@ async def api_wyposazenie_generate(request: Request):
             # garaz ma juz wlasciwe kategorie takze poza odzieza (Apteczka, Higiena i
             # kosmetyki, Naprawa i narzedzia, Zasilanie i ladowanie...) - wiec bierzemy
             # to, co model wskazal, a dopiero brak trafienia ladzie w Sprzet wyprawowy
-            if gc not in valid:
+            _byname = _wyp_cat_from_name(it.get("item"), valid)
+            if _byname:
+                gc = _byname
+            elif gc not in valid:
                 gc = EXPED_CAT
             try:
                 q = int(it.get("qty") or 1)
@@ -6473,9 +6539,11 @@ async def api_wyposazenie_generate(request: Request):
         if cat in ("Jersey", "Jersey Long Sleeve"):
             return 2                       # koszulki zawsze 2 - schna szybko
         if cat == "Bottoms / Bibs":
-            return 3 if _hard_rain else 2  # wkladka schnie dlugo
+            # 2 wystarcza: jedne na sobie, drugie schna. Trzecie tylko na dluzszym
+            # wyjezdzie, gdy mocno pada i nie ma szans na wyschniecie.
+            return 3 if (_hard_rain and days >= 4) else 2
         if cat == "Socks":
-            return min(days, 4) if _hard_rain else 2
+            return 3 if (_hard_rain and days >= 4) else 2
         if cat in ("Base Layer Top", "Base Layer Bottom"):
             return 2
         if cat in ("Bielizna (nierowerowa)",):
@@ -6536,6 +6604,29 @@ async def api_wyposazenie_generate(request: Request):
             if spare:
                 out.append(_mk_set("Czesci zamienne wyprawowe", "Naprawa i narz\u0119dzia", spare, 2))
             g["items"] = out
+
+    # ladowarka sieciowa jest CZESCIA zestawu do ladowania - nie dublujemy
+    for g in clean:
+        has_set = any("zestaw do ladowania" in _wyp_norm(i["item"]) for i in g["items"])
+        if not has_set:
+            continue
+        merged = []
+        for it in g["items"]:
+            n = _wyp_norm(it["item"])
+            if ("ladowark" in n or "kabel" in n) and "zestaw" not in n:
+                merged.append(it["item"])
+                continue
+            if "zestaw do ladowania" in n:
+                it["unit"] = "set"
+                it["qty"] = 1
+                base = it.get("reason") or ""
+                if merged or True:
+                    extra = ", ".join(merged) if merged else "\u0142adowarka sieciowa i kable"
+                    it["reason"] = ("W komplecie: " + extra + ". " + base).strip()
+        g["items"] = [it for it in g["items"]
+                      if not (("ladowark" in _wyp_norm(it["item"])
+                               or "kabel" in _wyp_norm(it["item"]))
+                              and "zestaw" not in _wyp_norm(it["item"]))]
 
     clean = [g for g in clean if g["items"]]
 
@@ -6608,6 +6699,37 @@ def api_wyposazenie_garage_options(category: str = Query(...), season: str = Que
             "weight_g": (int(r["weight_g"]) if r["weight_g"] is not None else None),
             "matches_season": bool(matches),
         })
+    # dopasowanie po nazwie w CALYM garazu (gear poza wskazanymi kategoriami)
+    qname0 = (q or "").strip().lower()
+    if qname0:
+        _w0 = [w for w in _re_email.split(r"[^\w\u00c0-\u017f]+", qname0) if len(w) > 3]
+        if _w0:
+            _have = set(x.get("gear_id") for x in out)
+            _c3 = _wyposazenie_db()
+            try:
+                _rows3 = _c3.execute(
+                    "SELECT id, category, brand, model, size, color, season, fabric, "
+                    "COALESCE(weight_g, weight_est_g) AS weight_g FROM gear WHERE active=1"
+                ).fetchall()
+            finally:
+                _c3.close()
+            for r in _rows3:
+                if r["id"] in _have:
+                    continue
+                hay = (" ".join([str(r["brand"] or ""), str(r["model"] or ""),
+                                 str(r["size"] or ""), str(r["category"] or "")])).lower()
+                if not any(w in hay for w in _w0):
+                    continue
+                base = " ".join([x for x in [r["brand"], r["model"]] if x]).strip() or "(bez nazwy)"
+                out.append({
+                    "src": "gear", "gear_id": r["id"],
+                    "label": "[" + str(r["category"]) + "] " + base,
+                    "category": r["category"], "size": r["size"], "color": r["color"],
+                    "season": r["season"], "fabric": r["fabric"],
+                    "weight_g": (int(r["weight_g"]) if r["weight_g"] is not None else None),
+                    "matches_season": True,
+                })
+
     # sprzet z tabeli equipment (lampki, Karoo, radar, torby) - dopasowanie po nazwie pozycji
     qname = (q or "").strip().lower()
     if qname:
@@ -6646,6 +6768,72 @@ def api_wyposazenie_garage_options(category: str = Query(...), season: str = Que
             out = keep
     out.sort(key=lambda x: (not x["matches_season"], x["label"].lower()))
     return {"category": category, "season": seas or None, "count": len(out), "items": out}
+
+
+@app.get("/api/planer/wyposazenie/kategorie")
+def api_wyposazenie_kategorie():
+    """Wszystkie kategorie garazu - do wyboru przy 'dodaj rzecz' / 'dodaj kategorie'."""
+    CLOTH = {"Base Layer Bottom", "Base Layer Top", "Bottoms / Bibs", "Glasses", "Gloves",
+             "Headwear", "Helmet", "Jacket / Shell", "Jersey", "Jersey Long Sleeve",
+             "Mid Layer Bottom", "Neckwear", "Overshoes", "Shoes", "Socks", "T-Shirt",
+             "Vest / Gilet", "Warmers", "Accessories"}
+    con = _wyposazenie_db()
+    try:
+        rows = con.execute("SELECT category, COUNT(*) c FROM gear WHERE active=1 "
+                           "GROUP BY category ORDER BY category").fetchall()
+    finally:
+        con.close()
+    out = [{"category": r["category"], "count": r["c"],
+            "kind": ("odziez" if r["category"] in CLOTH else "wyprawowy")}
+           for r in rows if r["category"]]
+    return {"count": len(out), "categories": out}
+
+
+@app.get("/api/planer/wyposazenie/zasady")
+def api_wyposazenie_zasady_get():
+    """Moje wlasne zasady pakowania (INSTRUKCJE) - wchodza do promptu generatora."""
+    con = _wyposazenie_db()
+    try:
+        rows = con.execute("SELECT id, text, active FROM packing_rules ORDER BY id").fetchall()
+    finally:
+        con.close()
+    return {"count": len(rows),
+            "rules": [{"id": r["id"], "text": r["text"], "active": bool(r["active"])}
+                      for r in rows]}
+
+
+@app.post("/api/planer/wyposazenie/zasady")
+async def api_wyposazenie_zasady_post(request: Request):
+    """Dodaj / wlacz / wylacz / usun zasade. body: {action:add|toggle|delete, text?, id?}."""
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    action = (str(b.get("action") or "")).strip().lower()
+    con = _wyposazenie_db()
+    try:
+        if action == "add":
+            txt = (str(b.get("text") or "")).strip()[:300]
+            if not txt:
+                raise HTTPException(status_code=400, detail="Pusta zasada")
+            cur = con.execute("INSERT INTO packing_rules(text, active, created_at) "
+                              "VALUES(?,1,datetime('now'))", (txt,))
+            con.commit()
+            return {"ok": True, "id": cur.lastrowid}
+        rid = int(b.get("id") or 0)
+        if not rid:
+            raise HTTPException(status_code=400, detail="Brak id")
+        if action == "toggle":
+            con.execute("UPDATE packing_rules SET active = 1 - COALESCE(active,0) WHERE id=?",
+                        (rid,))
+        elif action == "delete":
+            con.execute("DELETE FROM packing_rules WHERE id=?", (rid,))
+        else:
+            raise HTTPException(status_code=400, detail="Nieznana akcja")
+        con.commit()
+    finally:
+        con.close()
+    return {"ok": True}
 
 
 @app.post("/api/planer/wyposazenie/garage-add")
