@@ -41,7 +41,7 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 PREFIX = {"gear": "", "equipment": "eq", "components": "cmp"}
 # tam waga to zwykle masa przesylki z opakowaniem - nie ufamy
 MARKETPLACE = ("amazon.", "allegro.", "ebay.", "aliexpress.", "temu.", "olx.")
-PRZERWA = 2.5          # sekundy miedzy zapytaniami do sieci
+PRZERWA = 5.0          # sekundy miedzy zapytaniami do sieci
 
 
 def log(txt):
@@ -75,12 +75,31 @@ def szukaj(q, n=3):
     return out
 
 
+SMIECI = re.compile(r'(zestaw|wersja|glowny|szybszy|modul|rozmiar)', re.I)
+
+
+def czysc_zapytanie(marka, model):
+    """Nazwy modeli w bazie bywaja opisowe, np.
+    'Zipp 303 S XPLR - Zestaw #1 (glowny gravel)' albo 'Canyon CP0047 - mostek 80mm'.
+    Do wyszukiwarki zostawiamy sam produkt: ucinamy po myslniku i wyrzucamy nawiasy."""
+    m = model or ''
+    m = re.sub(r'\([^)]*\)', ' ', m)              # tresc w nawiasach
+    m = re.split(r'\s+[-\u2013\u2014]\s+', m)[0]      # wszystko po myslniku/pauzie
+    m = re.sub(r'#\d+', ' ', m)
+    m = re.sub(r'\s{2,}', ' ', m).strip(' -,;')
+    if not m or SMIECI.search(m):
+        m = re.sub(r'\s{2,}', ' ', re.sub(r'[-\u2013\u2014#()]', ' ', model or '')).strip()
+    return ('%s %s' % (marka or '', m)).strip()
+
+
 _SYS_WERYF = (
-    "Sprawdzasz, czy strona sklepu opisuje DOKLADNIE ten produkt, ktorego szukamy. "
-    "Dostajesz: szukany produkt (marka + model) oraz dane odczytane ze strony. "
-    "Odpowiadasz jednym slowem: TAK jesli to ten sam produkt (dopuszczalne inne "
-    "warianty koloru lub rozmiaru), NIE jesli to inny produkt, inna generacja, "
-    "akcesorium, kategoria zbiorcza albo strona nieproduktowa. W razie watpliwosci: NIE."
+    "Sprawdzasz, czy strona sklepu dotyczy szukanego produktu. Dostajesz nazwe szukana "
+    "(marka + model, czesto skrocona lub zapisana po polsku) oraz dane ze strony. "
+    "Odpowiadasz jednym slowem. TAK gdy to ten sam produkt LUB ta sama rodzina produktu "
+    "u tego samego producenta - inny kolor, rozmiar, rocznik czy nieco inna nazwa handlowa "
+    "sa w porzadku. NIE gdy to inny producent, wyraznie inny typ rzeczy, strona kategorii, "
+    "artykul redakcyjny bez produktu albo strona nieproduktowa. "
+    "Nazwa szukana bywa niepelna - nie wymagaj doslownej zgodnosci."
 )
 
 
@@ -125,8 +144,13 @@ def przetworz(conn, tabela, row, kategorie):
     if row["url"]:
         kandydaci = [row["url"]]
     else:
-        kandydaci = szukaj("%s %s" % (marka or "", model or ""))
+        zapytanie = czysc_zapytanie(marka, model)
+        kandydaci = szukaj(zapytanie)
         time.sleep(PRZERWA)
+        if not kandydaci:                      # pusto = mozliwy limit wyszukiwarki
+            time.sleep(20)
+            kandydaci = szukaj(zapytanie)
+            time.sleep(PRZERWA)
     if not kandydaci:
         return {"id": gid, "nazwa": nazwa, "wynik": "brak wynikow wyszukiwania"}
 
@@ -136,7 +160,7 @@ def przetworz(conn, tabela, row, kategorie):
         except Exception as e:
             continue
         pola = d.get("fields") or {}
-        if not row["url"] and not potwierdz(marka, model, pola, url):
+        if not row["url"] and not potwierdz(marka, czysc_zapytanie("", model), pola, url):
             continue
 
         zmiany, host = [], urlparse(url).netloc.lower()
@@ -153,6 +177,21 @@ def przetworz(conn, tabela, row, kategorie):
             ustaw("ean", pola.get("ean"), "ean")
         if "color" in row.keys():
             ustaw("color", pola.get("color"), "kolor")
+            # Kolor uproszczony (color_q) - to WLASNIE JEGO pokazuje kolumna "Kolor"
+            # w tabeli Garazu. Bez tego rzecz ma kolor w bazie, ale w tabeli widac
+            # pusto az do recznego wejscia w edycje i zapisania.
+            if "color_q" in row.keys() and not row["color_q"]:
+                _r = conn.execute("SELECT color FROM %s WHERE id=?" % tabela, (gid,)).fetchone()
+                _txt = _r[0] if _r else None
+                if _txt:
+                    try:
+                        from qbot_web import _color_q as _do_color_q
+                        _q = _do_color_q(_txt)
+                    except Exception:
+                        _q = None
+                    if _q:
+                        conn.execute("UPDATE %s SET color_q=? WHERE id=?" % tabela, (_q, gid))
+                        zmiany.append("kolor uproszczony %s" % _q)
         cur = (pola.get("currency") or "").upper()
         if "purchase_price" in row.keys() and cur in ("", "PLN") and pola.get("price"):
             ustaw("purchase_price", pola.get("price"), "cena")
