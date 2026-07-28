@@ -56,3 +56,4 @@ tmp_*.py
 .komoot_session
 outgoing/komoot/
 .worklock.json
+docs/audit/enrich_trigger.json

@@ -606,8 +606,18 @@ def main() -> int:
 
             garmin_upload = upload_activity(output_fit, method=args.garmin_upload_method)
         except Exception as exc:
-            garmin_upload = {"status": "failed", "error": str(exc), "method": args.garmin_upload_method}
-            exit_code = 1
+            _msg = str(exc)
+            # Garmin odpowiada 409 "Duplicate Activity", gdy jazda juz u niego jest.
+            # To NIE jest blad - cel osiagniety, aktywnosc dotarla na Garmina.
+            # Bez tego sync w kolko wysyla to samo i melduje porazke co 10 minut.
+            _dup = ("Duplicate Activity" in _msg) or ("API Error 409" in _msg)
+            if _dup:
+                garmin_upload = {"status": "duplicate", "detail": _msg,
+                                 "method": args.garmin_upload_method}
+            else:
+                garmin_upload = {"status": "failed", "error": _msg,
+                                 "method": args.garmin_upload_method}
+                exit_code = 1
 
     report = report_payload(
         activity=activity,
@@ -627,7 +637,9 @@ def main() -> int:
         update_activity_state(
             args.processed,
             activity=activity,
-            status="uploaded" if garmin_upload.get("status") == "success" else "failed",
+            status=("uploaded"
+                    if garmin_upload.get("status") in ("success", "duplicate")
+                    else "failed"),
             original_fit=input_fit,
             proxy_fit=output_fit,
             report=report_path,
@@ -638,12 +650,84 @@ def main() -> int:
     return exit_code
 
 
+SYNC_ALERT_STATE = APP_DIR / "state/sync_alert_state.json"
+SYNC_ALERT_COOLDOWN_H = 6
+
+
+def _sync_alert(reason: str) -> None:
+    """Jeden komunikat na Telegram przy awarii syncu, nie czesciej niz co 6 h.
+
+    Bez tego awaria siedzi wylacznie w pliku z logiem i wychodzi na jaw
+    dopiero po dobie, przez niewlasciwy objaw (brak raportu z jazdy).
+    """
+    import time as _t
+    profile = os.environ.get("PROFILE_NAME", "?")
+    try:
+        state = json.loads(SYNC_ALERT_STATE.read_text(encoding="utf-8"))
+        if not isinstance(state, dict):
+            state = {}
+    except Exception:
+        state = {}
+
+    last = state.get(profile, {}).get("last_alert_ts", 0)
+    if _t.time() - last < SYNC_ALERT_COOLDOWN_H * 3600:
+        print(f"[alert wyciszony] {reason}", file=sys.stderr)
+        return
+
+    try:
+        import qbot_config as _cfg
+        text = (
+            "Sync Karoo -> Garmin nie dziala\n\n"
+            f"Profil: {profile}\n"
+            f"Powod: {reason}\n\n"
+            "Jazdy nie trafiaja do bazy i nie powstana raporty.\n"
+            "Jesli to wygasly dostep do Hammerheada, wklej nowy tutaj:\n"
+            "https://albert.cytr.us/hammerhead-dostep"
+        )
+        requests.post(
+            f"https://api.telegram.org/bot{_cfg.TELEGRAM_TOKEN}/sendMessage",
+            json={"chat_id": _cfg.TELEGRAM_CHAT_ID, "text": text[:4000]},
+            timeout=10,
+        ).raise_for_status()
+    except Exception as exc:
+        print(f"[alert nieudany] {exc}", file=sys.stderr)
+        return
+
+    state.setdefault(profile, {})["last_alert_ts"] = int(_t.time())
+    try:
+        SYNC_ALERT_STATE.parent.mkdir(parents=True, exist_ok=True)
+        SYNC_ALERT_STATE.write_text(
+            json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _sync_alert_clear() -> None:
+    """Udany przebieg kasuje wyciszenie - kolejna awaria zaalarmuje od razu."""
+    profile = os.environ.get("PROFILE_NAME", "?")
+    try:
+        state = json.loads(SYNC_ALERT_STATE.read_text(encoding="utf-8"))
+        if isinstance(state, dict) and profile in state:
+            state.pop(profile, None)
+            SYNC_ALERT_STATE.write_text(
+                json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
     try:
-        raise SystemExit(main())
+        _rc = main()
+        if _rc == 0:
+            _sync_alert_clear()
+        else:
+            _sync_alert(f"przebieg zakonczony kodem {_rc}")
+        raise SystemExit(_rc)
     except NoUnprocessedActivity as exc:
         print(str(exc))
+        _sync_alert_clear()
         raise SystemExit(0)
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
+        _sync_alert(str(exc))
         raise SystemExit(1)

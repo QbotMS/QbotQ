@@ -163,9 +163,13 @@ class HammerheadTokenStore:
             return tokens
 
         if tokens and tokens.refresh_token:
-            refreshed = refresh_tokens(tokens.refresh_token)
-            self.save(refreshed)
-            return refreshed
+            try:
+                refreshed = refresh_tokens(tokens.refresh_token)
+            except HammerheadAuthError:
+                refreshed = None
+            if refreshed is not None:
+                self.save(refreshed)
+                return refreshed
 
         login_tokens = login_from_env()
         if login_tokens:

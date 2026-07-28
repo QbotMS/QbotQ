@@ -32,6 +32,37 @@ REPORTED_FILE = Path("/opt/qbot/app/data/reported_activities.json")
 REPORTED_FILE.parent.mkdir(exist_ok=True)
 IN_PROGRESS_TTL_HOURS = 6
 RIDE_REPORT_PREVIEW_DIR = Path("/opt/qbot/app/outgoing/ride_report_previews")
+MISSING_ALERT_FILE = Path("/opt/qbot/app/data/missing_data_alerts.json")
+
+
+def _missing_alert_sent(activity_id) -> bool:
+    """Czy dla tej aktywnosci wyslano juz alert o braku danych lokalnych."""
+    try:
+        return str(activity_id) in json.loads(
+            MISSING_ALERT_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+
+
+def _mark_missing_alert_sent(activity_id) -> None:
+    """Zapamietaj, ze alert poszedl - kolejne przebiegi crona maja milczec."""
+    try:
+        data = json.loads(MISSING_ALERT_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            data = {}
+    except Exception:
+        data = {}
+    data[str(activity_id)] = int(time.time())
+    if len(data) > 200:
+        for k, _v in sorted(data.items(), key=lambda kv: kv[1])[:len(data) - 200]:
+            data.pop(k, None)
+    try:
+        MISSING_ALERT_FILE.parent.mkdir(parents=True, exist_ok=True)
+        MISSING_ALERT_FILE.write_text(
+            json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except OSError as exc:
+        print(f"Nie udalo sie zapisac znacznika alertu: {exc}")
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -935,7 +966,11 @@ def process_activity(activity_id, activity_name="Trening"):
                 f"Aktywność: {activity_name} ({activity_id})"
             )
             try:
-                send_telegram(tg_alert)
+                if _missing_alert_sent(activity_id):
+                    print("Alert o braku danych juz wyslany - pomijam powiadomienie.")
+                else:
+                    send_telegram(tg_alert)
+                    _mark_missing_alert_sent(activity_id)
             except Exception as _tge:
                 print(f"⚠️  Alert Telegram: {_tge}")
             mark_report_status(activity_id, activity_name, "failed",
