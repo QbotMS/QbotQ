@@ -6409,6 +6409,65 @@ def _wyp_weather_tokens(wx):
     return t
 
 
+def _wyp_bike_profile():
+    """Opis roweru zbudowany z GARAZU (bikes + components + tires). Zrodlo prawdy
+    o sprzecie - zamiast zaszytego opisu."""
+    try:
+        con = _wyposazenie_db()
+        try:
+            bike = con.execute(
+                "SELECT name, brand, model, type, year, weight_kg, notes "
+                "FROM bikes WHERE active=1 ORDER BY id LIMIT 1").fetchone()
+            comps = con.execute(
+                "SELECT category, position, brand, model, spec, notes "
+                "FROM components WHERE active=1 AND COALESCE(status,'') != 'wycofany' "
+                "ORDER BY category, id").fetchall()
+            tires = con.execute(
+                "SELECT brand, model, width_mm, position, status, fits_wheelset "
+                "FROM tires WHERE COALESCE(status,'') = 'zamontowana'").fetchall()
+        finally:
+            con.close()
+    except Exception:
+        return ""
+
+    if not bike and not comps:
+        return ""
+
+    lines = []
+    if bike:
+        head = " ".join([x for x in [bike["brand"], bike["model"]] if x]).strip()
+        extra = []
+        if bike["type"]:
+            extra.append(str(bike["type"]))
+        if bike["year"]:
+            extra.append(str(bike["year"]))
+        if bike["weight_kg"]:
+            extra.append("%s kg" % bike["weight_kg"])
+        lines.append("- rower: %s%s" % (head, (" (" + ", ".join(extra) + ")") if extra else ""))
+
+    SKIP = ("spare parts", "other")
+    for c in comps:
+        if (c["category"] or "").lower() in SKIP:
+            continue
+        nm = " ".join([x for x in [c["brand"], c["model"]] if x]).strip()
+        if not nm:
+            continue
+        det = []
+        if c["spec"]:
+            det.append(str(c["spec"])[:90])
+        if c["notes"]:
+            det.append(str(c["notes"])[:170])
+        lines.append("- %s: %s%s" % (c["category"], nm,
+                                     (" | " + " | ".join(det)) if det else ""))
+
+    for t in tires:
+        lines.append("- opona (%s): %s %s %smm %s" % (
+            t["position"] or "?", t["brand"] or "", t["model"] or "",
+            t["width_mm"], t["fits_wheelset"] or ""))
+
+    return "\n".join(lines)
+
+
 def _wyp_instructions(season, style, wx):
     """INSTRUKCJE z Garazu (tabela instructions) dopasowane do sezonu, pogody i stylu.
     Pusta kolumna = pasuje zawsze. Wypisane wszystkie rodzaje pogody = pasuje zawsze."""
@@ -6616,6 +6675,7 @@ async def api_wyposazenie_generate(request: Request):
         _wxk = "|".join(str(wx.get(k)) for k in
                         ("tmin", "tmax", "precip_mm", "wind_max_ms", "season_hint"))
     _rk = "||".join(_wyp_instructions(season, style, wx))
+    _rk += "##" + _hl.sha1((_wyp_bike_profile() or "").encode("utf-8")).hexdigest()[:12]
     _ckey = _hl.sha1(("|".join([str(days), style, season, route, _wxk, _rk])
                       ).encode("utf-8")).hexdigest()
     _force = str(body.get("force") or "") in ("1", "true", "True")
@@ -6630,6 +6690,23 @@ async def api_wyposazenie_generate(request: Request):
             _out = _json.loads(_row["payload"])
             _out["cached"] = True
             return _out
+
+    # --- ROWER z garazu: nadrzedny wobec ogolnych zalozen o sprzecie ---
+    _bike = _wyp_bike_profile()
+    if _bike:
+        prompt += (
+            "\nMOJ ROWER (dane z garazu - NADRZEDNE wobec zalozen ogolnych):\n" + _bike + "\n"
+            "Z TEGO OPISU WYPROWADZ KONSEKWENCJE DLA PAKOWANIA, m.in.:\n"
+            "- elektroniczna grupa (AXS/Di2) => ladowarka do baterii przerzutki I zapasowa "
+            "naladowana bateria; baterie CR2032 do manetek gdy dotyczy;\n"
+            "- miernik mocy (Quarq/power meter) => zapasowa bateria wlasciwego typu;\n"
+            "- liczba rzedow kasety => spinka lancucha MUSI byc na te liczbe rzedow "
+            "(spinka 12-rzedowa nie pasuje do 13 rzedow);\n"
+            "- opony tubeless => korki/wtyczki i narzedzie, zapasowy rdzen wentyla, a zapasowa "
+            "detka opisana SZEROKOSCIA opony i dlugim wentylem;\n"
+            "- konkretne hamulce => klocki wlasciwego typu jako pozycja warunkowa;\n"
+            "- alarm/elektronika w rowerze => sprawdzenie lub zapas baterii.\n"
+            "Nie wypisuj czesci zamontowanych na stale, ktorych sie nie zabiera na trase.\n")
 
     # --- INSTRUKCJE z Garazu (tabela instructions) - maja pierwszenstwo ---
     _rules = _wyp_instructions(season, style, wx)
