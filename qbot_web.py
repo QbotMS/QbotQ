@@ -2146,7 +2146,7 @@ def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, 
         "KOMPLETY: jesli reguly_outfitu wskazuja pary (dana koszulka -> konkretne spodenki/warstwy), trzymaj sie ich. "
         "SPOJNOSC MARKI (WSKAZOWKA, nie twarda regula - logika doboru i pogoda moga ja nadpisac): w miare mozliwosci trzymaj zestaw w jednej marce - do koszulki PEdALED dobieraj spodenki PEdALED, do koszulki Albion - spodenki Albion. Wyjatek: gdy koszulka to Rapha Explore (LS lub SS) i w garderobie nie ma ulubionych spodenek Rapha, uzyj spodenek PEdALED albo Albion. "
         "Kazda pozycja: typ = OGOLNY rodzaj (np. 'przewiewna koszulka','spodenki z wkladka','wiatrowka'); przyklad = pole 'nazwa' z listy gear (dokladnie, BEZ opisu); tryb = 'na sobie' albo 'zabierz'; uwaga = 1 krotkie zdanie. "
-        "W KAZDYM zestawie OBOWIAZKOWO: koszulka/jersey ORAZ spodenki z wkladka (kategoria 'Bottoms / Bibs'). NIE proponuj kasku ani butow. 4-7 pozycji na zestaw. przyklad WYLACZNIE z listy gear."
+        "W KAZDYM zestawie OBOWIAZKOWO: koszulka/jersey ORAZ spodenki z wkladka (kategoria 'Bibs shorts'). NIE proponuj kasku ani butow. 4-7 pozycji na zestaw. przyklad WYLACZNIE z listy gear."
     )
     _pog_skrot = {"peak_wbgt": peak, "pogoda_ogolem": weather_overall, "alerty": alerty}
     pay2 = {"trasa": _trasa, "forma": forma, "climbs": climbs, "surface_blocks": surface_blocks,
@@ -4635,7 +4635,7 @@ GARAGE_DB = os.environ.get("QBOT_GARAGE_DB", "/opt/qbot/app/data/garage.db")
 # Kolejnosc slotow w panelu (jedna, caloroczna lista; z buty/kask/kurtka).
 RIDE_GEAR_SLOTS = [
     "Base Layer Top", "Base Layer Bottom", "Jersey", "T-Shirt", "Jersey Long Sleeve",
-    "Bottoms / Bibs", "Mid Layer Bottom", "Vest / Gilet", "Jacket / Shell",
+    "Bibs shorts", "Trousers", "Mid Layer Bottom", "Vest / Gilet", "Jacket / Shell",
     "Warmers", "Gloves", "Headwear", "Neckwear", "Socks", "Overshoes",
     "Shoes", "Helmet", "Glasses", "Accessories",
 ]
@@ -6741,10 +6741,13 @@ async def api_wyposazenie_generate(request: Request):
             return 1
         if cat in ("Jersey", "Jersey Long Sleeve"):
             return 2                       # koszulki zawsze 2 - schna szybko
-        if cat == "Bottoms / Bibs":
+        if cat == "Bibs shorts":
             # 2 wystarcza: jedne na sobie, drugie schna. Trzecie tylko na dluzszym
             # wyjezdzie, gdy mocno pada i nie ma szans na wyschniecie.
             return 3 if (_hard_rain and days >= 4) else 2
+        if cat == "Trousers":
+            # dlugie spodnie / szorty bez wkladki - jedna para wystarcza
+            return 1
         if cat == "Socks":
             # instrukcja z garazu: do 3 dni 2 pary, powyzej 3 dni 3 pary
             return 2 if days <= 3 else 3
@@ -6869,7 +6872,7 @@ async def api_wyposazenie_generate(request: Request):
 
     # --- "na sobie" tylko RAZ na kategorie i tylko dla rzeczy, ktore da sie miec na sobie ---
     WORN_OK = {"Helmet", "Glasses", "Shoes", "Jersey", "Jersey Long Sleeve",
-               "Bottoms / Bibs", "Socks", "Gloves", "Headwear"}
+               "Bibs shorts", "Trousers", "Socks", "Gloves", "Headwear"}
     seen_worn = set()
     for g in clean:
         for it in g["items"]:
@@ -7065,7 +7068,7 @@ def api_wyposazenie_garage_options(category: str = Query(""), season: str = Quer
 @app.get("/api/planer/wyposazenie/kategorie")
 def api_wyposazenie_kategorie():
     """Wszystkie kategorie garazu - do wyboru przy 'dodaj rzecz' / 'dodaj kategorie'."""
-    CLOTH = {"Base Layer Bottom", "Base Layer Top", "Bottoms / Bibs", "Glasses", "Gloves",
+    CLOTH = {"Base Layer Bottom", "Base Layer Top", "Bibs shorts", "Trousers", "Glasses", "Gloves",
              "Headwear", "Helmet", "Jacket / Shell", "Jersey", "Jersey Long Sleeve",
              "Mid Layer Bottom", "Neckwear", "Overshoes", "Shoes", "Socks", "T-Shirt",
              "Vest / Gilet", "Warmers", "Accessories"}

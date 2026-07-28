@@ -1,6 +1,132 @@
 # QBot -- CURRENT (handoff sesji)
 
 
+## Sesja 2026-07-27 -- Planer wyprawy: data trwala, PDF (tresc+FORMA), ogonki, nazwy postojow
+
+WYKONANE I WDROZONE (na zywo, zweryfikowane):
+- DATA WYPRAWY TRWALA: pole #wyprawa-data zapisywane w wersji/historii/szkicu
+  (planer_saved / planer_hist / planer_draft) i odtwarzane przy wczytaniu (pole +
+  feasDeparture + refreshFeas). Wczesniej data zyla tylko ulotnie w polu -> gubiona po
+  reloadzie i po wczytaniu wersji z historii. (planer-wyprawy-render.js)
+- GODZINA WERSJI lokalna: verName formatuje saved_at przez new Date() -> koniec z UTC
+  08:59, pokazuje lokalne 10:59.
+- PDF FORMA: data plynie planer -> wyprawa-oczekiwanie -> /api/wyprawa/pdf-start -> strona
+  druku (?departure=); render liczy XSS/forme; body dostaje klase pdf-forma; #ocena-formy
+  odslaniana w druku TYLKO na pierwszej sekcji (ALL) i gdy jest data; bez daty pomijana.
+  (planer-wyprawy-render.js, wyprawa-oczekiwanie.html, qbot_web.py: &departure= w URL druku
+  + wait az forma sie doliczy)
+- PDF PELNA TRESC (bug): builder lewego panelu (#allpanel) PRZENOSIL OPIS/tabele/FORMA/tlo do
+  paneli .ap-pane{display:none} i robil to TAKZE w trybie druku -> tresc byla w DOM, ale
+  niewidoczna -> PDF jej nie pokazywal. FIX: build() pomijany gdy print=1 -> tresc zostaje w
+  .wrap i jest widoczna (jak przed dodaniem panelu). Zweryfikowane na ZLOZONYM dokumencie
+  (offsetHeight): opis 605, tlo hist 740, tlo geo 499, FORMA 415. (planer-wyprawy.html)
+- PDF STARY CACHE (bug): _wyprawa_source_hash zaczynal sie od "v2" i nie zmienial przy
+  zmianach layoutu/FORMY -> serwowal zapisany, bledny PDF. FIX: bump "v2"->"v3" + czyszczenie
+  wpisu trasy w qbot_v2.wyprawa_report. Test: pdf-start cached:false, build od nowa 71 s,
+  8.7 MB, bez bledu. (qbot_web.py)
+- OGONKI W OPISACH LLM: 3 prompty w qbot3/routes/planer_opis.py (_SYS, _SYS_DZIEN, _SYS_TLO)
+  dostaly twarda instrukcje o pelnej polszczyznie (a c e l n o s z z). Cache Oppelnera
+  (planer_route_opis_dni/opis/tlo) wyczyszczony i zregenerowany. Efekt: Dzien->Dzien z ogonkiem,
+  trase->trase z ogonkiem, wiekszosci -> wiekszosci z ogonkami.
+- OGONKI W "OCENA FORMY": 14 sztywnych stringow werdyktu w fitmodel/expedition_feasibility.py
+  przepisane z ogonkami (Dzien powyzej sciany, Srednia miesci sie, Narastajace zmeczenie ...).
+  Deterministyczne, bez LLM/cache. Cache PDF trasy wyczyszczony.
+- NAZWY POSTOJOW: nocleg / od-do dnia / fakty PDF braly NAJBLIZSZE PO KM ignorujac dist_m
+  (odleglosc od trasy) -> lapaly przysiolki z boku (Gorniak 1615 m, Gorka 546 m). FIX:
+  score = |km - punkt| + 3.0*(dist_m/1000) w _nearest_town (planer_opis.py), _place_at_km i
+  _wyprawa_place_at_km (qbot_web.py). Efekt: cut 119.5 -> Ziebice, cut 234.55 -> Prudnik.
+
+COMMITY:
+- 5d7e6f5 (push origin/main): data wyprawy trwala + FORMA w PDF + ogonki opisow + nazwy
+  postojow wazone dist_m (qbot_web.py, qbot3/routes/planer_opis.py).
+- DO COMMITA (jawne sciezki, bez -a): qbot_web.py (v3 + wait FORMA) +
+  fitmodel/expedition_feasibility.py (ogonki werdyktu) + docs/CURRENT.md.
+- Statyk planer-wyprawy.html jest POZA repo aplikacji (wlasne .git w /opt/qbot/web/public) --
+  zywy natychmiast; ten commit go nie obejmuje.
+
+OTWARTE / UWAGI:
+- FLAGA /opt/qbot/artifacts/noclegi_offline.flag (offline testy, 24.07) nadal WLACZONA ->
+  /api/noclegi zwraca OFFLINE, front planera utyka na "sprawdzam noclegi..." (obsluguje tylko
+  status OK). Do decyzji: wylaczyc flage (koszty Google) czy poprawic UI na czytelny komunikat.
+- NAZWY POSTOJOW: brak rangi/populacji miejsca w route_poi_layer (zrodlo geonames, wszystko
+  jako 'town'); dist_m to jedyny sygnal. Duze miasto dalej od trasy niz wies przy niej ->
+  wybierze blizsza. Twarda ranga (dociagniecie populacji z geonames) = osobne zadanie.
+- Kanal SSH (MacOS-MCP:Shell) wielokrotnie wieszal sie ~4 min na komendach git (echo ok
+  przechodzi). Commity robione recznie przez uzytkownika w terminalu.
+
+---
+
+## Sesja 2026-07-25 -- awaria lancucha Karoo -> Garmin -> baza (dwa wygasle dostepy)
+
+Decyzja: docs/DECISIONS.md (wpis 2026-07-25).
+
+OBJAW ZGLOSZONY PRZEZ UZYTKOWNIKA: Telegram wysylal co 30 min "Raport z jazdy nie zostal
+wygenerowany / Brak danych aktywnosci w lokalnej bazie" dla i169091100 (Afternoon Ride).
+
+PRZYCZYNA (dwa niezalezne wygasniecia w tym samym oknie):
+1. Hammerhead: refresh odrzucany od 2026-07-24 13:10 (`invalid_grant / invalid refresh token`,
+   potwierdzone realnym zapytaniem do dashboard.hammerhead.io/v1/auth/token). Logowanie
+   przez SRAM ID (SSO) => sciezka GARMIN-owa "email+haslo" NIE ISTNIEJE dla Hammerheada,
+   `grant_type=password` nie zadziala. Jedyna droga: swiezy `jwt:refresh` z przegladarki.
+2. Garmin: `API Error 401 / Failed to retrieve social profile`. Profil michal wskazywal na
+   WLASNY magazyn `.garmin_tokens/michal/` (token wygasl 2026-05-20 04:15, plik nietkniety
+   od 19 maja -- sync odswiezal sesje TYLKO W PAMIECI i nigdy nie zapisywal). Magazyn
+   domyslny `.garmin_tokens/` byl caly czas zywy (odswiezany co 15 min przez importer).
+
+WZORZEC DO ZAPAMIETANIA (wylozyl system DWUKROTNIE tego samego wieczoru):
+istnieje magazyn DOMYSLNY i magazyn PROFILOWY; utrzymywany przy zyciu jest domyslny,
+a sync czyta profilowy. Przy Hammerheadzie formularz zapisal do domyslnego zamiast do
+`michal.json`; przy Garminie profilowy gnil od maja. Przed kazda zmiana poswiadczen
+SPRAWDZIC, ktory plik realnie czyta dany proces (`HAMMERHEAD_TOKENSTORE`,
+`GARMIN_TOKENSTORE` w config/profiles/<profil>.env).
+
+WYKONANE I WDROZONE (zweryfikowane na zywo):
+- `hammerhead_auth.py::get_tokens` -- nieudany refresh nie przerywa procesu wyjatkiem,
+  tylko pozwala sprobowac kolejnych drog (logowanie) i dopiero na koncu zglasza brak.
+- `qbot_web.py` -- nowy `GET /hammerhead-dostep` (formularz za sesja) + `POST
+  /api/hammerhead/refresh-token`. Uzytkownik wkleja `jwt:refresh` z przegladarki PROSTO
+  na serwer; wartosc nie przechodzi przez model ani przez zapis rozmowy. Endpoint zapisuje
+  do magazynu domyslnego ORAZ do kazdego `HAMMERHEAD_TOKENSTORE` z config/profiles/*.env
+  (zwraca liste `stores`), zeby rozjazd plikow sie nie powtorzyl.
+- `config/profiles/michal.env` -- `GARMIN_TOKENSTORE` przepiety z `.garmin_tokens/michal`
+  na wspolny `.garmin_tokens` (ten sam uzytkownik: get_full_name="Michal", id=63697126,
+  potwierdzone na zywo). Kopia: `michal.env.bak.20260725_220140`.
+- `qbot-hammerhead-sync` -- Garmin `409 Duplicate Activity` to NIE porazka: status
+  `duplicate`, exit_code 0, aktywnosc odznaczona jako przetworzona (`uploaded`). Bez tego
+  sync w nieskonczonosc wysylal to samo i meldowal blad co 10 min.
+- `qbot-hammerhead-sync` -- `_sync_alert()` / `_sync_alert_clear()`: JEDEN komunikat na
+  Telegram przy realnej awarii, wyciszenie 6 h (`state/sync_alert_state.json`), udany
+  przebieg kasuje wyciszenie. W tresci link do /hammerhead-dostep.
+- `ride_report.py` -- alert "brak danych aktywnosci" wysylany RAZ na aktywnosc
+  (`data/missing_data_alerts.json`), nie przy kazdym przebiegu crona co 30 min.
+
+DOWODY NA ZYWO:
+- 21:50 pierwszy pobrany FIT od 24.07 (216144 b, activityTime 2026-07-25T11:44:16Z).
+- 22:15:07 jazda w bazie: external_id 23731387812, "Marki Kolarstwo", garmin_live,
+  20.8 km, 3503 s, 145 W, aerobic_training_eff 2.4, activity_record 3502 rekordy 1 Hz.
+- 22:40 sync zwraca `"status": "duplicate"` zamiast `"failed"`; brak pliku wyciszenia
+  alarmu => zaden falszywy alarm nie poszedl.
+
+USTALENIE MERYTORYCZNE (korekta bledu asystenta): przystanek na Garminie NIE jest zbedna
+petla. `qbot_activity_ingest.py` pobiera FIT Z POWROTEM z Garmina
+(`download_activity(..., ORIGINAL)`) i nie ma ani jednego odwolania do Hammerheada, a
+`import_garmin_training.py` bierze z API Garmina pola LICZONE PRZEZ GARMINA
+(`aerobicTrainingEffect`, `anaerobicTrainingEffect`, `intensityFactor`), ktorych plik
+z Karoo nie zawiera. Plik w `hammerhead_originals/` to kopia robocza, NIE zrodlo bazy.
+UWAGA: `docs/archive/MODELQ_V1.md` twierdzi, ze strumienie 1 Hz pochodza z
+`hammerhead_originals` -- to nieaktualne (dokument v1, zarchiwizowany). Zywy kod wygrywa.
+
+OTWARTE:
+- Nie ustalono, ktora droga dzisiejsza jazda trafila na Garmina (jedyna zalogowana proba
+  wysylki zwrocila 409 "juz mam"; nazwa "Marki Kolarstwo" to nazewnictwo Garmina, nie
+  Karoo). Do wyjasnienia przy nastepnej jezdzie.
+- W przebiegu 22:40 pojawil sie warning `No such field 6 for dev_data_index 3` (pola
+  developerskie QExt2 w walidacji FIT). Nie blokuje syncu; `qbot_activity_ingest.py` ma na
+  to monkey-patch `_safe_get_dev_type`, `qbot-hammerhead-sync` nie ma. Do sprawdzenia.
+- Rozwazyc uporzadkowanie wzorca "magazyn domyslny vs profilowy" dla wszystkich integracji.
+
+---
+
 ## Sesja 2026-07-24 -- raport trasy: asfalt niebieski + zoom wykresu przy zaznaczeniu
 
 WYKONANE I WDROZONE (na zywo; statyk POZA repo -- brak commita kodu):
@@ -257,3 +383,37 @@ OTWARTE / DECYZJA UZYTKOWNIKA:
   proxuje na `q-bot.service` -> `/opt/qbot/app/mcp_server.py`.
   `qbot_api.py` zawiera martwy duplikat `/ride-readiness`.
 - Strona Karoo (repo QExt2): budzet RSRV natywnie w XSS z `ctlXss`.
+
+
+## [2026-07-27] Planowane obciazenie z Planera Wypraw (XSS/dzien) -- Kroki 1+2
+Cel: system ma widziec planowane obciazenie na kolejne dni (wyprawy z Planera).
+- Tabela qbot_v2.planned_load_daily (migracja sql/planned_load_daily_v1.sql, idempotentna): day+source PK, entry_id, route_id, stage_idx, xss, dist_km, moving_h, note. OSOBNO od fitmodel_daily (plan != fakt).
+- qbot_web.py: _dni_cuts_for_route + _recompute_planned_load_for_entry (XSS/dzien = podzial Planera dni_json -> cuts -> _planer_stage_xss; dzien N = event.day + N-1; idempotentne, best-effort). Endpoint POST /api/planer/planned-load/recompute. Hook w POST /api/calendar/route (po zapisie mapowania trasy, w try/except -- nie psuje zapisu).
+- Widocznosc: _forma_planned_events dokleja 'planowane obciazenie: MM-DD ~X XSS ... (razem ~T)'; prompt Doradcy traktuje XSS jak realny trening. /api/calendar zwraca days[d].planned_xss + liste 'planned'. kalendarz-render.js: badge w komorce dnia + chip 'Planowane XSS' w szufladzie (statyk poza repo, zywe od razu).
+- Backfill wyprawy 1-3.08 (entry_id=13, komoot-3088315688): 01.08 ~372 XSS / 02.08 ~305 / 03.08 ~231 (razem ~908). Zweryfikowane na zywym kodzie.
+- DO ZROBIENIA (poza kanalem DEV): commit qbot_web.py + sql/planned_load_daily_v1.sql jawnymi sciezkami (qbot/runuser, push root). Sprzatanie przez DC/SSH: scripts/_new_block_planned_load.txt + stare .bak (_tmp_check_plan_events.py.bak.*, _tmp_inspect_planer_schema.py.bak.*).
+- MOZLIWE DALEJ (Krok 3, nie robione): projekcja TSB/ATL do przodu na wykresie Formy z planned_load_daily (silnik simulate_expedition juz jest).
+
+## [2026-07-27] Kafel 'Najblizszy cel' w DZIS (wariant C)
+- GET /api/forma/event-prep -> event / target / stages / total_xss / verdict / ceilings / walls / simulation / taper / limits.
+- KLUCZOWA KOREKTA (wykryta na zywo): najblizszym wpisem byla delegacja 'Kania' 29.07 i kafel liczyl do niej tapering. Rozdzielono: 'event' (najblizszy wpis) vs 'target' (najblizszy z planned_load_daily). Przygotowanie liczone ZAWSZE dla target; urlop/delegacja lada jako 'limits' (po drodze). Rest pomijany.
+- LLM: /api/forma/analyze mode='event' - prompt dostaje etapy, sufity, werdykt, min TSB i JAWNIE liczbe dni do startu (pierwszy test mylil delegacje ze startem - doprecyzowane w patchu E4).
+- Front (statyki, poza repo): forma.html #dzis-event + CSS .evp (grid 3 kolumny, na waskim 1); forma-render.js EVP/renderEventPrep/loadEventPrep, chip 'Najblizszy cel' (event_prep) w Dostosuj, domyslnie wlaczony, przycisk AI -> runAnalyze('event').
+- Zweryfikowane na zywo: endpoint 200 (target=wyprawa 1-3.08, 372/305/231 XSS, verdict silnika, dzien 1 'powyzej rekordu dnia'), node --check forma-render.js OK, /forma.html zawiera #dzis-event, LLM zwraca plan w 2 akapitach.
+- DO ZROBIENIA: wizualne sprawdzenie w przegladarce (claude-in-chrome) - nie robione w tej sesji.
+
+## [2026-07-27] Odzież: rozbicie „Bottoms / Bibs” na „Bibs shorts” + „Trousers”
+**Kryterium (użytkownik):** `Bibs shorts` = TYLKO krótkie spodenki do jazdy z wkładką. `Trousers` = szorty bez wkładki, długie spodnie, wszystkie długie tights/bibtights (nawet z szelkami).
+
+- **Baza** (garage.db): 21 pozycji rozdzielone — 11 → `Bibs shorts`, 10 → `Trousers`. Kategoria „Bottoms / Bibs” już NIE ISTNIEJE (0 wierszy, 0 wystąpień w kodzie).
+- **Rozstrzygnięcia graniczne (zatwierdzone):** wszystkie DŁUGIE → Trousers, w tym PEdALED Odyssey Winter Tights, Pearl Izumi AmFIB Bib Tight (no chamois), Rapha Core Winter Bibtights (no chamois). Castelli Thermal Bibshorts → Bibs shorts (ocieplane, ale krótkie). POC Cadence Cargo Shorts → Trousers (szorty bez wkładki).
+- **Kod — 6 miejsc** (`qbot_web.py` ×5 + `planer-wyposazenia.html` ×1):
+  1. prompt generatora zestawów (wymóg „spodenki z wkładką”) → kategoria `Bibs shorts`
+  2. `RIDE_GEAR_SLOTS` → dwa sloty zamiast jednego
+  3. logika liczby sztuk: `Bibs shorts` bez zmian (2, przy deszczu i ≥4 dni → 3); **`Trousers` → 1 para**
+  4. `WORN_OK` → obie kategorie mogą być „na sobie”
+  5. `CLOTH` (endpoint /api/planer/wyposazenie/kategorie) → obie
+  6. `FAM` w Plannerze: `Bibs shorts`→[Bibs shorts]; `Trousers`→[Trousers, Mid Layer Bottom, Base Layer Bottom]
+- **Dowód na żywo:** oba sloty w API zakładki Odzież; stara kategoria zniknęła; generator Plannera widzi obie; endpoint kategorii zwraca obie. Podział pozycji zweryfikowany po nazwach (9 aktywnych Bibs shorts + 2 archiwalne, 10 Trousers).
+- **Kanał:** Qbot DEV MCP wypadł z sesji — praca przez `ssh q` (MacOS-MCP). UWAGA: **heredoc przez ssh dwukrotnie zawiesił kanał na ~4 min**, mimo czysto ASCII treści. Działający wzorzec: zapis skryptu lokalnie → `scp` → `ssh python3`.
+- **DO ZROBIENIA:** `qbot_web.py` NADAL NIEZACOMMITOWANY — teraz już trzy zmiany: (1) is_set/set_items, (2) rejestr kategorii wyprawowych, (3) rozbicie Bottoms/Bibs. Commit jako qbot + push jako root.
