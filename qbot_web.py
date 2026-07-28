@@ -4805,12 +4805,36 @@ def _color_q(color):
 EXPED_CATEGORY = "Sprzęt wyprawowy"
 
 
+def _exped_categories():
+    """Kategorie zakladki Wyprawowy z REJESTRU (gear_categories) - zrodlo prawdy.
+    Zwraca liste slownikow {name, section, sort}. Rejestr wygrywa z kodem:
+    dodanie kategorii = jeden wiersz w bazie, bez zmiany kodu."""
+    gc = _garage_conn()
+    try:
+        rows = gc.execute(
+            "SELECT name, section, sort FROM gear_categories WHERE active=1 "
+            "ORDER BY sort, name").fetchall()
+        return [{"name": r["name"], "section": r["section"], "sort": r["sort"]}
+                for r in rows]
+    except Exception:
+        return [{"name": EXPED_CATEGORY, "section": EXPED_CATEGORY, "sort": 900}]
+    finally:
+        gc.close()
+
+
+def _exped_category_names():
+    """Same nazwy kategorii wyprawowych (do filtrowania zakladek)."""
+    names = [c["name"] for c in _exped_categories()]
+    return set(names) | {EXPED_CATEGORY}
+
+
 @app.get("/api/garage/list")
 def garage_list(all: int = Query(0), q: str = Query(""), cat: str = Query(""), kind: str = Query("")):
     """Showroom garazu: lista rzeczy (domyslnie aktywne; all=1 z archiwum),
     plus kanoniczne listy kategorii i stanow do formularza."""
     ql = (q or "").strip().lower()
     cat = (cat or "").strip()
+    _exped_names = _exped_category_names()
     gc = _garage_conn()
     try:
         rows = gc.execute("SELECT * FROM gear ORDER BY category, brand, model").fetchall()
@@ -4821,11 +4845,12 @@ def garage_list(all: int = Query(0), q: str = Query(""), cat: str = Query(""), k
                 continue
             if cat and d.get("category") != cat:
                 continue
-            # zakladka Odziez nie pokazuje sprzetu wyprawowego (i odwrotnie)
+            # zakladka Odziez nie pokazuje rzeczy wyprawowych (i odwrotnie).
+            # Podzial wg REJESTRU kategorii (gear_categories), nie jednej stalej.
             if (kind or "").strip() == "wyprawowy":
-                if d.get("category") != EXPED_CATEGORY:
+                if d.get("category") not in _exped_names:
                     continue
-            elif d.get("category") == EXPED_CATEGORY:
+            elif d.get("category") in _exped_names:
                 continue
             if ql:
                 hay = " ".join(str(d.get(k) or "") for k in ("brand", "model", "size", "color", "notes")).lower()
@@ -4833,6 +4858,7 @@ def garage_list(all: int = Query(0), q: str = Query(""), cat: str = Query(""), k
                     continue
             items.append(d)
         return {"items": items, "categories": RIDE_GEAR_SLOTS,
+                "exped_categories": _exped_categories(),
                 "conditions": GARAGE_CONDITIONS, "seasons": GARAGE_SEASONS,
                 "fabrics": GARAGE_FABRICS,
                 "palette": GARAGE_PALETTE, "rating_cols": GARAGE_RATING_COLS,
@@ -6046,16 +6072,34 @@ async def forma_analyze(request: Request):
 
 # --- Planner Wyposazenia: generator listy pakowania (LLM) ---
 def _wyposazenie_garage_categories():
-    """Aktywne kategorie z gear (garage.db) - kanoniczna lista do mapowania pozycji."""
+    """Kanoniczna lista kategorii do mapowania pozycji przez generator.
+
+    ZASADA: Planner dostosowuje sie do BAZY, nie odwrotnie. Zrodlem sa:
+      (a) kategorie odziezy rowerowej faktycznie uzywane w gear,
+      (b) CALY rejestr kategorii wyprawowych (gear_categories) - TAKZE PUSTE.
+    Punkt (b) jest istotny: gdyby brac tylko "kategorie z rzeczami" (GROUP BY),
+    nowa kategoria nigdy by nie wystartowala - generator nie wiedzialby, ze
+    istnieje, wiec nikt nie przypisalby do niej rzeczy, wiec pozostalaby pusta.
+    """
     import sqlite3 as _sq
     con = _sq.connect(GARAGE_DB)
     try:
-        rows = con.execute(
+        used = [r[0] for r in con.execute(
             "SELECT category, COUNT(*) c FROM gear WHERE active=1 "
-            "GROUP BY category ORDER BY c DESC").fetchall()
-        return [r[0] for r in rows if r[0]]
+            "GROUP BY category ORDER BY c DESC").fetchall() if r[0]]
+        try:
+            reg = [r[0] for r in con.execute(
+                "SELECT name FROM gear_categories WHERE active=1 "
+                "ORDER BY sort, name").fetchall() if r[0]]
+        except Exception:
+            reg = []
     finally:
         con.close()
+    reg_set = set(reg)
+    # najpierw odziez rowerowa (uzywana), potem pelny rejestr wyprawowy
+    out = [c for c in used if c not in reg_set]
+    out.extend(reg)
+    return out
 
 
 @app.get("/api/planer/wyposazenie/pogoda")
@@ -6215,9 +6259,10 @@ async def api_wyposazenie_generate(request: Request):
         "GRUPY (uzywaj dokladnie tych nazw): 'Odziez rowerowa', 'Warstwy i pogoda', 'Ubranie do obozu', "
         "'Nocleg', 'Gotowanie', 'Woda', 'Jedzenie na rower', 'Higiena', 'Elektronika', "
         "'Apteczka i leki', 'Naprawa roweru', 'Dokumenty i pieniadze', 'Przed wyjazdem'. "
-        "ZASADY: (1) odziez zmieniana codziennie MUSI byc skalowana dniami - przy wyprawie dluzszej "
-        "niz 1 dzien podaj CO NAJMNIEJ 2 koszulki kolarskie i 2 spodenki z wkladka, a skarpetek tyle "
-        "co dni; to nie jest opcjonalne. Zuzywalne (skarpetki, base layer, bielizna, biby) skaluj dniami "
+        "ZASADY: (1) ZAKLADAJ PRANIE PO DRODZE (przepierka wieczorem) - NIE mnoz ubran przez liczbe "
+        "dni. Koszulki kolarskie: 2. Spodenki z wkladka: 2 (3 tylko gdy prognoza daje mocne opady i "
+        "nic nie wyschnie). Skarpetki: 2 (wiecej tylko przy mocnych opadach - dlugo schna). Bielizna "
+        "nierowerowa i ubranie po jezdzie: JEDEN komplet do 4 dni. Nie wypisuj osobno kabli, "
         "rozsadnie; (2) wielorazowe (kurtka, kask, okulary, buty, narzedzia) qty=1; (3) warstwy dobierz "
         "do pory roku i pogody z parametrow; (4) jedzenie kaloryczne skalowane dniami, mniej gdy trasa "
         "prowadzi przez miasta z zaopatrzeniem; (5) bez zapychaczy - tylko to co naprawde uzyteczne. "
@@ -6306,6 +6351,27 @@ async def api_wyposazenie_generate(request: Request):
         % cats_str
     )
 
+    # --- pamiec podreczna: te same warunki => ta sama lista (LLM potrafi sie wahac) ---
+    import hashlib as _hl
+    _wxk = ""
+    if wx and wx.get("ok"):
+        _wxk = "|".join(str(wx.get(k)) for k in
+                        ("tmin", "tmax", "precip_mm", "wind_max_ms", "season_hint"))
+    _ckey = _hl.sha1(("|".join([str(days), style, season, route, _wxk])
+                      ).encode("utf-8")).hexdigest()
+    _force = str(body.get("force") or "") in ("1", "true", "True")
+    if not _force:
+        _con = _wyposazenie_db()
+        try:
+            _row = _con.execute("SELECT payload FROM packing_gen_cache WHERE k=?",
+                                (_ckey,)).fetchone()
+        finally:
+            _con.close()
+        if _row:
+            _out = _json.loads(_row["payload"])
+            _out["cached"] = True
+            return _out
+
     from qgpt_client import qgpt_text
 
     def _gen_once(temp):
@@ -6330,7 +6396,7 @@ async def api_wyposazenie_generate(request: Request):
                     return None
         return None
 
-    parsed = _gen_once(0.2)
+    parsed = _gen_once(0.0)
     if not isinstance(parsed, dict):
         parsed = _gen_once(0.0)
     if not isinstance(parsed, dict):
@@ -6356,12 +6422,10 @@ async def api_wyposazenie_generate(request: Request):
             if not isinstance(it, dict) or not it.get("item"):
                 continue
             gc = it.get("garage_category")
-            if is_cloth:
-                if gc not in valid:
-                    gc = EXPED_CAT
-            elif gc == "Accessories":
-                pass  # noszone akcesoria (kamizelka hydracyjna, musette) sa w garazu
-            else:
+            # garaz ma juz wlasciwe kategorie takze poza odzieza (Apteczka, Higiena i
+            # kosmetyki, Naprawa i narzedzia, Zasilanie i ladowanie...) - wiec bierzemy
+            # to, co model wskazal, a dopiero brak trafienia ladzie w Sprzet wyprawowy
+            if gc not in valid:
                 gc = EXPED_CAT
             try:
                 q = int(it.get("qty") or 1)
@@ -6391,23 +6455,89 @@ async def api_wyposazenie_generate(request: Request):
             clean.append({"group": grp, "items": gitems})
     clean.sort(key=lambda g: _GROUP_ORDER.get(_norm_grp(g["group"]), 50))
 
-    # --- minimum sztuk odziezy zmienianej codziennie (model potrafi dac 1 na 3 dni) ---
-    def _min_qty(cat):
+    # --- ile sztuk odziezy: zakladamy PRZEPIERKI, chyba ze mocno pada (nie wyschnie) ---
+    _hard_rain = False
+    if wx and wx.get("ok"):
+        try:
+            _tot = float(wx.get("precip_mm") or 0)
+            _dmax = max([float(d.get("precip_mm") or 0)
+                         for d in (wx.get("days_detail") or []) if not d.get("brak")] or [0])
+            _hard_rain = (_tot >= 10.0) or (_dmax >= 5.0)
+        except (TypeError, ValueError):
+            _hard_rain = False
+
+    def _exact_qty(cat):
+        """Ile sztuk NAPRAWDE zabrac. Pranie po drodze = male ilosci."""
         if days < 2:
             return 1
-        if cat in ("Socks", "Base Layer Top", "Base Layer Bottom"):
-            return min(days, 5)
-        if cat in ("Jersey", "Jersey Long Sleeve", "Bottoms / Bibs", "T-Shirt"):
-            return min(max(2, days - 1), 4)
-        return 1
+        if cat in ("Jersey", "Jersey Long Sleeve"):
+            return 2                       # koszulki zawsze 2 - schna szybko
+        if cat == "Bottoms / Bibs":
+            return 3 if _hard_rain else 2  # wkladka schnie dlugo
+        if cat == "Socks":
+            return min(days, 4) if _hard_rain else 2
+        if cat in ("Base Layer Top", "Base Layer Bottom"):
+            return 2
+        if cat in ("Bielizna (nierowerowa)",):
+            return 1 if days <= 4 else 2   # gacie pierzemy wieczorem
+        if cat in ("T-Shirt", "Spodnie dlugie / dresowe", "Spodnie d\u0142ugie / dresowe"):
+            return 1 if days <= 4 else 2   # ubranie po jezdzie - jeden komplet wystarczy
+        return 0                            # 0 = nie ruszamy tego co dal model
 
     for g in clean:
         for it in g["items"]:
             if it.get("is_task") or it.get("unit") != "piece":
                 continue
-            need = _min_qty(it.get("garage_category"))
-            if need > (it.get("qty") or 1):
-                it["qty"] = need
+            want = _exact_qty(it.get("garage_category"))
+            if want:
+                it["qty"] = want
+
+    # --- rzeczy, ktorych Michal NIE chce na liscie (bierze je zawsze, nie trzeba przypominac) ---
+    _BLACK = ("telefon", "dowod osobisty", "dowod ", "karta platnicza", "gotowka",
+              "klucze do domu", "klucze do auta", "klucze ", "rezerwacj")
+    for g in clean:
+        g["items"] = [it for it in g["items"]
+                      if not any(k in _wyp_norm(it["item"]) for k in _BLACK)]
+
+    # --- scalanie w SETY zgodne z kategoriami garazu ---
+    def _mk_set(name, cat, contents, prio=1):
+        why = ("W komplecie: " + ", ".join(contents)) if contents else None
+        return {"item": name, "qty": 1, "unit": "set", "garage_category": cat,
+                "reason": why, "prio": prio, "worn": False, "is_task": False}
+
+    for g in clean:
+        gn = _norm_grp(g["group"])
+        names = [it["item"] for it in g["items"]]
+        if not names:
+            continue
+        if gn.startswith("apteczka"):
+            g["items"] = [_mk_set("Apteczka", "Apteczka", names, 1)]
+        elif gn == "higiena":
+            g["items"] = [_mk_set("Kosmetyki i higiena", "Higiena i kosmetyki", names, 2)]
+        elif gn == "naprawa roweru":
+            keep, basic, exped, spare = [], [], [], []
+            for it in g["items"]:
+                n = _wyp_norm(it["item"])
+                if "pompk" in n:                      # pompki zostaja osobno (dwie sztuki)
+                    keep.append(it)
+                elif any(k in n for k in ("detk", "hak przerzutki", "rdzen wentyla",
+                                          "klocki", "tire boot", "opona", "linka")):
+                    spare.append(it["item"])
+                elif any(k in n for k in ("multitool", "lyzki", "spinka", "latki",
+                                          "tubeless", "wtyczk", "korki")):
+                    basic.append(it["item"])
+                else:
+                    exped.append(it["item"])
+            out = list(keep)
+            if basic:
+                out.append(_mk_set("Narzedzia podstawowe", "Naprawa i narz\u0119dzia", basic, 1))
+            if exped:
+                out.append(_mk_set("Narzedzia wyprawowe", "Naprawa i narz\u0119dzia", exped, 2))
+            if spare:
+                out.append(_mk_set("Czesci zamienne wyprawowe", "Naprawa i narz\u0119dzia", spare, 2))
+            g["items"] = out
+
+    clean = [g for g in clean if g["items"]]
 
     # --- "na sobie" tylko RAZ na kategorie i tylko dla rzeczy, ktore da sie miec na sobie ---
     WORN_OK = {"Helmet", "Glasses", "Shoes", "Jersey", "Jersey Long Sleeve",
@@ -6423,7 +6553,16 @@ async def api_wyposazenie_generate(request: Request):
             else:
                 seen_worn.add(cat)
 
-    return {"days": days, "style": style, "season": season or None, "groups": clean}
+    _res = {"days": days, "style": style, "season": season or None,
+            "groups": clean, "cached": False}
+    _con = _wyposazenie_db()
+    try:
+        _con.execute("INSERT OR REPLACE INTO packing_gen_cache(k, payload, created_at) "
+                     "VALUES(?,?,datetime('now'))", (_ckey, _json.dumps(_res)))
+        _con.commit()
+    finally:
+        _con.close()
+    return _res
 
 
 def _wyposazenie_db():
@@ -6556,6 +6695,8 @@ async def api_wyposazenie_save(request: Request):
     except (TypeError, ValueError):
         days = None
     name = (str(body.get("name") or "")).strip()[:120] or None
+    _wx = body.get("weather")
+    weather_json = json.dumps(_wx) if isinstance(_wx, dict) else None
     groups = body.get("groups") or []
     if not isinstance(groups, list):
         raise HTTPException(status_code=400, detail="groups musi byc lista")
@@ -6565,12 +6706,13 @@ async def api_wyposazenie_save(request: Request):
         row = con.execute("SELECT id FROM packing_lists WHERE route_id=?", (route_id,)).fetchone()
         if row:
             list_id = row["id"]
-            con.execute("UPDATE packing_lists SET style=?, days=?, name=? WHERE id=?",
-                        (style or None, days, name, list_id))
+            con.execute("UPDATE packing_lists SET style=?, days=?, name=?, weather_json=? "
+                        "WHERE id=?", (style or None, days, name, weather_json, list_id))
         else:
             cur = con.execute(
-                "INSERT INTO packing_lists(route_id, style, days, name, created_at) "
-                "VALUES(?,?,?,?,datetime('now'))", (route_id, style or None, days, name))
+                "INSERT INTO packing_lists(route_id, style, days, name, created_at, weather_json) "
+                "VALUES(?,?,?,?,datetime('now'),?)",
+                (route_id, style or None, days, name, weather_json))
             list_id = cur.lastrowid
         con.execute("DELETE FROM packing_items WHERE list_id=?", (list_id,))
         n = 0
@@ -6625,7 +6767,7 @@ def api_wyposazenie_list(route_id: str = Query(...)):
     con = _wyposazenie_db()
     try:
         lst = con.execute(
-            "SELECT id, route_id, style, days, name, created_at "
+            "SELECT id, route_id, style, days, name, created_at, weather_json "
             "FROM packing_lists WHERE route_id=?", (route_id,)).fetchone()
         if not lst:
             return {"exists": False, "route_id": route_id, "groups": []}
@@ -6670,6 +6812,7 @@ def api_wyposazenie_list(route_id: str = Query(...)):
         "exists": True, "route_id": route_id, "list_id": lst["id"],
         "style": lst["style"], "days": lst["days"], "name": lst["name"],
         "created_at": lst["created_at"],
+        "weather": (json.loads(lst["weather_json"]) if lst["weather_json"] else None),
         "groups": [{"group": g, "items": groups[g]} for g in order],
     }
 
