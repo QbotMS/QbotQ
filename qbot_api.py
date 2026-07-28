@@ -1637,7 +1637,7 @@ async def surface_by_name_endpoint(
                 SELECT route_id FROM qbot_v2.route_artifacts
                 WHERE metadata_json->>'route_name' ILIKE %s
                 ORDER BY id DESC LIMIT 1
-            """, (name,))
+            """, (f"%{name}%",))
             _row2 = cur.fetchone()
             route_id = _row2['route_id'] if _row2 else None
 
