@@ -1,5 +1,47 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-07-30] Planer wyprawy: zakladka POGODA (prognoza per dzien + klimat ERA5)
+
+CO POWSTALO:
+- qbot3/routes/route_meteo_engine.py: run_meteo_engine ma opcjonalne from_km/to_km
+  (etap dnia wyprawy). ETA liczona OD NOWA dla zakresu -- pierwszy segment etapu = start_time,
+  a nie czas dojazdu od km 0 (base_cum). Bez tych parametrow zachowanie NIEZMIENIONE.
+  Dolozone do wyniku: temp_c i rh_pct w per_segment i w tabeli 30 min (byly liczone,
+  ale gubione), blok 'slonce' (wschod/zachod/dlugosc dnia/naslonecznienie/UV -- nowy blok
+  daily w _fetch_point), 'zakres_km' i gotowe 'podsumowanie' (skrajne wartosci + sumy).
+- qbot3/routes/route_climate.py (NOWY): klimatologia ERA5 przez Open-Meteo archive.
+  10 lat x okno +-3 dni = ~70 dni-obserwacji, srednie + percentyle (p90/p10) + rekordy.
+  Swiadomie BEZ WBGT/burz/wiatru wzgledem kierunku jazdy -- to wymaga prognozy, nie klimatu.
+- qbot_web.py: GET /api/planer/pogoda (route_id, start, day, cuts, start_time, mode, rebuild).
+  Jeden dzien na wywolanie. Data w oknie dzis..dzis+15 -> silnik METEO; poza oknem albo
+  w przeszlosci -> klimat, jawnie oznaczony. Cache qbot_v2.planer_pogoda_cache
+  (CREATE TABLE IF NOT EXISTS w kodzie; TTL 3 h prognoza / 30 dni klimat).
+  Seria do wykresu probkowana z osi 50 m do ~140 punktow (per_segment nie leci na front).
+- Statyki (poza repo, zywe od razu): planer-wyprawy.html -- zakladka POGODA w lewym menu
+  (#allpanel-tabs, miedzy ETAP a FORMA) + style .pg-*; render.js podbity na v=77.
+  planer-wyprawy-render.js -- renderPogoda/pgDayHTML/pgPrognozaHTML/pgKlimatHTML/pgFetch,
+  window.__planerPogoda wolane z toggleTab.
+
+DOWOD (na zywo, Oppelner Gravelzug komoot-3088315688, podzial 3 dni 0-120/120-235/235-328):
+- Dzien 2 (03.08): temp 22.4-34.4, odczuwalna 27.1-40.5, RH 34-70%, WBGT max 31.2 (ponad
+  limit o 6.2) na km 203 o 14:18, wiatr 0.8 m/s w czolo, porywy 10.7, slonce 05:22-20:33,
+  alerty: 2x ALARM upal + FLAGA burza (CAPE 2079). Tabele 30 min: 16 wierszy dla dnia 1.
+- KONTROLA NIEZALEZNA: surowe Open-Meteo dla punktow km 68/203/314 potwierdza temperatury
+  (m.in. 40.3 C na 04.08 na km 314 -- panel pokazal 40.4) i wilgotnosc. Dane sa poprawne,
+  prognoza jest po prostu ekstremalna.
+- Tryb klimat (data 2026-10-05): 'To nie jest prognoza', Tmax sr 15.5 / p90 20.6, szansa dnia
+  z opadem 44%, wiatr p90 8.4 m/s, porywy p90 15.6.
+- Cache: drugi strzal wraca z 'cached'. tests.test_route_report: 64/64 OK.
+
+UWAGA: pelne `unittest discover` ma 9 failow (test_report_data_provider,
+test_report_validation, test_route_poi_google_primary) -- NIE dotykaja pogody ani zmienionych
+plikow, byly wczesniej. Do zbadania osobno.
+
+MOZLIWE DALEJ (nie robione):
+- Wykres pogodowy dnia (dane 'seria' juz leca z API, front ich jeszcze nie rysuje).
+- Godzina startu per dzien (dzis jedna wspolna, domyslnie 09:00).
+- Wpiecie pogody wyprawy do PDF raportu wyprawy i do Plannera wyposazenia.
+
 ## [2026-07-28] Porzadki: commity, push, sprzatanie plikow
 
 STAN PO SESJI (zweryfikowany na zywo):

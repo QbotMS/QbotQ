@@ -322,7 +322,9 @@ def _fetch_point(lat: float, lon: float, date_str: str, timeout: float = 15.0) -
     hourly = ["temperature_2m", "relative_humidity_2m", "wind_speed_10m", "wind_direction_10m",
               "surface_pressure", "shortwave_radiation_instant", "direct_radiation_instant",
               "precipitation", "precipitation_probability", "weather_code", "cape", "wind_gusts_10m"]
+    daily = ["sunrise", "sunset", "daylight_duration", "sunshine_duration", "uv_index_max"]
     params = {"latitude": round(lat, 3), "longitude": round(lon, 3), "hourly": ",".join(hourly),
+              "daily": ",".join(daily),
               "windspeed_unit": "ms", "timezone": "UTC", "start_date": date_str, "end_date": date_str}
     url = OPEN_METEO_URL + "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"User-Agent": "QBot-METEO/1.0"})
@@ -330,7 +332,7 @@ def _fetch_point(lat: float, lon: float, date_str: str, timeout: float = 15.0) -
         data = json.loads(r.read().decode("utf-8"))
     h = data["hourly"]
     times = [_dt.datetime.fromisoformat(t).replace(tzinfo=_dt.timezone.utc) for t in h["time"]]
-    return {"times": times, "h": h}
+    return {"times": times, "h": h, "daily": data.get("daily") or {}}
 
 
 def _interp(times: list[_dt.datetime], vals: list, when: _dt.datetime) -> float:
@@ -371,8 +373,13 @@ def _storm_clear_after(times: list, codes: list, capes: list, when: _dt.datetime
 
 # --- Główny przebieg --------------------------------------------------------
 def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
-                     mode: str = "normalny") -> dict:
+                     mode: str = "normalny", from_km: Optional[float] = None,
+                     to_km: Optional[float] = None) -> dict:
     """Jeden przebieg silnika METEO. date=YYYY-MM-DD, start=HH:MM (lokalny).
+
+    from_km/to_km (opcjonalne) = ODCINEK trasy (etap dnia wyprawy wielodniowej).
+    ETA jest wtedy liczona OD NOWA: pierwszy segment zakresu = start_time,
+    a nie czas dojazdu od km 0. Bez tych parametrow zachowanie bez zmian.
 
     Pelna dokumentacja (kontrakt wejscia/wyjscia): docs/METEO_ENGINE.md.
     """
@@ -400,17 +407,33 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         return {"status": "ERROR",
                 "error": f"niespójność siatek: profil {len(profile)} != ramki z geo {len(geo)}"}
 
-    segs = []
+    a_km = float(from_km) if from_km is not None else None
+    b_km = float(to_km) if to_km is not None else None
+
+    raw = []
     prev_cum = 0.0
     for row, g in zip(profile, geo):
         cum_h = float(row.get("moving_h", 0.0)) + float(row.get("stop_h", 0.0))
-        eta_local = start_local + _dt.timedelta(hours=cum_h)
+        raw.append((row, g, cum_h, max(0.0, (cum_h - prev_cum) * 60.0)))
+        prev_cum = cum_h
+
+    sel = [x for x in raw
+           if (a_km is None or float(x[0]["km"]) >= a_km - 1e-6)
+           and (b_km is None or float(x[0]["km"]) <= b_km + 1e-6)]
+    if not sel:
+        return {"status": "ERROR",
+                "error": f"brak segmentow w zakresie km {a_km}..{b_km} (trasa {route_id})"}
+
+    base_cum = sel[0][2] - (sel[0][3] / 3600.0 * 60.0)
+
+    segs = []
+    for row, g, cum_h, dur_min in sel:
+        eta_local = start_local + _dt.timedelta(hours=max(0.0, cum_h - base_cum))
         segs.append({"km": float(row["km"]), "grade_pct": float(row["grade_pct"]),
                      "surface": row.get("surface"), "v_kmh": float(row.get("v_kmh", 0.0)),
                      "lat": g["lat"], "lon": g["lon"],
                      "eta_local": eta_local, "eta_utc": eta_local.astimezone(_dt.timezone.utc),
-                     "dur_min": max(0.0, (cum_h - prev_cum) * 60.0)})
-        prev_cum = cum_h
+                     "dur_min": dur_min})
 
     t0 = segs[0]["eta_utc"]
     t_end = segs[-1]["eta_utc"]
@@ -492,6 +515,7 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
 
         per_segment.append({
             "km": round(s["km"], 2), "eta": s["eta_local"].strftime("%H:%M"),
+            "temp_c": round(ta, 1), "rh_pct": round(rh),
             "grade_pct": round(s["grade_pct"], 1), "teren": _terrain_label(s["grade_pct"]),
             "surface": s["surface"], "wbgt_eff": round(wbgt, 1), "alert_level": lvl,
             "limit": limit, "exceed": exceed, "tau": round(tau, 2),
@@ -517,10 +541,14 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
     alerts.sort(key=lambda a: (a["eta_od"], order.get(a["severity"], 9)))
     table = _build_table(per_segment, n_win, t0)
     peak = max(per_segment, key=lambda x: x["wbgt_eff"])
+    sun = _sun_block((weather[0].get("daily") or {}), date_str)
+    summary = _build_summary(per_segment)
 
     return {
         "status": "OK",
         "route_id": route_id, "date": date_str, "start": start_time, "mode": mode,
+        "zakres_km": {"od": round(segs[0]["km"], 2), "do": round(segs[-1]["km"], 2)},
+        "slonce": sun, "podsumowanie": summary,
         "n_segments": len(per_segment), "n_windows": n_win,
         "peak": {"wbgt_eff": peak["wbgt_eff"], "km": peak["km"], "eta": peak["eta"],
                  "alert_level": peak["alert_level"], "teren": peak["teren"]},
@@ -709,6 +737,89 @@ def _build_cold_alerts(per_segment: list[dict]) -> list[dict]:
     return alerts
 
 
+def _sun_block(daily: dict, date_str: str) -> dict:
+    """Wschod/zachod slonca, dlugosc dnia i naslonecznienie (blok daily Open-Meteo, UTC)."""
+    tz = _tz()
+    times = daily.get("time") or []
+    if not times:
+        return {}
+    i = times.index(date_str) if date_str in times else 0
+
+    def _hhmm(key):
+        v = daily.get(key) or []
+        raw = v[i] if i < len(v) else None
+        if not raw:
+            return None
+        t = _dt.datetime.fromisoformat(raw)
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=_dt.timezone.utc)
+        return t.astimezone(tz).strftime("%H:%M")
+
+    def _hours(key):
+        v = daily.get(key) or []
+        raw = v[i] if i < len(v) else None
+        return round(float(raw) / 3600.0, 1) if raw is not None else None
+
+    out = {"wschod": _hhmm("sunrise"), "zachod": _hhmm("sunset"),
+           "dzien_h": _hours("daylight_duration"), "sloneczne_h": _hours("sunshine_duration")}
+    uv = daily.get("uv_index_max") or []
+    if i < len(uv) and uv[i] is not None:
+        out["uv_max"] = round(float(uv[i]), 1)
+    return out
+
+
+def _build_summary(per_segment: list[dict]) -> dict:
+    """Podsumowanie calego odcinka (dnia): skrajne wartosci + sumy, jedno zrodlo dla UI."""
+    t = [x["temp_c"] for x in per_segment if x.get("temp_c") is not None]
+    f = [x["feels"] for x in per_segment if x.get("feels") is not None]
+    rh = [x["rh_pct"] for x in per_segment if x.get("rh_pct") is not None]
+    ws = [x["wind_speed_ms"] for x in per_segment if x.get("wind_speed_ms") is not None]
+    tails = [x["wind_tail_ms"] for x in per_segment if x.get("wind_tail_ms") is not None]
+    cross = [abs(x["wind_cross_ms"]) for x in per_segment if x.get("wind_cross_ms") is not None]
+    gusts = [x["gust_ms"] for x in per_segment if x.get("gust_ms") is not None]
+    amb = [x["utci_amb"] for x in per_segment if x.get("utci_amb") is not None]
+    probs = [x["opad_prob"] for x in per_segment if x.get("opad_prob") is not None]
+
+    mm = 0.0
+    wet_min = 0.0
+    for x in per_segment:
+        d = float(x.get("_dur_min") or 0.0)
+        i_mm = float(x.get("opad_mm") or 0.0)
+        mm += i_mm * d / 60.0
+        if i_mm >= 0.2:
+            wet_min += d
+
+    storm = None
+    for x in per_segment:
+        storm = _storm_worse(storm, x.get("burza"))
+    peak = max(per_segment, key=lambda x: x["wbgt_eff"])
+    minutes = sum(float(x.get("_dur_min") or 0.0) for x in per_segment)
+
+    def _avg(v, nd=1):
+        return round(sum(v) / len(v), nd) if v else None
+
+    return {
+        "km_od": per_segment[0]["km"], "km_do": per_segment[-1]["km"],
+        "eta_od": per_segment[0]["eta"], "eta_do": per_segment[-1]["eta"],
+        "minuty": round(minutes),
+        "temp_min": (round(min(t), 1) if t else None), "temp_max": (round(max(t), 1) if t else None),
+        "temp_sr": _avg(t),
+        "odczuwalna_min": (round(min(f), 1) if f else None),
+        "odczuwalna_max": (round(max(f), 1) if f else None),
+        "rh_min": (round(min(rh)) if rh else None), "rh_max": (round(max(rh)) if rh else None),
+        "rh_sr": _avg(rh, 0),
+        "wbgt_max": peak["wbgt_eff"], "wbgt_km": peak["km"], "wbgt_eta": peak["eta"],
+        "wbgt_level": peak["alert_level"], "wbgt_exceed": peak["exceed"],
+        "opad_mm": round(mm, 1), "opad_prob_max": (max(probs) if probs else None),
+        "minuty_deszczu": round(wet_min),
+        "wiatr_sr_ms": _avg(ws), "wiatr_max_ms": (round(max(ws), 1) if ws else None),
+        "wiatr_wzdluz_sr_ms": _avg(tails), "wiatr_poprzek_sr_ms": _avg(cross),
+        "porywy_max_ms": (round(max(gusts), 1) if gusts else None),
+        "odczuwalna_otoczenia_min": (round(min(amb), 1) if amb else None),
+        "burza": storm,
+    }
+
+
 def _build_table(per_segment: list[dict], n_win: int, t0: _dt.datetime) -> list[dict]:
     """Agregacja co 30 min (jedno źródło do wyświetlania)."""
     buckets: dict[int, list[dict]] = {}
@@ -728,6 +839,8 @@ def _build_table(per_segment: list[dict], n_win: int, t0: _dt.datetime) -> list[
         gusts = [x["gust_ms"] for x in b if x["gust_ms"] is not None]
         feels_vals = [x["feels"] for x in b]
         u_avg = sum(feels_vals) / len(feels_vals)
+        temps = [x["temp_c"] for x in b if x.get("temp_c") is not None]
+        rhs = [x["rh_pct"] for x in b if x.get("rh_pct") is not None]
         storm_w = None
         for x in b:
             storm_w = _storm_worse(storm_w, x["burza"])
@@ -741,6 +854,11 @@ def _build_table(per_segment: list[dict], n_win: int, t0: _dt.datetime) -> list[
             "burza": {"poziom": storm_w, "cape": (max(capes) if capes else None),
                       "porywy_ms": (max(gusts) if gusts else None)},
             "odczuwalna": {"od": round(u_avg), "do": round(u_avg), "srednia": round(u_avg)},
+            "temp_c": (round(sum(temps) / len(temps), 1) if temps else None),
+            "temp_min": (round(min(temps), 1) if temps else None),
+            "temp_max": (round(max(temps), 1) if temps else None),
+            "rh_pct": (round(sum(rhs) / len(rhs)) if rhs else None),
+            "surface": b[0].get("surface"),
         })
     return rows
 

@@ -2191,6 +2191,74 @@ def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, 
     return og, et, rc, strategia, ubior, opony
 
 
+def _report_feasibility(conn, date_str, xss, forma):
+    """Wykonalnosc TEJ jazdy: liczby z silnika (fitmodel.expedition_feasibility,
+    model dwoch scian) + ocena napisana przez Alberta. Zwraca (dane, ocena).
+    Silnik = jedyne zrodlo liczb, LLM tylko interpretuje. Gdy LLM padnie ->
+    fallback na tekstowy verdict silnika (zakladka nigdy nie jest pusta)."""
+    if xss is None or not date_str:
+        return None, None
+    dane = None
+    try:
+        import sys as _sys
+        if "/opt/qbot/app" not in _sys.path:
+            _sys.path.insert(0, "/opt/qbot/app")
+        from fitmodel import expedition_feasibility as _ef
+        dane = _ef.assess(conn, str(date_str)[:10], [float(xss)])
+    except Exception:
+        dane = None
+    if not isinstance(dane, dict) or not dane.get("ok"):
+        return dane, None
+    _wall = (dane.get("walls") or [{}])[0]
+    _c = dane.get("ceilings") or {}
+    _fm = dane.get("form") or {}
+    pay = {
+        "data_jazdy": dane.get("departure"),
+        "dni_do_jazdy": dane.get("days_ahead"),
+        "xss_trasy": round(float(xss), 1),
+        "sciana_dnia": {"kolor": _wall.get("color"), "etykieta": _wall.get("label"),
+                        "rekord_1_dnia": _c.get("day_demonstrated"),
+                        "sciana_metaboliczna": _c.get("day_metabolic"),
+                        "sufit_tygodniowy": _c.get("week_avg")},
+        "forma_dzis": {"ctl": _fm.get("ctl"), "atl": _fm.get("atl"), "tsb": _fm.get("tsb"),
+                       "trend_ctl_na_dzien": _fm.get("slope_per_day"), "stan_na": _fm.get("as_of")},
+        "ctl_prognoza_na_dzien_jazdy": dane.get("projected_ctl"),
+        "tsb_po_jezdzie": (dane.get("simulation") or {}).get("tsb_end"),
+        "progi_tsb": dane.get("thresholds"),
+        "ftp": (forma or {}).get("ftp"),
+        "glikogen_pct": (forma or {}).get("glikogen_pct"),
+        "werdykt_silnika": dane.get("verdict"),
+    }
+    _sysp = (
+        "Jestes Albert - asystent kolarski QBot. Oceniasz WYKONALNOSC jednej zaplanowanej jazdy "
+        "na konkretna date. Zwracasz WYLACZNIE JSON o kluczach: werdykt, punkty.\n"
+        "werdykt: JEDNO zdanie - czy ta jazda jest w zasiegu przy tej formie i na te date.\n"
+        "punkty: 2-3 stringi, po jednym zdaniu (maks. ~25 slow kazdy): (a) skad to wynika - XSS "
+        "trasy kontra rekord jednego dnia i sciana metaboliczna, (b) co z forma na dzien jazdy "
+        "(CTL/TSB), (c) co realnie moze pojsc nie tak albo co daje zapas.\n"
+        "Prosty jezyk, bez zargonu bez wyjasnienia, bez markdown, bez emoji, bez naglowkow. "
+        "Liczby WYLACZNIE z danych wejsciowych, zaokraglone do calosci - nic nie dolicz. "
+        "NIE cytuj nazw pol ani kodow z danych (kolor, green/yellow/red, etykieta, slope, "
+        "walls) - tlumacz na ludzki jezyk. NIE pisz czego w danych brakuje i nie komentuj "
+        "zakresu danych - oceniasz TYLKO tym, co dostales; brakujace pole po prostu pomijasz. "
+        "Nie powtarzaj doslownie werdyktu silnika, ale mu nie zaprzeczaj. "
+        "XSS trasy to szacunek fizyczny, nie pomiar - mow o nim jak o szacunku."
+    )
+    ocena = None
+    try:
+        from qgpt_client import qgpt_json
+        _o = qgpt_json(json.dumps(pay, ensure_ascii=False, default=str),
+                       system=_sysp, max_tokens=1200, temperature=0.3)
+        if isinstance(_o, dict) and _o.get("werdykt"):
+            _pk = [str(x).strip() for x in (_o.get("punkty") or []) if str(x).strip()]
+            ocena = {"werdykt": str(_o["werdykt"]).strip(), "punkty": _pk[:4], "zrodlo": "Albert"}
+    except Exception:
+        ocena = None
+    if ocena is None and dane.get("verdict"):
+        ocena = {"werdykt": str(dane["verdict"]), "punkty": [], "zrodlo": "silnik"}
+    return dane, ocena
+
+
 def _load_poi_groups(conn, rbid):
     """POI z route_poi_layer (status=active) pogrupowane kategoria; kazdy z lat/lon/hours/meta."""
     _prows = conn.execute(
@@ -3092,7 +3160,8 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     details = {
         "surface": {"total_km": km_total, "by_cat": surface_by_cat, "risk": surface_risk},
         "climbs": {"ascent_m": ascent, "descent_m": descent, "count": len(climbs_list), "list": climbs_list},
-        "weather": {"windows": weather_windows, "peak": m.get("peak"), "caveats": m.get("caveats") or []},
+        "weather": {"windows": weather_windows, "peak": m.get("peak"), "caveats": m.get("caveats") or [],
+                    "slonce": m.get("slonce")},
         "poi": poi_out,
         "sprzet": sprzet,
     }
@@ -3174,6 +3243,11 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
              "vs_route": {"xss": (round(_xss) if _xss is not None else None), "cho_g": _fuel.get("carbs_total_g"), "cho_g_h": _fuel.get("carbs_g_h"),
                           "fluid_l": _fuel.get("fluid_total_l"), "wprime_txt": _wprime_txt,
                           "climb_w": _climb_w, "steep_pct": _steep_pct}}
+    try:
+        forma["wykonalnosc_dane"], forma["wykonalnosc"] = _report_feasibility(
+            conn, date_str, _xss, forma)
+    except Exception:
+        forma["wykonalnosc_dane"] = forma["wykonalnosc"] = None
 
     _climbs_slim = [{"i": x["i"], "a_km": x["a_km"], "b_km": x["b_km"], "gain_m": x["gain_m"],
                      "avg_pct": x["avg_pct"], "max_pct": x["max_pct"], "severity": x["severity"]}
@@ -3628,6 +3702,197 @@ def api_planer_dzien(route_id: str = Query(...), from_km: float = Query(..., ali
         raise
     except Exception as e:
         return {"status": "ERROR", "error": str(e)[:200]}
+    finally:
+        conn.close()
+
+
+# --- POGODA per dzien wyprawy (zakladka POGODA w Planerze) -------------------
+POGODA_FORECAST_TTL_H = 3.0      # prognoza sie zmienia -> krotki cache
+POGODA_KLIMAT_TTL_H = 24.0 * 30  # klimat ERA5 sie nie zmienia
+POGODA_HORIZON_DAYS = 15         # dokad siega prognoza Open-Meteo (dzis + 15)
+
+
+def _pogoda_cache_init(conn):
+    conn.execute("CREATE TABLE IF NOT EXISTS qbot_v2.planer_pogoda_cache ("
+                 "cache_key text PRIMARY KEY, route_id text NOT NULL, dzien int NOT NULL, "
+                 "data date NOT NULL, tryb text NOT NULL, payload jsonb NOT NULL, "
+                 "generated_at timestamptz NOT NULL DEFAULT now())")
+    conn.commit()
+
+
+def _pogoda_day_bounds(route_id, cuts_list):
+    """Granice km etapow (dni) na kanonicznej siatce 50 m - to samo zrodlo co model czasu."""
+    from qbot3.routes.route_segments_50m import load_canonical_segments_50m
+    out = load_canonical_segments_50m(route_id=str(route_id))
+    if out.get("status") != "OK" or not out.get("segments"):
+        raise HTTPException(status_code=422, detail="Brak kanonicznej siatki 50 m dla trasy")
+    segs = out["segments"]
+    total_km = round(float(segs[-1]["km_to"]), 2)
+    cuts = sorted(float(c) for c in (cuts_list or [])
+                  if c is not None and 0.0 < float(c) < total_km)
+    bounds, prev = [], 0.0
+    for c in cuts:
+        bounds.append((round(prev, 2), round(c, 2)))
+        prev = c
+    bounds.append((round(prev, 2), total_km))
+    return total_km, bounds
+
+
+def _pogoda_mid_point(route_id, from_km, to_km):
+    """Punkt w polowie etapu - do klimatologii (jeden punkt na dzien wystarczy)."""
+    geo = route_geometry(route_id)
+    coords = geo.get("coordinates") or []
+    if not coords:
+        raise HTTPException(status_code=422, detail="Brak geometrii trasy")
+    cum = [0.0]
+    for i in range(1, len(coords)):
+        cum.append(cum[-1] + _haversine_m(coords[i - 1][0], coords[i - 1][1],
+                                          coords[i][0], coords[i][1]) / 1000.0)
+    target = (float(from_km) + float(to_km)) / 2.0
+    j = min(range(len(cum)), key=lambda i: abs(cum[i] - target))
+    return float(coords[j][0]), float(coords[j][1])
+
+
+def _pogoda_seria(per_segment, max_pts=140):
+    """Gesta seria do wykresu - probkowana z osi 50 m, zeby nie wysylac tysiecy punktow."""
+    n = len(per_segment or [])
+    if not n:
+        return []
+    step = max(1, int(round(n / float(max_pts))))
+    out = []
+    for i in range(0, n, step):
+        x = per_segment[i]
+        out.append({"km": x.get("km"), "eta": x.get("eta"), "temp_c": x.get("temp_c"),
+                    "feels": x.get("feels"), "wbgt": x.get("wbgt_eff"),
+                    "rh_pct": x.get("rh_pct"), "opad_mm": x.get("opad_mm"),
+                    "opad_prob": x.get("opad_prob"), "wiatr_ms": x.get("wind_speed_ms"),
+                    "wiatr_wzdluz_ms": x.get("wind_tail_ms"),
+                    "wiatr_poprzek_ms": x.get("wind_cross_ms"),
+                    "porywy_ms": x.get("gust_ms"), "tau": x.get("tau"),
+                    "surface": x.get("surface"), "teren": x.get("teren")})
+    last = per_segment[-1]
+    if out and out[-1]["km"] != last.get("km"):
+        out.append({"km": last.get("km"), "eta": last.get("eta"), "temp_c": last.get("temp_c"),
+                    "feels": last.get("feels"), "wbgt": last.get("wbgt_eff"),
+                    "rh_pct": last.get("rh_pct"), "opad_mm": last.get("opad_mm"),
+                    "opad_prob": last.get("opad_prob"), "wiatr_ms": last.get("wind_speed_ms"),
+                    "wiatr_wzdluz_ms": last.get("wind_tail_ms"),
+                    "wiatr_poprzek_ms": last.get("wind_cross_ms"),
+                    "porywy_ms": last.get("gust_ms"), "tau": last.get("tau"),
+                    "surface": last.get("surface"), "teren": last.get("teren")})
+    return out
+
+
+@app.get("/api/planer/pogoda")
+def api_planer_pogoda(route_id: str = Query(...), start: str = Query(...),
+                      day: int = Query(1), cuts: str = Query(""),
+                      start_time: str = Query("09:00"), mode: str = Query("normalny"),
+                      rebuild: int = Query(0)):
+    """Pogoda dla JEDNEGO dnia wyprawy (etap = zakres km z podzialu Planera).
+
+    Data w horyzoncie prognozy (dzis .. dzis+15): pelny silnik METEO na osi 50 m -
+    temperatura, wilgotnosc, odczuwalna, WBGT z cieniem, opad, burza, wiatr wzdluz/w poprzek,
+    porywy, slonce (wschod/zachod/naslonecznienie/UV) + alerty i tabela co 30 min.
+    Poza horyzontem albo w przeszlosci: KLIMAT z ERA5 (10 lat, okno +-3 dni), jawnie
+    oznaczony jako klimat - zadnego udawania prognozy.
+    """
+    import datetime as _dt
+
+    try:
+        d0 = _dt.date.fromisoformat((start or "").strip()[:10])
+    except ValueError:
+        raise HTTPException(status_code=400, detail="start musi byc RRRR-MM-DD")
+    day = max(1, int(day or 1))
+    st = (start_time or "09:00").strip()[:5] or "09:00"
+    day_date = d0 + _dt.timedelta(days=day - 1)
+
+    cuts_list = []
+    for part in (cuts or "").replace(";", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            cuts_list.append(float(part))
+        except ValueError:
+            continue
+
+    conn = _db_conn()
+    try:
+        if not cuts_list:
+            cuts_list = _dni_cuts_for_route(conn, route_id) or []
+        total_km, bounds = _pogoda_day_bounds(route_id, cuts_list)
+        days_total = len(bounds)
+        if day > days_total:
+            raise HTTPException(status_code=400,
+                                detail="dzien %d, a podzial ma %d dni" % (day, days_total))
+        from_km, to_km = bounds[day - 1]
+
+        today = _dt.date.today()
+        forecast_ok = today <= day_date <= (today + _dt.timedelta(days=POGODA_HORIZON_DAYS))
+        tryb = "prognoza" if forecast_ok else "klimat"
+        ttl_h = POGODA_FORECAST_TTL_H if forecast_ok else POGODA_KLIMAT_TTL_H
+
+        base = {"ok": True, "route_id": route_id, "dzien": day, "dni_razem": days_total,
+                "data": day_date.isoformat(), "start_time": st, "mode": mode,
+                "od_km": from_km, "do_km": to_km, "trasa_km": total_km, "tryb": tryb}
+
+        cache_key = "%s|%d|%s|%s|%s|%.2f|%.2f" % (route_id, day, day_date.isoformat(),
+                                                  st, mode, from_km, to_km)
+        _pogoda_cache_init(conn)
+        if not rebuild:
+            row = conn.execute(
+                "SELECT payload, generated_at, "
+                "EXTRACT(EPOCH FROM (now() - generated_at)) / 3600.0 AS wiek_h "
+                "FROM qbot_v2.planer_pogoda_cache WHERE cache_key = %s", (cache_key,)).fetchone()
+            if row and float(row["wiek_h"]) <= ttl_h:
+                out = dict(base)
+                out.update(row["payload"] or {})
+                out["cached"] = True
+                out["policzono"] = str(row["generated_at"])[:19]
+                return out
+
+        if forecast_ok:
+            from qbot3.routes.route_meteo_engine import run_meteo_engine
+            m = run_meteo_engine(route_id=route_id, date_str=day_date.isoformat(),
+                                 start_time=st, mode=mode,
+                                 from_km=from_km, to_km=to_km)
+            if m.get("status") != "OK":
+                return dict(base, ok=False,
+                            powod="Silnik METEO: %s" % str(m.get("error") or m.get("status"))[:200])
+            payload = {"podsumowanie": m.get("podsumowanie"), "slonce": m.get("slonce"),
+                       "alerty": m.get("alerty") or m.get("alerts") or [],
+                       "tabela_30min": m.get("tabela_30min") or [],
+                       "seria": _pogoda_seria(m.get("per_segment") or []),
+                       "peak": m.get("peak"), "caveats": m.get("caveats") or [],
+                       "n_segments": m.get("n_segments"), "zrodlo": "Open-Meteo + silnik METEO QBot"}
+        else:
+            from qbot3.routes.route_climate import climate_for_day
+            lat, lon = _pogoda_mid_point(route_id, from_km, to_km)
+            k = climate_for_day(lat, lon, day_date.isoformat())
+            if k.get("status") != "OK":
+                return dict(base, ok=False, powod=str(k.get("error"))[:200])
+            payload = {"klimat": k, "zrodlo": "ERA5 / Open-Meteo archive",
+                       "powod_klimatu": ("Data jest dalej niz %d dni - prognoza nie istnieje."
+                                         % POGODA_HORIZON_DAYS) if day_date > today
+                       else "Data jest w przeszlosci - to nie jest prognoza."}
+
+        conn.execute(
+            "INSERT INTO qbot_v2.planer_pogoda_cache "
+            "(cache_key, route_id, dzien, data, tryb, payload, generated_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, now()) "
+            "ON CONFLICT (cache_key) DO UPDATE SET payload = EXCLUDED.payload, "
+            "tryb = EXCLUDED.tryb, generated_at = now()",
+            (cache_key, route_id, day, day_date, tryb, json.dumps(payload, default=str)))
+        conn.commit()
+
+        out = dict(base)
+        out.update(payload)
+        out["cached"] = False
+        return out
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"ok": False, "route_id": route_id, "dzien": day, "powod": str(e)[:300]}
     finally:
         conn.close()
 

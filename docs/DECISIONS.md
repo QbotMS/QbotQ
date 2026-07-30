@@ -4,6 +4,34 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-07-30 -- DECYZJA: pogoda wyprawy -- prognoza tam gdzie istnieje, klimat tam gdzie nie
+
+**Status:** zatwierdzone i wdrozone (zakladka POGODA w Planerze wyprawy).
+
+**Problem.** Wyprawa wielodniowa to N etapow w N dniach. Silnik METEO umial policzyc tylko
+CALA trase na jedna date i jedna godzine startu -- dla dnia 3 dawalby pogode z ETA liczona
+od km 0, czyli o kilkanascie godzin przesunieta. Drugi problem: wyprawy planuje sie na
+miesiace naprzod, a prognoza siega ~16 dni.
+
+**Decyzja 1 -- zakres km w silniku zamiast osobnego silnika dla wypraw.** run_meteo_engine
+dostal opcjonalne from_km/to_km i przelicza ETA od nowa w obrebie zakresu. Jedno zrodlo prawdy
+dla raportu trasy i dla wyprawy; brak drugiego, rozjezdzajacego sie modelu.
+
+**Decyzja 2 -- poza horyzontem prognozy podajemy KLIMAT, nie prognoze.** ERA5 (10 lat,
+okno +-3 dni), jawnie oznaczony etykieta 'klimat' i zdaniem 'To nie jest prognoza'.
+Zamiast ciszy albo udawanej prognozy -- uczciwa statystyka: srednie, p90/p10, rekordy,
+szansa dnia z opadem. Klimat NIE zawiera WBGT, burz ani wiatru wzgledem kierunku jazdy,
+bo tych nie da sie policzyc bez chwilowej radiacji, cienia i ETA -- i tak jest napisane
+w uwagach, zamiast podawac liczbe bez pokrycia.
+
+**Decyzja 3 -- jedna godzina startu dla wszystkich dni, domyslnie 09:00.** Prostota nad
+kompletnoscia. Godzina per dzien do rozwazenia pozniej, gdy okaze sie potrzebna.
+
+**Decyzja 4 -- liczymy na zadanie, jeden dzien na wywolanie, z cache.** Jeden dzien to
+kilkanascie zapytan do Open-Meteo (okna 30 min). Automatyczne liczenie wszystkich dni przy
+kazdym otwarciu zakladki byloby marnotrawstwem; cache 3 h dla prognozy, 30 dni dla klimatu.
+
+---
 ## 2026-07-25 -- DECYZJA: poswiadczenia integracji -- jeden magazyn, glosna awaria, duplikat to sukces
 
 **Status:** zatwierdzone i wdrozone. Weryfikacja na zywo (jazda 23731387812 w bazie 22:15,
