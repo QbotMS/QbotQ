@@ -1,5 +1,181 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-07-30] Pogoda v3/v4: opad to nie tylko milimetry, kolor nie moze klamac
+
+ZGLOSZENIE 1: "w podsumowaniu OPAD, a na wykresie brak".
+DIAGNOZA (na zywo, dzien 1 / 2026-08-01 / km 0-109): alert deszczu FLAGA powstal
+z PRAWDOPODOBIENSTWA 35% (prog RAIN_PROB_RISK=30), przy opad_max_mm = 0.0.
+Zaden ze 138 punktow serii nie mial opadu w mm, ale 137 mialo niezerowa szanse.
+Pas opadu rysowal wylacznie slupki z mm -> byl pusty i podpisany "sucho".
+Alert mowil o RYZYKU, wykres o ILOSCI. Oba mialy racje, razem wygladaly na sprzecznosc.
+NAPRAWA (prezentacja, nie dane -- dane byly poprawne):
+- pas opadu ma teraz TLO = prawdopodobienstwo (przezroczystosc 0.10-0.55) i SLUPKI = mm,
+- podpis pasa mowi wprost: "opad -- sucho, ale szansa do 35% (slupki = ilosc, tlo = szansa)"
+  albo "opad do X mm/h - szansa do Y%" albo "sucho, szansa ponizej 10%",
+- plakietka na osi wyprawy rozroznia "deszcz" (sa milimetry) od "ryzyko deszczu" (0 mm),
+- opis alertu deszczu bez ilosci konczy sie zdaniem "modele nie prognozuja konkretnej
+  ilosci -- to ryzyko, nie zapowiedz opadu",
+- kafel Opad przy 0 mm i >=30% szans pokazuje "0 mm, ale 35% szans".
+
+ZGLOSZENIE 2: "co to sa te jasnozielone paski?".
+DIAGNOZA: pasek dnia miał kolor z hsl(205-195*x), co dawalo ZIELEN dla calego przedzialu
+~22-31 C. Dzien 1 (24-29 C, ALARM upalu, WBGT ponad limit) byl wiec jasnozielony, czyli
+wygladal bezpiecznie. Kolor klamał.
+NAPRAWA: nowa skala kolorTemp() z progami dobranymi do jazdy (-5 granat / 5 niebieski /
+14 morski / 20 zielony / 25 zolty / 29 pomaranczowy / 33 ceglasty / 38 ciemna czerwien).
+Pasek jest teraz gradientem od koloru temp_min do koloru temp_max, a pod naglowkiem osi
+wyprawy doszla LEGENDA SKALI z podpisami (chlodno 5 / komfort 20 / cieplo 25 / goraco 29 /
+upal 33+). Opis osi tlumaczy, ze polozenie = na tle innych dni, kolor = co to znaczy dla jazdy.
+
+ZGLOSZENIE 3 (posrednio, ze zrzutu): Dzien 3 pokazywal "brak danych".
+SPRAWDZONE: dzien 3 (2026-08-03, km 219-328) liczy sie poprawnie -- 21.7-35.3 C, meta 16:21,
+1 postoj. Czyli byl to nieudany pojedynczy strzal, nie blad trwaly. ALE UI nie mowil DLACZEGO.
+NAPRAWA: zamiast "brak danych" pojawia sie "nie policzono: <powod>" w kolorze bledu.
+Ta sama zasada co przy ocenie Alberta: cisza nie jest odpowiedzia.
+
+Wersje statykow: pogoda-wyprawy-render.js v=4.
+NIEZWERYFIKOWANE WIZUALNIE (kanal chrome padal): legenda skali, tlo pasa opadu, gradient
+paskow dnia. Uzytkownik oglada strone sam -- warto potwierdzic na kolejnym zrzucie.
+
+## [2026-07-30] Pogoda: dlugie postoje w ETA, zachmurzenie, interaktywny wykres
+
+BLAD ZNALEZIONY PRZEZ UZYTKOWNIKA (najwazniejsze z tej partii). Silnik METEO wolal
+estimate_route_time_v2 BEZ planned_long_stops, wiec ETA zawierala tylko mikroprzerwy
+(0.22 min/km) i krotkie postoje co 9 km po 4.5 min. Obiad, sklep, kapiel -- zero.
+To nie jest kosmetyka zegara: pogoda liczy sie W MOMENCIE PRZEJAZDU, wiec kazdy
+nieuwzgledniony postoj przesuwa reszte dnia na wczesniejsze, chlodniejsze godziny.
+
+REGULA (decyzja uzytkownika): jeden dodatkowy postoj 30 min na kazde PELNE 75 km ETAPU.
+Nie globalnie dla trasy -- per dzien, bo dzien zaczyna sie rano od nowa. Postoje rozkladane
+rownomiernie: n postojow -> frakcje 1/(n+1), 2/(n+1)... Etap 119.5 km -> 1 postoj na km 59.8.
+Etap 40 km -> zero. Nowe stale LONG_STOP_EVERY_KM=75, LONG_STOP_MIN=30 i funkcja
+_long_stops_for_leg w route_meteo_engine; parametry run_meteo_engine: long_stop_every_km,
+long_stop_min (0 = wylaczone). Wynik zawiera blok "postoje" (liczba, minuty, na_km, regula).
+
+DOWOD: etap 0-119.5 km, start 09:00, ICON-D2.
+  bez postojow: meta 16:44, szczyt WBGT 33.0 C na km 93.85 o 14:57
+  z postojem:   meta 17:14, szczyt WBGT 33.2 C na km 86.15 o 14:59
+Szczyt upalu przesunal sie o 7.7 km -- czyli wczesniej wskazywalismy zle miejsce na trasie.
+
+ZACHMURZENIE: silnik w ogole go nie pobieral (mial je tylko modul porownania modeli).
+Dodane cloud_cover do _fetch_point, chmury_pct do per_segment i do tabeli 30 min,
+chmury_sr do podsumowania, chmury_pct do serii wykresu. Zweryfikowane: 142/142 punktow
+serii ma zachmurzenie (rano 94%, srednia dnia 25%).
+
+PODSTRONA (pogoda-wyprawy-render.js v=2):
+- pas zachmurzenia nad wykresem (im ciemniej, tym wiecej chmur),
+- pas opadu ZAWSZE widoczny z podpisem "opad -- sucho" gdy nie pada (wczesniej wygladalo,
+  jakby czegos brakowalo, zamiast informowac, ze jest sucho),
+- pionowe znaczniki postojow na wykresie,
+- INTERAKTYWNY KURSOR: pionowa linia + dymek z kompletem wartosci dla danego kilometra
+  (godzina, temperatura, odczuwalna, WBGT, wilgotnosc, zachmurzenie, opad, wiatr wzdluz,
+  porywy, nawierzchnia); dziala tez dotykiem,
+- kafel "Na trasie" pokazuje teraz jazde i postoje osobno.
+
+NIEZWERYFIKOWANE: nowych elementow wykresu NIKT NIE OBEJRZAL (kanal chrome padal w tej
+sesji). Uzytkownik potwierdzil, ze wczesniejsza wersja strony dziala. Do sprawdzenia okiem:
+pas chmur, dymek pod kursorem, znaczniki postojow.
+
+NIEODPOWIEDZIANE: wiadomosc uzytkownika z uwagami urwala sie na ", k" -- czwarta uwaga
+nieznana, warto dopytac.
+
+## [2026-07-30] Podstrona "Pogoda wyprawy" + raport pogodowy mailem
+
+CO POWSTALO (statyki poza repo, zywe od razu):
+- /opt/qbot/web/public/pogoda-wyprawy.html (NOWY) -- osobna podstrona na wzor plannera
+  wyposazenia. Wejscie: ?route=&days=&cuts=&start=&time=. Pasek: data startu, godzina
+  startu, "Policz pogode", "Przelicz od nowa", pole e-mail + "Wyslij raport".
+- /opt/qbot/web/public/pogoda-wyprawy-render.js (NOWY, ~29 kB) -- cale rysowanie bez bibliotek:
+  * OS WYPRAWY: wszystkie dni jako paski zakresu temperatur na wspolnej skali + plakietki
+    ryzyka (upal/deszcz/burza/zimno albo "czysto"); klik przewija do dnia.
+  * WYKRES DNIA (SVG, viewBox 1000x340): km na osi X, temperatura / odczuwalna (przerywana) /
+    WBGT liniami, WSTEGA ROZRZUTU ZESPOLU p10-p90 pod spodem, slupki opadu od gory, strefy
+    alertow jako tlo, pionowe znaczniki wschodu i zachodu (tylko gdy wpadaja w okno jazdy),
+    pod wykresem pasek wiatru wzdluz trasy (zielony = z tylu, czerwony = w czolo, nasycenie
+    wg sily).
+  * ZGODNOSC MODELI: kazdy punkt kontrolny jako pozioma skala z kropkami modeli (kanon
+    wiekszy i w kolorze akcentu) -- od razu widac, czy sie kupia czy rozjezdzaja; pod spodem
+    rozrzut zespolu i akapit Alberta.
+  * Kafle dnia, lista alertow, zwijana tabela 30 min, wariant klimatyczny dla dalekich dat.
+- planer-wyprawy.html + render.js: przycisk "Pogoda wyprawy" obok "Planner wyposazenia"
+  (przekazuje route, dni, ciecia, date i godzine). render.js podbity na v=79.
+- qbot_web.py: POST /api/pogoda/mail -- raport pogodowy na e-mail, NIEZALEZNY od PDF wyprawy.
+  Liczy dni tym samym endpointem co podstrona (wiec mail i ekran nie moga sie rozjechac),
+  sklada HTML bez SVG i bez zewnetrznego CSS (klienty pocztowe), wysyla przez SMTP Gmail.
+
+ZWERYFIKOWANE NA ZYWO:
+- Wszystkie cztery zasoby serwuja sie z 200 i zawieraja oczekiwana tresc
+  (pogoda-wyprawy.html, render.js, przycisk pog-link w planerze, link w render.js planera).
+- HTML maila zbudowany na prawdziwych danych dnia 1: 3535 B, zawiera kafle, model kanoniczny,
+  ostrzezenia i blok zgodnosci modeli.
+- Endpoint /api/planer/pogoda wolany wprost z Pythona zwraca ok=True, tryb=prognoza.
+
+!! NIEZWERYFIKOWANE (do zrobienia na poczatku nastepnej sesji) !!
+- PODSTRONY NIKT NIE OBEJRZAL. Kanal claude-in-chrome zawiesil sie na znane ~4 min przy
+  probie zrzutu ekranu. Skladnia JS NIE zostala potwierdzona: napisany na szybko skaner
+  nawiasow dal falszywe alarmy takze na pliku, ktory na pewno dziala (nie rozumie wyrazen
+  regularnych), wiec jego wynik odrzucono jako bezwartosciowy. Zanim uznamy to za gotowe:
+  otworzyc /pogoda-wyprawy.html?route=komoot-3088315688&days=3&cuts=119.50,234.55
+  &start=2026-08-02&time=09:00 i sprawdzic konsole przegladarki.
+- Wysylka maila nie byla testowana koncowo (zbudowano tylko tresc, bez strzalu SMTP).
+
+UWAGA O ROWNOLEGLEJ PRACY: w trakcie tej sesji planer-wyprawy-render.js zostal zmieniony
+przez kogos innego (urosl o ~2 kB, wersja podbita z 77 na 78) mimo pustej tablicy worklock.
+Moj patch czytal plik na biezaco i podmienial tylko swoj fragment, wiec cudze zmiany
+zostaly -- ale warto to sprawdzic, jesli cos w planerze zachowuje sie dziwnie.
+
+NIEZACOMMITOWANE (kanal SSH pada): route_weather_models.py, route_meteo_engine.py,
+qbot_web.py, docs/*. Statyki i tak sa poza repo.
+
+## [2026-07-30] Pogoda wielomodelowa: koniec z cichym "best_match"
+
+POWOD. Uzytkownik zglosil, ze QBot pokazuje grubo inne liczby niz Windy. Diagnoza na zywo:
+to nie byl blad, tylko WYBOR MODELU. Open-Meteo w trybie best_match wybieral ICON i podawal
+go jako fakt. Dla 4.08 na km 314: ICON 40.3 C, ECMWF (to widac na Windy) 37.9 C,
+ECMWF AIFS (tryb AI na Windy) 35.7 C. Rozjazd 4.6 C podany jako jedna pewna liczba.
+
+DRUGIE ODKRYCIE (wazniejsze). ICON-D2 ma siatke 2.2 km, ale SIEGA TYLKO 3 DNI. Dla dat
+dalszych Open-Meteo po cichu schodzil do ICON-EU (7 km) albo global (11 km) -- czyli
+przewagi rozdzielczosci NIE BYLO, mimo ze wynik wygladal tak samo. Zmierzone zasiegi
+(2026-07-30, punkt 50.58/18.04): ICON-D2 3 dni, ICON-EU 6, UKMO 8, ECMWF IFS / AIFS / GFS 16.
+Na jutro (gdzie D2 dziala) roznica jest realna: ICON-D2 34.4 vs ICON-EU 37.1 -- 2.7 C.
+
+CO POWSTALO:
+- qbot3/routes/route_weather_models.py (NOWY): rejestr 6 modeli (siatka, dostawca, typ),
+  model_reach() -- zasieg sprawdzany NA ZYWO z cache 6 h (hardkod by sklamal),
+  canonical_model() -- REGULA: najdrobniejsza siatka ktora SIEGA tej daty, ponizej 10 km;
+  gdy zaden -- ECMWF IFS. compare_models() -- komplet 6 modeli dla kilku punktow
+  JEDNYM zapytaniem. ensemble_spread() -- 51 wariantow ECMWF, p10/mediana/p90.
+- route_meteo_engine: run_meteo_engine i _fetch_point przyjmuja model=; wynik zawiera
+  pole "model". Bez parametru zachowanie bez zmian (best_match).
+- qbot_web: /api/planer/pogoda wybiera kanon regula i liczy nim cala os 50 m; dokleja blok
+  "modele" (kanon + powod + odrzucone + porownanie + zespol + ocena Alberta).
+  Parametry ?modele=0/1 i ?llm=0/1. Klucz cache uwzglednia oba.
+- _pogoda_modele_ocena: Albert interpretuje ROZBIEZNOSC, ale NIE wybiera modelu (wybor jest
+  regulowy i odtwarzalny). W prompcie jawnie: model wysokorozdzielczy jest lepszy tylko
+  w swoim zasiegu; rozrzut zespolu (niepewnosc wewnatrz modelu) to co innego niz rozjazd
+  miedzy osrodkami.
+
+KOSZT (zmierzony): 6 modeli jednym zapytaniem 180 ms, wiele punktow naraz 105 ms,
+zespol 134 ms. Czyli caly blok = 2 zapytania na dzien, nie kilkadziesiat.
+
+DOWOD (komoot-3088315688, dzien 1):
+- JUTRO: kanon ICON-D2 (2.2 km, uzasadnienie w odpowiedzi). Rozrzut modeli max 4.8 C
+  (meta: ICON-EU 36.4 vs AIFS 31.7). Zespol 51 czlonkow, rozrzut 4.2-5.2 C.
+  Albert: zgoda "umiarkowana", 4 punkty z konkretnymi liczbami.
+- +7 DNI: kanon ECMWF IFS + lista odrzuconych z powodem ("ICON-D2 konczy sie 2026-08-01").
+  Rozrzut miedzy modelami 5.4 C, ale zespol az 10.4-14.6 C -- prognoza na ten termin jest
+  bardzo niepewna i teraz to WIDAC zamiast byc ukryte.
+- tests.test_route_report: 64/64 OK.
+
+NAPRAWIONE PO DRODZE: pierwsza wersja _pogoda_modele_ocena miala "except Exception: pass"
+i przy jednym przebiegu ocena zniknela bez sladu. Teraz funkcja zwraca powod bledu
+(pole ocena_powod) -- cisza nie jest odpowiedzia. Po poprawce ocena wraca w 3.3 s.
+
+NASTEPNY KROK (uzgodniony, nie zaczety): osobna podstrona pogoda-wyprawy.html na wzor
+planera wyposazenia -- os calej wyprawy, wykres dnia ze wstega rozrzutu, panel zgody modeli,
+roza wiatru, tabela 30 min, oraz raport pogodowy wysylany mailem (niezalezny od PDF wyprawy).
+
 ## [2026-07-30] Planer wyprawy: zakladka POGODA (prognoza per dzien + klimat ERA5)
 
 CO POWSTALO:

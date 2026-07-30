@@ -3738,8 +3738,8 @@ def _pogoda_day_bounds(route_id, cuts_list):
     return total_km, bounds
 
 
-def _pogoda_mid_point(route_id, from_km, to_km):
-    """Punkt w polowie etapu - do klimatologii (jeden punkt na dzien wystarczy)."""
+def _pogoda_geo_cum(route_id):
+    """Geometria trasy + narastajacy kilometraz. Liczone raz, uzywane do wielu punktow."""
     geo = route_geometry(route_id)
     coords = geo.get("coordinates") or []
     if not coords:
@@ -3748,9 +3748,18 @@ def _pogoda_mid_point(route_id, from_km, to_km):
     for i in range(1, len(coords)):
         cum.append(cum[-1] + _haversine_m(coords[i - 1][0], coords[i - 1][1],
                                           coords[i][0], coords[i][1]) / 1000.0)
-    target = (float(from_km) + float(to_km)) / 2.0
-    j = min(range(len(cum)), key=lambda i: abs(cum[i] - target))
+    return coords, cum
+
+
+def _pogoda_point_at(coords, cum, km):
+    j = min(range(len(cum)), key=lambda i: abs(cum[i] - float(km)))
     return float(coords[j][0]), float(coords[j][1])
+
+
+def _pogoda_mid_point(route_id, from_km, to_km):
+    """Punkt w polowie etapu - do klimatologii (jeden punkt na dzien wystarczy)."""
+    coords, cum = _pogoda_geo_cum(route_id)
+    return _pogoda_point_at(coords, cum, (float(from_km) + float(to_km)) / 2.0)
 
 
 def _pogoda_seria(per_segment, max_pts=140):
@@ -3764,7 +3773,8 @@ def _pogoda_seria(per_segment, max_pts=140):
         x = per_segment[i]
         out.append({"km": x.get("km"), "eta": x.get("eta"), "temp_c": x.get("temp_c"),
                     "feels": x.get("feels"), "wbgt": x.get("wbgt_eff"),
-                    "rh_pct": x.get("rh_pct"), "opad_mm": x.get("opad_mm"),
+                    "rh_pct": x.get("rh_pct"), "chmury_pct": x.get("chmury_pct"),
+                    "opad_mm": x.get("opad_mm"),
                     "opad_prob": x.get("opad_prob"), "wiatr_ms": x.get("wind_speed_ms"),
                     "wiatr_wzdluz_ms": x.get("wind_tail_ms"),
                     "wiatr_poprzek_ms": x.get("wind_cross_ms"),
@@ -3774,7 +3784,8 @@ def _pogoda_seria(per_segment, max_pts=140):
     if out and out[-1]["km"] != last.get("km"):
         out.append({"km": last.get("km"), "eta": last.get("eta"), "temp_c": last.get("temp_c"),
                     "feels": last.get("feels"), "wbgt": last.get("wbgt_eff"),
-                    "rh_pct": last.get("rh_pct"), "opad_mm": last.get("opad_mm"),
+                    "rh_pct": last.get("rh_pct"), "chmury_pct": last.get("chmury_pct"),
+                    "opad_mm": last.get("opad_mm"),
                     "opad_prob": last.get("opad_prob"), "wiatr_ms": last.get("wind_speed_ms"),
                     "wiatr_wzdluz_ms": last.get("wind_tail_ms"),
                     "wiatr_poprzek_ms": last.get("wind_cross_ms"),
@@ -3783,11 +3794,331 @@ def _pogoda_seria(per_segment, max_pts=140):
     return out
 
 
+def _pogoda_modele_ocena(pay):
+    """Albert czyta tabele modeli i pisze wniosek. Liczby i wybor kanonu sa juz ustalone
+    regula (route_weather_models) - LLM ich NIE zmienia, tylko tlumaczy co z nich wynika."""
+    _sysp = (
+        "Jestes Albert - asystent kolarski QBot. Dostajesz porownanie kilku modeli pogodowych "
+        "dla jednego dnia wyprawy rowerowej i masz ocenic, NA ILE TEJ PROGNOZIE MOZNA UFAC. "
+        "Zwracasz WYLACZNIE JSON o kluczach: zgoda, wniosek, punkty.\n"
+        "zgoda: jedno slowo - 'wysoka', 'umiarkowana' albo 'niska'.\n"
+        "wniosek: JEDNO zdanie - czy modele mowia to samo i co z tego wynika dla planowania.\n"
+        "punkty: 2-4 stringi po jednym zdaniu (maks. ~30 slow): (a) gdzie modele sie zgadzaja, "
+        "a gdzie rozjezdzaja i o ile, (b) czy ktorys model odstaje od reszty i w ktora strone, "
+        "(c) co to znaczy praktycznie dla rowerzysty (czy planowac na wartosc srodkowa, czy "
+        "zakladac gorszy wariant), (d) tylko jesli istotne: czy decyzje warto odlozyc.\n"
+        "ZASADA O ROZDZIELCZOSCI: model o drobniejszej siatce jest dokladniejszy TYLKO w swoim "
+        "zasiegu czasowym. Poza zasiegiem jego liczb w ogole nie ma - nie pisz, ze jest lepszy "
+        "'ale nie siega'. Model kanoniczny zostal juz wybrany regula: NIE proponuj innego.\n"
+        "NAZEWNICTWO (obowiazkowe, bo uzytkownik widzi te liczby obok siebie): roznice MIEDZY "
+        "osrodkami nazywaj ZAWSZE dokladnie tak: \u201erozst\u0119p mi\u0119dzy modelami\u201d, "
+        "a rozrzut 51 wariantow ECMWF ZAWSZE dokladnie tak: \u201erozrzut zespo\u0142u\u201d. "
+        "Przepisz te dwa zwroty ZNAK W ZNAK, z polskimi ogonkami - reszta tej instrukcji jest "
+        "bez ogonkow tylko z powodow technicznych, ale Twoja odpowiedz ma byc poprawna "
+        "polszczyzna z ogonkami. Nigdy nie uzywaj samego slowa \u201erozrzut\u201d bez "
+        "okreslenia, o ktora z tych dwoch wielkosci chodzi - inaczej wyglada to jak "
+        "sprzecznosc z panelem.\n"
+        "Prosty jezyk, bez zargonu bez wyjasnienia, bez markdown, bez emoji, bez naglowkow. "
+        "Liczby WYLACZNIE z danych wejsciowych. NIE cytuj identyfikatorow modeli "
+        "(icon_d2, ecmwf_ifs025) - uzywaj nazw czytelnych (ICON-D2, ECMWF). "
+        "NIE pisz czego w danych brakuje; model bez wartosci po prostu pomijasz."
+    )
+    import time as _time
+    t0 = _time.time()
+    try:
+        from qgpt_client import qgpt_json
+        o = qgpt_json(json.dumps(pay, ensure_ascii=False, default=str),
+                      system=_sysp, max_tokens=1200, temperature=0.3)
+        if isinstance(o, dict) and o.get("wniosek"):
+            pk = [str(x).strip() for x in (o.get("punkty") or []) if str(x).strip()]
+            return {"zgoda": str(o.get("zgoda") or "").strip().lower() or None,
+                    "wniosek": str(o["wniosek"]).strip(), "punkty": pk[:4], "zrodlo": "Albert",
+                    "czas_s": round(_time.time() - t0, 1)}
+        # Odpowiedz przyszla, ale nie w tym ksztalcie co trzeba -- to tez trzeba wiedziec.
+        return {"blad": "LLM zwrocil odpowiedz bez pola 'wniosek' (typ: %s)" % type(o).__name__,
+                "czas_s": round(_time.time() - t0, 1)}
+    except Exception as e:
+        return {"blad": "%s: %s" % (type(e).__name__, str(e)[:180]),
+                "czas_s": round(_time.time() - t0, 1)}
+
+
+def _pogoda_modele_blok(route_id, day_date, kanon, podsumowanie, from_km, to_km, z_llm=True):
+    """Komplet 6 modeli w punktach kontrolnych dnia + rozrzut zespolu + ocena Alberta.
+
+    Punkty kontrolne (nie cala os -- to wystarczy, zeby zobaczyc czy modele sie zgadzaja):
+    start etapu, szczyt WBGT (najgorszy moment), meta. Kazdy z GODZINA przejazdu, nie z doby.
+    """
+    from qbot3.routes.route_weather_models import compare_models, ensemble_spread
+
+    p = podsumowanie or {}
+    coords, cum = _pogoda_geo_cum(route_id)
+    surowe = [("start", p.get("km_od", from_km), p.get("eta_od")),
+              ("szczyt upalu", p.get("wbgt_km"), p.get("wbgt_eta")),
+              ("meta", p.get("km_do", to_km), p.get("eta_do"))]
+    punkty, uzyte_km = [], set()
+    for nazwa, km, godz in surowe:
+        if km is None or godz is None:
+            continue
+        klucz = round(float(km), 1)
+        if klucz in uzyte_km:
+            continue
+        uzyte_km.add(klucz)
+        lat, lon = _pogoda_point_at(coords, cum, km)
+        punkty.append({"nazwa": nazwa, "lat": lat, "lon": lon,
+                       "km": klucz, "godzina": str(godz)[:5]})
+    if not punkty:
+        return None
+
+    try:
+        por = compare_models(punkty, str(day_date)[:10])
+    except Exception as e:
+        return {"status": "ERROR", "powod": str(e)[:200]}
+    if por.get("status") != "OK":
+        return {"status": "ERROR", "powod": str(por.get("error"))[:200]}
+
+    srodek = punkty[len(punkty) // 2]
+    godziny = sorted({x["godzina"] for x in punkty})
+    try:
+        zesp = ensemble_spread(srodek["lat"], srodek["lon"], str(day_date)[:10], godziny)
+    except Exception:
+        zesp = {"status": "ERROR"}
+
+    blok = {"status": "OK", "kanon": kanon, "porownanie": por,
+            "zespol": (zesp if zesp.get("status") == "OK" else None)}
+
+    if z_llm:
+        skrot = {"data": str(day_date)[:10],
+                 "model_kanoniczny": {"nazwa": kanon.get("nazwa"), "siatka_km": kanon.get("siatka_km"),
+                                      "powod_wyboru": kanon.get("powod")},
+                 "punkty": [], "rozrzut_max_c": por.get("rozrzut_max_c"),
+                 "zespol": (zesp.get("godziny") if zesp.get("status") == "OK" else None),
+                 "czlonkow_zespolu": zesp.get("czlonkow")}
+        from qbot3.routes.route_weather_models import MODELS as _MM
+        for w in por.get("punkty") or []:
+            skrot["punkty"].append({
+                "gdzie": w.get("nazwa"), "km": w.get("km"), "godzina": w.get("godzina"),
+                "rozrzut_c": w.get("temp_rozrzut"), "mediana_c": w.get("temp_mediana"),
+                "modele": {(_MM.get(mid) or {}).get("nazwa", mid):
+                           {"temp_c": v.get("temp_c"), "opad_mm": v.get("opad_mm"),
+                            "wiatr_ms": v.get("wiatr_ms"), "siatka_km": (_MM.get(mid) or {}).get("siatka_km")}
+                           for mid, v in (w.get("modele") or {}).items()}})
+        _oc = _pogoda_modele_ocena(skrot)
+        if _oc and _oc.get("wniosek"):
+            blok["ocena"] = _oc
+        else:
+            # Brak oceny nie jest cisza: mowimy wprost, czemu jej nie ma.
+            blok["ocena"] = None
+            blok["ocena_powod"] = (_oc or {}).get("blad") or "nieznany powod"
+    return blok
+
+
+def _pogoda_mail_dzien_html(d, nr):
+    """Jeden dzien w mailu. Bez SVG i bez CSS zewnetrznego -- klienty pocztowe tego nie lubia."""
+    def esc(x):
+        return (str(x if x is not None else "").replace("&", "&amp;").replace("<", "&lt;")
+                .replace(">", "&gt;"))
+
+    def liczba(v, nd=1):
+        if v is None:
+            return "b/d"
+        return ("%." + str(nd) + "f") % float(v)
+
+    if not d or not d.get("ok"):
+        return ("<h3 style='margin:18px 0 4px;font-size:16px'>Dzien %d</h3>"
+                "<p style='margin:0;color:#a6503d'>%s</p>"
+                % (nr, esc((d or {}).get("powod") or "brak danych")))
+
+    naglowek = ("<h3 style='margin:18px 0 2px;font-size:16px;color:#26332a'>Dzien %d "
+                "<span style='font-weight:400;color:#8c8168;font-size:13px'>%s &middot; km %s-%s</span></h3>"
+                % (nr, esc(d.get("data")), liczba(d.get("od_km"), 0), liczba(d.get("do_km"), 0)))
+
+    if d.get("tryb") == "klimat":
+        k = d.get("klimat") or {}
+        t = k.get("temp") or {}
+        o = k.get("opad") or {}
+        return (naglowek +
+                "<p style='margin:0 0 6px;font-size:13px;color:#8a5a12'><b>To nie jest prognoza.</b> %s</p>"
+                "<p style='margin:0;font-size:14px'>Klimat: maks. %s C (co 10. dzien powyzej %s), "
+                "min. %s C, szansa dnia z opadem %s%%.</p>"
+                % (esc(d.get("powod_klimatu")), liczba(t.get("max_sr")), liczba(t.get("max_p90")),
+                   liczba(t.get("min_sr")), o.get("szansa_dnia_z_opadem_pct")))
+
+    p = d.get("podsumowanie") or {}
+    sl = d.get("slonce") or {}
+    kan = ((d.get("modele") or {}).get("kanon")) or {}
+
+    kafle = [
+        ("Temperatura", "%s-%s C" % (liczba(p.get("temp_min")), liczba(p.get("temp_max")))),
+        ("Odczuwalna", "%s-%s C" % (liczba(p.get("odczuwalna_min")), liczba(p.get("odczuwalna_max")))),
+        ("Wilgotnosc", "%s-%s %%" % (liczba(p.get("rh_min"), 0), liczba(p.get("rh_max"), 0))),
+        ("Opad", "%s mm (do %s%% szans)" % (liczba(p.get("opad_mm")),
+                                            p.get("opad_prob_max") if p.get("opad_prob_max") is not None else "b/d")),
+        ("Wiatr", "%s m/s sr., porywy do %s" % (liczba(p.get("wiatr_sr_ms")), liczba(p.get("porywy_max_ms")))),
+        ("WBGT max", "%s C (km %s o %s)" % (liczba(p.get("wbgt_max")), liczba(p.get("wbgt_km"), 0),
+                                            esc(p.get("wbgt_eta")))),
+        ("Slonce", "%s-%s" % (esc(sl.get("wschod")), esc(sl.get("zachod")))),
+        ("Na trasie", "%s-%s" % (esc(p.get("eta_od")), esc(p.get("eta_do")))),
+    ]
+    komorki = "".join(
+        "<td style='padding:6px 10px;border:1px solid #dcd0ba;background:#fbf7ec;font-size:13px'>"
+        "<div style='color:#8c8168;font-size:11px;text-transform:uppercase'>%s</div>"
+        "<div style='font-weight:700'>%s</div></td>" % (esc(a), esc(b)) for a, b in kafle)
+    wiersze = "".join("<tr>" + komorki[i:i + 0] + "</tr>" for i in [])  # placeholder, skladamy nizej
+    tab = "<table style='border-collapse:collapse;margin:6px 0 8px'><tr>" +           komorki[:len(komorki)] + "</tr></table>"
+
+    czesci = [naglowek]
+    if kan.get("nazwa"):
+        czesci.append("<p style='margin:0 0 6px;font-size:12.5px;color:#8c8168'>Model: <b>%s</b> "
+                      "(siatka %s km) &mdash; %s</p>"
+                      % (esc(kan.get("nazwa")), liczba(kan.get("siatka_km")), esc(kan.get("powod"))))
+    # kafle w dwoch rzedach po cztery
+    poz = list(kafle)
+    tab = "<table style='border-collapse:collapse;margin:4px 0 8px'>"
+    for start_i in (0, 4):
+        tab += "<tr>"
+        for a, b in poz[start_i:start_i + 4]:
+            tab += ("<td style='padding:6px 10px;border:1px solid #dcd0ba;background:#fbf7ec;"
+                    "font-size:13px;min-width:130px'>"
+                    "<div style='color:#8c8168;font-size:11px;text-transform:uppercase'>%s</div>"
+                    "<div style='font-weight:700'>%s</div></td>" % (esc(a), esc(b)))
+        tab += "</tr>"
+    tab += "</table>"
+    czesci.append(tab)
+
+    al = d.get("alerty") or []
+    if al:
+        czesci.append("<div style='margin:6px 0'>")
+        for a in al:
+            kol = "#a6503d" if "ALARM" in str(a.get("severity") or "") else "#8a5a12"
+            opis = []
+            if a.get("km_od") is not None:
+                opis.append("km %s-%s" % (liczba(a.get("km_od"), 0), liczba(a.get("km_do"), 0)))
+            if a.get("eta_od"):
+                opis.append("%s-%s" % (esc(a["eta_od"]), esc(a.get("eta_do"))))
+            if a.get("minuty") is not None:
+                opis.append("%s min" % a["minuty"])
+            if a.get("wbgt_max") is not None:
+                opis.append("WBGT %s C" % liczba(a["wbgt_max"]))
+            if a.get("opad_max_mm") is not None:
+                opis.append("opad do %s mm/h" % liczba(a["opad_max_mm"]))
+            czesci.append("<div style='font-size:13.5px;color:%s;margin:2px 0'><b>%s %s</b> &middot; %s</div>"
+                          % (kol, esc(a.get("severity")), esc(a.get("typ")), esc(" &middot; ".join(opis))
+                             .replace("&amp;middot;", "&middot;")))
+        czesci.append("</div>")
+    else:
+        czesci.append("<p style='margin:4px 0;font-size:13.5px;color:#3f7a4d'>Brak ostrzezen.</p>")
+
+    mo = d.get("modele") or {}
+    oc = mo.get("ocena")
+    por = mo.get("porownanie") or {}
+    if por.get("rozrzut_max_c") is not None:
+        czesci.append("<p style='margin:6px 0 2px;font-size:12.5px;color:#8c8168'>"
+                      "Rozjazd miedzy modelami: do %s C.</p>" % liczba(por["rozrzut_max_c"]))
+    if oc and oc.get("wniosek"):
+        pk = "".join("<li>%s</li>" % esc(x) for x in (oc.get("punkty") or []))
+        czesci.append("<div style='background:#eae0cc;border-radius:8px;padding:9px 12px;margin:6px 0'>"
+                      "<div style='font-size:11px;text-transform:uppercase;color:#8c8168'>"
+                      "Zgodnosc modeli: %s</div><p style='margin:4px 0;font-size:13.5px'>%s</p>"
+                      "<ul style='margin:4px 0 0;padding-left:18px;font-size:13px;color:#47564a'>%s</ul></div>"
+                      % (esc(oc.get("zgoda")), esc(oc.get("wniosek")), pk))
+    return "".join(czesci)
+
+
+@app.post("/api/pogoda/mail")
+async def api_pogoda_mail(request: Request):
+    """Raport pogodowy wyprawy na e-mail. Niezalezny od PDF wyprawy.
+
+    Liczy (albo bierze z cache) kazdy dzien tym samym endpointem, ktory zasila podstrone,
+    wiec mail i ekran NIE MOGA sie rozjechac.
+    """
+    body = await request.json()
+    to = str(body.get("to") or "").strip()
+    route_id = str(body.get("route_id") or "").strip()
+    start = str(body.get("start") or "").strip()
+    if not to or "@" not in to:
+        return {"ok": False, "powod": "brak poprawnego adresu e-mail"}
+    if not route_id or not start:
+        return {"ok": False, "powod": "brak trasy albo daty startu"}
+
+    cuts = str(body.get("cuts") or "")
+    st = str(body.get("start_time") or "09:00")[:5]
+    try:
+        days = max(1, min(30, int(body.get("days") or 1)))
+    except Exception:
+        days = 1
+
+    nazwa = route_id
+    try:
+        conn0 = _db_conn()
+        try:
+            r0 = conn0.execute("SELECT name FROM qbot_v2.route_base WHERE route_id=%s",
+                               (route_id,)).fetchone()
+            if r0 and r0.get("name"):
+                nazwa = r0["name"]
+        finally:
+            conn0.close()
+    except Exception:
+        pass
+
+    dni = []
+    for i in range(days):
+        try:
+            d = api_planer_pogoda(route_id=route_id, start=start, day=i + 1, cuts=cuts,
+                                  start_time=st, mode="normalny", rebuild=0, modele=1, llm=1)
+        except HTTPException as e:
+            d = {"ok": False, "powod": str(e.detail)[:200]}
+        except Exception as e:
+            d = {"ok": False, "powod": str(e)[:200]}
+        dni.append(d)
+
+    ile_ok = sum(1 for d in dni if d.get("ok"))
+    if not ile_ok:
+        return {"ok": False, "powod": "zaden dzien nie ma danych pogodowych"}
+
+    tresc = "".join(_pogoda_mail_dzien_html(d, i + 1) for i, d in enumerate(dni))
+    html = (
+        "<div style='font-family:-apple-system,system-ui,Roboto,Helvetica,Arial,sans-serif;"
+        "color:#26332a;max-width:720px;margin:0 auto;padding:16px'>"
+        "<div style='font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8c8168'>"
+        "QBot &middot; raport pogodowy</div>"
+        "<h2 style='margin:4px 0 2px;font-size:21px'>%s</h2>"
+        "<p style='margin:0 0 4px;color:#8c8168;font-size:13.5px'>Start %s, godzina %s, %d %s. "
+        "Prognoza z dnia %s.</p>"
+        "<p style='margin:0 0 10px;color:#8c8168;font-size:12.5px'>Model dla kazdego dnia wybrany "
+        "regula: najdrobniejsza siatka, ktora siega tej daty. Prognoza siega ok. 16 dni &mdash; "
+        "dalsze dni pokazane jako klimat z ostatnich 10 lat, nie jako prognoza.</p>"
+        "%s"
+        "<p style='margin:18px 0 0;font-size:11.5px;color:#8c8168;border-top:1px solid #dcd0ba;"
+        "padding-top:8px'>Wygenerowane przez QBot. Liczby pochodza z Open-Meteo (kilka osrodkow "
+        "prognostycznych) i wlasnego silnika METEO liczacego warunki w momencie przejazdu.</p>"
+        "</div>"
+    ) % (nazwa, start, st, days, ("dzien" if days == 1 else "dni"),
+         _dt_now_str(), tresc)
+
+    msg = MIMEMultipart("alternative")
+    msg.attach(MIMEText(html, "html", "utf-8"))
+    msg["Subject"] = "Pogoda wyprawy: %s - start %s" % (nazwa, start)
+    msg["From"] = _cfg.GMAIL_USER
+    msg["To"] = to
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as srv:
+            srv.login(_cfg.GMAIL_USER, _cfg.GMAIL_APP_PASSWORD)
+            srv.send_message(msg)
+    except Exception as e:
+        return {"ok": False, "powod": "SMTP: %s" % str(e)[:200]}
+    return {"ok": True, "wyslano_do": to, "dni": days, "dni_z_danymi": ile_ok}
+
+
+def _dt_now_str():
+    import datetime as _d
+    return _d.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
 @app.get("/api/planer/pogoda")
 def api_planer_pogoda(route_id: str = Query(...), start: str = Query(...),
                       day: int = Query(1), cuts: str = Query(""),
                       start_time: str = Query("09:00"), mode: str = Query("normalny"),
-                      rebuild: int = Query(0)):
+                      rebuild: int = Query(0), modele: int = Query(1), llm: int = Query(1)):
     """Pogoda dla JEDNEGO dnia wyprawy (etap = zakres km z podzialu Planera).
 
     Data w horyzoncie prognozy (dzis .. dzis+15): pelny silnik METEO na osi 50 m -
@@ -3836,8 +4167,9 @@ def api_planer_pogoda(route_id: str = Query(...), start: str = Query(...),
                 "data": day_date.isoformat(), "start_time": st, "mode": mode,
                 "od_km": from_km, "do_km": to_km, "trasa_km": total_km, "tryb": tryb}
 
-        cache_key = "%s|%d|%s|%s|%s|%.2f|%.2f" % (route_id, day, day_date.isoformat(),
-                                                  st, mode, from_km, to_km)
+        cache_key = "%s|%d|%s|%s|%s|%.2f|%.2f|m%d|l%d" % (route_id, day, day_date.isoformat(),
+                                                          st, mode, from_km, to_km,
+                                                          int(bool(modele)), int(bool(llm)))
         _pogoda_cache_init(conn)
         if not rebuild:
             row = conn.execute(
@@ -3853,18 +4185,38 @@ def api_planer_pogoda(route_id: str = Query(...), start: str = Query(...),
 
         if forecast_ok:
             from qbot3.routes.route_meteo_engine import run_meteo_engine
+            from qbot3.routes.route_weather_models import canonical_model
+
+            # Model wybiera REGULA (najdrobniejsza siatka siegajaca tej daty), nie serwis.
+            lat_s, lon_s = _pogoda_mid_point(route_id, from_km, to_km)
+            try:
+                kanon = canonical_model(lat_s, lon_s, day_date.isoformat())
+            except Exception as e:
+                kanon = {"model": None, "powod": "nie udalo sie sprawdzic zasiegu modeli: %s"
+                                                 % str(e)[:80]}
             m = run_meteo_engine(route_id=route_id, date_str=day_date.isoformat(),
                                  start_time=st, mode=mode,
-                                 from_km=from_km, to_km=to_km)
+                                 from_km=from_km, to_km=to_km,
+                                 model=kanon.get("model"))
             if m.get("status") != "OK":
                 return dict(base, ok=False,
                             powod="Silnik METEO: %s" % str(m.get("error") or m.get("status"))[:200])
             payload = {"podsumowanie": m.get("podsumowanie"), "slonce": m.get("slonce"),
+                       "postoje": m.get("postoje"),
                        "alerty": m.get("alerty") or m.get("alerts") or [],
                        "tabela_30min": m.get("tabela_30min") or [],
                        "seria": _pogoda_seria(m.get("per_segment") or []),
                        "peak": m.get("peak"), "caveats": m.get("caveats") or [],
                        "n_segments": m.get("n_segments"), "zrodlo": "Open-Meteo + silnik METEO QBot"}
+            if modele:
+                try:
+                    payload["modele"] = _pogoda_modele_blok(
+                        route_id, day_date, kanon, m.get("podsumowanie"),
+                        from_km, to_km, z_llm=bool(llm))
+                except Exception as e:
+                    payload["modele"] = {"status": "ERROR", "powod": str(e)[:200]}
+            else:
+                payload["modele"] = {"status": "OK", "kanon": kanon}
         else:
             from qbot3.routes.route_climate import climate_for_day
             lat, lon = _pogoda_mid_point(route_id, from_km, to_km)
@@ -4258,7 +4610,7 @@ def _rain_summary(windows):
     return "Opady: " + ", ".join(bits) + "."
 
 
-def _build_report_email_html(data, has_map, has_chart, att_imgs=None):
+def _build_report_email_html(data, has_map, has_chart, att_imgs=None, has_climbs=False):
     """Ladny, uproszczony raport - sekcje jedna pod druga (tabelowy layout HTML,
     dziala w kazdym kliencie poczty). Kolejnosc: hero -> start/czas -> ostrzezenia ->
     mapa -> pogoda -> profil -> nawierzchnia -> przewyzszenia -> strategia -> POI.
@@ -4356,7 +4708,7 @@ def _build_report_email_html(data, has_map, has_chart, att_imgs=None):
 
     if has_chart:
         p.append(SEC("Profil trasy"))
-        p.append('<img src="cid:reportchart" width="700" style="width:100%%;max-width:700px;'
+        p.append('<img src="cid:reportchart" width="740" style="width:100%%;max-width:740px;'
                   'border-radius:10px;border:1px solid %s;display:block" alt="profil trasy">' % LINE)
 
     p.append(SEC("Pogoda"))
@@ -4391,7 +4743,12 @@ def _build_report_email_html(data, has_map, has_chart, att_imgs=None):
     p.append(TXT("Podjazdy <b>+%s m</b> &middot; Zjazdy <b>&minus;%s m</b> &middot; <b>%s</b> podjazdow" % (
         asc if asc is not None else "?", dsc if dsc is not None else "?", climbs.get("count") or 0)))
     clist = climbs.get("list") or []
-    if clist:
+    if clist and has_climbs:
+        # grafika: profil kazdego podjazdu, segmenty pokolorowane wg nachylenia + legenda
+        p.append('<img src="cid:reportclimbs" width="740" style="width:100%%;max-width:740px;'
+                  'border-radius:10px;border:1px solid %s;display:block" '
+                  'alt="profile podjazdow">' % LINE)
+    elif clist:
         for x in clist:
             p.append('<div style="font-family:%s;background:#fff;border:1px solid %s;border-radius:8px;'
                       'padding:8px 12px;margin:0 0 6px;font-size:%spx;color:%s">'
@@ -4449,8 +4806,9 @@ def _build_report_email_html(data, has_map, has_chart, att_imgs=None):
 
 def _capture_report_images(snapshot_id):
     """Renderuje raport-print.html w headless Chromium (Playwright) i robi zrzuty mapy + wykresu.
-    Zwraca (map_png_bytes, chart_png_bytes) - dowolne moze byc None przy niepowodzeniu."""
-    map_png = chart_png = None
+    Zwraca (map_png, chart_png, climbs_png) - kazdy moze byc None przy niepowodzeniu.
+    climbs_png to zakladka "Przewyzszenia": profile podjazdow z segmentami wg nachylenia."""
+    map_png = chart_png = climbs_png = None
     try:
         from playwright.sync_api import sync_playwright
         users, sign_val = _webauth_load()
@@ -4462,7 +4820,7 @@ def _capture_report_images(snapshot_id):
         with sync_playwright() as pw:
             browser = pw.chromium.launch(args=["--no-sandbox"])
             try:
-                context = browser.new_context(viewport={"width": 1040, "height": 820}, device_scale_factor=2)
+                context = browser.new_context(viewport={"width": 1240, "height": 900}, device_scale_factor=2)
                 if cookie_value:
                     context.add_cookies([{"name": "qbot_session", "value": cookie_value,
                                            "url": "http://127.0.0.1:%d" % PORT}])
@@ -4480,11 +4838,22 @@ def _capture_report_images(snapshot_id):
                 chart_el = page.query_selector("#chart")
                 if chart_el:
                     chart_png = chart_el.screenshot()
+                # zakladka "Przewyzszenia" - w DOM jest tylko sekcja aktywna, wiec ja klikamy
+                try:
+                    tab = page.query_selector('.multi-item[data-id="przewyzszenia"]')
+                    if tab:
+                        tab.click()
+                        page.wait_for_timeout(400)
+                        body = page.query_selector("#multi-pane .multi-body")
+                        if body:
+                            climbs_png = body.screenshot()
+                except Exception as _ec:
+                    print("climbs screenshot error:", _ec)
             finally:
                 browser.close()
     except Exception as _e:
         print("_capture_report_images error:", _e)
-    return map_png, chart_png
+    return map_png, chart_png, climbs_png
 
 
 def _fetch_attraction_images(poi, limit=24, max_bytes=3000000, timeout=6.0):
@@ -4553,17 +4922,270 @@ def report_send_email(snapshot_id: int = Query(...), to: str = Query(...)):
     finally:
         conn.close()
 
-    map_png, chart_png = _capture_report_images(snapshot_id)
+    parts = _report_mail_parts(data, snapshot_id, coords)
+    msg = _report_mail_build(data, parts, to)
 
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+            s.login(_cfg.GMAIL_USER, _cfg.GMAIL_APP_PASSWORD)
+            s.send_message(msg)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Nie udalo sie wyslac maila: %s" % e)
+
+    _remember_recipient(to)
+    return {"status": "ok", "to": to, "snapshot_id": snapshot_id}
+
+
+def _group_emails(conn, group_id):
+    rows = conn.execute(
+        "SELECT email FROM qbot_v2.mail_group_member WHERE group_id=%s ORDER BY email",
+        (group_id,)).fetchall()
+    return [r["email"] for r in rows]
+
+
+def _send_report_to_group(conn, route_id, date_str, start_time, group_id, schedule_id=None):
+    """SERCE harmonogramu. Liczy raport OD ZERA (czyli ze swieza pogoda), zapisuje snapshot,
+    robi JEDEN komplet zrzutow i rozsyla ten sam mail do calej grupy - jednym polaczeniem SMTP.
+    Kazdy adres zapisany osobno w report_schedule_sent, zeby bylo widac kto dostal, a kto nie."""
+    emails = _group_emails(conn, group_id)
+    if not emails:
+        raise RuntimeError("Grupa nie ma zadnego adresu")
+
+    data = _build_report_data(conn, route_id, date_str, start_time, 0, 0)
+    snapshot_id = _save_report_snapshot(conn, route_id, date_str, start_time, 0, 0, data)
+    geo = route_geometry(route_id)
+    parts = _report_mail_parts(data, snapshot_id, geo.get("coordinates") or [])
+
+    sent, failed = [], []
+    srv = None
+    try:
+        srv = smtplib.SMTP_SSL("smtp.gmail.com", 465)
+        srv.login(_cfg.GMAIL_USER, _cfg.GMAIL_APP_PASSWORD)
+        for em in emails:
+            try:
+                srv.send_message(_report_mail_build(data, parts, em))
+                sent.append(em)
+                _remember_recipient(em)
+                err = None
+            except Exception as ex:
+                failed.append(em)
+                err = str(ex)[:300]
+            if schedule_id:
+                try:
+                    conn.execute(
+                        "INSERT INTO qbot_v2.report_schedule_sent (schedule_id, email, ok, error) "
+                        "VALUES (%s, %s, %s, %s)", (schedule_id, em, err is None, err))
+                    conn.commit()
+                except Exception as _ex:
+                    print("schedule_sent insert error:", _ex)
+    finally:
+        try:
+            if srv:
+                srv.quit()
+        except Exception:
+            pass
+
+    return {"snapshot_id": snapshot_id, "sent": sent, "failed": failed,
+            "route_name": (data.get("route") or {}).get("name")}
+
+
+def _run_report_schedule(schedule_id):
+    """Wykonuje jeden zaplanowany wpis. Wolane w osobnym watku, wiec ma wlasne polaczenie
+    do bazy i lapie wszystko - zaden blad nie moze wywrocic serwisu."""
+    conn = _db_conn()
+    try:
+        row = conn.execute(
+            "SELECT id, day::text AS day, route_id, start_time::text AS start_time, group_id, "
+            "status, attempts FROM qbot_v2.report_schedule WHERE id=%s", (schedule_id,)).fetchone()
+        if not row:
+            return
+        if row["status"] == "sent":
+            return
+        conn.execute("UPDATE qbot_v2.report_schedule SET status='running', attempts=attempts+1, "
+                     "last_try_at=now() WHERE id=%s", (schedule_id,))
+        conn.commit()
+        try:
+            res = _send_report_to_group(conn, row["route_id"], row["day"],
+                                        (row["start_time"] or "08:00")[:5], row["group_id"],
+                                        schedule_id=schedule_id)
+        except Exception as ex:
+            # pogoda/generator/SMTP padly - NIE wysylamy nic, zeby nie poszedl raport z wczoraj
+            conn.execute("UPDATE qbot_v2.report_schedule SET status='failed', last_error=%s "
+                         "WHERE id=%s", (str(ex)[:400], schedule_id))
+            conn.commit()
+            _wyprawa_tg_notify("\u26a0\ufe0f Raport na %s NIE zostal wyslany: %s"
+                               % (row["day"], str(ex)[:200]))
+            return
+        ok = len(res["sent"])
+        bad = len(res["failed"])
+        conn.execute(
+            "UPDATE qbot_v2.report_schedule SET status=%s, snapshot_id=%s, finished_at=now(), "
+            "last_error=%s WHERE id=%s",
+            ("sent" if ok and not bad else ("partial" if ok else "failed"), res["snapshot_id"],
+             (", ".join(res["failed"])[:400] or None), schedule_id))
+        conn.commit()
+        _wyprawa_tg_notify("\u2709\ufe0f Raport \u201e%s\u201d (%s): wyslano %d/%d%s"
+                           % (res.get("route_name") or row["route_id"], row["day"], ok, ok + bad,
+                              ("; nie poszlo: " + ", ".join(res["failed"])) if bad else ""))
+    except Exception as ex:
+        print("run_report_schedule fatal:", ex)
+    finally:
+        conn.close()
+
+
+@app.get("/api/report/schedules")
+def report_schedules_list(start: str = Query(...), end: str = Query(...)):
+    """Zaplanowane wysylki w zakresie dat - do pokazania w kalendarzu."""
+    conn = _db_conn()
+    try:
+        rows = conn.execute(
+            "SELECT s.id, s.entry_id, s.day::text AS day, s.route_id, s.group_id, "
+            "s.send_at::text AS send_at, s.status, s.attempts, s.last_error, "
+            "s.finished_at::text AS finished_at, g.name AS group_name, "
+            "(SELECT count(*) FROM qbot_v2.report_schedule_sent x "
+            " WHERE x.schedule_id=s.id AND x.ok) AS sent_ok, "
+            "(SELECT count(*) FROM qbot_v2.mail_group_member m WHERE m.group_id=s.group_id) AS members "
+            "FROM qbot_v2.report_schedule s JOIN qbot_v2.mail_group g ON g.id=s.group_id "
+            "WHERE s.day BETWEEN %s AND %s ORDER BY s.day, s.id", (start, end)).fetchall()
+        return {"items": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
+@app.post("/api/report/schedule")
+async def report_schedule_set(request: Request):
+    """Wlacza poranna wysylke dla dnia z przypieta trasa.
+    body: {entry_id, day, group_id, all_days?}. all_days=true zaklada wpisy dla wszystkich
+    dni tego eventu, ktore maja przypieta trase (wyprawa wielodniowa)."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    entry_id = int(body.get("entry_id") or 0)
+    day = (str(body.get("day") or "")).strip()[:10]
+    group_id = int(body.get("group_id") or 0)
+    all_days = bool(body.get("all_days"))
+    if not entry_id or not day or not group_id:
+        raise HTTPException(status_code=400, detail="Wymagane: entry_id, day, group_id")
+
+    conn = _db_conn()
+    try:
+        g = conn.execute("SELECT id FROM qbot_v2.mail_group WHERE id=%s", (group_id,)).fetchone()
+        if not g:
+            raise HTTPException(status_code=404, detail="Nie ma takiej grupy")
+        if all_days:
+            rows = conn.execute(
+                "SELECT day::text AS day, route_id FROM qbot_v2.calendar_day_route "
+                "WHERE entry_id=%s ORDER BY day", (entry_id,)).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT day::text AS day, route_id FROM qbot_v2.calendar_day_route "
+                "WHERE entry_id=%s AND day=%s", (entry_id, day)).fetchall()
+        if not rows:
+            raise HTTPException(status_code=400, detail="Ten dzien nie ma przypietej trasy")
+        made = []
+        for r in rows:
+            row = conn.execute(
+                "INSERT INTO qbot_v2.report_schedule (entry_id, day, route_id, group_id) "
+                "VALUES (%s, %s, %s, %s) ON CONFLICT (entry_id, day, group_id) DO UPDATE "
+                "SET route_id=EXCLUDED.route_id, status='pending', attempts=0, last_error=NULL "
+                "RETURNING id", (entry_id, r["day"], r["route_id"], group_id)).fetchone()
+            made.append({"id": row["id"], "day": r["day"]})
+        conn.commit()
+        return {"ok": True, "created": made}
+    finally:
+        conn.close()
+
+
+@app.delete("/api/report/schedule/{schedule_id}")
+def report_schedule_del(schedule_id: int):
+    """Wylacza zaplanowana wysylke (kasuje wpis razem z historia wysylek)."""
+    conn = _db_conn()
+    try:
+        conn.execute("DELETE FROM qbot_v2.report_schedule WHERE id=%s", (schedule_id,))
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+@app.post("/api/report/schedule/{schedule_id}/run")
+def report_schedule_run(schedule_id: int):
+    """Odpala zaplanowana wysylke. Wraca OD RAZU - robota (ok. 1-2 min) leci w tle,
+    zeby nie zablokowac serwisu na czas generowania raportu."""
+    import threading
+    conn = _db_conn()
+    try:
+        row = conn.execute("SELECT id, status FROM qbot_v2.report_schedule WHERE id=%s",
+                           (schedule_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Nie ma takiego harmonogramu")
+        if row["status"] in ("running", "sent"):
+            return {"ok": True, "started": False, "status": row["status"]}
+    finally:
+        conn.close()
+    threading.Thread(target=_run_report_schedule, args=(schedule_id,), daemon=True).start()
+    return {"ok": True, "started": True}
+
+
+@app.get("/api/report/schedule/{schedule_id}")
+def report_schedule_get(schedule_id: int):
+    """Stan zaplanowanej wysylki + kto juz dostal."""
+    conn = _db_conn()
+    try:
+        row = conn.execute(
+            "SELECT id, day::text AS day, route_id, start_time::text AS start_time, group_id, "
+            "send_at::text AS send_at, status, attempts, last_error, snapshot_id, "
+            "finished_at::text AS finished_at FROM qbot_v2.report_schedule WHERE id=%s",
+            (schedule_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Nie ma takiego harmonogramu")
+        sent = conn.execute(
+            "SELECT email, ok, error, sent_at::text AS sent_at FROM qbot_v2.report_schedule_sent "
+            "WHERE schedule_id=%s ORDER BY sent_at", (schedule_id,)).fetchall()
+        return {"schedule": dict(row), "sent": [dict(x) for x in sent]}
+    finally:
+        conn.close()
+
+
+def _report_mail_parts(data, snapshot_id, coords):
+    """Ciezkie kawalki maila liczone RAZ: zrzuty mapy i wykresu, GPX, zdjecia atrakcji, HTML.
+    Przy wysylce do grupy te same czesci ida do wszystkich - nie liczymy ich per osoba."""
+    map_png, chart_png, climbs_png = _capture_report_images(snapshot_id)
     gpx_xml = None
     try:
         gpx_xml, _wn = _build_karoo_gpx(data["route"]["name"], coords,
-                                         (data.get("details") or {}).get("poi"), include_pois=True)
+                                        (data.get("details") or {}).get("poi"), include_pois=True)
     except Exception as _e:
         print("gpx build error:", _e)
-
     att_imgs = _fetch_attraction_images((data.get("details") or {}).get("poi") or {})
-    html_body = _build_report_email_html(data, has_map=bool(map_png), has_chart=bool(chart_png), att_imgs=att_imgs)
+    html_body = _build_report_email_html(data, has_map=bool(map_png), has_chart=bool(chart_png),
+                                         att_imgs=att_imgs, has_climbs=bool(climbs_png))
+    return {"map_png": map_png, "chart_png": chart_png, "climbs_png": climbs_png,
+            "gpx_xml": gpx_xml, "att_imgs": att_imgs, "html": html_body}
+
+
+def _remember_recipient(to):
+    """Historia adresow do podpowiedzi w formularzu."""
+    try:
+        _rc = _db_conn()
+        try:
+            _rc.execute(
+                "INSERT INTO qbot_v2.report_mail_recipients (email, last_used, use_count) "
+                "VALUES (%s, now(), 1) ON CONFLICT (email) DO UPDATE "
+                "SET last_used=now(), use_count=qbot_v2.report_mail_recipients.use_count+1", (to,))
+            _rc.commit()
+        finally:
+            _rc.close()
+    except Exception as _re:
+        print("recipient remember error:", _re)
+
+
+def _report_mail_build(data, parts, to):
+    """Sklada gotowa wiadomosc dla JEDNEGO adresata z policzonych wczesniej czesci."""
+    map_png, chart_png = parts["map_png"], parts["chart_png"]
+    att_imgs, gpx_xml, html_body = parts["att_imgs"], parts["gpx_xml"], parts["html"]
+    route_id = data["route"]["id"]
 
     msg = MIMEMultipart("related")
     alt = MIMEMultipart("alternative")
@@ -4579,6 +5201,11 @@ def report_send_email(snapshot_id: int = Query(...), to: str = Query(...)):
         img2.add_header("Content-ID", "<reportchart>")
         img2.add_header("Content-Disposition", "inline", filename="profil.png")
         msg.attach(img2)
+    if parts.get("climbs_png"):
+        img3 = MIMEImage(parts["climbs_png"])
+        img3.add_header("Content-ID", "<reportclimbs>")
+        img3.add_header("Content-Disposition", "inline", filename="podjazdy.png")
+        msg.attach(img3)
     for _pid, _im in (att_imgs or {}).items():
         _ai = MIMEImage(_im["bytes"], _subtype=_im["subtype"])
         _ai.add_header("Content-ID", "<%s>" % _im["cid"])
@@ -4594,28 +5221,7 @@ def report_send_email(snapshot_id: int = Query(...), to: str = Query(...)):
     msg["Subject"] = "Raport trasy: %s - %s %s" % (data["route"]["name"], st.get("date", ""), st.get("time", ""))
     msg["From"] = _cfg.GMAIL_USER
     msg["To"] = to
-
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
-            s.login(_cfg.GMAIL_USER, _cfg.GMAIL_APP_PASSWORD)
-            s.send_message(msg)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail="Nie udalo sie wyslac maila: %s" % e)
-
-    try:
-        _rc = _db_conn()
-        try:
-            _rc.execute(
-                "INSERT INTO qbot_v2.report_mail_recipients (email, last_used, use_count) "
-                "VALUES (%s, now(), 1) ON CONFLICT (email) DO UPDATE "
-                "SET last_used=now(), use_count=qbot_v2.report_mail_recipients.use_count+1",
-                (to,))
-            _rc.commit()
-        finally:
-            _rc.close()
-    except Exception as _re:
-        print("recipient save error:", _re)
-    return {"status": "ok", "to": to, "has_map": bool(map_png), "has_chart": bool(chart_png), "has_gpx": bool(gpx_xml)}
+    return msg
 
 
 # TEST (budowa raportu z jazdy): lista pokazuje tylko te jedna jazde.
@@ -7912,6 +8518,223 @@ async def calendar_edit(request: Request):
     return {"ok": True, "id": row["id"]}
 
 
+# ============ GRUPY ODBIORCOW RAPORTOW (harmonogram wysylki, etap 1) ============
+
+def _mail_group_rows(conn):
+    """Grupy razem z czlonkami. Jedno zapytanie na kazda tabele, laczone w Pythonie."""
+    grps = conn.execute(
+        "SELECT id, name, source_route_id, source_name, synced_at::text AS synced_at "
+        "FROM qbot_v2.mail_group ORDER BY name").fetchall()
+    mems = conn.execute(
+        "SELECT id, group_id, email, display_name, source FROM qbot_v2.mail_group_member "
+        "ORDER BY email").fetchall()
+    by_g = {}
+    for m in mems:
+        by_g.setdefault(m["group_id"], []).append(
+            {"id": m["id"], "email": m["email"], "display_name": m["display_name"],
+             "source": m["source"]})
+    return [{"id": g["id"], "name": g["name"], "source_route_id": g["source_route_id"],
+             "source_name": g["source_name"], "synced_at": g["synced_at"],
+             "members": by_g.get(g["id"], [])} for g in grps]
+
+
+def _rsvp_confirmed_emails(conn, route_id):
+    """Adresy, ktore POTWIERDZILY udzial w wyprawie. Liczy sie NAJSWIEZSZY wpis na adres
+    (ten sam adres moze dostac kilka zaproszen), status musi byc 'yes'."""
+    rows = conn.execute(
+        "SELECT DISTINCT ON (email) email, status FROM qbot_v2.wyprawa_rsvp "
+        "WHERE route_id=%s ORDER BY email, responded_at DESC NULLS LAST, created_at DESC",
+        (route_id,)).fetchall()
+    return {r["email"] for r in rows if r["status"] == "yes" and r["email"]}
+
+
+def _sync_group_from_rsvp(conn, group_id, route_id):
+    """Lustro RSVP w grupie mailowej. Dopisuje potwierdzonych (source='rsvp') i usuwa tych,
+    ktorzy juz nie sa na 'tak' - ale WYLACZNIE wsrod adresow z source='rsvp'.
+    Adresy dopisane recznie (source='manual') sa nietykalne, zeby edycja przezyla sync."""
+    want = _rsvp_confirmed_emails(conn, route_id)
+    have = conn.execute(
+        "SELECT email, source FROM qbot_v2.mail_group_member WHERE group_id=%s",
+        (group_id,)).fetchall()
+    have_all = {h["email"] for h in have}
+    have_rsvp = {h["email"] for h in have if h["source"] == "rsvp"}
+    added = sorted(want - have_all)
+    removed = sorted(have_rsvp - want)
+    for em in added:
+        conn.execute(
+            "INSERT INTO qbot_v2.mail_group_member (group_id, email, source) "
+            "VALUES (%s, %s, 'rsvp') ON CONFLICT (group_id, email) DO NOTHING",
+            (group_id, em))
+    for em in removed:
+        conn.execute(
+            "DELETE FROM qbot_v2.mail_group_member WHERE group_id=%s AND email=%s AND source='rsvp'",
+            (group_id, em))
+    conn.execute("UPDATE qbot_v2.mail_group SET synced_at=now() WHERE id=%s", (group_id,))
+    conn.commit()
+    return {"added": added, "removed": removed, "total_confirmed": len(want)}
+
+
+def _sync_groups_for_route(conn, route_id):
+    """Odswieza WSZYSTKIE grupy o rodowodzie z tej wyprawy. Wolane po zmianie statusu RSVP,
+    zeby grupa aktualizowala sie sama, bez klikania."""
+    gids = conn.execute(
+        "SELECT id FROM qbot_v2.mail_group WHERE source_route_id=%s", (route_id,)).fetchall()
+    out = []
+    for g in gids:
+        try:
+            r = _sync_group_from_rsvp(conn, g["id"], route_id)
+            r["group_id"] = g["id"]
+            out.append(r)
+        except Exception as ex:
+            print("rsvp group sync error:", ex)
+    return out
+
+
+@app.post("/api/mail-groups/import-rsvp")
+async def mail_group_import_rsvp(request: Request):
+    """Zaklada (lub uzupelnia) grupe z potwierdzonych uczestnikow wyprawy.
+    body: {route_id, name?, group_id?}. Bez group_id nazwa domyslna: '<wyprawa> - potwierdzeni'."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    route_id = (str(body.get("route_id") or "")).strip()[:64]
+    if not route_id:
+        raise HTTPException(status_code=400, detail="Wymagane: route_id")
+    conn = _db_conn()
+    try:
+        wn = conn.execute(
+            "SELECT wyprawa_name FROM qbot_v2.wyprawa_rsvp WHERE route_id=%s "
+            "AND wyprawa_name IS NOT NULL ORDER BY created_at DESC LIMIT 1",
+            (route_id,)).fetchone()
+        wname = (wn["wyprawa_name"] if wn else None) or route_id
+        gid = body.get("group_id")
+        if gid:
+            gid = int(gid)
+            row = conn.execute("SELECT id, name FROM qbot_v2.mail_group WHERE id=%s", (gid,)).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Nie ma takiej grupy")
+            conn.execute("UPDATE qbot_v2.mail_group SET source_route_id=%s, source_name=%s WHERE id=%s",
+                         (route_id, wname, gid))
+        else:
+            name = (str(body.get("name") or "")).strip()[:80] or (wname[:60] + " \u2014 potwierdzeni")
+            row = conn.execute(
+                "INSERT INTO qbot_v2.mail_group (name, source_route_id, source_name) "
+                "VALUES (%s, %s, %s) ON CONFLICT (name) DO UPDATE "
+                "SET source_route_id=EXCLUDED.source_route_id, source_name=EXCLUDED.source_name "
+                "RETURNING id, name", (name, route_id, wname)).fetchone()
+            gid = row["id"]
+        conn.commit()
+        res = _sync_group_from_rsvp(conn, gid, route_id)
+        grp = [g for g in _mail_group_rows(conn) if g["id"] == gid]
+        return {"ok": True, "group": (grp[0] if grp else None), "sync": res}
+    finally:
+        conn.close()
+
+
+@app.post("/api/mail-groups/{group_id}/sync")
+def mail_group_sync(group_id: int):
+    """Reczne odswiezenie grupy z jej wyprawy (to samo, co dzieje sie automatycznie po RSVP)."""
+    conn = _db_conn()
+    try:
+        row = conn.execute("SELECT source_route_id FROM qbot_v2.mail_group WHERE id=%s",
+                           (group_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Nie ma takiej grupy")
+        if not row["source_route_id"]:
+            raise HTTPException(status_code=400, detail="Ta grupa nie pochodzi z wyprawy")
+        res = _sync_group_from_rsvp(conn, group_id, row["source_route_id"])
+        grp = [g for g in _mail_group_rows(conn) if g["id"] == group_id]
+        return {"ok": True, "group": (grp[0] if grp else None), "sync": res}
+    finally:
+        conn.close()
+
+
+@app.get("/api/mail-groups")
+def mail_groups_list():
+    """Lista grup odbiorcow z adresami."""
+    conn = _db_conn()
+    try:
+        return {"items": _mail_group_rows(conn)}
+    finally:
+        conn.close()
+
+
+@app.post("/api/mail-groups")
+async def mail_group_create(request: Request):
+    """Nowa grupa. body: {name}."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    name = (str(body.get("name") or "")).strip()[:80]
+    if not name:
+        raise HTTPException(status_code=400, detail="Wymagana nazwa grupy")
+    conn = _db_conn()
+    try:
+        row = conn.execute(
+            "INSERT INTO qbot_v2.mail_group (name) VALUES (%s) "
+            "ON CONFLICT (name) DO UPDATE SET name=EXCLUDED.name RETURNING id, name",
+            (name,)).fetchone()
+        conn.commit()
+        return {"ok": True, "group": {"id": row["id"], "name": row["name"], "members": []}}
+    finally:
+        conn.close()
+
+
+@app.delete("/api/mail-groups/{group_id}")
+def mail_group_delete(group_id: int):
+    """Kasuje grupe razem z adresami (ON DELETE CASCADE)."""
+    conn = _db_conn()
+    try:
+        conn.execute("DELETE FROM qbot_v2.mail_group WHERE id=%s", (group_id,))
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+@app.post("/api/mail-groups/{group_id}/members")
+async def mail_group_member_add(group_id: int, request: Request):
+    """Dodaje adres do grupy. body: {email, display_name?}."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    email = (str(body.get("email") or "")).strip()[:200]
+    if not _EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="Nieprawidlowy adres e-mail")
+    dname = body.get("display_name")
+    dname = (str(dname).strip()[:80]) if dname not in (None, "") else None
+    conn = _db_conn()
+    try:
+        g = conn.execute("SELECT id FROM qbot_v2.mail_group WHERE id=%s", (group_id,)).fetchone()
+        if not g:
+            raise HTTPException(status_code=404, detail="Nie ma takiej grupy")
+        row = conn.execute(
+            "INSERT INTO qbot_v2.mail_group_member (group_id, email, display_name, source) "
+            "VALUES (%s, %s, %s, 'manual') ON CONFLICT (group_id, email) "
+            "DO UPDATE SET display_name=EXCLUDED.display_name, source='manual' RETURNING id",
+            (group_id, email, dname)).fetchone()
+        conn.commit()
+        return {"ok": True, "member": {"id": row["id"], "email": email, "display_name": dname}}
+    finally:
+        conn.close()
+
+
+@app.delete("/api/mail-groups/{group_id}/members/{member_id}")
+def mail_group_member_del(group_id: int, member_id: int):
+    """Usuwa adres z grupy."""
+    conn = _db_conn()
+    try:
+        conn.execute("DELETE FROM qbot_v2.mail_group_member WHERE id=%s AND group_id=%s",
+                     (member_id, group_id))
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
 @app.post("/api/calendar/route")
 async def calendar_route(request: Request):
     """Przypina/odpina trase do konkretnego dnia eventu. body: {entry_id, day, route_id?, route_name?}.
@@ -9454,14 +10277,19 @@ async def api_wyprawa_rsvp(request: Request):
                             '<p>Brak wyboru.</p>'), status_code=400)
     conn = _db_conn()
     try:
-        row = conn.execute("SELECT email, wyprawa_name FROM qbot_v2.wyprawa_rsvp WHERE token=%s",
-                           (t,)).fetchone()
+        row = conn.execute("SELECT email, wyprawa_name, route_id FROM qbot_v2.wyprawa_rsvp "
+                           "WHERE token=%s", (t,)).fetchone()
         if not row:
             return HTMLResponse(_wyprawa_rsvp_shell('<h2 style="color:#7c2b22">Nieprawid\u0142owy link</h2>'),
                                 status_code=404)
         conn.execute("UPDATE qbot_v2.wyprawa_rsvp SET status=%s, responded_at=now() WHERE token=%s",
                      (choice, t))
         conn.commit()
+        # grupa mailowa ma byc lustrem RSVP - odswiezamy od razu, best-effort
+        try:
+            _sync_groups_for_route(conn, row["route_id"])
+        except Exception as _ex:
+            print("rsvp auto-sync error:", _ex)
     finally:
         conn.close()
     wn = row["wyprawa_name"] or "wyprawa"

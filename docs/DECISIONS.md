@@ -4,6 +4,45 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-07-30 -- DECYZJA: harmonogram porannej wysylki raportu z trasy do grupy odbiorcow
+
+**Status:** zatwierdzone; ETAP 1 z 4 wdrozony (grupy odbiorcow). Etapy 2-4 do zrobienia.
+
+**Cel.** Dzien z przypieta trasa w kalendarzu ma sam, o 06:00 rano, wygenerowac SWIEZY raport
+z trasy (kluczowa jest aktualna pogoda) i wyslac go mailem do wskazanej grupy osob.
+
+**Decyzje uzytkownika (2026-07-30).**
+1. Harmonogram przypinany DO DNIA W KALENDARZU, ktory ma juz przypieta trase
+   (qbot_v2.calendar_day_route). Nie robimy osobnej listy harmonogramow.
+2. Godzina wysylki SZTYWNO 06:00. (Kolumna send_at zostaje w tabeli, zeby zmiana nie
+   wymagala migracji.)
+3. Tresc maila IDENTYCZNA jak przy recznej wysylce: HTML z pogoda, zrzuty mapy i wykresu
+   (Playwright), zdjecia atrakcji, GPX w zalaczniku.
+
+**Architektura.**
+- Budzik: istniejacy `reminder_daemon.py` (cron * * * * *, potwierdzony zywy). NIE zakladamy
+  nowego timera systemd -- wymagalby roota, a kanal SSH do roota jest niestabilny.
+- Daemon NIE liczy sam. O 06:00 puka do qbot-web (`POST /api/report/schedule/{id}/run`), bo
+  tam juz jest generator, Playwright i SMTP. Praca leci w osobnym watku (liczba workerow
+  qbot-web nieznana -- zakladamy najgorsze, zeby nie zablokowac strony na ~2 min).
+- Jeden snapshot na wysylke -> ten sam mail do wszystkich w grupie (nie liczymy per osoba).
+- Pogoda: `_build_report_data` zawsze pobiera swieza (brak cache w silniku meteo -- sprawdzone).
+- Blad pobrania pogody: 3 proby co 5 min, potem status `failed` + Telegram do uzytkownika i
+  BRAK wysylki. Lepiej nic niz raport z wczorajsza prognoza.
+
+**Schemat (utworzony 2026-07-30).** `qbot_v2.mail_group`, `mail_group_member`,
+`report_schedule` (entry_id, day, route_id, start_time, group_id, send_at 06:00, status,
+attempts, last_error, snapshot_id; UNIQUE(entry_id, day, group_id)), `report_schedule_sent`
+(audyt per adres + ochrona przed dubletem, wzorzec z `calendar_reminder_fired`).
+
+**Etapy (kazdy z dowodem na zywo):** 1) grupy odbiorcow -- ZROBIONE; 2) endpoint `run`
+odpalony recznie na grupie testowej; 3) budzik w daemonie z podmieniona godzina; 4) UI
+harmonogramu w szufladzie dnia.
+
+**Ograniczenia przyjete swiadomie.** Nadawca = konto Gmail uzytkownika (limit ~100 adresow
+dziennie, dla grupy znajomych bez znaczenia). Brak mechanizmu wypisania sie z listy.
+
+---
 ## 2026-07-30 -- DECYZJA: pogoda wyprawy -- prognoza tam gdzie istnieje, klimat tam gdzie nie
 
 **Status:** zatwierdzone i wdrozone (zakladka POGODA w Planerze wyprawy).

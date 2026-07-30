@@ -83,6 +83,46 @@ def _fire_calendar_reminders(TOKEN, CHAT_ID, log):
     return sent
 
 
+def _fire_report_schedules(log):
+    """Zaplanowana poranna wysylka raportu z trasy do grupy (qbot_v2.report_schedule).
+    Odpala sie co minute z crona, ale robote wykonuje tylko wtedy, gdy jest co robic.
+
+    Kolejnosc jest wazna: NAJPIERW lekkie zapytanie do bazy, DOPIERO potem (jesli cos
+    czeka) ciezki import qbot_web - inaczej co minute ladowalibysmy caly serwis web.
+
+    Ponawianie: do 3 prob, kolejna nie wczesniej niz 5 minut po poprzedniej. Wpis, ktory
+    utknal w 'running' dluzej niz 15 minut (np. restart serwisu w trakcie), wraca do gry."""
+    import os as _os, sys as _sys
+    _os.environ.setdefault("QBOT3_ENABLED", "1")
+    if "/opt/qbot/app" not in _sys.path:
+        _sys.path.insert(0, "/opt/qbot/app")
+    from fitmodel.api import _db_connect
+
+    conn = _db_connect(); cur = conn.cursor()
+    cur.execute(
+        "SELECT id, day::text, route_id FROM qbot_v2.report_schedule "
+        "WHERE day = CURRENT_DATE AND attempts < 3 AND send_at <= localtime AND ("
+        "  status = 'pending'"
+        "  OR (status = 'failed' AND (last_try_at IS NULL OR last_try_at < now() - interval '5 minutes'))"
+        "  OR (status = 'running' AND last_try_at < now() - interval '15 minutes')"
+        ") ORDER BY id")
+    todo = cur.fetchall()
+    conn.close()
+    if not todo:
+        return 0
+
+    from qbot_web import _run_report_schedule
+    done = 0
+    for sid, day, rid in todo:
+        log("RAPORT start [%s] %s %s" % (sid, day, rid))
+        try:
+            _run_report_schedule(sid)
+            done += 1
+        except Exception as e:
+            log("RAPORT EXC [%s]: %s" % (sid, e))
+    return done
+
+
 def main():
     if not TOKEN or not CHAT_ID:
         log("BLOCKED: TELEGRAM_TOKEN or TELEGRAM_CHAT_ID not set")
@@ -156,6 +196,10 @@ def main():
         sent += _fire_calendar_reminders(TOKEN, CHAT_ID, log)
     except Exception as e:
         log("CAL_STEP_EXC: %s" % e)
+    try:
+        sent += _fire_report_schedules(log)
+    except Exception as e:
+        log("RAPORT_STEP_EXC: %s" % e)
     if sent == 0:
         log("— brak przypomnień do wysłania")
 
