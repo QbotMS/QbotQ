@@ -318,14 +318,20 @@ def _shade_for_km(shade: list[dict], km: float) -> Optional[dict]:
 
 
 # --- Open-Meteo -------------------------------------------------------------
-def _fetch_point(lat: float, lon: float, date_str: str, timeout: float = 15.0) -> dict:
-    hourly = ["temperature_2m", "relative_humidity_2m", "wind_speed_10m", "wind_direction_10m",
+def _fetch_point(lat: float, lon: float, date_str: str, timeout: float = 15.0,
+                 model: Optional[str] = None) -> dict:
+    hourly = ["temperature_2m", "relative_humidity_2m", "cloud_cover",
+              "wind_speed_10m", "wind_direction_10m",
               "surface_pressure", "shortwave_radiation_instant", "direct_radiation_instant",
               "precipitation", "precipitation_probability", "weather_code", "cape", "wind_gusts_10m"]
     daily = ["sunrise", "sunset", "daylight_duration", "sunshine_duration", "uv_index_max"]
+    # model=None -> Open-Meteo wybiera sam (best_match). Podanie modelu jest SWIADOMA
+    # decyzja regulowa (route_weather_models.canonical_model), zeby wynik dalo sie odtworzyc.
     params = {"latitude": round(lat, 3), "longitude": round(lon, 3), "hourly": ",".join(hourly),
               "daily": ",".join(daily),
               "windspeed_unit": "ms", "timezone": "UTC", "start_date": date_str, "end_date": date_str}
+    if model:
+        params["models"] = model
     url = OPEN_METEO_URL + "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"User-Agent": "QBot-METEO/1.0"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -333,6 +339,29 @@ def _fetch_point(lat: float, lon: float, date_str: str, timeout: float = 15.0) -
     h = data["hourly"]
     times = [_dt.datetime.fromisoformat(t).replace(tzinfo=_dt.timezone.utc) for t in h["time"]]
     return {"times": times, "h": h, "daily": data.get("daily") or {}}
+
+
+# Dlugie postoje NIE sa kosmetyka: pogoda liczy sie w MOMENCIE PRZEJAZDU, wiec kazdy
+# nieuwzgledniony postoj przesuwa cala reszte dnia na wczesniejsze (chlodniejsze) godziny.
+# Model czasu (estimate_route_time_v2) liczy tylko mikroprzerwy i krotkie postoje co 9 km;
+# obiad/sklep/kapiel trzeba dolozyc osobno. Regula uzgodniona z uzytkownikiem 2026-07-30.
+LONG_STOP_EVERY_KM = 75.0
+LONG_STOP_MIN = 30.0
+
+
+def _long_stops_for_leg(leg_km: float, every_km: float = LONG_STOP_EVERY_KM,
+                        stop_min: float = LONG_STOP_MIN) -> list[dict]:
+    """Dlugie postoje DLA TEGO ETAPU: jeden na kazde pelne `every_km`, rozlozone rownomiernie.
+
+    Etap 120 km -> 1 postoj w polowie. Etap 160 km -> 2 postoje (w 1/3 i 2/3).
+    Zwraca [{"frakcja": 0.5, "minut": 30.0}, ...] - frakcja liczona wzgledem DLUGOSCI ETAPU.
+    """
+    if leg_km <= 0 or every_km <= 0 or stop_min <= 0:
+        return []
+    n = int(leg_km // every_km)
+    if n <= 0:
+        return []
+    return [{"frakcja": (i + 1) / (n + 1.0), "minut": float(stop_min)} for i in range(n)]
 
 
 def _interp(times: list[_dt.datetime], vals: list, when: _dt.datetime) -> float:
@@ -374,8 +403,20 @@ def _storm_clear_after(times: list, codes: list, capes: list, when: _dt.datetime
 # --- Główny przebieg --------------------------------------------------------
 def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
                      mode: str = "normalny", from_km: Optional[float] = None,
-                     to_km: Optional[float] = None) -> dict:
+                     to_km: Optional[float] = None, model: Optional[str] = None,
+                     long_stop_every_km: float = LONG_STOP_EVERY_KM,
+                     long_stop_min: float = LONG_STOP_MIN) -> dict:
     """Jeden przebieg silnika METEO. date=YYYY-MM-DD, start=HH:MM (lokalny).
+
+    long_stop_every_km / long_stop_min = dlugie postoje (obiad, sklep) DOLICZANE DO ETA:
+    jeden postoj na kazde pelne `long_stop_every_km` dlugosci ETAPU, po `long_stop_min` minut.
+    Model czasu sam ich nie liczy - zna tylko mikroprzerwy i krotkie postoje co 9 km.
+    Ustaw long_stop_min=0, zeby wylaczyc.
+
+    model (opcjonalny) = konkretny model pogodowy Open-Meteo, np. "icon_d2" albo
+    "ecmwf_ifs025". Bez niego serwis wybiera sam ("best_match"), co bywa mylace:
+    dla dat poza zasiegiem modeli wysokorozdzielczych po cichu schodzi do grubszej siatki.
+    Wybor kanoniczny liczy route_weather_models.canonical_model.
 
     from_km/to_km (opcjonalne) = ODCINEK trasy (etap dnia wyprawy wielodniowej).
     ETA jest wtedy liczona OD NOWA: pierwszy segment zakresu = start_time,
@@ -424,12 +465,22 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         return {"status": "ERROR",
                 "error": f"brak segmentow w zakresie km {a_km}..{b_km} (trasa {route_id})"}
 
-    base_cum = sel[0][2] - (sel[0][3] / 3600.0 * 60.0)
+    base_cum = sel[0][2] - (sel[0][3] / 60.0)
+
+    leg_a = float(sel[0][0]["km"])
+    leg_b = float(sel[-1][0]["km"])
+    leg_km = max(0.0, leg_b - leg_a)
+    postoje = _long_stops_for_leg(leg_km, long_stop_every_km, long_stop_min)
+    for p in postoje:
+        p["km"] = round(leg_a + leg_km * p["frakcja"], 2)
 
     segs = []
     for row, g, cum_h, dur_min in sel:
-        eta_local = start_local + _dt.timedelta(hours=max(0.0, cum_h - base_cum))
-        segs.append({"km": float(row["km"]), "grade_pct": float(row["grade_pct"]),
+        km_here = float(row["km"])
+        # postoje juz "odbyte" przed tym kilometrem opozniaja wszystko, co po nich nastepuje
+        stoj_h = sum(p["minut"] for p in postoje if p["km"] <= km_here) / 60.0
+        eta_local = start_local + _dt.timedelta(hours=max(0.0, cum_h - base_cum) + stoj_h)
+        segs.append({"km": km_here, "grade_pct": float(row["grade_pct"]),
                      "surface": row.get("surface"), "v_kmh": float(row.get("v_kmh", 0.0)),
                      "lat": g["lat"], "lon": g["lon"],
                      "eta_local": eta_local, "eta_utc": eta_local.astimezone(_dt.timezone.utc),
@@ -452,7 +503,7 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
     weather = []
     for (lat, lon) in win_point:
         try:
-            weather.append(_fetch_point(lat, lon, date_str))
+            weather.append(_fetch_point(lat, lon, date_str, model=model))
         except Exception as exc:  # noqa
             return {"status": "ERROR", "error": f"Open-Meteo nieudane: {str(exc)[:160]}"}
 
@@ -476,6 +527,7 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         wcode = int(wcode_raw) if wcode_raw is not None else None
         cape = _interp(tms, h["cape"], when) if "cape" in h else None
         gust = _interp(tms, h["wind_gusts_10m"], when) if "wind_gusts_10m" in h else None
+        cc = _interp(tms, h["cloud_cover"], when) if "cloud_cover" in h else None
 
         cza = cos_solar_zenith(when, s["lat"], s["lon"])
         fdir_base = (max(0.0, min(dir_ / ghi, 0.9)) if ghi > 1.0 else 0.0)
@@ -516,6 +568,7 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         per_segment.append({
             "km": round(s["km"], 2), "eta": s["eta_local"].strftime("%H:%M"),
             "temp_c": round(ta, 1), "rh_pct": round(rh),
+            "chmury_pct": (round(cc) if cc is not None else None),
             "grade_pct": round(s["grade_pct"], 1), "teren": _terrain_label(s["grade_pct"]),
             "surface": s["surface"], "wbgt_eff": round(wbgt, 1), "alert_level": lvl,
             "limit": limit, "exceed": exceed, "tau": round(tau, 2),
@@ -547,6 +600,12 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
     return {
         "status": "OK",
         "route_id": route_id, "date": date_str, "start": start_time, "mode": mode,
+        "model": (model or "best_match"),
+        "postoje": {"liczba": len(postoje), "minut_kazdy": (long_stop_min if postoje else 0),
+                    "na_km": [p["km"] for p in postoje],
+                    "minut_razem": round(sum(p["minut"] for p in postoje)),
+                    "regula": ("jeden postoj %.0f min na kazde %.0f km etapu"
+                               % (long_stop_min, long_stop_every_km))},
         "zakres_km": {"od": round(segs[0]["km"], 2), "do": round(segs[-1]["km"], 2)},
         "slonce": sun, "podsumowanie": summary,
         "n_segments": len(per_segment), "n_windows": n_win,
@@ -810,6 +869,8 @@ def _build_summary(per_segment: list[dict]) -> dict:
         "rh_sr": _avg(rh, 0),
         "wbgt_max": peak["wbgt_eff"], "wbgt_km": peak["km"], "wbgt_eta": peak["eta"],
         "wbgt_level": peak["alert_level"], "wbgt_exceed": peak["exceed"],
+        "chmury_sr": _avg([x["chmury_pct"] for x in per_segment
+                           if x.get("chmury_pct") is not None], 0),
         "opad_mm": round(mm, 1), "opad_prob_max": (max(probs) if probs else None),
         "minuty_deszczu": round(wet_min),
         "wiatr_sr_ms": _avg(ws), "wiatr_max_ms": (round(max(ws), 1) if ws else None),
@@ -841,6 +902,7 @@ def _build_table(per_segment: list[dict], n_win: int, t0: _dt.datetime) -> list[
         u_avg = sum(feels_vals) / len(feels_vals)
         temps = [x["temp_c"] for x in b if x.get("temp_c") is not None]
         rhs = [x["rh_pct"] for x in b if x.get("rh_pct") is not None]
+        ccs = [x["chmury_pct"] for x in b if x.get("chmury_pct") is not None]
         storm_w = None
         for x in b:
             storm_w = _storm_worse(storm_w, x["burza"])
@@ -858,6 +920,7 @@ def _build_table(per_segment: list[dict], n_win: int, t0: _dt.datetime) -> list[
             "temp_min": (round(min(temps), 1) if temps else None),
             "temp_max": (round(max(temps), 1) if temps else None),
             "rh_pct": (round(sum(rhs) / len(rhs)) if rhs else None),
+            "chmury_pct": (round(sum(ccs) / len(ccs)) if ccs else None),
             "surface": b[0].get("surface"),
         })
     return rows

@@ -1,5 +1,39 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-07-30] Pogoda v5: kolory modeli + dwie rozne liczby przestaly nazywac sie tak samo
+
+ZGLOSZENIE (zrzut panelu "Zgodnosc modeli"): "jak to czytac?".
+Przy okazji wyszly dwie wlasne wpadki:
+
+1. WSZYSTKIE KROPKI MIALY TEN SAM KOLOR. Legenda pod spodem byla wiec bezuzyteczna --
+   Albert pisal "najbardziej odstaje UKMO", a nie dalo sie sprawdzic ktora kropka to UKMO.
+   NAPRAWA: kazdy osrodek ma staly wlasny kolor (KOL_MODEL / kolorModelu w render.js):
+   ICON-D2 niebieski, ICON-EU zielony, ECMWF IFS pomaranczowy, ECMWF AIFS fioletowy,
+   GFS zolty, UKMO czerwony. Kanon poznaje sie po ROZMIARZE i obwodce, nie po kolorze --
+   bo kanon zmienia sie zaleznie od daty, a kolor modelu ma byc staly.
+   Legenda dostala kropki w tych samych kolorach. Doszedl tez akapit "jak to czytac"
+   nad panelem (wiersz = punkt trasy z godzina, os = temperatura, liczy sie ROZSTAW).
+
+2. DWIE ROZNE WIELKOSCI POD TA SAMA NAZWA. Panel pisal "rozrzut 3,6 C" (roznica MIEDZY
+   osrodkami), a Albert "rozrzut rosnie z 5,1 C" (rozrzut 51 wariantow ECMWF). Obie liczby
+   poprawne, ale to nie jest to samo -- obok siebie wygladalo jak blad.
+   NAPRAWA: w panelu "rozstep miedzy modelami" i "rozrzut zespolu" jako osobne pojecia,
+   przy zespole doszlo zdanie tlumaczace roznice (niezgoda MIEDZY instytucjami kontra
+   niepewnosc WEWNATRZ jednej prognozy). W prompcie Alberta twarda regula nazewnictwa.
+
+PUŁAPKA WARTA ZAPAMIETANIA: przy pierwszej probie Albert przepisal terminy DOSLOWNIE
+z promptu, czyli bez polskich znakow ("rozstep miedzy modelami"), bo caly prompt jest
+pisany bez ogonkow zgodnie z konwencja plikow. Trzeba bylo wpisac te dwa zwroty w prompcie
+Z OGONKAMI (\u escapes) i dodac zdanie, ze reszta instrukcji nie ma ogonkow tylko
+z powodow technicznych. Dotyczy KAZDEGO promptu, ktory kaze LLM uzyc konkretnego zwrotu.
+
+DOWOD: nowa ocena dnia 2 uzywa "rozstep miedzy modelami" 2x i "rozrzut zespolu" 1x,
+w obu przypadkach z ogonkami, zero uzyc golego slowa "rozrzut". Cytat: "rano rozstep
+miedzy modelami dla temperatury jest maly, 1.1 C, ale w poludnie rosnie do 4.5 C,
+a na mecie do 6.3 C; rozrzut zespolu wynosi 4.2 C, 6.2 C i 5.5 C".
+
+Wersja statykow: pogoda-wyprawy-render.js v=5.
+
 ## [2026-07-30] Pogoda v3/v4: opad to nie tylko milimetry, kolor nie moze klamac
 
 ZGLOSZENIE 1: "w podsumowaniu OPAD, a na wykresie brak".
