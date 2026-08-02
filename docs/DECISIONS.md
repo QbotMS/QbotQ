@@ -3061,3 +3061,13 @@ sie od kotwic `modelq2_anchor` przepisanych z Xerta.
 propozycja "zrob wysilek 20-30 min, zeby zweryfikowac TP" byla bledem sprzecznym
 z zalozeniem fundamentalnym ModelQ. Wszystkie powyzsze pomiary pochodza z jazd,
 ktore i tak zostaly zrobione.
+
+## 2026-08-02 — /ride-readiness dla Karoo: ModelQ override w mcp_server (kanon przywrocony)
+Karoo pobiera /ride-readiness przez qbot.cytr.us -> obsluguje je mcp_server.py (port 8000),
+a NIE qbot_api.py (port 8002), gdzie od dawna siedzial override ModelQ. Efekt: Karoo
+dostawal FTP/LTP/W' z Xerta (TP=241) wbrew kanonowi "Xert tylko benchmark".
+Naprawa: logika _modelq_ftp_ltp przeniesiona do mcp_server jako _modelq_ftp_ltp_override()
+(nadpisanie per-pole, Xert zostaje fallbackiem tylko dla pol bez wartosci ModelQ;
+W' = GREATEST(wprime_modelq_kj, wprime_road_kj)). Zweryfikowane na zywo po restarcie q-bot:
+ftpWatts=245.6, ltpWatts=182.6, wPrimeKj=28.4, sources=[...,'modelq:ftp+ltp+wprime'].
+Do rozwazenia po wyprawie: czy qbot_api._modelq_ftp_ltp nie jest teraz martwym kodem.

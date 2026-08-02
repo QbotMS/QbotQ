@@ -2788,6 +2788,59 @@ def _compute_today_factor(hrv_dev, bb, form, sleep_dev, hr_dev):
     raw = 0.55*hrv_norm + 0.10*hr_norm + 0.15*bb_norm + 0.10*form_norm + 0.10*sleep_norm
     return round(_clamp(raw, 0.70, 1.10), 3)
 
+def _modelq_ftp_ltp_override() -> dict:
+    """FTP/LTP/W' z ModelQ (qbot_v2.fitmodel_daily) -- nadpisuje Xerta per-pole.
+
+    Kanon: Xert tylko benchmark. Kazde pole nadpisuje TYLKO gdy ModelQ ma
+    wartosc; brak wartosci -> Xert zostaje jako fallback DLA TEGO POLA.
+    W' = GREATEST(wprime_modelq_kj, wprime_road_kj) -- road z W'bal=0 na Karoo
+    to dowod z jazdy, ze MQ2 zaniza. Ta sama logika co w qbot_api._modelq_ftp_ltp
+    (tam nieuzywana na publicznej trasie -- Karoo trafia tutaj, patrz
+    DECISIONS.md 2026-08-02).
+    Zwraca {'ftp_watts','ltp_watts','wprime_kj'}: float|None; blad -> same None.
+    """
+    import psycopg
+    from psycopg.rows import dict_row
+
+    out = {"ftp_watts": None, "ltp_watts": None, "wprime_kj": None}
+    try:
+        with psycopg.connect(
+            host=os.getenv("PGHOST", "localhost"),
+            port=os.getenv("PGPORT", "5432"),
+            dbname=os.getenv("PGDATABASE", "qbot"),
+            user=os.getenv("PGUSER", "qbot"),
+            password=os.getenv("PGPASSWORD", ""),
+            row_factory=dict_row,
+            connect_timeout=3,
+        ) as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT ftp_est_w FROM qbot_v2.fitmodel_daily "
+                "WHERE ftp_est_w IS NOT NULL ORDER BY day DESC LIMIT 1"
+            )
+            r = cur.fetchone()
+            if r and r.get("ftp_est_w"):
+                out["ftp_watts"] = round(float(r["ftp_est_w"]), 1)
+            cur.execute(
+                "SELECT ltp_modelq_w FROM qbot_v2.fitmodel_daily "
+                "WHERE ltp_modelq_w IS NOT NULL ORDER BY day DESC LIMIT 1"
+            )
+            r = cur.fetchone()
+            if r and r.get("ltp_modelq_w"):
+                out["ltp_watts"] = round(float(r["ltp_modelq_w"]), 1)
+            cur.execute(
+                "SELECT GREATEST(wprime_modelq_kj, wprime_road_kj) AS wprime "
+                "FROM qbot_v2.fitmodel_daily "
+                "WHERE COALESCE(wprime_modelq_kj, wprime_road_kj) IS NOT NULL "
+                "ORDER BY day DESC LIMIT 1"
+            )
+            r = cur.fetchone()
+            if r and r.get("wprime"):
+                out["wprime_kj"] = round(float(r["wprime"]), 1)
+    except Exception as exc:
+        print(f"⚠️  ride-readiness: modelq override error: {exc}")
+    return out
+
+
 def _modelq_ctl_xss() -> float | None:
     """CTL wyrazone w XSS (qbot_v2.fitmodel_daily.ctl_xss) dla Karoo/QExt2.
 
@@ -2955,6 +3008,19 @@ async def ride_readiness(request):
     ltp_watts  = xert.get("ltp_watts")
     w_prime_kj = xert.get("hie_kj")
     xert_status= (xert.get("forma") or {}).get("status")
+
+    # ModelQ override (kanon: Xert tylko benchmark/fallback per-pole)
+    _mq = _modelq_ftp_ltp_override()
+    _mq_fields = []
+    if _mq.get("ftp_watts"):
+        ftp_watts = _mq["ftp_watts"]; _mq_fields.append("ftp")
+    if _mq.get("ltp_watts"):
+        ltp_watts = _mq["ltp_watts"]; _mq_fields.append("ltp")
+    if _mq.get("wprime_kj"):
+        w_prime_kj = _mq["wprime_kj"]; _mq_fields.append("wprime")
+    if _mq_fields:
+        sources.append("modelq:" + "+".join(_mq_fields))
+        print(f"🚦 ride-readiness modelq override: {_mq_fields} ftp={ftp_watts} ltp={ltp_watts} wprime={w_prime_kj}", flush=True)
 
     recovery = select_recovery_records(
         recovery_raw.get("sleepRecords") or [],
