@@ -3102,3 +3102,17 @@ stabilnosci zera seriami kalibracji.
 **Poza pakietem (swiadomie NIE ruszone):** sprzezenie TP<->CTL (0.66, zwalidowane
 MAE ~3 W); XSS/CTL jazd z kwarantanny (trening sie odbyl, wyciecie pogorszyloby CTL);
 ltp_hrdrift jako zrodlo (pomiar wycofany 26.07, czeka na filtry zjazdow/temperatury).
+
+## 2026-08-04 (uzup.) -- Kwarantanna 2.08 POTWIERDZONA przesunieciem zera miernika
+
+Kalibracje poranne: 1.08 i 2.08 ok. -170/-180 (stabilnie po resecie -171),
+3.08 rano ok. -90. Przesuniecie ~80 jednostek = ~2.5 Nm = ~20 W przy 80 rpm.
+Dryf najprawdopodobniej w trakcie jazdy 2.08 -> zawyzanie rosnace ku koncowi.
+Tlumaczy jednoczesnie: rekordowe P@HR 261 W (po korekcie ~240 = normalny mocny
+finisz) i falszywy deficyt W' -6.8 kJ przy HR 124 < LTHR. Jazda 2.08 zostaje
+w kwarantannie NA STALE (dryf zmienny w czasie = dane nienaprawialne skalarem).
+Jazdy 1.08 (kalibracja stabilna przed startem) i 3.08 (skalibrowana na nowym
+zerze) sa CZYSTE. Otwarta obserwacja: zero wedruje mimo resetu (-10/-20 hist.
+-> -60/-80 -> reset -171 -> -90); jesli kolejne poranki pokaza dalsza wedrowke
+o dziesiatki jednostek -> serwis/reklamacja SRAM. Zadanie "zwolnij 2.08 po
+kalibracjach" z CURRENT -- ZAMKNIETE (odwrotnie: kwarantanna na stale).
