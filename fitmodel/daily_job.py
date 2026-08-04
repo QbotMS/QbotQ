@@ -100,6 +100,14 @@ def main() -> None:
             return compute_road_wprime(conn)
         _step("wprime_road", _wprime_road)
 
+        # 2b4. Straznik miernika mocy: P@HR nowych jazd vs baza temperaturowa
+        # (proteza MagicZero -- spindle DUB-PWR nie auto-zeruje w trakcie jazdy).
+        # ALERT na Telegram przy mocnym odchyle/serii/wzroscie w trakcie.
+        def _pm_guard():
+            from fitmodel.power_meter_guard import run as pm_guard_run
+            return pm_guard_run(conn)
+        _step("power_meter_guard", _pm_guard)
+
         # 3. Glikogen -> fitmodel_daily
         def _glyco():
             from fitmodel.glycogen import update_glycogen_in_daily
@@ -188,6 +196,14 @@ def run_after_ride(reason: str = "") -> None:
             from fitmodel.wprime_road import compute_road_wprime
             return compute_road_wprime(conn)
         _step("wprime_road", _wprime_road)
+
+        # 2b4. Straznik miernika mocy: P@HR nowych jazd vs baza temperaturowa
+        # (proteza MagicZero -- spindle DUB-PWR nie auto-zeruje w trakcie jazdy).
+        # ALERT na Telegram przy mocnym odchyle/serii/wzroscie w trakcie.
+        def _pm_guard():
+            from fitmodel.power_meter_guard import run as pm_guard_run
+            return pm_guard_run(conn)
+        _step("power_meter_guard", _pm_guard)
 
         def _glyco():
             from fitmodel.glycogen import update_glycogen_in_daily

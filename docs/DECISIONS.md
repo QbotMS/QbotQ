@@ -3116,3 +3116,27 @@ zerze) sa CZYSTE. Otwarta obserwacja: zero wedruje mimo resetu (-10/-20 hist.
 -> -60/-80 -> reset -171 -> -90); jesli kolejne poranki pokaza dalsza wedrowke
 o dziesiatki jednostek -> serwis/reklamacja SRAM. Zadanie "zwolnij 2.08 po
 kalibracjach" z CURRENT -- ZAMKNIETE (odwrotnie: kwarantanna na stale).
+
+## 2026-08-04 -- Straznik miernika mocy (power_meter_guard): P@HR po kazdej jezdzie
+
+KONTEKST: SRAM Force E1 DUB-PWR (jednostronny w osi) NIE MA MagicZero -- brak
+auto-zerowania w trakcie jazdy (instrukcja Quarq: DUB-PWR tylko Manual Zero).
+Dryf zera po porannej kalibracji jest niewykrywalny recznie. Dwa epizody
+(22-30.07 zanizanie, 2.08 zawyzanie) wykryte z opoznieniem przez reczna
+analize P@HR -- teraz automat.
+
+MODUL fitmodel/power_meter_guard.py, krok power_meter_guard w daily_job
+(obie galezie, po wprime_road). Mediana mocy w koszyku HR 115-135 (pedalowanie)
+vs baza z 450 dni WARUNKOWANA TEMPERATURA (+-5C, min 10 jazd, fallback x2 /
+globalna) i bez jazd z kwarantanny. Wyniki idempotentnie w
+qbot_v2.power_meter_guard; ALERT -> Telegram.
+
+LOGIKA STOPNIOWANA (kalibrowana na 29 jazdach 06-08.2026, trzy iteracje):
+- prog pojedynczy 12%: 13/29 alertow (za duzo falszywek) -- ODRZUCONE
+- baza temperaturowa + 12%: gubi znane zanizanie 26/30.07, oskarza czysta 1.08 -- ODRZUCONE
+- FINAL: |dev|>=20%% jedna jazda LUB |dev|>=8%% dwie kolejne w ta sama strone
+  (TREND) LUB wzrost cw.4 vs cw.1 > 25%% (fizjologicznie P@HR spada w trakcie).
+WYNIK NA HISTORII: 7/29 alertow; trafione wszystkie znane zle (26.07, 30.07
+trend; 2.08 +28%%; 17.07 -24%%), oszczedzone znane czyste (1.08 +18%% bez
+alertu -- trend przerwany, 3.08). Dyskusyjne: 19-20.06 = udokumentowany
+weekend przebic ("podejrzanie dobrze" -- akceptowalny koszt).
