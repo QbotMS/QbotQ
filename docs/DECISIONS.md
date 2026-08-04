@@ -3071,3 +3071,34 @@ Naprawa: logika _modelq_ftp_ltp przeniesiona do mcp_server jako _modelq_ftp_ltp_
 W' = GREATEST(wprime_modelq_kj, wprime_road_kj)). Zweryfikowane na zywo po restarcie q-bot:
 ftpWatts=245.6, ltpWatts=182.6, wPrimeKj=28.4, sources=[...,'modelq:ftp+ltp+wprime'].
 Do rozwazenia po wyprawie: czy qbot_api._modelq_ftp_ltp nie jest teraz martwym kodem.
+
+## 2026-08-04 -- LTP wygladzone (EMA28) + kwarantanna jazd z wadliwym miernikiem
+
+**Problem 1 (LTP).** Publikowane LTP = dzienne TP - HIE/400 nurkowalo po kazdej mocnej
+jezdzie (HIE skacze za TL_high, TP nie nadaza) -- "model karze za dobra jazde"
+(znane z 19.07, obnazyla wyprawa 1-3.08: LTP 187.7 -> 182.2 w najlepszym bloku roku).
+**Backtest (od 03.2026, 4+2 warianty):** wygladzanie WEJSC (HIE) odrzucone -- psuje
+naturalne znoszenie sie szumow TP i HIE (zmiennosc rosnie, odbicie +3 W po skoku).
+**Decyzja: publikowane ltp_modelq_w = EMA28 z dziennego (TP - HIE/400).**
+MAE vs Xert 3.48 -> 2.03 W; reakcja na skok HIE -3.3 -> -0.4 W; zmiennosc d/d
+1.46 -> 0.25 W; poziom bez zmian (190.9 -> 190.3). Sygnatura wewnetrzna
+(TP/HIE -> W'bal/MPA/XSS) NIETKNIETA -- EMA tylko w publish_to_daily.
+Backfill 581 dni. Weryfikacja na zywo: /ride-readiness ltpWatts 182.6 -> 187.5.
+
+**Problem 2 (kotwice z wadliwego miernika).** Nowa tabela
+qbot_v2.fitmodel_ride_quarantine (external_id, reason, added, released) -- jazdy
+na liscie (released IS NULL) nie moga stawiac kotwic. Czytaja ja wprime_road
+(_clean_event_rides) i wprime_anchor (apply_road_anchor); harvesty CP/MMP Kroku 1
+maja z niej korzystac. Zasiew: 4 jazdy 22-30.07 (dryf zera, zanizanie 15-25%)
+oraz 23827598168 (2.08) -- PODEJRZENIE zawyzania po resecie -171: P@HR 261 W
+powyzej maksimum 15 miesiecy ORAZ Wbal=0 (474 s) przy medianie HR 124 < LTHR 132
+w tym samym fragmencie. Kotwica 34.1 kJ z tej jazdy cofnieta; obowiazuje czysta
+28.4 kJ z 6.07. Zwolnienie 2.08 (wpis released, nie DELETE) po potwierdzeniu
+stabilnosci zera seriami kalibracji.
+
+**Sprostowanie do wpisu 2026-08-02:** kotwica 28.4 NIE pochodzi z jazdy 22.07
+(pomylka: notka pewnosci vs zrodlo wartosci) -- pochodzi z czystej jazdy 6.07.
+
+**Poza pakietem (swiadomie NIE ruszone):** sprzezenie TP<->CTL (0.66, zwalidowane
+MAE ~3 W); XSS/CTL jazd z kwarantanny (trening sie odbyl, wyciecie pogorszyloby CTL);
+ltp_hrdrift jako zrodlo (pomiar wycofany 26.07, czeka na filtry zjazdow/temperatury).

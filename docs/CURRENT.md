@@ -1,5 +1,89 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-08-04] LTP EMA28 + kwarantanna jazd (pakiet A po wyprawie)
+
+Zrobione: (1) publikowane LTP = EMA28 z dziennego TP-HIE/400 (publish.py, backfill
+581 dni, Karoo ltpWatts 187.5); (2) tabela fitmodel_ride_quarantine + respekt w
+wprime_road/wprime_anchor; zasiew 22-30.07 + 2.08 (podejrzenie zawyzania);
+W' na Karoo wrocilo 34.1 -> 28.4 (czysta kotwica 6.07). Szczegoly i backtest
+w DECISIONS 2026-08-04.
+OTWARTE: zwolnienie 2.08 z kwarantanny po seriach kalibracji miernika;
+Pakiet B: Krok 1 CP z okien 120-600 s (harvest MA czytac kwarantanne),
+analiza todayFactor k=0.10 na historii (zera 2.08 przy HR<LTHR jako material).
+
+## [2026-07-30] Modele: stopniowanie zestawu wg horyzontu, koniec z grafika porownania
+
+DWIE UWAGI UZYTKOWNIKA:
+ 1. "nie jestem przekonany co do skutecznosci wizualizacji porownania modeli -- wystarcza
+    dwa-trzy zdania, bez grafiki". Skale z kropkami wymagaly instrukcji obslugi (padlo
+    pytanie "jak to czytac?"), wiec nie spelnialy zadania -- usuniete.
+ 2. "dla prognoz kilkudniowych nie ma sensu porownywac modeli z rozdzielczoscia 22 km".
+    Sedno: zestawienie siatki 2 km z siatka 25 km na krotkim horyzoncie mierzy ROZNICE
+    ROZDZIELCZOSCI, a nie niepewnosc pogody -- rozstep wychodzi zawyzony i mowi nie o tym,
+    o czym mysli czytelnik.
+
+STOPNIOWANIE (nowe: HORYZONTY + zestaw_dla_horyzontu w route_weather_models.py):
+  0-2 dni  "krotki" -> icon_d2 (2.2 km), HARMONIE (5.5 km), icon_eu (7 km)
+  3-5 dni  "sredni" -> icon_eu (7), ukmo (10), gfs (13) + ecmwf_ifs025 jako referencja
+  6+  dni  "daleki" -> ecmwf_ifs025, ecmwf_aifs025_single, gfs (same globalne)
+compare_models przyjmuje teraz liste modeli (domyslnie z reguly) i zwraca "horyzont"
+oraz "modele_uzyte"; modele_opis ograniczone do uzytych. Do rejestru doszedl
+knmi_harmonie_arome_europe (5.5 km, ~4 dni zasiegu).
+Kanon wybiera sie NIEZALEZNIE od tego zestawu (najdrobniejsza siatka pokrywajaca okno jazdy).
+
+PANEL (pogoda-wyprawy-render.js v=6): zamiast skal z kropkami cztery akapity --
+(1) czym policzono i dlaczego, (2) z czym porownano + uzasadnienie zestawu,
+(3) rozstep miedzy modelami z liczbami, (4) rozrzut zespolu jako osobna wielkosc.
+Pod spodem ocena Alberta. Usunieto tez zdublowana linijke o modelu nad kaflami.
+Prompt Alberta: zwraca teraz {zgoda, wniosek} bez listy punktow, wniosek to 2-3 zdania
+do ~60 slow, proza. Dodana instrukcja, ze zestaw modeli jest CELOWO ograniczony -- LLM
+nie ma komentowac braku modelu ani proponowac dolozenia innego.
+
+DOWOD: dzien 1 (horyzont krotki) porownany na icon_d2 + HARMONIE + icon_eu, rozstep max
+6.7 C (HARMONIE 23.4 vs ICON-EU 30.1 na mecie) -- czyli po odsianiu modeli globalnych
+rozjazd NADAL jest duzy, wiec to prawdziwa niezgoda, nie artefakt rozdzielczosci.
+Ocena Alberta: 68 slow, proza, bez wyliczanki, klucz "punkty" nie wystepuje.
+
+## [2026-07-30] BLAD I NAPRAWA: zasieg modelu liczony w dniach zamiast w godzinach -> NaN
+
+ZGLOSZENIE: generowanie pogody wysypalo sie na dniu 2 komunikatem prosto z Postgresa:
+'invalid input syntax for type json ... Token "NaN" is invalid ... "wbgt_max": NaN'.
+
+LANCUCH PRZYCZYN (diagnoza na zywo):
+ 1. model_reach() uznawal model za "siegajacy daty", jesli mial CHOCBY JEDNA niepusta
+    godzine tego dnia.
+ 2. ICON-D2 dla 2026-08-02 mial 4 godziny z 24 -- konczyl sie o 05:00 nad ranem.
+ 3. canonical_model() wybral go jako kanon (najdrobniejsza siatka 2.2 km "siegajaca daty").
+ 4. Jazda od 09:00 trafiala w godziny bez danych -> _interp zwracal None -> WBGT = NaN,
+    wilgotnosc = 0.
+ 5. json.dumps domyslnie zapisuje NaN (co nie jest poprawnym JSON), Postgres to odrzucil.
+ 6. Uzytkownik zobaczyl blad bazy zamiast informacji, ze prognoza sie skonczyla.
+
+NAPRAWA -- trzy warstwy, bo kazda z nich zawiodla osobno:
+ a) ZASIEG W GODZINACH: model_reach zwraca teraz "ostatnia_godzina" (ISO), nie tylko dzien.
+ b) KANON MUSI POKRYC OKNO JAZDY: canonical_model(..., do_godziny="HH:MM") odrzuca modele
+    konczace sie wczesniej. qbot_web liczy okno jako start + 14 h (z zapasem), maks. 23:00.
+    Komunikat odrzucenia mowi konkretnie: "nie pokrywa calego dnia jazdy (konczy sie
+    2026-08-02T05:00)".
+ c) NaN NIE OPUSZCZA SILNIKA: _bez_nan() zamienia NaN/Inf na null rekurencyjnie, liczy
+    podmiany i dokleja pole "niepelne_dane" z wyjasnieniem; json.dumps ma allow_nan=False,
+    zeby ewentualny blad wyszedl u nas, a nie w bazie.
+Przy okazji: payload gubil pole "model" (czym faktycznie policzono) -- dodane.
+
+ZMIERZONE ZASIEGI (punkt 50.60/17.50, stan 2026-07-30 wieczor):
+  icon_d2 -> 2026-08-02T05:00 | icon_eu -> 2026-08-05T02:00 | ukmo -> 2026-08-06T14:00
+  ecmwf_ifs025 -> 2026-08-14T16:00 | aifs -> 2026-08-15T07:00 | gfs -> 2026-08-15T23:00
+
+DOWOD (wszystkie 3 dni, rebuild):
+  Dzien 1: ICON-D2 2.2 km, temp 23.6-30.0, rh 54-77, WBGT 29.2, meta 16:33
+  Dzien 2: ICON-EU 7.0 km (ICON-D2 odrzucony), temp 18.1-26.4, rh 39-74, WBGT 25.0
+  Dzien 3: ICON-EU 7.0 km, temp 20.7-34.6, rh 38-69, WBGT 32.5
+  Zero NaN w odpowiedzi, json.dumps(allow_nan=False) przechodzi.
+
+WNIOSEK OGOLNY DO ZAPAMIETANIA: "model siega daty" to za gruba miara. Modele
+wysokorozdzielcze koncza sie w SRODKU doby, wiec kazde pytanie o dostepnosc prognozy
+musi dotyczyc konkretnych GODZIN, nie dnia.
+
 ## [2026-07-30] Pogoda v5: kolory modeli + dwie rozne liczby przestaly nazywac sie tak samo
 
 ZGLOSZENIE (zrzut panelu "Zgodnosc modeli"): "jak to czytac?".

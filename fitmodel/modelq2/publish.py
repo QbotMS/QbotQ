@@ -6,7 +6,7 @@ MQ2 zasila STARE kolumny qbot_v2.fitmodel_daily, z ktorych czytaja wszyscy konsu
 Mapowanie (MQ2 -> fitmodel_daily):
   ftp_est_w        <- TP   (prog W'bal, Karoo + wszedzie)
   cp_modelq_w      <- TP   (kolumna ~prog, NIE LTP -- zweryfikowane na zywych danych)
-  ltp_modelq_w     <- LTP
+  ltp_modelq_w     <- LTP (EMA28 z dziennego TP - HIE/400, od 2026-08-04)
   wprime_modelq_kj <- HIE
   pp_modelq_w      <- PP
   ctl_xss          <- CTL
@@ -81,17 +81,36 @@ def publish_to_daily(conn) -> int:
     cur.execute("SELECT day,tp_w,hie_kj,pp_w,ltp_w,ctl,atl,tsb,source "
                 "FROM qbot_v2.modelq2_signature ORDER BY day")
     n = 0
+    # 2026-08-04: publikowane LTP = EMA28 z dziennego (TP - HIE/400).
+    # LTP to parametr wolnozmienny, a dzienne HIE skacze po mocnej jezdzie
+    # (TL_high), przez co surowe LTP nurkowalo -3.3 W dzien po dobrym treningu
+    # ("model karze za dobra jazde", DECISIONS 2026-07-26). Backtest od 03.2026:
+    # MAE vs Xert 3.48 -> 2.03 W, reakcja na skok HIE -3.3 -> -0.4 W (plasko),
+    # zmiennosc d/d 1.46 -> 0.25 W, poziom bez zmian (190.9 -> 190.3).
+    # Wygladzanie WEJSC (samego HIE) odrzucone: psulo naturalne znoszenie sie
+    # szumow TP i HIE i dawalo odbicie +3 W po skoku. Sygnatura wewnetrzna
+    # (TP/HIE -> W'bal/MPA/XSS) NIETKNIETA -- EMA istnieje tylko w publikacji.
+    _LTP_EMA_N = 28
+    _ltp_ema = None
     for day, tp, hie, pp, ltp, ctl, atl, tsb, src in cur.fetchall():
+        _ltp_raw = float(ltp)
+        if _ltp_ema is None:
+            _ltp_ema = _ltp_raw
+        else:
+            _ltp_ema += (2.0 / (_LTP_EMA_N + 1)) * (_ltp_raw - _ltp_ema)
+        ltp = round(_ltp_ema, 1)
         # 2026-07-26: MQ2 zapisuje wlasna notke proweniencyjna do ltp_modelq_note.
         # Kolumny *_r2 pochodzily z ModelQ v1 (regresja krzywej mocy) i od cutoveru
         # 2026-07-08 stoja puste. MQ2 nie dopasowuje krzywej -- LTP wychodzi ze wzoru
         # na sygnaturze -- wiec r2 nie ma tu sensu i jest jawnie zerowane, zeby
         # raport nie pokazywal pustego pola po nieistniejacym modelu.
-        note = ("LTP = TP - HIE/400 (wzor Xert). Zrodlo MQ2: %s "
+        note = ("LTP = EMA28 z dziennego (TP - HIE/400) (wzor Xert, wygladzony "
+                "na wyjsciu od 2026-08-04; surowe dzienne nurkowalo po mocnej "
+                "jezdzie -- szczegoly DECISIONS). Zrodlo MQ2: %s "
                 "(TP dryfuje za CTL wokol kotwicy, HIE za TL_high). "
                 "To nie jest dopasowanie krzywej -- r2 nie wystepuje. "
-                "TP=%.1f W, HIE=%.2f kJ. || %s"
-                % (src or "decay", float(tp), float(hie), LTP_MEASURED_NOTE))
+                "TP=%.1f W, HIE=%.2f kJ, LTP_raw=%.1f W. || %s"
+                % (src or "decay", float(tp), float(hie), _ltp_raw, LTP_MEASURED_NOTE))
         # cp_modelq_w niesie TP, nie CP i nie LTP -- historyczna nazwa kolumny.
         # Notka mowi to wprost, zeby raport nie sugerowal osobno wyznaczonego CP.
         cp_note = ("UWAGA: kolumna cp_modelq_w niesie TP (prog) z sygnatury MQ2, "

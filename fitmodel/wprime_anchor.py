@@ -51,7 +51,9 @@ def apply_road_anchor(conn, window_days: int = WINDOW_DAYS, min_zero_s: int = MI
         "        WHERE a.external_id = q.ride_id) AS ride_date, "
         "       q.wbal_zero_seconds "
         "FROM qbot_v2.fitmodel_qext2_ride q "
-        "WHERE q.wbal_zero_seconds >= %s",
+        "WHERE q.wbal_zero_seconds >= %s "
+        "AND NOT EXISTS (SELECT 1 FROM qbot_v2.fitmodel_ride_quarantine k "
+        "                WHERE k.external_id = q.ride_id AND k.released IS NULL)",
         (min_zero_s,),
     )
     anchors = [(r[0], int(r[1])) for r in cur.fetchall() if r[0] is not None]
