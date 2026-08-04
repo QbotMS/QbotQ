@@ -302,13 +302,27 @@ def _validate_and_fix_meal_items(items: list[dict]) -> tuple[list[dict], list[st
         # Auto-fix sugar-like items
         _sugar_keywords = ["miod", "miód", "honey", "cukier", "sugar", "dżem",
                            "dzem", "syrop", "jam", "marmolada", "konfitura"]
+        # UWAGA: sama nazwa NIE wystarcza. Dopasowanie idzie po podciagu, wiec
+        # "Baton Slodzone Miodem" lapie sie na "miod", a "Racuch z pistacjami"
+        # na "jam" -- i obu bezpodstawnie wyzerowaloby bialko i tluszcz.
+        # Zerujemy dopiero gdy produkt faktycznie JEST glownie cukrem, tzn.
+        # same weglowodany pokrywaja >=80% deklarowanych kcal.
         if any(kw in name_l for kw in _sugar_keywords):
-            if p > 2:
-                warnings.append(f"item[{i}] '{name}': auto-fix protein {p}->0 (sugar-type)")
-                item["protein_g"] = 0
-            if f > 2:
-                warnings.append(f"item[{i}] '{name}': auto-fix fat {f}->0 (sugar-type)")
-                item["fat_g"] = 0
+            _carb_kcal = c * 4
+            _carb_dominant = bool(kcal > 0 and _carb_kcal >= 0.8 * kcal)
+            if not _carb_dominant:
+                warnings.append(
+                    "item[%d] %r: nazwa pasuje do sugar-type, ale wegle to tylko %.0f%% kcal "
+                    "-- POMINIETO auto-zerowanie makr"
+                    % (i, name, (_carb_kcal / kcal * 100) if kcal else 0)
+                )
+            else:
+                if p > 2:
+                    warnings.append(f"item[{i}] '{name}': auto-fix protein {p}->0 (sugar-type)")
+                    item["protein_g"] = 0
+                if f > 2:
+                    warnings.append(f"item[{i}] '{name}': auto-fix fat {f}->0 (sugar-type)")
+                    item["fat_g"] = 0
 
         # Check macro consistency — auto-fix when macros wildly exceed reported kcal
         p2 = item.get("protein_g") or 0

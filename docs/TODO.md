@@ -8,6 +8,51 @@
 
 # OTWARTE
 
+## [ZYWIENIE-ZAPIS] Regula cukrowa zerowala makra po podciagu w nazwie [ZAMKNIETE 2026-08-04]
+
+WYKRYTE przy logowaniu jedzenia za 30.07-03.08. Pierwsza diagnoza (wpisana 2026-08-01)
+byla BLEDNA -- twierdzila, ze "Albert gubi makra niedeterministycznie". Nieprawda.
+
+PRAWDZIWA PRZYCZYNA: _validate_and_fix_meal_items (qbot_nutrition_db.py) dopasowywala
+slowa cukrowe jako PODCIAG w dowolnym miejscu nazwy produktu:
+    _sugar_keywords = ["miod", "miód", "cukier", "dzem", "jam", "konfitura", ...]
+    if any(kw in name_l for kw in _sugar_keywords): -> protein_g=0, fat_g=0
+Nazwa "Baton Slodzone Miodem" lapala sie na "miod" -> bialko 7->0, tluszcz 14.9->0,
+przy nietknietych kcal i weglowodanach. Blad byl DETERMINISTYCZNY i CICHY -- bilans
+kaloryczny sie zgadzal, wiec nic nie krzyczalo.
+
+Dopasowanie po podciagu myli sie w obie strony:
+  - za duzo: "Racuch z pistacjami" lapie "jam" (intake_items id=354)
+  - za malo: "konfitura" nie lapie odmiany "konfitura" z ogonkiem (id=447 ocalal przypadkiem)
+
+NAPRAWA (2026-08-04): zerowanie makr odpala sie tylko gdy produkt faktycznie JEST
+glownie cukrem, tzn. same weglowodany pokrywaja >=80% deklarowanych kcal.
+Miod (20 g W / 80 kcal = 100%) -> regula dziala. Baton (21.3 g W / 253 kcal = 34%)
+-> pominieta, z ostrzezeniem w logu.
+Test: 7/7 przypadkow + zapis kontrolny na zywo przez MCP (makra przezyly).
+
+SKALA SZKOD w historii: przeskanowano wszystkie 337 pozycji intake_items.
+Slowo cukrowe w nazwie mialy 4: id=41 (miod, zerowanie poprawne), id=324 (cukierek,
+55 kcal), id=354 (pistacje, makra ocalaly -- inna sciezka zapisu), id=399 (baton,
+juz poprawiony recznie). Realnie uszkodzony byl tylko id=399.
+
+## [ZYWIENIE-BLONNIK] fiber_g nie dociera z LLM do bazy -- SWIADOMIE NIE NAPRAWIANE
+
+args_schema toola nutrition_log_add (qbot3/tool_registry.py ~2087) nie ma pola fiber_g,
+a albert.py (552-565) buduje z args_schema parametry funkcji dla LLM -- wiec model
+fizycznie nie moze przekazac blonnika. Warstwy nizej (mcp_adapter 525/538,
+qbot_nutrition_db 442) obsluguja fiber_g poprawnie.
+
+DECYZJA (2026-08-04, Michal): NIE dodajemy pola. Blonnik nie zasila zadnego modelu
+(ani ModelQ, ani glikogenu), a dane bylyby i tak szczatkowe -- podawany jest
+sporadycznie, tylko gdy czytamy z etykiety. Srednia z rzadkich wpisow bylaby smieciem.
+
+ZROBIONE ZAMIAST TEGO: fiber_total usuniete z publicznego podsumowania dnia
+(_serialize_summary w qbot_nutrition_tools.py oraz _nutrition_summary_subset
+w qbot3/adapters/mcp_adapter.py), zeby suma 0 nie czytala sie jak pomiar.
+Kolumna w bazie i sumowanie w daily_summary_compute zostaja nietkniete --
+jesli kiedys pole wroci, dane historyczne beda spojne.
+
 ## [DOK-CZAS-50M] docs/ROUTE_TIME_ESTIMATE_V2.md jest nieaktualny (dodane 2026-07-30)
 
 Dokument mowi, ze resolver czasu czyta route_frames (80 m) i zostawia notke 'do weryfikacji'.
@@ -213,6 +258,8 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 ---
 
 # ZROBIONE (skrot; szczegoly w DECISIONS.md i TODO.md.bak.*)
+- [2026-07-30] ZROBIONE: zestaw porownywanych modeli dobierany do horyzontu (0-2 dni: siatki do 7 km; 3-5 dni: 7-13 km + ECMWF; 6+ dni: same globalne) -- zestawianie siatki 2 km z 25 km na krotkim terminie mierzylo rozdzielczosc, nie pogode. Do rejestru doszedl HARMONIE 5.5 km. Grafika porownania (skale z kropkami) USUNIETA -- zastapiona czterema akapitami i ocena Alberta w 2-3 zdaniach prozy.
+- [2026-07-30] NAPRAWIONE: pogoda wysypywala sie na dniu 2 bledem Postgresa o NaN. Przyczyna: zasieg modelu sprawdzany w DNIACH, a ICON-D2 mial 4 godziny z 24 (konczyl sie o 05:00) -- jazda od 09:00 trafiala w pustke i WBGT wychodzil NaN. Teraz model_reach zwraca ostatnia GODZINE, canonical_model wymaga pokrycia okna jazdy (start + 14 h), a _bez_nan() sanityzuje NaN/Inf na null z polem 'niepelne_dane'; json.dumps ma allow_nan=False. Payload zawiera tez pole 'model'. Zasada: 'model siega daty' to za gruba miara.
 - [2026-07-30] ZROBIONE: panel zgodnosci modeli -- kazdy osrodek ma wlasny staly kolor (wczesniej wszystkie kropki byly identyczne, wiec legenda i uwagi Alberta o konkretnym modelu byly nieweryfikowalne), kanon rozpoznawany po rozmiarze i obwodce; instrukcja 'jak to czytac' nad panelem; rozdzielone pojecia 'rozstep miedzy modelami' (niezgoda miedzy osrodkami) i 'rozrzut zespolu' (niepewnosc 51 wariantow ECMWF) w UI i w prompcie Alberta. UWAGA na przyszlosc: zwroty, ktore LLM ma przepisac doslownie, trzeba podac w prompcie z polskimi znakami -- inaczej kopiuje je bez ogonkow.
 - [2026-07-30] ZROBIONE: pogoda v3/v4 -- pas opadu pokazuje SZANSE jako tlo obok mm jako slupkow (alert deszczu powstaje juz przy 30% prawdopodobienstwa i 0 mm, wiec pusty pas przy plakietce DESZCZ wygladal na sprzecznosc); plakietka rozroznia 'deszcz' od 'ryzyko deszczu'; nowa skala barw temperatury dobrana do jazdy z legenda (stara malowala 29 C z alarmem upalu na zielono); 'brak danych' zastapione konkretnym powodem niepowodzenia.
 - [2026-07-30] ZROBIONE: pogoda -- dlugie postoje w ETA (regula: 1 postoj 30 min na kazde pelne 75 km ETAPU; wczesniej silnik znal tylko mikroprzerwy i krotkie postoje co 9 km, wiec pogoda popoludniowa byla liczona o ~pol godziny za wczesnie -- szczyt WBGT wskazywal km 93.9 zamiast 86.2). Zachmurzenie dodane do silnika (cloud_cover), tabeli 30 min, podsumowania i serii wykresu. Podstrona v=2: pas chmur, pas opadu zawsze widoczny z podpisem, znaczniki postojow, interaktywny kursor z dymkiem (dziala tez dotykiem). DO OBEJRZENIA OKIEM.

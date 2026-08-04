@@ -740,7 +740,7 @@ def _nutrition_summary_subset(summary: dict[str, Any] | None) -> dict[str, Any]:
             "carbs_total",
             "protein_total",
             "fat_total",
-            "fiber_total",
+            # fiber_total pominiety celowo -- patrz _summary_public w qbot_nutrition_tools.py
             "sodium_total",
             "fluids_total",
             "computed_at",

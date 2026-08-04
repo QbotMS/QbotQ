@@ -461,4 +461,6 @@ def _tool_qbot_nutrition_meal_from_template(_args: dict | None = None) -> dict[s
 
 
 def _serialize_summary(s: dict) -> dict:
-    return {k: v for k, v in s.items() if k in ("kcal_total","carbs_total","protein_total","fat_total","fiber_total","sodium_total","fluids_total")}
+    # fiber_total celowo pominiety: blonnik jest podawany sporadycznie, wiec
+    # suma 0 czytalaby sie jak pomiar, a jest brakiem danych.
+    return {k: v for k, v in s.items() if k in ("kcal_total","carbs_total","protein_total","fat_total","sodium_total","fluids_total")}
