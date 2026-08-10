@@ -205,3 +205,125 @@ def score_climb(conn, climb: dict, cp_w: float, wprime_kj: float | None,
 def _fmt_t(t_s: float) -> str:
     m = int(round(t_s / 60.0))
     return "%d min" % max(1, m)
+
+
+# --- [PODJAZDY-SKALA] lancuchowanie: symulacja W' przez sekwencje podjazdow ---
+# Zasada (uzytkownik 2026-08-10): "analiza trasy musi uwzgledniac poprzednie
+# podjazdy". Kazdy podjazd symulowany SEGMENT PO SEGMENCIE przy zadanym tempie
+# (strome rampy kosztuja W' nawet gdy srednia < CP), miedzy podjazdami
+# odbudowa tau (formula jak w kanonie wbal_replay).
+
+RECOVERY_P_FRAC = 0.55   # zalozona moc na dojazdach miedzy podjazdami (ulamek CP)
+WBAL_SAFE_PCT = 12.0     # ponizej tego progu przed/na podjezdzie = ryzyko zatrzymania
+TEMPO_FRAC = 0.88        # tempo = ~88% mocy osiagalnej (jazda "z glowa")
+
+
+def _tau_s(cp: float, p_rec: float) -> float:
+    dcp = max(cp - p_rec, 0.0)
+    return 546.0 * math.exp(-0.01 * dcp) + 316.0
+
+
+def _climb_wcost(climb, v_kmh, mass, cp, wbal_j, wp_j):
+    """Przejazd podjazdu segment po segmencie ze stala predkoscia v_kmh.
+    Zwraca (wbal_po, min_wbal, czas_s). Odbudowa na lzejszych segmentach tau."""
+    t_total = 0.0
+    min_w = wbal_j
+    for sg in climb.get("segments") or []:
+        L = float(sg.get("len_m") or 0)
+        if L <= 0:
+            continue
+        g = float(sg.get("grade") if sg.get("grade") is not None else 0.0)
+        crr = CRR.get(sg.get("sk"), CRR_DEFAULT)
+        p = power_req(g, v_kmh, mass, crr)
+        t = L / (v_kmh / 3.6)
+        if p > cp:
+            wbal_j -= (p - cp) * t
+        else:
+            deficit = wp_j - wbal_j
+            wbal_j = wp_j - deficit * math.exp(-t / _tau_s(cp, p))
+        wbal_j = max(0.0, min(wp_j, wbal_j))
+        min_w = min(min_w, wbal_j)
+        t_total += t
+    return wbal_j, min_w, t_total
+
+
+def _climb_speed(conn, climb, cp, mass, target_frac=1.0):
+    """Predkosc rownowagi dla podjazdu przy celu = target_frac * moc osiagalna."""
+    st = _seg_stats(climb.get("segments"))
+    if st is None:
+        return None
+    avg_g, crr, _cg, _cc, length = st
+    pts = achievable_curve(conn)
+    lo, hi = V_FLOOR_HARD_KMH, 30.0
+    for _ in range(40):
+        mid = (lo + hi) / 2.0
+        t_est = length / (mid / 3.6)
+        w_target = cp * ach_pct(pts, t_est) / 100.0 * target_frac
+        if power_req(avg_g, mid, mass, crr) > w_target:
+            hi = mid
+        else:
+            lo = mid
+    return max(lo, V_FLOOR_HARD_KMH)
+
+
+def chain_verdict(conn, climbs, cp_w, wprime_kj, mass_rider_kg, gap_speed_kmh=None):
+    """Symulacja calej sekwencji podjazdow. Polityka zachlanna: atakuj dopoki
+    W' na wejsciu i w trakcie nie spada ponizej progu; inaczej tempo.
+
+    Zwraca {verdict, per_climb: [{i, mode, wbal_in_pct, wbal_min_pct}], ...}."""
+    if not climbs or not cp_w:
+        return None
+    cp = float(cp_w)
+    wp_j = float(wprime_kj or 20.0) * 1000.0
+    mass = float(mass_rider_kg) + BIKE_GEAR_KG
+    v_gap = float(gap_speed_kmh or 16.0)
+    p_rec = RECOVERY_P_FRAC * cp
+    tau_gap = _tau_s(cp, p_rec)
+
+    wbal = wp_j
+    prev_end_km = 0.0
+    out = []
+    n_tempo = 0
+    first_tempo = None
+    for c in climbs:
+        # dojazd do podjazdu = odbudowa
+        gap_km = max(0.0, float(c.get("a_km") or 0.0) - prev_end_km)
+        if gap_km > 0:
+            t_gap = gap_km / v_gap * 3600.0
+            deficit = wp_j - wbal
+            wbal = wp_j - deficit * math.exp(-t_gap / tau_gap)
+        wbal_in = wbal
+        # probuj ATAK; jesli min W' za nisko -> TEMPO
+        mode = "atak"
+        v_a = _climb_speed(conn, c, cp, mass, 1.0)
+        if v_a is None:
+            prev_end_km = float(c.get("b_km") or prev_end_km)
+            continue
+        w_after, w_min, _t = _climb_wcost(c, v_a, mass, cp, wbal, wp_j)
+        if w_min < WBAL_SAFE_PCT / 100.0 * wp_j:
+            mode = "tempo"
+            v_t = _climb_speed(conn, c, cp, mass, TEMPO_FRAC)
+            w_after, w_min, _t = _climb_wcost(c, v_t, mass, cp, wbal, wp_j)
+            n_tempo += 1
+            if first_tempo is None:
+                first_tempo = c.get("i")
+        wbal = w_after
+        out.append({"i": c.get("i"), "mode": mode,
+                    "wbal_in_pct": round(wbal_in / wp_j * 100.0),
+                    "wbal_min_pct": round(w_min / wp_j * 100.0)})
+        prev_end_km = float(c.get("b_km") or prev_end_km)
+
+    risky = [o for o in out if o["wbal_min_pct"] <= 5]
+    if n_tempo == 0:
+        verdict = ("Mozesz atakowac wszystkie podjazdy - W\u2032 nie schodzi ponizej %d%%."
+                   % min((o["wbal_min_pct"] for o in out), default=100))
+    else:
+        ataki = [str(o["i"]) for o in out if o["mode"] == "atak"]
+        verdict = ("Atakuj podjazdy %s; od #%s jedz tempem (inaczej W\u2032 przy dnie)."
+                   % ((", ".join("#" + a for a in ataki) or "\u2014"), first_tempo))
+    if risky:
+        verdict += (" Uwaga: na %s W\u2032 i tak zejdzie \u22645%% - rozwaz krotka przerwe przed."
+                    % ", ".join("#%s" % o["i"] for o in risky))
+    return {"verdict": verdict, "per_climb": out,
+            "params": {"wprime_kj": round(wp_j / 1000.0, 1), "cp_w": round(cp),
+                       "gap_speed_kmh": round(v_gap, 1)}}

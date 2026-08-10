@@ -3186,7 +3186,8 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
 
     details = {
         "surface": {"total_km": km_total, "by_cat": surface_by_cat, "risk": surface_risk},
-        "climbs": {"ascent_m": ascent, "descent_m": descent, "count": len(climbs_list), "list": climbs_list},
+        "climbs": {"ascent_m": ascent, "descent_m": descent, "count": len(climbs_list), "list": climbs_list,
+                   "chain": None},
         "weather": {"windows": weather_windows, "peak": m.get("peak"), "caveats": m.get("caveats") or [],
                     "slonce": m.get("slonce")},
         "poi": poi_out,
@@ -3307,6 +3308,19 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
             if _sc:
                 _x["score"] = _sc["score"]; _x["score_label"] = _sc["label"]
                 _x["score_why"] = _sc["why"]
+        # lancuchowanie: werdykt laczny z uwzglednieniem poprzednich podjazdow
+        _chain = _cs.chain_verdict(conn, climbs_list, float(_ftp) if _ftp else None,
+                                   _wp_kj, mass, gap_speed_kmh=speed_net_kmh)
+        # tryb per podjazd (atak/tempo) takze do kart
+        if _chain:
+            _bymode = {o["i"]: o for o in _chain.get("per_climb") or []}
+            for _x in climbs_list:
+                _o = _bymode.get(_x["i"])
+                if _o:
+                    _x["chain_mode"] = _o["mode"]
+                    _x["chain_wbal_in"] = _o["wbal_in_pct"]
+                    _x["chain_wbal_min"] = _o["wbal_min_pct"]
+        details["climbs"]["chain"] = _chain
     except Exception as _e:
         print("climb_score error:", _e, flush=True)
 
