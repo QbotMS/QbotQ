@@ -2093,7 +2093,8 @@ def _load_outfit_rules():
 def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, total_h,
                   peak, weather_overall, weather_stages, risks,
                   forma, climbs, surface_blocks, fuel, resupply, gear, alerty,
-                  opony_opcje, nawierzchnia_udzial, opady_historia=None, outfit_rules=None):
+                  opony_opcje, nawierzchnia_udzial, opady_historia=None, outfit_rules=None,
+                  podjazdy_werdykt=None):
     """Albert (LLM) - proza/rekomendacje. Liczby tylko z danych. DWA wywolania:
     (1) pogoda+ryzyka, (2) plan (strategia+ubior+opony) - kazde z wlasnym budzetem,
     bo gpt-5* liczy reasoning w max_completion_tokens i jeden wielki kontrakt sie nie miesci.
@@ -2155,7 +2156,15 @@ def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, 
         "gdzie mozna docisnac, wiatr, kluczowe podjazdy, ryzyka, dlugosc vs glikogen. "
         "Kazdy etap: opis 1-3 zdania; moc = ZALECANY zakres na ten etap w W ORAZ %FTP (policz z forma.ftp; na trudnych/luznych i "
         "pod wiatr nizej, na twardym z plecow mozna wyzej, ale nie na stale ponad FTP; na podjazdach krotko wyzej); "
-        "zywienie = konkret na bazie fuel.carbs_g_h; pojenie = na bazie fuel.fluid_l_h i pogody (gdzie dolac wg resupply).\n"
+        "zywienie = konkret na bazie fuel.carbs_g_h; pojenie = na bazie fuel.fluid_l_h i pogody (gdzie dolac wg resupply). "
+        "PODJAZDY - NOWY SILNIK OCEN: kazdy wpis w climbs ma 'ocena' (-2..+2 wzgledem AKTUALNEJ formy uzytkownika: "
+        "+2/+1 latwy, 0 na granicy mozliwosci, -1 ledwo, -2 nieprzejezdny) oraz 'tryb' z symulacji W' CALEJ trasy "
+        "z uwzglednieniem poprzednich podjazdow: 'atak' = mozna docisnac, 'tempo' = jechac zachowawczo, bo zapas W' "
+        "po wczesniejszych podjazdach bedzie niski (wbal_in_pct = prognozowany zapas na wejsciu, wbal_min_pct = minimum "
+        "w trakcie, w % pelnego W'). TWARDE REGULY: (a) zalecenia mocy na etapach MUSZA respektowac tryb - na podjezdzie "
+        "'tempo' NIE zalecaj docisniecia, zalec jazde ponizej progu; (b) podjazd z ocena 0 omow wprost jako kluczowy "
+        "wysilek dnia, przy -1/-2 uprzedz o mozliwym zejsciu z roweru; (c) 'calosc' ma zaczac od tresci podjazdy_werdykt "
+        "wlasnymi slowami; (d) nie wymyslaj ocen podjazdom - tylko z danych.\n"
         "sprzet_opony: OBIEKT {\"wheelset\",\"tire\",\"uzasadnienie\"}. Wybierz DOKLADNIE JEDNA opcje z opony_opcje (skopiuj wheelset i tire). "
         "WAZENIE: G-One Pro RS jest wyraznie szybszy i gladszy na asfalcie i twardym gravelu; Thunder Burt oplaca sie DOPIERO gdy DUZO "
         "luznego/piachu/technicznego. Patrz nawierzchnia_udzial: jesli twarda+dobry gravel (k1+k2) dominuja, wybierz szybsza (G-One) "
@@ -2170,7 +2179,8 @@ def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, 
         "W KAZDYM zestawie OBOWIAZKOWO: koszulka/jersey ORAZ spodenki z wkladka (kategoria 'Spodenki z wkładką'). NIE proponuj kasku ani butow. 4-7 pozycji na zestaw. przyklad WYLACZNIE z listy gear."
     )
     _pog_skrot = {"peak_wbgt": peak, "pogoda_ogolem": weather_overall, "alerty": alerty}
-    pay2 = {"trasa": _trasa, "forma": forma, "climbs": climbs, "surface_blocks": surface_blocks,
+    pay2 = {"trasa": _trasa, "forma": forma, "climbs": climbs, "podjazdy_werdykt": podjazdy_werdykt,
+            "surface_blocks": surface_blocks,
             "nawierzchnia_udzial": nawierzchnia_udzial, "surface_legenda": _legenda,
             "fuel": fuel, "resupply": resupply, "gear": gear, "opony_opcje": opony_opcje,
             "reguly_outfitu": outfit_rules, "pogoda": _pog_skrot}
@@ -3321,12 +3331,24 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
                     _x["chain_wbal_in"] = _o["wbal_in_pct"]
                     _x["chain_wbal_min"] = _o["wbal_min_pct"]
         details["climbs"]["chain"] = _chain
+        # zakladka Forma: rezerwa W' z symulacji calej trasy (zamiast starego
+        # szacunku 'najstromszy vs FTP' liczonego przy stalych 12 km/h)
+        if _chain and _chain.get("per_climb"):
+            _minw = min((o["wbal_min_pct"] for o in _chain["per_climb"]), default=None)
+            _n_tempo = sum(1 for o in _chain["per_climb"] if o["mode"] == "tempo")
+            if _minw is not None:
+                _txt = "symulacja podjazdow: min W\u2032 ~%d%%" % _minw
+                _txt += (" (wszystkie do zaatakowania)" if _n_tempo == 0
+                         else " (%d podjazd(y) do przejechania tempem)" % _n_tempo)
+                forma["vs_route"]["wprime_txt"] = _txt
     except Exception as _e:
         print("climb_score error:", _e, flush=True)
 
     _climbs_slim = [{"i": x["i"], "a_km": x["a_km"], "b_km": x["b_km"], "gain_m": x["gain_m"],
                      "avg_pct": x["avg_pct"], "max_pct": x["max_pct"], "severity": x["severity"],
-                     "ocena": x.get("score"), "ocena_txt": x.get("score_label")}
+                     "ocena": x.get("score"), "ocena_txt": x.get("score_label"),
+                     "tryb": x.get("chain_mode"), "wbal_in_pct": x.get("chain_wbal_in"),
+                     "wbal_min_pct": x.get("chain_wbal_min")}
                     for x in climbs_list]
     _surf_blocks = [{"a": s["a"], "b": s["b"], "k": s["k"], "label": s.get("label")} for s in surface_cat]
     _resupply = []
@@ -3358,7 +3380,8 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
             forma=_forma_llm, climbs=_climbs_slim, surface_blocks=_surf_blocks,
             fuel=_fuel, resupply=_resupply, gear=_gear, alerty=_alerty,
             opony_opcje=_tire_options, nawierzchnia_udzial=_naw_udzial,
-            opady_historia=precip_history, outfit_rules=_load_outfit_rules())
+            opady_historia=precip_history, outfit_rules=_load_outfit_rules(),
+            podjazdy_werdykt=((details["climbs"].get("chain") or {}).get("verdict")))
     except Exception:
         _og = _et = _rc2 = []
         _strat = _ubior = _opony = None
