@@ -1364,6 +1364,27 @@ def route_surface_segments(route_id: str):
     }
 
 
+def _dominant_surface_cat(ribbon, a_km, b_km):
+    """Dominujaca kategoria nawierzchni na odcinku [a_km, b_km) - wg dlugosci przekrycia.
+
+    ribbon: lista dictow z kluczami a/b (km, absolutne) i k (kategoria 1-5).
+    Zwraca k tej kategorii, ktora zajmuje najwiecej metrow odcinka, albo None.
+    Uzywane do deseniu nieutwardzonych na profilach podjazdow (zakladka Przewyzszenia)."""
+    if b_km <= a_km:
+        return None
+    acc: dict[int, float] = {}
+    for r in ribbon or []:
+        k = r.get("k")
+        if k is None:
+            continue
+        ov = min(b_km, float(r["b"])) - max(a_km, float(r["a"]))
+        if ov > 0:
+            acc[k] = acc.get(k, 0.0) + ov
+    if not acc:
+        return None
+    return max(acc.items(), key=lambda kv: kv[1])[0]
+
+
 def _coalesce_categories(buckets: list[dict]) -> list[dict]:
     """Scala sasiednie bucket-y o tej samej surface_category w ciagle odcinki (wstazka 5-kat.)."""
     runs: list[dict] = []
@@ -2146,7 +2167,7 @@ def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, 
         "KOMPLETY: jesli reguly_outfitu wskazuja pary (dana koszulka -> konkretne spodenki/warstwy), trzymaj sie ich. "
         "SPOJNOSC MARKI (WSKAZOWKA, nie twarda regula - logika doboru i pogoda moga ja nadpisac): w miare mozliwosci trzymaj zestaw w jednej marce - do koszulki PEdALED dobieraj spodenki PEdALED, do koszulki Albion - spodenki Albion. Wyjatek: gdy koszulka to Rapha Explore (LS lub SS) i w garderobie nie ma ulubionych spodenek Rapha, uzyj spodenek PEdALED albo Albion. "
         "Kazda pozycja: typ = OGOLNY rodzaj (np. 'przewiewna koszulka','spodenki z wkladka','wiatrowka'); przyklad = pole 'nazwa' z listy gear (dokladnie, BEZ opisu); tryb = 'na sobie' albo 'zabierz'; uwaga = 1 krotkie zdanie. "
-        "W KAZDYM zestawie OBOWIAZKOWO: koszulka/jersey ORAZ spodenki z wkladka (kategoria 'Bibs shorts'). NIE proponuj kasku ani butow. 4-7 pozycji na zestaw. przyklad WYLACZNIE z listy gear."
+        "W KAZDYM zestawie OBOWIAZKOWO: koszulka/jersey ORAZ spodenki z wkladka (kategoria 'Spodenki z wkładką'). NIE proponuj kasku ani butow. 4-7 pozycji na zestaw. przyklad WYLACZNIE z listy gear."
     )
     _pog_skrot = {"peak_wbgt": peak, "pogoda_ogolem": weather_overall, "alerty": alerty}
     pay2 = {"trasa": _trasa, "forma": forma, "climbs": climbs, "surface_blocks": surface_blocks,
@@ -3079,8 +3100,14 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
                 _sj = json.loads(_sj)
             except Exception:
                 _sj = []
-        _segs = [{"len_m": round(sg.get("length_m") or 0), "grade": sg.get("gradient_pct"),
-                  "cat": sg.get("category")} for sg in (_sj or [])]
+        _segs = []
+        _off = (r["start_m"] or 0) / 1000.0
+        for sg in (_sj or []):
+            _lkm = (sg.get("length_m") or 0) / 1000.0
+            _segs.append({"len_m": round(sg.get("length_m") or 0), "grade": sg.get("gradient_pct"),
+                          "cat": sg.get("category"),
+                          "sk": _dominant_surface_cat(surface_cat, _off, _off + _lkm)})
+            _off += _lkm
         climbs_list.append({"i": (r["event_index"] or 0) + 1,
                             "a_km": round((r["start_m"] or 0) / 1000.0, 1),
                             "b_km": round((r["end_m"] or 0) / 1000.0, 1),
@@ -3515,6 +3542,9 @@ def _build_day_data(conn, route_id, km_from, km_to):
     # nawierzchnia - ribbon przyciety do [a0,b0], offset do 0
     raw_buckets = _load_surface_buckets(conn, rbid)
     ribbon = _absorb_short_surface(_coalesce_categories(raw_buckets))
+    # km ABSOLUTNE - do deseniu nawierzchni na profilach podjazdow (climbs_list jest absolutny)
+    _surf_abs = [{"a": float(r["km_from"]), "b": float(r["km_to"]), "k": r["category"]}
+                 for r in ribbon if r.get("category") is not None]
     surface_cat = []
     for r in ribbon:
         if r.get("category") is None:
@@ -3549,8 +3579,14 @@ def _build_day_data(conn, route_id, km_from, km_to):
                 _sj = json.loads(_sj)
             except Exception:
                 _sj = []
-        _segs = [{"len_m": round(sg.get("length_m") or 0), "grade": sg.get("gradient_pct"),
-                  "cat": sg.get("category")} for sg in (_sj or [])]
+        _segs = []
+        _off = (r["start_m"] or 0) / 1000.0
+        for sg in (_sj or []):
+            _lkm = (sg.get("length_m") or 0) / 1000.0
+            _segs.append({"len_m": round(sg.get("length_m") or 0), "grade": sg.get("gradient_pct"),
+                          "cat": sg.get("category"),
+                          "sk": _dominant_surface_cat(_surf_abs, _off, _off + _lkm)})
+            _off += _lkm
         climbs_list.append({"i": (r["event_index"] or 0) + 1,
                             "a_km": round((r["start_m"] or 0) / 1000.0, 1),
                             "b_km": round((r["end_m"] or 0) / 1000.0, 1),
@@ -3712,6 +3748,26 @@ POGODA_KLIMAT_TTL_H = 24.0 * 30  # klimat ERA5 sie nie zmienia
 POGODA_HORIZON_DAYS = 15         # dokad siega prognoza Open-Meteo (dzis + 15)
 
 
+def _bez_nan(x, licznik=None):
+    """NaN/Infinity -> None. JSON ich nie zna, Postgres odrzuca, przegladarka gubi sie na nich.
+
+    Zwraca oczyszczona kopie; licznik (lista jednoelementowa) zlicza podmiany, zeby dalo sie
+    powiedziec uzytkownikowi, ze czesc danych byla niepelna, zamiast udawac, ze wszystko gra.
+    """
+    import math
+    if isinstance(x, float):
+        if math.isnan(x) or math.isinf(x):
+            if licznik is not None:
+                licznik[0] += 1
+            return None
+        return x
+    if isinstance(x, dict):
+        return {k: _bez_nan(v, licznik) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_bez_nan(v, licznik) for v in x]
+    return x
+
+
 def _pogoda_cache_init(conn):
     conn.execute("CREATE TABLE IF NOT EXISTS qbot_v2.planer_pogoda_cache ("
                  "cache_key text PRIMARY KEY, route_id text NOT NULL, dzien int NOT NULL, "
@@ -3800,13 +3856,16 @@ def _pogoda_modele_ocena(pay):
     _sysp = (
         "Jestes Albert - asystent kolarski QBot. Dostajesz porownanie kilku modeli pogodowych "
         "dla jednego dnia wyprawy rowerowej i masz ocenic, NA ILE TEJ PROGNOZIE MOZNA UFAC. "
-        "Zwracasz WYLACZNIE JSON o kluczach: zgoda, wniosek, punkty.\n"
+        "Zwracasz WYLACZNIE JSON o kluczach: zgoda, wniosek.\n"
         "zgoda: jedno slowo - 'wysoka', 'umiarkowana' albo 'niska'.\n"
-        "wniosek: JEDNO zdanie - czy modele mowia to samo i co z tego wynika dla planowania.\n"
-        "punkty: 2-4 stringi po jednym zdaniu (maks. ~30 slow): (a) gdzie modele sie zgadzaja, "
-        "a gdzie rozjezdzaja i o ile, (b) czy ktorys model odstaje od reszty i w ktora strone, "
-        "(c) co to znaczy praktycznie dla rowerzysty (czy planowac na wartosc srodkowa, czy "
-        "zakladac gorszy wariant), (d) tylko jesli istotne: czy decyzje warto odlozyc.\n"
+        "wniosek: DWA albo TRZY zdania, lacznie do 60 slow. Zmiesc w nich: gdzie modele sie "
+        "zgadzaja, a gdzie rozjezdzaja i o ile stopni; czy ktorys odstaje i w ktora strone; "
+        "co z tego wynika dla rowerzysty (planowac na wartosc srodkowa czy zakladac gorszy "
+        "wariant). Bez wyliczanek i bez listy - zwykla, zwiezla proza. NIE dodawaj klucza "
+        "'punkty'.\n"
+        "ZESTAW MODELI JEST DOBRANY DO HORYZONTU: na krotki termin porownujemy tylko siatki "
+        "drobne, na daleki tylko globalne. Nie komentuj braku modelu, ktorego nie ma w danych, "
+        "i nie sugeruj dolozenia innego - zestaw jest celowy.\n"
         "ZASADA O ROZDZIELCZOSCI: model o drobniejszej siatce jest dokladniejszy TYLKO w swoim "
         "zasiegu czasowym. Poza zasiegiem jego liczb w ogole nie ma - nie pisz, ze jest lepszy "
         "'ale nie siega'. Model kanoniczny zostal juz wybrany regula: NIE proponuj innego.\n"
@@ -3830,9 +3889,13 @@ def _pogoda_modele_ocena(pay):
         o = qgpt_json(json.dumps(pay, ensure_ascii=False, default=str),
                       system=_sysp, max_tokens=1200, temperature=0.3)
         if isinstance(o, dict) and o.get("wniosek"):
-            pk = [str(x).strip() for x in (o.get("punkty") or []) if str(x).strip()]
+            tresc = str(o["wniosek"]).strip()
+            # gdyby model mimo wszystko zwrocil liste - skleic w proze, nie gubic tresci
+            reszta = [str(x).strip() for x in (o.get("punkty") or []) if str(x).strip()]
+            if reszta:
+                tresc = (tresc + " " + " ".join(reszta)).strip()
             return {"zgoda": str(o.get("zgoda") or "").strip().lower() or None,
-                    "wniosek": str(o["wniosek"]).strip(), "punkty": pk[:4], "zrodlo": "Albert",
+                    "wniosek": tresc, "zrodlo": "Albert",
                     "czas_s": round(_time.time() - t0, 1)}
         # Odpowiedz przyszla, ale nie w tym ksztalcie co trzeba -- to tez trzeba wiedziec.
         return {"blad": "LLM zwrocil odpowiedz bez pola 'wniosek' (typ: %s)" % type(o).__name__,
@@ -3887,7 +3950,10 @@ def _pogoda_modele_blok(route_id, day_date, kanon, podsumowanie, from_km, to_km,
             "zespol": (zesp if zesp.get("status") == "OK" else None)}
 
     if z_llm:
+        _hor = por.get("horyzont") or {}
         skrot = {"data": str(day_date)[:10],
+                 "horyzont_dni": _hor.get("dni"), "zestaw_modeli": _hor.get("nazwa"),
+                 "dlaczego_taki_zestaw": _hor.get("opis"),
                  "model_kanoniczny": {"nazwa": kanon.get("nazwa"), "siatka_km": kanon.get("siatka_km"),
                                       "powod_wyboru": kanon.get("powod")},
                  "punkty": [], "rozrzut_max_c": por.get("rozrzut_max_c"),
@@ -4189,8 +4255,16 @@ def api_planer_pogoda(route_id: str = Query(...), start: str = Query(...),
 
             # Model wybiera REGULA (najdrobniejsza siatka siegajaca tej daty), nie serwis.
             lat_s, lon_s = _pogoda_mid_point(route_id, from_km, to_km)
+            # Model musi pokrywac CALE OKNO JAZDY, nie sama date: ICON-D2 potrafi miec
+            # 4 godziny z 24 i konczyc sie nad ranem. Bierzemy start + 14 h zapasu.
             try:
-                kanon = canonical_model(lat_s, lon_s, day_date.isoformat())
+                _h0 = int(st[:2])
+            except Exception:
+                _h0 = 9
+            _do_godz = "%02d:00" % min(23, _h0 + 14)
+            try:
+                kanon = canonical_model(lat_s, lon_s, day_date.isoformat(),
+                                        do_godziny=_do_godz)
             except Exception as e:
                 kanon = {"model": None, "powod": "nie udalo sie sprawdzic zasiegu modeli: %s"
                                                  % str(e)[:80]}
@@ -4202,7 +4276,7 @@ def api_planer_pogoda(route_id: str = Query(...), start: str = Query(...),
                 return dict(base, ok=False,
                             powod="Silnik METEO: %s" % str(m.get("error") or m.get("status"))[:200])
             payload = {"podsumowanie": m.get("podsumowanie"), "slonce": m.get("slonce"),
-                       "postoje": m.get("postoje"),
+                       "postoje": m.get("postoje"), "model": m.get("model"),
                        "alerty": m.get("alerty") or m.get("alerts") or [],
                        "tabela_30min": m.get("tabela_30min") or [],
                        "seria": _pogoda_seria(m.get("per_segment") or []),
@@ -4228,13 +4302,21 @@ def api_planer_pogoda(route_id: str = Query(...), start: str = Query(...),
                                          % POGODA_HORIZON_DAYS) if day_date > today
                        else "Data jest w przeszlosci - to nie jest prognoza."}
 
+        _brakow = [0]
+        payload = _bez_nan(payload, _brakow)
+        if _brakow[0]:
+            payload["niepelne_dane"] = (
+                "Model nie podal wartosci dla %d pol - te miejsca sa puste zamiast zmyslone. "
+                "Zwykle znaczy to, ze prognoza konczy sie w trakcie dnia." % _brakow[0])
+
         conn.execute(
             "INSERT INTO qbot_v2.planer_pogoda_cache "
             "(cache_key, route_id, dzien, data, tryb, payload, generated_at) "
             "VALUES (%s, %s, %s, %s, %s, %s, now()) "
             "ON CONFLICT (cache_key) DO UPDATE SET payload = EXCLUDED.payload, "
             "tryb = EXCLUDED.tryb, generated_at = now()",
-            (cache_key, route_id, day, day_date, tryb, json.dumps(payload, default=str)))
+            (cache_key, route_id, day, day_date, tryb,
+             json.dumps(payload, default=str, allow_nan=False)))
         conn.commit()
 
         out = dict(base)
@@ -5505,10 +5587,10 @@ GARAGE_DB = os.environ.get("QBOT_GARAGE_DB", "/opt/qbot/app/data/garage.db")
 
 # Kolejnosc slotow w panelu (jedna, caloroczna lista; z buty/kask/kurtka).
 RIDE_GEAR_SLOTS = [
-    "Base Layer Top", "Base Layer Bottom", "Jersey", "T-Shirt", "Jersey Long Sleeve",
-    "Bibs shorts", "Trousers", "Mid Layer Bottom", "Vest / Gilet", "Jacket / Shell",
-    "Warmers", "Gloves", "Headwear", "Neckwear", "Socks", "Overshoes",
-    "Shoes", "Helmet", "Glasses", "Accessories",
+    "Bielizna termoaktywna — góra", "Bielizna termoaktywna — dół", "Koszulka krótki rękaw", "Koszulka techniczna", "Koszulka długi rękaw",
+    "Spodenki z wkładką", "Spodnie rowerowe (bez wkładki)", "Spodnie termiczne", "Kamizelka", "Kurtka",
+    "Rękawki i nogawki", "Rękawiczki", "Nakrycie głowy", "Komin i chusta", "Skarpety", "Ochraniacze na buty",
+    "Buty", "Kask", "Okulary", "Akcesoria",
 ]
 RIDE_GEAR_CASSETTES = ["Garbaruk 10-52T (13rz)", "SRAM Force E1 10-46T"]
 _RIDE_GEAR_ALLOWED = set(RIDE_GEAR_SLOTS) | {"wheels", "cassette"}
@@ -7201,6 +7283,14 @@ _NAME2CAT = (
     ("ladowark", "Zasilanie i \u0142adowanie"),
     ("powerbank", "Zasilanie i \u0142adowanie"),
     ("kabel", "Zasilanie i \u0142adowanie"),
+    ("torba podsiodlowa", "Torby bikepackingowe"),
+    ("torba na kierownice", "Torby bikepackingowe"),
+    ("torba na rame", "Torby bikepackingowe"),
+    ("torba na gorna rure", "Torby bikepackingowe"),
+    ("torba bikepack", "Torby bikepackingowe"),
+    ("torebka", "Torby bikepackingowe"),
+    ("sakwa", "Torby bikepackingowe"),
+    ("torba", "Torby bikepackingowe"),
     ("apteczka", "Apteczka"),
     ("kosmetyk", "Higiena i kosmetyki"),
     ("higien", "Higiena i kosmetyki"),
@@ -7213,25 +7303,66 @@ _NAME2CAT = (
     ("bielizna", "Bielizna (nierowerowa)"),
     ("bokserki", "Bielizna (nierowerowa)"),
     ("majtki", "Bielizna (nierowerowa)"),
-    ("skarpety zwykle", "Socks"),
-    ("skarpetki zwykle", "Socks"),
-    ("koszulka na wieczor", "T-Shirt"),
-    ("koszulka po jezdzie", "T-Shirt"),
-    ("t-shirt", "T-Shirt"),
+    ("skarpety zwykle", "Skarpety"),
+    ("skarpetki zwykle", "Skarpety"),
+    ("koszulka na wieczor", "Koszulka techniczna"),
+    ("koszulka po jezdzie", "Koszulka techniczna"),
+    ("t-shirt", "Koszulka techniczna"),
+    ("spodenki z wkladka", "Spodenki z wkładką"),
+    ("z wkladka", "Spodenki z wkładką"),
+    ("spodenki kolarskie", "Spodenki z wkładką"),
+    ("spodenki rowerowe", "Spodenki z wkładką"),
+    ("bib short", "Spodenki z wkładką"),
+    ("bibshort", "Spodenki z wkładką"),
+    ("bibsy", "Spodenki z wkładką"),
+    ("spodenki", "Spodenki z wkładką"),
+    ("szorty", "Spodnie rowerowe (bez wkładki)"),
     ("spodnie", "Spodnie d\u0142ugie / dresowe"),
     ("dresow", "Spodnie d\u0142ugie / dresowe"),
     ("recznik", "R\u0119cznik / str\u00f3j k\u0105pielowy"),
     ("stroj kapielowy", "R\u0119cznik / str\u00f3j k\u0105pielowy"),
-    ("bluza", "Jersey Long Sleeve"),
-    ("longsleeve", "Jersey Long Sleeve"),
-    ("dlugi rekaw", "Jersey Long Sleeve"),
+    ("bluza", "Koszulka długi rękaw"),
+    ("longsleeve", "Koszulka długi rękaw"),
+    ("dlugi rekaw", "Koszulka długi rękaw"),
     ("multitool", "Naprawa i narz\u0119dzia"),
     ("noz", "Naprawa i narz\u0119dzia"),
     ("lampka", "O\u015bwietlenie osobiste"),
     ("swiatlo", "O\u015bwietlenie osobiste"),
-    ("kamizelka hydracyjna", "Accessories"),
-    ("musette", "Accessories"),
+    ("kamizelka hydracyjna", "Akcesoria"),
+    ("musette", "Akcesoria"),
 )
+
+
+# Historyczne zmiany nazw kategorii garazu. Zapisane wczesniej listy pakowania
+# wciaz wskazuja stare nazwy - tlumaczymy je w locie, zeby stara lista nie
+# pokazywala pustego wyboru zamiast rzeczy.
+# MAPA_STARYCH: nazwy sprzed przejscia na polskie kategorie. Zapisane listy
+# i logi jazd moga wciaz je zawierac - tlumaczymy w locie.
+_CAT_ALIAS = {
+    "Accessories": ["Akcesoria"],
+    "Base Layer Bottom": ["Bielizna termoaktywna — dół"],
+    "Base Layer Top": ["Bielizna termoaktywna — góra"],
+    "Bibs shorts": ["Spodenki z wkładką"],
+    "Glasses": ["Okulary"],
+    "Gloves": ["Rękawiczki"],
+    "Headwear": ["Nakrycie głowy"],
+    "Helmet": ["Kask"],
+    "Jacket / Shell": ["Kurtka"],
+    "Jersey": ["Koszulka krótki rękaw"],
+    "Jersey Long Sleeve": ["Koszulka długi rękaw"],
+    "Mid Layer Bottom": ["Spodnie termiczne"],
+    "Neckwear": ["Komin i chusta"],
+    "Overshoes": ["Ochraniacze na buty"],
+    "Shoes": ["Buty"],
+    "Socks": ["Skarpety"],
+    "T-Shirt": ["Koszulka techniczna"],
+    "Trousers": ["Spodnie rowerowe (bez wkładki)"],
+    "Vest / Gilet": ["Kamizelka"],
+    "Warmers": ["Rękawki i nogawki"],
+    "Bottoms / Bibs": ["Spodenki z wkładką", "Spodnie rowerowe (bez wkładki)"],   # rozbite na dwie kategorie
+    "Mid Layer": ["Koszulka długi rękaw"],             # przemianowane
+    "helmet": ["Kask"],                            # literowka w starych danych
+}
 
 
 _CAT_EXPAND = {
@@ -7241,10 +7372,10 @@ _CAT_EXPAND = {
     "Zasilanie i \u0142adowanie": ["Zasilanie i \u0142adowanie", "Sprz\u0119t wyprawowy"],
     "Apteczka": ["Apteczka", "Sprz\u0119t wyprawowy"],
     "Higiena i kosmetyki": ["Higiena i kosmetyki", "Sprz\u0119t wyprawowy"],
-    "T-Shirt": ["T-Shirt", "Jersey Long Sleeve", "Jersey"],
-    "Jersey": ["Jersey", "Jersey Long Sleeve", "T-Shirt"],
-    "Jersey Long Sleeve": ["Jersey Long Sleeve", "Jersey", "T-Shirt"],
-    "Bielizna (nierowerowa)": ["Bielizna (nierowerowa)", "Base Layer Bottom"],
+    "Koszulka techniczna": ["Koszulka techniczna", "Koszulka długi rękaw", "Koszulka krótki rękaw"],
+    "Koszulka krótki rękaw": ["Koszulka krótki rękaw", "Koszulka długi rękaw", "Koszulka techniczna"],
+    "Koszulka długi rękaw": ["Koszulka długi rękaw", "Koszulka krótki rękaw", "Koszulka techniczna"],
+    "Bielizna (nierowerowa)": ["Bielizna (nierowerowa)", "Bielizna termoaktywna — dół"],
 }
 
 # ktore kategorie ze SPRZETU (equipment) dolozyc do danej kategorii garazu
@@ -7445,8 +7576,17 @@ async def api_wyposazenie_generate(request: Request):
         "Ma licznik Hammerhead Karoo (nawigacja GPS) i lampki, wiec NIE dubluj nawigacji ani "
         "podstawowych swiatel - dodaj powerbank i kable do ladowania. "
         "GRUPY (uzywaj dokladnie tych nazw): 'Odziez rowerowa', 'Warstwy i pogoda', 'Ubranie do obozu', "
-        "'Nocleg', 'Gotowanie', 'Woda', 'Jedzenie na rower', 'Higiena', 'Elektronika', "
-        "'Apteczka i leki', 'Naprawa roweru', 'Dokumenty i pieniadze', 'Przed wyjazdem'. "
+        "'Nocleg', 'Gotowanie', 'Nawadnianie i odzywianie', 'Higiena', 'Elektronika', "
+        "'Apteczka i leki', 'Naprawa roweru', 'Torby', 'Dokumenty i pieniadze', 'Przed wyjazdem'. "
+        "GRUPY OBOWIAZKOWE - musza byc ZAWSZE, niezaleznie od stylu i pogody: 'Odziez rowerowa', "
+        "'Nawadnianie i odzywianie', 'Higiena', 'Apteczka i leki', 'Naprawa roweru', 'Elektronika', 'Torby'. "
+        "W 'Torby' wypisz KONKRETNE torby z garazu (kategoria 'Torby bikepackingowe'), dobrane "
+        "do stylu i dlugosci: lekko/hotele - zestaw minimalny; biwak - wieksza pojemnosc. "
+        "Kazda torba to OSOBNA pozycja, bo kazda ma inne miejsce montazu. "
+        "Nie wymyslaj toreb spoza garazu. "
+        "W 'Nawadnianie i odzywianie' zawsze: bidony (podaj ile), zapas jedzenia na rower "
+        "(batony/zele) i elektrolity; przy upale zwieksz zapas wody, przy biwaku dodaj filtr "
+        "lub tabletki do uzdatniania i worek na wode. 'Nocleg' i 'Gotowanie' TYLKO przy stylu biwak. "
         "ZASADY: (1) ZAKLADAJ PRANIE PO DRODZE (przepierka wieczorem) - NIE mnoz ubran przez liczbe "
         "dni. Koszulki kolarskie: 2. Spodenki z wkladka: 2 (3 tylko gdy prognoza daje mocne opady i "
         "nic nie wyschnie). Skarpetki: 2 (wiecej tylko przy mocnych opadach - dlugo schna). Bielizna "
@@ -7454,7 +7594,7 @@ async def api_wyposazenie_generate(request: Request):
         "rozsadnie; (2) wielorazowe (kurtka, kask, okulary, buty, narzedzia) qty=1; (3) warstwy dobierz "
         "do pory roku i pogody z parametrow; (4) jedzenie kaloryczne skalowane dniami, mniej gdy trasa "
         "prowadzi przez miasta z zaopatrzeniem; (5) bez zapychaczy - tylko to co naprawde uzyteczne. "
-        "Kategorii 'Accessories' UZYWAJ takze poza grupami odziezowymi, ale WYLACZNIE dla rzeczy "
+        "Kategorii 'Akcesoria' UZYWAJ takze poza grupami odziezowymi, ale WYLACZNIE dla rzeczy "
         "noszonych na sobie lub plecach: kamizelka hydracyjna, musette, ochraniacze. "
         "NAZWY JEDNOZNACZNE: jedna pozycja = jedna rzecz. NIGDY 'bluza lub gilet', nigdy ogolnej "
         "'bielizny rowerowej' obok spodenek z wkladka (to samo liczone dwa razy) - napisz wprost co to jest. "
@@ -7687,23 +7827,23 @@ async def api_wyposazenie_generate(request: Request):
         """Ile sztuk NAPRAWDE zabrac. Pranie po drodze = male ilosci."""
         if days < 2:
             return 1
-        if cat in ("Jersey", "Jersey Long Sleeve"):
+        if cat in ("Koszulka krótki rękaw", "Koszulka długi rękaw"):
             return 2                       # koszulki zawsze 2 - schna szybko
-        if cat == "Bibs shorts":
+        if cat == "Spodenki z wkładką":
             # 2 wystarcza: jedne na sobie, drugie schna. Trzecie tylko na dluzszym
             # wyjezdzie, gdy mocno pada i nie ma szans na wyschniecie.
             return 3 if (_hard_rain and days >= 4) else 2
-        if cat == "Trousers":
+        if cat == "Spodnie rowerowe (bez wkładki)":
             # dlugie spodnie / szorty bez wkladki - jedna para wystarcza
             return 1
-        if cat == "Socks":
+        if cat == "Skarpety":
             # instrukcja z garazu: do 3 dni 2 pary, powyzej 3 dni 3 pary
             return 2 if days <= 3 else 3
-        if cat in ("Base Layer Top", "Base Layer Bottom"):
+        if cat in ("Bielizna termoaktywna — góra", "Bielizna termoaktywna — dół"):
             return 2
         if cat in ("Bielizna (nierowerowa)",):
             return 1 if days <= 4 else 2   # gacie pierzemy wieczorem
-        if cat in ("T-Shirt", "Spodnie dlugie / dresowe", "Spodnie d\u0142ugie / dresowe"):
+        if cat in ("Koszulka techniczna", "Spodnie dlugie / dresowe", "Spodnie d\u0142ugie / dresowe"):
             return 1 if days <= 4 else 2   # ubranie po jezdzie - jeden komplet wystarczy
         return 0                            # 0 = nie ruszamy tego co dal model
 
@@ -7759,6 +7899,52 @@ async def api_wyposazenie_generate(request: Request):
             if spare:
                 out.append(_mk_set("Czesci zamienne wyprawowe", "Naprawa i narz\u0119dzia", spare, 2))
             g["items"] = out
+
+    # Model potrafi wypisac te sama rzecz dwa razy w jednej grupie ("Koszulka rowerowa"
+    # x2, kazda z qty=2) - front rozbija to na wiersze i wychodzi 4x to samo.
+    # Scalamy powtorki po nazwie: zostaje jeden wpis z najwieksza iloscia.
+    def _scal_duplikaty(grupa):
+        widziane = {}
+        wynik = []
+        for it in grupa["items"]:
+            klucz = _wyp_norm(it["item"])
+            if klucz in widziane:
+                poprzedni = widziane[klucz]
+                poprzedni["qty"] = max(poprzedni.get("qty", 1), it.get("qty", 1))
+                poprzedni["worn"] = bool(poprzedni.get("worn")) or bool(it.get("worn"))
+                poprzedni["prio"] = min(poprzedni.get("prio", 2), it.get("prio", 2))
+                if not poprzedni.get("reason") and it.get("reason"):
+                    poprzedni["reason"] = it["reason"]
+                continue
+            widziane[klucz] = it
+            wynik.append(it)
+        grupa["items"] = wynik
+
+    for g in clean:
+        _scal_duplikaty(g)
+
+    # Model potrafi pominac cala grupe (zdarzylo sie z woda i jedzeniem na 3-dniowej
+    # wyprawie). Grup krytycznych nie zostawiamy jego uznaniu - jesli ktorejs brak,
+    # dokladamy minimum i piszemy wprost, ze to regula, a nie propozycja modelu.
+    _MIN_GRUPY = {
+        "Nawadnianie i odzywianie": [
+            ("Bidony", 2, "podstawa nawodnienia - uzupelniaj na kazdym postoju"),
+            ("Jedzenie na rower (batony/zele)", 1, "zapas na odcinki bez sklepow"),
+            ("Elektrolity", 1, "przy dlugich godzinach w siodle, zwlaszcza w upale"),
+        ],
+        "Torby": [
+            ("Torby bikepackingowe", 1, "wybierz z garazu komplet pod ten wyjazd"),
+        ],
+    }
+    _sa = {_wyp_norm(g["group"]) for g in clean}
+    for nazwa, pozycje in _MIN_GRUPY.items():
+        if _wyp_norm(nazwa) in _sa:
+            continue
+        clean.append({"group": nazwa, "items": [
+            {"item": it, "qty": q, "unit": "szt", "prio": 1, "worn": False,
+             "reason": powod + " (dodane regula - generator pominal te grupe)",
+             "garage_category": None}
+            for it, q, powod in pozycje]})
 
     # bluza/polar to ubranie OBOZOWE i jedna sztuka - nie odziez rowerowa x2
     _camp = None
@@ -7819,8 +8005,8 @@ async def api_wyposazenie_generate(request: Request):
     clean = [g for g in clean if g["items"]]
 
     # --- "na sobie" tylko RAZ na kategorie i tylko dla rzeczy, ktore da sie miec na sobie ---
-    WORN_OK = {"Helmet", "Glasses", "Shoes", "Jersey", "Jersey Long Sleeve",
-               "Bibs shorts", "Trousers", "Socks", "Gloves", "Headwear"}
+    WORN_OK = {"Kask", "Okulary", "Buty", "Koszulka krótki rękaw", "Koszulka długi rękaw",
+               "Spodenki z wkładką", "Spodnie rowerowe (bez wkładki)", "Skarpety", "Rękawiczki", "Nakrycie głowy"}
     seen_worn = set()
     for g in clean:
         for it in g["items"]:
@@ -7862,6 +8048,15 @@ def api_wyposazenie_garage_options(category: str = Query(""), season: str = Quer
     cats_q = [c.strip() for c in (category or "").split(",") if c.strip()]
     if not cats_q and not all_cats:
         raise HTTPException(status_code=400, detail="Wymagane: category")
+    # stare nazwy kategorii (z list zapisanych przed zmiana nazewnictwa) -> aktualne
+    _przestarzale = [c for c in cats_q if c in _CAT_ALIAS]
+    if _przestarzale:
+        _po = []
+        for c in cats_q:
+            for t in _CAT_ALIAS.get(c, [c]):
+                if t not in _po:
+                    _po.append(t)
+        cats_q = _po
     # dolacz kategorie pokrewne (np. narzedzia + sprzet wyprawowy, t-shirt + long sleeve)
     _exp = list(cats_q)
     for c in cats_q:
@@ -7888,6 +8083,8 @@ def api_wyposazenie_garage_options(category: str = Query(""), season: str = Quer
     finally:
         con.close()
     multi = all_cats or len(cats_q) > 1
+    _uwaga = ("przestarzale kategorie w liscie: %s" % ", ".join(_przestarzale)) \
+        if (not all_cats and _przestarzale) else None
     out = []
     for r in rows:
         s = (r["season"] or "").lower()
@@ -7910,6 +8107,10 @@ def api_wyposazenie_garage_options(category: str = Query(""), season: str = Quer
             for e in _EQ_FOR.get(c, []):
                 if e not in _eqcats:
                     _eqcats.append(e)
+            # kategoria moze byc wprost kategoria ze SPRZETU (np. "Elektronika",
+            # "Torby bikepackingowe") - wtedy szukamy jej bezposrednio
+            if c not in _eqcats:
+                _eqcats.append(c)
     if _eqcats:
         _ph2 = ",".join(["?"] * len(_eqcats))
         _c2 = _wyposazenie_db()
@@ -8016,19 +8217,34 @@ def api_wyposazenie_garage_options(category: str = Query(""), season: str = Quer
 @app.get("/api/planer/wyposazenie/kategorie")
 def api_wyposazenie_kategorie():
     """Wszystkie kategorie garazu - do wyboru przy 'dodaj rzecz' / 'dodaj kategorie'."""
-    CLOTH = {"Base Layer Bottom", "Base Layer Top", "Bibs shorts", "Trousers", "Glasses", "Gloves",
-             "Headwear", "Helmet", "Jacket / Shell", "Jersey", "Jersey Long Sleeve",
-             "Mid Layer Bottom", "Neckwear", "Overshoes", "Shoes", "Socks", "T-Shirt",
-             "Vest / Gilet", "Warmers", "Accessories"}
+    CLOTH = {"Bielizna termoaktywna — dół", "Bielizna termoaktywna — góra", "Spodenki z wkładką", "Spodnie rowerowe (bez wkładki)", "Okulary", "Rękawiczki",
+             "Nakrycie głowy", "Kask", "Kurtka", "Koszulka krótki rękaw", "Koszulka długi rękaw",
+             "Spodnie termiczne", "Komin i chusta", "Ochraniacze na buty", "Buty", "Skarpety", "Koszulka techniczna",
+             "Kamizelka", "Rękawki i nogawki", "Akcesoria"}
     con = _wyposazenie_db()
     try:
         rows = con.execute("SELECT category, COUNT(*) c FROM gear WHERE active=1 "
                            "GROUP BY category ORDER BY category").fetchall()
+        # Sprzet (torby, elektronika, kuchnia...) to osobna tabela w Garazu.
+        # Bez tego nie dalo sie wybrac np. kategorii "Elektronika" przy dodawaniu rzeczy.
+        eq = con.execute("SELECT category, COUNT(*) c FROM equipment WHERE active=1 "
+                         "GROUP BY category ORDER BY category").fetchall()
     finally:
         con.close()
     out = [{"category": r["category"], "count": r["c"],
             "kind": ("odziez" if r["category"] in CLOTH else "wyprawowy")}
            for r in rows if r["category"]]
+    _juz = {x["category"] for x in out}
+    for r in eq:
+        if not r["category"]:
+            continue
+        if r["category"] in _juz:                       # ta sama nazwa w obu tabelach
+            for x in out:
+                if x["category"] == r["category"]:
+                    x["count"] += r["c"]
+            continue
+        out.append({"category": r["category"], "count": r["c"], "kind": "sprzet"})
+    out.sort(key=lambda x: x["category"])
     return {"count": len(out), "categories": out}
 
 
@@ -8733,6 +8949,85 @@ def mail_group_member_del(group_id: int, member_id: int):
         return {"ok": True}
     finally:
         conn.close()
+
+
+@app.get("/api/planer/termin")
+@app.get("/api/planer/wyposazenie/termin")
+def wyposazenie_termin(route_id: str = Query("")):
+    # Termin wyprawy bierzemy z KALENDARZA - tam plan jest juz znany.
+    # Trasa jest przypieta do konkretnego dnia wydarzenia; bierzemy cale wydarzenie,
+    # bo pakujemy sie na calosc, nie na jeden etap. Gdy trasy nie ma w kalendarZu,
+    # zwracamy dzisiejsza date (bez zgadywania z nazwy trasy).
+    import datetime as _dt
+    dzis = _dt.date.today().isoformat()
+    rid = (route_id or "").strip()[:64]
+    if not rid:
+        return {"start": dzis, "days": None, "source": "dzis", "event": None}
+    conn = _db_conn()
+    try:
+        # Dopasowanie ELASTYCZNE, bo trasy trafiaja do kalendarza pod roznymi kluczami:
+        #  - trasa wielodniowa z planera dostaje klucz per dzien: "planer-<id>-d01", "-d02"...
+        #  - trasa pojedyncza bywa zapisana wprost albo jako "komoot-<numer>"
+        #  - numer z nazwy ("... #3088315688") to jeszcze inny identyfikator
+        # Dlatego probujemy: dokladnie, po prefiksie w obie strony i po numerze w nazwie.
+        row = conn.execute(
+            "SELECT e.id, e.day::text AS start, e.end_day::text AS koniec, e.title, "
+            "       min(r.day)::text AS pierwszy_dzien, max(r.day)::text AS ostatni_dzien "
+            "FROM qbot_v2.calendar_day_route r "
+            "JOIN qbot_v2.calendar_entry e ON e.id = r.entry_id "
+            "WHERE r.route_id = %(rid)s "
+            "   OR r.route_id LIKE %(rid)s || \'-%%\' "
+            "   OR %(rid)s LIKE r.route_id || \'-%%\' "
+            "   OR r.route_name ILIKE \'%%\' || %(rid)s || \'%%\' "
+            "GROUP BY e.id, e.day, e.end_day, e.title "
+            "ORDER BY e.day DESC LIMIT 1",
+            {"rid": rid},
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        # Druga proba: po numerze w TYTULE wydarzenia. Planer wyprawy zapisuje wyprawe
+        # jako "Wyprawa: [Q] ... #3088315688 - 327.9 km", a strona przekazuje
+        # "komoot-3088315688" - wspolny jest tylko sam numer. Tak samo szukaja
+        # inne miejsca w aplikacji (raport i pogoda wyprawy).
+        import re as _re
+        _cyf = _re.findall(r"\d{6,}", rid)
+        if _cyf:
+            conn = _db_conn()
+            try:
+                row = conn.execute(
+                    "SELECT id, day::text AS start, end_day::text AS koniec, title, "
+                    "       NULL::text AS pierwszy_dzien, NULL::text AS ostatni_dzien "
+                    "FROM qbot_v2.calendar_entry "
+                    "WHERE title LIKE %s ORDER BY day DESC LIMIT 1",
+                    ("%" + _cyf[0] + "%",),
+                ).fetchone()
+            finally:
+                conn.close()
+    if not row:
+        return {"start": dzis, "days": None, "source": "dzis", "event": None}
+    # Dni, na ktore rozpisano trasy, opisuja wyprawe dokladniej niz sam naglowek
+    # wydarzenia (ktory bywa jednodniowy mimo trzydniowego wyjazdu).
+    # wszystkie dni tego wydarzenia, nie tylko ten etap, ktory pasowal do klucza
+    conn = _db_conn()
+    try:
+        rng = conn.execute(
+            "SELECT min(day)::text AS od, max(day)::text AS do_ "
+            "FROM qbot_v2.calendar_day_route WHERE entry_id = %s",
+            (row["id"],),
+        ).fetchone()
+    finally:
+        conn.close()
+    start = (rng and rng["od"]) or row["pierwszy_dzien"] or row["start"] or dzis
+    koniec = (rng and rng["do_"]) or row["ostatni_dzien"] or row["koniec"] or start
+    try:
+        d1 = _dt.date.fromisoformat(start)
+        d2 = _dt.date.fromisoformat(koniec)
+        dni = max(1, (d2 - d1).days + 1)
+    except ValueError:
+        dni = None
+    return {"start": start, "end": koniec, "days": dni, "source": "kalendarz",
+            "event": row["title"], "entry_id": row["id"]}
 
 
 @app.post("/api/calendar/route")
