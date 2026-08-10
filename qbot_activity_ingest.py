@@ -130,13 +130,20 @@ def parse_fit(fit_bytes: bytes):
             "e_lat": _semi(_fv(m, "end_position_lat")),
             "e_lon": _semi(_fv(m, "end_position_long")),
         })
+    gears = []  # (ts, front_t, rear_t) - zmiany biegow SRAM AXS (zeby wprost z FIT)
     for m in fit.get_messages("event"):
+        ev = _fv(m, "event")
         events.append({
             "ts": _fv(m, "timestamp"),
-            "event": _fv(m, "event"),
+            "event": ev,
             "event_type": _fv(m, "event_type"),
         })
-    return records, laps, events
+        if ev in ("front_gear_change", "rear_gear_change"):
+            gears.append((_fv(m, "timestamp"), _to_int(_fv(m, "front_gear")),
+                          _to_int(_fv(m, "rear_gear"))))
+    gears = [g for g in gears if g[0] is not None]
+    gears.sort(key=lambda g: g[0])
+    return records, laps, events, gears
 
 
 def _to_int(v):
@@ -146,7 +153,7 @@ def _to_int(v):
         return None
 
 
-def store(conn, aid, summary, fit_bytes, records, laps, events):
+def store(conn, aid, summary, fit_bytes, records, laps, events, gears=None):
     # 1) surowy FIT na dysk
     fit_path = os.path.join(FIT_DIR, f"{aid}.fit")
     with open(fit_path, "wb") as f:
@@ -165,7 +172,18 @@ def store(conn, aid, summary, fit_bytes, records, laps, events):
             has_pos = True
         rec_rows[sec] = (aid, sec, r["ts"], r["lat"], r["lon"], r["alt"], r["dist"],
                          _to_int(r["power"]), _to_int(r["hr"]), _to_int(r["cad"]),
-                         r["spd"], r["temp"])
+                         r["spd"], r["temp"], None, None)
+
+    # biegi: fill-forward po czasie (event niesie NOWY bieg; przed pierwszym eventem = NULL)
+    if gears and rec_rows:
+        gi, cur_f, cur_r = 0, None, None
+        for sec in sorted(rec_rows):
+            row = rec_rows[sec]
+            ts = row[2]
+            while gi < len(gears) and gears[gi][0] <= ts:
+                cur_f, cur_r = gears[gi][1], gears[gi][2]
+                gi += 1
+            rec_rows[sec] = row[:12] + (cur_f, cur_r)
 
     lap_rows = []
     for i, lp in enumerate(laps):
@@ -191,8 +209,9 @@ def store(conn, aid, summary, fit_bytes, records, laps, events):
         if rec_rows:
             cur.executemany(
                 "INSERT INTO qbot_v2.activity_record "
-                "(external_id,sec,ts,lat,lon,altitude_m,distance_m,power_w,hr_bpm,cadence_rpm,speed_mps,temperature_c) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "(external_id,sec,ts,lat,lon,altitude_m,distance_m,power_w,hr_bpm,cadence_rpm,speed_mps,temperature_c,"
+                "gear_front_t,gear_rear_t) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 list(rec_rows.values()))
         if lap_rows:
             cur.executemany(
@@ -240,8 +259,8 @@ def _build_report_safe(aid: str) -> str:
 def ingest_one(gc, conn, summary, with_report: bool = False) -> dict:
     aid = str(summary.get("activityId"))
     fit_bytes = download_fit(gc, aid)
-    records, laps, events = parse_fit(fit_bytes)
-    res = store(conn, aid, summary, fit_bytes, records, laps, events)
+    records, laps, events, gears = parse_fit(fit_bytes)
+    res = store(conn, aid, summary, fit_bytes, records, laps, events, gears)
     res["aid"] = aid
     res["name"] = summary.get("activityName")
     if with_report:
