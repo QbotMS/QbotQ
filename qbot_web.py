@@ -3318,9 +3318,24 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
             if _sc:
                 _x["score"] = _sc["score"]; _x["score_label"] = _sc["label"]
                 _x["score_why"] = _sc["why"]
-        # lancuchowanie: werdykt laczny z uwzglednieniem poprzednich podjazdow
-        _chain = _cs.chain_verdict(conn, climbs_list, float(_ftp) if _ftp else None,
-                                   _wp_kj, mass, gap_speed_kmh=speed_net_kmh)
+        # lancuchowanie: SYMULATOR CALEJ TRASY (ramka 50 m, przerwy kanonu,
+        # upal z meteo) - fallback do starego chain_verdict przy bledzie
+        _chain = None
+        try:
+            from qbot3.routes.route_ride_sim import simulate_ride
+            _frames = [(float(r["distance_m"]), float(r["elevation_m"]))
+                       for r in erows if r["elevation_m"] is not None]
+            _chain = simulate_ride(_frames, surface_cat and [
+                {"a": c["a"], "b": c["b"], "k": c["k"]} for c in surface_cat] or [],
+                m.get("per_segment") or [], float(_ftp) if _ftp else None, _wp_kj,
+                mass, long_stops=long_stops, long_stop_min_total=(
+                    float(long_stops or 0) * float(long_stop_min or 0)),
+                climbs=climbs_list)
+        except Exception as _se:
+            print("route_ride_sim error:", _se, flush=True)
+        if _chain is None:
+            _chain = _cs.chain_verdict(conn, climbs_list, float(_ftp) if _ftp else None,
+                                       _wp_kj, mass, gap_speed_kmh=speed_net_kmh)
         # tryb per podjazd (atak/tempo) takze do kart
         if _chain:
             _bymode = {o["i"]: o for o in _chain.get("per_climb") or []}

@@ -279,7 +279,7 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 
 ---
 
-- [PODJAZDY-SKALA] v2: temperatura w krzywej osiągalnej, łańcuchowanie zmęczenia między podjazdami (W′ carryover po trasie), ocena w trybie DZIEŃ planera, readiness dnia (todayFactor) w CP; fazy 1-3 ZROBIONE 2026-08-10 (żniwiarka + scorer + kasety per jazda)
+- [PODJAZDY-SKALA] etap B: glikogen i punkt bomby w symulatorze trasy (zapas z ModelQ + jedzenie z fuel vs spalanie kJ); etap C: durability — krzywa osiągalna zależna od kj_before (po czystych jazdach z nową baterią); etap D: wiatr czołowy/boczny w fizyce symulatora + wykres W′/glikogenu pod profilem; ocena w trybie DZIEŃ planera; readiness dnia w CP. ZROBIONE: fazy 1-3 + łańcuch + etap A symulatora (50 m, przerwy kanonu, upał) 2026-08-10
 
 # ZROBIONE (skrot; szczegoly w DECISIONS.md i TODO.md.bak.*)
 - [2026-07-30] ZROBIONE: zestaw porownywanych modeli dobierany do horyzontu (0-2 dni: siatki do 7 km; 3-5 dni: 7-13 km + ECMWF; 6+ dni: same globalne) -- zestawianie siatki 2 km z 25 km na krotkim terminie mierzylo rozdzielczosc, nie pogode. Do rejestru doszedl HARMONIE 5.5 km. Grafika porownania (skale z kropkami) USUNIETA -- zastapiona czterema akapitami i ocena Alberta w 2-3 zdaniach prozy.
