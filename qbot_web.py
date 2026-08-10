@@ -3276,8 +3276,43 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     except Exception:
         forma["wykonalnosc_dane"] = forma["wykonalnosc"] = None
 
+    # --- [PODJAZDY-SKALA] ocena -2..+2 per podjazd (skalowana do CP z ModelQ) ---
+    try:
+        from qbot3.routes import climb_score as _cs
+        _cass_code = None
+        try:
+            if latlon:
+                import math as _m
+                _dlat = _m.radians(latlon[0] - 52.23); _dlon = _m.radians(latlon[1] - 21.01)
+                _a = (_m.sin(_dlat / 2) ** 2
+                      + _m.cos(_m.radians(52.23)) * _m.cos(_m.radians(latlon[0])) * _m.sin(_dlon / 2) ** 2)
+                _dkm = 6371 * 2 * _m.asin(_m.sqrt(_a))
+                # heurystyka jak w ride_cassette: wyprawa >250 km od Wwy = 10-52
+                _cass_code = "10-52" if _dkm > 250 else "10-46"
+        except Exception:
+            _cass_code = None
+        _cass_code = _cass_code or "10-46"
+        _cogs_row = conn.execute(
+            "SELECT cogs FROM qbot_v2.gear_cassette WHERE code=%s", (_cass_code,)).fetchone()
+        _cogs = list(_cogs_row["cogs"]) if _cogs_row else None
+        # W' jak w /ride-readiness: GREATEST(modelq, road)
+        _wp_row = conn.execute(
+            "SELECT GREATEST(COALESCE(wprime_modelq_kj,0), COALESCE(wprime_road_kj,0)) AS wp "
+            "FROM qbot_v2.fitmodel_daily WHERE ftp_est_w IS NOT NULL "
+            "ORDER BY day DESC LIMIT 1").fetchone()
+        _wp_kj = float(_wp_row["wp"]) if (_wp_row and _wp_row["wp"]) else (float(_wprime) if _wprime else None)
+        for _x in climbs_list:
+            _sc = _cs.score_climb(conn, _x, float(_ftp) if _ftp else None, _wp_kj,
+                                  mass, _cogs, 36, _cass_code)
+            if _sc:
+                _x["score"] = _sc["score"]; _x["score_label"] = _sc["label"]
+                _x["score_why"] = _sc["why"]
+    except Exception as _e:
+        print("climb_score error:", _e, flush=True)
+
     _climbs_slim = [{"i": x["i"], "a_km": x["a_km"], "b_km": x["b_km"], "gain_m": x["gain_m"],
-                     "avg_pct": x["avg_pct"], "max_pct": x["max_pct"], "severity": x["severity"]}
+                     "avg_pct": x["avg_pct"], "max_pct": x["max_pct"], "severity": x["severity"],
+                     "ocena": x.get("score"), "ocena_txt": x.get("score_label")}
                     for x in climbs_list]
     _surf_blocks = [{"a": s["a"], "b": s["b"], "k": s["k"], "label": s.get("label")} for s in surface_cat]
     _resupply = []

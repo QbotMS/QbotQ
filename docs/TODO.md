@@ -279,7 +279,7 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 
 ---
 
-- [PODJAZDY-SKALA] Model oceny podjazdów dla użytkownika (−2…+2): faza 1 żniwiarka ride_climb_efforts z historii (moc/HR/kadencja/biegi/nawierzchnia/temperatura/W'bal/XSS na starcie, detekcja pchania), faza 2 scorer w raporcie tras, faza 3 mapowanie kaset per jazda (10-46 vs 10-52)
+- [PODJAZDY-SKALA] v2: temperatura w krzywej osiągalnej, łańcuchowanie zmęczenia między podjazdami (W′ carryover po trasie), ocena w trybie DZIEŃ planera, readiness dnia (todayFactor) w CP; fazy 1-3 ZROBIONE 2026-08-10 (żniwiarka + scorer + kasety per jazda)
 
 # ZROBIONE (skrot; szczegoly w DECISIONS.md i TODO.md.bak.*)
 - [2026-07-30] ZROBIONE: zestaw porownywanych modeli dobierany do horyzontu (0-2 dni: siatki do 7 km; 3-5 dni: 7-13 km + ECMWF; 6+ dni: same globalne) -- zestawianie siatki 2 km z 25 km na krotkim terminie mierzylo rozdzielczosc, nie pogode. Do rejestru doszedl HARMONIE 5.5 km. Grafika porownania (skale z kropkami) USUNIETA -- zastapiona czterema akapitami i ocena Alberta w 2-3 zdaniach prozy.
