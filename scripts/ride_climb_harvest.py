@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""Zniwiarka podjazdow z historii jazd -> qbot_v2.ride_climb_efforts.
+
+Detekcja podjazdow w strumieniu 1Hz (activity_record) TYM SAMYM silnikiem co
+dla planowanych tras (qbot3.routes.route_elevation_engine.detect_route_climb_events)
+- dzieki temu 'podjazd na trasie' i 'podjazd przejechany' to to samo pojecie.
+
+Dla kazdego podjazdu liczy: moc/W/kg, HR + dryf, kadencje, biegi (numer pozycji
+= kanon; zeby przez qbot_v2.ride_cassette), temperature, W'bal na wejsciu
+(rekonstrukcja rozniczkowa na parametrach z fitmodel_wbal_ride), prace przed
+podjazdem, oraz detekcje PCHANIA roweru (wolno + brak kadencji + niska moc).
+
+Uzycie:
+  .venv/bin/python3 scripts/ride_climb_harvest.py [--since 2026-01-01] [--only ID] [--limit N]
+"""
+import argparse
+import os
+import sys
+
+sys.path.insert(0, "/opt/qbot/app")
+os.environ.setdefault("QBOT3_ENABLED", "1")
+
+from fitmodel.api import _db_connect  # noqa: E402
+from qbot3.routes.route_elevation_engine import (  # noqa: E402
+    ElevationSample, detect_route_climb_events)
+
+DETECTION_VERSION = "ride_karoo_400_3_v1"
+WALK_SPEED_MPS = 1.4      # < 5.0 km/h
+WALK_CAD_MAX = 15
+WALK_POWER_MAX = 60
+STOP_SPEED_MPS = 0.3
+MOVING_SPEED_MPS = 0.5
+FRONT_FALLBACK_T = 36
+
+
+def load_records(cur, aid):
+    cur.execute("""
+        select sec, ts, distance_m, altitude_m, power_w, hr_bpm, cadence_rpm,
+               speed_mps, temperature_c, gear_rear_num, gear_front_t, lat, lon
+        from qbot_v2.activity_record
+        where external_id=%s order by sec
+    """, (aid,))
+    return cur.fetchall()
+
+
+def build_samples(recs):
+    """Probki wysokosci po dystansie (rosnaco, bez duplikatow z postoju)."""
+    out, last_d = [], -1.0
+    for r in recs:
+        d, alt = r[2], r[3]
+        if d is None or alt is None:
+            continue
+        d = float(d)
+        if d <= last_d:
+            continue
+        out.append(ElevationSample(sample_index=len(out), distance_m=d,
+                                   lat=r[11] or 0.0, lon=r[12] or 0.0,
+                                   elevation_m=float(alt), source="ride"))
+        last_d = d
+    return out
+
+
+def wbal_series(recs, ftp_w, wprime_kj):
+    """Rekonstrukcja W'bal [kJ] po sekundach: model rozniczkowy, moc 3s.
+
+    P>CP: liniowe zuzycie; P<CP: odbudowa proporcjonalna do deficytu
+    (integralna forma Skiba/Froncioni-Clarke). Wersja uproszczona do celow
+    cech modelu - NIE jest to tozsame z tick-po-ticku QExt2."""
+    if not ftp_w or not wprime_kj:
+        return None
+    ftp_w = float(ftp_w)
+    wp = float(wprime_kj) * 1000.0
+    bal = wp
+    out = []
+    buf = []
+    for r in recs:
+        p = r[4] or 0
+        buf.append(p)
+        if len(buf) > 3:
+            buf.pop(0)
+        p3 = sum(buf) / len(buf)
+        if p3 > ftp_w:
+            bal -= (p3 - ftp_w)
+        else:
+            bal += (wp - bal) * (ftp_w - p3) / wp
+        bal = min(wp, max(0.0, bal))
+        out.append(bal / 1000.0)
+    return out
+
+
+def harvest_one(cur, aid):
+    recs = load_records(cur, aid)
+    if len(recs) < 120:
+        return "ZA_KROTKA", 0
+    samples = build_samples(recs)
+    if len(samples) < 50:
+        return "BEZ_PROFILU", 0
+    events = detect_route_climb_events(samples, source="ride")
+    # indeks: dystans -> sec (pierwszy rekord z dystansem >= d)
+    dist_sec = [(float(r[2]), r[0]) for r in recs if r[2] is not None]
+
+    def sec_at(dist):
+        lo, hi = 0, len(dist_sec) - 1
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if dist_sec[mid][0] < dist:
+                lo = mid + 1
+            else:
+                hi = mid
+        return dist_sec[lo][1]
+
+    # kaseta i W'bal
+    cur.execute("select cassette_code from qbot_v2.ride_cassette where external_id=%s", (aid,))
+    row = cur.fetchone()
+    cassette = row[0] if row else None
+    cogs = None
+    if cassette:
+        cur.execute("select cogs from qbot_v2.gear_cassette where code=%s", (cassette,))
+        cogs = cur.fetchone()[0]
+    cur.execute("""select ftp_base_w, wprime_base_kj from qbot_v2.fitmodel_wbal_ride
+                   where external_id=%s""", (aid,))
+    wb = cur.fetchone()
+    wseries = wbal_series(recs, wb[0], float(wb[1])) if wb and wb[0] and wb[1] else None
+
+    sec_index = {r[0]: i for i, r in enumerate(recs)}
+    kj_cum, acc = {}, 0.0
+    for i, r in enumerate(recs):
+        acc += (r[4] or 0) / 1000.0
+        kj_cum[i] = acc
+
+    cur.execute("delete from qbot_v2.ride_climb_efforts where external_id=%s", (aid,))
+    n = 0
+    for ev in events:
+        s_sec, e_sec = sec_at(ev.start_m), sec_at(ev.end_m)
+        if e_sec <= s_sec:
+            continue
+        i0, i1 = sec_index.get(s_sec, 0), sec_index.get(e_sec, len(recs) - 1)
+        cut = recs[i0:i1 + 1]
+        dur = e_sec - s_sec
+        pw = [r[4] for r in cut if r[4] is not None]
+        hr = [r[5] for r in cut if r[5] is not None]
+        cad = [r[6] for r in cut if r[6] is not None]
+        tmp = [r[8] for r in cut if r[8] is not None]
+        spd = [(r[7] or 0.0) for r in cut]
+        moving = sum(1 for v in spd if v > MOVING_SPEED_MPS)
+        stopped = sum(1 for v in spd if v <= STOP_SPEED_MPS)
+        walked = sum(1 for r in cut
+                     if (r[7] or 0) > STOP_SPEED_MPS and (r[7] or 0) < WALK_SPEED_MPS
+                     and (r[6] or 0) <= WALK_CAD_MAX and (r[4] or 0) <= WALK_POWER_MAX)
+        gears = [r[9] for r in cut if r[9] is not None]
+        min_pos = min(gears) if gears else None
+        sec_easiest = sum(1 for g in gears if g == 1) if gears else None
+        front_t = next((r[10] for r in cut if r[10]), FRONT_FALLBACK_T)
+        easiest_cog = ratio_min = None
+        if min_pos and cogs and 1 <= min_pos <= len(cogs):
+            easiest_cog = cogs[len(cogs) - min_pos]  # pozycja 1 = ostatnia z listy
+            ratio_min = round(front_t / easiest_cog, 3)
+        hrd = None
+        if len(hr) >= 60:
+            half = len(hr) // 2
+            a, b = sum(hr[:half]) / half, sum(hr[half:]) / (len(hr) - half)
+            hrd = round((b - a) / a * 100.0, 1) if a else None
+        avg_p = round(sum(pw) / len(pw), 1) if pw else None
+        vam = round(ev.elevation_gain_m / (moving or dur) * 3600.0, 0) if dur else None
+        wstart = wmin = None
+        if wseries:
+            seg = wseries[i0:i1 + 1]
+            if seg:
+                wstart, wmin = round(seg[0], 2), round(min(seg), 2)
+        cur.execute("""
+            insert into qbot_v2.ride_climb_efforts
+            (external_id, event_index, start_sec, end_sec, start_m, end_m,
+             length_m, gain_m, avg_pct, max_pct, duration_s, moving_s, vam_mh,
+             avg_power_w, wkg, avg_hr, hr_drift_pct, avg_cadence,
+             min_gear_pos, sec_at_easiest, cassette_code, easiest_cog, gear_ratio_min,
+             avg_temp_c, wbal_start_kj, wbal_min_kj, kj_before, km_from_ride_start,
+             walked_s, stopped_s, walked, detection_version)
+            values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (aid, ev.event_index, s_sec, e_sec, ev.start_m, ev.end_m,
+              ev.length_m, ev.elevation_gain_m, ev.avg_gradient_pct, ev.max_gradient_pct,
+              dur, moving, vam,
+              avg_p, None, round(sum(hr) / len(hr), 1) if hr else None, hrd,
+              round(sum(cad) / len(cad), 1) if cad else None,
+              min_pos, sec_easiest, cassette, easiest_cog, ratio_min,
+              round(sum(tmp) / len(tmp), 1) if tmp else None,
+              wstart, wmin, round(kj_cum.get(i0, 0.0), 1),
+              round(ev.start_m / 1000.0, 2),
+              walked, stopped, walked >= 30, DETECTION_VERSION))
+        n += 1
+    return "OK", n
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--since", default="2025-01-01")
+    ap.add_argument("--only", default=None)
+    ap.add_argument("--limit", type=int, default=0)
+    args = ap.parse_args()
+    with _db_connect() as conn:
+        cur = conn.cursor()
+        if args.only:
+            aids = [(args.only,)]
+        else:
+            cur.execute("""select external_id from qbot_v2.activity_fit_raw
+                           where started_at >= %s order by started_at""", (args.since,))
+            aids = cur.fetchall()
+            if args.limit:
+                aids = aids[:args.limit]
+        print("jazd: %d" % len(aids), flush=True)
+        stat, total = {}, 0
+        for (aid,) in aids:
+            try:
+                st, n = harvest_one(cur, aid)
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                st, n = "BLAD:%s" % type(e).__name__, 0
+            stat[st] = stat.get(st, 0) + 1
+            total += n
+            print("  %s %-12s podjazdow=%d" % (aid, st, n), flush=True)
+        print("PODSUMOWANIE:", stat, "podjazdow lacznie:", total)
+
+
+if __name__ == "__main__":
+    main()
