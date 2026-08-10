@@ -32,6 +32,23 @@ WALK_POWER_MAX = 60
 STOP_SPEED_MPS = 0.3
 MOVING_SPEED_MPS = 0.5
 FRONT_FALLBACK_T = 36
+LTHR_BPM = 132.0  # prog mleczanowy HR (athlete profile); klasyfikacja wysilku
+
+
+def classify_effort(pct_cp, pct_lthr, hr_drift):
+    """Rozroznia 'jechane z zapasem' od 'na limicie' (uwaga uzytkownika:
+    czasem sie oszczedzam wiedzac co przede mna - niska moc != brak mozliwosci).
+
+    na_limicie: HR >= ~Z4 (>=95%% LTHR) LUB moc >= 95%% CP LUB wyrazny dryf HR.
+    z_zapasem:  HR w Z1-Z2 (<90%% LTHR) i moc < 85%% CP.
+    posrednie:  reszta."""
+    if pct_lthr is None and pct_cp is None:
+        return None
+    if (pct_lthr is not None and pct_lthr >= 95.0) or        (pct_cp is not None and pct_cp >= 95.0) or        (hr_drift is not None and hr_drift >= 5.0):
+        return "na_limicie"
+    if (pct_lthr is not None and pct_lthr < 90.0) and        (pct_cp is None or pct_cp < 85.0):
+        return "z_zapasem"
+    return "posrednie"
 
 
 def load_records(cur, aid):
@@ -91,9 +108,16 @@ def harvest_one(cur, aid):
         cur.execute("select cogs from qbot_v2.gear_cassette where code=%s", (cassette,))
         cogs = cur.fetchone()[0]
     # W'bal: KANON (fitmodel.wbal_replay = replika QExt2: moc 3s, cf ciepla/dryfu,
-    # odbudowa tau na postojach). Zadnych lokalnych uproszczen.
+    # odbudowa tau na postojach). UWAGA (od uzytkownika): W' bylo wielokrotnie
+    # przeskalowywane i nie zawsze odpowiadalo realnym mozliwosciom - traktowac
+    # jako ceche POMOCNICZA, nie etykiete porazki. Twarda prawda = pchanie/stop.
     _rw = replay_wbal(aid, verbose=False, collect_series=True)
     wbal_by_sec = dict(_rw.get("series") or []) if _rw.get("status") == "OK" else {}
+    ftp_base = float(_rw["ftp_base_w"]) if _rw.get("status") == "OK" and _rw.get("ftp_base_w") else None
+    # kwarantanna miernika mocy: moc z tych jazd NIE moze uczyc modelu
+    cur.execute("select 1 from qbot_v2.fitmodel_ride_quarantine "
+                "where external_id=%s and released is null", (aid,))
+    quarantined = cur.fetchone() is not None
 
     sec_index = {r[0]: i for i, r in enumerate(recs)}
     kj_cum, acc = {}, 0.0
@@ -134,6 +158,10 @@ def harvest_one(cur, aid):
             a, b = sum(hr[:half]) / half, sum(hr[half:]) / (len(hr) - half)
             hrd = round((b - a) / a * 100.0, 1) if a else None
         avg_p = round(sum(pw) / len(pw), 1) if pw else None
+        avg_h = round(sum(hr) / len(hr), 1) if hr else None
+        pct_cp = round(avg_p / ftp_base * 100.0, 1) if (avg_p and ftp_base) else None
+        pct_lthr = round(avg_h / LTHR_BPM * 100.0, 1) if avg_h else None
+        eclass = classify_effort(pct_cp, pct_lthr, hrd)
         vam = round(ev.elevation_gain_m / (moving or dur) * 3600.0, 0) if dur else None
         wstart = wmin = None
         if wbal_by_sec:
@@ -147,19 +175,21 @@ def harvest_one(cur, aid):
              avg_power_w, wkg, avg_hr, hr_drift_pct, avg_cadence,
              min_gear_pos, sec_at_easiest, cassette_code, easiest_cog, gear_ratio_min,
              avg_temp_c, wbal_start_kj, wbal_min_kj, kj_before, km_from_ride_start,
-             walked_s, stopped_s, walked, detection_version)
+             walked_s, stopped_s, walked, detection_version,
+             ftp_base_w, pct_cp, pct_lthr, effort_class, quarantined)
             values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (aid, ev.event_index, s_sec, e_sec, ev.start_m, ev.end_m,
               ev.length_m, ev.elevation_gain_m, ev.avg_gradient_pct, ev.max_gradient_pct,
               dur, moving, vam,
-              avg_p, None, round(sum(hr) / len(hr), 1) if hr else None, hrd,
+              avg_p, None, avg_h, hrd,
               round(sum(cad) / len(cad), 1) if cad else None,
               min_pos, sec_easiest, cassette, easiest_cog, ratio_min,
               round(sum(tmp) / len(tmp), 1) if tmp else None,
               wstart, wmin, round(kj_cum.get(i0, 0.0), 1),
               round(ev.start_m / 1000.0, 2),
-              walked, stopped, walked >= 30, DETECTION_VERSION))
+              walked, stopped, walked >= 30, DETECTION_VERSION,
+              ftp_base, pct_cp, pct_lthr, eclass, quarantined))
         n += 1
     return "OK", n
 
