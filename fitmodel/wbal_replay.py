@@ -92,14 +92,14 @@ def _fetch_ride_rows(external_id: str) -> list[dict]:
     cur = conn.cursor()
     cur.execute(
         """
-        SELECT ts, power_w, hr_bpm, speed_mps, distance_m, temperature_c
+        SELECT sec, ts, power_w, hr_bpm, speed_mps, distance_m, temperature_c
         FROM qbot_v2.activity_record
         WHERE external_id = %s
         ORDER BY ts
         """,
         (external_id,),
     )
-    cols = ["ts", "power_w", "hr_bpm", "speed_mps", "distance_m", "temperature_c"]
+    cols = ["sec", "ts", "power_w", "hr_bpm", "speed_mps", "distance_m", "temperature_c"]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     conn.close()
     return rows
@@ -129,7 +129,7 @@ def _fetch_daily_baseline(ride_date) -> tuple[float | None, float | None]:
     return ftp, wprime
 
 
-def replay_wbal(external_id: str, verbose: bool = True) -> dict:
+def replay_wbal(external_id: str, verbose: bool = True, collect_series: bool = False) -> dict:
     rows = _fetch_ride_rows(external_id)
     if not rows:
         if verbose:
@@ -162,6 +162,7 @@ def replay_wbal(external_id: str, verbose: bool = True) -> dict:
     xss_sum = 0.0  # akumulator XSS (patrz XSS_BETA)
     xss_active_s = 0.0
 
+    series: list[tuple] = []  # (sec, wbal_kj) gdy collect_series
     prev = None
     for row in rows:
         if prev is not None:
@@ -258,6 +259,8 @@ def replay_wbal(external_id: str, verbose: bool = True) -> dict:
 
         wbal_j = min(max(wbal_j, 0.0), wprime_eff_j)
         min_wbal_pct = min(min_wbal_pct, 100 * wbal_j / wprime_eff_j)
+        if collect_series:
+            series.append((row.get("sec"), wbal_j / 1000.0))
         prev = row
 
     result = {
@@ -276,6 +279,8 @@ def replay_wbal(external_id: str, verbose: bool = True) -> dict:
         "xss_per_h": round(xss_sum / (xss_active_s / 3600.0), 1) if xss_active_s > 0 else 0.0,
         "segments": segments_log,
     }
+    if collect_series:
+        result["series"] = series  # [(sec, wbal_kj)] -- np. dla zniwiarki podjazdow
     if verbose:
         print(f"Jazda {external_id} ({ride_date}): FTP_bazowe={result['ftp_base_w']}W "
               f"W'_bazowe={result['wprime_base_kj']}kJ")

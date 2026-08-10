@@ -7,7 +7,7 @@ dla planowanych tras (qbot3.routes.route_elevation_engine.detect_route_climb_eve
 
 Dla kazdego podjazdu liczy: moc/W/kg, HR + dryf, kadencje, biegi (numer pozycji
 = kanon; zeby przez qbot_v2.ride_cassette), temperature, W'bal na wejsciu
-(rekonstrukcja rozniczkowa na parametrach z fitmodel_wbal_ride), prace przed
+(KANON: fitmodel.wbal_replay.replay_wbal, replika QExt2), prace przed
 podjazdem, oraz detekcje PCHANIA roweru (wolno + brak kadencji + niska moc).
 
 Uzycie:
@@ -21,6 +21,7 @@ sys.path.insert(0, "/opt/qbot/app")
 os.environ.setdefault("QBOT3_ENABLED", "1")
 
 from fitmodel.api import _db_connect  # noqa: E402
+from fitmodel.wbal_replay import replay_wbal  # noqa: E402  (kanon W'bal, replika QExt2)
 from qbot3.routes.route_elevation_engine import (  # noqa: E402
     ElevationSample, detect_route_climb_events)
 
@@ -60,34 +61,6 @@ def build_samples(recs):
     return out
 
 
-def wbal_series(recs, ftp_w, wprime_kj):
-    """Rekonstrukcja W'bal [kJ] po sekundach: model rozniczkowy, moc 3s.
-
-    P>CP: liniowe zuzycie; P<CP: odbudowa proporcjonalna do deficytu
-    (integralna forma Skiba/Froncioni-Clarke). Wersja uproszczona do celow
-    cech modelu - NIE jest to tozsame z tick-po-ticku QExt2."""
-    if not ftp_w or not wprime_kj:
-        return None
-    ftp_w = float(ftp_w)
-    wp = float(wprime_kj) * 1000.0
-    bal = wp
-    out = []
-    buf = []
-    for r in recs:
-        p = r[4] or 0
-        buf.append(p)
-        if len(buf) > 3:
-            buf.pop(0)
-        p3 = sum(buf) / len(buf)
-        if p3 > ftp_w:
-            bal -= (p3 - ftp_w)
-        else:
-            bal += (wp - bal) * (ftp_w - p3) / wp
-        bal = min(wp, max(0.0, bal))
-        out.append(bal / 1000.0)
-    return out
-
-
 def harvest_one(cur, aid):
     recs = load_records(cur, aid)
     if len(recs) < 120:
@@ -117,10 +90,10 @@ def harvest_one(cur, aid):
     if cassette:
         cur.execute("select cogs from qbot_v2.gear_cassette where code=%s", (cassette,))
         cogs = cur.fetchone()[0]
-    cur.execute("""select ftp_base_w, wprime_base_kj from qbot_v2.fitmodel_wbal_ride
-                   where external_id=%s""", (aid,))
-    wb = cur.fetchone()
-    wseries = wbal_series(recs, wb[0], float(wb[1])) if wb and wb[0] and wb[1] else None
+    # W'bal: KANON (fitmodel.wbal_replay = replika QExt2: moc 3s, cf ciepla/dryfu,
+    # odbudowa tau na postojach). Zadnych lokalnych uproszczen.
+    _rw = replay_wbal(aid, verbose=False, collect_series=True)
+    wbal_by_sec = dict(_rw.get("series") or []) if _rw.get("status") == "OK" else {}
 
     sec_index = {r[0]: i for i, r in enumerate(recs)}
     kj_cum, acc = {}, 0.0
@@ -163,8 +136,8 @@ def harvest_one(cur, aid):
         avg_p = round(sum(pw) / len(pw), 1) if pw else None
         vam = round(ev.elevation_gain_m / (moving or dur) * 3600.0, 0) if dur else None
         wstart = wmin = None
-        if wseries:
-            seg = wseries[i0:i1 + 1]
+        if wbal_by_sec:
+            seg = [wbal_by_sec[r[0]] for r in cut if r[0] in wbal_by_sec]
             if seg:
                 wstart, wmin = round(seg[0], 2), round(min(seg), 2)
         cur.execute("""
