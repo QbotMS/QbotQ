@@ -786,3 +786,11 @@ Cel: system ma widziec planowane obciazenie na kolejne dni (wyprawy z Planera).
 - **Dowód na żywo:** oba sloty w API zakładki Odzież; stara kategoria zniknęła; generator Plannera widzi obie; endpoint kategorii zwraca obie. Podział pozycji zweryfikowany po nazwach (9 aktywnych Bibs shorts + 2 archiwalne, 10 Trousers).
 - **Kanał:** Qbot DEV MCP wypadł z sesji — praca przez `ssh q` (MacOS-MCP). UWAGA: **heredoc przez ssh dwukrotnie zawiesił kanał na ~4 min**, mimo czysto ASCII treści. Działający wzorzec: zapis skryptu lokalnie → `scp` → `ssh python3`.
 - **[ZAMKNIETE 2026-07-28] DO ZROBIENIA:** `qbot_web.py` NADAL NIEZACOMMITOWANY — teraz już trzy zmiany: (1) is_set/set_items, (2) rejestr kategorii wyprawowych, (3) rozbicie Bottoms/Bibs. Commit jako qbot + push jako root.
+
+
+## 2026-08-10 — Biegi SRAM AXS w 1Hz (ingest + backfill) + deseń nawierzchni na profilach podjazdów
+
+- **Biegi**: `activity_record` ma 4 nowe kolumny: `gear_front_num`/`gear_rear_num` (KANON — pozycja przerzutki) i `gear_front_t`/`gear_rear_t` (zęby wg konfiguracji AXS, bywają nieaktualne — Sycylia: konfig 10-46, fizycznie 10-52). Ingest (`qbot_activity_ingest.py`) zbiera je na stałe z eventów FIT, fill-forward po czasie. Backfill: `scripts/backfill_gears.py` — 48 jazd z biegami (2× 01.2026 + wszystkie od 03.06), 71 sprzed sparowania AXS bez danych, 1 BRAK_FIT. Mapowanie numer→zęby przy analizie (kombinacja kasety przypisywana do jazdy). Historia sprzętu w DECISIONS (40T owal→36T ~poł. maja; kasety 10-46 lokalnie / 10-52 góry od ~końca maja).
+- **Raport tras / Przewyższenia**: profile podjazdów mają deseń rombowy na odcinkach nieutwardzonych (przewaga kategorii na 100 m, kolor deseniu wg jasności pola), odcięty na krzywej; szerokość 80% kolumny; czcionki z tokenów motywu (czytelne w trybie ciemnym); nagłówek karty z „% nieutwardzone". Serwer: pole `sk` w `segments` (helper `_dominant_surface_cat`, obie ścieżki: raport pełny + tryb DZIEŃ).
+- **SPROSTOWANIE do commita `3817073`**: zawiera nie tylko podjazdy — wjechały też wcześniejsze niezacommitowane zmiany w `qbot_web.py` (modele pogodowe, generator wyposażenia/garaż, grupy mailowe). Historia wypchnięta, bez rewrite.
+- **Nowe zadanie otwarte**: model oceny podjazdów „dla mnie" (skala −2…+2) — plan zaakceptowany, faza 1 (żniwiarka `ride_climb_efforts` z historii jazd) do zrobienia.

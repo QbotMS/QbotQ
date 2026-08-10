@@ -16,7 +16,28 @@ sys.path.insert(0, "/opt/qbot/app")
 os.environ.setdefault("QBOT3_ENABLED", "1")
 
 from fitparse import FitFile  # noqa: E402
+import fitparse.records as _fr  # noqa: E402
+import fitparse.base as _fb  # noqa: E402
 from fitmodel.api import _db_connect  # noqa: E402
+
+# Nieznane pola developerskie w FIT nie moga wywracac parsera
+# (ta sama lata co w qbot_activity_ingest._safe_get_dev_type)
+_BYTE_BT = next((bt for bt in _fr.BASE_TYPES.values() if getattr(bt, "size", None) == 1), None)
+_ORIG_GET_DEV_TYPE = _fb.get_dev_type
+
+
+def _safe_get_dev_type(dev_data_index, field_def_num):
+    try:
+        return _ORIG_GET_DEV_TYPE(dev_data_index, field_def_num)
+    except Exception:
+        return _fr.DevField(
+            dev_data_index=dev_data_index, def_num=field_def_num, type=_BYTE_BT,
+            name="unknown_dev_%s_%s" % (dev_data_index, field_def_num),
+            units=None, native_field_num=None,
+        )
+
+
+_fb.get_dev_type = _safe_get_dev_type
 
 
 def gear_events(fit_path):
@@ -25,10 +46,13 @@ def gear_events(fit_path):
     for m in ff.get_messages("event"):
         d = {f.name: f.value for f in m}
         if d.get("event") in ("front_gear_change", "rear_gear_change"):
-            ts, fg, rg = d.get("timestamp"), d.get("front_gear"), d.get("rear_gear")
+            ts = d.get("timestamp")
             if ts is not None:
-                out.append((ts, int(fg) if fg is not None else None,
-                            int(rg) if rg is not None else None))
+                def _i(k):
+                    v = d.get(k)
+                    return int(v) if v is not None else None
+                out.append((ts, _i("front_gear"), _i("rear_gear"),
+                            _i("front_gear_num"), _i("rear_gear_num")))
     out.sort(key=lambda g: g[0])
     return out
 
@@ -41,20 +65,22 @@ def backfill_one(cur, aid, fit_path, dry=False):
         return "BEZ_BIEGOW", 0, 0
     # interwaly [ts_od, ts_do) ze stalym biegiem; ostatni bez konca
     n_upd = 0
-    for i, (ts, fg, rg) in enumerate(gears):
+    for i, (ts, fg, rg, fn, rn) in enumerate(gears):
         ts_to = gears[i + 1][0] if i + 1 < len(gears) else None
         if dry:
             continue
         if ts_to is not None:
             cur.execute(
-                "UPDATE qbot_v2.activity_record SET gear_front_t=%s, gear_rear_t=%s "
+                "UPDATE qbot_v2.activity_record SET gear_front_t=%s, gear_rear_t=%s, "
+                "gear_front_num=%s, gear_rear_num=%s "
                 "WHERE external_id=%s AND ts >= %s AND ts < %s",
-                (fg, rg, aid, ts, ts_to))
+                (fg, rg, fn, rn, aid, ts, ts_to))
         else:
             cur.execute(
-                "UPDATE qbot_v2.activity_record SET gear_front_t=%s, gear_rear_t=%s "
+                "UPDATE qbot_v2.activity_record SET gear_front_t=%s, gear_rear_t=%s, "
+                "gear_front_num=%s, gear_rear_num=%s "
                 "WHERE external_id=%s AND ts >= %s",
-                (fg, rg, aid, ts))
+                (fg, rg, fn, rn, aid, ts))
         n_upd += cur.rowcount
     return "OK", len(gears), n_upd
 
@@ -78,7 +104,11 @@ def main():
         print("jazd do przerobienia: %d (since %s)" % (len(rides), args.since))
         stat = {}
         for aid, fit_path in rides:
-            st, n_ev, n_upd = backfill_one(cur, aid, fit_path, dry=args.dry)
+            try:
+                st, n_ev, n_upd = backfill_one(cur, aid, fit_path, dry=args.dry)
+            except Exception as e:
+                conn.rollback()
+                st, n_ev, n_upd = "BLAD:%s" % type(e).__name__, 0, 0
             stat[st] = stat.get(st, 0) + 1
             print("  %s  %-10s eventy=%-4d rekordy_upd=%d" % (aid, st, n_ev, n_upd))
             if not args.dry:

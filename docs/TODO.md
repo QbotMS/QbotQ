@@ -8,6 +8,28 @@
 
 # OTWARTE
 
+## [WAGA-SYNC] Wlasny synchronizator Withings -> Garmin (zamiast SmartScaleSync) (dodane 2026-08-06)
+
+CEL: zrezygnowac z platnej subskrypcji SmartScaleSync (18,5 EUR) i postawic synchronizacje
+u siebie. Waga MUSI dalej isc przez Garmina -- QBot czyta body composition z Garmin Connect
+(import_garmin_body.py -> qbot_v2.body_measurements, source_type=INDEX_SCALE), a konektor
+Withings w QBocie jest DEPRECATED (qbot3/connectors/import_withings_body.py) i taki zostaje.
+
+STAN FAKTYCZNY (sprawdzone 2026-08-06): ostatni pomiar 2026-08-06, 101.34 kg, source garmin /
+INDEX_SCALE -- czyli droga Withings -> (SmartScaleSync) -> Garmin -> QBot dziala.
+Withings NIE MA oficjalnej integracji z Garminem; kazde rozwiazanie to obejscie.
+
+PLAN (decyzja przed kodem, po urlopie):
+- withings-sync (pip, open source) albo wlasny odpowiednik na VPS, cron po porannym wazeniu.
+- Sekrety Withings juz sa: /opt/q/secrets/withings/withings.env -- sprawdzic, czy refresh
+  tokenu jeszcze dziala (to byl powod deprecacji konektora, wiec traktowac jako ryzyko nr 1).
+- Garmin: login + haslo + 2FA, sesja do odnawiania. Ryzyko nr 2 -- upload idzie wewnetrznym
+  API Garmina (plik FIT), potrafi sie zepsuc przy zmianach po stronie Garmina.
+- Przeniesc pelny sklad ciala, nie sama wage (tluszcz, miesnie, kosci, nawodnienie, BMI).
+
+DOWOD SUKCESU: po wazeniu nowy wiersz w qbot_v2.body_measurements z data biezaca --
+BEZ aktywnej subskrypcji SmartScaleSync. Odpiac subskrypcje dopiero po 2-3 udanych dobach.
+
 ## [ZYWIENIE-ZAPIS] Regula cukrowa zerowala makra po podciagu w nazwie [ZAMKNIETE 2026-08-04]
 
 WYKRYTE przy logowaniu jedzenia za 30.07-03.08. Pierwsza diagnoza (wpisana 2026-08-01)
@@ -256,6 +278,8 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
   (z payloadu Formy juz usuniete 2026-07-16). Usuniecie kolumn = decyzja przed kodem (destrukcja).
 
 ---
+
+- [PODJAZDY-SKALA] Model oceny podjazdów dla użytkownika (−2…+2): faza 1 żniwiarka ride_climb_efforts z historii (moc/HR/kadencja/biegi/nawierzchnia/temperatura/W'bal/XSS na starcie, detekcja pchania), faza 2 scorer w raporcie tras, faza 3 mapowanie kaset per jazda (10-46 vs 10-52)
 
 # ZROBIONE (skrot; szczegoly w DECISIONS.md i TODO.md.bak.*)
 - [2026-07-30] ZROBIONE: zestaw porownywanych modeli dobierany do horyzontu (0-2 dni: siatki do 7 km; 3-5 dni: 7-13 km + ECMWF; 6+ dni: same globalne) -- zestawianie siatki 2 km z 25 km na krotkim terminie mierzylo rozdzielczosc, nie pogode. Do rejestru doszedl HARMONIE 5.5 km. Grafika porownania (skale z kropkami) USUNIETA -- zastapiona czterema akapitami i ocena Alberta w 2-3 zdaniach prozy.

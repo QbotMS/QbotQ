@@ -3140,3 +3140,27 @@ WYNIK NA HISTORII: 7/29 alertow; trafione wszystkie znane zle (26.07, 30.07
 trend; 2.08 +28%%; 17.07 -24%%), oszczedzone znane czyste (1.08 +18%% bez
 alertu -- trend przerwany, 3.08). Dyskusyjne: 19-20.06 = udokumentowany
 weekend przebic ("podejrzanie dobrze" -- akceptowalny koszt).
+
+## 2026-08-10 -- Biegi SRAM AXS w 1Hz: kanon = NUMER biegu, nie zeby z FIT
+
+KONTEKST: Karoo zapisuje w FIT eventy front/rear_gear_change z liczba zebow
+ORAZ numerem biegu. Zeby pochodza z KONFIGURACJI aplikacji AXS, ktora nie
+nadaza za fizycznymi zmianami kaset (np. Sycylia 08.2026: konfiguracja
+raportuje 10-46, fizycznie zalozona 10-52). Numer biegu = pozycja przerzutki,
+zawsze prawdziwy.
+
+DECYZJA: activity_record ma 4 kolumny: gear_front_num/gear_rear_num (KANON do
+analiz) oraz gear_front_t/gear_rear_t (zeby wg konfiguracji - tylko
+pomocniczo). Mapowanie numer->zeby robimy na etapie analizy/raportu trasy,
+przypisujac kombinacje kasety do jazdy.
+
+HISTORIA SPRZETU (od uzytkownika, daty orientacyjne, "nie potwierdze dokladnych"):
+- do ~polowy maja 2026: przod owalna 40T; potem 36T (bez zmian do dzis)
+- do ~konca maja 2026: kaseta 10-46
+- od ~konca maja: gory/wyprawy (Toskania, Opolszczyzna, Sycylia) = 10-52;
+  lokalnie (Warszawa i okolice, np. Tykocin) = 10-46
+- pierwsze eventy biegow w FIT: 2 jazdy 01.2026, na stale od 03.06.2026
+  (wczesniej Karoo niesparowane z AXS - biegow nie ma skad wziac)
+
+Ingest: qbot_activity_ingest.py (parse_fit + store, fill-forward po czasie,
+przed 1. eventem NULL). Backfill wstecz: scripts/backfill_gears.py.

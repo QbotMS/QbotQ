@@ -140,7 +140,9 @@ def parse_fit(fit_bytes: bytes):
         })
         if ev in ("front_gear_change", "rear_gear_change"):
             gears.append((_fv(m, "timestamp"), _to_int(_fv(m, "front_gear")),
-                          _to_int(_fv(m, "rear_gear"))))
+                          _to_int(_fv(m, "rear_gear")),
+                          _to_int(_fv(m, "front_gear_num")),
+                          _to_int(_fv(m, "rear_gear_num"))))
     gears = [g for g in gears if g[0] is not None]
     gears.sort(key=lambda g: g[0])
     return records, laps, events, gears
@@ -172,18 +174,20 @@ def store(conn, aid, summary, fit_bytes, records, laps, events, gears=None):
             has_pos = True
         rec_rows[sec] = (aid, sec, r["ts"], r["lat"], r["lon"], r["alt"], r["dist"],
                          _to_int(r["power"]), _to_int(r["hr"]), _to_int(r["cad"]),
-                         r["spd"], r["temp"], None, None)
+                         r["spd"], r["temp"], None, None, None, None)
 
-    # biegi: fill-forward po czasie (event niesie NOWY bieg; przed pierwszym eventem = NULL)
+    # biegi: fill-forward po czasie (event niesie NOWY bieg; przed pierwszym eventem = NULL).
+    # Kanon = NUMERY biegow (pozycja przerzutki); zeby (gear_*_t) to konfiguracja z aplikacji
+    # AXS - bywa nieaktualna po zmianie kasety, mapowanie na zeby robimy przy analizie.
     if gears and rec_rows:
-        gi, cur_f, cur_r = 0, None, None
+        gi, cur_f, cur_r, cur_fn, cur_rn = 0, None, None, None, None
         for sec in sorted(rec_rows):
             row = rec_rows[sec]
             ts = row[2]
             while gi < len(gears) and gears[gi][0] <= ts:
-                cur_f, cur_r = gears[gi][1], gears[gi][2]
+                cur_f, cur_r, cur_fn, cur_rn = gears[gi][1], gears[gi][2], gears[gi][3], gears[gi][4]
                 gi += 1
-            rec_rows[sec] = row[:12] + (cur_f, cur_r)
+            rec_rows[sec] = row[:12] + (cur_f, cur_r, cur_fn, cur_rn)
 
     lap_rows = []
     for i, lp in enumerate(laps):
@@ -210,8 +214,8 @@ def store(conn, aid, summary, fit_bytes, records, laps, events, gears=None):
             cur.executemany(
                 "INSERT INTO qbot_v2.activity_record "
                 "(external_id,sec,ts,lat,lon,altitude_m,distance_m,power_w,hr_bpm,cadence_rpm,speed_mps,temperature_c,"
-                "gear_front_t,gear_rear_t) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "gear_front_t,gear_rear_t,gear_front_num,gear_rear_num) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 list(rec_rows.values()))
         if lap_rows:
             cur.executemany(
