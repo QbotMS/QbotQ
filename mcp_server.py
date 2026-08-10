@@ -2892,6 +2892,35 @@ async def ride_readiness(request):
     today = date.today().isoformat()
     yesterday = (date.today() - timedelta(days=1)).isoformat()
 
+    # --- raport kasety z QExt2 (override 10-52 itp.) ---
+    # Karoo dosyla stan przelacznika w parametrach GET; zapis fire-and-forget,
+    # bledy NIE moga zepsuc odpowiedzi readiness. Ostatni raport = kaseta
+    # zamontowana danego dnia (mapowanie na jazdy robi analiza/ride_cassette).
+    try:
+        _co = request.query_params.get("cassette_override")
+        _cogs = (request.query_params.get("cassette_cogs") or "").strip()
+        if _co is not None:
+            import psycopg as _pg
+            _ovr = str(_co).lower() in ("1", "true", "yes", "on")
+            with _pg.connect(
+                host=os.getenv("PGHOST", "localhost"),
+                port=os.getenv("PGPORT", "5432"),
+                dbname=os.getenv("PGDATABASE", "qbot"),
+                user=os.getenv("PGUSER", "qbot"),
+                password=os.getenv("PGPASSWORD", ""),
+            ) as _conn:
+                _conn.execute(
+                    "INSERT INTO qbot_v2.qext2_cassette_report (override_enabled, cogs) "
+                    "SELECT %s, %s WHERE NOT EXISTS ("
+                    "  SELECT 1 FROM qbot_v2.qext2_cassette_report "
+                    "  WHERE reported_at > now() - interval '10 minutes' "
+                    "    AND override_enabled = %s AND coalesce(cogs,'') = %s)",
+                    (_ovr, _cogs or None, _ovr, _cogs))
+                _conn.commit()
+            print(f"🦷 ride-readiness cassette report: override={_ovr} cogs={_cogs or '-'}", flush=True)
+    except Exception as exc:
+        print(f"⚠️  ride-readiness: cassette report error: {exc}", flush=True)
+
     oldest_30 = (date.today() - timedelta(days=30)).isoformat()
 
     async def fetch_wellness():
