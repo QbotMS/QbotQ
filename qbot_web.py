@@ -8622,7 +8622,8 @@ def calendar_entries(start: str = Query(...), end: str = Query(...)):
     try:
         rows = conn.execute(
             "SELECT id, day::text AS day, kind, title, feel, severity, "
-            "end_day::text AS end_day, note, color, event_type, at_time::text AS at_time, remind_offsets "
+            "end_day::text AS end_day, note, color, event_type, at_time::text AS at_time, remind_offsets, "
+            "kcal_planned "
             "FROM qbot_v2.calendar_entry "
             "WHERE (day BETWEEN %s AND %s) "
             "   OR (end_day IS NOT NULL AND day <= %s AND end_day >= %s) "
@@ -8703,6 +8704,45 @@ def calendar_entries(start: str = Query(...), end: str = Query(...)):
             "rides": rides, "entry_routes": entry_routes, "planned": planned}
 
 
+def _kcal_planned(body):
+    """Ryczalt kalorii dla eventu (kcal_planned). Puste/0 = brak ryczaltu."""
+    v = body.get("kcal_planned")
+    if v in (None, ""):
+        return None
+    try:
+        v = int(float(v))
+    except (TypeError, ValueError):
+        return None
+    return v if 800 <= v <= 8000 else None
+
+
+def _event_intake_sync(entry_id=None):
+    """Po zapisie eventu z ryczaltem wyrownuje dni WSTECZ (do wczoraj).
+    Dni przyszle dopisuje nocny fitmodel.daily_job. Bledy nie blokuja zapisu."""
+    from datetime import date, timedelta
+    try:
+        import qbot_event_intake as _evi
+        conn = _db_conn()
+        try:
+            if entry_id is None:
+                return None
+            r = conn.execute(
+                "SELECT day::text d, COALESCE(end_day, day)::text e, kcal_planned "
+                "FROM qbot_v2.calendar_entry WHERE id=%s", (entry_id,)).fetchone()
+            if not r:
+                return None
+            end = min(date.fromisoformat(r["e"]), date.today() - timedelta(days=1))
+            start = date.fromisoformat(r["d"])
+            if start > end:
+                return []
+            return _evi.fill_range(conn, start, end)
+        finally:
+            conn.close()
+    except Exception as exc:
+        print("[event_intake_sync] nieudany: %s" % exc)
+        return None
+
+
 @app.post("/api/calendar/entry")
 async def calendar_add(request: Request):
     """Dodaje wpis kalendarza. body: {day, kind, title?, feel?, severity?, end_day?, note?}.
@@ -8738,9 +8778,9 @@ async def calendar_add(request: Request):
     conn = _db_conn()
     try:
         row = conn.execute(
-            "INSERT INTO qbot_v2.calendar_entry (day, kind, title, feel, severity, end_day, note, color, event_type, at_time, remind_offsets) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
-            (day, kind, title, feel, severity, end_day, note, _s("color", 20), _s("event_type", 20), _s("at_time", 8), _s("remind_offsets", 20)),
+            "INSERT INTO qbot_v2.calendar_entry (day, kind, title, feel, severity, end_day, note, color, event_type, at_time, remind_offsets, kcal_planned) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            (day, kind, title, feel, severity, end_day, note, _s("color", 20), _s("event_type", 20), _s("at_time", 8), _s("remind_offsets", 20), _kcal_planned(body)),
         ).fetchone()
         conn.commit()
     except Exception as e:
@@ -8748,7 +8788,10 @@ async def calendar_add(request: Request):
         raise HTTPException(status_code=500, detail="Zapis nieudany: %s" % e)
     finally:
         conn.close()
-    return {"ok": True, "id": (row["id"] if row else None)}
+    eid_new = (row["id"] if row else None)
+    if eid_new is not None and _kcal_planned(body) is not None:
+        _event_intake_sync(eid_new)
+    return {"ok": True, "id": eid_new}
 
 
 @app.post("/api/calendar/delete")
@@ -8806,9 +8849,11 @@ async def calendar_edit(request: Request):
     conn = _db_conn()
     try:
         row = conn.execute(
-            "UPDATE qbot_v2.calendar_entry SET title=%s, feel=%s, severity=%s, end_day=%s, note=%s, color=%s, event_type=%s, at_time=%s, remind_offsets=%s "
+            "UPDATE qbot_v2.calendar_entry SET title=%s, feel=%s, severity=%s, end_day=%s, note=%s, color=%s, event_type=%s, at_time=%s, remind_offsets=%s, "
+            "kcal_planned = CASE WHEN %s THEN %s ELSE kcal_planned END "
             "WHERE id=%s RETURNING id",
-            (title, feel, severity, end_day, note, _s("color", 20), _s("event_type", 20), _s("at_time", 8), _s("remind_offsets", 20), eid),
+            (title, feel, severity, end_day, note, _s("color", 20), _s("event_type", 20), _s("at_time", 8), _s("remind_offsets", 20),
+             ("kcal_planned" in body), _kcal_planned(body), eid),
         ).fetchone()
         conn.commit()
     except Exception as e:
@@ -8818,6 +8863,7 @@ async def calendar_edit(request: Request):
         conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="Nie ma wpisu o tym id")
+    _event_intake_sync(eid)
     return {"ok": True, "id": row["id"]}
 
 

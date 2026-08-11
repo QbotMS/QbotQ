@@ -1,5 +1,40 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-08-11] Ryczalt kaloryczny z eventu kalendarza (wakacje bez logowania)
+
+Po co: na urlopie nie chce sie logowac posilkow, a puste dni psuja bilans.
+Event kalendarza dostaje pole kcal_planned -- "tych dni nie loguje, przyjmij X kcal".
+
+Zrobione:
+- qbot_v2.calendar_entry + kolumna kcal_planned (scripts/migrate_calendar_kcal_planned.py).
+- qbot_nutrition_presets.macros_for_kcal(conn, kcal, band=250) -- makra dla DOWOLNEJ
+  wartosci kcal ta sama metoda co presety (mediana realnych czystych dni w pasmie,
+  fallback FALLBACK_SPLIT). Wyciagniete _clean_samples() i _med() na poziom modulu.
+- qbot_event_intake.py (NOWY): fill_day / fill_recent / fill_range. Zapis do
+  intake_logs+intake_items ze source='event_preset' (zawiera 'preset' -> UI pokazuje
+  SZACUNEK i silnik presetow sie tym nie uczy). Priorytety: realne jedzenie > recznie
+  wybrany preset dnia > ryczalt z eventu. Gdy pojawi sie realne jedzenie, wlasny
+  ryczalt tego dnia jest kasowany. Idempotentne.
+- fitmodel/daily_job.py: krok "event_intake" (po wprime/pm_guard, przed glikogenem),
+  okno 7 dni wstecz do WCZORAJ. Dzien biezacy celowo pomijany (jeszcze trwa).
+  Wlasne polaczenie przez qbot_nutrition_db._conn (psycopg3/dict_row) -- pipeline
+  jedzie na psycopg2.
+- qbot_web.py: /api/calendar zwraca kcal_planned; entry/edit przyjmuja pole
+  (_kcal_planned, zakres 800-8000); po zapisie _event_intake_sync wyrownuje dni
+  WSTECZ. WAZNE: w /api/calendar/edit kcal_planned zmienia sie TYLKO gdy klucz jest
+  w body (CASE WHEN) -- planer wypraw edytuje eventy bez tego pola i nie moze go zerowac.
+- kalendarz-render.js (v=26): pole "Ryczalt kcal/dzien" w formularzu dodawania
+  i edycji eventu.
+
+Zweryfikowane na zywo: event Sycylia (id 7, 6-21.08) = 3200 kcal; dni 6-10.08
+dostaly 3200 kcal / W 340 g / B 135 g / T 116 g (mediana z 8 realnych dni, nie
+fallback); /api/nutrition/day-summary zwraca kind=preset; edycja bez pola nie
+kasuje ryczaltu; powtorny przebieg nocnego kroku = 0 dopisanych (idempotencja).
+
+OTWARTE: Albert NIE ma realnego writera kalendarza (mcp_adapter zwraca
+WRITE_NOT_AVAILABLE) -- eventy zaklada sie serwisem kalendarza albo planerem wypraw,
+wiec ryczalt ustawia sie tam. Planer wypraw nie ma jeszcze wlasnego pola na ryczalt.
+
 ## [2026-08-04] LTP EMA28 + kwarantanna jazd (pakiet A po wyprawie)
 
 Zrobione: (1) publikowane LTP = EMA28 z dziennego TP-HIE/400 (publish.py, backfill

@@ -108,6 +108,19 @@ def main() -> None:
             return pm_guard_run(conn)
         _step("power_meter_guard", _pm_guard)
 
+        # 2e. Ryczalt kaloryczny z eventu kalendarza (wakacje: kcal_planned).
+        # Dni bez realnego jedzenia dostaja szacunek X kcal + makra jak w
+        # presetach. Wlasne polaczenie (psycopg3, dict_row) -- ten pipeline
+        # jedzie na psycopg2. Okno 7 dni wstecz do WCZORAJ wlacznie.
+        def _event_intake():
+            from qbot_nutrition_db import _conn as _nconn
+            import qbot_event_intake as _evi
+            with _nconn() as c2:
+                res = _evi.fill_recent(c2, days_back=7)
+            zap = sum(1 for r in res if r["action"] == "zapisany_ryczalt")
+            return {"dni_sprawdzone": len(res), "dopisane_ryczalty": zap}
+        _step("event_intake", _event_intake)
+
         # 3. Glikogen -> fitmodel_daily
         def _glyco():
             from fitmodel.glycogen import update_glycogen_in_daily
