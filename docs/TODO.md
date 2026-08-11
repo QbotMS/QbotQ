@@ -315,3 +315,115 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - **QExt2 Strona A<->B**: 7 developer fields @1Hz do/z FIT (deploy key, CI, sideload).
 
 - [2026-07-20] ZROBIONE: Scheduled -- scripts/verify_dupes.py (poranna weryfikacja duplikatow jazd, tylko zglasza; cron root 05:30; Telegram tylko o nowych grupach; stan data/verify_dupes_seen.json). Wykryto 9 starych par do ewentualnego recznego wyczyszczenia.
+
+
+---
+
+## [MIERNIK-MODELQ] Plan po sesji 2026-08-11 (Sycylia)
+
+Kontekst i dowody: DECISIONS.md, wpis "2026-08-11 -- Miernik Quarq DUB-PWR".
+Kolejnosc jest celowa: 1-2 to ryzyka wprowadzone dzisiaj, reszta wg wartosci.
+
+### 1. [PILNE] Zabezpieczyc kotwice EF przed samonapedzaniem
+
+RYZYKO: ef_anchor_step() wstawia kotwice KAZDEGO dnia, gdy TP_ef > TP_model+2 W.
+Kotwica podnosi TP modelu -> nastepnego dnia TP_ef nadal moze byc wyzsze ->
+kolejna kotwica. Mechanizm jednostronny (w dol tylko decay), wiec teoretycznie
+moze wspinac sie w nieskonczonosc, jesli EF utrzyma sie wysoko.
+Dzis: TP_ef 273.9, kotwica 262.9. Jutro model ~263 -> kotwica ~268 -> itd.
+To moze byc POPRAWNE (nadrabianie zaleglosci po 3 tygodniach slepoty), ale
+musi miec hamulec.
+
+DO ZROBIENIA:
+- twardy sufit dziennego przyrostu kotwicy (propozycja: max +3 W/dzien),
+- sufit bezwzgledny sanity (propozycja: TP <= 1.35 * mediana TP z 90 dni),
+- minimalna liczba segmentow w oknie EF (propozycja: >= 8) -- inaczej kotwica
+  stoi na dwoch przypadkowych jazdach,
+- czyscic stare auto-kotwice: zostawiac najwyzej jedna "kotwice EF" na 7 dni,
+  zeby modelq2_anchor nie spuchl do setek wierszy (nearest-anchor zaczalby
+  wybierac zawsze dzisiejsza i seria historyczna stracilaby sens).
+- WERYFIKACJA: przebieg 7 kolejnych dni w symulacji, sprawdzic czy TP sie
+  stabilizuje, czy rosnie liniowo.
+
+### 2. [PILNE] Spojnosc XSS po rewizji TP w gore
+
+PROBLEM: build_and_store przeliczyl TP dla 588 dni (20.07: 245 -> 256 W).
+Ale XSS jazd w modelq2_ride policzono STARA, nizsza sygnatura -- zgodnie
+z zasada kauzalnosci (sygnatura sprzed jazdy). Teraz wiemy, ze ta sygnatura
+byla zanizona, wiec XSS tych jazd jest ZAWYZONY (nizszy prog = wiekszy stres).
+Skutek: CTL/ATL z okresu 17.07-11.08 stoja na zawyzonym obciazeniu.
+
+DECYZJA DO PODJECIA (nie przesadzac samemu):
+  (a) zostawic -- kauzalnosc swieta, historia sie nie zmienia;
+  (b) przeliczyc XSS dla 17.07-11.08 nowa sygnatura -- spojnosc wazniejsza
+      niz kauzalnosc, bo to korekta bledu, nie zmiana wiedzy;
+  (c) przeliczyc tylko od dnia wstawienia kotwicy EF.
+Przed decyzja: policzyc RONICE (o ile spadnie CTL przy wariancie b).
+
+### 3. Straznik v2 -- bilans energii calej jazdy
+
+Zastapic/uzupelnic obecny straznik oparty na P@HR (stoi na optycznym HR
+z zegarka Garmin, wahania +-10 uderzen dzien do dnia -- niepewna podstawa).
+
+SPECYFIKACJA:
+- praca zmierzona = suma power_w po sekundach;
+- praca fizyczna = suma max(0, m*g*dh + Crr*m*g*v + 0.5*rho*CdA*v^3);
+  clamp do zera obowiazkowy (na zjazdach placi grawitacja);
+- wysokosc z barometru, wygladzona srednia ruchoma 15 s;
+- masa: weight_kg z fitmodel_daily + 10.5 kg rower + flaga bagazu;
+- WYNIK JAKO PRZEDZIAL, nie punkt: policzyc dla Crr 0.008 / 0.012 / 0.020 /
+  0.030 i podac zakres. Werdykt tylko gdy CALY przedzial lezy po jednej
+  stronie. To bezposrednia lekcja z 11.08 -- punktowy wynik przy zgadnietym
+  Crr dal falszywe oskarzenie +50%.
+- druga warstwa: podpis bledu (nadmiar w Nm w koszykach mocy) -> rozstrzyga
+  offset vs wzmocnienie, czyli czy dane sa odzyskiwalne.
+- FLAGA BAGAZU (automat): start != meta ORAZ start ~= meta jazdy poprzedniej
+  -> tour A->B, masa nieznana -> nie wydawac werdyktu, tylko oznaczyc.
+  Petla (start == meta, < 2 km) -> masa znana -> werdykt dozwolony.
+- zapis do tabeli, nie do logow (lekcja: szukalem alertu w journalctl,
+  a on lezal w power_meter_guard).
+
+### 4. Rewizja 5 jazd w kwarantannie 22.07-02.08
+
+Kwarantannowane na podstawie P@HR, czyli tej samej niepewnej metody.
+Trzy z nich to prawdopodobnie toury z bagazem (sprawdzic topologia GPS).
+Przepuscic przez straznika v2, zwolnic wszystkie bez jednoznacznego dowodu
+zawyzania, przeliczyc. Zasada przyjeta 11.08: brak danych szkodzi bardziej
+niz dane z bledem.
+
+### 5. Test statyczny korby (po powrocie z wakacji)
+
+Jedyny test rozdzielajacy offset od wzmocnienia bez jazdy.
+- rower stabilnie, LEWE ramie korby POZIOMO (godzina 3), nic nie dotyka roweru;
+- Set Zero, zapisac zero offset;
+- obciazyc pedal znanym ciezarem (woda w butelkach: 1.5 l = 1.5 kg),
+  DWA punkty: ~5 kg i ~10 kg;
+- odczytac Torque w sekcji Crank Input w AXS (nie moc -- moment);
+- oczekiwane T = m * 9.81 * L, gdzie L = dlugosc korby (POTWIERDZIC: 170
+  czy 172.5 mm -- nie mam tego w danych);
+- dopasowac prosta przez dwa punkty:
+    przesuniecie (wyraz wolny) != 0  -> blad ZERA (nie trzyma pod obciazeniem),
+    nachylenie != 1                  -> blad WZMOCNIENIA.
+- wynik przesadza o reklamacji. Gwarancja SRAM 2 lata, zakup 19.05.2026,
+  wysylka poza sezonem (listopad).
+
+### 6. Bateria i procedura obslugi (biezace)
+
+- AAA LITOWA (nie alkaliczna, nie cynkowo-weglowa). Alkaliczny Duracell
+  tylko awaryjnie, na wakacje; wyjac po powrocie (ryzyko wycieku w osi).
+- reset: przekrecic pierscien SLED o 90 stopni, wyjac sanki, odczekac kilka
+  minut, wlozyc swieza, Set Zero.
+- kalibracja przed KAZDA jazda (DUB-PWR nie ma Magic Zero) -- i zapisywac
+  wartosc, docelowo automatycznie.
+- POMYSL: pole na zero offset w /ride-readiness z QExt2, zeby straznik mial
+  zero przed i po jezdzie bez recznego przepisywania z AXS.
+
+### 7. Slaby punkt swiezo wdrozonej kotwicy EF (do przemyslenia)
+
+EF liczy sie z ef_norm w fitmodel_segment, czyli z TETNA. To jest ten sam
+optyczny HR z zegarka, do ktorego Michal ma uzasadnione zastrzezenia.
+Czyli naprawilismy TP kotwica, ktora dziedziczy szum HR.
+Kierunek: rozwazyc kotwice TP niezalezna od tetna -- np. z krzywej mocy
+(MMP 300-1200 s z zaufanych jazd) albo z progu wyznaczonego bilansem energii.
+Nie robic pochopnie -- najpierw obserwowac 2-3 tygodnie, czy kotwica EF
+zachowuje sie sensownie po zalozeniu hamulcow z punktu 1.

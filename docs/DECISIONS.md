@@ -3297,3 +3297,66 @@ podjazdowe ze sztywnym Crr traktowac wylacznie jako sygnal wstepny.
   (gwarancja 2 lata, zakup 19.05.2026 -- czasu duzo, wysylka poza sezonem).
 - Szew XSS: sygnatury historyczne jazd zostaly stare (kauzalnosc MQ2),
   wiec miedzy 10 a 11.08 jest skok TP. Obserwowac pierwsza jazde po zmianie.
+
+
+## 2026-08-11 (druga czesc) -- CP bylo ZANIZONE. Decyzja: FTP 263 zostaje
+
+### Decyzja Michala (przyjeta, wiazaca dla przyszlych sesji)
+
+FTP/TP 262.9 W zostaje. NIE cofamy do 254 przez wykluczenie jazd sycylijskich
+z okna EF. Uzasadnienie Michala: "moja forma rosnie, niespiesznie ale czuje sie
+mocniejszy -- nie ma opcji, abym stal w miejscu po skakaniu po gorach".
+
+### WAZNE ZALOZENIE DO PAMIETANIA W KAZDEJ PRZYSZLEJ ANALIZIE
+
+WCZESNIEJSZE DANE MOGLY BYC ZANIZONE, NIE ZAWYZONE.
+
+Przez cala sesje 11.08 domyslnie zakladalem, ze odchylenia w gore = blad
+miernika. Michal wskazal odwrotna mozliwosc, ktorej nie sprawdzalem:
+zero miernika nie bylo wczesniej pilnowane (Setup Calibration dopiero 30.07,
+zakup 19.05; wczesniej Michal nie zwracal uwagi na kalibracje), wiec nieaktualne
+zero moglo powodowac ZANIZANIE mocy przez tygodnie. W takim ukladzie "idealny
+maj" (+1.6% / -1.7% w bilansie energii) nie jest dowodem zdrowego miernika --
+moze byc suma dwoch bledow, ktore sie zniosly. Kazda przyszla analiza ma
+traktowac oba kierunki jako rownoprawne, dopoki test statyczny korby
+nie da liczby.
+
+### DOWOD, ze CP bylo za niskie (nie opinia -- policzone 11.08)
+
+Od 2026-06-01: 33 jazdy w modelq2_ride, z czego 8 z min_wbal_pct = 0.0:
+05.06, 20.06, 06.07, 12.07, 01.08, 02.08, 09.08, 11.08.
+Co CZWARTA jazda konczy sie calkowitym oproznieniem W'.
+
+To niemozliwe przy poprawnie dobranym CP. W'bal = 0 oznacza wysilek
+absolutnie maksymalny -- zdarzenie kilka razy w sezonie, nie regularny
+element treningu. ZADNA z tych jazd nie skonczyla sie zsiadaniem z wyczerpania
+(09.08 prowadzenie roweru wynikalo ze zjazdu po kamieniach, nie z braku sil).
+Zgodnie z zasada przyjeta przy budowie skali podjazdow: TWARDA GRANICA TO
+CHODZENIE/ZATRZYMANIE, nie liczba na ekranie. Te zera nie mialy pokrycia
+w rzeczywistosci -- model mial za nisko ustawiony prog, wiec widzial jazde
+"ponad progiem" tam, gdzie Michal jechal pod nim.
+
+TP w tym okresie oscylowalo 236-250 W. Po podniesieniu do 262.9 W wiekszosc
+tych zdarzen nie powinna sie powtorzyc. To jest test weryfikacyjny na
+najblizsze tygodnie: JESLI przy TP 263 W'bal nadal bedzie zjezdzal do zera
+co kilka jazd, CP JEST NADAL ZA NISKIE i trzeba podnosic dalej.
+
+### Konsekwencja dla kotwicy EF
+
+Swiadomie akceptujemy, ze skok EF 1.662 -> 1.789 pochodzi z jazd sycylijskich
+(mediana ef_norm 2.069 vs 1.662 w reszcie okna 14.07-07.08), czyli z jazd
+spornych. Kontrargument, ktory to usprawiedliwia: bilans energii calej jazdy
+dla 11.08 wyszedl idealnie (0%), dla 08.08 -6%. Sporna zostaje glownie 09.08.
+Ryzyko przyjete swiadomie, obserwujemy.
+
+Hamulce z TODO [MIERNIK-MODELQ] pkt 1 nadal do zrobienia (max 1 kotwica EF
+na 7 dni, min. 8 segmentow, sufit +3 W/tydzien, czyszczenie auto-kotwic) --
+ale NIE po to, zeby cofnac 263, tylko zeby mechanizm nie zasmiecil
+modelq2_anchor i nie dzialal jak zapadka na szumie.
+
+SPROSTOWANIE do TODO pkt 1: opisalem tam ryzyko "samonapedzania sie" kotwicy.
+To bylo bledne. EF liczy sie z mocy i tetna (ef_norm = np_w/hr_avg,
+znormalizowane), NIE z TP -- wiec sprzezenia zwrotnego nie ma, a TP zbiega
+geometrycznie do TP_ef (263 -> 268.5 -> 271 -> 272.6 -> ... -> 274).
+Realne ryzyko to ZAPADKA (mechanizm jednostronny: w gore od razu, w dol tylko
+decay) plus zasmiecenie tabeli kotwic, nie ucieczka w nieskonczonosc.
