@@ -33,6 +33,13 @@ from fitmodel.wbal_replay import replay_deficit
 
 WINDOW_DAYS = 42     # jak dlugo dolna granica z drogi obowiazuje (pamiec formy ~6 tyg)
 MIN_ZERO_S = 10      # odsiej pojedyncze glitche czujnika (min. sekund na W'bal=0)
+# 2026-08-11 (DECISIONS): bezpiecznik kotwic. Zdarzenie W'bal=0 dluzsze niz
+# MAX_ZERO_S to objaw ZLEGO CP (jazda "ponad progiem" przez wiele minut jest
+# niemozliwa), nie dowod wielkiego W' -- takie zdarzenia nie stawiaja kotwic.
+# Analogicznie kotwica > MAX_ANCHOR_KJ jest fizjologicznie nierealna (2026-08:
+# 66.7 i 49.1 kJ przy zanizonym CP) -- odrzucamy i logujemy zamiast publikowac.
+MAX_ZERO_S = 300     # maks. sekund na W'bal=0, powyzej = artefakt zlego CP
+MAX_ANCHOR_KJ = 35.0 # maks. wiarygodna dolna granica W' [kJ]
 
 
 def ensure_columns(conn) -> None:
@@ -48,7 +55,7 @@ def ensure_columns(conn) -> None:
     conn.commit()
 
 
-def _clean_event_rides(conn, min_zero_s: int) -> list[str]:
+def _clean_event_rides(conn, min_zero_s: int, max_zero_s: int = MAX_ZERO_S) -> list[str]:
     """ride_id zdarzen W'bal=0 (>= min_zero_s). replay_deficit sam odsieje te bez
     strumienia 1 Hz (duplikaty/natywne ID Karoo -> NO_DATA), wiec dedup jest
     automatyczny: liczbe wnosza tylko jazdy z activity_record."""
@@ -59,9 +66,10 @@ def _clean_event_rides(conn, min_zero_s: int) -> list[str]:
     cur.execute(
         "SELECT DISTINCT q.ride_id FROM qbot_v2.fitmodel_qext2_ride q "
         "WHERE q.wbal_zero_seconds >= %s "
+        "AND q.wbal_zero_seconds <= %s "
         "AND NOT EXISTS (SELECT 1 FROM qbot_v2.fitmodel_ride_quarantine k "
         "                WHERE k.external_id = q.ride_id AND k.released IS NULL)",
-        (min_zero_s,),
+        (min_zero_s, max_zero_s),
     )
     return [r[0] for r in cur.fetchall()]
 
@@ -77,13 +85,21 @@ def compute_road_wprime(conn=None, window_days: int = WINDOW_DAYS,
 
     # 1) dolna granica per zdarzenie (tylko te z danymi 1 Hz)
     events = []  # (ride_date, wprime_lower_kj, ride_id, base_kj)
+    n_rejected = []  # (ride_date, ride_id, lower_kj) -- kotwice > MAX_ANCHOR_KJ
     for ride_id in _clean_event_rides(conn, min_zero_s):
         res = replay_deficit(ride_id, verbose=False)
         if res.get("status") != "OK":
             continue
         from datetime import date as _date
         y, m, d = (int(x) for x in res["ride_date"].split("-"))
-        events.append((_date(y, m, d), float(res["wprime_lower_kj"]),
+        lower = float(res["wprime_lower_kj"])
+        if lower > MAX_ANCHOR_KJ:
+            # kotwica nierealna = objaw zlego CP; nie publikujemy, tylko logujemy
+            print("wprime_road: ODRZUCONO kotwice %.1f kJ > %.0f kJ (jazda %s, %s)"
+                  % (lower, MAX_ANCHOR_KJ, res["ride_date"], ride_id))
+            n_rejected.append((res["ride_date"], ride_id, lower))
+            continue
+        events.append((_date(y, m, d), lower,
                        ride_id, float(res["wprime_base_kj"])))
 
     # 2) dla kazdego dnia -- max granica z okna
@@ -123,7 +139,7 @@ def compute_road_wprime(conn=None, window_days: int = WINDOW_DAYS,
     if own:
         conn.close()
     return {"events_with_data": len(events), "days_set": n_set,
-            "days_road_gt_mq2": n_above_mq2}
+            "days_road_gt_mq2": n_above_mq2, "rejected_anchors": n_rejected}
 
 
 if __name__ == "__main__":

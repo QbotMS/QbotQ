@@ -3164,3 +3164,136 @@ HISTORIA SPRZETU (od uzytkownika, daty orientacyjne, "nie potwierdze dokladnych"
 
 Ingest: qbot_activity_ingest.py (parse_fit + store, fill-forward po czasie,
 przed 1. eventem NULL). Backfill wstecz: scripts/backfill_gears.py.
+
+
+## 2026-08-11 -- Miernik Quarq DUB-PWR, kwarantanny, EF wraca do MQ2
+
+### Sledztwo: czy miernik zawyza (Sycylia 8-11.08)
+
+Punkt wyjscia: straznik mocy dal ALERT dla jazdy 9.08 (23908082381):
+P@HR 242 W vs baza 171 W (+42%, baza 43 jazd w 27 C +-5).
+
+Metody uzyte i ich WERDYKT:
+
+1. FIZYKA OKIEN PODJAZDOWYCH (odrzucona jako rozstrzygajaca).
+   Okna 60 s, nachylenie >=4-5%, moc oczekiwana = M*g*dh/dt + Crr*M*g*v + aero,
+   M=110 kg, Crr=0.012. Wynik: 9.08 +50%, 11.08 +30%, 19.07 (PL) +10%.
+   BLAD METODY: sztywne Crr=0.012 na SYPKIM SZUTRZE przy 5 km/h. Realny opor
+   toczenia na luznym kamieniu jest 2-3x wyzszy. "Nadmiarowe waty" to w duzej
+   czesci prawdziwa praca przeciw nawierzchni. Metoda ZAWYZA blad miernika na
+   trudnym terenie -- nie uzywac jej samodzielnie do oskarzania sprzetu.
+
+2. BILANS ENERGII CALEJ JAZDY (metoda referencyjna).
+   Praca kolarza = suma po sekundach z max(0, m*g*dh + Crr*m*g*v + aero).
+   KLUCZOWE: clamp do zera -- na zjazdach za opory placi grawitacja, nie kolarz.
+   (Pierwsza wersja bez clampu naliczala opory takze na zjazdach i dawala
+   falszywy wynik "miernik zanizal".)
+   Wyniki: 19.07 PL +10% (linia bazowa), 08.08 -6%, 11.08 0%, 09.08 +40%
+   przy Crr 0.012 ale zgodnosc przy Crr 0.030 (jazda z kamieniami wielkosci
+   glowy, 9 min prowadzenia roweru w danych 1 Hz).
+   WNIOSEK: brak dowodu na zawyzanie. 08.08 i 11.08 czyste.
+
+3. PODPIS BLEDU: OFFSET vs WZMOCNIENIE (test rozstrzygajacy typ usterki).
+   Nadmiar liczony w Nm w koszykach mocy oczekiwanej:
+   09.08: 120-180 W +68% | 180-240 W +47% | 240-320 W +28%  (~+15 Nm)
+   11.08: 120-180 W +57% | 180-240 W +31% | 240-320 W +11%  (~+8 Nm)
+   19.07: --            | 180-240 W +14% | 240-320 W  +4%  (~+3 Nm)
+   Procent SPADA z moca, nadmiar momentu jest w przyblizeniu staly ->
+   podpis OFFSETU, nie wzmocnienia. Cv potwierdza (hipoteza "stale Nm"
+   ma mniejszy rozrzut). Praktyczny wniosek: im mocniej jedziesz, tym
+   dokladniejszy pomiar; blad offsetowy jest ODWRACALNY po fakcie
+   (odjecie stalego momentu), inaczej niz blad wzmocnienia.
+
+### Hipotezy ODRZUCONE (i czym)
+
+- "Wada termiczna, rosnaca w czasie" -- odrzucona: czerwcowe i 1-3.08 jazdy
+  byly tourami A->B (start = meta poprzedniego dnia, sprawdzone po GPS),
+  czyli Z BAGAZEM. Blad masy (+20-25 kg) jest mnoznikowy i tlumaczy +17-24%.
+  Petle sycylijskie 8-11.08 to start=meta (0.0 km) -- bez bagazu.
+- "Uszkodzenie przy transporcie na Sycylie" -- odrzucona: zero przekroczylo
+  200 jeszcze w Polsce, po pierwszym Setup Calibration.
+- "Slaba/zla bateria" -- odrzucona pomiarem: 2x Set Zero na starej baterii
+  -247/-249, po wlozeniu alkalicznego Duracella -245/-246, po powrocie starej
+  -238/-239. Wplyw baterii ~2.5 jednostki (szum). Front pomiarowy jest
+  ratiometryczny. UWAGA: ta sama stara bateria dala -248 i -238.5 w odstepie
+  kilkunastu minut -- 9 jednostek to osiadanie mechaniczne po ruszaniu SLED-em,
+  wiecej niz cala wymiana baterii.
+- "Setup Calibration wpisal zle wzmocnienie" -- odrzucona przez test #3
+  (blad ma charakter offsetowy, nie mnoznikowy).
+
+### Fakty o sprzecie (do ewentualnej reklamacji)
+
+Quarq DUB POWER METER, model PM-ASSY-D1, serial AHP29525, firmware 1.4.2.
+Zakup 19.05.2026. Setup Calibration NIE wykonany po zakupie -- dopiero
+30.07.2026 21:37, powtorzony 09.08.2026 12:51.
+Historia zera: -10/-20 (maj) -> -60/-80 -> reset -171 -> -90 -> -261/-264
+(09.08) -> -238/-248 (11.08). Skala: 0.0313 Nm na jednostke (z ekranow AXS:
+-261 = -8.16 Nm, -172 = -5.38 Nm). Cala wedrowka zera od maja to ~7 Nm.
+Powtarzalnosc dwoch kolejnych Set Zero: +-1-3 jednostki (wzorowa).
+Bateria: AAA LITOWA (nie alkaliczna, nie cynkowo-weglowa). Reset = przekrecic
+pierscien SLED o 90 stopni, wyjac sanki, odczekac kilka minut. Manual Zero
+tylko recznie -- DUB-PWR nie ma Magic Zero.
+Test do wykonania po powrocie: statyczny, znany ciezar na poziomym lewym
+ramieniu korby, odczyt Torque w sekcji Crank Input w AXS, dwa punkty obciazenia.
+To jedyny test rozdzielajacy offset od wzmocnienia bez jazdy.
+
+### Decyzje wykonane
+
+1. KWARANTANNY. 08.08 (23895233248) i 09.08 (23908082381) najpierw wpisane,
+   potem ZWOLNIONE tego samego dnia po bilansie energii. Uzasadnienie Michala
+   (przyjete): kwarantanna leczy objaw, a tworzy gorsza chorobe -- model widzi
+   "nie trenowal", CTL spada, TSB rosnie i po czterech dniach cisnienia wystawia
+   zielona gotowosc. Brak danych szkodzi bardziej niz dane z bledem.
+   W kwarantannie zostaje 5 jazd z 22.07-02.08 (do rewizji osobno).
+
+2. BEZPIECZNIK KOTWIC W' (fitmodel/wprime_road.py).
+   MAX_ZERO_S = 300: zdarzenie W'bal=0 dluzsze niz 5 min to objaw ZLEGO CP
+   (jazda "ponad progiem" przez wiele minut jest niemozliwa), nie dowod
+   wielkiego W'. MAX_ANCHOR_KJ = 35.0: kotwica powyzej jest nierealna
+   fizjologicznie -- odrzucana i logowana (zwracana w kluczu rejected_anchors),
+   nie publikowana.
+   Powod bezposredni: 09.08 wyprodukowala kotwice 66.7 kJ (zdarzenie 1787 s),
+   11.08 kolejna 49.1 kJ. Obie znikly, wszystkie dni stoja na czystej 28.39 kJ
+   z jazdy 06.07. Bez tego GREATEST(modelq, road) karmil Karoo bzdura.
+
+3. EF WRACA DO MQ2 (fitmodel/modelq2/publish.py, nowa ef_anchor_step()).
+   DIAGNOZA: cutover na MQ2 z 17.07 zastapil krok ftp_resolver w daily_job,
+   ale run_daily_v2 NIE liczyl i NIE zapisywal ef_med_28d. Kolumna byla pusta
+   od 17.07 (styczen-czerwiec: 100% pokrycia). TP dryfowal za CTL slepy na
+   wydajnosc i przegapil poprawe EF 1.632 -> 1.789 (+9.6%) z najlepszego bloku
+   roku. STAD zanizone CP, stad absurdalne kotwice W', stad "W'bal=0 przez
+   30 minut" -- jedno zrodlo, nie usterka miernika.
+   NAPRAWA: (a) ef_med_28d znow zapisywane (46 dni wstecz uzupelnione,
+   26/26 dni okresu 17.07-11.08); (b) kotwica EF w modelq2_anchor na dzis,
+   gdy TP z EF przekracza TP modelu o >2 W: TP tlumione (ftp_damping_factor
+   0.5), HIE/PP z modelu (EF nic nie mowi o W' ani PP), JEDNOSTRONNIE jak
+   w ftp_resolver -- niski EF nie ciagnie TP w dol, w dol tylko naturalny decay.
+   WYNIK: kotwica 262.9 W (z TP_ef 273.9 W), FTP 251.9 -> 262.9 W,
+   LTP 183.8 -> 199.7 W (koniec wielomiesiecznego zjazdu, +16 W).
+   Seria 588 dni przeliczona i opublikowana.
+
+### Lekcja metodologiczna
+
+Przez wieksza czesc sesji stawialem pewne wyroki, ktore potem sam odwolywalem
+(kolejno: "miernik czysty", "+50% na pewno", "wada termiczna", "bagaz",
+"wzmocnienie", "offset"). Zrodla bledow: (a) szukanie alertu w logach zamiast
+w kanonicznej tabeli power_meter_guard; (b) wybieranie z trzech wynikow tego,
+ktory pasowal do tezy (Crr 0.015); (c) dorabianie wyjasnien do najsilniejszego
+sygnalu zamiast jego weryfikacji; (d) podanie procedury resetu od miernika
+w pajaku zamiast w osi. Trafne tropy pochodzily od Michala: kalibracje po
+transporcie, "jazdy sa selektywnie zjebane", "to nie DUB w pajaku",
+"moze wczesniej zanizalo", "W' i CP sa za niskie".
+ZASADA NA PRZYSZLOSC: przy ocenie miernika najpierw bilans energii calej jazdy
+(clamp do zera na zjazdach), potem podpis offset/wzmocnienie w Nm, a okna
+podjazdowe ze sztywnym Crr traktowac wylacznie jako sygnal wstepny.
+
+### Otwarte
+
+- Straznik v2: warstwa bilansu energii calej jazdy, bez tetna i bez sztywnego
+  Crr per okno (obecny straznik stoi na P@HR z optycznego HR z zegarka Garmin,
+  ktory Michal slusznie uwaza za niepewny: +-10 uderzen dzien do dnia).
+- Rewizja 5 jazd z kwarantanny 22.07-02.08 po naprawie EF.
+- Test statyczny korby po powrocie z wakacji + ewentualna reklamacja SRAM
+  (gwarancja 2 lata, zakup 19.05.2026 -- czasu duzo, wysylka poza sezonem).
+- Szew XSS: sygnatury historyczne jazd zostaly stare (kauzalnosc MQ2),
+  wiec miedzy 10 a 11.08 jest skok TP. Obserwowac pierwsza jazde po zmianie.

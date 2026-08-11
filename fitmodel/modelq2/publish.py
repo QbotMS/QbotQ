@@ -131,10 +131,76 @@ def publish_to_daily(conn) -> int:
     return n
 
 
+def ef_anchor_step(conn, days_back: int = 45) -> dict:
+    """2026-08-11 (DECISIONS): przywrocenie EF do MQ2 po cutoverze z 17.07.
+
+    Cutover odlaczyl ftp_resolver i zaden pisarz nie wypelnial juz ef_med_28d --
+    TP dryfowal za CTL slepy na wydajnosc i przegapil poprawe EF +9.6 pct
+    (blok 07-08.2026), stad zanizone CP i absurdalne kotwice W' z drogi.
+
+    1) Obserwowalnosc: ef_med_28d znow zapisywane do fitmodel_daily
+       (UPDATE, ostatnie days_back dni).
+    2) Kotwica EF: gdy TP z EF (formula ftp_resolver: ftp_anchor*EF/ef_anchor)
+       przekracza TP modelu o >2 W, wstawiamy/odswiezamy kotwice w modelq2_anchor
+       na DZIS: TP tlumione (ftp_damping_factor, dom. 0.5), HIE/PP z modelu
+       (EF nic nie mowi o W' ani PP). JEDNOSTRONNIE jak w ftp_resolver: niski
+       EF nie ciagnie TP w dol -- w dol dziala wylacznie naturalny decay.
+    """
+    from fitmodel.ftp_resolver import load_params, compute_ef_median, compute_ftp_est
+    cur = conn.cursor()
+    params = load_params(conn)
+    today = dt.date.today()
+    n_ef = 0
+    for i in range(days_back, -1, -1):
+        d = today - dt.timedelta(days=i)
+        ef = compute_ef_median(conn, d)
+        if ef is None:
+            continue
+        cur.execute("UPDATE qbot_v2.fitmodel_daily SET ef_med_28d=%s WHERE day=%s",
+                    (round(float(ef), 4), d))
+        n_ef += cur.rowcount
+    out = {"ef_days_written": n_ef, "anchor": None}
+    ef_t = compute_ef_median(conn, today)
+    tp_ef = compute_ftp_est(ef_t, params)
+    if tp_ef is not None:
+        cur.execute("SELECT tp_w, hie_kj, pp_w FROM qbot_v2.modelq2_signature "
+                    "WHERE day<=%s ORDER BY day DESC LIMIT 1", (today,))
+        r = cur.fetchone()
+        if r:
+            tp_m, hie_m, pp_m = (float(x) for x in r)
+            if float(tp_ef) > tp_m + 2.0:
+                damp = params.get("ftp_damping_factor", 0.5)
+                tp_a = round(tp_m + damp * (float(tp_ef) - tp_m), 1)
+                cur.execute("SELECT ctl FROM qbot_v2.modelq2_signature "
+                            "WHERE day<=%s AND ctl IS NOT NULL ORDER BY day DESC LIMIT 1",
+                            (today,))
+                rc = cur.fetchone()
+                ctl_a = round(float(rc[0]), 2) if rc else 0.0
+                note = ("kotwica EF (auto): TP_ef=%.1f W z EF=%.3f, tlumienie %.2f "
+                        "od TP modelu %.1f W" % (float(tp_ef), float(ef_t), damp, tp_m))
+                cur.execute("SELECT 1 FROM qbot_v2.modelq2_anchor WHERE day=%s", (today,))
+                if cur.fetchone():
+                    cur.execute("UPDATE qbot_v2.modelq2_anchor SET tp_w=%s, hie_kj=%s, pp_w=%s, "
+                                "ctl_anchor=%s, note=%s WHERE day=%s",
+                                (tp_a, round(hie_m, 2), round(pp_m, 1), ctl_a, note, today))
+                else:
+                    cur.execute("INSERT INTO qbot_v2.modelq2_anchor "
+                                "(day, tp_w, hie_kj, pp_w, ctl_anchor, note) "
+                                "VALUES (%s,%s,%s,%s,%s,%s)",
+                                (today, tp_a, round(hie_m, 2), round(pp_m, 1), ctl_a, note))
+                out["anchor"] = {"day": str(today), "tp_anchor_w": tp_a,
+                                 "tp_ef_w": round(float(tp_ef), 1),
+                                 "ef": round(float(ef_t), 3)}
+    conn.commit()
+    return out
+
+
 def run_daily_v2(conn) -> dict:
     """Pelny pipeline v2 dla daily_job (zastepuje stare silniki sygnatury/formy)."""
     from fitmodel.modelq2.progression import build_and_store
     new_rides = ingest_new_rides_xss(conn)
+    ef_stats = ef_anchor_step(conn)   # 2026-08-11: EF wraca do MQ2 (obserwowalnosc + kotwica)
     stats = build_and_store(conn=conn)
     published = publish_to_daily(conn)
-    return {"new_rides_xss": new_rides, "signature": stats, "published_days": published}
+    return {"new_rides_xss": new_rides, "ef": ef_stats,
+            "signature": stats, "published_days": published}
