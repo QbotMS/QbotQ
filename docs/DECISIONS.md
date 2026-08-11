@@ -4,6 +4,48 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-08-11 -- DECYZJA: ryczalt kaloryczny przypiety do eventu kalendarza
+
+**Status:** wdrozone i zweryfikowane na zywo (commit 17d0ab2).
+
+**Problem.** Na urlopie uzytkownik nie loguje posilkow. Dzien bez wpisow to dla systemu
+dzien z zerowym spozyciem, wiec bilans energetyczny i glikogen kłamia przez caly wyjazd.
+Reczne klikanie presetu na kazdy z 16 dni Sycylii to ta sama robota, przed ktora uciekamy.
+
+**Decyzja.** Ryczalt jest wlasciwoscia EVENTU, nie dnia. Kolumna `kcal_planned` w
+`qbot_v2.calendar_entry`: jeden wpis "Sycylia 6-21.08, 3200 kcal" pokrywa caly zakres.
+
+**Rozstrzygniecia i ich powody.**
+1. **Makra: ta sama metoda co presety, nie nowy podzial.** `qbot_nutrition_presets.macros_for_kcal`
+   -- mediana z realnych, czystych dni w pasmie +-250 kcal wokol podanej wartosci, fallback
+   `FALLBACK_SPLIT` (50/20/30 C/P/F) gdy pasmo puste. Powod: makra wyliczone z wlasnej historii
+   sa blizsze prawdzie niz dowolny podzial procentowy, a uzytkownik zna juz te reguly z presetow.
+   Dla 3200 kcal wyszlo 340 g W / 135 g B / 116 g T z 8 realnych dni (nie fallback).
+2. **Zapis do `intake_logs`+`intake_items`, nie do `nutrition_daily_summary`.** Powod: konsumenci
+   (kafelki, raporty, glikogen, silnik presetow) czytaja intake. Zapis do podsumowania omijalby
+   ich wszystkich i wymagalby przerabiania kazdego czytelnika osobno.
+3. **`source='event_preset'` -- slowo "preset" w nazwie jest CELOWE.** Istniejace filtry uzywaja
+   `source ILIKE '%preset%'`, wiec dzien sam z siebie wyswietla sie jako SZACUNEK (nie ZALOGOWANE),
+   a silnik presetow nie uczy sie makr z wlasnych szacunkow (petla sprzezenia zwrotnego).
+   Zmiana nazwy zrodla na cos bez "preset" cicho zepsuje oba te mechanizmy.
+4. **Hierarchia pierwszenstwa:** realne jedzenie > recznie wybrany preset dnia > ryczalt z eventu.
+   Gdy realny wpis pojawi sie pozniej, ryczalt tego dnia jest KASOWANY (inaczej podwojne liczenie).
+   To swiadome odejscie od zachowania recznych presetow, ktore sie nie auto-usuwaja -- tam ryzyko
+   dublowania bylo po stronie uzytkownika, tu wpis jest maszynowy, wiec maszyna go sprzata.
+5. **Dni przyszle NIE sa wypelniane z gory.** Nocny krok `event_intake` w `fitmodel.daily_job`
+   (okno 7 dni wstecz, do WCZORAJ wlacznie). Powod: szacunek dnia, ktory jeszcze nie nastapil,
+   to prognoza udajaca pomiar; dzien biezacy moze jeszcze zostac zalogowany normalnie.
+   Krok jest idempotentny -- powtorny przebieg nic nie dubluje.
+6. **`/api/calendar/edit` zmienia `kcal_planned` TYLKO gdy klucz jest w body** (`CASE WHEN`).
+   Powod: planer wypraw i inne sciezki edytuja eventy wysylajac wlasny zestaw pol; bez tego
+   pierwsza taka edycja po cichu wyzerowalaby ryczalt calego urlopu.
+
+**Swiadomie NIE zrobione.** Pole ryczaltu w planerze wypraw (decyzja uzytkownika 2026-08-11:
+zostawiamy) -- event z planera doedytowuje sie w kalendarzu. Albert nie zaklada eventow
+(`mcp_adapter` zwraca `WRITE_NOT_AVAILABLE`), wiec ryczaltu nie da sie ustawic z czatu; eventy
+powstaja w serwisie kalendarza albo w planerze wypraw i to sie nie zmienia.
+
+---
 ## 2026-07-30 -- DECYZJA: harmonogram porannej wysylki raportu z trasy do grupy odbiorcow
 
 **Status:** zatwierdzone; ETAP 1 z 4 wdrozony (grupy odbiorcow). Etapy 2-4 do zrobienia.
@@ -3417,3 +3459,80 @@ Dane, ktore moga to potwierdzic lub obalic (nie sprawdzone jeszcze):
 Jesli teza sie potwierdzi, konsekwencja jest praktyczna: te same watty wymagaja
 dluzszej regeneracji, wiec plan powinien isc w strone mniejszej czestotliwosci
 mocnych jazd przy zachowanej intensywnosci.
+
+
+## 2026-08-11 (czwarta czesc) -- tolerancja na zmeczenie + przywrocenie L2-OBJ
+
+### Teza Michala: "moc rosnie, ale tolerancja na zmeczenie maleje"
+
+Sprawdzone. Wniosek: teza ma pokrycie, ale GLOWNA PRZYCZYNA to zmiana wzorca
+treningu, nie zalamanie odpornosci.
+
+ZMIANA WZORCA (lato 2025 -> lato 2026):
+  jazd/tydzien       4.6  -> 3.2
+  XSS na jazde (med)  86  -> 149
+  XSS/tydzien        571  -> 546   (praktycznie bez zmian!)
+  dni wolnych        34%  -> 54%
+Tygodniowe obciazenie IDENTYCZNE, ale upakowane w o 1/3 mniej jazd, kazda
+prawie 2x ciezsza. Michal juz nieswiadomie skompensowal wieksza liczba dni
+wolnych. Odczucie "mniejszej tolerancji" = pojedyncza jazda kosztuje duzo
+wiecej, bo jest duzo ciezsza.
+
+SYGNAL FIZJOLOGICZNY (reakcja poranna D+1 na 100 XSS; pomiar poranny wypada
+PRZED kolejna jazda, wiec jest czysty niezaleznie od czestotliwosci):
+  2025 caly rok (n=77): dHRV +0.00 | dRHR +0.65
+  2026 sty-maj  (n=16): dHRV -1.58 | dRHR +0.71
+  2026 cze-sie  (n=18): dHRV -0.50 | dRHR +0.96
+RHR reaguje o ~48% mocniej na te sama jednostke obciazenia niz rok temu.
+Sygnal jest raczej NIEDOSZACOWANY: XSS z 17.07-11.08 jest zawyzony o ~7%
+(mianownik za duzy), po korekcie wskaznik bylby wyzszy.
+HRV NIE potwierdza (0.00 -> -1.58 -> -0.50, bez kierunku) -- nie budujemy
+na tym tezy.
+
+CZEGO NIE DA SIE WYKLUCZYC: upal. Sierpien na Sycylii daje RHR 48.1 przy
+45-47 przez reszte roku, a cieplo podnosi RHR niezaleznie od zmeczenia.
+n=18 wobec 77. ROZSTRZYGNIE WRZESIEN W POLSCE: jesli RHR nie zejdzie do 46,
+sygnal jest prawdziwy i wzorzec trzeba rozluznic.
+
+METODA -- dwie proby odrzucone po drodze:
+ - filtr "jazd izolowanych" (brak jazdy przez 4 dni po) zostawil 3 jazdy z 49;
+   przy tej czestotliwosci treningu czysty pomiar regeneracji nie istnieje;
+ - readiness_score to z-score wobec RUCHOMEJ bazy 60-dniowej, wiec Z DEFINICJI
+   nie moze pokazac powolnego trendu -- baza przesuwa sie razem z zawodnikiem.
+   Do trendow uzywac WYLACZNIE surowych HRV/RHR.
+
+### KOREKTA MOJEJ DIAGNOZY (druga tego dnia)
+
+Napisalem najpierw, ze "atl_plus nie dziala od cutoveru". BLEDNE.
+atl_plus dziala -- modul L3 (hidden_fatigue.py) przeliczyl 1624 dni.
+Problem: ma ZEROWE WEJSCIE. L3 liczy ukryte zmeczenie z SUBIEKTYWNYCH wpisow
+feel/illness w kalendarzu, a w calej historii sa 3 wpisy feel (12/15/17.07).
+Stad mnoznik atl_plus/atl_raw = 1.000 w srednich miesiecznych.
+Cutover MQ2 nie zepsul mechanizmu -- ZASTAPIL obiektywny (v1: fatigue_mult
+z readiness_score = HRV+RHR+sen) subiektywnym, ktorego nikt nie karmi.
+
+### L2-OBJ: przywrocenie obiektywnej korekty (WDROZONE)
+
+W fitmodel/modelq2/hidden_fatigue.py, obok L3, addytywnie i odwracalnie:
+  fatigue_mult = clamp(1 - 0.4 * readiness_score, 0.5, 1.7)   [1:1 z v1]
+  xss_ready(d) = xss_jazdy(d) * (fatigue_mult - 1)   -- moze byc UJEMNY
+  atl_ready(d) = EWMA(tau=7) z xss_ready
+  atl_plus     = atl_raw + atl_ukryte_subj + atl_ready
+  tsb_plus     = tsb_raw - atl_ukryte_subj - atl_ready
+Roznica wobec L3: L2-OBJ jest DWUKIERUNKOWE (swiezy => jazda kosztuje mniej),
+L3 zostaje jednokierunkowe (dobry humor nie zmysla regeneracji).
+atl_raw / ctl_xss / tsb_raw / sygnatura CP/FTP/W' NIETKNIETE.
+Przelacznik: QBOT_L2_READINESS_FATIGUE=0. Kolumna audytu: atl_ready_adj.
+Notka proweniencyjna dopisywana do atl_plus_note.
+
+WERYFIKACJA NA ZYWO (1624 dni): korekta p5 -8.5 / mediana 0 / p95 +8.6,
+czyli typowo +-20% ATL -- zgodnie z intencja v1 (+-16% przy readiness +-0.4).
+Skrajnosci uzasadnione: 07-11.06 (tour Toskania, 5 ciezkich dni pod rzad,
+gotowosc -1.3..-0.3) ATL 112-152 -> 161-197.
+Stan na 11.08: ATL 99.2 -> 96.3, TSB -21.8 -> -18.9 (gotowosc byla przyzwoita,
+wiec model lagodzi zmeczenie). daily_job krok 2b1 wola to co noc.
+
+UWAGA INTERPRETACYJNA: L2-OBJ mowi, ze OBIEKTYWNIE (HRV/RHR/sen) Michal znosi
+sierpniowe obciazenie dobrze -- co idzie PRZECIW tezie o malejacej tolerancji.
+Jedyny marker za teza to reakcja RHR na jednostke obciazenia. Nie rozstrzygac
+przed wrzesniem.

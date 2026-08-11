@@ -121,6 +121,8 @@ DO ZROBIENIA (decyzja przed kodem, po jednym):
 - Edycja istniejacych wpisow (dzis tylko dodawanie/usuwanie).
 - (po modelu kondycji) pokazanie wplywu samopoczucia/choroby w kalendarzu.
 - Commit qbot_web.py jawnymi sciezkami (robi Michal).
+- [KCAL-RYCZALT] pole "Ryczalt kcal/dzien" w PLANERZE WYPRAW -- swiadomie odlozone
+  (decyzja 2026-08-11: zostawiamy). Dzis event z planera doedytowuje sie w kalendarzu.
 
 ## [KONDYCJA-DNIA] Model subiektywnej kondycji dnia -- L1/L2/L3 (dodane 2026-07-16)
 
@@ -282,6 +284,7 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [PODJAZDY-SKALA] etap B: glikogen i punkt bomby w symulatorze trasy (zapas z ModelQ + jedzenie z fuel vs spalanie kJ); etap C: durability — krzywa osiągalna zależna od kj_before (po czystych jazdach z nową baterią); etap D: wiatr czołowy/boczny w fizyce symulatora + wykres W′/glikogenu pod profilem; ocena w trybie DZIEŃ planera; readiness dnia w CP. ZROBIONE: fazy 1-3 + łańcuch + etap A symulatora (50 m, przerwy kanonu, upał) 2026-08-10
 
 # ZROBIONE (skrot; szczegoly w DECISIONS.md i TODO.md.bak.*)
+- [2026-08-11] ZROBIONE: [KCAL-RYCZALT] ryczalt kaloryczny przypiety do eventu kalendarza (`calendar_entry.kcal_planned`). Dni urlopu bez logowania dostaja szacunek X kcal + makra metoda presetow (`macros_for_kcal`, mediana realnych dni w pasmie +-250 kcal, fallback split). Nowy `qbot_event_intake.py`, nocny krok `event_intake` w daily_job (7 dni wstecz do wczoraj, idempotentny), pole w formularzu eventu (kalendarz-render.js v=26). Pierwszenstwo: realne jedzenie > reczny preset dnia > ryczalt; realny wpis kasuje ryczalt. Edycja eventu bez pola NIE zeruje ryczaltu (planer wypraw). Dowod na zywo: Sycylia 6-21.08 = 3200 kcal, dni 6-10.08 zapisane 340 g W / 135 g B / 116 g T (8 realnych dni, nie fallback). Szczegoly: DECISIONS 2026-08-11 + docs/PROJEKT_ODZYWIANIE.md.
 - [2026-07-30] ZROBIONE: zestaw porownywanych modeli dobierany do horyzontu (0-2 dni: siatki do 7 km; 3-5 dni: 7-13 km + ECMWF; 6+ dni: same globalne) -- zestawianie siatki 2 km z 25 km na krotkim terminie mierzylo rozdzielczosc, nie pogode. Do rejestru doszedl HARMONIE 5.5 km. Grafika porownania (skale z kropkami) USUNIETA -- zastapiona czterema akapitami i ocena Alberta w 2-3 zdaniach prozy.
 - [2026-07-30] NAPRAWIONE: pogoda wysypywala sie na dniu 2 bledem Postgresa o NaN. Przyczyna: zasieg modelu sprawdzany w DNIACH, a ICON-D2 mial 4 godziny z 24 (konczyl sie o 05:00) -- jazda od 09:00 trafiala w pustke i WBGT wychodzil NaN. Teraz model_reach zwraca ostatnia GODZINE, canonical_model wymaga pokrycia okna jazdy (start + 14 h), a _bez_nan() sanityzuje NaN/Inf na null z polem 'niepelne_dane'; json.dumps ma allow_nan=False. Payload zawiera tez pole 'model'. Zasada: 'model siega daty' to za gruba miara.
 - [2026-07-30] ZROBIONE: panel zgodnosci modeli -- kazdy osrodek ma wlasny staly kolor (wczesniej wszystkie kropki byly identyczne, wiec legenda i uwagi Alberta o konkretnym modelu byly nieweryfikowalne), kanon rozpoznawany po rozmiarze i obwodce; instrukcja 'jak to czytac' nad panelem; rozdzielone pojecia 'rozstep miedzy modelami' (niezgoda miedzy osrodkami) i 'rozrzut zespolu' (niepewnosc 51 wariantow ECMWF) w UI i w prompcie Alberta. UWAGA na przyszlosc: zwroty, ktore LLM ma przepisac doslownie, trzeba podac w prompcie z polskimi znakami -- inaczej kopiuje je bez ogonkow.
@@ -427,3 +430,19 @@ Kierunek: rozwazyc kotwice TP niezalezna od tetna -- np. z krzywej mocy
 (MMP 300-1200 s z zaufanych jazd) albo z progu wyznaczonego bilansem energii.
 Nie robic pochopnie -- najpierw obserwowac 2-3 tygodnie, czy kotwica EF
 zachowuje sie sensownie po zalozeniu hamulcow z punktu 1.
+
+
+### 8. [MIERNIK-MODELQ cd.] Tolerancja na zmeczenie -- do sprawdzenia we wrzesniu
+
+- RHR po powrocie do Polski: czy zejdzie do 46 (baza roczna) czy zostanie 48.
+  To rozstrzyga, czy sygnal "+48% reakcji RHR na jednostke XSS" jest prawdziwy,
+  czy to byl upal sycylijski.
+- Powtorzyc analize D+1 na 100 XSS na wrzesniowych danych (n bedzie wieksze).
+- Jesli sygnal sie potwierdzi: konsekwencja NIE jest obnizanie intensywnosci
+  (moc rosnie, wzorzec dziala), tylko pilnowanie dni wolnych -- Michal juz
+  jest na 54% i to prawdopodobnie wlasnie dlatego moc rosnie.
+- Rozwazyc dodanie RHR-per-XSS jako stalego wskaznika w raporcie Forma
+  (obok CTL/ATL/TSB) -- to jedyny marker, ktory zlapal zmiane.
+- L3 (feel/illness) ma 3 wpisy w calej historii. Albo zaczac logowac feel
+  po jezdzie (1 klikniecie w QExt2/web), albo uznac L3 za martwe i oprzec
+  sie wylacznie na L2-OBJ. Decyzja Michala.

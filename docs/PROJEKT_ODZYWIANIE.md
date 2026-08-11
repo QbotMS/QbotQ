@@ -48,6 +48,50 @@ Moduł wystawia `window.QNut = {ready(), balanceHTML(), bodyHTML()}`; `renderCar
 - Jak uzupełniać niezalogowane dni jedzenia (ostatnio odpuszczone) — w te dni puste słupki intake / brak bilansu.
 
 
+## Ryczalt kaloryczny z eventu kalendarza (urlop bez logowania) [2026-08-11]
+
+Po co: event typu urlop moze niesc deklaracje "tych dni nie loguje, przyjmij X kcal dziennie".
+
+**Model danych**
+- `qbot_v2.calendar_entry.kcal_planned` (integer, NULL = brak ryczaltu). Migracja:
+  `scripts/migrate_calendar_kcal_planned.py`. Zakres przyjmowany przez API: 800-8000.
+- Event pokrywa dni `day .. COALESCE(end_day, day)`. Przy nakladajacych sie eventach wygrywa
+  NAJNOWSZY (`ORDER BY created_at DESC`).
+
+**Makra** -- `qbot_nutrition_presets.macros_for_kcal(conn, kcal, band=BAND_ANY_KCAL)`:
+mediana z realnych, czystych dni o spozyciu w pasmie +-250 kcal wokol podanej wartosci
+(ten sam filtr co presety: bez `%preset%`/`%recovery%`, bez `quality='estimated'`, kcal>=1200,
+ostatnie 30 probek). Pasmo puste -> `FALLBACK_SPLIT`. Zwraca tez `n_days` i `low_confidence`.
+Pomocnicze `_clean_samples()` i `_med()` sa teraz na poziomie modulu (byly lokalne).
+
+**Silnik** -- `qbot_event_intake.py`:
+- `fill_day(conn, day)` -- jeden dzien; `fill_recent(conn, days_back=7)` -- okno wstecz do
+  WCZORAJ; `fill_range(conn, start, end)` -- konkretny zakres. Dwie ostatnie robia commit.
+- Zapis: `intake_logs` (`source='event_preset'`, `quality_status='estimated'`, note
+  "Ryczalt z eventu: <tytul> (X kcal)") + jedna pozycja zbiorcza w `intake_items`.
+- Pierwszenstwo: realne jedzenie > recznie wybrany preset dnia > ryczalt z eventu.
+  Pojawienie sie realnego jedzenia KASUJE ryczalt tego dnia. Zdjecie ryczaltu z eventu
+  kasuje wpisy przy najblizszym przebiegu. Idempotentne (`action='bez_zmian'`).
+- Slowo "preset" w `source` jest CELOWE -- patrz DECISIONS 2026-08-11 pkt 3.
+
+**Kiedy sie odpala**
+- Nocny krok `event_intake` w `fitmodel/daily_job.py` (po `power_meter_guard`, przed glikogenem),
+  okno 7 dni wstecz do WCZORAJ. Dzien biezacy celowo pomijany. Krok ma WLASNE polaczenie przez
+  `qbot_nutrition_db._conn` (psycopg3/dict_row) -- pipeline jedzie na psycopg2.
+- Po zapisie/edycji eventu w webie: `_event_intake_sync` w `qbot_web.py` wyrownuje dni WSTECZ
+  (do wczoraj). Bledy nie blokuja zapisu eventu.
+
+**API / UI**
+- `GET /api/calendar` zwraca `kcal_planned` w `entries`.
+- `POST /api/calendar/entry` i `/api/calendar/edit` przyjmuja `kcal_planned` (helper `_kcal_planned`).
+  UWAGA: w `edit` pole zmienia sie TYLKO gdy klucz jest w body (`CASE WHEN`) -- planer wypraw
+  edytuje eventy bez tego pola i nie moze go wyzerowac.
+- `kalendarz-render.js` (v=26): pole "Ryczalt kcal/dzien" w formularzu dodawania (`#f_kcal`)
+  i edycji (`#e_kcal`) eventu. Kafelek zywienia dnia pokazuje go jako SZACUNEK.
+
+**Nie zrobione (swiadomie):** pole ryczaltu w planerze wypraw; ustawianie ryczaltu przez Alberta
+(nie ma writera kalendarza -- `WRITE_NOT_AVAILABLE`).
+
 ## Presety szybkiego szacunku (malo / normalnie / popuscilem)
 _Dodane 2026-07-17/18. Odpowiedz na TODO ponizej "jak uzupelniac niezalogowane dni"._ 
 
