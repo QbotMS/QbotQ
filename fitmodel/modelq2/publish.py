@@ -131,6 +131,33 @@ def publish_to_daily(conn) -> int:
     return n
 
 
+# 2026-08-11 (DECISIONS, druga czesc): hamulce kotwicy EF.
+# Mechanizm jest JEDNOSTRONNY (w gore od razu, w dol tylko decay), a EF liczy
+# sie z tetna -- czyli z zaszumionego wejscia. Bez hamulcow dziala jak zapadka:
+# kazdy przypadkowy skok EF podnosi prog na stale. Do tego kotwica wstawiana
+# codziennie zasmieca modelq2_anchor, a logika "najblizszej kotwicy" zaczyna
+# zawsze wybierac dzisiejsza -- zamrozone kotwice z Xerta staja sie martwe.
+# UWAGA: hamulce NIE sluza cofnieciu progu 262.9 W (decyzja Michala: zostaje).
+EF_ANCHOR_MIN_DAYS = 7      # najwyzej jedna auto-kotwica EF na tyle dni
+EF_ANCHOR_MIN_SEGMENTS = 8  # min. segmentow w oknie EF, inaczej kotwica na szumie
+EF_ANCHOR_MAX_RISE_W = 3.0  # maks. przyrost TP kotwicy na EF_ANCHOR_MIN_DAYS (proporcjonalnie do dni)
+EF_ANCHOR_FRESH_DAYS = 14   # okno swiezosci: bez nowych jazd prog NIE rosnie
+EF_ANCHOR_FRESH_MIN_SEG = 3 # min. segmentow w oknie swiezosci
+EF_ANCHOR_SANITY_MULT = 1.35  # sufit: TP <= mult * mediana TP z 90 dni
+EF_ANCHOR_NOTE_TAG = "kotwica EF (auto)"
+
+
+def _ef_segment_count(conn, day, window_days: int = 28) -> int:
+    """Ile segmentow z dobrym HR wchodzi do okna EF na dany dzien."""
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT COUNT(*) FROM qbot_v2.fitmodel_segment "
+        "WHERE hr_quality_ok IS TRUE AND ef_norm IS NOT NULL "
+        "AND started_at > %s AND started_at < %s",
+        (day - dt.timedelta(days=window_days), day + dt.timedelta(days=1)))
+    return int(cur.fetchone()[0])
+
+
 def ef_anchor_step(conn, days_back: int = 45) -> dict:
     """2026-08-11 (DECISIONS): przywrocenie EF do MQ2 po cutoverze z 17.07.
 
@@ -171,6 +198,75 @@ def ef_anchor_step(conn, days_back: int = 45) -> dict:
             if float(tp_ef) > tp_m + 2.0:
                 damp = params.get("ftp_damping_factor", 0.5)
                 tp_a = round(tp_m + damp * (float(tp_ef) - tp_m), 1)
+                # --- HAMULEC A: dosc segmentow w oknie EF
+                n_seg = _ef_segment_count(conn, today)
+                if n_seg < EF_ANCHOR_MIN_SEGMENTS:
+                    out["anchor_skipped"] = ("za malo segmentow w oknie EF: %d < %d"
+                                             % (n_seg, EF_ANCHOR_MIN_SEGMENTS))
+                    conn.commit()
+                    return out
+                # --- HAMULEC A2 (swiezosc): okno EF ma 28 dni, wiec przy braku jazd
+                # stare segmenty o niskim EF wypadaja i sama mediana rosnie -- prog
+                # pialby sie w gore PODCZAS ODPOCZYNKU. Wymagamy swiezych jazd.
+                n_fresh = _ef_segment_count(conn, today, window_days=EF_ANCHOR_FRESH_DAYS)
+                if n_fresh < EF_ANCHOR_FRESH_MIN_SEG:
+                    out["anchor_skipped"] = ("brak swiezych jazd: %d segmentow w %d dni "
+                                             "(< %d) -- prog nie rosnie na odpoczynku"
+                                             % (n_fresh, EF_ANCHOR_FRESH_DAYS,
+                                                EF_ANCHOR_FRESH_MIN_SEG))
+                    conn.commit()
+                    return out
+                # --- HAMULEC B: karencja + limit przyrostu wzgledem ostatniej auto-kotwicy
+                cur.execute("SELECT day, tp_w FROM qbot_v2.modelq2_anchor "
+                            "WHERE note LIKE %s ORDER BY day DESC LIMIT 1",
+                            (EF_ANCHOR_NOTE_TAG + "%",))
+                prev = cur.fetchone()
+                reuse_day = None
+                if prev:
+                    prev_day, prev_tp = prev[0], float(prev[1])
+                    age = (today - prev_day).days
+                    # --- HAMULEC A3 (nowe dane): prog rosnie WYLACZNIE na podstawie
+                    # nowych jazd. Bez tego kotwica goni TP_ef, ktory sam pelznie
+                    # w gore, bo z okna 28 dni wypadaja starsze segmenty o niskim EF
+                    # (test 11.08: +12.9 W w dwa tygodnie BEZ ani jednej nowej jazdy).
+                    cur.execute("SELECT COUNT(*) FROM qbot_v2.fitmodel_segment "
+                                "WHERE hr_quality_ok IS TRUE AND ef_norm IS NOT NULL "
+                                "AND started_at > %s",
+                                (dt.datetime.combine(prev_day, dt.time.max),))
+                    if int(cur.fetchone()[0]) == 0:
+                        out["anchor_skipped"] = ("brak nowych segmentow od ostatniej "
+                                                 "kotwicy (%s) -- prog nie rosnie bez "
+                                                 "nowych danych" % prev_day)
+                        conn.commit()
+                        return out
+                    # Limit przyrostu liczony OD CZASU, nie od liczby uruchomien.
+                    # Wersja "cap = prev + 3 W" przy karencji dopuszczala +3 W co
+                    # 2-3 dni (test 11.08: 262.9 -> 274.7 W w 10 dni). Teraz budzet
+                    # przyrostu narasta proporcjonalnie: EF_ANCHOR_MAX_RISE_W na
+                    # kazde EF_ANCHOR_MIN_DAYS dni od ostatniego podniesienia.
+                    budget = EF_ANCHOR_MAX_RISE_W * max(age, 0) / float(EF_ANCHOR_MIN_DAYS)
+                    cap = prev_tp + budget
+                    if tp_a <= prev_tp + 0.1 or budget < 0.1:
+                        out["anchor_skipped"] = ("limit czasowy: %d dni od ostatniej "
+                                                 "kotwicy, budzet %.2f W"
+                                                 % (age, budget))
+                        conn.commit()
+                        return out
+                    tp_a = round(min(tp_a, cap), 1)
+                    if age < EF_ANCHOR_MIN_DAYS:
+                        reuse_day = prev_day  # w karencji aktualizujemy istniejaca
+                # --- HAMULEC C: sufit sanity wzgledem mediany TP z 90 dni
+                cur.execute("SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY tp_w) "
+                            "FROM qbot_v2.modelq2_signature WHERE day > %s",
+                            (today - dt.timedelta(days=90),))
+                rmed = cur.fetchone()
+                if rmed and rmed[0]:
+                    ceiling = float(rmed[0]) * EF_ANCHOR_SANITY_MULT
+                    if tp_a > ceiling:
+                        out["anchor_capped"] = {"chcialo": tp_a, "sufit": round(ceiling, 1)}
+                        tp_a = round(ceiling, 1)
+                if reuse_day is not None:
+                    today = reuse_day  # aktualizujemy istniejaca kotwice, nie tworzymy nowej
                 cur.execute("SELECT ctl FROM qbot_v2.modelq2_signature "
                             "WHERE day<=%s AND ctl IS NOT NULL ORDER BY day DESC LIMIT 1",
                             (today,))

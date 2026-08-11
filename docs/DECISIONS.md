@@ -3360,3 +3360,60 @@ znormalizowane), NIE z TP -- wiec sprzezenia zwrotnego nie ma, a TP zbiega
 geometrycznie do TP_ef (263 -> 268.5 -> 271 -> 272.6 -> ... -> 274).
 Realne ryzyko to ZAPADKA (mechanizm jednostronny: w gore od razu, w dol tylko
 decay) plus zasmiecenie tabeli kotwic, nie ucieczka w nieskonczonosc.
+
+
+## 2026-08-11 (trzecia czesc) -- hamulce kotwicy EF, decyzja o XSS
+
+### Hamulce kotwicy EF (publish.py) -- WDROZONE
+
+Symulacja 10-21 dni wykryla dwa bledy NIEWIDOCZNE w samym kodzie:
+1. karencja 7 dni blokowala tworzenie NOWEJ kotwicy, ale nie podnoszenie
+   istniejacej -> +3 W co 2-3 dni, TP 262.9 -> 274.7 W w 10 dni;
+2. GROZNIEJSZY: prog pelzal w gore PODCZAS ODPOCZYNKU. Okno EF ma 28 dni,
+   wiec bez nowych jazd wypadaja starsze segmenty o niskim EF i sama mediana
+   rosnie. Test: +12.9 W w dwa tygodnie bez ani jednej nowej jazdy.
+
+ROZWIAZANIE (prostsze niz kolejne limity): prog rosnie WYLACZNIE gdy pojawily
+sie nowe segmenty od dnia ostatniej kotwicy (HAMULEC A3). Do tego:
+- EF_ANCHOR_MIN_SEGMENTS = 8 (dosc danych w oknie),
+- EF_ANCHOR_FRESH_DAYS = 14 / FRESH_MIN_SEG = 3 (okno swiezosci),
+- budzet przyrostu liczony OD CZASU: EF_ANCHOR_MAX_RISE_W = 3.0 W na
+  EF_ANCHOR_MIN_DAYS = 7 dni, proporcjonalnie (nie od liczby uruchomien),
+- EF_ANCHOR_SANITY_MULT = 1.35 x mediana TP z 90 dni jako sufit,
+- w karencji aktualizujemy istniejaca kotwice zamiast tworzyc nowa
+  (modelq2_anchor nie puchnie, zamrozone kotwice z Xerta zostaja zywe).
+
+WERYFIKACJA: 21 dni bez jazd -> 262.9 W bez ruchu. Nowa jazda -> jedna kotwica
+267.2 W i cisza do kolejnych danych. Produkcyjnie 11.08: pominieta
+("brak nowych segmentow"). Baza po symulacji posprzatana (segmenty TEST_SIM
+usuniete, kotwice przywrocone).
+
+LEKCJA: hamulcow nie da sie zweryfikowac czytaniem kodu -- trzeba przepuscic
+symulacje wielu dni. Oba bledy wygladaly poprawnie w diffie.
+
+### Decyzja: XSS z okresu 17.07-11.08 NIE bedzie przeliczany
+
+Policzony koszt obu wariantow (nic nie zmieniono):
+  suma XSS 12 jazd: 2347 -> 2176 (-7.3%, rownomiernie -5..-9% na jazde)
+  CTL 77.4 -> 74.3 (-3.1) | ATL 99.2 -> 92.1 (-7.1) | TSB -21.8 -> -17.8 (+4.0)
+
+DECYZJA MICHALA: zostawiamy. Roznica nie zmienia zadnej decyzji treningowej,
+a przeliczanie historii lamie kauzalnosc, na ktorej stoi caly MQ2.
+ZNANE PRZESUNIECIE: obciazenie z okresu 17.07-11.08 jest zawyzone o ~7%,
+bo XSS policzono zanizona sygnatura. Pamietac przy ocenie formy z tego okresu.
+
+### Obserwacja Michala do sprawdzenia w nastepnej kolejnosci
+
+"Moc rosnie, ale tolerancja na zmeczenie juz maleje."
+
+To jest teza o zmianie ODPORNOSCI, nie mocy -- osobny wymiar niz TP/CP.
+Dane, ktore moga to potwierdzic lub obalic (nie sprawdzone jeszcze):
+- readiness_score vs readiness_effective w czasie (fitmodel_daily),
+- atl_plus vs atl_raw -- mnoznik fizjologiczny juz teraz skaluje ATL przez
+  z-score gotowosci (HRV+RHR+sen, baza 60 dni); jesli tolerancja spada,
+  atl_plus powinien coraz czesciej przewyzszac atl_raw,
+- trend HRV nocnego i RHR na tle rosnacego CTL,
+- czas powrotu gotowosci do zielonej po mocnej jezdzie (kiedys vs teraz).
+Jesli teza sie potwierdzi, konsekwencja jest praktyczna: te same watty wymagaja
+dluzszej regeneracji, wiec plan powinien isc w strone mniejszej czestotliwosci
+mocnych jazd przy zachowanej intensywnosci.
