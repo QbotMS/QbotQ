@@ -3598,3 +3598,42 @@ na -20 W. Trwala rozbieznosc = jeden z modeli ma blad strukturalny.
 
 Kontekst miernika: nierozstrzygniety do testu statycznego korby (160 mm:
 5 kg -> 7.85 Nm, 10 kg -> 15.7 Nm) i do wrzesniowych danych z Polski bez upalu.
+
+
+## 2026-08-12 — [KASETA-FIZYKA] wykrywanie kasety z rozwiniecia
+
+**Blad zrodlowy**: `qbot_v2.gear_cassette` mial ZLA liste zebow dla 10-46
+(`10,11,12,14,16,17,19,21,24,28,32,38,46`). Prawdziwa SRAM XPLR XG-1371/1391
+10-46 to `10,11,12,13,15,17,19,21,24,28,32,38,46` (13 i 15, nie 14 i 16).
+Poprawione w bazie + label.
+
+**Zasada**: kolumny `gear_front_t`/`gear_rear_t` (zeby z konfiguracji AXS) sa
+NIEWIARYGODNE — konfiguracja bywa nieaktualna wzgledem tego, co fizycznie
+siedzi na bebenku. Kanon to `gear_rear_num` (pozycja przerzutki). Kaseta
+wykrywana z FIZYKI: mediana rozwiniecia `speed_mps*60/cadence_rpm` per pozycja;
+ksztalt krzywej wskazuje kasete bez znajomosci obwodu kola i zebatki z przodu
+(oba sa wspolna skala, dopasowywana jako parametr).
+
+**Narzedzie**: `scripts/detect_cassette.py` (--dry-run / --apply / --ride ID).
+Filtry: kadencja 60-100, v>2.5 m/s, P>60 W, >=25 s na pozycji, >=5 pozycji.
+Pewnosc = blad dopasowania + margines nad drugim kandydatem. Jazdy bez
+rozstrzygniecia dostaja kasete z najblizszej pewnej jazdy (`physics_fill`).
+`source='manual'` NIGDY nie jest nadpisywany.
+
+**Wynik backfillu (49 jazd, bledy dopasowania 0.04-0.84%)**: 10-46 physics=12,
+fill=7, manual=2; 10-52 physics=24, fill=4. 16 jazd zmienilo kasete.
+
+**Poprawiona os czasu** (stara heurystyka "wyprawa >250 km od Wwy = 10-52" byla
+zla): 10-46 do 03.05 -> 10-52 od 05.05 (zalozona po dlugim weekendzie majowym,
+przez Toskanie) -> 10-46 od 16.06 do konca lipca -> 10-52 od 01.08
+(Opolszczyzna, potem Sycylia). Potwierdzone przez uzytkownika.
+
+**Efekt uboczny**: dopasowany obwod kola rozdziela sie na dwa skupiska
+~2.25-2.29 m (Thunder Burt 2.1 na Zipp 303 S XPLR) i ~2.14-2.17 m (G-One Pro RS
+na Zipp 303 S). Kaseta i kola zmieniaja sie NIEZALEZNIE (kaseta przekladana
+miedzy bebenkami) — nie wolno wiazac jednego z drugim. Jazda 06.01 daje obwod
+2.53 m przy zalozeniu 36T z przodu, co po przeliczeniu na 40T owal daje 2.28 m
+— potwierdza zmiane korby 40T->36T.
+
+**Otwarte**: jazda 30.07 (21.6 km, za malo danych) dostala 10-52 z dopelnienia
+od 01.08 — moglo byc jeszcze 10-46; do potwierdzenia przez uzytkownika.

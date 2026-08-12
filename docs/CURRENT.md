@@ -850,3 +850,17 @@ Cel: system ma widziec planowane obciazenie na kolejne dni (wyprawy z Planera).
 - Reuzyty writer `confirm_route_analysis` (audyt + koncowe powiadomienie z czasem liczenia).
 - Testy: 17 zielonych w `tests/test_qbot_qcal_telegram.py`, 17 w `tests/test_route_precompute_trigger.py`.
 - Zweryfikowane na zywo (dry-run, pending #29, sprzatniete). `qbot-api` zrestartowany.
+
+
+## 2026-08-12 — [KASETA-FIZYKA] kaseta per jazda z pomiaru, nie z heurystyki
+- Poprawiona lista zebow 10-46 w `qbot_v2.gear_cassette` (byla zla: 14,16 zamiast 13,15).
+- Nowy `scripts/detect_cassette.py` — wykrywanie kasety z rozwiniecia
+  (`speed_mps*60/cadence_rpm` per `gear_rear_num`). Zebatki z konfiguracji AXS
+  (`gear_rear_t`) sa niewiarygodne i NIE sa uzywane.
+- Backfill 49 jazd wykonany i zweryfikowany na zywo: 10-46 physics=12/fill=7/manual=2,
+  10-52 physics=24/fill=4. Bledy dopasowania 0.04-0.84%.
+- Os czasu poprawiona (patrz DECISIONS). Stara heurystyka odleglosciowa w
+  `qbot_web.py` (~linia 3301, `_build_report_data`) NADAL zgaduje kasete dla
+  ZAPLANOWANEJ trasy — tam nie ma jeszcze jazdy, wiec pomiar nie pomoze;
+  do rozwazenia oparcie o ostatnia znana kasete z `ride_cassette`.
+- NIE zrobione: sekcja "Biegi" w raporcie jazdy (zakladka Cialo i sprzet, pod E).
