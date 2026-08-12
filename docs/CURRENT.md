@@ -864,3 +864,14 @@ Cel: system ma widziec planowane obciazenie na kolejne dni (wyprawy z Planera).
   ZAPLANOWANEJ trasy — tam nie ma jeszcze jazdy, wiec pomiar nie pomoze;
   do rozwazenia oparcie o ostatnia znana kasete z `ride_cassette`.
 - NIE zrobione: sekcja "Biegi" w raporcie jazdy (zakladka Cialo i sprzet, pod E).
+
+
+## 2026-08-12 — [NAPED-KANON] ride_drivetrain
+- Nowa tabela `qbot_v2.ride_drivetrain` + `scripts/build_drivetrain.py`.
+- Backfill 49 jazd zweryfikowany na zywo: 36T/10-46=19, 36T/10-52=28,
+  owal 40T(41)/10-46=2. Obwod policzony dla 44 jazd, 5 z uwaga.
+- Kanon: owal 40T liczy sie jako 41 zebow (tak raportuje AXS, taki ma obwod).
+- Kola z obwodu: 34 jazdy TB 2.1 / 303 S XPLR, 10 jazd G-One / 303 S.
+- NIE zrobione: (1) wpiecie ride_drivetrain w climb_score i raport jazdy
+  (dzis 36T na sztywno); (2) sekcja "Biegi" w zakladce Cialo i sprzet pod E;
+  (3) [OBWOD-303S] weryfikacja obwodu w ustawieniach Karoo.

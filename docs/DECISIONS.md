@@ -3637,3 +3637,43 @@ miedzy bebenkami) — nie wolno wiazac jednego z drugim. Jazda 06.01 daje obwod
 
 **Otwarte**: jazda 30.07 (21.6 km, za malo danych) dostala 10-52 z dopelnienia
 od 01.08 — moglo byc jeszcze 10-46; do potwierdzenia przez uzytkownika.
+
+
+## 2026-08-12 — [NAPED-KANON] `qbot_v2.ride_drivetrain`: naped per jazda
+
+Jedno zrodlo prawdy o przelozeniach. Wczesniej kazdy modul zgadywal osobno
+(raport trasy: kaseta po odleglosci od Wwy; climb_score: 36T na sztywno).
+
+Sklad: `chainring_t` (EFEKTYWNE zeby z AXS, do liczenia), `chainring_label`
+(do pokazania czlowiekowi), `cassette_code` + `cassette_source` (z ride_cassette),
+`circumference_m` (wyliczony), `positions`, `flag`, `note`.
+
+**Owal 40T = 41 zebow efektywnych.** AXS raportuje owal jako 41, bo taki ma
+obwod. Do KAZDEGO liczenia rozwiniecia uzywaj 41; "40T owal" to wylacznie
+etykieta dla czlowieka. Nie "poprawiac" 41 na 40 w kodzie.
+
+**Dlaczego przod z AXS, a tyl z pomiaru**: przednia zebatka i obwod kola
+wystepuja w danych WYLACZNIE jako iloczyn (rozwiniecie = przod/tyl * obwod),
+wiec przodu nie da sie zmierzyc niezaleznie od kola — to jedno pokretlo, nie
+dwa. Konfiguracja AXS z przodu jest za to wiarygodna (jedna zebatka, zmieniana
+przy serwisie): 41 w styczniu, 36 od 03.05 na wszystkich 47 jazdach, zero szumu.
+Tylna konfiguracja rozjezdza sie, bo kasety sa przekladane miedzy bebenkami.
+
+**Historia napedu potwierdzona przez uzytkownika**: owal 40T od polowy 2025;
+36T zalozone przed Toskania i niezmieniane. Dane: 41 do 10.01, 36 juz 03.05.
+Dokladnej daty zmiany korby z danych nie wyciagniemy — miedzy 10.01 a 03.05 nie
+ma zadnej jazdy z zapisem biegow.
+
+**Kola**: obwod rozdziela sie na dwa czyste skupiska — 34 jazdy 2.224-2.293 m
+(Thunder Burt 2.1 na Zipp 303 S XPLR) i 10 jazd 2.098-2.185 m (G-One Pro RS
+50/45 na Zipp 303 S). Kaseta i kola zmieniaja sie NIEZALEZNIE. To nie jest blad
+GPS na krętych trasach: 12.07 (104 km) daje 2.162, a 19.07 (103 km) daje 2.283
+— ten sam teren, ta sama dlugosc.
+
+**OTWARTE [OBWOD-303S]**: skupisko 2.10-2.19 m jest o ~4% mniejsze niz spec
+G-One Pro RS 50 mm (~2.22-2.25 m). Albo Karoo liczy predkosc z czujnika ze zle
+wpisanym obwodem (wtedy kilometraz tych jazd jest zanizony o ~4%), albo GPS
+zanizza. Do sprawdzenia w ustawieniach Karoo.
+
+Narzedzie: `scripts/build_drivetrain.py` (--dry-run / --apply).
+Backfill: 49 jazd, 44 z obwodem, 5 z uwaga (za malo pozycji przerzutki).
