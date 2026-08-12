@@ -473,6 +473,121 @@ def _execute_writer(atype: str, payload: dict, idem_key: str, chat_id: str | Non
         return {"status": "error", "error": str(e)[:200]}
 
 
+# ── Reczne przeliczenie trasy z Telegrama (kontekstowo) ──
+
+_ROUTE_RECOMPUTE_VERB_RE = re.compile(
+    r"(przelicz|policz|oblicz|recompute|precompute|uruchom\s+(pe[lł]n[aą]\s+)?analiz)",
+    re.IGNORECASE,
+)
+_ROUTE_WORD_RE = re.compile(r"(tras|route)", re.IGNORECASE)
+_ROUTE_ID_RE = re.compile(r"\b(\d{7,})\b")
+
+
+def _route_id_from_text(text: str) -> str:
+    m = _ROUTE_ID_RE.search(text or "")
+    return m.group(1) if m else ""
+
+
+def _conv_context(conv: dict | None) -> dict[str, Any]:
+    ctx = (conv or {}).get("context_json") or {}
+    if isinstance(ctx, str):
+        try:
+            ctx = json.loads(ctx)
+        except Exception:
+            ctx = {}
+    return ctx if isinstance(ctx, dict) else {}
+
+
+def _detect_route_recompute(text: str) -> bool:
+    """Czy wiadomosc to polecenie przeliczenia trasy."""
+    low = (text or "").strip().lower()
+    if not low:
+        return False
+    if low.startswith("/przelicz"):
+        return True
+    if not _ROUTE_RECOMPUTE_VERB_RE.search(low):
+        return False
+    return bool(_ROUTE_WORD_RE.search(low) or _route_id_from_text(low))
+
+
+def _route_recompute_request(chat_id: str, text: str, conv: dict | None, dry_run: bool = False) -> dict:
+    """Obsluga 'przelicz trase <id>' — reuzywa writer confirm_route_analysis."""
+    route_id = _route_id_from_text(text)
+    from_context = False
+    if not route_id:
+        route_id = str(_conv_context(conv).get("last_route_id") or "").strip()
+        from_context = bool(route_id)
+
+    if not route_id:
+        msg = "Podaj numer trasy, np. przelicz trase 55918401."
+        _turn_add(chat_id, "inbound", text, intent="route_recompute_needs_id")
+        _turn_add(chat_id, "outbound", text=msg, intent="route_recompute_needs_id")
+        return {"response": msg, "status": "ok", "route_recompute": "needs_route_id"}
+
+    payload = {"route_id": route_id, "trigger_source": "telegram_manual"}
+    preview = f"Reczne przeliczenie trasy {route_id} (pelny precompute aktywnej wersji)."
+    idem_key = f"telegram_manual_recompute:{route_id}:{datetime.now():%Y%m%d%H%M}"
+    up = upsert_pending_action(
+        chat_id=str(chat_id),
+        action_type="confirm_route_analysis",
+        payload=payload,
+        preview=preview,
+        idem_key=idem_key,
+        expires_minutes=30,
+    )
+    pid = up.get("pending_action_id")
+    if not pid:
+        msg = f"Nie udalo sie przygotowac przeliczenia trasy {route_id}: {up.get('error', up.get('status', '?'))}"
+        _turn_add(chat_id, "outbound", text=msg, intent="route_recompute_failed")
+        return {"response": msg, "status": "error", "route_recompute": "failed"}
+
+    new_ctx = dict(_conv_context(conv))
+    new_ctx["last_route_id"] = route_id
+    new_ctx["last_query"] = text
+    _conv_upsert(chat_id, context_json=json.dumps(new_ctx))
+
+    if from_context or up.get("action_status") != "pending":
+        # ID z kontekstu (albo akcja juz istniala) -> pytamy numerem, zeby nie
+        # przeliczyc nie tej trasy.
+        msg = (
+            f"#{pid} Ostatnio byla mowa o trasie {route_id}. Przeliczyc ja w calosci?\n\n"
+            f"Odpowiedz: {pid} TAK albo {pid} NIE"
+        )
+        _turn_add(chat_id, "inbound", text, intent="route_recompute_confirm_needed", action_id=pid)
+        _turn_add(chat_id, "outbound", text=msg, intent="route_recompute_confirm_needed", action_id=pid)
+        return {
+            "response": msg, "status": "ok", "route_recompute": "awaiting_confirmation",
+            "action_id": pid, "route_id": route_id, "from_context": True,
+        }
+
+    if dry_run:
+        msg = f"[DRY-RUN] Przeliczylbym trase {route_id} (#{pid})."
+        _turn_add(chat_id, "outbound", text=msg, intent="route_recompute_dryrun", action_id=pid)
+        return {
+            "response": msg, "status": "ok", "route_recompute": "dry_run",
+            "action_id": pid, "route_id": route_id,
+        }
+
+    result = _pending_execute(chat_id, int(pid), dry_run=False)
+    _turn_add(chat_id, "inbound", text, intent="route_recompute_manual", action_id=pid)
+    if isinstance(result, dict) and result.get("status") in ("OK", "ok"):
+        msg = (
+            f"Uruchomilem pelne przeliczenie trasy {route_id} (#{pid}). "
+            f"Odezwe sie, gdy skonczy."
+        )
+        state = "started"
+    else:
+        err = result.get("error", result.get("status", "?")) if isinstance(result, dict) else "?"
+        msg = f"Nie udalo sie uruchomic przeliczenia trasy {route_id}: {err}"
+        state = "failed"
+    _turn_add(chat_id, "outbound", text=msg, intent="route_recompute_result",
+              response_json=result if isinstance(result, dict) else None, action_id=pid)
+    return {
+        "response": msg, "status": "ok", "route_recompute": state,
+        "action_id": pid, "route_id": route_id, "action_result": result,
+    }
+
+
 # ── Main handler ──
 
 def _parse_followup_dates(text: str):
@@ -514,6 +629,10 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
         if cmd in ("/help","/start"): return {"response": "QBot Telegram:\n/status\nPisz naturalnie np. 'pokaż bilans za ostatnie 7 dni'"}
         if cmd == "/status":
             return {"response": f"QBot v1 — {date.today().isoformat()}"}
+
+    # ── Reczne przeliczenie trasy — PRZED routerem (router nie ma tego writera) ──
+    if _detect_route_recompute(text):
+        return _route_recompute_request(chat_id, text, conv, dry_run=dry_run)
 
     # ── Natural language via qbot.query ──
     context = {}
@@ -615,6 +734,11 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
             _turn_add(chat_id, "inbound", text, intent=str(intent)[:100])
             _turn_add(chat_id, "outbound", text=response, intent="query_response")
 
+        ctx_route_id = (
+            _route_id_from_text(text)
+            or str(_mapping_or_empty(result.get("route_report")).get("route_id") or "")
+            or str(_conv_context(conv).get("last_route_id") or "")
+        )
         _conv_upsert(chat_id, state="idle" if not write_hint else "awaiting_confirmation",
                      pending_action_id=pid if write_hint else None,
                      last_intent=str(intent)[:100],
@@ -624,6 +748,7 @@ def handle_message(chat_id: str, text: str, dry_run: bool = True) -> dict:
                          "last_date_to": _mapping_or_empty(result.get("date_resolution")).get("date_to",""),
                          "last_domains": intent,
                          "last_query": text,
+                         "last_route_id": ctx_route_id,
                      }))
 
         return {"response": response, "status": "ok", "read_only": True, "intents": intent,

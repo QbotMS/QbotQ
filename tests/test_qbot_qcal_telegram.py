@@ -7,6 +7,95 @@ from unittest.mock import patch
 import qbot_qcal_telegram
 
 
+class TestQbotQcalTelegramManualRecompute(unittest.TestCase):
+    """Reczna komenda 'przelicz trase <id>' (kontekstowo)."""
+
+    def test_detects_recompute_commands(self) -> None:
+        for text in (
+            "przelicz trase 55918401",
+            "przelicz trasę",
+            "/przelicz 55864231",
+            "policz trasę 55864231",
+            "uruchom pełną analizę trasy 55918401",
+        ):
+            self.assertTrue(qbot_qcal_telegram._detect_route_recompute(text), text)
+
+    def test_does_not_hijack_read_queries(self) -> None:
+        for text in (
+            "pokaż listę tras",
+            "analiza trasy 55918401",
+            "raport trasy 55918401",
+            "ile zjadłem wczoraj",
+            "18 TAK",
+        ):
+            self.assertFalse(qbot_qcal_telegram._detect_route_recompute(text), text)
+
+    def test_explicit_route_id_runs_immediately(self) -> None:
+        with patch("qbot_qcal_telegram.is_authorized", return_value=True), \
+                patch("qbot_qcal_telegram._conv_get", return_value=None), \
+                patch("qbot_qcal_telegram._pending_active_rows", return_value=[]), \
+                patch("qbot_qcal_telegram.upsert_pending_action", return_value={
+                    "status": "pending", "created": True,
+                    "pending_action_id": 31, "action_status": "pending",
+                }) as mock_upsert, \
+                patch("qbot_qcal_telegram._pending_execute", return_value={
+                    "status": "OK", "action_type": "confirm_route_analysis", "route_id": "55918401",
+                }) as mock_execute, \
+                patch("qbot_qcal_telegram._turn_add"), \
+                patch("qbot_qcal_telegram._conv_upsert"), \
+                patch("qbot_tools._tool_qbot_query") as mock_query:
+            result = qbot_qcal_telegram.handle_message(
+                chat_id="358008451", text="przelicz trasę 55918401", dry_run=False)
+
+        self.assertEqual(result["route_recompute"], "started")
+        self.assertEqual(result["route_id"], "55918401")
+        mock_execute.assert_called_once_with("358008451", 31, dry_run=False)
+        self.assertEqual(
+            mock_upsert.call_args.kwargs["action_type"], "confirm_route_analysis")
+        self.assertEqual(
+            mock_upsert.call_args.kwargs["payload"]["route_id"], "55918401")
+        mock_query.assert_not_called()
+
+    def test_route_id_from_context_asks_for_numbered_confirmation(self) -> None:
+        with patch("qbot_qcal_telegram.is_authorized", return_value=True), \
+                patch("qbot_qcal_telegram._conv_get", return_value={
+                    "state": "idle",
+                    "context_json": '{"last_route_id": "55864231"}',
+                }), \
+                patch("qbot_qcal_telegram._pending_active_rows", return_value=[]), \
+                patch("qbot_qcal_telegram.upsert_pending_action", return_value={
+                    "status": "pending", "created": True,
+                    "pending_action_id": 42, "action_status": "pending",
+                }), \
+                patch("qbot_qcal_telegram._pending_execute") as mock_execute, \
+                patch("qbot_qcal_telegram._turn_add"), \
+                patch("qbot_qcal_telegram._conv_upsert"), \
+                patch("qbot_tools._tool_qbot_query") as mock_query:
+            result = qbot_qcal_telegram.handle_message(
+                chat_id="358008451", text="przelicz trasę", dry_run=False)
+
+        self.assertEqual(result["route_recompute"], "awaiting_confirmation")
+        self.assertEqual(result["route_id"], "55864231")
+        self.assertIn("42 TAK", result["response"])
+        mock_execute.assert_not_called()
+        mock_query.assert_not_called()
+
+    def test_no_route_id_anywhere_asks_for_number(self) -> None:
+        with patch("qbot_qcal_telegram.is_authorized", return_value=True), \
+                patch("qbot_qcal_telegram._conv_get", return_value=None), \
+                patch("qbot_qcal_telegram._pending_active_rows", return_value=[]), \
+                patch("qbot_qcal_telegram.upsert_pending_action") as mock_upsert, \
+                patch("qbot_qcal_telegram._turn_add"), \
+                patch("qbot_qcal_telegram._conv_upsert"), \
+                patch("qbot_tools._tool_qbot_query") as mock_query:
+            result = qbot_qcal_telegram.handle_message(
+                chat_id="358008451", text="przelicz trasę", dry_run=False)
+
+        self.assertEqual(result["route_recompute"], "needs_route_id")
+        mock_upsert.assert_not_called()
+        mock_query.assert_not_called()
+
+
 class TestQbotQcalTelegramRouteQuery(unittest.TestCase):
     def test_route_analysis_uses_public_qbot_query_wrapper(self) -> None:
         route_report_result = {

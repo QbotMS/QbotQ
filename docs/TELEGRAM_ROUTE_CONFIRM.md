@@ -49,3 +49,44 @@ Po zapisaniu/wykryciu nowej trasy w RWGPS:
 
 ## 8. Uwaga o wdrożeniu
 Worker to świeży podproces uruchamiany przy każdym „TAK" — poprawka w `route_precompute_trigger.py` działa od zaraz, BEZ restartu qbot-api. Zmiany w gatewayu (`qbot_qcal_telegram.py`) wymagają restartu qbot-api.
+
+## 9. Reczne przeliczenie trasy z Telegrama (2026-08-12)
+
+**Problem:** gdy pytanie `NN TAK` wygaslo (TTL 30 min) albo odpowiedziano `NIE`, z Telegrama nie
+bylo jak wrocic do przeliczenia. Telegram nie chodzi przez Alberta — `handle_message` ->
+`qbot_tools._tool_qbot_query` -> `qbot_query_router` (legacy, same czytniki), a `route_recompute`
+zyje wylacznie w rejestrze Alberta (`qbot3/tool_registry.py`). Nie bylo tam zadnego writera do tras.
+
+**Rozwiazanie (bez podpinania Telegrama do Alberta):** deterministyczny przechwyt w gatewayu,
+PRZED oddaniem tekstu do routera. Reuzywa istniejacy writer `confirm_route_analysis`, wiec
+dostaje za darmo audyt, idempotencje i koncowe powiadomienie z czasem liczenia.
+
+**Skladnia:** `przelicz trase 55918401`, `policz trase <id>`, `/przelicz <id>`,
+`uruchom pelna analize trasy <id>`. Detektor: czasownik przeliczenia + (slowo "tras"/"route"
+LUB numer 7+ cyfr). `analiza trasy X` i `raport trasy X` NIE lapia sie (to odczyty).
+
+**Zachowanie (`_route_recompute_request`):**
+1. **ID wprost w komendzie** -> start od razu, bez pytania (polecenie jest jawne).
+2. **ID tylko z kontekstu rozmowy** (`context_json.last_route_id`) -> numerowane potwierdzenie
+   `NN TAK` / `NN NIE`, zeby nie przeliczyc nie tej trasy.
+3. **Brak ID i pustego kontekstu** -> prosba o numer, bez tworzenia akcji.
+
+**Kontekst:** `handle_message` zapisuje `last_route_id` w `context_json` przy kazdej turze —
+z numeru w tekscie, z `result.route_report.route_id`, albo przenosi poprzedni.
+
+**Szczegoly:** `upsert_pending_action(action_type="confirm_route_analysis", expires_minutes=30)`,
+`idem_key = telegram_manual_recompute:<route_id>:<YYYYMMDDHHMM>` (dedup w obrebie minuty —
+chroni przed podwojnym tapnieciem). Payload niesie `trigger_source="telegram_manual"`, ale
+`_execute_writer` i tak wymusza `telegram_confirm` (gate koncowego powiadomienia w workerze).
+
+**Intenty audytu** (`telegram_conversation_turns`): `route_recompute_manual`,
+`route_recompute_confirm_needed`, `route_recompute_needs_id`, `route_recompute_result`,
+`route_recompute_failed`, `route_recompute_dryrun`.
+
+**Testy:** `tests/test_qbot_qcal_telegram.py` — klasa `TestQbotQcalTelegramManualRecompute`
+(5 testow: detekcja, brak porwania odczytow, start natychmiastowy, potwierdzenie z kontekstu,
+prosba o numer). Razem 17 zielonych.
+
+**Weryfikacja na zywo (2026-08-12):** dry-run dla trasy 55918401 na chat 358008451 -> pending #29
+w `telegram_pending_actions` z payload `route_id=55918401`, TTL 30 min, `last_route_id` zapisany
+w `context_json`; wpis testowy anulowany. Zmiana w gatewayu => wymaga restartu `qbot-api` (zrobiony).

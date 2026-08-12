@@ -839,3 +839,14 @@ Cel: system ma widziec planowane obciazenie na kolejne dni (wyprawy z Planera).
 - **[PODJAZDY-SKALA] strategia+forma z nowego silnika (2026-08-10, cd.)**: `_climbs_slim` dla LLM rozszerzony o `tryb` (atak/tempo) i `wbal_in_pct`/`wbal_min_pct`; `pay2` dostał `podjazdy_werdykt`; instrukcja strategii (sys2) z twardymi regułami: moc etapów respektuje tryb (na „tempo" zakaz dociskania), ocena 0 = kluczowy wysiłek dnia, −1/−2 = uprzedź o zejściu, „calosc" zaczyna od werdyktu; kotwice split sys2a/sys2b (_i_strat/_i_opony/_i_ubior) nienaruszone. Zakładka Forma: `wprime_txt` z symulacji („symulacja podjazdów: min W′ ~X% …") zamiast starego szacunku najstromszy-vs-FTP przy 12 km/h. Weryfikacja na żywo („ciągle stromo"): strategia otwiera werdyktem, etap 2 wprost „#6 trzymaj poniżej progu", Forma pokazuje min W′ 15%.
 
 - **[PODJAZDY-SKALA etap A] symulator całej trasy (2026-08-10, cd.)**: nowy moduł `qbot3/routes/route_ride_sim.py` — symulacja pełnego przebiegu ramka po ramce **50 m** (kanon `route_elevation_samples`, wygładzanie 200 m), ZERO nowych miar: prędkość z kanonicznej tabeli nawierzchnia×nachylenie (`segment_speed_kmh`, tryb normalny), przerwy z kanonu `stops_minutes` (mikro 0,22 min/km rozproszone co 1 km, krótkie co 9 km × 4,5 min) + długie wg deklaracji użytkownika (pozycje `_long_stop_positions`), W′ jak w kanonie wbal_replay (tau, cf ciepła clamp 0.88–1.06), temperatura per km z meteo per_segment (ETA), Crr/fizyka z climb_score. Polityka: jazda tabelą; gdy koszt W′ zszedłby <12% — przycięcie do tempa (88% CP_eff) i zwolnienie; W′=0 przy mocy>CP → pchanie 3,5 km/h. Wynik zastępuje chain_verdict w `details.climbs.chain` (ten sam kształt + series/min_wbal/heat_cut/walk/moving_h; fallback do starego chain_verdict przy błędzie). Weryfikacja „ciągle stromo" 12.08: upał tnie CP ~10%, #5 i #6 w tempo (min W′ 11% @km 14,8), reszta atak z W′ 85–91% na wejściu; długa przerwa 40 min poprawia wejścia na #8/#9 i total_h 2,85→3,52 h. ETAPY B (glikogen/punkt bomby), C (durability z kj_before), D (wiatr w fizyce + wykres W′) — w TODO.
+
+## 2026-08-12 — Telegram: reczne przeliczenie trasy (kontekstowo)
+- Ustalono na zywo: Telegram NIE chodzi przez Alberta (router legacy `qbot_query_router`),
+  wiec `route_recompute` byl z Telegrama nieosiagalny. Jedyna droga byla numerowana odpowiedz
+  `NN TAK` z TTL 30 min — po jej wygasnieciu nic sie nie dalo zrobic.
+- Dodano przechwyt w `qbot_qcal_telegram.handle_message`: `_detect_route_recompute` +
+  `_route_recompute_request`. ID w komendzie -> start od razu; ID z kontekstu
+  (`context_json.last_route_id`) -> potwierdzenie `NN TAK`; brak ID -> prosba o numer.
+- Reuzyty writer `confirm_route_analysis` (audyt + koncowe powiadomienie z czasem liczenia).
+- Testy: 17 zielonych w `tests/test_qbot_qcal_telegram.py`, 17 w `tests/test_route_precompute_trigger.py`.
+- Zweryfikowane na zywo (dry-run, pending #29, sprzatniete). `qbot-api` zrestartowany.
