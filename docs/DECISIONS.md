@@ -3677,3 +3677,35 @@ zanizza. Do sprawdzenia w ustawieniach Karoo.
 
 Narzedzie: `scripts/build_drivetrain.py` (--dry-run / --apply).
 Backfill: 49 jazd, 44 z obwodem, 5 z uwaga (za malo pozycji przerzutki).
+
+
+## 2026-08-12 — [NAPED-KANON] etap 2: wpiecie w raporty
+
+**Raport TRASY** (`_build_report_data` w qbot_web.py) nie zgaduje juz kasety po
+odleglosci od Warszawy. Nowa funkcja `climb_score.latest_drivetrain(conn,
+before_day=None)` zwraca naped z ostatniej PRZEJECHANEJ jazdy (ride_drivetrain).
+`score_climb()` dostal parametr `circ_m` — obwod kola przestal byc stala
+WHEEL_CIRC_M=2.18. Weryfikacja na zywo (trasa "ciagle stromo"): opis podjazdu
+mowi "min. 4.3 km/h = 45 rpm na 36/52 (kaseta 10-52)", obwod 2.277 m.
+
+**Raport JAZDY**: nowy blok `gears` (`_gears(cur, ride_key)` w
+ride_report_builder.py) + karta "E2 · Biegi — co ile jechales" pod E w zakladce
+Cialo i sprzet. Per bieg: zeby, przelozenie, ROZWINIECIE (metry na obrot korby),
+% czasu, moc, HR, kadencja, predkosc, nachylenie (okno 10 s) + nachylenie p90.
+Zeby z ride_drivetrain, pozycja z activity_record.gear_rear_num.
+Front: `raport-jazdy-render.js` (?v=59). Weryfikacja na zywo: jazdy 09.08 i
+03.08 zwracaja `cassette_code` przez /api/ride-report/data?rebuild=1; plik JS
+serwowany z blokiem E2; `node --check` czysty.
+
+**[OBWOD-303S] — sprostowanie i zawezenie**: czujniki maja WPISANE na sztywno
+XPLR 2280 mm, 303 S 2205 mm (informacja od uzytkownika). Zmierzone z rozwiniecia:
+XPLR ~2.27 m (zgodne, ~0.6%), 303 S ~2.15 m — o ~2.5% MNIEJ niz wpisane 2205.
+Gdyby predkosc szla z czujnika kola, pomiar musialby wyjsc dokladnie 2205 mm.
+Nie wychodzi => na tych jazdach predkosc najpewniej leci z GPS albo czujnik
+303 S nie byl sparowany. Do sprawdzenia na Karoo.
+
+**NOWY BLAD [FIT-DEVFIELD]**: jazda 23932728831 (11.08) NIE buduje raportu —
+`_parse_fit` wywala sie na `fitparse.utils.FitParseError: No such field 1 for
+dev_data_index 3` (pola deweloperskie QExt2). Blad ISTNIAL WCZESNIEJ, nie ma
+zwiazku z ta zmiana (leci przed wywolaniem _gears). Endpoint zwraca 500.
+Do naprawy osobno.

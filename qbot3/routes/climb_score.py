@@ -89,13 +89,57 @@ def power_req(grade_pct: float, v_kmh: float, mass_total: float, crr: float) -> 
     return max(0.0, grav + roll + air)
 
 
-def _v_at_cadence(cad_rpm: float, front_t: int, cog_t: int) -> float:
+def _v_at_cadence(cad_rpm: float, front_t: int, cog_t: int,
+                  circ_m: float = WHEEL_CIRC_M) -> float:
     """Predkosc [km/h] przy danej kadencji na przelozeniu front/cog."""
-    return cad_rpm / 60.0 * (front_t / cog_t) * WHEEL_CIRC_M * 3.6
+    return cad_rpm / 60.0 * (front_t / cog_t) * circ_m * 3.6
 
 
-def _cadence_at_v(v_kmh: float, front_t: int, cog_t: int) -> float:
-    return v_kmh / 3.6 / WHEEL_CIRC_M * 60.0 / (front_t / cog_t)
+def _cadence_at_v(v_kmh: float, front_t: int, cog_t: int,
+                  circ_m: float = WHEEL_CIRC_M) -> float:
+    return v_kmh / 3.6 / circ_m * 60.0 / (front_t / cog_t)
+
+
+def latest_drivetrain(conn, before_day=None):
+    """Ostatni ZNANY naped z qbot_v2.ride_drivetrain (kanon [NAPED-KANON]).
+
+    Zwraca dict: front_t (EFEKTYWNE zeby, owal 40T = 41), cassette_code, cogs,
+    circumference_m, day. None gdy brak danych -- wtedy wolajacy uzywa
+    wlasnych domyslnych.
+
+    UWAGA: to jest naped z ostatniej PRZEJECHANEJ jazdy. Dla trasy PLANOWANEJ
+    nie ma nic lepszego -- lepsze niz zgadywanie po odleglosci od domu.
+    """
+    try:
+        sql = ("select d.chainring_t, d.cassette_code, d.circumference_m, d.day, "
+               "c.cogs from qbot_v2.ride_drivetrain d "
+               "left join qbot_v2.gear_cassette c on c.code = d.cassette_code "
+               "where d.chainring_t is not null and d.cassette_code is not null ")
+        args = ()
+        if before_day is not None:
+            sql += "and d.day <= %s "
+            args = (before_day,)
+        sql += "order by d.day desc limit 1"
+        row = conn.execute(sql, args).fetchone() if hasattr(conn, "execute") else None
+        if row is None:
+            cur = conn.cursor()
+            cur.execute(sql, args)
+            row = cur.fetchone()
+        if not row:
+            return None
+        try:
+            front_t, code, circ, day, cogs = (row["chainring_t"], row["cassette_code"],
+                                              row["circumference_m"], row["day"],
+                                              row["cogs"])
+        except (TypeError, KeyError, IndexError):
+            front_t, code, circ, day, cogs = row
+        return {"front_t": int(front_t), "cassette_code": code,
+                "cogs": list(cogs) if cogs else None,
+                "circumference_m": (float(circ) if circ else None),
+                "day": day}
+    except Exception as e:  # brak tabeli / brak danych -- nie wywalaj raportu
+        print("latest_drivetrain error:", e, flush=True)
+        return None
 
 
 def _seg_stats(segments):
@@ -130,7 +174,7 @@ def _seg_stats(segments):
 
 
 def score_climb(conn, climb: dict, cp_w: float, wprime_kj: float | None,
-                mass_rider_kg: float, cogs, front_t: int, cassette_code: str | None):
+                mass_rider_kg: float, cogs, front_t: int, cassette_code: str | None, circ_m: float | None = None):
     """Ocena -2..+2 dla podjazdu z raportu (dict z segments/length_m/avg_pct)."""
     if not cp_w:
         return None
@@ -146,9 +190,10 @@ def score_climb(conn, climb: dict, cp_w: float, wprime_kj: float | None,
     mass = float(mass_rider_kg) + BIKE_GEAR_KG
     cp = float(cp_w)
     pts = achievable_curve(conn)
+    circ = float(circ_m) if circ_m else WHEEL_CIRC_M
     easiest = cogs[-1] if cogs else None
     v_dign = max(V_DIGN_MIN_KMH,
-                 _v_at_cadence(CAD_DIGN_RPM, front_t, easiest) if easiest else 0.0)
+                 _v_at_cadence(CAD_DIGN_RPM, front_t, easiest, circ) if easiest else 0.0)
 
     # rownowaga: predkosc, przy ktorej moc wymagana = osiagalna (P75)
     lo, hi = V_FLOOR_HARD_KMH, 30.0
@@ -189,14 +234,14 @@ def score_climb(conn, climb: dict, cp_w: float, wprime_kj: float | None,
         if p_crux_floor > 1.2 * p90_short:
             score = -2
 
-    cad_floor = _cadence_at_v(V_FLOOR_HARD_KMH, front_t, easiest) if easiest else None
+    cad_floor = _cadence_at_v(V_FLOOR_HARD_KMH, front_t, easiest, circ) if easiest else None
     why = ("~%d W przy %.1f km/h (%.0f%% osiagalnego ~%d W, ~%s), "
            "crux ~%d W; min. %.1f km/h = %s rpm na %s/%s%s") % (
         round(p_dign), v_dign, e * 100.0, round(w_ach), _fmt_t(t_est),
         round(p_crux_floor), V_FLOOR_HARD_KMH,
         (str(int(round(cad_floor))) if cad_floor else "?"),
         front_t, (easiest or "?"),
-        (" (kaseta zal. %s)" % cassette_code) if cassette_code else "")
+        (" (kaseta %s)" % cassette_code) if cassette_code else "")
     return {"score": score, "label": LABELS[score], "why": why,
             "v_sust_kmh": round(v_sust, 1), "w_ach_w": round(w_ach),
             "p_dign_w": round(p_dign), "effort_pct": round(e * 100.0)}

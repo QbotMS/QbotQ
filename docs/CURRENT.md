@@ -875,3 +875,16 @@ Cel: system ma widziec planowane obciazenie na kolejne dni (wyprawy z Planera).
 - NIE zrobione: (1) wpiecie ride_drivetrain w climb_score i raport jazdy
   (dzis 36T na sztywno); (2) sekcja "Biegi" w zakladce Cialo i sprzet pod E;
   (3) [OBWOD-303S] weryfikacja obwodu w ustawieniach Karoo.
+
+
+## 2026-08-12 — [NAPED-KANON] etap 2 ZAMKNIETY
+- `climb_score.latest_drivetrain()` + `score_climb(..., circ_m)`; raport trasy
+  bierze naped z ride_drivetrain zamiast heurystyki odleglosciowej.
+- `_gears()` w ride_report_builder + karta "E2 · Biegi" w raporcie jazdy
+  (raport-jazdy-render.js ?v=59, raport-jazdy.html podbite).
+- Zweryfikowane na zywo: raport trasy "36/52 (kaseta 10-52)", raport jazdy
+  09.08 i 03.08 z blokiem gears, JS serwowany z E2.
+- qbot-web zrestartowany, active.
+- OTWARTE: [FIT-DEVFIELD] jazda 11.08 nie parsuje sie (fitparse vs pola
+  deweloperskie QExt2) — blad wczesniejszy, endpoint 500.
+- OTWARTE: [OBWOD-303S] czujnik 303 S ma wpisane 2205 mm, pomiar daje ~2150 mm.

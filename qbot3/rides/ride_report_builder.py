@@ -601,6 +601,84 @@ def _drivetrain(recs, events):
         "coasting_min":_tag(round(coast/60),"A","fit"),
     }
 
+def _gears(cur, ride_key):
+    """[NAPED-KANON] Rozklad jazdy na poszczegolne biegi kasety.
+
+    Zeby bierzemy z qbot_v2.ride_drivetrain (przod z AXS, kaseta z pomiaru
+    rozwiniecia) -- NIE z activity_record.gear_rear_t, bo tamta konfiguracja
+    AXS bywa nieaktualna po przelozeniu kasety miedzy bebenkami.
+    Pozycja przerzutki (gear_rear_num) jest kanonem: 1 = najlzejszy bieg.
+    """
+    cur.execute(
+        "SELECT d.chainring_t, d.chainring_label, d.cassette_code, "
+        "d.circumference_m, d.flag, c.cogs "
+        "FROM qbot_v2.ride_drivetrain d "
+        "LEFT JOIN qbot_v2.gear_cassette c ON c.code = d.cassette_code "
+        "WHERE d.external_id=%s", (ride_key,))
+    dt = cur.fetchone()
+    if not dt or not dt.get("cogs") or not dt.get("chainring_t"):
+        return _plugin("brak napedu w ride_drivetrain dla tej jazdy")
+    cogs = list(dt["cogs"])
+    front = int(dt["chainring_t"])
+    circ = float(dt["circumference_m"]) if dt.get("circumference_m") else None
+
+    cur.execute("""
+        WITH g AS (
+          SELECT gear_rear_num AS pos, power_w, hr_bpm, cadence_rpm, speed_mps,
+                 CASE WHEN distance_m - lag(distance_m, 10) OVER w > 5
+                      THEN 100.0 * (altitude_m - lag(altitude_m, 10) OVER w)
+                           / (distance_m - lag(distance_m, 10) OVER w) END AS grade
+          FROM qbot_v2.activity_record
+          WHERE external_id = %s AND gear_rear_num IS NOT NULL AND speed_mps > 0.5
+          WINDOW w AS (ORDER BY sec)
+        )
+        SELECT pos, count(*) AS sec,
+               avg(power_w) AS p, avg(hr_bpm) AS hr, avg(cadence_rpm) AS cad,
+               avg(speed_mps) AS v, avg(grade) AS grade,
+               percentile_cont(0.9) WITHIN GROUP (ORDER BY grade) AS grade_p90
+        FROM g GROUP BY pos ORDER BY pos
+    """, (ride_key,))
+    rows = cur.fetchall()
+    if not rows:
+        return _plugin("brak pozycji przerzutki w activity_record")
+    tot = sum(int(r["sec"]) for r in rows) or 1
+
+    out = []
+    for r in rows:
+        pos = int(r["pos"])
+        cog = cogs[len(cogs) - pos] if 1 <= pos <= len(cogs) else None
+        out.append({
+            "pos": pos,
+            "cog_t": cog,
+            "ratio": (round(front / cog, 2) if cog else None),
+            "development_m": (round(front / cog * circ, 2) if (cog and circ) else None),
+            "sec": int(r["sec"]),
+            "pct": round(100.0 * int(r["sec"]) / tot, 1),
+            "power_w": (round(float(r["p"])) if r["p"] is not None else None),
+            "hr": (round(float(r["hr"])) if r["hr"] is not None else None),
+            "cadence": (round(float(r["cad"])) if r["cad"] is not None else None),
+            "speed_kmh": (round(float(r["v"]) * 3.6, 1) if r["v"] is not None else None),
+            "grade_pct": (round(float(r["grade"]), 1) if r["grade"] is not None else None),
+            "grade_p90": (round(float(r["grade_p90"]), 1) if r["grade_p90"] is not None else None),
+        })
+
+    easiest = [o for o in out if o["pos"] == 1]
+    reserve = None
+    if easiest:
+        e = easiest[0]
+        reserve = {"pct_on_easiest": e["pct"], "cadence_on_easiest": e["cadence"],
+                   "sec_on_easiest": e["sec"]}
+    return _tag({
+        "chainring_t": front,
+        "chainring_label": dt.get("chainring_label"),
+        "cassette_code": dt.get("cassette_code"),
+        "circumference_m": (round(circ, 3) if circ else None),
+        "flag": dt.get("flag"),
+        "rows": out,
+        "reserve": reserve,
+    }, "A", "ride_drivetrain + activity_record")
+
+
 def _physio(recs, wellness, rhr_base):
     hr=[r["hr"] for r in recs if r["hr"]]
     hr_avg=round(sum(hr)/len(hr)) if hr else None
@@ -1359,6 +1437,7 @@ def build_w1(fit_path, ride_key, inputs=None):
         "weather":_weather_block(recs, day),
         "surface":_surf_block,
         "drivetrain":_drivetrain(recs, events),
+        "gears":_gears(cur, ride_key),
         "physio":_physio(recs, wellness, rhr_base),
         "energy":_energy(recs),
         "splits":_splits(recs),

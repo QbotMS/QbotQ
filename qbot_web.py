@@ -3290,22 +3290,17 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     # --- [PODJAZDY-SKALA] ocena -2..+2 per podjazd (skalowana do CP z ModelQ) ---
     try:
         from qbot3.routes import climb_score as _cs
-        _cass_code = None
-        try:
-            if latlon:
-                import math as _m
-                _dlat = _m.radians(latlon[0] - 52.23); _dlon = _m.radians(latlon[1] - 21.01)
-                _a = (_m.sin(_dlat / 2) ** 2
-                      + _m.cos(_m.radians(52.23)) * _m.cos(_m.radians(latlon[0])) * _m.sin(_dlon / 2) ** 2)
-                _dkm = 6371 * 2 * _m.asin(_m.sqrt(_a))
-                # heurystyka jak w ride_cassette: wyprawa >250 km od Wwy = 10-52
-                _cass_code = "10-52" if _dkm > 250 else "10-46"
-        except Exception:
-            _cass_code = None
-        _cass_code = _cass_code or "10-46"
-        _cogs_row = conn.execute(
-            "SELECT cogs FROM qbot_v2.gear_cassette WHERE code=%s", (_cass_code,)).fetchone()
-        _cogs = list(_cogs_row["cogs"]) if _cogs_row else None
+        # [NAPED-KANON] naped z ostatniej PRZEJECHANEJ jazdy (qbot_v2.ride_drivetrain),
+        # nie z heurystyki odleglosciowej. Przod = zeby EFEKTYWNE (owal 40T = 41).
+        _dt = _cs.latest_drivetrain(conn)
+        _cass_code = (_dt or {}).get("cassette_code") or "10-46"
+        _front_t = int((_dt or {}).get("front_t") or 36)
+        _circ_m = (_dt or {}).get("circumference_m")
+        _cogs = (_dt or {}).get("cogs")
+        if not _cogs:
+            _cogs_row = conn.execute(
+                "SELECT cogs FROM qbot_v2.gear_cassette WHERE code=%s", (_cass_code,)).fetchone()
+            _cogs = list(_cogs_row["cogs"]) if _cogs_row else None
         # W' jak w /ride-readiness: GREATEST(modelq, road)
         _wp_row = conn.execute(
             "SELECT GREATEST(COALESCE(wprime_modelq_kj,0), COALESCE(wprime_road_kj,0)) AS wp "
@@ -3314,7 +3309,7 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
         _wp_kj = float(_wp_row["wp"]) if (_wp_row and _wp_row["wp"]) else (float(_wprime) if _wprime else None)
         for _x in climbs_list:
             _sc = _cs.score_climb(conn, _x, float(_ftp) if _ftp else None, _wp_kj,
-                                  mass, _cogs, 36, _cass_code)
+                                  mass, _cogs, _front_t, _cass_code, _circ_m)
             if _sc:
                 _x["score"] = _sc["score"]; _x["score_label"] = _sc["label"]
                 _x["score_why"] = _sc["why"]
