@@ -33,15 +33,44 @@ B_ILLNESS = 0.15  # narzut za aktywna chorobe danego dnia
 CAP = 0.35        # gorny limit narzutu (% kosztu jazdy)
 TAU_RL = 7.0      # dni, ta sama stala co ATL
 
+# --- L2-OBJ (przywrocone 2026-08-11, DECISIONS) ---------------------------
+# Cutover MQ2 (08.07) zastapil OBIEKTYWNA korekte zmeczenia z ModelQ v1
+# (fatigue_mult z readiness_score: HRV + RHR + sen) warstwa SUBIEKTYWNA L3
+# (feel/choroba z kalendarza). W calej historii sa 3 wpisy feel, wiec
+# atl_plus praktycznie rowna sie atl_raw i wymiar "ile mnie ta jazda
+# naprawde kosztowala" zniknal z modelu.
+# Przywracamy stale i formule 1:1 z v1 (archive/modelq_v1/training_load.py),
+# ale ADDYTYWNIE i obok L3: liczymy sam NADMIAR wzgledem XSS surowego,
+# wiec atl_raw/ctl_xss/tsb_raw pozostaja nietkniete i wszystko jest
+# odwracalne przelacznikiem.
+FATIGUE_MULT_K = 0.4      # v1: +/-0.4 readiness => +/-16% korekty
+MULT_LO, MULT_HI = 0.5, 1.7
+
 
 def _enabled() -> bool:
     return os.getenv("QBOT_L3_HIDDEN_FATIGUE", "1") not in ("0", "false", "False", "no")
 
 
+def _obj_enabled() -> bool:
+    return os.getenv("QBOT_L2_READINESS_FATIGUE", "1") not in ("0", "false", "False", "no")
+
+
+def fatigue_multiplier(readiness_score) -> float:
+    """v1 1:1. readiness>0 (swiezy) => mnoznik <1, readiness<0 (zmeczony) => >1."""
+    if readiness_score is None:
+        return 1.0
+    mult = 1.0 - FATIGUE_MULT_K * float(readiness_score)
+    return max(MULT_LO, min(MULT_HI, mult))
+
+
 def apply_hidden_fatigue(conn) -> dict:
     """Przelicza atl_plus/tsb_plus + kolumny audytu z ukrytego zmeczenia. Zwraca statystyki."""
     enabled = _enabled()
+    obj_on = _obj_enabled()
     cur = conn.cursor()
+    cur.execute("ALTER TABLE qbot_v2.fitmodel_daily "
+                "ADD COLUMN IF NOT EXISTS atl_ready_adj NUMERIC")
+    conn.commit()
 
     # baza obiektywna z fitmodel_daily
     cur.execute("SELECT day, atl_raw, ctl_xss, tsb_raw FROM qbot_v2.fitmodel_daily ORDER BY day")
@@ -74,7 +103,12 @@ def apply_hidden_fatigue(conn) -> dict:
             ill_days.add(dd)
             dd = dd + dt.timedelta(days=1)
 
+    cur.execute("SELECT day, readiness_score FROM qbot_v2.fitmodel_daily "
+                "WHERE day BETWEEN %s AND %s AND readiness_score IS NOT NULL", (d0, d1))
+    readiness = {r[0]: float(r[1]) for r in cur.fetchall()}
+
     hidden_atl = 0.0
+    ready_atl = 0.0   # L2-OBJ: strumien EWMA nadmiaru z gotowosci
     updated = 0
     nz = 0
     d = d0
@@ -94,11 +128,26 @@ def apply_hidden_fatigue(conn) -> dict:
         else:
             hidden_atl = 0.0
 
+        # L2-OBJ: nadmiar/ulga wzgledem XSS surowego wg gotowosci tego dnia.
+        # Moze byc UJEMNY (swiezy = jazda kosztuje mniej) -- inaczej niz L3,
+        # ktore jest jednokierunkowe. Zacisk MULT_LO/HI jak w v1.
+        if obj_on and ride_xss > 0:
+            mult = fatigue_multiplier(readiness.get(d))
+            xss_ready = ride_xss * (mult - 1.0)
+        else:
+            mult = 1.0
+            xss_ready = 0.0
+        if obj_on:
+            ready_atl = ready_atl + (xss_ready - ready_atl) / TAU_RL
+        else:
+            ready_atl = 0.0
+
         if d in base:
             atl_raw, ctl, tsb_raw = base[d]
             if atl_raw is not None:
-                atl_plus = round(float(atl_raw) + hidden_atl, 1)
-                tsb_plus = round(float(tsb_raw) - hidden_atl, 1) if tsb_raw is not None else None
+                atl_plus = round(float(atl_raw) + hidden_atl + ready_atl, 1)
+                tsb_plus = (round(float(tsb_raw) - hidden_atl - ready_atl, 1)
+                            if tsb_raw is not None else None)
             else:
                 atl_plus = None
                 tsb_plus = None
@@ -112,16 +161,23 @@ def apply_hidden_fatigue(conn) -> dict:
                 note = ("%s, jazda %.0f XSS, +%.0f%% -> +%.1f xss; atl_ukryte +%.2f"
                         % (", ".join(bits), ride_xss, surcharge * 100, xss_hidden, hidden_atl))
                 nz += 1
+            if obj_on and ride_xss > 0 and abs(mult - 1.0) > 0.01:
+                bit = ("gotowosc %+.2f -> koszt x%.2f (%+.0f xss); atl_gotowosc %+.2f"
+                       % (readiness.get(d, 0.0), mult, xss_ready, ready_atl))
+                note = (note + " || " + bit) if note else bit
             cur.execute(
                 "UPDATE qbot_v2.fitmodel_daily SET atl_plus=%s, tsb_plus=%s, "
-                "xss_hidden_subj=%s, atl_hidden_subj=%s, atl_plus_note=%s WHERE day=%s",
-                (atl_plus, tsb_plus, round(xss_hidden, 1), round(hidden_atl, 2), note, d),
+                "xss_hidden_subj=%s, atl_hidden_subj=%s, atl_ready_adj=%s, "
+                "atl_plus_note=%s WHERE day=%s",
+                (atl_plus, tsb_plus, round(xss_hidden, 1), round(hidden_atl, 2),
+                 round(ready_atl, 2), note, d),
             )
             updated += cur.rowcount
         d = d + dt.timedelta(days=1)
 
     conn.commit()
-    return {"enabled": enabled, "updated": updated, "days_with_hidden": nz}
+    return {"enabled": enabled, "obj_enabled": obj_on,
+            "updated": updated, "days_with_hidden": nz}
 
 
 if __name__ == "__main__":
