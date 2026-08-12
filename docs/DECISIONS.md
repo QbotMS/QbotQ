@@ -3536,3 +3536,65 @@ UWAGA INTERPRETACYJNA: L2-OBJ mowi, ze OBIEKTYWNIE (HRV/RHR/sen) Michal znosi
 sierpniowe obciazenie dobrze -- co idzie PRZECIW tezie o malejacej tolerancji.
 Jedyny marker za teza to reakcja RHR na jednostke obciazenia. Nie rozstrzygac
 przed wrzesniem.
+
+
+## 2026-08-11/12 (piata czesc) -- benchmark Xert: breakthrough +34 W i co z niego wynika
+
+### Fakt
+
+Xert (fitmodel_xert_bench + xert_profile_snapshots, snapshot daily_cron 00:15)
+podniosl prog o 34.3 W w jedna noc:
+
+  data       TP      LTP     HIE    PP
+  09.08    247.1   188.8   23.3   1013
+  10.08    281.4   224.1   22.9   1030   <== breakthrough
+  12.08    281.1   224.2   22.8   1026
+
+Snapshot z 10.08 obejmuje jazdy DO 09.08 wlacznie -- czyli Xert ogloszil
+przelamanie na podstawie jazdy 23908082381, tej samej, ktora byla przedmiotem
+calodniowego sporu o miernik.
+
+Benchmark na 12.08: ModelQ 261.7 vs Xert 281.1 (delta -19.4 W),
+LTP 199.4 vs 224.2 (delta -24.8 W), W' 26.6 vs HIE 22.8 (delta +3.8 kJ).
+
+### Zgodnosc historyczna (wazna -- to waliduje oba modele)
+
+Delty TP tydzien po tygodniu do konca lipca: -5.9 / -0.4 / -5.7 / +4.2 / +1.0 W.
+LTP w granicach 5-10 W. Dwa niezalezne algorytmy na tych samych danych dawaly
+praktycznie ten sam prog. Dzisiejsze -19.4 W to NAJWIEKSZA rozbieznosc
+w historii benchmarku (dotad max +-9 W).
+
+### Interpretacja -- czego to NIE dowodzi
+
+To NIE jest niezalezne potwierdzenie wzrostu formy. Xert i ModelQ zjadly ten
+sam posilek: nasza kotwica EF wystrzelila przez jazdy sycylijskie (ef_norm
+2.35 i 2.36 pochodza z 09.08), Xert zrobil breakthrough na tej samej jezdzie.
+Jesli miernik zawyzal, oba modele myla sie RAZEM. Nie traktowac zgodnosci
+Xert/ModelQ jako dowodu przy ocenie miernika.
+
+### Interpretacja -- co jest wartosciowe
+
+Xert podniosl TP i LTP, ale HIE ZOSTAWIL BEZ RUCHU (23.3 -> 22.9). W jego
+modelu oznacza to, ze zinterpretowal 09.08 jako przelamanie PROGOWE, nie
+beztlenowe. Czyli niezalezny algorytm doszedl do tego samego wniosku co Michal:
+dlugi wysilek powyzej zakladanego progu = PROG BYL ZA NISKO, a nie "ogromny
+bak W'". To spina sie z dowodem z 11.08 (8 z 33 jazd od 01.06 z W'bal = 0.0).
+
+### DECYZJA: nie gonimy Xerta do 281
+
+263 W to pozycja konserwatywna i swiadoma. Hamulce kotwicy EF (max 3 W/7 dni,
+tylko na nowych danych) zbudowano dokladnie po to, zeby model nie skakal
+za pojedyncza jazda tak, jak zrobil to Xert.
+
+### TEST ROZSTRZYGAJACY (na wrzesien)
+
+Mamy dwa modele rozjechane o 19 W i konkretny fakt, ktory je rozsadzi:
+  - jesli przy TP 263 W'bal NADAL bedzie zjezdzal do zera co kilka jazd
+    -> prog jest wciaz za nisko, Xert mial racje, podnosimy;
+  - jesli zdarzenia W'bal=0 ustana -> 263 jest w punkt, breakthrough Xerta
+    byl artefaktem pojedynczej jazdy (i/lub zawyzonego miernika).
+Obserwowac tez, czy delta ModelQ-Xert wroci do +-9 W (norma) czy utrwali sie
+na -20 W. Trwala rozbieznosc = jeden z modeli ma blad strukturalny.
+
+Kontekst miernika: nierozstrzygniety do testu statycznego korby (160 mm:
+5 kg -> 7.85 Nm, 10 kg -> 15.7 Nm) i do wrzesniowych danych z Polski bez upalu.
