@@ -56,19 +56,34 @@ def ingest_new_rides_xss(conn, lookback_days: int = 14) -> int:
         sig = _mq2_sig_before(cur, d)
         if sig is None:
             continue
-        rows = io.fetch_ride_rows(eid)
-        res = replay_mpa(rows, sig, smooth=True, keep_series=True)
-        x = compute_xss(rows, sig)
+        # 2026-08-14: jazda w AKTYWNEJ kwarantannie miernika -> XSS z tetna
+        # (hr_xss.py), bez W'bal. Waty tej jazdy sa niewiarygodne, ale jazda
+        # liczy sie do obciazenia (decyzja Michala 11.08). Szczegoly DECISIONS.
+        cur.execute("SELECT 1 FROM qbot_v2.fitmodel_ride_quarantine "
+                    "WHERE external_id=%s AND released IS NULL", (eid,))
+        if cur.fetchone():
+            from fitmodel.modelq2.hr_xss import fetch_hr_rows, compute_hr_xss
+            hr_rows = fetch_hr_rows(eid)
+            hx = compute_hr_xss(hr_rows)
+            dur = int((hr_rows[-1][0] - hr_rows[0][0]).total_seconds()) if len(hr_rows) > 1 else 0
+            vals = (eid, d, len(hr_rows), dur, sig.tp_w, sig.hie_kj, sig.pp_w,
+                    None, round(hx, 1), 0.0, 0.0, round(hx, 1), 'hr')
+        else:
+            rows = io.fetch_ride_rows(eid)
+            res = replay_mpa(rows, sig, smooth=True, keep_series=True)
+            x = compute_xss(rows, sig)
+            vals = (eid, d, res.n_ticks, int(res.duration_s), sig.tp_w, sig.hie_kj, sig.pp_w,
+                    round(res.min_wbal_pct, 1), round(x.low, 1), round(x.high, 2),
+                    round(x.peak, 3), round(x.total, 1), 'power')
         cur.execute("""INSERT INTO qbot_v2.modelq2_ride
             (external_id,ride_date,n_ticks,duration_s,sig_tp_w,sig_hie_kj,sig_pp_w,
-             min_wbal_pct,xss_low,xss_high,xss_peak,xss_total)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+             min_wbal_pct,xss_low,xss_high,xss_peak,xss_total,xss_source)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT (external_id) DO UPDATE SET
              xss_low=EXCLUDED.xss_low,xss_high=EXCLUDED.xss_high,xss_peak=EXCLUDED.xss_peak,
-             xss_total=EXCLUDED.xss_total,min_wbal_pct=EXCLUDED.min_wbal_pct""",
-            (eid, d, res.n_ticks, int(res.duration_s), sig.tp_w, sig.hie_kj, sig.pp_w,
-             round(res.min_wbal_pct, 1), round(x.low, 1), round(x.high, 2),
-             round(x.peak, 3), round(x.total, 1)))
+             xss_total=EXCLUDED.xss_total,min_wbal_pct=EXCLUDED.min_wbal_pct,
+             xss_source=EXCLUDED.xss_source""",
+            vals)
         done += 1
     conn.commit()
     return done

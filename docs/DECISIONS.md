@@ -4,6 +4,32 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-08-14 -- DECYZJA: XSS z tetna (fallback) dla jazd w kwarantannie miernika
+
+PROBLEM: kwarantanna wylaczala jazdy tylko z kotwic CP/W'; XSS liczony z watow
+i tak karmil CTL -> TP. Sycylijskie jazdy z dryfem zera (guard: 9.08 +42%,
+11.08 +31%, 13.08 +18%; 14.08 kalibracje -409 -> -282 po 3.5 km) zawyzaly
+obciazenie i sygnature.
+
+DECYZJA (Michal: "zrob wszystko, aby dane byly realne"):
+1. Nowy modul fitmodel/modelq2/hr_xss.py: hrXSS = 0.69 * suma (HR/132)^2 * UNIT
+   po probkach jazdy (v >= 1 m/s). CAL_K=0.69 = mediana XSS_power/hrXSS_raw
+   z 36 czystych jazd 05-08.2026 (identyczna dla dlugich jazd, n=19).
+   Prog v=3 m/s odrzucony (wycinal strome podjazdy 7-9 km/h).
+2. publish.ingest_new_rides_xss: jazda w AKTYWNEJ kwarantannie (released IS
+   NULL) -> XSS z HR, min_wbal=NULL (zero kotwic W'), xss_source='hr'
+   (nowa kolumna w modelq2_ride, default 'power').
+3. Kwarantanna: 9.08 PRZYWROCONA (guard +42%; zwolnienie 11.08 bylo oparte
+   na blednym Crr), dopisane 11.08, 13.08, 14.08. 8.08 zostaje na watach
+   (guard +1.8%, OK). Intencja "jazdy licza sie do obciazenia" zachowana --
+   licza sie, ale uczciwa waluta z tetna.
+4. Przeliczenie + rebuild + publish. XSS: 9.08 242->150, 11.08 149->149,
+   13.08 173->164, 14.08 nowa 139. Sygnatura 14.08: TP 264.5->264.1,
+   CTL 79.8->77.2, ATL 106->96, TSB -26.4->-19.2.
+
+UWAGA OPERACYJNA: zwolnienie jazdy z kwarantanny NIE przelicza jej
+automatycznie -- trzeba recznie usunac wpis z modelq2_ride i ponowic ingest.
+
 ## 2026-08-11 -- DECYZJA: ryczalt kaloryczny przypiety do eventu kalendarza
 
 **Status:** wdrozone i zweryfikowane na zywo (commit 17d0ab2).
