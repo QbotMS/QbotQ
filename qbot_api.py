@@ -1642,7 +1642,25 @@ async def surface_by_name_endpoint(
             route_id = _row2['route_id'] if _row2 else None
 
         if not route_id:
+            # Fallback: stabilny #<route_id> w nazwie. Kopia trasy na Karoo moze miec
+            # STARA date w nazwie (data zmienia sie przy przeliczeniu trasy), wtedy
+            # ILIKE po pelnej nazwie pudluje -- ale #<id> jest staly.
+            import re as _re_sb
+            _m = _re_sb.search(r"#(\d{6,})", name)
+            if _m:
+                cur.execute("""
+                    SELECT route_id FROM qbot_v2.route_artifacts
+                    WHERE route_id LIKE %s
+                    ORDER BY id DESC LIMIT 1
+                """, (f"%{_m.group(1)}",))
+                _row3 = cur.fetchone()
+                route_id = _row3['route_id'] if _row3 else None
+                if route_id:
+                    print(f"SURFACE_BYNAME resolved_by_hash name={name!r} route_id={route_id}", flush=True)
+
+        if not route_id:
             cur.close(); conn.close()
+            print(f"SURFACE_BYNAME not_found name={name!r}", flush=True)
             return JSONResponse({"status": "not_found", "name": name}, status_code=202)
 
         # Pobierz segmenty nawierzchni - TYLKO najnowszy profil TEJ trasy
@@ -1663,6 +1681,7 @@ async def surface_by_name_endpoint(
         cur.close(); conn.close()
 
         if not segments:
+            print(f"SURFACE_BYNAME not_ready name={name!r} route_id={route_id}", flush=True)
             return JSONResponse({"status": "not_ready", "route_id": route_id}, status_code=202)
 
         SURFACE_MAP = {
@@ -1694,6 +1713,7 @@ async def surface_by_name_endpoint(
                 result.append({'km_start': round(km, 3), 'km_end': round(km_end, 3), 'surface': surface_3})
             km = km_end
 
+        print(f"SURFACE_BYNAME ok name={name!r} route_id={route_id} segments={len(result)}", flush=True)
         return JSONResponse(result)
 
     except Exception as e:
