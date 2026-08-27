@@ -9322,6 +9322,77 @@ def forma_data(response: Response, start: str | None = Query(None), end: str | N
         conn.close()
 
 
+# ---------- STATYSTYKI JAZD ----------
+@app.get("/api/stats/rides")
+def api_stats_rides(response: Response, start: str | None = Query(None),
+                    end: str | None = Query(None), sport: str | None = Query(None)):
+    """Statystyki aktywnosci: sumy + rozbicie czasowe (dzien/tydzien/miesiac wg dlugosci okresu).
+    Czas ruchu = training_sessions.duration_s; czas calkowity = rozpietosc ts w activity_record
+    (fallback: duration_s gdy brak rekordow 1Hz)."""
+    response.headers["Cache-Control"] = "no-store"
+    from datetime import date as _dt_date, timedelta as _dt_timedelta
+    end_d = _dt_date.fromisoformat(end) if end else _dt_date.today()
+    start_d = _dt_date.fromisoformat(start) if start else (end_d - _dt_timedelta(days=29))
+    conn = _db_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT date, sport_type, duration_s, distance_m, elevation_m, external_id "
+            "FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s ORDER BY date",
+            (start_d.isoformat(), end_d.isoformat()),
+        )
+        rows = cur.fetchall()
+        sports = sorted({r["sport_type"] for r in rows if r["sport_type"]})
+        if sport:
+            rows = [r for r in rows if r["sport_type"] == sport]
+        ids = [r["external_id"] for r in rows if r["external_id"]]
+        spans = {}
+        if ids:
+            cur.execute(
+                "SELECT external_id, EXTRACT(EPOCH FROM (MAX(ts)-MIN(ts)))::int AS span "
+                "FROM qbot_v2.activity_record WHERE external_id = ANY(%s) GROUP BY external_id",
+                (ids,),
+            )
+            for r in cur.fetchall():
+                spans[r["external_id"]] = r["span"]
+        ndays = (end_d - start_d).days + 1
+        gran = "day" if ndays <= 31 else ("week" if ndays <= 200 else "month")
+        buckets = {}
+        tot = {"count": 0, "moving_s": 0, "elapsed_s": 0, "distance_m": 0.0, "elevation_m": 0.0}
+        by_sport = {}
+        for r in rows:
+            mov = int(r["duration_s"] or 0)
+            ela = int(spans.get(r["external_id"]) or 0)
+            if ela < mov:
+                ela = mov
+            dist = float(r["distance_m"] or 0.0)
+            elev = float(r["elevation_m"] or 0.0)
+            d = r["date"]
+            if gran == "day":
+                key = d.isoformat()
+            elif gran == "week":
+                key = (d - _dt_timedelta(days=d.weekday())).isoformat()
+            else:
+                key = d.strftime("%Y-%m")
+            b = buckets.setdefault(key, {"label": key, "count": 0, "moving_s": 0,
+                                         "elapsed_s": 0, "distance_m": 0.0, "elevation_m": 0.0})
+            sp = r["sport_type"] or "?"
+            s = by_sport.setdefault(sp, {"sport": sp, "count": 0, "moving_s": 0,
+                                         "elapsed_s": 0, "distance_m": 0.0, "elevation_m": 0.0})
+            for agg in (b, s, tot):
+                agg["count"] += 1
+                agg["moving_s"] += mov
+                agg["elapsed_s"] += ela
+                agg["distance_m"] += dist
+                agg["elevation_m"] += elev
+        return {"start": start_d.isoformat(), "end": end_d.isoformat(), "granularity": gran,
+                "sports": sports, "totals": tot,
+                "by_sport": sorted(by_sport.values(), key=lambda x: -x["moving_s"]),
+                "buckets": [buckets[k] for k in sorted(buckets)]}
+    finally:
+        conn.close()
+
+
 # ---------- ODZYWIANIE (zywienie + body composition) ----------
 def _build_nutrition_data(conn, start_str, end_str):
     """Dane dzienne odzywiania: energia (albert_day_view), waga (fitmodel_daily),
