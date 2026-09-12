@@ -410,6 +410,17 @@ def _one_if_new():
             return 0
         print(f'NEW: ingest aid={aid}')
         r = ingest_one(gc, conn, cyc, with_report=True)
+        # czujniki + rower + biegi (szacowane dla napedu mechanicznego) -- DECISIONS 2026-09-12
+        try:
+            from qbot3.rides.activity_devices import ingest_devices
+            from qbot3.rides.gear_estimate import estimate_if_needed
+            _fp = "/opt/qbot/artifacts/fit/%s.fit" % aid
+            if os.path.exists(_fp):
+                ingest_devices(str(aid), _fp, conn)
+            _ge = estimate_if_needed(conn, str(aid))
+            print(f"   czujniki/rower zapisane; biegi: {_ge}")
+        except Exception as _e:
+            print(f"   czujniki/rower: blad {_e}")
         print('INGESTED:', json.dumps(r, default=str))
         conn.close()
         _recompute_fitmodel(f"one_if_new aid={r.get('aid')}")

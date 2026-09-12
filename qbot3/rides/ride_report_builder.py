@@ -11,7 +11,7 @@ Zasady kontraktu:
 import os, math, collections
 from fitparse import FitFile
 
-SCHEMA_VERSION = 2  # 2: trace.surface_cat + nawierzchnia per pozycja / ze sladu
+SCHEMA_VERSION = 3  # 2: trace.surface_cat + nawierzchnia per pozycja / ze sladu
 
 # --- stale modelu (literaturowe / sprzet) ---
 HR_MAX = 184
@@ -601,6 +601,20 @@ def _drivetrain(recs, events):
         "coasting_min":_tag(round(coast/60),"A","fit"),
     }
 
+def _bike(cur, ride_key):
+    """Rower i czujniki tej jazdy z FIT device_info (qbot_v2.activity_device + bike_sensor)."""
+    try:
+        from qbot3.rides.activity_devices import bike_for_ride
+        b = bike_for_ride(cur.connection, ride_key)
+    except Exception as e:
+        return _plugin("activity_device niedostepne: %s" % e)
+    if not b.get("sensors"):
+        return _plugin("brak device_info dla tej jazdy (stary import?)")
+    low = [x for x in b["sensors"] if str(x.get("battery")) in ("low", "critical")]
+    return _tag({"bike": b.get("bike"), "how": b.get("how"), "has_axs": b.get("has_axs"),
+                 "sensors": b["sensors"], "battery_warnings": low}, "A", "fit device_info")
+
+
 def _gears(cur, ride_key):
     """[NAPED-KANON] Rozklad jazdy na poszczegolne biegi kasety.
 
@@ -611,25 +625,26 @@ def _gears(cur, ride_key):
     """
     cur.execute(
         "SELECT d.chainring_t, d.chainring_label, d.cassette_code, "
-        "d.circumference_m, d.flag, c.cogs "
+        "d.circumference_m, d.flag, d.cassette_source, d.note AS dt_note, c.cogs "
         "FROM qbot_v2.ride_drivetrain d "
         "LEFT JOIN qbot_v2.gear_cassette c ON c.code = d.cassette_code "
         "WHERE d.external_id=%s", (ride_key,))
     dt = cur.fetchone()
     if not dt or not dt.get("cogs") or not dt.get("chainring_t"):
         return _plugin("brak napedu w ride_drivetrain dla tej jazdy")
+    _est = (dt.get("cassette_source") == "physics_est")
     cogs = list(dt["cogs"])
     front = int(dt["chainring_t"])
     circ = float(dt["circumference_m"]) if dt.get("circumference_m") else None
 
     cur.execute("""
         WITH g AS (
-          SELECT gear_rear_num AS pos, power_w, hr_bpm, cadence_rpm, speed_mps,
+          SELECT COALESCE(gear_rear_num, gear_rear_est) AS pos, power_w, hr_bpm, cadence_rpm, speed_mps,
                  CASE WHEN distance_m - lag(distance_m, 10) OVER w > 5
                       THEN 100.0 * (altitude_m - lag(altitude_m, 10) OVER w)
                            / (distance_m - lag(distance_m, 10) OVER w) END AS grade
           FROM qbot_v2.activity_record
-          WHERE external_id = %s AND gear_rear_num IS NOT NULL AND speed_mps > 0.5
+          WHERE external_id = %s AND COALESCE(gear_rear_num, gear_rear_est) IS NOT NULL AND speed_mps > 0.5
           WINDOW w AS (ORDER BY sec)
         )
         SELECT pos, count(*) AS sec,
@@ -676,7 +691,7 @@ def _gears(cur, ride_key):
         "flag": dt.get("flag"),
         "rows": out,
         "reserve": reserve,
-    }, "A", "ride_drivetrain + activity_record")
+    }, ("B" if _est else "A"), ("biegi szacowane z predkosci/kadencji -- " + str(dt.get("dt_note") or "")) if _est else "ride_drivetrain + activity_record (czujnik biegow)")
 
 
 def _physio(recs, wellness, rhr_base):
@@ -1560,6 +1575,7 @@ def build_w1(fit_path, ride_key, inputs=None):
         "surface":_surf_block,
         "drivetrain":_drivetrain(recs, events),
         "gears":_gears(cur, ride_key),
+        "bike":_bike(cur, ride_key),
         "physio":_physio(recs, wellness, rhr_base),
         "energy":_energy(recs),
         "splits":_splits(recs),
