@@ -5463,6 +5463,27 @@ def ride_report_data(response: Response, ride: str = Query(...), rebuild: int = 
     return w1
 
 
+@app.post("/api/ride-report/analyze")
+def ride_report_analyze(ride: str = Query(...)):
+    """Z serwisu: 'Wygeneruj analize' = to samo co 'Tak' na Telegramie (worker w tle: W1->W2->TG+mail)."""
+    from qbot3.rides import ride_report_notify as _rrn
+    _rrn.set_status(ride, "yes", "z serwisu")
+    _rrn.spawn_worker(ride)
+    return {"status": "started", "ride": ride}
+
+
+@app.get("/api/ride-report/status")
+def ride_report_status(ride: str = Query(...)):
+    conn = _db_conn()
+    try:
+        row = conn.execute("SELECT status, asked_at, answered_at, note FROM qbot_v2.ride_report_ask WHERE ride_key=%s", (ride,)).fetchone()
+    except Exception:
+        row = None
+    finally:
+        conn.close()
+    return row or {"status": "none"}
+
+
 @app.get("/api/ride-report/tiles")
 def ride_report_tiles(ride: str = Query(...), margin: int = 3):
     """Kafle z14 na TRACKU wykonanej jazdy (new/keep) + otoczka owned wzgledem StatsHunters.
@@ -5534,9 +5555,10 @@ def ride_report_w2(response: Response, ride: str = Query(...), rebuild: int = Qu
     response.headers["Cache-Control"] = "no-store"
     conn = _db_conn()
     try:
+        from qbot3.rides import ride_report_builder as _rrb
         row = conn.execute(
             "SELECT w1_json, w2_json FROM qbot_v2.ride_report_data "
-            "WHERE ride_key=%s AND schema_version=%s", (ride, 1)).fetchone()
+            "WHERE ride_key=%s AND schema_version=%s", (ride, _rrb.SCHEMA_VERSION)).fetchone()
     finally:
         conn.close()
     if not row or not row.get("w1_json"):
@@ -5555,7 +5577,7 @@ def ride_report_w2(response: Response, ride: str = Query(...), rebuild: int = Qu
         conn.execute(
             "UPDATE qbot_v2.ride_report_data SET w2_json=%s "
             "WHERE ride_key=%s AND schema_version=%s",
-            (json.dumps(w2, ensure_ascii=False), ride, 1))
+            (json.dumps(w2, ensure_ascii=False), ride, _rrb.SCHEMA_VERSION))
         conn.commit()
     finally:
         conn.close()

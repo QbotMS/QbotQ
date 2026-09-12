@@ -33,9 +33,10 @@ Zwroc WYLACZNIE surowy JSON (bez ```), o dokladnie takiej strukturze:
 {
  "verdict": "jedno zdanie podsumowujace jazde",
  "highlights": ["trzy krotkie kluczowe fakty"],
- "synteza": [{"tytul": "...", "tekst": "...", "cytaty": ["blok.pole", "..."]}],
+ "synteza": [{"tytul": "...", "tekst": "...", "cytaty": ["blok.pole", "..."], "km": [od_km, do_km]}],
  "next": ["2-4 konkretne wnioski na nastepny raz, wyprowadzone z danych (nie generyk)"]
 }
+Pole "km" w sekcji: zakres kilometrow jazdy, ktorego sekcja glownie dotyczy (liczby z trace.km albo z listy "momenty_km"); jesli sekcja dotyczy calej jazdy -> null. Nie wymyslaj km spoza trace.km.
 W "synteza" daj 6-7 sekcji pokrywajacych: obciazenie vs ModelQ, W' i regeneracje, pacing/splity/VI/decoupling, teren i wiatr (terrain_impact) a koszt i tempo, audyt energii, naped i technike, wellness poranny a jazde. KAZDA sekcja to POLACZENIE danych z cytatami; NIE powtarzaj tej samej mysli w kilku sekcjach. NIE generuj listy 'pytania'.\n\nPRZYKLAD (tak NIE wolno / tak MA byc):\nZLE: \"Jazda weszla w obciazenie: \\\"load.if\\\" 0.77, \\\"load.kj\\\" 639.\"\nDOBRZE: \"Jazda weszla w obciazenie: IF 0.77, praca 639 kJ.\" (a w \"cytaty\": [\"load.if\",\"load.kj\"]).\nZamieniaj KAZDY identyfikator blok.pole na ludzka etykiete z jednostka. Dotyczy verdict, highlights, tekst ORAZ next. Zaden z tych czterech nie moze zawierac kropkowanych nazw pol."""
 
 

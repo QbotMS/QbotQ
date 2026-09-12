@@ -267,6 +267,34 @@ def _spawn_komoot_analyze_worker(tour_id, atrakcje=False):
                      cwd="/opt/qbot/app", start_new_session=True)
 
 
+def handle_ride_report_callback(cq):
+    """Przyciski 'rr:y:<ride>' / 'rr:n:<ride>' -- raport z jazdy (ride_report_notify)."""
+    data = cq.get("data") or ""
+    cq_id = cq.get("id")
+    m = cq.get("message") or {}
+    chat_id = str((m.get("chat") or {}).get("id", ""))
+    message_id = m.get("message_id")
+    if chat_id != CHAT_ID:
+        tg_answer_callback(cq_id, "Brak dostepu"); return
+    parts = data.split(":")
+    action = parts[1] if len(parts) > 1 else ""
+    ride = parts[2] if len(parts) > 2 else ""
+    from qbot3.rides import ride_report_notify as rrn
+    if action == "y" and ride:
+        tg_answer_callback(cq_id, "Analizuje...")
+        rrn.set_status(ride, "yes")
+        tg_send_plain("\U0001F504 Przyjeto. Licze raport z jazdy w tle (ok. minuty) - przysle skrot tutaj, szczegoly mailem.")
+        rrn.spawn_worker(ride)
+    elif action == "n" and ride:
+        tg_answer_callback(cq_id, "Pominieto")
+        rrn.set_status(ride, "no")
+        tg_send_plain("\u274c Ok, bez raportu dla tej jazdy.")
+    else:
+        tg_answer_callback(cq_id)
+    if message_id:
+        tg_edit_markup(chat_id, message_id)
+
+
 def handle_komoot_callback(cq):
     data = cq.get("data") or ""
     cq_id = cq.get("id")
@@ -305,8 +333,54 @@ def handle_komoot_callback(cq):
         tg_edit_markup(chat_id, message_id)
 
 
+def _send_komoot_choice(chat_id: str, tour_id: str, text: str) -> None:
+    """Te same przyciski co przy nowej trasie z Komoota (komoot_watch._notify)."""
+    kb = {"inline_keyboard": [[
+        {"text": "\u2705 Analizuj", "callback_data": "kmt:y:" + str(tour_id)},
+        {"text": "\u274C Pomin", "callback_data": "kmt:n:" + str(tour_id)},
+    ], [
+        {"text": "\U0001F39F Analizuj + atrakcje", "callback_data": "kmt:ya:" + str(tour_id)},
+    ]]}
+    try:
+        from qbot_telegram_client import _api
+        r = _api("sendMessage", {"chat_id": str(chat_id), "text": text, "reply_markup": kb})
+        if not (r and r.get("ok")):
+            raise RuntimeError(f"sendMessage nie powiodl sie: {r}")
+    except Exception as e:
+        log(f"   przyciski Komoot blad: {e} — wysylam sam tekst")
+        tg_send_plain(text)
+
+
+def _is_route_gateway_message(chat_id: str, text: str) -> bool:
+    """Czy wiadomosc ma isc do qbot_qcal_telegram (komenda trasy / potwierdzenie)."""
+    try:
+        from qbot_qcal_telegram import (
+            _detect_route_recompute,
+            _parse_confirmation_reply,
+            _pending_active_rows,
+        )
+    except Exception as e:
+        log(f"   gateway import blad: {e}")
+        return False
+    try:
+        if _detect_route_recompute(text):
+            return True
+        decision = _parse_confirmation_reply(text).get("decision")
+        if decision in ("yes", "no") and _pending_active_rows(str(chat_id)):
+            return True
+    except Exception as e:
+        log(f"   gateway detekcja blad: {e}")
+    return False
+
+
 def main():
     log("🔍 Sprawdzam Telegram...")
+    try:
+        from qbot3.rides.ride_report_notify import run_ask
+        _n = run_ask()
+        if _n: log(f"   raport z jazdy: zapytano o {_n} jazd")
+    except Exception as e:
+        log(f"   ride_report_ask blad: {e}")
 
     state  = load_state()
     offset = state.get("last_update_id", 0) + 1
@@ -331,7 +405,10 @@ def main():
             state["last_update_id"] = update_id
             save_state(state)
             try:
-                handle_komoot_callback(cq)
+                if (cq.get("data") or "").startswith("rr:"):
+                    handle_ride_report_callback(cq)
+                else:
+                    handle_komoot_callback(cq)
             except Exception as e:
                 log(f"   callback blad: {e}")
             continue
@@ -358,10 +435,32 @@ def main():
             state["last_update_id"] = update_id
             save_state(state)
             continue
-        if text.startswith("/"):
+        if text.startswith("/") and not text.lower().startswith("/przelicz"):
             log(f"   ⏭  Komenda {text.split()[0]} — pomijam")
             state["last_update_id"] = update_id
             save_state(state)
+            continue
+
+        # ── Trasy: 'przelicz trase <id>' oraz potwierdzenia 'NN TAK' ──
+        # Musi isc PRZED QGPT, bo parser wellness/gear/kalendarz zjada te
+        # wiadomosci i konczy na fallbacku (goly LLM bez narzedzi).
+        if _is_route_gateway_message(chat_id, text):
+            state["last_update_id"] = update_id
+            save_state(state)
+            try:
+                from qbot_qcal_telegram import handle_message as _tg_handle
+                res = _tg_handle(chat_id=str(chat_id), text=text, dry_run=False)
+                reply = (res or {}).get("response") or "Brak odpowiedzi."
+                log(f"   🛣  Gateway tras: {reply[:120]}")
+                komoot_choice = (res or {}).get("komoot_choice")
+                if komoot_choice:
+                    _send_komoot_choice(chat_id, str(komoot_choice), reply)
+                else:
+                    tg_send_plain(reply)
+            except Exception as e:
+                log(f"   ❌ Gateway tras blad: {e}")
+                save_failed_message(update_id, text, e)
+                tg_send_plain(f"⚠️ Blad przy obsludze trasy: {str(e)[:200]}")
             continue
 
         try:
