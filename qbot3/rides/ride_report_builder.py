@@ -11,7 +11,7 @@ Zasady kontraktu:
 import os, math, collections
 from fitparse import FitFile
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2: trace.surface_cat + nawierzchnia per pozycja / ze sladu
 
 # --- stale modelu (literaturowe / sprzet) ---
 HR_MAX = 184
@@ -1051,7 +1051,7 @@ def _trace(recs, tick_tails=None, tick_cross=None, wbal_curve=None, target_pts=1
         b=int((c.get("sec") or 0)//win)
         g=bins.get(b)
         if g is None:
-            g={"sec":[],"dist":[],"p":[],"hr":[],"cad":[],"alt":[],"temp":[],"ef":[],"tail":[],"cross":[],"lat":[],"lon":[]}
+            g={"sec":[],"dist":[],"p":[],"hr":[],"cad":[],"alt":[],"temp":[],"ef":[],"tail":[],"cross":[],"lat":[],"lon":[],"scat":[]}
             bins[b]=g; order.append(b)
         g["sec"].append(c.get("sec") or 0)
         if c.get("dist") is not None: g["dist"].append(c["dist"])
@@ -1067,6 +1067,7 @@ def _trace(recs, tick_tails=None, tick_cross=None, wbal_curve=None, target_pts=1
             _lo=_deg(c["lon"])
             if _lo is not None: g["lon"].append(_lo)
         if ef_tick[idx] is not None: g["ef"].append(ef_tick[idx])
+        if c.get("scat") is not None: g["scat"].append(c["scat"])
         if tick_tails:
             tv=tick_tails.get(c.get("ts"))
             if tv is not None: g["tail"].append(tv)
@@ -1075,7 +1076,7 @@ def _trace(recs, tick_tails=None, tick_cross=None, wbal_curve=None, target_pts=1
             if cvv is not None: g["cross"].append(cvv)
     order.sort()
     def av(a): return (sum(a)/len(a)) if a else None
-    t=[]; km=[]; power=[]; hr=[]; cad=[]; alt=[]; temp=[]; ef=[]; tail=[]; cross=[]; lat=[]; lon=[]
+    t=[]; km=[]; power=[]; hr=[]; cad=[]; alt=[]; temp=[]; ef=[]; tail=[]; cross=[]; lat=[]; lon=[]; scat=[]
     for b in order:
         g=bins[b]
         t.append(int(round(av(g["sec"]) or 0)))
@@ -1090,6 +1091,7 @@ def _trace(recs, tick_tails=None, tick_cross=None, wbal_curve=None, target_pts=1
         cross.append(round(av(g["cross"]),2) if g["cross"] else None)
         lat.append(round(av(g["lat"]),6) if g["lat"] else None)
         lon.append(round(av(g["lon"]),6) if g["lon"] else None)
+        scat.append(max(set(g["scat"]), key=g["scat"].count) if g["scat"] else None)
     sp=list(power)
     for i in range(len(power)):
         vals=[power[j] for j in (i-1,i,i+1) if 0<=j<len(power) and power[j] is not None]
@@ -1107,7 +1109,7 @@ def _trace(recs, tick_tails=None, tick_cross=None, wbal_curve=None, target_pts=1
                     x0,y0=cur[j-1]; x1,y1=cur[j]; v=y0+(y1-y0)*((kk-x0)/((x1-x0) or 1))
                 wbal[i]=round(v)
     return {"t":t,"km":km,"power":sp,"hr":hr,"cad":cad,"alt":alt,"temp":temp,
-            "ef":ef,"wbal_pct":wbal,"tail":tail,"cross":cross,"lat":lat,"lon":lon,"n":len(t),"window_s":win}
+            "ef":ef,"wbal_pct":wbal,"tail":tail,"cross":cross,"lat":lat,"lon":lon,"surface_cat":scat,"n":len(t),"window_s":win}
 
 def _terrain_impact(recs, raw, splits, wprime, physio, weather):
     """Rozklad wysilku: (1) moc/HR/kadencja/predkosc per typ nawierzchni,
@@ -1122,7 +1124,8 @@ def _terrain_impact(recs, raw, splits, wprime, physio, weather):
 
     segs = [x for x in (raw.get("segments") or []) if x.get("km_to") is not None]
     surface_by_type = None
-    if segs:
+    _has_scat = any(r.get("scat") is not None for r in recs)
+    if segs or _has_scat:
         segs.sort(key=lambda x: x.get("km_from") or 0.0)
         starts = [x.get("km_from") or 0.0 for x in segs]
         def _sa(km, _s=segs, _st=starts):
@@ -1150,8 +1153,11 @@ def _terrain_impact(recs, raw, splits, wprime, physio, weather):
             _dm = (_d - _prevd) if (_prevd is not None) else 0.0
             _prevd = _d
             if _dm < 0 or _dm > 200.0: _dm = 0.0
-            if not _sg: continue
-            cat, lab = _seg_cat(_sg)
+            if _has_scat:
+                cat = r.get("scat"); lab = _CATLAB.get(cat) if cat is not None else None
+            else:
+                if not _sg: continue
+                cat, lab = _seg_cat(_sg)
             if cat is None: continue
             b = acc.setdefault(cat, {"lab":lab,"n":0,"m":0.0,"p":0.0,"hr":0.0,"hrn":0,"cad":0.0,"cadn":0,"sp":0.0,"spn":0,"gr":0.0,"grn":0})
             b["n"]+=1; b["m"]+=_dm; b["p"]+=r["p"]
@@ -1250,6 +1256,100 @@ def _surface_from_route_canonical(cur, route_id):
         return None, None
 
 
+def _assign_scat_from_route(rows, have_pos, max_m=60.0):
+    """Kategoria nawierzchni per rekord jazdy z kanonicznej warstwy 50 m dopasowanej trasy,
+    po NAJBLIZSZEJ POZYCJI (nie po km -- jazda i trasa maja rozny kilometraz).
+    Ustawia r["scat"] (1..5 lub None). Zwraca % rekordow z pozycja lezacych <= max_m od trasy."""
+    import math as _m
+    try:
+        from qbot3.routes.route_surface_category_store import compute_category as _cc
+    except Exception:
+        return 0.0
+    pts = [(r.get("mid_lat"), r.get("mid_lon"), r.get("surface")) for r in rows if r.get("mid_lat") is not None]
+    if not pts or not have_pos:
+        return 0.0
+    cats = {}
+    def _cat(sv):
+        if sv in cats: return cats[sv]
+        try:
+            c,_l,_ = _cc(surface=sv, tracktype=None, highway=None,
+                         classification_source=("tagged_surface" if sv else None), smoothness=None, ctx=None)
+        except Exception:
+            c = None
+        cats[sv] = c; return c
+    cell = 0.005
+    grid = {}
+    for ix,(la,lo,_sv) in enumerate(pts):
+        grid.setdefault((int(_m.floor(la/cell)), int(_m.floor(lo/cell))), []).append(ix)
+    cosl = _m.cos(_m.radians(pts[0][0]))
+    thr2 = (max_m/111000.0)**2
+    n=0; hit=0
+    for r in have_pos:
+        la=_deg(r.get("lat")); lo=_deg(r.get("lon"))
+        r["scat"]=None
+        if la is None or lo is None: continue
+        n+=1
+        ka=int(_m.floor(la/cell)); ko=int(_m.floor(lo/cell))
+        best=-1; bd=float("inf")
+        for da in (-1,0,1):
+            for dz in (-1,0,1):
+                for ix in grid.get((ka+da,ko+dz),()):
+                    pl,po,_ = pts[ix]
+                    dx=(po-lo)*cosl; dy=pl-la; d=dx*dx+dy*dy
+                    if d<bd: bd=d; best=ix
+        if best>=0 and bd<=thr2:
+            hit+=1
+            r["scat"]=_cat(pts[best][2])
+    return round(100.0*hit/n,1) if n else 0.0
+
+def _assign_scat_from_track(segments, have_pos):
+    """Kategoria per rekord ze segmentow silnika nawierzchni liczonego NA SLADZIE tej jazdy
+    (km_from/km_to sa w kilometrazu jazdy, wiec bisect po dist jest tu poprawny)."""
+    import bisect as _bi
+    try:
+        from qbot3.routes.route_surface_category_store import compute_category as _cc
+    except Exception:
+        return
+    segs=[x for x in (segments or []) if x.get("km_to") is not None]
+    if not segs: return
+    segs.sort(key=lambda x: x.get("km_from") or 0.0)
+    starts=[x.get("km_from") or 0.0 for x in segs]
+    cache={}
+    def _cat(sg):
+        k=id(sg)
+        if k in cache: return cache[k]
+        try:
+            c,_l,_ = _cc(surface=sg.get("surface_refined"), tracktype=sg.get("tracktype"), highway=sg.get("highway"),
+                         classification_source=sg.get("classification_source"), smoothness=sg.get("smoothness"), ctx=None)
+        except Exception:
+            c=None
+        cache[k]=c; return c
+    for r in have_pos:
+        km=(r.get("dist") or 0.0)/1000.0
+        i=_bi.bisect_right(starts,km)-1
+        r["scat"]=None
+        if 0<=i<len(segs) and (segs[i].get("km_from") or 0)<=km<(segs[i].get("km_to") or 0):
+            r["scat"]=_cat(segs[i])
+
+def _types_pct_from_recs(recs):
+    """Rozklad 5 kategorii po dystansie z r["scat"] -- prawda o TEJ jezdzie."""
+    try:
+        from qbot3.routes.route_surface_category_store import LABELS as _L
+    except Exception:
+        _L={}
+    acc={}; prev=None; tot=0.0
+    for r in recs:
+        d=r.get("dist")
+        if d is None: continue
+        dm=(d-prev) if prev is not None else 0.0
+        prev=d
+        if dm<0 or dm>200: dm=0.0
+        c=r.get("scat")
+        if c is None: continue
+        acc[c]=acc.get(c,0.0)+dm; tot+=dm
+    if not tot: return None
+    return {(_L.get(c) or str(c)): round(100.0*v/tot,1) for c,v in sorted(acc.items())}
+
 def _surface_and_wind(cur, recs, day, ride_key):
     """Punkt wejscia. Nawierzchnia: jesli jazda pasuje do przeliczonej trasy ->
     z kanonicznej warstwy 50 m (System A); inaczej z GPS (Overpass). Wiatr ZAWSZE
@@ -1271,10 +1371,32 @@ def _surface_and_wind(cur, recs, day, ride_key):
     surf_t, wind_t, terr_t = _surface_wind_from_track(have_pos, ride_key, day)
     if route_id:
         surf_r, segs_r = _surface_from_route_canonical(cur, route_id)
-        if surf_r is not None:
+        cover = 0.0
+        try:
+            from qbot3.routes.route_segments_50m import load_canonical_segments_50m
+            rows = (load_canonical_segments_50m(route_id=route_id) or {}).get("segments") or []
+            cover = _assign_scat_from_route(rows, have_pos)
+        except Exception:
+            cover = 0.0
+        if surf_r is not None and cover >= 80.0:
+            tp = _types_pct_from_recs(recs)
+            if tp:
+                surf_r["value"]["types_pct"] = tp
+            surf_r["note"] = (surf_r.get("note") or "") + f" | dopasowanie po pozycji: {cover}% jazdy <=60 m od trasy"
             terr = dict(terr_t or {})
             terr["segments"] = segs_r
+            terr["scat_source"] = f"route:{route_id}"
             return surf_r, wind_t, terr
+        # za male pokrycie -> to NIE byla ta trasa; nawierzchnia ze sladu
+        for r in have_pos: r["scat"] = None
+        if isinstance(surf_t, dict):
+            surf_t["note"] = (surf_t.get("note") or "") + f" | trasa {route_id} odrzucona: pokrycie {cover}% < 80%"
+    _assign_scat_from_track((terr_t or {}).get("segments"), have_pos)
+    tp_t = _types_pct_from_recs(recs)
+    if tp_t and isinstance(surf_t, dict) and isinstance(surf_t.get("value"), dict):
+        surf_t["value"]["types_pct"] = tp_t
+    if terr_t is not None:
+        terr_t["scat_source"] = "track_engine"
     return surf_t, wind_t, terr_t
 
 DISABLED=[

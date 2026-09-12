@@ -5439,11 +5439,21 @@ def ride_report_data(response: Response, ride: str = Query(...), rebuild: int = 
             return row["w1_json"]
         fit = (row or {}).get("fit_path")
         if not fit:
+            # starsza wersja schematu raportu tez zna sciezke FIT
+            fr0 = conn.execute(
+                "SELECT fit_path FROM qbot_v2.ride_report_data "
+                "WHERE ride_key=%s AND fit_path IS NOT NULL ORDER BY schema_version DESC LIMIT 1",
+                (ride,)).fetchone()
+            fit = fr0["fit_path"] if fr0 else None
+        if not fit:
             fr = conn.execute(
                 "SELECT fit_path FROM qbot_v2.ride_frames "
                 "WHERE ride_key=%s AND fit_path IS NOT NULL LIMIT 1",
                 (ride,)).fetchone()
             fit = fr["fit_path"] if fr else None
+        if not fit:
+            _cand = "/opt/qbot/artifacts/fit/%s.fit" % ride
+            if os.path.exists(_cand): fit = _cand
     finally:
         conn.close()
     if not fit or not os.path.exists(fit):
