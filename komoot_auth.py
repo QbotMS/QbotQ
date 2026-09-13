@@ -10,7 +10,7 @@ Mechanizm (potwierdzony na zywo):
 Zadne wartosci sekretne nie sa logowane.
 """
 from __future__ import annotations
-import base64, json, os, re, time, urllib.request, urllib.error
+import base64, json, os, re, time, urllib.parse, urllib.request, urllib.error
 from pathlib import Path
 
 SESSION_FILE = Path(os.getenv("KOMOOT_SESSION_FILE", "/opt/qbot/app/.komoot_session"))
@@ -24,6 +24,13 @@ class KomootAuthError(RuntimeError):
         super().__init__(msg)
         self.transient = transient
         self.http_code = http_code
+
+
+def _is_null_cookie(val):
+    """Komoot po wylogowaniu oddaje ciasteczka o wartosci 'j:null' (URL-encoded
+    'j%3Anull'). To NIE jest token - trzymanie tego w jarze udaje zdrowa sesje."""
+    v = urllib.parse.unquote((val or "").strip())
+    return v in ("", "j:null", "null", "undefined", "deleted")
 
 
 def _parse_jar(raw):
@@ -72,13 +79,24 @@ class KomootSession:
             raise KomootAuthError("Komoot refresh blad sieci: %s" % getattr(e, "reason", e),
                                   transient=True)
         fresh = {}
+        nulled = []
         for h in (resp.headers.get_all("Set-Cookie") or []):
             part = h.split(";", 1)[0]
             name, _, val = part.partition("=")
-            if val and val not in ("deleted", ""):
-                fresh[name.strip()] = val
+            name = name.strip()
+            if not val or val == "deleted":
+                continue
+            if _is_null_cookie(val):
+                # sesja padla - Komoot kasuje token przez 'j:null'.
+                # NIE zapisujemy tego do jara (zeby nie zatruc pliku sesji).
+                nulled.append(name)
+                continue
+            fresh[name] = val
         if "koa_at" not in fresh:
-            raise KomootAuthError("Komoot refresh: brak nowego koa_at (sesja wygasla? przeloguj)", transient=False)
+            why = ("Komoot wylogowal sesje (puste: %s) - przeloguj (ciasteczka)"
+                   % ", ".join(sorted(set(nulled)))) if nulled else \
+                  "Komoot refresh: brak nowego koa_at (sesja wygasla? przeloguj)"
+            raise KomootAuthError(why, transient=False)
         self.jar.update(fresh)
         self._save()
         return True
@@ -89,7 +107,11 @@ class KomootSession:
     def access_token(self):
         if not self.is_fresh():
             self.refresh()
-        return self.jar.get("koa_at", "")
+        atk = self.jar.get("koa_at", "")
+        if _is_null_cookie(atk):
+            raise KomootAuthError("Sesja Komoot jest martwa (koa_at pusty) - przeloguj (ciasteczka)",
+                                  transient=False)
+        return atk
 
     def authed_headers(self, accept="application/hal+json"):
         atk = self.access_token()

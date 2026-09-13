@@ -58,6 +58,33 @@ def _alert(msg):
         print("[KOMOOT-WATCH] Telegram alarm nieudany:", _e)
 
 
+_ALERT_STATE = "/opt/qbot/app/.komoot_watch_alert"
+_ALERT_EVERY_S = 6 * 3600
+
+
+def _alert_throttled(key, msg):
+    """Alarm nie czesciej niz raz na 6 h dla tego samego powodu (bez spamu co 5 min)."""
+    import json as _j, time as _t
+    now = int(_t.time())
+    state = {}
+    try:
+        with open(_ALERT_STATE, encoding="utf-8") as f:
+            state = _j.load(f)
+    except Exception:
+        state = {}
+    if now - int(state.get(key) or 0) < _ALERT_EVERY_S:
+        print("[KOMOOT-WATCH] alarm '%s' zdlawiony (byl < 6 h temu)" % key)
+        return False
+    _alert(msg)
+    state[key] = now
+    try:
+        with open(_ALERT_STATE, "w", encoding="utf-8") as f:
+            _j.dump(state, f)
+    except Exception as _e:
+        print("[KOMOOT-WATCH] nie zapisano stanu alarmu:", _e)
+    return True
+
+
 def _geo_sig(session, tour_id):
     """Stabilny odcisk GEOMETRII trasy z Komoot (hash zaokraglonych lat/lng)."""
     try:
@@ -201,14 +228,25 @@ def check_once(session=None, seed_if_empty=True):
                 print("[KOMOOT-WATCH] chwilowy blad Komoota, ponowie za ~5 min:", e2)
                 return {"error": "transient", "detail": str(e2)}
         else:
-            _alert("Sesja Komoot padla - przeloguj (ciasteczka). %s" % e)
+            _alert_throttled("auth", "Sesja Komoot padla - przeloguj (ciasteczka). %s" % e)
             return {"error": "auth", "detail": str(e)}
     with api_db._conn() as c:
         seen = _seen_map(c)
     if not seen and seed_if_empty:
         n = seed(session)
         return {"seeded": n, "notified": []}
-    tours = _list_all_planned(session)
+    try:
+        tours = _list_all_planned(session)
+    except kclient.KomootClientError as e:
+        # np. HTTP 401 = sesja wyglada na zywa, ale API nas nie zna (wylogowanie).
+        # Wczesniej leciol goly wyjatek i przebieg konczyl sie po cichu.
+        txt = str(e)
+        if " 401" in txt or " 403" in txt:
+            _alert_throttled("api_auth", "API Komoot odrzuca sesje (HTTP 401/403) - "
+                                         "przeloguj i wgraj swieze ciasteczka. Nowe trasy NIE sa wykrywane.")
+            return {"error": "auth_api", "detail": txt}
+        _alert_throttled("api_other", "Blad API Komoot: %s" % txt)
+        return {"error": "api", "detail": txt}
     notified = []
     quiet = []
     for t in tours:

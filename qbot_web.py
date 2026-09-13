@@ -911,6 +911,133 @@ async def api_hammerhead_refresh(request: Request):
     }
 
 
+_KOMOOT_FORM_HTML = """<!doctype html>
+<html lang="pl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sesja Komoot - QBot</title>
+<style>
+ body{background:#14161a;color:#e8e8e8;font:16px/1.5 system-ui,sans-serif;margin:0;padding:24px}
+ .box{max-width:620px;margin:0 auto}
+ h1{font-size:20px;margin:0 0 4px}
+ p{color:#9aa0a8;font-size:14px;margin:0 0 16px}
+ textarea{width:100%;box-sizing:border-box;padding:14px;height:120px;resize:vertical;
+       font:13px monospace;background:#1e2126;color:#e8e8e8;border:1px solid #333;border-radius:8px}
+ button{width:100%;margin-top:12px;padding:14px;font-size:16px;font-weight:600;
+        background:#e8622c;color:#fff;border:0;border-radius:8px}
+ button:disabled{opacity:.5}
+ #out{margin-top:18px;padding:14px;border-radius:8px;font-size:14px;display:none;white-space:pre-wrap}
+ #stan{margin:0 0 18px;padding:12px 14px;border-radius:8px;font-size:14px;
+       background:#1e2126;border:1px solid #333;white-space:pre-wrap}
+ .ok{background:#14331e;border:1px solid #2c6b3f}
+ .err{background:#3a1a1a;border:1px solid #7a2b2b}
+ ol{color:#9aa0a8;font-size:13px;padding-left:20px}
+ code{background:#1e2126;padding:1px 5px;border-radius:4px}
+</style></head><body><div class="box">
+<h1>Sesja Komoot</h1>
+<p>QBot sledzi Twoje zaplanowane trasy jako zalogowany uzytkownik. Komoot co jakis
+czas konczy sesje - wtedy nowe trasy przestaja wpadac do analizy i trzeba wkleic
+swieze ciasteczka.</p>
+<div id="stan">Sprawdzam stan sesji...</div>
+<textarea id="ck" placeholder="wklej tutaj caly naglowek Cookie" autocomplete="off"
+ autocapitalize="off" spellcheck="false"></textarea>
+<button id="go">Sprawdz i zapisz</button>
+<div id="out"></div>
+<ol>
+<li>Otworz <code>www.komoot.com</code> w przegladarce i zaloguj sie.</li>
+<li>Wcisnij F12 (Mac: Option+Cmd+I) - otworzy sie panel developerski.</li>
+<li>Zakladka <code>Network</code>, potem odswiez strone (F5).</li>
+<li>Kliknij pierwsze zadanie z lewej listy (to do <code>komoot.com</code>).</li>
+<li>Sekcja <code>Request Headers</code>, znajdz linie <code>Cookie:</code>.</li>
+<li>Skopiuj CALA wartosc po <code>Cookie:</code> i wklej w pole wyzej.</li>
+</ol>
+<p>Ciasteczka sa najpierw testowane na API Komoota, a zapisywane dopiero po udanym
+tescie. Stara sesja zostaje w kopii. Nic nie trafia do logow.</p>
+</div><script>
+const out=document.getElementById('out'),btn=document.getElementById('go'),
+      inp=document.getElementById('ck'),stan=document.getElementById('stan');
+const NL=String.fromCharCode(10);
+async function odswiezStan(){
+  try{
+    const r=await fetch('/api/komoot/session/status',{credentials:'same-origin'});
+    const j=await r.json();
+    const linie=[(j.alive?'Sesja zywa - '+(j.tours!==null?j.tours+' tras widocznych przez API':'API odpowiada')
+                         :'Sesja NIE dziala: '+(j.detail||'?'))];
+    if(j.last_tour){linie.push('Ostatnia wykryta trasa: '+j.last_tour.name+' ('+j.last_tour.date+')');}
+    stan.textContent=linie.join(NL);
+    stan.className=j.alive?'ok':'err';
+  }catch(e){stan.textContent='Nie udalo sie sprawdzic stanu: '+e;stan.className='err';}
+}
+odswiezStan();
+btn.onclick=async()=>{
+  const v=inp.value.trim();
+  out.style.display='block';
+  if(!v){out.className='err';out.textContent='Puste pole.';return;}
+  btn.disabled=true;out.className='';out.textContent='Sprawdzam u Komoota...';
+  try{
+    const r=await fetch('/api/komoot/session',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',body:JSON.stringify({cookie:v})});
+    const j=await r.json();
+    if(r.ok&&j.ok){
+      out.className='ok';
+      out.textContent=['OK - sesja zapisana.',
+        'API zwrocilo '+j.tours+' zaplanowanych tras.',
+        'Watcher wykryje nowe trasy przy najblizszym przebiegu (do 5 min).'].join(NL);
+      inp.value='';
+      odswiezStan();
+    }else{
+      out.className='err';
+      out.textContent='Odrzucone: '+(j.detail||r.status);
+    }
+  }catch(e){out.className='err';out.textContent='Blad polaczenia: '+e;}
+  btn.disabled=false;
+};
+</script></body></html>"""
+
+
+@app.get("/komoot-dostep", response_class=HTMLResponse)
+async def komoot_access_form(request: Request):
+    user = _current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    return HTMLResponse(_KOMOOT_FORM_HTML)
+
+
+@app.get("/api/komoot/session/status")
+async def api_komoot_session_status(request: Request):
+    """Stan sesji Komoot (test na zywo). Nie zwraca zadnych wartosci ciasteczek."""
+    user = _current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    import komoot_session_admin as _KA
+    st = _KA.status(live=True)
+    st["last_tour"] = _KA.last_seen_tour()
+    return st
+
+
+@app.post("/api/komoot/session")
+async def api_komoot_session_set(request: Request):
+    """Przyjmuje naglowek Cookie z przegladarki, testuje go na API Komoota
+    i zapisuje sesje dopiero po udanym tescie. Nic nie trafia do logow."""
+    user = _current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    body = await request.json()
+    raw = str((body or {}).get("cookie") or "")
+    if not (16 <= len(raw.strip()) <= 8192):
+        raise HTTPException(status_code=400, detail="zly format (za krotkie lub za dlugie)")
+    import komoot_session_admin as _KA
+    try:
+        res = _KA.store_session(raw)
+    except _KA.SessionInputError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except _KA.SessionRejected as exc:
+        raise HTTPException(status_code=502, detail="Komoot nie przyjal tych ciasteczek: %s" % exc)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail="nie udalo sie zapisac sesji: %s" % exc)
+    return res
+
+
 @app.post("/api/planer/opis-dni")
 async def api_planer_opis_dni(request: Request):
     """Opis LLM per dzien wg podzialu. Body: {route_id, cuts:[km,...], rebuild?}."""
