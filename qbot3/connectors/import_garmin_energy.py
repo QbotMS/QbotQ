@@ -85,7 +85,30 @@ quality_status=EXCLUDED.quality_status,imported_at=now()""",
          s.get("bodyBatteryDrainedValue"),
          quality),
     )
+    # HRV: qbot_v2.wellness_daily nie ma wlasnego zrodla HRV -- Garmin oddaje je
+    # w danych snu (qbot_v2.sleep_daily). Domykamy tu, zeby JEDNA tabela wellness
+    # miala komplet i raporty nie musialy siegac fallbackiem po sleep_daily.
+    cur.execute(
+        """UPDATE qbot_v2.wellness_daily w
+           SET hrv_ms = s.hrv_ms
+           FROM qbot_v2.sleep_daily s
+           WHERE w.date = %s AND s.date = %s
+             AND s.hrv_ms IS NOT NULL
+             AND w.hrv_ms IS DISTINCT FROM s.hrv_ms""",
+        (ds, ds),
+    )
     print(f"energy {ds}: {tk} kcal quality={quality}")
+
+# Fallback: podloga aktywnych kcal z ModelQ (jazdy z mocy 1Hz).
+# Patrz fitmodel/energy_fallback.py -- Garmin zostaje glowny, ModelQ tylko podnosi.
+try:
+    from fitmodel.energy_fallback import compute_day
+    for ds in target_dates:
+        res = compute_day(conn, ds)
+        if res:
+            print(f"energy_eff {ds}: active_eff={res['active_kcal_eff']:.0f} source={res['source']}")
+except Exception as e:
+    print(f"energy_eff: fallback error {e}")
 
 conn.commit()
 cur.close()

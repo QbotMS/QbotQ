@@ -35,7 +35,7 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("--date-from", default=None)
     p.add_argument("--date-to", default=None)
-    p.add_argument("--source", choices=["all", "garmin", "intervals"], default="all")
+    p.add_argument("--source", choices=["all", "garmin", "intervals"], default="garmin")
     p.add_argument("--dry-run", action="store_true")
     return p.parse_args()
 

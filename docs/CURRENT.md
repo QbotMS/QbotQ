@@ -1,5 +1,175 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-09-20] AXS: dobieranie z sasiedztwa + kandydaci kaset PER ROWER (skalowanie na Grail)
+
+Dwie rzeczy (Michal: blad ma marginalna wage -> dorob brakujace; szykuj sie na wiecej rowerow --
+Monster juz jest, Grail zaraz wpadnie).
+
+1) DOBIERANIE Z SASIEDZTWA (gear_axs.build_ride, nowa nearest_axs_cassette): gdy klasyfikacja
+   z przerzutki nie rozstrzyga (jazda na wspolnych zebatkach albo remis char.), bierzemy kasete
+   z NAJBLIZSZEJ czasowo PEWNEJ (source='axs') jazdy TEGO SAMEGO roweru. Kaseta nie zmienia sie
+   z dnia na dzien. Zrodlo 'axs_fill'; note zapisuje date zrodla i odleglosc w dniach (audytowalne).
+   Kolejnosc: AXS(klasyfikacja) -> axs_fill(sasiad) -> physics(zapas) -> brak.
+   Efekt (63 jazdy AXS Grizla): 41 axs + 22 axs_fill, 0 bez kasety. Oś czerwiec-lipiec spojna
+   (10-52 do ~11.07, potem 10-46) -- dobrane ciagna z wlasciwych pewnych sasiadow. (2 jazdy ze
+   stycznia zostaly na fizyce: stary setup owal 40T, inny rower, brak sasiada AXS -- OK.)
+
+2) KANDYDACI KASET PER ROWER (skalowanie): koniec z globalna lista AXS_CASSETTE_CODES.
+   Teraz BIKE_AXS_CASSETTES = {rower -> jego kasety}; 'Canyon Grizl' -> ('10-46','10-52').
+   Rower spoza mapy -> fallback: wszystkie kasety katalogu poza mechanicznymi (BIKE_GEARING).
+   Dzieki temu Grail z INNA kaseta nie bedzie mieszal klasyfikacji Grizla (i odwrotnie).
+   cassette_from_axs(...) przyjmuje teraz 'bike'.
+
+   CHECKLIST DODANIA NOWEGO ROWERU (jest tez w naglowku gear_axs.py):
+   a) czujniki/serial -> rozpoznanie: qbot3/rides/activity_devices.py (bike_for_ride, bike_sensor).
+   b) kaseta(y): AXS -> dopisz do BIKE_AXS_CASSETTES + upewnij sie ze sa w gear_cassette;
+      mechaniczny -> profil w gear_estimate.BIKE_GEARING.
+   c) nietypowy przod (owal) -> CHAINRING_LABELS.
+
+   OTWARTE dla Grail: potrzebne serial(e) czujnikow, czy AXS, jaka kaseta, jaki przod --
+   wtedy pre-rejestracja przed pierwsza jazda.
+
+KOD NIEZACOMMITOWANY (dev_shell_exec blokuje runuser/push). Do commitu przez root/DC:
+  qbot3/rides/gear_axs.py, qbot_activity_ingest.py, scripts/trigger_modelq_after_ride.py.
+Sprzatniecie (rm przez SSH/DC): scripts/_tmp_dt_1909.py, _tmp_dt_cmp.py, _tmp_check_w1.py;
+  oraz .bak: qbot3/rides/gear_axs.py.bak.1789905480.
+
+## [2026-09-20] AXS: klasyfikacja do 10-46/10-52 odporna na bledy wpisu w Karoo
+
+Michal potwierdzil: ma TYLKO dwie kasety AXS (10-46 i 10-52), a Karoo czasem zle zapisuje
+rzedy (zdarzalo mu sie lapac i poprawiac). Wiec 'ufaj zebom AXS doslownie' bylo zle -- tworzylo
+kasety-widma z bledow wpisu (widzielismy 'trzecia' kasete 14/16 top46 i 'czwarta' 37/38 top52 --
+to byly 10-46 i 10-52 z bledami rzedow).
+
+Nowy cassette_from_axs (qbot3/rides/gear_axs.py): klasyfikuje jazde do JEDNEJ z 2 realnych kaset
+przez WIEKSZOSC zebow CHARAKTERYSTYCZNYCH (wystepujacych tylko w jednej kasecie sposrod kandydatow
+AXS_CASSETTE_CODES=('10-46','10-52')): 10-46 ma char. {13,15,17,19,38,46}, 10-52 {14,16,18,37,44,52}.
+Wygrywa kaseta z wieksza liczba trafien; remis/brak char. -> None -> zapas (fizyka). Zapisuje
+KANONICZNE zeby z katalogu (nie zepsute z jazdy) i liczy obwod z pozycji (odporne na zly gear_rear_t).
+Note flaguje N pozycji niezgodnych = mozliwy blad wpisu w Karoo.
+
+Efekt na zywo (63 jazdy AXS): 41 z przerzutki (31x 10-46, 10x 10-52), 22 zapas-fizyka.
+- Poprawnie odzyskane jazdy, ktore fizyka mylila (np. 08-11: fizyka 10-52 -> AXS 10-46).
+- 19.09: 36T/10-46/axs/2.283/ok. W1 przebudowany dla wrzesniowych Grizli.
+- 22 zapas = jazdy na srodkowych zebatkach, gdzie bledy Karoo daly remis char. (17,19 vs 14,16)
+  albo brak zebow rozrozniajacych; z samego AXS nierozstrzygalne -> fizyka.
+
+OTWARTE/nastepny krok (opcjonalny):
+- Rozbicie remisow przez CIAGLOSC CZASOWA: kaseta nie zmienia sie z dnia na dzien, wiec jazde
+  nierozstrzygnieta mozna przypisac do kasety najblizszej pewnej (AXS) jazdy na tym samym zestawie.
+  Podnioslby to pokrycie AXS z 41/63 blizej 63/63.
+- KOD NIEZACOMMITOWANY (dev_shell_exec blokuje runuser/push). Do commitu przez root/DC:
+  qbot3/rides/gear_axs.py (nowy), qbot_activity_ingest.py, scripts/trigger_modelq_after_ride.py.
+- Sprzatniecie _tmp_*.py (rm przez SSH/DC): _tmp_dt_1909.py, _tmp_dt_cmp.py, _tmp_check_w1.py.
+
+## [2026-09-20] AXS: kaseta z DEKLARACJI PRZERZUTKI (gear_rear_t), nie z fizyki + wpiete w trigger
+
+Uwaga Michala: przy AXS pierwszym kryterium kasety powinien byc identyfikator/konfiguracja
+przerzutki, nie zgadywanie z fizyki. Sluszne -- i od razu sie oplacilo.
+
+Nowy modul qbot3/rides/gear_axs.py:
+- cassette_from_axs(): dopasowuje obserwowane pary (pozycja gear_rear_num -> zeby gear_rear_t)
+  POZYCYJNIE do katalogu gear_cassette (cog_at, pozycja od najwiekszego zeba=1). Bierze kasete
+  tylko gdy pasuje DOKLADNIE JEDNA; inaczej zapas (istniejacy ride_cassette / fizyka).
+- build_ride(): przod z AXS (mode gear_front_t), kaseta z przerzutki (fallback fizyka),
+  obwod z mediany rozwiniecia. Zapis ride_cassette source='axs' + ride_drivetrain cassette_source='axs'.
+- Wpiete w qbot_activity_ingest.ingest_devices_and_gears: mechaniczny -> gear_estimate,
+  jesli None (AXS) -> gear_axs.build_ride. Czyli trigger obsluguje juz OBA rowery.
+
+Dowod/efekt na zywo (63 jazdy AXS): 16 dostalo kasete WPROST z przerzutki (source=axs),
+reszta zapas (physics/physics_fill/manual), 0 bez kasety.
+- 19.09 (Grizl): 36T/10-46/axs/obwod 2.283/ok. Zdeklaracja AXS poz.6-10 = 21,19,17,15,13T
+  = jednoznacznie 10-46 (nie 10-52: ten ma 14,16,18,21 -> odpada na poz.10). W1 przebudowany.
+- WALIDACJA ZASADY: 14 majowych jazd fizyka chwilowo wrzucila na 10-52; AXS jednoznacznie
+  10-46 -> build_ride poprawil je z powrotem na 10-46/axs. Przerzutka > fizyka.
+
+Backfill: detect_cassette --apply (uzupelnil ride_cassette dla zaleglych 13.08-09.09,
+27 zmian fizyki), potem gear_axs dla wszystkich jazd AXS (AXS nadpisuje fizyke gdzie jednoznaczny).
+W1 przebudowany dla 19.09 i wrzesniowych Grizli (04/05/08/09).
+
+OTWARTE/limit:
+- Gdy jazda nie wrzuci na rozrozniajace zebatki (uzyte tylko 10-11-12T, wspolne 10-46/10-52),
+  AXS jest niejednoznaczny -> zapas fizyka, ktora myli 10-46/10-52. Lepszy fallback na przyszlosc:
+  przenies kasete z najblizszej jazdy potwierdzonej z AXS (bo kaseta nie zmienia sie z dnia na dzien).
+- Czerwcowe/sierpniowe 10-52 opieraja sie na samej fizyce (brak potwierdzenia AXS) -- moga byc
+  niepewne; do przegladu jesli bedzie AXS-owe potwierdzenie.
+- KOD NIEZACOMMITOWANY (dev_shell_exec blokuje runuser/push). Do commitu przez root/DC:
+  qbot3/rides/gear_axs.py (nowy), qbot_activity_ingest.py, scripts/trigger_modelq_after_ride.py.
+- Sprzatniecie _tmp_*.py (rm przez SSH/DC): _tmp_dt_1909.py, _tmp_dt_cmp.py, _tmp_check_w1.py.
+
+## [2026-09-20] Naped wracal do raportu tylko dla jazd liczonych recznie -- trigger na zywo pomijal device+estimate
+
+Zgloszenie: raport jazdy 19.09 pokazywal "brak informacji o napedzie".
+
+Przyczyna (znaleziona w kodzie, nie zgadnieta): sa DWIE procedury "po nowej jezdzie".
+Zmiana z 12.09 (c37ae02) dodala krok czujniki+rower+biegi TYLKO do _one_if_new()
+w qbot_activity_ingest.py. Ale wrapper syncu Karoo->Garmin (run_hammerhead_garmin_sync_profile.sh,
+linia 61) na zywo odpala scripts/trigger_modelq_after_ride.py, ktory wolal tylko
+ingest_one + _recompute_fitmodel -- bez ingest_devices/estimate. Skutek: kazda
+jazda z liva (18.09, 19.09) miala dane 1Hz i ModelQ, ale puste activity_device
+i ride_drivetrain -> raport "brak napedu". 11.09 dzialalo, bo policzono je recznie
+w tamtej sesji.
+
+Zrobione:
+- qbot_activity_ingest.py: nowa wspolna funkcja ingest_devices_and_gears(conn, aid, log)
+  (jedno zrodlo, zeby procedury sie nie rozjechaly znowu). _one_if_new uzywa jej.
+- scripts/trigger_modelq_after_ride.py: wola ing.ingest_devices_and_gears(conn, aid)
+  po ingest_one, przed conn.close().
+- Backfill 18.09 (Grand Canyon, estimate physics_est 36T/11-50) i 19.09 (Grizl AXS:
+  detect_cassette --ride --apply -> 10-46 obwod 2.283 pewnosc wysoka, potem
+  build_drivetrain --apply -> 36T/10-46). W1 przebudowany dla obu (_build_report_safe).
+
+Dowod na zywo: ride_drivetrain ma po 1 wierszu dla obu jazd; w1_json obu jazd ma pelny
+blok bike+gears, zero "brak napedu".
+
+UWAGA/otwarte:
+- Sciezka AXS (detect_cassette + build_drivetrain) NADAL nie jest wpieta w trigger --
+  dorobiona recznie tylko dla 19.09. Grizlowe jazdy 13.08-09.09 maja 'brak kasety'
+  w ride_drivetrain (backlog). Do decyzji: wpiac detect_cassette+build_drivetrain
+  dla roweru z AXS do wspolnej funkcji.
+- Zmiana kodu ZYWA na dysku (dziala od nastepnej jazdy), ale NIE zacommitowana --
+  dev_shell_exec blokuje runuser/push. Do commitu przez root/DC:
+  qbot_activity_ingest.py + scripts/trigger_modelq_after_ride.py.
+- Do sprzatniecia (rm przez SSH/DC): scripts/_tmp_dt_1909.py, _tmp_dt_cmp.py, _tmp_check_w1.py.
+
+## [2026-08-16] Podjazdy przestaly byc ciete na kawalki (karoo_400_3_merge_v2)
+
+Zgloszenie: raport trasy "Albert[Q] Sicily - DX Cavagrande" (#3186954572) pokazywal
+jeden ciagly podjazd jako cztery osobne "umiarkowane" fragmenty.
+
+Przyczyna (znaleziona w kodzie, nie zgadnieta): detektor konczyl podjazd na PIERWSZEJ
+ramce ponizej CLIMB_CONTINUE_PCT (-0,5%) i wymagal >=3% do wznowienia. Ramki tnace
+mialy -0,67%, czyli 67 cm spadku na 100 m -- szum SRTM albo plaska polka serpentyny.
+Do tego NIGDZIE nie bylo etapu laczenia sasiednich podjazdow (Strava/FIETS to robia).
+
+Zrobione:
+- qbot3/routes/route_elevation_engine.py: _climb_runs (kandydaci bez filtra),
+  _merge_climb_runs (scalanie), _run_stats/_run_passes. Filtr 400 m/3% przeniesiony
+  ZA scalanie. Progi: MERGE_MAX_GAP_M=400, MERGE_MAX_DIP_M=12.
+- Regula "scalanie nie moze pogorszyc" -- KLUCZOWA, dodana po audycie pierwszej
+  wersji, ktora GUBILA podjazdy (base 183: 1200 m @3,7% ginal, suma 316 -> 195 m).
+- scripts/backfill_climb_merge.py -- backfill z gotowych probek DB (bez opentopodata).
+  28 tras aktywnych zapisane, 143 -> 130 podjazdow.
+- Testy 11/11, trzy nowe (polka / realny zjazd / brak gubienia).
+- Dok.: DECISIONS 2026-08-16, docs/architecture/ROUTE_ELEVATION_CLIMB.md, TODO.
+
+Dowod na zywo: trasa 223 -> 6 podjazdow, glowny 7,55-14,45 km +358 m 5,2% "dlugi",
+najglebszy zjazd wewnatrz 5 m. _build_report_data zwraca 6 podjazdow z ocenami,
+symulator W' min 86% na km 13,1 (climb_score/route_ride_sim czytaja z bazy,
+wiec zero zmian w ich kodzie).
+
+Nauka metodologiczna: dwie pierwsze wersje testow byly BEZUZYTECZNE -- profile
+z polka -0,3%/-0,1% w ogole nie przerywaly biegu, wiec testy przechodzily nie
+dotykajac nowej logiki. Przy testowaniu detektorow progowych trzeba osobno
+sprawdzic licznikiem, ze przypadek testowy faktycznie wchodzi w badana sciezke.
+
+OTWARTE:
+- jazdy (ride_climb_efforts, scripts/ride_climb_harvest.py) uzywaja tego samego
+  detektora, ale NIE byly przeliczane -- swiadoma decyzja, do zrobienia przy okazji;
+- trasy status='disabled' zostaly na karoo_400_3_v1 (90 wierszy w bazie);
+- do sprzatniecia (rm niedostepny w dev_shell_exec): scripts/_tmp_check_climbs2.py,
+  _tmp_check_climbscore223.py, _tmp_prof223.py oraz DECISIONS.md.bak.20260816_232639.
+
 ## [2026-08-11] Ryczalt kaloryczny z eventu kalendarza (wakacje bez logowania)
 
 Po co: na urlopie nie chce sie logowac posilkow, a puste dni psuja bilans.
@@ -888,3 +1058,28 @@ Cel: system ma widziec planowane obciazenie na kolejne dni (wyprawy z Planera).
 - OTWARTE: [FIT-DEVFIELD] jazda 11.08 nie parsuje sie (fitparse vs pola
   deweloperskie QExt2) — blad wczesniejszy, endpoint 500.
 - OTWARTE: [OBWOD-303S] czujnik 303 S ma wpisane 2205 mm, pomiar daje ~2150 mm.
+
+## 2026-08-17 -- [KAROO-NAWIERZCHNIA] naprawa /api/surface/by-name (QExt2)
+Problem: po wysylce trasy na Karoo z Analizy trasy QExt2 nie dostawal profilu nawierzchni.
+Przyczyna: nazwa trasy zawiera date, ktora zmienia sie przy przeliczeniu trasy w QBocie;
+kopia na Karoo zostaje ze stara nazwa, ILIKE po pelnej nazwie -> 202 not_found.
+Naprawa (qbot_api.py, commit c1cb50c, wypchniety): fallback po stabilnym #<route_id> z nazwy
+(dopiero gdy nazwa nie pasuje -- chroni trasy planera 'dzien X/N') + logowanie SURFACE_BYNAME.
+Zweryfikowane na zywo. qbot-api zrestartowany. OTWARTE: retry przy 202 w QExt2 (osobny projekt).
+
+
+## 2026-08-18 (wieczor) — [ENERGIA-FALLBACK etap 1] wdrozone
+
+- Garmin zanizal aktywne kcal w dni jazdowe (jazdy z Karoo bez kalorii w Connect od ~06;
+  18.08: 1258 vs 2437 z mocy). Wdrozona podloga ModelQ w qbot_v2.energy_daily:
+  kolumny *_eff, modul fitmodel/energy_fallback.py, hook w import_garmin_energy.py,
+  konsumenci przelaczeni (wellness_day_get / energy_day / raport dzienny / report_data_provider).
+- Backfill od 06-01: 5 dni podniesionych, w tym 18.08 -> 2134. Kwarantanna miernika
+  wylaczona z podlogi (11/13/14/17.08 zostaly na Garminie).
+- qbot-api zrestartowany, uslugi active. COMMIT PENDING (dev_shell git = read-only;
+  zrobic przez DC): fitmodel/energy_fallback.py, qbot3/connectors/import_garmin_energy.py,
+  qbot_wellness_store.py, qbot_query_handler.py, qbot_report_data_provider.py, docs/.
+- Etap 2 w TODO: tor on-demand daily_energy_expenditure (tool_registry + prompt Alberta).
+- Kontekst sprzetowy: Fenix 8 na becie FW 23.25 (restarty, znane bugi) — rekomendowany
+  powrot na stable; miernik mocy dryfuje od 11.08 (kwarantanny) — jazda 18.08 moze
+  jeszcze trafic do kwarantanny przez guard, wtedy eff sam wroci na Garmina.

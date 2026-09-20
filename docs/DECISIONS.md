@@ -4,6 +4,203 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-08-24 -- DECYZJA: wlasny sync Withings -> Garmin zamiast SmartScaleSync
+
+PROBLEM: waga i sklad ciala trafialy do QBota lancuchem
+Withings -> SmartScaleSync (platne) -> Garmin -> import_garmin_body.py ->
+qbot_v2.body_measurements. Subskrypcja SmartScaleSync (18,5 EUR) wygasa 5.09.2026.
+
+USTALENIA (sprawdzone na zywo 2026-08-24, nie z pamieci):
+- Withings NIE MA oficjalnej integracji z Garminem; kazde rozwiazanie to obejscie.
+- Konektor qbot3/connectors/import_withings_body.py jest DEPRECATED i taki ZOSTAJE.
+  Waga ma dalej isc przez Garmina -- decyzja Michala.
+- Refresh token Withings z 30.05 nadal wazny (status 0) -- reczna autoryzacja
+  w przegladarce NIE byla potrzebna.
+- garminconnect 0.3.3 w venv ma add_body_composition(); tokenstore
+  /opt/qbot/app/.garmin_tokens dziala -> BEZ hasla w skrypcie, BEZ plikow FIT,
+  BEZ zewnetrznego withings-sync.
+
+DECYZJA: modul zbudowany doslownie wg wzorca qbot-hammerhead-sync (zweryfikowanego
+plik po pliku, nie z pamieci): samodzielny, W REPO, ale bez bazy qbot_v2, bez
+qbot-api, wlasny plik stanu JSON, wlasny cron, wlasny log, wlasne sekrety poza repo.
+Odrzucono trzymanie kodu calkiem poza repo -- traci historie zmian, kopie zapasowa
+i widocznosc dla kolejnych sesji, a skrypt na cronie nie potrzebuje natychmiastowosci
+jak pliki statyczne w /opt/qbot/web/public.
+
+PLIKI:
+- withings_auth.py -- odswiezanie tokenu (ROTACJA: Withings uniewaznia stary przy
+  kazdym uzyciu, wiec zapis atomowy przez plik tymczasowy + kopia zapasowa),
+  odczyt pomiarow, filtr zdroworozsadkowy, attrib in (0,2) = tylko z urzadzenia.
+- qbot-withings-sync -- program glowny.
+- scripts/run_withings_garmin_sync.sh -- opakowanie dla crona, flock.
+- scripts/withings_sync_checkpoint.py -- kontrola + mail (patrz nizej).
+
+BEZPIECZNIKI (jak u Hammerheada):
+- wysylka wymaga jawnego --upload, domyslnie tryb probny;
+- znacznik przesuwa sie WYLACZNIE po ODCZYCIE ZWROTNYM z Garmina -- "nie rzucilo
+  bledem" NIE liczy sie jako sukces (ta sama pulapka co przy [POI]);
+- blad przejsciowy -> kod 1, ponowienie za 15 min; blad TRWALY (uniewazniony token)
+  -> kod 2, alarm Telegram i STOP. Nie ponawiamy tego, co trwale zepsute.
+- utrata pliku stanu -> odbudowa z Garmina (get_body_composition), bez duplikatow.
+
+DOWODY (2026-08-24):
+- tryb probny na zywych danych: token odswiezony, pomiar 24.08 07:10 / 103,083 kg
+  z kompletem 6 wartosci;
+- TEST KONTROLOWANY zapisu (data 2026-08-20, poza oknem --days 3 importu):
+  PRZED 0 pomiarow -> push_measure=uploaded -> verify_in_garmin=True -> PO 1 pomiar,
+  103,08 kg, zrodlo INDEX_SCALE, tluszcz 31,3%, miesnie 67,3 kg, kosci 3,5 kg,
+  nawodnienie 49,0%. Test uzyl PRODUKCYJNYCH funkcji, nie ich kopii.
+  UWAGA: ten wpis testowy nalezy skasowac recznie w Garmin Connect.
+- przebieg przez opakowanie shellowe: rc=0, 1 sekunda, log pisany poprawnie.
+
+PULAPKA DO ZAPAMIETANIA: przeliczenie nawodnienia. Withings podaje wode w KILOGRAMACH,
+Garmin oczekuje PROCENTOW (50,46 kg / 103,08 kg = 49,0%). Potwierdzone po stronie Garmina.
+
+CRON:
+- */15 5-9 * * *  run_withings_garmin_sync.sh  (wazenie zwykle 7:10-7:25,
+  import_garmin_body.py o 7:30/9:00/12:00 z --days 3, wiec spozniony sync i tak dogoni)
+- 0 10 1 9 * i 0 10 4 9 *  withings_sync_checkpoint.py -- po 5.09 do usuniecia.
+
+PUNKT KONTROLNY (wazne): dopoki SmartScaleSync dziala rownolegle, nasz sync widzi
+"duplicate" i NIGDY nie udowodni, ze zapisuje sam -- awaria bylaby niewidoczna az do
+5.09. Dlatego checkpoint liczy statusy w state/processed_withings_measures.json
+i wysyla mail z werdyktem: uploaded>0 = dziala samodzielnie; same duplicate =
+niepotwierdzone; failed>0 = sprawdzic log.
+
+---
+## 2026-08-16 -- DECYZJA: scalanie pocietych podjazdow (karoo_400_3_merge_v2)
+
+PROBLEM: trasa "Albert[Q] Sicily - DX Cavagrande" (#3186954572) pokazywala JEDEN
+ciagly podjazd 7,55-14,45 km jako CZTERY osobne "umiarkowane" kawalki. Powod:
+detektor konczyl podjazd na PIERWSZEJ ramce ponizej CLIMB_CONTINUE_PCT (-0,5%),
+a do wznowienia wymagal juz >=3%. Ramki tnace mialy -0,67%, czyli spadek o 67 cm
+na 100 m -- to szum SRTM albo plaska polka serpentyny, nie koniec podjazdu.
+Nigdzie w kodzie nie bylo etapu laczenia sasiednich podjazdow (Strava/FIETS to
+robia standardowo).
+
+DECYZJA (Michal: progi 400 m / 12 m, backfill tylko trasy, climb_score od razu):
+1. Kolejnosc odwrocona: zbierz wszystkich kandydatow -> SCAL -> dopiero potem
+   filtr 400 m / 3%. Dzieki temu krotki kawalek moze byc mostkiem miedzy
+   fragmentami tego samego podjazdu.
+2. Scalanie gdy JEDNOCZESNIE: przerwa <= MERGE_MAX_GAP_M (400 m), dolek <=
+   MERGE_MAX_DIP_M (12 m), szczyt nastepnika wyzej.
+3. REGULA "scalanie nie moze pogorszyc" -- dodana po audycie pierwszej wersji:
+   sklejamy tylko gdy scalony blok dalej przechodzi prog ALBO gdy zaden ze
+   skladnikow i tak sam by nie przeszedl. Bez tego doklejenie lagodnego ogonka
+   rozcienczalo srednia ponizej 3% i KASOWALO podjazd wczesniej widoczny
+   (route_base 183: odcinek 1200 m @3,7% ginal po sklejeniu ze 150 m @2,7%,
+   suma przewyzszen spadala 316 -> 195 m).
+4. CLIMB_CONTINUE_PCT ZOSTAJE na -0,5%. Luzowanie progu nie rozwiazuje problemu
+   (realny 20-metrowy dolek dalej cialby podjazd), scalanie jest wlasciwym
+   miejscem naprawy.
+5. DETECTION_VERSION: karoo_400_3_v1 -> karoo_400_3_merge_v2.
+
+DOWOD NA ZYWO: trasa 223 (#3186954572) 11 podjazdow -> 6; glowny podjazd
+7,55-14,45 km, +358 m, 5,2%, severity "dlugi"; najglebszy zjazd WEWNATRZ tego
+6,9-km podjazdu = 5 m (czyli to naprawde jeden podjazd, nie sklejka).
+Raport /api/report/data zwraca 6 podjazdow z ocenami; symulator W' pokazuje
+minimum 86% na km 13,1 -- climb_score i route_ride_sim czytaja route_climb_events
+z bazy, wiec skorzystaly ze scalonych danych bez zmian w kodzie.
+
+BACKFILL: scripts/backfill_climb_merge.py (domyslnie sucho, --apply zapisuje).
+Czyta GOTOWE probki z route_elevation_samples -- DEM sie nie zmienil, wiec zero
+ruchu do opentopodata. 28 tras aktywnych, 8 ze zmiana liczby podjazdow,
+lacznie 143 -> 130. Nigdzie suma przewyzszen nie spadla (poza -1 m na base 183,
+co jest poprawne: scalony podjazd nie liczy metrow "odzyskanych" w dolku).
+Trasy status='disabled' swiadomie zostawione na karoo_400_3_v1.
+JAZDY (ride_climb_efforts, scripts/ride_climb_harvest.py) uzywaja tego samego
+detektora, ale NIE byly przeliczane -- decyzja: przy najblizszej okazji.
+
+TESTY: 11/11 w tests/test_route_elevation_engine.py. Trzy nowe: polka nie tnie
+podjazdu, realny zjazd 30 m NADAL tnie, scalanie nie gubi podjazdu. UWAGA
+metodologiczna: dwie pierwsze wersje testow byly bezuzyteczne -- profil z polka
+-0,3%/-0,1% w ogole nie przerywal biegu, wiec test przechodzil nie dotykajac
+nowej logiki. Poprawione i zweryfikowane licznikiem kandydatow: shelf 2->1,
+descent 2->2, kicker 2->2 (scalanie odmawia).
+
+---
+## 2026-08-25 -- DECYZJA: kotwice EF wylaczone + korekta zawyzonego FTP
+
+### KONTEKST (caly lancuch przyczynowy, sierpien 2026)
+
+SRAM Force E1 DUB-PWR (AXS, os, serial AHP29525) ma wadliwy zero offset:
+dryf 170-215 pkt w jednej jezdzie (limit Quarq: ±50 pkt/jazde, 32 pkt = 1 Nm).
+Problem powtarzalny TAKZE w umiarkowanych temperaturach 19-27°C (nie tylko upal).
+W spoczynku miernik jest idealnie powtarzalny (1 pkt roznicy) -- zero wedrowalo
+TYLKO w jezdzie. Reklamacja zlozona do Bike-Discount (163.02 EUR). Kupiony
+zamiennik: pajak PM-AXS-SPDR-E1 + tarcza AluGear 36T thread mount.
+
+### CO ZOSTALO ZROBIONE (chronologicznie)
+
+1. **power_meter_guard (istnieacy, bez zmian):** P@HR detekcja zawyzen.
+   Sierpniowe alerty: 9.08 +42%, 11.08 +31%, 13.08 +18%, 14.08 +24%,
+   17.08 +22%, 18.08 +79% (!), 20.08 +35%. Jazda 23.08 (pajak): OK -2.6%.
+
+2. **hrXSS fallback (14.08, plik hr_xss.py):** jazdy w AKTYWNEJ kwarantannie
+   licza XSS z tetna zamiast z watow. Formula: (HR/LTHR)^2 * UNIT * K,
+   podzial na Low (HR<=132) i High (HR>132).
+   K_LOW=0.90, K_HIGH=0.17 (mediany z 33/29 czystych jazd). Peak=0
+   (tetno nie widzi zrywow). LTHR=132 (kanon). V_MIN=1 m/s (odcina
+   postoj, nie podjazdy -- prog 3 m/s odrzucony: wycinal strome rampy).
+   Plik: fitmodel/modelq2/hr_xss.py. Kolumna xss_source w modelq2_ride.
+
+3. **publish.py (14.08+17.08):** ingest_new_rides_xss sprawdza kwarantanne
+   i kieruje na hr_xss albo standardowy compute_xss.
+
+4. **Kwarantanna (9/11/13/14/17/18/20.08):** 7 jazd. Jazda 8.08 czysta
+   (guard +1.8%), 18.08 przeoczona przy recznym wpisywaniu (guard +79%,
+   wykryta dopiero 23.08 przy audycie pierwszej jazdy z pajaka).
+
+5. **Kotwice EF -- PRZYCZYNA ZAWYZONEGO FTP (25.08):**
+   Wadliwy miernik -> zawyzone waty przy normalnym HR -> zawyzona EF
+   (mediana 28d: 2.08 vs czysta 1.55). Auto-kotwica EF wstawiala:
+   - 18.08: TP_ef=318.7 W, tlumione do 279.2 W
+   - 25.08: TP_ef=318.7 W, tlumione do 282.2 W
+   FTP na stronie uroslo z ~267 do ~284 W bez realnego wzrostu formy.
+   NAPRAWIONE: obie kotwice usuniete, rebuild od 2025-01-01 (6 kotwic).
+   FTP wrocilo do 264 W.
+
+6. **Auto-kotwica EF TYMCZASOWO WYLACZONA (25.08):**
+   Flaga EF_ANCHOR_DISABLED=True w publish.py. Powod: mediana 28d EF
+   nadal zanieczyszczona (tylko 4 czyste jazdy w oknie). Wlaczyc z powrotem
+   ~2026-09-05 gdy okno 28d wypelni sie jazdami z pajaka.
+   DO ZROBIENIA: ustawic EF_ANCHOR_DISABLED=False.
+
+### STAN PO KOREKCIE (25.08)
+
+FTP: 264 W (realistyczne), W'/HIE: 19.5 kJ (odzyskane po poprawie
+proporcji Low/High), LTP: 211 W, CTL: 72.4.
+
+Jedyna kotwica sierpniowa: 11.08 (TP=265.5, HIE=23.57) -- sprzed
+glownej fali zatruc. Model dryfuje od niej naturalnie (decay za CTL).
+
+### WISZACE RZECZY
+
+- Commit zmian z 17.08 (hr_xss split) -- komenda w CURRENT.md, worklock
+  claude-ai-0817 (wygasl? sprawdzic).
+- Commit dzisiejszych zmian (publish.py: EF_ANCHOR_DISABLED).
+- ~5.09: wlaczyc auto-kotwice EF z powrotem.
+- Rozwazyc: automatyczna kwarantanna przy guard ALERT (teraz reczna).
+- Reklamacja Bike-Discount: czekamy na odpowiedz.
+
+## 2026-08-17 -- DECYZJA: hrXSS dzielony na Low/High po LTHR (korekta fallbacku)
+
+PROBLEM: wersja z 14.08 ladowala caly hrXSS w Low. Gorskie jazdy (Sycylia)
+maja realne akcenty nad progiem -- TL_high sztucznie spadal, a decay.py
+dryfuje HIE (W') za TL_high, wiec W' nurkowalo mimo faktycznej pracy
+nad progiem. Zgloszone przez Michala 17.08.
+
+DECYZJA: compute_hr_xss_split() w hr_xss.py:
+- sekundy HR <= 132 (LTHR) -> Low * K_LOW=0.90
+- sekundy HR  > 132        -> High * K_HIGH=0.17
+- Peak = 0 (tetno nie widzi zrywow 15-30 s)
+Kalibracja: mediany z czystych jazd 05-08.2026 (Low n=33, High n=29).
+K_HIGH niski, bo HR tuz nad progiem czesto nie oznacza watow nad progiem
+(opoznienie/dryf tetna). Przeliczone jazdy 9/11/13/14/17.08.
+
+Kwarantanna rozszerzona o 17.08 (24006954010): kalibracje -226/-365/-441
+(215 pkt, FOTO od Michala), temp. tylko 21-27C -- dryf takze bez upalu.
+
 ## 2026-08-14 -- DECYZJA: XSS z tetna (fallback) dla jazd w kwarantannie miernika
 
 PROBLEM: kwarantanna wylaczala jazdy tylko z kotwic CP/W'; XSS liczony z watow
@@ -3735,3 +3932,55 @@ Nie wychodzi => na tych jazdach predkosc najpewniej leci z GPS albo czujnik
 dev_data_index 3` (pola deweloperskie QExt2). Blad ISTNIAL WCZESNIEJ, nie ma
 zwiazku z ta zmiana (leci przed wywolaniem _gears). Endpoint zwraca 500.
 Do naprawy osobno.
+
+
+## 2026-08-18 — [ENERGIA-FALLBACK] podloga aktywnych kcal z ModelQ (etap 1)
+
+Problem: jazdy z Karoo laduja w Garmin Connect BEZ kalorii (od ~2026-06; do 18.05
+calories = kJ z mocy 1:1, od 03.06 pole puste w API). Dzienne "aktywne kcal" Garmina
+to wtedy wylacznie szacunek z tetna nadgarstka Fenixa — w dni jazdowe zaniza
+(18.08: 1258 vs 2437 kcal metabolicznie z mocy; beta FW 23.xx z restartami pogarsza).
+Bilans dobowy QBota (qbot_v2.energy_daily) byl skazony.
+
+Decyzja — FALLBACK jako podloga, nigdy sufit:
+- energy_daily: nowe kolumny active_kcal_eff, total_kcal_eff, mq_ride_kcal,
+  energy_eff_source ('garmin'|'modelq_ride_floor'); surowe kolumny Garmina NIETKNIETE.
+- fitmodel/energy_fallback.py: active_eff = max(garmin_active, koszt_jazd_z_mocy_1Hz
+  minus nakladka BMR za czas jazdy); stale z fitmodel.glycogen (0.23, 4184) — jedna prawda.
+  Gdy Garmin wroci do normy, wygrywa automatycznie (zero przelacznikow).
+- Jazdy w AKTYWNEJ kwarantannie miernika (released IS NULL) NIE buduja podlogi.
+- Wpiecie: koniec import_garmin_energy.py (co 2h dzis + finalize D-1 05:00-08:59);
+  daily_job zbedny (finalize pokrywa D-1).
+- Konsumenci na eff: qbot_wellness_store (wellness_day_get), qbot_query_handler
+  (energy_day + raport dzienny), qbot_report_data_provider. Tor on-demand
+  daily_energy_expenditure = etap 2 (TODO), bo dotyka tool_registry/prompt Alberta.
+- Backfill 2026-06-01..08-18: 79 dni, 5 podniesionych (06-10 +28, 06-20 +210,
+  07-04 +13, 07-12 +5, 08-18 1258->2134). Kwarantanna zadziala: 11/13/14/17.08
+  mq_ride=0, zostal Garmin.
+
+Zweryfikowane na zywo: wellness_day_get(2026-08-18) -> total 4112.4 / active 2134.4;
+energy_daily 18.08 source=modelq_ride_floor, 01.08 (czysta duza jazda) source=garmin.
+Uwaga: 2 faile w tests/test_report_data_provider (partial/missing) sa sprzed zmiany
+(sprawdzone na HEAD wersji pliku) — stare testy do poprawy przy okazji.
+
+## 2026-09-12 — Nawierzchnia w raporcie z jazdy: per pozycja, ze sladu gdy brak trasy
+- Dopasowanie jazdy do trasy (`_find_matching_route`, start < 500 m) bylo zbyt lagodne: 6/6 ostatnich jazd "Marki" mialo pokrycie 1.5–56% trasy, a nawierzchnia byla brana z trasy po kilometrach -> falszywe procenty (np. 74% twardej vs realnie 18%).
+- Decyzja: trasa uznana za dopasowana tylko gdy >= 80% rekordow z pozycja lezy <= 60 m od osi 50 m; kategoria przypisywana po NAJBLIZSZEJ POZYCJI (`_assign_scat_from_route`). Inaczej nawierzchnia z silnika na sladzie GPS tej jazdy (`_assign_scat_from_track`, juz istniejacy `_surface_wind_from_track`).
+- `trace.surface_cat` (kategoria 1–5 per okno) w W1; `surface.types_pct` i `terrain_impact.surface_by_type` liczone z tych samych kategorii per rekord. SCHEMA_VERSION 1 -> 2 (stare raporty przebudowuja sie przy otwarciu, 3–10 s).
+- qbot_web `/api/ride-report/data`: sciezka FIT szukana tez w starszej wersji schematu i w `/opt/qbot/artifacts/fit/<ride>.fit` (bez tego bump wersji dawal 404).
+- Katalog `/opt/qbot/artifacts/analysis/exec_gpx` byl root:root -> qbot nie mogl pisac GPX; teraz qbot:qbot.
+- Front `raport-jazdy2` uzywa `trace.surface_cat`; zapas: dopasowanie po pozycji w przegladarce dla raportow bez pola.
+
+## 2026-09-12 — Raport z jazdy: analiza AI po jezdzie (Telegram -> W2 -> serwis + Telegram + mail)
+- Przeplyw: `telegram_reply_processor` (cron */2) wola `ride_report_notify.run_ask()`: jazdy z `activity_fit_raw` zakonczone >= 10 min temu (start + elapsedDuration) i bez wpisu w `qbot_v2.ride_report_ask` -> jedno pytanie z przyciskami `rr:y:<ride>` / `rr:n:<ride>` (wzor `kmt:`). Koszt LLM tylko na "Tak".
+- "Tak" -> `scripts/ride_report_worker.py` (odlaczony proces): W1 (SCHEMA_VERSION) -> W2 (`build_w2`, do W1 dolaczone `momenty_km`; prompt W2 ma nowe pole `km` per sekcja) -> zapis `w2_json` -> Telegram (werdykt, 3 fakty, 1 wniosek, link) -> mail HTML na `cfg.EMAIL_TO`. Statusy: asked|yes|no|running|done|error.
+- Serwis: `POST /api/ride-report/analyze` (to samo co "Tak"), `GET /api/ride-report/status`; `GET /api/ride-report/w2` czyta wg aktualnej SCHEMA_VERSION (bylo na sztywno 1). Front `raport-jazdy2`: panel "Analiza AI" z pastylkami km -> zaznaczenie odcinka.
+- Zweryfikowane na zywo 2026-09-12: pytanie o jazde 24322782380 o 16:00, "Tak" -> skrot na Telegramie i mail; test cichy na 24297440879 (W2 z km).
+
+## 2026-09-12 — Rower i czujniki per jazda z FIT device_info; biegi bez AXS szacowane z fizyki
+- Nowe: qbot_v2.activity_device (jazda x urzadzenie: producent, produkt, serial, typ, bateria) + qbot_v2.bike_sensor (serial/typ -> rower/komponent). Modul qbot3/rides/activity_devices.py; backfill scripts/backfill_activity_devices.py (370 FIT).
+- Rozpoznanie roweru: najpierw serial (Favero 2005667661 / BSM 9568256 -> Canyon Grand Canyon; BSM 7208960 -> Grizl), potem producent+typ (sram bike_power / AXS 34 -> Grizl). Zweryfikowane: 09.09 -> Grizl (AXS), 11.09 -> Grand Canyon.
+- Canyon Grand Canyon ('Monster gravel', SX Eagle mechaniczny, 36T, 11-50T 12s, Wicked Will 29x2.4) dodany do Garazu (bikes id 2 + komponenty + opony).
+- Biegi bez czujnika: qbot3/rides/gear_estimate.py -> activity_record.gear_rear_est (rozwiniecie v*60/cad vs obwod*przod/zab, tolerancja 7%), ride_drivetrain cassette_source='physics_est'. _gears w W1 uzywa COALESCE(gear_rear_num, gear_rear_est), tier B i jawna etykieta 'szacowane'. 11.09: 99.5% probek dopasowanych.
+- W1: nowy blok 'bike' (rower, czujniki, ostrzezenia bateryjne). SCHEMA_VERSION 2 -> 3.
+- Ingest (qbot_activity_ingest._one_if_new): po ingest_one -> ingest_devices + estimate_if_needed. build_drivetrain.py (AXS) nie bylo w zadnym cronie od 12.08 -> uruchomione recznie (64 jazdy); DO ZROBIENIA: dopisac do ingest lub daily_job.
