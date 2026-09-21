@@ -92,5 +92,59 @@ class TestInferFromTags(unittest.TestCase):
         self.assertEqual((surface, conf, csrc), ("unknown", "unknown", "unknown"))
 
 
+
+class TestCacheQualityGate(unittest.TestCase):
+    """Zapisany w cache smiec (LOW_CONFIDENCE / coverage < progu) musi byc
+    policzony od nowa, a nie zwrocony (audyt 2026-08-12)."""
+
+    def _run(self, cached_payload):
+        import json
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from tools.rwgps import route_surface_engine as eng
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            gpx = tmp_path / "route.gpx"
+            gpx.write_text("<gpx></gpx>", encoding="utf-8")
+            with patch.object(eng, "CACHE_ROOT", tmp_path), \
+                    patch.object(eng, "extract_artifact_points",
+                                 side_effect=RuntimeError("policzone od nowa")):
+                import hashlib
+                sha = hashlib.sha256(gpx.read_bytes()).hexdigest()
+                cache_file = tmp_path / (
+                    f"route_surface_engine_{gpx.stem}_50m_{eng.ENGINE_VERSION}_{sha[:12]}.json")
+                cache_file.write_text(json.dumps(cached_payload), encoding="utf-8")
+                return eng.analyze_route_surface(
+                    artifact_path=str(gpx), sample_distance_m=50,
+                    use_geology_context=False, use_landcover=False)
+
+    @staticmethod
+    def _payload(coverage, quality):
+        return {
+            "ok": True, "coverage_pct": coverage, "quality_status": quality,
+            "unknown_pct_refined": 100.0 - coverage, "inferred_surface_pct": 10.0,
+            "tagged_surface_pct": coverage, "unknown_surface_pct": 100.0 - coverage,
+            "inference_sources_pct": {}, "inference_sources_m": {}, "problem_segments": [],
+            "geology_context": {k: None for k in (
+                "enabled", "status", "provider", "dominant_region", "dominant_unit",
+                "units", "sections", "material_hint", "confidence", "source_resolution",
+                "sample_strategy", "warnings")},
+        }
+
+    def test_low_coverage_cache_is_recomputed(self):
+        result = self._run(self._payload(63.4, "LOW_CONFIDENCE"))
+        # recompute wywalil sie na zamockowanym ekstraktorze => cache NIE zostal uzyty
+        self.assertFalse(result.get("ok"))
+        self.assertEqual(result.get("error"), "POINT_EXTRACTION_FAILED")
+
+    def test_good_cache_is_reused(self):
+        result = self._run(self._payload(99.5, "GOOD_TAGGED"))
+        self.assertTrue(result.get("ok"))
+        self.assertTrue(result.get("cache_hit"))
+        self.assertEqual(result.get("coverage_pct"), 99.5)
+
 if __name__ == "__main__":
     unittest.main()

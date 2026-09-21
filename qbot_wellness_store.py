@@ -741,8 +741,11 @@ def _tool_qbot_wellness_day_get(args: dict | None = None) -> dict[str, Any]:
             erows = cur.fetchall()
             if erows:
                 sources_available.append(f"energy/{erows[0]['source']}")
-                data["total_kcal"] = _serialize_val(erows[0].get("total_kcal"))
-                data["active_kcal"] = _serialize_val(erows[0].get("active_kcal"))
+                # *_eff = z fallbackiem ModelQ (floor); surowe zostaja w *_kcal
+                _tk = erows[0].get("total_kcal_eff")
+                _ak = erows[0].get("active_kcal_eff")
+                data["total_kcal"] = _serialize_val(_tk if _tk is not None else erows[0].get("total_kcal"))
+                data["active_kcal"] = _serialize_val(_ak if _ak is not None else erows[0].get("active_kcal"))
                 data["resting_kcal"] = _serialize_val(erows[0].get("resting_kcal"))
                 data["steps"] = _serialize_val(erows[0].get("steps"))
 

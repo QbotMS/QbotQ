@@ -1581,8 +1581,13 @@ def _handle_energy_day(day_str: str) -> dict:
     parts = []
     if r.get("total_kcal") is not None:
         resting = r.get("resting_kcal") or 0
-        active = r.get("active_kcal") or 0
-        parts.append(f"🔥 Całkowity wydatek: {r['total_kcal']:.0f} kcal (spoczynek:{resting:.0f} + aktywny:{active:.0f})")
+        _ak = r.get("active_kcal_eff")
+        active = _ak if _ak is not None else (r.get("active_kcal") or 0)
+        _tk = r.get("total_kcal_eff")
+        total = _tk if _tk is not None else r["total_kcal"]
+        parts.append(f"🔥 Całkowity wydatek: {total:.0f} kcal (spoczynek:{resting:.0f} + aktywny:{active:.0f})")
+        if (r.get("energy_eff_source") or "") == "modelq_ride_floor":
+            parts.append("ℹ️ Aktywne kcal podniesione z ModelQ (moc 1Hz) -- Garmin zaniżał")
     if r.get("steps") is not None:
         parts.append(f"🚶 Kroki: {r['steps']}")
     if r.get("is_partial_snapshot"):
@@ -4223,13 +4228,15 @@ def _handle_daily_report(question: str) -> dict:
 
         # Energia
         en = _safe_fetch(pg,
-            "SELECT active_kcal, resting_kcal, steps, total_kcal "
+            "SELECT active_kcal, resting_kcal, steps, total_kcal, "
+            "COALESCE(active_kcal_eff, active_kcal) AS active_eff, "
+            "COALESCE(total_kcal_eff, total_kcal) AS total_eff "
             "FROM qbot_v2.energy_daily WHERE date = %s", (report_date,))
         if en and "_error" not in en[0]:
             e = en[0]
             steps = f", {e['steps']:,.0f} kroków" if e.get("steps") else ""
-            total = (e.get("total_kcal") or 0)
-            parts.append(f"🔥 Spalone: {total:.0f} kcal (rest {e.get('resting_kcal',0):.0f} + aktywność {e.get('active_kcal',0):.0f}){steps}")
+            total = (e.get("total_eff") or 0)
+            parts.append(f"🔥 Spalone: {total:.0f} kcal (rest {e.get('resting_kcal',0):.0f} + aktywność {e.get('active_eff',0):.0f}){steps}")
             sources.append("energy_daily")
             data["energy"] = dict(e)
         else:

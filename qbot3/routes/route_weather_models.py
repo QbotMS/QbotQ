@@ -47,6 +47,8 @@ MODELS: dict[str, dict] = {
                 "typ": "regionalny wysokiej rozdzielczosci"},
     "icon_eu": {"nazwa": "ICON-EU", "dostawca": "DWD (Niemcy)", "siatka_km": 7.0,
                 "typ": "regionalny"},
+    "knmi_harmonie_arome_europe": {"nazwa": "HARMONIE", "dostawca": "KNMI (Holandia)",
+                                   "siatka_km": 5.5, "typ": "regionalny wysokiej rozdzielczosci"},
     "ecmwf_ifs025": {"nazwa": "ECMWF IFS", "dostawca": "ECMWF", "siatka_km": 25.0,
                      "typ": "globalny fizyczny"},
     "ecmwf_aifs025_single": {"nazwa": "ECMWF AIFS", "dostawca": "ECMWF", "siatka_km": 25.0,
@@ -57,6 +59,36 @@ MODELS: dict[str, dict] = {
                       "typ": "globalny fizyczny"},
 }
 MODEL_IDS = list(MODELS.keys())
+
+# Stopniowanie zestawu porownywanych modeli. Klucz: gorna granica horyzontu (w dniach).
+HORYZONTY = [
+    {"do_dni": 2, "nazwa": "krotki",
+     "modele": ["icon_d2", "knmi_harmonie_arome_europe", "icon_eu"],
+     "opis": ("Do 2 dni porownujemy tylko modele o drobnej siatce (do 7 km). Dorzucenie "
+              "modelu globalnego o siatce 25 km zawyzaloby rozstep, bo mierzylby roznice "
+              "rozdzielczosci, a nie niepewnosc pogody.")},
+    {"do_dni": 5, "nazwa": "sredni",
+     "modele": ["icon_eu", "ukmo_seamless", "gfs_seamless", "ecmwf_ifs025"],
+     "opis": ("Na 3-5 dni modele o siatce 2 km juz nie siegaja albo traca przewage. "
+              "Porownujemy siatki 7-13 km, z ECMWF jako punktem odniesienia.")},
+    {"do_dni": 99, "nazwa": "daleki",
+     "modele": ["ecmwf_ifs025", "ecmwf_aifs025_single", "gfs_seamless"],
+     "opis": ("Powyzej 5 dni licza sie tylko modele globalne. Rozdzielczosc przestaje byc "
+              "argumentem - o jakosci decyduje sam model, nie gestosc siatki.")},
+]
+
+
+def zestaw_dla_horyzontu(date_str: str, dzis: Optional[_dt.date] = None) -> dict:
+    """Ktore modele ma sens porownywac dla tej daty. Zwraca {'nazwa','modele','opis','dni'}."""
+    dzis = dzis or _dt.date.today()
+    dni = (_dt.date.fromisoformat(date_str[:10]) - dzis).days
+    for h in HORYZONTY:
+        if dni <= h["do_dni"]:
+            return {"nazwa": h["nazwa"], "modele": list(h["modele"]), "opis": h["opis"],
+                    "dni": dni}
+    ost = HORYZONTY[-1]
+    return {"nazwa": ost["nazwa"], "modele": list(ost["modele"]), "opis": ost["opis"], "dni": dni}
+
 
 _reach_cache: dict[str, tuple[float, dict]] = {}
 _reach_lock = threading.Lock()
@@ -76,9 +108,12 @@ def _as_list(payload):
 
 # --- zasieg modeli ----------------------------------------------------------
 def model_reach(lat: float, lon: float, timeout: float = 30.0) -> dict:
-    """Do ktorego DNIA siega kazdy model w tym punkcie. Jedno zapytanie, cache 6 h.
+    """Dokad siega kazdy model w tym punkcie - w GODZINACH, nie w dniach. Cache 6 h.
 
-    Zwraca {model_id: {"ostatni_dzien": "RRRR-MM-DD", "dni": N}}. Model bez danych: dni=0.
+    Dzien to za gruba miara: ICON-D2 potrafi miec 4 godziny z 24 i formalnie "siegac daty",
+    a jazda od 09:00 trafia juz w pustke. Dlatego zwracamy ostatnia godzine z danymi.
+
+    Zwraca {model_id: {"ostatni_dzien", "dni", "ostatnia_godzina": "RRRR-MM-DDTHH:MM"}}.
     """
     key = "%.1f,%.1f" % (lat, lon)
     now = _dt.datetime.now().timestamp()
@@ -98,15 +133,16 @@ def model_reach(lat: float, lon: float, timeout: float = 30.0) -> dict:
     out = {}
     for mid in MODEL_IDS:
         seria = h.get("temperature_2m_" + mid) or []
-        ostatni = None
+        ostatnia_godz = None
         for i in range(min(len(times), len(seria))):
             if seria[i] is not None:
-                ostatni = times[i][:10]
-        if ostatni:
-            dni = (_dt.date.fromisoformat(ostatni) - today).days + 1
-            out[mid] = {"ostatni_dzien": ostatni, "dni": dni}
+                ostatnia_godz = times[i]
+        if ostatnia_godz:
+            dzien = ostatnia_godz[:10]
+            dni = (_dt.date.fromisoformat(dzien) - today).days + 1
+            out[mid] = {"ostatni_dzien": dzien, "dni": dni, "ostatnia_godzina": ostatnia_godz}
         else:
-            out[mid] = {"ostatni_dzien": None, "dni": 0}
+            out[mid] = {"ostatni_dzien": None, "dni": 0, "ostatnia_godzina": None}
 
     with _reach_lock:
         _reach_cache[key] = (now, out)
@@ -114,27 +150,40 @@ def model_reach(lat: float, lon: float, timeout: float = 30.0) -> dict:
 
 
 def canonical_model(lat: float, lon: float, date_str: str,
-                    reach: Optional[dict] = None) -> dict:
-    """Model kanoniczny dla tej daty: najdrobniejsza siatka, ktora TAM SIEGA.
+                    reach: Optional[dict] = None,
+                    do_godziny: Optional[str] = None) -> dict:
+    """Model kanoniczny: najdrobniejsza siatka, ktora POKRYWA CALE OKNO JAZDY.
 
-    Zwraca {"model": id, "nazwa", "siatka_km", "powod", "odrzucone": [...]}.
+    do_godziny = "HH:MM" ostatniej godziny, dla ktorej potrzebujemy danych (koniec jazdy
+    z zapasem). Model, ktory konczy sie wczesniej, jest ODRZUCANY - nawet jesli ma
+    kilka godzin tego dnia. Bez tego parametru wymagamy pokrycia do konca doby.
+
+    Zwraca {"model", "nazwa", "siatka_km", "powod", "odrzucone": [...]}.
     """
     target = _dt.date.fromisoformat(date_str[:10])
     reach = reach if reach is not None else model_reach(lat, lon)
+    gg = (do_godziny or "23:00")[:5]
+    potrzebne = "%sT%s" % (target.isoformat(), gg)
 
     dostepne = []
     odrzucone = []
     for mid, meta in MODELS.items():
-        ost = (reach.get(mid) or {}).get("ostatni_dzien")
-        siega = bool(ost) and _dt.date.fromisoformat(ost) >= target
+        info = reach.get(mid) or {}
+        ost_godz = info.get("ostatnia_godzina")
+        if ost_godz:
+            siega = ost_godz >= potrzebne          # porownanie ISO dziala leksykalnie
+        else:
+            ost = info.get("ostatni_dzien")
+            siega = bool(ost) and _dt.date.fromisoformat(ost) >= target
         (dostepne if siega else odrzucone).append(mid)
 
     hires = sorted([m for m in dostepne if MODELS[m]["siatka_km"] < HIRES_KM],
                    key=lambda m: MODELS[m]["siatka_km"])
     if hires:
         wybor = hires[0]
-        powod = ("%s ma najdrobniejsza siatke (%s km) sposrod modeli siegajacych tej daty"
-                 % (MODELS[wybor]["nazwa"], MODELS[wybor]["siatka_km"]))
+        powod = ("%s ma najdrobniejsza siatke (%s km) sposrod modeli, ktore pokrywaja "
+                 "caly ten dzien jazdy (do %s)"
+                 % (MODELS[wybor]["nazwa"], MODELS[wybor]["siatka_km"], gg))
     elif FALLBACK_MODEL in dostepne:
         wybor = FALLBACK_MODEL
         powod = ("zaden model wysokiej rozdzielczosci nie siega tak daleko -- "
@@ -145,34 +194,45 @@ def canonical_model(lat: float, lon: float, date_str: str,
         powod = "jedyny dostepny model siegajacy tej daty: %s" % MODELS[wybor]["nazwa"]
     else:
         return {"model": None, "nazwa": None, "siatka_km": None,
-                "powod": "zaden z %d modeli nie siega %s" % (len(MODELS), date_str),
+                "powod": "zaden z %d modeli nie ma danych do %s w dniu %s"
+                         % (len(MODELS), gg, date_str),
                 "odrzucone": odrzucone}
 
     return {"model": wybor, "nazwa": MODELS[wybor]["nazwa"],
             "siatka_km": MODELS[wybor]["siatka_km"], "dostawca": MODELS[wybor]["dostawca"],
             "typ": MODELS[wybor]["typ"], "powod": powod,
             "odrzucone": [{"model": m, "nazwa": MODELS[m]["nazwa"],
-                           "powod": "nie siega tej daty (konczy sie %s)"
-                                    % ((reach.get(m) or {}).get("ostatni_dzien") or "?")}
+                           "powod": "nie pokrywa calego dnia jazdy (konczy sie %s)"
+                                    % ((reach.get(m) or {}).get("ostatnia_godzina")
+                                       or (reach.get(m) or {}).get("ostatni_dzien") or "?")}
                           for m in odrzucone]}
 
 
 # --- porownanie modeli w punktach kontrolnych -------------------------------
-def compare_models(points: list[dict], date_str: str, timeout: float = 40.0) -> dict:
-    """Komplet 6 modeli dla kilku punktow trasy. JEDNO zapytanie.
+def compare_models(points: list[dict], date_str: str, timeout: float = 40.0,
+                   modele: Optional[list] = None) -> dict:
+    """Porownanie modeli dla kilku punktow trasy. JEDNO zapytanie.
 
+    modele = lista id do porownania; bez niej zestaw dobiera sie automatycznie wg
+    horyzontu (zestaw_dla_horyzontu), zeby nie zestawiac siatki 2 km z siatka 25 km
+    na prognozie jednodniowej.
     points: [{"nazwa": "start", "lat":, "lon":, "km":, "godzina": "09:00"}, ...]
     Dla kazdego punktu bierzemy wartosc z JEGO godziny (moment przejazdu), nie z doby.
     """
     if not points:
         return {"status": "ERROR", "error": "brak punktow kontrolnych"}
 
+    horyzont = zestaw_dla_horyzontu(date_str)
+    uzyte = [m for m in (modele or horyzont["modele"]) if m in MODELS]
+    if not uzyte:
+        uzyte = list(MODEL_IDS)
+
     params = {"latitude": ",".join("%.3f" % float(p["lat"]) for p in points),
               "longitude": ",".join("%.3f" % float(p["lon"]) for p in points),
               "start_date": date_str, "end_date": date_str,
               "hourly": "temperature_2m,relative_humidity_2m,precipitation,"
                         "precipitation_probability,wind_speed_10m,wind_gusts_10m,cloud_cover",
-              "models": ",".join(MODEL_IDS), "windspeed_unit": "ms", "timezone": TZ_NAME}
+              "models": ",".join(uzyte), "windspeed_unit": "ms", "timezone": TZ_NAME}
     data = _as_list(_get(FORECAST_URL + "?" + urllib.parse.urlencode(params), timeout))
 
     wiersze = []
@@ -190,7 +250,7 @@ def compare_models(points: list[dict], date_str: str, timeout: float = 40.0) -> 
             continue
 
         per_model = {}
-        for mid in MODEL_IDS:
+        for mid in uzyte:
             def _v(pole, nd=1):
                 seria = h.get("%s_%s" % (pole, mid)) or []
                 v = seria[j] if j < len(seria) else None
@@ -221,7 +281,9 @@ def compare_models(points: list[dict], date_str: str, timeout: float = 40.0) -> 
     return {"status": "OK", "data": date_str, "punkty": wiersze,
             "rozrzut_max_c": (max(rozrzuty) if rozrzuty else None),
             "rozrzut_sr_c": (round(sum(rozrzuty) / len(rozrzuty), 1) if rozrzuty else None),
-            "modele_opis": MODELS}
+            "horyzont": horyzont,
+            "modele_uzyte": uzyte,
+            "modele_opis": {k: MODELS[k] for k in uzyte}}
 
 
 # --- zespol (ensemble) ------------------------------------------------------

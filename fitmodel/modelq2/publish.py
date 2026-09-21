@@ -62,12 +62,12 @@ def ingest_new_rides_xss(conn, lookback_days: int = 14) -> int:
         cur.execute("SELECT 1 FROM qbot_v2.fitmodel_ride_quarantine "
                     "WHERE external_id=%s AND released IS NULL", (eid,))
         if cur.fetchone():
-            from fitmodel.modelq2.hr_xss import fetch_hr_rows, compute_hr_xss
+            from fitmodel.modelq2.hr_xss import fetch_hr_rows, compute_hr_xss_split
             hr_rows = fetch_hr_rows(eid)
-            hx = compute_hr_xss(hr_rows)
+            h_lo, h_hi = compute_hr_xss_split(hr_rows)
             dur = int((hr_rows[-1][0] - hr_rows[0][0]).total_seconds()) if len(hr_rows) > 1 else 0
             vals = (eid, d, len(hr_rows), dur, sig.tp_w, sig.hie_kj, sig.pp_w,
-                    None, round(hx, 1), 0.0, 0.0, round(hx, 1), 'hr')
+                    None, round(h_lo, 1), round(h_hi, 2), 0.0, round(h_lo + h_hi, 1), 'hr')
         else:
             rows = io.fetch_ride_rows(eid)
             res = replay_mpa(rows, sig, smooth=True, keep_series=True)
@@ -154,6 +154,11 @@ def publish_to_daily(conn) -> int:
 # zawsze wybierac dzisiejsza -- zamrozone kotwice z Xerta staja sie martwe.
 # UWAGA: hamulce NIE sluza cofnieciu progu 262.9 W (decyzja Michala: zostaje).
 EF_ANCHOR_MIN_DAYS = 7      # najwyzej jedna auto-kotwica EF na tyle dni
+EF_ANCHOR_DISABLED = True   # 2026-08-25: TYMCZASOWO wylaczona -- mediana 28d EF
+                            # zanieczyszczona jazdami z wadliwym miernikiem w osi
+                            # (7 jazd w kwarantannie 08.2026). Wlaczyc z powrotem
+                            # ~2026-09-05 gdy okno 28d wypelni sie jazdami z pajaka.
+                            # DECISIONS 2026-08-25.
 EF_ANCHOR_MIN_SEGMENTS = 8  # min. segmentow w oknie EF, inaczej kotwica na szumie
 EF_ANCHOR_MAX_RISE_W = 3.0  # maks. przyrost TP kotwicy na EF_ANCHOR_MIN_DAYS (proporcjonalnie do dni)
 EF_ANCHOR_FRESH_DAYS = 14   # okno swiezosci: bez nowych jazd prog NIE rosnie
@@ -188,6 +193,8 @@ def ef_anchor_step(conn, days_back: int = 45) -> dict:
        (EF nic nie mowi o W' ani PP). JEDNOSTRONNIE jak w ftp_resolver: niski
        EF nie ciagnie TP w dol -- w dol dziala wylacznie naturalny decay.
     """
+    if EF_ANCHOR_DISABLED:
+        return {"ef_anchor": "DISABLED (EF zanieczyszczone, patrz DECISIONS 2026-08-25)"}
     from fitmodel.ftp_resolver import load_params, compute_ef_median, compute_ftp_est
     cur = conn.cursor()
     params = load_params(conn)

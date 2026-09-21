@@ -18,6 +18,11 @@ Zasady (DECISIONS 2026-06-30, 2C):
       (okno 200 m przesuwa pozorny szczyt o ~pol okna do przodu),
 - detekcja progami Karoo: >=400 m i >=3% (tryb All Climbs),
 - podjazd konczy sie na SZCZYCIE (max wygladzonej wysokosci w obrebie biegu),
+- SCALANIE (2026-08-16): pojedyncza ramka ponizej CLIMB_CONTINUE_PCT to czesto
+  plaska polka serpentyny albo szum DEM (-0.7% na 100 m = 70 cm), a nie koniec
+  podjazdu. Sasiadujace biegi laczymy, gdy przerwa <= MERGE_MAX_GAP_M ORAZ
+  spadek w dolku <= MERGE_MAX_DIP_M. Filtr 400 m / 3% dziala PO scaleniu, zeby
+  krotkie kawalki mogly byc mostkiem miedzy fragmentami tego samego podjazdu,
 - podjazd dwupoziomowo: naglowek + segmenty 100 m z gradientem kazdego.
 
 Uwaga: prog 400 m ma naturalna tolerancje ~pol okna (precyzja do metra
@@ -37,8 +42,10 @@ MIN_CLIMB_LEN_M = 400.0
 MIN_CLIMB_AVG_PCT = 3.0
 CLIMB_START_PCT = 3.0        # ramka rozpoczynajaca podjazd
 CLIMB_CONTINUE_PCT = -0.5    # tolerancja dolka w obrebie podjazdu (rolling)
+MERGE_MAX_GAP_M = 400.0      # przerwa miedzy biegami dopuszczalna do scalenia
+MERGE_MAX_DIP_M = 12.0       # spadek w dolku (od szczytu poprzednika) do scalenia
 SMOOTHING_VERSION = "asc200_det100_50_v1"
-DETECTION_VERSION = "karoo_400_3_v1"
+DETECTION_VERSION = "karoo_400_3_merge_v2"
 DEFAULT_SOURCE = "srtm30m_opentopodata"
 
 # --- typy wyjsciowe ---
@@ -267,16 +274,10 @@ def _segments_100m(smoothed: list[float | None], d: list[float], start_i: int, e
     return segs
 
 
-def detect_route_climb_events(
-    samples: Sequence[ElevationSample],
-    detection_window_m: float = DETECTION_WINDOW_M,
-    source: str = DEFAULT_SOURCE,
-) -> list[ClimbEvent]:
-    d = [s.distance_m for s in samples]
-    sm = smooth_elevation(samples, detection_window_m)  # detekcja / srednie / segmenty / max
-    g = _frame_grades(sm, d)
-    events: list[ClimbEvent] = []
-    i, n, ev = 0, len(g), 0
+def _climb_runs(g: list[float | None], sm: list[float | None], d: list[float]) -> list[tuple[int, int]]:
+    """Surowi kandydaci (start_i, summit_i) — BEZ filtra dlugosci/nachylenia."""
+    runs: list[tuple[int, int]] = []
+    i, n = 0, len(g)
     while i < n:
         if g[i] is not None and g[i] >= CLIMB_START_PCT:
             j = i
@@ -289,29 +290,103 @@ def detect_route_climb_events(
             for k in range(i, run_end + 1):
                 if sm[k] is not None and sm[k] > best:
                     best, summit = sm[k], k
-            start_i, end_i = i, summit
-            if end_i > start_i and sm[start_i] is not None and sm[end_i] is not None:
-                length = d[end_i] - d[start_i]
-                gain = sm[end_i] - sm[start_i]
-                avg = gain / length * 100.0 if length > 0 else 0.0
-                if length >= MIN_CLIMB_LEN_M and avg >= MIN_CLIMB_AVG_PCT:
-                    segs = _segments_100m(sm, d, start_i, end_i)
-                    mx = max((s.gradient_pct for s in segs), default=round(avg, 1))
-                    events.append(ClimbEvent(
-                        event_index=ev,
-                        start_m=round(d[start_i], 1),
-                        end_m=round(d[end_i], 1),
-                        length_m=round(length, 1),
-                        elevation_gain_m=round(gain, 1),
-                        avg_gradient_pct=round(avg, 1),
-                        max_gradient_pct=round(mx, 1),
-                        severity=_severity(length, avg, mx, gain),
-                        source=source,
-                        detection_version=DETECTION_VERSION,
-                        segments=segs,
-                    ))
-                    ev += 1
+            if summit > i and sm[i] is not None and sm[summit] is not None:
+                runs.append((i, summit))
             i = j + 1
         else:
             i += 1
+    return runs
+
+
+def _run_stats(start_i: int, end_i: int, sm: list[float | None], d: list[float]) -> tuple[float, float, float]:
+    """(dlugosc, przewyzszenie, srednie nachylenie %) dla biegu start..end."""
+    a, b = sm[start_i], sm[end_i]
+    if a is None or b is None:
+        return 0.0, 0.0, 0.0
+    length = d[end_i] - d[start_i]
+    gain = b - a
+    return length, gain, (gain / length * 100.0 if length > 0 else 0.0)
+
+
+def _run_passes(start_i: int, end_i: int, sm: list[float | None], d: list[float]) -> bool:
+    """Czy bieg sam w sobie przechodzi prog Karoo (>=400 m i >=3%)."""
+    length, _gain, avg = _run_stats(start_i, end_i, sm, d)
+    return length >= MIN_CLIMB_LEN_M and avg >= MIN_CLIMB_AVG_PCT
+
+
+def _merge_climb_runs(runs: list[tuple[int, int]], sm: list[float | None], d: list[float]) -> list[tuple[int, int]]:
+    """Scala biegi rozdzielone plaska polka albo szumem DEM.
+
+    Laczy, gdy JEDNOCZESNIE:
+    - przerwa <= MERGE_MAX_GAP_M,
+    - spadek w dolku od szczytu poprzednika <= MERGE_MAX_DIP_M,
+    - szczyt nastepnika lezy WYZEJ (inaczej nie ma czego doklejac),
+    - SCALANIE NIE POGARSZA: albo scalony blok dalej przechodzi prog 400 m/3%,
+      albo zaden ze skladnikow i tak by sam nie przeszedl. Bez tego warunku
+      doklejenie krotkiego, lagodnego ogonka rozcienczalo srednia ponizej 3%
+      i kasowalo podjazd, ktory wczesniej byl widoczny (audyt 2026-08-16:
+      base 183, odcinek 1200 m @3.7% ginal po sklejeniu ze 150 m @2.7%).
+
+    Iteracyjnie, wiec A+B moze dalej wchlonac C.
+    """
+    if not runs:
+        return []
+    out: list[tuple[int, int]] = [runs[0]]
+    for b_start, b_end in runs[1:]:
+        a_start, a_end = out[-1]
+        top_a, top_b = sm[a_end], sm[b_end]
+        if top_a is None or top_b is None:
+            out.append((b_start, b_end))
+            continue
+        gap = d[b_start] - d[a_end]
+        vals = [sm[k] for k in range(a_end, b_start + 1) if sm[k] is not None]
+        dip = top_a - min(vals) if vals else 0.0
+        geometry_ok = gap <= MERGE_MAX_GAP_M and dip <= MERGE_MAX_DIP_M and top_b > top_a
+        if geometry_ok:
+            merged_ok = _run_passes(a_start, b_end, sm, d)
+            no_loss = merged_ok or not (
+                _run_passes(a_start, a_end, sm, d) or _run_passes(b_start, b_end, sm, d)
+            )
+        else:
+            no_loss = False
+        if geometry_ok and no_loss:
+            out[-1] = (a_start, b_end)
+        else:
+            out.append((b_start, b_end))
+    return out
+
+
+def detect_route_climb_events(
+    samples: Sequence[ElevationSample],
+    detection_window_m: float = DETECTION_WINDOW_M,
+    source: str = DEFAULT_SOURCE,
+) -> list[ClimbEvent]:
+    d = [s.distance_m for s in samples]
+    sm = smooth_elevation(samples, detection_window_m)  # detekcja / srednie / segmenty / max
+    g = _frame_grades(sm, d)
+    events: list[ClimbEvent] = []
+    for start_i, end_i in _merge_climb_runs(_climb_runs(g, sm, d), sm, d):
+        a, b = sm[start_i], sm[end_i]
+        if a is None or b is None:
+            continue
+        length = d[end_i] - d[start_i]
+        gain = b - a
+        avg = gain / length * 100.0 if length > 0 else 0.0
+        if length < MIN_CLIMB_LEN_M or avg < MIN_CLIMB_AVG_PCT:
+            continue
+        segs = _segments_100m(sm, d, start_i, end_i)
+        mx = max((s.gradient_pct for s in segs), default=round(avg, 1))
+        events.append(ClimbEvent(
+            event_index=len(events),
+            start_m=round(d[start_i], 1),
+            end_m=round(d[end_i], 1),
+            length_m=round(length, 1),
+            elevation_gain_m=round(gain, 1),
+            avg_gradient_pct=round(avg, 1),
+            max_gradient_pct=round(mx, 1),
+            severity=_severity(length, avg, mx, gain),
+            source=source,
+            detection_version=DETECTION_VERSION,
+            segments=segs,
+        ))
     return events

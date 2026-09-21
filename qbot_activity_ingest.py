@@ -272,6 +272,27 @@ def ingest_one(gc, conn, summary, with_report: bool = False) -> dict:
     return res
 
 
+def ingest_devices_and_gears(conn, aid, log=print):
+    """Czujniki + rower + naped -- DECISIONS 2026-09-12, AXS-z-przerzutki 2026-09-20.
+    Wspolny krok dla _one_if_new i trigger_modelq_after_ride; conn MUSI byc otwarte.
+    Mechaniczny (bez AXS) -> gear_estimate (fizyka). AXS -> gear_axs (kaseta z gear_rear_t)."""
+    try:
+        from qbot3.rides.activity_devices import ingest_devices
+        from qbot3.rides.gear_estimate import estimate_if_needed
+        from qbot3.rides.gear_axs import build_ride as _build_axs
+        _fp = "/opt/qbot/artifacts/fit/%s.fit" % aid
+        if os.path.exists(_fp):
+            ingest_devices(str(aid), _fp, conn)
+        _ge = estimate_if_needed(conn, str(aid))       # rower mechaniczny (fizyka)
+        if _ge is None:
+            _ge = _build_axs(conn, str(aid))           # rower z AXS (kaseta z przerzutki)
+        log(f"   czujniki/rower zapisane; naped: {_ge}")
+        return _ge
+    except Exception as _e:
+        log(f"   czujniki/rower: blad {_e}")
+        return None
+
+
 def _already(conn, aid) -> bool:
     with conn.cursor() as cur:
         cur.execute("SELECT 1 FROM qbot_v2.activity_fit_raw WHERE external_id=%s AND parse_error IS NULL", (aid,))
@@ -410,17 +431,7 @@ def _one_if_new():
             return 0
         print(f'NEW: ingest aid={aid}')
         r = ingest_one(gc, conn, cyc, with_report=True)
-        # czujniki + rower + biegi (szacowane dla napedu mechanicznego) -- DECISIONS 2026-09-12
-        try:
-            from qbot3.rides.activity_devices import ingest_devices
-            from qbot3.rides.gear_estimate import estimate_if_needed
-            _fp = "/opt/qbot/artifacts/fit/%s.fit" % aid
-            if os.path.exists(_fp):
-                ingest_devices(str(aid), _fp, conn)
-            _ge = estimate_if_needed(conn, str(aid))
-            print(f"   czujniki/rower zapisane; biegi: {_ge}")
-        except Exception as _e:
-            print(f"   czujniki/rower: blad {_e}")
+        ingest_devices_and_gears(conn, aid)
         print('INGESTED:', json.dumps(r, default=str))
         conn.close()
         _recompute_fitmodel(f"one_if_new aid={r.get('aid')}")

@@ -5526,7 +5526,10 @@ def rides_ready(response: Response):
         rows = conn.execute(
             "SELECT afr.external_id AS ride_key, afr.fit_path AS fit_path, "
             "ts.started_at AS t_start, ts.activity_name AS name, ts.sport_type AS sport, "
-            "(rrd.built_at IS NOT NULL) AS has_report "
+            "(rrd.built_at IS NOT NULL) AS has_report, "
+            "(afr.summary->>'distance')::numeric/1000 AS dist_km, "
+            "(afr.summary->>'duration')::numeric AS duration_s, "
+            "ts.tss AS xss "
             "FROM qbot_v2.activity_fit_raw afr "
             "JOIN qbot_v2.training_sessions ts ON ts.external_id = afr.external_id "
             "LEFT JOIN qbot_v2.ride_report_data rrd ON rrd.ride_key = afr.external_id "
@@ -5542,6 +5545,9 @@ def rides_ready(response: Response):
                 "date": ts.date().isoformat() if ts else None,
                 "time": ts.strftime("%H:%M") if ts else None,
                 "has_report": bool(r["has_report"]),
+                "dist_km": round(float(r["dist_km"]),1) if r["dist_km"] else None,
+                "duration_s": round(float(r["duration_s"])) if r["duration_s"] else None,
+                "xss": round(float(r["xss"])) if r.get("xss") else None,
             })
         return {"rides": out}
     finally:
@@ -8785,10 +8791,11 @@ def calendar_entries(start: str = Query(...), end: str = Query(...)):
             (start, end, end, start),
         ).fetchall()
         frows = conn.execute(
-            "SELECT day::text AS day, cp_modelq_w, ctl_xss, atl_raw, tsb_raw, "
-            "ftp_est_w, wprime_modelq_kj, w_per_kg, readiness_score, readiness_label, "
-            "hrv_night, rhr, sleep_h, glycogen_pct "
-            "FROM qbot_v2.fitmodel_daily WHERE day BETWEEN %s AND %s ORDER BY day",
+            "SELECT f.day::text AS day, f.cp_modelq_w, f.ctl_xss, f.atl_raw, f.tsb_raw, "
+            "f.ftp_est_w, f.wprime_modelq_kj, f.w_per_kg, f.readiness_score, f.readiness_label, "
+            "f.hrv_night, f.rhr, f.sleep_h, f.glycogen_pct, f.weight_kg, w.sleep_score "
+            "FROM qbot_v2.fitmodel_daily f LEFT JOIN qbot_v2.qbot_wellness_daily w ON w.date = f.day "
+            "WHERE f.day BETWEEN %s AND %s ORDER BY f.day",
             (start, end),
         ).fetchall()
         rrows = conn.execute(
@@ -8825,7 +8832,7 @@ def calendar_entries(start: str = Query(...), end: str = Query(...)):
             "ftp": _n(r["ftp_est_w"]), "wprime": _n(r["wprime_modelq_kj"], 1),
             "wkg": _n(r["w_per_kg"], 2), "readiness": _n(r["readiness_score"], 2),
             "readiness_label": r["readiness_label"], "hrv": _n(r["hrv_night"]),
-            "rhr": _n(r["rhr"]), "sleep": _n(r["sleep_h"], 1), "glyc": _n(r["glycogen_pct"]),
+            "rhr": _n(r["rhr"]), "sleep": _n(r["sleep_h"], 1), "glyc": _n(r["glycogen_pct"]), "weight_kg": (round(float(r["weight_kg"]),1) if r.get("weight_kg") else None), "sleep_score": (int(r["sleep_score"]) if r.get("sleep_score") else None),
         }
     rides = {}
     for r in rrows:

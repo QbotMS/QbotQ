@@ -8,27 +8,13 @@
 
 # OTWARTE
 
-## [WAGA-SYNC] Wlasny synchronizator Withings -> Garmin (zamiast SmartScaleSync) (dodane 2026-08-06)
+## [ENERGIA-FALLBACK etap 2] Drugi tor: daily_energy_expenditure (on-demand) (dodane 2026-08-18)
 
-CEL: zrezygnowac z platnej subskrypcji SmartScaleSync (18,5 EUR) i postawic synchronizacje
-u siebie. Waga MUSI dalej isc przez Garmina -- QBot czyta body composition z Garmin Connect
-(import_garmin_body.py -> qbot_v2.body_measurements, source_type=INDEX_SCALE), a konektor
-Withings w QBocie jest DEPRECATED (qbot3/connectors/import_withings_body.py) i taki zostaje.
+Podloga ModelQ dziala w qbot_v2.energy_daily (etap 1, DECISIONS 2026-08-18). Tor on-demand
+(public.daily_energy_expenditure: qbot_energy_store.py + mapowanie w tool_registry
+total_kcal_out/active_kcal_out) nadal zwraca czysty Garmin. Do zrobienia: te same eff
+w drugim torze; zmiana tool_registry = aktualizacja _SYSTEM Alberta w TYM SAMYM commicie.
 
-STAN FAKTYCZNY (sprawdzone 2026-08-06): ostatni pomiar 2026-08-06, 101.34 kg, source garmin /
-INDEX_SCALE -- czyli droga Withings -> (SmartScaleSync) -> Garmin -> QBot dziala.
-Withings NIE MA oficjalnej integracji z Garminem; kazde rozwiazanie to obejscie.
-
-PLAN (decyzja przed kodem, po urlopie):
-- withings-sync (pip, open source) albo wlasny odpowiednik na VPS, cron po porannym wazeniu.
-- Sekrety Withings juz sa: /opt/q/secrets/withings/withings.env -- sprawdzic, czy refresh
-  tokenu jeszcze dziala (to byl powod deprecacji konektora, wiec traktowac jako ryzyko nr 1).
-- Garmin: login + haslo + 2FA, sesja do odnawiania. Ryzyko nr 2 -- upload idzie wewnetrznym
-  API Garmina (plik FIT), potrafi sie zepsuc przy zmianach po stronie Garmina.
-- Przeniesc pelny sklad ciala, nie sama wage (tluszcz, miesnie, kosci, nawodnienie, BMI).
-
-DOWOD SUKCESU: po wazeniu nowy wiersz w qbot_v2.body_measurements z data biezaca --
-BEZ aktywnej subskrypcji SmartScaleSync. Odpiac subskrypcje dopiero po 2-3 udanych dobach.
 
 ## [ZYWIENIE-ZAPIS] Regula cukrowa zerowala makra po podciagu w nazwie [ZAMKNIETE 2026-08-04]
 
@@ -284,6 +270,24 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [PODJAZDY-SKALA] etap B: glikogen i punkt bomby w symulatorze trasy (zapas z ModelQ + jedzenie z fuel vs spalanie kJ); etap C: durability — krzywa osiągalna zależna od kj_before (po czystych jazdach z nową baterią); etap D: wiatr czołowy/boczny w fizyce symulatora + wykres W′/glikogenu pod profilem; ocena w trybie DZIEŃ planera; readiness dnia w CP. ZROBIONE: fazy 1-3 + łańcuch + etap A symulatora (50 m, przerwy kanonu, upał) 2026-08-10
 
 # ZROBIONE (skrot; szczegoly w DECISIONS.md i TODO.md.bak.*)
+## [WAGA-SYNC] Wlasny sync Withings -> Garmin [ZROBIONE 2026-08-24]
+
+Zastapiony platny SmartScaleSync (18,5 EUR, wygasa 5.09.2026) wlasnym modulem
+wg wzorca qbot-hammerhead-sync. Pliki: withings_auth.py, qbot-withings-sync,
+scripts/run_withings_garmin_sync.sh, scripts/withings_sync_checkpoint.py.
+Cron */15 5-9. Zapis do Garmina UDOWODNIONY testem kontrolowanym (uploaded +
+odczyt zwrotny, zrodlo INDEX_SCALE, pelny sklad ciala). Szczegoly w DECISIONS.md.
+
+ZOSTAJE DO ZROBIENIA RECZNIE:
+- skasowac testowy wpis wagi z 2026-08-20 w Garmin Connect (samplePk 1787564765465);
+- 1.09 i 4.09 przyjdzie mail kontrolny -- sprawdzic, czy jest status "uploaded";
+- po 5.09 usunac z crona dwa wpisy withings_sync_checkpoint.py.
+
+
+- [2026-08-18] [ENERGIA-FALLBACK] podloga aktywnych kcal z ModelQ w qbot_v2.energy_daily (max(garmin, jazdy z mocy 1Hz - nakladka BMR); kwarantanna miernika wylaczona z podlogi; kolumny *_eff + energy_eff_source; backfill 06-01..08-18: 5 dni podniesione, 18.08 1258->2134; konsumenci: wellness_day_get, energy_day, raport dzienny, report_data_provider).
+- [2026-08-17] ZROBIONE: [KAROO-NAWIERZCHNIA] /api/surface/by-name (QExt2) -- fallback po stabilnym `#<route_id>` z nazwy trasy + logowanie kazdego zapytania (SURFACE_BYNAME ok/not_found/not_ready/resolved_by_hash na stdout qbot-api). Przyczyna braku nawierzchni na Karoo po wysylce z Analizy trasy: nazwa trasy zawiera DATE, ktora zmienia sie przy przeliczeniu trasy w QBocie -- kopia na Karoo zostaje ze stara data, ILIKE po pelnej nazwie pudlowal (202 not_found). Fallback #id odpala sie dopiero gdy dopasowanie po nazwie zawiedzie (chroni trasy planera `-- dzien X/N`, gdzie #id wskazuje cala wyprawe). Dowod na zywo: stara nazwa Cavagrande (`... 2026-08-12 ... #3186954572`) przed poprawka 202, po poprawce 200/13 segmentow; nazwa dnia planera nadal zwraca profil DNIA (52 seg). Commit c1cb50c. OTWARTE: QExt2 fetchViaKaroo poddaje sie po 1 probie przy 202 (retry -- osobny projekt QExt2).
+- [2026-08-16] ZROBIONE: [PODJAZDY-SCALANIE] detektor przestal ciac jeden podjazd na kawalki. Byl brak etapu laczenia sasiednich podjazdow: pierwsza ramka ponizej -0,5% konczyla podjazd, a do wznowienia trzeba bylo juz >=3% -- na Cavagrande (#3186954572) ciely go ramki -0,67%, czyli spadek o 67 cm (szum SRTM / plaska polka serpentyny). Nowe scalanie w route_elevation_engine.py: przerwa <=400 m ORAZ dolek <=12 m ORAZ szczyt nastepnika wyzej, filtr 400 m/3% przeniesiony ZA scalanie. Plus regula 'scalanie nie moze pogorszyc' (dodana po audycie: pierwsza wersja gubila podjazd 1200 m @3,7% na base 183, rozcienczajac srednie ponizej progu). DETECTION_VERSION -> karoo_400_3_merge_v2. Dowod: trasa 223 z 11 -> 6 podjazdow, glowny 7,55-14,45 km +358 m 5,2% 'dlugi', najglebszy zjazd w jego srodku 5 m; raport zwraca 6 podjazdow z ocenami, symulator W' min 86% na km 13,1. Backfill scripts/backfill_climb_merge.py na 28 trasach aktywnych (143 -> 130 podjazdow, bez ruchu do opentopodata). Testy 11/11 (3 nowe, w tym kontra: realny zjazd 30 m NADAL tnie). Dok.: DECISIONS 2026-08-16 + docs/architecture/ROUTE_ELEVATION_CLIMB.md.
+  OTWARTE z tego watku: (a) jazdy ride_climb_efforts nadal na starym detektorze (scripts/ride_climb_harvest.py uzywa tej samej funkcji) -- przeliczyc przy okazji; (b) trasy status='disabled' swiadomie zostaly na karoo_400_3_v1.
 - [2026-08-12] ZROBIONE: TELEGRAM -- reczne, kontekstowe przeliczenie trasy. `przelicz trase <id>` / `policz trase <id>` / `/przelicz <id>` / `uruchom pelna analize trasy <id>` przechwytywane w `qbot_qcal_telegram.handle_message` PRZED routerem (Telegram nie chodzi przez Alberta, wiec `route_recompute` byl stamtad nieosiagalny). Reuzyty writer `confirm_route_analysis` -> audyt + koncowe powiadomienie z czasem liczenia. ID w komendzie = start od razu; ID z kontekstu (`context_json.last_route_id`) = numerowane potwierdzenie `NN TAK`; brak ID = prosba o numer. Testy 17 zielonych, dowod na zywo: pending #29 dla trasy 55918401 (dry-run, sprzatniete). Dok.: docs/TELEGRAM_ROUTE_CONFIRM.md rozdz. 9.
 - [2026-08-11] ZROBIONE: [KCAL-RYCZALT] ryczalt kaloryczny przypiety do eventu kalendarza (`calendar_entry.kcal_planned`). Dni urlopu bez logowania dostaja szacunek X kcal + makra metoda presetow (`macros_for_kcal`, mediana realnych dni w pasmie +-250 kcal, fallback split). Nowy `qbot_event_intake.py`, nocny krok `event_intake` w daily_job (7 dni wstecz do wczoraj, idempotentny), pole w formularzu eventu (kalendarz-render.js v=26). Pierwszenstwo: realne jedzenie > reczny preset dnia > ryczalt; realny wpis kasuje ryczalt. Edycja eventu bez pola NIE zeruje ryczaltu (planer wypraw). Dowod na zywo: Sycylia 6-21.08 = 3200 kcal, dni 6-10.08 zapisane 340 g W / 135 g B / 116 g T (8 realnych dni, nie fallback). Szczegoly: DECISIONS 2026-08-11 + docs/PROJEKT_ODZYWIANIE.md.
 - [2026-07-30] ZROBIONE: zestaw porownywanych modeli dobierany do horyzontu (0-2 dni: siatki do 7 km; 3-5 dni: 7-13 km + ECMWF; 6+ dni: same globalne) -- zestawianie siatki 2 km z 25 km na krotkim terminie mierzylo rozdzielczosc, nie pogode. Do rejestru doszedl HARMONIE 5.5 km. Grafika porownania (skale z kropkami) USUNIETA -- zastapiona czterema akapitami i ocena Alberta w 2-3 zdaniach prozy.

@@ -1,0 +1,309 @@
+#!/usr/bin/env python3
+"""Withings -> Garmin Connect: przenoszenie wagi i skladu ciala.
+
+Zastepuje platna usluge SmartScaleSync. Wzorowany na qbot-hammerhead-sync:
+samodzielny modul, bez bazy qbot_v2, bez qbot-api, wlasny plik stanu, wlasny cron.
+
+Lancuch pozostaje bez zmian dla reszty systemu:
+    waga Withings -> chmura Withings -> TEN SKRYPT -> Garmin Connect
+    -> import_garmin_body.py (cron) -> qbot_v2.body_measurements
+
+Bezpieczniki:
+- wysylka wymaga jawnego --upload (domyslnie tryb probny, jak u Hammerheada)
+- znacznik "wyslane" przesuwa sie WYLACZNIE po potwierdzeniu odczytem zwrotnym
+- blad przejsciowy -> ponowienie w kolejnym przebiegu; blad trwaly -> alarm i stop
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+APP_DIR = Path("/opt/qbot/app")
+sys.path.insert(0, str(APP_DIR))
+
+DEFAULT_STATE = APP_DIR / "state/processed_withings_measures.json"
+SYNC_ALERT_STATE = APP_DIR / "state/withings_sync_alert_state.json"
+SYNC_ALERT_COOLDOWN_H = 6
+
+from withings_auth import (  # noqa: E402
+    DEFAULT_ENV,
+    WithingsAuthError,
+    WithingsTransientError,
+    fetch_measures,
+    refresh_token,
+)
+
+
+# --------------------------------------------------------------------------
+# stan
+# --------------------------------------------------------------------------
+
+def load_state(path: Path) -> dict[str, Any]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("measures"), dict):
+            return data
+    except Exception:
+        pass
+    return {"measures": {}, "updated_at": None}
+
+
+def save_state(path: Path, state: dict[str, Any]) -> None:
+    state["updated_at"] = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                   encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def mark_sent(state: dict[str, Any], grp: dict[str, Any], status: str,
+              detail: str | None = None) -> None:
+    state["measures"][grp["grpid"]] = {
+        "ts": grp["ts"],
+        "iso": grp["iso"],
+        "weight_kg": grp["values"].get("weight_kg"),
+        "status": status,
+        "detail": detail,
+        "sent_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+    }
+
+
+def already_sent(state: dict[str, Any], grpid: str) -> bool:
+    entry = state["measures"].get(grpid)
+    return bool(entry) and entry.get("status") in ("uploaded", "duplicate")
+
+
+# --------------------------------------------------------------------------
+# Garmin
+# --------------------------------------------------------------------------
+
+def garmin_existing_dates(client: Any, days: int) -> set[str]:
+    """Daty, ktore JUZ maja pomiar w Garminie -- odbudowa stanu po utracie pliku."""
+    end = datetime.now().date()
+    start = end - timedelta(days=days)
+    try:
+        data = client.get_body_composition(start.isoformat(), end.isoformat())
+    except Exception as exc:
+        print(f"[uwaga] nie udalo sie odczytac stanu z Garmina: {exc}", file=sys.stderr)
+        return set()
+    seen: set[str] = set()
+    for item in (data or {}).get("dateWeightList", []) or []:
+        cal = item.get("calendarDate")
+        if cal:
+            seen.add(str(cal))
+    return seen
+
+
+def push_measure(client: Any, grp: dict[str, Any]) -> dict[str, Any]:
+    """Wysyla jedna grupe pomiarowa. Zwraca {'status': ..., 'detail': ...}."""
+    vals = grp["values"]
+    stamp = datetime.fromtimestamp(grp["ts"]).isoformat(timespec="seconds")
+    try:
+        client.add_body_composition(
+            timestamp=stamp,
+            weight=vals["weight_kg"],
+            percent_fat=vals.get("fat_pct"),
+            percent_hydration=_hydration_pct(vals),
+            bone_mass=vals.get("bone_mass_kg"),
+            muscle_mass=vals.get("muscle_mass_kg"),
+        )
+    except Exception as exc:
+        msg = str(exc)
+        low = msg.lower()
+        if "duplicate" in low or "already" in low:
+            return {"status": "duplicate", "detail": msg[:200]}
+        return {"status": "failed", "detail": msg[:200]}
+    return {"status": "uploaded", "detail": None}
+
+
+def _hydration_pct(vals: dict[str, float]) -> float | None:
+    """Garmin oczekuje nawodnienia w PROCENTACH, Withings podaje w kilogramach."""
+    water = vals.get("hydration_kg")
+    weight = vals.get("weight_kg")
+    if not water or not weight:
+        return None
+    return round(water / weight * 100.0, 1)
+
+
+def verify_in_garmin(client: Any, grp: dict[str, Any]) -> bool:
+    """Odczyt zwrotny: czy pomiar faktycznie wyladowal w Garminie.
+
+    Bez tego 'nie rzucilo bledem' udaje sukces (ta sama pulapka co [POI]).
+    """
+    day = datetime.fromtimestamp(grp["ts"]).date().isoformat()
+    for delay in (0, 3, 8):
+        if delay:
+            time.sleep(delay)
+        try:
+            data = client.get_body_composition(day, day)
+        except Exception:
+            continue
+        for item in (data or {}).get("dateWeightList", []) or []:
+            weight_g = item.get("weight")
+            if weight_g is None:
+                continue
+            if abs(float(weight_g) / 1000.0 - grp["values"]["weight_kg"]) < 0.15:
+                return True
+    return False
+
+
+# --------------------------------------------------------------------------
+# alarm
+# --------------------------------------------------------------------------
+
+def _sync_alert(reason: str) -> None:
+    """Jeden komunikat na Telegram przy awarii, nie czesciej niz co 6 h."""
+    try:
+        state = json.loads(SYNC_ALERT_STATE.read_text(encoding="utf-8"))
+        if not isinstance(state, dict):
+            state = {}
+    except Exception:
+        state = {}
+
+    if time.time() - state.get("last_alert_ts", 0) < SYNC_ALERT_COOLDOWN_H * 3600:
+        print(f"[alert wyciszony] {reason}", file=sys.stderr)
+        return
+
+    try:
+        import requests
+        import qbot_config as _cfg
+        text = (
+            "Sync Withings -> Garmin nie dziala\n\n"
+            f"Powod: {reason}\n\n"
+            "Waga i sklad ciala nie trafiaja do Garmina, wiec nie dojda tez do QBota.\n"
+            "Jesli to wygasly dostep do Withings, potrzebna reczna autoryzacja."
+        )
+        requests.post(
+            f"https://api.telegram.org/bot{_cfg.TELEGRAM_TOKEN}/sendMessage",
+            json={"chat_id": _cfg.TELEGRAM_CHAT_ID, "text": text},
+            timeout=15,
+        )
+    except Exception as exc:
+        print(f"[alert nieudany] {exc}", file=sys.stderr)
+
+    state["last_alert_ts"] = int(time.time())
+    try:
+        SYNC_ALERT_STATE.parent.mkdir(parents=True, exist_ok=True)
+        SYNC_ALERT_STATE.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n",
+                                    encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _sync_alert_clear() -> None:
+    """Udany przebieg kasuje wyciszenie - kolejna awaria zaalarmuje od razu."""
+    try:
+        if SYNC_ALERT_STATE.exists():
+            SYNC_ALERT_STATE.unlink()
+    except Exception:
+        pass
+
+
+# --------------------------------------------------------------------------
+# main
+# --------------------------------------------------------------------------
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Withings -> Garmin Connect (waga i sklad ciala)")
+    parser.add_argument("--days", type=int, default=14, help="ile dni wstecz pobrac z Withings")
+    parser.add_argument("--upload", action="store_true", help="faktycznie wyslij do Garmina")
+    parser.add_argument("--dry-run", action="store_true", help="tylko pokaz, nic nie wysylaj")
+    parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
+    parser.add_argument("--env", type=Path, default=DEFAULT_ENV)
+    args = parser.parse_args()
+
+    if args.dry_run and args.upload:
+        parser.error("--dry-run i --upload wykluczaja sie")
+    upload = args.upload
+
+    now = datetime.now().isoformat(timespec="seconds")
+    print(f"[{now}] withings-sync start (upload={upload}, days={args.days})")
+
+    cfg = refresh_token(args.env)
+    print("token Withings odswiezony")
+
+    groups = fetch_measures(cfg, days=args.days)
+    print(f"pomiarow z ostatnich {args.days} dni: {len(groups)}")
+
+    state = load_state(args.state)
+    pending = [g for g in groups if not already_sent(state, g["grpid"])]
+
+    if not pending:
+        print("brak nowych pomiarow -- nic do zrobienia")
+        return 0
+
+    print(f"nowych do wyslania: {len(pending)}")
+    for g in pending:
+        print(f"  {g['iso']} | {g['values'].get('weight_kg')} kg | {sorted(g['values'])}")
+
+    if not upload:
+        print("tryb probny -- nic nie wyslano (dodaj --upload)")
+        return 0
+
+    from garmin_auth import garmin_client
+    client = garmin_client()
+    print("zalogowano do Garmina")
+
+    # Odbudowa stanu: co juz jest w Garminie, tego nie dublujemy.
+    existing = garmin_existing_dates(client, args.days)
+    if existing:
+        print(f"dni z pomiarem juz w Garminie: {len(existing)}")
+
+    failures = 0
+    for g in pending:
+        day = datetime.fromtimestamp(g["ts"]).date().isoformat()
+        if day in existing:
+            mark_sent(state, g, "duplicate", "pomiar na ten dzien juz byl w Garminie")
+            print(f"  {g['iso']} -> pominiete (juz w Garminie)")
+            continue
+
+        result = push_measure(client, g)
+        if result["status"] == "uploaded":
+            if verify_in_garmin(client, g):
+                mark_sent(state, g, "uploaded")
+                print(f"  {g['iso']} -> wyslane i potwierdzone")
+            else:
+                failures += 1
+                print(f"  {g['iso']} -> wyslane BEZ potwierdzenia, ponowie", file=sys.stderr)
+        elif result["status"] == "duplicate":
+            mark_sent(state, g, "duplicate", result["detail"])
+            print(f"  {g['iso']} -> Garmin zglosil duplikat (traktuje jak sukces)")
+        else:
+            failures += 1
+            print(f"  {g['iso']} -> BLAD: {result['detail']}", file=sys.stderr)
+
+    save_state(args.state, state)
+    print(f"stan zapisany: {args.state}")
+
+    if failures:
+        print(f"nieudanych: {failures} -- zostana ponowione", file=sys.stderr)
+        return 1
+    print("wszystko przeszlo")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        rc = main()
+        if rc == 0:
+            _sync_alert_clear()
+        else:
+            _sync_alert(f"przebieg zakonczony kodem {rc}")
+        raise SystemExit(rc)
+    except WithingsAuthError as exc:
+        # Blad trwaly -- ponawianie nie ma sensu, wola czlowieka.
+        print(f"BLAD TRWALY: {exc}", file=sys.stderr)
+        _sync_alert(str(exc))
+        raise SystemExit(2)
+    except WithingsTransientError as exc:
+        # Blad przejsciowy -- kolejny przebieg za 15 min sprobuje ponownie.
+        print(f"blad przejsciowy: {exc}", file=sys.stderr)
+        raise SystemExit(1)

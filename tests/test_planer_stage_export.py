@@ -107,6 +107,14 @@ def test_export_does_not_call_attraction_discovery():
     source = (
         inspect.getsource(export.create_planer_day_routes)
         + inspect.getsource(export._inherit_parent_baseline)
+        + inspect.getsource(export._inherit_surface_layer)
+        + inspect.getsource(export._inherit_elevation_samples)
+        + inspect.getsource(export._inherit_shade_layer)
+        + inspect.getsource(export._inherit_poi_layer)
+        + inspect.getsource(export._inherit_poi_meta)
+        + inspect.getsource(export._inherit_climb_events)
+        + inspect.getsource(export._inherit_surface_context)
+        + inspect.getsource(export._inherit_surface_profile)
         + inspect.getsource(export._cleanup_superseded_planer_day_routes)
     )
     assert "ensure_route_attractions" not in source
@@ -121,6 +129,39 @@ def test_export_does_not_call_attraction_discovery():
     assert "route_parse_results" in source
     assert "stage_route_id ~" in source
     assert "_cleanup_superseded_planer_day_routes" in source
+
+
+def test_inheritance_covers_every_canonical_50m_layer():
+    """Dzien musi dostac KOMPLET warstw kanonu 50 m, inaczej Analiza Trasy
+    zobaczy dziure (regresja: dziedziczono tylko nawierzchnie i POI)."""
+    source = inspect.getsource(export._inherit_parent_baseline)
+    for helper in (
+        "_inherit_surface_layer",
+        "_inherit_elevation_samples",
+        "_inherit_shade_layer",
+        "_inherit_poi_layer",
+        "_inherit_poi_meta",
+        "_inherit_climb_events",
+        "_inherit_surface_context",
+        "_inherit_surface_profile",
+    ):
+        assert helper in source, f"brak dziedziczenia warstwy: {helper}"
+    assert "planer_inherit" in source
+
+
+def test_surface_inheritance_slices_by_km_not_segment_index():
+    """Nawierzchnia ma ZMIENNA dlugosc odcinkow - laczenie po segment_index
+    z osia 50 m dawalo blad 'parent surface coverage is insufficient'."""
+    source = inspect.getsource(export._inherit_surface_layer)
+    assert "km_from" in source and "km_to" in source
+    assert "surface_meta_json" in source
+    assert "segment_index=parent_axis.segment_index" not in source
+
+
+def test_climb_event_belongs_to_the_day_it_starts_in():
+    source = inspect.getsource(export._inherit_climb_events)
+    assert "start_m >= %s AND start_m < %s" in source
+    assert "extends_past_day_end" in source
 
 
 def test_cleanup_removes_superseded_children_artifacts_and_files(tmp_path, monkeypatch):

@@ -34,16 +34,24 @@ PRIMARY_CORRIDOR_RADIUS_M = 50
 FALLBACK_CORRIDOR_RADIUS_M = 80
 DEBUG_MAX_MATCH_DIST_M = 150
 CACHE_ROOT = Path("/opt/qbot/artifacts/analysis")
+# Kolejnosc wg pomiarow na realnym zapytaniu silnika (2026-08-12, Sycylia).
+# UWAGA: nie dodawac tu instancji REGIONALNYCH (np. overpass.osm.ch = tylko
+# Szwajcaria). Takie serwery odpowiadaja 200 z pusta lista dla obszarow spoza
+# swojego zakresu, co wyglada jak sukces i psuje profil nawierzchni.
 DEFAULT_OVERPASS_ENDPOINTS = [
+    "https://lz4.overpass-api.de/api/interpreter",
+    "https://z.overpass-api.de/api/interpreter",
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.private.coffee/api/interpreter",
     "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ]
 USER_AGENT = os.getenv("QBOT_OVERPASS_USER_AGENT", "QBot/1.0 route_surface_engine_v1; contact=qbot-local")
 REFERER = os.getenv("QBOT_OVERPASS_REFERER", "https://qbot.local/route_surface_engine")
-OVERPASS_TIMEOUT_SEC = max(3, min(int(os.getenv("QBOT_OVERPASS_TIMEOUT_SEC", "10")), 60))
-OVERPASS_RETRIES = max(0, min(int(os.getenv("QBOT_OVERPASS_RETRIES", "1")), 3))
+OVERPASS_TIMEOUT_SEC = max(3, min(int(os.getenv("QBOT_OVERPASS_TIMEOUT_SEC", "25")), 60))
+OVERPASS_RETRIES = max(0, min(int(os.getenv("QBOT_OVERPASS_RETRIES", "2")), 3))
 OVERPASS_BACKOFF_SEC = max(0.0, min(float(os.getenv("QBOT_OVERPASS_BACKOFF_SEC", "0.8")), 10.0))
+# Ponizej tego pokrycia zapisany wynik uznajemy za smiec i liczymy od nowa,
+# zamiast betonowac go w cache (audyt 2026-08-12).
+CACHE_MIN_COVERAGE_PCT = max(0.0, min(float(os.getenv("QBOT_SURFACE_CACHE_MIN_COVERAGE_PCT", "90")), 100.0))
 
 
 SURFACE_CANONICAL = {
@@ -342,6 +350,7 @@ def _overpass(query: str, metrics: dict[str, Any], timeout: int | None = None) -
         "Accept": "application/json",
     }
     last: str | None = None
+    empty_payload: tuple[dict[str, Any], str] | None = None
     effective_timeout = max(3, min(int(timeout or OVERPASS_TIMEOUT_SEC), 60))
     retry_statuses = {429, 500, 502, 503, 504}
 
@@ -369,7 +378,19 @@ def _overpass(query: str, metrics: dict[str, Any], timeout: int | None = None) -
                 status_codes[str(code)] = int(status_codes.get(str(code), 0)) + 1
                 if code == 200:
                     stats["ok"] += 1
-                    return response.json(), endpoint
+                    payload = response.json()
+                    elements = payload.get("elements") if isinstance(payload, dict) else None
+                    if elements:
+                        return payload, endpoint
+                    # Pusta odpowiedz 200: albo obszar naprawde pusty, albo serwer
+                    # regionalny nie ma danych dla tego regionu. Zapamietujemy ja
+                    # i probujemy dalej -- oddamy ja dopiero, gdy nikt nie da wiecej.
+                    stats["empty_ok"] = int(stats.get("empty_ok", 0)) + 1
+                    stats["last_error"] = "HTTP 200 bez elementow"
+                    last = f"HTTP 200 empty @ {endpoint}"
+                    if empty_payload is None:
+                        empty_payload = (payload, endpoint)
+                    break
                 metrics["http_error_count"] += 1
                 stats["http_errors"] += 1
                 stats["last_error"] = f"HTTP {code}"
@@ -382,6 +403,8 @@ def _overpass(query: str, metrics: dict[str, Any], timeout: int | None = None) -
             if attempt < OVERPASS_RETRIES:
                 time.sleep(OVERPASS_BACKOFF_SEC * (attempt + 1))
         time.sleep(0.2)
+    if empty_payload is not None:
+        return empty_payload
     raise RuntimeError(f"Overpass unavailable: {last}")
 
 
@@ -834,15 +857,24 @@ def analyze_route_surface(
                 required_geology_fields = {"enabled", "status", "provider", "dominant_region", "dominant_unit", "units", "sections", "material_hint", "confidence", "source_resolution", "sample_strategy", "warnings"}
                 if not required_geology_fields.issubset(geology_context):
                     raise ValueError("cached route_surface_analysis lacks geology_context v1 contract")
-                cached["cache_hit"] = True
-                metrics = cached.setdefault("overpass_metrics", _new_overpass_metrics())
-                metrics["cache_hit_count"] = int(metrics.get("cache_hit_count", 0)) + 1
                 if "quality_status" not in cached:
                     cached["quality_status"] = _quality_status(
                         float(cached.get("coverage_pct") or 0.0),
                         float(cached.get("unknown_pct_refined") or 100.0),
                         float(cached.get("inferred_surface_pct") or 100.0),
                     )
+                cached_coverage = float(cached.get("coverage_pct") or 0.0)
+                cached_quality = str(cached.get("quality_status") or "")
+                if cached_quality == "LOW_CONFIDENCE" or cached_coverage < CACHE_MIN_COVERAGE_PCT:
+                    # Nie zwracamy smiecia z cache -- wyjatek spada do 'except'
+                    # ponizej i analiza liczy sie od nowa (Overpass moze juz dzialac).
+                    raise ValueError(
+                        f"cached route_surface_analysis rejected: coverage={cached_coverage:.1f}%"
+                        f" quality={cached_quality or 'unknown'}"
+                    )
+                cached["cache_hit"] = True
+                metrics = cached.setdefault("overpass_metrics", _new_overpass_metrics())
+                metrics["cache_hit_count"] = int(metrics.get("cache_hit_count", 0)) + 1
                 return cached
         except Exception:
             pass

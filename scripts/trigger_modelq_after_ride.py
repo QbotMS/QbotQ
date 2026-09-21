@@ -48,6 +48,7 @@ def main():
                 else:
                     _log(f"NEW aid={aid} (proba {i}/{TRIES}) - ingest+recompute")
                     r = ing.ingest_one(gc, conn, cyc, with_report=True)
+                    ing.ingest_devices_and_gears(conn, aid, log=_log)
                     conn.close()
                     conn = None
                     t0 = time.time()

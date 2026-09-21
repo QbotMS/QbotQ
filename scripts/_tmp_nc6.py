@@ -1,0 +1,3 @@
+import subprocess
+r=subprocess.run(["node","--check","/opt/qbot/web/public/forma2-data.js"],capture_output=True,text=True)
+print("exit:", r.returncode, r.stderr[:200] if r.stderr else "ok")

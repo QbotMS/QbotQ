@@ -467,17 +467,64 @@ def _ensure_poi_prefs_table(conn) -> None:
     )
 
 
+def _parent_route_id_for_stage(conn, route_id: str) -> str | None:
+    """Dla dnia Plannera zwraca route_id trasy nadrzednej; None dla zwyklej trasy."""
+    try:
+        row = conn.execute(
+            "SELECT l.parent_route_id "
+            "FROM qbot_v2.route_stage_lineage l "
+            "JOIN qbot_v2.route_base rb ON rb.route_base_id = l.stage_route_base_id "
+            "WHERE rb.route_id = %s AND l.active = true "
+            "ORDER BY rb.route_base_id DESC LIMIT 1",
+            (str(route_id),),
+        ).fetchone()
+    except Exception as exc:
+        if getattr(exc, "sqlstate", None) not in {"42P01", "42703"}:
+            raise
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return None
+    if not row:
+        return None
+    value = row[0] if not isinstance(row, dict) else row.get("parent_route_id")
+    return str(value) if value else None
+
+
 def get_route_poi_prefs(conn, route_id: str | int) -> dict[str, Any]:
-    """Preferencje POI per-trasa (trwaly przelacznik). Domyslnie atrakcje OFF."""
+    """Preferencje POI per-trasa (trwaly przelacznik). Domyslnie atrakcje OFF.
+
+    Dzien Plannera nie ma wlasnej preferencji, a jego atrakcje pochodza
+    z publikacji rodzica (route_stage_lineage). Bez odziedziczenia flagi
+    raport dnia twierdzil, ze atrakcji "nie ma", i proponowal ponowne
+    - platne - pobranie, choc dane byly juz w bazie.
+    """
     _ensure_poi_prefs_table(conn)
     row = conn.execute(
         "SELECT attractions_enabled FROM qbot_v2.route_poi_prefs WHERE route_id = %s",
         (str(route_id),),
     ).fetchone()
-    if not row:
-        return {"attractions_enabled": False}
-    val = row[0] if not isinstance(row, dict) else row.get("attractions_enabled")
-    return {"attractions_enabled": bool(val)}
+    if row:
+        val = row[0] if not isinstance(row, dict) else row.get("attractions_enabled")
+        return {"attractions_enabled": bool(val)}
+
+    parent_route_id = _parent_route_id_for_stage(conn, str(route_id))
+    if parent_route_id and parent_route_id != str(route_id):
+        parent_row = conn.execute(
+            "SELECT attractions_enabled FROM qbot_v2.route_poi_prefs WHERE route_id = %s",
+            (parent_route_id,),
+        ).fetchone()
+        if parent_row:
+            parent_val = (
+                parent_row[0] if not isinstance(parent_row, dict)
+                else parent_row.get("attractions_enabled")
+            )
+            return {
+                "attractions_enabled": bool(parent_val),
+                "inherited_from_route_id": parent_route_id,
+            }
+    return {"attractions_enabled": False}
 
 
 def set_route_poi_attractions(route_id: str | int, enabled: bool) -> dict[str, Any]:

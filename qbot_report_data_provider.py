@@ -222,8 +222,8 @@ class ReportDataProvider:
                     "freshness": "fresh",
                     "missing_fields": mf,
                     "status": "partial" if mf else "ok",
-                    "total_kcal": row.get("total_kcal") or row.get("kcal_burned_total") or row.get("total_kcal_out"),
-                    "active_kcal": row.get("active_kcal") or row.get("active_kcal_out"),
+                    "total_kcal": row.get("total_kcal_eff") or row.get("total_kcal") or row.get("kcal_burned_total") or row.get("total_kcal_out"),
+                    "active_kcal": row.get("active_kcal_eff") or row.get("active_kcal") or row.get("active_kcal_out"),
                     "resting_kcal": row.get("resting_kcal") or row.get("resting_kcal_out"),
                     "steps": row.get("steps"),
                 }

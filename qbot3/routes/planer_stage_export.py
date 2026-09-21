@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -120,65 +119,123 @@ def _register_canonical_gpx(
     }
 
 
-def _inherit_parent_baseline(
-    conn,
-    *,
-    parent_route_base_id: int,
-    stage: dict[str, Any],
-) -> dict[str, int]:
-    """Slice stable DB layers only; never call an external provider."""
-    child_base_id = int(stage["route_base_id"])
-    child_version = str(stage["route_version_key"])
-    offset = float(stage["km_from"])
-    end = float(stage["km_to"])
-    conn.execute("DELETE FROM qbot_v2.route_surface_layer WHERE route_base_id=%s", (child_base_id,))
-    surface_rows = conn.execute(
+def _inherit_surface_layer(conn, *, parent_base_id, child_base_id, child_version, km0, km1):
+    """Nawierzchnia: wiersze o ZMIENNEJ dlugosci, kilometraz w surface_meta_json.
+    Tniemy po km (NIE po segment_index - to byl blad 669/2390)."""
+    rows = conn.execute(
         """
-        INSERT INTO qbot_v2.route_surface_layer (
-            route_base_id, route_version_key, segment_index, surface, highway,
-            tracktype, source, confidence, coverage_status, fetched_at, surface_meta_json
+        SELECT surface, highway, tracktype, source, confidence, coverage_status,
+               fetched_at, surface_meta_json,
+               (surface_meta_json->>'km_from')::float AS km_from,
+               (surface_meta_json->>'km_to')::float AS km_to
+        FROM qbot_v2.route_surface_layer
+        WHERE route_base_id=%s
+          AND (surface_meta_json->>'km_to')::float > %s
+          AND (surface_meta_json->>'km_from')::float < %s
+        ORDER BY (surface_meta_json->>'km_from')::float
+        """,
+        (parent_base_id, km0, km1),
+    ).fetchall()
+    conn.execute("DELETE FROM qbot_v2.route_surface_layer WHERE route_base_id=%s", (child_base_id,))
+    inserted = 0
+    for index, raw in enumerate(rows):
+        row = dict(raw)
+        new_from = round(max(float(row["km_from"]), km0) - km0, 3)
+        new_to = round(min(float(row["km_to"]), km1) - km0, 3)
+        if new_to <= new_from:
+            continue
+        meta = dict(row["surface_meta_json"] or {})
+        meta.update({
+            "km_from": new_from,
+            "km_to": new_to,
+            "distance_m": round((new_to - new_from) * 1000.0, 1),
+            "inherited_from_route_base_id": int(parent_base_id),
+            "parent_km_from": round(float(row["km_from"]), 3),
+            "parent_km_to": round(float(row["km_to"]), 3),
+        })
+        conn.execute(
+            """
+            INSERT INTO qbot_v2.route_surface_layer (
+                route_base_id, route_version_key, segment_index, surface, highway,
+                tracktype, source, confidence, coverage_status, fetched_at, surface_meta_json
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
+            """,
+            (
+                child_base_id, child_version, inserted, row["surface"], row["highway"],
+                row["tracktype"], "inherited:" + str(row["source"] or ""), row["confidence"],
+                row["coverage_status"], row["fetched_at"],
+                json.dumps(meta, ensure_ascii=False),
+            ),
         )
-        SELECT %s, %s, child_axis.segment_index, parent_surface.surface,
-               parent_surface.highway, parent_surface.tracktype,
-               'inherited:' || parent_surface.source, parent_surface.confidence,
-               parent_surface.coverage_status, parent_surface.fetched_at,
-               parent_surface.surface_meta_json
+        inserted += 1
+    return inserted
+
+
+def _inherit_elevation_samples(conn, *, parent_base_id, child_base_id, child_version, km0, km1):
+    """Profil DEM 50 m: distance_m w metrach, przesuwamy o poczatek dnia."""
+    conn.execute("DELETE FROM qbot_v2.route_elevation_samples WHERE route_base_id=%s", (child_base_id,))
+    return conn.execute(
+        """
+        INSERT INTO qbot_v2.route_elevation_samples (
+            route_base_id, route_version_key, sample_index, distance_m, lat, lon,
+            elevation_m, source, smoothing_version, elevation_meta_json
+        )
+        SELECT %s, %s,
+               (row_number() OVER (ORDER BY sample_index) - 1)::int,
+               distance_m - %s, lat, lon, elevation_m,
+               source, smoothing_version,
+               COALESCE(elevation_meta_json, '{}'::jsonb)
+                 || jsonb_build_object('inherited_from_route_base_id', %s,
+                                       'parent_distance_m', distance_m)
+        FROM qbot_v2.route_elevation_samples
+        WHERE route_base_id=%s AND distance_m >= %s AND distance_m <= %s
+        """,
+        (child_base_id, child_version, km0 * 1000.0, parent_base_id,
+         parent_base_id, km0 * 1000.0, km1 * 1000.0),
+    ).rowcount
+
+
+def _inherit_shade_layer(conn, *, parent_base_id, child_base_id, child_version, km0):
+    """Zacienienie jest 1:1 z osia 50 m - mapujemy przez srodek segmentu osi dziecka."""
+    conn.execute("DELETE FROM qbot_v2.route_shade_layer WHERE route_base_id=%s", (child_base_id,))
+    return conn.execute(
+        """
+        INSERT INTO qbot_v2.route_shade_layer (
+            route_base_id, route_version_key, segment_index, heading_deg,
+            class_center, class_left_10, class_left_20, class_right_10, class_right_20,
+            n_valid, source, tile, coverage_status, meta_json
+        )
+        SELECT %s, %s, child_axis.segment_index, parent_shade.heading_deg,
+               parent_shade.class_center, parent_shade.class_left_10, parent_shade.class_left_20,
+               parent_shade.class_right_10, parent_shade.class_right_20,
+               parent_shade.n_valid, 'inherited:' || parent_shade.source, parent_shade.tile,
+               parent_shade.coverage_status,
+               COALESCE(parent_shade.meta_json, '{}'::jsonb)
+                 || jsonb_build_object('inherited_from_route_base_id', %s)
         FROM qbot_v2.route_axis_segments child_axis
         JOIN LATERAL (
-            SELECT surface.*
+            SELECT shade.*
             FROM qbot_v2.route_axis_segments parent_axis
-            JOIN qbot_v2.route_surface_layer surface
-              ON surface.route_base_id=parent_axis.route_base_id
-             AND surface.segment_index=parent_axis.segment_index
+            JOIN qbot_v2.route_shade_layer shade
+              ON shade.route_base_id=parent_axis.route_base_id
+             AND shade.segment_index=parent_axis.segment_index
             WHERE parent_axis.route_base_id=%s
               AND parent_axis.km_from <= %s + (child_axis.km_from + child_axis.km_to) / 2.0
-              AND parent_axis.km_to >= %s + (child_axis.km_from + child_axis.km_to) / 2.0
+              AND parent_axis.km_to   >= %s + (child_axis.km_from + child_axis.km_to) / 2.0
             ORDER BY parent_axis.segment_index
             LIMIT 1
-        ) parent_surface ON true
+        ) parent_shade ON true
         WHERE child_axis.route_base_id=%s
-        ON CONFLICT (route_base_id, segment_index) DO UPDATE SET
-            route_version_key=EXCLUDED.route_version_key,
-            surface=EXCLUDED.surface, highway=EXCLUDED.highway,
-            tracktype=EXCLUDED.tracktype, source=EXCLUDED.source,
-            confidence=EXCLUDED.confidence, coverage_status=EXCLUDED.coverage_status,
-            fetched_at=EXCLUDED.fetched_at, surface_meta_json=EXCLUDED.surface_meta_json,
-            updated_at=now()
         """,
-        (child_base_id, child_version, parent_route_base_id, offset, offset, child_base_id),
+        (child_base_id, child_version, parent_base_id, parent_base_id, km0, km0, child_base_id),
     ).rowcount
-    axis_count_row = conn.execute(
-        "SELECT count(*) AS n FROM qbot_v2.route_axis_segments WHERE route_base_id=%s",
-        (child_base_id,),
-    ).fetchone()
-    axis_count = int(axis_count_row.get("n") if isinstance(axis_count_row, dict) else axis_count_row[0])
-    if axis_count and int(surface_rows or 0) < math.ceil(axis_count * 0.9):
-        raise RuntimeError(
-            f"parent surface coverage is insufficient for day {stage['day']}: {surface_rows}/{axis_count}"
-        )
 
+
+def _inherit_poi_layer(conn, *, parent_base_id, child_base_id, child_version, km0, km1):
+    """Sklepy/jedzenie/woda/miasta po km. Atrakcje NIE - te ida przez lineage
+    (route_attraction_store czyta publikacje rodzica)."""
     conn.execute("DELETE FROM qbot_v2.route_poi_layer WHERE route_base_id=%s", (child_base_id,))
-    poi_rows = conn.execute(
+    return conn.execute(
         """
         INSERT INTO qbot_v2.route_poi_layer (
             route_base_id, route_version_key, poi_key, poi_id, source_place_id,
@@ -191,36 +248,301 @@ def _inherit_parent_baseline(
                opening_hours_fetched_at, source_updated_at, confidence,
                'inherited from expedition route; ' || COALESCE(validity_hint, ''),
                stale_after, status,
-               COALESCE(poi_meta_json, '{}'::jsonb) ||
-                 jsonb_build_object('inherited_from_route_base_id', %s, 'parent_km', km_on_route)
+               COALESCE(poi_meta_json, '{}'::jsonb)
+                 || jsonb_build_object('inherited_from_route_base_id', %s, 'parent_km', km_on_route)
         FROM qbot_v2.route_poi_layer
         WHERE route_base_id=%s
           AND km_on_route >= %s AND km_on_route <= %s
           AND category <> 'attraction'
-        ON CONFLICT (route_base_id, poi_key) DO UPDATE SET
-            route_version_key=EXCLUDED.route_version_key, name=EXCLUDED.name,
-            category=EXCLUDED.category, lat=EXCLUDED.lat, lon=EXCLUDED.lon,
-            km_on_route=EXCLUDED.km_on_route,
-            distance_from_route_m=EXCLUDED.distance_from_route_m,
-            opening_hours=EXCLUDED.opening_hours,
-            opening_hours_fetched_at=EXCLUDED.opening_hours_fetched_at,
-            source_updated_at=EXCLUDED.source_updated_at,
-            confidence=EXCLUDED.confidence, validity_hint=EXCLUDED.validity_hint,
-            stale_after=EXCLUDED.stale_after, status=EXCLUDED.status,
-            poi_meta_json=EXCLUDED.poi_meta_json, updated_at=now()
         """,
-        (
-            child_base_id, child_version, offset, parent_route_base_id,
-            parent_route_base_id, offset, end,
-        ),
+        (child_base_id, child_version, km0, parent_base_id, parent_base_id, km0, km1),
     ).rowcount
 
+
+def _inherit_poi_meta(conn, *, parent_base_id, child_base_id, child_version, km0, km1):
+    """Naglowek POI: statusy rodzica, zakres przeliczony na dzien."""
+    row = conn.execute(
+        "SELECT * FROM qbot_v2.route_poi_meta WHERE route_base_id=%s", (parent_base_id,)
+    ).fetchone()
+    if not row:
+        return 0
+    parent = dict(row)
+    meta = dict(parent.get("meta_json") or {})
+    meta.update({
+        "inherited_from_route_base_id": int(parent_base_id),
+        "parent_km_from": round(km0, 3),
+        "parent_km_to": round(km1, 3),
+        "source": "parent_route_slice",
+    })
+    conn.execute(
+        """
+        INSERT INTO qbot_v2.route_poi_meta (
+            route_base_id, route_version_key, analysis_status, supply_status,
+            technical_completeness, poi_source_mode, google_supply_count,
+            missing_chunks_count, km_from, km_to, avg_speed_kmh, fetched_at,
+            missing_chunks_json, buffers_json, meta_json
+        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s::jsonb)
+        ON CONFLICT (route_base_id) DO UPDATE SET
+            route_version_key=EXCLUDED.route_version_key,
+            analysis_status=EXCLUDED.analysis_status,
+            supply_status=EXCLUDED.supply_status,
+            technical_completeness=EXCLUDED.technical_completeness,
+            poi_source_mode=EXCLUDED.poi_source_mode,
+            km_from=EXCLUDED.km_from, km_to=EXCLUDED.km_to,
+            fetched_at=EXCLUDED.fetched_at, meta_json=EXCLUDED.meta_json,
+            updated_at=now()
+        """,
+        (
+            child_base_id, child_version, parent.get("analysis_status"),
+            parent.get("supply_status"), parent.get("technical_completeness"),
+            parent.get("poi_source_mode"), parent.get("google_supply_count"),
+            parent.get("missing_chunks_count"), 0.0, round(km1 - km0, 3),
+            parent.get("avg_speed_kmh"), parent.get("fetched_at"),
+            json.dumps(parent.get("missing_chunks_json") or [], ensure_ascii=False),
+            json.dumps(parent.get("buffers_json") or {}, ensure_ascii=False),
+            json.dumps(meta, ensure_ascii=False),
+        ),
+    )
+    return 1
+
+
+def _inherit_climb_events(conn, *, parent_base_id, child_base_id, child_version, km0, km1):
+    """Podjazd nalezy w CALOSCI do dnia, w ktorym sie ZACZYNA (bez ciecia w polowie)."""
+    conn.execute("DELETE FROM qbot_v2.route_climb_events WHERE route_base_id=%s", (child_base_id,))
+    return conn.execute(
+        """
+        INSERT INTO qbot_v2.route_climb_events (
+            route_base_id, route_version_key, event_index, start_m, end_m, length_m,
+            elevation_gain_m, avg_gradient_pct, max_gradient_pct, severity,
+            segments_json, source, detection_version, climb_meta_json
+        )
+        SELECT %s, %s,
+               (row_number() OVER (ORDER BY start_m) - 1)::int,
+               start_m - %s, end_m - %s, length_m,
+               elevation_gain_m, avg_gradient_pct, max_gradient_pct, severity,
+               segments_json, 'inherited:' || COALESCE(source, ''), detection_version,
+               COALESCE(climb_meta_json, '{}'::jsonb)
+                 || jsonb_build_object('inherited_from_route_base_id', %s,
+                                       'parent_start_m', start_m,
+                                       'extends_past_day_end', (end_m > %s))
+        FROM qbot_v2.route_climb_events
+        WHERE route_base_id=%s AND start_m >= %s AND start_m < %s
+        """,
+        (child_base_id, child_version, km0 * 1000.0, km0 * 1000.0, parent_base_id,
+         km1 * 1000.0, parent_base_id, km0 * 1000.0, km1 * 1000.0),
+    ).rowcount
+
+
+def _inherit_surface_context(conn, *, parent_base_id, child_base_id, child_version, km0, km1):
+    """Kontekst nawierzchni (ryzyko piasku) - km_from/km_to sa wprost kolumnami."""
+    conn.execute("DELETE FROM qbot_v2.route_surface_context WHERE route_base_id=%s", (child_base_id,))
+    return conn.execute(
+        """
+        INSERT INTO qbot_v2.route_surface_context (
+            route_base_id, route_version_key, segment_index, km_from, km_to,
+            highway, tracktype, dominant_class, dominant_pl, agreement_pct, n_nodes,
+            shade_coverage, geology_sand, surface_estimate, estimate_confidence,
+            sand_risk, reason, source
+        )
+        SELECT %s, %s,
+               (row_number() OVER (ORDER BY km_from) - 1)::int,
+               GREATEST(km_from, %s) - %s, LEAST(km_to, %s) - %s,
+               highway, tracktype, dominant_class, dominant_pl, agreement_pct, n_nodes,
+               shade_coverage, geology_sand, surface_estimate, estimate_confidence,
+               sand_risk, reason, 'inherited:' || COALESCE(source, '')
+        FROM qbot_v2.route_surface_context
+        WHERE route_base_id=%s AND km_to > %s AND km_from < %s
+        """,
+        (child_base_id, child_version, km0, km0, km1, km0, parent_base_id, km0, km1),
+    ).rowcount
+
+
+def _inherit_surface_profile(conn, *, parent_artifact_id, child_artifact_id, km0, km1):
+    """Profil nawierzchni per PLIK (route_surface_profiles + _segments).
+    Czyta go kanoniczny czytnik trasy; dziecko ma wlasny artefakt."""
+    row = conn.execute(
+        """
+        SELECT id, enrichment_version, surface_source, sample_every_m, confidence,
+               coverage_pct, dominant_surface, status, surface_summary_json,
+               surface_segments_json
+        FROM qbot_v2.route_surface_profiles
+        WHERE route_artifact_id=%s
+        ORDER BY enriched_at DESC NULLS LAST, id DESC LIMIT 1
+        """,
+        (parent_artifact_id,),
+    ).fetchone()
+    if not row:
+        return 0
+    parent = dict(row)
+    sha_row = conn.execute(
+        "SELECT sha256 FROM qbot_v2.route_artifacts WHERE id=%s", (child_artifact_id,)
+    ).fetchone()
+    child_sha = (dict(sha_row).get("sha256") if sha_row else None) or f"planer-child-{child_artifact_id}"
+
+    kept = []
+    for segment in (parent.get("surface_segments_json") or []):
+        try:
+            seg_from = float(segment.get("km_from"))
+            seg_to = float(segment.get("km_to"))
+        except (TypeError, ValueError):
+            continue
+        if seg_to <= km0 or seg_from >= km1:
+            continue
+        new_from = round(max(seg_from, km0) - km0, 3)
+        new_to = round(min(seg_to, km1) - km0, 3)
+        if new_to <= new_from:
+            continue
+        clipped = dict(segment)
+        clipped.update({
+            "km_from": new_from,
+            "km_to": new_to,
+            "distance_m": round((new_to - new_from) * 1000.0, 1),
+            "parent_km_from": round(seg_from, 3),
+            "parent_km_to": round(seg_to, 3),
+        })
+        kept.append(clipped)
+
+    summary = dict(parent.get("surface_summary_json") or {})
+    summary.update({
+        "inherited_from_route_artifact_id": int(parent_artifact_id),
+        "parent_km_from": round(km0, 3),
+        "parent_km_to": round(km1, 3),
+        "segments": len(kept),
+    })
+
+    old = conn.execute(
+        "SELECT id FROM qbot_v2.route_surface_profiles WHERE route_artifact_id=%s",
+        (child_artifact_id,),
+    ).fetchall()
+    for entry in old:
+        old_id = int(dict(entry)["id"])
+        conn.execute(
+            "DELETE FROM qbot_v2.route_surface_segments WHERE route_surface_profile_id=%s",
+            (old_id,),
+        )
+        conn.execute("DELETE FROM qbot_v2.route_surface_profiles WHERE id=%s", (old_id,))
+
+    new_id_row = conn.execute(
+        """
+        INSERT INTO qbot_v2.route_surface_profiles (
+            route_artifact_id, enriched_at, enrichment_version, source_artifact_sha256,
+            surface_source, sample_every_m, confidence, coverage_pct, sampled_points,
+            matched_points, unmatched_points, dominant_surface, status,
+            surface_summary_json, surface_segments_json
+        ) VALUES (%s, now(), %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb)
+        RETURNING id
+        """,
+        (
+            child_artifact_id, parent["enrichment_version"], child_sha,
+            "inherited:" + str(parent.get("surface_source") or ""),
+            parent.get("sample_every_m"), parent.get("confidence"),
+            parent.get("coverage_pct"), len(kept), len(kept), 0,
+            parent.get("dominant_surface"), parent.get("status") or "ok",
+            json.dumps(summary, ensure_ascii=False),
+            json.dumps(kept, ensure_ascii=False),
+        ),
+    ).fetchone()
+    profile_id = int(dict(new_id_row)["id"])
+    for index, segment in enumerate(kept):
+        conn.execute(
+            """
+            INSERT INTO qbot_v2.route_surface_segments (
+                route_surface_profile_id, segment_index, distance_m, surface,
+                confidence, source, start_lat, start_lon, end_lat, end_lon
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (
+                profile_id, index, segment.get("distance_m"), segment.get("surface"),
+                segment.get("confidence"), segment.get("source"),
+                segment.get("start_lat"), segment.get("start_lon"),
+                segment.get("end_lat"), segment.get("end_lon"),
+            ),
+        )
+    return len(kept)
+
+
+def _inherit_parent_baseline(
+    conn,
+    *,
+    parent_route_base_id: int,
+    parent_route_artifact_id: int | None,
+    stage: dict[str, Any],
+) -> dict[str, int]:
+    """Przenosi KOMPLET warstw kanonu 50 m z trasy-rodzica na dzien.
+
+    Zadnego zapytania zewnetrznego: wszystkie warstwy sa juz policzone i
+    oplacone przez rodzica. Atrakcje NIE sa kopiowane - route_attraction_store
+    czyta publikacje rodzica przez route_stage_lineage, wiec dzien widzi
+    dokladnie te same atrakcje co Planer.
+    """
+    child_base_id = int(stage["route_base_id"])
+    child_version = str(stage["route_version_key"])
+    child_artifact_id = int(stage["route_artifact_id"])
+    km0 = float(stage["km_from"])
+    km1 = float(stage["km_to"])
+
+    axis_row = conn.execute(
+        "SELECT count(*) AS n FROM qbot_v2.route_axis_segments WHERE route_base_id=%s",
+        (child_base_id,),
+    ).fetchone()
+    axis_count = int(axis_row.get("n") if isinstance(axis_row, dict) else axis_row[0])
+
+    counts = {
+        "axis_rows": axis_count,
+        "surface_rows": _inherit_surface_layer(
+            conn, parent_base_id=parent_route_base_id, child_base_id=child_base_id,
+            child_version=child_version, km0=km0, km1=km1),
+        "elevation_rows": _inherit_elevation_samples(
+            conn, parent_base_id=parent_route_base_id, child_base_id=child_base_id,
+            child_version=child_version, km0=km0, km1=km1),
+        "shade_rows": _inherit_shade_layer(
+            conn, parent_base_id=parent_route_base_id, child_base_id=child_base_id,
+            child_version=child_version, km0=km0),
+        "poi_rows": _inherit_poi_layer(
+            conn, parent_base_id=parent_route_base_id, child_base_id=child_base_id,
+            child_version=child_version, km0=km0, km1=km1),
+        "poi_meta_rows": _inherit_poi_meta(
+            conn, parent_base_id=parent_route_base_id, child_base_id=child_base_id,
+            child_version=child_version, km0=km0, km1=km1),
+        "climb_rows": _inherit_climb_events(
+            conn, parent_base_id=parent_route_base_id, child_base_id=child_base_id,
+            child_version=child_version, km0=km0, km1=km1),
+        "surface_context_rows": _inherit_surface_context(
+            conn, parent_base_id=parent_route_base_id, child_base_id=child_base_id,
+            child_version=child_version, km0=km0, km1=km1),
+        "surface_profile_segments": (
+            _inherit_surface_profile(
+                conn, parent_artifact_id=int(parent_route_artifact_id),
+                child_artifact_id=child_artifact_id, km0=km0, km1=km1)
+            if parent_route_artifact_id is not None else 0
+        ),
+    }
+
+    # Straznik: dzien bez nawierzchni albo bez profilu wysokosci jest
+    # bezuzyteczny dla Analizy Trasy (kanon 50 m). Lepiej glosny blad
+    # niz cicha dziura.
+    if axis_count and counts["surface_rows"] < 1:
+        raise RuntimeError(
+            f"brak odziedziczonej nawierzchni dla dnia {stage['day']} "
+            f"(zakres {km0}-{km1} km rodzica)"
+        )
+    if axis_count and counts["elevation_rows"] < int(axis_count * 0.9):
+        raise RuntimeError(
+            f"niepelny profil wysokosci dla dnia {stage['day']}: "
+            f"{counts['elevation_rows']}/{axis_count}"
+        )
+
     now = datetime.now(timezone.utc)
-    for job_type, row_count in (
-        ("route_base", axis_count),
-        ("route_surface", int(surface_rows or 0)),
-        ("route_poi", int(poi_rows or 0)),
-    ):
+    job_rows = (
+        ("route_base", counts["axis_rows"]),
+        ("route_surface", counts["surface_rows"]),
+        ("route_poi", counts["poi_rows"]),
+        ("route_elevation", counts["elevation_rows"]),
+        ("route_shade", counts["shade_rows"]),
+        ("route_surface_context", counts["surface_context_rows"]),
+        ("route_surface_category", counts["surface_rows"]),
+    )
+    for job_type, row_count in job_rows:
         idem = f"route_precompute:{stage['route_id']}:{child_version}:{job_type}"
         conn.execute(
             """
@@ -240,13 +562,14 @@ def _inherit_parent_baseline(
                 json.dumps({
                     "status": "OK", "source": "parent_route_slice",
                     "parent_route_base_id": parent_route_base_id,
-                    "parent_km_from": offset, "parent_km_to": end,
+                    "parent_km_from": km0, "parent_km_to": km1,
                     "row_count": row_count,
+                    "external_requests": 0,
                 }, ensure_ascii=False),
                 idem,
             ),
         )
-    return {"axis_rows": axis_count, "surface_rows": int(surface_rows or 0), "poi_rows": int(poi_rows or 0)}
+    return counts
 
 
 def _cleanup_superseded_planer_day_route_files(
@@ -523,6 +846,17 @@ def create_planer_day_routes(*, route_id: str, cuts: list[Any]) -> dict[str, Any
                     "UPDATE qbot_v2.route_base SET status='active', updated_at=now() WHERE route_base_id=%s",
                     (stage["route_base_id"],),
                 )
+                # Ten sam podzial wygenerowany ponownie dostaje NOWA wersje
+                # route_base, a (rodzic, split_key, dzien) jest unikalne i wciaz
+                # wskazuje na wersje poprzednia. Zdejmujemy stary wpis, zeby
+                # rodowod przeszedl na aktualna wersje dnia -- bez tego nowe
+                # base zostaje BEZ rodowodu, czyli bez atrakcji i bez warstw.
+                conn.execute(
+                    "DELETE FROM qbot_v2.route_stage_lineage "
+                    "WHERE parent_route_base_id=%s AND split_key=%s AND day_index=%s "
+                    "AND stage_route_base_id<>%s",
+                    (int(parent["route_base_id"]), split_key, stage["day"], stage["route_base_id"]),
+                )
                 conn.execute(
                     "INSERT INTO qbot_v2.route_stage_lineage ("
                     "stage_route_base_id, stage_route_id, parent_route_base_id, parent_route_id, "
@@ -541,6 +875,10 @@ def create_planer_day_routes(*, route_id: str, cuts: list[Any]) -> dict[str, Any
                 stage["inherited_layers"] = _inherit_parent_baseline(
                     conn,
                     parent_route_base_id=int(parent["route_base_id"]),
+                    parent_route_artifact_id=(
+                        int(parent["route_artifact_id"])
+                        if parent.get("route_artifact_id") is not None else None
+                    ),
                     stage=stage,
                 )
 

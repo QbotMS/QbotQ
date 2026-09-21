@@ -8,21 +8,22 @@ z dryfem zera zawyzaly obciazenie i sygnature). Tetno jest niezalezne od
 miernika mocy -- dla jazd w AKTYWNEJ kwarantannie XSS liczymy z HR, zeby jazda
 liczyla sie do obciazenia (decyzja Michala 11.08), ale uczciwa waluta.
 
-FORMULA
--------
-hrXSS = CAL_K * suma po sekundach JAZDY: (HR/LTHR)^2 * UNIT
-  - UNIT = 100/3600 (spojnie z xss.py: 1h na progu = 100 XSS)
-  - kwadrat = klasyczne hrTSS (Coggan)
-  - JAZDA = probki z v >= 1 m/s. Bez filtra postoje (HR 80-100 na
-    przerwie) zawyzaly wynik o 30-50%. Prog 3 m/s (jak w guardzie)
-    odrzucony: wycinal strome podjazdy (7-9 km/h), czyli najciezsza prace.
-  - CAL_K = 0.69: mediana (XSS_power / hrXSS_raw) z 36 czystych jazd
-    05-08.2026 (miernik OK, bez kwarantanny) = 0.686, identyczna dla
-    dlugich jazd (>100 XSS, n=19). Czyste jazdy z upalu: 0.645 i 0.677.
-    Rozrzut dlugich 0.54-0.82 -- to fallback, nie precyzja; blad
-    kilkanascie %% vs +18..42%% bledu watow.
-Calosc ladowana w Low -- z tetna nie da sie uczciwie wydzielic High/Peak
-(HR jest wolne i sie opoznia), wiec nie udajemy, ze wiemy wiecej niz wiemy.
+FORMULA (od 17.08.2026: podzial Low/High)
+-----------------------------------------
+surowo, po sekundach JAZDY (v >= 1 m/s), waga (HR/LTHR)^2 * UNIT:
+  - sekundy z HR <= LTHR  -> koszyk LOW,  wynik * K_LOW  (0.90)
+  - sekundy z HR  > LTHR  -> koszyk HIGH, wynik * K_HIGH (0.17)
+  - PEAK = 0 (zryww 15-30 s tetno fizycznie nie widzi -- nie udajemy)
+UNIT = 100/3600 (spojnie z xss.py: 1h na progu = 100 XSS).
+
+K_LOW=0.90 i K_HIGH=0.17: mediany (XSS_power_low / hr_raw_low) i
+((XSS_power_high+peak) / hr_raw_high) z 33/29 czystych jazd 05-08.2026.
+K_HIGH jest niski, bo HR tuz nad progiem czesto NIE oznacza watow nad
+progiem (opoznienie i dryf tetna) -- tylko ~1/6 "energii" nad LTHR to
+prawdziwe High wg watow. Rozrzut duzy (0.04-0.72) -- to fallback,
+nie precyzja. Powod podzialu: gorskie jazdy (Sycylia 08.2026) mialy
+realne akcenty nad progiem, a wersja "wszystko w Low" sztucznie
+zanizala TL_high -> W'/HIE nurkowalo (decay.py dryfuje HIE za TL_high).
 
 OGRANICZENIA
 ------------
@@ -38,7 +39,8 @@ LTHR_BPM = 132.0
 UNIT = 100.0 / 3600.0   # jak w xss.py: 1h na progu = 100 XSS
 HR_MIN = 60             # ponizej: dane smieciowe -> pomijamy
 V_MIN_MPS = 1.0         # tylko jazda (odcina postoj, NIE strome podjazdy)
-CAL_K = 0.69            # kalibracja do waluty XSS (patrz naglowek)
+K_LOW = 0.90            # kalibracja koszyka Low (patrz naglowek)
+K_HIGH = 0.17           # kalibracja koszyka High (patrz naglowek)
 
 
 def fetch_hr_rows(external_id: str) -> list:
@@ -56,10 +58,10 @@ def fetch_hr_rows(external_id: str) -> list:
         conn.close()
 
 
-def compute_hr_xss(hr_rows: list, lthr_bpm: float = LTHR_BPM,
-                   cal_k: float = CAL_K) -> float:
-    """hrXSS (odpowiednik xss_low) z probek 1Hz. Dziury > 5 s pomijane."""
-    total = 0.0
+def compute_hr_xss_split(hr_rows: list, lthr_bpm: float = LTHR_BPM,
+                         k_low: float = K_LOW, k_high: float = K_HIGH) -> tuple:
+    """(xss_low, xss_high) z probek 1Hz. Dziury > 5 s pomijane."""
+    lo = hi = 0.0
     prev_ts = None
     for row in hr_rows:
         ts, hr, v = row[0], row[1], (row[2] if len(row) > 2 else None)
@@ -68,6 +70,16 @@ def compute_hr_xss(hr_rows: list, lthr_bpm: float = LTHR_BPM,
             dt_s = (ts - prev_ts).total_seconds()
             if 0 < dt_s <= 5:
                 ratio = hr / lthr_bpm
-                total += (ratio * ratio) * UNIT * dt_s
+                val = (ratio * ratio) * UNIT * dt_s
+                if hr > lthr_bpm:
+                    hi += val
+                else:
+                    lo += val
         prev_ts = ts
-    return total * cal_k
+    return lo * k_low, hi * k_high
+
+
+def compute_hr_xss(hr_rows: list, lthr_bpm: float = LTHR_BPM) -> float:
+    """Suma Low+High -- zachowane dla zgodnosci wstecz."""
+    lo, hi = compute_hr_xss_split(hr_rows, lthr_bpm=lthr_bpm)
+    return lo + hi

@@ -17,6 +17,8 @@ class TestQbotQcalTelegramManualRecompute(unittest.TestCase):
             "/przelicz 55864231",
             "policz trasę 55864231",
             "uruchom pełną analizę trasy 55918401",
+            "zanalizuj trasę 3180619966",
+            "analizuj trasę 3180619966",
         ):
             self.assertTrue(qbot_qcal_telegram._detect_route_recompute(text), text)
 
@@ -368,6 +370,127 @@ class TestQbotQcalTelegramRouteQuery(unittest.TestCase):
         mock_decline.assert_called_once_with("358008451", 18)
         mock_query.assert_not_called()
 
+
+
+class TestTelegramRouteSourceDispatch(unittest.TestCase):
+    """RWGPS (8 cyfr) vs Komoot (10 cyfr) — dwa rozne workery."""
+
+    def test_source_detection_by_id_length(self) -> None:
+        self.assertEqual(qbot_qcal_telegram._route_source_for_id("55918401"), "rwgps")
+        self.assertEqual(qbot_qcal_telegram._route_source_for_id("3180619966"), "komoot")
+
+    def test_komoot_without_attractions_offers_buttons(self) -> None:
+        with patch("qbot_qcal_telegram.is_authorized", return_value=True), \
+                patch("qbot_qcal_telegram._conv_get", return_value=None), \
+                patch("qbot_qcal_telegram._pending_active_rows", return_value=[]), \
+                patch("qbot_qcal_telegram.upsert_pending_action") as mock_upsert, \
+                patch("qbot_qcal_telegram._turn_add"), \
+                patch("qbot_qcal_telegram._conv_upsert"), \
+                patch("qbot_tools._tool_qbot_query") as mock_query:
+            result = qbot_qcal_telegram.handle_message(
+                chat_id="358008451", text="przelicz trase 3180619966", dry_run=False)
+
+        self.assertEqual(result["route_recompute"], "komoot_choice")
+        self.assertEqual(result["komoot_choice"], "3180619966")
+        mock_upsert.assert_not_called()
+        mock_query.assert_not_called()
+
+    def test_komoot_id_uses_komoot_action_type(self) -> None:
+        with patch("qbot_qcal_telegram.is_authorized", return_value=True), \
+                patch("qbot_qcal_telegram._conv_get", return_value=None), \
+                patch("qbot_qcal_telegram._pending_active_rows", return_value=[]), \
+                patch("qbot_qcal_telegram.upsert_pending_action", return_value={
+                    "status": "pending", "created": True,
+                    "pending_action_id": 51, "action_status": "pending",
+                }) as mock_upsert, \
+                patch("qbot_qcal_telegram._pending_execute", return_value={
+                    "status": "OK", "action_type": "confirm_komoot_analysis",
+                    "tour_id": "3180619966",
+                }), \
+                patch("qbot_qcal_telegram._turn_add"), \
+                patch("qbot_qcal_telegram._conv_upsert"), \
+                patch("qbot_tools._tool_qbot_query") as mock_query:
+            result = qbot_qcal_telegram.handle_message(
+                chat_id="358008451", text="przelicz trase 3180619966 z atrakcjami",
+                dry_run=False)
+
+        self.assertEqual(result["route_recompute"], "started")
+        self.assertEqual(
+            mock_upsert.call_args.kwargs["action_type"], "confirm_komoot_analysis")
+        self.assertEqual(
+            mock_upsert.call_args.kwargs["payload"]["tour_id"], "3180619966")
+        self.assertTrue(mock_upsert.call_args.kwargs["payload"]["atrakcje"])
+        self.assertIn("Komoot", result["response"])
+        mock_query.assert_not_called()
+
+    def test_komoot_writer_spawns_komoot_worker(self) -> None:
+        with patch("subprocess.Popen") as mock_popen, \
+                patch("qbot_qcal_telegram._turn_add", return_value=901), \
+                patch("qbot_qcal_telegram._route_confirm_log_path",
+                      return_value="/tmp/komoot_test.log"), \
+                patch("builtins.open", unittest.mock.mock_open()):
+            result = qbot_qcal_telegram._execute_writer(
+                "confirm_komoot_analysis",
+                {"tour_id": "3180619966"},
+                "idem",
+                chat_id="358008451",
+                action_id=51,
+            )
+
+        self.assertEqual(result["status"], "OK")
+        self.assertEqual(result["launch_audit_id"], 901)
+        cmd = mock_popen.call_args.args[0]
+        self.assertIn("scripts/komoot_analyze_worker.py", cmd[1])
+        self.assertEqual(cmd[2], "3180619966")
+        self.assertNotIn("--atrakcje", cmd)
+
+    def test_komoot_writer_passes_attractions_flag(self) -> None:
+        with patch("subprocess.Popen") as mock_popen, \
+                patch("qbot_qcal_telegram._turn_add", return_value=902), \
+                patch("qbot_qcal_telegram._route_confirm_log_path",
+                      return_value="/tmp/komoot_test.log"), \
+                patch("builtins.open", unittest.mock.mock_open()):
+            result = qbot_qcal_telegram._execute_writer(
+                "confirm_komoot_analysis",
+                {"tour_id": "3180619966", "atrakcje": True},
+                "idem",
+                chat_id="358008451",
+                action_id=52,
+            )
+
+        self.assertEqual(result["status"], "OK")
+        self.assertTrue(result["atrakcje"])
+        self.assertIn("--atrakcje", mock_popen.call_args.args[0])
+
+    def test_attractions_phrases_detected(self) -> None:
+        self.assertTrue(qbot_qcal_telegram._wants_attractions("przelicz trase 1 z atrakcjami"))
+        self.assertTrue(qbot_qcal_telegram._wants_attractions("analizuj trase 1 + atrakcje"))
+        self.assertFalse(qbot_qcal_telegram._wants_attractions("przelicz trase 1"))
+
+    def test_komoot_writer_needs_tour_id(self) -> None:
+        result = qbot_qcal_telegram._execute_writer(
+            "confirm_komoot_analysis", {}, "idem", chat_id="358008451", action_id=51)
+        self.assertEqual(result["status"], "error")
+
+
+class TestTelegramPollerRouteGateway(unittest.TestCase):
+    """Poller (telegram_reply_processor) musi oddac trasy do gatewayu."""
+
+    def test_recompute_command_goes_to_gateway(self) -> None:
+        import telegram_reply_processor as trp
+        self.assertTrue(trp._is_route_gateway_message("358008451", "przelicz trase 3180619966"))
+
+    def test_plain_wellness_message_stays_in_poller(self) -> None:
+        import telegram_reply_processor as trp
+        with patch("qbot_qcal_telegram._pending_active_rows", return_value=[]):
+            self.assertFalse(trp._is_route_gateway_message("358008451", "spalem 7h, nogi ciezkie"))
+
+    def test_numbered_yes_goes_to_gateway_only_with_active_pending(self) -> None:
+        import telegram_reply_processor as trp
+        with patch("qbot_qcal_telegram._pending_active_rows", return_value=[{"id": 51}]):
+            self.assertTrue(trp._is_route_gateway_message("358008451", "51 TAK"))
+        with patch("qbot_qcal_telegram._pending_active_rows", return_value=[]):
+            self.assertFalse(trp._is_route_gateway_message("358008451", "51 TAK"))
 
 if __name__ == "__main__":
     unittest.main()

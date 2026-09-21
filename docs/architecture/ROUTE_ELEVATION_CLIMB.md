@@ -18,6 +18,8 @@ Dla zaplanowanej trasy liczymy gęsty profil wysokości i wykrywamy podjazdy —
   - **~200 m** do **sumy przewyższeń** — wyznaczone empirycznie pod barometr (surowy SRTM 50 m zawyża i robi fantomy). Na trasie 55798129 daje ~427 m vs 403 m z RWGPS.
   - **~100 m** do **detekcji granic podjazdów i ścianek** — okno 200 m przesuwa pozorny szczyt o ~pół okna i sztucznie wydłużałoby krótkie podjazdy.
 - **Progi Karoo:** podjazd to odcinek **≥ 400 m** o średnim nachyleniu **≥ 3%**.
+- **Scalanie fragmentów (2026-08-16):** pojedyncza ramka poniżej `CLIMB_CONTINUE_PCT` (−0,5%) to najczęściej płaska półka serpentyny albo szum DEM (−0,7% na 100 m to raptem 70 cm), a nie koniec podjazdu. Sąsiadujące biegi łączymy, gdy **jednocześnie**: przerwa ≤ `MERGE_MAX_GAP_M` (400 m), spadek w dołku ≤ `MERGE_MAX_DIP_M` (12 m), szczyt następnika leży wyżej, oraz **scalanie nie pogarsza** (patrz niżej). Filtr 400 m / 3% działa **po** scaleniu, żeby krótki kawałek mógł być mostkiem między fragmentami tego samego podjazdu.
+- **Reguła „scalanie nie może pogorszyć":** sklejamy tylko wtedy, gdy scalony blok dalej przechodzi próg, **albo** gdy żaden ze składników i tak sam by nie przeszedł. Bez tego doklejenie krótkiego łagodnego ogonka rozcieńczało średnią poniżej 3% i kasowało podjazd, który wcześniej był widoczny (audyt 2026-08-16: `route_base` 183, odcinek 1200 m @3,7% ginął po sklejeniu ze 150 m @2,7%; suma przewyższeń podjazdów spadała z 316 na 195 m).
 - **Podjazd dwupoziomowo:**
   - **nagłówek** — start, koniec, długość, przewyższenie, średnie i maksymalne nachylenie, „severity",
   - **segmenty 100 m** — każdy z własnym gradientem i kategorią stromości (`lagodny`/`umiarkowany`/`stromy`/`bardzo_stromy`). To one pokazują, czy „średnie 5%" to równy podjazd, czy 3% z wstawkami 9-procentowych ścianek.
@@ -53,5 +55,7 @@ Okno wygładzania i progi stroimy porównując **ramka po ramce** wysokość z u
 
 ## Granice
 Podsystem zasila tylko dwie tabele. Nie przepina raportu trasy, nie zmienia `route_analysis_run`, nie dodaje publicznych narzędzi Alberta. Integracja z samym raportem (read-path) to osobny krok.
+
+Aktualizacja 2026-08-16 (`detection_version = karoo_400_3_merge_v2`): dodane scalanie pociętych podjazdów. Powód: trasa „Albert[Q] Sicily - DX Cavagrande" (#3186954572) raportowała jeden ciągły podjazd 7,55–14,45 km jako **cztery** osobne „umiarkowane" kawałki — cztery ramki po −0,67% (spadek 67 cm, w granicach szumu SRTM) rozcinały go, a do wznowienia potrzeba było już ≥3%. Po zmianie: 11 podjazdów → 6, główny podjazd to 6,9 km / +358 m / 5,2% / `dlugi`, a najgłębszy zjazd w jego wnętrzu to 5 m. Backfill 28 tras aktywnych: `scripts/backfill_climb_merge.py` (domyślnie sucho, `--apply` zapisuje; czyta gotowe próbki z bazy, nie rusza opentopodata). Trasy `disabled` świadomie zostawione na `karoo_400_3_v1`. Ocena podjazdów (`climb_score`) i symulator W′ (`route_ride_sim`) czytają `route_climb_events` z bazy, więc korzystają ze scalonych danych bez zmian w kodzie.
 
 Aktualizacja 2026-06-30: route_report może teraz czytać canonical `route_elevation_samples` i `route_climb_events` addytywnie jako sekcję „profil wysokości / podjazdy", ale bez zmiany algorytmu wyceny czasu ani legacy sekcji A3/A8.

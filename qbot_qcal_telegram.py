@@ -17,7 +17,7 @@ def _allowed() -> set[str]:
 def is_authorized(chat_id: str) -> bool:
     return str(chat_id).strip() in _allowed()
 
-_ALLOWED_ACTIONS = {"confirm_route_analysis"}  # kalendarz qcal_* usuniety 2026-07-16; nutrition_log_add usuniete 2026-07-05
+_ALLOWED_ACTIONS = {"confirm_route_analysis", "confirm_komoot_analysis"}  # kalendarz qcal_* usuniety 2026-07-16; nutrition_log_add usuniete 2026-07-05
 _CONFIRM_WORDS = {"tak", "yes", "ok", "potwierdzam", "zapisz", "dodaj", "confirm", "/confirm", "/yes", "t", "y"}
 _DECLINE_WORDS = {"nie", "no", "anuluj", "cancel", "/cancel", "/no", "n"}
 _CONFIRM_NUMERIC_RE = re.compile(r"^\s*#?\s*(\d+)\s+(.+?)\s*$", re.IGNORECASE)
@@ -397,7 +397,7 @@ def _handle_pending_confirmation(chat_id: str, text: str, dry_run: bool = False)
     _turn_add(chat_id, "inbound", text, intent="confirm", action_id=action_id)
     st = result.get("status", "?")
     if st in ("OK", "ok"):
-        if action_type == "confirm_route_analysis":
+        if action_type in ("confirm_route_analysis", "confirm_komoot_analysis"):
             msg = f"✓ Uruchomiłem analizę #{action_id}. Wynik zapisuję w DB i logach."
         else:
             msg = f"✓ Wykonano #{action_id}."
@@ -468,6 +468,53 @@ def _execute_writer(atype: str, payload: dict, idem_key: str, chat_id: str | Non
                 "launch_status": "started",
                 "launch_audit_id": launch_audit_id,
             }
+        if atype == "confirm_komoot_analysis":
+            tour_id = str(payload.get("tour_id") or payload.get("route_id") or "").strip()
+            if not tour_id:
+                return {"status": "error", "error": "missing tour_id for komoot analysis"}
+            atrakcje = bool(payload.get("atrakcje"))
+            import subprocess as _subprocess
+            import sys as _sys
+
+            worker_cmd = [_sys.executable, "/opt/qbot/app/scripts/komoot_analyze_worker.py", tour_id]
+            if atrakcje:
+                worker_cmd.append("--atrakcje")
+            log_path = _route_confirm_log_path("komoot_" + tour_id)
+            with open(log_path, "ab") as _logf:
+                _subprocess.Popen(
+                    worker_cmd,
+                    stdout=_logf,
+                    stderr=_subprocess.STDOUT,
+                    cwd="/opt/qbot/app",
+                    start_new_session=True,
+                )
+            launch_audit_id = None
+            if chat_id and action_id is not None:
+                launch_audit_id = _turn_add(
+                    chat_id,
+                    "system",
+                    text=f"Launch komoot analyze for #{action_id} tour_id={tour_id}",
+                    intent="komoot_analyze_launch_audit",
+                    response_json={
+                        "status": "OK",
+                        "tour_id": tour_id,
+                        "source": "komoot",
+                        "atrakcje": atrakcje,
+                        "worker_log_path": log_path,
+                        "action_id": action_id,
+                    },
+                    action_id=action_id,
+                )
+            return {
+                "status": "OK",
+                "action_type": atype,
+                "tour_id": tour_id,
+                "source": "komoot",
+                "atrakcje": atrakcje,
+                "worker_log_path": log_path,
+                "launch_status": "started",
+                "launch_audit_id": launch_audit_id,
+            }
         return {"status": "unknown_action_type", "action_type": atype}
     except Exception as e:
         return {"status": "error", "error": str(e)[:200]}
@@ -476,11 +523,24 @@ def _execute_writer(atype: str, payload: dict, idem_key: str, chat_id: str | Non
 # ── Reczne przeliczenie trasy z Telegrama (kontekstowo) ──
 
 _ROUTE_RECOMPUTE_VERB_RE = re.compile(
-    r"(przelicz|policz|oblicz|recompute|precompute|uruchom\s+(pe[lł]n[aą]\s+)?analiz)",
+    r"(przelicz|policz|oblicz|recompute|precompute|zanalizuj|analizuj|uruchom\s+(pe[lł]n[aą]\s+)?analiz)",
     re.IGNORECASE,
 )
 _ROUTE_WORD_RE = re.compile(r"(tras|route)", re.IGNORECASE)
 _ROUTE_ID_RE = re.compile(r"\b(\d{7,})\b")
+
+
+_ATTRACTIONS_RE = re.compile(r"(atrakcj|zwiedza|\bpoi\b)", re.IGNORECASE)
+
+
+def _wants_attractions(text: str) -> bool:
+    """Czy komenda wprost prosi o analize z atrakcjami (odpowiednik kmt:ya)."""
+    return bool(_ATTRACTIONS_RE.search(text or ""))
+
+
+def _route_source_for_id(route_id: str) -> str:
+    """RWGPS ma ID 8-cyfrowe, Komoot 10-cyfrowe. Prog: >=10 cyfr => komoot."""
+    return "komoot" if len(str(route_id).strip()) >= 10 else "rwgps"
 
 
 def _route_id_from_text(text: str) -> str:
@@ -524,12 +584,37 @@ def _route_recompute_request(chat_id: str, text: str, conv: dict | None, dry_run
         _turn_add(chat_id, "outbound", text=msg, intent="route_recompute_needs_id")
         return {"response": msg, "status": "ok", "route_recompute": "needs_route_id"}
 
-    payload = {"route_id": route_id, "trigger_source": "telegram_manual"}
-    preview = f"Reczne przeliczenie trasy {route_id} (pelny precompute aktywnej wersji)."
+    source = _route_source_for_id(route_id)
+    atrakcje = _wants_attractions(text)
+    if source == "komoot" and not atrakcje:
+        # Parytet z powiadomieniem o nowej trasie: oddajemy wybor przyciskami
+        # (kmt:y / kmt:ya / kmt:n) — obsluguje je istniejacy handle_komoot_callback.
+        new_ctx = dict(_conv_context(conv))
+        new_ctx["last_route_id"] = route_id
+        new_ctx["last_query"] = text
+        _conv_upsert(chat_id, context_json=json.dumps(new_ctx))
+        msg = f"Trasa Komoot #{route_id} — jak ja przeliczyc?"
+        _turn_add(chat_id, "inbound", text, intent="komoot_analyze_choice")
+        _turn_add(chat_id, "outbound", text=msg, intent="komoot_analyze_choice")
+        return {
+            "response": msg, "status": "ok", "route_recompute": "komoot_choice",
+            "komoot_choice": route_id, "route_id": route_id, "source": "komoot",
+        }
+    if source == "komoot":
+        action_type = "confirm_komoot_analysis"
+        payload = {
+            "tour_id": route_id, "route_id": route_id,
+            "trigger_source": "telegram_manual", "atrakcje": True,
+        }
+        preview = f"Analiza trasy Komoot #{route_id} (+atrakcje)."
+    else:
+        action_type = "confirm_route_analysis"
+        payload = {"route_id": route_id, "trigger_source": "telegram_manual"}
+        preview = f"Reczne przeliczenie trasy RWGPS {route_id} (pelny precompute aktywnej wersji)."
     idem_key = f"telegram_manual_recompute:{route_id}:{datetime.now():%Y%m%d%H%M}"
     up = upsert_pending_action(
         chat_id=str(chat_id),
-        action_type="confirm_route_analysis",
+        action_type=action_type,
         payload=payload,
         preview=preview,
         idem_key=idem_key,
@@ -549,8 +634,9 @@ def _route_recompute_request(chat_id: str, text: str, conv: dict | None, dry_run
     if from_context or up.get("action_status") != "pending":
         # ID z kontekstu (albo akcja juz istniala) -> pytamy numerem, zeby nie
         # przeliczyc nie tej trasy.
+        what = "Zanalizowac ja (Komoot)?" if source == "komoot" else "Przeliczyc ja w calosci?"
         msg = (
-            f"#{pid} Ostatnio byla mowa o trasie {route_id}. Przeliczyc ja w calosci?\n\n"
+            f"#{pid} Ostatnio byla mowa o trasie {route_id}. {what}\n\n"
             f"Odpowiedz: {pid} TAK albo {pid} NIE"
         )
         _turn_add(chat_id, "inbound", text, intent="route_recompute_confirm_needed", action_id=pid)
@@ -571,10 +657,9 @@ def _route_recompute_request(chat_id: str, text: str, conv: dict | None, dry_run
     result = _pending_execute(chat_id, int(pid), dry_run=False)
     _turn_add(chat_id, "inbound", text, intent="route_recompute_manual", action_id=pid)
     if isinstance(result, dict) and result.get("status") in ("OK", "ok"):
-        msg = (
-            f"Uruchomilem pelne przeliczenie trasy {route_id} (#{pid}). "
-            f"Odezwe sie, gdy skonczy."
-        )
+        kind = ("analize trasy Komoot (+atrakcje)" if source == "komoot"
+                else "pelne przeliczenie trasy RWGPS")
+        msg = f"Uruchomilem {kind} {route_id} (#{pid}). Odezwe sie, gdy skonczy."
         state = "started"
     else:
         err = result.get("error", result.get("status", "?")) if isinstance(result, dict) else "?"

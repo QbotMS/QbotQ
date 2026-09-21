@@ -377,6 +377,55 @@ def _ensure_route_precompute_poi_only(route_id_text: str, *, trigger_source: str
     }
 
 
+# Warstwa docelowa kazdego jobu - do sprawdzenia, czy dziedziczenie ja juz wypelnilo.
+_JOB_TARGET_TABLE: dict[str, str] = {
+    "route_base": "route_axis_segments",
+    "route_surface": "route_surface_layer",
+    "route_poi": "route_poi_layer",
+    "route_elevation": "route_elevation_samples",
+    "route_shade": "route_shade_layer",
+    "route_surface_context": "route_surface_context",
+    "route_surface_category": "route_surface_layer",
+}
+
+
+def _inherited_stage_lineage(conn, route_base_id: int) -> dict[str, Any] | None:
+    """Zwraca rodowod dnia Plannera albo None dla zwyklej trasy."""
+    try:
+        row = conn.execute(
+            "SELECT parent_route_base_id, parent_route_id, parent_km_from, parent_km_to "
+            "FROM qbot_v2.route_stage_lineage "
+            "WHERE stage_route_base_id=%s AND active=true LIMIT 1",
+            (int(route_base_id),),
+        ).fetchone()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return None
+    return dict(row) if row else None
+
+
+def _layer_already_inherited(conn, *, route_base_id: int, job_type: str) -> int | None:
+    """Liczba wierszy w warstwie docelowej jobu; None gdy nie wiemy."""
+    table = _JOB_TARGET_TABLE.get(job_type)
+    if not table:
+        return None
+    try:
+        row = conn.execute(
+            f"SELECT count(*) AS n FROM qbot_v2.{table} WHERE route_base_id=%s",
+            (int(route_base_id),),
+        ).fetchone()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return None
+    return int(dict(row)["n"]) if row else None
+
+
 def ensure_route_precompute(*, route_id: str | int, trigger_source: str = "manual", scope: str = "all") -> dict[str, Any]:
     route_id_text = _normalize_route_id(route_id)
     scope_norm = (scope or "all").strip().lower()
@@ -398,7 +447,21 @@ def ensure_route_precompute(*, route_id: str | int, trigger_source: str = "manua
             raise LookupError(f"No route_base found for route_id={route_id_text!r}")
 
         job_results: dict[str, dict[str, Any]] = {}
+        lineage = _inherited_stage_lineage(conn, route_base_id)
         for job_type, writer, count_key in _effective_job_sequence():
+            # Dzien Plannera: warstwy sa wycinkiem rodzica. Nie pobieraj ponownie
+            # (route_poi = platne zapytania Google), tylko potwierdz stan z bazy.
+            if lineage is not None:
+                existing = _layer_already_inherited(conn, route_base_id=route_base_id, job_type=job_type)
+                if existing:
+                    job_results[job_type] = {
+                        "status": "OK",
+                        "skipped": "inherited_from_parent",
+                        "row_count": existing,
+                        "parent_route_base_id": lineage.get("parent_route_base_id"),
+                        "external_requests": 0,
+                    }
+                    continue
             writer_kwargs = {"route_id": route_id_text} if job_type == "route_base" else {"route_base_id": route_base_id}
             job_results[job_type] = _run_job(
                 conn,
