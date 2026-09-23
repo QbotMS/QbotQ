@@ -170,3 +170,18 @@ Wyprawa = dni jazdy **z punktu do punktu**: start dnia ≤ 15 km od końca poprz
 i dni jazdy wokół domu **nie są** wyprawą. Punkt odniesienia = najcięższa wyprawa (km + przewyższenie/10); km/dzień,
 m/dzień i liczba dni z TEGO SAMEGO wyjazdu. Na danych: 07.2025 (2 dni), Toskania 06.2026 (7 dni, 511 km, 7 259 m),
 Opole 08.2026 (3 dni). Bez GPS — przybliżenie seriami dni. Dane dzienne: `_daily_km_up` (cache 10 min).
+
+## Model sezonu (2026-09-23, po uwagach użytkownika)
+
+Sezon Y = rok treningowy: **start = pierwszy dzień roboczy po świętach** (od 27.12.Y-1, bez weekendów, 1.01, 6.01) =
+start **bazy**; → budowa i szczyty pod wyprawy A (taper / wyprawa / regeneracja) → **jazda sezonowa** (po ostatniej A
+albo cały sezon, gdy brak A) → **roztrenowanie** (auto: 1.10 albo po regeneracji ostatniej A) → **totalny luz**
+(auto: 12.12) do dnia przed startem sezonu Y+1. W luzie silnik nie planuje sesji, a Telegram milczy.
+Nadpisania per sezon w zakładce Sezon: `season.<Y>.start | bz_end | roz | luz` (puste = auto). Globalne: taper, regeneracja,
+tydzień lżejszy, objętość. Przykład: 2026 kończy się roztrenowaniem 28.09–13.12 i luzem 14–27.12; sezon 2027 startuje 28.12.2026.
+API `GET /season` (tygodnie z okresem i sezonem, granice sezonów z flagami auto, plan km celów objętości).
+
+Cele objętości: plan rozkładany na miesiące wg **Twojego rytmu roku** (udział km w miesiącach z 2 lat jazd), postęp
+porównywany z tą krzywą (nie liniowo); przed startem okresu status mówi „start dd.mm.rrrr · teraz: <okres> sezonu Y”.
+Z planu km na dany miesiąc wynika **minimalny budżet godzin** tygodnia (km/tydz. ÷ Twoja średnia prędkość ze 120 dni),
+obcięty do `load.budget_h`. W edytorze okresy: sezon bieżący / następny, rok kalendarzowy, jazda IV–IX, własny.

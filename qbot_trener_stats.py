@@ -332,6 +332,53 @@ def _daily_km_up_db(c, since: date) -> dict:
     return out
 
 
+_PROFILE: dict = {}
+
+
+def month_profile(c, sport: str = "rower") -> list[float]:
+    """Udzial km (rower) albo godzin (inne) w miesiacach I..XII z ostatnich 2 lat - Twoj rytm roku. Cache 1 h."""
+    hit = _PROFILE.get(sport)
+    if hit and hit[0] > time.time() - 3600:
+        return hit[1]
+    c.execute("SELECT EXTRACT(MONTH FROM date)::int AS m, sport_type, COALESCE(distance_m,0) AS d, COALESCE(duration_s,0) AS s "
+              "FROM qbot_v2.training_sessions WHERE date >= CURRENT_DATE - 730")
+    tot = [0.0] * 12
+    for r in c.fetchall():
+        if E.SPORT_OF.get(r["sport_type"]) == sport:
+            tot[r["m"] - 1] += float(r["d"]) if sport == "rower" else float(r["s"])
+    sm = sum(tot)
+    prof = [x / sm for x in tot] if sm else [1 / 12] * 12
+    _PROFILE[sport] = (time.time(), prof)
+    return prof
+
+
+def volume_plan(a_: date, b_: date, total: float, prof: list[float]) -> list[dict]:
+    """Rozklad celu objetosci na miesiace okresu wg profilu roku (czesciowe miesiace proporcjonalnie do dni)."""
+    import calendar
+    months, d = [], date(a_.year, a_.month, 1)
+    while d <= b_:
+        dim = calendar.monthrange(d.year, d.month)[1]
+        m0, m1 = max(a_, d), min(b_, date(d.year, d.month, dim))
+        frac = ((m1 - m0).days + 1) / dim
+        months.append([d, prof[d.month - 1] * frac])
+        d = date(d.year + (d.month == 12), d.month % 12 + 1, 1)
+    w = sum(x[1] for x in months) or 1
+    return [{"month": m.strftime("%Y-%m"), "value": round(total * v / w)} for m, v in months]
+
+
+def plan_expected(plan: list[dict], today: date) -> float:
+    import calendar
+    exp = 0.0
+    for p in plan:
+        y, m = map(int, p["month"].split("-"))
+        dim = calendar.monthrange(y, m)[1]
+        if (y, m) < (today.year, today.month):
+            exp += p["value"]
+        elif (y, m) == (today.year, today.month):
+            exp += p["value"] * today.day / dim
+    return exp
+
+
 def compute_goal_status(c, goals: list) -> dict:
     today = date.today()
     out = {}
@@ -346,6 +393,15 @@ def compute_goal_status(c, goals: list) -> dict:
     slope30 = balance(days, 30, 2)["weight_slope_kg_wk"]
     c.execute("SELECT ftp_est_w FROM qbot_v2.fitmodel_daily WHERE ftp_est_w IS NOT NULL ORDER BY day DESC LIMIT 1")
     r = c.fetchone(); ftp_now = float(r["ftp_est_w"]) if r else None
+    MN_PL = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]
+    ovs = {}
+    try:
+        uname = next((g.get("username") for g in goals if g.get("username")), None)
+        if uname:
+            c.execute("SELECT overrides FROM qbot_v2.trainer_settings WHERE username=%s", (uname,))
+            r_ = c.fetchone(); ovs = dict(r_["overrides"]) if r_ else {}
+    except Exception:
+        ovs = {}
     for g in goals:
         if g["status"] not in ("active", "paused"):
             continue
@@ -361,23 +417,28 @@ def compute_goal_status(c, goals: list) -> dict:
                 a_ = E._d(g.get("date_from")) or date(today.year, 1, 1)
                 b_ = E._d(g.get("date_to")) or date(a_.year, 12, 31)
                 sp = t.get("sport", "rower")
-                c.execute("SELECT sport_type, COALESCE(distance_m,0) AS m, COALESCE(duration_s,0) AS s FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s", (a_, min(b_, today)))
-                rows = [r for r in c.fetchall() if E.SPORT_OF.get(r["sport_type"]) == sp]
-                el = (today - a_).days / max(1, (b_ - a_).days + 1)
-                if t.get("km"):
-                    s = status_linear(sum(float(r["m"]) for r in rows) / 1000, float(t["km"]), el, "km", "km")
-                elif t.get("h"):
-                    s = status_linear(sum(float(r["s"]) for r in rows) / 3600, float(t["h"]), el, "godziny", "h")
-                elif t.get("sessions"):
-                    s = status_linear(len(rows), float(t["sessions"]), el, "sesje", "sesji")
-                else:
+                key, unit = (("km", "km") if t.get("km") else (("h", "h") if t.get("h") else (("sessions", "sesji") if t.get("sessions") else (None, ""))))
+                if not key:
                     s = {"level": "n", "text": "podaj km, godziny albo liczbę sesji", "rows": []}
-                if el <= 0:
-                    s["level"], s["text"] = "n", "okres jeszcze się nie zaczął"
-                weeks = max(1.0, ((b_ - a_).days + 1) / 7)
-                for key, unit in (("km", "km"), ("h", "h"), ("sessions", "sesji")):
-                    if t.get(key):
-                        s["rows"].append({"k": "średnio na tydzień", "have": None, "need": round(float(t[key]) / weeks, 1), "note": f"{unit} / tydz. w całym okresie"})
+                else:
+                    prof = month_profile(c, "rower" if key == "km" else sp)
+                    plan = volume_plan(a_, b_, float(t[key]), prof)
+                    c.execute("SELECT sport_type, COALESCE(distance_m,0) AS m, COALESCE(duration_s,0) AS s FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s", (a_, min(b_, today)))
+                    rows_ = [r for r in c.fetchall() if E.SPORT_OF.get(r["sport_type"]) == sp]
+                    have = (sum(float(r["m"]) for r in rows_) / 1000) if key == "km" else ((sum(float(r["s"]) for r in rows_) / 3600) if key == "h" else len(rows_))
+                    exp = plan_expected(plan, today)
+                    ptxt = " · ".join(f"{MN_PL[int(p['month'][5:]) - 1]} {p['value']}" for p in plan)
+                    if today < a_:
+                        W = E.season_weeks(goals, ovs, E.monday(today), 1)
+                        s = {"level": "n", "text": f"start {a_.strftime('%d.%m.%Y')} (za {(a_ - today).days} dni) · teraz: {E.PH_NAME.get(W[0]['ph'], '')} sezonu {W[0]['season']}",
+                             "rows": [{"k": "pierwszy miesiąc", "have": None, "need": plan[0]["value"] if plan else None, "note": f"plan {unit} na miesiące wg Twojego rytmu roku: {ptxt}"}]}
+                    else:
+                        ratio = have / exp if exp else None
+                        lvl = "n" if ratio is None else ("g" if ratio >= 0.95 else ("y" if ratio >= 0.8 else "r"))
+                        s = {"level": lvl, "text": {"g": "zgodnie z planem", "y": "lekko w tyle", "r": "wyraźnie w tyle", "n": "za wcześnie na ocenę"}[lvl],
+                             "rows": [{"k": unit, "have": round(have), "need": round(float(t[key])), "note": f"wg planu miesięcznego na dziś ~{round(exp)} {unit}"},
+                                      {"k": "plan na miesiące", "have": None, "need": None, "note": ptxt}],
+                             "progress": round(have / float(t[key]), 3)}
             elif k == "power":
                 if t.get("wkg") and not t.get("ftp_w") and cur_w:
                     t = dict(t, ftp_w=round(float(t["wkg"]) * cur_w))

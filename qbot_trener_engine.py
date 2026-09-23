@@ -65,7 +65,48 @@ def _d(v) -> date | None:
     return v if isinstance(v, date) else date.fromisoformat(str(v)[:10])
 
 
-# ---------------- Sezon (port rSeason z trener.js) ----------------
+# ---------------- Sezon (rok treningowy) ----------------
+# Sezon Y: start = pierwszy dzien roboczy po swietach (od 27.12.Y-1, bez weekendow / 1.01 / 6.01) = start budowy BAZY;
+# baza -> budowa + szczyty pod wyprawy A (taper / wyprawa / regeneracja) -> jazda sezonowa -> ROZTRENOWANIE (od 1.10
+# albo po regeneracji ostatniej A) -> TOTALNY LUZ (od ok. 12.12) do dnia przed startem sezonu Y+1.
+# Nadpisania per sezon: season.<Y>.start / .bz_end / .roz / .luz (RRRR-MM-DD). Globalne: season.taper_w / regen_w /
+# light_every_w / volume.
+PH_H.update({"sz": 7.0, "lz": 0.0})
+PH_NAME.update({"sz": "Sezon — jazda", "lz": "Totalny luz"})
+
+
+def first_workday_after_xmas(prev_year: int) -> date:
+    d = date(prev_year, 12, 27)
+    while d.weekday() >= 5 or (d.month == 1 and d.day in (1, 6)):
+        d += timedelta(days=1)
+    return d
+
+
+def season_bounds(y: int, ov: dict, goals: list | None = None) -> dict:
+    """Granice sezonu Y (z auto albo nadpisan). 'auto' mowi, ktore wartosci sa wyliczone."""
+    start = _d(ov.get(f"season.{y}.start")) or first_workday_after_xmas(y - 1)
+    nxt = _d(ov.get(f"season.{y + 1}.start")) or first_workday_after_xmas(y)
+    luz = _d(ov.get(f"season.{y}.luz")) or date(y, 12, 12)
+    A = sorted([_g for _g in (goals or []) if _g.get("kind") in ("trip", "long_ride") and _g.get("priority") == "A"
+                and _g.get("date_from") and _g.get("status") not in ("dropped", "done") and start <= _d(_g["date_from"]) < nxt],
+               key=lambda g: _d(g["date_from"]))
+    regen = int(P(ov, "season.regen_w"))
+    auto_bz = (_d(A[0]["date_from"]) - timedelta(weeks=10) - timedelta(days=1)) if A else date(y, 2, 28)
+    auto_bz = max(auto_bz, start + timedelta(weeks=6))
+    last_end = (_d(A[-1].get("date_to")) or _d(A[-1]["date_from"])) if A else None
+    auto_roz = max(date(y, 10, 1), last_end + timedelta(weeks=regen, days=1)) if last_end else date(y, 10, 1)
+    bz_end = _d(ov.get(f"season.{y}.bz_end")) or auto_bz
+    roz = _d(ov.get(f"season.{y}.roz")) or auto_roz
+    return {"year": y, "start": start, "bz_end": bz_end, "roz": min(roz, luz), "luz": luz, "end": nxt - timedelta(days=1),
+            "auto": {"start": f"season.{y}.start" not in ov, "bz_end": f"season.{y}.bz_end" not in ov,
+                     "roz": f"season.{y}.roz" not in ov, "luz": f"season.{y}.luz" not in ov},
+            "a_goals": [g.get("name") for g in A]}
+
+
+def season_of(d: date, ov: dict) -> int:
+    nxt_start = _d(ov.get(f"season.{d.year + 1}.start")) or first_workday_after_xmas(d.year)
+    return d.year + 1 if d >= nxt_start else d.year
+
 
 def season_weeks(goals: list, ov: dict, s0: date, n: int = 70) -> list[dict]:
     ev = []
@@ -74,36 +115,49 @@ def season_weeks(goals: list, ov: dict, s0: date, n: int = 70) -> list[dict]:
             a = _d(g["date_from"]); b = _d(g.get("date_to")) or a
             ev.append({"g": g, "a": a, "b": max(a, b), "pr": g.get("priority", "B")})
     ev.sort(key=lambda x: x["a"])
-    W = [{"s": s0 + timedelta(weeks=i), "ph": None, "h": 0.0, "ev": [], "lt": False, "bev": False, "pre": False} for i in range(n)]
-    if not ev:
-        for w in W:
-            w["ph"], w["h"] = "bz", PH_H["bz"]
-        return W
     A = [x for x in ev if x["pr"] == "A"]
+    taper, regen = int(P(ov, "season.taper_w")), int(P(ov, "season.regen_w"))
+    W = [{"s": s0 + timedelta(weeks=i), "ph": None, "h": 0.0, "ev": [], "lt": False, "bev": False, "pre": False, "season": None} for i in range(n)]
+    SB: dict = {}
 
     def wk0(t: date) -> date:
         return s0 + timedelta(weeks=(t - s0).days // 7)
-    first_a = wk0(A[0]["a"]) if A else wk0(ev[0]["a"])
-    rt_e = _d(ov.get("season.rt_end")) or min(s0 + timedelta(days=55), first_a - timedelta(weeks=12))
-    bz_e = _d(ov.get("season.bz_end")) or (first_a - timedelta(weeks=10) - timedelta(days=1))
-    taper, regen = int(P(ov, "season.taper_w")), int(P(ov, "season.regen_w"))
     for w in W:
         m = w["s"] + timedelta(days=3)
-        w["ph"] = "rt" if m <= rt_e else ("bz" if m <= bz_e else "bd")
+        y = season_of(m, ov)
+        sb = SB.get(y) or SB.setdefault(y, season_bounds(y, ov, goals))
+        w["season"] = y
+        if m >= sb["luz"]:
+            w["ph"] = "lz"
+        elif m >= sb["roz"]:
+            w["ph"] = "rt"
+        elif m <= sb["bz_end"]:
+            w["ph"] = "bz"
+        else:
+            w["ph"] = "bd"
     for x in A:
         ws, we = wk0(x["a"]), wk0(x["b"])
         for w in W:
+            if w["ph"] in ("lz",):
+                continue
             if ws - timedelta(weeks=taper) <= w["s"] < ws:
                 w["ph"] = "tp"
             if ws <= w["s"] <= we:
                 w["ph"] = "ev"
             if we < w["s"] <= we + timedelta(weeks=regen):
                 w["ph"] = "rg"
-    if A:
-        lw = wk0(A[-1]["b"])
+    # po regeneracji ostatniej A w danym sezonie, a przed roztrenowaniem: jazda sezonowa (bez budowy pod nic)
+    for y, sb in SB.items():
+        lastA = [x for x in A if sb["start"] <= x["a"] <= sb["end"]]
+        if not lastA:  # sezon bez wyprawy A: po bazie zwykla jazda sezonowa (nie ma pod co budowac szczytu)
+            for w in W:
+                if w["season"] == y and w["ph"] == "bd":
+                    w["ph"] = "sz"
+            continue
+        lw = wk0(lastA[-1]["b"]) + timedelta(weeks=regen)
         for w in W:
-            if w["s"] > lw + timedelta(weeks=regen):
-                w["ph"] = "rt"
+            if w["season"] == y and w["s"] > lw and w["ph"] == "bd":
+                w["ph"] = "sz"
     for x in ev:
         for w in W:
             if x["a"] < w["s"] + timedelta(days=7) and x["b"] >= w["s"]:
@@ -124,25 +178,34 @@ def season_weeks(goals: list, ov: dict, s0: date, n: int = 70) -> list[dict]:
         base = PH_H.get(w["ph"], 5.0)
         if w["ph"] == "bd":
             run += 1; base += min(1.5, run * 0.08)
-        if w["ev"] and w["ev"][0]["pr"] != "A":
+        if w["ev"] and w["ev"][0]["pr"] != "A" and w["ph"] != "lz":
             w["h"] = max(base, od(w) * 5.0); w["bev"] = True
             continue
         nx = W[i + 1] if i + 1 < len(W) else None
-        if nx and nx["ev"] and nx["ev"][0]["pr"] != "A" and w["ph"] != "tp":
+        if nx and nx["ev"] and nx["ev"][0]["pr"] != "A" and w["ph"] not in ("tp", "lz"):
             base *= 0.8; w["pre"] = True
         w["h"] = base
     k = 0
     cyc, vol = int(P(ov, "season.light_every_w")), float(P(ov, "season.volume"))
     for w in W:
-        if w["ph"] in ("rt", "bz", "bd"):
+        if w["ph"] in ("rt", "bz", "bd", "sz"):
             k += 1
             if k % cyc == 0 and not w["bev"]:
                 w["h"] *= 0.7; w["lt"] = True
         else:
             k = 0
-        if w["ph"] != "ev" and not w["bev"]:
+        if w["ph"] not in ("ev", "lz") and not w["bev"]:
             w["h"] *= (1 + (vol - 5) * 0.06)
     return W
+
+
+def seasons_summary(goals: list, ov: dict, today: date, n: int = 3) -> list[dict]:
+    y0 = season_of(today, ov)
+    out = []
+    for y in range(y0, y0 + n):
+        sb = season_bounds(y, ov, goals)
+        out.append({k: (v.isoformat() if isinstance(v, date) else v) for k, v in sb.items()})
+    return out
 
 
 # ---------------- reguly i dni ----------------
@@ -272,7 +335,17 @@ def plan_week(ctx: dict) -> dict:
     W = season_weeks(ctx.get("goals", []), ov, monday(today))
     wk = next((w for w in W if w["s"] == ws), None) or {"ph": "bz", "h": PH_H["bz"], "lt": False, "ev": [], "pre": False}
     ph = wk["ph"]
-    target_min = int(min(float(wk["h"]), float(P(ov, "load.budget_h"))) * 60)
+    if ph == "lz":
+        days_ = [ws + timedelta(days=i) for i in range(7)]
+        return {"sessions": [], "notes": ["totalny luz — bez planu treningów (najwyżej luźny spacer / joga, jeśli masz ochotę)"],
+                "phase": ph, "phase_name": PH_NAME[ph], "light": False, "target_h": 0.0, "planned_h": 0.0, "season": wk.get("season"),
+                "days": {d.isoformat(): {"type": day_info(ctx, d)["type"], "labels": day_info(ctx, d)["labels"], "busy": [], "wx": (ctx.get("weather") or {}).get(d.isoformat())} for d in days_}}
+    floor_h = float(ctx.get("km_floor_h") or 0)
+    base_h = float(wk["h"])
+    if floor_h > base_h:
+        notes.append(f"cel kilometrów wymaga ~{floor_h:.1f} h/tydz. (okres: {base_h:.1f} h) — budżet podniesiony")
+        base_h = floor_h
+    target_min = int(min(base_h, float(P(ov, "load.budget_h"))) * 60)
     month = (ws + timedelta(days=3)).month
     cnt = {s: int(ov.get(f"mix.{s}.{month}", MIXD[s][month - 1])) for s in MIXD}
     if ph == "rg":
@@ -470,8 +543,8 @@ def plan_week(ctx: dict) -> dict:
     if low_today and today in infos:
         notes.append(f"gotowość dziś {round(rt, 2)} < próg {round(thr, 2)} — dziś wersje minimum")
     total = sum(s["dur_min"] for s in out) + sum(int(s["dur_min"]) for s in keep)
-    return {"sessions": out, "notes": notes, "phase": ph, "phase_name": PH_NAME.get(ph, ph), "light": bool(wk.get("lt")),
-            "target_h": round(min(float(wk["h"]), float(P(ov, "load.budget_h"))), 1), "planned_h": round(total / 60, 1),
+    return {"sessions": out, "notes": notes, "phase": ph, "phase_name": PH_NAME.get(ph, ph), "light": bool(wk.get("lt")), "season": wk.get("season"),
+            "target_h": round(min(base_h, float(P(ov, "load.budget_h"))), 1), "planned_h": round(total / 60, 1),
             "days": {d.isoformat(): {"type": infos[d]["type"], "labels": infos[d]["labels"],
                                      "busy": [{"a": t2(a), "b": t2(b), "label": l} for a, b, l in infos[d]["busy"] if a is not None],
                                      "wx": infos[d]["wx"]} for d in days}}
@@ -612,6 +685,25 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
             wx = forecast(*hp)
     except Exception:
         wx = {}
-    return {"week_start": ws, "today": today, "ov": ov, "goals": goals, "rules": rules, "calendar": cal, "day_state": dstate,
+    km_floor_h = 0.0
+    try:
+        import calendar as _cal
+        import qbot_trener_stats as ST
+        for g in goals:
+            t = g.get("target") or {}
+            if g.get("kind") == "volume" and g.get("status") == "active" and t.get("km") and t.get("sport", "rower") == "rower":
+                a_, b_ = _d(g.get("date_from")), _d(g.get("date_to"))
+                if a_ and b_ and a_ <= ws + timedelta(days=3) <= b_:
+                    m = ws + timedelta(days=3)
+                    plan = {p["month"]: p["value"] for p in ST.volume_plan(a_, b_, float(t["km"]), ST.month_profile(c, "rower"))}
+                    km_week = plan.get(m.strftime("%Y-%m"), 0) / (_cal.monthrange(m.year, m.month)[1] / 7)
+                    c.execute("SELECT COALESCE(SUM(distance_m),0)/1000.0 AS km, COALESCE(SUM(duration_s),0)/3600.0 AS h FROM qbot_v2.training_sessions "
+                              "WHERE sport_type IN ('cycling','gravel_cycling') AND date > %s", (today - timedelta(days=120),))
+                    rr = c.fetchone()
+                    spd = (float(rr["km"]) / float(rr["h"])) if rr and rr["h"] and float(rr["h"]) > 5 else 20.0
+                    km_floor_h = max(km_floor_h, km_week / spd)
+    except Exception:
+        km_floor_h = 0.0
+    return {"week_start": ws, "today": today, "ov": ov, "goals": goals, "rules": rules, "calendar": cal, "day_state": dstate, "km_floor_h": round(km_floor_h, 1),
             "keep": keep, "activities_extra": extra, "readiness_today": rt, "readiness_threshold": thr, "weather": wx,
             "all_sessions": sess}

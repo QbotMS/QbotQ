@@ -136,5 +136,43 @@ class TestPlan(unittest.TestCase):
         self.assertEqual(ph["2027-05-24"], "rg")
 
 
+class TestSeasonModel(unittest.TestCase):
+    G = [{"kind": "trip", "name": "Badlands", "priority": "A", "date_from": "2027-05-14", "date_to": "2027-05-22", "status": "active"},
+         {"kind": "trip", "name": "Wrzesien", "priority": "A", "date_from": "2027-09-04", "date_to": "2027-09-12", "status": "active"}]
+
+    def test_start_first_workday_after_xmas(self):
+        self.assertEqual(E.first_workday_after_xmas(2026), date(2026, 12, 28))   # 27.12.2026 = niedziela
+        self.assertEqual(E.first_workday_after_xmas(2027), date(2027, 12, 27))   # poniedzialek
+
+    def test_season_of(self):
+        self.assertEqual(E.season_of(date(2026, 12, 20), {}), 2026)
+        self.assertEqual(E.season_of(date(2026, 12, 28), {}), 2027)
+
+    def test_bounds_auto_and_override(self):
+        b = E.season_bounds(2027, {}, self.G)
+        self.assertEqual(b["start"], date(2026, 12, 28))
+        self.assertEqual(b["luz"], date(2027, 12, 12))
+        self.assertEqual(b["roz"], date(2027, 10, 1))                 # 12.09 + 2 tyg. regeneracji < 1.10
+        o = E.season_bounds(2027, {"season.2027.luz": "2027-12-15", "season.2027.start": "2027-01-04"}, self.G)
+        self.assertEqual((o["start"], o["luz"]), (date(2027, 1, 4), date(2027, 12, 15)))
+        self.assertFalse(o["auto"]["luz"])
+
+    def test_timeline_2026_2027(self):
+        W = E.season_weeks(self.G, {}, date(2026, 9, 21), 70)
+        ph = {w["s"].isoformat(): (w["ph"], w["season"]) for w in W}
+        self.assertEqual(ph["2026-09-21"], ("sz", 2026))    # koncowka sezonu 2026 (jazda, bez A)
+        self.assertEqual(ph["2026-10-05"], ("rt", 2026))    # roztrenowanie od 1.10
+        self.assertEqual(ph["2026-12-14"], ("lz", 2026))    # totalny luz od 12.12
+        self.assertEqual(ph["2026-12-28"], ("bz", 2027))    # start sezonu 2027 = baza
+        self.assertEqual(ph["2027-05-10"][0], "ev")
+        self.assertEqual(ph["2027-10-04"][0], "rt")
+        self.assertEqual(ph["2027-12-13"][0], "lz")
+
+    def test_luz_no_plan(self):
+        r = E.plan_week(ctx(week_start=date(2026, 12, 14), today=date(2026, 12, 14)))
+        self.assertEqual(r["phase"], "lz")
+        self.assertEqual(r["sessions"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

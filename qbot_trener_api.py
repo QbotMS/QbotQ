@@ -841,6 +841,34 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
             return {"text": N.text_day(d, [dict(x) for x in c.fetchall()]) or "(dziś brak treningów w planie)"}
         return run(go)
 
+    @r.get("/season")
+    def season_get(request: Request):
+        """Model sezonu: tygodnie (okres, h, wyprawy) od biezacego tygodnia, granice sezonow (auto/nadpisane), plan km."""
+        u = user_of(request)
+        import qbot_trener_stats as ST
+        def go(c):
+            c.execute("SELECT * FROM qbot_v2.trainer_goal WHERE username=%s", (u,))
+            goals = [dict(x) for x in c.fetchall()]
+            c.execute("SELECT overrides FROM qbot_v2.trainer_settings WHERE username=%s", (u,))
+            row = c.fetchone(); ov = dict(row["overrides"]) if row else {}
+            today = date.today(); s0 = today - timedelta(days=today.weekday())
+            W = E.season_weeks(goals, ov, s0, 66)
+            weeks = [{"s": w["s"].isoformat(), "ph": w["ph"], "name": E.PH_NAME.get(w["ph"], w["ph"]), "h": round(w["h"], 1), "lt": w["lt"],
+                      "pre": w["pre"], "season": w["season"], "ev": [{"name": x["g"]["name"], "kind": x["g"]["kind"], "pr": x["pr"],
+                      "a": x["a"].isoformat(), "b": x["b"].isoformat()} for x in w["ev"]]} for w in W]
+            vol = []
+            for g in goals:
+                t = g.get("target") or {}
+                if g["kind"] == "volume" and g["status"] == "active" and g.get("date_from") and g.get("date_to"):
+                    key = "km" if t.get("km") else ("h" if t.get("h") else ("sessions" if t.get("sessions") else None))
+                    if key:
+                        prof = ST.month_profile(c, "rower" if key == "km" else t.get("sport", "rower"))
+                        vol.append({"id": g["id"], "name": g["name"], "unit": key, "plan": ST.volume_plan(g["date_from"], g["date_to"], float(t[key]), prof)})
+            params = {k: E.P(ov, k) for k in ("season.taper_w", "season.regen_w", "season.light_every_w", "season.volume")}
+            return {"weeks": weeks, "seasons": E.seasons_summary(goals, ov, today, 3), "volume": vol, "params": params,
+                    "overridden": {k: v for k, v in ov.items() if k.startswith("season.")}}
+        return run(go)
+
     @r.get("/balance")
     def balance_get(request: Request):
         u = user_of(request)
