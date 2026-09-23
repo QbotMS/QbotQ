@@ -160,7 +160,7 @@ def qgpt_chat(
         try:
             attempt_payload = dict(payload)
             attempt_payload["model"] = mdl
-            if mdl.startswith("gpt-5") or mdl.startswith("o1") or mdl.startswith("o3") or mdl.startswith("o4"):
+            if mdl.startswith(("gpt-5", "gpt-6", "gpt-7", "o1", "o3", "o4")):
                 attempt_payload["max_completion_tokens"] = max(max_tokens, 2000)
                 attempt_payload["reasoning_effort"] = "low"
             else:

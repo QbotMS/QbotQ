@@ -38,9 +38,13 @@ def _gen_kwargs(model: str, base_url: str, max_n: int) -> dict:
     uzywaja klasycznego max_tokens + temperature.
     """
     m = (model or "").lower()
-    is_openai_new = ("api.openai.com" in (base_url or "")) or m.startswith(("gpt-5", "o1", "o3", "o4"))
+    is_openai_new = ("api.openai.com" in (base_url or "")) or m.startswith(("gpt-5", "gpt-6", "gpt-7", "o1", "o3", "o4"))
     if is_openai_new:
-        return {"max_completion_tokens": max_n}
+        kw = {"max_completion_tokens": max_n}
+        # GPT-6+ z function tools na /chat/completions wymaga reasoning_effort='none'
+        if m.startswith(("gpt-6", "gpt-7")):
+            kw["reasoning_effort"] = "none"
+        return kw
     return {"max_tokens": max_n, "temperature": 0}
 
 
