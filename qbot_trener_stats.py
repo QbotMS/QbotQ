@@ -93,9 +93,11 @@ def series_stats(daily: dict, min_km: float = 20.0) -> dict:
     has_geo = any(len(v) >= 4 and v[2] and v[3] for v in daily.values())
     if has_geo:
         ex = expedition_chains(daily)
+        chains_out = [{"start": x["start"], "end": x["end"], "days": x["days"], "per_day": x["per_day"]} for x in ex]
         ref = max(ex, key=lambda x: x["load"], default=None)
         longest = max(ex, key=lambda x: (x["days"], x["load"]), default=None)
     else:  # bez GPS: przyblizenie seriami dni (najciezsza >=3 dni)
+        chains_out = []
         multi = [x for x in R if x["days"] >= 3]
         ref = max(multi, key=lambda x: x["load"], default=None)
         longest = max(R, key=lambda x: (x["days"], x["load"]), default=None)
@@ -104,7 +106,7 @@ def series_stats(daily: dict, min_km: float = 20.0) -> dict:
                                     "km_day": round(x["km_day"]), "up_day": round(x["up_day"])}
     return {"max_km_day": round(max((v[0] for v in daily.values()), default=0)),
             "max_up_day": round(max((v[1] for v in daily.values()), default=0)),
-            "ref": pack(ref), "longest": pack(longest)}
+            "ref": pack(ref), "longest": pack(longest), "chains": chains_out}
 
 
 def _hav(a: tuple, b: tuple) -> float:
@@ -138,7 +140,8 @@ def expedition_chains(daily: dict, link_km: float = 15.0, move_km: float = 10.0,
     for ch in chains:
         km_ = sum(daily[x][0] for x in ch); up_ = sum(daily[x][1] for x in ch)
         out.append({"start": ch[0].isoformat(), "end": ch[-1].isoformat(), "days": len(ch), "km": round(km_), "up": round(up_),
-                    "km_day": round(km_ / len(ch)), "up_day": round(up_ / len(ch)), "load": km_ + up_ / 10})
+                    "km_day": round(km_ / len(ch)), "up_day": round(up_ / len(ch)), "load": km_ + up_ / 10,
+                    "per_day": [(x.isoformat(), daily[x][0], daily[x][1]) for x in ch]})
     return out
 
 
@@ -146,7 +149,7 @@ def _lvl(ratios: list[float]) -> str:
     r = [x for x in ratios if x is not None]
     if not r:
         return "n"
-    if min(r) >= 1:
+    if min(r) >= 0.9:  # w granicach 10% = w praktyce to samo (dzien do dnia rozni sie bardziej)
         return "g"
     if min(r) < 0.5:
         return "r"
@@ -158,35 +161,60 @@ def _pl_date(iso_: str) -> str:
     return f"{d}.{m}.{y}"
 
 
+def best_window(chains: list, n: int, need_km: float | None, need_up: float | None) -> dict | None:
+    """Najlepsze okno min(n, dlugosc wyprawy) kolejnych dni jazdy na wyprawach: najpierw jak najdluzsze (do n),
+    potem najlepsze wzgledem wymagan celu (min z km/dzien i m/dzien wzgledem potrzeb)."""
+    best = None
+    for ch in chains:
+        pdays = ch["per_day"]
+        w = min(n, len(pdays))
+        for i in range(0, len(pdays) - w + 1):
+            win = pdays[i:i + w]
+            kd = sum(x[1] for x in win) / w
+            ud = sum(x[2] for x in win) / w
+            ratios = [r for r in ((kd / need_km) if need_km else None, (ud / need_up) if need_up else None) if r is not None]
+            score = min(ratios) if ratios else kd + ud / 10
+            key = (w, score)
+            if best is None or key > best["key"]:
+                best = {"key": key, "days": w, "km_day": round(kd), "up_day": round(ud), "start": win[0][0], "end": win[-1][0]}
+    return best
+
+
 def status_trip(g: dict, hist: dict, ctl_now: float | None, ctl_max: float | None) -> dict:
     t = g.get("target") or {}
     one_day = g.get("kind") == "long_ride"
     days = 1 if one_day else (t.get("days") or (((E._d(g.get("date_to")) - E._d(g.get("date_from"))).days + 1) if g.get("date_from") and g.get("date_to") else None))
     ref, lon = hist.get("ref"), hist.get("longest")
     rows, ratios = [], []
-    refn = (f"najcięższa wyprawa: {_pl_date(ref['start'])}–{_pl_date(ref['end'])}, {ref['days']} dni, {ref['km']} km, {ref['up']} m"
-            if ref else "brak wyprawy (jazdy z punktu do punktu) w danych")
-    if t.get("km") and days:
-        need = t["km"] / days
-        have = hist["max_km_day"] if one_day else (ref["km_day"] if ref else hist["max_km_day"])
-        rows.append({"k": "dystans" if one_day else "km na dzień", "have": have, "need": round(need),
-                     "note": "Twój rekord dnia" if one_day else (f"średnio w najcięższej wyprawie; rekord dnia {hist['max_km_day']} km")})
-        ratios.append(have / need if need else None)
-    if t.get("up_m") and days:
-        need = t["up_m"] / days
-        have = hist["max_up_day"] if one_day else (ref["up_day"] if ref else hist["max_up_day"])
-        rows.append({"k": "przewyższenie" if one_day else "przewyższenie na dzień", "have": have, "need": round(need),
-                     "note": "Twój rekord dnia" if one_day else (f"średnio w najcięższej wyprawie; rekord dnia {hist['max_up_day']} m")})
-        ratios.append(have / need if need else None)
+    need_km = (t["km"] / days) if (t.get("km") and days) else None
+    need_up = (t["up_m"] / days) if (t.get("up_m") and days) else None
+    win = None if one_day else best_window(hist.get("chains") or [], int(days or 1), need_km, need_up)
+    if win:
+        wtxt = f"najlepsze {win['days']} dni pod rząd na wyprawie: {_pl_date(win['start'])}–{_pl_date(win['end'])}"
+    elif ref:  # bez danych dziennych (brak GPS) - cala najciezsza seria
+        win = {"days": ref["days"], "km_day": ref["km_day"], "up_day": ref["up_day"]}
+        wtxt = f"najcięższa seria: {_pl_date(ref['start'])}–{_pl_date(ref['end'])}"
+    else:
+        wtxt = "brak wyprawy (jazdy z punktu do punktu) w danych"
+    if need_km:
+        have = hist["max_km_day"] if one_day else (win["km_day"] if win else hist["max_km_day"])
+        rows.append({"k": "dystans" if one_day else "km na dzień", "have": have, "need": round(need_km),
+                     "note": "Twój rekord dnia" if one_day else f"{wtxt}; rekord dnia {hist['max_km_day']} km"})
+        ratios.append(have / need_km)
+    if need_up:
+        have = hist["max_up_day"] if one_day else (win["up_day"] if win else hist["max_up_day"])
+        rows.append({"k": "przewyższenie" if one_day else "przewyższenie na dzień", "have": have, "need": round(need_up),
+                     "note": "Twój rekord dnia" if one_day else f"{wtxt}; rekord dnia {hist['max_up_day']} m"})
+        ratios.append(have / need_up)
     if days and days > 1:
-        have = ref["days"] if ref else 0
-        note = refn + (f" · najdłuższa wyprawa: {lon['days']} dni ({_pl_date(lon['start'])}, {lon['km']} km — lżejsza)" if lon and ref and lon["days"] > ref["days"] else "")
-        rows.append({"k": "dni pod rząd", "have": have, "need": days, "note": note})
+        have = (lon["days"] if lon else 0) if hist.get("chains") else (ref["days"] if ref else 0)
+        rows.append({"k": "dni pod rząd", "have": have, "need": days,
+                     "note": (f"najdłuższa wyprawa: {_pl_date(lon['start'])}–{_pl_date(lon['end'])}, {lon['km']} km, {lon['up']} m" if lon else wtxt)})
         ratios.append(have / days)
     if ctl_now is not None:
         rows.append({"k": "forma (CTL)", "have": round(ctl_now), "need": None, "note": f"rekord z 18 mies.: {round(ctl_max) if ctl_max else '—'}"})
     lvl = _lvl(ratios)
-    txt = {"g": "gotowy na obecne wymagania", "y": "wykonalne — są luki", "r": "duża luka", "n": "uzupełnij km / przewyższenie / dni"}[lvl]
+    txt = {"g": "robiłeś już taki wysiłek — gotowy", "y": "wykonalne — są luki", "r": "duża luka", "n": "uzupełnij km / przewyższenie / dni"}[lvl]
     scored = [r for r in rows if r.get("need") and isinstance(r.get("have"), (int, float))]
     weak = min(scored, key=lambda r: r["have"] / r["need"], default=None)
     if lvl in ("y", "r") and weak and weak["have"] / weak["need"] < 1:

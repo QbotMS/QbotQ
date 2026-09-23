@@ -84,6 +84,32 @@ class TestExpeditions(unittest.TestCase):
         self.assertEqual(S.expedition_chains(d)[0]["days"], 3)
 
 
+def geo_with_opole():
+    d = geo_like()
+    pt = (50.7, 17.9)
+    for i, (km, up) in enumerate([(131, 825), (109, 824), (101, 723)]):
+        nxt = (pt[0] - 0.3, pt[1] - 0.3); d[date(2026, 8, 1) + timedelta(days=i)] = (km, up, pt, nxt); pt = nxt
+    return d
+
+
+class TestTripWindow(unittest.TestCase):
+    def test_short_trip_compared_with_best_3_days(self):
+        hist = S.series_stats(geo_with_opole())
+        g = {"kind": "trip", "target": {"km": 300, "up_m": 2500, "days": 3}, "date_from": "2027-04-16", "date_to": "2027-04-18"}
+        st = S.status_trip(g, hist, 56, 91)
+        rows = {r["k"]: r for r in st["rows"]}
+        self.assertEqual(st["level"], "g")                                  # Opole 114 km/d i Toskania >833 m/d
+        self.assertGreaterEqual(rows["km na dzień"]["have"], 100)
+        self.assertGreaterEqual(rows["przewyższenie na dzień"]["have"], 0.9 * 833)   # Opole: 114 km i 791 m/dzien w jednym bloku
+        self.assertEqual(rows["dni pod rząd"]["have"], 7)
+
+    def test_long_trip_uses_whole_longest(self):
+        hist = S.series_stats(geo_with_opole())
+        g = {"kind": "trip", "target": {"km": 792, "up_m": 15004, "days": 11}, "date_from": "2027-05-14", "date_to": "2027-05-24"}
+        rows = {r["k"]: r for r in S.status_trip(g, hist, 56, 91)["rows"]}
+        self.assertEqual(rows["km na dzień"]["have"], 73)                  # cale 7 dni Toskanii (dluzszego okna nie ma)
+
+
 class TestSeries(unittest.TestCase):
     def test_reference_is_heaviest_not_longest(self):
         s = S.series_stats(real_like())
@@ -101,8 +127,7 @@ class TestStatus(unittest.TestCase):
         st = S.status_trip(g, hist, 56, 91)
         rows = {r["k"]: r for r in st["rows"]}
         self.assertEqual(rows["dni pod rząd"]["have"], 7)
-        self.assertIn("05.06.2026–11.06.2026", rows["dni pod rząd"]["note"])
-        self.assertIn("lżejsza", rows["dni pod rząd"]["note"])
+        self.assertIn("05.06.2026–11.06.2026", rows["km na dzień"]["note"])
         self.assertEqual(rows["km na dzień"]["have"], 73)
         self.assertEqual(rows["przewyższenie na dzień"]["have"], 1037)
         self.assertIn("dni pod rząd", st["text"])   # 7/11 = 0.64 < przewyzszenie 1037/1364 = 0.76
