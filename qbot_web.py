@@ -4855,6 +4855,17 @@ def report_day_pack_build(route_id: str = Query(...), date: str = Query(...)):
         conn.close()
 
 
+@app.get("/api/report/day-packs")
+def report_day_packs_list(route_id: str = Query(...)):
+    """E2c: daty z zapisanym pakietem dnia dla trasy (bez tresci)."""
+    from qbot3.routes import route_day_pack as _dp
+    conn = _db_conn()
+    try:
+        return {"route_id": route_id, "items": _dp.list_packs(conn, route_id)}
+    finally:
+        conn.close()
+
+
 @app.get("/api/report/day-pack")
 def report_day_pack_get(route_id: str = Query(...), date: str = Query(...)):
     """E2c: zapisany pakiet dnia (bez AI). {"jest": false} gdy brak."""

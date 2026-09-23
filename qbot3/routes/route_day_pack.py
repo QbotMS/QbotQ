@@ -416,3 +416,17 @@ def load_pack(conn, route_id: str, date_str: str):
     p = json.loads(p) if isinstance(p, str) else p
     p.setdefault("meta", {})["wiek_h"] = round(float(row["wiek_h"] if isinstance(row, dict) else row[1]), 2)
     return p
+
+
+
+def list_packs(conn, route_id: str) -> list:
+    """Daty z zapisanym pakietem dla trasy (rosnaco) + wiek i model. Bez tresci pakietu."""
+    _ensure(conn)
+    rows = conn.execute("SELECT pack_date, created_at, model FROM qbot_v2.route_day_pack "
+                        "WHERE route_id=%s ORDER BY pack_date", (route_id,)).fetchall()
+    conn.commit()
+    out = []
+    for r in rows:
+        v = list(r.values()) if isinstance(r, dict) else list(r)
+        out.append({"date": str(v[0]), "created_at": v[1].isoformat(timespec="seconds") if v[1] else None, "model": v[2]})
+    return out
