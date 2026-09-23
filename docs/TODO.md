@@ -10,9 +10,8 @@
 
 ## [TRENER] Sekcja Trener w Formie — etapy 2-5 (dodane 2026-09-23)
 
-Etap 1 (tabele trainer_* + API /api/trener) i Etap 2 (zakladka Trener w forma.html, trener.js/css, /auto)
-ZROBIONE 2026-09-23. Dalej: (3) silnik planu tygodnia + akcje na serwerze + auto-dopasowanie
-zrobionych z training_sessions, (4) bilans z wagi + statusy celow, (5) Telegram + Garmin + narzedzie
+Etapy 1-3 (tabele + API, zakladka Trener, silnik planu tygodnia z akcjami i auto-dopasowaniem zrobionych)
+ZROBIONE 2026-09-23. Otwarte: LTHR nie jest ustawione w env (RIDER_LTHR_BPM) -> strefy tetna w opisach ukryte. Dalej: (4) bilans z wagi + statusy celow, (5) Telegram + Garmin + narzedzie
 Alberta (+_SYSTEM w tym samym commicie). Dane startuja puste. Dok.: docs/TRENER.md
 
 

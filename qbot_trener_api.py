@@ -400,6 +400,8 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
             b = await body_of(request)
             def go(c):
                 d = cleaner(b)
+                if table == "trainer_session":
+                    d["source"] = "manual"
                 cols = ["username"] + list(d.keys())
                 c.execute(f"INSERT INTO qbot_v2.{table} ({','.join(cols)}) VALUES ({','.join(['%s'] * len(cols))}) RETURNING *",
                           [u] + _vals(d))
@@ -413,6 +415,8 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                 d = cleaner(b, partial=True)
                 if not d:
                     raise BadInput("brak pol do zmiany")
+                if table == "trainer_session":
+                    d["source"] = "manual"
                 sets = ",".join(f"{k}=%s" for k in d) + ",updated_at=now()"
                 c.execute(f"UPDATE qbot_v2.{table} SET {sets} WHERE id=%s AND username=%s RETURNING *", _vals(d) + [item_id, u])
                 row = c.fetchone()
@@ -474,26 +478,203 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
             return {"overrides": cur}
         return run(go)
 
-    @r.get("/week")
-    def week_get(request: Request, start: str = Query(None)):
-        u = user_of(request)
+    # ---------------- TYDZIEN (Etap 3: silnik planu) ----------------
+    import qbot_trener_engine as E
+
+    def _week_bounds(start: str | None) -> tuple[date, date]:
         try:
             d0 = date.fromisoformat(start) if start else date.today()
         except ValueError:
-            raise HTTPException(status_code=400, detail="start: RRRR-MM-DD")
+            raise BadInput("start: RRRR-MM-DD")
         d0 = d0 - timedelta(days=d0.weekday())
-        d1 = d0 + timedelta(days=6)
+        return d0, d0 + timedelta(days=6)
+
+    def _match_done(c, u: str, d0: date, d1: date) -> int:
+        """Zrobione z Garmina -> status done w planie (ten sam dzien i sport, najblizsza godzina)."""
+        c.execute("SELECT id, day, sport, start_time FROM qbot_v2.trainer_session WHERE username=%s AND day BETWEEN %s AND %s "
+                  "AND status='plan' AND training_session_id IS NULL AND day <= CURRENT_DATE", (u, d0, d1))
+        plan = c.fetchall()
+        if not plan:
+            return 0
+        c.execute("SELECT id, date, sport_type, started_at FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s", (d0, d1))
+        acts = [a for a in c.fetchall()]
+        c.execute("SELECT training_session_id FROM qbot_v2.trainer_session WHERE username=%s AND training_session_id IS NOT NULL", (u,))
+        used = {r["training_session_id"] for r in c.fetchall()}
+        n = 0
+        for p in plan:
+            best = None
+            for a in acts:
+                if a["id"] in used or a["date"] != p["day"] or E.SPORT_OF.get(a["sport_type"]) != p["sport"]:
+                    continue
+                dist = abs((a["started_at"].hour * 60 + a["started_at"].minute) - (p["start_time"].hour * 60 + p["start_time"].minute)) if a["started_at"] and p["start_time"] else 0
+                if best is None or dist < best[0]:
+                    best = (dist, a["id"])
+            if best:
+                used.add(best[1]); n += 1
+                c.execute("UPDATE qbot_v2.trainer_session SET status='done', training_session_id=%s, updated_at=now() WHERE id=%s", (best[1], p["id"]))
+        return n
+
+    def _sess_rows(c, u, d0, d1):
+        c.execute("SELECT * FROM qbot_v2.trainer_session WHERE username=%s AND day BETWEEN %s AND %s ORDER BY day, start_time NULLS LAST, id", (u, d0, d1))
+        return [_jsonable(x) for x in c.fetchall()]
+
+    _SIC = {"rower": "🚲", "sila": "🏋️", "wiosl": "🚣", "joga": "🧘"}
+
+    def _desc(x: dict) -> str:
+        return f"{str(x['day'])[5:]} {_SIC.get(x['sport'], '')} {x['name']} {str(x.get('start_time') or '')[:5]} {x['dur_min']}′"
+
+    def _regenerate(c, u: str, d0: date, action: str, payload: dict) -> dict:
+        _match_done(c, u, d0, d0 + timedelta(days=6))
+        today = date.today()
+        c.execute("SELECT * FROM qbot_v2.trainer_session WHERE username=%s AND day BETWEEN %s AND %s AND source='auto' AND status='plan' AND day >= %s",
+                  (u, d0, d0 + timedelta(days=6), today))
+        before = [_jsonable(x) for x in c.fetchall()]
+        c.execute("DELETE FROM qbot_v2.trainer_session WHERE id = ANY(%s)", ([x["id"] for x in before],))
+        ctx = E.build_context(c, u, d0, today)
+        res = E.plan_week(ctx)
+        after_ids = []
+        for x in res["sessions"]:
+            cols = ["username", "day", "sport", "name", "start_time", "dur_min", "min_min", "zone", "xss", "is_long", "status", "cut", "source", "note"]
+            c.execute(f"INSERT INTO qbot_v2.trainer_session ({','.join(cols)}) VALUES ({','.join(['%s'] * len(cols))}) RETURNING id",
+                      [u] + [x.get(k) for k in cols[1:]])
+            after_ids.append(c.fetchone()["id"])
+        bset = {(_desc(x)) for x in before}
+        aset = {(_desc(x)) for x in res["sessions"]}
+        lines = ["− " + t for t in sorted(bset - aset)] + ["+ " + t for t in sorted(aset - bset)]
+        payload = dict(payload, after_ids=after_ids, notes=res["notes"])
+        c.execute("INSERT INTO qbot_v2.trainer_change (username, week_start, action, payload, before, after) VALUES (%s,%s,%s,%s::jsonb,%s::jsonb,%s::jsonb) RETURNING id",
+                  (u, d0, action, json.dumps(payload, ensure_ascii=False), json.dumps(before, ensure_ascii=False, default=str),
+                   json.dumps(res["sessions"], ensure_ascii=False, default=str)))
+        cid = c.fetchone()["id"]
+        return {"change_id": cid, "lines": lines, "notes": res["notes"], "added": len(after_ids), "removed": len(before)}
+
+    @r.get("/week")
+    def week_get(request: Request, start: str = Query(None)):
+        u = user_of(request)
         def go(c):
-            c.execute("SELECT * FROM qbot_v2.trainer_session WHERE username=%s AND day BETWEEN %s AND %s "
-                      "ORDER BY day, start_time NULLS LAST, id", (u, d0, d1))
-            sessions = [_jsonable(x) for x in c.fetchall()]
-            c.execute("SELECT id, day, end_day, kind, event_type, title, at_time FROM qbot_v2.calendar_entry "
+            d0, d1 = _week_bounds(start)
+            matched = _match_done(c, u, d0, d1)
+            sessions = _sess_rows(c, u, d0, d1)
+            c.execute("SELECT id, day, end_day, kind, event_type, title, at_time, note FROM qbot_v2.calendar_entry "
                       "WHERE day <= %s AND COALESCE(end_day, day) >= %s ORDER BY day, id", (d1, d0))
             cal = [_jsonable(x) for x in c.fetchall()]
-            c.execute("SELECT id, date, started_at, sport_type, activity_name, distance_m, duration_s, elevation_m "
+            c.execute("SELECT id, date, started_at, sport_type, activity_name, distance_m, duration_s, elevation_m, tss "
                       "FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s ORDER BY started_at NULLS LAST", (d0, d1))
             done = [_jsonable(x) for x in c.fetchall()]
-            return {"start": d0.isoformat(), "end": d1.isoformat(), "sessions": sessions, "calendar": cal, "activities": done}
+            meta = {}
+            try:
+                ctx = E.build_context(c, u, d0)
+                pw = E.plan_week(ctx)
+                meta = {"phase": pw["phase"], "phase_name": pw["phase_name"], "light": pw["light"], "target_h": pw["target_h"],
+                        "days": pw["days"], "readiness_today": ctx["readiness_today"], "readiness_threshold": ctx["readiness_threshold"],
+                        "has_weather": bool(ctx["weather"])}
+                c.execute("SELECT ftp_est_w FROM qbot_v2.fitmodel_daily WHERE ftp_est_w IS NOT NULL ORDER BY day DESC LIMIT 1")
+                fr = c.fetchone()
+                meta["ftp_w"] = float(fr["ftp_est_w"]) if fr else None
+                import os as _os
+                lt = _os.environ.get("RIDER_LTHR_BPM")
+                if not lt:
+                    for _ef in ("/opt/qbot/app/.env.local", "/etc/qbot/qbot-api.env", "/opt/qbot/app/.env"):
+                        try:
+                            for _ln in open(_ef, encoding="utf-8"):
+                                _ln = _ln.strip()
+                                if _ln.startswith("export "):
+                                    _ln = _ln[7:].strip()
+                                if _ln.startswith("RIDER_LTHR_BPM="):
+                                    lt = _ln.split("=", 1)[1].strip().strip('"').strip("'")
+                        except OSError:
+                            pass
+                        if lt:
+                            break
+                meta["lthr_bpm"] = int(lt) if lt and lt.isdigit() else None
+                meta["ov"] = {k: v for k, v in ctx["ov"].items() if k.startswith("wx.")}
+            except Exception as e:  # meta pomocnicze - tydzien ma sie pokazac nawet bez niego
+                meta = {"error": str(e)[:200]}
+            c.execute("SELECT id, action, payload, created_at FROM qbot_v2.trainer_change WHERE username=%s AND week_start=%s AND accepted IS NULL "
+                      "ORDER BY id DESC LIMIT 1", (u, d0))
+            last = c.fetchone()
+            return {"start": d0.isoformat(), "end": d1.isoformat(), "sessions": sessions, "calendar": cal, "activities": done,
+                    "matched_now": matched, "meta": meta, "warnings": E.check_rules(sessions, {}),
+                    "pending_change": (_jsonable(last) if last else None)}
+        return run(go)
+
+    @r.post("/week/generate")
+    async def week_generate(request: Request):
+        u = user_of(request)
+        b = await body_of(request) if (await request.body()) else {}
+        def go(c):
+            d0, _ = _week_bounds((b or {}).get("start"))
+            if d0 + timedelta(days=6) < date.today():
+                raise BadInput("nie przeliczam minionych tygodni")
+            return _regenerate(c, u, d0, "generate", {})
+        return run(go)
+
+    DAY_ACTIONS = ("rest", "ill", "del", "short", "clear")
+
+    @r.post("/week/action")
+    async def week_action(request: Request):
+        u = user_of(request)
+        b = await body_of(request)
+        def go(c):
+            act = _choice((b or {}).get("action"), "action", DAY_ACTIONS)
+            d = _date((b or {}).get("day"), "day")
+            if not d:
+                raise BadInput("day: wymagane")
+            dd = date.fromisoformat(d)
+            if dd < date.today():
+                raise BadInput("dzień już minął")
+            payload = {"day": d, "cal_ids": [], "day_state": None, "cleared": []}
+            if act in ("rest", "ill", "del"):
+                kind, et, title = {"rest": ("event", "rest", "REST DAY"), "ill": ("illness", None, "Choroba"), "del": ("event", "delegacja", "Delegacja")}[act]
+                c.execute("INSERT INTO qbot_v2.calendar_entry (day, kind, event_type, title, note) VALUES (%s,%s,%s,%s,'[trener]') RETURNING id", (dd, kind, et, title))
+                payload["cal_ids"].append(c.fetchone()["id"])
+            elif act == "short":
+                c.execute("INSERT INTO qbot_v2.trainer_day (username, day, state) VALUES (%s,%s,'short') ON CONFLICT (username, day) DO NOTHING RETURNING day", (u, dd))
+                if c.fetchone():
+                    payload["day_state"] = d
+            else:
+                c.execute("DELETE FROM qbot_v2.calendar_entry WHERE day=%s AND note='[trener]' RETURNING id, day, kind, event_type, title", (dd,))
+                payload["cleared"] = [_jsonable(x) for x in c.fetchall()]
+                c.execute("DELETE FROM qbot_v2.trainer_day WHERE username=%s AND day=%s", (u, dd))
+            return _regenerate(c, u, dd - timedelta(days=dd.weekday()), "day_" + act, payload)
+        return run(go)
+
+    @r.post("/week/undo")
+    async def week_undo(request: Request):
+        u = user_of(request)
+        b = await body_of(request)
+        def go(c):
+            cid = _int((b or {}).get("id"), "id", 1, 10 ** 12, required=True)
+            c.execute("SELECT * FROM qbot_v2.trainer_change WHERE id=%s AND username=%s AND accepted IS NULL", (cid, u))
+            ch = c.fetchone()
+            if not ch:
+                raise HTTPException(status_code=404, detail="brak zmiany do cofnięcia")
+            p = ch["payload"] or {}
+            if p.get("after_ids"):
+                c.execute("DELETE FROM qbot_v2.trainer_session WHERE username=%s AND id = ANY(%s) AND source='auto'", (u, p["after_ids"]))
+            cols = ["day", "sport", "name", "start_time", "dur_min", "min_min", "zone", "xss", "is_long", "status", "cut", "source", "note"]
+            for x in (ch["before"] or []):
+                c.execute(f"INSERT INTO qbot_v2.trainer_session (username,{','.join(cols)}) VALUES (%s,{','.join(['%s'] * len(cols))})", [u] + [x.get(k) for k in cols])
+            if p.get("cal_ids"):
+                c.execute("DELETE FROM qbot_v2.calendar_entry WHERE id = ANY(%s) AND note='[trener]'", (p["cal_ids"],))
+            if p.get("day_state"):
+                c.execute("DELETE FROM qbot_v2.trainer_day WHERE username=%s AND day=%s", (u, p["day_state"]))
+            for x in p.get("cleared") or []:
+                c.execute("INSERT INTO qbot_v2.calendar_entry (day, kind, event_type, title, note) VALUES (%s,%s,%s,%s,'[trener]')", (x["day"], x["kind"], x["event_type"], x["title"]))
+            c.execute("UPDATE qbot_v2.trainer_change SET accepted=false WHERE id=%s", (cid,))
+            return {"ok": True, "undone": cid}
+        return run(go)
+
+    @r.post("/week/accept")
+    async def week_accept(request: Request):
+        u = user_of(request)
+        b = await body_of(request)
+        def go(c):
+            cid = _int((b or {}).get("id"), "id", 1, 10 ** 12, required=True)
+            c.execute("UPDATE qbot_v2.trainer_change SET accepted=true WHERE id=%s AND username=%s AND accepted IS NULL RETURNING id", (cid, u))
+            if not c.fetchone():
+                raise HTTPException(status_code=404, detail="brak zmiany")
+            return {"ok": True}
         return run(go)
 
     @r.get("/health")

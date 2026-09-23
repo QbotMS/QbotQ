@@ -34,8 +34,8 @@ Wzorzec UI (zaakceptowany mockup, dane przykładowe): `/opt/qbot/web/public/tren
    zrobione z Garmina; plan od Etapu 3), Cele (CRUD), Dostępność (wpisy + siatka tygodnia + szablony),
    Sezon (liczony w przeglądarce z celów trip/long_ride z datą), Kalibracja (nadpisania, zapis automatyczny).
    Czas i Bilans z mockupu — w Etapie 4.
-3. Silnik planu tygodnia (Python): sezon + mix + reguły + Kalendarz + gotowość/HRV + METEO;
-   akcje po stronie serwera; REST DAY → `calendar_entry`; auto-dopasowanie zrobionych z `training_sessions`.
+3. **Silnik planu tygodnia** (ZROBIONE 2026-09-23): `qbot_trener_engine.py` (czysta `plan_week(ctx)` + `build_context`),
+   testy `tests/test_trener_engine.py`. Szczegóły w sekcji „Silnik” niżej.
 4. Bilans z wagi (gdy brak logów), statusy celów na bieżąco.
 5. Telegram (plan pn / rozliczenie nd), wysyłka do Garmina (dziś tylko joga), narzędzie Alberta
    (+ `_SYSTEM` w tym samym commicie).
@@ -75,3 +75,31 @@ d: 0 nie / 1 tak / 2 czasem; `ac` puste = wszystkie aktywności (dla `busy` zaws
 /`MIXD`/`YOGA` w `trener.js` (Etap 3 przeniesie je do Pythona jako źródło dla silnika).
 
 Walidacja: `clean_*` w module (400 z czytelnym komunikatem). Testy: `tests/test_trener_api.py`.
+
+## Silnik planu (Etap 3)
+
+Kolejność w `plan_week`: (0) dni wyprawy z celów → tylko joga przed jazdą; delegacja → tylko joga hotelowa 06:30–09:00;
+choroba → dzień pusty + 2 kolejne dni „brak czasu”; (1) **długa jazda** w sb/nd (lub urlop) z najlepszą pogodą i
+największym oknem, ~45% minut roweru; (2) pozostałe jazdy — rozrzucone (maks. odstęp), bez dnia po ciężkiej długiej
+(≥ `yoga.hard_xss`) w oknie `regen.heavy_gap_h`; zła pogoda → wioślarz (jeśli miesiąc na to pozwala) albo pominięcie;
+(3) mocny akcent tylko w Budowie (`int.hard_per_week`, odstęp `int.hard_gap_days` od długiej); (4) siła — nie dzień po
+dniu, nie w przeddzień długiej, chętnie w dni bez roweru; (5) wioślarz — chętnie w dni ze złą pogodą; (6) joga wg reguł
+(dzień po długiej: 40′ gdy wolny, 15′ gdy inny trening; dni bez treningu 30′); (7) min. dni wolnych; (8) „brak czasu”
+i gotowość dziś < próg → wersje minimum.
+
+Budżet tygodnia = godziny z Sezonu (okres, tydzień lżejszy, objętość), obcięte do `load.budget_h`, minus sesje
+zachowane (ręczne / zrobione / pominięte / z przeszłych dni) i aktywności spoza planu z minionych dni.
+Liczba sesji = Mix miesiąca (`mix.*` lub domyślne), korekty okresu (Regeneracja: rower ≤2, bez siły/wiosła; Taper: siła ≤1).
+Okna: wpisy `pref` per aktywność; brak okna → 09:00–20:00 (dni robocze) / 07:00–20:00 (weekend, urlop).
+Zajętości: wpisy `busy` + wydarzenia Kalendarza z godziną (blok 2,5 h). `flex` = trening dozwolony, ale ≤ `max_min`.
+Pogoda: Open-Meteo forecast (10 dni, cache 1 h) dla „domu” = najczęstszy punkt startu z 60 ostatnich jazd; agregat
+08–18: wiatr średni, porywy maks., odczuwalna min/max (`apparent_temperature`), opad maks. mm/h i szansa, pokrywa śnieżna.
+Bez celów sezon = „Baza + siła” (6,5 h).
+
+API tygodnia: `GET /week` (dopasowuje zrobione z Garmina: ten sam dzień + sport, najbliższa godzina → `done` +
+`training_session_id`; zwraca `meta` z fazą, celem h, dniami (typ, zajętości, pogoda), FTP, LTHR jeśli ustawione w env
+`RIDER_LTHR_BPM`, ostrzeżenia, ostatnią nierozstrzygniętą zmianę), `POST /week/generate {start}` (kasuje tylko przyszłe
+sesje auto w stanie plan i układa od nowa → `trainer_change`), `POST /week/action {day, action}` (rest/del → `calendar_entry`
+kind event z `note='[trener]'`, ill → kind illness, short → `trainer_day`, clear → usuwa wpisy `[trener]` z dnia i stan;
+potem przeliczenie), `POST /week/undo {id}` (przywraca sesje sprzed zmiany i usuwa jej wpisy w Kalendarzu), `POST /week/accept {id}`.
+Każda edycja sesji z UI (POST/PUT `/sessions`) ustawia `source='manual'` → przeliczenie jej nie rusza.
