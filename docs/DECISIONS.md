@@ -4086,3 +4086,11 @@ Uwaga: 2 faile w tests/test_report_data_provider (partial/missing) sa sprzed zmi
 - Biegi bez czujnika: qbot3/rides/gear_estimate.py -> activity_record.gear_rear_est (rozwiniecie v*60/cad vs obwod*przod/zab, tolerancja 7%), ride_drivetrain cassette_source='physics_est'. _gears w W1 uzywa COALESCE(gear_rear_num, gear_rear_est), tier B i jawna etykieta 'szacowane'. 11.09: 99.5% probek dopasowanych.
 - W1: nowy blok 'bike' (rower, czujniki, ostrzezenia bateryjne). SCHEMA_VERSION 2 -> 3.
 - Ingest (qbot_activity_ingest._one_if_new): po ingest_one -> ingest_devices + estimate_if_needed. build_drivetrain.py (AXS) nie bylo w zadnym cronie od 12.08 -> uruchomione recznie (64 jazdy); DO ZROBIENIA: dopisac do ingest lub daily_job.
+
+## 2026-09-24 — Opony przypisywane POJEDYNCZO do kola (tires.wheel_id); tabela opon = jedyne zrodlo dla cisnien
+- Dane: garage.db `tires` + kolumna `wheel_id` (-> components.id, category='wheels') + `position` przód/tył. Brak kola = 'w garażu' albo 'wycofana'. Na jednym miejscu (kolo+pozycja) jedna opona: zapis nowej AUTOMATYCZNIE odsyla poprzednia do garazu (decyzja uzytkownika). `fits_wheelset` wypelniane automatycznie nazwa kola (zgodnosc: opis roweru, wyszukiwarka garazu).
+- Serwer: `POST /api/bike/tire/save` (zwraca moved_to_garage), `POST /api/bike/tire/delete` (confirm=true); `/api/bike/config` + tire_statuses/tire_positions.
+- Cisnienia: `qbot_pressure_tools._read_wheelsets` czyta szerokosc/nazwe z tabeli opon (wsrc='opony'); spec/notes tylko zapas. Z `components.spec` kol 3/4/30 usuniete wpisy `tire=...;width_*` (koniec dwoch zrodel). Zweryfikowane: cisnienia identyczne przed/po (54/54, 50/45, 61/61).
+- Migracja: opony 1-2 -> kolo 3, 3-4 -> kolo 4, 7-8 -> kolo 30, 5-6 -> w garażu.
+- Front Garazu (poza repo): okno edycji opon, kolumny Rower/Koło, filtr roweru, kategorie komponentow wyswietlane po polsku (w bazie zostaja angielskie kody - uzywa ich kod, np. category='wheels').
+- ZNANE, POZA ZAKRESEM: `_read_wheelsets` i opis roweru biora kola/komponenty OBU rowerow naraz (brak filtra bike_id).

@@ -320,6 +320,24 @@ def _read_wheelsets(overrides: dict[int, float]) -> list[dict]:
         if front_mm is not None and rear_mm is not None:
             width = (front_mm, rear_mm)
             wsrc = "spec" if spec and "width_" in spec.lower() else "notes"
+        # OPONY z tabeli tires przypisane do tego kola (wheel_id) maja pierwszenstwo
+        # nad spec/notes. Brak kompletu przod+tyl -> stary odczyt ze spec/notes.
+        try:
+            c2 = _garage_conn()
+            trs = c2.execute(
+                "SELECT brand, model, width_mm, position FROM tires "
+                "WHERE wheel_id=? AND COALESCE(status,'')='zamontowana' ORDER BY id", (cid,)).fetchall()
+            c2.close()
+        except Exception:
+            trs = []
+        t_f = next((t for t in trs if str(t[3] or "").lower().startswith("prz")), None)
+        t_r = next((t for t in trs if str(t[3] or "").lower().startswith("ty")), None)
+        if t_f and t_r and t_f[2] and t_r[2]:
+            width = (float(t_f[2]), float(t_r[2]))
+            wsrc = "opony"
+            n_f = " ".join(x for x in (t_f[0], t_f[1]) if x)
+            n_r = " ".join(x for x in (t_r[0], t_r[1]) if x)
+            tire_name = n_f if n_f == n_r else (n_f + " / " + n_r)
         ov = overrides.get(idx)
         if ov is not None:
             width = (float(ov), float(ov))

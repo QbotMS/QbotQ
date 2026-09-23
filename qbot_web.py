@@ -7035,7 +7035,8 @@ def bike_config(all: int = Query(0)):
         cats = BIKE_COMPONENT_CATEGORIES + sorted(used - set(BIKE_COMPONENT_CATEGORIES))
         return {"bikes": bikes, "components": comps, "tires": tires, "fitting": fit,
                 "component_categories": cats, "used_categories": sorted(used),
-                "statuses": COMPONENT_STATUS}
+                "statuses": COMPONENT_STATUS,
+                "tire_statuses": TIRE_STATUS_FREE, "tire_positions": TIRE_POSITIONS}
     finally:
         gc.close()
 
@@ -7163,6 +7164,100 @@ async def equipment_delete(request: Request):
 async def bike_component_delete(request: Request):
     """TWARDE usuniecie komponentu roweru (nieodwracalne)."""
     return await _delete_request(request, "component")
+
+
+# --- Garaz: OPONY (tabela tires) przypisywane POJEDYNCZO do kola (wheel_id + position) ---
+TIRE_STATUS_FREE = ["w garażu", "wycofana"]
+TIRE_POSITIONS = ["przód", "tył"]
+
+
+def _tire_wheel_label(gc, wid):
+    r = gc.execute("SELECT brand, model FROM components WHERE id=? AND category='wheels'",
+                   (wid,)).fetchone()
+    if not r:
+        return None
+    return " ".join(x for x in (r["brand"], r["model"]) if x) or ("kolo %s" % wid)
+
+
+@app.post("/api/bike/tire/save")
+async def bike_tire_save(request: Request):
+    """Dodaj/edytuj opone. wheel_id+position = zamontowana na tym kole; jesli miejsce
+    zajete, poprzednia opona automatycznie wraca do garazu. Bez kola: w garazu/wycofana."""
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    cols = {k: _gs(b.get(k), 4000 if k == "notes" else 200)
+            for k in ("brand", "model", "width_src", "type", "notes")}
+    if not (cols.get("brand") or cols.get("model")):
+        raise HTTPException(status_code=400, detail="Wymagana marka lub model")
+    w = b.get("width_mm")
+    try:
+        cols["width_mm"] = float(str(w).replace(",", ".")) if w not in (None, "") else None
+    except (TypeError, ValueError):
+        cols["width_mm"] = None
+    wid = b.get("wheel_id")
+    wid = int(wid) if str(wid or "").strip().isdigit() else None
+    pos = _gs(b.get("position"), 20)
+    gid = b.get("id")
+    gid = int(gid) if str(gid or "").strip().isdigit() and int(gid) > 0 else None
+    gc = _garage_conn()
+    try:
+        moved = []
+        if wid is not None:
+            label = _tire_wheel_label(gc, wid)
+            if not label:
+                raise HTTPException(status_code=400, detail="Nieznane kolo")
+            if pos not in TIRE_POSITIONS:
+                raise HTTPException(status_code=400, detail="Pozycja: przód albo tył")
+            cols.update(wheel_id=wid, position=pos, status="zamontowana", fits_wheelset=label)
+            q = "SELECT id FROM tires WHERE wheel_id=? AND position=?"
+            args = [wid, pos]
+            if gid:
+                q += " AND id<>?"
+                args.append(gid)
+            moved = [r["id"] for r in gc.execute(q, args).fetchall()]
+            if moved:
+                gc.execute("UPDATE tires SET wheel_id=NULL, status='w garażu' WHERE id IN (%s)"
+                           % ",".join("?" * len(moved)), moved)
+        else:
+            st = _gs(b.get("status"), 40)
+            cols.update(wheel_id=None, position=pos if pos in TIRE_POSITIONS else None,
+                        status=st if st in TIRE_STATUS_FREE else "w garażu")
+        keys = list(cols.keys())
+        if gid:
+            gc.execute("UPDATE tires SET %s WHERE id=?" % ", ".join("%s=?" % k for k in keys),
+                       [cols[k] for k in keys] + [gid])
+        else:
+            cur = gc.execute("INSERT INTO tires (%s) VALUES (%s)"
+                             % (", ".join(keys), ",".join("?" for _ in keys)),
+                             [cols[k] for k in keys])
+            gid = cur.lastrowid
+        gc.commit()
+        return {"ok": True, "id": gid, "moved_to_garage": moved}
+    finally:
+        gc.close()
+
+
+@app.post("/api/bike/tire/delete")
+async def bike_tire_delete(request: Request):
+    """TWARDE usuniecie opony (nieodwracalne), wymaga confirm=true."""
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    gid = b.get("id")
+    if not str(gid or "").strip().isdigit():
+        raise HTTPException(status_code=400, detail="Brak id")
+    if not b.get("confirm"):
+        raise HTTPException(status_code=400, detail="Brak potwierdzenia")
+    gc = _garage_conn()
+    try:
+        n = gc.execute("DELETE FROM tires WHERE id=?", (int(gid),)).rowcount
+        gc.commit()
+        return {"ok": True, "deleted": n}
+    finally:
+        gc.close()
 
 
 @app.get("/api/garage/prefs")
