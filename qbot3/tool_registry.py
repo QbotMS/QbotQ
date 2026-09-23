@@ -2483,6 +2483,37 @@ def _load_garmin_live_fetch_tool() -> dict[str, Any]:
     }
 
 
+def _load_route_day_plan_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        from qbot3.routes.route_day_tool import day_plan
+        out = day_plan(args or {})
+        if out.get("status") == "OK":
+            return success_result(out)
+        return error_result("ROUTE_DAY_PLAN_" + str(out.get("status") or "ERROR"), out.get("error") or "brak danych planu dnia")
+
+    return {
+        "callable": _wrapper,
+        "category": "routes",
+        "description": (
+            "PLAN DNIA JAZDY z tego, co juz policzone (BEZ uruchamiania AI, ~4-10 s): trasa, start/przerwy/meta, "
+            "wschod/zachod + ostrzezenie o zmroku, pogoda w czasie jazdy (okna), alerty, pakiet dnia (ocena okna startu, "
+            "aktywne reguly, etapy z moca/jedzeniem/piciem, wykonalnosc, notatki), prognoza formy RANO w dniu jazdy, ostatni dobor "
+            "ubioru (ten_sam_plan=true/false), opis 'O trasie', zaproszenia gosci. Bez parametrow: najblizsza jazda z kalendarza."
+        ),
+        "args_schema": {
+            "route_id": {"type": "string", "description": "ID trasy (opcjonalne; domyslnie z najblizszej jazdy w kalendarzu)"},
+            "date": {"type": "string", "description": "YYYY-MM-DD (opcjonalne)"},
+            "time": {"type": "string", "description": "godzina startu HH:MM (opcjonalne; domyslnie z kalendarza albo 10:00)"},
+            "long_stops": {"type": "integer", "description": "liczba dluzszych przerw (opcjonalne, domyslnie 0)"},
+            "long_stop_min": {"type": "integer", "description": "dlugosc jednej przerwy w min (opcjonalne, domyslnie 30)"},
+        },
+        "safety": "read",
+        "mode": "read_only",
+    }
+
+
 # ── init ───────────────────────────────────────────────────────────────
 
 def _init_registry():
@@ -2547,6 +2578,7 @@ def _init_registry():
         ("route_poi_analyze", _load_route_poi_analyze_tool),
         ("route_poi_analyze_readonly", _load_route_poi_analyze_readonly_tool),
         ("route_report", _load_route_report_tool),
+        ("route_day_plan", _load_route_day_plan_tool),
         ("route_analysis", _load_route_analysis_tool),
         ("rwgps_poi_push", _load_rwgps_poi_push_tool),
         ("rwgps_route_import_gpx", _load_rwgps_route_import_gpx_tool),
