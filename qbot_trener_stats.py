@@ -448,7 +448,9 @@ def compute_goal_status(c, goals: list) -> dict:
             continue
         k, t = g["kind"], g.get("target") or {}
         try:
-            if k in ("trip", "long_ride"):
+            if k in ("trip", "long_ride") and (E._d(g.get("date_to")) or E._d(g.get("date_from")) or today) < today:
+                s = {"level": "n", "text": "termin już minął — zakończ cel albo popraw datę (rok?)", "rows": []}
+            elif k in ("trip", "long_ride"):
                 s = status_trip(g, hist, ctl_now, ctl_max)
             elif k == "weight":
                 c.execute("SELECT weight_kg FROM qbot_v2.fitmodel_daily WHERE weight_kg IS NOT NULL AND day >= %s ORDER BY day LIMIT 1", (g["created_at"].date() - timedelta(days=3),))
