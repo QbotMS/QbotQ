@@ -31,7 +31,8 @@ from qbot3.routes.route_attraction_engine import (
 WIKIPEDIA_API = "https://pl.wikipedia.org/w/api.php"
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
 OVERPASS_APIS = ("https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter")
-USER_AGENT = "QBot-route-attractions/2.2 (private cycling route planner)"
+# Wikimedia (polityka robotow, 2026) wymaga danych kontaktowych w UA - bez nich 403.
+USER_AGENT = "QBot-route-attractions/2.3 (+https://albert.cytr.us/; private cycling route planner) python-requests"
 DEFAULT_CACHE_ROOT = Path(os.getenv("QBOT_ATTRACTION_CACHE_ROOT", "/opt/qbot/artifacts/attraction_cache"))
 
 

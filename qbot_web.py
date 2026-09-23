@@ -4901,7 +4901,15 @@ def guest_data(token: str):
             pk = _dp.load_pack(conn, inv["route_id"], str(inv["ride_date"]))
         except Exception:
             pk = None
-        return _ri.guest_view(d, inv, geo, pk)
+        gv = _ri.guest_view(d, inv, geo, pk)
+        try:
+            from qbot3.routes import route_intro as _rint
+            _it = _rint.load(conn, inv["route_id"])
+            if _it:
+                gv["o_trasie"] = {k: _it.get(k) for k in ("tytul", "wprowadzenie", "czego_sie_spodziewac", "warto_zobaczyc")}
+        except Exception:
+            pass
+        return gv
     finally:
         conn.close()
 
@@ -4978,6 +4986,35 @@ def invites_revoke(token: str = Query(...)):
     conn = _db_conn()
     try:
         return {"ok": _ri.revoke(conn, token)}
+    finally:
+        conn.close()
+
+
+@app.get("/api/route-intro")
+def route_intro_get(route_id: str = Query(...)):
+    """Zapisany opis trasy (AI, raz na trase). {"jest": false} gdy brak."""
+    from qbot3.routes import route_intro as _rint
+    conn = _db_conn()
+    try:
+        it = _rint.load(conn, route_id)
+        return it if it else {"jest": False}
+    finally:
+        conn.close()
+
+
+@app.post("/api/route-intro")
+def route_intro_build(route_id: str = Query(...)):
+    """Generuje (AI, ~20-35 s) i zapisuje opis trasy. Nadpisuje poprzedni."""
+    from qbot3.routes import route_intro as _rint
+    import qgpt_client as _qc
+    conn = _db_conn()
+    try:
+        it = _rint.build(_build_report_data, conn, route_id, getattr(_qc, "QGPT_MODEL", ""))
+        if not it.get("ok"):
+            raise HTTPException(status_code=502, detail="Nie udalo sie wygenerowac opisu: %s" % it.get("blad"))
+        _rint.save(conn, route_id, it)
+        it["aktualny"] = True
+        return it
     finally:
         conn.close()
 
