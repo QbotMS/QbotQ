@@ -3106,7 +3106,10 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
 
     # --- meteo: pogoda per okno + odczuwalna + wiatr gesty + ETA ---
     from qbot3.routes.route_meteo_engine import run_meteo_engine
-    m = run_meteo_engine(route_id=route_id, date_str=date_str, start_time=start_time)
+    # E1: pogoda liczona przy ETA z PRZERWAMI UZYTKOWNIKA (te same co model czasu i symulacja)
+    m = run_meteo_engine(route_id=route_id, date_str=date_str, start_time=start_time,
+                         planned_long_stops=int(long_stops or 0),
+                         planned_long_stop_each_min=float(long_stop_min or 0))
     per = m["per_segment"]
     weather = []
     for w in m["tabela_30min"]:

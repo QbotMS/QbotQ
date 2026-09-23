@@ -318,8 +318,65 @@ def _shade_for_km(shade: list[dict], km: float) -> Optional[dict]:
 
 
 # --- Open-Meteo -------------------------------------------------------------
+# [E1 warstwa dnia] Prognoza godzinowa punktu jest pobierana dla CALEGO dnia (0-24 h),
+# wiec jest niezalezna od godziny startu i przerw -> cache w DB. TTL: prognoza sie zmienia.
+METEO_CACHE_TTL_S = 2 * 3600
+# Punkty pogodowe przypiete do stalej siatki km trasy (nie do okien czasu), zeby ta sama
+# warstwa dnia sluzyla kazdej godzinie startu. Przesuniecie punktu <= GRID/2 (modele 2-11 km).
+METEO_GRID_KM = 5.0
+
+
+def _meteo_cache_get(key: str):
+    try:
+        conn = _pg_connect()
+        try:
+            cur = conn.cursor()
+            cur.execute("CREATE TABLE IF NOT EXISTS qbot_v2.meteo_point_cache ("
+                        "cache_key text PRIMARY KEY, payload jsonb NOT NULL, "
+                        "fetched_at timestamptz NOT NULL DEFAULT now())")
+            cur.execute("SELECT payload, extract(epoch from (now()-fetched_at)) "
+                        "FROM qbot_v2.meteo_point_cache WHERE cache_key=%s", (key,))
+            row = cur.fetchone()
+            conn.commit()
+        finally:
+            conn.close()
+        if row and float(row[1]) < METEO_CACHE_TTL_S:
+            p = row[0]
+            return json.loads(p) if isinstance(p, str) else p
+    except Exception:  # noqa - cache nigdy nie blokuje pobrania
+        pass
+    return None
+
+
+def _meteo_cache_put(key: str, data: dict) -> None:
+    try:
+        conn = _pg_connect()
+        try:
+            cur = conn.cursor()
+            cur.execute("INSERT INTO qbot_v2.meteo_point_cache (cache_key, payload, fetched_at) "
+                        "VALUES (%s, %s::jsonb, now()) ON CONFLICT (cache_key) DO UPDATE "
+                        "SET payload=EXCLUDED.payload, fetched_at=now()", (key, json.dumps(data)))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:  # noqa
+        pass
+
+
 def _fetch_point(lat: float, lon: float, date_str: str, timeout: float = 15.0,
                  model: Optional[str] = None) -> dict:
+    key = "%.3f,%.3f|%s|%s" % (round(lat, 3), round(lon, 3), date_str, model or "best_match")
+    data = _meteo_cache_get(key)
+    if data is None:
+        data = _fetch_point_raw(lat, lon, date_str, timeout=timeout, model=model)
+        _meteo_cache_put(key, data)
+    h = data["hourly"]
+    times = [_dt.datetime.fromisoformat(t).replace(tzinfo=_dt.timezone.utc) for t in h["time"]]
+    return {"times": times, "h": h, "daily": data.get("daily") or {}}
+
+
+def _fetch_point_raw(lat: float, lon: float, date_str: str, timeout: float = 15.0,
+                     model: Optional[str] = None) -> dict:
     hourly = ["temperature_2m", "relative_humidity_2m", "cloud_cover",
               "wind_speed_10m", "wind_direction_10m",
               "surface_pressure", "shortwave_radiation_instant", "direct_radiation_instant",
@@ -335,10 +392,7 @@ def _fetch_point(lat: float, lon: float, date_str: str, timeout: float = 15.0,
     url = OPEN_METEO_URL + "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"User-Agent": "QBot-METEO/1.0"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        data = json.loads(r.read().decode("utf-8"))
-    h = data["hourly"]
-    times = [_dt.datetime.fromisoformat(t).replace(tzinfo=_dt.timezone.utc) for t in h["time"]]
-    return {"times": times, "h": h, "daily": data.get("daily") or {}}
+        return json.loads(r.read().decode("utf-8"))
 
 
 # Dlugie postoje NIE sa kosmetyka: pogoda liczy sie w MOMENCIE PRZEJAZDU, wiec kazdy
@@ -405,8 +459,15 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
                      mode: str = "normalny", from_km: Optional[float] = None,
                      to_km: Optional[float] = None, model: Optional[str] = None,
                      long_stop_every_km: float = LONG_STOP_EVERY_KM,
-                     long_stop_min: float = LONG_STOP_MIN) -> dict:
-    """Jeden przebieg silnika METEO. date=YYYY-MM-DD, start=HH:MM (lokalny).
+                     long_stop_min: float = LONG_STOP_MIN,
+                     planned_long_stops: Optional[int] = None,
+                     planned_long_stop_each_min: float = 0.0) -> dict:
+    """Jeden przebieg silnika METEO.
+
+    planned_long_stops (opcjonalne, E1) = dlugie przerwy ZADEKLAROWANE przez uzytkownika
+    (raport trasy): n przerw po planned_long_stop_each_min minut, w TYCH SAMYCH miejscach co
+    model czasu (qbot_route_time_tools._long_stop_positions). Gdy podane (takze 0), zastepuje
+    regule long_stop_every_km/long_stop_min. None = dotychczasowa regula (np. planer). date=YYYY-MM-DD, start=HH:MM (lokalny).
 
     long_stop_every_km / long_stop_min = dlugie postoje (obiad, sklep) DOLICZANE DO ETA:
     jeden postoj na kazde pelne `long_stop_every_km` dlugosci ETAPU, po `long_stop_min` minut.
@@ -470,7 +531,13 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
     leg_a = float(sel[0][0]["km"])
     leg_b = float(sel[-1][0]["km"])
     leg_km = max(0.0, leg_b - leg_a)
-    postoje = _long_stops_for_leg(leg_km, long_stop_every_km, long_stop_min)
+    if planned_long_stops is not None:
+        from qbot_route_time_tools import _long_stop_positions
+        _each = float(planned_long_stop_each_min or 0.0)
+        postoje = ([{"frakcja": f, "minut": _each} for f in _long_stop_positions(int(planned_long_stops))]
+                   if (int(planned_long_stops) > 0 and _each > 0) else [])
+    else:
+        postoje = _long_stops_for_leg(leg_km, long_stop_every_km, long_stop_min)
     for p in postoje:
         p["km"] = round(leg_a + leg_km * p["frakcja"], 2)
 
@@ -496,9 +563,14 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         return min(max(k, 0), n_win - 1)
 
     win_point = []
+    _grid_cache = {}
     for c in win_centers:
         best = min(segs, key=lambda s: abs((s["eta_utc"] - c).total_seconds()))
-        win_point.append((best["lat"], best["lon"]))
+        gk = round(float(best["km"]) / METEO_GRID_KM) * METEO_GRID_KM
+        if gk not in _grid_cache:
+            _grid_cache[gk] = min(segs, key=lambda s: abs(float(s["km"]) - gk))
+        g = _grid_cache[gk]
+        win_point.append((g["lat"], g["lon"]))
 
     weather = []
     for (lat, lon) in win_point:
@@ -601,11 +673,13 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         "status": "OK",
         "route_id": route_id, "date": date_str, "start": start_time, "mode": mode,
         "model": (model or "best_match"),
-        "postoje": {"liczba": len(postoje), "minut_kazdy": (long_stop_min if postoje else 0),
+        "postoje": {"liczba": len(postoje), "minut_kazdy": ((postoje[0]["minut"] if postoje else 0)),
                     "na_km": [p["km"] for p in postoje],
                     "minut_razem": round(sum(p["minut"] for p in postoje)),
-                    "regula": ("jeden postoj %.0f min na kazde %.0f km etapu"
-                               % (long_stop_min, long_stop_every_km))},
+                    "regula": (("przerwy uzytkownika: %d x %.0f min" % (len(postoje), (postoje[0]["minut"] if postoje else 0)))
+                               if planned_long_stops is not None else
+                               ("jeden postoj %.0f min na kazde %.0f km etapu"
+                                % (long_stop_min, long_stop_every_km)))},
         "zakres_km": {"od": round(segs[0]["km"], 2), "do": round(segs[-1]["km"], 2)},
         "slonce": sun, "podsumowanie": summary,
         "n_segments": len(per_segment), "n_windows": n_win,
