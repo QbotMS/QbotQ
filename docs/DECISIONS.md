@@ -4,6 +4,68 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-09-23 -- DECYZJA: TRENER w Formie (planer treningow) -- zamkniety serwis
+
+PROBLEM: potrzeba AI-wspomaganego planowania treningow pod cele sezonu (wyprawy, waga, km), z uwzglednieniem
+zajetosci (dom/praca/dziecko), Kalendarza, pogody, gotowosci i okresow (roztrenowanie -> baza+sila -> budowa -> taper).
+
+DECYZJE:
+- Osobne moduly zamiast rozbudowy qbot_web.py: qbot_trener_api.py (APIRouter /api/trener, montowany PRZED app.mount),
+  qbot_trener_engine.py (czysta plan_week), qbot_trener_stats.py, qbot_trener_workouts.py, qbot_trener_notify.py.
+  Tabele qbot_v2.trainer_* (sql/trainer_v1..v4.sql). Front trener.js/trener.css poza repo (zakladka w forma.html).
+- Dane uzytkownika startuja PUSTE (nic z mockupu). Wartosci "auto" kalibracji NIE sa zapisywane -- liczone z bazy
+  (czulosc na gotowosc, prog wersji minimum, przerwa po ciezkiej jezdzie, pogoda z historii jazd w cache);
+  trainer_settings trzyma tylko reczne nadpisania; silnik uzywa auto jako bazy, reczne wygrywaja.
+- Temperatura w regulach pogody = odczuwalna z prognozy, nie termometr urzadzenia (rozrzut termometru ~+-4 C).
+- Sesje edytowane recznie = source 'manual' -> przeliczenie tygodnia ich nie rusza. REST/choroba/delegacja ida do
+  calendar_entry z note '[trener]' (cofanie usuwa tylko te wpisy).
+- Sila = obwod na cale cialo z rotujacym akcentem (klatka+ramiona/plecy/nogi/brzuch), hantle+lawka+masa ciala.
+- Garmin (wysylka treningow) USUNIETY -- uzytkownik: zbedne. Zestawy cwiczen wystarcza w Albercie.
+- Albert: narzedzie trainer_week (tylko odczyt) + _SYSTEM; intent trainer_week w qbot_query_handler PRZED training_recent.
+- Telegram: cron root */15 -> qbot_trener_notify.py tick (zgoda uzytkownika 2026-09-23); dedup trainer_notify_log.
+
+WERYFIKACJA: testy trener_api/engine/stats/notify/workouts OK; integracje na uzytkowniku testowym (posprzatane);
+jsdom UI bez bledow; live /api/trener/* 200; qbot_query "plan treningowy" -> Albert/trainer_week; test Telegram dotarl.
+Commity: 25c62ed, 238fb2f, 17ec064, a20b2fe, c3d410e, ff56b2e, f0ef769. Dok.: docs/TRENER.md.
+
+WYCOFANIE: usun wpis crona qbot_trener_notify, usun przycisk/zakladke Trener z forma.html; tabele trainer_* mozna zostawic.
+
+---
+## 2026-09-23 -- DECYZJA: model LLM = GPT-6 Luna (trasy/chat + raport jazdy W2)
+
+PROBLEM: dobor modelu LLM pod koszt/jakosc/szybkosc. Dotychczas gpt-5.4-mini (marzec 2026),
+dzis srodek stawki. GPT-6 Luna (premiera 2026-09-23) $0.10/$0.50 za 1M -- ~4-8x taniej niz
+gpt-5.4-mini na naszych zadaniach, ~20x taniej niz GPT-6 Sol.
+
+USTALENIA (sprawdzone na zywo 2026-09-23, nie z pamieci):
+- DWA rozne pokretla modelu: (a) trasy/chat -> Albert -> qbot3/llm/model_profiles (profil 'gpt',
+  model=QBOT_PLANNER_MODEL lub default); (b) raport jazdy W2 -> qgpt_client.qgpt_json -> QGPT_MODEL.
+  To NIE jest jeden przelacznik.
+- qbot_config laduje .env.local z override=True => .env.local WYGRYWA nad /etc/qbot/qbot-api.env
+  (tam byl martwy QGPT_MODEL=gemini-2.5-flash nadpisywany przez .env.local=gpt-5.4-mini).
+- Analiza trasy: liczby liczy SILNIK, model tylko formatuje -> wszystkie modele daja te same liczby
+  (test 3 trasy x 3 modele). Raport jazdy W2: model NAPRAWDE wnioskuje z W1 -> to tu jakosc ma znaczenie.
+- Dowod jakosci (harness 5 jazd x 3 modele, metryki twarde): JSON ok 5/5 u wszystkich; zero wyciekow
+  nazw pol; zero liczb bez pokrycia; komplet sekcji. Ugruntowanie cytatow w W1: mini 96.3%, Luna 100%,
+  Sol 100%. Czas W2: mini ~12.8s / Luna ~16.6s / Sol ~18.3s. Wniosek: Luna >= mini, rowna Solowi;
+  Sol nie dal mierzalnej przewagi za ~20x cene.
+- Klucz OpenAI MA dostep do gpt-6-luna (blad przy pierwszej probie byl tylko parametryczny).
+
+DECYZJA: GPT-6 Luna na OBU sciezkach (trasy/chat + raport jazdy W2). Sol trzymany w rezerwie
+(gdyby slepa lektura prozy pokazala przewage). Astra pominieta (przeplacone dla naszych zadan).
+
+ZMIANY (commit ea422bd):
+- qbot3/llm/albert.py _gen_kwargs: gpt-6/gpt-7 dodane do is_openai_new; gdy model startswith gpt-6/7
+  -> reasoning_effort='none' (GPT-6 z function tools na /chat/completions tego wymaga; bez tego HTTP 400).
+- qgpt_client.py: galaz modeli rozumujacych rozszerzona o gpt-6/gpt-7 (max_completion_tokens +
+  reasoning_effort='low'; W2 nie ma tools, wiec 'low' dziala).
+- .env.local: QGPT_MODEL=gpt-6-luna, dodane QBOT_PLANNER_MODEL=gpt-6-luna. Restart qbot-api.
+
+WERYFIKACJA na zywo po restarcie: Albert model=gpt-6-luna, W2 QGPT_MODEL=gpt-6-luna, qbot-api active.
+
+WYCOFANIE: w .env.local wroc QGPT_MODEL=gpt-5.4-mini, usun QBOT_PLANNER_MODEL, restart qbot-api.
+
+---
 ## 2026-08-24 -- DECYZJA: wlasny sync Withings -> Garmin zamiast SmartScaleSync
 
 PROBLEM: waga i sklad ciala trafialy do QBota lancuchem
