@@ -148,3 +148,12 @@ Decyzja runtime:
 - Zapisy nadal są blokowane przed VNEXT i kierowane do Alberta/QBot3 jako `ACTION_REQUIRED`.
 
 Jawne powody eskalacji: `ESCALATED_ARCHITECTURE`, `ESCALATED_ROUTE`, `ESCALATED_MULTIDOMAIN`, `ANALYSIS_REQUIRED`, `ACTION_REQUIRED`.
+
+
+---
+
+## TRENER (2026-09-23)
+
+Sekcja Trener w Formie (qbot-web) + narzędzie Alberta `trainer_week` (tylko odczyt: plan tygodnia, zestawy ćwiczeń,
+statusy celów, bilans). Routing Claude/MCP: `qbot_query_handler` intent `trainer_week` (w `OPEN_DOMAIN_INTENTS`) → Albert.
+Powiadomienia: `qbot_trener_notify.py` z crona root co 15 min. Szczegóły: `docs/TRENER.md`.

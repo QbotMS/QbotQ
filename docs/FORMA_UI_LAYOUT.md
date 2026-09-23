@@ -154,3 +154,13 @@ Cel UX: **treść zakładki mieści się bez scrollowania**. Kafle zwarte (mniej
 - jeśli `a.has_report` → przycisk `.rd-btn` „Otwórz raport trasy ↗" linkujący do `/raport-jazdy.html?ride=<external_id>` w nowej karcie (`target="_blank" rel="noopener"`).
 
 **Powiększanie kafla (`openTileZoom`):** każdy `.tile` ma `data-k`; delegowany klik na `document` otwiera modal `.tilez-back/.tilez` (position:fixed, z-index 200) z: dużą wartością + jednostką, deltą w oknie, **powiększonym mini-wykresem** (`.tilez-chart .mini{height:170px}`), pełnym opisem i interpretacją metryki. Zamknięcie: **klik gdziekolwiek** (tło, karta, „×") lub Esc. Działa na zakładkach Wskaźniki i DZIŚ (widżety żywienia to nie kafle → nieobjęte).
+
+
+---
+
+## 11. Zakładka Trener (od 2026-09-23)
+
+UI v2 (`forma.html`, przyciski `#tabs [data-t]`, panele `.panel#p-<nazwa>`): Dziennik · Trendy · Odżywianie · Statystyki ·
+**Trener** (`#p-trener > #trener-root`). Trener ma własne podzakładki i style w `/opt/qbot/web/public/trener.js` +
+`trener.css` (klasy `tr-*` pod `#p-trener`, bez kolizji z `ui2.css`). Wersjonowanie w forma.html: `trener.js?v=N`.
+Pełna dokumentacja: `docs/TRENER.md`.
