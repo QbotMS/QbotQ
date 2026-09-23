@@ -4980,6 +4980,120 @@ def invites_list(route_id: str = Query(...), date: str = Query(None)):
         conn.close()
 
 
+def _invite_mail_ctx(conn, route_id, date, time_s, n, m):
+    """Wspolne dane maila: nazwa trasy, plan (bez AI), opis trasy (jesli zapisany), GPX."""
+    from qbot3.routes import ride_invite as _ri, route_intro as _rint
+    d = _build_report_data(conn, route_id, date, time_s, n, m, ai=False, day_table=True)
+    conn.commit()
+    rt, st, tm = d.get("route") or {}, d.get("start") or {}, d.get("time") or {}
+    meta = None
+    try:
+        hh, mm = [int(x) for x in str(time_s).split(":")]
+        tot = hh * 60 + mm + int(round(float(tm.get("total_h")) * 60))
+        meta = "%02d:%02d" % ((tot // 60) % 24, tot % 60)
+    except Exception:
+        pass
+    name = _ri._clean_name(rt.get("name"))
+    plan = {"data": date, "start": time_s, "miejsce": st.get("miejscowosc"), "przerwy_n": n, "przerwy_min": m,
+            "meta": meta, "km": rt.get("distance_km"), "w_gore_m": rt.get("ascent_m")}
+    try:
+        intro = _rint.load(conn, route_id)
+    except Exception:
+        intro = None
+    return name, plan, intro
+
+
+@app.get("/api/invites/preview", response_class=HTMLResponse)
+def invites_preview(route_id: str = Query(...), date: str = Query(...), time: str = Query("10:00"),
+                    long_stops: int = Query(0), long_stop_min: int = Query(0), note: str = Query("")):
+    """Podglad maila z zaproszeniem (nic nie wysyla, nie tworzy zaproszen)."""
+    from qbot3.routes import ride_invite as _ri
+    conn = _db_conn()
+    try:
+        name, plan, intro = _invite_mail_ctx(conn, route_id, date, time, long_stops, long_stop_min)
+    finally:
+        conn.close()
+    return HTMLResponse(_ri.email_html(route_name=name, intro=intro, plan=plan,
+                                       link=_WYPRAWA_PUBLIC_BASE.rstrip("/") + "/g/PODGLAD", note=(note or None)))
+
+
+@app.post("/api/invites/send")
+async def invites_send(request: Request):
+    """Tworzy/odswieza zaproszenia i WYSYLA maile (GPX w zalaczniku). body: {route_id, date, time, long_stops,
+    long_stop_min, emails[] | group_id, note?}. Jeden GPX i jedno polaczenie SMTP dla wszystkich."""
+    from qbot3.routes import ride_invite as _ri
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    rid, day = str(b.get("route_id") or ""), str(b.get("date") or "")[:10]
+    tm, n, m = str(b.get("time") or "10:00")[:5], int(b.get("long_stops") or 0), int(b.get("long_stop_min") or 0)
+    note = (str(b.get("note") or "").strip() or None)
+    if note:
+        note = note[:1500]
+    if not rid or not day:
+        raise HTTPException(status_code=400, detail="Wymagane: route_id + date")
+    conn = _db_conn()
+    try:
+        emails = [str(x) for x in (b.get("emails") or [])]
+        if b.get("group_id"):
+            emails += [r["email"] for r in conn.execute(
+                "SELECT email FROM qbot_v2.mail_group_member WHERE group_id=%s", (int(b["group_id"]),)).fetchall()]
+        seen, uniq = set(), []
+        for e_ in emails:
+            k = e_.strip().lower()
+            if k and k not in seen:
+                seen.add(k); uniq.append(e_.strip())
+        if not uniq:
+            raise HTTPException(status_code=400, detail="Brak adresow")
+        if len(uniq) > 40:
+            raise HTTPException(status_code=400, detail="Za duzo adresow naraz (max 40)")
+        inv = _ri.create_invites(conn, rid, day, tm, n, m, uniq)
+        name, plan, intro = _invite_mail_ctx(conn, rid, day, tm, n, m)
+        try:
+            gpx = report_gpx(rid, day, tm, 0).body
+        except Exception:
+            gpx = None
+        base = _WYPRAWA_PUBLIC_BASE.rstrip("/")
+        safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", _ri._ascii(name) if hasattr(_ri, "_ascii") else name)[:60] or "trasa"
+        subj = "Zaproszenie na jazd\u0119: %s \u2013 %s" % (((intro or {}).get("tytul") or name), _ri.fmt_day(day))
+        out = []
+        srv = None
+        try:
+            srv = smtplib.SMTP_SSL("smtp.gmail.com", 465)
+            srv.login(_cfg.GMAIL_USER, _cfg.GMAIL_APP_PASSWORD)
+            for it in inv:
+                if not it.get("ok"):
+                    out.append({"email": it["email"], "ok": False, "blad": it.get("blad")}); continue
+                link = base + "/g/" + it["token"]
+                msg = MIMEMultipart("mixed")
+                alt = MIMEMultipart("alternative")
+                alt.attach(MIMEText(_ri.email_html(route_name=name, intro=intro, plan=plan, link=link, note=note), "html", "utf-8"))
+                msg.attach(alt)
+                if gpx:
+                    ga = MIMEApplication(gpx, _subtype="gpx+xml")
+                    ga.add_header("Content-Disposition", "attachment", filename="%s.gpx" % safe)
+                    msg.attach(ga)
+                msg["Subject"] = subj
+                msg["From"] = _cfg.GMAIL_USER
+                msg["To"] = it["email"]
+                try:
+                    srv.send_message(msg)
+                    _ri.mark_sent(conn, it["token"])
+                    out.append({"email": it["email"], "ok": True, "link": link})
+                except Exception as ex:
+                    out.append({"email": it["email"], "ok": False, "blad": str(ex)[:160]})
+        finally:
+            try:
+                if srv:
+                    srv.quit()
+            except Exception:
+                pass
+        return {"ok": all(x["ok"] for x in out), "wyslano": sum(1 for x in out if x["ok"]), "items": out}
+    finally:
+        conn.close()
+
+
 @app.post("/api/invites/revoke")
 def invites_revoke(token: str = Query(...)):
     from qbot3.routes import ride_invite as _ri

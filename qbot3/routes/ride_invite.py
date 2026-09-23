@@ -29,6 +29,8 @@ def ensure(conn):
                  "revoked_at timestamptz, responded_at timestamptz, "
                  "open_count int NOT NULL DEFAULT 0, last_opened_at timestamptz)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ride_invite_uq ON qbot_v2.ride_invite (route_id, ride_date, lower(email))")
+    conn.execute("ALTER TABLE qbot_v2.ride_invite ADD COLUMN IF NOT EXISTS sent_at timestamptz")
+    conn.execute("ALTER TABLE qbot_v2.ride_invite ADD COLUMN IF NOT EXISTS sent_count int NOT NULL DEFAULT 0")
 
 
 def _row(r):
@@ -119,7 +121,7 @@ def revoke(conn, token: str) -> bool:
 def list_invites(conn, route_id: str, ride_date: str | None = None) -> list:
     ensure(conn)
     q = ("SELECT token, email, ride_date, start_time, long_stops, long_stop_min, status, created_at, expires_at, "
-         "revoked_at, responded_at, open_count, last_opened_at FROM qbot_v2.ride_invite WHERE route_id=%s")
+         "revoked_at, responded_at, open_count, last_opened_at, sent_at, sent_count FROM qbot_v2.ride_invite WHERE route_id=%s")
     args = [route_id]
     if ride_date:
         q += " AND ride_date=%s"
@@ -195,3 +197,71 @@ def guest_view(data: dict, invite: dict, geometry: list | None, pack: dict | Non
         "gosc": {"email": invite["email"], "rsvp": invite["status"],
                  "wazny_do": invite["expires_at"].isoformat(timespec="minutes") if hasattr(invite.get("expires_at"), "isoformat") else invite.get("expires_at")},
     }
+
+
+
+def mark_sent(conn, token: str):
+    conn.execute("UPDATE qbot_v2.ride_invite SET sent_at=now(), sent_count=sent_count+1 WHERE token=%s", (token,))
+    conn.commit()
+
+
+# ---------- [G3] mail z zaproszeniem ----------
+_DNI = ["poniedzia\u0142ek", "wtorek", "\u015broda", "czwartek", "pi\u0105tek", "sobota", "niedziela"]
+_MIES = ["stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia", "wrze\u015bnia",
+         "pa\u017adziernika", "listopada", "grudnia"]
+
+
+def fmt_day(iso: str) -> str:
+    d = _dt.date.fromisoformat(str(iso)[:10])
+    return "%s, %d %s" % (_DNI[d.weekday()], d.day, _MIES[d.month - 1])
+
+
+def email_html(*, route_name: str, intro: dict | None, plan: dict, link: str, note: str | None = None) -> str:
+    """Mail do goscia (jedna jazda). plan: {data, start, miejsce, przerwy_n, przerwy_min, meta, km, w_gore_m}."""
+    import html as _h
+    e = _h.escape
+    title = (intro or {}).get("tytul") or route_name
+    km = ("%.1f" % float(plan.get("km") or 0)).replace(".", ",")
+    btn = ("font-family:Georgia,serif;font-size:16px;font-weight:bold;text-decoration:none;"
+           "display:inline-block;padding:13px 24px;border-radius:9px;letter-spacing:.03em")
+    rows = [("Kiedy", fmt_day(plan["data"])),
+            ("Start", "%s%s" % (e(plan.get("start") or ""), (" &middot; " + e(plan["miejsce"])) if plan.get("miejsce") else "")),
+            ("Trasa", "%s km &middot; +%s m" % (km, int(round(float(plan.get("w_gore_m") or 0)))))]
+    if plan.get("przerwy_n"):
+        rows.append(("Przerwy", "%d &times; %d min" % (plan["przerwy_n"], plan.get("przerwy_min") or 0)))
+    if plan.get("meta"):
+        rows.append(("Meta", "ok. %s <span style=\"color:#8c8168\">(plan organizatora)</span>" % e(plan["meta"])))
+    trs = "".join('<tr><td style="padding:5px 12px 5px 0;color:#8c8168;font-size:13px;letter-spacing:.08em;text-transform:uppercase;'
+                  'white-space:nowrap;vertical-align:top">' + k + '</td><td style="padding:5px 0;font-size:15.5px;color:#201c14">' + v + '</td></tr>'
+                  for k, v in rows)
+    body = ""
+    if note:
+        body += ('<div style="background:#efe7d4;border-left:3px solid #7c2b22;padding:10px 14px;margin:14px 0;font-size:15px;'
+                 'line-height:1.55;font-style:italic">' + e(note).replace("\n", "<br>") + '</div>')
+    if intro and intro.get("wprowadzenie"):
+        body += '<p style="font-size:15.5px;line-height:1.6;margin:14px 0">' + e(intro["wprowadzenie"]) + '</p>'
+    if intro and intro.get("czego_sie_spodziewac"):
+        body += ('<div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#7c2b22;margin:16px 0 6px">Czego si\u0119 spodziewa\u0107</div>'
+                 '<ul style="margin:0 0 6px 18px;padding:0;font-size:14.5px;line-height:1.55">'
+                 + "".join("<li>" + e(x) + "</li>" for x in intro["czego_sie_spodziewac"]) + "</ul>")
+    if intro and intro.get("warto_zobaczyc"):
+        body += ('<div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#7c2b22;margin:16px 0 6px">Warto zobaczy\u0107</div>'
+                 '<ul style="margin:0 0 6px 18px;padding:0;font-size:14.5px;line-height:1.55">'
+                 + "".join("<li><b>" + e(x.get("nazwa") or "") + "</b> <span style=\"color:#8c8168\">(km " + str(x.get("km")).replace(".", ",")
+                           + ")</span> &mdash; " + e(x.get("dlaczego") or "") + "</li>" for x in intro["warto_zobaczyc"]) + "</ul>")
+    yes = '<a href="' + link + '?rsvp=tak" style="' + btn + ';background:#2f5d3a;color:#f5efe0">\u2714 JAD\u0118</a>'
+    no = '<a href="' + link + '?rsvp=nie" style="' + btn + ';background:#efe7d4;color:#7c2b22;border:1px solid #cdbb99">Nie dam rady</a>'
+    view = ('<a href="' + link + '" style="' + btn + ';background:#201c14;color:#f5efe0">Zobacz tras\u0119, pogod\u0119 i map\u0119 \u2192</a>')
+    return ('<div style="max-width:600px;margin:0 auto;background:#f7f1e3;padding:26px 28px;font-family:Georgia,serif;color:#201c14;border:1px solid #d8ceb6">'
+            '<div style="text-align:center;color:#7c2b22;letter-spacing:.28em;font-size:12px;text-transform:uppercase">\u2726 Zaproszenie na jazd\u0119 \u2726</div>'
+            '<h1 style="text-align:center;font-size:28px;line-height:1.2;margin:10px 0 6px">' + e(title) + '</h1>'
+            + ('<div style="text-align:center;color:#5a5140;font-size:14px">' + e(route_name) + '</div>' if title != route_name else "")
+            + '<hr style="border:none;border-top:2px solid #6b6446;margin:16px 0">'
+            '<table style="border-collapse:collapse;margin:0 0 6px">' + trs + '</table>' + body
+            + '<div style="text-align:center;margin:22px 0 12px">' + view + '</div>'
+            '<div style="text-align:center;margin:10px 0">' + yes + '&nbsp;&nbsp;&nbsp;' + no + '</div>'
+            '<p style="text-align:center;color:#8c8168;font-size:12.5px;line-height:1.5;margin-top:14px">'
+            'Pod linkiem zawsze aktualna prognoza, wiatr i alerty dla planowanej godziny oraz mapa z punktami zaopatrzenia. '
+            'W za\u0142\u0105czniku plik <b>GPX</b> do nawigacji. Link jest osobisty i dzia\u0142a do dnia po je\u017adzie.</p>'
+            '<hr style="border:none;border-top:1px solid #d8ceb6;margin:16px 0 8px">'
+            '<div style="text-align:center;color:#8c8168;font-size:11px;letter-spacing:.2em;text-transform:uppercase">QBot &middot; Zaproszenie na jazd\u0119</div></div>')
