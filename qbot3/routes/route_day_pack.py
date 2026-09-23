@@ -91,7 +91,8 @@ def collect(build_fn, conn, route_id: str, date_str: str, long_stops: int = 0, l
                       "sr_proc": c.get("avg_pct"), "max_proc": c.get("max_pct"), "ocena": c.get("score"),
                       "ocena_opis": c.get("score_label")} for c in ((det.get("climbs") or {}).get("list") or [])],
         "forma": {"ftp_w": _f(fo.get("ftp"), 0), "masa_kg": fo.get("mass"), "wprime_kj": _f(fo.get("w_prime_kj")),
-                  "zapotrzebowanie": fo.get("vs_route")},
+                  "zapotrzebowanie": fo.get("vs_route"),
+                  "prognoza_dnia": fo.get("prognoza_dnia")},
         "wykonalnosc": {"werdykt_silnika": wd.get("verdict"), "sciana": ((wd.get("walls") or [{}])[0]).get("label"),
                         "tsb_po": (wd.get("simulation") or {}).get("days") and wd["simulation"]["days"][0].get("tsb_morning"),
                         "sufity": wd.get("ceilings"), "forma": wd.get("form")},
@@ -117,7 +118,9 @@ SYS_A = _HDR + (
     "\"pewnosc\":\"niska|srednia|wysoka\",\"piach\":\"brak|mozliwy|pewny\",\"po_opadach\":\"sucho|normalnie|mokro\","
     "\"komentarz\":<=22 slow}]. Jawny tag surface=sand -> piach 'pewny'; sam region/ryzyko -> 'mozliwy'. "
     "NIE cytuj surowych kodow OSM - tlumacz na ludzki.\n"
-    "wykonalnosc: {\"werdykt\":\"w_normie|na_granicy|ponad_forme\",\"komentarz\":<=25 slow} - na bazie liczb z day.wykonalnosc.\n"
+    "wykonalnosc: {\"werdykt\":\"w_normie|na_granicy|ponad_forme\",\"komentarz\":<=25 slow} - na bazie liczb z day.wykonalnosc "
+    "ORAZ day.forma.prognoza_dnia (forma PROGNOZOWANA rano w dniu jazdy: warianty 'jak_dotad' i 'odpoczynek'; "
+    "TSB dodatni = swiezosc). Oceniaj na prognoze, nie na stan dzisiejszy.\n"
     "notatki_alberta: 4-10 najwazniejszych FAKTOW dnia (<=25 slow kazdy) do odpowiadania na pytania.")
 
 SYS_B = _HDR + (

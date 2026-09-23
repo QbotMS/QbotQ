@@ -3422,6 +3422,12 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
             conn, date_str, _xss, forma, ai=ai)
     except Exception:
         forma["wykonalnosc_dane"] = forma["wykonalnosc"] = None
+    # prognoza formy RANO w dniu jazdy (ModelQ v2 1:1, warianty: jak dotad 14 dni / odpoczynek)
+    try:
+        from fitmodel.form_projection import project_form as _pf
+        forma["prognoza_dnia"] = _pf(conn, date_str)
+    except Exception:
+        forma["prognoza_dnia"] = None
 
     # --- [PODJAZDY-SKALA] ocena -2..+2 per podjazd (skalowana do CP z ModelQ) ---
     try:
