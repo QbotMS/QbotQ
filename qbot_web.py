@@ -5055,7 +5055,7 @@ async def invites_send(request: Request):
         except Exception:
             gpx = None
         base = _WYPRAWA_PUBLIC_BASE.rstrip("/")
-        safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", _ri._ascii(name) if hasattr(_ri, "_ascii") else name)[:60] or "trasa"
+        safe = _re.sub(r"[^A-Za-z0-9_.-]+", "_", name).strip("_")[:60] or "trasa"
         subj = "Zaproszenie na jazd\u0119: %s \u2013 %s" % (((intro or {}).get("tytul") or name), _ri.fmt_day(day))
         out = []
         srv = None
@@ -6245,7 +6245,9 @@ RIDE_GEAR_SLOTS = [
     "Buty", "Kask", "Okulary", "Akcesoria",
 ]
 RIDE_GEAR_CASSETTES = ["Garbaruk 10-52T (13rz)", "SRAM Force E1 10-46T"]
-_RIDE_GEAR_ALLOWED = set(RIDE_GEAR_SLOTS) | {"wheels", "cassette"}
+# "_rower", "_typ" (krotki|dluzsza|wyprawa), "_odczucie" (zimno|ok|cieplo), "_uwagi" - kontekst wpisu (value)
+RIDE_GEAR_META = ("_rower", "_typ", "_odczucie", "_uwagi")
+_RIDE_GEAR_ALLOWED = set(RIDE_GEAR_SLOTS) | {"wheels", "cassette"} | set(RIDE_GEAR_META)
 
 
 def _garage_conn():
@@ -6299,8 +6301,28 @@ def ride_gear_options(ride: str = Query("")):
                 "SELECT slot, gear_id, value FROM ride_gear_log WHERE ride_key=?",
                 (lr["ride_key"],)).fetchall():
                 last[r["slot"]] = {"gear_id": r["gear_id"], "value": r["value"]}
+        bikes = [{"id": r["id"], "name": r["name"], "type": r["type"]} for r in gc.execute(
+            "SELECT id, name, type FROM bikes WHERE active=1 ORDER BY id").fetchall()]
+        detected = None
+        if ride:
+            try:
+                from qbot3.rides.activity_devices import bike_for_ride
+                _pc = _db_conn()
+                try:
+                    bn = (bike_for_ride(_pc, ride) or {}).get("bike")
+                finally:
+                    _pc.close()
+                if bn:
+                    toks = [t for t in str(bn).lower().replace("canyon", "").split() if len(t) > 2]
+                    for b in bikes:
+                        if toks and all(t in str(b["name"]).lower() for t in toks):
+                            detected = {"id": b["id"], "name": b["name"], "z_czujnikow": bn}
+                            break
+            except Exception:
+                detected = None
         return {"ride": ride, "slots": slots,
                 "bike": {"wheels": wheels, "cassette": cassettes},
+                "bikes": bikes, "detected_bike": detected,
                 "saved": saved, "last": last}
     finally:
         gc.close()
