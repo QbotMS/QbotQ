@@ -242,7 +242,7 @@ def day_info(ctx: dict, d: date) -> dict:
             info["type"] = "del" if info["type"] in ("normal", "urlop") else info["type"]; info["labels"].append("🧳 delegacja")
         elif et == "urlop":
             info["type"] = "urlop" if info["type"] == "normal" else info["type"]; info["labels"].append("🏖️ " + (c.get("title") or "urlop"))
-        elif kind == "event" and c.get("at_time"):
+        elif kind == "event" and c.get("at_time") and c.get("id") not in ctx.get("route_entry_ids", set()):
             s = hm(str(c["at_time"])[:5]); info["busy"].append((s, min(s + 150, 23 * 60), "📅 " + (c.get("title") or "wydarzenie")))
     for g in ctx.get("goals", []):
         if g.get("kind") in ("trip", "long_ride") and g.get("date_from") and g.get("status") not in ("dropped", "done"):
@@ -407,13 +407,30 @@ def plan_week(ctx: dict) -> dict:
                 if nd in infos and infos[nd]["type"] == "normal":
                     infos[nd]["type"] = "short"; infos[nd]["labels"].append("po chorobie — lżej")
 
+    long_day = None
+    long_h_cfg = float(P(ov, "yoga.long_h"))
+    for rr in ctx.get("route_rides", []):
+        d = _d(rr["day"])
+        if d not in infos or d < today or infos[d]["type"] in ("rest", "ill", "del"):
+            continue
+        dur = int(rr["dur_min"])
+        is_long = dur >= long_h_cfg * 60 * 0.8 or (rr.get("km") or 0) >= 80
+        st = rr.get("at") or "08:00"
+        srow = {"day": d.isoformat(), "sport": "rower", "name": rr["name"], "start_time": st, "dur_min": dur,
+                "min_min": dur, "zone": 2, "is_long": is_long, "xss": rr.get("xss") or xss_of("rower", 2, dur),
+                "status": "plan", "cut": False, "source": "auto",
+                "note": "jazda z Kalendarza (trasa): " + ", ".join(x for x in (f"{rr['km']} km" if rr.get("km") else None, f"+{rr['up']} m" if rr.get("up") else None, f"~{rr['xss']} XSS" if rr.get("xss") else None) if x)}
+        placed.append(srow); out.append(srow)
+        cnt["rower"] = max(0, cnt["rower"] - 1); target_min = max(0, target_min - dur)
+        if is_long and (long_day is None or (rr.get("xss") or 0) > 0):
+            long_day = d
+        notes.append(f"{d.isoformat()}: Twoja jazda z Kalendarza „{rr['name']}” (~{dur // 60} h {dur % 60:02d}′) — plan ułożony wokół niej")
     fixed = cnt["sila"] * 40 + cnt["wiosl"] * 30 + cnt["joga"] * 20
     rower_total = max(0, target_min - fixed)
     long_h = float(P(ov, "yoga.long_h"))
     hard_xss = float(P(ov, "yoga.hard_xss"))
-    long_day = None
-    # 1) dluga jazda
-    if cnt["rower"] >= 1 and ph not in ("ev", "rg") and rower_total >= 60:
+    # 1) dluga jazda (pomijana, gdy dluga jest juz w Kalendarzu)
+    if long_day is None and cnt["rower"] >= 1 and ph not in ("ev", "rg") and rower_total >= 60:
         cands = [d for d in plan_days if open_day(d) and (d.weekday() >= 5 or infos[d]["type"] == "urlop") and not has(d, "rower")]
         scored = []
         for d in cands:
@@ -480,7 +497,7 @@ def plan_week(ctx: dict) -> dict:
                 continue
             if any(has(d + timedelta(days=k), "sila") for k in (-1, 1)):
                 continue
-            if long_day and (long_day - d).days == 1:
+            if long_day and 0 <= (long_day - d).days <= 1:   # nie w dzien dlugiej jazdy ani w przeddzien
                 continue
             cands.append((1 if has(d, "rower") else 0, d))
         if not cands:
@@ -685,6 +702,31 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
             wx = forecast(*hp)
     except Exception:
         wx = {}
+    import re as _re
+    route_rides, route_ids = [], set()
+    try:
+        c.execute("""SELECT r.entry_id, r.day, r.route_id, r.route_name, e.at_time, e.note, e.title FROM qbot_v2.calendar_day_route r
+                     JOIN qbot_v2.calendar_entry e ON e.id = r.entry_id WHERE r.day BETWEEN %s AND %s""", (ws, we))
+        rrows = c.fetchall()
+        c.execute("SELECT COALESCE(SUM(distance_m),0)/1000.0 AS km, COALESCE(SUM(duration_s),0)/3600.0 AS h FROM qbot_v2.training_sessions "
+                  "WHERE sport_type IN ('cycling','gravel_cycling') AND date > %s", (today - timedelta(days=120),))
+        sp_ = c.fetchone()
+        spd_ = (float(sp_["km"]) / float(sp_["h"])) if sp_ and sp_["h"] and float(sp_["h"]) > 5 else 20.0
+        for r in rrows:
+            note = r["note"] or ""
+            mk = _re.search(r"([0-9]+(?:[.,][0-9]+)?)\s*km", note); mu = _re.search(r"\+\s*([0-9]+)\s*m", note); mx = _re.search(r"~\s*([0-9]+)\s*XSS", note)
+            km_ = float(mk.group(1).replace(",", ".")) if mk else None
+            if km_ is None:
+                c.execute("SELECT distance_m FROM qbot_v2.route_base WHERE route_id=%s ORDER BY updated_at DESC LIMIT 1", (r["route_id"],))
+                rb = c.fetchone(); km_ = round(float(rb["distance_m"]) / 1000, 1) if rb and rb["distance_m"] else None
+            dur = int(round((km_ / spd_) * 60)) if km_ else 180
+            route_rides.append({"entry_id": r["entry_id"], "day": r["day"], "route_id": r["route_id"],
+                                "name": (r["title"] or r["route_name"] or "Jazda z Kalendarza").replace("[Q] ", "").split(" · ")[0],
+                                "at": r["at_time"].strftime("%H:%M") if r["at_time"] else None, "km": km_,
+                                "up": int(mu.group(1)) if mu else None, "xss": int(mx.group(1)) if mx else None, "dur_min": max(30, dur)})
+            route_ids.add(r["entry_id"])
+    except Exception:
+        route_rides, route_ids = [], set()
     km_floor_h = 0.0
     try:
         import calendar as _cal
@@ -705,5 +747,6 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
     except Exception:
         km_floor_h = 0.0
     return {"week_start": ws, "today": today, "ov": ov, "goals": goals, "rules": rules, "calendar": cal, "day_state": dstate, "km_floor_h": round(km_floor_h, 1),
+            "route_rides": route_rides, "route_entry_ids": route_ids,
             "keep": keep, "activities_extra": extra, "readiness_today": rt, "readiness_threshold": thr, "weather": wx,
             "all_sessions": sess}

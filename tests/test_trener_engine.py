@@ -136,6 +136,22 @@ class TestPlan(unittest.TestCase):
         self.assertEqual(ph["2027-05-24"], "rg")
 
 
+class TestCalendarRide(unittest.TestCase):
+    """Zgloszenie 2026-09-23: w nd trasa w Kalendarzu (104,7 km, 09:15), a silnik dal dluga jazde w sb i sile+joge w nd."""
+    def test_route_ride_is_the_long_ride(self):
+        cal = [{"id": 34, "day": "2026-10-11", "end_day": None, "kind": "event", "event_type": None, "title": "[Q] ze wsi do Małej Wsi", "at_time": "09:15", "note": ""}]
+        rides = [{"entry_id": 34, "day": "2026-10-11", "name": "ze wsi do Małej Wsi", "at": "09:15", "km": 104.7, "up": 644, "xss": 263, "dur_min": 300}]
+        r = E.plan_week(ctx(calendar=cal, route_rides=rides, route_entry_ids={34}))
+        sun = [s for s in r["sessions"] if s["day"] == "2026-10-11"]
+        self.assertEqual([s["name"] for s in sun if s["sport"] == "rower"], ["ze wsi do Małej Wsi"])
+        self.assertEqual(sun[0]["start_time"], "09:15")
+        self.assertFalse(any(s["sport"] == "sila" for s in sun))                       # nie w dzien dlugiej
+        longs = [s for s in r["sessions"] if s["is_long"]]
+        self.assertEqual(len(longs), 1)                                                  # bez drugiej dlugiej w sb
+        self.assertFalse(any(s["sport"] == "sila" and s["day"] == "2026-10-10" for s in r["sessions"]))  # ani w przeddzien
+        self.assertEqual(r["days"]["2026-10-11"]["busy"], [])                           # jazda nie jest zajetoscia
+
+
 class TestSeasonModel(unittest.TestCase):
     G = [{"kind": "trip", "name": "Badlands", "priority": "A", "date_from": "2027-05-14", "date_to": "2027-05-22", "status": "active"},
          {"kind": "trip", "name": "Wrzesien", "priority": "A", "date_from": "2027-09-04", "date_to": "2027-09-12", "status": "active"}]

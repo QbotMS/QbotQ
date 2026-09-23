@@ -191,3 +191,11 @@ obcięty do `load.budget_h`. W edytorze okresy: sezon bieżący / następny, rok
 Okna = N kolejnych dni jazdy na wyprawach (N = długość celu; gdy żadna wyprawa nie była tak długa — najdłuższe możliwe).
 **km/dzień i m/dzień porównywane osobno** z najlepszym oknem dla każdej miary (zmiana przewyższenia nie może zmienić
 oceny km), plus **wysiłek dzienny = km + m/10** z jednego bloku (czy oba naraz). „Gotowy” = każda miara ≥ 90% potrzeb.
+
+## Jazdy zaplanowane w Kalendarzu (2026-09-23)
+
+Wydarzenie Kalendarza z podpiętą trasą (`calendar_day_route`, np. z Analizy trasy / Planera) = **Twoja jazda**, nie
+zajętość: silnik wstawia ją jako sesję roweru o godzinie z wydarzenia (czas ≈ km ÷ średnia prędkość ze 120 dni; km, +m,
+XSS z notatki wydarzenia albo z `route_base`), odejmuje od budżetu i liczby jazd. Jeśli jest długa (≥ 0,8 × „długiej
+jazdy” albo ≥ 80 km) — to ona jest długą jazdą tygodnia (silnik nie dokłada drugiej), siła nie w ten dzień ani w
+przeddzień, joga po długiej — dzień później. W UI wydarzenia z godziną nie są już dublowane.
