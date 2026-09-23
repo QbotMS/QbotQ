@@ -90,15 +90,56 @@ def series_stats(daily: dict, min_km: float = 20.0) -> dict:
     R = [{"start": r[0].isoformat(), "end": r[-1].isoformat(), "days": len(r), "km": sum(daily[x][0] for x in r), "up": sum(daily[x][1] for x in r)} for r in runs]
     for x in R:
         x["km_day"], x["up_day"], x["load"] = x["km"] / x["days"], x["up"] / x["days"], x["km"] + x["up"] / 10
-    multi = [x for x in R if x["days"] >= 3]
-    ref = max(multi, key=lambda x: x["load"], default=None)
-    longest = max(R, key=lambda x: (x["days"], x["load"]), default=None)
+    has_geo = any(len(v) >= 4 and v[2] and v[3] for v in daily.values())
+    if has_geo:
+        ex = expedition_chains(daily)
+        ref = max(ex, key=lambda x: x["load"], default=None)
+        longest = max(ex, key=lambda x: (x["days"], x["load"]), default=None)
+    else:  # bez GPS: przyblizenie seriami dni (najciezsza >=3 dni)
+        multi = [x for x in R if x["days"] >= 3]
+        ref = max(multi, key=lambda x: x["load"], default=None)
+        longest = max(R, key=lambda x: (x["days"], x["load"]), default=None)
     def pack(x):
         return None if not x else {"start": x["start"], "end": x["end"], "days": x["days"], "km": round(x["km"]), "up": round(x["up"]),
                                     "km_day": round(x["km_day"]), "up_day": round(x["up_day"])}
     return {"max_km_day": round(max((v[0] for v in daily.values()), default=0)),
             "max_up_day": round(max((v[1] for v in daily.values()), default=0)),
             "ref": pack(ref), "longest": pack(longest)}
+
+
+def _hav(a: tuple, b: tuple) -> float:
+    import math
+    p1, p2 = math.radians(a[0]), math.radians(b[0])
+    dp, dl = p2 - p1, math.radians(b[1] - a[1])
+    return 2 * 6371 * math.asin(math.sqrt(math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2))
+
+
+def expedition_chains(daily: dict, link_km: float = 15.0, move_km: float = 10.0, max_gap_days: int = 1) -> list[dict]:
+    """daily: {date: (km, up, start(lat,lon)|None, end(lat,lon)|None)}.
+    WYPRAWA = dni jazdy z punktu do punktu: start dnia <= link_km od konca poprzedniego dnia jazdy I start przesuniety
+    >= move_km wzgledem startu poprzedniego dnia. Petle z jednej bazy (Mazury, Sycylia) i jazdy wokol domu NIE sa wyprawa.
+    Dozwolony 1 dzien przerwy w trakcie wyprawy (dzien bez jazdy). Zwraca lancuchy >= 2 dni jazdy."""
+    ds = [d for d in sorted(daily) if daily[d][2] and daily[d][3]]
+    chains, cur = [], []
+    for d in ds:
+        if cur:
+            p = cur[-1]
+            gap = (d - p).days - 1
+            linked = gap <= max_gap_days and _hav(daily[d][2], daily[p][3]) <= link_km and _hav(daily[d][2], daily[p][2]) >= move_km
+            if linked:
+                cur.append(d)
+                continue
+            if len(cur) >= 2:
+                chains.append(cur)
+        cur = [d] if _hav(daily[d][2], daily[d][3]) >= move_km else []
+    if len(cur) >= 2:
+        chains.append(cur)
+    out = []
+    for ch in chains:
+        km_ = sum(daily[x][0] for x in ch); up_ = sum(daily[x][1] for x in ch)
+        out.append({"start": ch[0].isoformat(), "end": ch[-1].isoformat(), "days": len(ch), "km": round(km_), "up": round(up_),
+                    "km_day": round(km_ / len(ch)), "up_day": round(up_ / len(ch)), "load": km_ + up_ / 10})
+    return out
 
 
 def _lvl(ratios: list[float]) -> str:
@@ -124,7 +165,7 @@ def status_trip(g: dict, hist: dict, ctl_now: float | None, ctl_max: float | Non
     ref, lon = hist.get("ref"), hist.get("longest")
     rows, ratios = [], []
     refn = (f"najcięższa wyprawa: {_pl_date(ref['start'])}–{_pl_date(ref['end'])}, {ref['days']} dni, {ref['km']} km, {ref['up']} m"
-            if ref else "brak wyjazdu ≥3 dni pod rząd w danych")
+            if ref else "brak wyprawy (jazdy z punktu do punktu) w danych")
     if t.get("km") and days:
         need = t["km"] / days
         have = hist["max_km_day"] if one_day else (ref["km_day"] if ref else hist["max_km_day"])
@@ -139,7 +180,7 @@ def status_trip(g: dict, hist: dict, ctl_now: float | None, ctl_max: float | Non
         ratios.append(have / need if need else None)
     if days and days > 1:
         have = ref["days"] if ref else 0
-        note = refn + (f" · najdłuższa seria jazd: {lon['days']} dni ({_pl_date(lon['start'])}, {lon['km']} km — lżejsza)" if lon and ref and lon["days"] > ref["days"] else "")
+        note = refn + (f" · najdłuższa wyprawa: {lon['days']} dni ({_pl_date(lon['start'])}, {lon['km']} km — lżejsza)" if lon and ref and lon["days"] > ref["days"] else "")
         rows.append({"k": "dni pod rząd", "have": have, "need": days, "note": note})
         ratios.append(have / days)
     if ctl_now is not None:
@@ -257,10 +298,38 @@ def compute_balance(c, ov: dict, goals: list) -> dict:
                        for d, s in zip(days[-30:], smooth(wv)[-30:])]}
 
 
+_DAILY_CACHE: dict = {}
+
+
 def _daily_km_up(c, since: date) -> dict:
-    c.execute("SELECT date, SUM(distance_m)/1000.0 AS km, SUM(elevation_m) AS up FROM qbot_v2.training_sessions "
-              "WHERE sport_type IN ('cycling','gravel_cycling') AND date >= %s GROUP BY date", (since,))
-    return {r["date"]: (float(r["km"] or 0), float(r["up"] or 0)) for r in c.fetchall()}
+    """{date: (km, up, start(lat,lon), end(lat,lon))} dla jazd rowerowych od 'since'. Cache 10 min (podglad celu liczy sie przy kazdej zmianie pola)."""
+    hit = _DAILY_CACHE.get(since)
+    if hit and hit[0] > time.time() - 600:
+        return hit[1]
+    res = _daily_km_up_db(c, since)
+    _DAILY_CACHE.clear(); _DAILY_CACHE[since] = (time.time(), res)
+    return res
+
+
+def _daily_km_up_db(c, since: date) -> dict:
+    c.execute("""WITH s AS (SELECT external_id, date, started_at, distance_m, elevation_m FROM qbot_v2.training_sessions
+                 WHERE sport_type IN ('cycling','gravel_cycling') AND date >= %s),
+      f AS (SELECT DISTINCT ON (r.external_id) r.external_id, r.lat, r.lon FROM qbot_v2.activity_record r JOIN s USING (external_id)
+            WHERE r.lat IS NOT NULL ORDER BY r.external_id, r.sec),
+      l AS (SELECT DISTINCT ON (r.external_id) r.external_id, r.lat, r.lon FROM qbot_v2.activity_record r JOIN s USING (external_id)
+            WHERE r.lat IS NOT NULL ORDER BY r.external_id, r.sec DESC)
+      SELECT s.date, s.started_at, s.distance_m, s.elevation_m, f.lat AS fa, f.lon AS fo, l.lat AS la, l.lon AS lo
+      FROM s LEFT JOIN f USING (external_id) LEFT JOIN l USING (external_id) ORDER BY s.date, s.started_at NULLS LAST""", (since,))
+    out: dict = {}
+    for r in c.fetchall():
+        km_, up_, st_, en_ = out.get(r["date"], (0.0, 0.0, None, None))
+        km_ += float(r["distance_m"] or 0) / 1000; up_ += float(r["elevation_m"] or 0)
+        if r["fa"] is not None:
+            if st_ is None:
+                st_ = (float(r["fa"]), float(r["fo"]))
+            en_ = (float(r["la"]), float(r["lo"]))
+        out[r["date"]] = (km_, up_, st_, en_)
+    return out
 
 
 def compute_goal_status(c, goals: list) -> dict:

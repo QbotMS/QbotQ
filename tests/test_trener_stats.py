@@ -49,6 +49,41 @@ def real_like():
     return daily
 
 
+def geo_like():
+    """Mazury: 8 dni petli z jednej bazy; Sycylia: petle z bazy; Toskania: 7 dni z punktu do punktu (~0,4 st. dziennie)."""
+    d = {}
+    base_m, base_s = (54.0, 22.0), (36.9, 15.1)
+    for i, (km, up) in enumerate([(46, 278), (50, 425), (25, 136), (55, 298), (34, 290), (72, 607), (65, 548), (56, 373)]):
+        d[date(2025, 8, 8) + timedelta(days=i)] = (km, up, base_m, base_m)
+    for i, dd in enumerate([8, 9, 11, 13, 14, 17, 18, 20]):
+        d[date(2026, 8, dd)] = (50, 600, base_s, base_s)
+    pt = (43.7, 11.2)
+    for i, (km, up) in enumerate([(69, 766), (94, 1238), (90, 1237), (58, 613), (59, 1150), (82, 1290), (59, 965)]):
+        nxt = (pt[0] - 0.4, pt[1] + 0.1)
+        d[date(2026, 6, 5) + timedelta(days=i)] = (km, up, pt, nxt)
+        pt = nxt
+    return d
+
+
+class TestExpeditions(unittest.TestCase):
+    def test_only_point_to_point_counts(self):
+        ch = S.expedition_chains(geo_like())
+        self.assertEqual(len(ch), 1)
+        self.assertEqual((ch[0]["start"], ch[0]["days"], ch[0]["km"]), ("2026-06-05", 7, 511))
+
+    def test_stats_ignore_base_loops(self):
+        s = S.series_stats(geo_like())
+        self.assertEqual(s["ref"]["start"], "2026-06-05")
+        self.assertEqual(s["longest"]["days"], 7)      # Mazury (8 dni petli) juz nie sa "najdluzsza wyprawa"
+
+    def test_rest_day_inside_trip(self):
+        d = {}
+        pt = (50.0, 17.0)
+        for dd in (1, 2, 4):  # 3 = dzien przerwy
+            nxt = (pt[0] + 0.3, pt[1]); d[date(2026, 8, dd)] = (100, 800, pt, nxt); pt = nxt
+        self.assertEqual(S.expedition_chains(d)[0]["days"], 3)
+
+
 class TestSeries(unittest.TestCase):
     def test_reference_is_heaviest_not_longest(self):
         s = S.series_stats(real_like())

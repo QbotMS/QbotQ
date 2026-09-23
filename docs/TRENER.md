@@ -162,3 +162,11 @@ inne (opis). Walidacja dat i wymaganych pól, podpowiedzi na żywo (km/dzień, x
 przed zapisem. API: `POST /goals/preview` (nic nie zapisuje), `GET /route_summary?route_id=`, `POST /goals/{id}/calendar`
 (wpis kind=event, note `[trener-cel]`, ponowne wywołanie aktualizuje zamiast dublować). FTP w podglądzie nowego celu:
 potrzebny przyrost %/mies. (≤1% realne, ≤2% ambitne, więcej mało realne).
+
+## Gotowość do wyprawy — co jest „wyprawą” (2026-09-23, poprawka po 2 błędach)
+
+Wyprawa = dni jazdy **z punktu do punktu**: start dnia ≤ 15 km od końca poprzedniego dnia jazdy **i** start przesunięty
+≥ 10 km względem poprzedniego startu (dozwolony 1 dzień przerwy). Pętle z jednej bazy (Mazury 08.2025, Sycylia 08.2026)
+i dni jazdy wokół domu **nie są** wyprawą. Punkt odniesienia = najcięższa wyprawa (km + przewyższenie/10); km/dzień,
+m/dzień i liczba dni z TEGO SAMEGO wyjazdu. Na danych: 07.2025 (2 dni), Toskania 06.2026 (7 dni, 511 km, 7 259 m),
+Opole 08.2026 (3 dni). Bez GPS — przybliżenie seriami dni. Dane dzienne: `_daily_km_up` (cache 10 min).
