@@ -35,27 +35,49 @@ class TestBalance(unittest.TestCase):
         self.assertIsNone(S.lin_slope([(0, 1), (1, 2)]))
 
 
+def real_like():
+    daily = {}
+    # Mazury 2025: 8 dni lekkich petli (403 km, 2955 m)
+    for i, (km, up) in enumerate([(46, 278), (50, 425), (25, 136), (55, 298), (34, 290), (72, 607), (65, 548), (56, 373)]):
+        daily[date(2025, 8, 8) + timedelta(days=i)] = (km, up)
+    # Toskania 2026: 7 dni (511 km, 7259 m)
+    for i, (km, up) in enumerate([(69, 766), (94, 1238), (90, 1237), (58, 613), (59, 1150), (82, 1290), (59, 965)]):
+        daily[date(2026, 6, 5) + timedelta(days=i)] = (km, up)
+    # Opole 2026: 3 dni (341 km, 2372 m); rekord dnia 131 km
+    for i, (km, up) in enumerate([(131, 825), (109, 824), (101, 723)]):
+        daily[date(2026, 8, 1) + timedelta(days=i)] = (km, up)
+    return daily
+
+
 class TestSeries(unittest.TestCase):
-    def test_series_threshold_20km(self):
-        d0 = date(2026, 6, 5)
-        daily = {d0 + timedelta(days=i): (km, 1000) for i, km in enumerate([69, 94, 90, 58, 59, 82, 60])}
-        daily[date(2026, 5, 1)] = (131, 400)
-        s = S.series_stats(daily)
-        self.assertEqual(s["series_days"], 7)
+    def test_reference_is_heaviest_not_longest(self):
+        s = S.series_stats(real_like())
+        self.assertEqual(s["ref"]["start"], "2026-06-05")        # Toskania, nie Mazury
+        self.assertEqual(s["ref"]["days"], 7)
+        self.assertEqual(s["ref"]["km"], 511)
+        self.assertEqual(s["longest"]["days"], 8)                # tylko informacyjnie
         self.assertEqual(s["max_km_day"], 131)
-        self.assertEqual(s["series_km"], 512)
-        self.assertEqual(s["best_km_day"], 73)
-        self.assertEqual(s["best_up_day"], 1000)
 
 
 class TestStatus(unittest.TestCase):
-    def test_trip(self):
-        hist = {"max_km_day": 131, "max_up_day": 1621, "series_days": 7, "series_start": "2026-06-05", "series_km": 511, "series_up": 7259,
-                "best_km_day": 73, "best_km_series": "2026-06-05, 7 dni", "best_up_day": 1037, "best_up_series": "2026-06-05, 7 dni"}
-        g = {"target": {"km": 790, "up_m": 15300, "days": 9}, "date_from": "2027-05-14", "date_to": "2027-05-22"}
-        s = S.status_trip(g, hist, 55, 91)
-        self.assertEqual(s["level"], "y")
-        self.assertIn("przewyższenie", s["text"])
+    def test_trip_uses_reference_trip(self):
+        hist = S.series_stats(real_like())
+        g = {"kind": "trip", "target": {"km": 790, "up_m": 15000, "days": 11}, "date_from": "2027-05-14", "date_to": "2027-05-24"}
+        st = S.status_trip(g, hist, 56, 91)
+        rows = {r["k"]: r for r in st["rows"]}
+        self.assertEqual(rows["dni pod rząd"]["have"], 7)
+        self.assertIn("05.06.2026–11.06.2026", rows["dni pod rząd"]["note"])
+        self.assertIn("lżejsza", rows["dni pod rząd"]["note"])
+        self.assertEqual(rows["km na dzień"]["have"], 73)
+        self.assertEqual(rows["przewyższenie na dzień"]["have"], 1037)
+        self.assertIn("dni pod rząd", st["text"])   # 7/11 = 0.64 < przewyzszenie 1037/1364 = 0.76
+
+    def test_long_ride_uses_day_record(self):
+        hist = S.series_stats(real_like())
+        st = S.status_trip({"kind": "long_ride", "target": {"km": 200, "up_m": 1500}, "date_from": "2027-06-12"}, hist, 56, 91)
+        rows = {r["k"]: r for r in st["rows"]}
+        self.assertEqual(rows["dystans"]["have"], 131)
+        self.assertNotIn("dni pod rząd", rows)
 
     def test_weight_wrong_direction(self):
         g = {"target": {"weight_kg": 90}, "date_to": "2027-10-31"}
