@@ -152,6 +152,24 @@ class TestCalendarRide(unittest.TestCase):
         self.assertEqual(r["days"]["2026-10-11"]["busy"], [])                           # jazda nie jest zajetoscia
 
 
+class TestCarryOver(unittest.TestCase):
+    """Zgloszenie 2026-09-23: nd 27.09 trasa 104,7 km (~263 XSS), a w pn 28.09 plan dal godzinna jazde."""
+    def test_no_ride_after_heavy_sunday_of_previous_week(self):
+        carry = [{"day": "2026-10-04", "name": "ze wsi do Małej Wsi", "xss": 263, "is_long": True}]
+        r = E.plan_week(ctx(week_start=date(2026, 10, 5), today=date(2026, 10, 5), carry=carry))
+        mon = [s for s in r["sessions"] if s["day"] == "2026-10-05"]
+        self.assertFalse(any(s["sport"] == "rower" for s in mon))
+        self.assertTrue(any(s["name"] == "Joga po długiej jeździe" for s in mon))
+        self.assertTrue(any("przerwa po ciężkiej" in n for n in r["notes"]))
+
+    def test_engine_long_ride_counts_as_heavy(self):
+        r = E.plan_week(ctx())
+        longs = [date.fromisoformat(s["day"]) for s in r["sessions"] if s.get("is_long")]
+        rides = [date.fromisoformat(s["day"]) for s in r["sessions"] if s["sport"] == "rower" and not s.get("is_long")]
+        for L in longs:
+            self.assertFalse(any(0 < (d - L).days < 2 for d in rides), (longs, rides))
+
+
 class TestSeasonModel(unittest.TestCase):
     G = [{"kind": "trip", "name": "Badlands", "priority": "A", "date_from": "2027-05-14", "date_to": "2027-05-22", "status": "active"},
          {"kind": "trip", "name": "Wrzesien", "priority": "A", "date_from": "2027-09-04", "date_to": "2027-09-12", "status": "active"}]

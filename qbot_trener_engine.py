@@ -242,6 +242,8 @@ def day_info(ctx: dict, d: date) -> dict:
             info["type"] = "del" if info["type"] in ("normal", "urlop") else info["type"]; info["labels"].append("🧳 delegacja")
         elif et == "urlop":
             info["type"] = "urlop" if info["type"] == "normal" else info["type"]; info["labels"].append("🏖️ " + (c.get("title") or "urlop"))
+        elif c.get("id") in ctx.get("route_trip_ids", set()):
+            info["type"] = "trip" if info["type"] in ("normal", "urlop", "short") else info["type"]; info["labels"].append("🗺️ " + (c.get("title") or "wyprawa"))
         elif kind == "event" and c.get("at_time") and c.get("id") not in ctx.get("route_entry_ids", set()):
             s = hm(str(c["at_time"])[:5]); info["busy"].append((s, min(s + 150, 23 * 60), "📅 " + (c.get("title") or "wydarzenie")))
     for g in ctx.get("goals", []):
@@ -395,6 +397,26 @@ def plan_week(ctx: dict) -> dict:
         placed.append(s); out.append(s)
         return s
 
+    long_day = None
+    long_h_cfg = float(P(ov, "yoga.long_h"))
+    for rr in ctx.get("route_rides", []):
+        d = _d(rr["day"])
+        if d not in infos or d < today or infos[d]["type"] in ("rest", "ill", "del"):
+            continue
+        dur = int(rr["dur_min"])
+        is_long = dur >= long_h_cfg * 60 * 0.8 or (rr.get("km") or 0) >= 80
+        st = rr.get("at") or "08:00"
+        srow = {"day": d.isoformat(), "sport": "rower", "name": rr["name"], "start_time": st, "dur_min": dur,
+                "min_min": dur, "zone": 2, "is_long": is_long, "xss": rr.get("xss") or xss_of("rower", 2, dur),
+                "status": "plan", "cut": False, "source": "auto",
+                "note": "jazda z Kalendarza (trasa): " + ", ".join(x for x in (f"{rr['km']} km" if rr.get("km") else None, f"+{rr['up']} m" if rr.get("up") else None, f"~{rr['xss']} XSS" if rr.get("xss") else None) if x)}
+        placed.append(srow); out.append(srow)
+        st_m = hm(st)
+        infos[d]["win"]["joga"] = [(max(5 * 60, st_m - 60), st_m)]   # joga przed jazda - przed startem
+        cnt["rower"] = max(0, cnt["rower"] - 1); target_min = max(0, target_min - dur)
+        if is_long and (long_day is None or (rr.get("xss") or 0) > 0):
+            long_day = d
+        notes.append(f"{d.isoformat()}: Twoja jazda z Kalendarza „{rr['name']}” (~{dur // 60} h {dur % 60:02d}′) — plan ułożony wokół niej")
     # dni wyprawy / delegacji: tylko krotka joga (reguly jogi)
     for d in plan_days:
         t = infos[d]["type"]
@@ -410,31 +432,37 @@ def plan_week(ctx: dict) -> dict:
                 if nd in infos and infos[nd]["type"] == "normal":
                     infos[nd]["type"] = "short"; infos[nd]["labels"].append("po chorobie — lżej")
 
-    long_day = None
-    long_h_cfg = float(P(ov, "yoga.long_h"))
-    for rr in ctx.get("route_rides", []):
-        d = _d(rr["day"])
-        if d not in infos or d < today or infos[d]["type"] in ("rest", "ill", "del"):
-            continue
-        dur = int(rr["dur_min"])
-        is_long = dur >= long_h_cfg * 60 * 0.8 or (rr.get("km") or 0) >= 80
-        st = rr.get("at") or "08:00"
-        srow = {"day": d.isoformat(), "sport": "rower", "name": rr["name"], "start_time": st, "dur_min": dur,
-                "min_min": dur, "zone": 2, "is_long": is_long, "xss": rr.get("xss") or xss_of("rower", 2, dur),
-                "status": "plan", "cut": False, "source": "auto",
-                "note": "jazda z Kalendarza (trasa): " + ", ".join(x for x in (f"{rr['km']} km" if rr.get("km") else None, f"+{rr['up']} m" if rr.get("up") else None, f"~{rr['xss']} XSS" if rr.get("xss") else None) if x)}
-        placed.append(srow); out.append(srow)
-        cnt["rower"] = max(0, cnt["rower"] - 1); target_min = max(0, target_min - dur)
-        if is_long and (long_day is None or (rr.get("xss") or 0) > 0):
-            long_day = d
-        notes.append(f"{d.isoformat()}: Twoja jazda z Kalendarza „{rr['name']}” (~{dur // 60} h {dur % 60:02d}′) — plan ułożony wokół niej")
     fixed = cnt["sila"] * 40 + cnt["wiosl"] * 30 + cnt["joga"] * 20
     rower_total = max(0, target_min - fixed)
     long_h = float(P(ov, "yoga.long_h"))
     hard_xss = float(P(ov, "yoga.hard_xss"))
+    heavy_gap_h = float(P(ov, "regen.heavy_gap_h"))
+    hard_gap_d = int(P(ov, "int.hard_gap_days"))
+    carry = [dict(c_, day=_d(c_["day"])) for c_ in ctx.get("carry", [])]
+
+    def heavy_days() -> list:
+        hs = [_d(p["day"]) for p in placed if p["sport"] == "rower" and (p.get("is_long") or float(p.get("xss") or 0) >= hard_xss)]
+        return hs + [c_["day"] for c_ in carry if c_.get("is_long") or float(c_.get("xss") or 0) >= hard_xss]
+
+    def in_heavy_gap(d: date) -> date | None:
+        """Dzien d wypada w przerwie po ciezkiej jezdzie (tez z poprzedniego tygodnia) -> zwraca dzien tej jazdy."""
+        for h in heavy_days():
+            if 0 < (d - h).days * 24 < heavy_gap_h:
+                return h
+        return None
+    _seen_carry = set()
+    for c_ in sorted(carry, key=lambda x: -float(x.get("xss") or 0)):
+        if c_["day"] in _seen_carry:
+            continue
+        _seen_carry.add(c_["day"])
+        if c_.get("is_long") or float(c_.get("xss") or 0) >= hard_xss:
+            blocked = [d for d in plan_days if 0 < (d - c_["day"]).days * 24 < heavy_gap_h and infos[d]["type"] != "trip"
+                       and not any(p["day"] == d.isoformat() and p["sport"] == "rower" for p in placed)]
+            if blocked:
+                notes.append(f"{', '.join(x.isoformat() for x in blocked)}: przerwa po ciężkiej jeździe {c_['day'].isoformat()} ({c_.get('name') or 'jazda'}, ~{int(float(c_.get('xss') or 0))} XSS) — bez roweru")
     # 1) dluga jazda (pomijana, gdy dluga jest juz w Kalendarzu)
     if long_day is None and cnt["rower"] >= 1 and ph not in ("ev", "rg") and rower_total >= 60:
-        cands = [d for d in plan_days if open_day(d) and (d.weekday() >= 5 or infos[d]["type"] == "urlop") and not has(d, "rower")]
+        cands = [d for d in plan_days if open_day(d) and (d.weekday() >= 5 or infos[d]["type"] == "urlop") and not has(d, "rower") and not in_heavy_gap(d)]
         scored = []
         for d in cands:
             bad = wx_bad(infos[d]["wx"], ov, True)
@@ -459,7 +487,7 @@ def plan_week(ctx: dict) -> dict:
             for d in plan_days:
                 if not open_day(d) or has(d, "rower"):
                     continue
-                if long_day and 0 < (d - long_day).days < heavy_gap_days and (placed and any(p.get("is_long") and (p.get("xss") or 0) >= hard_xss for p in placed)):
+                if in_heavy_gap(d):
                     continue
                 bad = wx_bad(infos[d]["wx"], ov, False)
                 rdays = [_d(p["day"]) for p in placed if p["sport"] == "rower"]
@@ -487,7 +515,7 @@ def plan_week(ctx: dict) -> dict:
             if hard_n <= 0:
                 break
             d = _d(s["day"])
-            if long_day and abs((d - long_day).days) < gap:
+            if any(0 < abs((d - h).days) < gap for h in heavy_days() if h != d):
                 continue
             s.update(name="Podjazdy / tempo", zone=3, xss=xss_of("rower", 3, s["dur_min"]), note="mocny akcent tygodnia (Budowa)")
             hard_n -= 1
@@ -501,6 +529,8 @@ def plan_week(ctx: dict) -> dict:
             if any(has(d + timedelta(days=k), "sila") for k in (-1, 1)):
                 continue
             if long_day and 0 <= (long_day - d).days <= 1:   # nie w dzien dlugiej jazdy ani w przeddzien
+                continue
+            if in_heavy_gap(d) or any(0 <= (h - d).days <= 1 for h in heavy_days()):  # ani w przerwie po ciezkiej, ani przed ciezka
                 continue
             cands.append((1 if has(d, "rower") else 0, d))
         if not cands:
@@ -523,6 +553,12 @@ def plan_week(ctx: dict) -> dict:
         add(cands[0][2], "wiosl", "Wioślarz spokojnie", 30, 15)
     # 6) joga wg regul
     jn = cnt["joga"]
+    for c_ in carry:
+        nd = c_["day"] + timedelta(days=1)
+        if (c_.get("is_long") or float(c_.get("xss") or 0) >= hard_xss) and nd in infos and nd >= today and open_day(nd) and not has(nd, "joga") and jn > 0:
+            key = "rest_after_long"
+            if int(ov.get(f"yoga.{key}.on", 1)) and add(nd, "joga", "Joga po długiej jeździe", int(ov.get(f"yoga.{key}.min", YOGA[key])), 10, why=f"dzień po długiej jeździe ({c_['day'].isoformat()})"):
+                jn -= 1
     if long_day and jn > 0:
         nd = long_day + timedelta(days=1)
         if nd in infos and nd >= today and open_day(nd) and not has(nd, "joga"):
@@ -598,7 +634,8 @@ def check_rules_detailed(sessions: list, ov: dict, days_meta: dict | None = None
                 add("sila_before_long", x, f"{dd}: siła w przeddzień długiej jazdy ({nd}) — nogi mogą być zmęczone")
             if nxt in by and any(y["sport"] == "sila" for y in by[nxt]):
                 add("sila_seq", x, f"siła dzień po dniu ({dd} i {nd}) — zalecane 48 h przerwy")
-        if nxt in by:
+        trip_pair = ((days_meta or {}).get(d) or {}).get("type") == "trip" and ((days_meta or {}).get(nxt) or {}).get("type") == "trip"
+        if nxt in by and not trip_pair:
             for x in [y for y in L if y["sport"] == "rower" and is_long(y)]:
                 if any(y["sport"] == "rower" and is_long(y) for y in by[nxt]):
                     add("long_seq", x, f"dwie długie / ciężkie jazdy pod rząd ({dd}, {nd})")
@@ -739,30 +776,79 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
     except Exception:
         wx = {}
     import re as _re
-    route_rides, route_ids = [], set()
-    try:
-        c.execute("""SELECT r.entry_id, r.day, r.route_id, r.route_name, e.at_time, e.note, e.title FROM qbot_v2.calendar_day_route r
-                     JOIN qbot_v2.calendar_entry e ON e.id = r.entry_id WHERE r.day BETWEEN %s AND %s""", (ws, we))
-        rrows = c.fetchall()
+    route_rides, route_ids, route_trip_ids = [], set(), set()
+
+    def _route_days(pa, pb):
+        """Wydarzenia Kalendarza z podpieta trasa nachodzace na [pa, pb] -> lista jazd per dzien.
+        Wydarzenie wielodniowe (end_day) z jedna trasa = wyprawa: km / m / XSS rozlozone rowno na dni
+        (chyba ze Planer dal osobne trasy per dzien). Km i +m z notatki maja pierwszenstwo przed trasa."""
+        c.execute("""SELECT e.id AS entry_id, e.day, e.end_day, e.at_time, e.note, e.title, r.day AS rday, r.route_id, r.route_name
+                     FROM qbot_v2.calendar_entry e JOIN qbot_v2.calendar_day_route r ON r.entry_id = e.id
+                     WHERE e.day <= %s AND COALESCE(e.end_day, e.day) >= %s""", (pb, pa))
+        rows = c.fetchall()
         c.execute("SELECT COALESCE(SUM(distance_m),0)/1000.0 AS km, COALESCE(SUM(duration_s),0)/3600.0 AS h FROM qbot_v2.training_sessions "
                   "WHERE sport_type IN ('cycling','gravel_cycling') AND date > %s", (today - timedelta(days=120),))
         sp_ = c.fetchone()
         spd_ = (float(sp_["km"]) / float(sp_["h"])) if sp_ and sp_["h"] and float(sp_["h"]) > 5 else 20.0
-        for r in rrows:
-            note = r["note"] or ""
-            mk = _re.search(r"([0-9]+(?:[.,][0-9]+)?)\s*km", note); mu = _re.search(r"\+\s*([0-9]+)\s*m", note); mx = _re.search(r"~\s*([0-9]+)\s*XSS", note)
-            km_ = float(mk.group(1).replace(",", ".")) if mk else None
-            if km_ is None:
-                c.execute("SELECT distance_m FROM qbot_v2.route_base WHERE route_id=%s ORDER BY updated_at DESC LIMIT 1", (r["route_id"],))
-                rb = c.fetchone(); km_ = round(float(rb["distance_m"]) / 1000, 1) if rb and rb["distance_m"] else None
-            dur = int(round((km_ / spd_) * 60)) if km_ else 180
-            route_rides.append({"entry_id": r["entry_id"], "day": r["day"], "route_id": r["route_id"],
-                                "name": (r["title"] or r["route_name"] or "Jazda z Kalendarza").replace("[Q] ", "").split(" · ")[0],
-                                "at": r["at_time"].strftime("%H:%M") if r["at_time"] else None, "km": km_,
-                                "up": int(mu.group(1)) if mu else None, "xss": int(mx.group(1)) if mx else None, "dur_min": max(30, dur)})
-            route_ids.add(r["entry_id"])
+        per_entry: dict = {}
+        for r in rows:
+            per_entry.setdefault(r["entry_id"], []).append(r)
+        out_ = []
+        for eid, rs in per_entry.items():
+            e = rs[0]
+            d0, d1 = _d(e["day"]), _d(e["end_day"]) or _d(e["day"])
+            n = (d1 - d0).days + 1
+            note = e["note"] or ""
+            mk = _re.search(r"([0-9]+(?:[.,][0-9]+)?)\s*km", note)
+            mu = _re.search(r"\+\s*([0-9]+)\s*m\b", note) or _re.search(r"(?<![0-9k])([0-9]{3,5})\s*m(?![a-zł])", note)
+            mx = _re.search(r"~\s*([0-9]+)\s*XSS", note)
+            title = (e["title"] or e["route_name"] or "Jazda z Kalendarza").replace("[Q] ", "").split(" · ")[0]
+            if len(rs) > 1 or n == 1:
+                items = [(_d(r["rday"]), r) for r in rs]
+                split = 1
+            else:
+                items = [(d0 + timedelta(days=i), rs[0]) for i in range(n)]
+                split = n
+            for i, (dday, r) in enumerate(sorted(items, key=lambda x: x[0])):
+                km_ = float(mk.group(1).replace(",", ".")) / split if (mk and split > 1) else (float(mk.group(1).replace(",", ".")) if mk and n == 1 else None)
+                if km_ is None:
+                    c.execute("SELECT distance_m FROM qbot_v2.route_base WHERE route_id=%s ORDER BY updated_at DESC LIMIT 1", (r["route_id"],))
+                    rb = c.fetchone(); km_ = round(float(rb["distance_m"]) / 1000 / split, 1) if rb and rb["distance_m"] else None
+                up_ = int(int(mu.group(1)) / split) if mu else None
+                xs_ = int(int(mx.group(1)) / split) if mx else None
+                dur = int(round((km_ / spd_) * 60)) if km_ else 180
+                out_.append({"entry_id": eid, "day": dday, "route_id": r["route_id"],
+                             "name": title + (f" — dzień {i + 1}/{len(items)}" if len(items) > 1 else ""),
+                             "at": e["at_time"].strftime("%H:%M") if e["at_time"] else None, "km": round(km_, 1) if km_ else None,
+                             "up": up_, "xss": xs_, "dur_min": max(30, dur), "multi": n > 1})
+        return out_
+    try:
+        for rr in _route_days(ws, we):
+            if ws <= _d(rr["day"]) <= we:
+                route_rides.append(rr)
+            route_ids.add(rr["entry_id"])
+            if rr["multi"]:
+                route_trip_ids.add(rr["entry_id"])
     except Exception:
-        route_rides, route_ids = [], set()
+        route_rides, route_ids, route_trip_ids = [], set(), set()
+    carry = []
+    try:
+        pa, pb = ws - timedelta(days=3), ws - timedelta(days=1)
+        c.execute("SELECT day, sport, name, dur_min, xss, is_long FROM qbot_v2.trainer_session WHERE username=%s AND day BETWEEN %s AND %s "
+                  "AND status IN ('plan','done') AND sport='rower'", (user, pa, pb))
+        for r in c.fetchall():
+            carry.append({"day": r["day"], "name": r["name"], "xss": float(r["xss"] or 0), "is_long": bool(r["is_long"]), "src": "plan"})
+        for rr in _route_days(pa, pb):
+            if pa <= _d(rr["day"]) <= pb:
+                carry.append({"day": rr["day"], "name": rr["name"], "xss": float(rr.get("xss") or xss_of("rower", 2, rr["dur_min"])),
+                              "is_long": (rr.get("km") or 0) >= 80 or rr["dur_min"] >= float(P(ov, "yoga.long_h")) * 60 * 0.8, "src": "kalendarz"})
+        c.execute("SELECT date, activity_name, duration_s, tss, sport_type FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s", (pa, pb))
+        for r in c.fetchall():
+            if SPORT_OF.get(r["sport_type"]) == "rower":
+                carry.append({"day": r["date"], "name": r["activity_name"], "xss": float(r["tss"] or 0),
+                              "is_long": (r["duration_s"] or 0) >= float(P(ov, "yoga.long_h")) * 3600 * 0.8, "src": "garmin"})
+    except Exception:
+        carry = []
     km_floor_h = 0.0
     try:
         import calendar as _cal
@@ -783,6 +869,6 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
     except Exception:
         km_floor_h = 0.0
     return {"week_start": ws, "today": today, "ov": ov, "goals": goals, "rules": rules, "calendar": cal, "day_state": dstate, "km_floor_h": round(km_floor_h, 1),
-            "route_rides": route_rides, "route_entry_ids": route_ids,
+            "route_rides": route_rides, "route_entry_ids": route_ids, "route_trip_ids": route_trip_ids, "carry": carry,
             "keep": keep, "activities_extra": extra, "readiness_today": rt, "readiness_threshold": thr, "weather": wx,
             "all_sessions": sess}
