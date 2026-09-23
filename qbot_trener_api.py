@@ -902,6 +902,13 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
             return RV.review_week(c, u, d0, force=bool((b or {}).get("force")))
         return run(go)
 
+    @r.get("/compare")
+    def compare_get(request: Request, weeks: int = Query(3, ge=1, le=4)):
+        """PODGLAD: obecny silnik (tydzien po tygodniu) vs model bloku (forma/zmeczenie). Nic nie zapisuje."""
+        u = user_of(request)
+        import qbot_trener_block as BL
+        return run(lambda c: BL.compare(c, u, weeks))
+
     @r.get("/balance")
     def balance_get(request: Request):
         u = user_of(request)

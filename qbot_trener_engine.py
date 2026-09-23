@@ -347,7 +347,11 @@ def plan_week(ctx: dict) -> dict:
     if floor_h > base_h:
         notes.append(f"cel kilometrów wymaga ~{floor_h:.1f} h/tydz. (okres: {base_h:.1f} h) — budżet podniesiony")
         base_h = floor_h
-    target_min = int(min(base_h, float(P(ov, "load.budget_h"))) * 60)
+    if ctx.get("target_h_override") is not None:  # model bloku (porownanie / przyszly silnik)
+        base_h = float(ctx["target_h_override"])
+        target_min = int(base_h * 60)
+    else:
+        target_min = int(min(base_h, float(P(ov, "load.budget_h"))) * 60)
     month = (ws + timedelta(days=3)).month
     cnt = {s: int(ov.get(f"mix.{s}.{month}", MIXD[s][month - 1])) for s in MIXD}
     if ph == "rg":
@@ -444,8 +448,12 @@ def plan_week(ctx: dict) -> dict:
         hs = [_d(p["day"]) for p in placed if p["sport"] == "rower" and (p.get("is_long") or float(p.get("xss") or 0) >= hard_xss)]
         return hs + [c_["day"] for c_ in carry if c_.get("is_long") or float(c_.get("xss") or 0) >= hard_xss]
 
+    fatigue = {_d(x) for x in ctx.get("fatigue_days", [])}
+
     def in_heavy_gap(d: date) -> date | None:
-        """Dzien d wypada w przerwie po ciezkiej jezdzie (tez z poprzedniego tygodnia) -> zwraca dzien tej jazdy."""
+        """Dzien d wypada w przerwie po ciezkiej jezdzie (tez z poprzedniego tygodnia) albo jest dniem zmeczenia z modelu."""
+        if d in fatigue:
+            return d
         for h in heavy_days():
             if 0 < (d - h).days * 24 < heavy_gap_h:
                 return h
@@ -543,7 +551,7 @@ def plan_week(ctx: dict) -> dict:
     for _ in range(cnt["wiosl"]):
         cands = []
         for d in plan_days:
-            if not open_day(d) or has(d, "wiosl"):
+            if not open_day(d) or has(d, "wiosl") or d in fatigue:
                 continue
             bad = wx_bad(infos[d]["wx"], ov, False)
             cands.append((0 if bad else 1, 1 if has(d, "rower") else 0, d))
@@ -600,7 +608,7 @@ def plan_week(ctx: dict) -> dict:
         notes.append(f"gotowość dziś {round(rt, 2)} < próg {round(thr, 2)} — dziś wersje minimum")
     total = sum(s["dur_min"] for s in out) + sum(int(s["dur_min"]) for s in keep)
     return {"sessions": out, "notes": notes, "phase": ph, "phase_name": PH_NAME.get(ph, ph), "light": bool(wk.get("lt")), "season": wk.get("season"),
-            "target_h": round(min(base_h, float(P(ov, "load.budget_h"))), 1), "planned_h": round(total / 60, 1),
+            "target_h": round(base_h if ctx.get("target_h_override") is not None else min(base_h, float(P(ov, "load.budget_h"))), 1), "planned_h": round(total / 60, 1),
             "days": {d.isoformat(): {"type": infos[d]["type"], "labels": infos[d]["labels"],
                                      "busy": [{"a": t2(a), "b": t2(b), "label": l} for a, b, l in infos[d]["busy"] if a is not None],
                                      "wx": infos[d]["wx"]} for d in days}}

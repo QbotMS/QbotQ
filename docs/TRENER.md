@@ -222,3 +222,13 @@ trening w REST/choroba, kolizja z zajętością — działają też dla sesji r�
 - **Ostrzeżenia** (`check_rules_detailed`): obiekty `{key, text, session_id, acked}`; „rozumiem, zostaw” zapisuje klucz
   w `trainer_session.acks` (`sql/trainer_v5.sql`) — wyciszone nie wracają w regułach ani w AI.
 - **AI** dostaje gotowe sumy godzin, widełki i flagi decyzji (ręczna / usunięta / wyciszone) i ma je szanować.
+
+## Porównanie silników — PODGLĄD (2026-09-23)
+
+`qbot_trener_block.py` + `GET /compare?weeks=3` + podzakładka „Porównanie 🧪” (nic nie zapisuje). Model bloku:
+XSS → CTL (τ 42) / ATL (τ 7) / TSB rano jak w ModelQ (sprawdzone na danych 22→23.09); cel formy per okres
+(RAMP: baza +3, budowa +4, jazda 0, roztrenowanie −2, taper −5, regeneracja −3 CTL/tydz.) → dzienne XSS ≈ CTL + 6·przyrost;
+stałe sesje (Kalendarz, wyprawy, Twoje) liczone najpierw, reszta → godziny (~45 XSS/h, obcięte do budżetu); dzień z TSB
+rano < −25 = dzień luzu (bez roweru/siły/wioślarza, hook `fatigue_days` w `plan_week`); druga iteracja luzuje dni,
+w które sam plan wpędziłby w zmęczenie. Haki w silniku (`target_h_override`, `fatigue_days`) są aktywne tylko,
+gdy przekaże je model bloku — obecne planowanie się nie zmienia. Decyzja o podmianie: po przeglądzie użytkownika.
