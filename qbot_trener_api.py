@@ -739,6 +739,48 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
             return out
         return run(go)
 
+    @r.post("/sessions/{item_id}/garmin")
+    async def session_garmin(item_id: int, request: Request):
+        u = user_of(request)
+        b = await body_of(request) if (await request.body()) else {}
+        import qbot_trener_garmin as G
+        def go(c):
+            c.execute("SELECT * FROM qbot_v2.trainer_session WHERE id=%s AND username=%s", (item_id, u))
+            srow = c.fetchone()
+            if not srow:
+                raise HTTPException(status_code=404, detail="nie znaleziono")
+            ses = _jsonable(srow)
+            c.execute("SELECT ftp_est_w FROM qbot_v2.fitmodel_daily WHERE ftp_est_w IS NOT NULL ORDER BY day DESC LIMIT 1")
+            fr = c.fetchone()
+            res = G.push(ses, float(fr["ftp_est_w"]) if fr else None, dry_run=bool((b or {}).get("dry_run")))
+            if res.get("status") in ("success", "DUPLICATE") and res.get("workoutId"):
+                c.execute("UPDATE qbot_v2.trainer_session SET garmin_workout_id=%s, updated_at=now() WHERE id=%s", (res["workoutId"], item_id))
+            return res
+        return run(go)
+
+    @r.get("/notify/preview")
+    def notify_preview(request: Request, kind: str = Query("plan"), start: str = Query(None)):
+        u = user_of(request)
+        import qbot_trener_notify as N
+        def go(c):
+            d0, _ = _week_bounds(start)
+            if kind == "plan":
+                res = E.plan_week(E.build_context(c, u, d0))
+                c.execute("SELECT * FROM qbot_v2.trainer_session WHERE username=%s AND day BETWEEN %s AND %s ORDER BY day, start_time NULLS LAST", (u, d0, d0 + timedelta(days=6)))
+                ses = [dict(x) for x in c.fetchall()]
+                if not ses:
+                    ses = [dict(x, day=date.fromisoformat(x["day"]), start_time=datetime.strptime(x["start_time"], "%H:%M").time() if x.get("start_time") else None) for x in res["sessions"]]
+                return {"text": N.text_plan(d0, ses, res["phase_name"], res["target_h"], res["notes"])}
+            if kind == "review":
+                c.execute("SELECT * FROM qbot_v2.trainer_session WHERE username=%s AND day BETWEEN %s AND %s ORDER BY day, start_time NULLS LAST", (u, d0, d0 + timedelta(days=6)))
+                rows = [dict(x) for x in c.fetchall()]
+                st = N.settings(c, u)
+                return {"text": N.text_review(d0, rows, 0.0, st["notify.tone"], None)}
+            d = date.today()
+            c.execute("SELECT * FROM qbot_v2.trainer_session WHERE username=%s AND day=%s ORDER BY start_time NULLS LAST", (u, d))
+            return {"text": N.text_day(d, [dict(x) for x in c.fetchall()]) or "(dziś brak treningów w planie)"}
+        return run(go)
+
     @r.get("/balance")
     def balance_get(request: Request):
         u = user_of(request)

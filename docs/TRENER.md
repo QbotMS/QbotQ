@@ -38,8 +38,7 @@ Wzorzec UI (zaakceptowany mockup, dane przykładowe): `/opt/qbot/web/public/tren
    testy `tests/test_trener_engine.py`. Szczegóły w sekcji „Silnik” niżej.
 4. **Bilans, statusy celów, Czas, pogoda auto, badania** (ZROBIONE 2026-09-23): `qbot_trener_stats.py`,
    migracja `sql/trainer_v3.sql`, testy `tests/test_trener_stats.py`. Szczegóły w sekcji „Etap 4” niżej.
-5. Telegram (plan pn / rozliczenie nd), wysyłka do Garmina (dziś tylko joga), narzędzie Alberta
-   (+ `_SYSTEM` w tym samym commicie).
+5. **Telegram, Garmin, Albert** (ZROBIONE 2026-09-23) — sekcja „Etap 5” niżej.
 
 ## Dane (sql/trainer_v1.sql, schemat qbot_v2, per `username`)
 
@@ -121,3 +120,19 @@ Każda edycja sesji z UI (POST/PUT `/sessions`) ustawia `source='manual'` → pr
 - Pogoda auto: `trainer_auto_cache['weather']` liczone w tle (wątek w qbot-web, ~25 s, archiwum Open-Meteo dla
   jazd z 2 lat), odświeżane gdy starsze niż 7 dni; `/auto` zwraca wx.* z opisem. **Silnik planu używa tych wartości
   jako bazy** (ręczne nadpisania wygrywają).
+
+## Etap 5
+
+- **Telegram** `qbot_trener_notify.py`: cron root `*/15 * * * *` → `qbot_trener_notify.py tick` (log
+  `/var/log/qbot-trener-notify.log`, zainstalowany 2026-09-23 za zgodą użytkownika). Okna: rozliczenie ndz 19:00–19:59,
+  plan tygodnia pn 07:00 (bieżący) lub ndz 20:00 (następny; brakujący plan generuje się sam i zapisuje jako zaakceptowana
+  zmiana `telegram_autoplan`), dzień 07:00 lub 2 h przed sesją. Deduplikacja `trainer_notify_log` (`sql/trainer_v4.sql`).
+  Ustawienia `notify.*` z Kalibracji. Użytkownik = najwięcej wierszy trainer_* (bez kont z `_`), albo env `TRENER_USER`.
+  Wysyłka: `qbot_config.TELEGRAM_TOKEN/CHAT_ID`, czysty tekst. `preview plan|day|review`, `send-test`.
+  API `GET /notify/preview?kind=plan|day|review` (podgląd w Kalibracji → Pilnowanie).
+- **Garmin** `qbot_trener_garmin.py`: `POST /sessions/{id}/garmin {dry_run?}` — trening (rower: rozgrzewka / blok z zakresem
+  mocy z FTP / schłodzenie; inne: jeden blok czasowy) + `schedule_workout` na dzień sesji. Idempotencja przez
+  `garmin_workout_write_audit` (klucz z treści sesji). Wyłącznie na kliknięcie użytkownika w UI (z potwierdzeniem).
+- **Albert**: narzędzie `trainer_week` (odczyt: plan tygodnia, statusy celów, bilans) + wpis w `_SYSTEM`. Routing:
+  `qbot_query_handler` intent `trainer_week` (frazy „plan treningowy”, „trener”, „co mam dziś trenować”…) PRZED
+  `training_recent`, w `OPEN_DOMAIN_INTENTS` → Albert. Pusty Trener zwraca poprawny komunikat (nie błąd — inaczej pętla).

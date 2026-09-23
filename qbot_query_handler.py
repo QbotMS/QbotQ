@@ -396,6 +396,12 @@ def _envelope(
 # Intent router  (deterministic, keyword-based)
 # ---------------------------------------------------------------------------
 INTENT_KEYWORDS: list[tuple[list[str], str]] = [
+    # TRENER (sekcja Formy) -> Albert (narzedzie trainer_week). MUSI byc przed "trening" (training_recent).
+    (["plan treningowy", "plan treningów", "plan treningow", "planie treningowym", "trener", "trenera", "trenerze",
+      "zaplanowane treningi", "zaplanowany trening", "co mam dziś trenować", "co mam dzis trenowac", "co mam dziś w planie",
+      "co mam dzis w planie", "treningi na ten tydzień", "treningi na ten tydzien", "treningi na tydzień",
+      "treningi na tydzien", "plan na ten tydzień", "plan na ten tydzien", "status celów", "status celow",
+      "moje cele"], "trainer_week"),
     (["model gpt", "albert gpt", "przełącz na gpt", "przelacz na gpt", "użyj gpt", "uzyj gpt", "albert na gpt"], "albert_model_gpt"),
     (["model gemini", "albert gemini", "przełącz na gemini", "przelacz na gemini", "użyj gemini", "uzyj gemini", "albert na gemini"], "albert_model_gemini"),
     (["model claude", "albert claude", "przełącz na claude", "przelacz na claude", "użyj claude", "uzyj claude", "albert na claude"], "albert_model_claude"),
@@ -572,6 +578,7 @@ OPEN_DOMAIN_INTENTS: set[str] = {
     "route_workflow_fetch", "route_workflow_upload", "route_workflow_list",
     "rwgps_recent_routes", "rwgps_poi_push",
     "trip_stages", "trip_summary", "trip_attractions", "trips_status",
+    "trainer_week",  # TRENER -> Albert (trainer_week)
 }
 
 # Sygnały domeny otwartej — używane do wykrywania konfliktu

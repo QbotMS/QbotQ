@@ -2508,6 +2508,7 @@ def _init_registry():
         ("route_attractions", _load_route_attractions_tool),
         ("route_delete", _load_route_delete_tool),
         ("tire_pressure", _load_tire_pressure_tool),
+        ("trainer_week", _load_trainer_week_tool),
         ("route_fuel_plan", _load_route_fuel_plan_tool),
         ("route_time_estimate", _load_route_time_estimate_tool),
         ("route_wbgt", _load_route_wbgt_tool),
@@ -2846,6 +2847,36 @@ def _load_route_profile_detail_tool() -> dict[str, Any]:
             "artifact_id": {"type": "integer", "description": "ID artefaktu trasy (opcjonalne)"},
             "land_cover": {"type": "boolean", "default": False, "description": "Dodaje pokrycie terenu OSM per sektor: las/pola/laki/zabudowa/woda + podsumowanie"},
         },
+        "safety": "read",
+        "mode": "read_only",
+    }
+
+
+def _load_trainer_week_tool() -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        import qbot_trener_notify as _tn
+        out = _tn.albert_summary((args or {}).get("week_start"))
+        if out.get("status") == "OK":
+            return success_result({"analysis": out["analysis"], "phase": out["phase"], "target_h": out["target_h"], "week_start": out["week_start"]})
+        if out.get("status") == "DATA_MISSING":
+            # pusty Trener to poprawna odpowiedz (nie blad) - inaczej Albert ponawia wywolanie w petli
+            return success_result({"analysis": "Trener nie ma jeszcze danych: brak celow, wpisow tygodnia i planu. "
+                                               "Uzupelnij je w Formie -> Trener (albert.cytr.us/forma.html#trener) i kliknij 'przelicz tydzien'.",
+                                   "empty": True})
+        return error_result(out.get("status", "TRAINER_FAILED"), out.get("error") or "blad Trenera")
+
+    return {
+        "callable": _wrapper,
+        "category": "training",
+        "description": (
+            "TRENER (sekcja Formy): plan treningow na tydzien (dzien, godzina, rower/sila/wioslarz/joga, czas, "
+            "status zrobione/pominiete), faza sezonu i cel godzin, statusy celow (wyprawy, waga, km, FTP, nawyki) "
+            "i bilans kcal. Tylko odczyt. Param: week_start (RRRR-MM-DD, opcjonalnie; domyslnie biezacy tydzien). "
+            "Pokaz pole analysis w calosci."
+        ),
+        "args_schema": {"week_start": {"type": "string", "description": "Poniedzialek tygodnia RRRR-MM-DD (opcjonalne)"}},
         "safety": "read",
         "mode": "read_only",
     }
