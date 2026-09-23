@@ -5133,6 +5133,45 @@ def route_intro_build(route_id: str = Query(...)):
         conn.close()
 
 
+@app.get("/api/report/outfit")
+def report_outfit_get(route_id: str = Query(...), date: str = Query(...)):
+    """Ostatnia propozycja ubioru dla trasy + dnia (z planem, dla ktorego powstala). {"jest": false} gdy brak."""
+    from qbot3.routes import outfit_advisor as _oa
+    conn = _db_conn()
+    try:
+        p = _oa.load_last(conn, route_id, date)
+        return p if p else {"jest": False}
+    finally:
+        conn.close()
+
+
+@app.post("/api/report/outfit")
+async def report_outfit_build(request: Request):
+    """Dobor ubioru (AI, ~10-20 s) dla planu: {route_id, date, time, long_stops, long_stop_min}. Zapisuje propozycje."""
+    from qbot3.routes import outfit_advisor as _oa
+    import qgpt_client as _qc
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    rid, day = str(b.get("route_id") or ""), str(b.get("date") or "")[:10]
+    tm, n, m = str(b.get("time") or "10:00")[:5], int(b.get("long_stops") or 0), int(b.get("long_stop_min") or 0)
+    if not rid or not day:
+        raise HTTPException(status_code=400, detail="Wymagane: route_id + date")
+    conn = _db_conn()
+    try:
+        d = _build_report_data(conn, rid, day, tm, n, m, ai=False, day_table=True)
+        conn.commit()
+        p = _oa.advise(conn, d, tm, _load_outfit_rules(), getattr(_qc, "QGPT_MODEL", ""))
+        if not p.get("ok"):
+            raise HTTPException(status_code=502, detail="Nie udalo sie dobrac ubioru: %s" % p.get("blad"))
+        _oa.save(conn, rid, day, tm, n, m, p)
+        p["plan"] = {"start": tm, "long_stops": n, "long_stop_min": m}
+        return p
+    finally:
+        conn.close()
+
+
 @app.post("/api/report/plan/save")
 def report_plan_save(route_id: str = Query(...), date: str = Query(...),
                      time: str = Query("10:00"), long_stops: int = Query(0),
