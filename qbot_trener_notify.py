@@ -31,7 +31,7 @@ TZ = ZoneInfo("Europe/Warsaw")
 DEF = {"notify.week_plan": 2, "notify.day": 1, "notify.review": 1, "notify.tone": 1}
 SIC = {"rower": "🚲", "sila": "🏋️", "wiosl": "🚣", "joga": "🧘"}
 DN = ["pn", "wt", "śr", "cz", "pt", "sb", "nd"]
-URL = "https://albert.cytr.us/forma.html#trener"
+URL = "https://albert.cytr.us/trener.html"
 
 
 def _conn():

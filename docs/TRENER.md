@@ -249,3 +249,10 @@ gdy przekaże je model bloku — obecne planowanie się nie zmienia. Decyzja o p
 - **Płynny przyrost**: max +`load.max_inc_pct` (7%) względem poprzedniego zwykłego tygodnia (bez wyprawy / choroby,
   nie po tygodniu lżejszym).
 - **Siła 48 h także nd→pn**. „Długa jazda” tylko gdy ≥ 50% progu długiej (inaczej „Rower dłużej”).
+
+## Osobna strona (2026-09-23)
+
+Trener wyniesiony z Formy: **`/trener.html`** (poza repo, jak inne strony), pozycja „Trener” w lewym menu zaraz po Formie
+(ikona hantla, `nav.js?v=5` na wszystkich stronach). Forma nie ma już zakładki Trener; stare linki `forma.html#trener`
+przekierowują na `/trener.html`. Link w wiadomościach Telegram: `https://albert.cytr.us/trener.html`.
+(Tekst pustego Trenera w `qbot3/tool_registry.py` nadal wskazuje stary adres — plik był zajęty przez inną sesję; przekierowanie działa.)
