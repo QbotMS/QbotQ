@@ -24,7 +24,7 @@ DEF: dict[str, Any] = {
     "regen.sensitivity": 5, "regen.min_pct": 15, "regen.heavy_gap_h": 48, "regen.after_illness": 0,
     "wx.wind_ms": 8, "wx.gust_ms": 13, "wx.forest_bonus_ms": 1, "wx.cold_long_c": 0, "wx.cold_short_c": -10,
     "wx.heat_c": 30, "wx.rain_mmh": 0.5, "wx.rain_prob": 40, "wx.wet24_mm": 10, "wx.snow_cm": 10,
-    "yoga.hard_xss": 120, "yoga.long_h": 3, "regen.trip_rec_d": 3,
+    "yoga.hard_xss": 120, "yoga.long_h": 3, "regen.trip_rec_d": 3, "regen.pre_trip_d": 3,
     "season.taper_w": 2, "season.regen_w": 2, "season.light_every_w": 4, "season.volume": 5,
 }
 MIXD = {"rower": [3, 3, 4, 4, 5, 5, 5, 5, 4, 4, 3, 3], "sila": [3, 3, 2, 1, 1, 1, 1, 1, 1, 1, 2, 2],
@@ -466,6 +466,21 @@ def plan_week(ctx: dict) -> dict:
         nd_ = d + timedelta(days=1)
         if infos[d]["type"] != "trip" and nd_ in infos and infos[nd_]["type"] == "trip" and d not in recovery:
             recovery[d] = {"trip": (infos[nd_]["labels"][-1] if infos[nd_]["labels"] else "wyprawa").replace("🗺️ ", ""), "k": 0, "n": 0, "why": "dzień przed wyprawą — świeże nogi na start"}
+    pre_n = int(P(ov, "regen.pre_trip_d"))
+    trip_starts = [d for d in days if infos[d]["type"] == "trip" and (d - timedelta(days=1) not in infos or infos[d - timedelta(days=1)]["type"] != "trip")]
+    if ctx.get("next_trip_start"):
+        trip_starts.append(_d(ctx["next_trip_start"]))
+    taper: dict = {}      # dzien -> start wyprawy (dni -2..-N: tylko jedna krotka luzna jazda)
+    for S_ in trip_starts:
+        for k in range(2, pre_n + 1):
+            d = S_ - timedelta(days=k)
+            if d in infos and infos[d]["type"] != "trip":
+                taper.setdefault(d, S_)
+    no_strength = {S_ - timedelta(days=k) for S_ in trip_starts for k in range(1, pre_n + 2)}
+    for S_ in trip_starts:
+        tl = sorted(d for d, v in taper.items() if v == S_ and d >= today)
+        if tl:
+            notes.append(f"{', '.join(x.isoformat() for x in tl)}: luz przed wyprawą ({S_.isoformat()}) — najwyżej jedna krótka, luźna jazda; bez siły")
     if ctx.get("next_trip_start"):  # wyprawa zaczyna sie w poniedzialek nastepnego tygodnia
         d = _d(ctx["next_trip_start"]) - timedelta(days=1)
         if d in infos and d not in recovery and infos[d]["type"] != "trip":
@@ -494,7 +509,7 @@ def plan_week(ctx: dict) -> dict:
                 notes.append(f"{', '.join(x.isoformat() for x in blocked)}: przerwa po ciężkiej jeździe {c_['day'].isoformat()} ({c_.get('name') or 'jazda'}, ~{int(float(c_.get('xss') or 0))} XSS) — bez roweru")
     # 1) dluga jazda (pomijana, gdy dluga jest juz w Kalendarzu)
     if long_day is None and cnt["rower"] >= 1 and ph not in ("ev", "rg") and rower_total >= 60:
-        cands = [d for d in plan_days if open_day(d) and (d.weekday() >= 5 or infos[d]["type"] == "urlop") and not has(d, "rower") and not in_heavy_gap(d)]
+        cands = [d for d in plan_days if open_day(d) and (d.weekday() >= 5 or infos[d]["type"] == "urlop") and not has(d, "rower") and not in_heavy_gap(d) and d not in taper]
         scored = []
         for d in cands:
             bad = wx_bad(infos[d]["wx"], ov, True)
@@ -524,6 +539,8 @@ def plan_week(ctx: dict) -> dict:
                     continue
                 if in_heavy_gap(d):
                     continue
+                if d in taper and any(p["sport"] == "rower" and _d(p["day"]) in taper and taper[_d(p["day"])] == taper[d] for p in placed):
+                    continue
                 bad = wx_bad(infos[d]["wx"], ov, False)
                 rdays = [_d(p["day"]) for p in placed if p["sport"] == "rower"]
                 dist = min([abs((d - x).days) for x in rdays], default=7)
@@ -540,7 +557,10 @@ def plan_week(ctx: dict) -> dict:
                     notes.append(f"{d.isoformat()}: {bad} — jazda pominięta (brak lepszego dnia)")
                 break
             name, zone = ("Rower luźno", 1) if ph in ("rg", "tp") else ("Rower spokojnie", 2)
-            s = add(d, "rower", name, each, 30, zone=zone)
+            dur_ = each
+            if d in taper:
+                name, zone, dur_ = "Rower luźno (przed wyprawą)", 1, min(each, 45)
+            s = add(d, "rower", name, dur_, 30, zone=zone, why=("luz przed wyprawą — krótko i spokojnie" if d in taper else ""))
             if not s:
                 continue
     # 3) mocny akcent
@@ -569,6 +589,8 @@ def plan_week(ctx: dict) -> dict:
                 continue
             if d == ws and "sila" in prev_last:   # 48 h miedzy sila takze przez niedziele / poniedzialek
                 continue
+            if d in no_strength:                   # sila nie blizej niz N+1 dni przed wyprawa
+                continue
             cands.append((0 if d.weekday() in pat.get("sila", set()) else 1, 1 if has(d, "rower") else 0, d))
         if not cands:
             break
@@ -580,7 +602,7 @@ def plan_week(ctx: dict) -> dict:
     for _ in range(cnt["wiosl"]):
         cands = []
         for d in plan_days:
-            if not open_day(d) or has(d, "wiosl") or d in recovery:
+            if not open_day(d) or has(d, "wiosl") or d in recovery or d in no_strength:
                 continue
             bad = wx_bad(infos[d]["wx"], ov, False)
             cands.append((0 if bad else 1, 1 if has(d, "rower") else 0, d))
@@ -677,6 +699,17 @@ def check_rules_detailed(sessions: list, ov: dict, days_meta: dict | None = None
                 if any(y["sport"] == "rower" and is_long(y) for y in by[nxt]):
                     add("long_seq", x, f"dwie długie / ciężkie jazdy pod rząd ({dd}, {nd})")
         dm = (days_meta or {}).get(d) or {}
+        # przed wyprawa (dni typu trip): sila w 4 dniach przed / trening dzien przed
+        for k in range(1, 5):
+            td = (date.fromisoformat(d) + timedelta(days=k)).isoformat()
+            tm = (days_meta or {}).get(td) or {}
+            pm = (days_meta or {}).get((date.fromisoformat(td) - timedelta(days=1)).isoformat()) or {}
+            if tm.get("type") == "trip" and pm.get("type") != "trip":
+                for x in L:
+                    if x["sport"] in ("sila", "wiosl") and x.get("status") == "plan":
+                        add("pre_trip_strength", x, f"{dd}: {x['name']} {k} dni przed wyprawą ({td[8:10]}.{td[5:7]}) — nogi mają być świeże")
+                    if k == 1 and x["sport"] == "rower" and x.get("status") == "plan":
+                        add("pre_trip_ride", x, f"{dd}: jazda dzień przed wyprawą — lepiej wolne")
         if dm.get("type") in ("rest", "ill"):
             for x in L:
                 if x["sport"] != "joga" and x.get("status") == "plan":

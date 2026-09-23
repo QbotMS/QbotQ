@@ -197,6 +197,22 @@ class TestConsistency(unittest.TestCase):
         r = E.plan_week(ctx(goals=g))
         self.assertFalse(any(s["day"] == "2026-10-09" and s["sport"] != "joga" for s in r["sessions"]))
 
+    def test_taper_before_trip(self):
+        """Zgloszenie 2026-09-23: 3 jazdy + sila (wt) tuz przed 3-dniowa wyprawa (sb)."""
+        g = [{"kind": "trip", "name": "Wyprawa", "priority": "B", "date_from": "2026-10-10", "date_to": "2026-10-12", "status": "active"}]
+        r = E.plan_week(ctx(goals=g))
+        pre = [s for s in r["sessions"] if "2026-10-06" <= s["day"] <= "2026-10-09"]
+        self.assertFalse(any(s["sport"] in ("sila", "wiosl") for s in pre), pre)                 # bez sily 4 dni przed
+        taper_rides = [s for s in r["sessions"] if s["day"] in ("2026-10-07", "2026-10-08") and s["sport"] == "rower"]
+        self.assertLessEqual(len(taper_rides), 1)
+        self.assertTrue(all(s["dur_min"] <= 45 for s in taper_rides))
+        self.assertFalse(any(s["day"] == "2026-10-09" and s["sport"] != "joga" for s in r["sessions"]))
+
+    def test_rule_warns_strength_before_trip(self):
+        ses = [{"id": 1, "day": "2026-10-07", "sport": "sila", "name": "Siła", "dur_min": 40, "status": "plan"}]
+        meta = {"2026-10-10": {"type": "trip"}, "2026-10-11": {"type": "trip"}}
+        self.assertTrue(any("przed wyprawą" in w for w in E.check_rules(ses, {}, meta)))
+
     def test_sila_not_monday_after_sunday_sila(self):
         r = E.plan_week(ctx(prev_last_sports=["sila"]))
         self.assertFalse(any(s["sport"] == "sila" and s["day"] == "2026-10-05" for s in r["sessions"]))

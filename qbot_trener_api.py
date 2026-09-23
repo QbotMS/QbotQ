@@ -720,6 +720,7 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                             break
                 meta["lthr_bpm"] = int(lt) if lt and lt.isdigit() else None
                 meta["ov"] = {k: v for k, v in ctx["ov"].items() if k.startswith("wx.")}
+                meta["route_entry_ids"] = sorted(ctx.get("route_entry_ids") or [])
             except Exception as e:  # meta pomocnicze - tydzien ma sie pokazac nawet bez niego
                 meta = {"error": str(e)[:200]}
             import qbot_trener_workouts as TW

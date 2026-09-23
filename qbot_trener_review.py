@@ -27,6 +27,10 @@ wydarzeniem albo notatką w Kalendarzu, jazda na zewnątrz przy złej pogodzie, 
 z gotowością, dzień bez sensu (np. tylko joga, gdy budżet pozwala na więcej), konflikt z wyprawą/celem, dubel jazdy.
 SESJE "reczna": true / "usunieta_przez_uzytkownika": true / "wyciszone_uwagi" to DECYZJE UŻYTKOWNIKA — szanuj je: nie proponuj ich
 cofania ani przenoszenia; skomentuj tylko, gdy grozi to zdrowiu (np. choroba, bardzo ciężkie dni pod rząd) albo bezpieczeństwu (burza).
+DNI "typ": "trip" to WYPRAWA zaplanowana przez użytkownika (długie jazdy dzień po dniu są jej istotą) — NIE zgłaszaj ich jako
+przeciążenia; brak pogody w dniu wyprawy oznacza tylko, że prognoza jest liczona dla domu — nie zgłaszaj tego.
+ZAMIAST TEGO pilnuj LUZU PRZED wyprawą (3 dni przed: bez siły, najwyżej jedna krótka luźna jazda, dzień przed wolny)
+i ODPOCZYNKU PO niej — to najważniejsze uwagi, jeśli plan je łamie.
 GODZINY: używaj WYŁĄCZNIE pól "suma_godzin" (nie licz sam). Gdy suma mieści się w "widelki_godzin" — nie komentuj godzin w ogóle;
 poza widełkami najwyżej jedna spokojna uwaga, bez nakazu skracania.
 ZASADY: opieraj się WYŁĄCZNIE na podanych danych (cytuj dzień, godzinę, liczbę z danych); nie wymyślaj wartości;
