@@ -161,22 +161,25 @@ def _pl_date(iso_: str) -> str:
     return f"{d}.{m}.{y}"
 
 
-def best_window(chains: list, n: int, need_km: float | None, need_up: float | None) -> dict | None:
-    """Najlepsze okno min(n, dlugosc wyprawy) kolejnych dni jazdy na wyprawach: najpierw jak najdluzsze (do n),
-    potem najlepsze wzgledem wymagan celu (min z km/dzien i m/dzien wzgledem potrzeb)."""
-    best = None
+def best_windows(chains: list, n: int) -> dict | None:
+    """Okna min(n, dlugosc wyprawy) kolejnych dni jazdy na wyprawach. Zwraca OSOBNO najlepsze km/dzien, m/dzien
+    i wysilek/dzien (km + m/10) - kazde z okna, w ktorym zostalo osiagniete. Dluzsze okna (do n) maja pierwszenstwo.
+    (Poprawka 2026-09-23: jedno wspolne okno dla km i m przestawialo ocene po zmianie samego przewyzszenia.)"""
+    wmax = max((min(n, len(ch["per_day"])) for ch in chains), default=0)
+    if not wmax:
+        return None
+    best = {"days": wmax, "km": None, "up": None, "eff": None}
     for ch in chains:
-        pdays = ch["per_day"]
-        w = min(n, len(pdays))
-        for i in range(0, len(pdays) - w + 1):
-            win = pdays[i:i + w]
-            kd = sum(x[1] for x in win) / w
-            ud = sum(x[2] for x in win) / w
-            ratios = [r for r in ((kd / need_km) if need_km else None, (ud / need_up) if need_up else None) if r is not None]
-            score = min(ratios) if ratios else kd + ud / 10
-            key = (w, score)
-            if best is None or key > best["key"]:
-                best = {"key": key, "days": w, "km_day": round(kd), "up_day": round(ud), "start": win[0][0], "end": win[-1][0]}
+        pd = ch["per_day"]
+        if len(pd) < wmax:
+            continue
+        for i in range(0, len(pd) - wmax + 1):
+            win = pd[i:i + wmax]
+            kd = sum(x[1] for x in win) / wmax
+            ud = sum(x[2] for x in win) / wmax
+            for key, val in (("km", kd), ("up", ud), ("eff", kd + ud / 10)):
+                if best[key] is None or val > best[key]["v"]:
+                    best[key] = {"v": val, "start": win[0][0], "end": win[-1][0], "km": round(kd), "up": round(ud)}
     return best
 
 
@@ -188,24 +191,34 @@ def status_trip(g: dict, hist: dict, ctl_now: float | None, ctl_max: float | Non
     rows, ratios = [], []
     need_km = (t["km"] / days) if (t.get("km") and days) else None
     need_up = (t["up_m"] / days) if (t.get("up_m") and days) else None
-    win = None if one_day else best_window(hist.get("chains") or [], int(days or 1), need_km, need_up)
-    if win:
-        wtxt = f"najlepsze {win['days']} dni pod rząd na wyprawie: {_pl_date(win['start'])}–{_pl_date(win['end'])}"
-    elif ref:  # bez danych dziennych (brak GPS) - cala najciezsza seria
-        win = {"days": ref["days"], "km_day": ref["km_day"], "up_day": ref["up_day"]}
-        wtxt = f"najcięższa seria: {_pl_date(ref['start'])}–{_pl_date(ref['end'])}"
-    else:
-        wtxt = "brak wyprawy (jazdy z punktu do punktu) w danych"
+    bw = None if one_day else best_windows(hist.get("chains") or [], int(days or 1))
+
+    def wnote(x, n_):
+        return f"najlepsze {n_} dni pod rząd na wyprawie: {_pl_date(x['start'])}–{_pl_date(x['end'])}"
     if need_km:
-        have = hist["max_km_day"] if one_day else (win["km_day"] if win else hist["max_km_day"])
-        rows.append({"k": "dystans" if one_day else "km na dzień", "have": have, "need": round(need_km),
-                     "note": "Twój rekord dnia" if one_day else f"{wtxt}; rekord dnia {hist['max_km_day']} km"})
+        if one_day or not bw:
+            have, note = hist["max_km_day"], ("Twój rekord dnia" if one_day else ((f"najcięższa seria {_pl_date(ref['start'])}–{_pl_date(ref['end'])}; " if ref else "") + f"rekord dnia {hist['max_km_day']} km"))
+            if not one_day and ref:
+                have = ref["km_day"]
+        else:
+            have, note = round(bw["km"]["v"]), wnote(bw["km"], bw["days"]) + f"; rekord dnia {hist['max_km_day']} km"
+        rows.append({"k": "dystans" if one_day else "km na dzień", "have": have, "need": round(need_km), "note": note})
         ratios.append(have / need_km)
     if need_up:
-        have = hist["max_up_day"] if one_day else (win["up_day"] if win else hist["max_up_day"])
-        rows.append({"k": "przewyższenie" if one_day else "przewyższenie na dzień", "have": have, "need": round(need_up),
-                     "note": "Twój rekord dnia" if one_day else f"{wtxt}; rekord dnia {hist['max_up_day']} m"})
+        if one_day or not bw:
+            have, note = hist["max_up_day"], ("Twój rekord dnia" if one_day else ((f"najcięższa seria {_pl_date(ref['start'])}–{_pl_date(ref['end'])}; " if ref else "") + f"rekord dnia {hist['max_up_day']} m"))
+            if not one_day and ref:
+                have = ref["up_day"]
+        else:
+            have, note = round(bw["up"]["v"]), wnote(bw["up"], bw["days"]) + f"; rekord dnia {hist['max_up_day']} m"
+        rows.append({"k": "przewyższenie" if one_day else "przewyższenie na dzień", "have": have, "need": round(need_up), "note": note})
         ratios.append(have / need_up)
+    if bw and (need_km or need_up) and not one_day:
+        need_e = (need_km or 0) + (need_up or 0) / 10
+        e = bw["eff"]
+        rows.append({"k": "wysiłek dzienny (km + m/10)", "have": round(e["v"]), "need": round(need_e),
+                     "note": wnote(e, bw["days"]) + f": {e['km']} km i {e['up']} m dziennie — łącznie w jednym bloku"})
+        ratios.append(e["v"] / need_e if need_e else None)
     if days and days > 1:
         have = (lon["days"] if lon else 0) if hist.get("chains") else (ref["days"] if ref else 0)
         rows.append({"k": "dni pod rząd", "have": have, "need": days,

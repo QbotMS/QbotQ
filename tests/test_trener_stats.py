@@ -103,6 +103,18 @@ class TestTripWindow(unittest.TestCase):
         self.assertGreaterEqual(rows["przewyższenie na dzień"]["have"], 0.9 * 833)   # Opole: 114 km i 791 m/dzien w jednym bloku
         self.assertEqual(rows["dni pod rząd"]["have"], 7)
 
+    def test_more_climbing_does_not_flip_km(self):
+        """Zgloszenie 2026-09-23: 300 km / 2500 m -> zielony, 300 km / 3000 m -> 'luka km'. Km nie moze zalezec od m."""
+        hist = S.series_stats(geo_with_opole())
+        res = {}
+        for up in (2500, 3000):
+            g = {"kind": "trip", "target": {"km": 300, "up_m": up, "days": 3}, "date_from": "2027-06-11", "date_to": "2027-06-13"}
+            st = S.status_trip(g, hist, 56, 91)
+            res[up] = (st["level"], {r["k"]: r["have"] for r in st["rows"]})
+        self.assertEqual(res[2500][1]["km na dzień"], res[3000][1]["km na dzień"])   # 114 w obu
+        self.assertEqual(res[2500][0], "g")
+        self.assertEqual(res[3000][0], "g")                                            # 114 km ✓, ~1160 m ✓, wysilek ~96% ✓
+
     def test_long_trip_uses_whole_longest(self):
         hist = S.series_stats(geo_with_opole())
         g = {"kind": "trip", "target": {"km": 792, "up_m": 15004, "days": 11}, "date_from": "2027-05-14", "date_to": "2027-05-24"}

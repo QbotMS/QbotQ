@@ -185,3 +185,9 @@ Cele objętości: plan rozkładany na miesiące wg **Twojego rytmu roku** (udzia
 porównywany z tą krzywą (nie liniowo); przed startem okresu status mówi „start dd.mm.rrrr · teraz: <okres> sezonu Y”.
 Z planu km na dany miesiąc wynika **minimalny budżet godzin** tygodnia (km/tydz. ÷ Twoja średnia prędkość ze 120 dni),
 obcięty do `load.budget_h`. W edytorze okresy: sezon bieżący / następny, rok kalendarzowy, jazda IV–IX, własny.
+
+### Ocena wyprawy — porównanie z historią (poprawka 2026-09-23)
+
+Okna = N kolejnych dni jazdy na wyprawach (N = długość celu; gdy żadna wyprawa nie była tak długa — najdłuższe możliwe).
+**km/dzień i m/dzień porównywane osobno** z najlepszym oknem dla każdej miary (zmiana przewyższenia nie może zmienić
+oceny km), plus **wysiłek dzienny = km + m/10** z jednego bloku (czy oba naraz). „Gotowy” = każda miara ≥ 90% potrzeb.
