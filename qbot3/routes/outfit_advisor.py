@@ -6,7 +6,13 @@
                      ocena, rotacja (ostatnio proponowane lekko w dol). Do AI: top 6 na warstwe.
 3) AI              - 2 rozne zestawy wylacznie z kandydatow; kazda rzecz z uzasadnieniem liczba z warunkow.
 Zapis: qbot_v2.route_outfit (historia propozycji -> rotacja, wyswietlanie).
-Historia 'W czym jechalem' (ride_gear_log) - podpinana w kolejnym kroku.
+Historia 'W czym jechalem' (garage.db ride_gear_log; _typ krotki|dluzsza|wyprawa, _odczucie zimno|ok|cieplo, _rower)
+- podpinana w kolejnym kroku. ZASADA (decyzja 2026-09-23, uzytkownik):
+  * KONKRETNE RZECZY ("co lubisz zakladac") - WYLACZNIE z jazd _typ in (dluzsza, wyprawa). Krotkie treningi nie wplywaja
+    na to, KTORE rzeczy sa proponowane (na godzine mozna zalozyc prawie wszystko, w tygodniu nie zaklada sie najlepszych).
+  * KOMFORT TERMICZNY (ile warstw przy jakiej odczuwalnej/wietrze) - ze WSZYSTKICH jazd, waga = min(1, czas_h / 3).
+    Sygnal 'zimno' / 'cieplo' mocny nawet po krotkiej jezdzie; 'ok' po krotkiej jezdzie - slaby.
+  * ROWER z krotkich jazd - tylko informacja (na czym zwykle jezdzi), bez wplywu na ranking roweru na trase.
 """
 from __future__ import annotations
 
