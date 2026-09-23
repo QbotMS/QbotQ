@@ -93,5 +93,27 @@ class TestOverrides(unittest.TestCase):
             clean_overrides({"Zly Klucz": 1})
 
 
+class TestAuto(unittest.TestCase):
+    def test_sensitivity_low_data(self):
+        from qbot_trener_api import auto_sensitivity
+        self.assertEqual(auto_sensitivity([(0.1, 1.0)] * 5)["value"], 5)
+
+    def test_sensitivity_strong(self):
+        from qbot_trener_api import auto_sensitivity
+        pairs = [(i / 10, 1 + i / 100) for i in range(30)]
+        self.assertEqual(auto_sensitivity(pairs)["value"], 10)
+
+    def test_threshold(self):
+        from qbot_trener_api import auto_min_threshold
+        r = auto_min_threshold([i / 100 for i in range(100)], 15)
+        self.assertAlmostEqual(r["threshold"], 0.15)
+
+    def test_heavy_gap(self):
+        from qbot_trener_api import auto_heavy_gap
+        self.assertEqual(auto_heavy_gap([1] * 4 + [2] * 6)["value"], 48)
+        self.assertEqual(auto_heavy_gap([1] * 3)["value"], 48)
+        self.assertEqual(auto_heavy_gap([1] * 9 + [2])["value"], 24)
+
+
 if __name__ == "__main__":
     unittest.main()

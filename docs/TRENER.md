@@ -29,7 +29,11 @@ Wzorzec UI (zaakceptowany mockup, dane przykładowe): `/opt/qbot/web/public/tren
 ## Etapy
 
 1. **Fundament danych** — tabele + API (ZROBIONE 2026-09-23).
-2. Zakładka TRENER w `forma.html` (+ `trener.js`, CSS z mockupu), zapis celów / reguł / kalibracji.
+2. **Zakładka TRENER w `forma.html`** (ZROBIONE 2026-09-23): `/opt/qbot/web/public/trener.js` + `trener.css`
+   (poza repo, klasy `tr-*` pod `#p-trener`). Podzakładki: Tydzień (podgląd: zajętości z wpisów + Kalendarz +
+   zrobione z Garmina; plan od Etapu 3), Cele (CRUD), Dostępność (wpisy + siatka tygodnia + szablony),
+   Sezon (liczony w przeglądarce z celów trip/long_ride z datą), Kalibracja (nadpisania, zapis automatyczny).
+   Czas i Bilans z mockupu — w Etapie 4.
 3. Silnik planu tygodnia (Python): sezon + mix + reguły + Kalendarz + gotowość/HRV + METEO;
    akcje po stronie serwera; REST DAY → `calendar_entry`; auto-dopasowanie zrobionych z `training_sessions`.
 4. Bilans z wagi (gdy brak logów), statusy celów na bieżąco.
@@ -59,5 +63,15 @@ d: 0 nie / 1 tak / 2 czasem; `ac` puste = wszystkie aktywności (dla `busy` zaws
 - `GET /week?start=RRRR-MM-DD` → tydzień pn–nd: `sessions` + `calendar` (calendar_entry nachodzące)
   + `activities` (training_sessions z tygodnia)
 - `GET /health` → czy tabele istnieją
+- `GET /auto` → wartości auto liczone na żywo: `regen.sensitivity` (Spearman gotowość rano vs EF jazdy/norma 28 d;
+  <20 jazd → 5), `regen.min_pct` (+ próg gotowości = percentyl z 365 dni), `regen.heavy_gap_h` (≥120 XSS:
+  najmniejsze k dni, w których ≥75% powrotów HRV≥97% mediany 7 d i RHR≤mediana+1). Pogoda auto — Etap 4.
+
+## Klucze nadpisań (`trainer_settings.overrides`)
+
+`load.*`, `int.*`, `regen.*`, `food.*`, `wx.*`, `notify.*` (suwaki/przełączniki; przełącznik = indeks opcji),
+`mix.<rower|sila|wiosl|joga|trenazer>.<1..12>` (sesji/tydz. w miesiącu), `yoga.<reguła>.on|min`, `yoga.hard_xss`,
+`yoga.long_h`, `season.taper_w|regen_w|light_every_w|volume|rt_end|bz_end`. Definicje i wartości domyślne: tablica `G`
+/`MIXD`/`YOGA` w `trener.js` (Etap 3 przeniesie je do Pythona jako źródło dla silnika).
 
 Walidacja: `clean_*` w module (400 z czytelnym komunikatem). Testy: `tests/test_trener_api.py`.

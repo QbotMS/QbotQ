@@ -257,6 +257,108 @@ def _vals(d: dict) -> list:
     return [json.dumps(v, ensure_ascii=False) if k in _JSON_COLS else v for k, v in d.items()]
 
 
+
+# ---------------- AUTO (liczone na zywo z bazy, nie zapisywane) ----------------
+
+def _rank(v: list) -> list:
+    o = sorted(range(len(v)), key=lambda i: v[i])
+    r = [0] * len(v)
+    for k, i in enumerate(o):
+        r[i] = k
+    return r
+
+
+def _pearson(x: list, y: list) -> float | None:
+    n = len(x)
+    if n < 3:
+        return None
+    mx, my = sum(x) / n, sum(y) / n
+    sx = sum((a - mx) ** 2 for a in x) ** .5
+    sy = sum((b - my) ** 2 for b in y) ** .5
+    if not sx or not sy:
+        return None
+    return sum((a - mx) * (b - my) for a, b in zip(x, y)) / (sx * sy)
+
+
+def auto_sensitivity(pairs: list) -> dict:
+    """pairs: (gotowosc rano, EF jazdy / norma 28 d). Slaby zwiazek -> niska czulosc."""
+    if len(pairs) < 20:
+        return {"value": 5, "n": len(pairs), "r": None, "note": "za mało jazd z gotowością — wartość domyślna"}
+    x = [p[0] for p in pairs]
+    y = [p[1] for p in pairs]
+    r = _pearson(_rank(x), _rank(y))
+    v = 5 if r is None else max(1, min(10, round(2 + abs(r) * 16)))
+    return {"value": v, "n": len(pairs), "r": None if r is None else round(r, 3),
+            "note": f"związek gotowości z jazdą: {'brak danych' if r is None else round(r, 2)} ({len(pairs)} jazd)"}
+
+
+def auto_min_threshold(values: list, pct: int = 15) -> dict:
+    v = sorted(values)
+    if len(v) < 30:
+        return {"value": pct, "threshold": None, "n": len(v), "note": "za mało dni z gotowością"}
+    th = v[min(len(v) - 1, int(len(v) * pct / 100))]
+    return {"value": pct, "threshold": round(th, 3), "n": len(v),
+            "note": f"{pct}% najsłabszych dni = gotowość poniżej {round(th, 2)} ({len(v)} dni)"}
+
+
+def auto_heavy_gap(recover_days: list, share: float = 0.75) -> dict:
+    n = len(recover_days)
+    if n < 10:
+        return {"value": 48, "n": n, "note": "za mało ciężkich jazd z HRV — wartość domyślna"}
+    for k in (1, 2, 3, 4):
+        got = sum(1 for d in recover_days if d <= k) / n
+        if got >= share:
+            return {"value": k * 24, "n": n, "note": f"po ciężkiej jeździe HRV i tętno wracają do normy w {round(got*100)}% do {k} dni ({n} jazd)"}
+    return {"value": 96, "n": n, "note": f"powrót dłuższy niż 3 dni ({n} jazd)"}
+
+
+def compute_auto(c) -> dict:
+    c.execute("SELECT day, readiness_effective AS re, hrv_night AS hrv, rhr, xss_daily AS xss, ef_med_28d AS ef "
+              "FROM qbot_v2.fitmodel_daily ORDER BY day")
+    D = {}
+    for r in c.fetchall():
+        D[r["day"]] = {k: (float(r[k]) if r[k] is not None else None) for k in ("re", "hrv", "rhr", "xss", "ef")}
+    c.execute("SELECT date, normalized_power_w AS np, avg_hr_bpm AS hr FROM qbot_v2.training_sessions "
+              "WHERE sport_type IN ('cycling','gravel_cycling') AND duration_s >= 2700 AND normalized_power_w > 0 AND avg_hr_bpm > 80")
+    pairs = []
+    for r in c.fetchall():
+        d, p = D.get(r["date"]), D.get(r["date"] - timedelta(days=1))
+        if d and d["re"] is not None and p and p["ef"]:
+            pairs.append((d["re"], (float(r["np"]) / float(r["hr"])) / p["ef"]))
+    days = sorted(D)
+    last = days[-1] if days else date.today()
+    rv = [D[d]["re"] for d in days if d > last - timedelta(days=365) and D[d]["re"] is not None]
+    rec = []
+    for d0 in days:
+        x = D[d0]["xss"] or 0
+        nxt = D.get(d0 + timedelta(days=1))
+        if x < 120 or not nxt or (nxt["xss"] or 0) > 40:
+            continue
+        base = [D.get(d0 - timedelta(days=k)) for k in range(1, 8)]
+        bh = [b["hrv"] for b in base if b and b["hrv"]]
+        br = [b["rhr"] for b in base if b and b["rhr"]]
+        if len(bh) < 4 or len(br) < 4:
+            continue
+        bh.sort(); br.sort()
+        mh, mr = bh[len(bh) // 2], br[len(br) // 2]
+        res = None
+        for k in range(1, 6):
+            dd = D.get(d0 + timedelta(days=k))
+            if not dd or dd["hrv"] is None or dd["rhr"] is None:
+                break
+            if dd["hrv"] >= 0.97 * mh and dd["rhr"] <= mr + 1:
+                res = k
+                break
+        else:
+            res = 6
+        if res is not None:
+            rec.append(res)
+    return {"regen.sensitivity": auto_sensitivity(pairs),
+            "regen.min_pct": auto_min_threshold(rv),
+            "regen.heavy_gap_h": auto_heavy_gap(rec),
+            "_computed_at": datetime.now().isoformat(timespec="seconds")}
+
+
 def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
     r = APIRouter(prefix="/api/trener")
 
@@ -404,5 +506,10 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                 out[t] = bool(c.fetchone()["ok"])
             return {"ok": all(out.values()), "tables": out}
         return run(go)
+
+    @r.get("/auto")
+    def auto_get(request: Request):
+        user_of(request)
+        return run(compute_auto)
 
     return r

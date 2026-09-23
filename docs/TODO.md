@@ -10,8 +10,8 @@
 
 ## [TRENER] Sekcja Trener w Formie — etapy 2-5 (dodane 2026-09-23)
 
-Etap 1 (tabele trainer_* + API /api/trener) ZROBIONY 2026-09-23. Dalej: (2) zakladka w forma.html +
-trener.js wg mockupu trener-mock.html, (3) silnik planu tygodnia + akcje na serwerze + auto-dopasowanie
+Etap 1 (tabele trainer_* + API /api/trener) i Etap 2 (zakladka Trener w forma.html, trener.js/css, /auto)
+ZROBIONE 2026-09-23. Dalej: (3) silnik planu tygodnia + akcje na serwerze + auto-dopasowanie
 zrobionych z training_sessions, (4) bilans z wagi + statusy celow, (5) Telegram + Garmin + narzedzie
 Alberta (+_SYSTEM w tym samym commicie). Dane startuja puste. Dok.: docs/TRENER.md
 
