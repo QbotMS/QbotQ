@@ -9,7 +9,7 @@ from psycopg.rows import dict_row
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response, FileResponse
 import re as _re_email
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -162,7 +162,7 @@ async def _webauth_guard(request, call_next):
     if request.url.path in ("/healthz", "/login", "/favicon.ico", "/favicon.svg", "/wyprawa-rsvp", "/api/wyprawa/rsvp"):
         return await call_next(request)
     # [G1] goscie jazdy: tylko z waznym tokenem (sprawdzane w endpointach), dane z bialej listy
-    if request.url.path.startswith("/api/guest/"):
+    if request.url.path.startswith("/api/guest/") or request.url.path.startswith("/g/"):
         return await call_next(request)
 
     users, sign_val = _webauth_load()
@@ -4850,6 +4850,36 @@ def _guest_invite_or_error(conn, token):
     if not inv:
         raise HTTPException(status_code=410 if why and ("wygasl" in why or "wylaczony" in why) else 404, detail=why)
     return inv
+
+
+# [G2] strona goscia + pliki z BIALEJ LISTY (reszta statyk dalej za logowaniem)
+_GUEST_ASSETS = {
+    "theme.css": "theme.css", "raport.css": "raport.css", "aside.css": "aside.css",
+    "raport-v2.css": "raport-v2.css", "raport-trasy2.css": "raport-trasy2.css", "raport-gosc.css": "raport-gosc.css",
+    "raport-render.js": "raport-render.js", "raport-trasy2.js": "raport-trasy2.js", "raport-gosc.js": "raport-gosc.js",
+    "leaflet.js": "vendor/leaflet.js", "leaflet.css": "vendor/leaflet.css", "favicon.svg": "favicon.svg",
+}
+
+
+@app.get("/g/assets/{name}")
+def guest_asset(name: str):
+    rel = _GUEST_ASSETS.get(name)
+    if not rel:
+        raise HTTPException(status_code=404, detail="brak")
+    p = os.path.join(WEB_ROOT, rel)
+    if not os.path.isfile(p):
+        raise HTTPException(status_code=404, detail="brak")
+    mt = ("text/css" if name.endswith(".css") else "application/javascript" if name.endswith(".js")
+          else "image/svg+xml" if name.endswith(".svg") else "application/octet-stream")
+    return FileResponse(p, media_type=mt, headers={"Cache-Control": "public, max-age=300", "X-Robots-Tag": "noindex"})
+
+
+@app.get("/g/{token}")
+def guest_page(token: str):
+    """Strona goscia. Waznosc tokenu sprawdza /api/guest/{token} (strona pokazuje komunikat)."""
+    return FileResponse(os.path.join(WEB_ROOT, "raport-gosc.html"), media_type="text/html",
+                        headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow",
+                                 "Referrer-Policy": "no-referrer"})
 
 
 @app.get("/api/guest/{token}")
