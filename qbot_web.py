@@ -4815,8 +4815,48 @@ def report_plan(route_id: str = Query(...), date: str = Query(...),
         data["plan_params"] = {"date": date, "time": time, "long_stops": long_stops,
                                "long_stop_min": long_stop_min,
                                "w_zakresie_wariantow": "08:00" <= (time or "") <= "12:00"}
+        # E2c: pakiet dnia (jesli wygenerowany) -> najblizszy wariant + reguly aktywne dla TEGO planu
+        try:
+            from qbot3.routes import route_day_pack as _dp
+            _pk = _dp.load_pack(conn, route_id, date)
+            _ap = _dp.apply_pack(_pk, data, time) if _pk else {"jest": False}
+            if _pk and _ap.get("wariant"):
+                _ap["wariant_tresc"] = (_pk.get("warianty") or {}).get(_ap["wariant"])
+                _ap["wiek_h"] = (_pk.get("meta") or {}).get("wiek_h")
+            data["pakiet"] = _ap
+        except Exception as _e:
+            data["pakiet"] = {"jest": False, "blad": str(_e)[:160]}
         data["plan_ms"] = round((_t.perf_counter() - _t0) * 1000)
         return data
+    finally:
+        conn.close()
+
+
+@app.post("/api/report/day-pack")
+def report_day_pack_build(route_id: str = Query(...), date: str = Query(...)):
+    """E2c: generuje PAKIET DNIA (AI, ~40-45 s) dla trasy + daty i zapisuje (nadpisuje poprzedni
+    dla tej daty). Warianty startu 08:00-12:00, reguly przetestowane automatycznie."""
+    from qbot3.routes import route_day_pack as _dp
+    import qgpt_client as _qc
+    conn = _db_conn()
+    try:
+        inp = _dp.collect(_build_report_data, conn, route_id, date, 0, 0)
+        conn.commit()
+        pack = _dp.build_pack(inp, getattr(_qc, "QGPT_MODEL", ""))
+        _dp.save_pack(conn, pack)
+        return pack
+    finally:
+        conn.close()
+
+
+@app.get("/api/report/day-pack")
+def report_day_pack_get(route_id: str = Query(...), date: str = Query(...)):
+    """E2c: zapisany pakiet dnia (bez AI). {"jest": false} gdy brak."""
+    from qbot3.routes import route_day_pack as _dp
+    conn = _db_conn()
+    try:
+        p = _dp.load_pack(conn, route_id, date)
+        return p if p else {"jest": False}
     finally:
         conn.close()
 
