@@ -459,3 +459,10 @@ zachowuje sie sensownie po zalozeniu hamulcow z punktu 1.
 - L3 (feel/illness) ma 3 wpisy w calej historii. Albo zaczac logowac feel
   po jezdzie (1 klikniecie w QExt2/web), albo uznac L3 za martwe i oprzec
   sie wylacznie na L2-OBJ. Decyzja Michala.
+
+## 2026-09-23 -- po wdrozeniu przegladu baz tylko-do-odczytu (MCP)
+- [ ] Routing qbot_query: pytania ogolne o garaz ("pokaz garaz", "mojego garazu", "dostep do garazu", "wszystkie opony")
+      trafiaja do garage_search i daja 0 wynikow -> kierowac do garage_status / tabeli tires; pusty wynik
+      garage_search -> pokaz podsumowanie zamiast pustki. (czeka na decyzje uzytkownika)
+- [ ] garage_search nie przeszukuje tabeli `tires` (zapytanie "opony" -> 0 wynikow mimo 8 opon w garazu).
+- [ ] Przy dodawaniu tabel z tokenami/sekretami: REVOKE SELECT dla qbot_ro (default privileges daja dostep automatycznie).

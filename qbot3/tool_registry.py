@@ -2345,15 +2345,46 @@ def _load_db_select_readonly_tool() -> dict[str, Any]:
         "callable": lambda args: db_select_readonly(args),
         "category": "db",
         "description": (
-            "Wykonaj bezpieczne zapytanie SELECT na bazie danych. "
-            "Użyj do pobrania danych nutrition, kalendarza, wellness, tras, sprzętu. "
-            "Zawsze sprawdź kolumny przez db_table_describe przed użyciem. "
-            "Parametry: sql (zapytanie SELECT, bez modyfikacji danych)."
+            "Zapytanie tylko do odczytu na PostgreSQL (konto qbot_ro): SELECT lub WITH ... SELECT, "
+            "jedno zapytanie, max 200 wierszy, limit 5 s. Dane nutrition, kalendarza, wellness, tras, treningu. "
+            "Pelne nazwy qbot_v2.tabela; najpierw db_table_describe. Garazu tu NIE ma (garage_select). "
+            "Parametry: sql."
         ),
         "args_schema": {"sql": {"type": "string"}},
         "safety": "read",
         "mode": "read_only",
         "notes": "Primary transparent read path for ordinary questions; use db_schema_list / db_table_describe first when schema is unknown.",
+    }
+
+
+def _load_garage_tables_tool() -> dict[str, Any]:
+    from qbot3.garage_readonly import garage_tables
+    return {
+        "callable": lambda args: garage_tables(args),
+        "category": "garage",
+        "description": (
+            "Lista tabel bazy garazu (SQLite garage.db) z kolumnami i liczba wierszy: bikes, components, "
+            "tires, gear (odziez), equipment (akcesoria/torby), fitting, trips, packing_*. Tylko odczyt."
+        ),
+        "args_schema": {},
+        "safety": "read",
+        "mode": "read_only",
+        "notes": "Uzyj przed garage_select, gdy nie znasz kolumn garazu.",
+    }
+
+def _load_garage_select_tool() -> dict[str, Any]:
+    from qbot3.garage_readonly import garage_select
+    return {
+        "callable": lambda args: garage_select(args),
+        "category": "garage",
+        "description": (
+            "Zapytanie SQLite tylko do odczytu na bazie garazu: SELECT lub WITH ... SELECT, max 200 wierszy, 5 s. "
+            "Rowery, komponenty (bike_id), opony, odziez, akcesoria, fitting; aktywne active=1. Parametry: sql."
+        ),
+        "args_schema": {"sql": {"type": "string"}},
+        "safety": "read",
+        "mode": "read_only",
+        "notes": "Pelny odczyt garazu, gdy garage_status/garage_search nie wystarcza.",
     }
 
 
@@ -2525,6 +2556,8 @@ def _init_registry():
         ("db_table_describe", _load_db_table_describe_tool),
         ("db_sample_rows", _load_db_sample_rows_tool),
         ("db_select_readonly", _load_db_select_readonly_tool),
+        ("garage_tables", _load_garage_tables_tool),
+        ("garage_select", _load_garage_select_tool),
         # Write tools
         ("nutrition_log_add", _load_nutrition_log_add_tool),
         ("nutrition_log_delete", _load_nutrition_log_delete_tool),

@@ -224,7 +224,7 @@ def handle_qbot3_mcp(payload: dict[str, Any]) -> dict[str, Any]:
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": {"name": _MCP_SERVER_NAME, "version": _MCP_SERVER_VERSION},
                 "instructions": (
-                    "Używaj tools/call z qbot.query. Zapisy finalizuje Albert po stronie serwera."
+                    "Używaj tools/call z qbot.query. Zapisy finalizuje Albert po stronie serwera. Przeglad surowych danych (tylko odczyt): qbot_db_schema_list / qbot_db_table_describe / qbot_db_select (PostgreSQL) oraz qbot_garage_tables / qbot_garage_select (garaz)."
                 ),
             },
         }
@@ -258,7 +258,91 @@ def _list_tools(req_id: Any) -> dict[str, Any]:
             },
         },
     ]
+    tools.extend(_DB_READ_TOOLS)
     return {"jsonrpc": "2.0", "id": req_id, "result": {"tools": tools}}
+
+
+# ── Przeglad baz tylko do odczytu (2026-09-23). Konto qbot_ro (PG) / garage.db mode=ro. ──
+_DB_READ_TOOLS: list[dict[str, Any]] = [
+    {
+        "name": "qbot_db_schema_list",
+        "description": "Lista wszystkich tabel bazy QBot (PostgreSQL) wg schematow. Dane biezace: schema qbot_v2. Tylko odczyt. Zacznij od tego, gdy nie znasz nazw tabel.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "qbot_db_table_describe",
+        "description": "Kolumny, typy i przyblizona liczba wierszy tabeli PostgreSQL. Uzyj przed pisaniem SQL.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "schema": {"type": "string", "description": "Schemat, zwykle qbot_v2"},
+                "table": {"type": "string", "description": "Nazwa tabeli (mozna tez schema.tabela)"},
+            },
+            "required": ["table"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "qbot_db_select",
+        "description": "Zapytanie SQL tylko do odczytu na bazie QBot (PostgreSQL): SELECT lub WITH ... SELECT, jedno zapytanie. Max 200 wierszy, limit 5 s. Uzywaj pelnych nazw (qbot_v2.tabela) i agregacji/WHERE dla duzych tabel (np. activity_record = dane 1 Hz).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "sql": {"type": "string", "description": "Zapytanie SELECT / WITH ... SELECT"},
+                "max_rows": {"type": "integer", "minimum": 1, "maximum": 200, "default": 200},
+            },
+            "required": ["sql"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "qbot_garage_tables",
+        "description": "Lista tabel bazy garazu (SQLite: rowery, komponenty, opony, odziez, akcesoria, fitting, pakowanie) z kolumnami i liczba wierszy. Tylko odczyt.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "qbot_garage_select",
+        "description": "Zapytanie SQL (SQLite) tylko do odczytu na bazie garazu: SELECT lub WITH ... SELECT. Max 200 wierszy, limit 5 s. Tabele m.in. bikes, components (bike_id), tires, gear, equipment, fitting; aktywne: active=1.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "sql": {"type": "string", "description": "Zapytanie SELECT / WITH ... SELECT (SQLite)"},
+                "max_rows": {"type": "integer", "minimum": 1, "maximum": 200, "default": 200},
+            },
+            "required": ["sql"],
+            "additionalProperties": False,
+        },
+    },
+]
+
+
+def _call_db_read_tool(req_id: Any, name: str, args: dict[str, Any]) -> dict[str, Any] | None:
+    """Zwraca odpowiedz dla narzedzi przegladu baz albo None, gdy to nie jest takie narzedzie."""
+    if name not in {t["name"] for t in _DB_READ_TOOLS}:
+        return None
+    args = args if isinstance(args, dict) else {}
+    try:
+        if name == "qbot_db_schema_list":
+            from qbot3.db_introspection import db_schema_list
+            res = db_schema_list({})
+        elif name == "qbot_db_table_describe":
+            from qbot3.db_introspection import db_table_describe
+            res = db_table_describe({"schema": args.get("schema") or "qbot_v2", "table": args.get("table", "")}
+                                    if args.get("schema") or "." not in str(args.get("table", ""))
+                                    else {"table": args.get("table", "")})
+        elif name == "qbot_db_select":
+            from qbot3.db_introspection import db_select_readonly
+            res = db_select_readonly({"sql": args.get("sql", ""), "max_rows": args.get("max_rows"), "_tool": "mcp_db_select"})
+        elif name == "qbot_garage_tables":
+            from qbot3.garage_readonly import garage_tables
+            res = garage_tables({})
+        else:
+            from qbot3.garage_readonly import garage_select
+            res = garage_select({"sql": args.get("sql", ""), "max_rows": args.get("max_rows")})
+    except Exception as exc:
+        res = {"status": "ERROR", "error": str(exc)[:300]}
+    res.setdefault("tool", name)
+    return _result(req_id, res)
 
 
 def _call_tool(req_id: Any, params: dict[str, Any]) -> dict[str, Any]:
@@ -341,6 +425,10 @@ def _call_tool(req_id: Any, params: dict[str, Any]) -> dict[str, Any]:
 
     if name == "qbot_action_execute":
         return _handle_action_execute(req_id, args)
+
+    _db_resp = _call_db_read_tool(req_id, name, args)
+    if _db_resp is not None:
+        return _db_resp
 
     return _error(req_id, -32602, f"Tool not found: {name}")
 

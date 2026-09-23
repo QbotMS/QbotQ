@@ -4,6 +4,35 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-09-23 -- DECYZJA: publiczny MCP daje przeglad baz TYLKO DO ODCZYTU (GPT/Claude)
+
+**Kontekst:** GPT przez konektor QBot dostawal puste wyniki (np. "czy masz dostep do mojego garazu"
+-> garage_search szukal slow pytania, 0 wynikow). Uzytkownik chce, by zewnetrzny model mogl sam
+przegladac dane, w tym wellness (pelny dostep swiadomie zaakceptowany przez uzytkownika).
+
+**Decyzja:**
+- `/mcp` (qbot3/adapters/mcp_adapter.py — ta sama sciezka dla GPT przez qbot-mcp-bridge i dla Claude)
+  listuje obok `qbot_query` 5 narzedzi odczytu: `qbot_db_schema_list`, `qbot_db_table_describe`,
+  `qbot_db_select` (PostgreSQL) oraz `qbot_garage_tables`, `qbot_garage_select` (SQLite garage.db).
+  Zadne narzedzie zapisu nie jest publiczne (test_only_one_public_tool pilnuje dokladnej listy).
+- Odczyt PG idzie kontem **qbot_ro** (nie wlascicielem qbot): tylko GRANT SELECT na qbot_v2/public/archive
+  (+ ALTER DEFAULT PRIVILEGES dla nowych tabel), `default_transaction_read_only=on`, `statement_timeout=5s`,
+  CONNECTION LIMIT 5. Kolumny `token` w qbot_v2.ride_invite i qbot_v2.wyprawa_rsvp — bez dostepu.
+  Haslo: PGRO_USER/PGRO_PASSWORD w /opt/qbot/app/.env.local. Brak danych qbot_ro => blad, NIGDY fallback na qbot.
+- garage.db otwierana `mode=ro` + `PRAGMA query_only` + authorizer SQLite (tylko SELECT/READ/FUNCTION), 5 s.
+- Limity: jedno zapytanie (bez `;`), SELECT lub WITH, max 200 wierszy (fetchmany, flaga truncated),
+  dlugie pola ucinane do 4000 znakow. Dozwolone `WITH` (wczesniej odrzucane). Usuniety SIGALRM
+  (nie dziala w watkach FastAPI) — limit czasu egzekwuje baza.
+- Dziennik: kazdy odczyt -> linia `DB_READ_AUDIT {...}` / `GARAGE_READ_AUDIT {...}` w /opt/qbot/logs/qbot-api.log.
+- Albert dostal te same zabezpieczenia oraz nowe narzedzia `garage_tables` / `garage_select` (tool_registry + _SYSTEM).
+
+**Uwaga:** nowe tabele z sekretami/tokenami beda automatycznie czytelne dla qbot_ro (default privileges) —
+przy dodawaniu takiej tabeli trzeba jawnie REVOKE dla qbot_ro.
+
+**Dowod:** tests/test_db_readonly.py 20/20 (w tym zapis odrzucany przez SAMA baze z pominieciem filtra),
+tests/test_qbot3_acceptance.py OK, test HTTP na zywym /mcp: 6 narzedzi, odczyt opon z garazu (8) i fitmodel_daily,
+proba UPDATE -> BLOCKED.
+
 ## 2026-09-23 -- DECYZJA: TRENER w Formie (planer treningow) -- zamkniety serwis
 
 PROBLEM: potrzeba AI-wspomaganego planowania treningow pod cele sezonu (wyprawy, waga, km), z uwzglednieniem

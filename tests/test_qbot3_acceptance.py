@@ -755,12 +755,18 @@ class TestRegression(unittest.TestCase):
         self.assertIn("db_select_readonly", names)
 
     def test_only_one_public_tool(self):
-        """Only qbot_query is publicly listed (writes finalized server-side by Albert)."""
+        """Publicznie: qbot_query (zapisy finalizuje Albert) + narzedzia TYLKO ODCZYTU baz (2026-09-23).
+        Zadne narzedzie zapisu (action_execute itp.) nie moze byc listowane."""
         from qbot3.adapters.mcp_adapter import _list_tools
         tools_list = _list_tools("test")
         tools = tools_list["result"]["tools"]
         names = [t["name"] for t in tools]
-        self.assertEqual(names, ["qbot_query"])
+        self.assertEqual(names, [
+            "qbot_query",
+            "qbot_db_schema_list", "qbot_db_table_describe", "qbot_db_select",
+            "qbot_garage_tables", "qbot_garage_select",
+        ])
+        self.assertNotIn("qbot_action_execute", names)
 
 
 

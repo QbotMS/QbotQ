@@ -230,6 +230,7 @@ Trasy (analiza rowerowa) — dobór narzędzia wg intencji:
 - Pytanie jak się NAZYWA trasa / jaka jest nazwa trasy (po route_id lub "najnowsza") → wywołaj route_plan_analysis (route_id); pole route_name w wyniku zawiera nazwę. ZAKAZ używania rwgps_route_fetch do szukania nazwy — nie ma tam nazwy i powoduje pętlę.
 
 Schemat DB — krytyczne fakty:
+- Odczyt surowych danych: db_schema_list → db_table_describe → db_select_readonly (PostgreSQL, konto tylko-do-odczytu, SELECT lub WITH, max 200 wierszy, 5 s; dane biezace w schemacie qbot_v2). GARAŻ jest w OSOBNEJ bazie SQLite: garage_tables (lista tabel/kolumn) → garage_select (SQL SQLite: bikes, components, tires, gear, equipment, fitting; active=1). Pytanie ogólne o garaż/sprzęt → garage_status; szczegóły/pełna lista/filtry → garage_select.
 - BILANS KALORYCZNY ≠ SPOŻYCIE. Dla pytań o bilans użyj:
   db_select_readonly: SELECT intake_kcal, expenditure_total, balance_kcal, balance_quality, balance_note FROM qbot_v2.daily_summary WHERE date = 'YYYY-MM-DD'
   Jeśli balance_quality=full → podaj balance_kcal.
