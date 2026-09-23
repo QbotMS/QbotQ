@@ -24,6 +24,7 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import math
+import time
 import os
 import urllib.parse
 import urllib.request
@@ -395,6 +396,96 @@ def _fetch_point_raw(lat: float, lon: float, date_str: str, timeout: float = 15.
         return json.loads(r.read().decode("utf-8"))
 
 
+# [E2a warstwa dnia] Tabela cieplna dnia: WBGT i Tmrt dla punktow siatki (co METEO_GRID_KM)
+# x sloty co 15 min, w dwoch wariantach: pelne slonce (tau=1) i pelny cien (tau=0).
+# Odczyt dla odcinka = interpolacja w czasie, miedzy sasiednimi punktami (km) i wg tau.
+# Test dokladnosci 2026-09-23 (2094 odc., start 9:15 i 12:00): blad tabeli vs liczenie
+# dokladne WBGT srednio 0.00 / max 0.09 C, Tmrt max 0.17 C.
+THERMAL_SLOT_MIN = 15
+THERMAL_T0_UTC_H = 4          # 04:00 UTC
+THERMAL_NSLOT = 73            # do 22:00 UTC
+_THERMAL_MEMO: dict = {}
+
+
+def _thermal_inputs(w: dict, when: _dt.datetime):
+    h, t = w["h"], w["times"]
+    return (_interp(t, h["temperature_2m"], when), _interp(t, h["relative_humidity_2m"], when),
+            _interp(t, h["surface_pressure"], when), _interp(t, h["wind_speed_10m"], when),
+            _interp(t, h["shortwave_radiation_instant"], when), _interp(t, h["direct_radiation_instant"], when))
+
+
+def _thermal_solve(inp, cza: float, tau: float):
+    ta, rh, pres, ws, ghi, dr = inp
+    fb = (max(0.0, min(dr / ghi, 0.9)) if ghi > 1.0 else 0.0)
+    if cza < CZA_MIN:
+        fb = 0.0
+    fe = fb * tau
+    wb = float(wbgt_liljegren_k(ta + 273.15, rh, pres, ws, ghi, fe, cza)) - 273.15
+    tm = float(mean_radiant_temp_c(ta + 273.15, rh, pres, ws, ghi, fe, cza))
+    return wb, tm
+
+
+class DayThermal:
+    """Odczyt z tabeli cieplnej dnia. data[g] = lista slotow [wbgt_slonce, wbgt_cien, tmrt_slonce, tmrt_cien]."""
+
+    def __init__(self, date_str: str, gks: list, data: dict):
+        self.t0 = _dt.datetime.fromisoformat(date_str + "T%02d:00:00+00:00" % THERMAL_T0_UTC_H)
+        self.gks = sorted(float(g) for g in gks)
+        self.data = {float(k): v for k, v in data.items()}
+
+    def _at(self, g: float, when: _dt.datetime, tau: float):
+        rows = self.data[g]
+        x = (when - self.t0).total_seconds() / (THERMAL_SLOT_MIN * 60.0)
+        j = int(max(0, min(len(rows) - 2, math.floor(x))))
+        f = max(0.0, min(1.0, x - j))
+        a, b = rows[j], rows[j + 1]
+        v = [a[i] + f * (b[i] - a[i]) for i in range(4)]
+        tau = max(0.0, min(1.0, float(tau)))
+        return v[1] + tau * (v[0] - v[1]), v[3] + tau * (v[2] - v[3])
+
+    def lookup(self, km: float, when: _dt.datetime, tau: float):
+        """(wbgt_c, tmrt_c) z plynnym przejsciem miedzy dwoma sasiednimi punktami siatki."""
+        lo = math.floor(km / METEO_GRID_KM) * METEO_GRID_KM
+        hi = lo + METEO_GRID_KM
+        if lo in self.data and hi in self.data:
+            f = (km - lo) / METEO_GRID_KM
+            w0, t0 = self._at(lo, when, tau)
+            w1, t1 = self._at(hi, when, tau)
+            return w0 + f * (w1 - w0), t0 + f * (t1 - t0)
+        g = min(self.gks, key=lambda x: abs(x - km))
+        return self._at(g, when, tau)
+
+
+def build_day_thermal(route_id: str, date_str: str, grid_pts: dict, weather_by_g: dict,
+                      model: Optional[str] = None) -> DayThermal:
+    """grid_pts: {km_siatki: (lat, lon)}; weather_by_g: {km_siatki: wynik _fetch_point}.
+    Cache: pamiec procesu + meteo_point_cache (klucz 'thermal|...', TTL jak prognoza)."""
+    key = "thermal|%s|%s|%s|%d|%.1f" % (route_id, date_str, model or "best_match", len(grid_pts), METEO_GRID_KM)
+    m = _THERMAL_MEMO.get(key)
+    if m and (time.time() - m[0]) < METEO_CACHE_TTL_S:
+        return m[1]
+    data = _meteo_cache_get(key)
+    if data is None:
+        t0 = _dt.datetime.fromisoformat(date_str + "T%02d:00:00+00:00" % THERMAL_T0_UTC_H)
+        slots = [t0 + _dt.timedelta(minutes=THERMAL_SLOT_MIN * j) for j in range(THERMAL_NSLOT)]
+        tab = {}
+        for g, (lat, lon) in grid_pts.items():
+            w = weather_by_g[g]
+            rows = []
+            for sl in slots:
+                inp = _thermal_inputs(w, sl)
+                cza = cos_solar_zenith(sl, lat, lon)
+                ws_, ts_ = _thermal_solve(inp, cza, 1.0)
+                wc_, tc_ = _thermal_solve(inp, cza, 0.0)
+                rows.append([round(ws_, 3), round(wc_, 3), round(ts_, 3), round(tc_, 3)])
+            tab[str(float(g))] = rows
+        data = {"gks": sorted(float(g) for g in grid_pts), "data": tab}
+        _meteo_cache_put(key, data)
+    obj = DayThermal(date_str, data["gks"], data["data"])
+    _THERMAL_MEMO[key] = (time.time(), obj)
+    return obj
+
+
 # Dlugie postoje NIE sa kosmetyka: pogoda liczy sie w MOMENCIE PRZEJAZDU, wiec kazdy
 # nieuwzgledniony postoj przesuwa cala reszte dnia na wczesniejsze (chlodniejsze) godziny.
 # Model czasu (estimate_route_time_v2) liczy tylko mikroprzerwy i krotkie postoje co 9 km;
@@ -461,13 +552,17 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
                      long_stop_every_km: float = LONG_STOP_EVERY_KM,
                      long_stop_min: float = LONG_STOP_MIN,
                      planned_long_stops: Optional[int] = None,
-                     planned_long_stop_each_min: float = 0.0) -> dict:
+                     planned_long_stop_each_min: float = 0.0,
+                     use_day_table: bool = False) -> dict:
     """Jeden przebieg silnika METEO.
 
     planned_long_stops (opcjonalne, E1) = dlugie przerwy ZADEKLAROWANE przez uzytkownika
     (raport trasy): n przerw po planned_long_stop_each_min minut, w TYCH SAMYCH miejscach co
     model czasu (qbot_route_time_tools._long_stop_positions). Gdy podane (takze 0), zastepuje
-    regule long_stop_every_km/long_stop_min. None = dotychczasowa regula (np. planer). date=YYYY-MM-DD, start=HH:MM (lokalny).
+    regule long_stop_every_km/long_stop_min. None = dotychczasowa regula (np. planer).
+
+    use_day_table (E2a) = pogoda odcinka z NAJBLIZSZEGO punktu siatki wg km, a WBGT/Tmrt
+    z tabeli cieplnej dnia (build_day_thermal). Domyslnie False = dotychczasowe liczenie. date=YYYY-MM-DD, start=HH:MM (lokalny).
 
     long_stop_every_km / long_stop_min = dlugie postoje (obiad, sklep) DOLICZANE DO ETA:
     jeden postoj na kazde pelne `long_stop_every_km` dlugosci ETAPU, po `long_stop_min` minut.
@@ -579,11 +674,32 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         except Exception as exc:  # noqa
             return {"status": "ERROR", "error": f"Open-Meteo nieudane: {str(exc)[:160]}"}
 
+    dtab = None
+    w_by_g = {}
+    if use_day_table:
+        _gpts = {}
+        for s in segs:
+            gk = round(float(s["km"]) / METEO_GRID_KM) * METEO_GRID_KM
+            if gk not in _gpts or abs(float(s["km"]) - gk) < _gpts[gk][0]:
+                _gpts[gk] = (abs(float(s["km"]) - gk), s["lat"], s["lon"])
+        grid_pts = {g: (v[1], v[2]) for g, v in _gpts.items()}
+        try:
+            for g, (la, lo_) in grid_pts.items():
+                w_by_g[g] = _fetch_point(la, lo_, date_str, model=model)
+        except Exception as exc:  # noqa
+            return {"status": "ERROR", "error": f"Open-Meteo nieudane: {str(exc)[:160]}"}
+        dtab = build_day_thermal(route_id, date_str, grid_pts, w_by_g, model=model)
+
     per_segment = []
     for s in segs:
         wi = _win_idx(s["eta_utc"])
-        h = weather[wi]["h"]
-        tms = weather[wi]["times"]
+        if dtab is not None:
+            _gw = w_by_g[round(float(s["km"]) / METEO_GRID_KM) * METEO_GRID_KM]
+            h = _gw["h"]
+            tms = _gw["times"]
+        else:
+            h = weather[wi]["h"]
+            tms = weather[wi]["times"]
         when = s["eta_utc"]
         ta = _interp(tms, h["temperature_2m"], when)
         rh = _interp(tms, h["relative_humidity_2m"], when)
@@ -610,7 +726,10 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         tau = segment_tau(sh, when, s["lat"], s["lon"]) if sh else 1.0
         fdir_eff = fdir_base * tau
 
-        wbgt = float(wbgt_liljegren_k(ta + 273.15, rh, pres, ws, ghi, fdir_eff, cza)) - 273.15
+        if dtab is not None:
+            wbgt, _tmrt_tab = dtab.lookup(float(s["km"]), when, tau)
+        else:
+            wbgt = float(wbgt_liljegren_k(ta + 273.15, rh, pres, ws, ghi, fdir_eff, cza)) - 273.15
         lvl = wbgt_level(wbgt)
         limit = metabolic_limit_c(s["grade_pct"])
         exceed = round(wbgt - limit, 1)
@@ -622,7 +741,8 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
                      if storm else None)
 
         # ODCZUWALNA (UTCI): Tmrt z solvera (cień wpięty), wiatr efektywny (otoczenie + ped jazdy)
-        tmrt = float(mean_radiant_temp_c(ta + 273.15, rh, pres, ws, ghi, fdir_eff, cza))
+        tmrt = (_tmrt_tab if dtab is not None
+                else float(mean_radiant_temp_c(ta + 273.15, rh, pres, ws, ghi, fdir_eff, cza)))
         eff = effective_wind_ms(s["v_kmh"], ws, tail, cross)
         wind_oob = eff > V_UTCI_MAX or eff < V_UTCI_MIN
         eff_c = min(max(eff, V_UTCI_MIN), V_UTCI_MAX)
@@ -672,7 +792,7 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
     return {
         "status": "OK",
         "route_id": route_id, "date": date_str, "start": start_time, "mode": mode,
-        "model": (model or "best_match"),
+        "model": (model or "best_match"), "tabela_dnia": bool(dtab is not None),
         "postoje": {"liczba": len(postoje), "minut_kazdy": ((postoje[0]["minut"] if postoje else 0)),
                     "na_km": [p["km"] for p in postoje],
                     "minut_razem": round(sum(p["minut"] for p in postoje)),

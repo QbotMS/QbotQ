@@ -18,6 +18,7 @@ sekwencji podjazdow.
 """
 from __future__ import annotations
 
+import bisect
 import math
 
 from qbot_route_time_tools import (SHORT_BREAK_EVERY_KM, SHORT_BREAK_MIN,
@@ -68,6 +69,15 @@ def _cat_lookup(ribbon, km):
     return None
 
 
+def _temp_lookup_fast(kms, per, km):
+    """Jak _temp_lookup, ale wyszukiwanie binarne po posortowanej liscie km (per_segment
+    z meteo jest w kolejnosci km). Wynik identyczny (test 0/5098 roznic, 2026-09-23)."""
+    if not per:
+        return None
+    i = bisect.bisect_right(kms, km) - 1
+    return (per[i] if i >= 0 else per[0]).get("temp_c")
+
+
 def _temp_lookup(per, km):
     """temp_c z meteo per_segment dla km (najblizszy punkt <= km, fallback pierwszy)."""
     if not per:
@@ -99,6 +109,7 @@ def simulate_ride(frames, ribbon, weather_per, cp_w, wprime_kj, mass_rider_kg,
     micro_rest_s_per_km = MICRO_MIN_PER_KM * 60.0
     short_every_km = SHORT_BREAK_EVERY_KM
     short_rest_s = SHORT_BREAK_MIN * 60.0
+    _wkms = [float(p.get("km") or 0.0) for p in (weather_per or [])]
     n_long = int(long_stops or 0)
     long_positions = [f * total_km for f in _long_stop_positions(n_long)]
     long_each_s = (float(long_stop_min_total or 0.0) * 60.0 / n_long) if n_long else 0.0
@@ -139,7 +150,7 @@ def simulate_ride(frames, ribbon, weather_per, cp_w, wprime_kj, mass_rider_kg,
         cat = _cat_lookup(ribbon, km)
         crr = CRR.get(cat, CRR_DEFAULT)
         sclass = "paved" if cat == 1 else ("unpaved" if cat in (2, 3, 4, 5) else None)
-        temp = _temp_lookup(weather_per, km)
+        temp = _temp_lookup_fast(_wkms, weather_per, km)
         cf = _heat_cf(temp)
         cp_eff = cp * cf
         wp_eff = wp_j * cf
