@@ -145,6 +145,54 @@ def expedition_chains(daily: dict, link_km: float = 15.0, move_km: float = 10.0,
     return out
 
 
+def trip_recovery(c) -> dict:
+    """Ile dni po WYPRAWACH (jazda z punktu do punktu >= 2 dni) HRV i tetno spoczynkowe wracaja do normy.
+    Norma = mediana 7 dni przed wyprawa; powrot = HRV >= 97% normy i RHR <= norma + 1 (jak przy 'przerwie po ciezkiej').
+    Wartosc = mediana dni powrotu, min. 2 (decyzja uzytkownika 2026-09-23), max. 5; brak danych -> 1 + dni/3."""
+    daily = _daily_km_up(c, date.today() - timedelta(days=730))
+    chains = expedition_chains(daily)
+    c.execute("SELECT day, hrv_night AS h, rhr AS r FROM qbot_v2.fitmodel_daily WHERE hrv_night IS NOT NULL AND rhr IS NOT NULL")
+    F = {r["day"]: (float(r["h"]), float(r["r"])) for r in c.fetchall()}
+    rows = []
+    for ch in chains:
+        a, b = date.fromisoformat(ch["start"]), date.fromisoformat(ch["end"])
+        base = [F[a - timedelta(days=k)] for k in range(1, 8) if (a - timedelta(days=k)) in F]
+        if len(base) < 4:
+            rows.append({"start": ch["start"], "end": ch["end"], "days": ch["days"], "km": ch["km"], "rec": None, "note": "brak HRV przed wyprawą"})
+            continue
+        hs = sorted(x[0] for x in base); rs = sorted(x[1] for x in base)
+        mh, mr = hs[len(hs) // 2], rs[len(rs) // 2]
+        rec = None
+        for k in range(1, 8):
+            v = F.get(b + timedelta(days=k))
+            if v and v[0] >= 0.97 * mh and v[1] <= mr + 1:
+                rec = k
+                break
+        rows.append({"start": ch["start"], "end": ch["end"], "days": ch["days"], "km": ch["km"], "rec": rec if rec else 7,
+                     "note": f"HRV norma {mh:.0f}, tętno {mr:.0f}"})
+    got = sorted(r["rec"] for r in rows if r["rec"] is not None)
+    if got:
+        med = got[len(got) // 2]
+        val = max(2, min(5, med))
+        note = "po wyprawach HRV i tętno wracały do normy po: " + ", ".join(f"{_pl_date(r['start'])} ({r['days']} dni) → {r['rec']} dni" for r in rows if r["rec"] is not None)
+    else:
+        val, note = 2, "brak wypraw z HRV — wartość minimalna"
+    return {"value": val, "n": len(got), "rows": rows, "note": note}
+
+
+def trip_recovery_cached(c) -> dict:
+    """trip_recovery z cache trainer_auto_cache (klucz 'trip_rec', waznosc 1 dzien; liczenie ~10 s)."""
+    import json as _json
+    c.execute("SELECT value, computed_at FROM qbot_v2.trainer_auto_cache WHERE key='trip_rec'")
+    r = c.fetchone()
+    if r and r["computed_at"] and (datetime.now(r["computed_at"].tzinfo) - r["computed_at"]).total_seconds() < 86400:
+        return r["value"] if isinstance(r["value"], dict) else _json.loads(r["value"])
+    v = trip_recovery(c)
+    c.execute("INSERT INTO qbot_v2.trainer_auto_cache (key, value, computed_at) VALUES ('trip_rec', %s, now()) "
+              "ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, computed_at=now()", (_json.dumps(v, ensure_ascii=False, default=str),))
+    return v
+
+
 def _lvl(ratios: list[float]) -> str:
     r = [x for x in ratios if x is not None]
     if not r:

@@ -170,6 +170,38 @@ class TestCarryOver(unittest.TestCase):
             self.assertFalse(any(0 < (d - L).days < 2 for d in rides), (longs, rides))
 
 
+class TestConsistency(unittest.TestCase):
+    def test_trip_recovery_days_no_training(self):
+        rec = [{"day": d, "trip": "Wyprawa małopolska", "k": i + 1, "n": 3, "why": "z danych"} for i, d in enumerate(("2026-10-06", "2026-10-07", "2026-10-08"))]
+        r = E.plan_week(ctx(week_start=date(2026, 10, 5), today=date(2026, 10, 5), trip_recovery_days=rec))
+        for d in ("2026-10-06", "2026-10-07", "2026-10-08"):
+            self.assertFalse(any(s["day"] == d and s["sport"] in ("rower", "sila", "wiosl") for s in r["sessions"]), d)
+        self.assertTrue(any(s["day"] >= "2026-10-09" and s["sport"] == "rower" for s in r["sessions"]))   # potem wraca normalnie
+
+    def test_rhythm_follows_previous_week(self):
+        pat = {"sila": [1, 4], "long": [5], "rower": [2, 6]}
+        r = E.plan_week(ctx(prev_pattern=pat))
+        wd = lambda sp: sorted({date.fromisoformat(s["day"]).weekday() for s in r["sessions"] if s["sport"] == sp and not s.get("is_long")})
+        self.assertTrue(set(wd("sila")) <= {1, 4}, wd("sila"))
+        self.assertEqual([date.fromisoformat(s["day"]).weekday() for s in r["sessions"] if s.get("is_long")], [5])
+
+    def test_progression_cap(self):
+        r = E.plan_week(ctx(prev_week_h=4.0, prev_week_normal=True))
+        self.assertLessEqual(r["target_h"], 8)
+        self.assertTrue(any("przyrost ograniczony" in n for n in r["notes"]))
+        train_h = sum(s["dur_min"] for s in r["sessions"] if s["sport"] != "joga") / 60   # joga (mobilnosc) poza limitem
+        self.assertLessEqual(train_h, 4.0 * 1.07 + 0.3)
+
+    def test_day_before_trip_is_free(self):
+        g = [{"kind": "trip", "name": "Wyprawa", "priority": "B", "date_from": "2026-10-10", "date_to": "2026-10-12", "status": "active"}]
+        r = E.plan_week(ctx(goals=g))
+        self.assertFalse(any(s["day"] == "2026-10-09" and s["sport"] != "joga" for s in r["sessions"]))
+
+    def test_sila_not_monday_after_sunday_sila(self):
+        r = E.plan_week(ctx(prev_last_sports=["sila"]))
+        self.assertFalse(any(s["sport"] == "sila" and s["day"] == "2026-10-05" for s in r["sessions"]))
+
+
 class TestSeasonModel(unittest.TestCase):
     G = [{"kind": "trip", "name": "Badlands", "priority": "A", "date_from": "2027-05-14", "date_to": "2027-05-22", "status": "active"},
          {"kind": "trip", "name": "Wrzesien", "priority": "A", "date_from": "2027-09-04", "date_to": "2027-09-12", "status": "active"}]

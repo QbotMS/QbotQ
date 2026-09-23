@@ -236,3 +236,16 @@ stałe sesje (Kalendarz, wyprawy, Twoje) liczone najpierw, reszta → godziny (~
 rano < −25 = dzień luzu (bez roweru/siły/wioślarza, hook `fatigue_days` w `plan_week`); druga iteracja luzuje dni,
 w które sam plan wpędziłby w zmęczenie. Haki w silniku (`target_h_override`, `fatigue_days`) są aktywne tylko,
 gdy przekaże je model bloku — obecne planowanie się nie zmienia. Decyzja o podmianie: po przeglądzie użytkownika.
+
+## Spójność tygodni (2026-09-23, decyzja: zostaje układ tygodniowy)
+
+- **Odpoczynek po wyprawie z danych** (`trip_recovery` → cache `trip_rec`, Kalibracja „Odpoczynek po wyprawie”, klucz
+  `regen.trip_rec_d`): ile dni po wyprawach (z punktu do punktu) HRV ≥ 97% normy i tętno ≤ norma+1; mediana, min. 2
+  (użytkownik), max. 5. Dziś: 07.2025 → 4, Toskania → 1, Opole → 3 ⇒ **3 dni**. W tych dniach bez roweru / siły /
+  wioślarza (joga ok), także przez granicę tygodni. **Dzień przed wyprawą** — wolny (joga ok).
+- **Dni wyprawy liczone osobno**: cel tygodnia × (dni bez wyprawy / 7) na resztę tygodnia; dni wyprawy nie zabierają
+  budżetu ani liczby jazd.
+- **Rytm poprzedniego tygodnia**: silnik preferuje te same dni tygodnia dla siły, jazd i długiej jazdy.
+- **Płynny przyrost**: max +`load.max_inc_pct` (7%) względem poprzedniego zwykłego tygodnia (bez wyprawy / choroby,
+  nie po tygodniu lżejszym).
+- **Siła 48 h także nd→pn**. „Długa jazda” tylko gdy ≥ 50% progu długiej (inaczej „Rower dłużej”).

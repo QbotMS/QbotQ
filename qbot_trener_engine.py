@@ -24,7 +24,7 @@ DEF: dict[str, Any] = {
     "regen.sensitivity": 5, "regen.min_pct": 15, "regen.heavy_gap_h": 48, "regen.after_illness": 0,
     "wx.wind_ms": 8, "wx.gust_ms": 13, "wx.forest_bonus_ms": 1, "wx.cold_long_c": 0, "wx.cold_short_c": -10,
     "wx.heat_c": 30, "wx.rain_mmh": 0.5, "wx.rain_prob": 40, "wx.wet24_mm": 10, "wx.snow_cm": 10,
-    "yoga.hard_xss": 120, "yoga.long_h": 3,
+    "yoga.hard_xss": 120, "yoga.long_h": 3, "regen.trip_rec_d": 3,
     "season.taper_w": 2, "season.regen_w": 2, "season.light_every_w": 4, "season.volume": 5,
 }
 MIXD = {"rower": [3, 3, 4, 4, 5, 5, 5, 5, 4, 4, 3, 3], "sila": [3, 3, 2, 1, 1, 1, 1, 1, 1, 1, 2, 2],
@@ -358,6 +358,17 @@ def plan_week(ctx: dict) -> dict:
     days = [ws + timedelta(days=i) for i in range(7)]
     infos = {d: day_info(ctx, d) for d in days}
     plan_days = [d for d in days if d >= today]
+    trip_n = sum(1 for d in days if infos[d]["type"] == "trip")
+    if trip_n:
+        target_min = int(target_min * (7 - trip_n) / 7)
+        notes.append(f"wyprawa w tym tygodniu ({trip_n} dni) — liczona osobno; pozostałe dni: ~{target_min / 60:.1f} h")
+    # (b) plynny przyrost: max +load.max_inc_pct wzgledem poprzedniego 'zwyklego' tygodnia (bez wyprawy / choroby / lzejszego)
+    prev_h = ctx.get("prev_week_h")
+    if prev_h and not trip_n and not wk.get("lt") and ctx.get("prev_week_normal"):
+        cap = int(prev_h * 60 * (1 + float(P(ov, "load.max_inc_pct")) / 100))
+        if target_min > cap:
+            notes.append(f"przyrost ograniczony do +{P(ov, 'load.max_inc_pct')}% względem poprzedniego tygodnia ({prev_h:.1f} h → {cap / 60:.1f} h)")
+            target_min = cap
     for s in ctx.get("keep", []):
         if s.get("status") == "skip" and s.get("sport") in cnt:  # usuniete/pominiete przez Ciebie: silnik nie wstawia zastepstwa
             cnt[s["sport"]] = max(0, cnt[s["sport"]] - 1)
@@ -411,9 +422,13 @@ def plan_week(ctx: dict) -> dict:
                 "status": "plan", "cut": False, "source": "auto",
                 "note": "jazda z Kalendarza (trasa): " + ", ".join(x for x in (f"{rr['km']} km" if rr.get("km") else None, f"+{rr['up']} m" if rr.get("up") else None, f"~{rr['xss']} XSS" if rr.get("xss") else None) if x)}
         placed.append(srow); out.append(srow)
+        if rr.get("multi"):
+            target_min += dur  # neutralizacja odjecia ponizej: dni wyprawy liczone osobno
         st_m = hm(st)
         infos[d]["win"]["joga"] = [(max(5 * 60, st_m - 60), st_m)]   # joga przed jazda - przed startem
-        cnt["rower"] = max(0, cnt["rower"] - 1); target_min = max(0, target_min - dur)
+        if not rr.get("multi"):  # dzien wyprawy nie zabiera jazd z reszty tygodnia
+            cnt["rower"] = max(0, cnt["rower"] - 1)
+        target_min = max(0, target_min - dur)
         if is_long and (long_day is None or (rr.get("xss") or 0) > 0):
             long_day = d
         notes.append(f"{d.isoformat()}: Twoja jazda z Kalendarza „{rr['name']}” (~{dur // 60} h {dur % 60:02d}′) — plan ułożony wokół niej")
@@ -432,6 +447,8 @@ def plan_week(ctx: dict) -> dict:
                 if nd in infos and infos[nd]["type"] == "normal":
                     infos[nd]["type"] = "short"; infos[nd]["labels"].append("po chorobie — lżej")
 
+    pat = {k: set(v) for k, v in (ctx.get("prev_pattern") or {}).items()}   # dni tygodnia z poprzedniego tygodnia
+    prev_last = set(ctx.get("prev_last_sports") or [])                      # sporty z niedzieli poprzedniego tygodnia
     fixed = cnt["sila"] * 40 + cnt["wiosl"] * 30 + cnt["joga"] * 20
     rower_total = max(0, target_min - fixed)
     long_h = float(P(ov, "yoga.long_h"))
@@ -444,8 +461,23 @@ def plan_week(ctx: dict) -> dict:
         hs = [_d(p["day"]) for p in placed if p["sport"] == "rower" and (p.get("is_long") or float(p.get("xss") or 0) >= hard_xss)]
         return hs + [c_["day"] for c_ in carry if c_.get("is_long") or float(c_.get("xss") or 0) >= hard_xss]
 
+    recovery = {_d(x["day"]): x for x in ctx.get("trip_recovery_days", [])}
+    for d in days:  # dzien przed wyprawa (wielodniowa) = swiezosc na start
+        nd_ = d + timedelta(days=1)
+        if infos[d]["type"] != "trip" and nd_ in infos and infos[nd_]["type"] == "trip" and d not in recovery:
+            recovery[d] = {"trip": (infos[nd_]["labels"][-1] if infos[nd_]["labels"] else "wyprawa").replace("🗺️ ", ""), "k": 0, "n": 0, "why": "dzień przed wyprawą — świeże nogi na start"}
+    if ctx.get("next_trip_start"):  # wyprawa zaczyna sie w poniedzialek nastepnego tygodnia
+        d = _d(ctx["next_trip_start"]) - timedelta(days=1)
+        if d in infos and d not in recovery and infos[d]["type"] != "trip":
+            recovery[d] = {"trip": ctx.get("next_trip_name") or "wyprawa", "k": 0, "n": 0, "why": "dzień przed wyprawą — świeże nogi na start"}
+    for d, x in sorted(recovery.items()):
+        if d in infos and d >= today:
+            notes.append(f"{d.isoformat()}: " + (f"odpoczynek po wyprawie „{x['trip']}” (dzień {x['k']}/{x['n']}) — {x['why']}" if x["k"] else f"{x['why']} („{x['trip']}”)"))
+
     def in_heavy_gap(d: date) -> date | None:
-        """Dzien d wypada w przerwie po ciezkiej jezdzie (tez z poprzedniego tygodnia) -> zwraca dzien tej jazdy."""
+        """Dzien d wypada w przerwie po ciezkiej jezdzie albo w odpoczynku po wyprawie (tez z poprzedniego tygodnia)."""
+        if d in recovery:
+            return d
         for h in heavy_days():
             if 0 < (d - h).days * 24 < heavy_gap_h:
                 return h
@@ -467,14 +499,17 @@ def plan_week(ctx: dict) -> dict:
         for d in cands:
             bad = wx_bad(infos[d]["wx"], ov, True)
             free = find_slot(infos[d], "rower", 600, placed, 60)
-            scored.append((1 if bad else 0, -(free[1] if free else 0), d, bad))
-        scored.sort(key=lambda x: (x[0], x[1], x[2]))
-        if scored and scored[0][1] < 0:
-            _, _, d, bad = scored[0]
+            scored.append((1 if bad else 0, 0 if d.weekday() in pat.get("long", set()) else 1, -(free[1] if free else 0), d, bad))
+        scored.sort(key=lambda x: (x[0], x[1], x[2], x[3]))
+        if scored and scored[0][2] < 0:
+            _, _, _, d, bad = scored[0]
             dur = int(max(60, min(rower_total * (0.45 if cnt["rower"] > 1 else 1.0), long_h * 60 * 1.3)))
-            s = add(d, "rower", "Długa jazda", dur, 60, zone=2, is_long=True, why="najdłuższa jazda tygodnia")
+            real_long = dur >= long_h * 60 * 0.5   # np. 60' w roztrenowaniu to nie 'dluga jazda'
+            s = add(d, "rower", "Długa jazda" if real_long else "Rower dłużej", dur, 60, zone=2, is_long=real_long,
+                    why="najdłuższa jazda tygodnia")
             if s:
-                long_day = d; rower_total -= s["dur_min"]; cnt["rower"] -= 1
+                long_day = d if real_long else None
+                rower_total -= s["dur_min"]; cnt["rower"] -= 1
                 if bad:
                     notes.append(f"{d.isoformat()}: długa jazda mimo pogody ({bad}) — brak lepszego dnia w weekend")
     # 2) pozostale jazdy
@@ -492,11 +527,11 @@ def plan_week(ctx: dict) -> dict:
                 bad = wx_bad(infos[d]["wx"], ov, False)
                 rdays = [_d(p["day"]) for p in placed if p["sport"] == "rower"]
                 dist = min([abs((d - x).days) for x in rdays], default=7)
-                cands.append((1 if bad else 0, -dist, d, bad))
+                cands.append((1 if bad else 0, 0 if d.weekday() in pat.get("rower", set()) else 1, -dist, d, bad))
             if not cands:
                 break
-            cands.sort(key=lambda x: (x[0], x[1], x[2]))
-            _, _, d, bad = cands[0]
+            cands.sort(key=lambda x: (x[0], x[1], x[2], x[3]))
+            _, _, _, d, bad = cands[0]
             if bad:
                 if int(ov.get(f"mix.wiosl.{month}", MIXD["wiosl"][month - 1])) > 0 or cnt["wiosl"] > 0:
                     cnt["wiosl"] += 1
@@ -532,18 +567,20 @@ def plan_week(ctx: dict) -> dict:
                 continue
             if in_heavy_gap(d) or any(0 <= (h - d).days <= 1 for h in heavy_days()):  # ani w przerwie po ciezkiej, ani przed ciezka
                 continue
-            cands.append((1 if has(d, "rower") else 0, d))
+            if d == ws and "sila" in prev_last:   # 48 h miedzy sila takze przez niedziele / poniedzialek
+                continue
+            cands.append((0 if d.weekday() in pat.get("sila", set()) else 1, 1 if has(d, "rower") else 0, d))
         if not cands:
             break
         cands.sort()
-        d = cands[0][1]
+        d = cands[0][2]
         if add(d, "sila", "Siła obwodowa", 40, 15):
             sila_i += 1
     # 5) wioslarz (chetnie w dni z zla pogoda)
     for _ in range(cnt["wiosl"]):
         cands = []
         for d in plan_days:
-            if not open_day(d) or has(d, "wiosl"):
+            if not open_day(d) or has(d, "wiosl") or d in recovery:
                 continue
             bad = wx_bad(infos[d]["wx"], ov, False)
             cands.append((0 if bad else 1, 1 if has(d, "rower") else 0, d))
@@ -849,6 +886,52 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
                               "is_long": (r["duration_s"] or 0) >= float(P(ov, "yoga.long_h")) * 3600 * 0.8, "src": "garmin"})
     except Exception:
         carry = []
+    prev_pattern, prev_last, prev_h, prev_normal, rec_days, next_trip = {}, [], None, False, [], None
+    try:
+        pw0, pw1 = ws - timedelta(days=7), ws - timedelta(days=1)
+        c.execute("SELECT day, sport, name, dur_min, is_long, note, status FROM qbot_v2.trainer_session WHERE username=%s AND day BETWEEN %s AND %s "
+                  "AND status IN ('plan','done')", (user, pw0, pw1))
+        pr = c.fetchall()
+        for r in pr:
+            k = "long" if r["is_long"] else r["sport"]
+            prev_pattern.setdefault(k, []).append(r["day"].weekday())
+            if r["day"] == pw1:
+                prev_last.append(r["sport"])
+        prev_multi = any(" — dzień " in (r["name"] or "") for r in pr)
+        c.execute("SELECT 1 FROM qbot_v2.calendar_entry WHERE kind='illness' AND day <= %s AND COALESCE(end_day, day) >= %s LIMIT 1", (pw1, pw0))
+        ill = bool(c.fetchone())
+        if pr:
+            prev_h = sum(int(r["dur_min"]) for r in pr) / 60
+            prev_normal = not prev_multi and not ill
+        # wyprawy (cele + wielodniowe trasy z Kalendarza) konczace sie w ostatnich 8 dniach lub w tym tygodniu
+        import qbot_trener_stats as _ST
+        trec = _ST.trip_recovery_cached(c)
+        n_rec = int(ov.get("regen.trip_rec_d", trec.get("value") or DEF["regen.trip_rec_d"]))
+        why = ("ręcznie ustawione" if "regen.trip_rec_d" in ov else (trec.get("note") or "z danych"))
+        trips = []
+        for g in goals:
+            if g.get("kind") == "trip" and g.get("date_from") and g.get("status") not in ("dropped", "done"):
+                a_, b_ = _d(g["date_from"]), _d(g.get("date_to")) or _d(g["date_from"])
+                if (b_ - a_).days >= 1:
+                    trips.append((g["name"], b_))
+        ends: dict = {}
+        for rr in _route_days(ws - timedelta(days=10), we):
+            if rr.get("multi"):
+                ends[rr["entry_id"]] = max(ends.get(rr["entry_id"], (None, date.min)), (rr["name"].split(" — ")[0], _d(rr["day"])), key=lambda x: x[1])
+        trips += list(ends.values())
+        nxt_mon = we + timedelta(days=1)
+        for g in goals:
+            if g.get("kind") == "trip" and _d(g.get("date_from")) == nxt_mon and g.get("status") not in ("dropped", "done"):
+                next_trip = (nxt_mon, g["name"])
+        for rr in _route_days(nxt_mon, nxt_mon):
+            if rr.get("multi") and _d(rr["day"]) == nxt_mon:
+                next_trip = (nxt_mon, rr["name"].split(" — ")[0])
+        for name, end in trips:
+            if ws - timedelta(days=8) <= end <= we:
+                for k in range(1, n_rec + 1):
+                    rec_days.append({"day": end + timedelta(days=k), "trip": name, "k": k, "n": n_rec, "why": why})
+    except Exception:
+        pass
     km_floor_h = 0.0
     try:
         import calendar as _cal
@@ -870,5 +953,7 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
         km_floor_h = 0.0
     return {"week_start": ws, "today": today, "ov": ov, "goals": goals, "rules": rules, "calendar": cal, "day_state": dstate, "km_floor_h": round(km_floor_h, 1),
             "route_rides": route_rides, "route_entry_ids": route_ids, "route_trip_ids": route_trip_ids, "carry": carry,
+            "prev_pattern": prev_pattern, "prev_last_sports": prev_last, "prev_week_h": prev_h, "prev_week_normal": prev_normal,
+            "trip_recovery_days": rec_days, "next_trip_start": next_trip[0] if next_trip else None, "next_trip_name": next_trip[1] if next_trip else None,
             "keep": keep, "activities_extra": extra, "readiness_today": rt, "readiness_threshold": thr, "weather": wx,
             "all_sessions": sess}

@@ -837,6 +837,8 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                 if k.startswith("wx."):
                     out[k] = v
             out["_weather"] = {"computed_at": wx.get("_computed_at"), "computing": wx.get("_computing"), "n": wx.get("_n")}
+            tr = ST.trip_recovery_cached(c)
+            out["regen.trip_rec_d"] = {"value": tr.get("value"), "n": tr.get("n"), "note": tr.get("note")}
             return out
         return run(go)
 
