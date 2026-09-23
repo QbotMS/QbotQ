@@ -2349,7 +2349,7 @@ def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, 
     return og, et, rc, strategia, ubior, opony
 
 
-def _report_feasibility(conn, date_str, xss, forma):
+def _report_feasibility(conn, date_str, xss, forma, ai=True):
     """Wykonalnosc TEJ jazdy: liczby z silnika (fitmodel.expedition_feasibility,
     model dwoch scian) + ocena napisana przez Alberta. Zwraca (dane, ocena).
     Silnik = jedyne zrodlo liczb, LLM tylko interpretuje. Gdy LLM padnie ->
@@ -2370,6 +2370,8 @@ def _report_feasibility(conn, date_str, xss, forma):
     _wall = (dane.get("walls") or [{}])[0]
     _c = dane.get("ceilings") or {}
     _fm = dane.get("form") or {}
+    if not ai:
+        return dane, None
     pay = {
         "data_jazdy": dane.get("departure"),
         "dni_do_jazdy": dane.get("days_ahead"),
@@ -3011,7 +3013,10 @@ def _fetch_precip_history(lat, lon, ride_date_str, days_back=10):
         return None
 
 
-def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_stop_min=0):
+def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_stop_min=0,
+                       ai=True, day_table=False):
+    # E2b: ai=False -> bez zapytan LLM (proza/strategia/ubior, slowna ocena wykonalnosci;
+    # liczby zostaja); day_table=True -> pogoda z tabeli cieplnej dnia (E2a). Domyslnie jak dotad.
     """Buduje pelny blok DATA (route/start/time/chart) dla jednej trasy."""
     base = conn.execute(
         "SELECT rb.route_base_id, rb.distance_m, rb.route_modified_at, "
@@ -3109,7 +3114,8 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     # E1: pogoda liczona przy ETA z PRZERWAMI UZYTKOWNIKA (te same co model czasu i symulacja)
     m = run_meteo_engine(route_id=route_id, date_str=date_str, start_time=start_time,
                          planned_long_stops=int(long_stops or 0),
-                         planned_long_stop_each_min=float(long_stop_min or 0))
+                         planned_long_stop_each_min=float(long_stop_min or 0),
+                         use_day_table=bool(day_table))
     per = m["per_segment"]
     weather = []
     for w in m["tabela_30min"]:
@@ -3413,7 +3419,7 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
                           "climb_w": _climb_w, "steep_pct": _steep_pct}}
     try:
         forma["wykonalnosc_dane"], forma["wykonalnosc"] = _report_feasibility(
-            conn, date_str, _xss, forma)
+            conn, date_str, _xss, forma, ai=ai)
     except Exception:
         forma["wykonalnosc_dane"] = forma["wykonalnosc"] = None
 
@@ -3513,6 +3519,8 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     _og = _et = _rc2 = None
     _strat = _ubior = _opony = None
     try:
+        if not ai:
+            raise RuntimeError("E2b: ai=False")
         _og, _et, _rc2, _strat, _ubior, _opony = _report_prose(
             date_str=date_str, start_time=start_time, finish=_finish, dist_km=dist_km,
             ascent_m=ascent, moving_h=tmoving, total_h=ttotal, peak=details["weather"]["peak"],
@@ -4786,6 +4794,28 @@ def report_data(route_id: str = Query(...), date: str = Query(...),
         data = _build_report_data(conn, route_id, date, time, long_stops, long_stop_min)
         snap_id = _save_report_snapshot(conn, route_id, date, time, long_stops, long_stop_min, data)
         data["snapshot_id"] = snap_id
+        return data
+    finally:
+        conn.close()
+
+
+@app.get("/api/report/plan")
+def report_plan(route_id: str = Query(...), date: str = Query(...),
+                time: str = Query("10:00"), long_stops: int = Query(0),
+                long_stop_min: int = Query(0)):
+    """E2b warstwa planu: liczby raportu dla godziny startu + przerw, BEZ AI i BEZ zapisu
+    do archiwum (Historia nietknieta). Pogoda z tabeli cieplnej dnia (cache 2 h)."""
+    import time as _t
+    _t0 = _t.perf_counter()
+    conn = _db_conn()
+    try:
+        data = _build_report_data(conn, route_id, date, time, long_stops, long_stop_min,
+                                  ai=False, day_table=True)
+        data["plan_mode"] = True
+        data["plan_params"] = {"date": date, "time": time, "long_stops": long_stops,
+                               "long_stop_min": long_stop_min,
+                               "w_zakresie_wariantow": "08:00" <= (time or "") <= "12:00"}
+        data["plan_ms"] = round((_t.perf_counter() - _t0) * 1000)
         return data
     finally:
         conn.close()
