@@ -567,22 +567,41 @@ def plan_week(ctx: dict) -> dict:
                                      "wx": infos[d]["wx"]} for d in days}}
 
 
-def check_rules(sessions: list, ov: dict) -> list[str]:
-    """Ostrzezenia dla recznie ulozonego tygodnia (sila dzien po dniu, dwie dlugie pod rzad)."""
+def check_rules(sessions: list, ov: dict, days_meta: dict | None = None) -> list[str]:
+    """Ostrzezenia dla tygodnia (tez dla sesji recznych, ktorych silnik nie rusza):
+    sila dzien po dniu; sila w dzien dlugiej jazdy lub w przeddzien; dwie dlugie/ciezkie pod rzad;
+    trening w dzien REST / choroby; trening kolidujacy z zajetoscia."""
     out = []
-    by = {}
+    hard = float((ov or {}).get("yoga.hard_xss", DEF["yoga.hard_xss"]))
+    by: dict = {}
     for s in sessions:
         if s.get("status") == "skip":
             continue
         by.setdefault(str(s["day"])[:10], []).append(s)
+    def is_long(x):
+        return bool(x.get("is_long")) or float(x.get("xss") or 0) >= hard
     ds = sorted(by)
-    for a, b in zip(ds, ds[1:]):
-        if (_d(b) - _d(a)).days != 1:
-            continue
-        if any(x["sport"] == "sila" for x in by[a]) and any(x["sport"] == "sila" for x in by[b]):
-            out.append(f"siła dzień po dniu ({a[5:]} i {b[5:]}) — zalecane 48 h przerwy")
-        if any(x.get("is_long") for x in by[a]) and any(x.get("is_long") for x in by[b]):
-            out.append(f"dwie długie jazdy pod rząd ({a[5:]}, {b[5:]})")
+    for d in ds:
+        L = by[d]
+        if any(x["sport"] == "sila" for x in L) and any(x["sport"] == "rower" and is_long(x) for x in L):
+            out.append(f"{d[8:10]}.{d[5:7]}: siła w dniu długiej jazdy — przenieś siłę na inny dzień")
+        nxt = (date.fromisoformat(d) + timedelta(days=1)).isoformat()
+        if nxt in by and any(x["sport"] == "sila" for x in L) and any(x["sport"] == "rower" and is_long(x) for x in by[nxt]):
+            out.append(f"{d[8:10]}.{d[5:7]}: siła w przeddzień długiej jazdy ({nxt[8:10]}.{nxt[5:7]}) — nogi będą zmęczone")
+        if nxt in by and any(x["sport"] == "sila" for x in L) and any(x["sport"] == "sila" for x in by[nxt]):
+            out.append(f"siła dzień po dniu ({d[8:10]}.{d[5:7]} i {nxt[8:10]}.{nxt[5:7]}) — zalecane 48 h przerwy")
+        if nxt in by and any(x["sport"] == "rower" and is_long(x) for x in L) and any(x["sport"] == "rower" and is_long(x) for x in by[nxt]):
+            out.append(f"dwie długie / ciężkie jazdy pod rząd ({d[8:10]}.{d[5:7]}, {nxt[8:10]}.{nxt[5:7]})")
+        dm = (days_meta or {}).get(d) or {}
+        if dm.get("type") in ("rest", "ill") and any(x["sport"] != "joga" and x.get("status") == "plan" for x in L):
+            out.append(f"{d[8:10]}.{d[5:7]}: trening w dzień {'REST' if dm['type'] == 'rest' else 'choroby'}")
+        for bz in dm.get("busy") or []:
+            a0, b0 = hm(bz["a"]), hm(bz["b"])
+            for x in L:
+                if x.get("start_time") and x.get("status") == "plan":
+                    s0 = hm(str(x["start_time"])[:5]); e0 = s0 + int(x["dur_min"])
+                    if s0 < b0 and e0 > a0:
+                        out.append(f"{d[8:10]}.{d[5:7]}: {x['name']} {str(x['start_time'])[:5]} koliduje z „{bz['label'].strip()}” {bz['a']}–{bz['b']}")
     return out
 
 

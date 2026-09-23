@@ -710,7 +710,7 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                       "ORDER BY id DESC LIMIT 1", (u, d0))
             last = c.fetchone()
             return {"start": d0.isoformat(), "end": d1.isoformat(), "sessions": sessions, "calendar": cal, "activities": done,
-                    "matched_now": matched, "meta": meta, "warnings": E.check_rules(sessions, {}),
+                    "matched_now": matched, "meta": meta, "warnings": E.check_rules(sessions, meta.get("ov") or {}, meta.get("days")),
                     "pending_change": (_jsonable(last) if last else None)}
         return run(go)
 
@@ -867,6 +867,17 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
             params = {k: E.P(ov, k) for k in ("season.taper_w", "season.regen_w", "season.light_every_w", "season.volume")}
             return {"weeks": weeks, "seasons": E.seasons_summary(goals, ov, today, 3), "volume": vol, "params": params,
                     "overridden": {k: v for k, v in ov.items() if k.startswith("season.")}}
+        return run(go)
+
+    @r.post("/week/review")
+    async def week_review(request: Request):
+        """Weryfikacja tygodnia przez AI (drugi pilot). Nic nie zmienia - zwraca uwagi do decyzji uzytkownika."""
+        u = user_of(request)
+        b = await body_of(request) if (await request.body()) else {}
+        import qbot_trener_review as RV
+        def go(c):
+            d0, _ = _week_bounds((b or {}).get("start"))
+            return RV.review_week(c, u, d0, force=bool((b or {}).get("force")))
         return run(go)
 
     @r.get("/balance")

@@ -199,3 +199,13 @@ zajętość: silnik wstawia ją jako sesję roweru o godzinie z wydarzenia (czas
 XSS z notatki wydarzenia albo z `route_base`), odejmuje od budżetu i liczby jazd. Jeśli jest długa (≥ 0,8 × „długiej
 jazdy” albo ≥ 80 km) — to ona jest długą jazdą tygodnia (silnik nie dokłada drugiej), siła nie w ten dzień ani w
 przeddzień, joga po długiej — dzień później. W UI wydarzenia z godziną nie są już dublowane.
+
+## Weryfikacja AI („silnik liczy, AI sprawdza, Ty decydujesz”, 2026-09-23)
+
+`qbot_trener_review.py`, `POST /week/review {start, force?}`. Po „przelicz tydzień” i akcjach dnia UI sam uruchamia
+weryfikację (przycisk „sprawdź plan” na żądanie). AI (QGPT_MODEL, dziś gpt-6-luna, ~12 s) dostaje zwarty kontekst: dni
+(typ, zajętości, pogoda, wpisy i notatki Kalendarza, sesje planu z flagą ręczna/długa/XSS, zrobione z Garmina), faza,
+cel h, gotowość, nadchodzące cele (90 dni), progi, wyniki reguł. Zwraca JSON z maks. 6 uwagami (dzień, waga, problem,
+dlaczego — fakt z danych, sugestia). Walidacja (dzień w tygodniu, waga z listy, przycięcie), cache 30 min. **AI niczego
+nie zmienia.** Reguły (`check_rules`) rozszerzone: siła w dniu / przeddzień długiej, dwie długie/ciężkie pod rząd,
+trening w REST/choroba, kolizja z zajętością — działają też dla sesji ręcznych (silnik ich nie rusza, więc ostrzega).
