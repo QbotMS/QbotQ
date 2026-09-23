@@ -247,26 +247,64 @@ def check_once(session=None, seed_if_empty=True):
             return {"error": "auth_api", "detail": txt}
         _alert_throttled("api_other", "Blad API Komoot: %s" % txt)
         return {"error": "api", "detail": txt}
-    notified = []
-    quiet = []
+    # --- Przebieg 1: kandydaci (nowe albo zmieniony changed_at) + odcisk geometrii ---
+    candidates = []
     for t in tours:
         tid = str(t["id"])
         ca = t.get("changed_at")
         prev = seen.get(tid)
         if prev and prev.get("changed_at") == ca:
             continue  # nic sie nie zmienilo od ostatniego razu
-        # nowa trasa albo zmienil sie changed_at -> ustal czy zmienila sie GEOMETRIA
         new_sig = _geo_sig(session, tid)
+        candidates.append({"t": t, "tid": tid, "ca": ca, "prev": prev, "sig": new_sig})
+
+    # indeks odciskow z JUZ znanych tras (poprzednie przebiegi): sig -> [(tour_id, changed_at)]
+    seen_by_sig = {}
+    for _stid, _sinfo in seen.items():
+        _ssig = _sinfo.get("komoot_geo_sig")
+        if _ssig:
+            seen_by_sig.setdefault(_ssig, []).append((_stid, _sinfo.get("changed_at") or ""))
+
+    notified = []
+    quiet = []
+    dups = []
+    for cand in candidates:
+        t = cand["t"]; tid = cand["tid"]; ca = cand["ca"]; prev = cand["prev"]; new_sig = cand["sig"]
         prev_sig = prev.get("komoot_geo_sig") if prev else None
+
+        # 1) edycja TEJ SAMEJ trasy bez zmiany przebiegu (np. nazwa) -> zapisz cicho, NIE pytaj
         if prev and prev_sig and new_sig and prev_sig == new_sig:
-            # edycja bez zmiany przebiegu (np. nazwa) -> zapisz cicho, NIE pytaj
             with api_db._conn() as c:
                 _mark(c, tid, ca, prev.get("geometry_hash"), prev.get("route_id"),
                       t.get("name"), (t.get("date") or "")[:10], new_sig, prev.get("last_status") or "seen")
                 c.commit()
             quiet.append(tid)
             continue
-        # nowa / zmiana geometrii / brak bazy sig -> pytaj
+
+        # 2) DUPLIKAT GEOMETRII pod INNYM numerem -> pytaj tylko o NAJNOWSZY (nowszy wygrywa)
+        if new_sig:
+            group = [(tid, ca or "")]
+            for _rid, _rca in seen_by_sig.get(new_sig, []):
+                if _rid != tid:
+                    group.append((_rid, _rca or ""))
+            for other in candidates:
+                if other["tid"] != tid and other["sig"] == new_sig:
+                    group.append((other["tid"], other["ca"] or ""))
+            if len(group) > 1:
+                # kanoniczny = najwiekszy (changed_at, tour_id) w grupie tego samego sladu
+                canon_id, _ = max(group, key=lambda x: (x[1], x[0]))
+                if canon_id != tid:
+                    # starszy duplikat -> zapisz cicho jako 'dup', NIE pytaj
+                    with api_db._conn() as c:
+                        _mark(c, tid, ca, prev.get("geometry_hash") if prev else None,
+                              prev.get("route_id") if prev else None, t.get("name"),
+                              (t.get("date") or "")[:10], new_sig, "dup")
+                        c.commit()
+                    dups.append({"tour_id": tid, "name": t.get("name"), "canonical": canon_id})
+                    continue
+                # ten kandydat JEST najnowszy w grupie -> pytamy ponizej
+
+        # 3) nowa / zmiana geometrii / najnowszy z grupy -> pytaj
         ok = _notify(t)
         with api_db._conn() as c:
             _mark(c, tid, ca, prev.get("geometry_hash") if prev else None,
@@ -275,7 +313,8 @@ def check_once(session=None, seed_if_empty=True):
             c.commit()
         notified.append({"tour_id": tid, "name": t.get("name"), "notified": ok,
                          "geo_changed": bool(prev and prev_sig)})
-    return {"notified": notified, "count": len(notified), "quiet_name_only": len(quiet)}
+    return {"notified": notified, "count": len(notified),
+            "quiet_name_only": len(quiet), "duplicates": len(dups)}
 
 
 # -- akcje z przyciskow ---------------------------------------------------------
