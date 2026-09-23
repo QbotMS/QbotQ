@@ -1,0 +1,10 @@
+[Unit]
+Description=QBot G4 - prognoza dla gosci 07:00 i 18:00 Europe/Warsaw
+
+[Timer]
+OnCalendar=*-*-* 07:00:00 Europe/Warsaw
+OnCalendar=*-*-* 18:00:00 Europe/Warsaw
+Persistent=true
+
+[Install]
+WantedBy=timers.target

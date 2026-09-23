@@ -5051,6 +5051,11 @@ async def invites_send(request: Request):
         inv = _ri.create_invites(conn, rid, day, tm, n, m, uniq)
         name, plan, intro = _invite_mail_ctx(conn, rid, day, tm, n, m)
         try:
+            _fc_base = _ri.forecast_summary(_build_report_data(conn, rid, day, tm, n, m, ai=False, day_table=True), tm)
+            conn.commit()
+        except Exception:
+            _fc_base = None
+        try:
             gpx = report_gpx(rid, day, tm, 0).body
         except Exception:
             gpx = None
@@ -5080,6 +5085,10 @@ async def invites_send(request: Request):
                 try:
                     srv.send_message(msg)
                     _ri.mark_sent(conn, it["token"])
+                    try:
+                        _ri.set_baseline(conn, it["token"], _fc_base)       # [G4] punkt odniesienia prognozy
+                    except Exception:
+                        pass
                     out.append({"email": it["email"], "ok": True, "link": link})
                 except Exception as ex:
                     out.append({"email": it["email"], "ok": False, "blad": str(ex)[:160]})

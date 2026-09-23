@@ -1,0 +1,11 @@
+[Unit]
+Description=QBot G4 - pilnowanie prognozy dla zaproszonych gosci (mail przy istotnej zmianie)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/qbot/app
+Environment=QBOT3_ENABLED=1
+ExecStart=/opt/qbot/app/.venv/bin/python scripts/guest_forecast_watch.py
+TimeoutStartSec=600

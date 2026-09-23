@@ -31,6 +31,9 @@ def ensure(conn):
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ride_invite_uq ON qbot_v2.ride_invite (route_id, ride_date, lower(email))")
     conn.execute("ALTER TABLE qbot_v2.ride_invite ADD COLUMN IF NOT EXISTS sent_at timestamptz")
     conn.execute("ALTER TABLE qbot_v2.ride_invite ADD COLUMN IF NOT EXISTS sent_count int NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE qbot_v2.ride_invite ADD COLUMN IF NOT EXISTS fc_baseline jsonb")
+    conn.execute("ALTER TABLE qbot_v2.ride_invite ADD COLUMN IF NOT EXISTS fc_baseline_at timestamptz")
+    conn.execute("ALTER TABLE qbot_v2.ride_invite ADD COLUMN IF NOT EXISTS fc_notified_at timestamptz")
 
 
 def _row(r):
@@ -265,3 +268,87 @@ def email_html(*, route_name: str, intro: dict | None, plan: dict, link: str, no
             'W za\u0142\u0105czniku plik <b>GPX</b> do nawigacji. Link jest osobisty i dzia\u0142a do dnia po je\u017adzie.</p>'
             '<hr style="border:none;border-top:1px solid #d8ceb6;margin:16px 0 8px">'
             '<div style="text-align:center;color:#8c8168;font-size:11px;letter-spacing:.2em;text-transform:uppercase">QBot &middot; Zaproszenie na jazd\u0119</div></div>')
+
+
+
+# ---------- [G4] skrot prognozy + wykrywanie istotnej zmiany ----------
+def forecast_summary(d: dict, start: str) -> dict:
+    """Skrot prognozy dla planu (dane z warstwy planu, bez AI)."""
+    import math
+    det = d.get("details") or {}
+    w = det.get("weather") or {}
+    win = w.get("windows") or []
+    fe = [float(x["feels"]) for x in win if x.get("feels") is not None]
+    pr = [(x.get("okno"), float(x.get("opad_prob") or 0), float(x.get("opad_mm") or 0)) for x in win]
+    wind = [math.hypot(float(x.get("w_along") or 0), float(x.get("w_cross") or 0)) for x in ((d.get("chart") or {}).get("weather") or [])]
+    wb = [float(x["wbgt"]) for x in win if x.get("wbgt") is not None]
+    wet = [p[0] for p in pr if p[1] >= 40]
+    tm = d.get("time") or {}
+    meta = None
+    try:
+        h, m = [int(x) for x in str(start).split(":")]
+        mm = h * 60 + m + int(round(float(tm.get("total_h")) * 60))
+        meta = "%02d:%02d" % ((mm // 60) % 24, mm % 60)
+    except Exception:
+        pass
+    return {"feels_min": min(fe) if fe else None, "feels_max": max(fe) if fe else None,
+            "wiatr_max": round(max(wind), 1) if wind else None,
+            "deszcz_max": max((p[1] for p in pr), default=0.0), "deszcz_mm": round(sum(p[2] for p in pr), 1),
+            "deszcz_od": wet[0] if wet else None,
+            "burza": any(str(a.get("typ") or "").startswith("burz") for a in (d.get("alerts") or [])),
+            "wbgt_max": max(wb) if wb else None, "meta": meta}
+
+
+def _fmt_c(x):
+    return "%s\u00b0C" % ("%.0f" % x if x is not None else "?")
+
+
+def significant_changes(old: dict, new: dict) -> list:
+    """Lista zmian 'bylo -> jest' (pusta = brak istotnej zmiany). Progi: docs w module guest_forecast_watch."""
+    if not old or not new:
+        return []
+    ch = []
+    def dv(k):
+        a, b = old.get(k), new.get(k)
+        return (None if a is None or b is None else b - a)
+    if (dv("feels_min") is not None and abs(dv("feels_min")) >= 3) or (dv("feels_max") is not None and abs(dv("feels_max")) >= 3):
+        ch.append(("odczuwalna", "%s\u2013%s" % (_fmt_c(old.get("feels_min")), _fmt_c(old.get("feels_max"))),
+                   "%s\u2013%s" % (_fmt_c(new.get("feels_min")), _fmt_c(new.get("feels_max")))))
+    if dv("wiatr_max") is not None and abs(dv("wiatr_max")) >= 3:
+        ch.append(("wiatr", "do %.0f m/s" % old["wiatr_max"], "do %.0f m/s" % new["wiatr_max"]))
+    a, b = float(old.get("deszcz_max") or 0), float(new.get("deszcz_max") or 0)
+    mm_a, mm_b = float(old.get("deszcz_mm") or 0), float(new.get("deszcz_mm") or 0)
+    if (a < 40) != (b < 40) or abs(b - a) >= 30 or abs(mm_b - mm_a) >= 3:
+        ch.append(("deszcz", "%.0f%%%s" % (a, (", %s mm" % ("%.1f" % mm_a).replace(".", ",")) if mm_a else ""),
+                   "%.0f%%%s%s" % (b, (", %s mm" % ("%.1f" % mm_b).replace(".", ",")) if mm_b else "", (" (od ok. %s)" % new["deszcz_od"]) if new.get("deszcz_od") else "")))
+    if bool(old.get("burza")) != bool(new.get("burza")):
+        ch.append(("burza", "nie" if not old.get("burza") else "mo\u017cliwa", "mo\u017cliwa" if new.get("burza") else "ju\u017c nie"))
+    wa, wbb = old.get("wbgt_max"), new.get("wbgt_max")
+    if wa is not None and wbb is not None and any((wa < t) != (wbb < t) for t in (23, 26)):
+        ch.append(("upa\u0142 (WBGT)", _fmt_c(wa), _fmt_c(wbb)))
+    return ch
+
+
+def set_baseline(conn, token: str, summ: dict, notified: bool = False):
+    import json as _j
+    conn.execute("UPDATE qbot_v2.ride_invite SET fc_baseline=%s::jsonb, fc_baseline_at=now()" + (", fc_notified_at=now()" if notified else "")
+                 + " WHERE token=%s", (_j.dumps(summ, ensure_ascii=False), token))
+    conn.commit()
+
+
+def change_email_html(*, route_name: str, day: str, start: str, changes: list, link: str) -> str:
+    import html as _h
+    e = _h.escape
+    rows = "".join('<tr><td style="padding:6px 12px 6px 0;color:#8c8168;font-size:13px;text-transform:uppercase;letter-spacing:.06em">'
+                   + e(k) + '</td><td style="padding:6px 10px 6px 0;color:#8c8168;text-decoration:line-through">' + e(a)
+                   + '</td><td style="padding:6px 0;font-weight:bold;color:#201c14">\u2192 ' + e(b) + '</td></tr>' for k, a, b in changes)
+    btn = "font-family:Georgia,serif;font-size:16px;font-weight:bold;text-decoration:none;display:inline-block;padding:12px 22px;border-radius:9px;background:#201c14;color:#f5efe0"
+    return ('<div style="max-width:600px;margin:0 auto;background:#f7f1e3;padding:24px 26px;font-family:Georgia,serif;color:#201c14;border:1px solid #d8ceb6">'
+            '<div style="text-align:center;color:#7c2b22;letter-spacing:.24em;font-size:12px;text-transform:uppercase">Zmiana prognozy</div>'
+            '<h1 style="text-align:center;font-size:24px;margin:10px 0 4px">' + e(route_name) + '</h1>'
+            '<div style="text-align:center;color:#5a5140;font-size:14.5px">' + e(fmt_day(day)) + ' &middot; start ' + e(start) + '</div>'
+            '<hr style="border:none;border-top:2px solid #6b6446;margin:16px 0">'
+            '<p style="font-size:15px;line-height:1.55;margin:0 0 8px">Prognoza na nasz\u0105 jazd\u0119 wyra\u017anie si\u0119 zmieni\u0142a:</p>'
+            '<table style="border-collapse:collapse;font-size:15px;margin:0 0 14px">' + rows + '</table>'
+            '<div style="text-align:center;margin:18px 0 8px"><a href="' + link + '" style="' + btn + '">Aktualna pogoda i trasa \u2192</a></div>'
+            '<p style="text-align:center;color:#8c8168;font-size:12px;margin-top:12px">Wiadomo\u015b\u0107 automatyczna z QBota. Kolejna tylko przy nast\u0119pnej istotnej zmianie.</p></div>')
