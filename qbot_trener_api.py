@@ -225,6 +225,32 @@ def clean_session(b: dict, partial: bool = False) -> dict:
     return out
 
 
+def clean_lab(b: dict, partial: bool = False) -> dict:
+    if not isinstance(b, dict):
+        raise BadInput("body: obiekt JSON")
+    out: dict = {}
+    if not partial or "day" in b:
+        d = _date(b.get("day"), "day")
+        if not d:
+            raise BadInput("day: wymagane")
+        out["day"] = d
+    if not partial or "name" in b:
+        out["name"] = _txt(b.get("name"), "name", required=True, max_len=80)
+    if not partial or "value" in b:
+        v = b.get("value")
+        if v in (None, ""):
+            out["value"] = None
+        else:
+            try:
+                out["value"] = float(str(v).replace(",", "."))
+            except ValueError:
+                raise BadInput("value: liczba")
+    for f, ml in (("unit", 20), ("ref_range", 60), ("note", 500)):
+        if not partial or f in b:
+            out[f] = _txt(b.get(f), f, max_len=ml)
+    return out
+
+
 def clean_overrides(b: Any) -> dict:
     """{klucz: wartosc|None}; None usuwa nadpisanie (powrot do auto). Klucze: [a-z0-9_.]."""
     if not isinstance(b, dict):
@@ -436,8 +462,19 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
 
         return list_, create, update, delete
 
+    # /goals/status musi byc zarejestrowane PRZED /goals/{item_id}
+    @r.get("/goals/status")
+    def goals_status(request: Request):
+        u = user_of(request)
+        import qbot_trener_stats as ST
+        def go(c):
+            c.execute("SELECT * FROM qbot_v2.trainer_goal WHERE username=%s", (u,))
+            return ST.compute_goal_status(c, [dict(x) for x in c.fetchall()])
+        return run(go)
+
     for path, table, cleaner, order in (("goals", "trainer_goal", clean_goal, "date_from NULLS LAST, id"),
-                                        ("rules", "trainer_rule", clean_rule, "sort, id")):
+                                        ("rules", "trainer_rule", clean_rule, "sort, id"),
+                                        ("labs", "trainer_lab", clean_lab, "day DESC, id DESC")):
         l_, c_, u_, d_ = crud(table, cleaner, order)
         r.add_api_route(f"/{path}", l_, methods=["GET"])
         r.add_api_route(f"/{path}", c_, methods=["POST"])
@@ -691,6 +728,33 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
     @r.get("/auto")
     def auto_get(request: Request):
         user_of(request)
-        return run(compute_auto)
+        import qbot_trener_stats as ST
+        def go(c):
+            out = compute_auto(c)
+            wx = ST.weather_auto_cached(c, db_conn)
+            for k, v in wx.items():
+                if k.startswith("wx."):
+                    out[k] = v
+            out["_weather"] = {"computed_at": wx.get("_computed_at"), "computing": wx.get("_computing"), "n": wx.get("_n")}
+            return out
+        return run(go)
+
+    @r.get("/balance")
+    def balance_get(request: Request):
+        u = user_of(request)
+        import qbot_trener_stats as ST
+        def go(c):
+            c.execute("SELECT overrides FROM qbot_v2.trainer_settings WHERE username=%s", (u,))
+            row = c.fetchone()
+            c.execute("SELECT * FROM qbot_v2.trainer_goal WHERE username=%s", (u,))
+            goals = [dict(x) for x in c.fetchall()]
+            return ST.compute_balance(c, dict(row["overrides"]) if row else {}, goals)
+        return run(go)
+
+    @r.get("/time")
+    def time_get(request: Request):
+        u = user_of(request)
+        import qbot_trener_stats as ST
+        return run(lambda c: ST.compute_time(c, u))
 
     return r

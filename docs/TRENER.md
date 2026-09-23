@@ -36,7 +36,8 @@ Wzorzec UI (zaakceptowany mockup, dane przykładowe): `/opt/qbot/web/public/tren
    Czas i Bilans z mockupu — w Etapie 4.
 3. **Silnik planu tygodnia** (ZROBIONE 2026-09-23): `qbot_trener_engine.py` (czysta `plan_week(ctx)` + `build_context`),
    testy `tests/test_trener_engine.py`. Szczegóły w sekcji „Silnik” niżej.
-4. Bilans z wagi (gdy brak logów), statusy celów na bieżąco.
+4. **Bilans, statusy celów, Czas, pogoda auto, badania** (ZROBIONE 2026-09-23): `qbot_trener_stats.py`,
+   migracja `sql/trainer_v3.sql`, testy `tests/test_trener_stats.py`. Szczegóły w sekcji „Etap 4” niżej.
 5. Telegram (plan pn / rozliczenie nd), wysyłka do Garmina (dziś tylko joga), narzędzie Alberta
    (+ `_SYSTEM` w tym samym commicie).
 
@@ -103,3 +104,20 @@ sesje auto w stanie plan i układa od nowa → `trainer_change`), `POST /week/ac
 kind event z `note='[trener]'`, ill → kind illness, short → `trainer_day`, clear → usuwa wpisy `[trener]` z dnia i stan;
 potem przeliczenie), `POST /week/undo {id}` (przywraca sesje sprzed zmiany i usuwa jej wpisy w Kalendarzu), `POST /week/accept {id}`.
 Każda edycja sesji z UI (POST/PUT `/sessions`) ustawia `source='manual'` → przeliczenie jej nie rusza.
+
+## Etap 4
+
+- `GET /balance` — bilans z okna `food.smooth_days` (dom. 14): `food.source` 0 = logi, 1 = logi gdy ≥70% dni z wpisami
+  (inaczej waga), 2 = waga. Logi = SUM(`intake_items.kcal`) per `intake_logs.date`; wydatek = `energy_daily.total_kcal_eff`
+  (fallback `total_kcal`, bez dni `partial`); z wagi = nachylenie MNK wagi (`fitmodel_daily.weight_kg`) × 7700 kcal/kg.
+  Cel tempa: z aktywnego celu wagi (kg do terminu) albo suwak `food.loss_kg_wk`. + seria 30 dni (waga, średnia 7 d).
+- `GET /goals/status` — per cel: `level` g/y/r/n, tekst, wiersze (ma/potrzeba/uwaga), `progress`.
+  Wyprawa: km/dzień i m/dzień = najlepsza średnia z serii ≥3 dni (dni ≥20 km), rekordy dnia, najdłuższa seria,
+  CTL teraz vs rekord 18 mies. (bez wymyślonego „potrzebnego CTL”). Waga: śr. 7 dni, tempo 30 d vs potrzebne do terminu.
+  Objętość: km/h od `date_from` vs liniowe tempo. FTP: przyrost od startu celu vs czas. Nawyk: 4 ostatnie tygodnie.
+- `GET /time` — optimum h z Sezonu, limit `load.budget_h`, wolne okna tygodnia (okna treningu lub domyślne minus
+  zajętości i dni rest/choroba/wyprawa), optimum per miesiąc.
+- `/labs` CRUD (`trainer_lab`) — wyniki badań z datą.
+- Pogoda auto: `trainer_auto_cache['weather']` liczone w tle (wątek w qbot-web, ~25 s, archiwum Open-Meteo dla
+  jazd z 2 lat), odświeżane gdy starsze niż 7 dni; `/auto` zwraca wx.* z opisem. **Silnik planu używa tych wartości
+  jako bazy** (ręczne nadpisania wygrywają).

@@ -570,7 +570,17 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
     rules = [dict(r) for r in c.fetchall()]
     c.execute("SELECT overrides FROM qbot_v2.trainer_settings WHERE username=%s", (user,))
     row = c.fetchone()
-    ov = dict(row["overrides"]) if row else {}
+    ov_user = dict(row["overrides"]) if row else {}
+    # wartosci auto (pogoda z historii jazd, cache Etapu 4) jako baza; reczne nadpisania wygrywaja
+    ov = {}
+    try:
+        c.execute("SELECT value FROM qbot_v2.trainer_auto_cache WHERE key='weather'")
+        wr = c.fetchone()
+        if wr:
+            ov.update({k: v["value"] for k, v in dict(wr["value"]).items() if k.startswith("wx.") and isinstance(v, dict) and "value" in v})
+    except Exception:
+        pass
+    ov.update(ov_user)
     c.execute("SELECT id, day, end_day, kind, event_type, title, at_time, note FROM qbot_v2.calendar_entry WHERE day <= %s AND COALESCE(end_day, day) >= %s", (we, ws))
     cal = [dict(r) for r in c.fetchall()]
     c.execute("SELECT day, state FROM qbot_v2.trainer_day WHERE username=%s AND day BETWEEN %s AND %s", (user, ws, we))
