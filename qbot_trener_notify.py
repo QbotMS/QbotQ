@@ -221,8 +221,15 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
         _goals = [dict(x) for x in c.fetchall()]
         c.execute("SELECT overrides FROM qbot_v2.trainer_settings WHERE username=%s", (user,))
         _r = c.fetchone(); _ov = dict(_r["overrides"]) if _r else {}
+        if 5 * 60 <= hm < 5 * 60 + 15:  # co noc: biezacy tydzien + 2 kolejne maja plan (puste tygodnie planuja sie same)
+            for k_ in range(3):
+                w_ = ws + timedelta(weeks=k_)
+                if not _sessions(c, user, w_, w_ + timedelta(days=6)):
+                    _ensure_plan(c, user, w_)
+                    log.append(f"horyzont: zaplanowano tydzień {w_.isoformat()}")
+            conn.commit()
         if E.season_weeks(_goals, _ov, ws, 1)[0]["ph"] == "lz":
-            return [f"{now.strftime('%a %H:%M')}: totalny luz — bez wiadomości"]
+            return log + [f"{now.strftime('%a %H:%M')}: totalny luz — bez wiadomości"]
         # rozliczenie: ndz 19:00-19:59
         if st["notify.review"] == 1 and today.weekday() == 6 and 19 * 60 <= hm < 20 * 60:
             ses = _sessions(c, user, ws, ws + timedelta(days=6))

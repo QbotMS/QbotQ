@@ -356,6 +356,9 @@ def plan_week(ctx: dict) -> dict:
     days = [ws + timedelta(days=i) for i in range(7)]
     infos = {d: day_info(ctx, d) for d in days}
     plan_days = [d for d in days if d >= today]
+    for s in ctx.get("keep", []):
+        if s.get("status") == "skip" and s.get("sport") in cnt:  # usuniete/pominiete przez Ciebie: silnik nie wstawia zastepstwa
+            cnt[s["sport"]] = max(0, cnt[s["sport"]] - 1)
     keep = [s for s in ctx.get("keep", []) if s.get("status") != "skip"]
     for s in keep:
         if s["sport"] in cnt:
@@ -567,10 +570,9 @@ def plan_week(ctx: dict) -> dict:
                                      "wx": infos[d]["wx"]} for d in days}}
 
 
-def check_rules(sessions: list, ov: dict, days_meta: dict | None = None) -> list[str]:
-    """Ostrzezenia dla tygodnia (tez dla sesji recznych, ktorych silnik nie rusza):
-    sila dzien po dniu; sila w dzien dlugiej jazdy lub w przeddzien; dwie dlugie/ciezkie pod rzad;
-    trening w dzien REST / choroby; trening kolidujacy z zajetoscia."""
+def check_rules_detailed(sessions: list, ov: dict, days_meta: dict | None = None) -> list[dict]:
+    """Ostrzezenia tygodnia jako obiekty {key, text, session_id, acked}. key = typ:id_sesji -> mozna wyciszyc per sesja
+    ("rozumiem, zostaw" -> trainer_session.acks). Dziala tez dla sesji recznych (silnik ich nie rusza)."""
     out = []
     hard = float((ov or {}).get("yoga.hard_xss", DEF["yoga.hard_xss"]))
     by: dict = {}
@@ -580,29 +582,44 @@ def check_rules(sessions: list, ov: dict, days_meta: dict | None = None) -> list
         by.setdefault(str(s["day"])[:10], []).append(s)
     def is_long(x):
         return bool(x.get("is_long")) or float(x.get("xss") or 0) >= hard
-    ds = sorted(by)
-    for d in ds:
+    def add(kind, x, text):
+        sid = x.get("id")
+        key = f"{kind}:{sid}" if sid else kind
+        out.append({"key": key, "text": text, "session_id": sid, "acked": key in (x.get("acks") or [])})
+    for d in sorted(by):
         L = by[d]
-        if any(x["sport"] == "sila" for x in L) and any(x["sport"] == "rower" and is_long(x) for x in L):
-            out.append(f"{d[8:10]}.{d[5:7]}: siła w dniu długiej jazdy — przenieś siłę na inny dzień")
+        dd = f"{d[8:10]}.{d[5:7]}"
         nxt = (date.fromisoformat(d) + timedelta(days=1)).isoformat()
-        if nxt in by and any(x["sport"] == "sila" for x in L) and any(x["sport"] == "rower" and is_long(x) for x in by[nxt]):
-            out.append(f"{d[8:10]}.{d[5:7]}: siła w przeddzień długiej jazdy ({nxt[8:10]}.{nxt[5:7]}) — nogi będą zmęczone")
-        if nxt in by and any(x["sport"] == "sila" for x in L) and any(x["sport"] == "sila" for x in by[nxt]):
-            out.append(f"siła dzień po dniu ({d[8:10]}.{d[5:7]} i {nxt[8:10]}.{nxt[5:7]}) — zalecane 48 h przerwy")
-        if nxt in by and any(x["sport"] == "rower" and is_long(x) for x in L) and any(x["sport"] == "rower" and is_long(x) for x in by[nxt]):
-            out.append(f"dwie długie / ciężkie jazdy pod rząd ({d[8:10]}.{d[5:7]}, {nxt[8:10]}.{nxt[5:7]})")
+        nd = f"{nxt[8:10]}.{nxt[5:7]}"
+        for x in [y for y in L if y["sport"] == "sila"]:
+            if any(y["sport"] == "rower" and is_long(y) for y in L):
+                add("sila_long", x, f"{dd}: siła w dniu długiej jazdy — nogi będą zmęczone na trasie")
+            if nxt in by and any(y["sport"] == "rower" and is_long(y) for y in by[nxt]):
+                add("sila_before_long", x, f"{dd}: siła w przeddzień długiej jazdy ({nd}) — nogi mogą być zmęczone")
+            if nxt in by and any(y["sport"] == "sila" for y in by[nxt]):
+                add("sila_seq", x, f"siła dzień po dniu ({dd} i {nd}) — zalecane 48 h przerwy")
+        if nxt in by:
+            for x in [y for y in L if y["sport"] == "rower" and is_long(y)]:
+                if any(y["sport"] == "rower" and is_long(y) for y in by[nxt]):
+                    add("long_seq", x, f"dwie długie / ciężkie jazdy pod rząd ({dd}, {nd})")
         dm = (days_meta or {}).get(d) or {}
-        if dm.get("type") in ("rest", "ill") and any(x["sport"] != "joga" and x.get("status") == "plan" for x in L):
-            out.append(f"{d[8:10]}.{d[5:7]}: trening w dzień {'REST' if dm['type'] == 'rest' else 'choroby'}")
+        if dm.get("type") in ("rest", "ill"):
+            for x in L:
+                if x["sport"] != "joga" and x.get("status") == "plan":
+                    add("rest_day", x, f"{dd}: {x['name']} w dzień {'REST' if dm['type'] == 'rest' else 'choroby'}")
         for bz in dm.get("busy") or []:
             a0, b0 = hm(bz["a"]), hm(bz["b"])
             for x in L:
                 if x.get("start_time") and x.get("status") == "plan":
                     s0 = hm(str(x["start_time"])[:5]); e0 = s0 + int(x["dur_min"])
                     if s0 < b0 and e0 > a0:
-                        out.append(f"{d[8:10]}.{d[5:7]}: {x['name']} {str(x['start_time'])[:5]} koliduje z „{bz['label'].strip()}” {bz['a']}–{bz['b']}")
+                        add("busy", x, f"{dd}: {x['name']} {str(x['start_time'])[:5]} koliduje z „{bz['label'].strip()}” {bz['a']}–{bz['b']}")
     return out
+
+
+def check_rules(sessions: list, ov: dict, days_meta: dict | None = None) -> list[str]:
+    """Teksty NIEwyciszonych ostrzezen (zgodnosc wsteczna)."""
+    return [w["text"] for w in check_rules_detailed(sessions, ov, days_meta) if not w["acked"]]
 
 
 # ---------------- pogoda + "dom" ----------------

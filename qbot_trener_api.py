@@ -220,6 +220,11 @@ def clean_session(b: dict, partial: bool = False) -> dict:
         out["status"] = _choice(b.get("status"), "status", SESSION_STATUS, default="plan")
     if "note" in b:
         out["note"] = _txt(b.get("note"), "note", max_len=1000)
+    if "acks" in b:
+        ak = b.get("acks") or []
+        if not isinstance(ak, list) or len(ak) > 20 or any(not isinstance(x, str) or len(x) > 80 for x in ak):
+            raise BadInput("acks: lista kluczy")
+        out["acks"] = ak
     if out.get("min_min") and out.get("dur_min") and out["min_min"] > out["dur_min"]:
         raise BadInput("min_min wieksze niz dur_min")
     return out
@@ -276,7 +281,7 @@ def _jsonable(row: dict) -> dict:
     return out
 
 
-_JSON_COLS = {"target", "windows", "period", "overrides", "payload", "before", "after"}
+_JSON_COLS = {"target", "windows", "period", "overrides", "payload", "before", "after", "acks"}
 
 
 def _vals(d: dict) -> list:
@@ -441,7 +446,7 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                 d = cleaner(b, partial=True)
                 if not d:
                     raise BadInput("brak pol do zmiany")
-                if table == "trainer_session":
+                if table == "trainer_session" and set(d) - {"acks"}:
                     d["source"] = "manual"
                 sets = ",".join(f"{k}=%s" for k in d) + ",updated_at=now()"
                 c.execute(f"UPDATE qbot_v2.{table} SET {sets} WHERE id=%s AND username=%s RETURNING *", _vals(d) + [item_id, u])
@@ -659,11 +664,27 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
         cid = c.fetchone()["id"]
         return {"change_id": cid, "lines": lines, "notes": res["notes"], "added": len(after_ids), "removed": len(before)}
 
+    def _ensure_horizon(c, u: str, d0: date) -> bool:
+        """Biezacy tydzien + 2 kolejne planuja sie SAME, gdy nie maja zadnej sesji (zmiany uzytkownika zostaja)."""
+        m0 = date.today() - timedelta(days=date.today().weekday())
+        if not (m0 <= d0 <= m0 + timedelta(weeks=2)):
+            return False
+        c.execute("SELECT 1 FROM qbot_v2.trainer_session WHERE username=%s AND day BETWEEN %s AND %s LIMIT 1", (u, d0, d0 + timedelta(days=6)))
+        if c.fetchone():
+            return False
+        c.execute("SELECT 1 FROM qbot_v2.trainer_goal WHERE username=%s UNION ALL SELECT 1 FROM qbot_v2.trainer_rule WHERE username=%s LIMIT 1", (u, u))
+        if not c.fetchone():
+            return False  # pusty Trener - nic nie planujemy
+        res = _regenerate(c, u, d0, "auto_horizon", {})
+        c.execute("UPDATE qbot_v2.trainer_change SET accepted=true WHERE id=%s", (res["change_id"],))
+        return True
+
     @r.get("/week")
     def week_get(request: Request, start: str = Query(None)):
         u = user_of(request)
         def go(c):
             d0, d1 = _week_bounds(start)
+            auto_planned = _ensure_horizon(c, u, d0)
             matched = _match_done(c, u, d0, d1)
             sessions = _sess_rows(c, u, d0, d1)
             c.execute("SELECT id, day, end_day, kind, event_type, title, at_time, note FROM qbot_v2.calendar_entry "
@@ -710,7 +731,8 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                       "ORDER BY id DESC LIMIT 1", (u, d0))
             last = c.fetchone()
             return {"start": d0.isoformat(), "end": d1.isoformat(), "sessions": sessions, "calendar": cal, "activities": done,
-                    "matched_now": matched, "meta": meta, "warnings": E.check_rules(sessions, meta.get("ov") or {}, meta.get("days")),
+                    "matched_now": matched, "meta": meta, "auto_planned": auto_planned,
+                    "warnings": E.check_rules_detailed(sessions, meta.get("ov") or {}, meta.get("days")),
                     "pending_change": (_jsonable(last) if last else None)}
         return run(go)
 
