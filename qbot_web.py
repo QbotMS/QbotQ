@@ -161,6 +161,9 @@ async def _webauth_guard(request, call_next):
     """
     if request.url.path in ("/healthz", "/login", "/favicon.ico", "/favicon.svg", "/wyprawa-rsvp", "/api/wyprawa/rsvp"):
         return await call_next(request)
+    # [G1] goscie jazdy: tylko z waznym tokenem (sprawdzane w endpointach), dane z bialej listy
+    if request.url.path.startswith("/api/guest/"):
+        return await call_next(request)
 
     users, sign_val = _webauth_load()
     if not users:
@@ -4834,6 +4837,117 @@ def report_plan(route_id: str = Query(...), date: str = Query(...),
             data["pakiet"] = {"jest": False, "blad": str(_e)[:160]}
         data["plan_ms"] = round((_t.perf_counter() - _t0) * 1000)
         return data
+    finally:
+        conn.close()
+
+
+# ===================== [G1] ZAPROSZENIA GOSCI =====================
+def _guest_invite_or_error(conn, token):
+    from qbot3.routes import ride_invite as _ri
+    if not _ri.rate_ok(token):
+        raise HTTPException(status_code=429, detail="Za duzo zapytan - sprobuj za chwile")
+    inv, why = _ri.get_valid(conn, token)
+    if not inv:
+        raise HTTPException(status_code=410 if why and ("wygasl" in why or "wylaczony" in why) else 404, detail=why)
+    return inv
+
+
+@app.get("/api/guest/{token}")
+def guest_data(token: str):
+    """Dane dla goscia (BEZ logowania, tylko wazny token). Biala lista: ride_invite.guest_view."""
+    from qbot3.routes import ride_invite as _ri, route_day_pack as _dp
+    conn = _db_conn()
+    try:
+        inv = _guest_invite_or_error(conn, token)
+        _ri.touch(conn, token)
+        d = _build_report_data(conn, inv["route_id"], str(inv["ride_date"]), inv["start_time"],
+                               inv["long_stops"], inv["long_stop_min"], ai=False, day_table=True)
+        conn.commit()
+        try:
+            geo = (route_geometry(inv["route_id"]) or {}).get("coordinates") or []
+        except Exception:
+            geo = []
+        try:
+            pk = _dp.load_pack(conn, inv["route_id"], str(inv["ride_date"]))
+        except Exception:
+            pk = None
+        return _ri.guest_view(d, inv, geo, pk)
+    finally:
+        conn.close()
+
+
+@app.get("/api/guest/{token}/gpx")
+def guest_gpx(token: str, pois: int = 1):
+    conn = _db_conn()
+    try:
+        inv = _guest_invite_or_error(conn, token)
+    finally:
+        conn.close()
+    return report_gpx(inv["route_id"], str(inv["ride_date"]), inv["start_time"], pois)
+
+
+@app.post("/api/guest/{token}/rsvp")
+def guest_rsvp(token: str, status: str = Query(...)):
+    from qbot3.routes import ride_invite as _ri
+    conn = _db_conn()
+    try:
+        _guest_invite_or_error(conn, token)
+        if not _ri.set_rsvp(conn, token, status):
+            raise HTTPException(status_code=400, detail="status: tak | nie")
+        return {"ok": True, "rsvp": status}
+    finally:
+        conn.close()
+
+
+@app.post("/api/invites")
+async def invites_create(request: Request):
+    """Organizator (za logowaniem): {route_id, date, time, long_stops, long_stop_min, emails[] | group_id}."""
+    from qbot3.routes import ride_invite as _ri
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    rid, day = str(b.get("route_id") or ""), str(b.get("date") or "")[:10]
+    if not rid or not day:
+        raise HTTPException(status_code=400, detail="Wymagane: route_id + date")
+    conn = _db_conn()
+    try:
+        emails = [str(x) for x in (b.get("emails") or [])]
+        if b.get("group_id"):
+            emails += [r["email"] for r in conn.execute(
+                "SELECT email FROM qbot_v2.mail_group_member WHERE group_id=%s", (int(b["group_id"]),)).fetchall()]
+        seen, uniq = set(), []
+        for e in emails:
+            k = e.strip().lower()
+            if k and k not in seen:
+                seen.add(k); uniq.append(e.strip())
+        res = _ri.create_invites(conn, rid, day, str(b.get("time") or "10:00")[:5],
+                                 int(b.get("long_stops") or 0), int(b.get("long_stop_min") or 0), uniq)
+        base = _WYPRAWA_PUBLIC_BASE.rstrip("/")
+        for r in res:
+            if r.get("token"):
+                r["link"] = base + "/g/" + r["token"]
+        return {"ok": True, "items": res}
+    finally:
+        conn.close()
+
+
+@app.get("/api/invites")
+def invites_list(route_id: str = Query(...), date: str = Query(None)):
+    from qbot3.routes import ride_invite as _ri
+    conn = _db_conn()
+    try:
+        return {"items": _ri.list_invites(conn, route_id, date)}
+    finally:
+        conn.close()
+
+
+@app.post("/api/invites/revoke")
+def invites_revoke(token: str = Query(...)):
+    from qbot3.routes import ride_invite as _ri
+    conn = _db_conn()
+    try:
+        return {"ok": _ri.revoke(conn, token)}
     finally:
         conn.close()
 
