@@ -223,7 +223,11 @@ trening w REST/choroba, kolizja z zajętością — działają też dla sesji r�
   w `trainer_session.acks` (`sql/trainer_v5.sql`) — wyciszone nie wracają w regułach ani w AI.
 - **AI** dostaje gotowe sumy godzin, widełki i flagi decyzji (ręczna / usunięta / wyciszone) i ma je szanować.
 
-## Porównanie silników — PODGLĄD (2026-09-23)
+## Porównanie silników — ODRZUCONE i USUNIĘTE (2026-09-23)
+
+Użytkownik: układ tygodniowy jest lepszy, ma być spójny między tygodniami. Model bloku (poniżej, historycznie) usunięty
+(commit z usunięciem; wcześniejszy 598762e). Opis zostaje jako zapis decyzji.
+
 
 `qbot_trener_block.py` + `GET /compare?weeks=3` + podzakładka „Porównanie 🧪” (nic nie zapisuje). Model bloku:
 XSS → CTL (τ 42) / ATL (τ 7) / TSB rano jak w ModelQ (sprawdzone na danych 22→23.09); cel formy per okres
