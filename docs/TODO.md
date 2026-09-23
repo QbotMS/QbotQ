@@ -461,8 +461,6 @@ zachowuje sie sensownie po zalozeniu hamulcow z punktu 1.
   sie wylacznie na L2-OBJ. Decyzja Michala.
 
 ## 2026-09-23 -- po wdrozeniu przegladu baz tylko-do-odczytu (MCP)
-- [ ] Routing qbot_query: pytania ogolne o garaz ("pokaz garaz", "mojego garazu", "dostep do garazu", "wszystkie opony")
-      trafiaja do garage_search i daja 0 wynikow -> kierowac do garage_status / tabeli tires; pusty wynik
-      garage_search -> pokaz podsumowanie zamiast pustki. (czeka na decyzje uzytkownika)
-- [ ] garage_search nie przeszukuje tabeli `tires` (zapytanie "opony" -> 0 wynikow mimo 8 opon w garazu).
+- [x] 2026-09-23 Routing qbot_query: pytania ogolne o garaz -> garage_status; pusty wynik garage_search -> podsumowanie.
+- [x] 2026-09-23 garage_search przeszukuje tez `tires` i `equipment`.
 - [ ] Przy dodawaniu tabel z tokenami/sekretami: REVOKE SELECT dla qbot_ro (default privileges daja dostep automatycznie).

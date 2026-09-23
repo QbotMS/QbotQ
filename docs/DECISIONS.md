@@ -4,6 +4,17 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-09-23 -- DECYZJA: garage_search — pytania ogolne, opony, akcesoria, brak pustych odpowiedzi
+
+- Pytanie o garaz bez konkretnego przedmiotu (po odjeciu slow "garaz*" i ogolnych: masz, dostep, qbot,
+  wszystkie, zawartosc, ...) -> odpowiedz garage_status (warning general_garage_question_routed_to_garage_status).
+- Wyszukiwanie obejmuje tez tabele `tires` (slowo "opony"/tire -> wszystkie opony z szerokoscia, pozycja,
+  kolami i statusem) oraz `equipment` (torby, elektronika, nawigacja/swiatla, narzedzia).
+- Brak trafien -> "Nie znalazlem ..." + podsumowanie garazu (status PARTIAL, warning no_match_showing_garage_summary).
+- Pytania o cisnienie opon nadal ida do Alberta (tire_pressure) — sprawdzone.
+- Dowod: scripts/test_query_vnext_garage.py (19 przypadkow, garaz oceniany scisle), acceptance OK,
+  na zywo: "czy masz dostep do mojego garazu na Qbot?" -> przeglad; "wszystkie opony..." -> 8 opon.
+
 ## 2026-09-23 -- DECYZJA: publiczny MCP daje przeglad baz TYLKO DO ODCZYTU (GPT/Claude)
 
 **Kontekst:** GPT przez konektor QBot dostawal puste wyniki (np. "czy masz dostep do mojego garazu"

@@ -2887,6 +2887,20 @@ def _sql_like_clause(columns: list[str], terms: list[str]) -> tuple[str, list[st
     return (" OR ".join(clauses), params)
 
 
+# Slowa, ktore NIE opisuja przedmiotu (pytanie ogolne o garaz) — 2026-09-23
+_GARAGE_GENERIC_WORDS = {
+    "masz", "dostęp", "dostep", "dostępu", "dostepu", "qbot", "qbocie", "qbota",
+    "wszystkie", "wszystko", "wszystkich", "lista", "listę", "liste", "listy",
+    "cały", "caly", "całą", "cala", "całe", "cale", "zawartość", "zawartosc",
+    "mój", "moj", "mojego", "mojej", "moim", "twój", "twoj", "mnie", "dla",
+    "jest", "być", "byc", "widzisz", "możesz", "mozesz", "przegląd", "przeglad",
+    "podsumowanie", "stan", "status", "tam", "tego", "twoim", "twoje",
+}
+_GARAGE_WORD_PREFIXES = ("garaż", "garaz", "garage")
+_TIRE_WORDS = {"opony", "opona", "opon", "oponach", "oponami", "oponę", "opone", "tire", "tires",
+               "tyre", "tyres", "ogumienie"}
+
+
 def _handle_garage_search(text: str) -> dict:
     used = []
     missing = []
@@ -2901,8 +2915,19 @@ def _handle_garage_search(text: str) -> dict:
     import re as _re_gs
     raw_terms = [_re_gs.sub(r"[^\w\u00C0-\u024F]", "", t) for t in ql.split()]
     raw_terms = [t for t in raw_terms if len(t) > 2 and t not in STOP_WORDS]
-    if not raw_terms:
-        raw_terms = [_re_gs.sub(r"[^\w\u00C0-\u024F]", "", ql)]
+
+    # 2026-09-23: usun slowa "garaz*" i ogolne; pytanie bez konkretnego przedmiotu -> przeglad garazu
+    item_terms = [t for t in raw_terms
+                  if not t.startswith(_GARAGE_WORD_PREFIXES) and t not in _GARAGE_GENERIC_WORDS]
+    if not item_terms:
+        res = _handle_garage_status(text)
+        try:
+            res.setdefault("warnings", []).append("general_garage_question_routed_to_garage_status")
+        except Exception:
+            pass
+        return res
+    raw_terms = item_terms
+
     # Stem Polish words for better matching
     stemmed = []
     for t in raw_terms:
@@ -2911,6 +2936,7 @@ def _handle_garage_search(text: str) -> dict:
 
     expanded_terms = _expand_search_terms(raw_terms)
     alias_used = expanded_terms != raw_terms
+    wants_tires = any(t in _TIRE_WORDS or t.startswith("opon") for t in expanded_terms)
 
     try:
         conn = _sqlite_conn()
@@ -2925,7 +2951,7 @@ def _handle_garage_search(text: str) -> dict:
                 params,
             ).fetchall()
             if gear_rows:
-                results.extend([dict(r) for r in gear_rows])
+                results.extend([{**dict(r), "_table": "gear"} for r in gear_rows])
                 matched_tables.append("gear")
         except Exception:
             missing.append("gear")
@@ -2940,7 +2966,7 @@ def _handle_garage_search(text: str) -> dict:
                 params,
             ).fetchall()
             if bike_rows:
-                results.extend([dict(r) for r in bike_rows])
+                results.extend([{**dict(r), "_table": "bikes"} for r in bike_rows])
                 matched_tables.append("bikes")
         except Exception:
             missing.append("bikes")
@@ -2955,10 +2981,45 @@ def _handle_garage_search(text: str) -> dict:
                 params,
             ).fetchall()
             if comp_rows:
-                results.extend([dict(r) for r in comp_rows])
+                results.extend([{**dict(r), "_table": "components"} for r in comp_rows])
                 matched_tables.append("components")
         except Exception:
             missing.append("components")
+
+        # tires (2026-09-23) — "opony" = wszystkie opony; inaczej dopasowanie po marce/modelu/kolach
+        try:
+            if wants_tires:
+                tire_rows = conn.execute(
+                    "SELECT id, brand, model, width_mm, type, position, fits_wheelset, status FROM tires ORDER BY id"
+                ).fetchall()
+            else:
+                clause, params = _sql_like_clause(
+                    ["brand", "model", "type", "fits_wheelset"], expanded_terms
+                )
+                tire_rows = conn.execute(
+                    f"SELECT id, brand, model, width_mm, type, position, fits_wheelset, status FROM tires WHERE ({clause}) LIMIT 20",
+                    params,
+                ).fetchall()
+            if tire_rows:
+                results.extend([{**dict(r), "_table": "tires"} for r in tire_rows])
+                matched_tables.append("tires")
+        except Exception:
+            missing.append("tires")
+
+        # equipment (2026-09-23): torby, elektronika, nawigacja/swiatla, narzedzia
+        try:
+            clause, params = _sql_like_clause(
+                ["category", "brand", "model", "alias", "role"], expanded_terms
+            )
+            eq_rows = conn.execute(
+                f"SELECT id, category, brand, model, alias, capacity_l, color, status FROM equipment WHERE active=1 AND ({clause}) LIMIT 20",
+                params,
+            ).fetchall()
+            if eq_rows:
+                results.extend([{**dict(r), "_table": "equipment"} for r in eq_rows])
+                matched_tables.append("equipment")
+        except Exception:
+            missing.append("equipment")
 
         conn.close()
     except Exception as exc:
@@ -2974,21 +3035,38 @@ def _handle_garage_search(text: str) -> dict:
             results = helmet_results
 
     if not results:
-        return _envelope("garage_search", f"Nie znaleziono nic dla: {query}.",
-                         missing_sources=missing,
+        # 2026-09-23: zamiast pustki — podsumowanie garazu + informacja, czego nie znaleziono
+        summary = _handle_garage_status(text)
+        s_answer = summary.get("answer") or ""
+        answer = (f"Nie znalazłem w garażu pozycji pasujących do: {', '.join(raw_terms)}.\n\n{s_answer}").strip()
+        return _envelope("garage_search", answer,
                          data={"query": query, "original_terms": raw_terms, "expanded_terms": expanded_terms,
-                               "alias_used": alias_used, "result_count": 0, "results": []})
+                               "alias_used": alias_used, "result_count": 0, "results": [],
+                               "garage_summary": summary.get("data") or {}},
+                         sources_used=summary.get("sources_used") or [],
+                         missing_sources=missing,
+                         warnings=["no_match_showing_garage_summary"])
 
+    icons = {"gear": "👕", "bikes": "🚲", "components": "🔧", "tires": "🛞", "equipment": "🎒"}
     parts = [f"🔍 Znaleziono {len(results)} pozycji dla: {query}"]
     if alias_used:
         parts.append(f"   ↳ Rozszerzone terminy: {', '.join(expanded_terms)}")
-    for r in results[:10]:
-        tbl_hint = "🚲" if ("name" in r and "category" not in r) else "👕"
-        name = r.get("name") or r.get("model") or ""
+    for r in results[:20]:
+        tbl = r.get("_table", "")
+        icon = icons.get(tbl, "•")
         brand = r.get("brand") or ""
+        if tbl == "tires":
+            bits = [f"{r.get('width_mm')} mm" if r.get("width_mm") else "", r.get("position") or "",
+                    r.get("fits_wheelset") or "", r.get("status") or ""]
+            desc = ", ".join(b for b in bits if b)
+            parts.append(f"   {icon} {brand} {r.get('model') or ''}" + (f" — {desc}" if desc else ""))
+            continue
+        name = r.get("name") or r.get("model") or ""
         color = r.get("color") or ""
         extra = f" ({color})" if color else ""
-        parts.append(f"   {tbl_hint} {brand} {name}{extra}" if brand else f"   {tbl_hint} {name}{extra}")
+        parts.append(f"   {icon} {brand} {name}{extra}" if brand else f"   {icon} {name}{extra}")
+    if len(results) > 20:
+        parts.append(f"   … i {len(results) - 20} więcej")
 
     answer = "\n".join(parts)
 
@@ -2999,7 +3077,7 @@ def _handle_garage_search(text: str) -> dict:
         "alias_used": alias_used,
         "matched_tables": matched_tables,
         "result_count": len(results),
-        "results": results[:20],
+        "results": results[:40],
     }
 
     status = "PARTIAL" if missing else "OK"

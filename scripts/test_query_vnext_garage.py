@@ -32,6 +32,14 @@ TESTS: list[tuple[str, str, list[str], bool]] = [
     ("garage_search_rapha",  "szukaj Rapha",                     ["garage_search"], True),
     ("garage_search_pedaled","szukaj PEdALED",                   ["garage_search"], True),
     ("garage_search_sram",   "pokaż komponenty SRAM",            ["garage_search"], True),
+    # 2026-09-23: pytania ogolne -> przeglad; opony i akcesoria przeszukiwane; brak trafien -> podsumowanie
+    ("general_access_q",     "czy masz dostęp do mojego garażu na Qbot?", ["garage_status"], True),
+    ("general_show_garage2", "pokaż zawartość garażu",           ["garage_status"], True),
+    ("tires_all",            "pokaż wszystkie opony z garażu z szerokością i statusem", ["garage_search"], True),
+    ("tires_short",          "jakie mam opony",                  ["garage_search"], True),
+    ("tires_brand",          "szukaj Thunder Burt",              ["garage_search"], True),
+    ("equipment_bags",       "pokaż torby",                      ["garage_search"], True),
+    ("no_match_fallback",    "szukaj xqzwvk",                    ["garage_search"], True),
     # Regression
     ("regression_nutrition", "pokaż moje jedzenie dzisiaj",      ["nutrition_day"], True),
     ("regression_balance",   "pokaż bilans 7 dni",               ["nutrition_range"], True),
@@ -83,12 +91,23 @@ def run():
             elif status == "ERROR":
                 detail["issues"].append(f"handler returned ERROR")
 
-            # For garage_search, check result_count
+            # For garage_search, check result_count (0 dozwolone tylko w tescie fallbacku — wtedy musi byc podsumowanie)
             if result.get("intent") == "garage_search":
                 dd = result.get("data", {})
                 if dd.get("result_count", 0) == 0:
-                    detail["issues"].append("garage_search returned 0 results — may be OK")
-                    # This is informational, not an error
+                    if label == "no_match_fallback":
+                        if not dd.get("garage_summary") or "Rowery" not in (result.get("answer") or ""):
+                            detail["issues"].append("fallback bez podsumowania garazu")
+                    else:
+                        detail["issues"].append("garage_search returned 0 results")
+                if label.startswith("tires_"):
+                    if "tires" not in (dd.get("matched_tables") or []):
+                        detail["issues"].append("opony nie znalezione w tabeli tires")
+                if label == "tires_all" and dd.get("result_count", 0) < 8:
+                    detail["issues"].append(f"oczekiwano >=8 opon, jest {dd.get('result_count')}")
+                if label == "equipment_bags" and "equipment" not in (dd.get("matched_tables") or []):
+                    detail["issues"].append("torby nie znalezione w equipment")
+                detail["answer_head"] = (result.get("answer") or "")[:300]
 
             if detail["issues"]:
                 detail["status"] = "PARTIAL" if status != "ERROR" else "ERROR"
@@ -119,5 +138,14 @@ def run():
 
 if __name__ == "__main__":
     s = run()
-    if s["failed"] > 0:
+    # Garaz oceniany scisle (kazdy test garazu musi byc OK; fallback moze byc PARTIAL bez uwag).
+    # Testy regresji innych domen — jak dotad: tylko ERROR przerywa.
+    garage_bad = [
+        d for d in s["details"]
+        if not d["label"].startswith("regression_")
+        and not (d["status"] == "OK" or (d["label"] == "no_match_fallback" and d["status"] == "PARTIAL" and not d["issues"]))
+    ]
+    if garage_bad:
+        print("GARAGE FAIL:", [d["label"] for d in garage_bad])
+    if s["failed"] > 0 or garage_bad:
         sys.exit(1)
