@@ -4838,6 +4838,26 @@ def report_plan(route_id: str = Query(...), date: str = Query(...),
         conn.close()
 
 
+@app.post("/api/report/plan/save")
+def report_plan_save(route_id: str = Query(...), date: str = Query(...),
+                     time: str = Query("10:00"), long_stops: int = Query(0),
+                     long_stop_min: int = Query(0)):
+    """Zapisuje BIEZACY PLAN jako raport w archiwum (potrzebne do wysylki mailem). Bez AI:
+    liczby z warstwy planu + tresci z pakietu dnia (komentarze ryzyka, strategia wariantu)."""
+    from qbot3.routes import route_day_pack as _dp
+    conn = _db_conn()
+    try:
+        data = _build_report_data(conn, route_id, date, time, long_stops, long_stop_min,
+                                  ai=False, day_table=True)
+        _pk = _dp.load_pack(conn, route_id, date)
+        if _pk:
+            _dp.inject_legacy(data, _pk, _dp.apply_pack(_pk, data, time))
+        snap_id = _save_report_snapshot(conn, route_id, date, time, long_stops, long_stop_min, data)
+        return {"ok": bool(snap_id), "snapshot_id": snap_id, "z_pakietem": bool(_pk)}
+    finally:
+        conn.close()
+
+
 @app.post("/api/report/day-pack")
 def report_day_pack_build(route_id: str = Query(...), date: str = Query(...)):
     """E2c: generuje PAKIET DNIA (AI, ~40-45 s) dla trasy + daty i zapisuje (nadpisuje poprzedni

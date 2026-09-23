@@ -430,3 +430,40 @@ def list_packs(conn, route_id: str) -> list:
         v = list(r.values()) if isinstance(r, dict) else list(r)
         out.append({"date": str(v[0]), "created_at": v[1].isoformat(timespec="seconds") if v[1] else None, "model": v[2]})
     return out
+
+
+
+def inject_legacy(data: dict, pack: dict, ap: dict) -> dict:
+    """Wstawia tresci pakietu do danych raportu w DOTYCHCZASOWYM formacie (mail/archiwum):
+    komentarze odcinkow ryzyka + strategia {calosc, etapy[{tytul,zakres_km,opis,moc,zywienie,pojenie}]}
+    dla wariantu wybranego przez apply_pack. Bez AI."""
+    if not pack or not data:
+        return data
+    det = data.get("details") or {}
+    by = {r.get("id"): r for r in ((pack.get("dzien") or {}).get("ryzyka") or [])}
+    for i, r in enumerate(((det.get("surface") or {}).get("risk") or [])):
+        p = by.get("r%d" % (i + 1))
+        if p and p.get("komentarz"):
+            r["comment"] = p["komentarz"]
+    v = (pack.get("warianty") or {}).get((ap or {}).get("wariant")) or {}
+    def _n(x, d=1):
+        try:
+            return ("%." + str(d) + "f") % float(x)
+        except Exception:
+            return "?"
+    etapy = []
+    for e in v.get("etapy") or []:
+        km, mw, mp = e.get("km") or [None, None], e.get("moc_w") or [None, None], e.get("moc_pct_ftp") or [None, None]
+        etapy.append({
+            "tytul": ", ".join(e.get("charakter") or []).replace("_", " ") or "etap",
+            "zakres_km": "%s-%s" % (_n(km[0], 1), _n(km[1], 1)),
+            "opis": e.get("uwaga") or "",
+            "moc": "%s-%s W (%s-%s%% FTP), tryb %s" % (mw[0], mw[1], mp[0], mp[1], e.get("tryb") or "?"),
+            "zywienie": "%s g/h" % e.get("jedzenie_g_h", "?"),
+            "pojenie": "%s l/h" % e.get("picie_l_h", "?"),
+        })
+    zd = [((v.get("ocena_okna") or {}).get("zdanie") or "")] + [r.get("zdanie") or "" for r in ((ap or {}).get("reguly_aktywne") or [])]
+    if etapy:
+        det["strategia"] = {"calosc": " ".join(x for x in zd if x).strip(), "etapy": etapy,
+                            "zrodlo": "pakiet dnia %s, wariant %s" % ((pack.get("meta") or {}).get("created_at"), (ap or {}).get("wariant"))}
+    return data
