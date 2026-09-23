@@ -1,5 +1,19 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-09-23] TRENER w Formie — serwis zamknięty (etapy 1-5 + zestawy ćwiczeń)
+
+- Zakładka Trener w forma.html (trener.js/trener.css poza repo, v=5): Tydzień (silnik planu, akcje dnia, przeciąganie,
+  auto-odhaczanie z Garmina), Czas, Dostępność, Cele (statusy), Sezon, Bilans i waga (+ badania), Kalibracja.
+- Backend: qbot_trener_api.py (/api/trener/*), qbot_trener_engine.py, qbot_trener_stats.py, qbot_trener_notify.py,
+  qbot_trener_workouts.py; migracje sql/trainer_v1..v4.sql (zastosowane). Dane użytkownika startują PUSTE.
+- Telegram: cron root */15 → qbot_trener_notify.py tick (log /var/log/qbot-trener-notify.log). Test wysłany i dotarł.
+- Albert: narzędzie trainer_week + _SYSTEM; routing qbot_query_handler intent trainer_week → Albert (przed training_recent).
+- Garmin: usunięty (decyzja użytkownika).
+- Znane: test_report_validation.test_daily_report_handler_returns_data pada NIEZALEŻNIE od Trenera (sprawdzone na wersji
+  sprzed zmian). LTHR (RIDER_LTHR_BPM) nieustawione → strefy tętna w opisach ukryte.
+- DECISIONS.md: decyzje Trenera w docs/TRENER.md, bo w DECISIONS.md leży niezacommitowany wpis innej sesji (GPT-6 Luna).
+- Dalej: generator programu treningu (TODO [TRENER-GENERATOR]).
+
 ## [2026-09-20] AXS: dobieranie z sasiedztwa + kandydaci kaset PER ROWER (skalowanie na Grail)
 
 Dwie rzeczy (Michal: blad ma marginalna wage -> dorob brakujace; szykuj sie na wiecej rowerow --

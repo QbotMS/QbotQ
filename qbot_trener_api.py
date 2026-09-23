@@ -627,6 +627,11 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                 meta["ov"] = {k: v for k, v in ctx["ov"].items() if k.startswith("wx.")}
             except Exception as e:  # meta pomocnicze - tydzien ma sie pokazac nawet bez niego
                 meta = {"error": str(e)[:200]}
+            import qbot_trener_workouts as TW
+            for x in sessions:
+                if x["sport"] in ("sila", "wiosl", "joga"):
+                    n = TW.strength_index(c, u, x) if x["sport"] == "sila" else 0
+                    x["details"] = TW.details(x["sport"], meta.get("phase"), x["dur_min"], bool(x.get("cut")), n)
             c.execute("SELECT id, action, payload, created_at FROM qbot_v2.trainer_change WHERE username=%s AND week_start=%s AND accepted IS NULL "
                       "ORDER BY id DESC LIMIT 1", (u, d0))
             last = c.fetchone()
@@ -737,25 +742,6 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                     out[k] = v
             out["_weather"] = {"computed_at": wx.get("_computed_at"), "computing": wx.get("_computing"), "n": wx.get("_n")}
             return out
-        return run(go)
-
-    @r.post("/sessions/{item_id}/garmin")
-    async def session_garmin(item_id: int, request: Request):
-        u = user_of(request)
-        b = await body_of(request) if (await request.body()) else {}
-        import qbot_trener_garmin as G
-        def go(c):
-            c.execute("SELECT * FROM qbot_v2.trainer_session WHERE id=%s AND username=%s", (item_id, u))
-            srow = c.fetchone()
-            if not srow:
-                raise HTTPException(status_code=404, detail="nie znaleziono")
-            ses = _jsonable(srow)
-            c.execute("SELECT ftp_est_w FROM qbot_v2.fitmodel_daily WHERE ftp_est_w IS NOT NULL ORDER BY day DESC LIMIT 1")
-            fr = c.fetchone()
-            res = G.push(ses, float(fr["ftp_est_w"]) if fr else None, dry_run=bool((b or {}).get("dry_run")))
-            if res.get("status") in ("success", "DUPLICATE") and res.get("workoutId"):
-                c.execute("UPDATE qbot_v2.trainer_session SET garmin_workout_id=%s, updated_at=now() WHERE id=%s", (res["workoutId"], item_id))
-            return res
         return run(go)
 
     @r.get("/notify/preview")

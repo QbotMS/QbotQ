@@ -38,7 +38,7 @@ Wzorzec UI (zaakceptowany mockup, dane przykładowe): `/opt/qbot/web/public/tren
    testy `tests/test_trener_engine.py`. Szczegóły w sekcji „Silnik” niżej.
 4. **Bilans, statusy celów, Czas, pogoda auto, badania** (ZROBIONE 2026-09-23): `qbot_trener_stats.py`,
    migracja `sql/trainer_v3.sql`, testy `tests/test_trener_stats.py`. Szczegóły w sekcji „Etap 4” niżej.
-5. **Telegram, Garmin, Albert** (ZROBIONE 2026-09-23) — sekcja „Etap 5” niżej.
+5. **Telegram, Albert, zestawy ćwiczeń** (ZROBIONE 2026-09-23) — sekcje „Etap 5” i „Zestawy ćwiczeń” niżej. **Serwis zamknięty 2026-09-23.**
 
 ## Dane (sql/trainer_v1.sql, schemat qbot_v2, per `username`)
 
@@ -130,9 +130,23 @@ Każda edycja sesji z UI (POST/PUT `/sessions`) ustawia `source='manual'` → pr
   Ustawienia `notify.*` z Kalibracji. Użytkownik = najwięcej wierszy trainer_* (bez kont z `_`), albo env `TRENER_USER`.
   Wysyłka: `qbot_config.TELEGRAM_TOKEN/CHAT_ID`, czysty tekst. `preview plan|day|review`, `send-test`.
   API `GET /notify/preview?kind=plan|day|review` (podgląd w Kalibracji → Pilnowanie).
-- **Garmin** `qbot_trener_garmin.py`: `POST /sessions/{id}/garmin {dry_run?}` — trening (rower: rozgrzewka / blok z zakresem
-  mocy z FTP / schłodzenie; inne: jeden blok czasowy) + `schedule_workout` na dzień sesji. Idempotencja przez
-  `garmin_workout_write_audit` (klucz z treści sesji). Wyłącznie na kliknięcie użytkownika w UI (z potwierdzeniem).
+- **Garmin: USUNIĘTE 2026-09-23** (decyzja użytkownika: treningi w Garminie zbędne). Moduł był w commicie c3d410e,
+  usunięty w commicie zamykającym; historia w git.
 - **Albert**: narzędzie `trainer_week` (odczyt: plan tygodnia, statusy celów, bilans) + wpis w `_SYSTEM`. Routing:
   `qbot_query_handler` intent `trainer_week` (frazy „plan treningowy”, „trener”, „co mam dziś trenować”…) PRZED
   `training_recent`, w `OPEN_DOMAIN_INTENTS` → Albert. Pusty Trener zwraca poprawny komunikat (nie błąd — inaczej pętla).
+
+## Zestawy ćwiczeń (`qbot_trener_workouts.py`)
+
+- **Siła = obwód na całe ciało** przy każdej sesji (6 slotów: nogi, klatka, plecy, barki, brzuch, tył ciała) + 2 ćwiczenia
+  **akcentu**, który rotuje co sesję: klatka + ramiona → plecy → nogi → brzuch. Sprzęt: hantle, ławka, masa ciała (pompki,
+  deski…). Numer sesji = liczba wcześniejszych sesji siłowych użytkownika (nie pominiętych) → akcent i wariant ćwiczeń
+  (pula rotuje co cykl 4 akcentów). Dawkowanie wg okresu Sezonu: rt 2 rundy 40/20 s; bz 3(–4) rundy 8–12 powt.;
+  bd 3 rundy + jednonóż; tp 2 rundy podtrzymania; rg/ev 1 runda; wersja minimum = 1 runda.
+- **Wioślarz** wg okresu: rt spokojnie 18–22/min; bz 3 × 8′ / 2′; bd 6 × 3′ / 2′; + przypomnienie techniki.
+- Gdzie widać: `GET /week` → `sessions[].details` (szczegóły treningu w UI), Telegram (poranna wiadomość dnia),
+  Albert (`trainer_week` → sekcja „Zestawy ćwiczeń”). Sesja siłowa w silniku nazywa się „Siła obwodowa”.
+
+## Dalej (poza zakresem zamkniętego serwisu)
+
+- **Generator programu treningu** — do zaprojektowania osobno (patrz TODO).

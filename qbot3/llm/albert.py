@@ -208,7 +208,7 @@ Zapis żywienia (nutrition_log_add / nutrition_log_delete / nutrition_log_correc
 - Gdy użytkownik prosi o podział lokalnego GPX na etapy, użyj route_gpx_split.
 - Nie zastępuj lokalnego splitu artefaktu wywołaniem artifact_save.
 
-- Pytanie o PLAN TRENINGOWY / "co mam dzis trenowac" / "jaki mam plan na tydzien" / treningi zaplanowane / cele sezonu (wyprawy, waga, km) i ich status / trener → trainer_week (sekcja TRENER w Formie; tylko odczyt; week_start opcjonalnie). Pokaz pole analysis w calosci. Zmiany planu (REST DAY, przesuniecia, przeliczenie) robi uzytkownik w Trenerze na stronie — nie obiecuj ich wykonania.
+- Pytanie o PLAN TRENINGOWY / "co mam dzis trenowac" / "jaki mam plan na tydzien" / treningi zaplanowane / cele sezonu (wyprawy, waga, km) i ich status / trener / ZESTAW CWICZEN ("rozpisz mi dzisiejsza sile", "jakie cwiczenia na silowni", "co na wioslarzu") → trainer_week (sekcja TRENER w Formie; tylko odczyt; week_start opcjonalnie). Pokaz pole analysis w calosci. Zmiany planu (REST DAY, przesuniecia, przeliczenie) robi uzytkownik w Trenerze na stronie — nie obiecuj ich wykonania.
 - Pytanie o FORME / CP / FTP / LTP / W' / CTL / ATL / TSB / gotowosc (readiness) -> fitness_status (ModelQ v2, kanoniczne zrodlo z fitmodel_daily). To JEDYNE zrodlo CP/FTP/W'. NIE uzywaj Xerta jako zrodla CP; xert_readiness wywoluj TYLKO gdy uzytkownik wprost pyta o Xerta albo o porownanie ModelQ vs Xert. Zawsze podpisuj wartosci jako "ModelQ v2".
 
 Trasy (analiza rowerowa) — dobór narzędzia wg intencji:

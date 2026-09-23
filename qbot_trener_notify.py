@@ -93,12 +93,27 @@ def text_plan(ws: date, sessions: list[dict], phase: str | None, target_h: float
     return "\n".join(out)
 
 
-def text_day(d: date, sessions: list[dict]) -> str | None:
+def text_day(d: date, sessions: list[dict], details: dict | None = None) -> str | None:
     act = [s for s in sessions if s["status"] == "plan"]
     if not act:
         return None
-    return "\n".join([f"💪 Dziś ({DN[d.weekday()]} {d.strftime('%d.%m')}):"] + [_line(s, False) for s in act] +
-                     ["", "Gorszy dzień? W Trenerze: ⋯ → brak czasu (wersje minimum) albo REST DAY.", URL])
+    out = [f"💪 Dziś ({DN[d.weekday()]} {d.strftime('%d.%m')}):"]
+    for s in act:
+        out.append(_line(s, False))
+        dt = (details or {}).get(s.get("id"))
+        if dt and s["sport"] in ("sila", "wiosl"):
+            out.append(dt)
+    return "\n".join(out + ["", "Gorszy dzień? W Trenerze: ⋯ → brak czasu (wersje minimum) albo REST DAY.", URL])
+
+
+def session_details(c, user: str, sessions: list[dict], phase: str | None) -> dict:
+    import qbot_trener_workouts as TW
+    out = {}
+    for s in sessions:
+        if s.get("id") and s["sport"] in ("sila", "wiosl"):
+            n = TW.strength_index(c, user, s) if s["sport"] == "sila" else 0
+            out[s["id"]] = TW.details(s["sport"], phase, s["dur_min"], bool(s.get("cut")), n)["text"]
+    return out
 
 
 def text_pre(s: dict) -> str:
@@ -224,7 +239,9 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
             log.append(_once(c, f"plan:{y2}-W{w2:02d}", user, text_plan(send_plan, ses, res.get("phase_name"), res.get("target_h"), res.get("notes")) if ses else None, dry))
         # dzien
         if st["notify.day"] == 1 and 7 * 60 <= hm < 8 * 60:
-            log.append(_once(c, f"day:{today.isoformat()}", user, text_day(today, _sessions(c, user, today, today)), dry))
+            tses = _sessions(c, user, today, today)
+            ph = E.plan_week(E.build_context(c, user, ws))["phase"] if tses else None
+            log.append(_once(c, f"day:{today.isoformat()}", user, text_day(today, tses, session_details(c, user, tses, ph)), dry))
         if st["notify.day"] == 2:
             for s in _sessions(c, user, today, today):
                 if s["status"] != "plan" or not s.get("start_time"):
@@ -260,8 +277,20 @@ def albert_summary(week_start: str | None = None) -> dict:
         conn.rollback()
     finally:
         conn.close()
+    det = {}
+    if ses:
+        conn2 = _conn()
+        try:
+            det = session_details(conn2.cursor(), user, [s for s in ses if s["status"] == "plan" and s["day"] >= date.today()], res["phase"])
+        finally:
+            conn2.close()
     lines = [text_plan(ws, ses, res["phase_name"], res["target_h"], res["notes"]) if ses else
              f"Tydzień {ws.isoformat()}: brak zapisanego planu (faza {res['phase_name']}, cel {res['target_h']} h) — plan tworzy się przyciskiem „przelicz tydzień” w Trenerze."]
+    if det:
+        lines.append("\nZestawy ćwiczeń (nadchodzące sesje):")
+        for s in ses:
+            if s.get("id") in det:
+                lines.append(f"\n{_line(s)}\n{det[s['id']]}")
     if goals:
         lines.append("\nCele:")
         for g in goals:

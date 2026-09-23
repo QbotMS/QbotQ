@@ -8,13 +8,11 @@
 
 # OTWARTE
 
-## [TRENER] Sekcja Trener w Formie — etapy 2-5 (dodane 2026-09-23)
+## [TRENER-GENERATOR] Generator programu treningu (dodane 2026-09-23)
 
-Etapy 1-5 (tabele + API, zakladka Trener, silnik planu, bilans/statusy/czas/pogoda auto/badania,
-Telegram+cron, Garmin, narzedzie Alberta trainer_week) ZROBIONE 2026-09-23. Garmin: realna wysylka jeszcze nietestowana
-(tylko dry-run) - pierwsza proba przyciskiem w UI. Otwarte: LTHR nie jest ustawione w env (RIDER_LTHR_BPM) -> strefy tetna w opisach ukryte. Dalej: (4) bilans z wagi + statusy celow, (5) Telegram + Garmin + narzedzie
-Alberta (+_SYSTEM w tym samym commicie). Dane startuja puste. Dok.: docs/TRENER.md
-
+Sekcja Trener zamknieta 2026-09-23 (etapy 1-5 + zestawy cwiczen; Garmin usuniety na zyczenie). Kolejny krok
+wg uzytkownika: opcje generatora programu treningu (np. wlasne programy silowe/wioslarza, bloki tygodniowe).
+Najpierw projekt i akceptacja (Decyzja przed kodem). Dok.: docs/TRENER.md
 
 ## [ENERGIA-FALLBACK etap 2] Drugi tor: daily_energy_expenditure (on-demand) (dodane 2026-08-18)
 
@@ -277,7 +275,9 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 
 - [PODJAZDY-SKALA] etap B: glikogen i punkt bomby w symulatorze trasy (zapas z ModelQ + jedzenie z fuel vs spalanie kJ); etap C: durability — krzywa osiągalna zależna od kj_before (po czystych jazdach z nową baterią); etap D: wiatr czołowy/boczny w fizyce symulatora + wykres W′/glikogenu pod profilem; ocena w trybie DZIEŃ planera; readiness dnia w CP. ZROBIONE: fazy 1-3 + łańcuch + etap A symulatora (50 m, przerwy kanonu, upał) 2026-08-10
 
-# ZROBIONE (skrot; szczegoly w DECISIONS.md i TODO.md.bak.*)
+# ZROBIONE
+
+- [2026-09-23] TRENER w Formie: etapy 1-5 (tabele+API, zakladka, silnik planu tygodnia, bilans/statusy/czas/pogoda auto/badania, Telegram+cron, Albert trainer_week), zestawy cwiczen (obwod na cale cialo z rotujacym akcentem, wioslarz), Garmin usuniety. docs/TRENER.md (skrot; szczegoly w DECISIONS.md i TODO.md.bak.*)
 ## [WAGA-SYNC] Wlasny sync Withings -> Garmin [ZROBIONE 2026-08-24]
 
 Zastapiony platny SmartScaleSync (18,5 EUR, wygasa 5.09.2026) wlasnym modulem

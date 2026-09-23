@@ -414,7 +414,7 @@ def plan_week(ctx: dict) -> dict:
             break
         cands.sort()
         d = cands[0][1]
-        if add(d, "sila", "Siła " + "AB"[sila_i % 2], 40, 15):
+        if add(d, "sila", "Siła obwodowa", 40, 15):
             sila_i += 1
     # 5) wioslarz (chetnie w dni z zla pogoda)
     for _ in range(cnt["wiosl"]):

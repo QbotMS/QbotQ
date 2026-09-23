@@ -6,7 +6,6 @@ from datetime import date, time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import qbot_trener_garmin as G
 import qbot_trener_notify as N
 
 
@@ -36,31 +35,6 @@ class TestTexts(unittest.TestCase):
         self.assertIn("Plan wykonany.", t)
         low = N.text_review(date(2026, 9, 28), [S(status="skip", day=date(2026, 9, 28)), S(id=5, day=date(2026, 9, 28), dur_min=60)], 0, 0, None)
         self.assertIn("Trudny tydzień", low)
-
-
-class TestGarmin(unittest.TestCase):
-    def test_bike_power(self):
-        d = G.build_dto(S(), 253)
-        st = d["workoutSegments"][0]["workoutSteps"]
-        self.assertEqual([x["stepType"]["stepTypeKey"] for x in st], ["warmup", "interval", "cooldown"])
-        self.assertEqual(sum(x["endConditionValue"] for x in st), 7200)
-        self.assertEqual((st[1]["targetValueOne"], st[1]["targetValueTwo"]), (142.0, 190.0))
-        self.assertEqual(d["sportType"]["sportTypeKey"], "cycling")
-
-    def test_bike_no_ftp(self):
-        st = G.build_dto(S(), None)["workoutSegments"][0]["workoutSteps"]
-        self.assertEqual(st[1]["targetType"]["workoutTargetTypeKey"], "no.target")
-
-    def test_other_sports(self):
-        self.assertEqual(G.build_dto(S(sport="sila", name="Siła A", dur_min=40), 253)["sportType"]["sportTypeKey"], "strength_training")
-        self.assertEqual(G.build_dto(S(sport="joga", name="Joga", dur_min=15), 253)["estimatedDurationInSecs"], 900)
-
-    def test_idem_changes_with_content(self):
-        self.assertNotEqual(G.idem_key(S()), G.idem_key(S(dur_min=90)))
-        self.assertEqual(G.idem_key(S()), G.idem_key(S()))
-
-    def test_dry_run(self):
-        self.assertEqual(G.push(S(), 253, dry_run=True)["status"], "DRY_RUN_OK")
 
 
 if __name__ == "__main__":

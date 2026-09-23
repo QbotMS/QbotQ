@@ -2873,7 +2873,8 @@ def _load_trainer_week_tool() -> dict[str, Any]:
         "description": (
             "TRENER (sekcja Formy): plan treningow na tydzien (dzien, godzina, rower/sila/wioslarz/joga, czas, "
             "status zrobione/pominiete), faza sezonu i cel godzin, statusy celow (wyprawy, waga, km, FTP, nawyki) "
-            "i bilans kcal. Tylko odczyt. Param: week_start (RRRR-MM-DD, opcjonalnie; domyslnie biezacy tydzien). "
+            "i bilans kcal oraz ZESTAWY CWICZEN (sila obwodowa: cwiczenia, rundy, powtorzenia; wioslarz: odcinki) "
+            "nadchodzacych sesji. Tylko odczyt. Param: week_start (RRRR-MM-DD, opcjonalnie; domyslnie biezacy tydzien). "
             "Pokaz pole analysis w calosci."
         ),
         "args_schema": {"week_start": {"type": "string", "description": "Poniedzialek tygodnia RRRR-MM-DD (opcjonalne)"}},
