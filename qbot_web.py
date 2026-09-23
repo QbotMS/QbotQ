@@ -11165,6 +11165,12 @@ def api_reports_nostore(fn: str):
                              "Pragma": "no-cache", "Expires": "0"})
 
 
+# TRENER (sekcja Formy) - API /api/trener/* (Etap 1: cele, wpisy tygodnia, nadpisania, sesje).
+# Musi byc PRZED app.mount("/"), inaczej statyki przechwyca sciezke. Dok.: docs/TRENER.md
+from qbot_trener_api import build_router as _trener_build_router
+app.include_router(_trener_build_router(_db_conn, _current_user))
+
+
 app.mount("/", StaticFiles(directory=WEB_ROOT, html=True), name="static")
 
 

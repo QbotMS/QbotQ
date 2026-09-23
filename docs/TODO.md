@@ -8,6 +8,14 @@
 
 # OTWARTE
 
+## [TRENER] Sekcja Trener w Formie — etapy 2-5 (dodane 2026-09-23)
+
+Etap 1 (tabele trainer_* + API /api/trener) ZROBIONY 2026-09-23. Dalej: (2) zakladka w forma.html +
+trener.js wg mockupu trener-mock.html, (3) silnik planu tygodnia + akcje na serwerze + auto-dopasowanie
+zrobionych z training_sessions, (4) bilans z wagi + statusy celow, (5) Telegram + Garmin + narzedzie
+Alberta (+_SYSTEM w tym samym commicie). Dane startuja puste. Dok.: docs/TRENER.md
+
+
 ## [ENERGIA-FALLBACK etap 2] Drugi tor: daily_energy_expenditure (on-demand) (dodane 2026-08-18)
 
 Podloga ModelQ dziala w qbot_v2.energy_daily (etap 1, DECISIONS 2026-08-18). Tor on-demand
