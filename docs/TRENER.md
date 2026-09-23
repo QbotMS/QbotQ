@@ -150,3 +150,15 @@ Każda edycja sesji z UI (POST/PUT `/sessions`) ustawia `source='manual'` → pr
 ## Dalej (poza zakresem zamkniętego serwisu)
 
 - **Generator programu treningu** — do zaprojektowania osobno (patrz TODO).
+
+## Edytor celów (2026-09-23, po uwagach użytkownika)
+
+Inne pola dla każdego rodzaju (formularz przebudowuje się po zmianie rodzaju / aktywności):
+wyprawa (od–do → dni same; trasa z QBota wypełnia km / przewyższenie z osi 50 m / przeważającą nawierzchnię; nawierzchnia
+i bagaż jako przyciski; „dodaj do Kalendarza”), długa jazda (dzień + godzina startu, trasa, docelowy czas), objętość
+(okres rok / sezon IV–IX / własny; aktywność; miara zależna od aktywności: rower km|h, wioślarz h|sesje, siła/joga sesje|h),
+waga i FTP (tylko „do kiedy”; FTP w W albo W/kg), nawyk (aktywność; razy/tydz., rower też km/tydz., joga + minuty),
+inne (opis). Walidacja dat i wymaganych pól, podpowiedzi na żywo (km/dzień, x/tydz., potrzebne tempo) i ocena realności
+przed zapisem. API: `POST /goals/preview` (nic nie zapisuje), `GET /route_summary?route_id=`, `POST /goals/{id}/calendar`
+(wpis kind=event, note `[trener-cel]`, ponowne wywołanie aktualizuje zamiast dublować). FTP w podglądzie nowego celu:
+potrzebny przyrost %/mies. (≤1% realne, ≤2% ambitne, więcej mało realne).

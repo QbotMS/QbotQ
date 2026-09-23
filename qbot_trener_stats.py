@@ -113,16 +113,18 @@ def _lvl(ratios: list[float]) -> str:
 
 def status_trip(g: dict, hist: dict, ctl_now: float | None, ctl_max: float | None) -> dict:
     t = g.get("target") or {}
-    days = t.get("days") or (((E._d(g.get("date_to")) - E._d(g.get("date_from"))).days + 1) if g.get("date_from") and g.get("date_to") else None)
+    days = 1 if g.get("kind") == "long_ride" else (t.get("days") or (((E._d(g.get("date_to")) - E._d(g.get("date_from"))).days + 1) if g.get("date_from") and g.get("date_to") else None))
     rows, ratios = [], []
     if t.get("km") and days:
         need = t["km"] / days
-        have = hist["best_km_day"] or hist["max_km_day"]
-        rows.append({"k": "km na dzień", "have": have, "need": round(need), "note": (f"najlepsza seria ≥3 dni ({hist['best_km_series']}); " if hist["best_km_series"] else "") + f"rekord dnia {hist['max_km_day']} km"}); ratios.append(have / need if need else None)
+        have = hist["max_km_day"] if days == 1 else (hist["best_km_day"] or hist["max_km_day"])
+        rows.append({"k": "dystans" if days == 1 else "km na dzień", "have": have, "need": round(need),
+                     "note": "Twój rekord dnia" if days == 1 else ((f"najlepsza seria ≥3 dni ({hist['best_km_series']}); " if hist["best_km_series"] else "") + f"rekord dnia {hist['max_km_day']} km")}); ratios.append(have / need if need else None)
     if t.get("up_m") and days:
         need = t["up_m"] / days
-        have = hist["best_up_day"] or hist["max_up_day"]
-        rows.append({"k": "przewyższenie na dzień", "have": have, "need": round(need), "note": (f"najlepsza seria ≥3 dni ({hist['best_up_series']}); " if hist["best_up_series"] else "") + f"rekord dnia {hist['max_up_day']} m"}); ratios.append(have / need if need else None)
+        have = hist["max_up_day"] if days == 1 else (hist["best_up_day"] or hist["max_up_day"])
+        rows.append({"k": "przewyższenie" if days == 1 else "przewyższenie na dzień", "have": have, "need": round(need),
+                     "note": "Twój rekord dnia" if days == 1 else ((f"najlepsza seria ≥3 dni ({hist['best_up_series']}); " if hist["best_up_series"] else "") + f"rekord dnia {hist['max_up_day']} m")}); ratios.append(have / need if need else None)
     if days and days > 1:
         rows.append({"k": "dni pod rząd", "have": hist["series_days"], "need": days, "note": (f"seria od {hist['series_start']}: {hist['series_km']} km, {hist['series_up']} m" if hist["series_start"] else "")})
         ratios.append(hist["series_days"] / days)
@@ -272,14 +274,29 @@ def compute_goal_status(c, goals: list) -> dict:
                 r = c.fetchone()
                 s = status_weight(g, cur_w, float(r["weight_kg"]) if r else cur_w, slope30, today)
             elif k == "volume":
-                a = E._d(g.get("date_from")) or date(today.year, 1, 1)
-                b = E._d(g.get("date_to")) or date(a.year, 12, 31)
-                c.execute("SELECT COALESCE(SUM(distance_m),0)/1000.0 AS km, COALESCE(SUM(duration_s),0)/3600.0 AS h FROM qbot_v2.training_sessions "
-                          "WHERE sport_type IN ('cycling','gravel_cycling') AND date BETWEEN %s AND %s", (a, min(b, today)))
-                r = c.fetchone()
-                el = (today - a).days / max(1, (b - a).days + 1)
-                s = status_linear(float(r["km"]), float(t["km"]), el, "km", "km") if t.get("km") else (status_linear(float(r["h"]), float(t["h"]), el, "godziny", "h") if t.get("h") else {"level": "n", "text": "podaj km lub h", "rows": []})
+                a_ = E._d(g.get("date_from")) or date(today.year, 1, 1)
+                b_ = E._d(g.get("date_to")) or date(a_.year, 12, 31)
+                sp = t.get("sport", "rower")
+                c.execute("SELECT sport_type, COALESCE(distance_m,0) AS m, COALESCE(duration_s,0) AS s FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s", (a_, min(b_, today)))
+                rows = [r for r in c.fetchall() if E.SPORT_OF.get(r["sport_type"]) == sp]
+                el = (today - a_).days / max(1, (b_ - a_).days + 1)
+                if t.get("km"):
+                    s = status_linear(sum(float(r["m"]) for r in rows) / 1000, float(t["km"]), el, "km", "km")
+                elif t.get("h"):
+                    s = status_linear(sum(float(r["s"]) for r in rows) / 3600, float(t["h"]), el, "godziny", "h")
+                elif t.get("sessions"):
+                    s = status_linear(len(rows), float(t["sessions"]), el, "sesje", "sesji")
+                else:
+                    s = {"level": "n", "text": "podaj km, godziny albo liczbę sesji", "rows": []}
+                if el <= 0:
+                    s["level"], s["text"] = "n", "okres jeszcze się nie zaczął"
+                weeks = max(1.0, ((b_ - a_).days + 1) / 7)
+                for key, unit in (("km", "km"), ("h", "h"), ("sessions", "sesji")):
+                    if t.get(key):
+                        s["rows"].append({"k": "średnio na tydzień", "have": None, "need": round(float(t[key]) / weeks, 1), "note": f"{unit} / tydz. w całym okresie"})
             elif k == "power":
+                if t.get("wkg") and not t.get("ftp_w") and cur_w:
+                    t = dict(t, ftp_w=round(float(t["wkg"]) * cur_w))
                 if not t.get("ftp_w") or ftp_now is None:
                     s = {"level": "n", "text": "brak FTP lub celu", "rows": []}
                 else:
@@ -289,18 +306,27 @@ def compute_goal_status(c, goals: list) -> dict:
                     el = ((today - g["created_at"].date()).days / max(1, (due - g["created_at"].date()).days)) if due else 1
                     gain = ftp_now - f0; need = float(t["ftp_w"]) - f0
                     s = status_linear(max(0.0, gain), need, el, "przyrost FTP", "W") if need > 0 else {"level": "g", "text": "cel osiągnięty", "rows": []}
+                    if need > 0 and el < 0.1 and due:
+                        months = max(0.5, (due - today).days / 30.4)
+                        pm = need / f0 / months * 100
+                        s["level"] = "g" if pm <= 1.0 else ("y" if pm <= 2.0 else "r")
+                        s["text"] = f"potrzeba +{round(need / months, 1)} W/mies. ({pm:.1f}%/mies.) — " + {"g": "realne", "y": "ambitne", "r": "mało realne"}[s["level"]]
                     s["rows"].insert(0, {"k": "FTP teraz", "have": round(ftp_now), "need": t["ftp_w"], "note": f"na starcie celu {round(f0)} W"})
             elif k == "habit":
-                sp = t.get("sport", "rower"); per = float(t.get("per_week") or 1)
-                c.execute("SELECT date, sport_type FROM qbot_v2.training_sessions WHERE date >= %s", (E.monday(today) - timedelta(weeks=4),))
-                wk = defaultdict(int)
+                sp = t.get("sport", "rower"); per = float(t.get("per_week") or 0); kmw = float(t.get("km_week") or 0)
+                c.execute("SELECT date, sport_type, COALESCE(distance_m,0) AS m FROM qbot_v2.training_sessions WHERE date >= %s", (E.monday(today) - timedelta(weeks=4),))
+                wk = defaultdict(lambda: [0, 0.0])
                 for r in c.fetchall():
                     if E.SPORT_OF.get(r["sport_type"]) == sp:
-                        wk[E.monday(r["date"])] += 1
+                        x = wk[E.monday(r["date"])]; x[0] += 1; x[1] += float(r["m"]) / 1000
                 weeks = [E.monday(today) - timedelta(weeks=i) for i in range(1, 5)]
-                okw = sum(1 for w in weeks if wk.get(w, 0) >= per)
+                def met(w):
+                    return (wk[w][1] >= kmw) if kmw else (wk[w][0] >= per)
+                okw = sum(1 for w in weeks if met(w))
                 lvl = "g" if okw >= 3 else ("y" if okw >= 2 else "r")
-                s = {"level": lvl, "text": f"{okw} z 4 ostatnich tygodni ✓", "rows": [{"k": "w tym tygodniu", "have": wk.get(E.monday(today), 0), "need": per, "note": "sesji"}]}
+                cur = wk[E.monday(today)]
+                s = {"level": lvl, "text": f"{okw} z 4 ostatnich tygodni ✓",
+                     "rows": [{"k": "w tym tygodniu", "have": round(cur[1]) if kmw else cur[0], "need": kmw or per, "note": "km" if kmw else "sesji"}]}
             else:
                 s = {"level": "n", "text": "", "rows": []}
         except Exception as e:

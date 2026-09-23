@@ -462,6 +462,80 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
 
         return list_, create, update, delete
 
+    @r.post("/goals/preview")
+    async def goals_preview(request: Request):
+        """Ocena realnosci celu PRZED zapisem (nic nie zapisuje)."""
+        u = user_of(request)
+        b = await body_of(request)
+        import qbot_trener_stats as ST
+        def go(c):
+            g = clean_goal(dict(b or {}, name=(b or {}).get("name") or "podgląd"))
+            g.update(id="preview", status="active", created_at=datetime.now().astimezone())
+            st = ST.compute_goal_status(c, [g]).get("preview") or {}
+            c.execute("SELECT AVG(weight_kg) AS w FROM qbot_v2.fitmodel_daily WHERE weight_kg IS NOT NULL AND day >= CURRENT_DATE - 7")
+            w = c.fetchone()
+            c.execute("SELECT ftp_est_w FROM qbot_v2.fitmodel_daily WHERE ftp_est_w IS NOT NULL ORDER BY day DESC LIMIT 1")
+            f = c.fetchone()
+            st["now"] = {"weight_kg": round(float(w["w"]), 1) if w and w["w"] else None, "ftp_w": round(float(f["ftp_est_w"])) if f else None}
+            return st
+        return run(go)
+
+    @r.get("/route_summary")
+    def route_summary(request: Request, route_id: str = Query(...)):
+        """Km, przewyzszenie (os 50 m) i przewazajaca nawierzchnia policzonej trasy QBota."""
+        user_of(request)
+        def go(c):
+            c.execute("SELECT route_base_id, distance_m, source_meta_json FROM qbot_v2.route_base WHERE route_id=%s ORDER BY (status='disabled'), updated_at DESC LIMIT 1", (route_id,))
+            rb = c.fetchone()
+            if not rb:
+                raise HTTPException(status_code=404, detail="brak trasy")
+            c.execute("SELECT COALESCE(SUM(elevation_gain_m),0) AS up, COUNT(*) AS n FROM qbot_v2.route_axis_segments WHERE route_base_id=%s", (rb["route_base_id"],))
+            ax = c.fetchone()
+            up = float(ax["up"]) if ax and ax["n"] else float((rb["source_meta_json"] or {}).get("elevation_gain_m") or 0)
+            c.execute("SELECT surface, COUNT(*) AS n FROM qbot_v2.route_surface_layer WHERE route_base_id=%s GROUP BY surface", (rb["route_base_id"],))
+            cnt = {"asfalt": 0, "szuter": 0, "teren": 0, "nieznana": 0}
+            PAVED = {"asphalt", "paved", "concrete", "paving_stones", "concrete:plates", "sett", "chipseal"}
+            GRAV = {"gravel", "fine_gravel", "compacted", "pebblestone", "unpaved"}
+            TER = {"ground", "dirt", "earth", "grass", "sand", "mud", "wood", "rock"}
+            for x in c.fetchall():
+                sname = (x["surface"] or "").lower()
+                key = "asfalt" if sname in PAVED else ("szuter" if sname in GRAV else ("teren" if sname in TER else "nieznana"))
+                cnt[key] += x["n"]
+            known = cnt["asfalt"] + cnt["szuter"] + cnt["teren"]
+            pct = {k: round(100 * v / known) for k, v in cnt.items() if k != "nieznana"} if known else {}
+            if not pct:
+                surf = None
+            elif pct["asfalt"] >= 70:
+                surf = "asfalt"
+            elif pct["teren"] >= 40:
+                surf = "teren"
+            elif pct["szuter"] >= 50:
+                surf = "szuter"
+            else:
+                surf = "mieszana"
+            return {"route_id": route_id, "km": round(float(rb["distance_m"] or 0) / 1000, 1), "up_m": round(up), "surface": surf, "surface_pct": pct}
+        return run(go)
+
+    @r.post("/goals/{item_id}/calendar")
+    def goal_calendar(item_id: int, request: Request):
+        """Dopisz cel (wyprawa / dluga jazda) do Kalendarza jako wydarzenie; ponowne wywolanie aktualizuje wpis."""
+        u = user_of(request)
+        def go(c):
+            c.execute("SELECT * FROM qbot_v2.trainer_goal WHERE id=%s AND username=%s", (item_id, u))
+            g = c.fetchone()
+            if not g or not g["date_from"]:
+                raise HTTPException(status_code=400, detail="cel bez daty")
+            end = g["date_to"] if g["date_to"] and g["date_to"] != g["date_from"] else None
+            if g["calendar_entry_id"]:
+                c.execute("UPDATE qbot_v2.calendar_entry SET day=%s, end_day=%s, title=%s WHERE id=%s RETURNING id", (g["date_from"], end, g["name"], g["calendar_entry_id"]))
+                if c.fetchone():
+                    return {"ok": True, "calendar_entry_id": g["calendar_entry_id"], "updated": True}
+            c.execute("INSERT INTO qbot_v2.calendar_entry (day, end_day, kind, title, note) VALUES (%s,%s,'event',%s,'[trener-cel]') RETURNING id", (g["date_from"], end, g["name"]))
+            cid = c.fetchone()["id"]
+            c.execute("UPDATE qbot_v2.trainer_goal SET calendar_entry_id=%s WHERE id=%s", (cid, item_id))
+            return {"ok": True, "calendar_entry_id": cid}
+        return run(go)
+
     # /goals/status musi byc zarejestrowane PRZED /goals/{item_id}
     @r.get("/goals/status")
     def goals_status(request: Request):
