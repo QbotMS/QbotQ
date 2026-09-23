@@ -209,3 +209,16 @@ cel h, gotowość, nadchodzące cele (90 dni), progi, wyniki reguł. Zwraca JSON
 dlaczego — fakt z danych, sugestia). Walidacja (dzień w tygodniu, waga z listy, przycięcie), cache 30 min. **AI niczego
 nie zmienia.** Reguły (`check_rules`) rozszerzone: siła w dniu / przeddzień długiej, dwie długie/ciężkie pod rząd,
 trening w REST/choroba, kolizja z zajętością — działają też dla sesji ręcznych (silnik ich nie rusza, więc ostrzega).
+
+## Horyzont planu i Twoje zmiany (2026-09-23)
+
+- **Trener planuje sam bieżący + 2 kolejne tygodnie**: pusty tydzień w tym zakresie planuje się przy otwarciu
+  (`_ensure_horizon` w `GET /week`, zmiana `auto_horizon` od razu zaakceptowana) i co noc 05:00–05:15 (cron tick).
+  Tygodni z jakąkolwiek sesją nie przelicza sam — od tego jest „przelicz tydzień”.
+- **Twoje zmiany**: dodane (`note` „dodane przez Ciebie”, usunięcie kasuje), przeniesione / zmienione (`source=manual`,
+  silnik nie rusza), usunięte sesje trenera = `status=skip` + „usunięte przez Ciebie” (↺ przywróć; silnik nie wstawia
+  zastępstwa tego sportu). Podsumowanie tygodnia pokazuje licznik zmian i sumy z nimi.
+- **Cel godzin = widełki ±25%** (UI i AI: w widełkach bez komentarzy).
+- **Ostrzeżenia** (`check_rules_detailed`): obiekty `{key, text, session_id, acked}`; „rozumiem, zostaw” zapisuje klucz
+  w `trainer_session.acks` (`sql/trainer_v5.sql`) — wyciszone nie wracają w regułach ani w AI.
+- **AI** dostaje gotowe sumy godzin, widełki i flagi decyzji (ręczna / usunięta / wyciszone) i ma je szanować.
