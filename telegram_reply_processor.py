@@ -407,6 +407,9 @@ def main():
             try:
                 if (cq.get("data") or "").startswith("rr:"):
                     handle_ride_report_callback(cq)
+                elif (cq.get("data") or "").startswith("tr:"):
+                    import qbot_trener_notify as _TRN   # TRENER: REST / brak czasu / choroba / cofnij
+                    _TRN.handle_callback(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, CHAT_ID)
                 else:
                     handle_komoot_callback(cq)
             except Exception as e:

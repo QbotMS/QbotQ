@@ -420,6 +420,17 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
         finally:
             conn.close()
 
+    def _after_change(c, u: str, table: str, days: list) -> None:
+        """Planer sam aktualizuje plan po zmianie: sesja -> jej tydzien + rolowanie; cele / dostepnosc -> caly horyzont."""
+        import qbot_trener_ops as OPS_
+        try:
+            if table == "trainer_session":
+                OPS_.after_session_edit(c, u, days)
+            elif table in ("trainer_goal", "trainer_rule"):
+                OPS_.replan_horizon(c, u, {"trainer_goal": "zmiana celów", "trainer_rule": "zmiana dostępności"}[table])
+        except Exception as e:  # aktualizacja nie moze zablokowac samej zmiany
+            print("trener auto-aktualizacja blad:", e)
+
     def crud(table: str, cleaner: Callable, order: str):
         def list_(request: Request):
             u = user_of(request)
@@ -436,7 +447,9 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                 cols = ["username"] + list(d.keys())
                 c.execute(f"INSERT INTO qbot_v2.{table} ({','.join(cols)}) VALUES ({','.join(['%s'] * len(cols))}) RETURNING *",
                           [u] + _vals(d))
-                return _jsonable(c.fetchone())
+                row = _jsonable(c.fetchone())
+                _after_change(c, u, table, [row.get("day")])
+                return row
             return run(go)
 
         async def update(item_id: int, request: Request):
@@ -448,20 +461,29 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                     raise BadInput("brak pol do zmiany")
                 if table == "trainer_session" and set(d) - {"acks"}:
                     d["source"] = "manual"
+                old_day = None
+                if table == "trainer_session":
+                    c.execute("SELECT day FROM qbot_v2.trainer_session WHERE id=%s AND username=%s", (item_id, u))
+                    o = c.fetchone(); old_day = o["day"] if o else None
                 sets = ",".join(f"{k}=%s" for k in d) + ",updated_at=now()"
                 c.execute(f"UPDATE qbot_v2.{table} SET {sets} WHERE id=%s AND username=%s RETURNING *", _vals(d) + [item_id, u])
                 row = c.fetchone()
                 if not row:
                     raise HTTPException(status_code=404, detail="nie znaleziono")
-                return _jsonable(row)
+                row = _jsonable(row)
+                if not (table == "trainer_session" and not (set(d) - {"acks"})):
+                    _after_change(c, u, table, [old_day, row.get("day")])
+                return row
             return run(go)
 
         def delete(item_id: int, request: Request):
             u = user_of(request)
             def go(c):
-                c.execute(f"DELETE FROM qbot_v2.{table} WHERE id=%s AND username=%s RETURNING id", (item_id, u))
-                if not c.fetchone():
+                c.execute(f"DELETE FROM qbot_v2.{table} WHERE id=%s AND username=%s RETURNING *", (item_id, u))
+                row = c.fetchone()
+                if not row:
                     raise HTTPException(status_code=404, detail="nie znaleziono")
+                _after_change(c, u, table, [row.get("day")])
                 return {"ok": True, "id": item_id}
             return run(go)
 
@@ -591,6 +613,12 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
             c.execute("INSERT INTO qbot_v2.trainer_settings(username, overrides, updated_at) VALUES (%s,%s::jsonb,now()) "
                       "ON CONFLICT (username) DO UPDATE SET overrides=EXCLUDED.overrides, updated_at=now()",
                       (u, json.dumps(cur, ensure_ascii=False)))
+            if any(not k.startswith("notify.") for k in patch):
+                import qbot_trener_ops as OPS_
+                try:
+                    OPS_.replan_horizon(c, u, "zmiana Kalibracji / Sezonu")
+                except Exception as e:
+                    print("trener auto-aktualizacja blad:", e)
             return {"overrides": cur}
         return run(go)
 
@@ -605,64 +633,17 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
         d0 = d0 - timedelta(days=d0.weekday())
         return d0, d0 + timedelta(days=6)
 
+    import qbot_trener_ops as OPS
+
     def _match_done(c, u: str, d0: date, d1: date) -> int:
-        """Zrobione z Garmina -> status done w planie (ten sam dzien i sport, najblizsza godzina)."""
-        c.execute("SELECT id, day, sport, start_time FROM qbot_v2.trainer_session WHERE username=%s AND day BETWEEN %s AND %s "
-                  "AND status='plan' AND training_session_id IS NULL AND day <= CURRENT_DATE", (u, d0, d1))
-        plan = c.fetchall()
-        if not plan:
-            return 0
-        c.execute("SELECT id, date, sport_type, started_at FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s", (d0, d1))
-        acts = [a for a in c.fetchall()]
-        c.execute("SELECT training_session_id FROM qbot_v2.trainer_session WHERE username=%s AND training_session_id IS NOT NULL", (u,))
-        used = {r["training_session_id"] for r in c.fetchall()}
-        n = 0
-        for p in plan:
-            best = None
-            for a in acts:
-                if a["id"] in used or a["date"] != p["day"] or E.SPORT_OF.get(a["sport_type"]) != p["sport"]:
-                    continue
-                dist = abs((a["started_at"].hour * 60 + a["started_at"].minute) - (p["start_time"].hour * 60 + p["start_time"].minute)) if a["started_at"] and p["start_time"] else 0
-                if best is None or dist < best[0]:
-                    best = (dist, a["id"])
-            if best:
-                used.add(best[1]); n += 1
-                c.execute("UPDATE qbot_v2.trainer_session SET status='done', training_session_id=%s, updated_at=now() WHERE id=%s", (best[1], p["id"]))
-        return n
+        return OPS.match_done(c, u, d0, d1)
 
     def _sess_rows(c, u, d0, d1):
         c.execute("SELECT * FROM qbot_v2.trainer_session WHERE username=%s AND day BETWEEN %s AND %s ORDER BY day, start_time NULLS LAST, id", (u, d0, d1))
         return [_jsonable(x) for x in c.fetchall()]
 
-    _SIC = {"rower": "🚲", "sila": "🏋️", "wiosl": "🚣", "joga": "🧘"}
-
-    def _desc(x: dict) -> str:
-        return f"{str(x['day'])[5:]} {_SIC.get(x['sport'], '')} {x['name']} {str(x.get('start_time') or '')[:5]} {x['dur_min']}′"
-
     def _regenerate(c, u: str, d0: date, action: str, payload: dict) -> dict:
-        _match_done(c, u, d0, d0 + timedelta(days=6))
-        today = date.today()
-        c.execute("SELECT * FROM qbot_v2.trainer_session WHERE username=%s AND day BETWEEN %s AND %s AND source='auto' AND status='plan' AND day >= %s",
-                  (u, d0, d0 + timedelta(days=6), today))
-        before = [_jsonable(x) for x in c.fetchall()]
-        c.execute("DELETE FROM qbot_v2.trainer_session WHERE id = ANY(%s)", ([x["id"] for x in before],))
-        ctx = E.build_context(c, u, d0, today)
-        res = E.plan_week(ctx)
-        after_ids = []
-        for x in res["sessions"]:
-            cols = ["username", "day", "sport", "name", "start_time", "dur_min", "min_min", "zone", "xss", "is_long", "status", "cut", "source", "note"]
-            c.execute(f"INSERT INTO qbot_v2.trainer_session ({','.join(cols)}) VALUES ({','.join(['%s'] * len(cols))}) RETURNING id",
-                      [u] + [x.get(k) for k in cols[1:]])
-            after_ids.append(c.fetchone()["id"])
-        bset = {(_desc(x)) for x in before}
-        aset = {(_desc(x)) for x in res["sessions"]}
-        lines = ["− " + t for t in sorted(bset - aset)] + ["+ " + t for t in sorted(aset - bset)]
-        payload = dict(payload, after_ids=after_ids, notes=res["notes"])
-        c.execute("INSERT INTO qbot_v2.trainer_change (username, week_start, action, payload, before, after) VALUES (%s,%s,%s,%s::jsonb,%s::jsonb,%s::jsonb) RETURNING id",
-                  (u, d0, action, json.dumps(payload, ensure_ascii=False), json.dumps(before, ensure_ascii=False, default=str),
-                   json.dumps(res["sessions"], ensure_ascii=False, default=str)))
-        cid = c.fetchone()["id"]
-        return {"change_id": cid, "lines": lines, "notes": res["notes"], "added": len(after_ids), "removed": len(before)}
+        return OPS.regenerate(c, u, d0, action, payload)
 
     def _ensure_horizon(c, u: str, d0: date) -> bool:
         """Biezacy tydzien + 2 kolejne planuja sie SAME, gdy nie maja zadnej sesji (zmiany uzytkownika zostaja)."""
@@ -684,6 +665,11 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
         u = user_of(request)
         def go(c):
             d0, d1 = _week_bounds(start)
+            cal_upd = None
+            try:
+                cal_upd = OPS.calendar_changed(c, u)
+            except Exception as e:
+                print("trener kalendarz blad:", e)
             auto_planned = _ensure_horizon(c, u, d0)
             matched = _match_done(c, u, d0, d1)
             sessions = _sess_rows(c, u, d0, d1)
@@ -733,6 +719,7 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
             last = c.fetchone()
             return {"start": d0.isoformat(), "end": d1.isoformat(), "sessions": sessions, "calendar": cal, "activities": done,
                     "matched_now": matched, "meta": meta, "auto_planned": auto_planned,
+                    "calendar_update": ({"reason": cal_upd["reason"], "weeks": 1 + len(cal_upd.get("rolled") or [])} if cal_upd else None),
                     "warnings": E.check_rules_detailed(sessions, meta.get("ov") or {}, meta.get("days")),
                     "pending_change": (_jsonable(last) if last else None)}
         return run(go)
@@ -762,20 +749,7 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
             dd = date.fromisoformat(d)
             if dd < date.today():
                 raise BadInput("dzień już minął")
-            payload = {"day": d, "cal_ids": [], "day_state": None, "cleared": []}
-            if act in ("rest", "ill", "del"):
-                kind, et, title = {"rest": ("event", "rest", "REST DAY"), "ill": ("illness", None, "Choroba"), "del": ("event", "delegacja", "Delegacja")}[act]
-                c.execute("INSERT INTO qbot_v2.calendar_entry (day, kind, event_type, title, note) VALUES (%s,%s,%s,%s,'[trener]') RETURNING id", (dd, kind, et, title))
-                payload["cal_ids"].append(c.fetchone()["id"])
-            elif act == "short":
-                c.execute("INSERT INTO qbot_v2.trainer_day (username, day, state) VALUES (%s,%s,'short') ON CONFLICT (username, day) DO NOTHING RETURNING day", (u, dd))
-                if c.fetchone():
-                    payload["day_state"] = d
-            else:
-                c.execute("DELETE FROM qbot_v2.calendar_entry WHERE day=%s AND note='[trener]' RETURNING id, day, kind, event_type, title", (dd,))
-                payload["cleared"] = [_jsonable(x) for x in c.fetchall()]
-                c.execute("DELETE FROM qbot_v2.trainer_day WHERE username=%s AND day=%s", (u, dd))
-            return _regenerate(c, u, dd - timedelta(days=dd.weekday()), "day_" + act, payload)
+            return OPS.day_action(c, u, dd, act)
         return run(go)
 
     @r.post("/week/undo")
@@ -784,24 +758,10 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
         b = await body_of(request)
         def go(c):
             cid = _int((b or {}).get("id"), "id", 1, 10 ** 12, required=True)
-            c.execute("SELECT * FROM qbot_v2.trainer_change WHERE id=%s AND username=%s AND accepted IS NULL", (cid, u))
-            ch = c.fetchone()
-            if not ch:
+            r_ = OPS.undo(c, u, cid)
+            if not r_.get("ok"):
                 raise HTTPException(status_code=404, detail="brak zmiany do cofnięcia")
-            p = ch["payload"] or {}
-            if p.get("after_ids"):
-                c.execute("DELETE FROM qbot_v2.trainer_session WHERE username=%s AND id = ANY(%s) AND source='auto'", (u, p["after_ids"]))
-            cols = ["day", "sport", "name", "start_time", "dur_min", "min_min", "zone", "xss", "is_long", "status", "cut", "source", "note"]
-            for x in (ch["before"] or []):
-                c.execute(f"INSERT INTO qbot_v2.trainer_session (username,{','.join(cols)}) VALUES (%s,{','.join(['%s'] * len(cols))})", [u] + [x.get(k) for k in cols])
-            if p.get("cal_ids"):
-                c.execute("DELETE FROM qbot_v2.calendar_entry WHERE id = ANY(%s) AND note='[trener]'", (p["cal_ids"],))
-            if p.get("day_state"):
-                c.execute("DELETE FROM qbot_v2.trainer_day WHERE username=%s AND day=%s", (u, p["day_state"]))
-            for x in p.get("cleared") or []:
-                c.execute("INSERT INTO qbot_v2.calendar_entry (day, kind, event_type, title, note) VALUES (%s,%s,%s,%s,'[trener]')", (x["day"], x["kind"], x["event_type"], x["title"]))
-            c.execute("UPDATE qbot_v2.trainer_change SET accepted=false WHERE id=%s", (cid,))
-            return {"ok": True, "undone": cid}
+            return r_
         return run(go)
 
     @r.post("/week/accept")

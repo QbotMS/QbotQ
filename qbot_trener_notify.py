@@ -162,14 +162,24 @@ def text_review(ws: date, sessions: list[dict], extra_h: float, tone: int, weigh
 
 # ---------------- wysylka ----------------
 
-def send(text: str) -> tuple[bool, str]:
+def day_buttons(d: date) -> list:
+    """Przyciski pod wiadomoscia dnia (callback tr:<akcja>:<dzien>) - obsluga w telegram_reply_processor -> handle_callback."""
+    ds = d.isoformat()
+    return [[{"text": "😴 REST DAY", "callback_data": f"tr:rest:{ds}"}, {"text": "⏱️ Brak czasu", "callback_data": f"tr:short:{ds}"}],
+            [{"text": "🤒 Choroba", "callback_data": f"tr:ill:{ds}"}]]
+
+
+def send(text: str, buttons: list | None = None) -> tuple[bool, str]:
     import qbot_config as cfg
     tok, chat = getattr(cfg, "TELEGRAM_TOKEN", None), getattr(cfg, "TELEGRAM_CHAT_ID", None)
     if not tok or not chat:
         return False, "brak TELEGRAM_TOKEN/CHAT_ID"
+    body = {"chat_id": chat, "text": text[:4000], "disable_web_page_preview": True}
+    if buttons:
+        body["reply_markup"] = {"inline_keyboard": buttons}
     try:
         req = urllib.request.Request(f"https://api.telegram.org/bot{tok}/sendMessage",
-                                     data=json.dumps({"chat_id": chat, "text": text[:4000], "disable_web_page_preview": True}).encode(),
+                                     data=json.dumps(body).encode(),
                                      headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=15) as r:
             j = json.loads(r.read().decode())
@@ -178,7 +188,58 @@ def send(text: str) -> tuple[bool, str]:
         return False, str(e)[:200]
 
 
-def _once(c, key: str, user: str, text: str | None, dry: bool) -> str:
+def change_text(res: dict, head: str) -> str:
+    """Krotkie podsumowanie przeliczenia (po przycisku / zmianie w Kalendarzu)."""
+    L = [head]
+    ch = res.get("lines") or []
+    L += ["  " + x for x in ch[:8]] + (["  …"] if len(ch) > 8 else [])
+    if not ch:
+        L.append("  plan bez zmian w sesjach")
+    for r in res.get("rolled") or []:
+        L.append(f"Tydzień od {r['week_start'][8:10]}.{r['week_start'][5:7]} też zaktualizowany ({len(r['lines'])} zmian).")
+    return "\n".join(L + [URL])
+
+
+def handle_callback(cq: dict, answer, send_plain, clear_buttons, chat_ok: str) -> None:
+    """Przycisk z Telegrama: tr:rest|short|ill:<RRRR-MM-DD> albo tr:undo:<id zmiany>."""
+    import qbot_trener_ops as OPS
+    data = cq.get("data") or ""
+    m = cq.get("message") or {}
+    chat_id = str((m.get("chat") or {}).get("id", ""))
+    if chat_id != str(chat_ok):
+        answer(cq.get("id"), "Brak dostępu"); return
+    parts = data.split(":")
+    act, arg = (parts[1] if len(parts) > 1 else ""), (parts[2] if len(parts) > 2 else "")
+    conn = _conn()
+    try:
+        c = conn.cursor(); user = pick_user(c)
+        if not user:
+            answer(cq.get("id"), "Brak planu"); return
+        if act == "undo":
+            r = OPS.undo(c, user, int(arg))
+            conn.commit()
+            answer(cq.get("id"), "Cofnięte" if r.get("ok") else "Nie ma czego cofnąć")
+            send_plain("↩️ Cofnięte — plan wrócił do poprzedniej wersji." if r.get("ok") else "Tej zmiany nie da się już cofnąć.")
+        elif act in ("rest", "short", "ill"):
+            d = date.fromisoformat(arg)
+            if d < date.today():
+                answer(cq.get("id"), "Ten dzień już minął"); return
+            answer(cq.get("id"), "Przeliczam…")
+            res = OPS.day_action(c, user, d, act)
+            conn.commit()
+            head = {"rest": "😴 REST DAY", "short": "⏱️ Brak czasu — wersje minimum", "ill": "🤒 Choroba — dziś wolne, potem lżej"}[act]
+            txt = change_text(res, f"{head} ({d.strftime('%d.%m')}). Zmiany w planie:")
+            send(txt, [[{"text": "↩️ Cofnij", "callback_data": f"tr:undo:{res['change_id']}"}]])
+        else:
+            answer(cq.get("id"))
+            return
+    finally:
+        conn.close()
+    if m.get("message_id"):
+        clear_buttons(chat_id, m["message_id"])
+
+
+def _once(c, key: str, user: str, text: str | None, dry: bool, buttons: list | None = None) -> str:
     if not text:
         return f"{key}: pusto"
     c.execute("SELECT 1 FROM qbot_v2.trainer_notify_log WHERE key=%s", (key,))
@@ -186,7 +247,7 @@ def _once(c, key: str, user: str, text: str | None, dry: bool) -> str:
         return f"{key}: już wysłane"
     if dry:
         return f"{key}: [DRY]\n{text}"
-    ok, det = send(text)
+    ok, det = send(text, buttons)
     c.execute("INSERT INTO qbot_v2.trainer_notify_log (key, username, ok, detail) VALUES (%s,%s,%s,%s) ON CONFLICT (key) DO NOTHING", (key, user, ok, det))
     return f"{key}: {'wysłane' if ok else 'BŁĄD ' + det}"
 
@@ -228,6 +289,17 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
                     _ensure_plan(c, user, w_)
                     log.append(f"horyzont: zaplanowano tydzień {w_.isoformat()}")
             conn.commit()
+        try:
+            import qbot_trener_ops as OPS
+            upd = OPS.calendar_changed(c, user)
+            conn.commit()
+            if upd:
+                log.append(f"kalendarz: przeliczono ({len(upd['lines'])} zmian)")
+                if (upd["lines"] or upd.get("rolled")) and not dry:
+                    send(change_text(upd, "🗓️ Zmiana w Kalendarzu — plan zaktualizowany:"),
+                         [[{"text": "↩️ Cofnij", "callback_data": f"tr:undo:{upd['change_id']}"}]])
+        except Exception as e:
+            conn.rollback(); log.append(f"kalendarz: błąd {str(e)[:120]}")
         if E.season_weeks(_goals, _ov, ws, 1)[0]["ph"] == "lz":
             return log + [f"{now.strftime('%a %H:%M')}: totalny luz — bez wiadomości"]
         # rozliczenie: ndz 19:00-19:59
@@ -254,14 +326,14 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
         if st["notify.day"] == 1 and 7 * 60 <= hm < 8 * 60:
             tses = _sessions(c, user, today, today)
             ph = E.plan_week(E.build_context(c, user, ws))["phase"] if tses else None
-            log.append(_once(c, f"day:{today.isoformat()}", user, text_day(today, tses, session_details(c, user, tses, ph)), dry))
+            log.append(_once(c, f"day:{today.isoformat()}", user, text_day(today, tses, session_details(c, user, tses, ph)), dry, day_buttons(today)))
         if st["notify.day"] == 2:
             for s in _sessions(c, user, today, today):
                 if s["status"] != "plan" or not s.get("start_time"):
                     continue
                 t0 = s["start_time"].hour * 60 + s["start_time"].minute - 120
                 if t0 <= hm < t0 + 15:
-                    log.append(_once(c, f"pre:{s['id']}", user, text_pre(s), dry))
+                    log.append(_once(c, f"pre:{s['id']}", user, text_pre(s), dry, day_buttons(today)))
         conn.commit()
     finally:
         conn.close()

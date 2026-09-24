@@ -256,3 +256,18 @@ Trener wyniesiony z Formy: **`/trener.html`** (poza repo, jak inne strony), pozy
 (ikona hantla, `nav.js?v=5` na wszystkich stronach). Forma nie ma już zakładki Trener; stare linki `forma.html#trener`
 przekierowują na `/trener.html`. Link w wiadomościach Telegram: `https://albert.cytr.us/trener.html`.
 (Tekst pustego Trenera w `qbot3/tool_registry.py` nadal wskazuje stary adres — plik był zajęty przez inną sesję; przekierowanie działa.)
+
+## Samoczynna aktualizacja, rolowanie tygodni, przyciski w Telegramie (2026-09-24)
+
+`qbot_trener_ops.py` — wspólne operacje (strona, Telegram, cron): `regenerate`, `cascade`, `day_action`, `after_session_edit`,
+`replan_horizon`, `calendar_changed`, `undo`.
+- **Po zmianie planer sam przelicza:** Twoja sesja (dodanie / przeniesienie / usunięcie; bez samego „rozumiem”) → jej
+  tydzień; cele i dostępność, Kalibracja / Sezon (poza `notify.*`) → cały horyzont; **Kalendarz** — podpis wpisów
+  horyzontu (`trainer_auto_cache calsig:<user>`) sprawdzany przy otwarciu tygodnia i w cronie co 15 min. Ruszane są
+  tylko sesje trenera; Twoje ręczne zostają. Zmiana bieżącego tygodnia czeka na Akceptuj / Cofnij (nowa zastępuje starą).
+- **Rolowanie:** po zmianie w tygodniu N przeliczane są kolejne tygodnie horyzontu, które mają plan (zmiany „rolowanie”
+  z `payload.parent`, od razu zaakceptowane); **Cofnij rodzica cofa też rolowanie**.
+- **Telegram:** wiadomość dnia (i „2 h przed”) ma przyciski 😴 REST DAY / ⏱️ Brak czasu / 🤒 Choroba (`tr:<akcja>:<dzień>`);
+  odpowiedź z listą zmian i ↩️ Cofnij (`tr:undo:<id>`). Obsługa: `telegram_reply_processor.py` (cron co 2 min) →
+  `qbot_trener_notify.handle_callback` (tylko nasz czat, dzień nie z przeszłości). Zmiana w Kalendarzu wykryta przez
+  cron → wiadomość „plan zaktualizowany” z Cofnij.
