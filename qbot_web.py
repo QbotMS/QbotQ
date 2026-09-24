@@ -6777,8 +6777,8 @@ async def garage_toggle(request: Request):
 # --- Garaz: zdjecie + miniatura rzeczy (pliki w /gear, odnosniki w bazie) ---
 GEAR_IMG_DIR = os.path.join(WEB_ROOT, "gear")
 GEAR_IMG_MAX_BYTES = 12 * 1024 * 1024
-PHOTO_TABLES = {"gear": "gear", "equipment": "equipment", "component": "components", "bike": "bikes"}
-PHOTO_PREFIX = {"gear": "", "equipment": "eq", "component": "cmp", "bike": "bk"}
+PHOTO_TABLES = {"gear": "gear", "equipment": "equipment", "component": "components", "bike": "bikes", "fitting": "fitting"}
+PHOTO_PREFIX = {"gear": "", "equipment": "eq", "component": "cmp", "bike": "bk", "fitting": "fit"}
 
 
 def _photo_target(entity):
@@ -7100,6 +7100,19 @@ async def bike_component_save(request: Request):
             cols[k] = None
     bid = b.get("bike_id")
     cols["bike_id"] = int(bid) if str(bid or "").strip().isdigit() else None
+    if "dims" in b:  # wymiary czesci (mostek, kierownica, siodlo, sztyca, korba...) jako JSON
+        import json as _json
+        d = b.get("dims")
+        clean = {}
+        if isinstance(d, dict):
+            for dk, dv in list(d.items())[:30]:
+                if dv in (None, ""):
+                    continue
+                try:
+                    clean[str(dk)[:40]] = float(str(dv).replace(",", "."))
+                except (TypeError, ValueError):
+                    clean[str(dk)[:40]] = str(dv)[:60]
+        cols["dims"] = _json.dumps(clean, ensure_ascii=False) if clean else None
 
     gid = b.get("id")
     gc = _garage_conn()
@@ -7274,7 +7287,13 @@ async def bike_fitting_save(request: Request):
         raise HTTPException(status_code=400, detail="Brak bike_id")
     cols = _fit_cols(b, _FIT_NUM, _FIT_TXT)
     cols["bike_id"] = bike_id
-    cols["is_current"] = 1 if b.get("is_current") in (1, "1", True, "true") else 0
+    if "is_current" in b or not _fit_id(b.get("id")):
+        cols["is_current"] = 1 if b.get("is_current") in (1, "1", True, "true") else 0
+    for k in ("stem_id", "bar_id", "saddle_id", "seatpost_id", "crank_id", "aero_id"):
+        if k in b:
+            cols[k] = _fit_id(b.get(k))
+    if "stem_flipped" in b:
+        cols["stem_flipped"] = 1 if b.get("stem_flipped") in (1, "1", True, "true") else 0
     gc = _garage_conn()
     try:
         if not gc.execute("SELECT 1 FROM bikes WHERE id=?", (bike_id,)).fetchone():
@@ -11906,6 +11925,8 @@ def api_reports_nostore(fn: str):
 # Musi byc PRZED app.mount("/"), inaczej statyki przechwyca sciezke. Dok.: docs/TRENER.md
 from qbot_trener_api import build_router as _trener_build_router
 app.include_router(_trener_build_router(_db_conn, _current_user))
+from qbot_garage_audit_api import build_router as _gaudit_build_router
+app.include_router(_gaudit_build_router(_current_user))
 
 
 app.mount("/", StaticFiles(directory=WEB_ROOT, html=True), name="static")
