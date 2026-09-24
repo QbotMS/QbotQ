@@ -5171,7 +5171,7 @@ async def report_outfit_build(request: Request):
     try:
         d = _build_report_data(conn, rid, day, tm, n, m, ai=False, day_table=True)
         conn.commit()
-        p = _oa.advise(conn, d, tm, _load_outfit_rules(), getattr(_qc, "QGPT_MODEL", ""))
+        p = _oa.advise(conn, d, tm, _load_outfit_rules(), getattr(_qc, "QGPT_MODEL", ""), n, m)
         if not p.get("ok"):
             raise HTTPException(status_code=502, detail="Nie udalo sie dobrac ubioru: %s" % p.get("blad"))
         _oa.save(conn, rid, day, tm, n, m, p)

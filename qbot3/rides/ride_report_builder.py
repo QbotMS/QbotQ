@@ -788,6 +788,8 @@ def _weather_block(recs, day):
         "pressure_hpa": _plugin("open-meteo - brak danych"),
         "cloud_pct": _plugin("open-meteo - brak danych"),
         "wbgt_max": _plugin("open-meteo - brak danych"),
+        "wind_ms": _plugin("open-meteo - brak danych"),
+        "precip_mm": _plugin("open-meteo - brak danych"),
         "sun_pct": _plugin("cien - wymaga trasy (parked)"),
     }
     pos = [r for r in recs if r.get("lat") is not None and r.get("lon") is not None]
@@ -823,6 +825,17 @@ def _weather_block(recs, day):
                 wbgts.append(wb)
         if wbgts:
             out["wbgt_max"] = _tag(round(max(wbgts), 1), "B", "open-meteo WBGT (T+RH+slonce+wiatr)")
+        # sila wiatru (nie tylko skladowa wzdluz trasy) - do oceny ubioru i warunkow
+        ws = [x["wspeed"] for x in rows if x.get("wspeed") is not None]
+        if ws:
+            out["wind_ms"] = _tag({"avg": round(sum(ws) / len(ws), 1), "max": round(max(ws), 1)},
+                                  "B", SRC + " (10 m, srednia godzinowa)")
+        # opad w godzinach jazdy
+        pr = [x["precip"] for x in rows if x.get("precip") is not None]
+        if pr:
+            out["precip_mm"] = _tag({"sum": round(sum(pr), 1), "max_h": round(max(pr), 1),
+                                     "wet_h": sum(1 for v in pr if v >= 0.1), "hours": len(pr)},
+                                    "B", SRC + " (godziny jazdy)")
     except Exception:
         pass
     return out
