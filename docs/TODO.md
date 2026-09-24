@@ -275,7 +275,10 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 
 - [PODJAZDY-SKALA] etap B: glikogen i punkt bomby w symulatorze trasy (zapas z ModelQ + jedzenie z fuel vs spalanie kJ); etap C: durability — krzywa osiągalna zależna od kj_before (po czystych jazdach z nową baterią); etap D: wiatr czołowy/boczny w fizyce symulatora + wykres W′/glikogenu pod profilem; ocena w trybie DZIEŃ planera; readiness dnia w CP. ZROBIONE: fazy 1-3 + łańcuch + etap A symulatora (50 m, przerwy kanonu, upał) 2026-08-10
 
+- [2026-09-24] Obserwowac: czy kolejne FIT z Karoo maja device_info czujnikow (24.09 brak). Jesli systematycznie -> miernik z roweru/kalendarza jako zapas dla straznika.
+
 # ZROBIONE
+- [2026-09-24] Straznik miernika per miernik + czujniki w backfill/_one (DECISIONS 2026-09-24).
 
 - [2026-09-23] TRENER w Formie: etapy 1-5 (tabele+API, zakladka, silnik planu tygodnia, bilans/statusy/czas/pogoda auto/badania, Telegram+cron, Albert trainer_week), zestawy cwiczen (obwod na cale cialo z rotujacym akcentem, wioslarz), Garmin usuniety. docs/TRENER.md (skrot; szczegoly w DECISIONS.md i TODO.md.bak.*)
 ## [WAGA-SYNC] Wlasny sync Withings -> Garmin [ZROBIONE 2026-08-24]

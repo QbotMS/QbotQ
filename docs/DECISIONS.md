@@ -4094,3 +4094,53 @@ Uwaga: 2 faile w tests/test_report_data_provider (partial/missing) sa sprzed zmi
 - Migracja: opony 1-2 -> kolo 3, 3-4 -> kolo 4, 7-8 -> kolo 30, 5-6 -> w garażu.
 - Front Garazu (poza repo): okno edycji opon, kolumny Rower/Koło, filtr roweru, kategorie komponentow wyswietlane po polsku (w bazie zostaja angielskie kody - uzywa ich kod, np. category='wheels').
 - ZNANE, POZA ZAKRESEM: `_read_wheelsets` i opis roweru biora kola/komponenty OBU rowerow naraz (brak filtra bike_id).
+
+## 2026-09-24 — Garaz: BIKE FIT per rower (geometria katalogowa + ustawienia z historia + wymiary ciala + rysunek na zywo)
+- Dane (garage.db): nowa `bike_geometry` (1 wiersz/rower: stack, reach, katy, dlugosci, kola, bar_type drop/flat, zrodlo); nowa `rider_body` (pomiary ciala z data, historia); `fitting` + spacer_mm, headset_cap_mm, bar_reach_mm, bar_drop_mm, is_current.
+- Zasada: rama sie nie zmienia (katalog), korekty = ustawienia (fitting) z data; efektywny stack/reach kierownicy, drop i odleglosc siodlo-kierownica LICZONE z geometrii ramy + podkladek + czapki + mostka (dlugosc, kat). Wartosci fittera (reach_mm/stack_mm/drop_mm) zostaja jako „zmierzone”, do porownania.
+- Wysokosc siodla = od osi suportu wzdluz rury podsiodlowej; setback = czubek siodla za pionem suportu.
+- Grizl CF SL rozm. S z katalogu Canyon (canyon.com productpdf pid=3049): stack 556, reach 397, HA 71, SA 73.5, HT 118, ST 492, CS 435, WB 1036, BB drop 75. Monster: geometria do uzupelnienia (rozmiar nieznany), bar_type flat.
+- Serwer: POST /api/bike/fitting/save|delete, /api/bike/geometry/save, /api/bike/body/save|delete; /api/bike/config + geometry, body, weight (ostatnia waga z Garmina przez qbot_pressure_tools._athlete_weight, tylko do wgladu).
+- Front: nowy modul /web/public/garaz-fit.js (IIFE, window.QFit), rysunek SVG z danych; konczyny rysowane jako wypelnione ksztalty (kreski rak znikaly w podgladzie czatu). Sylwetka = model przyblizony (proporcje z wzrostu, noga skalowana dlugoscia kroku), katy ciala ±kilka stopni.
+- Zweryfikowane: node --check obu JS, model na danych z bazy (Grizl bez lemondki: kierownica 476/603, kolano 144°, plecy 40°), render SVG bez NaN.
+
+## 2026-09-24 — Fitting liczony z CZESCI roweru (components.dims) + duplikat ustawien
+- components.dims (JSON) = wymiary czesci do fittingu, zalezne od kategorii: stem (length_mm, angle_deg, stack_mm), handlebar (bar_type, width_mm, reach_mm, drop_mm, rise_mm, backsweep_deg, flare_deg), saddle (length_mm, width_mm), seatpost (offset_mm, travel_mm, length_mm), crankset (crank_mm), aero bars (extension_mm, pad_angle_deg, pad_stack_mm). Edycja w oknie komponentu.
+- fitting + stem_id, bar_id, saddle_id, seatpost_id, crank_id, aero_id, stem_flipped. Wymiary bierzemy z czesci; stare pola liczbowe w fittingu = zapas „gdy brak czesci” (zapis historyczny fittera zostaje).
+- Kierownica z wzniosem (Redshift Top Shelf Low-Flare 41 cm: rise 50, reach 72, drop 118, backsweep 7, flare 10 – dane producenta): chwyty = zacisk + wznios w gore + reach do przodu - cofniecie z backsweepu. Raportujemy osobno zacisk (mostek) i chwyty (klamkomanetki). Wynik: stack chwytow 671 mm vs fitter 670.
+- Dodany mostek Zipp Service Course SL 90 mm jako czesc (id 35); kat -6 PRZYJETY (flaga w notatce czesci, pokazywana jako zalozenie).
+- Duplikat ustawienia: kopia z dzisiejsza data, oryginal opcjonalnie -> historia (is_current=0). /api/bike/fitting/save aktualizuje tylko przyslane pola.
+
+
+## 2026-09-24 -- Straznik miernika: baza PER MIERNIK + czujniki w kazdej sciezce ingestu
+
+Powod: ALERT TREND 24.09 porownal dwie jazdy roznymi miernikami (22.09 = Favero
+ant:30604 na Monster gravel, 24.09 = Grizl) z JEDNA wspolna baza 450 dni ze
+wszystkich miernikow (Force DUB-PWR ant:29525, Quarq ant:18383, Favero). Od
+23.08 prawie kazda jazda wychodzila -8..-16% vs ta baza -> alarm co druga jazda.
+Rozne mierniki = rozna skala; porownanie miedzy nimi nie wykrywa dryfu zera.
+
+Decyzja:
+- Klucz miernika z activity_device (device_type=bike_power): 'ant:<ANT id>',
+  zapasowo 'sn:<serial>'. Kolumna power_meter_guard.meter_key.
+- Baza testu 1 tylko z jazd TYM miernikiem (dalej warunkowana temperatura).
+  < 10 jazd miernika -> werdykt BAZA ("zbieram baze"), bez alertu z testu 1.
+- TREND tylko gdy poprzednia sprawdzona jazda byla TYM SAMYM miernikiem.
+- Brak miernika w FIT (device_info bez czujnikow) -> SKIP testu 1.
+- Test cwiartek (wzrost P@HR w trakcie) bez zmian -- nie potrzebuje bazy.
+- Recheck historii: fitmodel/power_meter_guard.py --recheck N (bez Telegrama).
+  Przeliczone 40 dni 2026-09-24: Quarq ant:18383 ma baze od 19.09 (19.09 +5% OK).
+
+Czujniki: backfill() i _one() w qbot_activity_ingest.py NIE wolaly
+ingest_devices_and_gears -> jazdy wczytane tymi sciezkami nie mialy
+activity_device (np. 22.09). Dopisane; historia uzupelniona
+scripts/backfill_activity_devices.py --apply (66 plikow).
+Uwaga: FIT 24.09 (24482331098) z Karoo zawiera TYLKO wpis 'creator' -- zadnych
+czujnikow. To plik, nie nasz kod. 23.09 (2 jazdy) -- brak pliku FIT w artifacts.
+
+Uzupelnienie 2026-09-24 (przyczyna ustalona): FIT 24.09 bez czujnikow, bo Karoo
+wylaczone przed zapisem, wlaczone w domu -> zapis bez polaczonych czujnikow (Karoo
+spisuje device_info przy zapisie). QExt2 build-189 niewinny (diff 184->189 nie dotyka
+czujnikow). Zapas w strazniku: brak bike_power w FIT + >=10 zmian biegow AXS ->
+ostatni miernik z jazd z AXS (meter_key_from_axs), notka "miernik ustalony z biegow AXS".
+Takie jazdy NIE wchodza do bazy (baza tylko z potwierdzonych czujnikow). 24.09: +4% OK.

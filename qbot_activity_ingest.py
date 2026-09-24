@@ -323,6 +323,7 @@ def backfill(limit=2000, start=0, since=SINCE, with_report=False):
                 continue
             try:
                 r = ingest_one(gc, conn, a, with_report=with_report)
+                ingest_devices_and_gears(conn, aid)  # czujniki (2026-09-24: brakowalo w backfill)
                 done += 1
                 _rep = f" report={r['report']}" if with_report else ""
                 print(f"OK {aid} {r['name']!r} rec={r['records']} lap={r['laps']} ev={r['events']} pos={r['has_position']}{_rep}")
@@ -365,6 +366,7 @@ def _one():
         print("brak jazdy w 15 ostatnich"); return
     was_new = not _already(conn, str(cyc.get("activityId")))
     r = ingest_one(gc, conn, cyc, with_report=True)
+    ingest_devices_and_gears(conn, str(cyc.get("activityId")))  # czujniki (2026-09-24)
     print("INGESTED:", json.dumps(r, default=str))
     with conn.cursor() as cur:
         cur.execute("SELECT count(*), count(lat) FROM qbot_v2.activity_record WHERE external_id=%s", (r["aid"],))

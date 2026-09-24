@@ -1097,3 +1097,7 @@ Zweryfikowane na zywo. qbot-api zrestartowany. OTWARTE: retry przy 202 w QExt2 (
 - Kontekst sprzetowy: Fenix 8 na becie FW 23.25 (restarty, znane bugi) — rekomendowany
   powrot na stable; miernik mocy dryfuje od 11.08 (kwarantanny) — jazda 18.08 moze
   jeszcze trafic do kwarantanny przez guard, wtedy eff sam wroci na Garmina.
+
+## 2026-09-24 (claude-pmguard)
+- Straznik miernika: baza per miernik (meter_key), werdykt BAZA dla nowego miernika, TREND tylko ten sam miernik; recheck 40 dni zrobiony. Czujniki zapisywane tez w backfill/_one; historia uzupelniona. Commit: patrz git.
+- Straznik: zapas miernika z biegow AXS gdy FIT bez czujnikow (24.09 przeliczona: OK). Czeka na commit razem z poprzednia zmiana.
