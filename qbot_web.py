@@ -7166,6 +7166,70 @@ async def bike_component_delete(request: Request):
     return await _delete_request(request, "component")
 
 
+# --- Garaz: ROWERY (tabela bikes) - dodaj / edytuj / usun ---
+@app.post("/api/bike/bike/save")
+async def bike_bike_save(request: Request):
+    """Dodaj/edytuj rower w Garazu."""
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    cols = {k: _gs(b.get(k), 4000 if k == "notes" else 200)
+            for k in ("name", "brand", "model", "type", "color", "frame_size", "purchase_date", "notes")}
+    if not (cols.get("name") or cols.get("model")):
+        raise HTTPException(status_code=400, detail="Wymagana nazwa albo model")
+    for k, conv in (("year", int), ("weight_kg", float), ("purchase_price", float)):
+        v = b.get(k)
+        try:
+            cols[k] = conv(str(v).replace(",", ".")) if v not in (None, "") else None
+        except (TypeError, ValueError):
+            cols[k] = None
+    cols["active"] = 0 if b.get("active") in (0, "0", False, "false") else 1
+    gid = b.get("id")
+    gid = int(gid) if str(gid or "").strip().isdigit() and int(gid) > 0 else None
+    gc = _garage_conn()
+    try:
+        keys = list(cols.keys())
+        if gid:
+            gc.execute("UPDATE bikes SET %s WHERE id=?" % ", ".join("%s=?" % k for k in keys),
+                       [cols[k] for k in keys] + [gid])
+        else:
+            cur = gc.execute("INSERT INTO bikes (%s) VALUES (%s)"
+                             % (", ".join(keys), ",".join("?" for _ in keys)), [cols[k] for k in keys])
+            gid = cur.lastrowid
+        gc.commit()
+        return {"ok": True, "id": gid}
+    finally:
+        gc.close()
+
+
+@app.post("/api/bike/bike/delete")
+async def bike_bike_delete(request: Request):
+    """TWARDE usuniecie roweru - TYLKO gdy nic do niego nie jest przypisane
+    (komponenty, fitting). Inaczej ok=false + liczby blokujace."""
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    gid = b.get("id")
+    if not str(gid or "").strip().isdigit():
+        raise HTTPException(status_code=400, detail="Brak id")
+    if not b.get("confirm"):
+        raise HTTPException(status_code=400, detail="Brak potwierdzenia")
+    gid = int(gid)
+    gc = _garage_conn()
+    try:
+        n_c = gc.execute("SELECT count(*) FROM components WHERE bike_id=?", (gid,)).fetchone()[0]
+        n_f = gc.execute("SELECT count(*) FROM fitting WHERE bike_id=?", (gid,)).fetchone()[0]
+        if n_c or n_f:
+            return {"ok": False, "blocked": {"components": n_c, "fitting": n_f}}
+        n = gc.execute("DELETE FROM bikes WHERE id=?", (gid,)).rowcount
+        gc.commit()
+        return {"ok": True, "deleted": n}
+    finally:
+        gc.close()
+
+
 # --- Garaz: OPONY (tabela tires) przypisywane POJEDYNCZO do kola (wheel_id + position) ---
 TIRE_STATUS_FREE = ["w garażu", "wycofana"]
 TIRE_POSITIONS = ["przód", "tył"]
