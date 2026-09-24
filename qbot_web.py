@@ -6743,8 +6743,8 @@ async def garage_toggle(request: Request):
 # --- Garaz: zdjecie + miniatura rzeczy (pliki w /gear, odnosniki w bazie) ---
 GEAR_IMG_DIR = os.path.join(WEB_ROOT, "gear")
 GEAR_IMG_MAX_BYTES = 12 * 1024 * 1024
-PHOTO_TABLES = {"gear": "gear", "equipment": "equipment", "component": "components"}
-PHOTO_PREFIX = {"gear": "", "equipment": "eq", "component": "cmp"}
+PHOTO_TABLES = {"gear": "gear", "equipment": "equipment", "component": "components", "bike": "bikes"}
+PHOTO_PREFIX = {"gear": "", "equipment": "eq", "component": "cmp", "bike": "bk"}
 
 
 def _photo_target(entity):
@@ -7175,7 +7175,7 @@ async def bike_bike_save(request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="Bledny JSON")
     cols = {k: _gs(b.get(k), 4000 if k == "notes" else 200)
-            for k in ("name", "brand", "model", "type", "color", "frame_size", "purchase_date", "notes")}
+            for k in ("name", "nickname", "brand", "model", "type", "color", "frame_size", "purchase_date", "notes")}
     if not (cols.get("name") or cols.get("model")):
         raise HTTPException(status_code=400, detail="Wymagana nazwa albo model")
     for k, conv in (("year", int), ("weight_kg", float), ("purchase_price", float)):
@@ -7225,6 +7225,11 @@ async def bike_bike_delete(request: Request):
             return {"ok": False, "blocked": {"components": n_c, "fitting": n_f}}
         n = gc.execute("DELETE FROM bikes WHERE id=?", (gid,)).rowcount
         gc.commit()
+        for fn in ("bk%d.jpg" % gid, "bk%d_thumb.jpg" % gid):
+            try:
+                os.remove(os.path.join(GEAR_IMG_DIR, fn))
+            except OSError:
+                pass
         return {"ok": True, "deleted": n}
     finally:
         gc.close()
