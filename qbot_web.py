@@ -5201,21 +5201,55 @@ def report_plan_save(route_id: str = Query(...), date: str = Query(...),
         conn.close()
 
 
-@app.post("/api/report/day-pack")
-def report_day_pack_build(route_id: str = Query(...), date: str = Query(...)):
-    """E2c: generuje PAKIET DNIA (AI, ~40-45 s) dla trasy + daty i zapisuje (nadpisuje poprzedni
-    dla tej daty). Warianty startu 08:00-12:00, reguly przetestowane automatycznie."""
+import threading as _pk_th
+import time as _pk_t
+
+_PACK_JOBS: dict = {}          # (route_id, date) -> {"started", "done", "error", "czas_s"}
+_PACK_JOBS_LOCK = _pk_th.Lock()
+
+
+def _day_pack_job(route_id, date):
     from qbot3.routes import route_day_pack as _dp
     import qgpt_client as _qc
+    key = (route_id, date)
+    t0 = _pk_t.time()
     conn = _db_conn()
     try:
         inp = _dp.collect(_build_report_data, conn, route_id, date, 0, 0)
         conn.commit()
         pack = _dp.build_pack(inp, getattr(_qc, "QGPT_MODEL", ""))
         _dp.save_pack(conn, pack)
-        return pack
+        with _PACK_JOBS_LOCK:
+            _PACK_JOBS[key].update({"done": True, "czas_s": round(_pk_t.time() - t0, 1)})
+    except Exception as e:
+        with _PACK_JOBS_LOCK:
+            _PACK_JOBS[key].update({"done": True, "error": str(e)[:300], "czas_s": round(_pk_t.time() - t0, 1)})
     finally:
         conn.close()
+
+
+@app.post("/api/report/day-pack")
+def report_day_pack_build(route_id: str = Query(...), date: str = Query(...)):
+    """E2c: zleca generowanie PAKIETU DNIA (AI) W TLE i od razu odpowiada {"status": "started"|"running"}.
+    Calosc bywa > 100 s (limit Cloudflare = HTTP 524), gdy prognoza w cache wygasla. Postep: GET /api/report/day-pack/status."""
+    key = (route_id, date)
+    with _PACK_JOBS_LOCK:
+        j = _PACK_JOBS.get(key)
+        if j and not j.get("done") and _pk_t.time() - j["started"] < 600:
+            return {"status": "running", "od_s": round(_pk_t.time() - j["started"])}
+        _PACK_JOBS[key] = {"started": _pk_t.time(), "done": False, "error": None}
+    _pk_th.Thread(target=_day_pack_job, args=(route_id, date), daemon=True).start()
+    return {"status": "started"}
+
+
+@app.get("/api/report/day-pack/status")
+def report_day_pack_status(route_id: str = Query(...), date: str = Query(...)):
+    with _PACK_JOBS_LOCK:
+        j = dict(_PACK_JOBS.get((route_id, date)) or {})
+    if not j:
+        return {"status": "none"}
+    return {"status": ("error" if j.get("error") else "done") if j.get("done") else "running",
+            "od_s": round(_pk_t.time() - j["started"]), "czas_s": j.get("czas_s"), "blad": j.get("error")}
 
 
 @app.get("/api/report/day-packs")
@@ -7031,12 +7065,16 @@ def bike_config(all: int = Query(0)):
         tires = [dict(r) for r in gc.execute(
             "SELECT * FROM tires ORDER BY fits_wheelset, position, id").fetchall()]
         fit = [dict(r) for r in gc.execute("SELECT * FROM fitting ORDER BY id").fetchall()]
+        geom = [dict(r) for r in gc.execute("SELECT * FROM bike_geometry ORDER BY bike_id").fetchall()]
+        body = [dict(r) for r in gc.execute(
+            "SELECT * FROM rider_body ORDER BY measured_on DESC, id DESC").fetchall()]
         used = {c["category"] for c in comps if c.get("category")}
         cats = BIKE_COMPONENT_CATEGORIES + sorted(used - set(BIKE_COMPONENT_CATEGORIES))
         return {"bikes": bikes, "components": comps, "tires": tires, "fitting": fit,
                 "component_categories": cats, "used_categories": sorted(used),
                 "statuses": COMPONENT_STATUS,
-                "tire_statuses": TIRE_STATUS_FREE, "tire_positions": TIRE_POSITIONS}
+                "tire_statuses": TIRE_STATUS_FREE, "tire_positions": TIRE_POSITIONS,
+                "geometry": geom, "body": body, "weight": _fit_latest_weight()}
     finally:
         gc.close()
 
@@ -7164,6 +7202,156 @@ async def equipment_delete(request: Request):
 async def bike_component_delete(request: Request):
     """TWARDE usuniecie komponentu roweru (nieodwracalne)."""
     return await _delete_request(request, "component")
+
+
+# --- Garaz: BIKE FIT (geometria ramy, ustawienia/fitting, wymiary ciala) ---
+_FIT_NUM = ("saddle_height_mm", "saddle_setback_mm", "saddle_tilt_deg", "reach_mm", "stack_mm",
+            "drop_mm", "handlebar_width_mm", "stem_length_mm", "stem_angle_deg", "crank_length_mm",
+            "spacer_mm", "headset_cap_mm", "bar_reach_mm", "bar_drop_mm")
+_FIT_TXT = ("cleat_left", "cleat_right", "shoe_size", "notes", "date_set", "fitter_name", "variant")
+_GEO_NUM = ("stack_mm", "reach_mm", "head_angle_deg", "seat_angle_deg", "head_tube_mm", "seat_tube_mm",
+            "top_tube_mm", "chainstay_mm", "wheelbase_mm", "bb_drop_mm", "fork_offset_mm",
+            "standover_mm", "tire_mm")
+_GEO_TXT = ("size", "wheel_size", "bar_type", "source", "notes")
+_BODY_NUM = ("height_mm", "inseam_mm", "sit_bone_mm", "shoulder_mm", "arm_mm", "torso_mm",
+             "upper_arm_mm", "forearm_mm", "thigh_mm", "shank_mm", "foot_mm")
+_BODY_TXT = ("measured_on", "notes")
+
+
+def _fit_latest_weight():
+    try:
+        from qbot_pressure_tools import _athlete_weight
+        w, d = _athlete_weight()
+        return {"kg": round(float(w), 1), "date": str(d) if d else None} if w is not None else None
+    except Exception:
+        return None
+
+
+def _fit_cols(b, nums, txts):
+    cols = {}
+    for k in nums:
+        if k in b:
+            v = b.get(k)
+            try:
+                cols[k] = float(str(v).replace(",", ".")) if v not in (None, "") else None
+            except (TypeError, ValueError):
+                cols[k] = None
+    for k in txts:
+        if k in b:
+            cols[k] = _gs(b.get(k), 4000 if k == "notes" else 300)
+    return cols
+
+
+async def _fit_json(request):
+    try:
+        return await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+
+
+def _fit_upsert(gc, table, cols, gid):
+    keys = list(cols.keys())
+    if gid:
+        if keys:
+            gc.execute("UPDATE %s SET %s WHERE id=?" % (table, ", ".join("%s=?" % k for k in keys)),
+                       [cols[k] for k in keys] + [gid])
+        return gid
+    cur = gc.execute("INSERT INTO %s (%s) VALUES (%s)" % (table, ", ".join(keys), ",".join("?" for _ in keys)),
+                     [cols[k] for k in keys])
+    return cur.lastrowid
+
+
+def _fit_id(v):
+    return int(v) if str(v or "").strip().isdigit() and int(v) > 0 else None
+
+
+@app.post("/api/bike/fitting/save")
+async def bike_fitting_save(request: Request):
+    """Dodaj/edytuj ustawienie (wariant fittingu) roweru."""
+    b = await _fit_json(request)
+    bike_id = _fit_id(b.get("bike_id"))
+    if not bike_id:
+        raise HTTPException(status_code=400, detail="Brak bike_id")
+    cols = _fit_cols(b, _FIT_NUM, _FIT_TXT)
+    cols["bike_id"] = bike_id
+    cols["is_current"] = 1 if b.get("is_current") in (1, "1", True, "true") else 0
+    gc = _garage_conn()
+    try:
+        if not gc.execute("SELECT 1 FROM bikes WHERE id=?", (bike_id,)).fetchone():
+            raise HTTPException(status_code=400, detail="Nieznany rower")
+        gid = _fit_upsert(gc, "fitting", cols, _fit_id(b.get("id")))
+        gc.commit()
+        return {"ok": True, "id": gid}
+    finally:
+        gc.close()
+
+
+@app.post("/api/bike/fitting/delete")
+async def bike_fitting_delete(request: Request):
+    b = await _fit_json(request)
+    gid = _fit_id(b.get("id"))
+    if not gid or not b.get("confirm"):
+        raise HTTPException(status_code=400, detail="Brak id lub potwierdzenia")
+    gc = _garage_conn()
+    try:
+        n = gc.execute("DELETE FROM fitting WHERE id=?", (gid,)).rowcount
+        gc.commit()
+        return {"ok": True, "deleted": n}
+    finally:
+        gc.close()
+
+
+@app.post("/api/bike/geometry/save")
+async def bike_geometry_save(request: Request):
+    """Zapis geometrii katalogowej ramy (1 wiersz na rower)."""
+    b = await _fit_json(request)
+    bike_id = _fit_id(b.get("bike_id"))
+    if not bike_id:
+        raise HTTPException(status_code=400, detail="Brak bike_id")
+    cols = _fit_cols(b, _GEO_NUM, _GEO_TXT)
+    gc = _garage_conn()
+    try:
+        if not gc.execute("SELECT 1 FROM bikes WHERE id=?", (bike_id,)).fetchone():
+            raise HTTPException(status_code=400, detail="Nieznany rower")
+        if not gc.execute("SELECT 1 FROM bike_geometry WHERE bike_id=?", (bike_id,)).fetchone():
+            gc.execute("INSERT INTO bike_geometry (bike_id) VALUES (?)", (bike_id,))
+        keys = list(cols.keys())
+        if keys:
+            gc.execute("UPDATE bike_geometry SET %s, updated_at=CURRENT_TIMESTAMP WHERE bike_id=?"
+                       % ", ".join("%s=?" % k for k in keys), [cols[k] for k in keys] + [bike_id])
+        gc.commit()
+        return {"ok": True, "bike_id": bike_id}
+    finally:
+        gc.close()
+
+
+@app.post("/api/bike/body/save")
+async def bike_body_save(request: Request):
+    """Dodaj/edytuj pomiar wymiarow ciala (historia z data)."""
+    b = await _fit_json(request)
+    cols = _fit_cols(b, _BODY_NUM, _BODY_TXT)
+    gc = _garage_conn()
+    try:
+        gid = _fit_upsert(gc, "rider_body", cols, _fit_id(b.get("id")))
+        gc.commit()
+        return {"ok": True, "id": gid}
+    finally:
+        gc.close()
+
+
+@app.post("/api/bike/body/delete")
+async def bike_body_delete(request: Request):
+    b = await _fit_json(request)
+    gid = _fit_id(b.get("id"))
+    if not gid or not b.get("confirm"):
+        raise HTTPException(status_code=400, detail="Brak id lub potwierdzenia")
+    gc = _garage_conn()
+    try:
+        n = gc.execute("DELETE FROM rider_body WHERE id=?", (gid,)).rowcount
+        gc.commit()
+        return {"ok": True, "deleted": n}
+    finally:
+        gc.close()
 
 
 # --- Garaz: ROWERY (tabela bikes) - dodaj / edytuj / usun ---
