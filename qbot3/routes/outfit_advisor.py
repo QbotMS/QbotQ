@@ -319,6 +319,14 @@ def historia_jazd(conn, limit: int = 12) -> list:
                 conn.rollback()
             except Exception:
                 pass
+    # stare raporty bez sily wiatru / opadu -> dociagnij w tle (bedzie przy nastepnym doborze)
+    try:
+        from qbot3.rides.w1_weather_patch import patch_in_background
+        miss = [k for k, x in w1.items() if not (_v((x.get("we") or {}).get("wind_ms")) and _v((x.get("we") or {}).get("precip_mm")))]
+        if miss:
+            patch_in_background(miss)
+    except Exception:
+        pass
     out = []
     for rk in order:
         d = rides[rk]

@@ -776,6 +776,22 @@ def _wbgt(ta, rh, solar, wind):
     return wbgt_shade + min(solar_term, 6.0)
 
 
+def _utc_key(ts):
+    """Klucz godziny w UTC. FIT: czas naive = UTC. activity_record: wartosc zegarowa jest UTC
+    (opis strefy w bazie bledny), wiec bierzemy wartosc zegarowa bez przeliczania."""
+    if getattr(ts, "tzinfo", None) is not None:
+        ts = ts.replace(tzinfo=None)
+    return ts.strftime("%Y-%m-%dT%H")
+
+
+def _om_hourly_utc(lat, lon, recs):
+    """Open-Meteo w UTC dla godzin tej jazdy (NAPRAWA 2026-09-24: wczesniej godziny lokalne
+    Open-Meteo byly laczone z czasem UTC z FIT -> pogoda przesunieta o 1-2 h)."""
+    from tools.rwgps.route_weather import _fetch_open_meteo
+    a, b = _utc_key(recs[0]["ts"]), _utc_key(recs[-1]["ts"])
+    return _fetch_open_meteo(lat, lon, a[:10], tz="GMT", end_day=b[:10])
+
+
 def _weather_block(recs, day):
     """Pogoda jazdy: temperatura z FIT (pomiar, tier A) + wilgotnosc/zachmurzenie/
     cisnienie/odczuwalna/WBGT z open-meteo dla godzin jazdy (tier B). sun_pct parked."""
@@ -796,10 +812,9 @@ def _weather_block(recs, day):
     if not pos:
         return out
     try:
-        from tools.rwgps.route_weather import _fetch_open_meteo
         lat0, lon0 = _deg(pos[0]["lat"]), _deg(pos[0]["lon"])
-        hourly = _fetch_open_meteo(lat0, lon0, day)
-        keys = sorted({r["ts"].strftime("%Y-%m-%dT%H") for r in recs})
+        hourly = _om_hourly_utc(lat0, lon0, recs)
+        keys = sorted({_utc_key(r["ts"]) for r in recs})
         rows = [hourly[k] for k in keys if k in hourly]
         if not rows:
             return out
@@ -999,9 +1014,9 @@ def _surface_wind_from_track(have_pos, ride_key, day):
 
     wind = _plugin("brak danych pogodowych")
     try:
-        from tools.rwgps.route_weather import _fetch_open_meteo, _rel_wind
+        from tools.rwgps.route_weather import _rel_wind
         lat0, lon0 = _deg(have_pos[0]["lat"]), _deg(have_pos[0]["lon"])
-        hourly = _fetch_open_meteo(lat0, lon0, day)
+        hourly = _om_hourly_utc(lat0, lon0, have_pos)
         buckets = []
         start = have_pos[0]
         last_d = have_pos[0].get("dist") or 0.0
@@ -1017,7 +1032,7 @@ def _surface_wind_from_track(have_pos, ride_key, day):
             if a is b:
                 continue
             hdg = _bearing_deg(_deg(a["lat"]), _deg(a["lon"]), _deg(b["lat"]), _deg(b["lon"]))
-            hourkey = b["ts"].strftime("%Y-%m-%dT%H")
+            hourkey = _utc_key(b["ts"])
             wx = hourly.get(hourkey) or {}
             tail, _cross, _delta = _rel_wind(hdg, wx.get("wdir"), wx.get("wspeed"))
             if tail is not None:
@@ -1028,7 +1043,7 @@ def _surface_wind_from_track(have_pos, ride_key, day):
                 _j = min(_i+8, len(have_pos)-1)
                 if _j <= _i: continue
                 _h = _bearing_deg(_deg(have_pos[_i]["lat"]), _deg(have_pos[_i]["lon"]), _deg(have_pos[_j]["lat"]), _deg(have_pos[_j]["lon"]))
-                _wx = hourly.get(have_pos[_i]["ts"].strftime("%Y-%m-%dT%H")) or {}
+                _wx = hourly.get(_utc_key(have_pos[_i]["ts"])) or {}
                 _t, _c, _d = _rel_wind(_h, _wx.get("wdir"), _wx.get("wspeed"))
                 if _t is not None:
                     tick_tails[have_pos[_i]["ts"]] = _t

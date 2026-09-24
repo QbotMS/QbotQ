@@ -96,10 +96,12 @@ def _fetch_owm(lat, lon, key):
     return out
 
 
-def _fetch_open_meteo(lat, lon, day: str):
+def _fetch_open_meteo(lat, lon, day: str, tz: str = "auto", end_day: str | None = None):
+    """Godzinowa pogoda Open-Meteo. Klucze = godziny w strefie tz ("auto" = lokalna miejsca,
+    "GMT" = UTC - dla danych z FIT, ktore maja czas UTC)."""
     params = {"latitude": round(lat, 4), "longitude": round(lon, 4),
               "hourly": "temperature_2m,precipitation,wind_speed_10m,wind_direction_10m,relative_humidity_2m,cloud_cover,surface_pressure,apparent_temperature,shortwave_radiation",
-              "wind_speed_unit": "ms", "timezone": "auto", "start_date": day, "end_date": day}
+              "wind_speed_unit": "ms", "timezone": tz, "start_date": day, "end_date": end_day or day}
     r = httpx.get(OM_URL, params=params, timeout=20.0)
     r.raise_for_status()
     h = r.json().get("hourly", {})
