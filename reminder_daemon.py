@@ -134,7 +134,7 @@ def main():
     # dezaktywuj przeterminowane
     conn.execute(
         "UPDATE reminders SET active=0 WHERE active=1 AND deadline IS NOT NULL "
-        "AND datetime(deadline) < datetime('now')"
+        "AND datetime(deadline) < datetime('now','localtime')"
     )
     conn.commit()
     rows = conn.execute("SELECT * FROM reminders WHERE active=1").fetchall()

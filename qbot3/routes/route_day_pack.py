@@ -297,7 +297,7 @@ def build_pack(inputs: dict, model_name: str = "") -> dict:
         warianty.update((res.get(k) or {}).get("warianty") or {})
     return {
         "meta": {"wersja": PACK_VERSION, "route_id": day["trasa"]["route_id"], "date": day["trasa"]["data"],
-                 "model": model_name, "created_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
+                 "model": model_name, "created_at": __import__("qbot_time").iso_local(),
                  "sloty": SLOTS, "zakres": [SLOTS[0], SLOTS[-1]], "przerwy_zalozone": inputs.get("default_stops"),
                  "czas_s": round(time.perf_counter() - t0, 1), "bledy": errs},
         "dzien": {"pogoda_przebieg": a.get("pogoda_przebieg") or [], "ryzyka": a.get("ryzyka") or [],

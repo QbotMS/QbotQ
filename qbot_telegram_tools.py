@@ -895,7 +895,7 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
         _safe_exec("qbot_sleep_day_get")
         _safe_exec("qbot_nutrition_day_get")
         _safe_exec("qbot_intervals_wellness_status")
-        _safe_exec("qbot_intervals_comments_import_preview", {"dry_run": True, "date_to": datetime.now(timezone.utc).strftime("%Y-%m-%d")})
+        _safe_exec("qbot_intervals_comments_import_preview", {"dry_run": True, "date_to": __import__("qbot_time").today_local().isoformat()})
 
     # Handle NEEDS_LOCATION or ERROR from weather — clean user-facing
     weather_status = extra_results.get("qbot_weather_forecast", extra_results.get("qbot_weather_current", {}))

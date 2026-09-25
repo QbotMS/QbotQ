@@ -362,7 +362,7 @@ def _tool_qbot_intervals_wellness_status(_args: dict | None = None) -> dict[str,
 
     records = data if isinstance(data, list) else ([data] if isinstance(data, dict) else [])
     latest = records[-1] if records else {}
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_str = __import__("qbot_time").today_local().isoformat()
     latest_id = latest.get("id", "") if isinstance(latest, dict) else ""
 
     weight = latest.get("weight") if isinstance(latest, dict) else None
@@ -1555,10 +1555,10 @@ def _tool_qbot_weather_forecast(_args: dict | None = None) -> dict[str, Any]:
     hourly = report.get("hourly_forecast", [])
     selected_idx: list[int] = list(range(min(len(hourly), hours)))
     if wants_tomorrow:
-        target_date = (datetime.now(timezone.utc) + timedelta(days=1)).date().isoformat()
+        target_date = (__import__("qbot_time").today_local() + timedelta(days=1)).isoformat()
         selected_idx = [i for i, h in enumerate(hourly) if isinstance(h.get("czas"), str) and h["czas"][:10] == target_date]
     elif "today" in period_l or "dzis" in period_l:
-        target_date = datetime.now(timezone.utc).date().isoformat()
+        target_date = __import__("qbot_time").today_local().isoformat()
         selected_idx = [i for i, h in enumerate(hourly) if isinstance(h.get("czas"), str) and h["czas"][:10] == target_date]
     if wants_morning:
         selected_idx = [i for i in selected_idx if (hourly[i].get("czas", "")[11:13].isdigit() and 6 <= int(hourly[i]["czas"][11:13]) < 12)]

@@ -185,7 +185,7 @@ def guest_view(data: dict, invite: dict, geometry: list | None, pack: dict | Non
         "wykres": chart,
         "pogoda": {"naglowek": data.get("weather_head"), "okna": w.get("windows"), "szczyt": w.get("peak"),
                    "slonce": w.get("slonce"), "ogolne": w.get("ogolne"), "etapy": w.get("etapy"), "uwagi": w.get("caveats"),
-                   "prognoza_z": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="minutes")},
+                   "prognoza_z": __import__("qbot_time").iso_local(timespec="minutes")},
         "alerty": data.get("alerts") or [],
         "nawierzchnia": {"total_km": (det.get("surface") or {}).get("total_km"),
                          "udzial": (det.get("surface") or {}).get("by_cat"), "ryzyka": risks},

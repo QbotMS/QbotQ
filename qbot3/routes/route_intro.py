@@ -209,7 +209,7 @@ def build(build_fn, conn, route_id: str, model_name: str = "") -> dict:
     if err:
         return {"ok": False, "blad": err}
     return {"ok": True, "wersja": INTRO_VERSION, "model": model_name, "czas_s": round(time.perf_counter() - t0, 1),
-            "created_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
+            "created_at": __import__("qbot_time").iso_local(),
             "tytul": o["tytul"], "wprowadzenie": o["wprowadzenie"], "czego_sie_spodziewac": o["czego_sie_spodziewac"],
             "warto_zobaczyc": o["warto_zobaczyc"], "krajobraz": f["krajobraz_wzdluz_trasy"]}
 
