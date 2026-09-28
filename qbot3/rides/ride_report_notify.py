@@ -212,6 +212,7 @@ def run_worker(ride_key: str, send_tg: bool = True, send_mail: bool = True) -> d
         if not w1:
             if not fit: raise RuntimeError("brak pliku FIT")
             w1 = rrb.build_w1(fit, ride_key); rrb.save_report(ride_key, fit, {}, w1)
+        w1 = rrb.apply_canonical_load(w1)  # obciazenie = XSS ModelQ (takze w zapisanych W1)
         w1p = dict(w1); w1p["momenty_km"] = _moments(w1)
         w2 = build_w2(w1p)
         cur.execute("UPDATE qbot_v2.ride_report_data SET w2_json=%s WHERE ride_key=%s AND schema_version=%s",

@@ -2447,7 +2447,7 @@ def _handle_training_recent(text: str) -> dict:
         pg = _pg_conn()
         rows = _safe_fetch(pg, """
             SELECT date, started_at, sport_type, distance_m, duration_s, elevation_m,
-                   avg_power_w, normalized_power_w, tss, avg_hr_bpm, activity_name
+                   avg_power_w, normalized_power_w, (SELECT m.xss_total FROM qbot_v2.modelq2_ride m WHERE m.external_id = training_sessions.external_id LIMIT 1) AS tss, avg_hr_bpm, activity_name
             FROM qbot_v2.training_sessions
             WHERE date >= %s
             ORDER BY date DESC, started_at DESC
@@ -2475,7 +2475,7 @@ def _handle_training_recent(text: str) -> dict:
         if np:
             line += f" — NP {np:.0f}W"
         if tss:
-            line += f" — TSS {tss:.0f}"
+            line += f" — XSS {float(tss):.0f}"
         if hr:
             line += f" — HR {hr}bpm"
         parts.append(line)
@@ -4329,7 +4329,7 @@ def _handle_daily_report(question: str) -> dict:
 
         # Treningi
         tr = _safe_fetch(pg,
-            "SELECT activity_name, sport_type, duration_s, distance_m, avg_hr_bpm, tss "
+            "SELECT activity_name, sport_type, duration_s, distance_m, avg_hr_bpm, (SELECT m.xss_total FROM qbot_v2.modelq2_ride m WHERE m.external_id = training_sessions.external_id LIMIT 1) AS tss "
             "FROM qbot_v2.training_sessions WHERE date = %s ORDER BY started_at", (report_date,))
         if tr and "_error" not in tr[0]:
             for t in tr:
@@ -4337,7 +4337,7 @@ def _handle_daily_report(question: str) -> dict:
                 _ds = t.get('duration_s') or 0
                 h = _ds // 3600; m2 = (_ds % 3600) // 60
                 hr = f", HR {t['avg_hr_bpm']}" if t.get('avg_hr_bpm') else ""
-                tss = f", TSS {t['tss']:.0f}" if t.get('tss') else ""
+                tss = f", XSS {float(t['tss']):.0f}" if t.get('tss') else ""
                 parts.append(f"🚴 {t.get('activity_name') or t.get('sport_type','Trening')}: {km}{h}h{m2:02d}{hr}{tss}")
             sources.append("training_sessions")
             data["training"] = [dict(t) for t in tr]

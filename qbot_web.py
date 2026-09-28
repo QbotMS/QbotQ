@@ -6013,13 +6013,12 @@ def rides_ready(response: Response):
         rows = conn.execute(
             "SELECT afr.external_id AS ride_key, afr.fit_path AS fit_path, "
             "ts.started_at AS t_start, ts.activity_name AS name, ts.sport_type AS sport, "
-            "(rrd.built_at IS NOT NULL) AS has_report, "
+            "EXISTS(SELECT 1 FROM qbot_v2.ride_report_data rrd WHERE rrd.ride_key = afr.external_id) AS has_report, "
             "(afr.summary->>'distance')::numeric/1000 AS dist_km, "
             "(afr.summary->>'duration')::numeric AS duration_s, "
-            "ts.tss AS xss "
+            "(SELECT m.xss_total FROM qbot_v2.modelq2_ride m WHERE m.external_id = ts.external_id LIMIT 1) AS xss "
             "FROM qbot_v2.activity_fit_raw afr "
             "JOIN qbot_v2.training_sessions ts ON ts.external_id = afr.external_id "
-            "LEFT JOIN qbot_v2.ride_report_data rrd ON rrd.ride_key = afr.external_id "
             "WHERE afr.parse_error IS NULL "
             "ORDER BY ts.started_at DESC NULLS LAST LIMIT 50"
         ).fetchall()
@@ -6056,7 +6055,7 @@ def ride_report_data(response: Response, ride: str = Query(...), rebuild: int = 
             "WHERE ride_key=%s AND schema_version=%s",
             (ride, _rrb.SCHEMA_VERSION)).fetchone()
         if row and row.get("w1_json") and not rebuild:
-            return row["w1_json"]
+            return _rrb.apply_canonical_load(row["w1_json"])  # obciazenie = XSS ModelQ
         fit = (row or {}).get("fit_path")
         if not fit:
             # starsza wersja schematu raportu tez zna sciezke FIT

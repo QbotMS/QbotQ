@@ -912,7 +912,10 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
             if pa <= _d(rr["day"]) <= pb:
                 carry.append({"day": rr["day"], "name": rr["name"], "xss": float(rr.get("xss") or xss_of("rower", 2, rr["dur_min"])),
                               "is_long": (rr.get("km") or 0) >= 80 or rr["dur_min"] >= float(P(ov, "yoga.long_h")) * 60 * 0.8, "src": "kalendarz"})
-        c.execute("SELECT date, activity_name, duration_s, tss, sport_type FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s", (pa, pb))
+        # obciazenie wykonanej jazdy = XSS ModelQ; TSS Garmina tylko gdy ModelQ jeszcze nie przeliczyl (~15 min po wgraniu)
+        c.execute("SELECT t.date, t.activity_name, t.duration_s, COALESCE(m.xss_total, t.tss) AS tss, t.sport_type "
+                  "FROM qbot_v2.training_sessions t LEFT JOIN qbot_v2.modelq2_ride m ON m.external_id = t.external_id "
+                  "WHERE t.date BETWEEN %s AND %s", (pa, pb))
         for r in c.fetchall():
             if SPORT_OF.get(r["sport_type"]) == "rower":
                 carry.append({"day": r["date"], "name": r["activity_name"], "xss": float(r["tss"] or 0),

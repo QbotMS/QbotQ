@@ -1573,6 +1573,50 @@ def _ride_xss(conn, ride_key):
 
 
 # ---------- API ----------
+def canonical_xss(cur, ride_key):
+    """XSS KANONICZNY = ModelQ (modelq2_ride.xss_total, fitmodel/modelq2/xss.py) - ta sama liczba, z ktorej
+    licza sie CTL/ATL/TSB w fitmodel_daily (sprawdzone 2026-09-28: obciazenie wyliczone z przyrostu ATL
+    = xss_total co do punktu). NIE uzywac: training_sessions.tss (TSS Garmina) ani fitmodel_wbal_ride.xss
+    (W'bal replay sprzed cutoveru MQ2, systematycznie +10..28%)."""
+    cur.execute("SELECT xss_total, xss_low, xss_high, xss_source FROM qbot_v2.modelq2_ride "
+                "WHERE external_id=%s LIMIT 1", (str(ride_key),))
+    return cur.fetchone()
+
+
+def apply_canonical_load(w1):
+    """Nadpisuje w W1 (takze zapisanym wczesniej) obciazenie wartoscia kanoniczna ModelQ:
+    load.xss (+ xss_per_h z czasu ruchu) i plan_vs_actual._real.xss. Brak wiersza ModelQ -> bez zmian."""
+    if not isinstance(w1, dict) or not w1.get("ride_key"):
+        return w1
+    try:
+        conn = _connect()
+        try:
+            r = canonical_xss(conn.cursor(), w1["ride_key"])
+        finally:
+            conn.close()
+    except Exception:
+        return w1
+    if not r or r.get("xss_total") is None:
+        return w1
+    x = round(float(r["xss_total"]), 1)
+    w1 = dict(w1)
+    load = dict(w1.get("load") or {})
+    mv = load.get("dur_moving_s")
+    mv = mv.get("value") if isinstance(mv, dict) else mv
+    load["xss"] = _tag(x, "A", "modelq2", xss_per_h=(round(x / (float(mv) / 3600.0), 1) if mv else None),
+                       xss_low=_f1(r.get("xss_low")), xss_high=_f1(r.get("xss_high")), xss_source=r.get("xss_source"))
+    w1["load"] = load
+    pva = w1.get("plan_vs_actual")
+    if isinstance(pva, dict) and isinstance(pva.get("value"), dict) and isinstance(pva["value"].get("_real"), dict):
+        pva = dict(pva); v = dict(pva["value"]); re_ = dict(v["_real"])
+        re_["xss"] = round(x); re_.pop("tss", None)
+        v["_real"] = re_; pva["value"] = v; w1["plan_vs_actual"] = pva
+    return w1
+
+
+def _f1(v):
+    return round(float(v), 1) if v is not None else None
+
 def build_w1(fit_path, ride_key, inputs=None):
     recs, events, session = _parse_fit(fit_path)
     conn=_connect(); cur=conn.cursor()
@@ -1616,7 +1660,7 @@ def build_w1(fit_path, ride_key, inputs=None):
     w1["terrain_impact"] = _terrain_impact(recs, _terr_raw, w1["splits"], w1["wprime"], w1["physio"], w1["weather"])
     w1["trace"] = _trace(recs, (_terr_raw or {}).get("tick_tails"), (_terr_raw or {}).get("tick_cross"), ((w1["wprime"] or {}).get("wbal_curve") or {}).get("value"))
     conn.close()
-    return w1
+    return apply_canonical_load(w1)
 
 def save_report(ride_key, fit_path, inputs, w1, w2=None):
     import json

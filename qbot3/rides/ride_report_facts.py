@@ -7,8 +7,8 @@ Cztery pytania uzytkownika:
                                                 podobne jazdy: EF = NP / srednie tetno)
   3) konsekwencje             -> konsekwencje (fitmodel_daily przed/po/dzis, prognoza swiezosci wg planu TRENERA)
   4) na co uwazac             -> wnioski LLM z powyzszego
-Obciazenie = training_sessions.tss (ta sama skala co ModelQ dzienny i planer; W1 load.xss z wbal_replay
-to INNA skala - nie mieszac). Konsekwencje licz na zywo (live_consequences) - wiersze modelu formy
+Obciazenie = XSS ModelQ (modelq2_ride.xss_total) - kanon CTL/ATL/TSB. NIE training_sessions.tss (TSS Garmina)
+i NIE fitmodel_wbal_ride (stara skala W'bal replay). Konsekwencje licz na zywo (live_consequences) - wiersze modelu formy
 dnia jazdy przeliczaja sie w nocy, wiec W1 z dnia jazdy ma jeszcze stan sprzed jazdy.
 """
 import re
@@ -56,8 +56,12 @@ def _np(powers):
     return (sum(r ** 4 for r in roll) / len(roll)) ** 0.25
 
 
+# obciazenie = XSS ModelQ (kanon CTL/ATL/TSB), nie TSS Garmina
+_XSS = "(SELECT m.xss_total FROM qbot_v2.modelq2_ride m WHERE m.external_id = training_sessions.external_id LIMIT 1)"
+
+
 def _session(cur, ride_key):
-    cur.execute("SELECT date, started_at, ended_at, distance_m, duration_s, tss, normalized_power_w, avg_power_w, "
+    cur.execute("SELECT date, started_at, ended_at, distance_m, duration_s, " + _XSS + ", normalized_power_w, avg_power_w, "
                 "avg_hr_bpm, intensity_factor, activity_name FROM qbot_v2.training_sessions WHERE external_id=%s",
                 (ride_key,))
     return cur.fetchone()
@@ -190,7 +194,7 @@ def execution_block(cur, ride_key, day, w1, plan, ses):
     # podobne jazdy (EF = NP / srednie tetno, wyzej = lepiej)
     pod = {}
     if ses and ses[4]:
-        cur.execute("SELECT date, activity_name, distance_m, duration_s, normalized_power_w, avg_hr_bpm, tss "
+        cur.execute("SELECT date, activity_name, distance_m, duration_s, normalized_power_w, avg_hr_bpm, " + _XSS + " "
                     "FROM qbot_v2.training_sessions WHERE external_id<>%s AND date<%s AND date>=%s "
                     "AND sport_type ILIKE %s AND duration_s BETWEEN %s AND %s "
                     "AND normalized_power_w IS NOT NULL AND avg_hr_bpm>0 ORDER BY date DESC LIMIT 6",
