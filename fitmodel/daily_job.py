@@ -92,6 +92,11 @@ def main() -> None:
             from fitmodel.power_meter_guard import _telegram_send
             return run_and_alert(conn, send=_telegram_send)
         _step("modelq2_integrity", _mq2_integrity)
+        # 2026-09-28: 2-3 zdjecia z kazdej NOWEJ jazdy (>= 30 km) wybrane nauczonym gustem -> START
+        def _strava_auto():
+            import qbot_strava
+            return qbot_strava.run_auto()
+        _step("strava_auto_photos", _strava_auto)
 
         # 2b1. L3 -- ukryte zmeczenie (subiektywny koszt jazdy) -> atl_plus/tsb_plus
         # (addytywne, audytowalne, odwracalne). PO modelq2 (baza atl_plus=atl_raw).
