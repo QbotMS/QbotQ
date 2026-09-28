@@ -37,6 +37,23 @@ BACKFILL_MIN, BACKFILL_CAP, PER_RIDE_BACKFILL = 30, 40, 2
 INCR_RIDES, PER_RIDE_INCR = 3, 3
 
 
+def make_thumbs(path):
+    """Lekkie wersje zdjecia dla START: m/ = 1600 px (pokaz), t/ = 720 px (kolaz, tasma). JPEG q82."""
+    try:
+        from PIL import Image, ImageOps
+        d, fn = os.path.split(path)
+        for sub, w in (("m", 1600), ("t", 720)):
+            out = os.path.join(d, sub, fn)
+            if os.path.exists(out):
+                continue
+            os.makedirs(os.path.join(d, sub), exist_ok=True)
+            im = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
+            im.thumbnail((w, w * 2))
+            im.save(out, "JPEG", quality=82, optimize=True, progressive=True)
+    except Exception as e:
+        print("[strava] miniatura %s: %s" % (path, e))
+
+
 def _km_from_home(lat, lon):
     import math
     if lat is None or lon is None:
@@ -203,6 +220,7 @@ def run_sync(db_conn: Callable, since: str = "2025-01-01") -> None:
                                 f.write(r.read())
                         except Exception as e:
                             print("[strava] zdjecie %s: %s" % (uid, e)); continue
+                    make_thumbs(path)
                     ll = p.get("location") or [None, None]
                     sz = (p.get("sizes") or {}).get("2048") or [None, None]
                     c.execute("""INSERT INTO qbot_v2.strava_photo (unique_id, strava_activity_id, ride_key, day, caption, lat, lon, taken_at, width, height, file, src_url)
