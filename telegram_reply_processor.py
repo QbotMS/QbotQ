@@ -407,6 +407,9 @@ def main():
             try:
                 if (cq.get("data") or "").startswith("rr:"):
                     handle_ride_report_callback(cq)
+                elif (cq.get("data") or "").startswith("lg:"):
+                    from fitmodel.load_guard import handle_callback as _lg_cb   # straznik obciazenia: Moc OK / Licz z tetna
+                    _lg_cb(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, CHAT_ID)
                 elif (cq.get("data") or "").startswith("tr:"):
                     import qbot_trener_notify as _TRN   # TRENER: REST / brak czasu / choroba / cofnij
                     _TRN.handle_callback(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, CHAT_ID)

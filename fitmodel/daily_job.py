@@ -119,9 +119,18 @@ def main() -> None:
         # (proteza MagicZero -- spindle DUB-PWR nie auto-zeruje w trakcie jazdy).
         # ALERT na Telegram przy mocnym odchyle/serii/wzroscie w trakcie.
         def _pm_guard():
-            from fitmodel.power_meter_guard import run as pm_guard_run
-            return pm_guard_run(conn)
+            # 2026-09-28: stary straznik (P@HR) liczy i zapisuje dalej, ale BEZ Telegrama -
+            # dawal falszywe alarmy (zwlaszcza po zmianie miernika). Pytania wysyla load_guard.
+            from fitmodel.power_meter_guard import check_new_rides as pm_check
+            return pm_check(conn, lookback_days=7, send=None)
         _step("power_meter_guard", _pm_guard)
+
+        # 2d2. Straznik OBCIAZENIA: XSS z mocy vs XSS z tetna; jazda >=2 h poza x0.7-1.4
+        # -> pytanie na Telegramie (Moc OK / Licz z tetna). Nic nie podmienia sam.
+        def _load_guard():
+            from fitmodel.load_guard import run as lg_run
+            return lg_run(conn)
+        _step("load_guard", _load_guard)
 
         # 2e. Ryczalt kaloryczny z eventu kalendarza (wakacje: kcal_planned).
         # Dni bez realnego jedzenia dostaja szacunek X kcal + makra jak w
@@ -229,9 +238,18 @@ def run_after_ride(reason: str = "") -> None:
         # (proteza MagicZero -- spindle DUB-PWR nie auto-zeruje w trakcie jazdy).
         # ALERT na Telegram przy mocnym odchyle/serii/wzroscie w trakcie.
         def _pm_guard():
-            from fitmodel.power_meter_guard import run as pm_guard_run
-            return pm_guard_run(conn)
+            # 2026-09-28: stary straznik (P@HR) liczy i zapisuje dalej, ale BEZ Telegrama -
+            # dawal falszywe alarmy (zwlaszcza po zmianie miernika). Pytania wysyla load_guard.
+            from fitmodel.power_meter_guard import check_new_rides as pm_check
+            return pm_check(conn, lookback_days=7, send=None)
         _step("power_meter_guard", _pm_guard)
+
+        # 2d2. Straznik OBCIAZENIA: XSS z mocy vs XSS z tetna; jazda >=2 h poza x0.7-1.4
+        # -> pytanie na Telegramie (Moc OK / Licz z tetna). Nic nie podmienia sam.
+        def _load_guard():
+            from fitmodel.load_guard import run as lg_run
+            return lg_run(conn)
+        _step("load_guard", _load_guard)
 
         def _glyco():
             from fitmodel.glycogen import update_glycogen_in_daily
