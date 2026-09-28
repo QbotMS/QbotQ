@@ -285,11 +285,11 @@ def _load_fitness_status_tool() -> dict[str, Any]:
         "wrapped": _tool_qbot_fitness_status,
         "category": "fitness",
         "description": (
-            "Kanoniczny stan formy z ModelQ v2 (fitmodel_daily) - JEDYNE zrodlo "
-            "CP/FTP/W'/formy. Uzyj dla pytan o CP, FTP, LTP, W', CTL/ATL/TSB, "
-            "gotowosc/readiness. Zwraca: ftp_w, cp_w, ltp_w, wprime_kj (+lo/hi/confidence), "
-            "ctl, atl, tsb, readiness_score/label, source. Xert NIE jest zrodlem CP "
-            "(benchmark: xert_readiness). Parametr: date (ISO, domyslnie najnowszy dzien)."
+            "Kanoniczny stan formy ModelQ v2 - JEDYNE zrodlo CP/FTP/W'/formy. Dla pytan o "
+            "CP, FTP, LTP, W', CTL/ATL/TSB, gotowosc, przeciazenie/skok obciazenia. Zwraca: "
+            "ftp_w, cp_w, ltp_w, wprime_kj, ctl, atl, tsb (z korekta), readiness_score/"
+            "effective, load_ramp (7d/28d) + load_ramp_ocena, ostrzezenie_przeciazenia. "
+            "Xert to benchmark (xert_readiness). Parametr: date (ISO)."
         ),
         "args_schema": {"date": {"type": "string"}},
         "safety": "read",

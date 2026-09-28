@@ -1766,7 +1766,8 @@ def _tool_qbot_fitness_status(args: dict | None = None) -> dict[str, Any]:
         }
     cols = ("day, ftp_est_w, cp_modelq_w, ltp_modelq_w, wprime_modelq_kj, "
             "wprime_lo_kj, wprime_hi_kj, wprime_confidence, wprime_source, "
-            "ctl_xss, atl_plus, tsb_plus, readiness_score, readiness_label")
+            "ctl_xss, atl_plus, tsb_plus, readiness_score, readiness_label, "
+            "load_ramp, readiness_effective")
     try:
         with conn.cursor() as cur:
             if day:
@@ -1789,6 +1790,13 @@ def _tool_qbot_fitness_status(args: dict | None = None) -> dict[str, Any]:
     def _f(v):
         return round(float(v), 1) if v is not None else None
 
+    # skok obciazenia (2026-09-28) - te same progi co strona Forma (forma2-data.js)
+    _ramp = round(float(row[14]), 2) if row[14] is not None else None
+    _ramp_oc = (None if _ramp is None else "strefa ryzyka" if _ramp >= 1.5
+                else "nagly wzrost" if _ramp >= 1.3 else "norma")
+    _rde = float(row[15]) if row[15] is not None else None
+    _warn = bool(_ramp is not None and _ramp >= 1.3 and _rde is not None and _rde <= -0.4)
+
     return {
         "tool": "qbot_fitness_status", "status": "OK",
         "safety_class": "READ_ONLY", "source": "ModelQ v2",
@@ -1798,5 +1806,9 @@ def _tool_qbot_fitness_status(args: dict | None = None) -> dict[str, Any]:
         "wprime_confidence": row[7], "wprime_source": row[8],
         "ctl": _f(row[9]), "atl": _f(row[10]), "tsb": _f(row[11]),
         "readiness_score": _f(row[12]), "readiness_label": row[13],
-        "notes": "Kanoniczne CP/FTP/W' = ModelQ v2. Xert tylko benchmark.",
+        "readiness_effective": (round(float(row[15]), 2) if row[15] is not None else None),
+        "load_ramp": _ramp, "load_ramp_ocena": _ramp_oc, "ostrzezenie_przeciazenia": _warn,
+        "notes": ("Kanoniczne CP/FTP/W' = ModelQ v2. Xert tylko benchmark. atl/tsb = z korekta "
+                  "zmeczenia (gotowosc, samopoczucie, choroba). load_ramp = srednie obciazenie "
+                  "7 dni / 28 dni (1.0 norma, >=1.3 nagly wzrost, >=1.5 strefa ryzyka)."),
     }
