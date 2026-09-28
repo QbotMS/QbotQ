@@ -179,7 +179,7 @@ def _mail_html(name: str, w1: dict, w2: dict, ride_key: str) -> str:
         html.escape(s.get("tekst") or "")) for s in (w2.get("synteza") or []))
     hl = "".join("<li>%s</li>" % html.escape(x) for x in (w2.get("highlights") or []))
     nx = "".join("<li>%s</li>" % html.escape(x) for x in (w2.get("next") or []))
-    link = "%s/raport-jazdy2.html?ride=%s" % (BASE_URL, ride_key)
+    link = "%s/raport-jazdy.html?ride=%s" % (BASE_URL, ride_key)
     return ("<div style='font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;line-height:1.5;color:#222;max-width:680px'>"
             "<h2 style='margin:0 0 6px'>%s</h2><p style='font-size:17px;margin:0 0 12px'><b>%s</b></p><ul>%s</ul>"
             "<table style='border-collapse:collapse;font-size:14px;margin:8px 0 12px'>%s</table>%s"
@@ -217,7 +217,7 @@ def run_worker(ride_key: str, send_tg: bool = True, send_mail: bool = True) -> d
         w2 = build_w2(w1p)
         cur.execute("UPDATE qbot_v2.ride_report_data SET w2_json=%s WHERE ride_key=%s AND schema_version=%s",
                     (json.dumps(w2, ensure_ascii=False), ride_key, rrb.SCHEMA_VERSION)); conn.commit()
-        link = "%s/raport-jazdy2.html?ride=%s" % (BASE_URL, ride_key)
+        link = "%s/raport-jazdy.html?ride=%s" % (BASE_URL, ride_key)
         if send_tg:
             hl = "\n".join("• " + html.escape(x) for x in (w2.get("highlights") or [])[:3])
             nx = (w2.get("next") or [None])[0]
