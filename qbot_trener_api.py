@@ -685,7 +685,10 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                 pw = E.plan_week(ctx)
                 meta = {"phase": pw["phase"], "phase_name": pw["phase_name"], "light": pw["light"], "target_h": pw["target_h"],
                         "days": pw["days"], "readiness_today": ctx["readiness_today"], "readiness_threshold": ctx["readiness_threshold"],
-                        "has_weather": bool(ctx["weather"])}
+                        "has_weather": bool(ctx["weather"]),
+                        # sygnaly z zakladki Sezon (okres ochronny po infekcji, regeneracja) - widoczne w tygodniu
+                        "season_notes": [n for n in pw["notes"] if n.startswith("Sezon:") or "okresie ochronnym" in n],
+                        "season_sig": ctx.get("season_sig")}
                 c.execute("SELECT ftp_est_w FROM qbot_v2.fitmodel_daily WHERE ftp_est_w IS NOT NULL ORDER BY day DESC LIMIT 1")
                 fr = c.fetchone()
                 meta["ftp_w"] = float(fr["ftp_est_w"]) if fr else None

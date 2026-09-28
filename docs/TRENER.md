@@ -271,3 +271,10 @@ przekierowują na `/trener.html`. Link w wiadomościach Telegram: `https://alber
   odpowiedź z listą zmian i ↩️ Cofnij (`tr:undo:<id>`). Obsługa: `telegram_reply_processor.py` (cron co 2 min) →
   `qbot_trener_notify.handle_callback` (tylko nasz czat, dzień nie z przeszłości). Zmiana w Kalendarzu wykryta przez
   cron → wiadomość „plan zaktualizowany” z Cofnij.
+
+
+## Sygnały z zakładki Sezon (2026-09-28)
+Źródło: `fitmodel/season.py::trainer_signals` → `ctx["season_sig"]` (build_context, `_season_sig`). Błąd = brak sygnałów, plan liczy się dalej.
+- **Okres ochronny po infekcji** (`AFTER_ILL_EASY_DAYS` = 14 dni od końca ostatniej infekcji z Kalendarza): dni planu do `protect_to` dostają `flex_cap` = 90 min, etykietę „po infekcji — tylko krótko”, brak długiej jazdy i akcentów (`hard_n = 0`). Jazda z Kalendarza w tym okresie NIE jest zmieniana — tylko ostrzeżenie. Wyłącznik: `season.after_illness.on = 0`. Uzasadnienie: w sezonie 2026 dwa razy (21.05, 27.09) długa jazda w tym okresie = najgłębszy dołek gotowości.
+- **Regeneracja** (te same progi co zakładka Sezon): niepełna, gdy gotowość (3 dni) < −0,4 albo tętno spocz. (7 dni) > start sezonu + 1; razem z gotowością ≤ −0,4 lub skokiem obciążenia ≥ 1,3 → dziś wersje minimum (obok progu gotowości). Wyłącznik: `regen.sensitivity = 0`.
+- Widok tygodnia: `meta.season_notes` (ramki 🩺 w trener.js) i `meta.season_sig`.

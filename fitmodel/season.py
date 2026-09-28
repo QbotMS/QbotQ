@@ -22,7 +22,8 @@ STRONG_X, LIGHT_X = 1.3, 0.6
 
 
 def _rows(conn, sql, params=()):
-    cur = conn.cursor()
+    # polaczenie (psycopg2/3) albo juz kursor (TRENER przekazuje kursor do build_context)
+    cur = conn.cursor() if hasattr(conn, "cursor") else conn
     cur.execute(sql, params)
     res = cur.fetchall()
     if res and not isinstance(res[0], dict):
@@ -1146,3 +1147,43 @@ def facts(conn, z, fd, rides, ill):
             "meter_bad_period": [bad_from.isoformat(), bad_to.isoformat()] if bad_from else None,
             "meter_note": ("W okresie meter_bad_period pomiar mocy byl wadliwy: wydolnosc (moc przy tetnie) z tego okresu "
                            "pominieta, a obciazenie jazd w kwarantannie liczone z tetna. Wydolnosc tylko z czystych jazd.")}
+
+
+# ======================= SYGNALY DLA TRENERA (2026-09-28) =======================
+def trainer_signals(conn, today: dt.date | None = None) -> dict:
+    """Lekkie sygnaly z Sezonu dla qbot_trener_engine.plan_week (bez pelnego build()):
+    - okres ochronny po infekcji: AFTER_ILL_EASY_DAYS dni od konca ostatniej infekcji (u Michala 2x dluga jazda
+      w tym okresie = najglebszy dolek gotowosci: 21.05 i 27.09.2026),
+    - regeneracja: gotowosc (srednia 3 dni) >= REGEN_RDY3 i tetno spocz. (7 dni) <= start sezonu + REGEN_RHR_MARGIN,
+    - skok obciazenia dzis (load_ramp 7/28 dni).
+    Te same progi co kafle/tabela zakladki Sezon."""
+    today = today or dt.date.today()
+    out = {"today": today.isoformat(), "easy_max_min": int(EASY_RIDE_H * 60), "protect_days": AFTER_ILL_EASY_DAYS}
+    r = _rows(conn, "SELECT day, COALESCE(end_day, day) AS e FROM qbot_v2.calendar_entry WHERE kind='illness' AND day <= %s "
+                    "ORDER BY COALESCE(end_day, day) DESC LIMIT 1", (today,))
+    if r:
+        ill_end = r[0]["e"]
+        prot = ill_end + dt.timedelta(days=AFTER_ILL_EASY_DAYS)
+        if prot >= today:
+            out.update({"ill_start": r[0]["day"].isoformat(), "ill_end": ill_end.isoformat(), "protect_to": prot.isoformat()})
+    start = dt.date(today.year, 3, 1)
+    if today < start:
+        start = dt.date(today.year - 1, 3, 1)
+    fd = {x["day"]: x for x in _rows(conn, "SELECT day, rhr, readiness_effective, readiness_score, load_ramp FROM qbot_v2.fitmodel_daily "
+                                             "WHERE (day >= %s AND day < %s) OR day > %s", (start, start + dt.timedelta(days=28), today - dt.timedelta(days=8)))}
+
+    def m(vals):
+        vals = [float(v) for v in vals if v is not None]
+        return sum(vals) / len(vals) if vals else None
+    rhr0 = m([fd[d]["rhr"] for d in fd if start <= d < start + dt.timedelta(days=28)])
+    rhr7 = m([(fd.get(today - dt.timedelta(days=k)) or {}).get("rhr") for k in range(7)])
+    rdy3 = m([((fd.get(today - dt.timedelta(days=k)) or {}).get("readiness_effective")
+               if (fd.get(today - dt.timedelta(days=k)) or {}).get("readiness_effective") is not None
+               else (fd.get(today - dt.timedelta(days=k)) or {}).get("readiness_score")) for k in range(3)])
+    norm = (rhr0 + REGEN_RHR_MARGIN) if rhr0 is not None else None
+    ok = (rdy3 is not None and rdy3 >= REGEN_RDY3) and (rhr7 is not None and norm is not None and rhr7 <= norm)
+    out["regen"] = {"ok": bool(ok), "rdy3": round(rdy3, 2) if rdy3 is not None else None,
+                    "rhr7": round(rhr7, 1) if rhr7 is not None else None, "rhr_norm": round(norm, 1) if norm is not None else None}
+    lr = next((fd[d]["load_ramp"] for d in sorted(fd, reverse=True) if d <= today and fd[d].get("load_ramp") is not None), None)
+    out["load_ramp"] = round(float(lr), 2) if lr is not None else None
+    return out

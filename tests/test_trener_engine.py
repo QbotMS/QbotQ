@@ -258,3 +258,37 @@ class TestSeasonModel(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSeasonSignals(unittest.TestCase):
+    """Sygnaly z zakladki Sezon (fitmodel/season.py trainer_signals) w planie tygodnia."""
+
+    def test_after_illness_protection(self):
+        sig = {"protect_to": "2026-10-09", "ill_end": "2026-09-25", "easy_max_min": 90, "regen": {"ok": True}}
+        r = E.plan_week(ctx(season_sig=sig))
+        for s in r["sessions"]:
+            if s["sport"] == "rower" and s["day"] <= "2026-10-09":
+                self.assertLessEqual(s["dur_min"], 90, s)
+                self.assertFalse(s["is_long"], s)
+        self.assertTrue(any("okres ochronny po infekcji" in n for n in r["notes"]))
+        self.assertIn("po infekcji — tylko krótko", r["days"]["2026-10-06"]["labels"])
+
+    def test_long_ride_after_protection_allowed(self):
+        sig = {"protect_to": "2026-10-07", "ill_end": "2026-09-23", "easy_max_min": 90, "regen": {"ok": True}}
+        r = E.plan_week(ctx(season_sig=sig))
+        longs = [s for s in r["sessions"] if s["is_long"]]
+        self.assertTrue(all(s["day"] > "2026-10-07" for s in longs))
+
+    def test_regen_not_ok_cuts_today(self):
+        sig = {"regen": {"ok": False, "rdy3": -1.0, "rhr7": 49.1, "rhr_norm": 47.8}, "load_ramp": 1.48}
+        r = E.plan_week(ctx(season_sig=sig))
+        for s in by_day(r).get("2026-10-05", []):
+            if s["sport"] != "joga" and s["min_min"] < s["dur_min"] + 1:
+                self.assertTrue(s["cut"] or s["dur_min"] == s["min_min"], s)
+        self.assertTrue(any("regeneracja niepełna" in n for n in r["notes"]))
+
+    def test_no_signals_no_change(self):
+        a = E.plan_week(ctx())
+        b = E.plan_week(ctx(season_sig={"regen": {"ok": True}}))
+        self.assertEqual([(s["day"], s["sport"], s["dur_min"]) for s in a["sessions"]],
+                         [(s["day"], s["sport"], s["dur_min"]) for s in b["sessions"]])

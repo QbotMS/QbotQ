@@ -358,6 +358,22 @@ def plan_week(ctx: dict) -> dict:
     days = [ws + timedelta(days=i) for i in range(7)]
     infos = {d: day_info(ctx, d) for d in days}
     plan_days = [d for d in days if d >= today]
+    # --- Sezon (fitmodel/season.py trainer_signals): okres ochronny po infekcji ---
+    sig = ctx.get("season_sig") or {}
+    prot = _d(sig.get("protect_to"))
+    prot_days: set = set()
+    if prot and int(ov.get("season.after_illness.on", 1)):
+        cap_m = int(sig.get("easy_max_min") or 90)
+        for d in plan_days:
+            if d <= prot and infos[d]["type"] in ("normal", "urlop", "short"):
+                prot_days.add(d)
+                infos[d]["flex_cap"] = min(int(infos[d].get("flex_cap") or cap_m), cap_m)
+                infos[d]["labels"].append("po infekcji — tylko krótko")
+        if prot_days:
+            hard_n = 0
+            notes.append(f"Sezon: do {prot.isoformat()} okres ochronny po infekcji (koniec objawów {sig.get('ill_end')}) — "
+                         f"jazdy najwyżej ~{cap_m} min spokojnie, bez długiej jazdy i akcentów "
+                         f"(w Twoim sezonie 2× długa jazda w tym okresie dała najgłębszy dołek gotowości)")
     trip_n = sum(1 for d in days if infos[d]["type"] == "trip")
     if trip_n:
         target_min = int(target_min * (7 - trip_n) / 7)
@@ -416,6 +432,9 @@ def plan_week(ctx: dict) -> dict:
             continue
         dur = int(rr["dur_min"])
         is_long = dur >= long_h_cfg * 60 * 0.8 or (rr.get("km") or 0) >= 80
+        if d in prot_days and dur > int(sig.get("easy_max_min") or 90):
+            notes.append(f"{d.isoformat()}: Twoja jazda „{rr['name']}” (~{dur // 60} h {dur % 60:02d}′) wypada w okresie "
+                         f"ochronnym po infekcji (do {prot.isoformat()}) — rozważ skrócenie albo przesunięcie")
         st = rr.get("at") or "08:00"
         srow = {"day": d.isoformat(), "sport": "rower", "name": rr["name"], "start_time": st, "dur_min": dur,
                 "min_min": dur, "zone": 2, "is_long": is_long, "xss": rr.get("xss") or xss_of("rower", 2, dur),
@@ -509,7 +528,8 @@ def plan_week(ctx: dict) -> dict:
                 notes.append(f"{', '.join(x.isoformat() for x in blocked)}: przerwa po ciężkiej jeździe {c_['day'].isoformat()} ({c_.get('name') or 'jazda'}, ~{int(float(c_.get('xss') or 0))} XSS) — bez roweru")
     # 1) dluga jazda (pomijana, gdy dluga jest juz w Kalendarzu)
     if long_day is None and cnt["rower"] >= 1 and ph not in ("ev", "rg") and rower_total >= 60:
-        cands = [d for d in plan_days if open_day(d) and (d.weekday() >= 5 or infos[d]["type"] == "urlop") and not has(d, "rower") and not in_heavy_gap(d) and d not in taper]
+        cands = [d for d in plan_days if open_day(d) and (d.weekday() >= 5 or infos[d]["type"] == "urlop") and not has(d, "rower") and not in_heavy_gap(d) and d not in taper
+                 and d not in prot_days]
         scored = []
         for d in cands:
             bad = wx_bad(infos[d]["wx"], ov, True)
@@ -650,6 +670,20 @@ def plan_week(ctx: dict) -> dict:
     # 8) brak czasu / gotowosc dzis
     thr, rt = ctx.get("readiness_threshold"), ctx.get("readiness_today")
     low_today = thr is not None and rt is not None and rt < thr and int(P(ov, "regen.sensitivity")) > 0
+    reg = sig.get("regen") or {}
+    ramp = sig.get("load_ramp")
+    sez_low = (int(P(ov, "regen.sensitivity")) > 0 and reg and not reg.get("ok")
+               and ((reg.get("rdy3") is not None and reg["rdy3"] <= -0.4) or (ramp is not None and ramp >= 1.3)))
+    if sez_low and today in infos and not low_today:
+        why = []
+        if reg.get("rhr7") is not None and reg.get("rhr_norm") is not None and reg["rhr7"] > reg["rhr_norm"]:
+            why.append(f"tętno spocz. {reg['rhr7']} > norma {reg['rhr_norm']}")
+        if reg.get("rdy3") is not None and reg["rdy3"] <= -0.4:
+            why.append(f"gotowość 3 dni {reg['rdy3']}")
+        if ramp is not None and ramp >= 1.3:
+            why.append(f"skok obciążenia ×{ramp}")
+        notes.append("Sezon: regeneracja niepełna (" + ", ".join(why) + ") — dziś wersje minimum")
+    low_today = bool(low_today or sez_low)
     for s in out:
         d = _d(s["day"])
         if infos[d]["type"] == "short" or (low_today and d == today and s["sport"] != "joga"):
@@ -792,6 +826,15 @@ def forecast(lat: float, lon: float) -> dict:
 
 
 # ---------------- kontekst z bazy ----------------
+
+def _season_sig(c, today) -> dict:
+    """Sygnaly z zakladki Sezon (fitmodel/season.py trainer_signals). Blad = brak sygnalow, plan liczy sie dalej."""
+    try:
+        from fitmodel.season import trainer_signals
+        return trainer_signals(c, today)
+    except Exception as exc:
+        return {"error": str(exc)}
+
 
 def build_context(c, user: str, week_start: date, today: date | None = None, keep_ids_exclude: bool = True) -> dict:
     today = today or date.today()
@@ -1012,4 +1055,4 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
             "prev_pattern": prev_pattern, "prev_last_sports": prev_last, "prev_week_h": prev_h, "prev_week_normal": prev_normal,
             "trip_recovery_days": rec_days, "next_trip_start": next_trip[0] if next_trip else None, "next_trip_name": next_trip[1] if next_trip else None,
             "keep": keep, "activities_extra": extra, "readiness_today": rt, "readiness_threshold": thr, "weather": wx,
-            "all_sessions": sess}
+            "all_sessions": sess, "season_sig": _season_sig(c, today)}
