@@ -899,6 +899,11 @@ def insight(conn, z, fd, rides, ill):
 # Skrypt TYLKO liczy fakty; interpretacje pisze AI (/api/forma/season/analyze).
 WIN_DAYS = 30
 TAU_CTL = 42.0
+# Serie mocy wg ROWERU (2026-09-28, wg Michala): Grizl mial JEDEN miernik (os Quarq AHP29525) do konca sierpnia;
+# FIT raz zapisuje jego ANT id (ant:29525), raz nie ('nieznany') - to ten sam miernik. Od 23.08 nowy pajak Quarq
+# (ant:18383) na tym samym rowerze - ta sama seria, znacznik zmiany. Inne id = inny rower / trenazer (osobno).
+GRIZL_METERS = {"nieznany", "ant:29525", "ant:18383"}
+GRIZL_SPIDER_KEY = "ant:18383"
 
 
 def _weight_path(last_day, last_w, goal):
@@ -950,9 +955,12 @@ def facts(conn, z, fd, rides, ill):
     for r in pah:
         if bad_from and bad_from <= r["d"] <= bad_to:
             r["bad"] = True
+    for r in pah:
+        r["grizl"] = r["m"] in GRIZL_METERS
     clean_all = [r for r in pah if not r["bad"]]
-    cur_m = clean_all[-1]["m"] if clean_all else None
-    m_first = min((r["d"] for r in clean_all if r["m"] == cur_m), default=None)
+    cur_m = "Grizl"
+    spider_from = min((r["d"] for r in pah if r["m"] == GRIZL_SPIDER_KEY), default=None)
+    m_first = spider_from
     wts = [(r["d"], float(r["w"])) for r in _rows(conn, "SELECT day AS d, weight_kg AS w FROM qbot_v2.fitmodel_daily "
                                                         "WHERE day >= %s AND weight_kg IS NOT NULL ORDER BY day", (s0,))]
     goal_w = None
@@ -981,17 +989,13 @@ def facts(conn, z, fd, rides, ill):
         ps = [s for s in sess if ws <= s["day"] <= we]
         plan_h = round(sum((s["dur_min"] or 0) for s in ps if s["sport"] == "rower") / 60.0, 1) if ps else (round(t.get("h", 0), 1) if t else None)
         plan_xss = sum(float(s["xss"] or 0) for s in ps) if ps else ((t.get("h", 0) or 0) * xss_h if t else 0)
-        p_w = [float(r["p"]) for r in pah if ws <= r["d"] <= we and not r["bad"] and r["m"] == cur_m]
-        p_o = [float(r["p"]) for r in pah if ws <= r["d"] <= we and not r["bad"] and r["m"] != cur_m]
+        p_w = [float(r["p"]) for r in pah if ws <= r["d"] <= we and not r["bad"] and r["grizl"]]
+        p_o = [float(r["p"]) for r in pah if ws <= r["d"] <= we and not r["bad"] and not r["grizl"]]
         # caly sezon: dominujacy miernik tygodnia (najwiecej jazd) i mediana z jego jazd
-        wk_all = [r for r in pah if ws <= r["d"] <= we and not r["bad"]]
-        dom_m, p_dom = None, None
-        if wk_all:
-            cnt = {}
-            for r in wk_all:
-                cnt[r["m"]] = cnt.get(r["m"], 0) + 1
-            dom_m = max(cnt, key=cnt.get)
-            p_dom = round(_median([float(r["p"]) for r in wk_all if r["m"] == dom_m]))
+        # seria Grizla (jeden rower, jeden system pomiaru) = glowna seria wydolnosci
+        dom_m = ("Grizl (nowy pająk)" if any(r["m"] == GRIZL_SPIDER_KEY for r in pah if ws <= r["d"] <= we and r["grizl"])
+                 else "Grizl") if p_w else None
+        p_dom = round(_median(p_w)) if p_w else None
         bad_w = bool(bad_from and not (we < bad_from or ws > bad_to))
         wt = [x for d, x in wts if ws <= d <= we]
         hrs = round(sum((r["duration_s"] or 0) for r in rides_all if ws <= r["date"] <= we) / 3600.0, 1) if ws <= today else None
@@ -1035,7 +1039,7 @@ def facts(conn, z, fd, rides, ill):
         if not fut:
             rec["hours_week"] = hours_4w(d)
             rec["ctl"] = round(val(d, "ctl_xss"), 1) if val(d, "ctl_xss") is not None else None
-            p = [float(r["p"]) for r in pah if d - dt.timedelta(days=28) <= r["d"] <= d and not r["bad"] and r["m"] == cur_m]
+            p = [float(r["p"]) for r in pah if d - dt.timedelta(days=28) <= r["d"] <= d and not r["bad"] and r["grizl"]]
             rec["p_at_hr"] = round(_median(p)) if p else None
             rec["p_at_hr_n"] = len(p)
             rec["rhr7"] = round(mean([val(d - dt.timedelta(days=j), "rhr") for j in range(7)]), 1) if mean([val(d - dt.timedelta(days=j), "rhr") for j in range(7)]) else None
@@ -1052,15 +1056,20 @@ def facts(conn, z, fd, rides, ill):
     windows = [win(today - dt.timedelta(days=WIN_DAYS)), win(today), win(today + dt.timedelta(days=WIN_DAYS))]
 
     # --- trendy (fakty do analizy) ---
-    clean = [(r["d"], float(r["p"])) for r in pah if not r["bad"] and r["m"] == cur_m]
-    # trend w obrebie biezacego miernika: pierwsze 3 tyg. od jego zalozenia vs ostatnie 3 tyg.
+    clean = [(r["d"], float(r["p"])) for r in pah if not r["bad"] and r["grizl"]]
+    # seria Grizla: ostatnie 3 tyg. vs te same 3 tyg. przed okresem wady miernika i vs szczyt sezonu (mediana 4 tyg.)
     p8 = [p for d, p in clean if d > today - dt.timedelta(weeks=3)]
-    p8b = [p for d, p in clean if m_first and d < m_first + dt.timedelta(weeks=3)]
+    p8b = [p for d, p in clean if bad_from and bad_from - dt.timedelta(weeks=4) <= d < bad_from]
+    guard_alerts = [r["d"].isoformat() for r in _rows(conn, "SELECT ride_date AS d FROM qbot_v2.power_meter_guard "
+                    "WHERE verdict='ALERT' AND ride_date >= %s ORDER BY ride_date", (s0,))]
     rhr_above = sum(1 for k in range(14) if rhr_norm and val(today - dt.timedelta(days=k), "rhr") is not None
                     and val(today - dt.timedelta(days=k), "rhr") > rhr_norm)
-    trends = {"p_at_hr_last_3w": round(_median(p8)) if p8 else None, "p_at_hr_first_3w_meter": round(_median(p8b)) if p8b else None,
-              "p_at_hr_n": [len(p8), len(p8b)], "meter_current": cur_m, "meter_since": m_first.isoformat() if m_first else None,
-              "p_at_hr_note": "moc przy tetnie porownywalna tylko w obrebie jednego miernika; zmiana miernika = nowa skala", "rhr_days_above_norm_14d": rhr_above, "rhr_norm": rhr_norm,
+    trends = {"p_at_hr_last_3w": round(_median(p8)) if p8 else None, "p_at_hr_4w_before_meter_fault": round(_median(p8b)) if p8b else None,
+              "p_at_hr_n": [len(p8), len(p8b)], "series": "Grizl", "spider_change": spider_from.isoformat() if spider_from else None,
+              "p_at_hr_note": ("jedna seria Grizla przez caly sezon; od spider_change nowy pajak Quarq (ta sama os/rower, "
+                               "mozliwa roznica kalibracji ok. 1-2%). Straznik zglaszal odchylenia miernika juz przed okresem "
+                               "kwarantanny: guard_alert_days."),
+              "guard_alert_days": guard_alerts, "rhr_days_above_norm_14d": rhr_above, "rhr_norm": rhr_norm,
               "weight_last": wts[-1][1] if wts else None, "weight_last_day": wts[-1][0].isoformat() if wts else None,
               "weight_goal": goal_w, "typical_hours": typical, "xss_per_h": round(xss_h, 1)}
     planned = [{"day": s["day"].isoformat(), "name": s["name"], "sport": s["sport"], "min": s["dur_min"], "xss": float(s["xss"] or 0)}
