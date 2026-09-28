@@ -983,6 +983,15 @@ def facts(conn, z, fd, rides, ill):
         plan_xss = sum(float(s["xss"] or 0) for s in ps) if ps else ((t.get("h", 0) or 0) * xss_h if t else 0)
         p_w = [float(r["p"]) for r in pah if ws <= r["d"] <= we and not r["bad"] and r["m"] == cur_m]
         p_o = [float(r["p"]) for r in pah if ws <= r["d"] <= we and not r["bad"] and r["m"] != cur_m]
+        # caly sezon: dominujacy miernik tygodnia (najwiecej jazd) i mediana z jego jazd
+        wk_all = [r for r in pah if ws <= r["d"] <= we and not r["bad"]]
+        dom_m, p_dom = None, None
+        if wk_all:
+            cnt = {}
+            for r in wk_all:
+                cnt[r["m"]] = cnt.get(r["m"], 0) + 1
+            dom_m = max(cnt, key=cnt.get)
+            p_dom = round(_median([float(r["p"]) for r in wk_all if r["m"] == dom_m]))
         bad_w = bool(bad_from and not (we < bad_from or ws > bad_to))
         wt = [x for d, x in wts if ws <= d <= we]
         hrs = round(sum((r["duration_s"] or 0) for r in rides_all if ws <= r["date"] <= we) / 3600.0, 1) if ws <= today else None
@@ -994,6 +1003,7 @@ def facts(conn, z, fd, rides, ill):
                "hours": hrs, "plan_h": plan_h if ws >= cur_ws else None,
                "p_at_hr": round(_median(p_w)) if p_w else None, "p_n": len(p_w),
                "p_at_hr_other_meter": round(_median(p_o)) if p_o else None, "meter_bad": bad_w,
+               "p_week": p_dom, "p_meter": dom_m,
                "rhr": round(mean(rh), 1) if mean(rh) is not None else None,
                "readiness": round(mean(rd), 2) if mean(rd) is not None else None,
                "weight": round(sum(wt) / len(wt), 1) if wt else None, "weight_path": wpath(we) if (wpath and we > today) else None,

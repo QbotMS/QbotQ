@@ -10487,9 +10487,14 @@ _SEASON_AI_SYSTEM = (
     "7. Po polsku, prosto, krotkie zdania, bez markdown i gwiazdek, bez motywacyjnych frazesow. Bez skrotow: "
     "zamiast CTL pisz 'forma', zamiast XSS 'obciazenie', zamiast TSB 'swiezosc'. Nie cytuj liczb, ktore nic nie "
     "mowia zawodnikowi (np. obciazenie w punktach) - mow o godzinach, dniach, watach, uderzeniach serca, kg.\n"
-    "Zwroc WYLACZNIE JSON: {\"werdykt\": \"jedno-dwa zdania\", \"co_sie_dzieje\": [\"...\"], "
-    "\"jak_prowadzisz_sezon\": [\"...\"], \"na_co_mozesz_liczyc\": [\"...\"], \"uwagi_do_planu\": [\"...\"]} - "
-    "kazda lista 2-4 krotkie punkty (uwagi_do_planu moze byc pusta)."
+    "9. uwagi_do_planu: opisz, co JEST w planie TRENERA i co z tym zrobic (np. 'Jazda 4:46 zaplanowana na 4 pazdziernika - "
+    "skroc do ~1,5 h albo przesun'). Nie pisz trybem rozkazujacym o rzeczach, ktore juz sa w planie.\n"
+    "10. Kazda liczbe przypisuj do dokladnie tej daty, ktora stoi przy niej w faktach.\n"
+    "8. ZWIEZLE: tekst trafia do 4 waskich kolumn. Werdykt = JEDNO zdanie (max ok. 25 slow). Kazda lista 2-3 punkty, "
+    "kazdy punkt max ok. 15 slow, jedna mysl, najwyzej jedna liczba jako dowod. Zadnych powtorzen miedzy kolumnami.\n"
+    "Zwroc WYLACZNIE JSON: {\"werdykt\": \"...\", \"co_sie_dzieje\": [\"...\"], "
+    "\"jak_prowadzisz_sezon\": [\"...\"], \"na_co_mozesz_liczyc\": [\"...\"], \"uwagi_do_planu\": [\"...\"]} "
+    "(uwagi_do_planu moze byc pusta)."
 )
 
 
@@ -10499,7 +10504,7 @@ def _season_ai_payload(z):
     today = z.get("today")
     wk = F.get("weeks") or []
     cur = next((i for i, w in enumerate(wk) if w.get("current")), len(wk) - 1)
-    keep = ("week", "phase_name", "light", "hours", "plan_h", "ctl", "ctl_proj", "p_at_hr", "p_n",
+    keep = ("week", "phase_name", "light", "hours", "plan_h", "ctl", "ctl_proj", "p_week", "p_meter",
             "meter_bad", "rhr", "readiness", "weight", "weight_path", "ill_days")
     weeks = [{k: w.get(k) for k in keep if w.get(k) not in (None, False, 0) or k in ("week", "hours")} for w in wk[max(0, cur - 20): cur + 13]]
     tr = F.get("trainer") or {}
