@@ -8,6 +8,18 @@
 
 # OTWARTE
 
+## [GARAZ-CISNIENIA-PER-ROWER] Kalkulator ciśnień i opis roweru biorą koła obu rowerów (dodane 2026-09-24)
+`qbot_pressure_tools._read_wheelsets` i opis roweru w `qbot_web.py` czytają wszystkie komponenty `wheels`/wszystkie rowery. Dodać filtr `bike_id` (rower planowany/rozpoznany z jazdy). Przy trasie na Grizla nie pokazywać kół Monstera.
+
+## [GARAZ-FIT-DANE] Uzupełnić dane do fittingu (dodane 2026-09-24)
+Setback siodła w „Moje – aktualne”, kąt mostka Gear Groove (przyjęte −6°), rozmiar i geometria ramy Grand Canyon (Monster), pomiar ud i podudzi taśmą (model liczy ze wzrostu), ew. offset sztycy ShockStop.
+
+## [GARAZ-FIT-MODEL] Dokładność sylwetki (dodane 2026-09-24)
+Plecy w aero: model 32° vs zdjęcie ok. 40° (różnica w pozycji biodra). Rozważyć parametr pochylenia miednicy / położenia biodra na siodle po pomiarach. Kąt kolana zweryfikować zdjęciem z korbą w dole.
+
+## [GARAZ-SPRZATANIE] Pliki .bak z sesji 2026-09-24 (dodane 2026-09-24)
+Kopie `*.bak.2026092*` w `/opt/qbot/web/public/`, `/opt/qbot/app/` i `garage.db.bak.*` w `/opt/qbot/app/data/` — usunąć po akceptacji zmian.
+
 ## [TRENER-GENERATOR] Generator programu treningu (dodane 2026-09-23)
 
 Sekcja Trener zamknieta 2026-09-23 (etapy 1-5 + zestawy cwiczen; Garmin usuniety na zyczenie). Kolejny krok

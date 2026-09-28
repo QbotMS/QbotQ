@@ -1,5 +1,18 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-09-24] GARAŻ: nowy wygląd, rowery, opony per koło, BIKE FIT z rysunkiem
+Pełny opis modułu: `docs/GARAZ.md`. Decyzje: `docs/DECISIONS.md` (wpisy 2026-09-24).
+- Wygląd jak Trener/Raport (ui2.css), zakładki podkreślane, kategorie komponentów po polsku na ekranie (w bazie angielskie kody).
+- Rowery: CRUD, przydomek, zdjęcie (kafelki 3 w rzędzie, 70% szerokości), kliknięcie kafelka filtruje części. Grand Canyon = „Monster”.
+- Opony: tabela `tires` z `wheel_id` + pozycja; zajęte miejsce → poprzednia opona do garażu; ciśnienia czytają opony z tabeli (spec kół wyczyszczony). Zweryfikowane: ciśnienia bez zmian.
+- Fitting: geometria katalogowa (Grizl S z Canyon), ustawienia z historią złożone z części (`components.dims`), duplikat, zdjęcie ustawienia, wymiary ciała z historią, rysunek SVG roweru i sylwetki (Top Shelf z wzniosem, pozycja aero), oceny kątów z dymkami.
+- Grizl: ustawienia fittera (Gear Groove 80, podkładki 25, moduł offsetu, C13) rozdzielone od „Moje – aktualne (z lemondką)” (Zipp SL 90 −6°, podkładki 5, C17, siodło 750). Stack chwytów wyliczony 671 vs fitter 670.
+
+**NIEZAKOŃCZONE:**
+- Kod serwera (`qbot_web.py`) jest w repo: commit d2423c0 (wykonany w innej sesji, obejmuje zmiany Garażu z tej sesji). **Do commita zostały tylko dokumenty:** `docs/DECISIONS.md`, `docs/GARAZ.md` (nowy), `docs/CURRENT.md`, `docs/TODO.md` (kanał Mac/SSH nie odpowiadał, DEV ma git tylko do odczytu). Commit jawnymi ścieżkami jako qbot, push jako root.
+- Do uzupełnienia przez Michała: setback siodła w „Moje”, kąt mostka Gear Groove, rozmiar ramy Monstera, pomiar ud/podudzi.
+- Pliki `.bak.*` z tej sesji w `/opt/qbot/web/public`, `/opt/qbot/app` i obok `garage.db` — do sprzątnięcia po akceptacji.
+
 ## [2026-09-23] TRENER w Formie — serwis zamknięty (etapy 1-5 + zestawy ćwiczeń)
 
 - Zakładka Trener w forma.html (trener.js/trener.css poza repo, v=5): Tydzień (silnik planu, akcje dnia, przeciąganie,
@@ -1101,3 +1114,14 @@ Zweryfikowane na zywo. qbot-api zrestartowany. OTWARTE: retry przy 202 w QExt2 (
 ## 2026-09-24 (claude-pmguard)
 - Straznik miernika: baza per miernik (meter_key), werdykt BAZA dla nowego miernika, TREND tylko ten sam miernik; recheck 40 dni zrobiony. Czujniki zapisywane tez w backfill/_one; historia uzupelniona. Commit: patrz git.
 - Straznik: zapas miernika z biegow AXS gdy FIT bez czujnikow (24.09 przeliczona: OK). Czeka na commit razem z poprzednia zmiana.
+
+
+## [2026-09-28] Sesja: Kalendarz / Raport z jazdy / Forma / TRENER / ModelQ (claude-kal-an)
+- Kalendarz: klik w wydarzenie w siatce -> edytor; pogoda na kafelkach (/api/calendar/wx: prognoza jak TRENER + pogoda z minionych jazd); wszystkie wykonane treningi (training_sessions, wszystkie sporty) zamiast 50 ostatnich jazd.
+- Raport z jazdy: Analiza AI v2 (plan / wykonanie / konsekwencje na zywo / uwagi; fakty w qbot3/rides/ride_report_facts.py) jako ramka w widoku Analiza; zwijanie sekcji i ramek Wysilku.
+- OBCIAZENIE = XSS ModelQ (modelq2_ride.xss_total) wszedzie: raport z jazdy (apply_canonical_load), lista jazd, kalendarz, Forma, TRENER, Albert. NIE TSS Garmina, NIE fitmodel_wbal_ride (stara skala +10..28%).
+- ModelQ: wiele jazd dziennie (ingest kazdej jazdy + suma dnia), backfill 17 jazd, przebudowa historii. Kopie: qbot_v2.bak_20260928_{fitmodel_daily,modelq2_signature,modelq2_ride} (do usuniecia po weryfikacji).
+- Testy ModelQ: tests/test_modelq2.py (16); nocny krok daily_job modelq2_integrity (fitmodel/modelq2/integrity.py) z alertem Telegram.
+- TRENER: wydarzenie "jazda" bez trasy = jazda dnia (km z notatki), czas/XSS z podobnych jazd. Kalendarz: FK ON DELETE CASCADE (planned_load_daily, report_schedule, calendar_reminder_fired).
+- Forma/Dziennik: dane ze START (liczniki gotowosc -2..+2 i swiezosc -40..+30, strzalki trendu 7 dni, jedzenie, ostatnia jazda, statystyki, wykres obciazenia z dwiema skalami). START do przeprojektowania.
+- OTWARTE: gwiazdki oceny treningow w TRENERZE (backend /api/trener/rating jest, brak UI); cele jedzenia/wagi zaszyte w froncie (2100 kcal, 160 g, 100 kg do 30.09); niezacommitowane zmiany innych sesji z 25.09 (qbot_web.py garderoba/termika, qbot_garage_taxonomy.py, ride_thermal.py - serwer z nich korzysta); START licznik gotowosci ma stare progi.

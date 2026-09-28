@@ -4144,3 +4144,11 @@ spisuje device_info przy zapisie). QExt2 build-189 niewinny (diff 184->189 nie d
 czujnikow). Zapas w strazniku: brak bike_power w FIT + >=10 zmian biegow AXS ->
 ostatni miernik z jazd z AXS (meter_key_from_axs), notka "miernik ustalony z biegow AXS".
 Takie jazdy NIE wchodza do bazy (baza tylko z potwierdzonych czujnikow). 24.09: +4% OK.
+
+## 2026-09-24 — Fitting: pozycja aero, zdjęcia ustawień, oceny kątów, rozdzielenie ustawień fittera od własnych
+- Ustawienie z lemondką (`aero_id`) rysuje sylwetkę na podłokietnikach (przełącznik „pozycja aero”); pozycja podłokietników w `components.dims` lemondki (`pad_stack_mm`, `pad_setback_mm`), dla Grizla odczyt ze zdjęcia: 50 mm nad kierownicą, 115 mm za zaciskiem. Bark model 85° vs zdjęcie ~80°.
+- Długości nóg ze zdjęcia ODRZUCONE (noga nie sięgała pedału – kolano 175°). Pomiar „szacunek ze zdjęcia” zawiera tylko tułów/ramię/przedramię.
+- Zdjęcia ustawień: `fitting.photo/thumb`, `entity=fitting` w /api/garage/photo*.
+- Oceny: kolano w dole 140–150°, biodro w GÓRZE korby 45–60° (zamiast kąta w dole), plecy 30–45° / aero 20–35°, bark 80–95° / aero 80–100°; opis i znaczenie odchylenia w dymku.
+- Historia fittera ≠ konfiguracja właściciela: fitter = Gear Groove 80 mm, podkładki 25 mm, moduł offsetu Fair Cycles, C13; własne = Zipp SL 90 mm (−6° potwierdzone), podkładki 5 mm, C17, siodło 750 mm. Części zapasowe mostek/korba przeniesione do kategorii stem/crankset (status zapas).
+- Dokumentacja modułu: docs/GARAZ.md.
