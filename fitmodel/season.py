@@ -156,6 +156,10 @@ def build(conn, today: dt.date | None = None) -> dict:
         z["story"] = story(z, fd, [r for r in rides if r["date"] >= start], ill)
     except Exception as exc:   # opis nie moze zablokowac danych
         z["story"] = {"error": str(exc)}
+    try:
+        z["tiles"] = tiles(z, fd, [r for r in rides if r["date"] >= start])
+    except Exception as exc:
+        z["tiles"] = [{"id": "err", "title": "Status", "status": "błąd", "level": "bad", "line": str(exc), "more": []}]
     return z
 
 
@@ -210,6 +214,14 @@ def _phases(weeks):
             merged.append({"kind": cur["kind"], "weeks": list(cur["weeks"])})
         i += 1
     return merged
+
+
+def trip_start(ph, rides):
+    """Pierwszy dzien wyjazdu = pierwsza jazda >= TRIP_RIDE_H h w tygodniach fazy (nie poniedzialek)."""
+    a = dt.date.fromisoformat(ph["weeks"][0]["week"])
+    b = a + dt.timedelta(days=7 * len(ph["weeks"]) - 1)
+    ds = [r["date"] for r in rides if a <= r["date"] <= b and (r["duration_s"] or 0) >= TRIP_RIDE_H * 3600]
+    return min(ds) if ds else a
 
 
 def story(z, fd, rides, ill):
@@ -298,10 +310,7 @@ def story(z, fd, rides, ill):
     for ph in phs:
         if ph["kind"] != "wyjazd":
             continue
-        a = dt.date.fromisoformat(ph["weeks"][0]["week"])
-        trip_rides = [r for r in rides if a <= r["date"] <= a + dt.timedelta(days=7 * len(ph["weeks"]) - 1)
-                      and (r["duration_s"] or 0) >= 3600]
-        a0 = min((r["date"] for r in trip_rides), default=a)
+        a0 = trip_start(ph, rides)
         pre = [rdy(a0 - dt.timedelta(days=k)) for k in range(1, 8)]
         pre = [v for v in pre if v is not None]
         h = sum(w["hours"] for w in ph["weeks"]) / len(ph["weeks"])
@@ -351,9 +360,7 @@ def story(z, fd, rides, ill):
     for ph in phs:
         if ph["kind"] != "wyjazd":
             continue
-        a = dt.date.fromisoformat(ph["weeks"][0]["week"])
-        tr = [r for r in rides if a <= r["date"] <= a + dt.timedelta(days=13) and (r["duration_s"] or 0) >= 3600]
-        a0 = min((r["date"] for r in tr), default=a)
+        a0 = trip_start(ph, rides)
         pre = [rdy(a0 - dt.timedelta(days=k)) for k in range(1, 8)]
         pre = [v for v in pre if v is not None]
         if pre and sum(pre) / len(pre) <= TRIP_PRE_READY:
@@ -380,3 +387,117 @@ def story(z, fd, rides, ill):
     return {"przebieg": przebieg, "gdzie": gdzie, "plan": plan, "obserwacje": obs, "wnioski": lessons,
             "zasady": ("Zdania powstają z danych według stałych reguł (fakty w czasie, bez zgadywania przyczyn). "
                        "Wniosek pojawia się dopiero, gdy wzór powtórzył się w sezonie.")}
+
+
+# ======================= KAFLE STATUSU (2026-09-28) =======================
+# Szybka odpowiedz "co to znaczy / co robic / czy gotowy na wyjazd". Progi jawne:
+REGEN_RDY3 = -0.4          # gotowosc (srednia 3 dni) >= -> regeneracja w normie
+REGEN_RHR_MARGIN = 1.0     # tetno spocz. (7 dni) <= start sezonu + margines
+AFTER_ILL_EASY_DAYS = 14   # po infekcji: tylko krotko (reguła z Twojego sezonu, 2x dolek)
+EASY_RIDE_H = 1.5
+FORM_TOL = 3.0             # forma >= forma na starcie ostatniego wyjazdu - tolerancja
+NORMAL_WEEK_X = 0.8        # "normalny tydzien" >= 0.8 x typowy
+
+
+def tiles(z, fd, rides):
+    W, weeks, typical = z["where"], z["weeks"], z["typical_hours"]
+    today = dt.date.fromisoformat(z["today"])
+
+    def val(d, k):
+        r = fd.get(d)
+        return float(r[k]) if r and r.get(k) is not None else None
+
+    def rdy(d):
+        v = val(d, "readiness_effective")
+        return v if v is not None else val(d, "readiness_score")
+
+    def mean(xs):
+        xs = [x for x in xs if x is not None]
+        return sum(xs) / len(xs) if xs else None
+
+    rdy3 = mean([rdy(today - dt.timedelta(days=k)) for k in range(0, 3)])
+    rhr7 = mean([val(today - dt.timedelta(days=k), "rhr") for k in range(0, 7)])
+    rhr_ref = W["rhr"]["start_28d"]
+    rhr_goal = (rhr_ref + REGEN_RHR_MARGIN) if rhr_ref is not None else None
+    rdy_ok = rdy3 is not None and rdy3 >= REGEN_RDY3
+    rhr_ok = rhr7 is not None and rhr_goal is not None and rhr7 <= rhr_goal
+    regen_ok = rdy_ok and rhr_ok
+
+    # forma odniesienia: start ostatniego wyjazdu w sezonie
+    ref = None
+    for ph in _phases(weeks):
+        if ph["kind"] == "wyjazd":
+            a = trip_start(ph, rides)
+            c0 = None
+            for k in range(1, 9):
+                c0 = val(a - dt.timedelta(days=k), "ctl_xss")
+                if c0 is not None:
+                    break
+            ref = {"start": a, "ctl": c0, "weeks": len(ph["weeks"]),
+                   "hours": sum(w["hours"] for w in ph["weeks"]) / len(ph["weeks"])}
+    ctl = W["ctl"]["now"]
+    dai = W["days_after_illness"]
+    ill_end = dt.date.fromisoformat(W["illness_last_end"]) if W["illness_last_end"] else None
+    full = [w for w in weeks if not w["partial"]]
+    normal_after = [w for w in full if ill_end and dt.date.fromisoformat(w["week"]) > ill_end
+                    and typical and w["hours"] >= NORMAL_WEEK_X * typical and w["type"] != "infekcja"]
+    h4, tw = W["hours_week"]["now_4w"], typical
+    T = []
+
+    # 1. forma
+    if ctl is not None and ref and ref["ctl"]:
+        d = ctl - ref["ctl"]
+        lvl = "good" if d >= -FORM_TOL else ("warn" if d >= -10 else "bad")
+        T.append({"id": "forma", "title": "Forma", "status": "wystarcza" if lvl == "good" else ("trochę brakuje" if lvl == "warn" else "za niska"),
+                  "level": lvl,
+                  "line": "%s — jak na starcie wyjazdu %s (%s)" % (_pl(ctl, 0), _dm(ref["start"]), _pl(ref["ctl"], 0)) if lvl == "good"
+                          else "%s, na starcie wyjazdu %s było %s" % (_pl(ctl, 0), _dm(ref["start"]), _pl(ref["ctl"], 0)),
+                  "more": ["Forma (CTL) to średnie obciążenie z ok. 6 tygodni — baza treningowa.",
+                           "Szczyt sezonu %s (%s) był w trakcie wyjazdu, więc do planowania porównuję z formą na jego starcie."
+                           % (_pl(W["ctl"]["max"], 0), _dm(dt.date.fromisoformat(W["ctl"]["max_day"]))),
+                           "Obciążenie po korekcie miernika (jazdy w kwarantannie liczone z tętna)."]})
+    # 2. regeneracja
+    lvl = "good" if regen_ok else ("warn" if (rdy3 is not None and rdy3 > -0.8) else "bad")
+    T.append({"id": "regen", "title": "Regeneracja", "status": "w normie" if regen_ok else "niepełna", "level": lvl,
+              "line": "gotowość %s · tętno %s (norma do %s)" % (_pl(rdy3, 2), _pl(rhr7), _pl(rhr_goal)),
+              "more": ["Gotowość (średnia 3 dni): %s — w normie od %s. %s" % (_pl(rdy3, 2), _pl(REGEN_RDY3, 1), "✓" if rdy_ok else "✗"),
+                       "Tętno spoczynkowe (średnia 7 dni): %s — w normie do %s (start sezonu %s + %s). %s"
+                       % (_pl(rhr7), _pl(rhr_goal), _pl(rhr_ref), _pl(REGEN_RHR_MARGIN), "✓" if rhr_ok else "✗"),
+                       "To mówi, czy organizm odrobił zmęczenie — niezależnie od miernika mocy."]})
+    # 3. po infekcji
+    if dai is not None and dai <= 30:
+        if dai < AFTER_ILL_EASY_DAYS:
+            left = AFTER_ILL_EASY_DAYS - dai
+            T.append({"id": "infekcja", "title": "Po infekcji", "status": "dzień %d z %d" % (dai, AFTER_ILL_EASY_DAYS), "level": "warn",
+                      "line": "jeszcze %d dni: tylko krótko i spokojnie (do ~%s h)" % (left, _pl(EASY_RIDE_H)),
+                      "more": ["Koniec objawów: %s." % _dm(ill_end),
+                               "W Twoim sezonie 2 razy (21.05 i 27.09) dłuższa jazda w pierwszych 2 tygodniach po infekcji dała najgłębszy dołek gotowości.",
+                               "Do %s bez długich jazd." % _dm(ill_end + dt.timedelta(days=AFTER_ILL_EASY_DAYS))]})
+        else:
+            T.append({"id": "infekcja", "title": "Po infekcji", "status": "okres ochronny minął", "level": "good",
+                      "line": "%d dni od końca infekcji" % dai, "more": ["Koniec objawów: %s." % _dm(ill_end)]})
+    # 4. objetosc
+    if h4 is not None and tw:
+        x = h4 / tw
+        lvl = "good" if x >= NORMAL_WEEK_X else ("warn" if x >= 0.6 else "bad")
+        T.append({"id": "objetosc", "title": "Objętość", "status": "normalna" if lvl == "good" else "obniżona" if lvl == "warn" else "niska",
+                  "level": lvl, "line": "%s h/tydz. (typowo %s h)" % (_pl(h4), _pl(tw)),
+                  "more": ["Średnia z 4 ostatnich pełnych tygodni: %s h. Typowy tydzień sezonu (mediana, bez infekcji): %s h." % (_pl(h4), _pl(tw)),
+                           "Godziny nie zależą od miernika mocy."]})
+    # 5. gotowosc na wyjazd (jak ostatni wyjazd sezonu)
+    if ref:
+        checks = [
+            ("forma jak na starcie wyjazdu %s" % _dm(ref["start"]), ctl is not None and ref["ctl"] is not None and ctl >= ref["ctl"] - FORM_TOL),
+            ("regeneracja w normie", regen_ok),
+            ("co najmniej %d dni po infekcji" % AFTER_ILL_EASY_DAYS, dai is None or dai >= AFTER_ILL_EASY_DAYS),
+            ("co najmniej 1 normalny tydzień (≥ %s h) po infekcji" % _pl(NORMAL_WEEK_X * tw if tw else None), dai is None or len(normal_after) >= 1),
+        ]
+        ok = sum(1 for _, v in checks if v)
+        lvl = "good" if ok == len(checks) else ("warn" if ok >= len(checks) - 2 else "bad")
+        miss = [n for n, v in checks if not v]
+        T.append({"id": "wyjazd", "title": "Wyjazd jak w czerwcu", "status": "gotowy" if lvl == "good" else "jeszcze nie",
+                  "level": lvl, "line": ("wszystkie warunki spełnione" if not miss else "brakuje: " + ", ".join(miss)),
+                  "more": ["Odniesienie: wyjazd od %s, %d tyg. po %s h." % (_dm(ref["start"]), ref["weeks"], _pl(ref["hours"]))]
+                          + [("✓ " if v else "✗ ") + n for n, v in checks]
+                          + ["Przed samym startem: kilka luźniejszych dni."]})
+    return T

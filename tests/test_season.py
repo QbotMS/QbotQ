@@ -32,6 +32,12 @@ class BuildLive(unittest.TestCase):
         types = {w["type"] for w in z["weeks"]}
         self.assertTrue(types <= {"budowa", "mocny", "lzejszy", "wyjazd", "infekcja", "biezacy"})
         self.assertEqual(sum(1 for w in z["weeks"] if w["partial"]), 1)
+        ids = [t["id"] for t in z["tiles"]]
+        self.assertNotIn("err", ids)
+        for t in z["tiles"]:
+            self.assertIn(t["level"], ("good", "warn", "bad"))
+            self.assertTrue(t["title"] and t["status"] and t["line"])
+        self.assertIn("regen", ids)
         st = z["story"]
         self.assertNotIn("error", st)
         for k in ("przebieg", "gdzie", "plan", "obserwacje", "wnioski"):
