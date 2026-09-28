@@ -420,7 +420,7 @@ def plan_week(ctx: dict) -> dict:
         srow = {"day": d.isoformat(), "sport": "rower", "name": rr["name"], "start_time": st, "dur_min": dur,
                 "min_min": dur, "zone": 2, "is_long": is_long, "xss": rr.get("xss") or xss_of("rower", 2, dur),
                 "status": "plan", "cut": False, "source": "auto",
-                "note": ("jazda z Kalendarza (trasa): " if rr.get("has_route", True) else "jazda z Kalendarza (bez trasy): ") + ", ".join(x for x in (f"{rr['km']} km" if rr.get("km") else None, f"+{rr['up']} m" if rr.get("up") else None, f"~{rr['xss']} XSS" if rr.get("xss") else None) if x)}
+                "note": ("jazda z Kalendarza (trasa): " if rr.get("has_route", True) else "jazda z Kalendarza (bez trasy): ") + ", ".join(x for x in (f"{rr['km']} km" if rr.get("km") else None, f"+{rr['up']} m" if rr.get("up") else None, f"~{rr['xss']} XSS" if rr.get("xss") else None, f"czas i XSS z {rr['sim_n']} podobnych jazd" if rr.get("sim_n") else None) if x)}
         placed.append(srow); out.append(srow)
         if rr.get("multi"):
             target_min += dur  # neutralizacja odjecia ponizej: dni wyprawy liczone osobno
@@ -863,6 +863,20 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
                   "WHERE sport_type IN ('cycling','gravel_cycling') AND date > %s", (today - timedelta(days=120),))
         sp_ = c.fetchone()
         spd_ = (float(sp_["km"]) / float(sp_["h"])) if sp_ and sp_["h"] and float(sp_["h"]) > 5 else 20.0
+        def _similar(km):
+            """2026-09-28: czas ruchu i XSS jazdy z Kalendarza z PODOBNYCH jazd (dystans +-35%, 365 dni):
+            mediana predkosci ruchu i mediana XSS ModelQ na km. <2 podobnych -> None (stary szacunek)."""
+            c.execute("""SELECT t.distance_m/1000.0 AS km, t.duration_s/3600.0 AS h, m.xss_total AS x
+                         FROM qbot_v2.training_sessions t JOIN qbot_v2.modelq2_ride m ON m.external_id = t.external_id
+                         WHERE t.sport_type IN ('cycling','gravel_cycling') AND t.date > %s
+                           AND t.distance_m BETWEEN %s AND %s AND t.duration_s > 0 AND m.xss_total > 0""",
+                      (today - timedelta(days=365), km * 650.0, km * 1350.0))
+            rs_ = c.fetchall()
+            if len(rs_) < 2:
+                return None
+            sp = sorted(float(x["km"]) / float(x["h"]) for x in rs_)
+            xk = sorted(float(x["x"]) / float(x["km"]) for x in rs_)
+            return sp[len(sp) // 2], xk[len(xk) // 2], len(rs_)
         per_entry: dict = {}
         for r in rows:
             per_entry.setdefault(r["entry_id"], []).append(r)
@@ -889,11 +903,14 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
                     rb = c.fetchone(); km_ = round(float(rb["distance_m"]) / 1000 / split, 1) if rb and rb["distance_m"] else None
                 up_ = int(int(mu.group(1)) / split) if mu else None
                 xs_ = int(int(mx.group(1)) / split) if mx else None
-                dur = int(round((km_ / spd_) * 60)) if km_ else 180
+                sim = _similar(km_) if km_ else None
+                dur = int(round((km_ / (sim[0] if sim else spd_)) * 60)) if km_ else 180
+                if xs_ is None and sim:
+                    xs_ = int(round(km_ * sim[1]))
                 out_.append({"entry_id": eid, "day": dday, "route_id": r["route_id"],
                              "name": title + (f" — dzień {i + 1}/{len(items)}" if len(items) > 1 else ""),
                              "at": e["at_time"].strftime("%H:%M") if e["at_time"] else None, "km": round(km_, 1) if km_ else None,
-                             "up": up_, "xss": xs_, "dur_min": max(30, dur), "multi": n > 1, "has_route": bool(r["route_id"])})
+                             "up": up_, "xss": xs_, "dur_min": max(30, dur), "multi": n > 1, "has_route": bool(r["route_id"]), "sim_n": (sim[2] if sim else None)})
         return out_
     try:
         for rr in _route_days(ws, we):
