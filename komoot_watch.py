@@ -16,7 +16,7 @@ Pierwszy przebieg (pusta tabela) = SEED (bez pytania, bez pobierania geometrii).
 Tabela stanu: qbot_v2.komoot_seen_tours.
 """
 from __future__ import annotations
-import os, sys, json, hashlib
+import os, sys, json, hashlib, re
 sys.path.insert(0, "/opt/qbot/app")
 import komoot_auth
 import komoot_ingest
@@ -83,6 +83,47 @@ def _alert_throttled(key, msg):
     except Exception as _e:
         print("[KOMOOT-WATCH] nie zapisano stanu alarmu:", _e)
     return True
+
+
+_API_5XX_GRACE_S = 3600  # alarm o 5xx dopiero gdy blad trzyma sie > 1 h
+
+
+def _is_5xx(txt):
+    return bool(re.search(r"HTTP 5\d\d", txt or ""))
+
+
+def _state_rw(update=None):
+    import json as _j
+    st = {}
+    try:
+        with open(_ALERT_STATE, encoding="utf-8") as f:
+            st = _j.load(f)
+    except Exception:
+        st = {}
+    if update is not None:
+        update(st)
+        try:
+            with open(_ALERT_STATE, "w", encoding="utf-8") as f:
+                _j.dump(st, f)
+        except Exception as _e:
+            print("[KOMOOT-WATCH] nie zapisano stanu:", _e)
+    return st
+
+
+def _api_5xx_since():
+    """Zapamietaj poczatek serii bledow 5xx; zwraca ile sekund trwa."""
+    import time as _t
+    now = int(_t.time())
+    def _u(st):
+        if not st.get("api_5xx_since"):
+            st["api_5xx_since"] = now
+    st = _state_rw(_u)
+    return now - int(st.get("api_5xx_since") or now)
+
+
+def _api_5xx_clear():
+    if _state_rw().get("api_5xx_since"):
+        _state_rw(lambda st: st.pop("api_5xx_since", None))
 
 
 def _geo_sig(session, tour_id):
@@ -171,7 +212,15 @@ def _list_all_planned(session, cap=1200):
     out = []
     page = 0
     while True:
-        r = kclient.list_planned_tours(session, limit=50, page=page)
+        try:
+            r = kclient.list_planned_tours(session, limit=50, page=page)
+        except kclient.KomootClientError as _e:
+            if not _is_5xx(str(_e)):
+                raise
+            import time as _t
+            print("[KOMOOT-WATCH] 5xx na stronie %d, ponawiam za 5 s: %s" % (page, _e))
+            _t.sleep(5)
+            r = kclient.list_planned_tours(session, limit=50, page=page)
         ts = r["tours"]
         out.extend(ts)
         if len(ts) < 50 or len(out) >= cap:
@@ -245,8 +294,16 @@ def check_once(session=None, seed_if_empty=True):
             _alert_throttled("api_auth", "API Komoot odrzuca sesje (HTTP 401/403) - "
                                          "przeloguj i wgraj swieze ciasteczka. Nowe trasy NIE sa wykrywane.")
             return {"error": "auth_api", "detail": txt}
+        if _is_5xx(txt):
+            dur = _api_5xx_since()
+            if dur < _API_5XX_GRACE_S:
+                print("[KOMOOT-WATCH] chwilowy blad serwera Komoot (%d s), ponowie za ~5 min: %s" % (dur, txt))
+                return {"error": "transient_api", "detail": txt, "since_s": dur}
+            _alert_throttled("api_5xx", "Serwer Komoot nie dziala od ~%d min: %s" % (dur // 60, txt))
+            return {"error": "api", "detail": txt, "since_s": dur}
         _alert_throttled("api_other", "Blad API Komoot: %s" % txt)
         return {"error": "api", "detail": txt}
+    _api_5xx_clear()
     # --- Przebieg 1: kandydaci (nowe albo zmieniony changed_at) + odcisk geometrii ---
     candidates = []
     for t in tours:
