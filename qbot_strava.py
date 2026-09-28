@@ -29,6 +29,22 @@ PHOTO_URL = "/strava/"
 DEFAULT_BASE = os.environ.get("STRAVA_REDIRECT_BASE", "https://albert.cytr.us")
 SCOPE = "read,activity:read_all"
 LIMIT_15, LIMIT_DAY = 90, 900          # zapas wzgledem limitow Stravy (100 / 1000)
+# dobor zdjec (decyzja Michala 2026-09-28): NIE wszystkie. Na start ~40 z najlepszych jazd (wyjazdy + dlugie),
+# potem po 2-3 zdjecia z kazdej nowej jazdy.
+HOME = (52.23, 21.01)
+AWAY_KM, LONG_KM = 80.0, 90.0
+BACKFILL_MIN, BACKFILL_CAP, PER_RIDE_BACKFILL = 30, 40, 2
+INCR_RIDES, PER_RIDE_INCR = 3, 3
+
+
+def _km_from_home(lat, lon):
+    import math
+    if lat is None or lon is None:
+        return 0.0
+    p1, p2 = math.radians(HOME[0]), math.radians(lat)
+    dl, dp = math.radians(lon - HOME[1]), p2 - p1
+    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 6371.0 * 2 * math.asin(math.sqrt(h))
 
 _SYNC = {"running": False, "phase": None, "done": 0, "photos": 0, "error": None, "started": None, "finished": None, "note": None}
 _LOCK = threading.Lock()
@@ -131,15 +147,53 @@ def run_sync(db_conn: Callable, since: str = "2025-01-01") -> None:
                     return
                 page += 1
             _SYNC["phase"] = "zdjęcia"
-            c.execute("SELECT strava_id, ride_key, start_date FROM qbot_v2.strava_activity WHERE total_photo_count > 0 AND photos_synced_at IS NULL ORDER BY start_date DESC")
-            todo = [dict(r) if hasattr(r, "keys") else {"strava_id": r[0], "ride_key": r[1], "start_date": r[2]} for r in c.fetchall()]
-            for t in todo:
+            c.execute("SELECT count(*) AS n FROM qbot_v2.strava_photo")
+            r0 = c.fetchone(); have = r0["n"] if hasattr(r0, "keys") else r0[0]
+            c.execute("SELECT strava_id, ride_key, start_date, distance_m, raw FROM qbot_v2.strava_activity "
+                      "WHERE total_photo_count > 0 AND photos_synced_at IS NULL ORDER BY start_date DESC")
+            acts = [dict(r) if hasattr(r, "keys") else {"strava_id": r[0], "ride_key": r[1], "start_date": r[2], "distance_m": r[3], "raw": r[4]}
+                    for r in c.fetchall()]
+            for a_ in acts:
+                raw = a_.get("raw") or {}
+                if isinstance(raw, str):
+                    raw = json.loads(raw)
+                ll = raw.get("start_latlng") or []
+                a_["away_km"] = _km_from_home(ll[0], ll[1]) if len(ll) == 2 else 0.0
+                a_["region"] = ("%d,%d" % (round(ll[0]), round(ll[1]))) if len(ll) == 2 else "?"
+                a_["dist_km"] = (a_.get("distance_m") or 0) / 1000.0
+            if have < BACKFILL_MIN:
+                # START: ~40 zdjec z NAJLEPSZYCH jazd = wyjazdy (start > 80 km od domu) i dlugie jazdy (>= 90 km),
+                # po kolei z kazdego regionu (Toskania, Sycylia, Opolszczyzna...), max 2 zdjecia z jednej jazdy
+                best = [x for x in acts if x["away_km"] > AWAY_KM or x["dist_km"] >= LONG_KM]
+                regions = {}
+                for x in sorted(best, key=lambda x: (-(x["away_km"] > AWAY_KM), -x["dist_km"])):
+                    regions.setdefault("dom" if x["away_km"] <= AWAY_KM else x["region"], []).append(x)
+                queue = []
+                while any(regions.values()):
+                    for k in list(regions):
+                        if regions[k]:
+                            queue.append(regions[k].pop(0))
+                cap, per = BACKFILL_CAP - have, PER_RIDE_BACKFILL
+            else:
+                # potem: tylko NOWE jazdy (pozniejsze niz ostatnia jazda ze zdjeciami), po 2-3 zdjecia z jazdy
+                c.execute("SELECT max(a.start_date) AS m FROM qbot_v2.strava_activity a WHERE EXISTS "
+                          "(SELECT 1 FROM qbot_v2.strava_photo p WHERE p.strava_activity_id = a.strava_id)")
+                r1 = c.fetchone(); last = r1["m"] if hasattr(r1, "keys") else r1[0]
+                queue = [x for x in acts if last is None or x["start_date"] > last][:INCR_RIDES]
+                cap, per = INCR_RIDES * PER_RIDE_INCR, PER_RIDE_INCR
+            taken = 0
+            for t in queue:
+                if taken >= cap:
+                    break
                 tok = _token(c)
                 photos, usage = _http("GET", API + "/activities/%d/photos" % t["strava_id"], {"size": 2048, "photo_sources": "true"}, tok)
+                got = 0
                 for p in photos or []:
-                    uid = str(p.get("unique_id") or p.get("id"))
+                    if got >= per or taken >= cap:
+                        break
+                    uid = str(p.get("unique_id") or p.get("id") or "")
                     url = (p.get("urls") or {}).get("2048") or next(iter((p.get("urls") or {}).values()), None)
-                    if not uid or not url or p.get("type") not in (None, 1, "1") and p.get("video_url"):
+                    if not uid or not url or p.get("video_url"):
                         continue
                     fn = "%s.jpg" % uid.replace("/", "_")
                     path = os.path.join(PHOTO_DIR, fn)
@@ -151,17 +205,17 @@ def run_sync(db_conn: Callable, since: str = "2025-01-01") -> None:
                             print("[strava] zdjecie %s: %s" % (uid, e)); continue
                     ll = p.get("location") or [None, None]
                     sz = (p.get("sizes") or {}).get("2048") or [None, None]
-                    day = str(t["start_date"])[:10]
                     c.execute("""INSERT INTO qbot_v2.strava_photo (unique_id, strava_activity_id, ride_key, day, caption, lat, lon, taken_at, width, height, file, src_url)
-                                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (unique_id) DO UPDATE SET caption=EXCLUDED.caption, ride_key=EXCLUDED.ride_key""",
-                              (uid, t["strava_id"], t["ride_key"], day, p.get("caption") or None, ll[0] if ll else None, ll[1] if ll else None,
-                               p.get("created_at"), sz[0], sz[1], fn, url))
-                    _SYNC["photos"] += 1
+                                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (unique_id) DO NOTHING""",
+                              (uid, t["strava_id"], t["ride_key"], str(t["start_date"])[:10], p.get("caption") or None,
+                               ll[0] if ll else None, ll[1] if ll else None, p.get("created_at"), sz[0], sz[1], fn, url))
+                    got += 1; taken += 1; _SYNC["photos"] += 1
                 c.execute("UPDATE qbot_v2.strava_activity SET photos_synced_at=now() WHERE strava_id=%s", (t["strava_id"],))
                 conn.commit()
                 if _over_limit(usage):
-                    _SYNC["note"] = "limit Stravy - reszta zdjęć przy następnym pobieraniu (za ok. 15 min)"
+                    _SYNC["note"] = "limit Stravy - reszta przy następnym pobieraniu (za ok. 15 min)"
                     return
+            # jazdy, ktorych nie wybralismy, NIE sa oznaczane - moga trafic do kolejnego doboru
             _SYNC["note"] = "gotowe"
         finally:
             conn.close()
