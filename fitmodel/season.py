@@ -945,7 +945,7 @@ def facts(conn, z, fd, rides, ill):
     sess = _rows(conn, "SELECT day, sport, dur_min, xss, name FROM qbot_v2.trainer_session WHERE day >= %s AND day <= %s",
                  (today - dt.timedelta(days=today.weekday()), end))
     # --- dane ---
-    pah = _rows(conn, """SELECT g.ride_date AS d, g.p_at_hr_w AS p, COALESCE(g.meter_key, 'nieznany') AS m,
+    pah = _rows(conn, """SELECT g.ride_date AS d, g.p_at_hr_w AS p, COALESCE(g.meter_key, 'nieznany') AS m, g.external_id AS e,
                                 EXISTS (SELECT 1 FROM qbot_v2.fitmodel_ride_quarantine q WHERE q.external_id=g.external_id AND q.released IS NULL) AS bad
                          FROM qbot_v2.power_meter_guard g WHERE g.ride_date >= %s AND g.p_at_hr_w IS NOT NULL ORDER BY g.ride_date""", (s0,))
     qdays = {r["d"] for r in _rows(conn, "SELECT m.ride_date AS d FROM qbot_v2.fitmodel_ride_quarantine q JOIN qbot_v2.modelq2_ride m "
@@ -957,6 +957,19 @@ def facts(conn, z, fd, rides, ill):
             r["bad"] = True
     for r in pah:
         r["grizl"] = r["m"] in GRIZL_METERS
+    # estymacja z fizyki dla okresu wady miernika (fitmodel/meter_physics.py): P@HR * wzorzec / ratio jazdy
+    phys, ref_ratio, ref_n = {}, None, 0
+    try:
+        from fitmodel import meter_physics as MP
+        MP.ensure(conn, s0)
+        ref_ratio, ref_n = MP.reference_ratio(conn, bad_from, bad_to)
+        phys = {r["e"]: float(r["q"]) for r in _rows(conn, "SELECT external_id AS e, ratio AS q FROM qbot_v2.meter_phys "
+                                                             "WHERE ratio IS NOT NULL AND ride_date >= %s", (s0,))}
+    except Exception:
+        phys = {}
+    for r in pah:
+        q = phys.get(r["e"])
+        r["p_est"] = (float(r["p"]) * ref_ratio / q) if (r["bad"] and q and ref_ratio) else None
     clean_all = [r for r in pah if not r["bad"]]
     cur_m = "Grizl"
     spider_from = min((r["d"] for r in pah if r["m"] == GRIZL_SPIDER_KEY), default=None)
@@ -996,6 +1009,8 @@ def facts(conn, z, fd, rides, ill):
         dom_m = ("Grizl (nowy pająk)" if any(r["m"] == GRIZL_SPIDER_KEY for r in pah if ws <= r["d"] <= we and r["grizl"])
                  else "Grizl") if p_w else None
         p_dom = round(_median(p_w)) if p_w else None
+        p_e = [r["p_est"] for r in pah if ws <= r["d"] <= we and r.get("p_est") and r["grizl"]]
+        p_est = round(_median(p_e)) if p_e else None
         bad_w = bool(bad_from and not (we < bad_from or ws > bad_to))
         wt = [x for d, x in wts if ws <= d <= we]
         hrs = round(sum((r["duration_s"] or 0) for r in rides_all if ws <= r["date"] <= we) / 3600.0, 1) if ws <= today else None
@@ -1008,6 +1023,8 @@ def facts(conn, z, fd, rides, ill):
                "p_at_hr": round(_median(p_w)) if p_w else None, "p_n": len(p_w),
                "p_at_hr_other_meter": round(_median(p_o)) if p_o else None, "meter_bad": bad_w,
                "p_week": p_dom, "p_meter": dom_m,
+               "p_est": p_est, "p_est_n": len(p_e),
+               "p_est_lo": round(p_est * (1 - 0.10)) if p_est else None, "p_est_hi": round(p_est * (1 + 0.10)) if p_est else None,
                "rhr": round(mean(rh), 1) if mean(rh) is not None else None,
                "readiness": round(mean(rd), 2) if mean(rd) is not None else None,
                "weight": round(sum(wt) / len(wt), 1) if wt else None, "weight_path": wpath(we) if (wpath and we > today) else None,
@@ -1069,7 +1086,10 @@ def facts(conn, z, fd, rides, ill):
               "p_at_hr_note": ("jedna seria Grizla przez caly sezon; od spider_change nowy pajak Quarq (ta sama os/rower, "
                                "mozliwa roznica kalibracji ok. 1-2%). Straznik zglaszal odchylenia miernika juz przed okresem "
                                "kwarantanny: guard_alert_days."),
-              "guard_alert_days": guard_alerts, "rhr_days_above_norm_14d": rhr_above, "rhr_norm": rhr_norm,
+              "guard_alert_days": guard_alerts,
+              "phys_ref_ratio": ref_ratio, "phys_ref_n": ref_n,
+              "phys_note": ("p_est = estymacja wydolnosci w okresie wady z fizyki na podjazdach (moc z miernika skorygowana "
+                            "o stosunek do mocy z grawitacji), dokladnosc ok. +-10%; tylko jazdy z podjazdami."), "rhr_days_above_norm_14d": rhr_above, "rhr_norm": rhr_norm,
               "weight_last": wts[-1][1] if wts else None, "weight_last_day": wts[-1][0].isoformat() if wts else None,
               "weight_goal": goal_w, "typical_hours": typical, "xss_per_h": round(xss_h, 1)}
     planned = [{"day": s["day"].isoformat(), "name": s["name"], "sport": s["sport"], "min": s["dur_min"], "xss": float(s["xss"] or 0)}

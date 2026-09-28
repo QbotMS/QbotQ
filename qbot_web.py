@@ -10480,14 +10480,16 @@ _SEASON_AI_SYSTEM = (
     "2. Patrz na caly przekroj: miesiac temu -> dzis -> za miesiac (plan TRENERA), a nie tylko na biezace zdarzenie.\n"
     "3. Moc przy tetnie (wydolnosc) = jedna seria Grizla przez caly sezon (p_week). Od trends.spider_change nowy pajak "
     "Quarq na tym samym rowerze - porownywalny, z mozliwa roznica ok. 1-2%. W okresie meter_bad_period pomiar byl wadliwy - "
-    "pomin go; zwroc uwage, ze straznik zglaszal odchylenia juz wczesniej (guard_alert_days) - wiec wartosci tuz przed "
-    "tym okresem traktuj ostroznie.\n"
+    "pomin pomiar; zamiast niego jest p_est = estymacja z fizyki na podjazdach (+-10%, p_est_lo..p_est_hi) - mozesz jej "
+    "uzywac z zaznaczeniem, ze to estymacja. Tydzien 3.08-20.08 to glownie Sycylia w upale (tetno wyzsze przy tych samych "
+    "watach). Straznik zglaszal odchylenia juz wczesniej (guard_alert_days) - wartosci tuz przed okresem wady ostroznie.\n"
     "4. Forma (CTL) to srednie obciazenie ~6 tygodni; w roztrenowaniu jej spadek jest zaplanowany i normalny.\n"
     "5. Infekcje: tylko fakt wystapienia, bez zgadywania przyczyn.\n"
     "6. Ocen plan TRENERA na najblizsze tygodnie (planned_sessions) wzgledem stanu organizmu - jesli cos koliduje "
     "(np. dluga jazda przy zlej regeneracji albo tuz po infekcji), powiedz to konkretnie z data.\n"
     "7. Po polsku, prosto, krotkie zdania, bez markdown i gwiazdek, bez motywacyjnych frazesow. Bez skrotow: "
-    "zamiast CTL pisz 'forma', zamiast XSS 'obciazenie', zamiast TSB 'swiezosc'. Nie cytuj liczb, ktore nic nie "
+    "zamiast CTL pisz 'forma', zamiast XSS 'obciazenie', zamiast TSB 'swiezosc'. readiness/readiness7 to 'gotowosc' "
+    "(HRV, tetno, sen; 0 = norma) - NIGDY nie nazywaj gotowosci swiezoscia. Nie cytuj liczb, ktore nic nie "
     "mowia zawodnikowi (np. obciazenie w punktach) - mow o godzinach, dniach, watach, uderzeniach serca, kg.\n"
     "9. uwagi_do_planu: opisz, co JEST w planie TRENERA i co z tym zrobic (np. 'Jazda 4:46 zaplanowana na 4 pazdziernika - "
     "skroc do ~1,5 h albo przesun'). Nie pisz trybem rozkazujacym o rzeczach, ktore juz sa w planie.\n"
@@ -10506,7 +10508,7 @@ def _season_ai_payload(z):
     today = z.get("today")
     wk = F.get("weeks") or []
     cur = next((i for i, w in enumerate(wk) if w.get("current")), len(wk) - 1)
-    keep = ("week", "phase_name", "light", "hours", "plan_h", "ctl", "ctl_proj", "p_week", "p_meter",
+    keep = ("week", "phase_name", "light", "hours", "plan_h", "ctl", "ctl_proj", "p_week", "p_meter", "p_est", "p_est_lo", "p_est_hi",
             "meter_bad", "rhr", "readiness", "weight", "weight_path", "ill_days")
     weeks = [{k: w.get(k) for k in keep if w.get(k) not in (None, False, 0) or k in ("week", "hours")} for w in wk[max(0, cur - 20): cur + 13]]
     tr = F.get("trainer") or {}
