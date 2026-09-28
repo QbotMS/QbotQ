@@ -6184,7 +6184,14 @@ def ride_report_w2(response: Response, ride: str = Query(...), rebuild: int = Qu
     if not row or not row.get("w1_json"):
         raise HTTPException(status_code=404, detail="Brak raportu W1 - najpierw wygeneruj raport")
     if row.get("w2_json") and not rebuild:
-        return row["w2_json"]
+        w2s = row["w2_json"]
+        try:  # W2 v2: konsekwencje zawsze na zywo (model formy przelicza dni po jezdzie w nocy)
+            if isinstance(w2s, dict) and w2s.get("fakty"):
+                from qbot3.rides import ride_report_facts as _RF
+                w2s["konsekwencje_live"] = _RF.live_for_day(w2s["fakty"].get("dzien"))
+        except Exception as e:
+            print("[ride_report_w2] konsekwencje live: %s" % e)
+        return w2s
     if not rebuild:
         return {"status": "empty"}
     from qbot3.rides.ride_report_w2 import build_w2
@@ -9710,6 +9717,67 @@ def calendar_entries(start: str = Query(...), end: str = Query(...)):
     return {"start": start, "end": end, "entries": rows, "days": days,
             "rides": rides, "entry_routes": entry_routes, "planned": planned}
 
+
+@app.get("/api/calendar/wx")
+def calendar_wx(request: Request, start: str = Query(...), end: str = Query(...)):
+    """Pogoda na kafelki kalendarza (2026-09-28). forecast = to samo zrodlo i te same progi co TRENER
+    (qbot_trener_engine.forecast: Open-Meteo, punkt domowy z jazd, godziny 8-18, od wczoraj do +9 dni);
+    rides = pogoda faktyczna z raportow minionych jazd (ride_report_data.w1_json.weather); ov = progi wx.* TRENERA."""
+    user = _current_user(request) or ""
+    fc, ov, rides = {}, {}, {}
+    conn = _db_conn()
+    try:
+        c = conn.cursor()
+        try:
+            import qbot_trener_engine as _E
+            hp = _E.home_point(c)
+            if hp:
+                fc = {d: v for d, v in (_E.forecast(*hp) or {}).items() if start <= d <= end}
+        except Exception as e:
+            conn.rollback()
+            print("[calendar_wx] prognoza: %s" % e)
+        try:
+            c.execute("SELECT value FROM qbot_v2.trainer_auto_cache WHERE key='weather'")
+            wr = c.fetchone()
+            if wr and wr.get("value"):
+                ov.update({k: v["value"] for k, v in dict(wr["value"]).items()
+                           if k.startswith("wx.") and isinstance(v, dict) and "value" in v})
+            if user:
+                c.execute("SELECT overrides FROM qbot_v2.trainer_settings WHERE username=%s", (user,))
+                r = c.fetchone()
+                if r and r.get("overrides"):
+                    ov.update({k: v for k, v in dict(r["overrides"]).items() if str(k).startswith("wx.")})
+        except Exception as e:
+            conn.rollback()
+            print("[calendar_wx] progi: %s" % e)
+        try:
+            c.execute(
+                "SELECT DISTINCT ON (t.date) t.date::text AS day, d.w1_json->'weather' AS w "
+                "FROM qbot_v2.training_sessions t JOIN qbot_v2.ride_report_data d ON d.ride_key = t.external_id "
+                "WHERE t.date BETWEEN %s AND %s AND d.w1_json IS NOT NULL "
+                "ORDER BY t.date, t.distance_m DESC NULLS LAST, d.built_at DESC",
+                (start, end))
+            for r in c.fetchall():
+                w = r["w"] or {}
+                def g(k):
+                    x = w.get(k) if isinstance(w, dict) else None
+                    return x.get("value") if isinstance(x, dict) else None
+                t, a, wi, pr = g("temp_c") or {}, g("apparent_c") or {}, g("wind_ms") or {}, g("precip_mm") or {}
+                if not (t or a or wi):
+                    continue
+                rain = pr.get("sum")
+                wind = wi.get("avg")
+                icon = "\U0001F327\uFE0F" if (rain or 0) > 1 else ("\U0001F4A8" if (wind or 0) > 7 else "\u26C5")
+                rides[r["day"]] = {"wind": wind, "wind_max": wi.get("max"),
+                                   "feel_min": a.get("min"), "feel_max": a.get("max"),
+                                   "temp_min": t.get("min"), "temp_max": t.get("max"),
+                                   "rain_mm": rain, "icon": icon}
+        except Exception as e:
+            conn.rollback()
+            print("[calendar_wx] jazdy: %s" % e)
+    finally:
+        conn.close()
+    return {"start": start, "end": end, "forecast": fc, "rides": rides, "ov": ov}
 
 def _kcal_planned(body):
     """Ryczalt kalorii dla eventu (kcal_planned). Puste/0 = brak ryczaltu."""

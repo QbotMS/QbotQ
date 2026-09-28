@@ -97,7 +97,7 @@ def _scrub_out(out):
     return out
 
 
-def build_w2(w1: dict, *, max_tokens: int = 4096) -> dict:
+def build_w2_v1(w1: dict, *, max_tokens: int = 4096) -> dict:
     from qgpt_client import qgpt_json
     base = (
         "Zanalizuj ta jazde na podstawie danych W1. Zwroc verdict, highlights, synteza, next.\n\n"
@@ -132,4 +132,105 @@ def build_w2(w1: dict, *, max_tokens: int = 4096) -> dict:
     out.setdefault("pytania", [])
     out.setdefault("next", [])
     out["_meta"] = {"generator": "w2_llm", "source": "qgpt", "reads": "W1 only"}
+    return out
+
+
+
+# =====================================================================================
+# W2 v2 (2026-09-28): analiza wg 4 pytan uzytkownika. Liczby licza sie w ride_report_facts
+# (plan, wykonanie, konsekwencje, jedzenie); LLM dostaje GOTOWE porownania i ma wyciagnac
+# wnioski, a NIE opisywac dane zdaniami. Klucze verdict/highlights/synteza/next zostaja
+# (Telegram + mail w ride_report_notify ich uzywaja).
+# =====================================================================================
+W2V2_SYSTEM = """Jestes trenerem kolarskim (gravel, turystyka, bikepacking) w systemie QBot. Uzytkownik jest hobbysta.
+Dostajesz: FAKTY (plan, wykonanie, konsekwencje, jedzenie) policzone deterministycznie przez program oraz W1 (szczegoly jazdy).
+Uzytkownik chce z analizy dowiedziec sie TYLKO czterech rzeczy:
+ 1) co zaplanowal,
+ 2) jak to pojechal w ramach swoich mozliwosci (wobec planu, wobec formy z ktora wszedl w jazde, wobec podobnych jazd),
+ 3) jakie sa konsekwencje tej jazdy (zmeczenie, forma, ile odpoczynku, co z najblizszymi treningami),
+ 4) na co powinien zwrocic uwage.
+
+ZASADY:
+- NIE przepisuj danych na zdania. Kazde zdanie ma byc WNIOSKIEM (co z tego wynika), liczba tylko jako dowod.
+- Liczby wylacznie z FAKTOW/W1, nie przeliczaj i nie wymyslaj. Nie wpisuj nazw pol (np. load.if) - pisz po ludzku.
+- Forme, zmeczenie i gotowosc bierz WYLACZNIE z FAKTY.wykonanie.wejscie i FAKTY.konsekwencje (W1.modelq.current bywa sprzed nocnego przeliczenia).
+- Obciazenie = skala planera i modelu formy (FAKTY.wykonanie.realnie.obciazenie). Nie uzywaj W1 load.xss.
+- Slownik dla uzytkownika: swiezosc (TSB) ujemna = zmeczony; gotowosc ujemna = organizm zmeczony rano; EF = moc na uderzenie serca (wyzej = lepiej).
+- Porownanie z podobnymi jazdami jest orientacyjne - wyciagaj wniosek tylko gdy roznica jest duza, i zaznacz ostroznosc.
+- Brak planu -> napisz to wprost i ocen jazde wobec mozliwosci.
+- Jezyk: polski, prosty (hobbysta, nie sportowiec zawodowy), konkretny, bez frazesow i motywowania.
+
+Zwroc WYLACZNIE surowy JSON:
+{
+ "verdict": "jedno zdanie: ocena calej jazdy + najwazniejsza konsekwencja",
+ "plan": "1-2 zdania: co bylo zaplanowane (dystans, czas, obciazenie, sposob jazdy)",
+ "wykonanie": {"ocena": "w planie | za mocno | za slabo | nierowno | brak planu",
+               "tekst": "3-5 zdan: jak pojechal wobec planu, wobec formy z ktora wszedl i wobec podobnych jazd",
+               "odcinki": [{"km": [od, do], "ocena": "krotko", "tekst": "1 zdanie wniosku o tym odcinku"}]},
+ "konsekwencje": "2-4 zdania: co jazda zrobila ze zmeczeniem i forma, kiedy wroci swiezosc, czy najblizsze treningi z TRENERA pasuja",
+ "uwagi": [{"co": "krotki naglowek", "dlaczego": "przyczyna z danych", "zalecenie": "co konkretnie zrobic nastepnym razem"}],
+ "dobrze": "jedna rzecz, ktora wyszla dobrze (z danych)",
+ "jedzenie": "1 zdanie: plan jedzenia/picia vs wpisy (albo ze brak wpisow i czego to dotyczy)"
+}
+"uwagi": 2-3 pozycje, od najwazniejszej. "odcinki": tylko odcinki z FAKTY.wykonanie.odcinki (te same km)."""
+
+
+def _trim_w1(w1):
+    d = _for_prompt(w1)
+    d.pop("trace", None)
+    d.pop("plan_vs_actual", None)
+    try:
+        mq = dict(d.get("modelq") or {})
+        cur = dict(mq.get("current") or {})
+        for k in ("atl", "ctl", "tsb", "readiness"):
+            cur.pop(k, None)
+        mq["current"] = cur
+        d["modelq"] = mq
+        ld = dict(d.get("load") or {})
+        ld.pop("xss", None)
+        d["load"] = ld
+    except Exception:
+        pass
+    return d
+
+
+def _scrub_any(x):
+    if isinstance(x, str):
+        return _scrub(x)
+    if isinstance(x, list):
+        return [_scrub_any(v) for v in x]
+    if isinstance(x, dict):
+        return {k: (_scrub_any(v) if k != "km" else v) for k, v in x.items()}
+    return x
+
+
+def build_w2(w1: dict, *, max_tokens: int = 4096) -> dict:
+    from qgpt_client import qgpt_json
+    from qbot3.rides import ride_report_facts as _F
+    ride_key = str((w1 or {}).get("ride_key") or "")
+    facts = _F.build_facts(ride_key, w1)
+    prompt = ("FAKTY (JSON):\n" + json.dumps(facts, ensure_ascii=False, default=str)
+              + "\n\nW1 - szczegoly jazdy (JSON):\n" + json.dumps(_trim_w1(w1), ensure_ascii=False, default=str))
+    out = qgpt_json(prompt, system=W2V2_SYSTEM, max_tokens=max_tokens, temperature=0)
+    if not isinstance(out, dict):
+        raise ValueError("W2: model nie zwrocil obiektu JSON")
+    out = _scrub_any(out)
+    wyk = out.get("wykonanie") if isinstance(out.get("wykonanie"), dict) else {"tekst": str(out.get("wykonanie") or "")}
+    out["wykonanie"] = wyk
+    uw = [u for u in (out.get("uwagi") or []) if isinstance(u, dict)][:3]
+    out["uwagi"] = uw
+    # zgodnosc wstecz (Telegram / mail / stary widok)
+    out.setdefault("verdict", "")
+    out["highlights"] = [u.get("co") for u in uw if u.get("co")][:3]
+    out["synteza"] = [s for s in [
+        {"tytul": "Co zaplanowałeś", "tekst": out.get("plan") or ""},
+        {"tytul": "Jak pojechałeś", "tekst": wyk.get("tekst") or ""},
+        {"tytul": "Konsekwencje", "tekst": out.get("konsekwencje") or ""},
+        {"tytul": "Jedzenie i picie", "tekst": out.get("jedzenie") or ""},
+        {"tytul": "Co wyszło dobrze", "tekst": out.get("dobrze") or ""},
+    ] if s["tekst"]]
+    out["next"] = [("%s: %s" % (u.get("co"), u.get("zalecenie"))) if u.get("co") else (u.get("zalecenie") or "")
+                   for u in uw if u.get("zalecenie")]
+    out["fakty"] = facts
+    out["_meta"] = {"generator": "w2_llm_v2", "source": "qgpt", "reads": "FAKTY (ride_report_facts) + W1"}
     return out
