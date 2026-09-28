@@ -10469,6 +10469,123 @@ def forma_data(response: Response, start: str | None = Query(None), end: str | N
         conn.close()
 
 
+_SEASON_AI_SYSTEM = (
+    "Jestes doswiadczonym trenerem kolarstwa szutrowego i bikepackingu. Rozmawiasz z amatorem (hobbysta, "
+    "ok. 100 kg, jazda glownie Z2-Z3, wyprawy wielodniowe). Dostajesz WYLACZNIE fakty policzone przez skrypt "
+    "z jego danych (JSON). Twoje zadanie: wyjasnic mu po ludzku, co sie z nim dzieje w sezonie, czy dobrze "
+    "prowadzi sezon, co robi zle i na co moze liczyc w najblizszym miesiacu.\n"
+    "ZASADY:\n"
+    "1. Uzywaj TYLKO liczb i dat z faktow. Nie wymyslaj wartosci, dat ani przyczyn. Gdy czegos nie da sie "
+    "rozstrzygnac z danych - powiedz to wprost jednym zdaniem.\n"
+    "2. Patrz na caly przekroj: miesiac temu -> dzis -> za miesiac (plan TRENERA), a nie tylko na biezace zdarzenie.\n"
+    "3. Moc przy tetnie (wydolnosc) porownuj TYLKO w obrebie jednego miernika (trends.meter_current). "
+    "W okresie meter_bad_period pomiar mocy byl wadliwy - nie wyciagaj z niego wnioskow o wydolnosci.\n"
+    "4. Forma (CTL) to srednie obciazenie ~6 tygodni; w roztrenowaniu jej spadek jest zaplanowany i normalny.\n"
+    "5. Infekcje: tylko fakt wystapienia, bez zgadywania przyczyn.\n"
+    "6. Ocen plan TRENERA na najblizsze tygodnie (planned_sessions) wzgledem stanu organizmu - jesli cos koliduje "
+    "(np. dluga jazda przy zlej regeneracji albo tuz po infekcji), powiedz to konkretnie z data.\n"
+    "7. Po polsku, prosto, krotkie zdania, bez markdown i gwiazdek, bez motywacyjnych frazesow. Bez skrotow: "
+    "zamiast CTL pisz 'forma', zamiast XSS 'obciazenie', zamiast TSB 'swiezosc'. Nie cytuj liczb, ktore nic nie "
+    "mowia zawodnikowi (np. obciazenie w punktach) - mow o godzinach, dniach, watach, uderzeniach serca, kg.\n"
+    "Zwroc WYLACZNIE JSON: {\"werdykt\": \"jedno-dwa zdania\", \"co_sie_dzieje\": [\"...\"], "
+    "\"jak_prowadzisz_sezon\": [\"...\"], \"na_co_mozesz_liczyc\": [\"...\"], \"uwagi_do_planu\": [\"...\"]} - "
+    "kazda lista 2-4 krotkie punkty (uwagi_do_planu moze byc pusta)."
+)
+
+
+def _season_ai_payload(z):
+    F = z.get("facts") or {}
+    I = z.get("insight") or {}
+    today = z.get("today")
+    wk = F.get("weeks") or []
+    cur = next((i for i, w in enumerate(wk) if w.get("current")), len(wk) - 1)
+    keep = ("week", "phase_name", "light", "hours", "plan_h", "ctl", "ctl_proj", "p_at_hr", "p_n",
+            "meter_bad", "rhr", "readiness", "weight", "weight_path", "ill_days")
+    weeks = [{k: w.get(k) for k in keep if w.get(k) not in (None, False, 0) or k in ("week", "hours")} for w in wk[max(0, cur - 20): cur + 13]]
+    tr = F.get("trainer") or {}
+    return {"dzis": today, "okna_minus30_dzis_plus30": F.get("windows"), "trendy": F.get("trends"),
+            "trener": {"sezon": tr.get("season"), "cele": tr.get("goals"),
+                       "zaplanowane_sesje_3tyg": (tr.get("planned_sessions") or [])[:25]},
+            "zdarzenia": F.get("events"), "meter_bad_period": F.get("meter_bad_period"), "meter_note": F.get("meter_note"),
+            "tygodnie_20_wstecz_12_naprzod": weeks,
+            "obserwacje_skryptu": {"sygnal_przed_infekcja": I.get("pre_signal"),
+                                   "powroty_po_infekcji": [m.get("text") for m in (I.get("manage") or []) if m.get("title") == "Powrót po infekcji"],
+                                   "oczekiwania": I.get("expect")}}
+
+
+def _season_ai_table(conn):
+    conn.execute("CREATE TABLE IF NOT EXISTS qbot_v2.season_ai (day date PRIMARY KEY, result jsonb, "
+                 "model_note text, created_at timestamptz DEFAULT now())")
+    conn.commit()
+
+
+_SEASON_AI_STATE = {"running": False, "error": None, "started": None}
+
+
+@app.get("/api/forma/season/analyze")
+def forma_season_ai_get(response: Response):
+    """Ostatnia zapisana analiza AI sezonu (bez wywolania modelu) + stan liczenia w tle."""
+    response.headers["Cache-Control"] = "no-store"
+    conn = _db_conn()
+    try:
+        _season_ai_table(conn)
+        r = conn.execute("SELECT day, result, created_at FROM qbot_v2.season_ai ORDER BY day DESC LIMIT 1").fetchone()
+        st = {"running": _SEASON_AI_STATE["running"], "error": _SEASON_AI_STATE["error"]}
+        if not r:
+            return {"ok": True, "result": None, **st}
+        return {"ok": True, "day": str(r["day"]), "created_at": str(r["created_at"]), "result": r["result"], **st}
+    finally:
+        conn.close()
+
+
+def _first_json_obj(txt):
+    """Pierwszy poprawny obiekt JSON z odpowiedzi modelu (model bywa, ze dopisze cos po nim)."""
+    import re as _re
+    t = _re.sub(r"```(?:json)?", "", txt or "")
+    i = t.find("{")
+    if i < 0:
+        raise ValueError("brak JSON w odpowiedzi")
+    obj, _end = json.JSONDecoder().raw_decode(t[i:])
+    return obj
+
+
+def _season_ai_worker():
+    from fitmodel.season import build as _season_build
+    from qgpt_client import qgpt_text
+    conn = _db_conn()
+    try:
+        z = _season_build(conn)
+        pay = _season_ai_payload(z)
+        res = _first_json_obj(qgpt_text(json.dumps(pay, ensure_ascii=False, default=str), system=_SEASON_AI_SYSTEM,
+                                        max_tokens=6000, temperature=0.3))
+        if not isinstance(res, dict) or not res.get("werdykt"):
+            raise RuntimeError("niepelna odpowiedz modelu")
+        _season_ai_table(conn)
+        conn.execute("INSERT INTO qbot_v2.season_ai (day, result, created_at) VALUES (%s, %s::jsonb, now()) "
+                     "ON CONFLICT (day) DO UPDATE SET result=EXCLUDED.result, created_at=now()",
+                     (z["today"], json.dumps(res, ensure_ascii=False)))
+        conn.commit()
+        _SEASON_AI_STATE["error"] = None
+    except Exception as exc:
+        _SEASON_AI_STATE["error"] = "%s: %s" % (type(exc).__name__, exc)
+    finally:
+        _SEASON_AI_STATE["running"] = False
+        conn.close()
+
+
+@app.post("/api/forma/season/analyze")
+def forma_season_ai_run(response: Response):
+    """Analiza AI sezonu W TLE (bez HTTP 524 przy dlugim liczeniu): skrypt (fitmodel/season.py) liczy fakty,
+    model pisze interpretacje TYLKO z nich. Front odpytuje GET co kilka sekund. Wynik: qbot_v2.season_ai (1/dzien)."""
+    response.headers["Cache-Control"] = "no-store"
+    if _SEASON_AI_STATE["running"]:
+        return {"ok": True, "running": True, "note": "juz liczy"}
+    import threading as _th
+    _SEASON_AI_STATE.update({"running": True, "error": None, "started": str(__import__("datetime").datetime.now())})
+    _th.Thread(target=_season_ai_worker, daemon=True).start()
+    return {"ok": True, "running": True}
+
+
 @app.get("/api/forma/season")
 def forma_season(response: Response):
     """Sezon (od 1 marca): 'gdzie jestem' + tydzien po tygodniu + status do Dziennika.

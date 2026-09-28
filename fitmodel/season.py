@@ -166,6 +166,11 @@ def build(conn, today: dt.date | None = None) -> dict:
     except Exception as exc:
         z["view"] = {"error": str(exc)}
     try:
+        z["facts"] = facts(conn, z, fd, [r for r in rides if r["date"] >= start], ill)
+    except Exception as exc:
+        import traceback
+        z["facts"] = {"error": "%s: %s" % (type(exc).__name__, exc), "trace": traceback.format_exc()[-800:]}
+    try:
         z["tiles"] = tiles(z, fd, [r for r in rides if r["date"] >= start])
     except Exception as exc:
         z["tiles"] = [{"id": "err", "title": "Status", "status": "błąd", "level": "bad", "line": str(exc), "more": []}]
@@ -886,3 +891,178 @@ def insight(conn, z, fd, rides, ill):
             "series": {"p_at_hr": ser_p, "p_ref": round(p_ref) if p_ref else None, "rhr7": ser_r, "rhr_ref": rhr0,
                        "rhr_goal": rhr_goal, "weight7": ser_w, "goal_w": goal_w,
                        "ill": [[a.isoformat(), b.isoformat()] for a, b in grp if b >= ch_start]}}
+
+
+# ======================= SEZON v4: FAKTY (2026-09-28) =======================
+# Ogolny obraz sezonu niezalezny od biezacej sytuacji: tydzien po tygodniu od startu sezonu
+# do konca roku (przeszlosc = wykonanie, przyszlosc = plan TRENERA), okna -30 / dzis / +30 dni.
+# Skrypt TYLKO liczy fakty; interpretacje pisze AI (/api/forma/season/analyze).
+WIN_DAYS = 30
+TAU_CTL = 42.0
+
+
+def _weight_path(last_day, last_w, goal):
+    """Liniowa sciezka do celu wagi z TRENERA: funkcja d -> kg (None gdy brak celu)."""
+    if not goal or not goal.get("by") or last_w is None:
+        return None
+    by = dt.date.fromisoformat(goal["by"])
+    span = max(1, (by - last_day).days)
+    return lambda d: round(last_w + (goal["kg"] - last_w) * min(1.0, max(0.0, (d - last_day).days / span)), 1)
+
+
+def facts(conn, z, fd, rides, ill):
+    W, weeks_s, typical = z["where"], z["weeks"], z["typical_hours"]
+    today = dt.date.fromisoformat(z["today"])
+    import qbot_trener_engine as TE
+    ovr = _rows(conn, "SELECT overrides FROM qbot_v2.trainer_settings ORDER BY username LIMIT 1")
+    ov = (ovr[0]["overrides"] if ovr else None) or {}
+    goals = _rows(conn, "SELECT kind, priority, date_from, date_to, status, name, target FROM qbot_v2.trainer_goal WHERE status='active'")
+    sb = TE.season_bounds(TE.season_of(today, ov), ov, goals)
+    start = sb["start"]                              # sezon wg TRENERA (np. 29.12.2025)
+    s0 = start - dt.timedelta(days=start.weekday())
+    fdl = {r["day"]: r for r in _rows(conn, "SELECT day, ctl_xss, readiness_effective, readiness_score, rhr "
+                                            "FROM qbot_v2.fitmodel_daily WHERE day >= %s", (s0 - dt.timedelta(days=7),))}
+    rides_all = _rows(conn, "SELECT date, duration_s FROM qbot_v2.training_sessions WHERE sport_type='cycling' AND date >= %s", (s0,))
+
+    def val(d, k):
+        r = fdl.get(d)
+        return float(r[k]) if r and r.get(k) is not None else None
+
+    def mean(xs):
+        xs = [x for x in xs if x is not None]
+        return sum(xs) / len(xs) if xs else None
+
+    # --- TRENER: fazy + cele ---
+    end = sb["end"]
+    n_w = ((end - s0).days // 7) + 1
+    sw = {w["s"]: w for w in TE.season_weeks(goals, ov, s0, n_w)}
+    # sesje zaplanowane
+    sess = _rows(conn, "SELECT day, sport, dur_min, xss, name FROM qbot_v2.trainer_session WHERE day >= %s AND day <= %s",
+                 (today - dt.timedelta(days=today.weekday()), end))
+    # --- dane ---
+    pah = _rows(conn, """SELECT g.ride_date AS d, g.p_at_hr_w AS p, COALESCE(g.meter_key, 'nieznany') AS m,
+                                EXISTS (SELECT 1 FROM qbot_v2.fitmodel_ride_quarantine q WHERE q.external_id=g.external_id AND q.released IS NULL) AS bad
+                         FROM qbot_v2.power_meter_guard g WHERE g.ride_date >= %s AND g.p_at_hr_w IS NOT NULL ORDER BY g.ride_date""", (s0,))
+    qdays = {r["d"] for r in _rows(conn, "SELECT m.ride_date AS d FROM qbot_v2.fitmodel_ride_quarantine q JOIN qbot_v2.modelq2_ride m "
+                                         "ON m.external_id=q.external_id WHERE q.released IS NULL AND m.ride_date >= %s", (s0,))}
+    # okres wady miernika = od pierwszej do ostatniej jazdy w kwarantannie; w nim KAZDY pomiar mocy jest podejrzany
+    bad_from, bad_to = (min(qdays), max(qdays)) if qdays else (None, None)
+    for r in pah:
+        if bad_from and bad_from <= r["d"] <= bad_to:
+            r["bad"] = True
+    clean_all = [r for r in pah if not r["bad"]]
+    cur_m = clean_all[-1]["m"] if clean_all else None
+    m_first = min((r["d"] for r in clean_all if r["m"] == cur_m), default=None)
+    wts = [(r["d"], float(r["w"])) for r in _rows(conn, "SELECT day AS d, weight_kg AS w FROM qbot_v2.fitmodel_daily "
+                                                        "WHERE day >= %s AND weight_kg IS NOT NULL ORDER BY day", (s0,))]
+    goal_w = None
+    for g in goals:
+        if g["kind"] == "weight" and (g.get("target") or {}).get("weight_kg"):
+            goal_w = {"kg": float(g["target"]["weight_kg"]), "by": g["date_to"].isoformat() if g.get("date_to") else None}
+    wpath = _weight_path(wts[-1][0], mean([w for _, w in wts[-7:]]), goal_w) if wts else None
+    rat = sorted(w["xss"] / w["hours"] for w in weeks_s if not w["partial"] and w["hours"] >= 3 and w["type"] != "infekcja" and w["xss"])
+    xss_h = rat[len(rat) // 2] if rat else 55.0
+    rhr0 = W["rhr"]["start_28d"]
+    rhr_norm = (rhr0 + REGEN_RHR_MARGIN) if rhr0 is not None else None
+    wk_by = {dt.date.fromisoformat(w["week"]): w for w in weeks_s}
+
+    # --- tygodnie ---
+    rows = []
+    ctl = val(today, "ctl_xss") or W["ctl"]["now"]
+    ctl_proj = ctl
+    cur_ws = today - dt.timedelta(days=today.weekday())
+    for i in range(n_w):
+        ws = s0 + dt.timedelta(weeks=i)
+        we = ws + dt.timedelta(days=6)
+        t = sw.get(ws, {})
+        ph = t.get("ph")
+        w = wk_by.get(ws)
+        past = we < today
+        ps = [s for s in sess if ws <= s["day"] <= we]
+        plan_h = round(sum((s["dur_min"] or 0) for s in ps if s["sport"] == "rower") / 60.0, 1) if ps else (round(t.get("h", 0), 1) if t else None)
+        plan_xss = sum(float(s["xss"] or 0) for s in ps) if ps else ((t.get("h", 0) or 0) * xss_h if t else 0)
+        p_w = [float(r["p"]) for r in pah if ws <= r["d"] <= we and not r["bad"] and r["m"] == cur_m]
+        p_o = [float(r["p"]) for r in pah if ws <= r["d"] <= we and not r["bad"] and r["m"] != cur_m]
+        bad_w = bool(bad_from and not (we < bad_from or ws > bad_to))
+        wt = [x for d, x in wts if ws <= d <= we]
+        hrs = round(sum((r["duration_s"] or 0) for r in rides_all if ws <= r["date"] <= we) / 3600.0, 1) if ws <= today else None
+        rh = [val(ws + dt.timedelta(days=k), "rhr") for k in range(7) if ws + dt.timedelta(days=k) <= today]
+        rd = [val(ws + dt.timedelta(days=k), "readiness_effective") if val(ws + dt.timedelta(days=k), "readiness_effective") is not None
+              else val(ws + dt.timedelta(days=k), "readiness_score") for k in range(7) if ws + dt.timedelta(days=k) <= today]
+        row = {"week": ws.isoformat(), "phase": ph, "phase_name": TE.PH_NAME.get(ph, ph) if ph else None,
+               "light": bool(t.get("lt")), "past": past, "current": ws == cur_ws,
+               "hours": hrs, "plan_h": plan_h if ws >= cur_ws else None,
+               "p_at_hr": round(_median(p_w)) if p_w else None, "p_n": len(p_w),
+               "p_at_hr_other_meter": round(_median(p_o)) if p_o else None, "meter_bad": bad_w,
+               "rhr": round(mean(rh), 1) if mean(rh) is not None else None,
+               "readiness": round(mean(rd), 2) if mean(rd) is not None else None,
+               "weight": round(sum(wt) / len(wt), 1) if wt else None, "weight_path": wpath(we) if (wpath and we > today) else None,
+               "ill_days": w["ill_days"] if w else 0, "type": w["type"] if w else None}
+        if we <= today:
+            row["ctl"] = round(val(we, "ctl_xss"), 1) if val(we, "ctl_xss") is not None else None
+        else:
+            # prognoza formy wg planu TRENERA (EWMA 42 dni, dzienne XSS = plan tygodnia / 7)
+            d0 = max(ws, today + dt.timedelta(days=1))
+            for k in range((we - d0).days + 1):
+                ctl_proj = ctl_proj + (plan_xss / 7.0 - ctl_proj) / TAU_CTL
+            row["ctl_proj"] = round(ctl_proj, 1)
+        rows.append(row)
+
+    # --- okna -30 / dzis / +30 ---
+    def phase_on(d):
+        ws = d - dt.timedelta(days=d.weekday())
+        t = sw.get(ws)
+        return TE.PH_NAME.get(t["ph"], t["ph"]) if t and t.get("ph") else None
+
+    def hours_4w(d):
+        a = d - dt.timedelta(days=d.weekday()) - dt.timedelta(weeks=4)
+        b = d - dt.timedelta(days=d.weekday()) - dt.timedelta(days=1)
+        return round(sum((r["duration_s"] or 0) for r in rides_all if a <= r["date"] <= b) / 3600.0 / 4.0, 1)
+
+    def win(d):
+        fut = d > today
+        rec = {"date": d.isoformat(), "future": fut, "phase": phase_on(d)}
+        if not fut:
+            rec["hours_week"] = hours_4w(d)
+            rec["ctl"] = round(val(d, "ctl_xss"), 1) if val(d, "ctl_xss") is not None else None
+            p = [float(r["p"]) for r in pah if d - dt.timedelta(days=28) <= r["d"] <= d and not r["bad"] and r["m"] == cur_m]
+            rec["p_at_hr"] = round(_median(p)) if p else None
+            rec["p_at_hr_n"] = len(p)
+            rec["rhr7"] = round(mean([val(d - dt.timedelta(days=j), "rhr") for j in range(7)]), 1) if mean([val(d - dt.timedelta(days=j), "rhr") for j in range(7)]) else None
+            rec["readiness7"] = round(mean([val(d - dt.timedelta(days=j), "readiness_effective") for j in range(7)]), 2) if mean([val(d - dt.timedelta(days=j), "readiness_effective") for j in range(7)]) is not None else None
+            ww = [x for dd, x in wts if dd <= d][-7:]
+            rec["weight"] = round(sum(ww) / len(ww), 1) if ww else None
+        else:
+            wsd = d - dt.timedelta(days=d.weekday())
+            r = next((x for x in rows if x["week"] == wsd.isoformat()), None)
+            rec["hours_week_plan"] = r["plan_h"] if r else None
+            rec["ctl_proj"] = r.get("ctl_proj") if r else None
+            rec["weight_path"] = wpath(d) if wpath else None
+        return rec
+    windows = [win(today - dt.timedelta(days=WIN_DAYS)), win(today), win(today + dt.timedelta(days=WIN_DAYS))]
+
+    # --- trendy (fakty do analizy) ---
+    clean = [(r["d"], float(r["p"])) for r in pah if not r["bad"] and r["m"] == cur_m]
+    # trend w obrebie biezacego miernika: pierwsze 3 tyg. od jego zalozenia vs ostatnie 3 tyg.
+    p8 = [p for d, p in clean if d > today - dt.timedelta(weeks=3)]
+    p8b = [p for d, p in clean if m_first and d < m_first + dt.timedelta(weeks=3)]
+    rhr_above = sum(1 for k in range(14) if rhr_norm and val(today - dt.timedelta(days=k), "rhr") is not None
+                    and val(today - dt.timedelta(days=k), "rhr") > rhr_norm)
+    trends = {"p_at_hr_last_3w": round(_median(p8)) if p8 else None, "p_at_hr_first_3w_meter": round(_median(p8b)) if p8b else None,
+              "p_at_hr_n": [len(p8), len(p8b)], "meter_current": cur_m, "meter_since": m_first.isoformat() if m_first else None,
+              "p_at_hr_note": "moc przy tetnie porownywalna tylko w obrebie jednego miernika; zmiana miernika = nowa skala", "rhr_days_above_norm_14d": rhr_above, "rhr_norm": rhr_norm,
+              "weight_last": wts[-1][1] if wts else None, "weight_last_day": wts[-1][0].isoformat() if wts else None,
+              "weight_goal": goal_w, "typical_hours": typical, "xss_per_h": round(xss_h, 1)}
+    planned = [{"day": s["day"].isoformat(), "name": s["name"], "sport": s["sport"], "min": s["dur_min"], "xss": float(s["xss"] or 0)}
+               for s in sorted(sess, key=lambda s: s["day"]) if s["day"] >= today]
+    gl = [{"name": g["name"], "kind": g["kind"], "priority": g["priority"],
+           "from": g["date_from"].isoformat() if g.get("date_from") else None,
+           "to": g["date_to"].isoformat() if g.get("date_to") else None, "target": g.get("target")} for g in goals]
+    return {"weeks": rows, "windows": windows, "trends": trends, "trainer": {
+                "season": {"start": sb["start"].isoformat(), "roz": sb["roz"].isoformat(), "luz": sb["luz"].isoformat(),
+                           "end": end.isoformat(), "next_start": TE.season_bounds(today.year + 1, ov, goals)["start"].isoformat()},
+                "planned_sessions": planned, "goals": gl},
+            "events": (z.get("view") or {}).get("events", []),
+            "meter_bad_period": [bad_from.isoformat(), bad_to.isoformat()] if bad_from else None,
+            "meter_note": ("W okresie meter_bad_period pomiar mocy byl wadliwy: wydolnosc (moc przy tetnie) z tego okresu "
+                           "pominieta, a obciazenie jazd w kwarantannie liczone z tetna. Wydolnosc tylko z czystych jazd.")}

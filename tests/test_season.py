@@ -32,6 +32,18 @@ class BuildLive(unittest.TestCase):
         types = {w["type"] for w in z["weeks"]}
         self.assertTrue(types <= {"budowa", "mocny", "lzejszy", "wyjazd", "infekcja", "biezacy"})
         self.assertEqual(sum(1 for w in z["weeks"] if w["partial"]), 1)
+        F = z["facts"]
+        self.assertNotIn("error", F)
+        self.assertEqual(len(F["windows"]), 3)
+        self.assertTrue(F["windows"][2]["future"])
+        self.assertTrue(any(w["current"] for w in F["weeks"]))
+        # wydolnosc: tylko biezacy miernik, nic z okresu wadliwego miernika
+        bp = F.get("meter_bad_period")
+        if bp:
+            for w in F["weeks"]:
+                if w["meter_bad"]:
+                    continue
+                self.assertFalse(bp[0] <= w["week"] <= bp[1] and w["p_at_hr"] is not None)
         I = z["insight"]
         self.assertNotIn("error", I)
         self.assertTrue(I["head"])
