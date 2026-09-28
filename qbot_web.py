@@ -3268,11 +3268,25 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     descent = round(ascent - _net) if (ascent is not None) else None
 
     weather_windows = []
+    # temperatura na trasie (kalibracja Karoo) i na rowerze (UTCI z pedem jazdy) - qbot3/routes/ride_thermal.py
+    from qbot3.routes import ride_thermal as _RT
+    _rt_pers = _RT.personal_offset()
+    _rt_per = m.get("per_segment") or []
     for _w in (m.get("tabela_30min") or []):
+        try:
+            _a, _b = float(_w.get("km_od") or 0), float(_w.get("km_do") or 0)
+            _ts = _RT.window_stats([pp for pp in _rt_per if _a <= float(pp["km"]) <= _b], date_str, _rt_pers)
+        except Exception:
+            _ts = {}
         weather_windows.append({"okno": _w.get("okno"), "km_od": _w.get("km_od"), "km_do": _w.get("km_do"),
                                 "wbgt": _w.get("wbgt_max"), "feels": (_w.get("odczuwalna") or {}).get("srednia"),
                                 "opad_mm": (_w.get("opad") or {}).get("mm"), "opad_prob": (_w.get("opad") or {}).get("prob"),
-                                "wiatr_ms": _w.get("wiatr_wzdluz_ms"), "alert_level": _w.get("alert_level")})
+                                "wiatr_ms": _w.get("wiatr_wzdluz_ms"), "alert_level": _w.get("alert_level"),
+                                "temp": _w.get("temp_c"), "chmury_pct": _w.get("chmury_pct"),
+                                "na_trasie": _ts.get("na_trasie"), "na_rowerze": _ts.get("na_rowerze"),
+                                "czolowy_max": _ts.get("czolowy_max"), "czolowy_sr": _ts.get("czolowy_sr"),
+                                "porywy_max": _ts.get("porywy_max"), "wiatr_10m": _ts.get("wiatr_max"),
+                                "wiatr_ochrona": _ts.get("wiatr_ochrona")})
 
     _pg = _load_poi_groups(conn, rbid)
     poi_out = _curate_pois(_pg, dist_km, date_str)
@@ -3337,7 +3351,8 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
         "surface": {"total_km": km_total, "by_cat": surface_by_cat, "risk": surface_risk},
         "climbs": {"ascent_m": ascent, "descent_m": descent, "count": len(climbs_list), "list": climbs_list,
                    "chain": None},
-        "weather": {"windows": weather_windows, "peak": m.get("peak"), "caveats": m.get("caveats") or [],
+        "weather": {"windows": weather_windows, "termika": dict(_RT.meta(), osobista_korekta=_rt_pers),
+                    "peak": m.get("peak"), "caveats": m.get("caveats") or [],
                     "slonce": m.get("slonce")},
         "poi": poi_out,
         "sprzet": sprzet,
