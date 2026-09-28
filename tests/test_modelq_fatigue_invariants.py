@@ -59,6 +59,30 @@ class ModelQFatigueInvariants(unittest.TestCase):
         exp = (sum(vals[:7]) / 7) / (sum(vals) / 28)
         self.assertAlmostEqual(ramp, exp, delta=0.011)
 
+    def test_readiness_surcharge_week_cap(self):
+        """Doplata z gotowosci (odtworzona z atl_ready_adj: x_d = 7*a_d - 6*a_{d-1})
+        w oknie 7 dni nie przekracza 25% surowego XSS z tych dni."""
+        from fitmodel.modelq2.hidden_fatigue import READY_WEEK_CAP
+        rides = self._ride_days()
+        self.cur.execute("SELECT day, atl_ready_adj FROM qbot_v2.fitmodel_daily "
+                         "WHERE atl_ready_adj IS NOT NULL ORDER BY day")
+        rows = [(r[0], float(r[1])) for r in self.cur.fetchall()]
+        ext = {}
+        for (d0, a0), (d1, a1) in zip(rows, rows[1:]):
+            if (d1 - d0).days == 1:
+                ext[d1] = 7 * a1 - 6 * a0
+        checked = 0
+        for d in ext:
+            # limit dziala w dniu z DODATNIA doplata (okno konczace sie tym dniem)
+            if rides.get(d, 0) <= 0 or ext[d] <= 0.5:
+                continue
+            win = [d - timedelta(days=i) for i in range(7)]
+            raw7 = sum(rides.get(x, 0.0) for x in win)
+            pos7 = sum(max(0.0, ext.get(x, 0.0)) for x in win)
+            self.assertLessEqual(pos7, READY_WEEK_CAP * raw7 + 1.5, msg=str(d))
+            checked += 1
+        self.assertGreater(checked, 10)
+
     def test_publish_keeps_corrections(self):
         import inspect
         from fitmodel.modelq2 import publish

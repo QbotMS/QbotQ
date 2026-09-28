@@ -45,6 +45,13 @@ TAU_RL = 7.0      # dni, ta sama stala co ATL
 # odwracalne przelacznikiem.
 FATIGUE_MULT_K = 0.4      # v1: +/-0.4 readiness => +/-16% korekty
 MULT_LO, MULT_HI = 0.5, 1.7
+# Limit tygodniowy (2026-09-28, "opcja 2"): suma DODATNICH doplat z gotowosci w oknie
+# 7 dni <= READY_WEEK_CAP * suma surowego XSS z tych 7 dni. Na seriach dni (wyjazd)
+# mnoznik x1.6 dzien po dniu dawal TSB+ -118 (06-11.06.2026); symulacja na 634 dniach:
+# ta sama zgodnosc z gotowoscia za 1-2 dni (0.154 vs 0.153), dolek -102. Ulga (swiezy,
+# mnoznik <1) bez limitu. Przelacznik: QBOT_L2_WEEK_CAP=0.
+READY_WEEK_CAP = 0.25
+READY_WEEK_DAYS = 7
 
 
 def _enabled() -> bool:
@@ -53,6 +60,10 @@ def _enabled() -> bool:
 
 def _obj_enabled() -> bool:
     return os.getenv("QBOT_L2_READINESS_FATIGUE", "1") not in ("0", "false", "False", "no")
+
+
+def _week_cap_enabled() -> bool:
+    return os.getenv("QBOT_L2_WEEK_CAP", "1") not in ("0", "false", "False", "no")
 
 
 def _ill_norest_enabled() -> bool:
@@ -87,6 +98,8 @@ def apply_hidden_fatigue(conn) -> dict:
     norest_on = _ill_norest_enabled()
     from collections import deque
     ramp_win = deque(maxlen=RAMP_LONG)
+    cap_on = _week_cap_enabled()
+    wk_hist = deque(maxlen=READY_WEEK_DAYS - 1)   # (surowy XSS, doplata z gotowosci) poprzednich dni
     prev_atl_plus = None
 
     # baza obiektywna z fitmodel_daily
@@ -162,12 +175,21 @@ def apply_hidden_fatigue(conn) -> dict:
         # L2-OBJ: nadmiar/ulga wzgledem XSS surowego wg gotowosci tego dnia.
         # Moze byc UJEMNY (swiezy = jazda kosztuje mniej) -- inaczej niz L3,
         # ktore jest jednokierunkowe. Zacisk MULT_LO/HI jak w v1.
+        capped = False
         if obj_on and ride_xss > 0:
             mult = fatigue_multiplier(readiness.get(d))
             xss_ready = ride_xss * (mult - 1.0)
+            if cap_on and xss_ready > 0:
+                raw7 = sum(h[0] for h in wk_hist) + ride_xss
+                ext7 = sum(max(0.0, h[1]) for h in wk_hist)
+                lim = max(0.0, READY_WEEK_CAP * raw7 - ext7)
+                if xss_ready > lim:
+                    xss_ready = lim
+                    capped = True
         else:
             mult = 1.0
             xss_ready = 0.0
+        wk_hist.append((ride_xss, xss_ready))
         if obj_on:
             ready_atl = ready_atl + (xss_ready - ready_atl) / TAU_RL
         else:
@@ -199,8 +221,9 @@ def apply_hidden_fatigue(conn) -> dict:
                         % (", ".join(bits), ride_xss, surcharge * 100, xss_hidden, hidden_atl))
                 nz += 1
             if obj_on and ride_xss > 0 and abs(mult - 1.0) > 0.01:
-                bit = ("gotowosc %+.2f -> koszt x%.2f (%+.0f xss); atl_gotowosc %+.2f"
-                       % (readiness.get(d, 0.0), mult, xss_ready, ready_atl))
+                bit = ("gotowosc %+.2f -> koszt x%.2f (%+.0f xss%s); atl_gotowosc %+.2f"
+                       % (readiness.get(d, 0.0), mult, xss_ready,
+                          ", limit tyg. 25%" if capped else "", ready_atl))
                 note = (note + " || " + bit) if note else bit
             cur.execute(
                 "UPDATE qbot_v2.fitmodel_daily SET atl_plus=%s, tsb_plus=%s, "
@@ -214,6 +237,7 @@ def apply_hidden_fatigue(conn) -> dict:
 
     conn.commit()
     return {"enabled": enabled, "obj_enabled": obj_on, "illness_norest": norest_on,
+            "week_cap": cap_on,
             "updated": updated, "days_with_hidden": nz}
 
 
