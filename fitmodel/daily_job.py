@@ -85,6 +85,14 @@ def main() -> None:
             return run_daily_v2(conn)
         _step("modelq2_v2", _modelq2)
 
+        # 2026-09-28: kontrola spojnosci ModelQ (tylko odczyt): kazda jazda 1Hz ma XSS, obciazenie dnia
+        # z przyrostu ATL == suma XSS jazd, brak duplikatow. Problem -> alert Telegram.
+        def _mq2_integrity():
+            from fitmodel.modelq2.integrity import run_and_alert
+            from fitmodel.power_meter_guard import _telegram_send
+            return run_and_alert(conn, send=_telegram_send)
+        _step("modelq2_integrity", _mq2_integrity)
+
         # 2b1. L3 -- ukryte zmeczenie (subiektywny koszt jazdy) -> atl_plus/tsb_plus
         # (addytywne, audytowalne, odwracalne). PO modelq2 (baza atl_plus=atl_raw).
         # Przelacznik: QBOT_L3_HIDDEN_FATIGUE=0.
