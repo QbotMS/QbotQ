@@ -180,7 +180,8 @@ def execution_block(cur, ride_key, day, w1, plan, ses):
     if r:
         wej["gotowosc_rano"] = _f(r[0], 2)
         wej["gotowosc_opis"] = r[1]
-    cur.execute("SELECT day, tsb_raw, ctl_xss, atl_raw FROM qbot_v2.fitmodel_daily WHERE day<%s ORDER BY day DESC LIMIT 1", (day,))
+    cur.execute("SELECT day, COALESCE(tsb_plus, tsb_raw), ctl_xss, COALESCE(atl_plus, atl_raw) "   # kanon: z korekta
+                "FROM qbot_v2.fitmodel_daily WHERE day<%s ORDER BY day DESC LIMIT 1", (day,))
     r = cur.fetchone()
     if r:
         wej["swiezosc_przed"] = _f(r[1], 1)
@@ -219,7 +220,8 @@ def execution_block(cur, ride_key, day, w1, plan, ses):
 # ---------------------------------------------------------------- 3) konsekwencje (na zywo)
 def live_consequences(cur, day):
     day = _d(day)
-    cur.execute("SELECT day, ctl_xss, atl_raw, tsb_raw, readiness_score, readiness_label FROM qbot_v2.fitmodel_daily "
+    cur.execute("SELECT day, ctl_xss, COALESCE(atl_plus, atl_raw), COALESCE(tsb_plus, tsb_raw), "
+                "readiness_score, readiness_label FROM qbot_v2.fitmodel_daily "
                 "WHERE day BETWEEN %s AND %s ORDER BY day", (day - timedelta(days=1), day + timedelta(days=7)))
     rows = [{"dzien": str(r[0]), "forma": _f(r[1], 1), "zmeczenie": _f(r[2], 1), "swiezosc": _f(r[3], 1),
              "gotowosc": _f(r[4], 2), "gotowosc_opis": r[5]} for r in cur.fetchall()]

@@ -55,6 +55,17 @@ def _obj_enabled() -> bool:
     return os.getenv("QBOT_L2_READINESS_FATIGUE", "1") not in ("0", "false", "False", "no")
 
 
+def _ill_norest_enabled() -> bool:
+    """2026-09-28: dzien choroby BEZ jazdy nie jest odpoczynkiem -> ATL+ nie spada.
+    Wczesniej leżenie w chorobie podbijalo Swiezosc (wrzesien: +38 'super wypoczety')."""
+    return os.getenv("QBOT_L3_ILLNESS_NOREST", "1") not in ("0", "false", "False", "no")
+
+
+# Skok obciazenia (2026-09-28): srednie XSS 7 dni / srednie 28 dni (ACWR, rolling).
+# Liczony z surowego XSS jazd; None gdy baza 28 dni za mala (< RAMP_MIN_BASE XSS/dzien).
+RAMP_SHORT, RAMP_LONG, RAMP_MIN_BASE = 7, 28, 10.0
+
+
 def fatigue_multiplier(readiness_score) -> float:
     """v1 1:1. readiness>0 (swiezy) => mnoznik <1, readiness<0 (zmeczony) => >1."""
     if readiness_score is None:
@@ -70,7 +81,13 @@ def apply_hidden_fatigue(conn) -> dict:
     cur = conn.cursor()
     cur.execute("ALTER TABLE qbot_v2.fitmodel_daily "
                 "ADD COLUMN IF NOT EXISTS atl_ready_adj NUMERIC")
+    cur.execute("ALTER TABLE qbot_v2.fitmodel_daily "
+                "ADD COLUMN IF NOT EXISTS load_ramp NUMERIC")
     conn.commit()
+    norest_on = _ill_norest_enabled()
+    from collections import deque
+    ramp_win = deque(maxlen=RAMP_LONG)
+    prev_atl_plus = None
 
     # baza obiektywna z fitmodel_daily
     cur.execute("SELECT day, atl_raw, ctl_xss, tsb_raw FROM qbot_v2.fitmodel_daily ORDER BY day")
@@ -116,13 +133,27 @@ def apply_hidden_fatigue(conn) -> dict:
         ride_xss = rides.get(d, 0.0)
         feel = feels.get(d)
         ill = d in ill_days
+        norest = False
         if enabled and ride_xss > 0:
             neg = (-feel) if (feel is not None and feel < 0) else 0
             surcharge = min(CAP, neg * A_FEEL + (B_ILLNESS if ill else 0.0))
             xss_hidden = ride_xss * surcharge
+        elif enabled and norest_on and ill and prev_atl_plus is not None:
+            # choroba bez jazdy: wkladamy do strumienia tyle, ile wynosilo ATL+ wczoraj
+            # -> suma ATL+ (raw + ukryte + gotowosc, wszystkie tau=7) zostaje plasko.
+            surcharge = 0.0
+            xss_hidden = max(0.0, float(prev_atl_plus))
+            norest = True
         else:
             surcharge = 0.0
             xss_hidden = 0.0
+        ramp_win.append(ride_xss)
+        load_ramp = None
+        if len(ramp_win) == RAMP_LONG:
+            _l = sum(ramp_win) / RAMP_LONG
+            _s = sum(list(ramp_win)[-RAMP_SHORT:]) / RAMP_SHORT
+            if _l >= RAMP_MIN_BASE:
+                load_ramp = round(_s / _l, 2)
         if enabled:
             hidden_atl = hidden_atl + (xss_hidden - hidden_atl) / TAU_RL
         else:
@@ -151,8 +182,14 @@ def apply_hidden_fatigue(conn) -> dict:
             else:
                 atl_plus = None
                 tsb_plus = None
+            if atl_plus is not None:
+                prev_atl_plus = atl_plus
             note = None
-            if xss_hidden > 0:
+            if norest:
+                note = ("choroba bez jazdy: zmeczenie nie spada jak w odpoczynku (+%.1f xss ukryte); atl_ukryte +%.2f"
+                        % (xss_hidden, hidden_atl))
+                nz += 1
+            elif xss_hidden > 0:
                 bits = []
                 if feel is not None and feel < 0:
                     bits.append("feel %+d" % feel)
@@ -168,15 +205,15 @@ def apply_hidden_fatigue(conn) -> dict:
             cur.execute(
                 "UPDATE qbot_v2.fitmodel_daily SET atl_plus=%s, tsb_plus=%s, "
                 "xss_hidden_subj=%s, atl_hidden_subj=%s, atl_ready_adj=%s, "
-                "atl_plus_note=%s WHERE day=%s",
+                "atl_plus_note=%s, load_ramp=%s WHERE day=%s",
                 (atl_plus, tsb_plus, round(xss_hidden, 1), round(hidden_atl, 2),
-                 round(ready_atl, 2), note, d),
+                 round(ready_atl, 2), note, load_ramp, d),
             )
             updated += cur.rowcount
         d = d + dt.timedelta(days=1)
 
     conn.commit()
-    return {"enabled": enabled, "obj_enabled": obj_on,
+    return {"enabled": enabled, "obj_enabled": obj_on, "illness_norest": norest_on,
             "updated": updated, "days_with_hidden": nz}
 
 

@@ -86,7 +86,8 @@ def calendar_rides(conn, after, before) -> dict:
 def project_form(conn, target_date, lookback_days: int = LOOKBACK_DAYS) -> dict | None:
     if isinstance(target_date, str):
         target_date = _dt.date.fromisoformat(target_date[:10])
-    row = conn.execute("SELECT day, ctl_xss, atl_raw FROM qbot_v2.fitmodel_daily "
+    # kanon (2026-09-28): ATL z korekta zmeczenia (atl_plus); surowe tylko gdy brak
+    row = conn.execute("SELECT day, ctl_xss, COALESCE(atl_plus, atl_raw) FROM qbot_v2.fitmodel_daily "
                        "WHERE ctl_xss IS NOT NULL AND atl_raw IS NOT NULL ORDER BY day DESC LIMIT 1").fetchone()
     if not row:
         return None
@@ -98,7 +99,7 @@ def project_form(conn, target_date, lookback_days: int = LOOKBACK_DAYS) -> dict 
     # jazda w przeszlosci / dzis: stan historyczny rano tego dnia (z dnia poprzedniego)
     if target_date <= last:
         prev = target_date - _dt.timedelta(days=1)
-        h = conn.execute("SELECT ctl_xss, atl_raw FROM qbot_v2.fitmodel_daily WHERE day=%s", (prev,)).fetchone()
+        h = conn.execute("SELECT ctl_xss, COALESCE(atl_plus, atl_raw) FROM qbot_v2.fitmodel_daily WHERE day=%s", (prev,)).fetchone()
         if h:
             h = list(h.values()) if isinstance(h, dict) else list(h)
             c, a = float(h[0]), float(h[1])

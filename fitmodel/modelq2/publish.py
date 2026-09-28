@@ -329,5 +329,10 @@ def run_daily_v2(conn) -> dict:
     ef_stats = ef_anchor_step(conn)   # 2026-08-11: EF wraca do MQ2 (obserwowalnosc + kotwica)
     stats = build_and_store(conn=conn)
     published = publish_to_daily(conn)
+    # publish_to_daily zeruje atl_plus/tsb_plus do wartosci surowych -> KAZDE wywolanie
+    # (daily_job, after_ride, przycisk AKTUALIZACJA /api/modelq2/recompute) musi od razu
+    # doliczyc korekty zmeczenia. Bez tego przycisk kasowal Swiezosc poprawiona (2026-09-28).
+    from fitmodel.modelq2.hidden_fatigue import apply_hidden_fatigue
+    hf = apply_hidden_fatigue(conn)
     return {"new_rides_xss": new_rides, "ef": ef_stats,
-            "signature": stats, "published_days": published}
+            "signature": stats, "published_days": published, "hidden_fatigue": hf}

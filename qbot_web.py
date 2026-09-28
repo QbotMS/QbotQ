@@ -3358,7 +3358,7 @@ def _build_report_data(conn, route_id, date_str, start_time, long_stops=0, long_
     try:
         _mqd = conn.execute(
             "SELECT day, ftp_est_w, w_per_kg, ltp_modelq_w, wprime_modelq_kj, "
-            "pp_modelq_w, ctl_xss, atl_raw FROM qbot_v2.fitmodel_daily "
+            "pp_modelq_w, ctl_xss, COALESCE(atl_plus, atl_raw) AS atl_raw FROM qbot_v2.fitmodel_daily "
             "WHERE ftp_est_w IS NOT NULL ORDER BY day DESC LIMIT 1").fetchone()
     except Exception:
         _mqd = None
@@ -7994,10 +7994,12 @@ async def forma_analyze(request: Request):
         "wp": ("wprime_modelq_kj", "W'", "kJ", 1),
         "wkg": ("w_per_kg", "W/kg", "W/kg", 2),
         "ctl": ("ctl_xss", "CTL", "", 1),
-        "atl": ("atl_raw", "ATL", "", 1),
-        "tsb": ("tsb_raw", "TSB", "", 1),
-        "atlp": ("atl_plus", "ATL+", "", 1),
-        "tsbp": ("tsb_plus", "TSB+", "", 1),
+        # kanon (2026-09-28): ATL/TSB = z korekta zmeczenia; surowe tylko do porownania
+        "atl": ("atl_plus", "ATL (zmeczenie z korekta)", "", 1),
+        "tsb": ("tsb_plus", "TSB (swiezosc z korekta)", "", 1),
+        "atlp": ("atl_raw", "ATL surowe (bez korekty)", "", 1),
+        "tsbp": ("tsb_raw", "TSB surowe (bez korekty)", "", 1),
+        "ramp": ("load_ramp", "Skok obciazenia 7/28 dni", "", 2),
         "hrv": ("hrv_night", "HRV", "ms", 0),
         "rhr": ("rhr", "RHR", "bpm", 0),
         "slp": ("sleep_score", "Sen (scoring)", "", 0),
@@ -9643,7 +9645,7 @@ def calendar_entries(start: str = Query(...), end: str = Query(...)):
             (start, end, end, start),
         ).fetchall()
         frows = conn.execute(
-            "SELECT f.day::text AS day, f.cp_modelq_w, f.ctl_xss, f.atl_raw, f.tsb_raw, "
+            "SELECT f.day::text AS day, f.cp_modelq_w, f.ctl_xss, COALESCE(f.atl_plus, f.atl_raw) AS atl_raw, COALESCE(f.tsb_plus, f.tsb_raw) AS tsb_raw, "
             "f.ftp_est_w, f.wprime_modelq_kj, f.w_per_kg, f.readiness_score, f.readiness_label, "
             "f.hrv_night, f.rhr, f.sleep_h, f.glycogen_pct, f.weight_kg, w.sleep_score "
             "FROM qbot_v2.fitmodel_daily f LEFT JOIN qbot_v2.qbot_wellness_daily w ON w.date = f.day "
@@ -10327,6 +10329,7 @@ _FORMA_FIELDS = [
     "readiness_effective", "readiness_effective_label", "readiness_subj_delta", "readiness_effective_note",
     "ctl_xss", "atl_raw", "tsb_raw",
     "atl_plus", "tsb_plus", "xss_hidden_subj", "atl_hidden_subj", "atl_plus_note",
+    "load_ramp",
 ]
 
 
@@ -10362,8 +10365,10 @@ def _build_training_load_latest(conn, end_str, lookback_days=400):
     return {
         "day": r["day"].isoformat(),
         "ctl": _forma_num(r["ctl_xss"]),
-        "atl": _forma_num(r["atl_raw"]),
-        "tsb": _forma_num(r["tsb_raw"]),
+        "atl": _forma_num(r["atl_plus"] if r["atl_plus"] is not None else r["atl_raw"]),   # kanon z korekta
+        "tsb": _forma_num(r["tsb_plus"] if r["tsb_plus"] is not None else r["tsb_raw"]),
+        "atl_raw": _forma_num(r["atl_raw"]),
+        "tsb_raw": _forma_num(r["tsb_raw"]),
         "atl_plus": _forma_num(r["atl_plus"]),
         "tsb_plus": _forma_num(r["tsb_plus"]),
     }

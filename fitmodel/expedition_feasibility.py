@@ -271,7 +271,7 @@ def load_tsb_thresholds(conn, today=None, window_days=365, min_days=60):
     end = today or _date.today()
     start = end - _timedelta(days=window_days)
     rows = conn.execute(
-        "SELECT tsb_raw FROM qbot_v2.fitmodel_daily "
+        "SELECT COALESCE(tsb_plus, tsb_raw) AS tsb_raw FROM qbot_v2.fitmodel_daily "   # kanon: tsb_plus
         "WHERE day BETWEEN %s AND %s AND tsb_raw IS NOT NULL",
         (start.isoformat(), end.isoformat()),
     ).fetchall()
@@ -288,7 +288,8 @@ def load_form_context(conn, today=None, lookback_days=30):
     end = today or _date.today()
     start = end - _timedelta(days=lookback_days)
     rows = conn.execute(
-        "SELECT day, ctl_xss, atl_raw, tsb_raw FROM qbot_v2.fitmodel_daily "
+        "SELECT day, ctl_xss, COALESCE(atl_plus, atl_raw) AS atl_raw, "   # kanon: atl_plus/tsb_plus
+        "COALESCE(tsb_plus, tsb_raw) AS tsb_raw FROM qbot_v2.fitmodel_daily "
         "WHERE day BETWEEN %s AND %s AND ctl_xss IS NOT NULL ORDER BY day",
         (start.isoformat(), end.isoformat()),
     ).fetchall()
