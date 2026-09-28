@@ -94,6 +94,8 @@ def apply_hidden_fatigue(conn) -> dict:
                 "ADD COLUMN IF NOT EXISTS atl_ready_adj NUMERIC")
     cur.execute("ALTER TABLE qbot_v2.fitmodel_daily "
                 "ADD COLUMN IF NOT EXISTS load_ramp NUMERIC")
+    cur.execute("ALTER TABLE qbot_v2.fitmodel_daily "
+                "ADD COLUMN IF NOT EXISTS load_7d NUMERIC, ADD COLUMN IF NOT EXISTS load_28d NUMERIC")
     conn.commit()
     norest_on = _ill_norest_enabled()
     from collections import deque
@@ -162,9 +164,11 @@ def apply_hidden_fatigue(conn) -> dict:
             xss_hidden = 0.0
         ramp_win.append(ride_xss)
         load_ramp = None
+        load_7d = load_28d = None   # srednie dzienne XSS (obciazenie dlugoterminowe, Forma)
         if len(ramp_win) == RAMP_LONG:
             _l = sum(ramp_win) / RAMP_LONG
             _s = sum(list(ramp_win)[-RAMP_SHORT:]) / RAMP_SHORT
+            load_7d, load_28d = round(_s, 1), round(_l, 1)
             if _l >= RAMP_MIN_BASE:
                 load_ramp = round(_s / _l, 2)
         if enabled:
@@ -228,9 +232,9 @@ def apply_hidden_fatigue(conn) -> dict:
             cur.execute(
                 "UPDATE qbot_v2.fitmodel_daily SET atl_plus=%s, tsb_plus=%s, "
                 "xss_hidden_subj=%s, atl_hidden_subj=%s, atl_ready_adj=%s, "
-                "atl_plus_note=%s, load_ramp=%s WHERE day=%s",
+                "atl_plus_note=%s, load_ramp=%s, load_7d=%s, load_28d=%s WHERE day=%s",
                 (atl_plus, tsb_plus, round(xss_hidden, 1), round(hidden_atl, 2),
-                 round(ready_atl, 2), note, load_ramp, d),
+                 round(ready_atl, 2), note, load_ramp, load_7d, load_28d, d),
             )
             updated += cur.rowcount
         d = d + dt.timedelta(days=1)

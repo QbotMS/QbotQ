@@ -10360,7 +10360,7 @@ _FORMA_FIELDS = [
     "readiness_effective", "readiness_effective_label", "readiness_subj_delta", "readiness_effective_note",
     "ctl_xss", "atl_raw", "tsb_raw",
     "atl_plus", "tsb_plus", "xss_hidden_subj", "atl_hidden_subj", "atl_plus_note",
-    "load_ramp",
+    "load_ramp", "load_7d", "load_28d",
 ]
 
 
@@ -11001,9 +11001,18 @@ def modelq2_data(response: Response, start: str | None = Query(None), end: str |
         def _d(r):
             return {k: (float(v) if isinstance(v, (int, float)) or (v is not None and k != "day" and k != "max_effort") else v)
                     for k, v in r.items()}
+        # kanon (2026-09-28): zmeczenie/swiezosc Z KOREKTA z fitmodel_daily (atl_plus/tsb_plus),
+        # surowe z sygnatury MQ2 tylko jako atl_raw/tsb_raw - ta sama liczba co Forma i Albert.
+        _fdk = {x["day"]: x for x in conn.execute(
+            "SELECT day, atl_plus, tsb_plus FROM qbot_v2.fitmodel_daily WHERE day BETWEEN %s AND %s",
+            (start_d.isoformat(), end_d.isoformat())).fetchall()}
+        def _canon(r, k):
+            v = (_fdk.get(r["day"]) or {}).get(k + "_plus")
+            return _f(v) if v is not None else _f(r[k])
         mq_series = [{"day": r["day"].isoformat(), "tp": _f(r["tp_w"]), "hie": _f(r["hie_kj"]),
                       "pp": _f(r["pp_w"]), "ltp": _f(r["ltp_w"]),
-                      "ctl": _f(r["ctl"]), "atl": _f(r["atl"]), "tsb": _f(r["tsb"]),
+                      "ctl": _f(r["ctl"]), "atl": _canon(r, "atl"), "tsb": _canon(r, "tsb"),
+                      "atl_raw": _f(r["atl"]), "tsb_raw": _f(r["tsb"]),
                       "tl_low": _f(r["tl_low"]), "tl_high": _f(r["tl_high"]), "tl_peak": _f(r["tl_peak"])}
                      for r in mq]
         xb_series = [{"day": r["day"].isoformat(), "tp": _f(r["tp_w"]), "hie": _f(r["hie_kj"]),
