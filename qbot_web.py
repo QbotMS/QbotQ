@@ -10469,6 +10469,19 @@ def forma_data(response: Response, start: str | None = Query(None), end: str | N
         conn.close()
 
 
+@app.get("/api/forma/season")
+def forma_season(response: Response):
+    """Sezon (od 1 marca): 'gdzie jestem' + tydzien po tygodniu + status do Dziennika.
+    Logika w fitmodel/season.py (godziny/km niezalezne od miernika, XSS po kwarantannie)."""
+    response.headers["Cache-Control"] = "no-store"
+    from fitmodel.season import build as _season_build
+    conn = _db_conn()
+    try:
+        return _season_build(conn)
+    finally:
+        conn.close()
+
+
 # ---------- STATYSTYKI JAZD ----------
 @app.get("/api/stats/rides")
 def api_stats_rides(response: Response, start: str | None = Query(None),
