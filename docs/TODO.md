@@ -113,6 +113,38 @@ Poziomy (do decyzji, po jednym, decyzja przed kodem):
 3) pelne 3D three.js obracane mysza (marzenie Michala) -- osobny, cizszy kawalek.
 Rekomendacja: prototyp poziomu 3 na jednej trasie (sama obracana bryla), potem rozbudowa.
 
+## [LIVE-TRACK] Sledzenie na zywo z Karoo -- POMYSLY BEZ DECYZJI (dodane 2026-09-28)
+
+Przemyslenia na kiedys. Nic nie zatwierdzone, nie implementowac bez decyzji Michala.
+
+Zrodlo: link Live Tracking z Karoo (dashboard.hammerhead.io/live/<id>). Wg Hammerheada
+link jest przypisany do konta (nie do jazdy), wazny do wylaczenia Live Tracking w Karoo,
+pozycja aktualizowana co 30 s; wymaga internetu na Karoo. Nieoficjalny endpoint
+/v1/shares/tracking/<id> (wzor: github.com/JanC/karoo-live-tracker, ~900 linii,
+Python stdlib + Leaflet). Dane: pozycja, kierunek, slad, trasa, dystans, przewyzszenie,
+czas jazdy/postojow, sr. predkosc, bateria, ETA, stan (riding). BRAK HR/mocy/W'bal --
+nic dla ModelQ. Ryzyko: Hammerhead moze zmienic endpoint.
+
+Pomysl A -- udostepnianie sledzenia gosciom z waznoscia tokena:
+- link Karoo trzymany TYLKO w QBocie (jak sekret, env, nie repo); gosc dostaje wlasny
+  link QBota z terminem waznosci (1 dzien / tydzien / wlasne daty), bez logowania;
+- odwolanie jednym kliknieciem, lista aktywnych linkow (kto, do kiedy, ile otwarc);
+- pozycja widoczna TYLKO w trakcie jazdy (poza jazda: "teraz nie jedzie" -- nie
+  pokazywac ostatniego postoju = czesto dom);
+- opcjonalnie powiazanie z zaproszeniami gosci tras G1-G4 (sledzenie na czas wyprawy);
+- odpytywanie co 30-60 s; przed decyzja zmierzyc realny odstep aktualizacji i co link
+  zwraca MIEDZY jazdami.
+- dodatki: Telegram (zjazd z trasy, bateria Karoo nisko), Albert "ile mi zostalo",
+  nakladki RainViewer (radar deszczu) i Waymarked Trails na mape raportu.
+
+Pomysl B -- (QExt2, OSOBNY projekt, tu tylko notatka) sledzenie innej osoby z Karoo:
+- mając jej link Live Tracking: pole danych (odleglosc, kierunek, przed/za na trasie),
+  znacznik na mapie Karoo (sprawdzic mozliwosci karoo-ext), alert o postoju/oddaleniu;
+- lepiej przez QBota (serwer pobiera, QExt2 dostaje gotowe; latwiejsza naprawa) i
+  laczy sie z Pomyslem A (dostep czasowy od kolegi);
+- opoznienie do 30 s -- sensowne przy rozjechaniu sie na km, nie przy jezdzie obok;
+  wymaga zgody drugiej osoby i zasiegu u obu.
+
 ## [KALENDARZ-WEB] Webowy kalendarz -- kontynuacja (dodane 2026-07-16)
 
 BAZA GOTOWA (DECISIONS.md 2026-07-16 + CURRENT.md): siatka miesiaca z odczytem konca dnia
