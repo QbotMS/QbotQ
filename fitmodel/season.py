@@ -963,13 +963,19 @@ def facts(conn, z, fd, rides, ill):
         from fitmodel import meter_physics as MP
         MP.ensure(conn, s0)
         ref_ratio, ref_n = MP.reference_ratio(conn, bad_from, bad_to)
-        phys = {r["e"]: float(r["q"]) for r in _rows(conn, "SELECT external_id AS e, ratio AS q FROM qbot_v2.meter_phys "
-                                                             "WHERE ratio IS NOT NULL AND ride_date >= %s", (s0,))}
+        phys = {r["e"]: r for r in _rows(conn, "SELECT external_id AS e, ratio AS q, ratio_weak AS qw, n_windows AS n, "
+                                                "temp_avg AS ta, temp_max AS tm FROM qbot_v2.meter_phys WHERE ride_date >= %s", (s0,))}
     except Exception:
         phys = {}
+    HOT = 30.0
     for r in pah:
-        q = phys.get(r["e"])
-        r["p_est"] = (float(r["p"]) * ref_ratio / q) if (r["bad"] and q and ref_ratio) else None
+        ph = phys.get(r["e"]) or {}
+        q, qw = ph.get("q"), ph.get("qw")
+        r["n_win"] = int(ph.get("n") or 0)
+        r["t_max"] = float(ph["tm"]) if ph.get("tm") is not None and float(ph["tm"]) > -50 else None
+        r["t_avg"] = float(ph["ta"]) if ph.get("ta") is not None else None
+        r["p_est"] = (float(r["p"]) * ref_ratio / float(q)) if (r["bad"] and q and ref_ratio) else None
+        r["p_est_weak"] = (float(r["p"]) * ref_ratio / float(qw)) if (r["bad"] and qw and ref_ratio) else None
     clean_all = [r for r in pah if not r["bad"]]
     cur_m = "Grizl"
     spider_from = min((r["d"] for r in pah if r["m"] == GRIZL_SPIDER_KEY), default=None)
@@ -1009,8 +1015,20 @@ def facts(conn, z, fd, rides, ill):
         dom_m = ("Grizl (nowy pająk)" if any(r["m"] == GRIZL_SPIDER_KEY for r in pah if ws <= r["d"] <= we and r["grizl"])
                  else "Grizl") if p_w else None
         p_dom = round(_median(p_w)) if p_w else None
-        p_e = [r["p_est"] for r in pah if ws <= r["d"] <= we and r.get("p_est") and r["grizl"]]
-        p_est = round(_median(p_e)) if p_e else None
+        # estymacja tygodnia = srednia WAZONA liczba podjazdow (pewniejsza jazda liczy sie mocniej)
+        est_r = [r for r in pah if ws <= r["d"] <= we and r.get("p_est") and r["grizl"]]
+        p_e = [r["p_est"] for r in est_r]
+        w_sum = sum(r["n_win"] for r in est_r)
+        p_est = round(sum(r["p_est"] * r["n_win"] for r in est_r) / w_sum) if w_sum else None
+        est_conf = bool(w_sum >= 20)
+        weak = [{"d": r["d"].isoformat(), "p": round(r["p_est_weak"]), "n": r["n_win"]} for r in pah
+                if ws <= r["d"] <= we and r.get("p_est_weak") and r["grizl"]]
+        est_rides = [{"d": r["d"].isoformat(), "p": round(r["p_est"]), "n": r["n_win"],
+                      "tmax": r["t_max"]} for r in est_r]
+        wk_t = [r for r in pah if ws <= r["d"] <= we]
+        tmaxs = [r["t_max"] for r in wk_t if r["t_max"] is not None]
+        tavgs = [r["t_avg"] for r in wk_t if r["t_avg"] is not None]
+        hot_n = sum(1 for x in tmaxs if x >= HOT)
         bad_w = bool(bad_from and not (we < bad_from or ws > bad_to))
         wt = [x for d, x in wts if ws <= d <= we]
         hrs = round(sum((r["duration_s"] or 0) for r in rides_all if ws <= r["date"] <= we) / 3600.0, 1) if ws <= today else None
@@ -1023,7 +1041,10 @@ def facts(conn, z, fd, rides, ill):
                "p_at_hr": round(_median(p_w)) if p_w else None, "p_n": len(p_w),
                "p_at_hr_other_meter": round(_median(p_o)) if p_o else None, "meter_bad": bad_w,
                "p_week": p_dom, "p_meter": dom_m,
-               "p_est": p_est, "p_est_n": len(p_e),
+               "p_est": p_est, "p_est_n": len(p_e), "p_est_windows": w_sum, "p_est_conf": est_conf,
+               "p_est_rides": est_rides, "p_est_weak": weak,
+               "temp_max": round(max(tmaxs)) if tmaxs else None, "temp_avg": round(sum(tavgs) / len(tavgs)) if tavgs else None,
+               "hot_rides": hot_n,
                "p_est_lo": round(p_est * (1 - 0.10)) if p_est else None, "p_est_hi": round(p_est * (1 + 0.10)) if p_est else None,
                "rhr": round(mean(rh), 1) if mean(rh) is not None else None,
                "readiness": round(mean(rd), 2) if mean(rd) is not None else None,
@@ -1089,7 +1110,9 @@ def facts(conn, z, fd, rides, ill):
               "guard_alert_days": guard_alerts,
               "phys_ref_ratio": ref_ratio, "phys_ref_n": ref_n,
               "phys_note": ("p_est = estymacja wydolnosci w okresie wady z fizyki na podjazdach (moc z miernika skorygowana "
-                            "o stosunek do mocy z grawitacji), dokladnosc ok. +-10%; tylko jazdy z podjazdami."), "rhr_days_above_norm_14d": rhr_above, "rhr_norm": rhr_norm,
+                            "o stosunek do mocy z grawitacji), srednia wazona liczba podjazdow, dokladnosc ok. +-10%. "
+                            "p_est_conf=false (<20 podjazdow w tygodniu) = niska pewnosc. hot_rides = jazdy z max >= 30 C "
+                            "(upal podnosi tetno przy tych samych watach -> nizsza moc przy tetnie)."), "rhr_days_above_norm_14d": rhr_above, "rhr_norm": rhr_norm,
               "weight_last": wts[-1][1] if wts else None, "weight_last_day": wts[-1][0].isoformat() if wts else None,
               "weight_goal": goal_w, "typical_hours": typical, "xss_per_h": round(xss_h, 1)}
     planned = [{"day": s["day"].isoformat(), "name": s["name"], "sport": s["sport"], "min": s["dur_min"], "xss": float(s["xss"] or 0)}

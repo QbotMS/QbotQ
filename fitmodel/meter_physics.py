@@ -17,7 +17,10 @@ from statistics import median
 
 G, CDA, CRR, EXTRA_KG = 9.81, 0.45, 0.009, 14.0
 MIN_GRADE, V_MIN, V_MAX, CAD_MIN, WIN_S = 0.04, 1.8, 9.0, 40, 60
-MIN_WINDOWS = 5
+MIN_WINDOWS = 5            # od tylu okien jazda ma pewny wynik (ratio)
+WEAK_WINDOWS = 3           # 3-4 okna: wynik slabej pewnosci (ratio_weak) - tylko do pokazania, nie do sredniej
+WEEK_CONF_WINDOWS = 20     # tydzien uznany za pewny od tylu okien (suma z jazd)
+HOT_C = 30.0               # dzien goracy: max temperatura jazdy >= HOT_C
 ACCURACY = 0.10
 # bagaz wg Michala (2026-09-28): Toskania ~10 kg, Opolszczyzna ~6 kg (nie wazone dokladnie)
 LUGGAGE = [(dt.date(2026, 6, 5), dt.date(2026, 6, 11), 10.0), (dt.date(2026, 8, 1), dt.date(2026, 8, 3), 6.0)]
@@ -25,6 +28,8 @@ LUGGAGE = [(dt.date(2026, 6, 5), dt.date(2026, 6, 11), 10.0), (dt.date(2026, 8, 
 DDL = """CREATE TABLE IF NOT EXISTS qbot_v2.meter_phys (
     external_id text PRIMARY KEY, ride_date date, n_windows integer, ratio real,
     mass_kg real, luggage_kg real, computed_at timestamptz DEFAULT now())"""
+DDL2 = ("ALTER TABLE qbot_v2.meter_phys ADD COLUMN IF NOT EXISTS ratio_weak real, "
+        "ADD COLUMN IF NOT EXISTS temp_avg real, ADD COLUMN IF NOT EXISTS temp_max real")
 
 
 def _t(rows):
@@ -67,9 +72,12 @@ def ensure(conn, since, limit: int = 400) -> int:
     """Licz dla jazd z moca od `since`, ktorych nie ma jeszcze w meter_phys. Zwraca liczbe policzonych."""
     cur = conn.cursor()
     cur.execute(DDL)
+    cur.execute(DDL2)
+    # nowe jazdy + jazdy policzone przed dodaniem temperatur (temp_max IS NULL) -> licz od nowa
     cur.execute("""SELECT t.external_id, t.date FROM qbot_v2.training_sessions t
                    WHERE t.sport_type='cycling' AND t.date >= %s AND t.avg_power_w IS NOT NULL
-                     AND NOT EXISTS (SELECT 1 FROM qbot_v2.meter_phys m WHERE m.external_id=t.external_id)
+                     AND NOT EXISTS (SELECT 1 FROM qbot_v2.meter_phys m WHERE m.external_id=t.external_id
+                                     AND m.temp_max IS NOT NULL)
                    ORDER BY t.date LIMIT %s""", (since, limit))
     todo = _t(cur.fetchall())
     for eid, d in todo:
@@ -79,10 +87,17 @@ def ensure(conn, since, limit: int = 400) -> int:
         mass = (float(w[0]) if w else 101.0) + EXTRA_KG + lug
         cur.execute("SELECT sec, altitude_m, distance_m, power_w, cadence_rpm, speed_mps, temperature_c "
                     "FROM qbot_v2.activity_record WHERE external_id=%s ORDER BY sec", (eid,))
-        n, r = ride_ratio(_t(cur.fetchall()), mass)
-        cur.execute("INSERT INTO qbot_v2.meter_phys (external_id, ride_date, n_windows, ratio, mass_kg, luggage_kg) "
-                    "VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (external_id) DO NOTHING",
-                    (eid, d, n, (round(r, 3) if r is not None and n >= MIN_WINDOWS else None), round(mass, 1), lug))
+        R = _t(cur.fetchall())
+        n, r = ride_ratio(R, mass)
+        temps = [x[6] for x in R if x[6] is not None]
+        t_avg = round(sum(temps) / len(temps), 1) if temps else None
+        t_max = round(max(temps), 1) if temps else -99.0     # -99 = brak czujnika (zeby nie liczyc ponownie)
+        cur.execute("INSERT INTO qbot_v2.meter_phys (external_id, ride_date, n_windows, ratio, mass_kg, luggage_kg, "
+                    "ratio_weak, temp_avg, temp_max) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (external_id) DO UPDATE SET "
+                    "n_windows=EXCLUDED.n_windows, ratio=EXCLUDED.ratio, mass_kg=EXCLUDED.mass_kg, luggage_kg=EXCLUDED.luggage_kg, "
+                    "ratio_weak=EXCLUDED.ratio_weak, temp_avg=EXCLUDED.temp_avg, temp_max=EXCLUDED.temp_max, computed_at=now()",
+                    (eid, d, n, (round(r, 3) if r is not None and n >= MIN_WINDOWS else None), round(mass, 1), lug,
+                     (round(r, 3) if r is not None and WEAK_WINDOWS <= n < MIN_WINDOWS else None), t_avg, t_max))
     conn.commit()
     return len(todo)
 

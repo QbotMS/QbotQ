@@ -44,6 +44,13 @@ class BuildLive(unittest.TestCase):
                 if w["meter_bad"]:
                     continue
                 self.assertFalse(bp[0] <= w["week"] <= bp[1] and w["p_at_hr"] is not None)
+        # estymacja z fizyki: srednia wazona podjazdami, pewnosc od 20 podjazdow, slabe jazdy poza srednia
+        for w in F["weeks"]:
+            if w.get("p_est") is not None:
+                self.assertEqual(w["p_est_conf"], w["p_est_windows"] >= 20)
+                rs = w["p_est_rides"]
+                exp = round(sum(r["p"] * r["n"] for r in rs) / sum(r["n"] for r in rs))
+                self.assertLessEqual(abs(exp - w["p_est"]), 1)
         I = z["insight"]
         self.assertNotIn("error", I)
         self.assertTrue(I["head"])
