@@ -35,12 +35,15 @@ GODZINY: używaj WYŁĄCZNIE pól "suma_godzin" (nie licz sam). Gdy suma mieści
 poza widełkami najwyżej jedna spokojna uwaga, bez nakazu skracania.
 ZASADY: opieraj się WYŁĄCZNIE na podanych danych (cytuj dzień, godzinę, liczbę z danych); nie wymyślaj wartości;
 nie powtarzaj bez potrzeby uwag z "reguly" (możesz je doprecyzować); maks. 6 uwag, najważniejsze pierwsze;
+OCENY UŻYTKOWNIKA (\"oceny_uzytkownika\": 1–5 + komentarz do wcześniejszych sesji) to jego PREFERENCJE: wyciągaj z nich wzorce
+(np. niska ocena siły dzień po długiej jeździe, komentarz o układzie ćwiczeń) i zgłaszaj, gdy ten plan je powtarza — cytuj datę
+i komentarz; nie zgłaszaj ocen samych w sobie.
 pisz po polsku, prosto, krótko, bez żargonu. Jeśli plan jest sensowny — pusta lista i jedno zdanie podsumowania.
 Odpowiedz WYŁĄCZNIE JSON: {"summary": "1–2 zdania", "issues": [{"day": "RRRR-MM-DD", "severity": "wysoka|średnia|niska",
 "problem": "co jest nie tak", "why": "fakt z danych", "suggestion": "co zrobić (konkretnie)"}]}"""
 
 
-def build_input(ctx: dict, sessions: list, activities: list, rule_issues: list, plan_meta: dict) -> dict:
+def build_input(ctx: dict, sessions: list, activities: list, rule_issues: list, plan_meta: dict, ratings: list | None = None) -> dict:
     ws = ctx["week_start"]
     days = []
     for i in range(7):
@@ -83,7 +86,7 @@ def build_input(ctx: dict, sessions: list, activities: list, rule_issues: list, 
             "progi": {"min_dni_wolnych": E.P(ov, "load.min_rest_days"), "przerwa_po_ciezkiej_h": E.P(ov, "regen.heavy_gap_h"),
                       "ciezka_jazda_xss": E.P(ov, "yoga.hard_xss"), "dluga_jazda_h": E.P(ov, "yoga.long_h"),
                       "wiatr_max_ms": E.P(ov, "wx.wind_ms"), "deszcz_max_mmh": E.P(ov, "wx.rain_mmh")},
-            "nadchodzace_cele": goals, "reguly": rule_issues, "dni": days}
+            "nadchodzace_cele": goals, "reguly": rule_issues, "oceny_uzytkownika": ratings or [], "dni": days}
 
 
 def validate(resp, ws: date) -> dict:
@@ -121,7 +124,13 @@ def review_week(c, user: str, ws: date, force: bool = False, llm=None) -> dict:
     days_meta = {d: {"type": v["type"], "busy": v["busy"]} for d, v in res["days"].items()}
     det = E.check_rules_detailed([dict(s_, day=str(s_["day"])) for s_ in sessions], ctx.get("ov") or {}, days_meta)
     rules = [w["text"] for w in det if not w["acked"]]
-    inp = build_input(ctx, sessions, acts, rules, res)
+    try:
+        import qbot_trener_ratings as TR
+        ratings = TR.recent_for_ai(c, user, ws)
+    except Exception as e:  # brak tabeli/ocen nie moze zablokowac weryfikacji
+        print("trener review: oceny:", e)
+        ratings = []
+    inp = build_input(ctx, sessions, acts, rules, res, ratings)
     if not sessions:
         return {"summary": "Brak planu w tym tygodniu — najpierw „przelicz tydzień”.", "issues": [], "rule_issues": rules, "cached": False, "model": None}
     key = hashlib.sha1((user + json.dumps(inp, sort_keys=True, default=str)).encode()).hexdigest()

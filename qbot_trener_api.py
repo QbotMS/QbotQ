@@ -709,11 +709,15 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                 meta["route_entry_ids"] = sorted(ctx.get("route_entry_ids") or [])
             except Exception as e:  # meta pomocnicze - tydzien ma sie pokazac nawet bez niego
                 meta = {"error": str(e)[:200]}
-            import qbot_trener_workouts as TW
+            import qbot_trener_ratings as TR
+            prefs = TR.exercise_prefs(c, u)
+            rates = TR.for_range(c, u, d0, d1)
             for x in sessions:
                 if x["sport"] in ("sila", "wiosl", "joga"):
-                    n = TW.strength_index(c, u, x) if x["sport"] == "sila" else 0
-                    x["details"] = TW.details(x["sport"], meta.get("phase"), x["dur_min"], bool(x.get("cut")), n)
+                    x["details"] = TR.details_for(c, u, x, meta.get("phase"), prefs)
+                rt = rates.get((str(x["day"])[:10], x["sport"]))
+                x["rating"] = rt["rating"] if rt else None
+                x["rating_note"] = rt["note"] if rt else None
             c.execute("SELECT id, action, payload, created_at FROM qbot_v2.trainer_change WHERE username=%s AND week_start=%s AND accepted IS NULL "
                       "ORDER BY id DESC LIMIT 1", (u, d0))
             last = c.fetchone()
@@ -722,6 +726,31 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                     "calendar_update": ({"reason": cal_upd["reason"], "weeks": 1 + len(cal_upd.get("rolled") or [])} if cal_upd else None),
                     "warnings": E.check_rules_detailed(sessions, meta.get("ov") or {}, meta.get("days")),
                     "pending_change": (_jsonable(last) if last else None)}
+        return run(go)
+
+    @r.post("/rating")
+    async def rating_post(request: Request):
+        """Ocena planu sesji 1-5 (+ komentarz); rating 0 = usun. Trener bierze oceny pod uwage (qbot_trener_ratings)."""
+        u = user_of(request)
+        b = await body_of(request)
+        import qbot_trener_ratings as TR
+        try:
+            clean = TR.clean_rating(b)
+        except TR.BadRating as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        def go(c):
+            phase = None
+            try:
+                c.execute("SELECT day FROM qbot_v2.trainer_session WHERE id=%s AND username=%s", (clean["session_id"], u))
+                sr = c.fetchone()
+                if sr:
+                    phase = E.plan_week(E.build_context(c, u, E.monday(sr["day"])))["phase"]
+            except Exception as e:
+                print("trener ocena: faza:", e)
+            try:
+                return TR.save(c, u, clean, phase)
+            except TR.BadRating as e:
+                raise BadInput(str(e))
         return run(go)
 
     @r.post("/week/generate")

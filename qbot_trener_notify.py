@@ -107,12 +107,13 @@ def text_day(d: date, sessions: list[dict], details: dict | None = None) -> str 
 
 
 def session_details(c, user: str, sessions: list[dict], phase: str | None) -> dict:
-    import qbot_trener_workouts as TW
-    out = {}
+    import qbot_trener_ratings as TR
+    out, prefs = {}, None
     for s in sessions:
         if s.get("id") and s["sport"] in ("sila", "wiosl"):
-            n = TW.strength_index(c, user, s) if s["sport"] == "sila" else 0
-            out[s["id"]] = TW.details(s["sport"], phase, s["dur_min"], bool(s.get("cut")), n)["text"]
+            if prefs is None:
+                prefs = TR.exercise_prefs(c, user)
+            out[s["id"]] = TR.details_for(c, user, s, phase, prefs)["text"]
     return out
 
 
@@ -362,13 +363,19 @@ def albert_summary(week_start: str | None = None) -> dict:
         conn.rollback()
     finally:
         conn.close()
-    det = {}
-    if ses:
-        conn2 = _conn()
+    det, rated = {}, ""
+    conn2 = _conn()
+    try:
+        c2 = conn2.cursor()
+        if ses:
+            det = session_details(c2, user, [s for s in ses if s["status"] == "plan" and s["day"] >= date.today()], res["phase"])
         try:
-            det = session_details(conn2.cursor(), user, [s for s in ses if s["status"] == "plan" and s["day"] >= date.today()], res["phase"])
-        finally:
-            conn2.close()
+            import qbot_trener_ratings as TR
+            rated = TR.text_recent(TR.recent_for_ai(c2, user, ws))
+        except Exception as e:
+            print("trener albert: oceny:", e)
+    finally:
+        conn2.close()
     lines = [text_plan(ws, ses, res["phase_name"], res["target_h"], res["notes"]) if ses else
              f"Tydzień {ws.isoformat()}: brak zapisanego planu (faza {res['phase_name']}, cel {res['target_h']} h) — plan tworzy się przyciskiem „przelicz tydzień” w Trenerze."]
     if det:
@@ -381,6 +388,8 @@ def albert_summary(week_start: str | None = None) -> dict:
         for g in goals:
             v = gst.get(str(g["id"]), {})
             lines.append(f"- {g['name']} ({g['kind']}, {g['priority']}): {v.get('text', '')}")
+    if rated:
+        lines.append("\n" + rated)
     if bal.get("balance_kcal") is not None:
         lines.append(f"\nBilans {bal['days']} dni: {bal['balance_kcal']:+d} kcal/d (źródło: {'logi' if bal['source'] == 'logs' else 'waga'})")
     return {"status": "OK", "analysis": "\n".join(lines), "phase": res["phase_name"], "target_h": res["target_h"],

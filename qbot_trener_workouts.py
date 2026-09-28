@@ -47,7 +47,27 @@ ROW = {
 ROW_TECH = "Technika: nogi → tułów → ręce przy pociągnięciu, w powrocie odwrotnie; plecy proste, nie szarp rękami."
 
 
-def details(sport: str, phase: str | None, dur_min: int, cut: bool = False, n: int = 0) -> dict:
+BAD_AVG = 2.0  # srednia ocen cwiczenia <= 2 -> Trener go unika (qbot_trener_ratings.exercise_prefs)
+
+
+def _ok(prefs: dict, name: str) -> bool:
+    v = prefs.get(name)
+    return v is None or v > BAD_AVG
+
+
+def _pick(opts: list, var: int, prefs: dict | None) -> tuple[str, bool]:
+    """Wariant z rotacji; gdy nisko oceniony - najlepiej oceniony inny wariant tej grupy (nieoceniony = 3)."""
+    first = opts[var % len(opts)]
+    if not prefs or _ok(prefs, first):
+        return first, False
+    cands = [opts[(var + k) % len(opts)] for k in range(1, len(opts))]
+    good = [o for o in cands if _ok(prefs, o)]
+    if not good:
+        return first, False
+    return max(good, key=lambda o: prefs.get(o, 3.0)), True
+
+
+def details(sport: str, phase: str | None, dur_min: int, cut: bool = False, n: int = 0, prefs: dict | None = None) -> dict:
     phase = phase if phase in DOSE else "bz"
     if sport == "sila":
         acc = ACCENTS[n % len(ACCENTS)]
@@ -55,12 +75,20 @@ def details(sport: str, phase: str | None, dur_min: int, cut: bool = False, n: i
         rounds, work, rest, note = DOSE[phase]
         if cut:
             rounds, note = 1, "wersja minimum: jedna runda całego obwodu"
-        ex = [{"group": g, "name": opts[var % len(opts)]} for g, opts in BASE]
-        extra = EXTRA[acc][var % 2]
-        ex += [{"group": "➕ " + acc, "name": e} for e in extra]
+        ex = []
+        for g, opts in BASE:
+            nm, sw = _pick(opts, var, prefs)
+            ex.append({"group": g, "name": nm, "swapped": sw})
+        extra, esw = EXTRA[acc][var % 2], False
+        if prefs and not all(_ok(prefs, e) for e in extra):
+            alt = EXTRA[acc][(var + 1) % 2]
+            if all(_ok(prefs, e) for e in alt):
+                extra, esw = alt, True
+        ex += [{"group": "➕ " + acc, "name": e, "swapped": esw} for e in extra]
         lines = [f"Obwód na całe ciało · akcent: {acc} · {rounds} × obwód · {work} · przerwa między rundami {rest}",
                  "Rozgrzewka 5′: krążenia ramion i bioder, 10 przysiadów bez obciążenia, 10 pompek na kolanach."]
-        lines += [f"{i + 1}. {e['name']}" + (f" ({e['group']})" if not e["group"].startswith("➕") else " ➕") for i, e in enumerate(ex)]
+        lines += [f"{i + 1}. {e['name']}" + (f" ({e['group']})" if not e["group"].startswith("➕") else " ➕")
+                  + (" · zamiana wg Twoich ocen" if e.get("swapped") else "") for i, e in enumerate(ex)]
         lines.append(f"Uwaga: {note}. Oddychaj, bez bólu stawów; gdy za łatwo — trudniejszy wariant lub cięższy hantel.")
         return {"title": f"Siła obwodowa — akcent {acc}", "accent": acc, "rounds": rounds, "exercises": ex, "text": "\n".join(lines)}
     if sport == "wiosl":
