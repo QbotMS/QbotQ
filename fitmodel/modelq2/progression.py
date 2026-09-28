@@ -37,7 +37,11 @@ DEFAULT_ANCHOR_DAYS = [dt.date(2025, 12, 27), dt.date(2026, 3, 29), dt.date(2026
 def _load_xss_by_day(conn) -> dict:
     cur = conn.cursor()
     cur.execute("SELECT ride_date, xss_low, xss_high, xss_peak FROM qbot_v2.modelq2_ride ORDER BY ride_date")
-    return {d: (float(l), float(h), float(p)) for d, l, h, p in cur.fetchall()}
+    out = {}
+    for d, l, h, p in cur.fetchall():  # 2026-09-28: SUMA jazd dnia (wczesniej kolejna jazda nadpisywala poprzednia)
+        a = out.get(d, (0.0, 0.0, 0.0))
+        out[d] = (a[0] + float(l or 0), a[1] + float(h or 0), a[2] + float(p or 0))
+    return out
 
 
 def _build_anchors(conn, loads_by_day, anchor_days=None) -> list:

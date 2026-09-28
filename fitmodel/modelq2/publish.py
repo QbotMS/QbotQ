@@ -43,13 +43,22 @@ def ingest_new_rides_xss(conn, lookback_days: int = 14) -> int:
     d_to = dt.date.today()
     d_from = d_to - dt.timedelta(days=lookback_days)
     rides = io.list_rides(d_from, d_to)
-    byday = {}
-    for eid, d, n in rides:
-        if d not in byday or n > byday[d][1]:
-            byday[d] = (eid, n)
+    # 2026-09-28: KAZDA jazda dnia (wczesniej tylko 1 na dzien = najwiecej probek -> gubione dojazdy
+    # tam/z powrotem, 18 jazd od 2025). Duplikat = ta sama godzina startu w training_sessions
+    # (inny external_id tej samej jazdy) -> liczony raz (strumien z najwieksza liczba probek).
+    seen_start = set()
+    todo = []
+    for eid, d, n in sorted(rides, key=lambda x: (x[1], -x[2])):
+        cur.execute("SELECT started_at FROM qbot_v2.training_sessions WHERE external_id=%s", (eid,))
+        st = cur.fetchone()
+        stv = (st.get("started_at") if hasattr(st, "get") else st[0]) if st else None
+        key = stv if stv is not None else ("eid", eid)
+        if key in seen_start:
+            continue
+        seen_start.add(key)
+        todo.append((d, eid, n))
     done = 0
-    for d in sorted(byday):
-        eid, n = byday[d]
+    for d, eid, n in todo:
         cur.execute("SELECT 1 FROM qbot_v2.modelq2_ride WHERE external_id=%s", (eid,))
         if cur.fetchone():
             continue  # juz policzone

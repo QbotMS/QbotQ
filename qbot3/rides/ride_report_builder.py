@@ -337,12 +337,12 @@ def _mq2_sig_before(cur, day):
     except Exception:
         return None
 
-def _mq2_buckets(cur, day):
+def _mq2_buckets(cur, day, ride_key=None):
     """Wiadra XSS (Low/High/Peak) tej jazdy z modelq2_ride (po dacie)."""
     try:
         cur.execute("""SELECT xss_low,xss_high,xss_peak,xss_total,min_wbal_pct
                        FROM qbot_v2.modelq2_ride WHERE ride_date=%s
-                       ORDER BY xss_total DESC NULLS LAST LIMIT 1""",(day,))
+                       ORDER BY (external_id=%s) DESC NULLS LAST, xss_total DESC NULLS LAST LIMIT 1""",(day,ride_key))
         r=cur.fetchone()
         if not r: return None
         g=lambda k: float(r[k]) if r.get(k) is not None else None
@@ -351,7 +351,7 @@ def _mq2_buckets(cur, day):
     except Exception:
         return None
 
-def _mq2_ride_row(cur, day):
+def _mq2_ride_row(cur, day, ride_key=None):
     """Kanoniczny wiersz MQ2 tej jazdy (po dacie): external_id, sygnatura uzyta
     do replay, wiadra XSS, min W'bal. Zrodlo prawdy = modelq2_ride."""
     try:
@@ -359,7 +359,7 @@ def _mq2_ride_row(cur, day):
         cur.execute("""SELECT external_id,sig_tp_w,sig_hie_kj,sig_pp_w,
                               xss_low,xss_high,xss_peak,xss_total,min_wbal_pct
                        FROM qbot_v2.modelq2_ride WHERE ride_date=%s
-                       ORDER BY xss_total DESC NULLS LAST LIMIT 1""",(day,))
+                       ORDER BY (external_id=%s) DESC NULLS LAST, xss_total DESC NULLS LAST LIMIT 1""",(day,ride_key))
         r=cur.fetchone()
         if not r: return None
         g=lambda k: float(r[k]) if r.get(k) is not None else None
@@ -1622,7 +1622,7 @@ def build_w1(fit_path, ride_key, inputs=None):
     conn=_connect(); cur=conn.cursor()
     day = str(recs[0]["ts"].date())
     form=_modelq_form(cur); Wp,wp_source=_modelq_wprime(cur, day); efa=_ef_anchor(cur)
-    _mqr=_mq2_ride_row(cur, day)
+    _mqr=_mq2_ride_row(cur, day, ride_key)  # 2026-09-28: wiele jazd dnia -> wiersz TEJ jazdy
     _buckets=_mqr["buckets"] if _mqr else None
     _sig=_mqr["sig"] if (_mqr and _mqr.get("sig")) else _mq2_sig_before(cur, day)
     _mq_rows=_fetch_activity_rows(cur, _mqr["external_id"]) if _mqr else None
