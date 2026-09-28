@@ -115,6 +115,7 @@ class TestReportDataProvider(unittest.TestCase):
         self.assertEqual(result["body_composition"]["status"], "missing")
         self.assertEqual(result["validation"]["status"], "DATA_MISSING")
 
+    @unittest.skip("raport dobowy wylaczony (decyzja Michala) - odblokowac po ponownym wlaczeniu")
     @patch("qbot_report_data_provider._db_conn")
     def test_daily_partial_data(self, mock_conn):
         """Only sleep + nutrition available → DATA_PARTIAL."""
@@ -140,6 +141,7 @@ class TestReportDataProvider(unittest.TestCase):
         # 4 missing fields → DATA_MISSING (more than 3)
         self.assertEqual(result["validation"]["status"], "DATA_MISSING")
 
+    @unittest.skip("raport dobowy wylaczony (decyzja Michala) - odblokowac po ponownym wlaczeniu")
     @patch("qbot_report_data_provider._db_conn")
     def test_daily_partial_ok(self, mock_conn):
         """3 sources present → DATA_PARTIAL (not MISSING)."""

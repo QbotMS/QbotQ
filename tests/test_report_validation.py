@@ -266,6 +266,7 @@ T: 32 g"""
 class TestReportDiagnosticHandlers(unittest.TestCase):
     """Diagnostic handlers must return structured data without crashing."""
 
+    @unittest.skip("raport dobowy wylaczony (decyzja Michala) - odblokowac po ponownym wlaczeniu")
     def test_daily_report_handler_returns_data(self):
         """handle_query('raport dobowy') returns structured diagnostic"""
         with patch("qbot_query_handler._pg_conn") as mock_pg:
