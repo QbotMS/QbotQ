@@ -32,6 +32,15 @@ class BuildLive(unittest.TestCase):
         types = {w["type"] for w in z["weeks"]}
         self.assertTrue(types <= {"budowa", "mocny", "lzejszy", "wyjazd", "infekcja", "biezacy"})
         self.assertEqual(sum(1 for w in z["weeks"] if w["partial"]), 1)
+        st = z["story"]
+        self.assertNotIn("error", st)
+        for k in ("przebieg", "gdzie", "plan", "obserwacje", "wnioski"):
+            self.assertIsInstance(st[k], list)
+        self.assertTrue(st["przebieg"] and st["gdzie"])
+        # wniosek tylko przy powtorzeniu: kazdy wniosek 'Powtorzylo sie N razy' ma N >= 2
+        for w in st["wnioski"]:
+            if w.startswith("Powtórzyło się"):
+                self.assertGreaterEqual(int(w.split()[2]), 2)
 
 
 if __name__ == "__main__":
