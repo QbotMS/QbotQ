@@ -133,4 +133,92 @@ def build_router(current_user: Callable) -> APIRouter:
         out["ok"] = True
         return out
 
+    # ---------- parametry rzeczy (czesc ciala, dlugosc) ----------
+    @r.get("/params")
+    def params_get(request: Request, id: int = Query(...)) -> Any:
+        need_user(request)
+        import qbot_garage_taxonomy as T
+        c = _conn()
+        try:
+            x = c.execute("SELECT id, category, g_body, g_len, g_layer, g_style, s_cond, condition FROM gear WHERE id=?", (int(id),)).fetchone()
+        finally:
+            c.close()
+        if not x:
+            raise HTTPException(status_code=404, detail="brak rzeczy")
+        return {"id": x["id"], "category": x["category"], "g_body": x["g_body"], "g_len": x["g_len"],
+                "s_cond": x["s_cond"], "condition": x["condition"], "g_layer": x["g_layer"], "g_style": x["g_style"],
+                "layering": T.LAYERING, "style": T.STYLE,
+                "body": T.BODY, "len": T.LEN, "cats": {k: list(v) for k, v in T.PARAM_CATS.items()}}
+
+    @r.post("/params")
+    async def params_save(request: Request) -> Any:
+        need_user(request)
+        import qbot_garage_taxonomy as T
+        b = await request.json()
+        gid = int(b.get("id") or 0)
+        gb = b.get("g_body") or None
+        gl = b.get("g_len") or None
+        if gb is not None and gb not in T.BODY:
+            raise HTTPException(status_code=400, detail="zla czesc ciala")
+        if gl is not None and gl not in T.LEN:
+            raise HTTPException(status_code=400, detail="zla dlugosc")
+        gy = b.get("g_layer") or None
+        gs = b.get("g_style") or None
+        if gy is not None and gy not in T.LAYERING:
+            raise HTTPException(status_code=400, detail="zle warstwowanie")
+        if gs is not None and gs not in T.STYLE:
+            raise HTTPException(status_code=400, detail="zly styl")
+        c = _conn()
+        try:
+            if not c.execute("SELECT 1 FROM gear WHERE id=?", (gid,)).fetchone():
+                raise HTTPException(status_code=404, detail="brak rzeczy")
+            if "g_layer" in b or "g_style" in b:
+                c.execute("UPDATE gear SET g_body=?, g_len=?, g_layer=?, g_style=? WHERE id=?", (gb, gl, gy, gs, gid))
+            else:
+                c.execute("UPDATE gear SET g_body=?, g_len=? WHERE id=?", (gb, gl, gid))
+            c.commit()
+        finally:
+            c.close()
+        return {"ok": True, "id": gid, "g_body": gb, "g_len": gl, "g_layer": gy, "g_style": gs}
+
+    # ---------- Ankieta ocen v2 (-2..+2, null = n/d; Dopasowanie obowiazkowe) ----------
+    @r.post("/survey")
+    async def survey_save(request: Request) -> Any:
+        need_user(request)
+        import qbot_garage_taxonomy as T
+        b = await request.json()
+        gid = int(b.get("id") or 0)
+        vals = b.get("vals") or {}
+        status = "ok" if b.get("status", "ok") == "ok" else "draft"
+        clean = {}
+        for col in T.SURVEY_COLS:
+            v = vals.get(col)
+            if v in (None, "", "nd"):
+                clean[col] = None
+                continue
+            try:
+                iv = int(v)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="zla wartosc %s" % col)
+            if not -2 <= iv <= 2:
+                raise HTTPException(status_code=400, detail="poza skala %s" % col)
+            clean[col] = iv
+        if status == "ok" and clean.get("s_fit") is None:
+            raise HTTPException(status_code=400, detail="Dopasowanie jest obowiazkowe")
+        c = _conn()
+        try:
+            x = c.execute("SELECT category, condition FROM gear WHERE id=?", (gid,)).fetchone()
+            if not x:
+                raise HTTPException(status_code=404, detail="brak rzeczy")
+            c.execute("UPDATE gear SET " + ", ".join("%s=?" % k for k in T.SURVEY_COLS) + ", s_status=? WHERE id=?",
+                      [clean[k] for k in T.SURVEY_COLS] + [status, gid])
+            cond = T.condition_from(clean.get("s_cond"), x["condition"]) if status == "ok" else None
+            if cond:
+                c.execute("UPDATE gear SET condition=? WHERE id=?", (cond, gid))
+            c.commit()
+        finally:
+            c.close()
+        return {"ok": True, "id": gid, "vals": clean, "s_status": status, "ocena": T.ocena(x["category"], clean),
+                "condition": cond or x["condition"]}
+
     return r

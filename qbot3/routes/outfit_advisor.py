@@ -25,7 +25,8 @@ import time
 
 GARAGE_DB = "/opt/qbot/app/data/garage.db"
 RULES_MD = "/opt/qbot/app/docs/OUTFIT_ADVISOR_RULES.md"
-VERSION = 2
+VERSION = 3
+# temperatura na trasie / na rowerze: qbot3/routes/ride_thermal.py (kalibracja Karoo + UTCI), zamiast stalej -6 C
 _SPODNIE = ["Spodnie rowerowe (bez wk\u0142adki)"]
 LAYERS = [
     ("baza_gora", ["Bielizna termoaktywna \u2014 g\u00f3ra"]),
@@ -44,7 +45,9 @@ LAYERS = [
     ("buty", ["Buty"]),
     ("ochraniacze", ["Ochraniacze na buty"]),
 ]
-LAYER_KEYS = [k for k, _ in LAYERS]
+# warstwy wynikaja z taksonomii (kategoria + parametry rzeczy): qbot_garage_taxonomy.slot_of/LAYER_OF_SLOT
+LAYER_KEYS = ["baza_gora", "koszulka", "kamizelka", "kurtka", "deszcz_gora", "baza_dol", "spodenki", "spodnie",
+              "deszcz_dol", "rekawki", "nogawki", "rekawiczki", "glowa", "szyja", "skarpety", "buty", "ochraniacze"]
 _WARMERS = "R\u0119kawki i nogawki"
 SEASON_RANGE = {"lato": (16, 30), "przejsciowy": (6, 18), "zima": (-10, 6)}
 # UWAGA: 'hoodie' celowo NIE jest znakiem ocieplenia (np. North Face Sun Hoodie = letnia warstwa na upal)
@@ -62,7 +65,10 @@ ST_W = {"CORE": 2.0, "ROTATION": 0.7, "SPECIAL": 0.3, "BACKUP": -1.0, "NEW": -0.
 RAIN_W = {"ulewa_sucho": 2.0, "umiarkowany_sucho": 1.5, "mzawka_sucho": 0.8, "umiarkowany_przemaka_po_czasie": 0.4}
 PAD_LONG = {">6": 1.5, "4-6": 0.5, "2-4": -1.0, "1-2": -2.0, "<1": -4.0}
 PAD_MID = {">6": 0.5, "4-6": 0.5, "2-4": 0.0, "1-2": -1.0, "<1": -3.0}
-_WEATHER_LAYERS = ("kurtka", "kamizelka", "spodnie", "rekawiczki", "buty", "nogawki", "ochraniacze")
+_SLAB = (("s_breath", "oddychalnosc"), ("s_dry", "szybkoschniecie"), ("s_wind", "wiatroszczelnosc"),
+         ("s_water", "wodoodpornosc"), ("s_pack", "pakownosc"), ("s_comfort", "komfort_wykonania"),
+         ("s_fit", "dopasowanie_rozmiaru"), ("s_insul", "izolacja_jakosc_grzania"), ("s_cond", "stan_techniczny"))
+_WEATHER_LAYERS = ("kurtka", "kamizelka", "deszcz_gora", "deszcz_dol", "spodnie", "rekawiczki", "buty", "nogawki", "ochraniacze")
 
 
 def _f(x, d=None):
@@ -98,14 +104,54 @@ def warunki(d: dict, start: str, long_stops: int = 0, long_stop_min: int = 0) ->
     st = _hm(start)
     meta = st + int(round(float(tm.get("total_h") or 0) * 60)) if st is not None else None
     fe = [(x.get("okno"), _f(x.get("feels"))) for x in win if _f(x.get("feels")) is not None]
+    ta = [(x.get("okno"), _f(x.get("temp"))) for x in win if _f(x.get("temp")) is not None]
     out = {"start": start, "meta": _fmt(meta) if meta is not None else None, "czas_h": _f(tm.get("total_h"))}
-    if long_stops:
+    if long_stops:   # przywrocone (zgubione przy przebudowie v3 2026-09-25)
         out["dlugie_postoje"] = {"ile": int(long_stops), "min_kazdy": int(long_stop_min or 0)}
+
+    def _sum(key):
+        v = [_f(x.get(key)) for x in win if _f(x.get(key)) is not None]
+        if not v:
+            return None
+        return {"start": v[0], "koniec": v[-1], "min": min(v), "max": max(v), "srednia": round(sum(v) / len(v), 1)}
+    for key, lab in (("temp", "prognoza_powietrza"), ("na_trasie", "na_trasie"), ("na_rowerze", "na_rowerze")):
+        sm = _sum(key)
+        if sm:
+            out[lab] = sm
+    termika = w.get("termika") or {}
+    if termika:
+        out["temperatura_opis"] = {
+            "prognoza_powietrza": "prognoza temperatury powietrza (model pogody)",
+            "na_trasie": "prognoza + poprawka z kalibracji na Karoo Michala (%s jazd): tam gdzie jezdzi jest zwykle chlodniej; "
+                         "niepewnosc 80%%: %s C" % (termika.get("kalibracja_jazd"), termika.get("niepewnosc_80proc")),
+            "na_rowerze": "TEMPERATURA DO UBIORU: jak na trasie (tyle pokazuje Karoo i tyle Michal czuje na twarzy - ped jazdy"
+                          " i cieplo z wysilku sie znosza)"
+                          " + osobista korekta %s C (z %s jazd w 'W czym jechalem')" % (
+                              (termika.get("osobista_korekta") or {}).get("c"), (termika.get("osobista_korekta") or {}).get("jazd")),
+        }
+        lo80 = (termika.get("niepewnosc_80proc") or [None])[0]
+        if lo80 is not None and out.get("na_rowerze"):
+            out["zapas_bezpieczenstwa"] = {"na_rowerze_chlodny_wariant_min": round(out["na_rowerze"]["min"] + lo80, 1),
+                                           "opis": "w 1 na 10 jazd bywa o %.1f C chlodniej niz przewidywanie - rzeczy do "
+                                                   "dolozenia musza to pokryc" % abs(lo80)}
+    na_s = [x.get("okno") for x in win if x.get("wiatr_ochrona") == "na_sobie"]
+    pod_r = [x.get("okno") for x in win if x.get("wiatr_ochrona") == "pod_reka"]
+    if na_s:
+        out["wiatr_ochrona_wymagana"] = {"okna": na_s[:10], "co": "ochrona od wiatru NA SOBIE (kamizelka/wiatrowka)"}
+    if pod_r:
+        out["wiatr_ochrona_pod_reka"] = {"okna": pod_r[:10], "co": "kamizelka/wiatrowka pod reka (kieszen), zaloz przy dluzszym wietrze"}
+    tmap = {x.get("okno"): x for x in win}
     if fe:
         lo = min(fe, key=lambda x: x[1]); hi = max(fe, key=lambda x: x[1])
         out["odczuwalna"] = {"start": fe[0][1], "koniec": fe[-1][1], "min": lo[1], "min_o": lo[0], "max": hi[1], "max_o": hi[0],
                              "rozrzut": round(hi[1] - lo[1], 1)}
-        out["przebieg"] = [{"godz": o, "odczuwalna": v} for o, v in fe]
+        out["przebieg"] = [{x: y for x, y in (("godz", o), ("prognoza", _f((tmap.get(o) or {}).get("temp"))),
+                            ("na_trasie", _f((tmap.get(o) or {}).get("na_trasie"))),
+                            ("na_rowerze", _f((tmap.get(o) or {}).get("na_rowerze"))),
+                            ("czolowy_ms", _f((tmap.get(o) or {}).get("czolowy_sr"))),
+                            ("porywy_ms", _f((tmap.get(o) or {}).get("porywy_max"))),
+                            ("wiatr_ochrona", (tmap.get(o) or {}).get("wiatr_ochrona")), ("odczuwalna_w_sloncu", v))
+                            if y is not None} for o, v in fe]
     wb = [_f(x.get("wbgt")) for x in win if _f(x.get("wbgt")) is not None]
     if wb:
         out["wbgt_max"] = max(wb)
@@ -161,14 +207,20 @@ def recent_ids(conn, n=3) -> set:
     return ids
 
 
-def _layer(r, cat2layer):
-    cat = r["category"]
-    if cat == _WARMERS:
-        return "nogawki" if _LEG.search(r["model"] or "") else "rekawki"
-    k = cat2layer.get(cat)
-    if k == "spodnie" and r["a_pad_h"] not in (None, "", "0"):
-        return "spodenki"                  # np. POC 179 (bibsy z wkladka w kategorii 'bez wkladki'), tights z wkladka
-    return k
+def _pad_eff(r):
+    """Wkladka na dlugie jazdy (decyzja Michala 2026-09-25): Komfort z Ankiety ocen >= +1 = wkladka na > 6 h
+    (godziny z audytu to najdluzsza jazda w 2026, nie limit). Komfort <= 0 -> godziny z audytu (zwykle krotko)."""
+    try:
+        if r["s_comfort"] is not None and int(r["s_comfort"]) >= 1:
+            return ">6"
+    except (KeyError, IndexError, TypeError, ValueError):
+        pass
+    return r["a_pad_h"]
+
+
+def _layer(r, cat2layer=None):
+    import qbot_garage_taxonomy as T
+    return T.LAYER_OF_SLOT.get(T.slot_of(r["category"], r["g_body"], r["g_len"]) or "")
 
 
 def _gear_rows():
@@ -176,23 +228,33 @@ def _gear_rows():
     g.row_factory = sqlite3.Row
     have = {r["name"] for r in g.execute("PRAGMA table_info(gear)")}
     acols = [c for c in ("a_status", "a_fit", "a_use", "a_temp_min", "a_temp_max", "a_effort", "a_rain", "a_wind",
-                         "a_wet_cold", "a_pad_h", "a_carry", "a_role", "a_pairs", "a_note", "a_out", "a_src", "a_date")]
+                         "a_wet_cold", "a_pad_h", "a_carry", "a_role", "a_pairs", "a_note", "a_out", "a_src", "a_date",
+                         "g_body", "g_len", "s_breath", "s_dry", "s_wind", "s_water", "s_pack", "s_comfort", "s_fit",
+                         "s_insul", "s_cond", "s_status", "g_layer", "g_style", "color_q")]
     sel = ", ".join(c if c in have else "NULL AS %s" % c for c in acols)
+    rc = [c for c in ("r_intensity", "r_breath", "r_dry", "r_insul", "r_wind", "r_water", "r_pack", "ratings_status")]
+    rsel = ", ".join(c if c in have else "NULL AS %s" % c for c in rc if c not in ("r_insul", "r_wind", "r_water", "r_breath"))
     rows = g.execute("SELECT id, category, brand, model, color, season, rating, r_insul, r_wind, r_water, r_breath, fabric, notes, "
+                     + rsel + ", "
                      + sel + " FROM gear WHERE active=1").fetchall()
     g.close()
     return rows
 
 
 def kandydaci(war: dict, recent: set, per_layer: int = 7, liked: set | None = None) -> dict:
-    fe = war.get("odczuwalna") or {}
-    lo_t, hi_t = _f(fe.get("min"), 10.0), _f(fe.get("max"), 15.0)
+    # dopasowanie do zakresow z audytu po TEMPERATURZE POWIETRZA (tak Michal podawal, w czym jezdzil);
+    # odczuwalna tylko gdy brak powietrza
+    # dopasowanie do zakresow z audytu (temperatura, w jakiej Michal nosil zestaw): od chlodniejszej temperatury
+    # na trasie do prognozy powietrza (obejmuje zapas); odczuwalna tylko gdy brak danych
+    lo_src = war.get("na_trasie") or war.get("prognoza_powietrza") or war.get("odczuwalna") or {}
+    hi_src = war.get("prognoza_powietrza") or war.get("odczuwalna") or {}
+    lo_t, hi_t = _f(lo_src.get("min"), 10.0), _f(hi_src.get("max"), 15.0)
     rain = war.get("deszcz") or {}
     wet = rain.get("max_proc", 0) >= 40
     heavy = _f(rain.get("suma_mm"), 0.0) >= 5
     czas = _f(war.get("czas_h"), 0.0) or 0.0
     cold_stops = bool(war.get("dlugie_postoje")) or czas >= 4 or bool(war.get("meta_po_zmroku"))
-    windy = _f((war.get("wiatr_ms") or {}).get("max"), 0.0) >= 6 and lo_t < 15
+    windy = bool(war.get("wiatr_ochrona_wymagana")) or (_f((war.get("wiatr_ms") or {}).get("max"), 0.0) >= 6 and lo_t < 15)
     liked = liked or set()
     cat2layer = {c: k for k, cs in LAYERS for c in cs}
     out = {k: [] for k in LAYER_KEYS}
@@ -201,6 +263,8 @@ def kandydaci(war: dict, recent: set, per_layer: int = 7, liked: set | None = No
         if not k:
             continue
         audited = bool(r["a_date"])
+        if r["s_fit"] is not None and int(r["s_fit"]) < 0:
+            continue                                             # Dopasowanie < 0 (ankieta) = nie do jazdy
         notes = r["notes"] or ""
         if audited:
             if int(r["a_out"] or 0):
@@ -218,7 +282,7 @@ def kandydaci(war: dict, recent: set, per_layer: int = 7, liked: set | None = No
         a, b = rng
         margin = 3 if audited else 2
         ov = max(0.0, min(b, hi_t + margin) - max(a, lo_t - margin))   # zachodzenie na przebieg jazdy
-        if ov <= 0 and k not in ("kamizelka", "kurtka", "rekawki", "nogawki"):
+        if ov <= 0 and k not in ("kamizelka", "kurtka", "deszcz_gora", "deszcz_dol", "rekawki", "nogawki"):
             continue
         if ov <= 0 and a > hi_t + margin:
             continue                                             # warstwy zdejmowane moga lezec nizej, ale nie wyzej
@@ -236,10 +300,10 @@ def kandydaci(war: dict, recent: set, per_layer: int = 7, liked: set | None = No
                 sc += RAIN_W.get(r["a_rain"] or "", 0.0) + (1.0 if heavy and r["a_rain"] == "ulewa_sucho" else 0.0)
                 if r["a_carry"] == "czesto":
                     sc += 0.5
-            if windy and k in ("kurtka", "kamizelka") and r["a_wind"] in ("mocna", "umiarkowana"):
+            if windy and k in ("kurtka", "kamizelka", "deszcz_gora") and r["a_wind"] in ("mocna", "umiarkowana"):
                 sc += 0.7
             if k == "spodenki" and r["a_pad_h"]:
-                sc += (PAD_LONG if czas >= 5 else PAD_MID if czas >= 3 else {}).get(r["a_pad_h"], 0.0)
+                sc += (PAD_LONG if czas >= 5 else PAD_MID if czas >= 3 else {}).get(_pad_eff(r), 0.0)
         else:
             sc = float(r["rating"] or 3) + fit_t + (0.5 if src == "notatka" else 0.0)
             warm_item = bool(_WARM.search(" ".join(str(x or "") for x in (r["model"], r["fabric"], notes)))) or (_f(r["r_insul"], 0) >= 3)
@@ -251,27 +315,42 @@ def kandydaci(war: dict, recent: set, per_layer: int = 7, liked: set | None = No
             sc -= 0.5 if _MINUS05.search(notes) else 0.0
             if wet and _f(r["r_water"], 0) >= 3:
                 sc += 1.0
+        # niepakowna warstwa wierzchnia (nie da sie jej schowac) na dzien cieplejszy niz jej zakres -> odpada
+        nb_max = _f((war.get("na_rowerze") or {}).get("max"), None)
+        if k in ("kurtka", "kamizelka") and nb_max is not None and r["s_pack"] is not None and int(r["s_pack"]) < 1 \
+                and b < 40 and nb_max > b:
+            continue
         if int(r["id"]) in liked:
             sc += 0.7                                            # noszone z 'ok' na dluzszej jezdzie
         if int(r["id"]) in recent:
             sc -= 0.7
         it = {"id": int(r["id"]), "warstwa": k, "kategoria": r["category"],
-              "nazwa": ("%s %s" % (r["brand"] or "", r["model"] or "")).strip(), "kolor": r["color"],
+              "nazwa": ("%s %s" % (r["brand"] or "", r["model"] or "")).strip(), "kolor": r["color_q"] or r["color"],
               "zakres_c": [a, b], "zakres_z": src, "ostatnio_proponowane": int(r["id"]) in recent, "_score": round(sc, 2)}
+        it["marka"] = (r["brand"] or "").strip()
+        if r["g_len"]:
+            it["dlugosc"] = r["g_len"]
+        if r["g_layer"]:
+            it["warstwowanie"] = {"chetnie": "chetnie", "potrzeba": "w razie potrzeby (niepreferowane)", "nie": "nie - tylko sama"}.get(r["g_layer"])
+        if r["g_style"]:
+            it["styl"] = "outdoorowy" if r["g_style"] == "outdoor" else "kolarski"
+        oc = {lab: r[col] for col, lab in _SLAB if r[col] is not None}
+        if oc:
+            it["ankieta"] = oc                                  # skala -2..+2 (0 = przecietnie)
+            it["ankieta_status"] = "potwierdzone przez Michala" if r["s_status"] == "ok" else "wstepne AI - niepewne"
         if audited:
             it["audyt"] = {x: v for x, v in (
                 ("status", r["a_status"]), ("fit", r["a_fit"]), ("uzycie_2026", r["a_use"]), ("wysilek", r["a_effort"]),
                 ("rola", r["a_role"]), ("deszcz_sprawdzony", r["a_rain"]), ("wiatr_ochrona", r["a_wind"]),
-                ("mokra_wychladza", bool(int(r["a_wet_cold"] or 0))), ("wkladka_sprawdzona_h", r["a_pad_h"]),
+                ("mokra_wychladza", bool(int(r["a_wet_cold"] or 0))), ("wkladka_sprawdzona_h", _pad_eff(r) if k == "spodenki" else r["a_pad_h"]),
                 ("wozenie_awaryjne", r["a_carry"]), ("komplety", r["a_pairs"]), ("uwagi", r["a_note"]),
                 ("zrodlo", r["a_src"]), ("data", r["a_date"])) if v not in (None, "", False)}
         else:
             it.update({"sezon": r["season"], "ocena": r["rating"],
-                       "oceny": {k2: r[k2] for k2 in ("r_insul", "r_wind", "r_water", "r_breath") if r[k2] is not None},
                        "material": (r["fabric"] or "")[:80], "notatka": re.sub(r"\s+", " ", notes)[:220]})
         out[k].append(it)
-    for k in out:
-        out[k] = sorted(out[k], key=lambda x: -x["_score"])[:per_layer]
+    for k in out:   # koszulka: wiecej kandydatow (dwa rozne tempa potrzebuja roznych koszulek)
+        out[k] = sorted(out[k], key=lambda x: -x["_score"])[:(per_layer + 4 if k == "koszulka" else per_layer)]
     return {k: v for k, v in out.items() if v}
 
 
@@ -369,7 +448,7 @@ def _liked(hist) -> set:
 SYS_FALLBACK = ("Jestes doswiadczonym kolarzem-doradca od ubioru na gravel. Piszesz po polsku, konkretnie. "
                 "Dobierasz ubior WYLACZNIE z listy 'kandydaci' (pole id). Wiatr zawsze w m/s.")
 SYS_FORMAT = ("\n\n## FORMAT ODPOWIEDZI\nZwracasz WYLACZNIE JSON. Jedna rzecz na warstwe w zestawie (pole 'warstwa' kandydata). "
-              "Min. 4 rzeczy w zestawie. Spodnie z warstwy 'spodnie' wymagaja rzeczy z warstwy 'spodenki' w tym samym zestawie. "
+              "Min. 4 rzeczy w zestawie. Rzeczy z warstwy 'spodnie' lub 'deszcz_dol' wymagaja rzeczy z warstwy 'spodenki' (z wkladka) w tym samym zestawie. "
               "Rzeczy 'do_kieszeni' tez tylko z kandydatow. Piszesz prostym jezykiem, zwracasz sie do Michala na TY ""(nie 'Michal woli', tylko 'wolisz').")
 
 
@@ -407,19 +486,39 @@ def _prompt(war, kand, hist, rules):
             + "\n\nreguly_ubioru (dodatkowe od uzytkownika): " + json.dumps(rules or [], ensure_ascii=False)
             + '\n\nZwroc JSON: {"warunki_krotko": "1-2 zdania o przebiegu warunkow w czasie jazdy",'
               ' "z_historii": "1 zdanie: co z Twoich jazd wplynelo na dobor (albo pusty)",'
-              ' "zestawy": [{"nazwa": "krotka nazwa, np. Lzejszy / Cieplejszy", "kiedy": "1 zdanie: kiedy ten zestaw",'
-              ' "rzeczy": [{"id": liczba, "dlaczego": "1 zdanie z liczba"}],'
-              ' "do_kieszeni": [{"id": liczba, "dlaczego": "1 zdanie"}], "zdejmij": "co i kiedy zdjac (albo pusty)",'
+              ' "zestawy": [{"tempo": "spokojniejsza" lub "szybsza", "nazwa": "krotka nazwa", "kiedy": "1 zdanie: kiedy ten zestaw",'
+              ' "po_co": "1 zdanie: dlaczego te rzeczy przy TYM tempie (co daje wzgledem drugiego zestawu)",'
+              ' "rzeczy": [{"id": liczba, "dlaczego": "1 zdanie z liczba", "zamienniki": [id, id] (opcjonalnie, 0-2, ta sama warstwa)}],'
+              ' "do_kieszeni": [{"id": liczba, "dlaczego": "1 zdanie"}], "zdejmij": "co i kiedy zdjac / zalozyc (albo pusty)",'
+              ' "kolory": "1 zdanie: jak zestaw uklada sie kolorystycznie",'
               ' "slaby_punkt": "1 zdanie: slaby punkt zestawu i co z nim zrobic"}]}'
-              " - DOKLADNIE 2 zestawy.")
+              " - DOKLADNIE 2 zestawy: jeden tempo=spokojniejsza, drugi tempo=szybsza.")
 
 
-def _valid(o, kand):
+def _valid(o, kand, war=None):
     if not isinstance(o, dict) or len(o.get("zestawy") or []) != 2:
         return "zle zestawy"
     ids = {it["id"]: it for v in kand.values() for it in v}
+    tempa = sorted((z.get("tempo") or "") for z in o["zestawy"])
+    if tempa != ["spokojniejsza", "szybsza"]:
+        return "zestawy musza miec tempo: jeden 'spokojniejsza', drugi 'szybsza'"
+    need = [k for k in ("buty", "skarpety", "rekawiczki") if kand.get(k)]
+    dry = war is not None and (_f((war.get("deszcz") or {}).get("max_proc"), 0.0) < 10) and not war.get("dlugie_postoje")
     sets = []
     for z in o["zestawy"]:
+        on = {int(it.get("id")) for it in (z.get("rzeczy") or []) if str(it.get("id", "")).lstrip("-").isdigit()}
+        pk = {int(it.get("id")) for it in (z.get("do_kieszeni") or []) if str(it.get("id", "")).lstrip("-").isdigit()}
+        if on & pk:
+            return "ta sama rzecz na sobie i w kieszeni (id %s) - wybierz jedno" % ", ".join(str(i) for i in sorted(on & pk))
+        layers_on = {ids[i]["warstwa"] for i in on if i in ids}
+        miss = [k for k in need if k not in layers_on]
+        if miss:
+            return "brak w zestawie: %s" % ", ".join(miss)
+        if dry and len(pk) > 1:
+            return "sucha prognoza bez dlugich postojow: najwyzej 1 rzecz do kieszeni"
+        if not (z.get("po_co") or "").strip():
+            return "brak 'po_co' w zestawie"
+
         its = z.get("rzeczy") or []
         if len(its) < 4:
             return "za malo rzeczy w zestawie"
@@ -438,12 +537,283 @@ def _valid(o, kand):
                 seen.add(lw)
             if not (it.get("dlaczego") or "").strip():
                 return "brak uzasadnienia"
-        if "spodnie" in seen and "spodenki" not in seen:
+        if ("spodnie" in seen or "deszcz_dol" in seen) and "spodenki" not in seen:
             return "spodnie bez wkladki bez warstwy z wkladka (liner/bibsy)"
         sets.append({int(x["id"]) for x in its})
     if len(sets[0] ^ sets[1]) < 2:
         return "zestawy prawie takie same"
     return None
+
+
+_ZAKRES_RE = re.compile(r"(zakres\w*|pasuj\w*|odpowiedni\w*|sprawdza\w*\s+si\w*|przewidzian\w*|uniwersaln\w*|u\u017cywan\w*|przy)"
+                        r"[^.;]{0,40}\b(od|na|powy\u017cej|ponad)\s*-?\d+(\s*[\u2013-]\s*-?\d+)?\s*\u00b0\s*C"
+                        r"|\bzakres\w*\s+(temperatur|od\s*-?\d)", re.I)
+
+
+def _style(o):
+    """Uzasadnienia 'zakresem temperatur rzeczy' sa zakazane (nic nie mowia) - wymus poprawke."""
+    bad = []
+    for z in (o or {}).get("zestawy") or []:
+        for it in (z.get("rzeczy") or []) + (z.get("do_kieszeni") or []):
+            if _ZAKRES_RE.search(it.get("dlaczego") or ""):
+                bad.append(str(it.get("id")))
+    return ("uzasadnienia zakresem temperatur (id: %s) - napisz, co ta rzecz daje w tych warunkach" % ", ".join(bad)) if bad else None
+
+
+_WINTER_HEAD = re.compile(r"beanie|balaclava|skully|headband|kominiark|zimow", re.I)
+_NEUTRAL = {"BLACK", "GREY", "NAVY"}
+
+
+def _checks(o, kand, war, final=False):
+    """Kontrole zestawu wymuszane w kodzie (decyzje Michala 2026-09-25). Zwraca liste uwag (pusta = ok)."""
+    ids = {it["id"]: it for v in kand.values() for it in v}
+    nb = war.get("na_rowerze") or {}
+    t_min, t_max, t_avg = _f(nb.get("min"), 10.0), _f(nb.get("max"), 15.0), _f(nb.get("srednia"), 12.0)
+    wind_need = bool(war.get("wiatr_ochrona_wymagana") or war.get("wiatr_ochrona_pod_reka"))
+    reason_pocket = wind_need or bool(war.get("dlugie_postoje")) or t_min < 10 or _f((war.get("deszcz") or {}).get("max_proc"), 0) >= 30
+    czas = _f(war.get("czas_h"), 0.0) or 0.0
+    bad = []
+
+    def pak(c):
+        return _f((c.get("ankieta") or {}).get("pakownosc"), None)
+    for zi, z in enumerate(o.get("zestawy") or []):
+        tag = "zestaw %s" % ("A" if zi == 0 else "B")
+        on = [ids[int(it["id"])] for it in z.get("rzeczy") or [] if int(it.get("id", -1)) in ids]
+        onmap = {c["warstwa"]: c for c in on}
+        dl = {int(it["id"]): (it.get("dlaczego") or "") for it in z.get("rzeczy") or []}
+        pk = [ids[int(it["id"])] for it in z.get("do_kieszeni") or [] if int(it.get("id", -1)) in ids]
+        # 1) komplet marki: gora marki X -> dol marki X, jesli jest odpowiedni
+        top = onmap.get("koszulka") or onmap.get("kurtka")
+        bot = onmap.get("spodenki")
+        if top and bot and top.get("marka") and top["marka"].lower() != (bot.get("marka") or "").lower() \
+                and "mieszam" not in dl.get(bot["id"], "").lower():
+            ok_pad = (">6",) if czas >= 6 else ((">6", "4-6") if czas >= 4 else (">6", "4-6", "2-4"))
+            same = [c for c in kand.get("spodenki", []) if (c.get("marka") or "").lower() == top["marka"].lower()
+                    and ((c.get("audyt") or {}).get("wkladka_sprawdzona_h") in ok_pad)]
+            if same:
+                bad.append("%s: gora %s + dol %s - do gory tej marki jest dol %s (id %s); wez komplet albo napisz w 'dlaczego' "
+                           "dolu slowo 'mieszam' i powod" % (tag, top["marka"], bot.get("marka"), same[0]["nazwa"], same[0]["id"]))
+        # 2) warstwa wierzchnia na sobie przy cieplym dniu musi dac sie schowac
+        if t_max >= 15:
+            for c in on:
+                if c["warstwa"] in ("kurtka", "kamizelka", "deszcz_gora") and (pak(c) is None or pak(c) < 1):
+                    bad.append("%s: %s nie da sie schowac (pakownosc %s), a w dzien jest %.0f C do ubioru - nie planuj jej zdejmowania; "
+                               "wybierz uklad z rzeczami do zdjecia i schowania (rekawki, kamizelka)" % (tag, c["nazwa"], pak(c), t_max))
+        # 3) baza pod dlugi rekaw / bluze, ktorej nie da sie zdjac
+        if onmap.get("baza_gora") and t_avg >= 13 and (onmap.get("kurtka") or (onmap.get("koszulka") or {}).get("dlugosc") == "dlugi"):
+            bad.append("%s: baza pod dlugim rekawem/bluza przy sredniej %.0f C do ubioru - nie da sie jej zdjac w trasie" % (tag, t_avg))
+        # 3b) koszulka techniczna (nie 'chetnie') z baza/rekawkami
+        kc = onmap.get("koszulka")
+        if kc and not (kc.get("warstwowanie") or "").startswith("chetnie") and (onmap.get("baza_gora") or onmap.get("rekawki")):
+            bad.append("%s: %s nie jest do warstwowania - bez bazy i rekawkow; na chlodny start wez jersey kolarski 'chetnie'" % (tag, kc["nazwa"]))
+        # 3c) wkladka > 6 h przy jezdzie >= 6 h
+        sc_ = onmap.get("spodenki")
+        if sc_ and czas >= 6 and (sc_.get("audyt") or {}).get("wkladka_sprawdzona_h") != ">6" and \
+                any((c.get("audyt") or {}).get("wkladka_sprawdzona_h") == ">6" for c in kand.get("spodenki", [])):
+            bad.append("%s: %s ma wkladke sprawdzona %s h, a jazda trwa %.1f h - wez spodenki z wkladka >6 h" %
+                       (tag, sc_["nazwa"], (sc_.get("audyt") or {}).get("wkladka_sprawdzona_h"), czas))
+        # 4) kamizelka w kieszeni tylko z powodem
+        if not reason_pocket:
+            for c in pk:
+                if c["warstwa"] in ("kamizelka", "kurtka"):
+                    bad.append("%s: %s w kieszeni bez powodu (slaby wiatr, bez dlugich postojow, start >= 10 C) - usun" % (tag, c["nazwa"]))
+        # 5) nakrycie glowy wg temperatury
+        g = onmap.get("glowa")
+        if g and _WINTER_HEAD.search(g["nazwa"]) and t_min >= 8:
+            caps = [c["nazwa"] for c in kand.get("glowa", []) if not _WINTER_HEAD.search(c["nazwa"])][:3]
+            bad.append("%s: %s to czapka zimowa, a do ubioru jest >= 8 C - wez czapke kolarska (%s)" % (tag, g["nazwa"], ", ".join(caps)))
+        # 6) kolory dodatkow w palecie zestawu - tylko PODPOWIEDZ dla AI (nie w gotowej poradzie)
+        fams = _palette(z.get("rzeczy") or [], ids)
+        for lay in (() if final else ("buty", "rekawiczki", "skarpety", "glowa")):
+            c = onmap.get(lay)
+            if not c:
+                continue
+            want = _want_fams(lay, fams)
+            pool = [x for x in kand.get(lay, []) if x["id"] != c["id"]]
+            target = next((fm for fm in want if _fam(c.get("kolor")) == fm or any(_fam(x.get("kolor")) == fm for x in pool)), "neutral")
+            if _fam(c.get("kolor")) != target:
+                bad.append("%s: podpowiedz - %s (%s) nie pasuje kolorem do zestawu (%s); zmien TYLKO jesli jest rzecz rownie dobra "
+                           "funkcjonalnie w tych warunkach (temperatura, wentylacja, deszcz), inaczej zostaw" %
+                           (tag, c["nazwa"], c.get("kolor"), ", ".join(want)))
+    return bad
+
+
+_TO_BAG = re.compile(r"w\u0142\u00f3\u017c do (torby|kieszeni|torebki)|do torby|do kieszeni|na post\u00f3j", re.I)
+
+
+_THERMAL_SOCK = re.compile(r"thermolite|primaloft|winter|zimow|alpha|thermal|ultraz|merino reflective", re.I)
+_FAM = {"BLACK": "neutral", "GREY": "neutral", "NAVY": "navy", "GREEN": "green", "OLIVE": "green", "BROWN": "brown",
+        "BEIGE": "brown", "ORANGE": "orange", "RED": "red", "BLUE": "blue", "WHITE": "white", "MULTI": "multi"}
+
+
+def _fam(color):
+    return _FAM.get((color or "").upper(), "neutral")
+
+
+def _palette(items, ids):
+    """Rodziny kolorow glownych rzeczy zestawu (koszulka, spodenki, kurtka/kamizelka na sobie), bez neutralnych."""
+    by = {}
+    for i in items:
+        c = ids.get(int(i["id"])) if isinstance(i, dict) else None
+        if c and c["warstwa"] in ("koszulka", "spodenki", "spodnie", "kurtka", "kamizelka"):
+            by.setdefault(c["warstwa"], _fam(c.get("kolor")))
+    return by
+
+
+def _want_fams(lay, by):
+    """Kolejnosc rodzin dla dodatku: buty -> kolor dolu, reszta -> kolor gory; potem drugi kolor; na koncu neutralne."""
+    top = by.get("koszulka") or by.get("kurtka") or by.get("kamizelka")
+    bot = by.get("spodenki") or by.get("spodnie")
+    if lay == "glowa":                       # czapka: neutralna, kolor tylko gdy brak neutralnej
+        return ["neutral"] + [f for f in (top, bot) if f and f not in ("neutral", "multi")]
+    order = [bot, top] if lay == "buty" else [top, bot]
+    out = [f for f in order if f and f not in ("neutral", "multi")]
+    return out + ["neutral"] if out else ["neutral"]
+
+
+_PLC = {"BLACK": "czarny", "GREY": "szary", "NAVY": "granatowy", "BEIGE": "be\u017cowy", "OLIVE": "oliwkowy", "BROWN": "br\u0105zowy",
+        "WHITE": "bia\u0142y", "GREEN": "zielony", "ORANGE": "pomara\u0144czowy", "RED": "czerwony", "BLUE": "niebieski", "MULTI": "wielokolorowy"}
+_BASE_NEUTRAL = {"BLACK", "GREY", "NAVY", "BEIGE", "OLIVE", "BROWN"}
+
+
+def _kolory(items):
+    """Opis kolorow z FAKTYCZNEGO zestawu (po autokorekcie) - nie z tekstu AI."""
+    neu, acc = [], []
+    for it in items:
+        k = (it.get("kolor") or "").upper()
+        if not k:
+            continue
+        name = _PLC.get(k, k.lower())
+        if k in _BASE_NEUTRAL:
+            if name not in neu:
+                neu.append(name)
+        else:
+            acc.append("%s (%s)" % (name, it.get("nazwa", "")[:28]))
+    txt = "Baza: " + (", ".join(neu) if neu else "brak neutralnej bazy")
+    if not acc:
+        return txt + "; bez mocnych akcentow."
+    if len({a.split(" (")[0] for a in acc}) == 1:
+        return txt + "; jeden akcent: " + ", ".join(acc) + "."
+    return txt + "; UWAGA - kilka akcentow: " + ", ".join(acc) + "."
+
+
+def _dedupe(o, war):
+    """Rzecz na sobie i w kieszeni naraz: przy wymaganej ochronie od wiatru zostaje na sobie, inaczej w kieszeni."""
+    keep_on = bool((war or {}).get("wiatr_ochrona_wymagana"))
+    for z in (o or {}).get("zestawy") or [] if isinstance(o, dict) else []:
+        try:
+            on = {int(i.get("id")) for i in z.get("rzeczy") or []}
+            pk = {int(i.get("id")) for i in z.get("do_kieszeni") or []}
+        except Exception:
+            continue
+        both = on & pk
+        if not both:
+            continue
+        if keep_on:
+            z["do_kieszeni"] = [i for i in z.get("do_kieszeni") or [] if int(i.get("id")) not in both]
+        else:
+            z["rzeczy"] = [i for i in z.get("rzeczy") or [] if int(i.get("id")) not in both]
+
+
+def _autofix(o, kand, war):
+    """Deterministyczne poprawki tam, gdzie AI ignoruje uwagi: komplet marki, neutralne dodatki, rzecz 'do torby'.
+    Zwraca liste opisow poprawek."""
+    ids = {it["id"]: it for v in kand.values() for it in v}
+    czas = _f(war.get("czas_h"), 0.0) or 0.0
+    ok_pad = (">6",) if czas >= 6 else ((">6", "4-6") if czas >= 4 else (">6", "4-6", "2-4"))
+    fixes = []
+    for zi, z in enumerate(o.get("zestawy") or []):
+        tag = "A" if zi == 0 else "B"
+        rz = z.get("rzeczy") or []
+        # (a) koszulka niepreferowana do warstw + baza/rekawki -> jersey kolarski 'chetnie'
+        cur = {(ids.get(int(i["id"])) or {}).get("warstwa"): i for i in rz}
+        tk = cur.get("koszulka")
+        tkc = ids.get(int(tk["id"])) if tk else None
+        if tkc and not (tkc.get("warstwowanie") or "").startswith("chetnie") and (cur.get("baza_gora") or cur.get("rekawki")):
+            alts = [c for c in kand.get("koszulka", []) if (c.get("warstwowanie") or "").startswith("chetnie") and c["id"] != tkc["id"]]
+            alts.sort(key=lambda c: (0 if c.get("dlugosc") == tkc.get("dlugosc") else 1, -c["_score"]))
+            if alts:
+                n = alts[0]
+                tk.update({"id": n["id"], "zamienniki": [], "dlaczego": "Jersey kolarski do warstw (rekawki/gilet) zamiast %s, "
+                           "ktorej nie warstwujesz." % tkc["nazwa"]})
+                fixes.append("%s: %s -> %s (koszulki technicznej nie warstwujesz)" % (tag, tkc["nazwa"], n["nazwa"]))
+        # (b) wkladka przed marka: jazda >= 6 h -> tylko wkladki sprawdzone > 6 h
+        sp = cur.get("spodenki")
+        spc = ids.get(int(sp["id"])) if sp else None
+        if spc and czas >= 6 and (spc.get("audyt") or {}).get("wkladka_sprawdzona_h") != ">6":
+            topc = ids.get(int((cur.get("koszulka") or cur.get("kurtka") or {"id": -1})["id"])) or {}
+            good = [c for c in kand.get("spodenki", []) if (c.get("audyt") or {}).get("wkladka_sprawdzona_h") == ">6"]
+            good.sort(key=lambda c: (0 if (c.get("marka") or "").lower() == (topc.get("marka") or "").lower() else 1, -c["_score"]))
+            if good:
+                n = good[0]
+                sp.update({"id": n["id"], "zamienniki": [], "dlaczego": "Wkladka sprawdzona >6 h na %.1f h jazdy (zamiast %s: %s h)." %
+                           (czas, spc["nazwa"], (spc.get("audyt") or {}).get("wkladka_sprawdzona_h"))})
+                fixes.append("%s: %s -> %s (wkladka >6 h na %.1f h)" % (tag, spc["nazwa"], n["nazwa"], czas))
+        onmap = {}
+        for it in rz:
+            c = ids.get(int(it["id"]))
+            if c:
+                onmap[c["warstwa"]] = (it, c)
+        # rzecz wierzchnia opisana "do torby / na postoj" -> do kieszeni
+        for it in list(rz):
+            c = ids.get(int(it["id"]))
+            if c and c["warstwa"] in ("kamizelka", "kurtka") and _TO_BAG.search(it.get("dlaczego") or "") and \
+                    not any(int(p.get("id", -1)) == c["id"] for p in z.get("do_kieszeni") or []):
+                rz.remove(it)
+                z.setdefault("do_kieszeni", []).append({"id": c["id"], "dlaczego": it.get("dlaczego")})
+                fixes.append("%s: %s przeniesiona do kieszeni (opis mowi 'do torby')" % (tag, c["nazwa"]))
+        # komplet marki
+        top = (onmap.get("koszulka") or onmap.get("kurtka") or (None, None))[1]
+        bot = onmap.get("spodenki")
+        if top and bot and top.get("marka") and top["marka"].lower() != (bot[1].get("marka") or "").lower() \
+                and "mieszam" not in (bot[0].get("dlaczego") or "").lower():
+            same = sorted([c for c in kand.get("spodenki", []) if (c.get("marka") or "").lower() == top["marka"].lower()
+                           and (c.get("audyt") or {}).get("wkladka_sprawdzona_h") in ok_pad], key=lambda c: -c["_score"])
+            if same:
+                n = same[0]
+                old = bot[1]["nazwa"]
+                bot[0].update({"id": n["id"], "zamienniki": [old_id for old_id in [bot[1]["id"]]],
+                               "dlaczego": "Komplet z %s: wkladka sprawdzona %s h na %.1f h jazdy." % (
+                                   top["nazwa"], (n.get("audyt") or {}).get("wkladka_sprawdzona_h"), czas)})
+                fixes.append("%s: %s -> %s (komplet marki %s)" % (tag, old, n["nazwa"], top["marka"]))
+        # dodatki w palecie zestawu (decyzja Michala 2026-09-25): zielona gora + brazowy dol -> brazowe buty,
+        # zielone rekawiczki, oliwkowe/zielone skarpety; zestaw czarno-szary -> dodatki neutralne
+        fams = _palette(rz, ids)
+        for lay in ("buty", "rekawiczki", "skarpety", "glowa"):
+            it = next((i for i in rz if (ids.get(int(i["id"])) or {}).get("warstwa") == lay), None)
+            if not it:
+                continue
+            c = ids[int(it["id"])]
+            want = _want_fams(lay, fams)
+            winter_ok = _f((war.get("na_rowerze") or {}).get("min"), 10) < 8
+            # TYLKO ten sam model w innym kolorze (funkcja bez zmian); inne modele wybiera AI (funkcja przed kolorem)
+            pool = [x for x in kand.get(lay, []) if x["id"] != c["id"] and x["nazwa"] == c["nazwa"]]
+            # pierwsza rodzina z listy, dla ktorej jest rzecz (obecna albo z puli) = docelowa
+            target = next((fm for fm in want if _fam(c.get("kolor")) == fm or any(_fam(x.get("kolor")) == fm for x in pool)), "neutral")
+            if _fam(c.get("kolor")) == target:
+                continue
+            best = None
+            for fam in [target]:
+                cand = sorted([x for x in pool if _fam(x.get("kolor")) == fam], key=lambda x: -x["_score"])
+                if cand:
+                    best = cand[0]
+                    break
+            if best:
+                it.update({"id": best["id"], "zamienniki": [c["id"]]})
+                fixes.append("%s: %s (%s) -> %s (%s) - kolor do zestawu" % (tag, c["nazwa"], c.get("kolor"), best["nazwa"], best.get("kolor")))
+    # nazwy zestawow: marka dolu po autokorekcie (np. "POC + Albion" -> "POC + POC" -> "POC")
+    for z in o.get("zestawy") or []:
+        nm = z.get("nazwa") or ""
+        for it in z.get("rzeczy") or []:
+            c = ids.get(int(it["id"]))
+            if not c or c["warstwa"] != "spodenki":
+                continue
+            for other in {x.get("marka") for x in kand.get("spodenki", []) if x.get("marka")}:
+                if other and other != c.get("marka") and other in nm:
+                    nm = nm.replace(other, c.get("marka") or other)
+        nm = re.sub(r"\b(\w+)\s*\+\s*\1\b", r"\1", nm)      # "POC + POC" -> "POC"
+        z["nazwa"] = nm.strip()
+    return fixes
 
 
 def advise(conn, data: dict, start: str, rules=None, model_name: str = "", long_stops: int = 0, long_stop_min: int = 0) -> dict:
@@ -455,28 +825,52 @@ def advise(conn, data: dict, start: str, rules=None, model_name: str = "", long_
     if not kand:
         return {"ok": False, "blad": "brak pasujacych rzeczy w garazu"}
     system = _rules_text() + SYS_FORMAT
-    o, err = None, None
-    for _ in range(2):
+    o, err, fix = None, None, ""
+    for attempt in range(2):
         try:
-            o = qgpt_json(_prompt(war, kand, hist, rules), system=system, max_tokens=5000, temperature=0.5)
+            o = qgpt_json(_prompt(war, kand, hist, rules) + fix, system=system, max_tokens=5000, temperature=0.5)
         except Exception as e:  # noqa
             o, err = None, "wyjatek: " + str(e)[:120]
-        err = _valid(o, kand)
+        _dedupe(o, war)
+        err = _valid(o, kand, war)
+        if not err and attempt < 1:
+            err = _style(o)
+        if not err:
+            ch = _checks(o, kand, war)
+            if ch and attempt < 1:
+                err = "; ".join(ch)
         if not err:
             break
+        fix = "\n\nPOPRZEDNIA ODPOWIEDZ ODRZUCONA: " + err + ". Popraw i zwroc caly JSON."
     if err:
         return {"ok": False, "blad": err, "warunki": war}
+    fx = _autofix(o, kand, war)
+    if _valid(o, kand, war):          # poprawki nie moga zepsuc podstaw
+        return {"ok": False, "blad": "autokorekta zepsula zestaw", "warunki": war}
+    o["_kontrola_uwagi"] = ["poprawione automatycznie: " + f for f in fx] + _checks(o, kand, war, final=True)
     ids = {it["id"]: it for v in kand.values() for it in v}
     for z in o["zestawy"]:
         for key in ("rzeczy", "do_kieszeni"):
             for it in z.get(key) or []:
                 c = ids[int(it["id"])]
                 it.update({"id": c["id"], "nazwa": c["nazwa"], "kategoria": c["kategoria"], "warstwa": c["warstwa"], "kolor": c["kolor"]})
+                zm = []   # zamienniki: miekko - odrzucamy bledne (inna warstwa, spoza kandydatow, ta sama rzecz)
+                for j in (it.get("zamienniki") if isinstance(it.get("zamienniki"), list) else [])[:2]:
+                    try:
+                        cj = ids.get(int(j))
+                    except Exception:
+                        cj = None
+                    if cj and cj["warstwa"] == c["warstwa"] and cj["id"] != c["id"]:
+                        zm.append({"id": cj["id"], "nazwa": cj["nazwa"], "kolor": cj["kolor"]})
+                it["zamienniki"] = zm
         z["rzeczy"].sort(key=lambda x: LAYER_KEYS.index(x["warstwa"]))
+        z["kolory"] = _kolory(z["rzeczy"])
+    o["zestawy"].sort(key=lambda z: 0 if z.get("tempo") == "spokojniejsza" else 1)
     return {"ok": True, "wersja": VERSION, "model": model_name, "czas_s": round(time.perf_counter() - t0, 1),
             "created_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
             "warunki": war, "warunki_krotko": o.get("warunki_krotko"), "z_historii": o.get("z_historii"),
-            "zestawy": o["zestawy"], "kandydatow": sum(len(v) for v in kand.values()), "jazd_w_historii": len(hist)}
+            "zestawy": o["zestawy"], "kandydatow": sum(len(v) for v in kand.values()), "jazd_w_historii": len(hist),
+            "kontrola_uwagi": o.get("_kontrola_uwagi") or []}
 
 
 # ---------------- zapis ----------------

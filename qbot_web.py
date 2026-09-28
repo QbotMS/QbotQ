@@ -2306,7 +2306,7 @@ def _report_prose(*, date_str, start_time, finish, dist_km, ascent_m, moving_h, 
         "KOMPLETY: jesli reguly_outfitu wskazuja pary (dana koszulka -> konkretne spodenki/warstwy), trzymaj sie ich. "
         "SPOJNOSC MARKI (WSKAZOWKA, nie twarda regula - logika doboru i pogoda moga ja nadpisac): w miare mozliwosci trzymaj zestaw w jednej marce - do koszulki PEdALED dobieraj spodenki PEdALED, do koszulki Albion - spodenki Albion. Wyjatek: gdy koszulka to Rapha Explore (LS lub SS) i w garderobie nie ma ulubionych spodenek Rapha, uzyj spodenek PEdALED albo Albion. "
         "Kazda pozycja: typ = OGOLNY rodzaj (np. 'przewiewna koszulka','spodenki z wkladka','wiatrowka'); przyklad = pole 'nazwa' z listy gear (dokladnie, BEZ opisu); tryb = 'na sobie' albo 'zabierz'; uwaga = 1 krotkie zdanie. "
-        "W KAZDYM zestawie OBOWIAZKOWO: koszulka/jersey ORAZ spodenki z wkladka (kategoria 'Spodenki z wkładką'). NIE proponuj kasku ani butow. 4-7 pozycji na zestaw. przyklad WYLACZNIE z listy gear."
+        "W KAZDYM zestawie OBOWIAZKOWO: koszulka/jersey ORAZ spodenki z wkladka (kategoria 'Spodnie i spodenki z wkładką'). NIE proponuj kasku ani butow. 4-7 pozycji na zestaw. przyklad WYLACZNIE z listy gear."
     )
     _pog_skrot = {"peak_wbgt": peak, "pogoda_ogolem": weather_overall, "alerty": alerty}
     pay2 = {"trasa": _trasa, "forma": forma, "climbs": climbs, "podjazdy_werdykt": podjazdy_werdykt,
@@ -6326,12 +6326,10 @@ async def ride_report_correlate(request: Request):
 GARAGE_DB = os.environ.get("QBOT_GARAGE_DB", "/opt/qbot/app/data/garage.db")
 
 # Kolejnosc slotow w panelu (jedna, caloroczna lista; z buty/kask/kurtka).
-RIDE_GEAR_SLOTS = [
-    "Bielizna termoaktywna — góra", "Bielizna termoaktywna — dół", "Koszulka krótki rękaw", "Koszulka techniczna", "Koszulka długi rękaw",
-    "Spodenki z wkładką", "Spodnie rowerowe (bez wkładki)", "Spodnie termiczne", "Kamizelka", "Kurtka",
-    "Rękawki i nogawki", "Rękawiczki", "Nakrycie głowy", "Komin i chusta", "Skarpety", "Ochraniacze na buty",
-    "Buty", "Kask", "Okulary", "Akcesoria",
-]
+# Taksonomia odziezy (2026-09-24): kategorie != sloty; slot wynika z kategorii + parametrow rzeczy.
+import qbot_garage_taxonomy as _GT
+RIDE_GEAR_SLOTS = list(_GT.SLOTS)
+GARAGE_CLOTH_CATS = list(_GT.RIDING_CATS)
 RIDE_GEAR_CASSETTES = ["Garbaruk 10-52T (13rz)", "SRAM Force E1 10-46T"]
 # "_rower", "_typ" (krotki|dluzsza|wyprawa), "_odczucie" (zimno|ok|cieplo), "_uwagi" - kontekst wpisu (value)
 RIDE_GEAR_META = ("_rower", "_typ", "_odczucie", "_uwagi")
@@ -6363,9 +6361,9 @@ def ride_gear_options(ride: str = Query("")):
     try:
         by_cat = {}
         for r in gc.execute(
-            "SELECT id, category, brand, model, size, color FROM gear "
+            "SELECT id, category, brand, model, size, color, g_body, g_len FROM gear "
             "WHERE active=1 ORDER BY brand, model").fetchall():
-            by_cat.setdefault(r["category"], []).append(
+            by_cat.setdefault(_GT.slot_of(r["category"], r["g_body"], r["g_len"]) or r["category"], []).append(
                 {"id": r["id"], "label": _gear_label(r)})
         slots = [{"slot": cat, "items": by_cat.get(cat, [])} for cat in RIDE_GEAR_SLOTS]
         wheels = [
@@ -6572,7 +6570,12 @@ def garage_list(all: int = Query(0), q: str = Query(""), cat: str = Query(""), k
                 if ql not in hay:
                     continue
             items.append(d)
-        return {"items": items, "categories": RIDE_GEAR_SLOTS,
+        for _d in items:
+            _d["ocena"] = _GT.ocena(_d.get("category"), _d)
+        return {"items": items, "categories": GARAGE_CLOTH_CATS,
+                "survey": [{"col": c, "label": l, "hint": h} for c, l, h in _GT.SURVEY],
+                "survey_weights": {c: _GT.weights_for(c) for c in GARAGE_CLOTH_CATS},
+                "params": {"body": _GT.BODY, "len": _GT.LEN, "cats": {k: list(v) for k, v in _GT.PARAM_CATS.items()}},
                 "exped_categories": _exped_categories(),
                 "conditions": GARAGE_CONDITIONS, "seasons": GARAGE_SEASONS,
                 "fabrics": GARAGE_FABRICS,
@@ -6601,6 +6604,18 @@ async def garage_save(request: Request):
     model = _gs(b.get("model"), 160)
     if not category or not (brand or model):
         raise HTTPException(status_code=400, detail="Wymagane: kategoria oraz marka lub model")
+    if brand:  # bez rozrozniania wielkosci liter: "Assos" == "ASSOS" -> istniejacy zapis marki
+        try:
+            _bc = _garage_conn()
+            try:
+                _br = _bc.execute("SELECT brand, count(*) n FROM gear WHERE lower(trim(brand))=lower(?) "
+                                  "GROUP BY brand ORDER BY n DESC LIMIT 1", (brand.strip(),)).fetchone()
+            finally:
+                _bc.close()
+            if _br and _br["brand"]:
+                brand = _br["brand"]
+        except Exception:
+            pass
     size = _gs(b.get("size"), 40)
     color = _gs(b.get("color"), 60)
     _q = b.get("qty")
@@ -8406,25 +8421,25 @@ _NAME2CAT = (
     ("majtki", "Bielizna (nierowerowa)"),
     ("skarpety zwykle", "Skarpety"),
     ("skarpetki zwykle", "Skarpety"),
-    ("koszulka na wieczor", "Koszulka techniczna"),
-    ("koszulka po jezdzie", "Koszulka techniczna"),
-    ("t-shirt", "Koszulka techniczna"),
-    ("spodenki z wkladka", "Spodenki z wkładką"),
-    ("z wkladka", "Spodenki z wkładką"),
-    ("spodenki kolarskie", "Spodenki z wkładką"),
-    ("spodenki rowerowe", "Spodenki z wkładką"),
-    ("bib short", "Spodenki z wkładką"),
-    ("bibshort", "Spodenki z wkładką"),
-    ("bibsy", "Spodenki z wkładką"),
-    ("spodenki", "Spodenki z wkładką"),
-    ("szorty", "Spodnie rowerowe (bez wkładki)"),
+    ("koszulka na wieczor", "Koszulka na wieczór"),
+    ("koszulka po jezdzie", "Koszulka na wieczór"),
+    ("t-shirt", "Koszulka na wieczór"),
+    ("spodenki z wkladka", "Spodnie i spodenki z wkładką"),
+    ("z wkladka", "Spodnie i spodenki z wkładką"),
+    ("spodenki kolarskie", "Spodnie i spodenki z wkładką"),
+    ("spodenki rowerowe", "Spodnie i spodenki z wkładką"),
+    ("bib short", "Spodnie i spodenki z wkładką"),
+    ("bibshort", "Spodnie i spodenki z wkładką"),
+    ("bibsy", "Spodnie i spodenki z wkładką"),
+    ("spodenki", "Spodnie i spodenki z wkładką"),
+    ("szorty", "Spodnie i spodenki bez wkładki"),
     ("spodnie", "Spodnie d\u0142ugie / dresowe"),
     ("dresow", "Spodnie d\u0142ugie / dresowe"),
     ("recznik", "R\u0119cznik / str\u00f3j k\u0105pielowy"),
     ("stroj kapielowy", "R\u0119cznik / str\u00f3j k\u0105pielowy"),
-    ("bluza", "Koszulka długi rękaw"),
-    ("longsleeve", "Koszulka długi rękaw"),
-    ("dlugi rekaw", "Koszulka długi rękaw"),
+    ("bluza", "Koszulki i bluzy kolarskie"),
+    ("longsleeve", "Koszulki i bluzy kolarskie"),
+    ("dlugi rekaw", "Koszulki i bluzy kolarskie"),
     ("multitool", "Naprawa i narz\u0119dzia"),
     ("noz", "Naprawa i narz\u0119dzia"),
     ("lampka", "O\u015bwietlenie osobiste"),
@@ -8441,29 +8456,32 @@ _NAME2CAT = (
 # i logi jazd moga wciaz je zawierac - tlumaczymy w locie.
 _CAT_ALIAS = {
     "Accessories": ["Akcesoria"],
-    "Base Layer Bottom": ["Bielizna termoaktywna — dół"],
-    "Base Layer Top": ["Bielizna termoaktywna — góra"],
-    "Bibs shorts": ["Spodenki z wkładką"],
+    "Base Layer Bottom": ["Termika"],
+    "Base Layer Top": ["Termika"],
+    "Bibs shorts": ["Spodnie i spodenki z wkładką"],
     "Glasses": ["Okulary"],
     "Gloves": ["Rękawiczki"],
     "Headwear": ["Nakrycie głowy"],
     "Helmet": ["Kask"],
-    "Jacket / Shell": ["Kurtka"],
-    "Jersey": ["Koszulka krótki rękaw"],
-    "Jersey Long Sleeve": ["Koszulka długi rękaw"],
-    "Mid Layer Bottom": ["Spodnie termiczne"],
+    "Jacket / Shell": ["Kurtki i kamizelki", "Odzież deszczowa"],
+    "Jersey": ["Koszulki i bluzy kolarskie"],
+    "Jersey Long Sleeve": ["Koszulki i bluzy kolarskie"],
+    "Mid Layer Bottom": ["Termika"],
     "Neckwear": ["Komin i chusta"],
     "Overshoes": ["Ochraniacze na buty"],
     "Shoes": ["Buty"],
     "Socks": ["Skarpety"],
-    "T-Shirt": ["Koszulka techniczna"],
-    "Trousers": ["Spodnie rowerowe (bez wkładki)"],
-    "Vest / Gilet": ["Kamizelka"],
+    "T-Shirt": ["Koszulki i bluzy techniczne"],
+    "Trousers": ["Spodnie i spodenki bez wkładki"],
+    "Vest / Gilet": ["Kurtki i kamizelki"],
     "Warmers": ["Rękawki i nogawki"],
-    "Bottoms / Bibs": ["Spodenki z wkładką", "Spodnie rowerowe (bez wkładki)"],   # rozbite na dwie kategorie
-    "Mid Layer": ["Koszulka długi rękaw"],             # przemianowane
+    "Bottoms / Bibs": ["Spodnie i spodenki z wkładką", "Spodnie i spodenki bez wkładki"],   # rozbite na dwie kategorie
+    "Mid Layer": ["Koszulki i bluzy kolarskie"],             # przemianowane
     "helmet": ["Kask"],                            # literowka w starych danych
 }
+# polskie nazwy sprzed porzadkow 2026-09-24 -> nowe kategorie
+for _o, _n in _GT.OLD2NEW.items():
+    _CAT_ALIAS.setdefault(_o, [_n] + ([_GT.DESZCZ] if _o == "Kurtka" else []))
 
 
 _CAT_EXPAND = {
@@ -8473,10 +8491,10 @@ _CAT_EXPAND = {
     "Zasilanie i \u0142adowanie": ["Zasilanie i \u0142adowanie", "Sprz\u0119t wyprawowy"],
     "Apteczka": ["Apteczka", "Sprz\u0119t wyprawowy"],
     "Higiena i kosmetyki": ["Higiena i kosmetyki", "Sprz\u0119t wyprawowy"],
-    "Koszulka techniczna": ["Koszulka techniczna", "Koszulka długi rękaw", "Koszulka krótki rękaw"],
-    "Koszulka krótki rękaw": ["Koszulka krótki rękaw", "Koszulka długi rękaw", "Koszulka techniczna"],
-    "Koszulka długi rękaw": ["Koszulka długi rękaw", "Koszulka krótki rękaw", "Koszulka techniczna"],
-    "Bielizna (nierowerowa)": ["Bielizna (nierowerowa)", "Bielizna termoaktywna — dół"],
+    "Koszulki i bluzy kolarskie": ["Koszulki i bluzy kolarskie", "Koszulki i bluzy techniczne"],
+    "Koszulki i bluzy techniczne": ["Koszulki i bluzy techniczne", "Koszulki i bluzy kolarskie"],
+    "Kurtki i kamizelki": ["Kurtki i kamizelki", "Odzież deszczowa"],
+    "Bielizna (nierowerowa)": ["Bielizna (nierowerowa)", "Termika"],
 }
 
 # ktore kategorie ze SPRZETU (equipment) dolozyc do danej kategorii garazu
@@ -8928,23 +8946,23 @@ async def api_wyposazenie_generate(request: Request):
         """Ile sztuk NAPRAWDE zabrac. Pranie po drodze = male ilosci."""
         if days < 2:
             return 1
-        if cat in ("Koszulka krótki rękaw", "Koszulka długi rękaw"):
+        if cat in ("Koszulki i bluzy kolarskie", "Koszulki i bluzy techniczne"):
             return 2                       # koszulki zawsze 2 - schna szybko
-        if cat == "Spodenki z wkładką":
+        if cat == "Spodnie i spodenki z wkładką":
             # 2 wystarcza: jedne na sobie, drugie schna. Trzecie tylko na dluzszym
             # wyjezdzie, gdy mocno pada i nie ma szans na wyschniecie.
             return 3 if (_hard_rain and days >= 4) else 2
-        if cat == "Spodnie rowerowe (bez wkładki)":
+        if cat == "Spodnie i spodenki bez wkładki":
             # dlugie spodnie / szorty bez wkladki - jedna para wystarcza
             return 1
         if cat == "Skarpety":
             # instrukcja z garazu: do 3 dni 2 pary, powyzej 3 dni 3 pary
             return 2 if days <= 3 else 3
-        if cat in ("Bielizna termoaktywna — góra", "Bielizna termoaktywna — dół"):
+        if cat == "Termika":
             return 2
         if cat in ("Bielizna (nierowerowa)",):
             return 1 if days <= 4 else 2   # gacie pierzemy wieczorem
-        if cat in ("Koszulka techniczna", "Spodnie dlugie / dresowe", "Spodnie d\u0142ugie / dresowe"):
+        if cat in ("Koszulka na wiecz\u00f3r", "Spodnie dlugie / dresowe", "Spodnie d\u0142ugie / dresowe"):
             return 1 if days <= 4 else 2   # ubranie po jezdzie - jeden komplet wystarczy
         return 0                            # 0 = nie ruszamy tego co dal model
 
@@ -9106,8 +9124,8 @@ async def api_wyposazenie_generate(request: Request):
     clean = [g for g in clean if g["items"]]
 
     # --- "na sobie" tylko RAZ na kategorie i tylko dla rzeczy, ktore da sie miec na sobie ---
-    WORN_OK = {"Kask", "Okulary", "Buty", "Koszulka krótki rękaw", "Koszulka długi rękaw",
-               "Spodenki z wkładką", "Spodnie rowerowe (bez wkładki)", "Skarpety", "Rękawiczki", "Nakrycie głowy"}
+    WORN_OK = {"Kask", "Okulary", "Buty", "Koszulki i bluzy kolarskie", "Koszulki i bluzy techniczne",
+               "Spodnie i spodenki z wkładką", "Spodnie i spodenki bez wkładki", "Skarpety", "Rękawiczki", "Nakrycie głowy"}
     seen_worn = set()
     for g in clean:
         for it in g["items"]:
@@ -9318,10 +9336,7 @@ def api_wyposazenie_garage_options(category: str = Query(""), season: str = Quer
 @app.get("/api/planer/wyposazenie/kategorie")
 def api_wyposazenie_kategorie():
     """Wszystkie kategorie garazu - do wyboru przy 'dodaj rzecz' / 'dodaj kategorie'."""
-    CLOTH = {"Bielizna termoaktywna — dół", "Bielizna termoaktywna — góra", "Spodenki z wkładką", "Spodnie rowerowe (bez wkładki)", "Okulary", "Rękawiczki",
-             "Nakrycie głowy", "Kask", "Kurtka", "Koszulka krótki rękaw", "Koszulka długi rękaw",
-             "Spodnie termiczne", "Komin i chusta", "Ochraniacze na buty", "Buty", "Skarpety", "Koszulka techniczna",
-             "Kamizelka", "Rękawki i nogawki", "Akcesoria"}
+    CLOTH = set(_GT.RIDING_CATS)
     con = _wyposazenie_db()
     try:
         rows = con.execute("SELECT category, COUNT(*) c FROM gear WHERE active=1 "
@@ -9718,6 +9733,7 @@ def calendar_entries(start: str = Query(...), end: str = Query(...)):
                         "source": r["source"]})
     return {"start": start, "end": end, "entries": rows, "days": days,
             "rides": rides, "entry_routes": entry_routes, "planned": planned}
+
 
 
 @app.get("/api/calendar/wx")
