@@ -258,6 +258,57 @@ def save_readiness(db_conn, as_of: date | None = None) -> dict[str, Any]:
     return row
 
 
+def _expand_ranges(ranges, today: date, max_days: int = 400) -> list[date]:
+    """[(day, end_day|None), ...] -> posortowane unikalne dni <= today (bez przyszlosci)."""
+    out = set()
+    for a, b in ranges or []:
+        if a is None:
+            continue
+        a = _coerce_date(a)
+        b = _coerce_date(b) if b else a
+        if b < a:
+            a, b = b, a
+        if b > today:
+            b = today
+        n = 0
+        d = a
+        while d <= b and n < max_days:
+            out.add(d)
+            d += timedelta(days=1)
+            n += 1
+    return sorted(out)
+
+
+def recalc_subjective_days(db_conn, ranges, today: date | None = None) -> dict[str, Any]:
+    """Przelicza gotowosc (readiness_effective) dla dni objetych wpisami feel/choroba
+    oraz strumien ukrytego zmeczenia (atl_plus/tsb_plus) po CALEJ historii.
+    Uzywane gdy wpis dodano/zmieniono/usunieto PO FAKCIE (poza oknem 8 dni joba)."""
+    today = today or date.today()
+    days = _expand_ranges(ranges, today)
+    for d in days:
+        save_readiness(db_conn, d)
+    db_conn.commit()
+    hf = None
+    if days:
+        from fitmodel.modelq2.hidden_fatigue import apply_hidden_fatigue
+        hf = apply_hidden_fatigue(db_conn)
+    return {"days": len(days), "first": str(days[0]) if days else None,
+            "last": str(days[-1]) if days else None, "hidden_fatigue": hf}
+
+
+def recalc_recent_subjective_entries(db_conn, since_days: int = 2) -> dict[str, Any]:
+    """Siatka bezpieczenstwa dla daily_job: wpisy feel/choroba DODANE w ostatnich
+    since_days dniach -> przelicz dni, ktorych dotycza (niezaleznie jak dawne)."""
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT day, end_day FROM qbot_v2.calendar_entry "
+            "WHERE kind IN ('feel','illness') AND created_at >= now() - (%s || ' days')::interval",
+            (str(int(since_days)),),
+        )
+        ranges = [(r[0], r[1]) for r in cur.fetchall()]
+    return recalc_subjective_days(db_conn, ranges)
+
+
 if __name__ == "__main__":
     conn = _db_connect()
     d = sys.argv[1] if len(sys.argv) > 1 else None

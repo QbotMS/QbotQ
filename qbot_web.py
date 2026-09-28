@@ -9866,7 +9866,32 @@ async def calendar_add(request: Request):
     eid_new = (row["id"] if row else None)
     if eid_new is not None and _kcal_planned(body) is not None:
         _event_intake_sync(eid_new)
+    if eid_new is not None and kind in ("feel", "illness"):
+        _subj_recalc_async([(day, end_day)])
     return {"ok": True, "id": eid_new}
+
+
+def _subj_recalc_async(ranges):
+    """Wpis choroba/feel zmieniony -> w tle przelicz gotowosc dni ktorych dotyczy
+    (tez wstecz, poza oknem 8 dni daily_job) + ukryte zmeczenie. Nie blokuje odpowiedzi."""
+    ranges = [r for r in (ranges or []) if r and r[0]]
+    if not ranges:
+        return
+    import threading as _th
+
+    def _run():
+        try:
+            from fitmodel.readiness import recalc_subjective_days, _db_connect as _rdb
+            c = _rdb()
+            try:
+                res = recalc_subjective_days(c, ranges)
+                print("[subj_recalc] %s -> %s" % (ranges, res), flush=True)
+            finally:
+                c.close()
+        except Exception as e:
+            print("[subj_recalc] BLAD %s: %s" % (ranges, e), flush=True)
+
+    _th.Thread(target=_run, daemon=True).start()
 
 
 @app.post("/api/calendar/delete")
@@ -9882,10 +9907,12 @@ async def calendar_delete(request: Request):
         raise HTTPException(status_code=400, detail="Wymagane: id (liczba)")
     conn = _db_conn()
     try:
-        conn.execute("DELETE FROM qbot_v2.calendar_entry WHERE id=%s", (eid,))
+        gone = conn.execute("DELETE FROM qbot_v2.calendar_entry WHERE id=%s RETURNING day, end_day, kind", (eid,)).fetchone()
         conn.commit()
     finally:
         conn.close()
+    if gone and gone["kind"] in ("feel", "illness"):
+        _subj_recalc_async([(gone["day"], gone["end_day"])])
     return {"ok": True}
 
 
@@ -9923,6 +9950,7 @@ async def calendar_edit(request: Request):
 
     conn = _db_conn()
     try:
+        prev = conn.execute("SELECT day, end_day, kind FROM qbot_v2.calendar_entry WHERE id=%s", (eid,)).fetchone()
         row = conn.execute(
             "UPDATE qbot_v2.calendar_entry SET title=%s, feel=%s, severity=%s, end_day=%s, note=%s, color=%s, event_type=%s, at_time=%s, remind_offsets=%s, "
             "kcal_planned = CASE WHEN %s THEN %s ELSE kcal_planned END "
@@ -9939,6 +9967,9 @@ async def calendar_edit(request: Request):
     if not row:
         raise HTTPException(status_code=404, detail="Nie ma wpisu o tym id")
     _event_intake_sync(eid)
+    if prev and prev["kind"] in ("feel", "illness"):
+        # stary zakres + nowy (end_day moglo sie zmienic; day/kind bez zmian)
+        _subj_recalc_async([(prev["day"], prev["end_day"]), (prev["day"], end_day)])
     return {"ok": True, "id": row["id"]}
 
 

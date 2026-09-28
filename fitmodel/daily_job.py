@@ -64,6 +64,13 @@ def main() -> None:
             return out
         _step("readiness", _readiness)
 
+        # 2c1. Siatka bezpieczenstwa: wpisy choroba/feel dodane w ostatnich 2 dniach,
+        # ale dotyczace dni SPOZA okna 8 dni (wpis wsteczny) -> przelicz tamte dni.
+        def _readiness_backfill():
+            from fitmodel.readiness import recalc_recent_subjective_entries
+            return recalc_recent_subjective_entries(conn, since_days=2)
+        _step("readiness_backfill", _readiness_backfill)
+
         # 2d. Krok 3 -- W'bal tick-po-ticku dla nowych jazd -> fitmodel_wbal_ride
         def _wbal_replay():
             from fitmodel.wbal_replay import run_for_new_rides
