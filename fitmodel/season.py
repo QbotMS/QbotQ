@@ -157,6 +157,10 @@ def build(conn, today: dt.date | None = None) -> dict:
     except Exception as exc:   # opis nie moze zablokowac danych
         z["story"] = {"error": str(exc)}
     try:
+        z["view"] = view(z, fd, [r for r in rides if r["date"] >= start], ill)
+    except Exception as exc:
+        z["view"] = {"error": str(exc)}
+    try:
         z["tiles"] = tiles(z, fd, [r for r in rides if r["date"] >= start])
     except Exception as exc:
         z["tiles"] = [{"id": "err", "title": "Status", "status": "błąd", "level": "bad", "line": str(exc), "more": []}]
@@ -439,8 +443,10 @@ def tiles(z, fd, rides):
     dai = W["days_after_illness"]
     ill_end = dt.date.fromisoformat(W["illness_last_end"]) if W["illness_last_end"] else None
     full = [w for w in weeks if not w["partial"]]
-    normal_after = [w for w in full if ill_end and dt.date.fromisoformat(w["week"]) > ill_end
-                    and typical and w["hours"] >= NORMAL_WEEK_X * typical and w["type"] != "infekcja"]
+    # typowy tydzien PO okresie ochronnym (spojne z planem powrotu i warunkami wyjazdu)
+    protect_end = (ill_end + dt.timedelta(days=AFTER_ILL_EASY_DAYS)) if ill_end else None
+    normal_after = [w for w in full if protect_end and dt.date.fromisoformat(w["week"]) > protect_end
+                    and typical and w["hours"] >= 0.95 * typical and w["type"] != "infekcja"]
     h4, tw = W["hours_week"]["now_4w"], typical
     T = []
 
@@ -490,7 +496,7 @@ def tiles(z, fd, rides):
             ("forma jak na starcie wyjazdu %s" % _dm(ref["start"]), ctl is not None and ref["ctl"] is not None and ctl >= ref["ctl"] - FORM_TOL),
             ("regeneracja w normie", regen_ok),
             ("co najmniej %d dni po infekcji" % AFTER_ILL_EASY_DAYS, dai is None or dai >= AFTER_ILL_EASY_DAYS),
-            ("co najmniej 1 normalny tydzień (≥ %s h) po infekcji" % _pl(NORMAL_WEEK_X * tw if tw else None), dai is None or len(normal_after) >= 1),
+            ("co najmniej 1 pełny typowy tydzień (~%s h) po okresie ochronnym" % _pl(tw), dai is None or len(normal_after) >= 1),
         ]
         ok = sum(1 for _, v in checks if v)
         lvl = "good" if ok == len(checks) else ("warn" if ok >= len(checks) - 2 else "bad")
@@ -501,3 +507,128 @@ def tiles(z, fd, rides):
                           + [("✓ " if v else "✗ ") + n for n, v in checks]
                           + ["Przed samym startem: kilka luźniejszych dni."]})
     return T
+
+
+# ======================= WIDOK SEZONU v2 (2026-09-28) =======================
+# Odpowiedzi dla kolarza amatora: gdzie jestem (wykres formy + zdarzenia), plan powrotu
+# tydzien po tygodniu, najwczesniejszy wyjazd, lekcje sezonu.
+WEEK_STEP = 1.15           # tydzien planu <= +15% wzgledem poprzedniego tygodnia planu
+LONG_STEP_H = 1.0          # najdluzsza jazda rosnie o max 1 h / tydzien
+PLAN_WEEKS = 8
+
+
+def view(z, fd, rides, ill):
+    W, weeks, typical = z["where"], z["weeks"], z["typical_hours"]
+    today = dt.date.fromisoformat(z["today"])
+    start = dt.date.fromisoformat(W["season_start"])
+    full = [w for w in weeks if not w["partial"]]
+
+    # --- wykres formy + zdarzenia ---
+    form = [{"day": d.isoformat(), "v": round(float(fd[d]["ctl_xss"]), 1)}
+            for d in sorted(fd) if d >= start and fd[d].get("ctl_xss") is not None]
+    ev = []
+    for ph in _phases(weeks):
+        if ph["kind"] != "wyjazd":
+            continue
+        a = trip_start(ph, rides)
+        b0 = dt.date.fromisoformat(ph["weeks"][-1]["week"]) + dt.timedelta(days=6)
+        ds = [r["date"] for r in rides if a <= r["date"] <= b0 and (r["duration_s"] or 0) >= TRIP_RIDE_H * 3600]
+        b = max(ds) if ds else b0
+        ev.append({"kind": "wyjazd", "from": a.isoformat(), "to": b.isoformat(),
+                   "label": "wyjazd %s–%s" % (_dm(a), _dm(b)),
+                   "hours": round(sum((r["duration_s"] or 0) for r in rides if a <= r["date"] <= b) / 3600.0, 1)})
+    ill_s = sorted(d for d in ill if d >= start)
+    grp = []
+    for d in ill_s:
+        if grp and (d - grp[-1][1]).days <= 1:
+            grp[-1][1] = d
+        else:
+            grp.append([d, d])
+    for a, b in grp:
+        ev.append({"kind": "infekcja", "from": a.isoformat(), "to": b.isoformat(), "label": "infekcja %s–%s" % (_dm(a), _dm(b))})
+    for r in rides:
+        if r["date"] >= start and (r["duration_s"] or 0) >= 5 * 3600:
+            ev.append({"kind": "dluga", "from": r["date"].isoformat(), "to": r["date"].isoformat(),
+                       "label": "%s: %s h" % (_dm(r["date"]), _pl((r["duration_s"] or 0) / 3600.0))})
+
+    # --- plan powrotu ---
+    T = typical or 0.0
+    longs = sorted(w["longest_h"] for w in full if w["type"] not in ("infekcja",) and w["longest_h"])
+    L_typ = longs[len(longs) // 2] if longs else 3.0
+    ill_end = dt.date.fromisoformat(W["illness_last_end"]) if W["illness_last_end"] else None
+    protect_to = (ill_end + dt.timedelta(days=AFTER_ILL_EASY_DAYS)) if ill_end else None
+    # punkt wyjscia: FORMA przeliczona na godziny (forma = srednie dzienne obciazenie ~6 tyg.;
+    # obciazenie na godzine = mediana z pelnych tygodni sezonu bez infekcji)
+    rat = sorted(w["xss"] / w["hours"] for w in full if w["hours"] >= 3 and w["type"] != "infekcja" and w["xss"])
+    xss_h = rat[len(rat) // 2] if rat else 55.0
+    base_h = ((C_now := W["ctl"]["now"]) or 0) * 7.0 / xss_h if xss_h else T
+    prev_h, prev_protect = None, False
+    cur = next((w for w in weeks if w["partial"]), None)
+    ws = dt.date.fromisoformat(cur["week"]) if cur else today - dt.timedelta(days=today.weekday())
+    prev_long = EASY_RIDE_H
+    plan, reached, earliest = [], 0, None
+    for i in range(PLAN_WEEKS):
+        we = ws + dt.timedelta(days=6)
+        protect = protect_to is not None and ws <= protect_to
+        if prev_h is None or protect or prev_protect:
+            # pierwszy tydzien / okres ochronny / pierwszy tydzien po nim: poziom formy
+            h = min(T, round(base_h * 2) / 2.0)
+        else:
+            h = min(T, max(prev_h, round(prev_h * WEEK_STEP * 2) / 2.0))
+        if protect:
+            h = min(h, 3 * EASY_RIDE_H)
+            lng = EASY_RIDE_H
+            rule = "po infekcji: tylko krótkie spokojne jazdy (do %s h)" % _pl(EASY_RIDE_H)
+            if protect_to < we:
+                rule += "; od %s wolno dłużej" % _dm(protect_to + dt.timedelta(days=1))
+        else:
+            lng = min(L_typ, prev_long + LONG_STEP_H)
+            rule = "dalej tylko przy regeneracji w normie; inaczej powtórz poprzedni tydzień"
+        prev_long = lng
+        is_typ = (not protect) and T and h >= 0.95 * T
+        plan.append({"week": ws.isoformat(), "to": we.isoformat(), "hours": h, "long_h": round(lng, 1),
+                     "rule": rule, "typical": bool(is_typ), "current": i == 0})
+        prev_h, prev_protect = h, protect
+        if is_typ:
+            reached += 1
+            if reached == 1 and earliest is None:
+                earliest = we + dt.timedelta(days=1)   # po 1 pelnym typowym tygodniu
+        ws += dt.timedelta(days=7)
+        if reached >= 2:
+            break
+
+    # --- najwczesniejszy wyjazd (jak ostatni wyjazd sezonu) ---
+    trip = None
+    tr = [e for e in ev if e["kind"] == "wyjazd"]
+    if tr:
+        t = tr[-1]
+        trip = {"ref": t["label"], "ref_hours": t["hours"],
+                "earliest": earliest.isoformat() if earliest else None,
+                "earliest_txt": (_dm(earliest) if earliest else "poza horyzontem planu"),
+                "conditions": ["regeneracja w normie (gotowość ≥ −0,4 i tętno spoczynkowe do %s)" % _pl((W["rhr"]["start_28d"] or 0) + REGEN_RHR_MARGIN),
+                               "co najmniej 1 pełny typowy tydzień (~%s h) za Tobą" % _pl(T),
+                               "2–3 luźniejsze dni tuż przed startem"]}
+
+    # --- naglowek: jedno zdanie ---
+    C = W["ctl"]
+    lvl_txt = None
+    cand = [d for d in sorted(fd) if start <= d < dt.date.fromisoformat(C["max_day"])
+            and fd[d].get("ctl_xss") is not None and float(fd[d]["ctl_xss"]) <= (C["now"] or 0) + 0.5] if C["max_day"] else []
+    if cand:
+        lvl_txt = _dm(cand[-1])
+    n_back = sum(1 for p in plan if not p["typical"])
+    head = []
+    if lvl_txt:
+        head.append("Formę masz na poziomie z %s%s." % (lvl_txt, " — tuż przed czerwcowym wyjazdem" if tr and cand[-1] <= dt.date.fromisoformat(tr[-1]["from"]) and (dt.date.fromisoformat(tr[-1]["from"]) - cand[-1]).days <= 10 else ""))
+    if W["days_after_illness"] is not None and W["days_after_illness"] <= 30:
+        head.append("Organizm jeszcze wraca po infekcji.")
+    if n_back:
+        head.append("Plan: %d tyg. stopniowego powrotu do typowego tygodnia (%s h)%s." % (
+            n_back, _pl(T), (", wyjazd najwcześniej od %s" % _dm(earliest)) if earliest else ""))
+
+    # --- lekcje (tylko powtorzone wzory) ---
+    lessons = (z.get("story") or {}).get("wnioski", [])
+    return {"headline": " ".join(head), "form": form, "events": ev, "form_now": C["now"],
+            "form_hours": round(base_h, 1), "xss_per_h": round(xss_h, 1),
+            "form_peak": {"v": C["max"], "day": C["max_day"]}, "plan": plan, "trip": trip, "lessons": lessons,
+            "typical_hours": T, "typical_long_h": L_typ}

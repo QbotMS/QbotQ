@@ -32,6 +32,16 @@ class BuildLive(unittest.TestCase):
         types = {w["type"] for w in z["weeks"]}
         self.assertTrue(types <= {"budowa", "mocny", "lzejszy", "wyjazd", "infekcja", "biezacy"})
         self.assertEqual(sum(1 for w in z["weeks"] if w["partial"]), 1)
+        v = z["view"]
+        self.assertNotIn("error", v)
+        self.assertTrue(v["headline"])
+        self.assertGreater(len(v["form"]), 30)
+        self.assertTrue(v["plan"])
+        self.assertTrue(v["plan"][0]["current"])
+        for a, b in zip(v["plan"], v["plan"][1:]):          # plan nie rosnie szybciej niz +15%/tydz. po okresie ochronnym
+            if not a["rule"].startswith("po infekcji"):
+                self.assertLessEqual(b["hours"], max(a["hours"], round(a["hours"] * 1.15 * 2) / 2.0) + 1e-9)
+            self.assertLessEqual(b["long_h"], a["long_h"] + 1.0 + 1e-9)
         ids = [t["id"] for t in z["tiles"]]
         self.assertNotIn("err", ids)
         for t in z["tiles"]:
