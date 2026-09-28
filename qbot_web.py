@@ -10482,7 +10482,9 @@ _SEASON_AI_SYSTEM = (
     "Quarq na tym samym rowerze - porownywalny, z mozliwa roznica ok. 1-2%. W okresie meter_bad_period pomiar byl wadliwy - "
     "pomin pomiar; zamiast niego jest p_est = estymacja z fizyki na podjazdach (+-10%, p_est_lo..p_est_hi) - mozesz jej "
     "uzywac z zaznaczeniem, ze to estymacja. Tydzien 3.08-20.08 to glownie Sycylia w upale (tetno wyzsze przy tych samych "
-    "watach). Straznik zglaszal odchylenia juz wczesniej (guard_alert_days) - wartosci tuz przed okresem wady ostroznie.\n"
+    "watach). Straznik zglaszal odchylenia juz wczesniej (guard_alert_days) - wartosci tuz przed okresem wady ostroznie.\n"    "3b. Upal i seria dni: w tygodniach z hot_rides (jazdy >= 30 C) oraz series_days (3. i dalszy kolejny dlugi dzien) "
+    "moc przy tetnie jest u tego zawodnika zanizona (powyzej ~24 C srednio 5-10%, 3. dzien wyjazdu nawet ok. 20%). "
+    "Nie interpretuj takich tygodni jako spadku formy - najwyzej wspomnij o warunkach.\n"
     "4. Forma (CTL) to srednie obciazenie ~6 tygodni; w roztrenowaniu jej spadek jest zaplanowany i normalny.\n"
     "5. Infekcje: tylko fakt wystapienia, bez zgadywania przyczyn.\n"
     "6. Ocen plan TRENERA na najblizsze tygodnie (planned_sessions) wzgledem stanu organizmu - jesli cos koliduje "
@@ -10509,7 +10511,7 @@ def _season_ai_payload(z):
     wk = F.get("weeks") or []
     cur = next((i for i, w in enumerate(wk) if w.get("current")), len(wk) - 1)
     keep = ("week", "phase_name", "light", "hours", "plan_h", "ctl", "ctl_proj", "p_week", "p_meter", "p_est", "p_est_lo", "p_est_hi",
-            "meter_bad", "rhr", "readiness", "weight", "weight_path", "ill_days")
+            "meter_bad", "rhr", "readiness", "weight", "weight_path", "ill_days", "hot_rides", "temp_max", "series_days")
     weeks = [{k: w.get(k) for k in keep if w.get(k) not in (None, False, 0) or k in ("week", "hours")} for w in wk[max(0, cur - 20): cur + 13]]
     tr = F.get("trainer") or {}
     return {"dzis": today, "okna_minus30_dzis_plus30": F.get("windows"), "trendy": F.get("trends"),

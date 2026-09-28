@@ -928,6 +928,18 @@ def facts(conn, z, fd, rides, ill):
     fdl = {r["day"]: r for r in _rows(conn, "SELECT day, ctl_xss, readiness_effective, readiness_score, rhr "
                                             "FROM qbot_v2.fitmodel_daily WHERE day >= %s", (s0 - dt.timedelta(days=7),))}
     rides_all = _rows(conn, "SELECT date, duration_s FROM qbot_v2.training_sessions WHERE sport_type='cycling' AND date >= %s", (s0,))
+    # seria dlugich dni (2026-09-28): n-ty kolejny dzien z jazda >= 3 h; od 3. dnia moc przy tetnie bywa wyraznie nizsza
+    long_days = {}
+    for r in rides_all:
+        long_days[r["date"]] = long_days.get(r["date"], 0) + (r["duration_s"] or 0)
+    long_set = {d for d, s in long_days.items() if s >= 3 * 3600}
+
+    def series_n(d):
+        n = 0
+        while d in long_set:
+            n += 1
+            d = d - dt.timedelta(days=1)
+        return n
 
     def val(d, k):
         r = fdl.get(d)
@@ -1029,6 +1041,7 @@ def facts(conn, z, fd, rides, ill):
         tmaxs = [r["t_max"] for r in wk_t if r["t_max"] is not None]
         tavgs = [r["t_avg"] for r in wk_t if r["t_avg"] is not None]
         hot_n = sum(1 for x in tmaxs if x >= HOT)
+        series3 = [ws + dt.timedelta(days=k) for k in range(7) if series_n(ws + dt.timedelta(days=k)) >= 3]
         bad_w = bool(bad_from and not (we < bad_from or ws > bad_to))
         wt = [x for d, x in wts if ws <= d <= we]
         hrs = round(sum((r["duration_s"] or 0) for r in rides_all if ws <= r["date"] <= we) / 3600.0, 1) if ws <= today else None
@@ -1045,6 +1058,8 @@ def facts(conn, z, fd, rides, ill):
                "p_est_rides": est_rides, "p_est_weak": weak,
                "temp_max": round(max(tmaxs)) if tmaxs else None, "temp_avg": round(sum(tavgs) / len(tavgs)) if tavgs else None,
                "hot_rides": hot_n,
+               "series_days": [x.isoformat() for x in series3],
+               "series_max": max([series_n(ws + dt.timedelta(days=k)) for k in range(7)] or [0]),
                "p_est_lo": round(p_est * (1 - 0.10)) if p_est else None, "p_est_hi": round(p_est * (1 + 0.10)) if p_est else None,
                "rhr": round(mean(rh), 1) if mean(rh) is not None else None,
                "readiness": round(mean(rd), 2) if mean(rd) is not None else None,
@@ -1112,7 +1127,10 @@ def facts(conn, z, fd, rides, ill):
               "phys_note": ("p_est = estymacja wydolnosci w okresie wady z fizyki na podjazdach (moc z miernika skorygowana "
                             "o stosunek do mocy z grawitacji), srednia wazona liczba podjazdow, dokladnosc ok. +-10%. "
                             "p_est_conf=false (<20 podjazdow w tygodniu) = niska pewnosc. hot_rides = jazdy z max >= 30 C "
-                            "(upal podnosi tetno przy tych samych watach -> nizsza moc przy tetnie)."), "rhr_days_above_norm_14d": rhr_above, "rhr_norm": rhr_norm,
+                            "(upal podnosi tetno przy tych samych watach -> nizsza moc przy tetnie). Analiza z fizyki (21 jazd): "
+                            "przy 18-22 C +6%, powyzej ~24 C srednio -5..-10% wzgledem normy. series_days = 3. i dalszy "
+                            "kolejny dzien jazdy >= 3 h - moc przy tetnie bywa nizsza (np. 3.08 -19%). Pojedyncza jazda ma "
+                            "rozrzut ok. +-15% - nie wnioskuj o formie z jednej goracej jazdy ani z 3. dnia wyjazdu."), "rhr_days_above_norm_14d": rhr_above, "rhr_norm": rhr_norm,
               "weight_last": wts[-1][1] if wts else None, "weight_last_day": wts[-1][0].isoformat() if wts else None,
               "weight_goal": goal_w, "typical_hours": typical, "xss_per_h": round(xss_h, 1)}
     planned = [{"day": s["day"].isoformat(), "name": s["name"], "sport": s["sport"], "min": s["dur_min"], "xss": float(s["xss"] or 0)}
