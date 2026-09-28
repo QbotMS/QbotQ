@@ -9653,6 +9653,7 @@ def calendar_entries(start: str = Query(...), end: str = Query(...)):
         rrows = conn.execute(
             "SELECT date::text AS day, external_id, activity_name, sport_type, "
             "distance_m, duration_s, tss, normalized_power_w, "
+            "(SELECT m.xss_total FROM qbot_v2.modelq2_ride m WHERE m.external_id = training_sessions.external_id LIMIT 1) AS xss, "
             "started_at::text AS started_at, activity_training_load "
             "FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s "
             "ORDER BY date, started_at",
@@ -9695,7 +9696,7 @@ def calendar_entries(start: str = Query(...), end: str = Query(...)):
             "sport": r["sport_type"],
             "dist_km": _n((r["distance_m"] or 0) / 1000.0, 1),
             "dur_h": _n((r["duration_s"] or 0) / 3600.0, 2),
-            "tss": _n(r["tss"]), "np": _n(r["normalized_power_w"]),
+            "tss": _n(r["tss"]), "xss": _n(r["xss"]), "duration_s": r["duration_s"], "np": _n(r["normalized_power_w"]),
             "strain": _n(r["activity_training_load"]),
             "time": (st[11:16] if st and len(st) >= 16 else None),
         })
