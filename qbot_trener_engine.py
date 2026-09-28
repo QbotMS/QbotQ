@@ -420,7 +420,7 @@ def plan_week(ctx: dict) -> dict:
         srow = {"day": d.isoformat(), "sport": "rower", "name": rr["name"], "start_time": st, "dur_min": dur,
                 "min_min": dur, "zone": 2, "is_long": is_long, "xss": rr.get("xss") or xss_of("rower", 2, dur),
                 "status": "plan", "cut": False, "source": "auto",
-                "note": "jazda z Kalendarza (trasa): " + ", ".join(x for x in (f"{rr['km']} km" if rr.get("km") else None, f"+{rr['up']} m" if rr.get("up") else None, f"~{rr['xss']} XSS" if rr.get("xss") else None) if x)}
+                "note": ("jazda z Kalendarza (trasa): " if rr.get("has_route", True) else "jazda z Kalendarza (bez trasy): ") + ", ".join(x for x in (f"{rr['km']} km" if rr.get("km") else None, f"+{rr['up']} m" if rr.get("up") else None, f"~{rr['xss']} XSS" if rr.get("xss") else None) if x)}
         placed.append(srow); out.append(srow)
         if rr.get("multi"):
             target_min += dur  # neutralizacja odjecia ponizej: dni wyprawy liczone osobno
@@ -852,9 +852,12 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
         """Wydarzenia Kalendarza z podpieta trasa nachodzace na [pa, pb] -> lista jazd per dzien.
         Wydarzenie wielodniowe (end_day) z jedna trasa = wyprawa: km / m / XSS rozlozone rowno na dni
         (chyba ze Planer dal osobne trasy per dzien). Km i +m z notatki maja pierwszenstwo przed trasa."""
+        # 2026-09-28: takze wydarzenie typu "jazda" BEZ przypietej trasy (km z notatki, np. "100 km") -
+        # wczesniej takie wydarzenie bylo tylko "zajetym czasem" i TRENER planowal obok wlasna dluga jazde.
         c.execute("""SELECT e.id AS entry_id, e.day, e.end_day, e.at_time, e.note, e.title, r.day AS rday, r.route_id, r.route_name
-                     FROM qbot_v2.calendar_entry e JOIN qbot_v2.calendar_day_route r ON r.entry_id = e.id
-                     WHERE e.day <= %s AND COALESCE(e.end_day, e.day) >= %s""", (pb, pa))
+                     FROM qbot_v2.calendar_entry e LEFT JOIN qbot_v2.calendar_day_route r ON r.entry_id = e.id
+                     WHERE e.day <= %s AND COALESCE(e.end_day, e.day) >= %s
+                       AND (r.entry_id IS NOT NULL OR (e.kind = 'event' AND e.event_type = 'jazda'))""", (pb, pa))
         rows = c.fetchall()
         c.execute("SELECT COALESCE(SUM(distance_m),0)/1000.0 AS km, COALESCE(SUM(duration_s),0)/3600.0 AS h FROM qbot_v2.training_sessions "
                   "WHERE sport_type IN ('cycling','gravel_cycling') AND date > %s", (today - timedelta(days=120),))
@@ -874,14 +877,14 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
             mx = _re.search(r"~\s*([0-9]+)\s*XSS", note)
             title = (e["title"] or e["route_name"] or "Jazda z Kalendarza").replace("[Q] ", "").split(" · ")[0]
             if len(rs) > 1 or n == 1:
-                items = [(_d(r["rday"]), r) for r in rs]
+                items = [(_d(r["rday"] or e["day"]), r) for r in rs]
                 split = 1
             else:
                 items = [(d0 + timedelta(days=i), rs[0]) for i in range(n)]
                 split = n
             for i, (dday, r) in enumerate(sorted(items, key=lambda x: x[0])):
                 km_ = float(mk.group(1).replace(",", ".")) / split if (mk and split > 1) else (float(mk.group(1).replace(",", ".")) if mk and n == 1 else None)
-                if km_ is None:
+                if km_ is None and r["route_id"]:
                     c.execute("SELECT distance_m FROM qbot_v2.route_base WHERE route_id=%s ORDER BY updated_at DESC LIMIT 1", (r["route_id"],))
                     rb = c.fetchone(); km_ = round(float(rb["distance_m"]) / 1000 / split, 1) if rb and rb["distance_m"] else None
                 up_ = int(int(mu.group(1)) / split) if mu else None
@@ -890,7 +893,7 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
                 out_.append({"entry_id": eid, "day": dday, "route_id": r["route_id"],
                              "name": title + (f" — dzień {i + 1}/{len(items)}" if len(items) > 1 else ""),
                              "at": e["at_time"].strftime("%H:%M") if e["at_time"] else None, "km": round(km_, 1) if km_ else None,
-                             "up": up_, "xss": xs_, "dur_min": max(30, dur), "multi": n > 1})
+                             "up": up_, "xss": xs_, "dur_min": max(30, dur), "multi": n > 1, "has_route": bool(r["route_id"])})
         return out_
     try:
         for rr in _route_days(ws, we):
