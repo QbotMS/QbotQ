@@ -157,6 +157,11 @@ def build(conn, today: dt.date | None = None) -> dict:
     except Exception as exc:   # opis nie moze zablokowac danych
         z["story"] = {"error": str(exc)}
     try:
+        z["insight"] = insight(conn, z, fd, [r for r in rides if r["date"] >= start], ill)
+    except Exception as exc:
+        import traceback
+        z["insight"] = {"error": "%s: %s" % (type(exc).__name__, exc), "trace": traceback.format_exc()[-600:]}
+    try:
         z["view"] = view(z, fd, [r for r in rides if r["date"] >= start], ill)
     except Exception as exc:
         z["view"] = {"error": str(exc)}
@@ -632,3 +637,252 @@ def view(z, fd, rides, ill):
             "form_hours": round(base_h, 1), "xss_per_h": round(xss_h, 1),
             "form_peak": {"v": C["max"], "day": C["max_day"]}, "plan": plan, "trip": trip, "lessons": lessons,
             "typical_hours": T, "typical_long_h": L_typ}
+
+
+# ======================= SEZON v3 (2026-09-28) =======================
+# Trzy pytania kolarza: co sie ze mna dzieje / jak prowadze sezon / na co moge liczyc.
+# Wydolnosc = moc przy tym samym tetnie (power_meter_guard.p_at_hr_w), bez jazd w kwarantannie
+# miernika. Regeneracja = tetno spoczynkowe + gotowosc (niezalezne od miernika). Fazy = TRENER.
+CAP_OK, CAP_WARN = -0.03, -0.08     # zmiana mocy przy tetnie: >= -3% bez spadku, >= -8% lekki spadek
+RETURN_HOLD_DAYS = 5               # "powrot do normy" = warunki spelnione 5 dni z rzedu
+PRE_ILL_DIP = -0.07                 # moc przy tetnie w 5 dni przed infekcja nizsza o >= 7% -> sygnal
+LVL = {"good": "good", "bad": "bad", "warn": "warn", "info": "info"}
+
+
+def _median(xs):
+    xs = sorted(x for x in xs if x is not None)
+    if not xs:
+        return None
+    n = len(xs)
+    return xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2.0
+
+
+def insight(conn, z, fd, rides, ill):
+    W, weeks, typical = z["where"], z["weeks"], z["typical_hours"]
+    today = dt.date.fromisoformat(z["today"])
+    start = dt.date.fromisoformat(W["season_start"])
+
+    def val(d, k):
+        r = fd.get(d)
+        return float(r[k]) if r and r.get(k) is not None else None
+
+    def rdy(d):
+        v = val(d, "readiness_effective")
+        return v if v is not None else val(d, "readiness_score")
+
+    def mean(xs):
+        xs = [x for x in xs if x is not None]
+        return sum(xs) / len(xs) if xs else None
+
+    # --- dane dodatkowe ---
+    pah = _rows(conn, """SELECT g.ride_date AS d, g.p_at_hr_w AS p FROM qbot_v2.power_meter_guard g
+                         WHERE g.ride_date >= %s AND g.p_at_hr_w IS NOT NULL
+                           AND NOT EXISTS (SELECT 1 FROM qbot_v2.fitmodel_ride_quarantine q
+                                           WHERE q.external_id = g.external_id AND q.released IS NULL)
+                         ORDER BY g.ride_date""", (start,))
+    pah = [(r["d"], float(r["p"])) for r in pah]
+    wts = _rows(conn, "SELECT day AS d, weight_kg AS w FROM qbot_v2.fitmodel_daily WHERE day >= %s AND weight_kg IS NOT NULL ORDER BY day",
+                (start,))
+    wts = [(r["d"], float(r["w"])) for r in wts]
+    goal_w = None
+    try:
+        g = _rows(conn, "SELECT target, date_to FROM qbot_v2.trainer_goal WHERE kind='weight' AND status='active' ORDER BY id DESC LIMIT 1")
+        if g:
+            t = g[0]["target"] or {}
+            goal_w = {"kg": float(t.get("weight_kg")), "by": g[0]["date_to"].isoformat() if g[0]["date_to"] else None} if t.get("weight_kg") else None
+    except Exception:
+        goal_w = None
+
+    # --- infekcje (grupy) ---
+    ill_s = sorted(ill)
+    grp = []
+    for d in ill_s:
+        if grp and (d - grp[-1][1]).days <= 1:
+            grp[-1][1] = d
+        else:
+            grp.append([d, d])
+    last_ill = grp[-1] if grp else None
+    recent_ill = last_ill if (last_ill and (today - last_ill[1]).days <= 60) else None
+
+    # ============ 1. CO SIE ZE MNA DZIEJE ============
+    now_items = []
+    # wydolnosc
+    rec = [p for d, p in pah if d > today - dt.timedelta(days=21) and (not recent_ill or d > recent_ill[1])][-4:]
+    if recent_ill:
+        ref_w = [p for d, p in pah if recent_ill[0] - dt.timedelta(days=21) <= d < recent_ill[0]]
+        ref_lbl = "3 tygodnie przed infekcją"
+    else:
+        ref_w = [p for d, p in pah if today - dt.timedelta(days=81) <= d < today - dt.timedelta(days=21)]
+        ref_lbl = "poprzednie 2 miesiące"
+    p_now, p_ref = _median(rec), _median(ref_w)
+    cap_ch = (p_now / p_ref - 1.0) if (p_now and p_ref) else None
+    if cap_ch is not None:
+        lvl = "good" if cap_ch >= CAP_OK else ("warn" if cap_ch >= CAP_WARN else "bad")
+        now_items.append({"key": "wydolnosc", "title": "Wydolność", "level": lvl,
+                          "status": "nie spadła" if lvl == "good" else ("lekko niższa" if lvl == "warn" else "wyraźnie niższa"),
+                          "text": "Moc przy tym samym tętnie: teraz %s W, %s %s W (%s%s%%)." % (
+                              _pl(p_now, 0), ref_lbl, _pl(p_ref, 0), "+" if cap_ch >= 0 else "", _pl(100 * cap_ch, 0)),
+                          "note": "Liczone z ostatnich jazd (bez jazd z wadliwym miernikiem). W chłodzie wynik bywa trochę wyższy."})
+    # regeneracja
+    rhr7 = mean([val(today - dt.timedelta(days=k), "rhr") for k in range(7)])
+    rhr0 = W["rhr"]["start_28d"]
+    rhr_max_w = max([w["rhr"] for w in weeks if w["rhr"] is not None and not w["partial"]] or [0])
+    rdy3 = mean([rdy(today - dt.timedelta(days=k)) for k in range(3)])
+    regen_ok = (rdy3 is not None and rdy3 >= REGEN_RDY3) and (rhr7 is not None and rhr0 is not None and rhr7 <= rhr0 + REGEN_RHR_MARGIN)
+    if rhr7 is not None:
+        worst = rhr7 >= rhr_max_w - 0.1
+        now_items.append({"key": "regeneracja", "title": "Regeneracja", "level": "good" if regen_ok else ("bad" if (rdy3 or 0) <= -0.8 else "warn"),
+                          "status": "w normie" if regen_ok else "organizm zmęczony",
+                          "text": "Tętno spoczynkowe %s (na starcie sezonu %s)%s, gotowość %s." % (
+                              _pl(rhr7), _pl(rhr0), " — najwyżej w sezonie" if worst else "", _pl(rdy3, 2)),
+                          "note": "Tętno i gotowość nie zależą od miernika mocy — mówią, czy organizm odrobił zmęczenie."})
+    # co dolozylo zmeczenia
+    extra = []
+    if recent_ill:
+        e = recent_ill[1]
+        lr = [r for r in rides if e < r["date"] <= e + dt.timedelta(days=AFTER_ILL_EASY_DAYS) and (r["duration_s"] or 0) >= LONG_RIDE_H * 3600]
+        if lr:
+            r0 = lr[0]
+            extra.append("długa jazda %s (%s h), %d dni po infekcji" % (_dm(r0["date"]), _pl((r0["duration_s"] or 0) / 3600.0), (r0["date"] - e).days))
+        extra.insert(0, "infekcja %s – %s" % (_dm(recent_ill[0]), _dm(recent_ill[1])))
+    h4 = W["hours_week"]["now_4w"]
+    if h4 is not None and typical:
+        now_items.append({"key": "objetosc", "title": "Jazda", "level": "info",
+                          "status": "%s h/tydz." % _pl(h4),
+                          "text": "Ostatnie 4 tygodnie średnio %s h, typowo w sezonie %s h." % (_pl(h4), _pl(typical)),
+                          "note": "Godziny nie zależą od miernika."})
+    last7 = wts[-7:]
+    w_now = mean([w for _, w in last7])
+    w_now_day = last7[-1][0] if last7 else None
+    w_then = mean([w for d, w in wts if w_now_day and w_now_day - dt.timedelta(days=97) <= d < w_now_day - dt.timedelta(days=83)])
+    if w_now is not None:
+        dw = (w_now - w_then) if w_then is not None else None
+        now_items.append({"key": "waga", "title": "Waga", "level": "warn" if (dw is not None and dw >= 1.0) else "info",
+                          "status": "%s kg" % _pl(w_now),
+                          "text": (("%s%s kg w 3 miesiące" % ("+" if dw >= 0 else "", _pl(dw))) if dw is not None else "brak porównania")
+                                  + (" (ostatni pomiar %s)" % _dm(w_now_day) if w_now_day and (today - w_now_day).days > 3 else ""),
+                          "note": ("Cel w TRENERZE: %s kg do %s." % (_pl(goal_w["kg"], 0), _dm(dt.date.fromisoformat(goal_w["by"])))) if goal_w and goal_w.get("by") else ""})
+    # sygnal przed infekcja
+    pre_sig = None
+    if recent_ill and p_ref:
+        pre = [(d, p) for d, p in pah if recent_ill[0] - dt.timedelta(days=5) <= d < recent_ill[0]]
+        dips = [(d, p) for d, p in pre if p / p_ref - 1.0 <= PRE_ILL_DIP]
+        if dips:
+            pre_sig = "Sygnał przed infekcją: %s moc przy tętnie %s W (%s%% poniżej normy) — kilka dni przed objawami." % (
+                ", ".join(_dm(d) for d, _ in dips), "/".join(_pl(p, 0) for _, p in dips), _pl(100 * (min(p for _, p in dips) / p_ref - 1.0), 0))
+    # zdanie podsumowania
+    cap_ok = cap_ch is not None and cap_ch >= CAP_OK
+    if cap_ch is None:
+        head = "Za mało wiarygodnych danych mocy, żeby ocenić wydolność."
+    elif cap_ok and not regen_ok:
+        head = "Formy nie straciłeś — zmęczony jest organizm. Stąd złe samopoczucie."
+    elif not cap_ok and not regen_ok:
+        head = "Spadła i wydolność, i regeneracja — organizm potrzebuje odpoczynku."
+    elif cap_ok and regen_ok:
+        head = "Wydolność i regeneracja w normie."
+    else:
+        head = "Regeneracja w normie, ale moc przy tętnie niższa niż wcześniej."
+    if extra and not regen_ok:
+        head += " Zmęczenie dołożyły: " + ", ".join(extra) + "."
+
+    # ============ 2. JAK PROWADZE SEZON ============
+    full = [w for w in weeks if not w["partial"] and dt.date.fromisoformat(w["week"]) >= start - dt.timedelta(days=6)]
+    nonill = [w for w in full if w["type"] != "infekcja"]
+    reg = [w for w in nonill if typical and w["hours"] >= LIGHT_X * typical]
+    manage = []
+    if nonill:
+        frac = len(reg) / len(nonill)
+        manage.append({"level": "good" if frac >= 0.75 else "warn", "title": "Regularność",
+                       "text": "%d z %d tygodni (bez infekcji) z normalną jazdą, typowo %s h." % (len(reg), len(nonill), _pl(typical))})
+    st = z.get("story") or {}
+    obs = st.get("obserwacje") or []
+    ill_obs = [o for o in obs if "po infekcji" in o]
+    rebound = [o for o in obs if "lżejszy tydzień" in o]
+    if rebound:
+        manage.append({"level": "good", "title": "Odpoczynek po dużym wysiłku",
+                       "text": "Lżejszy tydzień po wyjeździe / mocnym tygodniu poprawiał gotowość (%s)." % "; ".join(o.split(":")[0] for o in rebound)})
+    if ill_obs:
+        manage.append({"level": "bad", "title": "Powrót po infekcji",
+                       "text": "%s: długa jazda w pierwszych 2 tygodniach po infekcji → najgłębszy dołek gotowości. %s" % (
+                           ", ".join(o.split(":")[0] for o in ill_obs),
+                           "Powtórzyło się — to Twój najczęstszy błąd." if len(ill_obs) >= 2 else "")})
+    if len(wts) >= 20:
+        w_first = mean([w for d, w in wts[:14]])
+        dws = (w_now - w_first) if (w_now is not None and w_first is not None) else None
+        if dws is not None:
+            manage.append({"level": "bad" if dws >= 1.0 else ("good" if dws <= -1.0 else "info"), "title": "Waga w sezonie",
+                           "text": "Od %s: %s → %s kg (%s%s kg)%s." % (_dm(wts[0][0]), _pl(w_first), _pl(w_now), "+" if dws >= 0 else "", _pl(dws),
+                                    (", cel %s kg" % _pl(goal_w["kg"], 0)) if goal_w else "")})
+    qd = _rows(conn, "SELECT m.ride_date AS d FROM qbot_v2.fitmodel_ride_quarantine q JOIN qbot_v2.modelq2_ride m ON m.external_id=q.external_id "
+                     "WHERE q.released IS NULL AND m.ride_date >= %s ORDER BY m.ride_date", (start,))
+    if qd:
+        ms = []
+        for r in qd:
+            nm = MIES_M[r["d"].month - 1]
+            if nm not in ms:
+                ms.append(nm)
+        manage.append({"level": "info", "title": "Dane mocy",
+                       "text": "%d jazd z wadliwym pomiarem liczonych z tętna (%s)." % (len(qd), ", ".join(ms))})
+
+    # ============ 3. NA CO MOGE LICZYC ============
+    expect = []
+    # ile trwal powrot po poprzedniej infekcji (tetno i gotowosc w normie jednoczesnie)
+    rhr_goal = (rhr0 + REGEN_RHR_MARGIN) if rhr0 is not None else None
+    back_days = None
+    def ok_on(d):
+        r3 = mean([rdy(d - dt.timedelta(days=j)) for j in range(3)])
+        h7 = mean([val(d - dt.timedelta(days=j), "rhr") for j in range(7)])
+        return r3 is not None and h7 is not None and rhr_goal is not None and r3 >= REGEN_RDY3 and h7 <= rhr_goal
+    for a, b in grp[:-1] if (recent_ill and grp[-1] == recent_ill) else grp:
+        for k in range(1, 45):
+            d = b + dt.timedelta(days=k)
+            if all(ok_on(d + dt.timedelta(days=j)) for j in range(RETURN_HOLD_DAYS)):   # stan utrzymany, nie chwilowe odbicie
+                back_days = (k, a, b)
+                break
+    if back_days:
+        k, a, b = back_days
+        s = "Po infekcji %s – %s organizm wrócił do normy na stałe po %d dniach od końca objawów." % (_dm(a), _dm(b), k)
+        if recent_ill and not regen_ok:
+            eta = recent_ill[1] + dt.timedelta(days=k)
+            s += " Teraz odpowiada to okolicy %s — jeśli do tego czasu jeździsz spokojnie." % _dm(max(eta, today + dt.timedelta(days=1)))
+        expect.append(s)
+    if cap_ok:
+        expect.append("Wydolność zachowałeś — po odpoczynku wracasz z tego samego poziomu, bez nadrabiania.")
+    # fazy TRENERA
+    try:
+        import qbot_trener_engine as TE
+        ovr = _rows(conn, "SELECT overrides FROM qbot_v2.trainer_settings ORDER BY username LIMIT 1")
+        ov = (ovr[0]["overrides"] if ovr else None) or {}
+        goals = _rows(conn, "SELECT kind, priority, date_from, date_to, status, name FROM qbot_v2.trainer_goal WHERE status='active'")
+        sb = TE.season_bounds(today.year, ov, goals)
+        nb = TE.season_bounds(today.year + 1, ov, goals)
+        if today < sb["roz"]:
+            expect.append("TRENER: roztrenowanie od %s, pełny luz od %s, nowy sezon od %s — nie musisz teraz niczego nadrabiać." % (
+                _dm(sb["roz"]), _dm(sb["luz"]), _dm(nb["start"])))
+        elif today < sb["luz"]:
+            expect.append("TRENER: jesteś w roztrenowaniu (do %s), potem pełny luz, nowy sezon od %s." % (_dm(sb["luz"]), _dm(nb["start"])))
+        else:
+            expect.append("TRENER: pełny luz, nowy sezon od %s." % _dm(nb["start"]))
+    except Exception:
+        pass
+
+    # --- serie do wykresow ---
+    ch_start = today - dt.timedelta(days=120)
+    ser_p = [{"day": d.isoformat(), "v": round(p)} for d, p in pah if d >= ch_start]
+    ser_r = []
+    for i in range(120, -1, -1):
+        d = today - dt.timedelta(days=i)
+        v = mean([val(d - dt.timedelta(days=j), "rhr") for j in range(7)])
+        if v is not None:
+            ser_r.append({"day": d.isoformat(), "v": round(v, 1)})
+    ser_w = []
+    wd = dict(wts)
+    for i in range(120, -1, -1):
+        d = today - dt.timedelta(days=i)
+        v = mean([wd.get(d - dt.timedelta(days=j)) for j in range(7)])
+        if v is not None:
+            ser_w.append({"day": d.isoformat(), "v": round(v, 1)})
+    return {"head": head, "now": now_items, "pre_signal": pre_sig, "manage": manage, "expect": expect,
+            "series": {"p_at_hr": ser_p, "p_ref": round(p_ref) if p_ref else None, "rhr7": ser_r, "rhr_ref": rhr0,
+                       "rhr_goal": rhr_goal, "weight7": ser_w, "goal_w": goal_w,
+                       "ill": [[a.isoformat(), b.isoformat()] for a, b in grp if b >= ch_start]}}
