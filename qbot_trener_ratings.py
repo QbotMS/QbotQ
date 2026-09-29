@@ -80,6 +80,16 @@ def for_range(c, user: str, d0, d1) -> dict:
     return {(str(r["day"])[:10], r["sport"]): {"rating": int(r["rating"]), "note": r["note"]} for r in c.fetchall()}
 
 
+def _mirror(s: dict, note) -> None:
+    """2026-09-29: tresc notatki -> sygnal organizmu -> wpis samopoczucia w Kalendarzu (fitmodel/body_notes.py, w tle).
+    Ocena gwiazdkami to ocena planu - NIE jest przenoszona."""
+    try:
+        from fitmodel.body_notes import sync_async
+        sync_async(s["day"], s["sport"], note, s.get("name"))
+    except Exception as e:
+        print("trener ocena: kopia do Kalendarza nieudana:", e)
+
+
 def save(c, user: str, b: dict, phase=None) -> dict:
     """Zapis/usuniecie oceny sesji (upsert po dniu i sporcie) + kopia zestawu cwiczen z chwili oceny."""
     c.execute("SELECT * FROM qbot_v2.trainer_session WHERE id=%s AND username=%s", (b["session_id"], user))
@@ -89,6 +99,7 @@ def save(c, user: str, b: dict, phase=None) -> dict:
     s = dict(s)
     if b["rating"] == 0:
         c.execute("DELETE FROM qbot_v2.trainer_rating WHERE username=%s AND day=%s AND sport=%s", (user, s["day"], s["sport"]))
+        _mirror(s, None)
         return {"ok": True, "deleted": True}
     title, ex = s.get("name"), None
     if s["sport"] in ("sila", "wiosl", "joga"):
@@ -106,6 +117,7 @@ def save(c, user: str, b: dict, phase=None) -> dict:
         "exercises=COALESCE(EXCLUDED.exercises, qbot_v2.trainer_rating.exercises), updated_at=now()",
         (user, s["day"], s["sport"], s["id"], b["rating"], b["note"], title,
          json.dumps(ex, ensure_ascii=False) if ex is not None else None))
+    _mirror(s, b.get("note"))
     return {"ok": True, "day": str(s["day"])[:10], "sport": s["sport"], "rating": b["rating"], "note": b["note"]}
 
 
