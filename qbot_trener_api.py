@@ -687,7 +687,7 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                         "days": pw["days"], "readiness_today": ctx["readiness_today"], "readiness_threshold": ctx["readiness_threshold"],
                         "has_weather": bool(ctx["weather"]),
                         # sygnaly z zakladki Sezon (okres ochronny po infekcji, regeneracja) - widoczne w tygodniu
-                        "season_notes": [n for n in pw["notes"] if n.startswith("Sezon:") or "okresie ochronnym" in n],
+                        "season_notes": [n for n in pw["notes"] if n.startswith(("Sezon:", "Status dnia:")) or "okresie ochronnym" in n],
                         "season_sig": ctx.get("season_sig")}
                 c.execute("SELECT ftp_est_w FROM qbot_v2.fitmodel_daily WHERE ftp_est_w IS NOT NULL ORDER BY day DESC LIMIT 1")
                 fr = c.fetchone()

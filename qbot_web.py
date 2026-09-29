@@ -10361,6 +10361,7 @@ _FORMA_FIELDS = [
     "ctl_xss", "atl_raw", "tsb_raw",
     "atl_plus", "tsb_plus", "xss_hidden_subj", "atl_hidden_subj", "atl_plus_note",
     "load_ramp", "load_7d", "load_28d",
+    "readiness_3d", "day_status", "day_status_note", "early_warn",
 ]
 
 
@@ -10372,7 +10373,8 @@ def _forma_row_out(r):
     out = {"day": r["day"].isoformat()}
     for f in _FORMA_FIELDS:
         v = r[f]
-        out[f] = v if f in ("wprime_confidence", "readiness_label", "readiness_note", "readiness_effective_label", "readiness_effective_note", "atl_plus_note") else _forma_num(v)
+        out[f] = v if f in ("wprime_confidence", "readiness_label", "readiness_note", "readiness_effective_label", "readiness_effective_note", "atl_plus_note",
+                            "day_status", "day_status_note", "early_warn") else _forma_num(v)
     return out
 
 

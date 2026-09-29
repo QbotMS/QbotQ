@@ -672,8 +672,12 @@ def plan_week(ctx: dict) -> dict:
     low_today = thr is not None and rt is not None and rt < thr and int(P(ov, "regen.sensitivity")) > 0
     reg = sig.get("regen") or {}
     ramp = sig.get("load_ramp")
-    sez_low = (int(P(ov, "regen.sensitivity")) > 0 and reg and not reg.get("ok")
-               and ((reg.get("rdy3") is not None and reg["rdy3"] <= -0.4) or (ramp is not None and ramp >= 1.3)))
+    dstat = sig.get("day_status")
+    if dstat:   # wspolny status dnia (fitmodel/day_status.py) ma pierwszenstwo
+        sez_low = int(P(ov, "regen.sensitivity")) > 0 and dstat in ("przeciazenie", "zmeczony")
+    else:
+        sez_low = (int(P(ov, "regen.sensitivity")) > 0 and reg and not reg.get("ok")
+                   and ((reg.get("rdy3") is not None and reg["rdy3"] <= -0.4) or (ramp is not None and ramp >= 1.3)))
     if sez_low and today in infos and not low_today:
         why = []
         if reg.get("rhr7") is not None and reg.get("rhr_norm") is not None and reg["rhr7"] > reg["rhr_norm"]:
@@ -682,7 +686,11 @@ def plan_week(ctx: dict) -> dict:
             why.append(f"gotowość 3 dni {reg['rdy3']}")
         if ramp is not None and ramp >= 1.3:
             why.append(f"skok obciążenia ×{ramp}")
-        notes.append("Sezon: regeneracja niepełna (" + ", ".join(why) + ") — dziś wersje minimum")
+        if dstat:
+            notes.append("Status dnia: %s (%s) — dziś wersje minimum" % ({"przeciazenie": "przeciążenie", "zmeczony": "zmęczony"}.get(dstat, dstat),
+                                                                         sig.get("day_status_note") or ", ".join(why)))
+        else:
+            notes.append("Sezon: regeneracja niepełna (" + ", ".join(why) + ") — dziś wersje minimum")
     low_today = bool(low_today or sez_low)
     for s in out:
         d = _d(s["day"])

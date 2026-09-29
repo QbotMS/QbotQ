@@ -288,7 +288,7 @@ def _load_fitness_status_tool() -> dict[str, Any]:
             "Kanoniczny stan formy ModelQ v2 - JEDYNE zrodlo CP/FTP/W'/formy. Dla pytan o "
             "CP, FTP, LTP, W', CTL/ATL/TSB, gotowosc, przeciazenie/skok obciazenia. Zwraca: "
             "ftp_w, cp_w, ltp_w, wprime_kj, ctl, atl, tsb (z korekta), readiness_score/"
-            "effective, load_ramp (7d/28d) + load_ramp_ocena, ostrzezenie_przeciazenia. "
+            "effective, load_ramp (7d/28d), status_dnia (przeciazenie/zmeczony/uwaga/w_normie) + dlaczego. "
             "Xert to benchmark (xert_readiness). Parametr: date (ISO)."
         ),
         "args_schema": {"date": {"type": "string"}},

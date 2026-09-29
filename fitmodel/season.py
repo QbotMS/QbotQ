@@ -1186,4 +1186,9 @@ def trainer_signals(conn, today: dt.date | None = None) -> dict:
                     "rhr7": round(rhr7, 1) if rhr7 is not None else None, "rhr_norm": round(norm, 1) if norm is not None else None}
     lr = next((fd[d]["load_ramp"] for d in sorted(fd, reverse=True) if d <= today and fd[d].get("load_ramp") is not None), None)
     out["load_ramp"] = round(float(lr), 2) if lr is not None else None
+    # wspolny status dnia (fitmodel/day_status.py)
+    ds = _rows(conn, "SELECT day_status, day_status_note FROM qbot_v2.fitmodel_daily WHERE day <= %s AND day_status IS NOT NULL "
+                     "ORDER BY day DESC LIMIT 1", (today,))
+    if ds:
+        out["day_status"], out["day_status_note"] = ds[0]["day_status"], ds[0]["day_status_note"]
     return out

@@ -240,7 +240,13 @@ def apply_hidden_fatigue(conn) -> dict:
         d = d + dt.timedelta(days=1)
 
     conn.commit()
-    return {"enabled": enabled, "obj_enabled": obj_on, "illness_norest": norest_on,
+    # status dnia (fitmodel/day_status.py) - korzysta z load_ramp i gotowosci, wiec liczony PO korektach zmeczenia
+    try:
+        from fitmodel.day_status import apply_day_status
+        ds = apply_day_status(conn)
+    except Exception as exc:
+        ds = {"error": str(exc)}
+    return {"enabled": enabled, "obj_enabled": obj_on, "illness_norest": norest_on, "day_status": ds,
             "week_cap": cap_on,
             "updated": updated, "days_with_hidden": nz}
 

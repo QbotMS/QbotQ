@@ -2574,6 +2574,16 @@ def _handle_fitness_status(text: str) -> dict:
                          status_override="PARTIAL")
 
     parts = [f"Forma na {r.get('day')} (ModelQ v2):"]
+    # 2026-09-29: wspolny status dnia (fitmodel/day_status.py) jako glowna odpowiedz - ten sam co Dziennik i TRENER
+    _DSL = {"przeciazenie": "PRZECIĄŻENIE — dziś wolne albo bardzo lekko (do ~1 h spokojnie)",
+            "zmeczony": "ZMĘCZONY — lekko albo wolne", "uwaga": "UWAGA — jedź spokojnie, bez akcentów",
+            "w_normie": "W NORMIE — trening wg planu"}
+    if r.get("status_dnia"):
+        parts.append("Status dnia: " + _DSL.get(r["status_dnia"], r["status_dnia"]))
+        if r.get("status_dnia_dlaczego"):
+            parts.append("dlaczego: " + r["status_dnia_dlaczego"])
+    if r.get("sygnal_infekcji"):
+        parts.append("UWAGA: organizm słabnie bez powodu w obciążeniu — możliwy początek infekcji")
     if r.get("ftp_w") is not None:
         parts.append(f"FTP: {r['ftp_w']:.0f} W")
     if r.get("cp_w") is not None:
@@ -2592,9 +2602,11 @@ def _handle_fitness_status(text: str) -> dict:
     if r.get("tsb") is not None:
         parts.append(f"TSB: {r['tsb']:.1f}")
     if r.get("readiness_label"):
-        _rl = f"Gotowosc: {r['readiness_label']}"
+        _rl = f"Gotowosc (ostatnia noc): {r['readiness_label']}"
         if r.get("readiness_score") is not None:
             _rl += f" ({r['readiness_score']:.1f})"
+        if r.get("readiness_3d") is not None:
+            _rl += f" · srednia 3 dni: {r['readiness_3d']:+.2f}"
         parts.append(_rl)
     parts.append("zrodlo: ModelQ v2 (agregat jazda + wellness Garmin). Xert = tylko benchmark.")
 
