@@ -1767,7 +1767,7 @@ def _tool_qbot_fitness_status(args: dict | None = None) -> dict[str, Any]:
     cols = ("day, ftp_est_w, cp_modelq_w, ltp_modelq_w, wprime_modelq_kj, "
             "wprime_lo_kj, wprime_hi_kj, wprime_confidence, wprime_source, "
             "ctl_xss, atl_plus, tsb_plus, readiness_score, readiness_label, "
-            "load_ramp, readiness_effective, day_status, day_status_note, readiness_3d, early_warn")
+            "load_ramp, readiness_effective, day_status, day_status_note, readiness_3d, early_warn, atl_real, tsb_real, body_load")
     try:
         with conn.cursor() as cur:
             if day:
@@ -1811,6 +1811,8 @@ def _tool_qbot_fitness_status(args: dict | None = None) -> dict[str, Any]:
         "status_dnia": row[16], "status_dnia_dlaczego": row[17],
         "readiness_3d": (round(float(row[18]), 2) if row[18] is not None else None),
         "sygnal_infekcji": bool(row[19]) if row[19] is not None else False,
+        "zmeczenie_faktyczne": _f(row[20]), "swiezosc_faktyczna": _f(row[21]),
+        "stan_ciala": (round(float(row[22]), 2) if row[22] is not None else None),
         "notes": ("Kanoniczne CP/FTP/W' = ModelQ v2. Xert tylko benchmark. atl/tsb = z korekta "
                   "zmeczenia (gotowosc, samopoczucie, choroba). load_ramp = srednie obciazenie "
                   "7 dni / 28 dni (1.0 norma, >=1.3 nagly wzrost, >=1.5 strefa ryzyka)."),

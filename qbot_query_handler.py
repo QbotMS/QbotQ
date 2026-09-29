@@ -2601,6 +2601,9 @@ def _handle_fitness_status(text: str) -> dict:
         parts.append(f"ATL: {r['atl']:.1f}")
     if r.get("tsb") is not None:
         parts.append(f"TSB: {r['tsb']:.1f}")
+    if r.get("swiezosc_faktyczna") is not None:
+        parts.append(f"Faktycznie (treningi + cialo + samopoczucie): zmeczenie {r['zmeczenie_faktyczne']:.0f}, "
+                     f"swiezosc {r['swiezosc_faktyczna']:+.0f}")
     if r.get("readiness_label"):
         _rl = f"Gotowosc (ostatnia noc): {r['readiness_label']}"
         if r.get("readiness_score") is not None:

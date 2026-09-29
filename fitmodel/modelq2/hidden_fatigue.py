@@ -246,6 +246,12 @@ def apply_hidden_fatigue(conn) -> dict:
         ds = apply_day_status(conn)
     except Exception as exc:
         ds = {"error": str(exc)}
+    # faktyczne zmeczenie/swiezosc (fitmodel/real_load.py) - po day_status, bo korzysta z readiness_3d
+    try:
+        from fitmodel.real_load import apply_real_load
+        ds = dict(ds, real_load=apply_real_load(conn))
+    except Exception as exc:
+        ds = dict(ds, real_load={"error": str(exc)})
     return {"enabled": enabled, "obj_enabled": obj_on, "illness_norest": norest_on, "day_status": ds,
             "week_cap": cap_on,
             "updated": updated, "days_with_hidden": nz}
