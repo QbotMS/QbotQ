@@ -4872,6 +4872,7 @@ _GUEST_ASSETS = {
     "theme.css": "theme.css", "raport.css": "raport.css", "aside.css": "aside.css",
     "raport-v2.css": "raport-v2.css", "raport-trasy2.css": "raport-trasy2.css", "raport-gosc.css": "raport-gosc.css",
     "raport-render.js": "raport-render.js", "raport-trasy2.js": "raport-trasy2.js", "raport-gosc.js": "raport-gosc.js",
+    "raport-trasy-m.js": "raport-trasy-m.js",  # wersja telefonowa (2026-09-29)
     "leaflet.js": "vendor/leaflet.js", "leaflet.css": "vendor/leaflet.css", "favicon.svg": "favicon.svg",
 }
 
