@@ -137,6 +137,14 @@ def main() -> None:
             return lg_run(conn)
         _step("load_guard", _load_guard)
 
+        # 2d3. Straznik korekty ciala (fitmodel/real_load_guard.py): TYLKO powiadomienie na Telegram, gdy faktyczne
+        # zmeczenie/swiezosc moga sie rozjezdzac (sila, dane, dominacja jednego sygnalu, trwala rozbieznosc). Nic nie zmienia.
+        def _rl_guard():
+            from fitmodel.real_load_guard import run as rlg_run
+            from fitmodel.power_meter_guard import _telegram_send
+            return rlg_run(conn, send=_telegram_send)
+        _step("real_load_guard", _rl_guard)
+
         # 2e. Ryczalt kaloryczny z eventu kalendarza (wakacje: kcal_planned).
         # Dni bez realnego jedzenia dostaja szacunek X kcal + makra jak w
         # presetach. Wlasne polaczenie (psycopg3, dict_row) -- ten pipeline
