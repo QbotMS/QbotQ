@@ -2,7 +2,9 @@
 
 qbot_v2.activity_device: jedna linia na (jazda, urzadzenie) -- producent, produkt, serial, typ, bateria.
 qbot_v2.bike_sensor: mapowanie czujnika (serial lub producent+typ) -> rower/komponent (z Garazu).
-bike_for_ride(): nazwa roweru na podstawie czujnikow (najpierw serial, potem producent+typ).
+bike_for_ride(): nazwa roweru na podstawie czujnikow (najpierw numer ANT, potem serial, potem producent+typ).
+Numer ANT (ant_device_number) rozroznia dwa rowery z AXS (2026-10-01: Grizl 10625, Grail 27856);
+wazy najwiecej (+5), bo pedaly Assioma (serial, +3) bywaja przekladane miedzy rowerami.
 """
 from __future__ import annotations
 import json, os, sys
@@ -17,6 +19,7 @@ CREATE TABLE IF NOT EXISTS qbot_v2.activity_device(
 CREATE TABLE IF NOT EXISTS qbot_v2.bike_sensor(
   id serial PRIMARY KEY, bike text NOT NULL, component text, manufacturer text, device_type text,
   serial_number bigint, note text, active boolean DEFAULT true);
+ALTER TABLE qbot_v2.bike_sensor ADD COLUMN IF NOT EXISTS ant_device_number int;
 """
 SEED = [  # (bike, component, manufacturer, device_type, serial, note)
     ("Monster gravel", "miernik mocy Favero Assioma", "favero_electronics", "bike_power", 2005667661, "pedaly"),
@@ -92,25 +95,29 @@ def ingest_devices(external_id: str, fit_path: str, conn=None) -> int:
 
 def devices_for_ride(conn, external_id: str) -> list[dict]:
     cur = conn.cursor()
-    cur.execute("SELECT device_index,manufacturer,product,product_name,serial_number,device_type,source_type,battery_status,battery_voltage FROM qbot_v2.activity_device WHERE external_id=%s ORDER BY device_index", (external_id,))
-    cols = ["device_index","manufacturer","product","product_name","serial_number","device_type","source_type","battery_status","battery_voltage"]
+    cur.execute("SELECT device_index,manufacturer,product,product_name,serial_number,device_type,source_type,battery_status,battery_voltage,ant_device_number FROM qbot_v2.activity_device WHERE external_id=%s ORDER BY device_index", (external_id,))
+    cols = ["device_index","manufacturer","product","product_name","serial_number","device_type","source_type","battery_status","battery_voltage","ant_device_number"]
     return [(dict(r) if isinstance(r, dict) else dict(zip(cols, r))) for r in cur.fetchall()]
 
 
 def bike_for_ride(conn, external_id: str) -> dict:
-    """{'bike': nazwa|None, 'how': 'serial'|'type'|None, 'sensors': [...z komponentem i bateria...], 'has_axs': bool}"""
+    """{'bike': nazwa|None, 'how': 'ant'|'serial'|'type'|None, 'sensors': [...z komponentem i bateria...], 'has_axs': bool}"""
     devs = devices_for_ride(conn, external_id)
-    cur = conn.cursor(); cur.execute("SELECT bike,component,manufacturer,device_type,serial_number FROM qbot_v2.bike_sensor WHERE active")
+    cur = conn.cursor(); cur.execute("SELECT bike,component,manufacturer,device_type,serial_number,ant_device_number FROM qbot_v2.bike_sensor WHERE active")
     maps = [tuple(r.values()) if isinstance(r, dict) else tuple(r) for r in cur.fetchall()]
     votes = {}; how = None; sensors = []; has_axs = False
     for d in devs:
         comp = None; bike = None
-        for b, c, m, t, s in maps:
-            if s is not None and d.get("serial_number") == s:
-                bike, comp = b, c; votes[b] = votes.get(b, 0) + 3; how = how or "serial"; break
+        for b, c, m, t, s, a in maps:
+            if a is not None and d.get("ant_device_number") == a and m == d.get("manufacturer"):
+                bike, comp = b, c; votes[b] = votes.get(b, 0) + 5; how = how or "ant"; break
         if bike is None:
-            for b, c, m, t, s in maps:
-                if s is None and m == d.get("manufacturer") and str(t) == str(d.get("device_type")):
+            for b, c, m, t, s, a in maps:
+                if s is not None and d.get("serial_number") == s:
+                    bike, comp = b, c; votes[b] = votes.get(b, 0) + 3; how = how or "serial"; break
+        if bike is None:
+            for b, c, m, t, s, a in maps:
+                if s is None and a is None and m == d.get("manufacturer") and str(t) == str(d.get("device_type")):
                     bike, comp = b, c; votes[b] = votes.get(b, 0) + 1; how = how or "type"; break
         if d.get("manufacturer") == "sram" and str(d.get("device_type")) == "34": has_axs = True
         if d.get("source_type") == "antplus" or d.get("device_type") in ("bike_power", "bike_speed", "heart_rate", "34"):
