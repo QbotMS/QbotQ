@@ -243,31 +243,49 @@ def discover_osm_landmarks(
 
     queries = [query_for(chunk) for chunk in chunks]
 
-    def fetch(query: str) -> None:
-        key = hashlib.sha256(query.encode()).hexdigest()[:24]
-        path = cache_root / f"osm-landmarks-{key}.json"
+    # 2026-10-03: zapytania PO KOLEI (nie 4 naraz) + ponawianie przy 429/5xx.
+    # Rownolegle zapytania dostawaly od Overpass "za duzo zapytan" i silnik
+    # tracil wiekszosc odcinkow (DEGRADED_OSM, run 17 i 18). Udane odcinki
+    # zostaja w cache, wiec ponowne przeliczenie dociaga tylko brakujace.
+    osm_deadline = time.monotonic() + float(os.getenv("QBOT_ATTR_OSM_BUDGET_SEC", "100"))
+
+    def _cache_path(query: str) -> Path:
+        return cache_root / f"osm-landmarks-{hashlib.sha256(query.encode()).hexdigest()[:24]}.json"
+
+    def fetch(query: str) -> str:
+        """Zwraca 'cache' | 'ok' | 'fail'."""
+        path = _cache_path(query)
         try:
             if path.exists():
                 json.loads(path.read_text(encoding="utf-8"))
-                return
+                return "cache"
         except (OSError, ValueError):
             pass
-        for endpoint in OVERPASS_APIS:
-            try:
-                response = requests.post(endpoint, data={"data": query}, timeout=15, headers={"User-Agent": USER_AGENT})
-                response.raise_for_status()
-                data = response.json()
+        for attempt in range(3):
+            for endpoint in OVERPASS_APIS:
+                if time.monotonic() > osm_deadline:
+                    return "fail"
                 try:
-                    cache_root.mkdir(parents=True, exist_ok=True)
-                    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-                except OSError:
-                    pass
-                return
-            except (requests.RequestException, ValueError):
-                continue
+                    response = requests.post(endpoint, data={"data": query}, timeout=20, headers={"User-Agent": USER_AGENT})
+                    if response.status_code in {429, 502, 503, 504}:
+                        continue
+                    response.raise_for_status()
+                    data = response.json()
+                    try:
+                        cache_root.mkdir(parents=True, exist_ok=True)
+                        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+                    except OSError:
+                        pass
+                    return "ok"
+                except (requests.RequestException, ValueError):
+                    continue
+            if attempt < 2:
+                time.sleep(min(6.0 * (attempt + 1), max(0.0, osm_deadline - time.monotonic())))
+        return "fail"
 
-    with ThreadPoolExecutor(max_workers=min(4, len(queries))) as executor:
-        list(executor.map(fetch, queries))
+    for query in queries:
+        if fetch(query) == "ok":
+            time.sleep(1.0)
 
     for query in queries:
         key = hashlib.sha256(query.encode()).hexdigest()[:24]
