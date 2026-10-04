@@ -408,6 +408,7 @@ async def get_activity_details(activity_id: str) -> str:
     # FIT z Garmin Connect — per-sekundowe dane: kadencja, moc, HR, prędkość, alt, temp
     import io, zipfile
     from fitparse import FitFile
+    import fitmodel._fitparse_compat  # noqa: F401  (2026-10-04: dev-fields QExt2)
     from datetime import datetime, timedelta
     import asyncio as _aio
 
@@ -529,6 +530,7 @@ async def get_route_surface(activity_id: str) -> str:
     """
     import math, io, zipfile
     from fitparse import FitFile
+    import fitmodel._fitparse_compat  # noqa: F401  (2026-10-04: dev-fields QExt2)
     from datetime import datetime, timedelta
     import asyncio
     activity_id = str(activity_id)

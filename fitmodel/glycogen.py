@@ -10,6 +10,8 @@ from typing import Any
 
 import numpy as np
 from fitparse import FitFile
+# 2026-10-04: lata dev-fields (Connect IQ / QExt2) - bez niej FitParseError na jazdach z polami QExt2.
+from fitmodel import _fitparse_compat  # noqa: F401  (efekt uboczny: patch fitparse)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 

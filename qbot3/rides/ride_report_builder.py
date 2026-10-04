@@ -10,6 +10,14 @@ Zasady kontraktu:
 """
 import os, math, collections
 from fitparse import FitFile
+# 2026-10-04: lata dev-fields (Connect IQ / QExt2) - bez niej FitParseError na jazdach z polami QExt2.
+try:
+    import fitmodel._fitparse_compat  # noqa: F401  (efekt uboczny: patch fitparse)
+except ModuleNotFoundError:
+    import sys as _sys
+    from pathlib import Path as _P
+    _sys.path.insert(0, str(_P(__file__).resolve().parents[2]))
+    import fitmodel._fitparse_compat  # noqa: F401
 
 SCHEMA_VERSION = 3  # 2: trace.surface_cat + nawierzchnia per pozycja / ze sladu
 

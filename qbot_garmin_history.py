@@ -124,6 +124,7 @@ def _find_series(payload: Any, aliases: tuple[str, ...]) -> list[float] | list[i
 
 def _fit_streams_from_download(g, activity_id: str) -> dict[str, list[Any]]:
     from fitparse import FitFile
+    import fitmodel._fitparse_compat  # noqa: F401  (2026-10-04: dev-fields QExt2)
 
     blob = g.download_activity(activity_id, dl_fmt=g.ActivityDownloadFormat.ORIGINAL)
     fit_raw = blob
@@ -181,6 +182,7 @@ def _fit_streams_from_download(g, activity_id: str) -> dict[str, list[Any]]:
 
 def _download_fit_records(g, activity_id: str) -> list[dict[str, Any]]:
     from fitparse import FitFile
+    import fitmodel._fitparse_compat  # noqa: F401  (2026-10-04: dev-fields QExt2)
 
     blob = g.download_activity(activity_id, dl_fmt=g.ActivityDownloadFormat.ORIGINAL)
     fit_raw = blob
