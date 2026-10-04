@@ -4,6 +4,22 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-04 -- DECYZJA: prog mocy z ModelQ na Karoo przez intervals.icu (Garmin bez zmian)
+
+- Garmin Connect liczy IF/TSS z `threshold_power` zapisanego przez Karoo w FIT (session 247 W w jazdach 04.10
+  i 27.09; IF/TSS w FIT == w Garmin). Zapis FTP do Garmin Connect (nieoficjalne API) NIEPOTRZEBNY.
+- Lancuch: TP ModelQ (`fitmodel_daily.cp_modelq_w`) -> intervals.icu FTP (Ride) -> Hammerhead Third-party Sync
+  (polaczone przez Michala) -> Karoo -> FIT -> Garmin. Wysylamy MODEL (decyzja Michala), dzis 256 W.
+- Job `fitmodel/threshold_sync.py`, krok daily_job "threshold_sync": histereza 2%, PUT tylko {"ftp"},
+  BEZ `/apply` (nie przeliczac historii intervals), odczyt kontrolny, log `qbot_v2.threshold_sync_log`,
+  Telegram przy zmianie i bledzie, blad nie jest polykany.
+- Hammerhead przenosi tez z intervals.icu strefy, max HR i wage. Max HR Ride w intervals.icu: 181 -> 173
+  (181 = artefakt paska 02.05.2026: HR 93->181->115 w 90 s przy ~70 W; realne maksima 171-173 na wielu jazdach
+  2025-2026, utrzymane 10 s). `fitmodel_param.hr_max_bpm` = 184 w QBot NIEZMIENIONE (zmiana przesuwa pasmo HR
+  segmentow 0.60-0.85 i wymaga przeliczenia) - osobna decyzja.
+- Zasada: IF/TSS/czas ponad progiem w analizach QBota licz z cp_modelq_w / ltp_modelq_w / wprime_modelq_kj;
+  IF/TSS z Garmina tylko do kontroli spojnosci.
+
 ## 2026-10-04 -- DECYZJA: prog TP niepewny (ok. 239-256 W), kotwica EF z 11.08 zostaje, automatyczny przeglad
 
 Kontekst: Albert zglosil "blad parsera FIT" (request 477e9825). Prawda: ride_analysis (tools/rwgps/ride_overlay.py)

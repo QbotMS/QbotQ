@@ -8,6 +8,11 @@
 
 # OTWARTE
 
+## [KAROO-PROG-WERYFIKACJA] Sprawdzic lancuch progu na Karoo (dodane 2026-10-04)
+Po pierwszej jezdzie po synchronizacji: FTP w Hammerhead Dashboard i na Karoo = TP ModelQ; w FIT session
+`threshold_power` = zapisany prog; IF/TSS w Garmin Connect przeliczone od nowego progu; strefy HR na Karoo od max 173.
+Decyzja do podjecia: `fitmodel_param.hr_max_bpm` 184 -> 173? (przeliczenie segmentow).
+
 ## [MODELQ-TP-PRZEGLAD] Prog TP niepewny 239-256 W - automatyczny przeglad (dodane 2026-10-04)
 Krok daily_job `tp_recheck` wysle raport na Telegram, gdy zajdzie wyzwalacz (21 dni / 8 jazd / 15 h / 400 km od 04.10)
 i okno EF bedzie czyste. Po raporcie: decyzja o TP (kotwica reczna / usuniecie kotwicy EF 11.08 / bez zmian).

@@ -154,6 +154,15 @@ def main() -> None:
             return tpr_run(conn, send=_telegram_send)
         _step("tp_recheck", _tp_recheck)
 
+        # 2d5. Prog mocy na Karoo (fitmodel/threshold_sync.py, DECISIONS 2026-10-04): TP ModelQ (cp_modelq_w)
+        # -> intervals.icu FTP (histereza 2%, bez /apply) -> Hammerhead -> Karoo -> threshold_power w FIT
+        # -> IF/TSS w Garmin Connect. Zmiana i blad -> threshold_sync_log + Telegram; blad nie jest polykany.
+        def _threshold_sync():
+            from fitmodel.threshold_sync import run as ts_run
+            from fitmodel.power_meter_guard import _telegram_send
+            return ts_run(conn, send=_telegram_send)
+        _step("threshold_sync", _threshold_sync)
+
         # 2e. Ryczalt kaloryczny z eventu kalendarza (wakacje: kcal_planned).
         # Dni bez realnego jedzenia dostaja szacunek X kcal + makra jak w
         # presetach. Wlasne polaczenie (psycopg3, dict_row) -- ten pipeline
