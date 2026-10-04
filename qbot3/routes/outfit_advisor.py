@@ -189,10 +189,16 @@ def _range(season, insul, notes):
     return None, None
 
 
-def recent_ids(conn, n=3) -> set:
+def recent_ids(conn, n=3, skip=None) -> set:
+    """Rzeczy z ostatnich propozycji (rotacja). skip=(route_id, data): ponowne dobory TEJ SAMEJ jazdy sie nie licza
+    (decyzja 2026-10-04: inaczej kazde ponowne generowanie karze sprawdzony zestaw)."""
     try:
         ensure(conn)
-        rows = conn.execute("SELECT proposal FROM qbot_v2.route_outfit ORDER BY created_at DESC LIMIT %s", (n,)).fetchall()
+        if skip and skip[0] and skip[1]:
+            rows = conn.execute("SELECT proposal FROM qbot_v2.route_outfit WHERE NOT (route_id=%s AND ride_date=%s) "
+                                "ORDER BY created_at DESC LIMIT %s", (skip[0], skip[1], n)).fetchall()
+        else:
+            rows = conn.execute("SELECT proposal FROM qbot_v2.route_outfit ORDER BY created_at DESC LIMIT %s", (n,)).fetchall()
         conn.commit()
     except Exception:
         return set()
@@ -241,7 +247,7 @@ def _gear_rows():
     return rows
 
 
-def kandydaci(war: dict, recent: set, per_layer: int = 7, liked: set | None = None) -> dict:
+def kandydaci(war: dict, recent: set, per_layer: int = 7, liked: set | None = None, strong: set | None = None) -> dict:
     # dopasowanie do zakresow z audytu po TEMPERATURZE POWIETRZA (tak Michal podawal, w czym jezdzil);
     # odczuwalna tylko gdy brak powietrza
     # dopasowanie do zakresow z audytu (temperatura, w jakiej Michal nosil zestaw): od chlodniejszej temperatury
@@ -256,6 +262,7 @@ def kandydaci(war: dict, recent: set, per_layer: int = 7, liked: set | None = No
     cold_stops = bool(war.get("dlugie_postoje")) or czas >= 4 or bool(war.get("meta_po_zmroku"))
     windy = bool(war.get("wiatr_ochrona_wymagana")) or (_f((war.get("wiatr_ms") or {}).get("max"), 0.0) >= 6 and lo_t < 15)
     liked = liked or set()
+    strong = strong or set()
     cat2layer = {c: k for k, cs in LAYERS for c in cs}
     out = {k: [] for k in LAYER_KEYS}
     for r in _gear_rows():
@@ -322,6 +329,8 @@ def kandydaci(war: dict, recent: set, per_layer: int = 7, liked: set | None = No
             continue
         if int(r["id"]) in liked:
             sc += 0.7                                            # noszone z 'ok' na dluzszej jezdzie
+        if int(r["id"]) in strong:
+            sc += 2.5                                            # 'ok' w PODOBNYCH warunkach (decyzja 2026-10-04)
         if int(r["id"]) in recent:
             sc -= 0.7
         it = {"id": int(r["id"]), "warstwa": k, "kategoria": r["category"],
@@ -434,6 +443,43 @@ def historia_jazd(conn, limit: int = 12) -> list:
             e["warunki"] = "brak raportu z jazdy"
         out.append({k: v for k, v in e.items() if v not in (None, "", [])})
     return out
+
+
+SIM_DT_C = 3.0             # podobna jazda: srednia temp. (Karoo) +-3 C od sredniej do ubioru
+SIM_DWIND_MS = 2.5         # ... wiatr max +-2.5 m/s, sucho, odczucie ok, typ dluzsza/wyprawa
+
+
+def _similar_ok(hist, war):
+    """Najblizsza jazda 'ok' w podobnych warunkach -> punkt wyjscia doboru (decyzja Michala 2026-10-04)."""
+    avg = _f((war.get("na_rowerze") or {}).get("srednia"))
+    if avg is None or _rain_real(war):
+        return None
+    wmax = _f((war.get("wiatr_ms") or {}).get("max"), 0.0)
+    best = None
+    for e in hist:
+        if not e.get("rzeczy_licza_do_wyboru") or (e.get("odczucie") or "ok") != "ok" or not e.get("rzeczy"):
+            continue
+        tc = e.get("temp_licznik")
+        t = _f(tc.get("avg")) if isinstance(tc, dict) else _f(tc)
+        if t is None or abs(t - avg) > SIM_DT_C:
+            continue
+        w = e.get("wiatr_ms")
+        wm = _f(w.get("max") if isinstance(w, dict) else w, 0.0)
+        if abs(wm - wmax) > SIM_DWIND_MS:
+            continue
+        op = e.get("opad")
+        if _f(op.get("sum") if isinstance(op, dict) else op, 0.0) >= POCKET_RAIN_MM:
+            continue
+        d = abs(t - avg)
+        if best is None or d < best[0]:
+            best = (d, e, t, wm)
+    if not best:
+        return None
+    _, e, t, wm = best
+    return {"data": e.get("data"), "temp_srednia_karoo": t, "wiatr_max_ms": wm, "czas_ruchu_h": e.get("czas_ruchu_h"),
+            "odczucie": "ok", "rzeczy": [it.get("nazwa") for it in e["rzeczy"]], "_ids": {int(it["id"]) for it in e["rzeczy"]},
+            "co_z_tym": "PUNKT WYJSCIA: w podobnych warunkach ten zestaw byl ok - zacznij od niego (zestaw spokojniejszy). "
+                       "Zmieniaj rzecz tylko z konkretnego powodu tej jazdy (dluzszy czas, dlugie postoje, brak slonca) i napisz jakiego."}
 
 
 def _liked(hist) -> set:
@@ -564,6 +610,66 @@ _WINTER_HEAD = re.compile(r"beanie|balaclava|skully|headband|kominiark|zimow", r
 _NEUTRAL = {"BLACK", "GREY", "NAVY"}
 
 
+POCKET_RAIN_PROC = 30      # kurtka/spodnie deszczowe do kieszeni dopiero od tej szansy deszczu (albo prognozowane mm)
+POCKET_RAIN_MM = 0.5       # ... albo od tylu mm w czasie jazdy (0.1 mm = szum prognozy, decyzja 2026-10-04)
+POCKET_MAX_DRY = 2         # bez realnego deszczu najwyzej tyle rzeczy w kieszeni (decyzja Michala 2026-10-03)
+WARM_ONE_MIN_C = 5         # od tej temp. do ubioru: najwyzej 1 warstwa od zimna/wiatru (na sobie + w kieszeni)
+
+
+def _rain_real(war):
+    r = (war or {}).get("deszcz") or {}
+    return _f(r.get("max_proc"), 0.0) >= POCKET_RAIN_PROC or _f(r.get("suma_mm"), 0.0) >= POCKET_RAIN_MM
+
+
+def _pocket_trim(o, kand, war):
+    """Siatka bezpieczenstwa (decyzja Michala 2026-10-03): bez realnego deszczu nic deszczowego w kieszeni;
+    najwyzej JEDNA warstwa od zimna/wiatru (kamizelka ALBO kurtka; przy dlugich postojach kurtka); bez deszczu max 2 rzeczy."""
+    ids = {it["id"]: it for v in kand.values() for it in v}
+    rain = _rain_real(war)
+    stops = bool((war or {}).get("dlugie_postoje"))
+    fixes = []
+    for zi, z in enumerate(o.get("zestawy") or []):
+        tag = "A" if zi == 0 else "B"
+        pk = list(z.get("do_kieszeni") or [])
+        lay = lambda it: (ids.get(int(it.get("id", -1))) or {}).get("warstwa")
+        nm = lambda it: (ids.get(int(it.get("id", -1))) or {}).get("nazwa", str(it.get("id")))
+        if not rain:
+            for it in [i for i in pk if lay(i) in ("deszcz_gora", "deszcz_dol")]:
+                pk.remove(it)
+                fixes.append("%s: %s usunieta z kieszeni (szansa deszczu < %d%%, 0 mm)" % (tag, nm(it), POCKET_RAIN_PROC))
+        warm = [i for i in pk if lay(i) in ("kamizelka", "kurtka")]
+        if len(warm) > 1:
+            pref = "kurtka" if stops else "kamizelka"
+            keep = next((i for i in warm if lay(i) == pref), warm[0])
+            for it in warm:
+                if it is not keep:
+                    pk.remove(it)
+                    fixes.append("%s: %s usunieta z kieszeni (wystarczy %s)" % (tag, nm(it), nm(keep)))
+        t_min = _f(((war or {}).get("na_rowerze") or {}).get("min"), 10.0)
+        rz = z.get("rzeczy") or []
+        worn = [i for i in rz if lay(i) in ("kamizelka", "kurtka")]
+        pkw = [i for i in pk if lay(i) in ("kamizelka", "kurtka")]
+        if worn and pkw and not rain and t_min >= WARM_ONE_MIN_C:
+            for it in pkw:
+                pk.remove(it)
+                fixes.append("%s: %s usunieta z kieszeni (masz juz %s)" % (tag, nm(it), nm(worn[0])))
+        # zimowa czapka przy >= 8 C -> czapka kolarska (regula 2026-09-25, AI ja ignorowalo)
+        if t_min >= 8:
+            for it in rz:
+                c = ids.get(int(it.get("id", -1))) or {}
+                if c.get("warstwa") == "glowa" and _WINTER_HEAD.search(c.get("nazwa", "")):
+                    caps = sorted([x for x in kand.get("glowa", []) if not _WINTER_HEAD.search(x["nazwa"])], key=lambda x: -x["_score"])
+                    if caps:
+                        it.update({"id": caps[0]["id"], "zamienniki": [], "dlaczego": "Czapka kolarska pod kask - przy %.0f C zimowa niepotrzebna." % t_min})
+                        fixes.append("%s: %s -> %s (za cieplo na zimowa czapke)" % (tag, c["nazwa"], caps[0]["nazwa"]))
+        if not rain and len(pk) > POCKET_MAX_DRY:
+            for it in pk[POCKET_MAX_DRY:]:
+                fixes.append("%s: %s usunieta z kieszeni (limit %d rzeczy bez deszczu)" % (tag, nm(it), POCKET_MAX_DRY))
+            pk = pk[:POCKET_MAX_DRY]
+        z["do_kieszeni"] = pk
+    return fixes
+
+
 def _checks(o, kand, war, final=False):
     """Kontrole zestawu wymuszane w kodzie (decyzje Michala 2026-09-25). Zwraca liste uwag (pusta = ok)."""
     ids = {it["id"]: it for v in kand.values() for it in v}
@@ -617,6 +723,18 @@ def _checks(o, kand, war, final=False):
             for c in pk:
                 if c["warstwa"] in ("kamizelka", "kurtka"):
                     bad.append("%s: %s w kieszeni bez powodu (slaby wiatr, bez dlugich postojow, start >= 10 C) - usun" % (tag, c["nazwa"]))
+        # 4b) kieszen (decyzja Michala 2026-10-03): deszczowe tylko przy realnym deszczu, 1 warstwa ciepla, max 2 rzeczy
+        rain_real = _rain_real(war)
+        if not rain_real:
+            for c in pk:
+                if c["warstwa"] in ("deszcz_gora", "deszcz_dol"):
+                    bad.append("%s: %s w kieszeni, a szansa deszczu < %d%% i 0 mm - usun" % (tag, c["nazwa"], POCKET_RAIN_PROC))
+        warm_all = [c["nazwa"] for c in on + pk if c["warstwa"] in ("kamizelka", "kurtka")]
+        if len(warm_all) > 1 and not rain_real and t_min >= WARM_ONE_MIN_C:
+            bad.append("%s: %s - dwie warstwy od zimna/wiatru (zdjeta i tak laduje w kieszeni); zostaw JEDNA: przy dlugich "
+                       "postojach ocieplana kurtka na zimny start i na postoje, inaczej kamizelka; dopasuj 'zdejmij'" % (tag, " + ".join(warm_all)))
+        if not rain_real and len(pk) > POCKET_MAX_DRY:
+            bad.append("%s: %d rzeczy w kieszeni bez deszczu - najwyzej %d" % (tag, len(pk), POCKET_MAX_DRY))
         # 5) nakrycie glowy wg temperatury
         g = onmap.get("glowa")
         if g and _WINTER_HEAD.search(g["nazwa"]) and t_min >= 8:
@@ -816,12 +934,57 @@ def _autofix(o, kand, war):
     return fixes
 
 
-def advise(conn, data: dict, start: str, rules=None, model_name: str = "", long_stops: int = 0, long_stop_min: int = 0) -> dict:
+_TXT_Z = ("nazwa", "kiedy", "po_co", "zdejmij", "slaby_punkt")
+
+
+def _retext(o, kand, fx):
+    """Po autokorekcie (usuniete/zamienione rzeczy) teksty AI moga mowic o rzeczach, ktorych juz nie ma
+    (np. 'kurtke zaloz na postoje'). Jedno krotkie wywolanie AI przepisuje TYLKO teksty pod koncowe listy.
+    Zwraca None gdy OK, inaczej uwage do kontroli (teksty zostaja stare). Decyzja Michala 2026-10-04."""
+    from qgpt_client import qgpt_json
+    ids = {it["id"]: it for v in kand.values() for it in v}
+    nm = lambda it: (ids.get(int(it.get("id", -1))) or {}).get("nazwa", "?")
+    zs = o.get("zestawy") or []
+    inp = {"zmiany_automatyczne": fx, "z_historii": o.get("z_historii") or "",
+           "zestawy": [{"na_sobie": [nm(i) for i in z.get("rzeczy") or []],
+                        "w_kieszeni": [nm(i) for i in z.get("do_kieszeni") or []],
+                        **{k: z.get(k) or "" for k in _TXT_Z}} for z in zs]}
+    prompt = ("Po automatycznej korekcie zestawow ubioru teksty moga wspominac rzeczy, ktorych juz NIE MA "
+              "(usuniete z kieszeni albo zamienione). Popraw teksty tak, by mowily WYLACZNIE o rzeczach z list "
+              "'na_sobie' i 'w_kieszeni'. Zdejmowanie rzeczy NOSZONEJ (np. kamizelki, nogawek) i chowanie jej do kieszeni jest OK - "
+              "zostaw takie zdania. Nie wolno tylko kazac wyjmowac/zakladac rzeczy, ktorej nie ma w zadnej liscie. "
+              "Zdanie o usunietej rzeczy zastap tym, co realnie masz (np. na postoj zaloz z powrotem zdjeta kamizelke). Nie zmieniaj list, sensu ani dlugosci bardziej niz trzeba; "
+              "teksty bez problemu przepisz bez zmian. Po polsku.\n"
+              "Zwroc TYLKO JSON: {\"z_historii\": \"...\", \"zestawy\": [{\"nazwa\": \"...\", \"kiedy\": \"...\", "
+              "\"po_co\": \"...\", \"zdejmij\": \"...\", \"slaby_punkt\": \"...\"}]} w tej samej kolejnosci.\n\n"
+              + json.dumps(inp, ensure_ascii=False))
+    try:
+        r = qgpt_json(prompt, system="Redaktor tekstow doradcy ubioru rowerowego. Tylko JSON.", max_tokens=1500, temperature=0.2)
+        rz = r.get("zestawy") if isinstance(r, dict) else None
+        if not isinstance(rz, list) or len(rz) != len(zs):
+            return "teksty po autokorekcie nieprzepisane (zla odpowiedz AI) - moga wspominac usuniete rzeczy"
+        for z, n in zip(zs, rz):
+            for k in _TXT_Z:
+                if isinstance(n, dict) and isinstance(n.get(k), str) and (n[k].strip() or not z.get(k)):
+                    z[k] = n[k].strip()
+        if isinstance(r.get("z_historii"), str):
+            o["z_historii"] = r["z_historii"].strip()
+        return None
+    except Exception as e:
+        return "teksty po autokorekcie nieprzepisane (%s) - moga wspominac usuniete rzeczy" % type(e).__name__
+
+
+def advise(conn, data: dict, start: str, rules=None, model_name: str = "", long_stops: int = 0, long_stop_min: int = 0,
+           route_id: str | None = None, ride_date: str | None = None) -> dict:
     from qgpt_client import qgpt_json
     t0 = time.perf_counter()
     war = warunki(data, start, long_stops, long_stop_min)
     hist = historia_jazd(conn)
-    kand = kandydaci(war, recent_ids(conn), liked=_liked(hist))
+    sim = _similar_ok(hist, war)
+    if sim:
+        war["podobna_jazda_ok"] = {k: v for k, v in sim.items() if not k.startswith("_")}
+    kand = kandydaci(war, recent_ids(conn, skip=(route_id, ride_date)), liked=_liked(hist),
+                     strong=sim["_ids"] if sim else None)
     if not kand:
         return {"ok": False, "blad": "brak pasujacych rzeczy w garazu"}
     system = _rules_text() + SYS_FORMAT
@@ -844,10 +1007,14 @@ def advise(conn, data: dict, start: str, rules=None, model_name: str = "", long_
         fix = "\n\nPOPRZEDNIA ODPOWIEDZ ODRZUCONA: " + err + ". Popraw i zwroc caly JSON."
     if err:
         return {"ok": False, "blad": err, "warunki": war}
-    fx = _autofix(o, kand, war)
+    fx = _autofix(o, kand, war) + _pocket_trim(o, kand, war)
     if _valid(o, kand, war):          # poprawki nie moga zepsuc podstaw
         return {"ok": False, "blad": "autokorekta zepsula zestaw", "warunki": war}
     o["_kontrola_uwagi"] = ["poprawione automatycznie: " + f for f in fx] + _checks(o, kand, war, final=True)
+    if fx:
+        note = _retext(o, kand, fx)
+        if note:
+            o["_kontrola_uwagi"].append(note)
     ids = {it["id"]: it for v in kand.values() for it in v}
     for z in o["zestawy"]:
         for key in ("rzeczy", "do_kieszeni"):

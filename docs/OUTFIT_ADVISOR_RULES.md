@@ -84,6 +84,13 @@ Oceny oznaczone "kopia z ID x" traktuj jako mniej pewne niz wlasne.
   sprawdzone jako awaryjne i pakowne).
 - Deszcz < 10% i sucho: najwyzej JEDNA rzecz awaryjna do kieszeni (zwykle kamizelka), chyba ze podasz powod
   na druga (dlugie postoje, koncowka po zmroku, gory).
+- KIESZEN (decyzja Michala 2026-10-03, wymuszane w kodzie): kurtka/spodnie przeciwdeszczowe do kieszeni TYLKO
+  przy szansie deszczu >= 30% albo prognozowanych opadach (mm > 0). Najwyzej JEDNA warstwa od zimna/wiatru
+  w kieszeni (kamizelka ALBO kurtka, nie obie; przy dlugich postojach ocieplana kurtka - zaloz ja tez na zimny start).
+  Bez deszczu najwyzej 2 rzeczy w kieszeni lacznie. Michal nie wozi "wozu serwisowego".
+  Deszcz realny = szansa >= 30% albo >= 0.5 mm (0.1 mm to szum prognozy).
+- PODOBNA JAZDA (decyzja 2026-10-04): gdy w 'warunki' jest 'podobna_jazda_ok', to zestaw sprawdzony w podobnych
+  warunkach z odczuciem ok - zestaw spokojniejszy budujesz OD NIEGO; kazda zmiane uzasadnij roznica tej jazdy.
 - Wiatr: czolowy / na odkrytym powyzej ~5 m/s przy chlodzie -> gora z a_wind mocna/umiarkowana albo kamizelka.
 
 ## 8. Dlugosc jazdy i wkladka

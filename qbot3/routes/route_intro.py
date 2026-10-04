@@ -171,7 +171,8 @@ def _prompt(f):
             ' "wprowadzenie": "jeden akapit 5-7 zdan: gdzie lezy trasa i jaki to region, jak wyglada krajobraz, jaki jest charakter jazdy i dla kogo",\n'
             ' "czego_sie_spodziewac": ["3-5 krotkich punktow praktycznych z km: nawierzchnia i trudne odcinki, podjazdy, zaopatrzenie"],\n'
             ' "warto_zobaczyc": [{"nazwa": "dokladnie z listy atrakcji", "km": liczba, "dlaczego": "1-2 konkretne zdania"}]}\n'
-            "warto_zobaczyc: 3-6 pozycji rozlozonych po calej trasie, tylko z listy atrakcji.")
+            "warto_zobaczyc: 3-6 pozycji rozlozonych po calej trasie, tylko z listy atrakcji; "
+            "gdy lista atrakcji jest pusta - zwroc warto_zobaczyc: [] (nie wymyslaj miejsc).")
 
 
 def _norm(o):
@@ -183,9 +184,16 @@ def _norm(o):
 def _valid(o, f):
     if not o:
         return "brak JSON"
-    for k in ("tytul", "wprowadzenie", "czego_sie_spodziewac", "warto_zobaczyc"):
+    for k in ("tytul", "wprowadzenie", "czego_sie_spodziewac"):
         if not o.get(k):
             return "brak pola " + k
+    # trasa bez atrakcji w danych: pusta lista jest POPRAWNA (sekcja sie chowa)
+    if "warto_zobaczyc" not in o or o["warto_zobaczyc"] is None:
+        o["warto_zobaczyc"] = []
+    if not isinstance(o["warto_zobaczyc"], list):
+        return "warto_zobaczyc nie jest lista"
+    if not o["warto_zobaczyc"] and (f.get("atrakcje") or []):
+        return "brak pola warto_zobaczyc"
     names = {a["nazwa"] for a in f.get("atrakcje") or []}
     bad = [x.get("nazwa") for x in o["warto_zobaczyc"] if isinstance(x, dict) and x.get("nazwa") not in names]
     if bad:
