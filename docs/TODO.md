@@ -8,6 +8,15 @@
 
 # OTWARTE
 
+## [MODELQ-TP-PRZEGLAD] Prog TP niepewny 239-256 W - automatyczny przeglad (dodane 2026-10-04)
+Krok daily_job `tp_recheck` wysle raport na Telegram, gdy zajdzie wyzwalacz (21 dni / 8 jazd / 15 h / 400 km od 04.10)
+i okno EF bedzie czyste. Po raporcie: decyzja o TP (kotwica reczna / usuniecie kotwicy EF 11.08 / bez zmian).
+Szczegoly: DECISIONS 2026-10-04. Powiazane otwarte: (1) wspolczynnik gotowosci QExt2 (cf 0.88 dal falszywe
+W'bal=0 19.09) - sesja QExt2; (2) modul przebic `fitmodel/modelq2/breakthrough.py` istnieje, NIEPODLACZONY;
+(3) kotwica EF wylaczona od 25.08 (EF_ANCHOR_DISABLED); (4) skazone segmenty jazd z kwarantanny nadal w
+fitmodel_segment (EF ~1.98) - filtrowac w kazdym nowym uzyciu EF; (5) sprzatanie: tabele *_bak_20261004
+po potwierdzeniu, skrypty scripts/_tmp_*.py z sesji 04.10.
+
 ## [GARAZ-CISNIENIA-PER-ROWER] Kalkulator ciśnień i opis roweru biorą koła obu rowerów (dodane 2026-09-24)
 `qbot_pressure_tools._read_wheelsets` i opis roweru w `qbot_web.py` czytają wszystkie komponenty `wheels`/wszystkie rowery. Dodać filtr `bike_id` (rower planowany/rozpoznany z jazdy). Przy trasie na Grizla nie pokazywać kół Monstera.
 

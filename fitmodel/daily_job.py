@@ -145,6 +145,15 @@ def main() -> None:
             return rlg_run(conn, send=_telegram_send)
         _step("real_load_guard", _rl_guard)
 
+        # 2d4. Przeglad progu TP (fitmodel/tp_recheck.py, DECISIONS 2026-10-04): gdy zajdzie wyzwalacz
+        # (dni/jazdy/h/km od uzbrojenia) i okno EF jest czyste (bez infekcji, >= 8 segmentow) ->
+        # jeden raport na Telegram (dolna granica TP z W'bal + TP z EF). Nic nie zmienia w modelu.
+        def _tp_recheck():
+            from fitmodel.tp_recheck import run as tpr_run
+            from fitmodel.power_meter_guard import _telegram_send
+            return tpr_run(conn, send=_telegram_send)
+        _step("tp_recheck", _tp_recheck)
+
         # 2e. Ryczalt kaloryczny z eventu kalendarza (wakacje: kcal_planned).
         # Dni bez realnego jedzenia dostaja szacunek X kcal + makra jak w
         # presetach. Wlasne polaczenie (psycopg3, dict_row) -- ten pipeline

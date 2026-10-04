@@ -4,6 +4,37 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-04 -- DECYZJA: prog TP niepewny (ok. 239-256 W), kotwica EF z 11.08 zostaje, automatyczny przeglad
+
+Kontekst: Albert zglosil "blad parsera FIT" (request 477e9825). Prawda: ride_analysis (tools/rwgps/ride_overlay.py)
+czytal FIT bez laty dev-fields -> FitParseError na jazdach z polami QExt2 (naprawione 4e150ec + f526ce9).
+Przy okazji przegladu segmentow i kotwic:
+
+1. **Kotwica EF 11.08 (TP 265.5) policzona na skazonej sprawnosci.** EF 1.877 vs czyste ~1.55-1.58;
+   w jej oknie 28 dni 9 jazd z kwarantanny miernika (w tym jazda z 11.08, +31%). Przy czystym EF (~241 W
+   < TP modelu 260.6) kotwica by NIE powstala. Wpis 25.08 ("sprzed glownej fali zatruc") byl bledny.
+   Symulacja bez niej (in-memory, kalibracja 0.05 W): TP nizszy o stale 17.4 W (dzis 238.7 zamiast 256.1),
+   LTP publikowane ~191 zamiast ~209. Xert przed skazeniem (09.08): 247.1 W = wersja bez kotwicy.
+   Xert po skazeniu bezuzyteczny (dzis TP 308, LTP 260) - nie uzywac nawet jako benchmarku.
+2. **Dolna granica z W'bal:** przy TP 216 W jazdy 19.09 (Marki, 3 min ~260 W, HR max 152), 27.09, 04.10
+   schodza 4-8 kJ ponizej zera przy W' ~18 kJ, a Michal sie nie odcial -> TP >= ~238-242 W.
+   **Gornej granicy brak** - Michal nie jezdzi na maksa (best 20 min od 23.08: 193 W, 60 min: 179 W).
+3. **EF (sprawnosc) po infekcji 09.2026 zanizony:** EF28 1.438 -> 216 W (k=prog/EF z czystych okresow
+   = 150, kod 153; rozrzut 140-173). Sprzeczne z dolna granica -> EF niewiarygodny do wygasniecia infekcji.
+   Mierniki Quarq/SRAM i Favero dawaly zgodne EF (218 / 212 W).
+4. **19.09 Karoo pokazalo W'bal=0 przy cp_eff 223 W** (= TP x cf 0.88). Zero falszywe (HR 150-152,
+   jazda dalej normalnie) -> problem we wspolczynniku gotowosci QExt2, nie w TP. Osobny temat QExt2.
+
+DECYZJA (Michal): kotwica 11.08 ZOSTAJE (obnizenie progu obnizyloby strefy i zerowalo W' czesciej -
+ryzyko "jazdy nizej"), TP uznany za NIEPEWNY w zakresie ok. 239-256 W. Pomiar powtorzyc automatycznie
+(fitmodel/tp_recheck.py, krok daily_job "tp_recheck"): wyzwalacz co nastapi pierwsze od 04.10 - 21 dni /
+8 jazd / 15 h / 400 km; bezpieczniki - okno EF 28 dni poza infekcja z Kalendarza +14 dni i >= 8 czystych
+segmentow. Raport raz na Telegram, nic nie zmienia. Stan: data/tp_recheck.json; CLI: fitmodel/tp_recheck.py
+--status / --arm [--days --rides --hours --km] / --force. Kotwica EF w publish.py dalej WYLACZONA.
+
+Segmenty: dolny prog pasma HR 0.65 -> 0.60 HRmax (3a69e3f), przeliczone wszystkie jazdy: 572 segmenty /
+221 jazd (bylo 438/183), kopia qbot_v2.fitmodel_segment_bak_20261004.
+
 ## 2026-09-23 -- DECYZJA: garage_search — pytania ogolne, opony, akcesoria, brak pustych odpowiedzi
 
 - Pytanie o garaz bez konkretnego przedmiotu (po odjeciu slow "garaz*" i ogolnych: masz, dostep, qbot,
