@@ -30,6 +30,13 @@ HR_LOCK_DELTA = 3
 HR_JUMP_DELTA = 15
 HR_LOCK_SECONDS = 30
 POWER_JUMP_DELTA = 5
+# Pasmo HR okna stabilnego (ulamek HRmax). 2026-10-04: dolny prog 0.65 -> 0.60.
+# Przy 0.65 (120 bpm) spokojne jazdy gravelowe (mediana HR 114) prawie nie dawaly
+# segmentow: 173 z 353 jazd z moca mialo 0. Przy 0.60: +37 jazd z segmentami,
+# poziom EF praktycznie bez zmian (symulacja: -1 W srednio w progu z EF).
+# Kalibracja odtworzenia na obecnych danych: 182/182 jazd, 437/437 segmentow.
+HR_BAND_LOW_FRAC = 0.60
+HR_BAND_HIGH_FRAC = 0.85
 
 # WATEK 2 (Strona B): developer fields zapisywane przez QExt2 do FIT.
 # KONTRAKT z QExt2 (Strona A) — nazwy MUSZA sie zgadzac po obu stronach:
@@ -248,8 +255,8 @@ def _stable_window_ok(window_rows: list[dict[str, Any]], hr_max: float) -> bool:
         return False
 
     hr_mean = float(np.mean(hr_values))
-    hr_low = 0.65 * hr_max
-    hr_high = 0.85 * hr_max
+    hr_low = HR_BAND_LOW_FRAC * hr_max
+    hr_high = HR_BAND_HIGH_FRAC * hr_max
     return hr_low <= hr_mean <= hr_high
 
 

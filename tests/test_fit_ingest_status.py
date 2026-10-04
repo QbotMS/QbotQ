@@ -98,5 +98,22 @@ class LockTests(unittest.TestCase):
         fi._release_lock(again)
 
 
+class HrBandTests(unittest.TestCase):
+    """Okno stabilne: rowna moc 180 W, HR staly; dolny prog 0.60 HRmax (184 -> 110.4 bpm)."""
+
+    def _win(self, hr):
+        return [{"power": 180.0, "heart_rate": hr} for _ in range(60)]
+
+    def test_hr_113_now_in_band(self):
+        self.assertTrue(fi._stable_window_ok(self._win(113.0), 184.0))
+
+    def test_hr_108_below_band(self):
+        self.assertFalse(fi._stable_window_ok(self._win(108.0), 184.0))
+
+    def test_hr_upper_band_unchanged(self):
+        self.assertTrue(fi._stable_window_ok(self._win(156.0), 184.0))
+        self.assertFalse(fi._stable_window_ok(self._win(158.0), 184.0))
+
+
 if __name__ == "__main__":
     unittest.main()
