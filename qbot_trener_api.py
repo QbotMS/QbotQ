@@ -12,7 +12,7 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Any, Callable
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 GOAL_KINDS = ("trip", "long_ride", "volume", "weight", "power", "habit", "other")
 GOAL_STATUS = ("active", "paused", "done", "dropped")
@@ -673,7 +673,7 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
             auto_planned = _ensure_horizon(c, u, d0)
             matched = _match_done(c, u, d0, d1)
             sessions = _sess_rows(c, u, d0, d1)
-            c.execute("SELECT id, day, end_day, kind, event_type, title, at_time, note FROM qbot_v2.calendar_entry "
+            c.execute("SELECT id, day, end_day, kind, event_type, title, at_time, note, feel, source FROM qbot_v2.calendar_entry "
                       "WHERE day <= %s AND COALESCE(end_day, day) >= %s ORDER BY day, id", (d1, d0))
             cal = [_jsonable(x) for x in c.fetchall()]
             c.execute("SELECT id, date, started_at, sport_type, activity_name, distance_m, duration_s, elevation_m, tss "
@@ -896,6 +896,107 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
             d0, _ = _week_bounds((b or {}).get("start"))
             return RV.review_week(c, u, d0, force=bool((b or {}).get("force")))
         return run(go)
+
+    @r.post("/week/ask")
+    async def week_ask(request: Request):
+        """Prosba do AI o zmiane planu: zwraca PROPOZYCJE zmian (nic nie zapisuje)."""
+        u = user_of(request)
+        b = await body_of(request)
+        import qbot_trener_ask as AK
+        def go(c):
+            d0, _ = _week_bounds((b or {}).get("start"))
+            return AK.propose(c, u, d0, str((b or {}).get("text") or ""))
+        return run(go)
+
+    @r.post("/week/ask/apply")
+    async def week_ask_apply(request: Request):
+        """Zastosuj zaakceptowane propozycje (ponowna walidacja); zmiana z Akceptuj / Cofnij."""
+        u = user_of(request)
+        b = await body_of(request)
+        import qbot_trener_ask as AK
+        def go(c):
+            d0, _ = _week_bounds((b or {}).get("start"))
+            ch = (b or {}).get("changes")
+            if not isinstance(ch, list) or not ch:
+                raise BadInput("changes: lista zmian wymagana")
+            res = AK.apply(c, u, d0, str((b or {}).get("text") or ""), ch)
+            if not res.get("ok"):
+                raise BadInput(res.get("error") or "nie udało się zastosować")
+            return res
+        return run(go)
+
+    @r.get("/exercises")
+    def exercises_get(request: Request):
+        """Baza cwiczen (tabela trainer_exercise) + stan grafik z manifestu + liczba paczek."""
+        u = user_of(request)
+        import qbot_trener_exercises as X
+        def go(c):
+            items = X.list_db(c, u)
+            return {"items": [_jsonable(x) for x in items], "groups": X.GROUPS, "wclass": X.WCLS, "equip": X.EQUIP, "batches": X.batches()}
+        return run(go)
+
+    @r.put("/exercises/{key}/rating")
+    async def exercises_rating(key: str, request: Request):
+        """Ocena cwiczenia: {tier: P|R|X|null, prio: 1-3}. tier null = wroc do propozycji."""
+        u = user_of(request)
+        b = await body_of(request)
+        import qbot_trener_exercises as X
+        def go(c):
+            try:
+                return X.set_rating(c, u, key, (b or {}).get("tier"), (b or {}).get("prio"))
+            except ValueError as e:
+                raise BadInput(str(e))
+        return run(go)
+
+    @r.get("/sessions/{sid}/sheet")
+    def session_sheet(sid: int, request: Request):
+        """Sciaga treningu silowego: sesja + zestaw z bazy + kroki cwiczen (strona /sciaga.html)."""
+        u = user_of(request)
+        import qbot_trener_sheet as SH
+        def go(c):
+            try:
+                return _jsonable(SH.sheet_data(c, u, sid))
+            except SH.SheetError as e:
+                raise BadInput(str(e))
+        return run(go)
+
+    @r.get("/sessions/{sid}/sheet.pdf")
+    def session_sheet_pdf(sid: int, request: Request):
+        """PDF sciagi z WKLEJONYMI grafikami; brak grafiki = blad 400 (nie oddajemy pliku bez grafik)."""
+        u = user_of(request)
+        import qbot_trener_sheet as SH
+        def go(c):
+            try:
+                return SH.build_pdf(SH.sheet_data(c, u, sid))
+            except SH.SheetError as e:
+                raise BadInput(str(e))
+        pdf, rep = run(go)
+        return Response(content=pdf, media_type="application/pdf",
+                        headers={"Content-Disposition": f'inline; filename="trening_sila_{sid}.pdf"',
+                                 "X-Sheet-Images": str(rep["images"]), "X-Sheet-Pages": str(rep["pages"]), "Cache-Control": "no-store"})
+
+    @r.put("/sessions/{sid}/block_kg")
+    async def session_block_kg(sid: int, request: Request):
+        """Ciezar bloku {letter, kg}: zapamietany dla cwiczen bloku + przeliczony zestaw."""
+        u = user_of(request)
+        b = await body_of(request)
+        import qbot_trener_sheet as SH
+        def go(c):
+            try:
+                return SH.set_block_kg(c, u, sid, str((b or {}).get("letter") or ""), float((b or {}).get("kg") or 0))
+            except (SH.SheetError, ValueError) as e:
+                raise BadInput(str(e))
+        return run(go)
+
+    @r.get("/exercises/prompt")
+    def exercises_prompt(request: Request, batch: int = Query(...)):
+        """Gotowy prompt do ChatGPT dla paczki grafik (ten sam styl dla wszystkich paczek)."""
+        user_of(request)
+        import qbot_trener_exercises as X
+        t = X.prompt(int(batch))
+        if not t:
+            raise HTTPException(status_code=404, detail="brak takiej paczki")
+        return {"batch": int(batch), "text": t}
 
     @r.get("/balance")
     def balance_get(request: Request):

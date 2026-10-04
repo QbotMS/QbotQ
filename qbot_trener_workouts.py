@@ -49,6 +49,20 @@ ROW_TECH = "Technika: nogi → tułów → ręce przy pociągnięciu, w powrocie
 
 BAD_AVG = 2.0  # srednia ocen cwiczenia <= 2 -> Trener go unika (qbot_trener_ratings.exercise_prefs)
 
+# Pomijanie partii (opts.skip_groups sesji, np. z prosby do AI): partia -> sloty obwodu i akcenty, ktore wypadaja
+SKIP_GROUPS = {
+    "nogi": ({"nogi", "tył ciała"}, {"nogi"}),
+    "klatka": ({"klatka"}, {"klatka + ramiona"}),
+    "ramiona": (set(), {"klatka + ramiona"}),
+    "plecy": ({"plecy"}, {"plecy"}),
+    "barki": ({"barki"}, set()),
+    "brzuch": ({"brzuch"}, {"brzuch"}),
+}
+
+
+def clean_skip(skip) -> list:
+    return [g for g in SKIP_GROUPS if g in (skip or [])]
+
 
 def _ok(prefs: dict, name: str) -> bool:
     v = prefs.get(name)
@@ -67,30 +81,47 @@ def _pick(opts: list, var: int, prefs: dict | None) -> tuple[str, bool]:
     return max(good, key=lambda o: prefs.get(o, 3.0)), True
 
 
-def details(sport: str, phase: str | None, dur_min: int, cut: bool = False, n: int = 0, prefs: dict | None = None) -> dict:
+def details(sport: str, phase: str | None, dur_min: int, cut: bool = False, n: int = 0, prefs: dict | None = None,
+            skip: list | None = None) -> dict:
     phase = phase if phase in DOSE else "bz"
     if sport == "sila":
-        acc = ACCENTS[n % len(ACCENTS)]
+        skip = clean_skip(skip)
+        no_slot = set().union(*[SKIP_GROUPS[g][0] for g in skip]) if skip else set()
+        no_acc = set().union(*[SKIP_GROUPS[g][1] for g in skip]) if skip else set()
+        acc = None
+        for k in range(len(ACCENTS)):   # akcent z rotacji; pominieta partia -> nastepny dozwolony
+            a = ACCENTS[(n + k) % len(ACCENTS)]
+            if a not in no_acc:
+                acc = a
+                break
         var = (n // len(ACCENTS)) % 4
         rounds, work, rest, note = DOSE[phase]
         if cut:
             rounds, note = 1, "wersja minimum: jedna runda całego obwodu"
         ex = []
         for g, opts in BASE:
+            if g in no_slot:
+                continue
             nm, sw = _pick(opts, var, prefs)
             ex.append({"group": g, "name": nm, "swapped": sw})
-        extra, esw = EXTRA[acc][var % 2], False
-        if prefs and not all(_ok(prefs, e) for e in extra):
-            alt = EXTRA[acc][(var + 1) % 2]
-            if all(_ok(prefs, e) for e in alt):
-                extra, esw = alt, True
-        ex += [{"group": "➕ " + acc, "name": e, "swapped": esw} for e in extra]
-        lines = [f"Obwód na całe ciało · akcent: {acc} · {rounds} × obwód · {work} · przerwa między rundami {rest}",
-                 "Rozgrzewka 5′: krążenia ramion i bioder, 10 przysiadów bez obciążenia, 10 pompek na kolanach."]
+        if acc:
+            extra, esw = EXTRA[acc][var % 2], False
+            if prefs and not all(_ok(prefs, e) for e in extra):
+                alt = EXTRA[acc][(var + 1) % 2]
+                if all(_ok(prefs, e) for e in alt):
+                    extra, esw = alt, True
+            ex += [{"group": "➕ " + acc, "name": e, "swapped": esw} for e in extra]
+        bez = (" (bez: " + ", ".join(skip) + ")") if skip else ""
+        warm = ("Rozgrzewka 5′: krążenia ramion i bioder, 10 pompek na kolanach, 10 krążeń tułowia." if "nogi" in skip
+                else "Rozgrzewka 5′: krążenia ramion i bioder, 10 przysiadów bez obciążenia, 10 pompek na kolanach.")
+        lines = [f"Obwód{bez} · akcent: {acc or '—'} · {rounds} × obwód · {work} · przerwa między rundami {rest}", warm]
         lines += [f"{i + 1}. {e['name']}" + (f" ({e['group']})" if not e["group"].startswith("➕") else " ➕")
                   + (" · zamiana wg Twoich ocen" if e.get("swapped") else "") for i, e in enumerate(ex)]
+        if skip:
+            lines.append("Pominięte na Twoją prośbę: " + ", ".join(skip) + ".")
         lines.append(f"Uwaga: {note}. Oddychaj, bez bólu stawów; gdy za łatwo — trudniejszy wariant lub cięższy hantel.")
-        return {"title": f"Siła obwodowa — akcent {acc}", "accent": acc, "rounds": rounds, "exercises": ex, "text": "\n".join(lines)}
+        return {"title": f"Siła obwodowa{bez} — akcent {acc or 'brak'}", "accent": acc, "rounds": rounds, "exercises": ex,
+                "skip": skip, "text": "\n".join(lines)}
     if sport == "wiosl":
         name, steps = ROW[phase]
         if cut:

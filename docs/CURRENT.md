@@ -1,5 +1,19 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-10-03] TRENER: silnik siły z bazy (bloki ciężaru) + ściąga/PDF z grafikami
+Dok.: TRENER.md „Siła z bazy ćwiczeń” i „Ściąga i PDF”. Do commita (nowe): qbot_trener_sila.py, qbot_trener_sheet.py, sql/trainer_v9.sql, sql/trainer_v10.sql, tests/test_trener_sila.py, tests/test_trener_sheet.py; zmienione: qbot_trener_ratings.py, qbot_trener_api.py, qbot_trener_exercises.py, tests/test_trener_exercises.py. Do sprawdzenia przez użytkownika: wygląd PDF (układ stron) — nie weryfikowany wzrokowo przez Claude.
+
+## [2026-10-03] TRENER: baza ćwiczeń gotowa (100/100 grafik)
+Dok.: docs/TRENER.md „Baza ćwiczeń” + „Stan bazy ćwiczeń”. Do commita (nowe): qbot_trener_exercises.py, sql/trainer_v8.sql, tests/test_trener_exercises.py, scripts/cw_import.py. Dalej: silnik w bloki ciężaru + ściąga z bazy.
+
+## [2026-10-02] TRENER: prośba do AI o zmianę planu
+Opis: `docs/TRENER.md` (sekcja „Prośba do AI o zmianę planu”). Na żywo: migracja `opts` wykonana, qbot-web zrestartowany,
+endpointy w openapi, trener.js?v=22 / trener.css?v=2 serwowane; test zapis+Cofnij w wycofanej transakcji OK.
+Dalej tego dnia: Trener na telefon/iPad — osobny układ `trener-m.js` (poza repo), dok. TRENER.md „Wersja mobilna”.
+**NIEZAKOŃCZONE:** commit + push (DEV ma git tylko do odczytu): qbot_trener_ask.py, qbot_trener_api.py, qbot_trener_ops.py,
+qbot_trener_workouts.py, qbot_trener_ratings.py, sql/trainer_v7.sql, tests/test_trener_ask.py, docs/TRENER.md, docs/TODO.md,
+docs/CURRENT.md. Do sprawdzenia przez użytkownika: wygląd okna na /trener.html (składni JS nie dało się sprawdzić — brak node w DEV).
+
 ## [2026-09-24] GARAŻ: nowy wygląd, rowery, opony per koło, BIKE FIT z rysunkiem
 Pełny opis modułu: `docs/GARAZ.md`. Decyzje: `docs/DECISIONS.md` (wpisy 2026-09-24).
 - Wygląd jak Trener/Raport (ui2.css), zakładki podkreślane, kategorie komponentów po polsku na ekranie (w bazie angielskie kody).

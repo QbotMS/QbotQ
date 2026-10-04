@@ -66,11 +66,20 @@ def exercise_prefs(c, user: str, days: int = 365) -> dict:
 def details_for(c, user: str, s: dict, phase, prefs: dict | None = None) -> dict:
     """Szczegoly sesji; dla przyszlej sesji 'plan' z uwzglednieniem ocen cwiczen."""
     import qbot_trener_workouts as TW
+    if s["sport"] == "sila":   # 2026-10-03: zestaw z bazy cwiczen w blokach ciezaru (qbot_trener_sila); brak -> stary obwod
+        try:
+            import qbot_trener_sila as SX
+            d = SX.workout_for(c, user, s, phase, prefs)
+            if d:
+                return d
+        except Exception as e:
+            print("trener sila z bazy: blad, stary zestaw:", repr(e)[:300])
     n = TW.strength_index(c, user, s) if s["sport"] == "sila" else 0
     use = s["sport"] == "sila" and s.get("status") == "plan" and _d(s["day"]) >= date.today()
     if use and prefs is None:
         prefs = exercise_prefs(c, user)
-    return TW.details(s["sport"], phase, s["dur_min"], bool(s.get("cut")), n, prefs=(prefs if use else None))
+    return TW.details(s["sport"], phase, s["dur_min"], bool(s.get("cut")), n, prefs=(prefs if use else None),
+                      skip=((s.get("opts") or {}).get("skip_groups") if isinstance(s.get("opts"), dict) else None))
 
 
 def for_range(c, user: str, d0, d1) -> dict:

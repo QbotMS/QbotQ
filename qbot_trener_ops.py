@@ -179,6 +179,14 @@ def undo(c, u: str, cid: int) -> dict:
             c.execute("DELETE FROM qbot_v2.trainer_session WHERE username=%s AND id = ANY(%s) AND source='auto'", (u, p["after_ids"]))
         for s in (x["before"] or []):
             c.execute(f"INSERT INTO qbot_v2.trainer_session (username,{','.join(COLS)}) VALUES (%s,{','.join(['%s'] * len(COLS))})", [u] + [s.get(k2) for k2 in COLS])
+        ai = p.get("ai") or {}
+        if ai.get("created"):   # prosba do AI: dodane sesje znikaja, zmienione / usuniete wracaja do stanu sprzed
+            c.execute("DELETE FROM qbot_v2.trainer_session WHERE username=%s AND id = ANY(%s)", (u, ai["created"]))
+        for s in ai.get("restore") or []:
+            rc = [k2 for k2 in COLS + ["opts"] if k2 in s]
+            vals = [json.dumps(s[k2]) if k2 == "opts" and s[k2] is not None else s[k2] for k2 in rc]
+            c.execute(f"UPDATE qbot_v2.trainer_session SET {', '.join(k2 + ('=%s::jsonb' if k2 == 'opts' else '=%s') for k2 in rc)}, updated_at=now() "
+                      "WHERE id=%s AND username=%s", vals + [s["id"], u])
         if p.get("cal_ids"):
             c.execute("DELETE FROM qbot_v2.calendar_entry WHERE id = ANY(%s) AND note='[trener]'", (p["cal_ids"],))
         if p.get("day_state"):

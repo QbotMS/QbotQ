@@ -278,3 +278,118 @@ przekierowują na `/trener.html`. Link w wiadomościach Telegram: `https://alber
 - **Okres ochronny po infekcji** (`AFTER_ILL_EASY_DAYS` = 14 dni od końca ostatniej infekcji z Kalendarza): dni planu do `protect_to` dostają `flex_cap` = 90 min, etykietę „po infekcji — tylko krótko”, brak długiej jazdy i akcentów (`hard_n = 0`). Jazda z Kalendarza w tym okresie NIE jest zmieniana — tylko ostrzeżenie. Wyłącznik: `season.after_illness.on = 0`. Uzasadnienie: w sezonie 2026 dwa razy (21.05, 27.09) długa jazda w tym okresie = najgłębszy dołek gotowości.
 - **Regeneracja** (te same progi co zakładka Sezon): niepełna, gdy gotowość (3 dni) < −0,4 albo tętno spocz. (7 dni) > start sezonu + 1; razem z gotowością ≤ −0,4 lub skokiem obciążenia ≥ 1,3 → dziś wersje minimum (obok progu gotowości). Wyłącznik: `regen.sensitivity = 0`.
 - Widok tygodnia: `meta.season_notes` (ramki 🩺 w trener.js) i `meta.season_sig`.
+
+## Prośba do AI o zmianę planu (2026-10-02)
+`qbot_trener_ask.py`, pole „💬 Poproś Trenera o zmianę” w widoku Tydzień (trener.js `drawAsk`, trener.css `.tr-ask`).
+- `POST /api/trener/week/ask {start, text}` → AI (QGPT, ~7 s) dostaje tydzień (sesje z id, dni, zajętości, pogoda, gotowość,
+  godzina „teraz”) + prośbę i zwraca operacje `add` / `edit` / `remove`. **Nic nie zapisuje** — UI pokazuje podgląd.
+- `POST /api/trener/week/ask/apply {start, text, changes}` → ponowna walidacja na serwerze, wykonanie jako Twoje zmiany
+  (`source=manual`; dodane: note „dodane przez Ciebie…”, usunięte: `status=skip` „usunięte przez Ciebie…”), zmiana
+  `trainer_change.action='prosba_ai'` (Akceptuj / Cofnij), potem przeliczenie sesji trenera w tygodniu + rolowanie
+  (dzieci z `payload.parent`). Cofnij: `payload.ai = {created, restore}` w `qbot_trener_ops.undo` — usuwa dodane, przywraca
+  zmienione wiersze 1:1 (sprawdzone: stan po cofnięciu identyczny).
+- Bezpieczniki (`validate`): maks. 6 operacji, dni tylko z tego tygodnia od dziś, sesje tylko z tego tygodnia i nie zrobione,
+  sporty z listy, czas 5–600′; ostrzeżenia (nie blokada): kolizja z zajętością, dzisiejsza godzina już minęła.
+- **Siła bez wybranych partii**: `trainer_session.opts = {"skip_groups": [...]}` (`sql/trainer_v7.sql`). Partie:
+  nogi (też tył ciała), klatka, ramiona, plecy, barki, brzuch (`qbot_trener_workouts.SKIP_GROUPS`). Pominięta partia wypada
+  z obwodu i z akcentu (akcent → następny dozwolony z rotacji); „bez nóg” = rozgrzewka bez przysiadów. Działa w UI, Telegramie
+  i Albercie (wszystko przez `details_for`).
+- Testy: `tests/test_trener_ask.py`. Albert bez zmian (brak zmian narzędzi).
+
+## Telefon i iPad (2026-10-02)
+trener.css?v=3 / trener.js?v=23 (poza repo). Poniżej 1100 px tydzień = karty dni (`auto-fill minmax(300px,1fr)`: iPad pion 2,
+iPhone 1), ekran raz na tydzień przewija się do dziś. W szczegółach treningu `przenieś na…` (zamiast przeciągania, które na
+iPhonie nie działa). Dotyk (`pointer:coarse`): pola 16 px (Safari nie powiększa), przyciski ≥ 40 px, większe gwiazdki.
+Podzakładki w jednym przewijanym rzędzie, pogoda dnia po dotknięciu (toast), toast nad paskiem iPhone'a.
+
+## Wersja mobilna — osobny układ (2026-10-02)
+`/opt/qbot/web/public/trener-m.js` (poza repo, wzorzec jak `raport-trasy-m.js`). Włącza się przy ekranie ≤ 820 px albo na dotyku bez
+myszy (iPhone, iPad); komputer zostaje na `trener.js`. Wymuszenie: `?full=1` (pełna), `?m=1` (mobilna). trener.html ładuje
+trener-m.js PRZED trener.js; trener.js na mobile nie rysuje tygodnia (`window.TRENER_M.ready()`), udostępnia `window.TRENER_CORE.go(sub)`.
+- **Start = tydzień**: ‹ tydzień ›, faza, pasek godzin, ↻ przelicz, zmiany do Akceptuj/Cofnij, uwagi („rozumiem, zostaw”), prośba do AI,
+  weryfikacja AI (zwinięta), **dni jeden pod drugim** z **pogodą jak w Kalendarzu** (`/api/calendar/wx`: prognoza 8–18 — wiatr i porywy m/s,
+  odczuwalna min…max, opad i szansa, burza, czerwono gdy przekracza progi wx.*; dni minione — pogoda podczas jazdy), zajętości, treningi,
+  zrobione poza planem; ekran przewija się do dziś. Na dole „Więcej”.
+- **Trening na cały ekran**: zestaw ćwiczeń, notatka, Zrobione / Minimum / Pomiń / Usuń / Przywróć, godzina, czas, przenieś na dzień,
+  zamień na sport, ocena gwiazdkami + komentarz.
+- **Dzień (⋯)**: REST DAY, brak czasu, choroba, delegacja, zwykły dzień + dodaj trening (po dodaniu otwiera się jego karta).
+- **Więcej**: Czas, Dostępność, Cele, Sezon, Bilans i waga, Kalibracja — rysuje trener.js (`TRENER_CORE.go`) ze stylami dotykowymi
+  z sekcji „Telefon i iPad”; po powrocie tydzień wczytuje się od nowa.
+- Wstecz / tydzień: okrągłe przyciski w prawym dolnym rogu + gest wstecz (history). Test: Node z atrapą DOM na danych tygodnia
+  28.09–04.10 (start, 6 treningów, dni, powrót — bez błędów, bez undefined/NaN).
+
+## Samopoczucie w dniu + mobile v3 (2026-10-02)
+- **Samopoczucie** = wpis Kalendarza `kind=feel` (−2…+2, etykiety jak w Kalendarzu: fatalnie / słabo / neutralnie / dobrze / świetnie;
+  emotki 🤒 😕 😐 🙂 😄). Zapis przez istniejące `/api/calendar/entry|edit|delete` (edit nadpisuje cały wpis → wysyłamy ocenę + notatkę);
+  Kalendarz sam przelicza gotowość (`_subj_recalc_async`), a zmiana podpisu Kalendarza przelicza plan. Notatki z TRENERA (`source=trener`)
+  tylko do odczytu. `GET /api/trener/week` zwraca w `calendar` także `feel` i `source` (qbot_trener_api.py).
+- **Komputer** (trener.js v25): emotka w nagłówku dnia (pełna informacja w dymku), wpis samopoczucia nie zajmuje już wiersza;
+  w nagłówku dni do dziś lista „samopoczucie” (5 ocen + usuń). `window.TRENER_FEEL`.
+- **Mobile** (trener-m.js v3): **zakładki u góry** (Tydzień, Czas, Dostępność, Cele, Sezon, Bilans i waga, Kalibracja; przewijane, przyklejone);
+  **dni jako zwijane karty** — podstawowe: blok daty (dziś pomarańczowy, weekend jaśniejszy), nazwa, emotka samopoczucia, typ dnia,
+  pogoda w skrócie, treningi w skrócie; po dotknięciu: pełna pogoda, samopoczucie z notatką, zajętości, treningi, „✎ Edytuj dzień”.
+  Dziś rozwinięty domyślnie. **Edycja dnia**: samopoczucie (5 buziek + notatka, dni do dziś), REST / brak czasu / choroba / delegacja /
+  zwykły dzień i dodaj trening (dni od dziś). Test Node na danych 28.09–04.10: karty, rozwinięcie, edycje 3 dni, zakładka, powrót — bez błędów.
+
+## Baza ćwiczeń (2026-10-02)
+- **Katalog 100 ćwiczeń** pod sprzęt użytkownika (jedna para hantli z wymiennym obciążeniem do 12 kg/szt., ławka, mata, gumy:
+  długa pętla + mini band; nic więcej): `qbot_trener_exercises.py` (`CATALOG` = źródło do zasilenia), tabela
+  `qbot_v2.trainer_exercise` + `trainer_exercise_user` (Twoje ciężary, na później) — `sql/trainer_v8.sql`, `seed()` dopisuje
+  nowe klucze, istniejących nie nadpisuje bez `force`. Grupy: nogi 16, tył ciała 14, plecy 14, klatka 10, barki 10, ramiona 8,
+  brzuch i tułów 18, rozgrzewka 10. Poziom 1–3. **Klasa ciężaru** `wclass`: C 10–12 kg, S 6–8 kg, L 2–4 kg, 0 bez hantli — pod
+  układanie treningu w **bloki ciężaru** (1–2 zmiany obciążenia na trening; decyzja użytkownika 2026-10-02).
+- **Grafiki** (ChatGPT, jeden styl, bez tekstu): oryginały `/opt/qbot/data/cwiczenia/src/*.zip`, strona `/opt/qbot/web/public/cwiczenia/
+  <key>.webp` (1536 px) + `<key>_m.webp` (768 px), `manifest.json` (wersja `v`, sha1, paczka); stare wersje `/opt/qbot/data/cwiczenia/old/`.
+  Paczka 1 = 12 gotowych (ytw_prone i bent_over_row_db w v2), paczki 2–9 = po 11 nowych. `prompt(batch)` = gotowy tekst do ChatGPT.
+- **API**: `GET /api/trener/exercises` (baza + stan grafik), `GET /api/trener/exercises/prompt?batch=N`.
+- **Strona** `/cwiczenia.html` (poza repo; link z Trenera): podsumowanie, filtry (grupy, bez grafiki), paczki z „📋 Kopiuj prompt”,
+  karta ćwiczenia (grafika, mięśnie, kroki, ✓/✕, opis do grafiki).
+- Kroki i ✓/✕ są dla paczki 1; dla kolejnych dopisywane razem z ich grafikami. **Silnik jeszcze nie losuje z bazy i nie układa bloków** —
+  osobny krok (rotacja bez powtórek, oceny, akcent, „bez nóg”, bloki wg `wclass`, ściąga z bazy). Testy: `tests/test_trener_exercises.py`.
+
+### Stan bazy ćwiczeń (2026-10-03)
+Grafiki **100/100** (2026-10-03; deska kopenhaska dopiero za 3. razem — nowy czat + prompt z dwoma punktami podparcia; paczki 1–9 zaimportowane `scripts/cw_import.py`, odrzucone przy przeglądzie poprawiane w ChatGPT; `--skip` dla odrzuconych).
+Wszystkie 100 ćwiczeń mają kroki i ✓/✕ (`TEXTS`). Bez grafiki: `copenhagen_plank_short` (GPT 2× źle — opadające biodra / podparcie
+na dolnym kolanie) — **silnik ma wybierać tylko ćwiczenia z grafiką**. Mobilność (paczka 9): podświetlone stawy zamiast mięśni — przyjęte.
+Pliki: `/opt/qbot/web/public/cwiczenia/` ~6,6 MB. Wysyłka ZIP z Maca: `scp ~/Downloads/<zip> q:/opt/qbot/data/cwiczenia/src/<nazwa>.zip`
+(Desktop Commander / MacOS-MCP zawieszały się 2026-10-02/03 — Terminal działa niezawodnie).
+Następny krok: silnik TRENERA losuje z bazy + bloki ciężaru (`wclass`) + ściąga/PDF z bazy.
+
+### Ocena ćwiczeń — podstawowe / rotacyjne (2026-10-03)
+`sql/trainer_v9.sql`: `trainer_exercise.tier/prio` = **propozycja** (`qbot_trener_exercises.PROPOSAL`: 27 podstawowych, w każdej partii
+siłowej jedno ★★★ — m.in. wyciskanie na ławce, wiosłowanie jednorącz, wyciskanie nad głowę siedząc, przysiad goblet, martwy ciąg
+rumuński, deska), `trainer_exercise_user.tier/prio` = **ocena użytkownika** (wygrywa; NULL = propozycja). tier: P podstawowe (prio 1–3),
+R rotacyjne, X pomijaj (silnik nie wybiera). API: `GET /api/trener/exercises` (tier, prio, tier_prop, prio_prop, tier_user),
+`PUT /api/trener/exercises/<key>/rating {tier: P|R|X|null, prio}`. Strona `/cwiczenia.html`: sekcje wg partii, na karcie
+Podstawowe/Rotacyjne/Pomijaj + ★1–3, „przywróć” propozycję, filtry (P/R/X/moje/partie), powiększenie rysunku z opisem.
+Plan dla silnika: ~70% slotów z podstawowych (wg prio, bez powtórki z rzędu), reszta rotacyjne; akcent najpierw rotacyjne; X nigdy.
+
+## Siła z bazy ćwiczeń — bloki ciężaru (2026-10-03, etap 1)
+`qbot_trener_sila.py` (opis zasad w nagłówku), podpięte w `qbot_trener_ratings.details_for` (sport `sila`; błąd → stary obwód
+z `qbot_trener_workouts` + log). Zestaw zapisany w `qbot_v2.trainer_workout` (`sql/trainer_v10.sql`, PK username+day+sport,
+`sig` = wersja|okres|czas|minimum|pominięte partie) — stały przy odświeżaniu / Telegramie / Albercie; nowe losowanie tylko
+przy zmianie podpisu (przyszła sesja w planie). Miniona sesja bez zapisu → stary zestaw (historia). Losowanie deterministyczne
+(ziarno: użytkownik|dzień|podpis). Wybór: 70% podstawowe (wagi gwiazdek 6:3:1), 30% rotacyjne, akcent najpierw rotacyjne;
+bez X, bez grafiki, bez ocen ≤2, bez powtórki z poprzedniego treningu (rotacyjne: z 3 ostatnich); poziom: minimum 1, okresy
+bz/bd do 3, inne do 2; brzuch tylko bez hantli (blok końcowy). Bloki C→S→L, maks. 2 klasy (trzecia → wymiana w tej samej
+partii), bez hantli rozdzielane do bloków z ciężarem, przeplot góra/dół. Okres „na czas” (rt) → przy ćwiczeniu „40 s”.
+`details`: title, accent, rounds, exercises[{n,key,name,group,dose,tier,accent,wclass,block,img,img_full}], blocks[{letter,
+wclass,kg,head,items}], warmup, skip, engine='baza1', text. Testy: `tests/test_trener_sila.py` (8).
+Etap 2 (następny): ściąga z grafikami + PDF z serwera — PDF bez wszystkich grafik = błąd, nie wydawać.
+
+### Ściąga i PDF z grafikami (2026-10-03, etap 2)
+`qbot_trener_sheet.py`: `sheet_data` (sesja + zestaw z bazy + kroki), `build_pdf` — **PDF bez reportlab**: strony A4 rysowane
+w Pillow (150 dpi) z wklejonymi grafikami `/cwiczenia/<key>.webp`, zapis `Image.save(..., "PDF", save_all)`. Brak którejkolwiek
+grafiki / mniej wklejonych niż ćwiczeń / brak obrazów w PDF → `SheetError` (HTTP 400), plik NIE jest oddawany (wymóg
+użytkownika). `set_block_kg` → `trainer_exercise_user.weight_kg` dla ćwiczeń bloku + przeliczenie zapisanego zestawu ze źródła
+`data._src` (zapisywane przez `qbot_trener_sila.workout_for`). API: `GET /api/trener/sessions/<id>/sheet`, `GET …/sheet.pdf`
+(nagłówki X-Sheet-Images / X-Sheet-Pages), `PUT …/block_kg {letter, kg}`. Strona `/sciaga.html?id=<id>` (poza repo):
+rozgrzewka, bloki w kolorach, karty z grafiką i krokami, pole „mój ciężar” przy blokach z hantlami, przycisk „📄 PDF z
+grafikami” (pobiera, sprawdza typ odpowiedzi, błąd pokazuje zamiast pustego pliku). Przycisk „📄 Ściąga z grafikami” w sesji
+siłowej: trener.js v27, trener-m.js v5. Test na żywo 2026-10-03: trening 15.10 → PDF 2 strony, 8/8 grafik, ~430 KB.
+Testy: `tests/test_trener_sheet.py` (PDF z grafikami; brak grafiki = błąd).
+
+**PDF na jednej stronie (2026-10-03, podgląd zaakceptowany):** `build_pdf` = 1 strona A4, karty w 2 kolumnach (grafika
+z lewej, nazwa, „partia · dawka” w kolorze bloku, kroki, ✓/✕), karty w rzędzie wyrównane; skala 100% → 93 → 86 → 80 → 74%
+aż się zmieści; nie mieści się → `_build_pdf_multi` (stary układ wielostronicowy, `layout: multi`). Raport: pages, images,
+scale, layout. Trening 15.10: 1 strona, skala 100%, 8/8 grafik, ~300 KB. Testy: 1 strona dla zwykłego treningu, długi → multi.
