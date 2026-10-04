@@ -283,6 +283,11 @@ def ingest_devices_and_gears(conn, aid, log=print):
         _fp = "/opt/qbot/artifacts/fit/%s.fit" % aid
         if os.path.exists(_fp):
             ingest_devices(str(aid), _fp, conn)
+        try:  # kola po czujniku predkosci (2026-10-01); brak czujnika -> garaz bez zmian
+            from qbot3.garage_wheels import on_ride as _wheels_on_ride
+            _wheels_on_ride(conn, str(aid), log=log)
+        except Exception as _we:
+            log(f"   kola: blad {_we}")
         _ge = estimate_if_needed(conn, str(aid))       # rower mechaniczny (fizyka)
         if _ge is None:
             _ge = _build_axs(conn, str(aid))           # rower z AXS (kaseta z przerzutki)

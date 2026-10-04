@@ -6989,7 +6989,7 @@ COMPONENT_STATUS = ["zamontowany", "zapas", "wycofany"]
 # Kategoria komponentu pozostaje polem tekstowym, wiec mozna wpisac wlasna.
 BIKE_COMPONENT_CATEGORIES = [
     "frame", "fork", "headset", "stem", "handlebar", "aero bars", "seatpost",
-    "saddle", "wheels", "tires", "cassette", "chain", "crankset", "drivetrain",
+    "saddle", "wheels", "tires", "cassette", "rotors", "tubeless insert", "chain", "crankset", "drivetrain",
     "brakes", "pedals", "bottom bracket", "electronics", "rack", "mudguards",
     "bottle cages", "spare parts", "other",
 ]
@@ -7107,6 +7107,15 @@ def bike_config(all: int = Query(0)):
             "SELECT * FROM rider_body ORDER BY measured_on DESC, id DESC").fetchall()]
         used = {c["category"] for c in comps if c.get("category")}
         cats = BIKE_COMPONENT_CATEGORIES + sorted(used - set(BIKE_COMPONENT_CATEGORIES))
+        # Przebieg (licznik): baza + jazdy rozpoznane po czujnikach (qbot3/rides/bike_odometer.py)
+        try:
+            from qbot3.rides.bike_odometer import odometers as _odo
+            _o = _odo()
+            for _b in bikes:
+                if _b.get("id") in _o:
+                    _b["odometer"] = _o[_b["id"]]
+        except Exception as _e:
+            print("[bike_config] odometer:", _e)
         return {"bikes": bikes, "components": comps, "tires": tires, "fitting": fit,
                 "component_categories": cats, "used_categories": sorted(used),
                 "statuses": COMPONENT_STATUS,
@@ -7137,6 +7146,13 @@ async def bike_component_save(request: Request):
             cols[k] = None
     bid = b.get("bike_id")
     cols["bike_id"] = int(bid) if str(bid or "").strip().isdigit() else None
+    _wid = b.get("wheel_id")
+    cols["wheel_id"] = int(_wid) if str(_wid or "").strip().isdigit() and cols.get("category") != "wheels" else None
+    _wp = (b.get("wheel_pos") or "").strip()
+    cols["wheel_pos"] = "tył" if cols.get("category") == "cassette" and cols["wheel_id"] else (
+        _wp if cols["wheel_id"] and _wp in ("przód", "tył") else None)
+    if cols["wheel_id"] and cols.get("status") != "wycofany":
+        cols["status"] = "zamontowany"   # przypiete do kola = zamontowane
     if "dims" in b:  # wymiary czesci (mostek, kierownica, siodlo, sztyca, korba...) jako JSON
         import json as _json
         d = b.get("dims")
@@ -7154,6 +7170,15 @@ async def bike_component_save(request: Request):
     gid = b.get("id")
     gc = _garage_conn()
     try:
+        from qbot3.garage_wheels import ensure as _gw_ensure, mount as _gw_mount
+        _gw_ensure(gc)
+        if cols.get("wheel_id"):  # czesc kola: rower zawsze za kolem
+            _wr = gc.execute("SELECT bike_id FROM components WHERE id=?", (cols["wheel_id"],)).fetchone()
+            cols["bike_id"] = _wr[0] if _wr else cols["bike_id"]
+        _old_bike = None
+        if cols.get("category") == "wheels" and gid not in (None, "", 0, "0"):
+            _r = gc.execute("SELECT bike_id FROM components WHERE id=?", (int(gid),)).fetchone()
+            _old_bike = _r[0] if _r else None
         keys = list(cols.keys())
         if gid not in (None, "", 0, "0"):
             gid = int(gid)
@@ -7166,7 +7191,14 @@ async def bike_component_save(request: Request):
                 [cols[k] for k in keys])
             gid = cur.lastrowid
         gc.commit()
-        return {"ok": True, "id": gid}
+        if cols.get("category") == "wheels" and (_old_bike != cols.get("bike_id") or not gc.execute(
+                "SELECT 1 FROM wheel_mounts WHERE wheel_id=?", (int(gid),)).fetchone()):
+            _gw_mount(gc, int(gid), cols.get("bike_id"), source="manual")  # przelozenie kol recznie
+        _removed = []
+        if cols.get("wheel_id"):  # nowa czesc w zajetym miejscu na kole -> stara na polke
+            from qbot3.garage_wheels import free_slot as _gw_free
+            _removed = _gw_free(gc, int(gid), cols["wheel_id"], cols.get("category"), cols.get("wheel_pos"))
+        return {"ok": True, "id": gid, "removed": _removed}
     finally:
         gc.close()
 
