@@ -29,6 +29,13 @@ except ModuleNotFoundError:
     import psycopg as psycopg2
 
 from fitparse import FitFile
+# 2026-10-04: lata dev-fields (Connect IQ / QExt2). Bez niej kazda jazda z polami
+# QExt2 dawala FitParseError("No such field N for dev_data_index M") w ride_analysis.
+try:
+    import fitmodel._fitparse_compat  # noqa: F401  (efekt uboczny: patch fitparse)
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    import fitmodel._fitparse_compat  # noqa: F401
 
 SEMI = 180.0 / (2 ** 31)
 FIT_DIR = "/opt/qbot/artifacts/fit"
