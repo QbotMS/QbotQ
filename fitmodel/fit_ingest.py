@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import fcntl
+import logging
 import math
 import os
+import time
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from statistics import mean, pstdev
 from typing import Any
@@ -15,6 +18,8 @@ except ModuleNotFoundError:
     import psycopg as psycopg2
 from fitparse import FitFile
 from fitmodel import _fitparse_compat  # noqa: F401  (patch dev-fields, efekt uboczny)
+
+_log = logging.getLogger("fitmodel.fit_ingest")
 
 
 WINDOW_SECONDS = 60
@@ -54,7 +59,13 @@ def _get_field_value(message: Any, field_name: str) -> Any:
     return None
 
 
-def parse_fit_to_seconds(fit_path: str) -> list[dict]:
+def parse_fit_to_seconds(fit_path: str, *, strict: bool = False) -> list[dict]:
+    """FIT -> os czasu co 1 s.
+
+    strict=False: blad czytania jest LOGOWANY (logger.exception) i zwraca [] -
+    zachowanie zgodne dla wywolujacych (ride_buckets).
+    strict=True: wyjatek leci dalej (ingest_fit_file zapisuje status parse_error).
+    """
     rows: list[dict[str, Any]] = []
     try:
         fit = FitFile(fit_path)
@@ -76,6 +87,9 @@ def parse_fit_to_seconds(fit_path: str) -> list[dict]:
             }
             rows.append(row)
     except Exception:
+        if strict:
+            raise
+        _log.exception("parse_fit_to_seconds: blad czytania FIT %s", fit_path)
         return []
 
     if not rows:
@@ -383,11 +397,157 @@ def upsert_qext2_ride(db_conn, ride_id: str, s: dict) -> None:
     db_conn.commit()
 
 
+# --- Status ingestu (2026-10-04) -------------------------------------------
+# Wczesniej blad parsowania dawal ciche "0 segmentow", a jazdy z 0 segmentow byly
+# mielone od nowa przy kazdym przebiegu (cron ingest_qext2_fit co 30 min trwal
+# 16-39 min). Teraz kazda proba ma wpis w qbot_v2.fitmodel_ingest_status; jazdy
+# ok/no_records sa pomijane, dopoki plik FIT sie nie zmieni (mtime). parse_error:
+# max MAX_PARSE_ATTEMPTS prob, alert Telegram przy pierwszej.
+# Przeliczenie wszystkiego od nowa (np. po zmianie kryteriow segmentow):
+#   DELETE FROM qbot_v2.fitmodel_ingest_status;
+# NIE mylic z activity_fit_raw.parse_error (inny etap) ani z
+# fitmodel_ride_quarantine (to wyklucza jazde z CP/W' i sezonu).
+STATUS_OK = "ok"
+STATUS_NO_RECORDS = "no_records"
+STATUS_PARSE_ERROR = "parse_error"
+MAX_PARSE_ATTEMPTS = 3
+LOCK_PATH = "/opt/qbot/app/data/.fit_ingest.lock"
+LOCK_WAIT_SECONDS = 300
+
+_STATUS_DDL = """
+CREATE TABLE IF NOT EXISTS qbot_v2.fitmodel_ingest_status (
+    ride_id         text PRIMARY KEY,
+    status          text NOT NULL,
+    error           text,
+    attempts        int NOT NULL DEFAULT 1,
+    segments_found  int,
+    fit_mtime       timestamptz,
+    at              timestamptz NOT NULL DEFAULT now()
+)
+"""
+
+
+def ensure_ingest_status_table(db_conn) -> None:
+    with db_conn.cursor() as cur:
+        cur.execute(_STATUS_DDL)
+    db_conn.commit()
+
+
+def _load_ingest_status(db_conn) -> dict[str, tuple[str, int, Any]]:
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT ride_id, status, attempts, fit_mtime FROM qbot_v2.fitmodel_ingest_status"
+        )
+        return {str(r[0]): (str(r[1]), int(r[2] or 0), r[3]) for r in cur.fetchall()}
+
+
+def _record_ingest_status(db_conn, ride_id: str, status: str, error: str | None,
+                          segments_found: int, fit_mtime: Any) -> int:
+    """Upsert statusu; zwraca licznik prob (rosnie tylko dla kolejnych parse_error
+    tego samego pliku)."""
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO qbot_v2.fitmodel_ingest_status
+                (ride_id, status, error, attempts, segments_found, fit_mtime, at)
+            VALUES (%s, %s, %s, 1, %s, %s, now())
+            ON CONFLICT (ride_id) DO UPDATE SET
+                status = EXCLUDED.status,
+                error = EXCLUDED.error,
+                segments_found = EXCLUDED.segments_found,
+                fit_mtime = EXCLUDED.fit_mtime,
+                at = now(),
+                attempts = CASE
+                    WHEN EXCLUDED.status = 'parse_error'
+                         AND qbot_v2.fitmodel_ingest_status.status = 'parse_error'
+                         AND qbot_v2.fitmodel_ingest_status.fit_mtime
+                             IS NOT DISTINCT FROM EXCLUDED.fit_mtime
+                    THEN qbot_v2.fitmodel_ingest_status.attempts + 1
+                    ELSE 1 END
+            RETURNING attempts
+            """,
+            (ride_id, status, error, segments_found, fit_mtime),
+        )
+        attempts = int(cur.fetchone()[0])
+    db_conn.commit()
+    return attempts
+
+
+def _fit_mtime(path: str) -> datetime | None:
+    try:
+        return datetime.fromtimestamp(int(os.stat(path).st_mtime), tz=timezone.utc)
+    except OSError:
+        return None
+
+
+def should_skip_ride(has_segments: bool, status_row: tuple | None,
+                     fit_mtime: datetime | None) -> bool:
+    """Czy pominac jazde w ingest_all_new (czysta logika, testowana)."""
+    if has_segments:
+        return True
+    if not status_row:
+        return False
+    status, attempts, stored_mtime = status_row
+    if fit_mtime is not None and stored_mtime is not None and fit_mtime > stored_mtime:
+        return False  # plik FIT sie zmienil -> licz od nowa
+    if status in (STATUS_OK, STATUS_NO_RECORDS):
+        return True
+    if status == STATUS_PARSE_ERROR:
+        return attempts >= MAX_PARSE_ATTEMPTS
+    return False
+
+
+def _acquire_lock(wait_s: float = LOCK_WAIT_SECONDS) -> int | None:
+    """fd z blokada; None = inny przebieg trzyma blokade dluzej niz wait_s;
+    -1 = nie da sie otworzyc pliku blokady (lecimy bez blokady, z logiem)."""
+    try:
+        fd = os.open(LOCK_PATH, os.O_RDONLY | os.O_CREAT, 0o644)
+    except OSError:
+        _log.warning("fit_ingest: nie moge otworzyc %s - ingest bez blokady", LOCK_PATH)
+        return -1
+    deadline = time.monotonic() + wait_s
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return fd
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                os.close(fd)
+                return None
+            time.sleep(2)
+
+
+def _release_lock(fd: int) -> None:
+    if fd is None or fd < 0:
+        return
+    try:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+def _default_send():
+    try:
+        from fitmodel.power_meter_guard import _telegram_send
+        return _telegram_send
+    except Exception:
+        _log.exception("fit_ingest: brak _telegram_send - alerty tylko w logu")
+        return None
+
+
 def ingest_fit_file(fit_path: str, db_conn) -> dict:
+    """Zwraca jawny status: ok / no_records / parse_error (+ error)."""
     ride_id = extract_ride_id(fit_path)
-    rows = parse_fit_to_seconds(fit_path)
+    try:
+        rows = parse_fit_to_seconds(fit_path, strict=True)
+    except Exception as exc:
+        err = f"{type(exc).__name__}: {exc}"[:500]
+        _log.exception("fit_ingest parse_error ride_id=%s path=%s", ride_id, fit_path)
+        return {"segments_found": 0, "segments_saved": 0, "ride_id": ride_id,
+                "status": STATUS_PARSE_ERROR, "error": err}
     if not rows:
-        return {"segments_found": 0, "segments_saved": 0, "ride_id": ride_id}
+        return {"segments_found": 0, "segments_saved": 0, "ride_id": ride_id,
+                "status": STATUS_NO_RECORDS, "error": "0 rekordow z timestampem"}
 
     _ensure_segment_index(db_conn)
     params = _load_fitmodel_params(db_conn)
@@ -396,7 +556,8 @@ def ingest_fit_file(fit_path: str, db_conn) -> dict:
     stable_flags: list[bool] = [False] * len(rows)
     first_ts = rows[0]["timestamp"]
     if not isinstance(first_ts, datetime):
-        return {"segments_found": 0, "segments_saved": 0, "ride_id": ride_id}
+        return {"segments_found": 0, "segments_saved": 0, "ride_id": ride_id,
+                "status": STATUS_NO_RECORDS, "error": "timestamp rekordu nie jest datetime"}
 
     for idx, row in enumerate(rows):
         timestamp = row["timestamp"]
@@ -487,38 +648,84 @@ def ingest_fit_file(fit_path: str, db_conn) -> dict:
         "segments_saved": saved,
         "ride_id": ride_id,
         "qext2_saved": qext2_saved,
+        "status": STATUS_OK,
     }
 
 
-def ingest_all_new(fit_dir: str, db_conn) -> dict:
+def ingest_all_new(fit_dir: str, db_conn, send: Any = "default") -> dict:
+    """Ingest nowych/niezakonczonych jazd. send: funkcja(text) do alertu
+    parse_error; "default" = Telegram, None = tylko log."""
+    lock_fd = _acquire_lock()
+    if lock_fd is None:
+        _log.warning("fit_ingest: inny przebieg trzyma blokade > %ss - pomijam", LOCK_WAIT_SECONDS)
+        return {"processed": 0, "skipped": 0, "total_segments": 0, "locked": True}
+    try:
+        return _ingest_all_new_locked(fit_dir, db_conn, send)
+    finally:
+        _release_lock(lock_fd)
+
+
+def _ingest_all_new_locked(fit_dir: str, db_conn, send: Any) -> dict:
+    if send == "default":
+        send = _default_send()
     fit_dir_path = Path(fit_dir)
     fit_files = sorted(
         path for path in fit_dir_path.iterdir()
         if path.is_file() and path.suffix.lower() == ".fit"
     )
 
-    existing_rides: set[str] = set()
+    ensure_ingest_status_table(db_conn)
     with db_conn.cursor() as cur:
         cur.execute("SELECT DISTINCT ride_id FROM qbot_v2.fitmodel_segment")
         existing_rides = {str(row[0]) for row in cur.fetchall()}
+    statuses = _load_ingest_status(db_conn)
 
     processed = 0
     skipped = 0
     total_segments = 0
+    parse_errors = 0
     for fit_file in fit_files:
-        ride_id = extract_ride_id(str(fit_file))
-        if ride_id in existing_rides:
+        path = str(fit_file)
+        ride_id = extract_ride_id(path)
+        mtime = _fit_mtime(path)
+        if should_skip_ride(ride_id in existing_rides, statuses.get(ride_id), mtime):
             skipped += 1
             continue
-        result = ingest_fit_file(str(fit_file), db_conn)
+        result = ingest_fit_file(path, db_conn)
         processed += 1
         total_segments += int(result.get("segments_saved", 0) or 0)
-        existing_rides.add(ride_id)
+        status = result.get("status", STATUS_OK)
+        try:
+            attempts = _record_ingest_status(
+                db_conn, ride_id, status, result.get("error"),
+                int(result.get("segments_found", 0) or 0), mtime,
+            )
+        except Exception:
+            _log.exception("fit_ingest: zapis statusu nieudany ride_id=%s", ride_id)
+            try:
+                db_conn.rollback()
+            except Exception:
+                pass
+            attempts = 0
+        if status == STATUS_PARSE_ERROR:
+            parse_errors += 1
+            if attempts == 1 and send is not None:
+                try:
+                    send(
+                        f"\u26a0\ufe0f FIT parse_error: jazda {ride_id}\n"
+                        f"{result.get('error')}\nPlik: {path}\n"
+                        f"(qbot_v2.fitmodel_ingest_status, proba {attempts}/{MAX_PARSE_ATTEMPTS})"
+                    )
+                except Exception:
+                    _log.exception("fit_ingest: alert Telegram nieudany ride_id=%s", ride_id)
+        if result.get("segments_found"):
+            existing_rides.add(ride_id)
 
     return {
         "processed": processed,
         "skipped": skipped,
         "total_segments": total_segments,
+        "parse_errors": parse_errors,
     }
 
 

@@ -28,57 +28,9 @@ from fitmodel.buckets import compute_buckets
 FIT_DIR = Path("/opt/qbot/artifacts/fit")
 
 
-# ── Czytnik FIT (skopiowany 1:1 z fit_ingest.py, bez zaleznosci od psycopg2) ──
-def extract_ride_id(fit_path: str) -> str:
-    return Path(fit_path).stem
-
-
-def _get_field_value(message: Any, field_name: str) -> Any:
-    try:
-        if hasattr(message, "get_value"):
-            return message.get_value(field_name)
-    except Exception:
-        pass
-    try:
-        for field in getattr(message, "fields", []):
-            if getattr(field, "name", None) == field_name:
-                return getattr(field, "value", None)
-    except Exception:
-        pass
-    return None
-
-
-def parse_fit_to_seconds(fit_path: str) -> list[dict]:
-    rows: list[dict[str, Any]] = []
-    try:
-        fit = FitFile(fit_path)
-        for message in fit.get_messages("record"):
-            timestamp = _get_field_value(message, "timestamp")
-            if timestamp is None:
-                continue
-            if isinstance(timestamp, datetime):
-                timestamp = timestamp.replace(microsecond=0)
-            rows.append({"timestamp": timestamp,
-                         "power": _get_field_value(message, "power")})
-    except Exception:
-        return []
-    if not rows:
-        return []
-    rows.sort(key=lambda item: item["timestamp"])
-    first_ts, last_ts = rows[0]["timestamp"], rows[-1]["timestamp"]
-    if not isinstance(first_ts, datetime) or not isinstance(last_ts, datetime):
-        return rows
-    second_map: dict[datetime, dict[str, Any]] = {}
-    for row in rows:
-        ts = row["timestamp"]
-        if isinstance(ts, datetime):
-            second_map[ts.replace(microsecond=0)] = dict(row, timestamp=ts.replace(microsecond=0))
-    timeline: list[dict[str, Any]] = []
-    current, end = first_ts.replace(microsecond=0), last_ts.replace(microsecond=0)
-    while current <= end:
-        timeline.append(second_map.get(current, {"timestamp": current, "power": None}))
-        current += timedelta(seconds=1)
-    return timeline
+# ── Czytnik FIT: wspolny z fit_ingest (2026-10-04; wczesniej kopia 1:1 z cichym
+# `except: return []`). Blad czytania jest teraz logowany w fit_ingest.
+from fitmodel.fit_ingest import extract_ride_id, parse_fit_to_seconds  # noqa: E402
 
 DDL = """
 CREATE TABLE IF NOT EXISTS qbot_v2.fitmodel_ride_buckets (
