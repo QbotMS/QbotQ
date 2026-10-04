@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1"><link rel="alternate icon" href="/favicon.ico?v=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/theme.css?v=3">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<title>ModelQ v2 — sygnatura — QBot lab</title>
+<style>
+:root{--ink:#26332a;--ink2:#47564a;--muted:#8c8168;--line:#dcd0ba;--paper:#f2ecdd;--card:#fbf7ec;--panel:#eae0cc;--accent:#3c6b47;--accent-bg:#e0ebdf;--good:#3f7a4d;--good-bg:#e6f0e6;--bad:#a6503d;--bad-bg:#f2e4de;--warn:#8a5a12;--warn-bg:#f4ead2;--chart-border:#c9b48f;--success:var(--good);--success-bg:var(--good-bg);--danger:var(--bad);--danger-bg:var(--bad-bg);--risky:var(--bad);--candidate:#7b4fa0}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5}
+.wrap{max-width:1020px;margin:0 auto;padding:28px 20px 90px}
+header{border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:20px}
+.eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.eyebrow a{color:var(--muted);text-decoration:none}
+h1{margin:4px 0 2px;font-size:24px}
+.sub{color:var(--muted);font-size:13px}
+.bar{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:18px}
+.bar .row1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bar input{padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);font-size:13px}
+.bar button{padding:7px 14px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;font-size:13px;cursor:pointer}
+.rng.active{border-color:var(--accent);background:var(--accent-bg);color:var(--accent);font-weight:650}
+#apply{border-color:var(--accent);background:var(--accent);color:#fff;margin-left:auto}
+.section{margin:22px 0 12px;display:flex;align-items:center;gap:8px}
+.section h2{margin:0;font-size:17px}
+#recompute{margin-left:auto;padding:7px 16px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:8px;font-size:13px;font-weight:650;cursor:pointer}
+#recompute:disabled{opacity:.55;cursor:default}
+.updstatus{font-size:12px;color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-bottom:14px}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:10px;margin-bottom:4px}
+.metric{background:var(--panel);border-radius:8px;padding:10px 12px}
+.metric .k{font-size:12px;color:var(--muted)}
+.metric .v{font-size:20px;font-weight:700}
+.metric .vs{font-size:11px;color:var(--ink2)}
+.agree{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:6px}
+.agree b{color:var(--success);font-weight:650}
+.chart .t{font-size:13px;font-weight:650;margin:14px 0 8px}
+.cbox{position:relative;height:440px}
+.checks{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.chip{font-size:12px;padding:4px 10px;border-radius:999px;cursor:pointer;user-select:none;border:1px solid var(--line)}
+.chip.on{background:var(--accent-bg);color:var(--accent);border-color:var(--accent);font-weight:650}
+.note{font-size:12px;color:var(--muted);margin-top:8px}
+table.cmp{width:100%;border-collapse:collapse;font-size:13px}
+table.cmp th,table.cmp td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right}
+table.cmp th:first-child,table.cmp td:first-child{text-align:left}
+table.cmp thead tr:first-child th{color:var(--ink);font-weight:700;font-size:12px;border-bottom:1px solid var(--ink)}
+table.cmp thead tr:nth-child(2) th{color:var(--muted);font-weight:400;font-size:11px;border-bottom:1px solid var(--ink)}
+table.cmp tbody tr:last-child td{border-bottom:none}
+table.cmp td .mq{font-weight:700}
+table.cmp td .xt{color:var(--muted)}
+table.cmp .metric-name{font-weight:650}
+table.cmp .unit{color:var(--muted);font-weight:400;font-size:11px}
+.foot{font-size:11px;color:var(--muted);text-align:center;padding:16px 0}
+</style>
+</head>
+<body><div class="wrap">
+<header>
+<div class="eyebrow"><a href="/">QBot · lab</a> · ModelQ v2 (sygnatura)</div>
+<h1>ModelQ v2 — sygnatura</h1>
+<div class="sub">Dzienna sygnatura TP / HIE / PP + forma (CTL/ATL/TSB) — vs benchmark Xerta</div>
+</header>
+
+<div class="section"><h2>Dziś</h2><button type="button" id="recompute">AKTUALIZACJA</button><span class="updstatus" id="updstatus"></span></div>
+<div id="today" class="card">Ładowanie…</div>
+
+<div class="section"><h2>Xert vs ModelQ2 — okna 90 / 30 / 7 / 1 dnia</h2></div>
+<div class="card"><div id="windowsTable">Ładowanie…</div></div>
+
+<div class="bar">
+  <div class="row1">
+    <button type="button" class="rng" data-days="90">90 dni</button>
+    <button type="button" class="rng active" data-days="180">180 dni</button>
+    <button type="button" class="rng" data-days="365">rok</button>
+    <button type="button" class="rng" data-days="720">2 lata</button>
+    <input type="date" id="start">
+    <span>—</span>
+    <input type="date" id="end">
+    <button type="button" id="apply">Pokaż</button>
+  </div>
+</div>
+
+<div class="section"><h2>Sygnatura w czasie — MQ2 vs Xert</h2></div>
+<div class="card">
+  <div class="checks" id="checks"></div>
+  <div class="chart"><div class="cbox"><canvas id="mqChart"></canvas></div></div>
+  <div class="note">Linia ciągła = ModelQ v2 (dzienna, liczona z Twoich danych 1&nbsp;Hz). Kropki = Xert (benchmark, dni z jazdą). Diament = dzień z przebiciem (Xert max&nbsp;effort). Przełączaj TP / HIE / PP — mają różne skale.</div>
+</div>
+
+<div class="foot">dane z /api/modelq2/data · qbot_v2.modelq2_signature + modelq2_xert_bench · AKTUALIZACJA = /api/modelq2/recompute</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="/mq2-render.js?v=8"></script>
+<link rel="stylesheet" href="/nav.css?v=4">
+<script src="/nav.js?v=5"></script>
+</body>
+</html>

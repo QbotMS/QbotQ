@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1"><link rel="alternate icon" href="/favicon.ico?v=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/theme.css?v=3">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<title>Pogoda wyprawy — QBot</title>
+<style>
+:root{--ink:#26332a;--ink2:#47564a;--muted:#8c8168;--line:#dcd0ba;--paper:#f2ecdd;--card:#fbf7ec;--panel:#eae0cc;--accent:#3c6b47;--accent-bg:#e0ebdf;--good:#3f7a4d;--good-bg:#e6f0e6;--bad:#a6503d;--bad-bg:#f2e4de;--warn:#8a5a12;--warn-bg:#f4ead2;--cold:#3f6f9a;--cold-bg:#e2ebf3;--rain:#3f6f9a}
+html{height:100%}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5;height:100%;overflow:hidden;display:flex;flex-direction:column}
+.masthead{padding:8px 24px 4px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.eyebrow a{color:var(--muted);text-decoration:none}
+.eyebrow a:hover{color:var(--accent)}
+h1{margin:2px 0 1px;font-size:20px}
+.sub{color:var(--muted);font-size:14px}
+.rname{color:var(--ink);font-weight:700}
+.bar{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;padding:10px 24px;border-bottom:1px solid var(--line)}
+.field{display:flex;flex-direction:column;gap:3px}
+.field label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+input[type=date],input[type=time],input[type=text]{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.btn{font:inherit;padding:9px 16px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:#fff;cursor:pointer}
+.btn.ghost{background:var(--card);color:var(--accent)}
+.btn:disabled{opacity:.5;cursor:default}
+.spacer{flex:1 1 auto}
+.msg{font-size:13.5px;color:var(--muted);align-self:center;max-width:420px}
+.wrap{flex:1 1 auto;min-height:0;overflow-y:auto;padding:16px 24px 60px}
+
+/* --- OS WYPRAWY (przeglad wszystkich dni) --- */
+.osw{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:16px}
+.osw h3{margin:0 0 2px;font-size:15px;color:var(--accent)}
+.osw .lead{font-size:13px;color:var(--muted);margin:0 0 10px}
+.osw-grid{display:grid;gap:8px}
+.skala{display:flex;align-items:center;gap:0;margin:0 0 12px;flex-wrap:wrap}
+.skala i{display:block;width:100%;height:8px;border-radius:4px;margin-bottom:3px}
+.skala span{flex:1 1 0;font-size:11px;color:var(--muted);text-align:center;white-space:nowrap}
+.skala span:first-of-type{text-align:left}
+.skala span:last-child{text-align:right}
+.osw-day{display:grid;grid-template-columns:112px 1fr auto;gap:10px;align-items:center;cursor:pointer;border-radius:8px;padding:4px 6px}
+.osw-day:hover{background:var(--panel)}
+.osw-lab{font-size:13px;line-height:1.25}
+.osw-lab b{display:block;font-size:14px}
+.osw-lab span{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.osw-bar{position:relative;height:26px;border-radius:6px;overflow:hidden;background:var(--panel)}
+.osw-bar i{position:absolute;top:0;bottom:0;display:block}
+.osw-bar em{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-style:normal;font-size:12.5px;font-weight:650;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.35);font-variant-numeric:tabular-nums}
+.osw-flags{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;min-width:96px}
+.flag{font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:2px 7px;border-radius:999px;white-space:nowrap}
+.flag.upal{background:var(--bad-bg);color:var(--bad)}
+.flag.deszcz{background:var(--cold-bg);color:var(--cold)}
+.flag.burza{background:var(--warn-bg);color:var(--warn)}
+.flag.zimno{background:var(--cold-bg);color:var(--cold)}
+.flag.ok{background:var(--good-bg);color:var(--good)}
+.flag.brak{background:var(--panel);color:var(--muted)}
+
+/* --- KARTA DNIA --- */
+.day{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:16px}
+.day-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;margin-bottom:4px}
+.day-h b{font-size:17px}
+.day-h .km{color:var(--muted);font-size:13.5px;font-variant-numeric:tabular-nums}
+.tag{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:var(--accent-bg);color:var(--accent)}
+.tag.klimat{background:var(--warn-bg);color:var(--warn)}
+.tag.brak{background:var(--bad-bg);color:var(--bad)}
+.day-btn{margin-left:auto;font:inherit;font-size:13.5px;padding:6px 12px;border-radius:8px;border:1px solid var(--accent);background:var(--card);color:var(--accent);cursor:pointer}
+.day-btn:hover{background:var(--accent-bg)}
+.day-btn:disabled{border-color:var(--line);color:var(--muted);cursor:default}
+.model-line{font-size:12.5px;color:var(--muted);margin:0 0 10px;line-height:1.45}
+.model-line b{color:var(--ink2)}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:6px 0 12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 11px;min-width:0}
+.card .lab{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.card .val{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.card .val small{font-size:13px;font-weight:400;color:var(--muted)}
+.card .sub{font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.35}
+.card.hot{border-color:var(--bad);background:var(--bad-bg)}
+.card.wet{border-color:var(--cold);background:var(--cold-bg)}
+
+.sec{margin:14px 0 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:3px}
+.chart{width:100%;height:auto;display:block;margin:6px 0 2px}
+.chart-wrap{position:relative}
+.chart-wrap .tip{display:none;position:absolute;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:12.5px;line-height:1.5;color:var(--ink);box-shadow:0 3px 10px rgba(0,0,0,.13);pointer-events:none;white-space:nowrap;z-index:5}
+.chart-wrap .tip b{font-weight:700}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin:2px 0 6px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.legend .band{height:10px;border-radius:2px;opacity:.35}
+
+.al{display:flex;gap:9px;align-items:baseline;padding:6px 10px;border-radius:8px;margin-bottom:5px;font-size:14px;line-height:1.45}
+.al.NOGO,.al.ALARM{background:var(--bad-bg);color:var(--bad)}
+.al.FLAGA{background:var(--warn-bg);color:var(--warn)}
+.al.OK{background:var(--good-bg);color:var(--good)}
+.al b{font-size:12px;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
+
+/* --- ZGODA MODELI --- */
+.mods{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-top:6px}
+.mod-pt{margin-bottom:12px}
+.mod-pt:last-child{margin-bottom:0}
+.mod-hd{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:3px}
+.mod-hd b{font-size:13.5px}
+.mod-hd span{color:var(--muted);font-variant-numeric:tabular-nums}
+.mod-scale{position:relative;height:36px;margin:2px 0 0}
+.mod-axis{position:absolute;left:0;right:0;top:15px;height:2px;background:var(--line);border-radius:2px}
+.mod-band{position:absolute;top:11px;height:10px;background:var(--accent);opacity:.16;border-radius:3px}
+.mod-dot{position:absolute;top:9px;width:13px;height:13px;border-radius:50%;margin-left:-6.5px;border:2px solid var(--card);background:var(--ink2)}
+.mod-dot.kanon{width:19px;height:19px;top:6px;margin-left:-9.5px;border:3px solid var(--card);box-shadow:0 0 0 2px var(--ink2)}
+.mod-tick{position:absolute;top:26px;font-size:10.5px;color:var(--muted);transform:translateX(-50%);white-space:nowrap}
+.mod-key{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--muted);margin-top:8px}
+.mod-key i{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--ink2);margin-right:5px;vertical-align:baseline}
+.mod-key i.kanon{box-shadow:0 0 0 2px var(--ink2);margin-right:7px}
+.ocena{margin-top:10px;padding-top:9px;border-top:1px solid var(--line)}
+.ocena .zg{font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:999px;margin-right:7px}
+.zg.wysoka{background:var(--good-bg);color:var(--good)}
+.zg.umiarkowana{background:var(--warn-bg);color:var(--warn)}
+.zg.niska{background:var(--bad-bg);color:var(--bad)}
+.ocena p{margin:5px 0 0;font-size:14px;line-height:1.5}
+.ocena ul{margin:6px 0 0;padding-left:18px;font-size:13.5px;color:var(--ink2);line-height:1.5}
+.ocena li{margin:.15em 0}
+.ocena .aut{font-size:11.5px;color:var(--muted);margin-top:6px}
+
+table.t30{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:4px}
+table.t30 th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:5px 7px;text-align:right;border-bottom:1px solid var(--line)}
+table.t30 th:first-child,table.t30 td:first-child{text-align:left}
+table.t30 td{padding:5px 7px;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+table.t30 tr:last-child td{border-bottom:0}
+table.t30 td.hot{color:var(--bad);font-weight:650}
+table.t30 td.rainy{color:var(--cold);font-weight:650}
+.foldbtn{font:inherit;font-size:13px;color:var(--accent);background:none;border:0;padding:4px 0;cursor:pointer}
+.caveats{font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:8px}
+.caveats ul{margin:4px 0 0;padding-left:18px}
+.err{font-size:14px;color:var(--bad)}
+.note{font-size:13.5px;color:var(--muted);line-height:1.5}
+@media(max-width:760px){
+  .bar,.wrap,.masthead{padding-left:14px;padding-right:14px}
+  .osw-day{grid-template-columns:92px 1fr;grid-template-areas:"lab bar" "flags flags"}
+  .osw-flags{justify-content:flex-start;grid-area:flags}
+}
+</style>
+</head>
+<body>
+
+<div class="masthead">
+  <div class="eyebrow"><a href="/">QBot · lab</a> · <a href="/planer-wyprawy.html">← planer wyprawy</a> · <a href="/planer-wyposazenia.html">planner wyposażenia</a></div>
+  <h1>Pogoda wyprawy</h1>
+  <div class="sub">Wyprawa: <span class="rname" id="route-name">—</span> <span id="route-meta"></span></div>
+</div>
+
+<div class="bar" id="bar" style="display:none">
+  <div class="field"><label>Data startu</label><input type="date" id="startdate"></div>
+  <div class="field"><label>Godzina startu (każdego dnia)</label><input type="time" id="starttime" value="09:00"></div>
+  <div class="field"><label>&nbsp;</label><button class="btn" id="calc">Policz pogodę</button></div>
+  <div class="field"><label>&nbsp;</label><button class="btn ghost" id="recalc">Przelicz od nowa</button></div>
+  <div class="spacer"></div>
+  <span class="msg" id="msg"></span>
+  <div class="field"><label>Raport na e-mail</label><input type="text" id="mailto" placeholder="adres@example.com" style="width:230px"></div>
+  <div class="field"><label>&nbsp;</label><button class="btn ghost" id="send">Wyślij raport</button></div>
+</div>
+
+<div class="wrap" id="wrap">
+  <p class="note" id="boot">Wczytuję trasę…</p>
+</div>
+
+<script src="/pogoda-wyprawy-render.js?v=6"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+/* QBot motyw ciemny -- nadpisuje tokeny gdy <html class="theme-dark">.
+   Dziala dla kazdej strony uzywajacej tych samych zmiennych (jak forma.html). */
+html.theme-dark{
+  --ink:#ece3cf;--ink2:#cabd9f;--muted:#98a487;--line:#2c3d30;--paper:#060e0a;
+  --card:#17291d;--panel:#203427;--accent:#d8b877;--accent-bg:#273224;--side:#0a140e;--chart-bg:#060f0a;--chart-border:#3a2b1e;--frame:#0e1a13;--btnoff:#08110b;
+  --good:#7ec48b;--good-bg:#14291b;--bad:#df9b78;--bad-bg:#2e2119;--warn:#d9b25a;--warn-bg:#2b2410;
+}
+html.theme-dark body{background:var(--paper);color:var(--ink)}
+body{transition:background-color .2s ease,color .2s ease}
+/* Bezpiecznik kontrastu: placeholder zawsze czytelny (jasne i ciemne tlo). */
+::placeholder{color:#8a8f98;opacity:1}

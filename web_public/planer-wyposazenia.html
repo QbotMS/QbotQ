@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1"><link rel="alternate icon" href="/favicon.ico?v=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/theme.css?v=3">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<title>Planner wyposażenia — QBot</title>
+<style>
+:root{--ink:#26332a;--ink2:#47564a;--muted:#8c8168;--line:#dcd0ba;--paper:#f2ecdd;--card:#fbf7ec;--panel:#eae0cc;--accent:#3c6b47;--accent-bg:#e0ebdf;--good:#3f7a4d;--good-bg:#e6f0e6;--bad:#a6503d;--bad-bg:#f2e4de;--warn:#8a5a12;--warn-bg:#f4ead2}
+html{height:100%}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5;height:100%;overflow:hidden;display:flex;flex-direction:column}
+.masthead{padding:8px 24px 4px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.eyebrow a{color:var(--muted);text-decoration:none}
+h1{margin:2px 0 1px;font-size:20px}
+.sub{color:var(--muted);font-size:14px}
+.rname{color:var(--ink);font-weight:700}
+.bar{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;padding:10px 24px;border-bottom:1px solid var(--line)}
+.field{display:flex;flex-direction:column;gap:3px}
+.field label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+input[type=number],input[type=text],select,textarea{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+input[type=number]{width:70px}
+#season{width:160px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{font:inherit;padding:8px 14px;border:0;background:var(--card);color:var(--ink2);cursor:pointer}
+.seg button.on{background:var(--accent);color:#fff}
+.btn{font:inherit;padding:9px 16px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:#fff;cursor:pointer}
+.btn.ghost{background:var(--card);color:var(--accent)}
+.btn:disabled{opacity:.5;cursor:default}
+.spacer{flex:1 1 auto}
+.msg{font-size:13.5px;color:var(--muted);align-self:center}
+.wrap{flex:1 1 auto;min-height:0;overflow-y:auto;padding:14px 24px 40px}
+.grp{margin-bottom:18px}
+.grp h4{margin:0 0 4px;font-size:15px;color:var(--accent);border-bottom:1px solid var(--line);padding-bottom:4px}
+.row{display:grid;grid-template-columns:minmax(210px,1fr) 74px minmax(230px,1.3fr) 120px 96px 30px;gap:12px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.tcell{display:flex;align-items:center;gap:8px;min-width:0}
+.rtype{font-size:15px;cursor:pointer;border-bottom:1px dotted var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rtype:hover{color:var(--accent);border-bottom-color:var(--accent)}
+.pill{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;white-space:nowrap}
+.p1{background:var(--bad-bg);color:var(--bad)}
+.p2{background:var(--accent-bg);color:var(--accent)}
+.p3{background:var(--warn-bg);color:var(--warn)}
+.worn{background:var(--panel);color:var(--ink2)}
+.row select{width:100%}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;color:var(--ink2);white-space:nowrap}
+.row.done .rtype{text-decoration:line-through;color:var(--muted)}
+.row.skip{opacity:.5}
+.row.skip .rtype{text-decoration:line-through}
+.rm{border:0;background:none;color:var(--bad);cursor:pointer;font-size:17px}
+.qbox{display:flex;align-items:center;gap:4px;font-size:13px;color:var(--muted)}
+.qbox input{width:52px;padding:5px 6px}
+.setlab{font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--panel);color:var(--ink2)}
+.split{flex:1 1 auto;min-height:0;display:flex;align-items:stretch}
+.col{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;min-height:0}
+.side{width:330px;flex:0 0 330px;border-left:1px solid var(--line);overflow-y:auto;padding:14px 16px 40px;background:var(--card);transition:margin-right .18s ease}
+body.side-off .side{margin-right:-330px}
+.sidetab{position:absolute;top:50%;right:0;transform:translateY(-50%);z-index:40;writing-mode:vertical-rl;background:var(--accent);color:#fff;border:0;cursor:pointer;padding:14px 6px;border-radius:8px 0 0 8px;font:inherit;font-size:12.5px;letter-spacing:.08em;text-transform:uppercase}
+.split{position:relative}
+.sbox{margin-bottom:18px}
+.sbox h5{margin:0 0 6px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.sbox div{font-size:14px}
+.wxday{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)}
+.wxday:last-child{border-bottom:0}
+.wxday b{font-weight:600}
+.wxrain{color:var(--warn);font-weight:700}
+.bars{padding:10px 24px 0}
+.bars:empty{display:none}
+.wxbar{background:var(--accent-bg);color:var(--accent);font-size:13.5px;padding:8px 12px;border-radius:9px;margin-bottom:10px;display:none}
+.wxbar.warn{background:var(--warn-bg);color:var(--warn)}
+.dupwarn{background:var(--bad-bg);color:var(--bad);font-size:13.5px;padding:8px 12px;border-radius:9px;margin-bottom:10px;display:none}
+.addi{margin-top:6px;font-size:14px;color:var(--accent);background:none;border:0;cursor:pointer}
+.empty{color:var(--muted);font-size:15px;padding:40px 4px;text-align:center}
+.modal-back{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1500}
+body.modal-open .modal-back,body.add-open .modal-back{display:block}
+.modal{display:none;position:fixed;z-index:1501;top:50%;left:50%;transform:translate(-50%,-50%);width:560px;max-width:94vw;max-height:88vh;overflow-y:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.28)}
+body.modal-open #modal{display:block}
+body.add-open #addm{display:block}
+body.addrow-open #addrow{display:block}
+body.rules-open #rulesm{display:block}
+body.addrow-open .modal-back,body.rules-open .modal-back{display:block}
+.rrow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:14.5px}
+.rrow:last-child{border-bottom:0}
+.rrow .rx{margin-left:auto;border:0;background:none;color:var(--bad);cursor:pointer;font-size:16px}
+.modal-head{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.modal-head .t{font-weight:800;font-size:16px;flex:1}
+.modal-x{background:none;border:0;font-size:22px;line-height:1;color:var(--muted);cursor:pointer}
+.mbody{padding:16px 18px;font-size:15px}
+.mgrp{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fgrid .full{grid-column:1/-1}
+.fgrid label{display:flex;flex-direction:column;gap:3px;font-size:15px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.fgrid input,.fgrid textarea{font:inherit;font-size:19px;width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);text-transform:none;letter-spacing:normal}
+.mfoot{display:flex;gap:10px;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--line)}
+</style>
+<script>/* czas lokalny (strefa przegladarki) -- wspolne dla QBot lab */function qTsLocal(s,naiveUtc){if(!s)return"";var t=String(s).trim().replace(" ","T").replace(/\.\d+/,"");if(/[+-]\d\d$/.test(t))t+=":00";t=t.replace(/([+-]\d\d)(\d\d)$/,"$1:$2");if(!/(Z|[+-]\d\d:\d\d)$/i.test(t)){if(!naiveUtc)return t.slice(0,16).replace("T"," ");t+="Z";}var d=new Date(t);if(isNaN(d.getTime()))return String(s).slice(0,16);var p=function(n){return("0"+n).slice(-2);};return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes());}function qDateLocal(d){d=d||new Date();var p=function(n){return("0"+n).slice(-2);};return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());}
+</script>
+</head>
+<body>
+<div class="masthead">
+  <div class="eyebrow"><a href="/">QBot · lab</a> · <a href="/planer-wyprawy.html">← planer wyprawy</a> · <a href="/garaz.html">garaż</a></div>
+  <h1>Planner wyposażenia</h1>
+  <div class="sub">Wyprawa: <span class="rname" id="route-name">—</span> <span id="route-meta"></span></div>
+</div>
+
+<div class="bar" id="bar" style="display:none">
+  <div class="field"><label>Styl</label>
+    <div class="seg" id="seg-style"><button data-v="lekko">Lekko (hotele)</button><button data-v="ciezko">Ciężko (biwak)</button></div>
+  </div>
+  <div class="field"><label>Start</label><input type="date" id="startdate"></div>
+  <div class="field"><label>Dni</label><input type="number" id="days" min="1" max="60"></div>
+  <div class="field"><label>Warunki (z prognozy)</label><input type="text" id="season" placeholder="lato"></div>
+  <div class="field"><label>&nbsp;</label><button class="btn" id="gen">Generuj listę</button></div>
+  <div class="spacer"></div>
+  <span class="msg" id="msg"></span>
+  <div class="field"><label>&nbsp;</label><button class="btn ghost" id="rules">Instrukcje z Garażu</button></div>
+  <div class="field"><label>&nbsp;</label><button class="btn ghost" id="reload">Wczytaj zapisane</button></div>
+  <div class="field"><label>&nbsp;</label><button class="btn" id="save">Zapisz listę</button></div>
+</div>
+
+<div class="split">
+<div class="col">
+<div class="bars">
+  <div class="wxbar warn" id="oldbar" style="display:none"></div>
+  <div class="wxbar" id="wxbar"></div>
+  <div class="dupwarn" id="dupwarn"></div>
+</div>
+<div class="wrap" id="wrap"><div class="empty">Ustaw styl i dni, potem „Generuj listę”.</div></div>
+
+<div class="modal-back" id="mback"></div>
+
+<div class="modal" id="modal" role="dialog" aria-modal="true">
+  <div class="modal-head"><span class="t" id="m-title">—</span><button class="modal-x" data-close="1">×</button></div>
+  <div class="mbody"><div class="mgrp" id="m-grp"></div><div id="m-reason"></div></div>
+</div>
+
+<div class="modal" id="addm" role="dialog" aria-modal="true">
+  <div class="modal-head"><span class="t">Dodaj rzecz do bazy</span><button class="modal-x" data-close="1">×</button></div>
+  <div class="mbody">
+    <div class="mgrp" id="a-cat">—</div>
+    <div class="fgrid">
+      <label>Marka<input type="text" id="a-brand" placeholder="np. Dynaplug"></label>
+      <label>Model / nazwa<input type="text" id="a-model" placeholder="np. Racer Pro"></label>
+      <label>Rodzaj / rozmiar<input type="text" id="a-size" placeholder="np. kołki soft-nose"></label>
+      <label>Kolor<input type="text" id="a-color" placeholder="np. czarny"></label>
+      <label>Ilość szt.<input type="number" id="a-qty" min="1" placeholder="np. 5"></label>
+      <label>Waga (g)<input type="number" id="a-weight" min="0" placeholder="np. 14"></label>
+      <label class="full">Link do produktu<input type="text" id="a-url" placeholder="https://…"></label>
+      <label class="full">Notatki<textarea id="a-notes" rows="2" placeholder="cokolwiek ważnego"></textarea></label>
+    </div>
+  </div>
+  <div class="mfoot"><button class="btn ghost" data-close="1">Anuluj</button><button class="btn" id="a-save">Zapisz do bazy</button></div>
+</div>
+
+</div>
+<button class="sidetab" id="sidetab" title="Pokaż / ukryj panel">Panel</button>
+<aside class="side" id="side">
+  <div class="sbox"><h5>Wyprawa</h5><div id="s-route">-</div></div>
+  <div class="sbox"><h5>Pogoda wg generatora</h5><div id="s-wx">-</div></div>
+  <div class="sbox"><h5>Instrukcje z Garażu</h5><div id="s-rules">-</div></div>
+  <div class="sbox"><h5>Lista</h5><div id="s-meta">-</div></div>
+</aside>
+</div>
+<div class="modal" id="addrow" role="dialog" aria-modal="true">
+  <div class="modal-head"><span class="t">Dodaj rzecz do listy</span><button class="modal-x" data-close="1">×</button></div>
+  <div class="mbody">
+    <div class="fgrid">
+      <label class="full">Kategoria z tej grupy
+        <select id="ar-cat"></select></label>
+      <label class="full">albo inna kategoria z bazy
+        <select id="ar-all"><option value="">— wybierz —</option></select></label>
+      <label class="full">Nazwa pozycji na liście
+        <input type="text" id="ar-name" placeholder="np. Klapki"></label>
+    </div>
+  </div>
+  <div class="mfoot"><button class="btn ghost" data-close="1">Anuluj</button><button class="btn" id="ar-ok">Dodaj</button></div>
+</div>
+
+<div class="modal" id="rulesm" role="dialog" aria-modal="true">
+  <div class="modal-head"><span class="t">Instrukcje z Garażu</span><button class="modal-x" data-close="1">×</button></div>
+  <div class="mbody">
+    <p class="hint" style="margin-top:0">Te instrukcje generator stosuje przy obecnych warunkach. Edytujesz je w <a href="/garaz.html">Garażu</a> — tutaj tylko podgląd.</p>
+    <div id="rules-list">ładowanie…</div>
+  </div>
+  <div class="mfoot"><button class="btn ghost" data-close="1">Zamknij</button></div>
+</div>
+
+<link rel="stylesheet" href="/nav.css?v=4">
+<script src="/nav.js?v=5"></script>
+<script>
+(function(){
+  var q=new URLSearchParams(location.search), RID=q.get("route")||"";
+  var st={style:null,groups:[],opt:{}}, addCtx=null;
+  var $=function(id){return document.getElementById(id);};
+  function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});}
+  function seasonGuess(){var m=new Date().getMonth()+1;if(m>=5&&m<=9)return "lato";if(m>=11||m<=3)return "zima";return "przejsciowy";}
+
+  if(!RID){ $("route-name").textContent="nie wybrano trasy"; $("route-meta").textContent="— otwórz przez planer wyprawy."; return; }
+  fetch("/api/routes/ready").then(function(r){return r.json();}).then(function(d){
+    var h=(d.routes||[]).filter(function(x){return x.route_id===RID;})[0];
+    $("route-name").textContent=h?h.name:("trasa "+RID);
+    $("route-meta").textContent=(h&&h.distance_km!=null)?("· "+h.distance_km+" km"):"";
+    var sr=$("s-route");
+    if(sr){ sr.innerHTML="<b>"+esc(h?h.name:("trasa "+RID))+"</b><br>"
+      +(h&&h.distance_km!=null?(h.distance_km+" km"):"")
+      +(h&&h.elevation_gain_m!=null?(" · "+h.elevation_gain_m+" m w gore"):""); }
+    // Termin bierzemy z KALENDARZA (tam plan wyprawy jest juz znany), a nie z nazwy
+    // trasy - nazwa niesie date przejechania/utworzenia i myli prognoze pogody.
+    fetch("/api/planer/wyposazenie/termin?route_id="+encodeURIComponent(RID),
+          {credentials:"same-origin",cache:"no-store"})
+      .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function(t){
+        if(t&&t.start){ $("startdate").value=t.start; }
+        if(t&&t.days){ $("days").value=t.days; }
+        var mt=$("route-meta");
+        if(t&&t.source==="kalendarz"&&mt){
+          mt.textContent=(mt.textContent||"")+" · termin z kalendarza"+(t.event?(": "+t.event):"");
+        }
+        loadWeather();
+      })
+      .catch(function(){ loadWeather(); });
+  }).catch(function(){$("route-name").textContent="trasa "+RID; loadWeather();});
+
+  $("bar").style.display="";
+  var iD=parseInt(q.get("days")||"",10); $("days").value=(iD&&iD>0)?iD:3;
+  $("season").value=seasonGuess(); setStyle("ciezko");
+
+  // Data startu zanim odpowie kalendarz: z adresu (?date=) albo DZIS.
+  // Gdy trasa ma wydarzenie w kalendarzu, ponizsze zapytanie i tak to nadpisze.
+  (function(){
+    var m=(location.search.match(/[?&]date=([0-9-]{10})/)||[])[1];
+    var dzis=qDateLocal();
+    $("startdate").value=m||dzis;
+  })();
+
+  fetch("/api/planer/wyposazenie/list?route_id="+encodeURIComponent(RID)).then(function(r){return r.json();}).then(function(d){
+    if(d&&d.exists){
+      if(d.style) setStyle(d.style); if(d.days) $("days").value=d.days;
+      st.groups=(d.groups||[]).map(function(g){return{group:g.group,items:(g.items||[]).map(function(it){
+        return {item:it.item,garage_category:it.garage_category||null,gear_id:it.gear_id||null,
+                equip_id:it.equip_id||null,packed:!!it.packed,reason:it.notes||null,prio:it.prio||2,
+                worn:!!it.worn,skipped:!!it.skipped,have:!!it.have,is_task:!!it.is_task,
+                unit:it.unit||"piece",qty:it.qty||1};})};});
+      render();
+      var when=qTsLocal(d.created_at,true);
+      var ob=$("oldbar"); if(ob){ ob.style.display=""; }
+      if(ob) ob.textContent="To jest ZAPISANA lista"+(when?(" z "+when):"")+" — nie uwzględnia nowych poprawek ani prognozy. Kliknij „Generuj listę”, żeby zbudować ją od nowa.";
+      renderMeta("ZAPISANA z "+esc(qTsLocal(d.created_at,true))
+        + (d.weather && d.weather.ok ? ("<br>zbudowana dla: "+esc(d.weather.text)) : "<br>bez prognozy"));
+      $("msg").textContent="Wczytano zapisaną listę.";
+    }
+  }).catch(function(){});
+
+  function renderWx(x){
+    var box=$("s-wx"); if(!box) return;
+    if(!x || !x.ok){ box.textContent = x&&x.reason ? x.reason : "Brak prognozy."; return; }
+    var h="";
+    (x.days_detail||[]).forEach(function(d){
+      if(d.brak){ h+='<div class="wxday"><span>'+esc(d.date)+'</span><span>brak danych</span></div>'; return; }
+      var rain = d.precip_mm>0 ? ('<span class="wxrain">'+d.precip_mm+' mm</span>') : "0 mm";
+      h+='<div class="wxday"><span>'+esc(d.date.slice(5))+'</span><span><b>'
+        +d.tmin+'-'+d.tmax+' \u00b0C</b> \u00b7 '+rain
+        +(d.wind_max_ms!=null?(' \u00b7 '+d.wind_max_ms+' m/s'):'')+'</span></div>';
+    });
+    h+='<div style="margin-top:8px;color:var(--muted);font-size:12.5px">\u017ar\u00f3d\u0142o: '
+      +esc(x.source||"")+'</div>';
+    box.innerHTML=h;
+  }
+  function renderMeta(txt){ var m=$("s-meta"); if(m) m.innerHTML=txt; }
+
+  function loadWeather(){
+    var d=$("startdate").value, n=parseInt($("days").value,10)||1;
+    if(!d){ return; }
+    var w=$("wxbar"); if(!w){ return; } w.className="wxbar"; w.style.display=""; w.textContent="Sprawdzam prognozę…";
+    fetch("/api/planer/wyposazenie/pogoda?route_id="+encodeURIComponent(RID)+"&start="+encodeURIComponent(d)+"&days="+n)
+      .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function(x){
+        if(!x.ok){
+          st.weather=null; renderWx(x); w.className="wxbar warn";
+          w.textContent="Brak prognozy na te dni ("+(x.reason||"")+") — dobieram po porze roku.";
+          $("season").value=seasonGuess(); st.opt={}; fillGarageSelects(); return;
+        }
+        st.weather=x; renderWx(x); loadRules("side");
+        var seas=x.season_hint;
+        if(x.wet && seas==="lato"){ seas="lato,przejsciowy"; }
+        if(x.cold_wet){ seas="przejsciowy"; }
+        $("season").value=seas;
+        w.className="wxbar"+(x.wet?" warn":"");
+        w.textContent="Prognoza ("+x.source+"): "+x.text+" → dobieram jak na „"+seas+"”.";
+        st.opt={}; fillGarageSelects();
+      })
+      .catch(function(e){ st.weather=null; w.className="wxbar warn";
+        w.textContent="Nie udało się pobrać prognozy ("+e.message+") — dobieram po porze roku."; });
+  }
+  $("startdate").onchange=loadWeather;
+  $("days").onchange=loadWeather;
+
+  function setStyle(v){st.style=v;Array.prototype.forEach.call($("seg-style").children,function(b){b.classList.toggle("on",b.getAttribute("data-v")===v);});}
+  Array.prototype.forEach.call($("seg-style").children,function(b){b.onclick=function(){setStyle(b.getAttribute("data-v"));};});
+
+  $("gen").onclick=function(){
+    var body={days:parseInt($("days").value,10)||1,style:st.style,season:$("season").value.trim(),
+              route_summary:$("route-name").textContent,weather:st.weather||null};
+    $("gen").disabled=true; $("msg").textContent="Generuję listę…";
+    fetch("/api/planer/wyposazenie/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+      .then(function(r){if(!r.ok)throw new Error(r.status);return r.json();})
+      .then(function(d){
+        st.groups=(d.groups||[]).map(function(g){
+          var items=[];
+          (g.items||[]).forEach(function(it){
+            var unit=it.unit||"piece", n=Math.max(1,parseInt(it.qty,10)||1);
+            var mk=function(qv,wornFlag){ return {item:it.item,garage_category:it.garage_category||null,gear_id:null,
+              equip_id:null,packed:false,reason:it.reason||null,prio:it.prio||2,worn:!!wornFlag,
+              skipped:false,have:false,is_task:!!it.is_task,unit:unit,qty:qv}; };
+            // "na sobie" tylko PIERWSZA sztuka - reszta idzie do torby
+            if(unit==="piece"){ for(var k=0;k<n;k++){ items.push(mk(1, it.worn && k===0)); } }
+            else { items.push(mk(unit==="count"?n:1, it.worn)); }
+          });
+          return {group:g.group,items:items};
+        });
+        render(); st.saved=false; if($("oldbar")){ $("oldbar").style.display="none"; }
+        renderMeta("\u015awie\u017ca, NIEZAPISANA"+(d.cached?" (z pami\u0119ci - te same warunki)":"")); $("msg").textContent="Gotowe — świeża lista. Wybierz swoje rzeczy i zapisz.";
+      })
+      .catch(function(e){$("msg").textContent="Błąd generatora ("+e.message+").";})
+      .then(function(){$("gen").disabled=false;});
+  };
+
+  var FAM={"Koszulki i bluzy kolarskie":["Koszulki i bluzy kolarskie","Koszulki i bluzy techniczne"],"Koszulki i bluzy techniczne":["Koszulki i bluzy techniczne","Koszulki i bluzy kolarskie"],
+    "Spodnie i spodenki z wkładką":["Spodnie i spodenki z wkładką"],"Spodnie i spodenki bez wkładki":["Spodnie i spodenki bez wkładki","Termika"],
+    "Kurtki i kamizelki":["Kurtki i kamizelki","Odzież deszczowa"],"Odzież deszczowa":["Odzież deszczowa","Kurtki i kamizelki"],
+    "Sprz\u0119t wyprawowy":["Sprz\u0119t wyprawowy","Zasilanie i \u0142adowanie","Naprawa i narz\u0119dzia","Apteczka","Higiena i kosmetyki"],
+    "Zasilanie i \u0142adowanie":["Zasilanie i \u0142adowanie","Sprz\u0119t wyprawowy"],
+    "Naprawa i narz\u0119dzia":["Naprawa i narz\u0119dzia","Sprz\u0119t wyprawowy"],
+    "Apteczka":["Apteczka","Sprz\u0119t wyprawowy"],
+    "Higiena i kosmetyki":["Higiena i kosmetyki","Sprz\u0119t wyprawowy"],
+    "Oświetlenie osobiste":["Oświetlenie osobiste","Sprz\u0119t wyprawowy"]};
+  function famList(c){return FAM[c]||[c];}
+
+  function render(){
+    var host=$("wrap"); host.innerHTML="";
+    if(!st.groups.length){host.innerHTML='<div class="empty">Pusto. Kliknij „Generuj listę”.</div>';return;}
+    st.groups.forEach(function(g){
+      var card=document.createElement("div"); card.className="grp";
+      var h=document.createElement("h4"); h.textContent=g.group; card.appendChild(h);
+      g.items.forEach(function(it,ii){card.appendChild(rowEl(g,it,ii));});
+      var add=document.createElement("button"); add.className="addi"; add.textContent="＋ dodaj rzecz";
+      add._grp=g;
+      add.onclick=function(){ openAddRow(g); };
+      card.appendChild(add); host.appendChild(card);
+    });
+    fillGarageSelects(); checkDups();
+  }
+
+  function rowEl(g,it,ii){
+    var row=document.createElement("div"); row.className="row"+((it.packed)?" done":"")+(it.skipped?" skip":"");
+    var tc=document.createElement("div"); tc.className="tcell";
+    var t=document.createElement("span"); t.className="rtype"; t.textContent=it.item;
+    t.title="Kliknij — skąd ten pomysł"; t.onclick=function(){openReason(g.group,it);}; tc.appendChild(t);
+    if(!it.is_task){
+      var p=document.createElement("span"); p.className="pill p"+(it.prio||2);
+      p.textContent=({1:"konieczne",2:"zalecane",3:"pogodowe"})[it.prio||2]; tc.appendChild(p);
+      if(it.worn){var w=document.createElement("span");w.className="pill worn";w.textContent="na sobie";tc.appendChild(w);}
+    }
+    if(it.unit==="set"&&!it.is_task){var sl=document.createElement("span");sl.className="setlab";sl.textContent="komplet";tc.appendChild(sl);}
+    row.appendChild(tc);
+
+    // licznik sztuk (tylko unit=count)
+    if(it.unit==="count"&&!it.is_task){
+      var qb=document.createElement("div"); qb.className="qbox";
+      var qi=document.createElement("input"); qi.type="number"; qi.min="1"; qi.value=it.qty||1;
+      qi.oninput=function(){it.qty=parseInt(qi.value,10)||1;};
+      qb.appendChild(qi); qb.appendChild(document.createTextNode("szt.")); row.appendChild(qb);
+    } else { row.appendChild(document.createElement("span")); }
+
+    if(it.is_task){ row.appendChild(document.createElement("span")); }
+    else {
+      var cat=it.garage_category||"Sprzęt wyprawowy";
+      var sel=document.createElement("select"); sel.setAttribute("data-cat",cat); sel._it=it;
+      sel.innerHTML='<option value="">— wybierz z garażu —</option><option value="__all__">⋯ pokaż całą bazę</option><option value="__have__">✔ TAK — mam</option><option value="__skip__">✖ REZYGNACJA</option><option value="__add__">＋ dodaj do bazy…</option>';
+      sel.onchange=function(){
+        var v=sel.value;
+        if(v==="__add__"){ sel.value=selValue(it); openAdd(cat,it); return; }
+        if(v==="__all__"){ sel.value=selValue(it); showAllFor(cat); return; }
+        if(v==="__skip__"){ it.skipped=true; it.have=false; it.gear_id=null; it.equip_id=null; row.classList.add("skip"); checkDups(); return; }
+        if(v==="__have__"){ it.have=true; it.skipped=false; it.gear_id=null; it.equip_id=null; row.classList.remove("skip"); checkDups(); return; }
+        it.skipped=false; it.have=false; row.classList.remove("skip");
+        if(v.indexOf("e:")===0){ it.equip_id=parseInt(v.slice(2),10); it.gear_id=null; }
+        else { it.gear_id=v?parseInt(v,10):null; it.equip_id=null; }
+        checkDups();
+      };
+      row.appendChild(sel);
+    }
+
+    var pk=document.createElement("label"); pk.className="chk";
+    var cb=document.createElement("input"); cb.type="checkbox"; cb.checked=!!it.packed;
+    cb.onchange=function(){it.packed=cb.checked;row.classList.toggle("done",it.packed);};
+    pk.appendChild(cb); pk.appendChild(document.createTextNode(it.is_task?"zrobione":"spakowane")); row.appendChild(pk);
+
+    if(it.is_task){ row.appendChild(document.createElement("span")); }
+    else {
+      var wl=document.createElement("label"); wl.className="chk";
+      var wc=document.createElement("input"); wc.type="checkbox"; wc.checked=!!it.worn;
+      wc.onchange=function(){it.worn=wc.checked;render();};
+      wl.appendChild(wc); wl.appendChild(document.createTextNode("na sobie")); row.appendChild(wl);
+    }
+
+    var rm=document.createElement("button"); rm.className="rm"; rm.textContent="×"; rm.title="usuń";
+    rm.onclick=function(){g.items.splice(ii,1);render();}; row.appendChild(rm);
+    return row;
+  }
+
+  function showAllFor(cat){
+    $("msg").textContent="Wczytuję całą bazę...";
+    fetch("/api/planer/wyposazenie/garage-options?all_cats=1")
+      .then(function(r){return r.json();})
+      .then(function(d){ st.opt[cat]=d.items||[]; applyOptions(cat, st.opt[cat]);
+        $("msg").textContent="Cała baza dla: "+cat; })
+      .catch(function(e){ $("msg").textContent="Błąd ("+e.message+")."; });
+  }
+
+  function applyOptions(cat,items){
+    document.querySelectorAll('#wrap select[data-cat="'+cat.replace(/"/g,'\\"')+'"]').forEach(function(s){
+      var it=s._it, cur=it?it.gear_id:null;
+      var html=['<option value="">— wybierz z garażu —</option>'];
+      items.forEach(function(o){var extra=[];if(o.color)extra.push(o.color); if(o.size)extra.push(o.size);var lbl=o.label+(extra.length?(" — "+extra.join(", ")):"")+(o.matches_season?"":" ·");
+        var val=(o.src==="equip")?("e:"+o.equip_id):String(o.gear_id);
+        html.push('<option value="'+val+'">'+esc(lbl)+'</option>');});
+      html.push('<option value="__all__">⋯ pokaż całą bazę</option>');
+      html.push('<option value="__have__">✔ TAK — mam</option>');
+      html.push('<option value="__skip__">✖ REZYGNACJA</option>');
+      html.push('<option value="__add__">＋ dodaj do bazy…</option>');
+      s.innerHTML=html.join("");
+      s.value=selValue(it);
+    });
+  }
+  function selValue(it){
+    if(!it) return "";
+    if(it.skipped) return "__skip__";
+    if(it.have) return "__have__";
+    if(it.equip_id) return "e:"+it.equip_id;
+    if(it.gear_id) return String(it.gear_id);
+    return "";
+  }
+  function checkDups(){
+    var seen={}, dups={};
+    st.groups.forEach(function(g){ g.items.forEach(function(it){
+      var k=it.equip_id?("e"+it.equip_id):(it.gear_id?("g"+it.gear_id):null);
+      if(!k) return;
+      if(seen[k]) dups[k]=(dups[k]||1)+1; else seen[k]=it.item;
+    });});
+    var keys=Object.keys(dups);
+    var w=$("dupwarn"); if(!w){ return; }
+    if(!keys.length){ w.style.display="none"; return; }
+    var names=keys.map(function(k){return seen[k];});
+    w.textContent="Uwaga: ta sama rzecz z garażu wybrana więcej niż raz — "+names.join(", ")+".";
+    w.style.display="";
+  }
+  function fillGarageSelects(){
+    var cats={}; document.querySelectorAll('#wrap select[data-cat]').forEach(function(s){
+      var c=s.getAttribute("data-cat"); if(!cats[c])cats[c]=[]; if(s._it)cats[c].push(s._it.item); });
+    var seas=$("season").value.trim();
+    Object.keys(cats).forEach(function(cat){
+      if(st.opt[cat]){applyOptions(cat,st.opt[cat]);return;}
+      var qq=cats[cat].join(" ").slice(0,300);
+      fetch("/api/planer/wyposazenie/garage-options?category="+encodeURIComponent(famList(cat).join(","))+"&season="+encodeURIComponent(seas)+"&q="+encodeURIComponent(qq))
+        .then(function(r){return r.json();}).then(function(d){st.opt[cat]=d.items||[];applyOptions(cat,st.opt[cat]);})
+        .catch(function(){st.opt[cat]=[];applyOptions(cat,[]);});
+    });
+  }
+
+  // ---- modal: uzasadnienie ----
+  function openReason(grp,it){
+    $("m-title").textContent=it.item; $("m-grp").textContent=grp;
+    $("m-reason").textContent=it.reason||"Brak uzasadnienia dla tej pozycji.";
+    document.body.classList.add("modal-open");
+  }
+  // ---- modal: dodawanie do bazy (pelny formularz) ----
+  function openAdd(cat,it){
+    addCtx={cat:cat,it:it};
+    $("a-cat").textContent="Kategoria: "+cat;
+    $("a-brand").value=""; $("a-model").value=it.item||""; $("a-size").value="";
+    $("a-color").value=""; $("a-qty").value=""; $("a-weight").value=""; $("a-url").value=""; $("a-notes").value="";
+    document.body.classList.add("add-open"); setTimeout(function(){$("a-brand").focus();},50);
+  }
+  $("a-save").onclick=function(){
+    if(!addCtx) return;
+    var body={category:addCtx.cat,brand:$("a-brand").value.trim(),model:$("a-model").value.trim(),
+      size:$("a-size").value.trim(),color:$("a-color").value.trim(),notes:$("a-notes").value.trim(),
+      url:$("a-url").value.trim(),qty:$("a-qty").value,weight_g:$("a-weight").value,
+      season:$("season").value.trim()};
+    if(!body.brand&&!body.model){ $("msg").textContent="Podaj markę albo model."; return; }
+    $("a-save").disabled=true;
+    fetch("/api/garage/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+      .then(function(r){if(!r.ok)throw new Error(r.status);return r.json();})
+      .then(function(d){
+        var cat=addCtx.cat, it=addCtx.it;
+        var label=[body.brand,body.model].filter(Boolean).join(" ");
+        var arr=st.opt[cat]||(st.opt[cat]=[]);
+        arr.push({gear_id:d.id,label:label,size:body.size||null,matches_season:true});
+        it.gear_id=d.id; it.skipped=false; applyOptions(cat,arr);
+        closeAll(); $("msg").textContent="Dodano do bazy: "+label;
+      })
+      .catch(function(e){$("msg").textContent="Błąd zapisu do bazy ("+e.message+").";})
+      .then(function(){$("a-save").disabled=false;});
+  };
+  // --- dodaj rzecz: wybor kategorii z grupy albo z calej bazy ---
+  var ALLCATS=null, addRowGrp=null;
+  function openAddRow(g){
+    addRowGrp=g;
+    var cats=[]; g.items.forEach(function(it){
+      var c=it.garage_category; if(c && cats.indexOf(c)<0) cats.push(c); });
+    var sc=$("ar-cat"); sc.innerHTML = cats.length
+      ? cats.map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join("")
+      : '<option value="">(brak kategorii w tej grupie)</option>';
+    $("ar-name").value="";
+    var sa=$("ar-all");
+    var fill=function(blad){
+      var list=(ALLCATS||[]);
+      // Pusta lista bez slowa wyjasnienia wyglada jak zepsute okno - mowimy wprost, co sie stalo.
+      var info = blad
+        ? '<option value="" disabled>(nie uda\u0142o si\u0119 wczyta\u0107 kategorii \u2014 zamknij i otw\u00f3rz ponownie)</option>'
+        : (list.length ? '' : '<option value="" disabled>(brak kategorii w bazie)</option>');
+      sa.innerHTML='<option value="">\u2014 wybierz \u2014</option>' + info
+        + list.map(function(x){return '<option value="'+esc(x.category)+'">'+esc(x.category)+' ('+x.count+')</option>';}).join("");
+    };
+    // pusta tablica tez oznacza brak danych - wtedy probujemy pobrac jeszcze raz
+    if(ALLCATS && ALLCATS.length){ fill(); }
+    else {
+      fetch("/api/planer/wyposazenie/kategorie",{credentials:"same-origin",cache:"no-store"})
+        .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function(d){ ALLCATS=d.categories||[]; fill(); })
+        .catch(function(){ ALLCATS=null; fill(true); });
+    }
+    document.body.classList.add("addrow-open");
+    setTimeout(function(){$("ar-name").focus();},50);
+  }
+  var GUESS=[["bluza","Bluza / polar"],["longsleeve","Bluza / polar"],
+    ["koszulka","Koszulka na wieczór"],["t-shirt","Koszulka na wieczór"],["skarpet","Skarpety"],
+    ["bielizn","Bielizna (nierowerowa)"],["bokserki","Bielizna (nierowerowa)"],
+    ["klapki","Obuwie zapasowe / klapki"],["sanda","Obuwie zapasowe / klapki"],
+    ["spodnie","Spodnie długie / dresowe"],["dres","Spodnie długie / dresowe"],
+    ["ręcznik","Ręcznik / strój kąpielowy"],
+    ["multitool","Naprawa i narzędzia"],["nóż","Naprawa i narzędzia"],
+    ["lampk","Oświetlenie osobiste"],["ładow","Zasilanie i ładowanie"],
+    ["kosmetyk","Higiena i kosmetyki"],["apteczk","Apteczka"]];
+  function guessCat(name){
+    var n=(name||"").toLowerCase();
+    for(var i=0;i<GUESS.length;i++){ if(n.indexOf(GUESS[i][0])>=0) return GUESS[i][1]; }
+    return null;
+  }
+  $("ar-name").oninput=function(){
+    var gcat=guessCat($("ar-name").value); if(!gcat) return;
+    var sa=$("ar-all");
+    for(var i=0;i<sa.options.length;i++){
+      if(sa.options[i].value===gcat){ sa.selectedIndex=i; break; }
+    }
+  };
+  $("ar-ok").onclick=function(){
+    if(!addRowGrp) return;
+    var cat=$("ar-all").value || guessCat($("ar-name").value) || $("ar-cat").value || "Sprz\u0119t wyprawowy";
+    var nm=$("ar-name").value.trim() || cat;
+    addRowGrp.items.push({item:nm,garage_category:cat,gear_id:null,equip_id:null,packed:false,
+      reason:null,prio:2,worn:false,skipped:false,have:false,
+      is_task:!!(addRowGrp.items[0]&&addRowGrp.items[0].is_task),unit:"piece",qty:1});
+    st.opt={}; closeAll(); render();
+  };
+
+  // --- INSTRUKCJE: podglad regul z Garazu (zrodlo: tabela instructions) ---
+  function rulesUrl(){
+    var p = "?season=" + encodeURIComponent($("season").value.trim())
+          + "&style=" + encodeURIComponent(st.style || "");
+    var w = st.weather;
+    if (w && w.ok) {
+      p += "&tmin=" + encodeURIComponent(w.tmin)
+         + "&tmax=" + encodeURIComponent(w.tmax)
+         + "&precip=" + encodeURIComponent(w.precip_mm);
+    }
+    return "/api/planer/wyposazenie/zasady" + p;
+  }
+  function loadRules(target){
+    fetch(rulesUrl()).then(function(r){return r.json();})
+      .then(function(d){
+        var body = (d.rules||[]).map(function(t){
+          return '<div class="rrow"><span>' + esc(t) + '</span></div>';
+        }).join("") || '<div class="muted">Brak instrukcji pasuj\u0105cych do tych warunk\u00f3w.</div>';
+        var head = '<div class="muted" style="font-size:12.5px;margin-bottom:6px">'
+          + d.count + ' z ' + d.active_total + ' aktywnych w Gara\u017cu</div>';
+        if (target === "side") {
+          var b = $("s-rules"); if (b) b.innerHTML = head + body;
+        } else {
+          $("rules-list").innerHTML = head + body;
+        }
+      })
+      .catch(function(){
+        var el = (target === "side") ? $("s-rules") : $("rules-list");
+        if (el) el.textContent = "B\u0142\u0105d wczytywania.";
+      });
+  }
+  $("rules").onclick=function(){ document.body.classList.add("rules-open"); loadRules(); };
+
+  // --- sidebar jako chowana zakladka ---
+  (function(){
+    var tab=$("sidetab"); if(!tab) return;
+    try{ if(localStorage.getItem("wypSide")==="off") document.body.classList.add("side-off"); }catch(e){}
+    tab.onclick=function(){
+      document.body.classList.toggle("side-off");
+      try{ localStorage.setItem("wypSide", document.body.classList.contains("side-off")?"off":"on"); }catch(e){}
+    };
+  })();
+
+  function closeAll(){document.body.classList.remove("modal-open");document.body.classList.remove("add-open");
+    document.body.classList.remove("addrow-open");document.body.classList.remove("rules-open");}
+  document.querySelectorAll('[data-close]').forEach(function(b){b.onclick=closeAll;});
+  $("mback").onclick=closeAll;
+  document.addEventListener("keydown",function(e){if(e.key==="Escape")closeAll();});
+
+  // ---- zapis ----
+  $("save").onclick=function(){
+    var groups=st.groups.map(function(g){return{group:g.group,items:g.items.map(function(it){
+      return {item:it.item,qty:it.qty||1,garage_category:it.garage_category,gear_id:it.gear_id,
+              equip_id:it.equip_id,packed:it.packed,notes:it.reason,prio:it.prio,worn:it.worn,
+              skipped:it.skipped,have:it.have,is_task:it.is_task,unit:it.unit||"piece"};})};});
+    var body={route_id:RID,style:st.style,days:parseInt($("days").value,10)||1,
+              name:$("route-name").textContent,groups:groups,weather:st.weather||null};
+    $("save").disabled=true; $("msg").textContent="Zapisuję…";
+    fetch("/api/planer/wyposazenie/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+      .then(function(r){if(!r.ok)throw new Error(r.status);return r.json();})
+      .then(function(d){st.saved=true; $("msg").textContent="Zapisano ("+d.items_saved+" pozycji).";
+        renderMeta("ZAPISANA teraz"+(st.weather&&st.weather.ok?("<br>zbudowana dla: "+esc(st.weather.text)):""));})
+      .catch(function(e){$("msg").textContent="Błąd zapisu ("+e.message+").";})
+      .then(function(){$("save").disabled=false;});
+  };
+  $("reload").onclick=function(){
+    if(st.groups.length && !st.saved &&
+       !confirm("Wczytanie zapisanej listy skasuje obecn\u0105 (niezapisan\u0105). Kontynuowa\u0107?")){ return; }
+    location.reload();
+  };
+})();
+</script>
+</body>
+</html>

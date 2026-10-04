@@ -1,0 +1,100 @@
+/* QBot wspolny sidebar -- samodzielny (nie zalezy od zmiennych strony).
+   Domyslnie WASKI rail (ikony). Po rozsunieciu NACHODZI na tresc (nie przesuwa jej).
+   Kolory sledza motyw dzien/noc (html.theme-dark). */
+:root{
+  --qnav-rail:56px; --qnav-w:230px;
+  --qn-bg:#eef1ec; --qn-fg:#33403a; --qn-brand:#1c2a22; --qn-border:#d3ddd4;
+  --qn-hover:#e0e7df; --qn-active-bg:#dde8de; --qn-active-fg:#1c2a22; --qn-accent:#c49a3f;
+  --qn-muted:#7c8a80; --qn-tip-bg:#1c2024; --qn-tip-fg:#f6f2ea; --qn-fab-bg:#ffffff; --qn-scroll:#c3ccc4;
+}
+html.theme-dark{
+  --qn-bg:#0a140e; --qn-fg:#c9d1d9; --qn-brand:#ffffff; --qn-border:#2b3d2f;
+  --qn-hover:#22362a; --qn-active-bg:#24382b; --qn-active-fg:#ffffff; --qn-accent:#d8b877;
+  --qn-muted:#8aa090; --qn-tip-bg:#1c2024; --qn-tip-fg:#f6f2ea; --qn-fab-bg:#0a140e; --qn-scroll:#34472f;
+}
+
+/* tresc dostaje staly margines = szerokosc waskiego rail; rozsuniecie NIE zmienia tego marginesu */
+body.qnav-body{padding-left:var(--qnav-rail);transition:padding-left .18s ease}
+
+.qnav{position:fixed;top:0;left:0;height:100vh;width:var(--qnav-rail);background:var(--qn-bg);color:var(--qn-fg);
+  display:flex;flex-direction:column;z-index:1400;transition:width .18s ease,box-shadow .18s ease;overflow:hidden;
+  border-right:1px solid var(--qn-border);box-sizing:border-box;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+body.qnav-expanded .qnav{width:var(--qnav-w);box-shadow:6px 0 30px rgba(0,0,0,.25)}
+
+.qnav-top{display:flex;align-items:center;gap:8px;padding:12px;min-height:56px;box-sizing:border-box}
+.qnav-brand{font-weight:800;font-size:15px;color:var(--qn-brand);white-space:nowrap;overflow:hidden;letter-spacing:.02em;
+  flex:1;opacity:0;width:0;pointer-events:none;transition:opacity .12s ease}
+body.qnav-expanded .qnav-brand{opacity:1;width:auto;pointer-events:auto}
+.qnav-burger{background:none;border:0;color:var(--qn-fg);cursor:pointer;padding:7px;border-radius:8px;display:inline-flex;flex:0 0 auto}
+.qnav-burger:hover{background:var(--qn-hover)}
+
+.qnav-items{list-style:none;margin:0;padding:6px 0;overflow-y:auto;overflow-x:hidden}
+.qnav-prod{flex:1}
+.qnav-items::-webkit-scrollbar{width:6px}
+.qnav-items::-webkit-scrollbar-thumb{background:var(--qn-scroll);border-radius:3px}
+.qnav-link{display:flex;align-items:center;gap:12px;padding:10px 15px;color:var(--qn-fg);text-decoration:none;
+  white-space:nowrap;border-left:3px solid transparent;position:relative;cursor:pointer}
+.qnav-link:hover{background:var(--qn-hover);color:var(--qn-brand)}
+.qnav-link.active{background:var(--qn-active-bg);color:var(--qn-active-fg);border-left-color:var(--qn-accent)}
+.qnav-link svg{flex:0 0 20px;width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.qnav-label{overflow:hidden;opacity:0;width:0;pointer-events:none;transition:opacity .12s ease}
+body.qnav-expanded .qnav-label{opacity:1;width:auto;pointer-events:auto}
+
+/* obszar TESTOWY (nad przelacznikiem motywu) */
+.qnav-test{border-top:1px solid var(--qn-border)}
+.qnav-sec-label{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--qn-muted);
+  white-space:nowrap;overflow:hidden;opacity:0;height:0;padding:0 15px;pointer-events:none;transition:opacity .12s ease}
+body.qnav-expanded .qnav-sec-label{opacity:1;height:auto;padding:8px 15px 2px}
+
+/* dymek z nazwa w trybie waskim (rail) */
+body:not(.qnav-expanded) .qnav-link:hover::after{content:attr(data-label);position:absolute;left:calc(100% + 6px);
+  top:50%;transform:translateY(-50%);background:var(--qn-tip-bg);color:var(--qn-tip-fg);padding:5px 9px;border-radius:7px;
+  font-size:12px;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.35);z-index:1001;pointer-events:none}
+
+/* podklad do klikniecia-poza (zamyka rozsuniete menu) */
+.qnav-backdrop{display:none}
+body.qnav-expanded .qnav-backdrop{display:block;position:fixed;inset:0;background:rgba(0,0,0,.12);z-index:1390}
+.qnav-fab{display:none}
+
+/* stopka menu: przelacznik motywu */
+.qnav-foot{border-top:1px solid var(--qn-border);padding:6px 0}
+button.qnav-link{width:100%;background:none;border:0;font:inherit;text-align:left;cursor:pointer}
+
+@media(max-width:820px),(pointer:coarse) and (max-height:500px){
+  body.qnav-body{padding-left:0}
+  .qnav{transform:translateX(-100%);transition:transform .2s ease;width:230px;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:env(safe-area-inset-bottom)}
+  .qnav-items{overflow:visible}.qnav-prod{flex:0 0 auto}
+  body.qnav-open .qnav{transform:translateX(0);box-shadow:6px 0 30px rgba(0,0,0,.35)}
+  body.qnav-expanded .qnav{width:230px;box-shadow:none}
+  /* na mobile po otwarciu zawsze pelne etykiety */
+  .qnav-label,.qnav-brand{opacity:1;width:auto;pointer-events:auto}
+  .qnav-sec-label{opacity:1;height:auto;padding:8px 15px 2px}
+  body:not(.qnav-expanded) .qnav-link:hover::after{display:none}
+  .qnav-fab{display:inline-flex;position:fixed;top:10px;left:10px;z-index:1002;background:var(--qn-fab-bg);color:var(--qn-brand);
+    border:1px solid var(--qn-border);border-radius:10px;padding:9px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+  .qnav-fab svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  body.qnav-expanded .qnav-backdrop{display:none}
+  body.qnav-open .qnav-backdrop{display:block;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999}
+}
+
+
+/* === MOBILE UX v5 (2026-09-29): wygoda na telefonie ===
+   1) przycisk menu: grzywka iPhone'a + cel 44 px
+   2) tresc nie chowa sie pod przyciskiem menu
+   3) pola formularzy 16 px -> iOS nie powieksza strony przy wpisywaniu
+   4) przyciski/zakladki min. 40 px, bez opoznienia podwojnego dotkniecia */
+@media(max-width:820px),(pointer:coarse) and (max-height:500px){
+  .qnav-fab{top:calc(10px + env(safe-area-inset-top,0px));left:calc(10px + env(safe-area-inset-left,0px));
+    min-width:44px;min-height:44px;box-sizing:border-box;align-items:center;justify-content:center}
+  body.qnav-body:not(:has(.qhead)){padding-top:calc(60px + env(safe-area-inset-top,0px))}
+  body.qnav-body .qhead{padding-left:62px;padding-top:env(safe-area-inset-top,0px)}
+  body.qnav-body input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]),
+  body.qnav-body select, body.qnav-body textarea{font-size:16px!important}
+  body.qnav-body button:not(.qnav-burger), body.qnav-body select, body.qnav-body [role=button],
+  body.qnav-body [data-qtab], body.qnav-body .qtab, body.qnav-body .tab{min-height:40px}
+  body.qnav-body button:not(.qnav-burger){min-width:40px}
+  body.qnav-body a, body.qnav-body button, body.qnav-body select, body.qnav-body input, body.qnav-body label{touch-action:manipulation}
+  .leaflet-touch .leaflet-bar a{width:40px;height:40px;line-height:40px}
+}

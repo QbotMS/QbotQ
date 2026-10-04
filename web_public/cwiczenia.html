@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<link rel="stylesheet" href="/ui2.css?v=9">
+<link rel="stylesheet" href="/nav.css?v=4">
+<title>QBot — Baza ćwiczeń</title>
+<style>
+/* Baza cwiczen TRENERA: katalog /api/trener/exercises, ocena PUT /api/trener/exercises/<key>/rating (2026-10-03: podstawowe / rotacyjne / pomijaj + ★1-3) */
+.cx-sum{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 12px}
+.cx-sum .mini{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 14px}
+.cx-sum b{font-size:20px}
+.cx-f{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 0 10px}
+.cx-f::-webkit-scrollbar{display:none}
+.cx-f button{flex:0 0 auto;min-height:40px;border:1px solid var(--line);background:var(--well);color:var(--ink);border-radius:999px;padding:6px 14px;font:inherit;font-size:14px;cursor:pointer;white-space:nowrap}
+.cx-f button.on{border-color:var(--accent);background:var(--accent-bg);color:var(--accent-ink);font-weight:700}
+.cx-b{border:1px solid var(--line);border-radius:14px;background:var(--card);padding:12px;margin:0 0 14px}
+.cx-bh{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.cx-bh b{font-size:18px}.cx-bh .st{font-size:13px;color:var(--ink2)}
+.cx-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.cx-c{border:1px solid var(--line);border-radius:12px;background:var(--bg);overflow:hidden;display:flex;flex-direction:column}
+.cx-c.tP{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.cx-c.tX{opacity:.55}
+.cx-c .im{border:0;padding:0;margin:0;background:#fff;cursor:zoom-in;display:block;width:100%}
+.cx-c img,.cx-c .ph{width:100%;aspect-ratio:3/2;object-fit:contain;background:#fff;display:block}
+.cx-c .ph{display:flex;align-items:center;justify-content:center;color:#8a94a0;font-size:13px}
+.cx-c .tx{padding:8px 10px 4px;display:flex;flex-direction:column;gap:4px}
+.cx-c .tx b{font-size:15px;line-height:1.25}
+.cx-c .tg{display:flex;gap:4px;flex-wrap:wrap}
+.cx-c .tg span{font-size:11.5px;border-radius:999px;padding:1px 8px;background:var(--well);color:var(--ink2)}
+.cx-c .tg span.w{background:var(--accent-bg);color:var(--accent-ink);font-weight:700}
+.cx-r{padding:6px 10px 10px;display:flex;flex-direction:column;gap:6px;margin-top:auto}
+.cx-seg{display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.cx-seg button{min-height:40px;border:0;border-left:1px solid var(--line);background:var(--card);color:var(--ink2);font:inherit;font-size:13px;cursor:pointer;padding:4px 2px}
+.cx-seg button:first-child{border-left:0}
+.cx-seg button.on.P{background:var(--accent);color:#fff;font-weight:700}
+.cx-seg button.on.R{background:var(--well);color:var(--ink);font-weight:700;box-shadow:inset 0 0 0 2px var(--ink2)}
+.cx-seg button.on.X{background:var(--bad-bg);color:var(--bad);font-weight:700}
+.cx-st{display:flex;align-items:center;gap:2px;min-height:36px}
+.cx-st button{border:0;background:none;font-size:28px;line-height:1;padding:0 3px;cursor:pointer;color:var(--line2)}
+.cx-st button.on{color:var(--accent)}
+.cx-st .lb{font-size:12.5px;color:var(--ink2);margin-left:6px}
+.cx-src{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:6px;align-items:center;min-height:22px}
+.cx-src button{border:0;background:none;color:var(--accent-ink);font:inherit;font-size:12px;cursor:pointer;text-decoration:underline;padding:0}
+#cx-dlg{position:fixed;inset:0;z-index:1300;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:calc(12px + env(safe-area-inset-top,0px)) 12px calc(12px + env(safe-area-inset-bottom,0px))}
+#cx-dlg.on{display:flex}
+#cx-dlg .in{background:var(--card);color:var(--ink);border-radius:14px;max-width:960px;width:100%;max-height:100%;overflow:auto;padding:14px}
+#cx-dlg img{width:100%;border-radius:10px;background:#fff}
+#cx-dlg .x{float:right;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:22px;cursor:pointer}
+#cx-dlg h2{margin:4px 0 6px}
+#cx-dlg ol{margin:6px 0 8px 20px;padding:0;line-height:1.5}
+.cx-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:1400;background:var(--card);border:1px solid var(--good);color:var(--good);border-radius:12px;padding:10px 16px;font-size:15px;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.cx-toast.bad{border-color:var(--bad);color:var(--bad)}
+.cx-help{font-size:14px;line-height:1.45;margin:0 0 8px}
+</style>
+</head>
+<body><div class="wrap">
+
+<div class="head">
+  <h1>Baza ćwiczeń</h1>
+  <span class="mock"></span> <button class="themebtn" id="themebtn" type="button" aria-label="Tryb dzienny / nocny"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+</div>
+
+<section class="panel stack">
+<div class="cx-help">Oceń ćwiczenia: <b>Podstawowe</b> trafiają często (★★★ najczęściej, np. wyciskanie na ławce), <b>Rotacyjne</b> dają urozmaicenie, <b>Pomijaj</b> — Trener nie wybierze. Na start są moje propozycje; Twoja ocena zapisuje się od razu i wygrywa. Dotknij rysunku, żeby go powiększyć. <a href="/trener.html">← Trener</a></div>
+<div class="cx-sum" id="cx-sum"></div>
+<div class="cx-f" id="cx-f"></div>
+<div id="cx-list"><div class="sub">Wczytuję…</div></div>
+</section>
+
+</div>
+<div id="cx-dlg" role="dialog" aria-modal="true"><div class="in" id="cx-in"></div></div>
+<script src="/nav.js?v=5"></script>
+<script>(function(){var b=document.getElementById("themebtn");if(!b)return;var SUN='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',MOON='<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';function paint(){b.querySelector("svg").innerHTML=document.documentElement.classList.contains("theme-dark")?SUN:MOON;}b.addEventListener("click",function(){var d=!document.documentElement.classList.contains("theme-dark");document.documentElement.classList.toggle("theme-dark",d);try{localStorage.setItem("qtheme",d?"dark":"light")}catch(e){}paint();});paint();})();</script>
+<script>
+(function () {
+  "use strict";
+  var D = null, F = "all", G = {}, EQ = {};
+  var WCS = { C: "C · 10–12 kg", S: "Ś · 6–8 kg", L: "L · 2–4 kg", "0": "bez hantli" };
+  var TN = { P: "podstawowe", R: "rotacyjne", X: "pomijaj" }, PL = { 1: "podstawowe", 2: "często", 3: "najczęściej" };
+  function esc(t) { return String(t == null ? "" : t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
+  function api(m, p, b) { return fetch("/api/trener" + p, { method: m, credentials: "same-origin", headers: b ? { "Content-Type": "application/json" } : {}, body: b ? JSON.stringify(b) : undefined })
+    .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.detail || ("HTTP " + r.status)); return j; }); }); }
+  var tT = null;
+  function toast(m, bad) { var el = document.querySelector(".cx-toast"); if (!el) { el = document.createElement("div"); el.className = "cx-toast"; document.body.appendChild(el); } el.className = "cx-toast" + (bad ? " bad" : ""); el.textContent = m; el.hidden = false; clearTimeout(tT); tT = setTimeout(function () { el.hidden = true; }, 2200); }
+  function byKey(k) { return D.items.filter(function (q) { return q.key === k; })[0]; }
+  function ratingHTML(x) {
+    var h = "<div class='cx-r'><div class='cx-seg'>" + ["P", "R", "X"].map(function (t) { return "<button type='button' data-t='" + t + "' class='" + t + (x.tier === t ? " on" : "") + "'>" + (t === "P" ? "Podstawowe" : t === "R" ? "Rotacyjne" : "Pomijaj") + "</button>"; }).join("") + "</div>";
+    if (x.tier === "P") h += "<div class='cx-st'>" + [1, 2, 3].map(function (n) { return "<button type='button' data-p='" + n + "' class='" + ((x.prio || 1) >= n ? "on" : "") + "' aria-label='" + n + "'>★</button>"; }).join("") + "<span class='lb'>" + PL[x.prio || 1] + "</span></div>";
+    var prop = TN[x.tier_prop] + (x.tier_prop === "P" ? " " + "★".repeat(x.prio_prop || 1) : "");
+    h += "<div class='cx-src'>" + (x.tier_user ? "<span>Twoja ocena · propozycja: " + prop + "</span><button type='button' data-reset='1'>przywróć</button>" : "<span>propozycja Trenera</span>") + "</div></div>";
+    return h;
+  }
+  function card(x) {
+    return "<div class='cx-c t" + x.tier + "' data-k='" + esc(x.key) + "'><button type='button' class='im' data-zoom='1'>" + (x.img ? "<img loading='lazy' src='" + esc(x.img) + "' alt='" + esc(x.name) + "'>" : "<span class='ph'>brak grafiki</span>") + "</button>" +
+      "<span class='tx'><b>" + esc(x.name) + "</b><span class='tg'><span class='w'>" + WCS[x.wclass] + "</span><span>poziom " + x.level + "</span>" + (x.unilateral ? "<span>jednostronne</span>" : "") + "</span>" +
+      "<span class='sub' style='font-size:12.5px'>" + esc(x.dose || "") + (x.equip && x.equip.length ? " · " + x.equip.map(function (e) { return EQ[e] || e; }).join(", ") : "") + "</span></span>" + ratingHTML(x) + "</div>";
+  }
+  function counts(list) { var c = { P: 0, R: 0, X: 0 }; list.forEach(function (x) { c[x.tier] = (c[x.tier] || 0) + 1; }); return c; }
+  function draw() {
+    var it = D.items, c = counts(it), mine = it.filter(function (x) { return x.tier_user; }).length;
+    document.getElementById("cx-sum").innerHTML = "<div class='mini'><b>" + c.P + "</b> podstawowych</div><div class='mini'><b>" + c.R + "</b> rotacyjnych</div><div class='mini'><b>" + c.X + "</b> pomijanych</div><div class='mini'><b>" + mine + "</b> Twoich ocen</div>";
+    var fs = [["all", "Wszystkie"], ["P", "Podstawowe"], ["R", "Rotacyjne"], ["X", "Pomijane"], ["mine", "Moje oceny"]].concat(Object.keys(G).map(function (k) { return ["g:" + k, G[k]]; }));
+    var f = document.getElementById("cx-f");
+    f.innerHTML = fs.map(function (x) { return "<button data-f='" + x[0] + "' class='" + (F === x[0] ? "on" : "") + "'>" + esc(x[1]) + "</button>"; }).join("");
+    f.querySelectorAll("[data-f]").forEach(function (b) { b.onclick = function () { F = b.dataset.f; draw(); }; });
+    var sel = it.filter(function (x) { return F === "all" || (F === "mine" ? x.tier_user : F.indexOf("g:") === 0 ? x.grp === F.slice(2) : x.tier === F); });
+    var h = "";
+    Object.keys(G).forEach(function (g) {
+      var gi = sel.filter(function (x) { return x.grp === g; }); if (!gi.length) return;
+      gi.sort(function (a, b) { var o = { P: 0, R: 1, X: 2 }; return (o[a.tier] - o[b.tier]) || ((b.prio || 0) - (a.prio || 0)) || a.name.localeCompare(b.name, "pl"); });
+      var ca = counts(it.filter(function (x) { return x.grp === g; }));
+      h += "<div class='cx-b'><div class='cx-bh'><b>" + esc(G[g]) + "</b><span class='st'>podstawowe " + ca.P + " · rotacyjne " + ca.R + (ca.X ? " · pomijane " + ca.X : "") + "</span></div><div class='cx-g'>" + gi.map(card).join("") + "</div></div>";
+    });
+    document.getElementById("cx-list").innerHTML = h || "<div class='sub'>Nic w tym filtrze.</div>";
+    wire();
+  }
+  function save(k, body) {
+    var x = byKey(k), old = { tier: x.tier, prio: x.prio, tier_user: x.tier_user };
+    if (body.tier === null) { x.tier = x.tier_prop; x.prio = x.prio_prop; x.tier_user = false; }
+    else { x.tier = body.tier; x.prio = body.tier === "P" ? (body.prio || 1) : 0; x.tier_user = true; }
+    redrawCard(k);
+    api("PUT", "/exercises/" + encodeURIComponent(k) + "/rating", body).then(function () {
+      toast(body.tier === null ? "Przywrócono propozycję" : (TN[x.tier] + (x.tier === "P" ? " " + "★".repeat(x.prio) : "")));
+      var s = counts(D.items), mine = D.items.filter(function (q) { return q.tier_user; }).length;
+      document.getElementById("cx-sum").innerHTML = "<div class='mini'><b>" + s.P + "</b> podstawowych</div><div class='mini'><b>" + s.R + "</b> rotacyjnych</div><div class='mini'><b>" + s.X + "</b> pomijanych</div><div class='mini'><b>" + mine + "</b> Twoich ocen</div>";
+    }).catch(function (e) { x.tier = old.tier; x.prio = old.prio; x.tier_user = old.tier_user; redrawCard(k); toast("Nie zapisano: " + e.message, true); });
+  }
+  function redrawCard(k) {
+    var el = document.querySelector(".cx-c[data-k='" + k + "']"); if (!el) return;
+    var x = byKey(k), tmp = document.createElement("div"); tmp.innerHTML = card(x);
+    el.replaceWith(tmp.firstChild); wire();
+  }
+  function wire() {
+    document.querySelectorAll(".cx-c").forEach(function (c) {
+      var k = c.dataset.k;
+      c.querySelector("[data-zoom]").onclick = function () { show(k); };
+      c.querySelectorAll("[data-t]").forEach(function (b) { b.onclick = function () { var x = byKey(k), t = b.dataset.t; if (x.tier === t && x.tier_user) return; save(k, { tier: t, prio: t === "P" ? (x.tier === "P" ? x.prio || 1 : 1) : null }); }; });
+      c.querySelectorAll("[data-p]").forEach(function (b) { b.onclick = function () { save(k, { tier: "P", prio: +b.dataset.p }); }; });
+      var r = c.querySelector("[data-reset]"); if (r) r.onclick = function () { save(k, { tier: null }); };
+    });
+  }
+  function show(k) {
+    var x = byKey(k); if (!x) return;
+    var st = x.steps || [];
+    document.getElementById("cx-in").innerHTML = "<button class='x' id='cx-x' aria-label='Zamknij'>×</button><h2>" + esc(x.name) + "</h2><div class='sub'>" + esc(G[x.grp] || x.grp) + " · " + WCS[x.wclass] + " · poziom " + x.level + " · " + esc(x.dose || "") + (x.unilateral ? " · jednostronne" : "") + "</div>" +
+      (x.img_full ? "<img src='" + esc(x.img_full) + "' alt='" + esc(x.name) + "' style='margin-top:10px'>" : "") +
+      "<div style='margin-top:8px'><b>Mięśnie:</b> " + esc(x.muscles || "") + "</div>" +
+      (st.length ? "<ol>" + st.map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ol>" : "") +
+      (x.ok ? "<div>✓ " + esc(x.ok) + "</div>" : "") + (x.bad ? "<div>✕ " + esc(x.bad) + "</div>" : "") +
+      "<div class='sub' style='margin-top:8px'>klucz: " + esc(x.key) + " · ocena: " + TN[x.tier] + (x.tier === "P" ? " " + "★".repeat(x.prio || 1) : "") + (x.tier_user ? " (Twoja)" : " (propozycja)") + "</div>";
+    var dlg = document.getElementById("cx-dlg"); dlg.classList.add("on");
+    document.getElementById("cx-x").onclick = function () { dlg.classList.remove("on"); };
+    dlg.onclick = function (e) { if (e.target === dlg) dlg.classList.remove("on"); };
+  }
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") document.getElementById("cx-dlg").classList.remove("on"); });
+  api("GET", "/exercises").then(function (j) { D = j; G = j.groups || {}; EQ = j.equip || {}; draw(); })
+    .catch(function (e) { document.getElementById("cx-list").innerHTML = "<div class='sub'>Nie udało się wczytać bazy: " + esc(e.message) + "</div>"; });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" type="image/svg+xml" href="/g/assets/favicon.svg">
+<title>Zaproszenie na jazdę</title>
+<script>window.__QBOT_GUEST=true;window.__QBOT_GUEST_SECTIONS=["nawierzchnia","przewyzszenia","pogoda","zaopatrzenie","atrakcje"];
+try{if(localStorage.getItem("qtheme")!=="light")document.documentElement.classList.add("theme-dark")}catch(e){document.documentElement.classList.add("theme-dark")}</script>
+<link rel="stylesheet" href="/g/assets/theme.css?v=1">
+<link rel="stylesheet" href="/g/assets/leaflet.css?v=1">
+<link rel="stylesheet" href="/g/assets/raport.css?v=1">
+<link rel="stylesheet" href="/g/assets/aside.css?v=1">
+<link rel="stylesheet" href="/g/assets/raport-v2.css?v=1">
+<link rel="stylesheet" href="/g/assets/raport-trasy2.css?v=5">
+<link rel="stylesheet" href="/g/assets/raport-gosc.css?v=2">
+</head>
+<body class="mk-headlite g-page">
+<div class="qhead">
+  <div class="qhead-row">
+    <span class="qh-title">Zaproszenie na jazdę</span>
+    <div class="rtabs" id="rtabs"><button type="button" class="rtab active" data-rtab="mapa">Mapa</button></div>
+    <span class="g-plan" id="g-plan"></span>
+    <div class="qh-right">
+      <div class="g-rsvp" id="g-rsvp"><span class="g-rsvp-q" id="g-rsvp-q">Jedziesz?</span>
+        <button type="button" class="g-btn" id="g-yes">Jadę</button><button type="button" class="g-btn" id="g-no">Nie jadę</button></div>
+      <a class="g-btn g-gpx" id="g-gpx" href="#" download>⬇ GPX</a>
+      <a class="g-btn g-gpx" id="g-gpx2" href="#" download>⬇ GPX z POI</a>
+    </div>
+  </div>
+</div>
+<div class="status" id="f-status"></div>
+<div class="wrap">
+  <div class="empty" id="g-empty">Wczytuję trasę…</div>
+  <div id="report"></div>
+</div>
+<script src="/g/assets/leaflet.js?v=1"></script>
+<script src="/g/assets/raport-render.js?v=1"></script>
+<script src="/g/assets/raport-trasy-m.js?v=8"></script>
+<script src="/g/assets/raport-gosc.js?v=4"></script>
+<script>
+(function(){
+  var gt=document.getElementById("gen-toggle"), gw=document.getElementById("gen-wrap");
+  function setGen(open){ if(!gw||!gt)return; gw.classList.toggle("collapsed",!open); gt.textContent=open?"Parametry ▴":"Parametry ▾"; }
+  if(gt&&gw){ gt.addEventListener("click",function(){ setGen(gw.classList.contains("collapsed")); }); }
+  var rep=document.getElementById("report");
+  function activeTab(){ var a=document.querySelector(".rtab.active"); return a?a.getAttribute("data-rtab"):"mapa"; }
+  function sizeSzczegoly(){
+    // Zakladka szczegolow przewija sie razem ze strona (bez blokady scrolla).
+    var panel=rep&&rep.querySelector('.r-tabpanel[data-rtab="szczegoly"]');
+    document.body.classList.remove("rtab-szczegoly");
+    if(panel){ panel.style.height=""; }
+  }
+  function sizeMapa(){
+    var panel=rep&&rep.querySelector('.r-tabpanel[data-rtab="mapa"]');
+    if(!panel){ document.body.classList.remove("rtab-mapa"); return; }
+    if(activeTab()==="mapa" && !panel.hidden){
+      document.body.classList.add("rtab-mapa");
+      var top=panel.getBoundingClientRect().top;
+      var _tb=rep.querySelector("#r-topbar");
+      var _hd=rep.querySelector("header"), _cw=panel.querySelector(".chartwrap");
+      var _tbb=_tb?Math.round(_tb.getBoundingClientRect().bottom):56;
+      if(_hd){ _hd.style.top=(_tbb+10)+"px"; if(_cw){ _hd.style.bottom=Math.round(window.innerHeight-_cw.getBoundingClientRect().top+8)+"px"; } }
+      var _mc=panel.querySelector(".map-ctl"); if(_mc&&_cw){ _mc.style.bottom=Math.round(window.innerHeight-_cw.getBoundingClientRect().top+8)+"px"; _mc.style.top="auto"; }
+      panel.style.height="";
+      if(window._qmap){ setTimeout(function(){ try{ window._qmap.invalidateSize(); }catch(e){} },0); }
+    } else {
+      document.body.classList.remove("rtab-mapa");
+      panel.style.height="";
+      var _hd2=rep&&rep.querySelector("header"); if(_hd2){ _hd2.style.bottom="";_hd2.style.top=""; }
+      var _mw2=panel.querySelector(".mapwrap"); if(_mw2){ _mw2.style.top=""; }
+      var _tb2=rep&&rep.querySelector("#r-topbar"); if(_tb2){ _tb2.style.top=""; }
+      var _mc2=panel.querySelector(".map-ctl"); if(_mc2){ _mc2.style.bottom=""; _mc2.style.top=""; }
+    }
+  }
+  function applyRTab(){
+    var id=activeTab(), panels=rep.querySelectorAll(".r-tabpanel"), i;
+    for(i=0;i<panels.length;i++){ panels[i].hidden=(panels[i].getAttribute("data-rtab")!==id); }
+    sizeMapa();
+    if(id==="mapa"){ setTimeout(function(){ try{ window.dispatchEvent(new Event("resize")); }catch(e){} },60); }
+    sizeSzczegoly();
+  }
+  window.__applyRTab=applyRTab;
+  document.addEventListener("click",function(e){
+    var t=e.target, tab=t.closest&&t.closest(".qaside-tab");
+    if(tab){
+      var qa=tab.getAttribute("data-qa")||"legenda";
+      var as=document.getElementById("report-aside");
+      if(as){ as.setAttribute("data-sec",qa); var ti=document.getElementById("qaside-title"); if(ti) ti.textContent=(qa==="alerty"?"Alerty dla trasy":"Legenda"); }
+      document.body.classList.add("qaside-open");
+    } else if((t.closest&&t.closest(".qaside"))||(t.classList&&t.classList.contains("qaside-backdrop"))){ document.body.classList.remove("qaside-open"); }
+  });
+  window.addEventListener("resize",function(){ sizeMapa(); sizeSzczegoly(); });
+  if(gt){ gt.addEventListener("click",function(){ setTimeout(function(){ sizeMapa(); sizeSzczegoly(); },0); }); }
+  var tabs=[].slice.call(document.querySelectorAll(".rtab"));
+  tabs.forEach(function(b){ b.addEventListener("click",function(){ tabs.forEach(function(x){x.classList.toggle("active",x===b);}); applyRTab(); }); });
+  if(rep){ var mo=new MutationObserver(function(){ if(rep.querySelector(".r-tabpanel")){ applyRTab(); setGen(false); } }); mo.observe(rep,{childList:true}); }
+  // odporne przeliczanie ukladu mapy (font/wrap/qhead) - kafel zawsze pod paskiem, bez przerwy
+  try{ if(window.ResizeObserver){ var _ro=new ResizeObserver(function(){ sizeMapa(); }); var _qh=document.querySelector(".qhead"); if(_qh)_ro.observe(_qh); if(rep)_ro.observe(rep); } }catch(e){}
+  try{ if(document.fonts&&document.fonts.ready){ document.fonts.ready.then(function(){ sizeMapa(); }); } }catch(e){}
+  window.addEventListener("load",function(){ sizeMapa(); });
+  setTimeout(function(){ sizeMapa(); },200); setTimeout(function(){ sizeMapa(); },600);
+})();
+</script>
+<script src="/g/assets/raport-trasy2.js?v=6"></script>
+</body>
+</html>

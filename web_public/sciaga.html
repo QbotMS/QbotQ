@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<link rel="stylesheet" href="/ui2.css?v=9">
+<link rel="stylesheet" href="/nav.css?v=4">
+<title>QBot — Ściąga treningu</title>
+<style>
+/* Sciaga treningu silowego (2026-10-03): GET /api/trener/sessions/<id>/sheet, PDF /sheet.pdf (z wklejonymi grafikami), PUT /block_kg */
+.sh-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.sh-top h2{margin:0;font-size:22px}.sh-top .sub{margin-top:2px}
+.sh-btn{min-height:44px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:10px;padding:8px 16px;font:inherit;font-size:15px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.sh-btn.ghost{background:var(--card);color:var(--accent-ink)}
+.sh-btn:disabled{opacity:.6}
+.sh-wu{background:var(--warn-bg);border-radius:12px;padding:10px 14px;margin:0 0 12px;font-size:15px;line-height:1.45}
+.sh-bl{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;color:#fff;border-radius:12px;padding:10px 14px;margin:14px 0 8px}
+.sh-bl b{font-size:18px;letter-spacing:.02em}
+.sh-kg{display:flex;align-items:center;gap:6px;font-size:14px}
+.sh-kg input{width:84px;min-height:40px;border-radius:8px;border:0;padding:4px 8px;font:inherit;font-size:16px}
+.sh-kg button{min-height:40px;border-radius:8px;border:1px solid #fff;background:rgba(255,255,255,.15);color:#fff;font:inherit;font-size:14px;padding:4px 12px;cursor:pointer}
+.sh-chg{border:2px dashed var(--line2);border-radius:10px;padding:8px 12px;text-align:center;font-weight:700;margin:10px 0}
+.sh-ex{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:14px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin:0 0 10px}
+.sh-ex img{width:100%;aspect-ratio:3/2;object-fit:contain;background:#fff;border-radius:10px;display:block}
+.sh-ex h3{margin:0;font-size:18px;display:flex;gap:8px;align-items:baseline}.sh-ex h3 .n{font-size:24px}
+.sh-ex .ds{font-weight:700;white-space:nowrap}
+.sh-ex .hd{display:flex;justify-content:space-between;gap:10px}
+.sh-ex ol{margin:6px 0 6px 20px;padding:0;line-height:1.45;font-size:15px}
+.sh-ok{color:var(--good);font-size:14.5px}.sh-bad{color:var(--bad);font-size:14.5px}
+.sh-note{font-size:14px;color:var(--ink2);margin-top:12px;line-height:1.45}
+@media(max-width:640px){.sh-ex{grid-template-columns:1fr}}
+.sh-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:1400;background:var(--card);border:1px solid var(--good);color:var(--good);border-radius:12px;padding:10px 16px;font-size:15px;box-shadow:0 4px 16px rgba(0,0,0,.25);max-width:92vw}
+.sh-toast.bad{border-color:var(--bad);color:var(--bad)}
+</style>
+</head>
+<body><div class="wrap">
+<div class="head"><h1>Ściąga treningu</h1><span class="mock"></span></div>
+<section class="panel stack"><div id="sh"><div class="sub">Wczytuję…</div></div></section>
+</div>
+<script src="/nav.js?v=5"></script>
+<script>
+(function () {
+  "use strict";
+  var COL = { C: "#b5530f", S: "#1f5fa8", L: "#2f7d32", "0": "#5a636e" };
+  var id = +(new URLSearchParams(location.search).get("id") || 0), D = null;
+  var root = document.getElementById("sh");
+  function esc(t) { return String(t == null ? "" : t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
+  function api(m, p, b) { return fetch("/api/trener" + p, { method: m, credentials: "same-origin", headers: b ? { "Content-Type": "application/json" } : {}, body: b ? JSON.stringify(b) : undefined })
+    .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.detail || ("HTTP " + r.status)); return j; }); }); }
+  var tT = null;
+  function toast(m, bad) { var el = document.querySelector(".sh-toast"); if (!el) { el = document.createElement("div"); document.body.appendChild(el); } el.className = "sh-toast" + (bad ? " bad" : ""); el.textContent = m; el.hidden = false; clearTimeout(tT); tT = setTimeout(function () { el.hidden = true; }, bad ? 6000 : 2500); }
+  function load() {
+    if (!id) { root.innerHTML = "<div class='sub'>Brak numeru treningu w adresie.</div>"; return; }
+    api("GET", "/sessions/" + id + "/sheet").then(function (j) { D = j; draw(); })
+      .catch(function (e) { root.innerHTML = "<div class='sub'>Nie da się pokazać ściągi: " + esc(e.message) + "</div><p><a href='/trener.html'>← Trener</a></p>"; });
+  }
+  function draw() {
+    var s = D.session, d = D.details, info = D.info || {}, ex = {};
+    d.exercises.forEach(function (e) { ex[e.n] = e; });
+    var h = "<div class='sh-top'><div><h2>" + esc(d.title) + "</h2><div class='sub'>" + esc(s.dow) + " " + s.day.slice(8, 10) + "." + s.day.slice(5, 7) + (s.start ? " · " + s.start : "") + " · " + s.dur_min + "′ · " + d.rounds + " × każdy blok</div></div>" +
+      "<div style='display:flex;gap:8px;flex-wrap:wrap'><button class='sh-btn' id='sh-pdf'>📄 PDF z grafikami</button><a class='sh-btn ghost' href='/trener.html'>← Trener</a></div></div>";
+    if (d.warmup && d.warmup.length) h += "<div class='sh-wu'><b>Rozgrzewka 5′:</b> " + d.warmup.map(function (w) { return esc(w.name) + (w.dose ? " " + esc(w.dose) : ""); }).join(" · ") + "</div>";
+    var prev = null;
+    d.blocks.forEach(function (b) {
+      if (b.wclass !== "0" && prev !== null && prev !== b.kg) h += "<div class='sh-chg'>↔ Zmiana obciążenia: " + prev + " → " + b.kg + " kg</div>";
+      if (b.wclass !== "0") prev = b.kg;
+      h += "<div class='sh-bl' style='background:" + (COL[b.wclass] || COL["0"]) + "'><b>" + esc(b.head.toUpperCase()) + "</b>" +
+        (b.wclass !== "0" && s.editable ? "<span class='sh-kg'>mój ciężar <input type='number' inputmode='decimal' step='0.5' min='0.5' max='40' value='" + b.kg + "' data-kg='" + b.letter + "'> kg <button data-save='" + b.letter + "'>zapisz</button></span>" : "<span style='font-size:14px'>" + d.rounds + " × runda</span>") + "</div>";
+      b.items.forEach(function (n) {
+        var e = ex[n], i = info[e.key] || {};
+        h += "<div class='sh-ex'><img loading='lazy' src='" + esc(e.img_full || e.img) + "' alt='" + esc(e.name) + "'><div><div class='hd'><h3><span class='n' style='color:" + (COL[b.wclass] || COL["0"]) + "'>" + e.n + "</span>" + esc(e.name) + "</h3><span class='ds'>" + esc(e.dose || "") + "</span></div>" +
+          "<div class='sub'>" + esc(e.group) + (e.accent ? " · akcent dnia" : "") + "</div>" +
+          ((i.steps || []).length ? "<ol>" + i.steps.map(function (t) { return "<li>" + esc(t) + "</li>"; }).join("") + "</ol>" : "") +
+          (i.ok ? "<div class='sh-ok'>✓ " + esc(i.ok) + "</div>" : "") + (i.bad ? "<div class='sh-bad'>✕ " + esc(i.bad) + "</div>" : "") + "</div></div>";
+      });
+    });
+    var notes = (d.text || "").split("\n").filter(function (l) { return l.indexOf("Uwaga:") === 0 || l.indexOf("Pominięte") === 0; });
+    if (notes.length) h += "<div class='sh-note'>" + notes.map(esc).join("<br>") + "</div>";
+    root.innerHTML = h;
+    document.getElementById("sh-pdf").onclick = pdf;
+    root.querySelectorAll("[data-save]").forEach(function (bt) { bt.onclick = function () {
+      var L = bt.dataset.save, inp = root.querySelector("[data-kg='" + L + "']"), kg = parseFloat(String(inp.value).replace(",", "."));
+      if (!(kg > 0)) { toast("Podaj ciężar w kg", true); return; }
+      bt.disabled = true;
+      api("PUT", "/sessions/" + id + "/block_kg", { letter: L, kg: kg }).then(function () { toast("Zapisano " + kg + " kg — Trener zapamięta"); load(); })
+        .catch(function (e) { bt.disabled = false; toast("Nie zapisano: " + e.message, true); });
+    }; });
+  }
+  function pdf() {
+    var bt = document.getElementById("sh-pdf"); bt.disabled = true; bt.textContent = "Składam PDF…";
+    fetch("/api/trener/sessions/" + id + "/sheet.pdf", { credentials: "same-origin", cache: "no-store" }).then(function (r) {
+      var ct = r.headers.get("content-type") || "";
+      if (!r.ok || ct.indexOf("application/pdf") < 0) return r.json().catch(function () { return {}; }).then(function (j) { throw new Error(j.detail || ("HTTP " + r.status)); });
+      var imgs = r.headers.get("X-Sheet-Images");
+      return r.blob().then(function (b) {
+        toast("PDF gotowy" + (imgs ? " · grafik: " + imgs : ""));
+        var u = URL.createObjectURL(b), a = document.createElement("a");
+        a.href = u; a.download = "trening_sila_" + D.session.day + ".pdf"; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(u); }, 60000);
+      });
+    }).catch(function (e) { toast("PDF nie powstał: " + e.message, true); })
+      .then(function () { bt.disabled = false; bt.textContent = "📄 PDF z grafikami"; });
+  }
+  load();
+})();
+</script>
+</body>
+</html>

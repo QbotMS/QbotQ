@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1"><link rel="alternate icon" href="/favicon.ico?v=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="stylesheet" href="/ui2.css?v=9">
+<link rel="stylesheet" href="/nav.css?v=4">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<title>Garaż — QBot lab</title>
+<style>
+html{height:100%}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);line-height:1.5;height:100%;overflow:hidden;display:flex;flex-direction:column}
+.head{padding:22px 32px 8px;margin:0;align-items:center}
+.eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.eyebrow a{color:var(--muted);text-decoration:none}
+.sub{color:var(--muted);font-size:14px}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 32px 8px}
+.toolbar input,.toolbar select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font-size:14.5px}
+.toolbar #gsearch{flex:1 1 200px;min-width:150px}
+.count{font-size:13px;color:var(--muted);margin-left:2px}
+.btn{padding:8px 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:8px;font-size:14px;cursor:pointer}
+.btn.sec{background:var(--card);color:var(--ink);border-color:var(--line)}
+.btn.sec.on{background:var(--accent-bg);color:var(--accent);border-color:var(--accent)}
+.wrap{flex:1 1 auto;min-height:0;overflow-y:auto;max-width:none;margin:0;padding:0 32px 32px}
+table.gt{width:100%;border-collapse:collapse;font-size:15px}
+.gt thead th{position:sticky;top:0;z-index:1;background:var(--panel);text-align:left;font-size:13.5px;font-weight:700;color:var(--ink2);padding:9px 11px;cursor:pointer;white-space:nowrap;border-bottom:1px solid var(--line);user-select:none}
+.gt thead th.num{text-align:right}
+.gt thead th.noclick{cursor:default}
+.gt thead th .ar{color:var(--accent);font-size:11px;margin-left:3px}
+.gt tbody td{padding:8px 11px;border-bottom:1px solid var(--line);vertical-align:middle}
+.gt tbody td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.gt tbody td.mdl{font-weight:600}
+.gt tbody tr:hover{background:var(--accent-bg)}
+.gt tbody tr.arch{opacity:.45}
+.gt .gact{display:flex;gap:6px}
+.gt .gact button{padding:5px 10px;border-radius:7px;font-size:13px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:#fff;white-space:nowrap}
+.gt .gact button.sec{background:var(--card);color:var(--ink2);border-color:var(--line)}
+.sez{display:inline-flex;gap:3px}
+.sez b{font-weight:700;font-size:11px;padding:1px 6px;border-radius:999px;background:var(--panel);color:var(--muted)}
+.sez b.on{background:var(--accent-bg);color:var(--accent)}
+.stars{color:var(--warn);letter-spacing:1px;white-space:nowrap}
+.fab{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:999px;background:var(--panel);color:var(--ink2);white-space:nowrap}
+.fab.mer{background:var(--warn-bg);color:var(--warn)}
+.dot{display:inline-block;width:11px;height:11px;border-radius:50%;border:1px solid var(--line);margin-right:6px;vertical-align:-1px}
+.empty{font-size:15px;color:var(--muted);padding:30px 4px}
+.modal-back{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1500}
+body.modal-open .modal-back{display:block}
+.modal{display:none;position:fixed;z-index:1501;top:50%;left:50%;transform:translate(-50%,-50%);width:1020px;max-width:96vw;max-height:92vh;overflow-y:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.28)}
+.modal.open{display:block}
+.modal-head{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.modal-head .t{font-weight:800;font-size:16px;flex:1}
+.modal-x{background:none;border:0;font-size:22px;line-height:1;color:var(--muted);cursor:pointer}
+.mbody{padding:16px 18px}
+.mmeta{font-size:12.5px;color:var(--muted);margin-bottom:10px;padding:6px 9px;background:var(--panel);border-radius:8px}
+.murl{display:flex;gap:8px;margin:2px 0 6px}
+.murl input{flex:1 1 auto;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);font-size:14px}
+.murlmsg{font-size:12.5px;color:var(--muted);margin:0 0 10px}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mf{display:flex;flex-direction:column;gap:3px}
+.mf.full{grid-column:1 / -1}
+.mf label{font-size:13px;color:var(--ink2)}
+.mf input,.mf select,.mf textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);font-size:14.5px;font-family:inherit}
+.mf textarea{min-height:70px;resize:vertical}
+.mf input,.mf select{height:40px}
+.segbar{display:flex;gap:6px}
+.segbar button{flex:1 1 0;padding:7px 6px;border:1px solid var(--line);background:var(--paper);color:var(--ink2);border-radius:8px;font-size:13.5px;cursor:pointer}
+.segbar button.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent);font-weight:600}
+.starpick{display:flex;gap:4px;align-items:center}
+.starpick button{background:none;border:0;font-size:24px;line-height:1;color:var(--line);cursor:pointer;padding:0 1px}
+.starpick button.on{color:var(--warn)}
+.starpick .clr{font-size:12px;color:var(--muted);margin-left:6px;cursor:pointer;text-decoration:underline}
+.mphoto{display:flex;gap:12px;align-items:flex-start;margin-top:14px}
+.mthumb{width:120px;height:120px;object-fit:cover;border-radius:10px;border:1px solid var(--line);cursor:zoom-in;background:var(--panel)}
+.mphoto-ctrl{display:flex;flex-direction:column;gap:6px}
+.filelbl{cursor:pointer}
+.lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:1600;align-items:center;justify-content:center;cursor:zoom-out}
+body.lb-open .lightbox{display:flex}
+.lightbox img{max-width:92vw;max-height:92vh;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+.mfoot{display:flex;gap:8px;align-items:center;padding:14px 18px;border-top:1px solid var(--line)}
+.mfoot .msg{flex:1;font-size:13px;color:var(--muted)}
+.btn.danger{background:var(--bad);border-color:var(--bad);color:#fff}
+.btn.danger.armed{background:#7d2f20;border-color:#7d2f20}
+.sechead{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);margin:16px 0 6px}
+.svy-back{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1700}
+body.svy-open .svy-back{display:block}
+.svy{display:none;position:fixed;z-index:1701;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:680px;max-width:96vw;max-height:94vh;overflow-y:auto;background:var(--card);
+  border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.3)}
+body.svy-open .svy{display:block}
+.svy-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.svy-head .t{flex:1;font-weight:800;font-size:16px}
+.svy-prog{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.svy-body{padding:14px 18px}
+.svy-item{display:flex;gap:12px;align-items:flex-start;margin-bottom:12px}
+.svy-item img{width:84px;height:84px;object-fit:cover;border-radius:10px;border:1px solid var(--line);background:var(--panel)}
+.svy-name{font-size:16px;font-weight:700;line-height:1.25}
+.svy-sub{font-size:13px;color:var(--ink2);margin-top:2px}
+.svy-note{font-size:12.5px;color:var(--muted);margin-top:4px;line-height:1.4}
+.svy-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line)}
+.svy-row .lab{flex:0 0 168px;font-size:14px;color:var(--ink2)}
+.svy-scale{display:flex;gap:5px;flex-wrap:wrap}
+.svy-scale button{width:34px;height:32px;border:1px solid var(--line);background:var(--paper);
+  color:var(--ink2);border-radius:8px;font-size:14px;cursor:pointer}
+.svy-scale button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.svy-scale button.nd{width:44px;font-size:12px}
+.svy-row .lab{flex:0 0 230px}
+.svy-q{font-size:14px;color:var(--ink)}
+.svy-w{font-size:11.5px;color:var(--accent)}
+.svy-h{font-size:11.5px;color:var(--muted);line-height:1.3}
+/* Moja ocena usunieta z okna (2026-09-24) - Ocena liczona z Ankiety */
+.mf:has(#mRating){display:none}
+.svy-scale button.nd.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.svy-foot{display:flex;gap:8px;align-items:center;padding:12px 18px;border-top:1px solid var(--line)}
+.svy-foot .msg{flex:1;font-size:12.5px;color:var(--muted)}
+.badge-draft{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--warn-bg);color:var(--warn);font-weight:700}
+.badge-ok{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--good-bg);color:var(--good);font-weight:700}
+.tabbar{display:flex;flex:0 0 auto;gap:2px;margin:0 32px;border-bottom:1px solid var(--line);align-items:flex-end;overflow-x:auto;overflow-y:hidden}
+.tabsearch{margin-left:auto;flex:0 1 360px;display:flex;padding:0 0 6px 12px;min-width:180px}
+.tabsearch input{width:100%;padding:8px 12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--card);color:var(--ink);font-size:14.5px}
+.tabbar button{appearance:none;background:none;border:0;font:inherit;font-size:16px;color:var(--ink2);padding:9px 14px;margin-bottom:-1px;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+.tabbar button.on{color:var(--ink);font-weight:600;border-bottom-color:var(--accent)}
+.view{display:none}
+.view.on{display:block}
+.bikecards{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(170px,240px);gap:10px;margin:10px 0 18px;overflow-x:auto;padding-bottom:4px}
+@media (max-width:800px){.bikecards{grid-auto-columns:62%}}
+.bikecard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:0;overflow:hidden;cursor:pointer;transition:border-color .15s,background .15s}
+.bikecard .bkimg{position:relative;aspect-ratio:16/10;background:var(--panel);display:flex;align-items:center;justify-content:center}
+.bikecard .bkimg img{width:100%;height:100%;object-fit:cover;object-position:center;display:block}
+.bikecard .bkph{font-size:32px;opacity:.35}
+.bikecard .bkimg .bkedit{position:absolute;top:6px;right:6px}
+.bikecard .bktxt{padding:7px 10px 9px}
+.bikecard h3{margin:0 0 2px;font-size:14.5px;line-height:1.25}
+.bikecard .bkfull{font-size:12px;color:var(--ink2);margin-bottom:2px}
+.bikecard:hover{border-color:var(--accent)}
+.bikecard.sel{border-color:var(--accent);background:var(--accent-bg);box-shadow:inset 0 0 0 1px var(--accent)}
+.bikecard.inact{opacity:.6}
+.bikecard .bkedit{font-size:12px;padding:3px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink2);cursor:pointer}
+.bikecard .bkedit:hover{border-color:var(--accent);color:var(--ink)}
+.bikecard .meta{font-size:12px;color:var(--ink2)}
+.bikecard .note{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.45}
+.secttl{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);margin:18px 0 6px}
+.pill{font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px}
+.pill.mount{background:var(--good-bg);color:var(--good)}
+.pill.spare{background:var(--warn-bg);color:var(--warn)}
+.pill.off{background:var(--panel);color:var(--muted)}
+.qf-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 14px}
+.qf-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+.qf-head h4{margin:0;font-size:16px}
+.qf-act{display:flex;gap:6px;flex-wrap:wrap}
+.qf-card .note{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.45}
+.qf-row{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:4px 0;border-bottom:1px solid var(--line)}
+.qf-row b{font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
+.qf-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+@media (max-width:1000px){.qf-grid{grid-template-columns:1fr}}
+.qf-item{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer}
+.qf-item.sel{border-color:var(--accent);background:var(--accent-bg)}
+.qf-it-m{font-size:12.5px;color:var(--ink2)}
+.qf-badge{font-size:11.5px;margin-left:8px;padding:1px 8px;border-radius:999px;background:var(--accent);color:#fff;font-weight:600}
+.qf-ctl{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:14px}
+.qf-ctl select{padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit;font-size:14px}
+.qf-ctl label{display:flex;gap:6px;align-items:center;color:var(--ink2)}
+.dimsgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.dimsgrid span{display:block;font-size:12.5px;color:var(--ink2);margin-bottom:3px}
+.qf-it-a{grid-row:1/4;grid-column:2;align-self:center;display:flex;gap:6px}
+.qf-draw .qf-photo{grid-column:2;max-width:100%;max-height:320px;object-fit:contain;justify-self:start;border-radius:10px;border:1px solid var(--line);cursor:zoom-in}
+@media (max-width:900px){.qf-draw .qf-photo{grid-column:1}}
+.qf-item.wph{grid-template-columns:44px 1fr auto}
+.qf-item.wph .qf-it-a{grid-column:3}
+.qf-it-ph{grid-row:1/4;width:44px;height:54px;object-fit:cover;border-radius:6px;cursor:zoom-in}
+.qf-phrow{display:flex;gap:12px;align-items:flex-start}
+.qf-phprev{max-width:160px;max-height:200px;border-radius:8px;border:1px solid var(--line);cursor:zoom-in}
+.qf-phctl{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.qf-phst{font-size:12.5px;color:var(--muted)}
+.qf-mc .m{position:relative;cursor:help;outline:none}
+.qf-mc .m .qf-i{font-size:11px;color:var(--muted)}
+.qf-mc .m[data-tip]:hover::after,.qf-mc .m[data-tip]:focus::after{content:attr(data-tip);position:absolute;left:0;top:100%;z-index:30;width:280px;max-width:80vw;margin-top:6px;padding:9px 11px;background:var(--ink);color:var(--card);font-size:12.5px;font-weight:400;line-height:1.45;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.28);white-space:normal}
+.qf-mc .m:nth-child(2n)[data-tip]:hover::after,.qf-mc .m:nth-child(2n)[data-tip]:focus::after{left:auto;right:0}
+.qf-draw{display:grid;grid-template-columns:minmax(0,520px) minmax(0,1fr);gap:16px;align-items:start}
+.qf-draw .qf-mc{grid-template-columns:repeat(2,minmax(0,1fr));margin-top:0}
+@media (max-width:900px){.qf-draw{grid-template-columns:1fr}.qf-svg{max-width:520px}}
+.qf-mc{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}
+@media (max-width:800px){.qf-mc{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.qf-mc .m{background:var(--panel);border-radius:10px;padding:8px 10px}
+.qf-mc .l{font-size:12px;color:var(--ink2)}
+.qf-mc .v{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
+.qf-mc .d{font-size:12px;color:var(--muted)}
+.qf-mc .d.ok{color:var(--good)} .qf-mc .d.warn{color:var(--warn)}
+.qf-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:12px;align-items:start}
+.fitgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.fitbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.fitbox h4{margin:0 0 8px;font-size:14px;color:var(--accent)}
+.fitrow{display:flex;justify-content:space-between;gap:10px;font-size:13.5px;padding:3px 0;border-bottom:1px solid var(--line)}
+.fitrow span:last-child{font-weight:600;font-variant-numeric:tabular-nums}
+.colwrap{position:relative;display:inline-block}
+.colpick{display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:1200;min-width:250px;
+  max-height:60vh;overflow-y:auto;background:var(--card);border:1px solid var(--line);
+  border-radius:10px;box-shadow:0 12px 34px rgba(0,0,0,.24);padding:10px 12px}
+.colwrap.open .colpick{display:block}
+.colpick .h{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--muted);margin:8px 0 5px}
+.colpick .h:first-child{margin-top:0}
+.colpick label{display:flex;align-items:center;gap:8px;font-size:14px;padding:3px 0;cursor:pointer}
+.colpick input{width:16px;height:16px;accent-color:var(--accent)}
+.colpick .foot{display:flex;gap:6px;margin-top:10px;padding-top:9px;border-top:1px solid var(--line)}
+.colpick .foot button{flex:1;padding:6px 8px;border:1px solid var(--line);background:var(--paper);
+  color:var(--ink2);border-radius:7px;font-size:12.5px;cursor:pointer}
+
+/* UKLAD DWUKOLUMNOWY okna: pola po lewej, zdjecie z boku.
+   Dzieki temu karta jest nizsza i miesci sie na ekranie. */
+.mbody{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:12px 20px;align-items:start}
+.mbody > .mmeta,
+.mbody > .murl,
+.mbody > .murlmsg{grid-column:1 / -1}
+.mbody > .mgrid{grid-column:1;grid-template-columns:repeat(3,minmax(0,1fr))}
+.mbody > .mphoto{grid-column:2;margin-top:0;flex-direction:column;gap:10px;
+  position:sticky;top:0}
+.mbody > .mphoto .mthumb{width:250px;height:250px}
+.mbody > .mphoto .mphoto-ctrl{width:250px}
+.mbody > .mphoto .btn{width:100%;text-align:center}
+@media (max-width:900px){
+  .mbody{grid-template-columns:minmax(0,1fr)}
+  .mbody > .mgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mbody > .mphoto{grid-column:1;position:static}
+}
+
+/* zakladka INSTRUKCJE */
+.chipset{display:inline-flex;gap:4px;flex-wrap:wrap}
+.chip-q{font-size:11.5px;padding:2px 8px;border-radius:999px;background:var(--accent-bg);color:var(--accent);font-weight:600}
+.chip-q.w{background:var(--warn-bg);color:var(--warn)}
+.chip-q.t{background:var(--panel);color:var(--ink2)}
+.chip-off{font-size:12px;color:var(--muted)}
+.prio{display:inline-block;min-width:24px;text-align:center;font-weight:800;font-size:12.5px;
+  padding:2px 7px;border-radius:7px}
+.prio.p1{background:var(--bad-bg);color:var(--bad)}
+.prio.p2{background:var(--warn-bg);color:var(--warn)}
+.prio.p3{background:var(--panel);color:var(--muted)}
+.instr-t{font-weight:600;line-height:1.35}
+.instr-b{font-size:13px;color:var(--muted);margin-top:2px;line-height:1.4}
+.qgrp{display:flex;flex-direction:column;gap:4px}
+.qgrp > span{font-size:13px;color:var(--ink2)}
+.qbtns{display:flex;gap:6px;flex-wrap:wrap}
+.qbtns button{padding:7px 14px;border:1px solid var(--line);background:var(--paper);color:var(--ink2);
+  border-radius:8px;font-size:13.5px;cursor:pointer}
+.qbtns button.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent);font-weight:600}
+#i_priority button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#instrModal .mbody{display:block}
+#instrModal .mgrid{grid-template-columns:1fr 1fr}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>Garaż</h1>
+  <button class="themebtn" id="themebtn" type="button" aria-label="Tryb dzienny / nocny"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+</div>
+
+<div class="tabbar">
+  <button type="button" id="tabBike">Rower</button>
+  <button type="button" id="tabGear" class="on">Odzież</button>
+  <button type="button" id="tabEquip">Sprzęt</button>
+  <button type="button" id="tabExped">Wyprawy</button>
+  <button type="button" id="tabFit">Fitting</button>
+  <button type="button" id="tabInstr">Instrukcje</button>
+  <span class="tabsearch" id="tabSearch">
+    <input type="search" id="bsearch" placeholder="szukaj: nazwa, model, kategoria…" autocomplete="off" style="display:none">
+    <input type="search" id="gsearch" placeholder="szukaj: marka, model, kolor, notatka…">
+    <input type="search" id="esearch" placeholder="szukaj: marka, model, notatka…" style="display:none">
+    <input type="search" id="xsearch" placeholder="szukaj: marka, model, notatka…" style="display:none">
+    <input type="search" id="isearch" placeholder="szukaj w instrukcjach&#8230;" style="display:none">
+  </span>
+</div>
+
+<div class="toolbar" id="toolbarGear">
+  <select id="gfilter"><option value="">wszystkie kategorie</option></select>
+  <select id="gfilterBrand"><option value="">wszystkie marki</option></select>
+  <select id="gfilterColor"><option value="">wszystkie kolory</option></select>
+  <select id="gfilterFabric"><option value="">każdy materiał</option></select>
+  <select id="gfilterSeason">
+    <option value="">każdy sezon</option>
+    <option value="zima">zima</option>
+    <option value="przejsciowy">przejściowy</option>
+    <option value="lato">lato</option>
+  </select>
+  <span class="colwrap" id="colWrapGear"><button type="button" class="btn sec" id="colBtnGear">Kolumny</button><div class="colpick"></div></span>
+  <button type="button" class="btn sec" id="garch">Pokaż archiwum</button>
+  <button type="button" class="btn sec" id="gsurvey">Ankieta ocen</button>
+  <button type="button" class="btn" id="gadd">+ Dodaj rzecz</button>
+  <span class="count" id="gcount"></span>
+</div>
+
+<div class="toolbar" id="toolbarEquip" style="display:none">
+  <select id="efilter"><option value="">wszystkie kategorie</option></select>
+  <span class="colwrap" id="colWrapEquip"><button type="button" class="btn sec" id="colBtnEquip">Kolumny</button><div class="colpick"></div></span>
+  <button type="button" class="btn sec" id="earch">Pokaż archiwum</button>
+  <button type="button" class="btn" id="eadd">+ Dodaj sprzęt</button>
+  <span class="count" id="ecount"></span>
+</div>
+
+<div class="toolbar" id="toolbarExped" style="display:none">
+  <button type="button" class="btn" id="xadd">+ Dodaj sprzęt wyprawowy</button>
+  <span class="count" id="xcount"></span>
+</div>
+
+<div class="toolbar" id="toolbarBike" style="display:none">
+  <select id="bfilterBike"><option value="">wszystkie rowery</option></select>
+  <span class="colwrap" id="colWrapBike"><button type="button" class="btn sec" id="colBtnBike">Kolumny</button><div class="colpick"></div></span>
+  <button type="button" class="btn sec" id="barch">Pokaż wycofane</button>
+  <button type="button" class="btn sec" id="bkAdd">+ Dodaj rower</button>
+  <button type="button" class="btn" id="badd">+ Dodaj komponent</button>
+  <span class="count" id="bcount"></span>
+</div>
+
+<div class="toolbar" id="toolbarInstr" style="display:none">
+  <select id="ifilterSeason">
+    <option value="">ka&#380;dy sezon</option>
+    <option value="zima">zima</option>
+    <option value="przejsciowy">przej&#347;ciowy</option>
+    <option value="lato">lato</option>
+  </select>
+  <select id="ifilterWeather">
+    <option value="">ka&#380;da pogoda</option>
+    <option value="snieg">&#347;nieg</option>
+    <option value="deszcz">deszcz</option>
+    <option value="upal">upa&#322;</option>
+    <option value="zimno">zimno</option>
+  </select>
+  <button type="button" class="btn sec" id="iarch">Poka&#380; wy&#322;&#261;czone</button>
+  <button type="button" class="btn" id="iadd">+ Dodaj instrukcj&#281;</button>
+  <span class="count" id="icount"></span>
+</div>
+
+<div class="wrap">
+  <div class="view on" id="viewGear"><div id="garageBody"><div class="empty">ładowanie…</div></div></div>
+  <div class="view" id="viewEquip"><div id="equipBody"><div class="empty">ładowanie…</div></div></div>
+  <div class="view" id="viewExped"><div id="expedBody"><div class="empty">ładowanie…</div></div></div>
+  <div class="view" id="viewBike"><div id="bikeBody"><div class="empty">ładowanie…</div></div></div>
+  <div class="view" id="viewInstr"><div id="instrBody"><div class="empty">&#322;adowanie&#8230;</div></div></div>
+  <div class="view" id="viewFit"><div id="fitBody"><div class="empty">ładowanie…</div></div></div>
+</div>
+
+<div class="modal-back" id="mBack"></div>
+<div class="modal" id="gearModal">
+  <div class="modal-head">
+    <div class="t" id="mTitle">Dodaj rzecz</div>
+    <button type="button" class="modal-x" id="mCancelX" aria-label="zamknij">×</button>
+  </div>
+  <div class="mbody">
+    <input type="hidden" id="m_id">
+    <div class="mmeta" id="mMeta"></div>
+    <div class="murl">
+      <input id="m_url" placeholder="adres WWW do rzeczy (wklej i zaciągnij)">
+      <button type="button" class="btn" id="mScrape">Zaciągnij dane</button>
+      <button type="button" class="btn sec" id="mGrabPhoto" style="display:none">Zdjęcie ze strony</button>
+    </div>
+    <div class="murlmsg" id="mUrlStatus"></div>
+    <div class="mgrid">
+      <div class="mf"><label>Kategoria *</label><select id="m_category"></select></div>
+      <div class="mf"><label>Stan</label><select id="m_condition"></select></div>
+      <div class="mf"><label>Marka</label><input id="m_brand"></div>
+      <div class="mf"><label>Model</label><input id="m_model"></div>
+      <div class="mf"><label>Rozmiar</label><input id="m_size"></div>
+      <div class="mf"><label>Kolor (producenta)</label><input id="m_color"></div>
+      <div class="mf"><label>Kolor QBot</label><select id="m_color_q"></select></div>
+      <div class="mf"><label>Materiał</label><select id="m_fabric"></select></div>
+      <div class="mf"><label>Waga [g]</label><input id="m_weight_g" type="number" step="1"></div>
+      <div class="mf"><label>Data zakupu</label><input id="m_purchase_date" type="date"></div>
+      <div class="mf"><label>Cena [zł]</label><input id="m_purchase_price" type="number" step="0.01"></div>
+      <div class="mf"><label>EAN</label><input id="m_ean" inputmode="numeric"></div>
+      <div class="mf"><label>SKU</label><input id="m_sku"></div>
+      <div class="mf full"><label>Sezon</label>
+        <div class="segbar" id="mSeason">
+          <button type="button" data-s="zima">zima</button>
+          <button type="button" data-s="przejsciowy">przejściowy</button>
+          <button type="button" data-s="lato">lato</button>
+        </div>
+      </div>
+      <div class="mf full"><label>Moja ocena</label>
+        <div class="starpick" id="mRating">
+          <button type="button" data-v="1">★</button>
+          <button type="button" data-v="2">★</button>
+          <button type="button" data-v="3">★</button>
+          <button type="button" data-v="4">★</button>
+          <button type="button" data-v="5">★</button>
+          <span class="clr" id="mRatingClr">wyczyść</span>
+        </div>
+      </div>
+      <div class="mf full"><label>Notatki</label><textarea id="m_notes"></textarea></div>
+    </div>
+    <div class="mphoto">
+      <img id="mThumb" class="mthumb" alt="" style="display:none">
+      <div class="mphoto-ctrl">
+        <label class="btn sec filelbl" id="mPhotoLbl">Dodaj / zmień zdjęcie<input type="file" id="mPhotoFile" accept="image/*" hidden></label>
+        <button type="button" class="btn sec" id="mPhotoDel" style="display:none">Usuń zdjęcie</button>
+        <div class="msg" id="mPhotoStatus" style="font-size:12.5px;color:var(--muted)"></div>
+      </div>
+    </div>
+  </div>
+  <div class="mfoot">
+    <div class="msg" id="mStatus"></div>
+    <button type="button" class="btn danger" id="mDelete" style="display:none">Usuń</button>
+    <button type="button" class="btn sec" id="mArch" style="display:none">Archiwum</button>
+    <button type="button" class="btn sec" id="mRate" style="display:none">Ankieta</button>
+    <button type="button" class="btn sec" id="mCancel">Anuluj</button>
+    <button type="button" class="btn" id="mSave">Zapisz</button>
+  </div>
+</div>
+
+<div class="svy-back" id="svyBack"></div>
+<div class="svy" id="surveyPanel">
+  <div class="svy-head">
+    <div class="t">Ankieta ocen</div>
+    <span class="svy-prog" id="svyProg"></span>
+    <button type="button" class="modal-x" id="svyX" aria-label="zamknij">&times;</button>
+  </div>
+  <div class="svy-body">
+    <div class="svy-item">
+      <img id="svyImg" alt="" style="display:none">
+      <div>
+        <div class="svy-name" id="svyName"></div>
+        <div class="svy-sub" id="svySub"></div>
+        <div class="svy-note" id="svyNote"></div>
+      </div>
+    </div>
+    <div id="svyRows"></div>
+  </div>
+  <div class="svy-foot">
+    <div class="msg" id="svyMsg"></div>
+    <button type="button" class="btn sec" id="svyPrev">Wstecz</button>
+    <button type="button" class="btn sec" id="svySkip">Pomiń</button>
+    <button type="button" class="btn" id="svyNext">Zatwierdź i dalej</button>
+  </div>
+</div>
+
+<div class="modal" id="equipModal">
+  <div class="modal-head">
+    <div class="t" id="eTitle">Dodaj sprzęt</div>
+    <button type="button" class="modal-x" id="eCancelX" aria-label="zamknij">&times;</button>
+  </div>
+  <div class="mbody">
+    <input type="hidden" id="e_id">
+    <div class="mmeta" id="eMeta"></div>
+    <div class="murl">
+      <input id="e_url" placeholder="adres WWW do rzeczy (wklej i zaciągnij)">
+      <button type="button" class="btn" id="eScrape">Zaciągnij dane</button>
+    </div>
+    <div class="murlmsg" id="eUrlStatus"></div>
+    <div class="mgrid">
+      <div class="mf"><label>Kategoria *</label><select id="e_category"></select></div>
+      <div class="mf"><label>Status</label><select id="e_status"></select></div>
+      <div class="mf"><label>Marka</label><input id="e_brand"></div>
+      <div class="mf"><label>Model</label><input id="e_model"></div>
+      <div class="mf"><label>Miejsce montażu</label><select id="e_mount"></select></div>
+      <div class="mf"><label>Pojemność [l]</label><input id="e_capacity_l" type="number" step="0.1"></div>
+      <div class="mf"><label>Waga [g]</label><input id="e_weight_g" type="number" step="1"></div>
+      <div class="mf"><label>Rozmiar</label><input id="e_size"></div>
+      <div class="mf"><label>Stan</label><select id="e_condition"></select></div>
+      <div class="mf"><label>Kolor (producenta)</label><input id="e_color"></div>
+      <div class="mf"><label>Kolor QBot</label><select id="e_color_q"></select></div>
+      <div class="mf"><label>Data zakupu</label><input id="e_purchase_date" type="date"></div>
+      <div class="mf"><label>Cena [zł]</label><input id="e_purchase_price" type="number" step="0.01"></div>
+      <div class="mf"><label>EAN</label><input id="e_ean" inputmode="numeric"></div>
+      <div class="mf"><label>SKU</label><input id="e_sku"></div>
+      <div class="mf full"><label>Moja ocena</label>
+        <div class="starpick" id="eRating">
+          <button type="button" data-v="1">&#9733;</button>
+          <button type="button" data-v="2">&#9733;</button>
+          <button type="button" data-v="3">&#9733;</button>
+          <button type="button" data-v="4">&#9733;</button>
+          <button type="button" data-v="5">&#9733;</button>
+          <span class="clr" id="eRatingClr">wyczyść</span>
+        </div>
+      </div>
+      <div class="mf full"><label>Notatki</label><textarea id="e_notes"></textarea></div>
+    </div>
+    <div class="mphoto">
+      <img id="eThumb" class="mthumb" alt="" style="display:none">
+      <div class="mphoto-ctrl">
+        <label class="btn sec filelbl" id="ePhotoLbl">Dodaj / zmień zdjęcie<input type="file" id="ePhotoFile" accept="image/*" hidden></label>
+        <button type="button" class="btn sec" id="ePhotoDel" style="display:none">Usuń zdjęcie</button>
+        <div class="msg" id="ePhotoStatus" style="font-size:12.5px;color:var(--muted)"></div>
+      </div>
+    </div>
+  </div>
+  <div class="mfoot">
+    <div class="msg" id="eStatus"></div>
+    <button type="button" class="btn danger" id="eDelete" style="display:none">Usuń</button>
+    <button type="button" class="btn sec" id="eCancel">Anuluj</button>
+    <button type="button" class="btn" id="eSave">Zapisz</button>
+  </div>
+</div>
+
+<div class="modal" id="bikeModal">
+  <div class="modal-head">
+    <div class="t" id="bkTitle">Dodaj rower</div>
+    <button type="button" class="modal-x" id="bkCancelX" aria-label="zamknij">&times;</button>
+  </div>
+  <div class="mbody">
+    <input type="hidden" id="bk_id">
+    <div class="mgrid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+      <div class="mf"><label>Nazwa</label><input id="bk_name" placeholder="np. Canyon Grizl CF SL 2025"></div>
+      <div class="mf"><label>Przydomek</label><input id="bk_nickname" placeholder="np. Monster"></div>
+      <div class="mf"><label>Typ</label><input id="bk_type" list="bikeTypes" placeholder="gravel / mtb / szosa"><datalist id="bikeTypes"><option value="gravel"><option value="mtb"><option value="szosa"></datalist></div>
+      <div class="mf"><label>Marka</label><input id="bk_brand"></div>
+      <div class="mf"><label>Model</label><input id="bk_model"></div>
+      <div class="mf"><label>Rok</label><input id="bk_year" type="number" step="1"></div>
+      <div class="mf"><label>Rozmiar ramy</label><input id="bk_frame_size"></div>
+      <div class="mf"><label>Kolor</label><input id="bk_color"></div>
+      <div class="mf"><label>Waga [kg]</label><input id="bk_weight_kg" type="number" step="0.01"></div>
+      <div class="mf"><label>Data zakupu</label><input id="bk_purchase_date" type="date"></div>
+      <div class="mf"><label>Cena [zł]</label><input id="bk_purchase_price" type="number" step="1"></div>
+      <div class="mf"><label>&nbsp;</label><label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="bk_active" style="height:auto;width:auto"> aktywny</label></div>
+      <div class="mf full"><label>Notatki</label><textarea id="bk_notes"></textarea></div>
+    </div>
+    <div class="mphoto">
+      <img id="bkThumb" class="mthumb" alt="" style="display:none">
+      <div class="mphoto-ctrl">
+        <label class="btn sec filelbl">Dodaj / zmień zdjęcie<input type="file" id="bkPhotoFile" accept="image/*" hidden></label>
+        <div style="display:flex;gap:6px"><input id="bkPhotoUrl" placeholder="albo wklej link do zdjęcia" style="flex:1;min-width:0;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit;font-size:13.5px"><button type="button" class="btn sec" id="bkPhotoFetch">Pobierz</button></div>
+        <button type="button" class="btn sec" id="bkPhotoDel" style="display:none">Usuń zdjęcie</button>
+        <div class="msg" id="bkPhotoStatus" style="font-size:12.5px;color:var(--muted)"></div>
+      </div>
+    </div>
+  </div>
+  <div class="mfoot">
+    <div class="msg" id="bkStatus"></div>
+    <button type="button" class="btn danger" id="bkDelete" style="display:none">Usuń</button>
+    <button type="button" class="btn sec" id="bkCancel">Anuluj</button>
+    <button type="button" class="btn" id="bkSave">Zapisz</button>
+  </div>
+</div>
+
+<div class="modal" id="tireModal">
+  <div class="modal-head">
+    <div class="t" id="tTitle">Dodaj oponę</div>
+    <button type="button" class="modal-x" id="tCancelX" aria-label="zamknij">&times;</button>
+  </div>
+  <div class="mbody" style="display:block">
+    <input type="hidden" id="t_id">
+    <div class="mgrid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+      <div class="mf"><label>Marka</label><input id="t_brand"></div>
+      <div class="mf"><label>Model</label><input id="t_model"></div>
+      <div class="mf"><label>Typ</label><input id="t_type" list="tireTypes" placeholder="np. gravel / mtb / szosa"><datalist id="tireTypes"><option value="gravel"><option value="mtb"><option value="szosa"></datalist></div>
+      <div class="mf"><label>Szerokość [mm]</label><input id="t_width_mm" type="number" step="1"></div>
+      <div class="mf"><label>Źródło szerokości</label><input id="t_width_src" placeholder="np. zmierzona / nominalna"></div>
+      <div class="mf"><label>Status</label><select id="t_status"></select></div>
+      <div class="mf" style="grid-column:span 2"><label>Koło</label><select id="t_wheel"></select></div>
+      <div class="mf"><label>Pozycja</label><select id="t_position"><option value="przód">przód</option><option value="tył">tył</option></select></div>
+      <div class="mf full"><label>Notatki</label><textarea id="t_notes"></textarea></div>
+    </div>
+    <div class="murlmsg" id="tHint" style="margin-top:10px"></div>
+  </div>
+  <div class="mfoot">
+    <div class="msg" id="tStatus"></div>
+    <button type="button" class="btn danger" id="tDelete" style="display:none">Usuń</button>
+    <button type="button" class="btn sec" id="tCancel">Anuluj</button>
+    <button type="button" class="btn" id="tSave">Zapisz</button>
+  </div>
+</div>
+
+<div class="modal" id="compModal">
+  <div class="modal-head">
+    <div class="t" id="cTitle">Dodaj komponent</div>
+    <button type="button" class="modal-x" id="cCancelX" aria-label="zamknij">&times;</button>
+  </div>
+  <div class="mbody">
+    <input type="hidden" id="c_id">
+    <div class="mmeta" id="cMeta"></div>
+    <div class="murl">
+      <input id="c_url" placeholder="adres WWW do części (wklej i zaciągnij)">
+      <button type="button" class="btn" id="cScrape">Zaciągnij dane</button>
+    </div>
+    <div class="murlmsg" id="cUrlStatus"></div>
+    <div class="mgrid">
+      <div class="mf"><label>Rower</label><select id="c_bike_id"></select></div>
+      <div class="mf" title="Kaseta, tarcze, wkładki: przypnij do koła — rower ustawi się sam wg kół"><label>Na kole</label><select id="c_wheel_id"></select></div>
+      <div class="mf" title="Tarcza / wkładka: przód czy tył. Kaseta zawsze tył."><label>Strona koła</label><select id="c_wheel_pos"><option value="">—</option><option>przód</option><option>tył</option></select></div>
+      <div class="mf"><label>Kategoria *</label><input id="c_category" list="compCats"><datalist id="compCats"></datalist></div>
+      <div class="mf"><label>Status</label><select id="c_status"></select></div>
+      <div class="mf"><label>Marka</label><input id="c_brand"></div>
+      <div class="mf"><label>Model</label><input id="c_model"></div>
+      <div class="mf"><label>Pozycja</label><select id="c_position"><option value="">— wybierz —</option><option>rama</option><option>napęd</option><option>koła</option><option>hamulce</option><option>kokpit</option><option>siedzenie</option><option>elektronika</option></select></div>
+      <div class="mf"><label>Waga [g]</label><input id="c_weight_g" type="number" step="1"></div>
+      <div class="mf"><label>Przebieg [km]</label><input id="c_mileage_km" type="number" step="1"></div>
+      <div class="mf"><label>Cena [zł]</label><input id="c_purchase_price" type="number" step="0.01"></div>
+      <div class="mf"><label>Nr seryjny</label><input id="c_serial_number"></div>
+      <div class="mf"><label>SKU</label><input id="c_sku"></div>
+      <div class="mf full"><label>Specyfikacja</label><input id="c_spec"></div>
+      <div class="mf full" id="c_dims_box" style="display:none"></div>
+      <div class="mf full"><label>Notatki</label><textarea id="c_notes"></textarea></div>
+    </div>
+    <div class="mphoto">
+      <img id="cThumb" class="mthumb" alt="" style="display:none">
+      <div class="mphoto-ctrl">
+        <label class="btn sec filelbl" id="cPhotoLbl">Dodaj / zmień zdjęcie<input type="file" id="cPhotoFile" accept="image/*" hidden></label>
+        <button type="button" class="btn sec" id="cPhotoDel" style="display:none">Usuń zdjęcie</button>
+        <div class="msg" id="cPhotoStatus" style="font-size:12.5px;color:var(--muted)"></div>
+      </div>
+    </div>
+  </div>
+  <div class="mfoot">
+    <div class="msg" id="cStatus"></div>
+    <button type="button" class="btn danger" id="cDelete" style="display:none">Usuń</button>
+    <button type="button" class="btn sec" id="cCancel">Anuluj</button>
+    <button type="button" class="btn" id="cSave">Zapisz</button>
+  </div>
+</div>
+
+<div class="modal" id="expedModal">
+  <div class="modal-head">
+    <div class="t" id="xTitle">Dodaj sprzęt wyprawowy</div>
+    <button type="button" class="modal-x" id="xCancelX" aria-label="zamknij">&times;</button>
+  </div>
+  <div class="mbody">
+    <input type="hidden" id="x_id">
+    <div class="mmeta" id="xMeta"></div>
+    <div class="murl">
+      <input id="x_url" placeholder="adres WWW do rzeczy (wklej i zaciągnij)">
+      <button type="button" class="btn" id="xScrape">Zaciągnij dane</button>
+    </div>
+    <div class="murlmsg" id="xUrlStatus"></div>
+    <div class="mgrid">
+      <div class="mf full"><label>Kategoria *</label><select id="x_category"></select></div>
+      <div class="mf"><label>Marka</label><input id="x_brand"></div>
+      <div class="mf"><label>Model / nazwa</label><input id="x_model"></div>
+      <div class="mf"><label>Rodzaj / rozmiar</label><input id="x_size"></div>
+      <div class="mf"><label>Kolor</label><input id="x_color"></div>
+      <div class="mf"><label>Waga [g]</label><input id="x_weight_g" type="number" step="1"></div>
+      <div class="mf"><label>Ilość szt.</label><input id="x_qty" type="number" step="1"></div>
+      <div class="mf"><label>Stan</label><select id="x_condition"></select></div>
+      <div class="mf"><label>Data zakupu</label><input id="x_purchase_date" type="date"></div>
+      <div class="mf"><label>Cena [zł]</label><input id="x_purchase_price" type="number" step="0.01"></div>
+      <div class="mf"><label>EAN</label><input id="x_ean" inputmode="numeric"></div>
+      <div class="mf"><label>SKU</label><input id="x_sku"></div>
+      <div class="mf full"><label>Notatki</label><textarea id="x_notes"></textarea></div>
+      <div class="mf full">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;color:var(--ink)">
+          <input type="checkbox" id="x_is_set" style="width:16px;height:16px;accent-color:var(--accent)">
+          To jest zestaw (apteczka / zestaw narzędzi) — wagę podaj dla całego zestawu
+        </label>
+      </div>
+      <div class="mf full" id="xSetWrap" style="display:none">
+        <div class="sechead">Skład zestawu</div>
+        <div id="xSetRows"></div>
+        <button type="button" class="btn sec" id="xSetAdd" style="margin-top:6px">+ dodaj pozycję</button>
+      </div>
+    </div>
+    <div class="mphoto">
+      <img id="xThumb" class="mthumb" alt="" style="display:none">
+      <div class="mphoto-ctrl">
+        <label class="btn sec filelbl" id="xPhotoLbl">Dodaj / zmień zdjęcie<input type="file" id="xPhotoFile" accept="image/*" hidden></label>
+        <button type="button" class="btn sec" id="xPhotoDel" style="display:none">Usuń zdjęcie</button>
+        <div class="msg" id="xPhotoStatus" style="font-size:12.5px;color:var(--muted)"></div>
+      </div>
+    </div>
+  </div>
+  <div class="mfoot">
+    <div class="msg" id="xStatus"></div>
+    <button type="button" class="btn danger" id="xDelete" style="display:none">Usuń</button>
+    <button type="button" class="btn sec" id="xCancel">Anuluj</button>
+    <button type="button" class="btn" id="xSave">Zapisz</button>
+  </div>
+</div>
+
+<div class="modal" id="instrModal">
+  <div class="modal-head">
+    <div class="t" id="iTitle">Dodaj instrukcj&#281;</div>
+    <button type="button" class="modal-x" id="iCancelX" aria-label="zamknij">&times;</button>
+  </div>
+  <div class="mbody">
+    <input type="hidden" id="i_id">
+    <div class="mmeta" id="iMeta"></div>
+    <div class="mf full" style="margin-bottom:10px">
+      <label>Tre&#347;&#263; instrukcji *</label>
+      <input id="i_text" placeholder="np. Przy deszczu zawsze zabieraj zapasowe skarpety">
+    </div>
+    <div class="mf full" style="margin-bottom:12px">
+      <label>Szczeg&#243;&#322;y (opcjonalnie)</label>
+      <textarea id="i_body" placeholder="dopowiedzenie, wyj&#261;tki, uzasadnienie&#8230;"></textarea>
+    </div>
+    <div class="mgrid">
+      <div class="mf qgrp"><span>Sezon</span><div class="qbtns" id="i_season"></div></div>
+      <div class="mf qgrp"><span>Pogoda</span><div class="qbtns" id="i_weather"></div></div>
+      <div class="mf qgrp"><span>Typ wyprawy</span><div class="qbtns" id="i_trip_type"></div></div>
+      <div class="mf qgrp"><span>Priorytet</span>
+        <div class="qbtns" id="i_priority">
+          <button type="button" data-v="1">1 &#8212; konieczne</button>
+          <button type="button" data-v="2">2 &#8212; wa&#380;ne</button>
+          <button type="button" data-v="3">3 &#8212; opcjonalne</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mfoot">
+    <div class="msg" id="iStatus"></div>
+    <button type="button" class="btn danger" id="iDelete" style="display:none">Usu&#324;</button>
+    <button type="button" class="btn sec" id="iCancel">Anuluj</button>
+    <button type="button" class="btn" id="iSave">Zapisz</button>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox"><img id="lightboxImg" alt=""></div>
+<script src="/garaz-columns.js?v=2"></script>
+<script src="/garaz-render.js?v=25"></script>
+<script src="/garaz-audyt.js?v=6"></script>
+<script src="/garaz-fit.js?v=8"></script>
+<script src="/garaz-tabs.js?v=25"></script>
+<script src="/garaz-instrukcje.js?v=2"></script>
+<script src="/nav.js?v=5"></script>
+<script>(function(){var b=document.getElementById("themebtn");if(!b)return;var SUN='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',MOON='<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';function paint(){b.querySelector("svg").innerHTML=document.documentElement.classList.contains("theme-dark")?SUN:MOON;}b.addEventListener("click",function(){var d=!document.documentElement.classList.contains("theme-dark");document.documentElement.classList.toggle("theme-dark",d);try{localStorage.setItem("qtheme",d?"dark":"light")}catch(e){}paint();});paint();})();</script>
+<script src="/garaz-exped.js?v=4"></script>
+<script src="/garaz-search.js?v=1"></script>
+</body>
+</html>

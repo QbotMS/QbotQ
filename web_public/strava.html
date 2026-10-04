@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<link rel="stylesheet" href="/ui2.css?v=10">
+<link rel="stylesheet" href="/nav.css?v=4">
+<title>QBot — Strava</title>
+<style>
+.st-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0}
+.st-row input{flex:1;min-width:220px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--well);color:var(--ink);font:inherit}
+.st-btn{appearance:none;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:10px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer}
+.st-btn.sec{background:transparent;color:var(--accent-ink)}
+.st-btn[disabled]{opacity:.45;cursor:default}
+.st-step{display:flex;gap:10px;align-items:flex-start;margin:10px 0}
+.st-step .n{flex:0 0 28px;height:28px;border-radius:50%;background:var(--well);display:flex;align-items:center;justify-content:center;font-weight:700}
+.st-step.ok .n{background:var(--good-bg);color:var(--good)}
+.st-msg{font-size:13.5px;margin-top:6px}
+.st-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:10px}
+.st-grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;display:block}
+code{background:var(--well);padding:1px 6px;border-radius:6px}
+</style>
+</head>
+<body><div class="wrap">
+<div class="head"><h1>Połączenie ze Stravą</h1></div>
+<div class="stack">
+
+<div class="card">
+  <div class="st-step" id="s1"><span class="n">1</span><div>
+    <b>Załóż aplikację API na Stravie</b> (raz): <a class="link" href="https://www.strava.com/settings/api" target="_blank" rel="noopener">strava.com/settings/api</a><br>
+    <span class="sub">Application Name: <code>QBot</code> · Category: <code>Visualizer</code> · Website: <code>https://albert.cytr.us</code> ·
+    <b>Authorization Callback Domain: <code id="cbdom">albert.cytr.us</code></b> · ikonka: dowolny obrazek.</span>
+  </div></div>
+  <div class="st-step" id="s2"><span class="n">2</span><div style="flex:1">
+    <b>Wklej tutaj Client ID i Client Secret</b> z tej strony Stravy (zostają na serwerze QBota, nie wysyłaj ich nikomu):
+    <div class="st-row"><input id="cid" inputmode="numeric" placeholder="Client ID (liczba)"><input id="sec" type="password" placeholder="Client Secret" autocomplete="off"><button class="st-btn" id="save">Zapisz</button></div>
+    <div class="st-msg" id="m2"></div>
+  </div></div>
+  <div class="st-step" id="s3"><span class="n">3</span><div>
+    <b>Połącz</b> — na Stravie <b>zaznacz „View data about your private activities”</b> i kliknij Authorize.
+    <div class="st-row"><button class="st-btn" id="conn" disabled>Połącz ze Stravą</button></div>
+    <div class="st-msg" id="m3"></div>
+  </div></div>
+  <div class="st-step" id="s4"><span class="n">4</span><div style="flex:1">
+    <b>Pobierz zdjęcia</b> — za pierwszym razem ok. <b>40 najlepszych</b> z wyjazdów i długich jazd (od 1.01.2025, po 2 z jazdy, po kolei z każdego regionu); każde kolejne kliknięcie dokłada <b>2–3 zdjęcia z nowych jazd</b>.
+    <div class="st-row"><a class="st-btn" href="/zdjecia.html" style="text-decoration:none">Wybierz zdjęcia (kalibracja gustu) →</a><button class="st-btn sec" id="sync" disabled>Dociągnij 2–3 z nowych jazd</button></div>
+    <div class="st-msg" id="m4"></div>
+  </div></div>
+</div>
+
+<div class="card" id="prev" style="display:none"><p class="lbl">Ostatnie zdjęcia z jazd</p><div class="st-grid" id="grid"></div></div>
+</div></div>
+<script src="/nav.js?v=5"></script>
+<script>
+(function(){
+function $(i){return document.getElementById(i);}
+function j(u,o){return fetch(u,Object.assign({credentials:"same-origin",cache:"no-store"},o||{})).then(function(r){return r.json().then(function(x){if(!r.ok)throw new Error(x.detail||("HTTP "+r.status));return x;});});}
+var poll=null;
+function load(){j("/api/strava/status").then(function(s){
+  $("cbdom").textContent=s.callback_domain||"albert.cytr.us";
+  $("s2").classList.toggle("ok",s.configured);if(s.configured&&s.client_id)$("cid").value=s.client_id;
+  $("conn").disabled=!s.configured;$("s3").classList.toggle("ok",s.connected);
+  $("m3").textContent=s.connected?("Połączono: "+(s.athlete||"")+" ("+(s.scope||"")+")"):"";
+  $("sync").disabled=!s.connected||s.sync.running;
+  var y=s.sync||{};
+  $("m4").textContent=(s.activities?("aktywności: "+s.activities+" · z zdjęciami: "+s.with_photos+" · pobrane zdjęcia: "+s.photos):"")+
+    (y.running?(" · trwa: "+y.phase+" ("+y.done+" akt., "+y.photos+" zdj.)"):"")+(y.note&&!y.running?" · "+y.note:"")+(y.error?" · BŁĄD: "+y.error:"");
+  $("s4").classList.toggle("ok",s.photos>0);
+  if(y.running&&!poll)poll=setInterval(load,4000);if(!y.running&&poll){clearInterval(poll);poll=null;}
+  if(s.photos)j("/api/strava/photos?limit=24").then(function(p){$("prev").style.display="";$("grid").innerHTML=p.photos.map(function(x){return '<img loading="lazy" src="'+x.url+'" title="'+(x.day+" · "+(x.activity||"")).replace(/"/g,"")+'">';}).join("");});
+}).catch(function(e){$("m2").textContent="Błąd: "+e.message;});}
+$("save").onclick=function(){j("/api/strava/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({client_id:$("cid").value,client_secret:$("sec").value})}).then(function(){$("sec").value="";$("m2").textContent="Zapisane.";load();}).catch(function(e){$("m2").textContent="Nie zapisano: "+e.message;});};
+$("conn").onclick=function(){location.href="/api/strava/connect";};
+$("sync").onclick=function(){$("sync").disabled=true;j("/api/strava/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}).then(load).catch(function(e){$("m4").textContent="Błąd: "+e.message;});};
+var q=new URLSearchParams(location.search);if(q.get("ok"))$("m3").textContent="Połączono ze Stravą.";if(q.get("err"))$("m3").textContent="Nie udało się: "+q.get("err");
+load();
+})();
+</script>
+</body>
+</html>

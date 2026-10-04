@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1"><link rel="alternate icon" href="/favicon.ico?v=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/theme.css?v=3">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<title>QBot — Analiza Trasy</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/raport.css?v=2026073001">
+<link rel="stylesheet" href="/aside.css?v=2026072112">
+<link rel="stylesheet" href="/raport-v2.css?v=3">
+<link rel="stylesheet" href="/raport-trasy2.css?v=8">
+</head>
+<body>
+<div class="qhead">
+  <div class="qhead-row">
+    <span class="qh-title">Analiza trasy</span>
+    <button type="button" class="qh-btn" id="gen-toggle">Parametry ▾</button>
+    <div class="rtabs" id="rtabs">
+      <button type="button" class="rtab active" data-rtab="mapa">Mapa · wykres · alerty</button>
+      <button type="button" class="rtab" data-rtab="szczegoly">Szczegóły trasy</button>
+    </div>
+    <div class="qh-right"><div class="hist-bar" id="f-history"></div></div>
+  </div>
+  <div class="gen-wrap" id="gen-wrap">
+  <div class="row">
+    <div class="fld route"><label>Trasa</label><select id="f-route"><option value="">ładowanie…</option></select></div>
+    <div class="fld"><label>Data startu</label><input type="date" id="f-date"></div>
+    <div class="fld"><label>Godzina</label><input type="time" id="f-time" value="10:00"></div>
+    <div class="fld"><label>Długie przerwy</label><input type="number" id="f-nlong" min="0" max="12" step="1" value="0" style="width:62px"></div>
+    <div class="fld"><label>Czas 1 przerwy</label><select id="f-longmin">
+      <option value="15">15 min</option><option value="20">20 min</option>
+      <option value="30" selected>30 min</option><option value="45">45 min</option>
+      <option value="60">60 min</option></select></div>
+    <button class="btn" id="f-go">Generuj</button>
+  </div>
+  </div>
+</div>
+<div class="status" id="f-status"></div>
+<div class="wrap">
+  <div class="empty" id="f-empty">Wybierz trasę i parametry startu, następnie kliknij <b>Generuj</b>.</div>
+  <div id="report"></div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/raport-render.js?v=2026092502"></script>
+<script src="/raport-pogoda-viz.js?v=3"></script>
+<script>
+(function(){
+  const sel=document.getElementById("f-route");
+  const dEl=document.getElementById("f-date");
+  const tEl=document.getElementById("f-time");
+  const nlongEl=document.getElementById("f-nlong");
+  const lminEl=document.getElementById("f-longmin");
+  const tmr=new Date(Date.now()+86400000);
+  dEl.value=tmr.getFullYear()+"-"+String(tmr.getMonth()+1).padStart(2,"0")+"-"+String(tmr.getDate()).padStart(2,"0");
+  const go=document.getElementById("f-go"),st=document.getElementById("f-status"),mount=document.getElementById("report"),empty=document.getElementById("f-empty"),hist=document.getElementById("f-history");
+  const LS_KEY="qbot_report_last_route";
+  function setErr(m){st.textContent=m;st.classList.add("err");}
+  function clrErr(){st.classList.remove("err");}
+  function fmtChip(it){
+    const parts=(it.created_at||"").split(" ");
+    const dp=(parts[0]||"").split("-");
+    return (dp[2]&&dp[1]?dp[2]+"."+dp[1]:"")+" "+(parts[1]||"");
+  }
+  function loadSnapshot(id){
+    clrErr();st.textContent="Wczytuję zapisany raport…";empty.style.display="none";mount.innerHTML="";
+    fetch("/api/report/snapshot/"+id).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(t||("HTTP "+r.status)))).then(data=>{
+      st.textContent="";window.renderReport(data,mount);
+      hist.querySelectorAll(".hist-chip").forEach(b=>b.classList.toggle("active",b.dataset.id===String(id)));
+    }).catch(err=>{setErr("Nie udało się wczytać zapisanego raportu: "+err);empty.style.display="block";});
+  }
+  function refreshHistory(rid,autoload){
+    return fetch("/api/report/history?route_id="+encodeURIComponent(rid)).then(r=>r.json()).then(d=>{
+      const items=d.items||[];
+      if(!items.length){hist.style.display="none";hist.innerHTML="";return items;}
+      hist.style.display="flex";
+      hist.innerHTML='<span class="hist-label">Historia</span>'+items.map(it=>
+        `<button type="button" class="hist-chip" data-id="${it.id}">${fmtChip(it)}</button>`).join("");
+      hist.querySelectorAll(".hist-chip").forEach(b=>b.addEventListener("click",()=>loadSnapshot(b.dataset.id)));
+      if(autoload){
+        const it=items[0];
+        dEl.value=it.report_date;tEl.value=it.start_time;
+        nlongEl.value=it.long_stops;lminEl.value=it.long_stop_min;
+        loadSnapshot(it.id);
+      }
+      return items;
+    }).catch(()=>{hist.style.display="none";hist.innerHTML="";return [];});
+  }
+  fetch("/api/routes/ready").then(r=>r.json()).then(d=>{
+    const rs=(d.routes||[]);
+    if(!rs.length){sel.innerHTML='<option value="">brak gotowych tras</option>';return;}
+    sel.innerHTML=rs.map(r=>`<option value="${r.route_id}">${r.name} — ${String(r.distance_km).replace(".",",")} km</option>`).join("");
+    const want=new URLSearchParams(location.search).get("route");
+    const last=localStorage.getItem(LS_KEY);
+    const pick=(want&&rs.some(r=>String(r.route_id)===String(want)))?String(want):((last&&rs.some(r=>String(r.route_id)===last))?last:null);
+    if(pick){
+      sel.value=pick;
+      refreshHistory(pick,true);
+    }
+  }).catch(()=>{sel.innerHTML='<option value="">błąd listy tras</option>';});
+  sel.addEventListener("change",function(){
+    const rid=sel.value;
+    if(!rid){hist.style.display="none";hist.innerHTML="";return;}
+    localStorage.setItem(LS_KEY,rid);
+    refreshHistory(rid,true);
+  });
+  go.addEventListener("click",function(){
+    const rid=sel.value; clrErr();
+    if(!rid){setErr("Wybierz trasę.");return;}
+    const date=dEl.value,time=tEl.value||"10:00";
+    const nlong=parseInt(nlongEl.value||"0",10)||0;
+    const lmin=parseInt(lminEl.value||"0",10)||0;
+    go.disabled=true;st.textContent="Generuję raport…";empty.style.display="none";mount.innerHTML="";
+    const u="/api/report/data?route_id="+encodeURIComponent(rid)+"&date="+encodeURIComponent(date)+"&time="+encodeURIComponent(time)+"&long_stops="+nlong+"&long_stop_min="+lmin;
+    fetch(u).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(t||("HTTP "+r.status)))).then(data=>{
+      st.textContent="";window.renderReport(data,mount);
+      localStorage.setItem(LS_KEY,rid);
+      refreshHistory(rid,false);
+    }).catch(err=>{setErr("Nie udało się wygenerować raportu: "+err);empty.style.display="block";}).finally(()=>{go.disabled=false;});
+  });
+})();
+</script>
+<script>
+(function(){
+  var gt=document.getElementById("gen-toggle"), gw=document.getElementById("gen-wrap");
+  function setGen(open){ if(!gw||!gt)return; gw.classList.toggle("collapsed",!open); gt.textContent=open?"Parametry ▴":"Parametry ▾"; }
+  if(gt&&gw){ gt.addEventListener("click",function(){ setGen(gw.classList.contains("collapsed")); }); }
+  var rep=document.getElementById("report");
+  function activeTab(){ var a=document.querySelector(".rtab.active"); return a?a.getAttribute("data-rtab"):"mapa"; }
+  function sizeSzczegoly(){
+    // Zakladka szczegolow przewija sie razem ze strona (bez blokady scrolla).
+    var panel=rep&&rep.querySelector('.r-tabpanel[data-rtab="szczegoly"]');
+    document.body.classList.remove("rtab-szczegoly");
+    if(panel){ panel.style.height=""; }
+  }
+  function sizeMapa(){
+    var panel=rep&&rep.querySelector('.r-tabpanel[data-rtab="mapa"]');
+    if(!panel){ document.body.classList.remove("rtab-mapa"); return; }
+    if(activeTab()==="mapa" && !panel.hidden){
+      document.body.classList.add("rtab-mapa");
+      var top=panel.getBoundingClientRect().top;
+      var _tb=rep.querySelector("#r-topbar");
+      var _hd=rep.querySelector("header"), _cw=panel.querySelector(".chartwrap");
+      var _tbb=_tb?Math.round(_tb.getBoundingClientRect().bottom):56;
+      if(_hd){ _hd.style.top=(_tbb+10)+"px"; if(_cw){ _hd.style.bottom=Math.round(window.innerHeight-_cw.getBoundingClientRect().top+8)+"px"; } }
+      var _mc=panel.querySelector(".map-ctl"); if(_mc&&_cw){ _mc.style.bottom=Math.round(window.innerHeight-_cw.getBoundingClientRect().top+8)+"px"; _mc.style.top="auto"; }
+      panel.style.height="";
+      if(window._qmap){ setTimeout(function(){ try{ window._qmap.invalidateSize(); }catch(e){} },0); }
+    } else {
+      document.body.classList.remove("rtab-mapa");
+      panel.style.height="";
+      var _hd2=rep&&rep.querySelector("header"); if(_hd2){ _hd2.style.bottom="";_hd2.style.top=""; }
+      var _mw2=panel.querySelector(".mapwrap"); if(_mw2){ _mw2.style.top=""; }
+      var _tb2=rep&&rep.querySelector("#r-topbar"); if(_tb2){ _tb2.style.top=""; }
+      var _mc2=panel.querySelector(".map-ctl"); if(_mc2){ _mc2.style.bottom=""; _mc2.style.top=""; }
+    }
+  }
+  function applyRTab(){
+    var id=activeTab(), panels=rep.querySelectorAll(".r-tabpanel"), i;
+    for(i=0;i<panels.length;i++){ panels[i].hidden=(panels[i].getAttribute("data-rtab")!==id); }
+    sizeMapa();
+    if(id==="mapa"){ setTimeout(function(){ try{ window.dispatchEvent(new Event("resize")); }catch(e){} },60); }
+    sizeSzczegoly();
+  }
+  window.__applyRTab=applyRTab;
+  document.addEventListener("click",function(e){
+    var t=e.target, tab=t.closest&&t.closest(".qaside-tab");
+    if(tab){
+      var qa=tab.getAttribute("data-qa")||"legenda";
+      var as=document.getElementById("report-aside");
+      if(as){ as.setAttribute("data-sec",qa); var ti=document.getElementById("qaside-title"); if(ti) ti.textContent=(qa==="alerty"?"Alerty dla trasy":"Legenda"); }
+      document.body.classList.add("qaside-open");
+    } else if((t.closest&&t.closest(".qaside"))||(t.classList&&t.classList.contains("qaside-backdrop"))){ document.body.classList.remove("qaside-open"); }
+  });
+  window.addEventListener("resize",function(){ sizeMapa(); sizeSzczegoly(); });
+  if(gt){ gt.addEventListener("click",function(){ setTimeout(function(){ sizeMapa(); sizeSzczegoly(); },0); }); }
+  var tabs=[].slice.call(document.querySelectorAll(".rtab"));
+  tabs.forEach(function(b){ b.addEventListener("click",function(){ tabs.forEach(function(x){x.classList.toggle("active",x===b);}); applyRTab(); }); });
+  if(rep){ var mo=new MutationObserver(function(){ if(rep.querySelector(".r-tabpanel")){ applyRTab(); setGen(false); } }); mo.observe(rep,{childList:true}); }
+  // odporne przeliczanie ukladu mapy (font/wrap/qhead) - kafel zawsze pod paskiem, bez przerwy
+  try{ if(window.ResizeObserver){ var _ro=new ResizeObserver(function(){ sizeMapa(); }); var _qh=document.querySelector(".qhead"); if(_qh)_ro.observe(_qh); if(rep)_ro.observe(rep); } }catch(e){}
+  try{ if(document.fonts&&document.fonts.ready){ document.fonts.ready.then(function(){ sizeMapa(); }); } }catch(e){}
+  window.addEventListener("load",function(){ sizeMapa(); });
+  setTimeout(function(){ sizeMapa(); },200); setTimeout(function(){ sizeMapa(); },600);
+})();
+</script>
+<script>
+window.QThemeEdit={storeKey:"qraportedit",title:"Kolory — Raport trasy",items:[
+ {label:"Tło strony","var":"--paper",def:"#f2ecdd",sel:"body"},
+ {label:"Karta / kafel","var":"--card",def:"#fbf7ec",sel:".hero .m"},
+ {label:"Panel / belka","var":"--panel",def:"#eae0cc",sel:".qhead"},
+ {label:"Linie","var":"--line",def:"#dcd0ba"},
+ {label:"Tekst","var":"--ink",def:"#26332a"},
+ {label:"Tekst 2","var":"--ink2",def:"#47564a"},
+ {label:"Wyciszony","var":"--muted",def:"#8c8168"},
+ {label:"Akcent","var":"--accent",def:"#3c6b47",sel:".rtab.active"},
+ {label:"Akcent tło","var":"--accent-bg",def:"#e0ebdf",sel:".startband"},
+ {label:"Alert dobry","var":"--good",def:"#3f7a4d"},
+ {label:"Alert zły","var":"--bad",def:"#a6503d"}
+]};
+</script>
+<!-- Kolory (theme-editor) wylaczone na raporcie -->
+<script>
+/* MOBILE v1 analiza trasy: przycisk rozwijania podsumowania + wysokosc wykresu do CSS (--mk-chart-h) */
+(function(){
+  var rep=document.getElementById("report"), obs=null;
+  function chartH(){ var cw=rep&&rep.querySelector(".chartwrap"); var h=0;
+    if(cw&&getComputedStyle(cw).display!=="none"){ h=Math.round(cw.getBoundingClientRect().height); }
+    document.body.style.setProperty("--mk-chart-h",h+"px"); }
+  function ensure(){ var hd=rep&&rep.querySelector("header");
+    if(hd&&!document.getElementById("mk-hexp-btn")){ var b=document.createElement("button"); b.type="button"; b.id="mk-hexp-btn";
+      b.textContent=document.body.classList.contains("mk-hexp")?"\u25BE zwi\u0144":"\u25B4 wi\u0119cej"; hd.insertBefore(b,hd.firstChild); }
+    var cw=rep&&rep.querySelector(".chartwrap");
+    try{ if(cw&&window.ResizeObserver&&(!obs||obs._el!==cw)){ if(obs)obs.disconnect(); obs=new ResizeObserver(chartH); obs._el=cw; obs.observe(cw); } }catch(e){}
+    chartH(); }
+  document.addEventListener("click",function(e){ var b=e.target.closest&&e.target.closest("#mk-hexp-btn"); if(!b)return;
+    var on=document.body.classList.toggle("mk-hexp"); b.textContent=on?"\u25BE zwi\u0144":"\u25B4 wi\u0119cej"; });
+  if(rep){ new MutationObserver(ensure).observe(rep,{childList:true}); }
+  window.addEventListener("resize",chartH);
+  setTimeout(ensure,800); setTimeout(ensure,2500); setTimeout(ensure,6000);
+})();
+</script>
+<link rel="stylesheet" href="/nav.css?v=4">
+<script src="/nav.js?v=5"></script>
+<script src="/raport-trasy2.js?v=8"></script>
+<script src="/raport-trasy2-plan.js?v=12"></script>
+<script src="/raport-trasy-m.js?v=8"></script>
+</body>
+</html>

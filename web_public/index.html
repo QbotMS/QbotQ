@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
+<title>QBot — Dalej niż mapa</title>
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<link rel="stylesheet" href="/nav.css?v=4">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* START v2 (2026-09-28): kompaktowy - jeden ekran + krotko w dol. Zdjecia TYLKO z biezacego roku. Dane: /api/start/card */
+:root{--bg:#f8f4ec;--card:#fffdf8;--well:#efe8da;--ink:#2a241c;--ink2:#6f6455;--mut:#9a9184;--line:#e6dfd0;--line2:#d3c9b5;--acc:#e8742a;--acc-ink:#b3520f;--acc-bg:#fbe5d0;--good:#4f7a2a;--photo-ink:#f5f1ea;--photo-ink2:#e4dfd4;
+  --disp:'Big Shoulders Display',Impact,'Arial Narrow',sans-serif;--body:'Hanken Grotesk','Helvetica Neue',Arial,sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html.theme-dark{--bg:#1a1f27;--card:#0d1016;--well:#1f2631;--ink:#f3efe8;--ink2:#b9c0cc;--mut:#8792a4;--line:#5a3a20;--line2:#7a5030;--acc:#e8742a;--acc-ink:#ff9c55;--acc-bg:#4a2a0a;--good:#b7d38a}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px);background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
+a{color:var(--acc-ink);text-decoration:none}a:hover{text-decoration:underline}
+img{display:block;max-width:100%}
+.wrap{max-width:1240px;margin:0 auto;padding:0 clamp(16px,3vw,32px)}
+.lbl{font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut)}
+h2{margin:0;font-family:var(--disp);font-weight:800;font-size:28px;line-height:1;text-transform:uppercase;letter-spacing:.01em}
+/* gora */
+.top{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 0}
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}.brand b{font-family:var(--disp);font-weight:800;font-size:24px;letter-spacing:.03em}
+.nav{display:flex;gap:2px;flex-wrap:wrap}.nav a{display:flex;align-items:center;min-height:40px;padding:0 12px;border-radius:20px;color:var(--ink2);font-size:14.5px}
+.nav a:hover{background:rgba(241,237,228,.08);color:var(--ink);text-decoration:none}
+/* hero */
+.hero{position:relative;height:clamp(340px,52vh,520px);border-radius:22px;overflow:hidden;background:#20242a}
+.slide{position:absolute;inset:0;opacity:0;transition:opacity .9s ease}.slide.on{opacity:1}
+.slide img{width:100%;height:100%;object-fit:cover}
+.slide.por img{object-fit:contain;background:#15181c}   /* pionowe zdjecie nowej jazdy - bez rozciagania */
+.slide.on img{animation:kb 5s ease-out both}@keyframes kb{from{transform:scale(1)}to{transform:scale(1.06)}}
+.hero::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(14,16,15,.88) 0%,rgba(14,16,15,.55) 38%,rgba(14,16,15,0) 70%);pointer-events:none}
+.hin{position:absolute;inset:0;z-index:2;color:var(--photo-ink);display:flex;flex-direction:column;justify-content:space-between;padding:clamp(20px,3vw,36px)}
+.h1{margin:0;font-family:var(--disp);font-weight:800;font-size:clamp(48px,6.4vw,84px);line-height:.9;text-transform:uppercase}
+.h1 span{color:var(--acc)}
+.intro{margin:12px 0 0;max-width:430px;font-size:16.5px;line-height:1.5;color:var(--photo-ink2)}
+.cap{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.cap .t{display:flex;flex-direction:column;gap:2px;max-width:560px}
+.cap .t a{color:var(--photo-ink);font-weight:600;font-size:16px}
+.cap .t span{font-size:13.5px;color:var(--photo-ink2)}
+.bars{display:flex;gap:4px;flex-wrap:wrap;max-width:420px}
+.bars button{width:28px;height:32px;padding:0;border:0;background:none;cursor:pointer;display:flex;align-items:center}
+.bars span{position:relative;display:block;width:100%;height:3px;border-radius:2px;background:rgba(241,237,228,.28);overflow:hidden}
+.bars span i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--acc)}
+.bars .past i{width:100%;background:var(--photo-ink)}.bars .on i{animation:bar 4s linear forwards}@keyframes bar{to{width:100%}}
+.rise{opacity:0;animation:rise .8s cubic-bezier(.2,.7,.2,1) forwards}@keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+/* sezon: kolaz + mapa */
+.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,400px);gap:16px;margin-top:16px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px}
+.ph{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:12px}
+.gal{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:150px;gap:10px}
+.card{position:relative;overflow:hidden;border-radius:14px;background:var(--well);display:flex;align-items:flex-end;color:var(--photo-ink)}
+.card:first-child{grid-column:span 2;grid-row:span 2}
+.card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .9s cubic-bezier(.2,.7,.2,1)}
+.card:hover img{transform:scale(1.05)}.card:hover{text-decoration:none}
+.card::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0) 40%,rgba(0,0,0,.78) 100%)}
+.card .lab{position:relative;z-index:1;padding:10px 12px;display:flex;flex-direction:column;gap:1px}
+.card .lab b{font-weight:600;font-size:14px;line-height:1.25;text-shadow:0 1px 4px rgba(0,0,0,.5)}
+.card:first-child .lab b{font-size:17px}
+.card .lab span{font-size:12px;color:#e2ded4}
+.map svg{width:100%;height:auto;display:block}
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.facts div{background:var(--well);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.facts b{font-family:var(--disp);font-weight:800;font-size:26px;line-height:1}
+.draw{stroke-dasharray:1000;stroke-dashoffset:1000;animation:draw 2.2s cubic-bezier(.4,.1,.2,1) forwards}@keyframes draw{to{stroke-dashoffset:0}}
+.pulse{transform-box:fill-box;transform-origin:center;animation:pulse 2.8s ease-in-out infinite}@keyframes pulse{0%,100%{transform:scale(1);opacity:.3}50%{transform:scale(1.8);opacity:0}}
+/* horyzont */
+.hz{display:grid;grid-template-columns:minmax(0,300px) repeat(2,minmax(0,1fr));gap:16px;margin-top:16px}
+.next{display:flex;flex-direction:column;justify-content:space-between;gap:10px}
+.next .n{font-family:var(--disp);font-weight:800;font-size:64px;line-height:.9;color:var(--acc-ink)}
+.goal{position:relative;overflow:hidden;border-radius:20px;min-height:190px;display:flex;flex-direction:column;justify-content:flex-end;color:var(--photo-ink);background:var(--well)}
+.goal img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:saturate(.7) brightness(.7)}
+.goal::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.1),rgba(0,0,0,.72))}
+.goal .in{position:relative;z-index:1;padding:16px 18px;display:flex;flex-direction:column;gap:4px}
+.goal .in b{font-family:var(--disp);font-weight:800;font-size:34px;line-height:.95;text-transform:uppercase}
+.goal:hover{text-decoration:none}
+.badge{position:absolute;z-index:1;top:14px;right:14px;height:26px;padding:0 10px;border-radius:13px;background:var(--acc);color:#1b1407;font-family:var(--mono);font-size:11px;display:flex;align-items:center}
+.chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.chips span{display:flex;align-items:center;min-height:32px;padding:0 12px;border:1px solid var(--line);border-radius:16px;font-size:13px;color:var(--ink2)}
+footer{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:22px 0 28px;color:var(--mut);font-size:13px}
+
+/* wyprawy sezonu + panel */
+.card .lab small{font-size:12px;color:#e2ded4}
+dialog.trip{border:0;padding:0;border-radius:22px;background:var(--card);color:var(--ink);width:min(760px,94vw);max-height:90vh;overflow:auto;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+dialog.trip::backdrop{background:rgba(5,6,6,.72)}
+.tp-strip{display:grid;grid-template-columns:2fr 1fr 1fr;gap:6px;height:230px}
+.tp-strip img{width:100%;height:100%;object-fit:cover;display:block}
+.tp-strip img:first-child{grid-row:span 2}.tp-strip.one{grid-template-columns:1fr}
+.tp-body{padding:20px 24px 24px;display:flex;flex-direction:column;gap:14px}
+.tp-body h3{margin:0;font-family:var(--disp);font-weight:800;font-size:40px;line-height:.95;text-transform:uppercase}
+.tp-story{font-size:16px;line-height:1.6;color:var(--ink2);white-space:pre-line}
+.tp-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
+.tp-facts div{background:var(--well);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.tp-facts b{font-family:var(--disp);font-weight:800;font-size:26px;line-height:1}
+.tp-st{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.tp-st a{display:grid;grid-template-columns:70px 1fr auto;gap:10px;padding:9px 2px;border-bottom:1px solid var(--line);color:var(--ink);font-size:14px}
+.tp-st a:hover{background:var(--well);text-decoration:none}
+.tp-x{position:sticky;top:10px;float:right;margin:10px 10px -54px 0;z-index:2;width:44px;height:44px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;font-size:22px;cursor:pointer}
+.tp-edit{appearance:none;border:1px solid var(--line);background:none;color:var(--ink2);border-radius:10px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
+.tp-ta{width:100%;min-height:120px;background:var(--well);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:10px;font:inherit;font-size:15px;line-height:1.5}
+@media(max-width:980px){.row{grid-template-columns:1fr}.hz{grid-template-columns:1fr 1fr}.next{grid-column:span 2}}
+@media(max-width:640px){.nav{display:none}.gal{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:130px}.hz{grid-template-columns:1fr}.next{grid-column:auto}.hero::after{background:linear-gradient(180deg,rgba(14,16,15,.35),rgba(14,16,15,.9))}}
+@media (prefers-reduced-motion: reduce){.slide.on img,.rise,.bars .on i,.draw,.pulse{animation:none!important;opacity:1!important;stroke-dashoffset:0!important}.card img{transition:none}.bars .on i{width:100%}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div style="height:18px"></div>
+  <header class="hero" aria-label="Zdjęcia z jazd">
+    <div id="slides"></div>
+    <div class="hin">
+      <div class="rise">
+        <span class="lbl" style="color:#ffb27a">Michał · gravel &amp; bikepacking · Warszawa</span>
+        <h1 class="h1" style="margin-top:8px">Dalej <span>niż mapa.</span></h1>
+        <p class="intro" id="intro">Jeżdżę tam, gdzie kończy się asfalt.</p>
+      </div>
+      <div class="cap">
+        <div class="t"><span id="capNew" hidden style="align-self:flex-start;margin-bottom:6px;padding:3px 10px;border-radius:12px;background:var(--acc);color:#fff;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase"></span><a id="capT" href="#">—</a><span id="capM"></span></div>
+        <div class="bars" id="bars"></div>
+      </div>
+    </div>
+  </header>
+
+  <section class="row" aria-label="Sezon">
+    <div class="panel">
+      <div class="ph"><h2>Wyprawy sezonu <span id="yr1" style="color:var(--mut)"></span></h2><span class="lbl">kliknij, aby poznać</span></div>
+      <div class="gal" id="gal"></div>
+    </div>
+    <div class="panel map">
+      <div class="ph"><h2>Gdzie byłem</h2><span class="lbl" id="yr2"></span></div>
+      <div id="mapBox"></div>
+      <div class="facts" id="facts"></div>
+    </div>
+  </section>
+
+  <section class="hz" aria-label="Na horyzoncie">
+    <a class="panel next" id="next" href="/kalendarz.html" style="color:var(--ink)">
+      <span class="lbl">Najbliższa wyprawa</span>
+      <span><span class="n" id="nextN">—</span> <span style="font-size:15px;color:var(--ink2)">dni</span></span>
+      <span style="display:flex;flex-direction:column;gap:2px"><b id="nextT" style="font-size:17px"></b><span id="nextD" style="font-size:13px;color:var(--ink2)"></span></span>
+    </a>
+    <div id="goalA1" style="display:contents"></div>
+  </section>
+  <div class="chips" id="chips"></div>
+
+  <dialog class="trip" id="trip" aria-labelledby="tpH"><button class="tp-x" type="button" id="tpX" aria-label="Zamknij">×</button><div id="tpC"></div></dialog>
+
+  <footer><span>QBot · osobista analityka jazd</span><span><a href="/forma.html">Forma dziś</a> · <a href="/trener.html">Plan tygodnia</a></span></footer>
+</div>
+
+<script src="/nav.js?v=5"></script>
+<script>
+(function(){
+"use strict";
+var MON=["stycznia","lutego","marca","kwietnia","maja","czerwca","lipca","sierpnia","września","października","listopada","grudnia"];
+var MN=["styczeń","luty","marzec","kwiecień","maj","czerwiec","lipiec","sierpień","wrzesień","październik","listopad","grudzień"];
+function $(i){return document.getElementById(i);}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),x=a[i];a[i]=a[j];a[j]=x;}return a;}
+function dm(s){if(!s)return "";var d=new Date(s+"T12:00:00");return d.getDate()+" "+MON[d.getMonth()];}
+function days(s){var t=new Date();t.setHours(0,0,0,0);return Math.max(0,Math.round((new Date(s+"T00:00:00")-t)/864e5));}
+function pl(n,a,b,c){n=Math.abs(n);return n===1?a:((n%10>=2&&n%10<=4&&(n%100<12||n%100>14))?b:c);}
+function clean(t){return String(t||"").replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F1E6}-\u{1F1FF}\uFE0F]/gu,"").replace(/\s+/g," ").trim();}
+function rep(p){return "/raport-jazdy.html"+(p.ride_key?"?ride="+encodeURIComponent(p.ride_key):"");}
+function pick(a){return a[Math.floor(Math.random()*a.length)];}
+function meta(p){return [dm(p.day),p.km?p.km+" km":"",p.region||""].filter(Boolean).join(" · ");}
+
+fetch("/api/start/card",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw new Error(r.status);return r.json();}).then(render)
+  .catch(function(e){$("capM").textContent="Nie udało się wczytać danych ("+e.message+")";});
+
+function render(D){
+  var Y=String(D.year);
+  var yearPh=(D.photos||[]).filter(function(p){return String(p.day).slice(0,4)===Y;});   /* TYLKO biezacy rok */
+  var by={},acts=[];yearPh.forEach(function(p){if(!by[p.strava_id]){by[p.strava_id]=[];acts.push(by[p.strava_id]);}by[p.strava_id].push(p);});
+  acts=shuffle(acts);
+  /* pokaz: TYLKO poziome i co najmniej 1600 px szerokosci (pionowe rozciagniete na szeroki pas = rozmazane) */
+  var land=function(p){return p.width>=1600&&p.width>=p.height*1.2;};
+  /* hero: 5 jazd */
+  var HN=12,first=[],more=[];
+  /* 2026-09-28: NOWA JAZDA - przez 7 dni jej 1-3 zdjecia zawsze otwieraja karuzele (etykieta "Nowa jazda"), potem zwykla mieszanka */
+  var lim=new Date();lim.setHours(0,0,0,0);lim.setDate(lim.getDate()-7);var limS=lim.toISOString().slice(0,10);
+  var fresh=[],freshAct=null;acts.forEach(function(a){var d=a[0].day;if(d>=limS&&(!freshAct||d>freshAct[0].day))freshAct=a;});
+  if(freshAct){fresh=freshAct.slice().sort(function(x,y){return (y.width>=y.height*1.2)-(x.width>=x.height*1.2);}).slice(0,3);fresh.forEach(function(p){p._fresh=1;});}
+  acts.forEach(function(a){if(a===freshAct)return;var l=shuffle(a.filter(land));if(l.length){first.push(l[0]);more=more.concat(l.slice(1));}});
+  var hero=fresh.concat(first,shuffle(more)).slice(0,HN);
+  var sl=$("slides"),bars=$("bars"),idx=0,timer=null;
+  sl.innerHTML=hero.map(function(p,i){return '<div class="slide'+(i?"":" on")+(p.width<p.height*1.2?" por":"")+'"><img src="'+p.url_m+'" alt="'+esc(clean(p.title))+'"'+(i>1?' loading="lazy"':"")+' decoding="async"></div>';}).join("");
+  bars.innerHTML=hero.map(function(p,i){return '<button type="button" aria-label="Zdjęcie '+(i+1)+'"><span class="'+(i?"":"on")+'"><i></i></span></button>';}).join("");
+  function show(i){idx=i;var s=sl.children,b=bars.querySelectorAll("button span");for(var k=0;k<s.length;k++){s[k].className="slide"+(k===i?" on":"");b[k].className=k<i?"past":(k===i?"on":"");}
+    var nx=sl.children[(i+1)%s.length];if(nx){var im=nx.querySelector("img");if(im&&im.loading==="lazy")im.loading="eager";}
+    var p=hero[i];if(!p)return;var nb=$("capNew");nb.hidden=!p._fresh;if(p._fresh)nb.textContent="Nowa jazda · "+dm(p.day);$("capT").textContent=clean(p.title);$("capT").href=rep(p);$("capM").textContent=meta(p);
+    clearTimeout(timer);timer=setTimeout(function(){show((idx+1)%hero.length);},4000);}
+  bars.querySelectorAll("button").forEach(function(b,i){b.onclick=function(){show(i);};});
+  if(hero.length)show(0);else $("capM").textContent="Brak zdjęć z "+Y+" — pobierz na stronie Strava.";
+  /* intro */
+  var away=(D.regions||[]).filter(function(g){return !g.home;}),ns=away.slice().sort(function(a,b){return b.lat-a.lat;});
+  var cN=(D.countries||[]).length;
+  var GEN={"Podlasie":"Podlasia","Sycylia":"Sycylii","Toskania":"Toskanii","Małopolska":"Małopolski","Świętokrzyskie":"Świętokrzyskiego","Opolszczyzna":"Opolszczyzny","Kujawy":"Kujaw","Mazury":"Mazur","Suwalszczyzna":"Suwalszczyzny","Pomorze":"Pomorza","Bory Tucholskie":"Borów Tucholskich","Łódzkie":"Łódzkiego","Dolny Śląsk":"Dolnego Śląska","Lubelskie":"Lubelskiego"};
+  var ACC={"Sycylia":"Sycylię","Toskania":"Toskanię","Małopolska":"Małopolskę","Opolszczyzna":"Opolszczyznę","Suwalszczyzna":"Suwalszczyznę"};
+  $("intro").textContent="Jeżdżę tam, gdzie kończy się asfalt. W "+Y+" "+(ns.length>1?"od "+(GEN[ns[0].name]||ns[0].name)+" po "+(ACC[ns[ns.length-1].name]||ns[ns.length-1].name)+" — ":"")+away.length+" "+pl(away.length,"region","regiony","regionów")+", "+cN+" "+pl(cN,"kraj","kraje","krajów")+".";
+  /* WYPRAWY SEZONU: karta = wyprawa (zdjecie z niej), klik = panel z opisem, faktami i etapami */
+  $("yr1").textContent=Y;
+  var T=(D.trips||[]).slice().sort(function(a,b){return b.km-a.km;});
+  window.__TRIPS=T;
+  $("gal").innerHTML=T.length?T.slice(0,5).map(function(t,i){var ps=t.photos||[],pl2=ps.filter(function(p){return p.width>=p.height*1.2;}),p=pick(pl2.length?pl2:(ps.length?ps:yearPh));
+    return '<a class="card rise" style="animation-delay:'+(0.05+i*0.08).toFixed(2)+'s" href="#" data-t="'+i+'">'+(p?'<img src="'+(i?p.url_t:p.url_m)+'" alt="" loading="lazy" decoding="async">':'')+
+      '<span class="lab"><b>'+esc(t.name)+'</b><span>'+esc(dm(t.from)+" – "+dm(t.to))+' · '+t.days+' '+pl(t.days,"dzień","dni","dni")+' · '+t.km+' km</span></span></a>';}).join(""):'<span class="lbl">brak wypraw w '+Y+'</span>';
+  $("gal").querySelectorAll("[data-t]").forEach(function(el){el.onclick=function(e){e.preventDefault();openTrip(+el.dataset.t);};});
+  /* mapa + 3 fakty */
+  $("yr2").textContent=Y;
+  drawMap(D.regions||[]);
+  var t=D.totals||{};
+  $("facts").innerHTML='<div><b>'+(t.km||0).toLocaleString("pl-PL")+'</b><span class="lbl">km</span></div><div><b>'+(t.rides||0)+'</b><span class="lbl">'+pl(t.rides||0,"jazda","jazdy","jazd")+'</span></div><div><b>'+away.length+'</b><span class="lbl">'+pl(away.length,"wyjazd","wyjazdy","wyjazdów")+'</span></div>';
+  /* horyzont */
+  if(D.next){$("nextN").textContent=days(D.next.day);$("nextT").textContent=D.next.title;$("nextD").textContent=dm(D.next.day)+(D.next.end_day?" – "+dm(D.next.end_day):"");}
+  else{$("next").style.display="none";}
+  var ip=shuffle(yearPh);
+  $("goalA1").innerHTML=(D.goals_a||[]).slice(0,2).map(function(g,i){var p=ip[i];return '<a class="goal" href="/trener.html">'+(p?'<img src="'+p.url_t+'" alt="" loading="lazy" decoding="async">':"")+'<span class="badge">Cel A · '+g.date_from.slice(0,4)+'</span><span class="in"><span class="lbl" style="color:#ffb27a">za '+days(g.date_from)+' dni · '+dm(g.date_from)+'</span><b>'+esc(g.name)+'</b></span></a>';}).join("");
+  var B=D.goals_b||[];
+  $("chips").innerHTML=B.length?'<span class="lbl" style="border:0;padding-left:0">Po drodze</span>'+B.map(function(g){return '<span>'+esc(g.name)+' · '+MN[new Date(g.date_from+"T12:00:00").getMonth()]+'</span>';}).join(""):"";
+}
+
+var EU=null;
+function drawMap(R){
+  var box=$("mapBox");if(!R.length){box.innerHTML="";return;}
+  if(!EU){fetch("/europe.json",{cache:"force-cache"}).then(function(r){return r.json();}).then(function(j){EU=j;drawMap(R);}).catch(function(){EU={c:[]};drawMap(R);});return;}
+  var home=R.filter(function(g){return g.name==="Warszawa";})[0]||R[0],away=R.filter(function(g){return !g.home;});
+  var tripReg={};(window.__TRIPS||[]).forEach(function(t){tripReg[t.region]=1;});
+  var pts=away.concat([home]),la=pts.map(function(g){return g.lat;}),lo=pts.map(function(g){return g.lon;});
+  var minLa=Math.min.apply(null,la)-2.2,maxLa=Math.max.apply(null,la)+2.2,minLo=Math.min.apply(null,lo)-4,maxLo=Math.max.apply(null,lo)+5;
+  var W=400,H=360,k=Math.cos((minLa+maxLa)/2*Math.PI/180),s=Math.min(W/((maxLo-minLo)*k),H/(maxLa-minLa));
+  var ox=(W-(maxLo-minLo)*k*s)/2,oy=(H-(maxLa-minLa)*s)/2;
+  function PX(lon,lat){return [ox+(lon-minLo)*k*s,oy+(maxLa-lat)*s];}
+  function X(g){return PX(g.lon,g.lat)[0];}function Y(g){return PX(g.lon,g.lat)[1];}
+  var land=(EU.c||[]).map(function(c){return '<path d="'+c.r.map(function(r){return "M"+r.map(function(p){var q=PX(p[0],p[1]);return q[0].toFixed(1)+" "+q[1].toFixed(1);}).join("L")+"Z";}).join("")+'"'+(c.n==="Polska"?' style="fill:var(--acc-bg)"':'')+'><title>'+esc(c.n)+'</title></path>';}).join("");
+  var hx=X(home),hy=Y(home),mk=Math.max.apply(null,away.map(function(g){return g.km;}).concat([1]));
+  var h='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Mapa: '+esc(pts.map(function(g){return g.name;}).join(", "))+'"><defs><clipPath id="mclip"><rect width="'+W+'" height="'+H+'" rx="14"/></clipPath></defs>'+
+    '<g clip-path="url(#mclip)"><rect width="'+W+'" height="'+H+'" style="fill:var(--well)"/><g style="fill:var(--card);stroke:var(--line2)" stroke-width=".6" stroke-linejoin="round">'+land+'</g>';
+  h+='<g fill="none" style="stroke:var(--acc)" stroke-width="1.4" stroke-linecap="round" opacity=".9">';
+  away.forEach(function(g,i){var x=X(g),y=Y(g),mx=(hx+x)/2-(y-hy)*0.15,my=(hy+y)/2+(x-hx)*0.15;h+='<path class="draw" pathLength="1000" style="animation-delay:'+(0.2+i*0.18).toFixed(2)+'s" d="M'+hx.toFixed(1)+' '+hy.toFixed(1)+' Q'+mx.toFixed(1)+' '+my.toFixed(1)+' '+x.toFixed(1)+' '+y.toFixed(1)+'"/>';});
+  h+='</g><g style="fill:var(--acc)">';
+  away.forEach(function(g,i){var r=3+5*Math.sqrt(g.km/mk),x=X(g).toFixed(1),y=Y(g).toFixed(1);if(tripReg[g.name])h+='<circle class="pulse" style="animation-delay:'+(i*0.4).toFixed(1)+'s" cx="'+x+'" cy="'+y+'" r="'+(r*2).toFixed(1)+'"/>';h+='<circle cx="'+x+'" cy="'+y+'" r="'+r.toFixed(1)+'"><title>'+esc(g.name+": "+g.rides+" "+pl(g.rides,"jazda","jazdy","jazd")+", "+g.km+" km")+'</title></circle>';});
+  h+='</g><circle cx="'+hx.toFixed(1)+'" cy="'+hy.toFixed(1)+'" r="5" style="fill:var(--card);stroke:var(--ink)" stroke-width="2"/>';
+  /* podpisy tylko: dom + regiony wypraw + duze (>= 300 km); bez nachodzenia (min. odstep 16 px) */
+  var lab=[],used=[];[home].concat(away.filter(function(g){return tripReg[g.name]||g.km>=300;}).sort(function(a,b){return b.km-a.km;})).forEach(function(g){var x=X(g),y=Y(g);
+    if(used.some(function(u){return Math.abs(u[0]-x)<60&&Math.abs(u[1]-y)<16;}))return;used.push([x,y]);var r=x<W-110;
+    lab.push('<text x="'+(r?x+9:x-9).toFixed(1)+'" y="'+(y+4).toFixed(1)+'" text-anchor="'+(r?"start":"end")+'">'+esc(g.name)+'</text>');});
+  h+='<g font-family="Hanken Grotesk, Arial, sans-serif" font-size="12.5" font-weight="600" style="fill:var(--ink);stroke:var(--well)" paint-order="stroke" stroke-width="3" stroke-linejoin="round">'+lab.join("")+'</g></g>';
+  box.innerHTML=h+'</svg>';
+}
+
+/* PANEL WYPRAWY */
+function openTrip(i){
+  var t=(window.__TRIPS||[])[i];if(!t)return;var dlg=$("trip"),ps=shuffle(t.photos||[]).slice(0,3);
+  var who=t.companions&&t.companions.length?t.companions.join(", "):(t.people>1?(t.people===2?"we dwóch":t.people+" osoby")+" (imiona: uzupełnij w raporcie z jazdy)":"solo");
+  $("tpC").innerHTML=(ps.length?'<div class="tp-strip'+(ps.length===1?" one":"")+'">'+ps.map(function(p){return '<img src="'+(p.url_m||p.url_t)+'" alt="">';}).join("")+'</div>':'')+
+    '<div class="tp-body"><span class="lbl" style="color:var(--acc-ink)">'+esc(dm(t.from)+" – "+dm(t.to)+" "+t.to.slice(0,4))+' · '+esc(t.region)+'</span><h3 id="tpH">'+esc(t.name)+'</h3>'+
+    '<div class="tp-story" id="tpS">'+(t.story?esc(t.story):'<span class="lbl">piszę opis wyprawy…</span>')+'</div>'+
+    '<div><button class="tp-edit" id="tpE" type="button">popraw opis</button></div>'+
+    '<div class="tp-facts"><div><b>'+t.days+'</b><span class="lbl">'+pl(t.days,"dzień","dni","dni")+'</span></div><div><b>'+t.stages+'</b><span class="lbl">'+pl(t.stages,"etap","etapy","etapów")+'</span></div><div><b>'+t.km+'</b><span class="lbl">km</span></div><div><b>'+t.up_m.toLocaleString("pl-PL")+'</b><span class="lbl">m w górę</span></div><div><b>'+String(t.moving_h).replace(".",",")+'</b><span class="lbl">h w siodle</span></div><div><b>'+t.longest_km+'</b><span class="lbl">km najdłuższy</span></div></div>'+
+    '<div style="font-size:14.5px"><span class="lbl">z kim</span><br>'+esc(who)+'</div>'+
+    '<div class="tp-st">'+t.rides.map(function(r){return '<a href="/raport-jazdy.html?ride='+encodeURIComponent(r.ride_key)+'"><span class="lbl">'+esc(dm(r.date))+'</span><span>'+esc(r.name)+'</span><span style="color:var(--ink2)">'+r.km+' km · '+r.up_m+' m</span></a>';}).join("")+'</div></div>';
+  dlg.showModal();
+  function setStory(x){t.story=x;$("tpS").textContent=x;}
+  if(!t.story)fetch("/api/start/trip-story",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:t.key})}).then(function(r){return r.json();}).then(function(j){if(j.text)setStory(j.text);else $("tpS").textContent="Nie udało się napisać opisu.";}).catch(function(){$("tpS").textContent="Nie udało się napisać opisu.";});
+  $("tpE").onclick=function(){var cur=t.story||"";$("tpS").innerHTML='<textarea class="tp-ta" id="tpT"></textarea><div style="display:flex;gap:8px;margin-top:8px"><button class="tp-edit" id="tpOk" type="button">zapisz</button><button class="tp-edit" id="tpNew" type="button">napisz od nowa (AI)</button></div>';$("tpT").value=cur;
+    $("tpOk").onclick=function(){var v=$("tpT").value;fetch("/api/start/trip-story",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:t.key,text:v})}).then(function(){setStory(v);});};
+    $("tpNew").onclick=function(){$("tpS").innerHTML='<span class="lbl">piszę od nowa…</span>';fetch("/api/start/trip-story",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:t.key,regenerate:true})}).then(function(r){return r.json();}).then(function(j){if(j.text)setStory(j.text);});};};
+}
+$("tpX").onclick=function(){$("trip").close();};
+$("trip").addEventListener("click",function(e){if(e.target===$("trip"))$("trip").close();});
+})();
+</script>
+</body>
+</html>

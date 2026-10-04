@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1"><link rel="alternate icon" href="/favicon.ico?v=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QBot — render (wewnętrzne, do zrzutu)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/raport.css?v=2026071824">
+<style>body{background:#fff}.wrap{padding-top:6px;max-width:1000px}</style>
+<script>window.__QBOT_PRINT_MODE=true;</script>
+</head>
+<body>
+<div class="wrap"><div id="report"></div></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/raport-render.js?v=2026072301"></script>
+<script>
+(function(){
+  const qs = new URLSearchParams(location.search);
+  const sid = qs.get("snapshot_id");
+  const url = sid
+    ? ("/api/report/snapshot/" + encodeURIComponent(sid))
+    : ("/api/report/data?route_id=" + encodeURIComponent(qs.get("route_id") || "")
+       + "&date=" + encodeURIComponent(qs.get("date") || "")
+       + "&time=" + encodeURIComponent(qs.get("time") || "10:00")
+       + "&long_stops=" + encodeURIComponent(qs.get("long_stops") || "0")
+       + "&long_stop_min=" + encodeURIComponent(qs.get("long_stop_min") || "0"));
+  window.__QBOT_RENDER_DONE = false;
+  fetch(url).then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(t || ("HTTP " + r.status)))).then(data => {
+    window.renderReport(data, document.getElementById("report"));
+    window.__QBOT_RENDER_DONE = true;
+  }).catch(err => {
+    document.getElementById("report").textContent = "Błąd renderowania: " + err;
+    window.__QBOT_RENDER_DONE = "error";
+  });
+})();
+</script>
+</body>
+</html>

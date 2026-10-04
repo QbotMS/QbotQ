@@ -4152,3 +4152,13 @@ Takie jazdy NIE wchodza do bazy (baza tylko z potwierdzonych czujnikow). 24.09: 
 - Oceny: kolano w dole 140–150°, biodro w GÓRZE korby 45–60° (zamiast kąta w dole), plecy 30–45° / aero 20–35°, bark 80–95° / aero 80–100°; opis i znaczenie odchylenia w dymku.
 - Historia fittera ≠ konfiguracja właściciela: fitter = Gear Groove 80 mm, podkładki 25 mm, moduł offsetu Fair Cycles, C13; własne = Zipp SL 90 mm (−6° potwierdzone), podkładki 5 mm, C17, siodło 750 mm. Części zapasowe mostek/korba przeniesione do kategorii stem/crankset (status zapas).
 - Dokumentacja modułu: docs/GARAZ.md.
+
+
+## [2026-10-04] Statyki stron (web/public) — lustro w repo
+**Problem:** kod stron (.html/.js/.css w /opt/qbot/web/public) był poza repo: bez historii zmian i bez kopii na GitHubie
+(tylko pliki .bak.*). W web/public znalazło się stare lokalne repo git (lipiec 2026, 5 commitów, bez remote, porzucone).
+**Decyzja (użytkownik, opcja 1 z 2):** lustro w głównym repo — `scripts/web_mirror.py` kopiuje kod stron do `web_public/`
+(html/js/css/svg/ico + małe json; bez obrazów, danych, kopii, plików roboczych i map_*), usuwa z lustra pliki usunięte ze
+stron; `--check` = kod 1 gdy lustro nieaktualne. Strony nadal działają prosto z web/public (żywe od razu). Uruchamiać przed
+każdym commitem. Odrzucono: osobne repo dla web/public (druga rzecz do commitowania). Stare repo w web/public — 2026-10-04 spakowane do /opt/qbot/data/archive/web_public_git_2026-07.tar.gz (zweryfikowane)
+i usunięte z web/public (po zalogowaniu było do pobrania pod /.git/; nic z niego nie korzystało).

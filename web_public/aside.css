@@ -1,0 +1,23 @@
+/* QBot prawy panel (drawer) na analizę AI -- wysuwany z prawej, jak nav z lewej. */
+.qaside{position:fixed;top:0;right:0;height:100vh;width:420px;max-width:92vw;
+  background:var(--side,var(--card,#fffdf8));color:var(--ink,#1c2024);border-left:1px solid var(--line,#e3ddd2);
+  box-shadow:-10px 0 30px rgba(0,0,0,.16);z-index:1400;transform:translateX(100%);
+  transition:transform .2s ease;display:flex;flex-direction:column;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+body.qaside-open .qaside{transform:translateX(0)}
+.qaside-head{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line,#e3ddd2)}
+.qaside-title{font-weight:800;font-size:14px;flex:1}
+.qaside-x{background:none;border:0;font-size:22px;line-height:1;color:var(--muted,#7a838c);cursor:pointer;padding:2px 8px;border-radius:8px}
+.qaside-x:hover{background:var(--panel,#f0ece3)}
+.qaside-body{padding:16px 18px;overflow-y:auto;flex:1;font-size:14px;line-height:1.65}
+.qaside-body .qa-h{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent,#3f6f9a);margin-bottom:10px}
+.qaside-tab{position:fixed;right:0;top:25%;transform:translateY(-50%);z-index:1399;
+  background:#3c6b47;color:#f3ecdb;border:0;border-radius:10px 0 0 10px;padding:14px 9px;
+  cursor:pointer;writing-mode:vertical-rl;font-size:12px;font-weight:700;letter-spacing:.03em;
+  box-shadow:-4px 0 14px rgba(0,0,0,.18);display:block}
+body.qaside-open .qaside-tab{display:none}
+.qaside-backdrop{display:none}
+@media(max-width:820px){
+  .qaside{width:100vw}
+  body.qaside-open .qaside-backdrop{display:block;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1399}
+}

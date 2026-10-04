@@ -1,0 +1,471 @@
+/* QBot — style raportu trasy (jedno zrodlo wygladu).
+   Uzywane przez raport-trasy.html (formularz) oraz przez HTML wstrzykiwany z raport-render.js
+   (hero, startband, karty, mapa, wykres). Zmiany WYGLADU raportu = TEN plik. */
+:root{--ink:#26332a;--ink2:#47564a;--muted:#8c8168;--line:#dcd0ba;--paper:#f2ecdd;--card:#fbf7ec;--panel:#eae0cc;--accent:#3c6b47;--accent-bg:#e0ebdf;--accent-ink:#1f3a28;--good:#3f7a4d;--good-bg:#e6f0e6;--bad:#a6503d;--bad-bg:#f2e4de;--warn:#8a5a12;--warn-bg:#f4ead2;--chart-border:#c9b48f;--c-ele:#2a2e33;--c-grid:#efe7d8;--c-axislbl:#7a838c;--c-axmut:#9a938a;--c-wind0:#9a938a;--c-windline:#c8c0b2;--c-km:#41484f;--c-time:#3f6f9a;--c-temp:#9c5e10}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5}
+.mono{font-family:"SF Mono",ui-monospace,"Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace}
+.wrap{max-width:none;margin:0;padding:12px 24px 40px}
+.back{margin-bottom:16px}.back a{font-size:13px;color:var(--muted);text-decoration:none}
+/* pasek generatora (maly, przyklejony u gory) */
+.toolbar{position:sticky;top:0;z-index:1200;background:var(--panel);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+.tb-brand{font-weight:800;font-size:15px;color:var(--ink);align-self:center;margin-right:14px;white-space:nowrap;letter-spacing:.01em}
+.toolbar .row,.gen-wrap .row{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:flex-end;max-width:none;margin:0;padding:9px 0}
+.fld{display:flex;flex-direction:column;gap:2px}
+.fld label{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.fld select,.fld input{font:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.fld.route{flex:1 1 220px}.fld.route select{width:100%}
+.btn{font:inherit;font-size:13px;font-weight:650;padding:7px 18px;border:1px solid #3c6b47;border-radius:8px;background:#3c6b47;color:#fff;cursor:pointer}
+.btn:disabled{opacity:.5;cursor:default}
+.status{max-width:none;margin:0;padding:2px 24px;font-size:12.5px;color:var(--muted);min-height:0}
+.status.err{color:var(--bad)}
+.empty{max-width:none;margin:40px auto;padding:0 24px;color:var(--muted);font-size:14px;text-align:center}
+/* pasek Historia (ostatnie zapisane raporty danej trasy) */
+.hist-bar{max-width:none;margin:0;padding:0;display:none;flex-wrap:wrap;gap:6px;align-items:center}
+.hist-bar .hist-label{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-right:2px}
+.hist-chip{font:inherit;font-size:12px;padding:4px 11px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink2);cursor:pointer}
+.hist-chip:hover{border-color:var(--accent)}
+.hist-chip.active{background:#3c6b47;border-color:#3c6b47;color:#fff}
+/* drugi wiersz paska - wysylka mailem */
+.row-mail{border-top:1px dashed var(--line);margin-top:2px;padding-top:8px}
+.fld.mail{flex:1 1 220px}
+.btn-ghost{font:inherit;font-size:13px;font-weight:650;padding:6px 16px;border:1px solid var(--accent);border-radius:8px;background:#fff;color:var(--accent);cursor:pointer}
+.btn-ghost:disabled{opacity:.5;cursor:default}
+/* belka (jak Forma) + zakladki raportu */
+.qhead{position:sticky;top:0;z-index:1200;background:var(--paper);border-bottom:1px solid var(--line);padding:6px 24px 6px}
+.qhead-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.qh-title{font-weight:800;font-size:19px;color:var(--ink);letter-spacing:.01em}
+.qh-route{font-weight:800;font-size:18px;color:var(--ink);letter-spacing:.01em}
+.qh-route:empty{display:none}
+.qh-btn{font:inherit;font-size:12px;font-weight:650;padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);cursor:pointer}
+.qh-btn:hover{border-color:var(--accent)}
+.qh-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.gen-wrap{overflow:hidden;transition:max-height .2s ease;max-height:280px}
+.gen-wrap.collapsed{max-height:0}
+.rtabs{display:flex;gap:2px;margin-top:8px;overflow-x:auto}
+.rtabs::-webkit-scrollbar{height:0}
+.rtab{appearance:none;background:none;border:0;padding:10px 16px;margin-bottom:-1px;font:inherit;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent}
+.rtab:hover{color:var(--ink)}
+.rtab.active{color:var(--ink);border-bottom-color:var(--accent)}
+.qhead-row .rtabs{margin-top:0;margin-left:6px}
+.qhead-row .rtab{padding:6px 14px;margin-bottom:0}
+.r-tabpanel[hidden]{display:none}
+/* --- style raportu (uzywane przez raport-render.js) --- */
+header{border-bottom:1px solid var(--line);padding-bottom:4px;margin-bottom:6px}
+.titlerow{display:flex;align-items:baseline;gap:6px 16px;flex-wrap:wrap;margin:0 0 4px}
+.titlerow h1{margin:0;font-size:22px;line-height:1.1}
+.titlerow .meta{margin:0;border-top:0;padding:0;font-size:11px;color:var(--muted);margin-left:auto}
+.statsrow{display:block;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:7px 14px;margin-top:4px}
+.statsrow .hero{display:flex;flex-wrap:wrap;align-items:baseline;gap:0;margin:0}
+.statsrow .hero .m{background:none;border:0;border-radius:0;padding:0;margin:0;display:flex;align-items:baseline;gap:5px}
+.statsrow .hero .m + .m{border-left:1px solid var(--line);padding-left:14px;margin-left:14px}
+.statsrow .hero .m .v{font-size:20px}
+.statsrow .hero .m .u{font-size:12px;color:var(--ink2)}
+.statsrow .hero .m .sub{font-weight:600;font-size:11px;color:var(--muted);margin:0 0 0 2px}
+.statsrow .hero .m .l{display:none}
+.statsrow .breakstrip{margin-top:5px;padding:5px 0 0;border:0;border-top:1px dashed var(--line);border-radius:0;background:none;font-size:12px;gap:2px 14px}
+
+.eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+h1{margin:2px 0 8px;font-size:22px;line-height:1.15}
+.startband{display:flex;align-items:center;gap:12px;background:var(--accent-bg);border:1px solid var(--line);border-radius:10px;padding:5px 12px}
+.startband .cal{width:26px;height:26px;border-radius:8px;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:15px;flex:none}
+.startband .when{font-size:14px;font-weight:700;color:var(--ink);letter-spacing:.01em}
+.startband .where{font-size:13px;color:var(--ink2);margin-top:1px}
+.hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:8px}
+.hero .m{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:5px 10px}
+.hero .m .v{font-size:19px;font-weight:750;line-height:1;letter-spacing:-.01em}
+.hero .m .u{font-size:13px;font-weight:600;color:var(--ink2)}
+.hero .m .sub{font-size:11px;color:var(--accent-ink);font-weight:600;margin-top:2px}
+.hero .m .l{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+.breakstrip{margin-top:6px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 14px;font-size:12.5px;color:var(--ink2);display:flex;flex-wrap:wrap;gap:2px 14px;align-items:center}
+.breakstrip b{font-weight:700}
+.meta{margin-top:8px;font-size:11px;color:var(--muted);border-top:1px dashed var(--line);padding-top:6px}
+.sec-h{margin:8px 0 4px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+#map{height:460px;border-radius:12px;border:1px solid var(--line);background:#eee}
+.mapwrap{position:relative;margin-top:4px}
+.map-note{font-size:11px;color:var(--muted);margin-top:6px;text-align:right}
+.chartwrap{position:relative;margin-top:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px 10px 2px}
+.chartwrap svg{display:block;width:100%;height:auto;overflow:visible;touch-action:none}
+.chart-tip{position:absolute;pointer-events:none;display:none;transform:translate(-50%,-112%);background:#1c2024;color:#fff;border-radius:8px;padding:7px 10px;font-size:12px;line-height:1.5;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.28);z-index:5}
+.chart-tip b{font-weight:700}.chart-tip .k{color:#c7cfd6}
+.chart-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;font-size:12px;color:var(--muted)}
+.chart-legend .it{display:flex;align-items:center;gap:6px}
+.chart-legend .sw{width:14px;height:10px;border-radius:2px;display:inline-block}
+.chart-hint{font-size:11px;color:var(--muted);margin-top:4px;font-style:italic}
+/* --- wykres + legenda z prawej (pionowo) --- */
+.chartrow{display:flex;gap:12px;align-items:stretch;margin-top:4px}
+.chartrow .chartwrap{flex:1 1 auto;min-width:0;margin-top:0}
+.chart-side{flex:0 0 300px;display:flex;flex-direction:column;gap:8px;min-width:0;overflow-y:auto}
+.chart-side .chart-legend{display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;align-content:start;margin-top:0}
+.chart-side .chart-hint{margin-top:2px}
+@media(max-width:720px){.chartrow{flex-direction:column}.chart-side{flex:0 0 auto}.chart-side .chart-legend{flex-direction:row;flex-wrap:wrap;gap:6px 14px}}
+/* prawy panel: dwie zakladki (Legenda / Alerty) + sekcje */
+.qaside-tab.qa-tab-legenda{top:22%}
+.qaside-tab.qa-tab-alerty{top:42%}
+.qaside-tab.qa-off{display:none!important}
+#report-aside .qaside-sec{display:none}
+#report-aside[data-sec="alerty"] .qaside-sec[data-sec="alerty"]{display:block}
+#report-aside[data-sec="legenda"] .qaside-sec[data-sec="legenda"]{display:block}
+#report-aside{height:auto;max-height:100vh}
+#report-aside .chart-legend{display:block;margin-top:6px;font-size:12.5px}
+#report-aside .lg-grp{margin-bottom:11px}
+#report-aside .lg-h{font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);margin:0 0 5px}
+#report-aside .lg-items{display:grid;grid-template-columns:1fr 1fr;gap:5px 12px}
+#report-aside .lg-items .it{display:flex;align-items:center;gap:6px;min-width:0}
+#report-aside .chart-hint{margin-top:12px;font-style:italic}
+
+
+/* --- Zakladka MAPA: mapa + wykres na jednym ekranie (bez scrolla strony) --- */
+body.rtab-mapa{overflow:hidden}
+body.rtab-mapa .wrap{padding-bottom:0}
+body.rtab-mapa .r-tabpanel[data-rtab="mapa"]{display:flex;flex-direction:column;min-height:0}
+body.rtab-mapa .r-tabpanel[data-rtab="mapa"] .sec-h{display:none}
+body.rtab-mapa .mapwrap{flex:1 1 auto;min-height:200px;margin-top:2px}
+body.rtab-mapa #map{height:100%}
+body.rtab-mapa .chartwrap{flex:0 0 auto;margin-top:6px}
+body.rtab-mapa footer{display:none}
+body.rtab-mapa .map-note{margin-top:3px}
+body.rtab-mapa header{padding-bottom:2px;margin-bottom:3px}
+body.rtab-mapa .statsrow{margin-top:3px;padding:5px 12px}
+body.rtab-mapa .statsrow .breakstrip{display:none}
+
+.stub{margin-top:30px;color:var(--muted);font-size:13px;font-style:italic;border-left:3px solid var(--line);padding:6px 14px}
+footer{margin-top:44px;border-top:1px solid var(--line);padding-top:14px;font-size:12px;color:var(--muted)}
+.wxchip{display:flex;align-items:center;gap:8px;margin-top:6px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:5px 12px;font-size:13px;color:var(--ink2)}
+.barrow{display:flex;gap:12px;margin-top:4px;flex-wrap:wrap;align-items:stretch}
+.barrow .startband{flex:1 1 320px;margin:0}
+.barrow .wxchip{flex:1 1 240px;margin-top:0;font-size:13px}
+.sb-txt{min-width:0}
+.wxchip .wxi{flex:none}
+.wxchip b{color:var(--ink);font-weight:700}
+#map.bw .leaflet-tile-pane{filter:grayscale(1) contrast(1.05)}
+#map.color .leaflet-tile-pane{opacity:.8;filter:contrast(.9)}
+.map-ctl{position:absolute;top:8px;right:8px;z-index:1000;display:flex;flex-direction:column;gap:6px;margin:0}
+.map-ctl-info{align-self:center;color:var(--ink2);font-size:12px}
+.map-ctl button{font:inherit;font-size:12px;padding:5px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink2);cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+.map-ctl button:hover{border-color:var(--ink)}
+.alerts-det{margin-top:14px;border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
+.alerts-sum{cursor:pointer;list-style:none;padding:11px 14px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:700;display:flex;align-items:center;gap:8px}
+.alerts-sum::-webkit-details-marker{display:none}
+.alerts-sum::after{content:"▾";margin-left:auto;font-size:12px;transition:transform .15s}
+.alerts-det[open] .alerts-sum::after{transform:rotate(180deg)}
+.alerts-det .alerts{padding:0 14px 12px}
+.ad-count{letter-spacing:0;text-transform:none;font-weight:600;color:var(--ink2)}
+.multi{display:flex;gap:16px;margin:6px 0 4px;align-items:stretch}
+.multi-nav{display:flex;flex-direction:column;gap:6px;flex:0 0 190px}
+.multi-item{font:inherit;font-size:14px;text-align:left;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink2);cursor:pointer;transition:border-color .15s,background .15s,color .15s}
+.multi-item:hover{border-color:var(--ink)}
+.multi-item.active{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.multi-pane{flex:1 1 auto;min-height:260px;border:1px solid var(--line);border-radius:12px;background:var(--card);padding:18px 20px}
+.multi-head{font-size:16px;font-weight:650;color:var(--ink);margin-bottom:12px;padding-bottom:9px;border-bottom:1px solid var(--line)}
+.multi-body{padding-right:6px}
+.multi-placeholder{color:var(--muted);font-size:14px;font-style:italic}
+@media(max-width:640px){.multi{flex-direction:column}.multi-nav{flex-direction:row;flex-wrap:wrap;flex-basis:auto}.multi-item{flex:1 1 auto;text-align:center}}
+.alerts{margin:2px 0 4px;display:flex;flex-direction:column;gap:8px}
+.alert{background:var(--card);border:1px solid var(--line);border-left-width:4px;border-radius:10px;padding:10px 14px}
+.alert-top{display:flex;flex-wrap:wrap;align-items:center;gap:7px 10px}
+.alert .sev{font-size:11px;font-weight:700;letter-spacing:.05em;color:#fff;padding:2px 9px;border-radius:999px}
+.alert .atyp{font-size:14px;font-weight:700;color:var(--ink)}
+.alert .arange{font-size:12.5px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.alert .adet{font-size:12.5px;color:var(--muted);margin-top:5px}
+.alert-empty{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--muted);font-style:italic}
+.ms-sum{font-size:13.5px;color:var(--ink);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.ms-sub{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+.ms-ok{font-size:13px;color:#3f7a4d;margin:10px 0}
+.ms-list{list-style:none;margin:0;padding:0;font-size:13px;color:var(--ink2)}
+.ms-list li{padding:3px 0;border-bottom:1px solid #f0ece2}
+.ms-list .k{color:var(--muted);font-size:12px}
+.ms-list .dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.ms-list li.attr-card{display:flex;gap:12px;padding:10px 0;align-items:flex-start}
+.attr-photo{width:112px;height:78px;flex:0 0 112px;object-fit:cover;border-radius:8px;background:var(--line)}
+.attr-body{min-width:0;flex:1}
+.attr-extract{font-size:12px;line-height:1.45;color:var(--ink2);margin-top:4px}
+.attr-source{display:inline-block;margin-top:5px;font-size:11.5px;color:var(--accent);text-decoration:none}
+.attr-source:hover{text-decoration:underline}
+@media(max-width:620px){.attr-photo{width:88px;height:66px;flex-basis:88px}}
+.ms-note{font-size:11.5px;color:var(--muted);margin:10px 0 0;padding-left:16px}
+.sbar{display:flex;align-items:center;gap:10px;margin:5px 0}
+.sbar-lab{flex:0 0 150px;font-size:12.5px;color:var(--ink2)}
+.sbar-track{flex:1 1 auto;height:14px;background:#efe9dd;border-radius:4px;overflow:hidden}
+.sbar-fill{display:block;height:100%}
+.sbar-val{flex:0 0 auto;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.mtable{width:100%;border-collapse:collapse;font-size:12.5px}
+.mtable th{text-align:left;font-weight:600;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:5px 8px;border-bottom:1px solid var(--line)}
+.mtable td{padding:5px 8px;border-bottom:1px solid #f0ece2;color:var(--ink2);font-variant-numeric:tabular-nums}
+.poi-grp{margin-bottom:6px}
+.risk-cmt{font-size:13px;color:var(--ink2);margin:4px 0 2px;line-height:1.45}
+.wx-pts{list-style:disc;margin:6px 0 4px;padding-left:20px;font-size:14px;color:var(--ink);line-height:1.55}
+.wx-pts li{margin:3px 0}
+.wx-etapy{list-style:none;margin:4px 0 0;padding:0}
+.wx-etapy li{padding:6px 0;border-bottom:1px solid #f0ece2}
+.wx-etapy b{font-size:12.5px;color:var(--muted)}
+.wx-etap-t{font-size:13.5px;color:var(--ink2);line-height:1.5;margin-top:2px}
+.climb-card{margin:6px 0 2px;padding:5px 0 3px;border-top:1px solid #f0ece2}
+.climb-hd{font-size:12px;color:var(--ink2);margin-bottom:2px}
+/* profil podjazdu: 80% szerokosci kolumny (o 20% mniej niz pelna), teksty z tokenow motywu */
+.climb-prof{width:80%;max-width:80%;height:auto;display:block}
+.climb-prof .cp-g{fill:var(--ink2)}
+.climb-prof .cp-ax{fill:var(--muted)}
+.climb-defs{position:absolute;width:0;height:0;overflow:hidden}
+.cl-hatch{background-color:#e9e2d2;background-image:repeating-linear-gradient(45deg,rgba(0,0,0,.5) 0 1px,transparent 1px 5px),repeating-linear-gradient(-45deg,rgba(0,0,0,.5) 0 1px,transparent 1px 5px)}
+@media(max-width:640px){.climb-prof{width:100%;max-width:100%}}
+.climb-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;font-size:11px;color:var(--muted)}
+.climb-score{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;color:#fff;vertical-align:1px}
+.csp2{background:#2e7d32}.csp1{background:#58a05c}.csp0{background:#8a8a3a}
+.csm1{background:#d07a2a}.csm2{background:#c0392b}
+.climb-why{font-size:11.5px;color:var(--muted);margin:0 0 3px}
+.chain-box{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:0 10px 10px 0;padding:9px 13px;margin:2px 0 10px}
+.chain-h{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.chain-v{font-size:13.5px;color:var(--ink);margin-top:2px}
+.chain-rows{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.chain-pill{display:inline-block;font-size:10.5px;font-weight:600;padding:1px 8px;border-radius:999px;border:1px solid transparent}
+.cp-atak{background:var(--good-bg);color:var(--good);border-color:var(--good)}
+.cp-tempo{background:var(--warn-bg);color:var(--warn);border-color:var(--warn)}
+.cl-item{display:inline-flex;align-items:center;gap:4px}
+.cl-sw{display:inline-block;width:11px;height:11px;border-radius:2px;border:1px solid rgba(0,0,0,.15)}
+.spq{margin:2px 0 8px}
+.spq-why{font-size:12px;color:var(--muted);margin-top:2px}
+.press-main{margin:2px 0 6px;font-size:13px}
+.press-tab{border-collapse:collapse;width:100%;max-width:440px;font-size:12px;margin:2px 0 8px}
+.press-tab th,.press-tab td{border:1px solid #eee4d0;padding:3px 7px;text-align:left}
+.press-tab th{color:var(--muted);font-weight:600}
+.press-cur{background:#f3efe6;font-weight:600}
+.forma-tab{border-collapse:collapse;width:100%;max-width:440px;font-size:12.5px;margin:2px 0 8px}
+.forma-tab td{border:1px solid #eee4d0;padding:3px 8px}
+.forma-tab td:first-child{color:var(--muted);width:52%}
+.strat-all{font-size:13px;line-height:1.5;margin:2px 0 10px}
+.strat-card{border-top:1px solid #f0ece2;padding:6px 0 4px;margin:4px 0}
+.strat-hd{font-size:13px;margin-bottom:2px}
+.strat-op{font-size:12.5px;line-height:1.45;margin-bottom:4px}
+.strat-fp{font-size:12px;line-height:1.4;margin:1px 0}
+.strat-tag{display:inline-block;min-width:60px;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600}
+.ubior-list{list-style:none;padding:0;margin:2px 0 4px}
+.ubior-list li{padding:3px 0;border-bottom:1px dotted #eee4d0}
+.ubior-uw{font-size:11.5px;color:var(--muted);margin-top:1px}
+.ubior-tryb{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.03em;padding:1px 5px;border-radius:3px;margin-right:6px;background:#eef3ee;color:#3f7a4d}
+.ubior-tryb.zabierz{background:#f6efe0;color:#9c5e10}
+.poi-area{margin:7px 0 2px}
+.poi-tag{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.03em;padding:1px 5px;border-radius:3px;margin-right:6px;background:#eef1f6;color:#3b5573}
+.poi-desc{font-size:11.5px;color:var(--muted);margin-top:1px}
+.poi-none{margin:2px 0 6px}
+
+.dlbar{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 4px}
+.dlbtn{display:inline-block;padding:8px 12px;border-radius:8px;background:#1f6feb;color:#fff;text-decoration:none;font-size:13px;font-weight:600}
+.dlbtn:hover{filter:brightness(1.08)}
+.dlbtn2{background:#555}
+button.dlbtn{border:none;cursor:pointer;font:inherit}
+.dlbtn:disabled{opacity:.5;cursor:default}
+.dlbtn3{background:#7a3fb0}
+.dlmsg{font-size:12px;opacity:.85;align-self:center}
+/* zakladka Udostepnij (multi-menu) */
+.share-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0 4px}
+.share-mail{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px}
+.share-mail input{font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:#26332a;flex:1 1 220px;min-width:180px}
+.share-mail input::placeholder{color:#8a8f98;opacity:1}
+#sh-mail-msg.err{color:#b0402c}
+#sh-mail-msg{font-size:12.5px;margin:4px 0 0;color:var(--muted)}
+
+/* --- SZCZEGOLY TRASY: przewija sie normalnie razem ze strona (bez blokady scrolla) --- */
+
+/* --- delikatne powiekszenie czcionek w panelach szczegolow (czytelnosc) --- */
+.multi-body{font-size:14px;line-height:1.55}
+.strat-all{font-size:14px;line-height:1.5}
+.strat-op{font-size:13.5px;line-height:1.5}
+.strat-fp{font-size:13px}
+.strat-hd{font-size:14px}
+.risk-cmt{font-size:14px}
+.wx-etap-t{font-size:14.5px}
+.wx-pts{font-size:15px}
+.ms-list{font-size:14px}
+.ms-sum{font-size:14.5px}
+.ms-ok{font-size:14px}
+.press-main{font-size:14px}
+.mtable{font-size:13.5px}
+.forma-tab{font-size:13.5px}
+.spq-why{font-size:13px}
+.poi-desc{font-size:12.5px}
+.ubior-uw{font-size:12.5px}
+.climb-hd{font-size:13px}
+
+/* --- ciut wieksze odstepy miedzy wierszami (czytelnosc) --- */
+.multi-body{line-height:1.65}
+.strat-all{line-height:1.6}
+.strat-op{line-height:1.6}
+.strat-fp{line-height:1.55;margin:2px 0}
+.risk-cmt{line-height:1.6}
+.wx-etap-t{line-height:1.6}
+.wx-pts{line-height:1.7}
+.ms-list{line-height:1.6}
+.press-main{line-height:1.55}
+.mtable th,.mtable td{padding-top:7px;padding-bottom:7px}
+.forma-tab th,.forma-tab td{padding-top:6px;padding-bottom:6px}
+.press-tab th,.press-tab td{padding-top:6px;padding-bottom:6px}
+
+/* --- press-cur czytelny w ciemnym motywie: polprzezroczysty akcent zamiast jasnego tla --- */
+.press-cur{background:rgba(60,107,71,.16);color:var(--ink);font-weight:600}
+
+/* --- kolory wykresu raportu: wariant ciemny (czytelnosc) --- */
+html.theme-dark{--c-ele:#e6dabf;--c-grid:#2a3a2e;--c-axislbl:#9aa88c;--c-axmut:#8b9a7d;--c-wind0:#4a5c4e;--c-windline:#33453a;--c-km:#cdbf9f;--c-time:#86b4dd;--c-temp:#e0b25c}
+
+/* ciemniejsze tlo karty wykresu (motyw ciemny) */
+html.theme-dark .chartwrap{background:var(--chart-bg)}
+
+/* KOMOOT-MAP-LAYOUT */
+/* --- Zakladka MAPA: uklad Komoot - mapa wypelnia tlo, panele plywaja nad nia --- */
+body.rtab-mapa .wrap{position:relative;padding:0}
+body.rtab-mapa .status{display:none}
+/* panel zakladki = kontener na mape+wykres, wypelnia obszar (wysokosc ustawia JS) */
+body.rtab-mapa .r-tabpanel[data-rtab="mapa"]{position:relative;display:block;padding:0}
+body.rtab-mapa .mapwrap{position:fixed;left:var(--qnav-rail);right:0;bottom:0;top:0;margin:0;z-index:0}
+body.rtab-mapa #map{height:100%;border:0;border-radius:0}
+body.rtab-mapa .map-note{display:none}
+/* karta z tytulem/startem/statystykami - plywa gora-lewo */
+body.rtab-mapa header{
+  position:fixed;left:calc(var(--qnav-rail) + 10px);top:66px;z-index:1160;
+  width:min(230px,52vw);margin:0;padding:9px 12px;
+  border:1px solid var(--line);border-radius:14px;
+  background:rgba(6,15,10,.80);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);
+  box-shadow:0 8px 28px rgba(0,0,0,.42);
+  bottom:227px;overflow:auto;
+}
+html:not(.theme-dark) body.rtab-mapa header{background:rgba(251,247,236,.85)}
+body.rtab-mapa header .meta{display:none}
+body.rtab-mapa .barrow{margin-top:4px}
+/* wykres - plywajacy pasek u dolu (jak profil w Komoot) */
+body.rtab-mapa .chartwrap{
+  position:fixed;left:calc(var(--qnav-rail) + 10px);right:10px;bottom:10px;z-index:1150;margin:0;
+  border:1px solid var(--line);border-radius:14px;
+  background:rgba(6,15,10,.82);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);
+  box-shadow:0 8px 28px rgba(0,0,0,.46);
+}
+html:not(.theme-dark) body.rtab-mapa .chartwrap{background:rgba(251,247,236,.9)}
+
+body.rtab-mapa .chartwrap svg{max-height:230px}
+
+/* v3: waskie menu - reorganizacja tresci + zoom po prawej + atrybucja nad wykresem */
+body.rtab-mapa .titlerow h1{font-size:16px;line-height:1.15}
+body.rtab-mapa .statsrow{margin-top:6px;padding:6px 10px}
+body.rtab-mapa .statsrow .hero{flex-direction:column;align-items:flex-start;gap:3px}
+body.rtab-mapa .statsrow .hero .m+.m{border-left:0;padding-left:0;margin-left:0}
+body.rtab-mapa .statsrow .hero .m .v{font-size:17px}
+body.rtab-mapa .barrow{flex-direction:column;gap:6px}
+body.rtab-mapa .startband .when{font-size:13px}
+body.rtab-mapa .startband .where{font-size:12px}
+body.rtab-mapa .wxchip{font-size:12px}
+body.rtab-mapa .leaflet-top.leaflet-left{left:auto;right:8px;top:120px}
+body.rtab-mapa .leaflet-bottom.leaflet-right{bottom:221px}
+
+/* fix: baza flex w kolumnie menu */
+body.rtab-mapa .barrow>.startband,body.rtab-mapa .barrow>.wxchip{flex:0 0 auto}
+
+/* ==== v4: gorny pasek trasy + kafelek ==== */
+.rtopbar{padding:8px 0 4px}
+.rtopbar .rtb-name{font-weight:800;font-size:20px;color:var(--ink)}
+.rtopbar .rtb-sub{display:block;margin-top:2px;color:var(--ink2);font-size:13px}
+.rtopbar .rtb-sub .rtb-dot{opacity:.5;margin:0 5px}
+.rtopbar .meta{display:block;margin-top:2px;color:var(--muted);font-size:11px}
+.cardextra{display:none}
+.cx-sec{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:7px 10px}
+.cx-h{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.cx-bar{height:8px;border-radius:4px;overflow:hidden;display:flex;background:var(--line)}
+.cx-bar .cx-asf{background:#8aa6bd}
+.cx-bar .cx-unp{background:#c8862f}
+.cx-legend{display:flex;justify-content:space-between;gap:8px;margin-top:6px;font-size:11px;color:var(--ink2)}
+.cx-legend i.d{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:middle}
+.cx-legend i.asf{background:#8aa6bd}
+.cx-legend i.unp{background:#c8862f}
+.cx-rows{display:flex;flex-direction:column;gap:3px;font-size:13px}
+.cx-rows>div{display:flex;align-items:baseline;gap:6px}
+.cx-k{color:var(--ink2);min-width:44px}
+.cx-v{font-weight:700;color:var(--ink)}
+.cx-note{color:var(--muted);font-size:11px}
+.cx-xss{display:flex;align-items:baseline;gap:6px}
+.cx-xss .cx-v{font-size:16px}
+body.rtab-mapa #r-topbar{position:relative;z-index:1170;display:flex;align-items:baseline;gap:10px;margin:0;padding:7px 16px;background:rgba(6,15,10,.85);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden}
+html:not(.theme-dark) body.rtab-mapa #r-topbar{background:rgba(251,247,236,.9)}
+body.rtab-mapa #r-topbar .rtb-name{font-size:16px;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
+body.rtab-mapa #r-topbar .rtb-sub{margin-top:0;font-size:14px;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;min-width:0}
+body.rtab-mapa #r-topbar .meta{display:none}
+body.rtab-mapa .cardextra{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+
+/* ==== +2px czcionka raportu (czytelnosc) 2026-07-23 ==== */
+.rtopbar .rtb-name{font-size:22px}
+.rtopbar .rtb-sub{font-size:15px}
+.hero .m .v{font-size:21px}
+.hero .m .u{font-size:15px}
+.hero .m .sub{font-size:13px}
+.hero .m .l{font-size:12px}
+.statsrow .hero .m .v{font-size:22px}
+.statsrow .hero .m .u{font-size:14px}
+.statsrow .hero .m .sub{font-size:13px}
+.breakstrip{font-size:14.5px}
+.statsrow .breakstrip{font-size:14px}
+.sec-h{font-size:13px}
+.multi-item{font-size:16px}
+.multi-head{font-size:18px}
+.multi-body{font-size:16px}
+.strat-all{font-size:16px}
+.strat-op{font-size:15.5px}
+.strat-fp{font-size:15px}
+.strat-hd{font-size:16px}
+.risk-cmt{font-size:16px}
+.wx-etap-t{font-size:16.5px}
+.wx-pts{font-size:17px}
+.ms-list{font-size:16px}
+.ms-sum{font-size:16.5px}
+.ms-ok{font-size:16px}
+.ms-sub{font-size:13px}
+.press-main{font-size:16px}
+.mtable{font-size:15.5px}
+.forma-tab{font-size:15.5px}
+.spq-why{font-size:15px}
+.poi-desc{font-size:14.5px}
+.ubior-uw{font-size:14.5px}
+.climb-hd{font-size:15px}
+.alert .atyp{font-size:16px}
+.alert .arange{font-size:14.5px}
+.alert .adet{font-size:14.5px}
+#report-aside .chart-legend{font-size:14.5px}
+.sbar-lab{font-size:14.5px}
+.sbar-val{font-size:14px}
+/* podpowiedz kursora: mozna zaznaczyc fragment wykresu */
+.chartwrap svg{cursor:crosshair}
+
+/* ==== map-ctl na dole (przyciski mapy nad wykresem, nie pod menu) 2026-07-23 ==== */
+body.rtab-mapa .map-ctl{top:auto;bottom:250px;right:8px;z-index:1155;flex-direction:column;align-items:flex-end;gap:6px}
+
+/* ==== wieksza czcionka raportu v2 (wyrazniej, nadpisuje +2px) 2026-07-23 ==== */
+.rtopbar .rtb-name{font-size:23px}
+.rtopbar .rtb-sub{font-size:16px}
+.hero .m .v{font-size:22px}
+.statsrow .hero .m .v{font-size:23px}
+.breakstrip{font-size:15px}
+.statsrow .breakstrip{font-size:14.5px}
+.sec-h{font-size:14px}
+.multi-item{font-size:17px}
+.multi-head{font-size:20px}
+.multi-body{font-size:18px}
+.strat-all{font-size:18px}
+.strat-op{font-size:17px}
+.strat-fp{font-size:16px}
+.strat-hd{font-size:18px}
+.risk-cmt{font-size:17px}
+.wx-etap-t{font-size:18px}
+.wx-pts{font-size:18px}
+.ms-list{font-size:17px}
+.ms-sum{font-size:18px}
+.ms-ok{font-size:17px}
+.ms-sub{font-size:14px}
+.press-main{font-size:17px}
+.mtable{font-size:16px}
+.forma-tab{font-size:16px}
+.spq-why{font-size:16px}
+.poi-desc{font-size:15px}
+.ubior-uw{font-size:15px}
+.climb-hd{font-size:16px}
+.alert .atyp{font-size:17px}
+.alert .arange{font-size:15px}
+.alert .adet{font-size:15px}
+#report-aside .chart-legend{font-size:15px}
+.sbar-lab{font-size:15px}
+.sbar-val{font-size:14px}

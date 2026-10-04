@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1"><link rel="alternate icon" href="/favicon.ico?v=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/theme.css?v=3">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<title>QBot — modyfikacja tras</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--ink:#26332a;--ink2:#47564a;--muted:#8c8168;--line:#dcd0ba;--paper:#f2ecdd;--card:#fbf7ec;--panel:#eae0cc;--accent:#3c6b47;--accent-bg:#e0ebdf;--good:#3f7a4d;--good-bg:#e6f0e6;--bad:#a6503d;--bad-bg:#f2e4de;--warn:#8a5a12;--warn-bg:#f4ead2;--chart-border:#c9b48f;--success:var(--good);--success-bg:var(--good-bg);--danger:var(--bad);--danger-bg:var(--bad-bg);--risky:var(--bad);--candidate:#7b4fa0}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5}
+.wrap{max-width:880px;margin:0 auto;padding:28px 20px 80px}
+header{border-bottom:2px solid var(--ink);padding-bottom:16px;margin-bottom:24px}
+.eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+h1{margin:4px 0 2px;font-size:26px}
+.picker{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+select{flex:1;min-width:220px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:#26332a;font-size:14px}
+button{padding:8px 18px;border:1px solid var(--ink);border-radius:8px;background:var(--ink);color:#fff;font-size:14px;cursor:pointer}
+button:disabled{opacity:.4;cursor:default}
+.status{font-size:13px;color:var(--muted);margin-bottom:10px;min-height:18px}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-bottom:10px;flex-wrap:wrap}
+.legend .sw{display:inline-block;width:14px;height:4px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.legend .sw.dashed{background:none;border-top:2px dashed var(--candidate);width:14px;height:0;margin-top:2px}
+#map{height:520px;border-radius:12px;border:1px solid var(--line);background:#eee;margin-bottom:24px}
+h2.sec{font-size:15px;margin:0 0 10px}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+th,td{text-align:left;padding:10px 12px;font-size:13px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:650;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+tr:last-child td{border-bottom:none}
+tr.risky-row{cursor:pointer}
+tr.risky-row:hover{background:rgba(0,0,0,.03)}
+.nr-cell{font-weight:650;color:#fff;background:var(--risky);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px}
+.km-cell{white-space:nowrap;font-family:ui-monospace,monospace;color:var(--risky);font-weight:650}
+.reason-cell{color:var(--ink2,#41484f)}
+.before-line{font-size:12px;color:var(--muted);margin-top:4px;font-style:italic}
+.candidate-btn{padding:6px 12px;font-size:12px;white-space:nowrap}
+.remove-btn{padding:6px 12px;font-size:12px;white-space:nowrap;margin-top:6px;background:#fff;color:var(--risky);border-color:var(--risky)}
+.remove-btn[hidden]{display:none}
+.delta{font-size:12px;font-weight:650;margin-top:4px}
+.delta.better{color:var(--good)}
+.delta.worse{color:var(--risky)}
+.confidence{font-size:12px;color:var(--muted);margin-top:2px}
+.no-alt{font-size:12px;font-weight:650;color:var(--warn);margin-top:4px;background:#fff7e6;border:1px solid #e7c47a;border-radius:6px;padding:5px 8px;display:inline-block}
+.empty-note{font-size:13px;color:var(--muted);padding:16px;text-align:center;background:var(--card);border:1px dashed var(--line);border-radius:12px}
+</style>
+</head>
+<body><div class="wrap">
+<div style="margin-bottom:16px"><a href="/" style="font-size:13px;color:var(--muted);text-decoration:none">&larr; QBot lab</a></div>
+<header><div class="eyebrow">QBot · modyfikacja tras</div><h1>Wczytaj trasę z routes store</h1></header>
+
+<div class="picker">
+<select id="route-select"><option value="">Ładowanie listy tras…</option></select>
+<button id="load-btn" disabled>Wczytaj</button>
+</div>
+<div class="legend">
+<span><span class="sw" style="background:var(--good)"></span>Dobra nawierzchnia</span>
+<span><span class="sw" style="background:var(--risky)"></span>Ryzykowna / nieznana (numerowana)</span>
+<span><span class="sw dashed"></span>Proponowany objazd</span>
+</div>
+<div class="status" id="status"></div>
+<div id="map"></div>
+
+<h2 class="sec">Odcinki ryzykowne</h2>
+<div id="risky-table"><div class="empty-note">Wczytaj trasę, aby zobaczyć listę.</div></div>
+
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const sel = document.getElementById("route-select");
+const btn = document.getElementById("load-btn");
+const statusEl = document.getElementById("status");
+const tableEl = document.getElementById("risky-table");
+
+const map = L.map("map").setView([52.2297, 21.0122], 7);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: "&copy; OpenStreetMap"
+}).addTo(map);
+
+let currentLayers = [];
+let candidateLayers = {};
+let currentRouteId = null;
+let riskySegments = [];
+
+function clearRoute() {
+  currentLayers.forEach(l => map.removeLayer(l));
+  currentLayers = [];
+  Object.values(candidateLayers).forEach(l => map.removeLayer(l));
+  candidateLayers = {};
+}
+
+function markerIcon(bg, label, size) {
+  size = size || 22;
+  return L.divIcon({
+    className: "",
+    html: `<div style="background:${bg};color:#fff;font-size:${size <= 20 ? 11 : 10}px;font-weight:650;
+           width:${size}px;height:${size}px;border-radius:50%;display:flex;align-items:center;
+           justify-content:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)">${label}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2]
+  });
+}
+
+function renderTable(segments) {
+  riskySegments = segments.filter(s => s.risky);
+  if (!riskySegments.length) {
+    tableEl.innerHTML = '<div class="empty-note">Brak odcinków ryzykownych na tej trasie.</div>';
+    return;
+  }
+  const rows = riskySegments.map((s, i) => {
+    const before = (s.original_breakdown || []).map(b => `${b.pct}% ${b.surface}`).join(", ");
+    return `
+    <tr class="risky-row" data-idx="${i}">
+      <td><span class="nr-cell">${s.segment_no}</span></td>
+      <td class="km-cell">${s.km_from}–${s.km_to} km</td>
+      <td class="reason-cell">${s.reason || "—"}
+        <div class="before-line">Było: ${before || "brak danych"}</div>
+        <div class="delta" id="delta-${i}"></div>
+        <div id="conf-${i}"></div>
+      </td>
+      <td>
+        <button class="candidate-btn" data-idx="${i}">Nowy kandydat</button><br>
+        <button class="remove-btn" data-idx="${i}" hidden>Usuń</button>
+      </td>
+    </tr>`;
+  }).join("");
+  tableEl.innerHTML = `<table><thead><tr><th>Nr</th><th>Km</th><th>Uzasadnienie</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+
+  tableEl.querySelectorAll(".candidate-btn").forEach(b => {
+    b.addEventListener("click", (ev) => { ev.stopPropagation(); requestCandidateByIdx(b.dataset.idx); });
+  });
+  tableEl.querySelectorAll(".remove-btn").forEach(b => {
+    b.addEventListener("click", (ev) => { ev.stopPropagation(); removeCandidate(b.dataset.idx); });
+  });
+  tableEl.querySelectorAll(".risky-row").forEach(row => {
+    row.addEventListener("click", () => {
+      const idx = row.dataset.idx;
+      const seg = riskySegments[idx];
+      map.fitBounds(L.latLngBounds(seg.coordinates), { padding: [40, 40], maxZoom: 16 });
+    });
+  });
+}
+
+function removeCandidate(idx) {
+  if (candidateLayers[idx]) {
+    map.removeLayer(candidateLayers[idx]);
+    delete candidateLayers[idx];
+  }
+  const deltaEl = document.getElementById(`delta-${idx}`);
+  const confEl = document.getElementById(`conf-${idx}`);
+  if (deltaEl) { deltaEl.textContent = ""; deltaEl.className = "delta"; }
+  if (confEl) confEl.innerHTML = "";
+  const removeBtn = tableEl.querySelector(`.remove-btn[data-idx="${idx}"]`);
+  if (removeBtn) removeBtn.hidden = true;
+}
+
+function requestCandidateByIdx(idx) {
+  const seg = riskySegments[idx];
+  if (!seg) return;
+  const button = tableEl.querySelector(`.candidate-btn[data-idx="${idx}"]`);
+  const deltaEl = document.getElementById(`delta-${idx}`);
+  const confEl = document.getElementById(`conf-${idx}`);
+  const removeBtn = tableEl.querySelector(`.remove-btn[data-idx="${idx}"]`);
+  if (button) { button.disabled = true; button.textContent = "Liczenie…"; }
+  deltaEl.textContent = "";
+  confEl.innerHTML = "";
+
+  fetch(`/api/routes/${currentRouteId}/segments/candidate?km_from=${seg.km_from}&km_to=${seg.km_to}`)
+    .then(r => {
+      if (!r.ok) return r.json().then(e => { throw new Error(e.detail || "błąd"); });
+      return r.json();
+    })
+    .then(data => {
+      if (candidateLayers[idx]) map.removeLayer(candidateLayers[idx]);
+
+      if (data.no_real_alternative) {
+        const line = L.polyline(data.coordinates, {
+          color: "#d98a2b", weight: 4, dashArray: "2 8"
+        }).addTo(map);
+        candidateLayers[idx] = line;
+        map.fitBounds(line.getBounds(), { padding: [30, 30] });
+        deltaEl.textContent = "";
+        if (removeBtn) removeBtn.hidden = false;
+        const domEntry = (data.confidence.breakdown || []).find(b => b.surface === data.confidence.dominant);
+        const domPl = (domEntry && domEntry.surface_pl) || data.confidence.dominant;
+        confEl.innerHTML = `<div class="no-alt">⚠ Brak realnej alternatywy — to najprawdopodobniej jedyna przejezdna droga w tym miejscu (nadal głównie: ${domPl}).</div>`;
+        return;
+      }
+
+      const line = L.polyline(data.coordinates, {
+        color: "#7b4fa0", weight: 4, dashArray: "8 6"
+      }).addTo(map);
+      candidateLayers[idx] = line;
+      map.fitBounds(line.getBounds(), { padding: [30, 30] });
+      if (removeBtn) removeBtn.hidden = false;
+
+      const better = data.delta_km <= 0;
+      deltaEl.className = "delta " + (better ? "better" : "worse");
+      const sign = data.delta_km > 0 ? "+" : "";
+      deltaEl.textContent = `Kandydat: ${data.candidate_km} km (${sign}${data.delta_km} km vs oryginał ${data.original_km} km)`;
+
+      const c = data.confidence || {};
+      if (c.available) {
+        const parts = c.breakdown.map(b => `${b.pct}% ${b.surface_pl || b.surface}`).join(", ");
+        confEl.innerHTML = `<div class="confidence">Nawierzchnia kandydata: ${parts}</div>`;
+      } else {
+        confEl.innerHTML = `<div class="confidence">${c.note || "Nie udało się zweryfikować nawierzchni objazdu."}</div>`;
+      }
+    })
+    .catch(err => {
+      deltaEl.className = "delta worse";
+      deltaEl.textContent = "Błąd liczenia objazdu: " + err.message;
+    })
+    .finally(() => {
+      if (button) { button.disabled = false; button.textContent = "Nowy kandydat"; }
+    });
+}
+
+fetch("/api/routes/ready")
+  .then(r => r.json())
+  .then(data => {
+    const routes = data.routes || [];
+    if (!routes.length) {
+      sel.innerHTML = '<option value="">Brak tras z policzoną nawierzchnią</option>';
+      return;
+    }
+    sel.innerHTML = routes.map(r =>
+      `<option value="${r.route_id}">${r.name} — ${r.distance_km} km</option>`
+    ).join("");
+    btn.disabled = false;
+  })
+  .catch(() => {
+    sel.innerHTML = '<option value="">Błąd wczytywania listy</option>';
+  });
+
+btn.addEventListener("click", () => {
+  const routeId = sel.value;
+  if (!routeId) return;
+  currentRouteId = routeId;
+  statusEl.textContent = "Wczytywanie trasy…";
+  btn.disabled = true;
+  fetch(`/api/routes/${routeId}/surface-segments`)
+    .then(r => r.json())
+    .then(data => {
+      clearRoute();
+      const segments = data.segments || [];
+      if (!segments.length) {
+        statusEl.textContent = "Brak geometrii dla tej trasy.";
+        renderTable([]);
+        return;
+      }
+      segments.forEach(seg => {
+        const line = L.polyline(seg.coordinates, {
+          color: seg.risky ? "#c2452f" : "#3f7a4d",
+          weight: 5
+        }).addTo(map);
+        currentLayers.push(line);
+        if (seg.risky) {
+          const mid = seg.coordinates[Math.floor(seg.coordinates.length / 2)];
+          const numMarker = L.marker(mid, { icon: markerIcon("#c2452f", seg.segment_no, 20) })
+            .bindTooltip(`Odcinek ${seg.segment_no}: ${seg.km_from}–${seg.km_to} km — kliknij po kandydata`);
+          // uwaga: indexOf liczone LENIWIE (dopiero przy kliku), bo w momencie tworzenia
+          // tego markera riskySegments jeszcze nie jest wypelnione (renderTable() woalne pozniej)
+          numMarker.on("click", () => requestCandidateByIdx(riskySegments.indexOf(seg)));
+          numMarker.addTo(map);
+          currentLayers.push(numMarker);
+        }
+      });
+      const firstPt = segments[0].coordinates[0];
+      const lastSeg = segments[segments.length - 1];
+      const lastPt = lastSeg.coordinates[lastSeg.coordinates.length - 1];
+      const startMarker = L.marker(firstPt, { icon: markerIcon("#3f6f9a", "S") })
+        .bindTooltip("Start", { permanent: false });
+      const endMarker = L.marker(lastPt, { icon: markerIcon("#1c2024", "M") })
+        .bindTooltip("Meta", { permanent: false });
+      startMarker.addTo(map); endMarker.addTo(map);
+      currentLayers.push(startMarker, endMarker);
+
+      const bounds = L.latLngBounds(segments.flatMap(s => s.coordinates));
+      map.fitBounds(bounds, { padding: [20, 20] });
+      statusEl.textContent = `${data.name} — ${data.distance_km} km`;
+      renderTable(segments);
+    })
+    .catch(() => {
+      statusEl.textContent = "Błąd wczytywania trasy.";
+    })
+    .finally(() => {
+      btn.disabled = false;
+    });
+});
+</script>
+<link rel="stylesheet" href="/nav.css?v=4">
+<script src="/nav.js?v=5"></script>
+</body>
+</html>

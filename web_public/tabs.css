@@ -1,0 +1,18 @@
+/* QBot wewnetrzne zakladki tresci (górny pasek) -- samodzielny, wielokrotnego uzytku.
+   Konwencja: owin bloki w <section data-qtab="Nazwa">...</section>; tabs.js zbuduje pasek. */
+.qtabs-bar{position:sticky;top:0;z-index:60;display:flex;gap:2px;flex-wrap:nowrap;
+  background:var(--paper,#f6f2ea);border-bottom:1px solid var(--line,#e3ddd2);
+  margin:0 0 8px;padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.qtabs-bar::-webkit-scrollbar{height:0}
+.qtabs-btn{appearance:none;background:none;border:0;padding:8px 16px;margin-bottom:-1px;
+  font:inherit;font-size:14px;font-weight:600;color:var(--muted,#7a838c);cursor:pointer;
+  white-space:nowrap;border-bottom:3px solid transparent;transition:color .12s}
+.qtabs-btn:hover{color:var(--ink,#1c2024)}
+.qtabs-btn.active{color:var(--ink,#1c2024);border-bottom-color:var(--accent,#3f6f9a)}
+
+.qtab-panel[hidden]{display:none!important}
+
+/* pod-nagłówki grup wewnątrz zakładki */
+.qgrp{margin:10px 0 6px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted,#7a838c);font-weight:700}
+.qgrp:first-child{margin-top:2px}

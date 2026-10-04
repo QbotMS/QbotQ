@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1"><link rel="alternate icon" href="/favicon.ico?v=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/theme.css?v=3">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<title>QBot — Analiza dnia</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/raport.css?v=2026071824">
+<style>
+.day-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:500}
+.day-tab{padding:7px 13px;border:1px solid var(--line);border-radius:9px;background:var(--paper);cursor:pointer;font:inherit;text-align:left;line-height:1.15}
+.day-tab .d{font-weight:600;color:var(--ink);display:block;font-size:13px}
+.day-tab .k{font-size:11px;color:var(--muted)}
+.day-tab.on{background:var(--accent-bg);border-color:var(--accent)}
+.day-tab.on .d{color:var(--accent-ink)}
+.day-tab:hover{border-color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="day-tabs" id="day-tabs"></div>
+<div class="wrap">
+  <div class="back"><a href="/planer-wyprawy.html">&larr; Planer wyprawy</a></div>
+  <div class="status" id="d-status"></div>
+  <div id="report"></div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/raport-render.js?v=2026071826"></script>
+<script>
+(function(){
+  var qs=new URLSearchParams(location.search);
+  var routeId=qs.get("route_id")||"";
+  var daysRaw=qs.get("days")||"";
+  var tabs=document.getElementById("day-tabs");
+  var status=document.getElementById("d-status");
+  var mount=document.getElementById("report");
+  if(!routeId||!daysRaw){status.textContent="Brak parametr\u00f3w (route_id, days).";return;}
+  var days=daysRaw.split(",").map(function(p){var ab=p.split("-");return{from:parseFloat(ab[0]),to:parseFloat(ab[1])};}).filter(function(d){return !isNaN(d.from)&&!isNaN(d.to);});
+  if(!days.length){status.textContent="Nieprawid\u0142owy podzia\u0142 dni.";return;}
+  function renderTabs(active){
+    tabs.innerHTML=days.map(function(d,i){return '<button class="day-tab'+(i===active?" on":"")+'" data-i="'+i+'"><span class="d">Dzie\u0144 '+(i+1)+'</span><span class="k">'+d.from.toFixed(0)+'\u2013'+d.to.toFixed(0)+' km</span></button>';}).join("");
+    Array.prototype.forEach.call(tabs.querySelectorAll(".day-tab"),function(b){b.onclick=function(){loadDay(parseInt(b.dataset.i,10));};});
+  }
+  function loadDay(i){
+    renderTabs(i);
+    status.textContent="\u0141adowanie dnia "+(i+1)+"\u2026";
+    mount.innerHTML="";
+    var d=days[i];
+    fetch("/api/planer/dzien?route_id="+encodeURIComponent(routeId)+"&from="+d.from+"&to="+d.to)
+      .then(function(r){return r.json();})
+      .then(function(data){
+        if(!data||data.status==="ERROR"){status.textContent="B\u0142\u0105d: "+((data&&data.error)||"brak danych");return;}
+        status.textContent="";
+        window.renderReport(data, mount);
+      })
+      .catch(function(e){status.textContent="B\u0142\u0105d \u0142adowania: "+e;});
+  }
+  renderTabs(0);
+  loadDay(0);
+})();
+</script>
+<link rel="stylesheet" href="/nav.css?v=4">
+<script src="/nav.js?v=5"></script>
+</body>
+</html>

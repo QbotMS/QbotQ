@@ -1,0 +1,892 @@
+{
+ "row_one_arm_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 73,
+  "kb_m": 23,
+  "sha1": "c2a0478ed239",
+  "batch": 1
+ },
+ "bench_press_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 58,
+  "kb_m": 19,
+  "sha1": "40ecb951355a",
+  "batch": 1
+ },
+ "pullover_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 44,
+  "kb_m": 15,
+  "sha1": "08f7ac66f346",
+  "batch": 1
+ },
+ "shoulder_press_seated_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 66,
+  "kb_m": 22,
+  "sha1": "8bd2e0ff72f9",
+  "batch": 1
+ },
+ "ytw_prone": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 56,
+  "kb_m": 20,
+  "sha1": "cf5249c65e38",
+  "batch": 1,
+  "v": 2
+ },
+ "plank_forearm": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 43,
+  "kb_m": 11,
+  "sha1": "740aa8e3fefb",
+  "batch": 1
+ },
+ "bent_over_row_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 75,
+  "kb_m": 23,
+  "sha1": "490a76879a0a",
+  "batch": 1,
+  "v": 2
+ },
+ "pushup": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 44,
+  "kb_m": 13,
+  "sha1": "499f9beb02f9",
+  "batch": 1
+ },
+ "pushup_knees": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 49,
+  "kb_m": 15,
+  "sha1": "b82fbb4f7b5e",
+  "batch": 1
+ },
+ "arm_circles": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 40,
+  "kb_m": 14,
+  "sha1": "194562485792",
+  "batch": 1
+ },
+ "torso_rotations": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 47,
+  "kb_m": 16,
+  "sha1": "0cc647f07bd9",
+  "batch": 1
+ },
+ "band_pull_apart": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 50,
+  "kb_m": 15,
+  "sha1": "8bb8006ab14b",
+  "batch": 1
+ },
+ "band_squat": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 55,
+  "kb_m": 18,
+  "sha1": "8a9f060fabe7",
+  "batch": 2,
+  "v": 1
+ },
+ "bulgarian_split_squat_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 61,
+  "kb_m": 19,
+  "sha1": "8570631400ab",
+  "batch": 2,
+  "v": 1
+ },
+ "cossack_squat": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 53,
+  "kb_m": 17,
+  "sha1": "c0aa1a6eef5e",
+  "batch": 2,
+  "v": 1
+ },
+ "goblet_squat_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 56,
+  "kb_m": 17,
+  "sha1": "4ef3d2f02789",
+  "batch": 2,
+  "v": 1
+ },
+ "goblet_squat_pause_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 56,
+  "kb_m": 19,
+  "sha1": "4115d39932a2",
+  "batch": 2,
+  "v": 1
+ },
+ "heel_elevated_squat_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 50,
+  "kb_m": 17,
+  "sha1": "2ccb5be55d48",
+  "batch": 2,
+  "v": 1
+ },
+ "lateral_lunge_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 58,
+  "kb_m": 19,
+  "sha1": "1baee0984664",
+  "batch": 2,
+  "v": 1
+ },
+ "reverse_lunge_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 50,
+  "kb_m": 16,
+  "sha1": "69d0900fa6f7",
+  "batch": 2,
+  "v": 1
+ },
+ "split_squat_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 53,
+  "kb_m": 17,
+  "sha1": "914bdec3b0ef",
+  "batch": 2,
+  "v": 1
+ },
+ "step_up_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 49,
+  "kb_m": 16,
+  "sha1": "1d82ad82aa5d",
+  "batch": 2,
+  "v": 1
+ },
+ "walking_lunge_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 62,
+  "kb_m": 21,
+  "sha1": "04d189fa9a59",
+  "batch": 2,
+  "v": 2
+ },
+ "band_lateral_walk": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 60,
+  "kb_m": 19,
+  "sha1": "98cd5f1ecfb3",
+  "batch": 3,
+  "v": 1
+ },
+ "calf_raise_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 50,
+  "kb_m": 16,
+  "sha1": "bea211defa07",
+  "batch": 3,
+  "v": 1
+ },
+ "glute_bridge_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 46,
+  "kb_m": 14,
+  "sha1": "eb18a11b992d",
+  "batch": 3,
+  "v": 1
+ },
+ "hip_thrust_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 56,
+  "kb_m": 17,
+  "sha1": "abae376d2099",
+  "batch": 3,
+  "v": 1
+ },
+ "rdl_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 52,
+  "kb_m": 17,
+  "sha1": "cf48b27f43cc",
+  "batch": 3,
+  "v": 1
+ },
+ "single_leg_calf_raise": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 43,
+  "kb_m": 15,
+  "sha1": "26ea6c4c7837",
+  "batch": 3,
+  "v": 1
+ },
+ "single_leg_glute_bridge": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 51,
+  "kb_m": 16,
+  "sha1": "82d4a3b07cc5",
+  "batch": 3,
+  "v": 1
+ },
+ "single_leg_hip_thrust": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 59,
+  "kb_m": 18,
+  "sha1": "4350099b4fcb",
+  "batch": 3,
+  "v": 1
+ },
+ "single_leg_rdl_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 52,
+  "kb_m": 17,
+  "sha1": "a0ca7ae75b16",
+  "batch": 3,
+  "v": 1
+ },
+ "skater_squat": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 53,
+  "kb_m": 16,
+  "sha1": "f621ee86227b",
+  "batch": 3,
+  "v": 1
+ },
+ "wall_sit": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 36,
+  "kb_m": 11,
+  "sha1": "9645380ad933",
+  "batch": 3,
+  "v": 1
+ },
+ "band_clamshell": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 44,
+  "kb_m": 14,
+  "sha1": "e7eb1045d701",
+  "batch": 4,
+  "v": 1
+ },
+ "band_glute_kickback": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 56,
+  "kb_m": 19,
+  "sha1": "2d3d9cec763a",
+  "batch": 4,
+  "v": 1
+ },
+ "chest_supported_row_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 60,
+  "kb_m": 21,
+  "sha1": "568a74f3e3b6",
+  "batch": 4,
+  "v": 1
+ },
+ "hamstring_walkout": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 37,
+  "kb_m": 12,
+  "sha1": "2ce581552b53",
+  "batch": 4,
+  "v": 1
+ },
+ "kickstand_rdl_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 52,
+  "kb_m": 18,
+  "sha1": "3060727ffc0c",
+  "batch": 4,
+  "v": 1
+ },
+ "renegade_row_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 60,
+  "kb_m": 18,
+  "sha1": "369363e297ed",
+  "batch": 4,
+  "v": 1
+ },
+ "row_one_arm_pause_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 68,
+  "kb_m": 23,
+  "sha1": "d071c1af6ba1",
+  "batch": 4,
+  "v": 1
+ },
+ "side_lying_hip_abduction": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 38,
+  "kb_m": 13,
+  "sha1": "3f3165e652a9",
+  "batch": 4,
+  "v": 1
+ },
+ "sumo_deadlift_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 51,
+  "kb_m": 18,
+  "sha1": "7a78e5198683",
+  "batch": 4,
+  "v": 1
+ },
+ "band_lat_pulldown": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 52,
+  "kb_m": 18,
+  "sha1": "236700d51c16",
+  "batch": 5,
+  "v": 1
+ },
+ "band_row_one_arm": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 52,
+  "kb_m": 18,
+  "sha1": "34eb29cf5126",
+  "batch": 5,
+  "v": 1
+ },
+ "band_row_seated": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 46,
+  "kb_m": 15,
+  "sha1": "02aa90c51e27",
+  "batch": 5,
+  "v": 1
+ },
+ "bench_press_neutral_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 59,
+  "kb_m": 20,
+  "sha1": "4c19aeaeb883",
+  "batch": 5,
+  "v": 1
+ },
+ "db_fly": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 56,
+  "kb_m": 20,
+  "sha1": "62d1a0b3b38c",
+  "batch": 5,
+  "v": 1
+ },
+ "db_shrug": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 45,
+  "kb_m": 16,
+  "sha1": "8045ee280f3d",
+  "batch": 5,
+  "v": 1
+ },
+ "floor_press_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 51,
+  "kb_m": 17,
+  "sha1": "924723e20af5",
+  "batch": 5,
+  "v": 1
+ },
+ "pushup_wide": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 34,
+  "kb_m": 11,
+  "sha1": "ecd6156b5cbc",
+  "batch": 5,
+  "v": 1
+ },
+ "reverse_fly_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 51,
+  "kb_m": 18,
+  "sha1": "309e4cf39882",
+  "batch": 5,
+  "v": 1
+ },
+ "superman": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 31,
+  "kb_m": 11,
+  "sha1": "4cd7d7f693b9",
+  "batch": 5,
+  "v": 1
+ },
+ "prone_t_raise_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 53,
+  "kb_m": 18,
+  "sha1": "06a70c37b702",
+  "batch": 5,
+  "v": 1
+ },
+ "good_morning_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 40,
+  "kb_m": 15,
+  "sha1": "7aeb4c7972ef",
+  "batch": 4,
+  "v": 1
+ },
+ "band_good_morning": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 50,
+  "kb_m": 19,
+  "sha1": "e332f8d61580",
+  "batch": 4,
+  "v": 1
+ },
+ "arnold_press_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 64,
+  "kb_m": 22,
+  "sha1": "43d44eab0b08",
+  "batch": 6,
+  "v": 1
+ },
+ "band_chest_press": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 48,
+  "kb_m": 17,
+  "sha1": "44a059ffff70",
+  "batch": 6,
+  "v": 1
+ },
+ "band_external_rotation": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 43,
+  "kb_m": 16,
+  "sha1": "27378ea291d1",
+  "batch": 6,
+  "v": 1
+ },
+ "cuban_rotation_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 45,
+  "kb_m": 17,
+  "sha1": "41c178c7ffaa",
+  "batch": 6,
+  "v": 1
+ },
+ "front_raise_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 41,
+  "kb_m": 15,
+  "sha1": "266653ec8db3",
+  "batch": 6,
+  "v": 1
+ },
+ "lateral_raise_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 44,
+  "kb_m": 16,
+  "sha1": "8f9aa22cac08",
+  "batch": 6,
+  "v": 1
+ },
+ "pike_pushup": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 45,
+  "kb_m": 15,
+  "sha1": "aa76027b2090",
+  "batch": 6,
+  "v": 1
+ },
+ "pushup_feet_elevated": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 36,
+  "kb_m": 12,
+  "sha1": "c8aa66297231",
+  "batch": 6,
+  "v": 1
+ },
+ "pushup_incline": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 45,
+  "kb_m": 16,
+  "sha1": "dee023b3b44e",
+  "batch": 6,
+  "v": 1
+ },
+ "shoulder_press_standing_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 44,
+  "kb_m": 16,
+  "sha1": "f80dde09b195",
+  "batch": 6,
+  "v": 1
+ },
+ "band_curl": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 48,
+  "kb_m": 18,
+  "sha1": "d84a8733b5ec",
+  "batch": 7,
+  "v": 1
+ },
+ "bench_dips": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 51,
+  "kb_m": 17,
+  "sha1": "621ee87bffed",
+  "batch": 7,
+  "v": 1
+ },
+ "bicep_curl_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 46,
+  "kb_m": 17,
+  "sha1": "c9aba2f5d908",
+  "batch": 7,
+  "v": 1
+ },
+ "dead_bug": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 41,
+  "kb_m": 14,
+  "sha1": "8b2997d2d076",
+  "batch": 7,
+  "v": 1
+ },
+ "diamond_pushup": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 40,
+  "kb_m": 13,
+  "sha1": "f0521c79ac52",
+  "batch": 7,
+  "v": 1
+ },
+ "hammer_curl_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 48,
+  "kb_m": 18,
+  "sha1": "42d9f40f3d9f",
+  "batch": 7,
+  "v": 1
+ },
+ "hollow_hold": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 36,
+  "kb_m": 10,
+  "sha1": "d318ddf823f9",
+  "batch": 7,
+  "v": 1
+ },
+ "overhead_triceps_ext_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 55,
+  "kb_m": 19,
+  "sha1": "05d190dd6ddb",
+  "batch": 7,
+  "v": 1
+ },
+ "side_plank": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 33,
+  "kb_m": 11,
+  "sha1": "a9786ca4aff7",
+  "batch": 7,
+  "v": 1
+ },
+ "skull_crusher_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 56,
+  "kb_m": 20,
+  "sha1": "577e2368539b",
+  "batch": 7,
+  "v": 1
+ },
+ "triceps_kickback_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 59,
+  "kb_m": 22,
+  "sha1": "dce0ff0a99e8",
+  "batch": 7,
+  "v": 1
+ },
+ "band_dislocates": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 59,
+  "kb_m": 22,
+  "sha1": "f8cdc328a6a7",
+  "batch": 6,
+  "v": 1
+ },
+ "bird_dog": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 38,
+  "kb_m": 12,
+  "sha1": "8df3d5d2c70b",
+  "batch": 8,
+  "v": 1
+ },
+ "mountain_climbers": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 44,
+  "kb_m": 15,
+  "sha1": "532bf7d5645b",
+  "batch": 8,
+  "v": 1
+ },
+ "lying_leg_raise_bench": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 44,
+  "kb_m": 14,
+  "sha1": "4465f4c841b2",
+  "batch": 8,
+  "v": 1
+ },
+ "plank_shoulder_tap": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 36,
+  "kb_m": 13,
+  "sha1": "9a6d9d38552b",
+  "batch": 8,
+  "v": 1
+ },
+ "russian_twist_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 48,
+  "kb_m": 15,
+  "sha1": "2a873439b487",
+  "batch": 8,
+  "v": 1
+ },
+ "suitcase_carry_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 62,
+  "kb_m": 21,
+  "sha1": "40afce6c7ee7",
+  "batch": 8,
+  "v": 1
+ },
+ "farmer_carry_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 64,
+  "kb_m": 22,
+  "sha1": "e9668d29fd14",
+  "batch": 8,
+  "v": 1
+ },
+ "dead_bug_db": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 42,
+  "kb_m": 14,
+  "sha1": "54e0715c634a",
+  "batch": 8,
+  "v": 1
+ },
+ "glute_bridge_march": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 45,
+  "kb_m": 14,
+  "sha1": "a00c1bf29f60",
+  "batch": 8,
+  "v": 1
+ },
+ "reverse_crunch": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 37,
+  "kb_m": 12,
+  "sha1": "9ca51529966d",
+  "batch": 8,
+  "v": 1
+ },
+ "bear_hold": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 51,
+  "kb_m": 16,
+  "sha1": "e8b40d6d7ad5",
+  "batch": 9,
+  "v": 1
+ },
+ "db_woodchop": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 61,
+  "kb_m": 20,
+  "sha1": "1ff3b7321731",
+  "batch": 9,
+  "v": 1
+ },
+ "side_plank_hip_dip": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 35,
+  "kb_m": 12,
+  "sha1": "42a53a0d9c24",
+  "batch": 9,
+  "v": 1
+ },
+ "cat_cow": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 43,
+  "kb_m": 14,
+  "sha1": "023195e1b73d",
+  "batch": 9,
+  "v": 1
+ },
+ "worlds_greatest_stretch": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 54,
+  "kb_m": 18,
+  "sha1": "a035ed33ff92",
+  "batch": 9,
+  "v": 1
+ },
+ "hip_90_90": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 67,
+  "kb_m": 18,
+  "sha1": "47feeb4ed6db",
+  "batch": 9,
+  "v": 1
+ },
+ "thoracic_open_book": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 41,
+  "kb_m": 13,
+  "sha1": "42612ecb9dec",
+  "batch": 9,
+  "v": 1
+ },
+ "leg_swings": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 46,
+  "kb_m": 15,
+  "sha1": "277e5333d6e3",
+  "batch": 9,
+  "v": 1
+ },
+ "bodyweight_squat": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 45,
+  "kb_m": 15,
+  "sha1": "190594e4adca",
+  "batch": 9,
+  "v": 1
+ },
+ "hip_flexor_stretch": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 37,
+  "kb_m": 11,
+  "sha1": "91b6707b3349",
+  "batch": 9,
+  "v": 1
+ },
+ "inchworm": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 42,
+  "kb_m": 13,
+  "sha1": "616de378f008",
+  "batch": 9,
+  "v": 1
+ },
+ "copenhagen_plank_short": {
+  "w": 1536,
+  "h": 1024,
+  "kb": 47,
+  "kb_m": 15,
+  "sha1": "ea7696d5bd8e",
+  "batch": 8,
+  "v": 1
+ }
+}
