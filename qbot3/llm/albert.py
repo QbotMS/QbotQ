@@ -465,6 +465,7 @@ def run(question: str, tools_spec: list[dict], execute_tool_fn, context: dict,
 
             tool_results_log.append({
                 "reader": tool_name,
+                "args": args,
                 "status": result.get("status", "OK") if isinstance(result, dict) else "OK",
                 "data": result,
             })

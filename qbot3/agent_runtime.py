@@ -16,7 +16,7 @@ from qbot3.llm import get_llm_provider
 from qbot3.tool_registry import lookup, tool_descriptions, _idempotency_key, _resolve_date
 from qbot3.context_builder import build_context
 from qbot3.plan_validator import validate_plan
-from qbot3.observability import log_request, Timer, request_id as rid
+from qbot3.observability import log_request, Timer, request_id as rid, summarize_tool_results
 from qbot3.fallback_policy import planner_unavailable_response
 
 
@@ -282,6 +282,9 @@ def orchestrate_query(question: str, context: str = "", max_rows: int = 500) -> 
             pseudo_plan["mode"], pseudo_plan["intent"],
             pseudo_plan["tools_to_call"], pseudo_plan["tools_to_call"],
             False, mcp_status, "", timer.elapsed_ms(),
+            question=(question or "")[:500],
+            answer=(answer or "")[:1000],
+            tool_calls=summarize_tool_results(tool_results),
         )
     except Exception:
         pass

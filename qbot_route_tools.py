@@ -2843,7 +2843,8 @@ def _tool_qbot_ride_analysis(_args: dict | None = None) -> dict[str, Any]:
     try:
         from tools.rwgps.ride_overlay import build as overlay_build
         from tools.rwgps.ride_verdict import build as verdict_build
-        with contextlib.redirect_stdout(io.StringIO()):
+        _ov_out = io.StringIO()
+        with contextlib.redirect_stdout(_ov_out):
             if fit:
                 rc = overlay_build(fit_path=str(fit), use_latest=False)
             else:
@@ -2853,7 +2854,10 @@ def _tool_qbot_ride_analysis(_args: dict | None = None) -> dict[str, Any]:
                     "notes": "Jazda nie pasuje do zadnego planu (start za daleko). Tryb bez planu jeszcze niedostepny."}
         if rc not in (0, None):
             return {"tool": "qbot_ride_analysis", "safety_class": "READ_ONLY", "status": "WARN",
-                    "notes": f"Nakladanie FIT zwrocilo kod {rc}."}
+                    "notes": (
+                        f"Nakladanie FIT nieudane (kod {rc}): "
+                        + ((_ov_out.getvalue().strip().splitlines() or ["brak komunikatu"])[-1])[:300]
+                    )}
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             verdict_build(ride=ride)
