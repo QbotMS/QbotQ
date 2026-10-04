@@ -760,7 +760,7 @@ def _fallback_ai(prompt):
     return _fallback_telegram()
 
 def _telegram_report():
-    """Telegram generowany przez LLM (gpt-5.4-mini); fallback = szablon _fallback_telegram()."""
+    """Telegram generowany przez LLM (QGPT_MODEL); fallback = szablon _fallback_telegram()."""
     try:
         import json as _json_tg
         _payload = _json_tg.dumps(_data, ensure_ascii=False)

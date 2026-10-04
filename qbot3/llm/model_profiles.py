@@ -20,7 +20,7 @@ PROFILES: dict[str, dict] = {
         "base_url_env": "QBOT_PLANNER_BASE_URL",
         "base_url_default": "https://api.openai.com/v1",
         "model_env": "QBOT_PLANNER_MODEL",
-        "model_default": "gpt-5.4-mini",
+        "model_default": "gpt-6-luna",
         "key_env": "QBOT_PLANNER_API_KEY",
     },
     "gemini": {
