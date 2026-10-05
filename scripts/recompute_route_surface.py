@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""Ponowne przeliczenie profilu nawierzchni trasy (Overpass) + warstw precompute.
+"""Ponowne przeliczenie profilu nawierzchni trasy + warstw precompute.
 
-Uzycie (DLUGIE - przez SSH w tle, nie przez dev_shell_exec):
-  cd /opt/qbot/app && nohup .venv/bin/python3 scripts/recompute_route_surface.py komoot-3331694546 \
-      > /opt/qbot/artifacts/recompute_surface.txt 2>&1 &
+  .venv/bin/python3 scripts/recompute_route_surface.py <route_id> --bg   # w tle, od razu wraca
+  log: /opt/qbot/artifacts/recompute_surface_<route_id>.log
+Bez --bg dziala na pierwszym planie (tylko przez SSH, nie dev_shell_exec).
 
-Kroki: (1) qbot_route_artifact_enrich z enrich=surface (zapis route_surface_profiles),
+Kroki: (1) qbot_route_artifact_enrich z enrich=surface (zapis route_surface_profiles;
+zrodlo drog: lokalna baza OSM PL lub Overpass - docs/OSM_LOCAL_SURFACE.md),
 (2) ensure_route_precompute (route_base, route_surface_layer, wysokosci, ...).
 """
 from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -39,11 +41,11 @@ for _p in ("/opt/qbot/app/.env.local", "/etc/qbot/qbot-api.env"):
     _load_env(_p)
 os.environ.setdefault("QBOT3_ENABLED", "1")
 
-import psycopg  # noqa: E402
-from psycopg.rows import dict_row  # noqa: E402
-
 
 def _artifact_path(route_id: str) -> str:
+    import psycopg
+    from psycopg.rows import dict_row
+
     with psycopg.connect(
         host=os.getenv("PGHOST", "127.0.0.1"), port=os.getenv("PGPORT", "5432"),
         dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
@@ -59,11 +61,7 @@ def _artifact_path(route_id: str) -> str:
     return str(row["artifact_path"])
 
 
-def main() -> int:
-    if len(sys.argv) < 2:
-        print("Uzycie: recompute_route_surface.py <route_id>")
-        return 2
-    route_id = sys.argv[1].strip()
+def run(route_id: str) -> int:
     path = _artifact_path(route_id)
     print(f"[{time.strftime('%H:%M:%S')}] trasa={route_id} plik={path}", flush=True)
 
@@ -92,6 +90,22 @@ def main() -> int:
         return 1
     print(f"[{time.strftime('%H:%M:%S')}] KONIEC", flush=True)
     return 0
+
+
+def main() -> int:
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if not args:
+        print("Uzycie: recompute_route_surface.py <route_id> [--bg]")
+        return 2
+    route_id = args[0].strip()
+    if "--bg" in sys.argv:
+        log = f"/opt/qbot/artifacts/recompute_surface_{route_id}.log"
+        with open(os.devnull, "rb") as dn, open(log, "a") as lf:
+            p = subprocess.Popen([sys.executable, __file__, route_id], stdin=dn, stdout=lf, stderr=lf,
+                                 start_new_session=True, close_fds=True)
+        print(f"przeliczanie w tle, pid={p.pid}, log={log}")
+        return 0
+    return run(route_id)
 
 
 if __name__ == "__main__":

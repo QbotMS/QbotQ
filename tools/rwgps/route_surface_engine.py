@@ -525,6 +525,23 @@ def _fetch_highways_along_track(samples: list[Sample], radius_m: int, warnings: 
         south, west, north, east = _bbox_for_samples(chunk, pad_m=float(radius_m))
         return f'[out:json][timeout:{int(OVERPASS_TIMEOUT_SEC)}];way["highway"]({south:.7f},{west:.7f},{north:.7f},{east:.7f});out tags geom;'
 
+    def _chunk_payload(chunk: list[Sample], query: str) -> tuple[dict[str, Any], str]:
+        # Lokalna baza drog OSM (Geofabrik) gdy caly kawalek lezy w jej obszarze;
+        # inaczej publiczny Overpass. Blad bazy lokalnej -> Overpass (nie gubimy kawalka).
+        south, west, north, east = _bbox_for_samples(chunk, pad_m=float(radius_m))
+        try:
+            from tools.rwgps import osm_local
+
+            if osm_local.covers_bbox(south, west, north, east):
+                payload = osm_local.query_ways(south, west, north, east)
+                metrics["local_osm_chunks"] = int(metrics.get("local_osm_chunks", 0)) + 1
+                return payload, osm_local.SOURCE_NAME
+        except Exception as exc:  # noqa: BLE001
+            metrics["local_osm_errors"] = int(metrics.get("local_osm_errors", 0)) + 1
+            metrics["local_osm_last_error"] = f"{type(exc).__name__}: {exc}"[:240]
+        metrics["overpass_chunks"] = int(metrics.get("overpass_chunks", 0)) + 1
+        return _overpass(query, metrics, timeout=OVERPASS_TIMEOUT_SEC)
+
     failed: list[tuple[str, list[Sample], str]] = []
     for chunk_idx, start in enumerate(range(0, len(samples), chunk_size), start=1):
         chunk = samples[start : start + chunk_size]
@@ -532,7 +549,7 @@ def _fetch_highways_along_track(samples: list[Sample], radius_m: int, warnings: 
         if probe and probe.get("enabled"):
             _probe_all_overpass(query, chunk_idx, int(radius_m), probe, timeout=OVERPASS_TIMEOUT_SEC)
         try:
-            payload, selected_endpoint = _overpass(query, metrics, timeout=OVERPASS_TIMEOUT_SEC)
+            payload, selected_endpoint = _chunk_payload(chunk, query)
         except Exception as exc:
             failed.append((str(chunk_idx), chunk, str(exc)))
             metrics["selected_endpoint_per_chunk"].append({
@@ -567,7 +584,7 @@ def _fetch_highways_along_track(samples: list[Sample], radius_m: int, warnings: 
             for part_idx, part in enumerate(parts):
                 part_label = f"{label}.{part_idx + 1}" if len(parts) > 1 else label
                 try:
-                    payload, selected_endpoint = _overpass(_query_for(part), metrics, timeout=OVERPASS_TIMEOUT_SEC)
+                    payload, selected_endpoint = _chunk_payload(part, _query_for(part))
                 except Exception as exc:
                     part_failed.append((part_label, part, str(exc)))
                     continue
