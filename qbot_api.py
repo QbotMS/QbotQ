@@ -1721,6 +1721,112 @@ async def surface_by_name_endpoint(
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]}, status_code=500)
 
 
+def _qext2_resolve_route_id(cur, name):
+    """Ta sama kolejnosc dopasowania trasy po nazwie co /api/surface/by-name."""
+    cur.execute("""
+        SELECT DISTINCT fact_json->>'route_id' as route_id
+        FROM qbot_v2.qbot_planning_facts
+        WHERE fact_type = 'poi_stage_detail'
+          AND (fact_json->>'segment' ILIKE %s OR fact_json->>'stage' = %s)
+        LIMIT 1
+    """, (f"%{name}%", name))
+    row = cur.fetchone()
+    if row and row.get('route_id'):
+        return row['route_id']
+    cur.execute("""
+        SELECT route_id FROM qbot_v2.route_artifacts
+        WHERE metadata_json->>'route_name' ILIKE %s
+        ORDER BY id DESC LIMIT 1
+    """, (f"%{name}%",))
+    row = cur.fetchone()
+    if row and row.get('route_id'):
+        return row['route_id']
+    import re as _re
+    m = _re.search(r"#(\d{6,})", name)
+    if m:
+        cur.execute("""
+            SELECT route_id FROM qbot_v2.route_artifacts
+            WHERE route_id LIKE %s ORDER BY id DESC LIMIT 1
+        """, (f"%{m.group(1)}",))
+        row = cur.fetchone()
+        if row and row.get('route_id'):
+            return row['route_id']
+    return None
+
+
+_QEXT2_POI_CATS = {"water": "water", "hard_resupply": "shop", "soft_food_stop": "food"}
+_PL_DAYS = ["poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela"]
+
+
+def _qext2_today_hours(opening_hours):
+    """Z tekstu Google ('poniedzialek: 07:00–19:00; wtorek: ...') wyciaga godziny na dzis (Europe/Warsaw)."""
+    if not opening_hours:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+        from datetime import datetime
+        day = _PL_DAYS[datetime.now(ZoneInfo("Europe/Warsaw")).weekday()]
+        for part in opening_hours.split(";"):
+            part = part.strip()
+            if part.lower().startswith(day + ":"):
+                h = part.split(":", 1)[1].strip()
+                return "zamknięte" if h.lower().startswith("zamkni") else h.replace("\u2009", "").replace("\u202f", "")
+    except Exception:
+        return None
+    return None
+
+
+@app.get("/api/poi/by-name")
+async def poi_by_name_endpoint(
+    name: str,
+    authorization: Optional[str] = Header(None),
+):
+    """Punkty na trasie (woda, sklep, jedzenie) po nazwie trasy - dla QExt2 KOKPIT (komunikaty).
+    Zwraca liste [{km, cat, name, today}] po km, tylko punkty do 500 m od trasy, max 300 (limit 100 KB proxy Karoo)."""
+    BEARER = os.environ["QBOT_MCP_BEARER"]
+    if not authorization or authorization != f"Bearer {BEARER}":
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    try:
+        from api_db import _conn
+        conn = _conn()
+        cur = conn.cursor()
+        route_id = _qext2_resolve_route_id(cur, name)
+        if not route_id:
+            cur.close(); conn.close()
+            print(f"POI_BYNAME not_found name={name!r}", flush=True)
+            return JSONResponse({"status": "not_found", "name": name}, status_code=202)
+        cur.execute("""
+            SELECT p.km_on_route, p.category, p.name, p.opening_hours
+            FROM qbot_v2.route_poi_layer p
+            WHERE p.route_base_id = (
+                SELECT b.route_base_id FROM qbot_v2.route_base b
+                WHERE b.route_id = %s AND b.status = 'active'
+                ORDER BY b.updated_at DESC NULLS LAST, b.route_base_id DESC LIMIT 1
+            )
+              AND p.status = 'active'
+              AND p.category IN ('water', 'hard_resupply', 'soft_food_stop')
+              AND p.km_on_route IS NOT NULL
+              AND (p.distance_from_route_m IS NULL OR p.distance_from_route_m <= 500)
+            ORDER BY p.km_on_route
+            LIMIT 300
+        """, (route_id,))
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+        out = []
+        for r in rows:
+            out.append({
+                "km": round(float(r["km_on_route"]), 2),
+                "cat": _QEXT2_POI_CATS.get(r["category"], r["category"]),
+                "name": (r.get("name") or "")[:28],
+                "today": _qext2_today_hours(r.get("opening_hours")),
+            })
+        print(f"POI_BYNAME ok name={name!r} route_id={route_id} pois={len(out)}", flush=True)
+        return JSONResponse(out)
+    except Exception as e:
+        import traceback
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]}, status_code=500)
+
+
 @app.get("/mcp/.well-known/oauth-protected-resource")
 @app.get("/.well-known/oauth-protected-resource")
 def oauth_protected_resource():
