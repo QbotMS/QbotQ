@@ -534,6 +534,11 @@ def _persist_route_parse_result(file_path: Path, summary: dict[str, Any]) -> dic
         return None
 
 
+def _iso_or_none(value: Any) -> Any:
+    """datetime -> tekst ISO (do json.dumps / JSONB); reszta bez zmian."""
+    return value.isoformat() if hasattr(value, "isoformat") else value
+
+
 def _persist_route_surface_profile(file_path: Path, payload: dict[str, Any], surface_result: dict[str, Any] | None) -> dict[str, Any] | None:
     try:
         import api_db
@@ -635,8 +640,8 @@ def _persist_route_surface_profile(file_path: Path, payload: dict[str, Any], sur
             return None
         version_meta.update({
             "route_artifact_id": route_artifact.get("id"),
-            "created_at": route_artifact.get("created_at"),
-            "updated_at": route_artifact.get("updated_at"),
+            "created_at": _iso_or_none(route_artifact.get("created_at")),
+            "updated_at": _iso_or_none(route_artifact.get("updated_at")),
             "sha256": route_artifact.get("sha256"),
             "source_artifact_sha256": route_artifact.get("source_artifact_sha256") or route_artifact.get("sha256"),
             "distance_km": surface_summary.get("distance_km"),
@@ -681,8 +686,11 @@ def _persist_route_surface_profile(file_path: Path, payload: dict[str, Any], sur
             if segment_rows:
                 api_db.replace_route_surface_segments(profile_row["id"], segment_rows)
         return profile_row
-    except Exception:
-        return None
+    except Exception as exc:  # noqa: BLE001
+        import logging as _logging
+
+        _logging.getLogger("qbot.surface").exception("surface_profile_persist_failed %s", file_path)
+        return {"skipped": True, "reason": "surface_profile_persist_failed", "error": f"{type(exc).__name__}: {exc}"[:400]}
 
 
 def _normalize_collection(item: dict[str, Any], *, source: str) -> dict[str, Any]:
