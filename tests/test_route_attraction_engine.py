@@ -2,7 +2,7 @@ import math
 
 from qbot3.routes.route_attraction_engine import (
     CANDIDATES_PER_100_KM, RECOMMENDED_MAX_PER_100_KM, RECOMMENDED_QUALITY_SCORE,
-    classify, normalize_google_source_candidates, rank_candidates,
+    classify, dedupe, normalize_google_source_candidates, rank_candidates,
 )
 
 
@@ -153,3 +153,18 @@ def test_dense_heritage_route_recommends_all_strong_stops_within_cap():
     assert len(rec) >= min(len(strong), math.ceil(1.8 * RECOMMENDED_MAX_PER_100_KM))
     assert len(rec) <= math.ceil(1.8 * RECOMMENDED_MAX_PER_100_KM)
     assert len(rec) >= math.ceil(1.8 * 2.5)
+
+
+def test_merge_keeps_castle_tags_when_plaque_is_merged():
+    """Rabsztyn 2026-10-05: tablica 'Ruiny zamku' obok zamku nie moze zamienic go w pomnik."""
+    castle = _row("Zamek w Rabsztynie", 130.4, pageid=None, qid="Q9386720", lat=50.3,
+                  tags={"historic": "castle", "heritage": "2", "castle_type": "defensive"})
+    castle["dist"] = 73.0
+    plaque = _row("Ruiny zamku Rabsztyn", 130.4, pageid=None, lat=50.3002,
+                  tags={"historic": "memorial", "memorial": "plaque"})
+    plaque["dist"] = 101.0
+    merged = dedupe([plaque, castle])
+    assert len(merged) == 1
+    assert merged[0]["tags"]["historic"] == "castle"
+    result = rank_candidates([castle, plaque], [], {"Q9386720": {}}, 100)
+    assert [row["name"] for row in result["candidates"]] == ["Zamek w Rabsztynie"]

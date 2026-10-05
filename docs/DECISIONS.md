@@ -51,6 +51,12 @@ w widelkach 2,5..8 / 100 km (bylo sztywne 2,5). Powod: Orle Gniazda 5 polecanych
   `google_empty` lub `google_budget_exhausted` NIE zastepuje istniejacej publikacji (status partial); bez
   wczesniejszej publikacji publikuje, z `source_status.degraded_reasons`.
 - Atrakcje v2.3 (limity zalezne od jakosci) -- zatwierdzone przez Michala ("rob").
+- BLAD naprawiony: `route_attraction_engine._merge_into` nadpisywal tagi scalanego obiektu (zamek Rabsztyn +
+  tablica 'Ruiny zamku Rabsztyn' historic=memorial -> zamek odrzucony jako pomnik). Teraz tagi celu wygrywaja,
+  a tagi TYPU (historic/memorial/tourism/...) nie sa dopisywane, gdy cel ma juz typ. Rabsztyn: 76 pkt bez Google.
+  Test `test_merge_keeps_castle_tags_when_plaque_is_merged`.
+- OTWARTE: przystanek nazywa sie od najwyzej ocenionego obiektu (Wawel = 'Groby Krolewskie', Zamek Krolewski w
+  'w poblizu'); w miastach kara za bliskosc + sufit 15 daja 5 pozycji Krakowa kosztem Lutowca. Do decyzji.
 
 ---
 ## 2026-10-04 -- DECYZJA: prog mocy z ModelQ na Karoo przez intervals.icu (Garmin bez zmian)

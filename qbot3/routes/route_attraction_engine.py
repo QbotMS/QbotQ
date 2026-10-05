@@ -159,7 +159,15 @@ def has_claim(entity: dict[str, Any], prop: str) -> bool:
 def _merge_into(target: dict[str, Any], source: dict[str, Any]) -> None:
     target["sources"] |= source["sources"]
     target["osm_ids"] = sorted(set(target.get("osm_ids", [])) | set(source.get("osm_ids", [])))
-    target["tags"].update(source.get("tags") or {})
+    # 2026-10-05: tagi celu wygrywaja (Rabsztyn: tablica historic=memorial nadpisywala
+    # historic=castle zamku -> zamek odrzucony jako pomnik). Dopisujemy tylko brakujace.
+    _type_keys = {"historic", "memorial", "tourism", "military", "man_made", "amenity",
+                  "building", "religion", "place", "leisure", "natural", "ruins"}
+    _has_type = any(target["tags"].get(k) for k in ("historic", "tourism", "military", "man_made"))
+    for _key, _value in (source.get("tags") or {}).items():
+        if _has_type and _key in _type_keys:
+            continue
+        target["tags"].setdefault(_key, _value)
     for key in ("qid", "pageid", "wiki", "image"):
         if source.get(key) and not target.get(key):
             target[key] = source[key]
