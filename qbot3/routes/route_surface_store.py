@@ -199,6 +199,42 @@ def _upsert_route_surface_layer(conn, layers: list[dict[str, Any]]) -> int:
     return upserted
 
 
+def _low_quality_reason(conn, route_base: dict[str, Any]) -> str:
+    """Czytelny powod odrzucenia profilu (trafia do komunikatu Telegram)."""
+    route_id = route_base["route_id"]
+    base = f"No suitable surface profile for route_id={route_id}"
+    try:
+        row = conn.execute(
+            """
+            SELECT p.coverage_pct, p.surface_summary_json->'warnings' AS warnings
+            FROM qbot_v2.route_surface_profiles p
+            WHERE p.route_artifact_id = %s
+            ORDER BY p.enriched_at DESC NULLS LAST, p.id DESC
+            LIMIT 1
+            """,
+            (route_base.get("route_artifact_id"),),
+        ).fetchone()
+    except Exception:
+        return base
+    if not row:
+        return f"{base}: brak profilu nawierzchni (trasa nie byla jeszcze liczona)"
+    cov = row.get("coverage_pct")
+    warns = row.get("warnings") or []
+    if isinstance(warns, str):
+        try:
+            warns = json.loads(warns)
+        except Exception:
+            warns = [warns]
+    overpass_fail = any("Overpass highway chunk" in str(w) or str(w) == "OVERPASS_INCOMPLETE" for w in warns)
+    cov_txt = f"{float(cov):.0f}%" if cov is not None else "?"
+    if overpass_fail:
+        return (
+            f"serwery map OSM (Overpass) nie odpowiedzialy dla czesci trasy - nawierzchnia pobrana tylko dla {cov_txt}. "
+            f"To chwilowa awaria serwerow, nie trasy: przelicz trase ponownie pozniej ({route_id})"
+        )
+    return f"nawierzchnia rozpoznana tylko w {cov_txt} trasy (wymagane 90%) - analiza wstrzymana ({route_id})"
+
+
 def ensure_route_surface(*, route_id: str | int | None = None, route_base_id: int | None = None) -> dict[str, Any]:
     if route_id is None and route_base_id is None:
         raise ValueError("route_id or route_base_id required")
@@ -214,7 +250,7 @@ def ensure_route_surface(*, route_id: str | int | None = None, route_base_id: in
             route_artifact_id=int(route_base["route_artifact_id"]) if route_base.get("route_artifact_id") is not None else None,
         )
         if not profile:
-            raise LookupError(f"No suitable surface profile for route_id={route_base['route_id']}")
+            raise LookupError(_low_quality_reason(conn, route_base))
         route_version = profile.get("route_version") or {}
         route_version_key = str(route_version.get("route_version_key") or "").strip()
         if route_version_key and route_version_key != str(route_base.get("route_version_key") or "").strip():

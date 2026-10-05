@@ -581,6 +581,42 @@ def _persist_route_surface_profile(file_path: Path, payload: dict[str, Any], sur
                 "suspicious_reasons": gate.get("suspicious_reasons"),
             }
         if gate.get("suspicious") and not existing_good_profile:
+            # Incydent 2026-10-05: ponowne liczenie przy padajacym Overpass dalo 30%
+            # i nadpisalo wczesniejsze 67%. Czastkowy wynik nie moze pogorszyc zapisu.
+            try:
+                import os as _os
+                import psycopg as _pg
+                from psycopg.rows import dict_row as _dr
+
+                with _pg.connect(
+                    host=_os.getenv("PGHOST", "127.0.0.1"), port=_os.getenv("PGPORT", "5432"),
+                    dbname=_os.getenv("PGDATABASE", "qbot"), user=_os.getenv("PGUSER", "qbot"),
+                    password=_os.getenv("PGPASSWORD", ""), row_factory=_dr, connect_timeout=5,
+                ) as _c:
+                    _prev = _c.execute(
+                        """
+                        SELECT p.id, p.coverage_pct
+                        FROM qbot_v2.route_surface_profiles p
+                        JOIN qbot_v2.route_artifacts a ON a.id = p.route_artifact_id
+                        WHERE a.route_id::text = %s AND a.sha256 = %s
+                        ORDER BY p.coverage_pct DESC NULLS LAST
+                        LIMIT 1
+                        """,
+                        (route_id, hashlib.sha256(file_path.read_bytes()).hexdigest()),
+                    ).fetchone()
+            except Exception:
+                _prev = None
+            _new_cov = gate.get("coverage_pct")
+            if _prev and _prev.get("coverage_pct") is not None and _new_cov is not None \
+                    and float(_prev["coverage_pct"]) > float(_new_cov):
+                return {
+                    "skipped": True,
+                    "reason": "surface_quality_gate_kept_better_partial",
+                    "existing_profile_id": _prev.get("id"),
+                    "existing_coverage_pct": _prev.get("coverage_pct"),
+                    "new_coverage_pct": _new_cov,
+                }
+        if gate.get("suspicious") and not existing_good_profile:
             warnings = surface_summary.get("warnings")
             if not isinstance(warnings, list):
                 warnings = []

@@ -49,6 +49,13 @@ REFERER = os.getenv("QBOT_OVERPASS_REFERER", "https://qbot.local/route_surface_e
 OVERPASS_TIMEOUT_SEC = max(3, min(int(os.getenv("QBOT_OVERPASS_TIMEOUT_SEC", "25")), 60))
 OVERPASS_RETRIES = max(0, min(int(os.getenv("QBOT_OVERPASS_RETRIES", "2")), 3))
 OVERPASS_BACKOFF_SEC = max(0.0, min(float(os.getenv("QBOT_OVERPASS_BACKOFF_SEC", "0.8")), 10.0))
+# Kawalki, ktore nie przyszly w pierwszym przebiegu (timeout/blad na WSZYSTKICH
+# serwerach), ponawiamy po przerwie w mniejszych kawalkach (lzejsze zapytanie).
+# Incydent 2026-10-05 komoot-3331694546: kawalki 12-17 (~km 121-183) timeout
+# na 4 serwerach -> 1/3 trasy 'unmatched' i odrzucony profil.
+OVERPASS_CHUNK_RETRY_ROUNDS = max(0, min(int(os.getenv("QBOT_OVERPASS_CHUNK_RETRY_ROUNDS", "2")), 4))
+OVERPASS_CHUNK_RETRY_PAUSE_SEC = max(0.0, min(float(os.getenv("QBOT_OVERPASS_CHUNK_RETRY_PAUSE_SEC", "20")), 120.0))
+OVERPASS_INCOMPLETE_WARNING = "OVERPASS_INCOMPLETE"
 # Ponizej tego pokrycia zapisany wynik uznajemy za smiec i liczymy od nowa,
 # zamiast betonowac go w cache (audyt 2026-08-12).
 CACHE_MIN_COVERAGE_PCT = max(0.0, min(float(os.getenv("QBOT_SURFACE_CACHE_MIN_COVERAGE_PCT", "90")), 100.0))
@@ -497,32 +504,9 @@ def _fetch_highways_along_track(samples: list[Sample], radius_m: int, warnings: 
     ways: dict[int | str, dict[str, Any]] = {}
     chunk_size = 220
     metrics["chunks_total"] += (len(samples) + chunk_size - 1) // chunk_size if samples else 0
-    for chunk_idx, start in enumerate(range(0, len(samples), chunk_size), start=1):
-        chunk = samples[start : start + chunk_size]
-        south, west, north, east = _bbox_for_samples(chunk, pad_m=float(radius_m))
-        query = f'[out:json][timeout:{int(OVERPASS_TIMEOUT_SEC)}];way["highway"]({south:.7f},{west:.7f},{north:.7f},{east:.7f});out tags geom;'
-        if probe and probe.get("enabled"):
-            _probe_all_overpass(query, chunk_idx, int(radius_m), probe, timeout=OVERPASS_TIMEOUT_SEC)
-        try:
-            payload, selected_endpoint = _overpass(query, metrics, timeout=OVERPASS_TIMEOUT_SEC)
-        except Exception as exc:
-            metrics["chunks_failed"] += 1
-            metrics["selected_endpoint_per_chunk"].append({
-                "chunk": chunk_idx,
-                "radius_m": int(radius_m),
-                "endpoint": None,
-                "status": "FAILED",
-                "error": str(exc)[:240],
-            })
-            warnings.append(f"Overpass highway chunk {chunk_idx} failed-open: {exc}")
-            continue
-        metrics["chunks_ok"] += 1
-        metrics["selected_endpoint_per_chunk"].append({
-            "chunk": chunk_idx,
-            "radius_m": int(radius_m),
-            "endpoint": selected_endpoint,
-            "status": "OK",
-        })
+    metrics.setdefault("chunks_recovered", 0)
+
+    def _collect(payload: Any) -> None:
         for el in payload.get("elements", []) if isinstance(payload, dict) else []:
             if el.get("type") != "way":
                 continue
@@ -536,6 +520,86 @@ def _fetch_highways_along_track(samples: list[Sample], radius_m: int, warnings: 
             el["_qbot_bbox"] = bbox
             key = el.get("id")
             ways[key if key is not None else f"anon-{id(el)}"] = el
+
+    def _query_for(chunk: list[Sample]) -> str:
+        south, west, north, east = _bbox_for_samples(chunk, pad_m=float(radius_m))
+        return f'[out:json][timeout:{int(OVERPASS_TIMEOUT_SEC)}];way["highway"]({south:.7f},{west:.7f},{north:.7f},{east:.7f});out tags geom;'
+
+    failed: list[tuple[str, list[Sample], str]] = []
+    for chunk_idx, start in enumerate(range(0, len(samples), chunk_size), start=1):
+        chunk = samples[start : start + chunk_size]
+        query = _query_for(chunk)
+        if probe and probe.get("enabled"):
+            _probe_all_overpass(query, chunk_idx, int(radius_m), probe, timeout=OVERPASS_TIMEOUT_SEC)
+        try:
+            payload, selected_endpoint = _overpass(query, metrics, timeout=OVERPASS_TIMEOUT_SEC)
+        except Exception as exc:
+            failed.append((str(chunk_idx), chunk, str(exc)))
+            metrics["selected_endpoint_per_chunk"].append({
+                "chunk": chunk_idx,
+                "radius_m": int(radius_m),
+                "endpoint": None,
+                "status": "RETRY_PENDING",
+                "error": str(exc)[:240],
+            })
+            continue
+        metrics["chunks_ok"] += 1
+        metrics["selected_endpoint_per_chunk"].append({
+            "chunk": chunk_idx,
+            "radius_m": int(radius_m),
+            "endpoint": selected_endpoint,
+            "status": "OK",
+        })
+        _collect(payload)
+
+    # Ponowienia: po przerwie, kazdy nieudany kawalek dzielony na pol.
+    for round_no in range(1, OVERPASS_CHUNK_RETRY_ROUNDS + 1):
+        if not failed:
+            break
+        if OVERPASS_CHUNK_RETRY_PAUSE_SEC > 0:
+            time.sleep(OVERPASS_CHUNK_RETRY_PAUSE_SEC)
+        still: list[tuple[str, list[Sample], str]] = []
+        for label, chunk, _err in failed:
+            half = max(1, (len(chunk) + 1) // 2)
+            parts = [chunk[:half], chunk[half:]] if len(chunk) > 20 else [chunk]
+            parts = [p for p in parts if p]
+            part_failed: list[tuple[str, list[Sample], str]] = []
+            for part_idx, part in enumerate(parts):
+                part_label = f"{label}.{part_idx + 1}" if len(parts) > 1 else label
+                try:
+                    payload, selected_endpoint = _overpass(_query_for(part), metrics, timeout=OVERPASS_TIMEOUT_SEC)
+                except Exception as exc:
+                    part_failed.append((part_label, part, str(exc)))
+                    continue
+                metrics["selected_endpoint_per_chunk"].append({
+                    "chunk": part_label,
+                    "radius_m": int(radius_m),
+                    "endpoint": selected_endpoint,
+                    "status": f"OK_RETRY_{round_no}",
+                })
+                _collect(payload)
+            if part_failed:
+                still.extend(part_failed)
+            else:
+                metrics["chunks_recovered"] += 1
+                metrics["chunks_ok"] += 1
+        failed = still
+
+    if failed:
+        failed_roots = {label.split(".")[0] for label, _c, _e in failed}
+        metrics["chunks_failed"] += len(failed_roots)
+        for label, chunk, err in failed:
+            metrics["selected_endpoint_per_chunk"].append({
+                "chunk": label,
+                "radius_m": int(radius_m),
+                "endpoint": None,
+                "status": "FAILED",
+                "error": err[:240],
+            })
+            where = f" (km {chunk[0].dist_m / 1000.0:.1f}-{chunk[-1].dist_m / 1000.0:.1f})"
+            warnings.append(f"Overpass highway chunk {label}{where} failed-open after {OVERPASS_CHUNK_RETRY_ROUNDS} retry rounds: {err}")
+        if OVERPASS_INCOMPLETE_WARNING not in warnings:
+            warnings.append(OVERPASS_INCOMPLETE_WARNING)
     return list(ways.values())
 
 
