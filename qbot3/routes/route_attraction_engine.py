@@ -16,9 +16,15 @@ from difflib import SequenceMatcher
 from typing import Any, Iterable
 
 
-ALGORITHM_VERSION = "route_attractions_v2.2"
-CANDIDATES_PER_100_KM = 12.0
-RECOMMENDED_PER_100_KM = 2.5
+ALGORITHM_VERSION = "route_attractions_v2.3"
+# v2.3 (2026-10-05): limity zalezne od jakosci. Na szlaku zamkow (Orle Gniazda,
+# 182 km) sztywne 12 kandydatow / 2.5 polecanych na 100 km ucinalo Olsztyn,
+# Bobolice, Rabsztyn, Wawel. Teraz polecane = liczba mocnych przystankow
+# (score >= RECOMMENDED_QUALITY_SCORE), w widelkach MIN..MAX na 100 km.
+CANDIDATES_PER_100_KM = 25.0
+RECOMMENDED_PER_100_KM = 2.5          # minimum (trasy bez zageszczenia zabytkow)
+RECOMMENDED_MAX_PER_100_KM = 8.0      # sufit, zeby lista nie miala 40 pozycji
+RECOMMENDED_QUALITY_SCORE = 75.0      # przystanek "mocny" = zawsze wart polecenia
 
 # base score, display label, estimated visit minutes, uniqueness
 CATEGORY = {
@@ -459,7 +465,10 @@ def rank_candidates(
     # Kandydaci sa lista do decyzji TAK/NIE, wiec pobliskie dobre obiekty nie
     # konkuruja ze soba. Rozlozenie po trasie dotyczy dopiero rekomendacji.
     candidates = _mmr_select(stops, candidate_target, proximity_weight=0.0)
-    recommendation_target = max(1, math.ceil(route_distance_km / 100.0 * RECOMMENDED_PER_100_KM))
+    rec_min = max(1, math.ceil(route_distance_km / 100.0 * RECOMMENDED_PER_100_KM))
+    rec_max = max(rec_min, math.ceil(route_distance_km / 100.0 * RECOMMENDED_MAX_PER_100_KM))
+    strong = sum(1 for row in candidates if float(row["score"]) >= RECOMMENDED_QUALITY_SCORE)
+    recommendation_target = min(rec_max, max(rec_min, strong))
     recommended = _mmr_select(candidates, recommendation_target)
     recommended_keys = {candidate_key(row) for row in recommended}
     result_rows = []

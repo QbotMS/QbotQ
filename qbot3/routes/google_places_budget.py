@@ -1,7 +1,7 @@
 """Twardy bezpiecznik na wywolania Google Places (searchNearby).
 
 Limity (nadpisywalne przez env):
-- GOOGLE_PLACES_DAILY_LIMIT   (domyslnie 200) — na dobe kalendarzowa,
+- GOOGLE_PLACES_DAILY_LIMIT   (domyslnie 300; 200->300 decyzja Michala 2026-10-05) — na dobe kalendarzowa,
 - GOOGLE_PLACES_MONTHLY_LIMIT (domyslnie 1000) — na miesiac kalendarzowy.
 
 Kazde zapytanie do Places MUSI najpierw wywolac check_and_reserve(). Funkcja
@@ -23,7 +23,7 @@ import psycopg
 
 def _daily_limit() -> int:
     try:
-        return int(os.getenv("GOOGLE_PLACES_DAILY_LIMIT", "200"))
+        return int(os.getenv("GOOGLE_PLACES_DAILY_LIMIT", "300"))
     except (TypeError, ValueError):
         return 200
 

@@ -1,5 +1,19 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-10-05] Nawierzchnia z lokalnego OSM + naprawy Planera + atrakcje v2.3 (DO POTWIERDZENIA)
+Szczegoly i uzasadnienia: DECISIONS 2026-10-05, `docs/OSM_LOCAL_SURFACE.md`.
+- Zrobione i zacommitowane: lokalna baza drog OSM PL (nawierzchnia), ponawianie Overpass, zapis profilu
+  (datetime), komunikat odrzucenia, worker "+atrakcje" wlacza prefs, planer_opis z route store.
+- NARUSZENIE: `scripts/komoot_analyze_worker.py` byl na liscie "cudze niezacommitowane (nie ruszac)" z 2026-10-04.
+  Ta sesja go zalatala (1 blok: `set_route_poi_attractions`) i zacommitowala RAZEM z cudza zmiana z 2026-10-03
+  (atrakcje Telegrama przez kanoniczny silnik zamiast flagi route_poi). Cudza zmiana nie ma wpisu w DECISIONS.
+- Niezacommitowane: `qbot3/routes/route_attraction_engine.py` + `tests/test_route_attraction_engine.py` (v2.3,
+  czeka na decyzje Michala), `scripts/route_attractions_recompute.py`, `scripts/run_test_file.py`.
+  Nadal cudze: `qbot_trener_engine.py`, `qbot3/artifacts/route_analyzer.py`.
+- Otwarte dla `komoot-3331694546`: opublikowany run 24/25 (Google=0, zubozony) zamiast run 23 (Google 127).
+  Plan: przywrocic run 23; po resecie limitu Google jedno przeliczenie.
+- Skrypty tymczasowe `scripts/_tmp_patch_*` z tej sesji - do usuniecia.
+
 ## [2026-10-04] TRENER — stan po commicie 76a03c0 (wszystko w repo)
 Zrobione 2026-10-02..04 (dok. docs/TRENER.md): prośba do AI o zmianę planu, siła bez partii (opts), wersja mobilna
 (trener-m.js), samopoczucie w dniu, baza 100 ćwiczeń z grafikami + ocena podstawowe/rotacyjne (/cwiczenia.html), silnik siły

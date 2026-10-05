@@ -241,6 +241,25 @@ def discover_osm_landmarks(
           nwr({around})[\"man_made\"][\"wikidata\"];
         );out center tags;"""
 
+    # 2026-10-05: zabytki OSM z lokalnej bazy Polski (scripts/osm_landmarks_build.py),
+    # gdy caly kawalek (z korytarzem) lezy w PL; Overpass tylko dla reszty. Overpass
+    # odrzucal IP serwera -> ruiny zamkow tracily punkty "history" (heritage/historic).
+    local_payloads: dict[int, dict[str, Any]] = {}
+    try:
+        from tools.rwgps import osm_local as _osm_local
+
+        if _osm_local.landmarks_enabled():
+            for _idx, _chunk in enumerate(chunks):
+                _lats = [p[1] for p in _chunk]
+                _lons = [p[2] for p in _chunk]
+                _mlat = (min(_lats) + max(_lats)) / 2.0
+                _plat = corridor_m / 111320.0
+                _plon = corridor_m / (111320.0 * max(0.2, math.cos(math.radians(_mlat))))
+                _bb = (min(_lats) - _plat, min(_lons) - _plon, max(_lats) + _plat, max(_lons) + _plon)
+                if _osm_local.covers_bbox_landmarks(*_bb):
+                    local_payloads[_idx] = _osm_local.query_landmarks(*_bb)
+    except Exception:  # noqa: BLE001 - blad bazy lokalnej -> Overpass jak dawniej
+        local_payloads = {}
     queries = [query_for(chunk) for chunk in chunks]
 
     # 2026-10-03: zapytania PO KOLEI (nie 4 naraz) + ponawianie przy 429/5xx.
@@ -283,17 +302,22 @@ def discover_osm_landmarks(
                 time.sleep(min(6.0 * (attempt + 1), max(0.0, osm_deadline - time.monotonic())))
         return "fail"
 
-    for query in queries:
+    for _idx, query in enumerate(queries):
+        if _idx in local_payloads:
+            continue
         if fetch(query) == "ok":
             time.sleep(1.0)
 
-    for query in queries:
-        key = hashlib.sha256(query.encode()).hexdigest()[:24]
-        path = cache_root / f"osm-landmarks-{key}.json"
-        try:
-            data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
-        except (OSError, ValueError):
-            data = None
+    for _idx, query in enumerate(queries):
+        if _idx in local_payloads:
+            data = local_payloads[_idx]
+        else:
+            key = hashlib.sha256(query.encode()).hexdigest()[:24]
+            path = cache_root / f"osm-landmarks-{key}.json"
+            try:
+                data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+            except (OSError, ValueError):
+                data = None
         if data is None:
             missing_chunks += 1
             continue

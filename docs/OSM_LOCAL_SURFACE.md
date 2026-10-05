@@ -27,7 +27,7 @@ byla odrzucana. Trzy serwery overpass-api.de to jeden operator - zapas byl pozor
 
 ## Odswiezanie
 Cron (root lub qbot), raz w tygodniu, np. poniedzialek 04:20:
-`cd /opt/qbot/app && .venv/bin/python3 scripts/osm_extract_fetch.py --run && .venv/bin/python3 scripts/osm_local_build.py --run`
+`cd /opt/qbot/app && .venv/bin/python3 scripts/osm_extract_fetch.py --run && .venv/bin/python3 scripts/osm_local_build.py --run && .venv/bin/python3 scripts/osm_landmarks_build.py --run`
 Pobranie ~1 min, budowa ~15 min. Stara baza dziala do chwili podmiany.
 
 ## Ponawianie Overpass (dla tras poza Polska)
@@ -39,3 +39,12 @@ nadpisuje lepszego (client.py); komunikat odrzucenia mowi wprost o awarii serwer
 
 ## Inne kraje
 Dograc plik kraju z Geofabrik + jego .poly i rozszerzyc budowe (obecnie tylko Polska).
+
+## Zabytki dla atrakcji (2026-10-05)
+- `scripts/osm_landmarks_build.py --start|--status|--run` - z tego samego pliku Polski: osmium tags-filter
+  (historic, heritage, military, tourism, man_made) -> export -> SQLite `landmarks.sqlite` (srodek obiektu,
+  wszystkie tagi, R-tree). Filtr = dawne zapytanie Overpass (`is_landmark`). Ok. 6 min.
+- `tools/rwgps/osm_local.py`: `landmarks_enabled()`, `covers_bbox_landmarks()`, `query_landmarks()` (format
+  Overpass `out center tags`).
+- `qbot3/routes/route_attraction_sources.discover_osm_landmarks`: kawalek w PL -> baza lokalna; reszta Overpass.
+  Wylacznik `QBOT_ATTR_LOCAL_OSM=0`.

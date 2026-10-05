@@ -18,6 +18,7 @@ from typing import Any
 
 DIR = Path(os.getenv("QBOT_OSM_DIR", "/opt/qbot/data/osm"))
 DB = DIR / "roads.sqlite"
+LANDMARKS_DB = DIR / "landmarks.sqlite"
 POLY = DIR / "poland.poly"
 SOURCE_NAME = "local_osm_geofabrik_pl"
 
@@ -117,3 +118,47 @@ def meta() -> dict[str, str]:
         return {k: v for k, v in con.execute("SELECT k, v FROM meta").fetchall()}
     finally:
         con.close()
+
+
+def landmarks_enabled() -> bool:
+    """Lokalne zabytki OSM (scripts/osm_landmarks_build.py). Wylacznik: QBOT_ATTR_LOCAL_OSM=0."""
+    return (os.getenv("QBOT_ATTR_LOCAL_OSM", "1").strip() not in {"0", "false", "no"}
+            and LANDMARKS_DB.exists() and POLY.exists())
+
+
+def covers_bbox_landmarks(south: float, west: float, north: float, east: float) -> bool:
+    if not landmarks_enabled():
+        return False
+    rings = _load_rings()
+    for lat, lon in ((south, west), (south, east), (north, west), (north, east)):
+        if not any(_inside(lat, lon, r) for r in rings):
+            return False
+    return True
+
+
+def query_landmarks(south: float, west: float, north: float, east: float) -> dict[str, Any]:
+    """Zabytki w prostokacie, w formacie odpowiedzi Overpass 'out center tags'."""
+    con = sqlite3.connect(f"file:{LANDMARKS_DB}?mode=ro", uri=True, timeout=10)
+    try:
+        rows = con.execute(
+            """
+            SELECT l.id, l.lat, l.lon, l.tags_json
+            FROM landmarks_rtree r
+            JOIN landmarks_rid x ON x.rid = r.rid
+            JOIN landmarks l ON l.id = x.id
+            WHERE r.max_lat >= ? AND r.min_lat <= ? AND r.max_lon >= ? AND r.min_lon <= ?
+            """,
+            (south, north, west, east),
+        ).fetchall()
+    finally:
+        con.close()
+    kinds = {"n": "node", "w": "way", "r": "relation"}
+    elements = []
+    for key, lat, lon, tags_json in rows:
+        elements.append({
+            "type": kinds.get(key[:1], "node"),
+            "id": int(key[1:]) if key[1:].isdigit() else key,
+            "tags": json.loads(tags_json),
+            "center": {"lat": lat, "lon": lon},
+        })
+    return {"elements": elements, "generator": SOURCE_NAME + "_landmarks"}

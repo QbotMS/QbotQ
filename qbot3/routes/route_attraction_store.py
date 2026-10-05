@@ -184,6 +184,26 @@ def _insert_layer(conn, run_id: int, route_base_id: int, rows: list[dict[str, An
         )
 
 
+def _degraded_reasons(discovered: dict[str, Any]) -> list[str]:
+    """Dlaczego zrodla przebiegu sa niepelne (2026-10-05: run 24 z Google=0 i OSM=0
+    zastapil lepszy run 23). Pusta lista = zrodla kompletne."""
+    status = discovered.get("source_status") or {}
+    reasons: list[str] = []
+    if int(status.get("missing_chunks") or 0) > 0:
+        reasons.append("osm_missing_chunks")
+    if int(status.get("google") or 0) == 0:
+        reasons.append("google_empty")
+    try:
+        from qbot3.routes.google_places_budget import usage_snapshot
+
+        usage = usage_snapshot()
+        if usage["day_used"] >= usage["day_limit"] or usage["month_used"] >= usage["month_limit"]:
+            reasons.append("google_budget_exhausted")
+    except Exception:
+        pass
+    return reasons
+
+
 def ensure_route_attractions(*, route_id: str | int | None = None, route_base_id: int | None = None, force: bool = False) -> dict[str, Any]:
     if route_id is None and route_base_id is None:
         raise ValueError("route_id or route_base_id required")
@@ -236,6 +256,16 @@ def ensure_route_attractions(*, route_id: str | int | None = None, route_base_id
         )
         discovered["source_status"]["required_candidates"] = required_candidates
         discovered["source_status"]["candidate_count"] = candidate_count
+        degraded = _degraded_reasons(discovered)
+        discovered["source_status"]["degraded_reasons"] = degraded
+        if publishable and degraded:
+            has_published = conn.execute(
+                "SELECT 1 FROM qbot_v2.route_attraction_run WHERE route_base_id=%s AND published=true LIMIT 1",
+                (int(base["route_base_id"]),),
+            ).fetchone()
+            if has_published:
+                # Niepelne zrodla nie nadpisuja wczesniejszej publikacji.
+                publishable = False
         digest = result_hash(ranked)
 
         with conn.transaction():

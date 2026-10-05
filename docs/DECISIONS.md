@@ -4,6 +4,55 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-05 -- DECYZJA: nawierzchnia z lokalnej bazy OSM Polski; naprawy zapisu profilu; atrakcje v2.3 (DO POTWIERDZENIA)
+
+**Problem.** Analiza `komoot-3331694546` (Szlak Orlich Gniazd, 182,6 km) odrzucona: profil nawierzchni 67%,
+potem 30%. Przyczyna: overpass-api.de odrzuca IP serwera (Connection refused v4/v6), mail.ru/kumi timeout,
+openstreetmap.fr 403. Trzy adresy overpass-api.de = jeden operator, zapas byl pozorny.
+
+**Decyzje (wdrozone, commity b2acaa4 + kolejne):**
+- Nawierzchnia dla tras w PL: lokalna baza `/opt/qbot/data/osm/roads.sqlite` (Geofabrik -> osmium -> SQLite
+  R-tree, 6,48 mln drog). Overpass tylko poza PL / przy granicy / przy bledzie. Wylacznik `QBOT_SURFACE_LOCAL_OSM=0`.
+  Cron qbot pon. 04:20 odswieza. Dok.: `docs/OSM_LOCAL_SURFACE.md`.
+- Overpass (trasy zagraniczne): nieudane kawalki ponawiane 2 rundy po 20 s w polowkach; trwaly brak ->
+  `OVERPASS_INCOMPLETE` z km. Slabszy czastkowy profil nie nadpisuje lepszego (`tools/rwgps/client.py`).
+- BLAD KRYTYCZNY naprawiony: `_persist_route_surface_profile` padal po cichu na `datetime` w json.dumps
+  (route_version_key) -> profil nawierzchni NIE zapisywal sie. Teraz ISO tekst + logowanie wyjatku
+  (`surface_profile_persist_failed`). Mogl dotyczyc innych tras - do sprawdzenia.
+- Komunikat odrzucenia (Telegram) mowi wprost o awarii serwerow map / niskim pokryciu (route_surface_store).
+- Analiza Telegram "+atrakcje" (`scripts/komoot_analyze_worker.py`) wlacza `route_poi_prefs.attractions_enabled`
+  (jak POBIERZ) - bez tego Planer/raport nie pokazywal policzonych atrakcji.
+- `planer_opis` czytal martwy plik `/data/spine_<id>.json` (nowe trasy go nie maja -> "brak danych o nawierzchni");
+  teraz `load_canonical_segments_50m` (to samo co `/api/routes/{id}/spine`), plik tylko jako zapas.
+
+**Atrakcje v2.3 -- ZATWIERDZONE przez Michala 2026-10-05** (`route_attraction_engine.py`,
+niezacommitowane w chwili wpisu): kandydaci 12 -> 25 / 100 km; polecane = liczba przystankow ze score >= 75,
+w widelkach 2,5..8 / 100 km (bylo sztywne 2,5). Powod: Orle Gniazda 5 polecanych z 22.
+
+**Ustalenia (nie decyzje):**
+- Rola Google w atrakcjach: wg wpisu 2026-07-18 (v2.2) Google = POMOCNICZY dowod, Wikipedia = baza. Michal
+  oczekuje Google jako glownego zrodla (stan sprzed 2026-07-18, wpis 2026-07-02). DO ROZSTRZYGNIECIA.
+- Wynik atrakcji zalezy od OSM (punkty "history": heritage/historic). Przy zablokowanym Overpass ruiny zamkow
+  (np. Ostreznik 67,5 pkt) spadaja ponizej progu.
+- Bezpiecznik Google Places 200/dobe wyczerpany 05.10 (200/200) -> przebiegi atrakcji run 24/25 z Google=0
+  zastapily lepszy run 23 (Google 127). Przebieg bez Google NIE powinien nadpisywac lepszego - DO ZROBIENIA.
+
+**Uzupelnienie 2026-10-05 (wieczor) -- atrakcje: rzetelne zrodla (decyzje Michala):**
+- Dzienny limit Google Places 200 -> **300** (`google_places_budget.py`, domyslna wartosc w kodzie; w plikach env
+  limitu nie ma). Miesieczny 1000 bez zmian = darmowy prog Nearby Search **Enterprise** (pola rating/userRatingCount/
+  openingHours podnosza klase; Pro mialby 5000). Koszt analizy: atrakcje 1 zapytanie / 3 km, zaopatrzenie 1 / 8 km
+  (100 km ~ 47 zapytan). Wyniki Google NIE sa cache'owane -> kazde przeliczenie placi od nowa (DO ZROBIENIA: cache).
+- Zabytki OSM dla atrakcji z lokalnej bazy `/opt/qbot/data/osm/landmarks.sqlite` (`scripts/osm_landmarks_build.py`,
+  220 459 obiektow, ten sam filtr co dawne zapytanie Overpass). `route_attraction_sources.discover_osm_landmarks`
+  bierze lokalne dane dla kawalkow w PL, Overpass tylko poza PL. Wylacznik `QBOT_ATTR_LOCAL_OSM=0`.
+  Dowod (Orle Gniazda): 1133 obiekty, 0 brakujacych odcinkow, m.in. Olsztyn, Ostreznik, Lutowiec, Mirow, Bobolice,
+  Bakowiec, Ogrodzieniec, Ryczow, Bydlin, Rabsztyn, Wawel.
+- Bezpiecznik publikacji (`route_attraction_store._degraded_reasons`): przebieg z `osm_missing_chunks`,
+  `google_empty` lub `google_budget_exhausted` NIE zastepuje istniejacej publikacji (status partial); bez
+  wczesniejszej publikacji publikuje, z `source_status.degraded_reasons`.
+- Atrakcje v2.3 (limity zalezne od jakosci) -- zatwierdzone przez Michala ("rob").
+
+---
 ## 2026-10-04 -- DECYZJA: prog mocy z ModelQ na Karoo przez intervals.icu (Garmin bez zmian)
 
 - Garmin Connect liczy IF/TSS z `threshold_power` zapisanego przez Karoo w FIT (session 247 W w jazdach 04.10

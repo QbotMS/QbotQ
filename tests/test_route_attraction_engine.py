@@ -1,6 +1,9 @@
 import math
 
-from qbot3.routes.route_attraction_engine import classify, normalize_google_source_candidates, rank_candidates
+from qbot3.routes.route_attraction_engine import (
+    CANDIDATES_PER_100_KM, RECOMMENDED_MAX_PER_100_KM, RECOMMENDED_QUALITY_SCORE,
+    classify, normalize_google_source_candidates, rank_candidates,
+)
 
 
 def _row(name, km, *, extract="", tags=None, qid=None, pageid=1, lat=None):
@@ -53,8 +56,8 @@ def test_required_towns_share_one_candidate_pool_and_density_is_bounded():
     result = rank_candidates(rows, [], entities, 100)
     selected = {row["name"] for row in result["candidates"]}
     assert set(names) <= selected
-    assert len(result["candidates"]) <= math.ceil(12)
-    assert sum(row["is_recommended"] for row in result["candidates"]) <= math.ceil(2.5)
+    assert len(result["candidates"]) <= math.ceil(CANDIDATES_PER_100_KM)
+    assert sum(row["is_recommended"] for row in result["candidates"]) <= math.ceil(RECOMMENDED_MAX_PER_100_KM)
 
 
 def test_candidate_keys_and_ranking_are_stable():
@@ -104,7 +107,7 @@ def test_candidate_pool_keeps_nearby_quality_while_recommendations_use_spacing()
         _row("Fort Gamma", 22.0, pageid=None, tags={"historic": "fort"}, lat=50.02),
     ]
     result = rank_candidates(rows, [], {}, 10)
-    assert len(result["candidates"]) == 2  # ceil(1.2)
+    assert len(result["candidates"]) == 3  # ceil(10 km * 25/100) = 3
     assert all(row["selection_score"] == row["score"] for row in result["candidates"])
 
 
@@ -138,3 +141,15 @@ def test_exceptional_place_up_to_two_km_uses_penalty_instead_of_hard_rejection()
     landmark["dist"] = 1900.0
     result = rank_candidates([landmark], [], {}, 100)
     assert [row["name"] for row in result["candidates"]] == [landmark["name"]]
+
+
+def test_dense_heritage_route_recommends_all_strong_stops_within_cap():
+    """v2.3: szlak zamkow - kazdy mocny przystanek polecony, ale nie ponad sufit."""
+    rows = [_row(f"Zamek testowy {i}", 5 + i * 9, pageid=None, tags={"historic": "castle"},
+                 lat=50.0 + i / 100.0) for i in range(18)]
+    result = rank_candidates(rows, [], {}, 180)
+    strong = [r for r in result["candidates"] if r["score"] >= RECOMMENDED_QUALITY_SCORE]
+    rec = [r for r in result["candidates"] if r["is_recommended"]]
+    assert len(rec) >= min(len(strong), math.ceil(1.8 * RECOMMENDED_MAX_PER_100_KM))
+    assert len(rec) <= math.ceil(1.8 * RECOMMENDED_MAX_PER_100_KM)
+    assert len(rec) >= math.ceil(1.8 * 2.5)
