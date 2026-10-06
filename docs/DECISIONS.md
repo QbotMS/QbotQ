@@ -16,6 +16,14 @@
   przy prawdziwym zapytaniu (`google_nearby_is_cached`). Przeliczenie tej samej trasy = 0 zapytan.
 - `maxResultCount` 10 -> **20** (`GOOGLE_NEARBY_MAX_RESULTS`): ta sama cena za zapytanie; 10 ucinalo obiekty w miastach.
 - Darmowy prog Nearby Search Enterprise 1000/mies. = ~14 nowych tras 100 km miesiecznie.
+- Atrakcje **v2.4** (decyzja Michala 06.10): polecane max **2 na skupisko w promieniu 1,5 km**
+  (`RECOMMENDED_PER_CLUSTER`, `RECOMMENDED_CLUSTER_M`) - Krakow zajmowal 5 z 15 miejsc kosztem Lutowca
+  i Fortu Mydlniki; przystanek nazywa sie od **obiektu glownego** (zamek/palac/ruiny/twierdza/fort/dwor/
+  kosciol/klasztor, `_label_rank`), ocena = najlepsza w przystanku (Wawel byl "Groby Krolewskie" /
+  "Wieza Jana III Sobieskiego"). Testy +2.
+- PRZYJETA (decyzja Michala 06.10) zmiana nieznanej sesji z 2026-10-03 w `scripts/komoot_analyze_worker.py`:
+  Telegram "+atrakcje" liczy atrakcje kanonicznym silnikiem (`ensure_route_attractions`) zamiast dawnej flagi
+  route_poi (Google co 3 km). Razem z poprawka 05.10 (`set_route_poi_attractions` - widocznosc w Planerze).
 - Testy: `tests/test_google_places_cache.py` (3). `tests/test_route_poi_google_primary.py` ma 3/7 bledow
   sprzed tej zmiany (zapasowy Overpass) - do naprawy osobno.
 

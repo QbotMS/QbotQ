@@ -8,14 +8,13 @@ Szczegoly: DECISIONS 2026-10-05, `docs/OSM_LOCAL_SURFACE.md`.
 - NIEZACOMMITOWANE z tej sesji (dzialaja na produkcji): `qbot3/routes/planer_opis.py` (spine z route store),
   `scripts/komoot_analyze_worker.py` (blok `set_route_poi_attractions`), skrypty `komoot_analyze_bg.py`,
   `route_attractions_enable.py`, `planer_opis_rebuild.py`, `diag_planer_opis_inputs.py`.
-  UWAGA: komoot_analyze_worker.py zawiera tez CUDZA zmiane z 2026-10-03 (Telegram "+atrakcje" przez kanoniczny
-  silnik) bez wpisu w DECISIONS - commit tego pliku = swiadoma decyzja Michala.
+  komoot_analyze_worker.py: cudza zmiana z 2026-10-03 PRZYJETA przez Michala 06.10 (DECISIONS 2026-10-06).
 - `qbot3/artifacts/route_analyzer.py`: cudza zmiana probkowania z 2026-10-03 PRZYJETA przez Michala 06.10 +
   cache Google i 20 wynikow (DECISIONS 2026-10-06). Cudze nadal: `qbot_trener_engine.py`,
   nieznany `scripts/build_planer2_mock.py`.
 - komoot-3331694546: opublikowany run 26 (komplet zrodel, 46 kandydatow / 15 polecanych, BEZ poprawki Rabsztynu).
   Do zrobienia: przeliczenie z Google (~60 zapytan) po decyzji o cache.
-- ZROBIONE 06.10: cache Google 30 dni + 20 wynikow. OTWARTE: nazwa przystanku Wawel ("Groby Krolewskie"); dominacja Krakowa w polecanych.
+- ZROBIONE 06.10: cache Google 30 dni + 20 wynikow. ZROBIONE 06.10: v2.4 (skupiska max 2, nazwa od obiektu glownego).
 - Skrypty tymczasowe `scripts/_tmp_*` z tej sesji - do usuniecia.
 
 ## [2026-10-04] TRENER — stan po commicie 76a03c0 (wszystko w repo)

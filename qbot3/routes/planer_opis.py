@@ -71,8 +71,26 @@ def _resolve_base(conn, route_id):
     }
 
 
-def _spine_surface(route_id):
-    """% nawierzchni + ascent ze spine (paved/unpaved/unknown)."""
+def _spine_points(route_id):
+    """Punkty profilu {k, s, g} co 50 m. Zrodlo kanoniczne: route store
+    (load_canonical_segments_50m - to samo co /api/routes/{id}/spine). Dawny plik
+    /data/spine_<id>.json tylko jako zapas (nowe trasy go nie maja; 2026-10-05)."""
+    try:
+        from qbot3.routes.route_segments_50m import load_canonical_segments_50m
+
+        data = load_canonical_segments_50m(route_id=route_id)
+        if data.get("status") == "OK" and data.get("segments"):
+            out = []
+            for seg in data["segments"]:
+                sc = seg.get("surface_class")
+                out.append({
+                    "k": _f(seg.get("km_from")),
+                    "s": sc if sc in ("paved", "unpaved") else "unknown",
+                    "g": _f(seg.get("elev_gain_m")),
+                })
+            return out
+    except Exception:
+        pass
     p = _SPINE_DIR / ("spine_%s.json" % route_id)
     if not p.exists():
         return None
@@ -80,7 +98,13 @@ def _spine_surface(route_id):
         sp = json.loads(p.read_text(encoding="utf-8"))
     except Exception:
         return None
-    pts = sp if isinstance(sp, list) else (sp.get("points") or sp.get("spine") or [])
+    pts = sp if isinstance(sp, list) else (sp.get("spine") or sp.get("points") or [])
+    return pts or None
+
+
+def _spine_surface(route_id):
+    """% nawierzchni + ascent ze spine (paved/unpaved/unknown)."""
+    pts = _spine_points(route_id)
     if not pts:
         return None
     cnt = {}
@@ -306,14 +330,9 @@ def _nearest_town(towns, km):
 
 def _spine_range(route_id, a, b):
     """Nawierzchnia % + przewyzszenie dla zakresu km [a, b]."""
-    p = _SPINE_DIR / ("spine_%s.json" % route_id)
-    if not p.exists():
+    pts = _spine_points(route_id)
+    if not pts:
         return None
-    try:
-        sp = json.loads(p.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    pts = sp if isinstance(sp, list) else (sp.get("spine") or sp.get("points") or [])
     cnt = {"asfalt": 0, "nieutwardzone": 0, "nieznane": 0}
     asc = 0.0
     n = 0

@@ -168,3 +168,34 @@ def test_merge_keeps_castle_tags_when_plaque_is_merged():
     assert merged[0]["tags"]["historic"] == "castle"
     result = rank_candidates([castle, plaque], [], {"Q9386720": {}}, 100)
     assert [row["name"] for row in result["candidates"]] == ["Zamek w Rabsztynie"]
+
+
+def test_city_cluster_limited_to_two_recommended():
+    """v2.4: 5 mocnych obiektow w jednym miescie -> max 2 polecane, reszta miejsc dla szlaku."""
+    city = [_row(f"Kamienica {i}", 180.0 + i * 0.1, pageid=None, tags={"historic": "castle", "heritage": "2"},
+                 lat=50.0610 + i * 0.001) for i in range(5)]
+    for row in city:
+        row["lon"] = 19.937
+        row["dist"] = 50.0
+    route = [_row(f"Zamek szlaku {i}", 20 + i * 30, pageid=None, tags={"historic": "castle", "heritage": "2"},
+                  lat=50.5 + i * 0.1) for i in range(5)]
+    for row in route:
+        row["dist"] = 50.0
+    result = rank_candidates(city + route, [], {}, 182)
+    rec = [r for r in result["candidates"] if r["is_recommended"]]
+    assert sum(1 for r in rec if r["name"].startswith("Kamienica")) <= 2
+    assert sum(1 for r in rec if r["name"].startswith("Zamek szlaku")) == 5
+
+
+def test_stop_named_after_main_object():
+    """v2.4: Wawel - przystanek nazywa sie od zamku, nie od wiezy/grobow o wyzszej ocenie."""
+    from qbot3.routes.route_attraction_engine import collapse_stops
+    tower = {"name": "Wieza Jana III Sobieskiego", "km": 180.0, "lat": 50.054, "lon": 19.935,
+             "score": 80.0, "category": "castle_palace"}
+    castle = {"name": "Zamek Krolewski na Wawelu", "km": 180.1, "lat": 50.0541, "lon": 19.9351,
+              "score": 75.0, "category": "castle_palace"}
+    stops = collapse_stops([tower, castle])
+    assert len(stops) == 1
+    assert stops[0]["name"] == "Zamek Krolewski na Wawelu"
+    assert stops[0]["score"] == 80.0
+    assert "Wieza Jana III Sobieskiego" in stops[0]["nearby"]

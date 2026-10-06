@@ -16,7 +16,7 @@ from difflib import SequenceMatcher
 from typing import Any, Iterable
 
 
-ALGORITHM_VERSION = "route_attractions_v2.3"
+ALGORITHM_VERSION = "route_attractions_v2.4"
 # v2.3 (2026-10-05): limity zalezne od jakosci. Na szlaku zamkow (Orle Gniazda,
 # 182 km) sztywne 12 kandydatow / 2.5 polecanych na 100 km ucinalo Olsztyn,
 # Bobolice, Rabsztyn, Wawel. Teraz polecane = liczba mocnych przystankow
@@ -25,6 +25,12 @@ CANDIDATES_PER_100_KM = 25.0
 RECOMMENDED_PER_100_KM = 2.5          # minimum (trasy bez zageszczenia zabytkow)
 RECOMMENDED_MAX_PER_100_KM = 8.0      # sufit, zeby lista nie miala 40 pozycji
 RECOMMENDED_QUALITY_SCORE = 75.0      # przystanek "mocny" = zawsze wart polecenia
+# v2.4 (2026-10-06): skupisko (miasto) max 2 polecane w promieniu 1,5 km; nazwa przystanku
+# od obiektu glownego (zamek/palac/ruiny...), nie od najwyzej ocenionego elementu.
+RECOMMENDED_PER_CLUSTER = 2
+RECOMMENDED_CLUSTER_M = 1500.0
+_MAIN_LABEL_PREFIXES = ("zamek", "palac", "ruiny zamku", "ruiny palacu", "twierdza", "fort",
+                        "dwor", "kosciol", "bazylika", "katedra", "klasztor", "opactwo")
 
 # base score, display label, estimated visit minutes, uniqueness
 CATEGORY = {
@@ -391,6 +397,12 @@ def score(row: dict[str, Any], entity: dict[str, Any], google_rows: Iterable[dic
     return out
 
 
+def _label_rank(row: dict[str, Any]) -> int:
+    """1 = obiekt glowny nadajacy nazwe przystankowi (zamek, palac, ruiny, twierdza...)."""
+    name = norm(row.get("name") or "")
+    return 1 if any(name.startswith(prefix) for prefix in _MAIN_LABEL_PREFIXES) else 0
+
+
 def collapse_stops(scored: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     stops: list[dict[str, Any]] = []
     tangible = {"castle_palace", "fortification", "industrial_heritage", "open_air_museum"}
@@ -410,6 +422,12 @@ def collapse_stops(scored: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         elif row["category"] == "historic_town" and match["category"] != "historic_town":
             row["nearby"] = list(dict.fromkeys([match["name"], *match.get("nearby", [])]))
             stops[stops.index(match)] = row
+        elif _label_rank(row) > _label_rank(match):
+            # obiekt glowny (np. "Zamek Krolewski na Wawelu") nazywa przystanek; ocena = najlepsza
+            new = dict(row)
+            new["score"] = max(float(row["score"]), float(match["score"]))
+            new["nearby"] = list(dict.fromkeys([match["name"], *match.get("nearby", [])]))
+            stops[stops.index(match)] = new
         elif norm(row["name"]) != norm(match["name"]):
             match.setdefault("nearby", []).append(row["name"])
     return stops
@@ -421,6 +439,8 @@ def _mmr_select(
     *,
     min_score: float = 48.0,
     proximity_weight: float = 1.0,
+    cluster_cap: int | None = None,
+    cluster_m: float = RECOMMENDED_CLUSTER_M,
 ) -> list[dict[str, Any]]:
     pool = sorted(
         [dict(row) for row in rows if float(row["score"]) >= min_score],
@@ -431,6 +451,11 @@ def _mmr_select(
         best = None
         best_value = -999.0
         for row in pool:
+            if cluster_cap is not None and sum(
+                1 for old in chosen
+                if haversine_m(row["lat"], row["lon"], old["lat"], old["lon"]) <= cluster_m
+            ) >= cluster_cap:
+                continue
             proximity = 0.0
             for old in chosen:
                 gap = abs(float(row["km"]) - float(old["km"]))
@@ -441,7 +466,8 @@ def _mmr_select(
             value = float(row["score"]) - proximity * proximity_weight
             if value > best_value:
                 best, best_value = row, value
-        assert best is not None
+        if best is None:  # zostaly tylko obiekty z pelnych skupisk
+            break
         best["selection_score"] = round(best_value, 1)
         chosen.append(best)
         pool.remove(best)
@@ -477,7 +503,7 @@ def rank_candidates(
     rec_max = max(rec_min, math.ceil(route_distance_km / 100.0 * RECOMMENDED_MAX_PER_100_KM))
     strong = sum(1 for row in candidates if float(row["score"]) >= RECOMMENDED_QUALITY_SCORE)
     recommendation_target = min(rec_max, max(rec_min, strong))
-    recommended = _mmr_select(candidates, recommendation_target)
+    recommended = _mmr_select(candidates, recommendation_target, cluster_cap=RECOMMENDED_PER_CLUSTER)
     recommended_keys = {candidate_key(row) for row in recommended}
     result_rows = []
     for rank, row in enumerate(candidates, 1):
