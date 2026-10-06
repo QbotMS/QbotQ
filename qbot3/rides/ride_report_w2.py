@@ -158,6 +158,12 @@ ZASADY:
 - Slownik dla uzytkownika: swiezosc (TSB) ujemna = zmeczony; gotowosc ujemna = organizm zmeczony rano; EF = moc na uderzenie serca (wyzej = lepiej).
 - Porownanie z podobnymi jazdami jest orientacyjne - wyciagaj wniosek tylko gdy roznica jest duza, i zaznacz ostroznosc.
 - Brak planu -> napisz to wprost i ocen jazde wobec mozliwosci.
+- PREDKOSC (OBOWIAZKOWO, w "wykonanie.tekst"): podaj srednia NETTO (w ruchu) i BRUTTO (z postojami) w km/h
+  z FAKTY.wykonanie.predkosc i porownaj netto z TWOJA tabela predkosci (model_kmh: normalny/sport/wyscig,
+  pole poziom, vs_model_pct). Dodaj postoje: realne (postoje_min) vs typowe z modelu (postoje_model_min).
+  Gdy by_surface ma wiecej niz jedna klase - jedno zdanie, gdzie odstawales od tabeli. Tabela nie zna wiatru:
+  jesli odchylka jest duza, sprawdz wiatr (W1.wind / terrain_impact) zanim wyciagniesz wniosek o formie.
+  Gdy predkosc to null - napisz, ze brak danych o predkosci.
 - Jezyk: polski, prosty (hobbysta, nie sportowiec zawodowy), konkretny, bez frazesow i motywowania.
 
 Zwroc WYLACZNIE surowy JSON:
@@ -165,7 +171,7 @@ Zwroc WYLACZNIE surowy JSON:
  "verdict": "jedno zdanie: ocena calej jazdy + najwazniejsza konsekwencja",
  "plan": "1-2 zdania: co bylo zaplanowane (dystans, czas, obciazenie, sposob jazdy)",
  "wykonanie": {"ocena": "w planie | za mocno | za slabo | nierowno | brak planu",
-               "tekst": "3-5 zdan: jak pojechal wobec planu, wobec formy z ktora wszedl i wobec podobnych jazd",
+               "tekst": "3-6 zdan: predkosc netto/brutto wobec Twojej tabeli predkosci, jak pojechal wobec planu, wobec formy z ktora wszedl i wobec podobnych jazd",
                "odcinki": [{"km": [od, do], "ocena": "krotko", "tekst": "1 zdanie wniosku o tym odcinku"}]},
  "konsekwencje": "2-4 zdania: co jazda zrobila ze zmeczeniem i forma, kiedy wroci swiezosc, czy najblizsze treningi z TRENERA pasuja",
  "uwagi": [{"co": "krotki naglowek", "dlaczego": "przyczyna z danych", "zalecenie": "co konkretnie zrobic nastepnym razem"}],

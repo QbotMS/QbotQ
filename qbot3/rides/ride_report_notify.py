@@ -56,8 +56,10 @@ def _summary_line(ride_key: str, name: str, summ: dict, w1: dict | None) -> str:
     avg = V(L.get("avg_p_w")) or summ.get("averagePower")
     hr = ((w1 or {}).get("physio") or {}).get("hr_avg", {}).get("value") if w1 else summ.get("averageHR")
     xss = V(L.get("xss"))
+    sp = V((w1 or {}).get("speed")) or {}
     wmin = ((w1 or {}).get("wprime") or {}).get("wbal_min_pct", {}).get("value") if w1 else None
     parts = ["%.1f km" % float(dist) if dist else None, _hm(dur) if dur else None,
+             ("%.1f km/h (brutto %.1f)" % (sp["netto_kmh"], sp["brutto_kmh"])) if sp.get("netto_kmh") else None,
              "%d W" % round(float(avg)) if avg else None, "tętno %d" % round(float(hr)) if hr else None]
     l2 = [("obciążenie %d" % round(float(xss))) if xss is not None else None,
           ("zapas min. %d%%" % round(float(wmin))) if wmin is not None else None]
@@ -166,7 +168,12 @@ def _moments(w1: dict) -> list[dict]:
 def _mail_html(name: str, w1: dict, w2: dict, ride_key: str) -> str:
     V = lambda x: (x or {}).get("value") if isinstance(x, dict) else x
     L = w1.get("load") or {}; ph = w1.get("physio") or {}; wp = w1.get("wprime") or {}; sf = V(w1.get("surface")) or {}; wi = V(w1.get("wind")) or {}
+    sp = V(w1.get("speed")) or {}
+    mk = sp.get("model_kmh") or {}
     rows = [("Dystans", "%.1f km" % (V(L.get("dist_km")) or 0)), ("Czas ruchu", _hm(V(L.get("dur_moving_s")))),
+            ("Czas całkowity / postoje", "%s / %s" % (_hm(sp.get("elapsed_s")), _hm(sp.get("stop_s")))),
+            ("Prędkość netto / brutto", ("%.1f / %.1f km/h" % (sp["netto_kmh"], sp["brutto_kmh"])) if sp.get("netto_kmh") else "—"),
+            ("Twoja tabela: normalny / sport / wyścig", ("%s / %s / %s km/h — %s" % (mk.get("normalny"), mk.get("sport"), mk.get("wyscig"), sp.get("poziom") or "")) if mk else "—"),
             ("Moc średnia / znormalizowana", "%s / %s W" % (V(L.get("avg_p_w")), V(L.get("np_w")))),
             ("Intensywność / równość", "%s / %s" % (V(L.get("if")), V(L.get("vi")))),
             ("Tętno śr. / maks.", "%s / %s" % (V(ph.get("hr_avg")), V(ph.get("hr_max")))),
@@ -209,7 +216,7 @@ def run_worker(ride_key: str, send_tg: bool = True, send_mail: bool = True) -> d
         fit = cand if os.path.exists(cand) else fit
     try:
         w1 = _load_w1(conn, ride_key)
-        if not w1:
+        if not w1 or "speed" not in w1:  # 2026-10-06: stary W1 bez bloku predkosci -> przebuduj
             if not fit: raise RuntimeError("brak pliku FIT")
             w1 = rrb.build_w1(fit, ride_key); rrb.save_report(ride_key, fit, {}, w1)
         w1 = rrb.apply_canonical_load(w1)  # obciazenie = XSS ModelQ (takze w zapisanych W1)

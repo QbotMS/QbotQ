@@ -1626,6 +1626,15 @@ def apply_canonical_load(w1):
     return w1
 
 
+def _speed_block(recs):
+    """Predkosc netto/brutto + porownanie z tabela predkosci uzytkownika (qbot3/rides/ride_speed.py).
+    Wolac PO _surface_and_wind (rekordy maja wtedy r[\"scat\"])."""
+    try:
+        from qbot3.rides.ride_speed import speed_block
+        return speed_block(recs)
+    except Exception as exc:
+        return {"value": None, "tier": "C", "source": "fit", "reason": "blad: %s" % exc}
+
 def _f1(v):
     return round(float(v), 1) if v is not None else None
 
@@ -1663,6 +1672,7 @@ def build_w1(fit_path, ride_key, inputs=None):
         "physio":_physio(recs, wellness, rhr_base),
         "energy":_energy(recs),
         "splits":_splits(recs),
+        "speed":_speed_block(recs),  # 2026-10-06: netto/brutto + Twoja tabela predkosci
         "plan_vs_actual":_tag(_plan_vs_actual(cur, recs, ride_key),"A","plan vs realnie"),
         "nutrition":_tag(_nutrition(cur),"A","nutrition_daily"),
         "disabled":DISABLED,

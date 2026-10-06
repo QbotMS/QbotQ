@@ -214,7 +214,9 @@ def execution_block(cur, ride_key, day, w1, plan, ses):
             pod = {"uwaga": "orientacyjnie: inne trasy, pogoda i teren; EF=NP/srednie tetno, wyzej=lepiej",
                    "ta_jazda_ef": round(ef_this, 2) if ef_this else None, "mediana_ef": med,
                    "roznica_pct": (round((ef_this - med) / med * 100) if ef_this else None), "jazdy": lst}
-    return {"realnie": real, "sumy": sumy, "odcinki": odc, "wejscie": wej, "podobne": pod}
+    # 2026-10-06: predkosc netto/brutto + odniesienie do tabeli predkosci uzytkownika (W1.speed)
+    pr = _val((w1 or {}).get("speed"))
+    return {"realnie": real, "predkosc": pr, "sumy": sumy, "odcinki": odc, "wejscie": wej, "podobne": pod}
 
 
 # ---------------------------------------------------------------- 3) konsekwencje (na zywo)

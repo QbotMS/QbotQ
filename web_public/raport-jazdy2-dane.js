@@ -131,6 +131,18 @@ window.__RJ2dane=function(D,ctx){
   else if(pva._matched===false)PLANC+=it("Plan vs realny","—","brak trasy","","Nie powiązana z trasą.");
   if(PLANC||MMPC||ZONC)c+='<div class="pairrow">'+PLANC+MMPC+ZONC+'</div>';
   if(c||WYSC)H+=sec("Wysiłek",'<div class="nar">'+WYSC+c+'</div>',true);
+  /* ===== PREDKOSC (2026-10-06): netto/brutto + Twoja tabela predkosci na tym samym sladzie ===== */
+  var SPv=V(D.speed);
+  if(SPv&&isNum(SPv.netto_kmh)){c="";var MK=SPv.model_kmh||{},VS=SPv.vs_model_pct||{};
+    var spc=isNum(VS.normalny)?(VS.normalny<-5?"warn":"good"):"";
+    var pct=function(x){return isNum(x)?(x>0?"+":"")+x+"%":"—";};
+    c+=it("Średnia w ruchu (netto)",n(SPv.netto_kmh,1)+' <small>km/h</small>',SPv.poziom||"",spc,"Dystans ÷ czas jazdy bez postojów ("+fmtHM(SPv.moving_s)+").");
+    c+=it("Średnia całkowita (brutto)",n(SPv.brutto_kmh,1)+' <small>km/h</small>',isNum(SPv.brutto_model_kmh)?"typowo "+n(SPv.brutto_model_kmh,1):"","","Z postojami: całość "+fmtHM(SPv.elapsed_s)+", postoje "+n(SPv.postoje_min)+" min (Twoja typowa norma na ten dystans ~"+n(SPv.postoje_model_min)+" min).");
+    if(isNum(MK.normalny)){var spr=function(lab,k2){return '<tr><td>'+lab+'</td><td>'+n(MK[k2],1)+'</td><td>'+pct(VS[k2])+'</td></tr>';};
+      c+='<div class="it wt"><div class="h"><b>Wobec Twojej tabeli prędkości</b><span class="rate">ten sam ślad</span></div><table class="tb"><tr class="h"><td>Twój poziom</td><td>km/h</td><td>dziś netto</td></tr>'+spr("normalny","normalny")+spr("sport","sport")+spr("wyścig","wyscig")+'</table><p>Twoja tabela (nawierzchnia × nachylenie) przyłożona do tego śladu. Bez wiatru.'+(isNum(SPv.nawierzchnia_znana_pct)&&SPv.nawierzchnia_znana_pct<50?" Nawierzchnia znana na "+Math.round(SPv.nawierzchnia_znana_pct)+"% dystansu — reszta liczona średnią asfalt/szuter.":"")+'</p></div>';}
+    var spb=SPv.by_surface||[];
+    if(spb.length>1||(spb.length===1&&spb[0].klasa!=="nieznana")){c+='<div class="it wt"><div class="h"><b>Prędkość wg nawierzchni</b></div><table class="tb"><tr class="h"><td>nawierzchnia</td><td>km</td><td>dziś</td><td>tabela</td><td>różnica</td></tr>'+spb.map(function(b){return '<tr><td>'+esc(b.klasa)+'</td><td>'+n(b.dist_km,1)+'</td><td>'+n(b.kmh,1)+'</td><td>'+n(b.model_kmh,1)+'</td><td>'+pct(b.roznica_pct)+'</td></tr>';}).join("")+'</table></div>';}
+    H+=sec("Prędkość",'<div class="nar">'+c+'</div>',true);}
   var dl=Array.isArray(nu.daily)?nu.daily:[];
   if(dl.length){c=dl.map(function(r){var kc=r.kcal||r.kcal_in||r.intake_kcal,pr=r.protein_g||r.prot_g;return it("Jedzenie "+esc(r.day||r.date||""),(isNum(kc)?Math.round(kc)+" kcal":"—")+(isNum(pr)?' <small>białko '+Math.round(pr)+" g</small>":""),"","",Object.keys(r).filter(function(k){return !/day|date|kcal|protein|prot/.test(k)&&r[k]!=null&&typeof r[k]!=="object";}).map(function(k){return esc(k)+" "+esc(r[k]);}).join(" · "));}).join("");
     H+=sec("Jedzenie",'<div class="nar">'+c+'</div>');}
