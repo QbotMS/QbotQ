@@ -102,7 +102,7 @@ function marks(){rail.querySelectorAll("button[data-k]").forEach(function(b){var
   if(s.t||s.id)b.classList.toggle("off",!secEl(s));});}
 function padCalc(){var mr=$("map").getBoundingClientRect(),r=(cur&&!MOB.matches?dane:pj).getBoundingClientRect();window.__RJ3.padL=Math.max(80,Math.round(r.right-mr.left+20));}
 function refit(){var api=window.__RJapi;if(!api)return;padCalc();api.inval();api.fit();}
-function open(k){cur=k;geo();dane.style.display="block";document.body.classList.add("rj3-open");apply();marks();setTimeout(refit,60);
+function open(k){cur=k;geo();dane.style.display="flex";document.body.classList.add("rj3-open");apply();marks();setTimeout(refit,60);
   try{history.replaceState(null,"",location.pathname+location.search+"#"+k);}catch(e){}}
 function close(){cur=null;var gq=$("gearp");if(gq&&gq.style.display==="block")gq.style.display="none";dane.style.display="none";document.body.classList.remove("rj3-open");marks();setTimeout(refit,60);
   try{history.replaceState(null,"",location.pathname+location.search);}catch(e){}}

@@ -2,10 +2,11 @@
 body.rj3 #viewseg,body.rj3 #gearbtn{display:none!important}
 /* lewy panel: dane jazdy | pasek ikon */
 body.rj3 #pj{width:auto;display:flex;align-items:stretch;padding:0;max-height:calc(100% - var(--dockh,260px) - 36px)}
-body.rj3 #pj .pjmain{width:390px;padding:12px 14px;display:flex;flex-direction:column;overflow-y:auto;scrollbar-width:thin}
-body.rj3 #pj .kk{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 10px}
-body.rj3 #pj .kk .v{white-space:nowrap;font-size:19px}
-body.rj3 #pj .kk .v small{font-size:12px;font-weight:400;color:var(--ink2)}
+body.rj3 #pj .pjmain{width:318px;padding:10px 12px;display:flex;flex-direction:column;overflow-y:auto;scrollbar-width:thin}
+body.rj3 #pj .kk{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px}
+body.rj3 #pj .kk .v{white-space:nowrap;font-size:17px}
+body.rj3 #pj .kk .s{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.rj3 #pj .kk .v small{font-size:11px;font-weight:400;color:var(--ink2)}
 .pjsep{height:1px;background:var(--line);margin:10px 0}
 #pjv{font-size:13.5px;line-height:1.45;color:var(--ink);background:var(--well);border-radius:var(--r-sm);padding:8px 10px;margin-top:10px}
 #pjv b{display:block;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
@@ -63,3 +64,8 @@ body.rj3 #gwrap #gearp{position:static;width:auto;max-height:none;top:auto;right
 body.rj3 #gwrap #gearp .gh{display:none}
 body.rj3 #gwrap #gearp .gl{grid-template-columns:150px 1fr;gap:6px 10px}
 @media(max-width:820px),(pointer:coarse) and (max-height:500px){#mapctl{top:auto!important;right:8px;bottom:calc(var(--dockh,170px) + 14px)}}
+/* 2026-10-06: okno sekcji = kolorystyka lewego panelu (.ov) */
+body.rj3 #dane{flex-direction:column;overflow:hidden;background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(4px);border:1px solid var(--line);box-shadow:0 4px 18px rgba(0,0,0,.25)}
+html.theme-dark body.rj3 #dane{background:rgba(13,16,22,.86)}
+body.rj3 #dhd,html.theme-dark body.rj3 #dhd{position:static;flex:0 0 auto;background:transparent;border-bottom:1px solid var(--line)}
+body.rj3 #dgrid,body.rj3 #odcwrap,body.rj3 #gwrap{flex:1 1 auto;min-height:0;overflow-y:auto}
