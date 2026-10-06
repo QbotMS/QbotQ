@@ -17,7 +17,7 @@ function toMin(h){var p=String(h).split(":");return (+p[0])*60+(+p[1]);}
 function toHM(m){return pad(Math.floor(m/60))+":"+pad(m%60);}
 function nf(x,d){if(x==null||isNaN(x))return "\u2014";return Number(x).toFixed(d==null?1:d).replace(".",",");}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
-function clampStart(t){var m=toMin(t||"10:00");m=Math.round(m/15)*15;return toHM(Math.max(480,Math.min(720,m)));}
+function clampStart(t){var m=toMin(t||"10:00");m=Math.round(m/15)*15;return toHM(Math.max(360,Math.min(1200,m)));}
 function q(){return "route_id="+encodeURIComponent(ST.route)+"&date="+encodeURIComponent(ST.date);}
 
 /* przechwycenie renderu: trasa/data, komentarze ryzyka z pakietu */
@@ -122,7 +122,7 @@ function renderControls(){
   var ap=ST.apply||{};
   var metaTxt=ST.busy?'<span class="mkp-busy">przeliczam\u2026</span>':(ap.meta?"meta ~"+ap.meta:"");
   box.innerHTML='<div class="mkp-h"><b>Plan dnia</b><input type="date" id="mkp-d" value="'+esc(ST.date||"")+'"></div>'+
-    '<div class="mkp-row"><span class="mkp-l">start</span><input type="range" id="mkp-st" min="480" max="720" step="15" value="'+toMin(ST.start)+'"><b id="mkp-stv">'+ST.start+'</b></div>'+
+    '<div class="mkp-row"><span class="mkp-l">start</span><input type="range" id="mkp-st" min="360" max="1200" step="15" value="'+toMin(ST.start)+'"><b id="mkp-stv">'+ST.start+'</b></div>'+
     '<div class="mkp-row"><span class="mkp-l">przerwy</span><select id="mkp-n">'+nOpt+'</select><span>\u00d7</span><select id="mkp-m">'+mOpt+'</select><span>min</span></div>'+
     '<div class="mkp-row mkp-s"><span>'+metaTxt+'</span></div>'+
     '<div class="mkp-row mkp-s">'+status+'</div>'+(ST.err?'<div class="mkp-err">'+esc(ST.err)+'</div>':"");
