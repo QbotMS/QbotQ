@@ -1,3 +1,5 @@
+/* AUTO-GENEROWANY przez scripts/build_planer2_mock.py z planer-wyprawy-render.js.
+   NIE edytuj recznie - zmien zrodlo albo latki w skrypcie i uruchom ponownie. */
 /* czas lokalny (strefa przegladarki) -- wspolne dla QBot lab */function qTsLocal(s,naiveUtc){if(!s)return"";var t=String(s).trim().replace(" ","T").replace(/\.\d+/,"");if(/[+-]\d\d$/.test(t))t+=":00";t=t.replace(/([+-]\d\d)(\d\d)$/,"$1:$2");if(!/(Z|[+-]\d\d:\d\d)$/i.test(t)){if(!naiveUtc)return t.slice(0,16).replace("T"," ");t+="Z";}var d=new Date(t);if(isNaN(d.getTime()))return String(s).slice(0,16);var p=function(n){return("0"+n).slice(-2);};return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes());}function qDateLocal(d){d=d||new Date();var p=function(n){return("0"+n).slice(-2);};return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());}
 /* Planer wyprawy — Etap 3 — v28 (wiele dziennych GPX; XSS + ocena formy + kalendarz + wspolne atrakcje)
    Fix realnej przyczyny: Leaflet getLatLng() zwraca {lat,lng}, a kod czytal [lat,lon]
@@ -196,7 +198,7 @@
     }
     box.innerHTML = html;
     var cc = box.querySelectorAll(".ecard");
-    for (var y = 0; y < cc.length; y++) cc[y].addEventListener("click", function (e) { if (e.target.closest(".ec-detail")) return; toggleDay(parseInt(this.getAttribute("data-day"), 10)); });
+    for (var y = 0; y < cc.length; y++) cc[y].addEventListener("click", function (e) { if (e.target.closest(".ec-detail")) return; setView(parseInt(this.getAttribute("data-day"), 10)); });
   }
   window.__planerEtapCards = renderEtapCards;
 
@@ -264,7 +266,7 @@
 
   function renderOcena() {
     var box = document.getElementById("ocena-formy"); if (!box) return;
-    if (currentView !== null) { box.style.display = "none"; return; }
+    
     box.style.display = "block";
     if (!feasData) { box.innerHTML = '<h3>Ocena formy</h3><p class="muted">Liczenie\u2026</p>'; return; }
     var f = feasData.feasibility;
@@ -298,7 +300,7 @@
     var bh = document.getElementById("tlo-historia");
     var bg = document.getElementById("tlo-geografia");
     if (!bh || !bg) return;
-    if (currentView !== null) { bh.style.display = "none"; bg.style.display = "none"; return; }
+    
     bh.style.display = "block"; bg.style.display = "block";
     var rid = currentRouteId();
     if (!rid) return;
@@ -791,6 +793,7 @@
   function setView(v) {
     if (v != null && (v < 0 || v >= nDays)) v = null;
     currentView = v;
+    document.body.classList.toggle("pv-day", v != null);
     renderViewTabs();
     var panel = document.getElementById("dzien-panel");
     var tbl = document.querySelector("table");
@@ -812,7 +815,7 @@
       var st = computeStage(v);
       if (tbl) tbl.style.display = "none";
       if (dost) dost.style.display = "none";
-      if (opis) opis.style.display = "none";
+      
       if (hint) hint.style.display = "none";
       if (panel) panel.style.display = "";
       if (mast && IS_PRINT) { mast.style.display = ""; mast.innerHTML = dayMastHTML(v, st.from.toFixed(0) + "\u2013" + st.to.toFixed(0) + " km"); }
@@ -941,9 +944,15 @@
     h += '<div class="dsec" id="d-climbs"><h3>Podjazdy</h3><p class="muted">\u0141adowanie\u2026</p></div>';
     h += '<div class="dsec" id="d-resupply"><h3>Zaopatrzenie</h3><p class="muted">\u0141adowanie\u2026</p></div>';
     h += '<div class="dsec" id="d-attr"><h3>Atrakcje</h3><p class="muted">\u0141adowanie\u2026</p></div>';
+    h += '<div class="dsec" id="d-gpx"><h3>Ślad dnia</h3><button class="dbtn" id="d-gpx-btn">⬇ Pobierz GPX dnia ' + (i + 1) + '</button></div>';
     panel.innerHTML = h;
 
     var gen = document.getElementById("d-genopis"); if (gen) gen.onclick = doDostosuj;
+    var _gx = document.getElementById("d-gpx-btn"); if (_gx) _gx.onclick = function () {
+      var _nm = (sel && sel.options[sel.selectedIndex]) ? sel.options[sel.selectedIndex].text : "";
+      window.open("/api/planer/dzien/gpx?route_id=" + encodeURIComponent(rid) + "&from=" + st.from.toFixed(1)
+        + "&to=" + st.to.toFixed(1) + "&day=" + (i + 1) + "&name=" + encodeURIComponent(_nm), "_blank");
+    };
 
     function fillErr() { ["d-surface", "d-climbs", "d-resupply", "d-attr"].forEach(function (id) { var el = document.getElementById(id); if (el) { var p = el.querySelector("p"); if (p) p.textContent = "B\u0142\u0105d \u0142adowania danych."; } }); }
     fetch("/api/planer/dzien?route_id=" + encodeURIComponent(rid) + "&from=" + st.from.toFixed(1) + "&to=" + st.to.toFixed(1))
@@ -1151,11 +1160,11 @@
   function init() {
     map = L.map("map", { zoomSnap: 0 });
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(map);
-    map.scrollWheelZoom.disable();
+    void 0;
     document.addEventListener("keydown", function (e) { if (map && (e.key === "Meta" || e.key === "Control")) map.scrollWheelZoom.enable(); });
-    document.addEventListener("keyup", function (e) { if (map && (e.key === "Meta" || e.key === "Control")) map.scrollWheelZoom.disable(); });
-    window.addEventListener("blur", function () { if (map) map.scrollWheelZoom.disable(); });
-    if (!(typeof IS_PRINT !== "undefined" && IS_PRINT)) {
+    document.addEventListener("keyup", function (e) { if (map && (e.key === "Meta" || e.key === "Control")) void 0; });
+    window.addEventListener("blur", function () { if (map) void 0; });
+    if (false) {
       var _hd = document.querySelector("header");
       var _br = document.querySelector(".bar");
       if (_hd && _br && _br.parentNode !== _hd) _hd.appendChild(_br);
@@ -1324,8 +1333,6 @@
     var sel = document.getElementById("route"); var rid = sel ? sel.value : "";
     var nm = (sel && sel.options[sel.selectedIndex]) ? sel.options[sel.selectedIndex].text : "";
     var h = '';
-    h += '<div class="qa-h">Podzia\u0142 na dni</div>';
-    h += '<div class="tw-days"><button id="dminus" title="mniej dni">\u2212</button><span class="val" id="dval">' + nDays + '</span><button id="dplus" title="wi\u0119cej dni">+</button></div>';
     h += '<div class="qa-h" style="margin-top:18px">Wersje <span class="muted" style="font-weight:400;font-size:12px">(auto po DOSTOSUJ)</span></div>';
     var _sv = readSaved();
     if (!_sv.length) { h += '<div class="muted" style="font-size:13px;margin-bottom:8px">Brak wersji. Zr\u00f3b DOSTOSUJ \u2014 zapisze si\u0119 sama.</div>'; }
@@ -1351,12 +1358,6 @@
     h += '<div class="qa-h" style="margin-top:18px">Udost\u0119pnij dni</div>';
     h += '<button class="dbtn tw-full" id="tw-addqbot">\u2795 Dodaj wszystkie dni do QBot (' + nDays + ' GPX)</button>';
     h += '<div class="muted" id="tw-addqbot-status" style="font-size:13px;margin:4px 0 12px"></div>';
-    h += '<div style="font-size:12.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Pobierz GPX dnia</div>';
-    for (var i = 0; i < nDays; i++) {
-      var st = computeStage(i);
-      h += '<button class="dbtn tw-full tw-gpx" data-day="' + (i + 1) + '" data-from="' + st.from.toFixed(1) + '" data-to="' + st.to.toFixed(1) + '">'
-         + '\u2b07 Dzie\u0144 ' + (i + 1) + ' <span style="color:var(--muted);font-weight:400">' + st.from.toFixed(0) + '\u2013' + st.to.toFixed(0) + ' km</span></button>';
-    }
     body.innerHTML = h;
     var _dm = document.getElementById("dminus"); if (_dm) _dm.onclick = function () { changeDays(-1); };
     var _dp = document.getElementById("dplus"); if (_dp) _dp.onclick = function () { changeDays(1); };
@@ -1713,6 +1714,31 @@
     }
   }
   window.__planerPogoda = renderPogoda;
+
+
+  /* ===== MOCKUP v2: nadpisania (ostatnia deklaracja funkcji wygrywa) ===== */
+  function _pvRect(id) { var e = document.getElementById(id); return (e && e.offsetParent !== null) ? e.getBoundingClientRect() : null; }
+  function _fitPadTop() { return 16; }
+  function _fitPadLeft() {
+    var p = _pvRect("pv-panel"), m = _pvRect("map");
+    return (p && m) ? Math.max(24, Math.round(p.right - m.left) + 18) : 24;
+  }
+  function _fitPadBottom() {
+    var f = _pvRect("profil"), m = _pvRect("map");
+    return (f && m) ? Math.max(24, Math.round(m.bottom - f.top) + 18) : 24;
+  }
+  function applyMapMode() {
+    document.body.classList.remove("map-bg", "mb-all", "mb-day");
+    if (map) { [60, 300].forEach(function (ms) { setTimeout(function () { try { map.invalidateSize(false); } catch (e) {} }, ms); }); }
+  }
+  window.__planerRefitAny = function () {
+    try {
+      if (!map) return;
+      map.invalidateSize(false);
+      if (currentView == null) { if (coords.length) fitRoute(coords); }
+      else { var st = computeStage(currentView); zoomToDay(st.from, st.to); }
+    } catch (e) {}
+  };
 
   document.addEventListener("DOMContentLoaded", init);
 })();

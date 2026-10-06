@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1"><link rel="alternate icon" href="/favicon.ico?v=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/theme.css?v=3">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<title>Planer wyprawy v2 (mockup) — QBot</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+/* MOCKUP v2 2026-10-05: Planer wyprawy w ukladzie Analizy trasy.
+   Logika = planer-wyprawy2-render.js (generowany z planer-wyprawy-render.js przez scripts/build_planer2_mock.py). */
+:root{--ink:#2a241c;--ink2:#6f6455;--muted:#9a9184;--line:#e6dfd0;--line2:#d3c9b5;--paper:#f8f4ec;--card:#fffdf8;--panel:#efe8da;--well:#efe8da;--accent:#e8742a;--accent-ink:#b3520f;--accent-bg:#fbe5d0;--good:#4f7a2a;--good-bg:#e9efd9;--bad:#a32d2d;--bad-bg:#fbe3e0;--warn:#8a6d00;--warn-bg:#f7efc4;
+  --qh:100px;--pv-l:var(--qnav-rail,56px);--pw:440px;--rail:54px;--pf-h:210px;--gap:12px}
+html.theme-dark{--ink:#f3efe8;--ink2:#b9c0cc;--muted:#8792a4;--line:#5a3a20;--line2:#7a5030;--paper:#1a1f27;--card:#0d1016;--panel:#1f2631;--well:#1f2631;--accent:#e8742a;--accent-ink:#ff9c55;--accent-bg:#4a2a0a;--good:#b7d38a;--good-bg:#25301a;--bad:#f09595;--bad-bg:#3a1c1c;--warn:#e6c95a;--warn-bg:#3a3110}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5}
+
+/* ---- belka (jak Analiza trasy) ---- */
+.qhead{position:sticky;top:0;z-index:1200;background:var(--panel);border-bottom:1px solid var(--line);box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.qhead-row{display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;padding:8px 16px}
+.qh-title{font-weight:800;font-size:18px;letter-spacing:.01em}
+.qh-title small{font-weight:600;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#fff;background:var(--accent);border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:2px}
+.qh-btn,.rtab,.qh-link{font:inherit;font-size:14px;font-weight:650;padding:6px 12px;border:1px solid var(--line2);border-radius:9px;background:var(--card);color:var(--ink2);cursor:pointer;text-decoration:none;white-space:nowrap}
+.qh-btn:hover,.rtab:hover,.qh-link:hover{border-color:var(--accent);color:var(--accent-ink)}
+.rtabs{display:flex;gap:6px}
+.rtab.active{background:var(--accent-bg);border-color:var(--accent);color:var(--accent-ink)}
+.qh-right{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.gen-wrap{padding:0 16px 10px}
+.gen-wrap.collapsed{display:none}
+.gen-row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.fld label{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+.fld select,.fld input{font:inherit;font-size:15px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.fld select{min-width:280px}
+.tw-days{display:flex;align-items:center;gap:0;border:1px solid var(--line);border-radius:8px;background:var(--card);overflow:hidden}
+.tw-days button{border:0;background:transparent;font-size:19px;width:36px;height:36px;cursor:pointer;color:var(--accent)}
+.tw-days button:hover{background:var(--accent-bg)}
+.tw-days .val{min-width:30px;text-align:center;font-size:17px;font-weight:700}
+.btn{font:inherit;font-size:15px;font-weight:700;padding:8px 16px;border-radius:9px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+.planer-hist{display:none;flex-wrap:wrap;align-items:center;gap:6px}
+.planer-hist .ph-label{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.ph-chip{font:inherit;font-size:13px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink2);cursor:pointer}
+.ph-chip:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ---- MAPA: tlo + lewy panel z szyna ikon + profil dokowany ---- */
+#map{position:fixed;top:var(--qh);left:var(--pv-l);right:0;bottom:0;z-index:1}
+#pv-panel{position:fixed;z-index:1100;top:calc(var(--qh) + var(--gap));left:calc(var(--pv-l) + var(--gap));bottom:var(--gap);width:calc(var(--pw) + var(--rail));display:flex;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 26px rgba(0,0,0,.25);overflow:hidden;transition:width .18s ease}
+#pv-body{flex:1 1 auto;min-width:0;overflow:auto;padding:12px 14px 18px}
+#pv-rail{flex:0 0 var(--rail);display:flex;flex-direction:column;gap:6px;padding:8px 6px;border-left:1px solid var(--line);background:var(--panel)}
+.pv-tab{appearance:none;font:inherit;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--ink2);cursor:pointer}
+.pv-tab svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.pv-tab span{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.pv-tab:hover{border-color:var(--accent);color:var(--accent-ink)}
+.pv-tab.on{background:var(--accent);color:#fff}
+.pv-tab.pv-fold{margin-top:auto}
+body.pv-closed #pv-panel{width:var(--rail)}
+body.pv-closed #pv-body{display:none}
+body.pv-closed #pv-rail{border-left:0}
+.pv-sec{display:none}.pv-sec.on{display:block}
+.pv-h{font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0 0 8px}
+#profil{position:fixed;z-index:1050;right:var(--gap);bottom:var(--gap);height:var(--pf-h);left:calc(var(--pv-l) + var(--gap)*2 + var(--pw) + var(--rail));background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;box-shadow:0 8px 26px rgba(0,0,0,.22);transition:left .18s ease}
+body.pv-closed #profil{left:calc(var(--pv-l) + var(--gap)*2 + var(--rail))}
+.profil .sec-h{font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.profil-wrap{position:relative}
+.profil-wrap svg{width:100%;height:150px;display:block}
+.profil-tip{display:none;position:absolute;top:-4px;transform:translateX(-50%);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:2px 7px;font-size:13px;white-space:nowrap;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:20}
+.surf-legend2{display:flex;gap:14px;margin-top:4px;font-size:13px;color:var(--muted)}
+.surf-legend2 span{display:flex;align-items:center;gap:5px}
+.surf-legend2 i{width:11px;height:11px;border-radius:3px;display:inline-block}
+
+/* ---- SZCZEGOLY: dokument przewijany ---- */
+#pv-doc{display:none;max-width:920px;margin:0 auto;padding:18px 18px 80px}
+body.pv-szcz #pv-doc{display:block}
+body.pv-szcz #map,body.pv-szcz #pv-panel,body.pv-szcz #profil{display:none}
+
+/* ---- tresc (z Planera wyprawy, dopasowana do panelu) ---- */
+.opis{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px;font-size:15.5px;line-height:1.6;color:var(--ink2)}
+.opis h3{margin:0 0 6px;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.opis p{margin:0}.opis .muted,.muted{color:var(--muted)}
+#pv-panel .opis{border:0;padding:0;background:transparent}
+.viewtabs{display:flex;gap:5px;flex-wrap:wrap;margin:0 0 10px}
+.viewtab{padding:5px 10px;border:1px solid var(--line);border-radius:9px;background:var(--card);cursor:pointer;font:inherit;font-size:14px;font-weight:650;color:var(--ink2);line-height:1.15}
+.viewtab .k{font-size:12px;color:var(--muted);font-weight:400;margin-left:4px}
+.viewtab.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent-ink)}
+.dostosuj-btn{display:block;width:100%;margin:0 0 6px;padding:9px;font:inherit;font-size:14.5px;font-weight:650;color:#fff;background:var(--accent);border:none;border-radius:10px;cursor:pointer}
+.dostosuj-btn:disabled{background:var(--well);color:var(--muted);cursor:default}
+.hint{font-size:13px;color:var(--muted);margin:8px 0 0}
+body.pv-day .pv-all{display:none!important}
+.dot{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:8px;vertical-align:-1px}
+.bar-surf{display:inline-flex;height:9px;border-radius:5px;overflow:hidden;width:96px;vertical-align:-1px;border:1px solid var(--line)}
+.bar-surf i{display:block;height:100%}
+.surf-wrap{position:relative;display:inline-block}.surf-legend{display:none}
+.ecard{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:10px 12px;margin:8px 0 0;cursor:pointer;transition:border-color .12s}
+.ecard:hover{border-color:var(--accent)}
+.ec-head{display:flex;align-items:center;gap:7px;font-size:16px}
+.ec-head .dot{width:12px;height:12px;margin:0}
+.ec-head .ec-km{margin-left:auto;color:var(--muted);font-size:14px}
+.ec-main{margin-top:5px;font-size:16.5px;font-weight:650;font-variant-numeric:tabular-nums}
+.ec-surf{margin-top:7px}.ecard .surf-wrap,.ecard .bar-surf{display:block;width:100%}.ecard .bar-surf{height:10px}
+.ec-pct{display:flex;flex-wrap:wrap;gap:3px 12px;margin-top:6px;font-size:13.5px;color:var(--ink2)}
+.ec-pct span{display:flex;align-items:center;gap:5px}.ec-pct i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.ec-sub{margin-top:6px;font-size:13.5px;color:var(--muted)}.ec-sep{opacity:.45}
+.dcards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:10px}
+.dcard{background:var(--well);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}
+.dcard .lab{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.dcard .val{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+.dcard .val small{font-size:13px;font-weight:400;color:var(--muted)}
+.dcard .sub2{font-size:12px;color:var(--muted)}
+.dsec{border-top:1px solid var(--line);padding:10px 0 4px}
+.dsec h3{margin:0 0 6px;font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.dsec p,.dsec ul{margin:.3em 0;font-size:14.5px;line-height:1.55;color:var(--ink2)}
+.dsec ul{padding-left:1.2em}
+.poi-row{display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:14px;align-items:baseline}
+.poi-row:last-child{border-bottom:0}
+.poi-km{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;min-width:48px}
+.poi-name{flex:1}.poi-meta{color:var(--muted);font-size:13px}
+.climb-row,.attr-row{cursor:pointer}
+.climb-row:hover,.attr-row:hover{background:var(--well)}
+.climb-prof{width:100%;height:auto;display:block}
+.climb-legend{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:6px;font-size:12px;color:var(--ink2)}
+.cl-item{display:flex;align-items:center;gap:4px}.cl-sw{width:10px;height:10px;border-radius:3px;display:inline-block}
+.attr-media{display:flex;gap:10px;flex-wrap:wrap}.attr-photo{width:100%;border-radius:8px;border:1px solid var(--line)}
+.attr-desc{font-size:14px;color:var(--ink2);margin:.2em 0}.attr-loc{display:block;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.attr-src{font-size:12px;color:var(--muted)}
+.scat-bar{display:flex;height:12px;border-radius:5px;overflow:hidden;border:1px solid var(--line);margin:2px 0 6px}
+.scat-bar i{display:block;height:100%}
+.scat-legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;color:var(--ink2);margin-bottom:4px}
+.scat-legend span{display:flex;align-items:center;gap:5px}.scat-legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.clim-comment{font-size:14px;color:var(--ink2)}.ok-line{color:var(--good);font-size:14.5px}.warn-line{color:var(--bad);font-size:14.5px}
+.dbtn{font:inherit;font-size:14px;font-weight:600;padding:7px 12px;border-radius:8px;border:1px solid var(--accent);background:var(--card);color:var(--accent-ink);cursor:pointer;margin:0 6px 6px 0}
+.dbtn:hover{background:var(--accent-bg)}
+.tw-full{display:block;width:100%;text-align:left;margin:0 0 7px}
+.qa-h{font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0 0 8px}
+.tw-vers{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.tw-ver{display:flex;gap:6px}
+.tw-ver-load{flex:1;text-align:left;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);padding:7px 10px;cursor:pointer;font:inherit;font-size:13.5px;display:flex;flex-direction:column}
+.tw-ver-load:hover{border-color:var(--accent)}.tw-ver-sub{font-size:12px}
+.tw-ver-del{width:32px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--muted);font-size:17px;cursor:pointer}
+.of-days{margin-top:10px;display:flex;flex-direction:column;gap:7px}
+.of-day{display:flex;gap:9px;background:var(--well);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.of-dot{width:12px;height:12px;border-radius:3px;flex:0 0 auto;margin-top:4px}
+.of-h{font-size:15px;font-weight:650}.of-c{font-size:13.5px}
+.cutdot{width:24px;height:24px;border-radius:50%;background:var(--ink);color:#fff;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;cursor:grab}
+/* pogoda w waskim panelu */
+.pg-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:0 0 10px}
+.pg-bar label{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.pg-bar input{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.pg-note{font-size:13px;color:var(--muted);line-height:1.5}
+.pg-day{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.pg-day-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;margin-bottom:6px}
+.pg-km{color:var(--muted);font-size:13px}
+.pg-tag{font-size:11px;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:var(--accent-bg);color:var(--accent-ink)}
+.pg-tag.klimat{background:var(--warn-bg);color:var(--warn)}.pg-tag.brak{background:var(--bad-bg);color:var(--bad)}
+.pg-btn{font:inherit;font-size:13.5px;font-weight:600;padding:6px 11px;border-radius:8px;border:1px solid var(--accent);background:var(--card);color:var(--accent-ink);cursor:pointer;margin-left:auto}
+.pg-btn:disabled{border-color:var(--line);color:var(--muted)}
+.pg-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:4px 0 8px}
+.pg-card{background:var(--well);border:1px solid var(--line);border-radius:10px;padding:7px 9px}
+.pg-card .lab{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.pg-card .val{font-size:16.5px;font-weight:700}.pg-card .val small{font-size:12px;color:var(--muted);font-weight:400}
+.pg-card .sub{font-size:12px;color:var(--muted)}
+.pg-card.hot{border-color:var(--bad);background:var(--bad-bg)}.pg-card.wet{border-color:var(--warn);background:var(--warn-bg)}
+.pg-al{display:flex;gap:8px;padding:5px 8px;border-radius:8px;margin-bottom:5px;font-size:13.5px}
+.pg-al.NOGO,.pg-al.ALARM{background:var(--bad-bg);color:var(--bad)}.pg-al.FLAGA{background:var(--warn-bg);color:var(--warn)}
+.pg-tab{display:block;overflow-x:auto;width:100%;border-collapse:collapse;font-size:12.5px}
+.pg-tab th,.pg-tab td{padding:4px 6px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right}
+.pg-tab th:first-child,.pg-tab td:first-child{text-align:left}
+.pg-tab td.hot{color:var(--bad);font-weight:650}.pg-tab td.rainy{color:var(--accent-ink);font-weight:650}
+.pg-caveats{font-size:12.5px;color:var(--muted)}.pg-err{color:var(--bad)}
+.leaflet-control-attribution{font-size:10px}
+.mock-badge{position:fixed;right:10px;top:calc(var(--qh) + 8px);z-index:1150;font-size:11px;font-weight:800;letter-spacing:.12em;padding:4px 10px;border-radius:999px;background:var(--accent);color:#fff;pointer-events:none}
+body.pv-szcz .mock-badge{display:none}
+@media (max-width:820px){
+  :root{--pv-l:0px;--pw:calc(100vw - 54px - 24px);--pf-h:150px}
+  #pv-panel{top:auto;height:52vh}
+  #profil{display:none}
+  .fld select{min-width:0;width:100%}
+}
+</style>
+</head>
+<body class="pv-mapa">
+<table hidden aria-hidden="true"><tbody id="rows"></tbody></table>
+
+<div class="qhead" id="qhead">
+  <div class="qhead-row">
+    <span class="qh-title">Planer wyprawy <small>mockup v2</small></span>
+    <button type="button" class="qh-btn" id="gen-toggle">Parametry ▴</button>
+    <div class="rtabs">
+      <button type="button" class="rtab active" data-pv="mapa">Mapa · etapy</button>
+      <button type="button" class="rtab" data-pv="szcz">Szczegóły wyprawy</button>
+    </div>
+    <div class="qh-right">
+      <div class="planer-hist" id="planer-hist"></div>
+      <span id="wyp-row" style="display:none"><a class="qh-link" id="wyp-link" href="#">🎒 Wyposażenie</a></span>
+    </div>
+  </div>
+  <div class="gen-wrap" id="gen-wrap">
+    <div class="gen-row">
+      <div class="fld"><label>Trasa</label><select id="route"></select></div>
+      <div class="fld"><label>Data wyprawy</label><input type="date" id="wyprawa-data"></div>
+      <div class="fld"><label>Dni</label><div class="tw-days"><button type="button" id="dminus" title="mniej dni">−</button><span class="val" id="dval">2</span><button type="button" id="dplus" title="więcej dni">+</button></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="map"></div>
+<div class="mock-badge">MOCKUP</div>
+
+<div id="pv-panel">
+  <div id="pv-body">
+    <div class="pv-sec on" data-sec="etapy">
+      <div class="pv-h">Etapy i dni</div>
+      <div id="viewtabs" class="viewtabs"></div>
+      <div class="pv-all">
+        <button id="dostosuj" class="dostosuj-btn">DOSTOSUJ — opis i noclegi wg podziału</button>
+        <div id="etap-cards"></div>
+        <p class="hint" id="hint">Kółko na mapie = koniec dnia (nocleg). Przeciągnij — etapy liczą się na żywo. Klik w kartę = widok dnia.</p>
+        <div id="noclegi-out"></div>
+      </div>
+      <div id="dzien-panel" style="display:none"></div>
+    </div>
+    <div class="pv-sec" data-sec="pogoda"><div class="pv-h">Pogoda dzień po dniu</div><div id="pogoda-panel"></div></div>
+    <div class="pv-sec" data-sec="forma"><div id="ocena-formy" class="opis"></div></div>
+    <div class="pv-sec" data-sec="narz"><div class="pv-h">Narzędzia wyprawy</div><div id="tools-body"></div></div>
+  </div>
+  <div id="pv-rail">
+    <button type="button" class="pv-tab on" data-sec="etapy" title="Etapy i dni"><svg viewBox="0 0 24 24"><path d="M9 4l-5 2v14l5-2 6 2 5-2V4l-5 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg><span>Etapy</span></button>
+    <button type="button" class="pv-tab" data-sec="pogoda" title="Pogoda"><svg viewBox="0 0 24 24"><path d="M7 18a4 4 0 1 1 .9-7.9A5 5 0 0 1 17.5 9 3.5 3.5 0 0 1 17 18H7z"/></svg><span>Pogoda</span></button>
+    <button type="button" class="pv-tab" data-sec="forma" title="Ocena formy"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 7-8"/><path d="M14 7h6v6"/></svg><span>Forma</span></button>
+    <button type="button" class="pv-tab" data-sec="narz" title="Narzędzia: wersje, kalendarz, PDF, e-mail, QBot"><svg viewBox="0 0 24 24"><path d="M14 6a4 4 0 0 0-5.5 5.2l-5 5a1.5 1.5 0 0 0 2.1 2.1l5-5A4 4 0 0 0 18 8l-2.5 2.5L13 8 15.5 5.5z"/></svg><span>Narzędzia</span></button>
+    <button type="button" class="pv-tab pv-fold" id="pv-fold" title="Zwiń / rozwiń panel"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg><span>Zwiń</span></button>
+  </div>
+</div>
+
+<div id="profil" class="profil"></div>
+
+<div id="pv-doc">
+  <div id="opis" class="opis"><h3>Opis trasy</h3><p class="muted">Wybierz trasę…</p></div>
+  <div id="tlo-historia" class="opis"></div>
+  <div id="tlo-geografia" class="opis"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/planer-wyprawy2-render.js?v=2"></script>
+<link rel="stylesheet" href="/nav.css?v=4">
+<script src="/nav.js?v=5"></script>
+<script>
+(function(){
+  var b=document.body, qh=document.getElementById("qhead");
+  function setQh(){ document.documentElement.style.setProperty("--qh",qh.offsetHeight+"px"); }
+  function refit(){ setTimeout(function(){ try{ window.__planerRefitAny&&window.__planerRefitAny(); }catch(e){} },220); }
+  setQh(); window.addEventListener("resize",setQh);
+  try{ new ResizeObserver(function(){ setQh(); refit(); }).observe(qh); }catch(e){}
+  // Parametry (zwijane jak w Analizie trasy)
+  var gt=document.getElementById("gen-toggle"), gw=document.getElementById("gen-wrap");
+  gt.onclick=function(){ var open=gw.classList.toggle("collapsed")===false; gt.textContent=open?"Parametry ▴":"Parametry ▾"; };
+  // zakladki glowne
+  var tabs=[].slice.call(document.querySelectorAll(".rtab"));
+  tabs.forEach(function(t){ t.onclick=function(){
+    tabs.forEach(function(x){ x.classList.toggle("active",x===t); });
+    var v=t.getAttribute("data-pv"); b.classList.toggle("pv-mapa",v==="mapa"); b.classList.toggle("pv-szcz",v==="szcz");
+    if(v==="mapa") refit(); else window.scrollTo(0,0);
+  }; });
+  // lewy panel: szyna sekcji
+  var secs=[].slice.call(document.querySelectorAll(".pv-sec")), rt=[].slice.call(document.querySelectorAll(".pv-tab[data-sec]"));
+  function openSec(id){
+    b.classList.remove("pv-closed");
+    rt.forEach(function(x){ x.classList.toggle("on",x.getAttribute("data-sec")===id); });
+    secs.forEach(function(s){ s.classList.toggle("on",s.getAttribute("data-sec")===id); });
+    document.getElementById("pv-body").scrollTop=0;
+    if(id==="pogoda"){ try{ window.__planerPogoda&&window.__planerPogoda(); }catch(e){} }
+    refit();
+  }
+  rt.forEach(function(x){ x.onclick=function(){ openSec(x.getAttribute("data-sec")); }; });
+  var fold=document.getElementById("pv-fold");
+  fold.onclick=function(){ var c=b.classList.toggle("pv-closed");
+    fold.querySelector("path").setAttribute("d",c?"M9 6l6 6-6 6":"M15 6l-6 6 6 6");
+    fold.querySelector("span").textContent=c?"Rozwiń":"Zwiń"; refit(); };
+  // zwin Parametry po wczytaniu trasy (jak po Generuj w Analizie)
+  var dv=document.getElementById("viewtabs"), once=false;
+  new MutationObserver(function(){ if(!once&&dv.children.length){ once=true; gw.classList.add("collapsed"); gt.textContent="Parametry ▾"; } }).observe(dv,{childList:true});
+})();
+</script>
+</body>
+</html>
