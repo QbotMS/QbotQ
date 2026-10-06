@@ -1,18 +1,22 @@
 # QBot -- CURRENT (handoff sesji)
 
-## [2026-10-05] Nawierzchnia z lokalnego OSM + naprawy Planera + atrakcje v2.3 (DO POTWIERDZENIA)
-Szczegoly i uzasadnienia: DECISIONS 2026-10-05, `docs/OSM_LOCAL_SURFACE.md`.
-- Zrobione i zacommitowane: lokalna baza drog OSM PL (nawierzchnia), ponawianie Overpass, zapis profilu
-  (datetime), komunikat odrzucenia, worker "+atrakcje" wlacza prefs, planer_opis z route store.
-- NARUSZENIE: `scripts/komoot_analyze_worker.py` byl na liscie "cudze niezacommitowane (nie ruszac)" z 2026-10-04.
-  Ta sesja go zalatala (1 blok: `set_route_poi_attractions`) i zacommitowala RAZEM z cudza zmiana z 2026-10-03
-  (atrakcje Telegrama przez kanoniczny silnik zamiast flagi route_poi). Cudza zmiana nie ma wpisu w DECISIONS.
-- Niezacommitowane: `qbot3/routes/route_attraction_engine.py` + `tests/test_route_attraction_engine.py` (v2.3,
-  czeka na decyzje Michala), `scripts/route_attractions_recompute.py`, `scripts/run_test_file.py`.
-  Nadal cudze: `qbot_trener_engine.py`, `qbot3/artifacts/route_analyzer.py`.
-- Otwarte dla `komoot-3331694546`: opublikowany run 24/25 (Google=0, zubozony) zamiast run 23 (Google 127).
-  Plan: przywrocic run 23; po resecie limitu Google jedno przeliczenie.
-- Skrypty tymczasowe `scripts/_tmp_patch_*` z tej sesji - do usuniecia.
+## [2026-10-05/06] Nawierzchnia z lokalnego OSM + atrakcje v2.3 + naprawy Planera (stan 2026-10-06 08:00)
+Szczegoly: DECISIONS 2026-10-05, `docs/OSM_LOCAL_SURFACE.md`.
+- ZACOMMITOWANE: b2acaa4, f64c4c3, 099aed6 (nawierzchnia: lokalny OSM, ponawianie Overpass, zapis profilu),
+  f6646f5 + 50b3477 (atrakcje v2.3 zatwierdzone: zabytki OSM lokalnie, limity wg jakosci, bezpiecznik publikacji,
+  limit Google 300/dobe, scalanie bez nadpisywania tagow typu - Rabsztyn).
+- NIEZACOMMITOWANE z tej sesji (dzialaja na produkcji): `qbot3/routes/planer_opis.py` (spine z route store),
+  `scripts/komoot_analyze_worker.py` (blok `set_route_poi_attractions`), skrypty `komoot_analyze_bg.py`,
+  `route_attractions_enable.py`, `planer_opis_rebuild.py`, `diag_planer_opis_inputs.py`.
+  UWAGA: komoot_analyze_worker.py zawiera tez CUDZA zmiane z 2026-10-03 (Telegram "+atrakcje" przez kanoniczny
+  silnik) bez wpisu w DECISIONS - commit tego pliku = swiadoma decyzja Michala.
+- `qbot3/artifacts/route_analyzer.py`: cudza zmiana probkowania z 2026-10-03 PRZYJETA przez Michala 06.10 +
+  cache Google i 20 wynikow (DECISIONS 2026-10-06). Cudze nadal: `qbot_trener_engine.py`,
+  nieznany `scripts/build_planer2_mock.py`.
+- komoot-3331694546: opublikowany run 26 (komplet zrodel, 46 kandydatow / 15 polecanych, BEZ poprawki Rabsztynu).
+  Do zrobienia: przeliczenie z Google (~60 zapytan) po decyzji o cache.
+- ZROBIONE 06.10: cache Google 30 dni + 20 wynikow. OTWARTE: nazwa przystanku Wawel ("Groby Krolewskie"); dominacja Krakowa w polecanych.
+- Skrypty tymczasowe `scripts/_tmp_*` z tej sesji - do usuniecia.
 
 ## [2026-10-04] TRENER — stan po commicie 76a03c0 (wszystko w repo)
 Zrobione 2026-10-02..04 (dok. docs/TRENER.md): prośba do AI o zmianę planu, siła bez partii (opts), wersja mobilna

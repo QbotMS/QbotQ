@@ -4,6 +4,22 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-06 -- DECYZJA: pamiec podreczna Google Places (30 dni), 20 wynikow/zapytanie; przyjeta zmiana probkowania z 2026-10-03
+
+- PRZYJETA (decyzja Michala 06.10) niezacommitowana zmiana nieznanej sesji z 2026-10-03 w `route_analyzer.py`:
+  zaopatrzenie probkowane co **3 km, kolo 1,8 km** (bylo co 8 km / 2,3 km -> dziury ~3,5 km, miasteczka wypadaly).
+  Koszt: ~34 zapytania / 100 km na zaopatrzenie + ~34 na atrakcje = **~68 / 100 km** (nie 47 jak podano 05.10).
+- Pamiec podreczna odpowiedzi Nearby Search: `qbot3/routes/google_places_cache.py`, tabela
+  `qbot_v2.google_places_cache`, TTL 30 dni (`QBOT_GOOGLE_CACHE_TTL_DAYS`), wylacznik `QBOT_GOOGLE_CACHE=0`.
+  Klucz: punkt (4 miejsca po przecinku), promien, typy, liczba wynikow, wersja maski pol (`FIELDMASK_VERSION`).
+  Trafienie w cache NIE zuzywa limitu (`google_places_budget`) - petle w route_analyzer rezerwuja limit tylko
+  przy prawdziwym zapytaniu (`google_nearby_is_cached`). Przeliczenie tej samej trasy = 0 zapytan.
+- `maxResultCount` 10 -> **20** (`GOOGLE_NEARBY_MAX_RESULTS`): ta sama cena za zapytanie; 10 ucinalo obiekty w miastach.
+- Darmowy prog Nearby Search Enterprise 1000/mies. = ~14 nowych tras 100 km miesiecznie.
+- Testy: `tests/test_google_places_cache.py` (3). `tests/test_route_poi_google_primary.py` ma 3/7 bledow
+  sprzed tej zmiany (zapasowy Overpass) - do naprawy osobno.
+
+---
 ## 2026-10-05 -- DECYZJA: nawierzchnia z lokalnej bazy OSM Polski; naprawy zapisu profilu; atrakcje v2.3 (DO POTWIERDZENIA)
 
 **Problem.** Analiza `komoot-3331694546` (Szlak Orlich Gniazd, 182,6 km) odrzucona: profil nawierzchni 67%,

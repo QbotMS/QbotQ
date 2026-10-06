@@ -1372,8 +1372,10 @@ def analyze_route_poi_artifact(
             projected,
             km_from=km_from,
             km_to=km_to,
-            sample_step_km=min(8.0, max(4.0, chunk_km)),
-            radius_m=max(max_buffer_m + 800.0, 1500.0),
+            # 2026-10-03: co 3 km, kolo 1,8 km (bylo co 8 km / 2,3 km -> dziury
+            # ~3,5 km miedzy probkami, miasteczka wypadaly; Google daje max 10/zapytanie).
+            sample_step_km=3.0,
+            radius_m=1800.0,
             ride_start_dt=ride_start_dt,
             avg_speed_kmh=avg_speed_kmh,
             api_key=google_api_key,
@@ -1738,6 +1740,9 @@ def _route_poi_v2_mark_clusters(items: list[dict[str, Any]], proximity_m: float 
     return items
 
 
+GOOGLE_NEARBY_MAX_RESULTS = 20  # max Google Nearby Search (New); cena za zapytanie, nie za wynik
+
+
 def _route_poi_v2_google_api_key() -> str | None:
     key = os.environ.get("GOOGLE_PLACES_API_KEY")
     return key.strip() if isinstance(key, str) and key.strip() else None
@@ -1751,9 +1756,19 @@ def _route_poi_v2_google_search_nearby(
     api_key: str,
     included_types: list[str] | None = None,
 ) -> list[dict[str, Any]]:
+    # 2026-10-06: pamiec podreczna (qbot3/routes/google_places_cache.py, 30 dni) -
+    # przeliczenie tej samej trasy nie odpytuje Google ponownie. maxResultCount 10 -> 20
+    # (ta sama cena za zapytanie; w miastach 10 ucinalo obiekty przed ocena).
+    from qbot3.routes import google_places_cache as _gcache
+
+    _types = list(included_types or GOOGLE_SUPPLY_TYPES)
+    _ckey = _gcache.cache_key(lat, lon, radius_m, _types, GOOGLE_NEARBY_MAX_RESULTS)
+    _cached = _gcache.get(_ckey)
+    if _cached is not None:
+        return _cached
     payload = {
-        "includedTypes": list(included_types or GOOGLE_SUPPLY_TYPES),
-        "maxResultCount": 10,
+        "includedTypes": _types,
+        "maxResultCount": GOOGLE_NEARBY_MAX_RESULTS,
         "languageCode": "pl",
         "locationRestriction": {
             "circle": {
@@ -1774,7 +1789,17 @@ def _route_poi_v2_google_search_nearby(
     resp = httpx.post(GOOGLE_PLACES_URL, json=payload, headers=headers, timeout=10.0)
     resp.raise_for_status()
     places = resp.json().get("places", [])
-    return list(places) if isinstance(places, list) else []
+    places = list(places) if isinstance(places, list) else []
+    _gcache.put(_ckey, {"lat": lat, "lon": lon, "radius_m": radius_m, "types": _types}, places)
+    return places
+
+
+def google_nearby_is_cached(lat: float, lon: float, radius_m: float, included_types: list[str] | None = None) -> bool:
+    """Czy odpowiedz dla punktu jest w pamieci podrecznej (wtedy nie zuzywamy limitu)."""
+    from qbot3.routes import google_places_cache as _gcache
+
+    _types = list(included_types or GOOGLE_SUPPLY_TYPES)
+    return _gcache.has(_gcache.cache_key(lat, lon, radius_m, _types, GOOGLE_NEARBY_MAX_RESULTS))
 
 
 def _route_poi_v2_google_place_to_candidate(
@@ -1907,19 +1932,20 @@ def _route_poi_v2_google_supply_candidates(
         return []
 
     try:
-        step_km = max(4.0, float(sample_step_km))
+        step_km = max(2.0, float(sample_step_km))
     except (TypeError, ValueError):
         step_km = 8.0
 
     sample_km = float(km_from)
     seen: dict[str, dict[str, Any]] = {}
     while sample_km <= float(km_to) + 1e-9:
-        try:
-            _places_budget.check_and_reserve(1)
-        except _places_budget.PlacesBudgetExceeded as _bexc:
-            log.warning("Google Places: %s -- przerywam probkowanie zaopatrzenia", _bexc)
-            break
         sample = _find_point_at_km(points, sample_km)
+        if not google_nearby_is_cached(float(sample["lat"]), float(sample["lon"]), radius_m):
+            try:
+                _places_budget.check_and_reserve(1)
+            except _places_budget.PlacesBudgetExceeded as _bexc:
+                log.warning("Google Places: %s -- przerywam probkowanie zaopatrzenia", _bexc)
+                break
         try:
             places = _route_poi_v2_google_search_nearby(
                 float(sample["lat"]),
@@ -1982,12 +2008,14 @@ def _route_poi_v2_google_attraction_candidates(
     sample_km = float(km_from)
     seen: dict[str, dict[str, Any]] = {}
     while sample_km <= float(km_to) + 1e-9:
-        try:
-            _places_budget.check_and_reserve(1)
-        except _places_budget.PlacesBudgetExceeded as _bexc:
-            log.warning("Google Places: %s -- przerywam probkowanie atrakcji", _bexc)
-            break
         sample = _find_point_at_km(points, sample_km)
+        if not google_nearby_is_cached(float(sample["lat"]), float(sample["lon"]), radius_m,
+                                       list(GOOGLE_ATTRACTION_TYPES)):
+            try:
+                _places_budget.check_and_reserve(1)
+            except _places_budget.PlacesBudgetExceeded as _bexc:
+                log.warning("Google Places: %s -- przerywam probkowanie atrakcji", _bexc)
+                break
         places = None
         for attempt in range(3):
             try:
