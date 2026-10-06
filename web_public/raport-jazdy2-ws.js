@@ -272,7 +272,7 @@ function setView(v){VIEWM=v;document.querySelectorAll("#viewseg button").forEach
   var el=$("dane"),pj=$("pj"),dh=$("dhd");if(v==="dane"){el.style.display="";if(pj&&dh&&pj.parentNode!==dh)dh.appendChild(pj);daneRender();}else{if(pj&&pj.parentNode!==$("ws"))$("ws").insertBefore(pj,el);el.style.display="none";if(map)setTimeout(function(){map.invalidateSize();},50);}
   ["tl","dock","sg"].forEach(function(id){var e=$(id);if(!e)return;if(v==="dane"){e.dataset.prev=e.style.display;e.style.display="none";}else if(e.dataset.prev!==undefined){e.style.display=e.dataset.prev;}});
 }
-var DORD=["Wysiłek","Zapas na zrywy","Ciało tego dnia","Warunki i teren","Rower i napęd","Jedzenie"];
+var DORD=["Wysiłek","Prędkość","Zapas na zrywy","Ciało tego dnia","Warunki i teren","Rower i napęd","Jedzenie"];
 function daneRender(){var el=$("dgrid");if(!el||!D)return;
   el.innerHTML=(window.__RJ2dane?window.__RJ2dane(D,{FTP:FTP,TR:TR,PWS:PWS,SPD:SPD,GR:GR,LTHR:LTHR}):'<div class="sub">brak modułu Dane</div>');
   el.querySelectorAll(".dsec").forEach(function(s2){s2.classList.add("open");var t=s2.querySelector(".dh b"),ix=DORD.indexOf(t?t.textContent.trim():"");s2.style.order=ix<0?99:ix;});
@@ -348,7 +348,7 @@ function segStats(a,b){var st=function(arr){var s=0,c=0,mn=Infinity,mx=-Infinity
 function segDesc(a,b,S){var L=["Zakres: km "+n(TR.km[a],1)+"–"+n(TR.km[b],1)+" ("+fmtHM(S.t)+", "+n(S.km,1)+" km, +"+Math.round(S.asc)+" m)"];if(S.pw)L.push("moc: śr "+Math.round(S.pw.avg)+" W (max "+Math.round(S.pw.max)+")"+(FTP?", próg "+FTP:""));if(S.hr)L.push("HR: śr "+Math.round(S.hr.avg)+" (max "+Math.round(S.hr.max)+")");if(S.cad)L.push("kadencja: śr "+Math.round(S.cad.avg));if(S.wb)L.push("W'bal: min "+Math.round(S.wb.min)+"%");if(S.spd)L.push("prędkość: śr "+n(S.spd.avg,1)+" km/h");if(S.temp)L.push("temperatura: "+Math.round(S.temp.min)+"–"+Math.round(S.temp.max)+" °C");if(S.tail)L.push("wiatr wzdłuż: śr "+n(S.tail.avg,1)+" m/s ("+(S.tail.avg<0?"pod wiatr":"z plecami")+")");return L.join("; ");}
 function showSeg(){
   var ss0=$("sg-surf");if(ss0)ss0.remove();
-  if(!SEL)return closeSeg();var a=SEL.a,b=SEL.b,S=segStats(a,b);$("sg").style.display="";
+  if(!SEL)return closeSeg();var a=SEL.a,b=SEL.b,S=segStats(a,b);$("sg").style.display="block";
   $("sg-t").textContent="km "+n(TR.km[a],1)+" – "+n(TR.km[b],1);
   $("sg-s").textContent=fmtHM(S.t)+" · "+n(S.km,1)+" km · +"+Math.round(S.asc)+" m · śr. "+n(S.gr,1)+"%";
   $("sg-k").innerHTML=k("moc śr / max",S.pw?Math.round(S.pw.avg)+" / "+Math.round(S.pw.max):"—",S.pw&&FTP?Math.round(S.pw.avg/FTP*100)+"% progu":"")+k("tętno śr / max",S.hr?Math.round(S.hr.avg)+" / "+Math.round(S.hr.max):"—","")+k("zapas min",S.wb?Math.round(S.wb.min)+"%":"—","")+k("prędkość",S.spd?n(S.spd.avg,1):"—","km/h")+k("kadencja",S.cad?Math.round(S.cad.avg):"—","")+k("wiatr",S.tail?(S.tail.avg>0?"+":"")+n(S.tail.avg,1):"—","m/s wzdłuż");
