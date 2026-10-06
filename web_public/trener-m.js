@@ -225,7 +225,7 @@
     var act = ses.filter(function (x) { return x.status !== "skip"; }), linked = {};
     ses.forEach(function (x) { if (x.training_session_id) linked[x.training_session_id] = 1; });
     var extra = (j.activities || []).filter(function (a) { return !linked[a.id]; });
-    var plh = act.reduce(function (a, x) { return a + x.dur_min; }, 0) / 60, dnh = act.filter(function (x) { return x.status === "done"; }).reduce(function (a, x) { return a + x.dur_min; }, 0) / 60
+    var plh = act.reduce(function (a, x) { return a + x.dur_min; }, 0) / 60, dnh = act.filter(function (x) { return x.status === "done"; }).reduce(function (a, x) { return a + (x.real_min != null ? +x.real_min : x.dur_min); }, 0) / 60
       + extra.reduce(function (a, x) { return a + (x.duration_s || 0); }, 0) / 3600;
     var h = "<div class='tm-top'><button class='tm-rb' data-w='-1' aria-label='Poprzedni tydzień'>‹</button><div class='tt'><b>Tydzień " + pl(S.wk) + "–" + pl(S.wk + 6 * DAY) + "</b><span>" +
       esc(meta.phase_name || "") + (meta.light ? " · lżejszy" : "") + "</span></div><button class='tm-rb' data-w='1' aria-label='Następny tydzień'>›</button></div>";

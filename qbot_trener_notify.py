@@ -128,7 +128,7 @@ def text_review(ws: date, sessions: list[dict], extra_h: float, tone: int, weigh
     skipped = [s for s in planned if s["status"] == "skip"]
     missed = [s for s in planned if s["status"] == "plan" and s["day"] < date.today()]
     ph = sum(s["dur_min"] for s in planned if s["status"] != "skip") / 60
-    dh = sum(s["dur_min"] for s in done) / 60 + extra_h
+    dh = sum((s.get("real_min") or s["dur_min"]) for s in done) / 60 + extra_h   # zrobione = realny czas (2026-10-06)
     pct = round(100 * dh / ph) if ph else None
     out = [f"📊 Rozliczenie tygodnia {ws.strftime('%d.%m')}–{(ws + timedelta(days=6)).strftime('%d.%m')}",
            f"Zrobione {dh:.1f} h z {ph:.1f} h planu" + (f" ({pct}%)" if pct is not None else "") + f" · treningi ✅ {len(done)} / {len(planned)}"]

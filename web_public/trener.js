@@ -118,7 +118,7 @@
     var meta = j.meta || {}, T0 = todayMs(), g = document.getElementById("trw-g"); if (!g) return;
     var ph = document.getElementById("trw-ph"); ph.textContent = (meta.phase_name || "—") + (meta.light ? " · tydzień lżejszy" : ""); ph.className = "pill good";
     var ses = j.sessions || [], act = ses.filter(function (x) { return x.status !== "skip"; });
-    var pl_ = act.reduce(function (a, x) { return a + x.dur_min; }, 0) / 60, dn = act.filter(function (x) { return x.status === "done"; }).reduce(function (a, x) { return a + x.dur_min; }, 0) / 60;
+    var pl_ = act.reduce(function (a, x) { return a + x.dur_min; }, 0) / 60, dn = act.filter(function (x) { return x.status === "done"; }).reduce(function (a, x) { return a + (x.real_min != null ? +x.real_min : x.dur_min); }, 0) / 60;  /* zrobione = realny czas */
     var linked = {}; ses.forEach(function (x) { if (x.training_session_id) linked[x.training_session_id] = 1; });
     var extra = (j.activities || []).filter(function (a) { return !linked[a.id]; });
     var exh = extra.reduce(function (a, x) { return a + (x.duration_s || 0); }, 0) / 3600;
