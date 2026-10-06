@@ -42,7 +42,7 @@ function render(){
   $("h-date").textContent=(ride.date||opt.dataset.date||"")+(ride.time?" · "+ride.time:"")+(opt.dataset.sport?" · "+opt.dataset.sport:"")+(FTP?" · próg "+FTP+" W":"");
   var dist=V(L.dist_km)||ride.dist_km,asc=ascent(TR.alt||[]),np=V(L.np_w),avg=V(L.avg_p_w),hra=V(ph.hr_avg),xss=V(L.xss),iff=V(L.if),wmin=V(wp.wbal_min_pct);
   $("k5").innerHTML=k("dystans",n(dist,1)+" km",isNum(asc)?"+"+Math.round(asc)+" m":"")+k("czas",fmtHM(V(L.dur_moving_s)),isNum(V(L.dur_elapsed_s))?fmtHM(V(L.dur_elapsed_s))+" całk.":"")+(function(){var s=V(D.speed)||{};return k("prędkość",isNum(s.netto_kmh)?n(s.netto_kmh,1)+" km/h":"—",isNum(s.brutto_kmh)?"brutto "+n(s.brutto_kmh,1):"");})()+k("moc",n(avg)+" W",isNum(np)?"znorm. "+Math.round(np)+(FTP?" · "+Math.round(np/FTP*100)+"%":""):"")+k("tętno",n(hra),isNum(V(ph.hr_max))?"max "+V(ph.hr_max):"")+k("obciążenie",n(xss),isNum(iff)?"intens. "+n(iff,2):"")+k("zapas min.",isNum(wmin)?Math.round(wmin)+"%":"—",isNum(V(wp.time_lt25_min))&&V(wp.time_lt25_min)>0?"<25%: "+Math.round(V(wp.time_lt25_min))+" min":"");
-  derive();SPDS=smooth(SPD,5);CADS=smooth(TR.cad||[],5);DEV=[];for(var q=0;q<N;q++){var c=TR.cad?TR.cad[q]:null,v=SPD[q];DEV.push(isNum(c)&&c>40&&isNum(v)&&v>3?v*1000/60/c:null);}DEV=smooth(DEV,3);buildMap();drawChart();buildMoments();if(VIEWM==="dane")daneRender();loadSurface().then(function(){var has=SURF.some(function(x){return x;});$("surfchip").style.display=has?"":"none";var o=$("trackmode").querySelector('option[value="surf"]');if(o)o.disabled=!has;if(has){RIB.surf=true;$("surfchip").classList.add("on");drawChart();if(mode==="surf")drawTrack();}});
+  derive();SPDS=smooth(SPD,5);CADS=smooth(TR.cad||[],5);DEV=[];for(var q=0;q<N;q++){var c=TR.cad?TR.cad[q]:null,v=SPD[q];DEV.push(isNum(c)&&c>40&&isNum(v)&&v>3?v*1000/60/c:null);}DEV=smooth(DEV,3);buildMap();drawChart();buildMoments();if(VIEWM==="dane"||window.__RJ3)daneRender();loadSurface().then(function(){var has=SURF.some(function(x){return x;});$("surfchip").style.display=has?"":"none";var o=$("trackmode").querySelector('option[value="surf"]');if(o)o.disabled=!has;if(has){RIB.surf=true;$("surfchip").classList.add("on");drawChart();if(mode==="surf")drawTrack();}});
 }
 function k(l,v,s){return '<div><p class="lbl">'+l+'</p><div class="v">'+v+'</div><div class="s">'+(s||"&nbsp;")+'</div></div>';}
 function ascent(A){var a=0;for(var i=1;i<A.length;i++){if(isNum(A[i])&&isNum(A[i-1])){var d=A[i]-A[i-1];if(d>0.3)a+=d;}}return A.length?a:null;}
@@ -64,7 +64,7 @@ function buildMap(){
   mk=L.circleMarker(pts[0],{radius:7,color:"#fff",weight:2.5,fillColor:"#e8742a",fillOpacity:1,opacity:0}).addTo(map);mk.setStyle({opacity:0,fillOpacity:0});
   fitAll();
 }
-function fitPad(){return {paddingTopLeft:[80,70],paddingBottomRight:[40,$("dock").offsetHeight+30]};}
+function fitPad(){return {paddingTopLeft:[(window.__RJ3&&window.__RJ3.padL)||80,70],paddingBottomRight:[40,$("dock").offsetHeight+30]};}
 function fitAll(){var pts=[];for(var i=0;i<N;i++)if(isNum(TR.lat[i]))pts.push([TR.lat[i],TR.lon[i]]);if(pts.length)map.fitBounds(L.polyline(pts).getBounds(),window.matchMedia("(max-width:820px),(pointer:coarse) and (max-height:500px)").matches?{padding:[20,20]}:fitPad());}
 function applyBW(){var tp=map.getPane("tilePane");if(tp)tp.style.filter=bw?"grayscale(1) contrast(.95) brightness(1.05)":"";$("bwbtn").textContent=bw?"Mapa: kolor":"Mapa: B/W";}
 function drawTrack(){
@@ -268,7 +268,7 @@ function anRenderV1(j){
 /* 2026-09-28: prawy panel Analiza AI usuniety - analiza jest ramka w widoku Analiza (daneRender) */
 /* ---------- widok Analiza (pelna szerokosc) ---------- */
 var VIEWM="map",SURFHL=[];
-function setView(v){VIEWM=v;document.querySelectorAll("#viewseg button").forEach(function(b){b.classList.toggle("on",b.dataset.v===v);});
+function setView(v){if(window.__RJ3)return;VIEWM=v;document.querySelectorAll("#viewseg button").forEach(function(b){b.classList.toggle("on",b.dataset.v===v);});
   var el=$("dane"),pj=$("pj"),dh=$("dhd");if(v==="dane"){el.style.display="";if(pj&&dh&&pj.parentNode!==dh)dh.appendChild(pj);daneRender();}else{if(pj&&pj.parentNode!==$("ws"))$("ws").insertBefore(pj,el);el.style.display="none";if(map)setTimeout(function(){map.invalidateSize();},50);}
   ["tl","dock","sg"].forEach(function(id){var e=$(id);if(!e)return;if(v==="dane"){e.dataset.prev=e.style.display;e.style.display="none";}else if(e.dataset.prev!==undefined){e.style.display=e.dataset.prev;}});
 }
@@ -309,6 +309,7 @@ function daneRender(){var el=$("dgrid");if(!el||!D)return;
     var setS=function(open){s4.classList.toggle("open",open);ch.textContent=open?"⌄":"›";};
     setS(!SCOL[nm]);
     dh.onclick=function(e){if(e.target.closest("a,button"))return;var open=!s4.classList.contains("open");setS(open);if(open)delete SCOL[nm];else SCOL[nm]=1;try{localStorage.setItem("rj_sec_col",JSON.stringify(SCOL));}catch(e2){}};});
+  if(window.__RJ3&&typeof window.__RJ3.after==="function")window.__RJ3.after();
 }
 function highlightSurf(cat){SURFHL.forEach(function(l){map.removeLayer(l);});SURFHL=[];if(!cat||!SURF.length)return;var pts=[];
   var flush=function(){if(pts.length>1){SURFHL.push(L.polyline(pts,{color:"#fff",weight:12,opacity:.95}).addTo(map));SURFHL.push(L.polyline(pts,{color:SCAT[cat],weight:7,opacity:1}).addTo(map));}pts=[];};
@@ -366,5 +367,6 @@ function showCmp(){var o=$("sg-cmpout");if(!CMP.length){o.innerHTML="";return;}v
   o.innerHTML='<div class="sub" style="margin-top:10px;display:flex;justify-content:space-between"><b>Porównanie</b><a class="link" id="cmpclr">wyczyść</a></div><table style="border-collapse:collapse;font-size:13px;width:100%;margin-top:4px"><tr><td></td>'+CMP.map(function(c){return '<td style="text-align:right;font-weight:600;padding:2px 4px">km '+n(TR.km[c.a],0)+'–'+n(TR.km[c.b],0)+'</td>';}).join("")+'</tr>'+rows.map(function(r){return '<tr style="border-top:1px solid var(--line)"><td style="color:var(--ink2);padding:3px 0">'+r[0]+'</td>'+CMP.map(function(c){return '<td style="text-align:right;padding:3px 4px;font-variant-numeric:tabular-nums">'+r[1](c)+'</td>';}).join("")+'</tr>';}).join("")+'</table>';
   $("cmpclr").onclick=function(){CMP=[];showCmp();};}
 
+window.__RJapi={fit:function(){if(!N||!map)return;if(SEL)highlightSel();else fitAll();},inval:function(){if(map)map.invalidateSize();},data:function(){return D;}};
 loadRides();
 })();

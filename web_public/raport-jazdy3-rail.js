@@ -5,6 +5,8 @@
    Haczyki w ws.js: window.__RJ3 (after, padL), window.__RJapi (fit, inval, data). */
 (function(){
 "use strict";
+/* telefon: do czasu etapu 2 zostaje dotychczasowy widok mobilny (v2) - wylacz haczyki v3 */
+if(window.matchMedia("(max-width:820px),(pointer:coarse) and (max-height:500px)").matches){try{delete window.__RJ3;}catch(e){window.__RJ3=undefined;}document.body.classList.remove("rj3");return;}
 var $=function(i){return document.getElementById(i);};
 var V=function(x){return (x&&typeof x==="object"&&"value" in x)?x.value:x;};
 var isNum=function(v){return typeof v==="number"&&isFinite(v);};

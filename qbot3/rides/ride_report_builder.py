@@ -656,7 +656,7 @@ def _gears(cur, ride_key):
           WINDOW w AS (ORDER BY sec)
         )
         SELECT pos, count(*) AS sec,
-               avg(power_w) AS p, avg(hr_bpm) AS hr, avg(cadence_rpm) AS cad,
+               avg(power_w) AS p, avg(hr_bpm) AS hr, avg(cadence_rpm) FILTER (WHERE cadence_rpm > 0) AS cad,  -- 2026-10-06: kadencja z pedalowania (bez wolnego kola)
                avg(speed_mps) AS v, avg(grade) AS grade,
                percentile_cont(0.9) WITHIN GROUP (ORDER BY grade) AS grade_p90
         FROM g GROUP BY pos ORDER BY pos
