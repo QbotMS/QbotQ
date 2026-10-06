@@ -35,6 +35,11 @@
   (`URBAN_CLUSTER_M`), poza miastem 1,5 km (Rynek i Wawel ~1 km = osobne skupiska). Sufit polecanych
   8 -> **10 / 100 km** (Lutowiec). Wybrano gestosc zamiast liczby mieszkancow (GeoNames): dziala bez
   dodatkowych danych i lapie male gesto zabytkowe miasteczka. Test +1.
+- Zdjecia atrakcji (06.10): `attraction_image` w route_attraction_engine - Planer dostaje zawsze plik obrazu:
+  (1) obraz bezposredni (miniatura Wikipedii / upload.wikimedia / .jpg .png .webp), (2) Wikidata **P18** ->
+  Commons `Special:FilePath` (P18 bylo juz pobierane, nieuzywane), (3) tag OSM `image` ze strona 'Plik:/File:'
+  -> Special:FilePath, (4) brak. Odrzucane albumy (photos.app.goo.gl). Przyczyna: od lokalnego OSM tag
+  `image` (strona pliku, album) trafial do image_url -> brak fotek w Planerze. Test +1.
 - PRZYJETA (decyzja Michala 06.10) zmiana nieznanej sesji z 2026-10-03 w `scripts/komoot_analyze_worker.py`:
   Telegram "+atrakcje" liczy atrakcje kanonicznym silnikiem (`ensure_route_attractions`) zamiast dawnej flagi
   route_poi (Google co 3 km). Razem z poprawka 05.10 (`set_route_poi_attractions` - widocznosc w Planerze).

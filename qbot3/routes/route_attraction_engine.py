@@ -521,6 +521,44 @@ def candidate_key(row: dict[str, Any]) -> str:
     return "local:" + hashlib.sha256(payload.encode()).hexdigest()[:24]
 
 
+_IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+_COMMONS_FILEPATH = "https://commons.wikimedia.org/wiki/Special:FilePath/{name}?width=960"
+
+
+def _commons_file_url(file_name: str) -> str:
+    from urllib.parse import quote, unquote
+
+    name = unquote(str(file_name)).strip().replace(" ", "_")
+    return _COMMONS_FILEPATH.format(name=quote(name, safe="_()-.,"))
+
+
+def attraction_image(image: Any, entity: dict[str, Any] | None) -> str | None:
+    """2026-10-06: zawsze bezposredni plik obrazu (Planer wstawia go jako <img>).
+    1) obraz bezposredni, 2) Wikidata P18, 3) strona 'Plik:/File:' -> Special:FilePath, 4) None."""
+    from urllib.parse import unquote
+
+    raw = str(image or "").strip()
+    low = raw.lower()
+    if raw.startswith("http") and (
+        "upload.wikimedia.org" in low or "thumb.wikimedia.org" in low
+        or "special:filepath" in low or low.split("?")[0].endswith(_IMAGE_EXT)
+    ) and "/wiki/plik:" not in low and "/wiki/file:" not in low:
+        return raw
+    try:
+        p18 = (entity or {}).get("claims", {}).get("P18", [])
+        file_name = p18[0]["mainsnak"]["datavalue"]["value"] if p18 else None
+    except (KeyError, TypeError, IndexError):
+        file_name = None
+    if file_name:
+        return _commons_file_url(file_name)
+    match = re.search(r"/wiki/(?:plik|file|grafika|image):(.+)$", raw, re.I)
+    if match:
+        return _commons_file_url(unquote(match.group(1)))
+    if raw.lower().startswith(("file:", "plik:")):
+        return _commons_file_url(raw.split(":", 1)[1])
+    return None
+
+
 def rank_candidates(
     source_rows: Iterable[dict[str, Any]],
     google_rows: Iterable[dict[str, Any]],
@@ -564,7 +602,7 @@ def rank_candidates(
             "wiki": row.get("wiki"),
             "qid": row.get("qid"),
             "extract": str(row.get("extract") or "")[:650].strip(),
-            "image": row.get("image"),
+            "image": attraction_image(row.get("image"), wikidata.get(row.get("qid") or "", {})),
             "lat": round(float(row["lat"]), 6),
             "lon": round(float(row["lon"]), 6),
             "osm_ids": row.get("osm_ids") or [],

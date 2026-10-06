@@ -257,3 +257,17 @@ def test_dense_city_uses_smaller_cluster():
     rec = {r["name"] for r in result["candidates"] if r["is_recommended"]}
     assert len(rec & set(names[0])) == 2
     assert len(rec & set(names[1])) == 2
+
+
+def test_attraction_image_normalization():
+    """2026-10-06: Planer dostaje zawsze plik obrazu."""
+    from qbot3.routes.route_attraction_engine import attraction_image
+    thumb = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/X.jpg/960px-X.jpg"
+    assert attraction_image(thumb, {}) == thumb
+    page = "http://pl.wikipedia.org/wiki/Plik:Mir%C3%B3w_zamek_29.05.2010_p4.jpg"
+    assert attraction_image(page, {}) == ("https://commons.wikimedia.org/wiki/Special:FilePath/"
+                                          "Mir%C3%B3w_zamek_29.05.2010_p4.jpg?width=960")
+    wd = {"claims": {"P18": [{"mainsnak": {"datavalue": {"value": "Wawel Castle 2.jpg"}}}]}}
+    assert attraction_image(None, wd).endswith("/Special:FilePath/Wawel_Castle_2.jpg?width=960")
+    assert attraction_image("https://photos.app.goo.gl/QBuQ73cZjG44VNec6", {}) is None
+    assert attraction_image("https://photos.app.goo.gl/x", wd).endswith("Wawel_Castle_2.jpg?width=960")
