@@ -1827,6 +1827,50 @@ async def poi_by_name_endpoint(
         return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]}, status_code=500)
 
 
+@app.get("/api/ef/typical")
+async def ef_typical_endpoint(
+    authorization: Optional[str] = Header(None),
+):
+    """Typowe EF (NP / srednie tetno) dla QExt2 STATS: mediana z jazd z ostatnich 90 dni,
+    >= 60 min, w terenie (srednia > 10 km/h), umiarkowana intensywnosc (IF 0.60-0.80).
+    Zwraca {ef, p25, p75, n, days}; ef = null, gdy jazd < 5. Brak filtra po rowerze:
+    training_sessions nie ma powiazania z rowerem (Garaz laczy rowery tylko przez czujniki kol)."""
+    BEARER = os.environ["QBOT_MCP_BEARER"]
+    if not authorization or authorization != f"Bearer {BEARER}":
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    try:
+        from api_db import _conn
+        conn = _conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT count(*) AS n,
+                   percentile_cont(0.5)  WITHIN GROUP (ORDER BY normalized_power_w / avg_hr_bpm) AS med,
+                   percentile_cont(0.25) WITHIN GROUP (ORDER BY normalized_power_w / avg_hr_bpm) AS p25,
+                   percentile_cont(0.75) WITHIN GROUP (ORDER BY normalized_power_w / avg_hr_bpm) AS p75
+            FROM qbot_v2.training_sessions
+            WHERE normalized_power_w > 0 AND avg_hr_bpm > 80
+              AND duration_s >= 3600
+              AND date > current_date - 90
+              AND intensity_factor BETWEEN 0.60 AND 0.80
+              AND distance_m / NULLIF(duration_s, 0) > 2.8
+        """)
+        r = cur.fetchone()
+        cur.close(); conn.close()
+        n = int(r["n"] or 0)
+        out = {
+            "ef": round(float(r["med"]), 3) if n >= 5 and r["med"] is not None else None,
+            "p25": round(float(r["p25"]), 3) if n >= 5 and r["p25"] is not None else None,
+            "p75": round(float(r["p75"]), 3) if n >= 5 and r["p75"] is not None else None,
+            "n": n,
+            "days": 90,
+        }
+        print(f"EF_TYPICAL ok n={n} ef={out['ef']}", flush=True)
+        return JSONResponse(out)
+    except Exception as e:
+        import traceback
+        return JSONResponse({"error": str(e), "trace": traceback.format_exc()[-500:]}, status_code=500)
+
+
 @app.get("/mcp/.well-known/oauth-protected-resource")
 @app.get("/.well-known/oauth-protected-resource")
 def oauth_protected_resource():
