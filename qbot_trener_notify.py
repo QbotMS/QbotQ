@@ -201,6 +201,29 @@ def change_text(res: dict, head: str) -> str:
     return "\n".join(L + [URL])
 
 
+def _hm(m) -> str:
+    m = int(round(float(m or 0)))
+    return f"{m // 60}:{m % 60:02d}" if m >= 60 else f"{m}′"
+
+
+def adapt_text(res: dict) -> str:
+    """Wykonanie inne niz plan -> co Trener zmienil w reszcie tygodnia (czyste, testowalne)."""
+    L = []
+    for d in res.get("devs") or []:
+        dd = date.fromisoformat(d["day"])
+        more = (d.get("d_xss") or 0) > 0 or (d.get("d_xss") is None and (d.get("pct_min") or 0) > 0)
+        L.append(f"{'📈' if more else '📉'} {DN[dd.weekday()]} {dd.strftime('%d.%m')} {SIC.get(d['sport'], '')} {d['name']}: "
+                 f"plan {_hm(d['plan_min'])}" + (f" / obc. {round(d['plan_xss'])}" if d.get("plan_xss") is not None else "") +
+                 f" → realnie {_hm(d['real_min'])}" + (f" / obc. {round(d['real_xss'])}" if d.get("real_xss") is not None else ""))
+        if d.get("why"):
+            L.append("   " + d["why"])
+    txt = change_text(res, "\n".join(L) + "\n\nTrener przeliczył resztę tygodnia:")
+    nts = [n for n in (res.get("notes") or []) if ("przerwa po ciężkiej" in n or "luz przed wyprawą" in n)][:3]
+    if nts:
+        txt = txt[: -len(URL)] + "\n".join("ℹ️ " + n for n in nts) + "\n" + URL
+    return txt
+
+
 def handle_callback(cq: dict, answer, send_plain, clear_buttons, chat_ok: str) -> None:
     """Przycisk z Telegrama: tr:rest|short|ill:<RRRR-MM-DD> albo tr:undo:<id zmiany>."""
     import qbot_trener_ops as OPS
@@ -301,6 +324,16 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
                          [[{"text": "↩️ Cofnij", "callback_data": f"tr:undo:{upd['change_id']}"}]])
         except Exception as e:
             conn.rollback(); log.append(f"kalendarz: błąd {str(e)[:120]}")
+        if not dry:  # 2026-10-06: wykonanie vs plan - duza odchylka przelicza reszte tygodnia (+ Cofnij)
+            try:
+                import qbot_trener_ops as OPS
+                ad = OPS.adapt_check(c, user, today)
+                conn.commit()
+                if ad:
+                    log.append(f"wykonanie: odchyłka od planu — przeliczono ({len(ad['lines'])} zmian)")
+                    send(adapt_text(ad), [[{"text": "↩️ Cofnij", "callback_data": f"tr:undo:{ad['change_id']}"}]])
+            except Exception as e:
+                conn.rollback(); log.append(f"wykonanie: błąd {str(e)[:120]}")
         if E.season_weeks(_goals, _ov, ws, 1)[0]["ph"] == "lz":
             return log + [f"{now.strftime('%a %H:%M')}: totalny luz — bez wiadomości"]
         # rozliczenie: ndz 19:00-19:59

@@ -9,6 +9,8 @@
 * replan_horizon        - po zmianie celow / dostepnosci / Kalibracji / Kalendarza: przelicza caly horyzont.
 * calendar_changed      - wykrywa zmiany w Kalendarzu (podpis wpisow w horyzoncie, cache calsig:<user>).
 * undo(change)          - cofa zmiane (i jej rolowanie).
+* adapt_check           - wykonanie vs plan (realny czas i XSS z dopasowanej jazdy): duza odchylka -> przeliczenie reszty
+                          tygodnia (zmiana 'wykonanie', Akceptuj / Cofnij). Wolane z crona (qbot_trener_notify tick).
 """
 from __future__ import annotations
 
@@ -46,6 +48,7 @@ def match_done(c, u: str, d0: date, d1: date) -> int:
               "AND status='plan' AND training_session_id IS NULL AND day <= CURRENT_DATE", (u, d0, d1))
     plan = c.fetchall()
     if not plan:
+        refresh_real(c, u, d0, d1)
         return 0
     c.execute("SELECT id, date, sport_type, started_at FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s", (d0, d1))
     acts = list(c.fetchall())
@@ -63,7 +66,83 @@ def match_done(c, u: str, d0: date, d1: date) -> int:
         if best:
             used.add(best[1]); n += 1
             c.execute("UPDATE qbot_v2.trainer_session SET status='done', training_session_id=%s, updated_at=now() WHERE id=%s", (best[1], p["id"]))
+    refresh_real(c, u, d0, d1)
     return n
+
+
+ADAPT_FLAG_PCT = 0.10   # oznaczenie na karcie dnia: wiecej / mniej niz plan (czas albo obciazenie)
+
+
+def refresh_real(c, u: str, d0: date, d1: date) -> int:
+    """Wykonanie dopasowanych sesji: realny czas (min) i obciazenie (XSS ModelQ; TSS Garmina tylko do czasu przeliczenia ModelQ)."""
+    c.execute("""UPDATE qbot_v2.trainer_session s SET real_min = x.mn, real_xss = x.xs, real_src = x.src, updated_at = now()
+                 FROM (SELECT t.id, round(COALESCE(t.duration_s, 0) / 60.0)::int AS mn,
+                              COALESCE((SELECT m.xss_total FROM qbot_v2.modelq2_ride m WHERE m.external_id = t.external_id
+                                        AND m.xss_total IS NOT NULL LIMIT 1), t.tss) AS xs,
+                              CASE WHEN EXISTS (SELECT 1 FROM qbot_v2.modelq2_ride m WHERE m.external_id = t.external_id AND m.xss_total IS NOT NULL)
+                                   THEN 'modelq' WHEN t.tss IS NOT NULL THEN 'garmin' ELSE 'czas' END AS src
+                       FROM qbot_v2.training_sessions t) x
+                 WHERE x.id = s.training_session_id AND s.username = %s AND s.day BETWEEN %s AND %s AND s.status = 'done'
+                   AND s.real_src IS DISTINCT FROM 'modelq'""", (u, d0, d1))
+    return c.rowcount or 0
+
+
+def deviation(plan_min, plan_xss, real_min, real_xss, sport: str = "rower", thr: float = 15, hard_xss: float = 120) -> dict:
+    """Czysta ocena wykonania vs plan. flag 'wiecej'/'mniej' od 10% (czas albo obciazenie). adapt = przelicz reszte tygodnia:
+    |roznica obciazenia| >= thr (punkty, nie procent - 10% krotkiej jazdy to szum, 10% dlugiej to realne zmeczenie)
+    albo jazda przekroczyla prog ciezkiej jazdy, a plan nie."""
+    pm, rm = float(plan_min or 0), float(real_min or 0)
+    px = float(plan_xss) if plan_xss is not None else None
+    rx = float(real_xss) if real_xss is not None else None
+    p_min = (rm - pm) / pm if pm > 0 else None
+    d_xss = (rx - px) if (rx is not None and px is not None) else None
+    p_xss = (d_xss / max(px, 1.0)) if d_xss is not None else None
+    main = p_xss if p_xss is not None else p_min
+    big = any(v is not None and abs(v) >= ADAPT_FLAG_PCT for v in (p_min, p_xss))
+    flag = ("wiecej" if (main or 0) > 0 else "mniej") if big else None
+    heavy = sport == "rower" and rx is not None and rx >= hard_xss and (px or 0) < hard_xss
+    adapt = (d_xss is not None and abs(d_xss) >= thr) or heavy
+    why = []
+    if d_xss is not None and abs(d_xss) >= thr:
+        why.append(f"obciążenie {'+' if d_xss > 0 else ''}{round(d_xss)} wobec planu")
+    if heavy:
+        why.append(f"ciężka jazda (≥{round(hard_xss)}) zamiast planowanej lżejszej")
+    return {"flag": flag, "pct_min": None if p_min is None else round(p_min * 100), "pct_xss": None if p_xss is None else round(p_xss * 100),
+            "d_xss": None if d_xss is None else round(d_xss), "heavy": heavy, "adapt": adapt, "why": "; ".join(why)}
+
+
+def _ov(c, u: str) -> dict:
+    c.execute("SELECT overrides FROM qbot_v2.trainer_settings WHERE username=%s", (u,))
+    r = c.fetchone()
+    return dict(r["overrides"]) if r and r["overrides"] else {}
+
+
+def adapt_check(c, u: str, today: date | None = None) -> dict | None:
+    """Po wgraniu jazdy: wykonanie vs plan (ostatnie 3 dni). Duza odchylka -> przelicz reszte tygodnia (zmiana 'wykonanie'
+    do Akceptuj / Cofnij + rolowanie). Kazda sesja rozpatrywana raz (adapt_at); jazda czeka na XSS ModelQ."""
+    today = today or date.today()
+    ws = monday(today)
+    match_done(c, u, today - timedelta(days=2), today)
+    ov = _ov(c, u)
+    thr = float(ov.get("adapt.xss_delta", E.DEF["adapt.xss_delta"]))
+    hard = float(ov.get("yoga.hard_xss", E.DEF["yoga.hard_xss"]))
+    c.execute("SELECT * FROM qbot_v2.trainer_session WHERE username=%s AND day BETWEEN %s AND %s AND status='done' AND adapt_at IS NULL "
+              "AND real_min IS NOT NULL AND (sport <> 'rower' OR real_src = 'modelq') ORDER BY day, id", (u, today - timedelta(days=2), today))
+    devs = []
+    for s in c.fetchall():
+        dv = deviation(s["dur_min"], s.get("xss"), s["real_min"], s.get("real_xss"), s["sport"], thr, hard)
+        c.execute("UPDATE qbot_v2.trainer_session SET adapt_at=now() WHERE id=%s", (s["id"],))
+        if dv["adapt"]:
+            devs.append(dict(dv, id=s["id"], day=s["day"].isoformat(), sport=s["sport"], name=s["name"], plan_min=s["dur_min"],
+                             plan_xss=float(s["xss"]) if s.get("xss") is not None else None, real_min=s["real_min"],
+                             real_xss=float(s["real_xss"]) if s.get("real_xss") is not None else None))
+    if not devs:
+        return None
+    _supersede_pending(c, u, ws)
+    r = regenerate(c, u, ws, "wykonanie", {"reason": "wykonanie inne niż plan", "devs": devs})
+    r["rolled"] = cascade(c, u, ws, r["change_id"], "wykonanie")
+    r["devs"] = devs
+    return r
 
 
 def regenerate(c, u: str, d0: date, action: str, payload: dict, accepted: bool | None = None) -> dict:

@@ -24,7 +24,7 @@ DEF: dict[str, Any] = {
     "regen.sensitivity": 5, "regen.min_pct": 15, "regen.heavy_gap_h": 48, "regen.after_illness": 0,
     "wx.wind_ms": 8, "wx.gust_ms": 13, "wx.forest_bonus_ms": 1, "wx.cold_long_c": 0, "wx.cold_short_c": -10,
     "wx.heat_c": 30, "wx.rain_mmh": 0.5, "wx.rain_prob": 40, "wx.wet24_mm": 10, "wx.snow_cm": 10,
-    "yoga.hard_xss": 120, "yoga.long_h": 3, "regen.trip_rec_d": 3, "regen.pre_trip_d": 3,
+    "yoga.hard_xss": 120, "yoga.long_h": 3, "adapt.xss_delta": 15, "regen.trip_rec_d": 3, "regen.pre_trip_d": 3,
     "season.taper_w": 2, "season.regen_w": 2, "season.light_every_w": 4, "season.volume": 5,
 }
 MIXD = {"rower": [3, 3, 4, 4, 5, 5, 5, 5, 4, 4, 3, 3], "sila": [3, 3, 2, 1, 1, 1, 1, 1, 1, 1, 2, 2],
@@ -439,7 +439,7 @@ def plan_week(ctx: dict) -> dict:
         srow = {"day": d.isoformat(), "sport": "rower", "name": rr["name"], "start_time": st, "dur_min": dur,
                 "min_min": dur, "zone": 2, "is_long": is_long, "xss": rr.get("xss") or xss_of("rower", 2, dur),
                 "status": "plan", "cut": False, "source": "auto",
-                "note": ("jazda z Kalendarza (trasa): " if rr.get("has_route", True) else "jazda z Kalendarza (bez trasy): ") + ", ".join(x for x in (f"{rr['km']} km" if rr.get("km") else None, f"+{rr['up']} m" if rr.get("up") else None, f"~{rr['xss']} XSS" if rr.get("xss") else None, f"czas i XSS z {rr['sim_n']} podobnych jazd" if rr.get("sim_n") else None) if x)}
+                "note": ("jazda z Kalendarza (trasa): " if rr.get("has_route", True) else "jazda z Kalendarza (bez trasy): ") + ", ".join(x for x in (f"{rr['km']} km" if rr.get("km") else None, f"+{rr['up']} m" if rr.get("up") else None, f"~{rr['xss']} XSS" if rr.get("xss") else None, f"czas i XSS z {rr['sim_n']} podobnych jazd" if rr.get("sim_n") else None) if x) + ((" · zastępuje wpis „" + "”, „".join(rr["absorbed"]) + "”") if rr.get("absorbed") else "")}
         placed.append(srow); out.append(srow)
         if rr.get("multi"):
             target_min += dur  # neutralizacja odjecia ponizej: dni wyprawy liczone osobno
@@ -874,6 +874,13 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
     keep = [s for s in sess if s["source"] == "manual" or s["status"] != "plan" or s["day"] < today]
     for s in keep:
         s["start_time"] = s["start_time"].strftime("%H:%M") if s.get("start_time") else None
+        if s.get("status") == "done" and s.get("real_min"):  # 2026-10-06: zrobione liczone wg WYKONANIA (czas, XSS, dluga)
+            s["plan_dur_min"], s["plan_xss"] = s.get("dur_min"), s.get("xss")
+            s["dur_min"] = int(s["real_min"])
+            if s.get("real_xss") is not None:
+                s["xss"] = float(s["real_xss"])
+            if s.get("sport") == "rower" and s["dur_min"] >= float(P(ov, "yoga.long_h")) * 60 * 0.8:
+                s["is_long"] = True
     c.execute("SELECT id, date, sport_type, duration_s FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s", (ws, we))
     linked = {s["training_session_id"] for s in sess if s.get("training_session_id")}
     extra = [{"sport": SPORT_OF.get(r["sport_type"]), "dur_min": int((r["duration_s"] or 0) / 60)} for r in c.fetchall() if r["id"] not in linked and r["date"] < today]
@@ -962,12 +969,26 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
                              "name": title + (f" — dzień {i + 1}/{len(items)}" if len(items) > 1 else ""),
                              "at": e["at_time"].strftime("%H:%M") if e["at_time"] else None, "km": round(km_, 1) if km_ else None,
                              "up": up_, "xss": xs_, "dur_min": max(30, dur), "multi": n > 1, "has_route": bool(r["route_id"]), "sim_n": (sim[2] if sim else None)})
+        # 2026-10-03: jeden dzien = jedna jazda. Jazda z trasa wygrywa z wpisem "jazda" bez trasy
+        # tego samego dnia (np. "Dluzsza jazda 100 km" + plan z Analizy trasy) - wczesniej TRENER
+        # liczyl obie (dwie dlugie jazdy w niedziele). Wpis bez trasy -> absorbed_by (pomijany).
+        with_route = {}
+        for o in out_:
+            if o["has_route"]:
+                with_route.setdefault(o["day"], o)
+        for o in out_:
+            k = with_route.get(o["day"])
+            if not o["has_route"] and k is not None:
+                o["absorbed_by"] = k["entry_id"]
+                k.setdefault("absorbed", []).append(o["name"])
         return out_
     try:
         for rr in _route_days(ws, we):
+            route_ids.add(rr["entry_id"])
+            if rr.get("absorbed_by"):
+                continue
             if ws <= _d(rr["day"]) <= we:
                 route_rides.append(rr)
-            route_ids.add(rr["entry_id"])
             if rr["multi"]:
                 route_trip_ids.add(rr["entry_id"])
     except Exception:
@@ -980,6 +1001,8 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
         for r in c.fetchall():
             carry.append({"day": r["day"], "name": r["name"], "xss": float(r["xss"] or 0), "is_long": bool(r["is_long"]), "src": "plan"})
         for rr in _route_days(pa, pb):
+            if rr.get("absorbed_by"):
+                continue
             if pa <= _d(rr["day"]) <= pb:
                 carry.append({"day": rr["day"], "name": rr["name"], "xss": float(rr.get("xss") or xss_of("rower", 2, rr["dur_min"])),
                               "is_long": (rr.get("km") or 0) >= 80 or rr["dur_min"] >= float(P(ov, "yoga.long_h")) * 60 * 0.8, "src": "kalendarz"})

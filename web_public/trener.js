@@ -168,9 +168,18 @@
         if ((meta.route_entry_ids || []).indexOf(c.id) >= 0) return;  // wpis z trasa = trening w planie (dopasowany), nie osobny kafelek
         if (c.kind === "feel") return;  // samopoczucie = emotka w naglowku dnia (pelna informacja w dymku)
         items.push({ s: c.at_time ? tm(c.at_time) : -1, h: "<div class='tr-it cal'>" + (CALIC[c.event_type] || KIC[c.kind] || "📅") + " " + esc(c.title || c.event_type || c.kind) + (c.at_time ? " " + String(c.at_time).slice(0, 5) : "") + "</div>" }); });
+      /* 2026-10-06: wykonanie vs plan na karcie zrobionej sesji (realny czas i obciazenie; oznaczenie od 10%) */
+      var realLine = function (x) {
+        if (x.status !== "done" || x.real_min == null) return "";
+        var pm = +x.dur_min, rm = +x.real_min, px = x.xss != null ? +x.xss : null, rx = x.real_xss != null ? +x.real_xss : null;
+        var p1 = pm ? (rm - pm) / pm : 0, p2 = (px != null && rx != null) ? (rx - px) / Math.max(px, 1) : null, p = p2 != null ? p2 : p1;
+        var fl = (Math.abs(p1) >= 0.1 || (p2 != null && Math.abs(p2) >= 0.1)) ? (p > 0 ? "więcej niż plan" : "mniej niż plan") : "jak w planie";
+        var hm2 = function (m) { m = Math.round(m); return m >= 60 ? Math.floor(m / 60) + ":" + String(m % 60).padStart(2, "0") : m + "′"; };
+        return "<div style='font-size:11.5px;margin-top:3px;line-height:1.35'>realnie " + hm2(rm) + (rx != null ? " · obc. " + Math.round(rx) : "") + " <span style='opacity:.75'>(plan " + pm + "′" + (px != null ? " · " + Math.round(px) : "") + ")</span><br><b style='color:" + (fl === "jak w planie" ? "var(--good)" : "var(--warn)") + "'>" + fl + "</b></div>";
+      };
       ses.forEach(function (x) {
         if (x.day !== ds) return; var op = wkOpen === x.id, canEd = fut && x.status === "plan";
-        var hh = "<div class='tr-it plan tr-ses" + (x.status === "done" ? " done" : "") + "' data-sid='" + x.id + "' draggable='" + canEd + "' style='border-left-color:" + SCOL[x.sport] + (x.status === "skip" ? ";opacity:.5;text-decoration:line-through" : "") + (canEd ? ";cursor:grab" : "") + "'><div class='tr-sh' style='cursor:pointer'>" + (x.status === "done" ? "✓ " : (x.status === "skip" ? "✕ " : "")) + AIC[x.sport] + " " + esc(x.name) + "<br><span style='opacity:.8'>" + (x.start_time || "") + " · " + x.dur_min + "′" + (x.cut ? " min" : "") + ((x.note || "").indexOf("dodane przez Ciebie") === 0 ? " · ＋ Twoje" : (x.status === "skip" && (x.note || "").indexOf("usunięte przez Ciebie") === 0 ? " · usunięte" : (x.source === "manual" ? " · ✎" : ""))) + (x.rating ? " · <span style='color:var(--accent)' title='Twoja ocena planu'>" + "★".repeat(x.rating) + "</span>" : "") + "</span></div>";
+        var hh = "<div class='tr-it plan tr-ses" + (x.status === "done" ? " done" : "") + "' data-sid='" + x.id + "' draggable='" + canEd + "' style='border-left-color:" + SCOL[x.sport] + (x.status === "skip" ? ";opacity:.5;text-decoration:line-through" : "") + (canEd ? ";cursor:grab" : "") + "'><div class='tr-sh' style='cursor:pointer'>" + (x.status === "done" ? "✓ " : (x.status === "skip" ? "✕ " : "")) + AIC[x.sport] + " " + esc(x.name) + "<br><span style='opacity:.8'>" + (x.start_time || "") + " · " + x.dur_min + "′" + (x.cut ? " min" : "") + ((x.note || "").indexOf("dodane przez Ciebie") === 0 ? " · ＋ Twoje" : (x.status === "skip" && (x.note || "").indexOf("usunięte przez Ciebie") === 0 ? " · usunięte" : (x.source === "manual" ? " · ✎" : ""))) + (x.rating ? " · <span style='color:var(--accent)' title='Twoja ocena planu'>" + "★".repeat(x.rating) + "</span>" : "") + "</span>" + realLine(x) + "</div>";
         if (op) {
           hh += "<div style='border-top:1px dashed var(--line);margin-top:4px;padding-top:4px;display:flex;flex-direction:column;gap:5px'><div style='white-space:pre-line'>" + esc(x.details && x.details.text ? x.details.text : sdesc(x, meta)) + (x.note ? "\n" + esc(x.note) : "") + "</div>" +
             (x.sport === "sila" && x.details && x.details.engine ? "<a class='tr-btn sm' style='align-self:flex-start;text-decoration:none' href='/sciaga.html?id=" + x.id + "'>📄 Ściąga z grafikami</a>" : "");
@@ -188,9 +197,9 @@
       var wx = dm.wx, bad = wxBad(wx, meta.ov);
       var fs = dayFeels(j.calendar, ds), fm = feelMain(fs);
       var ftip = fs.map(function (c) { return FEEL_E[c.feel] + " " + (c.title || FEEL_L[c.feel]) + (c.note ? " — " + c.note : "") + (c.source === "trener" ? " (z notatki Trenera)" : ""); }).join("\n");
-      h += "<div class='tr-day" + (ms === T0 ? " today" : "") + "' data-day='" + ds + "'><div class='dh' style='display:flex;justify-content:space-between;gap:4px;align-items:center'><span>" + DN[i] + " " + pl(ms) + (ms === T0 ? " · dziś" : "") +
+      h += "<div class='tr-day" + (ms === T0 ? " today" : "") + "' data-day='" + ds + "'><div class='dh' style='display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px;align-items:center'><span style='flex:1 1 100%;white-space:nowrap'>" + DN[i] + " " + pl(ms) + (ms === T0 ? " · dziś" : "") +
         (fm ? " <span title='" + esc(ftip) + "' style='font-size:16px;cursor:help'>" + FEEL_E[fm.feel] + "</span>" : "") + "</span>" +
-        (ms <= T0 ? "<select data-feel='" + ds + "' title='Samopoczucie' style='font-size:11px;border:1px solid var(--line);background:var(--card);color:var(--ink2);border-radius:5px;margin-left:auto'><option value=''>" + (fm ? FEEL_E[fm.feel] : "☺") + " samopoczucie</option>" +
+        (ms <= T0 ? "<select data-feel='" + ds + "' title='Samopoczucie' style='font-size:11px;border:1px solid var(--line);background:var(--card);color:var(--ink2);border-radius:5px;flex:1 1 auto;min-width:0;max-width:100%'><option value=''>" + (fm ? FEEL_E[fm.feel] : "☺") + " samopoczucie</option>" +
           [2, 1, 0, -1, -2].map(function (v) { return "<option value='" + v + "'>" + FEEL_E[v] + " " + FEEL_L[v] + "</option>"; }).join("") + (fs.some(function (c) { return c.source !== "trener"; }) ? "<option value='del'>✕ usuń ocenę</option>" : "") + "</select>" : "") +
         (fut ? "<select class='tr-dm' data-dm='" + ds + "' style='font-size:11px;border:1px solid var(--line);background:var(--card);color:var(--ink2);border-radius:5px'><option value=''>⋯</option><option value='rest'>😴 REST DAY</option><option value='ill'>🤒 choroba</option><option value='del'>🧳 delegacja</option><option value='short'>⏱ brak czasu</option><option value='clear'>↺ zwykły dzień</option></select>" : "") + "</div>" +
         (wx ? "<div class='tr-wx' style='font-size:11px;" + (bad ? "color:var(--bad);font-weight:700" : "color:var(--muted)") + "' title='wiatr " + wx.wind + " m/s, porywy " + wx.gust + " · odczuwalna " + wx.feel_min + "…" + wx.feel_max + " °C · opad " + wx.rain_mmh + " mm/h (" + wx.rain_prob + "%)'>" + wx.icon + " " + wx.wind + " m/s · " + Math.round(wx.feel_max) + "°</div>" : "") +
@@ -803,6 +812,7 @@
       { k: "regen.sensitivity", n: "Czułość na gotowość dnia", min: 0, max: 10, st: 1, def: 5, u: "/10", l: ["ignoruj", "bardzo czuły"] },
       { k: "regen.min_pct", n: "Wersja minimum w najsłabsze dni", min: 0, max: 40, st: 5, def: 15, u: "% dni", l: ["nigdy", "często"] },
       { k: "regen.heavy_gap_h", n: "Przerwa po ciężkiej jeździe", min: 24, max: 96, st: 12, def: 48, u: " h" },
+      { k: "adapt.xss_delta", n: "Reakcja na odchyłkę od planu", min: 5, max: 60, st: 5, def: 15, u: " obc.", why: "różnica obciążenia zrobionego treningu wobec planu, od której Trener sam przelicza resztę tygodnia (Telegram + Cofnij); oznaczenie na karcie od 10%" },
       { k: "regen.trip_rec_d", n: "Odpoczynek po wyprawie", min: 1, max: 6, st: 1, def: 3, u: " dni", why: "dni bez roweru/siły po wyprawie wielodniowej (joga ok)" },
       { k: "regen.after_illness", n: "Powrót po chorobie", tog: ["do powrotu HRV i gotowości do normy", "stała liczba tygodni"], def: 0, why: "sprawdzane codziennie" }] },
     { t: "Waga i jedzenie", s: "Tempo zmian i źródło bilansu", x: [

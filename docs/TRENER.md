@@ -393,3 +393,22 @@ Testy: `tests/test_trener_sheet.py` (PDF z grafikami; brak grafiki = błąd).
 z lewej, nazwa, „partia · dawka” w kolorze bloku, kroki, ✓/✕), karty w rzędzie wyrównane; skala 100% → 93 → 86 → 80 → 74%
 aż się zmieści; nie mieści się → `_build_pdf_multi` (stary układ wielostronicowy, `layout: multi`). Raport: pages, images,
 scale, layout. Trening 15.10: 1 strona, skala 100%, 8/8 grafik, ~300 KB. Testy: 1 strona dla zwykłego treningu, długi → multi.
+
+
+## Wykonanie vs plan (2026-10-06)
+
+Problem: dopasowanie jazdy do planu (`match_done`: ten sam dzień + sport) oznaczało tylko `done`, a silnik liczył
+**planowany** czas/obciążenie zrobionej sesji (np. plan 30′/22 XSS, realnie 2:21/130 XSS → plan tygodnia bez reakcji).
+
+- `sql/trainer_v11.sql`: `trainer_session.real_min, real_xss, real_src (modelq|garmin|czas), adapt_at`.
+- `qbot_trener_ops.refresh_real` (wołane z `match_done`): realny czas z `training_sessions.duration_s`, obciążenie = XSS ModelQ
+  (`modelq2_ride.xss_total`), TSS Garmina tylko do czasu przeliczenia ModelQ.
+- **Silnik** (`build_context`): zrobione sesje liczone wg WYKONANIA (czas → budżet tygodnia, XSS → reguła „przerwa po ciężkiej
+  jeździe”, długa jazda) — zawsze, bez progu. Plan zostaje w `plan_dur_min` / `plan_xss`.
+- `deviation()` (czysta, `tests/test_trener_adapt.py`): oznaczenie „więcej / mniej niż plan” od **10%** (czas albo obciążenie);
+  **reakcja** gdy |różnica obciążenia| ≥ `adapt.xss_delta` (Kalibracja → Regeneracja, dom. **15**) albo jazda przekroczyła
+  `yoga.hard_xss`, a plan nie. Próg w punktach, nie w %: +10% krótkiej jazdy to szum, +10% 5-godzinnej to realne zmęczenie.
+- `adapt_check` (cron `qbot_trener_notify.py tick`, co 15 min): sesje `done` z ostatnich 3 dni, nierozpatrzone (`adapt_at`),
+  rower dopiero z XSS ModelQ → przy reakcji przeliczenie bieżącego tygodnia jako zmiana `wykonanie` (Akceptuj / Cofnij)
+  + rolowanie + Telegram (`adapt_text`: plan → realnie, przyczyna, zmiany, przycisk Cofnij). Wyprawy z Kalendarza nie są ruszane.
+- UI (`trener.js` v29): zrobiona sesja pokazuje „realnie 2:21 · obc. 130 (plan 30′ · 22)” + „więcej / mniej niż plan / jak w planie”.
