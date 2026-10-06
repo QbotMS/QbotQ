@@ -164,8 +164,8 @@ def test_merge_keeps_castle_tags_when_plaque_is_merged():
                   tags={"historic": "memorial", "memorial": "plaque"})
     plaque["dist"] = 101.0
     merged = dedupe([plaque, castle])
-    assert len(merged) == 1
-    assert merged[0]["tags"]["historic"] == "castle"
+    castles = [m for m in merged if m["name"] == "Zamek w Rabsztynie"]
+    assert len(castles) == 1 and castles[0]["tags"]["historic"] == "castle"
     result = rank_candidates([castle, plaque], [], {"Q9386720": {}}, 100)
     assert [row["name"] for row in result["candidates"]] == ["Zamek w Rabsztynie"]
 
@@ -199,3 +199,61 @@ def test_stop_named_after_main_object():
     assert stops[0]["name"] == "Zamek Krolewski na Wawelu"
     assert stops[0]["score"] == 80.0
     assert "Wieza Jana III Sobieskiego" in stops[0]["nearby"]
+
+
+def test_palace_does_not_rename_town_hall_tower():
+    """v2.4 regresja 06.10: Rynek - 'Wieza ratuszowa' nie zmienia sie w palac, Barbakan w 'Klasztorek'."""
+    from qbot3.routes.route_attraction_engine import collapse_stops
+    tower = {"name": "Wieza ratuszowa w Krakowie", "km": 180.0, "lat": 50.0616, "lon": 19.9368,
+             "score": 88.0, "category": "historic_building"}
+    palace = {"name": "Palac Malachowskich", "km": 180.1, "lat": 50.0617, "lon": 19.9370,
+              "score": 80.0, "category": "historic_building"}
+    barb = {"name": "Barbakan", "km": 180.5, "lat": 50.0655, "lon": 19.9417, "score": 84.0,
+            "category": "fortification"}
+    kl = {"name": "Klasztorek", "km": 180.5, "lat": 50.0656, "lon": 19.9418, "score": 70.0,
+          "category": "historic_building"}
+    names = sorted(s["name"] for s in collapse_stops([tower, palace, barb, kl]))
+    assert names == ["Barbakan", "Wieza ratuszowa w Krakowie"]
+
+
+def test_google_popularity_scales_with_reviews():
+    """v2.5: bardzo popularne miejsce (50 tys. opinii) dostaje wyraznie wiecej niz 1000 opinii."""
+    from qbot3.routes.route_attraction_engine import _google_score
+    small = _google_score(4.6, 1000)
+    huge = _google_score(4.6, 50000)
+    assert huge - small >= 3.0
+    assert _google_score(4.6, 5) < 2.5  # popularnosc ~0, gwiazdki wygladzone do sredniej
+    assert huge <= 13.5
+
+
+def test_tomb_does_not_swallow_castle():
+    """Wawel 2026-10-06: blizsze 'Groby Krolewskie' (tomb) nie wchlaniaja zamku (castle, Q18820)."""
+    tomb = _row("Groby Krolewskie na Wawelu", 180.0, pageid=None, lat=50.0540,
+                tags={"historic": "tomb", "amenity": "crypt"})
+    tomb["dist"] = 696.0
+    castle = _row("Zamek Krolewski na Wawelu", 180.0, pageid=None, qid="Q18820", lat=50.0541,
+                  tags={"historic": "castle", "heritage": "2"})
+    castle["dist"] = 746.0
+    merged = dedupe([tomb, castle])
+    assert sorted(m["name"] for m in merged) == ["Groby Krolewskie na Wawelu", "Zamek Krolewski na Wawelu"]
+    result = rank_candidates([tomb, castle], [], {"Q18820": {}}, 100)
+    assert [r["name"] for r in result["candidates"]] == ["Zamek Krolewski na Wawelu"]
+
+
+def test_dense_city_uses_smaller_cluster():
+    """v2.6: gesto (miasto) -> skupisko 0,8 km: dwie grupy po 4 obiekty ~1 km od siebie
+    (Rynek / Wawel) daja po 2 polecane, nie 2 na cale miasto."""
+    names = [["Sukiennice", "Barbakan", "Arsenal", "Kurdybanek"], ["Wawel", "Smocza", "Kanonicza", "Dom Dlugosza"]]
+    rows = []
+    for g, lat0 in enumerate((50.0610, 50.0520)):  # ~1 km miedzy grupami
+        for i in range(4):
+            # rozne km: bez scalania w przystanek i bez kary za bliskosc na trasie
+            r = _row(names[g][i], 20.0 + (g * 4 + i) * 20.0, pageid=None,
+                     tags={"historic": "castle", "heritage": "2"}, lat=lat0 + i * 0.0005)  # grupa ~170 m, przerwa ~830 m
+            r["lon"] = 19.937
+            r["dist"] = 50.0
+            rows.append(r)
+    result = rank_candidates(rows, [], {}, 182)
+    rec = {r["name"] for r in result["candidates"] if r["is_recommended"]}
+    assert len(rec & set(names[0])) == 2
+    assert len(rec & set(names[1])) == 2

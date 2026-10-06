@@ -18,9 +18,23 @@
 - Darmowy prog Nearby Search Enterprise 1000/mies. = ~14 nowych tras 100 km miesiecznie.
 - Atrakcje **v2.4** (decyzja Michala 06.10): polecane max **2 na skupisko w promieniu 1,5 km**
   (`RECOMMENDED_PER_CLUSTER`, `RECOMMENDED_CLUSTER_M`) - Krakow zajmowal 5 z 15 miejsc kosztem Lutowca
-  i Fortu Mydlniki; przystanek nazywa sie od **obiektu glownego** (zamek/palac/ruiny/twierdza/fort/dwor/
-  kosciol/klasztor, `_label_rank`), ocena = najlepsza w przystanku (Wawel byl "Groby Krolewskie" /
+  i Fortu Mydlniki; przystanek nazywa sie od **obiektu glownego** - TYLKO zamek / ruiny zamku / twierdza / fort / cytadela,
+  cale pierwsze slowo (`_label_rank`, `_MAIN_LABEL_WORDS`; szersza lista palac/klasztor psula Rynek Krakowa:
+  'Wieza ratuszowa' -> 'Palac Malachowskich', 'Barbakan' -> 'Klasztorek' - test regresji), ocena = najlepsza w przystanku (Wawel byl "Groby Krolewskie" /
   "Wieza Jana III Sobieskiego"). Testy +2.
+- Atrakcje **v2.5** (decyzja Michala 06.10): (1) lagodniejsza kara za bliskosc juz od 75 pkt
+  (`RECOMMENDED_QUALITY_SCORE`), nie od 80 - zamki co 2-3 km (Lutowiec 77, 2 km od Mirowa) nie odpadaja;
+  (2) popularnosc z Google do **10 pkt** (log liczby opinii: 100=2,5, 1000=5, 10 tys.=7,5, 100 tys.=10) + ocena
+  gwiazdkowa 3,5 pkt bez zmian. Bylo 2,5 pkt nasycone przy 1000 opinii (Wawel = Barbakan). Test +1.
+- BLAD naprawiony 06.10: `dedupe` scalal obiekty po podobienstwie nazw mimo sprzecznych typow -
+  'Groby Krolewskie na Wawelu' (tomb, blizej trasy) wchlanialy 'Zamek Krolewski na Wawelu' (castle, Q18820),
+  calosc odrzucana jako grob; na Wawelu zostawal tylko wpis z Google ('Zamek II', historia 0). Teraz
+  `_type_conflict`: rozne qid albo rozne historic/tourism/military/amenity = osobne obiekty. Test +1.
+- Atrakcje **v2.6** (decyzja Michala 06.10): promien skupiska zalezny od gestosci - obiekt z
+  >= 6 innymi kandydatami w 1,5 km (`URBAN_DENSITY_MIN`) = centrum miasta -> skupisko **0,8 km**
+  (`URBAN_CLUSTER_M`), poza miastem 1,5 km (Rynek i Wawel ~1 km = osobne skupiska). Sufit polecanych
+  8 -> **10 / 100 km** (Lutowiec). Wybrano gestosc zamiast liczby mieszkancow (GeoNames): dziala bez
+  dodatkowych danych i lapie male gesto zabytkowe miasteczka. Test +1.
 - PRZYJETA (decyzja Michala 06.10) zmiana nieznanej sesji z 2026-10-03 w `scripts/komoot_analyze_worker.py`:
   Telegram "+atrakcje" liczy atrakcje kanonicznym silnikiem (`ensure_route_attractions`) zamiast dawnej flagi
   route_poi (Google co 3 km). Razem z poprawka 05.10 (`set_route_poi_attractions` - widocznosc w Planerze).

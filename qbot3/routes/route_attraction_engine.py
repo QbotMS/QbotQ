@@ -16,21 +16,26 @@ from difflib import SequenceMatcher
 from typing import Any, Iterable
 
 
-ALGORITHM_VERSION = "route_attractions_v2.4"
+ALGORITHM_VERSION = "route_attractions_v2.6"
 # v2.3 (2026-10-05): limity zalezne od jakosci. Na szlaku zamkow (Orle Gniazda,
 # 182 km) sztywne 12 kandydatow / 2.5 polecanych na 100 km ucinalo Olsztyn,
 # Bobolice, Rabsztyn, Wawel. Teraz polecane = liczba mocnych przystankow
 # (score >= RECOMMENDED_QUALITY_SCORE), w widelkach MIN..MAX na 100 km.
 CANDIDATES_PER_100_KM = 25.0
 RECOMMENDED_PER_100_KM = 2.5          # minimum (trasy bez zageszczenia zabytkow)
-RECOMMENDED_MAX_PER_100_KM = 8.0      # sufit, zeby lista nie miala 40 pozycji
+RECOMMENDED_MAX_PER_100_KM = 10.0     # sufit (v2.6: 8 -> 10, szlak zamkow - Lutowiec)
 RECOMMENDED_QUALITY_SCORE = 75.0      # przystanek "mocny" = zawsze wart polecenia
 # v2.4 (2026-10-06): skupisko (miasto) max 2 polecane w promieniu 1,5 km; nazwa przystanku
 # od obiektu glownego (zamek/palac/ruiny...), nie od najwyzej ocenionego elementu.
 RECOMMENDED_PER_CLUSTER = 2
 RECOMMENDED_CLUSTER_M = 1500.0
-_MAIN_LABEL_PREFIXES = ("zamek", "palac", "ruiny zamku", "ruiny palacu", "twierdza", "fort",
-                        "dwor", "kosciol", "bazylika", "katedra", "klasztor", "opactwo")
+# v2.6: centrum miasta = gesto (>= URBAN_DENSITY_MIN innych kandydatow w 1,5 km) -> mniejszy promien
+# skupiska, zeby np. Rynek i Wawel (~1 km) nie dzielily limitu 2 polecanych.
+URBAN_DENSITY_MIN = 6
+URBAN_CLUSTER_M = 800.0
+# Tylko zamki i fortyfikacje; cale pierwsze slowo (lub "ruiny zamku"). Palace/koscioly NIE -
+# na Rynku Krakowa przejmowaly nazwe Wiezy ratuszowej/Barbakanu.
+_MAIN_LABEL_WORDS = {"zamek", "twierdza", "fort", "cytadela"}
 
 # base score, display label, estimated visit minutes, uniqueness
 CATEGORY = {
@@ -183,6 +188,19 @@ def _merge_into(target: dict[str, Any], source: dict[str, Any]) -> None:
         target["km"], target["dist"] = source["km"], source["dist"]
 
 
+def _type_conflict(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """2026-10-06: rozne obiekty mimo podobnych nazw - rozne qid albo sprzeczny typ OSM
+    (Wawel: grob vs zamek; Rabsztyn: tablica vs zamek). Takich nie scalamy po nazwie."""
+    if a.get("qid") and b.get("qid") and a["qid"] != b["qid"]:
+        return True
+    ta, tb = a.get("tags") or {}, b.get("tags") or {}
+    for key in ("historic", "tourism", "military", "amenity"):
+        va, vb = ta.get(key), tb.get(key)
+        if va and vb and va != vb:
+            return True
+    return False
+
+
 def dedupe(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     merged: list[dict[str, Any]] = []
     qids: dict[str, dict[str, Any]] = {}
@@ -201,6 +219,8 @@ def dedupe(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         match = None
         row_name = norm(row["name"])
         for old in merged:
+            if _type_conflict(row, old):
+                continue
             distance = haversine_m(row["lat"], row["lon"], old["lat"], old["lon"])
             similarity = SequenceMatcher(None, row_name, norm(old["name"])).ratio()
             if ((distance <= 120 and similarity >= 0.55)
@@ -330,7 +350,9 @@ def _google_score(rating: Any, count: Any) -> float:
     number = max(0, int(count))
     bayes = (number * float(rating) + 80 * 4.4) / (number + 80)
     # Google is evidence, never the semantic gate.
-    return 3.5 * clamp((bayes - 4.0) / 0.8, 0, 1) + 2.5 * clamp(math.log10(number + 1) / 3, 0, 1)
+    # v2.5 (2026-10-06): popularnosc do 10 pkt: 10 opinii=0, 100=2,5, 1000=5, 10 tys.=7,5, 100 tys.=10.
+    # Wczesniej 2,5 pkt nasycone przy 1000 opinii - Wawel wazyl tyle co Barbakan.
+    return 3.5 * clamp((bayes - 4.0) / 0.8, 0, 1) + 10.0 * clamp((math.log10(number + 1) - 1) / 4, 0, 1)
 
 
 def _distance_penalty(distance_m: float) -> float:
@@ -398,9 +420,13 @@ def score(row: dict[str, Any], entity: dict[str, Any], google_rows: Iterable[dic
 
 
 def _label_rank(row: dict[str, Any]) -> int:
-    """1 = obiekt glowny nadajacy nazwe przystankowi (zamek, palac, ruiny, twierdza...)."""
-    name = norm(row.get("name") or "")
-    return 1 if any(name.startswith(prefix) for prefix in _MAIN_LABEL_PREFIXES) else 0
+    """1 = obiekt glowny nadajacy nazwe przystankowi (zamek, ruiny zamku, twierdza, fort)."""
+    words = norm(row.get("name") or "").split()
+    if not words:
+        return 0
+    if words[0] in _MAIN_LABEL_WORDS or words[:2] == ["ruiny", "zamku"]:
+        return 1
+    return 0
 
 
 def collapse_stops(scored: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -447,20 +473,29 @@ def _mmr_select(
         key=candidate_key,
     )
     chosen: list[dict[str, Any]] = []
+    radius_for: dict[int, float] = {}
+    if cluster_cap is not None:
+        for row in pool:
+            dense = sum(
+                1 for other in pool
+                if other is not row and haversine_m(row["lat"], row["lon"], other["lat"], other["lon"]) <= cluster_m
+            )
+            radius_for[id(row)] = URBAN_CLUSTER_M if dense >= URBAN_DENSITY_MIN else cluster_m
     while pool and len(chosen) < target:
         best = None
         best_value = -999.0
         for row in pool:
             if cluster_cap is not None and sum(
                 1 for old in chosen
-                if haversine_m(row["lat"], row["lon"], old["lat"], old["lon"]) <= cluster_m
+                if haversine_m(row["lat"], row["lon"], old["lat"], old["lon"]) <= radius_for.get(id(row), cluster_m)
             ) >= cluster_cap:
                 continue
             proximity = 0.0
             for old in chosen:
                 gap = abs(float(row["km"]) - float(old["km"]))
                 penalty = 12 if gap < 3 else 6 if gap < 8 else 2 if gap < 15 else 0
-                if float(row["score"]) >= 80:
+                # v2.5: od progu 'mocnego' obiektu (75), nie od 80 - zamki co 2-3 km (Lutowiec)
+                if float(row["score"]) >= RECOMMENDED_QUALITY_SCORE:
                     penalty *= 0.5
                 proximity = max(proximity, penalty)
             value = float(row["score"]) - proximity * proximity_weight
