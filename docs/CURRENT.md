@@ -1,5 +1,8 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-10-07] Pogoda jazdy w ride_gear_log
+- qbot3/rides/gear_weather.py + wpiecia (qbot_web ride_gear_save, ride_report_builder.save_report, w1_weather_patch). Backfill 5/5 OK (06.10 18.5, 27.09 15.6, 22.09 14.5, 04.10 12.6, 24.09 10.9). Zweryfikowane na zywo POST /api/ride-gear/save -> pole weather. Recznie/ponownie: .venv/bin/python3 qbot3/rides/gear_weather.py [ride_key ...].
+
 ## [2026-10-05/06] Nawierzchnia z lokalnego OSM + atrakcje v2.3 + naprawy Planera (stan 2026-10-06 08:00)
 Szczegoly: DECISIONS 2026-10-05, `docs/OSM_LOCAL_SURFACE.md`.
 - ZACOMMITOWANE: b2acaa4, f64c4c3, 099aed6 (nawierzchnia: lokalny OSM, ponawianie Overpass, zapis profilu),

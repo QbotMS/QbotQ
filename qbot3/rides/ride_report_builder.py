@@ -1695,3 +1695,9 @@ def save_report(ride_key, fit_path, inputs, w1, w2=None):
                 (ride_key, SCHEMA_VERSION, fit_path, json.dumps(inputs or {}),
                  json.dumps(w1, default=str), json.dumps(w2) if w2 else None))
     conn.close()
+    # 2026-10-07: raport gotowy -> pogoda do 'W czym jechalem' (gdy stroj juz zapisany)
+    try:
+        from qbot3.rides.gear_weather import sync_ride
+        sync_ride(ride_key)
+    except Exception as e:  # noqa
+        print("gear_weather blad", ride_key, e)

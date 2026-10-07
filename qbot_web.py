@@ -6483,7 +6483,13 @@ async def ride_gear_save(request: Request):
                 (ride, slot, gear_id, value))
             saved_n += 1
         gc.commit()
-        return {"ok": True, "ride": ride, "saved": saved_n}
+        # 2026-10-07: pogoda jazdy (_temp_app/_temp_fit/_precip) z raportu - nie blokuje zapisu stroju
+        try:
+            from qbot3.rides.gear_weather import sync_ride
+            weather = sync_ride(ride)
+        except Exception as e:  # noqa
+            weather = {"ok": False, "why": str(e)[:160]}
+        return {"ok": True, "ride": ride, "saved": saved_n, "weather": weather}
     finally:
         gc.close()
 

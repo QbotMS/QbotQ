@@ -88,6 +88,11 @@ def patch_ride(cur, ride_key: str) -> dict:
     cur.execute("UPDATE qbot_v2.ride_report_data SET w1_json = jsonb_set(w1_json, '{weather}', %s::jsonb, true) "
                 "WHERE ride_key=%s AND schema_version=%s",
                 (json.dumps(we, ensure_ascii=False, default=str), ride_key, r["schema_version"]))
+    try:  # 2026-10-07: odswiez pogode w 'W czym jechalem'
+        from qbot3.rides.gear_weather import sync_ride
+        sync_ride(ride_key, cur=cur)
+    except Exception as e:  # noqa
+        print("gear_weather blad", ride_key, e)
     return {"ride": ride_key, "ok": True, "wind_ms": (wm or {}).get("value"), "precip_mm": (pr or {}).get("value")}
 
 

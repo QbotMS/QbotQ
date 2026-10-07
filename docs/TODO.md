@@ -336,6 +336,7 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [2026-09-24] Obserwowac: czy kolejne FIT z Karoo maja device_info czujnikow (24.09 brak). Jesli systematycznie -> miernik z roweru/kalendarza jako zapas dla straznika.
 
 # ZROBIONE
+- [2026-10-07] ZROBIONE: pogoda jazdy w 'W czym jechalem' (garage.db ride_gear_log): sloty meta _temp_app (apparent_c avg, wiodaca), _temp_fit (temp_c avg FIT, referencja), _precip (precip_mm sum), tekst '14.5'. Modul qbot3/rides/gear_weather.py (sync_ride), wpiety w /api/ride-gear/save, save_report i w1_weather_patch. Brak raportu -> stroj zapisany, pogoda dopisze sie po zbudowaniu raportu. updated_at = czas stroju jazdy (nie 'teraz' - inaczej psuje 'ostatnia jazda' i kolejnosc doradcy ubioru). Backfill 5 jazd zgodny z raportami. Testy tests/test_gear_weather.py (6).
 - [2026-10-02] TRENER: baza ćwiczeń — katalog 100 (qbot_trener_exercises.py, sql/trainer_v8.sql), grafiki paczka 1 (12), API /api/trener/exercises[/prompt], strona /cwiczenia.html. Dalej: paczki 2–9, silnik w bloki ciężaru + ściąga z bazy.
 - [2026-10-02] TRENER: prośba do AI o zmianę planu tygodnia (pole w widoku Tydzień, propozycja → Zastosuj → Akceptuj/Cofnij; qbot_trener_ask.py, /api/trener/week/ask[/apply]) + siła bez wybranych partii (trainer_session.opts, sql/trainer_v7.sql). docs/TRENER.md
 - [2026-09-24] Straznik miernika per miernik + czujniki w backfill/_one (DECISIONS 2026-09-24).
