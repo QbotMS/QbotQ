@@ -11576,7 +11576,7 @@ async () => {
 
 
 def _wyprawa_pdf_bytes(route_id, cuts, date, name):
-    # 1:1 widok Planera wyprawy: steruje prawdziwa strona /planer-wyprawy.html w trybie druku,
+    # 1:1 widok Planera wyprawy: steruje strona /planer-wyprawy-druk.html (Planer v1, od 2026-10-07 tylko do druku) w trybie druku,
     # zrzuca widok ALL + panel kazdego dnia i sklada w jeden PDF (Pillow).
     import io
     from urllib.parse import quote
@@ -11589,7 +11589,7 @@ def _wyprawa_pdf_bytes(route_id, cuts, date, name):
         cookie_value, _exp = _webauth_cookie_make(username, sign_val)
     ncuts = [c for c in (cuts or "").split(",") if c.strip()]
     ndays = len(ncuts) + 1
-    url = ("http://127.0.0.1:%d/planer-wyprawy.html?print=1&route=%s&cuts=%s&nDays=%d"
+    url = ("http://127.0.0.1:%d/planer-wyprawy-druk.html?print=1&route=%s&cuts=%s&nDays=%d"
            % (PORT, quote(route_id), quote(cuts or ""), ndays))
     if date:
         url += "&departure=" + quote(str(date))

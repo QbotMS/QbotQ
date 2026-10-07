@@ -44,7 +44,19 @@
     return "qLabels";
   }
 
+  var ST_F = null;
+  function stF(st) {
+    if (!ST_F) ST_F = { kolor: "", szara: F_DAYGRAY, ciemna: F_NIGHT, czarna: F_NIGHT + " grayscale(1) brightness(0.7) contrast(1.1)" };
+    return ST_F[st] || "";
+  }
   function apply(m) {
+    if (m.opt && m.opt.dayGray) {   // strony bez wlasnego przycisku (Planer, Naprawa trasy): styl per mapa, domyslnie noc=ciemna, dzien=szara
+      var st = m.st || (dark() ? "ciemna" : "szara");
+      if (m.mode === "carto") { m.layer.setUrl(OSM); if (m.labels && m.map.hasLayer(m.labels)) m.map.removeLayer(m.labels); }
+      m.mode = "osm"; filt(m.layer, stF(st));
+      try { document.dispatchEvent(new Event("qmapchange")); } catch (e) {}
+      return;
+    }
     var w = want();
     if (m.mode === w) return;
     var ac = m.map.attributionControl;
@@ -78,6 +90,14 @@
   }
   function onErr(m) { if (m.mode === "carto" && ++m.errs >= 8) { BROKEN = true; maps.forEach(apply); } }
 
+  function byMap(map) { return maps.filter(function (x) { return x.map === map; })[0] || null; }
+  window.qTilesMaps = function () { return maps.map(function (x) { return x.map; }); };
+  window.qTilesState = function (map) { var m = byMap(map); return m ? (m.st || (dark() ? "ciemna" : "szara")) : null; };
+  window.qTilesCycle = function (map) {   // kolor -> szara -> ciemna -> czarna -> kolor
+    var m = byMap(map); if (!m) return null;
+    var o = ["kolor", "szara", "ciemna", "czarna"], c = m.st || (dark() ? "ciemna" : "szara");
+    m.st = o[(o.indexOf(c) + 1) % 4]; apply(m); return m.st;
+  };
   window.qTilesNightColor = function (on) { NIGHT_COLOR = !!on; maps.forEach(apply); };
   window.qTilesIsNightColor = function () { return NIGHT_COLOR; };
   window.qTilesAttach = function (map, layer, opt) {
