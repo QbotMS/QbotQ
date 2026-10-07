@@ -164,6 +164,9 @@ async def _webauth_guard(request, call_next):
     # [G1] goscie jazdy: tylko z waznym tokenem (sprawdzane w endpointach), dane z bialej listy
     if request.url.path.startswith("/api/guest/") or request.url.path.startswith("/g/"):
         return await call_next(request)
+    # 2026-10-07: zdjecia strony startowej - WYLACZNIE katalog /opt/qbot/web/landing (wyselekcjonowane, bez metadanych)
+    if request.url.path.startswith("/landing/"):
+        return await call_next(request)
     # [QR-DEMO] publiczne kroki logowania przez QR (tworzenie, status, odbior). Dok.: docs/WEB_DEMO_AUTH.md
     if request.url.path in _wda.PUBLIC_PATHS:
         return _no_cache_static(await call_next(request), request.url.path)
@@ -249,22 +252,9 @@ async def _login_form(next: str = "/", err: int = 0):
         err_html = '<div class="err">Zle dane logowania. Sprobuj ponownie.</div>'
     else:
         err_html = ""
-    return HTMLResponse(
-        '<!doctype html><html lang="pl"><head><meta charset="utf-8">'
-        '<link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate icon" href="/favicon.ico"><title>QBot Lab - logowanie</title>'
-        '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        '<style>' + _LOGIN_PAGE_CSS + '</style></head><body>'
-        '<form method="post" action="/login" autocomplete="on">'
-        '<h1>QBot Lab</h1>'
-        '<label for="u">Login</label>'
-        '<input id="u" name="username" type="text" autocomplete="username" required autofocus>'
-        '<label for="p">Haslo</label>'
-        '<input id="p" name="password" type="password" autocomplete="current-password" required>'
-        '<input type="hidden" name="next" value="' + safe_next + '">'
-        '<button type="submit">Zaloguj</button>'
-        + err_html + _wda_ui.LOGIN_QR_HTML +
-        '</form>' + _wda_ui.LOGIN_QR_SCRIPT + '</body></html>'
-    )
+    # 2026-10-07: /login = strona startowa-wizytowka; formularz i QR w oknie "Zaloguj" (qbot_web_landing)
+    import qbot_web_landing as _landing
+    return HTMLResponse(_landing.render(safe_next, err_html, bool(err)))
 
 
 @app.post("/login")
@@ -12430,6 +12420,7 @@ import qbot_web_auth as _wda   # 2026-10-07: dostep demo przez QR. Dok.: docs/WE
 import qbot_web_auth_ui as _wda_ui
 _wda.configure(_db_conn, _owner_user, lambda: _webauth_load()[1])
 app.include_router(_wda.build_router())
+app.mount("/landing", StaticFiles(directory="/opt/qbot/web/landing"), name="landing")  # publiczne zdjecia /login
 
 
 app.mount("/", StaticFiles(directory=WEB_ROOT, html=True), name="static")

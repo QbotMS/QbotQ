@@ -54,3 +54,27 @@ demonstracyjnego przez QR” (2026-10-07).
 - Statyki: demo nie pobiera `*.bak*` ani plikow/katalogow zaczynajacych sie od `_`.
 - Weryfikacja zmian: przejscie wszystkich stron jako demo + porownanie `pg_stat_user_tables` (qbot_v2)
   przed/po; dopuszczalna jest tylko pamiec podreczna pogody (`meteo_point_cache`, dane publiczne).
+
+## Strona startowa (2026-10-07)
+- `/login` = wizytowka serwisu (`qbot_web_landing.py`): mapa topograficzna (poziomice marching squares z
+  wirtualnego terenu), trasa rysowana przy wejsciu, profil wysokosci we wkladce, legenda modulow, tryb nocny
+  (prefers-color-scheme), prefers-reduced-motion = stan koncowy bez animacji.
+- „Zaloguj” otwiera `<dialog>` z formularzem (te same pola, `next`, komunikaty `err`) i QR. Przy `err` okno
+  otwiera sie samo. Strona bez zewnetrznych zasobow (przed zalogowaniem statyki sa niedostepne).
+- Tresci publiczne: wylacznie ogolny opis modulow, bez danych uzytkownika.
+- v2 (2026-10-07, po uwagach wlasciciela): styl strony Start (index.html: Big Shoulders Display / Hanken
+  Grotesk / JetBrains Mono, akcent #e8742a, tryb nocny). Hero = 3 zdjecia z jazd (przenikanie + powolny najazd),
+  kafle modulow na zdjeciach (odslaniane przy przewijaniu), animowany profil trasy z paskiem nawierzchni.
+  Mapa topograficzna z v1 usunieta.
+- Zdjecia: `/opt/qbot/web/landing/` (hero-1..3, m-*.jpg) = wybrane 'liked' z qbot_v2.strava_photo, ponownie
+  zakodowane BEZ EXIF/GPS. Publiczne WYLACZNIE przez `/landing/` (wyjatek w bramce + osobny StaticFiles).
+  Podmiana zdjecia = nowy plik o tej samej nazwie, zawsze bez metadanych.
+- v3 (2026-10-07): tlo hero = film `hero.mp4` (1080p, ~9,4 MB) / `hero-m.mp4` (720p, ~3,1 MB, ekrany <=820 px),
+  kadr `hero-poster.jpg`; przy prefers-reduced-motion tylko kadr. Montaz 9 ujec (~24,5 s, cz-b, bez dzwieku,
+  -map_metadata -1) z nagran DJI Osmo Nano 'Sycylia 2026' (Pulpit wlasciciela). Ujecia wybrane z danych 1 Hz
+  (zjazdy/podjazdy dopasowane czasem nagrania; czas: activity_record.ts AT TIME ZONE 'Europe/Warsaw' = UTC)
+  i z klatek podgladowych (miejscowosci); bez twarzy i tablic. Ziarno filmowe = nakladka CSS `.grain` (SVG
+  feTurbulence), nie w pliku wideo. Skrypty: Mac ~/Downloads/qbot_frames/{extract.sh,build_video.sh}
+  (ffmpeg z Homebrew, uruchamiane przez kolejke DC; build_video.sh sam wysyla pliki scp na serwer).
+- Haslo hero: 'Tylko' + rotujaca linia co 3,6 s: nowe kwadraty / najlepsze trasy (wlasciciel) + prawdziwy
+  szuter / twarde dane / dobra pogoda (propozycje). Lista HASLA w skrypcie qbot_web_landing.py.
