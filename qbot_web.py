@@ -4823,6 +4823,15 @@ def report_data(route_id: str = Query(...), date: str = Query(...),
         conn.close()
 
 
+@app.get("/api/config/map")
+def map_config():
+    """Konfiguracja map dla stron (2026-10-07): klucz CARTO basemaps ze zmiennej CARTO_BASEMAP_KEY.
+    Klucz jest z natury publiczny (przegladarka wysyla go do CARTO), chroni go ograniczenie referera w CARTO.
+    Brak klucza -> strony zostaja przy OSM (qmap-tiles.js)."""
+    k = (os.getenv("CARTO_BASEMAP_KEY") or "").strip()
+    return {"configured": bool(k), "carto_key": k or None}
+
+
 @app.get("/api/report/plan")
 def report_plan(route_id: str = Query(...), date: str = Query(...),
                 time: str = Query("10:00"), long_stops: int = Query(0),

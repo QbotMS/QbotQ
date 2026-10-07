@@ -12,6 +12,8 @@
 <link rel="stylesheet" href="/aside.css?v=2026072112">
 <link rel="stylesheet" href="/raport-v2.css?v=3">
 <link rel="stylesheet" href="/raport-trasy2.css?v=8">
+<style>/* 2026-10-07: podpis mapy (wymagany przy CARTO) i zoom nad wykresem; --mk-chart-h = wysokosc wykresu */
+body.rtab-mapa #report .leaflet-bottom{bottom:calc(var(--mk-chart-h,0px) + 26px)!important}</style>
 </head>
 <body>
 <div class="qhead">
@@ -44,7 +46,8 @@
   <div id="report"></div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="/raport-render.js?v=2026100702"></script>
+<script src="/qmap-tiles.js?v=9"></script>
+<script src="/raport-render.js?v=2026100707"></script>
 <script src="/raport-pogoda-viz.js?v=3"></script>
 <script>
 (function(){

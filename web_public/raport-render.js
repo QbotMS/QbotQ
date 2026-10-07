@@ -296,6 +296,7 @@ function initMap(){
   window.MAPX=null;
   const map=window._qmap=L.map("map",{scrollWheelZoom:true,zoomSnap:0.25,zoomDelta:0.5}).setView([52.2,21.0],7);
   const _tl=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(map);
+  if(window.qTilesAttach)window.qTilesAttach(map,_tl);
   // --- Kwadraty (StatsHunters z14) + przycisk w pasku mapy ---
   (function setupTiles(){
     if(window.__QBOT_PRINT_MODE) return;
@@ -326,10 +327,7 @@ function initMap(){
       .then(function(r){ return r.ok ? r.json() : Promise.reject(r.status); })
       .then(function(d){
         (d.tiles||[]).forEach(function(t){
-          if(t.status==="empty"){
-            L.rectangle(t.bounds,{pane:"tiles",color:"#b8c0c8",weight:0.6,fill:false,opacity:0.55,interactive:false}).addTo(grp);
-            return;
-          }
+          if(t.status==="empty"||t.status==="owned") return;   // 2026-10-07: tylko kwadraty tej trasy (nowe / masz) - bez pustych i zdobytych poza trasa
           var s = COL[t.status]; if(!s) return;
           L.rectangle(t.bounds,{pane:"tiles",color:s.color,weight:1,fillColor:s.fill,fillOpacity:s.fo,interactive:false}).addTo(grp);
         });
@@ -340,7 +338,7 @@ function initMap(){
       .catch(function(err){ if(cnt) cnt.textContent="kafle niedostępne: "+err; if(btn){ on=false; paint(); btn.disabled=true; } });
   })();
   setTimeout(function(){try{map.invalidateSize();}catch(e){}},60);
-  (function(){var mapEl=document.getElementById("map");var bF=document.getElementById("mc-fit"),bB=document.getElementById("mc-bw");if(bF)bF.onclick=function(){if(window.MAPX&&window.MAPX.fitAll)window.MAPX.fitAll();};if(bB)bB.onclick=function(){if(mapEl.classList.contains("bw")){mapEl.classList.remove("bw");mapEl.classList.add("color");bB.textContent="Mapa: kolor";}else{mapEl.classList.remove("color");mapEl.classList.add("bw");bB.textContent="Mapa: B/W";}};})();
+  (function(){var mapEl=document.getElementById("map");var bF=document.getElementById("mc-fit"),bB=document.getElementById("mc-bw");if(bF)bF.onclick=function(){if(window.MAPX&&window.MAPX.fitAll)window.MAPX.fitAll();};if(bB){var _qLab=function(){var dk=document.documentElement.classList.contains("theme-dark"),nc=window.qTilesIsNightColor&&window.qTilesIsNightColor(),b=mapEl.classList.contains("bw");bB.textContent=dk?["Mapa: ciemna","Mapa: czarna","Mapa: szara","Mapa: kolor"][nc?(b?2:3):(b?1:0)]:(b?"Mapa: B/W":"Mapa: kolor");};bB.onclick=function(){var dk=document.documentElement.classList.contains("theme-dark");if(dk){var nc=window.qTilesIsNightColor&&window.qTilesIsNightColor(),b=mapEl.classList.contains("bw");/* noc: kolor -> szara -> ciemna -> czarna -> kolor */var st=nc?(b?2:3):(b?1:0);st=({3:2,2:0,0:1,1:3})[st];var nb=(st===1||st===2);mapEl.classList.toggle("bw",nb);mapEl.classList.toggle("color",!nb);if(window.qTilesNightColor)window.qTilesNightColor(st>=2);_qLab();return;}if(mapEl.classList.contains("bw")){mapEl.classList.remove("bw");mapEl.classList.add("color");}else{mapEl.classList.remove("color");mapEl.classList.add("bw");}_qLab();};document.addEventListener("qmapchange",_qLab);_qLab();}})();
   function hav(a,b){const R=6371,d2=Math.PI/180;const dLa=(b[0]-a[0])*d2,dLo=(b[1]-a[1])*d2,la1=a[0]*d2,la2=b[0]*d2;const x=Math.sin(dLa/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
   const surf=(DATA.chart&&DATA.chart.surface_cat)||[];
   const surfAt=km=>{for(const b of surf){if(km>=b.a&&km<=b.b)return b.k;}return surf.length?surf[surf.length-1].k:0;};
@@ -883,7 +881,8 @@ function initDayMap(){
   if(window._qmap){try{window._qmap.remove();}catch(e){}window._qmap=null;}
   window.MAPX=null;
   var map=window._qmap=L.map("map",{scrollWheelZoom:true,zoomSnap:0.25,zoomDelta:0.5}).setView([52.2,21.0],7);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(map);
+  var _tl2=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(map);
+  if(window.qTilesAttach)window.qTilesAttach(map,_tl2);
   var a0=(DATA.day&&DATA.day.km_from)||0, b0=(DATA.day&&DATA.day.km_to)||1e9;
   function hav(p,q){var R=6371,tr=Math.PI/180,dLa=(q[0]-p[0])*tr,dLo=(q[1]-p[1])*tr,la1=p[0]*tr,la2=q[0]*tr;var h=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(la1)*Math.cos(la2)*Math.sin(dLo/2)*Math.sin(dLo/2);return 2*R*Math.asin(Math.sqrt(h));}
   _qGeo(DATA.route.id).then(function(d){

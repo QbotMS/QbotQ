@@ -69,3 +69,5 @@ body.rj3 #dane{flex-direction:column;overflow:hidden;background:color-mix(in srg
 html.theme-dark body.rj3 #dane{background:rgba(13,16,22,.86)}
 body.rj3 #dhd,html.theme-dark body.rj3 #dhd{position:static;flex:0 0 auto;background:transparent;border-bottom:1px solid var(--line)}
 body.rj3 #dgrid,body.rj3 #odcwrap,body.rj3 #gwrap{flex:1 1 auto;min-height:0;overflow-y:auto}
+/* 2026-10-07: dolne kontrolki mapy (zoom, podpis OSM/CARTO) nad wykresem */
+body.rj3 .leaflet-bottom{bottom:calc(var(--dockh,260px) + 6px)}
