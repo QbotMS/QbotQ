@@ -166,8 +166,9 @@ async def _webauth_guard(request, call_next):
         return await call_next(request)
 
     users, sign_val = _webauth_load()
-    if not users:
-        return _no_cache_static(await call_next(request), request.url.path)
+    if not users or not sign_val:
+        # fail-closed (2026-10-07): brak/uszkodzona konfiguracja logowania = odmowa, nie otwarcie
+        return Response(status_code=503, content="auth config unavailable")
 
     cookie_value = request.cookies.get("qbot_session", "")
     if _webauth_cookie_valid(cookie_value, sign_val, users):
@@ -181,10 +182,60 @@ async def _webauth_guard(request, call_next):
     return Response(status_code=303, headers={"Location": "/login?next=" + next_url})
 
 
+_LOGIN_FAIL_WINDOW_S = 15 * 60   # okno liczenia nieudanych prob
+_LOGIN_FAIL_MAX = 5              # tyle nieudanych prob w oknie = blokada formularza dla loginu
+_LOGIN_FAIL_DELAY_S = 1.0        # opoznienie odpowiedzi po kazdej nieudanej probie
+_login_failures = {}             # klucz loginu -> [czasy]; pamiec procesu (czysci sie przy restarcie)
+
+
+def _webauth_safe_next(value):
+    """Tylko lokalna sciezka: zaczyna sie od jednego '/', bez '//', bez backslasha i znakow sterujacych."""
+    if not isinstance(value, str) or not value.startswith("/"):
+        return "/"
+    if value.startswith("//") or "\\" in value:
+        return "/"
+    if any(ord(c) < 32 or ord(c) == 127 for c in value):
+        return "/"
+    return value
+
+
+def _login_key(username, users):
+    # znane loginy liczone osobno; wszystkie nieznane we wspolnym koszyku (slownik nie rosnie)
+    return username if username in users else "__unknown__"
+
+
+def _login_locked(username, users, now=None):
+    import time as _time
+    now = _time.time() if now is None else now
+    key = _login_key(username, users)
+    recent = [t for t in _login_failures.get(key, []) if now - t < _LOGIN_FAIL_WINDOW_S]
+    if recent:
+        _login_failures[key] = recent
+    else:
+        _login_failures.pop(key, None)
+    return len(recent) >= _LOGIN_FAIL_MAX
+
+
+def _login_record_failure(username, users, now=None):
+    import time as _time
+    now = _time.time() if now is None else now
+    _login_failures.setdefault(_login_key(username, users), []).append(now)
+
+
+def _login_clear_failures(username, users):
+    _login_failures.pop(_login_key(username, users), None)
+
+
 @app.get("/login", response_class=HTMLResponse)
 async def _login_form(next: str = "/", err: int = 0):
-    safe_next = next if next.startswith("/") else "/"
-    err_html = '<div class="err">Zle dane logowania. Sprobuj ponownie.</div>' if err else ""
+    import html as _html
+    safe_next = _html.escape(_webauth_safe_next(next), quote=True)
+    if err == 2:
+        err_html = '<div class="err">Za duzo nieudanych prob. Sprobuj ponownie za kilkanascie minut.</div>'
+    elif err:
+        err_html = '<div class="err">Zle dane logowania. Sprobuj ponownie.</div>'
+    else:
+        err_html = ""
     return HTMLResponse(
         '<!doctype html><html lang="pl"><head><meta charset="utf-8">'
         '<link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate icon" href="/favicon.ico"><title>QBot Lab - logowanie</title>'
@@ -210,20 +261,28 @@ async def _login_submit(request: Request):
     fields = parse_qs(raw)
     username = fields.get("username", [""])[0]
     password = fields.get("password", [""])[0]
-    next_path = fields.get("next", ["/"])[0]
-    if not next_path.startswith("/"):
-        next_path = "/"
+    next_path = _webauth_safe_next(fields.get("next", ["/"])[0])
 
     users, sign_val = _webauth_load()
     import hmac as _hmac
+    import asyncio as _asyncio
     from urllib.parse import quote as _quote
-    ok = bool(sign_val) and username in users and _hmac.compare_digest(users[username], password)
+    if _login_locked(username, users):
+        return Response(
+            status_code=303,
+            headers={"Location": "/login?err=2&next=" + _quote(next_path, safe="")},
+        )
+    ok = bool(sign_val) and username in users and _hmac.compare_digest(
+        users[username].encode("utf-8"), password.encode("utf-8"))
     if not ok:
+        _login_record_failure(username, users)
+        await _asyncio.sleep(_LOGIN_FAIL_DELAY_S)
         return Response(
             status_code=303,
             headers={"Location": "/login?err=1&next=" + _quote(next_path, safe="")},
         )
 
+    _login_clear_failures(username, users)
     cookie_value, expiry = _webauth_cookie_make(username, sign_val)
     resp = Response(status_code=303, headers={"Location": next_path})
     resp.set_cookie(
@@ -231,6 +290,7 @@ async def _login_submit(request: Request):
         max_age=365 * 24 * 3600,
         httponly=True,
         samesite="lax",
+        secure=True,
     )
     return resp
 
