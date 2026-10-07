@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
-<title>QBot — Dalej niż mapa</title>
+<title>QBot — Start</title>
 <script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
 <link rel="stylesheet" href="/nav.css?v=4">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,13 +14,13 @@
 :root{--bg:#f8f4ec;--card:#fffdf8;--well:#efe8da;--ink:#2a241c;--ink2:#6f6455;--mut:#9a9184;--line:#e6dfd0;--line2:#d3c9b5;--acc:#e8742a;--acc-ink:#b3520f;--acc-bg:#fbe5d0;--good:#4f7a2a;--photo-ink:#f5f1ea;--photo-ink2:#e4dfd4;
   --disp:'Big Shoulders Display',Impact,'Arial Narrow',sans-serif;--body:'Hanken Grotesk','Helvetica Neue',Arial,sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
   box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-html.theme-dark{--bg:#1a1f27;--card:#0d1016;--well:#1f2631;--ink:#f3efe8;--ink2:#b9c0cc;--mut:#8792a4;--line:#5a3a20;--line2:#7a5030;--acc:#e8742a;--acc-ink:#ff9c55;--acc-bg:#4a2a0a;--good:#b7d38a}
+html.theme-dark{--bg:#2a2a2a;--card:#0d1016;--well:#1f2631;--ink:#f3efe8;--ink2:#b9c0cc;--mut:#8792a4;--line:#5a3a20;--line2:#7a5030;--acc:#e8742a;--acc-ink:#ff9c55;--acc-bg:#4a2a0a;--good:#b7d38a}
 *,*::before,*::after{box-sizing:inherit}
 html{scroll-padding-top:env(safe-area-inset-top,0px);background:var(--bg)}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
 a{color:var(--acc-ink);text-decoration:none}a:hover{text-decoration:underline}
 img{display:block;max-width:100%}
-.wrap{max-width:1240px;margin:0 auto;padding:0 clamp(16px,3vw,32px)}
+.wrap{max-width:1426px;margin:0 auto;padding:0 clamp(16px,3vw,32px)}
 .lbl{font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut)}
 h2{margin:0;font-family:var(--disp);font-weight:800;font-size:28px;line-height:1;text-transform:uppercase;letter-spacing:.01em}
 /* gora */
@@ -38,6 +38,11 @@ h2{margin:0;font-family:var(--disp);font-weight:800;font-size:28px;line-height:1
 .hin{position:absolute;inset:0;z-index:2;color:var(--photo-ink);display:flex;flex-direction:column;justify-content:space-between;padding:clamp(20px,3vw,36px)}
 .h1{margin:0;font-family:var(--disp);font-weight:800;font-size:clamp(48px,6.4vw,84px);line-height:.9;text-transform:uppercase}
 .h1 span{color:var(--acc)}
+/* rotujace hasla jak na /login (2026-10-07) */
+.h1 .rot{display:block;overflow:hidden;padding-bottom:.04em}.h1 .rot span{display:block;white-space:nowrap}
+.h1 .rot span.go-out{animation:rotOut .45s cubic-bezier(.6,0,.8,.4) forwards}.h1 .rot span.go-in{animation:rotIn .6s cubic-bezier(.2,.75,.2,1) forwards}
+@keyframes rotOut{from{transform:none}to{transform:translateY(-105%)}}@keyframes rotIn{from{transform:translateY(105%)}to{transform:none}}
+@media (max-width:620px){.h1 .rot span{white-space:normal}}
 .intro{margin:12px 0 0;max-width:430px;font-size:16.5px;line-height:1.5;color:var(--photo-ink2)}
 .cap{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .cap .t{display:flex;flex-direction:column;gap:2px;max-width:560px}
@@ -116,7 +121,7 @@ dialog.trip::backdrop{background:rgba(5,6,6,.72)}
     <div class="hin">
       <div class="rise">
         <span class="lbl" style="color:#ffb27a">Michał · gravel &amp; bikepacking · Warszawa</span>
-        <h1 class="h1" style="margin-top:8px">Dalej <span>niż mapa.</span></h1>
+        <h1 class="h1" style="margin-top:8px">Tylko<span class="rot"><span id="rot">nowe kwadraty</span></span></h1>
         <p class="intro" id="intro">Jeżdżę tam, gdzie kończy się asfalt.</p>
       </div>
       <div class="cap">
@@ -275,6 +280,13 @@ function openTrip(i){
 $("tpX").onclick=function(){$("trip").close();};
 $("trip").addEventListener("click",function(e){if(e.target===$("trip"))$("trip").close();});
 })();
+</script>
+<script>
+/* rotujace hasla - JEDNA lista dla /login i START: /opt/qbot/web/landing/hasla.js (ladowana swieza, ?t=) */
+(function(){var sc=document.createElement('script');sc.src='/landing/hasla.js?t='+Date.now();sc.onload=sc.onerror=go;document.head.appendChild(sc);function go(){
+var H=(window.QBOT_HASLA&&window.QBOT_HASLA.length)?window.QBOT_HASLA:['nowe kwadraty'],r=document.getElementById('rot'),i=0;if(!r)return;r.textContent=H[0];
+var rm=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+setInterval(function(){i=(i+1)%H.length;if(rm){r.textContent=H[i];return;}r.className='go-out';setTimeout(function(){r.textContent=H[i];r.className='go-in';},450);},3600);}})();
 </script>
 </body>
 </html>

@@ -40,7 +40,7 @@ a{color:inherit}
 /* ---- naglowek ---- */
 .top{position:absolute;z-index:5;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;
   padding:1.4rem clamp(1.2rem,4vw,3.5rem);color:#fff}
-.mark{font-family:var(--disp);font-weight:900;font-size:2rem;letter-spacing:.04em;display:flex;align-items:center;gap:.55rem}
+.mark{font-family:var(--disp);font-weight:900;font-size:clamp(2.4rem,4vw,3.4rem);line-height:1;letter-spacing:.04em;display:flex;align-items:center;gap:.55rem}
 .mark i{width:.62rem;height:.62rem;border-radius:50%;background:var(--acc);display:inline-block;box-shadow:0 0 0 4px rgba(232,116,42,.3)}
 .top .btn{padding:.7rem 1.5rem}
 
@@ -63,7 +63,7 @@ a{color:inherit}
 .hero h1 .ln{display:block;overflow:hidden;padding-bottom:.04em}
 .hero h1 .ln span{display:block;transform:translateY(105%);animation:rise .9s cubic-bezier(.2,.75,.2,1) forwards}
 .hero h1 .ln:nth-child(2) span{animation-delay:.14s;color:var(--acc)}
-.hero h1{max-width:none;font-size:clamp(3.6rem,11.5vw,11rem)}
+.hero h1{max-width:none;font-size:clamp(2.8rem,8vw,7.5rem)}
 .hero h1 .rot span{white-space:nowrap}
 .hero h1 .rot span.go-out{animation:rotOut .45s cubic-bezier(.6,0,.8,.4) forwards}
 .hero h1 .rot span.go-in{animation:rotIn .6s cubic-bezier(.2,.75,.2,1) forwards}
@@ -135,6 +135,10 @@ footer .wrap{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}
 .dlg input:focus{border-color:var(--acc);outline:none}
 .dlg button{margin-top:1.3rem;width:100%;padding:.85rem;border:0;border-radius:999px;background:var(--acc);color:#1b1407;font:600 1rem var(--body);cursor:pointer}
 .dlg .err{color:#c2410c;font-size:.88rem;margin-top:.8rem}
+.dlg.guest .login-part,.dlg:not(.guest) .guest-part{display:none}
+.dlg .guest-info{color:var(--ink2);font-size:.95rem;line-height:1.45;margin:0 0 1rem}
+.dlg.guest .guest-part > div{margin-top:0!important;border-top:0!important;padding-top:0!important}
+.dlg.guest #qrbox{margin-top:0!important}
 .dlg .x{position:absolute;top:1rem;right:1rem;width:2.3rem;height:2.3rem;margin:0;padding:0;border-radius:50%;background:var(--well);color:var(--ink);font-size:1.3rem;line-height:1}
 .dlg #qrgo{background:var(--well)!important;color:var(--ink)!important;margin-top:0!important}
 .dlg #qrcode{color:var(--ink)!important;font-family:var(--disp)!important;font-size:2.4rem!important}
@@ -156,8 +160,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}
 </head>
 <body>
 <header class="top">
-  <div class="mark"><i></i>QBot</div>
-  <button class="btn btn-acc" type="button" data-login>Zaloguj</button>
+  <div class="mark"><i></i>Albert QBot</div>
 </header>
 
 <section class="hero">
@@ -166,7 +169,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}
   <div class="shade"></div>
   <div class="hero-body">
     <h1 class="disp"><span class="ln"><span>Tylko</span></span><span class="ln rot"><span id="rot">nowe kwadraty</span></span></h1>
-    <p>QBot liczy formę, układa tydzień treningów i czyta trasę metr po metrze, zanim na nią wyjedziesz.</p>
+    <p>AlbertQbot pilnuje formy, układa trening<br>i czyta trasę metr po metrze, zanim na nią wyjedziesz.</p>
     <div class="acts">
       <button class="btn btn-acc" type="button" data-login>Zaloguj</button>
       <button class="btn btn-ghost" type="button" data-guest>Wejdź jako gość</button>
@@ -232,6 +235,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}
   <form method="post" action="/login" autocomplete="on">
     <button type="button" class="x" id="close-login" aria-label="Zamknij">&times;</button>
     <h2 id="login-title">Zaloguj</h2>
+    <div class="login-part">
     <label for="u">Login</label>
     <input id="u" name="username" type="text" autocomplete="username" required>
     <label for="p">Hasło</label>
@@ -239,16 +243,23 @@ footer .wrap{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}
     <input type="hidden" name="next" value="%%NEXT%%">
     <button type="submit">Zaloguj</button>
     %%ERR%%
+    </div>
+    <div class="guest-part">
+    <p class="guest-info">Pokaż ten kod właścicielowi serwisu. Zeskanuje go telefonem i zatwierdzi wejście. Dostaniesz podgląd na 1 godzinę, bez możliwości zmian.</p>
     %%QR_HTML%%
+    </div>
   </form>
 </dialog>
 
+<script src="/landing/hasla.js"></script>
 <script>
 (function () {
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   /* --- okno logowania --- */
   var dlg = document.getElementById('login-dlg');
   function openLogin(guest) {
+    dlg.classList.toggle('guest', !!guest);
+    document.getElementById('login-title').textContent = guest ? 'Wejście gościa' : 'Zaloguj';
     if (dlg.showModal) { if (!dlg.open) dlg.showModal(); } else { dlg.setAttribute('open', ''); }
     if (guest) { var q = document.getElementById('qrgo'); if (q && !q.disabled) q.click(); if (q) q.focus(); }
     else { var u = document.getElementById('u'); if (u) u.focus(); }
@@ -267,8 +278,10 @@ footer .wrap{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}
   }
 
   /* --- rotujace hasla --- */
-  var HASLA = ['nowe kwadraty', 'najlepsze trasy', 'prawdziwy szuter', 'twarde dane', 'dobra pogoda'];
+  /* lista hasel: /opt/qbot/web/landing/hasla.js (wspolna z START) */
+  var HASLA = (window.QBOT_HASLA && window.QBOT_HASLA.length) ? window.QBOT_HASLA : ['nowe kwadraty'];
   var rot = document.getElementById('rot'), hi = 0;
+  rot.textContent = HASLA[0];
   setInterval(function () {
     hi = (hi + 1) % HASLA.length;
     if (reduce) { rot.textContent = HASLA[hi]; return; }
@@ -355,8 +368,16 @@ footer .wrap{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}
 
 def render(safe_next_escaped, err_html, open_dialog):
     """safe_next_escaped: juz przefiltrowany i zakodowany do HTML parametr next."""
+    import os as _os
     import qbot_web_auth_ui as _ui
-    return (_TEMPLATE
+    page = _TEMPLATE
+    for _n in ("hero.mp4", "hero-m.mp4", "hero-poster.jpg", "hasla.js"):   # wersja = data pliku -> brak starej kopii w cache
+        try:
+            _v = int(_os.path.getmtime("/opt/qbot/web/landing/" + _n))
+            page = page.replace("/landing/" + _n, "/landing/%s?v=%d" % (_n, _v))
+        except OSError:
+            pass
+    return (page
             .replace("%%NEXT%%", safe_next_escaped)
             .replace("%%ERR%%", err_html)
             .replace("%%OPEN%%", "true" if open_dialog else "false")

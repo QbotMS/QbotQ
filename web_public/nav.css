@@ -7,10 +7,10 @@
   --qn-hover:#e0e7df; --qn-active-bg:#dde8de; --qn-active-fg:#1c2a22; --qn-accent:#c49a3f;
   --qn-muted:#7c8a80; --qn-tip-bg:#1c2024; --qn-tip-fg:#f6f2ea; --qn-fab-bg:#ffffff; --qn-scroll:#c3ccc4;
 }
-html.theme-dark{
-  --qn-bg:#0a140e; --qn-fg:#c9d1d9; --qn-brand:#ffffff; --qn-border:#2b3d2f;
-  --qn-hover:#22362a; --qn-active-bg:#24382b; --qn-active-fg:#ffffff; --qn-accent:#d8b877;
-  --qn-muted:#8aa090; --qn-tip-bg:#1c2024; --qn-tip-fg:#f6f2ea; --qn-fab-bg:#0a140e; --qn-scroll:#34472f;
+html.theme-dark{ /* 2026-10-07: menu noc -- granat + akcent #e8742a (tlo stron #2a2a2a) */
+  --qn-bg:#1a2236; --qn-fg:#d3d9e6; --qn-brand:#ffffff; --qn-border:#2c3752;
+  --qn-hover:#26314b; --qn-active-bg:#2c3a5a; --qn-active-fg:#ffffff; --qn-accent:#e8742a;
+  --qn-muted:#8b96ad; --qn-tip-bg:#141a29; --qn-tip-fg:#f6f2ea; --qn-fab-bg:#1a2236; --qn-scroll:#3a4766;
 }
 
 /* tresc dostaje staly margines = szerokosc waskiego rail; rozsuniecie NIE zmienia tego marginesu */

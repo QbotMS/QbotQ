@@ -11,7 +11,7 @@ html:root{
   --c-ele:#2a241c;--c-grid:#efe8da;--c-axislbl:#9a9184;--c-axmut:#9a9184;--c-wind0:#b8ae9e;--c-windline:#d3c9b5;--c-km:#6f6455;--c-time:#4a7fb5;--c-temp:#c8a24a;
 }
 html.theme-dark{
-  --bg:#1a1f27;--paper:#1a1f27;--card:#0d1016;--well:#1f2631;--panel:#1f2631;--side:#0d1016;
+  --bg:#2a2a2a;--paper:#2a2a2a;--card:#0d1016;--well:#1f2631;--panel:#1f2631;--side:#0d1016;
   --ink:#f3efe8;--ink2:#b9c0cc;--muted:#8792a4;--line:#5a3a20;--line2:#7a5030;
   --accent:#e8742a;--accent-ink:#ff9c55;--accent-bg:#4a2a0a;
   --warn:#e6c95a;--warn-bg:#3a3110;--bad:#f09595;--bad-bg:#3a1c1c;--good:#b7d38a;--good-bg:#25301a;
