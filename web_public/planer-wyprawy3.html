@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1"><link rel="alternate icon" href="/favicon.ico?v=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/theme.css?v=3">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<title>Planer wyprawy — QBot</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+/* MOCKUP v2 2026-10-05: Planer wyprawy w ukladzie Analizy trasy.
+   Logika = planer-wyprawy2-render.js (generowany z planer-wyprawy-render.js przez scripts/build_planer2_mock.py). */
+:root{--ink:#2a241c;--ink2:#6f6455;--muted:#9a9184;--line:#e6dfd0;--line2:#d3c9b5;--paper:#f8f4ec;--card:#fffdf8;--panel:#efe8da;--well:#efe8da;--accent:#e8742a;--accent-ink:#b3520f;--accent-bg:#fbe5d0;--good:#4f7a2a;--good-bg:#e9efd9;--bad:#a32d2d;--bad-bg:#fbe3e0;--warn:#8a6d00;--warn-bg:#f7efc4;
+  --qh:100px;--pv-l:var(--qnav-rail,56px);--pw:440px;--rail:54px;--pf-h:210px;--gap:12px}
+html.theme-dark{--ink:#f3efe8;--ink2:#b9c0cc;--muted:#8792a4;--line:#5a3a20;--line2:#7a5030;--paper:#1a1f27;--card:#0d1016;--panel:#1f2631;--well:#1f2631;--accent:#e8742a;--accent-ink:#ff9c55;--accent-bg:#4a2a0a;--good:#b7d38a;--good-bg:#25301a;--bad:#f09595;--bad-bg:#3a1c1c;--warn:#e6c95a;--warn-bg:#3a3110}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5}
+
+/* ---- belka (jak Analiza trasy) ---- */
+.qhead{position:sticky;top:0;z-index:1200;background:var(--panel);border-bottom:1px solid var(--line);box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.qhead-row{display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;padding:8px 16px}
+.qh-title{font-weight:800;font-size:18px;letter-spacing:.01em}
+.qh-title small{font-weight:600;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#fff;background:var(--accent);border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:2px}
+.qh-btn,.rtab,.qh-link{font:inherit;font-size:14px;font-weight:650;padding:6px 12px;border:1px solid var(--line2);border-radius:9px;background:var(--card);color:var(--ink2);cursor:pointer;text-decoration:none;white-space:nowrap}
+.qh-btn:hover,.rtab:hover,.qh-link:hover{border-color:var(--accent);color:var(--accent-ink)}
+.rtabs{display:flex;gap:6px}
+.rtab.active{background:var(--accent-bg);border-color:var(--accent);color:var(--accent-ink)}
+.qh-right{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.gen-wrap{padding:0 16px 10px}
+.gen-wrap.collapsed{display:none}
+.gen-row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.fld label{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+.fld select,.fld input{font:inherit;font-size:15px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.fld select{min-width:280px}
+.tw-days{display:flex;align-items:center;gap:0;border:1px solid var(--line);border-radius:8px;background:var(--card);overflow:hidden}
+.tw-days button{border:0;background:transparent;font-size:19px;width:36px;height:36px;cursor:pointer;color:var(--accent)}
+.tw-days button:hover{background:var(--accent-bg)}
+.tw-days .val{min-width:30px;text-align:center;font-size:17px;font-weight:700}
+.btn{font:inherit;font-size:15px;font-weight:700;padding:8px 16px;border-radius:9px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+.planer-hist{display:none;flex-wrap:wrap;align-items:center;gap:6px}
+.planer-hist .ph-label{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.ph-chip{font:inherit;font-size:13px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink2);cursor:pointer}
+.ph-chip:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ---- MAPA: tlo + lewy panel z szyna ikon + profil dokowany ---- */
+#map{position:fixed;top:var(--qh);left:var(--pv-l);right:0;bottom:0;z-index:1}
+#pv-panel{position:fixed;z-index:1100;top:calc(var(--qh) + var(--gap));left:calc(var(--pv-l) + var(--gap));bottom:var(--gap);width:calc(var(--pw) + var(--rail));display:flex;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 26px rgba(0,0,0,.25);overflow:hidden;transition:width .18s ease}
+#pv-body{flex:1 1 auto;min-width:0;overflow:auto;padding:12px 14px 18px}
+#pv-rail{flex:0 0 var(--rail);display:flex;flex-direction:column;gap:6px;padding:8px 6px;border-left:1px solid var(--line);background:var(--panel)}
+.pv-tab{appearance:none;font:inherit;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--ink2);cursor:pointer}
+.pv-tab svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.pv-tab span{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.pv-tab:hover{border-color:var(--accent);color:var(--accent-ink)}
+.pv-tab.on{background:var(--accent);color:#fff}
+.pv-tab.pv-fold{margin-top:auto}
+body.pv-closed #pv-panel{width:var(--rail)}
+body.pv-closed #pv-body{display:none}
+body.pv-closed #pv-rail{border-left:0}
+.pv-sec{display:none}.pv-sec.on{display:block}
+.pv-h{font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0 0 8px}
+#profil{position:fixed;z-index:1050;right:var(--gap);bottom:var(--gap);height:var(--pf-h);left:calc(var(--pv-l) + var(--gap)*2 + var(--pw) + var(--rail));background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;box-shadow:0 8px 26px rgba(0,0,0,.22);transition:left .18s ease}
+body.pv-closed #profil{left:calc(var(--pv-l) + var(--gap)*2 + var(--rail))}
+.profil .sec-h{font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.profil-wrap{position:relative}
+.profil-wrap svg{width:100%;height:150px;display:block}
+.profil-tip{display:none;position:absolute;top:-4px;transform:translateX(-50%);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:2px 7px;font-size:13px;white-space:nowrap;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:20}
+.surf-legend2{display:flex;gap:14px;margin-top:4px;font-size:13px;color:var(--muted)}
+.surf-legend2 span{display:flex;align-items:center;gap:5px}
+.surf-legend2 i{width:11px;height:11px;border-radius:3px;display:inline-block}
+
+/* ---- SZCZEGOLY: dokument przewijany ---- */
+#pv-doc{display:none;max-width:920px;margin:0 auto;padding:18px 18px 80px}
+body.pv-szcz #pv-doc{display:block}
+body.pv-szcz #map,body.pv-szcz #pv-panel,body.pv-szcz #profil{display:none}
+
+/* ---- tresc (z Planera wyprawy, dopasowana do panelu) ---- */
+.opis{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px;font-size:15.5px;line-height:1.6;color:var(--ink2)}
+.opis h3{margin:0 0 6px;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.opis p{margin:0}.opis .muted,.muted{color:var(--muted)}
+#pv-panel .opis{border:0;padding:0;background:transparent}
+.viewtabs{display:flex;gap:5px;flex-wrap:wrap;margin:0 0 10px}
+.viewtab{padding:5px 10px;border:1px solid var(--line);border-radius:9px;background:var(--card);cursor:pointer;font:inherit;font-size:14px;font-weight:650;color:var(--ink2);line-height:1.15}
+.viewtab .k{font-size:12px;color:var(--muted);font-weight:400;margin-left:4px}
+.viewtab.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent-ink)}
+.dostosuj-btn{display:block;width:100%;margin:0 0 6px;padding:9px;font:inherit;font-size:14.5px;font-weight:650;color:#fff;background:var(--accent);border:none;border-radius:10px;cursor:pointer}
+.dostosuj-btn:disabled{background:var(--well);color:var(--muted);cursor:default}
+.hint{font-size:13px;color:var(--muted);margin:8px 0 0}
+body.pv-day .pv-all{display:none!important}
+.dot{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:8px;vertical-align:-1px}
+.bar-surf{display:inline-flex;height:9px;border-radius:5px;overflow:hidden;width:96px;vertical-align:-1px;border:1px solid var(--line)}
+.bar-surf i{display:block;height:100%}
+.surf-wrap{position:relative;display:inline-block}.surf-legend{display:none}
+.ecard{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:10px 12px;margin:8px 0 0;cursor:pointer;transition:border-color .12s}
+.ecard:hover{border-color:var(--accent)}
+.ec-head{display:flex;align-items:center;gap:7px;font-size:16px}
+.ec-head .dot{width:12px;height:12px;margin:0}
+.ec-head .ec-km{margin-left:auto;color:var(--muted);font-size:14px}
+.ec-main{margin-top:5px;font-size:16.5px;font-weight:650;font-variant-numeric:tabular-nums}
+.ec-surf{margin-top:7px}.ecard .surf-wrap,.ecard .bar-surf{display:block;width:100%}.ecard .bar-surf{height:10px}
+.ec-pct{display:flex;flex-wrap:wrap;gap:3px 12px;margin-top:6px;font-size:13.5px;color:var(--ink2)}
+.ec-pct span{display:flex;align-items:center;gap:5px}.ec-pct i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.ec-sub{margin-top:6px;font-size:13.5px;color:var(--muted)}.ec-sep{opacity:.45}
+.dcards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:10px}
+.dcard{background:var(--well);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}
+.dcard .lab{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.dcard .val{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+.dcard .val small{font-size:13px;font-weight:400;color:var(--muted)}
+.dcard .sub2{font-size:12px;color:var(--muted)}
+.dsec{border-top:1px solid var(--line);padding:10px 0 4px}
+.dsec h3{margin:0 0 6px;font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.dsec p,.dsec ul{margin:.3em 0;font-size:14.5px;line-height:1.55;color:var(--ink2)}
+.dsec ul{padding-left:1.2em}
+.poi-row{display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:14px;align-items:baseline}
+.poi-row:last-child{border-bottom:0}
+.poi-km{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;min-width:48px}
+.poi-name{flex:1}.poi-meta{color:var(--muted);font-size:13px}
+.climb-row,.attr-row{cursor:pointer}
+.climb-row:hover,.attr-row:hover{background:var(--well)}
+.climb-prof{width:100%;height:auto;display:block}
+.climb-legend{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:6px;font-size:12px;color:var(--ink2)}
+.cl-item{display:flex;align-items:center;gap:4px}.cl-sw{width:10px;height:10px;border-radius:3px;display:inline-block}
+.attr-media{display:flex;gap:10px;flex-wrap:wrap}.attr-photo{width:100%;border-radius:8px;border:1px solid var(--line)}
+.attr-desc{font-size:14px;color:var(--ink2);margin:.2em 0}.attr-loc{display:block;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.attr-src{font-size:12px;color:var(--muted)}
+.scat-bar{display:flex;height:12px;border-radius:5px;overflow:hidden;border:1px solid var(--line);margin:2px 0 6px}
+.scat-bar i{display:block;height:100%}
+.scat-legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;color:var(--ink2);margin-bottom:4px}
+.scat-legend span{display:flex;align-items:center;gap:5px}.scat-legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.clim-comment{font-size:14px;color:var(--ink2)}.ok-line{color:var(--good);font-size:14.5px}.warn-line{color:var(--bad);font-size:14.5px}
+.dbtn{font:inherit;font-size:14px;font-weight:600;padding:7px 12px;border-radius:8px;border:1px solid var(--accent);background:var(--card);color:var(--accent-ink);cursor:pointer;margin:0 6px 6px 0}
+.dbtn:hover{background:var(--accent-bg)}
+.tw-full{display:block;width:100%;text-align:left;margin:0 0 7px}
+.qa-h{font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0 0 8px}
+.tw-vers{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.tw-ver{display:flex;gap:6px}
+.tw-ver-load{flex:1;text-align:left;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);padding:7px 10px;cursor:pointer;font:inherit;font-size:13.5px;display:flex;flex-direction:column}
+.tw-ver-load:hover{border-color:var(--accent)}.tw-ver-sub{font-size:12px}
+.tw-ver-del{width:32px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--muted);font-size:17px;cursor:pointer}
+.of-days{margin-top:10px;display:flex;flex-direction:column;gap:7px}
+.of-day{display:flex;gap:9px;background:var(--well);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.of-dot{width:12px;height:12px;border-radius:3px;flex:0 0 auto;margin-top:4px}
+.of-h{font-size:15px;font-weight:650}.of-c{font-size:13.5px}
+.cutdot{width:24px;height:24px;border-radius:50%;background:var(--ink);color:#fff;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;cursor:grab}
+/* pogoda w waskim panelu */
+.pg-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:0 0 10px}
+.pg-bar label{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.pg-bar input{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.pg-note{font-size:13px;color:var(--muted);line-height:1.5}
+.pg-day{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.pg-day-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;margin-bottom:6px}
+.pg-km{color:var(--muted);font-size:13px}
+.pg-tag{font-size:11px;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:var(--accent-bg);color:var(--accent-ink)}
+.pg-tag.klimat{background:var(--warn-bg);color:var(--warn)}.pg-tag.brak{background:var(--bad-bg);color:var(--bad)}
+.pg-btn{font:inherit;font-size:13.5px;font-weight:600;padding:6px 11px;border-radius:8px;border:1px solid var(--accent);background:var(--card);color:var(--accent-ink);cursor:pointer;margin-left:auto}
+.pg-btn:disabled{border-color:var(--line);color:var(--muted)}
+.pg-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:4px 0 8px}
+.pg-card{background:var(--well);border:1px solid var(--line);border-radius:10px;padding:7px 9px}
+.pg-card .lab{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.pg-card .val{font-size:16.5px;font-weight:700}.pg-card .val small{font-size:12px;color:var(--muted);font-weight:400}
+.pg-card .sub{font-size:12px;color:var(--muted)}
+.pg-card.hot{border-color:var(--bad);background:var(--bad-bg)}.pg-card.wet{border-color:var(--warn);background:var(--warn-bg)}
+.pg-al{display:flex;gap:8px;padding:5px 8px;border-radius:8px;margin-bottom:5px;font-size:13.5px}
+.pg-al.NOGO,.pg-al.ALARM{background:var(--bad-bg);color:var(--bad)}.pg-al.FLAGA{background:var(--warn-bg);color:var(--warn)}
+.pg-tab{display:block;overflow-x:auto;width:100%;border-collapse:collapse;font-size:12.5px}
+.pg-tab th,.pg-tab td{padding:4px 6px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right}
+.pg-tab th:first-child,.pg-tab td:first-child{text-align:left}
+.pg-tab td.hot{color:var(--bad);font-weight:650}.pg-tab td.rainy{color:var(--accent-ink);font-weight:650}
+.pg-caveats{font-size:12.5px;color:var(--muted)}.pg-err{color:var(--bad)}
+.leaflet-control-attribution{font-size:10px}
+.mock-badge{position:fixed;right:10px;top:calc(var(--qh) + 8px);z-index:1150;font-size:11px;font-weight:800;letter-spacing:.12em;padding:4px 10px;border-radius:999px;background:var(--accent);color:#fff;pointer-events:none}
+body.pv-szcz .mock-badge{display:none}
+@media (max-width:820px){
+  :root{--pv-l:0px;--pw:calc(100vw - 54px - 24px);--pf-h:150px}
+  #pv-panel{top:auto;height:52vh}
+  #profil{display:none}
+  .fld select{min-width:0;width:100%}
+}
+
+/* ===== v3 (2026-10-07): uklad jak Raport z jazdy v3 ===== */
+body.pl3{overflow:hidden}
+body.pl3 #map{top:0;left:var(--qnav-rail,56px)}
+body.pl3 .mock-badge,body.pl3 .qhead{display:none}
+body.pl3 #pv-panel{top:12px;left:calc(var(--qnav-rail,56px) + 12px);bottom:calc(var(--pfh,210px) + 24px);width:auto;display:flex;align-items:stretch;
+  background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(4px);border:1px solid var(--line);border-radius:12px;box-shadow:0 4px 18px rgba(0,0,0,.25);overflow:hidden}
+html.theme-dark body.pl3 #pv-panel{background:rgba(13,16,22,.88)}
+body.pl3 #profil{left:calc(var(--qnav-rail,56px) + 12px);right:12px;bottom:12px}
+#pl-main{width:330px;padding:12px 14px;overflow:auto;display:flex;flex-direction:column;gap:10px;scrollbar-width:thin}
+#pl-main .fld label{font-size:11.5px;margin-bottom:2px}
+#pl-main .fld select,#pl-main .fld input{width:100%;min-width:0;font-size:14px;padding:6px 8px}
+.pl-prm{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
+#pl-main .planer-hist{display:none!important}
+#pl-all{font:inherit;text-align:left;color:var(--ink);border:1px solid var(--line);background:var(--well);border-radius:10px;padding:8px 10px;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+#pl-all b{font-size:14.5px}#pl-all span{font-size:12.5px;color:var(--ink2)}
+#pl-all.on,body.pl3 .ecard.on{border:1.5px solid var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.pl-lbl{font-size:12px;color:var(--muted)}
+body.pl3 #etap-cards .ecard{margin:6px 0 0}
+#pl-rail{display:flex;flex-direction:column;gap:6px;padding:8px 7px;border-left:1px solid var(--line);overflow-y:auto;scrollbar-width:none;flex:0 0 auto}
+#pl-rail::-webkit-scrollbar{display:none}
+#pl-rail button{appearance:none;width:38px;height:38px;flex:0 0 auto;border-radius:12px;border:1.5px solid transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.pl-ic{color:var(--c);background:color-mix(in srgb,var(--c) 17%,transparent)}
+.pl-ic:hover{background:color-mix(in srgb,var(--c) 30%,transparent)}
+.pl-ic.on{border-color:var(--c)!important;background:color-mix(in srgb,var(--c) 34%,transparent)}
+.pl-exp{height:30px!important;border-radius:8px!important;border:1px solid var(--line)!important;background:var(--card);color:var(--ink2);display:none!important}
+body.pl-open .pl-exp{display:flex!important}
+.pl-tag{height:22px;border-radius:6px;background:var(--accent-bg);color:var(--accent);font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;letter-spacing:.04em;flex:0 0 auto}
+.pl-sep{height:1px;background:var(--line);margin:2px 4px;flex:0 0 auto}
+#pl-win{display:none;flex:1 1 auto;min-width:0;flex-direction:column;border-left:1px solid var(--line)}
+body.pl-open #pl-main{display:none}
+body.pl-open #pv-panel{right:340px}
+body.pl-open.pl-full #pv-panel{right:12px;bottom:12px}
+body.pl-open #pl-win{display:flex}
+#pl-winh{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);flex:0 0 auto}
+#pl-wint{font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px}
+#pl-wint small{font-size:13px;font-weight:500;color:var(--ink2)}
+#pl-winx{margin-left:auto;appearance:none;border:0;background:none;color:var(--muted);font-size:24px;line-height:1;cursor:pointer;min-width:40px;min-height:40px}
+#pl-winb{flex:1 1 auto;min-height:0;overflow:auto;padding:14px 16px 20px}
+#pl-winb .opis{border:0;padding:0;background:transparent;margin-bottom:14px}
+#pl-frame{width:100%;height:100%;border:0;border-radius:8px;background:var(--card)}
+.pl-s[data-s="frame"]{height:100%}
+/* panel dnia: tylko wybrana podsekcja (+ kafle liczb przy "Opis dnia") */
+#pl-winb[data-ds] #dzien-panel .dsec{display:none}
+#pl-winb[data-ds="d-interp"] #dzien-panel #d-interp,#pl-winb[data-ds="d-surface"] #dzien-panel #d-surface,#pl-winb[data-ds="d-climbs"] #dzien-panel #d-climbs,
+#pl-winb[data-ds="d-resupply"] #dzien-panel #d-resupply,#pl-winb[data-ds="d-attr"] #dzien-panel #d-attr,#pl-winb[data-ds="d-gpx"] #dzien-panel #d-gpx{display:block}
+#pl-winb #dzien-panel .dcards{display:none}
+#pl-winb.pl-cards #dzien-panel .dcards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
+#pl-winb #dzien-panel .dsec{border-top:0}
+body.pl3 .leaflet-bottom{bottom:calc(var(--pfh,210px) + 18px)}
+@media(max-width:820px){
+  body.pl3 #pv-panel{left:8px;right:8px;top:auto;height:56vh;bottom:8px}
+  body.pl3 #profil{display:none}
+  #pl-main{width:auto;flex:1 1 auto}
+  body.pl-open #pv-panel,body.pl-open.pl-full #pv-panel{right:8px;bottom:8px}
+  #pl-winb.pl-cards #dzien-panel .dcards{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+/* ---- v3.1 (2026-10-07) ---- */
+/* panel i profil 'absolute' zamiast 'fixed': logika planera mierzy je (offsetParent), zeby trasa omijala zasloniete miejsca */
+body.pl3 #pv-panel,body.pl3 #profil{position:absolute;transition:none}
+body.pl-open #profil{display:none}
+body.pl-open #pv-panel{bottom:12px}
+#pl-mapctl{position:absolute;z-index:1060;top:12px;right:12px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;max-width:320px;padding:6px;
+  background:color-mix(in srgb,var(--card) 92%,transparent);border:1px solid var(--line);border-radius:12px;box-shadow:0 4px 18px rgba(0,0,0,.25)}
+html.theme-dark #pl-mapctl{background:rgba(13,16,22,.88)}
+#pl-mapctl button{font:inherit;font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+#pl-sqn{font-size:12px;color:var(--ink2);align-self:center;padding:0 4px}
+body.pl-full #pl-mapctl{display:none}
+/* dzien: kilka podsekcji naraz (lista w data-ds) */
+#pl-winb[data-ds~="d-interp"] #dzien-panel #d-interp,#pl-winb[data-ds~="d-surface"] #dzien-panel #d-surface,#pl-winb[data-ds~="d-climbs"] #dzien-panel #d-climbs,
+#pl-winb[data-ds~="d-resupply"] #dzien-panel #d-resupply,#pl-winb[data-ds~="d-attr"] #dzien-panel #d-attr,#pl-winb[data-ds~="d-gpx"] #dzien-panel #d-gpx{display:block}
+/* profile podjazdow: rozsadny rozmiar w szerokim oknie */
+#pl-winb .climb-prof{max-width:560px}
+#pl-winb #d-climbs .climb-graph{max-width:600px}
+/* pogoda dnia: tylko wybrany dzien */
+#pl-winb[data-pgday="0"] .pg-day:not([data-day="0"]){display:none}
+#pl-winb[data-pgday="1"] .pg-day:not([data-day="1"]){display:none}
+#pl-winb[data-pgday="2"] .pg-day:not([data-day="2"]){display:none}
+#pl-winb[data-pgday="3"] .pg-day:not([data-day="3"]){display:none}
+#pl-winb[data-pgday="4"] .pg-day:not([data-day="4"]){display:none}
+#pl-winb[data-pgday="5"] .pg-day:not([data-day="5"]){display:none}
+#pl-winb[data-pgday="6"] .pg-day:not([data-day="6"]){display:none}
+#pl-winb[data-pgday="7"] .pg-day:not([data-day="7"]){display:none}
+#pl-winb[data-pgday="8"] .pg-day:not([data-day="8"]){display:none}
+#pl-winb[data-pgday="9"] .pg-day:not([data-day="9"]){display:none}
+#pl-winb[data-pgday="10"] .pg-day:not([data-day="10"]){display:none}
+#pl-winb[data-pgday="11"] .pg-day:not([data-day="11"]){display:none}
+
+/* ---- v3.2 (2026-10-07) ---- */
+#pl-main .dostosuj-btn{margin-top:6px}
+#pl-main .hint{font-size:12px}
+#pl-winb .opis-more{display:block!important}
+#pl-winb .opis-toggle{display:none!important}
+#pl-pgdays{display:inline-flex;flex-wrap:wrap;gap:6px;margin:0 0 0 10px;vertical-align:middle}
+#pl-pgdays button{font:inherit;font-size:13.5px;font-weight:600;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+#pl-pgdays button.on{border-color:var(--accent);background:var(--accent-bg);color:var(--accent-ink)}
+/* atrakcje dnia: lista po lewej, szczegol (zdjecie + opis) po prawej */
+#pl-winb #dzien-panel #d-attr{display:none}
+#pl-winb[data-ds~="d-attr"] #dzien-panel #d-attr{display:grid;grid-template-columns:minmax(260px,400px) minmax(0,1fr);column-gap:16px;align-items:start}
+#pl-winb #d-attr>h3,#pl-winb #d-attr>p{grid-column:1/-1}
+#pl-winb #d-attr .attr-row{grid-column:1;padding:9px 10px;border-radius:8px}
+#pl-winb #d-attr .attr-row.on{background:color-mix(in srgb,#f08ac0 16%,transparent)}
+#pl-winb #d-attr .attr-detail{grid-column:2;grid-row:2/span 60;align-self:start;position:sticky;top:0;background:var(--well);border:1px solid var(--line);border-radius:10px;padding:12px}
+#pl-winb #d-attr .attr-photo{max-height:320px;object-fit:cover}
+@media(max-width:1100px){#pl-winb[data-ds~="d-attr"] #dzien-panel #d-attr{display:block}}
+
+/* ---- Ocena formy v3 ---- */
+.fm-verd{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;border-left:4px solid var(--good);background:var(--well);border-radius:10px;padding:10px 14px;margin-bottom:12px}
+.fm-verd b{font-size:18px}.fm-verd span{font-size:13px;color:var(--ink2)}
+.fm-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.fm-t{background:var(--well);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.fm-t .lab{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.fm-t .val{font-size:22px;font-weight:700}.fm-t .val small{font-size:12px;font-weight:400;color:var(--muted)}
+.fm-t .sub{font-size:12.5px;color:var(--ink2)}
+.fm-h{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:12px 0 6px}
+.fm-tab{width:100%;border-collapse:collapse;font-size:14px}
+.fm-tab th{font-size:11.5px;color:var(--muted);font-weight:600;text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.fm-tab td{padding:6px 8px;border-bottom:1px solid var(--line)}
+.fm-ul{margin:0;padding-left:18px;font-size:14px;line-height:1.55;color:var(--ink2)}
+.fm-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media(max-width:1100px){.fm-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.fm-2{grid-template-columns:1fr}}
+
+/* ---- Ubior na wyprawe ---- */
+.ub-days{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:12px}
+.ub-mod{background:var(--well);border-radius:10px;padding:10px 12px;font-size:14px;line-height:1.5;margin-bottom:10px}
+.ub-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.ub-ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.ub-ul li{background:var(--well);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:14px}
+.ub-why{font-size:12.5px;color:var(--ink2);margin-top:2px}.ub-ile{color:var(--accent-ink);font-weight:700}
+.ub-weak{font-size:14px;color:var(--ink2);margin:12px 0 6px}
+@media(max-width:1100px){.ub-3{grid-template-columns:1fr}}
+
+/* ---- Ubior v2: jak w Analizie trasy (2 zestawy obok siebie) ---- */
+.ub-strip{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--ink2);margin-bottom:8px}
+.ub-w{font-size:14px;line-height:1.5;color:var(--ink2);margin:0 0 6px}
+.ub-sets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:10px}
+.ub-set{background:var(--well);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.ub-t{font-size:15px;font-weight:700;margin-bottom:4px}
+.ub-k{font-size:12.5px;color:var(--ink2);line-height:1.45}
+.ub-l{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ub-l li{font-size:14px;padding:6px 0;border-bottom:1px solid var(--line)}
+.ub-l li:last-child{border-bottom:0}
+.ub-sub{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:10px 0 0}
+.ub-z{font-size:13px;color:var(--ink2);margin-top:6px}
+.ub-foot{font-size:12.5px;color:var(--muted);margin-top:12px;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+@media(max-width:1100px){.ub-sets{grid-template-columns:1fr}}
+#pl-winb[data-ds~="d-climbs"][data-ds~="d-surface"] #dzien-panel #d-climbs{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+</style>
+</head>
+<body class="pl3 pv-mapa">
+<table hidden aria-hidden="true"><tbody id="rows"></tbody></table>
+<div hidden aria-hidden="true"><span id="wyp-row"><a id="wyp-link" href="#">wyp</a></span><div id="viewtabs" class="viewtabs"></div></div>
+<div id="map"></div>
+<div id="pv-panel">
+  <div id="pl-main">
+    <div class="fld"><label for="route">Trasa</label><select id="route"></select></div>
+    <div class="pl-prm">
+      <div class="fld"><label for="wyprawa-data">Data wyprawy</label><input type="date" id="wyprawa-data"></div>
+      <div class="fld"><label>Dni</label><div class="tw-days"><button type="button" id="dminus" aria-label="mniej dni">−</button><span class="val" id="dval">2</span><button type="button" id="dplus" aria-label="więcej dni">+</button></div></div>
+    </div>
+    <div class="planer-hist" id="planer-hist"></div>
+    <div class="pl-lbl">Etapy — klik pokazuje ikony etapu</div>
+    <button type="button" id="pl-all" class="on"><b>Cała trasa</b><span id="pl-allsub">wybierz trasę</span></button>
+    <div id="etap-cards"></div>
+    <button id="dostosuj" class="dostosuj-btn">DOSTOSUJ — opis i noclegi wg podziału</button>
+    <p class="hint" id="hint">Kółko na mapie = koniec dnia (nocleg). Przeciągnij — etapy liczą się na żywo. Liczbę dni zmieniasz w panelu wyprawy (Dni − / +).</p>
+    <div id="noclegi-out"></div>
+  </div>
+  <div id="pl-rail"></div>
+  <div id="pl-win">
+    <div id="pl-winh"><span id="pl-wint"></span><button type="button" id="pl-winx" aria-label="Zamknij">×</button></div>
+    <div id="pl-winb">
+      <div class="pl-s" data-s="forma"><div id="pl-forma"></div><div id="ocena-formy" class="opis" hidden></div></div>
+      <div class="pl-s" data-s="pogoda"><div id="pogoda-panel"></div></div>
+      <div class="pl-s" data-s="ubior"><div id="pl-ubior"></div></div>
+      <div class="pl-s" data-s="opis"><div id="opis" class="opis"><h3>Opis trasy</h3><p class="muted">Wybierz trasę…</p></div></div>
+      <div class="pl-s" data-s="tlo"><div id="tlo-historia" class="opis"></div><div id="tlo-geografia" class="opis"></div></div>
+      <div class="pl-s" data-s="udost"><div id="tools-body"></div></div>
+      <div class="pl-s" data-s="dzien"><div id="dzien-panel" style="display:none"></div></div>
+      <div class="pl-s" data-s="frame"><iframe id="pl-frame" title="Okno sekcji"></iframe></div>
+    </div>
+  </div>
+</div>
+<div id="profil" class="profil"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/qmap-tiles.js?v=13"></script>
+<script src="/planer-wyprawy3-render.js?v=2"></script>
+<link rel="stylesheet" href="/nav.css?v=4">
+<script src="/nav.js?v=5"></script>
+<script src="/planer-wyprawy3.js?v=9"></script>
+</body>
+</html>

@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="/theme.css?v=3">
 <script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<script src="/qembed.js?v=2"></script>
 <title>Planner wyposażenia — QBot</title>
 <style>
 :root{--ink:#26332a;--ink2:#47564a;--muted:#8c8168;--line:#dcd0ba;--paper:#f2ecdd;--card:#fbf7ec;--panel:#eae0cc;--accent:#3c6b47;--accent-bg:#e0ebdf;--good:#3f7a4d;--good-bg:#e6f0e6;--bad:#a6503d;--bad-bg:#f2e4de;--warn:#8a5a12;--warn-bg:#f4ead2}
@@ -303,7 +304,7 @@ body.addrow-open .modal-back,body.rules-open .modal-back{display:block}
 
   $("gen").onclick=function(){
     var body={days:parseInt($("days").value,10)||1,style:st.style,season:$("season").value.trim(),
-              route_summary:$("route-name").textContent,weather:st.weather||null};
+              route_summary:$("route-name").textContent,weather:st.weather||null,route_id:(new URLSearchParams(location.search).get("route")||"")};
     $("gen").disabled=true; $("msg").textContent="Generuję listę…";
     fetch("/api/planer/wyposazenie/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
       .then(function(r){if(!r.ok)throw new Error(r.status);return r.json();})
@@ -312,12 +313,12 @@ body.addrow-open .modal-back,body.rules-open .modal-back{display:block}
           var items=[];
           (g.items||[]).forEach(function(it){
             var unit=it.unit||"piece", n=Math.max(1,parseInt(it.qty,10)||1);
-            var mk=function(qv,wornFlag){ return {item:it.item,garage_category:it.garage_category||null,gear_id:null,
+            var mk=function(qv,wornFlag,first){ return {item:it.item,garage_category:it.garage_category||null,gear_id:(first&&it.gear_id)||null,
               equip_id:null,packed:false,reason:it.reason||null,prio:it.prio||2,worn:!!wornFlag,
               skipped:false,have:false,is_task:!!it.is_task,unit:unit,qty:qv}; };
             // "na sobie" tylko PIERWSZA sztuka - reszta idzie do torby
-            if(unit==="piece"){ for(var k=0;k<n;k++){ items.push(mk(1, it.worn && k===0)); } }
-            else { items.push(mk(unit==="count"?n:1, it.worn)); }
+            if(unit==="piece"){ for(var k=0;k<n;k++){ items.push(mk(1, it.worn && k===0, k===0)); } }
+            else { items.push(mk(unit==="count"?n:1, it.worn, true)); }
           });
           return {group:g.group,items:items};
         });

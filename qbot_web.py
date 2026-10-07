@@ -4695,6 +4695,63 @@ async def api_planer_wykonalnosc(request: Request):
         conn.close()
 
 
+@app.post("/api/planer/forma-plus")
+async def api_planer_forma_plus(request: Request):
+    """Ocena formy v3 (Planer v3, 2026-10-07): model dwoch scian (assess) + forma na start z planu TRENERA,
+    tydzien przed wyprawa, miejsce dni wyprawy wsrod jazd z 365 dni, podsumowanie. body jak /api/planer/wykonalnosc."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    route_id = str(body.get("route_id") or "").strip()
+    if not route_id:
+        raise HTTPException(status_code=400, detail="Wymagane: route_id")
+    cuts = body.get("cuts") or []
+    mode = (str(body.get("mode") or "normalny")).strip() or "normalny"
+    departure = body.get("departure") or None
+    conn = _db_conn()
+    try:
+        _month = None
+        if departure:
+            try:
+                _month = int(str(departure)[5:7])
+            except Exception:
+                _month = None
+        total_km, stages = _planer_stage_xss(conn, route_id, cuts, mode, _month)
+        import sys
+        sys.path.insert(0, "/opt/qbot/app")
+        from fitmodel import expedition_feasibility as _ef, expedition_form_plus as _fp
+        xs = [(s["xss"] or 0.0) for s in stages]
+        feas = _ef.assess(conn, departure, xs) if departure else None
+        plus = _fp.extend(conn, feas, departure, xs)
+        return {"ok": True, "route_id": route_id, "total_km": total_km, "stages": stages, "feasibility": feas, "plus": plus}
+    finally:
+        conn.close()
+
+
+@app.post("/api/planer/ubior")
+def api_planer_ubior(route_id: str = Query(...), start: str = Query(...), days: int = Query(1),
+                     hours: float = Query(0.0), style: str = Query("lekko"), regen: int = Query(0)):
+    """Ubior na wyprawe bikepackingowa (Planer v3, 2026-10-07): jeden modulowy zestaw na wszystkie dni
+    (qbot3/routes/outfit_trip.py, baza: doradca ubioru z Analizy trasy). regen=0 -> zapisany dobor (bez AI), jesli jest."""
+    conn = _db_conn()
+    try:
+        from qbot3.routes import outfit_trip as _ot
+        if not regen:
+            p = _ot.load(conn, route_id, start[:10])
+            if p:
+                p = dict(p); p["zapisany"] = True
+                return p
+            return {"ok": False, "brak": True, "blad": "brak zapisanego doboru - kliknij Dobierz"}
+        wx = api_wyposazenie_pogoda(route_id=route_id, start=start[:10], days=max(1, int(days or 1)))
+        p = _ot.advise_trip(conn, wx or {}, (hours or None), (style or "lekko"))
+        if p.get("ok"):
+            _ot.save(conn, route_id, start[:10], p)
+        return p
+    finally:
+        conn.close()
+
+
 def _dni_cuts_for_route(conn, route_id):
     """Granice km miedzy dniami z podzialu Planera (planer_route_opis_dni.dni_json).
     Zwraca liste km_to dni POZA ostatnim (= cuts dla _planer_stage_xss), None gdy brak podzialu."""
@@ -8714,6 +8771,25 @@ _GROUP_ORDER = {
 }
 
 
+def _wyp_merge_outfit(res, body):
+    """2026-10-07: jesli dla trasy jest dobrany Ubior na wyprawe (Planer v3), jego rzeczy zastepuja grupy odziezy generatora."""
+    try:
+        rid = str((body or {}).get("route_id") or "").strip()
+        if not rid or not isinstance(res, dict) or not res.get("groups"):
+            return res
+        from qbot3.routes import outfit_trip as _ot
+        c = _db_conn()
+        try:
+            p = _ot.load_any(c, rid)
+        finally:
+            c.close()
+        if p:
+            res = dict(res); res["groups"] = _ot.merge_packing(res["groups"], p); res["ubior_z_planera"] = True
+    except Exception:
+        pass
+    return res
+
+
 @app.post("/api/planer/wyposazenie/generate")
 async def api_wyposazenie_generate(request: Request):
     """Generator LLM listy pakowania. Wejscie: {days, style('lekko'|'ciezko'),
@@ -8882,7 +8958,7 @@ async def api_wyposazenie_generate(request: Request):
         if _row:
             _out = _json.loads(_row["payload"])
             _out["cached"] = True
-            return _out
+            return _wyp_merge_outfit(_out, body)
 
     # --- ROWER z garazu: nadrzedny wobec ogolnych zalozen o sprzecie ---
     _bike = _wyp_bike_profile()
@@ -9209,7 +9285,7 @@ async def api_wyposazenie_generate(request: Request):
         _con.commit()
     finally:
         _con.close()
-    return _res
+    return _wyp_merge_outfit(_res, body)
 
 
 def _wyposazenie_db():
