@@ -1,3 +1,6 @@
+/* 2026-10-07: geometria trasy pobierana raz na strone (mapa + drugi odbiorca brali ja osobno) */
+function _qGeo(id){var c=window.__qGeoC||(window.__qGeoC={});if(!c[id])c[id]=fetch("/api/routes/"+encodeURIComponent(id)+"/geometry").then(function(r){return r.ok?r.json():null;}).catch(function(){delete c[id];return null;});return c[id];}
+window._qGeo=_qGeo;
 /* QBot — render raportu trasy (jedno zrodlo wygladu).
    renderReport(data, mount): wstawia szkielet do `mount` i rysuje hero+mape+wykres.
    Dane (DATA) pochodza z /api/report/data. Ten plik NIE liczy danych - tylko rysuje. */
@@ -341,7 +344,7 @@ function initMap(){
   function hav(a,b){const R=6371,d2=Math.PI/180;const dLa=(b[0]-a[0])*d2,dLo=(b[1]-a[1])*d2,la1=a[0]*d2,la2=b[0]*d2;const x=Math.sin(dLa/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
   const surf=(DATA.chart&&DATA.chart.surface_cat)||[];
   const surfAt=km=>{for(const b of surf){if(km>=b.a&&km<=b.b)return b.k;}return surf.length?surf[surf.length-1].k:0;};
-  ((DATA.route&&DATA.route.__geometry)?Promise.resolve({ok:true,json:function(){return {coordinates:DATA.route.__geometry};}}):fetch("/api/routes/"+encodeURIComponent(DATA.route.id)+"/geometry"))
+  ((DATA.route&&DATA.route.__geometry)?Promise.resolve({ok:true,json:function(){return {coordinates:DATA.route.__geometry};}}):_qGeo(DATA.route.id).then(function(j){return {ok:!!j,json:function(){return j;}};}))
     .then(r=>r.ok?r.json():Promise.reject(r.status))
     .then(d=>{if(!d.coordinates||!d.coordinates.length)throw "brak geometrii";
       const co=d.coordinates;const cum=[0];for(let i=1;i<co.length;i++)cum[i]=cum[i-1]+hav(co[i-1],co[i]);
@@ -883,7 +886,7 @@ function initDayMap(){
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(map);
   var a0=(DATA.day&&DATA.day.km_from)||0, b0=(DATA.day&&DATA.day.km_to)||1e9;
   function hav(p,q){var R=6371,tr=Math.PI/180,dLa=(q[0]-p[0])*tr,dLo=(q[1]-p[1])*tr,la1=p[0]*tr,la2=q[0]*tr;var h=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(la1)*Math.cos(la2)*Math.sin(dLo/2)*Math.sin(dLo/2);return 2*R*Math.asin(Math.sqrt(h));}
-  fetch("/api/routes/"+encodeURIComponent(DATA.route.id)+"/geometry").then(function(r){return r.json();}).then(function(d){
+  _qGeo(DATA.route.id).then(function(d){
     if(!d.coordinates||!d.coordinates.length)return;
     var co=d.coordinates,cum=[0];for(var i=1;i<co.length;i++)cum[i]=cum[i-1]+hav(co[i-1],co[i]);
     var seg=[];for(var j=0;j<co.length;j++){if(cum[j]>=a0&&cum[j]<=b0)seg.push(co[j]);}

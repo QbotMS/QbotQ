@@ -381,9 +381,13 @@ function setupHead(){
 }
 setupHead();
 /* start: gdy trasa ma zapis, pierwsze otwarcie obsluguje wrapper; gdy nie ma - startujemy sami */
-(function waitSel(n){var s=document.getElementById("f-route");
-  if(s&&s.value){setTimeout(function(){if(!ST.route)startRoute(s.value);else if(!PACKS.length)loadPackList();},2500);return;}
-  if(n<40)setTimeout(function(){waitSel(n+1);},250);})(0);
+/* 2026-10-07: bez stalego czekania 2,5 s. Start od razu, gdy wiadomo, ze trasa NIE ma zapisu (Historia pusta / nie pytana);
+   gdy ma zapis - jak dotad: pierwsze otwarcie obsluguje wrapper, a my dopinamy po 2,5 s tylko gdy nic nie wystartowalo. */
+(function waitSel(n,seen){var s=document.getElementById("f-route"),hb=document.getElementById("f-history");
+  if(s&&s.value){var hd=hb?hb.style.display:"";if(seen==null)seen=n;
+    if(hd==="none"||(hd===""&&n-seen>=5)){if(!ST.route)startRoute(s.value);return;}
+    if(hd==="flex"){setTimeout(function(){if(!ST.route)startRoute(s.value);else if(!PACKS.length)loadPackList();},2500);return;}}
+  if(n<100)setTimeout(function(){waitSel(n+1,seen);},100);})(0,null);
 window.__mkBuilt=function(){renderControls();render();decorateLoad();addGrip();renderPackChips();};
 /* O trasie (organizator): odczyt zapisanego opisu, generowanie na zadanie */
 var INTRO_ROUTE=null;

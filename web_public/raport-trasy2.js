@@ -36,7 +36,7 @@ if(typeof _orig==="function"){
 }
 function hav(a,b){var R=6371,r=Math.PI/180,dLa=(b[0]-a[0])*r,dLo=(b[1]-a[1])*r,x=Math.pow(Math.sin(dLa/2),2)+Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.pow(Math.sin(dLo/2),2);return 2*R*Math.asin(Math.sqrt(x));}
 function loadGeo(id){
-  fetch("/api/routes/"+encodeURIComponent(id)+"/geometry",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null;}).then(function(d){
+  (window._qGeo?window._qGeo(id):fetch("/api/routes/"+encodeURIComponent(id)+"/geometry",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null;})).then(function(d){
     if(!d||!d.coordinates||!d.coordinates.length)return;
     var co=d.coordinates,cum=[0];for(var i=1;i<co.length;i++)cum[i]=cum[i-1]+hav(co[i-1],co[i]);
     GEO={co:co,cum:cum,kmT:cum[cum.length-1]};

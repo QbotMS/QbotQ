@@ -116,9 +116,49 @@ def _midpoint(segment_geojson: Any) -> tuple[Optional[float], Optional[float]]:
 
 
 # ---------------------------------------------------------- CZYTNIK Z BAZY
+_SEG_MEMO: dict = {}
+_SEG_MEMO_TTL_S = 5.0   # tylko w obrebie jednego liczenia raportu (raport czytal os 4x); zmiana trasy = nowy klucz
+
+
 def load_canonical_segments_50m(*, route_id: Optional[str] = None,
                                 route_base_id: Optional[int] = None) -> dict:
-    """Zwraca kanoniczne segmenty 50 m dla trasy. status: OK / NO_BASE / NO_AXIS."""
+    """Zwraca kanoniczne segmenty 50 m dla trasy. status: OK / NO_BASE / NO_AXIS.
+    2026-10-07: krotka pamiec (5 s) per (route_base_id, route_version_key) - kopia wyniku, wiec wolajacy moga go modyfikowac."""
+    import copy as _copy
+    import time as _time
+    conn = _db_conn()
+    try:
+        cur = conn.cursor()
+        if route_base_id is None:
+            if route_id is None:
+                raise ValueError("route_id lub route_base_id wymagane")
+            cur.execute("""SELECT route_base_id, route_version_key FROM qbot_v2.route_base
+                           WHERE route_id=%s ORDER BY updated_at DESC, route_base_id DESC LIMIT 1""", (str(route_id),))
+            row = cur.fetchone()
+            if not row:
+                return {"status": "NO_BASE", "segments": []}
+            rbid, rvk = int(row[0]), row[1]
+        else:
+            cur.execute("SELECT route_version_key FROM qbot_v2.route_base WHERE route_base_id=%s", (route_base_id,))
+            row = cur.fetchone()
+            rbid, rvk = int(route_base_id), (row[0] if row else None)
+    finally:
+        conn.close()
+    key, now = (rbid, rvk), _time.monotonic()
+    hit = _SEG_MEMO.get(key)
+    if hit and now - hit[0] < _SEG_MEMO_TTL_S:
+        return _copy.deepcopy(hit[1])
+    res = _load_canonical_segments_50m_impl(route_base_id=rbid)
+    if res.get("status") == "OK":
+        if len(_SEG_MEMO) > 16:
+            _SEG_MEMO.clear()
+        _SEG_MEMO[key] = (now, _copy.deepcopy(res))
+    return res
+
+
+def _load_canonical_segments_50m_impl(*, route_id: Optional[str] = None,
+                                      route_base_id: Optional[int] = None) -> dict:
+    """Wlasciwy odczyt (bez pamieci)."""
     conn = _db_conn()
     cur = conn.cursor()
 

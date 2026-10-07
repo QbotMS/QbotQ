@@ -327,20 +327,41 @@ METEO_CACHE_TTL_S = 2 * 3600
 METEO_GRID_KM = 5.0
 
 
+import threading as _threading
+_CACHE_TL = _threading.local()   # 2026-10-07: jedno polaczenie na watek do odczytu cache (bylo: nowe na kazdy punkt)
+_CACHE_TABLE_OK = False
+
+
+def _cache_conn():
+    c = getattr(_CACHE_TL, "conn", None)
+    if c is None or getattr(c, "closed", False):
+        c = _pg_connect()
+        _CACHE_TL.conn = c
+    return c
+
+
 def _meteo_cache_get(key: str):
+    global _CACHE_TABLE_OK
     try:
-        conn = _pg_connect()
+        conn = _cache_conn()
         try:
             cur = conn.cursor()
-            cur.execute("CREATE TABLE IF NOT EXISTS qbot_v2.meteo_point_cache ("
-                        "cache_key text PRIMARY KEY, payload jsonb NOT NULL, "
-                        "fetched_at timestamptz NOT NULL DEFAULT now())")
+            if not _CACHE_TABLE_OK:
+                cur.execute("CREATE TABLE IF NOT EXISTS qbot_v2.meteo_point_cache ("
+                            "cache_key text PRIMARY KEY, payload jsonb NOT NULL, "
+                            "fetched_at timestamptz NOT NULL DEFAULT now())")
+                _CACHE_TABLE_OK = True
             cur.execute("SELECT payload, extract(epoch from (now()-fetched_at)) "
                         "FROM qbot_v2.meteo_point_cache WHERE cache_key=%s", (key,))
             row = cur.fetchone()
             conn.commit()
-        finally:
-            conn.close()
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            _CACHE_TL.conn = None
+            raise
         if row and float(row[1]) < METEO_CACHE_TTL_S:
             p = row[0]
             return json.loads(p) if isinstance(p, str) else p
