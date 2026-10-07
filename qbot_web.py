@@ -164,6 +164,9 @@ async def _webauth_guard(request, call_next):
     # [G1] goscie jazdy: tylko z waznym tokenem (sprawdzane w endpointach), dane z bialej listy
     if request.url.path.startswith("/api/guest/") or request.url.path.startswith("/g/"):
         return await call_next(request)
+    # [QR-DEMO] publiczne kroki logowania przez QR (tworzenie, status, odbior). Dok.: docs/WEB_DEMO_AUTH.md
+    if request.url.path in _wda.PUBLIC_PATHS:
+        return _no_cache_static(await call_next(request), request.url.path)
 
     users, sign_val = _webauth_load()
     if not users or not sign_val:
@@ -172,7 +175,17 @@ async def _webauth_guard(request, call_next):
 
     cookie_value = request.cookies.get("qbot_session", "")
     if _webauth_cookie_valid(cookie_value, sign_val, users):
+        request.scope["qbot_auth"] = {"kind": "owner", "user": cookie_value.split(":")[0]}
         return _no_cache_static(await call_next(request), request.url.path)
+
+    # [QR-DEMO] sesja demo: wylacznie odczyt wg listy dozwolonych (qbot_web_auth.demo_allows).
+    # Pelne ciasteczko wlasciciela (powyzej) ma pierwszenstwo; bez niego demo nigdy nie dostaje zapisu.
+    _demo = _wda.demo_from_request(request)
+    if _demo and _demo["owner"] in users:
+        if _wda.demo_allows(request.method, request.url.path, list(request.query_params.keys())):
+            request.scope["qbot_auth"] = dict(_demo, kind="demo")
+            return _no_cache_static(await call_next(request), request.url.path)
+        return _wda.demo_denied_response(request)
 
     if request.url.path.startswith("/api/"):
         return Response(status_code=401, content="unauthorized")
@@ -320,12 +333,22 @@ def _db_conn():
     )
 
 
-def _current_user(request):
+def _owner_user(request):
+    """Login TYLKO z pelnej sesji wlasciciela (qbot_session). Sesja demo -> None."""
     users, sign_val = _webauth_load()
     cookie_value = request.cookies.get("qbot_session", "")
     if not _webauth_cookie_valid(cookie_value, sign_val, users):
         return None
     return cookie_value.split(":")[0]
+
+
+def _current_user(request):
+    """Wlasciciel danych: z pelnej sesji albo z sesji demo (bramka wpuszcza demo TYLKO do odczytu)."""
+    u = _owner_user(request)
+    if u:
+        return u
+    a = getattr(request, "scope", {}).get("qbot_auth") or {}
+    return a.get("owner") if a.get("kind") == "demo" else None
 
 
 @app.get("/api/prefs")
@@ -12403,6 +12426,9 @@ from qbot_strava import build_router as _strava_build_router   # 2026-09-28: Str
 app.include_router(_strava_build_router(_db_conn, _current_user))
 from qbot_start import build_router as _start_build_router   # 2026-09-28: START wizytowka
 app.include_router(_start_build_router(_db_conn, _current_user))
+import qbot_web_auth as _wda   # 2026-10-07: dostep demo przez QR. Dok.: docs/WEB_DEMO_AUTH.md
+_wda.configure(_db_conn, _owner_user, lambda: _webauth_load()[1])
+app.include_router(_wda.build_router())
 
 
 app.mount("/", StaticFiles(directory=WEB_ROOT, html=True), name="static")
