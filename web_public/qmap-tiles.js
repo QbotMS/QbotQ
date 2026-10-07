@@ -15,13 +15,14 @@
   var F_LAB = "brightness(1.9) contrast(1.1)";      // nazwy miejscowosci jasne, prawie biale
   /* 2026-10-07: domyslny tryb nocny = ciemne B/W z kafli OSM (teren, lasy, zabudowa zostaja; CARTO pokazywalo za malo).
      Odwrocenie jasnosci: tlo ciemne, napisy jasne. window.QMAP_NIGHT = "carto" wlacza wariant CARTO. */
-  var F_NIGHT = "grayscale(1) invert(1) contrast(0.78) brightness(0.95) sepia(0.35) hue-rotate(180deg) saturate(1.6)";   // 2026-10-07: "ciemna" w tonacji makiety: tlo ~#262a2f, napisy ~#beceea (zmierzone)
+  var F_NIGHT = "grayscale(1) invert(1) contrast(1.0) brightness(1.25) sepia(0.35) hue-rotate(180deg) saturate(1.6)";   // 2026-10-07: wariant F (wybor uzytkownika): tlo ~#141518, napisy ~#fefeff, drobne ~#d4e6ff (zmierzone)
   /* "czarna" = tryb B/W w nocy: ciemniejsza i neutralna (tlo ~#131313). Regula z !important nadpisuje filtr B/W strony
      (Raport z jazdy: styl inline na tilePane, Analiza trasy: klasa .bw na #map). */
   try { var _st = document.createElement("style"); _st.textContent = "html.qmap-night #map.bw .leaflet-tile-pane,html.qmap-night .leaflet-tile-pane[style*=\"grayscale\"]{filter:grayscale(1) brightness(0.7) contrast(1.1)!important}"; document.head.appendChild(_st); } catch (e) {}
   var A_OSM = "&copy; OpenStreetMap";
   var A_CARTO = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>';
   var cfgP = null, KEY = null, BROKEN = false, maps = [];
+  var F_DAYGRAY = "grayscale(1) contrast(.95) brightness(1.05)";   // "szara" - domyslna w dzien (strony z opcja dayGray)
   var NIGHT_COLOR = false;   // noc + przycisk "kolor" = zwykla kolorowa mapa (bez odwrocenia)
 
   function cfg() {
@@ -68,7 +69,7 @@
       filt(m.labels, F_LAB);
     } else {
       m.layer.setUrl(OSM);
-      filt(m.layer, w === "osmdark" ? F_NIGHT : "");
+      filt(m.layer, w === "osmdark" ? F_NIGHT : ((m.opt.dayGray && !dark()) ? F_DAYGRAY : ""));
       if (m.labels && m.map.hasLayer(m.labels)) m.map.removeLayer(m.labels);
     }
     document.documentElement.classList.toggle("qmap-carto", w === "carto");
@@ -79,9 +80,10 @@
 
   window.qTilesNightColor = function (on) { NIGHT_COLOR = !!on; maps.forEach(apply); };
   window.qTilesIsNightColor = function () { return NIGHT_COLOR; };
-  window.qTilesAttach = function (map, layer) {
+  window.qTilesAttach = function (map, layer, opt) {
     if (!map || !layer) return;
-    var m = { map: map, layer: layer, mode: "osm", errs: 0, labels: null };
+    var m = { map: map, layer: layer, mode: "osm", errs: 0, labels: null, opt: opt || {} };
+    if (m.opt.dayGray && !dark()) filt(layer, F_DAYGRAY);
     maps.push(m);
     layer.on("tileerror", function () { onErr(m); });
     cfg().then(function () { apply(m); });

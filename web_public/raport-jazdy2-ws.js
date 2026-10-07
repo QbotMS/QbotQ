@@ -16,7 +16,7 @@ function tempCol(t,lo,hi){if(!isNum(t))return "#9a9a9a";var f=(t-lo)/((hi-lo)||1
 function windCol(tail){if(!isNum(tail))return "#9a9a9a";return tail<-2?"#e24b4a":tail<-0.7?"#f09595":tail<0.7?"#9a9a9a":tail<2?"#97c459":"#639922";}
 var LEG={pw:[["#85b7eb","spokojnie"],["#97c459","wytrzymałość"],["#fac775","tempo"],["#f09595","próg"],["#e24b4a","na maksa"]],hr:[["#85b7eb","Z1"],["#97c459","Z2"],["#fac775","Z3"],["#f09595","Z4"],["#e24b4a","Z5"]],wb:[["#85b7eb",">75%"],["#97c459","50–75"],["#fac775","30–50"],["#f09595","15–30"],["#e24b4a","<15%"]],temp:[["#85b7eb","chłodno"],["#e24b4a","gorąco"]],wind:[["#e24b4a","w twarz"],["#9a9a9a","bok"],["#639922","w plecy"]],surf:[["#1565c0","twarda"],["#2e7d32","dobry gravel"],["#8bc34a","zwykły gravel"],["#e07b1a","trudny"],["#c2452f","ryzyko"]],none:[["#e8742a","ślad"]]};
 
-var D=null,TR=null,N=0,FTP=null,RKEY=null,map=null,segs=[],casing=null,hl=null,hlc=null,mk=null,mode="pw",bw=true,SPD=[],GR=[],PWS=[];
+var D=null,TR=null,N=0,FTP=null,RKEY=null,map=null,segs=[],casing=null,hl=null,hlc=null,mk=null,mode="pw",bw=!document.documentElement.classList.contains("theme-dark"),SPD=[],GR=[],PWS=[];
 
 
 /* ---------- lista i dane ---------- */

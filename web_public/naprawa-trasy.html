@@ -68,6 +68,7 @@ tr.risky-row:hover{background:rgba(0,0,0,.03)}
 
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/qmap-tiles.js?v=12"></script>
 <script>
 const sel = document.getElementById("route-select");
 const btn = document.getElementById("load-btn");
@@ -75,10 +76,11 @@ const statusEl = document.getElementById("status");
 const tableEl = document.getElementById("risky-table");
 
 const map = L.map("map").setView([52.2297, 21.0122], 7);
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+const _qtl = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
   attribution: "&copy; OpenStreetMap"
 }).addTo(map);
+if (window.qTilesAttach) window.qTilesAttach(map, _qtl, { dayGray: true });
 
 let currentLayers = [];
 let candidateLayers = {};

@@ -1159,7 +1159,8 @@
 
   function init() {
     map = L.map("map", { zoomSnap: 0 });
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(map);
+    var _qtl = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(map);
+    if (window.qTilesAttach) window.qTilesAttach(map, _qtl, { dayGray: true });
     void 0;
     document.addEventListener("keydown", function (e) { if (map && (e.key === "Meta" || e.key === "Control")) map.scrollWheelZoom.enable(); });
     document.addEventListener("keyup", function (e) { if (map && (e.key === "Meta" || e.key === "Control")) void 0; });
