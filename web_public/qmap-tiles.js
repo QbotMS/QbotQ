@@ -37,7 +37,16 @@
     if (window.QMAP_NIGHT === "carto" && KEY && !BROKEN) return "carto";
     return "osmdark";
   }
-  function filt(layer, f) { try { var c = layer.getContainer && layer.getContainer(); if (c) c.style.filter = f || ""; } catch (e) {} }
+  /* 2026-10-07: filtr na KAZDYM kaflu (Safari/iOS nie rysowal filtra nalozonego na kontener warstwy) */
+  try { var _fs = document.createElement("style"); _fs.textContent = ".leaflet-layer.qf img.leaflet-tile{filter:var(--qf)}"; document.head.appendChild(_fs); } catch (e) {}
+  function filt(layer, f) {
+    try {
+      layer._qf = f || "";   // zapamietany - nakladany ponownie po utworzeniu warstwy (zdarzenia add/load)
+      var c = layer.getContainer && layer.getContainer(); if (!c) return;
+      c.style.filter = "";
+      if (f) { c.style.setProperty("--qf", f); c.classList.add("qf"); } else { c.style.removeProperty("--qf"); c.classList.remove("qf"); }
+    } catch (e) {}
+  }
   function labPane(map) {
     var p = map.getPane("qLabels");
     if (!p) { p = map.createPane("qLabels"); p.style.zIndex = 450; p.style.pointerEvents = "none"; }  // nad trasa (400), pod znacznikami (600)
@@ -106,6 +115,7 @@
     if (m.opt.dayGray && !dark()) filt(layer, F_DAYGRAY);
     maps.push(m);
     layer.on("tileerror", function () { onErr(m); });
+    layer.on("add load", function () { if (layer._qf != null) filt(layer, layer._qf); });
     cfg().then(function () { apply(m); });
   };
 

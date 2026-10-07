@@ -75,9 +75,10 @@
     try { m.invalidateSize(false); } catch (e) {}
     var mr = vis("map"), pv = vis("pv-panel"), pf = vis("profil"), mc = vis("pl-mapctl");
     if (!mr) return;
-    var padL = pv ? Math.max(24, Math.round(pv.right - mr.left) + 24) : 24;
-    var padB = pf ? Math.max(24, Math.round(mr.bottom - pf.top) + 24) : 24;
-    var padT = mc ? Math.round(mc.bottom - mr.top) + 12 : 24;
+    var phone = window.matchMedia && window.matchMedia("(max-width: 820px)").matches;
+    var padL = phone ? 16 : (pv ? Math.max(24, Math.round(pv.right - mr.left) + 24) : 24);
+    var padB = phone ? (pv ? Math.max(24, Math.round(mr.bottom - pv.top) + 16) : 24) : (pf ? Math.max(24, Math.round(mr.bottom - pf.top) + 24) : 24);
+    var padT = mc ? Math.round(mc.bottom - mr.top) + (phone ? 8 : 12) : 24;
     m.fitBounds(b, { paddingTopLeft: [padL, padT], paddingBottomRight: [24, padB] });
   }
   window.__planerRefitAny = myFit;
@@ -161,7 +162,13 @@
   mc.innerHTML = '<button type="button" id="pl-fit">Wyśrodkuj trasę</button><button type="button" id="pl-style">Mapa</button><button type="button" id="pl-sq">Kwadraty: wł</button><span id="pl-sqn"></span>';
   document.body.appendChild(mc);
   function theMap() { var ms = window.qTilesMaps ? window.qTilesMaps() : []; return ms[0] || null; }
-  function styleLab() { var m = theMap(), st = (m && window.qTilesState) ? window.qTilesState(m) : null; $("pl-style").textContent = "Mapa: " + (st || "—"); }
+  function isPhone() { return !!(window.matchMedia && window.matchMedia("(max-width: 820px)").matches); }
+  function styleLab() {
+    var m = theMap(), st = (m && window.qTilesState) ? window.qTilesState(m) : null, ph = isPhone();
+    $("pl-style").textContent = ph ? ("Mapa: " + (st || "—")) : ("Mapa: " + (st || "—"));
+    $("pl-fit").textContent = ph ? "Środek" : "Wyśrodkuj trasę";
+    $("pl-sq").textContent = (ph ? "Kw.: " : "Kwadraty: ") + (sqOn ? "wł" : "wył");
+  }
   $("pl-fit").onclick = function () { myFit(); };
   $("pl-style").onclick = function () { var m = theMap(); if (m && window.qTilesCycle) window.qTilesCycle(m); styleLab(); };
   document.addEventListener("qmapchange", styleLab);
@@ -180,7 +187,7 @@
     }).catch(function () {});
   }
   $("pl-sq").onclick = function () {
-    sqOn = !sqOn; $("pl-sq").textContent = "Kwadraty: " + (sqOn ? "wł" : "wył");
+    sqOn = !sqOn; styleLab();
     var m = theMap(); if (!m || !sqGrp) { loadSquares(); return; }
     if (sqOn) sqGrp.addTo(m); else m.removeLayer(sqGrp);
   };
