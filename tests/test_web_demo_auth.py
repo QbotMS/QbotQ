@@ -161,6 +161,27 @@ class WebDemoAuthTest(unittest.TestCase):
         self.assertEqual(pc.get("/komoot-dostep").status_code, 403)
         self.assertEqual(pc.get("/openapi.json").status_code, 403)
 
+    def test_start_returns_qr_for_public_url(self):
+        d = self._start(_client())
+        r = _client().post("/auth/device/start")
+        self.req_ids.append(r.json()["id"])
+        svg = r.json()["qr_svg"]
+        self.assertTrue(svg and svg.lstrip().startswith(("<svg", "<?xml")), svg[:80] if svg else svg)
+        self.assertTrue(d["approve_path"].startswith("/auth/device/approve?id="))
+
+    def test_login_page_has_qr_button(self):
+        r = _client().get("/login")
+        self.assertIn('id="qrgo"', r.text)
+        self.assertIn("/auth/device/start", r.text)
+
+    def test_sessions_page_owner_only(self):
+        self.assertEqual(_client().get("/auth/sessions").status_code, 303)
+        r = self._owner().get("/auth/sessions")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("/api/auth/sessions", r.text)
+        pc, _ = self._demo_client()
+        self.assertEqual(pc.get("/auth/sessions").status_code, 403)
+
     def test_demo_static_policy(self):
         self.assertTrue(wda.demo_allows("GET", "/forma.html"))
         self.assertTrue(wda.demo_allows("GET", "/vendor/leaflet.js"))

@@ -9,6 +9,7 @@ Unieważnianie: POST /auth/demo/logout (komputer) lub POST /api/auth/sessions/re
 Surowe sekrety nie trafiaja do bazy ani logow (tylko sha256).
 """
 import hashlib
+import os
 import hmac
 import html
 import re
@@ -30,6 +31,8 @@ MAX_PENDING = 20           # globalny limit oczekujacych zadan
 POLL_MIN_INTERVAL_S = 1.0
 DEMO_CACHE_S = 5.0         # krotki cache walidacji sesji demo (unieważnienie czysci cache)
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+# publiczny adres strony (QR musi prowadzic telefon na zewnetrzny HTTPS, nie na port lokalny)
+PUBLIC_BASE = os.environ.get("QBOT_WEB_PUBLIC_URL", "https://albert.cytr.us")
 
 PUBLIC_PATHS = frozenset({"/auth/device/start", "/auth/device/status", "/auth/device/claim"})
 
@@ -223,8 +226,15 @@ def build_router():
                 "(id, browser_secret_hash, user_code, status, expires_at, device_info) "
                 "VALUES (%s, %s, %s, 'PENDING', now() + make_interval(secs => %s), %s)",
                 (rid, _sha(sec), code, REQ_TTL_S, ua))
-        resp = JSONResponse({"id": rid, "code": code, "approve_path": "/auth/device/approve?id=" + rid,
-                             "expires_in": REQ_TTL_S})
+        approve_path = "/auth/device/approve?id=" + rid
+        try:
+            import qbot_web_auth_ui as _ui
+            qr = _ui.qr_svg(PUBLIC_BASE.rstrip("/") + approve_path)
+        except Exception as e:
+            print("qr_svg blad:", type(e).__name__)
+            qr = None
+        resp = JSONResponse({"id": rid, "code": code, "approve_path": approve_path,
+                             "expires_in": REQ_TTL_S, "qr_svg": qr})
         resp.set_cookie(REQ_COOKIE, rid + "." + sec, max_age=REQ_TTL_S + CLAIM_GRACE_S,
                         httponly=True, secure=True, samesite="lax", path="/auth/device")
         return _nostore(resp)
@@ -348,6 +358,13 @@ def build_router():
             return _page("Dostep tymczasowy", "<h1>Zatwierdzono</h1><p class='muted'>Komputer zaloguje sie "
                          "za chwile na 1 godzine. Dostep mozesz zakonczyc wczesniej w ustawieniach dostepu.</p>")
         return _page("Dostep tymczasowy", "<h1>Odrzucono</h1><p class='muted'>Komputer nie dostanie dostepu.</p>")
+
+    @r.get("/auth/sessions", response_class=HTMLResponse)
+    async def sessions_page(request: Request):
+        if not _deps["owner"](request):
+            return Response(status_code=303, headers={"Location": "/login?next=%2Fauth%2Fsessions"})
+        import qbot_web_auth_ui as _ui
+        return _page("Dostepy tymczasowe", _ui.SESSIONS_BODY)
 
     @r.post("/auth/demo/logout")
     async def demo_logout(request: Request):

@@ -666,12 +666,16 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
         def go(c):
             d0, d1 = _week_bounds(start)
             cal_upd = None
-            try:
-                cal_upd = OPS.calendar_changed(c, u)
-            except Exception as e:
-                print("trener kalendarz blad:", e)
-            auto_planned = _ensure_horizon(c, u, d0)
-            matched = _match_done(c, u, d0, d1)
+            # [QR-DEMO] sesja demo = tylko odczyt: bez porzadkow, ktore zapisuja (kalendarz, horyzont, dopasowanie)
+            _demo = (getattr(request, "scope", {}).get("qbot_auth") or {}).get("kind") == "demo"
+            auto_planned, matched = False, 0
+            if not _demo:
+                try:
+                    cal_upd = OPS.calendar_changed(c, u)
+                except Exception as e:
+                    print("trener kalendarz blad:", e)
+                auto_planned = _ensure_horizon(c, u, d0)
+                matched = _match_done(c, u, d0, d1)
             sessions = _sess_rows(c, u, d0, d1)
             c.execute("SELECT id, day, end_day, kind, event_type, title, at_time, note, feel, source FROM qbot_v2.calendar_entry "
                       "WHERE day <= %s AND COALESCE(end_day, day) >= %s ORDER BY day, id", (d1, d0))

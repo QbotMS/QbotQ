@@ -262,8 +262,8 @@ async def _login_form(next: str = "/", err: int = 0):
         '<input id="p" name="password" type="password" autocomplete="current-password" required>'
         '<input type="hidden" name="next" value="' + safe_next + '">'
         '<button type="submit">Zaloguj</button>'
-        + err_html +
-        '</form></body></html>'
+        + err_html + _wda_ui.LOGIN_QR_HTML +
+        '</form>' + _wda_ui.LOGIN_QR_SCRIPT + '</body></html>'
     )
 
 
@@ -12427,6 +12427,7 @@ app.include_router(_strava_build_router(_db_conn, _current_user))
 from qbot_start import build_router as _start_build_router   # 2026-09-28: START wizytowka
 app.include_router(_start_build_router(_db_conn, _current_user))
 import qbot_web_auth as _wda   # 2026-10-07: dostep demo przez QR. Dok.: docs/WEB_DEMO_AUTH.md
+import qbot_web_auth_ui as _wda_ui
 _wda.configure(_db_conn, _owner_user, lambda: _webauth_load()[1])
 app.include_router(_wda.build_router())
 

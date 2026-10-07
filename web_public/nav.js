@@ -59,6 +59,48 @@
     return li;
   }
 
+  // [QR-DEMO] 2026-10-07: plakietka trybu demo + wylogowanie; wlasciciel: link "Dostepy tymczasowe"
+  function qAuthBadge(foot) {
+    if (!window.fetch) return;
+    fetch("/auth/demo/whoami", { credentials: "same-origin" }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (j) {
+      if (!j) return;
+      if (j.kind === "demo") {
+        var bar = document.createElement("div");
+        bar.className = "qdemo-bar";
+        bar.style.cssText = "position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:9999;background:#f59e0b;color:#1a1200;font:600 13px system-ui,sans-serif;padding:6px 12px;border-radius:0 0 10px 10px;box-shadow:0 2px 10px rgba(0,0,0,.3);display:flex;gap:10px;align-items:center";
+        var txt = document.createElement("span");
+        var out = document.createElement("button");
+        out.type = "button";
+        out.textContent = "Wyloguj";
+        out.style.cssText = "border:0;border-radius:6px;padding:3px 10px;background:#1a1200;color:#fff;cursor:pointer;font:600 12px system-ui,sans-serif";
+        var end = Date.now() + j.expires_in * 1000;
+        function tick() {
+          var s = Math.max(0, Math.round((end - Date.now()) / 1000));
+          if (s <= 0) { location.href = "/login"; return; }
+          txt.textContent = "Tryb demo \u2014 tylko podgl\u0105d \u00b7 zosta\u0142o " + Math.ceil(s / 60) + " min";
+        }
+        tick();
+        setInterval(tick, 30000);
+        out.addEventListener("click", function () {
+          var back = function () { location.href = "/login"; };
+          fetch("/auth/demo/logout", { method: "POST", credentials: "same-origin" }).then(back, back);
+        });
+        bar.appendChild(txt);
+        bar.appendChild(out);
+        document.body.appendChild(bar);
+      } else if (j.kind === "owner" && foot) {
+        var a = document.createElement("a");
+        a.className = "qnav-link";
+        a.href = "/auth/sessions";
+        a.setAttribute("data-label", "Dost\u0119py tymczasowe");
+        a.innerHTML = '<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span class="qnav-label">Dost\u0119py tymczasowe</span>';
+        foot.insertBefore(a, foot.firstChild);
+      }
+    }).catch(function () {});
+  }
+
   function build() {
     var nav = document.createElement("nav");
     nav.className = "qnav";
@@ -135,6 +177,7 @@
     document.body.appendChild(fab);
     document.body.classList.add("qnav-body");
     paintTheme();
+    qAuthBadge(foot);
 
     function isMobile() { return window.matchMedia("(max-width:820px),(pointer:coarse) and (max-height:500px)").matches; }
 

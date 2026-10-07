@@ -40,5 +40,17 @@ demonstracyjnego przez QR” (2026-10-07).
 ## Ograniczenia
 - Uniewaznienie blokuje kolejne zadania; nie cofa pobranych plikow ani zrzutow ekranu.
 - Limity (oczekujace zadania, odpytywanie, proby logowania) sa w pamieci procesu — restart je czysci.
-- Interfejs (przycisk QR na /login, rysowanie QR, plakietka demo i wylogowanie w nav.js, ekran sesji)
-  — osobny etap; rysowanie QR wymaga biblioteki `qrcode` w .venv.
+
+## Interfejs
+- `/login`: przycisk „Dostęp tymczasowy przez telefon” (`qbot_web_auth_ui.LOGIN_QR_HTML/SCRIPT`): QR (SVG z
+  biblioteki `qrcode`), kod porownawczy, odliczanie, odpytywanie co 2 s, automatyczny odbior i przejscie na `/`.
+- QR prowadzi na `QBOT_WEB_PUBLIC_URL` (domyslnie https://albert.cytr.us) + `/auth/device/approve?id=`.
+- `nav.js` (`qAuthBadge`): w demo pomaranczowa plakietka „Tryb demo — tylko podgląd · zostało N min” z
+  przyciskiem Wyloguj; u wlasciciela link „Dostępy tymczasowe” -> `/auth/sessions` (lista + konczenie).
+
+## Odczyt bez skutkow ubocznych
+- `qbot_trener_api.week_get` dla demo pomija porzadki zapisujace (`calendar_changed`, `_ensure_horizon`,
+  `_match_done`) — wykryte przejsciem przegladarki jako demo (licznik zapisow `trainer_session` +1).
+- Statyki: demo nie pobiera `*.bak*` ani plikow/katalogow zaczynajacych sie od `_`.
+- Weryfikacja zmian: przejscie wszystkich stron jako demo + porownanie `pg_stat_user_tables` (qbot_v2)
+  przed/po; dopuszczalna jest tylko pamiec podreczna pogody (`meteo_point_cache`, dane publiczne).
