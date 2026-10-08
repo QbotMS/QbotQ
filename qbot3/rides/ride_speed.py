@@ -120,7 +120,7 @@ def speed_block(recs):
     model = {m: round(dist_km / exp_h[m], 1) for m in MODES if exp_h[m] > 0}
     vs = {m: round((v_net / model[m] - 1.0) * 100.0) for m in model}
 
-    stops = RT.stops_minutes(dist_km)
+    stops = RT.stops_minutes(dist_km, moving_h=exp_h.get("normalny") or None)
     stop_model_min = stops["mikro_min"] + stops["krotkie_min"]
     stop_real_min = max(0.0, (elapsed_s - moving_s) / 60.0)
     gross_model = None

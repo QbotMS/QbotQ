@@ -5,6 +5,11 @@
 > pelna historia zamknietych pozycji w poprzedniej wersji: TODO.md.bak.* oraz DECISIONS.md).
 
 ---
+## [MODEL-CZASU-V3] otwarte (2026-10-08)
+- [ ] Cron pon. 05:15 speed_model_recalibrate.py + pierwszy probny przebieg (--no-telegram) -- przez SSH.
+- [ ] route_ride_sim (symulacja w raporcie trasy) na postoje v3.
+- [ ] Daty bikepackingu z Kalendarza zamiast recznie w konfiguracji.
+
 
 # OTWARTE
 
@@ -336,6 +341,7 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [2026-09-24] Obserwowac: czy kolejne FIT z Karoo maja device_info czujnikow (24.09 brak). Jesli systematycznie -> miernik z roweru/kalendarza jako zapas dla straznika.
 
 # ZROBIONE
+- [2026-10-08] [MODEL-CZASU-V3] config/speed_model.json, postoje wg czasu, bikepacking (Planer+Albert), rekalibracja z --approve. Dok.: ROUTE_TIME_ESTIMATE_V2.md sek. 10.
 - [2026-10-08] [GARMIN-WATCH] straznik Garmina 24h co 15 min (scripts/garmin_watch.py), energia bez okien, usuniete duplikaty crona; waga co 15 min cala doba + weight_refresh; MFP odlaczony. DECISIONS.md 2026-10-08.
 - [ ] Zweryfikowac najblizsze wazenie: status 'uploaded' w state/processed_withings_measures.json + sklad ciala w body_measurements.
 - [2026-10-07] [WAGA-MODELQ] waga ModelQ z body_measurements (pusta od 21.09) + backfill 17 dni; [XERT-BENCH] dzienny dopis Xerta do modelq2_xert_bench (izolowany od ModelQ, tests/test_xert_isolation.py). DECISIONS.md 2026-10-07.

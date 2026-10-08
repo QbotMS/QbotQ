@@ -81,3 +81,27 @@ Część toczna (ruch + mikro + krótkie): **nieobciążona, ~±15%** (na 6 h �
 
 ## 9. Jak rekalibrować tabelę prędkości
 Tabela `SPEED_TABLE` powstaje z danych: dla jazd referencyjnych zebrać (prędkość × nawierzchnia × grade 200 m, dopasowanie po pozycji), policzyć percentyle per nawierzchnia×kubełek, scalić podjazdy ≥6% (paved+unpaved), wygładzić cienkie strome zjazdy asfaltu, wstawić wartości dla trybów (mediana / p75 / p90). Po zmianie tabeli — zweryfikować na jazdach referencyjnych (czas ruchu vs realny `duration_s`).
+
+## 10. Model v3 (2026-10-08) -- konfiguracja, postoje wg czasu, bikepacking, rekalibracja
+
+**Kanon parametrow: `config/speed_model.json`** (wersja, zrodlo, tabela 3 trybow, postoje, bikepacking,
+wspolczynniki rowerow, historia 12 wersji). `SPEED_TABLE` w kodzie = zapas v2, gdy pliku brak/zly.
+Plik przeladowuje sie sam po zmianie (mtime) -- bez restartu uslug.
+
+- **Tabela normalny** = SREDNIA predkosc sekund 1 Hz per kratka (dystans/czas -> czas bez obciazenia),
+  z jazd bez bagazu (>= 40 km, PL, nawierzchnia po pozycji z lokalnej bazy OSM). Bezpieczniki: kratka
+  < 300 s albo zmiana > 25% -> poprzednia wartosc. sport/wyscig = max(poprzednia, nowy normalny).
+  Walidacja leave-one-out 08.10: blad czasu ruchu +10,9% (v2) -> +0,5% (v3), typowy 10,9% -> 4,5%.
+- **Postoje:** mikro = min/km; krotkie = `short_min_per_h` x max(0, czas ruchu - `free_h`).
+  Zwykle 0,19 min/km + 12,4 min/h po 1. godzinie; bikepacking 0,38 min/km + 16,3 min/h.
+  Blad czasu calkowitego (bez dlugich): zwykle +9,2% -> -0,7%, bikepacking -11,8% -> +0,5%.
+- **Bikepacking** (`bikepacking=true`): predkosc x `bikepacking_speed_factor` (0,92) + postoje bikepackingowe.
+  Planer wyprawy liczy dni zawsze jako bikepacking (parametry z `/api/routes/{id}/spine` -> `speed_model`).
+  Daty jazd z bagazem do kalibracji: `bikepacking_dates` w konfiguracji (dopisywac po wyjazdach).
+- **Rower** (`bike`, nazwa z Garazu): wspolczynnik z `bike_factors`, tylko gdy rower ma >= 5 jazd i
+  odchylenie >= 3%. Grand Canyon = Monster.
+- **Rekalibracja:** `scripts/speed_model_recalibrate.py` (cron pon. 05:15) liczy KANDYDATA
+  (`config/speed_model_candidate.json`, raport w artifacts + Telegram). Aktywny model zmienia sie dopiero po
+  `--approve` (decyzja Michala). `--status` = podglad. Okno: 120 dni (predkosc), 180 dni (postoje).
+- Poza v3: `qbot3/routes/route_ride_sim.py` (symulacja w raporcie) dalej uzywa stalych v2 (MICRO/SHORT_*).
+- Testy: `tests/test_speed_model_v3.py` (6). Przeglady: `scripts/speed_model_review_v2.py`, `speed_table_review.py`.

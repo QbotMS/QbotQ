@@ -53,10 +53,85 @@ DOC = "docs/ROUTE_TIME_ESTIMATE_V2.md"  # pelna dokumentacja: po co/jak/dlaczego
 GRADE_EDGES = [-8, -6, -4, -2, -1, 1, 2, 4, 6, 8]
 GRADE_LABELS = ["<-8", "-8..-6", "-6..-4", "-4..-2", "-2..-1", "-1..1", "1..2", "2..4", "4..6", "6..8", ">8"]
 
-# stopy
+# stopy (LEGACY v2 -- uzywane tylko gdy brak config/speed_model.json oraz przez route_ride_sim)
 MICRO_MIN_PER_KM = 0.22
 SHORT_BREAK_EVERY_KM = 9.0
 SHORT_BREAK_MIN = 4.5
+
+# ------------------------------------------------------------------ MODEL v3 Z KONFIGURACJI (2026-10-08)
+# Kanon: config/speed_model.json (wersjonowany, zatwierdzany przez Michala; rekalibracja tygodniowa
+# scripts/speed_model_recalibrate.py -> kandydat -> --approve). Tabela powyzej = zapas, gdy pliku brak/zly.
+# Postoje v3: mikro = min/km; krotkie = min na KAZDA godzine ruchu po free_h (zwykle 1 h, bikepacking 0 h).
+# Bikepacking: predkosc x bikepacking_speed_factor + wlasne postoje. Rower: opcjonalny wspolczynnik (bike_factors).
+import json as _json
+SPEED_MODEL_PATH = os.getenv("QBOT_SPEED_MODEL", "/opt/qbot/app/config/speed_model.json")
+SPEED_MODEL: dict[str, Any] = {}
+SPEED_MODEL_VERSION = "v2_2026-06-30"
+
+
+def _load_speed_model(path: str = SPEED_MODEL_PATH) -> bool:
+    """Wczytaj model v3 do SPEED_TABLE (w miejscu) + SPEED_MODEL. Zly plik -> zostaje tabela v2."""
+    global SPEED_MODEL, SPEED_MODEL_VERSION
+    try:
+        cfg = _json.loads(open(path, encoding="utf-8").read())
+        tab = cfg["table"]
+        for m in ("normalny", "sport", "wyscig"):
+            for c in ("paved", "unpaved"):
+                for b in GRADE_LABELS:
+                    v = float(tab[m][c][b])
+                    if not (2.0 <= v <= 70.0):
+                        raise ValueError(f"{m}/{c}/{b}={v}")
+        for k in ("normal", "bikepacking"):
+            s = cfg["stops"][k]
+            float(s["micro_min_per_km"]); float(s["short_min_per_h"]); float(s["free_h"])
+        float(cfg["bikepacking_speed_factor"])
+    except Exception as exc:  # noqa
+        print(f"[route_time] speed_model.json niepoprawny/brak ({exc}) -- tabela v2", flush=True)
+        SPEED_MODEL = {}
+        return False
+    for m in ("normalny", "sport", "wyscig"):
+        for c in ("paved", "unpaved"):
+            SPEED_TABLE[m][c].update({b: float(tab[m][c][b]) for b in GRADE_LABELS})
+    SPEED_MODEL = cfg
+    SPEED_MODEL_VERSION = "v3_" + str(cfg.get("version"))
+    return True
+
+
+_SM_MTIME: Optional[float] = None
+
+
+def _maybe_reload() -> None:
+    """Wczytaj konfiguracje ponownie, gdy plik sie zmienil (zatwierdzenie nowej wersji = bez restartu)."""
+    global _SM_MTIME
+    try:
+        m = os.path.getmtime(SPEED_MODEL_PATH)
+    except OSError:
+        return
+    if m != _SM_MTIME:
+        _SM_MTIME = m
+        _load_speed_model()
+
+
+def speed_factor(bikepacking: bool = False, bike: Optional[str] = None) -> float:
+    """Mnoznik predkosci ruchu: bagaz x rower (rower tylko gdy ma wspolczynnik w konfiguracji)."""
+    f = 1.0
+    if SPEED_MODEL:
+        if bikepacking:
+            f *= float(SPEED_MODEL.get("bikepacking_speed_factor") or 1.0)
+        bf = (SPEED_MODEL.get("bike_factors") or {}).get(bike or "")
+        if bf:
+            f *= float(bf)
+    return f
+
+
+def public_speed_model() -> dict:
+    """Parametry dla frontu (Planer): wersja, postoje, wspolczynnik bikepackingu."""
+    _maybe_reload()
+    if not SPEED_MODEL:
+        return {"version": SPEED_MODEL_VERSION, "legacy": True}
+    return {"version": SPEED_MODEL_VERSION, "stops": SPEED_MODEL["stops"],
+            "bikepacking_speed_factor": SPEED_MODEL["bikepacking_speed_factor"],
+            "bike_factors": SPEED_MODEL.get("bike_factors") or {}}
 
 # nawierzchnia binarna (PL + EN; "nieznana" = blad Overpass -> None, nie klasa)
 _PAVED = {"asphalt", "paving_stones", "concrete", "cobblestone", "concrete:plates",
@@ -89,16 +164,19 @@ def surface_class(raw: Optional[str]) -> Optional[str]:
     return None
 
 
-def segment_speed_kmh(grade_pct: float, surf_class: Optional[str], mode: str = DEFAULT_MODE) -> float:
-    """km/h dla segmentu. surf nieznana -> srednia paved+unpaved (bez biasu)."""
+def segment_speed_kmh(grade_pct: float, surf_class: Optional[str], mode: str = DEFAULT_MODE,
+                      factor: float = 1.0) -> float:
+    """km/h dla segmentu. surf nieznana -> srednia paved+unpaved (bez biasu). factor = speed_factor()."""
     tbl = SPEED_TABLE.get(mode, SPEED_TABLE[DEFAULT_MODE])
     b = _grade_bin(grade_pct)
     if surf_class in ("paved", "unpaved"):
-        return tbl[surf_class][b]
-    return round((tbl["paved"][b] + tbl["unpaved"][b]) / 2.0, 1)
+        v = tbl[surf_class][b]
+    else:
+        v = round((tbl["paved"][b] + tbl["unpaved"][b]) / 2.0, 1)
+    return round(v * factor, 2) if factor != 1.0 else v
 
 
-def moving_time_h(segments: list[dict], mode: str = DEFAULT_MODE) -> tuple[float, float]:
+def moving_time_h(segments: list[dict], mode: str = DEFAULT_MODE, factor: float = 1.0) -> tuple[float, float]:
     """segments: [{'len_m','grade_pct','surface'(klasa lub surowa)}]. Zwraca (godziny, metry_nieznane)."""
     h = 0.0
     unknown_m = 0.0
@@ -111,17 +189,27 @@ def moving_time_h(segments: list[dict], mode: str = DEFAULT_MODE) -> tuple[float
         sc = sc if sc in ("paved", "unpaved") else surface_class(sc)
         if sc is None:
             unknown_m += ln
-        v = segment_speed_kmh(g, sc, mode)
+        v = segment_speed_kmh(g, sc, mode, factor)
         if v and v > 0:
             h += (ln / 1000.0) / v
     return h, unknown_m
 
 
-def stops_minutes(distance_km: float, long_count: int = 0, long_total_min: float = 0.0) -> dict:
-    """mikro + krotkie auto; dlugie = wklad uzytkownika."""
-    micro = MICRO_MIN_PER_KM * distance_km
-    n_break = round(distance_km / SHORT_BREAK_EVERY_KM)
-    short = n_break * SHORT_BREAK_MIN
+def stops_minutes(distance_km: float, long_count: int = 0, long_total_min: float = 0.0,
+                  moving_h: Optional[float] = None, bikepacking: bool = False) -> dict:
+    """mikro + krotkie auto; dlugie = wklad uzytkownika.
+    v3 (gdy jest konfiguracja): krotkie zaleza od CZASU RUCHU (po free_h), nie od km.
+    moving_h brak -> przyblizenie z 22 km/h."""
+    if SPEED_MODEL:
+        p = SPEED_MODEL["stops"]["bikepacking" if bikepacking else "normal"]
+        mh = float(moving_h) if moving_h is not None else distance_km / 22.0
+        micro = float(p["micro_min_per_km"]) * distance_km
+        short = float(p["short_min_per_h"]) * max(0.0, mh - float(p["free_h"]))
+        n_break = int(round(short / SHORT_BREAK_MIN)) if short > 0 else 0
+    else:
+        micro = MICRO_MIN_PER_KM * distance_km
+        n_break = round(distance_km / SHORT_BREAK_EVERY_KM)
+        short = n_break * SHORT_BREAK_MIN
     longm = max(0.0, float(long_total_min or 0.0))
     return {
         "mikro_min": round(micro, 1),
@@ -143,7 +231,7 @@ def _long_stop_positions(n: int) -> list[float]:
 
 
 def clock_profile(segments: list[dict], mode: str, start_time: Optional[_dt.datetime],
-                  stops: dict, total_km: float) -> list[dict]:
+                  stops: dict, total_km: float, factor: float = 1.0) -> list[dict]:
     """Profil czasu zegarowego per segment: start + Sigma ruch + Sigma stopy dotad."""
     micro_per_m = (stops["mikro_min"] + stops["krotkie_min"]) / 60.0 / max(total_km * 1000.0, 1.0)  # h/m rozsiane
     long_positions = _long_stop_positions(stops["dlugie_liczba"])
@@ -160,7 +248,7 @@ def clock_profile(segments: list[dict], mode: str, start_time: Optional[_dt.date
         g = float(s.get("grade_pct") or 0.0)
         sc = s.get("surface")
         sc = sc if sc in ("paved", "unpaved") else surface_class(sc)
-        v = segment_speed_kmh(g, sc, mode)
+        v = segment_speed_kmh(g, sc, mode, factor)
         cum_move_h += (ln / 1000.0) / v if v > 0 else 0.0
         cum_stop_h += ln * micro_per_m
         cum_dist += ln
@@ -214,7 +302,8 @@ def _load_route_segments(route_id: str) -> Optional[list[dict]]:
 def estimate_route_time_v2(route_id: Optional[str] = None, mode: str = DEFAULT_MODE,
                            planned_long_stops: int = 0, planned_long_stop_min: float = 0.0,
                            start_time: Optional[str] = None,
-                           segments: Optional[list[dict]] = None) -> dict:
+                           segments: Optional[list[dict]] = None,
+                           bikepacking: bool = False, bike: Optional[str] = None) -> dict:
     """Glowne wejscie (wolane przez analizator trasy).
 
     route_id            - zaplanowana trasa (czyta segmenty z bazy),
@@ -222,8 +311,11 @@ def estimate_route_time_v2(route_id: Optional[str] = None, mode: str = DEFAULT_M
     planned_long_stops  - liczba dlugich postojow (Twoja deklaracja),
     planned_long_stop_min - laczny czas dlugich postojow [min],
     start_time          - 'HH:MM' lub ISO (opcjonalnie, dla profilu zegarowego),
-    segments            - alternatywnie podane wprost (do testow / analizatora).
+    segments            - alternatywnie podane wprost (do testow / analizatora),
+    bikepacking         - jazda z bagazem (wolniej + gestsze postoje; Planer wyprawy),
+    bike                - nazwa roweru z Garazu (wspolczynnik tylko gdy jest w konfiguracji).
     """
+    _maybe_reload()
     if mode not in SPEED_TABLE:
         mode = DEFAULT_MODE
     if segments is None:
@@ -240,8 +332,10 @@ def estimate_route_time_v2(route_id: Optional[str] = None, mode: str = DEFAULT_M
 
     total_m = sum(float(s.get("len_m") or 0.0) for s in segments)
     total_km = total_m / 1000.0
-    move_h, unknown_m = moving_time_h(segments, mode)
-    stops = stops_minutes(total_km, planned_long_stops, planned_long_stop_min)
+    fct = speed_factor(bikepacking, bike)
+    move_h, unknown_m = moving_time_h(segments, mode, fct)
+    stops = stops_minutes(total_km, planned_long_stops, planned_long_stop_min,
+                          moving_h=move_h, bikepacking=bikepacking)
     total_h = move_h + stops["suma_min"] / 60.0
 
     st = None
@@ -254,7 +348,7 @@ def estimate_route_time_v2(route_id: Optional[str] = None, mode: str = DEFAULT_M
                 st = _dt.datetime.combine(_dt.date.today(), _dt.time(int(hh), int(mm)))
         except Exception:  # noqa
             st = None
-    profile = clock_profile(segments, mode, st, stops, total_km)
+    profile = clock_profile(segments, mode, st, stops, total_km, fct)
 
     unknown_pct = 100.0 * unknown_m / total_m if total_m else 0.0
     warn = []
@@ -269,11 +363,13 @@ def estimate_route_time_v2(route_id: Optional[str] = None, mode: str = DEFAULT_M
         return f"{int(h)}h{int(round((h - int(h)) * 60)):02d}"
 
     analysis = (
-        f"CZAS RUCHU: {hm(move_h)}  |  CZAS CALKOWITY: {hm(total_h)}  (tryb: {mode})\n"
+        f"CZAS RUCHU: {hm(move_h)}  |  CZAS CALKOWITY: {hm(total_h)}  (tryb: {mode}"
+        f"{', bikepacking (z bagazem)' if bikepacking else ''})\n"
         f"Dystans {total_km:.1f} km. Predkosc moving z empirycznej tabeli nawierzchnia x nachylenie "
         f"(grade 200 m), poziom = {mode}.\n"
-        f"Stopy: mikro {stops['mikro_min']:.0f} min + krotkie {stops['krotkie_liczba']}x = "
-        f"{stops['krotkie_min']:.0f} min + dlugie {stops['dlugie_liczba']}x = {stops['dlugie_min']:.0f} min.\n"
+        f"Stopy: mikro {stops['mikro_min']:.0f} min + krotkie {stops['krotkie_min']:.0f} min "
+        f"(wg czasu jazdy) + dlugie {stops['dlugie_liczba']}x = {stops['dlugie_min']:.0f} min.\n"
+        f"Model {SPEED_MODEL_VERSION}: tabela i postoje z Twoich jazd (rekalibracja tygodniowa).\n"
         f"Dokladnosc czesci tocznej ~+-15% (nieobciazona); dlugie postoje wg Twojej deklaracji.\n"
         f"Wiatr/pogoda liczone osobno (modul meteo).\n"
         f"Dokumentacja narzedzia: {DOC}"
@@ -291,7 +387,9 @@ def estimate_route_time_v2(route_id: Optional[str] = None, mode: str = DEFAULT_M
         "analysis": analysis,
         "warning": " ".join(warn) if warn else "",
         "doc": DOC,
-        "model_version": "v2_2026-06-30",
+        "model_version": SPEED_MODEL_VERSION,
+        "bikepacking": bool(bikepacking),
+        "speed_factor": round(fct, 3),
     }
 
 
@@ -333,4 +431,9 @@ def _tool_route_time_estimate(args=None):
         planned_long_stop_min=float(a.get("planned_long_stop_min") or 0.0),
         start_time=a.get("start_time"),
         segments=a.get("segments"),
+        bikepacking=str(a.get("bikepacking") or "").strip().lower() in ("1", "true", "tak", "yes"),
+        bike=a.get("bike"),
     )
+
+
+_maybe_reload()

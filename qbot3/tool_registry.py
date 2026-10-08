@@ -2633,13 +2633,10 @@ def _load_route_time_estimate_tool() -> dict[str, Any]:
         "callable": _wrapper,
         "category": "routes",
         "description": (
-            "Szacowany CZAS przejechania ZAPLANOWANEJ trasy (model v2, z danych). "
-            "Pytania: 'ile zajmie trasa', 'jak dlugo bede jechal', 'ile czasu na trase'. "
-            "WYMAGA route_id z danymi kanonicznymi (grade 200m + nawierzchnia); bez fallbacku - brak danych => NEEDS_INPUT. "
-            "Predkosc moving z empirycznej tabeli nawierzchnia x nachylenie; poziom wg trybu: normalny(mediana,domyslny)/sport/wyscig. "
-            "Zwraca CZAS RUCHU i CZAS CALKOWITY OSOBNO + profil czasu zegarowego. Dokladnosc czesci tocznej ~+-15% (nieobciazona). "
-            "DLUGIE postoje (obiad/zwiedzanie) NIE sa zgadywane - podaje je uzytkownik (planned_long_stops + planned_long_stop_min). "
-            "Mikro i krotkie przerwy auto. Wiatr/pogoda osobno (meteo). Pokaz pole analysis w calosci."
+            "CZAS przejazdu ZAPLANOWANEJ trasy (model v3 z Twoich jazd). Wymaga route_id (dane kanoniczne), "
+            "brak => NEEDS_INPUT. Tryb: normalny/sport/wyscig. bikepacking=true dla jazdy z bagazem/wyprawy "
+            "(wolniej, wiecej postojow). Opcjonalnie bike (nazwa z Garazu). DLUGIE postoje podaje uzytkownik "
+            "(planned_long_stops + planned_long_stop_min). Zwraca CZAS RUCHU i CALKOWITY osobno; pokaz analysis."
         ),
         "args_schema": {
             "route_id": {"type": "string", "description": "ID zaplanowanej trasy (wymagane; dane kanoniczne z bazy)"},
@@ -2647,6 +2644,8 @@ def _load_route_time_estimate_tool() -> dict[str, Any]:
             "planned_long_stops": {"type": "number", "description": "Liczba planowanych dlugich postojow (obiad/zwiedzanie); domyslnie 0"},
             "planned_long_stop_min": {"type": "number", "description": "Laczny czas dlugich postojow w minutach; domyslnie 0"},
             "start_time": {"type": "string", "description": "Godzina startu HH:MM (opcjonalnie, profil czasu zegarowego)"},
+            "bikepacking": {"type": "boolean", "description": "true = jazda z bagazem / wyprawa bikepackingowa"},
+            "bike": {"type": "string", "description": "Rower z Garazu (opcjonalnie), np. Canyon Grizl"},
         },
         "safety": "read",
     }

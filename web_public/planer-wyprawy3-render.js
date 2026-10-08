@@ -14,6 +14,7 @@
   var mapStiffened = false;
   var coords = [], cumKm = [];
   var spine = [], totalKm = 0;
+  var speedModel = null;   // model czasu v3 z /spine (2026-10-08)
   var nDays = 2, cuts = [];
   var noclegiShown = false;
   var profilHover = null;
@@ -157,10 +158,19 @@
 
   function hm(h) { var m = Math.round((h || 0) * 60); return Math.floor(m / 60) + "h" + ("0" + (m % 60)).slice(-2); }
   function dayTime(st) {
-    var micro = 0.22 * st.distKm;                 // mikro-postoje (kanon)
-    var nb = Math.round(st.distKm / 9.0);         // krotkie co ~9 km
-    var stopsMin = micro + nb * 4.5 + 60;         // + min. 1h dlugich postojow/dzien
-    return { total: (st.moveH || 0) + stopsMin / 60, move: st.moveH || 0 };
+    /* 2026-10-08 model czasu v3: Planer = jazda z bagazem (bikepacking) -> predkosc x wspolczynnik
+       i postoje bikepackingowe z serwera (config/speed_model.json). Brak modelu -> stary wzor v2. */
+    var sm = (speedModel && !speedModel.legacy && speedModel.stops) ? speedModel : null;
+    if (!sm) {
+      var micro = 0.22 * st.distKm;                 // mikro-postoje (v2)
+      var nb = Math.round(st.distKm / 9.0);         // krotkie co ~9 km (v2)
+      var stopsMin0 = micro + nb * 4.5 + 60;        // + min. 1h dlugich postojow/dzien
+      return { total: (st.moveH || 0) + stopsMin0 / 60, move: st.moveH || 0 };
+    }
+    var f = sm.bikepacking_speed_factor || 1, p = sm.stops.bikepacking;
+    var move = (st.moveH || 0) / f;
+    var stopsMin = p.micro_min_per_km * st.distKm + p.short_min_per_h * Math.max(0, move - p.free_h) + 60;
+    return { total: move + stopsMin / 60, move: move };
   }
   function xssTd(i) {
     var v = "\u2026";
@@ -708,6 +718,7 @@
     ]).then(function (res) {
       coords = res[0].coordinates || [];
       spine = (res[1] && res[1].spine) || [];
+      speedModel = (res[1] && res[1].speed_model) || null;
       if (!spine.length) {
         var _ob = document.getElementById("opis");
         if (_ob) _ob.innerHTML = '<h3>Opis trasy</h3><p class="muted">Profil tej trasy nie jest jeszcze policzony w systemie \u2014 nie mo\u017cna pokaza\u0107 podzia\u0142u. Trasa potrzebuje policzonej warstwy 50 m (nawierzchnia + wysoko\u015bci).</p>';

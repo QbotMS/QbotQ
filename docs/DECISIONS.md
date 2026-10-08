@@ -4,6 +4,17 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-08 -- DECYZJA: model czasu v3 (tabela z jazd, postoje wg czasu, bikepacking, rekalibracja z akceptacja)
+
+- Problem: tabela predkosci i postoje stale od 30.06 (7 jazd); stara tabela zawyzala czas ruchu o ~11%,
+  postoje liniowe z km (za duzo na krotkich jazdach, za malo na wyprawach).
+- Decyzje Michala: jedna tabela "Ty" + wspolczynnik roweru po 5 jazdach (nie tabela per rower -- za malo
+  danych); osobny tryb bikepacking (Planer wyprawy zawsze); postoje wg czasu jazdy; tygodniowa rekalibracja,
+  nowa wersja tylko po jego akceptacji. Grand Canyon = Monster; bikepacking = 05-11.06 i 01-03.08.2026.
+- Szczegoly, liczby i kontrakt: docs/ROUTE_TIME_ESTIMATE_V2.md sek. 10. Przyklad Orle Gniazda 182,6 km:
+  calkowity (bez dlugich) 11h39 -> 10h56; bikepacking 13h16.
+
+---
 ## 2026-10-08 -- DECYZJA: straznik Garmina (jeden rytm 24h co 15 min) + waga wylacznie naszym kanalem
 
 **Problem.** Importy Garmina mialy rozne okna godzinowe (sen/wellness 5:00-8:45, treningi/jazdy 9:00-23:45,

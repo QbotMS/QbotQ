@@ -538,7 +538,7 @@ def route_spine(route_id: str, mode: str = "normalny"):
     os.environ.setdefault("QBOT3_ENABLED", "1")
     try:
         from qbot3.routes.route_segments_50m import load_canonical_segments_50m
-        from qbot_route_time_tools import segment_speed_kmh
+        from qbot_route_time_tools import segment_speed_kmh, public_speed_model
     except Exception as exc:
         raise HTTPException(status_code=500, detail="modul niedostepny: " + str(exc)[:120])
     try:
@@ -547,6 +547,7 @@ def route_spine(route_id: str, mode: str = "normalny"):
         raise HTTPException(status_code=500, detail=str(exc)[:200])
     if data.get("status") != "OK":
         raise HTTPException(status_code=404, detail="Profil niedostepny (" + str(data.get("status")) + ")")
+    _sm = public_speed_model()   # najpierw: przeladowuje model, gdy zatwierdzono nowa wersje
     spine = []
     for seg in data.get("segments", []):
         grade = float(seg.get("grade_pct") or 0.0)
@@ -563,7 +564,9 @@ def route_spine(route_id: str, mode: str = "normalny"):
             "s": s,
             "t": t,
         })
-    return {"route_id": route_id, "summary": data.get("summary", {}), "spine": spine}
+    # speed_model: parametry postojow i bikepackingu dla Planera (model czasu v3, 2026-10-08)
+    return {"route_id": route_id, "summary": data.get("summary", {}), "spine": spine,
+            "speed_model": _sm}
 
 
 def _haversine_m(lat1, lon1, lat2, lon2):
@@ -6440,13 +6443,17 @@ async def ride_report_correlate(request: Request):
     from qgpt_client import qgpt_text
     if live:
         system = (
-            "Jestes doswiadczonym analitykiem treningu kolarskiego (fizjologia wysilku, model mocy "
-            "krytycznej CP/W'). Dostajesz opis AKTUALNIE WYSWIETLANEGO fragmentu wykresu przebiegu jazdy "
-            "(widoczne serie i ich statystyki na widocznym zakresie km lub czasu). Skomentuj, co dzieje "
-            "sie na tym odcinku: pacing, sprzezenie tetno-moc (ekonomia, decoupling), kadencja, wplyw "
-            "wiatru, rezerwa W'. 3-5 zdan." + _ACCEPT + _BASE)
-        prompt = "Wyswietlany odcinek:\n" + live + ctx_block + "\n\nSkomentuj ten fragment jazdy."
-        mt = 440
+            # 2026-10-08 (uwaga uzytkownika): ma byc OCENA w 1-2 zdaniach, nie odczytywanie liczb.
+            "Jestes doswiadczonym trenerem kolarskim (model mocy krytycznej CP/W'). Dostajesz statystyki "
+            "ZAZNACZONEGO odcinka jazdy gravelowej (z nawierzchnia i srednimi calej jazdy do porownania) "
+            "oraz kontekst raportu. Napisz OCENE w 1-2 krotkich zdaniach: czy ten odcinek byl lzejszy, "
+            "typowy czy ciezszy niz reszta jazdy i wzgledem progu, co NAJBARDZIEJ to tlumaczy (teren, "
+            "nawierzchnia, wiatr, kadencja, zmeczenie) i - tylko jesli wynika z danych - jeden praktyczny "
+            "wniosek na przyszlosc. NIE przepisuj danych: najwyzej jedna liczba, ktora uzasadnia ocene. "
+            "NIE pisz, czego brakuje albo czego nie da sie ocenic - ocen to, co jest. PO POLSKU, bez "
+            "markdown, bez frazesow, od razu do rzeczy.")
+        prompt = "Zaznaczony odcinek:\n" + live + ctx_block + "\n\nOcen ten odcinek w 1-2 zdaniach."
+        mt = 160
     elif row:
         system = (
             "Jestes doswiadczonym analitykiem treningu kolarskiego (fizjologia wysilku, model mocy "
