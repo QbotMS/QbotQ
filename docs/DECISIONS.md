@@ -4,6 +4,59 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-08 -- DECYZJA: dynamiczne LTHR (zamiast kanonu 132 bpm) + strefy HR od LTHR + kwarantanna 22.07-03.08
+**Problem:** LTHR=132 (QExt2, hr_xss, raport jazdy) -- spokojna jazda (HR ~134, ~75-80 % CP) wychodzila "nad progiem";
+Michal: strefy na Karoo zawyzone. Pomiar: 181 bpm z 02.05.2026 = artefakt czujnika, realne max ~174.
+**Backtest LTHR** (01.2025-10.2026, okna 8 min, sprawny miernik, bez upalu): metoda "25 min >= 90 % CP" -- 0 wystapien;
+regresja 6 tyg. -- skoki 120-166; WYBRANA: HR + k*(1-%CP), k = mediana nachylen w obrebie jazd (80 ud./100 % CP),
+mediana 120 dni -> stabilnie 147-157 (2025 ~151-155, wiosna-lato 2026 ~148). Nigdy ponizej 147.
+**Wdrozenie (decyzja Michala):** fitmodel/lthr.py (tabele lthr_ride/lthr_window/lthr_daily/hr_xss_calib), krok daily_job
+`lthr` przed modelq2 (oba przebiegi), histereza 2 ud., max 3 ud./7 dni, start 150; publikacja dzis 148 (7 zmian w 19 mies.).
+Konsumenci: hr_xss (LTHR na dzien jazdy + K z kalibracji: K_LOW 0.924 / K_HIGH 1.412; blad sumy XSS HR vs moc 25-75 %:
+-13..+9 % vs -21..+16 % przy 132), qbot-api lthrBpm (QExt2), Trener, Albert (opis zawodnika), raport jazdy (strefy HR
+Coggan 68/83/94/105 % LTHR zamiast % HRmax 184; load.lthr_bpm; front raport-jazdy2-ws.js v45), threshold_sync.run_lthr ->
+intervals.icu `lthr` + `hr_zones` (Friel 81/89/93/99/102/106 % + max HR) -> Hammerhead/Karoo; krok `lthr_sync`.
+LTHR (bpm) od treningu prawie sie nie zmienia -- rosnie moc przy nim (CP); automat lapie dryf i bledy.
+**Kwarantanna A+B (decyzja Michala):** 5 jazd w kwarantannie mialo XSS z mocy (22.07, 25.07, 26.07, 30.07, 02.08) -> z tetna;
+nowe: 01.08 Opole, 03.08 Prudnik (ten sam wyjazd/miernik). Moc nienaprawialna (dryf zera zmienny w trakcie jazdy, 04.08).
+Wynik (przy LTHR 132): szczyt TP 08.2026 bez zmian ~252 W, dzis 239.4 W. Przeliczenie po LTHR: scripts/mq2_lthr_recompute_20261008.py.
+Testy: tests/test_lthr.py (7).
+
+## 2026-10-08 -- DECYZJA: glikogen czyta jazdy z bazy, nie z 381 plikow FIT (930 s -> 0.4 s)
+Przyczyna: compute_glycogen_balance czytal fitparse'em KAZDY plik z /opt/qbot/artifacts/fit (381 szt., ~2.4-3.7 s/plik)
+tylko po to, by odrzucic te spoza okna (30 dni w nocy, 3 dni po jezdzie -- w obu przypadkach ~15 min).
+Zmiana (decyzja Michala): `_ride_rows_by_day_db` -- jazdy z training_sessions.date (czas lokalny) w oknie, serie (ts, power_w)
+z activity_record, ta sama godzina startu liczona raz (najwiecej probek). Wzory spalania bez zmian.
+Weryfikacja 29.09-08.10: CHO i kcal jazd dzien po dniu IDENTYCZNE ze stara metoda (0 roznic); 30 dni: 0.41 s.
+Uwaga: 8 starych plikow FIT (2274..2291*) nie ma wpisu w training_sessions -- poza oknami glikogenu, bez wplywu.
+Testy: tests/test_glycogen_db_rides.py (4).
+
+## 2026-10-08 -- DECYZJA: usunieta kotwica EF z 11.08 (TP 265.5) -- TP 255.4 -> 239.4 W
+**Decyzja Michala** (rewizja 2026-10-04, gdzie kotwica zostala jako "niepewna 239-256 W"). Nowe dowody 08.10: jazda 08.10
+(las Marki) z fizyki na plaskim miernik/fizyka = 1.00 (miernik sprawny), a przy TP 255 tetno 146-150 przy ~200 W i odczucie
+"spokojnie" nie zgadzaly sie ze strefami; kotwica 11.08 z jazdy z miernikiem +25 % (meter_phys 1.246).
+Wykonanie: scripts/mq2_drop_anchor_20260811.py (wynik /opt/qbot/artifacts/mq2_drop_anchor.txt, 975 s, wszystkie kroki OK).
+Kopie przed zmiana: qbot_v2.bak_20261008_{modelq2_anchor,modelq2_signature,modelq2_ride,fitmodel_daily}.
+Efekt na 08.10: TP 255.4 -> 239.4 W, LTP 208.7 -> 189.2 W, CTL 57.1 -> 59.3, ATL real 69.9 -> 74.3, TSB real -12.8 -> -15.0.
+22 jazdy od 23.08 przeliczone z nowa sygnatura: XSS +6-8 %. Kontrola: min W'bal 19.09 = 1 %, 27.09 = 0 % (TP na dolnej granicy
+z 04.10). threshold_sync: intervals.icu FTP 256 -> 239 (-> Hammerhead/Karoo). tp_recheck zostaje uzbrojony.
+Przy okazji (test plaski, trasa lesna Marki, 33 przejazdy 05-10.2026 + archiwum Open-Meteo): mokre podloze (opad 3 dni >= ~6 mm)
+podnosi miernik/fizyka do 1.2-1.3 takze na sprawnym mierniku; czerwiec po suchych dniach 1.00 => kotwica 20.06 (251 W) zostaje.
+Lipiec 01-15: 1.21-1.28, ale prawie wszystkie jazdy po deszczu -- wady miernika i mokrego podloza nie da sie tu rozdzielic.
+Uwaga wydajnosc: krok glycogen w daily_job trwal 930 s (do zbadania).
+
+## 2026-10-08 -- DECYZJA: Gotowosc TERAZ (korekta po dzisiejszej jezdzie) + kolor zmiany na zegarach Formy
+**Problem (Michal):** gotowosc liczy sie z nocy (HRV/RHR/sen), wiec po jezdzie licznik nie pokazuje stanu wyjsciowego do drugiej jazdy tego samego dnia.
+**Decyzja (Michal, wariant "kara malejaca z godzinami"):** `fitmodel/readiness_now.py` — gotowosc teraz = gotowosc z 3 dni (rano)
+minus suma kar za dzisiejsze jazdy: `0.6 * (XSS/CTL) * 0.5 ** (h_od_konca / 5.5)`. Liczone na zywo w `/api/forma/data` (pole
+`readiness_now`), nic nie zapisuje do bazy. Kalibracja na danych 06.2025-10.2026 (~500 dni, zmiana readiness_score do rana):
+brak jazdy +0.08, XSS/CTL 0.5-1 -0.06, 1-2.5 -0.03, >2.5 -0.21 => jazda ~1 dnia formy zostawia rano ok. -0.15 vs dzien wolny;
+model daje rano ok. -0.08..-0.13. Wartosc tuz po jezdzie (K=0.6) to ZALOZENIE — HRV mierzony tylko noca.
+**Zegary (forma2-data.js v55):** usunieta kreska i podpis "wczoraj" (nieczytelne). Odcinek luku miedzy wczoraj a dzis w osobnym
+kolorze: zielony = poprawa, czerwony = pogorszenie. Gotowosc po jezdzie: duza liczba = teraz, szary kreskowany odcinek = kara
+z jazdy (od wartosci porannej), w opisie "rano / kara / do kiedy zniknie"; porownanie z wczoraj liczone od wartosci porannej.
+Testy: tests/test_readiness_now.py (5).
+
 ## 2026-10-08 -- DECYZJA: model czasu v3 (tabela z jazd, postoje wg czasu, bikepacking, rekalibracja z akceptacja)
 
 - Problem: tabela predkosci i postoje stale od 30.06 (7 jazd); stara tabela zawyzala czas ruchu o ~11%,

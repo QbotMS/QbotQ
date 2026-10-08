@@ -286,11 +286,16 @@ def _load(recs, form, ef_anchor, xss_block, buckets=None):
             if f>t: z=i+1
         zc[z]+=1
     zones_power=[round(100*c/n) for c in zc]
-    # strefy HR (%HRmax)
-    hb=[0.60,0.70,0.80,0.90]; hzc=[0]*5
+    # strefy HR (2026-10-08: % LTHR, Coggan 68/83/94/105 -- jak QExt2; LTHR dynamiczne z fitmodel/lthr.py na dzien jazdy)
+    try:
+        from fitmodel.lthr import get_lthr as _get_lthr
+        _lthr = int(_get_lthr(None, recs[0]["ts"].date() if recs and hasattr(recs[0]["ts"], "date") else None))
+    except Exception:
+        _lthr = 150
+    hb=[0.68,0.83,0.94,1.05]; hzc=[0]*5
     for r in recs:
         if not r["hr"]: continue
-        f=r["hr"]/HR_MAX; z=0
+        f=r["hr"]/_lthr; z=0
         for i,t in enumerate(hb):
             if f>t: z=i+1
         hzc[z]+=1
@@ -322,6 +327,7 @@ def _load(recs, form, ef_anchor, xss_block, buckets=None):
         "dur_elapsed_s":_tag(int(dur),"A","fit"),
         "zones_power_pct":_tag(zones_power,"A","fit"),
         "zones_hr_pct":_tag(zones_hr,"A","fit"),
+        "lthr_bpm":_tag(_lthr,"A","lthr_daily"),
         "mmp":_tag(mmp,"A","fit"),
     }
 

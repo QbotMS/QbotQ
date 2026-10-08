@@ -29,7 +29,9 @@ OGRANICZENIA
 ------------
 - Dryf sercowy (upal, odwodnienie) zawyza HR pod koniec dlugiej jazdy.
 - min_wbal dla jazd HR = NULL (brak watow = brak W'bal = zadnych kotwic).
-- LTHR=132 bpm: kanon z QExt2/DECISIONS (strefy Coggan %%LTHR).
+- LTHR: od 2026-10-08 DYNAMICZNE (fitmodel/lthr.py, tabela lthr_daily, na dzien jazdy); K_LOW/K_HIGH z
+  qbot_v2.hr_xss_calib (lthr.calibrate_hr_xss, co 28 dni lub po zmianie LTHR). Stale ponizej = awaryjne
+  (dawny kanon 132 bpm byl o ~18 ud. za niski -- DECISIONS 2026-10-08).
 """
 from __future__ import annotations
 
@@ -58,9 +60,44 @@ def fetch_hr_rows(external_id: str) -> list:
         conn.close()
 
 
-def compute_hr_xss_split(hr_rows: list, lthr_bpm: float = LTHR_BPM,
-                         k_low: float = K_LOW, k_high: float = K_HIGH) -> tuple:
-    """(xss_low, xss_high) z probek 1Hz. Dziury > 5 s pomijane."""
+_PCACHE: dict = {}
+
+
+def params_for(day) -> tuple:
+    """(lthr, k_low, k_high) na dzien jazdy: dynamiczne LTHR + najnowsza kalibracja K. Awaryjnie stale modulu."""
+    if day in _PCACHE:
+        return _PCACHE[day]
+    lthr, kl, kh = LTHR_BPM, K_LOW, K_HIGH
+    try:
+        from fitmodel.lthr import get_lthr
+        conn = _db_connect()
+        try:
+            lthr = float(get_lthr(conn, day))
+            cur = conn.cursor()
+            cur.execute("SELECT k_low, k_high FROM qbot_v2.hr_xss_calib ORDER BY day DESC LIMIT 1")
+            r = cur.fetchone()
+            if r:
+                r = tuple(r.values()) if isinstance(r, dict) else tuple(r)
+                kl, kh = float(r[0]), float(r[1])
+            else:
+                lthr, kl, kh = LTHR_BPM, K_LOW, K_HIGH   # bez kalibracji K nie mieszac nowego LTHR ze starymi K
+        finally:
+            conn.close()
+    except Exception:
+        lthr, kl, kh = LTHR_BPM, K_LOW, K_HIGH
+    _PCACHE[day] = (lthr, kl, kh)
+    return _PCACHE[day]
+
+
+def compute_hr_xss_split(hr_rows: list, lthr_bpm: float | None = None,
+                         k_low: float | None = None, k_high: float | None = None) -> tuple:
+    """(xss_low, xss_high) z probek 1Hz. Dziury > 5 s pomijane. Brak parametrow -> dynamiczne na dzien jazdy."""
+    if lthr_bpm is None or k_low is None or k_high is None:
+        day = hr_rows[0][0].date() if hr_rows and hasattr(hr_rows[0][0], "date") else None
+        dl, dkl, dkh = params_for(day)
+        lthr_bpm = dl if lthr_bpm is None else lthr_bpm
+        k_low = dkl if k_low is None else k_low
+        k_high = dkh if k_high is None else k_high
     lo = hi = 0.0
     prev_ts = None
     for row in hr_rows:
@@ -79,7 +116,7 @@ def compute_hr_xss_split(hr_rows: list, lthr_bpm: float = LTHR_BPM,
     return lo * k_low, hi * k_high
 
 
-def compute_hr_xss(hr_rows: list, lthr_bpm: float = LTHR_BPM) -> float:
+def compute_hr_xss(hr_rows: list, lthr_bpm: float | None = None) -> float:
     """Suma Low+High -- zachowane dla zgodnosci wstecz."""
     lo, hi = compute_hr_xss_split(hr_rows, lthr_bpm=lthr_bpm)
     return lo + hi

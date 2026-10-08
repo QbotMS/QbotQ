@@ -80,6 +80,12 @@ def main() -> None:
         # 2b. ModelQ v2 -- jedyne zrodlo prawdy: XSS nowych jazd + sygnatura MQ2 + publish -> fitmodel_daily.
         # Zastepuje ftp_resolver/cp_wprime/training_load/cp_v3. Konsumenci czytaja te same
         # kolumny (ftp_est_w, cp_modelq_w, ltp_modelq_w, wprime_modelq_kj, ctl_xss/atl/tsb) z MQ2.
+        # 2026-10-08: dynamiczne LTHR (fitmodel/lthr.py) PRZED modelq2 -- XSS z tetna nowych jazd liczy sie od niego
+        def _lthr():
+            from fitmodel.lthr import run_daily as lthr_run
+            return lthr_run(conn)
+        _step("lthr", _lthr)
+
         def _modelq2():
             from fitmodel.modelq2.publish import run_daily_v2
             return run_daily_v2(conn)
@@ -162,6 +168,12 @@ def main() -> None:
             from fitmodel.power_meter_guard import _telegram_send
             return ts_run(conn, send=_telegram_send)
         _step("threshold_sync", _threshold_sync)
+
+        def _lthr_sync():
+            from fitmodel.threshold_sync import run_lthr
+            from fitmodel.power_meter_guard import _telegram_send
+            return run_lthr(conn, send=_telegram_send)
+        _step("lthr_sync", _lthr_sync)
 
         # 2e. Ryczalt kaloryczny z eventu kalendarza (wakacje: kcal_planned).
         # Dni bez realnego jedzenia dostaja szacunek X kcal + makra jak w
@@ -251,6 +263,12 @@ def run_after_ride(reason: str = "") -> None:
             from fitmodel.wbal_replay import run_for_new_rides
             return run_for_new_rides()
         _step("wbal_replay", _wbal_replay)
+
+        # 2026-10-08: dynamiczne LTHR (fitmodel/lthr.py) PRZED modelq2 -- XSS z tetna nowych jazd liczy sie od niego
+        def _lthr():
+            from fitmodel.lthr import run_daily as lthr_run
+            return lthr_run(conn)
+        _step("lthr", _lthr)
 
         def _modelq2():
             from fitmodel.modelq2.publish import run_daily_v2

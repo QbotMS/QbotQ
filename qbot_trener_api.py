@@ -712,6 +712,11 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                         if lt:
                             break
                 meta["lthr_bpm"] = int(lt) if lt and lt.isdigit() else None
+                try:  # 2026-10-08: dynamiczne LTHR (fitmodel/lthr.py) ma pierwszenstwo przed env
+                    from fitmodel.lthr import get_lthr as _get_lthr
+                    meta["lthr_bpm"] = int(_get_lthr())
+                except Exception:
+                    pass
                 meta["ov"] = {k: v for k, v in ctx["ov"].items() if k.startswith("wx.")}
                 meta["route_entry_ids"] = sorted(ctx.get("route_entry_ids") or [])
             except Exception as e:  # meta pomocnicze - tydzien ma sie pokazac nawet bez niego

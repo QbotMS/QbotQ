@@ -1,5 +1,11 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-10-08] Dzwonek obok Wyloguj + rzadsze menu
+- nav.js v14 / nav.css v13: dzwonek #qbell wstawiany przez qLogoutBtn tuz przed Wyloguj (naglowek / plywajacy / pasek menu na telefonie), panel rozwija sie POD dzwonkiem; menu: pozycje co 52 px (bylo 46), pierwsza ikona 110 px od gory (pod pasem naglowka 78-82 px). Zweryfikowane Playwright komputer + telefon.
+
+## [2026-10-08] Nowe ikony menu (dwutonowe)
+- nav.js v13 / nav.css v11: wszystkie ikony menu + dzwonek, Setup, dzien/noc, Wyloguj - kontur 1.8, wypelnienie .qi-f/.qi-fo (16%, aktywna 26%), akcent #e8742a .qi-a/.qi-as. Zweryfikowane Playwright dzien/noc: 12 pozycji z akcentem, kolor akcentu poprawny, bez bledow.
+
 ## [2026-10-08] SETUP: Polaczenia, Dostepy, Sezony, Kontakty + Wyloguj
 - nav.js v12 / nav.css v10 (Wyloguj #qlogout, qLockMount, bez menu w ramce, bez klodki w menu, ?klodka=1 -> Setup), trener.js v35 (sezon_ust), trener-fragment (sub z podkreslnikiem).
 - Zweryfikowane Playwright: 5 zakladek, Strava/Komoot/Hammerhead w ramkach bez menu, Dostepy dzialaja (lista, Wyloguj), Kontakty: test dodaj grupe/adres/usun (posprzatane), ?klodka=1 -> #dostepy, Trening>Sezon bez ustawien + odnosnik, Wyloguj bez kolizji na 8 stronach (komputer + telefon). Dok.: docs/SETUP.md.

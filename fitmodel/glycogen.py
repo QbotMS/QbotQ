@@ -323,6 +323,43 @@ def _load_daily_glycogen_state(db_conn, day_value: date) -> tuple[float, float, 
     return 0.0, 0.0, None
 
 
+def _ride_rows_by_day_db(db_conn, start_day: date, end_day: date) -> dict:
+    """Serie (czas, moc) 1 Hz jazd z okresu -- z bazy, nie z plikow FIT (2026-10-08, DECISIONS).
+
+    Wczesniej krok czytal WSZYSTKIE pliki FIT z artifacts/fit (381 szt., ~2.4 s/plik = ~930 s) tylko po to,
+    by odrzucic te spoza okna. activity_record ma te same dane (pliki FIT nazywaja sie external_id).
+    Data jazdy = training_sessions.date (czas lokalny). Ta sama jazda pod dwoma external_id (ta sama godzina
+    startu) liczona raz -- strumien z najwieksza liczba probek (jak publish.ingest_new_rides_xss).
+    Zwraca {dzien: [rows, ...]}, rows = [{"timestamp", "power"}] posortowane po czasie."""
+    def _tup(r):
+        return tuple(r.values()) if isinstance(r, dict) else tuple(r)
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT t.external_id, t.date, t.started_at,
+                   (SELECT count(*) FROM qbot_v2.activity_record a WHERE a.external_id = t.external_id) AS n
+            FROM qbot_v2.training_sessions t
+            WHERE t.date BETWEEN %s AND %s
+            """,
+            (start_day, end_day),
+        )
+        found = [_tup(r) for r in cur.fetchall()]
+        best: dict = {}
+        for eid, day_value, started_at, n in found:
+            if not n:
+                continue
+            key = started_at if started_at is not None else ("eid", eid)
+            if key not in best or n > best[key][2]:
+                best[key] = (eid, day_value, n)
+        out: dict = {}
+        for eid, day_value, _n in sorted(best.values(), key=lambda x: (x[1], x[0])):
+            cur.execute("SELECT ts, power_w FROM qbot_v2.activity_record WHERE external_id = %s ORDER BY sec", (eid,))
+            rows = [{"timestamp": ts, "power": pw} for ts, pw in (_tup(r) for r in cur.fetchall()) if ts is not None]
+            if rows:
+                out.setdefault(_coerce_date(day_value), []).append(rows)
+    return out
+
+
 def compute_glycogen_balance(db_conn, fit_dir: str, start_day: date, end_day: date) -> list[dict]:
     """Dzienny bilans glikogenu [g] i [%] z flaga pewnosci.
 
@@ -350,11 +387,8 @@ def compute_glycogen_balance(db_conn, fit_dir: str, start_day: date, end_day: da
     ride_burn_by_day: dict[date, float] = {}
     ride_kcal_by_day: dict[date, float] = {}
     ftp_cache: dict[date, float] = {}
-    for path in sorted(Path(fit_dir).glob("*.fit")):
-        rows = _parse_fit_rows(str(path))
-        fit_day = _fit_day_from_rows(rows, str(path))
-        if fit_day is None or fit_day < current or fit_day > end_value:
-            continue
+    _rides_db = _ride_rows_by_day_db(db_conn, current, end_value)
+    for fit_day, rows in ((d, r) for d in sorted(_rides_db) for r in _rides_db[d]):
         if fit_day not in ftp_cache:
             with db_conn.cursor() as cur:
                 cur.execute(

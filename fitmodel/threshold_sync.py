@@ -124,6 +124,53 @@ def run(conn, send=None, client=None, dry_run: bool = False, tp_day=None, tp_w=N
                 pass
 
 
+FRIEL_HR_PCT = (0.81, 0.89, 0.93, 0.99, 1.02, 1.06)   # Friel (kolarstwo): Z1..Z5c gorne granice
+
+
+def run_lthr(conn, send=None, client=None, dry_run: bool = False) -> dict:
+    """LTHR (fitmodel/lthr.py, dynamiczne) -> intervals.icu sport-settings Ride `lthr` (2026-10-08, DECISIONS).
+    Hammerhead/Karoo biora strefy tetna z intervals. Zapis tylko przy roznicy >= 1 ud. (LTHR ma juz wlasna histereze)."""
+    from fitmodel.lthr import get_lthr
+    target = int(get_lthr(conn))
+    old = None
+    own = client is None
+    try:
+        client = client or _client()
+        s = _ride_settings(client)
+        old = s.get("lthr")
+        # strefy tetna intervals (7 nazw Friela: Recovery..Anaerobic) = gorne granice w % LTHR, ostatnia = max HR
+        zones = [int(round(target * p)) for p in FRIEL_HR_PCT] + [int(s.get("max_hr") or 173)]
+        if old is not None and int(old) == target and (s.get("hr_zones") or []) == zones:
+            return {"lthr_sync": "bez zmian", "intervals_lthr": old, "hr_zones": zones}
+        if dry_run:
+            return {"lthr_sync": "dry-run: zapisalbym", "old": old, "new": target, "hr_zones": zones}
+        r = client.put(f"{API}/sport-settings/{s['id']}", json={"lthr": target, "hr_zones": zones})
+        r.raise_for_status()
+        check = _ride_settings(client).get("lthr")
+        if int(check or 0) != target:
+            raise RuntimeError(f"odczyt kontrolny: intervals ma LTHR {check} zamiast {target}")
+        _log(conn, old, target, dt.date.today(), "ok-lthr")
+        if send:
+            send(f"\u2764\ufe0f LTHR na Karoo: {old} -> {target} ud./min, strefy tetna {zones} (intervals.icu; "
+                 f"Hammerhead pobierze przy synchronizacji).")
+        return {"lthr_sync": "zapisano", "old": old, "new": target, "hr_zones": zones}
+    except Exception as exc:
+        err = f"{type(exc).__name__}: {exc}"[:500]
+        _log(conn, old, target, dt.date.today(), "error-lthr", err)
+        if send:
+            try:
+                send(f"\u26a0\ufe0f Synchronizacja LTHR do intervals.icu NIEUDANA: {err}. Karoo zostaje na {old}.")
+            except Exception:
+                pass
+        raise
+    finally:
+        if own and client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+
 def _cli() -> None:
     import os
     import sys

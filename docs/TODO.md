@@ -13,12 +13,38 @@
 
 # OTWARTE
 
+## [CP-DYNAMICZNE] CP z wysilkow + przelomy (dodane 2026-10-08)
+Dzis TP/CP = model: kotwice (zamrozone, ostatnia 20.06 251 W) + dryf za CTL. Samo nie wykrywa, ze forma realnie
+wzrosla/spadla; auto-kotwica EF wylaczona od 25.08 (skazona 11.08). Otwarte:
+- "prawdziwe CP z okien 120-600 s" (notka w publish.py cp_note) -- nie liczone;
+- modul przelomow `fitmodel/modelq2/breakthrough.py` istnieje, NIEPODLACZONY (podnosi CP tylko przy rekordzie mocy
+  powyzej modelu, jak Xert) -- Michal rzadko jezdzi na maksa, wiec glownie dla sporadycznych mocnych wysilkow;
+- tp_recheck (automat przegladu) zostaje jedynym sygnalem "w dol".
+Do decyzji Michala: czy i jak podlaczyc przelomy (tylko w gore, z bezpiecznikami miernika: kwarantanna, meter_phys).
+
+## [HR-XSS-UPAL] XSS z tetna przy upale/dryfie tetna (dodane 2026-10-08)
+Po przejsciu na LTHR 148 + K_HIGH 1.41 dlugie lipcowe jazdy w kwarantannie mocno wzrosly: 04.07 175->244, 12.07 257->304,
+19.07 242->364 XSS (103 km). Podejrzenie: dryf sercowy w upale -> duzo sekund nad LTHR. hr_xss nie ma korekty na
+temperature/dryf. Sprawdzic temperatury tych jazd i ewentualnie liczyc koszyk High tylko przy niskim dryfie.
+
+## [BG-JOB] Zadania w tle z powiadomieniem w QBocie i na Telegramie (dodane 2026-10-08)
+Problem: dlugie skrypty odpalane przez SSH (nohup) koncza sie "po cichu", a print() bez flush laduje w pliku wyniku
+dopiero na koncu (08.10 mq2_drop_anchor: 16 min bez sladu postepu).
+Propozycja (czeka na "rob" od Michala): `scripts/bg_job.py --name "<opis>" -- <skrypt.py> [arg...]`:
+- dziecko z `python -u` (wynik na biezaco), plik wyniku sam w /opt/qbot/artifacts/<nazwa>_<data>.txt;
+- start: wpis w Centrum powiadomien (kind system, qbot_notif.push) "Zadanie w tle: ... - trwa";
+- koniec: ten sam klucz -> "zakonczone OK / BLAD", czas trwania, ostatnie linie wyniku + Telegram;
+- przelacznik "Zadania w tle" w ustawieniach powiadomien (SOURCES w qbot_notif.py - plik w robocie innej sesji, uzgodnic worklockiem);
+- regula w CONTEXT.md (scripts/build_context.py): kazdy dlugi skrypt podawac Michalowi jako polecenie przez bg_job.py.
+
 ## [KAROO-PROG-WERYFIKACJA] Sprawdzic lancuch progu na Karoo (dodane 2026-10-04)
 Po pierwszej jezdzie po synchronizacji: FTP w Hammerhead Dashboard i na Karoo = TP ModelQ; w FIT session
 `threshold_power` = zapisany prog; IF/TSS w Garmin Connect przeliczone od nowego progu; strefy HR na Karoo od max 173.
 Decyzja do podjecia: `fitmodel_param.hr_max_bpm` 184 -> 173? (przeliczenie segmentow).
 
 ## [MODELQ-TP-PRZEGLAD] Prog TP niepewny 239-256 W - automatyczny przeglad (dodane 2026-10-04)
+**2026-10-08: kotwica EF 11.08 USUNIETA (decyzja Michala), TP 255.4 -> 239.4 W - DECISIONS 2026-10-08.** Przeglad zostaje
+(potwierdzi albo poprawi 239 W). Sprzatanie po potwierdzeniu: tabele qbot_v2.bak_20261008_*.
 Krok daily_job `tp_recheck` wysle raport na Telegram, gdy zajdzie wyzwalacz (21 dni / 8 jazd / 15 h / 400 km od 04.10)
 i okno EF bedzie czyste. Po raporcie: decyzja o TP (kotwica reczna / usuniecie kotwicy EF 11.08 / bez zmian).
 Szczegoly: DECISIONS 2026-10-04. Powiazane otwarte: (1) wspolczynnik gotowosci QExt2 (cf 0.88 dal falszywe
@@ -344,7 +370,12 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] Kalendarz (kalendarz3.js): dystans jazdy trzymany w notatce wpisu (osobne pole w bazie); planned_xss z Planera wypraw nie jest jeszcze pokazywany w siatce (dodane 2026-10-08).
 - [ ] Albert: kalendarz bez narzedzi - odczyt tylko przez SQL, calendar_event_add/reminder_add w prompcie ale bez writera (WRITE_NOT_AVAILABLE), pomoc obiecuje 'dodaj wydarzenie' (dodane 2026-10-08).
 
+- [ ] [PORÓWNANIE-WSTRZYMANE] (2026-10-08, WSTRZYMANE decyzja Michala) Porownanie przejazdow wg GPS: progi ustalone ≥80% = ta sama trasa (trend), 50–79% = czesciowo wspolna (odcinki), tylko ten sam kierunek. Mockupy: /porownanie-mockup.html, /porownanie-1na1-mockup.html (dane /data/porownanie-*.json, skrypty /opt/qbot/artifacts/porownanie_*.py, indeks artifacts/porownanie/cells.json). Warunek wznowienia: porownanie mocy tylko przy TYM SAMYM mierniku (activity_device bike_power ant_device_number), np. 16.06 SRAM 29525 vs 08.10 Favero 30604 = 199 vs 147 W przy tym samym tempie i tetnie.
+
 # ZROBIONE
+- [2026-10-08] [STREFY-HR-LTHR] dynamiczne LTHR (fitmodel/lthr.py, dzis 148) zamiast 132; strefy HR raportu od LTHR; LTHR+strefy do intervals/Karoo (DECISIONS 2026-10-08).
+- [2026-10-08] [GLIKOGEN-WOLNY] krok glycogen 930 s -> 0.4 s: jazdy z activity_record zamiast czytania 381 plikow FIT (DECISIONS 2026-10-08).
+- [2026-10-08] [IKONY-MENU] Nowe dwutonowe ikony lewego menu (kontur + wypelnienie + pomaranczowy akcent), style .qi-* w nav.css.
 - [2026-10-08] [SETUP-2] SETUP: Polaczenia (Strava/Komoot/Hammerhead), Dostepy (dawna klodka), Trening>Sezony (ustawienia sezonow), Kontakty (grupy mailowe); Wyloguj w prawym gornym rogu. Dok.: docs/SETUP.md.
 - [2026-10-08] [SETUP-TRENING] SETUP > Trening: Dostepnosc + Ustawienia Trenera przeniesione z Treningu; zebatka SETUP nad przelacznikiem dzien/noc. Dok.: docs/SETUP.md.
 - [2026-10-08] [SETUP] Ekran SETUP (zebatka na dole menu, /setup.html), zakladka Powiadomienia: checklista rodzajow dzwonka (qbot_notif.SOURCES, qbot_v2.app_settings, /api/setup/notif). Testy test_notif_setup 2.
