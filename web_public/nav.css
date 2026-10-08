@@ -204,3 +204,13 @@ html.theme-dark .head .themebtn,html.theme-dark .head input,html.theme-dark .hea
   .qnc-pan::before{display:none}
   .qnc-h{padding-left:16px}
 }
+/* 2026-10-08: krzyzyk (usun z listy) + Historia */
+.qnc-it{position:relative}
+.qnc-del{position:absolute;top:6px;right:4px;background:none;border:0;color:var(--qn-muted);font-size:18px;line-height:1;padding:2px 6px;border-radius:6px;cursor:pointer}
+.qnc-del:hover{background:var(--qn-hover);color:var(--qn-brand)}
+.qnc-it:not(.qnc-hi) .qnc-tx{padding-right:22px}
+.qnc-hb{display:inline-flex;align-items:center;gap:4px}
+.qnc-histbtn{background:none;border:1px solid var(--qn-border);color:var(--qn-fg);font:inherit;font-size:12px;padding:3px 9px;border-radius:7px;cursor:pointer}
+.qnc-histbtn:hover{background:var(--qn-hover)}
+.qnc-hh{font-size:12px;color:var(--qn-muted);padding:8px 6px 2px}
+.qnc-st{font-style:italic}

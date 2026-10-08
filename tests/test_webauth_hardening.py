@@ -1,3 +1,5 @@
+import os as _os
+_os.environ["QBOT_NOTIF_DISABLE"] = "1"  # 2026-10-08: bez wpisow do Centrum powiadomien
 """Utwardzenie logowania qbot-web (2026-10-07): fail-closed bramki, bezpieczny next,
 Secure na ciasteczku, limit nieudanych prob. Bez prawdziwej konfiguracji (_webauth_load podmieniony)."""
 import os

@@ -8,7 +8,7 @@
 <script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
 <script src="/qdate.js?v=1"></script>
 <link rel="stylesheet" href="/ui2.css?v=10">
-<link rel="stylesheet" href="/nav.css?v=6">
+<link rel="stylesheet" href="/nav.css?v=7">
 <title>QBot — Forma</title>
 <style>
 .drow{display:grid;grid-template-columns:70px auto auto auto 1fr 20px;gap:4px 10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px;cursor:pointer}
@@ -345,7 +345,7 @@ table.qs-table td.num,table.qs-table th.num{text-align:right;font-variant-numeri
 
 <div style="margin-top:28px;font-size:12px;color:var(--muted)">Stara wersja: <a href="/forma.html">forma.html</a></div>
 </div>
-<script src="/nav.js?v=7"></script>
+<script src="/nav.js?v=8"></script>
 <script>/* Bilans i waga: ramka ladowana przy pierwszym otwarciu zakladki, wysokosc dopasowana do tresci */(function(){var fr=document.getElementById("fr-bilans"),b=document.querySelector('#tabs [data-t="bilans"]');if(!fr)return;function load(){if(fr.getAttribute("src"))return;fr.src="/trener-fragment.html?sub=bilans";fr.addEventListener("load",function(){try{var d=fr.contentDocument,set=function(){fr.style.height=Math.max(600,d.documentElement.scrollHeight+24)+"px";};set();new fr.contentWindow.ResizeObserver(set).observe(d.body);}catch(e){}});}if(b)b.addEventListener("click",load);if(location.hash==="#bilans")load();})();</script>
 <script>(function(){var b=document.getElementById("themebtn");if(!b)return;var SUN='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',MOON='<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';function paint(){b.querySelector("svg").innerHTML=document.documentElement.classList.contains("theme-dark")?SUN:MOON;}b.addEventListener("click",function(){var d=!document.documentElement.classList.contains("theme-dark");document.documentElement.classList.toggle("theme-dark",d);try{localStorage.setItem("qtheme",d?"dark":"light")}catch(e){}paint();});paint();})();</script>
 <script>

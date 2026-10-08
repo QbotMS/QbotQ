@@ -12,7 +12,6 @@
 
 
 # OTWARTE
-- [ ] [NOTIF-KROK2] Centrum powiadomien krok 2: Jazdy (nowa jazda/raport/brak ubioru), System (uslugi, dysk, nieudane logowania, wejscia QR demo), Pogoda przed jazda. Dok.: docs/NOTIF_CENTER.md.
 
 ## [KAROO-PROG-WERYFIKACJA] Sprawdzic lancuch progu na Karoo (dodane 2026-10-04)
 Po pierwszej jezdzie po synchronizacji: FTP w Hammerhead Dashboard i na Karoo = TP ModelQ; w FIT session
@@ -346,6 +345,8 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] Albert: kalendarz bez narzedzi - odczyt tylko przez SQL, calendar_event_add/reminder_add w prompcie ale bez writera (WRITE_NOT_AVAILABLE), pomoc obiecuje 'dodaj wydarzenie' (dodane 2026-10-08).
 
 # ZROBIONE
+- [2026-10-08] [NOTIF-HIST] Powiadomienia: krzyzyk = usun z listy (dismissed_at, sql/notif_v2.sql), Historia 90 dni (/api/notif/history). Dok.: docs/NOTIF_CENTER.md.
+- [2026-10-08] [NOTIF-KROK2] Centrum powiadomien krok 2: Nowa jazda, Uzupelnij w czym jechales, pogoda przed jazda Trenera (dzis/jutro), uslugi qbot* (nie dziala/failed/samoczynny restart), dysk >= 90%, demo QR (prosba/wejscie), nieudane logowania. Testy test_notif_step2 4. Dok.: docs/NOTIF_CENTER.md.
 - [2026-10-08] [NOTIF-KROK1] Centrum powiadomien: dzwonek w menu (nav.js qBell, plakietka z liczba, kropka na przycisku menu na telefonie), okno z lista; qbot_notif.py + qbot_v2.notif + /api/notif*; zrodla: zadania przy rowerze, trasy do potwierdzenia, brak swiezych danych (sen/waga > 3 dni), wiadomosci Trenera. Testy test_notif 4. Dok.: docs/NOTIF_CENTER.md.
 - [2026-10-08] ZROBIONE: [TRENING-2026-10-08] Strona TRENING (/trening.html) zamiast Kalendarza i Trenera: zakladki Miesiac (Kalendarz) + dzialy Trenera, Kalibracja = Ustawienia; Bilans i waga przeniesiony do Formy (ramka trener-fragment.html); przekierowania trener.html/kalendarz.html; menu + link Telegram. Dok.: docs/TRENER.md.
 - [2026-10-08] [RJ-UBIOR-ROWER] Raport z jazdy: przycisk "Ubior / rower" obok "Z kim jechalem" (okno qModal; ikona W czym jechalem zdjeta z kolumny) + "Rower po jezdzie - do zrobienia" (7 zadan, notatka; garage.db bike_task, qbot3/rides/bike_tasks.py, /api/bike-tasks*). Telegram 2 h przed zaplanowana jazda rowerowa Trenera (bez godziny: 7:00), przycisk Zrobione tr:bt:<max_id>. Testy tests/test_bike_tasks.py (5).

@@ -242,16 +242,27 @@
         .then(function (r) { if (!r.ok) throw r.status; return r.json(); });
     }
     var box = document.createElement("div"); box.className = "qnc";
+    var HIST = null;
+    function renderHist() {
+      if (!HIST) { box.innerHTML = '<div class="qnc-empty">wczytuję historię\u2026</div>'; return; }
+      var it = HIST.items || [];
+      box.innerHTML = '<div class="qnc-hh">Wszystkie powiadomienia z ' + HIST.days + ' dni, także usunięte</div>' + (it.length ? it.map(function (x) {
+        return '<div class="qnc-it qnc-hi"><div class="qnc-ic">' + qEsc(x.icon) + '</div><div class="qnc-tx"><b>' + qEsc(x.title) + '</b>'
+          + (x.body ? '<div class="qnc-b">' + qEsc(x.body).replace(/\n/g, "<br>") + '</div>' : "")
+          + '<div class="qnc-f"><span>' + qEsc(x.when) + '</span><span class="qnc-st">' + qEsc(x.status) + '</span>'
+          + (x.url ? '<a href="' + qEsc(x.url) + '">przejdź</a>' : "") + '</div></div></div>';
+      }).join("") : '<div class="qnc-empty">Historia jest pusta.</div>');
+    }
     function render() {
+      if (HIST !== null) { renderHist(); return; }
       var it = (DATA && DATA.items) || [];
       if (!it.length) { box.innerHTML = '<div class="qnc-empty">Brak powiadomień — wszystko w porządku.</div>'; return; }
       box.innerHTML = it.map(function (x, i) {
-        return '<div class="qnc-it' + (x.unread ? " u" : "") + '"><div class="qnc-ic">' + qEsc(x.icon) + '</div><div class="qnc-tx">'
+        return '<div class="qnc-it' + (x.unread ? " u" : "") + '"><button type="button" class="qnc-del" data-d="' + x.id + '" title="Usuń z listy (zostaje w historii)" aria-label="Usuń">\u00d7</button><div class="qnc-ic">' + qEsc(x.icon) + '</div><div class="qnc-tx">'
           + '<b>' + qEsc(x.title) + '</b>' + (x.body ? '<div class="qnc-b">' + qEsc(x.body).replace(/\n/g, "<br>") + '</div>' : "")
           + '<div class="qnc-f"><span>' + qEsc(x.when) + '</span>'
           + (x.url ? '<a href="' + qEsc(x.url) + '">przejdź</a>' : "")
           + (x.action ? '<button type="button" data-a="' + i + '">' + qEsc(x.action.label) + '</button>' : "")
-          + (!x.live ? '<button type="button" class="qnc-x" data-d="' + x.id + '" title="Ukryj">ukryj</button>' : "")
           + '</div></div></div>';
       }).join("");
       box.querySelectorAll("button[data-a]").forEach(function (bt) {
@@ -259,12 +270,14 @@
           post(a.post, a.body).then(load).catch(function () { bt.disabled = false; bt.textContent = "nie udało się"; }); };
       });
       box.querySelectorAll("button[data-d]").forEach(function (bt) {
-        bt.onclick = function () { bt.disabled = true; post("/api/notif/dismiss", { id: +bt.dataset.d }).then(load).catch(function () { bt.disabled = false; }); };
+        bt.onclick = function () { bt.disabled = true; var row = bt.closest(".qnc-it"); if (row) row.style.opacity = ".35";
+          post("/api/notif/dismiss", { id: +bt.dataset.d }).then(load).catch(function () { bt.disabled = false; if (row) row.style.opacity = ""; }); };
       });
     }
     /* 2026-10-08: wysuwany panel obok dzwonka (zamiast okna na srodku). Telefon: panel na cala szerokosc z lewej. */
     var pan = document.createElement("div"); pan.className = "qnc-pan"; pan.setAttribute("role", "dialog"); pan.setAttribute("aria-label", "Powiadomienia");
-    pan.innerHTML = '<div class="qnc-h"><b>Powiadomienia</b><button type="button" class="qnc-close" aria-label="Zamknij">\u00d7</button></div>';
+    pan.innerHTML = '<div class="qnc-h"><b>Powiadomienia</b><span class="qnc-hb"><button type="button" class="qnc-histbtn">Historia</button>'
+      + '<button type="button" class="qnc-close" aria-label="Zamknij">\u00d7</button></span></div>';
     pan.appendChild(box); document.body.appendChild(pan);
     function mob() { return window.matchMedia("(max-width:820px),(pointer:coarse) and (max-height:500px)").matches; }
     function place() {
@@ -277,9 +290,18 @@
     function outside(e) { if (!pan.contains(e.target) && !b.contains(e.target)) shut(); }
     function esc(e) { if (e.key === "Escape") { e.stopPropagation(); shut(); } }
     pan.querySelector(".qnc-close").addEventListener("click", shut);
+    var hb = pan.querySelector(".qnc-histbtn"), ht = pan.querySelector(".qnc-h b");
+    hb.addEventListener("click", function () {
+      if (HIST !== null) { HIST = null; hb.textContent = "Historia"; ht.textContent = "Powiadomienia"; render(); return; }
+      HIST = false; hb.textContent = "\u2190 Bieżące"; ht.textContent = "Historia"; render();
+      fetch("/api/notif/history", { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.json(); })
+        .then(function (j) { if (HIST === null) return; HIST = j; render(); })
+        .catch(function () { if (HIST === null) return; box.innerHTML = '<div class="qnc-empty">Nie udało się wczytać historii.</div>'; });
+    });
     window.addEventListener("resize", function () { if (md) place(); });
     b.addEventListener("click", function () {
       if (md) { shut(); return; }
+      HIST = null; hb.textContent = "Historia"; ht.textContent = "Powiadomienia";
       if (mob()) document.body.classList.remove("qnav-open");
       md = true; render(); place(); b.classList.add("active");
       requestAnimationFrame(function () { pan.classList.add("on"); });

@@ -1,5 +1,11 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-10-08] Powiadomienia: krzyzyk + Historia
+- × usuwa z listy (dismissed_at, wiersz zostaje), Historia 90 dni w panelu (nav.js v8, nav.css v7). Zweryfikowane Playwright: usuniecie, brak powrotu przy tej samej tresci, wpis 'usuniete' w Historii.
+
+## [2026-10-08] Centrum powiadomien krok 2
+- qbot_notif.py: jazdy, pogoda, system, demo; qbot_web: nieudane logowania -> notif. Zweryfikowane na zywo: /api/notif zwraca 2 jazdy + 4 wejscia demo z czasem zdarzenia; test nieudanego logowania (2 proby) -> pozycja, usunieta; prognoza dla jazd 11/13/15.10 spokojna (brak ostrzezen), alarmy pogody pokryte testem.
+
 ## [2026-10-08] Centrum powiadomien (krok 1)
 - Dzwonek pod ☰ we wszystkich stronach (nav.js v7, nav.css v6 w 23 plikach html); lista jako panel wysuwany obok dzwonka (nie okno na srodku). Zweryfikowane Playwright (komputer + telefon): plakietka 2, okno z pozycjami, bez bledow JS. Testowa pozycja Trenera dodana i usunieta.
 - Krok 2 w TODO [NOTIF-KROK2]. Szczegoly: docs/NOTIF_CENTER.md.

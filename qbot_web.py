@@ -236,6 +236,27 @@ def _login_record_failure(username, users, now=None):
     import time as _time
     now = _time.time() if now is None else now
     _login_failures.setdefault(_login_key(username, users), []).append(now)
+    # 2026-10-08: Centrum powiadomien - nieudane logowanie (jedna pozycja na dzien, licznik z bazy). Bledy pomijane.
+    # QBOT_NOTIF_DISABLE=1 (testy) - bez zapisu do bazy.
+    try:
+        if os.environ.get("QBOT_NOTIF_DISABLE") == "1":
+            raise RuntimeError("notif wylaczone")
+        import re as _re
+        from datetime import datetime as _dtm
+        import qbot_notif as _NF
+        _when = _dtm.fromtimestamp(now).astimezone()
+        _c = _db_conn()
+        try:
+            _cur = _c.cursor()
+            _cur.execute("SELECT title, resolved_at FROM qbot_v2.notif WHERE key=%s", ("system:login:" + _when.date().isoformat(),))
+            _r = _cur.fetchone()
+            _m = _re.search(r"(\d+)$", (_r or {}).get("title") or "") if _r and not _r.get("resolved_at") else None
+            _NF.login_failed(_cur, username, (int(_m.group(1)) if _m else 0) + 1, _when)
+            _c.commit()
+        finally:
+            _c.close()
+    except Exception as _e:
+        print("[notif] login_failed: %s" % _e)
 
 
 def _login_clear_failures(username, users):
@@ -6593,6 +6614,17 @@ def notif_list():
             conn.commit()
             _NOTIF_SYNC_TS[0] = _t.time()
         return NF.listing(cur)
+    finally:
+        conn.close()
+
+
+@app.get("/api/notif/history")
+def notif_history(days: int = Query(90)):
+    """2026-10-08: log powiadomien (tez usunietych krzyzykiem i zamknietych samoczynnie), ostatnie N dni."""
+    import qbot_notif as NF
+    conn = _db_conn()
+    try:
+        return NF.history(conn.cursor(), max(1, min(int(days or 90), 365)))
     finally:
         conn.close()
 
