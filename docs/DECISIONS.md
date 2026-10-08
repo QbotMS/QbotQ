@@ -4,6 +4,15 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-08 -- NAPRAWA: lthrBpm (i inne pola z fitmodel) puste dla Karoo -- brak prawa do /etc/qbot/qbot-api.env
+**Objaw:** /ride-readiness (mcp_server, q-bot jako user qbot) zwracal lthrBpm=None mimo dynamicznego LTHR 148 -> QExt2
+(`json.optInt("lthrBpm", 132)`) liczyl strefy HR / KOKPIT dalej od 132. Przyczyna: fitmodel.ftp_resolver._load_env_file
+robil Path.exists() na /etc/qbot/qbot-api.env -> PermissionError -> wyjatek w _db_connect -> _lthr_now() zwracal fallback None.
+Dotyczy kazdego wywolania fitmodel._db_connect z procesu bez dostepu do pliku.
+**Naprawa:** _load_env_file lapie OSError (brak dostepu = korzystaj z wlasnego env procesu). Zweryfikowane po restarcie q-bot:
+lthrBpm=148, durability.curve obecne, todayFactor=0,986. Testy test_lthr + test_durability: 12 OK.
+Karoo dostanie 148 przy najblizszym pobraniu /ride-readiness (bez builda).
+
 ## 2026-10-08 -- DECYZJA: forma dnia dla Karoo z ModelQ (jedno zrodlo) + cisnienie usuniete z formy
 **Odkrycie:** Karoo pobiera /ride-readiness z mcp_server.py (DECISIONS 2026-08-02), a tam todayFactor liczyl STARY
 `_compute_today_factor` (55 % HRV, 15 % Body Battery z domyslnym 75, 10 % forma Xerta, 10 % sen, 10 % RHR; asymetryczny --

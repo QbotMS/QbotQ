@@ -20,10 +20,16 @@ DEFAULT_WINDOW_DAYS = 28
 
 
 def _load_env_file(env_path: Path = ENV_FILE) -> None:
-    if not env_path.exists():
+    # 2026-10-08: proces bez prawa odczytu (q-bot/mcp_server jako user qbot) ma PG* z wlasnego env --
+    # brak dostepu do pliku NIE moze wywracac _db_connect (wczesniej: lthrBpm/durability = None dla Karoo).
+    try:
+        if not env_path.exists():
+            return
+        text = env_path.read_text()
+    except OSError:
         return
 
-    for raw_line in env_path.read_text().splitlines():
+    for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
