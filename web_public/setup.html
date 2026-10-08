@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<link rel="stylesheet" href="/ui2.css?v=10">
+<link rel="stylesheet" href="/nav.css?v=8">
+<title>QBot — Setup</title>
+<!-- SETUP (2026-10-08): ustawienia serwisu, wejscie z zebatki na dole menu (nav.js).
+     Zakladki: Powiadomienia (ktore rodzaje pokazuje dzwonek; /api/setup/notif, qbot_notif.SOURCES, qbot_v2.app_settings);
+     Trening (Dostepnosc + Ustawienia Trenera w ramkach trener-fragment.html ?sub=dostep / ?sub=kalib, ladowane przy otwarciu zakladki).
+     Kolejne zakladki dopisuj jako <button data-t> w #tabs + <section data-p>. Dok.: docs/NOTIF_CENTER.md -->
+<style>
+.sp{display:none}.sp.on{display:block}
+.st-intro{color:var(--ink2);font-size:14px;margin:0 0 14px;max-width:760px;line-height:1.5}
+.st-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start}
+.st-g h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.st-g h3 button{font:inherit;font-size:12px;text-transform:none;letter-spacing:0;background:none;border:0;color:var(--accent-ink,var(--accent));cursor:pointer;padding:2px 4px}
+.st-row{display:flex;gap:12px;align-items:flex-start;padding:9px 2px;border-top:1px solid var(--line);cursor:pointer}
+.st-row:first-of-type{border-top:0}
+.st-row input{width:18px;height:18px;margin:2px 0 0;accent-color:#e8742a;flex:0 0 auto;cursor:pointer}
+.st-row b{display:block;font-size:15px;font-weight:600}
+.st-row span{display:block;font-size:13px;color:var(--ink2);margin-top:1px}
+.st-row.off b{color:var(--muted)}
+.st-bar{display:flex;align-items:center;gap:12px;margin-top:14px;font-size:13px;color:var(--ink2)}
+.st-ok{color:var(--good,#2e7d32);font-weight:600}
+.st-err{color:var(--bad,#c0392b);font-weight:600}
+.st-h2{font-size:18px;margin:18px 0 8px}.st-h2:first-of-type{margin-top:4px}
+.st-fr{display:block;width:100%;height:600px;border:0;background:transparent}.st-fr[hidden]{display:none}
+.st-sub{margin:0 0 12px}.st-sub button{font-size:15px;padding:7px 12px}
+</style>
+</head>
+<body><div class="wrap">
+
+<div class="head">
+  <h1>Setup</h1>
+  <span class="mock"></span> <button class="themebtn" id="themebtn" type="button" aria-label="Tryb dzienny / nocny"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+</div>
+
+<div class="tabs" id="tabs">
+  <button data-t="powiadomienia" class="on">Powiadomienia</button>
+  <button data-t="trening">Trening</button>
+</div>
+
+<section class="sp on" data-p="powiadomienia">
+  <p class="st-intro">Zaznacz, co ma się pojawiać pod dzwonkiem w menu. Odznaczone nie pokazują się na liście ani w liczniku,
+    ale dalej trafiają do Historii, a po ponownym zaznaczeniu od razu widać ich bieżący stan. Wiadomości na Telegramie działają niezależnie.
+    Zmiany zapisują się od razu.</p>
+  <div class="st-grid" id="st-grid"><div class="card">wczytuję…</div></div>
+  <div class="st-bar"><span id="st-msg"></span></div>
+</section>
+
+<section class="sp" data-p="trening">
+  <p class="st-intro">Ustawienia Trenera przeniesione z zakładki Trening. Zapisy działają tak samo jak wcześniej.</p>
+  <div class="tabs st-sub" data-sub-of="trening">
+    <button data-s="dostep" class="on">Dostępność</button>
+    <button data-s="kalib">Ustawienia Trenera</button>
+  </div>
+  <iframe class="st-fr" data-s="dostep" data-src="/trener-fragment.html?sub=dostep" title="Trener — Dostępność"></iframe>
+  <iframe class="st-fr" data-s="kalib" data-src="/trener-fragment.html?sub=kalib" title="Trener — Ustawienia" hidden></iframe>
+</section>
+
+</div>
+<script src="/nav.js?v=10"></script>
+<script>(function(){var b=document.getElementById("themebtn");if(!b)return;var SUN='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',MOON='<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';function paint(){b.querySelector("svg").innerHTML=document.documentElement.classList.contains("theme-dark")?SUN:MOON;}b.addEventListener("click",function(){var d=!document.documentElement.classList.contains("theme-dark");document.documentElement.classList.toggle("theme-dark",d);try{localStorage.setItem("qtheme",d?"dark":"light")}catch(e){}paint();});paint();})();</script>
+<script>
+(function(){
+"use strict";
+function $(i){return document.getElementById(i);}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+/* zakladki */
+var tabs=document.querySelectorAll("#tabs button");
+/* ramki Trenera: ladowane przy pierwszym otwarciu zakladki, wysokosc = tresc (jak Forma > Bilans) */
+function frames(sec){sec.querySelectorAll("iframe[data-src]:not([hidden])").forEach(function(fr){if(fr.getAttribute("src"))return;fr.src=fr.dataset.src;
+  fr.addEventListener("load",function(){try{var d=fr.contentDocument,set=function(){fr.style.height=Math.max(200,d.documentElement.scrollHeight+16)+"px";};set();
+    new fr.contentWindow.ResizeObserver(set).observe(d.body);}catch(e){}});});}
+function show(t){tabs.forEach(function(b){b.classList.toggle("on",b.dataset.t===t);});
+  document.querySelectorAll("section[data-p]").forEach(function(s){s.classList.toggle("on",s.dataset.p===t);if(s.dataset.p===t)frames(s);});
+  try{history.replaceState(null,"","#"+t);}catch(e){}}
+tabs.forEach(function(b){b.addEventListener("click",function(){show(b.dataset.t);});});
+/* podzakladki w zakladce (np. Trening: Dostepnosc | Ustawienia Trenera); adres #trening-kalib otwiera wprost */
+function showSub(sec,k){var bar=sec.querySelector(".st-sub");if(!bar)return;
+  bar.querySelectorAll("button[data-s]").forEach(function(b){b.classList.toggle("on",b.dataset.s===k);});
+  sec.querySelectorAll("iframe[data-s]").forEach(function(f){f.hidden=f.dataset.s!==k;});frames(sec);
+  try{history.replaceState(null,"","#"+sec.dataset.p+"-"+k);}catch(e){}}
+document.querySelectorAll(".st-sub").forEach(function(bar){var sec=bar.closest("section[data-p]");
+  bar.querySelectorAll("button[data-s]").forEach(function(b){b.addEventListener("click",function(){showSub(sec,b.dataset.s);});});});
+var h=(location.hash||"").slice(1),hs=h.split("-");if(hs[0]&&document.querySelector('section[data-p="'+hs[0]+'"]')){show(hs[0]);if(hs[1])showSub(document.querySelector('section[data-p="'+hs[0]+'"]'),hs[1]);}
+
+/* Powiadomienia */
+var SRC=[],msgT=null;
+function msg(t,cls){var m=$("st-msg");m.className=cls||"";m.textContent=t;clearTimeout(msgT);if(cls==="st-ok")msgT=setTimeout(function(){m.textContent="";},2500);}
+function render(){
+  var groups=[],by={};
+  SRC.forEach(function(s){if(!by[s.group]){by[s.group]=[];groups.push(s.group);}by[s.group].push(s);});
+  $("st-grid").innerHTML=groups.map(function(g){
+    var all=by[g].every(function(s){return s.enabled;});
+    return '<div class="card st-g"><h3>'+esc(g)+'<button type="button" data-g="'+esc(g)+'">'+(all?"odznacz wszystkie":"zaznacz wszystkie")+'</button></h3>'+
+      by[g].map(function(s){return '<label class="st-row'+(s.enabled?"":" off")+'"><input type="checkbox" data-id="'+esc(s.id)+'"'+(s.enabled?" checked":"")+
+        '><div><b>'+esc(s.label)+'</b><span>'+esc(s.desc)+'</span></div></label>';}).join("")+'</div>';}).join("");
+  $("st-grid").querySelectorAll("input[data-id]").forEach(function(cb){cb.onchange=function(){save((function(o){o[cb.dataset.id]=cb.checked;return o;})({}));};});
+  $("st-grid").querySelectorAll("button[data-g]").forEach(function(b){b.onclick=function(){var g=b.dataset.g,all=by[g].every(function(s){return s.enabled;}),o={};
+    by[g].forEach(function(s){o[s.id]=!all;});save(o);};});
+}
+function save(o){
+  SRC.forEach(function(s){if(s.id in o)s.enabled=!!o[s.id];});render();msg("zapisuję…");
+  fetch("/api/setup/notif",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(o)})
+    .then(function(r){if(!r.ok)throw r.status;return r.json();})
+    .then(function(j){var en=j.enabled||{};SRC.forEach(function(s){if(s.id in en)s.enabled=!!en[s.id];});render();msg("zapisano","st-ok");
+      try{window.dispatchEvent(new Event("qnotif-refresh"));}catch(e){}})
+    .catch(function(e){msg(e===403?"tryb podglądu — bez zapisu":"nie zapisano, spróbuj jeszcze raz","st-err");load();});
+}
+function load(){fetch("/api/setup/notif",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw r.status;return r.json();})
+  .then(function(j){SRC=j.sources||[];render();}).catch(function(){$("st-grid").innerHTML='<div class="card">Nie udało się wczytać ustawień.</div>';});}
+load();
+})();
+</script>
+</body>
+</html>

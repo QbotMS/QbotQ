@@ -1,5 +1,12 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-10-08] SETUP > Trening + zebatka nad dzien/noc
+- Dostepnosc i Ustawienia Trenera przeniesione z Treningu do SETUP > Trening (ramki trener-fragment). trener.js v33, trener-m.js v9, nav.js v10. Zweryfikowane Playwright (komputer + telefon): Trening ma Kalendarz/Czas/Cele/Sezon, ramki laduja tresc, #kalib przekierowuje, zebatka nad przelacznikiem. Dok.: docs/SETUP.md.
+- Poprawka: w SETUP > Trening podzakladki u gory (Dostepnosc | Ustawienia Trenera) zamiast dwoch sekcji jedna pod druga; trener.js v34 (#kalib -> #trening-kalib).
+
+## [2026-10-08] SETUP (zebatka) + Powiadomienia - checklista
+- /setup.html (poza repo, lustro web_public), nav.js v9 (zebatka w stopce menu), nav.css v8. qbot_notif.SOURCES + app_settings. Zweryfikowane Playwright: zebatka pod przelacznikiem motywu, 14 pozycji w 6 grupach, zapis trwa po odswiezeniu; filtr listy sprawdzony (bez 'Nowa jazda' znika z listy), stan przywrocony (wszystko wlaczone).
+
 ## [2026-10-08] Powiadomienia: krzyzyk + Historia
 - × usuwa z listy (dismissed_at, wiersz zostaje), Historia 90 dni w panelu (nav.js v8, nav.css v7). Zweryfikowane Playwright: usuniecie, brak powrotu przy tej samej tresci, wpis 'usuniete' w Historii.
 
@@ -1174,3 +1181,7 @@ Zweryfikowane na zywo. qbot-api zrestartowany. OTWARTE: retry przy 202 w QExt2 (
 - Forma: nowa zakładka „Bilans i waga” (ramka /trener-fragment.html?sub=bilans).
 - /trener.html i /kalendarz.html przekierowują. Statyki poza repo (żywe od razu); repo: qbot_trener_notify.py, scripts/build_context.py, docs, web_public/.
 - Otwarte: poprawki kalendarza (telefon, plan w siatce) i narzędzia kalendarza dla Alberta — w TODO.
+
+## 2026-10-08 (2) — Kalendarz łączy Miesiąc i Tydzień [KALENDARZ3-2026-10-08]
+- Trening: zakładka Kalendarz (kalendarz3.js) zamiast Miesiąc + Tydzień; nagłówek 4 kafle + kafel ostrzeżeń, szczegóły zwinięte, panel dnia i okna edycji działają.
+- Do sprawdzenia na żywo przez Michała (Mac + iPhone); składnia JS sprawdzona node --check.

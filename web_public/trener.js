@@ -35,9 +35,13 @@
   var S = { goals: [], rules: [], ov: {}, auto: null, sub: null, wk: null, weekData: null };
 
   // ---------- szkielet ----------
-  // 2026-10-08 TRENING (trening.html): Miesiac = Kalendarz (#p-kal, kalendarz2-data.js); "Bilans i waga" przeniesiony do Formy
+  // 2026-10-08 TRENING (trening.html): Kalendarz = miesiac z powiekszonym tygodniem (#p-kal, kalendarz3.js) zastepuje Miesiac i Tydzien;
+  // rWeek zostaje dla trener-fragment.html (?sub=tydzien). "Bilans i waga" przeniesiony do Formy
   // (dzial dalej dziala przez go("bilans") dla trener-fragment.html); Kalibracja wyswietlana jako "Ustawienia".
-  var SUBS = [["miesiac", "Miesiąc"], ["tydzien", "Tydzień"], ["czas", "Czas"], ["cele", "Cele"], ["dostep", "Dostępność"], ["sezon", "Sezon"], ["kalib", "Ustawienia"]];
+  // 2026-10-08: Dostepnosc (dostep) i Ustawienia (kalib) przeniesione do SETUP > Trening (setup.html, ramki trener-fragment.html).
+  // Dzialy dalej dzialaja przez go("dostep"|"kalib"); stare linki #dostep / #kalib na Treningu przekierowuja do SETUP.
+  var SUBS = [["kalendarz", "Kalendarz"], ["czas", "Czas"], ["cele", "Cele"], ["sezon", "Sezon"]];
+  if (document.getElementById("p-kal") && /^#(dostep|kalib)$/.test(location.hash)) { location.replace("/setup.html#trening-" + location.hash.slice(1)); return; }
   root.innerHTML = "<div class='tr-sub'>" + SUBS.map(function (x) { return "<button data-sub='" + x[0] + "'>" + x[1] + "</button>"; }).join("") + "</div><div id='tr-body'></div>";
   var body = document.getElementById("tr-body");
   root.querySelectorAll("[data-sub]").forEach(function (b) { b.onclick = function () { go(b.dataset.sub); }; });
@@ -45,12 +49,13 @@
   (function () { var ts = root.querySelector(".tr-sub"), h1 = document.querySelector(".head h1");
     if (ts && h1) { ts.classList.add("tabs"); h1.insertAdjacentElement("afterend", ts); } })();
   function go(sub) {
+    if ((sub === "miesiac" || sub === "tydzien") && document.getElementById("p-kal")) sub = "kalendarz";
     S.sub = sub;
     document.querySelectorAll(".tr-sub [data-sub]").forEach(function (b) { b.classList.toggle("on", b.dataset.sub === sub); });
     try { localStorage.setItem("qtrener_sub", sub); } catch (e) {}
-    document.body.classList.toggle("tr-month", sub === "miesiac");
+    document.body.classList.toggle("tr-month", sub === "kalendarz");
     if (history.replaceState && document.getElementById("p-kal")) history.replaceState(history.state, "", "#" + sub);
-    ({ miesiac: function () {}, tydzien: rWeek, czas: rTime, cele: rGoals, dostep: rAvail, sezon: rSeason, bilans: rBal, kalib: rCalib })[sub]();
+    ({ kalendarz: function () { if (window.KAL3) window.KAL3.refresh(true); }, tydzien: rWeek, czas: rTime, cele: rGoals, dostep: rAvail, sezon: rSeason, bilans: rBal, kalib: rCalib })[sub]();
   }
   window.TRENER_CORE = { go: go };   // wersja mobilna (trener-m.js) rysuje dzialy z menu "Wiecej" przez go()
 
@@ -900,9 +905,9 @@
   body.innerHTML = "<div class='tr-empty'>Wczytuję…</div>";
   Promise.all([loadGoals(), loadRules(), api("GET", "/settings").then(function (j) { S.ov = j.overrides || {}; })]).then(function () {
     var s = null; try { s = localStorage.getItem("qtrener_sub"); } catch (e) {}
-    var hs = location.hash.replace("#", ""); if (SUBS.some(function (x) { return x[0] === hs; })) s = hs;
+    var hs = location.hash.replace("#", ""); if (hs === "miesiac" || hs === "tydzien") hs = "kalendarz"; if (SUBS.some(function (x) { return x[0] === hs; })) s = hs;
     if (window.TRENER_M) window.TRENER_M.ready();   // telefon / iPad: tydzien rysuje trener-m.js
-    else go(SUBS.some(function (x) { return x[0] === s; }) ? s : "tydzien");
+    else go(SUBS.some(function (x) { return x[0] === s; }) ? s : (document.getElementById("p-kal") ? "kalendarz" : "tydzien"));
     api("GET", "/auto").then(function (j) { S.auto = j; if (S.sub === "kalib") rCalib(); }).catch(function () {});
   }).catch(function (e) { body.innerHTML = "<div class='tr-empty'>Nie udało się wczytać Trenera: " + esc(e.message) + "</div>"; });
 })();
