@@ -35,15 +35,22 @@
   var S = { goals: [], rules: [], ov: {}, auto: null, sub: null, wk: null, weekData: null };
 
   // ---------- szkielet ----------
-  var SUBS = [["tydzien", "Tydzień"], ["czas", "Czas"], ["dostep", "Dostępność"], ["cele", "Cele"], ["sezon", "Sezon"], ["bilans", "Bilans i waga"], ["kalib", "Kalibracja"]];
+  // 2026-10-08 TRENING (trening.html): Miesiac = Kalendarz (#p-kal, kalendarz2-data.js); "Bilans i waga" przeniesiony do Formy
+  // (dzial dalej dziala przez go("bilans") dla trener-fragment.html); Kalibracja wyswietlana jako "Ustawienia".
+  var SUBS = [["miesiac", "Miesiąc"], ["tydzien", "Tydzień"], ["czas", "Czas"], ["cele", "Cele"], ["dostep", "Dostępność"], ["sezon", "Sezon"], ["kalib", "Ustawienia"]];
   root.innerHTML = "<div class='tr-sub'>" + SUBS.map(function (x) { return "<button data-sub='" + x[0] + "'>" + x[1] + "</button>"; }).join("") + "</div><div id='tr-body'></div>";
   var body = document.getElementById("tr-body");
   root.querySelectorAll("[data-sub]").forEach(function (b) { b.onclick = function () { go(b.dataset.sub); }; });
+  // 2026-10-07: podzakladki wygladaja jak zakladki Formy (.tabs) i stoja w pasie naglowka za tytulem (nav.css PAS NAGLOWKA)
+  (function () { var ts = root.querySelector(".tr-sub"), h1 = document.querySelector(".head h1");
+    if (ts && h1) { ts.classList.add("tabs"); h1.insertAdjacentElement("afterend", ts); } })();
   function go(sub) {
     S.sub = sub;
-    root.querySelectorAll("[data-sub]").forEach(function (b) { b.classList.toggle("on", b.dataset.sub === sub); });
+    document.querySelectorAll(".tr-sub [data-sub]").forEach(function (b) { b.classList.toggle("on", b.dataset.sub === sub); });
     try { localStorage.setItem("qtrener_sub", sub); } catch (e) {}
-    ({ tydzien: rWeek, czas: rTime, cele: rGoals, dostep: rAvail, sezon: rSeason, bilans: rBal, kalib: rCalib })[sub]();
+    document.body.classList.toggle("tr-month", sub === "miesiac");
+    if (history.replaceState && document.getElementById("p-kal")) history.replaceState(history.state, "", "#" + sub);
+    ({ miesiac: function () {}, tydzien: rWeek, czas: rTime, cele: rGoals, dostep: rAvail, sezon: rSeason, bilans: rBal, kalib: rCalib })[sub]();
   }
   window.TRENER_CORE = { go: go };   // wersja mobilna (trener-m.js) rysuje dzialy z menu "Wiecej" przez go()
 
@@ -401,7 +408,7 @@
     S.goals.forEach(function (g) {
       var dd = g.date_from ? Math.round((D(g.date_from) - todayMs()) / DAY) : null;
       h += "<div class='tr-goal'><span class='ic'>" + (KIC2[g.kind] || "📌") + "</span><div><div class='t'>" + esc(g.name) + "<span class='tr-pr " + g.priority + "'>" + g.priority + "</span></div><div class='m'>" +
-        (g.date_from ? g.date_from + (g.date_to && g.date_to !== g.date_from ? " – " + g.date_to : "") : "bez terminu") + (goalSummary(g) ? " · " + esc(goalSummary(g)) : "") + (g.note ? "<br>" + esc(g.note) : "") + "</div></div>" +
+        (g.date_from ? QD.dmy(g.date_from) + (g.date_to && g.date_to !== g.date_from ? " – " + QD.dmy(g.date_to) : "") : "bez terminu") + (goalSummary(g) ? " · " + esc(goalSummary(g)) : "") + (g.note ? "<br>" + esc(g.note) : "") + "</div></div>" +
         "<span style='text-align:right'><span class='tr-st " + g.status + "'>" + STN[g.status] + "</span>" + (dd != null && dd >= 0 && g.status === "active" ? "<div class='m' style='font-size:12px;color:var(--muted);margin-top:4px'>za " + dd + " dni</div>" : "") + "</span>" +
         "<div class='act'><button class='tr-btn sm' data-ge='" + g.id + "'>" + (editId === g.id ? "zamknij" : "edytuj") + "</button>" +
         (g.status === "active" ? "<button class='tr-btn sm' data-gs='" + g.id + "' data-v='paused'>wstrzymaj</button><button class='tr-btn sm' data-gs='" + g.id + "' data-v='done'>zakończ</button>" : "<button class='tr-btn sm' data-gs='" + g.id + "' data-v='active'>wznów</button>") +
@@ -502,7 +509,7 @@
         h += row("Kalendarz", chips("add_calendar", [[true, "dodaj do Kalendarza"], [false, "nie dodawaj"]], T("add_calendar") !== false));
       } else if (k === "volume") {
         var y = (todayMs() >= firstWorkday(new Date().getFullYear())) ? new Date().getFullYear() + 1 : new Date().getFullYear(), per = T("period") || "";
-        h += row("Okres", chips("period", [["sez" + y, "sezon " + y + " (bieżący)"], ["sez" + (y + 1), "sezon " + (y + 1)], ["year" + (y + 1), "rok kalendarzowy " + (y + 1)], ["season" + (y + 1), "jazda IV–IX " + (y + 1)], ["custom", "własny"]], per, "per") + (per === "custom" ? "<div class='tr-tt' style='margin-top:6px'>od <input type='date' data-f='date_from' value='" + esc(d.date_from || "") + "'> do <input type='date' data-f='date_to' value='" + esc(d.date_to || "") + "'></div>" : (d.date_from ? "<div class='sub' style='margin-top:3px'>" + d.date_from + " – " + d.date_to + "</div>" : "")));
+        h += row("Okres", chips("period", [["sez" + y, "sezon " + y + " (bieżący)"], ["sez" + (y + 1), "sezon " + (y + 1)], ["year" + (y + 1), "rok kalendarzowy " + (y + 1)], ["season" + (y + 1), "jazda IV–IX " + (y + 1)], ["custom", "własny"]], per, "per") + (per === "custom" ? "<div class='tr-tt' style='margin-top:6px'>od <input type='date' data-f='date_from' value='" + esc(d.date_from || "") + "'> do <input type='date' data-f='date_to' value='" + esc(d.date_to || "") + "'></div>" : (d.date_from ? "<div class='sub' style='margin-top:3px'>" + QD.dmy(d.date_from) + " – " + QD.dmy(d.date_to) + "</div>" : "")));
         var sp = T("sport") || "rower";
         h += row("Aktywność", chips("sport", ACT.map(function (a) { return [a[0], a[1] + " " + a[2]]; }), sp, "sp"));
         var ms = sp === "rower" ? [["km", "km"], ["h", "godziny"]] : (sp === "wiosl" ? [["h", "godziny"], ["sessions", "sesje"]] : [["sessions", "sesje"], ["h", "godziny"]]);
@@ -893,6 +900,7 @@
   body.innerHTML = "<div class='tr-empty'>Wczytuję…</div>";
   Promise.all([loadGoals(), loadRules(), api("GET", "/settings").then(function (j) { S.ov = j.overrides || {}; })]).then(function () {
     var s = null; try { s = localStorage.getItem("qtrener_sub"); } catch (e) {}
+    var hs = location.hash.replace("#", ""); if (SUBS.some(function (x) { return x[0] === hs; })) s = hs;
     if (window.TRENER_M) window.TRENER_M.ready();   // telefon / iPad: tydzien rysuje trener-m.js
     else go(SUBS.some(function (x) { return x[0] === s; }) ? s : "tydzien");
     api("GET", "/auto").then(function (j) { S.auto = j; if (S.sub === "kalib") rCalib(); }).catch(function () {});

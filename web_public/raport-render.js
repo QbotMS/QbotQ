@@ -297,6 +297,7 @@ function initMap(){
   const map=window._qmap=L.map("map",{scrollWheelZoom:true,zoomSnap:0.25,zoomDelta:0.5}).setView([52.2,21.0],7);
   const _tl=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(map);
   if(window.qTilesAttach)window.qTilesAttach(map,_tl);
+  if(window.qMapCtl){var _mc=document.querySelector(".map-ctl");if(_mc)window.qMapCtl(_mc,map);}  // 2026-10-07: przyciski w prawym dolnym rogu (qmap-tiles.js)
   // --- Kwadraty (StatsHunters z14) + przycisk w pasku mapy ---
   (function setupTiles(){
     if(window.__QBOT_PRINT_MODE) return;
@@ -354,19 +355,27 @@ function initMap(){
       let bounds=null;
       all.forEach(sg=>{L.polyline(sg.pts,{color:"#ffffff",weight:7,opacity:1,lineCap:"round",lineJoin:"round",interactive:false}).addTo(map);const pl=L.polyline(sg.pts,{color:SCAT[sg.c]||"#3f6f9a",weight:4,opacity:1,lineCap:"round",lineJoin:"round",interactive:false}).addTo(map);bounds=bounds?bounds.extend(pl.getBounds()):pl.getBounds();});
       L.circleMarker(co[0],{radius:7,color:"#fff",weight:2,fillColor:"#3f7a4d",fillOpacity:1}).addTo(map).bindTooltip("start");
-      if(bounds)map.fitBounds(bounds,(window.__QBOT_PRINT_MODE?{padding:[20,20]}:{paddingTopLeft:[320,100],paddingBottomRight:[40,230]}));
+      if(bounds)map.fitBounds(bounds,(window.__QBOT_PRINT_MODE?{padding:[20,20]}:(window.qFitPad?window.qFitPad(map):{paddingTopLeft:[320,100],paddingBottomRight:[40,230]})));
       window.__QBOT_MAP_READY=false;
       _tl.once("load",function(){window.__QBOT_MAP_READY=true;});
       setTimeout(function(){window.__QBOT_MAP_READY=true;},4000);
       document.getElementById("r-mapnote").textContent="Kolor trasy = nawierzchnia (jak na wykresie)"+(d.distance_km!=null?" · "+nf(d.distance_km,1)+" km":"");
       function latlonAtKm(km){km=Math.max(0,Math.min(kmT,km));if(km<=cum[0])return co[0];for(let i=1;i<cum.length;i++){if(cum[i]>=km){const t=(km-cum[i-1])/((cum[i]-cum[i-1])||1),a=co[i-1],b=co[i];return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];}}return co[co.length-1];}
       let mark=null;
-      window.MAPX={ready:true,fitAll:function(){if(bounds)map.fitBounds(bounds,(window.__QBOT_PRINT_MODE?{padding:[20,20]}:{paddingTopLeft:[320,100],paddingBottomRight:[40,230]}));},markAtKm:function(km){const ll=latlonAtKm(km);if(!mark){mark=L.circleMarker(ll,{radius:6,color:"#fff",weight:2,fillColor:"#1c2024",fillOpacity:1,interactive:false}).addTo(map);}else{mark.setLatLng(ll);mark.setStyle({opacity:1,fillOpacity:1});}},fitKm:function(a,b){try{var pts=[latlonAtKm(a)];for(var i=0;i<co.length;i++){if(cum[i]>=a&&cum[i]<=b)pts.push(co[i]);}pts.push(latlonAtKm(b));map.fitBounds(L.latLngBounds(pts),{padding:[30,30],maxZoom:16});}catch(e){}},clearMark:function(){if(mark)mark.setStyle({opacity:0,fillOpacity:0});}};
+      window.MAPX={ready:true,fitAll:function(){if(bounds)map.fitBounds(bounds,(window.__QBOT_PRINT_MODE?{padding:[20,20]}:(window.qFitPad?window.qFitPad(map):{paddingTopLeft:[320,100],paddingBottomRight:[40,230]})));},markAtKm:function(km){const ll=latlonAtKm(km);if(!mark){mark=L.circleMarker(ll,{radius:6,color:"#fff",weight:2,fillColor:"#1c2024",fillOpacity:1,interactive:false}).addTo(map);}else{mark.setLatLng(ll);mark.setStyle({opacity:1,fillOpacity:1});}},fitKm:function(a,b){try{var pts=[latlonAtKm(a)];for(var i=0;i<co.length;i++){if(cum[i]>=a&&cum[i]<=b)pts.push(co[i]);}pts.push(latlonAtKm(b));map.fitBounds(L.latLngBounds(pts),Object.assign(window.qFitPad?window.qFitPad(map,30):{padding:[30,30]},{maxZoom:16}));}catch(e){}},clearMark:function(){if(mark)mark.setStyle({opacity:0,fillOpacity:0});}};
+      /* 2026-10-08: mapa SAMA dopasowuje sie ponownie, gdy zmieni sie to, co na nia nachodzi (gorny pasek z nazwa trasy
+         zawija sie do 2 wierszy po wczytaniu danych, panel, wykres) - dopoki uzytkownik sam nie przesunie/przyblizy mapy.
+         "Wysrodkuj trase" przywraca automatyke. */
+      if(!window.__QBOT_PRINT_MODE&&window.ResizeObserver){var _um=false,_rt=null,_mce=map.getContainer();
+        ["mousedown","wheel","touchstart"].forEach(function(ev){_mce.addEventListener(ev,function(e){if(!(e.target.closest&&e.target.closest(".leaflet-control")))_um=true;},{passive:true});});
+        var _fb=document.getElementById("mc-fit");if(_fb)_fb.addEventListener("click",function(){_um=false;});
+        var _ro=new ResizeObserver(function(){if(_um)return;clearTimeout(_rt);_rt=setTimeout(function(){if(!_um&&window.MAPX)window.MAPX.fitAll();},150);});
+        [".qhead","#r-topbar","header","#chartwrap"].forEach(function(s){var e=document.querySelector(s);if(e)_ro.observe(e);});}
       map.on("click",function(e){
         var cp=map.latLngToContainerPoint(e.latlng),best=-1,bestD=Infinity;
         for(var i=0;i<co.length;i++){var p=map.latLngToContainerPoint(L.latLng(co[i][0],co[i][1])),dx=p.x-cp.x,dy=p.y-cp.y,d=dx*dx+dy*dy;if(d<bestD){bestD=d;best=i;}}
         if(best>=0&&Math.sqrt(bestD)<=18){var km=cum[best],sg=null;for(var j=0;j<surf.length;j++){if(km>=surf[j].a&&km<=surf[j].b){sg=surf[j];break;}}if(sg){window.MAPX.fitKm(sg.a,sg.b);return;}}
-        if(bounds)map.fitBounds(bounds,(window.__QBOT_PRINT_MODE?{padding:[20,20]}:{paddingTopLeft:[320,100],paddingBottomRight:[40,230]}));
+        if(bounds)map.fitBounds(bounds,(window.__QBOT_PRINT_MODE?{padding:[20,20]}:(window.qFitPad?window.qFitPad(map):{paddingTopLeft:[320,100],paddingBottomRight:[40,230]})));
       });
     })
     .catch(err=>{document.getElementById("r-mapnote").textContent="Nie udało się wczytać geometrii trasy ("+err+").";});
@@ -883,6 +892,7 @@ function initDayMap(){
   var map=window._qmap=L.map("map",{scrollWheelZoom:true,zoomSnap:0.25,zoomDelta:0.5}).setView([52.2,21.0],7);
   var _tl2=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(map);
   if(window.qTilesAttach)window.qTilesAttach(map,_tl2);
+  if(window.qMapCtl){var _mc2=document.querySelector(".map-ctl");if(_mc2)window.qMapCtl(_mc2,map);}
   var a0=(DATA.day&&DATA.day.km_from)||0, b0=(DATA.day&&DATA.day.km_to)||1e9;
   function hav(p,q){var R=6371,tr=Math.PI/180,dLa=(q[0]-p[0])*tr,dLo=(q[1]-p[1])*tr,la1=p[0]*tr,la2=q[0]*tr;var h=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(la1)*Math.cos(la2)*Math.sin(dLo/2)*Math.sin(dLo/2);return 2*R*Math.asin(Math.sqrt(h));}
   _qGeo(DATA.route.id).then(function(d){
@@ -898,7 +908,7 @@ function initDayMap(){
     window.MAPX={ready:true,
       fitAll:function(){map.fitBounds(bounds,{padding:[16,16]});},
       markAtKm:function(km){var ll=latlonAtKm(km);if(!mark){mark=L.circleMarker(ll,{radius:6,color:"#fff",weight:2,fillColor:"#c2452f",fillOpacity:1,interactive:false}).addTo(map);}else{mark.setLatLng(ll);mark.setStyle({opacity:1,fillOpacity:1});}},
-      fitKm:function(a,b){try{var pts=[latlonAtKm(a)];for(var i3=0;i3<co.length;i3++){if(cum[i3]>=a&&cum[i3]<=b)pts.push(co[i3]);}pts.push(latlonAtKm(b));map.fitBounds(L.latLngBounds(pts),{padding:[30,30],maxZoom:16});}catch(e){}},
+      fitKm:function(a,b){try{var pts=[latlonAtKm(a)];for(var i3=0;i3<co.length;i3++){if(cum[i3]>=a&&cum[i3]<=b)pts.push(co[i3]);}pts.push(latlonAtKm(b));map.fitBounds(L.latLngBounds(pts),Object.assign(window.qFitPad?window.qFitPad(map,30):{padding:[30,30]},{maxZoom:16}));}catch(e){}},
       clearMark:function(){if(mark)mark.setStyle({opacity:0,fillOpacity:0});}};
     var bF=document.getElementById("mc-fit");if(bF)bF.onclick=function(){window.MAPX.fitAll();};
   }).catch(function(){});

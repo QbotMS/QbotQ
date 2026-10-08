@@ -6,7 +6,8 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
 <title>QBot — Start</title>
 <script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
-<link rel="stylesheet" href="/nav.css?v=4">
+<script src="/qdate.js?v=1"></script>
+<link rel="stylesheet" href="/nav.css?v=6">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
@@ -158,7 +159,7 @@ dialog.trip::backdrop{background:rgba(5,6,6,.72)}
   <footer><span>QBot · osobista analityka jazd</span><span><a href="/forma.html">Forma dziś</a> · <a href="/trener.html">Plan tygodnia</a></span></footer>
 </div>
 
-<script src="/nav.js?v=5"></script>
+<script src="/nav.js?v=7"></script>
 <script>
 (function(){
 "use strict";
@@ -167,7 +168,7 @@ var MN=["styczeń","luty","marzec","kwiecień","maj","czerwiec","lipiec","sierpi
 function $(i){return document.getElementById(i);}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
 function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),x=a[i];a[i]=a[j];a[j]=x;}return a;}
-function dm(s){if(!s)return "";var d=new Date(s+"T12:00:00");return d.getDate()+" "+MON[d.getMonth()];}
+function dm(s){return QD.dm(s);}  /* format dat: qdate.js */
 function days(s){var t=new Date();t.setHours(0,0,0,0);return Math.max(0,Math.round((new Date(s+"T00:00:00")-t)/864e5));}
 function pl(n,a,b,c){n=Math.abs(n);return n===1?a:((n%10>=2&&n%10<=4&&(n%100<12||n%100>14))?b:c);}
 function clean(t){return String(t||"").replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F1E6}-\u{1F1FF}\uFE0F]/gu,"").replace(/\s+/g," ").trim();}
@@ -264,7 +265,7 @@ function openTrip(i){
   var t=(window.__TRIPS||[])[i];if(!t)return;var dlg=$("trip"),ps=shuffle(t.photos||[]).slice(0,3);
   var who=t.companions&&t.companions.length?t.companions.join(", "):(t.people>1?(t.people===2?"we dwóch":t.people+" osoby")+" (imiona: uzupełnij w raporcie z jazdy)":"solo");
   $("tpC").innerHTML=(ps.length?'<div class="tp-strip'+(ps.length===1?" one":"")+'">'+ps.map(function(p){return '<img src="'+(p.url_m||p.url_t)+'" alt="">';}).join("")+'</div>':'')+
-    '<div class="tp-body"><span class="lbl" style="color:var(--acc-ink)">'+esc(dm(t.from)+" – "+dm(t.to)+" "+t.to.slice(0,4))+' · '+esc(t.region)+'</span><h3 id="tpH">'+esc(t.name)+'</h3>'+
+    '<div class="tp-body"><span class="lbl" style="color:var(--acc-ink)">'+esc(dm(t.from)+" – "+QD.dmy(t.to))+' · '+esc(t.region)+'</span><h3 id="tpH">'+esc(t.name)+'</h3>'+
     '<div class="tp-story" id="tpS">'+(t.story?esc(t.story):'<span class="lbl">piszę opis wyprawy…</span>')+'</div>'+
     '<div><button class="tp-edit" id="tpE" type="button">popraw opis</button></div>'+
     '<div class="tp-facts"><div><b>'+t.days+'</b><span class="lbl">'+pl(t.days,"dzień","dni","dni")+'</span></div><div><b>'+t.stages+'</b><span class="lbl">'+pl(t.stages,"etap","etapy","etapów")+'</span></div><div><b>'+t.km+'</b><span class="lbl">km</span></div><div><b>'+t.up_m.toLocaleString("pl-PL")+'</b><span class="lbl">m w górę</span></div><div><b>'+String(t.moving_h).replace(".",",")+'</b><span class="lbl">h w siodle</span></div><div><b>'+t.longest_km+'</b><span class="lbl">km najdłuższy</span></div></div>'+

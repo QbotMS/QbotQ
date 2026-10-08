@@ -46,7 +46,8 @@
   var DTYPE = { rest: "😴 REST DAY", ill: "🤒 choroba", del: "🧳 delegacja", short: "⏱ brak czasu", trip: "🗺️ wyprawa", urlop: "🏖️ urlop" };
   var CALIC = { rest: "😴", delegacja: "🧳", urlop: "🏖️" }, KIC = { illness: "🤒", reminder: "⏰", event: "📅" };
   var FEEL_E = { "-2": "🤒", "-1": "😕", "0": "😐", "1": "🙂", "2": "😄" }, FEEL_L = { "-2": "fatalnie", "-1": "słabo", "0": "neutralnie", "1": "dobrze", "2": "świetnie" };
-  var TABS = [["tydzien", "Tydzień"], ["czas", "Czas"], ["dostep", "Dostępność"], ["cele", "Cele"], ["sezon", "Sezon"], ["bilans", "Bilans i waga"], ["kalib", "Kalibracja"]];
+  // 2026-10-08 TRENING: + Miesiac (Kalendarz, #p-kal), Bilans i waga -> Forma, Kalibracja = "Ustawienia"
+  var TABS = [["miesiac", "Miesiąc"], ["tydzien", "Tydzień"], ["czas", "Czas"], ["cele", "Cele"], ["dostep", "Dostępność"], ["sezon", "Sezon"], ["kalib", "Ustawienia"]];
   var DEF = { rower: ["Rower spokojnie", "12:00", 60, 30], sila: ["Siła obwodowa", "10:00", 40, 15], wiosl: ["Wioślarz spokojnie", "16:00", 30, 15], joga: ["Joga", "09:00", 20, 10] };
 
   var S = { wk: monday(todayMs()), data: null, wx: null, lines: null, ask: null, review: null, autoReview: false, opened: null, open: {}, view: "home", arg: null, tab: "tydzien" };
@@ -58,6 +59,7 @@
     "body.tm .head{padding-left:52px;min-height:44px;align-items:center}",
     "body.tm #trener-root{display:none}body.tm.tm-sec #trener-root{display:block}body.tm.tm-sec #tm{display:none}",
     "body.tm #trener-root .tr-sub{display:none!important}",
+    "body.tm:not(.tm-sec) #p-kal{display:none!important}",
     "#tm-tabs{position:sticky;top:0;z-index:50;display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:8px 0 10px;margin:0 0 6px;background:var(--bg)}",
     "#tm-tabs::-webkit-scrollbar{display:none}",
     "#tm-tabs button{flex:0 0 auto;min-height:40px;border:1px solid var(--line);background:var(--well);color:var(--ink);border-radius:999px;padding:6px 16px;font:inherit;font-size:15px;cursor:pointer;white-space:nowrap}",
@@ -141,7 +143,7 @@
   function drawTabs() {
     tabs.innerHTML = TABS.map(function (t) { return "<button type='button' data-tab='" + t[0] + "' class='" + (S.tab === t[0] ? "on" : "") + "'>" + t[1] + "</button>"; }).join("");
     tabs.querySelectorAll("[data-tab]").forEach(function (b) { b.onclick = function () { var t = b.dataset.tab; if (t === S.tab && t !== "tydzien") return;
-      history.replaceState({ tm: t === "tydzien" ? "home" : "sec", arg: t }, ""); show(t === "tydzien" ? "home" : "sec", t); }; });
+      history.replaceState({ tm: t === "tydzien" ? "home" : "sec", arg: t }, "", "#" + t); show(t === "tydzien" ? "home" : "sec", t); }; });
     var on = tabs.querySelector(".on"); if (on && on.scrollIntoView) on.scrollIntoView({ inline: "center", block: "nearest" });
   }
 
@@ -457,7 +459,7 @@
     })(0);
   }
 
-  history.replaceState({ tm: "home" }, "");
-  drawTabs();
-  drawHome();
+  var h0 = location.hash.replace("#", "");
+  if (h0 !== "tydzien" && TABS.some(function (t) { return t[0] === h0; })) { history.replaceState({ tm: "sec", arg: h0 }, ""); show("sec", h0); }
+  else { history.replaceState({ tm: "home" }, ""); drawTabs(); drawHome(); }
 })();

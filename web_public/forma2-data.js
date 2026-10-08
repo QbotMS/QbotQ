@@ -23,7 +23,7 @@ function renderSezon(){
   qJSON("/api/forma/season").then(function(Z){
     var W=Z.where||{},WK=Z.weeks||[];
     function c(x,d){if(x==null)return "—";return (+x).toFixed(d||0).replace(".",",");}
-    function dm(s){if(!s)return "";return (+s.slice(8,10))+"."+(+s.slice(5,7));}
+    function dm(s){return QD.dm(s);}  /* format dat: qdate.js */
     /* status Dziennika - tylko to, czego nie mowi Swiezosc */
     var ds=q$("dz-season");if(ds)ds.innerHTML=(Z.status||[]).length?'Sezon: '+Z.status.join(" · "):"";
     var sub=q$("sz-sub");if(sub)sub.textContent="od "+dm(W.season_start)+" · stan na "+dm(Z.today);
@@ -476,14 +476,14 @@ function renderDziennik(){
       var pr2=path(rp,YR);if(pr2)h+='<path d="'+pr2+'" fill="none" stroke="var(--ink2)" stroke-width="1.6"/>';
       function dot(v,f,c){for(var i=N-1;i>=0;i--)if(v[i]!=null)return '<circle cx="'+X(i).toFixed(1)+'" cy="'+f(v[i]).toFixed(1)+'" r="3.4" fill="'+c+'" stroke="var(--card)" stroke-width="1.5"/>';return "";}
       h+=dot(c28,Y,"var(--blue)")+dot(c7,Y,"var(--accent)")+dot(ctl,Y,"var(--purple)")+dot(rp,YR,"var(--ink2)");
-      L.forEach(function(x,i){var t=(+x.day.slice(8,10))+"."+(+x.day.slice(5,7))+" · tydzień "+(c7[i]!=null?Math.round(c7[i]):"—")+" · 4 tyg. "+(c28[i]!=null?Math.round(c28[i]):"—")+" · forma "+(ctl[i]!=null?Math.round(ctl[i]):"—")+" · skok "+(rp[i]!=null?"×"+rp[i].toFixed(2).replace(".",","):"—")+(ill[x.day]?" · choroba":"");
+      L.forEach(function(x,i){var t=QD.dm(x.day)+" · tydzień "+(c7[i]!=null?Math.round(c7[i]):"—")+" · 4 tyg. "+(c28[i]!=null?Math.round(c28[i]):"—")+" · forma "+(ctl[i]!=null?Math.round(ctl[i]):"—")+" · skok "+(rp[i]!=null?"×"+rp[i].toFixed(2).replace(".",","):"—")+(ill[x.day]?" · choroba":"");
         h+='<rect x="'+(pl+i*cw).toFixed(1)+'" y="'+T0+'" width="'+Math.max(1,cw).toFixed(1)+'" height="'+(R1-T0)+'" fill="transparent"><title>'+t+'</title></rect>';});
       h+='</svg>';
       function last(v){for(var i=v.length-1;i>=0;i--)if(v[i]!=null)return v[i];return null;}
       var pk=-1,pkD=null;c28.forEach(function(v,i){if(v!=null&&v>pk){pk=v;pkD=L[i].day;}});
       var r=last(rp),l7=last(c7),l28=last(c28),lc=last(ctl);
       function pill(c,lab,v,sub){return '<span style="display:inline-flex;align-items:baseline;gap:5px;margin-right:14px"><span style="width:10px;height:3px;border-radius:2px;background:'+c+';display:inline-block;align-self:center"></span>'+lab+' <b style="color:'+c+';font-size:15px">'+v+'</b>'+(sub?'<span class="muted" style="font-size:11.5px">'+sub+'</span>':'')+'</span>';}
-      var pkTxt=pkD?(", szczyt "+Math.round(pk)+" · "+(+pkD.slice(8,10))+"."+(+pkD.slice(5,7))):"";
+      var pkTxt=pkD?(", szczyt "+Math.round(pk)+" · "+QD.dm(pkD)):"";
       el.innerHTML='<div style="font-size:13px;margin:0 0 4px">'
         +pill("var(--accent)","ostatni tydzień",l7!=null?Math.round(l7):"—","/dzień")
         +pill("var(--blue)","ostatnie 4 tyg.",l28!=null?Math.round(l28):"—","/dzień"+pkTxt)
@@ -494,7 +494,7 @@ function renderDziennik(){
       var ko=q$("dz-korekty");if(ko){var rows=[],lim=qLocalISO(new Date(Date.now()-14*864e5));
         for(var i=N-1;i>=0&&rows.length<10;i--){var x=L[i];if(!x.atl_plus_note||x.day<lim)continue;
           var parts=String(x.atl_plus_note).split(" || ").map(korTxt).filter(Boolean);
-          if(parts.length)rows.push('<div style="display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px"><span class="muted" style="min-width:44px">'+(+x.day.slice(8,10))+"."+(+x.day.slice(5,7))+'</span><span>'+parts.join(" · ")+'</span></div>');}
+          if(parts.length)rows.push('<div style="display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px"><span class="muted" style="min-width:44px">'+QD.dm(x.day)+'</span><span>'+parts.join(" · ")+'</span></div>');}
         ko.innerHTML='<p class="lbl" style="margin:0 0 4px"><span class="tip" tabindex="0" data-tip="Dni, w których model zmienił koszt jazdy albo spadek zmęczenia: słaba lub dobra gotowość, samopoczucie, choroba, limit tygodniowy. Przez nie Świeżość różni się od samego bilansu treningów.">Dlaczego taka świeżość · korekty modelu z 14 dni</span></p>'
           +(rows.length?rows.join(""):'<div class="muted" style="font-size:13px">brak korekt — świeżość to sam bilans treningów</div>');}
     }).catch(function(){el.innerHTML='<div class="muted">nie udało się pobrać danych</div>';});
@@ -551,8 +551,8 @@ function renderDziennik(){
       var weeksY=doy/7,monthsY=doy/(365.25/12);
       var refW=r[2]?scale(ytd,1/weeksY):null,refM=r[2]?scale(ytd,1/monthsY):null;
       var out="";
-      out+=card("Tydzień",mon.getDate()+"."+(mon.getMonth()+1)+"–"+dd.getDate()+"."+(dd.getMonth()+1)+" · dzień "+(dow+1)+"/7",wk,refW,"śr. tyg. "+Y,"średnia tygodniowa od 1 stycznia "+Y);
-      out+=card("Miesiąc",MN[dd.getMonth()]+" · dzień "+dd.getDate(),mo,refM,"śr. mies. "+Y,"średnia miesięczna od 1 stycznia "+Y);
+      out+=card("Tydzień",mon.getDate()+"."+(mon.getMonth()+1)+"–"+dd.getDate()+"."+(dd.getMonth()+1)+" · dzień "+(dow+1)+"/7",wk,refW,"śr. tyg. "+Y,"średnia tygodniowa od 01.01."+Y);
+      out+=card("Miesiąc",MN[dd.getMonth()]+" · dzień "+dd.getDate(),mo,refM,"śr. mies. "+Y,"średnia miesięczna od 01.01."+Y);
       out+=card("Rok",Y+" do "+dd.getDate()+"."+(dd.getMonth()+1),ytd,pytd,(Y-1)+" do "+dd.getDate()+"."+(dd.getMonth()+1),py?("cały "+(Y-1)+": <b style=\"color:var(--ink)\">"+n0(py.km)+" km</b> · "+py.cnt+" jazd · "+hm(py.mv)+" h · "+n0(py.el)+" m"):"");
       g.innerHTML=out;
     });
@@ -576,7 +576,7 @@ function renderDziennik(){
     var s=key+"-01",e=key+"-"+("0"+mdays(y,m)).slice(-2);
     return qJSON("/api/calendar?start="+s+"&end="+e).then(function(C){absorb(C);loaded[key]=1;}).catch(function(){loaded[key]=1;});}
   function detail(ds){var d=KD[ds]||{},rr=KR[ds]||[],ee=KE[ds]||[];
-    var h='<div class="kd-h"><b>'+qDayName(ds)+' '+(+ds.slice(8))+' '+MNF[+ds.slice(5,7)-1]+'</b>'+(d.readiness_label?' <span class="pill small '+rcls(d)+'">'+qEsc(d.readiness_label)+'</span>':'')+'</div>';
+    var h='<div class="kd-h"><b>'+qDayName(ds)+' '+QD.dm(ds)+'</b>'+(d.readiness_label?' <span class="pill small '+rcls(d)+'">'+qEsc(d.readiness_label)+'</span>':'')+'</div>';
     h+='<div class="g4" style="margin-top:8px"><div class="mini"><p class="lbl">Gotowość</p><div class="v">'+(typeof d.readiness==="number"?(d.readiness>0?"+":"")+qN(d.readiness,2):"—")+'</div></div>'
       +'<div class="mini"><p class="lbl">Sen · HRV · tętno</p><div class="v" style="font-size:15px">'+(d.sleep_score?d.sleep_score:qN(d.sleep,1)+" h")+' · '+qN(d.hrv,0)+' · '+qN(d.rhr,0)+'</div></div>'
       +'<div class="mini"><p class="lbl">Forma / zmęczenie</p><div class="v">'+qN(d.ctl,0)+' / '+qN(d.atl,0)+'</div></div>'
@@ -651,7 +651,7 @@ function renderTrendy(){
   var illIdx={};(cal.entries||[]).forEach(function(e){if(e.kind!=="illness")return;var a0=e.day,b0=e.end_day||e.day;
     for(var j=0;j<N;j++){if(SN[j].day>=a0&&SN[j].day<=b0)illIdx[j]=1;}});
   var illR=[];Object.keys(illIdx).map(Number).sort(function(x,y){return x-y;}).forEach(function(i){var L=illR[illR.length-1];if(L&&i===L.b+1)L.b=i;else illR.push({a:i,b:i});});
-  illR.forEach(function(r){r.label="infekcja "+(+SN[r.a].day.slice(8))+"."+(+SN[r.a].day.slice(5,7))+"–"+(+SN[r.b].day.slice(8))+"."+(+SN[r.b].day.slice(5,7));});
+  illR.forEach(function(r){r.label="infekcja "+QD.dm(SN[r.a].day)+"–"+QD.dm(SN[r.b].day);});
   var vertPlugin={id:"illBands",beforeDatasetsDraw:function(chart){var ctx=chart.ctx,xA=chart.scales.x,yA=chart.scales.y,w=(xA.right-xA.left)/Math.max(1,N);
       illR.forEach(function(r){var x0=xA.getPixelForValue(r.a)-w/2,x1=xA.getPixelForValue(r.b)+w/2;ctx.save();
         ctx.fillStyle="rgba(229,83,75,0.22)";ctx.fillRect(x0,yA.top,x1-x0,yA.bottom-yA.top);

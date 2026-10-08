@@ -64,7 +64,7 @@ function buildMap(){
   mk=L.circleMarker(pts[0],{radius:7,color:"#fff",weight:2.5,fillColor:"#e8742a",fillOpacity:1,opacity:0}).addTo(map);mk.setStyle({opacity:0,fillOpacity:0});
   fitAll();
 }
-function fitPad(){return {paddingTopLeft:[(window.__RJ3&&window.__RJ3.padL)||80,70],paddingBottomRight:[40,$("dock").offsetHeight+30]};}
+function fitPad(){if(window.__RJ3&&typeof window.__RJ3.pad==="function")window.__RJ3.pad();/* 2026-10-08: margines liczony w chwili dopasowania (otwarte okno sekcji) *//* 2026-10-08: margines liczony w chwili dopasowania (otwarte okna) */return {paddingTopLeft:[(window.__RJ3&&window.__RJ3.padL)||80,70],paddingBottomRight:[40,$("dock").offsetHeight+30]};}
 function fitAll(){var pts=[];for(var i=0;i<N;i++)if(isNum(TR.lat[i]))pts.push([TR.lat[i],TR.lon[i]]);if(pts.length)map.fitBounds(L.polyline(pts).getBounds(),window.matchMedia("(max-width:820px),(pointer:coarse) and (max-height:500px)").matches?{padding:[20,20]}:fitPad());}
 function applyBW(){var tp=map.getPane("tilePane");if(tp)tp.style.filter=bw?"grayscale(1) contrast(.95) brightness(1.05)":"";var dk=document.documentElement.classList.contains("theme-dark"),nc=window.qTilesIsNightColor&&window.qTilesIsNightColor();$("bwbtn").textContent=dk?["Mapa: ciemna","Mapa: czarna","Mapa: szara","Mapa: kolor"][nc?(bw?2:3):(bw?1:0)]:(bw?"Mapa: kolor":"Mapa: B/W");}
 function drawTrack(){
@@ -169,20 +169,28 @@ function setCursor(i,fromMap){
   chipVals(k);
   var tip=$("tip"),svg=$("chart"),rr=svg.getBoundingClientRect();tip.style.display="block";var lx=(CX(k)/CW)*rr.width;tip.style.left=lx+"px";tip.style.top="6px";tip.style.transform=lx>rr.width*0.6?"translateX(-105%)":"translateX(8px)";tip.innerHTML=tipHTML(k);
 }
-function tipHTML(k){return "km "+n(TR.km[k],1)+" · "+fmtT(TR.t[k]-TR.t[0])+" · "+(GR[k]>0?"+":"")+n(GR[k],1)+"%"+(SURF[k]?" · "+SLAB[SURF[k]]:"")+(TR.tail?" · wiatr "+(TR.tail[k]>0?"+":"")+n(TR.tail[k],1)+" m/s":"");}
+/* 2026-10-08: dymek nad wykresem pokazuje tez LICZBY wlaczonych serii (to samo co na wykresie) */
+var TIPN={alt:"wys.",pw:"moc",hr:"tętno",wb:"zapas",spd:"prędk.",cad:"kad.",temp:"temp.",dev:"rozw."};
+function tipVals(k){var o=[];Object.keys(TIPN).forEach(function(l){if(!LN[l])return;var z,u;if(l==="alt"){z=TR.alt[k];u=" m";}else{var s=SER[l];if(!s)return;z=s.f(k);u=s.unit||"";}if(!isNum(z))return;o.push("<b>"+TIPN[l]+" "+(l==="pw"||l==="hr"||l==="cad"||l==="alt"||l==="wb"?Math.round(z):l==="dev"?n(z,2):n(z,1))+u+"</b>");});return o.length?"<br>"+o.join(" · "):"";}
+function tipHTML(k){return tipBase(k)+tipVals(k);}
+function tipBase(k){return "km "+n(TR.km[k],1)+" · "+fmtT(TR.t[k]-TR.t[0])+" · "+(GR[k]>0?"+":"")+n(GR[k],1)+"%"+(SURF[k]?" · "+SLAB[SURF[k]]:"")+(TR.tail?" · wiatr "+(TR.tail[k]>0?"+":"")+n(TR.tail[k],1)+" m/s":"");}
 function resetView(){VIEW=null;drawChart();}
 (function wire(){
-  var svg=$("chart"),tip=$("tip"),down=null,moved=false,lastTap=0;
+  var svg=$("chart"),tip=$("tip"),down=null,moved=false,lastTap=0,tapT=null;
   var px=function(e){var r=svg.getBoundingClientRect();return (e.clientX-r.left)/r.width*CW;};
   svg.addEventListener("pointerdown",function(e){if(!N)return;down=px(e);moved=false;svg.setPointerCapture(e.pointerId);});
   svg.addEventListener("pointermove",function(e){if(!N)return;var x=px(e),k=iAtX(x);setCursor(k,false);
     if(down!=null&&Math.abs(x-down)>5){moved=true;SEL={a:iAtX(Math.min(down,x)),b:iAtX(Math.max(down,x))};drawChart();}});
   svg.addEventListener("pointerup",function(e){if(!N)return;var now=Date.now();
-    if(moved){highlightSel();showSeg();}
-    else{if(now-lastTap<350){if(SEL&&!VIEW){VIEW={a:SEL.a,b:SEL.b};drawChart();}else if(VIEW){resetView();}}lastTap=now;}
+    if(moved){showSeg();highlightSel();}
+    else{/* 2026-10-08: KLIK = WROC. Wykres powiekszony -> cala jazda. Zaznaczony odcinek (mapa przyblizona do odcinka) -> zdjecie
+         zaznaczenia + cala trasa na mapie (po 360 ms, zeby dwuklik zdazyl). DWUKLIK na zaznaczeniu = powieksz wykres. */
+      if(VIEW){clearTimeout(tapT);resetView();lastTap=0;}
+      else if(now-lastTap<350&&SEL){clearTimeout(tapT);VIEW={a:SEL.a,b:SEL.b};drawChart();lastTap=0;}
+      else{lastTap=now;clearTimeout(tapT);if(SEL)tapT=setTimeout(function(){if(!VIEW&&SEL){closeSeg();fitAll();}},360);}}
     down=null;moved=false;});
   svg.addEventListener("pointerleave",function(){tip.style.display="none";var h=svg.querySelector("#hcur");if(h)h.setAttribute("opacity","0");if(mk)mk.setStyle({opacity:0,fillOpacity:0});chipVals(null);});
-  document.addEventListener("keydown",function(e){if(e.key==="Escape"){if(VIEW)resetView();else closeSeg();}});
+  document.addEventListener("keydown",function(e){if(e.key==="Escape"){if(document.querySelector(".qmod.on"))return;if(VIEW)resetView();else{var had=SEL;closeSeg();if(had)fitAll();}}});
   document.querySelectorAll("#dock .chip[data-l]").forEach(function(c){c.onclick=function(e){var l=c.dataset.l;if(e.target.classList.contains("ax")){AX[l]=!AX[l];e.target.classList.toggle("on",!!AX[l]);drawChart();return;}LN[l]=!LN[l];if(l!=="alt"&&l!=="pw")AX[l]=LN[l];c.classList.toggle("on",LN[l]);var axx=c.querySelector(".ax");if(axx)axx.classList.toggle("on",!!AX[l]);drawChart();};});
   function syncChips(){document.querySelectorAll("#dock .chip[data-l]").forEach(function(c){c.classList.toggle("on",!!LN[c.dataset.l]);var ax=c.querySelector(".ax");if(ax)ax.classList.toggle("on",!!AX[c.dataset.l]);});document.querySelectorAll("#dock .chip[data-sc]").forEach(function(x){x.classList.toggle("on",x.dataset.sc===SCALE);});}
   var PRESETS={pwhr:{ln:{alt:true,pw:true,hr:true},sc:"rel",ax:{}},spdcad:{ln:{alt:true,spd:true,cad:true,dev:true},sc:"abs",ax:{spd:true,cad:true,dev:true}},pwspd:{ln:{alt:true,pw:true,spd:true},sc:"abs",ax:{spd:true},rib:{surf:true,wind:true}},hrtemp:{ln:{alt:true,hr:true,temp:true},sc:"abs",ax:{hr:true,temp:true}},wbpw:{ln:{alt:true,wb:true,pw:true},sc:"abs",ax:{wb:true}},hralt:{ln:{alt:true,hr:true},sc:"abs",ax:{hr:true}}};
@@ -252,7 +260,7 @@ function anRender(j){
   var UW=j.uwagi||[];if(UW.length){h+='<div class="q"><div class="qh">4 · Na co zwrócić uwagę</div>'+UW.map(function(u){return '<div class="uw"><b>'+esc(u.co||"")+'</b>'+(u.dlaczego?'<div>'+esc(u.dlaczego)+'</div>':'')+(u.zalecenie?'<div class="zal">→ '+esc(u.zalecenie)+'</div>':'')+'</div>';}).join("")+'</div>';}
   if(j.dobrze||j.jedzenie){h+='<div class="q">'+(j.dobrze?'<p><b>Co wyszło dobrze:</b> '+esc(j.dobrze)+'</p>':'')+(j.jedzenie?'<p><b>Jedzenie i picie:</b> '+esc(j.jedzenie)+'</p>':'')+'</div>';}
   b.innerHTML=h;
-  b.querySelectorAll(".kmp").forEach(function(k){k.onclick=function(){var a=kmToIdx(+k.dataset.a),bb=kmToIdx(+k.dataset.b);if(bb<=a)bb=Math.min(N-1,a+Math.max(3,Math.round(60/(TR.window_s||10))));setView("map");SEL={a:a,b:bb};drawChart();highlightSel();showSeg();};});
+  b.querySelectorAll(".kmp").forEach(function(k){k.onclick=function(){var a=kmToIdx(+k.dataset.a),bb=kmToIdx(+k.dataset.b);if(bb<=a)bb=Math.min(N-1,a+Math.max(3,Math.round(60/(TR.window_s||10))));setView("map");SEL={a:a,b:bb};drawChart();showSeg();highlightSel();};});
 }
 function anRenderV1(j){
   var b=$("an-body"),h="";if(!b)return;
@@ -263,7 +271,7 @@ function anRenderV1(j){
     h+='<div class="sc"><b>'+esc(s.tytul||"")+(km?'<span class="kmp" data-a="'+(+km[0])+'" data-b="'+(+km[1])+'">km '+n(+km[0],1)+(km[1]!=km[0]?"–"+n(+km[1],1):"")+' ↗</span>':"")+'</b><p>'+esc(s.tekst||"")+'</p></div>';});
   if(Array.isArray(j.next)&&j.next.length)h+='<div class="nx"><b>Na następny raz</b><ul style="margin:4px 0 0;padding-left:18px">'+j.next.map(function(x){return '<li>'+esc(x)+'</li>';}).join("")+'</ul></div>';
   b.innerHTML=h;
-  b.querySelectorAll(".kmp").forEach(function(k){k.onclick=function(){var a=kmToIdx(+k.dataset.a),bb=kmToIdx(+k.dataset.b);if(bb<=a)bb=Math.min(N-1,a+Math.max(3,Math.round(60/(TR.window_s||10))));setView("map");SEL={a:a,b:bb};drawChart();highlightSel();showSeg();};});
+  b.querySelectorAll(".kmp").forEach(function(k){k.onclick=function(){var a=kmToIdx(+k.dataset.a),bb=kmToIdx(+k.dataset.b);if(bb<=a)bb=Math.min(N-1,a+Math.max(3,Math.round(60/(TR.window_s||10))));setView("map");SEL={a:a,b:bb};drawChart();showSeg();highlightSel();};});
 }
 /* 2026-09-28: prawy panel Analiza AI usuniety - analiza jest ramka w widoku Analiza (daneRender) */
 /* ---------- widok Analiza (pelna szerokosc) ---------- */
@@ -278,7 +286,7 @@ function daneRender(){var el=$("dgrid");if(!el||!D)return;
   el.querySelectorAll(".dsec").forEach(function(s2){s2.classList.add("open");var t=s2.querySelector(".dh b"),ix=DORD.indexOf(t?t.textContent.trim():"");s2.style.order=ix<0?99:ix;});
   el.querySelectorAll(".it").forEach(function(it){if(!it.classList.contains("nw")&&(it.querySelector("table")||it.querySelector(".mmp")||it.querySelector(".zone")||it.querySelector(".lg")))it.classList.add("wt");});
   var TIPS=window.__RJTIPS||{};el.querySelectorAll(".it .h b").forEach(function(b){var t=TIPS[b.textContent.trim()];if(t)b.setAttribute("title",t);});
-  el.querySelectorAll(".kmp[data-a]").forEach(function(k){k.onclick=function(){var a=kmToIdx(+k.dataset.a),b=kmToIdx(+k.dataset.b);if(b<=a)b=Math.min(N-1,a+Math.max(3,Math.round(60/(TR.window_s||10))));setView("map");SEL={a:a,b:b};drawChart();highlightSel();showSeg();};});
+  el.querySelectorAll(".kmp[data-a]").forEach(function(k){k.onclick=function(){var a=kmToIdx(+k.dataset.a),b=kmToIdx(+k.dataset.b);if(b<=a)b=Math.min(N-1,a+Math.max(3,Math.round(60/(TR.window_s||10))));setView("map");SEL={a:a,b:b};drawChart();showSeg();highlightSel();};});
   el.querySelectorAll("tr.kmp[data-cat]").forEach(function(r){r.onclick=function(){setView("map");highlightSurf(+r.dataset.cat);};});
   /* Analiza AI jako pierwsza ramka widoku Analiza (2026-09-28; zamiast prawego panelu) */
   el.insertAdjacentHTML("afterbegin",'<div class="dsec open" id="an" style="order:-1"><div class="dh"><b>Analiza AI</b><a class="link" id="an-refresh" href="#" style="font-size:13px;margin-left:auto">odśwież</a><span class="chev">⌄</span></div><div class="db"><div id="an-body" class="sub">ładuję…</div></div></div>');
@@ -339,14 +347,26 @@ function buildMoments(){
     var mk2=L.marker([TR.lat[k],TR.lon[k]],{icon:ico,zIndexOffset:900}).addTo(map);mk2.on("click",function(){gotoMoment(m);});MOMM.push(mk2);});
   drawMomentPills();
 }
-function gotoMoment(m){if(m.b!=null){SEL={a:m.a,b:m.b};drawChart();highlightSel();showSeg();}else{closeSeg();setCursor(m.a,false);var k=m.a;map.setView([TR.lat[k],TR.lon[k]],Math.max(map.getZoom(),14));}}
+function gotoMoment(m){if(m.b!=null){SEL={a:m.a,b:m.b};drawChart();showSeg();highlightSel();}else{closeSeg();setCursor(m.a,false);var k=m.a;map.setView([TR.lat[k],TR.lon[k]],Math.max(map.getZoom(),14));}}
 function drawMomentPills(){var box=$("mks");if(!box)return;box.innerHTML="";if(!SHOWMOM)return;var r=rng();
-  MOM.forEach(function(m){var k=m.b!=null?(m.a+m.b)/2:m.a;if(k<r.a||k>r.b)return;var el=document.createElement("span");el.className="mk";el.innerHTML=m.ic+" "+esc(m.lab);el.title=m.t;el.style.left=(CX(k)/CW*100)+"%";el.onclick=function(){gotoMoment(m);};box.appendChild(el);});}
+  MOM.forEach(function(m){var k=m.b!=null?(m.a+m.b)/2:m.a;if(k<r.a||k>r.b)return;var el=document.createElement("span");el.className="mk";el.innerHTML=m.ic+" "+esc(m.lab);el.title=m.t;el.style.left=(CX(k)/CW*100)+"%";el.onclick=function(){gotoMoment(m);};box.appendChild(el);});
+  /* 2026-10-08: pigulki momentow nie nachodza na siebie: JEDEN wiersz, przy kolizji rozsuwane w bok (najblizej swojego miejsca na
+     wykresie, w granicach ramki); drugi wiersz tylko gdy wszystkie sie nie mieszcza. Telefon: pasek przewijany (bez zmian). */
+  if(!box.firstChild||getComputedStyle(box.firstChild).position!=="absolute"){box.style.height="";return;}
+  var br=box.getBoundingClientRect(),W=br.width,G=6,its=[].map.call(box.children,function(e){var r=e.getBoundingClientRect();return {e:e,w:r.width,c:(r.left+r.right)/2-br.left};});
+  its.sort(function(p,q){return p.c-q.c;});
+  var tot=its.reduce(function(s,x){return s+x.w;},0)+G*(its.length-1),i,x=-1e9,lim=W;
+  if(tot<=W){
+    its.forEach(function(it){it.l=Math.max(it.c-it.w/2,x+G,0);x=it.l+it.w;});
+    for(i=its.length-1;i>=0;i--){if(its[i].l+its[i].w>lim)its[i].l=lim-its[i].w;lim=its[i].l-G;}
+    its.forEach(function(it){it.e.style.transform="none";it.e.style.left=Math.round(it.l)+"px";it.e.style.top="0";});
+    box.style.height="26px";
+  }else{var lanes=[];its.forEach(function(it){var l=Math.min(Math.max(it.c-it.w/2,0),W-it.w),L=0;while(lanes[L]!=null&&l<lanes[L]+G)L++;lanes[L]=l+it.w;it.e.style.transform="none";it.e.style.left=Math.round(l)+"px";it.e.style.top=(L*26)+"px";});box.style.height=(lanes.length*26)+"px";}}
 /* ---------- odcinek ---------- */
 function segStats(a,b){var st=function(arr){var s=0,c=0,mn=Infinity,mx=-Infinity;for(var i=a;i<=b;i++){var v=arr&&arr[i];if(!isNum(v))continue;s+=v;c++;if(v<mn)mn=v;if(v>mx)mx=v;}return c?{avg:s/c,min:mn,max:mx}:null;};
   var asc=0;for(var i=a+1;i<=b;i++){if(isNum(TR.alt[i])&&isNum(TR.alt[i-1])){var d=TR.alt[i]-TR.alt[i-1];if(d>0.3)asc+=d;}}
   return {km:TR.km[b]-TR.km[a],t:TR.t[b]-TR.t[a],pw:st(TR.power),hr:st(TR.hr),wb:st(TR.wbal_pct),spd:st(SPD),cad:st(TR.cad),temp:st(TR.temp),tail:st(TR.tail),asc:asc,gr:TR.km[b]>TR.km[a]?(TR.alt[b]-TR.alt[a])/((TR.km[b]-TR.km[a])*1000)*100:0};}
-function segDesc(a,b,S){var L=["Zakres: km "+n(TR.km[a],1)+"–"+n(TR.km[b],1)+" ("+fmtHM(S.t)+", "+n(S.km,1)+" km, +"+Math.round(S.asc)+" m)"];if(S.pw)L.push("moc: śr "+Math.round(S.pw.avg)+" W (max "+Math.round(S.pw.max)+")"+(FTP?", próg "+FTP:""));if(S.hr)L.push("HR: śr "+Math.round(S.hr.avg)+" (max "+Math.round(S.hr.max)+")");if(S.cad)L.push("kadencja: śr "+Math.round(S.cad.avg));if(S.wb)L.push("W'bal: min "+Math.round(S.wb.min)+"%");if(S.spd)L.push("prędkość: śr "+n(S.spd.avg,1)+" km/h");if(S.temp)L.push("temperatura: "+Math.round(S.temp.min)+"–"+Math.round(S.temp.max)+" °C");if(S.tail)L.push("wiatr wzdłuż: śr "+n(S.tail.avg,1)+" m/s ("+(S.tail.avg<0?"pod wiatr":"z plecami")+")");return L.join("; ");}
+function segDesc(a,b,S){var L=["Zakres: km "+n(TR.km[a],1)+"–"+n(TR.km[b],1)+" ("+fmtHM(S.t)+", "+n(S.km,1)+" km, +"+Math.round(S.asc)+" m)"];if(S.pw)L.push("moc: śr "+Math.round(S.pw.avg)+" W (max "+Math.round(S.pw.max)+")"+(FTP?", próg "+FTP:""));if(S.hr)L.push("HR: śr "+Math.round(S.hr.avg)+" (max "+Math.round(S.hr.max)+")");if(S.cad)L.push("kadencja: śr "+Math.round(S.cad.avg));if(S.wb)L.push("W'bal: min "+Math.round(S.wb.min)+"%");if(S.spd)L.push("prędkość: śr "+n(S.spd.avg,1)+" km/h");if(S.temp)L.push("temperatura: "+Math.round(S.temp.min)+"–"+Math.round(S.temp.max)+" °C");if(S.tail)L.push("wiatr wzdłuż: śr "+n(S.tail.avg,1)+" m/s ("+(S.tail.avg<0?"pod wiatr":"z plecami")+")");/* 2026-10-08: dla oceny AI - nachylenie, nawierzchnia odcinka i srednie CALEJ jazdy do porownania */if(isNum(S.gr))L.push("nachylenie śr "+n(S.gr,1)+"%");try{var sc={},tot=0;for(var k=a;k<=b;k++){var sk=SURF[k];if(sk){sc[sk]=(sc[sk]||0)+1;tot++;}}if(tot)L.push("nawierzchnia: "+Object.keys(sc).sort(function(x,y){return sc[y]-sc[x];}).map(function(x){return (SLAB[x]||x)+" "+Math.round(sc[x]/tot*100)+"%";}).join(", "));}catch(e){}try{var W=segStats(0,N-1),C=[];if(W.pw)C.push("moc śr "+Math.round(W.pw.avg)+" W");if(W.hr)C.push("HR śr "+Math.round(W.hr.avg));if(W.cad)C.push("kadencja śr "+Math.round(W.cad.avg));if(W.spd)C.push("prędkość śr "+n(W.spd.avg,1)+" km/h");if(C.length)L.push("CAŁA JAZDA dla porównania: "+C.join(", ")+" (odcinek to km "+n(TR.km[a],1)+"–"+n(TR.km[b],1)+" z "+n(TR.km[N-1],1)+")");}catch(e){}return L.join("; ");}
 function showSeg(){
   var ss0=$("sg-surf");if(ss0)ss0.remove();
   if(!SEL)return closeSeg();var a=SEL.a,b=SEL.b,S=segStats(a,b);$("sg").style.display="block";

@@ -50,7 +50,7 @@ async function render(){
       if(e.kind==="illness")h+='<div data-id="'+e.id+'" class="ev red">🤒 '+qEsc(e.title||"choroba")+'</div>';
       else if(e.kind==="feel")h+='<div data-id="'+e.id+'" class="ev gray">😊 '+qEsc(e.title||(e.feel>0?"dobrze":e.feel<0?"słabo":"neutralnie"))+'</div>';
       else if(e.kind==="reminder")h+='<div data-id="'+e.id+'" class="ev gray">🔔 '+qEsc((e.at_time?e.at_time.slice(0,5)+" ":"")+(e.title||"przypomnienie"))+'</div>';
-      else if(e.kind==="event")h+='<div data-id="'+e.id+'" class="ev '+evClass(e.event_type)+'">'+evIcon(e.event_type)+' '+qEsc(e.title||evLabel(e.event_type))+'</div>';
+      else if(e.kind==="event")h+='<div data-id="'+e.id+'" class="ev '+evClass(e.event_type)+'">'+evIcon(e.event_type)+' '+qEsc(QD.text(e.title||evLabel(e.event_type)))+'</div>';
     });
     var slParts=[];if(dd.sleep_score)slParts.push("sen "+dd.sleep_score);else if(dd.sleep)slParts.push("sen "+qN(dd.sleep,1)+"h");if(dd.weight_kg)slParts.push(qN(dd.weight_kg,1)+" kg");
     if(slParts.length)h+='<div class="sl"><span>'+slParts.join("</span><span>")+'</span></div>';
@@ -103,7 +103,7 @@ function showDay(ds){
   var dp=q$("dp");if(!dp)return;var dd=calData[ds]||{};var rr=ridesMap[ds]||[];
   var dn=["niedziela","poniedziałek","wtorek","środa","czwartek","piątek","sobota"];
   var d=new Date(ds+"T12:00:00");
-  dp.querySelector("div:first-child").textContent=dn[d.getDay()].charAt(0).toUpperCase()+dn[d.getDay()].slice(1)+", "+d.getDate()+" "+(MON[d.getMonth()]||"").toLowerCase();
+  dp.querySelector("div:first-child").textContent=dn[d.getDay()].charAt(0).toUpperCase()+dn[d.getDay()].slice(1)+", "+QD.dm(d);
   var sub=dp.querySelector(".sub");
   if(sub)sub.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:14px;line-height:1.6"><span>gotowość <b>'+(typeof dd.readiness==="number"?(dd.readiness>0?"+":"")+qN(dd.readiness,2):"—")+'</b></span><span>sen <b>'+(dd.sleep_score||qN(dd.sleep,1)+'h')+'</b></span><span>HRV <b>'+qN(dd.hrv,0)+'</b></span>'+(dd.weight_kg?'<span>waga <b>'+qN(dd.weight_kg,1)+' kg</b></span>':'')+'</div>';
   var rows=dp.querySelector(".rows");if(rows){rows.innerHTML="";
@@ -112,7 +112,7 @@ function showDay(ds){
     var ents2=(calData[ds]||{})._entries||[];var seen={};ents2=ents2.filter(function(e){if(seen[e.id])return false;seen[e.id]=1;return true;});
     ents2.forEach(function(e){
       var ic=e.kind==="illness"?"🤒":e.kind==="feel"?"😊":e.kind==="reminder"?"🔔":evIcon(e.event_type);
-      var lbl=e.kind==="feel"?("samopoczucie: "+(FEEL_LABEL[String(e.feel)]||e.title||"")):(e.title||(e.kind==="illness"?"choroba":e.kind==="reminder"?"przypomnienie":evLabel(e.event_type)));
+      var lbl=e.kind==="feel"?("samopoczucie: "+(FEEL_LABEL[String(e.feel)]||e.title||"")):QD.text(e.title||(e.kind==="illness"?"choroba":e.kind==="reminder"?"przypomnienie":evLabel(e.event_type)));
       rows.innerHTML+='<div class="r kent" data-id="'+e.id+'" style="grid-template-columns:auto 1fr auto;cursor:pointer"><span>'+ic+'</span><span class="w">'+qEsc(lbl)+'</span><span class="s">✎</span></div>';
     });
     rows.querySelectorAll(".kent").forEach(function(el){el.addEventListener("click",function(){var e=findEntry(parseInt(this.dataset.id,10));if(e)openEditor(ds,e);});});

@@ -73,7 +73,10 @@
     });
     if (!b) return;
     try { m.invalidateSize(false); } catch (e) {}
-    var mr = vis("map"), pv = vis("pv-panel"), pf = vis("profil"), mc = vis("pl-mapctl");
+    var mr = vis("map"), pv = vis("pv-panel"), pf = vis("profil"), mc0 = $("pl-mapctl");
+    /* 2026-10-08: przyciski mapy na komputerze stoja w prawym dolnym rogu (qMapCtl) - wtedy NIE wplywaja na gorny margines
+       (wczesniej padT = dol przyciskow => ~800 px i mapa oddalala sie do calej Europy) */
+    var mc = (mc0 && !mc0.closest(".leaflet-control-container")) ? vis("pl-mapctl") : null;
     if (!mr) return;
     var phone = window.matchMedia && window.matchMedia("(max-width: 820px)").matches;
     var padL = phone ? 16 : (pv ? Math.max(24, Math.round(pv.right - mr.left) + 24) : 24);
@@ -161,6 +164,7 @@
   var mc = document.createElement("div"); mc.id = "pl-mapctl";
   mc.innerHTML = '<button type="button" id="pl-fit">Wyśrodkuj trasę</button><button type="button" id="pl-style">Mapa</button><button type="button" id="pl-sq">Kwadraty: wł</button><span id="pl-sqn"></span>';
   document.body.appendChild(mc);
+  if (window.qMapCtl) window.qMapCtl(mc);   // 2026-10-07: komputer - przyciski w prawym dolnym rogu mapy (qmap-tiles.js)
   function theMap() { var ms = window.qTilesMaps ? window.qTilesMaps() : []; return ms[0] || null; }
   function isPhone() { return !!(window.matchMedia && window.matchMedia("(max-width: 820px)").matches); }
   function styleLab() {

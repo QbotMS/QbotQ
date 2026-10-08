@@ -1,5 +1,9 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-10-08] Centrum powiadomien (krok 1)
+- Dzwonek pod ☰ we wszystkich stronach (nav.js v7, nav.css v6 w 23 plikach html); lista jako panel wysuwany obok dzwonka (nie okno na srodku). Zweryfikowane Playwright (komputer + telefon): plakietka 2, okno z pozycjami, bez bledow JS. Testowa pozycja Trenera dodana i usunieta.
+- Krok 2 w TODO [NOTIF-KROK2]. Szczegoly: docs/NOTIF_CENTER.md.
+
 ## [2026-10-08] Ubior / rower w Raporcie z jazdy + przypomnienie serwisowe
 - Front (poza repo, lustro web_public): raport-jazdy3-rail.js v6 (przycisk #ubbtn, okno qModal z #gearp), raport-jazdy2-gear.js v3 (sekcja zadan, window.__RJgear), raport-jazdy3.css v9, raport-jazdy-m.js v4 (etykieta).
 - Backend: qbot3/rides/bike_tasks.py, qbot_web.py /api/bike-tasks (GET), /save, /done; qbot_trener_notify.py tick (klucz bt:<session_id>, 2 h przed startem / 7:00) + callback tr:bt. Zweryfikowane: dry tick dla jazdy 11.10 09:00 -> tekst o 07:00; Playwright: przycisk jest, okno otwiera sie, 7 pozycji, bez bledow JS.
@@ -1158,3 +1162,9 @@ Zweryfikowane na zywo. qbot-api zrestartowany. OTWARTE: retry przy 202 w QExt2 (
 - TRENER: wydarzenie "jazda" bez trasy = jazda dnia (km z notatki), czas/XSS z podobnych jazd. Kalendarz: FK ON DELETE CASCADE (planned_load_daily, report_schedule, calendar_reminder_fired).
 - Forma/Dziennik: dane ze START (liczniki gotowosc -2..+2 i swiezosc -40..+30, strzalki trendu 7 dni, jedzenie, ostatnia jazda, statystyki, wykres obciazenia z dwiema skalami). START do przeprojektowania.
 - OTWARTE: gwiazdki oceny treningow w TRENERZE (backend /api/trener/rating jest, brak UI); cele jedzenia/wagi zaszyte w froncie (2100 kcal, 160 g, 100 kg do 30.09); niezacommitowane zmiany innych sesji z 25.09 (qbot_web.py garderoba/termika, qbot_garage_taxonomy.py, ride_thermal.py - serwer z nich korzysta); START licznik gotowosci ma stare progi.
+
+## 2026-10-08 — TRENING zamiast Kalendarza i Trenera [TRENING-2026-10-08]
+- Nowa strona /trening.html (menu „Trening”): Miesiąc (Kalendarz) + Tydzień, Czas, Cele, Dostępność, Sezon, Ustawienia (Trener).
+- Forma: nowa zakładka „Bilans i waga” (ramka /trener-fragment.html?sub=bilans).
+- /trener.html i /kalendarz.html przekierowują. Statyki poza repo (żywe od razu); repo: qbot_trener_notify.py, scripts/build_context.py, docs, web_public/.
+- Otwarte: poprawki kalendarza (telefon, plan w siatce) i narzędzia kalendarza dla Alberta — w TODO.

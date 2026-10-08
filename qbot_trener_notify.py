@@ -31,7 +31,7 @@ TZ = ZoneInfo("Europe/Warsaw")
 DEF = {"notify.week_plan": 2, "notify.day": 1, "notify.review": 1, "notify.tone": 1}
 SIC = {"rower": "🚲", "sila": "🏋️", "wiosl": "🚣", "joga": "🧘"}
 DN = ["pn", "wt", "śr", "cz", "pt", "sb", "nd"]
-URL = "https://albert.cytr.us/trener.html"
+URL = "https://albert.cytr.us/trening.html"
 
 
 def _conn():
@@ -272,6 +272,22 @@ def handle_callback(cq: dict, answer, send_plain, clear_buttons, chat_ok: str) -
         clear_buttons(chat_id, m["message_id"])
 
 
+def _nc(c, key: str, text: str) -> None:
+    """2026-10-08: kopia wiadomosci Trenera do Centrum powiadomien (dzwonek, qbot_notif.py). Bledy pomijane."""
+    try:
+        import qbot_notif as NF
+        lines = [x for x in str(text or "").strip().splitlines() if x.strip()]
+        if lines:
+            c.execute("SAVEPOINT nc")
+            NF.push(c, "trener:" + key, "trener", lines[0][:140], "\n".join(lines[1:])[:400] or None, "/trener.html")
+            c.execute("RELEASE SAVEPOINT nc")
+    except Exception:
+        try:
+            c.execute("ROLLBACK TO SAVEPOINT nc")
+        except Exception:
+            pass
+
+
 def _once(c, key: str, user: str, text: str | None, dry: bool, buttons: list | None = None) -> str:
     if not text:
         return f"{key}: pusto"
@@ -281,6 +297,8 @@ def _once(c, key: str, user: str, text: str | None, dry: bool, buttons: list | N
     if dry:
         return f"{key}: [DRY]\n{text}"
     ok, det = send(text, buttons)
+    if key.startswith(("plan:", "review:")):
+        _nc(c, key, text)
     c.execute("INSERT INTO qbot_v2.trainer_notify_log (key, username, ok, detail) VALUES (%s,%s,%s,%s) ON CONFLICT (key) DO NOTHING", (key, user, ok, det))
     return f"{key}: {'wysłane' if ok else 'BŁĄD ' + det}"
 
@@ -329,6 +347,7 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
             if upd:
                 log.append(f"kalendarz: przeliczono ({len(upd['lines'])} zmian)")
                 if (upd["lines"] or upd.get("rolled")) and not dry:
+                    _nc(c, f"chg:{upd['change_id']}", change_text(upd, "🗓️ Zmiana w Kalendarzu — plan zaktualizowany:")); conn.commit()
                     send(change_text(upd, "🗓️ Zmiana w Kalendarzu — plan zaktualizowany:"),
                          [[{"text": "↩️ Cofnij", "callback_data": f"tr:undo:{upd['change_id']}"}]])
         except Exception as e:
@@ -340,6 +359,7 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
                 conn.commit()
                 if ad:
                     log.append(f"wykonanie: odchyłka od planu — przeliczono ({len(ad['lines'])} zmian)")
+                    _nc(c, f"adapt:{ad['change_id']}", adapt_text(ad)); conn.commit()
                     send(adapt_text(ad), [[{"text": "↩️ Cofnij", "callback_data": f"tr:undo:{ad['change_id']}"}]])
             except Exception as e:
                 conn.rollback(); log.append(f"wykonanie: błąd {str(e)[:120]}")

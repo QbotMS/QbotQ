@@ -6576,6 +6576,64 @@ def ride_gear_options(ride: str = Query("")):
         gc.close()
 
 
+_NOTIF_SYNC_TS = [0.0]
+
+
+@app.get("/api/notif")
+def notif_list():
+    """2026-10-08: Centrum powiadomien (dzwonek w menu, nav.js). Stan na zywo przeliczany co >= 60 s.
+    Logika i zrodla: qbot_notif.py, tabela qbot_v2.notif (sql/notif_v1.sql)."""
+    import time as _t
+    import qbot_notif as NF
+    conn = _db_conn()
+    try:
+        cur = conn.cursor()
+        if _t.time() - _NOTIF_SYNC_TS[0] > 60:
+            NF.sync_live(cur, GARAGE_DB)
+            conn.commit()
+            _NOTIF_SYNC_TS[0] = _t.time()
+        return NF.listing(cur)
+    finally:
+        conn.close()
+
+
+@app.post("/api/notif/read")
+async def notif_read(request: Request):
+    """Body: {ids:[...]} albo {} = wszystkie przeczytane."""
+    import qbot_notif as NF
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    ids = [i for i in (body.get("ids") or []) if str(i).isdigit()]
+    conn = _db_conn()
+    try:
+        n = NF.mark_read(conn.cursor(), ids or None)
+        conn.commit()
+        return {"ok": True, "read": n}
+    finally:
+        conn.close()
+
+
+@app.post("/api/notif/dismiss")
+async def notif_dismiss(request: Request):
+    """Body: {id} - ukryj pozycje. Po akcji (np. Zrobione przy rowerze) wymus przeliczenie stanu."""
+    import qbot_notif as NF
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    nid = body.get("id")
+    conn = _db_conn()
+    try:
+        n = NF.dismiss(conn.cursor(), int(nid)) if str(nid or "").isdigit() else 0
+        conn.commit()
+        _NOTIF_SYNC_TS[0] = 0.0
+        return {"ok": True, "dismissed": n}
+    finally:
+        conn.close()
+
+
 @app.get("/api/bike-tasks")
 def bike_tasks_get(ride: str = Query("")):
     """2026-10-08: 'Rower po jezdzie - do zrobienia' (okno Ubior / rower w Raporcie z jazdy).
@@ -6598,6 +6656,7 @@ async def bike_tasks_save(request: Request):
         raise HTTPException(status_code=400, detail="Bledny JSON")
     c = BT.conn(GARAGE_DB)
     try:
+        _NOTIF_SYNC_TS[0] = 0.0
         return BT.save(c, body.get("ride"), body.get("bike_id"), body.get("tasks") or [], body.get("note"))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -6616,6 +6675,7 @@ async def bike_tasks_done(request: Request):
     ids = [i for i in (body.get("ids") or []) if str(i).isdigit()]
     c = BT.conn(GARAGE_DB)
     try:
+        _NOTIF_SYNC_TS[0] = 0.0
         return {"ok": True, "done": BT.mark_done(c, ids=ids) if ids else 0}
     finally:
         c.close()

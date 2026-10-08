@@ -5,7 +5,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1"><link rel="alternate icon" href="/favicon.ico?v=1">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="stylesheet" href="/ui2.css?v=9">
-<link rel="stylesheet" href="/nav.css?v=4">
+<link rel="stylesheet" href="/nav.css?v=6">
 <script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
 <title>Garaż — QBot lab</title>
 <style>
@@ -30,6 +30,9 @@ table.gt{width:100%;border-collapse:collapse;font-size:15px}
 .gt thead th.noclick{cursor:default}
 .gt thead th .ar{color:var(--accent);font-size:11px;margin-left:3px}
 .gt tbody td{padding:8px 11px;border-bottom:1px solid var(--line);vertical-align:middle}
+/* GARAZ TABELE GRANAT (2026-10-07, noc): cale tabele na ciemnym granatowo-szarym tle (wiersze #151a22), naglowek odrobine jasniejszy (#1b212b) */
+html.theme-dark table{background:#151a22}
+html.theme-dark .gt thead th{background:#1b212b}
 .gt tbody td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .gt tbody td.mdl{font-weight:600}
 .gt tbody tr:hover{background:var(--accent-bg)}
@@ -707,7 +710,7 @@ body.svy-open .svy{display:block}
 <script src="/garaz-fit.js?v=8"></script>
 <script src="/garaz-tabs.js?v=25"></script>
 <script src="/garaz-instrukcje.js?v=2"></script>
-<script src="/nav.js?v=5"></script>
+<script src="/nav.js?v=7"></script>
 <script>(function(){var b=document.getElementById("themebtn");if(!b)return;var SUN='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',MOON='<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';function paint(){b.querySelector("svg").innerHTML=document.documentElement.classList.contains("theme-dark")?SUN:MOON;}b.addEventListener("click",function(){var d=!document.documentElement.classList.contains("theme-dark");document.documentElement.classList.toggle("theme-dark",d);try{localStorage.setItem("qtheme",d?"dark":"light")}catch(e){}paint();});paint();})();</script>
 <script src="/garaz-exped.js?v=4"></script>
 <script src="/garaz-search.js?v=1"></script>

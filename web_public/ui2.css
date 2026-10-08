@@ -21,6 +21,7 @@ a:hover{text-decoration:underline}
 .loading .card{transition:opacity .2s}
 .wrap{max-width:1500px;margin:0 auto;padding:22px 32px 90px}
 h1{margin:0;font-size:24px;font-weight:600;letter-spacing:-.01em}
+/* naglowek strony (.head h1): styl w nav.css -- sekcja NAGLOWKI STRON */
 h2{margin:0;font-size:18px;font-weight:600}
 .sub{color:var(--ink2);font-size:15px}
 .muted{color:var(--muted)}

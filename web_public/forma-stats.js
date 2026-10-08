@@ -49,8 +49,8 @@ function bucketLabel(key, gran){
   if(gran==="month"){ const [y,m]=key.split("-");
     const N=["sty","lut","mar","kwi","maj","cze","lip","sie","wrz","paź","lis","gru"];
     return N[Number(m)-1]+" '"+y.slice(2); }
-  if(gran==="week") return "tydz. "+key.slice(5);
-  return key.slice(5);
+  if(gran==="week") return "tydz. "+QD.dm(key);
+  return QD.dm(key);
 }
 function niceMax(v){
   if(v<=0) return 1;

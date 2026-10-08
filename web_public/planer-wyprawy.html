@@ -355,6 +355,8 @@ body.pl-full #pl-mapctl{display:none}
   .ub-strip{font-size:12px}
 }
 
+/* 2026-10-07: komputer - kontrolki mapy (przyciski + +/-) w prawym dolnym rogu, NAD wykresem wysokosci */
+@media (min-width: 821px){ body.pl3 .leaflet-bottom{bottom:calc(var(--pfh,210px) + 20px)} }
 /* ---- telefon v2 (iPhone) ---- */
 #pl-all{display:block}#pl-all b,#pl-all span{display:block}
 @media (max-width: 820px){
@@ -371,6 +373,21 @@ body.pl-full #pl-mapctl{display:none}
   #pl-all{padding:7px 10px}#pl-all span{font-size:12px}
 }
 #pl-main>*{flex-shrink:0}
+/* === PANEL KOMPAKT (2026-10-07): wszystko w lewym panelu bez przewijania (2 dni, ekran ~1440x900) ===
+   rowne odstepy 7 px miedzy wszystkimi polami, ciasniejsze karty etapow, mniejszy przycisk DOSTOSUJ,
+   podpowiedz (#hint) jako dymek na etykiecie Etapy, panel wyzszy o ~10 px. Tylko desktop (>820 px). */
+@media (min-width:821px){
+  body.pl3 #pv-panel{top:8px;bottom:calc(var(--pfh,210px) + 18px)}
+  #pl-main{gap:7px;padding:10px 13px}
+  #pl-main .qbrand{margin:0 0 2px}
+  #pl-main #hint{display:none!important}
+  .pl-lbl{cursor:help}
+  #etap-cards{display:flex;flex-direction:column;gap:7px}
+  body.pl3 #etap-cards .ecard{margin:0;padding:8px 11px}
+  #pl-all{padding:7px 10px}
+  .ec-main{margin-top:3px}.ec-surf{margin-top:5px}.ec-pct{margin-top:4px}.ec-sub{margin-top:3px;font-size:13px;line-height:1.4}
+  #pl-main .dostosuj-btn{margin:0;padding:6px 8px;font-size:13px;border-radius:8px}
+}
 </style>
 </head>
 <body class="pl3 pv-mapa">
@@ -379,13 +396,14 @@ body.pl-full #pl-mapctl{display:none}
 <div id="map"></div>
 <div id="pv-panel">
   <div id="pl-main">
+    <div class="qbrand">Planer wyprawy</div>
     <div class="fld"><label for="route">Trasa</label><select id="route"></select></div>
     <div class="pl-prm">
       <div class="fld"><label for="wyprawa-data">Data wyprawy</label><input type="date" id="wyprawa-data"></div>
       <div class="fld"><label>Dni</label><div class="tw-days"><button type="button" id="dminus" aria-label="mniej dni">−</button><span class="val" id="dval">2</span><button type="button" id="dplus" aria-label="więcej dni">+</button></div></div>
     </div>
     <div class="planer-hist" id="planer-hist"></div>
-    <div class="pl-lbl">Etapy — klik pokazuje ikony etapu</div>
+    <div class="pl-lbl" title="Kółko na mapie = koniec dnia (nocleg). Przeciągnij — etapy liczą się na żywo. Liczbę dni zmieniasz polem Dni − / +.">Etapy — klik pokazuje ikony etapu ⓘ</div>
     <button type="button" id="pl-all" class="on"><b>Cała trasa</b><span id="pl-allsub">wybierz trasę</span></button>
     <div id="etap-cards"></div>
     <button id="dostosuj" class="dostosuj-btn">DOSTOSUJ — opis i noclegi wg podziału</button>
@@ -411,8 +429,8 @@ body.pl-full #pl-mapctl{display:none}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="/qmap-tiles.js?v=15"></script>
 <script src="/planer-wyprawy3-render.js?v=2"></script>
-<link rel="stylesheet" href="/nav.css?v=4">
-<script src="/nav.js?v=5"></script>
+<link rel="stylesheet" href="/nav.css?v=6">
+<script src="/nav.js?v=7"></script>
 <script src="/planer-wyprawy3.js?v=11"></script>
 </body>
 </html>
