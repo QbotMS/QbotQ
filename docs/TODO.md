@@ -13,7 +13,44 @@
 
 # OTWARTE
 
+## [TRWALOSC] Trwalosc (durability) -- spadek mocy po zuzytych kJ (dodane 2026-10-08)
+**WDROZONE 08.10 w QBot** (fitmodel/durability.py, Forma > Trwalosc, Raport z jazdy > Trwalosc -- DECISIONS 2026-10-08).
+**KOREKTA liczb ponizej:** "po 2500 kJ 74 %" = artefakt krotkich koncowek; po filtrze (>= 20 min po progu): 1500 kJ 95 %,
+2000 kJ 91-93 %, 2500 kJ ~80 % (tylko 8 jazd). Odciecie 27.09 = ostatnie minuty (paliwo), po 2000 kJ mial 110 %.
+Zostaje do zrobienia: (2) ostrzezenie przy trasach > ~2500 kJ + jedzenie, (3) RSRV w QExt2 (osobna sesja).
+DLA QExt2 GOTOWE (08.10): /ride-readiness (qbot-api, mcp_server._durability_now) wysyla pole `durability`:
+{"curve": [[kJ, % mocy 5 min], ...] (dzis [[0,100],[1000,100],[1500,95.2],[2000,92.8]]), "kj90", "rides", "day"};
+None gdy brak danych. Krzywa konczy sie na ostatnim progu z >= 5 jazdami -- dalej QExt2 ma ekstrapolowac ostroznie.
+Analiza 08.10 (59 czystych jazd > 1500 kJ od 04.2025, 13 jazd > 2500 kJ): najlepsze 5 min po 1500 kJ = 93 % swiezej mocy,
+po 2500 kJ = 74 %; 20 min: 92 % / 79 %. W 2026 do ~2000 kJ czesto MOCNIEJ niz na swiezo (27.09, 04.10, 20.06);
+po ~2500 kJ spadek 20-25 % (04.10: 145 vs 203 W; 27.09 odcielo przy ~2400 kJ). Zastrzezenie: po 2500 kJ czesciowo wybor
+(nie ciska sie) -> gorna granica, nie pomiar maksa. Wniosek: rozjazd odczucia z CP pod koniec dlugich jazd = brak
+pojecia zmeczenia w systemie, nie blad CP.
+Do decyzji Michala: (1) trwalosc w raporcie jazdy / Formie (sledzona w sezonie), (2) ostrzezenie przy trasach > ~2500 kJ
++ jedzenie (glikogen), (3) Karoo/QExt2 (osobny projekt): ZASADA ustalona 08.10 -- W'bal na Karoo ZOSTAJE na swiezym modelu
+(zejscie ponizej zera = kandydat na przelom; detekcja przelomu w QBot i tak liczy sie ze swiezej krzywej moc-czas),
+a zmeczenie pokazywac OSOBNO (np. "2400 kJ · ~80 % mocy"), nie wliczac do W'bal.
+[2026-10-08] ZROBIONE: forma dnia na Karoo z ModelQ w mcp_server (wczesniej stary wzor HRV/BB/Xert) + cisnienie
+usuniete z formy (brak zwiazku w danych). DO ZROBIENIA: usunac martwe qbot_api._modelq_today_factor;
+RSRV v2 w QExt2: start ZAWSZE 100 %, kara z kJ (krzywa trwalosci), bez odbudowy na postojach (blad: postoj liczony
+jako suma postojow od startu). Kalibrowac DOPIERO na jazdach z nowa forma.
+MIEJSCE NA ZMECZENIE NA KAROO = RSRV (QExt2, odpowiednik Garmin Stamina; TODO [RSRV]). Stan 08.10 (fitmodel_qext2_ride):
+RSRV na KAZDEJ dlugiej jezdzie konczy na 8-17 % (27.09 odcielo: min 12 %; 26.07 bez odciecia: 10 %; 30.08: 13 %; 04.10: 14 %)
+-> nie odroznia realnego odciecia; wzor na XSS (budzet clamp(CTL*5.4, 300, 600)), a trwalosc wg danych zalezy od kJ
+(do ~2000 kJ ~100 %, po 2500 kJ ~75 %). Kalibracja RSRV z krzywej trwalosci = wejscie do [RSRV] (sesja QExt2).
+
 ## [CP-DYNAMICZNE] CP z wysilkow + przelomy (dodane 2026-10-08)
+**Decyzja Michala 08.10: wariant B (przelom -> Telegram pyta "zatwierdzic?" -> TAK tworzy kotwice).**
+WDROZONE 08.10: fitmodel/cp_breakthrough.py + krok daily_job + akcja Telegram confirm_cp_breakthrough (DECISIONS 2026-10-08).
+>>> PAMIETAC: po kilku zatwierdzonych przelomach PRZEJSC NA AUTOMAT (wariant A: kotwica od razu + powiadomienie).
+    Kryterium przejscia: >= 3 przelomy zatwierdzone bez korekty Michala. <<<
+Backtest 08.10 (12.2025-10.2026, 134 czyste jazdy):
+- detekcja z W'bal bez obcinania (deficyt > 1 kJ) dala 10 "przelomow" i TP dzis 248.8 zamiast 239.5 -- ODRZUCONA: deficyty
+  powstaja na dlugich jazdach z wieloma zrywami (27.09: "wysilek" 31 min, a najlepsze 20 min od 23.08 = 193 W) =
+  artefakt modelu regeneracji W' (Skiba tau), nie dowod wyzszego CP;
+- krzywa moc-czas: ZADNA jazda nie przekroczyla P(d) = TP + W'/d (max 95 % przy 10 min, 94 % przy 2 min) -- prawdziwych
+  przelomow 0 w 10 miesiacach. Wniosek: przelom liczyc z MMP vs krzywa modelu (2-20 min), nie z W'bal.
+- UWAGA: "dolna granica TP ~238-242 z W'bal" (DECISIONS 2026-10-04) opiera sie na tym samym artefakcie -- do rewizji.
 Dzis TP/CP = model: kotwice (zamrozone, ostatnia 20.06 251 W) + dryf za CTL. Samo nie wykrywa, ze forma realnie
 wzrosla/spadla; auto-kotwica EF wylaczona od 25.08 (skazona 11.08). Otwarte:
 - "prawdziwe CP z okien 120-600 s" (notka w publish.py cp_note) -- nie liczone;

@@ -4,6 +4,45 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-08 -- DECYZJA: forma dnia dla Karoo z ModelQ (jedno zrodlo) + cisnienie usuniete z formy
+**Odkrycie:** Karoo pobiera /ride-readiness z mcp_server.py (DECISIONS 2026-08-02), a tam todayFactor liczyl STARY
+`_compute_today_factor` (55 % HRV, 15 % Body Battery z domyslnym 75, 10 % forma Xerta, 10 % sen, 10 % RHR; asymetryczny --
+gorsze dni karane 3-5x mocniej). Decyzja 2026-07-18 (readiness_effective) byla wdrozona TYLKO w qbot_api._modelq_today_factor,
+ktorego Karoo nie wywoluje -> nigdy nie dzialala na rowerze. Dowod (FIT qext2_readiness vs ModelQ, 21 jazd od 20.08):
+Karoo nizej w 17 (08.09: 0,89 vs 1,07; 26.08: 0,91 vs 1,07; 08.10: 0,86 vs 0,99). Na Karoo dodatkowo applyBaroAdjustment
+mnozyl forme przez baroMultiplier 0,80-1,00 (gdy wlaczona wrazliwosc na cisnienie).
+**Cisnienie -- test na danych:** ERA5 Warszawa 07:00, 01.2025-10.2026: 645 dni vs readiness/HRV/RHR/sen -> |r| <= 0,10,
+spadek >= 6 hPa/24 h (79 dni) bez roznic (t < 1,3); 282 jazdy (EF wzgl. 28 dni) r = -0,03 / 0,01. Brak podstaw do korekty.
+**Decyzja:** mcp_server `_modelq_today_factor_for_day(today)`: tf = 1 + 0,10 * readiness_effective (fallback score), zacisk
+0,70-1,10, TYLKO z dzisiejszego wiersza fitmodel_daily; brak wiersza -> pole todayFactor nie jest wysylane (Karoo: 1,0).
+`baroMultiplier` = jawne 1,0 (nadpisuje zapis w AthleteDataStore). Stare wartosci zostaja w signals jako diagnostyka:
+`todayFactorLegacy`, `baroMultiplierLegacy`. Zweryfikowane na zywo po restarcie q-bot: todayFactor=0,986 (readiness -0,145),
+baro=1,0, legacy 1,017 / baro 0,884, sources += modelq:todayFactor.
+**Zostaje (osobne kroki):** martwa kopia qbot_api._modelq_today_factor do usuniecia; RSRV v2 (start zawsze 100 %, kara z kJ)
+-- sesja QExt2; forma wplywa na Karoo takze na CP w W'bal (cf 0,88-1,06) i IF do zalecen jedzenia/picia.
+
+## 2026-10-08 -- DECYZJA: trwalosc (durability) -- mechanizm + Forma > Trwalosc + Raport z jazdy (modul Dane)
+fitmodel/durability.py: na jazde (>= 1 h, activity_record) narastajace kJ, najlepsze 5/20 min na swiezo (do 1000 kJ) i po
+progach 1000/1500/2000/2500/3000 kJ -> qbot_v2.durability_ride (310 jazd od 01.2025). Krzywa sezonu = mediana "po progu /
+swiezo" z czystych jazd 12 mies. (min. 5 jazd, nierosnaca); trend co miesiac z 180 dni. Krok daily_job `durability`.
+KOREKTA wczesniejszej analizy (ta sama sesja): "po 2500 kJ 74 %" bylo ARTEFAKTEM -- po progu zostawalo czesto kilka minut
+(dojazd do domu, 04.10: 9 min -> 145 W). Teraz punkt liczy sie tylko gdy po progu >= 20 min jazdy (5 min) / 40 min (20 min).
+Wynik 12 mies.: po 1500 kJ 95 %, po 2000 kJ 93 % (dalej za malo jazd); cala historia: 2000 kJ 91 %, 2500 kJ ~80 % (8 jazd).
+27.09 i 04.10: po 2000 kJ 110-116 % (mocniej niz na swiezo) -- odciecie 27.09 bylo w ostatnich minutach = paliwo, nie trwalosc.
+UI: /api/forma/durability + forma.html zakladka "Trwalosc" (forma-durability.js v1: kafle, krzywa 5/20 min, trend, lista jazd);
+/api/ride/durability + raport-jazdy2-dane.js v36 sekcja "Trwalosc" (werdykt vs typowo, wykres, tabela), ws.js v46 (ctx.RKEY).
+Testy: test_durability (4). Wejscie dla RSRV (QExt2) -- TODO [TRWALOSC]/[RSRV].
+
+## 2026-10-08 -- DECYZJA: przelom CP z krzywej moc-czas, z potwierdzeniem na Telegramie (wariant B)
+fitmodel/cp_breakthrough.py, krok daily_job `cp_breakthrough` po modelq2 (oba przebiegi). Czysta jazda (bez kwarantanny,
+poza METER_BAD, meter_phys < 1.15) z MMP(2/5/10/20 min) > TP + W'/d o > 1 % -> kandydat (qbot_v2.cp_breakthrough):
+krotkie podnosza W', dlugie TP, limity +3 % TP / +15 % W'. Telegram: "#NN ... NN TAK / NN NIE", 48 h (qbot_qcal_telegram:
+akcja confirm_cp_breakthrough -> approve: kotwica modelq2_anchor 'przelom (zatwierdzony Telegram)' + build_and_store + publish).
+Backtest: z W'bal bez obcinania 10 falszywych przelomow (TP dzis 248.8) -- ODRZUCONE (artefakt regeneracji Skiby na jazdach
+z wieloma zrywami); krzywa moc-czas: 0 przelomow w 134 czystych jazdach 12.2025-10.2026 (max 95 % krzywej przy 10 min).
+Wszystkie 134 jazdy oznaczone jako sprawdzone (cp_bt_checked). Po >= 3 zatwierdzonych bez korekty -> automat (TODO).
+UWAGA: dolna granica TP ~238-242 z W'bal (04.10) opiera sie na tym samym artefakcie -- do rewizji (TODO). Testy: test_cp_breakthrough (5).
+
 ## 2026-10-08 -- DECYZJA: XSS z tetna -- korekta temperatury ZOSTAJE (mala, bez dowodu poprawy)
 Hipoteza z TODO [HR-XSS-UPAL]: skok XSS lipcowych jazd (04.07 175->244, 12.07 257->304, 19.07 242->364) przez upal.
 Sprawdzenie: 04.07 i 12.07 chlodne (mediana 11 C, HR > LTHR 2 % czasu) -- przyczyna = zmiana LTHR: przy 132 sekundy HR 132-148

@@ -55,6 +55,24 @@ RIDER_MAX_HR_BPM = _env_int("RIDER_MAX_HR_BPM")
 RIDER_LTHR_BPM   = _env_int("RIDER_LTHR_BPM")
 
 
+def _durability_now():
+    """2026-10-08: krzywa trwalosci (fitmodel/durability.py) dla Karoo/QExt2 -- wejscie do RSRV.
+    {"curve": [[kJ, % mocy 5 min], ...], "kj90": .., "rides": .., "day": ..}; None gdy brak danych/bazy.
+    Zasada: W'bal na Karoo zostaje na SWIEZYM modelu; trwalosc tylko dla RSRV (DECISIONS 2026-10-08)."""
+    try:
+        from fitmodel.ftp_resolver import _db_connect
+        from fitmodel import durability as _D
+        conn = _db_connect()
+        try:
+            sc = _D.season_curve(conn)
+        finally:
+            conn.close()
+        pts = [[p["kj"], p["pct5"]] for p in sc["curve"] if p.get("pct5") is not None]
+        return {"curve": pts, "kj90": sc.get("kj90"), "rides": sc.get("rides"), "day": sc.get("day")} if len(pts) > 1 else None
+    except Exception:
+        return None
+
+
 def _lthr_now():
     """2026-10-08: LTHR dynamiczne z qbot_v2.lthr_daily (fitmodel/lthr.py); env RIDER_LTHR_BPM tylko awaryjnie."""
     try:
@@ -2799,6 +2817,45 @@ def _compute_today_factor(hrv_dev, bb, form, sleep_dev, hr_dev):
     raw = 0.55*hrv_norm + 0.10*hr_norm + 0.15*bb_norm + 0.10*form_norm + 0.10*sleep_norm
     return round(_clamp(raw, 0.70, 1.10), 3)
 
+def _modelq_today_factor_for_day(day_iso: str):
+    """Forma dnia dla Karoo = ModelQ readiness_effective z DZISIEJSZEGO wiersza (DECISIONS 2026-10-08).
+
+    Mapa jak w decyzji 2026-07-18: tf = 1.0 + 0.10 * readiness_effective, zacisk 0.70-1.10.
+    Brak dzisiejszego wiersza -> None (pole todayFactor nie jest wysylane, Karoo liczy neutralnie 1.0).
+    Zastepuje stary _compute_today_factor (HRV/Body Battery/Xert/sen/RHR), ktory zostaje tylko w diagnostyce.
+    """
+    import psycopg
+    from psycopg.rows import dict_row
+
+    try:
+        with psycopg.connect(
+            host=os.getenv("PGHOST", "localhost"),
+            port=os.getenv("PGPORT", "5432"),
+            dbname=os.getenv("PGDATABASE", "qbot"),
+            user=os.getenv("PGUSER", "qbot"),
+            password=os.getenv("PGPASSWORD", ""),
+            row_factory=dict_row,
+            connect_timeout=3,
+        ) as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT readiness_effective, readiness_score FROM qbot_v2.fitmodel_daily "
+                "WHERE day = %s::date",
+                (day_iso,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            eff = r.get("readiness_effective")
+            if eff is None:
+                eff = r.get("readiness_score")
+            if eff is None:
+                return None
+            tf = 1.0 + 0.10 * float(eff)
+            return round(min(max(tf, 0.70), 1.10), 3)
+    except Exception as exc:
+        print(f"⚠️  ride-readiness: modelq todayFactor error: {exc}", flush=True)
+        return None
+
 def _modelq_ftp_ltp_override() -> dict:
     """FTP/LTP/W' z ModelQ (qbot_v2.fitmodel_daily) -- nadpisuje Xerta per-pole.
 
@@ -3115,7 +3172,11 @@ async def ride_readiness(request):
                 body_weight_date = past["id"]
                 break
 
-    today_factor = _compute_today_factor(hrv_dev_30d, bb, form_score, sleep_dev, hr_dev)
+    # Forma dnia: ModelQ (jedno zrodlo). Stary wzor tylko do diagnostyki w signals.
+    today_factor_legacy = _compute_today_factor(hrv_dev_30d, bb, form_score, sleep_dev, hr_dev)
+    today_factor = _modelq_today_factor_for_day(today)
+    if today_factor is not None:
+        sources.append("modelq:todayFactor")
 
     payload = {
         "hrvToday":           hrv_today,
@@ -3134,12 +3195,15 @@ async def ride_readiness(request):
         "pressureHpa":        pressure_now,
         "pressureChange24h":  pressure_change,
         "pressureDeficit":    round(1013.25 - pressure_now, 2) if pressure_now is not None else None,
-        "baroMultiplier":     _baro_multiplier(pressure_now, pressure_change),
+        # Cisnienie NIE koryguje formy (DECISIONS 2026-10-08: brak zwiazku na 645 dniach / 282 jazdach).
+        # Jawne 1.0 nadpisuje wartosc zapisana wczesniej w AthleteDataStore na Karoo.
+        "baroMultiplier":     1.0,
         "restingHrToday":     rhr_today,
         "restingHrBaseline":  rhr_baseline,
         "maxHrBpm":           RIDER_MAX_HR_BPM,
         "lthrBpm":            _lthr_now(),
         "maxHrSource":        RIDER_MAX_HR_SOURCE if RIDER_MAX_HR_BPM else None,
+        "durability":         _durability_now(),
         "ctl":                round(ctl, 1) if ctl is not None else None,
         "ctlXss":             _modelq_ctl_xss(),
         "atl":                round(atl, 1) if atl is not None else None,
@@ -3162,12 +3226,17 @@ async def ride_readiness(request):
             "maxHrSource":      RIDER_MAX_HR_SOURCE if RIDER_MAX_HR_BPM else None,
             "formScore":       form_score,
             "xertStatus":      xert_status,
+            "todayFactorLegacy": today_factor_legacy,
+            "baroMultiplierLegacy": _baro_multiplier(pressure_now, pressure_change),
         },
         "dataAge": today,
         "sources": sources,
     }
 
-    print(f"🚦 ride-readiness | factor={today_factor} ftp={ftp_watts} "
+    if today_factor is None:
+        payload.pop("todayFactor", None)
+
+    print(f"🚦 ride-readiness | factor={today_factor} legacy={today_factor_legacy} ftp={ftp_watts} "
           f"hrv_dev={hrv_dev_30d} hr_dev={hr_dev} bb={bb} "
           f"sleep_dev={sleep_dev} pressure={pressure_now}({pressure_change:+.1f}) "
           f"sources={sources}", flush=True)
