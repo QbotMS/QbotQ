@@ -6576,6 +6576,51 @@ def ride_gear_options(ride: str = Query("")):
         gc.close()
 
 
+@app.get("/api/bike-tasks")
+def bike_tasks_get(ride: str = Query("")):
+    """2026-10-08: 'Rower po jezdzie - do zrobienia' (okno Ubior / rower w Raporcie z jazdy).
+    Zadania tej jazdy + otwarte z innych jazd. garage.db bike_task (qbot3/rides/bike_tasks.py)."""
+    from qbot3.rides import bike_tasks as BT
+    c = BT.conn(GARAGE_DB)
+    try:
+        return BT.for_ride(c, (ride or "").strip()[:64])
+    finally:
+        c.close()
+
+
+@app.post("/api/bike-tasks/save")
+async def bike_tasks_save(request: Request):
+    """Body: {ride, bike_id, tasks:[klucze], note}. Przypomnienie: Telegram 2 h przed jazda (Trener)."""
+    from qbot3.rides import bike_tasks as BT
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    c = BT.conn(GARAGE_DB)
+    try:
+        return BT.save(c, body.get("ride"), body.get("bike_id"), body.get("tasks") or [], body.get("note"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        c.close()
+
+
+@app.post("/api/bike-tasks/done")
+async def bike_tasks_done(request: Request):
+    """Body: {ids:[...]} - odhacz zadania jako zrobione."""
+    from qbot3.rides import bike_tasks as BT
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    ids = [i for i in (body.get("ids") or []) if str(i).isdigit()]
+    c = BT.conn(GARAGE_DB)
+    try:
+        return {"ok": True, "done": BT.mark_done(c, ids=ids) if ids else 0}
+    finally:
+        c.close()
+
+
 @app.post("/api/ride-gear/save")
 async def ride_gear_save(request: Request):
     """Zapis wyboru sprzetu dla ride_key. Body: {ride, items:{slot:{gear_id|value}}}.

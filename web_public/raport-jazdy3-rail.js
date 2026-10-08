@@ -23,9 +23,7 @@ var SECS=[
  {k:"rower",t:"Rower i napęd",lab:"Rower i napęd",c:"#f0975a",i:'<circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/>'},
  {k:"jedz",t:"Jedzenie",lab:"Jedzenie",c:"#4cc9b0",i:'<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>'},
  {sep:1},
- {k:"odc",lab:"Odcinek (zaznacz na wykresie)",c:"#e8742a",i:'<path d="M3 12h18"/><path d="M7 7v10"/><path d="M17 7v10"/>'},
- {k:"zk",id:"zk",lab:"Z kim jechałem",c:"#9ad07a",i:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'},
- {k:"ubior",lab:"W czym jechałem",c:"#c9b98f",i:'<path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/>'}
+ {k:"odc",lab:"Odcinek (zaznacz na wykresie)",c:"#e8742a",i:'<path d="M3 12h18"/><path d="M7 7v10"/><path d="M17 7v10"/>'}
 ];
 var BY={};SECS.forEach(function(s){if(s.k)BY[s.k]=s;});
 var cur=null,dane=$("dane"),dgrid=$("dgrid"),dhd=$("dhd"),pj=$("pj"),ws=$("ws"),rail,odc,main;
@@ -35,12 +33,25 @@ var MOB=window.matchMedia("(max-width:820px),(pointer:coarse) and (max-height:50
 /* --- lewy panel: [dane jazdy | ikony] --- */
 main=document.createElement("div");main.className="pjmain";
 while(pj.firstChild)main.appendChild(pj.firstChild);pj.appendChild(main);
-main.insertAdjacentHTML("beforeend",'<div class="pjsep"></div><div class="kk" id="k5x"></div><div id="pjv" class="empty"><b>Werdykt</b>…</div>');
+main.insertAdjacentHTML("beforeend",'<div class="pjsep"></div><div class="kk" id="k5x"></div><div id="pjv" class="empty"><b>Werdykt</b>…</div>'
+  +'<div class="pjbtns"><button type="button" id="zkbtn" class="pjzk" title="Z kim jechałem">'+SV('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>')+'<span>Z kim jechałem</span></button>'
+  +'<button type="button" id="ubbtn" class="pjzk pjub" title="Ubiór / rower">'+SV('<path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/>')+'<span>Ubiór / rower</span></button></div>');
+/* 2026-10-08: "Ubior / rower" - W czym jechalem (raport-jazdy2-gear.js #gearp) + rower po jezdzie do zrobienia, w oknie qModal */
+document.getElementById("ubbtn").addEventListener("click",function(){var G=window.__RJgear;if(!G||!window.qModal)return;var p=G.panel,mo=null;
+  p.classList.add("inmod");
+  var md=window.qModal("Ubiór / rower",p,function(el){if(mo)mo.disconnect();el.classList.remove("inmod");el.style.display="none";document.body.appendChild(el);});
+  G.open();if(window.MutationObserver){mo=new MutationObserver(function(){if(p.style.display==="none")md.close();});mo.observe(p,{attributes:true,attributeFilter:["style"]});}});
+/* 2026-10-08: "Z kim jechalem" - zamiast sekcji w kolumnie ikon: przycisk pod werdyktem, otwiera okno nakladane (nav.js qModal,
+   wyglad jak okno dostepow). Formularz #zk (ws.js, z obsluga zapisu) jest na czas okna przenoszony do niego i potem wraca. */
+document.getElementById("zkbtn").addEventListener("click",function(){var z=$("zk");if(!z||!window.qModal)return;
+  var home=z.parentNode,nxt=z.nextSibling;z.classList.add("inmod");z.style.display="";
+  window.qModal("Z kim jechałem",z,function(el){el.classList.remove("inmod");if(home&&home.isConnected)home.insertBefore(el,(nxt&&nxt.parentNode===home)?nxt:null);});
+  setTimeout(function(){var i=$("zk-in");if(i)i.focus();},50);});
 rail=document.createElement("div");rail.id="rail";
 rail.innerHTML=SECS.map(function(s){if(s.sep)return '<div class="sep"></div>';return '<button type="button" data-k="'+s.k+'" title="'+s.lab+'" aria-label="'+s.lab+'" style="--c:'+s.c+'">'+SV(s.i)+'</button>';}).join("");
 pj.appendChild(rail);
 /* przyciski mapy na mapie (pod ramka "slad") */
-var mc=document.createElement("div");mc.className="ov";mc.id="mapctl";["bwbtn","fitbtn"].forEach(function(i){var b=$(i);if(b)mc.appendChild(b);});ws.appendChild(mc);
+var mc=document.createElement("div");mc.className="ov";mc.id="mapctl";["bwbtn","fitbtn"].forEach(function(i){var b=$(i);if(b)mc.appendChild(b);});ws.appendChild(mc);if(window.qMapCtl)window.qMapCtl(mc);/* 2026-10-07: prawy dolny rog mapy (qmap-tiles.js) */
 rail.addEventListener("click",function(e){var b=e.target.closest("button[data-k]");if(!b)return;var k=b.dataset.k,s=BY[k];
   if(s.act==="gear"){var g=$("gearbtn");if(g)g.click();return;}
   if(cur===k)close();else open(k);});
@@ -65,13 +76,10 @@ function extras(){var api=window.__RJapi,D=api&&api.data?api.data():null,box=$("
 
 /* --- Odcinek: kontener z podpowiedzia + okienko #sg przeniesione do panelu --- */
 odc=document.createElement("div");odc.id="odcwrap";odc.style.display="none";
-odc.innerHTML='<p class="hint" id="odchint">Przeciągnij po wykresie na dole (od km do km), żeby zaznaczyć odcinek. Tu pojawią się jego liczby, <b>Komentarz AI</b> i <b>Do porównania</b>. Dwuklik na zaznaczeniu przybliża wykres, Esc wraca.</p>';
+odc.innerHTML='<p class="hint" id="odchint">Przeciągnij po wykresie na dole (od km do km), żeby zaznaczyć odcinek. Tu pojawią się jego liczby, <b>Komentarz AI</b> i <b>Do porównania</b>. Dwuklik na zaznaczeniu przybliża wykres; klik w wykres albo Esc wraca do całej jazdy.</p>';
 dane.appendChild(odc);
 var sg=$("sg");if(sg)odc.appendChild(sg);
-if(sg&&window.MutationObserver){new MutationObserver(function(){var vis=sg.style.display==="block";$("odchint").style.display=vis?"none":"";if(vis&&cur!=="odc")open("odc");}).observe(sg,{attributes:true,attributeFilter:["style"]});}
-/* --- W czym jechalem: panel z raport-jazdy2-gear.js (#gearp) przeniesiony do okna sekcji --- */
-var gw=document.createElement("div");gw.id="gwrap";gw.style.display="none";dane.appendChild(gw);
-var gp=$("gearp");if(gp){gw.appendChild(gp);if(window.MutationObserver)new MutationObserver(function(){if(gp.style.display==="none"&&cur==="ubior")close();}).observe(gp,{attributes:true,attributeFilter:["style"]});}
+if(sg&&window.MutationObserver){new MutationObserver(function(){var vis=sg.style.display==="block";$("odchint").style.display=vis?"none":"";if(vis&&cur!=="odc")open("odc");if(!vis&&cur==="odc")close();/* 2026-10-08: zdjete zaznaczenie zamyka okno Odcinek */}).observe(sg,{attributes:true,attributeFilter:["style"]});}
 
 /* --- geometria: dol panelu nad wykresem, prawa krawedz przy ramce "slad" --- */
 var dock=$("dock");
@@ -79,19 +87,17 @@ function geo(){if(dock)document.body.style.setProperty("--dockh",dock.offsetHeig
   if(MOB.matches){dane.style.left="";dane.style.width="";return;}
   var wr=ws.getBoundingClientRect(),pr=pj.getBoundingClientRect(),tl=$("tl"),tr=tl&&tl.offsetParent?tl.getBoundingClientRect():null;
   var left=Math.round(pr.right-wr.left+10),right=tr?Math.round(tr.left-wr.left-10):Math.round(wr.width-12);
-  var w=Math.max(420,right-left);dane.style.left=left+"px";dane.style.width=w+"px";
+  var w=Math.max(420,right-left);dane.style.left=left+"px";dane.style.width=w+"px";dane.style.setProperty("--danew",w+"px");
   var mcx=$("mapctl");if(mcx&&tr)mcx.style.top=Math.round(tr.bottom-wr.top+8)+"px";
   document.body.classList.toggle("rj3-narrow",w<700);}
-try{if(window.ResizeObserver){var ro=new ResizeObserver(function(){geo();padCalc();});if(dock)ro.observe(dock);ro.observe(pj);var tlx=$("tl");if(tlx)ro.observe(tlx);}}catch(e){}
+try{if(window.ResizeObserver){var rfT=null,ro=new ResizeObserver(function(){geo();padCalc();/* 2026-10-08: okno sekcji zmienilo rozmiar (np. komentarz AI) -> mapa dopasowuje sie ponownie */if(cur){clearTimeout(rfT);rfT=setTimeout(refit,120);}});if(dock)ro.observe(dock);ro.observe(pj);ro.observe(dane);var tlx=$("tl");if(tlx)ro.observe(tlx);}}catch(e){}
 window.addEventListener("resize",function(){geo();padCalc();});
 
 function secEl(s){if(!s)return null;if(s.id)return $(s.id);var hit=null;dgrid.querySelectorAll(".dsec").forEach(function(d){var b=d.querySelector(".dh b");if(b&&b.textContent.trim()===s.t)hit=d;});return hit;}
 function apply(){
   var s=BY[cur],none=$("rj3none");if(none)none.remove();
-  var gpp=$("gearp");gw.style.display=cur==="ubior"?"":"none";
-  if(cur!=="ubior"&&gpp&&gpp.style.display==="block")gpp.style.display="none";
-  if(cur==="ubior"){dgrid.style.display="none";odc.style.display="none";if(gpp&&gpp.style.display!=="block"){var gb=$("gearbtn");if(gb)gb.click();}}
-  else if(cur==="odc"){dgrid.style.display="none";odc.style.display="";}
+  dane.classList.toggle("odc-fit",cur==="odc");   /* 2026-10-08: okno Odcinek szerokie i wysokie tylko na tyle, ile maja dane */
+  if(cur==="odc"){dgrid.style.display="none";odc.style.display="";}
   else{odc.style.display="none";dgrid.style.display="";var el=secEl(s);
     dgrid.querySelectorAll(".dsec").forEach(function(d){d.style.display=(d===el)?"":"none";});
     if(!el)dgrid.insertAdjacentHTML("afterbegin",'<div id="rj3none">Brak danych dla tej jazdy w tej sekcji.</div>');}
@@ -100,11 +106,13 @@ function apply(){
 }
 function marks(){rail.querySelectorAll("button[data-k]").forEach(function(b){var k=b.dataset.k,s=BY[k];b.classList.toggle("on",k===cur);
   if(s.t||s.id)b.classList.toggle("off",!secEl(s));});}
-function padCalc(){var mr=$("map").getBoundingClientRect(),r=(cur&&!MOB.matches?dane:pj).getBoundingClientRect();window.__RJ3.padL=Math.max(80,Math.round(r.right-mr.left+20));}
+/* 2026-10-08: lewy margines dopasowania mapy = prawa krawedz NAJDALSZEGO widocznego panelu (panel jazdy albo otwarte okno sekcji, np. Odcinek) */
+function padCalc(){var mr=$("map").getBoundingClientRect(),x=0;[pj,dane].forEach(function(e){if(!e||MOB.matches&&e===dane)return;var c=getComputedStyle(e),r=e.getBoundingClientRect();if(c.display!=="none"&&c.visibility!=="hidden"&&r.width>0&&r.height>0)x=Math.max(x,r.right);});window.__RJ3.padL=Math.max(80,Math.round(x-mr.left+20));}
+window.__RJ3.pad=padCalc;
 function refit(){var api=window.__RJapi;if(!api)return;padCalc();api.inval();api.fit();}
 function open(k){cur=k;geo();dane.style.display="flex";document.body.classList.add("rj3-open");apply();marks();setTimeout(refit,60);
   try{history.replaceState(null,"",location.pathname+location.search+"#"+k);}catch(e){}}
-function close(){cur=null;var gq=$("gearp");if(gq&&gq.style.display==="block")gq.style.display="none";dane.style.display="none";document.body.classList.remove("rj3-open");marks();setTimeout(refit,60);
+function close(){cur=null;dane.style.display="none";document.body.classList.remove("rj3-open");marks();setTimeout(refit,60);
   try{history.replaceState(null,"",location.pathname+location.search);}catch(e){}}
 
 /* po kazdym przeliczeniu sekcji (zmiana jazdy) */

@@ -171,7 +171,7 @@ html.theme-dark .ov{background:rgba(13,16,22,.86)}
   .leaflet-control-zoom{display:none}
   #pj{top:calc(8px + env(safe-area-inset-top,0px));left:62px;right:8px;padding:6px 8px}
   #pj select{margin-bottom:6px;min-height:40px}
-  #pj #h-title,#pj #h-date,#pj #bwbtn,#pj .themebtn{display:none}
+  #pj #h-title,#pj #h-date,#pj #bwbtn,#pj .themebtn,#pj .qbrand{display:none}
   #pj .kk{gap:2px 8px}
   #pj .kk .lbl{font-size:11.5px}
   #pj .kk .v{font-size:15px}
@@ -205,7 +205,7 @@ html.theme-dark .ov{background:rgba(13,16,22,.86)}
   #dane svg{max-width:100%;height:auto}
 }
 </style>
-<link rel="stylesheet" href="/raport-jazdy3.css?v=8">
+<link rel="stylesheet" href="/raport-jazdy3.css?v=9">
 </head>
 <body class="rj3">
 <div id="ws">
@@ -214,6 +214,7 @@ html.theme-dark .ov{background:rgba(13,16,22,.86)}
 
   <div class="ov" id="pj">
     <div class="id">
+    <div class="qbrand">Raport z jazdy</div>
     <select id="ridesel"><option>ładuję listę jazd…</option></select>
     <div class="ttl" id="h-title">—</div>
     <div class="dt" id="h-date"></div>
@@ -260,7 +261,7 @@ html.theme-dark .ov{background:rgba(13,16,22,.86)}
       <span class="grp"><span class="muted">skala:</span><button class="chip on" data-sc="abs" type="button">W / bpm</button><button class="chip" data-sc="rel" type="button">% progu</button></span>
       <span class="grp"><span class="muted">oś:</span><button class="chip on" data-x="km" type="button">km</button><button class="chip" data-x="t" type="button">czas</button></span>
       <button class="chip zoomout" id="viewall" type="button" style="display:none;border-color:var(--accent);color:var(--accent-ink);font-weight:600">⤢ cała jazda</button>
-      <span class="muted" style="margin-left:auto;font-size:12px" id="hint">przeciągnij = odcinek · dwuklik = przybliż / wróć · Esc = wróć</span>
+      <span class="muted" style="margin-left:auto;font-size:12px" id="hint">przeciągnij = odcinek · dwuklik = przybliż wykres · klik / Esc = wróć</span>
     </div>
     <div class="mks" id="mks"></div>
     <div style="position:relative"><svg id="chart" viewBox="0 0 1000 230" preserveAspectRatio="none"></svg><div id="tip"></div></div>
@@ -272,8 +273,8 @@ html.theme-dark .ov{background:rgba(13,16,22,.86)}
 <script src="/raport-jazdy2-dane.js?v=35"></script>
 <script src="/qmap-tiles.js?v=15"></script>
 <script src="/raport-jazdy2-ws.js?v=44"></script>
-<script src="/raport-jazdy2-gear.js?v=2"></script>
-<script src="/raport-jazdy-m.js?v=3"></script>
-<script src="/raport-jazdy3-rail.js?v=5"></script>
+<script src="/raport-jazdy2-gear.js?v=3"></script>
+<script src="/raport-jazdy-m.js?v=4"></script>
+<script src="/raport-jazdy3-rail.js?v=6"></script>
 </body>
 </html>

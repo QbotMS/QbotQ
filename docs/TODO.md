@@ -341,6 +341,7 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [2026-09-24] Obserwowac: czy kolejne FIT z Karoo maja device_info czujnikow (24.09 brak). Jesli systematycznie -> miernik z roweru/kalendarza jako zapas dla straznika.
 
 # ZROBIONE
+- [2026-10-08] [RJ-UBIOR-ROWER] Raport z jazdy: przycisk "Ubior / rower" obok "Z kim jechalem" (okno qModal; ikona W czym jechalem zdjeta z kolumny) + "Rower po jezdzie - do zrobienia" (7 zadan, notatka; garage.db bike_task, qbot3/rides/bike_tasks.py, /api/bike-tasks*). Telegram 2 h przed zaplanowana jazda rowerowa Trenera (bez godziny: 7:00), przycisk Zrobione tr:bt:<max_id>. Testy tests/test_bike_tasks.py (5).
 - [2026-10-08] [MODEL-CZASU-V3] config/speed_model.json, postoje wg czasu, bikepacking (Planer+Albert), rekalibracja z --approve. Dok.: ROUTE_TIME_ESTIMATE_V2.md sek. 10.
 - [2026-10-08] [GARMIN-WATCH] straznik Garmina 24h co 15 min (scripts/garmin_watch.py), energia bez okien, usuniete duplikaty crona; waga co 15 min cala doba + weight_refresh; MFP odlaczony. DECISIONS.md 2026-10-08.
 - [ ] Zweryfikowac najblizsze wazenie: status 'uploaded' w state/processed_withings_measures.json + sklad ciala w body_measurements.

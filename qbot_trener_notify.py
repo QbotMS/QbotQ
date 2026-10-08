@@ -244,6 +244,15 @@ def handle_callback(cq: dict, answer, send_plain, clear_buttons, chat_ok: str) -
             conn.commit()
             answer(cq.get("id"), "Cofnięte" if r.get("ok") else "Nie ma czego cofnąć")
             send_plain("↩️ Cofnięte — plan wrócił do poprzedniej wersji." if r.get("ok") else "Tej zmiany nie da się już cofnąć.")
+        elif act == "bt":  # 2026-10-08: zadania przy rowerze odhaczone
+            from qbot3.rides import bike_tasks as BT
+            gc = BT.conn()
+            try:
+                n_ = BT.mark_done(gc, max_id=int(arg))
+            finally:
+                gc.close()
+            answer(cq.get("id"), "Odhaczone")
+            send_plain(f"✅ Rower gotowy — odhaczono {n_} zadań." if n_ else "Te zadania były już odhaczone.")
         elif act in ("rest", "short", "ill"):
             d = date.fromisoformat(arg)
             if d < date.today():
@@ -334,6 +343,27 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
                     send(adapt_text(ad), [[{"text": "↩️ Cofnij", "callback_data": f"tr:undo:{ad['change_id']}"}]])
             except Exception as e:
                 conn.rollback(); log.append(f"wykonanie: błąd {str(e)[:120]}")
+        # 2026-10-08: "Rower po jezdzie - do zrobienia" (Raport z jazdy) -> Telegram 2 h przed zaplanowana
+        # jazda rowerowa (bez godziny startu: 7:00 w dniu jazdy). Niezrobione wraca przed kolejna jazda.
+        try:
+            from qbot3.rides import bike_tasks as BT
+            for s in _sessions(c, user, today, today):
+                if s["sport"] != "rower" or s["status"] != "plan":
+                    continue
+                st_ = s.get("start_time")
+                t0 = (st_.hour * 60 + st_.minute - 120) if st_ else 7 * 60
+                if not (t0 <= hm < t0 + 15):
+                    continue
+                gc = BT.conn()
+                try:
+                    ot = BT.open_tasks(gc)
+                finally:
+                    gc.close()
+                txt = BT.reminder_text(s["name"], st_.strftime("%H:%M") if st_ else None, ot)
+                btn = [[{"text": "✅ Zrobione", "callback_data": f"tr:bt:{max(t['id'] for t in ot)}"}]] if ot else None
+                log.append(_once(c, f"bt:{s['id']}", user, txt, dry, btn))
+        except Exception as e:
+            log.append(f"rower-zadania: błąd {str(e)[:120]}")
         if E.season_weeks(_goals, _ov, ws, 1)[0]["ph"] == "lz":
             return log + [f"{now.strftime('%a %H:%M')}: totalny luz — bez wiadomości"]
         # rozliczenie: ndz 19:00-19:59

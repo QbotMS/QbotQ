@@ -88,7 +88,7 @@ function build(){
       row("chart","\ud83d\udcc8","Wykres","najlepiej w poziomie")+
       row("dane","\ud83d\udccb","Analiza","wysi\u0142ek, zapas, cia\u0142o, teren, rower")+
       row("ai","\u2728","Komentarz AI","")+
-      row("gear","\ud83d\udc55","W czym jecha\u0142em","")+
+      row("gear","\ud83d\udc55","Ubi\u00f3r / rower","")+
       row("zk","\ud83d\udc65","Z kim jecha\u0142em","")+
     '</div>';
   document.body.appendChild(m);

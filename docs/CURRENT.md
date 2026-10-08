@@ -1,5 +1,9 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-10-08] Ubior / rower w Raporcie z jazdy + przypomnienie serwisowe
+- Front (poza repo, lustro web_public): raport-jazdy3-rail.js v6 (przycisk #ubbtn, okno qModal z #gearp), raport-jazdy2-gear.js v3 (sekcja zadan, window.__RJgear), raport-jazdy3.css v9, raport-jazdy-m.js v4 (etykieta).
+- Backend: qbot3/rides/bike_tasks.py, qbot_web.py /api/bike-tasks (GET), /save, /done; qbot_trener_notify.py tick (klucz bt:<session_id>, 2 h przed startem / 7:00) + callback tr:bt. Zweryfikowane: dry tick dla jazdy 11.10 09:00 -> tekst o 07:00; Playwright: przycisk jest, okno otwiera sie, 7 pozycji, bez bledow JS.
+
 ## [2026-10-07] Pogoda jazdy w ride_gear_log
 - qbot3/rides/gear_weather.py + wpiecia (qbot_web ride_gear_save, ride_report_builder.save_report, w1_weather_patch). Backfill 5/5 OK (06.10 18.5, 27.09 15.6, 22.09 14.5, 04.10 12.6, 24.09 10.9). Zweryfikowane na zywo POST /api/ride-gear/save -> pole weather. Recznie/ponownie: .venv/bin/python3 qbot3/rides/gear_weather.py [ride_key ...].
 

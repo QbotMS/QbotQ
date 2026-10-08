@@ -71,3 +71,41 @@ body.rj3 #dhd,html.theme-dark body.rj3 #dhd{position:static;flex:0 0 auto;backgr
 body.rj3 #dgrid,body.rj3 #odcwrap,body.rj3 #gwrap{flex:1 1 auto;min-height:0;overflow-y:auto}
 /* 2026-10-07: dolne kontrolki mapy (zoom, podpis OSM/CARTO) nad wykresem */
 body.rj3 .leaflet-bottom{bottom:calc(var(--dockh,260px) + 6px)}
+
+/* 2026-10-07 PANEL KOMPAKT: lewy panel jazdy razem z werdyktem bez przewijania (ekran ~1440x900). Tylko desktop.
+   Ciasniejsze odstepy: tytul, wybor jazdy, siatki liczb (wiersze 3 px, wysokosc linii 1.25), separator, werdykt.
+   Pusty pasek przyciskow (.row - przyciski na desktopie ukryte) bez marginesu. */
+@media (min-width:821px){
+  body.rj3 #pj .pjmain{padding:8px 12px}
+  body.rj3 #pj .qbrand{margin-bottom:5px}
+  body.rj3 #pj #ridesel{margin-bottom:5px}
+  body.rj3 #pj #h-date{margin-bottom:5px}
+  body.rj3 #pj .kk{gap:3px 8px}
+  body.rj3 #pj .kk > *{line-height:1.25}
+  body.rj3 #pj .pjmain > .row{margin:0}
+  body.rj3 .pjsep{margin:6px 0}
+  body.rj3 #pjv{margin-top:6px;padding:6px 10px;line-height:1.4}
+  /* 2026-10-07: panel zawsze siega do dolnego wykresu (--dockh liczy raport-jazdy3-rail.js geo()); odstep 12 px jak #dane */
+  body.rj3 #pj{bottom:calc(var(--dockh,260px) + 24px);max-height:none}
+  body.rj3 #pj .pjmain{overflow-y:auto}
+}
+
+/* 2026-10-08: "Z kim jechalem" - przycisk pod werdyktem (rail.js #zkbtn) + formularz #zk w oknie qModal */
+body.rj3 #pj .pjzk{display:flex;align-items:center;gap:8px;width:100%;margin-top:6px;padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:transparent;color:inherit;font:inherit;font-size:14px;cursor:pointer;text-align:left}
+body.rj3 #pj .pjzk svg{color:#9ad07a;flex:0 0 auto}
+body.rj3 #pj .pjzk:hover{border-color:#9ad07a}
+.qmod #zk.inmod{display:block!important;border:0;background:none;padding:0;margin:0;box-shadow:none}
+.qmod #zk.inmod>.dh{display:none}
+.qmod #zk.inmod>.db{display:block!important;padding:0}
+/* 2026-10-08: okno Odcinek dopasowane do danych (szerokosc i wysokosc), nie szersze niz miejsce do ramki "slad" */
+@media (min-width:821px){
+  body.rj3 #dane.odc-fit{width:fit-content!important;min-width:420px;max-width:var(--danew,640px);bottom:auto!important;height:auto;max-height:calc(100% - var(--dockh,260px) - 36px)}
+  body.rj3 #dane.odc-fit #dgrid{display:none}
+  /* tekst komentarza AI nie poszerza okna - zawija sie w szerokosci liczb */
+  body.rj3 #dane.odc-fit #sg-aiout{width:0;min-width:100%}
+}
+/* 2026-10-08: przyciski pod werdyktem: Z kim jechalem | Ubior / rower */
+body.rj3 #pj .pjbtns{display:flex;gap:6px;margin-top:6px}
+body.rj3 #pj .pjbtns .pjzk{flex:1 1 0;min-width:0;margin-top:0}
+body.rj3 #pj .pjbtns .pjzk span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.rj3 #pj .pjub svg{color:#c9b98f}body.rj3 #pj .pjub:hover{border-color:#c9b98f}
