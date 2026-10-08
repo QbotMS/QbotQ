@@ -106,9 +106,9 @@ function metricPills(){
   METRICS.forEach(m=>{
     const b = el("button",null,m.lbl);
     b.type="button";
-    b.style.borderRadius="999px";
+    b.style.borderRadius="999px"; b.style.padding="3px 10px"; b.style.fontSize="12.5px"; b.style.lineHeight="1.3";
     if(ACTIVE.has(m.id)){ b.classList.add("active"); b.style.borderColor=m.col; b.style.color=m.col; }
-    const dot=el("span"); dot.style.cssText="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:"+m.col+(ACTIVE.has(m.id)?"":";opacity:.35");
+    const dot=el("span"); dot.style.cssText="display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;background:"+m.col+(ACTIVE.has(m.id)?"":";opacity:.35");
     b.prepend(dot);
     b.addEventListener("click",()=>toggleMetric(m.id));
     box.appendChild(b);
@@ -117,7 +117,7 @@ function metricPills(){
 
 function drawChart(d){
   const host = $("#qs-chart"); host.innerHTML="";
-  host.style.cssText="display:block;height:auto;padding:8px 4px";
+  host.style.cssText="display:block;height:auto;padding:4px 4px 0;min-height:0";
   const xl=$("#qs-xlab"); if(xl) xl.innerHTML="";
   const B = d.buckets||[];
   if(!B.length){ host.appendChild(el("div","empty","brak aktywności w tym okresie")); return; }
@@ -129,21 +129,24 @@ function drawChart(d){
     act.filter(m=>m.unit===u).forEach(m=>B.forEach(b=>vals.push(m.val(b))));
     maxU[u] = niceMax(Math.max(...vals, 0));
   });
-  const W=760, H=230, ml=52, mr=(units.length>1?52:14), mt=10, mb=26;
+  /* 2026-10-08 kompakt: rysowanie 1:1 w pikselach karty (wczesniej viewBox 760x230 rozciagany do szerokosci = olbrzymie
+     litery i slupki), wysokosc 150 px, slupek max 26 px, os Y 3 podzialki */
+  const W=Math.max(320, Math.round(host.clientWidth||760)-8), H=150, ml=50, mr=(units.length>1?50:8), mt=8, mb=20;
   const iw=W-ml-mr, ih=H-mt-mb;
   const NS="http://www.w3.org/2000/svg";
   const svg=document.createElementNS(NS,"svg");
   svg.setAttribute("viewBox","0 0 "+W+" "+H);
-  svg.style.cssText="width:100%;height:auto;display:block";
+  svg.setAttribute("width",W); svg.setAttribute("height",H);
+  svg.style.cssText="width:100%;height:"+H+"px;display:block";
   const line=(x1,y1,x2,y2,col,wd)=>{ const l=document.createElementNS(NS,"line");
     l.setAttribute("x1",x1);l.setAttribute("y1",y1);l.setAttribute("x2",x2);l.setAttribute("y2",y2);
     l.setAttribute("stroke",col);l.setAttribute("stroke-width",wd||1);svg.appendChild(l); };
   const text=(x,y,s,anchor,col,size)=>{ const t=document.createElementNS(NS,"text");
     t.setAttribute("x",x);t.setAttribute("y",y);t.setAttribute("text-anchor",anchor||"middle");
-    t.setAttribute("fill",col||"var(--muted)");t.setAttribute("font-size",size||10);
+    t.setAttribute("fill",col||"var(--muted)");t.setAttribute("font-size",size||11);
     t.textContent=s;svg.appendChild(t); return t; };
   // siatka + oś lewa (jednostka 1) i prawa (jednostka 2)
-  const TICKS=4;
+  const TICKS=3;
   for(let i=0;i<=TICKS;i++){
     const y = mt + ih - ih*i/TICKS;
     line(ml,y,ml+iw,y,"var(--line)",i===0?1.2:0.6);
@@ -152,11 +155,12 @@ function drawChart(d){
   }
   // słupki grupowane
   const n=B.length, slot=iw/n, gpad=Math.min(6, slot*0.15);
-  const bw=Math.max(2,(slot-2*gpad)/act.length);
+  const bw=Math.min(26, Math.max(2,(slot-2*gpad)/act.length));
+  const goff=(slot-bw*act.length)/2;
   B.forEach((b,bi)=>{
     act.forEach((m,mi)=>{
       const v=m.val(b), hpx=ih*(v/maxU[m.unit]);
-      const x=ml+bi*slot+gpad+mi*bw, y=mt+ih-hpx;
+      const x=ml+bi*slot+goff+mi*bw, y=mt+ih-hpx;
       const r=document.createElementNS(NS,"rect");
       r.setAttribute("x",x); r.setAttribute("y",y);
       r.setAttribute("width",Math.max(1,bw-1)); r.setAttribute("height",Math.max(0,hpx));
@@ -168,8 +172,8 @@ function drawChart(d){
       r.appendChild(tt); svg.appendChild(r);
     });
     // etykiety X (max ~14, co k-ta)
-    const k=Math.ceil(n/14);
-    if(bi%k===0) text(ml+bi*slot+slot/2, H-8, bucketLabel(b.label,d.granularity));
+    const k=Math.ceil(n/Math.max(4,Math.floor(iw/56)));
+    if(bi%k===0) text(ml+bi*slot+slot/2, H-5, bucketLabel(b.label,d.granularity));
   });
   host.appendChild(svg);
 }
@@ -186,14 +190,52 @@ function render(d){
   if(sel.options.length<=1 && (d.sports||[]).length){
     d.sports.forEach(s=>{ const o=el("option",null,spl(s)); o.value=s; sel.appendChild(o); });
   }
-  $("#qs-chartttl").textContent = "Podokresy: "+granPL(d.granularity)+" · kliknij serie, by włączyć/wyłączyć (max 2 jednostki naraz)";
+  const ttl=$("#qs-chartttl"); ttl.textContent = "Podokresy: "+granPL(d.granularity)+" · kliknij serię (max 2 jednostki)";
+  ttl.style.padding="6px 8px 0"; ttl.style.fontSize="11.5px";
   metricPills();
   drawChart(d);
   fillTable($("#qs-bysport"), ["Rodzaj","Akt.","Dystans","Czas ruchu","Czas całk.","Przewyższenie"],
     (d.by_sport||[]).map(s=>[spl(s.sport), s.count, fmtKm(s.distance_m), fmtH(s.moving_s), fmtH(s.elapsed_s), fmtM(s.elevation_m)]));
-  fillTable($("#qs-table"), [granPL(d.granularity,true),"Akt.","Dystans","Czas ruchu","Czas całk.","Przewyższenie"],
-    (d.buckets||[]).slice().reverse().map(b=>[bucketLabel(b.label,d.granularity), b.count, fmtKm(b.distance_m), fmtH(b.moving_s), fmtH(b.elapsed_s), fmtM(b.elevation_m)]));
+  drawList(d);
 }
+
+/* 2026-10-08: JEDNO zestawienie zamiast tabeli podokresow + osobnego wykazu: pojedyncze aktywnosci z okresu i filtra rodzaju,
+   pogrupowane miesiacami (naglowek = sumy miesiaca w okresie), domyslnie 10 pozycji, reszta po "Rozwin". Dane: d.items z /api/stats/rides. */
+let LIST_OPEN = false, LIST_KEY = "";
+const ICO = s => { s=(s||"").toLowerCase(); return s.indexOf("cycl")>=0||s.indexOf("bik")>=0?"🚴🏻":s.indexOf("strength")>=0?"🏋️":s.indexOf("rowing")>=0?"🚣":s.indexOf("walk")>=0||s.indexOf("hik")>=0?"🚶":s.indexOf("run")>=0?"🏃":s.indexOf("yoga")>=0?"🧘":s.indexOf("swim")>=0?"🏊":"•"; };
+const MNF = ["Styczeń","Luty","Marzec","Kwiecień","Maj","Czerwiec","Lipiec","Sierpień","Wrzesień","Październik","Listopad","Grudzień"];
+const DNS = ["nd","pn","wt","śr","cz","pt","sb"];
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function drawList(d){
+  const box = $("#act-list"); if(!box) return;
+  const items = d.items || [], LIM = 10, key = d.start+"|"+d.end+"|"+CUR.sport;
+  if(key !== LIST_KEY){ LIST_KEY = key; LIST_OPEN = false; }
+  const sub = $("#act-sub"); if(sub) sub.textContent = items.length+" w okresie · najnowsze u góry";
+  if(!items.length){ box.innerHTML = '<div class="muted">brak aktywności w tym okresie</div>'; return; }
+  const MT = {};
+  items.forEach(it => { const m = it.date.slice(0,7), t = MT[m] = MT[m] || {n:0,dist:0,mov:0,ela:0,elev:0,xss:0};
+    t.n++; t.dist += it.distance_m||0; t.mov += it.moving_s||0; t.ela += it.elapsed_s||0; t.elev += it.elevation_m||0; t.xss += it.xss||0; });
+  const n = LIST_OPEN ? items.length : Math.min(LIM, items.length);
+  let h = '<div style="overflow-x:auto"><table class="act-t"><thead><tr><th>Dzień</th><th>Aktywność</th><th class="num">Dystans</th><th class="num">Czas ruchu</th><th class="num act-x">Czas całk.</th><th class="num act-x">Przewyższenie</th><th class="num act-x">XSS</th></tr></thead><tbody>';
+  let lastM = "", lastD = "";
+  for(let i=0;i<n;i++){
+    const it = items[i], m = it.date.slice(0,7), dd = new Date(it.date+"T12:00:00"), bike = ICO(it.sport)==="🚴🏻";
+    if(m !== lastM){ lastM = m; lastD = ""; const t = MT[m];
+      h += '<tr class="act-m"><td colspan="2"><b>'+MNF[+m.slice(5,7)-1]+' '+m.slice(0,4)+'</b> <span class="muted">· '+t.n+' akt.</span></td>'
+        + '<td class="num">'+fmtKm(t.dist)+'</td><td class="num">'+fmtH(t.mov)+'</td><td class="num act-x">'+fmtH(t.ela)+'</td><td class="num act-x">'+fmtM(t.elev)+'</td><td class="num act-x">'+(t.xss?Math.round(t.xss):'')+'</td></tr>'; }
+    const nm = it.name || spl(it.sport);
+    h += '<tr><td class="act-d">'+(it.date!==lastD ? DNS[dd.getDay()]+' '+QD.dm(it.date) : '')+'</td><td>'+ICO(it.sport)+' '
+      + (bike && it.external_id ? '<a class="link" href="/raport-jazdy.html?ride='+encodeURIComponent(it.external_id)+'">'+esc(nm)+'</a>' : esc(nm))+'</td>'
+      + '<td class="num">'+(it.distance_m ? fmtKm(it.distance_m) : '')+'</td><td class="num">'+fmtH(it.moving_s)+'</td><td class="num act-x">'+fmtH(it.elapsed_s)+'</td>'
+      + '<td class="num act-x">'+(it.elevation_m ? fmtM(it.elevation_m) : '')+'</td><td class="num act-x">'+(it.xss!=null ? it.xss : '')+'</td></tr>';
+    lastD = it.date;
+  }
+  h += '</tbody></table></div>';
+  if(items.length > LIM) h += '<div style="text-align:center;padding:10px 0 2px"><button type="button" class="act-more">'+(LIST_OPEN ? 'Zwiń do '+LIM : 'Rozwiń — pokaż pozostałe '+(items.length-LIM))+'</button></div>';
+  box.innerHTML = h;
+  const b = box.querySelector(".act-more"); if(b) b.onclick = () => { LIST_OPEN = !LIST_OPEN; drawList(d); if(!LIST_OPEN && box.scrollIntoView) box.scrollIntoView({block:"nearest"}); };
+}
+
 
 function granPL(g, head){
   if(g==="day") return head?"Dzień":"dziennie";
@@ -237,4 +279,7 @@ function init(){
   load();
 }
 if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init); else init();
+let RSZ=null; window.addEventListener("resize",()=>{ clearTimeout(RSZ); RSZ=setTimeout(()=>{ if(LASTD) drawChart(LASTD); },200); });
+/* zakladka ukryta przy pierwszym rysowaniu => clientWidth 0; przerysuj gdy panel stanie sie widoczny */
+if(window.ResizeObserver){ const h=document.getElementById("qs-chart"); let lw=0; if(h) new ResizeObserver(()=>{ const w=h.clientWidth; if(w&&Math.abs(w-lw)>20&&LASTD){ lw=w; drawChart(LASTD);} }).observe(h); }
 })();

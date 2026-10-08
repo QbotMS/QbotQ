@@ -1,34 +1,35 @@
 /* QBot wspolny sidebar -- wstrzykiwany na kazdej stronie.
+   2026-10-08: ikony dwutonowe (kontur + wypelnienie .qi-f/.qi-fo + pomaranczowy akcent .qi-a/.qi-as, style w nav.css).
    Domyslnie waski rail (ikony). Rozsuniecie NACHODZI na tresc (nie przesuwa jej), stan nietrwaly.
    Menu podzielone: PRODUKCYJNE (gora) + TESTOWE (na dole, nad przelacznikiem motywu).
    Stopka: przelacznik motywu dzien/noc (klasa html.theme-dark, klucz qtheme). */
 (function () {
   var PROD = [
     { href: "/index.html", label: "Start", alt: ["/"],
-      icon: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>' },
+      icon: '<path class="qi-fo" d="M5.5 10.2 12 4.7l6.5 5.5V20h-13z"/><path d="M3 11.4 12 3.8l9 7.6"/><path d="M5.5 10v10h13V10"/><path d="M10 20v-4.6c0-.5.4-.9.9-.9h2.2c.5 0 .9.4.9.9V20"/><path d="M16.2 6.6V4.4h1.9v3.8"/><circle class="qi-a" cx="12" cy="10.6" r="1.3"/>' },
     { href: "/forma.html", label: "Forma",
-      icon: '<path d="M3 17l6-6 4 4 7-8"/><path d="M14 7h6v6"/>' },
+      icon: '<path d="M3.5 3.5v17h17"/><path class="qi-fo" d="M6.5 17.5 10 12.5l3.2 2.4L19 8v10.5H6.5z"/><path d="M6.5 17.5 10 12.5l3.2 2.4L19 8"/><circle cx="10" cy="12.5" r=".9"/><circle cx="13.2" cy="14.9" r=".9"/><circle class="qi-a" cx="19" cy="8" r="2"/>' },
     { href: "/trening.html", label: "Trening", alt: ["/trener.html", "/kalendarz.html"],
-      icon: '<path d="M6.5 6.5v11M17.5 6.5v11"/><path d="M3.5 9v6M20.5 9v6"/><path d="M6.5 12h11"/>' },
+      icon: '<path d="M8.7 12h6.6"/><rect class="qi-f" x="5.2" y="6.5" width="3.5" height="11" rx="1.2"/><rect class="qi-f" x="15.3" y="6.5" width="3.5" height="11" rx="1.2"/><path d="M3 9.2v5.6M21 9.2v5.6"/><rect class="qi-a" x="10.8" y="11" width="2.4" height="2" rx=".5"/>' },
     { href: "/raport-jazdy.html", label: "Raport jazdy",
-      icon: '<circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M6 17l4-8h5l3 8M10 9l2-4h3"/>' },
+      icon: '<circle class="qi-f" cx="5.6" cy="16.4" r="3.9"/><circle class="qi-f" cx="18.4" cy="16.4" r="3.9"/><path d="M5.6 16.4 9 8.8l2.6 7.6H5.6"/><path d="M9 8.8h6.3M15.3 8.8l-3.7 7.6M15.3 8.8l3.1 7.6"/><path d="M7.4 7.3h3.2M14.4 6.3h2.2l-.9 2.5"/><circle class="qi-a" cx="11.6" cy="16.4" r="1.4"/>' },
     { href: "/raport-trasy.html", label: "Analiza trasy",
-      icon: '<path d="M9 4l-5 2v14l5-2 6 2 5-2V4l-5 2-6-2z"/><path d="M9 4v14M15 6v14"/>' },
+      icon: '<path class="qi-f" d="M3 6.2 8.6 4l6.8 2.2L21 4v13.8L15.4 20l-6.8-2.2L3 20z"/><path d="M8.6 4v13.8M15.4 6.2V20" stroke-opacity=".55"/><path d="M5.3 16.2c1.6-.4 2.3-2.6 4.3-3.1s2.8 1 4.6.2" stroke-dasharray="1.4 1.7"/><path class="qi-a" d="M17.6 6.6a2.3 2.3 0 0 1 2.3 2.3c0 1.7-2.3 4-2.3 4s-2.3-2.3-2.3-4a2.3 2.3 0 0 1 2.3-2.3z"/>' },
     { href: "/planer-wyprawy.html", label: "Planer wyprawy",
-      icon: '<circle cx="12" cy="12" r="9"/><path d="M16 8l-6 2-2 6 6-2 2-6z"/>' },
+      icon: '<circle class="qi-f" cx="12" cy="12" r="9"/><path d="M12 3.6v1.7M12 18.7v1.7M3.6 12h1.7M18.7 12h1.7" stroke-opacity=".6"/><path class="qi-a" d="M16 8 13.3 13.3 10.7 10.7z"/><path d="M8 16 10.7 10.7 13.3 13.3z"/><circle cx="12" cy="12" r=".8"/>' },
     { href: "/garaz.html", label: "Garaż",
-      icon: '<path d="M3 21V9l9-6 9 6v12"/><path d="M8 21v-7h8v7"/>' }
+      icon: '<path class="qi-f" d="M3.5 9.6 12 4l8.5 5.6V20.5h-17z"/><path d="M7 20.5v-8h10v8"/><path d="M7 14.8h10M7 17.6h10" stroke-opacity=".6"/><circle class="qi-a" cx="12" cy="9" r="1.2"/>' }
   ];
   var TEST = [
     { href: "/mq2.html", label: "MQ2",
-      icon: '<path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/>' },
+      icon: '<circle class="qi-fo" cx="12" cy="12" r="9.5"/><path class="qi-a" d="M13.2 4.5 7 13.1h4.6l-.8 6.4 6.2-8.6h-4.6z"/><path d="M13.2 4.5 7 13.1h4.6l-.8 6.4 6.2-8.6h-4.6z"/>' },
     { href: "/naprawa-trasy.html", label: "Naprawa trasy",
-      icon: '<path d="M14 6a4 4 0 0 0-5.5 5.2l-5 5a1.5 1.5 0 0 0 2.1 2.1l5-5A4 4 0 0 0 18 8l-2.5 2.5L13 8 15.5 5.5z"/>' }
+      icon: '<path class="qi-f" d="M14.8 6.2a4.1 4.1 0 0 0-5.5 5.2l-5.6 5.6a1.6 1.6 0 1 0 2.3 2.3l5.6-5.6a4.1 4.1 0 0 0 5.2-5.5l-2.4 2.4-2.3-.6-.6-2.3z"/><circle class="qi-a" cx="5.4" cy="5.4" r="1.4"/><path d="M8 5.4h2.2" stroke-dasharray="1 1.5"/><circle cx="18.6" cy="18.6" r="1.2"/>' }
   ];
 
   var BURGER = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
-  var MOON = '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';
-  var SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
+  var MOON = '<path class="qi-f" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/><circle class="qi-a" cx="17.5" cy="5" r="1"/><circle class="qi-a" cx="20.3" cy="8.4" r=".7"/>';
+  var SUN = '<circle class="qi-f" cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/><circle class="qi-a" cx="12" cy="12" r="1.4"/>';
 
   function norm(p) { p = (p || "").replace(/\/+$/, ""); return p === "" ? "/" : p; }
   var path = norm(location.pathname);
@@ -155,7 +156,7 @@
   function qlClose() { if (QL.ov) QL.ov.classList.remove("on"); if (QL.timer) { clearInterval(QL.timer); QL.timer = null; } }
   /* 2026-10-08: WYLOGUJ w prawym gornym rogu (wlasciciel): obok przycisku dzien/noc (#themebtn) w naglowku strony,
      a gdy strona go nie ma - plywajacy w rogu ekranu. POST /auth/logout -> /login. */
-  var LOGOUT = '<svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>';
+  var LOGOUT = '<svg viewBox="0 0 24 24"><path class="qi-fo" d="M5 3h4v18H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/><circle class="qi-a" cx="6.5" cy="12" r="1"/></svg>';
   function qLogout(b) {
     if (b) { b.disabled = true; }
     var go = function () { location.href = "/login"; };
@@ -243,7 +244,7 @@
   /* 2026-10-08: CENTRUM POWIADOMIEN - dzwonek pod przyciskiem menu (na telefonie kropka tez na przycisku menu).
      Dane: /api/notif (qbot_notif.py: zadania przy rowerze, trasy do potwierdzenia, brak swiezych danych,
      wiadomosci Trenera). Pomaranczowa kropka z liczba = nieprzeczytane; otwarcie okna oznacza je jako przeczytane. */
-  var BELL = '<svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>';
+  var BELL = '<svg viewBox="0 0 24 24"><path class="qi-f" d="M6 8.5a6 6 0 0 1 12 0c0 6.5 2.8 8.5 2.8 8.5H3.2S6 15 6 8.5"/><path d="M10.3 20.5a1.94 1.94 0 0 0 3.4 0"/><path d="M12 2.5v.8"/><path class="qi-as" d="M8.6 8.3a3.4 3.4 0 0 1 2.2-2.9"/></svg>';
   function qEsc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function qBell(top, fab, closeExpanded) {
     var b = document.createElement("button");
@@ -387,7 +388,7 @@
     themeBtn.innerHTML = '<svg viewBox="0 0 24 24"></svg><span class="qnav-label"></span>';
     foot.appendChild(themeBtn);
     // 2026-10-08: SETUP (zebatka) - w stopce menu nad przelacznikiem dzien/noc, /setup.html (zakladka Powiadomienia)
-    foot.insertBefore(makeLink({ href: "/setup.html", label: "Setup", icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>' }, closeExpanded).firstChild, themeBtn);
+    foot.insertBefore(makeLink({ href: "/setup.html", label: "Setup", icon: '<path class="qi-f" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-2.82 1.16V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-2.82-1.16l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 3.17 14H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.16-2.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9.9 3.17V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 2.82 1.16l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 20.83 10H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/><circle cx="12" cy="12" r="3.2"/><circle class="qi-a" cx="12" cy="12" r="1.3"/>' }, closeExpanded).firstChild, themeBtn);
 
     function paintTheme() {
       var d = isDark();

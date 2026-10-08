@@ -311,37 +311,49 @@ function renderDziennik(){
   var ramp=T.load_ramp!=null?+T.load_ramp:null;
   /* liczniki ze SKALA NA LUKU (koniec lewy/prawy + 0). Gotowosc = srednia wazona z-score (HRV/RHR/sen wobec normy 60 dni),
      progi jak w modelu fitmodel/readiness.py: >= +0.4 swiezy, <= -0.4 zmeczony. Swiezosc (TSB): progi w stylu TrainingPeaks. */
-  function gauge(id,v,lo,hi,col,val,word,sub,ticks,prev,dec){var pct=Math.max(0.001,Math.min(1,(v-lo)/(hi-lo)));var ang=Math.PI+pct*Math.PI,gx=60+50*Math.cos(ang),gy=65+50*Math.sin(ang);
+  function gauge(id,v,lo,hi,col,val,word,sub,ticks,prev,dec,ext){var pct=Math.max(0.001,Math.min(1,(v-lo)/(hi-lo)));var ang=Math.PI+pct*Math.PI,gx=60+50*Math.cos(ang),gy=65+50*Math.sin(ang);
     var a=q$(id+"-arc");if(!a)return;a.setAttribute("d","M10 65 A50 50 0 0 1 "+gx.toFixed(2)+" "+gy.toFixed(2));a.setAttribute("stroke",col);
-    var sv=a.ownerSVGElement;sv.setAttribute("viewBox","0 0 120 80");sv.querySelectorAll(".gt").forEach(function(x){x.remove();});
+    var sv=a.ownerSVGElement;sv.setAttribute("viewBox","-16 -22 152 104");sv.querySelectorAll(".gt").forEach(function(x){x.remove();});
     var ns="http://www.w3.org/2000/svg";(ticks||[]).forEach(function(t){var p=(t-lo)/(hi-lo),an=Math.PI+p*Math.PI,cx=Math.cos(an),cy=Math.sin(an);
       var ln=document.createElementNS(ns,"line");ln.setAttribute("class","gt");ln.setAttribute("x1",(60+43*cx).toFixed(1));ln.setAttribute("y1",(65+43*cy).toFixed(1));ln.setAttribute("x2",(60+57*cx).toFixed(1));ln.setAttribute("y2",(65+57*cy).toFixed(1));ln.setAttribute("stroke","var(--muted)");ln.setAttribute("stroke-width","1");ln.setAttribute("opacity",".7");sv.appendChild(ln);
-      if(t===lo||t===hi){var tx=document.createElementNS(ns,"text");tx.setAttribute("class","gt");tx.setAttribute("x",t===lo?"10":"110");tx.setAttribute("y","78");tx.setAttribute("text-anchor","middle");tx.setAttribute("font-size","8");tx.setAttribute("fill","var(--muted)");tx.textContent=(t>0?"+":"")+t;sv.appendChild(tx);}});
-    /* zmiana wzgledem wczoraj (2026-09-29): spadek = cien od dzis do wczoraj (zanika), wzrost = podswietlony przyrost */
+      var tx=document.createElementNS(ns,"text");tx.setAttribute("class","gt");tx.setAttribute("fill","var(--muted)");tx.textContent=(t>0?"+":"")+String(t).replace(".",",");
+      if(t===lo||t===hi){tx.setAttribute("x",t===lo?"10":"110");tx.setAttribute("y","78");tx.setAttribute("text-anchor","middle");tx.setAttribute("font-size","8");}
+      else{tx.setAttribute("x",(60+64*cx).toFixed(1));tx.setAttribute("y",(65+64*cy+2.5).toFixed(1));tx.setAttribute("text-anchor",cx<-0.3?"end":cx>0.3?"start":"middle");tx.setAttribute("font-size","7");}
+      sv.appendChild(tx);});
+    /* zmiana (2026-10-08): bez kreski i podpisu "wczoraj"; odcinek miedzy wczoraj a dzis w osobnym kolorze
+       (zielony = poprawa, czerwony = pogorszenie, jak strzalka pod licznikiem). ext = kara z dzisiejszej jazdy
+       (Gotowosc teraz): szary kreskowany odcinek od wartosci porannej do biezacej; wtedy odcinek "vs wczoraj" tylko w tekscie. */
     var dl="";
-    if(prev!=null&&isFinite(prev)){
-      var pp=Math.max(0.001,Math.min(1,(prev-lo)/(hi-lo))),pa=Math.PI+pp*Math.PI,px=60+50*Math.cos(pa),py=65+50*Math.sin(pa);
-      var sw=parseFloat(a.getAttribute("stroke-width")||getComputedStyle(a).strokeWidth||"10")||10;
-      function arcP(p1,p2){var a1=Math.PI+p1*Math.PI,a2=Math.PI+p2*Math.PI;return "M"+(60+50*Math.cos(a1)).toFixed(2)+" "+(65+50*Math.sin(a1)).toFixed(2)+" A50 50 0 0 1 "+(60+50*Math.cos(a2)).toFixed(2)+" "+(65+50*Math.sin(a2)).toFixed(2);}
-      function seg(d,stroke,w,op,dash,cap){var e=document.createElementNS(ns,"path");e.setAttribute("class","gt");e.setAttribute("d",d);e.setAttribute("fill","none");e.setAttribute("stroke",stroke);
-        e.setAttribute("stroke-width",w);e.setAttribute("opacity",op);if(dash)e.setAttribute("stroke-dasharray",dash);e.setAttribute("stroke-linecap",cap||"butt");sv.appendChild(e);return e;}
+    var sw=parseFloat(a.getAttribute("stroke-width")||getComputedStyle(a).strokeWidth||"10")||10;
+    function P(x){return Math.max(0.001,Math.min(1,(x-lo)/(hi-lo)));}
+    function arcP(p1,p2){var a1=Math.PI+p1*Math.PI,a2=Math.PI+p2*Math.PI;return "M"+(60+50*Math.cos(a1)).toFixed(2)+" "+(65+50*Math.sin(a1)).toFixed(2)+" A50 50 0 0 1 "+(60+50*Math.cos(a2)).toFixed(2)+" "+(65+50*Math.sin(a2)).toFixed(2);}
+    function seg(d,stroke,w,op,dash,ttl){var e=document.createElementNS(ns,"path");e.setAttribute("class","gt");e.setAttribute("d",d);e.setAttribute("fill","none");e.setAttribute("stroke",stroke);
+      e.setAttribute("stroke-width",w);e.setAttribute("opacity",op);if(dash)e.setAttribute("stroke-dasharray",dash);e.setAttribute("stroke-linecap","butt");
+      if(ttl){var t=document.createElementNS(ns,"title");t.textContent=ttl;e.appendChild(t);}sv.appendChild(e);return e;}
+    if(ext&&isFinite(ext.from)&&Math.abs(P(ext.from)-pct)>0.004){
+      seg(arcP(Math.min(pct,P(ext.from)),Math.max(pct,P(ext.from))),"var(--muted)",sw,"0.9","2.4 1.6",ext.title||"");
+    }else if(prev!=null&&isFinite(prev)){
+      var pp=P(prev);
       if(Math.abs(pp-pct)>0.004){
         if(v>=prev){
-          /* wzrost: to, co bylo wczoraj - przygaszone; przyrost - pelny kolor + jasna linia srodkiem */
-          seg(arcP(0.001,pp),"var(--card)",sw+0.5,"0.55");
-          seg(arcP(pp,pct),"#ffffff",Math.max(1.6,sw*0.22),"0.9",null,"round");
+          a.setAttribute("d",arcP(0.001,pp));
+          seg(arcP(pp,pct),"var(--good)",sw,"1",null,"poprawa od wczoraj");
         }else{
-          /* spadek: utracony odcinek kreskowany w kolorze licznika na pustym torze */
-          seg(arcP(pct,pp),col,sw,"0.55","2.6 1.6");
-          seg(arcP(pct,pp),col,Math.max(1.2,sw*0.16),"0.95");
-        }}
-      var mk=document.createElementNS(ns,"line");mk.setAttribute("class","gt");mk.setAttribute("x1",(60+39*Math.cos(pa)).toFixed(2));mk.setAttribute("y1",(65+39*Math.sin(pa)).toFixed(2));
-      mk.setAttribute("x2",(60+61*Math.cos(pa)).toFixed(2));mk.setAttribute("y2",(65+61*Math.sin(pa)).toFixed(2));mk.setAttribute("stroke","var(--ink)");mk.setAttribute("stroke-width","2.2");mk.setAttribute("stroke-linecap","round");
-      var tt=document.createElementNS(ns,"title");tt.textContent="wczoraj: "+(prev>0?"+":"")+qN(prev,dec||0);mk.appendChild(tt);sv.appendChild(mk);
-      var tw2=document.createElementNS(ns,"text");tw2.setAttribute("class","gt");tw2.setAttribute("x",(60+68*Math.cos(pa)).toFixed(2));tw2.setAttribute("y",(65+68*Math.sin(pa)+2).toFixed(2));
-      tw2.setAttribute("text-anchor",Math.cos(pa)<-0.3?"end":Math.cos(pa)>0.3?"start":"middle");tw2.setAttribute("font-size","6.5");tw2.setAttribute("fill","var(--ink2)");tw2.textContent="wczoraj";sv.appendChild(tw2);
-      var dv=v-prev,dd=dec||0,z=Math.abs(dv)<Math.pow(10,-dd)/2;
-      dl='<div style="margin-top:4px;font-size:13px">'+(z?'<span class="muted">bez zmiany vs wczoraj</span>':'<b style="color:'+(dv>0?"var(--good)":"var(--bad)")+'">'+(dv>0?"▲ +":"▼ ")+qN(dv,dd)+'</b> <span class="muted">vs wczoraj ('+(prev>0?"+":"")+qN(prev,dd)+')</span>')+'</div>';}
+          seg(arcP(pct,pp),"var(--bad)",sw,"0.85",null,"spadek od wczoraj");
+        }}}
+    if(prev!=null&&isFinite(prev)){
+      var wa=Math.PI+P(prev)*Math.PI,wc=Math.cos(wa),ws=Math.sin(wa);
+      var mk=document.createElementNS(ns,"line");mk.setAttribute("class","gt");mk.setAttribute("x1",(60+40*wc).toFixed(2));mk.setAttribute("y1",(65+40*ws).toFixed(2));
+      mk.setAttribute("x2",(60+60*wc).toFixed(2));mk.setAttribute("y2",(65+60*ws).toFixed(2));mk.setAttribute("stroke","var(--ink)");mk.setAttribute("stroke-width","1.8");mk.setAttribute("stroke-linecap","round");
+      var mt=document.createElementNS(ns,"title");mt.textContent="wczoraj: "+(prev>0?"+":"")+qN(prev,dec||0);mk.appendChild(mt);sv.appendChild(mk);
+      var wl=document.createElementNS(ns,"text");wl.setAttribute("class","gt");wl.setAttribute("x",(60+73*wc).toFixed(2));wl.setAttribute("y",(65+73*ws+2).toFixed(2));
+      wl.setAttribute("text-anchor","middle");wl.setAttribute("font-size","7");wl.setAttribute("font-weight","600");wl.setAttribute("fill","var(--ink)");wl.textContent="wczoraj";sv.appendChild(wl);
+      /* podpis "wczoraj" nie moze nachodzic na podpisy skali: odsuwaj na zewnatrz luku */
+      (function(){var others=[].filter.call(sv.querySelectorAll("text.gt"),function(t){return t!==wl;});
+        function hit(){try{var A=wl.getBBox();if(!A.width)return false;return others.some(function(t){var B=t.getBBox();return A.x<B.x+B.width&&B.x<A.x+A.width&&A.y<B.y+B.height&&B.y<A.y+A.height;});}catch(e){return false;}}
+        for(var rr=78;rr<=92&&hit();rr+=3){wl.setAttribute("x",(60+rr*wc).toFixed(2));wl.setAttribute("y",(65+rr*ws+2).toFixed(2));}})();
+      var dv=((ext&&isFinite(ext.from))?ext.from:v)-prev,dd=dec||0,z=Math.abs(dv)<Math.pow(10,-dd)/2;
+      dl='<div style="margin-top:4px;font-size:13px">'+(z?'<span class="muted">bez zmiany vs wczoraj</span>':'<b style="color:'+(dv>0?"var(--good)":"var(--bad)")+'">'+(dv>0?"▲ +":"▼ ")+qN(dv,dd)+'</b> <span class="muted">'+((ext&&isFinite(ext.from))?"rano ":"")+'vs wczoraj ('+(prev>0?"+":"")+qN(prev,dd)+')</span>')+'</div>';}
     q$(id+"-val").textContent=val;var w=q$(id+"-word");w.textContent=word;w.style.color=col;var s=q$(id+"-sub");if(s)s.innerHTML=(sub||"")+dl;}
   var Y=S.length>1?S[S.length-2]:null;
   if(typeof rd2==="number"){
@@ -352,19 +364,23 @@ function renderDziennik(){
     /* licznik = gotowosc z 3 dni (ta, ktora wchodzi do statusu dnia); ostatnia noc tylko jako dopisek.
        Slowo zgodne z histereza statusu: "zmeczony" dopoki status liczy zmeczenie z 3 dni. */
     var g3=(T.readiness_3d!=null)?+T.readiness_3d:rd2;
+    /* Gotowosc TERAZ (2026-10-08, /api/forma/data readiness_now, fitmodel/readiness_now.py) */
+    var RN=(forma.readiness_now&&forma.readiness_now.now!=null&&T.day===today)?forma.readiness_now:null;
+    var gm=g3;if(RN){g3=+RN.now;}
     var t3=T.day_status_note&&T.day_status_note.indexOf("gotowość z 3 dni")>=0;
-    var gw=t3||g3<=-0.4?"zmęczony":g3>=0.4?"świeży":"neutralny";
+    var gw=(t3&&!RN)||g3<=-0.4?"zmęczony":g3>=0.4?"świeży":"neutralny";
     var gc=gw==="zmęczony"?"var(--bad)":gw==="świeży"?"var(--good)":"var(--accent)";
     var odch=Math.abs(g3)<0.4&&!t3?"w granicach Twojej normy":(g3<0?"poniżej":"powyżej")+" Twojej normy"+(Math.abs(g3)>=1?" — wyraźnie":"");
     gauge("dz-g",g3,-2,2,gc,(g3>0?"+":"")+qN(g3,1),gw,
-      odch+' <span class="muted">(średnia z 3 dni — do decyzji)</span><br>'
+      (RN?'rano <b>'+(gm>0?"+":"")+qN(gm,1)+'</b> · po jeździe <b>'+qN(RN.penalty,2)+'</b><br>':'')
       +'<span class="tip" tabindex="0" data-tip="Jedna noc bywa myląca: HRV potrafi skakać o ±15 z dnia na dzień. Dlatego licznik pokazuje średnią z 3 dni, a pojedyncza noc jest tylko dopiskiem.">ostatnia noc: <b>'+(rd2>0?"+":"")+qN(rd2,1)+'</b></span>'
       +' · HRV '+qN(T.hrv_night||T.hrv,0)+' · tętno spocz. '+qN(T.rhr,0)+' · sen '+(T.sleep_score||qN(T.sleep_h||T.sleep,1)+" h"),[-2,-0.4,0.4,2],
-      Y?(Y.readiness_3d!=null?+Y.readiness_3d:(Y.readiness_effective!=null?+Y.readiness_effective:null)):null,2);
+      Y?(Y.readiness_3d!=null?+Y.readiness_3d:(Y.readiness_effective!=null?+Y.readiness_effective:null)):null,2,
+      RN?{from:gm,title:"kara z dzisiejszej jazdy: "+qN(RN.penalty,2)}:null);
   }
   if(tsb!=null){var tw=tsb>25?"roztrenowanie":tsb>5?"świeży":tsb>=-10?"neutralnie":tsb>=-30?"trening budujący":"przeciążenie";
     var tc=tsb>25?"var(--accent)":tsb>5?"var(--good)":tsb>=-10?"var(--accent)":tsb>=-30?"var(--blue)":"var(--bad)";
-    gauge("dz-t",tsb,-40,30,tc,(tsb>0?"+":"")+qN(tsb,0),tw,(T.atl_real!=null?"forma "+qN(T.ctl_xss,0)+" − zmęczenie "+qN(T.atl_real,0)+'<br><span class="tip" tabindex="0" data-tip="Faktyczne zmęczenie = zmęczenie z treningów + stan ciała (gotowość z 3 dni, tętno spocz., Body Battery, infekcja) + Twoje wpisy samopoczucia (gdy inne niż 0). Działa w obie strony: wypoczęte ciało obniża zmęczenie.">zmęczenie: z treningów '+qN(T.atl_raw,0)+(T.atl_real-T.atl_raw>=0?" + ":" − ")+"ciało "+qN(Math.abs(T.atl_real-T.atl_raw),0)+'</span>':"bilans: forma "+qN(T.ctl_xss||T.ctl,0)+" − zmęczenie "+qN(atlK,0)+" (z korektą na regenerację i chorobę)")+(ramp!=null?'<br><span class="tip" tabindex="0" data-tip="Średnie obciążenie ostatnich 7 dni podzielone przez średnie z 4 tygodni. 1,0 = norma, powyżej 1,3 = nagły skok, powyżej 1,5 = strefa ryzyka.">skok obciążenia ×'+qN(ramp,2)+'</span>'+(ramp>=1.5?' <b style="color:var(--bad)">— strefa ryzyka</b>':ramp>=1.3?' <b style="color:var(--accent)">— nagły wzrost</b>':''):''),[-40,-30,-10,5,25,30],Y?(Y.tsb_real!=null?+Y.tsb_real:(Y.tsb_plus!=null?+Y.tsb_plus:(Y.tsb_raw!=null?+Y.tsb_raw:null))):null,0);}
+    gauge("dz-t",tsb,-40,30,tc,(tsb>0?"+":"")+qN(tsb,0),tw,(T.atl_real!=null?"forma "+qN(T.ctl_xss,0)+" − zmęczenie "+qN(T.atl_real,0)+'<br><span class="tip" tabindex="0" data-tip="Faktyczne zmęczenie = zmęczenie z treningów + stan ciała (gotowość z 3 dni, tętno spocz., Body Battery, infekcja) + Twoje wpisy samopoczucia (gdy inne niż 0). Działa w obie strony: wypoczęte ciało obniża zmęczenie.">zmęczenie: z treningów '+qN(T.atl_raw,0)+(T.atl_real-T.atl_raw>=0?" + ":" − ")+"ciało "+qN(Math.abs(T.atl_real-T.atl_raw),0)+'</span>':"bilans: forma "+qN(T.ctl_xss||T.ctl,0)+" − zmęczenie "+qN(atlK,0)+" (z korektą na regenerację i chorobę)")+(ramp!=null?'<br><span class="tip" tabindex="0" data-tip="Średnie obciążenie ostatnich 7 dni podzielone przez średnie z 4 tygodni. 1,0 = norma, powyżej 1,3 = nagły skok, powyżej 1,5 = strefa ryzyka.">ostatnie 7 dni: ×'+qN(ramp,2)+' średniego obciążenia z 4 tyg.</span>'+(ramp>=1.5?' <b style="color:var(--bad)">— ryzyko przeciążenia</b>':ramp>=1.3?' <b style="color:var(--accent)">— nagły wzrost</b>':''):''),[-40,-30,-10,5,25,30],Y?(Y.tsb_real!=null?+Y.tsb_real:(Y.tsb_plus!=null?+Y.tsb_plus:(Y.tsb_raw!=null?+Y.tsb_raw:null))):null,0);}
   if(typeof rd2==="number"){var t2=tsb!=null?tsb:0;
     var DSA={przeciazenie:"Przeciążenie — dziś wolne albo bardzo lekko (do ~1 h spokojnie).",zmeczony:"Organizm zmęczony — lekko albo wolne.",uwaga:"Uwaga — jedź spokojnie, bez akcentów.",w_normie:"W normie — trening wg planu."};
     if(T.day_status){q$("dz-verdict").innerHTML=qEsc(DSA[T.day_status]||"")+(T.day_status_note?'<div class="muted" style="font-size:13px;font-weight:400;margin-top:4px">'+qEsc(T.day_status_note)+'</div>':'');}
@@ -557,68 +573,7 @@ function renderDziennik(){
       g.innerHTML=out;
     });
   })();
-  /* kalendarz miesiaca (2026-09-28): siatka 7 kolumn, wybor miesiaca, szczegoly dnia po kliknieciu.
-     Jazdy z /api/calendar (bez limitu 50 z /api/rides/ready). Starsze niz zaladowany rok -> dociagane z /api/calendar. */
-  (function(){var rows=q$("days");if(!rows)return;rows.className="";
-  var KD={},KR={},KE={},loaded={};
-  function absorb(C){var d=C.days||{},r=C.rides||{};Object.keys(d).forEach(function(k){KD[k]=d[k];});Object.keys(r).forEach(function(k){KR[k]=r[k];});
-    (C.entries||[]).forEach(function(e){var a0=new Date(e.day+"T12:00:00"),b0=new Date((e.end_day||e.day)+"T12:00:00");
-      for(var t=a0;t<=b0;t=new Date(t.getTime()+864e5)){var k=qLocalISO(t);KE[k]=KE[k]||[];if(KE[k].indexOf(e)<0)KE[k].push(e);}});}
-  absorb(cal);
-  (function(){var t=new Date();for(var i=0;i<12;i++){var m=new Date(t.getFullYear(),t.getMonth()-i,1);loaded[m.getFullYear()+"-"+("0"+(m.getMonth()+1)).slice(-2)]=1;}})();
-  var MNF=["styczeń","luty","marzec","kwiecień","maj","czerwiec","lipiec","sierpień","wrzesień","październik","listopad","grudzień"];
-  var ym=today.slice(0,7),sel=null;
-  function sp(s){s=(s||"").toLowerCase();return s.indexOf("cycl")>=0||s.indexOf("bik")>=0||s.indexOf("gravel")>=0?"🚴🏻":s.indexOf("strength")>=0||s.indexOf("train")>=0?"🏋️":s.indexOf("walk")>=0||s.indexOf("hik")>=0?"🚶":s.indexOf("run")>=0?"🏃":s.indexOf("yoga")>=0?"🧘":s.indexOf("swim")>=0?"🏊":"•";}
-  function isBike(r){return sp(r.sport)==="🚴🏻";}
-  function rcls(d){if(!d||typeof d.readiness!=="number")return "";return d.readiness>0.3?"good":d.readiness>-0.3?"":"bad";}
-  function mdays(y,m){return new Date(y,m+1,0).getDate();}
-  function monthData(key){if(loaded[key])return Promise.resolve();var y=+key.slice(0,4),m=+key.slice(5,7)-1;
-    var s=key+"-01",e=key+"-"+("0"+mdays(y,m)).slice(-2);
-    return qJSON("/api/calendar?start="+s+"&end="+e).then(function(C){absorb(C);loaded[key]=1;}).catch(function(){loaded[key]=1;});}
-  function detail(ds){var d=KD[ds]||{},rr=KR[ds]||[],ee=KE[ds]||[];
-    var h='<div class="kd-h"><b>'+qDayName(ds)+' '+QD.dm(ds)+'</b>'+(d.readiness_label?' <span class="pill small '+rcls(d)+'">'+qEsc(d.readiness_label)+'</span>':'')+'</div>';
-    h+='<div class="g4" style="margin-top:8px"><div class="mini"><p class="lbl">Gotowość</p><div class="v">'+(typeof d.readiness==="number"?(d.readiness>0?"+":"")+qN(d.readiness,2):"—")+'</div></div>'
-      +'<div class="mini"><p class="lbl">Sen · HRV · tętno</p><div class="v" style="font-size:15px">'+(d.sleep_score?d.sleep_score:qN(d.sleep,1)+" h")+' · '+qN(d.hrv,0)+' · '+qN(d.rhr,0)+'</div></div>'
-      +'<div class="mini"><p class="lbl">Forma / zmęczenie</p><div class="v">'+qN(d.ctl,0)+' / '+qN(d.atl,0)+'</div></div>'
-      +'<div class="mini"><p class="lbl">Świeżość · waga</p><div class="v" style="font-size:15px">'+(d.tsb>0?"+":"")+qN(d.tsb,1)+(d.weight_kg?' · '+qN(d.weight_kg,1)+' kg':'')+'</div></div></div>';
-    if(rr.length)h+='<div style="margin-top:10px">'+rr.map(function(r){return '<div class="kd-r">'+sp(r.sport)+' <b>'+qEsc(r.name||"")+'</b> · '+(r.dist_km?qN(r.dist_km,0)+" km · ":"")+(r.duration_s?qHM(r.duration_s):"")+(r.xss?' · obciążenie '+r.xss:'')+(isBike(r)?' · <a class="link" href="/raport-jazdy.html?ride='+encodeURIComponent(r.ride_key)+'">raport →</a>':'')+'</div>';}).join("")+'</div>';
-    if(ee.length)h+='<div style="margin-top:8px">'+ee.map(function(e){var ic=e.kind==="illness"?"🤕":e.kind==="feel"?"😊":"📌";return '<div class="kd-r">'+ic+' '+qEsc(e.title||(e.kind==="illness"?"choroba":""))+(e.note?' <span class="muted">— '+qEsc(e.note)+'</span>':'')+'</div>';}).join("")+'</div>';
-    if(!rr.length&&!ee.length)h+='<div class="muted" style="margin-top:8px">bez jazdy i bez wpisów</div>';
-    return h;}
-  function draw(){var y=+ym.slice(0,4),m=+ym.slice(5,7)-1,n=mdays(y,m),first=(new Date(y,m,1).getDay()+6)%7;
-    var km=0,hh=0,cnt=0,ill=0,tired=0,sl=[],hv=[];
-    for(var i=1;i<=n;i++){var ds=ym+"-"+("0"+i).slice(-2),d=KD[ds]||{},rr=KR[ds]||[];
-      rr.forEach(function(r){if(isBike(r)){km+=r.dist_km||0;hh+=(r.duration_s||0)/3600;cnt++;}});
-      if((KE[ds]||[]).some(function(e){return e.kind==="illness";}))ill++;
-      if(typeof d.readiness==="number"&&d.readiness<=-0.3)tired++;if(d.sleep_score)sl.push(d.sleep_score);if(d.hrv)hv.push(d.hrv);}
-    function av(a){return a.length?Math.round(a.reduce(function(s,x){return s+x;},0)/a.length):"—";}
-    var h='<div class="kal-top"><div class="kal-nav"><button type="button" data-k="-1" aria-label="poprzedni miesiąc">‹</button><b>'+MNF[m]+' '+y+'</b><button type="button" data-k="1" aria-label="następny miesiąc">›</button>'
-      +(ym!==today.slice(0,7)?'<button type="button" data-k="0" class="kal-now">bieżący</button>':'')+'</div>'
-      +'<div class="kal-sum"><span><b>'+cnt+'</b> jazd</span><span><b>'+qN(km,0)+'</b> km</span><span><b>'+qN(hh,1)+'</b> h</span><span>zmęczony <b>'+tired+'</b> dni</span>'+(ill?'<span style="color:var(--bad)">infekcja <b>'+ill+'</b> dni</span>':'')+'<span>śr. sen <b>'+av(sl)+'</b> · HRV <b>'+av(hv)+'</b></span></div></div>';
-    h+='<div class="kal">';["pon","wt","śr","czw","pt","sob","ndz"].forEach(function(w){h+='<div class="kal-wd">'+w+'</div>';});
-    for(var k=0;k<first;k++)h+='<div class="kal-c empty"></div>';
-    for(var i=1;i<=n;i++){var ds=ym+"-"+("0"+i).slice(-2),d=KD[ds]||{},rr=KR[ds]||[],ee=KE[ds]||[],fut=ds>today;
-      var bikes=rr.filter(isBike),other=rr.filter(function(r){return !isBike(r);});
-      var bk=0,bs=0;bikes.forEach(function(r){bk+=r.dist_km||0;bs+=r.duration_s||0;});
-      var illE=ee.filter(function(e){return e.kind==="illness";})[0],feelE=ee.filter(function(e){return e.kind==="feel";})[0];
-      var note=(illE&&illE.title)||(feelE&&feelE.title)||"";
-      h+='<div class="kal-c '+(fut?"fut ":"")+(ds===today?"today ":"")+(ds===sel?"sel ":"")+(illE?"ill ":"")+'" data-d="'+ds+'" role="button" tabindex="0">'
-        +'<div class="kal-h"><span class="kal-n">'+i+'</span>'+(d.readiness_label&&!fut?'<span class="kal-r '+rcls(d)+'">'+qEsc(d.readiness_label)+'</span>':'')+'</div>'
-        +(bikes.length?'<div class="kal-ride">🚴🏻 '+qN(bk,0)+' km · '+qHM(bs)+(bikes.length>1?' <span class="muted">('+bikes.length+')</span>':'')+'</div>':(!fut?'<div class="kal-rest">odpoczynek</div>':''))
-        +(other.length?'<div class="kal-oth">'+other.map(function(r){return sp(r.sport)+(r.duration_s?' '+qHM(r.duration_s):'');}).join(" ")+'</div>':'')
-        +(!fut&&(d.sleep_score||d.hrv)?'<div class="kal-w">sen '+(d.sleep_score||qN(d.sleep,1))+' · HRV '+qN(d.hrv,0)+'</div>':'')
-        +(note?'<div class="kal-note" title="'+qEsc(note)+'">'+(illE?"🤕 ":"😊 ")+qEsc(note)+'</div>':'')
-        +'</div>';}
-    h+='</div><div id="kal-det" class="kal-det">'+(sel&&sel.slice(0,7)===ym?detail(sel):'<span class="muted">Kliknij dzień, żeby zobaczyć szczegóły.</span>')+'</div>';
-    rows.innerHTML=h;
-    rows.querySelectorAll(".kal-nav button").forEach(function(bt){bt.addEventListener("click",function(){var k=+bt.dataset.k;
-      if(k===0){ym=today.slice(0,7);}else{var dt0=new Date(+ym.slice(0,4),+ym.slice(5,7)-1+k,1);ym=dt0.getFullYear()+"-"+("0"+(dt0.getMonth()+1)).slice(-2);}
-      rows.querySelector(".kal").style.opacity=".5";monthData(ym).then(draw);});});
-    rows.querySelectorAll(".kal-c[data-d]").forEach(function(c){function pick(){sel=c.dataset.d;draw();var dd=q$("kal-det");if(dd&&dd.scrollIntoView)dd.scrollIntoView({block:"nearest",behavior:"smooth"});}
-      c.addEventListener("click",pick);c.addEventListener("keydown",function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();pick();}});});
-  }
-  sel=today;draw();
-  })();
+  /* 2026-10-08: kalendarz miesiaca usuniety; lista aktywnosci = forma-stats.js drawList (Statystyki) */
 }
 /* --- TRENDY (z przełącznikami) --- */
 var GROUPS={moc:{series:["ftp_est_w","ltp_modelq_w"],label:["Moc progowa","Próg spokojny"],color:["var(--blue)","var(--purple)"],unit:"W"},

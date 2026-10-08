@@ -365,18 +365,32 @@
     /* 2026-10-06: wpis typu "jazda" + trasa przypieta do 1. dnia (calendar_day_route). TRENER liczy wtedy wyprawe z trasy
        (km rozlozone na dni, czas i XSS z podobnych jazd), a wpis BEZ trasy na te same dni (np. reczny "Wyprawa ... 180 km")
        jest przez nia zastepowany. Wczesniej wpis byl zwyklym wydarzeniem i TRENER nie laczyl go z planem. */
-    fetch("/api/calendar/entry", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ day: day, end_day: endD, kind: "event", event_type: "jazda", title: "Wyprawa: " + title,
-                             note: "Z Planera wyprawy (" + nDays + " dni). " + (totalKm ? totalKm.toFixed(1) + " km" : "") }) })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (!d || !d.ok) { alert("Nie udalo sie dodac."); return; }
-        if (!d.id || !rid) { alert("Dodano wyprawe do kalendarza (bez przypiecia trasy)."); return; }
-        return fetch("/api/calendar/route", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ entry_id: d.id, day: day, route_id: rid, route_name: title }) })
-          .then(function (r2) { alert(r2.ok ? "Dodano wyprawe do kalendarza z przypieta trasa (Trener ja uwzgledni)." : "Dodano wyprawe, ale nie udalo sie przypiac trasy."); });
+    /* 2026-10-08: bez dubla (jak Analiza trasy): (1) ta sama trasa juz przypieta tego dnia -> nic nie dodajemy;
+       (2) jest juz jazda BEZ trasy zaczynajaca sie tego dnia (np. reczna "Wyprawa ... 180 km") -> aktualizujemy ja i przypinamy trase;
+       (3) inaczej nowy wpis. */
+    var note = "Z Planera wyprawy (" + nDays + " dni). " + (totalKm ? totalKm.toFixed(1) + " km" : "");
+    function post(u, b) { return fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(b) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.detail || ("HTTP " + r.status)); return j; }); }); }
+    fetch("/api/calendar?start=" + day + "&end=" + endD, { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; })
+      .then(function (js) {
+        var routed = {}, same = null;
+        (js.entry_routes || []).forEach(function (x) { routed[x.entry_id] = 1; if (rid && String(x.route_id) === String(rid) && x.day === day) same = x; });
+        if (same) { alert("Ta wyprawa (ta sama trasa, ten sam dzień) już jest w kalendarzu — nic nie dodaję."); return null; }
+        var ex = (js.entries || []).filter(function (e) { return e.kind === "event" && e.event_type === "jazda" && !routed[e.id] && e.day === day; })[0];
+        var p = ex ? post("/api/calendar/edit", { id: ex.id, title: "Wyprawa: " + title, note: note, event_type: "jazda", at_time: ex.at_time ? String(ex.at_time).slice(0, 5) : "",
+                        color: ex.color || "", remind_offsets: ex.remind_offsets || "", end_day: endD, feel: ex.feel, severity: ex.severity || "" }).then(function () { return { id: ex.id, merged: true }; })
+                   : post("/api/calendar/entry", { day: day, end_day: endD, kind: "event", event_type: "jazda", title: "Wyprawa: " + title, note: note })
+                       .then(function (d) { return { id: d && (d.id || (d.entry && d.entry.id)), merged: false }; });
+        return p.then(function (res) {
+          var how = res.merged ? "Zaktualizowano istniejący wpis jazdy w kalendarzu" : "Dodano wyprawę do kalendarza";
+          if (!res.id || !rid) { alert(how + " (bez przypięcia trasy)."); return; }
+          return fetch("/api/calendar/route", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+            body: JSON.stringify({ entry_id: res.id, day: day, route_id: rid, route_name: title }) })
+            .then(function (r2) { alert(r2.ok ? how + " z przypiętą trasą (Trener ją uwzględni)." : how + ", ale nie udało się przypiąć trasy."); });
+        });
       })
-      .catch(function () { alert("Blad polaczenia z kalendarzem."); });
+      .catch(function (e) { alert("Błąd kalendarza: " + (e && e.message ? e.message : e)); });
   }
 
   function resetCuts() {

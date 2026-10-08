@@ -230,3 +230,20 @@ html.qframe body{padding-left:0}
   display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto}
 .qnav-logout svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .qnav-logout:hover{color:#e8742a}
+/* === IKONY DWUTONOWE (2026-10-08): kontur 1.8 + delikatne wypelnienie w kolorze ikony + akcent #e8742a === */
+.qnav-link svg,.qnav-bico svg,.qnav-fab svg,.qlogout-head svg,.qlogout-fix svg,.qnav-logout svg{stroke-width:1.8}
+.qi-f{fill:currentColor;fill-opacity:.16}
+.qi-fo{fill:currentColor;fill-opacity:.16;stroke:none}
+.qi-a{fill:#e8742a;stroke:none}
+.qi-as{fill:none;stroke:#e8742a}
+.qnav-link.active .qi-f,.qnav-link.active .qi-fo{fill-opacity:.26}
+/* 2026-10-08: ikony 24 px i JEDNA os pionowa w waskim menu (wczesniej: burger 19 px, linki 18 px, dzwonek i dzien/noc 15 px od lewej).
+   Kazda pozycja: 3 px paska aktywnosci + 13 px = lewa krawedz ikony 16 px, srodek 28 px (rail 56 px). Burger: 10 + 6 = 16 px. */
+.qnav-top{padding:12px 12px 12px 10px}
+.qnav-burger{padding:6px}
+.qnav-burger svg{width:24px;height:24px}
+.qnav-link{padding:10px 14px 10px 13px;gap:14px}
+button.qnav-link{border:0;border-left:3px solid transparent}
+.qnav-link svg{flex:0 0 24px;width:24px;height:24px}
+.qnav-bico{flex:0 0 24px}
+.qnav-bico svg{width:24px;height:24px}
