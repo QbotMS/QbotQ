@@ -214,3 +214,19 @@ html.theme-dark .head .themebtn,html.theme-dark .head input,html.theme-dark .hea
 .qnc-histbtn:hover{background:var(--qn-hover)}
 .qnc-hh{font-size:12px;color:var(--qn-muted);padding:8px 6px 2px}
 .qnc-st{font-style:italic}
+/* 2026-10-08: SETUP > Dostepy - tresc okna klodki osadzona w stronie */
+.qmod.qlock-inline{position:static;inset:auto;display:block;padding:0;background:none;-webkit-backdrop-filter:none;backdrop-filter:none;z-index:auto}
+.qmod.qlock-inline .qlock-box{width:auto;max-width:640px;box-shadow:none;border-radius:var(--r,14px)}
+.qmod.qlock-inline .qlock-body{padding:14px 20px 16px}
+/* 2026-10-08: WYLOGUJ w prawym gornym rogu */
+.qlogout-head{margin-left:8px}
+.qlogout-head svg,.qlogout-fix svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.qlogout-fix{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));z-index:1300;
+  width:40px;height:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;
+  background:var(--qn-fab-bg);color:var(--qn-fg);border:1px solid var(--qn-border);box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.qlogout-fix:hover,.qlogout-head:hover{color:#e8742a}
+html.qframe body{padding-left:0}
+.qnav-logout{margin-left:auto;background:none;border:1px solid var(--qn-border);color:var(--qn-fg);border-radius:50%;width:38px;height:38px;
+  display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto}
+.qnav-logout svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.qnav-logout:hover{color:#e8742a}

@@ -6,11 +6,13 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
 <script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
 <link rel="stylesheet" href="/ui2.css?v=10">
-<link rel="stylesheet" href="/nav.css?v=8">
+<link rel="stylesheet" href="/nav.css?v=10">
 <title>QBot — Setup</title>
 <!-- SETUP (2026-10-08): ustawienia serwisu, wejscie z zebatki na dole menu (nav.js).
      Zakladki: Powiadomienia (ktore rodzaje pokazuje dzwonek; /api/setup/notif, qbot_notif.SOURCES, qbot_v2.app_settings);
-     Trening (Dostepnosc + Ustawienia Trenera w ramkach trener-fragment.html ?sub=dostep / ?sub=kalib, ladowane przy otwarciu zakladki).
+     Trening (Dostepnosc | Sezony | Ustawienia Trenera - ramki trener-fragment.html ?sub=dostep / sezon_ust / kalib);
+     Polaczenia (Strava | Komoot | Hammerhead - ramki starych stron, nav.js w ramce nie rysuje menu);
+     Dostepy (tresc dawnej klodki, nav.js qLockMount); Kontakty (grupy adresow, /api/mail-groups*). Dok.: docs/SETUP.md
      Kolejne zakladki dopisuj jako <button data-t> w #tabs + <section data-p>. Dok.: docs/NOTIF_CENTER.md -->
 <style>
 .sp{display:none}.sp.on{display:block}
@@ -30,6 +32,18 @@
 .st-h2{font-size:18px;margin:18px 0 8px}.st-h2:first-of-type{margin-top:4px}
 .st-fr{display:block;width:100%;height:600px;border:0;background:transparent}.st-fr[hidden]{display:none}
 .st-sub{margin:0 0 12px}.st-sub button{font-size:15px;padding:7px 12px}
+.st-fr.st-dark{border-radius:12px;background:#14161a}
+.st-btn{appearance:none;border:1px solid #e8742a;background:#e8742a;color:#fff;border-radius:9px;padding:7px 14px;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+.st-btn.sec{background:transparent;color:inherit;border-color:var(--line)}.st-btn:disabled{opacity:.5;cursor:default}
+.st-knew{display:flex;gap:8px;max-width:640px;margin-bottom:12px}
+.st-knew input,.st-kadd input{flex:1;min-width:0;padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:var(--well);color:var(--ink);font:inherit;font-size:14px}
+.st-kgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px;align-items:start}
+.st-kh{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px}.st-kh b{font-size:16px}
+.st-kh small{display:block;color:var(--muted);font-size:12.5px;font-weight:400}
+.st-km{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:14px}
+.st-km span{min-width:0;overflow-wrap:anywhere}.st-km small{color:var(--muted)}
+.st-x{background:none;border:0;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;padding:2px 6px;border-radius:6px}.st-x:hover{color:#e8742a}
+.st-kadd{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}.st-kadd input{min-width:140px}
 </style>
 </head>
 <body><div class="wrap">
@@ -42,6 +56,9 @@
 <div class="tabs" id="tabs">
   <button data-t="powiadomienia" class="on">Powiadomienia</button>
   <button data-t="trening">Trening</button>
+  <button data-t="polaczenia">Połączenia</button>
+  <button data-t="dostepy">Dostępy</button>
+  <button data-t="kontakty">Kontakty</button>
 </div>
 
 <section class="sp on" data-p="powiadomienia">
@@ -56,14 +73,42 @@
   <p class="st-intro">Ustawienia Trenera przeniesione z zakładki Trening. Zapisy działają tak samo jak wcześniej.</p>
   <div class="tabs st-sub" data-sub-of="trening">
     <button data-s="dostep" class="on">Dostępność</button>
+    <button data-s="sezon">Sezony</button>
     <button data-s="kalib">Ustawienia Trenera</button>
   </div>
   <iframe class="st-fr" data-s="dostep" data-src="/trener-fragment.html?sub=dostep" title="Trener — Dostępność"></iframe>
+  <iframe class="st-fr" data-s="sezon" data-src="/trener-fragment.html?sub=sezon_ust" title="Trener — Sezony" hidden></iframe>
   <iframe class="st-fr" data-s="kalib" data-src="/trener-fragment.html?sub=kalib" title="Trener — Ustawienia" hidden></iframe>
 </section>
 
+<section class="sp" data-p="polaczenia">
+  <p class="st-intro">Połączenia QBota z serwisami zewnętrznymi. Te same strony co wcześniej (stare adresy dalej działają).</p>
+  <div class="tabs st-sub" data-sub-of="polaczenia">
+    <button data-s="strava" class="on">Strava</button>
+    <button data-s="komoot">Komoot</button>
+    <button data-s="hammerhead">Hammerhead / Karoo</button>
+  </div>
+  <iframe class="st-fr" data-s="strava" data-src="/strava.html" title="Połączenie ze Stravą"></iframe>
+  <iframe class="st-fr st-dark" data-s="komoot" data-src="/komoot-dostep" title="Sesja Komoot" hidden></iframe>
+  <iframe class="st-fr st-dark" data-s="hammerhead" data-src="/hammerhead-dostep" title="Dostęp Hammerhead" hidden></iframe>
+</section>
+
+<section class="sp" data-p="dostepy">
+  <p class="st-intro">Tymczasowe dostępy dla gości (logowanie przez QR): prośby do zatwierdzenia kodem i aktywne sesje.
+    Link „?klodka=1” z Telegrama otwiera tę zakładkę.</p>
+  <div id="st-lock"></div>
+</section>
+
+<section class="sp" data-p="kontakty">
+  <p class="st-intro">Grupy adresów do zaproszeń na wyprawy i wysyłek planu. Grupy z wyprawy uzupełniają się same po odpowiedziach RSVP;
+    adresy dopisane ręcznie zostają.</p>
+  <div class="st-knew card"><input id="k-new" type="text" maxlength="80" placeholder="nazwa nowej grupy, np. Ekipa gravel"><button type="button" class="st-btn" id="k-add">Dodaj grupę</button></div>
+  <div class="st-kgrid" id="k-list"><div class="card">wczytuję…</div></div>
+  <div class="st-bar"><span id="k-msg"></span></div>
+</section>
+
 </div>
-<script src="/nav.js?v=10"></script>
+<script src="/nav.js?v=12"></script>
 <script>(function(){var b=document.getElementById("themebtn");if(!b)return;var SUN='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',MOON='<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';function paint(){b.querySelector("svg").innerHTML=document.documentElement.classList.contains("theme-dark")?SUN:MOON;}b.addEventListener("click",function(){var d=!document.documentElement.classList.contains("theme-dark");document.documentElement.classList.toggle("theme-dark",d);try{localStorage.setItem("qtheme",d?"dark":"light")}catch(e){}paint();});paint();})();</script>
 <script>
 (function(){
@@ -77,6 +122,8 @@ function frames(sec){sec.querySelectorAll("iframe[data-src]:not([hidden])").forE
   fr.addEventListener("load",function(){try{var d=fr.contentDocument,set=function(){fr.style.height=Math.max(200,d.documentElement.scrollHeight+16)+"px";};set();
     new fr.contentWindow.ResizeObserver(set).observe(d.body);}catch(e){}});});}
 function show(t){tabs.forEach(function(b){b.classList.toggle("on",b.dataset.t===t);});
+  if(t==="dostepy"&&window.qLockMount)window.qLockMount($("st-lock"));
+  if(t==="kontakty")kLoad();
   document.querySelectorAll("section[data-p]").forEach(function(s){s.classList.toggle("on",s.dataset.p===t);if(s.dataset.p===t)frames(s);});
   try{history.replaceState(null,"","#"+t);}catch(e){}}
 tabs.forEach(function(b){b.addEventListener("click",function(){show(b.dataset.t);});});
@@ -115,6 +162,35 @@ function save(o){
 function load(){fetch("/api/setup/notif",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw r.status;return r.json();})
   .then(function(j){SRC=j.sources||[];render();}).catch(function(){$("st-grid").innerHTML='<div class="card">Nie udało się wczytać ustawień.</div>';});}
 load();
+
+/* Kontakty: grupy adresow (/api/mail-groups: GET lista, POST nowa, DELETE grupa, POST/DELETE czlonkowie, POST sync z wyprawy) */
+var KG=null;
+function kmsg(t,bad){var m=$("k-msg");m.className=bad?"st-err":"st-ok";m.textContent=t||"";}
+function kreq(method,url,body){return fetch(url,{method:method,credentials:"same-origin",headers:body?{"Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined})
+  .then(function(r){return r.json().catch(function(){return {};}).then(function(j){if(!r.ok)throw new Error(r.status===403?"tryb podglądu — bez zmian":(j.detail||("HTTP "+r.status)));return j;});});}
+function kLoad(){return kreq("GET","/api/mail-groups").then(function(j){KG=j.items||[];kRender();}).catch(function(e){$("k-list").innerHTML='<div class="card">Nie udało się wczytać grup: '+esc(e.message)+'</div>';});}
+function kRender(){
+  if(!KG.length){$("k-list").innerHTML='<div class="card">Brak grup. Dodaj pierwszą powyżej albo zrób grupę z potwierdzeń RSVP w Planerze wyprawy.</div>';return;}
+  $("k-list").innerHTML=KG.map(function(g){var src=g.source_route_id?("z wyprawy: "+esc(g.source_name||g.source_route_id)+(g.synced_at?" · odświeżona "+esc(String(g.synced_at).slice(8,10)+"."+String(g.synced_at).slice(5,7)):"")):"ręczna";
+    return '<div class="card"><div class="st-kh"><div><b>'+esc(g.name)+'</b><small>'+src+' · '+g.members.length+' adr.</small></div><div>'
+      +(g.source_route_id?'<button type="button" class="st-btn sec" data-ksync="'+g.id+'">odśwież</button> ':'')
+      +'<button type="button" class="st-x" data-kdel="'+g.id+'" title="Usuń grupę">\u00d7</button></div></div>'
+      +g.members.map(function(m){return '<div class="st-km"><span>'+esc(m.email)+(m.display_name?' <small>'+esc(m.display_name)+'</small>':'')+(m.source&&m.source!=="manual"?' <small>· '+esc(m.source)+'</small>':'')+'</span>'
+        +'<button type="button" class="st-x" data-kmdel="'+g.id+':'+m.id+'" title="Usuń adres">\u00d7</button></div>';}).join("")
+      +'<div class="st-kadd"><input type="email" data-kem="'+g.id+'" placeholder="adres e-mail"><input type="text" data-knm="'+g.id+'" placeholder="imię (opcjonalnie)"><button type="button" class="st-btn" data-kadd="'+g.id+'">Dodaj</button></div></div>';}).join("");
+  var L=$("k-list");
+  L.querySelectorAll("[data-kadd]").forEach(function(b){b.onclick=function(){var id=b.dataset.kadd,em=L.querySelector('[data-kem="'+id+'"]').value.trim(),nm=L.querySelector('[data-knm="'+id+'"]').value.trim();
+    if(!em){kmsg("Wpisz adres e-mail.",true);return;}b.disabled=true;kreq("POST","/api/mail-groups/"+id+"/members",{email:em,display_name:nm||null}).then(function(){kmsg("Dodano "+em);return kLoad();}).catch(function(e){b.disabled=false;kmsg(e.message,true);});};});
+  L.querySelectorAll("[data-kmdel]").forEach(function(b){b.onclick=function(){var p=b.dataset.kmdel.split(":");b.disabled=true;
+    kreq("DELETE","/api/mail-groups/"+p[0]+"/members/"+p[1]).then(function(){kmsg("Usunięto adres");return kLoad();}).catch(function(e){b.disabled=false;kmsg(e.message,true);});};});
+  L.querySelectorAll("[data-kdel]").forEach(function(b){b.onclick=function(){var g=KG.filter(function(x){return String(x.id)===b.dataset.kdel;})[0];
+    if(!confirm("Usunąć grupę „"+(g?g.name:"")+"” razem z adresami?"))return;b.disabled=true;
+    kreq("DELETE","/api/mail-groups/"+b.dataset.kdel).then(function(){kmsg("Usunięto grupę");return kLoad();}).catch(function(e){b.disabled=false;kmsg(e.message,true);});};});
+  L.querySelectorAll("[data-ksync]").forEach(function(b){b.onclick=function(){b.disabled=true;
+    kreq("POST","/api/mail-groups/"+b.dataset.ksync+"/sync").then(function(){kmsg("Odświeżono z wyprawy");return kLoad();}).catch(function(e){b.disabled=false;kmsg(e.message,true);});};});
+}
+$("k-add").onclick=function(){var n=$("k-new").value.trim();if(!n){kmsg("Wpisz nazwę grupy.",true);return;}
+  kreq("POST","/api/mail-groups",{name:n}).then(function(){$("k-new").value="";kmsg("Dodano grupę "+n);return kLoad();}).catch(function(e){kmsg(e.message,true);});};
 })();
 </script>
 </body>

@@ -55,7 +55,7 @@
     try { localStorage.setItem("qtrener_sub", sub); } catch (e) {}
     document.body.classList.toggle("tr-month", sub === "kalendarz");
     if (history.replaceState && document.getElementById("p-kal")) history.replaceState(history.state, "", "#" + sub);
-    ({ kalendarz: function () { if (window.KAL3) window.KAL3.refresh(true); }, tydzien: rWeek, czas: rTime, cele: rGoals, dostep: rAvail, sezon: rSeason, bilans: rBal, kalib: rCalib })[sub]();
+    ({ kalendarz: function () { if (window.KAL3) window.KAL3.refresh(true); }, tydzien: rWeek, czas: rTime, cele: rGoals, dostep: rAvail, sezon: rSeason, sezon_ust: rSeason, bilans: rBal, kalib: rCalib })[sub]();
   }
   window.TRENER_CORE = { go: go };   // wersja mobilna (trener-m.js) rysuje dzialy z menu "Wiecej" przez go()
 
@@ -747,7 +747,11 @@
   }
   function drawSeason() {
     var j = SZ, W = j.weeks, NW = W.length, mx = 35, T0 = todayMs();
-    var h = "<div class='card'><div class='cardhead'><h2>Sezon · tydzień po tygodniu</h2><span class='sub'>sezon = od startu bazy (po świętach) do końca totalnego luzu</span></div><div class='tr-szwrap'>";
+    // 2026-10-08: "Ustawienia sezonow" + "Zasady budowania sezonu" przeniesione do SETUP > Trening > Sezony (go("sezon_ust"));
+    // w Treningu > Sezon zostaje wykres + plany objetosci + odnosnik.
+    var ONLY = S.sub === "sezon_ust", h = "";
+    if (!ONLY) {
+    h = "<div class='card'><div class='cardhead'><h2>Sezon · tydzień po tygodniu</h2><span class='sub'>sezon = od startu bazy (po świętach) do końca totalnego luzu</span></div><div class='tr-szwrap'>";
     h += "<div class='tr-szm' style='grid-template-columns:repeat(" + NW + ",1fr)'>" + W.map(function (w, i) { return "<span style='font-weight:700;color:var(--ink)'>" + (i === 0 || W[i - 1].season !== w.season ? "▸ " + w.season : "") + "</span>"; }).join("") + "</div>";
     h += "<div class='tr-szg' style='grid-template-columns:repeat(" + NW + ",1fr)'>";
     W.forEach(function (w, i) { var cur = T0 >= D(w.s) && T0 < D(w.s) + WK; h += "<div class='tr-szc" + (szSel === i ? " sel" : "") + (cur ? " now" : "") + "' data-w='" + i + "' title='" + pl(D(w.s)) + " · sezon " + w.season + " · " + esc(w.name) + " · " + w.h + " h" + (w.lt ? " · lżejszy" : "") + "'><span class='tr-sze'>" + w.ev.map(function (e) { return KIC2[e.kind] || ""; }).join("") + "</span><div class='tr-szb'><i style='height:" + (w.ph === "lz" ? 3 : Math.max(4, w.h / mx * 100)) + "%;background:" + PH[w.ph][1] + (w.lt ? ";opacity:.55" : "") + "'></i></div></div>"; });
@@ -760,7 +764,10 @@
       h += "<div class='card'><div class='cardhead'><h2>📏 " + esc(v.name) + " — plan na miesiące</h2><span class='sub'>wg Twojego rytmu roku (2 lata jazd)</span></div><div style='display:grid;grid-template-columns:repeat(" + v.plan.length + ",1fr);gap:4px;align-items:end;height:120px'>" +
         v.plan.map(function (p) { return "<div style='display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;font-size:10.5px;color:var(--muted)'><b style='color:var(--ink)'>" + p.value + "</b><i style='display:block;width:60%;height:" + Math.round(p.value / mxv * 85) + "%;background:var(--accent);border-radius:3px 3px 0 0'></i><span>" + MN[+p.month.slice(5) - 1] + "</span></div>"; }).join("") + "</div><div class='sub' style='margin-top:4px'>" + u + " na miesiąc · z tego wynika minimalny budżet godzin w tygodniu w planie</div></div>";
     });
+    }
+    if (!ONLY) h += "<div class='card'><div class='sub'>Daty sezonów (start bazy, koniec bazy, roztrenowanie, luz) i zasady budowania sezonu ustawiasz w <a href='/setup.html#trening-sezon' target='_top'>Setup → Trening → Sezony</a>.</div></div>";
     // ustawienia sezonow
+    if (ONLY) {
     var KEYS = [["start", "Start sezonu (baza)", "pierwszy dzień roboczy po świętach"], ["bz_end", "Koniec bazy", "auto: 10 tyg. przed pierwszą wyprawą A (albo koniec lutego)"], ["roz", "Start roztrenowania", "auto: 1.10 albo po regeneracji ostatniej A"], ["luz", "Start totalnego luzu", "auto: 12.12"]];
     h += "<div class='card'><div class='cardhead'><h2>Ustawienia sezonów</h2><span class='sub'>puste = auto · zmiana przelicza plan</span></div>";
     j.seasons.forEach(function (sb) {
@@ -772,9 +779,10 @@
       h += "</div></div>";
     });
     h += "</div><div class='card'><div class='cardhead'><h2>Zasady budowania sezonu</h2></div><div id='trs-par'></div></div>";
+    }
     body.innerHTML = h;
     var det = document.getElementById("trs-det");
-    if (szSel >= 0 && W[szSel]) {
+    if (!det) { /* SETUP: bez wykresu */ } else if (szSel >= 0 && W[szSel]) {
       var w = W[szSel];
       det.innerHTML = "<div class='tr-box'><b>Tydzień " + pl(D(w.s)) + "–" + pl(D(w.s) + 6 * DAY) + "</b> · sezon " + w.season + " · " + esc(w.name) + (w.lt ? " · lżejszy" : "") + (w.pre ? " · przed wyprawą B — lżej" : "") + "<br>Plan: ~" + w.h + " h" + (w.ev.length ? " · " + w.ev.map(function (e) { return (KIC2[e.kind] || "") + " " + esc(e.name); }).join(", ") : "") + "<div class='sub' style='margin-top:4px'>" + PTXT[w.ph] + "</div><button class='tr-btn sm' id='trs-x' style='margin-top:6px'>× zamknij</button></div>";
       document.getElementById("trs-x").onclick = function () { szSel = -1; drawSeason(); };
@@ -787,9 +795,9 @@
     body.querySelectorAll("[data-sk2]").forEach(function (i) { i.onchange = function () { if (i.value) save(i.dataset.sk2, i.value); }; });
     body.querySelectorAll("[data-sr]").forEach(function (b) { b.onclick = function () { save(b.dataset.sr, null); }; });
     var par = document.getElementById("trs-par");
-    par.innerHTML = [["season.taper_w", "Taper przed wyprawą A", 1, 3, 2, " tydz."], ["season.regen_w", "Regeneracja po wyprawie A", 1, 3, 2, " tydz."], ["season.light_every_w", "Tydzień lżejszy co", 3, 5, 4, " tydz."], ["season.volume", "Ogólna objętość", 1, 9, 5, ""]].map(function (x) { return sliderHTML({ k: x[0], n: x[1], min: x[2], max: x[3], st: 1, def: x[4], u: x[5] }); }).join("");
-    par.querySelectorAll("[data-sk]").forEach(function (i) { i.onchange = function () { save(i.dataset.sk, +i.value); }; });
-    par.querySelectorAll("[data-rs]").forEach(function (b) { b.onclick = function () { save(b.dataset.rs, null); }; });
+    if (par) par.innerHTML = [["season.taper_w", "Taper przed wyprawą A", 1, 3, 2, " tydz."], ["season.regen_w", "Regeneracja po wyprawie A", 1, 3, 2, " tydz."], ["season.light_every_w", "Tydzień lżejszy co", 3, 5, 4, " tydz."], ["season.volume", "Ogólna objętość", 1, 9, 5, ""]].map(function (x) { return sliderHTML({ k: x[0], n: x[1], min: x[2], max: x[3], st: 1, def: x[4], u: x[5] }); }).join("");
+    if (par) par.querySelectorAll("[data-sk]").forEach(function (i) { i.onchange = function () { save(i.dataset.sk, +i.value); }; });
+    if (par) par.querySelectorAll("[data-rs]").forEach(function (b) { b.onclick = function () { save(b.dataset.rs, null); }; });
   }
 
   // ======================= KALIBRACJA =======================

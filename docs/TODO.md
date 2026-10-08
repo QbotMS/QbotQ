@@ -341,10 +341,14 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [2026-09-24] Obserwowac: czy kolejne FIT z Karoo maja device_info czujnikow (24.09 brak). Jesli systematycznie -> miernik z roweru/kalendarza jako zapas dla straznika.
 
 - [ ] Sezon w Treningu (plan faz Trenera) vs Sezon w Formie (analiza) - zdecydowac czy scalic (dodane 2026-10-08).
-- [ ] Kalendarz (zakladka Miesiac): telefon - kafle puste (CSS chowa wpisy, slupki .mob nie sa rysowane), brak planu Trenera/planned_xss w siatce, dystans jazdy trzymany w notatce, status maila doczytywany bez czekania (dodane 2026-10-08).
+- [ ] Kalendarz (kalendarz3.js): dystans jazdy trzymany w notatce wpisu (osobne pole w bazie); planned_xss z Planera wypraw nie jest jeszcze pokazywany w siatce (dodane 2026-10-08).
 - [ ] Albert: kalendarz bez narzedzi - odczyt tylko przez SQL, calendar_event_add/reminder_add w prompcie ale bez writera (WRITE_NOT_AVAILABLE), pomoc obiecuje 'dodaj wydarzenie' (dodane 2026-10-08).
 
 # ZROBIONE
+- [2026-10-08] [SETUP-2] SETUP: Polaczenia (Strava/Komoot/Hammerhead), Dostepy (dawna klodka), Trening>Sezony (ustawienia sezonow), Kontakty (grupy mailowe); Wyloguj w prawym gornym rogu. Dok.: docs/SETUP.md.
+- [2026-10-08] [SETUP-TRENING] SETUP > Trening: Dostepnosc + Ustawienia Trenera przeniesione z Treningu; zebatka SETUP nad przelacznikiem dzien/noc. Dok.: docs/SETUP.md.
+- [2026-10-08] [SETUP] Ekran SETUP (zebatka na dole menu, /setup.html), zakladka Powiadomienia: checklista rodzajow dzwonka (qbot_notif.SOURCES, qbot_v2.app_settings, /api/setup/notif). Testy test_notif_setup 2.
+- [2026-10-08] ZROBIONE: [KALENDARZ3-2026-10-08] Trening: zakladka Kalendarz (kalendarz3.js) laczy Miesiac i Tydzien - powiekszony tydzien, kafle tygodnia + ostrzezenia, panel dnia z edytorami, okna treningu; telefon: kropki w sciśnietych dniach, karty dni w powiekszonym tygodniu. Dok.: docs/TRENER.md.
 - [2026-10-08] [NOTIF-HIST] Powiadomienia: krzyzyk = usun z listy (dismissed_at, sql/notif_v2.sql), Historia 90 dni (/api/notif/history). Dok.: docs/NOTIF_CENTER.md.
 - [2026-10-08] [NOTIF-KROK2] Centrum powiadomien krok 2: Nowa jazda, Uzupelnij w czym jechales, pogoda przed jazda Trenera (dzis/jutro), uslugi qbot* (nie dziala/failed/samoczynny restart), dysk >= 90%, demo QR (prosba/wejscie), nieudane logowania. Testy test_notif_step2 4. Dok.: docs/NOTIF_CENTER.md.
 - [2026-10-08] [NOTIF-KROK1] Centrum powiadomien: dzwonek w menu (nav.js qBell, plakietka z liczba, kropka na przycisku menu na telefonie), okno z lista; qbot_notif.py + qbot_v2.notif + /api/notif*; zrodla: zadania przy rowerze, trasy do potwierdzenia, brak swiezych danych (sen/waga > 3 dni), wiadomosci Trenera. Testy test_notif 4. Dok.: docs/NOTIF_CENTER.md.

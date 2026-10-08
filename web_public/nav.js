@@ -58,7 +58,7 @@
   }
 
   // [QR-DEMO] 2026-10-07: plakietka trybu demo + wylogowanie; wlasciciel: link "Dostepy tymczasowe"
-  function qAuthBadge(foot) {
+  function qAuthBadge() {
     if (!window.fetch) return;
     fetch("/auth/demo/whoami", { credentials: "same-origin" }).then(function (r) {
       return r.ok ? r.json() : null;
@@ -88,15 +88,10 @@
         bar.appendChild(txt);
         bar.appendChild(out);
         document.body.appendChild(bar);
-      } else if (j.kind === "owner" && foot) {
-        var a = document.createElement("a");
-        a.className = "qnav-link";
-        a.href = "/auth/sessions";
-        a.setAttribute("data-label", "Dost\u0119py tymczasowe");
-        a.innerHTML = '<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span class="qnav-label">Dost\u0119py tymczasowe</span>';
-        a.addEventListener("click", function (e) { e.preventDefault(); document.body.classList.remove("qnav-expanded", "qnav-open"); qLockOpen(); });
-        foot.insertBefore(a, foot.firstChild);
-        if (/[?&]klodka=1\b/.test(location.search)) qLockOpen();
+      } else if (j.kind === "owner") {
+        // 2026-10-08: Dostepy tymczasowe przeniesione do SETUP > Dostepy (bez klodki w menu). Link z Telegrama ?klodka=1 -> tam.
+        if (/[?&]klodka=1\b/.test(location.search) && norm(location.pathname) !== "/setup.html") { location.replace("/setup.html#dostepy"); return; }
+        qLogoutBtn();
       }
     }).catch(function () {});
   }
@@ -158,40 +153,72 @@
   }
   function qlRevoke(id) { qlJSON("/api/auth/sessions/revoke", { id: id, csrf: QL.csrfS }).then(qlLoadSes, qlLoadSes); }
   function qlClose() { if (QL.ov) QL.ov.classList.remove("on"); if (QL.timer) { clearInterval(QL.timer); QL.timer = null; } }
+  /* 2026-10-08: WYLOGUJ w prawym gornym rogu (wlasciciel): obok przycisku dzien/noc (#themebtn) w naglowku strony,
+     a gdy strona go nie ma - plywajacy w rogu ekranu. POST /auth/logout -> /login. */
+  var LOGOUT = '<svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>';
+  function qLogout(b) {
+    if (b) { b.disabled = true; }
+    var go = function () { location.href = "/login"; };
+    fetch("/auth/logout", { method: "POST", credentials: "same-origin" }).then(go, go);
+  }
+  function qLogoutBtn() {
+    if (document.getElementById("qlogout")) return;
+    var b = document.createElement("button");
+    b.type = "button"; b.id = "qlogout"; b.title = "Wyloguj"; b.setAttribute("aria-label", "Wyloguj"); b.innerHTML = LOGOUT;
+    b.addEventListener("click", function () { if (confirm("Wylogować z QBota w tej przeglądarce?")) qLogout(b); });
+    // gdzie: (1) obok #themebtn, jesli ten stoi w prawym gornym rogu ekranu; (2) telefon - w gornym pasku
+    // wysunietego menu (na stronach z mapa gorny pasek ekranu jest zajety: wybor trasy/jazdy, styl mapy);
+    // (3) komputer - plywajacy w prawym gornym rogu.
+    var tb = document.getElementById("themebtn"), r = tb ? tb.getBoundingClientRect() : null;
+    var mob = window.matchMedia("(max-width:820px),(pointer:coarse) and (max-height:500px)").matches;
+    var top = document.querySelector(".qnav-top");
+    if (tb && tb.parentNode && r.width > 0 && r.right > window.innerWidth - 220 && r.top < 140) { b.className = "themebtn qlogout-head"; tb.parentNode.insertBefore(b, tb.nextSibling); }
+    else if (mob && top) { b.className = "qnav-logout"; top.appendChild(b); }
+    else { b.className = "qlogout-fix"; document.body.appendChild(b); }
+  }
+
+  function qlHTML(modal) {
+    return '<div class="qlock-box"' + (modal ? ' role="dialog" aria-modal="true" aria-label="Dostępy i konto"' : '') + '>'
+      + (modal ? '<div class="qlock-h"><b>Dostępy tymczasowe</b><button type="button" class="qlock-x" aria-label="Zamknij">\u00d7</button></div>' : '')
+      + '<div class="qlock-body"><div class="qlock-req" hidden></div>'
+      + '<div class="qlock-sec">Aktywne dostępy</div><p class="qlock-muted">Goście mają tylko podgląd przez 1 h. Zakończenie działa od razu.</p>'
+      + '<div class="qlock-list"></div><button type="button" class="qlock-all" hidden>Zakończ wszystkie</button></div>'
+      + '<div class="qlock-foot"><span>Wylogowanie dotyczy tej przeglądarki.</span><button type="button" class="qlock-out">Wyloguj</button></div></div>';
+  }
+  function qlWire(ov, modal) {
+    ov.addEventListener("click", function (e) {
+      if (modal && e.target === ov) return qlClose();
+      var t = e.target.closest ? e.target : null; if (!t) return;
+      var b;
+      if ((b = t.closest(".qlock-end"))) qlRevoke(b.getAttribute("data-id"));
+      else if ((b = t.closest(".qlock-ok"))) qlDecide(b.getAttribute("data-id"), "approve");
+      else if ((b = t.closest(".qlock-no"))) qlDecide(b.getAttribute("data-id"), "deny");
+    });
+    ov.addEventListener("keydown", function (e) {
+      var i = e.target; if (e.key === "Enter" && i && i.matches && i.matches(".qlock-req input[data-id]")) qlDecide(i.getAttribute("data-id"), "approve");
+    });
+    var x = ov.querySelector(".qlock-x"); if (x) x.addEventListener("click", qlClose);
+    ov.querySelector(".qlock-all").addEventListener("click", function () { qlRevoke("all"); });
+    if (modal) document.addEventListener("keydown", function (e) { if (e.key === "Escape" && ov.classList.contains("on")) qlClose(); });
+    ov.querySelector(".qlock-out").addEventListener("click", function () { this.textContent = "Wylogowuję…"; qLogout(this); });
+  }
   function qLockOpen() {
     var ov = QL.ov;
-    if (!ov) {
+    if (!ov || ov.classList.contains("qlock-inline")) {
       ov = QL.ov = document.createElement("div"); ov.id = "qlock"; ov.className = "qmod";
-      ov.innerHTML = '<div class="qlock-box" role="dialog" aria-modal="true" aria-label="Dostępy i konto">'
-        + '<div class="qlock-h"><b>Dostępy tymczasowe</b><button type="button" class="qlock-x" aria-label="Zamknij">\u00d7</button></div>'
-        + '<div class="qlock-body"><div class="qlock-req" hidden></div>'
-        + '<div class="qlock-sec">Aktywne dostępy</div><p class="qlock-muted">Goście mają tylko podgląd przez 1 h. Zakończenie działa od razu.</p>'
-        + '<div class="qlock-list"></div><button type="button" class="qlock-all" hidden>Zakończ wszystkie</button></div>'
-        + '<div class="qlock-foot"><span>Wylogowanie dotyczy tej przeglądarki.</span><button type="button" class="qlock-out">Wyloguj</button></div></div>';
-      document.body.appendChild(ov);
-      ov.addEventListener("click", function (e) {
-        if (e.target === ov) return qlClose();
-        var t = e.target.closest ? e.target : null; if (!t) return;
-        var b;
-        if ((b = t.closest(".qlock-end"))) qlRevoke(b.getAttribute("data-id"));
-        else if ((b = t.closest(".qlock-ok"))) qlDecide(b.getAttribute("data-id"), "approve");
-        else if ((b = t.closest(".qlock-no"))) qlDecide(b.getAttribute("data-id"), "deny");
-      });
-      ov.addEventListener("keydown", function (e) {
-        var i = e.target; if (e.key === "Enter" && i && i.matches && i.matches(".qlock-req input[data-id]")) qlDecide(i.getAttribute("data-id"), "approve");
-      });
-      ov.querySelector(".qlock-x").addEventListener("click", qlClose);
-      ov.querySelector(".qlock-all").addEventListener("click", function () { qlRevoke("all"); });
-      document.addEventListener("keydown", function (e) { if (e.key === "Escape" && ov.classList.contains("on")) qlClose(); });
-      ov.querySelector(".qlock-out").addEventListener("click", function () {
-        var b = this; b.disabled = true; b.textContent = "Wylogowuję…";
-        var go = function () { location.href = "/login"; };
-        fetch("/auth/logout", { method: "POST", credentials: "same-origin" }).then(go, go);
-      });
+      ov.innerHTML = qlHTML(true); document.body.appendChild(ov); qlWire(ov, true);
     }
     ov.classList.add("on"); qlLoadReq(); qlLoadSes();
     if (!QL.timer) QL.timer = setInterval(function () { if (ov.classList.contains("on")) qlLoadReq(); }, 3000);
   }
+  /* SETUP > Dostepy: ta sama tresc osadzona w stronie (bez okna). Prosby o dostep odswiezane co 3 s, gdy karta widoczna. */
+  window.qLockMount = function (el) {
+    if (QL.ov && QL.ov.classList.contains("qlock-inline") && el.contains(QL.ov)) { qlLoadReq(); qlLoadSes(); return; }
+    var ov = document.createElement("div"); ov.className = "qmod qlock-inline"; ov.innerHTML = qlHTML(false);
+    el.appendChild(ov); QL.ov = ov; qlWire(ov, false); qlLoadReq(); qlLoadSes();
+    if (QL.timer) clearInterval(QL.timer);
+    QL.timer = setInterval(function () { if (QL.ov === ov && ov.offsetParent && !document.hidden) qlLoadReq(); }, 3000);
+  };
 
   /* 2026-10-08: qModal(tytul, element[, przyZamknieciu]) - wspolne okno nakladane w stylu okna klodki (nav.css .qmod).
      Element jest wkladany do tresci okna; po zamknieciu (x, klik w tlo, Esc) wywolywane przyZamknieciu(element) - np. odlozenie go na miejsce. */
@@ -310,10 +337,12 @@
     });
     load();
     setInterval(function () { if (!document.hidden) load(); }, 120000);
+    window.addEventListener("qnotif-refresh", load); /* SETUP > Powiadomienia zmienione */
     document.addEventListener("visibilitychange", function () { if (!document.hidden) load(); });
   }
 
   function build() {
+    if (window.self !== window.top) { document.documentElement.classList.add("qframe"); return; } // 2026-10-08: strona w ramce (SETUP) - bez menu
     var nav = document.createElement("nav");
     nav.className = "qnav";
 
@@ -357,6 +386,8 @@
     themeBtn.className = "qnav-link qnav-theme";
     themeBtn.innerHTML = '<svg viewBox="0 0 24 24"></svg><span class="qnav-label"></span>';
     foot.appendChild(themeBtn);
+    // 2026-10-08: SETUP (zebatka) - w stopce menu nad przelacznikiem dzien/noc, /setup.html (zakladka Powiadomienia)
+    foot.insertBefore(makeLink({ href: "/setup.html", label: "Setup", icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>' }, closeExpanded).firstChild, themeBtn);
 
     function paintTheme() {
       var d = isDark();
@@ -389,7 +420,7 @@
     document.body.appendChild(fab);
     document.body.classList.add("qnav-body");
     paintTheme();
-    qAuthBadge(foot);
+    qAuthBadge();
     try { qBell(top, fab, closeExpanded); } catch (e) {}
 
     function isMobile() { return window.matchMedia("(max-width:820px),(pointer:coarse) and (max-height:500px)").matches; }

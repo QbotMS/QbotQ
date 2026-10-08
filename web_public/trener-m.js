@@ -46,8 +46,10 @@
   var DTYPE = { rest: "😴 REST DAY", ill: "🤒 choroba", del: "🧳 delegacja", short: "⏱ brak czasu", trip: "🗺️ wyprawa", urlop: "🏖️ urlop" };
   var CALIC = { rest: "😴", delegacja: "🧳", urlop: "🏖️" }, KIC = { illness: "🤒", reminder: "⏰", event: "📅" };
   var FEEL_E = { "-2": "🤒", "-1": "😕", "0": "😐", "1": "🙂", "2": "😄" }, FEEL_L = { "-2": "fatalnie", "-1": "słabo", "0": "neutralnie", "1": "dobrze", "2": "świetnie" };
-  // 2026-10-08 TRENING: + Miesiac (Kalendarz, #p-kal), Bilans i waga -> Forma, Kalibracja = "Ustawienia"
-  var TABS = [["miesiac", "Miesiąc"], ["tydzien", "Tydzień"], ["czas", "Czas"], ["cele", "Cele"], ["dostep", "Dostępność"], ["sezon", "Sezon"], ["kalib", "Ustawienia"]];
+  // 2026-10-08 TRENING: Kalendarz (kalendarz3.js, #p-kal) zastepuje Tydzien i Miesiac; Bilans i waga -> Forma; Kalibracja = "Ustawienia".
+  // Widok "home" (dawny Tydzien, drawHome) zostaje w kodzie, ale nie jest juz zakladka.
+  // 2026-10-08: Dostepnosc i Ustawienia -> SETUP > Trening (setup.html)
+  var TABS = [["kalendarz", "Kalendarz"], ["czas", "Czas"], ["cele", "Cele"], ["sezon", "Sezon"]];
   var DEF = { rower: ["Rower spokojnie", "12:00", 60, 30], sila: ["Siła obwodowa", "10:00", 40, 15], wiosl: ["Wioślarz spokojnie", "16:00", 30, 15], joga: ["Joga", "09:00", 20, 10] };
 
   var S = { wk: monday(todayMs()), data: null, wx: null, lines: null, ask: null, review: null, autoReview: false, opened: null, open: {}, view: "home", arg: null, tab: "tydzien" };
@@ -161,7 +163,7 @@
     else if (v === "sec") openSec(arg);
     else { if (prev === "sec") S.data = null; view.innerHTML = ""; drawHome(); }
   }
-  window.addEventListener("popstate", function (e) { var st = e.state || {}; show(st.tm || "home", st.arg); });
+  window.addEventListener("popstate", function (e) { var st = e.state || {}; show(st.tm || "sec", st.tm ? st.arg : "kalendarz"); });
   function backHome() { if (S.view === "ses" || S.view === "day") history.back(); else drawHome(); }
 
   // ---------- dane ----------
@@ -460,6 +462,6 @@
   }
 
   var h0 = location.hash.replace("#", "");
-  if (h0 !== "tydzien" && TABS.some(function (t) { return t[0] === h0; })) { history.replaceState({ tm: "sec", arg: h0 }, ""); show("sec", h0); }
-  else { history.replaceState({ tm: "home" }, ""); drawTabs(); drawHome(); }
+  if (!TABS.some(function (t) { return t[0] === h0; })) h0 = "kalendarz";
+  history.replaceState({ tm: "sec", arg: h0 }, ""); show("sec", h0);
 })();

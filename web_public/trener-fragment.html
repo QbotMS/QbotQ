@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- trener-fragment.html (2026-10-08): JEDEN dzial prawdziwego Trenera (trener.js) do osadzenia w ramce innej strony.
-     ?sub=bilans (Forma > Bilans i waga) | tydzien | czas | cele | dostep | sezon | kalib. Bez menu serwisu i paska zakladek.
+     ?sub=bilans (Forma > Bilans i waga) | tydzien | czas | cele | dostep | sezon | sezon_ust | kalib (SETUP > Trening). Bez menu serwisu i paska zakladek.
      Zapisy dzialaja jak w Treningu. Nie zmienia zapamietanej zakladki (localStorage qtrener_sub). Dok.: docs/TRENER.md -->
 <script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
 <script src="/qdate.js?v=1"></script>
 <link rel="stylesheet" href="/ui2.css?v=10">
-<link rel="stylesheet" href="/nav.css?v=8">
+<link rel="stylesheet" href="/nav.css?v=10">
 <link rel="stylesheet" href="/trener.css?v=3">
 <title>Trener (fragment)</title>
 <style>
@@ -26,7 +26,7 @@ body{padding-left:0!important;margin:0!important}
 </div>
 <script>
 (function(){
-  var m=/[?&]sub=([a-z]+)/.exec(location.search),SUB=m?m[1]:"tydzien",old=null;
+  var m=/[?&]sub=([a-z_]+)/.exec(location.search),SUB=m?m[1]:"tydzien",old=null;
   try{old=localStorage.getItem("qtrener_sub");}catch(e){}
   /* trener.js po wczytaniu danych wola TRENER_M.ready() zamiast go(zapamietana); trener-m.js celowo NIE jest ladowany */
   window.TRENER_M={ready:function(){
@@ -36,6 +36,6 @@ body{padding-left:0!important;margin:0!important}
 })();
 </script>
 <script src="/ui2-common.js?v=3"></script>
-<script src="/trener.js?v=34"></script>
+<script src="/trener.js?v=35"></script>
 </body>
 </html>

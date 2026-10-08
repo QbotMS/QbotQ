@@ -1,5 +1,9 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-10-08] SETUP: Polaczenia, Dostepy, Sezony, Kontakty + Wyloguj
+- nav.js v12 / nav.css v10 (Wyloguj #qlogout, qLockMount, bez menu w ramce, bez klodki w menu, ?klodka=1 -> Setup), trener.js v35 (sezon_ust), trener-fragment (sub z podkreslnikiem).
+- Zweryfikowane Playwright: 5 zakladek, Strava/Komoot/Hammerhead w ramkach bez menu, Dostepy dzialaja (lista, Wyloguj), Kontakty: test dodaj grupe/adres/usun (posprzatane), ?klodka=1 -> #dostepy, Trening>Sezon bez ustawien + odnosnik, Wyloguj bez kolizji na 8 stronach (komputer + telefon). Dok.: docs/SETUP.md.
+
 ## [2026-10-08] SETUP > Trening + zebatka nad dzien/noc
 - Dostepnosc i Ustawienia Trenera przeniesione z Treningu do SETUP > Trening (ramki trener-fragment). trener.js v33, trener-m.js v9, nav.js v10. Zweryfikowane Playwright (komputer + telefon): Trening ma Kalendarz/Czas/Cele/Sezon, ramki laduja tresc, #kalib przekierowuje, zebatka nad przelacznikiem. Dok.: docs/SETUP.md.
 - Poprawka: w SETUP > Trening podzakladki u gory (Dostepnosc | Ustawienia Trenera) zamiast dwoch sekcji jedna pod druga; trener.js v34 (#kalib -> #trening-kalib).
