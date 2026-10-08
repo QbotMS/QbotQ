@@ -206,6 +206,51 @@ def _read_req_cookie(request):
     return (rid, sec) if rid and sec else (None, None)
 
 
+# ---------------- 2026-10-07: zdalne zatwierdzanie z okna klodki + powiadomienie Telegram ----------------
+# Wlasciciel widzi oczekujace prosby w oknie klodki (nav.js) BEZ kodu porownawczego - kod musi mu podac gosc,
+# a serwer sprawdza zgodnosc (to zastepuje fizyczne skanowanie QR). 3 bledne kody = prosba odrzucona.
+# Telegram: krotka wiadomosc bez kodu, najwyzej raz na NOTIFY_MIN_S (endpoint startu jest publiczny - ochrona przed spamem).
+NOTIFY_MIN_S = 60
+MAX_CODE_TRIES = 3
+_notify_last = [0.0]
+_code_tries = {}
+
+
+def _ua_short(ua):
+    ua = ua or ""
+    os_ = next((n for k, n in (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"), ("Mac OS", "Mac"),
+                               ("Windows", "Windows"), ("Linux", "Linux")) if k in ua), "nieznany system")
+    br = next((n for k, n in (("Edg/", "Edge"), ("Firefox/", "Firefox"), ("Chrome/", "Chrome"), ("Safari/", "Safari"))
+               if k in ua), "przegladarka")
+    return os_ + " · " + br
+
+
+def _notify_request(ua):
+    now = time.time()
+    if now - _notify_last[0] < NOTIFY_MIN_S:
+        return
+    _notify_last[0] = now
+
+    def _send():
+        try:
+            import httpx
+            import qbot_config as cfg
+            txt = ("\U0001F512 QBot: ktos prosi o dostep tymczasowy (podglad, 1 h).\n"
+                   "Urzadzenie: " + _ua_short(ua) + "\n"
+                   "Zatwierdzisz w menu -> klodka (wpisz kod, ktory poda gosc). Prosba wazna 2 min.\n"
+                   + PUBLIC_BASE.rstrip("/") + "/?klodka=1")
+            httpx.post("https://api.telegram.org/bot" + cfg.TELEGRAM_TOKEN + "/sendMessage",
+                       json={"chat_id": cfg.TELEGRAM_CHAT_ID, "text": txt}, timeout=8)
+        except Exception as e:
+            print("notify_request blad:", type(e).__name__)
+    import threading
+    threading.Thread(target=_send, daemon=True).start()
+
+
+def _norm_code(c):
+    return re.sub(r"[^A-Z0-9]", "", str(c or "").upper())
+
+
 def build_router():
     r = APIRouter()
 
@@ -226,6 +271,7 @@ def build_router():
                 "(id, browser_secret_hash, user_code, status, expires_at, device_info) "
                 "VALUES (%s, %s, %s, 'PENDING', now() + make_interval(secs => %s), %s)",
                 (rid, _sha(sec), code, REQ_TTL_S, ua))
+        _notify_request(ua)
         approve_path = "/auth/device/approve?id=" + rid
         try:
             import qbot_web_auth_ui as _ui
@@ -378,6 +424,16 @@ def build_router():
         resp.delete_cookie(DEMO_COOKIE, path="/")
         return _nostore(resp)
 
+    @r.post("/auth/logout")
+    async def logout(request: Request):
+        """2026-10-07: wylogowanie z dowolnego ekranu (okno klodki w menu). Usuwa ciasteczko wlasciciela (qbot_session)
+        i ewentualne ciasteczko demo. Ciasteczko wlasciciela jest podpisane (bez listy sesji w bazie) - usuniecie = wylogowanie
+        tej przegladarki."""
+        resp = JSONResponse({"ok": True, "redirect": "/login"})
+        resp.delete_cookie("qbot_session", path="/")
+        resp.delete_cookie(DEMO_COOKIE, path="/")
+        return _nostore(resp)
+
     @r.get("/auth/demo/whoami")
     async def demo_whoami(request: Request):
         a = request.scope.get("qbot_auth") or {}
@@ -399,7 +455,7 @@ def build_router():
                 (owner,)).fetchall()
         return _nostore(JSONResponse({
             "sessions": [{"id": x["id"], "created_at": x["created_at"].isoformat(),
-                          "expires_at": x["expires_at"].isoformat(), "device": x["device_info"]} for x in rows],
+                          "expires_at": x["expires_at"].isoformat(), "device": _ua_short(x["device_info"])} for x in rows],
             "csrf": _csrf(request, "sessions")}))
 
     @r.post("/api/auth/sessions/revoke")
@@ -427,5 +483,59 @@ def build_router():
                                  "WHERE id=%s AND owner=%s AND revoked_at IS NULL", (sid, owner)).rowcount
         clear_demo_cache()
         return _nostore(JSONResponse({"ok": True, "revoked": n}))
+
+    @r.get("/api/auth/requests")
+    async def requests_list(request: Request):
+        owner = _deps["owner"](request)
+        if not owner:
+            return Response(status_code=403, content="owner session required")
+        with _deps["db"]() as conn:
+            rows = conn.execute(
+                "SELECT id, created_at, extract(epoch FROM (expires_at - now()))::int AS left_s, device_info "
+                "FROM qbot_v2.web_device_auth_requests WHERE status='PENDING' AND expires_at > now() "
+                "ORDER BY created_at DESC LIMIT 10").fetchall()
+        return _nostore(JSONResponse({
+            "requests": [{"id": x["id"], "created_at": x["created_at"].isoformat(), "left_s": max(0, x["left_s"]),
+                          "device": _ua_short(x["device_info"])} for x in rows],
+            "csrf": _csrf(request, "requests")}))
+
+    @r.post("/api/auth/requests/decide")
+    async def requests_decide(request: Request):
+        owner = _deps["owner"](request)
+        if not owner:
+            return Response(status_code=403, content="owner session required")
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        if not _csrf_ok(request, "requests", body.get("csrf")):
+            return Response(status_code=403, content="csrf")
+        rid, decision = str(body.get("id") or ""), body.get("decision")
+        if decision not in ("approve", "deny") or not rid:
+            return _nostore(JSONResponse({"error": "bad_request"}, status_code=400))
+        with _deps["db"]() as conn:
+            if decision == "deny":
+                row = conn.execute("UPDATE qbot_v2.web_device_auth_requests SET status='DENIED' "
+                                   "WHERE id=%s AND status='PENDING' RETURNING id", (rid,)).fetchone()
+                return _nostore(JSONResponse({"ok": bool(row), "status": "DENIED" if row else "gone"}))
+            cur = conn.execute("SELECT user_code FROM qbot_v2.web_device_auth_requests "
+                               "WHERE id=%s AND status='PENDING' AND expires_at > now()", (rid,)).fetchone()
+            if not cur:
+                return _nostore(JSONResponse({"ok": False, "status": "gone"}))
+            if not hmac.compare_digest(_norm_code(cur["user_code"]), _norm_code(body.get("code"))):
+                n = _code_tries.get(rid, 0) + 1
+                _code_tries[rid] = n
+                if n >= MAX_CODE_TRIES:
+                    conn.execute("UPDATE qbot_v2.web_device_auth_requests SET status='DENIED' "
+                                 "WHERE id=%s AND status='PENDING'", (rid,))
+                    return _nostore(JSONResponse({"ok": False, "status": "denied_bad_code"}))
+                return _nostore(JSONResponse({"ok": False, "status": "bad_code", "tries_left": MAX_CODE_TRIES - n}))
+            row = conn.execute(
+                "UPDATE qbot_v2.web_device_auth_requests SET status='APPROVED', approved_by=%s, "
+                "approved_at=now(), scope=%s, session_ttl_s=%s "
+                "WHERE id=%s AND status='PENDING' AND expires_at > now() RETURNING id",
+                (owner, SCOPE_DEMO, SESSION_TTL_S, rid)).fetchone()
+        _code_tries.pop(rid, None)
+        return _nostore(JSONResponse({"ok": bool(row), "status": "APPROVED" if row else "gone"}))
 
     return r

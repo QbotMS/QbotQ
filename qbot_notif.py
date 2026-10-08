@@ -366,12 +366,79 @@ def sync_live(cur, garage_db: str | None = None, today: date | None = None) -> i
     return len(items)
 
 
+# ---------------- SETUP > Powiadomienia (2026-10-08): ktore rodzaje pokazuje dzwonek ----------------
+# (id, grupa, nazwa, opis, prefiksy kluczy). Wylaczone nie sa pokazywane ani liczone w plakietce;
+# w bazie dalej sie zapisuja (po wlaczeniu od razu widac stan biezacy). Historia pokazuje wszystko.
+SOURCES = [
+    ("jazda", "Jazdy", "Nowa jazda", "jazda rowerowa z ostatnich 3 dni, link do raportu", ("jazda:",)),
+    ("ubior", "Jazdy", "Uzupełnij, w czym jechałeś", "jazda bez wpisanego ubioru i roweru", ("live:ubior:",)),
+    ("rower", "Jazdy", "Rower po jeździe — do zrobienia", "zadania zaznaczone w oknie Ubiór / rower", ("live:rower:",)),
+    ("pogoda", "Pogoda", "Pogoda przed zaplanowaną jazdą", "deszcz, wiatr, przymrozek, burza, śnieg — dziś i jutro", ("live:pogoda:",)),
+    ("trasa", "Trasy", "Trasa czeka na potwierdzenie", "nowa trasa RWGPS / Komoot — odpowiedź w Telegramie", ("live:trasa:",)),
+    ("trener_plan", "Trener", "Plan tygodnia", "kopia wiadomości z Telegrama", ("trener:plan:",)),
+    ("trener_rozl", "Trener", "Rozliczenie tygodnia", "niedziela wieczorem", ("trener:review:",)),
+    ("trener_zmiany", "Trener", "Zmiany planu", "po zmianie w Kalendarzu i po odchyłce wykonania", ("trener:chg:", "trener:adapt:")),
+    ("dane_sen", "Dane", "Brak świeżych danych: sen", "nic nowego dłużej niż 3 dni", ("live:dane:sen",)),
+    ("dane_waga", "Dane", "Brak świeżych danych: waga", "nic nowego dłużej niż 3 dni", ("live:dane:waga",)),
+    ("sys_uslugi", "System", "Usługi QBota", "usługa nie działa, zadanie w tle się wysypało, samoczynny restart", ("live:system:svc:", "system:restart:")),
+    ("sys_dysk", "System", "Mało miejsca na dysku", "zajęte 90% i więcej", ("live:system:dysk",)),
+    ("sys_demo", "System", "Dostęp demo przez QR", "prośba o dostęp i wejścia", ("live:demo:", "system:demo:")),
+    ("sys_login", "System", "Nieudane logowania", "licznik dzienny z godziną ostatniej próby", ("system:login:",)),
+]
+PREF_KEY = "notif.enabled"
+
+
+def source_of(key: str) -> str | None:
+    for sid, _g, _n, _d, prefs in SOURCES:
+        if any(key.startswith(p) for p in prefs):
+            return sid
+    return None
+
+
+def _settings_ensure(cur) -> None:
+    cur.execute("CREATE TABLE IF NOT EXISTS qbot_v2.app_settings (key TEXT PRIMARY KEY, value JSONB NOT NULL, "
+                "updated_at TIMESTAMPTZ NOT NULL DEFAULT now())")
+
+
+def enabled_map(cur) -> dict:
+    """{id: bool}; brak wpisu = wlaczone."""
+    _settings_ensure(cur)
+    cur.execute("SELECT value FROM qbot_v2.app_settings WHERE key=%s", (PREF_KEY,))
+    r = _row(cur)
+    v = (r or {}).get("value") or {}
+    return {sid: bool(v.get(sid, True)) for sid, *_ in SOURCES}
+
+
+def settings_view(cur) -> dict:
+    en = enabled_map(cur)
+    return {"sources": [{"id": sid, "group": g, "label": n, "desc": d, "enabled": en[sid]} for sid, g, n, d, _p in SOURCES]}
+
+
+def settings_save(cur, values: dict) -> dict:
+    import json
+    en = enabled_map(cur)
+    for sid in en:
+        if sid in (values or {}):
+            en[sid] = bool(values[sid])
+    cur.execute("INSERT INTO qbot_v2.app_settings (key, value) VALUES (%s, %s::jsonb) "
+                "ON CONFLICT (key) DO UPDATE SET value=excluded.value, updated_at=now()", (PREF_KEY, json.dumps(en)))
+    return en
+
+
 def listing(cur, limit: int = 60) -> dict:
     cur.execute("SELECT id, key, kind, title, body, url, action, created_at, updated_at, read_at FROM qbot_v2.notif "
                 "WHERE resolved_at IS NULL AND (key LIKE 'live:%%' OR updated_at > now() - make_interval(days => %s)) "
                 "ORDER BY (read_at IS NULL) DESC, updated_at DESC LIMIT %s", (EVENT_DAYS, limit))
     items = []
-    for r in _rows(cur):
+    rows = _rows(cur)
+    try:
+        en = enabled_map(cur)
+    except Exception:
+        cur.connection.rollback(); en = {}
+    for r in rows:
+        sid = source_of(r["key"])
+        if sid and not en.get(sid, True):
+            continue
         items.append({"id": r["id"], "kind": r["kind"], "icon": KIND_ICON.get(r["kind"], "🔔"), "title": r["title"],
                       "body": r["body"], "url": r["url"], "action": r["action"], "unread": r["read_at"] is None,
                       "when": r["updated_at"].strftime("%d.%m %H:%M") if r["updated_at"] else "",

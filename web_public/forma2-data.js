@@ -684,11 +684,14 @@ function renderTrendy(){
     var pwrCanvas=q$("trendy-pwr-canvas");if(!pwrCanvas)return;
     var ds=[];
     if(PWRMODE==="cp"||PWRMODE==="oba")ds.push({label:"CP",data:cpD,borderColor:"#3b82f6",borderWidth:2.5,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false});
-    if(PWRMODE==="ltp"||PWRMODE==="oba")ds.push({label:"LTP",data:ltpD,borderColor:"#9b59b6",borderWidth:2,borderDash:[4,3],pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false});
+    if(PWRMODE==="ltp"||PWRMODE==="oba")ds.push({label:"LTP",data:ltpD,yAxisID:(PWRMODE==="oba"?"y2":"y"),borderColor:"#9b59b6",borderWidth:2,borderDash:[4,3],pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false});
     window._pwrChart=new Chart(pwrCanvas,{type:"line",data:{labels:labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
       plugins:{legend:{display:ds.length>1,position:"top",labels:{usePointStyle:true,pointStyle:"line",boxWidth:20,padding:10,color:txtCol,font:{size:11}}},
         tooltip:{backgroundColor:isDark?"rgba(30,30,30,0.95)":"rgba(255,255,255,0.95)",titleColor:isDark?"#ddd":"#333",bodyColor:isDark?"#bbb":"#555",borderColor:isDark?"#444":"#ddd",borderWidth:1,padding:10,displayColors:true,callbacks:{title:function(items){if(!items.length)return "";var i=items[0].dataIndex;return SN[i]?SN[i].day:"";}}}},
-      scales:{x:{display:false},y:{position:"left",ticks:{color:txtCol,font:{size:10}},grid:{color:gridCol}}}}});
+      /* 2026-10-08: CP + LTP - kazda na wlasnej skali (CP lewa, LTP prawa, etykiety w kolorach linii); prawa os do srodka (mirror),
+         szerokosc 0 - obszar wykresu zostaje rowny wykresowi powyzej (wspolny kursor) */
+      scales:{x:{display:false},y:{position:"left",ticks:{color:PWRMODE==="oba"?"#3b82f6":txtCol,font:{size:10}},grid:{color:gridCol}},
+        y2:{display:PWRMODE==="oba",position:"right",ticks:{color:"#9b59b6",font:{size:10},mirror:true,padding:4},grid:{drawOnChartArea:false},afterFit:function(a){a.width=0;}}}}});
     /* sync hover */
     canvas.addEventListener("mousemove",function(evt){syncHover(window._trendyChart,window._pwrChart,evt);});
     canvas.addEventListener("mouseleave",function(){clearSync(window._pwrChart);});

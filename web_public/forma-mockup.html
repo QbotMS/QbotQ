@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
-<script>if(location.hash==="#trener")location.replace("/trening.html");</script>
+<script>if(location.hash==="#trener")location.replace("/trener.html");</script>
 <script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
 <script src="/qdate.js?v=1"></script>
 <link rel="stylesheet" href="/ui2.css?v=10">
 <link rel="stylesheet" href="/nav.css?v=14">
-<title>QBot — Forma</title>
+<title>QBot — Forma (mockup)</title>
 <style>
 .drow{display:grid;grid-template-columns:70px auto auto auto 1fr 20px;gap:4px 10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px;cursor:pointer}
 .drow .dc{color:var(--ink2);white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -32,14 +32,13 @@
 .qs-tile .l{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em}
 .qs-tile .s{font-size:12px;color:var(--muted);margin-top:2px}
 .qs-tiles .empty{font-size:13px;color:var(--muted)}
-.qs-chartwrap{display:flex;align-items:flex-end;gap:4px;min-height:0;padding:4px 4px 0}
+.qs-chartwrap{display:flex;align-items:flex-end;gap:4px;min-height:180px;padding:8px 4px 0}
 .qs-xlabels{display:flex;gap:4px;padding:4px 4px 0}
 .qs-xlabels span{flex:1;min-width:8px;font-size:10px;color:var(--muted);text-align:center;overflow:hidden;white-space:nowrap}
 table.qs-table{width:100%;border-collapse:collapse;font-size:13px}
 table.qs-table th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--line)}
 table.qs-table td{padding:6px 8px;border-bottom:1px solid var(--line)}
 table.qs-table td.num,table.qs-table th.num{text-align:right;font-variant-numeric:tabular-nums}
-.act-t{width:100%;border-collapse:collapse;font-size:14px}.act-t td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}.act-t tr.act-r{cursor:pointer}.act-t tr.act-r:hover td{background:var(--well)}.act-t tr.act-r.open td{background:var(--well);border-bottom-color:transparent}.act-chev{color:var(--muted);font-size:11px;display:inline-block;width:10px}.act-t tr.act-det td{background:var(--well);padding:4px 12px 12px}.act-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 16px;margin:4px 0 10px}.act-g div{display:flex;flex-direction:column;gap:1px}.act-g span{font-size:11.5px;color:var(--muted)}.act-g b{font-size:15px;font-variant-numeric:tabular-nums}.act-go{display:inline-block;border:1px solid var(--accent);color:var(--accent-ink,var(--accent));border-radius:8px;padding:6px 14px;text-decoration:none;font-weight:600;font-size:13.5px}.act-t th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}.act-t th.num{text-align:right}.act-t td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}.act-t .act-d{white-space:nowrap;color:var(--ink2);width:76px}.act-t tr.act-m td{padding-top:14px;font-size:14.5px;border-bottom:2px solid var(--line)}.act-more{border:1px solid var(--line);background:var(--well);color:var(--ink);border-radius:8px;padding:7px 16px;cursor:pointer;font:inherit;font-size:13.5px}@media(max-width:700px){.act-t td{padding:5px 4px;font-size:13px}.act-t .act-x{display:none}}
 .dztop{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
 .dzg{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px}
 .dzg .gauge{grid-column:span 3}.dzq{grid-column:span 6;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -122,9 +121,8 @@ table.qs-table td.num,table.qs-table th.num{text-align:right;font-variant-numeri
   <button data-t="bilans">Bilans i waga</button>
   </div>
 
-<!-- ============ BILANS I WAGA (2026-10-08: z Trenera; prawdziwy dzial trener.js w ramce trener-fragment.html) ============ -->
-<section class="panel stack" id="p-bilans" hidden><iframe id="fr-bilans" title="Bilans i waga" style="width:100%;border:0;min-height:600px;display:block;background:transparent"></iframe></section>
-
+<div style="background:var(--accent-bg);color:var(--accent-ink);border:1px dashed var(--accent);border-radius:var(--r-sm);padding:9px 12px;font-size:13.5px;margin:0 0 14px;line-height:1.5"><b>Mockup FORMA</b> — obecna Forma + zakładka <b>Bilans i waga</b> przeniesiona z Trenera (prawdziwa, zapisy działają). Sezon już tu jest — Sezon z Trenera trafia do TRENINGU. Druga część: <a href="/trening-mockup.html" style="color:inherit;font-weight:600">mockup TRENING</a>.</div>
+<section class="panel stack" id="p-bilans" hidden><div style="font-size:12.5px;color:var(--muted);margin:0 0 8px">z Trenera</div><iframe id="fr-bilans" title="Bilans i waga" style="width:100%;border:0;min-height:600px;display:block;background:transparent"></iframe></section>
 <!-- ============ DZIENNIK ============ -->
 <section class="panel stack" id="p-dziennik">
 <div class="dztop">
@@ -176,6 +174,21 @@ table.qs-table td.num,table.qs-table th.num{text-align:right;font-variant-numeri
   <div id="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-top:8px;font-variant-numeric:tabular-nums"></div>
 </div>
 
+<div class="card">
+  <div class="rows" id="days">
+    <div class="r"><span class="w">pt 11.09</span><span class="s">regeneracja · sen 79 · HRV 55 · 1 960 kcal</span><span class="chev">›</span>
+      <div class="more"><div class="g4"><div class="mini"><p class="lbl">Moc progowa</p><div class="v">264</div></div><div class="mini"><p class="lbl">Forma / zmęcz.</p><div class="v">76 / 78</div></div><div class="mini"><p class="lbl">Świeżość</p><div class="v">−2.1</div></div><div class="mini"><p class="lbl">Waga</p><div class="v">103.6</div></div></div><div class="sub" style="margin-top:8px">Białko 131 g. Samopoczucie: dobre.</div></div></div>
+    <div class="r"><span class="w">🚲 cz 10.09</span><span class="s">Kampinos gravel · 68 km · obciążenie 112 · 2 180 kcal</span><span class="chev">›</span>
+      <div class="more"><div class="sub">198 W średnio · 141 bpm · 1 020 m w górę · zapas na zrywy min. 18%</div><div class="g4" style="margin-top:8px"><div class="mini"><p class="lbl">Sen</p><div class="v">71</div></div><div class="mini"><p class="lbl">HRV</p><div class="v">52</div></div><div class="mini"><p class="lbl">Świeżość</p><div class="v">+0.4</div></div><div class="mini"><p class="lbl">Białko</p><div class="v">142 g</div></div></div><div style="margin-top:8px"><a class="link" href="/raport-jazdy.html">Raport z jazdy →</a></div></div></div>
+    <div class="r"><span class="w">śr 9.09</span><span class="s">dzień wolny · sen 71 · lekki katar</span><span class="chev">›</span>
+      <div class="more sub">Choroba oznaczona w kalendarzu — zmęczenie liczone z poprawką.</div></div>
+    <div class="r"><span class="w">🚲 wt 8.09</span><span class="s">Spokojna szosa · 52 km · obciążenie 71 · 2 240 kcal</span><span class="chev">›</span>
+      <div class="more sub">172 W średnio · 128 bpm.</div></div>
+    <div class="r"><span class="w">pn 7.09</span><span class="s">regeneracja · sen 88 · HRV 61</span><span class="chev">›</span>
+      <div class="more sub">Waga 104.0 kg.</div></div>
+  </div>
+  <div style="text-align:center;padding:10px 0 2px"><a class="link" href="#dziennik">wcześniej ↓</a></div>
+</div>
 </section>
 
 <!-- ============ TRENDY ============ -->
@@ -325,16 +338,14 @@ table.qs-table td.num,table.qs-table th.num{text-align:right;font-variant-numeri
 <div style="height:10px"></div>
 <div class="card" style="padding:8px"><table class="qs-table" id="qs-bysport"></table></div>
 <div style="height:10px"></div>
-<!-- 2026-10-08: JEDNO zestawienie (forma-stats.js drawList): aktywnosci z okresu i filtra powyzej, miesiacami z sumami;
-     zastapilo tabele dzien/tydzien/miesiac i osobny Wykaz aktywnosci (a ten - kalendarz miesiaca z Dziennika) -->
-<div class="card"><div class="cardhead"><p class="lbl">Aktywności w okresie</p><span class="sub" id="act-sub"></span></div><div id="act-list"><div class="muted">ładuję…</div></div></div>
+<div class="card" style="padding:8px"><table class="qs-table" id="qs-table"></table></div>
 </section>
 
 
 <div style="margin-top:28px;font-size:12px;color:var(--muted)">Stara wersja: <a href="/forma.html">forma.html</a></div>
 </div>
 <script src="/nav.js?v=14"></script>
-<script>/* Bilans i waga: ramka ladowana przy pierwszym otwarciu zakladki, wysokosc dopasowana do tresci */(function(){var fr=document.getElementById("fr-bilans"),b=document.querySelector('#tabs [data-t="bilans"]');if(!fr)return;function load(){if(fr.getAttribute("src"))return;fr.src="/trener-fragment.html?sub=bilans";fr.addEventListener("load",function(){try{var d=fr.contentDocument,set=function(){fr.style.height=Math.max(600,d.documentElement.scrollHeight+24)+"px";};set();new fr.contentWindow.ResizeObserver(set).observe(d.body);}catch(e){}});}if(b)b.addEventListener("click",load);if(location.hash==="#bilans")load();})();</script>
+<script>(function(){var fr=document.getElementById("fr-bilans"),b=document.querySelector('#tabs [data-t="bilans"]');function load(){if(fr.getAttribute("src"))return;fr.src="/mockup-trener-sub.html?sub=bilans";fr.addEventListener("load",function(){try{var d=fr.contentDocument,set=function(){fr.style.height=Math.max(600,d.documentElement.scrollHeight+24)+"px";};set();new fr.contentWindow.ResizeObserver(set).observe(d.body);}catch(e){}});}if(b)b.addEventListener("click",load);if(location.hash==="#bilans")load();})();</script>
 <script>(function(){var b=document.getElementById("themebtn");if(!b)return;var SUN='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',MOON='<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';function paint(){b.querySelector("svg").innerHTML=document.documentElement.classList.contains("theme-dark")?SUN:MOON;}b.addEventListener("click",function(){var d=!document.documentElement.classList.contains("theme-dark");document.documentElement.classList.toggle("theme-dark",d);try{localStorage.setItem("qtheme",d?"dark":"light")}catch(e){}paint();});paint();})();</script>
 <script>
 (function(){
@@ -356,7 +367,7 @@ table.qs-table td.num,table.qs-table th.num{text-align:right;font-variant-numeri
 </script>
 <script src="/ui2-common.js?v=3"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script src="/forma2-data.js?v=59"></script>
-<script src="/forma-stats.js?v=7"></script>
+<script src="/forma2-data.js?v=52"></script>
+<script src="/forma-stats.js?v=4"></script>
 </body>
 </html>

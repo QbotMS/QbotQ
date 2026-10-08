@@ -247,3 +247,19 @@ button.qnav-link{border:0;border-left:3px solid transparent}
 .qnav-link svg{flex:0 0 24px;width:24px;height:24px}
 .qnav-bico{flex:0 0 24px}
 .qnav-bico svg{width:24px;height:24px}
+/* 2026-10-08: dzwonek obok Wyloguj (prawy gorny rog), panel rozwijany pod nim; menu: rzadziej i od linii pod pasem naglowka */
+.qbell .qnav-bico{flex:0 0 20px;width:20px;height:20px}
+.qbell .qnav-bico svg{width:20px;height:20px}
+.qbell-head{margin-left:8px}
+.qbell-fix{right:calc(60px + env(safe-area-inset-right,0px))}
+.qnav-top .qbell-menu{margin-left:auto}
+.qnav-top .qbell-menu + .qnav-logout{margin-left:6px}
+.qnc-pan::before{display:none}
+/* gorna krawedz ikony Start = dolna krawedz pasa naglowka (~80 px) */
+.qnav-prod{margin-top:0}
+.qnav-link{padding-top:13px;padding-bottom:13px}
+
+/* 2026-10-08 (wieczor): dzwonek i Wyloguj jako pozycje stopki lewego menu (nav.js qLogoutBtn/qBell) */
+.qnav .qbell,.qnav-foot .qnav-out{width:100%;background:none;border:0;border-left:3px solid transparent;font:inherit;cursor:pointer;text-align:left}/* border-left jak w .qnav-link: bez niego ikona dzwonka/wyloguj byla 3 px w lewo od osi pozostalych */.qnav > .qbell{margin-bottom:12px;position:relative}.qnav > .qbell::after{content:"";position:absolute;left:12px;right:12px;bottom:-7px;border-bottom:1px solid var(--qn-border)}
+.qnav .qbell .qnav-bico{flex:0 0 24px;width:24px;height:24px}.qnav .qbell .qnav-bico svg{width:24px;height:24px}
+.qnav-foot .qnav-out:hover{color:#e8742a}

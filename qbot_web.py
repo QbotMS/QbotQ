@@ -6629,6 +6629,38 @@ def notif_history(days: int = Query(90)):
         conn.close()
 
 
+@app.get("/api/setup/notif")
+def setup_notif_get():
+    """2026-10-08: SETUP > Powiadomienia - ktore rodzaje pokazuje dzwonek (qbot_notif.SOURCES, qbot_v2.app_settings)."""
+    import qbot_notif as NF
+    conn = _db_conn()
+    try:
+        v = NF.settings_view(conn.cursor())
+        conn.commit()
+        return v
+    finally:
+        conn.close()
+
+
+@app.post("/api/setup/notif")
+async def setup_notif_save(request: Request):
+    """Body: {id: true|false, ...}. Nieznane id sa pomijane."""
+    import qbot_notif as NF
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Oczekiwany obiekt")
+    conn = _db_conn()
+    try:
+        en = NF.settings_save(conn.cursor(), body)
+        conn.commit()
+        return {"ok": True, "enabled": en}
+    finally:
+        conn.close()
+
+
 @app.post("/api/notif/read")
 async def notif_read(request: Request):
     """Body: {ids:[...]} albo {} = wszystkie przeczytane."""
@@ -8375,7 +8407,9 @@ async def forma_analyze(request: Request):
         return None
 
     _PROFILE = (
-        "Zawodnik: kolarz gravel/touring, ~100 kg, prog ModelQ ~240 W, LTHR 132, NIE sciga sie - "
+        "Zawodnik: kolarz gravel/touring, ~100 kg, prog ModelQ ~240 W, LTHR "
+        + str(__import__("fitmodel.lthr", fromlist=["get_lthr"]).get_lthr())   # 2026-10-08 dynamiczne LTHR
+        + ", NIE sciga sie - "
         "cel to dlugie jazdy w terenie, pojemnosc tlenowa i trwalosc, nie krotkie wyscigi. "
     )
     _STYLE = (
@@ -10796,7 +10830,18 @@ def _build_forma_data(conn, start_str, end_str):
         "series": series,
         "latest": latest,
         "training_load": _build_training_load_latest(conn, end_str),
+        "readiness_now": _forma_readiness_now(conn, end_str),
     }
+
+
+def _forma_readiness_now(conn, day_str):
+    """Gotowosc TERAZ (2026-10-08): poranna gotowosc z 3 dni minus malejaca kara za dzisiejsze jazdy.
+    Model i kalibracja: fitmodel/readiness_now.py. Blad nie moze psuc /api/forma/data."""
+    try:
+        from fitmodel import readiness_now as _rn
+        return _rn.compute(conn, day_str)
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)[:200]}
 
 
 @app.get("/api/forma/data")
@@ -10969,7 +11014,10 @@ def api_stats_rides(response: Response, start: str | None = Query(None),
     try:
         cur = conn.cursor()
         cur.execute(
-            "SELECT date, sport_type, duration_s, distance_m, elevation_m, external_id "
+            "SELECT date, sport_type, duration_s, distance_m, elevation_m, external_id, activity_name, started_at, "
+            "avg_power_w, normalized_power_w, max_power_w, avg_hr_bpm, max_hr_bpm, avg_cadence_rpm, calories, intensity_factor, "
+            "(SELECT m.xss_total FROM qbot_v2.modelq2_ride m WHERE m.external_id = training_sessions.external_id "
+            "AND m.xss_total IS NOT NULL LIMIT 1) AS xss "
             "FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s ORDER BY date",
             (start_d.isoformat(), end_d.isoformat()),
         )
@@ -10992,6 +11040,7 @@ def api_stats_rides(response: Response, start: str | None = Query(None),
         buckets = {}
         tot = {"count": 0, "moving_s": 0, "elapsed_s": 0, "distance_m": 0.0, "elevation_m": 0.0}
         by_sport = {}
+        items = []  # 2026-10-08: pojedyncze aktywnosci (Forma > Statystyki: zestawienie)
         for r in rows:
             mov = int(r["duration_s"] or 0)
             ela = int(spans.get(r["external_id"]) or 0)
@@ -11009,6 +11058,13 @@ def api_stats_rides(response: Response, start: str | None = Query(None),
             b = buckets.setdefault(key, {"label": key, "count": 0, "moving_s": 0,
                                          "elapsed_s": 0, "distance_m": 0.0, "elevation_m": 0.0})
             sp = r["sport_type"] or "?"
+            items.append({"date": d.isoformat(), "sport": sp, "name": r.get("activity_name"), "external_id": r["external_id"],
+                          "started_at": r["started_at"].isoformat() if r.get("started_at") else None,
+                          "moving_s": mov, "elapsed_s": ela, "distance_m": dist, "elevation_m": elev,
+                          "xss": round(float(r["xss"])) if r.get("xss") is not None else None,
+                          **{k: (round(float(r[k]), 2) if r.get(k) is not None else None) for k in (
+                              "avg_power_w", "normalized_power_w", "max_power_w", "avg_hr_bpm", "max_hr_bpm",
+                              "avg_cadence_rpm", "calories", "intensity_factor")}})
             s = by_sport.setdefault(sp, {"sport": sp, "count": 0, "moving_s": 0,
                                          "elapsed_s": 0, "distance_m": 0.0, "elevation_m": 0.0})
             for agg in (b, s, tot):
@@ -11020,7 +11076,8 @@ def api_stats_rides(response: Response, start: str | None = Query(None),
         return {"start": start_d.isoformat(), "end": end_d.isoformat(), "granularity": gran,
                 "sports": sports, "totals": tot,
                 "by_sport": sorted(by_sport.values(), key=lambda x: -x["moving_s"]),
-                "buckets": [buckets[k] for k in sorted(buckets)]}
+                "buckets": [buckets[k] for k in sorted(buckets)],
+                "items": sorted(items, key=lambda x: (x["date"], x["started_at"] or ""), reverse=True)}
     finally:
         conn.close()
 

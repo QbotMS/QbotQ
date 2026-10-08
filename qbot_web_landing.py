@@ -52,7 +52,17 @@ a{color:inherit}
 .slide:nth-child(2){background-image:url(/landing/hero-2.jpg);animation-delay:7s}
 .slide:nth-child(3){background-image:url(/landing/hero-3.jpg);animation-delay:14s}
 @keyframes slide{0%{opacity:0;transform:scale(1.12)}5%{opacity:1}33%{opacity:1}39%{opacity:0;transform:scale(1.02)}100%{opacity:0;transform:scale(1.02)}}
-.hero-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:var(--night)}
+.hero-video{position:fixed;inset:0;z-index:0;width:100%;height:100vh;height:100lvh;object-fit:cover;background:var(--night)}
+/* 2026-10-07 SZKLO (wybor uzytkownika, zamiast 'kurtyny'): film przypiety do okna (fixed) i widoczny pod CALA strona.
+   Sekcje ponizej banera: polprzezroczyste ciemne tlo + lekkie rozmycie, zawsze ciemna paleta (jasne napisy), takze w trybie dziennym.
+   Sekcja koncowa pokazuje film zamiast zdjecia hero-2.jpg.
+   Film stoi POZA sekcja .hero (bezposrednio w body): w Safari element fixed wewnatrz rodzica z overflow:hidden bywa przycinany
+   do rodzica i 'odjezdza' razem z nim. .hero ma przezroczyste tlo, zeby nie zaslaniac filmu. */
+.hero{background:transparent}
+.mods,.route,.closing,footer{position:relative;z-index:4;--bg:transparent;--card:rgba(13,16,22,.72);--well:rgba(31,38,49,.8);--ink:#f3efe8;--ink2:#cfd5de;--mut:#a3aab6;--line:rgba(255,255,255,.14);color:var(--ink)}
+.mods,.route,footer{background:rgba(14,17,22,.55);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+section.closing{background:transparent}  /* section. = mocniej niz pozniejsza regula .closing ze zdjeciem */
+body{background:var(--night)}
 .grain{position:absolute;inset:-50%;z-index:1;pointer-events:none;opacity:.16;mix-blend-mode:overlay;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");animation:grain .8s steps(5) infinite}
 @keyframes grain{0%{transform:translate(0,0)}20%{transform:translate(-4%,3%)}40%{transform:translate(3%,-5%)}60%{transform:translate(-6%,-2%)}80%{transform:translate(5%,4%)}100%{transform:translate(0,0)}}
 .shade{position:absolute;inset:0;background:
@@ -163,8 +173,8 @@ footer .wrap{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}
   <div class="mark"><i></i>Albert QBot</div>
 </header>
 
+<video class="hero-video" id="hero-video" muted loop playsinline preload="auto" poster="/landing/hero-poster.jpg" aria-hidden="true"></video>
 <section class="hero">
-  <video class="hero-video" id="hero-video" muted loop playsinline preload="auto" poster="/landing/hero-poster.jpg" aria-hidden="true"></video>
   <div class="grain" aria-hidden="true"></div>
   <div class="shade"></div>
   <div class="hero-body">

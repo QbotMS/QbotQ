@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<script src="/qdate.js?v=1"></script>
+<link rel="stylesheet" href="/ui2.css?v=10">
+<link rel="stylesheet" href="/nav.css?v=4">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<title>QBot — Porównanie 1:1 (mockup)</title>
+<style>
+/* MOCKUP 2026-10-08: porownanie dwoch przejazdow (1:1). Dane: /data/porownanie-1na1-mock.json (artifacts/porownanie_1na1_data.py).
+   Os X = km WSPOLNYCH odcinkow (ten sam kierunek); co ~100 m: roznica czasu ruchu narastajaco, predkosc, moc, tetno obu jazd. */
+:root{--ca:#e8742a;--cb:#3a86ff}
+.mk{background:var(--accent-bg);color:var(--accent-ink);border:1px dashed var(--accent);border-radius:var(--r-sm);padding:9px 12px;font-size:13.5px;margin-bottom:14px;line-height:1.5}
+.sel{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.sel button{font:inherit;font-size:13.5px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:6px 14px;cursor:pointer}
+.sel button.on{border-color:var(--accent);background:var(--accent-bg);color:var(--accent-ink);font-weight:600}
+.duo{display:grid;grid-template-columns:1fr 150px 1fr;gap:10px;align-items:stretch;margin-bottom:10px}
+.rc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;border-top:4px solid var(--ca)}
+.rc.b{border-top-color:var(--cb)}
+.rc .t{font-size:12px;color:var(--muted)}.rc .n{font-size:16px;font-weight:700;margin:2px 0 6px}
+.rc .g{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 10px}
+.rc .g div{display:flex;flex-direction:column}.rc .g span{font-size:11px;color:var(--muted)}.rc .g b{font-size:15px;font-variant-numeric:tabular-nums}
+.zg{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.zg .v{font-size:30px;font-weight:800;line-height:1}.zg .s{font-size:12px;color:var(--muted);margin-top:4px}
+.verd{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--good);border-radius:10px;padding:10px 14px;font-size:15px;line-height:1.5;margin-bottom:10px}
+.verd.bad{border-left-color:var(--bad)}
+.lay{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:start}
+#map{height:520px;border-radius:12px;border:1px solid var(--line)}
+.ch{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.ch .h{font-size:12.5px;color:var(--ink2);display:flex;justify-content:space-between;gap:8px;margin:2px 2px 0}
+.ch .h b{color:var(--ink)}
+#tip{font-size:13px;min-height:20px;margin:4px 2px 6px;color:var(--ink2)}
+#tip b{color:var(--ink)}
+table.sim{width:100%;border-collapse:collapse;font-size:14px}
+table.sim th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.sim td{padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.sim .num{text-align:right;font-variant-numeric:tabular-nums}
+table.sim tr:hover td{background:var(--well)}
+.dg{color:var(--good);font-weight:700}.db{color:var(--bad);font-weight:700}
+.h2{font-size:16px;font-weight:700;margin:16px 0 8px}
+.leg{font-size:12.5px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;margin:6px 2px}
+.leg i{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.segno{background:var(--card);border:2px solid var(--good);color:var(--ink);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+@media(max-width:1100px){.lay{grid-template-columns:1fr}#map{height:340px}}
+@media(max-width:760px){.duo{grid-template-columns:1fr}.zg{flex-direction:row;gap:10px}table.sim .x{display:none}}
+</style>
+</head>
+<body><div class="wrap">
+<div class="head"><h1>Porównanie</h1>
+  <button class="themebtn" id="themebtn" type="button" aria-label="Tryb dzienny / nocny"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button></div>
+<div class="mk"><b>Mockup porównania 1:1.</b> Prawdziwe dane, 3 przykładowe pary: ta sama trasa (100%), trasa częściowo wspólna (57%) i prawie ta sama (77%).
+Wykresy pokazują tylko <b>wspólne odcinki</b> (ten sam kierunek), oś = km wspólnej drogi. Najedź na wykres — punkt pojawi się na mapie.</div>
+<div class="sel" id="sel"></div>
+<div id="root"><div class="muted">ładuję…</div></div>
+</div>
+<script src="/nav.js?v=12"></script>
+<script>(function(){var b=document.getElementById("themebtn");if(!b)return;var SUN='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',MOON='<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';function paint(){b.querySelector("svg").innerHTML=document.documentElement.classList.contains("theme-dark")?SUN:MOON;}b.addEventListener("click",function(){var d=!document.documentElement.classList.contains("theme-dark");document.documentElement.classList.toggle("theme-dark",d);try{localStorage.setItem("qtheme",d?"dark":"light")}catch(e){}paint();});paint();})();</script>
+<script src="/ui2-common.js?v=3"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/qmap-tiles.js?v=15"></script>
+<script>
+(function(){
+"use strict";
+var J,P,MAP=null,MK=null;
+function hm(s){if(s==null)return "—";s=Math.round(Math.abs(s));var h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?h+":"+qPad2(m)+":"+qPad2(x):m+":"+qPad2(x);}
+function n1(v){return v==null?"—":(Math.round(v*10)/10).toString().replace(".",",");}
+function dm(d){return d?QD.dm(d)+"."+d.slice(0,4):"";}
+function sm(arr,k){return arr.map(function(_,i){var s=0,n=0;for(var j=Math.max(0,i-k);j<=Math.min(arr.length-1,i+k);j++)if(arr[j]!=null){s+=arr[j];n++;}return n?s/n:null;});}
+
+fetch("/data/porownanie-1na1-mock.json",{credentials:"same-origin",cache:"no-store"}).then(function(r){return r.json();}).then(function(j){J=j;
+  var L=["ta sama trasa","częściowo wspólna","prawie ta sama"];
+  q$("sel").innerHTML=J.pairs.map(function(p,i){return '<button type="button" data-i="'+i+'">'+QD.dm(p.a.date)+' vs '+QD.dm(p.b.date)+' · '+p.z+'% <span class="muted">('+(L[i]||"")+')</span></button>';}).join("");
+  q$("sel").querySelectorAll("button").forEach(function(b){b.onclick=function(){show(+b.dataset.i);};});show(0);
+}).catch(function(e){q$("root").textContent="Brak danych: "+e.message;});
+
+function card(r,cls,lbl){function c(l,v){return '<div><span>'+l+'</span><b>'+v+'</b></div>';}
+  return '<div class="rc '+cls+'"><div class="t">'+lbl+' · '+dm(r.date)+'</div><div class="n">'+qEsc(r.name||"")+'</div><div class="g">'
+   +c("Dystans",n1(r.km)+" km")+c("Czas",hm(r.time_s))+c("Śr. prędkość",n1(r.kmh)+" km/h")+c("Moc śr. / NP",(r.p||"—")+" / "+(r.np||"—")+" W")
+   +c("Tętno śr.",(r.hr||"—")+" bpm")+c("XSS · ↑",(r.xss||"—")+" · "+(r.up||"—")+" m")+c("Temperatura",r.temp!=null?n1(r.temp)+" °C":"—")+'</div></div>';}
+
+function show(i){P=J.pairs[i];q$("sel").querySelectorAll("button").forEach(function(b){b.classList.toggle("on",+b.dataset.i===i);});
+  var S=P.segments,tA=0,tB=0,km=0,pa=0,pb=0,ha=0,hb=0,w=0;S.forEach(function(g){tA+=g.a.t;tB+=g.b.t;km+=g.len_km;var ww=g.a.t;if(g.a.p&&g.b.p){pa+=g.a.p*ww;pb+=g.b.p*ww;}if(g.a.hr&&g.b.hr){ha+=g.a.hr*ww;hb+=g.b.hr*ww;}w+=ww;});
+  var faster=tA<tB,vA=km/(tA/3600),vB=km/(tB/3600);
+  var h='<div class="duo">'+card(P.a,"a","Ta jazda")+'<div class="zg"><div class="v">'+P.z+'%</div><div class="s">zgodność tras<br>'+P.ab+'% / '+P.ba+'%</div><div class="s"><b>'+n1(km)+' km</b> wspólnie<br>'+S.length+' odc.</div></div>'+card(P.b,"b","Porównywana")+'</div>';
+  h+='<div class="verd'+(faster?"":" bad")+'">Na wspólnych <b>'+n1(km)+' km</b> byłeś <b class="'+(faster?"dg":"db")+'">'+(faster?"szybszy":"wolniejszy")+' o '+hm(tA-tB)+'</b> ('+n1(vA)+' vs '+n1(vB)+' km/h)'
+    +(w&&pa?' przy mocy <b>'+Math.round(pa/w)+'</b> vs '+Math.round(pb/w)+' W':'')+(w&&ha?' i tętnie <b>'+Math.round(ha/w)+'</b> vs '+Math.round(hb/w)+' bpm':'')+'.'
+    +(P.a.temp!=null&&P.b.temp!=null?' Temperatura '+n1(P.a.temp)+' vs '+n1(P.b.temp)+' °C.':'')+'</div>';
+  h+='<div class="lay"><div><div id="map"></div><div class="leg"><span><i style="background:var(--ca)"></i>ta jazda</span><span><i style="background:var(--cb)"></i>porównywana</span><span><i style="background:var(--good);height:7px"></i>wspólne odcinki (numer)</span></div></div>'
+    +'<div><div id="tip">Najedź na wykres.</div><div class="ch" id="charts"></div></div></div>';
+  h+='<div class="h2">Wspólne odcinki</div><div class="card" style="padding:6px 8px;overflow-x:auto"><table class="sim"><tr><th>#</th><th>km tej jazdy</th><th class="num">Długość</th><th class="num">Czas ruchu</th><th class="num">Różnica</th><th class="num">km/h</th><th class="num x">Moc W</th><th class="num x">Tętno</th></tr>'
+    +S.map(function(g,k){var d=g.a.t-g.b.t;return '<tr><td><b>'+(k+1)+'</b></td><td>'+n1(g.km_a[0])+'–'+n1(g.km_a[1])+' <span class="muted" style="font-size:12px">(tam '+n1(g.km_b[0])+'–'+n1(g.km_b[1])+')</span></td><td class="num">'+n1(g.len_km)+' km</td>'
+      +'<td class="num">'+hm(g.a.t)+' <span class="muted">/ '+hm(g.b.t)+'</span></td><td class="num '+(d<=0?"dg":"db")+'">'+(d<=0?"−":"+")+hm(d)+'</td><td class="num">'+n1(g.a.kmh)+' <span class="muted">/ '+n1(g.b.kmh)+'</span></td>'
+      +'<td class="num x">'+(g.a.p||"—")+' <span class="muted">/ '+(g.b.p||"—")+'</span></td><td class="num x">'+(g.a.hr||"—")+' <span class="muted">/ '+(g.b.hr||"—")+'</span></td></tr>';}).join("")+'</table></div>'
+    +'<div style="font-size:12.5px;color:var(--muted);margin-top:6px">Pierwsza wartość = ta jazda, po ukośniku = porównywana. Czas ruchu bez postojów. Zielone = zyskałeś, czerwone = straciłeś.</div>';
+  q$("root").innerHTML=h;drawMap();drawCharts();
+}
+
+function drawMap(){
+  if(MAP){MAP.remove();MAP=null;}if(!window.L)return;
+  MAP=L.map("map",{attributionControl:false});var tl=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18}).addTo(MAP);if(window.qTilesAttach)window.qTilesAttach(MAP,tl);
+  var lb=L.polyline(P.line_b.map(function(p){return [p[0],p[1]];}),{color:"#3a86ff",weight:3,opacity:.75}).addTo(MAP);
+  var la=L.polyline(P.line_a.map(function(p){return [p[0],p[1]];}),{color:"#e8742a",weight:3,opacity:.95}).addTo(MAP);
+  P.segments.forEach(function(g,k){var pts=P.line_a.filter(function(p){return p[2]>=g.km_a[0]&&p[2]<=g.km_a[1];}).map(function(p){return [p[0],p[1]];});
+    if(pts.length>1)L.polyline(pts,{color:"#3fa06a",weight:8,opacity:.45}).addTo(MAP);
+    L.marker(g.mid,{icon:L.divIcon({className:"",html:'<div class="segno">'+(k+1)+'</div>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(MAP);});
+  MK=L.circleMarker(P.line_a[0].slice(0,2),{radius:7,color:"#fff",weight:2,fillColor:"#e8742a",fillOpacity:1}).addTo(MAP);MK.setStyle({opacity:0,fillOpacity:0});
+  MAP.fitBounds(la.getBounds().extend(lb.getBounds()),{padding:[20,20]});
+}
+function moveMk(kmA){if(!MK)return;var best=null;P.line_a.forEach(function(p){if(best===null||Math.abs(p[2]-kmA)<Math.abs(best[2]-kmA))best=p;});if(best){MK.setLatLng([best[0],best[1]]);MK.setStyle({opacity:1,fillOpacity:1});}}
+
+function drawCharts(){
+  var X=P.points;if(!X.length){q$("charts").innerHTML='<div class="muted">brak wspólnych odcinków</div>';return;}
+  var W=640,pl=44,pr=10,xmax=X[X.length-1][0]||1;function XX(v){return pl+v/xmax*(W-pl-pr);}
+  var gap=X.map(function(p){return p[2];}),va=sm(X.map(function(p){return p[3];}),2),vb=sm(X.map(function(p){return p[4];}),2),
+      wa=sm(X.map(function(p){return p[5];}),2),wb=sm(X.map(function(p){return p[6];}),2),ha=sm(X.map(function(p){return p[7];}),1),hb=sm(X.map(function(p){return p[8];}),1);
+  var bounds=[];X.forEach(function(p,i){if(i&&p[9]!==X[i-1][9])bounds.push(p[0]);});
+  function panel(title,H,series,opt){
+    var all=[];series.forEach(function(s){s.v.forEach(function(v){if(v!=null)all.push(v);});});if(!all.length)return "";
+    var lo=Math.min.apply(null,all),hi=Math.max.apply(null,all);if(opt.zero){lo=Math.min(lo,0);hi=Math.max(hi,0);}var pd=Math.max((hi-lo)*0.1,opt.minpad||1);lo-=pd;hi+=pd;
+    function Y(v){return 6+(hi-v)/(hi-lo)*(H-12);}
+    var s='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block" data-h="'+H+'">';
+    bounds.forEach(function(b){s+='<line x1="'+XX(b).toFixed(1)+'" x2="'+XX(b).toFixed(1)+'" y1="4" y2="'+(H-4)+'" stroke="var(--muted)" stroke-dasharray="3 3" opacity=".6"/>';});
+    [lo+pd,hi-pd].forEach(function(v){s+='<text x="'+(pl-5)+'" y="'+(Y(v)+3).toFixed(1)+'" text-anchor="end" font-size="10" fill="var(--muted)">'+opt.f(v)+'</text>';});
+    if(opt.zero){var y0=Y(0);
+      var up="",dn="";X.forEach(function(p,i){var x=XX(p[0]).toFixed(1),y=Y(gap[i]).toFixed(1);up+=(i?" L":"M")+x+" "+(gap[i]>0?y:y0.toFixed(1));dn+=(i?" L":"M")+x+" "+(gap[i]<0?y:y0.toFixed(1));});
+      s+='<path d="'+dn+' L'+XX(xmax).toFixed(1)+' '+y0.toFixed(1)+' L'+XX(0).toFixed(1)+' '+y0.toFixed(1)+' Z" fill="var(--good)" opacity=".28"/><path d="'+up+' L'+XX(xmax).toFixed(1)+' '+y0.toFixed(1)+' L'+XX(0).toFixed(1)+' '+y0.toFixed(1)+' Z" fill="var(--bad)" opacity=".28"/>'
+        +'<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+y0.toFixed(1)+'" y2="'+y0.toFixed(1)+'" stroke="var(--ink2)" stroke-width="1"/>'
+        +'<text x="'+(W-pr)+'" y="'+(H-4)+'" text-anchor="end" font-size="10" fill="var(--good)">▼ ta jazda z przodu</text><text x="'+(W-pr)+'" y="12" text-anchor="end" font-size="10" fill="var(--bad)">▲ ta jazda z tyłu</text>';}
+    series.forEach(function(se){var d="",pen=false;se.v.forEach(function(v,i){if(v==null){pen=false;return;}d+=(pen?" L":"M")+XX(X[i][0]).toFixed(1)+" "+Y(v).toFixed(1);pen=true;});
+      s+='<path d="'+d+'" fill="none" stroke="'+se.c+'" stroke-width="'+(se.w||1.7)+'"'+(se.o?' opacity="'+se.o+'"':'')+'/>';});
+    s+='<line class="cx" x1="0" x2="0" y1="2" y2="'+(H-2)+'" stroke="var(--ink)" opacity="0"/></svg>';
+    return '<div class="h"><b>'+title+'</b><span>'+(opt.note||"")+'</span></div>'+s;}
+  var h=panel("Różnica czasu (narastająco)",120,[{v:gap,c:"var(--ink)",w:2}],{zero:true,f:function(v){return (v>0?"+":v<0?"−":"")+hm(v);},minpad:5,note:"na końcu: "+(gap[gap.length-1]<=0?"−":"+")+hm(gap[gap.length-1])});
+  h+=panel("Prędkość km/h",100,[{v:vb,c:"var(--cb)",o:.85},{v:va,c:"var(--ca)"}],{f:function(v){return Math.round(v);}});
+  if(wa.some(function(v){return v!=null;}))h+=panel("Moc W",100,[{v:wb,c:"var(--cb)",o:.85},{v:wa,c:"var(--ca)"}],{f:function(v){return Math.round(v);}});
+  if(ha.some(function(v){return v!=null;}))h+=panel("Tętno bpm",90,[{v:hb,c:"var(--cb)",o:.85},{v:ha,c:"var(--ca)"}],{f:function(v){return Math.round(v);}});
+  h+='<svg viewBox="0 0 '+W+' 16" style="width:100%;height:auto;display:block">'+[0,0.25,0.5,0.75,1].map(function(f){return '<text x="'+XX(xmax*f).toFixed(1)+'" y="12" text-anchor="middle" font-size="10" fill="var(--muted)">'+n1(xmax*f)+' km</text>';}).join("")+'</svg>';
+  var ch=q$("charts");ch.innerHTML=h;
+  function at(evt){var sv=ch.querySelector("svg"),r=sv.getBoundingClientRect(),xv=(evt.clientX-r.left)*(W/r.width);var km=(xv-pl)/(W-pl-pr)*xmax,best=0;
+    X.forEach(function(p,i){if(Math.abs(p[0]-km)<Math.abs(X[best][0]-km))best=i;});return best;}
+  function hover(evt){var i=at(evt),p=X[i],x=XX(p[0]);ch.querySelectorAll(".cx").forEach(function(l){l.setAttribute("x1",x);l.setAttribute("x2",x);l.setAttribute("opacity",".45");});
+    q$("tip").innerHTML='odcinek <b>'+(p[9]+1)+'</b> · km tej jazdy <b>'+n1(p[1])+'</b> · różnica <b class="'+(gap[i]<=0?"dg":"db")+'">'+(gap[i]<=0?"−":"+")+hm(gap[i])+'</b> · '
+      +'<span style="color:var(--ca)">'+n1(va[i])+'</span> / <span style="color:var(--cb)">'+n1(vb[i])+'</span> km/h'+(wa[i]!=null?' · <span style="color:var(--ca)">'+Math.round(wa[i])+'</span> / <span style="color:var(--cb)">'+(wb[i]!=null?Math.round(wb[i]):"—")+'</span> W':'')
+      +(ha[i]!=null?' · <span style="color:var(--ca)">'+Math.round(ha[i])+'</span> / <span style="color:var(--cb)">'+(hb[i]!=null?Math.round(hb[i]):"—")+'</span> bpm':'');moveMk(p[1]);}
+  ch.addEventListener("mousemove",hover);ch.addEventListener("touchmove",function(e){if(e.touches[0])hover(e.touches[0]);},{passive:true});
+}
+})();
+</script>
+</body>
+</html>

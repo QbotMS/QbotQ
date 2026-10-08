@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<link rel="stylesheet" href="/ui2.css?v=10">
+<link rel="stylesheet" href="/nav.css?v=14">
+<link rel="stylesheet" href="/vendor/leaflet.css">
+<title>QBot — Mapy (porównanie podkładów)</title>
+<style>
+/* MOCKUP 2026-10-07: porownanie ostrosci podkladow map. Strona testowa, poza menu.
+   Filtr nocny = kopia F_NIGHT z qmap-tiles.js (wariant F). Mapy zsynchronizowane: przesuniecie/zoom jednej ruszaja wszystkie. */
+.wrap{max-width:none;padding:22px 24px 24px}
+.ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 12px}
+.ctl select{font:inherit;font-size:14px;padding:6px 9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);min-width:320px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.seg button{font:inherit;font-size:14px;padding:6px 14px;border:0;background:var(--card);color:var(--ink2);cursor:pointer}
+.seg button.on{background:var(--accent);color:#fff;font-weight:700}
+.ctl .sub{font-size:13.5px}
+.grid4{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;height:calc(100vh - 160px);min-height:560px}
+.cell{position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#111}
+.cell .m{position:absolute;inset:0}
+.cell .lab{position:absolute;z-index:500;left:10px;top:10px;max-width:calc(100% - 20px);background:rgba(13,16,22,.86);color:#f3efe8;border-radius:9px;padding:7px 10px;font-size:13px;line-height:1.35;pointer-events:none}
+.cell .lab b{display:block;font-size:14.5px}
+.cell .lab span{color:#b9c0cc}
+.leaflet-layer.nf img.leaflet-tile{filter:grayscale(1) invert(1) contrast(1.0) brightness(1.25) sepia(0.35) hue-rotate(180deg) saturate(1.6)}
+@media(max-width:820px){.grid4{grid-template-columns:1fr;height:auto}.cell{height:70vh}}
+</style>
+</head>
+<body><div class="wrap">
+<div class="head"><h1>Mapy — porównanie</h1></div>
+<div class="ctl">
+  <select id="route"><option>ładuję trasy…</option></select>
+  <span class="seg" id="mode"><button type="button" data-m="day">Dzień</button><button type="button" data-m="night">Noc</button></span>
+  <span class="sub muted">Przesuń lub przybliż dowolną mapę — pozostałe idą za nią. Ostrość najlepiej oceniać przy zoomie 13–15.</span>
+</div>
+<div class="grid4" id="grid"></div>
+</div>
+<script src="/vendor/leaflet.js"></script>
+<script src="/nav.js?v=14"></script>
+<script>
+(function () {
+  "use strict";
+  var OSM = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  var A_OSM = "&copy; OpenStreetMap";
+  var A_CARTO = "&copy; OpenStreetMap, &copy; CARTO";
+  var KEY = "", mode = document.documentElement.classList.contains("theme-dark") ? "night" : "day";
+  function carto(style) { return "https://basemaps.cartocdn.com/rastertiles/" + style + "/{z}/{x}/{y}@2x.png" + (KEY ? "?key=" + encodeURIComponent(KEY) : ""); }
+
+  /* warianty: dla kazdego trybu -> url, opcje kafli, czy nakladac filtr nocny */
+  var V = [
+    { t: "1. Obecna — OpenStreetMap", d: "kafle 256 px; na Retinie rozciągane 2× (rozmyte)",
+      day: function () { return [OSM, {}, false, A_OSM]; }, night: function () { return [OSM, {}, true, A_OSM]; } },
+    { t: "2. OpenStreetMap „Retina” (sztuczka)", d: "kafle o poziom bliżej, pomniejszone o połowę: ostro, ale napisy 2× mniejsze, 4× więcej kafli",
+      day: function () { return [OSM, { tileSize: 128, zoomOffset: 1 }, false, A_OSM]; }, night: function () { return [OSM, { tileSize: 128, zoomOffset: 1 }, true, A_OSM]; } },
+    { t: "3. CARTO Voyager @2x", d: "prawdziwe kafle Retina (512 px), napisy normalnej wielkości; w nocy ten sam filtr co dziś",
+      day: function () { return [carto("voyager"), {}, false, A_CARTO]; }, night: function () { return [carto("voyager"), {}, true, A_CARTO]; } },
+    { t: "4. CARTO Positron / Dark Matter @2x", d: "Retina; jasna minimalistyczna w dzień, natywnie ciemna w nocy (bez filtra)",
+      day: function () { return [carto("light_all"), {}, false, A_CARTO]; }, night: function () { return [carto("dark_all"), {}, false, A_CARTO]; } }
+  ];
+
+  var grid = document.getElementById("grid"), maps = [], lines = [], sync = false;
+  V.forEach(function (v, i) {
+    var cell = document.createElement("div"); cell.className = "cell";
+    cell.innerHTML = '<div class="m" id="m' + i + '"></div><div class="lab"><b>' + v.t + '</b><span>' + v.d + '</span></div>';
+    grid.appendChild(cell);
+    var map = L.map("m" + i, { zoomControl: i === 0, attributionControl: true, zoomSnap: 1 });
+    map.attributionControl.setPrefix(false);
+    map.setView([50.6, 19.5], 11);
+    maps.push({ map: map, v: v, layer: null });
+    map.on("move zoom", function () {
+      if (sync) return; sync = true;
+      var c = map.getCenter(), z = map.getZoom();
+      maps.forEach(function (o) { if (o.map !== map) o.map.setView(c, z, { animate: false }); });
+      sync = false;
+    });
+  });
+
+  function draw() {
+    maps.forEach(function (o) {
+      var r = o.v[mode](), url = r[0], opt = r[1], nf = r[2];
+      if (o.layer) o.map.removeLayer(o.layer);
+      o.layer = L.tileLayer(url, Object.assign({ maxZoom: 19, attribution: r[3] }, opt)).addTo(o.map);
+      o.layer.on("add load", function () { var c = o.layer.getContainer(); if (c) c.classList.toggle("nf", nf); });
+      var c = o.layer.getContainer(); if (c) c.classList.toggle("nf", nf);
+    });
+    document.querySelectorAll("#mode button").forEach(function (b) { b.classList.toggle("on", b.dataset.m === mode); });
+  }
+  document.querySelectorAll("#mode button").forEach(function (b) { b.onclick = function () { mode = b.dataset.m; draw(); }; });
+
+  function showRoute(id) {
+    fetch("/api/routes/" + encodeURIComponent(id) + "/geometry", { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (g) {
+      var pts = g.coordinates || []; if (!pts.length) return;
+      lines.forEach(function (l) { l[0].removeLayer(l[1]); }); lines = [];
+      maps.forEach(function (o) { lines.push([o.map, L.polyline(pts, { color: "#e8742a", weight: 4, opacity: .9 }).addTo(o.map)]); });
+      /* start: fragment trasy z bliska (zoom 14) - tam widac roznice ostrosci */
+      sync = true; maps.forEach(function (o) { o.map.setView(pts[Math.floor(pts.length / 4)], 14, { animate: false }); }); sync = false;
+    });
+  }
+
+  fetch("/api/config/map", { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; })
+    .catch(function () { return {}; }).then(function (j) {
+      KEY = (j && j.carto_key) || ""; draw();
+      return fetch("/api/routes/ready", { credentials: "same-origin" }).then(function (r) { return r.json(); });
+    }).then(function (d) {
+      var rs = (d && d.routes) || [], sel = document.getElementById("route");
+      if (!rs.length) { sel.innerHTML = "<option>brak tras</option>"; return; }
+      sel.innerHTML = rs.map(function (r) { return '<option value="' + r.route_id + '">' + r.name + " — " + r.distance_km + " km</option>"; }).join("");
+      var pick = rs.filter(function (r) { return /Orlich/i.test(r.name); })[0] || rs[0];
+      sel.value = pick.route_id; showRoute(pick.route_id);
+      sel.onchange = function () { showRoute(sel.value); };
+    });
+})();
+</script>
+</body>
+</html>

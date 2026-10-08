@@ -201,7 +201,7 @@ function render(d){
 
 /* 2026-10-08: JEDNO zestawienie zamiast tabeli podokresow + osobnego wykazu: pojedyncze aktywnosci z okresu i filtra rodzaju,
    pogrupowane miesiacami (naglowek = sumy miesiaca w okresie), domyslnie 10 pozycji, reszta po "Rozwin". Dane: d.items z /api/stats/rides. */
-let LIST_OPEN = false, LIST_KEY = "";
+let LIST_OPEN = false, LIST_KEY = "", OPEN_ID = null;
 const ICO = s => { s=(s||"").toLowerCase(); return s.indexOf("cycl")>=0||s.indexOf("bik")>=0?"🚴🏻":s.indexOf("strength")>=0?"🏋️":s.indexOf("rowing")>=0?"🚣":s.indexOf("walk")>=0||s.indexOf("hik")>=0?"🚶":s.indexOf("run")>=0?"🏃":s.indexOf("yoga")>=0?"🧘":s.indexOf("swim")>=0?"🏊":"•"; };
 const MNF = ["Styczeń","Luty","Marzec","Kwiecień","Maj","Czerwiec","Lipiec","Sierpień","Wrzesień","Październik","Listopad","Grudzień"];
 const DNS = ["nd","pn","wt","śr","cz","pt","sb"];
@@ -224,16 +224,36 @@ function drawList(d){
       h += '<tr class="act-m"><td colspan="2"><b>'+MNF[+m.slice(5,7)-1]+' '+m.slice(0,4)+'</b> <span class="muted">· '+t.n+' akt.</span></td>'
         + '<td class="num">'+fmtKm(t.dist)+'</td><td class="num">'+fmtH(t.mov)+'</td><td class="num act-x">'+fmtH(t.ela)+'</td><td class="num act-x">'+fmtM(t.elev)+'</td><td class="num act-x">'+(t.xss?Math.round(t.xss):'')+'</td></tr>'; }
     const nm = it.name || spl(it.sport);
-    h += '<tr><td class="act-d">'+(it.date!==lastD ? DNS[dd.getDay()]+' '+QD.dm(it.date) : '')+'</td><td>'+ICO(it.sport)+' '
-      + (bike && it.external_id ? '<a class="link" href="/raport-jazdy.html?ride='+encodeURIComponent(it.external_id)+'">'+esc(nm)+'</a>' : esc(nm))+'</td>'
+    const op = OPEN_ID === (it.external_id||it.date+i);
+    h += '<tr class="act-r'+(op?' open':'')+'" data-i="'+i+'" tabindex="0"><td class="act-d">'+(it.date!==lastD ? DNS[dd.getDay()]+' '+QD.dm(it.date) : '')+'</td><td><span class="act-chev">'+(op?'▾':'▸')+'</span> '+ICO(it.sport)+' '+esc(nm)+'</td>'
       + '<td class="num">'+(it.distance_m ? fmtKm(it.distance_m) : '')+'</td><td class="num">'+fmtH(it.moving_s)+'</td><td class="num act-x">'+fmtH(it.elapsed_s)+'</td>'
       + '<td class="num act-x">'+(it.elevation_m ? fmtM(it.elevation_m) : '')+'</td><td class="num act-x">'+(it.xss!=null ? it.xss : '')+'</td></tr>';
+    if(op) h += '<tr class="act-det"><td colspan="7">'+detail(it, bike)+'</td></tr>';
     lastD = it.date;
   }
   h += '</tbody></table></div>';
   if(items.length > LIM) h += '<div style="text-align:center;padding:10px 0 2px"><button type="button" class="act-more">'+(LIST_OPEN ? 'Zwiń do '+LIM : 'Rozwiń — pokaż pozostałe '+(items.length-LIM))+'</button></div>';
   box.innerHTML = h;
   const b = box.querySelector(".act-more"); if(b) b.onclick = () => { LIST_OPEN = !LIST_OPEN; drawList(d); if(!LIST_OPEN && box.scrollIntoView) box.scrollIntoView({block:"nearest"}); };
+  box.querySelectorAll("tr.act-r").forEach(tr => { const go = () => { const it = items[+tr.dataset.i], id = it.external_id||it.date+tr.dataset.i;
+      OPEN_ID = OPEN_ID === id ? null : id; drawList(d); };
+    tr.addEventListener("click", go); tr.addEventListener("keydown", e => { if(e.key==="Enter"||e.key===" "){ e.preventDefault(); go(); } }); });
+}
+/* rozwiniecie aktywnosci: kluczowe statystyki + przejscie do raportu z jazdy (tylko rower) */
+function detail(it, bike){
+  const n0 = v => v==null ? null : Math.round(v), kmh = it.distance_m && it.moving_s ? (it.distance_m/1000)/(it.moving_s/3600) : null;
+  const st = it.started_at ? new Date(it.started_at) : null, hh = st ? String(st.getHours()).padStart(2,"0")+":"+String(st.getMinutes()).padStart(2,"0") : null;
+  const T = [["Start", hh], ["Śr. prędkość", kmh ? (Math.round(kmh*10)/10).toString().replace(".",",")+" km/h" : null],
+    ["Śr. moc", it.avg_power_w ? n0(it.avg_power_w)+" W" : null], ["Moc znormalizowana", it.normalized_power_w ? n0(it.normalized_power_w)+" W" : null],
+    ["Maks. moc", it.max_power_w ? n0(it.max_power_w)+" W" : null], ["Tętno śr. / maks.", it.avg_hr_bpm ? n0(it.avg_hr_bpm)+(it.max_hr_bpm ? " / "+n0(it.max_hr_bpm) : "")+" bpm" : null],
+    ["Kadencja", it.avg_cadence_rpm ? n0(it.avg_cadence_rpm)+" rpm" : null], ["Intensywność (IF)", it.intensity_factor ? (Math.round(it.intensity_factor*100)/100).toString().replace(".",",") : null],
+    ["Obciążenie", it.xss!=null ? it.xss+" XSS" : null], ["Kalorie", it.calories ? n0(it.calories)+" kcal" : null],
+    ["Przerwy", it.elapsed_s && it.moving_s && it.elapsed_s-it.moving_s>=60 ? fmtH(it.elapsed_s-it.moving_s) : null], ["Przewyższenie", it.elevation_m ? fmtM(it.elevation_m) : null]]
+    .filter(x => x[1]);
+  let h = '<div class="act-g">'+T.map(x => '<div><span>'+x[0]+'</span><b>'+x[1]+'</b></div>').join("")+'</div>';
+  if(bike && it.external_id) h += '<a class="act-go" href="/raport-jazdy.html?ride='+encodeURIComponent(it.external_id)+'">Raport z jazdy →</a>';
+  else if(!T.length) h += '<div class="muted">brak dodatkowych danych dla tej aktywności</div>';
+  return h;
 }
 
 

@@ -412,3 +412,32 @@ Problem: dopasowanie jazdy do planu (`match_done`: ten sam dzień + sport) oznac
   rower dopiero z XSS ModelQ → przy reakcji przeliczenie bieżącego tygodnia jako zmiana `wykonanie` (Akceptuj / Cofnij)
   + rolowanie + Telegram (`adapt_text`: plan → realnie, przyczyna, zmiany, przycisk Cofnij). Wyprawy z Kalendarza nie są ruszane.
 - UI (`trener.js` v29): zrobiona sesja pokazuje „realnie 2:21 · obc. 130 (plan 30′ · 22)” + „więcej / mniej niż plan / jak w planie”.
+
+## Strona TRENING zamiast Kalendarza i Trenera [TRENING-2026-10-08]
+Jedna pozycja menu **Trening** (`/trening.html`, ikona hantla) zamiast „Trener” i „Kalendarz”. Zakładki:
+**Miesiąc** (dawny Kalendarz) · Tydzień · Czas · Cele · Dostępność · Sezon · **Ustawienia** (= Kalibracja).
+- Miesiąc = sekcja `#p-kal` w `trening.html` + `kalendarz2-data.js` (bez zmian; style kalendarza zawężone do `#p-kal`).
+- Pozostałe zakładki = działy `trener.js` (komputer) / `trener-m.js` (telefon, iPad). `go("miesiac")` ustawia `body.tr-month`
+  (CSS chowa `#tr-body`, pokazuje `#p-kal`); na telefonie `#p-kal` widać tylko w trybie działu (`body.tm-sec`).
+- Adres zakładki w `#hash` (np. `/trening.html#miesiac`); `trener.js` przy starcie bierze hash przed zapamiętaną zakładką.
+- **Bilans i waga** przeniesiony do **Formy** (zakładka `#bilans`): ramka `/trener-fragment.html?sub=bilans` = prawdziwy dział
+  `trener.js` bez menu (nie ładuje `trener-m.js`, nie zmienia zapamiętanej zakładki). `go("bilans")` dalej istnieje.
+- `/trener.html` → `/trening.html` (zachowuje `?full=1`/`?m=1` i `#`), `/kalendarz.html` → `/trening.html#miesiac`.
+  Link w Telegramie (`qbot_trener_notify.py`): `https://albert.cytr.us/trening.html`.
+- Kopie sprzed zmiany: `*.bak.20261008-trening` (trener.js, trener-m.js, forma.html, nav.js) oraz `trener.html.bak.*`, `kalendarz.html.bak.*`.
+- Do rozstrzygnięcia: Sezon w Treningu (plan faz) i Sezon w Formie (analiza) częściowo się dublują.
+
+## Kalendarz = Miesiąc + Tydzień (kalendarz3.js) [KALENDARZ3-2026-10-08]
+Zakładki Treningu: **Kalendarz** · Czas · Cele · Dostępność · Sezon · Ustawienia (zastępuje Miesiąc i Tydzień z wpisu wyżej).
+- `kalendarz3.js` (poza repo, sekcja `#p-kal` w `trening.html`): siatka miesiąca, tydzień wybranego dnia **powiększony**
+  (karty dni: plan Trenera, zrobione z km/czas/XSS, wpisy, typ dnia, pogoda, gotowość, sen/waga), pozostałe tygodnie ściśnięte;
+  kolumna tygodnia z podsumowaniem (tren./km/XSS). Klik dnia = panel dnia (+ powiększa jego tydzień), klik etykiety = powiększa tydzień.
+- Nagłówek tygodnia: 4 wąskie kafle (Plan/zrobione, Obciążenie, Sesje ✓/plan, Cel z Sezonu) + **5. kafel = ostrzeżenia**
+  (zmiany do Akceptuj/Cofnij, gotowość, uwagi sezonu, ostrzeżenia sesji z „rozumiem”) — zawsze na wierzchu.
+  „Szczegóły tygodnia” (pasek godzin z widełkami, Poproś Trenera, Weryfikacja AI) zwinięte. „↻ przelicz tydzień” = POST /week/generate.
+- Panel dnia: samopoczucie / wydarzenie / choroba / przypomnij = edytor wpisów (port z kalendarz2-data.js: typy, kolory, wielodniowe,
+  trasa dnia, raport mailem, usuwanie); „＋ trening” (POST /sessions), „✎ ustaw dzień” (POST /week/action: rest/short/ill/del/clear).
+  Klik w trening = okno treningu (zrobione / minimum / pomiń / usuń / przywróć / godzina / czas / przenieś / zamień, ściąga siły).
+- `trener.js`: go("miesiac"|"tydzien") na stronie z `#p-kal` → "kalendarz"; go("kalendarz") woła `KAL3.refresh(true)`. rWeek zostaje
+  dla `trener-fragment.html?sub=tydzien`. `trener-m.js`: zakładka startowa = Kalendarz, widok "home" (dawny Tydzień) nieużywany.
+- `kalendarz2-data.js` nie jest już ładowany przez żadną stronę (zostaje jako źródło portu). Kopie: `*.bak.20261008-kalendarz3`.

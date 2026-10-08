@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<script src="/qdate.js?v=1"></script>
+<link rel="stylesheet" href="/ui2.css?v=10">
+<link rel="stylesheet" href="/nav.css?v=4">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<title>QBot — Porównanie (mockup)</title>
+<style>
+/* MOCKUP 2026-10-08: Porownanie przejazdow wg GPS. Dane: /data/porownanie-mock.json (skrypt /opt/qbot/artifacts/porownanie_mock_data.py),
+   ostatnie 20 jazd z domu; ten sam kierunek; zgodnosc = udzial trasy w kratkach ~100 m; odcinki wspolne >= 1 km, czas = czas ruchu. */
+.mk{background:var(--accent-bg);color:var(--accent-ink);border:1px dashed var(--accent);border-radius:var(--r-sm);padding:9px 12px;font-size:13.5px;margin-bottom:14px;line-height:1.5}
+.sel{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.sel select{font:inherit;font-size:15px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);max-width:100%}
+.h2{font-size:16px;font-weight:700;margin:18px 0 8px;display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.h2 small{font-weight:400;color:var(--muted);font-size:12.5px}
+table.sim{width:100%;border-collapse:collapse;font-size:14px}
+table.sim th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.sim td{padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.sim .num{text-align:right;font-variant-numeric:tabular-nums}
+table.sim tr.r{cursor:pointer}table.sim tr.r:hover td{background:var(--well)}table.sim tr.on td{background:var(--accent-bg)}
+table.sim tr.tier td{font-size:12.5px;color:var(--ink2);padding-top:12px;font-weight:600}
+.zb{display:inline-block;width:70px;height:7px;border-radius:4px;background:var(--line);position:relative;vertical-align:middle;margin-right:6px}
+.zb i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--good)}
+.zb.mid i{background:var(--accent)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:2px;background:var(--card)}
+.seg button{border:0;background:none;color:var(--ink2);font:inherit;font-size:13px;padding:4px 10px;border-radius:999px;cursor:pointer}
+.seg button.on{background:var(--accent);color:#fff}
+.tiles{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:7px 12px;min-width:120px}
+.tile .l{font-size:12px;color:var(--ink2)}.tile .v{font-size:19px;font-weight:700}
+.tile .v.g{color:var(--good)}.tile .v.b{color:var(--bad)}
+#map{height:380px;border-radius:12px;border:1px solid var(--line);margin-bottom:10px}
+.leg{font-size:12.5px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;margin:0 0 10px}
+.leg i{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.dg{color:var(--good);font-weight:600}.db{color:var(--bad);font-weight:600}
+.empty{color:var(--muted);font-size:14px;padding:6px 0}
+@media(max-width:760px){table.sim .x{display:none}#map{height:280px}}
+</style>
+</head>
+<body><div class="wrap">
+<div class="head"><h1>Porównanie</h1>
+  <button class="themebtn" id="themebtn" type="button" aria-label="Tryb dzienny / nocny"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button></div>
+
+<div class="mk"><b>Mockup „Porównanie”.</b> Prawdziwe dane: ostatnie 20 jazd startujących przy domu. Podobne = ten sam kierunek, zgodność liczona w kratkach ~100 m.
+<b>≥ 80%</b> = ta sama trasa (trend), <b>50–79%</b> = częściowo wspólna (porównanie odcinków). W mockupie porównanie odcinków policzone dla 3 najbliższych przejazdów.</div>
+
+<div class="sel"><label for="ride">Jazda:</label><select id="ride"></select></div>
+
+<div class="h2">Podobne wcześniejsze przejazdy <small id="simsub"></small></div>
+<div class="card" style="padding:6px 8px;overflow-x:auto"><table class="sim" id="sim"></table></div>
+
+<div id="trendbox">
+<div class="h2">Trend na tej trasie <span class="seg" id="tm"><button data-m="kmh" class="on">prędkość</button><button data-m="time_s">czas</button><button data-m="p">moc</button><button data-m="hr">tętno</button><button data-m="xss">XSS</button></span></div>
+<div class="card" style="padding:10px"><div id="trend"></div><div class="sub" id="trendsub" style="font-size:12.5px;color:var(--muted);margin-top:4px"></div></div>
+</div>
+
+<div class="h2">Porównanie z wybranym przejazdem <small id="cmpsub"></small></div>
+<div id="cmp"><div class="empty">Kliknij przejazd na liście powyżej.</div></div>
+</div>
+<script src="/nav.js?v=12"></script>
+<script>(function(){var b=document.getElementById("themebtn");if(!b)return;var SUN='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',MOON='<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';function paint(){b.querySelector("svg").innerHTML=document.documentElement.classList.contains("theme-dark")?SUN:MOON;}b.addEventListener("click",function(){var d=!document.documentElement.classList.contains("theme-dark");document.documentElement.classList.toggle("theme-dark",d);try{localStorage.setItem("qtheme",d?"dark":"light")}catch(e){}paint();});paint();})();</script>
+<script src="/ui2-common.js?v=3"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/qmap-tiles.js?v=15"></script>
+<script>
+(function(){
+"use strict";
+var J=null,CUR=null,SEL=null,MET="kmh",MAP=null;
+function hm(s){if(s==null)return "—";s=Math.round(s);var h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?h+":"+qPad2(m)+":"+qPad2(x):m+":"+qPad2(x);}
+function n1(v){return v==null?"—":(Math.round(v*10)/10).toString().replace(".",",");}
+function dm(d){return d?QD.dm(d)+"."+d.slice(2,4):"";}
+function delta(a,b,lowerBetter,fmt){if(a==null||b==null)return "";var d=a-b;if(Math.abs(d)<1e-9)return '<span class="muted">=</span>';var good=lowerBetter?d<0:d>0;return '<span class="'+(good?"dg":"db")+'">'+(d>0?"+":"−")+fmt(Math.abs(d))+'</span>';}
+
+fetch("/data/porownanie-mock.json",{credentials:"same-origin",cache:"no-store"}).then(function(r){return r.json();}).then(function(j){J=j;
+  var s=q$("ride");s.innerHTML=J.rides.map(function(r,i){var R=r.ride,n80=r.similar.filter(function(x){return x.z>=80;}).length;
+    return '<option value="'+i+'">'+dm(R.date)+' · '+qEsc(R.name||"")+' · '+n1(R.km)+' km — '+(n80?n80+" × ta sama trasa":r.similar.length?r.similar.length+" częściowo wspólnych":"brak podobnych")+'</option>';}).join("");
+  var first=J.rides.findIndex(function(r){return r.similar.some(function(x){return x.z>=80;});});s.value=String(first>=0?first:0);
+  s.onchange=function(){pick(+s.value);};pick(+s.value);
+}).catch(function(e){q$("sim").innerHTML='<tr><td class="empty">Brak danych mockupu: '+qEsc(e.message)+'</td></tr>';});
+
+function pick(i){CUR=J.rides[i];SEL=null;
+  var sim=CUR.similar,a=sim.filter(function(x){return x.z>=80;}),b=sim.filter(function(x){return x.z<80;});
+  q$("simsub").textContent=a.length+" × ta sama trasa (≥ 80%) · "+b.length+" × częściowo wspólna (50–79%)";
+  var R=CUR.ride,h='<tr><th>Data</th><th>Jazda</th><th class="num">km</th><th>Zgodność</th><th class="num">Czas</th><th class="num">km/h</th><th class="num x">Moc</th><th class="num x">Tętno</th><th class="num x">XSS</th></tr>';
+  h+='<tr class="on"><td><b>'+dm(R.date)+'</b></td><td><b>'+qEsc(R.name||"")+'</b> <span class="muted">(ta jazda)</span></td><td class="num">'+n1(R.km)+'</td><td></td><td class="num">'+hm(R.time_s)+'</td><td class="num">'+n1(R.kmh)+'</td><td class="num x">'+(R.p||"—")+'</td><td class="num x">'+(R.hr||"—")+'</td><td class="num x">'+(R.xss||"—")+'</td></tr>';
+  function rows(L,t){if(!L.length)return "";var o='<tr class="tier"><td colspan="9">'+t+'</td></tr>';
+    L.forEach(function(x){o+='<tr class="r" data-id="'+x.id+'"><td>'+dm(x.date)+'</td><td>'+qEsc(x.name||"")+'</td><td class="num">'+n1(x.km)+'</td>'
+      +'<td><span class="zb'+(x.z<80?" mid":"")+'"><i style="width:'+x.z+'%"></i></span><b>'+x.z+'%</b> <span class="muted" style="font-size:12px" title="ile tej jazdy pokrywa tamta / ile tamtej pokrywa ta">('+x.ab+'/'+x.ba+')</span></td>'
+      +'<td class="num">'+hm(x.time_s)+'</td><td class="num">'+n1(x.kmh)+' '+delta(x.kmh,R.kmh,false,n1)+'</td><td class="num x">'+(x.p||"—")+'</td><td class="num x">'+(x.hr||"—")+'</td><td class="num x">'+(x.xss||"—")+'</td></tr>';});return o;}
+  h+=rows(a,"Ta sama trasa (≥ 80%) — trend")+rows(b,"Częściowo wspólna (50–79%) — porównanie wspólnych odcinków");
+  if(!sim.length)h+='<tr><td colspan="9" class="empty">Brak wcześniejszych przejazdów z co najmniej 50% wspólnej trasy w tym samym kierunku.</td></tr>';
+  q$("sim").innerHTML=h;
+  q$("sim").querySelectorAll("tr.r").forEach(function(tr){tr.onclick=function(){SEL=tr.dataset.id;q$("sim").querySelectorAll("tr.r").forEach(function(z){z.classList.toggle("on",z===tr);});drawCmp();q$("cmp").scrollIntoView({behavior:"smooth",block:"start"});};});
+  drawTrend();
+  var f=Object.keys(CUR.compare)[0];if(f){SEL=f;var tr=q$("sim").querySelector('tr.r[data-id="'+f+'"]');if(tr)tr.classList.add("on");}
+  drawCmp();
+}
+
+/* trend: ta jazda + przejazdy >= 80% */
+var MD={kmh:["Śr. prędkość","km/h",false],time_s:["Czas","",true],p:["Śr. moc","W",false],hr:["Śr. tętno","bpm",true],xss:["Obciążenie","XSS",null]};
+q$("tm").querySelectorAll("button").forEach(function(b){b.onclick=function(){MET=b.dataset.m;q$("tm").querySelectorAll("button").forEach(function(x){x.classList.toggle("on",x===b);});drawTrend();};});
+function drawTrend(){
+  var L=CUR.similar.filter(function(x){return x.z>=80;}).concat([Object.assign({me:true},CUR.ride)]).filter(function(x){return x[MET]!=null;}).sort(function(a,b){return a.date<b.date?-1:1;});
+  if(L.length<2){q$("trend").innerHTML='<div class="empty">Za mało przejazdów tej samej trasy (≥ 80%), żeby pokazać trend.</div>';q$("trendsub").textContent="";return;}
+  var W=800,H=200,pl=48,pr=14,t0=14,t1=170,v=L.map(function(x){return x[MET];}),lo=Math.min.apply(null,v),hi=Math.max.apply(null,v),pd=Math.max((hi-lo)*0.15,MET==="time_s"?60:1);lo-=pd;hi+=pd;
+  var d0=new Date(L[0].date).getTime(),d1=new Date(L[L.length-1].date).getTime()||d0+1;
+  function X(x){return pl+((new Date(x.date).getTime()-d0)/Math.max(1,d1-d0))*(W-pl-pr);}function Y(x){return t1-(x-lo)/(hi-lo)*(t1-t0);}
+  var fmt=MET==="time_s"?hm:function(x){return n1(x);},low=MD[MET][2];
+  var best=L.reduce(function(a,b){return low===null?(a[MET]>=b[MET]?a:b):(low?(a[MET]<=b[MET]?a:b):(a[MET]>=b[MET]?a:b));});
+  var s='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block">';
+  [lo+pd,(lo+hi)/2,hi-pd].forEach(function(y){s+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(y).toFixed(1)+'" y2="'+Y(y).toFixed(1)+'" stroke="var(--line)" opacity=".6"/><text x="'+(pl-6)+'" y="'+(Y(y)+3).toFixed(1)+'" text-anchor="end" font-size="10" fill="var(--muted)">'+fmt(y)+'</text>';});
+  var path="";L.forEach(function(x,i){path+=(i?" L":"M")+X(x).toFixed(1)+" "+Y(x[MET]).toFixed(1);});
+  s+='<path d="'+path+'" fill="none" stroke="var(--blue)" stroke-width="1.6" opacity=".6"/>';
+  L.forEach(function(x){s+='<circle cx="'+X(x).toFixed(1)+'" cy="'+Y(x[MET]).toFixed(1)+'" r="'+(x.me?6:4.2)+'" fill="'+(x.me?"var(--accent)":x===best?"var(--good)":"var(--blue)")+'" stroke="var(--card)" stroke-width="1.5"><title>'+dm(x.date)+': '+fmt(x[MET])+' '+MD[MET][1]+(x.me?" (ta jazda)":"")+(x===best?" — najlepszy":"")+'</title></circle>';});
+  [L[0],L[L.length-1]].forEach(function(x,i){s+='<text x="'+X(x).toFixed(1)+'" y="'+(H-8)+'" text-anchor="'+(i?"end":"start")+'" font-size="10.5" fill="var(--muted)">'+dm(x.date)+'</text>';});
+  s+='</svg>';q$("trend").innerHTML=s;
+  var me=L.filter(function(x){return x.me;})[0],rank=L.slice().sort(function(a,b){return low===false||low===null?b[MET]-a[MET]:a[MET]-b[MET];}).indexOf(me)+1;
+  q$("trendsub").innerHTML='<span style="color:var(--accent)">●</span> ta jazda · <span style="color:var(--good)">●</span> najlepszy ('+dm(best.date)+': '+fmt(best[MET])+' '+MD[MET][1]+') · ta jazda: <b>'+rank+'. miejsce</b> z '+L.length+' przejazdów · cała jazda (trend wspólnych odcinków w wersji docelowej)';
+}
+
+/* porownanie 1:1 */
+function drawCmp(){
+  var el=q$("cmp"),x=CUR.similar.filter(function(s){return s.id===SEL;})[0],c=SEL&&CUR.compare[SEL],R=CUR.ride;
+  if(!x){el.innerHTML='<div class="empty">'+(CUR.similar.length?"Kliknij przejazd na liście powyżej.":"Brak podobnych przejazdów do porównania.")+'</div>';q$("cmpsub").textContent="";return;}
+  q$("cmpsub").textContent=dm(R.date)+" (ta jazda) vs "+dm(x.date);
+  if(!c){el.innerHTML='<div class="empty">W mockupie wspólne odcinki są policzone tylko dla 3 najbliższych przejazdów. W wersji docelowej — dla każdego.</div>';return;}
+  var S=c.segments,tA=0,tB=0,km=0;S.forEach(function(g){tA+=g.a.t;tB+=g.b.t;km+=g.len_km;});
+  var h='<div class="tiles"><div class="tile"><div class="l">Zgodność tras</div><div class="v">'+x.z+'%</div></div><div class="tile"><div class="l">Wspólne odcinki</div><div class="v">'+S.length+' · '+n1(km)+' km</div></div>'
+    +'<div class="tile"><div class="l">Czas ruchu na wspólnych</div><div class="v">'+hm(tA)+' <small style="font-size:13px;font-weight:400">vs '+hm(tB)+'</small></div></div>'
+    +'<div class="tile"><div class="l">Różnica</div><div class="v '+(tA<=tB?"g":"b")+'">'+(tA<=tB?"−":"+")+hm(Math.abs(tA-tB))+'</div></div></div>';
+  h+='<div id="map"></div><div class="leg"><span><i style="background:var(--accent)"></i>ta jazda</span><span><i style="background:#3a86ff"></i>'+dm(x.date)+'</span><span><i style="background:var(--good);height:6px"></i>wspólne odcinki</span></div>';
+  h+='<div class="card" style="padding:6px 8px;overflow-x:auto"><table class="sim"><tr><th>Odcinek (km tej jazdy)</th><th class="num">Długość</th><th class="num">Czas ruchu</th><th class="num">Różnica</th><th class="num">km/h</th><th class="num x">Moc W</th><th class="num x">Tętno</th><th class="num x">Postoje</th></tr>';
+  S.forEach(function(g,i){h+='<tr><td><b>'+(i+1)+'.</b> '+n1(g.km_a[0])+'–'+n1(g.km_a[1])+' <span class="muted" style="font-size:12px">(tam '+n1(g.km_b[0])+'–'+n1(g.km_b[1])+')</span></td><td class="num">'+n1(g.len_km)+' km</td>'
+    +'<td class="num">'+hm(g.a.t)+' <span class="muted">/ '+hm(g.b.t)+'</span></td><td class="num">'+delta(g.a.t,g.b.t,true,hm)+'</td>'
+    +'<td class="num">'+n1(g.a.kmh)+' <span class="muted">/ '+n1(g.b.kmh)+'</span></td><td class="num x">'+(g.a.p||"—")+' <span class="muted">/ '+(g.b.p||"—")+'</span></td>'
+    +'<td class="num x">'+(g.a.hr||"—")+' <span class="muted">/ '+(g.b.hr||"—")+'</span></td><td class="num x">'+hm(g.a.stop)+' <span class="muted">/ '+hm(g.b.stop)+'</span></td></tr>';});
+  if(!S.length)h+='<tr><td colspan="8" class="empty">Brak wspólnych odcinków ≥ 1 km.</td></tr>';
+  h+='</table></div><div style="font-size:12.5px;color:var(--muted);margin-top:6px">Pierwsza wartość = ta jazda, po ukośniku = '+dm(x.date)+'. Czas ruchu bez postojów; zielone = szybciej / więcej mocy.</div>';
+  el.innerHTML=h;
+  if(MAP){MAP.remove();MAP=null;}
+  if(!window.L)return;
+  MAP=L.map("map",{zoomControl:true,attributionControl:false});
+  var tl=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18}).addTo(MAP);if(window.qTilesAttach)window.qTilesAttach(MAP,tl);
+  var lb=L.polyline(c.line_b,{color:"#3a86ff",weight:3,opacity:.75}).addTo(MAP),la=L.polyline(c.line_a,{color:"#e8742a",weight:3,opacity:.9}).addTo(MAP);
+  c.common_a.forEach(function(r){var pts=c.line_a.filter(function(p,i){return c.dist_a[i]>=r[0]&&c.dist_a[i]<=r[1];});if(pts.length>1)L.polyline(pts,{color:"#3fa06a",weight:7,opacity:.55}).addTo(MAP);});
+  MAP.fitBounds(la.getBounds().extend(lb.getBounds()),{padding:[20,20]});
+}
+})();
+</script>
+</body>
+</html>

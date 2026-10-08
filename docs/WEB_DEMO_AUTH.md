@@ -70,7 +70,7 @@ demonstracyjnego przez QR” (2026-10-07).
   zakodowane BEZ EXIF/GPS. Publiczne WYLACZNIE przez `/landing/` (wyjatek w bramce + osobny StaticFiles).
   Podmiana zdjecia = nowy plik o tej samej nazwie, zawsze bez metadanych.
 - v3 (2026-10-07): tlo hero = film `hero.mp4` (1080p, ~9,4 MB) / `hero-m.mp4` (720p, ~3,1 MB, ekrany <=820 px),
-  kadr `hero-poster.jpg`; przy prefers-reduced-motion tylko kadr. Montaz 9 ujec (~24,5 s, cz-b, bez dzwieku,
+  kadr `hero-poster.jpg`; przy prefers-reduced-motion tylko kadr. Montaz 11 ujec (~30,5 s, 10 MB / 3,9 MB; w tym 3 statyczne krajobrazy z postojow i krotkich plikow; cz-b, bez dzwieku,
   -map_metadata -1) z nagran DJI Osmo Nano 'Sycylia 2026' (Pulpit wlasciciela). Ujecia wybrane z danych 1 Hz
   (zjazdy/podjazdy dopasowane czasem nagrania; czas: activity_record.ts AT TIME ZONE 'Europe/Warsaw' = UTC)
   i z klatek podgladowych (miejscowosci); bez twarzy i tablic. Ziarno filmowe = nakladka CSS `.grain` (SVG
@@ -78,3 +78,6 @@ demonstracyjnego przez QR” (2026-10-07).
   (ffmpeg z Homebrew, uruchamiane przez kolejke DC; build_video.sh sam wysyla pliki scp na serwer).
 - Haslo hero: 'Tylko' + rotujaca linia co 3,6 s: nowe kwadraty / najlepsze trasy (wlasciciel) + prawdziwy
   szuter / twarde dane / dobra pogoda (propozycje). Lista HASLA w skrypcie qbot_web_landing.py.
+- Adresy filmu i kadru dostaja ?v=<data pliku> (qbot_web_landing.render) - nowy montaz wysylany przez
+  build_video.sh jest widoczny od razu, bez restartu i bez starej kopii w pamieci przegladarki.
+  build_video.sh tworzy tez out/check.jpg (klatka ze srodka kazdego ujecia) do kontroli montazu.

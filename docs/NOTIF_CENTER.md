@@ -3,7 +3,7 @@
 _Utworzono 2026-10-08. Żywy system wygrywa — weryfikuj na kodzie._
 
 ## Co to jest
-Dzwonek w lewym menu (pod ☰, na każdej stronie z nav.js). Pomarańczowa plakietka z liczbą = nieprzeczytane.
+Dzwonek w prawym górnym rogu obok przycisku Wyloguj (od 2026-10-08; wcześniej w lewym menu pod ☰). Pomarańczowa plakietka z liczbą = nieprzeczytane.
 Na telefonie ta sama plakietka jest na pływającym przycisku menu. Klik → panel wysuwany obok dzwonka
 (komputer: tuż przy menu, na wysokości dzwonka; telefon: pełna wysokość z lewej). Zamykanie panelu: × w nagłówku, Esc, klik obok,
 ponowny klik w dzwonek. Otwarcie panelu oznacza wszystko jako przeczytane. Telegram działa jak dotąd — dzwonek go nie zastępuje.
@@ -13,6 +13,14 @@ ponowny klik w dzwonek. Otwarcie panelu oznacza wszystko jako przeczytane. Teleg
 - Logika: `qbot_notif.py` — `push()` (zmiana treści lub ponowne otwarcie ⇒ nieprzeczytane), `resolve()`, `sync_live()`, `listing()`, `mark_read()`, `dismiss()`.
 - API (`qbot_web.py`): `GET /api/notif` (stan na żywo przeliczany najwyżej co 60 s), `POST /api/notif/read` ({ids} albo {} = wszystkie), `POST /api/notif/dismiss` ({id}).
 - Front: `nav.js` (`qBell`, odpytywanie co 2 min i przy powrocie na kartę), style w `nav.css` (sekcja CENTRUM POWIADOMIEN). Statyki poza repo, kopia w web_public/.
+
+## SETUP > Powiadomienia (2026-10-08)
+- Strona `/setup.html` (zębatka — najniższa pozycja menu, `nav.js` foot). Zakładka **Powiadomienia**: checklista 14 rodzajów w grupach
+  Jazdy / Pogoda / Trasy / Trener / Dane / System, z „zaznacz/odznacz wszystkie” w grupie; zapis od razu.
+- Katalog rodzajów: `qbot_notif.SOURCES` (id, grupa, nazwa, opis, prefiksy kluczy) + `source_of(key)`. Nowe źródło = dopisz wiersz do SOURCES.
+- Zapis: `qbot_v2.app_settings` (`sql/app_settings_v1.sql`), klucz `notif.enabled` = {id: bool}; brak wpisu = włączone.
+- API: `GET/POST /api/setup/notif`. Wyłączone rodzaje są odfiltrowane w `listing()` (lista i plakietka); dalej się zapisują i są w Historii.
+- Kolejne zakładki SETUP: `<button data-t>` w `#tabs` + `<section data-p>` w setup.html.
 
 ## Usuwanie i historia (2026-10-08)
 - **×** przy każdej pozycji = usuń z listy (`POST /api/notif/dismiss`): ustawia `dismissed_at` + `resolved_at`, wiersz ZOSTAJE w bazie.
@@ -46,4 +54,4 @@ Ikony rodzajów: `KIND_ICON` w `qbot_notif.py`.
 Jazdy, pogoda przed jazdą, system — jak wyżej. Analiza AI jazdy nie jest osobnym powiadomieniem (generuje się na żądanie).
 
 ## Testy
-`tests/test_notif.py` (4), `tests/test_notif_step2.py` (4).
+`tests/test_notif.py` (4), `tests/test_notif_step2.py` (4), `tests/test_notif_setup.py` (2).

@@ -37,7 +37,7 @@ async function loadRide(key){
 function render(){
   var sel=$("ridesel"),opt=sel.options[sel.selectedIndex]||{dataset:{}};
   var L=D.load||{},ride=D.ride||{},ph=D.physio||{},mq=D.modelq||{},wp=D.wprime||{};
-  FTP=V(L.ftp_w)||(mq.current&&mq.current.ftp_w)||null;TR=D.trace||{};N=(TR.km||[]).length;
+  FTP=V(L.ftp_w)||(mq.current&&mq.current.ftp_w)||null;LTHR=V(L.lthr_bpm)||LTHR;TR=D.trace||{};N=(TR.km||[]).length;
   $("h-title").textContent=opt.dataset.name||D.ride_key;
   $("h-date").textContent=(ride.date||opt.dataset.date||"")+(ride.time?" · "+ride.time:"")+(opt.dataset.sport?" · "+opt.dataset.sport:"")+(FTP?" · próg "+FTP+" W":"");
   var dist=V(L.dist_km)||ride.dist_km,asc=ascent(TR.alt||[]),np=V(L.np_w),avg=V(L.avg_p_w),hra=V(ph.hr_avg),xss=V(L.xss),iff=V(L.if),wmin=V(wp.wbal_min_pct);
@@ -85,7 +85,7 @@ function highlightSel(){
 }
 
 /* ---------- wykres: linie na jednym polu + wstegi ---------- */
-var LTHR=132,SCALE="abs";
+var LTHR=150,SCALE="abs";  /* 2026-10-08: LTHR z raportu (load.lthr_bpm, dynamiczne), 150 awaryjnie */
 var CW=1000,ML=56,MR=48,AXW=40,CH=230,RIB_H=9,LN={alt:true,pw:true,hr:true,wb:true,spd:false,cad:false,temp:false,dev:false},RIB={zone:false,wind:false,surf:false},XM="km",SEL=null,VIEW=null,CMP=[];
 function smooth(arr,w){var o=new Array(N),hh=w>>1;for(var i=0;i<N;i++){var sm=0,c=0;for(var j=i-hh;j<=i+hh;j++){if(j>=0&&j<N&&isNum(arr[j])){sm+=arr[j];c++;}}o[i]=c?sm/c:null;}return o;}
 var SPDS=[],CADS=[],DEV=[],AX={hr:true};

@@ -165,17 +165,18 @@
   function qLogoutBtn() {
     if (document.getElementById("qlogout")) return;
     var b = document.createElement("button");
-    b.type = "button"; b.id = "qlogout"; b.title = "Wyloguj"; b.setAttribute("aria-label", "Wyloguj"); b.innerHTML = LOGOUT;
+    b.type = "button"; b.id = "qlogout"; b.title = "Wyloguj"; b.setAttribute("aria-label", "Wyloguj"); b.setAttribute("data-label", "Wyloguj");
+    b.className = "qnav-link qnav-out"; b.innerHTML = LOGOUT + '<span class="qnav-label">Wyloguj</span>';
     b.addEventListener("click", function () { if (confirm("Wylogować z QBota w tej przeglądarce?")) qLogout(b); });
-    // gdzie: (1) obok #themebtn, jesli ten stoi w prawym gornym rogu ekranu; (2) telefon - w gornym pasku
-    // wysunietego menu (na stronach z mapa gorny pasek ekranu jest zajety: wybor trasy/jazdy, styl mapy);
-    // (3) komputer - plywajacy w prawym gornym rogu.
-    var tb = document.getElementById("themebtn"), r = tb ? tb.getBoundingClientRect() : null;
-    var mob = window.matchMedia("(max-width:820px),(pointer:coarse) and (max-height:500px)").matches;
-    var top = document.querySelector(".qnav-top");
-    if (tb && tb.parentNode && r.width > 0 && r.right > window.innerWidth - 220 && r.top < 140) { b.className = "themebtn qlogout-head"; tb.parentNode.insertBefore(b, tb.nextSibling); }
-    else if (mob && top) { b.className = "qnav-logout"; top.appendChild(b); }
-    else { b.className = "qlogout-fix"; document.body.appendChild(b); }
+    // 2026-10-08 (wieczor): dzwonek + Wyloguj w STOPCE LEWEGO MENU (nad Setup i dzien/noc). Wczesniej plywaly w prawym gornym rogu
+    // i zaslanialy naglowki stron oraz sterowanie map (Raport z jazdy, Analiza trasy).
+    var foot = document.querySelector(".qnav-foot");
+    if (!foot) return;
+    foot.insertBefore(b, foot.firstChild);
+    var bell = document.getElementById("qbell") || window.__qbell;
+    // dzwonek NAD domkiem (Start) - pierwsza pozycja menu, pod nim wiekszy odstep (nav.css .qnav > .qbell)
+    var prod = document.querySelector(".qnav-prod");
+    if (bell && prod) prod.parentNode.insertBefore(bell, prod); else if (bell) foot.insertBefore(bell, b);
   }
 
   function qlHTML(modal) {
@@ -248,10 +249,11 @@
   function qEsc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function qBell(top, fab, closeExpanded) {
     var b = document.createElement("button");
-    b.type = "button"; b.className = "qnav-link qnav-bell"; b.setAttribute("data-label", "Powiadomienia");
+    // 2026-10-08: dzwonek obok Wyloguj (prawy gorny rog) - wstawia go qLogoutBtn(); bez zalogowanego wlasciciela zostaje poza strona
+    b.type = "button"; b.id = "qbell"; b.className = "qnav-link qbell"; b.title = "Powiadomienia"; b.setAttribute("data-label", "Powiadomienia");
     b.setAttribute("aria-label", "Powiadomienia");
     b.innerHTML = '<span class="qnav-bico">' + BELL + '<span class="qnav-badge" hidden></span></span><span class="qnav-label">Powiadomienia</span>';
-    top.parentNode.insertBefore(b, top.nextSibling);
+    window.__qbell = b;
     var dot = document.createElement("span"); dot.className = "qnav-fabdot"; dot.hidden = true; fab.appendChild(dot);
     var badge = b.querySelector(".qnav-badge"), DATA = null, md = null;
     function paint(n) {
@@ -310,8 +312,10 @@
     function mob() { return window.matchMedia("(max-width:820px),(pointer:coarse) and (max-height:500px)").matches; }
     function place() {
       if (mob()) { pan.style.left = ""; pan.style.top = ""; return; }
-      var nv = b.closest(".qnav"), nr = nv ? nv.getBoundingClientRect() : { right: 56 }, br = b.getBoundingClientRect();
-      pan.style.left = Math.round(nr.right + 8) + "px"; pan.style.top = Math.max(8, Math.round(br.top - 4)) + "px";
+      // panel wysuwany W PRAWO od dzwonka w lewym menu
+      var br = b.getBoundingClientRect(), h = pan.offsetHeight || 480;
+      pan.style.left = Math.round(br.right + 10) + "px";
+      pan.style.top = Math.max(8, Math.min(Math.round(br.top), window.innerHeight - h - 8)) + "px";   // dzwonek u gory menu: panel od jego wysokosci w dol
     }
     function shut() { if (!md) return; md = null; pan.classList.remove("on"); b.classList.remove("active");
       document.removeEventListener("mousedown", outside, true); document.removeEventListener("keydown", esc, true); }
