@@ -55,24 +55,6 @@ RIDER_MAX_HR_BPM = _env_int("RIDER_MAX_HR_BPM")
 RIDER_LTHR_BPM   = _env_int("RIDER_LTHR_BPM")
 
 
-def _durability_now():
-    """2026-10-08: krzywa trwalosci (fitmodel/durability.py) dla Karoo/QExt2 -- wejscie do RSRV.
-    {"curve": [[kJ, % mocy 5 min], ...], "kj90": .., "rides": .., "day": ..}; None gdy brak danych/bazy.
-    Zasada: W'bal na Karoo zostaje na SWIEZYM modelu; trwalosc tylko dla RSRV (DECISIONS 2026-10-08)."""
-    try:
-        from fitmodel.ftp_resolver import _db_connect
-        from fitmodel import durability as _D
-        conn = _db_connect()
-        try:
-            sc = _D.season_curve(conn)
-        finally:
-            conn.close()
-        pts = [[p["kj"], p["pct5"]] for p in sc["curve"] if p.get("pct5") is not None]
-        return {"curve": pts, "kj90": sc.get("kj90"), "rides": sc.get("rides"), "day": sc.get("day")} if len(pts) > 1 else None
-    except Exception:
-        return None
-
-
 def _lthr_now():
     """2026-10-08: LTHR dynamiczne z qbot_v2.lthr_daily (fitmodel/lthr.py); env RIDER_LTHR_BPM tylko awaryjnie."""
     try:
@@ -3203,7 +3185,6 @@ async def ride_readiness(request):
         "maxHrBpm":           RIDER_MAX_HR_BPM,
         "lthrBpm":            _lthr_now(),
         "maxHrSource":        RIDER_MAX_HR_SOURCE if RIDER_MAX_HR_BPM else None,
-        "durability":         _durability_now(),
         "ctl":                round(ctl, 1) if ctl is not None else None,
         "ctlXss":             _modelq_ctl_xss(),
         "atl":                round(atl, 1) if atl is not None else None,
@@ -3238,7 +3219,7 @@ async def ride_readiness(request):
 
     print(f"🚦 ride-readiness | factor={today_factor} legacy={today_factor_legacy} ftp={ftp_watts} "
           f"hrv_dev={hrv_dev_30d} hr_dev={hr_dev} bb={bb} "
-          f"sleep_dev={sleep_dev} pressure={pressure_now}({pressure_change:+.1f}) "
+          f"sleep_dev={sleep_dev} pressure={pressure_now}({pressure_change}) "
           f"sources={sources}", flush=True)
 
     return JSONResponse(payload, headers={"Access-Control-Allow-Origin": "*"})
