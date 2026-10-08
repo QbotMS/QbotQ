@@ -204,6 +204,13 @@ def main() -> None:
             return run_weekly_benchmark(conn, dry_run=False)
         _step("xert_bench", _xert)
 
+        # 6b. 2026-10-07: dzienny dopis Xerta do modelq2_xert_bench (wykres ModelQ vs Xert).
+        # TYLKO benchmark -- ModelQ tej tabeli nie czyta (tests/test_xert_isolation.py).
+        def _xert_daily():
+            from fitmodel.xert_daily_bench import run_daily_xert_bench
+            return run_daily_xert_bench(conn)
+        _step("xert_daily_bench", _xert_daily)
+
         # 7. Plan tygodnia (tryb=PROPOZYCJA do zatwierdzenia) -> fitmodel_week_plan
         def _plan():
             from fitmodel.week_planner import build_plan, upsert_plan

@@ -4,6 +4,49 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-08 -- DECYZJA: straznik Garmina (jeden rytm 24h co 15 min) + waga wylacznie naszym kanalem
+
+**Problem.** Importy Garmina mialy rozne okna godzinowe (sen/wellness 5:00-8:45, treningi/jazdy 9:00-23:45,
+kalorie 5-8 co 15 min + co 2 h, waga 7:30/9:00/12:00), a sen/kalorie/treningi byly ZDUBLOWANE w crontabie qbot.
+Kalorie za wczoraj domykaly sie tylko 05:00-08:59.
+
+**Decyzja (Michal):** wszystkie dane z Garmina co 15 min, cala doba, bez okien.
+- `scripts/garmin_watch.py` (cron root `*/15 * * * *`, flock): 2 lekkie zapytania na cykl -- czas syncu
+  urzadzenia (`get_device_last_used`, fenix 8) + ostatnia aktywnosc (`get_activities(0,1)`; Karoo nie jest
+  urzadzeniem na koncie, jazdy wpadaja jako aktywnosci). Pelne importy: po zmianie + 3 cykle dobierania,
+  co 3 h (siatka), 03:xx domkniecie wczoraj. Sygnaly oznaczane dopiero po sukcesie WSZYSTKICH importow;
+  4 nieudane cykle z rzedu -> rytm 3 h + Telegram; brak Garmina > 1 h -> Telegram (cooldown 6 h).
+- Importy (kolejnosc): body -> sleep -> energy -> wellness (przelicza gotowosc i wage ModelQ) -> training ->
+  activity_ingest. Stan: `state/garmin_watch.json`, log: `/opt/qbot/logs/garmin_watch.log`.
+- `import_garmin_energy.py`: kazde uruchomienie = wczoraj full + dzis partial (bez zaleznosci od godziny).
+- Crontab: usuniete stare wpisy importow Garmina (root) i duplikaty (qbot). Kopie: /root/crontab.*.bak.20261008_watch.
+- Pierwszy przebieg 08.10 09:09: 6/6 importow rc=0, 9 s.
+
+**Waga.** Nasz sync Withings -> Garmin nigdy nie wysylal (5/5 = "duplicate"): waga szla Withings -> MyFitnessPal ->
+Garmin (zrodlo MFP, sama masa) -> od 08.09 brak skladu ciala. Michal odlaczyl MFP od Withings (08.10).
+Od teraz waga tylko naszym kanalem (pelny sklad). Sync Withings `*/15 * * * *` cala doba; nowy pomiar ->
+`scripts/weight_refresh.py` (import wagi + waga/W/kg w ModelQ od razu). DO WERYFIKACJI: najblizsze wazenie
+ze statusem "uploaded" i skladem ciala w body_measurements.
+
+---
+## 2026-10-07 -- DECYZJA: waga ModelQ z body_measurements; Xert dziennie do tabeli porownawczej, bez wplywu na ModelQ
+
+**Waga.** `fitmodel_daily.weight_kg` byla pusta od 21.09 (Albert/forma/W/kg/glikogen bez swiezej wagi).
+Przyczyna: `readiness._raw_wellness_for_day` bral wage z `qbot_wellness_daily`, gdzie wagi nie ma wcale
+(import Garmin wellness jej nie zapisuje; intervals.icu martwy od 05.2026). Lancuch Withings -> Garmin ->
+`import_garmin_body.py` -> `qbot_v2.body_measurements` dziala (ostatni pomiar 01.10 = 104,53 kg).
+Teraz kanon wagi ModelQ = `body_measurements` (carry-forward), `qbot_wellness_daily` tylko jako zapas.
+Uzupelniono 17 dni (21.09-07.10) wagi + `w_per_kg` (UPDATE tylko pustych dni; gotowosc NIE przeliczana).
+
+**Xert (decyzja Michala).** Xert ma wpadac do tabeli porownawczej, ale NIE wplywa na parametry ModelQ.
+- `modelq2_xert_bench` byl jednorazowym importem CSV (do 06.07) - wykres `/api/modelq2/data` stal od lipca.
+- Nowy krok daily_job `xert_daily_bench` (`fitmodel/xert_daily_bench.py`): dopis dni ze
+  `xert_profile_snapshots`, `ON CONFLICT DO NOTHING` (wiersze CSV nietkniete). Backfill 07.07-07.10: 93 dni.
+- Izolacja: `scripts/mq2_backfill.py` czyta benchmark tylko `day <= '2026-07-06'`; ModelQ v2 i readiness
+  nie czytaja tabel Xerta. Bezpiecznik: `tests/test_xert_isolation.py` (4 testy).
+- Przypomnienie (04.10): Xert po skazeniu (TP ~309) - porownanie jest surowe, bez interpretacji.
+
+---
 ## 2026-10-06 -- DECYZJA: pamiec podreczna Google Places (30 dni), 20 wynikow/zapytanie; przyjeta zmiana probkowania z 2026-10-03
 
 - PRZYJETA (decyzja Michala 06.10) niezacommitowana zmiana nieznanej sesji z 2026-10-03 w `route_analyzer.py`:

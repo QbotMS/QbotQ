@@ -160,14 +160,26 @@ def _raw_wellness_for_day(cur, as_of: date) -> dict[str, Any]:
         rhr = int(rh) if rh is not None else None
         weight = float(wt) if wt is not None else None
     if weight is None:
+        # 2026-10-07: kanon wagi = qbot_v2.body_measurements (import Garmina, Withings->Garmin).
+        # qbot_wellness_daily nie ma wagi (import Garmin wellness jej nie zapisuje, intervals.icu
+        # martwy od 05.2026) -> waga w fitmodel_daily byla pusta od 21.09. Carry-forward.
         cur.execute(
-            """SELECT weight_kg FROM qbot_v2.qbot_wellness_daily
+            """SELECT weight_kg FROM qbot_v2.body_measurements
                WHERE weight_kg IS NOT NULL AND date<=%s
                ORDER BY date DESC LIMIT 1""",
             (as_of,),
         )
         w2 = cur.fetchone()
         weight = float(w2[0]) if w2 and w2[0] is not None else None
+    if weight is None:
+        cur.execute(
+            """SELECT weight_kg FROM qbot_v2.qbot_wellness_daily
+               WHERE weight_kg IS NOT NULL AND date<=%s
+               ORDER BY date DESC LIMIT 1""",
+            (as_of,),
+        )
+        w3 = cur.fetchone()
+        weight = float(w3[0]) if w3 and w3[0] is not None else None
     return {"sleep_h": sleep_h, "hrv_night": hrv, "rhr": rhr, "weight_kg": weight}
 
 

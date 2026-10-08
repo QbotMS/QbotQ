@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Cron job: import Garmin energy data into qbot_v2.energy_daily.
 
-Two modes:
-  09:00-23:59 every 2h → today's partial snapshot (quality_status=partial)
-  05:00-08:59 every 15min → yesterday's finalization (quality_status=full if complete)
+2026-10-08: bez okien godzinowych (wolany przez scripts/garmin_watch.py o dowolnej porze).
+Kazde uruchomienie: WCZORAJ = domkniecie (quality_status=full), DZIS = migawka (partial).
+Wczesniej wczoraj domykal sie tylko 05:00-08:59 -- brak syncu w tym oknie = dzien niedomkniety.
 """
 
 import sys, os
@@ -16,23 +16,17 @@ from dotenv import load_dotenv
 load_dotenv("/opt/qbot/app/.env")
 
 now = datetime.now(ZoneInfo("Europe/Warsaw"))
-hour = now.hour
-is_finalize = (5 <= hour <= 8)
-
-if is_finalize:
-    target_dates = [(now - timedelta(days=1)).strftime("%Y-%m-%d")]
-    quality = "full"
-    partial = False
-else:
-    target_dates = [now.strftime("%Y-%m-%d")]
-    quality = "partial"
-    partial = True
+targets = [
+    ((now - timedelta(days=1)).strftime("%Y-%m-%d"), "full", False),
+    (now.strftime("%Y-%m-%d"), "partial", True),
+]
+target_dates = [t[0] for t in targets]
 
 gc = garmin_client()
 conn = psycopg.connect(host="127.0.0.1", dbname="qbot", user="qbot", password="")
 cur = conn.cursor()
 
-for ds in target_dates:
+for ds, quality, partial in targets:
     try:
         s = gc.get_user_summary(ds)
     except Exception as e:

@@ -18,7 +18,9 @@ d_to=dt.date.fromisoformat(sys.argv[2])
 
 conn=_db_connect(); cur=conn.cursor()
 # benchmark sygnatur (posortowane daty do wyszukiwania <=)
-cur.execute("SELECT day,tp_w,hie_kj,pp_w FROM qbot_v2.modelq2_xert_bench ORDER BY day")
+# 2026-10-07: TYLKO historyczny import CSV (<= 2026-07-06). Pozniejsze wiersze to dzienny
+# benchmark Xerta (fitmodel/xert_daily_bench.py) i NIE moga zasilac ModelQ (decyzja Michala).
+cur.execute("SELECT day,tp_w,hie_kj,pp_w FROM qbot_v2.modelq2_xert_bench WHERE day <= '2026-07-06' ORDER BY day")
 bench=cur.fetchall()
 bdays=[b[0] for b in bench]
 def sig_for(d):
