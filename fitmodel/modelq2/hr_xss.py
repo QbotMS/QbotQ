@@ -45,17 +45,34 @@ K_LOW = 0.90            # kalibracja koszyka Low (patrz naglowek)
 K_HIGH = 0.17           # kalibracja koszyka High (patrz naglowek)
 
 
+TEMP_REF_C = 15.0
+TEMP_FACTOR_MIN, TEMP_FACTOR_MAX = 0.80, 1.25
+
+
+def temp_factor(t_med, a, b) -> float:
+    """Korekta temperatury (2026-10-08, DECISIONS): XSS_tetno / XSS_moc = a + b*(T - 15) na czystych jazdach
+    (cieplo: tetno zawyza ~+10 %, chlod zaniza ~5-10 %). Zwraca mnoznik 1/(a+b*(T-15)) przyciety do 0.80-1.25."""
+    if t_med is None or a is None or b is None:
+        return 1.0
+    r = a + b * (float(t_med) - TEMP_REF_C)
+    if r <= 0:
+        return 1.0
+    return max(TEMP_FACTOR_MIN, min(TEMP_FACTOR_MAX, 1.0 / r))
+
+
 def fetch_hr_rows(external_id: str) -> list:
-    """[(ts, hr_bpm, speed_mps), ...] 1Hz dla jazdy, posortowane po czasie."""
+    """[(ts, hr_bpm, speed_mps, temp_c), ...] 1Hz dla jazdy, posortowane po czasie (temp od 2026-10-08)."""
     conn = _db_connect()
     try:
         cur = conn.cursor()
         cur.execute(
-            "SELECT ts, hr_bpm, speed_mps FROM qbot_v2.activity_record "
+            "SELECT ts, hr_bpm, speed_mps, temperature_c FROM qbot_v2.activity_record "
             "WHERE external_id = %s ORDER BY ts", (external_id,))
+        rows = cur.fetchall()
+        rows = [tuple(r.values()) if isinstance(r, dict) else tuple(r) for r in rows]
         return [(ts, float(h) if h is not None else None,
-                 float(v) if v is not None else None)
-                for ts, h, v in cur.fetchall()]
+                 float(v) if v is not None else None, float(t) if t is not None else None)
+                for ts, h, v, t in rows]
     finally:
         conn.close()
 
@@ -67,34 +84,39 @@ def params_for(day) -> tuple:
     """(lthr, k_low, k_high) na dzien jazdy: dynamiczne LTHR + najnowsza kalibracja K. Awaryjnie stale modulu."""
     if day in _PCACHE:
         return _PCACHE[day]
-    lthr, kl, kh = LTHR_BPM, K_LOW, K_HIGH
+    lthr, kl, kh, ta, tb = LTHR_BPM, K_LOW, K_HIGH, None, None
     try:
         from fitmodel.lthr import get_lthr
         conn = _db_connect()
         try:
             lthr = float(get_lthr(conn, day))
             cur = conn.cursor()
-            cur.execute("SELECT k_low, k_high FROM qbot_v2.hr_xss_calib ORDER BY day DESC LIMIT 1")
+            cur.execute("SELECT k_low, k_high, temp_a, temp_b FROM qbot_v2.hr_xss_calib ORDER BY day DESC LIMIT 1")
             r = cur.fetchone()
             if r:
                 r = tuple(r.values()) if isinstance(r, dict) else tuple(r)
                 kl, kh = float(r[0]), float(r[1])
+                ta = float(r[2]) if r[2] is not None else None
+                tb = float(r[3]) if r[3] is not None else None
             else:
                 lthr, kl, kh = LTHR_BPM, K_LOW, K_HIGH   # bez kalibracji K nie mieszac nowego LTHR ze starymi K
         finally:
             conn.close()
     except Exception:
-        lthr, kl, kh = LTHR_BPM, K_LOW, K_HIGH
-    _PCACHE[day] = (lthr, kl, kh)
+        lthr, kl, kh, ta, tb = LTHR_BPM, K_LOW, K_HIGH, None, None
+    _PCACHE[day] = (lthr, kl, kh, ta, tb)
     return _PCACHE[day]
 
 
 def compute_hr_xss_split(hr_rows: list, lthr_bpm: float | None = None,
                          k_low: float | None = None, k_high: float | None = None) -> tuple:
     """(xss_low, xss_high) z probek 1Hz. Dziury > 5 s pomijane. Brak parametrow -> dynamiczne na dzien jazdy."""
+    tfac = 1.0
     if lthr_bpm is None or k_low is None or k_high is None:
         day = hr_rows[0][0].date() if hr_rows and hasattr(hr_rows[0][0], "date") else None
-        dl, dkl, dkh = params_for(day)
+        dl, dkl, dkh, ta, tb = params_for(day)
+        temps = sorted(r[3] for r in hr_rows if len(r) > 3 and r[3] is not None)
+        tfac = temp_factor(temps[len(temps) // 2] if temps else None, ta, tb)
         lthr_bpm = dl if lthr_bpm is None else lthr_bpm
         k_low = dkl if k_low is None else k_low
         k_high = dkh if k_high is None else k_high
@@ -113,7 +135,7 @@ def compute_hr_xss_split(hr_rows: list, lthr_bpm: float | None = None,
                 else:
                     lo += val
         prev_ts = ts
-    return lo * k_low, hi * k_high
+    return lo * k_low * tfac, hi * k_high * tfac
 
 
 def compute_hr_xss(hr_rows: list, lthr_bpm: float | None = None) -> float:

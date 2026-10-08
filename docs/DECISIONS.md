@@ -4,6 +4,16 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-08 -- DECYZJA: XSS z tetna -- korekta temperatury ZOSTAJE (mala, bez dowodu poprawy)
+Hipoteza z TODO [HR-XSS-UPAL]: skok XSS lipcowych jazd (04.07 175->244, 12.07 257->304, 19.07 242->364) przez upal.
+Sprawdzenie: 04.07 i 12.07 chlodne (mediana 11 C, HR > LTHR 2 % czasu) -- przyczyna = zmiana LTHR: przy 132 sekundy HR 132-148
+szly do koszyka High z K 0.17 (skreslane w 83 %), przy 148 sa w Low z K 0.92. Nowe wartosci blizsze XSS z mocy.
+Korekta temperatury (hr_xss.temp_factor, dopasowanie w lthr.calibrate_hr_xss, kolumny hr_xss_calib.temp_a/temp_b):
+XSS_tetno/XSS_moc = a + b*(T-15) na 164 czystych jazdach -> a 1.007, b 0.0047/C => mnoznik 1.04 przy 5 C ... 0.93 przy 30 C.
+Rozrzut 25-75 % bez/z korekta: -13..+9 % / -11..+12 % -- BEZ poprawy (przedzialy temperatur mialy 9-20 jazd, szum).
+Decyzja Michala: zostawic (niegrozna, przelicza sie co miesiac; moze sie wyostrzyc z kolejnymi letnimi jazdami).
+Dotyczy nowych jazd z XSS z tetna; stare nieprzeliczone. Testy: test_lthr.TempFactor.
+
 ## 2026-10-08 -- DECYZJA: dynamiczne LTHR (zamiast kanonu 132 bpm) + strefy HR od LTHR + kwarantanna 22.07-03.08
 **Problem:** LTHR=132 (QExt2, hr_xss, raport jazdy) -- spokojna jazda (HR ~134, ~75-80 % CP) wychodzila "nad progiem";
 Michal: strefy na Karoo zawyzone. Pomiar: 181 bpm z 02.05.2026 = artefakt czujnika, realne max ~174.

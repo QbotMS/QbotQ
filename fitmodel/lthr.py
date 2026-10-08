@@ -43,6 +43,8 @@ DDL = [
          n_windows integer, n_rides integer, slope real, note text, computed_at timestamptz DEFAULT now())""",
     """CREATE TABLE IF NOT EXISTS qbot_v2.hr_xss_calib (day date PRIMARY KEY, k_low real, k_high real, n_low integer,
          n_high integer, lthr_bpm integer, err_p25 real, err_p75 real, computed_at timestamptz DEFAULT now())""",
+    "ALTER TABLE qbot_v2.hr_xss_calib ADD COLUMN IF NOT EXISTS temp_a real, ADD COLUMN IF NOT EXISTS temp_b real, "
+    "ADD COLUMN IF NOT EXISTS n_temp integer, ADD COLUMN IF NOT EXISTS err_t_p25 real, ADD COLUMN IF NOT EXISTS err_t_p75 real",
 ]
 
 
@@ -229,12 +231,15 @@ def calibrate_hr_xss(conn, day=None) -> dict:
     rides = [r for r in _t(cur.fetchall()) if not _bad(r[1])]
     acc = []
     for eid, d, xl, xh in rides:
-        cur.execute("SELECT ts, hr_bpm, speed_mps FROM qbot_v2.activity_record WHERE external_id=%s ORDER BY ts", (eid,))
-        R = [(a, float(b) if b is not None else None, float(v) if v is not None else None) for a, b, v in _t(cur.fetchall())]
+        cur.execute("SELECT ts, hr_bpm, speed_mps, temperature_c FROM qbot_v2.activity_record WHERE external_id=%s ORDER BY ts", (eid,))
+        R = [(a, float(b) if b is not None else None, float(v) if v is not None else None) for a, b, v, _ in _t(cur.fetchall())]
         lo, hi = compute_hr_xss_split(R, lthr_bpm=get_lthr(conn, d), k_low=1.0, k_high=1.0)
-        acc.append((float(xl or 0), float(xh or 0), lo, hi))
-    lows = [a / c for a, b, c, d in acc if c > 5]
-    highs = [b / d for a, b, c, d in acc if d > 1.0]
+        cur.execute("SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY temperature_c) FROM qbot_v2.activity_record "
+                    "WHERE external_id=%s AND temperature_c IS NOT NULL", (eid,))
+        tm = _t([cur.fetchone()])[0][0]
+        acc.append((float(xl or 0), float(xh or 0), lo, hi, float(tm) if tm is not None else None))
+    lows = [a / c for a, b, c, d, _ in acc if c > 5]
+    highs = [b / d for a, b, c, d, _ in acc if d > 1.0]
     if len(lows) < 30:
         return {"calib": "za malo jazd", "n": len(lows)}
     k_low = float(median(lows))
@@ -243,17 +248,36 @@ def calibrate_hr_xss(conn, day=None) -> dict:
         cur.execute("SELECT k_high FROM qbot_v2.hr_xss_calib ORDER BY day DESC LIMIT 1")
         r = cur.fetchone()
         k_high = float(_t([r])[0][0]) if r else 1.0
-    err = sorted(((k_low * c + k_high * d) - (a + b)) / (a + b) for a, b, c, d in acc if a + b > 20)
+    err = sorted(((k_low * c + k_high * d) - (a + b)) / (a + b) for a, b, c, d, _ in acc if a + b > 20)
+    # korekta temperatury: ratio = XSS_tetno/XSS_moc ~ a + b*(T - 15), OLS na jazdach z temperatura (ratio przyciete 0.5-2)
+    from fitmodel.modelq2.hr_xss import TEMP_REF_C, temp_factor
+    pts = [(t - TEMP_REF_C, max(0.5, min(2.0, (k_low * c + k_high * d) / (a + b)))) for a, b, c, d, t in acc
+           if t is not None and a + b > 20]
+    ta = tb = None
+    err_t = None
+    if len(pts) >= 40 and len([x for x, _ in pts if x > 0]) >= 15:
+        mx = sum(x for x, _ in pts) / len(pts); my = sum(y for _, y in pts) / len(pts)
+        sxx = sum((x - mx) ** 2 for x, _ in pts)
+        tb = sum((x - mx) * (y - my) for x, y in pts) / sxx
+        ta = my - tb * mx
+        err_t = sorted(((k_low * c + k_high * d) * temp_factor(t, ta, tb) - (a + b)) / (a + b)
+                       for a, b, c, d, t in acc if t is not None and a + b > 20)
     lthr = get_lthr(conn, day)
-    cur.execute("""INSERT INTO qbot_v2.hr_xss_calib (day, k_low, k_high, n_low, n_high, lthr_bpm, err_p25, err_p75)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (day) DO UPDATE SET k_low=EXCLUDED.k_low,
+    cur.execute("""INSERT INTO qbot_v2.hr_xss_calib (day, k_low, k_high, n_low, n_high, lthr_bpm, err_p25, err_p75,
+                   temp_a, temp_b, n_temp, err_t_p25, err_t_p75)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (day) DO UPDATE SET k_low=EXCLUDED.k_low,
                    k_high=EXCLUDED.k_high, n_low=EXCLUDED.n_low, n_high=EXCLUDED.n_high, lthr_bpm=EXCLUDED.lthr_bpm,
-                   err_p25=EXCLUDED.err_p25, err_p75=EXCLUDED.err_p75, computed_at=now()""",
+                   err_p25=EXCLUDED.err_p25, err_p75=EXCLUDED.err_p75, temp_a=EXCLUDED.temp_a, temp_b=EXCLUDED.temp_b,
+                   n_temp=EXCLUDED.n_temp, err_t_p25=EXCLUDED.err_t_p25, err_t_p75=EXCLUDED.err_t_p75, computed_at=now()""",
                 (day, round(k_low, 3), round(k_high, 3), len(lows), len(highs), lthr,
-                 round(err[len(err) // 4], 3), round(err[3 * len(err) // 4], 3)))
+                 round(err[len(err) // 4], 3), round(err[3 * len(err) // 4], 3),
+                 round(ta, 4) if ta is not None else None, round(tb, 5) if tb is not None else None, len(pts),
+                 round(err_t[len(err_t) // 4], 3) if err_t else None, round(err_t[3 * len(err_t) // 4], 3) if err_t else None))
     conn.commit()
     return {"k_low": round(k_low, 3), "k_high": round(k_high, 3), "n_low": len(lows), "n_high": len(highs),
-            "lthr": lthr, "blad_25_75": [round(err[len(err) // 4], 2), round(err[3 * len(err) // 4], 2)]}
+            "lthr": lthr, "blad_25_75": [round(err[len(err) // 4], 2), round(err[3 * len(err) // 4], 2)],
+            "temp": {"a": round(ta, 3) if ta is not None else None, "b_na_C": round(tb, 4) if tb is not None else None,
+                     "n": len(pts), "blad_po_korekcie_25_75": [round(err_t[len(err_t) // 4], 2), round(err_t[3 * len(err_t) // 4], 2)] if err_t else None}}
 
 
 def run_daily(conn) -> dict:

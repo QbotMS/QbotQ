@@ -9,3 +9,9 @@ requests==2.32.5
 garminconnect==0.3.3
 cronometer-mcp==2.0.3
 psycopg[binary]==3.2.6
+# 2026-10-08: przypiete jak na serwerze -- nowy pydantic usunal eval_type_backport, ktorego uzywa mcp 1.9.4
+# (CI smoke padl na "import mcp_server" od #473; przyczyna = swiezo zainstalowane zaleznosci, nie zmiana kodu)
+mcp==1.9.4
+pydantic==2.12.5
+pydantic-core==2.41.5
+pydantic-settings==2.14.1

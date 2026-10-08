@@ -22,11 +22,6 @@ wzrosla/spadla; auto-kotwica EF wylaczona od 25.08 (skazona 11.08). Otwarte:
 - tp_recheck (automat przegladu) zostaje jedynym sygnalem "w dol".
 Do decyzji Michala: czy i jak podlaczyc przelomy (tylko w gore, z bezpiecznikami miernika: kwarantanna, meter_phys).
 
-## [HR-XSS-UPAL] XSS z tetna przy upale/dryfie tetna (dodane 2026-10-08)
-Po przejsciu na LTHR 148 + K_HIGH 1.41 dlugie lipcowe jazdy w kwarantannie mocno wzrosly: 04.07 175->244, 12.07 257->304,
-19.07 242->364 XSS (103 km). Podejrzenie: dryf sercowy w upale -> duzo sekund nad LTHR. hr_xss nie ma korekty na
-temperature/dryf. Sprawdzic temperatury tych jazd i ewentualnie liczyc koszyk High tylko przy niskim dryfie.
-
 ## [BG-JOB] Zadania w tle z powiadomieniem w QBocie i na Telegramie (dodane 2026-10-08)
 Problem: dlugie skrypty odpalane przez SSH (nohup) koncza sie "po cichu", a print() bez flush laduje w pliku wyniku
 dopiero na koncu (08.10 mq2_drop_anchor: 16 min bez sladu postepu).
@@ -373,6 +368,7 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] [PORÓWNANIE-WSTRZYMANE] (2026-10-08, WSTRZYMANE decyzja Michala) Porownanie przejazdow wg GPS: progi ustalone ≥80% = ta sama trasa (trend), 50–79% = czesciowo wspolna (odcinki), tylko ten sam kierunek. Mockupy: /porownanie-mockup.html, /porownanie-1na1-mockup.html (dane /data/porownanie-*.json, skrypty /opt/qbot/artifacts/porownanie_*.py, indeks artifacts/porownanie/cells.json). Warunek wznowienia: porownanie mocy tylko przy TYM SAMYM mierniku (activity_device bike_power ant_device_number), np. 16.06 SRAM 29525 vs 08.10 Favero 30604 = 199 vs 147 W przy tym samym tempie i tetnie.
 
 # ZROBIONE
+- [2026-10-08] [HR-XSS-UPAL] sprawdzone: skok = zmiana LTHR, nie upal; korekta temperatury mala (+-5 %), zostaje (DECISIONS 2026-10-08).
 - [2026-10-08] [STREFY-HR-LTHR] dynamiczne LTHR (fitmodel/lthr.py, dzis 148) zamiast 132; strefy HR raportu od LTHR; LTHR+strefy do intervals/Karoo (DECISIONS 2026-10-08).
 - [2026-10-08] [GLIKOGEN-WOLNY] krok glycogen 930 s -> 0.4 s: jazdy z activity_record zamiast czytania 381 plikow FIT (DECISIONS 2026-10-08).
 - [2026-10-08] [IKONY-MENU] Nowe dwutonowe ikony lewego menu (kontur + wypelnienie + pomaranczowy akcent), style .qi-* w nav.css.

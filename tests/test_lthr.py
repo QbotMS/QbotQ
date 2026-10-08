@@ -44,5 +44,16 @@ class T(unittest.TestCase):
         self.assertEqual(L.ride_windows(rows2), [])
 
 
+class TempFactor(unittest.TestCase):
+    def test_temp_factor(self):
+        from fitmodel.modelq2.hr_xss import temp_factor
+        self.assertEqual(temp_factor(None, 1.0, 0.01), 1.0)
+        self.assertEqual(temp_factor(20, None, None), 1.0)
+        self.assertAlmostEqual(temp_factor(15, 1.0, 0.01), 1.0)
+        self.assertLess(temp_factor(25, 1.0, 0.01), 1.0)          # cieplo -> XSS z tetna w dol
+        self.assertEqual(temp_factor(60, 1.0, 0.05), 0.80)        # przyciecie
+        self.assertEqual(temp_factor(-30, 1.0, 0.05), 1.0)        # r <= 0 -> bez korekty
+
+
 if __name__ == "__main__":
     unittest.main()
