@@ -4,6 +4,19 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-08 -- DECYZJA: RSRV v2 na Karoo (styl Garmin Stamina) -- WDROZONE
+**Michal:** start zawsze 100 %, bez klikania, krotkie jazdy maja prawie nie ruszac zapasu; dosc eksperymentow.
+**Model** (wzorzec `fitmodel/rsrv_v2.py`, kopia 1:1 QExt2 `ReserveModelV2.kt`, te same przypadki w obu testach):
+co sekunde ruchu ze swieza moca ubywa 1/T(x), x = moc EMA 20 min / CP, T(x) krzywa moc-czas
+(1,0 CP 1 h; 0,8 4 h; 0,7 8 h; 0,6 13 h; 0,5 22 h) -- zgodna z rekordami Michala 1-6 h. Tetno moze x tylko PODBIC:
+x_hr = 0,087 + 0,683*(HR-47)/(LTHR-47), liczone gdy x_hr-0,05 > x (prog szumu), HR 60..HRmax, tylko przy pedalowaniu
+(moc > 0,3 CP). Jazdy jednego dnia sumuja sie, nowy dzien = 100 %. Bez XSS, formy dnia, dryfu, odbudowy na postoju, podlogi.
+**Historia (43 jazdy):** 1 h spokojnie 90-96 % (stary 62-86), mocne 24-42 %, 5-6 h spokojnie 70-82 %. Tetno: -0..-6 pkt.
+**Czego NIE lapie:** odciecia z braku jedzenia (27.09: 62 %) i "gorszego dnia" z porannych pomiarow -- dane tego nie potwierdzaja.
+**QExt2 48a4e4b:** nowe klucze bazy dnia (ulamek zuzycia), snapshot v5, LTHR/HRmax z /ride-readiness, pole RSRV "czekam"
+tylko bez mocy (>5 min ruchu bez mocy). Przy okazji fix: po restarcie apki w trakcie jazdy jazda liczyla sie dwa razy
+(zapisana baza dnia zawierala sesje, a sesja wracala ze snapshotu) -- teraz odejmowana; odrzucona przywrocona jazda wraca do bazy.
+
 ## 2026-10-08 -- NAPRAWA: lthrBpm (i inne pola z fitmodel) puste dla Karoo -- brak prawa do /etc/qbot/qbot-api.env
 **Objaw:** /ride-readiness (mcp_server, q-bot jako user qbot) zwracal lthrBpm=None mimo dynamicznego LTHR 148 -> QExt2
 (`json.optInt("lthrBpm", 132)`) liczyl strefy HR / KOKPIT dalej od 132. Przyczyna: fitmodel.ftp_resolver._load_env_file
@@ -30,7 +43,16 @@ baro=1,0, legacy 1,017 / baro 0,884, sources += modelq:todayFactor.
 **Zostaje (osobne kroki):** martwa kopia qbot_api._modelq_today_factor do usuniecia; RSRV v2 (start zawsze 100 %, kara z kJ)
 -- sesja QExt2; forma wplywa na Karoo takze na CP w W'bal (cf 0,88-1,06) i IF do zalecen jedzenia/picia.
 
-## 2026-10-08 -- DECYZJA: trwalosc (durability) -- mechanizm + Forma > Trwalosc + Raport z jazdy (modul Dane)
+## 2026-10-08 -- DECYZJA: trwalosc WYCOFANA z QBot (Michal: "wywal TRWALOSC z QBot")
+Powod: na jego jazdach do ~4 h moc ~100 % startu (mediana 8 ostatnich jazd: 102 % po ~3 i ~4 h), spadek dopiero po ~5 h
+(~80 %, malo jazd) -> brak wartosci na co dzien; pojedyncza jazda = szum trasy (60-120 %); zima bez danych.
+Usuniete: fitmodel/durability.py, tests/test_durability.py, /api/forma/durability, /api/ride/durability, krok daily_job
+`durability` (oba przebiegi), pole `durability` w /ride-readiness (mcp_server), karta w Dzienniku + forma-durability.js,
+serie "trwalosc po ~3/4/5 h" w Trendach (forma2-data.js v61), sekcja + ikona w Raporcie z jazdy (dane v38, rail v8).
+Na prosbe Michala usuniete takze: tabela qbot_v2.durability_ride (310 wierszy, DROP 08.10) i wszystkie kopie plikow
+(artifacts/*.usuniety.*, web/public/forma-durability.js.bak.*). Opis calosci 08.10: docs/PROGI_MODELQ.md. Ustalenia o RSRV (za szybki 3-5x) zostaja w TODO [RSRV] jako kierunek dla QExt2.
+
+## 2026-10-08 -- DECYZJA: trwalosc (durability) -- mechanizm + Forma > Trwalosc + Raport z jazdy (modul Dane) [WYCOFANE -- patrz wpis wyzej]
 fitmodel/durability.py: na jazde (>= 1 h, activity_record) narastajace kJ, najlepsze 5/20 min na swiezo (do 1000 kJ) i po
 progach 1000/1500/2000/2500/3000 kJ -> qbot_v2.durability_ride (310 jazd od 01.2025). Krzywa sezonu = mediana "po progu /
 swiezo" z czystych jazd 12 mies. (min. 5 jazd, nierosnaca); trend co miesiac z 180 dni. Krok daily_job `durability`.

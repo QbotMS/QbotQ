@@ -13,32 +13,6 @@
 
 # OTWARTE
 
-## [TRWALOSC] Trwalosc (durability) -- spadek mocy po zuzytych kJ (dodane 2026-10-08)
-**WDROZONE 08.10 w QBot** (fitmodel/durability.py, Forma > Trwalosc, Raport z jazdy > Trwalosc -- DECISIONS 2026-10-08).
-**KOREKTA liczb ponizej:** "po 2500 kJ 74 %" = artefakt krotkich koncowek; po filtrze (>= 20 min po progu): 1500 kJ 95 %,
-2000 kJ 91-93 %, 2500 kJ ~80 % (tylko 8 jazd). Odciecie 27.09 = ostatnie minuty (paliwo), po 2000 kJ mial 110 %.
-Zostaje do zrobienia: (2) ostrzezenie przy trasach > ~2500 kJ + jedzenie, (3) RSRV w QExt2 (osobna sesja).
-DLA QExt2 GOTOWE (08.10): /ride-readiness (qbot-api, mcp_server._durability_now) wysyla pole `durability`:
-{"curve": [[kJ, % mocy 5 min], ...] (dzis [[0,100],[1000,100],[1500,95.2],[2000,92.8]]), "kj90", "rides", "day"};
-None gdy brak danych. Krzywa konczy sie na ostatnim progu z >= 5 jazdami -- dalej QExt2 ma ekstrapolowac ostroznie.
-Analiza 08.10 (59 czystych jazd > 1500 kJ od 04.2025, 13 jazd > 2500 kJ): najlepsze 5 min po 1500 kJ = 93 % swiezej mocy,
-po 2500 kJ = 74 %; 20 min: 92 % / 79 %. W 2026 do ~2000 kJ czesto MOCNIEJ niz na swiezo (27.09, 04.10, 20.06);
-po ~2500 kJ spadek 20-25 % (04.10: 145 vs 203 W; 27.09 odcielo przy ~2400 kJ). Zastrzezenie: po 2500 kJ czesciowo wybor
-(nie ciska sie) -> gorna granica, nie pomiar maksa. Wniosek: rozjazd odczucia z CP pod koniec dlugich jazd = brak
-pojecia zmeczenia w systemie, nie blad CP.
-Do decyzji Michala: (1) trwalosc w raporcie jazdy / Formie (sledzona w sezonie), (2) ostrzezenie przy trasach > ~2500 kJ
-+ jedzenie (glikogen), (3) Karoo/QExt2 (osobny projekt): ZASADA ustalona 08.10 -- W'bal na Karoo ZOSTAJE na swiezym modelu
-(zejscie ponizej zera = kandydat na przelom; detekcja przelomu w QBot i tak liczy sie ze swiezej krzywej moc-czas),
-a zmeczenie pokazywac OSOBNO (np. "2400 kJ · ~80 % mocy"), nie wliczac do W'bal.
-[2026-10-08] ZROBIONE: forma dnia na Karoo z ModelQ w mcp_server (wczesniej stary wzor HRV/BB/Xert) + cisnienie
-usuniete z formy (brak zwiazku w danych). DO ZROBIENIA: usunac martwe qbot_api._modelq_today_factor;
-RSRV v2 w QExt2: start ZAWSZE 100 %, kara z kJ (krzywa trwalosci), bez odbudowy na postojach (blad: postoj liczony
-jako suma postojow od startu). Kalibrowac DOPIERO na jazdach z nowa forma.
-MIEJSCE NA ZMECZENIE NA KAROO = RSRV (QExt2, odpowiednik Garmin Stamina; TODO [RSRV]). Stan 08.10 (fitmodel_qext2_ride):
-RSRV na KAZDEJ dlugiej jezdzie konczy na 8-17 % (27.09 odcielo: min 12 %; 26.07 bez odciecia: 10 %; 30.08: 13 %; 04.10: 14 %)
--> nie odroznia realnego odciecia; wzor na XSS (budzet clamp(CTL*5.4, 300, 600)), a trwalosc wg danych zalezy od kJ
-(do ~2000 kJ ~100 %, po 2500 kJ ~75 %). Kalibracja RSRV z krzywej trwalosci = wejscie do [RSRV] (sesja QExt2).
-
 ## [CP-DYNAMICZNE] CP z wysilkow + przelomy (dodane 2026-10-08)
 **Decyzja Michala 08.10: wariant B (przelom -> Telegram pyta "zatwierdzic?" -> TAK tworzy kotwice).**
 WDROZONE 08.10: fitmodel/cp_breakthrough.py + krok daily_job + akcja Telegram confirm_cp_breakthrough (DECISIONS 2026-10-08).
@@ -380,6 +354,19 @@ retry; 3) uczciwy komunikat Telegram (realne liczby, nie "zapisane w DB"). Pliki
 
 ## [RSRV] Ocena wzoru po realnych danych (dodane 2026-07-06)
 
+**OCENA 08.10 (dane, nie odczucie)** -- RSRV z pliku FIT (qext2_rsrv_pct) vs zuzyte kJ i trwalosc z QBot (fitmodel/durability.py):
+| jazda | 500 kJ | 1000 kJ | 1500 kJ | 2000 kJ | koniec | realna moc po 2000 kJ (trwalosc) |
+| 27.09 Zabia Wola 4,6 h | 77 % | 58 % | 24 % | 18 % | 17 % | 110 % swiezej |
+| 04.10 Zakroczym 4,9 h  | 65 % | 58 % | 42 % | 19 % | 17 % | 116 % |
+| 06.10 Marki 2,4 h      | 62 % | 44 % | -    | -    | 19 % | (1166 kJ) |
+WNIOSEK: RSRV jest ~3-5x za szybki. Po 2,4 h spokojnej jazdy pokazuje 19 % ("pusto"), a dane mowia, ze do ~2000 kJ moc
+jest w 100 %, spadek dopiero po ~2500 kJ (~80 %). Przyczyna: budzet XSS clamp(CTL*5,4, 300, 600) -- przy CTL ~59 to ~320 XSS,
+ktore wyczerpuje KAZDA jazda > ~2 h (+ kara za dryf). Dlatego RSRV konczy kazda dluga jazde na 8-17 % i nie odroznia odciecia.
+KIERUNEK dla RSRV (sesja QExt2): spadek RSRV ma byc powolny -- dane 08.10 (59 dlugich jazd): do ~4 h / ~2000 kcal moc
+  ~100 % startu, wyrazny spadek dopiero po ~5 h (~80 %, malo jazd). Obecny budzet XSS clamp(CTL*5,4, 300, 600) i kara za dryf
+  sa za agresywne. Tylko dane z czujnikow (bez recznego wpisu w trakcie jazdy). Pole `durability` w /ride-readiness
+  i trwalosc w QBot USUNIETE 08.10 (decyzja Michala) -- QExt2 musi miec wlasny wzor.
+
 Wejscie naprawione (todayFactor = readiness_score; RSRV na XSS). DO ZROBIENIA (po kilku jazdach z
 realnym todayFactor): ocenic czy sam WZOR RSRV w QExt2 (tempo XSS-penalty, odbudowa 30 min, kara za
 decoupling, budzet `CTL*5.4`) "czuje sie" jak Stamina, czy wymaga przestrojenia. Wymaga obserwacji
@@ -405,6 +392,8 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] [PORÓWNANIE-WSTRZYMANE] (2026-10-08, WSTRZYMANE decyzja Michala) Porownanie przejazdow wg GPS: progi ustalone ≥80% = ta sama trasa (trend), 50–79% = czesciowo wspolna (odcinki), tylko ten sam kierunek. Mockupy: /porownanie-mockup.html, /porownanie-1na1-mockup.html (dane /data/porownanie-*.json, skrypty /opt/qbot/artifacts/porownanie_*.py, indeks artifacts/porownanie/cells.json). Warunek wznowienia: porownanie mocy tylko przy TYM SAMYM mierniku (activity_device bike_power ant_device_number), np. 16.06 SRAM 29525 vs 08.10 Favero 30604 = 199 vs 147 W przy tym samym tempie i tetnie.
 
 # ZROBIONE
+- [2026-10-08] ZROBIONE: [RSRV-V2] RSRV na Karoo w stylu Garmin Stamina (moc EMA 20 min wzgl. CP + tetno z progiem 0,05 CP), start 100 %, bez XSS/formy/odbudowy. Wzorzec fitmodel/rsrv_v2.py + tests/test_rsrv_v2.py; QExt2 48a4e4b. Dok.: DECISIONS 2026-10-08.
+- [2026-10-08] [TRWALOSC] zbadane i WYCOFANE z QBot (decyzja Michala): do ~4 h brak spadku mocy, wiec bez wartosci na co dzien.
 - [2026-10-08] [HR-XSS-UPAL] sprawdzone: skok = zmiana LTHR, nie upal; korekta temperatury mala (+-5 %), zostaje (DECISIONS 2026-10-08).
 - [2026-10-08] [STREFY-HR-LTHR] dynamiczne LTHR (fitmodel/lthr.py, dzis 148) zamiast 132; strefy HR raportu od LTHR; LTHR+strefy do intervals/Karoo (DECISIONS 2026-10-08).
 - [2026-10-08] [GLIKOGEN-WOLNY] krok glycogen 930 s -> 0.4 s: jazdy z activity_record zamiast czytania 381 plikow FIT (DECISIONS 2026-10-08).
