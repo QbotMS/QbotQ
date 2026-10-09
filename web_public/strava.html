@@ -39,7 +39,7 @@ code{background:var(--well);padding:1px 6px;border-radius:6px}
     <div class="st-msg" id="m2"></div>
   </div></div>
   <div class="st-step" id="s3"><span class="n">3</span><div>
-    <b>Połącz</b> — na Stravie <b>zaznacz „View data about your private activities”</b> i kliknij Authorize.
+    <b>Połącz</b> — otworzy się nowa karta Stravy: <b>zostaw zaznaczone wszystkie pola</b> (w tym edycję aktywności — QBot ustawia rower, opis i tytuł) i kliknij Autoryzuj.
     <div class="st-row"><button class="st-btn" id="conn" disabled>Połącz ze Stravą</button></div>
     <div class="st-msg" id="m3"></div>
   </div></div>
@@ -72,7 +72,7 @@ function load(){j("/api/strava/status").then(function(s){
   if(s.photos)j("/api/strava/photos?limit=24").then(function(p){$("prev").style.display="";$("grid").innerHTML=p.photos.map(function(x){return '<img loading="lazy" src="'+x.url+'" title="'+(x.day+" · "+(x.activity||"")).replace(/"/g,"")+'">';}).join("");});
 }).catch(function(e){$("m2").textContent="Błąd: "+e.message;});}
 $("save").onclick=function(){j("/api/strava/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({client_id:$("cid").value,client_secret:$("sec").value})}).then(function(){$("sec").value="";$("m2").textContent="Zapisane.";load();}).catch(function(e){$("m2").textContent="Nie zapisano: "+e.message;});};
-$("conn").onclick=function(){location.href="/api/strava/connect";};
+$("conn").onclick=function(){var w=window.open("/api/strava/connect","_blank");if(!w){(window.top||window).location.href="/api/strava/connect";return;}$("m3").textContent="Dokończ autoryzację w nowej karcie — ten status odświeży się sam.";var n=0,t=setInterval(function(){load();if(++n>60)clearInterval(t);},3000);};
 $("sync").onclick=function(){$("sync").disabled=true;j("/api/strava/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}).then(load).catch(function(e){$("m4").textContent="Błąd: "+e.message;});};
 var q=new URLSearchParams(location.search);if(q.get("ok"))$("m3").textContent="Połączono ze Stravą.";if(q.get("err"))$("m3").textContent="Nie udało się: "+q.get("err");
 load();
