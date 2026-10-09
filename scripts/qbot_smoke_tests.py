@@ -489,13 +489,13 @@ def test_ride_readiness_sleep_data_date_payload():
         payload2 = asyncio.run(run_once())
         assert_equal(payload1["sleepDataDate"], "2026-05-23", "sleep data date payload")
         assert_equal(payload1["sleepDataDate"], payload2["sleepDataDate"], "sleep data date stability")
-        assert_equal(payload1["todayFactor"], payload2["todayFactor"], "todayFactor stable")
+        assert_equal(payload1.get("todayFactor"), payload2.get("todayFactor"), "todayFactor stable")  # 2026-10-08: pole pomijane bez wiersza ModelQ
         assert_equal(payload1["signals"]["sleepDataDate"], "2026-05-23", "sleep data date in signals")
 
         fake_recovery.sleep_date = "2026-05-24"
         payload3 = asyncio.run(run_once())
         assert_equal(payload3["sleepDataDate"], "2026-05-24", "sleep data date changes after new sleep")
-        if payload3["todayFactor"] != payload1["todayFactor"]:
+        if payload3.get("todayFactor") != payload1.get("todayFactor"):
             raise AssertionError("todayFactor changed after sleep marker update")
 
         encoded = json.loads(json.dumps(payload3, ensure_ascii=False))
