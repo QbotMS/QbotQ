@@ -2928,7 +2928,7 @@ def _modelq_ctl_xss() -> float | None:
     return None
 
 
-@mcp.custom_route("/ride-readiness", methods=["GET"])
+@mcp.custom_route("/ride-readiness", methods=["GET", "POST"])
 async def ride_readiness(request):
     """Return ride-readiness context for Karoo/QExt2.
 
@@ -2938,6 +2938,37 @@ async def ride_readiness(request):
     import asyncio
     from starlette.responses import JSONResponse
     from datetime import date, timedelta
+
+    # E3.3 (QExt2 plan v2): token urzadzenia. READINESS_REQUIRE_TOKEN=1 -> bez tokenu 401;
+    # do czasu instalacji nowego APK tryb przejsciowy (stare buildy Karoo nie wysylaja tokenu).
+    _tok = os.getenv("QEXT_READINESS_TOKEN", "").strip()
+    _authed = bool(_tok) and request.headers.get("authorization", "") == f"Bearer {_tok}"
+    if not _authed and os.getenv("READINESS_REQUIRE_TOKEN", "0") == "1":
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if not _authed:
+        print("⚠️  ride-readiness bez tokenu (tryb przejsciowy)", flush=True)
+    if request.method == "POST":
+        # zgloszenie kasety z Karoo (odczyt GET niczego nie zapisuje w nowych buildach)
+        if not _authed:
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        try:
+            _b = await request.json()
+            _ovr = bool(_b.get("cassette_override"))
+            _cogs = str(_b.get("cassette_cogs") or "").strip()
+            import psycopg as _pg
+            with _pg.connect(host=os.getenv("PGHOST", "localhost"), port=os.getenv("PGPORT", "5432"),
+                             dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
+                             password=os.getenv("PGPASSWORD", "")) as _conn:
+                _conn.execute(
+                    "INSERT INTO qbot_v2.qext2_cassette_report (override_enabled, cogs) "
+                    "SELECT %s, %s WHERE NOT EXISTS (SELECT 1 FROM qbot_v2.qext2_cassette_report "
+                    "WHERE reported_at > now() - interval '10 minutes' AND override_enabled = %s AND coalesce(cogs,'') = %s)",
+                    (_ovr, _cogs or None, _ovr, _cogs))
+                _conn.commit()
+            return JSONResponse({"ok": True})
+        except Exception as exc:
+            print(f"⚠️  ride-readiness POST kaseta: {exc}", flush=True)
+            return JSONResponse({"ok": False, "error": "bad request"}, status_code=400)
 
     today = date.today().isoformat()
     yesterday = (date.today() - timedelta(days=1)).isoformat()
