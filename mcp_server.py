@@ -2892,6 +2892,81 @@ def _modelq_ftp_ltp_override() -> dict:
 
 
 _STOPS_CACHE = {"ts": 0.0, "val": None}
+_CADENCE_FILE = "/opt/qbot/app/data/cadence_model.json"
+_CADENCE_LOCK = __import__("threading").Lock()
+
+
+def _build_cadence_model() -> dict:
+    """E6.4 (QExt2 plan v2): naturalna kadencja Michala per rower (klucz = nr ANT przerzutki AXS, 'none' = brak AXS)
+    x %CP (1: 50-70, 2: 70-85, 3: 85-100, 4: >100) x nachylenie (0: <2%, 1: 2-5%, 2: >5%), 90 dni.
+    Wpis [pb, gb, p10, p25]; tylko rowery z >= 15 jazdami i przedzialy z >= 300 s pedalowania."""
+    import psycopg, collections, json, time as _t
+    with psycopg.connect(host=os.getenv("PGHOST", "localhost"), port=os.getenv("PGPORT", "5432"),
+                         dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
+                         password=os.getenv("PGPASSWORD", ""), connect_timeout=5) as conn, conn.cursor() as cur:
+        cur.execute("""SELECT t.external_id,
+               COALESCE((SELECT max(d.ant_device_number)::text FROM qbot_v2.activity_device d
+                         WHERE d.external_id=t.external_id AND d.manufacturer='sram' AND d.device_type='34'), 'none'),
+               (SELECT ftp_est_w FROM qbot_v2.fitmodel_daily f WHERE f.day<=t.date AND ftp_est_w IS NOT NULL ORDER BY day DESC LIMIT 1)
+               FROM qbot_v2.training_sessions t
+               WHERE t.date > current_date - 90 AND t.avg_power_w > 0
+                 AND EXISTS (SELECT 1 FROM qbot_v2.activity_device d WHERE d.external_id=t.external_id)""")
+        rides = cur.fetchall()
+        per_bike = collections.Counter(r[1] for r in rides)
+        bins = collections.defaultdict(list)
+        for ext, bike, cp in rides:
+            if per_bike[bike] < 15 or not cp:
+                continue
+            cur.execute("SELECT power_w, cadence_rpm, altitude_m, distance_m FROM qbot_v2.activity_record WHERE external_id=%s ORDER BY sec", (ext,))
+            rec = cur.fetchall()
+            for k in range(30, len(rec)):
+                p, c, a, d = rec[k]
+                if not p or not c or p < 40 or c < 20 or a is None or d is None:
+                    continue
+                a0, d0 = rec[k - 30][2], rec[k - 30][3]
+                if a0 is None or d0 is None or d - d0 < 60:
+                    continue
+                g = 100.0 * (a - a0) / (d - d0)
+                pct = p / float(cp)
+                if g < -2 or pct < 0.5:
+                    continue
+                pb = 1 if pct < 0.7 else 2 if pct < 0.85 else 3 if pct < 1.0 else 4
+                gb = 0 if g < 2 else 1 if g < 5 else 2
+                bins[(bike, pb, gb)].append(int(c))
+    out = collections.defaultdict(list)
+    for (bike, pb, gb), v in bins.items():
+        if len(v) >= 300:
+            v.sort()
+            out[bike].append([pb, gb, v[int(0.10 * len(v))], v[int(0.25 * len(v))]])
+    model = {"built": _t.strftime("%Y-%m-%d"), "bikes": dict(out), "rides": dict(per_bike)}
+    tmp = _CADENCE_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(model, f)
+    os.replace(tmp, _CADENCE_FILE)
+    return model
+
+
+def _cadence_model() -> dict | None:
+    """Model z pliku; przebudowa w tle, gdy plik starszy niz 24 h (zadanie Karoo nie czeka)."""
+    import json, threading, time as _t
+    try:
+        age = _t.time() - os.path.getmtime(_CADENCE_FILE)
+    except OSError:
+        age = 1e9
+    if age > 24 * 3600 and _CADENCE_LOCK.acquire(blocking=False):
+        def _run():
+            try:
+                _build_cadence_model()
+            except Exception as exc:
+                print(f"⚠️  cadence model build error: {exc}", flush=True)
+            finally:
+                _CADENCE_LOCK.release()
+        threading.Thread(target=_run, daemon=True).start()
+    try:
+        with open(_CADENCE_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return None
 
 
 def _short_stops_min_per_km() -> float | None:
@@ -3259,6 +3334,7 @@ async def ride_readiness(request):
         "ctl":                round(ctl, 1) if ctl is not None else None,
         "ctlXss":             _modelq_ctl_xss(),
         "shortStopsMinPerKm": _short_stops_min_per_km(),
+        "cadenceModel":       _cadence_model(),
         "atl":                round(atl, 1) if atl is not None else None,
         "signals": {
             "hrvToday":        hrv_today,
