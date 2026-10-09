@@ -322,9 +322,62 @@ def _effort(c, ride_key):
     return e
 
 
+SNAP_DIR = "/opt/qbot/artifacts/tiles/snap"
+NO_ATTR_KM = 25.0                   # decyzja Michala: dla Warszawy i okolic bez atrakcji
+
+
+def tiles_snapshot(force: bool = False) -> str | None:
+    """Migawka kafelkow StatsHunters (cala historia) z data pobrania. Raz na dobe; trzymamy 14 ostatnich."""
+    import glob, json as _j
+    os.makedirs(SNAP_DIR, exist_ok=True)
+    snaps = sorted(glob.glob(SNAP_DIR + "/*.json"))
+    if snaps and not force and time.time() - os.path.getmtime(snaps[-1]) < 20 * 3600:
+        return snaps[-1]
+    try:
+        sys.path.insert(0, "/opt/qbot/app/tools")
+        from tools.tile_store import fetch_tiles, _env
+        share = os.getenv("STATSHUNTERS_SHARE_ID", _env().get("STATSHUNTERS_SHARE_ID", ""))
+        if not share:
+            return None
+        d = fetch_tiles(share, force=True)
+        if d.get("_error") or not d.get("tiles"):
+            print("[strava publish] statshunters: %s" % d.get("_error"))
+            return None
+        name = SNAP_DIR + "/%s.json" % datetime.fromisoformat(d["fetched_at"]).strftime("%Y%m%d%H%M")
+        with open(name, "w") as h:
+            _j.dump({"fetched_at": d["fetched_at"], "tiles": d["tiles"]}, h)
+        for old in sorted(glob.glob(SNAP_DIR + "/*.json"))[:-14]:
+            os.remove(old)
+        return name
+    except Exception as e:
+        print("[strava publish] migawka kafelkow: %s" % e)
+        return None
+
+
+def _snapshot_before(start_ts) -> set | None:
+    """Najnowsza migawka pobrana PRZED startem jazdy (czas lokalny serwera)."""
+    import glob, json as _j
+    best = None
+    for p in sorted(glob.glob(SNAP_DIR + "/*.json")):
+        try:
+            fa = datetime.strptime(os.path.basename(p)[:12], "%Y%m%d%H%M")
+        except ValueError:
+            continue
+        if fa < start_ts.astimezone().replace(tzinfo=None):
+            best = p
+    if not best:
+        return None
+    return {tuple(t) for t in _j.load(open(best))["tiles"]}
+
+
 def _new_tiles(c, ride_key, tr):
+    """Nowe kwadraty (zoom 14) = nie ma ich ani w historii GPS QBota sprzed jazdy, ani w migawce StatsHunters sprzed jazdy.
+    Brak migawki sprzed jazdy -> None (linijki nie ma; nie zgadujemy). Squadratinhos (zoom 17) nie liczymy."""
+    base = _snapshot_before(tr[0]["ts"])
+    if base is None:
+        return None
     la = [r["lat"] for r in tr]; lo = [r["lon"] for r in tr]
-    r = _one(c, """WITH t AS (SELECT DISTINCT floor((lon+180)/360*16384)::int x,
+    rows = _rows(c, """WITH t AS (SELECT DISTINCT floor((lon+180)/360*16384)::int x,
                   floor((1-ln(tan(radians(lat))+1/cos(radians(lat)))/pi())/2*16384)::int y
                   FROM qbot_v2.activity_record WHERE external_id=%s AND lat IS NOT NULL),
                prev AS (SELECT DISTINCT floor((lon+180)/360*16384)::int x,
@@ -332,9 +385,9 @@ def _new_tiles(c, ride_key, tr):
                   FROM qbot_v2.activity_record WHERE external_id<>%s AND lat IS NOT NULL
                   AND ts < (SELECT min(ts) FROM qbot_v2.activity_record WHERE external_id=%s)
                   AND lat BETWEEN %s AND %s AND lon BETWEEN %s AND %s)
-               SELECT count(*) n FROM t WHERE NOT EXISTS (SELECT 1 FROM prev p WHERE p.x=t.x AND p.y=t.y)""",
+               SELECT t.x, t.y FROM t WHERE NOT EXISTS (SELECT 1 FROM prev p WHERE p.x=t.x AND p.y=t.y)""",
              (ride_key, ride_key, ride_key, min(la) - 0.05, max(la) + 0.05, min(lo) - 0.05, max(lo) + 0.05))
-    return int(r["n"]) if r else 0
+    return len({(r["x"], r["y"]) for r in rows} - base)
 
 
 def _stops(tr):
@@ -486,6 +539,8 @@ def wikidata_candidates(pts, ends):
     out = []
     for it in items.values():
         if any(_SKIP_TYPE.search(t) for t in it["types"]) and not it["zabytek"]:
+            continue
+        if hav_m(it["pt"], HOME) < NO_ATTR_KM * 1000:   # Warszawa i okolice - bez atrakcji
             continue
         if _SACRAL.search(it["name"]) or any(_SACRAL.search(t) for t in it["types"]):   # decyzja Michala: zadnych odniesien religijnych
             continue
@@ -731,6 +786,7 @@ def start_loop(db_conn) -> None:
         time.sleep(300)
         while True:
             try:
+                tiles_snapshot()
                 if 6 <= datetime.now().hour <= 23:
                     print("[strava publish]", run_publish(db_conn))
             except Exception as e:
