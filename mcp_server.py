@@ -2892,6 +2892,19 @@ def _modelq_ftp_ltp_override() -> dict:
 
 
 _STOPS_CACHE = {"ts": 0.0, "val": None}
+
+
+def _qext2_device_settings() -> dict | None:
+    """E7.1: ostatnia kopia ustawien SETUP z Karoo (None, gdy brak)."""
+    try:
+        import psycopg
+        with psycopg.connect(host=os.getenv("PGHOST", "localhost"), port=os.getenv("PGPORT", "5432"),
+                             dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
+                             password=os.getenv("PGPASSWORD", ""), connect_timeout=3) as conn:
+            row = conn.execute("SELECT settings FROM qbot_v2.qext2_settings WHERE id = 1").fetchone()
+            return row[0] if row else None
+    except Exception:
+        return None
 _CADENCE_FILE = "/opt/qbot/app/data/cadence_model.json"
 _CADENCE_LOCK = __import__("threading").Lock()
 
@@ -3068,6 +3081,18 @@ async def ride_readiness(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         try:
             _b = await request.json()
+            if isinstance(_b.get("settings"), dict):
+                # E7.1: kopia ustawien SETUP z Karoo (odtwarzana po reinstalacji)
+                import psycopg as _pg, json as _json
+                with _pg.connect(host=os.getenv("PGHOST", "localhost"), port=os.getenv("PGPORT", "5432"),
+                                 dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
+                                 password=os.getenv("PGPASSWORD", "")) as _conn:
+                    _conn.execute("CREATE TABLE IF NOT EXISTS qbot_v2.qext2_settings (id int PRIMARY KEY, settings jsonb, updated_at timestamptz DEFAULT now())")
+                    _conn.execute("INSERT INTO qbot_v2.qext2_settings (id, settings, updated_at) VALUES (1, %s, now()) "
+                                  "ON CONFLICT (id) DO UPDATE SET settings = EXCLUDED.settings, updated_at = now()",
+                                  (_json.dumps(_b["settings"]),))
+                    _conn.commit()
+                return JSONResponse({"ok": True, "saved": "settings"})
             _ovr = bool(_b.get("cassette_override"))
             _cogs = str(_b.get("cassette_cogs") or "").strip()
             import psycopg as _pg
@@ -3335,6 +3360,7 @@ async def ride_readiness(request):
         "ctlXss":             _modelq_ctl_xss(),
         "shortStopsMinPerKm": _short_stops_min_per_km(),
         "cadenceModel":       _cadence_model(),
+        "deviceSettings":     _qext2_device_settings() if _authed else None,
         "atl":                round(atl, 1) if atl is not None else None,
         "signals": {
             "hrvToday":        hrv_today,
