@@ -2891,6 +2891,46 @@ def _modelq_ftp_ltp_override() -> dict:
     return out
 
 
+_STOPS_CACHE = {"ts": 0.0, "val": None}
+
+
+def _short_stops_min_per_km() -> float | None:
+    """E4.4 (QExt2 plan v2): mediana krotkich postojow (<= 20 min) na km z jazd >= 40 km z ostatnich 120 dni.
+    Dla ETA na Karoo zamiast stalej 0.72 min/km. Cache 12 h; blad -> None (Karoo zostaje przy stalej)."""
+    import time as _t
+    if _t.time() - _STOPS_CACHE["ts"] < 12 * 3600 and _STOPS_CACHE["val"] is not None:
+        return _STOPS_CACHE["val"]
+    try:
+        import psycopg, statistics
+        with psycopg.connect(host=os.getenv("PGHOST", "localhost"), port=os.getenv("PGPORT", "5432"),
+                             dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
+                             password=os.getenv("PGPASSWORD", ""), connect_timeout=3) as conn, conn.cursor() as cur:
+            cur.execute("SELECT external_id, distance_m FROM qbot_v2.training_sessions "
+                        "WHERE date > current_date - 120 AND distance_m >= 40000 AND avg_power_w > 0")
+            vals = []
+            for ext, dist in cur.fetchall():
+                cur.execute("SELECT ts, COALESCE(speed_mps, 0) FROM qbot_v2.activity_record WHERE external_id=%s ORDER BY ts", (ext,))
+                rec = cur.fetchall()
+                if len(rec) < 600:
+                    continue
+                short = stop = 0.0; prev = rec[0][0]
+                for ts, v in rec[1:]:
+                    dt = (ts - prev).total_seconds(); prev = ts
+                    if dt > 1.5 or v < 0.8:
+                        stop += dt
+                    elif stop > 0:
+                        if stop <= 1200:
+                            short += stop
+                        stop = 0.0
+                vals.append(short / 60.0 / (float(dist) / 1000.0))
+        val = round(statistics.median(vals), 3) if len(vals) >= 5 else None
+        _STOPS_CACHE.update(ts=_t.time(), val=val)
+        return val
+    except Exception as exc:
+        print(f"⚠️  ride-readiness: stops median error: {exc}", flush=True)
+        return None
+
+
 def _modelq_ctl_xss() -> float | None:
     """CTL wyrazone w XSS (qbot_v2.fitmodel_daily.ctl_xss) dla Karoo/QExt2.
 
@@ -3218,6 +3258,7 @@ async def ride_readiness(request):
         "maxHrSource":        RIDER_MAX_HR_SOURCE if RIDER_MAX_HR_BPM else None,
         "ctl":                round(ctl, 1) if ctl is not None else None,
         "ctlXss":             _modelq_ctl_xss(),
+        "shortStopsMinPerKm": _short_stops_min_per_km(),
         "atl":                round(atl, 1) if atl is not None else None,
         "signals": {
             "hrvToday":        hrv_today,
