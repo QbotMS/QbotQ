@@ -43,7 +43,7 @@ UA = "QBot/3.0 (strava publish; qbot@olga181.mikrus.xyz)"
 API = "https://www.strava.com/api/v3"
 AXS_BIKE = {10625: "Grizl", 27856: "Grail"}
 NO_AXS_BIKE = "Monster"
-BIKE_KEYS = {"Grizl": ("grizl",), "Grail": ("grail",), "Monster": ("monster", "grand canyon")}
+BIKE_KEYS = {"Grizl": ("grizl",), "Grail": ("grail",), "Monster": ("monster", "grand canyon", "kloc")}   # na Stravie: Kloc MTB
 SURF_GROUP = {"twarda szybka": "asfalt", "dobry gravel": "szuter", "zwykly gravel": "szuter",
               "trudna/wolna": "ujeby", "ryzyko/niepewne": "ujeby"}
 PRIVACY_KM = 3.0                    # nic w promieniu 3 km od startu i mety (okolice domu)
