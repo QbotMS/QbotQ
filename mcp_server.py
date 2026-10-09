@@ -3070,7 +3070,9 @@ async def ride_readiness(request):
     # E3.3 (QExt2 plan v2): token urzadzenia. READINESS_REQUIRE_TOKEN=1 -> bez tokenu 401;
     # do czasu instalacji nowego APK tryb przejsciowy (stare buildy Karoo nie wysylaja tokenu).
     _tok = os.getenv("QEXT_READINESS_TOKEN", "").strip()
-    _authed = bool(_tok) and request.headers.get("authorization", "") == f"Bearer {_tok}"
+    # most MCP na publicznym adresie wycina "Authorization" -> Karoo wysyla X-QExt2-Token (oba akceptowane)
+    _authed = bool(_tok) and (request.headers.get("x-qext2-token", "") == _tok
+                              or request.headers.get("authorization", "") == f"Bearer {_tok}")
     if not _authed and os.getenv("READINESS_REQUIRE_TOKEN", "0") == "1":
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     if not _authed:
