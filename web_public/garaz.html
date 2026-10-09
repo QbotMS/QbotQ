@@ -250,6 +250,25 @@ body.svy-open .svy{display:block}
 #i_priority button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 #instrModal .mbody{display:block}
 #instrModal .mgrid{grid-template-columns:1fr 1fr}
+/* zakladka NOTATKI (2026-10-09) */
+.nt-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:10px 0 14px}
+.nt-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.nt-t{font-weight:700;font-size:16px}
+.nt-tags{display:inline-flex;gap:5px;flex-wrap:wrap;flex:1}
+.nt-tag{font-size:11.5px;padding:2px 9px;border-radius:999px;background:var(--accent-bg);color:var(--accent);font-weight:600}
+.nt-tag.gen{background:var(--panel);color:var(--ink2)}
+.nt-d{font-size:12.5px;color:var(--muted)}
+.nt-ed{padding:5px 10px;font-size:13px}
+.nt-body{font-size:14.5px;line-height:1.5}
+.nt-body p{margin:6px 0}
+.nt-body ul{margin:4px 0 8px;padding-left:20px}
+.nt-body li.sub{margin-left:18px;list-style:circle}
+.nt-body .nt-h{font-weight:700;color:var(--accent);font-size:13px;letter-spacing:.04em;text-transform:uppercase;margin:12px 0 4px}
+.nt-tab{border-collapse:collapse;margin:6px 0 10px;font-size:14px}
+.nt-tab th,.nt-tab td{border:1px solid var(--line);padding:5px 10px;text-align:left}
+.nt-tab th{background:var(--panel)}
+#notesModal .mbody{display:block}
+#n_body{min-height:320px;font-family:ui-monospace,Menlo,monospace;font-size:13.5px}
 </style>
 </head>
 <body>
@@ -266,12 +285,14 @@ body.svy-open .svy{display:block}
   <button type="button" id="tabExped">Wyprawy</button>
   <button type="button" id="tabFit">Fitting</button>
   <button type="button" id="tabInstr">Instrukcje</button>
+  <button type="button" id="tabNotes">Notatki</button>
   <span class="tabsearch" id="tabSearch">
     <input type="search" id="bsearch" placeholder="szukaj: nazwa, model, kategoria…" autocomplete="off" style="display:none">
     <input type="search" id="gsearch" placeholder="szukaj: marka, model, kolor, notatka…">
     <input type="search" id="esearch" placeholder="szukaj: marka, model, notatka…" style="display:none">
     <input type="search" id="xsearch" placeholder="szukaj: marka, model, notatka…" style="display:none">
     <input type="search" id="isearch" placeholder="szukaj w instrukcjach&#8230;" style="display:none">
+    <input type="search" id="nsearch" placeholder="szukaj w notatkach&#8230;" style="display:none">
   </span>
 </div>
 
@@ -334,6 +355,12 @@ body.svy-open .svy{display:block}
   <span class="count" id="icount"></span>
 </div>
 
+<div class="toolbar" id="toolbarNotes" style="display:none">
+  <select id="nfilterBike"><option value="">wszystkie rowery</option></select>
+  <button type="button" class="btn" id="nadd">+ Dodaj notatk&#281;</button>
+  <span class="count" id="ncount"></span>
+</div>
+
 <div class="wrap">
   <div class="view on" id="viewGear"><div id="garageBody"><div class="empty">ładowanie…</div></div></div>
   <div class="view" id="viewEquip"><div id="equipBody"><div class="empty">ładowanie…</div></div></div>
@@ -341,6 +368,7 @@ body.svy-open .svy{display:block}
   <div class="view" id="viewBike"><div id="bikeBody"><div class="empty">ładowanie…</div></div></div>
   <div class="view" id="viewInstr"><div id="instrBody"><div class="empty">&#322;adowanie&#8230;</div></div></div>
   <div class="view" id="viewFit"><div id="fitBody"><div class="empty">ładowanie…</div></div></div>
+  <div class="view" id="viewNotes"><div id="notesBody"><div class="empty">&#322;adowanie&#8230;</div></div></div>
 </div>
 
 <div class="modal-back" id="mBack"></div>
@@ -703,6 +731,26 @@ body.svy-open .svy{display:block}
   </div>
 </div>
 
+<div class="modal" id="notesModal">
+  <div class="modal-head">
+    <div class="t" id="nTitle">Dodaj notatk&#281;</div>
+    <button type="button" class="modal-x" id="nCancelX" aria-label="zamknij">&times;</button>
+  </div>
+  <div class="mbody">
+    <input type="hidden" id="n_id">
+    <div class="mmeta" id="nMeta"></div>
+    <div class="mf full" style="margin-bottom:10px"><label>Tytu&#322; *</label><input id="n_title" placeholder="np. &#321;a&#324;cuchy &#8212; d&#322;ugo&#347;ci i rotacja"></div>
+    <div class="mf qgrp" style="margin-bottom:10px"><span>Dotyczy rower&#243;w (nic = og&#243;lna)</span><div class="qbtns" id="n_bikes"></div></div>
+    <div class="mf full"><label>Tre&#347;&#263; &#8212; **pogrubienie**, &#8222;- &#8221; lista, | tabela |, ## nag&#322;&#243;wek</label><textarea id="n_body"></textarea></div>
+  </div>
+  <div class="mfoot">
+    <div class="msg" id="nStatus"></div>
+    <button type="button" class="btn danger" id="nDelete" style="display:none">Usu&#324;</button>
+    <button type="button" class="btn sec" id="nCancel">Anuluj</button>
+    <button type="button" class="btn" id="nSave">Zapisz</button>
+  </div>
+</div>
+
 <div class="lightbox" id="lightbox"><img id="lightboxImg" alt=""></div>
 <script src="/garaz-columns.js?v=2"></script>
 <script src="/garaz-render.js?v=25"></script>
@@ -713,6 +761,7 @@ body.svy-open .svy{display:block}
 <script src="/nav.js?v=14"></script>
 <script>(function(){var b=document.getElementById("themebtn");if(!b)return;var SUN='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',MOON='<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';function paint(){b.querySelector("svg").innerHTML=document.documentElement.classList.contains("theme-dark")?SUN:MOON;}b.addEventListener("click",function(){var d=!document.documentElement.classList.contains("theme-dark");document.documentElement.classList.toggle("theme-dark",d);try{localStorage.setItem("qtheme",d?"dark":"light")}catch(e){}paint();});paint();})();</script>
 <script src="/garaz-exped.js?v=4"></script>
-<script src="/garaz-search.js?v=1"></script>
+<script src="/garaz-notatki.js?v=1"></script>
+<script src="/garaz-search.js?v=2"></script>
 </body>
 </html>

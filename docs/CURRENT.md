@@ -1206,3 +1206,7 @@ Zweryfikowane na zywo. qbot-api zrestartowany. OTWARTE: retry przy 202 w QExt2 (
 - Wdrozone: qbot_strava_publish.py (watek w qbot-web), scope Stravy rozszerzony o activity:write,profile:read_all.
 - CZEKA NA MICHALA: raz kliknac „Połącz ze Stravą” na /strava.html (bez tego automat nic nie wysyla, jest powiadomienie).
 - Podglad 04.10 (bez wysylania): /opt/qbot/artifacts/strava_dry_0410.txt. Dok.: docs/STRAVA_PUBLISH.md
+
+## 09.10.2026 – Garaż: zakładka Notatki [GARAZ-NOTATKI]
+- Jedna lista notatek z tagami rowerów (bike_notes w garage.db). Zweryfikowane Playwright: karta, tagi, tabela, okno edycji, bez błędów JS.
+- Albert nie czyta notatek (decyzja: pytania ida przez DEV). Dok.: docs/GARAZ.md sekcja Notatki.

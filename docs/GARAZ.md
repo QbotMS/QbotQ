@@ -47,3 +47,12 @@ zdjęcia: `/api/garage/photo`, `/photo/from-url`, `/photo/delete` z `entity` ∈
 ## Znane ograniczenia
 - Kalkulator ciśnień i opis roweru dla Alberta biorą koła/komponenty obu rowerów naraz (brak filtra `bike_id`).
 - Sylwetka nie modeluje pochylenia miednicy ani długości stopy; długości nóg ze zdjęcia odrzucone jako niewiarygodne.
+
+## Notatki (od 09.10.2026)
+- Zakładka **Notatki** (`garaz-notatki.js`, samodzielna jak `garaz-exped.js`): jedna lista notatek warsztatowych, tagi = rowery.
+- Tabela `bike_notes` w garage.db (tworzona leniwie w `qbot_web._bike_notes_conn`): `title`, `body`, `bike_ids` (CSV id z `bikes`, puste = ogólna), `created_at`, `updated_at`.
+- API: `GET /api/bike-notes/list` (notatki + rowery), `POST /api/bike-notes/save` (id = edycja), `POST /api/bike-notes/delete` (wymaga `confirm`).
+- Treść: prosty tekst z formatowaniem `**pogrubienie**`, `- lista`, `| tabela |`, `## nagłówek` — rysowane w przeglądarce (najpierw escape HTML).
+- `bikes.notes` (pole w oknie roweru) zostaje jak było — to opis specyfikacji, nie notatki.
+- Albert NIE czyta notatek — decyzja Michała 09.10.2026: pytania idą przez sesje Claude/DEV, nie przez Alberta. Sesja czyta notatki zapytaniem do garage.db: SELECT * FROM bike_notes.
+- Pierwsza notatka: „Łańcuchy — długości i rotacja” (Grizl + Grail).

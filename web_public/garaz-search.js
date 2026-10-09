@@ -4,7 +4,7 @@
    PO kodzie przelaczania (mikrozadanie), wiec wygrywa z dawnymi ukrywaczami pola. Fitting: bez pola. */
 (function(){
 "use strict";
-var MAP = {tabBike:"bsearch", tabGear:"gsearch", tabEquip:"esearch", tabExped:"xsearch", tabInstr:"isearch", tabFit:null};
+var MAP = {tabBike:"bsearch", tabGear:"gsearch", tabEquip:"esearch", tabExped:"xsearch", tabInstr:"isearch", tabNotes:"nsearch", tabFit:null};
 function sync(){
   var box = document.getElementById("tabSearch"); if(!box) return;
   var act = null;

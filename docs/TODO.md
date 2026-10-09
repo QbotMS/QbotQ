@@ -392,6 +392,7 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] [PORÓWNANIE-WSTRZYMANE] (2026-10-08, WSTRZYMANE decyzja Michala) Porownanie przejazdow wg GPS: progi ustalone ≥80% = ta sama trasa (trend), 50–79% = czesciowo wspolna (odcinki), tylko ten sam kierunek. Mockupy: /porownanie-mockup.html, /porownanie-1na1-mockup.html (dane /data/porownanie-*.json, skrypty /opt/qbot/artifacts/porownanie_*.py, indeks artifacts/porownanie/cells.json). Warunek wznowienia: porownanie mocy tylko przy TYM SAMYM mierniku (activity_device bike_power ant_device_number), np. 16.06 SRAM 29525 vs 08.10 Favero 30604 = 199 vs 147 W przy tym samym tempie i tetnie.
 
 # ZROBIONE
+- [2026-10-09] [GARAZ-NOTATKI] Garaż: zakładka Notatki (bike_notes, tagi rowerów, /api/bike-notes/*), notatka o łańcuchach Grizl/Grail. Dok.: GARAZ.md. Albert nie czyta notatek (decyzja: niepotrzebne, pytania ida przez DEV).
 - [2026-10-08] ZROBIONE: [RSRV-V2] RSRV na Karoo w stylu Garmin Stamina (moc EMA 20 min wzgl. CP + tetno z progiem 0,05 CP), start 100 %, bez XSS/formy/odbudowy. Wzorzec fitmodel/rsrv_v2.py + tests/test_rsrv_v2.py; QExt2 48a4e4b. Dok.: DECISIONS 2026-10-08.
 - [2026-10-08] [TRWALOSC] zbadane i WYCOFANE z QBot (decyzja Michala): do ~4 h brak spadku mocy, wiec bez wartosci na co dzien.
 - [2026-10-08] [HR-XSS-UPAL] sprawdzone: skok = zmiana LTHR, nie upal; korekta temperatury mala (+-5 %), zostaje (DECISIONS 2026-10-08).

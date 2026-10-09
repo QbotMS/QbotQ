@@ -8089,6 +8089,97 @@ async def instructions_delete(request: Request):
         gc.close()
 
 
+
+# --- Garaz: NOTATKI warsztatowe (jedna lista, tagi = rowery) ---
+# Tabela w garage.db tworzona leniwie (CREATE IF NOT EXISTS) przy pierwszym uzyciu.
+# bike_ids = CSV id rowerow z tabeli bikes ("" = notatka ogolna). Tresc = tekst z prostym
+# formatowaniem (**pogrubienie**, - lista, | tabela |, ## naglowek) rysowanym po stronie przegladarki.
+def _bike_notes_conn():
+    gc = _garage_conn()
+    gc.execute(
+        "CREATE TABLE IF NOT EXISTS bike_notes ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " title TEXT NOT NULL,"
+        " body TEXT,"
+        " bike_ids TEXT,"
+        " created_at TEXT NOT NULL DEFAULT (datetime('now')),"
+        " updated_at TEXT NOT NULL DEFAULT (datetime('now')))")
+    return gc
+
+
+@app.get("/api/bike-notes/list")
+def bike_notes_list():
+    gc = _bike_notes_conn()
+    try:
+        items = [dict(r) for r in gc.execute(
+            "SELECT * FROM bike_notes ORDER BY updated_at DESC, id DESC").fetchall()]
+        bikes = [dict(r) for r in gc.execute(
+            "SELECT id, name, nickname, active FROM bikes ORDER BY active DESC, id").fetchall()]
+        return {"items": items, "bikes": bikes}
+    finally:
+        gc.close()
+
+
+@app.post("/api/bike-notes/save")
+async def bike_notes_save(request: Request):
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    title = _gs(b.get("title"), 300)
+    if not title:
+        raise HTTPException(status_code=400, detail="Wymagany tytul notatki")
+    body = _gs(b.get("body"), 20000)
+    gc = _bike_notes_conn()
+    try:
+        known = {r[0] for r in gc.execute("SELECT id FROM bikes").fetchall()}
+        ids = []
+        for x in (b.get("bike_ids") or []):
+            try:
+                x = int(x)
+            except (TypeError, ValueError):
+                continue
+            if x in known and x not in ids:
+                ids.append(x)
+        csv = ",".join(str(x) for x in sorted(ids))
+        nid = b.get("id")
+        if nid not in (None, "", 0, "0"):
+            nid = int(nid)
+            cur = gc.execute("UPDATE bike_notes SET title=?, body=?, bike_ids=?, "
+                             "updated_at=datetime('now') WHERE id=?", (title, body, csv, nid))
+            if not cur.rowcount:
+                raise HTTPException(status_code=404, detail="Nie ma takiej notatki")
+        else:
+            cur = gc.execute("INSERT INTO bike_notes (title, body, bike_ids) VALUES (?,?,?)",
+                             (title, body, csv))
+            nid = cur.lastrowid
+        gc.commit()
+        return {"ok": True, "id": nid}
+    finally:
+        gc.close()
+
+
+@app.post("/api/bike-notes/delete")
+async def bike_notes_delete(request: Request):
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    nid = b.get("id")
+    if nid in (None, "", 0, "0"):
+        raise HTTPException(status_code=400, detail="Brak id")
+    if not b.get("confirm"):
+        raise HTTPException(status_code=400, detail="Brak potwierdzenia")
+    gc = _bike_notes_conn()
+    try:
+        cur = gc.execute("DELETE FROM bike_notes WHERE id=?", (int(nid),))
+        gc.commit()
+        if not cur.rowcount:
+            raise HTTPException(status_code=404, detail="Nie ma takiej notatki")
+        return {"ok": True, "id": int(nid)}
+    finally:
+        gc.close()
+
 _FEEL_WORDS = {-2: "fatalnie", -1: "gorzej niz zwykle", 0: "neutralnie", 1: "dobrze", 2: "swietnie"}
 
 
