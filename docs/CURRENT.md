@@ -1195,3 +1195,14 @@ Zweryfikowane na zywo. qbot-api zrestartowany. OTWARTE: retry przy 202 w QExt2 (
 ## 2026-10-08 (2) — Kalendarz łączy Miesiąc i Tydzień [KALENDARZ3-2026-10-08]
 - Trening: zakładka Kalendarz (kalendarz3.js) zamiast Miesiąc + Tydzień; nagłówek 4 kafle + kafel ostrzeżeń, szczegóły zwinięte, panel dnia i okna edycji działają.
 - Do sprawdzenia na żywo przez Michała (Mac + iPhone); składnia JS sprawdzona node --check.
+
+## 2026-10-08 (koniec dnia) — ModelQ: progi, LTHR, przelomy CP; trwalosc wycofana [sesja Claude, projekt QBot]
+- Opis mechanizmow: docs/PROGI_MODELQ.md. Decyzje: DECISIONS 2026-10-08. Otwarte: TODO [CP-DYNAMICZNE] (przejscie na automat
+  po 3 przelomach), [MODELQ-TP-PRZEGLAD] (rewizja dolnej granicy z W'bal), [RSRV] (QExt2: RSRV 3-5x za szybki).
+- DO COMMITA: qbot_web.py, mcp_server.py, fitmodel/daily_job.py, usuniete fitmodel/durability.py + tests/test_durability.py,
+  docs (DECISIONS, TODO, CURRENT, PROGI_MODELQ), web_mirror (forma2-data.js, forma.html, raport-jazdy*).
+
+## 09.10.2026 – Strava: automatyczny rower + opis „Albert · QBot”
+- Wdrozone: qbot_strava_publish.py (watek w qbot-web), scope Stravy rozszerzony o activity:write,profile:read_all.
+- CZEKA NA MICHALA: raz kliknac „Połącz ze Stravą” na /strava.html (bez tego automat nic nie wysyla, jest powiadomienie).
+- Podglad 04.10 (bez wysylania): /opt/qbot/artifacts/strava_dry_0410.txt. Dok.: docs/STRAVA_PUBLISH.md

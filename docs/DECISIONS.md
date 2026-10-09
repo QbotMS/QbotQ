@@ -4494,3 +4494,8 @@ Takie jazdy NIE wchodza do bazy (baza tylko z potwierdzonych czujnikow). 24.09: 
 stron; `--check` = kod 1 gdy lustro nieaktualne. Strony nadal działają prosto z web/public (żywe od razu). Uruchamiać przed
 każdym commitem. Odrzucono: osobne repo dla web/public (druga rzecz do commitowania). Stare repo w web/public — 2026-10-04 spakowane do /opt/qbot/data/archive/web_public_git_2026-07.tar.gz (zweryfikowane)
 i usunięte z web/public (po zalogowaniu było do pobrania pod /.git/; nic z niego nie korzystało).
+
+## 2026-10-09 – Strava: rower i opis z QBota
+- Rower na Stravie ustawia QBot: AXS 10625 = Grizl, AXS 27856 = Grail, brak AXS = Monster.
+- Opis ZAWSZE nadpisuje; format: region+km+przewyzszenie+asfalt/szuter/ujeby; zdanie o wysilku (wpierdol / mocno, ale stabilnie / lekko / rowno, progi wzgledem wlasnej historii XSS i min W'bal); opcjonalnie nowe kwadraty, atrakcja (AI ocenia, 0-1), przerwa >= 15 min; podpis „🤖 Albert · QBot”.
+- Rzeczowo, bez zartow; bez danych zdrowotnych i bez okolic startu/mety (3 km). Automat tylko dla jazd od 09.10.2026. Ilustracja – pozniej.

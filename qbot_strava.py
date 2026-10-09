@@ -4,7 +4,7 @@
 Przeplyw:
   1. Michal zaklada aplikacje API na strava.com/settings/api (Callback Domain = albert.cytr.us)
   2. na /strava.html wpisuje Client ID + Client Secret (POST /api/strava/config) - sekret NIE trafia do czatu/repo
-  3. "Polacz ze Strava" -> GET /api/strava/connect -> Strava (scope read,activity:read_all) -> GET /api/strava/callback
+  3. "Polacz ze Strava" -> GET /api/strava/connect -> Strava (scope read,activity:read_all,activity:write,profile:read_all) -> GET /api/strava/callback
   4. "Pobierz zdjecia" -> POST /api/strava/sync (watek w tle, wznawialny, pilnuje limitow Stravy 100/15 min, 1000/dzien)
 Zdjecia: /opt/qbot/web/public/strava/<unique_id>.jpg (statyk za brama logowania), metadane w qbot_v2.strava_photo,
 dopasowanie do jazdy QBota po czasie startu (+-15 min) -> ride_key (= training_sessions.external_id).
@@ -27,7 +27,7 @@ API = "https://www.strava.com/api/v3"
 PHOTO_DIR = "/opt/qbot/web/public/strava"
 PHOTO_URL = "/strava/"
 DEFAULT_BASE = os.environ.get("STRAVA_REDIRECT_BASE", "https://albert.cytr.us")
-SCOPE = "read,activity:read_all"
+SCOPE = "read,activity:read_all,activity:write,profile:read_all"   # 2026-10-09: zapis roweru i opisu (qbot_strava_publish)
 LIMIT_15, LIMIT_DAY = 90, 900          # zapas wzgledem limitow Stravy (100 / 1000)
 # dobor zdjec (decyzja Michala 2026-09-28): NIE wszystkie. Na start ~40 z najlepszych jazd (wyjazdy + dlugie),
 # potem po 2-3 zdjecia z kazdej nowej jazdy.
@@ -498,6 +498,11 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
     if not _SCHED_STARTED:
         _SCHED_STARTED = True
         threading.Thread(target=_scheduler, args=(db_conn,), daemon=True, name="strava-auto").start()
+        try:   # 2026-10-09: automat roweru i opisu na Stravie (docs/STRAVA_PUBLISH.md)
+            import qbot_strava_publish
+            qbot_strava_publish.start_loop(db_conn)
+        except Exception as e:
+            print("[strava] publish start: %s" % e)
 
     def user_of(request: Request) -> str:
         u = current_user(request)
