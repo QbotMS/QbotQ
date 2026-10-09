@@ -9,7 +9,9 @@ Po kazdej nowej jezdzie (od START_FROM) QBot jednym PUT /activities/{id} ustawia
 
 Opis (rzeczowo, z ikonkami, bez danych zdrowotnych, bez okolic startu/mety):
   1) region + km + przewyzszenie + nawierzchnia: asfalt / szuter / ujeby (5 kategorii -> 3),
-  2) wysilek z XSS i W'bal wzgledem WLASNEJ historii jazd: wpierdol / mocno, ale stabilnie / lekko / rowno,
+  2) wysilek z intensywnosci (srednia moc/tetno) i obciazenia (XSS) wzgledem WLASNEJ historii: wpierdol / mocno / lekko / rowno.
+     W'bal tylko wewnetrznie - NIGDY w tekscie (dane prywatne, decyzja 2026-10-09 b),
+  MyBiom (lasy w okolicy, uczone z nazw na Stravie) -> region zawsze "Przepiękna Puszcza Słupecka"; do Mamy -> BEZ opisu,
   3) (opcjonalnie) nowe kwadraty (zoom 14, historia GPS QBota), atrakcja (0-2, ocenia AI), dluga przerwa,
   4) podpis "🤖 Albert · QBot".
 AI (qgpt_json) WYBIERA tylko nazwe regionu i atrakcje z list przygotowanych przez QBota; liczby wstawia QBot.
@@ -47,13 +49,15 @@ SURF_GROUP = {"twarda szybka": "asfalt", "dobry gravel": "szuter", "zwykly grave
 PRIVACY_KM = 3.0                    # nic w promieniu 3 km od startu i mety (okolice domu)
 POI_MAX_M = 400                     # atrakcja maks. tyle od sladu
 STOP_MIN_S = 15 * 60                # przerwa w opisie od 15 min
-GEO_EVERY_KM = 8.0
+GEO_EVERY_KM = 4.0                  # gesciej - tytul potrzebuje miasteczek po drodze
 WD_SEG_KM = 5.0
 MAX_ATTEMPTS = 24                   # x LOOP_S = ok. 8 h czekania na czujniki / raport / W'bal
 LOOP_S = 20 * 60
 _SKIP_TYPE = re.compile(r"wieś|miasto|osada|kolonia|przysiółek|gmina|sołectwo|część|dzielnica|osiedle|stacja|przystanek|"
                         r"ulica|droga|most|rzeka|potok|kanał|jezioro|staw|szkoła|parafia|dekanat|powiat|województwo|"
                         r"kapliczka|krzyż|cmentarz|pomnik przyrody|drzewo|grób|mogiła", re.I)
+_SACRAL = re.compile(r"kości|bazylik|klasztor|kaplic|parafi|sanktuar|opact|cerk|synagog|meczet|kapliczk|krzyż|cmentarz|"
+                     r"zakon|kolegiat|katedr|dzwonnic|plebani|wikariat|kalwari|figura|świątyni|dom zakonny", re.I)
 _GENERIC = {"doli", "okol", "skra", "międ", "pogr", "ziem", "równ", "wzdł", "prze", "nad", "pod", "półn", "połu",
             "zach", "wsch", "pusz", "lasy", "wyso", "rozl", "brze", "pasm", "pagó", "poje", "pole", "pola"}
 
@@ -91,14 +95,16 @@ def surface_split(types_pct: dict | None) -> dict | None:
     return fl
 
 
-def effort_class(xss: float, minw: float, p: dict) -> str:
-    """Progi wzgledem wlasnej historii (decyzja Michala 2026-10-09)."""
-    xh = p.get("xss_h") or 0
-    if minw < 10 and xh >= p["h75"]:
+def effort_class(e: dict, p: dict) -> str:
+    """Wysilek z INTENSYWNOSCI i obciazenia wzgledem wlasnej historii (2026-10-09 b, po uwadze Michala do 08.10).
+    W'bal liczony wewnetrznie, ale NIGDY nie trafia do tekstu (dane prywatne)."""
+    minw, hr, pw = e.get("min_wbal"), e.get("avg_hr"), e.get("avg_pw")
+    hi_int = (hr is not None and hr >= p["hr75"]) or (pw is not None and pw >= p["pw75"])
+    if minw is not None and minw < 10 and (e.get("xss_h") or 0) >= p["h75"]:
         return "wpierdol"
-    if xss >= p["x75"] and minw >= 25:
-        return "mocno"
-    if xss < p["x50"] and minw > 50:
+    if hi_int or (e.get("xss") or 0) >= p["x75"]:
+        return "mocno" if (minw is None or minw >= 25) else "mocno_akcenty"
+    if (hr is None or hr < p["hr50"]) and (pw is None or pw < p["pw50"]) and (e.get("xss_h") or 0) < p["h50"]:
         return "lekko"
     return "rowno"
 
@@ -112,12 +118,12 @@ def effort_sentence(e: dict | None, moving_s: float) -> str:
     t = hmm(moving_s)
     if not e:
         return "⏱️ %s w ruchu." % t
-    w = int(round(e["min_wbal"]))
     return {
-        "wpierdol": "🥵 Wpierdol: %s w ruchu, bak (W′) zjechał do %d%%." % (t, w),
-        "mocno": "💪 Mocno, ale stabilnie: %s w ruchu, a bak (W′) ani razu nie spadł poniżej %d%%." % (t, w),
-        "lekko": "😌 Lekko: %s w ruchu, bak (W′) nie zszedł poniżej %d%%." % (t, w),
-        "rowno": "⚡ Równa, solidna jazda: %s w ruchu, bak (W′) najniżej %d%%." % (t, w),
+        "wpierdol": "🥵 Wpierdol: %s w ruchu na granicy możliwości." % t,
+        "mocno": "💪 Mocno, ale stabilnie: %s w ruchu, równe tempo w ramach sił." % t,
+        "mocno_akcenty": "💪 Mocno: %s w ruchu, z ostrymi akcentami." % t,
+        "lekko": "😌 Lekko: %s spokojnej jazdy." % t,
+        "rowno": "⚡ Równa, solidna jazda: %s w ruchu." % t,
     }[e["cls"]]
 
 
@@ -165,6 +171,98 @@ def assemble(f: dict, region: str, attractions: list) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------- tytul (2026-10-09 e, decyzje Michala)
+# Tylko w miejsce DOMYSLNEJ nazwy. MyBiom -> "MyBIOM", do Mamy -> "do Mamy" (bez [Qbot]); pozostale:
+# "[Qbot] A – B · <etykieta> <ikona jazdy> <pogoda>". Bez km (sa w polu Stravy), bez poetyki (zostaje Michalowi).
+# etykieta: bikepacking Dn (kolejne dni ze startem > 80 km od Warszawy) / wyprawa (>= 80 km) / gravel / szosa / mix.
+KIND_TITLE = {"mybiom": "MyBIOM", "domamy": "do Mamy"}
+EFFORT_ICON = {"wpierdol": "🥵", "mocno": "💪", "mocno_akcenty": "💪", "rowno": "⚡", "lekko": "😌"}
+HOME = (52.23, 21.01)
+AWAY_KM = 80.0
+EXPED_KM = 80.0
+_DEFAULT_NAME = re.compile(
+    r"^\W*((morning|afternoon|evening|night|lunch)( gravel| mountain| road)? ride|"
+    r"(poranna|popołudniowa|wieczorna|nocna|południowa|przedpołudniowa) (jazda|przejażdżka)( rowerowa| na rowerze)?|"
+    r"jazda( rowerowa| na rowerze)?|ride|.{0,40} kolarstwo( gravelowe| szosowe| górskie)?)\W*$", re.I)
+
+
+def is_default_name(name: str | None) -> bool:
+    return bool(name) and bool(_DEFAULT_NAME.match(name.strip()))
+
+
+def weather_icons(w: dict | None) -> list:
+    """Z bloku pogody raportu z jazdy: niebo (opad / zachmurzenie) + najwyzej jedno ostrzezenie (wiatr / upal / mroz)."""
+    if not w:
+        return []
+    def v(k):
+        x = w.get(k) or {}
+        return x.get("value") if isinstance(x, dict) else None
+    pr, t, cl, wi = v("precip_mm") or {}, v("temp_c") or {}, v("cloud_pct"), v("wind_ms") or {}
+    out = []
+    if (pr.get("wet_h") or 0) >= 1 or (pr.get("sum") or 0) >= 1.0:
+        out.append("❄️" if (t.get("avg") is not None and t["avg"] <= 1) else "🌧️")
+    elif cl is not None:
+        out.append("☀️" if cl < 25 else ("🌤️" if cl < 70 else "☁️"))
+    if (wi.get("max") or 0) >= 8:
+        out.append("💨")
+    elif t.get("max") is not None and t["max"] >= 28:
+        out.append("🔥")
+    elif t.get("min") is not None and t["min"] <= 0:
+        out.append("🥶")
+    return out[:2]
+
+
+def ride_label(km: float, surface: dict | None, bp_day: int | None) -> str | None:
+    if bp_day:
+        return "bikepacking D%d" % bp_day
+    if km >= EXPED_KM:
+        return "wyprawa"
+    if not surface:
+        return None
+    if surface["szuter"] + surface["ujeby"] > 30:
+        return "gravel"
+    if surface["asfalt"] > 85:
+        return "szosa"
+    return "mix"
+
+
+def title_places(towns: list, ranks: dict) -> list:
+    """Dwa najwazniejsze punkty: najpierw miasta, potem miasteczka, potem wsie; pierwszy i ostatni w kolejnosci jazdy."""
+    if not towns:
+        return []
+    top = max(ranks.get(t, 0) for t in towns)
+    sel = [t for t in towns if ranks.get(t, 0) == top]
+    if len(sel) == 1:
+        rest = [t for t in towns if t != sel[0] and ranks.get(t, 0) == max([ranks.get(x, 0) for x in towns if x != sel[0]] or [0])]
+        return [sel[0]] + ([rest[-1]] if rest else [])
+    return [sel[0], sel[-1]]
+
+
+def build_title(kind: str | None, places: list, label: str | None, eff_cls: str | None, wx: list) -> str:
+    if kind in KIND_TITLE:
+        return KIND_TITLE[kind]
+    head = "[Qbot] " + (" – ".join(places) if places else "Jazda")
+    tail = " ".join(x for x in [label, EFFORT_ICON.get(eff_cls or "")] + list(wx) if x)
+    return head + (" · " + tail if tail else "")
+
+
+def bikepacking_day(c, ride_key, start_pt, day) -> int | None:
+    """Dzien wyprawy: start > 80 km od Warszawy i poprzedni dzien (lub dni) tez tak. Pierwszy dzien = 'wyprawa'/etc,
+    bo w dniu jazdy QBot nie wie jeszcze, ze bedzie nastepny."""
+    if hav_m(start_pt, HOME) < AWAY_KM * 1000:
+        return None
+    rows = _rows(c, "SELECT t.date, r.lat, r.lon FROM qbot_v2.training_sessions t JOIN LATERAL ("
+                    "SELECT lat, lon FROM qbot_v2.activity_record r WHERE r.external_id=t.external_id AND r.lat IS NOT NULL "
+                    "ORDER BY ts LIMIT 1) r ON true WHERE t.date BETWEEN %s::date - 30 AND %s::date - 1 AND t.external_id<>%s",
+                 (day, day, ride_key))
+    away = {r["date"] for r in rows if hav_m((r["lat"], r["lon"]), HOME) >= AWAY_KM * 1000}
+    n, d = 1, day - timedelta(days=1)
+    while d in away:
+        n += 1
+        d -= timedelta(days=1)
+    return n if n >= 2 else None
+
+
 # ---------------------------------------------------------------- baza
 
 def _rows(c, sql, args=()):
@@ -205,16 +303,23 @@ def _track(c, ride_key):
 
 
 def _effort(c, ride_key):
-    r = _one(c, "SELECT xss, xss_per_h, min_wbal_pct FROM qbot_v2.fitmodel_wbal_ride WHERE external_id=%s AND status='OK'", (ride_key,))
-    if not r or r["xss"] is None or r["min_wbal_pct"] is None:
+    s = _one(c, "SELECT avg_hr_bpm, avg_power_w FROM qbot_v2.training_sessions WHERE external_id=%s", (ride_key,)) or {}
+    r = _one(c, "SELECT xss, xss_per_h, min_wbal_pct FROM qbot_v2.fitmodel_wbal_ride WHERE external_id=%s AND status='OK'", (ride_key,)) or {}
+    if r.get("xss") is None and not s.get("avg_hr_bpm") and not s.get("avg_power_w"):
         return None
-    p = _one(c, "SELECT percentile_cont(0.75) WITHIN GROUP (ORDER BY xss_per_h) h75, "
-                "percentile_cont(0.5) WITHIN GROUP (ORDER BY xss) x50, percentile_cont(0.75) WITHIN GROUP (ORDER BY xss) x75 "
+    p = _one(c, "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY xss_per_h) h50, percentile_cont(0.75) WITHIN GROUP (ORDER BY xss_per_h) h75, "
+                "percentile_cont(0.75) WITHIN GROUP (ORDER BY xss) x75 "
                 "FROM qbot_v2.fitmodel_wbal_ride WHERE status='OK' AND xss IS NOT NULL AND external_id<>%s", (ride_key,))
-    p = {k: float(v) for k, v in p.items()}
-    p["xss_h"] = float(r["xss_per_h"] or 0)
-    return {"xss": round(float(r["xss"])), "xss_h": round(p["xss_h"], 1), "min_wbal": float(r["min_wbal_pct"]),
-            "cls": effort_class(float(r["xss"]), float(r["min_wbal_pct"]), p), "progi": {k: round(v, 1) for k, v in p.items()}}
+    q = _one(c, "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY avg_hr_bpm) hr50, percentile_cont(0.75) WITHIN GROUP (ORDER BY avg_hr_bpm) hr75, "
+                "percentile_cont(0.5) WITHIN GROUP (ORDER BY avg_power_w) pw50, percentile_cont(0.75) WITHIN GROUP (ORDER BY avg_power_w) pw75 "
+                "FROM qbot_v2.training_sessions WHERE duration_s >= 1800 AND avg_power_w > 0 AND date >= '2025-01-01' AND external_id<>%s", (ride_key,))
+    p = {k: float(v) for k, v in dict(p, **q).items() if v is not None}
+    e = {"xss": float(r["xss"]) if r.get("xss") is not None else None, "xss_h": float(r.get("xss_per_h") or 0),
+         "min_wbal": float(r["min_wbal_pct"]) if r.get("min_wbal_pct") is not None else None,
+         "avg_hr": float(s["avg_hr_bpm"]) if s.get("avg_hr_bpm") else None, "avg_pw": float(s["avg_power_w"]) if s.get("avg_power_w") else None}
+    e["cls"] = effort_class(e, p)
+    e["progi"] = {k: round(v, 1) for k, v in p.items()}
+    return e
 
 
 def _new_tiles(c, ride_key, tr):
@@ -246,6 +351,63 @@ def _stops(tr):
             out.append({"pt": pt, "dur": gap})
     return out
 
+
+
+# ---------------------------------------------------------------- MyBiom / do Mamy (2026-10-09 b)
+# Uczone z nazw Michala na Stravie: nazwa ~ "mam" = do Mamy, ~ "biom" = MyBiom. Kafelki zoom 15 sladow GPS.
+KIND_MAX_KM = 45.0
+MYBIOM_REGION = "Przepiękna Puszcza Słupecka"
+_KIND_CACHE = {"t": 0.0, "m": None}
+_Z15 = ("floor((r.lon+180)/360*32768)::int AS x, "
+        "floor((1-ln(tan(radians(r.lat))+1/cos(radians(r.lat)))/pi())/2*32768)::int AS y")
+
+
+def kind_model(c) -> dict:
+    if _KIND_CACHE["m"] is not None and time.time() - _KIND_CACHE["t"] < 6 * 3600:
+        return _KIND_CACHE["m"]
+    rows = _rows(c, "WITH lab AS (SELECT DISTINCT ride_key, CASE WHEN name ~* 'mam' THEN 'domamy' ELSE 'mybiom' END k "
+                    "FROM qbot_v2.strava_activity WHERE ride_key IS NOT NULL AND (name ~* 'mam' OR name ~* 'biom')) "
+                    "SELECT DISTINCT l.k, l.ride_key, " + _Z15 + " FROM qbot_v2.activity_record r JOIN lab l ON r.external_id=l.ride_key "
+                    "WHERE r.lat IS NOT NULL")
+    m = {"domamy": {}, "mybiom": {}}
+    for r in rows:
+        m[r["k"]].setdefault(r["ride_key"], set()).add((r["x"], r["y"]))
+    _KIND_CACHE.update(t=time.time(), m=m)
+    return m
+
+
+def kind_scores(tiles: set, model: dict, exclude: str | None = None) -> dict:
+    out = {}
+    for k, rides in model.items():
+        rides = {rk: s for rk, s in rides.items() if rk != exclude}
+        cnt = {}
+        for s in rides.values():
+            for t in s:
+                cnt[t] = cnt.get(t, 0) + 1
+        core = {t for t, v in cnt.items() if v >= 0.6 * max(1, len(rides))}
+        out[k] = {"core_hit": round(len(tiles & core) / len(core), 2) if core else 0.0,
+                  "cov": round(len(tiles & set(cnt)) / len(tiles), 2) if tiles else 0.0}
+    return out
+
+
+def kind_decide(km: float, sc: dict) -> str | None:
+    """Progi z walidacji 09.10 (88 jazd do 45 km): prawdziwe do Mamy core_hit 0,65-1,0, inne jazdy <= 0,17;
+    do Mamy wymaga tez >= 60% sladu na znanych drogach (odpada szosa obok). MyBiom: wiekszosc rdzenia lasow + prawie caly slad
+    w znanych kafelkach; ponizej 10 km (testy przerzutki, dojazdy) - nic."""
+    if km > KIND_MAX_KM or km < 10:
+        return None
+    if sc["domamy"]["core_hit"] >= 0.6 and sc["domamy"]["cov"] >= 0.6:
+        return "domamy"
+    if sc["mybiom"]["core_hit"] >= 0.6 and sc["mybiom"]["cov"] >= 0.8:
+        return "mybiom"
+    return None
+
+
+def ride_kind(c, ride_key, km, exclude_self=True):
+    t = {(r["x"], r["y"]) for r in _rows(c, "SELECT DISTINCT " + _Z15 + " FROM qbot_v2.activity_record r "
+                                            "WHERE r.external_id=%s AND r.lat IS NOT NULL", (ride_key,))}
+    sc = kind_scores(t, kind_model(c), ride_key if exclude_self else None)
+    return kind_decide(km, sc), sc
 
 # ---------------------------------------------------------------- swiat zewnetrzny (Nominatim, Wikidata, AI)
 
@@ -325,6 +487,8 @@ def wikidata_candidates(pts, ends):
     for it in items.values():
         if any(_SKIP_TYPE.search(t) for t in it["types"]) and not it["zabytek"]:
             continue
+        if _SACRAL.search(it["name"]) or any(_SACRAL.search(t) for t in it["types"]):   # decyzja Michala: zadnych odniesien religijnych
+            continue
         if not it["zabytek"] and it["sitelinks"] < 2:
             continue
         if any(hav_m(it["pt"], e) < PRIVACY_KM * 1000 for e in ends):
@@ -352,9 +516,9 @@ def _prompt(facts):
         "Uzywaj WYLACZNIE nazw wlasnych z list powyzej (mozesz dodac slowa ogolne: okolice, dolina, między, skraj). "
         "Polska odmiana poprawna, pelne polskie znaki.\n"
         "- atrakcje: 0, 1 albo 2 nazwy DOKLADNIE jak w kandydaci_atrakcje, tylko obiekty, ktorymi naprawde warto sie pochwalic: "
-        "zamek, palac, bazylika, klasztor, znany zabytek, slynne miejsce. Zwykle koscioly wiejskie, rezerwaty, kapliczki, "
+        "zamek, palac, twierdza, znany zabytek swiecki, slynne miejsce. NIGDY obiekty religijne. Rezerwaty, "
         "dworki bez znaczenia, schrony, pomniki - pomijaj. Nie wybieraj dwoch czesci tego samego zespolu "
-        "(np. bazylika i klasztor w jednym miejscu) - wtedy jedna, najwazniejsza. Lepiej pusta lista niz atrakcja na sile.")
+        "- wtedy jedna, najwazniejsza. Lepiej pusta lista niz atrakcja na sile.")
 
 
 def ai_pick(facts):
@@ -377,18 +541,23 @@ def ai_pick(facts):
 # ---------------------------------------------------------------- fakty + opis
 
 def build(c, ride_key, use_ai=True) -> dict:
-    s = _one(c, "SELECT distance_m, elevation_m, started_at FROM qbot_v2.training_sessions WHERE external_id=%s", (ride_key,))
+    s = _one(c, "SELECT distance_m, elevation_m, started_at, date FROM qbot_v2.training_sessions WHERE external_id=%s", (ride_key,))
     tr = _track(c, ride_key)
     if not s or len(tr) < 60:
         raise RuntimeError("brak jazdy lub sladu GPS")
-    rep = _one(c, "SELECT w1_json->'surface'->'value'->'types_pct' AS t FROM qbot_v2.ride_report_data WHERE ride_key=%s", (ride_key,))
+    rep = _one(c, "SELECT w1_json->'surface'->'value'->'types_pct' AS t, w1_json->'weather' AS w "
+                  "FROM qbot_v2.ride_report_data WHERE ride_key=%s", (ride_key,))
     start, end = (tr[0]["lat"], tr[0]["lon"]), (tr[-1]["lat"], tr[-1]["lon"])
+    km = (s["distance_m"] or 0) / 1000.0
+    kind, ksc = ride_kind(c, ride_key, km)
+    if kind == "domamy":     # decyzja Michala: jazda do Mamy - bez komentarza
+        return {"ride_key": ride_key, "kind": kind, "kind_scores": ksc, "km": km, "description": "", "title": KIND_TITLE[kind]}
     pts = [(r["lat"], r["lon"]) for r in tr[::5]]
-    f = {"ride_key": ride_key, "km": (s["distance_m"] or 0) / 1000.0, "elev_m": s["elevation_m"],
+    f = {"ride_key": ride_key, "kind": kind, "kind_scores": ksc, "km": km, "elev_m": s["elevation_m"],
          "moving_s": sum(1 for r in tr if (r["speed_mps"] or 0) > 0.8),
          "surface": surface_split((rep or {}).get("t")), "effort": _effort(c, ride_key), "new_tiles": _new_tiles(c, ride_key, tr)}
     # miejscowosci i administracja (bez okolic startu/mety)
-    towns, admin, nxt = [], [], 0.0
+    towns, admin, ranks, nxt = [], [], {}, 0.0
     for r in tr:
         dm = (r["distance_m"] or 0) / 1000.0
         if dm < nxt:
@@ -401,6 +570,7 @@ def build(c, ride_key, use_ai=True) -> dict:
         p = _place(a)
         if p and p not in towns:
             towns.append(p)
+            ranks[p] = 2 if a.get("city") else (1 if a.get("town") else 0)
         for k in ("municipality", "county", "state"):
             if a.get(k) and a[k] not in admin:
                 admin.append(a[k])
@@ -414,11 +584,16 @@ def build(c, ride_key, use_ai=True) -> dict:
             f["stop"] = {"place": pl, "min": round(b["dur"] / 60)}
     f["candidates"] = wikidata_candidates(pts, (start, end))
     region, atr, note = (ai_pick(f) if use_ai else (None, [], "bez AI"))
+    if kind == "mybiom":      # decyzja Michala: MyBiom ma zawsze ta lokalizacje
+        region = MYBIOM_REGION
     if not region:
         region = ("między %s a %s" % (towns[0], towns[-1])) if len(towns) >= 2 else (towns[0] if towns else (admin[-1] if admin else "Polska"))
     region = region[:1].upper() + region[1:]
     f["region"], f["attractions"], f["ai_note"] = region, atr, note
     f["description"] = assemble(f, region, atr)
+    bp = bikepacking_day(c, ride_key, start, s["date"])
+    f["title"] = build_title(kind, title_places(towns, ranks), ride_label(km, f.get("surface"), bp),
+                             (f.get("effort") or {}).get("cls"), weather_icons((rep or {}).get("w")))
     return f
 
 
@@ -502,7 +677,7 @@ def run_publish(db_conn=None) -> dict:
         for x in acts or []:
             S._upsert_activity(c, x)
         conn.commit()
-        todo = _rows(c, "SELECT a.strava_id, a.ride_key, a.start_date, COALESCE(p.attempts,0) attempts FROM qbot_v2.strava_activity a "
+        todo = _rows(c, "SELECT a.strava_id, a.ride_key, a.start_date, a.name, COALESCE(p.attempts,0) attempts FROM qbot_v2.strava_activity a "
                         "LEFT JOIN qbot_v2.strava_publish p ON p.strava_id=a.strava_id WHERE a.start_date >= %s AND a.ride_key IS NOT NULL "
                         "AND a.sport_type ~* 'ride' AND (p.status IS NULL OR (p.status IN ('czeka','blad') AND p.attempts < %s)) "
                         "ORDER BY a.start_date", (START_FROM, MAX_ATTEMPTS))
@@ -520,6 +695,8 @@ def run_publish(db_conn=None) -> dict:
                     continue
                 f = build(c, rk)
                 data = {"description": f["description"]}
+                if f.get("title") and is_default_name(t.get("name")):   # tylko w miejsce domyslnej nazwy
+                    data["name"] = f["title"]
                 if bike and gmap.get(bike):
                     data["gear_id"] = gmap[bike]
                 _put(S._token(c), sid, data)
@@ -577,10 +754,11 @@ if __name__ == "__main__":
             b, why = bike_of(cu, a.dry)
             fx = build(cu, a.dry, use_ai=not a.no_ai)
             fx["bike"], fx["bike_why"] = b, why
-            for x in fx["candidates"]:
+            for x in fx.get("candidates", []):
                 x.pop("pt", None)
             print(json.dumps({k: v for k, v in fx.items() if k != "description"}, ensure_ascii=False, indent=1, default=str))
-            print("\n===== OPIS =====\n" + fx["description"])
+            print("\n===== TYTUL (gdy nazwa domyslna) =====\n" + str(fx.get("title")))
+            print("\n===== OPIS =====\n" + (fx["description"] or "(bez opisu - pole opisu na Stravie zostanie wyczyszczone)"))
         finally:
             cn.close()
     elif a.once:
