@@ -5321,6 +5321,42 @@ def route_intro_build(route_id: str = Query(...)):
         conn.close()
 
 
+@app.get("/api/report/outfit/gear")
+def report_outfit_gear():
+    """Rzeczy z Garazu do okna Faworyci (kategoria -> rzeczy). Tylko ubior z warstwa."""
+    from qbot3.routes import outfit_fav as _of
+    return {"items": _of.gear_list()}
+
+
+@app.get("/api/report/outfit/fav")
+def report_outfit_fav_get(route_id: str = Query(...), date: str = Query(...)):
+    """Faworyci ubioru dla trasy + dnia planu."""
+    from qbot3.routes import outfit_fav as _of
+    conn = _db_conn()
+    try:
+        return {"ids": _of.get_ids(conn, route_id, date[:10])}
+    finally:
+        conn.close()
+
+
+@app.post("/api/report/outfit/fav")
+async def report_outfit_fav_set(request: Request):
+    """Zapis faworytow: {route_id, date, ids:[gear_id]} (pusta lista = brak faworytow)."""
+    from qbot3.routes import outfit_fav as _of
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    rid, day = str(b.get("route_id") or ""), str(b.get("date") or "")[:10]
+    if not rid or not day:
+        raise HTTPException(status_code=400, detail="Wymagane: route_id + date")
+    conn = _db_conn()
+    try:
+        return {"ids": _of.set_ids(conn, rid, day, b.get("ids") or [])}
+    finally:
+        conn.close()
+
+
 @app.get("/api/report/outfit")
 def report_outfit_get(route_id: str = Query(...), date: str = Query(...)):
     """Ostatnia propozycja ubioru dla trasy + dnia (z planem, dla ktorego powstala). {"jest": false} gdy brak."""
@@ -5350,7 +5386,13 @@ async def report_outfit_build(request: Request):
     try:
         d = _build_report_data(conn, rid, day, tm, n, m, ai=False, day_table=True)
         conn.commit()
-        p = _oa.advise(conn, d, tm, _load_outfit_rules(), getattr(_qc, "QGPT_MODEL", ""), n, m, route_id=rid, ride_date=day)
+        from qbot3.routes import outfit_fav as _of
+        favs = _of.get_ids(conn, rid, day)
+        if favs:   # faworyci na ten dzien: A z faworytami + B AI bez faworytow (docs/OUTFIT_FAVORITES.md)
+            p = _of.advise_fav(conn, d, tm, _load_outfit_rules(), getattr(_qc, "QGPT_MODEL", ""), n, m,
+                               route_id=rid, ride_date=day, fav_ids=favs)
+        else:
+            p = _oa.advise(conn, d, tm, _load_outfit_rules(), getattr(_qc, "QGPT_MODEL", ""), n, m, route_id=rid, ride_date=day)
         if not p.get("ok"):
             raise HTTPException(status_code=502, detail="Nie udalo sie dobrac ubioru: %s" % p.get("blad"))
         _oa.save(conn, rid, day, tm, n, m, p)

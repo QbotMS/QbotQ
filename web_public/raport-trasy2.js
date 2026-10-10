@@ -229,6 +229,7 @@ function toggle(id){
     var hd=rep.querySelector("header");if(hd)hd.scrollTop=0;
     markRows();
   }
+  document.body.dataset.mk=active||"";
   document.querySelectorAll(".mk-tab").forEach(function(b){b.classList.toggle("on",b.dataset.id===active);});
   placeRail();
   setTimeout(function(){

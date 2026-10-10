@@ -447,37 +447,77 @@ function loadList(){
 window.__mkGuestsRender=guestsRender;
 
 /* ---- Sprzet: rower (po opisaniu w Garazu) + dobor ubioru dla BIEZACEGO planu ---- */
+/* Faworyci (2026-10-10, docs/OUTFIT_FAVORITES.md): przycisk w naglowku panelu Sprzet -> okno Rodzaj | Rzecz;
+   faworyci per trasa+data planu; dobor: A z faworytami + B AI bez faworytow (to samo tempo). */
 var GEAR_P=null,GEAR_KEY=null,GEAR_BUSY=false;
+var FAV={key:null,ids:[],gear:null,loading:false};
+function favSame(p){var a=((p&&p.faworyci)||[]).map(function(x){return +x.id;}).sort().join(","),b=FAV.ids.slice().sort().join(",");return a===b;}
 function gearParamsDiff(p){var pl=(p&&p.plan)||{};return !(pl.start===ST.start&&+pl.long_stops===ST.n&&(!ST.n||+pl.long_stop_min===ST.m));}
+function favLoadGear(cb){
+  if(FAV.gear){if(cb)cb();return;}
+  fetch("/api/report/outfit/gear",{credentials:"same-origin",cache:"no-store"}).then(function(r){return r.json();})
+    .then(function(j){FAV.gear=(j&&j.items)||[];if(cb)cb();}).catch(function(){FAV.gear=[];if(cb)cb();});
+}
+function favById(){var m={};(FAV.gear||[]).forEach(function(g){m[g.id]=g;});return m;}
+function favBtn(){
+  var top=document.querySelector("#mk-pane .mk-top");if(!top)return;
+  var b=document.getElementById("mkw-favbtn");
+  if(!b){b=document.createElement("button");b.type="button";b.id="mkw-favbtn";b.className="mkw-favbtn";b.title="Rzeczy, kt\u00f3re chcesz w\u0142o\u017cy\u0107 na t\u0119 jazd\u0119";
+    top.insertBefore(b,top.querySelector(".mk-x"));b.onclick=favOpen;}
+  b.innerHTML="\u2605 Faworyci"+(FAV.ids.length?' <span class="mkw-favn">'+FAV.ids.length+'</span>':'');
+}
+function favChips(){
+  if(!FAV.ids.length)return '';
+  var by=favById();
+  return '<div class="mkw-favrow"><span class="mkw-favl">\u2605 Twoi faworyci:</span>'+FAV.ids.map(function(i){var g=by[i];
+    return '<span class="mkw-chip">'+esc(g?g.nazwa:("#"+i))+(g&&g.kolor?' <span class="k">'+esc(String(g.kolor).toLowerCase())+'</span>':'')+'</span>';}).join("")+
+    ' <button type="button" class="mkp-link" id="mkw-favedit">zmie\u0144</button></div>';
+}
 function gearRender(mb){
   mb=mb||document.querySelector("#mk-pane .multi-body");if(!mb)return;
   var key=ST.route+"|"+ST.date;
   var h='<div class="ms-sub">Rower</div><div class="k">Wyb\u00f3r Grizl / Monster Gravel pojawi si\u0119 tutaj po opisaniu obu rower\u00f3w w Gara\u017cu.</div>'+
-        '<div class="ms-sub">Ubi\u00f3r na ten plan</div><div id="mkw-body"></div>';
+        '<div class="ms-sub">Ubi\u00f3r na ten plan</div><div id="mkw-fav"></div><div id="mkw-body"></div>';
   mb.innerHTML=h;
   if(GEAR_KEY!==key){GEAR_KEY=key;GEAR_P=undefined;
     fetch("/api/report/outfit?route_id="+encodeURIComponent(ST.route)+"&date="+ST.date,{credentials:"same-origin",cache:"no-store"})
       .then(function(r){return r.json();}).then(function(j){if(GEAR_KEY!==key)return;GEAR_P=(j&&j.zestawy)?j:null;gearBody();}).catch(function(){GEAR_P=null;gearBody();});}
-  gearBody();
+  if(FAV.key!==key){FAV.key=key;FAV.ids=[];FAV.loading=true;
+    fetch("/api/report/outfit/fav?route_id="+encodeURIComponent(ST.route)+"&date="+ST.date,{credentials:"same-origin",cache:"no-store"})
+      .then(function(r){return r.json();}).then(function(j){if(FAV.key!==key)return;FAV.ids=((j&&j.ids)||[]).map(Number);FAV.loading=false;
+        if(FAV.ids.length)favLoadGear(favPaint);else favPaint();}).catch(function(){FAV.loading=false;favPaint();});}
+  favPaint();gearBody();
+}
+function favPaint(){
+  favBtn();var el=document.getElementById("mkw-fav");if(!el)return;
+  el.innerHTML=favChips();var e=document.getElementById("mkw-favedit");if(e)e.onclick=favOpen;
+  if(GEAR_P!==undefined)gearBody();
 }
 function gearBody(){
   var el=document.getElementById("mkw-body");if(!el)return;
   var dd=ST.date?ST.date.split("-").reverse().slice(0,2).join("."):"";
-  var btn='<button type="button" class="mkp-go" id="mkw-go">'+(GEAR_BUSY?"Dobieram\u2026 (~15 s)":GEAR_P?"Dobierz ponownie":"Dobierz ubi\u00f3r dla tego planu")+'</button>';
+  var nf_=FAV.ids.length;
+  var btn='<button type="button" class="mkp-go" id="mkw-go">'+(GEAR_BUSY?"Dobieram\u2026 ("+(nf_?"~30":"~15")+" s)":(GEAR_P?"Dobierz ponownie":"Dobierz ubi\u00f3r dla tego planu")+(nf_?" (z faworytami)":""))+'</button>';
   if(GEAR_P===undefined){el.innerHTML='<div class="k">wczytuj\u0119\u2026</div>';return;}
-  if(!GEAR_P){el.innerHTML='<div class="mkp-empty">AI u\u0142o\u017cy 2 zestawy z Twojego gara\u017cu dla planu: '+esc(dd)+', start '+esc(ST.start)+(ST.n?', przerwy '+ST.n+' \u00d7 '+ST.m+' min':'')+
-    '. Ka\u017cda rzecz z uzasadnieniem z pogody w czasie jazdy.<br>'+btn+'</div>';wireGo();return;}
-  var p=GEAR_P,h='';
+  if(!GEAR_P){el.innerHTML='<div class="mkp-empty">'+(nf_?'AI u\u0142o\u017cy 2 zestawy: <b>A</b> z Twoimi faworytami i <b>B</b> w\u0142asn\u0105 propozycj\u0119 (bez faworyt\u00f3w), w tym samym tempie, i spr\u00f3buje zrozumie\u0107 Tw\u00f3j wyb\u00f3r. ':
+    'AI u\u0142o\u017cy 2 zestawy z Twojego gara\u017cu dla planu: '+esc(dd)+', start '+esc(ST.start)+(ST.n?', przerwy '+ST.n+' \u00d7 '+ST.m+' min':'')+'. ')+
+    'Ka\u017cda rzecz z uzasadnieniem z pogody w czasie jazdy.'+(nf_?'':' Chcesz konkretne rzeczy? U\u017cyj <b>\u2605 Faworyci</b> u g\u00f3ry.')+'<br>'+btn+'</div>';wireGo();return;}
+  var p=GEAR_P,h='',fm=(p.tryb==="faworyci");
   if(gearParamsDiff(p))h+='<div class="mkp-rule p2">Propozycja dla innego planu (start '+esc((p.plan||{}).start)+((p.plan||{}).long_stops?', '+p.plan.long_stops+' \u00d7 '+p.plan.long_stop_min+' min':'')+') \u2014 dobierz ponownie dla bie\u017c\u0105cego.</div>';
-  if(p.warunki_krotko)h+='<p class="mkw-w">'+esc(p.warunki_krotko)+'</p>';if(p.kontrola_uwagi&&p.kontrola_uwagi.length)h+='<p class="mkw-w" style="color:var(--warn)">\u26a0 Kontrola zestawu: '+p.kontrola_uwagi.map(esc).join(' \u00b7 ')+'</p>';if(p.z_historii)h+='<p class="mkw-w">\u21bb '+esc(p.z_historii)+'</p>';
+  if(!FAV.loading&&!favSame(p))h+='<div class="mkp-rule p2">'+(FAV.ids.length?'Faworyci zmienili si\u0119 od tej propozycji':'Propozycja powsta\u0142a z faworytami, kt\u00f3rych ju\u017c nie ma')+' \u2014 dobierz ponownie.</div>';
+  if(p.warunki_krotko)h+='<p class="mkw-w">'+esc(p.warunki_krotko)+'</p>';
+  if(fm&&p.zrozumienie)h+='<div class="mkw-why"><b>\ud83e\udd14 Jak rozumiem Tw\u00f3j wyb\u00f3r:</b> '+esc(p.zrozumienie)+'</div>';
+  if(fm&&p.faworyci_uwagi&&p.faworyci_uwagi.length)h+=p.faworyci_uwagi.map(function(s){return '<p class="mkw-w" style="color:var(--warn)">\u2605 '+esc(s)+'</p>';}).join("");
+  if(p.kontrola_uwagi&&p.kontrola_uwagi.length)h+='<p class="mkw-w" style="color:var(--warn)">\u26a0 Kontrola zestawu: '+p.kontrola_uwagi.map(esc).join(' \u00b7 ')+'</p>';if(p.z_historii)h+='<p class="mkw-w">\u21bb '+esc(p.z_historii)+'</p>';
   (p.zestawy||[]).forEach(function(z,i){
     var tp=z.tempo==="szybsza"?"szybsza jazda":(z.tempo==="spokojniejsza"?"spokojniejsza jazda":"");
-    h+='<div class="mkw-set"><div class="mkw-t">'+(i===0?"A":"B")+' \u00b7 '+(tp?esc(tp)+' \u00b7 ':'')+esc(z.nazwa)+'</div>'+(z.kiedy?'<div class="k">'+esc(z.kiedy)+'</div>':'')+
+    var lab=fm?(z.rola==="faworyci"?"\u2605 Z Twoimi faworytami":"Propozycja AI (bez faworyt\u00f3w)"):"";
+    h+='<div class="mkw-set'+(fm&&z.rola==="faworyci"?' mkw-setfav':'')+'"><div class="mkw-t">'+(i===0?"A":"B")+' \u00b7 '+(lab?esc(lab)+' \u00b7 ':'')+(tp?esc(tp)+' \u00b7 ':'')+esc(z.nazwa)+'</div>'+(z.kiedy?'<div class="k">'+esc(z.kiedy)+'</div>':'')+
       (z.po_co?'<div class="k" style="margin-top:4px"><b>Po co:</b> '+esc(z.po_co)+'</div>':'')+'<ul class="mkw-l">';
-    (z.rzeczy||[]).forEach(function(it){h+='<li><b>'+esc(it.nazwa)+'</b> <span class="k">'+esc(it.kategoria)+(it.kolor?' \u00b7 '+esc(String(it.kolor).toLowerCase()):'')+'</span><div class="k">'+esc(it.dlaczego)+'</div>'+
+    (z.rzeczy||[]).forEach(function(it){h+='<li><b>'+(it.faworyt?'<span class="mkw-star" title="Tw\u00f3j faworyt">\u2605</span> ':'')+esc(it.nazwa)+'</b> <span class="k">'+esc(it.kategoria)+(it.kolor?' \u00b7 '+esc(String(it.kolor).toLowerCase()):'')+'</span><div class="k">'+esc(it.dlaczego)+'</div>'+
       ((it.zamienniki&&it.zamienniki.length)?'<div class="k">zamiennie: '+it.zamienniki.map(function(a){return esc(a.nazwa)+(a.kolor?' ('+esc(String(a.kolor).toLowerCase())+')':'');}).join(", ")+'</div>':'')+'</li>';});
     h+='</ul>';
-    if(z.do_kieszeni&&z.do_kieszeni.length)h+='<div class="mkw-sub">Do kieszeni</div><ul class="mkw-l">'+z.do_kieszeni.map(function(it){return '<li><b>'+esc(it.nazwa)+'</b><div class="k">'+esc(it.dlaczego)+'</div></li>';}).join("")+'</ul>';
+    if(z.do_kieszeni&&z.do_kieszeni.length)h+='<div class="mkw-sub">Do kieszeni</div><ul class="mkw-l">'+z.do_kieszeni.map(function(it){return '<li><b>'+(it.faworyt?'<span class="mkw-star" title="Tw\u00f3j faworyt">\u2605</span> ':'')+esc(it.nazwa)+'</b><div class="k">'+esc(it.dlaczego)+'</div></li>';}).join("")+'</ul>';
     if(z.kolory)h+='<div class="mkw-z">\ud83c\udfa8 '+esc(z.kolory)+'</div>';
     if(z.zdejmij)h+='<div class="mkw-z">\u23f1 '+esc(z.zdejmij)+'</div>';if(z.slaby_punkt)h+='<div class="mkw-z">\u26a0 '+esc(z.slaby_punkt)+'</div>';
     h+='</div>';});
@@ -491,6 +531,46 @@ function wireGo(){var b=document.getElementById("mkw-go");if(!b)return;b.disable
     .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.detail||("HTTP "+r.status));return j;});})
     .then(function(j){GEAR_BUSY=false;if(GEAR_KEY===key)GEAR_P=j;gearBody();})
     .catch(function(e){GEAR_BUSY=false;gearBody();var el=document.getElementById("mkw-body");if(el)el.insertAdjacentHTML("afterbegin",'<div class="mkx-err">'+esc(e.message)+'</div>');});};}
+/* okno Faworyci: Rodzaj (kategoria z Garazu) | Rzecz (rzeczy tej kategorii) */
+function favOpen(){
+  if(!ST.route||!ST.date)return;
+  favLoadGear(function(){
+    var sel=FAV.ids.slice(),gear=FAV.gear||[],cats=[],seen={};
+    gear.forEach(function(g){if(!seen[g.kategoria]){seen[g.kategoria]=1;cats.push(g.kategoria);}});
+    var by=favById(),cur=(by[sel[0]]&&by[sel[0]].kategoria)||cats[0];
+    var old=document.getElementById("mkw-dlg");if(old)old.remove();
+    var ov=document.createElement("div");ov.id="mkw-dlg";ov.className="mkw-ov";
+    var dd=ST.date.split("-").reverse().slice(0,2).join(".");
+    ov.innerHTML='<div class="mkw-box" role="dialog" aria-label="Faworyci"><div class="mkw-bh"><b>\u2605 Faworyci na '+esc(dd)+'</b><span class="k">rzeczy, kt\u00f3re chcesz w\u0142o\u017cy\u0107 \u2014 AI u\u0142o\u017cy z nimi zestaw A</span><button type="button" class="mk-x" id="mkw-dx">\u00d7</button></div>'+
+      '<div class="mkw-sel" id="mkw-sel"></div><div class="mkw-cols"><div class="mkw-c1"><div class="mkw-ch">Rodzaj</div><div id="mkw-cats"></div></div><div class="mkw-c2"><div class="mkw-ch">Rzecz</div><div id="mkw-items"></div></div></div>'+
+      '<div class="mkw-warn" id="mkw-warn"></div><div class="mkw-bf"><button type="button" class="mkp-btn" id="mkw-clr">Wyczy\u015b\u0107</button><span style="flex:1"></span><button type="button" class="mkp-btn" id="mkw-cn">Anuluj</button><button type="button" class="mkp-go" id="mkw-ok">Zapisz</button></div></div>';
+    document.body.appendChild(ov);
+    function cnt(c){return sel.filter(function(i){return by[i]&&by[i].kategoria===c;}).length;}
+    function paint(){
+      document.getElementById("mkw-cats").innerHTML=cats.map(function(c){var n=cnt(c);return '<button type="button" class="mkw-cat'+(c===cur?' on':'')+'" data-c="'+esc(c)+'">'+esc(c)+(n?' <span class="mkw-favn">'+n+'</span>':'')+'</button>';}).join("");
+      document.getElementById("mkw-items").innerHTML=gear.filter(function(g){return g.kategoria===cur;}).map(function(g){var on=sel.indexOf(g.id)>=0;
+        return '<label class="mkw-it'+(on?' on':'')+(g.nie_do_jazdy?' off':'')+'"><input type="checkbox" data-id="'+g.id+'"'+(on?' checked':'')+'> <span>'+esc(g.nazwa)+(g.kolor?' <span class="k">'+esc(String(g.kolor).toLowerCase())+'</span>':'')+(g.nie_do_jazdy?' <span class="k">(oznaczona: nie do jazdy)</span>':'')+'</span></label>';}).join("")||'<div class="k">brak rzeczy</div>';
+      document.getElementById("mkw-sel").innerHTML=sel.length?sel.map(function(i){var g=by[i];return '<span class="mkw-chip">'+esc(g?g.nazwa:("#"+i))+' <button type="button" class="mkw-rm" data-rm="'+i+'" title="usu\u0144">\u00d7</button></span>';}).join(""):'<span class="k">nic nie wybrano \u2014 AI dobierze ca\u0142o\u015b\u0107 samo (zestaw spokojniejszy i szybszy)</span>';
+      var lay={},dup=[];sel.forEach(function(i){var g=by[i];if(!g)return;if(lay[g.warstwa])dup.push(lay[g.warstwa]+" + "+g.nazwa);else lay[g.warstwa]=g.nazwa;});
+      document.getElementById("mkw-warn").textContent=dup.length?"\u26a0 Ta sama warstwa: "+dup.join("; ")+" \u2014 jedna rzecz b\u0119dzie na sobie, druga w kieszeni.":"";
+      ov.querySelectorAll(".mkw-cat").forEach(function(b){b.onclick=function(){cur=b.dataset.c;paint();};});
+      ov.querySelectorAll("#mkw-items input").forEach(function(c){c.onchange=function(){var id=+c.dataset.id,k=sel.indexOf(id);if(c.checked&&k<0)sel.push(id);if(!c.checked&&k>=0)sel.splice(k,1);paint();};});
+      ov.querySelectorAll(".mkw-rm").forEach(function(b){b.onclick=function(){var k=sel.indexOf(+b.dataset.rm);if(k>=0)sel.splice(k,1);paint();};});
+    }
+    paint();
+    function close(){ov.remove();document.removeEventListener("keydown",esc_);}
+    function esc_(e){if(e.key==="Escape"){e.stopPropagation();close();}}
+    document.addEventListener("keydown",esc_,true);
+    ov.onclick=function(e){if(e.target===ov)close();};
+    document.getElementById("mkw-dx").onclick=close;document.getElementById("mkw-cn").onclick=close;
+    document.getElementById("mkw-clr").onclick=function(){sel=[];paint();};
+    document.getElementById("mkw-ok").onclick=function(){var b=this;b.disabled=true;b.textContent="zapisuj\u0119\u2026";
+      fetch("/api/report/outfit/fav",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({route_id:ST.route,date:ST.date,ids:sel})})
+        .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.detail||("HTTP "+r.status));return j;});})
+        .then(function(j){FAV.ids=((j&&j.ids)||[]).map(Number);close();favPaint();gearBody();})
+        .catch(function(e){b.disabled=false;b.textContent="Zapisz";document.getElementById("mkw-warn").textContent="Nie zapisano: "+e.message;});};
+  });
+}
 window.__mkGearRender=gearRender;
 window.__mkIntroLoad=function(){var rid=ST.route;if(!rid)return Promise.resolve();
   return fetch('/api/route-intro?route_id='+encodeURIComponent(rid),{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.json();})
