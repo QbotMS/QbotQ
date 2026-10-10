@@ -7489,7 +7489,7 @@ async def garage_photo_from_url(request: Request):
 
 # --- Garaz: zakladka SPRZET (equipment) + ROWER (bikes/components/tires/fitting) ---
 EQUIP_CATEGORIES = [
-    "Torby bikepackingowe", "Bagazniki i mocowania", "Elektronika",
+    "Torby bikepackingowe", "Bagazniki i mocowania", "Blotniki", "Elektronika",
     "Nawigacja i swiatla", "Narzedzia i serwis", "Kuchnia", "Spanie",
     "Higiena", "Apteczka", "Dokumenty", "Inne",
 ]
