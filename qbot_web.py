@@ -5321,6 +5321,61 @@ def route_intro_build(route_id: str = Query(...)):
         conn.close()
 
 
+@app.post("/api/report/outfit/note")
+async def report_outfit_note(request: Request):
+    """Uwaga do AI {route_id, date, uwaga}: poprawka biezacej propozycji + propozycja wniosku (bez zapisu wniosku)."""
+    from qbot3.routes import outfit_notes as _on
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    rid, day = str(b.get("route_id") or ""), str(b.get("date") or "")[:10]
+    if not rid or not day or not str(b.get("uwaga") or "").strip():
+        raise HTTPException(status_code=400, detail="Wymagane: route_id + date + uwaga")
+    conn = _db_conn()
+    try:
+        r = _on.apply_note(conn, rid, day, b.get("uwaga"))
+        if not r.get("ok"):
+            raise HTTPException(status_code=502, detail="Nie udalo sie: %s" % r.get("blad"))
+        return r
+    finally:
+        conn.close()
+
+
+@app.get("/api/report/outfit/lessons")
+def report_outfit_lessons():
+    """Zatwierdzone wnioski z Uwag do AI (aktywne)."""
+    from qbot3.routes import outfit_notes as _on
+    conn = _db_conn()
+    try:
+        return {"items": _on.lessons(conn)}
+    finally:
+        conn.close()
+
+
+@app.post("/api/report/outfit/lessons")
+async def report_outfit_lessons_save(request: Request):
+    """Zatwierdzenie wniosku: {tresc, zastepuje:[id], route_id, date, uwaga} albo usuniecie: {usun: id}."""
+    from qbot3.routes import outfit_notes as _on
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    conn = _db_conn()
+    try:
+        if b.get("usun") is not None:
+            _on.delete_lesson(conn, b.get("usun"))
+        else:
+            try:
+                _on.save_lesson(conn, b.get("tresc"), b.get("zastepuje"), str(b.get("route_id") or "") or None,
+                                str(b.get("date") or "")[:10] or None, b.get("uwaga"))
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+        return {"items": _on.lessons(conn)}
+    finally:
+        conn.close()
+
+
 @app.get("/api/report/outfit/gear")
 def report_outfit_gear():
     """Rzeczy z Garazu do okna Faworyci (kategoria -> rzeczy). Tylko ubior z warstwa."""
@@ -5387,12 +5442,14 @@ async def report_outfit_build(request: Request):
         d = _build_report_data(conn, rid, day, tm, n, m, ai=False, day_table=True)
         conn.commit()
         from qbot3.routes import outfit_fav as _of
+        from qbot3.routes import outfit_notes as _on
+        _rules = _on.as_rules(conn) + (_load_outfit_rules() or [])   # wnioski z Uwag do AI = priorytet
         favs = _of.get_ids(conn, rid, day)
         if favs:   # faworyci na ten dzien: A z faworytami + B AI bez faworytow (docs/OUTFIT_FAVORITES.md)
-            p = _of.advise_fav(conn, d, tm, _load_outfit_rules(), getattr(_qc, "QGPT_MODEL", ""), n, m,
+            p = _of.advise_fav(conn, d, tm, _rules, getattr(_qc, "QGPT_MODEL", ""), n, m,
                                route_id=rid, ride_date=day, fav_ids=favs)
         else:
-            p = _oa.advise(conn, d, tm, _load_outfit_rules(), getattr(_qc, "QGPT_MODEL", ""), n, m, route_id=rid, ride_date=day)
+            p = _oa.advise(conn, d, tm, _rules, getattr(_qc, "QGPT_MODEL", ""), n, m, route_id=rid, ride_date=day)
         if not p.get("ok"):
             raise HTTPException(status_code=502, detail="Nie udalo sie dobrac ubioru: %s" % p.get("blad"))
         _oa.save(conn, rid, day, tm, n, m, p)
@@ -6692,6 +6749,31 @@ def setup_qext2_get():
     conn = _db_conn()
     try:
         v = QC.view(conn.cursor())
+        conn.commit()
+        return v
+    finally:
+        conn.close()
+
+
+@app.post("/api/setup/qext2")
+async def setup_qext2_save(request: Request):
+    """Zapis zmian SETUP > QExt2. Body: {messages:{order:[id], items:{id:{on,level,params}}}, rotation:{}, colors:{id:{v,params}}}
+    albo {"reset": true} (powrot do ustawien domyslnych). Nieznane id/klucze sa pomijane."""
+    import qext2_config as QC
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Oczekiwany obiekt")
+    conn = _db_conn()
+    try:
+        cur = conn.cursor()
+        if body.get("reset"):
+            QC.reset(cur)
+        else:
+            QC.save(cur, body)
+        v = QC.view(cur)
         conn.commit()
         return v
     finally:

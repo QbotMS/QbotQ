@@ -8,7 +8,11 @@ z możliwością zmiany progów, poziomów (tło), włączania/wyłączania i ko
    `RouteMessageEngine.kt` (kandydaci, progi `RAIN_SOON_MIN=30`, `FUEL_ALERT_G=-30`, `DUSK_WARN_MIN=45`, `NEAR_KM=3`, `POI_NEAR_KM=2`,
    burza 60 min, deszcz ≥40%), `RouteMessageRotator` (20 s / 8 s / 5 s), `EtaEngine.steepDescentAhead` (−6%, 3 km),
    `Kokpit2.kt` (poziomy tła: krytyczny W′/zjazd/HUB-krytyczny, ostrzeżenie deszcz/jedzenie/zmrok/HUB; kolory pól).
-2. Edycja i zapis: `POST /api/setup/qext2` → `qbot_v2.app_settings` klucz `qext2_config` (nadpisania na DEFAULTS).
+2. **(2026-10-10, gotowe)** Edycja i zapis: `POST /api/setup/qext2` (body w postaci `compact()`; `{"reset":true}` = domyślne) →
+   `qbot_v2.app_settings` klucz `qext2_config`. `effective()` nakłada zapis na DEFAULTS i pomija nieznane id/klucze/opcje
+   (walidacja: typ jak wartość domyślna, poziom z LEVELS, komunikat z centrali zawsze pierwszy i zawsze włączony).
+   Front: ▲▼ kolejność, włącz/wyłącz, poziom (tło), progi, reguła koloru; pomarańczowa ramka = inna niż domyślna.
+   `for_karoo(cur)` = gotowa postać dla Karoo (etap 3).
 3. QExt2 pobiera konfigurację razem z `/ride-readiness` (start + co 30 min) i stosuje; domyślne = obecne zachowanie.
 
 ## Pliki

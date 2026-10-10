@@ -105,10 +105,99 @@ def stored(cur):
     return v, ts
 
 
-def view(cur):
-    """Widok dla SETUP > QExt2: obecne reguly (domyslne + ewentualne nadpisania)."""
+def _coerce(default, v):
+    """Wartosc z formularza w typie wartosci domyslnej (bool/int/float); None = odrzuc."""
+    try:
+        if isinstance(default, bool):
+            return bool(v)
+        f = float(v)
+        if f != f or abs(f) > 100000:
+            return None
+        return int(round(f)) if isinstance(default, int) else round(f, 2)
+    except Exception:
+        return None
+
+
+def effective(st):
+    """DEFAULTS z nalozonymi zapisanymi zmianami. Nieznane id/klucze/opcje sa pomijane."""
     cfg = defaults()
+    if not isinstance(st, dict):
+        return cfg
+    mo = st.get("messages") or {}
+    items = {m["id"]: m for m in cfg["messages"]}
+    for mid, ov in (mo.get("items") or {}).items():
+        m = items.get(mid)
+        if not m or not isinstance(ov, dict):
+            continue
+        if "on" in ov:
+            m["on"] = bool(ov["on"])
+        if m["level"] != "by_severity" and ov.get("level") in LEVELS:
+            m["level"] = ov["level"]
+        for k, v in (ov.get("params") or {}).items():
+            if k in m["params"]:
+                c = _coerce(m["params"][k]["v"], v)
+                if c is not None:
+                    m["params"][k]["v"] = c
+    order = [i for i in (mo.get("order") or []) if i in items and i != "hub"]
+    order += [i for i in items if i not in order and i != "hub"]
+    cfg["messages"] = [items["hub"]] + [items[i] for i in order]   # komunikat z centrali zawsze pierwszy
+    for k, v in (st.get("rotation") or {}).items():
+        if k in cfg["rotation"]:
+            c = _coerce(cfg["rotation"][k]["v"], v)
+            if c is not None and c >= 1:
+                cfg["rotation"][k]["v"] = c
+    cols = {f["id"]: f for f in cfg["colors"]}
+    for fid, ov in (st.get("colors") or {}).items():
+        f = cols.get(fid)
+        if not f or not isinstance(ov, dict):
+            continue
+        if ov.get("v") in f["options"]:
+            f["v"] = ov["v"]
+        for k, v in (ov.get("params") or {}).items():
+            if k in (f.get("params") or {}):
+                c = _coerce(f["params"][k]["v"], v)
+                if c is not None:
+                    f["params"][k]["v"] = c
+    return cfg
+
+
+def compact(cfg):
+    """Postac do zapisu / dla Karoo: same wartosci (bez opisow)."""
+    return {
+        "version": VERSION,
+        "messages": {"order": [m["id"] for m in cfg["messages"]],
+                     "items": {m["id"]: {"on": m["on"], "level": m["level"], "params": {k: p["v"] for k, p in m["params"].items()}}
+                               for m in cfg["messages"]}},
+        "rotation": {k: p["v"] for k, p in cfg["rotation"].items()},
+        "colors": {f["id"]: {"v": f["v"], "params": {k: p["v"] for k, p in (f.get("params") or {}).items()}} for f in cfg["colors"]},
+    }
+
+
+def save(cur, body):
+    """Zapis zmian z SETUP (body w postaci compact). Zwraca efektywna konfiguracje."""
+    cfg = effective(body)
+    _ensure(cur)
+    cur.execute("INSERT INTO qbot_v2.app_settings (key, value, updated_at) VALUES (%s, %s::jsonb, now()) "
+                "ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()", (KEY, json.dumps(compact(cfg))))
+    return cfg
+
+
+def reset(cur):
+    _ensure(cur)
+    cur.execute("DELETE FROM qbot_v2.app_settings WHERE key=%s", (KEY,))
+
+
+def for_karoo(cur):
+    """Konfiguracja dla QExt2 (etap 3): wartosci + znacznik wersji zapisu."""
     st, ts = stored(cur)
-    return {"config": cfg, "levels": LEVELS, "order_note": ORDER_NOTE,
+    out = compact(effective(st))
+    out["updated_at"] = ts.isoformat() if ts else None
+    return out
+
+
+def view(cur):
+    """Widok dla SETUP > QExt2: obecne reguly (domyslne + zapisane zmiany) i wartosci domyslne do porownania."""
+    st, ts = stored(cur)
+    return {"config": effective(st), "defaults": compact(defaults()), "levels": LEVELS, "order_note": ORDER_NOTE,
             "stored": bool(st), "updated_at": ts.isoformat() if ts else None,
-            "editable": False, "source": "QExt2 build 292 (KOKPIT 2) – reguły odczytane z kodu"}
+            "editable": True, "source": "QExt2 build 292 (KOKPIT 2) – reguły odczytane z kodu"}

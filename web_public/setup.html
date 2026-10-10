@@ -52,6 +52,15 @@
 .q2-p{display:inline-block;margin:2px 6px 2px 0;padding:2px 7px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;white-space:nowrap}
 .q2-opt{display:block;font-size:13px;color:var(--ink2);margin-top:3px}.q2-opt.on{color:var(--ink);font-weight:600}.q2-opt.on:before{content:"● ";color:#e8742a}.q2-opt:not(.on):before{content:"○ ";color:var(--muted)}
 .q2-h{font-size:16px;margin:18px 0 8px}.q2-h:first-child{margin-top:0}.q2-note{font-size:13px;color:var(--ink2);margin:8px 0 0}
+.q2-p input[type=number]{width:64px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--well);color:var(--ink);font:inherit;font-size:13px}
+.q2-p input[type=checkbox],.q2-on input,.q2-opt input{accent-color:#e8742a;vertical-align:-2px}
+.q2-p.ch,.q2-on.ch,.q2-sel.ch,.q2-opt.ch{box-shadow:0 0 0 2px #e8742a;border-radius:6px}
+.q2-t td.mv{width:44px;white-space:nowrap}.q2-t td.mv button{background:none;border:1px solid var(--line);border-radius:5px;color:var(--ink2);font-size:11px;padding:1px 5px;margin:0 1px;cursor:pointer}
+.q2-t td.mv button:disabled{opacity:.3;cursor:default}.q2-t tr.off td{opacity:.55}
+.q2-sel{padding:3px 6px;border-radius:6px;border:1px solid var(--line);font:inherit;font-size:13px;font-weight:600}
+.q2-sel.lv-info{background:#1E2731;color:#fff}.q2-sel.lv-warn{background:#FFC21A;color:#000}.q2-sel.lv-crit{background:#8B0A1A;color:#fff}
+.q2-opt{cursor:pointer}.q2-opt:before{content:none!important}.q2-chg{font-size:12px;color:#e8742a;font-weight:600;margin-left:6px}
+.st-bar .st-btn+.st-btn{margin-left:2px}
 </style>
 </head>
 <body><div class="wrap">
@@ -110,7 +119,7 @@
 
 <section class="sp" data-p="qext2">
   <p class="st-intro">Komunikaty i kolory pól <b>KOKPIT 2</b> na Karoo (QExt2) w jednym miejscu. Kolejność na liście = precedencja:
-    wyżej = ważniejszy, wypiera niższe z paska komunikatów. <b>Etap 1: podgląd obecnych reguł</b> (tylko odczyt) – edycja i wysyłka na Karoo w kolejnym kroku.</p>
+    wyżej = ważniejszy, wypiera niższe z paska komunikatów (strzałki ▲▼). Zmiany zapisuje przycisk <b>Zapisz</b>.</p>
   <div id="q2-box"><div class="card">wczytuję…</div></div>
 </section>
 
@@ -181,22 +190,58 @@ load();
 
 /* Kontakty: grupy adresow (/api/mail-groups: GET lista, POST nowa, DELETE grupa, POST/DELETE czlonkowie, POST sync z wyprawy) */
 var KG=null;
-/* ---- QExt2 (etap 1: podglad) ---- */
-var Q2=null;
-function q2Par(ps){var o="";for(var k in (ps||{})){var p=ps[k];var v=(p.v===true?"tak":p.v===false?"nie":p.v);o+='<span class="q2-p">'+esc(p.label)+': <b>'+esc(v)+'</b> '+esc(p.unit||"")+'</span>';}return o;}
-function q2Load(){if(Q2){q2Render();return;}fetch("/api/setup/qext2",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
-  .then(function(j){Q2=j;q2Render();}).catch(function(e){$("q2-box").innerHTML='<div class="card">Nie udało się wczytać: '+esc(e.message)+'</div>';});}
-function q2Render(){var c=Q2.config,L=Q2.levels,h='';
-  h+='<div class="card"><div class="q2-h">Komunikaty (pasek na górze pola nav)</div><table class="q2-t"><tr><th></th><th>Komunikat</th><th>Poziom</th><th>Kiedy</th><th>Progi</th></tr>';
-  c.messages.forEach(function(m,i){var lv=m.level;var lvt=lv==="by_severity"?m.level_note:(L[lv]||lv);
-    h+='<tr><td class="n">'+(i+1)+'</td><td><b>'+esc(m.name)+'</b>'+(m.on?'':'<small>wyłączony</small>')+'</td><td><span class="q2-lv '+esc(lv)+'">'+esc(lv==="by_severity"?"wg nadawcy":lvt.split(" (")[0])+'</span></td><td><small>'+esc(m.when)+'</small></td><td>'+(q2Par(m.params)||'<small>—</small>')+'</td></tr>';});
-  h+='</table><p class="q2-note">'+esc(Q2.order_note)+'</p>';
-  h+='<div class="q2-h">Rotacja paska</div>'+q2Par(c.rotation)+'</div>';
-  h+='<div class="card" style="margin-top:12px"><div class="q2-h">Kolory pól</div><table class="q2-t"><tr><th>Pole</th><th>Reguła (● = obecnie)</th><th>Progi</th></tr>';
-  c.colors.forEach(function(f){var o='';for(var k in f.options)o+='<span class="q2-opt'+(k===f.v?' on':'')+'">'+esc(f.options[k])+'</span>';
-    h+='<tr><td><b>'+esc(f.field)+'</b></td><td>'+o+'</td><td>'+(q2Par(f.params)||'<small>—</small>')+'</td></tr>';});
-  h+='</table><p class="q2-note">Źródło: '+esc(Q2.source)+(Q2.stored?' · zapisane zmiany: '+esc(Q2.updated_at):' · bez zmian (ustawienia domyślne)')+'</p></div>';
-  $("q2-box").innerHTML=h;}
+/* ---- QExt2: komunikaty i kolory pol KOKPIT 2 (etap 2: edycja; /api/setup/qext2, qext2_config.py) ---- */
+var Q2=null,Q2E=null,q2T=null;
+function q2Clone(o){return JSON.parse(JSON.stringify(o));}
+function q2Msg(t,cls){var m=$("q2-msg");if(!m)return;m.className=cls||"";m.textContent=t||"";clearTimeout(q2T);if(cls==="st-ok")q2T=setTimeout(function(){m.textContent="";},3000);}
+function q2Load(force){if(Q2&&!force){q2Render();return;}fetch("/api/setup/qext2",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
+  .then(function(j){Q2=j;Q2E=q2Clone(j.config);q2Render();}).catch(function(e){$("q2-box").innerHTML='<div class="card">Nie udało się wczytać: '+esc(e.message)+'</div>';});}
+function q2Dv(path){var D=Q2.defaults,a=path.split(".");
+  if(a[0]==="m"){var it=D.messages.items[a[1]]||{};return a[2]==="p"?(it.params||{})[a[3]]:it[a[2]];}
+  if(a[0]==="r")return D.rotation[a[1]];
+  if(a[0]==="c"){var c=D.colors[a[1]]||{};return a[2]==="p"?(c.params||{})[a[3]]:c[a[2]];}}
+function q2Par(prefix,ps){var o="";for(var k in (ps||{})){var p=ps[k],path=prefix+k,ch=(String(p.v)!==String(q2Dv(path)))?" ch":"";
+  if(typeof p.v==="boolean")o+='<label class="q2-p'+ch+'"><input type="checkbox" data-q2="'+path+'"'+(p.v?" checked":"")+'> '+esc(p.label)+'</label>';
+  else o+='<label class="q2-p'+ch+'">'+esc(p.label)+' <input type="number" step="'+(Math.round(p.v)!==p.v?"0.1":"1")+'" data-q2="'+path+'" value="'+esc(p.v)+'"> '+esc(p.unit||"")+'</label>';}return o;}
+function q2Set(path,val){var a=path.split("."),c=Q2E;
+  if(a[0]==="m"){var m=c.messages.filter(function(x){return x.id===a[1];})[0];if(a[2]==="p")m.params[a[3]].v=val;else m[a[2]]=val;}
+  else if(a[0]==="r")c.rotation[a[1]].v=val;
+  else if(a[0]==="c"){var f=c.colors.filter(function(x){return x.id===a[1];})[0];if(a[2]==="p")f.params[a[3]].v=val;else f.v=val;}}
+function q2Body(){var c=Q2E,items={},cols={},rot={};
+  c.messages.forEach(function(m){var ps={};for(var k in m.params)ps[k]=m.params[k].v;items[m.id]={on:m.on,level:m.level,params:ps};});
+  for(var k in c.rotation)rot[k]=c.rotation[k].v;
+  c.colors.forEach(function(f){var ps={};for(var k in (f.params||{}))ps[k]=f.params[k].v;cols[f.id]={v:f.v,params:ps};});
+  return {messages:{order:c.messages.map(function(m){return m.id;}),items:items},rotation:rot,colors:cols};}
+function q2Post(body,okTxt){q2Msg("zapisuję…");fetch("/api/setup/qext2",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+  .then(function(r){if(!r.ok)throw r.status;return r.json();}).then(function(j){Q2=j;Q2E=q2Clone(j.config);q2Render();q2Msg(okTxt,"st-ok");})
+  .catch(function(e){q2Msg(e===403?"tryb podglądu — bez zapisu":"nie zapisano, spróbuj jeszcze raz","st-err");});}
+function q2Render(){var c=Q2E,L=Q2.levels,D=Q2.defaults,h='';
+  var dOrder=D.messages.order.join(","),cOrder=c.messages.map(function(m){return m.id;}).join(",");
+  h+='<div class="card"><div class="q2-h">Komunikaty (pasek na górze pola nav)'+(dOrder!==cOrder?' <span class="q2-chg">kolejność zmieniona</span>':'')+'</div><table class="q2-t"><tr><th></th><th></th><th>Komunikat</th><th>Poziom (tło)</th><th>Kiedy</th><th>Progi</th></tr>';
+  c.messages.forEach(function(m,i){var dm=D.messages.items[m.id]||{},hub=m.id==="hub",lvSel;
+    if(m.level==="by_severity")lvSel='<span class="q2-lv by_severity">wg nadawcy</span>';
+    else{lvSel='<select data-q2="m.'+m.id+'.level" class="q2-sel lv-'+m.level+(m.level!==dm.level?" ch":"")+'">';for(var k in L)lvSel+='<option value="'+k+'"'+(k===m.level?" selected":"")+'>'+esc(L[k].split(" (")[0])+'</option>';lvSel+='</select>';}
+    h+='<tr class="'+(m.on?"":"off")+'"><td class="n">'+(i+1)+'</td><td class="mv">'+(hub?'':'<button type="button" data-q2mv="'+m.id+':-1"'+(i<=1?" disabled":"")+'>▲</button><button type="button" data-q2mv="'+m.id+':1"'+(i===c.messages.length-1?" disabled":"")+'>▼</button>')+'</td>'
+      +'<td><label class="q2-on'+(m.on!==dm.on?" ch":"")+'"><input type="checkbox" data-q2="m.'+m.id+'.on"'+(m.on?" checked":"")+(hub?" disabled":"")+'> <b>'+esc(m.name)+'</b></label></td>'
+      +'<td>'+lvSel+'</td><td><small>'+esc(m.when)+'</small></td><td>'+(q2Par("m."+m.id+".p.",m.params)||'<small>—</small>')+'</td></tr>';});
+  h+='</table><p class="q2-note">'+esc(Q2.order_note)+' Komunikat z centrali jest zawsze pierwszy.</p>';
+  h+='<div class="q2-h">Rotacja paska</div>'+q2Par("r.",c.rotation)+'</div>';
+  h+='<div class="card" style="margin-top:12px"><div class="q2-h">Kolory pól</div><table class="q2-t"><tr><th>Pole</th><th>Reguła</th><th>Progi</th></tr>';
+  c.colors.forEach(function(f){var o='',dv=(D.colors[f.id]||{}).v;for(var k in f.options)o+='<label class="q2-opt'+(k===f.v?' on':'')+(k===f.v&&k!==dv?' ch':'')+'"><input type="radio" name="q2c-'+f.id+'" data-q2="c.'+f.id+'.v" value="'+k+'"'+(k===f.v?" checked":"")+'> '+esc(f.options[k])+'</label>';
+    h+='<tr><td><b>'+esc(f.field)+'</b></td><td>'+o+'</td><td>'+(q2Par("c."+f.id+".p.",f.params)||'<small>—</small>')+'</td></tr>';});
+  h+='</table></div>';
+  h+='<div class="st-bar"><button type="button" class="st-btn" id="q2-save">Zapisz</button><button type="button" class="st-btn sec" id="q2-undo">Cofnij niezapisane</button><button type="button" class="st-btn sec" id="q2-reset">Przywróć domyślne</button><span id="q2-msg"></span></div>';
+  h+='<p class="q2-note">'+(Q2.stored?'Zapisane zmiany z '+esc(String(Q2.updated_at||"").replace("T"," ").slice(0,16))+'.':'Bez zmian – ustawienia domyślne (= obecne zachowanie Karoo).')+' Pomarańczowa ramka = inna wartość niż domyślna. Karoo zacznie stosować zapisane ustawienia po wdrożeniu etapu 3.</p>';
+  $("q2-box").innerHTML=h;
+  var B=$("q2-box");
+  B.querySelectorAll("[data-q2]").forEach(function(el){el.addEventListener("change",function(){var path=el.dataset.q2,v;
+    if(el.type==="checkbox")v=el.checked;else if(el.type==="number"){v=parseFloat(el.value);if(isNaN(v)){q2Render();return;}}else v=el.value;
+    q2Set(path,v);q2Render();q2Msg("niezapisane zmiany","st-err");});});
+  B.querySelectorAll("[data-q2mv]").forEach(function(b){b.onclick=function(){var p=b.dataset.q2mv.split(":"),arr=Q2E.messages,i=-1;
+    arr.forEach(function(m,k){if(m.id===p[0])i=k;});var j=i+parseInt(p[1],10);if(i<1||j<1||j>=arr.length)return;var t=arr[i];arr[i]=arr[j];arr[j]=t;q2Render();q2Msg("niezapisane zmiany","st-err");};});
+  $("q2-save").onclick=function(){q2Post(q2Body(),"zapisano");};
+  $("q2-undo").onclick=function(){Q2E=q2Clone(Q2.config);q2Render();q2Msg("");};
+  $("q2-reset").onclick=function(){if(!confirm("Przywrócić wszystkie komunikaty i kolory do ustawień domyślnych?"))return;q2Post({reset:true},"przywrócono domyślne");};}
 function kmsg(t,bad){var m=$("k-msg");m.className=bad?"st-err":"st-ok";m.textContent=t||"";}
 function kreq(method,url,body){return fetch(url,{method:method,credentials:"same-origin",headers:body?{"Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined})
   .then(function(r){return r.json().catch(function(){return {};}).then(function(j){if(!r.ok)throw new Error(r.status===403?"tryb podglądu — bez zmian":(j.detail||("HTTP "+r.status)));return j;});});}
