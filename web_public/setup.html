@@ -44,6 +44,14 @@
 .st-km span{min-width:0;overflow-wrap:anywhere}.st-km small{color:var(--muted)}
 .st-x{background:none;border:0;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;padding:2px 6px;border-radius:6px}.st-x:hover{color:#e8742a}
 .st-kadd{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}.st-kadd input{min-width:140px}
+.q2-t{width:100%;border-collapse:collapse;font-size:14px}.q2-t th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line)}
+.q2-t td{padding:9px 8px;border-top:1px solid var(--line);vertical-align:top}.q2-t td.n{color:var(--muted);width:24px;text-align:right}
+.q2-t small{display:block;color:var(--ink2);font-size:12.5px;margin-top:2px;line-height:1.4}
+.q2-lv{display:inline-block;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600;white-space:nowrap}
+.q2-lv.info{background:#1E2731;color:#fff}.q2-lv.warn{background:#FFC21A;color:#000}.q2-lv.crit{background:#8B0A1A;color:#fff}.q2-lv.by_severity{background:linear-gradient(90deg,#FFC21A 50%,#8B0A1A 50%);color:#fff;text-shadow:0 0 2px #000}
+.q2-p{display:inline-block;margin:2px 6px 2px 0;padding:2px 7px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;white-space:nowrap}
+.q2-opt{display:block;font-size:13px;color:var(--ink2);margin-top:3px}.q2-opt.on{color:var(--ink);font-weight:600}.q2-opt.on:before{content:"● ";color:#e8742a}.q2-opt:not(.on):before{content:"○ ";color:var(--muted)}
+.q2-h{font-size:16px;margin:18px 0 8px}.q2-h:first-child{margin-top:0}.q2-note{font-size:13px;color:var(--ink2);margin:8px 0 0}
 </style>
 </head>
 <body><div class="wrap">
@@ -59,6 +67,7 @@
   <button data-t="polaczenia">Połączenia</button>
   <button data-t="dostepy">Dostępy</button>
   <button data-t="kontakty">Kontakty</button>
+  <button data-t="qext2">QExt2 (Karoo)</button>
 </div>
 
 <section class="sp on" data-p="powiadomienia">
@@ -99,6 +108,12 @@
   <div id="st-lock"></div>
 </section>
 
+<section class="sp" data-p="qext2">
+  <p class="st-intro">Komunikaty i kolory pól <b>KOKPIT 2</b> na Karoo (QExt2) w jednym miejscu. Kolejność na liście = precedencja:
+    wyżej = ważniejszy, wypiera niższe z paska komunikatów. <b>Etap 1: podgląd obecnych reguł</b> (tylko odczyt) – edycja i wysyłka na Karoo w kolejnym kroku.</p>
+  <div id="q2-box"><div class="card">wczytuję…</div></div>
+</section>
+
 <section class="sp" data-p="kontakty">
   <p class="st-intro">Grupy adresów do zaproszeń na wyprawy i wysyłek planu. Grupy z wyprawy uzupełniają się same po odpowiedziach RSVP;
     adresy dopisane ręcznie zostają.</p>
@@ -124,6 +139,7 @@ function frames(sec){sec.querySelectorAll("iframe[data-src]:not([hidden])").forE
 function show(t){tabs.forEach(function(b){b.classList.toggle("on",b.dataset.t===t);});
   if(t==="dostepy"&&window.qLockMount)window.qLockMount($("st-lock"));
   if(t==="kontakty")kLoad();
+  if(t==="qext2")q2Load();
   document.querySelectorAll("section[data-p]").forEach(function(s){s.classList.toggle("on",s.dataset.p===t);if(s.dataset.p===t)frames(s);});
   try{history.replaceState(null,"","#"+t);}catch(e){}}
 tabs.forEach(function(b){b.addEventListener("click",function(){show(b.dataset.t);});});
@@ -165,6 +181,22 @@ load();
 
 /* Kontakty: grupy adresow (/api/mail-groups: GET lista, POST nowa, DELETE grupa, POST/DELETE czlonkowie, POST sync z wyprawy) */
 var KG=null;
+/* ---- QExt2 (etap 1: podglad) ---- */
+var Q2=null;
+function q2Par(ps){var o="";for(var k in (ps||{})){var p=ps[k];var v=(p.v===true?"tak":p.v===false?"nie":p.v);o+='<span class="q2-p">'+esc(p.label)+': <b>'+esc(v)+'</b> '+esc(p.unit||"")+'</span>';}return o;}
+function q2Load(){if(Q2){q2Render();return;}fetch("/api/setup/qext2",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
+  .then(function(j){Q2=j;q2Render();}).catch(function(e){$("q2-box").innerHTML='<div class="card">Nie udało się wczytać: '+esc(e.message)+'</div>';});}
+function q2Render(){var c=Q2.config,L=Q2.levels,h='';
+  h+='<div class="card"><div class="q2-h">Komunikaty (pasek na górze pola nav)</div><table class="q2-t"><tr><th></th><th>Komunikat</th><th>Poziom</th><th>Kiedy</th><th>Progi</th></tr>';
+  c.messages.forEach(function(m,i){var lv=m.level;var lvt=lv==="by_severity"?m.level_note:(L[lv]||lv);
+    h+='<tr><td class="n">'+(i+1)+'</td><td><b>'+esc(m.name)+'</b>'+(m.on?'':'<small>wyłączony</small>')+'</td><td><span class="q2-lv '+esc(lv)+'">'+esc(lv==="by_severity"?"wg nadawcy":lvt.split(" (")[0])+'</span></td><td><small>'+esc(m.when)+'</small></td><td>'+(q2Par(m.params)||'<small>—</small>')+'</td></tr>';});
+  h+='</table><p class="q2-note">'+esc(Q2.order_note)+'</p>';
+  h+='<div class="q2-h">Rotacja paska</div>'+q2Par(c.rotation)+'</div>';
+  h+='<div class="card" style="margin-top:12px"><div class="q2-h">Kolory pól</div><table class="q2-t"><tr><th>Pole</th><th>Reguła (● = obecnie)</th><th>Progi</th></tr>';
+  c.colors.forEach(function(f){var o='';for(var k in f.options)o+='<span class="q2-opt'+(k===f.v?' on':'')+'">'+esc(f.options[k])+'</span>';
+    h+='<tr><td><b>'+esc(f.field)+'</b></td><td>'+o+'</td><td>'+(q2Par(f.params)||'<small>—</small>')+'</td></tr>';});
+  h+='</table><p class="q2-note">Źródło: '+esc(Q2.source)+(Q2.stored?' · zapisane zmiany: '+esc(Q2.updated_at):' · bez zmian (ustawienia domyślne)')+'</p></div>';
+  $("q2-box").innerHTML=h;}
 function kmsg(t,bad){var m=$("k-msg");m.className=bad?"st-err":"st-ok";m.textContent=t||"";}
 function kreq(method,url,body){return fetch(url,{method:method,credentials:"same-origin",headers:body?{"Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined})
   .then(function(r){return r.json().catch(function(){return {};}).then(function(j){if(!r.ok)throw new Error(r.status===403?"tryb podglądu — bez zmian":(j.detail||("HTTP "+r.status)));return j;});});}

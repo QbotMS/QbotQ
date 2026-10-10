@@ -6684,6 +6684,20 @@ def setup_notif_get():
         conn.close()
 
 
+@app.get("/api/setup/qext2")
+def setup_qext2_get():
+    """2026-10-10: SETUP > QExt2 - komunikaty i kolory pol KOKPIT 2 na Karoo (qext2_config.py, qbot_v2.app_settings).
+    Etap 1: widok tylko do odczytu (obecne reguly QExt2). Dok.: docs/QEXT2_CONFIG.md"""
+    import qext2_config as QC
+    conn = _db_conn()
+    try:
+        v = QC.view(conn.cursor())
+        conn.commit()
+        return v
+    finally:
+        conn.close()
+
+
 @app.post("/api/setup/notif")
 async def setup_notif_save(request: Request):
     """Body: {id: true|false, ...}. Nieznane id sa pomijane."""
