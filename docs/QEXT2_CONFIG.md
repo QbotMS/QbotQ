@@ -13,7 +13,8 @@ z możliwością zmiany progów, poziomów (tło), włączania/wyłączania i ko
    (walidacja: typ jak wartość domyślna, poziom z LEVELS, komunikat z centrali zawsze pierwszy i zawsze włączony).
    Front: ▲▼ kolejność, włącz/wyłącz, poziom (tło), progi, reguła koloru; pomarańczowa ramka = inna niż domyślna.
    `for_karoo(cur)` = gotowa postać dla Karoo (etap 3).
-3. **(2026-10-10, gotowe)** `/ride-readiness` (qbot-api) zwraca `qext2Config` = `for_karoo()`. QExt2 (build ≥ 293):
+3. **(2026-10-10, gotowe)** `/ride-readiness` zwraca `qext2Config` = `for_karoo()`. UWAGA: Karoo pyta **mcp_server.py** (`q-bot.service`,
+   port 8000, z tokenem) – tam jest właściwe wstawienie (tylko dla zautoryzowanych); kopia w qbot_api.py (port 8002) nie jest używana przez Karoo. QExt2 (build ≥ 293):
    `QExt2PrimaryExtension` zapisuje go (`AthleteDataStore.saveQext2Config`) i ładuje do `kokpit/Kokpit2Config.kt`.
    Stosowane w: `RouteMessageEngine.candidates` (wł/wył, progi, kolejność `sortByOrder`), `RouteMessageRotator` (rotacja),
    `Kokpit2NavRenderer.drawMsg` (poziom tła), `Kokpit2InstRenderer` (moc/W′/tętno/prędkość), `Kokpit2NavRenderer` (wiatr, manewr, ETA),

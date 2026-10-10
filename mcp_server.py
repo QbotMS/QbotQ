@@ -3398,6 +3398,17 @@ async def ride_readiness(request):
           f"sleep_dev={sleep_dev} pressure={pressure_now}({pressure_change}) "
           f"sources={sources}", flush=True)
 
+    # Setup QBota > QExt2 (Karoo): komunikaty i kolory pol KOKPIT 2 (qext2_config.py, docs/QEXT2_CONFIG.md)
+    if _authed:
+        try:
+            import psycopg as _pg
+            import qext2_config as _QC
+            with _pg.connect(host=os.getenv("PGHOST", "localhost"), port=os.getenv("PGPORT", "5432"),
+                             dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
+                             password=os.getenv("PGPASSWORD", ""), connect_timeout=2) as _cn:
+                payload["qext2Config"] = _QC.for_karoo(_cn.cursor())
+        except Exception as _e:
+            print(f"⚠️  ride-readiness: qext2Config error: {_e}", flush=True)
     return JSONResponse(payload, headers={"Access-Control-Allow-Origin": "*"})
 
 if __name__ == "__main__":
