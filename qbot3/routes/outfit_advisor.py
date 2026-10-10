@@ -170,6 +170,9 @@ def warunki(d: dict, start: str, long_stops: int = 0, long_stop_min: int = 0) ->
     out["slonce"] = {"wschod": sl.get("wschod"), "zachod": sl.get("zachod"), "sloneczne_h": sl.get("sloneczne_h"), "uv_max": sl.get("uv_max")}
     if meta is not None and _hm(sl.get("zachod")) is not None:
         out["meta_po_zmroku"] = meta > _hm(sl.get("zachod"))
+    # 2026-10-10: stan nawierzchni po opadach z 7 dni / 24 h (qbot3/routes/gear_kit.py), wklada qbot_web przed doborem
+    if d.get("_wstecz"):
+        out["nawierzchnia_po_opadach"] = d["_wstecz"]
     return out
 
 

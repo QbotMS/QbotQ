@@ -314,3 +314,22 @@ body:not([data-mk="sprzet"]) #mkw-favbtn{display:none}
 .mkn-l{display:flex;align-items:flex-start;gap:8px;justify-content:space-between;padding:5px 2px;border-bottom:1px solid var(--line);font-size:13.5px}
 .mkw-note{color:var(--accent)}
 #mkn-dlg .mkw-box{overflow-y:auto}
+
+/* Sprzet: szeroki panel, wieksza czcionka, rower i akcesoria (2026-10-10) */
+html body.rtab-mapa.mk-open[data-mk="sprzet"] header{width:calc(100vw - var(--qnav-rail,56px) - 90px);max-width:none}
+body[data-mk="sprzet"] #mk-pane{font-size:17px;line-height:1.55}
+body[data-mk="sprzet"] #mk-pane .k{font-size:15.5px}
+body[data-mk="sprzet"] #mk-pane .ms-sub{font-size:13px;margin-top:14px}
+body[data-mk="sprzet"] #mk-pane .mkw-w,body[data-mk="sprzet"] #mk-pane .mkw-why{font-size:16.5px}
+body[data-mk="sprzet"] #mk-pane .mkw-t{font-size:18.5px}
+body[data-mk="sprzet"] #mk-pane .mkw-l li{font-size:16.5px}
+body[data-mk="sprzet"] #mk-pane .mkw-z{font-size:16px}
+body[data-mk="sprzet"] #mk-pane .mkp-rule{font-size:15.5px}
+.mkw-sets{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:12px;align-items:start}
+.mkw-sets .mkw-set{margin:0}
+.mkk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin:4px 0 6px}
+.mkk-card{border:1px solid var(--line);border-radius:10px;padding:9px 12px;background:var(--well)}
+.mkk-h{font-weight:700;font-size:17px;margin-bottom:4px}
+.mkk-src{opacity:.75;font-size:13px!important}
+.mkk-b{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:10px;font-size:12.5px;font-weight:700;vertical-align:middle}
+.mkk-b.wym{background:#c0392b;color:#fff}.mkk-b.zal{background:var(--warn);color:#111}.mkk-b.nie{background:var(--line2);color:var(--ink2)}

@@ -476,7 +476,7 @@ function favChips(){
 function gearRender(mb){
   mb=mb||document.querySelector("#mk-pane .multi-body");if(!mb)return;
   var key=ST.route+"|"+ST.date;
-  var h='<div class="ms-sub">Rower</div><div class="k">Wyb\u00f3r Grizl / Monster Gravel pojawi si\u0119 tutaj po opisaniu obu rower\u00f3w w Gara\u017cu.</div>'+
+  var h='<div class="ms-sub">Rower i akcesoria</div><div id="mkk-body"></div>'+
         '<div class="ms-sub">Ubi\u00f3r na ten plan</div><div id="mkw-fav"></div><div id="mkw-body"></div>';
   mb.innerHTML=h;
   if(GEAR_KEY!==key){GEAR_KEY=key;GEAR_P=undefined;
@@ -486,7 +486,7 @@ function gearRender(mb){
     fetch("/api/report/outfit/fav?route_id="+encodeURIComponent(ST.route)+"&date="+ST.date,{credentials:"same-origin",cache:"no-store"})
       .then(function(r){return r.json();}).then(function(j){if(FAV.key!==key)return;FAV.ids=((j&&j.ids)||[]).map(Number);FAV.loading=false;
         if(FAV.ids.length)favLoadGear(favPaint);else favPaint();}).catch(function(){FAV.loading=false;favPaint();});}
-  favPaint();gearBody();
+  favPaint();gearBody();kitLoad();
 }
 function favPaint(){
   favBtn();var el=document.getElementById("mkw-fav");if(!el)return;
@@ -510,6 +510,7 @@ function gearBody(){
   if(fm&&p.faworyci_uwagi&&p.faworyci_uwagi.length)h+=p.faworyci_uwagi.map(function(s){return '<p class="mkw-w" style="color:var(--warn)">\u2605 '+esc(s)+'</p>';}).join("");
   if(p.kontrola_uwagi&&p.kontrola_uwagi.length)h+='<p class="mkw-w" style="color:var(--warn)">\u26a0 Kontrola zestawu: '+p.kontrola_uwagi.map(esc).join(' \u00b7 ')+'</p>';if(p.z_historii)h+='<p class="mkw-w">\u21bb '+esc(p.z_historii)+'</p>';
   if(p.uwagi_historia&&p.uwagi_historia.length){var lu=p.uwagi_historia[p.uwagi_historia.length-1];h+='<div class="mkw-why"><b>\u270e Twoja uwaga:</b> '+esc(lu.uwaga)+(lu.odpowiedz?'<div class="k">'+esc(lu.odpowiedz)+'</div>':'')+'</div>';}
+  h+='<div class="mkw-sets">';
   (p.zestawy||[]).forEach(function(z,i){
     var tp=z.tempo==="szybsza"?"szybsza jazda":(z.tempo==="spokojniejsza"?"spokojniejsza jazda":"");
     var lab=fm?(z.rola==="faworyci"?"\u2605 Z Twoimi faworytami":"Propozycja AI (bez faworyt\u00f3w)"):"";
@@ -522,6 +523,7 @@ function gearBody(){
     if(z.kolory)h+='<div class="mkw-z">\ud83c\udfa8 '+esc(z.kolory)+'</div>';
     if(z.zdejmij)h+='<div class="mkw-z">\u23f1 '+esc(z.zdejmij)+'</div>';if(z.slaby_punkt)h+='<div class="mkw-z">\u26a0 '+esc(z.slaby_punkt)+'</div>';
     h+='</div>';});
+  h+='</div>';
   h+='<div class="mkp-foot">'+esc(qTsLocal(p.created_at,true))+' \u00b7 z '+(p.kandydatow||"?")+' kandydat\u00f3w z gara\u017cu \u00b7 '+btn+' <button type="button" class="mkp-btn" id="mkw-note" title="Zg\u0142o\u015b uwag\u0119: poprawi\u0119 zestaw i naucz\u0119 si\u0119 na przysz\u0142o\u015b\u0107">Uwagi do AI</button></div>';
   el.innerHTML=h;wireGo();wireNote();
 }
@@ -532,6 +534,54 @@ function wireGo(){var b=document.getElementById("mkw-go");if(!b)return;b.disable
     .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.detail||("HTTP "+r.status));return j;});})
     .then(function(j){GEAR_BUSY=false;if(GEAR_KEY===key)GEAR_P=j;gearBody();})
     .catch(function(e){GEAR_BUSY=false;gearBody();var el=document.getElementById("mkw-body");if(el)el.insertAdjacentHTML("afterbegin",'<div class="mkx-err">'+esc(e.message)+'</div>');});};}
+/* ---- Rower i akcesoria (2026-10-10, qbot3/routes/gear_kit.py): pogoda wstecz 7 dni / 24 h, stan nawierzchni, rower (AI), lampki, blotniki ---- */
+var KIT={key:null,d:undefined,busy:false,auto:{}};
+function kitQ(){return "route_id="+encodeURIComponent(ST.route)+"&date="+ST.date+"&time="+encodeURIComponent(ST.start)+"&long_stops="+ST.n+"&long_stop_min="+ST.m;}
+function kitLoad(){
+  var key=ST.route+"|"+ST.date+"|"+ST.start+"|"+ST.n+"|"+ST.m;
+  if(KIT.key===key){kitPaint();return;}
+  KIT.key=key;KIT.d=undefined;kitPaint();
+  fetch("/api/report/kit?"+kitQ(),{credentials:"same-origin",cache:"no-store"}).then(function(r){return r.json();})
+    .then(function(j){if(KIT.key!==key)return;KIT.d=j||null;kitPaint();
+      if(j&&!j.rower&&!KIT.auto[ST.route+"|"+ST.date]){KIT.auto[ST.route+"|"+ST.date]=1;kitBike();}})
+    .catch(function(){if(KIT.key===key){KIT.d=null;kitPaint();}});
+}
+function kitBike(){
+  if(KIT.busy)return;KIT.busy=true;kitPaint();var key=KIT.key;
+  fetch("/api/report/kit",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({route_id:ST.route,date:ST.date,time:ST.start,long_stops:ST.n,long_stop_min:ST.m})})
+    .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.detail||("HTTP "+r.status));return j;});})
+    .then(function(j){KIT.busy=false;if(KIT.key===key)KIT.d=j;kitPaint();})
+    .catch(function(e){KIT.busy=false;kitPaint();var el=document.getElementById("mkk-body");if(el)el.insertAdjacentHTML("afterbegin",'<div class="mkx-err">'+esc(e.message)+'</div>');});
+}
+var KB={wymagane:["wym","wymagane"],zalecane:["zal","zalecane"],niepotrzebne:["nie","niepotrzebne"]};
+var KS={sucho:"\u2600\ufe0f",wilgotno:"\ud83d\udca7",mokro:"\ud83c\udf27\ufe0f",bloto:"\ud83d\udfe4",nieznany:"\u2754"};
+function kitBadge(p){var b=KB[p]||["nie",p||"\u2014"];return '<span class="mkk-b '+b[0]+'">'+esc(b[1])+'</span>';}
+function kitPaint(){
+  var el=document.getElementById("mkk-body");if(!el)return;
+  var d=KIT.d;
+  if(d===undefined){el.innerHTML='<div class="k">sprawdzam pogod\u0119 z ostatnich 7 dni i dobieram rower\u2026</div>';return;}
+  if(!d){el.innerHTML='<div class="mkx-err">Nie uda\u0142o si\u0119 wczyta\u0107 danych o sprz\u0119cie.</div>';return;}
+  var s=d.stan||{},pw=d.pogoda_wstecz||{},u=d.nawierzchnia_pct||{},a=d.akcesoria||{},L=a.lampki||{},B=a.blotniki||{},r=d.rower,h='<div class="mkk-grid">';
+  h+='<div class="mkk-card"><div class="mkk-h">'+(KS[s.stan]||"")+' Nawierzchnia: '+esc(s.opis||s.stan||"\u2014")+'</div><div class="k">'+esc(s.powod||"")+'</div>'+
+    (u.asfalt!=null?'<div class="k">trasa: asfalt '+u.asfalt+'% \u00b7 szuter '+u.szuter+'% \u00b7 ujeby '+u.ujeby+'%</div>':'')+
+    (pw.ok?'<div class="k mkk-src">'+esc(pw.zrodlo||"")+'</div>':'')+'</div>';
+  h+='<div class="mkk-card"><div class="mkk-h">\ud83d\udeb2 Rower'+(r&&r.rower?': '+esc(r.rower.nazwa)+(r.rower.ksywa?' ('+esc(r.rower.ksywa)+')':''):'')+'</div>';
+  if(KIT.busy)h+='<div class="k">AI dobiera rower\u2026 (~5 s)</div>';
+  else if(r&&r.rower){h+='<div>'+esc(r.rower.dlaczego)+'</div>'+((r.rower.opony||[]).length?'<div class="k">opony: '+r.rower.opony.map(esc).join(" \u00b7 ")+'</div>':'')+
+    (r.opony_uwaga?'<div class="k">'+esc(r.opony_uwaga)+'</div>':'')+(r.drugi?'<div class="k">drugi wyb\u00f3r: <b>'+esc(r.drugi.nazwa)+(r.drugi.ksywa?' ('+esc(r.drugi.ksywa)+')':'')+'</b> \u2014 '+esc(r.drugi.dlaczego)+'</div>':'')+
+    ((r.plan&&s.stan&&r.plan.stan&&r.plan.stan!==s.stan)?'<div class="mkp-rule p2">Wyb\u00f3r by\u0142 przy stanie \u201e'+esc(r.plan.stan)+'\u201d \u2014 wybierz ponownie.</div>':'');}
+  else h+='<div class="k">brak wyboru</div>';
+  h+='<div><button type="button" class="mkp-link" id="mkk-re">'+(r?'wybierz ponownie':'wybierz rower')+'</button></div></div>';
+  h+='<div class="mkk-card"><div class="mkk-h">\ud83d\udca1 Lampki '+kitBadge(L.potrzeba)+'</div><div class="k">'+esc(L.powod||"")+(L.meta?' \u00b7 meta ok. '+esc(L.meta)+', zach\u00f3d '+esc(L.zachod||"?"):'')+'</div>'+
+    ((L.wez||[]).length?'<div>we\u017a: <b>'+L.wez.map(function(x){return esc(x.nazwa);}).join(", ")+'</b></div>':'')+
+    ((L.zapas||[]).length?'<div class="k">zapas: '+L.zapas.map(function(x){return esc(x.nazwa);}).join(", ")+'</div>':'')+'</div>';
+  h+='<div class="mkk-card"><div class="mkk-h">\ud83d\udee1\ufe0f B\u0142otniki '+kitBadge(B.potrzeba)+'</div><div class="k">'+esc(B.potrzeba==="niepotrzebne"?"nawierzchnia sucha lub lekko wilgotna, bez deszczu w czasie jazdy":(B.powod||""))+'</div>'+
+    ((B.w_garazu||[]).length&&B.potrzeba!=="niepotrzebne"?'<div>we\u017a: <b>'+B.w_garazu.map(function(x){return esc(x.nazwa);}).join(", ")+'</b></div>':'')+
+    (B.uwaga?'<div class="k" style="color:var(--warn)">'+esc(B.uwaga)+'</div>':'')+'</div>';
+  el.innerHTML=h+'</div>';
+  var re=document.getElementById("mkk-re");if(re)re.onclick=kitBike;
+}
 /* okno Uwagi do AI (2026-10-10): uwaga poprawia biezacy zestaw od razu; wniosek na przyszlosc - AI proponuje, Ty zatwierdzasz */
 function wireNote(){var b=document.getElementById("mkw-note");if(b)b.onclick=noteOpen;}
 function noteOpen(){

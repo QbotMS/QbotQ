@@ -5321,6 +5321,54 @@ def route_intro_build(route_id: str = Query(...)):
         conn.close()
 
 
+def _kit_params(route_id, date, time, long_stops, long_stop_min):
+    return str(route_id), str(date)[:10], str(time or "10:00")[:5], int(long_stops or 0), int(long_stop_min or 0)
+
+
+@app.get("/api/report/kit")
+def report_kit(route_id: str = Query(...), date: str = Query(...), time: str = Query("10:00"),
+               long_stops: int = Query(0), long_stop_min: int = Query(0)):
+    """Sprzet na jazde: pogoda wstecz (7 dni / 24 h), stan nawierzchni, lampki, blotniki (bez AI) + ostatni wybor roweru."""
+    from qbot3.routes import gear_kit as _gk
+    rid, day, tm, n, m = _kit_params(route_id, date, time, long_stops, long_stop_min)
+    conn = _db_conn()
+    try:
+        d = _build_report_data(conn, rid, day, tm, n, m, ai=False, day_table=True)
+        conn.commit()
+        k = _gk.build(d, route_geometry(rid).get("coordinates"), day, tm)
+        k["rower"] = _gk.load_bike(conn, rid, day)
+        return k
+    finally:
+        conn.close()
+
+
+@app.post("/api/report/kit")
+async def report_kit_bike(request: Request):
+    """Wybor roweru przez AI (~5 s) dla planu {route_id, date, time, long_stops, long_stop_min}; zapis w qbot_v2.route_kit."""
+    from qbot3.routes import gear_kit as _gk
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    rid, day, tm, n, m = _kit_params(b.get("route_id"), b.get("date"), b.get("time"), b.get("long_stops"), b.get("long_stop_min"))
+    if not rid or not day:
+        raise HTTPException(status_code=400, detail="Wymagane: route_id + date")
+    conn = _db_conn()
+    try:
+        d = _build_report_data(conn, rid, day, tm, n, m, ai=False, day_table=True)
+        conn.commit()
+        k = _gk.build(d, route_geometry(rid).get("coordinates"), day, tm)
+        r = _gk.choose_bike(d, k["stan"], k["nawierzchnia_pct"], k["pogoda_wstecz"])
+        if not r.get("ok"):
+            raise HTTPException(status_code=502, detail="Nie udalo sie wybrac roweru: %s" % r.get("blad"))
+        r["plan"] = {"start": tm, "stan": k["stan"].get("stan")}
+        _gk.save_bike(conn, rid, day, r)
+        k["rower"] = r
+        return k
+    finally:
+        conn.close()
+
+
 @app.post("/api/report/outfit/note")
 async def report_outfit_note(request: Request):
     """Uwaga do AI {route_id, date, uwaga}: poprawka biezacej propozycji + propozycja wniosku (bez zapisu wniosku)."""
@@ -5441,6 +5489,12 @@ async def report_outfit_build(request: Request):
     try:
         d = _build_report_data(conn, rid, day, tm, n, m, ai=False, day_table=True)
         conn.commit()
+        try:   # stan nawierzchni po opadach (7 dni / 24 h) do doboru ubioru - gear_kit, bledy pomijane
+            from qbot3.routes import gear_kit as _gk
+            _k = _gk.build(d, route_geometry(rid).get("coordinates"), day, tm)
+            d["_wstecz"] = {"stan": _k["stan"].get("opis"), "powod": _k["stan"].get("powod")}
+        except Exception as _e:
+            print("[outfit] gear_kit: %s" % _e)
         from qbot3.routes import outfit_fav as _of
         from qbot3.routes import outfit_notes as _on
         _rules = _on.as_rules(conn) + (_load_outfit_rules() or [])   # wnioski z Uwag do AI = priorytet

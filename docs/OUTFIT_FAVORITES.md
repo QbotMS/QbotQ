@@ -54,3 +54,27 @@ Kod: `qbot3/routes/outfit_notes.py`. Tabela `qbot_v2.outfit_lessons (id, created
 API: `POST /api/report/outfit/note {route_id, date, uwaga}` -> `{proposal, odpowiedz, zmiany, wniosek_propozycja}`;
 `GET /api/report/outfit/lessons`; `POST /api/report/outfit/lessons {tresc, zastepuje, route_id, date, uwaga}` albo `{usun: id}`.
 Test: `tests/test_outfit_notes.py` (bez AI). E2E 2026-10-10 na kopii propozycji: czarne MAAP Alt_Road -> zielone, ~3 s.
+
+# Sprzet: rower i akcesoria (2026-10-10)
+
+Sekcja **"Rower i akcesoria"** w panelu Sprzet (zastapila napis "Wybor Grizl / Monster Gravel pojawi sie...").
+Kod: `qbot3/routes/gear_kit.py`. Panel Sprzet jest **na cala szerokosc obok menu** (przykrywa mape), czcionka tresci ~17 px,
+zestawy A/B obok siebie (`.mkw-sets`).
+
+- **Pogoda wstecz** (`past_weather`): Open-Meteo, opady godzinowe w 4 punktach trasy, okno 7 dni przed startem
+  (sumy 24 h / 48 h / 72 h / 7 dni - max z punktow, ostatni deszcz) + minimalna widocznosc w czasie jazdy. Cache 30 min.
+  Dla jazdy w przyszlosci godziny po "teraz" to prognoza.
+- **Stan nawierzchni** (`surface_state`, progi do kalibracji na jazdach): **bloto** = >=25% nieutwardzonych i (24 h >= 8 mm
+  albo 48 h >= 15 albo 7 dni >= 25 i 48 h >= 5); **mokro** = 24 h >= 3 albo 48 h >= 8 albo deszcz w czasie jazdy (>= 1 mm / >= 50%);
+  **wilgotno** = 7 dni >= 10 albo 24 h >= 0,5; inaczej **sucho** (przy 7 dni < 2 mm: uwaga o sypkim piachu).
+  Stan idzie tez do **doboru ubioru** (`warunki.nawierzchnia_po_opadach`, wkladane w `report_outfit_build`).
+- **Rower** (AI, `choose_bike`): z Garazu bez roweru partnerki (`EXCLUDE_BIKES`); wejscie: nawierzchnia trasy asfalt/szuter/ujeby
+  (kategorie 1 / 2-3 / 4-5), stan po opadach, km, przewyzszenie, czas, opony na kolach (wheel_mounts), zadania serwisowe todo.
+  Wynik + drugi wybor + uwaga o oponach; zapis `qbot_v2.route_kit`. Wybierany automatycznie przy pierwszym otwarciu Sprzetu
+  dla trasy+daty; "wybierz ponownie"; ostrzezenie gdy stan nawierzchni zmienil sie od wyboru.
+- **Lampki** (regula w kodzie): start przed wschodem, meta po zachodzie lub < 30 min przed nim, widocznosc < 1 km -> **wymagane**
+  (przod + tyl + czolowka jako zapas); widocznosc < 3 km -> **zalecane** (tyl). Lampki z Garazu (equipment, "swiatla"; bez Karoo).
+- **Blotniki**: **zalecane** przy mokro / bloto; szukane w equipment/components (blotnik/fender/mudguard) - Michal je dopisze.
+
+API: `GET /api/report/kit?route_id&date&time&long_stops&long_stop_min` (bez AI), `POST /api/report/kit` (AI wybor roweru).
+Test: `tests/test_gear_kit.py` (bez AI i sieci).
