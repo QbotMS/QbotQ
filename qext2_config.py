@@ -82,6 +82,50 @@ COLORS = [
 ]
 
 
+# PELNE ZESTAWIENIE KOLOROW KOKPIT 2 (tylko odczyt; zrodlo: Kokpit2.kt, RideDataAggregator.unifiedPowerColors,
+# RouteMessageEngine). Pozycje z "cfg" zaleza od wyboru w sekcji Kolory pol (wyswietlane wg obecnego ustawienia).
+PALETTE = [
+  {"group": "Dolne pole (instr)", "items": [
+    {"el": "Belka trasy", "rules": [["#2E7BFF", "przejechane"], ["#F2F4F7", "przed tobą: asfalt"], ["#FFB300", "przed tobą: szuter"],
+                                     ["#FF2A2A", "przed tobą: trudne / sypkie"], ["#FF3DF5", "długie postoje"],
+                                     ["#39FF14", "twoja pozycja (koło z czarną obwódką)"], ["#465366", "tło belki / brak trasy"]]},
+    {"el": "Moc (liczba)", "cfg": "power", "rules": [["#CBD5E1", "brak profilu tempa / brak mocy / dane > 5 s"], ["#FFFFFF", "< 85% pułapu tempa"],
+        ["#4ADE80", "85–100% pułapu (w celu)"], ["#FFFFFF", "nad pułapem do 10 s (zryw tolerowany)"], ["#FF5252", "nad pułapem > 10 s"],
+        ["#FF5252", "nad pułapem > 30 s: czerwone TŁO pod cyframi, cyfry czarne (gaśnie po 5 s poniżej)"]]},
+    {"el": "Piorun + numer strefy", "rules": [["#9AA3AE", "Z1 (< 55% CP)"], ["#6FA8FF", "Z2 (55–75%)"], ["#22C55E", "Z3 (75–90%)"],
+        ["#EAB308", "Z4 (90–105%)"], ["#F97316", "Z5 (105–120%)"], ["#EF4444", "Z6 (> 120%)"], ["#9AA5B1", "brak mocy / CP"]]},
+    {"el": "Prędkość (liczba)", "cfg": "speed", "rules": [["#F2C230", "zawsze żółta"], ["#9AA3AE", "brak danych"]]},
+    {"el": "W′ %", "cfg": "wbal", "rules": [["#4ADE80", "trend: rośnie"], ["#FF8C8C", "trend: spada"], ["#FFFFFF", "trend: stały"],
+        ["#9AA3AE", "brak danych"]]},
+    {"el": "Tętno", "cfg": "hr", "rules": [["#FFFFFF", "Z1–Z3"], ["#FACC15", "Z4"], ["#FF8C8C", "Z5"], ["#9AA3AE", "brak danych"]]},
+    {"el": "Serce przy tętnie", "rules": [["#FFFFFF", "bez dryfu"], ["#FB923C", "dryf tętna – umiarkowany"], ["#FF8C8C", "dryf tętna – duży"]]},
+    {"el": "NP 5 – podpis", "rules": [["#4ADE80", "NP 5 min rośnie"], ["#FF8C8C", "spada"], ["#C9D2DC", "stała"]]},
+    {"el": "⌀ – symbol średniej prędkości", "rules": [["#4ADE80", "średnia rośnie"], ["#FF8C8C", "spada"], ["#C9D2DC", "stała"]]},
+    {"el": "Kadencja, NP 5, ⌀ (liczby)", "rules": [["#FFFFFF", "wartość"], ["#9AA3AE", "brak danych"]]},
+    {"el": "Bieg", "rules": [["#AEB8C4", "blat (szary – rzadko się zmienia)"], ["#FFFFFF", "koronka"], ["#9AA5B1", "znak ×"]]},
+    {"el": "Podpisy i jednostki (KAD, BIEG, W′%, V km/h, W)", "rules": [["#9AA5B1", "szare"]]},
+  ]},
+  {"group": "Górne pole (nav)", "items": [
+    {"el": "Pasek komunikatów – tło", "rules": [["#1E2731", "informacja (tekst biały)"], ["#FFC21A", "ostrzeżenie (tekst czarny)"],
+        ["#8B0A1A", "krytyczny (tekst biały)"], ["#FB923C", "napis DEMO (czarny na żółtym tle)"]]},
+    {"el": "Temperatura", "rules": [["#FFFFFF", "wartość"], ["#AEB8C4", "termometr"], ["#9AA3AE", "brak danych"]]},
+    {"el": "Pogoda / opad", "rules": [["#60A5FA", "deszcz (kropla, %, mm)"], ["#BFDBFE", "śnieg"], ["#FF8C8C", "burza (błyskawica i %)"],
+        ["#FACC15", "słońce"], ["#E5E7EB", "chmura przy częściowym zachmurzeniu"], ["#9AA5B1", "pochmurno, mgła"]]},
+    {"el": "Manewr (ikona i dystans)", "cfg": "turn", "rules": [["#FFFFFF", "zwykłe: lewo/prawo, lekko, prosto, rondo"],
+        ["#FFC21A", "ostro, nawrót, rondo z zawróceniem"], ["#9AA5B1", "jednostka m / km"]]},
+    {"el": "Nachylenie – trójkąt (wysokość rośnie z nachyleniem)", "rules": [["#3B4BA8", "≤ −8%"], ["#5B9BE0", "−8 … −5%"], ["#2DD4BF", "−5 … −2%"],
+        ["#9AA5B1", "−2 … 1%"], ["#86EFAC", "1 … 2%"], ["#22C55E", "2 … 5%"], ["#EAB308", "5 … 8%"], ["#FDBA74", "8 … 11%"],
+        ["#F97316", "11 … 14%"], ["#EF4444", "14 … 20%"], ["#A855F7", "≥ 20%"]]},
+    {"el": "Nachylenie – liczba", "rules": [["#FFFFFF", "wartość"], ["#9AA5B1", "znak %"]]},
+    {"el": "DST, DTD", "rules": [["#FFFFFF", "wartości"], ["#AEB8C4", "pionowe podpisy"]]},
+    {"el": "ETA", "cfg": "eta", "rules": [["#FF8C8C", "meta po zmroku"], ["#FACC15", "zapas do zmroku ≤ próg żółty"],
+        ["#4ADE80", "zapas ≥ próg zielony"], ["#FFFFFF", "pomiędzy / bez zmroku"]]},
+    {"el": "Wiatr – strzałka (kierunek względem jazdy)", "cfg": "wind", "rules": [["#FF8C8C", "w twarz (składowa czołowa ≥ próg)"],
+        ["#4ADE80", "w plecy"], ["#FFFFFF", "boczny / słaby"]]},
+    {"el": "Wiatr – liczba i m/s", "rules": [["#FFFFFF", "wartość"], ["#AEB8C4", "m / s"]]},
+  ]},
+]
+
 def defaults():
     return {"version": VERSION, "messages": copy.deepcopy(MESSAGES), "rotation": copy.deepcopy(ROTATION), "colors": copy.deepcopy(COLORS)}
 
@@ -198,6 +242,6 @@ def for_karoo(cur):
 def view(cur):
     """Widok dla SETUP > QExt2: obecne reguly (domyslne + zapisane zmiany) i wartosci domyslne do porownania."""
     st, ts = stored(cur)
-    return {"config": effective(st), "defaults": compact(defaults()), "levels": LEVELS, "order_note": ORDER_NOTE,
+    return {"config": effective(st), "defaults": compact(defaults()), "levels": LEVELS, "order_note": ORDER_NOTE, "palette": PALETTE,
             "stored": bool(st), "updated_at": ts.isoformat() if ts else None,
             "editable": True, "source": "QExt2 build 292 (KOKPIT 2) – reguły odczytane z kodu"}

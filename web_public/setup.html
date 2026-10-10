@@ -61,6 +61,7 @@
 .q2-sel.lv-info{background:#1E2731;color:#fff}.q2-sel.lv-warn{background:#FFC21A;color:#000}.q2-sel.lv-crit{background:#8B0A1A;color:#fff}
 .q2-opt{cursor:pointer}.q2-opt:before{content:none!important}.q2-chg{font-size:12px;color:#e8742a;font-weight:600;margin-left:6px}
 .st-bar .st-btn+.st-btn{margin-left:2px}
+.q2-sw{display:inline-flex;align-items:center;gap:6px;margin:2px 12px 2px 0;font-size:13px;white-space:nowrap}.q2-sw i{display:inline-block;width:14px;height:14px;border-radius:4px;border:1px solid rgba(127,127,127,.5)}
 </style>
 </head>
 <body><div class="wrap">
@@ -215,6 +216,15 @@ function q2Body(){var c=Q2E,items={},cols={},rot={};
 function q2Post(body,okTxt){q2Msg("zapisuję…");fetch("/api/setup/qext2",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
   .then(function(r){if(!r.ok)throw r.status;return r.json();}).then(function(j){Q2=j;Q2E=q2Clone(j.config);q2Render();q2Msg(okTxt,"st-ok");})
   .catch(function(e){q2Msg(e===403?"tryb podglądu — bez zapisu":"nie zapisano, spróbuj jeszcze raz","st-err");});}
+/* pelne zestawienie kolorow (tylko odczyt); pozycje z cfg pokazuja regule wybrana wyzej */
+function q2Palette(){var P=Q2.palette||[],cur={};Q2E.colors.forEach(function(f){cur[f.id]=f;});
+  var h='<div class="card" style="margin-top:12px"><div class="q2-h">Pełne zestawienie kolorów KOKPIT 2</div><p class="q2-note" style="margin:0 0 8px">Wszystkie kolory, jakie mogą pojawić się w polach. Pozycje oznaczone ⚙ zależą od wyboru w sekcji „Kolory pól” wyżej.</p>';
+  P.forEach(function(g){h+='<div class="q2-h" style="font-size:14px">'+esc(g.group)+'</div><table class="q2-t">';
+    g.items.forEach(function(it){var rules=it.rules,extra='';
+      if(it.cfg&&cur[it.cfg]){var f=cur[it.cfg];extra='<small>⚙ obecnie: '+esc(f.options[f.v])+'</small>';}
+      h+='<tr><td style="width:30%"><b>'+esc(it.el)+'</b>'+extra+'</td><td>'+rules.map(function(r){return '<span class="q2-sw"><i style="background:'+esc(r[0])+'"></i>'+esc(r[1])+'</span>';}).join("")+'</td></tr>';});
+    h+='</table>';});
+  return h+'</div>';}
 function q2Render(){var c=Q2E,L=Q2.levels,D=Q2.defaults,h='';
   var dOrder=D.messages.order.join(","),cOrder=c.messages.map(function(m){return m.id;}).join(",");
   h+='<div class="card"><div class="q2-h">Komunikaty (pasek na górze pola nav)'+(dOrder!==cOrder?' <span class="q2-chg">kolejność zmieniona</span>':'')+'</div><table class="q2-t"><tr><th></th><th></th><th>Komunikat</th><th>Poziom (tło)</th><th>Kiedy</th><th>Progi</th></tr>';
@@ -230,6 +240,7 @@ function q2Render(){var c=Q2E,L=Q2.levels,D=Q2.defaults,h='';
   c.colors.forEach(function(f){var o='',dv=(D.colors[f.id]||{}).v;for(var k in f.options)o+='<label class="q2-opt'+(k===f.v?' on':'')+(k===f.v&&k!==dv?' ch':'')+'"><input type="radio" name="q2c-'+f.id+'" data-q2="c.'+f.id+'.v" value="'+k+'"'+(k===f.v?" checked":"")+'> '+esc(f.options[k])+'</label>';
     h+='<tr><td><b>'+esc(f.field)+'</b></td><td>'+o+'</td><td>'+(q2Par("c."+f.id+".p.",f.params)||'<small>—</small>')+'</td></tr>';});
   h+='</table></div>';
+  h+=q2Palette();
   h+='<div class="st-bar"><button type="button" class="st-btn" id="q2-save">Zapisz</button><button type="button" class="st-btn sec" id="q2-undo">Cofnij niezapisane</button><button type="button" class="st-btn sec" id="q2-reset">Przywróć domyślne</button><span id="q2-msg"></span></div>';
   h+='<p class="q2-note">'+(Q2.stored?'Zapisane zmiany z '+esc(String(Q2.updated_at||"").replace("T"," ").slice(0,16))+'.':'Bez zmian – ustawienia domyślne (= obecne zachowanie Karoo).')+' Pomarańczowa ramka = inna wartość niż domyślna. Karoo zacznie stosować zapisane ustawienia po wdrożeniu etapu 3.</p>';
   $("q2-box").innerHTML=h;
