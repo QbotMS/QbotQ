@@ -1210,3 +1210,9 @@ Zweryfikowane na zywo. qbot-api zrestartowany. OTWARTE: retry przy 202 w QExt2 (
 ## 09.10.2026 – Garaż: zakładka Notatki [GARAZ-NOTATKI]
 - Jedna lista notatek z tagami rowerów (bike_notes w garage.db). Zweryfikowane Playwright: karta, tagi, tabela, okno edycji, bez błędów JS.
 - Albert nie czyta notatek (decyzja: pytania ida przez DEV). Dok.: docs/GARAZ.md sekcja Notatki.
+
+## 2026-10-10 - Ubior i sprzet w Analizie trasy (sesja: faworyci / uwagi / sprzet)
+- Commity: be7808c (Faworyci), 49ad17e (Uwagi do AI), a6247bc (Sprzet: pogoda wstecz, rower, lampki, blotniki), 3e85390 (kategoria Blotniki), f42be4a (zasady roweru, reczny wybor, blotniki per rower). Dok.: docs/OUTFIT_FAVORITES.md
+- Zmiany danych Garazu (blotniki, widelec Grizla + RaceDay 2, Grail na 11.10) opisane w docs/OUTFIT_FAVORITES.md (garage.db poza repo).
+- RYZYKO: dobor ubioru z faworytami = 2 wywolania AI po kolei (test 67 s, limit Cloudflare 100 s). Jesli bedzie sie zrywac -> liczenie w tle + odpytywanie.
+- Otwarte: mocowanie blotnikow Ass Saver / SKS w Garazu (Michal); progi stanu nawierzchni (sucho/wilgotno/mokro/bloto) do kalibracji na jazdach.

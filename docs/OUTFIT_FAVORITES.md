@@ -89,3 +89,11 @@ Test: `tests/test_gear_kit.py` (bez AI i sieci).
 - **Blotniki per rower**: blotniki w `components` z `bike_id` (Mucky Nutz MugGuard Front/Rear -> Monster) pokazywane tylko
   dla wybranego roweru; blotniki w `equipment` (Ass Saver, SKS) - uniwersalne. Kategoria Sprzetu "Blotniki".
 - 11.10 (Neverending Bug): Michal wybral Graila (zapisane jako reczny wybor).
+
+## Zmiany danych w Garazu (garage.db, poza repo) - 2026-10-10, z czatu
+- equipment 26 "Ass Saver Win Wing 2 Gravel Detour", 27 "SKS Speedrocker XL 28\"" - kategoria **Blotniki** (uniwersalne), mocowanie do uzupelnienia.
+- components 73/74 "Mucky Nutz MugGuard Front/Rear" - kategoria Blotniki, **bike_id 2 (Monster)**, status zapas.
+- components 75: Grizl CF SL 2025 (bike_id 1) - widelec **RockShox Rudy XPLR A1 Ultimate**, 40 mm, Sand, tlumik **Charger RaceDay 2**;
+  to samo dopisane w notatce roweru (bikes.notes - te notatke czyta AI przy wyborze roweru). Sztywny widelec ma Grizl partnerki (bike_id 6).
+- qbot_v2.route_kit: 11.10 (komoot-3340114493) - reczny wybor Michala: **Grail**.
+- Kazda zmiana: kopia garage.db.bak.<data> przed zapisem.
