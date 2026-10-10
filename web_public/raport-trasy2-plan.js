@@ -557,6 +557,16 @@ function kitBike(){
 var KB={wymagane:["wym","wymagane"],zalecane:["zal","zalecane"],niepotrzebne:["nie","niepotrzebne"]};
 var KS={sucho:"\u2600\ufe0f",wilgotno:"\ud83d\udca7",mokro:"\ud83c\udf27\ufe0f",bloto:"\ud83d\udfe4",nieznany:"\u2754"};
 function kitBadge(p){var b=KB[p]||["nie",p||"\u2014"];return '<span class="mkk-b '+b[0]+'">'+esc(b[1])+'</span>';}
+function kitFend(B,r){var bid=r&&r.rower&&r.rower.id;return (B.w_garazu||[]).filter(function(x){return x.rower_id==null||x.rower_id===bid;});}
+function kitManual(bid){
+  var d=KIT.d||{},key=KIT.key;
+  var kon={km:(LAST_ROUTE||{}).distance_km,przewyzszenie_m:(LAST_ROUTE||{}).ascent_m,czas_h:(LAST_TIME||{}).total_h,nawierzchnia_pct:d.nawierzchnia_pct,stan:(d.stan||{}).stan};
+  KIT.busy=true;kitPaint();
+  fetch("/api/report/kit/manual",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({route_id:ST.route,date:ST.date,bike_id:+bid,kontekst:kon})})
+    .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.detail||("HTTP "+r.status));return j;});})
+    .then(function(j){KIT.busy=false;if(KIT.key===key&&KIT.d)KIT.d.rower=j.rower;kitPaint();})
+    .catch(function(e){KIT.busy=false;kitPaint();var el=document.getElementById("mkk-body");if(el)el.insertAdjacentHTML("afterbegin",'<div class="mkx-err">'+esc(e.message)+'</div>');});
+}
 function kitPaint(){
   var el=document.getElementById("mkk-body");if(!el)return;
   var d=KIT.d;
@@ -572,15 +582,17 @@ function kitPaint(){
     (r.opony_uwaga?'<div class="k">'+esc(r.opony_uwaga)+'</div>':'')+(r.drugi?'<div class="k">drugi wyb\u00f3r: <b>'+esc(r.drugi.nazwa)+(r.drugi.ksywa?' ('+esc(r.drugi.ksywa)+')':'')+'</b> \u2014 '+esc(r.drugi.dlaczego)+'</div>':'')+
     ((r.plan&&s.stan&&r.plan.stan&&r.plan.stan!==s.stan)?'<div class="mkp-rule p2">Wyb\u00f3r by\u0142 przy stanie \u201e'+esc(r.plan.stan)+'\u201d \u2014 wybierz ponownie.</div>':'');}
   else h+='<div class="k">brak wyboru</div>';
-  h+='<div><button type="button" class="mkp-link" id="mkk-re">'+(r?'wybierz ponownie':'wybierz rower')+'</button></div></div>';
+  var opts=(d.rowery||[]).map(function(b){return '<option value="'+b.id+'"'+(r&&r.rower&&r.rower.id===b.id?' selected':'')+'>'+esc(b.nazwa)+(b.ksywa?' ('+esc(b.ksywa)+')':'')+'</option>';}).join("");
+  h+='<div class="mkk-row">'+(r&&r.recznie?'<span class="mkk-b zal">Tw\u00f3j wyb\u00f3r</span> ':'')+'<select id="mkk-sel" title="Tw\u00f3j wyb\u00f3r roweru - AI uczy si\u0119 z niego na kolejne trasy"><option value="">zmie\u0144 rower\u2026</option>'+opts+'</select> <button type="button" class="mkp-link" id="mkk-re">'+(r?'zapytaj AI ponownie':'wybierz rower')+'</button></div></div>';
   h+='<div class="mkk-card"><div class="mkk-h">\ud83d\udca1 Lampki '+kitBadge(L.potrzeba)+'</div><div class="k">'+esc(L.powod||"")+(L.meta?' \u00b7 meta ok. '+esc(L.meta)+', zach\u00f3d '+esc(L.zachod||"?"):'')+'</div>'+
     ((L.wez||[]).length?'<div>we\u017a: <b>'+L.wez.map(function(x){return esc(x.nazwa);}).join(", ")+'</b></div>':'')+
     ((L.zapas||[]).length?'<div class="k">zapas: '+L.zapas.map(function(x){return esc(x.nazwa);}).join(", ")+'</div>':'')+'</div>';
   h+='<div class="mkk-card"><div class="mkk-h">\ud83d\udee1\ufe0f B\u0142otniki '+kitBadge(B.potrzeba)+'</div><div class="k">'+esc(B.potrzeba==="niepotrzebne"?"nawierzchnia sucha lub lekko wilgotna, bez deszczu w czasie jazdy":(B.powod||""))+'</div>'+
-    ((B.w_garazu||[]).length&&B.potrzeba!=="niepotrzebne"?'<div>we\u017a: <b>'+B.w_garazu.map(function(x){return esc(x.nazwa);}).join(", ")+'</b></div>':'')+
+    (kitFend(B,r).length&&B.potrzeba!=="niepotrzebne"?'<div>we\u017a: <b>'+kitFend(B,r).map(function(x){return esc(x.nazwa);}).join(", ")+'</b></div>':'')+
     (B.uwaga?'<div class="k" style="color:var(--warn)">'+esc(B.uwaga)+'</div>':'')+'</div>';
   el.innerHTML=h+'</div>';
   var re=document.getElementById("mkk-re");if(re)re.onclick=kitBike;
+  var sel=document.getElementById("mkk-sel");if(sel)sel.onchange=function(){if(sel.value)kitManual(sel.value);};
 }
 /* okno Uwagi do AI (2026-10-10): uwaga poprawia biezacy zestaw od razu; wniosek na przyszlosc - AI proponuje, Ty zatwierdzasz */
 function wireNote(){var b=document.getElementById("mkw-note");if(b)b.onclick=noteOpen;}

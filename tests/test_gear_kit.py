@@ -48,6 +48,14 @@ class T(unittest.TestCase):
         self.assertNotIn("Go\u015bki", names)
         self.assertTrue(K.bikes())
 
+    def test_manual_and_rules(self):
+        bs = K.bikes()
+        r = K.manual_bike(bs[0]["id"], {"km": 80})
+        self.assertTrue(r["ok"] and r["recznie"])
+        self.assertFalse(K.manual_bike(999999)["ok"])
+        self.assertTrue(any("Monster" in x for x in K.BIKE_RULES))
+        self.assertTrue(all("do_zrobienia" not in b for b in bs), "zadania serwisowe nie ida do wyboru roweru")
+
 
 if __name__ == "__main__":
     unittest.main()

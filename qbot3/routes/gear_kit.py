@@ -23,6 +23,13 @@ GARAGE_DB = "/opt/qbot/app/data/garage.db"
 EXCLUDE_BIKES = re.compile(r"go\u015bk|goski", re.I)          # rower partnerki - nie proponowac
 UNPAVED_CATS = {2: "szuter", 3: "szuter", 4: "ujeby", 5: "ujeby"}
 DUSK_MARGIN_MIN = 30
+# Zasady wyboru roweru od Michala (2026-10-10) - twarde, przed ocena AI:
+BIKE_RULES = [
+    "Monster (Canyon Grand Canyon) to rower na ZIM\u0118 i na NAPRAWD\u0118 ci\u0119\u017ckie warunki (\u015bnieg, mr\u00f3z, g\u0142\u0119bokie b\u0142oto) -"
+    " NIE wybieraj go na zwyk\u0142e trasy ok. 80 km i d\u0142u\u017csze, nawet gdy jest mokro albo s\u0105 odcinki piachu.",
+    "Bie\u017c\u0105ce zadania serwisowe NIE wp\u0142ywaj\u0105 na wyb\u00f3r roweru (serwis ogarnia Micha\u0142).",
+    "Wybory_michala to jego r\u0119czne decyzje na wcze\u015bniejszych trasach - traktuj je jako wzorzec (podobna trasa i warunki -> ten sam rower).",
+]
 _CACHE: dict = {}
 _TTL_S = 1800
 
@@ -184,12 +191,9 @@ def bikes() -> list:
             ty = g.execute("SELECT t.brand, t.model, t.width_mm, t.type, t.position FROM tires t JOIN wheel_mounts w "
                            "ON w.wheel_id=t.wheel_id AND w.to_at IS NULL WHERE w.bike_id=? AND (t.status IS NULL OR t.status LIKE 'zamont%')",
                            (b["id"],)).fetchall()
-            tasks = g.execute("SELECT task, note FROM bike_task WHERE bike_id=? AND (status IS NULL OR status='todo')",
-                              (b["id"],)).fetchall()
             out.append({"id": int(b["id"]), "nazwa": b["name"], "ksywa": b["nickname"], "typ": b["type"],
                         "opony": ["%s %s %s mm%s" % (t["brand"] or "", t["model"] or "", t["width_mm"] or "?",
                                                      (" (%s)" % t["position"]) if t["position"] else "") for t in ty],
-                        "do_zrobienia": [("%s %s" % (t["task"] or "", t["note"] or "")).strip() for t in tasks],
                         "notatki": (b["notes"] or "")[:300]})
         return out
     finally:
@@ -266,7 +270,48 @@ def accessories(data: dict, start: str, pw: dict, stan: dict) -> dict:
 
 
 # ---------------- rower (AI) ----------------
-def choose_bike(data: dict, stan: dict, unp: dict, pw: dict) -> dict:
+def context(data: dict, stan: dict, unp: dict) -> dict:
+    r = data.get("route") or {}
+    return {"km": r.get("distance_km"), "przewyzszenie_m": r.get("ascent_m"), "czas_h": (data.get("time") or {}).get("total_h"),
+            "nawierzchnia_pct": unp, "stan": (stan or {}).get("stan")}
+
+
+def manual_history(conn, n=12) -> list:
+    """Reczne wybory roweru Michala (wzorzec dla AI)."""
+    try:
+        ensure(conn)
+        rows = conn.execute("SELECT route_id, ride_date, payload FROM qbot_v2.route_kit WHERE payload->>'recznie'='true' "
+                            "ORDER BY created_at DESC LIMIT %s", (n,)).fetchall()
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return []
+    out, seen = [], set()
+    for x in rows:
+        x = dict(x) if isinstance(x, dict) else dict(zip(("route_id", "ride_date", "payload"), x))
+        k = (x["route_id"], str(x["ride_date"]))
+        if k in seen:
+            continue
+        seen.add(k)
+        pl = x["payload"] if not isinstance(x["payload"], str) else json.loads(x["payload"])
+        out.append({"rower": ((pl.get("rower") or {}).get("nazwa")), "trasa": pl.get("kontekst")})
+    return out
+
+
+def manual_bike(bike_id: int, kontekst: dict | None = None) -> dict:
+    by = {b["id"]: b for b in bikes()}
+    if int(bike_id) not in by:
+        return {"ok": False, "blad": "rower spoza Garazu"}
+    b = by[int(bike_id)]
+    return {"ok": True, "recznie": True, "rower": {"id": b["id"], "nazwa": b["nazwa"], "ksywa": b["ksywa"], "opony": b["opony"],
+            "dlaczego": "Tw\u00f3j wyb\u00f3r."}, "kontekst": kontekst or {},
+            "created_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")}
+
+
+def choose_bike(data: dict, stan: dict, unp: dict, pw: dict, conn=None) -> dict:
     from qgpt_client import qgpt_json
     bs = bikes()
     if not bs:
@@ -276,11 +321,12 @@ def choose_bike(data: dict, stan: dict, unp: dict, pw: dict) -> dict:
     sand = sum(1 for x in sf.get("risk") or [] if "piach" in json.dumps(x, ensure_ascii=False).lower() or "sand" in json.dumps(x).lower())
     inp = {"trasa": {"km": r.get("distance_km"), "przewyzszenie_m": r.get("ascent_m"), "czas_h": (data.get("time") or {}).get("total_h"),
                      "nawierzchnia_pct": unp, "odcinki_ryzykowne": len(sf.get("risk") or []), "odcinki_z_ryzykiem_piachu": sand},
-           "stan_po_opadach": stan, "opady_mm": (pw or {}).get("opady_mm_max"), "rowery": bs}
-    prompt = ("Wybierz rower na te jazde z listy 'rowery' (pole id) i podaj drugi wybor. Bierz pod uwage: udzial asfaltu / szutru / "
-              "ujebow (trudny teren), stan nawierzchni po opadach (bloto i piach -> szersze, bardziej terenowe opony), dlugosc i czas "
-              "jazdy (dlugo po asfalcie -> szybszy, lzejszy rower), opony zamontowane na kolach, zadania serwisowe 'do_zrobienia' "
-              "(rower z pilna usterka odradzaj). Piszesz po polsku z polskimi znakami, na TY, konkretnie, z liczbami.\n\n"
+           "stan_po_opadach": stan, "opady_mm": (pw or {}).get("opady_mm_max"), "rowery": bs,
+           "zasady_michala": BIKE_RULES, "wybory_michala": manual_history(conn) if conn is not None else []}
+    prompt = ("Wybierz rower na te jazde z listy 'rowery' (pole id) i podaj drugi wybor. NAJPIERW 'zasady_michala' (twarde) i "
+              "'wybory_michala' (wzorzec), potem: udzial asfaltu / szutru / ujebow (trudny teren), stan nawierzchni po opadach, "
+              "dlugosc i czas jazdy (dlugo po asfalcie -> szybszy, lzejszy rower), opony zamontowane na kolach. "
+              "Piszesz po polsku z polskimi znakami, na TY, konkretnie, z liczbami.\n\n"
               + json.dumps(inp, ensure_ascii=False)
               + '\n\nZwroc TYLKO JSON: {"rower_id": id, "dlaczego": "1-2 zdania", "drugi_id": id, "drugi_dlaczego": "1 zdanie: kiedy lepszy drugi",'
                 ' "opony_uwaga": "1 zdanie o oponach/cisnieniu w tych warunkach albo pusty"}')
@@ -302,7 +348,7 @@ def choose_bike(data: dict, stan: dict, unp: dict, pw: dict) -> dict:
     out = {"ok": True, "rower": {"id": rid, "nazwa": by[rid]["nazwa"], "ksywa": by[rid]["ksywa"], "opony": by[rid]["opony"],
                                  "dlaczego": (o.get("dlaczego") or "").strip()},
            "opony_uwaga": (o.get("opony_uwaga") or "").strip(),
-           "created_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")}
+           "kontekst": context(data, stan, unp), "created_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")}
     if did in by and did != rid:
         out["drugi"] = {"id": did, "nazwa": by[did]["nazwa"], "ksywa": by[did]["ksywa"], "dlaczego": (o.get("drugi_dlaczego") or "").strip()}
     return out

@@ -5337,6 +5337,7 @@ def report_kit(route_id: str = Query(...), date: str = Query(...), time: str = Q
         conn.commit()
         k = _gk.build(d, route_geometry(rid).get("coordinates"), day, tm)
         k["rower"] = _gk.load_bike(conn, rid, day)
+        k["rowery"] = [{"id": b["id"], "nazwa": b["nazwa"], "ksywa": b["ksywa"]} for b in _gk.bikes()]
         return k
     finally:
         conn.close()
@@ -5358,13 +5359,40 @@ async def report_kit_bike(request: Request):
         d = _build_report_data(conn, rid, day, tm, n, m, ai=False, day_table=True)
         conn.commit()
         k = _gk.build(d, route_geometry(rid).get("coordinates"), day, tm)
-        r = _gk.choose_bike(d, k["stan"], k["nawierzchnia_pct"], k["pogoda_wstecz"])
+        r = _gk.choose_bike(d, k["stan"], k["nawierzchnia_pct"], k["pogoda_wstecz"], conn)
         if not r.get("ok"):
             raise HTTPException(status_code=502, detail="Nie udalo sie wybrac roweru: %s" % r.get("blad"))
         r["plan"] = {"start": tm, "stan": k["stan"].get("stan")}
         _gk.save_bike(conn, rid, day, r)
         k["rower"] = r
+        k["rowery"] = [{"id": b["id"], "nazwa": b["nazwa"], "ksywa": b["ksywa"]} for b in _gk.bikes()]
         return k
+    finally:
+        conn.close()
+
+
+@app.post("/api/report/kit/manual")
+async def report_kit_manual(request: Request):
+    """Reczny wybor roweru {route_id, date, bike_id, kontekst}: zapis jako 'recznie' (wzorzec dla AI na kolejne trasy)."""
+    from qbot3.routes import gear_kit as _gk
+    try:
+        b = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    rid, day = str(b.get("route_id") or ""), str(b.get("date") or "")[:10]
+    try:
+        bid = int(b.get("bike_id"))
+    except Exception:
+        bid = None
+    if not rid or not day or bid is None:
+        raise HTTPException(status_code=400, detail="Wymagane: route_id + date + bike_id")
+    r = _gk.manual_bike(bid, b.get("kontekst") if isinstance(b.get("kontekst"), dict) else None)
+    if not r.get("ok"):
+        raise HTTPException(status_code=400, detail=r.get("blad"))
+    conn = _db_conn()
+    try:
+        _gk.save_bike(conn, rid, day, r)
+        return {"rower": r}
     finally:
         conn.close()
 

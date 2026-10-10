@@ -78,3 +78,14 @@ zestawy A/B obok siebie (`.mkw-sets`).
 
 API: `GET /api/report/kit?route_id&date&time&long_stops&long_stop_min` (bez AI), `POST /api/report/kit` (AI wybor roweru).
 Test: `tests/test_gear_kit.py` (bez AI i sieci).
+
+## Rower: zasady Michala i reczny wybor (2026-10-10, korekta)
+- `gear_kit.BIKE_RULES` (twarde, przed ocena AI): **Monster = rower na zime i naprawde ciezkie warunki** (snieg, mroz, glebokie bloto),
+  NIE na zwykle trasy ok. 80 km i dluzsze; **biezace zadania serwisowe NIE wplywaja na wybor** (usuniete z wejscia AI).
+- **Reczny wybor**: lista "zmien rower..." w karcie Rower -> `POST /api/report/kit/manual {route_id, date, bike_id, kontekst}`;
+  zapis w `qbot_v2.route_kit` z `recznie: true` i kontekstem trasy (km, przewyzszenie, czas, nawierzchnia %, stan).
+  Ostatnie 12 recznych wyborow (`manual_history`) idzie do AI jako `wybory_michala` - wzorzec na kolejne trasy.
+  "zapytaj AI ponownie" nadpisuje wybor dla tej trasy+daty.
+- **Blotniki per rower**: blotniki w `components` z `bike_id` (Mucky Nutz MugGuard Front/Rear -> Monster) pokazywane tylko
+  dla wybranego roweru; blotniki w `equipment` (Ass Saver, SKS) - uniwersalne. Kategoria Sprzetu "Blotniki".
+- 11.10 (Neverending Bug): Michal wybral Graila (zapisane jako reczny wybor).
