@@ -509,20 +509,21 @@ function gearBody(){
   if(fm&&p.zrozumienie)h+='<div class="mkw-why"><b>\ud83e\udd14 Jak rozumiem Tw\u00f3j wyb\u00f3r:</b> '+esc(p.zrozumienie)+'</div>';
   if(fm&&p.faworyci_uwagi&&p.faworyci_uwagi.length)h+=p.faworyci_uwagi.map(function(s){return '<p class="mkw-w" style="color:var(--warn)">\u2605 '+esc(s)+'</p>';}).join("");
   if(p.kontrola_uwagi&&p.kontrola_uwagi.length)h+='<p class="mkw-w" style="color:var(--warn)">\u26a0 Kontrola zestawu: '+p.kontrola_uwagi.map(esc).join(' \u00b7 ')+'</p>';if(p.z_historii)h+='<p class="mkw-w">\u21bb '+esc(p.z_historii)+'</p>';
+  if(p.uwagi_historia&&p.uwagi_historia.length){var lu=p.uwagi_historia[p.uwagi_historia.length-1];h+='<div class="mkw-why"><b>\u270e Twoja uwaga:</b> '+esc(lu.uwaga)+(lu.odpowiedz?'<div class="k">'+esc(lu.odpowiedz)+'</div>':'')+'</div>';}
   (p.zestawy||[]).forEach(function(z,i){
     var tp=z.tempo==="szybsza"?"szybsza jazda":(z.tempo==="spokojniejsza"?"spokojniejsza jazda":"");
     var lab=fm?(z.rola==="faworyci"?"\u2605 Z Twoimi faworytami":"Propozycja AI (bez faworyt\u00f3w)"):"";
     h+='<div class="mkw-set'+(fm&&z.rola==="faworyci"?' mkw-setfav':'')+'"><div class="mkw-t">'+(i===0?"A":"B")+' \u00b7 '+(lab?esc(lab)+' \u00b7 ':'')+(tp?esc(tp)+' \u00b7 ':'')+esc(z.nazwa)+'</div>'+(z.kiedy?'<div class="k">'+esc(z.kiedy)+'</div>':'')+
       (z.po_co?'<div class="k" style="margin-top:4px"><b>Po co:</b> '+esc(z.po_co)+'</div>':'')+'<ul class="mkw-l">';
-    (z.rzeczy||[]).forEach(function(it){h+='<li><b>'+(it.faworyt?'<span class="mkw-star" title="Tw\u00f3j faworyt">\u2605</span> ':'')+esc(it.nazwa)+'</b> <span class="k">'+esc(it.kategoria)+(it.kolor?' \u00b7 '+esc(String(it.kolor).toLowerCase()):'')+'</span><div class="k">'+esc(it.dlaczego)+'</div>'+
+    (z.rzeczy||[]).forEach(function(it){h+='<li><b>'+(it.faworyt?'<span class="mkw-star" title="Tw\u00f3j faworyt">\u2605</span> ':'')+esc(it.nazwa)+(it.z_uwagi?' <span class="mkw-note" title="zmienione wg Twojej uwagi">\u270e</span>':'')+'</b> <span class="k">'+esc(it.kategoria)+(it.kolor?' \u00b7 '+esc(String(it.kolor).toLowerCase()):'')+'</span><div class="k">'+esc(it.dlaczego)+'</div>'+
       ((it.zamienniki&&it.zamienniki.length)?'<div class="k">zamiennie: '+it.zamienniki.map(function(a){return esc(a.nazwa)+(a.kolor?' ('+esc(String(a.kolor).toLowerCase())+')':'');}).join(", ")+'</div>':'')+'</li>';});
     h+='</ul>';
-    if(z.do_kieszeni&&z.do_kieszeni.length)h+='<div class="mkw-sub">Do kieszeni</div><ul class="mkw-l">'+z.do_kieszeni.map(function(it){return '<li><b>'+(it.faworyt?'<span class="mkw-star" title="Tw\u00f3j faworyt">\u2605</span> ':'')+esc(it.nazwa)+'</b><div class="k">'+esc(it.dlaczego)+'</div></li>';}).join("")+'</ul>';
+    if(z.do_kieszeni&&z.do_kieszeni.length)h+='<div class="mkw-sub">Do kieszeni</div><ul class="mkw-l">'+z.do_kieszeni.map(function(it){return '<li><b>'+(it.faworyt?'<span class="mkw-star" title="Tw\u00f3j faworyt">\u2605</span> ':'')+esc(it.nazwa)+(it.z_uwagi?' <span class="mkw-note" title="zmienione wg Twojej uwagi">\u270e</span>':'')+'</b><div class="k">'+esc(it.dlaczego)+'</div></li>';}).join("")+'</ul>';
     if(z.kolory)h+='<div class="mkw-z">\ud83c\udfa8 '+esc(z.kolory)+'</div>';
     if(z.zdejmij)h+='<div class="mkw-z">\u23f1 '+esc(z.zdejmij)+'</div>';if(z.slaby_punkt)h+='<div class="mkw-z">\u26a0 '+esc(z.slaby_punkt)+'</div>';
     h+='</div>';});
-  h+='<div class="mkp-foot">'+esc(qTsLocal(p.created_at,true))+' \u00b7 z '+(p.kandydatow||"?")+' kandydat\u00f3w z gara\u017cu \u00b7 '+btn+'</div>';
-  el.innerHTML=h;wireGo();
+  h+='<div class="mkp-foot">'+esc(qTsLocal(p.created_at,true))+' \u00b7 z '+(p.kandydatow||"?")+' kandydat\u00f3w z gara\u017cu \u00b7 '+btn+' <button type="button" class="mkp-btn" id="mkw-note" title="Zg\u0142o\u015b uwag\u0119: poprawi\u0119 zestaw i naucz\u0119 si\u0119 na przysz\u0142o\u015b\u0107">Uwagi do AI</button></div>';
+  el.innerHTML=h;wireGo();wireNote();
 }
 function wireGo(){var b=document.getElementById("mkw-go");if(!b)return;b.disabled=GEAR_BUSY;b.onclick=function(){
   if(GEAR_BUSY)return;GEAR_BUSY=true;gearBody();var key=GEAR_KEY;
@@ -531,6 +532,52 @@ function wireGo(){var b=document.getElementById("mkw-go");if(!b)return;b.disable
     .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.detail||("HTTP "+r.status));return j;});})
     .then(function(j){GEAR_BUSY=false;if(GEAR_KEY===key)GEAR_P=j;gearBody();})
     .catch(function(e){GEAR_BUSY=false;gearBody();var el=document.getElementById("mkw-body");if(el)el.insertAdjacentHTML("afterbegin",'<div class="mkx-err">'+esc(e.message)+'</div>');});};}
+/* okno Uwagi do AI (2026-10-10): uwaga poprawia biezacy zestaw od razu; wniosek na przyszlosc - AI proponuje, Ty zatwierdzasz */
+function wireNote(){var b=document.getElementById("mkw-note");if(b)b.onclick=noteOpen;}
+function noteOpen(){
+  if(!ST.route||!ST.date||!GEAR_P)return;
+  var old=document.getElementById("mkn-dlg");if(old)old.remove();
+  var ov=document.createElement("div");ov.id="mkn-dlg";ov.className="mkw-ov";
+  ov.innerHTML='<div class="mkw-box" role="dialog" aria-label="Uwagi do AI"><div class="mkw-bh"><b>Uwagi do AI</b><span class="k">poprawi\u0119 bie\u017c\u0105cy zestaw i zaproponuj\u0119 wniosek na przysz\u0142o\u015b\u0107</span><button type="button" class="mk-x" id="mkn-x">\u00d7</button></div>'+
+    '<textarea id="mkn-t" class="mkn-ta" rows="3" placeholder="np. Dobra\u0142e\u015b czarne r\u0119kawiczki, lepiej b\u0119d\u0105 pasowa\u0107 zielone. / Zamie\u0144 kamizelk\u0119 na Primaloft w zestawie A."></textarea>'+
+    '<div class="mkw-bf"><span class="k" id="mkn-st"></span><span style="flex:1"></span><button type="button" class="mkp-go" id="mkn-go">Wy\u015blij uwag\u0119</button></div>'+
+    '<div id="mkn-res"></div><div class="mkw-ch" style="margin-top:12px">Czego AI si\u0119 nauczy\u0142o</div><div id="mkn-les" class="mkn-les"><span class="k">wczytuj\u0119\u2026</span></div></div>';
+  document.body.appendChild(ov);
+  function close(){ov.remove();document.removeEventListener("keydown",k_,true);}
+  function k_(e){if(e.key==="Escape"){e.stopPropagation();close();}}
+  document.addEventListener("keydown",k_,true);
+  ov.onclick=function(e){if(e.target===ov)close();};document.getElementById("mkn-x").onclick=close;
+  function post(u,b){return fetch(u,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)})
+    .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.detail||("HTTP "+r.status));return j;});});}
+  function paintLes(items){var el=document.getElementById("mkn-les");if(!el)return;
+    el.innerHTML=(items&&items.length)?items.map(function(x){return '<div class="mkn-l"><span>'+esc(x.wniosek)+'</span><button type="button" class="mkw-rm" data-del="'+x.id+'" title="zapomnij">\u00d7</button></div>';}).join(""):'<span class="k">jeszcze nic \u2014 zatwierdzone wnioski b\u0119d\u0105 tu i w ka\u017cdym kolejnym doborze ubioru</span>';
+    el.querySelectorAll("[data-del]").forEach(function(b){b.onclick=function(){if(!confirm("Zapomnie\u0107 ten wniosek?"))return;post("/api/report/outfit/lessons",{usun:+b.dataset.del}).then(function(j){paintLes(j.items);});};});}
+  fetch("/api/report/outfit/lessons",{credentials:"same-origin",cache:"no-store"}).then(function(r){return r.json();}).then(function(j){paintLes(j.items);}).catch(function(){paintLes([]);});
+  var go=document.getElementById("mkn-go");
+  go.onclick=function(){
+    var u=(document.getElementById("mkn-t").value||"").trim();if(!u){document.getElementById("mkn-st").textContent="wpisz uwag\u0119";return;}
+    go.disabled=true;go.textContent="Poprawiam\u2026 (~15 s)";document.getElementById("mkn-st").textContent="";
+    post("/api/report/outfit/note",{route_id:ST.route,date:ST.date,uwaga:u}).then(function(r){
+      go.disabled=false;go.textContent="Wy\u015blij kolejn\u0105 uwag\u0119";document.getElementById("mkn-t").value="";
+      if(r.proposal&&r.zmiany&&r.zmiany.length){GEAR_P=r.proposal;gearBody();}
+      var h='<div class="mkw-why"><b>'+(r.zmiany&&r.zmiany.length?'\u2714 Poprawione':'Bez zmian w zestawie')+':</b> '+esc(r.odpowiedz||"")+
+        (r.zmiany&&r.zmiany.length?'<div class="k">'+r.zmiany.map(esc).join(" \u00b7 ")+'</div>':'')+'</div>';
+      var w=r.wniosek_propozycja;
+      if(w&&w.tresc){h+='<div class="mkn-w"><div class="mkw-ch">Wniosek na przysz\u0142o\u015b\u0107 \u2014 zapami\u0119ta\u0107?</div><textarea id="mkn-wt" class="mkn-ta" rows="2">'+esc(w.tresc)+'</textarea>'+
+        (w.zastepuje&&w.zastepuje.length?'<div class="k">zast\u0105pi: '+w.zastepuje.map(function(x){return esc(x.wniosek);}).join(" \u00b7 ")+'</div>':'')+
+        '<div class="mkw-bf"><span style="flex:1"></span><button type="button" class="mkp-btn" id="mkn-no">Nie zapami\u0119tuj</button><button type="button" class="mkp-go" id="mkn-yes">Zapami\u0119taj</button></div></div>';}
+      else h+='<div class="k">AI uzna\u0142o t\u0119 uwag\u0119 za jednorazow\u0105 \u2014 bez wniosku na przysz\u0142o\u015b\u0107.</div>';
+      var res=document.getElementById("mkn-res");res.innerHTML=h;
+      var yes=document.getElementById("mkn-yes"),no=document.getElementById("mkn-no");
+      if(no)no.onclick=function(){res.querySelector(".mkn-w").innerHTML='<span class="k">Nie zapami\u0119tano.</span>';};
+      if(yes)yes.onclick=function(){yes.disabled=true;
+        post("/api/report/outfit/lessons",{tresc:document.getElementById("mkn-wt").value,zastepuje:(w.zastepuje||[]).map(function(x){return x.id;}),route_id:ST.route,date:ST.date,uwaga:u})
+          .then(function(j){res.querySelector(".mkn-w").innerHTML='<span class="k">\u2714 Zapami\u0119tane \u2014 b\u0119dzie brane pod uwag\u0119 przy ka\u017cdym doborze.</span>';paintLes(j.items);})
+          .catch(function(e){yes.disabled=false;res.insertAdjacentHTML("beforeend",'<div class="mkx-err">'+esc(e.message)+'</div>');});};
+    }).catch(function(e){go.disabled=false;go.textContent="Wy\u015blij uwag\u0119";document.getElementById("mkn-st").innerHTML='<span class="mkx-err">'+esc(e.message)+'</span>';});
+  };
+  setTimeout(function(){var t=document.getElementById("mkn-t");if(t)t.focus();},50);
+}
 /* okno Faworyci: Rodzaj (kategoria z Garazu) | Rzecz (rzeczy tej kategorii) */
 function favOpen(){
   if(!ST.route||!ST.date)return;

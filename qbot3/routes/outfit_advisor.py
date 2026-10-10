@@ -744,8 +744,8 @@ def _checks(o, kand, war, final=False):
         fams = _palette(z.get("rzeczy") or [], ids)
         for lay in (() if final else ("buty", "rekawiczki", "skarpety", "glowa")):
             c = onmap.get(lay)
-            if not c:
-                continue
+            if not c or "uwag" in dl.get(c["id"], "").lower():
+                continue                                         # zgodnie z uwaga Michala (outfit_notes) - nie ruszac
             want = _want_fams(lay, fams)
             pool = [x for x in kand.get(lay, []) if x["id"] != c["id"]]
             target = next((fm for fm in want if _fam(c.get("kolor")) == fm or any(_fam(x.get("kolor")) == fm for x in pool)), "neutral")
@@ -899,8 +899,8 @@ def _autofix(o, kand, war):
         fams = _palette(rz, ids)
         for lay in ("buty", "rekawiczki", "skarpety", "glowa"):
             it = next((i for i in rz if (ids.get(int(i["id"])) or {}).get("warstwa") == lay), None)
-            if not it:
-                continue
+            if not it or "uwag" in (it.get("dlaczego") or "").lower():
+                continue                                         # zgodnie z uwaga Michala (outfit_notes) - nie ruszac
             c = ids[int(it["id"])]
             want = _want_fams(lay, fams)
             winter_ok = _f((war.get("na_rowerze") or {}).get("min"), 10) < 8

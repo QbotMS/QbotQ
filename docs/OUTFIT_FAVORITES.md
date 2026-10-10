@@ -34,3 +34,23 @@ Faworyci sa przypisani do **trasy + daty planu** (ubior jest na dzien, w ktory p
 
 ## Testy
 `tests/test_outfit_fav.py` (bez AI: lista rzeczy, wymuszenie faworyta, walidacja jednego zestawu, prompt B).
+
+# Uwagi do AI (2026-10-10)
+
+Przycisk **"Uwagi do AI"** obok "Dobierz ponownie" (panel Sprzet). Okno: pole na uwage (np. "czarne rekawiczki -> lepiej zielone",
+"zamien kamizelke w A"), lista **"Czego AI sie nauczylo"** z x (zapomnij).
+
+Decyzje Michala:
+- uwaga **poprawia od razu biezacy zestaw** - tylko wskazane rzeczy, reszta bez zmian, nowe rzeczy z calego Garazu;
+  bez autokorekty silnika; zapis nowej wersji w `qbot_v2.route_outfit` (+ `uwagi_historia`, rzeczy `z_uwagi: true` = znak ✎),
+- AI proponuje **wniosek na przyszlosc** (jedna zasada ogolna, albo brak gdy uwaga jednorazowa); **zapis dopiero po
+  zatwierdzeniu** (mozna poprawic tekst); wniosek moze **zastapic** stare (sprzeczne/dublujace) - stare `active=false, replaced_by`.
+- zatwierdzone wnioski (max 40 najnowszych) ida do **kazdego doboru** (z faworytami i bez) na poczatku `reguly_ubioru`
+  z dopiskiem "priorytet nad innymi regulami" (`outfit_notes.as_rules` w `report_outfit_build`).
+- rzecz wybrana zgodnie z wnioskiem: AI pisze w 'dlaczego' "zgodnie z Twoja uwaga" -> **autokorekta kolorow i podpowiedz
+  kolorow silnika jej nie ruszaja** (`outfit_advisor._autofix` / `_checks`, warunek "uwag" w dlaczego).
+
+Kod: `qbot3/routes/outfit_notes.py`. Tabela `qbot_v2.outfit_lessons (id, created_at, route_id, ride_date, uwaga, wniosek, active, replaced_by)`.
+API: `POST /api/report/outfit/note {route_id, date, uwaga}` -> `{proposal, odpowiedz, zmiany, wniosek_propozycja}`;
+`GET /api/report/outfit/lessons`; `POST /api/report/outfit/lessons {tresc, zastepuje, route_id, date, uwaga}` albo `{usun: id}`.
+Test: `tests/test_outfit_notes.py` (bez AI). E2E 2026-10-10 na kopii propozycji: czarne MAAP Alt_Road -> zielone, ~3 s.
