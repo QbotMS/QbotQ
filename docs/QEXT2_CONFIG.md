@@ -13,7 +13,12 @@ z możliwością zmiany progów, poziomów (tło), włączania/wyłączania i ko
    (walidacja: typ jak wartość domyślna, poziom z LEVELS, komunikat z centrali zawsze pierwszy i zawsze włączony).
    Front: ▲▼ kolejność, włącz/wyłącz, poziom (tło), progi, reguła koloru; pomarańczowa ramka = inna niż domyślna.
    `for_karoo(cur)` = gotowa postać dla Karoo (etap 3).
-3. QExt2 pobiera konfigurację razem z `/ride-readiness` (start + co 30 min) i stosuje; domyślne = obecne zachowanie.
+3. **(2026-10-10, gotowe)** `/ride-readiness` (qbot-api) zwraca `qext2Config` = `for_karoo()`. QExt2 (build ≥ 293):
+   `QExt2PrimaryExtension` zapisuje go (`AthleteDataStore.saveQext2Config`) i ładuje do `kokpit/Kokpit2Config.kt`.
+   Stosowane w: `RouteMessageEngine.candidates` (wł/wył, progi, kolejność `sortByOrder`), `RouteMessageRotator` (rotacja),
+   `Kokpit2NavRenderer.drawMsg` (poziom tła), `Kokpit2InstRenderer` (moc/W′/tętno/prędkość), `Kokpit2NavRenderer` (wiatr, manewr, ETA),
+   `RideDataAggregator.getSteepDescentAhead` (próg i zasięg zjazdu). Zmiany docierają przy pobraniu formy dnia (start QExt2 / ponowienia);
+   w SETUP na Karoo linia „Komunikaty i kolory z QBota: <data zapisu | domyślne>”, w ride_log `QEXT2_CONFIG updated=…`.
 
 ## Pliki
 - `qext2_config.py` – DEFAULTS (MESSAGES w kolejności precedencji, ROTATION, COLORS z opcjami), `view(cur)`.

@@ -1085,6 +1085,17 @@ async def ride_readiness():
         elif xert_status_signal != "MISSING":
             payload["signals"] = {"xertStatus": xert_status_signal}
 
+        # Setup > QExt2 (Karoo): komunikaty i kolory pol KOKPIT 2 (qext2_config.py, docs/QEXT2_CONFIG.md)
+        try:
+            import psycopg as _pg
+            import qext2_config as _QC
+            with _pg.connect(host=os.getenv("PGHOST", "localhost"), port=os.getenv("PGPORT", "5432"),
+                             dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
+                             password=os.getenv("PGPASSWORD", ""), connect_timeout=2) as _cn:
+                payload["qext2Config"] = _QC.for_karoo(_cn.cursor())
+        except Exception as _e:
+            print(f"[RIDE_READINESS_QEXT2_CONFIG_FAIL {_e.__class__.__name__}: {_e}]", flush=True)
+
         elapsed_ms = (_time.perf_counter() - t0) * 1000
         print(f"[RIDE_READINESS_DONE status={status} ok={core_ok} ready={core_ok} elapsed_ms={elapsed_ms:.0f}]", flush=True)
         return payload
