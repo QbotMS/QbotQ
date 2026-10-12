@@ -65,7 +65,7 @@ Wiadomość aktualizuje się po każdej zmianie (także po wpisie z Telegrama).
   Stan na 12.10.2026: tylko 5 realnych ważeń w 60 dniach – bez częstszego ważenia monitor nie ruszy.
 
 ## Cel dnia, dokładka, weekend, 21:30 (qbot_food_plan.py, od 12.10.2026)
-- **Model spalania** (od 12.10.2026 popr.): dzień bez treningu = mediana `energy_daily` w dni bez treningu z 182 dni **wg dnia tygodnia**, ściągana do średniej przy małej próbce ((n·med_dt + 5·med)/(n+5)); **dzień bieżący = Garmin do teraz (energy_daily partial) + reszta dnia** (baza × część doby, która została + niezrobiony trening); pierwotnie: dzień bez treningu = mediana `energy_daily` w dni bez treningu
+- **Model spalania** (od 12.10.2026 popr.): dzień bez treningu = mediana `energy_daily` „bez wysiłku” z CAŁEJ historii Garmina (do 365 dni, od 28.02.2026; dzień z treningiem = całość − kcal treningów z Garmina) **wg dnia tygodnia** (17–27 próbek na dzień, ściąganie do średniej symboliczne: 2 pseudo-próbki); **dzień bieżący = Garmin do teraz (energy_daily partial) + reszta dnia** (baza × część doby, która została + niezrobiony trening); pierwotnie: dzień bez treningu = mediana `energy_daily` w dni bez treningu
   (12.10: 2473 kcal), trening = mediana nadwyżki na godzinę (12.10: 467 kcal/h) × czas sesji Trenera × współczynnik
   sportu (rower 1, wioślarz 0,9, siła 0,6, joga 0,3). Dzień miniony = realne `energy_daily`.
 - **Cel dnia** = spalanie − kalibracja (rozbieżność waga vs wpisy, gdy gotowa, max ±500) + cel bilansu Trenera

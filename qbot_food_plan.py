@@ -41,33 +41,45 @@ def _hm(t: dtime | None) -> str:
 
 
 # ======================================================================= model spalania
-SHRINK_N = 5   # sila sciagania mediany dnia tygodnia do sredniej (pseudo-probki)
+SHRINK_N = 2   # symboliczne sciaganie mediany dnia tygodnia do sredniej (probki 17-27 na dzien)
+HIST_DAYS = 365
 
 
 def model(c) -> dict:
-    """Spalanie: dzien bez treningu = mediana energy_daily w dni bez treningu (182 dni) WG DNIA TYGODNIA, sciagana do
-    sredniej ogolnej: (n*med_dt + 5*med)/(n+5) (2026-10-12, pomysl Michala; rozrzut dni tygodnia ~120 kcal).
-    Trening = mediana nadwyzki na godzine (90 dni). Liczone raz dziennie."""
+    """Spalanie 'bez wysilku' (bez treningow) WG DNIA TYGODNIA z calej historii Garmina (do 365 dni):
+    dzien bez treningu = cale energy_daily; dzien z treningiem = energy_daily - kcal treningow z Garmina (gdy kazda sesja ma kcal).
+    (2026-10-12: wczesniej tylko dni bez treningu z 182 dni -> 6-12 probek; Michal: dane sa od maja, uzyj ich.)
+    Trening = mediana nadwyzki na godzine ponad baze dnia tygodnia (90 dni). Liczone raz dziennie."""
     key = date.today().isoformat()
     if _MODEL.get("key") == key:
         return _MODEL["v"]
     rows = c.execute(
-        "WITH t AS (SELECT date, sum(duration_s)/3600.0 h FROM qbot_v2.training_sessions WHERE date >= current_date-182 GROUP BY date), "
-        "e AS (SELECT date, COALESCE(total_kcal_eff,total_kcal) tot FROM qbot_v2.energy_daily WHERE date >= current_date-182 "
-        "AND date < current_date AND quality_status<>'partial') SELECT e.date, e.tot, COALESCE(t.h,0) h FROM e LEFT JOIN t USING (date)").fetchall()
-    rest = [(r["date"], float(r["tot"])) for r in rows if r["h"] < 0.25 and r["tot"]]
-    base = st.median([v for _, v in rest]) if len(rest) >= 7 else 2450.0
+        "WITH t AS (SELECT date, sum(duration_s)/3600.0 h, sum(calories) cal, count(calories) n_cal, count(*) n "
+        "FROM qbot_v2.training_sessions WHERE date >= current_date - %s GROUP BY date), "
+        "e AS (SELECT date, COALESCE(total_kcal_eff,total_kcal) tot FROM qbot_v2.energy_daily WHERE date >= current_date - %s "
+        "AND date < current_date AND quality_status<>'partial') "
+        "SELECT e.date, e.tot, COALESCE(t.h,0) h, t.cal, t.n_cal, t.n FROM e LEFT JOIN t USING (date)", (HIST_DAYS, HIST_DAYS)).fetchall()
+    ne = []
+    for r in rows:
+        if not r["tot"]:
+            continue
+        if r["h"] < 0.25:
+            ne.append((r["date"], float(r["tot"])))
+        elif r["n"] and r["n_cal"] == r["n"] and r["cal"] and float(r["cal"]) > 0:
+            ne.append((r["date"], float(r["tot"]) - float(r["cal"])))
+    base = st.median([v for _, v in ne]) if len(ne) >= 7 else 2450.0
     by_wd = {}
-    for d, v in rest:
+    for d, v in ne:
         by_wd.setdefault(d.weekday(), []).append(v)
     base_wd = {}
     for wd in range(7):
         xs = by_wd.get(wd, [])
         base_wd[wd] = round((len(xs) * st.median(xs) + SHRINK_N * base) / (len(xs) + SHRINK_N)) if xs else round(base)
     recent = [r for r in rows if r["date"] >= date.today() - timedelta(days=90)]
-    per_h = [(float(r["tot"]) - base) / float(r["h"]) for r in recent if r["h"] > 0.5 and r["tot"]]
-    v = {"base": round(base), "base_wd": base_wd, "n_wd": {k: len(x) for k, x in by_wd.items()},
-         "per_h": round(st.median(per_h)) if len(per_h) >= 7 else 480, "n_rest": len(rest), "n_ride": len(per_h)}
+    per_h = [(float(r["tot"]) - base_wd[r["date"].weekday()]) / float(r["h"]) for r in recent if r["h"] > 0.5 and r["tot"]]
+    v = {"base": round(base), "base_wd": base_wd, "n_wd": {k: len(x) for k, x in sorted(by_wd.items())},
+         "per_h": round(st.median(per_h)) if len(per_h) >= 7 else 480, "n_days": len(ne), "n_ride": len(per_h),
+         "since": min((d for d, _ in ne), default=None)}
     _MODEL.update(key=key, v=v)
     return v
 
