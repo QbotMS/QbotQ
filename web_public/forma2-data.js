@@ -798,9 +798,32 @@ function renderTrendy(){
     cEl.textContent=parts.join(" \u00b7 ");
   }
   /* statystyki */
-  var sg=q$("trendy-stats");
-  if(sg){var days2=SN.map(function(s2){return s2.day;});var rideCnt=0,rideKm=0,seen2={};(rides.rides||[]).forEach(function(r){if(seen2[r.ride_key])return;seen2[r.ride_key]=1;if(r.date>=days2[0]&&r.date<=days2[N-1]){rideCnt++;rideKm+=(r.dist_km||0);}});
-    sg.innerHTML='<div class="mini"><p class="lbl">jazdy</p><div class="v">'+rideCnt+'</div></div><div class="mini"><p class="lbl">dystans</p><div class="v">'+Math.round(rideKm)+' km</div></div><div class="mini"><p class="lbl">CP</p><div class="v">'+Math.round(cpD[N-1]||0)+' W</div></div><div class="mini"><p class="lbl">W/kg</p><div class="v">'+qN(T.w_per_kg||T.wkg,2)+'</div></div>';}
+  /* 2026-10-12: wskazniki okresu w pasku zakresu (30/90/rok) + trend vs POPRZEDNI okres tej samej dlugosci.
+     Jazdy/dystans/czas: /api/stats/rides dla obu okresow. CP i W/kg: koniec okresu vs jego poczatek (= koniec poprzedniego). */
+  var kp=q$("trendy-kpi");
+  if(kp&&N){
+    var dA=String(SN[0].day).slice(0,10),dB=String(SN[N-1].day).slice(0,10);
+    var pB=new Date(dA+"T12:00:00");pB.setDate(pB.getDate()-1);var pA=new Date(pB);pA.setDate(pA.getDate()-(N-1));
+    function iso(x){return x.getFullYear()+"-"+("0"+(x.getMonth()+1)).slice(-2)+"-"+("0"+x.getDate()).slice(-2);}
+    function tv(t){t=t||{};return {cnt:t.count||0,km:(t.distance_m||0)/1000,h:(t.moving_s||0)/3600};}
+    function arrow(now,prev,fmt,unit,pct){if(prev==null||now==null)return '<span class="t eq">–</span>';var dlt=now-prev;
+      if(pct){if(!prev)return '<span class="t eq">–</span>';dlt=Math.round(dlt/prev*100);}
+      if(Math.abs(dlt)<(pct?1:1e-9))return '<span class="t eq">= </span>';
+      return '<span class="t '+(dlt>0?"up":"dn")+'">'+(dlt>0?"▲ +":"▼ −")+fmt(Math.abs(dlt))+(pct?"%":(unit||""))+'</span>';}
+    function card(lab,val,arr,tip){return '<span class="k" title="'+tip+'"><span class="l">'+lab+'</span><b>'+val+'</b>'+arr+'</span>';}
+    var cp1=cpD[N-1],cp0=null;for(var ci=0;ci<N;ci++){if(cpD[ci]!=null){cp0=cpD[ci];break;}}
+    var wk1=SN[N-1].w_per_kg!=null?+SN[N-1].w_per_kg:(T.w_per_kg||T.wkg||null),wk0=null;for(var wi=0;wi<N;wi++){if(SN[wi].w_per_kg!=null){wk0=+SN[wi].w_per_kg;break;}}
+    var lab=N<=31?"30 dni":(N<=92?"90 dni":"rok");
+    kp.innerHTML='<span class="k"><span class="l">wczytuję…</span></span>';
+    Promise.all([qJSON("/api/stats/rides?start="+dA+"&end="+dB).catch(function(){return null;}),qJSON("/api/stats/rides?start="+iso(pA)+"&end="+iso(pB)).catch(function(){return null;})]).then(function(r){
+      var c=tv(r[0]&&r[0].totals),p=r[1]?tv(r[1].totals):null,pr=QD.dm(iso(pA))+"–"+QD.dm(iso(pB));
+      kp.innerHTML=card("jazdy",c.cnt,arrow(c.cnt,p&&p.cnt,function(v){return v;}),"poprzednie "+lab+" ("+pr+"): "+(p?p.cnt:"–")+" jazd")
+        +card("dystans",Math.round(c.km)+" km",arrow(c.km,p&&p.km,function(v){return v;},"",true),"poprzednie "+lab+": "+(p?Math.round(p.km)+" km":"–"))
+        +card("czas",Math.round(c.h)+" h",arrow(c.h,p&&p.h,function(v){return v;},"",true),"poprzednie "+lab+": "+(p?Math.round(p.h)+" h":"–"))
+        +card("CP",Math.round(cp1||0)+" W",arrow(cp1,cp0,function(v){return Math.round(v);}," W"),"na początku okresu ("+QD.dm(dA)+"): "+(cp0!=null?Math.round(cp0)+" W":"–"))
+        +card("W/kg",qN(wk1,2),arrow(wk1,wk0,function(v){return qN(v,2);}),"na początku okresu ("+QD.dm(dA)+"): "+(wk0!=null?qN(wk0,2):"–"));
+    });
+  }
 }
 /* --- ODZYWIANIE --- */
 function renderOdzywianie(){

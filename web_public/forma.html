@@ -108,6 +108,11 @@ table.qs-table td.num,table.qs-table th.num{text-align:right;font-variant-numeri
 .trrs{margin-bottom:10px}.trgrip{position:absolute;left:0;right:0;bottom:-11px;height:14px;cursor:ns-resize;z-index:6;touch-action:none;display:flex;align-items:center;justify-content:center}
 .trgrip::after{content:"";width:46px;height:4px;border-radius:2px;background:var(--line2,var(--line))}.trgrip:hover::after{background:var(--accent)}
 body.tr-resizing{cursor:ns-resize;user-select:none}
+/* 2026-10-12: Trendy - wskazniki okresu w pasku zakresu, z trendem vs poprzedni okres */
+.trkpi{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.trkpi .k{border:1px solid var(--line);background:var(--well);border-radius:10px;padding:5px 11px;display:flex;align-items:baseline;gap:7px;font-size:13px;line-height:1.2;cursor:default}
+.trkpi .k .l{color:var(--muted);font-size:11.5px}.trkpi .k b{font-size:16px;font-variant-numeric:tabular-nums}
+.trkpi .t{font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}.trkpi .t.up{color:var(--good)}.trkpi .t.dn{color:var(--bad)}.trkpi .t.eq{color:var(--muted)}
 </style>
 </head>
 <body><div class="wrap">
@@ -182,8 +187,11 @@ body.tr-resizing{cursor:ns-resize;user-select:none}
 
 <!-- ============ TRENDY ============ -->
 <section class="panel stack" id="p-trendy" hidden>
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:10px">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
   <div class="seg" id="rng"><button>30 dni</button><button class="on">90 dni</button><button>rok</button></div>
+  <div id="trendy-kpi" class="trkpi"></div>
+  </div>
   <span style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px">przeciągnij po wykresie = powiększ · dwuklik = cała skala
     <button type="button" id="tr-zoomreset" hidden style="border:1px solid var(--line);background:var(--well);color:var(--ink);border-radius:8px;padding:4px 10px;cursor:pointer;font:inherit;font-size:12.5px">↺ cała skala</button></span>
 </div>
@@ -212,7 +220,7 @@ body.tr-resizing{cursor:ns-resize;user-select:none}
   </div>
 </div>
 <div style="font-size:13.5px;color:var(--ink2);margin:8px 2px 14px;line-height:1.5" id="trendy-comment"></div>
-<div class="g4" id="trendy-stats" style="margin-top:12px"></div>
+
 </section>
 
 <!-- ============ SEZON ============ -->
