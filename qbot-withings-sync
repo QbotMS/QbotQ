@@ -86,20 +86,24 @@ def already_sent(state: dict[str, Any], grpid: str) -> bool:
 # Garmin
 # --------------------------------------------------------------------------
 
-def garmin_existing_dates(client: Any, days: int) -> set[str]:
-    """Daty, ktore JUZ maja pomiar w Garminie -- odbudowa stanu po utracie pliku."""
+def garmin_existing_dates(client: Any, days: int) -> dict[str, bool]:
+    """Daty, ktore JUZ maja pomiar w Garminie -> czy ktorys z nich ma SKLAD CIALA (bodyFat).
+    2026-10-12: dzien z sama waga (np. wpis 'MFP') NIE blokuje wysylki pelnego pomiaru z Withings -
+    wczesniej blokowal i sklad ciala ginal od 09.2026. Odczyt przez get_weigh_ins (pelne dane, jak import_garmin_body)."""
     end = datetime.now().date()
     start = end - timedelta(days=days)
+    seen: dict[str, bool] = {}
     try:
-        data = client.get_body_composition(start.isoformat(), end.isoformat())
+        raw = client.get_weigh_ins(start.isoformat(), end.isoformat()) or {}
     except Exception as exc:
         print(f"[uwaga] nie udalo sie odczytac stanu z Garmina: {exc}", file=sys.stderr)
-        return set()
-    seen: set[str] = set()
-    for item in (data or {}).get("dateWeightList", []) or []:
-        cal = item.get("calendarDate")
-        if cal:
-            seen.add(str(cal))
+        return seen
+    for day in raw.get("dailyWeightSummaries", []) or []:
+        items = ([day.get("latestWeight")] if day.get("latestWeight") else []) + list(day.get("allWeightMetrics") or [])
+        for item in items:
+            cal = str(item.get("calendarDate") or day.get("summaryDate") or "")[:10]
+            if cal:
+                seen[cal] = seen.get(cal, False) or item.get("bodyFat") is not None
     return seen
 
 
@@ -152,7 +156,8 @@ def verify_in_garmin(client: Any, grp: dict[str, Any]) -> bool:
             if weight_g is None:
                 continue
             if abs(float(weight_g) / 1000.0 - grp["values"]["weight_kg"]) < 0.15:
-                return True
+                if grp["values"].get("fat_pct") is None or item.get("bodyFat") is not None:
+                    return True   # gdy wysylalismy sklad, musi byc widoczny w Garminie
     return False
 
 
@@ -404,10 +409,13 @@ def main() -> int:
 
             for g in pending:
                 day = datetime.fromtimestamp(g["ts"]).date().isoformat()
-                if day in existing:
-                    mark_sent(state, g, "duplicate", "pomiar na ten dzien juz byl w Garminie")
+                has_comp = g["values"].get("fat_pct") is not None
+                if day in existing and (existing[day] or not has_comp):
+                    mark_sent(state, g, "duplicate", "pomiar na ten dzien juz byl w Garminie" + (" (ze skladem)" if existing[day] else ""))
                     print(f"  {g['iso']} -> pominiete (juz w Garminie)")
                     continue
+                if day in existing:
+                    print(f"  {g['iso']} -> w Garminie sama waga, wysylam pelny pomiar ze skladem ciala")
 
                 result = push_measure(client, g)
                 if result["status"] == "uploaded":

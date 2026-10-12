@@ -202,6 +202,10 @@ def write_to_body_measurements(entries: list[dict]) -> dict:
     errors = 0
     accepted = 0
 
+    # 2026-10-12: wpisy ZE skladem ciala zapisywane jako ostatnie w danym dniu (wygrywaja z sama waga),
+    # a sama waga (MFP i inne) nie nadpisuje dnia, ktory ma juz sklad (Withings -> Garmin wysyla pelny pomiar).
+    comp_days = {e["date"] for e in entries if e.get("has_body_comp")}
+    entries = sorted(entries, key=lambda e: (e["date"], bool(e.get("has_body_comp"))))
     with _conn() as conn, conn.cursor() as cur:
         _ensure_schema(cur)
         for e in entries:
@@ -209,9 +213,10 @@ def write_to_body_measurements(entries: list[dict]) -> dict:
             st = e["source_type"]
             raw = json.dumps(e.get("raw_json", {}))
 
-            # Priority: INDEX_SCALE always wins. MFP only as fallback.
-            if st == "MFP":
-                if has_index_scale_for_date(cur, ds):
+            # Priority: INDEX_SCALE / wpis ze skladem wygrywa. Sama waga tylko jako fallback.
+            if not e.get("has_body_comp"):
+                cur.execute("SELECT 1 FROM qbot_v2.body_measurements WHERE date=%s AND body_fat_pct IS NOT NULL", (ds,))
+                if ds in comp_days or cur.fetchone() or (st == "MFP" and has_index_scale_for_date(cur, ds)):
                     skipped_mfp += 1
                     continue
 
