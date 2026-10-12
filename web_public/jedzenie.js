@@ -227,8 +227,8 @@
   /* ------------------------------------------------------------ ANALIZA */
   var A = { day: null };
   function loadAnaliza(day) {
-    A.day = day || A.day || S.sel || S.today;
-    if (!A.day) return;
+    var t = new Date(), loc = t.getFullYear() + "-" + ("0" + (t.getMonth() + 1)).slice(-2) + "-" + ("0" + t.getDate()).slice(-2);
+    A.day = day || A.day || S.sel || S.today || loc;  /* wejscie prosto w #analiza: dni jeszcze sie wczytuja */
     $("analiza").classList.add("busy");
     j("/api/jedzenie/analysis?day=" + A.day).then(renderAnaliza).catch(function (e) { $("analiza").innerHTML = "<p class='msg'>" + esc(e.message) + "</p>"; })
       .then(function () { $("analiza").classList.remove("busy"); });
