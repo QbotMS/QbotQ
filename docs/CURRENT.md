@@ -1237,3 +1237,4 @@ Zweryfikowane na zywo. qbot-api zrestartowany. OTWARTE: retry przy 202 w QExt2 (
 ## 2026-10-12 Brokul (Diety od Brokula)
 - Wdrozone: docs/BROKUL.md. Cron root */15 brokul_tick.py (jako qbot). Sesja wklejona 12.10 08:50.
 - Obserwowac: zywotnosc sesji (data/brokul_state.json), pierwsze podsumowanie 20:00 (12.10 wyslane recznie jako test).
+- 12.10 pozniej: jedzenie etap 1-2 wdrozone (docs/BROKUL.md). Wolny tekst w bocie = jedzenie (stary parser wellness/gear wylaczony). Test na weekendzie 10-11.10 (wiadomosci dnia wyslane recznie).

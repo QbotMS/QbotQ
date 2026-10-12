@@ -1,39 +1,51 @@
-# Diety od Brokuła → QBot (od 12.10.2026)
+# Jedzenie w QBot: Diety od Brokuła + jedzenie spoza diety (od 12.10.2026)
 
-Import jadłospisu z panelu klienta dietyodbrokula.pl i potwierdzanie zjedzonych posiłków na Telegramie.
+Koncept (uzgodniony 12.10.2026): Brokuł jako baza, wszystko inne wpisywane na Telegramie, dzień zamykany
+o 20:00. Kolejne etapy (do zrobienia): pas 🔥 Jedzenie, cele kroczące 99/95/90 kg + ważenie, kalibracja
+i cel kcal dnia z dokładką pod trening, pasy 💪/📉, piątkowy plan weekendu. Patrz docs/TODO.md.
 
-## Jak to działa
-- **Sesja**: logowanie hasłem jest NIEMOŻLIWE (formularz chroni niewidoczna reCAPTCHA – sprawdzone 12.10.2026,
-  odpowiedź „Coś poszło nie tak z reCAPTCHA”). Michał loguje się w przeglądarce i wkleja nagłówek Cookie na
-  **https://albert.cytr.us/brokul-dostep**. Zapis do `/opt/qbot/app/.brokul_session` (600, qbot) tylko po udanym teście.
-  Ciasteczka Cloudflare (`cf_clearance`, `__cf_bm`, `_cfuvid`) są odrzucane (przypięte do IP przeglądarki).
-- **Cron** (root): `*/15 * * * * runuser -u qbot -- .venv/bin/python3 scripts/brokul_tick.py >> logs/brokul.log`
-  - co 3 h import menu (`/customer/diets/` → linki `/customer/diets/menu/item/<id>/` → parser → `qbot_v2.brokul_meals`),
-  - między importami odczyt panelu co ≥20 min (podtrzymanie sesji, odświeżone ciasteczka wracają do pliku),
-  - od 20:00 jedno podsumowanie dnia na Telegramie (`qbot_v2.brokul_notify` pilnuje, żeby nie było drugiego),
-  - sesja wygasła → jedna wiadomość z linkiem do `/brokul-dostep` (`data/brokul_state.json: expired_notified`).
-- **Bilans**: do `intake_logs`/`intake_items` wchodzi WYŁĄCZNIE posiłek potwierdzony ✅ (decyzja 12.10.2026).
-  `source='brokul'`, `quality_status='imported'`, `meal_type='brokul_<typ>'`, `eaten_at` = przybliżona pora posiłku,
-  `sodium_mg = sól_g × 400`. Pierwsze ✅ danego dnia usuwa szacunek z presetu tego dnia (bez podwójnego liczenia).
-- **Przyciski** (`br:e|s|p:<id>`, `br:a:<RRRRMMDD>`): ✅ zjadłem / ❌ pominąłem / ponowne kliknięcie stanu = cofnij /
-  „Zjadłem wszystkie pozostałe”. Wiadomość się aktualizuje (stan + suma zjedzonych makr). Obsługa:
-  `telegram_reply_processor.py` → `qbot_brokul_meals.handle_callback`.
+## Brokuł (qbot_brokul.py, qbot_brokul_meals.py)
+- **Sesja**: logowanie hasłem NIEMOŻLIWE (niewidoczna reCAPTCHA – sprawdzone 12.10.2026). Michał wkleja nagłówek
+  Cookie na **https://albert.cytr.us/brokul-dostep**; zapis do `.brokul_session` (600, qbot) dopiero po udanym teście.
+  Ciasteczka Cloudflare są odrzucane. Powiadomień z aplikacji Brokuła nie da się czytać (iOS) – nie używamy.
+- **Import co 3 h** (cron */15, `scripts/brokul_tick.py`): `/customer/diets/` → numery menu → menu
+  (`/customer/diets/menu/item/<id>/`, 5 dni do przodu = do końca zamówienia) + **harmonogram dostaw**
+  (`/customer/diets/day/order_item_id/<id>/` → `brokul_delivery_days`). Posiłek `pending` z dnia, którego nie ma
+  w harmonogramie → `cancelled` (dzień odwołany/przeniesiony w panelu). Między importami odczyt co ≥20 min
+  (podtrzymanie sesji). Sesja wygasła → jedna wiadomość z linkiem.
+- **Statusy** `brokul_meals.status`: pending / eaten (+`eaten_day`) / skipped / fridge („zjem później”) /
+  discarded (z lodówki wyrzucone) / cancelled. Do bilansu (`intake_*`, source='brokul', 'imported') wchodzi
+  WYŁĄCZNIE `eaten`, w dniu `eaten_day` (z lodówki = dzień zjedzenia, nie dostawy). `sodium_mg = sól × 400`.
+  Pierwszy realny wpis dnia usuwa szacunek z presetu tego dnia.
+- **Koniec zamówienia**: 7:00–9:59, gdy do ostatniego dnia dostawy ≤2 dni → jedno przypomnienie.
+
+## Jedzenie spoza diety (qbot_food_log.py)
+- Telegram: **każdy wolny tekst i każde zdjęcie = jedzenie** (stary parser wellness/sprzęt/kalendarz + fallback
+  QGPT wyłączony 12.10.2026; komendy tras „NN TAK”/„przelicz trasę” mają pierwszeństwo).
+- Przepływ: surowa treść ZAWSZE najpierw do `food_entries` (idempotencja po `tg_message_id`) → dzień
+  (`wczoraj`, `przedwczoraj`, dzień tygodnia, `DD.MM`; domyślnie dziś; 00:00–03:59 = wczoraj) → katalog
+  (`food_catalog`: ta sama fraza + ta sama porcja potwierdzona ≥2× → „jak zwykle”, bez AI) → inaczej AI
+  (Anthropic, `ANTHROPIC_MODEL`) → kcal + PEŁNE makra (bez makr wpis odrzucony). Porcja niejasna → pytanie
+  z 3–4 wariantami. Nie jedzenie → pytanie „to jednak jedzenie?”.
+- Potwierdzenie `✅ #id · DD.MM (dz)` + [➖ mniej ×0,25] [✔ OK] [➕ więcej] [← dzień wcześniej] [🗑 usuń].
+  Wybór wariantu i OK uczą katalog. Błąd AI → wpis `failed`, ponowienie z ticka (max 4 próby), widoczny o 20:00.
+- Zapis: `intake_logs` (meal_type='poza_dieta', source='telegram', 'estimated') + `intake_items` (×skala).
+
+## Wiadomość dnia (20:00, także dni bez diety)
+Brokuł (✅ / ❌ / 📦 później, cofnij, „wszystkie zjedzone”, „wszystkie do lodówki”), lodówka (zjadłem dziś / 🗑),
+wpisy poza dietą, szybkie przyciski [✔ Nic poza dietą] [🥨 Przekąska 250] [🍫 Słodycze 350]
+[🍽 Na mieście S 600 / M 900 / L 1300] (zgrubne, z makrami; poprawka ➖/➕), suma dnia z `intake_*`,
+stan zamknięcia. **Dzień zamknięty** (`food_day.closed_at`, pod pas Jedzenia): brak `pending` w Brokule ORAZ
+(„Nic poza dietą” albo ≥1 wpis); dzień bez dostawy: ≥1 wpis (albo „Nic” + coś z lodówki).
+Wiadomość aktualizuje się po każdej zmianie (także po wpisie z Telegrama).
+
+## Przyciski (telegram_reply_processor)
+`br:<e|s|p|f|d|w>:<id>[:RRRRMMDD]`, `br:<a|z>:RRRRMMDD` → qbot_brokul_meals.handle_callback;
+`fd:<o|m|p|k|b|x|r>:<id>[:n]`, `qk:RRRRMMDD:<none|snack|sweet|out_s|out_m|out_l>` → qbot_food_log.handle_callback.
+Przyciski nie wygasają (stan w bazie).
 
 ## Pliki
-- `qbot_brokul.py` – sesja, pobieranie stron, status, strona `/brokul-dostep` (FORM_HTML).
-- `qbot_brokul_meals.py` – parser, baza, Telegram, `tick()`.
-- `scripts/brokul_tick.py` – cron; `--init` (tabele), `--import`, `--send DD.MM.RRRR` (wymuś podsumowanie).
-- `sql/brokul_v1.sql` – `brokul_meals` (pełne dane: makra, cukry, nasycone, sól, skład, alergeny, status), `brokul_notify`.
-- `qbot_web.py` – `GET /brokul-dostep`, `GET /api/brokul/session/status`, `POST /api/brokul/session`.
-- `tests/test_brokul.py` – parser (mini HTML + próbka 25 posiłków w /opt/qbot/artifacts/brokul_menu_sample.html).
-
-## Parser
-Dzień: `div.meals[data-day]`; posiłek: dziecko-karta z `<h3>` (typ); nazwa: pierwszy `<p>` ≠ „Wartości…”;
-wartości po ikonie `use href=...#macros-*` (energy_value, fat, saturated_acids, carbohydrates, sugar, protein,
-salt) z zapasem po etykiecie; skład: tekst po „Składniki:” do „Z uwagi na…”; alergeny: zdanie „Z uwagi na…”.
-Posiłek bez nazwy/kcal/B/W/T NIE jest zapisywany (reguła: zawsze pełne makra).
-Ponowny import aktualizuje tylko posiłki `pending`; potwierdzonych nie rusza.
-
-## Do obserwacji
-- jak długo żyje sesja przy podtrzymywaniu co 20 min (stored_at / expired_at w `data/brokul_state.json`),
-- czy numer menu zmienia się przy nowym zamówieniu (import bierze wszystkie linki z panelu – powinno działać samo).
+`qbot_brokul.py` (sesja, /brokul-dostep), `qbot_brokul_meals.py` (menu, harmonogram, statusy, tick),
+`qbot_food_log.py` (wpisy, AI, katalog, wiadomość dnia), `scripts/brokul_tick.py` (`--init`, `--import`,
+`--send DD.MM.RRRR`), `sql/brokul_v1.sql`, `sql/food_v1.sql`, `tests/test_brokul.py`, `tests/test_food_log.py`,
+`qbot_web.py` (`/brokul-dostep`, `/api/brokul/session[/status]`).

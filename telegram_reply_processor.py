@@ -413,6 +413,9 @@ def main():
                 elif (cq.get("data") or "").startswith("tr:"):
                     import qbot_trener_notify as _TRN   # TRENER: REST / brak czasu / choroba / cofnij
                     _TRN.handle_callback(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, CHAT_ID)
+                elif (cq.get("data") or "").startswith(("fd:", "qk:")):
+                    import qbot_food_log as _FL   # jedzenie spoza diety + szybkie przyciski dnia
+                    _FL.handle_callback(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, CHAT_ID)
                 elif (cq.get("data") or "").startswith("br:"):
                     import qbot_brokul_meals as _BRM   # Brokul: zjadlem / pominalem / cofnij
                     _BRM.handle_callback(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, CHAT_ID)
@@ -436,6 +439,17 @@ def main():
             log(f"🚫 Unauthorized chat_id={chat_id} — ignoruję")
             state["last_update_id"] = update_id
             save_state(state)
+            continue
+
+        # 2026-10-12: zdjecie = jedzenie (qbot_food_log)
+        if msg.get("photo") or str((msg.get("document") or {}).get("mime_type") or "").startswith("image/"):
+            state["last_update_id"] = update_id
+            save_state(state)
+            try:
+                import qbot_food_log as _FL
+                _FL.handle_photo(msg)
+            except Exception as e:
+                log(f"   ❌ Jedzenie (zdjecie) blad: {e}")
             continue
 
         # Pomijaj puste i komendy
@@ -472,26 +486,16 @@ def main():
                 tg_send_plain(f"⚠️ Blad przy obsludze trasy: {str(e)[:200]}")
             continue
 
+        # 2026-10-12: wolny tekst = JEDZENIE (qbot_food_log). Stary parser wellness/sprzet/kalendarz
+        # (process_message + fallback QGPT) wylaczony - Michal nie pisal do bota; funkcje zostaja w pliku.
+        state["last_update_id"] = update_id
+        save_state(state)
         try:
-            summary = process_message(text)
-            if summary == "brak danych do zapisu":
-                log("💬 Fallback → chat z QGPT")
-                reply = chat_with_qgpt(text)
-                log(f"   🤖 Odpowiedź: {reply[:120]}")
-                tg_send(reply)
-                state["last_update_id"] = update_id
-                save_state(state)
-            else:
-                state["last_update_id"] = update_id
-                save_state(state)
-                tg_send(f"✅ Zapisano: {summary}")
+            import qbot_food_log as _FL
+            _FL.handle_text(text, msg)
         except Exception as e:
-            log(f"   ❌ Błąd przetwarzania: {e}")
+            log(f"   ❌ Jedzenie blad: {e}")
             save_failed_message(update_id, text, e)
-            try:
-                tg_send(f"⚠️ Błąd: {e}")
-            except Exception as send_exc:
-                log(f"   ❌ Nie udało się wysłać informacji o błędzie: {send_exc}")
 
     log("✅ Zakończono.")
 

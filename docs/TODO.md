@@ -391,7 +391,16 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 
 - [ ] [PORÓWNANIE-WSTRZYMANE] (2026-10-08, WSTRZYMANE decyzja Michala) Porownanie przejazdow wg GPS: progi ustalone ≥80% = ta sama trasa (trend), 50–79% = czesciowo wspolna (odcinki), tylko ten sam kierunek. Mockupy: /porownanie-mockup.html, /porownanie-1na1-mockup.html (dane /data/porownanie-*.json, skrypty /opt/qbot/artifacts/porownanie_*.py, indeks artifacts/porownanie/cells.json). Warunek wznowienia: porownanie mocy tylko przy TYM SAMYM mierniku (activity_device bike_power ant_device_number), np. 16.06 SRAM 29525 vs 08.10 Favero 30604 = 199 vs 147 W przy tym samym tempie i tetnie.
 
+## Jedzenie / redukcja (koncept uzgodniony 12.10.2026, dok. docs/BROKUL.md)
+- [ ] Etap 3: pas 🔥 Jedzenie (dzien zamkniety uczciwie, przekroczenie nie zrywa), mrozenie (1 za 7 dni, max 2), naprawa do 12:00 nastepnego dnia, kamienie milowe 3/7/14/30/50/100, licznik w wiadomosci 20:00
+- [ ] Etap 4: cele kroczace 99 kg do 31.12.2026 / 95 kg do 31.03.2027 / 90 kg do 30.06.2027 (zastepuja 'Redukcja kalduna' 89 kg), caly plan widoczny (wykres z korytarzem, etapy, prognoza); wazenie 3-4x/tydz. (dopisek 7:00, bez dramatu, pomijany po dlugiej jezdzie i na wyjazdach/delegacjach z Kalendarza)
+- [ ] Etap 5: kalibracja (wydatek + zanizanie porcji z realnej zmiany wagi), cel kcal dnia, tempo startowe 0,5 kg/tydz., dokladka do Brokula pod trening (7:00 w dni treningowe + 20:00), miejsce na slodkie w paliwie na rowerze
+- [ ] Etap 6: pasy 💪 Trening (zgodnie z planem, odpoczynek sie liczy, choroba zamraza) i 📉 Redukcja (tydzien w widelkach + wazenia)
+- [ ] Etap 7: piatek rano plan weekendu (co zamawiac na miescie, co w domu/na rower)
+- [ ] Delegacja w Kalendarzu -> o 20:00 domyslnie propozycja 'wszystko do lodowki'
+
 # ZROBIONE
+- [2026-10-12] Jedzenie etap 1-2: harmonogram dostaw Brokula (odwolane dni, koniec zamowienia), lodowka (zjem pozniej), wiadomosc dnia 20:00 takze w dni bez diety, Telegram: kazdy tekst/zdjecie = jedzenie (zapis surowy najpierw, dzien z tekstu, AI kcal+makra, pytanie o porcje przyciskami, katalog porcji, mniej/OK/wiecej), szybkie przyciski. Dok.: docs/BROKUL.md
 - [2026-10-12] Diety od Brokula -> QBot: import menu (5 dni, pelne makra+sol+cukry+sklad) do qbot_v2.brokul_meals co 3 h, sesja wklejana na /brokul-dostep (logowanie haslem blokuje reCAPTCHA), podtrzymanie sesji co 20 min, Telegram od 20:00 z przyciskami Zjadlem/Pominalem/cofnij; do bilansu (intake_*) tylko po potwierdzeniu. Dok.: docs/BROKUL.md
 - [2026-10-10] Faworyci ubioru w Analizie trasy (Sprzet): przycisk + okno Rodzaj|Rzecz, faworyci per trasa+data, dobor A z faworytami + B AI bez faworytow (to samo tempo) + 'Jak rozumiem Twoj wybor'. Dok.: docs/OUTFIT_FAVORITES.md
 - [2026-10-10] Uwagi do AI (ubior): poprawka biezacego zestawu od razu + wniosek na przyszlosc po zatwierdzeniu (qbot_v2.outfit_lessons), wnioski w kazdym doborze. Dok.: docs/OUTFIT_FAVORITES.md

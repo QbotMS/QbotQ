@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Diety od Brokula - jadlospis -> QBot (2026-10-12). Dok.: docs/BROKUL.md
+"""Diety od Brokula - jadlospis -> QBot. Dok.: docs/BROKUL.md
 
-Przeplyw:
-  tick (cron */15)  -> co 3 h import menu z panelu (5 dni x posilki) do qbot_v2.brokul_meals,
-                       miedzy importami lekki odczyt panelu (podtrzymanie sesji),
-                    -> o 20:00 Telegram: lista dzisiejszych posilkow z przyciskami,
-                    -> sesja wygasla -> jedna wiadomosc z linkiem /brokul-dostep.
-  przycisk ✅       -> posilek trafia do bilansu (intake_logs + intake_items, source='brokul').
-  przycisk ❌       -> pominiety; jesli byl w bilansie, wpis znika. Ponowne klikniecie
-                       aktualnego stanu = cofniecie (wraca do 'pending').
-Do bilansu NIC nie wchodzi bez ✅ (decyzja Michala 12.10.2026).
+Ten modul: dane Brokula (menu, harmonogram dostaw, statusy posilkow, lodowka) + tick crona.
+Wiadomosc dnia (20:00), logowanie jedzenia spoza diety i przyciski szybkie: qbot_food_log.py.
+
+Statusy posilku (brokul_meals.status):
+  pending    - brak decyzji
+  eaten      - zjedzony w dniu eaten_day (zwykle = day; z lodowki = pozniejszy dzien) -> wpis w intake_*
+  skipped    - nie zjedzony (pominiety)
+  fridge     - 'zjem pozniej' (lodowka); wraca w kolejnych dniach w wiadomosci dnia
+  discarded  - z lodowki wyrzucony
+  cancelled  - dzien odwolany/przeniesiony w panelu (nie ma go w harmonogramie dostaw)
+Do bilansu wchodzi WYLACZNIE 'eaten' (decyzja Michala 12.10.2026).
 """
 from __future__ import annotations
 
@@ -29,17 +31,14 @@ TZ = ZoneInfo("Europe/Warsaw")
 IMPORT_EVERY_S = 3 * 3600
 KEEPALIVE_EVERY_S = 20 * 60
 NOTIFY_HOUR = 20
+END_REMIND_DAYS = 2
 ACCESS_URL = "https://albert.cytr.us/brokul-dostep"
 SOURCE = "brokul"
-# przyblizona pora posilku (do eaten_at); dokladna godzina nie jest znana
 MEAL_TIMES = {
     "śniadanie": dtime(7, 30), "ii śniadanie": dtime(10, 30), "przedtreningowy": dtime(13, 30),
     "potreningowy": dtime(16, 30), "obiad": dtime(14, 0), "podwieczorek": dtime(16, 30),
     "kolacja": dtime(19, 30),
 }
-_DNI = ["pon", "wt", "śr", "czw", "pt", "sob", "nd"]
-
-# znaczniki ikon przy wartosciach (stabilne) + zapas po etykiecie
 _ICON_KEY = {
     "macros-fat": "fat_g", "macros-saturated_acids": "sat_fat_g",
     "macros-carbohydrates": "carbs_g", "macros-sugar": "sugars_g",
@@ -137,6 +136,22 @@ def parse_menu(html: str, menu_item_id: str | None = None) -> list[dict]:
     return out
 
 
+def parse_delivery_days(html: str) -> list[str]:
+    """Strona /customer/diets/day/order_item_id/<id>/ -> daty dostaw (ISO)."""
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+    for t in soup(["script", "style"]):
+        t.decompose()
+    main = soup.find("main") or soup
+    out = set()
+    for d, m, y in re.findall(r"\b(\d{2})\.(\d{2})\.(\d{4})\b", main.get_text("\n")):
+        try:
+            out.add(date(int(y), int(m), int(d)).isoformat())
+        except ValueError:
+            pass
+    return sorted(out)
+
+
 def meal_ok(m: dict) -> bool:
     """Regula QBota: kazdy wpis jedzenia z kcal i pelnymi makrami."""
     return bool(m.get("name")) and all(m.get(k) is not None for k in ("kcal", "protein_g", "carbs_g", "fat_g"))
@@ -148,7 +163,7 @@ _FIELDS = ("name", "kcal", "kj", "fat_g", "sat_fat_g", "carbs_g", "sugars_g", "p
 
 
 def upsert_meals(meals: list[dict]) -> dict:
-    """Nowe -> insert. Istniejace 'pending' -> aktualizacja. Potwierdzonych nie ruszamy."""
+    """Nowe -> insert. Istniejace 'pending'/'cancelled' -> aktualizacja (cancelled wraca do pending). Reszty nie ruszamy."""
     res = {"new": 0, "updated": 0, "kept_decided": 0, "invalid": 0}
     with _conn() as c:
         for m in meals:
@@ -164,8 +179,8 @@ def upsert_meals(meals: list[dict]) -> dict:
                           % (", ".join(_FIELDS), ", ".join(["%s"] * len(_FIELDS))),
                           [m["day"], m["meal_type"]] + vals)
                 res["new"] += 1
-            elif row["status"] == "pending":
-                c.execute("UPDATE qbot_v2.brokul_meals SET %s, fetched_at=now(), updated_at=now() WHERE id=%%s"
+            elif row["status"] in ("pending", "cancelled"):
+                c.execute("UPDATE qbot_v2.brokul_meals SET %s, status='pending', fetched_at=now(), updated_at=now() WHERE id=%%s"
                           % ", ".join("%s=%%s" % f for f in _FIELDS), vals + [row["id"]])
                 res["updated"] += 1
             else:
@@ -174,17 +189,40 @@ def upsert_meals(meals: list[dict]) -> dict:
     return res
 
 
+def sync_delivery(order_item_id: str, days: list[str]) -> dict:
+    """Zapis harmonogramu + odwolane dni: posilki 'pending' z dni zamowienia, ktorych nie ma w harmonogramie."""
+    if not days:
+        return {"days": 0, "cancelled": 0}
+    with _conn() as c:
+        c.execute("DELETE FROM qbot_v2.brokul_delivery_days WHERE order_item_id=%s", (order_item_id,))
+        for d in days:
+            c.execute("INSERT INTO qbot_v2.brokul_delivery_days (day, order_item_id) VALUES (%s,%s)", (d, order_item_id))
+        n = c.execute("UPDATE qbot_v2.brokul_meals SET status='cancelled', updated_at=now() "
+                      "WHERE menu_item_id=%s AND status='pending' AND NOT (day = ANY(%s::date[]))",
+                      (order_item_id, days)).rowcount
+        c.commit()
+    return {"days": len(days), "cancelled": n}
+
+
 def import_menu() -> dict:
-    """Panel -> numery menu -> kazde menu -> parser -> baza. Rzuca B.SessionExpired."""
+    """Panel -> numery menu -> harmonogram dostaw + menu -> baza. Rzuca B.SessionExpired."""
     ids = B.menu_ids(B.fetch("/customer/diets/"))
     if not ids:
         raise RuntimeError("w panelu nie ma linku do menu (/customer/diets/menu/item/<id>/)")
-    meals = []
+    meals, deliv = [], {}
     for mid in ids:
         meals += parse_menu(B.fetch("/customer/diets/menu/item/%s/" % mid), mid)
+        try:
+            deliv[mid] = parse_delivery_days(B.fetch("/customer/diets/day/order_item_id/%s/" % mid))
+        except B.SessionExpired:
+            raise
+        except Exception as e:
+            _log("harmonogram %s: blad %s" % (mid, e))
     if not meals:
         raise RuntimeError("menu pobrane, ale parser nie znalazl posilkow - zmienila sie strona?")
     res = upsert_meals(meals)
+    for mid, days in deliv.items():
+        res["delivery_" + mid] = sync_delivery(mid, days)
     res["menu_ids"] = ids
     res["days"] = sorted({m["day"] for m in meals})
     B._state_update(last_import=time.strftime("%Y-%m-%d %H:%M:%S"), last_import_ts=time.time(),
@@ -193,9 +231,26 @@ def import_menu() -> dict:
 
 
 def day_meals(day: date | str) -> list[dict]:
+    """Posilki DOSTARCZONE danego dnia (bez odwolanych)."""
     with _conn() as c:
-        return c.execute("SELECT * FROM qbot_v2.brokul_meals WHERE day=%s ORDER BY meal_order, id",
-                         (str(day),)).fetchall()
+        return c.execute("SELECT * FROM qbot_v2.brokul_meals WHERE day=%s AND status<>'cancelled' "
+                         "ORDER BY meal_order, id", (str(day),)).fetchall()
+
+
+def fridge_for(day: date | str) -> list[dict]:
+    """Lodowka widoczna w dniu 'day': odlozone wczesniej + zjedzone/wyrzucone z lodowki tego dnia."""
+    with _conn() as c:
+        return c.execute(
+            "SELECT * FROM qbot_v2.brokul_meals WHERE day < %s AND ("
+            " (status='fridge') OR (status='eaten' AND eaten_day=%s AND eaten_day<>day)"
+            " OR (status='discarded' AND decided_at::date=%s)) ORDER BY day, meal_order",
+            (str(day), str(day), str(day))).fetchall()
+
+
+def delivery_end() -> date | None:
+    with _conn() as c:
+        r = c.execute("SELECT max(day) d FROM qbot_v2.brokul_delivery_days").fetchone()
+    return r["d"] if r else None
 
 
 def _slug(meal_type: str) -> str:
@@ -205,113 +260,57 @@ def _slug(meal_type: str) -> str:
     return "brokul_" + re.sub(r"[^a-z0-9]+", "_", t).strip("_")
 
 
-def _remove_intake(c, log_id) -> None:
+def remove_intake(c, log_id) -> None:
     if log_id:
         c.execute("DELETE FROM qbot_v2.intake_items WHERE intake_log_id=%s", (log_id,))
         c.execute("DELETE FROM qbot_v2.intake_logs WHERE id=%s", (log_id,))
 
 
-def set_status(meal_id: int, status: str) -> dict:
-    """'eaten' -> wpis do bilansu; 'skipped'/'pending' -> wpis (jesli byl) usuniety."""
-    assert status in ("eaten", "skipped", "pending")
+def drop_preset(c, day) -> None:
+    """Realny wpis zastepuje szacunek z presetu tego dnia (inaczej podwojne liczenie)."""
+    for o in c.execute("SELECT id FROM qbot_v2.intake_logs WHERE date=%s AND source ILIKE '%%preset%%'", (day,)).fetchall():
+        remove_intake(c, o["id"])
+
+
+def set_status(meal_id: int, status: str, eaten_day: date | None = None) -> dict:
+    """eaten -> wpis do bilansu w dniu eaten_day (domyslnie dzien dostawy); kazdy inny status -> wpis usuniety."""
+    assert status in ("eaten", "skipped", "pending", "fridge", "discarded")
     with _conn() as c:
         m = c.execute("SELECT * FROM qbot_v2.brokul_meals WHERE id=%s FOR UPDATE", (meal_id,)).fetchone()
         if not m:
             raise KeyError("brak posilku %s" % meal_id)
         log_id = m["intake_log_id"]
+        ed = eaten_day or m["day"]
+        if log_id and (status != "eaten" or m["eaten_day"] != ed):
+            remove_intake(c, log_id)
+            log_id = None
         if status == "eaten" and not log_id:
-            t = MEAL_TIMES.get(m["meal_type"].lower(), dtime(12, 0))
-            eaten_at = datetime.combine(m["day"], t, tzinfo=TZ)
-            c.execute("INSERT INTO qbot_v2.days (date) VALUES (%s) ON CONFLICT DO NOTHING", (m["day"],))
-            # realny wpis zastepuje szacunek z presetu tego dnia (inaczej podwojne liczenie)
-            for o in c.execute("SELECT id FROM qbot_v2.intake_logs WHERE date=%s AND source ILIKE '%%preset%%'",
-                               (m["day"],)).fetchall():
-                _remove_intake(c, o["id"])
+            t = MEAL_TIMES.get(m["meal_type"].lower(), dtime(12, 0)) if ed == m["day"] else dtime(13, 0)
+            c.execute("INSERT INTO qbot_v2.days (date) VALUES (%s) ON CONFLICT DO NOTHING", (ed,))
+            drop_preset(c, ed)
+            note = "Brokuł: %s" % m["meal_type"] + ("" if ed == m["day"] else " (z lodówki, dostawa %s)" % m["day"].strftime("%d.%m"))
             log_id = c.execute(
                 "INSERT INTO qbot_v2.intake_logs (date, eaten_at, meal_type, note, source, quality_status) "
                 "VALUES (%s, %s, %s, %s, %s, 'imported') RETURNING id",
-                (m["day"], eaten_at, _slug(m["meal_type"]), "Brokuł: %s" % m["meal_type"], SOURCE)).fetchone()["id"]
+                (ed, datetime.combine(ed, t, tzinfo=TZ), _slug(m["meal_type"]), note, SOURCE)).fetchone()["id"]
             c.execute(
                 "INSERT INTO qbot_v2.intake_items (intake_log_id, food_name, amount, unit, kcal, protein_g, "
                 "carbs_g, fat_g, fiber_g, sodium_mg, source) VALUES (%s,%s,1,'porcja',%s,%s,%s,%s,NULL,%s,%s)",
                 (log_id, m["name"], m["kcal"], m["protein_g"], m["carbs_g"], m["fat_g"],
                  round(m["salt_g"] * 400, 1) if m["salt_g"] is not None else None, SOURCE))
-        elif status != "eaten" and log_id:
-            _remove_intake(c, log_id)
-            log_id = None
-        c.execute("UPDATE qbot_v2.brokul_meals SET status=%s, intake_log_id=%s, decided_at=%s, updated_at=now() "
-                  "WHERE id=%s", (status, log_id, None if status == "pending" else datetime.now(TZ), meal_id))
+        c.execute("UPDATE qbot_v2.brokul_meals SET status=%s, intake_log_id=%s, eaten_day=%s, decided_at=%s, updated_at=now() "
+                  "WHERE id=%s", (status, log_id, ed if status == "eaten" else None,
+                                  None if status == "pending" else datetime.now(TZ), meal_id))
         c.commit()
-        return {"id": meal_id, "day": m["day"], "status": status, "intake_log_id": log_id}
+        return {"id": meal_id, "day": m["day"], "status": status, "eaten_day": ed if status == "eaten" else None}
 
 
-# ======================================================================= Telegram
-def _fmt(v) -> str:
-    return "%.0f" % v if v is not None else "?"
-
-
-def build_message(day: date) -> tuple[str, dict | None]:
-    meals = day_meals(day)
-    head = "🥦 Brokuł %s (%s)" % (day.strftime("%d.%m"), _DNI[day.weekday()])
-    if not meals:
-        return head + "\nBrak posiłków w menu na ten dzień.", None
-    icon = {"eaten": "✅", "skipped": "❌", "pending": "⏳"}
-    lines = [head, "Do bilansu wchodzi tylko to, co potwierdzisz ✅.", ""]
-    tot = {"kcal": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0}
-    kb = []
-    for m in meals:
-        lines.append("%s %s: %s" % (icon[m["status"]], m["meal_type"], m["name"]))
-        lines.append("     %s kcal · B %s · W %s · T %s g" % (_fmt(m["kcal"]), _fmt(m["protein_g"]),
-                                                            _fmt(m["carbs_g"]), _fmt(m["fat_g"])))
-        if m["status"] == "eaten":
-            for k in tot:
-                tot[k] += m[k] or 0
-        mt = m["meal_type"]
-        if m["status"] == "eaten":
-            row = [{"text": "✔ Zjedzone: %s" % mt, "callback_data": "br:p:%d" % m["id"]},
-                   {"text": "❌ Pominąłem", "callback_data": "br:s:%d" % m["id"]}]
-        elif m["status"] == "skipped":
-            row = [{"text": "✅ Zjadłem", "callback_data": "br:e:%d" % m["id"]},
-                   {"text": "✖ Pominięte: %s" % mt, "callback_data": "br:p:%d" % m["id"]}]
-        else:
-            row = [{"text": "✅ %s" % mt, "callback_data": "br:e:%d" % m["id"]},
-                   {"text": "❌ Pominąłem", "callback_data": "br:s:%d" % m["id"]}]
-        kb.append(row)
-    if any(m["status"] == "pending" for m in meals):
-        kb.append([{"text": "✅ Zjadłem wszystkie pozostałe", "callback_data": "br:a:%s" % day.strftime("%Y%m%d")}])
-    lines += ["", "Zjedzone: %s kcal · B %s · W %s · T %s g" % (_fmt(tot["kcal"]), _fmt(tot["protein_g"]),
-                                                               _fmt(tot["carbs_g"]), _fmt(tot["fat_g"]))]
-    return "\n".join(lines), {"inline_keyboard": kb}
-
-
-def _chat_id() -> str:
-    import qbot_config as cfg
-    return str(cfg.TELEGRAM_CHAT_ID)
-
-
-def send_day(day: date, force: bool = False) -> bool:
-    from qbot_telegram_client import _api
-    with _conn() as c:
-        if not force and c.execute("SELECT 1 FROM qbot_v2.brokul_notify WHERE day=%s", (day,)).fetchone():
-            return False
-    if not day_meals(day):
-        return False
-    text, kb = build_message(day)
-    chat = _chat_id()
-    r = _api("sendMessage", {"chat_id": chat, "text": text, "reply_markup": kb})
-    if not (r and r.get("ok")):
-        raise RuntimeError("sendMessage nie powiodl sie: %s" % (r or {}).get("description"))
-    with _conn() as c:
-        c.execute("INSERT INTO qbot_v2.brokul_notify (day, chat_id, message_id) VALUES (%s,%s,%s) "
-                  "ON CONFLICT (day) DO UPDATE SET chat_id=EXCLUDED.chat_id, message_id=EXCLUDED.message_id, sent_at=now()",
-                  (day, chat, r["result"]["message_id"]))
-        c.commit()
-    return True
-
-
+# ======================================================================= Telegram: przyciski Brokula
 def handle_callback(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, chat_id_allowed):
-    """Przyciski 'br:e|s|p:<id>' i 'br:a:<YYYYMMDD>' (telegram_reply_processor)."""
-    from qbot_telegram_client import _api
+    """br:<akcja>:<id>|<RRRRMMDD>[:<dzien wiadomosci RRRRMMDD>]
+       e zjadlem / s nie zjadlem / p cofnij / f do lodowki / d zjadlem z lodowki (w dniu wiadomosci)
+       w wyrzucone / a wszystkie pozostale zjedzone / z wszystkie pozostale do lodowki."""
+    import qbot_food_log as F
     data = cq.get("data") or ""
     msg = cq.get("message") or {}
     chat = str((msg.get("chat") or {}).get("id", ""))
@@ -320,20 +319,22 @@ def handle_callback(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, chat_
         return
     parts = data.split(":")
     act, arg = (parts[1] if len(parts) > 1 else ""), (parts[2] if len(parts) > 2 else "")
+    mday = datetime.strptime(parts[3], "%Y%m%d").date() if len(parts) > 3 else None
     try:
-        if act in ("e", "s", "p"):
-            r = set_status(int(arg), {"e": "eaten", "s": "skipped", "p": "pending"}[act])
-            day = r["day"]
-            tg_answer_callback(cq.get("id"), {"e": "Zapisane w bilansie", "s": "Pominięte",
-                                              "p": "Cofnięte"}[act])
-        elif act == "a":
+        if act in ("e", "s", "p", "f", "d", "w"):
+            st = {"e": "eaten", "s": "skipped", "p": "pending", "f": "fridge", "d": "eaten", "w": "discarded"}[act]
+            r = set_status(int(arg), st, eaten_day=mday if act == "d" else None)
+            day = mday or r["day"]
+            tg_answer_callback(cq.get("id"), {"e": "Zapisane w bilansie", "s": "Nie zjedzone", "p": "Cofnięte",
+                                              "f": "Do lodówki", "d": "Zjedzone dziś", "w": "Wyrzucone"}[act])
+        elif act in ("a", "z"):
             day = datetime.strptime(arg, "%Y%m%d").date()
             n = 0
             for m in day_meals(day):
                 if m["status"] == "pending":
-                    set_status(m["id"], "eaten")
+                    set_status(m["id"], "eaten" if act == "a" else "fridge")
                     n += 1
-            tg_answer_callback(cq.get("id"), "Zapisano %d posiłków" % n)
+            tg_answer_callback(cq.get("id"), ("Zjedzone: %d" if act == "a" else "Do lodówki: %d") % n)
         else:
             tg_answer_callback(cq.get("id"))
             return
@@ -341,28 +342,42 @@ def handle_callback(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, chat_
         tg_answer_callback(cq.get("id"), "Błąd zapisu")
         tg_send_plain("⚠️ Brokuł: nie udało się zapisać (%s)." % type(e).__name__)
         raise
-    text, kb = build_message(day)
-    _api("editMessageText", {"chat_id": chat, "message_id": msg.get("message_id"), "text": text,
-                             "reply_markup": kb or {"inline_keyboard": []}})
+    F.refresh_day(day, chat_id=chat, message_id=msg.get("message_id"))
 
 
 def _notify_expired() -> None:
     st = B.state()
     if st.get("expired_notified"):
         return
-    from qbot_telegram_client import _api
-    _api("sendMessage", {"chat_id": _chat_id(), "disable_web_page_preview": True,
-                         "text": "🥦 Brokuł: sesja wygasła, menu się nie pobiera.\n"
-                                 "Zaloguj się na dietyodbrokula.pl i wklej nowe ciasteczka:\n" + ACCESS_URL})
+    import qbot_food_log as F
+    F.tg_send("🥦 Brokuł: sesja wygasła, menu się nie pobiera.\n"
+              "Zaloguj się na dietyodbrokula.pl i wklej nowe ciasteczka:\n" + ACCESS_URL)
     B._state_update(expired_notified=time.strftime("%Y-%m-%d %H:%M:%S"))
+
+
+def _remind_end(now: datetime) -> None:
+    """Rano (7:00-9:59), gdy do konca zamowienia zostaly <= 2 dni dostaw - raz na koniec zamowienia."""
+    end = delivery_end()
+    if not end or not (7 <= now.hour < 10):
+        return
+    left = (end - now.date()).days
+    if left < 0 or left > END_REMIND_DAYS:
+        return
+    key = "end_reminded_%s" % end.isoformat()
+    if B.state().get(key):
+        return
+    import qbot_food_log as F
+    F.tg_send("🥦 Dieta Brokuła kończy się %s (%s). Przedłużone? Jeśli tak, QBot sam zobaczy nowe zamówienie."
+              % (end.strftime("%d.%m"), F.DNI[end.weekday()]))
+    B._state_update(**{key: time.strftime("%Y-%m-%d %H:%M:%S")})
 
 
 # ======================================================================= tick
 def tick(now: datetime | None = None) -> None:
+    import qbot_food_log as F
     now = now or datetime.now(TZ)
     st = B.state()
-    session_ok = B.SESSION_FILE.exists()
-    if session_ok:
+    if B.SESSION_FILE.exists():
         try:
             last_imp = float(st.get("last_import_ts") or 0)
             if time.time() - last_imp >= IMPORT_EVERY_S:
@@ -381,10 +396,20 @@ def tick(now: datetime | None = None) -> None:
             _log("blad importu: %s: %s" % (type(e).__name__, e))
     else:
         _log("brak sesji (.brokul_session)")
+    try:
+        _remind_end(now)
+    except Exception as e:
+        _log("przypomnienie o koncu diety: %s" % e)
+    try:
+        n = F.retry_pending()
+        if n:
+            _log("dokonczono wpisow jedzenia: %d" % n)
+    except Exception as e:
+        _log("retry jedzenia: %s" % e)
     if now.hour >= NOTIFY_HOUR:
         try:
-            if send_day(now.date()):
-                _log("wyslano podsumowanie %s" % now.date())
+            if F.send_day(now.date()):
+                _log("wyslano wiadomosc dnia %s" % now.date())
         except Exception as e:
             _log("blad wysylki Telegram: %s" % e)
 

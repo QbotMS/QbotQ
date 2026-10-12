@@ -1,0 +1,644 @@
+#!/usr/bin/env python3
+"""Jedzenie spoza diety + wiadomosc dnia (2026-10-12). Dok.: docs/BROKUL.md
+
+Telegram (telegram_reply_processor): kazdy wolny tekst i kazde zdjecie = jedzenie.
+  1) surowa tresc ZAWSZE najpierw do qbot_v2.food_entries (nic nie ginie, idempotencja po tg_message_id),
+  2) dzien: 'wczoraj', 'przedwczoraj', dzien tygodnia, DD.MM; domyslnie dzis, 00:00-03:59 = poprzedni dzien,
+  3) katalog Michala (food_catalog) -> 'jak zwykle' bez AI, gdy ta sama porcja potwierdzona >= 2 razy,
+  4) inaczej AI (Anthropic) szacuje kcal + pelne makra; gdy porcja niejasna -> pytanie przyciskami,
+  5) potwierdzenie z numerem i data + [mniej][OK][wiecej][dzien wczesniej][usun].
+Wiadomosc dnia (20:00): Brokul (zjadlem / nie / lodowka), lodowka, wpisy poza dieta, szybkie przyciski,
+suma dnia z intake_*, stan zamkniecia dnia (pod pas Jedzenia).
+Przyciski: fd:<akcja>:<id>[:<n>] (wpisy), qk:<RRRRMMDD>:<kod> (szybkie), br:... (Brokul -> qbot_brokul_meals).
+"""
+from __future__ import annotations
+
+import base64
+import json
+import re
+import sys
+import unicodedata
+from datetime import date, datetime, time as dtime, timedelta
+from zoneinfo import ZoneInfo
+
+sys.path.insert(0, "/opt/qbot/app")
+
+TZ = ZoneInfo("Europe/Warsaw")
+DNI = ["pn", "wt", "śr", "cz", "pt", "sb", "nd"]
+SOURCE = "telegram"
+# szybkie przyciski: (etykieta, kcal, B, W, T) - zgrubne, kalibracja waga wyrownuje blad
+QUICK = {
+    "snack": ("Przekąska", 250, 6, 30, 12),
+    "sweet": ("Słodycze", 350, 4, 45, 17),
+    "out_s": ("Posiłek na mieście (mały)", 600, 25, 60, 28),
+    "out_m": ("Posiłek na mieście (średni)", 900, 35, 90, 42),
+    "out_l": ("Posiłek na mieście (duży)", 1300, 50, 130, 62),
+}
+SCALE_STEP = 0.25
+CATALOG_AUTO_N = 2
+
+_WD = [("poniedzia", 0), ("wtor", 1), ("środ", 2), ("srod", 2), ("czwart", 3), ("piąt", 4), ("piat", 4),
+       ("sobot", 5), ("niedziel", 6)]
+_DATE_WORDS = re.compile(
+    r"\b(dzi[śs](iaj)?|wczoraj|przedwczoraj|rano|wieczorem|po po[łl]udniu|w nocy|"
+    r"w\s+)?(poniedzia\w*|wtor\w*|[śs]rod\w*|czwart\w*|pi[ąa]t\w*|sobot\w*|niedziel\w*)\b|"
+    r"\b(dzi[śs](iaj)?|wczoraj|przedwczoraj)\b|\b\d{1,2}\.\d{2}(\.\d{2,4})?\b", re.I)
+
+
+def _log(msg: str) -> None:
+    print("[%s] food: %s" % (datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"), msg), flush=True)
+
+
+def _conn():
+    from qbot_brokul_meals import _conn as c
+    return c()
+
+
+# ======================================================================= czyste funkcje
+def parse_day(text: str, now: datetime) -> date:
+    """Dzien wpisu z tekstu. Domyslnie dzis; 00:00-03:59 = poprzedni dzien."""
+    t = (text or "").lower()
+    today = now.date()
+    m = re.search(r"\b(\d{1,2})\.(\d{2})(?:\.(\d{2,4}))?\b", t)
+    if m:
+        d, mo = int(m.group(1)), int(m.group(2))
+        y = int(m.group(3)) if m.group(3) else today.year
+        if y < 100:
+            y += 2000
+        try:
+            cand = date(y, mo, d)
+            if not m.group(3) and cand > today:
+                cand = date(y - 1, mo, d)
+            if cand <= today:
+                return cand
+        except ValueError:
+            pass
+    if re.search(r"\bprzedwczoraj\b", t):
+        return today - timedelta(days=2)
+    if re.search(r"\bwczoraj\b", t):
+        return today - timedelta(days=1)
+    if re.search(r"\bdzi[śs](iaj)?\b", t):
+        return today
+    for stem, wd in _WD:
+        if re.search(r"\b" + stem, t):
+            back = (today.weekday() - wd) % 7
+            return today - timedelta(days=back)
+    if now.hour < 4:
+        return today - timedelta(days=1)
+    return today
+
+
+def norm_phrase(text: str) -> str:
+    t = _DATE_WORDS.sub(" ", (text or "").lower())
+    t = unicodedata.normalize("NFKD", t.replace("ł", "l"))
+    t = "".join(ch for ch in t if not unicodedata.combining(ch))
+    t = re.sub(r"[^a-z0-9 ]+", " ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def _f(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def clean_items(items) -> list[dict] | None:
+    """Kazda pozycja z nazwa, kcal i pelnymi makrami (regula QBota) - inaczej None."""
+    out = []
+    for it in items or []:
+        if not isinstance(it, dict):
+            return None
+        x = {"name": str(it.get("name") or "").strip()[:120], "portion": str(it.get("portion") or "").strip()[:60],
+             "kcal": _f(it.get("kcal")), "protein_g": _f(it.get("protein_g")),
+             "carbs_g": _f(it.get("carbs_g")), "fat_g": _f(it.get("fat_g"))}
+        if not x["name"] or any(x[k] is None or x[k] < 0 for k in ("kcal", "protein_g", "carbs_g", "fat_g")):
+            return None
+        out.append(x)
+    return out or None
+
+
+def totals(items: list[dict], scale: float = 1.0) -> dict:
+    return {k: round(sum((i.get(k) or 0) for i in items) * scale, 1) for k in ("kcal", "protein_g", "carbs_g", "fat_g")}
+
+
+def _fmt(v) -> str:
+    return "%.0f" % v if v is not None else "?"
+
+
+def receipt_text(e: dict) -> str:
+    d = e["day"]
+    head = "✅ #%d · %s (%s)" % (e["id"], d.strftime("%d.%m"), DNI[d.weekday()])
+    if e.get("_from_catalog"):
+        head += " · jak zwykle"
+    lines = [head]
+    sc = e.get("scale") or 1
+    for it in e["items"] or []:
+        lines.append("• %s%s: %s kcal" % (it["name"], (" – " + it["portion"]) if it.get("portion") else "",
+                                           _fmt((it["kcal"] or 0) * sc)))
+    t = totals(e["items"] or [], sc)
+    lines.append("Razem ~%s kcal · B %s · W %s · T %s g%s" % (_fmt(t["kcal"]), _fmt(t["protein_g"]), _fmt(t["carbs_g"]),
+                                                            _fmt(t["fat_g"]), "" if abs(sc - 1) < 1e-6 else "  (×%.2f)" % sc))
+    return "\n".join(lines)
+
+
+def receipt_kb(eid: int) -> dict:
+    return {"inline_keyboard": [
+        [{"text": "➖ mniej", "callback_data": "fd:m:%d" % eid}, {"text": "✔ OK", "callback_data": "fd:k:%d" % eid},
+         {"text": "➕ więcej", "callback_data": "fd:p:%d" % eid}],
+        [{"text": "← dzień wcześniej", "callback_data": "fd:b:%d" % eid}, {"text": "🗑 usuń", "callback_data": "fd:x:%d" % eid}]]}
+
+
+# ======================================================================= AI
+_PROMPT = """Szacujesz wartości odżywcze jedzenia/napojów, które użytkownik (dorosły mężczyzna w Polsce) zjadł.
+Zwracasz WYŁĄCZNIE JSON, bez komentarza:
+{"not_food": false, "ambiguous": false, "items": [{"name": "...", "portion": "...", "kcal": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0}], "question": null, "options": null}
+Zasady:
+- Pomiń słowa o czasie ("wczoraj", "w sobotę", "rano", daty) - opisują kiedy, nie co.
+- Każda pozycja: krótka polska nazwa, porcja słowami (np. "cała ~30 cm", "2 szt.", "0,5 l"), kcal i PEŁNE makra (liczby).
+- Gdy ilość podana -> użyj jej. Typowe pojedyncze sztuki (pączek, banan, baton, jabłko, piwo 0,5 l, kawa) -> przyjmij 1 typową sztukę bez pytania.
+- Gdy ilości NIE podano, a realne porcje różnią się ponad 2x (pizza, ciasto, makaron, frytki, lody, sałatka, zupa, chipsy...) ->
+  "ambiguous": true, "question": krótko np. "Pizza – ile?", "options": 3-4 warianty [{"label": "1 kawałek", "items": [...pełne pozycje dla tego wariantu, z wszystkimi produktami z wiadomości...]}],
+  label max 18 znaków; wtedy "items": null.
+- Sieciówki (McDonald's, KFC, Żabka, Starbucks) i produkty paczkowane -> wartości producenta, jeśli je znasz.
+- Zdjęcie: szacuj widoczną porcję; etykieta z tabelą wartości -> przepisz ją i przelicz na zjedzoną ilość.
+- Nie jedzenie i nie napój -> {"not_food": true}.
+"""
+
+
+def estimate(text: str | None, image: tuple[bytes, str] | None = None) -> dict:
+    """AI -> {'not_food'|'ambiguous', items|options, question}. Rzuca przy bledzie."""
+    import httpx
+    import qbot_config as cfg
+    from qgpt_client import parse_json_text
+    content = []
+    if image:
+        content.append({"type": "image", "source": {"type": "base64", "media_type": image[1],
+                                                    "data": base64.b64encode(image[0]).decode()}})
+    content.append({"type": "text", "text": "Wiadomość użytkownika: " + (text or "(samo zdjęcie)")})
+    r = httpx.post("https://api.anthropic.com/v1/messages",
+                   headers={"content-type": "application/json", "x-api-key": cfg.ANTHROPIC_API_KEY,
+                            "anthropic-version": "2023-06-01"},
+                   json={"model": cfg.ANTHROPIC_MODEL, "max_tokens": 1500, "temperature": 0, "system": _PROMPT,
+                         "messages": [{"role": "user", "content": content}]},
+                   timeout=60)
+    r.raise_for_status()
+    txt = "".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text")
+    j = parse_json_text(txt)
+    if not isinstance(j, dict):
+        raise ValueError("AI: odpowiedz nie jest obiektem JSON")
+    if j.get("not_food"):
+        return {"not_food": True}
+    if j.get("ambiguous") and j.get("options"):
+        opts = []
+        for o in j["options"][:4]:
+            it = clean_items((o or {}).get("items"))
+            if it:
+                opts.append({"label": str(o.get("label") or "?")[:24], "items": it})
+        if len(opts) >= 2:
+            return {"ambiguous": True, "question": str(j.get("question") or "Ile?")[:80], "options": opts}
+    it = clean_items(j.get("items"))
+    if not it:
+        raise ValueError("AI: brak pelnych wartosci (kcal + makra)")
+    return {"items": it}
+
+
+# ======================================================================= Telegram
+def _api(method: str, data: dict) -> dict:
+    from qbot_telegram_client import _api as a
+    return a(method, data) or {}
+
+
+def _chat_id() -> str:
+    import qbot_config as cfg
+    return str(cfg.TELEGRAM_CHAT_ID)
+
+
+def tg_send(text: str, kb: dict | None = None, reply_to: int | None = None) -> int | None:
+    body = {"chat_id": _chat_id(), "text": text[:4000], "disable_web_page_preview": True}
+    if kb:
+        body["reply_markup"] = kb
+    if reply_to:
+        body["reply_to_message_id"] = reply_to
+        body["allow_sending_without_reply"] = True
+    r = _api("sendMessage", body)
+    return (r.get("result") or {}).get("message_id") if r.get("ok") else None
+
+
+def tg_edit(message_id: int, text: str, kb: dict | None) -> None:
+    _api("editMessageText", {"chat_id": _chat_id(), "message_id": message_id, "text": text[:4000],
+                             "disable_web_page_preview": True, "reply_markup": kb or {"inline_keyboard": []}})
+
+
+def _download_photo(file_id: str) -> tuple[bytes, str]:
+    import httpx
+    from qbot_telegram_client import _token
+    r = _api("getFile", {"file_id": file_id})
+    path = (r.get("result") or {}).get("file_path")
+    if not path:
+        raise RuntimeError("getFile: brak sciezki")
+    data = httpx.get("https://api.telegram.org/file/bot%s/%s" % (_token(), path), timeout=30).content
+    ext = path.rsplit(".", 1)[-1].lower()
+    return data, {"png": "image/png", "webp": "image/webp"}.get(ext, "image/jpeg")
+
+
+# ======================================================================= wpisy
+def _get(c, eid: int) -> dict | None:
+    return c.execute("SELECT * FROM qbot_v2.food_entries WHERE id=%s", (eid,)).fetchone()
+
+
+def _write_intake(c, e: dict) -> int:
+    from qbot_brokul_meals import remove_intake, drop_preset
+    remove_intake(c, e.get("intake_log_id"))
+    d = e["day"]
+    sc = e["scale"] or 1
+    c.execute("INSERT INTO qbot_v2.days (date) VALUES (%s) ON CONFLICT DO NOTHING", (d,))
+    drop_preset(c, d)
+    when = datetime.now(TZ) if d == datetime.now(TZ).date() else datetime.combine(d, dtime(13, 0), tzinfo=TZ)
+    lid = c.execute("INSERT INTO qbot_v2.intake_logs (date, eaten_at, meal_type, note, source, quality_status) "
+                    "VALUES (%s,%s,'poza_dieta',%s,%s,'estimated') RETURNING id",
+                    (d, when, "Telegram #%d: %s" % (e["id"], (e.get("raw_text") or e["kind"])[:200]), SOURCE)).fetchone()["id"]
+    for it in e["items"]:
+        c.execute("INSERT INTO qbot_v2.intake_items (intake_log_id, food_name, amount, unit, kcal, protein_g, carbs_g, fat_g, source) "
+                  "VALUES (%s,%s,%s,'porcja',%s,%s,%s,%s,%s)",
+                  (lid, (it["name"] + (" – " + it["portion"] if it.get("portion") else ""))[:200], sc,
+                   round(it["kcal"] * sc, 1), round(it["protein_g"] * sc, 1), round(it["carbs_g"] * sc, 1),
+                   round(it["fat_g"] * sc, 1), SOURCE))
+    t = totals(e["items"], sc)
+    c.execute("UPDATE qbot_v2.food_entries SET status='logged', intake_log_id=%s, kcal=%s, protein_g=%s, carbs_g=%s, fat_g=%s, "
+              "updated_at=now() WHERE id=%s", (lid, t["kcal"], t["protein_g"], t["carbs_g"], t["fat_g"], e["id"]))
+    return lid
+
+
+def _learn(c, e: dict) -> None:
+    """Katalog: ta sama fraza + ta sama porcja -> licznik; po CATALOG_AUTO_N QBot przestaje pytac."""
+    if e["kind"] != "text" or not e.get("phrase_norm") or not e.get("items"):
+        return
+    sc = e["scale"] or 1
+    items = [dict(i, kcal=round(i["kcal"] * sc, 1), protein_g=round(i["protein_g"] * sc, 1),
+                  carbs_g=round(i["carbs_g"] * sc, 1), fat_g=round(i["fat_g"] * sc, 1)) for i in e["items"]]
+    label = "%.0f" % totals(items)["kcal"]
+    old = c.execute("SELECT label, n FROM qbot_v2.food_catalog WHERE phrase_norm=%s", (e["phrase_norm"],)).fetchone()
+    n = (old["n"] + 1) if (old and old["label"] == label) else 1
+    c.execute("INSERT INTO qbot_v2.food_catalog (phrase_norm, items, label, n, last_used) VALUES (%s,%s,%s,%s,now()) "
+              "ON CONFLICT (phrase_norm) DO UPDATE SET items=EXCLUDED.items, label=EXCLUDED.label, n=EXCLUDED.n, last_used=now()",
+              (e["phrase_norm"], json.dumps(items, ensure_ascii=False), label, n))
+
+
+def create_entry(kind: str, day: date, raw_text: str | None = None, photo_file_id: str | None = None,
+                 tg_message_id: int | None = None, items: list | None = None) -> int | None:
+    with _conn() as c:
+        r = c.execute("INSERT INTO qbot_v2.food_entries (kind, tg_message_id, raw_text, photo_file_id, day, phrase_norm, items) "
+                      "VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (tg_message_id) DO NOTHING RETURNING id",
+                      (kind, tg_message_id, raw_text, photo_file_id, day,
+                       norm_phrase(raw_text) if kind == "text" else None,
+                       json.dumps(items, ensure_ascii=False) if items else None)).fetchone()
+        c.commit()
+    return r["id"] if r else None
+
+
+def process_entry(eid: int, reply_to: int | None = None) -> str:
+    """Szacowanie + zapis + odpowiedz. Zwraca status. Bledy -> 'failed' (wpis zostaje, wraca o 20:00)."""
+    with _conn() as c:
+        e = _get(c, eid)
+        if not e or e["status"] not in ("new", "failed"):
+            return e["status"] if e else "missing"
+        c.execute("UPDATE qbot_v2.food_entries SET attempts=attempts+1 WHERE id=%s", (eid,))
+        c.commit()
+        try:
+            res = None
+            if e["kind"] == "text" and e["phrase_norm"]:
+                cat = c.execute("SELECT * FROM qbot_v2.food_catalog WHERE phrase_norm=%s AND n>=%s",
+                                (e["phrase_norm"], CATALOG_AUTO_N)).fetchone()
+                if cat:
+                    res = {"items": cat["items"], "_from_catalog": True}
+            if res is None:
+                img = _download_photo(e["photo_file_id"]) if e["photo_file_id"] else None
+                res = estimate(e["raw_text"], img)
+        except Exception as ex:
+            c.execute("UPDATE qbot_v2.food_entries SET status='failed', error=%s, updated_at=now() WHERE id=%s",
+                      (("%s: %s" % (type(ex).__name__, ex))[:500], eid))
+            c.commit()
+            _log("#%d blad szacowania: %s" % (eid, ex))
+            tg_send("⚠️ #%d zapisane jako „%s”, ale nie udało się policzyć kcal. Spróbuję ponownie; wpis jest bezpieczny."
+                    % (eid, (e["raw_text"] or "zdjęcie")[:60]), reply_to=reply_to)
+            return "failed"
+        if res.get("not_food"):
+            c.execute("UPDATE qbot_v2.food_entries SET status='not_food', updated_at=now() WHERE id=%s", (eid,))
+            c.commit()
+            tg_send("🤔 #%d to chyba nie jedzenie – nic nie zapisałem. Wpisz jeszcze raz, jeśli to pomyłka." % eid,
+                    {"inline_keyboard": [[{"text": "To jednak jedzenie – policz", "callback_data": "fd:r:%d" % eid}]]},
+                    reply_to=reply_to)
+            return "not_food"
+        if res.get("ambiguous"):
+            c.execute("UPDATE qbot_v2.food_entries SET status='asking', question=%s, options=%s, updated_at=now() WHERE id=%s",
+                      (res["question"], json.dumps(res["options"], ensure_ascii=False), eid))
+            c.commit()
+            d = e["day"]
+            rows, row = [], []
+            for i, o in enumerate(res["options"]):
+                row.append({"text": "%s · %s kcal" % (o["label"], _fmt(totals(o["items"])["kcal"])), "callback_data": "fd:o:%d:%d" % (eid, i)})
+                if len(row) == 2:
+                    rows.append(row); row = []
+            if row:
+                rows.append(row)
+            rows.append([{"text": "🗑 anuluj", "callback_data": "fd:x:%d" % eid}])
+            mid = tg_send("❓ #%d · %s (%s)\n%s" % (eid, d.strftime("%d.%m"), DNI[d.weekday()], res["question"]),
+                          {"inline_keyboard": rows}, reply_to=reply_to)
+            c.execute("UPDATE qbot_v2.food_entries SET reply_message_id=%s WHERE id=%s", (mid, eid))
+            c.commit()
+            return "asking"
+        c.execute("UPDATE qbot_v2.food_entries SET items=%s, updated_at=now() WHERE id=%s",
+                  (json.dumps(res["items"], ensure_ascii=False), eid))
+        e = _get(c, eid)
+        _write_intake(c, e)
+        c.commit()
+        e = _get(c, eid)
+        e["_from_catalog"] = res.get("_from_catalog")
+        mid = tg_send(receipt_text(e), receipt_kb(eid), reply_to=reply_to)
+        c.execute("UPDATE qbot_v2.food_entries SET reply_message_id=%s WHERE id=%s", (mid, eid))
+        c.commit()
+    refresh_day(e["day"])
+    return "logged"
+
+
+def retry_pending() -> int:
+    """Wpisy, ktore utknely (nowe > 2 min albo nieudane, max 4 proby) - dokoncz."""
+    with _conn() as c:
+        rows = c.execute("SELECT id FROM qbot_v2.food_entries WHERE status IN ('new','failed') AND attempts < 4 "
+                         "AND created_at < now() - interval '2 minutes' ORDER BY id").fetchall()
+    n = 0
+    for r in rows:
+        if process_entry(r["id"]) == "logged":
+            n += 1
+    return n
+
+
+# ---------------------------------------------------------------- wejscie z telegram_reply_processor
+def handle_text(text: str, msg: dict) -> None:
+    now = datetime.now(TZ)
+    day = parse_day(text, now)
+    eid = create_entry("text", day, raw_text=text.strip()[:1000], tg_message_id=msg.get("message_id"))
+    if eid is None:
+        _log("wiadomosc %s juz byla - pomijam" % msg.get("message_id"))
+        return
+    process_entry(eid, reply_to=msg.get("message_id"))
+
+
+def handle_photo(msg: dict) -> None:
+    now = datetime.now(TZ)
+    cap = (msg.get("caption") or "").strip()
+    photos = msg.get("photo") or []
+    fid = photos[-1]["file_id"] if photos else (msg.get("document") or {}).get("file_id")
+    if not fid:
+        return
+    eid = create_entry("photo", parse_day(cap, now), raw_text=cap[:1000] or None, photo_file_id=fid,
+                       tg_message_id=msg.get("message_id"))
+    if eid is not None:
+        process_entry(eid, reply_to=msg.get("message_id"))
+
+
+# ---------------------------------------------------------------- przyciski
+def handle_callback(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, chat_id_allowed):
+    data = cq.get("data") or ""
+    msg = cq.get("message") or {}
+    chat = str((msg.get("chat") or {}).get("id", ""))
+    if chat != str(chat_id_allowed):
+        tg_answer_callback(cq.get("id"), "Brak dostepu")
+        return
+    p = data.split(":")
+    if p[0] == "qk":
+        return _quick(cq, p, msg, tg_answer_callback)
+    act, eid = p[1], int(p[2])
+    days_touched = set()
+    with _conn() as c:
+        e = _get(c, eid)
+        if not e:
+            tg_answer_callback(cq.get("id"), "Nie ma takiego wpisu")
+            return
+        days_touched.add(e["day"])
+        if act == "o" and e["status"] == "asking":
+            opt = (e["options"] or [])[int(p[3])]
+            c.execute("UPDATE qbot_v2.food_entries SET items=%s, scale=1 WHERE id=%s",
+                      (json.dumps(opt["items"], ensure_ascii=False), eid))
+            e = _get(c, eid)
+            _write_intake(c, e)
+            _learn(c, _get(c, eid))
+            c.commit()
+            tg_answer_callback(cq.get("id"), "Zapisane")
+            tg_edit(msg["message_id"], receipt_text(_get(c, eid)), receipt_kb(eid))
+        elif act in ("m", "p") and e["status"] == "logged":
+            sc = max(0.25, round((e["scale"] or 1) + (-SCALE_STEP if act == "m" else SCALE_STEP), 2))
+            c.execute("UPDATE qbot_v2.food_entries SET scale=%s WHERE id=%s", (sc, eid))
+            _write_intake(c, _get(c, eid))
+            c.commit()
+            tg_answer_callback(cq.get("id"), "×%.2f" % sc)
+            tg_edit(msg["message_id"], receipt_text(_get(c, eid)), receipt_kb(eid))
+        elif act == "k" and e["status"] == "logged":
+            _learn(c, e)
+            c.commit()
+            tg_answer_callback(cq.get("id"), "OK")
+            tg_edit(msg["message_id"], receipt_text(e), None)
+        elif act == "b" and e["status"] in ("logged", "asking"):
+            nd = e["day"] - timedelta(days=1)
+            c.execute("UPDATE qbot_v2.food_entries SET day=%s WHERE id=%s", (nd, eid))
+            if e["status"] == "logged":
+                _write_intake(c, _get(c, eid))
+            c.commit()
+            days_touched.add(nd)
+            tg_answer_callback(cq.get("id"), "Przeniesione na %s" % nd.strftime("%d.%m"))
+            e2 = _get(c, eid)
+            tg_edit(msg["message_id"], receipt_text(e2) if e2["status"] == "logged" else msg.get("text", ""),
+                    receipt_kb(eid) if e2["status"] == "logged" else msg.get("reply_markup"))
+        elif act == "x":
+            from qbot_brokul_meals import remove_intake
+            remove_intake(c, e["intake_log_id"])
+            c.execute("UPDATE qbot_v2.food_entries SET status='deleted', intake_log_id=NULL, updated_at=now() WHERE id=%s", (eid,))
+            c.commit()
+            tg_answer_callback(cq.get("id"), "Usunięte")
+            tg_edit(msg["message_id"], "🗑 #%d usunięte (%s)" % (eid, (e["raw_text"] or e["kind"])[:60]), None)
+        elif act == "r" and e["status"] == "not_food":
+            c.execute("UPDATE qbot_v2.food_entries SET status='new', raw_text=%s WHERE id=%s",
+                      ("(to jest jedzenie/napój) " + (e["raw_text"] or ""), eid))
+            c.commit()
+            tg_answer_callback(cq.get("id"), "Liczę…")
+            tg_edit(msg["message_id"], "↻ #%d liczę jeszcze raz…" % eid, None)
+            process_entry(eid)
+        else:
+            tg_answer_callback(cq.get("id"))
+            return
+    for d in days_touched:
+        refresh_day(d)
+
+
+def _quick(cq, p, msg, answer) -> None:
+    day = datetime.strptime(p[1], "%Y%m%d").date()
+    code = p[2]
+    if code == "none":
+        with _conn() as c:
+            r = c.execute("INSERT INTO qbot_v2.food_day (day, extras_none) VALUES (%s, true) ON CONFLICT (day) "
+                          "DO UPDATE SET extras_none = NOT qbot_v2.food_day.extras_none, updated_at=now() RETURNING extras_none",
+                          (day,)).fetchone()
+            c.commit()
+        answer(cq.get("id"), "Nic poza dietą" if r["extras_none"] else "Cofnięte")
+    elif code in QUICK:
+        lab, k, pr, cb, ft = QUICK[code]
+        items = [{"name": lab, "portion": "szacunek", "kcal": k, "protein_g": pr, "carbs_g": cb, "fat_g": ft}]
+        eid = create_entry("quick", day, raw_text=lab, items=items)
+        with _conn() as c:
+            e = _get(c, eid)
+            _write_intake(c, e)
+            c.commit()
+            e = _get(c, eid)
+        mid = tg_send(receipt_text(e), receipt_kb(eid))
+        with _conn() as c:
+            c.execute("UPDATE qbot_v2.food_entries SET reply_message_id=%s WHERE id=%s", (mid, eid))
+            c.commit()
+        answer(cq.get("id"), "Dodane – popraw ➖/➕ jeśli trzeba")
+    else:
+        answer(cq.get("id"))
+        return
+    refresh_day(day, message_id=msg.get("message_id"))
+
+
+# ======================================================================= wiadomosc dnia
+def day_entries(day: date) -> list[dict]:
+    with _conn() as c:
+        return c.execute("SELECT * FROM qbot_v2.food_entries WHERE day=%s AND status IN ('logged','asking','failed','new') "
+                         "ORDER BY id", (day,)).fetchall()
+
+
+def day_totals(day: date) -> dict:
+    with _conn() as c:
+        r = c.execute("SELECT sum(i.kcal) kcal, sum(i.protein_g) p, sum(i.carbs_g) cb, sum(i.fat_g) f "
+                      "FROM qbot_v2.intake_logs l JOIN qbot_v2.intake_items i ON i.intake_log_id=l.id WHERE l.date=%s",
+                      (day,)).fetchone()
+    return {"kcal": r["kcal"], "protein_g": r["p"], "carbs_g": r["cb"], "fat_g": r["f"]}
+
+
+def close_state(day: date) -> dict:
+    """Dzien zamkniety = Brokul bez 'pending' ORAZ (klik 'Nic poza dieta' albo >= 1 wpis poza dieta).
+    Dzien bez dostawy: >= 1 wpis albo (Nic + cos z lodowki)."""
+    from qbot_brokul_meals import day_meals, fridge_for
+    meals = day_meals(day)
+    fr = [m for m in fridge_for(day) if m["status"] == "eaten"]
+    ents = [e for e in day_entries(day) if e["status"] == "logged"]
+    with _conn() as c:
+        fd = c.execute("SELECT * FROM qbot_v2.food_day WHERE day=%s", (day,)).fetchone()
+    none = bool(fd and fd["extras_none"])
+    pending = [m for m in meals if m["status"] == "pending"]
+    if meals:
+        closed = not pending and (none or bool(ents))
+    else:
+        closed = bool(ents) or (none and bool(fr))
+    with _conn() as c:
+        c.execute("INSERT INTO qbot_v2.food_day (day, extras_none, closed_at) VALUES (%s,%s,%s) ON CONFLICT (day) DO UPDATE "
+                  "SET closed_at = CASE WHEN %s THEN COALESCE(qbot_v2.food_day.closed_at, now()) ELSE NULL END, updated_at=now()",
+                  (day, none, datetime.now(TZ) if closed else None, closed))
+        c.commit()
+    return {"closed": closed, "pending": len(pending), "none": none, "entries": len(ents), "has_diet": bool(meals)}
+
+
+def build_day(day: date) -> tuple[str, dict]:
+    from qbot_brokul_meals import day_meals, fridge_for
+    meals = day_meals(day)
+    fridge = fridge_for(day)
+    ents = day_entries(day)
+    cs = close_state(day)
+    md = day.strftime("%Y%m%d")
+    L = ["🍽 Dzień %s (%s)" % (day.strftime("%d.%m"), DNI[day.weekday()]), ""]
+    kb = []
+    ic = {"eaten": "✅", "skipped": "❌", "pending": "⏳", "fridge": "📦", "discarded": "🗑"}
+    if meals:
+        L.append("🥦 Brokuł:")
+        for m in meals:
+            L.append("%s %s: %s · %s kcal" % (ic.get(m["status"], "•"), m["meal_type"], m["name"][:70], _fmt(m["kcal"])))
+            t, i = m["meal_type"], m["id"]
+            if m["status"] == "pending":
+                kb.append([{"text": "✅ %s" % t, "callback_data": "br:e:%d:%s" % (i, md)},
+                           {"text": "❌", "callback_data": "br:s:%d:%s" % (i, md)},
+                           {"text": "📦 później", "callback_data": "br:f:%d:%s" % (i, md)}])
+            else:
+                lab = {"eaten": "✔ Zjedzone", "skipped": "✖ Nie zjedzone", "fridge": "📦 W lodówce"}.get(m["status"], m["status"])
+                kb.append([{"text": "%s: %s (cofnij)" % (lab, t), "callback_data": "br:p:%d:%s" % (i, md)}])
+        if sum(1 for m in meals if m["status"] == "pending") >= 2:
+            kb.append([{"text": "✅ Wszystkie zjedzone", "callback_data": "br:a:%s" % md},
+                       {"text": "📦 Wszystkie do lodówki", "callback_data": "br:z:%s" % md}])
+        L.append("")
+    else:
+        L += ["🥦 Brokuł: dziś bez dostawy.", ""]
+    if fridge:
+        L.append("📦 Z lodówki:")
+        for m in fridge:
+            L.append("%s %s z %s: %s · %s kcal" % (ic.get(m["status"], "•"), m["meal_type"], m["day"].strftime("%d.%m"),
+                                                  m["name"][:60], _fmt(m["kcal"])))
+            t, i = "%s %s" % (m["meal_type"], m["day"].strftime("%d.%m")), m["id"]
+            if m["status"] == "fridge":
+                kb.append([{"text": "✅ Zjadłem dziś: %s" % t, "callback_data": "br:d:%d:%s" % (i, md)},
+                           {"text": "🗑", "callback_data": "br:w:%d:%s" % (i, md)}])
+            else:
+                kb.append([{"text": "%s: %s (cofnij)" % ("✔ Zjedzone" if m["status"] == "eaten" else "🗑 Wyrzucone", t),
+                            "callback_data": "br:f:%d:%s" % (i, md)}])
+        L.append("")
+    L.append("🍴 Poza dietą:")
+    if ents:
+        for e in ents:
+            if e["status"] == "logged":
+                L.append("✅ #%d %s · %s kcal" % (e["id"], (e["raw_text"] or e["kind"])[:50], _fmt(e["kcal"])))
+            else:
+                L.append("⏳ #%d %s · do dokończenia" % (e["id"], (e["raw_text"] or "zdjęcie")[:50]))
+    elif cs["none"]:
+        L.append("✔ nic")
+    else:
+        L.append("– (napisz albo wyślij zdjęcie, np. „2 pączki”, „wczoraj pizza”)")
+    kb.append([{"text": ("✔ Nic poza dietą ✓" if cs["none"] else "✔ Nic poza dietą"), "callback_data": "qk:%s:none" % md}])
+    kb.append([{"text": "🥨 Przekąska", "callback_data": "qk:%s:snack" % md},
+               {"text": "🍫 Słodycze", "callback_data": "qk:%s:sweet" % md}])
+    kb.append([{"text": "🍽 Na mieście S", "callback_data": "qk:%s:out_s" % md},
+               {"text": "M", "callback_data": "qk:%s:out_m" % md},
+               {"text": "L", "callback_data": "qk:%s:out_l" % md}])
+    t = day_totals(day)
+    L += ["", "Razem: %s kcal · B %s · W %s · T %s g" % (_fmt(t["kcal"] or 0), _fmt(t["protein_g"] or 0),
+                                                         _fmt(t["carbs_g"] or 0), _fmt(t["fat_g"] or 0))]
+    if cs["closed"]:
+        L.append("🔒 Dzień zamknięty")
+    else:
+        need = []
+        if cs["pending"]:
+            need.append("potwierdź posiłki Brokuła")
+        if not (cs["none"] or cs["entries"]):
+            need.append("wpisz, co zjadłeś poza dietą, albo kliknij „Nic poza dietą”" if cs["has_diet"] else "wpisz, co zjadłeś")
+        L.append("⏳ Do zamknięcia: " + "; ".join(need))
+    return "\n".join(L), {"inline_keyboard": kb}
+
+
+def send_day(day: date, force: bool = False) -> bool:
+    with _conn() as c:
+        if not force and c.execute("SELECT 1 FROM qbot_v2.brokul_notify WHERE day=%s", (day,)).fetchone():
+            return False
+    text, kb = build_day(day)
+    mid = tg_send(text, kb)
+    if not mid:
+        raise RuntimeError("sendMessage nie powiodl sie")
+    with _conn() as c:
+        c.execute("INSERT INTO qbot_v2.brokul_notify (day, chat_id, message_id) VALUES (%s,%s,%s) "
+                  "ON CONFLICT (day) DO UPDATE SET chat_id=EXCLUDED.chat_id, message_id=EXCLUDED.message_id, sent_at=now()",
+                  (day, _chat_id(), mid))
+        c.commit()
+    return True
+
+
+def refresh_day(day: date, chat_id: str | None = None, message_id: int | None = None) -> None:
+    """Odswiez wiadomosc dnia (jesli byla wyslana). Bledy pomijane - to tylko widok."""
+    try:
+        if not message_id:
+            with _conn() as c:
+                r = c.execute("SELECT message_id FROM qbot_v2.brokul_notify WHERE day=%s", (day,)).fetchone()
+            if not r:
+                close_state(day)
+                return
+            message_id = r["message_id"]
+        text, kb = build_day(day)
+        tg_edit(message_id, text, kb)
+    except Exception as e:
+        _log("refresh_day %s: %s" % (day, e))
