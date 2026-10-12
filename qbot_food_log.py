@@ -118,7 +118,9 @@ def clean_items(items) -> list[dict] | None:
             return None
         x = {"name": str(it.get("name") or "").strip()[:120], "portion": str(it.get("portion") or "").strip()[:60],
              "kcal": _f(it.get("kcal")), "protein_g": _f(it.get("protein_g")),
-             "carbs_g": _f(it.get("carbs_g")), "fat_g": _f(it.get("fat_g"))}
+             "carbs_g": _f(it.get("carbs_g")), "fat_g": _f(it.get("fat_g")),
+             "conf": {"pewne": "pewne", "średnie": "średnie", "srednie": "średnie"}.get(str(it.get("conf") or "").strip().lower(), "zgrubne"),
+             "src": str(it.get("src") or "").strip()[:40]}
         if not x["name"] or any(x[k] is None or x[k] < 0 for k in ("kcal", "protein_g", "carbs_g", "fat_g")):
             return None
         out.append(x)
@@ -140,12 +142,19 @@ def receipt_text(e: dict) -> str:
         head += " · jak zwykle"
     lines = [head]
     sc = e.get("scale") or 1
+    weak = False
     for it in e["items"] or []:
-        lines.append("• %s%s: %s kcal" % (it["name"], (" – " + it["portion"]) if it.get("portion") else "",
-                                           _fmt((it["kcal"] or 0) * sc)))
+        mk = {"pewne": "✔", "średnie": "~", "zgrubne": "⚠️"}.get(it.get("conf"), "•")
+        weak = weak or it.get("conf") == "zgrubne"
+        src = it.get("src") or ""
+        lines.append("%s %s%s: %s kcal%s" % (mk, it["name"], (" – " + it["portion"]) if it.get("portion") else "",
+                                              _fmt((it["kcal"] or 0) * sc),
+                                              (" (" + src + ")") if src.startswith(("historia", "etykieta", "poprawka")) else ""))
     t = totals(e["items"] or [], sc)
     lines.append("Razem ~%s kcal · B %s · W %s · T %s g%s" % (_fmt(t["kcal"]), _fmt(t["protein_g"]), _fmt(t["carbs_g"]),
                                                             _fmt(t["fat_g"]), "" if abs(sc - 1) < 1e-6 else "  (×%.2f)" % sc))
+    if len(e["items"] or []) > 1 or weak:
+        lines.append("✔ pewne · ~ średnie · ⚠️ zgrubne. Poprawka: odpowiedz na tę wiadomość, np. „makaron ok. 600 g”.")
     return "\n".join(lines)
 
 
@@ -159,7 +168,7 @@ def receipt_kb(eid: int) -> dict:
 # ======================================================================= AI
 _PROMPT = """Szacujesz wartości odżywcze jedzenia/napojów, które użytkownik (dorosły mężczyzna w Polsce) zjadł.
 Zwracasz WYŁĄCZNIE JSON, bez komentarza:
-{"not_food": false, "ambiguous": false, "items": [{"name": "...", "portion": "...", "kcal": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0}], "question": null, "options": null}
+{"not_food": false, "ambiguous": false, "items": [{"name": "...", "portion": "...", "kcal": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0, "conf": "pewne|średnie|zgrubne", "src": "..."}], "question": null, "options": null}
 Zasady:
 - Pomiń słowa o czasie ("wczoraj", "w sobotę", "rano", daty) - opisują kiedy, nie co.
 - Każda pozycja: krótka polska nazwa, porcja słowami (np. "cała ~30 cm", "2 szt.", "0,5 l"), kcal i PEŁNE makra (liczby).
@@ -173,26 +182,25 @@ Zasady:
 - Sieciówki (McDonald's, KFC, Żabka, Starbucks) i produkty paczkowane -> wartości producenta, jeśli je znasz.
 - Zdjęcie: szacuj widoczną porcję; etykieta z tabelą wartości -> przepisz ją i przelicz na zjedzoną ilość.
 - Nie jedzenie i nie napój -> {"not_food": true}.
+- HISTORIA (jeśli podana) to wcześniejsze wpisy TEGO użytkownika. Gdy pozycja to ten sam produkt/danie -> użyj jego
+  wartości i wielkości porcji (przelicz, jeśli ilość inna); wtedy "src": "historia DD.MM", "conf": "pewne".
+- "conf": "pewne" = historia, etykieta ze zdjęcia albo dokładnie znana wartość producenta przy podanej ilości;
+  "średnie" = znany produkt, ale ilość lub wariant zgadywane; "zgrubne" = porcja i skład zgadywane (dania domowe, restauracje).
+  Nie zawyżaj pewności. "src": krótko skąd wartości (np. "historia 27.06", "etykieta", "wartości producenta", "szacunek").
 """
 
 
-def estimate(text: str | None, image: tuple[bytes, str] | None = None) -> dict:
-    """AI -> {'not_food'|'ambiguous', items|options, question}. Rzuca przy bledzie."""
+def _ai_json(system: str, content: list) -> dict:
+    """Anthropic -> obiekt JSON. Bez JSON-a jedna prosba o poprawke. Rzuca przy bledzie."""
     import httpx
     import qbot_config as cfg
     from qgpt_client import parse_json_text
-    content = []
-    if image:
-        content.append({"type": "image", "source": {"type": "base64", "media_type": image[1],
-                                                    "data": base64.b64encode(image[0]).decode()}})
-    content.append({"type": "text", "text": "Wiadomość użytkownika: " + (text or "(samo zdjęcie)")})
     msgs = [{"role": "user", "content": content}]
-    j = None
-    for attempt in range(2):
+    for _ in range(2):
         r = httpx.post("https://api.anthropic.com/v1/messages",
                        headers={"content-type": "application/json", "x-api-key": cfg.ANTHROPIC_API_KEY,
                                 "anthropic-version": "2023-06-01"},
-                       json={"model": cfg.ANTHROPIC_MODEL, "max_tokens": 4000, "temperature": 0, "system": _PROMPT,
+                       json={"model": cfg.ANTHROPIC_MODEL, "max_tokens": 4000, "temperature": 0, "system": system,
                              "messages": msgs},
                        timeout=90)
         r.raise_for_status()
@@ -203,12 +211,60 @@ def estimate(text: str | None, image: tuple[bytes, str] | None = None) -> dict:
         except ValueError:
             j = None
         if isinstance(j, dict):
-            break
+            return j
         msgs = msgs + [{"role": "assistant", "content": txt or "?"},
-                       {"role": "user", "content": "To nie jest JSON. Odpowiedz WYŁĄCZNIE JSON-em wg schematu, bez pytań: "
-                                                   "dla każdej pozycji przyjmij typową porcję."}]
-    if not isinstance(j, dict):
-        raise ValueError("AI: odpowiedz nie jest obiektem JSON")
+                       {"role": "user", "content": "To nie jest JSON. Odpowiedz WYŁĄCZNIE JSON-em wg schematu, bez pytań."}]
+    raise ValueError("AI: brak JSON w odpowiedzi")
+
+
+_STOP = {"porcja", "porcji", "kawalek", "kawalki", "kawalkow", "sztuk", "sztuki", "srednie", "srednich", "duza", "duzy",
+         "duze", "mala", "maly", "male", "jedna", "jeden", "okolo", "troche", "jakies", "biedronki", "biedronka", "lidla",
+         "lidl", "zabki", "zabka", "oraz", "potem", "rano", "wieczorem"}
+
+
+def _toks(t: str) -> set[str]:
+    return {w[:5] for w in norm_phrase(t).split() if len(w) >= 4 and not w.isdigit() and w not in _STOP}
+
+
+def history_refs(text: str, limit: int = 8) -> list[dict]:
+    """Wczesniejsze wpisy Michala podobne do tekstu (bez Brokula i szacunkow presetu) - punkt odniesienia dla AI."""
+    q = _toks(text or "")
+    if not q:
+        return []
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT DISTINCT ON (lower(i.food_name)) l.date, i.food_name, i.kcal, i.protein_g, i.carbs_g, i.fat_g "
+            "FROM qbot_v2.intake_items i JOIN qbot_v2.intake_logs l ON l.id=i.intake_log_id "
+            "WHERE COALESCE(l.source,'') <> 'brokul' AND COALESCE(l.source,'') NOT ILIKE '%%preset%%' "
+            "AND COALESCE(l.meal_type,'') <> 'quick' AND i.kcal IS NOT NULL AND i.kcal > 0 "
+            "AND i.food_name NOT LIKE 'Posiłek na mieście%%' AND i.food_name NOT IN ('Przekąska','Słodycze') "
+            "ORDER BY lower(i.food_name), l.date DESC").fetchall()
+    scored = []
+    for r in rows:
+        hit = len(q & _toks(r["food_name"]))
+        if hit:
+            scored.append((hit, r["date"], r))
+    scored.sort(key=lambda x: (-x[0], -x[1].toordinal()))
+    out = []
+    for hit, d, r in scored[:limit]:
+        out.append({"date": r["date"].strftime("%d.%m"), "name": r["food_name"], "kcal": r["kcal"],
+                    "protein_g": r["protein_g"], "carbs_g": r["carbs_g"], "fat_g": r["fat_g"]})
+    return out
+
+
+def estimate(text: str | None, image: tuple[bytes, str] | None = None, refs: list | None = None) -> dict:
+    """AI -> {'not_food'|'ambiguous', items|options, question}. Rzuca przy bledzie."""
+    content = []
+    if image:
+        content.append({"type": "image", "source": {"type": "base64", "media_type": image[1],
+                                                    "data": base64.b64encode(image[0]).decode()}})
+    msg = "Wiadomość użytkownika: " + (text or "(samo zdjęcie)")
+    if refs:
+        msg += "\n\nHISTORIA użytkownika (podobne wcześniejsze wpisy):\n" + "\n".join(
+            "- %s | %s | %s kcal, B %s, W %s, T %s" % (r["date"], r["name"], r["kcal"], r["protein_g"], r["carbs_g"], r["fat_g"])
+            for r in refs)
+    content.append({"type": "text", "text": msg})
+    j = _ai_json(_PROMPT, content)
     if j.get("not_food"):
         return {"not_food": True}
     if j.get("ambiguous") and j.get("options"):
@@ -223,6 +279,22 @@ def estimate(text: str | None, image: tuple[bytes, str] | None = None) -> dict:
     if not it:
         raise ValueError("AI: brak pelnych wartosci (kcal + makra)")
     return {"items": it}
+
+
+_FIX_PROMPT = """Poprawiasz wpis jedzenia użytkownika. Dostajesz pozycje (JSON) i poprawkę słowami.
+Zwróć WYŁĄCZNIE JSON: {"items": [...pełna lista pozycji w tym samym formacie...]}.
+Zmieniaj tylko pozycje, których dotyczy poprawka (ilość, wariant, wartości z etykiety; można dodać lub usunąć pozycję).
+Poprawione pozycje: przelicz kcal i PEŁNE makra, "conf": "pewne" jeśli użytkownik podał konkretne liczby/ilość, "src": "poprawka".
+Pozostałe pozycje przepisz bez zmian."""
+
+
+def correct_items(items: list[dict], fix: str) -> list[dict]:
+    j = _ai_json(_FIX_PROMPT, [{"type": "text", "text": "POZYCJE:\n%s\n\nPOPRAWKA: %s" % (
+        json.dumps(items, ensure_ascii=False), fix)}])
+    it = clean_items(j.get("items"))
+    if not it:
+        raise ValueError("AI: poprawka bez pelnych wartosci")
+    return it
 
 
 # ======================================================================= Telegram
@@ -336,7 +408,7 @@ def process_entry(eid: int, reply_to: int | None = None) -> str:
                     res = {"items": cat["items"], "_from_catalog": True}
             if res is None:
                 img = _download_photo(e["photo_file_id"]) if e["photo_file_id"] else None
-                res = estimate(e["raw_text"], img)
+                res = estimate(e["raw_text"], img, history_refs(e["raw_text"] or ""))
         except Exception as ex:
             c.execute("UPDATE qbot_v2.food_entries SET status='failed', error=%s, updated_at=now() WHERE id=%s",
                       (("%s: %s" % (type(ex).__name__, ex))[:500], eid))
@@ -398,8 +470,42 @@ def retry_pending() -> int:
 
 
 # ---------------------------------------------------------------- wejscie z telegram_reply_processor
+def correct_entry(eid: int, fix: str, reply_to: int | None = None) -> bool:
+    """Poprawka slowami do istniejacego wpisu (np. 'chrupki 60 g'). Skala wlicza sie w pozycje i wraca do 1."""
+    with _conn() as c:
+        e = _get(c, eid)
+        if not e or e["status"] != "logged":
+            return False
+        sc = e["scale"] or 1
+        base = [dict(i, kcal=round(i["kcal"] * sc, 1), protein_g=round(i["protein_g"] * sc, 1),
+                     carbs_g=round(i["carbs_g"] * sc, 1), fat_g=round(i["fat_g"] * sc, 1)) for i in e["items"]]
+        try:
+            items = correct_items(base, fix)
+        except Exception as ex:
+            _log("#%d poprawka blad: %s" % (eid, ex))
+            tg_send("⚠️ #%d: nie udało się zastosować poprawki („%s”). Wpis bez zmian." % (eid, fix[:60]), reply_to=reply_to)
+            return False
+        c.execute("UPDATE qbot_v2.food_entries SET items=%s, scale=1, updated_at=now() WHERE id=%s",
+                  (json.dumps(items, ensure_ascii=False), eid))
+        _write_intake(c, _get(c, eid))
+        c.commit()
+        e = _get(c, eid)
+    if e["reply_message_id"]:
+        tg_edit(e["reply_message_id"], receipt_text(e) + "\n✏️ poprawione: " + fix[:80], receipt_kb(eid))
+    tg_send("✏️ #%d poprawione · teraz ~%s kcal" % (eid, _fmt(e["kcal"])), reply_to=reply_to)
+    refresh_day(e["day"])
+    return True
+
+
 def handle_text(text: str, msg: dict) -> None:
     now = datetime.now(TZ)
+    rt = (msg.get("reply_to_message") or {}).get("message_id")
+    if rt:
+        with _conn() as c:
+            r = c.execute("SELECT id FROM qbot_v2.food_entries WHERE reply_message_id=%s AND status='logged'", (rt,)).fetchone()
+        if r:
+            correct_entry(r["id"], text.strip()[:500], reply_to=msg.get("message_id"))
+            return
     day = parse_day(text, now)
     eid = create_entry("text", day, raw_text=text.strip()[:1000], tg_message_id=msg.get("message_id"))
     if eid is None:

@@ -30,6 +30,14 @@ i cel kcal dnia z dokładką pod trening, pasy 💪/📉, piątkowy plan weekend
 - Potwierdzenie `✅ #id · DD.MM (dz)` + [➖ mniej ×0,25] [✔ OK] [➕ więcej] [← dzień wcześniej] [🗑 usuń].
   Wybór wariantu i OK uczą katalog. Błąd AI → wpis `failed`, ponowienie z ticka (max 4 próby), widoczny o 20:00.
 - Zapis: `intake_logs` (meal_type='poza_dieta', source='telegram', 'estimated') + `intake_items` (×skala).
+- **Historia Michała jako punkt odniesienia** (od 12.10.2026): przed szacowaniem QBot szuka podobnych wcześniejszych
+  wpisów w `intake_items` (bez Brokuła i szacunków presetu; dopasowanie po początkach słów) i podaje je AI. Ten sam
+  produkt → wartości i porcja z historii (`src` „historia DD.MM”). Powód: AI zgadywało opakowania (chrupki 40 g vs
+  realne 60 g, McCrispy 630 vs 880 kcal).
+- **Pewność każdej pozycji** (`conf`): ✔ pewne (historia, etykieta, znana wartość przy podanej ilości) · ~ średnie ·
+  ⚠️ zgrubne (porcja i skład zgadywane). Widoczna w potwierdzeniu.
+- **Poprawka pojedynczej pozycji**: odpowiedź (reply) na potwierdzenie, np. „makaron ok. 600 g” → AI zmienia tylko tę
+  pozycję (`src` „poprawka”), skala wlicza się w pozycje, intake przepisany, potwierdzenie i wiadomość dnia odświeżone.
 
 ## Wiadomość dnia (20:00, także dni bez diety)
 Brokuł (✅ / ❌ / 📦 później, cofnij, „wszystkie zjedzone”, „wszystkie do lodówki”), lodówka (zjadłem dziś / 🗑),
