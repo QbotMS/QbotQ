@@ -159,6 +159,8 @@ def text_review(ws: date, sessions: list[dict], extra_h: float, tone: int, weigh
                    "Tydzień przegrany. Ustal jeden trening, którego NIE odpuścisz, i zrób go."][tone]
     try:  # 2026-10-12: monitor rozbieznosci waga vs zalogowane jedzenie (qbot_food_streaks); bledy pomijane
         import qbot_food_streaks as _FS
+        import qbot_food_plan as _FP
+        out.append(_FP.week_food_line(ws))
         out.append(_FS.discrepancy_line())
     except Exception:
         pass

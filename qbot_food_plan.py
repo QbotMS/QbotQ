@@ -169,9 +169,13 @@ def week_deficits(ws: date, actuals: bool) -> dict:
     out, flex, fixed = {}, {}, 0.0
     with _conn() as c:
         m = model(c)
-        weekly = -target_balance(c) * 7
+        ill = {ws + timedelta(days=i) for i in range(7) if is_ill(c, ws + timedelta(days=i))}
+        weekly = -target_balance(c) * (7 - len(ill))   # dni choroby: bez deficytu i bez przerzucania go na inne dni
         for i in range(7):
             d = ws + timedelta(days=i)
+            if d in ill:
+                out[d] = 0
+                continue
             mins, kc = _train_kcal(c, d, m)
             if actuals and d < today:
                 cl = c.execute("SELECT closed_at FROM qbot_v2.food_day WHERE day=%s", (d,)).fetchone()
@@ -194,6 +198,28 @@ def week_deficits(ws: date, actuals: bool) -> dict:
         out[d] = int(round(max(TRAIN_DEF_MIN, min(TRAIN_DEF_MAX, rem * w / tot)))) if tot else TRAIN_DEF_MIN
     _WEEK[key] = (time.time(), out)
     return out
+
+
+def is_ill(c, day: date) -> bool:
+    """Choroba w Kalendarzu (kind='illness') obejmujaca dzien."""
+    return bool(c.execute("SELECT 1 FROM qbot_v2.calendar_entry WHERE kind='illness' AND %s BETWEEN day AND COALESCE(end_day, day) LIMIT 1",
+                          (day,)).fetchone())
+
+
+UNDER_DAYS, UNDER_DEF = 3, 900
+
+
+def under_eating(c, day: date) -> bool:
+    """Bezpiecznik: 3 zamkniete dni z rzedu przed 'day' z deficytem > 900 kcal (spalone realne - zjedzone)."""
+    for i in range(1, UNDER_DAYS + 1):
+        d = day - timedelta(days=i)
+        cl = c.execute("SELECT closed_at FROM qbot_v2.food_day WHERE day=%s", (d,)).fetchone()
+        ex = expend(c, d)
+        k = c.execute("SELECT sum(i.kcal) k FROM qbot_v2.intake_logs l JOIN qbot_v2.intake_items i ON i.intake_log_id=l.id WHERE l.date=%s",
+                      (d,)).fetchone()["k"]
+        if not (cl and cl["closed_at"] and ex["src"] == "realne" and k and ex["kcal"] - float(k) > UNDER_DEF):
+            return False
+    return True
 
 
 def day_deficit(day: date) -> int:
@@ -440,6 +466,27 @@ def food_lines(day: date) -> list[str]:
     return L[:4]
 
 
+def week_food_line(ws: date) -> str:
+    """Jedna linia jedzenia tygodnia pn-nd do niedzielnego rozliczenia Trenera."""
+    import qbot_food_streaks as S
+    days = [ws + timedelta(days=i) for i in range(7)]
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT f.day, (SELECT sum(i.kcal) FROM qbot_v2.intake_logs l JOIN qbot_v2.intake_items i ON i.intake_log_id=l.id WHERE l.date=f.day) k, "
+            "(SELECT sum(i.protein_g) FROM qbot_v2.intake_logs l JOIN qbot_v2.intake_items i ON i.intake_log_id=l.id WHERE l.date=f.day) p "
+            "FROM qbot_v2.food_day f WHERE f.closed_at IS NOT NULL AND f.day BETWEEN %s AND %s", (days[0], days[-1])).fetchall()
+        bal = [r["k"] and (float(r["k"]) - expend(c, r["day"])["kcal"]) for r in rows]
+    cl = [r for r in rows if r["k"]]
+    if not cl:
+        return "🍽 Jedzenie tygodnia: brak zamkniętych dni"
+    ak = sum(float(r["k"]) for r in cl) / len(cl)
+    ap = sum(float(r["p"] or 0) for r in cl) / len(cl)
+    ab = sum(b for b in bal if b is not None) / max(1, len([b for b in bal if b is not None]))
+    n = S.streaks()["food"]["n"]
+    return "🍽 Jedzenie tygodnia: zamknięte %d/7 · śr. %s kcal · bilans %+d/dz · białko %s g/dz (cel %d) · 🔥 passa %d" % (
+        len(cl), _fmt(ak), round(ab), _fmt(ap), PROTEIN_TARGET, n)
+
+
 def weekend_lines(friday: date) -> list[str]:
     out = []
     with _conn() as c:
@@ -466,6 +513,14 @@ def morning_digest(day: date, train_lines: list[str] | None = None) -> str | Non
             wl = S.weigh_line(c, day)
         if wl:
             L.append(wl)
+    except Exception:
+        pass
+    try:
+        with _conn() as c:
+            if is_ill(c, day):
+                L.append("🤒 Choroba – dziś bez deficytu: jedz tyle, ile spalasz")
+            if under_eating(c, day):
+                L.append("⚠️ 3 dni z rzędu za mało jedzenia (deficyt >900) – dziś zjedz cały cel")
     except Exception:
         pass
     try:
