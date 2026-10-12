@@ -143,26 +143,38 @@ def header_line(s: dict | None = None) -> str:
 
 # ======================================================================= 💪 Trening (dzienny)
 def train_results(now: datetime) -> list[tuple[date, str]]:
-    """Dzien zgodny z planem Trenera: brak sesji 'plan' (wykonane, zmienione przyciskiem albo odpoczynek) = ok.
-    Choroba w Kalendarzu = neutralnie. Sesja 'plan' po terminie (12:00 nastepnego dnia) = niezaliczony."""
+    """Dzien zgodny z planem Trenera (od PIERWSZEGO dnia w Trenerze, nie od startu jedzenia - 2026-10-12):
+    - brak sesji 'plan' (wykonane, zmienione przyciskiem, odpoczynek) = ok,
+    - sesja 'plan' o tej samej nazwie co wykonana tego dnia = duplikat, liczy sie jak wykonana,
+    - choroba albo delegacja/urlop/wyprawa w Kalendarzu = neutralnie,
+    - sesja 'plan' po terminie (12:00 nastepnego dnia) = niezaliczony; dzis i do terminu = w toku."""
     today = now.date()
     out = []
     with _conn() as c:
-        rows = c.execute("SELECT day, status FROM qbot_v2.trainer_session WHERE day BETWEEN %s AND %s AND username NOT LIKE '\\_%%'",
-                         (START, today)).fetchall()
-        ill = c.execute("SELECT day, COALESCE(end_day, day) e FROM qbot_v2.calendar_entry WHERE kind='illness' AND COALESCE(end_day, day) >= %s",
-                        (START,)).fetchall()
+        rows = c.execute("SELECT day, status, name FROM qbot_v2.trainer_session WHERE day <= %s AND username NOT LIKE '\\_%%'",
+                         (today,)).fetchall()
+        if not rows:
+            return out
+        t0 = min(r["day"] for r in rows)
+        cal = c.execute("SELECT day, COALESCE(end_day, day) e FROM qbot_v2.calendar_entry WHERE COALESCE(end_day, day) >= %s AND "
+                        "(kind='illness' OR (kind='event' AND (event_type IN ('delegacja','urlop') OR title ~* 'wyprawa')))",
+                        (t0,)).fetchall()
     by = {}
     for r in rows:
-        by.setdefault(r["day"], []).append(r["status"])
-    d = START
+        by.setdefault(r["day"], []).append(r)
+    d = t0
     while d <= today:
-        if any(i["day"] <= d <= i["e"] for i in ill):
+        ses = by.get(d, [])
+        done = {x["name"] for x in ses if x["status"] == "done"}
+        open_ = [x for x in ses if x["status"] == "plan" and x["name"] not in done]
+        if any(i["day"] <= d <= i["e"] for i in cal) and open_:
             out.append((d, "neutral"))
-        elif "plan" in by.get(d, []):
-            out.append((d, "fail" if _past(d, now) else "neutral"))
+        elif open_:
+            out.append((d, "fail" if now > deadline(d) else "neutral"))
+        elif d < today or done:
+            out.append((d, "ok"))
         else:
-            out.append((d, "ok" if (d < today or _past(d, now) or "done" in by.get(d, [])) else "neutral"))
+            out.append((d, "neutral"))
         d += timedelta(days=1)
     return out
 
@@ -224,7 +236,7 @@ def check_milestones(s: dict | None = None) -> None:
     st_ = B.state()
     for kind, emo, txt in (("food", "🔥", "dni z rzędu z uczciwie zamkniętym jedzeniem"),
                            ("window", "🕗", "dni z rzędu w oknie 10–20"),
-                           ("train", "💪", "dni z rzędu zgodnie z planem treningowym"),
+                           ("train", "💪", "dni z rzędu zgodnie z planem treningowym (passa 💪)"),
                            ("reduce", "📉", "tygodni z rzędu w celu redukcji")):
         x = s[kind]
         if x["n"] in MILESTONES and x["since"]:

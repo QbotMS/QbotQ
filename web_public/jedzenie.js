@@ -38,7 +38,7 @@
       var s = x.streaks, fr = (s.food.freezes || 0) + (s.window.freezes || 0) + (s.train.freezes || 0);
       $("hs").innerHTML = [["🔥", "Jedzenie", s.food.n, "dni"], ["🕗", "Okno", s.window.n, "dni"], ["💪", "Trening", s.train.n, "dni"], ["📉", "Redukcja", s.reduce.n, "tyg."]]
         .map(function (p) { return "<span class='pill' title='" + p[1] + "'>" + p[0] + " <b>" + p[2] + "</b> " + p[3] + "</span>"; }).join("") +
-        (fr ? "<span class='pill' title='Mrożenia ratujące pas'>❄️ <b>" + fr + "</b></span>" : "");
+        (fr ? "<span class='pill' title='Mrożenia ratujące passę'>❄️ <b>" + fr + "</b></span>" : "");
       if (S.tab === "pasy") renderPasy();
     }).catch(function () {});
   }
@@ -152,7 +152,7 @@
       (d.brokul_kcal ? "<span>Dokładka do Brokuła</span><span>" + (d.extra >= 150 ? n0(d.extra) + " kcal" : "nie trzeba") + "</span>" : "") + "</div>" +
       (d.sessions.length ? "<div class='note'>🚲 " + d.sessions.map(function (s) { return esc(s.name) + " " + s.dur_min + "′" + (s.start_time ? " o " + s.start_time.slice(0, 5) : ""); }).join("; ") + "</div>" : "") +
       (!fut && !d.closed ? "<div class='note'>Do zamknięcia: " + [d.pending ? "potwierdź posiłki Brokuła" : "", (!d.entries.length && !d.none) ? (d.has_diet ? "dopisz jedzenie poza dietą albo kliknij „Nic poza dietą”" : "dopisz, co zjadłeś") : ""].filter(Boolean).join("; ") +
-        ". Termin pasa: " + dm(d.deadline.slice(0, 10)) + " 12:00.</div>" : "") + "</div>");
+        ". Termin passy: " + dm(d.deadline.slice(0, 10)) + " 12:00.</div>" : "") + "</div>");
     if (!fut) {
       var w = d.window, wtxt = { ok: "✔ dotrzymane", broken: "✖ złamane", exempt: "zwolnione", pending: "do potwierdzenia" }[w.state] || w.state;
       R.push("<div class='card'><div class='ttl'><h2>🕗 Okno 10–20</h2><span class='state " + (w.state === "ok" ? "ok" : "") + "'>" + wtxt + "</span></div>" +
@@ -193,7 +193,7 @@
   }
   function uniq(a) { return a.filter(function (x, i) { return x && a.indexOf(x) === i; }); }
 
-  /* ------------------------------------------------------------ PASY */
+  /* ------------------------------------------------------------ PASSA (zakladka 'pasy') */
   function loadPasy() { return loadHeader().then(renderPasy); }
   function calGrid(days) {
     if (!days.length) return "<p class='empty'>Jeszcze brak dni.</p>";
@@ -218,7 +218,7 @@
           : calGrid(v.days)) + "</div>";
     }).join("") + "</div>";
     html += "<div class='legend'><span><i style='background:var(--good)'></i>zaliczony</span><span><i style='background:var(--bad)'></i>niezaliczony</span><span><i style='background:var(--blue)'></i>uratowany mrożeniem</span><span><i style='background:var(--line2)'></i>neutralny / w toku</span></div>";
-    html += "<div class='card' style='margin-top:12px'><p class='note' style='margin:0'>Zasady: dzień zamykasz do 12:00 następnego dnia. Za każde 7 dni pasa dostajesz 1 mrożenie (maks. 2) – ratuje pas przy jednym gorszym dniu. Kamienie milowe: " + x.milestones.join(", ") + ".</p></div>";
+    html += "<div class='card' style='margin-top:12px'><p class='note' style='margin:0'>Zasady passy: dzień zamykasz do 12:00 następnego dnia. 💪 Trening liczy się od pierwszego dnia w Trenerze, pozostałe od 10.10.2026. Za każde 7 dni pasa dostajesz 1 mrożenie (maks. 2) – ratuje passę przy jednym gorszym dniu. Kamienie milowe: " + x.milestones.join(", ") + ".</p></div>";
     $("pasy").innerHTML = html;
   }
 

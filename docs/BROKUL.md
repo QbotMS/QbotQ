@@ -83,8 +83,9 @@ Wiadomość aktualizuje się po każdej zmianie (także po wpisie z Telegrama).
   kandydaci (na 100 g) trafiają do AI jako podpowiedź – wyniki bywają nietrafione, AI używa tylko przy zgodnej marce i nazwie.
 
 ## Pasy 💪 Trening i 📉 Redukcja (qbot_food_streaks.py)
-- 💪 dzienny: brak sesji `plan` po terminie (wykonane, zmienione przyciskiem REST/brak czasu, odpoczynek) = zaliczony;
-  choroba w Kalendarzu = neutralnie; sesja `plan` po 12:00 następnego dnia = niezaliczony.
+- 💪 dzienny, od PIERWSZEGO dnia w Trenerze (12.10: 23.09.2026): brak sesji `plan` po terminie (wykonane, zmienione przyciskiem REST/brak czasu, odpoczynek) = zaliczony;
+  choroba / delegacja / urlop / wyprawa = neutralnie; zdublowana sesja `plan` o nazwie wykonanej = wykonana;
+  sesja `plan` po 12:00 następnego dnia = niezaliczony. Nazwa w UI: „Passa” (12.10.2026, wcześniej „Pasy”).
 - 📉 tygodniowy (pn–nd, ocena po pn 12:00): ≥2 realne ważenia, ≥5 zamkniętych dni, średni bilans w widełkach
   [cel −300, cel +250] (za duży deficyt też nie jest sukcesem); ≥4 dni wyjazdu = neutralnie.
 - Nagłówek wiadomości dnia: `🔥 · 🕗 · 💪 · 📉 tyg. · ❄️`.

@@ -267,7 +267,7 @@ def tick(now: datetime) -> list[str]:
                 import qbot_food_streaks as S
                 n = S.streaks(now)["food"]["n"]
                 F.tg_send("⏳ Dzień %s jeszcze otwarty%s. Zamknij go w wiadomości dnia (albo jutro do 12:00)."
-                          % (now.strftime("%d.%m"), (" – 🔥 pas %d dni" % n) if n else ""))
+                          % (now.strftime("%d.%m"), (" – 🔥 passa %d dni" % n) if n else ""))
                 log.append("przypomnienie 21:30")
             B._state_update(**{key: time.strftime("%Y-%m-%d %H:%M:%S")})
     return log
