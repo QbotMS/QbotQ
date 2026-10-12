@@ -12970,6 +12970,8 @@ from qbot_trener_api import build_router as _trener_build_router
 app.include_router(_trener_build_router(_db_conn, _current_user))
 from qbot_food_api import build_router as _food_build_router   # 2026-10-12: strona Jedzenie /api/jedzenie/* (docs/BROKUL.md)
 app.include_router(_food_build_router(_current_user, _owner_user))
+from qbot_trend_ai import build_router as _trend_ai_build_router   # 2026-10-12: Forma -> Trendy -> Analiza AI (panel boczny, bez zapisu)
+app.include_router(_trend_ai_build_router(_current_user, _owner_user))
 from qbot_garage_audit_api import build_router as _gaudit_build_router
 app.include_router(_gaudit_build_router(_current_user))
 from qbot_strava import build_router as _strava_build_router   # 2026-09-28: Strava OAuth + zdjecia z jazd (START)

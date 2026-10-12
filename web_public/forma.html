@@ -108,6 +108,17 @@ table.qs-table td.num,table.qs-table th.num{text-align:right;font-variant-numeri
 .trrs{margin-bottom:10px}.trgrip{position:absolute;left:0;right:0;bottom:-11px;height:14px;cursor:ns-resize;z-index:6;touch-action:none;display:flex;align-items:center;justify-content:center}
 .trgrip::after{content:"";width:46px;height:4px;border-radius:2px;background:var(--line2,var(--line))}.trgrip:hover::after{background:var(--accent)}
 body.tr-resizing{cursor:ns-resize;user-select:none}
+/* 2026-10-12: Trendy - panel boczny z analiza AI (bez zapisu) */
+.traip{position:fixed;top:0;right:0;bottom:0;width:min(440px,100%);background:var(--card);border-left:1px solid var(--line2,var(--line));box-shadow:-10px 0 30px rgba(0,0,0,.35);z-index:120;display:flex;flex-direction:column;transform:translateX(102%);transition:transform .2s ease}
+.traip.open{transform:none}
+.traip .h{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line)}
+.traip .h b{font-size:16px}.traip .b{padding:12px 16px;overflow-y:auto;font-size:14px;line-height:1.5}
+.traip .b h4{margin:12px 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+.traip .b ul{margin:0;padding-left:18px}.traip .b li{margin:4px 0}
+.traip .sel{font-size:12.5px;color:var(--ink2);background:var(--well);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.traip .corr{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px;font-variant-numeric:tabular-nums}.traip .corr td{padding:3px 4px;border-bottom:1px solid var(--line)}
+.traip button.x{border:1px solid var(--line);background:var(--well);color:var(--ink);border-radius:8px;padding:4px 10px;cursor:pointer;font:inherit}
+@media(max-width:700px){.traip{top:auto;height:80vh;width:100%;border-left:none;border-top:1px solid var(--line);transform:translateY(102%)}.traip.open{transform:none}}
 /* 2026-10-12: Trendy - wskazniki okresu w pasku zakresu, z trendem vs poprzedni okres */
 .trkpi{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .trkpi .k{border:1px solid var(--line);background:var(--well);border-radius:10px;padding:5px 11px;display:flex;align-items:baseline;gap:7px;font-size:13px;line-height:1.2;cursor:default}
@@ -193,6 +204,7 @@ body.tr-resizing{cursor:ns-resize;user-select:none}
   <div id="trendy-kpi" class="trkpi"></div>
   </div>
   <span style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px">przeciągnij po wykresie = powiększ · dwuklik = cała skala
+    <button type="button" id="tr-aibtn" style="border:1px solid var(--accent);background:var(--well);color:var(--accent-ink,var(--accent));border-radius:8px;padding:4px 12px;cursor:pointer;font:inherit;font-size:12.5px;font-weight:600">🤖 Analiza AI</button>
     <button type="button" id="tr-zoomreset" hidden style="border:1px solid var(--line);background:var(--well);color:var(--ink);border-radius:8px;padding:4px 10px;cursor:pointer;font:inherit;font-size:12.5px">↺ cała skala</button></span>
 </div>
 <div class="card" style="padding:14px 10px 8px">

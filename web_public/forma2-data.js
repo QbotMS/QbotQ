@@ -607,7 +607,7 @@ function renderTrendy(){
   var illIdx={};(cal.entries||[]).forEach(function(e){if(e.kind!=="illness")return;var a0=e.day,b0=e.end_day||e.day;
     for(var j=0;j<N;j++){if(SN[j].day>=a0&&SN[j].day<=b0)illIdx[j]=1;}});
   var illR=[];Object.keys(illIdx).map(Number).sort(function(x,y){return x-y;}).forEach(function(i){var L=illR[illR.length-1];if(L&&i===L.b+1)L.b=i;else illR.push({a:i,b:i});});
-  illR.forEach(function(r){r.label="infekcja "+QD.dm(SN[r.a].day)+"–"+QD.dm(SN[r.b].day);});
+  illR.forEach(function(r){r.label="infekcja "+QD.dm(SN[r.a].day)+"–"+QD.dm(SN[r.b].day);});window._trIll=illR.map(function(r){return {from:SN[r.a].day,to:SN[r.b].day};});window._trSN=SN;
   var vertPlugin={id:"illBands",beforeDatasetsDraw:function(chart){var ctx=chart.ctx,xA=chart.scales.x,yA=chart.scales.y,w=(xA.right-xA.left)/Math.max(1,N);
       illR.forEach(function(r){var x0=xA.getPixelForValue(r.a)-w/2,x1=xA.getPixelForValue(r.b)+w/2;ctx.save();
         ctx.fillStyle="rgba(229,83,75,0.22)";ctx.fillRect(x0,yA.top,x1-x0,yA.bottom-yA.top);
@@ -980,4 +980,50 @@ load().catch(function(e){console.error("forma2:",e);});
     });
   }
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",grips);else grips();
+})();
+
+/* 2026-10-12: TRENDY - ANALIZA AI zaznaczonych (widocznych) serii w zaznaczonym okresie (zakres 30/90/rok + powiekszenie).
+   Korelacje Pearsona (opoznienie 0-3 dni) liczy przegladarka; AI (/api/trendy/ai) tylko interpretuje. Wynik NIE jest zapisywany. */
+(function(){
+  function charts(){return [["forma",window._trendyChart],["moc",window._pwrChart],["wellness",window._wellChart]].filter(function(x){return x[1];});}
+  /* usuniecie trendu liniowego (wzgledem dnia) - inaczej dwie serie, ktore po prostu spadaja w okresie, daja falszywe r~1 */
+  function detr(v){var pts=[];v.forEach(function(y,i){if(y!=null&&isFinite(y))pts.push([i,+y]);});if(pts.length<3)return v;var n=pts.length,mx=0,my=0;pts.forEach(function(p){mx+=p[0];my+=p[1];});mx/=n;my/=n;
+    var sxy=0,sxx=0;pts.forEach(function(p){sxy+=(p[0]-mx)*(p[1]-my);sxx+=(p[0]-mx)*(p[0]-mx);});var k=sxx?sxy/sxx:0;return v.map(function(y,i){return y==null||!isFinite(y)?null:y-(my+k*(i-mx));});}
+  function pearson(a,b,lag){var xs=[],ys=[];for(var i=0;i<a.length;i++){var j2=i+lag;if(j2>=b.length)break;var x=a[i],y=b[j2];if(x!=null&&y!=null&&isFinite(x)&&isFinite(y)){xs.push(+x);ys.push(+y);}}
+    var n=xs.length;if(n<8)return null;var mx=xs.reduce(function(s,v){return s+v;},0)/n,my=ys.reduce(function(s,v){return s+v;},0)/n,sxy=0,sx=0,sy=0;
+    for(var k=0;k<n;k++){var dx=xs[k]-mx,dy=ys[k]-my;sxy+=dx*dy;sx+=dx*dx;sy+=dy*dy;}if(!sx||!sy)return null;return {r:sxy/Math.sqrt(sx*sy),n:n};}
+  function collect(){
+    var SN=window._trSN||[];if(!SN.length)return null;var z=window._trZoom,a0=z?z.min:0,b0=z?z.max:SN.length-1;
+    var days=SN.slice(a0,b0+1).map(function(s){return String(s.day).slice(0,10);}),ser=[],seen={};
+    charts().forEach(function(x){var ch=x[1];ch.data.datasets.forEach(function(ds,di){if(!ch.isDatasetVisible(di))return;var nm=(ds.label||"").trim();if(!nm||seen[nm])return;
+      var v=(ds.data||[]).slice(a0,b0+1).map(function(q){return q==null||!isFinite(q)?null:Math.round(q*100)/100;});if(!v.some(function(q){return q!=null;}))return;
+      seen[nm]=1;ser.push({name:nm,chart:x[0],values:v});});});
+    var rd=ser.filter(function(s){return s.name==="jazdy";})[0],rides=[];if(rd)rd.values.forEach(function(v,i){if(v!=null)rides.push(days[i]);});
+    ser=ser.filter(function(s){return s.name!=="jazdy";});ser.forEach(function(s){s.dt=detr(s.values);});
+    var corr=[];for(var i=0;i<ser.length;i++)for(var k=i+1;k<ser.length;k++){var best=null;for(var lag=-3;lag<=3;lag++){var p=lag>=0?pearson(ser[i].dt,ser[k].dt,lag):pearson(ser[k].dt,ser[i].dt,-lag);
+      if(p&&(!best||Math.abs(p.r)>Math.abs(best.r)+0.05||(lag===0&&best&&Math.abs(p.r)>=Math.abs(best.r)-0.05&&best.lag!==0)))best={r:p.r,n:p.n,lag:lag};}
+      if(best)corr.push({a:ser[i].name,b:ser[k].name,r:Math.round(best.r*100)/100,lag:best.lag,n:best.n});}
+    corr.sort(function(p,q){return Math.abs(q.r)-Math.abs(p.r);});
+    var ill=(window._trIll||[]).filter(function(r){return r.to>=days[0]&&r.from<=days[days.length-1];});
+    return {from:days[0],to:days[days.length-1],days:days.length,dates:days,series:ser.map(function(s){return {name:s.name,chart:s.chart,values:s.values};}),corr:corr.slice(0,30),corr_note:"korelacje Pearsona po usunieciu trendu liniowego (zwiazek dzien do dnia, nie wspolny trend)",ill:ill,rides:rides};
+  }
+  function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+  function panel(){var p=document.getElementById("traip");if(p)return p;p=document.createElement("aside");p.id="traip";p.className="traip";p.setAttribute("aria-label","Analiza AI");
+    p.innerHTML='<div class="h"><b>🤖 Analiza AI</b><button class="x" type="button" aria-label="Zamknij">✕</button></div><div class="b" id="traib"></div>';
+    document.body.appendChild(p);p.querySelector(".x").onclick=function(){p.classList.remove("open");};
+    document.addEventListener("keydown",function(e){if(e.key==="Escape")p.classList.remove("open");});return p;}
+  function rcol(r){var a=Math.abs(r);return a>=0.5?"var(--good)":a>=0.3?"var(--accent-ink,var(--accent))":"var(--muted)";}
+  function run(){
+    var c=collect(),p=panel(),b=document.getElementById("traib");p.classList.add("open");
+    if(!c||!c.series.length){b.innerHTML='<p>Włącz na wykresach serie, które chcesz porównać (pigułki), i spróbuj ponownie.</p>';return;}
+    var sel='<div class="sel"><b>'+QD.dm(c.from)+'.'+c.from.slice(0,4)+' – '+QD.dm(c.to)+'</b> · '+c.days+' dni'+(window._trZoom?' (powiększenie)':'')+'<br>'+c.series.map(function(s){return esc(s.name);}).join(' · ')+(c.rides.length?' · jazdy ('+c.rides.length+')':'')+'</div>';
+    var ct=c.corr.length?'<h4>Korelacje (policzone, bez wspólnego trendu)</h4><table class="corr">'+c.corr.slice(0,8).map(function(q){return '<tr><td>'+esc(q.a)+' ↔ '+esc(q.b)+(q.lag?' <span style="color:var(--muted)">('+(q.lag>0?'+':'')+q.lag+' d)</span>':'')+'</td><td style="text-align:right;color:'+rcol(q.r)+';font-weight:700">'+(q.r>0?'+':'')+String(q.r).replace(".",",")+'</td><td style="text-align:right;color:var(--muted)">n='+q.n+'</td></tr>';}).join('')+'</table>':'';
+    b.innerHTML=sel+ct+'<p style="color:var(--muted);margin-top:12px">AI analizuje… (kilka sekund)</p>';
+    fetch("/api/trendy/ai",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(c)}).then(function(r){return r.json().then(function(x){if(!r.ok)throw new Error(x.detail||("HTTP "+r.status));return x;});})
+      .then(function(x){var L=[["zaleznosci","Zależności"],["trendy","Trendy"],["wnioski","Wnioski"],["uwagi","Ograniczenia danych"]];
+        b.innerHTML=sel+(x.podsumowanie?'<p style="margin:12px 0 4px;font-size:15px">'+esc(x.podsumowanie)+'</p>':'')+L.filter(function(k){return (x[k[0]]||[]).length;}).map(function(k){return '<h4>'+k[1]+'</h4><ul>'+x[k[0]].map(function(t){return '<li>'+esc(t)+'</li>';}).join('')+'</ul>';}).join('')+ct+
+          '<p style="color:var(--muted);font-size:12px;margin-top:12px">Wynik nie jest zapisywany. Zmień serie lub okres i kliknij „Analiza AI” ponownie. Korelacja ≠ przyczyna.</p>';})
+      .catch(function(e){b.innerHTML=sel+ct+'<p style="color:var(--bad);margin-top:12px">'+esc(e.message)+'</p>';});
+  }
+  document.addEventListener("click",function(ev){if(ev.target&&ev.target.id==="tr-aibtn")run();});
 })();
