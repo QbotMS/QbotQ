@@ -310,24 +310,26 @@
   function bchart() {
     var x = B.data, ch = x.goal && x.goal.chart, dm0 = domain(), t0 = dm0[0], t1 = dm0[1];
     var anyK0 = B.on.fat || B.on.muscle || B.on.bone, anyP0 = B.on.fatp || B.on.water;
-    var W = 980, H = 340, pl = 46, pr = 64, pt = 18, pb = 24;
+    var W = 980, H = 440, pl = 46, pr = 64, pt = 18, pb = 24;
+    /* dwie sekcje: gora = linie (waga, plan, prognoza, sklad), dol = slupki kcal - nic sie nie naklada */
+    var topB = pt + (H - pt - pb) * 0.6, botA = topB + 20, botB = H - pb;
     function X(t) { return pl + (t - t0) / (t1 - t0) * (W - pl - pr); }
     var vis = function (iso) { var t = T(iso); return t >= t0 && t <= t1; };
     var ser = x.series.filter(function (d) { return vis(d.day); });
     var body = (B.body.points || []).filter(function (p) { return vis(p.date); });
     var kmax = 1000; ser.forEach(function (d) { if (B.on.burn && d.expend) kmax = Math.max(kmax, d.expend); if (B.on.intake && d.intake != null) kmax = Math.max(kmax, d.intake); if (B.on.target && d.target) kmax = Math.max(kmax, d.target); });
-    kmax *= 2.0;   /* slupki tylko w dolnej polowie - nie zaslaniaja linii */
-    function YK(v) { return pt + (1 - v / kmax) * (H - pt - pb); }
+    kmax *= 1.05;
+    function YK(v) { return botB - v / kmax * (botB - botA); }
     var wv = [];
     if (B.on.weight) body.forEach(function (p) { wv.push(p.weight); });
     var planPts = ch ? ch.plan.map(function (p) { return [T(p[0]), p[1]]; }) : [];
-    function planAt(t) { for (var i = 1; i < planPts.length; i++) if (t <= planPts[i][0]) { var a = planPts[i - 1], b = planPts[i]; return a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]); } return null; }
+    function planAt(t) { if (!planPts.length || t < planPts[0][0]) return null; for (var i = 1; i < planPts.length; i++) if (t <= planPts[i][0]) { var a = planPts[i - 1], b = planPts[i]; return a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]); } return null; }
     if (B.on.plan && ch) [t0, t1].concat(planPts.map(function (p) { return p[0]; })).forEach(function (t) { if (t >= t0 && t <= t1) { var v = planAt(t); if (v != null) wv.push(v + 1, v - 1); } });
     var fc = ch && ch.forecast ? ch.forecast.map(function (p) { return [T(p[0]), p[1]]; }) : null;
     function fcAt(t) { if (!fc || t < fc[0][0] || t > fc[1][0]) return null; return fc[0][1] + (fc[1][1] - fc[0][1]) * (t - fc[0][0]) / (fc[1][0] - fc[0][0]); }
     if (B.on.forecast && fc) [Math.max(t0, fc[0][0]), Math.min(t1, fc[1][0])].forEach(function (t) { var v = fcAt(t); if (v != null) wv.push(v); });
     var w0 = wv.length ? Math.floor(Math.min.apply(null, wv) - 1) : 90, w1 = wv.length ? Math.ceil(Math.max.apply(null, wv) + 1) : 110;
-    function YW(v) { return pt + (w1 - v) / Math.max(1, w1 - w0) * (H - pt - pb); }
+    function YW(v) { return pt + (w1 - v) / Math.max(1, w1 - w0) * (topB - pt); }
     var CK = { fat: "fat_kg", muscle: "muscle_kg", bone: "bone_kg" }, CP = { fatp: "fat_pct", water: "water_pct" };
     var anyK = B.on.fat || B.on.muscle || B.on.bone, anyP = B.on.fatp || B.on.water;
     var cv = []; body.forEach(function (p) { Object.keys(CK).forEach(function (k) { if (B.on[k] && p[CK[k]] != null) cv.push(p[CK[k]]); }); });
@@ -337,11 +339,13 @@
     var c0 = cv.length ? Math.floor(Math.min.apply(null, cv) - 2) : 0, c1 = cv.length ? Math.ceil(Math.max.apply(null, cv) + 2) : 1;
     function YC(v) { return pt + (c1 - v) / Math.max(1, c1 - c0) * (H - pt - pb); }
     var s = "<svg id='bsvg' viewBox='0 0 " + W + " " + H + "' style='width:100%;min-width:640px;height:auto;display:block;color:inherit;user-select:none' role='img' aria-label='Bilans i waga'>";
-    for (var v = 0; v <= kmax / 1.9; v += 1000) s += "<line x1='" + pl + "' x2='" + (W - pr) + "' y1='" + YK(v).toFixed(1) + "' y2='" + YK(v).toFixed(1) + "' stroke='var(--line)'/><text x='" + (pl - 5) + "' y='" + (YK(v) + 4).toFixed(1) + "' font-size='11' text-anchor='end' fill='var(--muted)'>" + v + "</text>";
+    for (var v = 0; v <= kmax; v += (kmax > 6000 ? 2000 : 1000)) s += "<line x1='" + pl + "' x2='" + (W - pr) + "' y1='" + YK(v).toFixed(1) + "' y2='" + YK(v).toFixed(1) + "' stroke='var(--line)'/><text x='" + (pl - 5) + "' y='" + (YK(v) + 4).toFixed(1) + "' font-size='11' text-anchor='end' fill='var(--muted)'>" + v + "</text>";
     var days = (t1 - t0) / DAYMS, step = Math.max(1, Math.round(days / 9)), first = new Date(t0 + DAYMS / 2); first.setHours(12, 0, 0, 0);
     for (var t = first.getTime(), k = 0; t <= t1; t += DAYMS, k++) if (k % step === 0) { var dd = new Date(t), iso = dd.getFullYear() + "-" + ("0" + (dd.getMonth() + 1)).slice(-2) + "-" + ("0" + dd.getDate()).slice(-2);
       s += "<text x='" + X(t).toFixed(1) + "' y='" + (H - 7) + "' font-size='11' text-anchor='middle' fill='var(--muted)'>" + dm(iso) + "</text>"; }
     var bw = Math.max(1, (W - pl - pr) / days * 0.7), todayIso = S.today || x.end;
+    s += "<line x1='" + pl + "' x2='" + (W - pr) + "' y1='" + (topB + 10).toFixed(1) + "' y2='" + (topB + 10).toFixed(1) + "' stroke='var(--line2)'/>" +
+      "<text x='" + pl + "' y='" + (topB + 6).toFixed(1) + "' font-size='10' fill='var(--muted)'>waga i skład ciała ↑</text><text x='" + pl + "' y='" + (botA + 4).toFixed(1) + "' font-size='10' fill='var(--muted)' dy='8'>kcal ↓</text>";
     ser.forEach(function (d) {
       var cx = X(T(d.day)), x0 = (cx - bw / 2).toFixed(1), fut = d.expend_src !== "realne", op = fut ? " opacity='.45'" : "";
       var tot = d.expend, rst = d.rest != null ? Math.min(d.rest, tot) : null;
@@ -379,7 +383,7 @@
     function compSeries(k, key, dash, unit) { if (!B.on[k]) return;
       var vals = body.filter(function (p) { return p[key] != null; }).map(function (p) { return p[key]; }); if (!vals.length) return;
       var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals), pad = Math.max(0.2, (hi - lo) * 0.15); lo -= pad; hi += pad;
-      function Yo(v) { return pt + 14 + (hi - v) / (hi - lo) * (H - pt - pb - 28); }
+      function Yo(v) { return pt + 10 + (hi - v) / (hi - lo) * (topB - pt - 20); }
       ["normal", "athlete"].forEach(function (m) { var a2 = body.filter(function (p) { return p[key] != null && p.mode === m; }).map(function (p) { return [T(p.date), p[key]]; });
         s += "<path d='" + path(a2, Yo) + "' fill='none' stroke='" + BS[k][1] + "' stroke-width='2'" + (dash ? " stroke-dasharray='5 3'" : "") + "/>"; });
       body.forEach(function (p) { if (p[key] == null) return; s += "<circle cx='" + X(T(p.date)).toFixed(1) + "' cy='" + Yo(p[key]).toFixed(1) + "' r='2.8' fill='" + (p.suspect.length ? "var(--card)" : BS[k][1]) + "' stroke='" + BS[k][1] + "'/>"; });
@@ -440,25 +444,22 @@
       "<span class='sub' style='margin-left:6px'>od</span><input type='date' id='bfrom' value='" + (B.start || x.start) + "'><span class='sub'>do</span><input type='date' id='bto' value='" + (B.end || x.end) + "'><button class='btn" + (B.start ? " on" : "") + "' id='bgo'>Pokaż</button>" +
       (B.zoom ? "<button class='btn' id='bunzoom'>↺ cała skala</button>" : "") + "</div>";
     var grp = [["kcal", ["burn", "def", "target"]], ["waga", ["weight", "plan", "forecast"]], ["skład ciała", ["fat", "muscle", "bone", "fatp", "water"]]];
-    var tg = grp.map(function (gg) { return "<div class='toggles'><span class='sub' style='align-self:center;min-width:78px'>" + gg[0] + ":</span>" + gg[1].map(function (k) {
-      return "<button class='tg" + (B.on[k] ? " on" : "") + "' data-s='" + k + "' aria-pressed='" + B.on[k] + "'" + (BTIP[k] ? " title='" + BTIP[k] + "'" : "") + "><i style='background:" + BS[k][1] + "'></i>" + BS[k][0] + "</button>"; }).join("") + "</div>"; }).join("");
+    var tg = "<div class='toggles'>" + grp.map(function (gg, gi) { return "<span class='sub' style='align-self:center;margin:0 2px 0 " + (gi ? 12 : 0) + "px'>" + gg[0] + ":</span>" + gg[1].map(function (k) {
+      return "<button class='tg" + (B.on[k] ? " on" : "") + "' data-s='" + k + "' aria-pressed='" + B.on[k] + "'" + (BTIP[k] ? " title='" + BTIP[k] + "'" : "") + "><i style='background:" + BS[k][1] + "'></i>" + BS[k][0] + "</button>"; }).join(""); }).join("") + "</div>";
     var h = "<div class='card'><div class='ttl'><h2>Bilans i waga</h2><span class='sub'>cel bilansu wg budżetu tygodnia" + (x.calib ? " · kalibracja " + n0(-x.calib) : "") + "</span></div>" + rb + tg +
       "<div class='chwrap chartbox' id='bwrap'>" + bchart() + "<div class='tip2' id='btip'></div></div>" +
       "<div class='legend'><span><i style='background:#334155'></i>spoczynek</span><span><i style='background:#64748b'></i>aktywne</span><span><i style='background:#22c55e'></i>deficyt</span><span><i style='background:#ef4444'></i>nadwyżka</span><span>jaśniejsze słupki = prognoza</span></div>" +
       "<div class='legend' style='margin-top:4px'><span>lewa oś: kcal (słupki w dolnej części) · prawa: kg wagi, planu i prognozy" + (B.on.fat || B.on.muscle || B.on.bone || B.on.fatp || B.on.water ? " · skład ciała: każda seria we własnej skali (kształt trendu), wartość na końcu linii i w dymku" : "") + "</span><span>przeciągnij = powiększ · dwuklik = cała skala · klik = otwórz dzień</span></div></div>";
-    var bs = B.body && B.body.summary, cur = bs && (bs.athlete || bs.normal), lastc = (B.body.points || []).filter(function (p) { return p.fat_pct != null; }).slice(-1)[0];
-    h += "<div class='g2' style='margin-top:12px'><div class='card'><div class='ttl'><h2>⚖️ " + esc(g ? g.name : "Waga") + "</h2></div>" +
-      (g ? "<div class='state " + (g.level === "g" ? "ok" : "open") + "'>" + esc(g.text) + "</div><div class='kv'>" + (g.rows || []).map(function (r) { return "<span>" + esc(r.k) + "</span><span>" + esc(r.have == null ? "" : r.have) + (r.need != null ? " / " + esc(r.need) : "") + "</span>"; }).join("") + "</div>" : "<p class='empty'>Brak celu wagi.</p>") +
-      "<p class='lbl' style='margin-top:12px'>Skład ciała (Withings)</p>" + (lastc ? "<div class='kv'><span>Ostatni (" + dm(lastc.date) + ")</span><span>" + n1(lastc.fat_pct) + "% · " + n1(lastc.fat_kg) + " kg tłuszczu · " + n1(lastc.muscle_kg) + " kg mięśni</span>" +
-        (cur ? "<span>Średnia z 3 (" + (bs.athlete ? "tryb sportowca" : "tryb zwykły") + ")</span><span>" + n1(cur.last3_fat_pct) + "% · " + n1(cur.last3_fat_kg) + " kg · " + n1(cur.last3_muscle_kg) + " kg</span>" : "") +
-        (cur && cur.d_fat_kg != null ? "<span>Zmiana " + dm(cur.first) + "–" + dm(cur.last) + "</span><span>tłuszcz " + (cur.d_fat_kg > 0 ? "+" : "") + n1(cur.d_fat_kg) + " kg · mięśnie " + (cur.d_muscle_kg > 0 ? "+" : "") + n1(cur.d_muscle_kg) + " kg</span>" : "") + "</div>" : "<p class='empty'>Brak pomiarów składu.</p>") +
-      "<p class='note'>Bioimpedancja: ufaj trendowi z 3–4 tygodni. Od 12.10.2026 tryb sportowca – osobna seria.</p></div>";
-    var dsc = x.discrepancy || {};
-    h += "<div class='stack'><div class='card'><div class='ttl'><h2>Waga vs jedzenie</h2></div><p class='note' style='margin-top:0'>" + esc(x.discrepancy_line) + "</p>" +
-      (dsc.ready ? "<div class='kv'><span>Bilans z wpisów</span><span>" + n0(dsc.logged_bal) + " kcal/dz</span><span>Bilans z wagi</span><span>" + n0(dsc.actual_bal) + " kcal/dz</span><span>Rozbieżność</span><span>" + n0(dsc.disc) + " kcal/dz</span></div>" : "") + "</div>" +
-      "<div class='card'><div class='ttl'><h2>Tygodnie (pn–nd)</h2></div>" + (x.weeks.length ? "<table class='tb'><tr><th>Tydzień od</th><th class='r'>Zamknięte dni</th><th class='r'>Śr. bilans</th></tr>" +
-        x.weeks.slice().reverse().map(function (w) { var ok = w.avg_balance >= x.balance_target - 300 && w.avg_balance <= x.balance_target + 250; return "<tr><td>" + dm(w.week) + "</td><td class='r'>" + w.days + "</td><td class='r' style='color:var(--" + (ok ? "good" : "bad") + ")'>" + n0(w.avg_balance) + "</td></tr>"; }).join("") + "</table>"
-        : "<p class='empty'>Jeszcze brak zamkniętych dni z pełnym spalaniem.</p>") + "</div></div></div>";
+    /* zwarty pasek statusu zamiast duzych kart (cel wagi edytuje sie w Trener -> Cele; tygodnie sa w zakladce Analiza) */
+    var bs = B.body && B.body.summary, cur = bs && (bs.athlete || bs.normal), lastc = (B.body.points || []).filter(function (p) { return p.fat_pct != null; }).slice(-1)[0], dsc = x.discrepancy || {};
+    var rows = g && g.rows ? g.rows.filter(function (r) { return /tempo/.test(r.k); })[0] : null;
+    h += "<div class='bstrip'>" +
+      "<div class='bs'><span class='l'>⚖️ " + esc(g ? g.name : "Waga") + "</span><b class='" + (g && g.level === "g" ? "ok" : "open") + "'>" + esc(g ? g.text : "brak celu wagi") + "</b>" +
+        "<span class='sub'>" + (rows ? "tempo 30 dni: " + esc(rows.have) + " kg/tydz. (potrzeba " + esc(rows.need) + ") · " : "") + "cel ustawiasz w <a href='/trening.html'>Trener → Cele</a></span></div>" +
+      "<div class='bs'><span class='l'>Skład ciała · Withings</span><b>" + (lastc ? n1(lastc.fat_pct) + "% · " + n1(lastc.fat_kg) + " kg tłuszczu · " + n1(lastc.muscle_kg) + " kg mięśni" : "brak pomiarów") + "</b>" +
+        "<span class='sub'>" + (lastc ? "ostatni " + dm(lastc.date) : "") + (cur && cur.d_fat_kg != null ? " · od " + dm(cur.first) + ": tłuszcz " + (cur.d_fat_kg > 0 ? "+" : "") + n1(cur.d_fat_kg) + " kg, mięśnie " + (cur.d_muscle_kg > 0 ? "+" : "") + n1(cur.d_muscle_kg) + " kg" : "") + " · ufaj trendowi z 3–4 tyg.</span></div>" +
+      "<div class='bs'><span class='l'>Waga vs jedzenie</span><b>" + (dsc.ready ? "rozbieżność " + n0(dsc.disc) + " kcal/dz" : "za mało danych") + "</b>" +
+        "<span class='sub'>" + esc((x.discrepancy_line || "").replace(/^\S+\s*Waga vs jedzenie:\s*/, "")) + "</span></div></div>";
     $("bilans").innerHTML = h;
     $("bilans").querySelectorAll("[data-r]").forEach(function (b) { b.onclick = function () { B.range = +b.dataset.r; B.start = B.end = null; B.goal = false; loadBilans(); }; });
     var gb = $("bilans").querySelector("[data-goal]"); if (gb) gb.onclick = function () { B.goal = !B.goal; B.start = B.end = null; loadBilans(); };
