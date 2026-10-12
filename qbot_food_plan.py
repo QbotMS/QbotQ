@@ -101,6 +101,13 @@ def brokul_kcal(c, day: date) -> float | None:
     return float(r["k"]) if r and r["n"] else None
 
 
+def target_for(ex: dict, cal: float, bal: float) -> int:
+    """Cel jedzenia dnia. Dzien miniony (realne spalanie): dokladnie spalone - kalibracja + plan bilansu (bez zaokraglen,
+    zeby 'bilans vs plan' zgadzal sie co do kcal). Prognoza: zaokraglenie do 50 kcal."""
+    v = ex["kcal"] - cal + bal
+    return int(max(FLOOR_KCAL, round(v) if ex.get("src") == "realne" else round(v / 50) * 50))
+
+
 def day_plan(day: date, c=None) -> dict:
     own = c is None
     c = c or _conn()
@@ -108,7 +115,7 @@ def day_plan(day: date, c=None) -> dict:
         ex = expend(c, day)
         cal = calibration(c)
         bal = target_balance(c)
-        tgt = max(FLOOR_KCAL, round((ex["kcal"] - cal + bal) / 50) * 50)
+        tgt = target_for(ex, cal, bal)
         bk = brokul_kcal(c, day)
         extra = max(0, tgt - bk) if bk else None
         ses = sessions(c, day)
@@ -188,10 +195,12 @@ def evening_line(day: date) -> str:
     p = day_plan(day)
     eaten = F.day_totals(day)["kcal"] or 0
     left = p["target"] - eaten
-    if day < date.today():  # dzien miniony: ocena, nie 'zostalo'; za mocny deficyt tez jest problemem
-        tail = ("za dużo o ~%s" % _fmt(-left)) if left < -150 else (("za mało o ~%s" % _fmt(left) + (" ⚠️" if left > 300 else "")) if left > 150 else "w celu")
-    else:
-        tail = ("zostało ~%s" % _fmt(left)) if left > 0 else ("ponad cel o ~%s" % _fmt(-left))
+    if day < date.today() and p["expend_src"] == "realne":  # dzien miniony: jezyk bilansu (zjedzone - spalone) vs plan
+        bal = eaten - p["expend"]
+        d = bal - (p["balance"] - p["calib"])
+        tail = ("%s ponad plan" % _fmt(d)) if d > 150 else (("deficyt za mocny o %s ⚠️" % _fmt(-d)) if d < -300 else "w planie")
+        return "🎯 bilans %+d kcal (plan %+d) · %s" % (round(bal), p["balance"] - p["calib"], tail)
+    tail = ("zostało ~%s" % _fmt(left)) if left > 0 else ("ponad cel o ~%s" % _fmt(-left))
     return "🎯 %s/%s kcal · %s" % (_fmt(eaten), _fmt(p["target"]), tail)
 
 
