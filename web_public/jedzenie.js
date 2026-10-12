@@ -54,6 +54,24 @@
     }).catch(function (e) { $("dayview").innerHTML = "<p class='msg'>Nie udało się wczytać dni: " + esc(e.message) + "</p>"; });
   }
   var CFL = [["waist_cm", "talia *"], ["hips_cm", "biodra"], ["chest_cm", "klatka"], ["thigh_cm", "udo"], ["arm_cm", "ramię"], ["neck_cm", "szyja"]];
+  /* okno (popup) pomiaru obwodow - puste pola; zapis nadpisuje pomiar z tego dnia */
+  function circModal(day) {
+    var ov = document.createElement("div"); ov.className = "qmodal"; ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true");
+    ov.innerHTML = "<div class='qbox'><div class='ttl'><h2>📏 Obwody · " + wd(day) + " " + dm(day) + "</h2><button class='btn sm' data-x='1' aria-label='Zamknij'>✕</button></div>" +
+      "<p class='note' style='margin-top:0'>Rano, przed jedzeniem, taśma poziomo, na wydechu, bez wciągania brzucha. Talia na wysokości pępka.</p>" +
+      "<div class='qgrid'>" + CFL.map(function (f) { return "<label>" + f[1] + " <span class='muted'>(cm)</span><input inputmode='decimal' id='m_" + f[0] + "' autocomplete='off'></label>"; }).join("") + "</div>" +
+      "<div class='acts' style='margin-top:12px'><button class='btn pri' data-s='1'>Zapisz</button><button class='btn' data-x='1'>Anuluj</button><span class='sub' id='m_msg'>* talia wymagana</span></div></div>";
+    document.body.appendChild(ov);
+    function close() { document.removeEventListener("keydown", key); ov.remove(); }
+    function key(e) { if (e.key === "Escape") close(); if (e.key === "Enter") save(); }
+    function save() { var b2 = { date: day }; CFL.forEach(function (f) { b2[f[0]] = $("m_" + f[0]).value; });
+      if (!b2.waist_cm) { $("m_msg").textContent = "Wpisz talię."; $("m_waist_cm").focus(); return; }
+      $("m_msg").textContent = "Zapisuję…";
+      post("/api/jedzenie/circ", b2).then(function () { close(); B.body = null; S.loaded.bilans = false; return loadCirc(); }).then(renderDay).catch(function (e) { $("m_msg").textContent = e.message; }); }
+    ov.addEventListener("click", function (e) { if (e.target === ov || e.target.dataset.x) close(); if (e.target.dataset.s) save(); });
+    document.addEventListener("keydown", key);
+    setTimeout(function () { $("m_waist_cm").focus(); }, 30);
+  }
   function loadCirc() { return j("/api/jedzenie/circ").then(function (x) { S.circ = {}; (x.circ || []).forEach(function (q) { S.circ[q.date] = q; }); }).catch(function () { S.circ = S.circ || {}; }); }
   function dayObj(iso) { return (S.days || []).filter(function (d) { return d.day === iso; })[0]; }
   function renderStrip() {
@@ -173,14 +191,20 @@
           "<button class='btn" + (w.state === "broken" ? " pri" : "") + "' data-a='win' data-v='0'" + (d.late ? " disabled" : "") + ">✖ Złamane</button></div>" +
           (d.late ? "<div class='note'>Termin minął (12:00 następnego dnia).</div>" : "<div class='note'>Przed 10:00 tylko czarna kawa, po 20:00 nic. Zwolnione: trening ≥1,5 h, delegacja, urlop, wyprawa.</div>") : "") + "</div>");
     }
-    if (!fut) {  /* 2026-10-12: obwody ciala wpisywane przy dniu (talia wymagana); widoczne w Bilans i waga oraz Forma -> Trendy */
-      var cz = (S.circ || {})[d.day];
-      R.push("<div class='card'><div class='ttl'><h2>📏 Obwody</h2><span class='sub'>" + (cz ? "zapisane" : "mierz co 2 tygodnie") + "</span></div>" +
-        (cz ? "<div class='kv'><span>talia / wzrost</span><span>" + (cz.waist_cm / 177).toFixed(2).replace(".", ",") + " <span class='muted'>(cel &lt; 0,50)</span></span></div>"
-            : "<p class='note' style='margin-top:0'>Rano, na wysokości pępka, na wydechu, bez wciągania brzucha.</p>") +
-        "<div style='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:6px'>" + CFL.map(function (f) {
-          return "<label class='sub' style='display:flex;flex-direction:column;gap:2px'>" + f[1] + "<input inputmode='decimal' id='cf_" + f[0] + "' value='" + (cz && cz[f[0]] != null ? String(cz[f[0]]).replace(".", ",") : "") + "' style='padding:5px 7px;border:1px solid var(--line);border-radius:8px;background:var(--well);color:var(--ink);font:inherit'></label>"; }).join("") + "</div>" +
-        "<div class='acts' style='margin-top:8px'><button class='btn pri' data-a='circ'>" + (cz ? "Zapisz zmiany" : "Zapisz obwody") + "</button>" + (cz ? "<button class='btn' data-a='circdel'>Usuń</button>" : "") + "<span class='sub' id='cfmsg'>cm · talia wymagana</span></div></div>");
+    if (!fut) {  /* obwody: karta = dane dnia + zmiana od poprzedniego pomiaru; 'Zmierz' otwiera okno z pustymi polami */
+      var cz = (S.circ || {})[d.day], cdates = Object.keys(S.circ || {}).sort();
+      var prevD = cdates.filter(function (x) { return x < d.day; }).slice(-1)[0], prev = prevD ? S.circ[prevD] : null;
+      var lastD = cdates.filter(function (x) { return x <= d.day; }).slice(-1)[0];
+      var GOOD_DOWN = { waist_cm: 1, hips_cm: 1, chest_cm: 1 };
+      function dl(f) { if (!prev || prev[f] == null || cz[f] == null) return ""; var v = Math.round((cz[f] - prev[f]) * 10) / 10; if (!v) return " <span class='muted'>±0</span>";
+        var good = GOOD_DOWN[f] ? v < 0 : null; return " <span style='font-weight:600;color:" + (good === null ? "var(--muted)" : good ? "var(--good)" : "var(--bad)") + "'>" + (v < 0 ? "▼ −" : "▲ +") + n1(Math.abs(v)) + "</span>"; }
+      var body2 = cz ? "<div class='kv'>" + CFL.filter(function (f) { return cz[f[0]] != null; }).map(function (f) { return "<span>" + f[1].replace(" *", "") + "</span><span>" + n1(cz[f[0]]) + " cm" + dl(f[0]) + "</span>"; }).join("") +
+            "<span>talia / wzrost</span><span>" + (cz.waist_cm / 177).toFixed(2).replace(".", ",") + " <span class='muted'>(cel &lt; 0,50)</span></span></div>" +
+            (prev ? "<div class='note'>zmiana od pomiaru " + dm(prevD) + "</div>" : "<div class='note'>pierwszy pomiar</div>")
+        : (lastD ? "<div class='note' style='margin-top:0'>Ostatni pomiar " + dm(lastD) + ": talia " + n1(S.circ[lastD].waist_cm) + " cm (talia/wzrost " + (S.circ[lastD].waist_cm / 177).toFixed(2).replace(".", ",") + "). Mierz co 2 tygodnie.</div>"
+                 : "<div class='note' style='margin-top:0'>Brak pomiarów. Mierz co 2 tygodnie: rano, na wysokości pępka, na wydechu.</div>");
+      R.push("<div class='card'><div class='ttl'><h2>📏 Obwody</h2><span class='sub'>" + (cz ? "zmierzone " + dm(d.day) : "") + "</span></div>" + body2 +
+        "<div class='acts' style='margin-top:8px'><button class='btn pri' data-a='circopen'>📏 Zmierz</button>" + (cz ? "<button class='btn sm' data-a='circdel'>Usuń pomiar</button>" : "") + "</div></div>");
     }
     $("dayview").innerHTML = "<div class='dgrid'><div class='stack'>" + L.join("") + "</div><div class='stack'>" + R.join("") + "</div></div>";
     wireDay(d);
@@ -191,11 +215,9 @@
       var a = b.dataset.a; if (b.tagName === "INPUT") return;
       b.onclick = function () {
         var id = +b.dataset.id;
-        if (a === "circ" || a === "circdel") {
-          var cb2 = { date: d.day }; if (a === "circ") { CFL.forEach(function (f) { cb2[f[0]] = $("cf_" + f[0]).value; }); if (!cb2.waist_cm) { $("cfmsg").textContent = "Wpisz talię."; return; } }
-          else if (!confirm("Usunąć obwody z " + dm(d.day) + "?")) return;
-          return post("/api/jedzenie/circ", cb2).then(function () { B.body = null; S.loaded.bilans = false; return loadCirc(); }).then(renderDay).catch(function (e) { $("cfmsg").textContent = e.message; });
-        }
+        if (a === "circopen") return circModal(d.day);
+        if (a === "circdel") { if (!confirm("Usunąć obwody z " + dm(d.day) + "?")) return;
+          return post("/api/jedzenie/circ", { date: d.day }).then(function () { B.body = null; S.loaded.bilans = false; return loadCirc(); }).then(renderDay).catch(function (e) { alert(e.message); }); }
         if (a === "m") return act(b, "/api/jedzenie/brokul", { id: id, status: b.dataset.s, eaten_day: b.dataset.ed || null }, uniq([d.day]));
         if (a === "all") return act(b, "/api/jedzenie/brokul/all", { day: d.day, action: b.dataset.v });
         if (a === "win") return act(b, "/api/jedzenie/window", { day: d.day, ok: b.dataset.v === "1" });
