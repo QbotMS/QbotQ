@@ -497,7 +497,7 @@ def weekend_lines(friday: date) -> list[str]:
             if ses:
                 t += " (jazda %d′%s)" % (ses[0]["dur_min"] or 0, (", ~%d g węgli na rower" % p["fuel_g"]) if p["fuel_g"] else "")
             out.append(t)
-    return ["🗓 Weekend: " + " · ".join(out) + ". Co zamawiać: strona Jedzenie → Analiza."]
+    return ["🗓 Weekend: " + " · ".join(out) + ". Co zamawiać: strona Zdrowie → Analiza."]
 
 
 def morning_digest(day: date, train_lines: list[str] | None = None) -> str | None:
@@ -520,7 +520,7 @@ def morning_digest(day: date, train_lines: list[str] | None = None) -> str | Non
             with _conn() as c:
                 r0 = c.execute("SELECT max(date) d FROM qbot_v2.body_circumference WHERE waist_cm IS NOT NULL").fetchone()
             if not r0 or not r0["d"] or (day - r0["d"]).days >= 14:
-                L.append("📏 Obwód talii (pępek, na wydechu) – wpisz w Jedzenie → Bilans i waga")
+                L.append("📏 Obwód talii (pępek, na wydechu) – wpisz w Zdrowie → Dni")
     except Exception:
         pass
     try:

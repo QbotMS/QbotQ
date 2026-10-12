@@ -108,6 +108,8 @@ Z harmonogramu tylko DWIE wiadomości dziennie, zwięzłe (~8 linijek), szczegó
 - **Normy składników** (`qbot_food_plan.norms`): białko 160 g, tłuszcz min. 70 g, węgle = reszta kcal celu, cukry ≤10%
   energii, nasycone ≤10% energii, sól ≤5 g.
 
+## Zdrowie – układ (12.10.2026): Dni | Analiza | Ciało (bilans, waga, skład, obwody na wykresie) | Serce (forma-serce.js przeniesiony z Formy + zdrowie-serce.js: HRV z normą roczną i „serce a jedzenie i waga”, GET /api/jedzenie/heart_plus) | Passa | Brokuł. Forma: Dziennik, Trendy, Sezon, Statystyki (forma.html#serce → zdrowie.html#serce). HRV/RHR celowo także w Formie (gotowość do treningu) – inny cel.
+
 ## Analiza (12.10.2026 – przebudowa: tygodniami, wstecz i wzorce)
 - Zakładka Analiza = tydzień pn–nd (‹ ›), `GET /api/jedzenie/week?week=` (`qbot_food_api.week_analysis`):
   budżet tygodnia (plan deficytu z `week_deficits` tylko dni ≥ 10.10 vs realizacja = spalone − zjedzone w dniach zamkniętych z realnym spalaniem; ile zostało na dzień; porównanie z poprzednim tygodniem),
@@ -131,7 +133,7 @@ Z harmonogramu tylko DWIE wiadomości dziennie, zwięzłe (~8 linijek), szczegó
 - Wykres Bilans i waga: sekcje 50/50 (góra linie, dół kcal), oś kcal od 1500, trend spalania = średnia krocząca 7 dni, uchwyt wysokości (localStorage jedz_bil_h).
 - Gotowość usunięta z Wellness – jest na wykresie formy (gotowość 1 noc / 3 dni), gdzie koreluje z obciążeniem.
 
-## Strona „Jedzenie” (https://albert.cytr.us/jedzenie.html, od 12.10.2026)
+## Strona „Zdrowie” (do 12.10.2026 „Jedzenie”; /jedzenie.html przekierowuje na /zdrowie.html) (https://albert.cytr.us/jedzenie.html, od 12.10.2026)
 Menu: pozycja „Jedzenie” (nav.js, po Treningu). Struktura `jedzenie.html`, logika `jedzenie.js`, dane i zapis
 `qbot_food_api.py` (`/api/jedzenie/*`, router w `qbot_web.py`). Odczyt: `_current_user` (też demo); zapis: `_owner_user`.
 - **Dni**: pasek dni (od 10.10 / 6 dni wstecz do końca zamówienia), karta dnia: Brokuł (✅/❌/📦 = ponowny klik cofa),

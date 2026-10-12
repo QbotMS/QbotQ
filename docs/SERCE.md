@@ -39,3 +39,7 @@ wieczorem (przed snem, >= 1 h po jedzeniu, >= 2 h po treningu). 5 min siedzenia,
 `qbot3/connectors/import_garmin_heart.py`, `qbot_heart.py`, `qbot_web.py` (GET /api/forma/heart),
 `/opt/qbot/web/public/forma.html` + `forma-serce.js` (poza repo, kopia web_public/), `qbot3/tool_registry.py`
 (heart_health) + prompt `qbot3/llm/albert.py`, testy `tests/test_heart.py`.
+
+
+## 12.10.2026: widok przeniesiony do Zdrowie → Serce
+forma-serce.js bez zmian, osadzony w /zdrowie.html (#p-serce); obok zdrowie-serce.js: HRV (norma z roku vs 28 dni) i serce a jedzenie/waga (/api/jedzenie/heart_plus). Forma nie ma już zakładki Serce (forma.html#serce przekierowuje).

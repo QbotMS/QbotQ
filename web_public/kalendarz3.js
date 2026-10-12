@@ -51,15 +51,15 @@ function fail(e) { toast("Błąd: " + (e && e.message ? e.message : e), true); }
 /* ---------- dane (cache do pierwszego zapisu) ---------- */
 var WK = {}, CAL = {}, WXC = {}, SCH = {}, FDC = {}, FD = {};
 function invalidate() { WK = {}; CAL = {}; WXC = {}; SCH = {}; FDC = {}; }
-/* 2026-10-12: jedzenie dnia (zjedzone / cel) z /api/jedzenie/calendar - link do strony Jedzenie (docs/BROKUL.md) */
+/* 2026-10-12: jedzenie dnia (zjedzone / cel) z /api/jedzenie/calendar - link do strony Zdrowie (docs/BROKUL.md) */
 function loadFood(s, e) { var k = s + "|" + e; return FDC[k] || (FDC[k] = getJ("/api/jedzenie/calendar?start=" + s + "&end=" + e)); }
 function foodLn(ds) { var f = FD[ds]; if (!f) return "";
-  var href = ' href="/jedzenie.html#dni=' + ds + '" onclick="event.stopPropagation()" style="display:block;text-decoration:none;';
-  if (!f.kcal && !f.closed) return '<a class="ln food"' + href + 'color:var(--muted)" title="Brak wpisów jedzenia – otwórz dzień w Jedzeniu">🍽 brak wpisów</a>';
+  var href = ' href="/zdrowie.html#dni=' + ds + '" onclick="event.stopPropagation()" style="display:block;text-decoration:none;';
+  if (!f.kcal && !f.closed) return '<a class="ln food"' + href + 'color:var(--muted)" title="Brak wpisów jedzenia – otwórz dzień w Zdrowiu">🍽 brak wpisów</a>';
   var df = f.kcal - f.target, col = df > 150 ? "var(--bad)" : (f.real && df < -300 ? "var(--warn)" : "var(--good)");
   if (f.real) { var bl = f.kcal - f.expend;  /* dzien miniony: bilans (zjedzone - spalone) vs plan */
-    return '<a class="ln food"' + href + "color:" + col + '" title="zjedzone ' + qN(f.kcal, 0) + " − spalone " + qN(f.expend, 0) + " = bilans " + (bl > 0 ? "+" : "") + qN(bl, 0) + " (plan " + qN(f.plan_balance, 0) + ') – otwórz dzień w Jedzeniu">🍽 bil. ' + (bl > 0 ? "+" : "") + qN(bl, 0) + (f.closed ? " 🔒" : "") + "</a>"; }
-  return '<a class="ln food"' + href + "color:" + col + '" title="zjedzone / cel jedzenia – otwórz dzień w Jedzeniu">🍽 ' + qN(f.kcal, 0) + "/" + qN(f.target, 0) + (f.closed ? " 🔒" : "") + "</a>"; }
+    return '<a class="ln food"' + href + "color:" + col + '" title="zjedzone ' + qN(f.kcal, 0) + " − spalone " + qN(f.expend, 0) + " = bilans " + (bl > 0 ? "+" : "") + qN(bl, 0) + " (plan " + qN(f.plan_balance, 0) + ') – otwórz dzień w Zdrowiu">🍽 bil. ' + (bl > 0 ? "+" : "") + qN(bl, 0) + (f.closed ? " 🔒" : "") + "</a>"; }
+  return '<a class="ln food"' + href + "color:" + col + '" title="zjedzone / cel jedzenia – otwórz dzień w Zdrowiu">🍽 ' + qN(f.kcal, 0) + "/" + qN(f.target, 0) + (f.closed ? " 🔒" : "") + "</a>"; }
 function loadWeek(k) { return WK[k] || (WK[k] = api("GET", "/week?start=" + k).catch(function () { return { sessions: [], meta: {} }; })); }
 function loadCal(s, e) { var k = s + "|" + e; return CAL[k] || (CAL[k] = qJSON("/api/calendar?start=" + s + "&end=" + e)); }
 function getJ(u) { return fetch(u, { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; }); }

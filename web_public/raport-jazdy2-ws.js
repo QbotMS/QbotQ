@@ -282,7 +282,7 @@ function setView(v){if(window.__RJ3)return;VIEWM=v;document.querySelectorAll("#v
 }
 var DORD=["Wysiłek","Prędkość","Zapas na zrywy","Ciało tego dnia","Warunki i teren","Rower i napęd","Jedzenie"];
 function daneRender(){var el=$("dgrid");if(!el||!D)return;
-  el.innerHTML=(window.__RJ2dane?window.__RJ2dane(D,{FTP:FTP,TR:TR,PWS:PWS,SPD:SPD,GR:GR,LTHR:LTHR}):'<div class="sub">brak modułu Dane</div>');
+  el.innerHTML=(window.__RJ2dane?window.__RJ2dane(D,{FTP:FTP,TR:TR,PWS:PWS,SPD:SPD,GR:GR,LTHR:LTHR,RKEY:RKEY}):'<div class="sub">brak modułu Dane</div>');
   el.querySelectorAll(".dsec").forEach(function(s2){s2.classList.add("open");var t=s2.querySelector(".dh b"),ix=DORD.indexOf(t?t.textContent.trim():"");s2.style.order=ix<0?99:ix;});
   el.querySelectorAll(".it").forEach(function(it){if(!it.classList.contains("nw")&&(it.querySelector("table")||it.querySelector(".mmp")||it.querySelector(".zone")||it.querySelector(".lg")))it.classList.add("wt");});
   var TIPS=window.__RJTIPS||{};el.querySelectorAll(".it .h b").forEach(function(b){var t=TIPS[b.textContent.trim()];if(t)b.setAttribute("title",t);});

@@ -403,7 +403,7 @@ function renderDziennik(){
       var kc=+dd.totals.kcal||0,tg=+dd.target||0;
       fe.innerHTML='<p class="lbl">Jedzenie dziś</p><div class="v">'+qN(kc,0)+' <small class="muted" style="font-size:13px;font-weight:400">/ '+qN(tg,0)+' kcal</small></div>'
         +'<div style="height:8px;border-radius:4px;background:var(--well);overflow:hidden"><div style="width:'+Math.min(100,Math.round(tg?kc/tg*100:0))+'%;height:100%;background:'+(kc>tg+150?'var(--bad)':'var(--good)')+'"></div></div>'
-        +'<div class="muted" style="font-size:12px">B '+qN(+dd.totals.protein_g||0,0)+'/160 g · '+(dd.closed?'🔒 zamknięty':'⏳ otwarty')+' · <a class="link" href="/jedzenie.html">Jedzenie →</a></div>';}).catch(function(){});}
+        +'<div class="muted" style="font-size:12px">B '+qN(+dd.totals.protein_g||0,0)+'/160 g · '+(dd.closed?'🔒 zamknięty':'⏳ otwarty')+' · <a class="link" href="/zdrowie.html">Zdrowie →</a></div>';}).catch(function(){});}
   /* ostatnia jazda - obok karty Dzis */
   var le=q$("dz-last");
   if(le){var uq=[],sq={};(rides.rides||[]).forEach(function(r){if(!sq[r.ride_key]){sq[r.ride_key]=1;uq.push(r);}});var LR=uq[0];

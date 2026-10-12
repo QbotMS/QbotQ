@@ -388,7 +388,7 @@
     var h = "<div><div class='tm-vh'><span class='ic'>" + AIC[x.sport] + "</span><div><b>" + esc(x.name) + "</b><span class='tm-sub' style='font-size:14px'>" + DNL[di] + " " + pl(ms) + " · " + (x.start_time || "—") + " · " + x.dur_min + "′" + (x.cut ? " (minimum)" : "") + " · " + st + (x.xss ? " · ~" + Math.round(x.xss) + " XSS" : "") + "</span></div></div>";
     h += wxLine(x.day);
     if (det || x.note) h += "<div class='tm-det'>" + esc(det) + (x.note ? (det ? "\n\n" : "") + "📝 " + esc(x.note) : "") + "</div>";
-    if (x.sport === "sila" && x.details && x.details.engine) h += "<a class='tm-b pri' style='display:flex;justify-content:center;align-items:center;text-decoration:none;margin:0 0 12px' href='/sciaga.html?id=" + x.id + "'>📄 Ściąga z grafikami i PDF</a>";
+    if (x.sport === "sila" && x.details && x.details.engine) h += "<a class='tm-b pri' style='display:flex;justify-content:center;align-items:center;text-decoration:none;margin:0 0 12px' href='/sciaga.html?id=" + x.id + "'>📄 Ściąga · zmień ćwiczenia · PDF</a>";
     if (canEd) {
       h += "<div class='tm-g2'><button class='tm-b' data-sa='done'>✓ Zrobione</button>" + (x.min_min && x.min_min < x.dur_min ? "<button class='tm-b' data-sa='cut'>⏱ Minimum " + x.min_min + "′</button>" : "") +
         "<button class='tm-b' data-sa='skip'>✕ Pomiń</button><button class='tm-b bad' data-sa='del'>🗑 Usuń</button></div>";

@@ -33,13 +33,21 @@
 @media(max-width:640px){.sh-ex{grid-template-columns:1fr}}
 .sh-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:1400;background:var(--card);border:1px solid var(--good);color:var(--good);border-radius:12px;padding:10px 16px;font-size:15px;box-shadow:0 4px 16px rgba(0,0,0,.25);max-width:92vw}
 .sh-toast.bad{border-color:var(--bad);color:var(--bad)}
+/* zmiana cwiczen (2026-10-09): POST /api/trener/sessions/<id>/workout {action:reroll|swap, keys} */
+.sh-sw{min-height:36px;border:1px solid var(--line);background:var(--card);color:var(--ink2);border-radius:8px;padding:4px 10px;font:inherit;font-size:13.5px;cursor:pointer;margin-top:8px}
+.sh-sw:hover{border-color:var(--accent);color:var(--accent)}
+.sh-new{font-size:12px;font-weight:700;color:var(--accent);margin-left:6px}
+.sh-hint{font-size:13.5px;color:var(--ink2);margin:-4px 0 10px}
+.sh-rv{border-radius:12px;padding:10px 14px;margin:0 0 12px;font-size:15px;line-height:1.45;border:1px solid var(--line);background:var(--card)}
+.sh-rv.ok{border-color:var(--good)}.sh-rv.bad{border-color:var(--warn);background:var(--warn-bg)}
+.sh-rv ul{margin:4px 0 0 18px;padding:0}
 </style>
 </head>
 <body><div class="wrap">
 <div class="head"><h1>Ściąga treningu</h1><span class="mock"></span></div>
 <section class="panel stack"><div id="sh"><div class="sub">Wczytuję…</div></div></section>
 </div>
-<script src="/nav.js?v=14"></script>
+<script src="/nav.js?v=16"></script>
 <script>
 (function () {
   "use strict";
@@ -60,7 +68,9 @@
     var s = D.session, d = D.details, info = D.info || {}, ex = {};
     d.exercises.forEach(function (e) { ex[e.n] = e; });
     var h = "<div class='sh-top'><div><h2>" + esc(d.title) + "</h2><div class='sub'>" + esc(s.dow) + " " + s.day.slice(8, 10) + "." + s.day.slice(5, 7) + (s.start ? " · " + s.start : "") + " · " + s.dur_min + "′ · " + d.rounds + " × każdy blok</div></div>" +
-      "<div style='display:flex;gap:8px;flex-wrap:wrap'><button class='sh-btn' id='sh-pdf'>📄 PDF z grafikami</button><a class='sh-btn ghost' href='/trener.html'>← Trener</a></div></div>";
+      "<div style='display:flex;gap:8px;flex-wrap:wrap'>" + (s.editable ? "<button class='sh-btn ghost' id='sh-rr'>🔀 Inny zestaw</button>" : "") + "<button class='sh-btn' id='sh-pdf'>📄 PDF z grafikami</button><a class='sh-btn ghost' href='/trener.html'>← Trener</a></div></div>";
+    if (s.editable) h += "<div class='sh-hint'>Nie pasuje ćwiczenie? „↻ Zamień” wymienia tylko je (inne z tej samej partii). „🔀 Inny zestaw” losuje cały trening od nowa. Na stałe: oceń ćwiczenie na stronie <a href='/cwiczenia.html'>Ćwiczenia</a> („Pomijaj”).</div>";
+    if (s.editable && d._mod) h += "<div class='sh-rv' id='sh-rv'>🤖 Ocena AI zestawu po zmianie…</div>";
     if (d.warmup && d.warmup.length) h += "<div class='sh-wu'><b>Rozgrzewka 5′:</b> " + d.warmup.map(function (w) { return esc(w.name) + (w.dose ? " " + esc(w.dose) : ""); }).join(" · ") + "</div>";
     var prev = null;
     d.blocks.forEach(function (b) {
@@ -70,16 +80,24 @@
         (b.wclass !== "0" && s.editable ? "<span class='sh-kg'>mój ciężar <input type='number' inputmode='decimal' step='0.5' min='0.5' max='40' value='" + b.kg + "' data-kg='" + b.letter + "'> kg <button data-save='" + b.letter + "'>zapisz</button></span>" : "<span style='font-size:14px'>" + d.rounds + " × runda</span>") + "</div>";
       b.items.forEach(function (n) {
         var e = ex[n], i = info[e.key] || {};
-        h += "<div class='sh-ex'><img loading='lazy' src='" + esc(e.img_full || e.img) + "' alt='" + esc(e.name) + "'><div><div class='hd'><h3><span class='n' style='color:" + (COL[b.wclass] || COL["0"]) + "'>" + e.n + "</span>" + esc(e.name) + "</h3><span class='ds'>" + esc(e.dose || "") + "</span></div>" +
+        h += "<div class='sh-ex'><img loading='lazy' src='" + esc(e.img_full || e.img) + "' alt='" + esc(e.name) + "'><div><div class='hd'><h3><span class='n' style='color:" + (COL[b.wclass] || COL["0"]) + "'>" + e.n + "</span>" + esc(e.name) + (e.swapped ? "<span class='sh-new'>↻ nowe</span>" : "") + "</h3><span class='ds'>" + esc(e.dose || "") + "</span></div>" +
           "<div class='sub'>" + esc(e.group) + (e.accent ? " · akcent dnia" : "") + "</div>" +
           ((i.steps || []).length ? "<ol>" + i.steps.map(function (t) { return "<li>" + esc(t) + "</li>"; }).join("") + "</ol>" : "") +
-          (i.ok ? "<div class='sh-ok'>✓ " + esc(i.ok) + "</div>" : "") + (i.bad ? "<div class='sh-bad'>✕ " + esc(i.bad) + "</div>" : "") + "</div></div>";
+          (i.ok ? "<div class='sh-ok'>✓ " + esc(i.ok) + "</div>" : "") + (i.bad ? "<div class='sh-bad'>✕ " + esc(i.bad) + "</div>" : "") + (s.editable ? "<button class='sh-sw' data-sw='" + esc(e.key) + "'>↻ Zamień na inne</button>" : "") + "</div></div>";
       });
     });
     var notes = (d.text || "").split("\n").filter(function (l) { return l.indexOf("Uwaga:") === 0 || l.indexOf("Pominięte") === 0; });
     if (notes.length) h += "<div class='sh-note'>" + notes.map(esc).join("<br>") + "</div>";
     root.innerHTML = h;
     document.getElementById("sh-pdf").onclick = pdf;
+    if (document.getElementById("sh-rv")) review();
+    var rr = document.getElementById("sh-rr");
+    if (rr) rr.onclick = function () { change(rr, { action: "reroll" }, function () { return "Nowy zestaw gotowy"; }); };
+    root.querySelectorAll("[data-sw]").forEach(function (bt) { bt.onclick = function () {
+      change(bt, { action: "swap", keys: [bt.dataset.sw] }, function (j) {
+        if (j.missing && j.missing.length) return "Brak zastępstwa — usunięte: " + j.missing.join(", ");
+        return (j.pairs || []).map(function (p) { return p[0] + " → " + p[1]; }).join("; ") || "Zamienione"; });
+    }; });
     root.querySelectorAll("[data-save]").forEach(function (bt) { bt.onclick = function () {
       var L = bt.dataset.save, inp = root.querySelector("[data-kg='" + L + "']"), kg = parseFloat(String(inp.value).replace(",", "."));
       if (!(kg > 0)) { toast("Podaj ciężar w kg", true); return; }
@@ -87,6 +105,18 @@
       api("PUT", "/sessions/" + id + "/block_kg", { letter: L, kg: kg }).then(function () { toast("Zapisano " + kg + " kg — Trener zapamięta"); load(); })
         .catch(function (e) { bt.disabled = false; toast("Nie zapisano: " + e.message, true); });
     }; });
+  }
+  function review() {
+    api("GET", "/sessions/" + id + "/workout/review").then(function (r) {
+      var el = document.getElementById("sh-rv"); if (!el) return;
+      el.className = "sh-rv" + (r.ok === true ? " ok" : (r.ok === false ? " bad" : ""));
+      el.innerHTML = "🤖 <b>Ocena AI:</b> " + esc(r.werdykt || "—") + ((r.uwagi || []).length ? "<ul>" + r.uwagi.map(function (u) { return "<li>" + esc(u) + "</li>"; }).join("") + "</ul>" : "");
+    }).catch(function (e) { var el = document.getElementById("sh-rv"); if (el) el.textContent = "🤖 Ocena AI niedostępna: " + e.message; });
+  }
+  function change(bt, body, msg) {
+    bt.disabled = true;
+    api("POST", "/sessions/" + id + "/workout", body).then(function (j) { toast(msg(j)); load(); })
+      .catch(function (e) { bt.disabled = false; toast("Nie udało się: " + e.message, true); });
   }
   function pdf() {
     var bt = document.getElementById("sh-pdf"); bt.disabled = true; bt.textContent = "Składam PDF…";

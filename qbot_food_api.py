@@ -575,6 +575,68 @@ def build_router(current_user, owner_user) -> APIRouter:
         except Exception as ex:
             raise HTTPException(status_code=502, detail="AI niedostępne: %s" % type(ex).__name__)
 
+    @r.get("/heart_plus")
+    def heart_plus(request: Request):
+        """Zdrowie -> Serce: HRV (norma z roku, ostatnie 28 dni) + serce a jedzenie/waga
+        (cisnienie rano po dniu z duza iloscia soli z diety / po duzym deficycie / vs waga; HRV po duzym deficycie)."""
+        need_user(request)
+        import statistics as stt
+        import qbot_food_plan as FP
+        today = datetime.now(TZ).date()
+        with FP._conn() as c:
+            hrv = [(x["date"], float(x["h"])) for x in c.execute(
+                "SELECT date, avg(hrv_ms) h FROM qbot_v2.qbot_sleep_daily WHERE hrv_ms IS NOT NULL AND date >= %s GROUP BY date ORDER BY date",
+                (today - timedelta(days=365),)).fetchall()]
+            bp = c.execute("SELECT measured_local, systolic, diastolic FROM qbot_v2.blood_pressure ORDER BY measured_local").fetchall()
+            salt = {x["d"]: float(x["s"] or 0) for x in c.execute(
+                "SELECT COALESCE(eaten_day, day) d, sum(salt_g) s FROM qbot_v2.brokul_meals WHERE status='eaten' GROUP BY 1").fetchall()}
+            wts = [(x["date"], float(x["weight_kg"])) for x in c.execute(
+                "SELECT date, weight_kg FROM qbot_v2.body_measurements WHERE weight_kg IS NOT NULL ORDER BY date").fetchall()]
+            bal = {}
+            for x in c.execute("SELECT l.date, sum(i.kcal) k FROM qbot_v2.intake_logs l JOIN qbot_v2.intake_items i ON i.intake_log_id=l.id "
+                               "JOIN qbot_v2.food_day f ON f.day=l.date AND f.closed_at IS NOT NULL GROUP BY l.date").fetchall():
+                ex = FP.expend(c, x["date"])
+                if x["k"] and ex["src"] == "realne":
+                    bal[x["date"]] = float(x["k"]) - ex["kcal"]
+        old = [h for d, h in hrv if (today - d).days > 28]
+        rec = [h for d, h in hrv if (today - d).days <= 28]
+        norm = stt.median(old) if len(old) >= 30 else None
+        recent = sum(rec) / len(rec) if rec else None
+        delta = recent - norm if recent is not None and norm else None
+        pct = delta / norm * 100 if delta is not None else None
+        st_ = None if pct is None else ("bad" if pct <= -12 else "warn" if pct <= -7 else "good" if pct >= 3 else "good")
+        hmap = dict(hrv)
+        # HRV po duzym deficycie (nastepny dzien) vs po pozostalych dniach z bilansem - odchylenie od mediany 28 dni
+        def dev(d):
+            v = hmap.get(d)
+            base = [hmap[d - timedelta(days=k)] for k in range(1, 29) if (d - timedelta(days=k)) in hmap]
+            return v - stt.median(base) if v is not None and len(base) >= 8 else None
+        big = [dev(d + timedelta(days=1)) for d, v in bal.items() if v < -700]
+        oth = [dev(d + timedelta(days=1)) for d, v in bal.items() if v >= -700]
+        big, oth = [x for x in big if x is not None], [x for x in oth if x is not None]
+        links = {"hrv_po_deficycie": {"n_duzy": len(big), "n_inne": len(oth),
+                                      "duzy": round(sum(big) / len(big), 1) if big else None, "inne": round(sum(oth) / len(oth), 1) if oth else None}}
+        # cisnienie rano vs sol/deficyt dnia poprzedniego i waga
+        mbp = []
+        for m in bp:
+            lt = m["measured_local"]
+            if lt and lt.hour < 12:
+                d = lt.date()
+                w = next((v for dd, v in reversed(wts) if dd <= d), None)
+                mbp.append({"d": d, "sys": m["systolic"], "dia": m["diastolic"], "salt_prev": salt.get(d - timedelta(days=1)),
+                            "bal_prev": bal.get(d - timedelta(days=1)), "weight": w})
+        def grp(f):
+            a = [x["sys"] for x in mbp if f(x) is True]
+            b = [x["sys"] for x in mbp if f(x) is False]
+            return {"n_a": len(a), "n_b": len(b), "a": round(sum(a) / len(a)) if a else None, "b": round(sum(b) / len(b)) if b else None}
+        links["cisnienie"] = {"pomiary_rano": len(mbp), "pomiary_wszystkie": len(bp),
+                              "sol": grp(lambda x: None if x["salt_prev"] is None else x["salt_prev"] >= 8),
+                              "deficyt": grp(lambda x: None if x["bal_prev"] is None else x["bal_prev"] < -500)}
+        return {"hrv": {"series": [[d.isoformat(), round(h, 1)] for d, h in hrv], "norm": round(norm, 1) if norm else None,
+                        "recent": round(recent, 1) if recent is not None else None, "delta": round(delta, 1) if delta is not None else None,
+                        "pct": round(pct, 1) if pct is not None else None, "status": st_},
+                "links": links}
+
     @r.get("/calendar")
     def calendar(request: Request, start: str, end: str):
         """Kafelki kalendarza Trenera: zjedzone vs cel i zamkniecie dnia (tylko dni od startu jedzenia)."""
