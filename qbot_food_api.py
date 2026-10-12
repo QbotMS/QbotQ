@@ -239,10 +239,17 @@ def build_router(current_user, owner_user) -> APIRouter:
                 "WHERE l.date BETWEEN %s AND %s GROUP BY l.date", (a, today)).fetchall() if x["k"]}
             closed = {x["day"] for x in c.execute("SELECT day FROM qbot_v2.food_day WHERE closed_at IS NOT NULL AND day BETWEEN %s AND %s",
                                                   (a, today)).fetchall()}
+            rest = {x["date"]: float(x["r"]) for x in c.execute(
+                "SELECT date, resting_kcal r FROM qbot_v2.energy_daily WHERE date BETWEEN %s AND %s AND resting_kcal IS NOT NULL "
+                "AND quality_status<>'partial'", (a, today)).fetchall()}
             series, d = [], a
             while d <= today:
                 ex = FP.expend(c, d)
-                series.append({"day": d.isoformat(), "intake": round(itk[d]) if d in itk else None, "expend": round(ex["kcal"]),
+                # podzial spalania: spoczynek (BMR) + aktywne; dzien realny z Garmina, prognoza z modelu
+                rr = rest.get(d) if ex["src"] == "realne" else (ex.get("parts") or {}).get("bmr")
+                series.append({"day": d.isoformat(), "rest": round(rr) if rr else None,
+                               "active": round(ex["kcal"] - rr) if rr else None,
+                               "intake": round(itk[d]) if d in itk else None, "expend": round(ex["kcal"]),
                                "expend_src": ex["src"], "closed": d in closed,
                                "target": FP.target_for(ex, cal, bal, d)})
                 d += timedelta(days=1)
@@ -346,6 +353,7 @@ def build_router(current_user, owner_user) -> APIRouter:
                         "fat_kg": round(w * fp / 100, 1) if fp is not None else None,
                         "muscle_kg": round(float(r0["muscle_mass_kg"]), 1) if r0["muscle_mass_kg"] is not None else None,
                         "water_pct": float(r0["body_water_pct"]) if r0["body_water_pct"] is not None else None,
+                        "bone_kg": round(float(r0["bone_mass_kg"]), 2) if r0["bone_mass_kg"] is not None else None,
                         "mode": mode, "suspect": sus, "source": r0["source_type"]})
         comp = [x for x in out if x["fat_pct"] is not None]
         def avg(xs, k):
