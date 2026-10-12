@@ -1023,8 +1023,8 @@ load().catch(function(e){console.error("forma2:",e);});
         b.innerHTML=sel+(a.naglowek?'<p style="font-size:16px;font-weight:700;margin:12px 0 6px;line-height:1.4">'+esc(a.naglowek)+'</p>':'')+
           (a.odkrycia||[]).map(function(o){return '<div style="border:1px solid var(--line);border-left:4px solid '+(PC[o.pewnosc]||"var(--muted)")+';border-radius:10px;padding:8px 10px;margin:8px 0">'+
             '<div style="display:flex;justify-content:space-between;gap:8px"><b>'+esc(o.tytul)+'</b><span style="font-size:11.5px;color:'+(PC[o.pewnosc]||"var(--muted)")+';white-space:nowrap">pewność: '+esc(o.pewnosc)+'</span></div>'+
-            '<div style="margin-top:4px">'+esc(o.co)+'</div><div style="margin-top:4px;color:var(--ink2)">→ '+esc(o.znaczenie)+'</div></div>';}).join("")+
-          (a.eksperyment?'<h4>Eksperyment na 2 tygodnie</h4><div>'+esc(a.eksperyment)+'</div>':'')+(a.brakuje?'<h4>Czego brakuje</h4><div style="color:var(--ink2)">'+esc(a.brakuje)+'</div>':'')+
+            '<div style="margin-top:3px;color:var(--ink2)">'+esc(o.co)+'</div><div style="margin-top:3px;font-weight:600">→ '+esc(o.znaczenie)+'</div></div>';}).join("")+
+          (a.eksperyment?'<div style="margin-top:10px"><b>🧪 Sprawdź:</b> '+esc(a.eksperyment)+'</div>':'')+(a.brakuje?'<div style="margin-top:6px;color:var(--muted);font-size:12.5px">Brakuje: '+esc(a.brakuje)+'</div>':'')+
           '<details style="margin-top:12px"><summary style="cursor:pointer;color:var(--muted)">Policzone dane (szczegóły)</summary>'+details(x.policzone||{})+'</details>'+
           '<p style="color:var(--muted);font-size:12px;margin-top:12px">Liczone względem Twojej normy z 28 dni, bez par wynikających z tego samego modelu. Wynik nie jest zapisywany.</p>';})
       .catch(function(e){b.innerHTML=sel+'<p style="color:var(--bad);margin-top:12px">'+esc(e.message)+'</p>';});
