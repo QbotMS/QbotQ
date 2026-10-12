@@ -163,8 +163,11 @@ Zwracasz WYŁĄCZNIE JSON, bez komentarza:
 Zasady:
 - Pomiń słowa o czasie ("wczoraj", "w sobotę", "rano", daty) - opisują kiedy, nie co.
 - Każda pozycja: krótka polska nazwa, porcja słowami (np. "cała ~30 cm", "2 szt.", "0,5 l"), kcal i PEŁNE makra (liczby).
+- ZAWSZE odpowiadasz samym JSON-em. Nigdy tabel, list, pytań ani komentarzy tekstem.
+- Gdy w wiadomości jest WIĘCEJ NIŻ JEDNA pozycja -> NIGDY nie pytaj ("ambiguous": false): dla każdej przyjmij typową porcję
+  i opisz ją wprost w "portion" (np. "porcja ~350 g", "kawałek ~100 g", "całe opakowanie 70 g").
 - Gdy ilość podana -> użyj jej. Typowe pojedyncze sztuki (pączek, banan, baton, jabłko, piwo 0,5 l, kawa) -> przyjmij 1 typową sztukę bez pytania.
-- Gdy ilości NIE podano, a realne porcje różnią się ponad 2x (pizza, ciasto, makaron, frytki, lody, sałatka, zupa, chipsy...) ->
+- Gdy jest JEDNA pozycja, ilości NIE podano, a realne porcje różnią się ponad 2x (pizza, ciasto, makaron, frytki, lody, sałatka, zupa, chipsy...) ->
   "ambiguous": true, "question": krótko np. "Pizza – ile?", "options": 3-4 warianty [{"label": "1 kawałek", "items": [...pełne pozycje dla tego wariantu, z wszystkimi produktami z wiadomości...]}],
   label max 18 znaków; wtedy "items": null.
 - Sieciówki (McDonald's, KFC, Żabka, Starbucks) i produkty paczkowane -> wartości producenta, jeśli je znasz.
@@ -183,15 +186,27 @@ def estimate(text: str | None, image: tuple[bytes, str] | None = None) -> dict:
         content.append({"type": "image", "source": {"type": "base64", "media_type": image[1],
                                                     "data": base64.b64encode(image[0]).decode()}})
     content.append({"type": "text", "text": "Wiadomość użytkownika: " + (text or "(samo zdjęcie)")})
-    r = httpx.post("https://api.anthropic.com/v1/messages",
-                   headers={"content-type": "application/json", "x-api-key": cfg.ANTHROPIC_API_KEY,
-                            "anthropic-version": "2023-06-01"},
-                   json={"model": cfg.ANTHROPIC_MODEL, "max_tokens": 1500, "temperature": 0, "system": _PROMPT,
-                         "messages": [{"role": "user", "content": content}]},
-                   timeout=60)
-    r.raise_for_status()
-    txt = "".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text")
-    j = parse_json_text(txt)
+    msgs = [{"role": "user", "content": content}]
+    j = None
+    for attempt in range(2):
+        r = httpx.post("https://api.anthropic.com/v1/messages",
+                       headers={"content-type": "application/json", "x-api-key": cfg.ANTHROPIC_API_KEY,
+                                "anthropic-version": "2023-06-01"},
+                       json={"model": cfg.ANTHROPIC_MODEL, "max_tokens": 4000, "temperature": 0, "system": _PROMPT,
+                             "messages": msgs},
+                       timeout=90)
+        r.raise_for_status()
+        txt = "".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text")
+        a, b = txt.find("{"), txt.rfind("}")
+        try:
+            j = parse_json_text(txt[a:b + 1]) if 0 <= a < b else None
+        except ValueError:
+            j = None
+        if isinstance(j, dict):
+            break
+        msgs = msgs + [{"role": "assistant", "content": txt or "?"},
+                       {"role": "user", "content": "To nie jest JSON. Odpowiedz WYŁĄCZNIE JSON-em wg schematu, bez pytań: "
+                                                   "dla każdej pozycji przyjmij typową porcję."}]
     if not isinstance(j, dict):
         raise ValueError("AI: odpowiedz nie jest obiektem JSON")
     if j.get("not_food"):
@@ -327,8 +342,9 @@ def process_entry(eid: int, reply_to: int | None = None) -> str:
                       (("%s: %s" % (type(ex).__name__, ex))[:500], eid))
             c.commit()
             _log("#%d blad szacowania: %s" % (eid, ex))
-            tg_send("⚠️ #%d zapisane jako „%s”, ale nie udało się policzyć kcal. Spróbuję ponownie; wpis jest bezpieczny."
-                    % (eid, (e["raw_text"] or "zdjęcie")[:60]), reply_to=reply_to)
+            if (e["attempts"] or 0) == 0:
+                tg_send("⚠️ #%d zapisane jako „%s”, ale nie udało się policzyć kcal. Spróbuję ponownie; wpis jest bezpieczny."
+                        % (eid, (e["raw_text"] or "zdjęcie")[:60]), reply_to=reply_to)
             return "failed"
         if res.get("not_food"):
             c.execute("UPDATE qbot_v2.food_entries SET status='not_food', updated_at=now() WHERE id=%s", (eid,))
