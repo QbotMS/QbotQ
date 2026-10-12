@@ -397,12 +397,13 @@ function renderDziennik(){
   mcard("dz-m-kg","Waga",tm,qN(tm.v,1)+' <small>kg</small>',"");
   /* jedzenie dzis - kompaktowo w siatce 2x2 */
   var fe=q$("dz-food");
-  if(fe){var nk=nutToday||{},tgt=2100,kc=+nk.kcal||0,pr=+nk.protein_g||0,cb=+nk.carbs_g||0,ft=+nk.fat_g||0;var kP=pr*4,kC=cb*4,kF=ft*9;
-    var fh='<p class="lbl">Jedzenie dziś</p><div class="v">'+qN(kc,0)+' <small class="muted" style="font-size:13px;font-weight:400">/ '+tgt+' kcal</small></div>';
-    fh+='<div style="height:8px;border-radius:4px;background:var(--well);overflow:hidden"><div style="width:'+Math.min(100,Math.round(kc/tgt*100))+'%;height:100%;display:flex">'+(kc?'<div style="flex:'+kP+';background:var(--blue)"></div><div style="flex:'+kC+';background:var(--accent)"></div><div style="flex:'+kF+';background:var(--purple)"></div>':'')+'</div></div>';
-    fh+='<div class="muted" style="font-size:12px">'+(kc?'<span style="color:var(--blue)">■</span> B '+qN(pr,0)+'/160 · <span style="color:var(--accent)">■</span> W '+qN(cb,0)+' · <span style="color:var(--purple)">■</span> T '+qN(ft,0)+' g · ':'brak wpisów · ')+'<a class="link" href="#odzywianie" id="dz-addfood">dodaj →</a></div>';
-    fe.innerHTML=fh;
-    var af=q$("dz-addfood");if(af)af.onclick=function(e){e.preventDefault();var tb=document.querySelector('#tabs button[data-t="odzywianie"]');if(tb)tb.click();};}
+  if(fe){/* 2026-10-12: skrot do strony Jedzenie, dane z /api/jedzenie/day (docs/BROKUL.md) */
+    fe.innerHTML='<p class="lbl">Jedzenie dziś</p><div class="muted" style="font-size:12px">wczytuję…</div>';
+    fetch("/api/jedzenie/day?day="+today,{credentials:"same-origin",cache:"no-store"}).then(function(r){return r.ok?r.json():null;}).then(function(dd){if(!dd)return;
+      var kc=+dd.totals.kcal||0,tg=+dd.target||0;
+      fe.innerHTML='<p class="lbl">Jedzenie dziś</p><div class="v">'+qN(kc,0)+' <small class="muted" style="font-size:13px;font-weight:400">/ '+qN(tg,0)+' kcal</small></div>'
+        +'<div style="height:8px;border-radius:4px;background:var(--well);overflow:hidden"><div style="width:'+Math.min(100,Math.round(tg?kc/tg*100:0))+'%;height:100%;background:'+(kc>tg+150?'var(--bad)':'var(--good)')+'"></div></div>'
+        +'<div class="muted" style="font-size:12px">B '+qN(+dd.totals.protein_g||0,0)+'/160 g · '+(dd.closed?'🔒 zamknięty':'⏳ otwarty')+' · <a class="link" href="/jedzenie.html">Jedzenie →</a></div>';}).catch(function(){});}
   /* ostatnia jazda - obok karty Dzis */
   var le=q$("dz-last");
   if(le){var uq=[],sq={};(rides.rides||[]).forEach(function(r){if(!sq[r.ride_key]){sq[r.ride_key]=1;uq.push(r);}});var LR=uq[0];
@@ -645,6 +646,7 @@ function renderTrendy(){
   var datasets=DEFS.filter(function(d){return !d.status;}).map(function(d){
     var o={label:d.lab,data:d.data,borderColor:d.c,borderWidth:d.w||1.5,pointRadius:0,pointHoverRadius:4,tension:0.35,fill:false,yAxisID:d.ax,hidden:!isOn(d),_k:d.k,spanGaps:true};
     if(d.dash)o.borderDash=d.dash;
+    if(d.step){o.stepped=true;o.tension=0;}
     if(d.fill){o.fill=true;o.backgroundColor=isDark?"rgba(200,200,200,0.08)":"rgba(100,100,100,0.08)";}
     if(d.bar){o.type="bar";o.backgroundColor=d.c;o.borderWidth=0;o.barPercentage=0.8;o.categoryPercentage=1;o.order=9;}
     return o;});

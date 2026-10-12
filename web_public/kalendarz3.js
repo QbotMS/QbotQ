@@ -49,8 +49,15 @@ function toast(msg, bad) { var el = $("k3-toast"); if (!el) { el = document.crea
 function fail(e) { toast("Błąd: " + (e && e.message ? e.message : e), true); }
 
 /* ---------- dane (cache do pierwszego zapisu) ---------- */
-var WK = {}, CAL = {}, WXC = {}, SCH = {};
-function invalidate() { WK = {}; CAL = {}; WXC = {}; SCH = {}; }
+var WK = {}, CAL = {}, WXC = {}, SCH = {}, FDC = {}, FD = {};
+function invalidate() { WK = {}; CAL = {}; WXC = {}; SCH = {}; FDC = {}; }
+/* 2026-10-12: jedzenie dnia (zjedzone / cel) z /api/jedzenie/calendar - link do strony Jedzenie (docs/BROKUL.md) */
+function loadFood(s, e) { var k = s + "|" + e; return FDC[k] || (FDC[k] = getJ("/api/jedzenie/calendar?start=" + s + "&end=" + e)); }
+function foodLn(ds) { var f = FD[ds]; if (!f) return "";
+  var href = ' href="/jedzenie.html#dni=' + ds + '" onclick="event.stopPropagation()" style="display:block;text-decoration:none;';
+  if (!f.kcal && !f.closed) return '<a class="ln food"' + href + 'color:var(--muted)" title="Brak wpisów jedzenia – otwórz dzień w Jedzeniu">🍽 brak wpisów</a>';
+  var over = f.kcal - f.target > 150;
+  return '<a class="ln food"' + href + "color:" + (over ? "var(--bad)" : "var(--good)") + '" title="zjedzone / cel dnia – otwórz dzień w Jedzeniu">🍽 ' + qN(f.kcal, 0) + "/" + qN(f.target, 0) + (f.closed ? " 🔒" : "") + "</a>"; }
 function loadWeek(k) { return WK[k] || (WK[k] = api("GET", "/week?start=" + k).catch(function () { return { sessions: [], meta: {} }; })); }
 function loadCal(s, e) { var k = s + "|" + e; return CAL[k] || (CAL[k] = qJSON("/api/calendar?start=" + s + "&end=" + e)); }
 function getJ(u) { return fetch(u, { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; }); }
@@ -120,7 +127,7 @@ function compactCell(d, inM) {
     else h += '<div class="ln ' + (it.st === "skip" ? "sk" : "p") + '" data-sid="' + x.id + '">' + ic + " " + (x.start_time ? x.start_time.slice(0, 5) + " " : "") + x.dur_min + "′</div>"; });
   dp.extra.forEach(function (r) { h += rideLn(r); });
   gridEnts(ds).forEach(function (e) { h += entLn(e); });
-  return '<div class="' + cls("cd", ds, inM) + '" data-day="' + ds + '">' + h + slHTML(ds) + dotsHTML(ds) + "</div>";
+  return '<div class="' + cls("cd", ds, inM) + '" data-day="' + ds + '">' + h + foodLn(ds) + slHTML(ds) + dotsHTML(ds) + "</div>";
 }
 function bigCell(d, inM) {
   var ds = iso(d), dmeta = ((wk(ds).meta || {}).days || {})[ds] || {}, n = 0;
@@ -139,7 +146,7 @@ function bigCell(d, inM) {
   dp.extra.forEach(function (r) { n++; h += rideLn(r).replace("</div>", ' <small style="font-weight:400">· poza planem</small></div>'); });
   gridEnts(ds).forEach(function (e) { n++; h += entLn(e); });
   if (!n) h += '<div class="free">wolne</div>';
-  return '<div class="' + cls("bd", ds, inM) + '" data-day="' + ds + '">' + h + slHTML(ds) + "</div>";
+  return '<div class="' + cls("bd", ds, inM) + '" data-day="' + ds + '">' + h + foodLn(ds) + slHTML(ds) + "</div>";
 }
 
 /* ---------- naglowek tygodnia ---------- */
@@ -264,9 +271,9 @@ async function render() {
   var res;
   /* tygodnie PO KOLEI: rownolegle GET /week robily wyscig w OPS.calendar_changed (duble zmian 'aktualizacja') */
   var wkSeq = weeks.reduce(function (pr, k) { return pr.then(function (acc) { return loadWeek(k).then(function (w) { acc.push(w); return acc; }); }); }, Promise.resolve([]));
-  try { res = await Promise.all([loadCal(s, e), loadWx(s, e), loadSch(s, e), wkSeq]); }
+  try { res = await Promise.all([loadCal(s, e), loadWx(s, e), loadSch(s, e), wkSeq, loadFood(s, e)]); }
   catch (err) { $("k3-grid").innerHTML = '<div class="empty">Błąd: ' + qEsc(err.message) + "</div>"; return; }
-  C = res[0] || {}; X = res[1] || {}; W = {}; weeks.forEach(function (k, i) { W[k] = (res[3] || [])[i] || {}; });
+  C = res[0] || {}; X = res[1] || {}; FD = (res[4] || {}).days || {}; W = {}; weeks.forEach(function (k, i) { W[k] = (res[3] || [])[i] || {}; });
   entryRoutes = {}; (C.entry_routes || []).forEach(function (r) { entryRoutes[r.entry_id + "|" + r.day] = { route_id: r.route_id, route_name: r.route_name }; });
   sched = {}; ((res[2] || {}).items || []).forEach(function (r) { sched[r.entry_id + "|" + r.day] = r; });
   var g = "", mR = 0, mKm = 0, mX = 0;
@@ -302,7 +309,7 @@ function sesModal(id) {
   var det = x.details && x.details.text ? x.details.text : "";
   var h = mHead((AIC[x.sport] || "") + " " + qEsc(x.name)) + '<div class="km-body"><div class="sub">' + DNL[d.getDay()] + " " + dm(d) + " · " + (x.start_time || "—") + " · " + x.dur_min + "′" + (x.cut ? " (minimum)" : "") + " · " + st + (x.xss ? " · ~" + Math.round(x.xss) + " XSS" : "") + "</div>";
   if (det || x.note) h += '<div class="det">' + qEsc(det) + (x.note ? (det ? "\n\n" : "") + "📝 " + qEsc(x.note) : "") + "</div>";
-  if (x.sport === "sila" && x.details && x.details.engine) h += '<p><a class="link" href="/sciaga.html?id=' + x.id + '">📄 Ściąga z grafikami i PDF</a></p>';
+  if (x.sport === "sila" && x.details && x.details.engine) h += '<p><a class="link" href="/sciaga.html?id=' + x.id + '">📄 Ściąga · zmień ćwiczenia · PDF</a></p>';
   if (canEd) {
     var days = ""; for (var k = 0; k < 7; k++) { var dd = addD(monday(d), k), di = iso(dd); if (di >= today && di !== x.day) days += '<option value="' + di + '">' + DNL[dd.getDay()] + " " + dm(dd) + "</option>"; }
     h += '<div class="g2"><button type="button" data-sa="done">✓ Zrobione</button>' + (x.min_min && x.min_min < x.dur_min ? '<button type="button" data-sa="cut">⏱ Minimum ' + x.min_min + "′</button>" : "") + '<button type="button" data-sa="skip">✕ Pomiń</button><button type="button" class="bad" data-sa="del">🗑 Usuń</button></div>' +

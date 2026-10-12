@@ -100,6 +100,24 @@ details.sk2 p{font-size:12.5px;color:var(--ink2);margin:4px 0 0;line-height:1.45
 .empty{color:var(--muted);font-size:14px;padding:6px 0}
 .busy{opacity:.55;pointer-events:none}
 @media (prefers-reduced-motion:no-preference){.daychip,.btn,.seg button{transition:background-color .15s}}
+.rng{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
+.rng button,.rng input{font:inherit;font-size:13px}
+.rng input{padding:4px 6px;border:1px solid var(--line);border-radius:8px;background:var(--well);color:var(--ink)}
+.rng button.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.toggles{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}
+.tg{appearance:none;border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:999px;padding:3px 10px;font:inherit;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.tg i{width:12px;height:4px;border-radius:2px;display:inline-block}
+.tg.on{color:var(--ink);background:var(--well);border-color:var(--line2)}
+.tg:not(.on) i{filter:grayscale(1);opacity:.5}
+.chwrap{position:relative}
+.tip2{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line2);border-radius:8px;padding:7px 9px;font-size:12.5px;line-height:1.45;min-width:170px;z-index:5;display:none;box-shadow:0 4px 14px rgba(0,0,0,.25);font-variant-numeric:tabular-nums}
+.wknav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.wknav b{font-size:16px;min-width:150px;text-align:center}
+.jg{font-size:12px;border-radius:999px;padding:1px 8px;white-space:nowrap}
+.jg.ok{background:var(--good-bg);color:var(--good)}.jg.high,.jg.low{background:var(--bad-bg);color:var(--bad)}
+.recs{margin:6px 0 0;padding-left:18px}.recs li{margin:4px 0;font-size:14.5px;line-height:1.45}
+.nt{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums;margin-top:6px}
+.nt td{padding:4px 6px;border-bottom:1px solid var(--line)}.nt td.r{text-align:right}
 /* telefon: na koncu, zeby wygrac z .meal wyzej */
 @media(max-width:600px){.meal{grid-template-columns:1fr}.meal .seg{justify-self:start}}
 </style>
@@ -111,16 +129,18 @@ details.sk2 p{font-size:12.5px;color:var(--ink2);margin:4px 0 0;line-height:1.45
 </div>
 <div class="jt-bar" role="tablist" id="tabs">
   <button role="tab" data-t="dni">Dni</button>
+  <button role="tab" data-t="analiza">Analiza</button>
   <button role="tab" data-t="pasy">Passa</button>
   <button role="tab" data-t="bilans">Bilans i waga</button>
   <button role="tab" data-t="menu">Menu Brokuła</button>
 </div>
 <section id="t-dni" role="tabpanel"><div class="days" id="daystrip" role="list"></div><div id="dayview"><p class="empty">Wczytuję…</p></div></section>
+<section id="t-analiza" role="tabpanel" hidden><div id="analiza"><p class="empty">Wczytuję…</p></div></section>
 <section id="t-pasy" role="tabpanel" hidden><div id="pasy"><p class="empty">Wczytuję…</p></div></section>
 <section id="t-bilans" role="tabpanel" hidden><div id="bilans"><p class="empty">Wczytuję…</p></div></section>
 <section id="t-menu" role="tabpanel" hidden><div id="menu"><p class="empty">Wczytuję…</p></div></section>
 </div>
 <script src="/nav.js?v=15"></script>
-<script src="/jedzenie.js?v=1"></script>
+<script src="/jedzenie.js?v=2"></script>
 </body>
 </html>

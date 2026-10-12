@@ -68,6 +68,107 @@ def day_card(day: date, plan_ctx: dict) -> dict:
             "deadline": S.deadline(day).isoformat(), "late": S._past(day, datetime.now(TZ))}
 
 
+SWEET_RE = r"(czekolad|żelk|zelk|baton|ciast|lody|lód |wafel|wafl|cukierk|pączk|paczk|drożdżów|rwaniec|słodycz|slodycz|ciastk|deser|nutell|góralk|goralk|snickers|twix|prince polo)"
+
+
+def analysis(day: date) -> dict:
+    """Analiza dnia i tygodnia (liczby liczy QBot). Dzis: cel, zjedzone + zaplanowany Brokul, co jeszcze zjesc.
+    Tydzien (7 dni do 'day'): srednie vs normy, slodycze, okno, dni zamkniete, cukry/sol/nasycone z Brokula."""
+    import re as _re
+    import qbot_food_log as F
+    import qbot_food_plan as FP
+    import qbot_food_streaks as S
+    now = datetime.now(TZ)
+    with FP._conn() as c:
+        p = FP.day_plan(day, c)
+        nm = FP.norms(p["target"])
+        bro = c.execute("SELECT status, eaten_day, day, meal_type, name, kcal, protein_g, carbs_g, fat_g, sugars_g, sat_fat_g, salt_g "
+                        "FROM qbot_v2.brokul_meals WHERE (day=%s AND status<>'cancelled') OR (status='eaten' AND eaten_day=%s)", (day, day)).fetchall()
+    eat = F.day_totals(day)
+    eaten = {k: float(eat[k] or 0) for k in ("kcal", "protein_g", "carbs_g", "fat_g")}
+    pend = [m for m in bro if m["status"] == "pending" and m["day"] == day]
+    pk = {k: sum(float(m[k] or 0) for m in pend) for k in ("kcal", "protein_g", "carbs_g", "fat_g")}
+    proj = {k: eaten[k] + pk[k] for k in eaten}
+    bro_in = [m for m in bro if (m["status"] == "eaten" and (m["eaten_day"] or m["day"]) == day) or m in pend]
+    sug = sum(float(m["sugars_g"] or 0) for m in bro_in)
+    salt = sum(float(m["salt_g"] or 0) for m in bro_in)
+    sat = sum(float(m["sat_fat_g"] or 0) for m in bro_in)
+    left = p["target"] - proj["kcal"]
+    pl = nm["protein_g"] - proj["protein_g"]
+    recs = []
+    if left >= FP.SMALL_EXTRA:
+        recs.append("Po wszystkich posiłkach Brokuła zostaje ~%d kcal" % round(left) + (
+            " – zjedz białko: %s (brakuje ~%d g)" % (FP._protein_tip(pl), round(pl)) if pl >= 10 else " – węgle/tłuszcz wg ochoty, białko już jest"))
+    elif left <= -FP.SMALL_EXTRA:
+        recs.append("Z zaplanowanym jedzeniem jesteś ponad cel o ~%d kcal – dziś bez dokładek" % round(-left))
+    else:
+        recs.append("Plan dnia trafia w cel – nic nie dokładaj" + (", ale białka mało (brakuje ~%d g)" % round(pl) if pl >= 15 else ""))
+    if sug >= 0.9 * nm["sugars_max_g"]:
+        recs.append("Cukry z diety %d/%d g – słodycze dziś odpuść" % (round(sug), nm["sugars_max_g"]))
+    if salt > FP.SALT_MAX:
+        recs.append("Sól z diety %.0f g (norma 5) – bez słonych przekąsek, pij wodę" % salt)
+    if p["fuel_g"]:
+        recs.append("Na rower ~%d g węgli – tu zmieszczą się słodkie (żelki, batony)" % p["fuel_g"])
+    if day == now.date() and now.hour >= 17 and left >= 300:
+        recs.append("Do końca okna (20:00) zostało ~%d h" % max(0, 20 - now.hour))
+    today_part = {"day": day.isoformat(), "target": p["target"], "expend": p["expend"], "balance": p["balance"], "norms": nm,
+                  "eaten": {k: round(v) for k, v in eaten.items()}, "pending": {k: round(v) for k, v in pk.items()},
+                  "pending_meals": [m["meal_type"] for m in pend], "projected": {k: round(v) for k, v in proj.items()},
+                  "left_kcal": round(left), "protein_left": round(pl), "sugars_diet": round(sug, 1), "salt_diet": round(salt, 1),
+                  "sat_diet": round(sat, 1), "fuel_g": p["fuel_g"], "sessions": [s["name"] + " %d′" % (s["dur_min"] or 0) for s in p["sessions"]],
+                  "recs": recs}
+    # ---- tydzien
+    a = day - timedelta(days=6)
+    rows = []
+    with FP._conn() as c:
+        cal, bal = FP.calibration(c), FP.target_balance(c)
+        for i in range(7):
+            d = a + timedelta(days=i)
+            if d < S.START:
+                continue
+            t = F.day_totals(d)
+            ex = FP.expend(c, d)
+            fd = c.execute("SELECT closed_at, window_ok FROM qbot_v2.food_day WHERE day=%s", (d,)).fetchone()
+            ws_, _ = S.window_status(c, d)
+            b2 = c.execute("SELECT sum(sugars_g) su, sum(salt_g) sl, sum(sat_fat_g) sa FROM qbot_v2.brokul_meals WHERE status='eaten' "
+                           "AND COALESCE(eaten_day, day)=%s", (d,)).fetchone()
+            sw = c.execute("SELECT count(*) n FROM qbot_v2.food_entries e WHERE e.day=%s AND e.status='logged' AND "
+                           "(e.raw_text ~* %s OR e.items::text ~* %s)", (d, SWEET_RE, SWEET_RE)).fetchone()["n"]
+            rows.append({"day": d.isoformat(), "closed": bool(fd and fd["closed_at"]), "kcal": round(float(t["kcal"] or 0)),
+                         "protein_g": round(float(t["protein_g"] or 0)), "carbs_g": round(float(t["carbs_g"] or 0)), "fat_g": round(float(t["fat_g"] or 0)),
+                         "target": max(FP.FLOOR_KCAL, round((ex["kcal"] - cal + bal) / 50) * 50), "expend": round(ex["kcal"]),
+                         "window": ws_, "sweets": sw, "sugars_diet": round(float(b2["su"] or 0)), "salt_diet": round(float(b2["sl"] or 0), 1),
+                         "sat_diet": round(float(b2["sa"] or 0))})
+    cl = [r for r in rows if r["closed"]]
+    def av(k, src):
+        return round(sum(r[k] for r in src) / len(src)) if src else None
+    week = {"from": a.isoformat(), "to": day.isoformat(), "days": rows, "closed": len(cl), "n": len(rows),
+            "avg": {k: av(k, cl) for k in ("kcal", "protein_g", "carbs_g", "fat_g", "target", "expend")},
+            "avg_balance": round(sum(r["kcal"] - r["expend"] for r in cl) / len(cl)) if cl else None, "balance_target": bal,
+            "sweets_days": sum(1 for r in rows if r["sweets"]), "window_ok": sum(1 for r in rows if r["window"] == "ok"),
+            "window_broken": sum(1 for r in rows if r["window"] == "broken"), "over_target_days": sum(1 for r in cl if r["kcal"] > r["target"] + 150),
+            "salt_diet_avg": round(sum(r["salt_diet"] for r in rows if r["salt_diet"]) / max(1, sum(1 for r in rows if r["salt_diet"])), 1)}
+    wrec = []
+    if week["closed"] < week["n"]:
+        wrec.append("Zamknięte %d z %d dni – bez pełnych danych bilans jest niepewny" % (week["closed"], week["n"]))
+    if week["avg"]["protein_g"] is not None and week["avg"]["protein_g"] < FP.PROTEIN_TARGET * 0.85:
+        wrec.append("Białko średnio %d g/dz (cel 160) – dokładaj skyr/jajka/twaróg codziennie" % week["avg"]["protein_g"])
+    if week["avg_balance"] is not None:
+        diff = week["avg_balance"] - bal
+        if diff > 250:
+            wrec.append("Średni bilans %+d kcal/dz zamiast %+d – za dużo jedzenia o ~%d kcal dziennie" % (week["avg_balance"], bal, diff))
+        elif diff < -300:
+            wrec.append("Deficyt %+d kcal/dz – za mocny, grozi głodem i napadem na słodkie; jedz trochę więcej" % week["avg_balance"])
+    if week["sweets_days"] >= 3:
+        wrec.append("Słodycze w %d dniach z 7 – przenieś je na rower (paliwo) albo zaplanuj 1–2 dni" % week["sweets_days"])
+    if week["salt_diet_avg"] > FP.SALT_MAX:
+        wrec.append("Sól z samej diety ~%.0f g/dz (norma 5) – resztę dnia bez słonego" % week["salt_diet_avg"])
+    if week["window_broken"]:
+        wrec.append("Okno 10–20 złamane %d× – kolacja przed 20:00" % week["window_broken"])
+    week["recs"] = wrec
+    return {"today": today_part, "week": week, "generated_at": now.isoformat()}
+
+
 def plan_ctx() -> dict:
     import qbot_food_plan as FP
     with FP._conn() as c:
@@ -118,14 +219,19 @@ def build_router(current_user, owner_user) -> APIRouter:
                 "start": S.START.isoformat(), "launch": S.LAUNCH.isoformat()}
 
     @r.get("/balance")
-    def balance(request: Request, days: int = 42):
+    def balance(request: Request, days: int = 45, start: str | None = None, end: str | None = None):
         need_user(request)
         import qbot_food_plan as FP
         import qbot_food_streaks as S
         import qbot_trener_stats as ST
-        days = max(7, min(120, days))
         today = datetime.now(TZ).date()
-        a = today - timedelta(days=days)
+        if start:
+            a, today = _d(start), min(_d(end) if end else today, datetime.now(TZ).date())
+            if a > today or (today - a).days > 366:
+                raise HTTPException(status_code=400, detail="zakres: maks. 366 dni, od <= do")
+        else:
+            days = max(7, min(366, days))
+            a = today - timedelta(days=days)
         with FP._conn() as c:
             cal, bal = FP.calibration(c), FP.target_balance(c)
             itk = {x["date"]: float(x["k"]) for x in c.execute(
@@ -155,26 +261,119 @@ def build_router(current_user, owner_user) -> APIRouter:
                 ws = (date.fromisoformat(x["day"]) - timedelta(days=date.fromisoformat(x["day"]).weekday())).isoformat()
                 weeks.setdefault(ws, []).append(x["intake"] - x["expend"])
         wk = [{"week": k, "days": len(v), "avg_balance": round(sum(v) / len(v))} for k, v in sorted(weeks.items())]
+        with FP._conn() as c:
+            wts = [[x["date"].isoformat(), round(float(x["w"]), 2)] for x in c.execute(
+                "SELECT date, avg(weight_kg) w FROM qbot_v2.body_measurements WHERE weight_kg IS NOT NULL AND date BETWEEN %s AND %s "
+                "GROUP BY date ORDER BY date", (a, today)).fetchall()]
         disc = json.loads(json.dumps(S.discrepancy(), default=_ser))
-        return {"series": series, "weeks": wk, "balance_target": bal, "calib": cal, "discrepancy": disc,
+        return {"series": series, "weights": wts, "start": a.isoformat(), "end": today.isoformat(), "weeks": wk, "balance_target": bal, "calib": cal, "discrepancy": disc,
                 "discrepancy_line": S.discrepancy_line(), "goal": goal}
 
     @r.get("/menu")
-    def menu(request: Request):
+    def menu(request: Request, week: str | None = None):
+        """Menu Brokula tygodniami (pn-nd) + podsumowanie dni i tygodnia vs normy. Historia od 12.10.2026 (panel nie daje starszych)."""
         need_user(request)
         import qbot_brokul_meals as M
         import qbot_brokul as B
+        import qbot_food_plan as FP
         today = datetime.now(TZ).date()
+        ws = _d(week) if week else today
+        ws = ws - timedelta(days=ws.weekday())
+        we = ws + timedelta(days=6)
         with M._conn() as c:
-            meals = c.execute("SELECT * FROM qbot_v2.brokul_meals WHERE day >= %s AND status <> 'cancelled' ORDER BY day, meal_order",
-                              (today,)).fetchall()
+            meals = c.execute("SELECT * FROM qbot_v2.brokul_meals WHERE day BETWEEN %s AND %s AND status <> 'cancelled' ORDER BY day, meal_order",
+                              (ws, we)).fetchall()
             fridge = c.execute("SELECT * FROM qbot_v2.brokul_meals WHERE status='fridge' ORDER BY day, meal_order").fetchall()
-            dd = [x["day"].isoformat() for x in c.execute("SELECT DISTINCT day FROM qbot_v2.brokul_delivery_days WHERE day >= %s ORDER BY day",
-                                                           (today - timedelta(days=14),)).fetchall()]
+            rng = c.execute("SELECT min(day) a, max(day) b FROM qbot_v2.brokul_meals WHERE status <> 'cancelled'").fetchone()
+        K = ("kcal", "protein_g", "carbs_g", "fat_g", "sugars_g", "sat_fat_g", "salt_g")
+        days = {}
+        for m in meals:
+            d = days.setdefault(m["day"].isoformat(), {k: 0.0 for k in K})
+            for k in K:
+                d[k] += float(m[k] or 0)
+        week_sum = {k: round(sum(d[k] for d in days.values()), 1) for k in K}
+        n = len(days)
+        avg = {k: round(week_sum[k] / n, 1) for k in K} if n else None
+        def judge(v):
+            if not v:
+                return None
+            return {"protein_g": "ok" if v["protein_g"] >= FP.PROTEIN_TARGET * 0.9 else "low",
+                    "sugars_g": "ok" if v["sugars_g"] <= v["kcal"] * FP.SUGAR_MAX_PCT / 4 else "high",
+                    "sat_fat_g": "ok" if v["sat_fat_g"] <= v["kcal"] * FP.SAT_MAX_PCT / 9 else "high",
+                    "salt_g": "ok" if v["salt_g"] <= FP.SALT_MAX else "high",
+                    "fat_g": "ok" if v["fat_g"] >= FP.FAT_MIN else "low"}
         st = B.state()
-        return {"meals": [_row(m, MEAL_KEYS) for m in meals], "fridge": [_row(m, MEAL_KEYS) for m in fridge],
-                "delivery_days": dd, "order_end": _ser(M.delivery_end()), "session_alive": bool(st.get("alive")),
-                "last_import": st.get("last_import"), "access_url": "/brokul-dostep"}
+        return {"week": ws.isoformat(), "week_end": we.isoformat(),
+                "prev": (ws - timedelta(days=7)).isoformat() if rng and rng["a"] and rng["a"] < ws else None,
+                "next": (ws + timedelta(days=7)).isoformat() if rng and rng["b"] and rng["b"] > we else None,
+                "meals": [_row(m, MEAL_KEYS) for m in meals], "fridge": [_row(m, MEAL_KEYS) for m in fridge],
+                "days": {k: {kk: round(vv, 1) for kk, vv in v.items()} for k, v in days.items()},
+                "days_judge": {k: judge(v) for k, v in days.items()},
+                "week_sum": week_sum, "week_avg": avg, "week_judge": judge(avg), "n_days": n,
+                "norms": {"protein_g": FP.PROTEIN_TARGET, "fat_min_g": FP.FAT_MIN, "salt_max_g": FP.SALT_MAX,
+                          "sugars_pct": FP.SUGAR_MAX_PCT, "sat_pct": FP.SAT_MAX_PCT},
+                "order_end": _ser(M.delivery_end()), "session_alive": bool(st.get("alive")),
+                "last_import": st.get("last_import"), "access_url": "/brokul-dostep", "history_from": "2026-10-12"}
+
+    @r.get("/calendar")
+    def calendar(request: Request, start: str, end: str):
+        """Kafelki kalendarza Trenera: zjedzone vs cel i zamkniecie dnia (tylko dni od startu jedzenia)."""
+        need_user(request)
+        import qbot_food_plan as FP
+        import qbot_food_streaks as S
+        a, b = max(_d(start), S.START), min(_d(end), datetime.now(TZ).date())
+        out = {}
+        if a > b or (b - a).days > 62:
+            return {"days": out}
+        with FP._conn() as c:
+            cal, bal = FP.calibration(c), FP.target_balance(c)
+            itk = {x["date"]: float(x["k"]) for x in c.execute(
+                "SELECT l.date, sum(i.kcal) k FROM qbot_v2.intake_logs l JOIN qbot_v2.intake_items i ON i.intake_log_id=l.id "
+                "WHERE l.date BETWEEN %s AND %s GROUP BY l.date", (a, b)).fetchall() if x["k"]}
+            closed = {x["day"] for x in c.execute("SELECT day FROM qbot_v2.food_day WHERE closed_at IS NOT NULL AND day BETWEEN %s AND %s",
+                                                  (a, b)).fetchall()}
+            d = a
+            while d <= b:
+                ex = FP.expend(c, d)
+                out[d.isoformat()] = {"kcal": round(itk.get(d, 0)), "target": max(FP.FLOOR_KCAL, round((ex["kcal"] - cal + bal) / 50) * 50),
+                                      "closed": d in closed}
+                d += timedelta(days=1)
+        return {"days": out}
+
+    @r.get("/analysis")
+    def analysis_get(request: Request, day: str | None = None):
+        need_user(request)
+        d = _d(day) if day else datetime.now(TZ).date()
+        res = analysis(d)
+        import qbot_food_log as F
+        with F._conn() as c:
+            row = c.execute("SELECT payload, created_at FROM qbot_v2.food_analysis WHERE day=%s", (d,)).fetchone()
+        res["ai"] = (dict(row["payload"], created_at=row["created_at"].isoformat()) if row else None)
+        return json.loads(json.dumps(res, default=_ser))
+
+    @r.post("/analysis/ai")
+    async def analysis_ai(request: Request):
+        """Zalecenia AI na podstawie policzonych liczb (AI ich nie zmienia). Zapis per dzien."""
+        need_owner(request)
+        b = await body(request)
+        d = _d(b.get("day")) if b.get("day") else datetime.now(TZ).date()
+        res = json.loads(json.dumps(analysis(d), default=_ser))
+        import qbot_food_log as F
+        prompt = ("Jesteś dietetykiem sportowym. Użytkownik: mężczyzna ~104 kg, redukcja do 90 kg, kolarz gravel, catering Brokuł w dni robocze, "
+                  "w weekend je na mieście. Dostajesz POLICZONE dane dnia i tygodnia (nie zmieniaj liczb, nie licz własnych). "
+                  "Zwróć WYŁĄCZNIE JSON: {\"dzis\": [\"...\"], \"tydzien\": [\"...\"], \"weekend\": [\"...\"]}. "
+                  "Każda lista maks. 3 krótkie, konkretne zalecenia po polsku (co zjeść / czego unikać / co zmienić), prosty język, bez moralizowania. "
+                  "\"weekend\" tylko w czwartek-niedzielę: co zamawiać na mieście, inaczej pusta lista.")
+        try:
+            j = F._ai_json(prompt, [{"type": "text", "text": json.dumps(res, ensure_ascii=False)}])
+        except Exception as ex:
+            raise HTTPException(status_code=502, detail="AI niedostępne: %s" % type(ex).__name__)
+        pay = {k: [str(x)[:300] for x in (j.get(k) or [])][:3] for k in ("dzis", "tydzien", "weekend")}
+        with F._conn() as c:
+            c.execute("INSERT INTO qbot_v2.food_analysis (day, payload) VALUES (%s,%s) ON CONFLICT (day) DO UPDATE SET payload=EXCLUDED.payload, created_at=now()",
+                      (d, json.dumps(pay, ensure_ascii=False)))
+            c.commit()
+        return {"ok": True, "ai": pay}
 
     # ------------------------------------------------------------------ zapis
     async def body(request) -> dict:

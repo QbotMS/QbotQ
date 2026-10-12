@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
-<script>if(location.hash==="#trener")location.replace("/trening.html");</script>
+<script>if(location.hash==="#trener")location.replace("/trening.html");if(location.hash==="#odzywianie"||location.hash==="#bilans")location.replace("/jedzenie.html#bilans");</script>
 <script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
 <script src="/qdate.js?v=1"></script>
 <link rel="stylesheet" href="/ui2.css?v=10">
@@ -117,13 +117,10 @@ table.qs-table td.num,table.qs-table th.num{text-align:right;font-variant-numeri
   <button data-t="dziennik" class="on">Dziennik</button>
   <button data-t="trendy">Trendy</button>
   <button data-t="sezon">Sezon</button>
-  <button data-t="odzywianie">Odżywianie</button>
   <button data-t="statystyki">Statystyki</button>
-  <button data-t="bilans">Bilans i waga</button>
   </div>
 
-<!-- ============ BILANS I WAGA (2026-10-08: z Trenera; prawdziwy dzial trener.js w ramce trener-fragment.html) ============ -->
-<section class="panel stack" id="p-bilans" hidden><iframe id="fr-bilans" title="Bilans i waga" style="width:100%;border:0;min-height:600px;display:block;background:transparent"></iframe></section>
+<!-- 2026-10-12: 'Bilans i waga' i makieta 'Odżywianie' przeniesione na strone Jedzenie (/jedzenie.html), docs/BROKUL.md -->
 
 <!-- ============ DZIENNIK ============ -->
 <section class="panel stack" id="p-dziennik">
@@ -272,41 +269,6 @@ table.qs-table td.num,table.qs-table th.num{text-align:right;font-variant-numeri
 </details>
 </section>
 
-<!-- ============ ODZYWIANIE ============ -->
-<section class="panel stack" id="p-odzywianie" hidden>
-<div class="toolbar">
-  <div class="seg"><button>7 dni</button><button class="on">30 dni</button><button>90 dni</button></div>
-  <a class="link" href="#odzywianie">Baza posiłków</a>
-</div>
-<div class="g3">
-  <div class="card tight"><p class="lbl"><span class="tip" tabindex="0" data-tip="Średnio dziennie w wybranym oknie: zjedzone minus spalone (podstawa + jazdy).">Bilans dzienny</span></p><div class="big" style="margin-top:4px">−410<span class="u">kcal</span></div><div class="delta">2 180 zjedzone · 2 590 spalone</div></div>
-  <div class="card tight"><p class="lbl">Białko (średnio)</p><div class="big" style="margin-top:4px">128<span class="u">g</span></div><div class="delta warn">cel 160 g · brakuje 32</div></div>
-  <div class="card tight"><p class="lbl">Waga</p><div class="big" style="margin-top:4px">103.4<span class="u">kg</span></div><div class="delta up">−0.6 · cel 100 do 30.09</div></div>
-</div>
-
-<div class="card">
-  <div class="cardhead"><h2>Dziś</h2><span class="sub">1 240 / 2 300 kcal</span></div>
-  <div class="bar" style="height:10px"><i style="width:22%"></i><i class="b" style="width:24%"></i><i class="a" style="width:8%"></i></div>
-  <div class="legend" style="margin:8px 0 10px"><span><i class="sw" style="background:var(--accent)"></i>białko 68 g</span><span><i class="sw" style="background:var(--blue)"></i>węgle 142 g</span><span><i class="sw" style="background:var(--amber)"></i>tłuszcz 38 g</span></div>
-  <div class="rows">
-    <div class="r"><span class="w">07:10</span><span class="s">Brokuł · owsianka z owocami</span><span class="chev"></span><div class="more"></div></div>
-    <div class="r"><span class="w">11:30</span><span class="s">skyr + orzechy</span><span class="chev"></span></div>
-    <div class="r"><span class="w">13:40</span><span class="s">Brokuł · kurczak z kaszą</span><span class="chev"></span></div>
-  </div>
-  <div class="sub" style="display:flex;justify-content:space-between;gap:8px;margin-top:4px"><span>520 · 310 · 410 kcal</span><span>białko 24 · 28 · 16 g</span></div>
-  <a class="add" href="#odzywianie">＋ dodaj posiłek</a>
-</div>
-
-<div class="card">
-  <div class="cardhead"><h2>Waga i skład ciała</h2><span class="sub">30 dni</span></div>
-  <svg class="chart" viewBox="0 0 640 110" role="img" aria-label="Waga 30 dni">
-    <line class="grid" x1="0" y1="90" x2="640" y2="90"/><line class="grid" x1="0" y1="50" x2="640" y2="50"/><line class="grid" x1="0" y1="10" x2="640" y2="10"/>
-    <text class="ax" x="0" y="8">105</text><text class="ax" x="0" y="48">104</text><text class="ax" x="0" y="88">103</text>
-    <polyline points="30,20 90,26 150,22 210,34 270,38 330,44 390,50 450,58 510,62 570,70 640,74" fill="none" stroke="var(--purple)" stroke-width="2.5"/>
-  </svg>
-</div>
-</section>
-
 <!-- ============ STATYSTYKI ============ -->
 <section class="panel stack qtab-panel" data-qtab="Statystyki" id="p-statystyki" hidden>
 <div class="qs-ctl">
@@ -334,7 +296,6 @@ table.qs-table td.num,table.qs-table th.num{text-align:right;font-variant-numeri
 <div style="margin-top:28px;font-size:12px;color:var(--muted)">Stara wersja: <a href="/forma.html">forma.html</a></div>
 </div>
 <script src="/nav.js?v=14"></script>
-<script>/* Bilans i waga: ramka ladowana przy pierwszym otwarciu zakladki, wysokosc dopasowana do tresci */(function(){var fr=document.getElementById("fr-bilans"),b=document.querySelector('#tabs [data-t="bilans"]');if(!fr)return;function load(){if(fr.getAttribute("src"))return;fr.src="/trener-fragment.html?sub=bilans";fr.addEventListener("load",function(){try{var d=fr.contentDocument,set=function(){fr.style.height=Math.max(600,d.documentElement.scrollHeight+24)+"px";};set();new fr.contentWindow.ResizeObserver(set).observe(d.body);}catch(e){}});}if(b)b.addEventListener("click",load);if(location.hash==="#bilans")load();})();</script>
 <script>(function(){var b=document.getElementById("themebtn");if(!b)return;var SUN='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',MOON='<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';function paint(){b.querySelector("svg").innerHTML=document.documentElement.classList.contains("theme-dark")?SUN:MOON;}b.addEventListener("click",function(){var d=!document.documentElement.classList.contains("theme-dark");document.documentElement.classList.toggle("theme-dark",d);try{localStorage.setItem("qtheme",d?"dark":"light")}catch(e){}paint();});paint();})();</script>
 <script>
 (function(){
@@ -356,7 +317,7 @@ table.qs-table td.num,table.qs-table th.num{text-align:right;font-variant-numeri
 </script>
 <script src="/ui2-common.js?v=3"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script src="/forma2-data.js?v=59"></script>
+<script src="/forma2-data.js?v=61"></script>
 <script src="/forma-stats.js?v=7"></script>
 </body>
 </html>

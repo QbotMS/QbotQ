@@ -23,8 +23,9 @@
   function tab(t) {
     S.tab = t;
     document.querySelectorAll("#tabs button").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.t === t ? "true" : "false"); });
-    ["dni", "pasy", "bilans", "menu"].forEach(function (k) { $("t-" + k).hidden = k !== t; });
-    try { history.replaceState(null, "", "#" + t); } catch (e) {}
+    ["dni", "analiza", "pasy", "bilans", "menu"].forEach(function (k) { $("t-" + k).hidden = k !== t; });
+    try { history.replaceState(null, "", "#" + t + (t === "dni" && S.sel ? "=" + S.sel : "")); } catch (e) {}
+    if (t === "analiza") loadAnaliza();
     if (t === "pasy") loadPasy();
     if (t === "bilans" && !S.loaded.bilans) loadBilans();
     if (t === "menu" && !S.loaded.menu) loadMenu();
@@ -44,10 +45,11 @@
   }
 
   /* ------------------------------------------------------------ DNI */
-  function loadDays(keepSel) {
-    return j("/api/jedzenie/days").then(function (x) {
+  function loadDays(keepSel, start) {
+    return j("/api/jedzenie/days" + (start ? "?start=" + start : "")).then(function (x) {
       S.days = x.days; S.today = x.today; S.ctx = { balance: x.balance, calib: x.calib };
-      if (!keepSel || !S.days.some(function (d) { return d.day === S.sel; })) S.sel = x.today;
+      if (S.want && S.days.some(function (d) { return d.day === S.want; })) { S.sel = S.want; S.want = null; }
+      else if (!keepSel || !S.days.some(function (d) { return d.day === S.sel; })) S.sel = x.today;
       renderStrip(); renderDay();
     }).catch(function (e) { $("dayview").innerHTML = "<p class='msg'>Nie udało się wczytać dni: " + esc(e.message) + "</p>"; });
   }
@@ -58,7 +60,7 @@
       return "<button class='daychip" + (d.day === S.today ? " today" : "") + "' role='listitem' data-d='" + d.day + "'" + (d.day === S.sel ? " aria-current='true'" : "") + ">" +
         "<i class='" + cls + "'></i>" + d.weekday + " " + dm(d.day) + "<small>" + (fut ? (d.has_diet ? "menu" : "plan") : (d.closed ? "zamknięty" : "otwarty")) + (d.has_diet ? " · 🥦" : "") + "</small></button>";
     }).join("");
-    $("daystrip").querySelectorAll(".daychip").forEach(function (b) { b.onclick = function () { S.sel = b.dataset.d; renderStrip(); renderDay(); }; });
+    $("daystrip").querySelectorAll(".daychip").forEach(function (b) { b.onclick = function () { S.sel = b.dataset.d; renderStrip(); renderDay(); try { history.replaceState(null, "", "#dni=" + S.sel); } catch (e) {} }; });
     var cur = $("daystrip").querySelector("[aria-current=true]"); if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: "nearest", inline: "center" });
   }
   function refreshDay(iso) {
@@ -222,25 +224,115 @@
     $("pasy").innerHTML = html;
   }
 
-  /* ------------------------------------------------------------ BILANS */
+  /* ------------------------------------------------------------ ANALIZA */
+  var A = { day: null };
+  function loadAnaliza(day) {
+    A.day = day || A.day || S.sel || S.today;
+    if (!A.day) return;
+    $("analiza").classList.add("busy");
+    j("/api/jedzenie/analysis?day=" + A.day).then(renderAnaliza).catch(function (e) { $("analiza").innerHTML = "<p class='msg'>" + esc(e.message) + "</p>"; })
+      .then(function () { $("analiza").classList.remove("busy"); });
+  }
+  function shiftDay(iso, n) { var d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
+  function jpill(ok, txt) { return "<span class='jg " + (ok ? "ok" : "high") + "'>" + txt + "</span>"; }
+  function renderAnaliza(x) {
+    var t = x.today, w = x.week, nm = t.norms, pr = t.projected;
+    var h = "<div class='wknav' style='margin-bottom:10px'><button class='btn' data-ad='-1' aria-label='Poprzedni dzień'>‹</button><b>" + wd(t.day) + " " + dm(t.day) +
+      (t.day === S.today ? " · dziś" : "") + "</b><button class='btn' data-ad='1' aria-label='Następny dzień'>›</button></div>";
+    var left = t.left_kcal;
+    h += "<div class='g2'><div class='card'><div class='ttl'><h2>Co jeszcze zjeść</h2><span class='sub'>cel ~" + n0(t.target) + " kcal</span></div>" +
+      "<div class='big2'>" + (left >= 0 ? "zostaje ~" + n0(left) : "ponad o ~" + n0(-left)) + " <span class='sub' style='font-size:15px'>kcal</span></div>" +
+      "<div class='note'>Liczone z tym, co już zjedzone (" + n0(t.eaten.kcal) + " kcal)" + (t.pending_meals.length ? " i z zaplanowanym Brokułem: " + esc(t.pending_meals.join(", ")) + " (" + n0(t.pending.kcal) + " kcal)" : "") + ".</div>" +
+      "<ul class='recs'>" + t.recs.map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>" +
+      "<table class='nt'><tr><td>Białko</td><td class='r'>" + n0(pr.protein_g) + " / " + nm.protein_g + " g</td><td class='r'>" + jpill(pr.protein_g >= nm.protein_g * 0.9, pr.protein_g >= nm.protein_g * 0.9 ? "ok" : "za mało") + "</td></tr>" +
+      "<tr><td>Węglowodany</td><td class='r'>" + n0(pr.carbs_g) + " / ~" + nm.carbs_g + " g</td><td class='r'><span class='muted'>reszta kcal</span></td></tr>" +
+      "<tr><td>Tłuszcz</td><td class='r'>" + n0(pr.fat_g) + " / min. " + nm.fat_min_g + " g</td><td class='r'>" + jpill(pr.fat_g >= nm.fat_min_g, pr.fat_g >= nm.fat_min_g ? "ok" : "za mało") + "</td></tr>" +
+      "<tr><td>Cukry (dieta)</td><td class='r'>" + n0(t.sugars_diet) + " / maks. " + nm.sugars_max_g + " g</td><td class='r'>" + jpill(t.sugars_diet < nm.sugars_max_g * 0.9, t.sugars_diet < nm.sugars_max_g * 0.9 ? "ok" : "limit") + "</td></tr>" +
+      "<tr><td>Nasycone (dieta)</td><td class='r'>" + n0(t.sat_diet) + " / maks. " + nm.sat_max_g + " g</td><td class='r'>" + jpill(t.sat_diet <= nm.sat_max_g, t.sat_diet <= nm.sat_max_g ? "ok" : "za dużo") + "</td></tr>" +
+      "<tr><td>Sól (dieta)</td><td class='r'>" + n1(t.salt_diet) + " / maks. 5 g</td><td class='r'>" + jpill(t.salt_diet <= 5, t.salt_diet <= 5 ? "ok" : "za dużo") + "</td></tr></table>" +
+      "<div class='note'>Cukry, sól i nasycone znamy tylko z Brokuła (jedzenie spoza diety ma kcal i makra).</div></div>";
+    var av = w.avg;
+    h += "<div class='card'><div class='ttl'><h2>Tydzień " + dm(w.from) + "–" + dm(w.to) + "</h2><span class='sub'>zamknięte " + w.closed + "/" + w.n + " dni</span></div>" +
+      (w.closed ? "<table class='nt'><tr><td>Średnio zjedzone</td><td class='r'>" + n0(av.kcal) + " kcal (cel ~" + n0(av.target) + ")</td></tr>" +
+        "<tr><td>Średni bilans</td><td class='r'>" + n0(w.avg_balance) + " kcal/dz (cel " + n0(w.balance_target) + ")</td></tr>" +
+        "<tr><td>Białko</td><td class='r'>" + n0(av.protein_g) + " g/dz (cel 160)</td></tr><tr><td>Węgle / tłuszcz</td><td class='r'>" + n0(av.carbs_g) + " / " + n0(av.fat_g) + " g/dz</td></tr>" +
+        "<tr><td>Dni ze słodyczami</td><td class='r'>" + w.sweets_days + "</td></tr><tr><td>Okno: dotrzymane / złamane</td><td class='r'>" + w.window_ok + " / " + w.window_broken + "</td></tr>" +
+        "<tr><td>Dni ponad cel</td><td class='r'>" + w.over_target_days + "</td></tr></table>" : "<p class='empty'>Brak zamkniętych dni w tym tygodniu.</p>") +
+      (w.recs.length ? "<ul class='recs'>" + w.recs.map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>" : "<p class='note'>Bez uwag na ten tydzień.</p>") + "</div></div>";
+    var ai = x.ai;
+    h += "<div class='card' style='margin-top:12px'><div class='ttl'><h2>Zalecenia AI</h2><span class='sub'>" + (ai ? "z " + dm(ai.created_at.slice(0, 10)) + " " + ai.created_at.slice(11, 16) : "") + "</span></div>" +
+      (ai ? [["dzis", "Dziś"], ["tydzien", "Tydzień"], ["weekend", "Weekend"]].filter(function (k) { return (ai[k[0]] || []).length; }).map(function (k) {
+        return "<p class='lbl' style='margin-top:6px'>" + k[1] + "</p><ul class='recs'>" + ai[k[0]].map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>"; }).join("")
+        : "<p class='note' style='margin-top:0'>AI pisze zalecenia na podstawie liczb powyżej (nie zmienia ich). Zapisuje się raz na dzień.</p>") +
+      "<button class='btn pri' id='aibtn'>" + (ai ? "Napisz od nowa" : "Napisz zalecenia AI") + "</button> <span id='aimsg' class='sub'></span></div>";
+    $("analiza").innerHTML = h;
+    $("analiza").querySelectorAll("[data-ad]").forEach(function (b) { b.onclick = function () { loadAnaliza(shiftDay(A.day, +b.dataset.ad)); }; });
+    $("aibtn").onclick = function () { var b = $("aibtn"); b.disabled = true; b.textContent = "AI pisze… (kilka sekund)";
+      post("/api/jedzenie/analysis/ai", { day: A.day }).then(function () { loadAnaliza(A.day); }).catch(function (e) { $("aimsg").textContent = e.message; b.disabled = false; b.textContent = "Spróbuj ponownie"; }); };
+  }
+
+  /* ------------------------------------------------------------ BILANS (interaktywny) */
+  var B = { range: 45, start: null, end: null, on: { intake: true, expend: true, target: true, weight: true }, data: null };
+  var BCOL = { intake: "var(--accent)", expend: "var(--blue)", target: "var(--good)", weight: "var(--purple)" };
+  var BLAB = { intake: "zjedzone", expend: "spalone", target: "cel dnia", weight: "waga" };
   function loadBilans() {
     S.loaded.bilans = true;
-    j("/api/jedzenie/balance?days=42").then(renderBilans).catch(function (e) { S.loaded.bilans = false; $("bilans").innerHTML = "<p class='msg'>" + esc(e.message) + "</p>"; });
+    var q = B.start ? "start=" + B.start + "&end=" + (B.end || S.today || "") : "days=" + B.range;
+    $("bilans").classList.add("busy");
+    j("/api/jedzenie/balance?" + q).then(function (x) { B.data = x; renderBilans(x); })
+      .catch(function (e) { S.loaded.bilans = false; $("bilans").innerHTML = "<p class='msg'>" + esc(e.message) + "</p>"; })
+      .then(function () { $("bilans").classList.remove("busy"); });
   }
-  function balChart(ser) {
-    var W = 900, H = 260, pl = 44, pr = 10, pt = 12, pb = 26, n = ser.length;
-    var mx = Math.max.apply(null, ser.map(function (x) { return Math.max(x.expend || 0, x.intake || 0, x.target || 0); })) * 1.08;
-    var bw = (W - pl - pr) / n;
+  function balChart(x) {
+    var ser = x.series, n = ser.length, W = 900, H = 280, pl = 44, pr = 40, pt = 12, pb = 26;
+    var mx = Math.max.apply(null, ser.map(function (s) { return Math.max(B.on.expend ? s.expend || 0 : 0, B.on.intake ? s.intake || 0 : 0, B.on.target ? s.target || 0 : 0); }).concat([1000])) * 1.08;
+    var bw = (W - pl - pr) / n, idx = {};
+    ser.forEach(function (s, i) { idx[s.day] = i; });
     function X(i) { return pl + i * bw; } function Y(v) { return pt + (1 - v / mx) * (H - pt - pb); }
-    var s = "<svg viewBox='0 0 " + W + " " + H + "' style='width:100%;min-width:620px;height:auto;display:block;color:inherit' role='img' aria-label='Bilans dzienny: zjedzone, spalone, cel'>";
+    var wts = (x.weights || []).filter(function (p) { return idx[p[0]] != null; });
+    var w0 = wts.length ? Math.min.apply(null, wts.map(function (p) { return p[1]; })) - 1 : 0, w1 = wts.length ? Math.max.apply(null, wts.map(function (p) { return p[1]; })) + 1 : 1;
+    function YW(v) { return pt + (w1 - v) / Math.max(0.5, w1 - w0) * (H - pt - pb); }
+    var s = "<svg id='balsvg' viewBox='0 0 " + W + " " + H + "' style='width:100%;min-width:620px;height:auto;display:block;color:inherit' role='img' aria-label='Bilans dzienny: zjedzone, spalone, cel, waga'>";
     for (var v = 0; v <= mx; v += 1000) s += "<line x1='" + pl + "' x2='" + (W - pr) + "' y1='" + Y(v).toFixed(1) + "' y2='" + Y(v).toFixed(1) + "' stroke='var(--line)'/><text x='" + (pl - 5) + "' y='" + (Y(v) + 4).toFixed(1) + "' font-size='11' text-anchor='end' fill='var(--muted)'>" + v + "</text>";
-    ser.forEach(function (x, i) {
-      if (x.intake != null) s += "<rect x='" + (X(i) + bw * 0.18).toFixed(1) + "' y='" + Y(x.intake).toFixed(1) + "' width='" + (bw * 0.64).toFixed(1) + "' height='" + (Y(0) - Y(x.intake)).toFixed(1) + "' rx='2' fill='" + (x.closed ? "var(--accent)" : "none") + "' stroke='var(--accent)' stroke-width='1.2'><title>" + dm(x.day) + ": zjedzone " + n0(x.intake) + ", spalone " + n0(x.expend) + ", cel " + n0(x.target) + (x.closed ? "" : " (dzień otwarty)") + "</title></rect>";
-      if (i % 7 === 0 || i === n - 1) s += "<text x='" + (X(i) + bw / 2).toFixed(1) + "' y='" + (H - 8) + "' font-size='11' text-anchor='middle' fill='var(--muted)'>" + dm(x.day) + "</text>";
+    var step = Math.max(1, Math.round(n / 9));
+    ser.forEach(function (x2, i) {
+      if (B.on.intake && x2.intake != null) s += "<rect x='" + (X(i) + bw * 0.15).toFixed(1) + "' y='" + Y(x2.intake).toFixed(1) + "' width='" + Math.max(1, bw * 0.7).toFixed(1) + "' height='" + (Y(0) - Y(x2.intake)).toFixed(1) + "' rx='1.5' fill='" + (x2.closed ? "var(--accent)" : "none") + "' stroke='var(--accent)' stroke-width='1'/>";
+      if (i % step === 0) s += "<text x='" + (X(i) + bw / 2).toFixed(1) + "' y='" + (H - 8) + "' font-size='11' text-anchor='middle' fill='var(--muted)'>" + dm(x2.day) + "</text>";
     });
-    function ln(k, col, dash) { return "<path d='" + ser.map(function (x, i) { return (i ? "L" : "M") + (X(i) + bw / 2).toFixed(1) + " " + Y(x[k]).toFixed(1); }).join(" ") + "' fill='none' stroke='" + col + "' stroke-width='1.8'" + (dash ? " stroke-dasharray='" + dash + "'" : "") + "/>"; }
-    s += ln("expend", "var(--blue)") + ln("target", "var(--good)", "6 4");
-    return s + "</svg><div class='legend'><span><i style='background:var(--accent)'></i>zjedzone (dzień zamknięty)</span><span><i style='border:1px solid var(--accent)'></i>zjedzone (otwarty)</span><span><i style='background:var(--blue)'></i>spalone</span><span><i style='background:var(--good)'></i>cel dnia</span></div>";
+    function ln(k, dash) { return "<path d='" + ser.map(function (x2, i) { return (i ? "L" : "M") + (X(i) + bw / 2).toFixed(1) + " " + Y(x2[k]).toFixed(1); }).join(" ") + "' fill='none' stroke='" + BCOL[k] + "' stroke-width='1.8'" + (dash ? " stroke-dasharray='" + dash + "'" : "") + "/>"; }
+    if (B.on.expend) s += ln("expend");
+    if (B.on.target) s += ln("target", "6 4");
+    if (B.on.weight && wts.length) {
+      s += "<path d='" + wts.map(function (p, i) { return (i ? "L" : "M") + (X(idx[p[0]]) + bw / 2).toFixed(1) + " " + YW(p[1]).toFixed(1); }).join(" ") + "' fill='none' stroke='" + BCOL.weight + "' stroke-width='1.6'/>";
+      wts.forEach(function (p) { s += "<circle cx='" + (X(idx[p[0]]) + bw / 2).toFixed(1) + "' cy='" + YW(p[1]).toFixed(1) + "' r='3' fill='" + BCOL.weight + "'/>"; });
+      [w0 + 0.5, (w0 + w1) / 2, w1 - 0.5].forEach(function (v) { s += "<text x='" + (W - pr + 4) + "' y='" + (YW(v) + 4).toFixed(1) + "' font-size='10.5' fill='" + BCOL.weight + "'>" + n1(v) + "</text>"; });
+    }
+    s += "<line id='balcur' x1='0' x2='0' y1='" + pt + "' y2='" + (H - pb) + "' stroke='var(--muted)' stroke-dasharray='2 3' visibility='hidden'/>";
+    s += "<rect id='balhit' x='" + pl + "' y='" + pt + "' width='" + (W - pl - pr) + "' height='" + (H - pt - pb) + "' fill='transparent'/></svg>";
+    B.geo = { W: W, pl: pl, pr: pr, bw: bw, n: n, wmap: (x.weights || []).reduce(function (a, p) { a[p[0]] = p[1]; return a; }, {}) };
+    return s;
+  }
+  function wireBal() {
+    var svg = $("balsvg"), tip = $("baltip"), cur = $("balcur"), wrap = $("balwrap"); if (!svg) return;
+    function hide() { tip.style.display = "none"; cur.setAttribute("visibility", "hidden"); }
+    svg.addEventListener("mouseleave", hide);
+    svg.addEventListener("mousemove", function (ev) {
+      var r = svg.getBoundingClientRect(), g = B.geo, xv = (ev.clientX - r.left) / r.width * g.W, i = Math.floor((xv - g.pl) / g.bw);
+      if (i < 0 || i >= g.n) return hide();
+      var d = B.data.series[i], cx = g.pl + i * g.bw + g.bw / 2, bal = d.intake != null ? d.intake - d.expend : null, w = g.wmap[d.day];
+      cur.setAttribute("x1", cx); cur.setAttribute("x2", cx); cur.setAttribute("visibility", "visible");
+      tip.innerHTML = "<b>" + wd(d.day) + " " + dm(d.day) + "</b>" + (d.closed ? " 🔒" : "") +
+        "<br>zjedzone: " + (d.intake != null ? n0(d.intake) + " kcal" + (d.closed ? "" : " (otwarty)") : "brak wpisów") +
+        "<br>spalone: " + n0(d.expend) + (d.expend_src === "prognoza" ? " (prognoza)" : "") + "<br>cel: " + n0(d.target) +
+        (bal != null ? "<br>bilans: <b style='color:var(--" + (bal <= d.target - d.expend + 150 ? "good" : "bad") + ")'>" + (bal > 0 ? "+" : "") + n0(bal) + "</b>" : "") +
+        (w ? "<br>waga: " + n1(w) + " kg" : "");
+      var px = (cx / g.W) * r.width, left = px + 14; if (left + 190 > wrap.clientWidth) left = px - 200;
+      tip.style.left = Math.max(0, left) + "px"; tip.style.top = "10px"; tip.style.display = "block";
+    });
+    svg.addEventListener("click", function (ev) {
+      var r = svg.getBoundingClientRect(), g = B.geo, i = Math.floor(((ev.clientX - r.left) / r.width * g.W - g.pl) / g.bw);
+      var d = B.data.series[i]; if (d && d.day >= "2026-10-10") { S.want = d.day; tab("dni"); loadDays(true, d.day < shiftDay(S.today, -6) ? d.day : null); }
+    });
   }
   function wchart(ch) {
     var W = 640, H = 210, pl = 34, pr = 10, pt = 18, pb = 14;
@@ -263,7 +355,12 @@
     return s + "</svg><div class='legend'><span>– – plan z korytarzem ±1 kg</span><span>● ważenia</span><span>··· prognoza przy obecnym tempie</span></div>";
   }
   function renderBilans(x) {
-    var h = "<div class='card'><div class='ttl'><h2>Bilans dzienny (42 dni)</h2><span class='sub'>cel bilansu " + n0(x.balance_target) + " kcal/dz" + (x.calib ? " · kalibracja " + n0(-x.calib) : "") + "</span></div><div class='chartbox'>" + balChart(x.series) + "</div></div>";
+    var rb = "<div class='rng'>" + [45, 90, 180].map(function (d) { return "<button class='btn" + (!B.start && B.range === d ? " on" : "") + "' data-r='" + d + "'>" + d + " dni</button>"; }).join("") +
+      "<span class='sub' style='margin-left:6px'>od</span><input type='date' id='bfrom' value='" + (B.start || x.start) + "'><span class='sub'>do</span><input type='date' id='bto' value='" + (B.end || x.end) + "'><button class='btn" + (B.start ? " on" : "") + "' id='bgo'>Pokaż</button></div>";
+    var tg = "<div class='toggles'>" + Object.keys(BLAB).map(function (k) { return "<button class='tg" + (B.on[k] ? " on" : "") + "' data-s='" + k + "' aria-pressed='" + B.on[k] + "'><i style='background:" + BCOL[k] + "'></i>" + BLAB[k] + "</button>"; }).join("") + "</div>";
+    var h = "<div class='card'><div class='ttl'><h2>Bilans dzienny</h2><span class='sub'>" + dm(x.start) + "." + x.start.slice(0, 4) + " – " + dm(x.end) + " · cel bilansu " + n0(x.balance_target) + " kcal/dz" + (x.calib ? " · kalibracja " + n0(-x.calib) : "") + "</span></div>" + rb + tg +
+      "<div class='chwrap chartbox' id='balwrap'>" + balChart(x) + "<div class='tip2' id='baltip'></div></div>" +
+      "<div class='legend'><span><i style='background:var(--accent)'></i>zjedzone (pełne = dzień zamknięty)</span><span>najedź = szczegóły dnia · kliknij = otwórz dzień</span></div></div>";
     var g = x.goal;
     h += "<div class='g2' style='margin-top:12px'><div class='card'><div class='ttl'><h2>⚖️ " + esc(g ? g.name : "Waga") + "</h2></div>" +
       (g ? "<div class='state " + (g.level === "g" ? "ok" : "open") + "'>" + esc(g.text) + "</div>" + (g.chart ? wchart(g.chart) : "") +
@@ -272,41 +369,64 @@
     var dsc = x.discrepancy || {};
     h += "<div class='stack'><div class='card'><div class='ttl'><h2>Waga vs jedzenie</h2></div><p class='note' style='margin-top:0'>" + esc(x.discrepancy_line) + "</p>" +
       (dsc.ready ? "<div class='kv'><span>Bilans z wpisów</span><span>" + n0(dsc.logged_bal) + " kcal/dz</span><span>Bilans z wagi</span><span>" + n0(dsc.actual_bal) + " kcal/dz</span><span>Rozbieżność</span><span>" + n0(dsc.disc) + " kcal/dz</span></div>" : "") +
-      "<p class='note'>Porównuje to, co wynika z zapisanego jedzenia, z tym, co pokazuje waga (prawdziwe ważenia). Duża rozbieżność = coś umyka albo Garmin myli się co do spalania. QBot sam koryguje o nią cel dnia.</p></div>" +
+      "<p class='note'>Porównuje to, co wynika z zapisanego jedzenia, z tym, co pokazuje waga (prawdziwe ważenia). QBot sam koryguje o rozbieżność cel dnia.</p></div>" +
       "<div class='card'><div class='ttl'><h2>Tygodnie</h2></div>" + (x.weeks.length ? "<table class='tb'><tr><th>Tydzień od</th><th class='r'>Zamknięte dni</th><th class='r'>Śr. bilans</th></tr>" +
         x.weeks.slice().reverse().map(function (w) { var ok = w.avg_balance >= x.balance_target - 300 && w.avg_balance <= x.balance_target + 250; return "<tr><td>" + dm(w.week) + "</td><td class='r'>" + w.days + "</td><td class='r' style='color:var(--" + (ok ? "good" : "bad") + ")'>" + n0(w.avg_balance) + "</td></tr>"; }).join("") + "</table>"
         : "<p class='empty'>Jeszcze brak zamkniętych dni z pełnym spalaniem.</p>") + "</div></div></div>";
     $("bilans").innerHTML = h;
+    $("bilans").querySelectorAll("[data-r]").forEach(function (b) { b.onclick = function () { B.range = +b.dataset.r; B.start = B.end = null; loadBilans(); }; });
+    $("bgo").onclick = function () { var a = $("bfrom").value, b = $("bto").value; if (!a) return; B.start = a; B.end = b || null; loadBilans(); };
+    $("bilans").querySelectorAll("[data-s]").forEach(function (b) { b.onclick = function () { B.on[b.dataset.s] = !B.on[b.dataset.s]; renderBilans(B.data); }; });
+    wireBal();
   }
 
-  /* ------------------------------------------------------------ MENU */
-  function loadMenu() {
+  /* ------------------------------------------------------------ MENU (tygodniami) */
+  function loadMenu(week) {
     S.loaded.menu = true;
-    j("/api/jedzenie/menu").then(renderMenu).catch(function (e) { S.loaded.menu = false; $("menu").innerHTML = "<p class='msg'>" + esc(e.message) + "</p>"; });
+    $("menu").classList.add("busy");
+    j("/api/jedzenie/menu" + (week ? "?week=" + week : "")).then(renderMenu).catch(function (e) { S.loaded.menu = false; $("menu").innerHTML = "<p class='msg'>" + esc(e.message) + "</p>"; })
+      .then(function () { $("menu").classList.remove("busy"); });
   }
+  var JL = { protein_g: "białko", fat_g: "tłuszcz", sugars_g: "cukry", sat_fat_g: "nasycone", salt_g: "sól" };
+  function judgePills(jd) { if (!jd) return ""; return Object.keys(JL).map(function (k) { var v = jd[k]; return "<span class='jg " + v + "'>" + JL[k] + (v === "ok" ? " ✓" : v === "high" ? " ↑" : " ↓") + "</span>"; }).join(" "); }
   function renderMenu(x) {
+    var h = "<div class='card'><div class='ttl'><h2>🥦 Dieta od Brokuła</h2><span class='sub'>" + (x.order_end ? "zamówienie do " + wd(x.order_end) + " " + dmy(x.order_end) : "brak zamówienia") + "</span></div>" +
+      "<div class='wknav'><button class='btn' data-w='" + (x.prev || "") + "'" + (x.prev ? "" : " disabled") + " aria-label='Poprzedni tydzień'>‹</button><b>" + dm(x.week) + " – " + dm(x.week_end) + "</b>" +
+      "<button class='btn' data-w='" + (x.next || "") + "'" + (x.next ? "" : " disabled") + " aria-label='Następny tydzień'>›</button>" +
+      "<span class='note' style='margin:0'>" + (x.session_alive ? "Połączenie z Brokułem działa" : "⚠️ Sesja Brokuła nie działa – <a href='" + x.access_url + "'>wklej nowe ciasteczka</a>") +
+      (x.last_import ? " · import " + dm(x.last_import.slice(0, 10)) + " " + x.last_import.slice(11, 16) : "") + " · historia od " + dm(x.history_from) + "</span></div></div>";
+    var av = x.week_avg, nm = x.norms;
+    if (av) {
+      h += "<div class='card' style='margin-top:12px'><div class='ttl'><h2>Podsumowanie tygodnia</h2><span class='sub'>" + x.n_days + " dni diety · średnio na dzień</span></div>" +
+        "<div class='chartbox'><table class='tb'><tr><th></th><th class='r'>kcal</th><th class='r'>B</th><th class='r'>W</th><th class='r'>T</th><th class='r'>cukry</th><th class='r'>nas.</th><th class='r'>sól</th><th>vs normy</th></tr>" +
+        Object.keys(x.days).sort().map(function (d) { var v = x.days[d]; return "<tr><td>" + wd(d) + " " + dm(d) + "</td><td class='r'>" + n0(v.kcal) + "</td><td class='r'>" + n0(v.protein_g) + "</td><td class='r'>" + n0(v.carbs_g) + "</td><td class='r'>" + n0(v.fat_g) + "</td><td class='r'>" + n0(v.sugars_g) + "</td><td class='r'>" + n0(v.sat_fat_g) + "</td><td class='r'>" + n1(v.salt_g) + "</td><td>" + judgePills(x.days_judge[d]) + "</td></tr>"; }).join("") +
+        "<tr style='font-weight:700'><td>średnio</td><td class='r'>" + n0(av.kcal) + "</td><td class='r'>" + n0(av.protein_g) + "</td><td class='r'>" + n0(av.carbs_g) + "</td><td class='r'>" + n0(av.fat_g) + "</td><td class='r'>" + n0(av.sugars_g) + "</td><td class='r'>" + n0(av.sat_fat_g) + "</td><td class='r'>" + n1(av.salt_g) + "</td><td>" + judgePills(x.week_judge) + "</td></tr></table></div>" +
+        "<div class='note'>Normy: białko ~" + nm.protein_g + " g, tłuszcz min. " + nm.fat_min_g + " g, cukry maks. 10% kcal, nasycone maks. 10% kcal, sól maks. " + nm.salt_max_g + " g. Sama dieta, bez jedzenia spoza niej.</div></div>";
+    }
+    if (x.fridge.length) h += "<div class='card' style='margin-top:12px'><div class='ttl'><h2>📦 Lodówka</h2></div>" + x.fridge.map(function (m) { return "<div class='meal'><div class='nm'><b>" + esc(m.meal_type) + " z " + dm(m.day) + "</b> · " + esc(m.name) + "<div class='mx'>" + n0(m.kcal) + " kcal</div></div><span></span></div>"; }).join("") + "</div>";
     var by = {};
     x.meals.forEach(function (m) { (by[m.day] = by[m.day] || []).push(m); });
-    var h = "<div class='card'><div class='ttl'><h2>🥦 Dieta od Brokuła</h2><span class='sub'>" + (x.order_end ? "zamówienie do " + wd(x.order_end) + " " + dmy(x.order_end) : "brak zamówienia") + "</span></div>" +
-      "<div class='note' style='margin-top:0'>" + (x.session_alive ? "Połączenie z Brokułem działa" : "⚠️ Sesja Brokuła nie działa – <a href='" + x.access_url + "'>wklej nowe ciasteczka</a>") +
-      (x.last_import ? " · ostatni import " + dm(x.last_import.slice(0, 10)) + " " + x.last_import.slice(11, 16) : "") + "</div></div>";
-    if (x.fridge.length) h += "<div class='card' style='margin-top:12px'><div class='ttl'><h2>📦 Lodówka</h2></div>" + x.fridge.map(function (m) { return "<div class='meal'><div class='nm'><b>" + esc(m.meal_type) + " z " + dm(m.day) + "</b> · " + esc(m.name) + "<div class='mx'>" + n0(m.kcal) + " kcal</div></div><span></span></div>"; }).join("") + "</div>";
+    var ST = { eaten: "✅", skipped: "❌", fridge: "📦", discarded: "🗑", pending: "" };
     Object.keys(by).sort().forEach(function (d) {
       var ms = by[d], tot = ms.reduce(function (a, m) { return a + (m.kcal || 0); }, 0);
       h += "<div class='card' style='margin-top:12px'><div class='ttl'><h2>" + wd(d) + " " + dm(d) + "</h2><span class='sub'>" + n0(tot) + " kcal</span></div><div class='chartbox'><table class='tb'>" +
         "<tr><th>Posiłek</th><th class='r'>kcal</th><th class='r'>B</th><th class='r'>W</th><th class='r'>cukry</th><th class='r'>T</th><th class='r'>nas.</th><th class='r'>sól</th></tr>" +
         ms.map(function (m) {
-          return "<tr><td><b>" + esc(m.meal_type) + "</b> · " + esc(m.name) + (m.ingredients || m.allergen_notice ? "<details class='sk2'><summary>skład i alergeny</summary><p>" + esc(m.ingredients || "") + "</p><p>" + esc(m.allergen_notice || "") + "</p></details>" : "") +
+          return "<tr><td>" + (ST[m.status] ? ST[m.status] + " " : "") + "<b>" + esc(m.meal_type) + "</b> · " + esc(m.name) + (m.ingredients || m.allergen_notice ? "<details class='sk2'><summary>skład i alergeny</summary><p>" + esc(m.ingredients || "") + "</p><p>" + esc(m.allergen_notice || "") + "</p></details>" : "") +
             "</td><td class='r'>" + n0(m.kcal) + "</td><td class='r'>" + n1(m.protein_g) + "</td><td class='r'>" + n1(m.carbs_g) + "</td><td class='r'>" + n1(m.sugars_g) + "</td><td class='r'>" + n1(m.fat_g) + "</td><td class='r'>" + n1(m.sat_fat_g) + "</td><td class='r'>" + n1(m.salt_g) + "</td></tr>";
         }).join("") + "</table></div></div>";
     });
-    if (!x.meals.length) h += "<div class='card' style='margin-top:12px'><p class='empty'>Brak menu na najbliższe dni – zamówienie się skończyło albo import jeszcze nie przeszedł.</p></div>";
+    if (!x.meals.length) h += "<div class='card' style='margin-top:12px'><p class='empty'>Brak menu w tym tygodniu (QBot zapisuje menu od 12.10.2026; panel Brokuła nie udostępnia starszych).</p></div>";
     $("menu").innerHTML = h;
+    $("menu").querySelectorAll("[data-w]").forEach(function (b) { b.onclick = function () { if (b.dataset.w) loadMenu(b.dataset.w); }; });
   }
 
   /* ------------------------------------------------------------ start */
-  var h0 = (location.hash || "").replace("#", "");
+  var h0 = (location.hash || "").replace("#", ""), hd = null;
+  var m0 = /^dni=(\d{4}-\d{2}-\d{2})$/.exec(h0);
+  if (m0) { hd = m0[1]; h0 = "dni"; S.want = hd; }
   loadHeader();
-  loadDays(false);
-  tab(["dni", "pasy", "bilans", "menu"].indexOf(h0) >= 0 ? h0 : "dni");
+  var t0 = new Date(), lim = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() - 6, 12);
+  loadDays(false, hd && new Date(hd + "T12:00:00") < lim ? hd : null);
+  tab(["dni", "analiza", "pasy", "bilans", "menu"].indexOf(h0) >= 0 ? h0 : "dni");
 })();
