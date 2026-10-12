@@ -33,6 +33,13 @@ QUICK = {
     "out_s": ("Posiłek na mieście (mały)", 600, 25, 60, 28),
     "out_m": ("Posiłek na mieście (średni)", 900, 35, 90, 42),
     "out_l": ("Posiłek na mieście (duży)", 1300, 50, 130, 62),
+    # dni bez diety: posilki S/M/L (B ~20%, W ~45%, T ~35% energii)
+    "bf_s": ("Śniadanie (małe)", 350, 18, 39, 14), "bf_m": ("Śniadanie (średnie)", 550, 28, 62, 21),
+    "bf_l": ("Śniadanie (duże)", 800, 40, 90, 31),
+    "ln_s": ("Obiad (mały)", 600, 30, 68, 23), "ln_m": ("Obiad (średni)", 900, 45, 101, 35),
+    "ln_l": ("Obiad (duży)", 1300, 65, 146, 51),
+    "dn_s": ("Kolacja (mała)", 450, 23, 51, 18), "dn_m": ("Kolacja (średnia)", 700, 35, 79, 27),
+    "dn_l": ("Kolacja (duża)", 1000, 50, 113, 39),
 }
 SCALE_STEP = 0.25
 CATALOG_AUTO_N = 2
@@ -546,57 +553,64 @@ def build_day(day: date) -> tuple[str, dict]:
     ents = day_entries(day)
     cs = close_state(day)
     md = day.strftime("%Y%m%d")
-    L = ["🍽 Dzień %s (%s)" % (day.strftime("%d.%m"), DNI[day.weekday()]), ""]
     kb = []
     ic = {"eaten": "✅", "skipped": "❌", "pending": "⏳", "fridge": "📦", "discarded": "🗑"}
     if meals:
-        L.append("🥦 Brokuł:")
+        L = ["🍽 Dzień %s (%s) · dieta Brokuła" % (day.strftime("%d.%m"), DNI[day.weekday()]), ""]
+        L.append("🥦 Brokuł – potwierdź posiłki (📦 = zjem później):")
         for m in meals:
             L.append("%s %s: %s · %s kcal" % (ic.get(m["status"], "•"), m["meal_type"], m["name"][:70], _fmt(m["kcal"])))
             t, i = m["meal_type"], m["id"]
             if m["status"] == "pending":
                 kb.append([{"text": "✅ %s" % t, "callback_data": "br:e:%d:%s" % (i, md)},
                            {"text": "❌", "callback_data": "br:s:%d:%s" % (i, md)},
-                           {"text": "📦 później", "callback_data": "br:f:%d:%s" % (i, md)}])
+                           {"text": "📦", "callback_data": "br:f:%d:%s" % (i, md)}])
             else:
-                lab = {"eaten": "✔ Zjedzone", "skipped": "✖ Nie zjedzone", "fridge": "📦 W lodówce"}.get(m["status"], m["status"])
-                kb.append([{"text": "%s: %s (cofnij)" % (lab, t), "callback_data": "br:p:%d:%s" % (i, md)}])
+                lab = {"eaten": "✔", "skipped": "✖", "fridge": "📦"}.get(m["status"], m["status"])
+                kb.append([{"text": "%s %s · cofnij" % (lab, t), "callback_data": "br:p:%d:%s" % (i, md)}])
         if sum(1 for m in meals if m["status"] == "pending") >= 2:
             kb.append([{"text": "✅ Wszystkie zjedzone", "callback_data": "br:a:%s" % md},
-                       {"text": "📦 Wszystkie do lodówki", "callback_data": "br:z:%s" % md}])
+                       {"text": "📦 Wszystkie na później", "callback_data": "br:z:%s" % md}])
         L.append("")
     else:
-        L += ["🥦 Brokuł: dziś bez dostawy.", ""]
+        L = ["🍽 Dzień %s (%s) · bez diety" % (day.strftime("%d.%m"), DNI[day.weekday()]), ""]
     if fridge:
-        L.append("📦 Z lodówki:")
+        L.append("📦 Z lodówki (dieta z wcześniejszych dni):")
         for m in fridge:
             L.append("%s %s z %s: %s · %s kcal" % (ic.get(m["status"], "•"), m["meal_type"], m["day"].strftime("%d.%m"),
                                                   m["name"][:60], _fmt(m["kcal"])))
             t, i = "%s %s" % (m["meal_type"], m["day"].strftime("%d.%m")), m["id"]
             if m["status"] == "fridge":
-                kb.append([{"text": "✅ Zjadłem dziś: %s" % t, "callback_data": "br:d:%d:%s" % (i, md)},
+                kb.append([{"text": "✅ Zjadłem: %s" % t, "callback_data": "br:d:%d:%s" % (i, md)},
                            {"text": "🗑", "callback_data": "br:w:%d:%s" % (i, md)}])
             else:
-                kb.append([{"text": "%s: %s (cofnij)" % ("✔ Zjedzone" if m["status"] == "eaten" else "🗑 Wyrzucone", t),
+                kb.append([{"text": "%s %s · cofnij" % ("✔" if m["status"] == "eaten" else "🗑", t),
                             "callback_data": "br:f:%d:%s" % (i, md)}])
         L.append("")
-    L.append("🍴 Poza dietą:")
+    L.append("🍴 Poza dietą:" if meals else "🍴 Zjedzone:")
     if ents:
         for e in ents:
             if e["status"] == "logged":
                 L.append("✅ #%d %s · %s kcal" % (e["id"], (e["raw_text"] or e["kind"])[:50], _fmt(e["kcal"])))
             else:
                 L.append("⏳ #%d %s · do dokończenia" % (e["id"], (e["raw_text"] or "zdjęcie")[:50]))
-    elif cs["none"]:
+    elif meals and cs["none"]:
         L.append("✔ nic")
     else:
-        L.append("– (napisz albo wyślij zdjęcie, np. „2 pączki”, „wczoraj pizza”)")
-    kb.append([{"text": ("✔ Nic poza dietą ✓" if cs["none"] else "✔ Nic poza dietą"), "callback_data": "qk:%s:none" % md}])
-    kb.append([{"text": "🥨 Przekąska", "callback_data": "qk:%s:snack" % md},
-               {"text": "🍫 Słodycze", "callback_data": "qk:%s:sweet" % md}])
-    kb.append([{"text": "🍽 Na mieście S", "callback_data": "qk:%s:out_s" % md},
-               {"text": "M", "callback_data": "qk:%s:out_m" % md},
-               {"text": "L", "callback_data": "qk:%s:out_l" % md}])
+        L.append("– jeszcze nic")
+    L.append("")
+    L.append("Napisz albo wyślij zdjęcie, np. „2 pączki”, „w sobotę pizza”. Albo przyciski:")
+    if meals:
+        L.append("🥨 przekąska · 🍫 słodycze · 🍽 posiłek na mieście S/M/L")
+        kb.append([{"text": ("✔ Nic poza dietą ✓" if cs["none"] else "✔ Nic poza dietą"), "callback_data": "qk:%s:none" % md}])
+        kb.append([{"text": "🥨", "callback_data": "qk:%s:snack" % md}, {"text": "🍫", "callback_data": "qk:%s:sweet" % md}])
+        kb.append([{"text": "🍽 S", "callback_data": "qk:%s:out_s" % md}, {"text": "🍽 M", "callback_data": "qk:%s:out_m" % md},
+                   {"text": "🍽 L", "callback_data": "qk:%s:out_l" % md}])
+    else:
+        L.append("🍳 śniadanie · 🍲 obiad · 🌙 kolacja – S/M/L = mała/średnia/duża porcja · 🥨 przekąska · 🍫 słodycze")
+        for em, code in (("🍳", "bf"), ("🍲", "ln"), ("🌙", "dn")):
+            kb.append([{"text": "%s %s" % (em, sz), "callback_data": "qk:%s:%s_%s" % (md, code, sz.lower())} for sz in ("S", "M", "L")])
+        kb.append([{"text": "🥨", "callback_data": "qk:%s:snack" % md}, {"text": "🍫", "callback_data": "qk:%s:sweet" % md}])
     t = day_totals(day)
     L += ["", "Razem: %s kcal · B %s · W %s · T %s g" % (_fmt(t["kcal"] or 0), _fmt(t["protein_g"] or 0),
                                                          _fmt(t["carbs_g"] or 0), _fmt(t["fat_g"] or 0))]
@@ -607,8 +621,8 @@ def build_day(day: date) -> tuple[str, dict]:
         if cs["pending"]:
             need.append("potwierdź posiłki Brokuła")
         if not (cs["none"] or cs["entries"]):
-            need.append("wpisz, co zjadłeś poza dietą, albo kliknij „Nic poza dietą”" if cs["has_diet"] else "wpisz, co zjadłeś")
-        L.append("⏳ Do zamknięcia: " + "; ".join(need))
+            need.append("dopisz, co zjadłeś poza dietą, albo kliknij „Nic poza dietą”" if cs["has_diet"] else "dopisz, co zjadłeś")
+        L.append("⏳ Do zamknięcia dnia: " + "; ".join(need))
     return "\n".join(L), {"inline_keyboard": kb}
 
 
