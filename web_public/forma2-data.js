@@ -625,7 +625,7 @@ function renderTrendy(){
   function col(k){return SN.map(function(s2){var v=s2[k];return v!=null&&v!==""?Math.round(+v*100)/100:null;});}
   var DEFS=[
     {k:"ctl",lab:"forma",data:ctlD,c:"#e67e22",w:3,ax:"y",on:1,tip:"średnie obciążenie ~6 tygodni"},
-    {k:"rides",lab:"jazdy",data:ctlD.map(function(v,i){return xssD[i]>0?v:null;}),c:"#e67e22",ax:"y",on:1,points:true,tip:"dzień z jazdą – punkt na linii formy"},
+    {k:"rides",lab:"jazdy",data:ctlD.map(function(v,i){return xssD[i]>0?v:null;}),c:"#86efac",ax:"y",on:1,points:true,tip:"dzień z jazdą – punkt na linii formy"},
     {k:"atlf",lab:"zmęczenie faktyczne",data:col("atl_real"),c:isDark?"#c9c9c9":"#666",w:2,ax:"y",on:1,fill:true,tip:"treningi + stan ciała + samopoczucie"},
     {k:"tsbf",lab:"świeżość faktyczna",data:col("tsb_real"),c:"#1a9a6a",w:2.2,ax:"y2",on:1,tip:"forma − zmęczenie faktyczne"},
     {k:"r3",lab:"gotowość (3 dni)",data:col("readiness_3d"),c:"#8b7cf6",w:2,ax:"yR",on:1,tip:"HRV, tętno, sen — średnia 3 dni"},
@@ -647,7 +647,7 @@ function renderTrendy(){
   var datasets=DEFS.filter(function(d){return !d.status;}).map(function(d){
     var o={label:d.lab,data:d.data,borderColor:d.c,borderWidth:d.w||1.5,pointRadius:0,pointHoverRadius:4,tension:0.35,fill:false,yAxisID:d.ax,hidden:!isOn(d),_k:d.k,spanGaps:true};
     if(d.dash)o.borderDash=d.dash;
-    if(d.points){o.showLine=false;o.pointRadius=3.5;o.pointHoverRadius=5.5;o.pointBackgroundColor=d.c;o.pointBorderColor=isDark?"#111":"#fff";o.pointBorderWidth=1;o.borderWidth=0;o.spanGaps=false;}
+    if(d.points){o.showLine=false;o.pointRadius=4.5;o.pointHoverRadius=6.5;o.pointBackgroundColor=d.c;o.pointBorderColor=isDark?"#111":"#fff";o.pointBorderWidth=1;o.borderWidth=0;o.spanGaps=false;}
     if(d.step){o.stepped=true;o.tension=0;}
     if(d.fill){o.fill=true;o.backgroundColor=isDark?"rgba(200,200,200,0.08)":"rgba(100,100,100,0.08)";}
     if(d.bar){o.type="bar";o.backgroundColor=d.c;o.borderWidth=0;o.barPercentage=0.8;o.categoryPercentage=1;o.order=9;}
@@ -747,7 +747,7 @@ function renderTrendy(){
     if(show.hrv)ds.push({label:"HRV",data:hrvD,borderColor:"#9b59b6",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"yw"});
     if(show.rhr)ds.push({label:"RHR",data:rhrD,borderColor:"#e74c3c",borderWidth:1.5,borderDash:[4,3],pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"yw"});
     if(show.wt)ds.push({label:"waga (kg)",data:wtD,borderColor:"#e67e22",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"yw2"});
-    if(show.bal)ds.push({label:"bilans skumulowany (kcal)",data:balD,borderColor:"#14b8a6",backgroundColor:"rgba(20,184,166,.10)",fill:"origin",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.2,spanGaps:true,yAxisID:"ybal"});
+    if(show.bal)ds.push({label:"bilans skumulowany (kcal)",data:balD,borderColor:"#14b8a6",backgroundColor:"rgba(20,184,166,.10)",fill:"origin",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.2,spanGaps:false,yAxisID:"ybal"});
     if(show.rdy)ds.push({label:"gotowość",data:rdyD,borderColor:"#22c55e",borderWidth:2,borderDash:[6,3],pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"ywr"});
     var scalesW={x:{display:false},yw:{position:"left",ticks:{color:txtCol,font:{size:10}},grid:{color:gridCol}}};
     if(hasRight)scalesW.yw2={position:"right",ticks:{color:"#e67e22",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"kg",color:"#e67e22",font:{size:10}}};
@@ -766,8 +766,9 @@ function renderTrendy(){
   if(SN.length){var d0=String(SN[0].day).slice(0,10),d1=String(SN[SN.length-1].day).slice(0,10);
     fetch("/api/jedzenie/balance?start="+d0+"&end="+d1,{credentials:"same-origin",cache:"no-store"}).then(function(r){return r.ok?r.json():null;}).then(function(b){
       if(!b||!b.series)return;var m={};b.series.forEach(function(x){if(x.intake!=null)m[x.day]=x.intake-x.expend;});
-      /* skumulowany bilans: suma (zjedzone - spalone) od pierwszego dnia z wpisami w zakresie; dni bez wpisow nie zmieniaja sumy */
-      var acc=0,st0=false;balD=SN.map(function(s2){var v=m[String(s2.day).slice(0,10)];if(v!=null){acc+=v;st0=true;}return st0?Math.round(acc):null;});buildWellness();}).catch(function(){});}
+      /* skumulowany bilans TYLKO w okresach logowania: dzien bez wpisow = przerwa w linii; przerwa > 2 dni = nowa seria od 0
+         (bez wpisow nie wiemy, ile zjedzono - linia plaska przez dziury bylaby nieprawda) */
+      var acc=0,gap=99;balD=SN.map(function(s2){var v=m[String(s2.day).slice(0,10)];if(v==null){gap++;return null;}if(gap>2)acc=0;gap=0;acc+=v;return Math.round(acc);});buildWellness();}).catch(function(){});}
   
   /* komentarz */
   var cEl=q$("trendy-comment");if(cEl){
@@ -899,13 +900,30 @@ load().catch(function(e){console.error("forma2:",e);});
     var ch=charts().filter(function(c){return c.canvas===src;})[0];if(!ch||!ch.scales.x)return;
     var r=src.getBoundingClientRect(),i=Math.round(ch.scales.x.getValueForPixel(ev.clientX-r.left));
     if(i===window._trHover)return;window._trHover=i;
+    /* dymki z danymi na WSZYSTKICH wykresach dla tego samego dnia */
     charts().forEach(function(c){if(c===ch){c.draw();return;}
       var els=[];c.data.datasets.forEach(function(ds,di){if(c.isDatasetVisible(di)&&ds.data[i]!=null)els.push({datasetIndex:di,index:i});});
-      try{c.setActiveElements(els);}catch(e){}c.draw();});
+      try{var px=c.scales.x.getPixelForValue(i),a=c.chartArea;c.setActiveElements(els);c.tooltip.setActiveElements(els,{x:px,y:a.top+(a.bottom-a.top)/2});c.update("none");}catch(e){c.draw();}});
   }
   document.addEventListener("mousemove",function(ev){var t=ev.target;if(t&&IDS.indexOf(t.id)>=0)hover(t,ev);});
   document.addEventListener("mouseout",function(ev){var t=ev.target;if(!t||IDS.indexOf(t.id)<0)return;window._trHover=null;
-    charts().forEach(function(c){try{c.setActiveElements([]);}catch(e){}c.draw();});});
+    charts().forEach(function(c){try{c.setActiveElements([]);c.tooltip.setActiveElements([],{x:0,y:0});c.update("none");}catch(e){c.draw();}});});
+  /* WYROWNANIE: kazdy wykres ma inne osie (lewe/prawe) -> inny obszar rysowania. Dopelniamy marginesy tak,
+     zeby obszar danych wszystkich 3 zaczynal sie i konczyl w tym samym miejscu (ten sam dzien = ta sama pozycja). */
+  var alT=null;
+  function align(){
+    var cs=charts().filter(function(c){return c.chartArea;});if(cs.length<2)return;
+    /* zawsze NOWY zwykly obiekt marginesow (przypisanie obiektu-proxy Chart.js z powrotem = nieskonczona rekurencja) */
+    cs.forEach(function(c){c.options.layout.padding={left:0,right:0,top:0,bottom:0};c.update("none");});
+    var L=Math.max.apply(null,cs.map(function(c){return c.chartArea.left;})),Rr=Math.min.apply(null,cs.map(function(c){return c.chartArea.right;}));
+    cs.forEach(function(c){c.options.layout.padding={left:Math.max(0,Math.round(L-c.chartArea.left)),right:Math.max(0,Math.round(c.chartArea.right-Rr)),top:0,bottom:0};c.update("none");});
+  }
+  function alignSoon(){clearTimeout(alT);alT=setTimeout(align,80);}
+  function reg2(){if(!window.Chart||!window.Chart.register){return setTimeout(reg2,200);}
+    window.Chart.register({id:"qtralign",afterInit:function(ch){if(IDS.indexOf(ch.canvas&&ch.canvas.id)>=0)alignSoon();}});alignSoon();}
+  reg2();
+  window.addEventListener("resize",alignSoon);
+  window._trAlign=alignSoon;
   /* uchwyty wysokosci */
   function grips(){
     document.querySelectorAll(".trrs").forEach(function(w){
@@ -915,7 +933,7 @@ load().catch(function(e){console.error("forma2:",e);});
       g.addEventListener("pointerdown",function(ev){ev.preventDefault();var y0=ev.clientY,h0=w.getBoundingClientRect().height;document.body.classList.add("tr-resizing");
         function mv(e){w.style.height=Math.max(80,Math.min(1200,h0+e.clientY-y0))+"px";}
         function up(){document.removeEventListener("pointermove",mv);document.removeEventListener("pointerup",up);document.body.classList.remove("tr-resizing");
-          try{localStorage.setItem(k,String(Math.round(w.getBoundingClientRect().height)));}catch(e){}charts().forEach(function(c){try{c.resize();}catch(e){}});}
+          try{localStorage.setItem(k,String(Math.round(w.getBoundingClientRect().height)));}catch(e){}charts().forEach(function(c){try{c.resize();}catch(e){}});alignSoon();}
         document.addEventListener("pointermove",mv);document.addEventListener("pointerup",up);});
     });
   }
