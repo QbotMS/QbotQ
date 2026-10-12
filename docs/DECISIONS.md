@@ -4,6 +4,16 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-12 -- DECYZJA: Serce -- cisnienie, EKG, tetno przy mocy (Forma > Serce, Albert heart_health)
+**Powod:** Michal zaniepokojony tetnem spoczynkowym (od polowy 09 ~48-49 vs norma ~46) i tetnem przy tej samej mocy.
+**Decyzje Michala:** cisnienie z Withings idzie TA SAMA droga co waga (Withings -> Garmin -> QBot), nie osobna sciezka;
+EKG ma przychodzic automatycznie (adres ghs.connect.garmin.com znaleziony na stronie Garmin Connect); bez nowych
+wiadomosci na Telegramie. Historia: 4 pomiary cisnienia z 2023 przeniesione (wszystkie potwierdzone w Garminie),
+1 EKG (25.05.2025, rytm zatokowy), tetno przy 140-180 W policzone wstecz dla 375 jazd.
+**Przy okazji:** Withings status 601 (za czesto) byl traktowany jak uniewaznienie tokenu -> falszywy alarm na
+Telegramie 12.10 ok. 18:38 (dwa odswiezenia w kilka sekund przy recznym tescie). Teraz 601 = blad przejsciowy.
+Szczegoly: docs/SERCE.md.
+
 ## 2026-10-08 -- DECYZJA: RSRV v2 na Karoo (styl Garmin Stamina) -- WDROZONE
 **Michal:** start zawsze 100 %, bez klikania, krotkie jazdy maja prawie nie ruszac zapasu; dosc eksperymentow.
 **Model** (wzorzec `fitmodel/rsrv_v2.py`, kopia 1:1 QExt2 `ReserveModelV2.kt`, te same przypadki w obu testach):

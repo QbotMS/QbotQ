@@ -1238,3 +1238,11 @@ Zweryfikowane na zywo. qbot-api zrestartowany. OTWARTE: retry przy 202 w QExt2 (
 - Wdrozone: docs/BROKUL.md. Cron root */15 brokul_tick.py (jako qbot). Sesja wklejona 12.10 08:50.
 - Obserwowac: zywotnosc sesji (data/brokul_state.json), pierwsze podsumowanie 20:00 (12.10 wyslane recznie jako test).
 - 12.10 pozniej: jedzenie etap 1-2 wdrozone (docs/BROKUL.md). Wolny tekst w bocie = jedzenie (stary parser wellness/gear wylaczony). Test na weekendzie 10-11.10 (wiadomosci dnia wyslane recznie).
+
+## 2026-10-12 Serce (claude-serce)
+Wdrozone: cisnienie Withings -> Garmin -> qbot_v2.blood_pressure, EKG -> qbot_v2.ecg_recording, tetno przy 140-180 W ->
+qbot_v2.hr_at_power, zakladka Forma > Serce (/api/forma/heart, forma-serce.js), Albert heart_health. Testy test_heart 7 OK.
+Sprawdzone na zywo: przeniesienie 4 pomiarow z 2023 (potwierdzone w Garminie), import EKG, odpowiedz Alberta,
+ciśnienie opon dalej idzie do tire_pressure. Otwarte: wykres w zakladce niezweryfikowany wizualnie (Chart.js nie
+wczytal sie w Chrome na Macu), pierwsza nowa seria cisnienia. docs/SERCE.md
+

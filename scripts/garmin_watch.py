@@ -52,6 +52,8 @@ IMPORTS = [
     ("wellness", ["scripts/run_wellness_imports.py"], "wellness_import.log"),
     ("training", ["qbot3/connectors/import_garmin_training.py"], "connector_training.log"),
     ("activities", ["qbot_activity_ingest.py", "backfill", "20", "0", "2025-01-01", "report"], "activity_ingest.log"),
+    # Serce (2026-10-12): cisnienie + EKG z Garmina, tetno przy mocy dla nowych jazd (po activities).
+    ("heart", ["qbot3/connectors/import_garmin_heart.py"], "garmin_heart_import.log"),
 ]
 
 

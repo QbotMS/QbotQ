@@ -395,6 +395,11 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] ODLOZONE (Michal 12.10.2026: wrocic kiedys): nagrody za passe = Garaz -> Plan zakupow (lista upatrzonych produktow: nazwa, link, cena, zdjecie; status zablokowane/okno zakupu/kupione). Prog odblokowania wg ceny: do 200 zl 🔥14 dni; 200-500 🔥30 + 📉2 tyg.; 500-1500 📉4 tyg. + 🕗14 dni; wyzej etap wagi. Okno zakupu 14 dni (do decyzji), linijka w wiadomosci 20:00, "nastepna nagroda" w Jedzenie -> Passa. Zakladki Plan zakupow w Garazu jeszcze NIE ma (sprawdzone 12.10). Bez nagrod jedzeniowych.
 
 # ZROBIONE
+
+## [SERCE] Cisnienie, EKG, tetno przy mocy -- zakladka Serce + Albert [ZROBIONE 2026-10-12]
+Withings -> Garmin -> QBot (cisnienie), EKG z ghs.connect.garmin.com, hr_at_power, Forma > Serce, heart_health. docs/SERCE.md
+Do sprawdzenia: pierwszy NOWY pomiar cisnienia i nowe EKG przechodza automatem; wykres w zakladce (Chart.js z cdnjs
+nie wczytal sie w Chrome na Macu 12.10 -- sprawdzic na innym urzadzeniu).
 - [2026-10-12] Jedzenie etapy 3-7 (calosc): przypomnienie 21:30, wykres celu wagi (plan+korytarz, wazenia, prognoza), model spalania + cel kcal dnia + dokladka do Brokula pod trening (7:00 i 20:00), pasy 💪 Trening i 📉 Redukcja, piatkowy plan weekendu (AI), podpowiedz lodowki przy delegacji, Open Food Facts jako podpowiedz dla AI. Kalibracja ruszy sama, gdy monitor rozbieznosci bedzie mial dane (najwczesniej 31.10). Dok.: docs/BROKUL.md
 - [2026-10-12] Etap 4 (czesc): cel wagi z etapami 99/95/90 kg (aktywny etap steruje statusem celu i celem bilansu, plan widoczny w Celach), przypomnienie o wazeniu 7:00 (co >=2 dni od realnego wazenia, nie w delegacji/urlopie/wyprawie, nie po jezdzie >=3 h). Dok.: docs/TRENER.md
 - [2026-10-12] Jedzenie: pasy 🔥 Jedzenie i 🕗 Okno 10-20 (zaufanie, przycisk do 12:00 nast. dnia, zwolnienia: trening >=90 min, delegacja/urlop/wyprawa), mrozenie, kamienie milowe; monitor waga vs jedzenie z realnych wazen (body_measurements) w niedzielnym rozliczeniu Trenera; historia Michala jako punkt odniesienia AI, pewnosc pozycji, poprawka odpowiedzia, czytelne potwierdzenie. Dok.: docs/BROKUL.md

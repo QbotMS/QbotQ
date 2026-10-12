@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Withings -> Garmin Connect: przenoszenie wagi i skladu ciala.
+"""Withings -> Garmin Connect: przenoszenie wagi i skladu ciala oraz cisnienia (od 2026-10-12).
 
 Zastepuje platna usluge SmartScaleSync. Wzorowany na qbot-hammerhead-sync:
 samodzielny modul, bez bazy qbot_v2, bez qbot-api, wlasny plik stanu, wlasny cron.
@@ -36,6 +36,7 @@ from withings_auth import (  # noqa: E402
     DEFAULT_ENV,
     WithingsAuthError,
     WithingsTransientError,
+    fetch_blood_pressure,
     fetch_measures,
     refresh_token,
 )
@@ -156,6 +157,141 @@ def verify_in_garmin(client: Any, grp: dict[str, Any]) -> bool:
 
 
 # --------------------------------------------------------------------------
+# cisnienie (Serce, 2026-10-12) -- ten sam lancuch co waga:
+#   Withings -> TEN SKRYPT -> Garmin -> import_garmin_heart.py -> qbot_v2.blood_pressure
+# --------------------------------------------------------------------------
+
+def bp_already_sent(state: dict[str, Any], grpid: str) -> bool:
+    entry = state.setdefault("bp", {}).get(grpid)
+    return bool(entry) and entry.get("status") in ("uploaded", "duplicate")
+
+
+def bp_mark(state: dict[str, Any], grp: dict[str, Any], status: str, detail: str | None = None) -> None:
+    v = grp["values"]
+    state.setdefault("bp", {})[grp["grpid"]] = {
+        "ts": grp["ts"], "iso": grp["iso"],
+        "bp": f"{v['systolic']}/{v['diastolic']}", "pulse": v.get("pulse"),
+        "status": status, "detail": detail,
+        "sent_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+    }
+
+
+def _garmin_bp_keys(client: Any, start: str, end: str) -> set[tuple[str, int, int]]:
+    """(dzien, skurczowe, rozkurczowe) pomiarow, ktore JUZ sa w Garminie."""
+    keys: set[tuple[str, int, int]] = set()
+    data = client.get_blood_pressure(start, end) or {}
+    for day in data.get("measurementSummaries") or []:
+        for m in day.get("measurements") or []:
+            loc = str(m.get("measurementTimestampLocal") or "")[:10]
+            try:
+                keys.add((loc, int(m.get("systolic")), int(m.get("diastolic"))))
+            except (TypeError, ValueError):
+                continue
+    return keys
+
+
+def garmin_existing_bp(client: Any, groups: list[dict[str, Any]]) -> set[tuple[str, int, int]]:
+    if not groups:
+        return set()
+    first = datetime.fromtimestamp(min(g["ts"] for g in groups)).date()
+    last = datetime.fromtimestamp(max(g["ts"] for g in groups)).date()
+    keys: set[tuple[str, int, int]] = set()
+    cur_end = last
+    while cur_end >= first:
+        cur_start = max(first, cur_end - timedelta(days=179))
+        try:
+            keys |= _garmin_bp_keys(client, cur_start.isoformat(), cur_end.isoformat())
+        except Exception as exc:
+            print(f"[uwaga] nie udalo sie odczytac cisnienia z Garmina: {exc}", file=sys.stderr)
+        cur_end = cur_start - timedelta(days=1)
+    return keys
+
+
+def _bp_key(grp: dict[str, Any]) -> tuple[str, int, int]:
+    v = grp["values"]
+    return (datetime.fromtimestamp(grp["ts"]).date().isoformat(), v["systolic"], v["diastolic"])
+
+
+def push_bp(client: Any, grp: dict[str, Any]) -> dict[str, Any]:
+    v = grp["values"]
+    stamp = datetime.fromtimestamp(grp["ts"]).isoformat(timespec="seconds")
+    try:
+        client.set_blood_pressure(v["systolic"], v["diastolic"], int(v.get("pulse") or 0) or 60,
+                                  timestamp=stamp, notes="Withings")
+    except Exception as exc:
+        msg = str(exc)
+        if "duplicate" in msg.lower() or "already" in msg.lower():
+            return {"status": "duplicate", "detail": msg[:200]}
+        return {"status": "failed", "detail": msg[:200]}
+    return {"status": "uploaded", "detail": None}
+
+
+def verify_bp(client: Any, grp: dict[str, Any]) -> bool:
+    key = _bp_key(grp)
+    for delay in (0, 3, 8):
+        if delay:
+            time.sleep(delay)
+        try:
+            if key in _garmin_bp_keys(client, key[0], key[0]):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def sync_bp(cfg: dict[str, str], state: dict[str, Any], days: int, upload: bool,
+            get_client) -> tuple[int, int]:
+    """Zwraca (wyslanych, nieudanych)."""
+    groups = fetch_blood_pressure(cfg, days=days)
+    pending = [g for g in groups if not bp_already_sent(state, g["grpid"])]
+    print(f"cisnienie: pomiarow z {days} dni: {len(groups)}, nowych: {len(pending)}")
+    if not pending:
+        return 0, 0
+    for g in pending:
+        v = g["values"]
+        print(f"  {g['iso']} | {v['systolic']}/{v['diastolic']} | tetno {v.get('pulse')}")
+    if not upload:
+        print("tryb probny -- cisnienia nie wyslano")
+        return 0, 0
+    client = get_client()
+    existing = garmin_existing_bp(client, pending)
+    sent = failures = 0
+    for g in sorted(pending, key=lambda x: x["ts"]):
+        if _bp_key(g) in existing:
+            bp_mark(state, g, "duplicate", "pomiar juz byl w Garminie")
+            print(f"  {g['iso']} -> cisnienie juz w Garminie")
+            continue
+        if not g["values"].get("pulse"):
+            print(f"  {g['iso']} -> brak tetna w pomiarze, wysylam 60 (Garmin wymaga pola)")
+        res = push_bp(client, g)
+        if res["status"] == "uploaded" and verify_bp(client, g):
+            bp_mark(state, g, "uploaded")
+            sent += 1
+            print(f"  {g['iso']} -> cisnienie wyslane i potwierdzone")
+        elif res["status"] == "duplicate":
+            bp_mark(state, g, "duplicate", res["detail"])
+            print(f"  {g['iso']} -> Garmin zglosil duplikat (traktuje jak sukces)")
+        else:
+            failures += 1
+            print(f"  {g['iso']} -> cisnienie BLAD: {res['detail'] or 'brak potwierdzenia'}",
+                  file=sys.stderr)
+    return sent, failures
+
+
+def refresh_qbot_bp(days: int) -> None:
+    """Nowe cisnienie w Garminie -> od razu do bazy QBota (bez czekania na straznika)."""
+    import subprocess
+    try:
+        rc = subprocess.run([str(APP_DIR / ".venv/bin/python3"),
+                             str(APP_DIR / "qbot3/connectors/import_garmin_heart.py"),
+                             "--only", "bp", "--days", str(max(days, 30))],
+                            cwd=str(APP_DIR), timeout=180).returncode
+        print(f"import cisnienia do QBota: rc={rc}")
+    except Exception as exc:
+        print(f"[uwaga] import cisnienia do QBota nieudany: {exc}", file=sys.stderr)
+
+
+# --------------------------------------------------------------------------
 # alarm
 # --------------------------------------------------------------------------
 
@@ -212,8 +348,10 @@ def _sync_alert_clear() -> None:
 # --------------------------------------------------------------------------
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Withings -> Garmin Connect (waga i sklad ciala)")
+    parser = argparse.ArgumentParser(description="Withings -> Garmin Connect (waga, sklad ciala, cisnienie)")
     parser.add_argument("--days", type=int, default=14, help="ile dni wstecz pobrac z Withings")
+    parser.add_argument("--bp-days", type=int, default=None,
+                        help="ile dni cisnienia wstecz (domyslnie jak --days; jednorazowo wiecej = przeniesienie historii)")
     parser.add_argument("--upload", action="store_true", help="faktycznie wyslij do Garmina")
     parser.add_argument("--dry-run", action="store_true", help="tylko pokaz, nic nie wysylaj")
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
@@ -223,65 +361,78 @@ def main() -> int:
     if args.dry_run and args.upload:
         parser.error("--dry-run i --upload wykluczaja sie")
     upload = args.upload
+    bp_days = args.bp_days or args.days
 
     now = datetime.now().isoformat(timespec="seconds")
-    print(f"[{now}] withings-sync start (upload={upload}, days={args.days})")
+    print(f"[{now}] withings-sync start (upload={upload}, days={args.days}, bp_days={bp_days})")
 
     cfg = refresh_token(args.env)
     print("token Withings odswiezony")
 
+    state = load_state(args.state)
+    _client: list[Any] = []
+
+    def get_client() -> Any:
+        if not _client:
+            from garmin_auth import garmin_client
+            _client.append(garmin_client())
+            print("zalogowano do Garmina")
+        return _client[0]
+
+    failures = 0
+
+    # ---- waga i sklad ciala (logika bez zmian) ----
     groups = fetch_measures(cfg, days=args.days)
     print(f"pomiarow z ostatnich {args.days} dni: {len(groups)}")
-
-    state = load_state(args.state)
     pending = [g for g in groups if not already_sent(state, g["grpid"])]
 
     if not pending:
-        print("brak nowych pomiarow -- nic do zrobienia")
-        return 0
+        print("waga: brak nowych pomiarow")
+    else:
+        print(f"nowych do wyslania: {len(pending)}")
+        for g in pending:
+            print(f"  {g['iso']} | {g['values'].get('weight_kg')} kg | {sorted(g['values'])}")
 
-    print(f"nowych do wyslania: {len(pending)}")
-    for g in pending:
-        print(f"  {g['iso']} | {g['values'].get('weight_kg')} kg | {sorted(g['values'])}")
-
-    if not upload:
-        print("tryb probny -- nic nie wyslano (dodaj --upload)")
-        return 0
-
-    from garmin_auth import garmin_client
-    client = garmin_client()
-    print("zalogowano do Garmina")
-
-    # Odbudowa stanu: co juz jest w Garminie, tego nie dublujemy.
-    existing = garmin_existing_dates(client, args.days)
-    if existing:
-        print(f"dni z pomiarem juz w Garminie: {len(existing)}")
-
-    failures = 0
-    for g in pending:
-        day = datetime.fromtimestamp(g["ts"]).date().isoformat()
-        if day in existing:
-            mark_sent(state, g, "duplicate", "pomiar na ten dzien juz byl w Garminie")
-            print(f"  {g['iso']} -> pominiete (juz w Garminie)")
-            continue
-
-        result = push_measure(client, g)
-        if result["status"] == "uploaded":
-            if verify_in_garmin(client, g):
-                mark_sent(state, g, "uploaded")
-                print(f"  {g['iso']} -> wyslane i potwierdzone")
-            else:
-                failures += 1
-                print(f"  {g['iso']} -> wyslane BEZ potwierdzenia, ponowie", file=sys.stderr)
-        elif result["status"] == "duplicate":
-            mark_sent(state, g, "duplicate", result["detail"])
-            print(f"  {g['iso']} -> Garmin zglosil duplikat (traktuje jak sukces)")
+        if not upload:
+            print("tryb probny -- nic nie wyslano (dodaj --upload)")
         else:
-            failures += 1
-            print(f"  {g['iso']} -> BLAD: {result['detail']}", file=sys.stderr)
+            client = get_client()
+            # Odbudowa stanu: co juz jest w Garminie, tego nie dublujemy.
+            existing = garmin_existing_dates(client, args.days)
+            if existing:
+                print(f"dni z pomiarem juz w Garminie: {len(existing)}")
 
-    save_state(args.state, state)
-    print(f"stan zapisany: {args.state}")
+            for g in pending:
+                day = datetime.fromtimestamp(g["ts"]).date().isoformat()
+                if day in existing:
+                    mark_sent(state, g, "duplicate", "pomiar na ten dzien juz byl w Garminie")
+                    print(f"  {g['iso']} -> pominiete (juz w Garminie)")
+                    continue
+
+                result = push_measure(client, g)
+                if result["status"] == "uploaded":
+                    if verify_in_garmin(client, g):
+                        mark_sent(state, g, "uploaded")
+                        print(f"  {g['iso']} -> wyslane i potwierdzone")
+                    else:
+                        failures += 1
+                        print(f"  {g['iso']} -> wyslane BEZ potwierdzenia, ponowie", file=sys.stderr)
+                elif result["status"] == "duplicate":
+                    mark_sent(state, g, "duplicate", result["detail"])
+                    print(f"  {g['iso']} -> Garmin zglosil duplikat (traktuje jak sukces)")
+                else:
+                    failures += 1
+                    print(f"  {g['iso']} -> BLAD: {result['detail']}", file=sys.stderr)
+
+    # ---- cisnienie ----
+    bp_sent, bp_fail = sync_bp(cfg, state, bp_days, upload, get_client)
+    failures += bp_fail
+
+    if upload and (pending or bp_sent or bp_fail):
+        save_state(args.state, state)
+        print(f"stan zapisany: {args.state}")
+    if bp_sent:
+        refresh_qbot_bp(bp_days)
 
     if failures:
         print(f"nieudanych: {failures} -- zostana ponowione", file=sys.stderr)

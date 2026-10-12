@@ -2571,6 +2571,7 @@ def _init_registry():
         ("route_delete", _load_route_delete_tool),
         ("tire_pressure", _load_tire_pressure_tool),
         ("trainer_week", _load_trainer_week_tool),
+        ("heart_health", _load_heart_health_tool),
         ("route_fuel_plan", _load_route_fuel_plan_tool),
         ("route_time_estimate", _load_route_time_estimate_tool),
         ("route_wbgt", _load_route_wbgt_tool),
@@ -2942,6 +2943,41 @@ def _load_trainer_week_tool() -> dict[str, Any]:
             "Pokaz pole analysis w calosci."
         ),
         "args_schema": {"week_start": {"type": "string", "description": "Poniedzialek tygodnia RRRR-MM-DD (opcjonalne)"}},
+        "safety": "read",
+        "mode": "read_only",
+    }
+
+
+def _load_heart_health_tool() -> dict[str, Any]:
+    """Serce (2026-10-12): tetno spoczynkowe, tetno przy mocy, cisnienie krwi, EKG. docs/SERCE.md"""
+    from qbot3.errors import error_result, success_result
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        try:
+            import qbot_heart as _heart
+            d = _heart.build_heart_data(days=180)
+        except Exception as exc:
+            return error_result("HEART_FAILED", f"blad danych serca: {type(exc).__name__}")
+        bp = d["bp"]["summary"]
+        return success_result({
+            "analysis": d["analysis"],
+            "rhr": {k: d["rhr"].get(k) for k in ("recent", "norm", "delta", "status", "last7")},
+            "hr_at_power": {k: d["hrp"].get(k) for k in ("recent", "norm", "delta", "status", "rides", "band")},
+            "blood_pressure_last_series": bp,
+            "blood_pressure_count": len(d["bp"]["all"]),
+            "ecg_last": d["ecg"]["last"],
+            "ecg_count": len(d["ecg"]["list"]),
+        })
+
+    return {
+        "callable": _wrapper,
+        "category": "health",
+        "description": (
+            "SERCE: tetno spoczynkowe vs norma roku, tetno przy mocy 140-180 W (jazdy), CISNIENIE KRWI "
+            "(Withings, seria 7 dni), EKG z zegarka (wynik rytmu). Tylko odczyt, bez parametrow. "
+            "Pokaz pole analysis w calosci. To sygnaly, nie diagnoza."
+        ),
+        "args_schema": {},
         "safety": "read",
         "mode": "read_only",
     }

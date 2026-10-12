@@ -432,6 +432,14 @@ def api_forma_activities(request: Request, n: int = Query(3)):
         conn.close()
 
 
+@app.get("/api/forma/heart")
+def api_forma_heart(days: int = Query(180)):
+    """Serce (2026-10-12): tetno spoczynkowe, tetno przy 140-180 W, cisnienie, EKG.
+    Jedno zrodlo z narzedziem Alberta heart_health: qbot_heart.build_heart_data. docs/SERCE.md"""
+    import qbot_heart as _heart
+    return _heart.build_heart_data(days=max(30, min(730, days)))
+
+
 @app.get("/api/forma/activity")
 def api_forma_activity(request: Request, external_id: str = Query(...)):
     conn = _db_conn()

@@ -55,6 +55,18 @@ SANE_RANGES = {
     "bone_mass_kg": (0.5, 10.0),
 }
 
+# Cisnienie (ciśnieniomierz Withings) -- osobne typy pomiarow, osobna grupa.
+BP_TYPES = {
+    10: "systolic",
+    9: "diastolic",
+    11: "pulse",
+}
+BP_SANE_RANGES = {
+    "systolic": (70, 260),
+    "diastolic": (40, 150),
+    "pulse": (20, 250),
+}
+
 RETRY_DELAYS_S = (2, 6, 15)
 
 
@@ -133,8 +145,11 @@ def refresh_token(env_path: Path = DEFAULT_ENV) -> dict[str, str]:
     })
 
     status = res.get("status")
+    if status == 601:
+        # 601 = za duzo zapytan (np. dwa odswiezenia w kilka sekund). Token nadal wazny.
+        raise WithingsTransientError("Withings: za duzo zapytan (status=601), ponowie pozniej")
     if status != 0:
-        # 401/601 itp. = token uniewazniony. Ponawianie nic nie da.
+        # 401 itp. = token uniewazniony. Ponawianie nic nie da.
         raise WithingsAuthError(
             f"odswiezenie tokenu odrzucone przez Withings (status={status}). "
             "Potrzebna reczna autoryzacja w przegladarce."
@@ -194,6 +209,53 @@ def fetch_measures(cfg: dict[str, str], days: int = 30) -> list[dict[str, Any]]:
             if _sane(name, value):
                 vals[name] = value
         if "weight_kg" not in vals:
+            continue
+        ts = int(grp["date"])
+        out.append({
+            "grpid": str(grp.get("grpid")),
+            "ts": ts,
+            "iso": datetime.fromtimestamp(ts, timezone.utc).astimezone().isoformat(timespec="seconds"),
+            "values": vals,
+        })
+    out.sort(key=lambda g: g["ts"], reverse=True)
+    return out
+
+
+def fetch_blood_pressure(cfg: dict[str, str], days: int = 30) -> list[dict[str, Any]]:
+    """Pomiary cisnienia (skurczowe, rozkurczowe, tetno), od najnowszego.
+
+    Te same zasady co waga: tylko pomiary z urzadzenia (attrib 0/2), wartosci w zakresie
+    zdroworozsadkowym, grupa bez skurczowego lub rozkurczowego odrzucana.
+    """
+    now = int(time.time())
+    res = _post(
+        MEASURE_URL,
+        {
+            "action": "getmeas",
+            "meastypes": ",".join(str(t) for t in BP_TYPES),
+            "category": 1,
+            "startdate": now - days * 24 * 3600,
+            "enddate": now,
+        },
+        headers={"Authorization": "Bearer " + cfg["WITHINGS_ACCESS_TOKEN"]},
+    )
+    if res.get("status") != 0:
+        raise WithingsAuthError(f"odczyt cisnienia odrzucony (status={res.get('status')})")
+
+    out: list[dict[str, Any]] = []
+    for grp in res.get("body", {}).get("measuregrps", []):
+        if grp.get("attrib") not in (0, 2):
+            continue
+        vals: dict[str, int] = {}
+        for m in grp.get("measures", []):
+            name = BP_TYPES.get(m.get("type"))
+            if not name:
+                continue
+            value = int(round(m["value"] * (10 ** m["unit"])))
+            lo, hi = BP_SANE_RANGES[name]
+            if lo <= value <= hi:
+                vals[name] = value
+        if "systolic" not in vals or "diastolic" not in vals:
             continue
         ts = int(grp["date"])
         out.append({
