@@ -49,7 +49,8 @@ class TestItems(unittest.TestCase):
         e = {"id": 7, "day": date(2026, 10, 11), "scale": 0.75,
              "items": [{"name": "Pizza", "portion": "cała ~30 cm", "kcal": 900, "protein_g": 38, "carbs_g": 105, "fat_g": 35}]}
         t = F.receipt_text(e)
-        self.assertIn("#7 · 11.10 (nd)", t)
+        self.assertIn("#7 · nd 11.10 · 675 kcal", t)
+        self.assertIn("<pre> 675  Pizza cała ~30 cm</pre>", t)
         self.assertIn("675 kcal", t)
         self.assertIn("×0.75", t)
 

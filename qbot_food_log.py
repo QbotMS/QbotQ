@@ -120,7 +120,8 @@ def clean_items(items) -> list[dict] | None:
              "kcal": _f(it.get("kcal")), "protein_g": _f(it.get("protein_g")),
              "carbs_g": _f(it.get("carbs_g")), "fat_g": _f(it.get("fat_g")),
              "conf": {"pewne": "pewne", "średnie": "średnie", "srednie": "średnie"}.get(str(it.get("conf") or "").strip().lower(), "zgrubne"),
-             "src": str(it.get("src") or "").strip()[:40]}
+             "src": str(it.get("src") or "").strip()[:40],
+             "short": str(it.get("short") or "").strip()[:24]}
         if not x["name"] or any(x[k] is None or x[k] < 0 for k in ("kcal", "protein_g", "carbs_g", "fat_g")):
             return None
         out.append(x)
@@ -135,27 +136,45 @@ def _fmt(v) -> str:
     return "%.0f" % v if v is not None else "?"
 
 
+def _esc(t) -> str:
+    import html as _h
+    return _h.escape(str(t or ""), quote=False)
+
+
+def _short(it: dict) -> str:
+    sh = (it.get("short") or "").strip()
+    if not sh:
+        nm, po = it["name"], (it.get("portion") or "")
+        sh = nm if len(nm) <= 22 else nm[:21].rstrip() + "…"
+        if po and len(sh) + len(po) <= 21:
+            sh += " " + po
+    return sh[:24]
+
+
 def receipt_text(e: dict) -> str:
+    """HTML: naglowek z suma, makra, tabela 'kcal | pozycja' w bloku stalej szerokosci, legenda."""
     d = e["day"]
-    head = "✅ #%d · %s (%s)" % (e["id"], d.strftime("%d.%m"), DNI[d.weekday()])
-    if e.get("_from_catalog"):
-        head += " · jak zwykle"
-    lines = [head]
     sc = e.get("scale") or 1
-    weak = False
-    for it in e["items"] or []:
-        mk = {"pewne": "✔", "średnie": "~", "zgrubne": "⚠️"}.get(it.get("conf"), "•")
-        weak = weak or it.get("conf") == "zgrubne"
-        src = it.get("src") or ""
-        lines.append("%s %s%s: %s kcal%s" % (mk, it["name"], (" – " + it["portion"]) if it.get("portion") else "",
-                                              _fmt((it["kcal"] or 0) * sc),
-                                              (" (" + src + ")") if src.startswith(("historia", "etykieta", "poprawka")) else ""))
-    t = totals(e["items"] or [], sc)
-    lines.append("Razem ~%s kcal · B %s · W %s · T %s g%s" % (_fmt(t["kcal"]), _fmt(t["protein_g"]), _fmt(t["carbs_g"]),
-                                                            _fmt(t["fat_g"]), "" if abs(sc - 1) < 1e-6 else "  (×%.2f)" % sc))
-    if len(e["items"] or []) > 1 or weak:
-        lines.append("✔ pewne · ~ średnie · ⚠️ zgrubne. Poprawka: odpowiedz na tę wiadomość, np. „makaron ok. 600 g”.")
-    return "\n".join(lines)
+    items = e["items"] or []
+    t = totals(items, sc)
+    head = "✅ <b>#%d · %s %s · %s kcal</b>" % (e["id"], DNI[d.weekday()], d.strftime("%d.%m"), _fmt(t["kcal"]))
+    sub = "B %s · W %s · T %s g" % (_fmt(t["protein_g"]), _fmt(t["carbs_g"]), _fmt(t["fat_g"]))
+    if abs(sc - 1) > 1e-6:
+        sub += " · ×%.2f" % sc
+    if e.get("_from_catalog"):
+        sub += " · jak zwykle"
+    mk = {"pewne": " ", "średnie": "~", "zgrubne": "?"}
+    rows = ["%4s%s %s" % (_fmt((it["kcal"] or 0) * sc), mk.get(it.get("conf"), " "), _short(it)) for it in items]
+    out = [head, sub, "<pre>" + _esc("\n".join(rows)) + "</pre>"]
+    marks = {it.get("conf") for it in items}
+    leg = []
+    if "zgrubne" in marks:
+        leg.append("? zgrubnie")
+    if "średnie" in marks:
+        leg.append("~ średnio")
+    if leg or len(items) > 1:
+        out.append("<i>%sPopraw: odpowiedz na tę wiadomość, np. „makaron ok. 600 g”.</i>" % ((" · ".join(leg) + ". ") if leg else ""))
+    return "\n".join(out)
 
 
 def receipt_kb(eid: int) -> dict:
@@ -168,9 +187,10 @@ def receipt_kb(eid: int) -> dict:
 # ======================================================================= AI
 _PROMPT = """Szacujesz wartości odżywcze jedzenia/napojów, które użytkownik (dorosły mężczyzna w Polsce) zjadł.
 Zwracasz WYŁĄCZNIE JSON, bez komentarza:
-{"not_food": false, "ambiguous": false, "items": [{"name": "...", "portion": "...", "kcal": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0, "conf": "pewne|średnie|zgrubne", "src": "..."}], "question": null, "options": null}
+{"not_food": false, "ambiguous": false, "items": [{"name": "...", "portion": "...", "kcal": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0, "conf": "pewne|średnie|zgrubne", "src": "...", "short": "..."}], "question": null, "options": null}
 Zasady:
 - Pomiń słowa o czasie ("wczoraj", "w sobotę", "rano", daty) - opisują kiedy, nie co.
+- "short": nazwa RAZEM z ilością, max 22 znaki (np. "Racuchy ×6", "Makaron Kojak ~400 g", "Chrupki HiProt. 60 g").
 - Każda pozycja: krótka polska nazwa, porcja słowami (np. "cała ~30 cm", "2 szt.", "0,5 l"), kcal i PEŁNE makra (liczby).
 - ZAWSZE odpowiadasz samym JSON-em. Nigdy tabel, list, pytań ani komentarzy tekstem.
 - Gdy w wiadomości jest WIĘCEJ NIŻ JEDNA pozycja -> NIGDY nie pytaj ("ambiguous": false): dla każdej przyjmij typową porcję
@@ -308,8 +328,10 @@ def _chat_id() -> str:
     return str(cfg.TELEGRAM_CHAT_ID)
 
 
-def tg_send(text: str, kb: dict | None = None, reply_to: int | None = None) -> int | None:
+def tg_send(text: str, kb: dict | None = None, reply_to: int | None = None, html: bool = False) -> int | None:
     body = {"chat_id": _chat_id(), "text": text[:4000], "disable_web_page_preview": True}
+    if html:
+        body["parse_mode"] = "HTML"
     if kb:
         body["reply_markup"] = kb
     if reply_to:
@@ -319,9 +341,12 @@ def tg_send(text: str, kb: dict | None = None, reply_to: int | None = None) -> i
     return (r.get("result") or {}).get("message_id") if r.get("ok") else None
 
 
-def tg_edit(message_id: int, text: str, kb: dict | None) -> None:
-    _api("editMessageText", {"chat_id": _chat_id(), "message_id": message_id, "text": text[:4000],
-                             "disable_web_page_preview": True, "reply_markup": kb or {"inline_keyboard": []}})
+def tg_edit(message_id: int, text: str, kb: dict | None, html: bool = False) -> None:
+    body = {"chat_id": _chat_id(), "message_id": message_id, "text": text[:4000],
+            "disable_web_page_preview": True, "reply_markup": kb or {"inline_keyboard": []}}
+    if html:
+        body["parse_mode"] = "HTML"
+    _api("editMessageText", body)
 
 
 def _download_photo(file_id: str) -> tuple[bytes, str]:
@@ -450,7 +475,7 @@ def process_entry(eid: int, reply_to: int | None = None) -> str:
         c.commit()
         e = _get(c, eid)
         e["_from_catalog"] = res.get("_from_catalog")
-        mid = tg_send(receipt_text(e), receipt_kb(eid), reply_to=reply_to)
+        mid = tg_send(receipt_text(e), receipt_kb(eid), reply_to=reply_to, html=True)
         c.execute("UPDATE qbot_v2.food_entries SET reply_message_id=%s WHERE id=%s", (mid, eid))
         c.commit()
     refresh_day(e["day"])
@@ -491,7 +516,7 @@ def correct_entry(eid: int, fix: str, reply_to: int | None = None) -> bool:
         c.commit()
         e = _get(c, eid)
     if e["reply_message_id"]:
-        tg_edit(e["reply_message_id"], receipt_text(e) + "\n✏️ poprawione: " + fix[:80], receipt_kb(eid))
+        tg_edit(e["reply_message_id"], receipt_text(e) + "\n✏️ poprawione: " + _esc(fix[:80]), receipt_kb(eid), html=True)
     tg_send("✏️ #%d poprawione · teraz ~%s kcal" % (eid, _fmt(e["kcal"])), reply_to=reply_to)
     refresh_day(e["day"])
     return True
@@ -555,19 +580,19 @@ def handle_callback(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, chat_
             _learn(c, _get(c, eid))
             c.commit()
             tg_answer_callback(cq.get("id"), "Zapisane")
-            tg_edit(msg["message_id"], receipt_text(_get(c, eid)), receipt_kb(eid))
+            tg_edit(msg["message_id"], receipt_text(_get(c, eid)), receipt_kb(eid), html=True)
         elif act in ("m", "p") and e["status"] == "logged":
             sc = max(0.25, round((e["scale"] or 1) + (-SCALE_STEP if act == "m" else SCALE_STEP), 2))
             c.execute("UPDATE qbot_v2.food_entries SET scale=%s WHERE id=%s", (sc, eid))
             _write_intake(c, _get(c, eid))
             c.commit()
             tg_answer_callback(cq.get("id"), "×%.2f" % sc)
-            tg_edit(msg["message_id"], receipt_text(_get(c, eid)), receipt_kb(eid))
+            tg_edit(msg["message_id"], receipt_text(_get(c, eid)), receipt_kb(eid), html=True)
         elif act == "k" and e["status"] == "logged":
             _learn(c, e)
             c.commit()
             tg_answer_callback(cq.get("id"), "OK")
-            tg_edit(msg["message_id"], receipt_text(e), None)
+            tg_edit(msg["message_id"], receipt_text(e), None, html=True)
         elif act == "b" and e["status"] in ("logged", "asking"):
             nd = e["day"] - timedelta(days=1)
             c.execute("UPDATE qbot_v2.food_entries SET day=%s WHERE id=%s", (nd, eid))
@@ -577,7 +602,7 @@ def handle_callback(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, chat_
             days_touched.add(nd)
             tg_answer_callback(cq.get("id"), "Przeniesione na %s" % nd.strftime("%d.%m"))
             e2 = _get(c, eid)
-            tg_edit(msg["message_id"], receipt_text(e2) if e2["status"] == "logged" else msg.get("text", ""),
+            tg_edit(msg["message_id"], receipt_text(e2) if e2["status"] == "logged" else _esc(msg.get("text", "")),
                     receipt_kb(eid) if e2["status"] == "logged" else msg.get("reply_markup"))
         elif act == "x":
             from qbot_brokul_meals import remove_intake
@@ -619,7 +644,7 @@ def _quick(cq, p, msg, answer) -> None:
             _write_intake(c, e)
             c.commit()
             e = _get(c, eid)
-        mid = tg_send(receipt_text(e), receipt_kb(eid))
+        mid = tg_send(receipt_text(e), receipt_kb(eid), html=True)
         with _conn() as c:
             c.execute("UPDATE qbot_v2.food_entries SET reply_message_id=%s WHERE id=%s", (mid, eid))
             c.commit()
