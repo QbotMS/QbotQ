@@ -188,7 +188,10 @@ def evening_line(day: date) -> str:
     p = day_plan(day)
     eaten = F.day_totals(day)["kcal"] or 0
     left = p["target"] - eaten
-    tail = ("zostało ~%s" % _fmt(left)) if left > 0 else ("ponad cel o ~%s" % _fmt(-left))
+    if day < date.today():  # dzien miniony: ocena, nie 'zostalo'; za mocny deficyt tez jest problemem
+        tail = ("za dużo o ~%s" % _fmt(-left)) if left < -150 else (("za mało o ~%s" % _fmt(left) + (" ⚠️" if left > 300 else "")) if left > 150 else "w celu")
+    else:
+        tail = ("zostało ~%s" % _fmt(left)) if left > 0 else ("ponad cel o ~%s" % _fmt(-left))
     return "🎯 %s/%s kcal · %s" % (_fmt(eaten), _fmt(p["target"]), tail)
 
 

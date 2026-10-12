@@ -56,8 +56,9 @@ function loadFood(s, e) { var k = s + "|" + e; return FDC[k] || (FDC[k] = getJ("
 function foodLn(ds) { var f = FD[ds]; if (!f) return "";
   var href = ' href="/jedzenie.html#dni=' + ds + '" onclick="event.stopPropagation()" style="display:block;text-decoration:none;';
   if (!f.kcal && !f.closed) return '<a class="ln food"' + href + 'color:var(--muted)" title="Brak wpisów jedzenia – otwórz dzień w Jedzeniu">🍽 brak wpisów</a>';
-  var over = f.kcal - f.target > 150;
-  return '<a class="ln food"' + href + "color:" + (over ? "var(--bad)" : "var(--good)") + '" title="zjedzone / cel dnia – otwórz dzień w Jedzeniu">🍽 ' + qN(f.kcal, 0) + "/" + qN(f.target, 0) + (f.closed ? " 🔒" : "") + "</a>"; }
+  var df = f.kcal - f.target, col = df > 150 ? "var(--bad)" : (ds < today && df < -300 ? "var(--warn)" : "var(--good)");
+  var tt = ds < today ? (df > 150 ? "za dużo o " + qN(df, 0) : df < -150 ? "za mało o " + qN(-df, 0) : "w celu") : "zjedzone / cel";
+  return '<a class="ln food"' + href + "color:" + col + '" title="' + tt + ' kcal – otwórz dzień w Jedzeniu">🍽 ' + qN(f.kcal, 0) + "/" + qN(f.target, 0) + (f.closed ? " 🔒" : "") + "</a>"; }
 function loadWeek(k) { return WK[k] || (WK[k] = api("GET", "/week?start=" + k).catch(function () { return { sessions: [], meta: {} }; })); }
 function loadCal(s, e) { var k = s + "|" + e; return CAL[k] || (CAL[k] = qJSON("/api/calendar?start=" + s + "&end=" + e)); }
 function getJ(u) { return fetch(u, { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; }); }

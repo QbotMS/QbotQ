@@ -142,13 +142,18 @@
         qs.map(function (q) { return "<button class='btn sm' data-a='quick' data-c='" + q[0] + "'>" + q[1] + "</button>"; }).join("") + "</div></div>");
     }
     // prawa kolumna
-    var t = d.totals.kcal || 0, pct = d.target ? Math.min(100, t / d.target * 100) : 0, over = t > d.target;
+    var t = d.totals.kcal || 0, pct = d.target ? Math.min(100, t / d.target * 100) : 0, diff = t - d.target, past = d.day < S.today;
+    /* ocena symetryczna: za duzo = czerwony, za malo o >300 kcal (za mocny deficyt) = pomarancz, +-150 = w celu */
+    var cls = diff > 150 ? "over" : (past && diff < -300 ? "under" : "");
+    var verdict = past ? (diff > 150 ? "za dużo o " + n0(diff) + " kcal" : diff < -150 ? "za mało o " + n0(-diff) + " kcal" + (diff < -300 ? " – deficyt za mocny" : "") : "w celu")
+      : (diff > 150 ? "ponad cel o " + n0(diff) + " kcal" : "zostało " + n0(-diff) + " kcal");
+    var balTxt = (past && t) ? " · bilans " + (t - d.expend > 0 ? "+" : "") + n0(t - d.expend) + " (cel " + n0(S.ctx.balance) + ")" : "";
     var R = [];
     R.push("<div class='card'><div class='ttl'><h2>" + (d.day === S.today ? "Dziś" : wd(d.day) + " " + dm(d.day)) + "</h2><span class='state " + (fut ? "" : (d.closed ? "ok" : "open")) + "'>" +
       (fut ? "plan" : (d.closed ? "🔒 zamknięty" : "⏳ otwarty")) + "</span></div>" +
       "<div class='big2'>" + n0(t) + " <span class='sub' style='font-size:16px'>/ " + n0(d.target) + " kcal</span></div>" +
-      "<div class='meter' role='progressbar' aria-valuenow='" + Math.round(t) + "' aria-valuemax='" + d.target + "' aria-label='Zjedzone względem celu'><i class='" + (over ? "over" : "") + "' style='width:" + pct.toFixed(1) + "%'></i></div>" +
-      "<div class='sub'>" + (over ? "ponad cel o " + n0(t - d.target) + " kcal" : "zostało " + n0(d.target - t) + " kcal") + "</div>" +
+      "<div class='meter' role='progressbar' aria-valuenow='" + Math.round(t) + "' aria-valuemax='" + d.target + "' aria-label='Zjedzone względem celu'><i class='" + cls + "' style='width:" + pct.toFixed(1) + "%'></i></div>" +
+      "<div class='sub' style='color:var(--" + (cls === "over" ? "bad" : cls === "under" ? "warn" : "ink2") + ")'>" + verdict + balTxt + "</div>" +
       "<div class='kv'><span>Białko</span><span>" + n0(d.totals.protein_g) + " g</span><span>Węglowodany</span><span>" + n0(d.totals.carbs_g) + " g</span><span>Tłuszcz</span><span>" + n0(d.totals.fat_g) + " g</span>" +
       "<span>Spalanie</span><span>" + n0(d.expend) + " kcal" + (d.expend_src === "prognoza" ? " (prognoza)" : "") + "</span><span>Cel bilansu</span><span>" + n0(S.ctx.balance) + " kcal</span>" +
       (d.brokul_kcal ? "<span>Dokładka do Brokuła</span><span>" + (d.extra >= 150 ? n0(d.extra) + " kcal" : "nie trzeba") + "</span>" : "") + "</div>" +
