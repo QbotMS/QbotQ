@@ -41,18 +41,33 @@ def _hm(t: dtime | None) -> str:
 
 
 # ======================================================================= model spalania
+SHRINK_N = 5   # sila sciagania mediany dnia tygodnia do sredniej (pseudo-probki)
+
+
 def model(c) -> dict:
+    """Spalanie: dzien bez treningu = mediana energy_daily w dni bez treningu (182 dni) WG DNIA TYGODNIA, sciagana do
+    sredniej ogolnej: (n*med_dt + 5*med)/(n+5) (2026-10-12, pomysl Michala; rozrzut dni tygodnia ~120 kcal).
+    Trening = mediana nadwyzki na godzine (90 dni). Liczone raz dziennie."""
     key = date.today().isoformat()
     if _MODEL.get("key") == key:
         return _MODEL["v"]
     rows = c.execute(
-        "WITH t AS (SELECT date, sum(duration_s)/3600.0 h FROM qbot_v2.training_sessions WHERE date >= current_date-90 GROUP BY date), "
-        "e AS (SELECT date, COALESCE(total_kcal_eff,total_kcal) tot FROM qbot_v2.energy_daily WHERE date >= current_date-90 "
+        "WITH t AS (SELECT date, sum(duration_s)/3600.0 h FROM qbot_v2.training_sessions WHERE date >= current_date-182 GROUP BY date), "
+        "e AS (SELECT date, COALESCE(total_kcal_eff,total_kcal) tot FROM qbot_v2.energy_daily WHERE date >= current_date-182 "
         "AND date < current_date AND quality_status<>'partial') SELECT e.date, e.tot, COALESCE(t.h,0) h FROM e LEFT JOIN t USING (date)").fetchall()
-    rest = [float(r["tot"]) for r in rows if r["h"] < 0.25 and r["tot"]]
-    base = st.median(rest) if len(rest) >= 7 else 2450.0
-    per_h = [(float(r["tot"]) - base) / float(r["h"]) for r in rows if r["h"] > 0.5 and r["tot"]]
-    v = {"base": round(base), "per_h": round(st.median(per_h)) if len(per_h) >= 7 else 480, "n_rest": len(rest), "n_ride": len(per_h)}
+    rest = [(r["date"], float(r["tot"])) for r in rows if r["h"] < 0.25 and r["tot"]]
+    base = st.median([v for _, v in rest]) if len(rest) >= 7 else 2450.0
+    by_wd = {}
+    for d, v in rest:
+        by_wd.setdefault(d.weekday(), []).append(v)
+    base_wd = {}
+    for wd in range(7):
+        xs = by_wd.get(wd, [])
+        base_wd[wd] = round((len(xs) * st.median(xs) + SHRINK_N * base) / (len(xs) + SHRINK_N)) if xs else round(base)
+    recent = [r for r in rows if r["date"] >= date.today() - timedelta(days=90)]
+    per_h = [(float(r["tot"]) - base) / float(r["h"]) for r in recent if r["h"] > 0.5 and r["tot"]]
+    v = {"base": round(base), "base_wd": base_wd, "n_wd": {k: len(x) for k, x in by_wd.items()},
+         "per_h": round(st.median(per_h)) if len(per_h) >= 7 else 480, "n_rest": len(rest), "n_ride": len(per_h)}
     _MODEL.update(key=key, v=v)
     return v
 
@@ -64,18 +79,27 @@ def sessions(c, day: date) -> list[dict]:
 
 
 def expend(c, day: date) -> dict:
-    """Przewidywane (albo realne) spalanie dnia."""
+    """Spalanie dnia: miniony = realne energy_daily; dzisiaj = Garmin do teraz + reszta dnia; przyszly = model dnia tygodnia."""
     if day < date.today():
         r = c.execute("SELECT COALESCE(total_kcal_eff,total_kcal) e FROM qbot_v2.energy_daily WHERE date=%s AND quality_status<>'partial'",
                       (day,)).fetchone()
         if r and r["e"]:
             return {"kcal": float(r["e"]), "src": "realne"}
     m = model(c)
+    base = m["base_wd"].get(day.weekday(), m["base"])
     ses = sessions(c, day)
-    act = c.execute("SELECT COALESCE(sum(duration_s),0)/3600.0 h FROM qbot_v2.training_sessions WHERE date=%s", (day,)).fetchone()["h"]
     plan_h = sum((s["dur_min"] or 0) / 60 * SPORT_F.get(s["sport"], 0.8) for s in ses if s["status"] == "plan")
+    if day == date.today():
+        g = c.execute("SELECT COALESCE(total_kcal_eff,total_kcal) e, updated_at FROM qbot_v2.energy_daily WHERE date=%s", (day,)).fetchone()
+        if g and g["e"] and g["updated_at"]:
+            up = g["updated_at"].astimezone(TZ)
+            frac = min(1.0, max(0.0, (up.hour * 60 + up.minute) / 1440)) if up.date() == day else (1.0 if up.date() > day else 0.0)
+            rest = base * (1 - frac) + m["per_h"] * plan_h
+            return {"kcal": float(g["e"]) + rest, "src": "prognoza", "so_far": round(float(g["e"])),
+                    "so_far_at": up.strftime("%H:%M"), "train_h": round(plan_h, 2)}
+    act = c.execute("SELECT COALESCE(sum(duration_s),0)/3600.0 h FROM qbot_v2.training_sessions WHERE date=%s", (day,)).fetchone()["h"]
     h = float(act) + plan_h
-    return {"kcal": m["base"] + m["per_h"] * h, "src": "prognoza", "train_h": round(h, 2)}
+    return {"kcal": base + m["per_h"] * h, "src": "prognoza", "train_h": round(h, 2)}
 
 
 def calibration(c) -> int:

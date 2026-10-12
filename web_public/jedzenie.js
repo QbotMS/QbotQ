@@ -157,9 +157,9 @@
       "<div class='meter' role='progressbar' aria-valuenow='" + Math.round(t) + "' aria-valuemax='" + d.target + "' aria-label='Zjedzone względem celu'><i class='" + cls + "' style='width:" + pct.toFixed(1) + "%'></i></div>" +
       "<div class='sub' style='color:var(--" + (cls === "over" ? "bad" : cls === "under" ? "warn" : "ink2") + ")'>" + verdict + balTxt + "</div>" +
       "<div class='kv'><span>Białko</span><span>" + n0(d.totals.protein_g) + " g</span><span>Węglowodany</span><span>" + n0(d.totals.carbs_g) + " g</span><span>Tłuszcz</span><span>" + n0(d.totals.fat_g) + " g</span>" +
-      "<span>Spalanie</span><span>" + n0(d.expend) + " kcal" + (d.expend_src === "prognoza" ? " (prognoza)" : "") + "</span><span>Cel bilansu</span><span>" + n0(S.ctx.balance) + " kcal</span>" +
+      "<span>Spalanie</span><span>" + n0(d.expend) + " kcal" + (d.expend_src === "prognoza" ? " (prognoza" + (d.so_far != null ? "; Garmin do " + d.so_far_at + ": " + n0(d.so_far) : "") + ")" : "") + "</span><span>Cel bilansu</span><span>" + n0(S.ctx.balance) + " kcal</span>" +
       (d.brokul_kcal ? "<span>Dokładka do Brokuła</span><span>" + (d.extra >= 150 ? n0(d.extra) + " kcal" : "nie trzeba") + "</span>" : "") + "</div>" +
-      (d.sessions.length ? "<div class='note'>🚲 " + d.sessions.map(function (s) { return esc(s.name) + " " + s.dur_min + "′" + (s.start_time ? " o " + s.start_time.slice(0, 5) : ""); }).join("; ") + "</div>" : "") +
+      (d.sessions.length ? "<div class='note'>" + d.sessions.map(function (s) { return ({ rower: "🚲", sila: "🏋️", wiosl: "🚣", joga: "🧘" }[s.sport] || "•") + " " + esc(s.name) + " " + s.dur_min + "′" + (s.start_time ? " o " + s.start_time.slice(0, 5) : ""); }).join("; ") + "</div>" : "") +
       (!fut && !d.closed ? "<div class='note'>Do zamknięcia: " + [d.pending ? "potwierdź posiłki Brokuła" : "", (!d.entries.length && !d.none) ? (d.has_diet ? "dopisz jedzenie poza dietą albo kliknij „Nic poza dietą”" : "dopisz, co zjadłeś") : ""].filter(Boolean).join("; ") +
         ". Termin passy: " + dm(d.deadline.slice(0, 10)) + " 12:00.</div>" : "") + "</div>");
     if (!fut) {
