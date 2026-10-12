@@ -1246,3 +1246,7 @@ Sprawdzone na zywo: przeniesienie 4 pomiarow z 2023 (potwierdzone w Garminie), i
 ciśnienie opon dalej idzie do tire_pressure. Wykres zakladki zweryfikowany (canvas narysowany po czystym przeladowaniu).
 Otwarte: pierwsza nowa seria cisnienia i nowe EKG przez automat. docs/SERCE.md
 
+## 2026-10-12 TRENER: pogoda rano (claude-trener-wx)
+qbot_trener_weather.py + qbot_trener_notify (poranna wiadomosc 7:00 i przyciski tr:wxok/wxno). Testy test_trener_weather 10 OK,
+test_trener_notify 3 OK, test na zywo z ROLLBACK. Pierwsze prawdziwe uzycie: najblizszy ranek z jazda i zla prognoza. docs/TRENER.md
+

@@ -506,3 +506,19 @@ Cel Michała (id 19): „Redukcja: 99 → 95 → 90 kg” – 99 do 31.12.2026, 
 **Ważenie** (poranek 7:00–7:59): `qbot_food_streaks.weigh_line` – linia „⚖️ Dziś ważenie…” wpięta w wiadomość dnia
 (2. linia), a w dni bez treningu osobna wiadomość (klucz `weigh:<dzień>`). Tylko gdy od ostatniego PRAWDZIWEGO ważenia
 (`body_measurements`) minęły ≥2 dni; nie w delegacji/urlopie/wyprawie (Kalendarz), nie dzień po jeździe ≥3 h.
+
+
+## Pogoda rano: propozycja korekty (2026-10-12, qbot_trener_weather.py)
+Decyzje Michala: sprawdzenie RANO w dniu, w porannej wiadomosci 7:00 (bez osobnych wiadomosci); Trener tylko PROPONUJE
+(przyciski Zmien / Zostaw); jazdy dodane recznie dostaja samo ostrzezenie.
+- Prognoza GODZINOWA Open-Meteo dla domu (E.home_point), pogoda liczona w OKNIE jazdy (start..start+czas), nie srednia 8-18
+  jak przy ukladaniu planu. Progi: E.wx_bad (Kalibracja wx.*). Jazdy z 'trenaz/indoor/zwift/rolki' w nazwie pomijane.
+- Kolejnosc propozycji z Kalibracji wx.fallback (0 przesun godzine 07:00-20:00, najblizej pierwotnej, bez kolizji, min. 30 min
+  od teraz; 1 przesun dzien - kolejny dzien tygodnia bez jazdy, ta sama godzina; 2 skroc do wersji minimum; 3 zamien na
+  wioslarz w domu, polowa czasu 30-60 min), potem pozostale opcje. Jedna propozycja na wiadomosc.
+- Propozycja w trainer_auto_cache (wxprop:<id sesji>). Zmien = zmiana 'pogoda' w trainer_change (przycisk Cofnij -> OPS.undo),
+  Zostaw = tylko usuniecie propozycji. Callback tr:wxok|wxno:<id> w qbot_trener_notify.handle_callback.
+- UWAGA (stan zastany): wx.fallback z Kalibracji NIE jest uzywany przy ukladaniu planu (plan_week przy zlej pogodzie wybiera
+  inny dzien albo wioslarz) - uzywa go tylko poranna korekta.
+- Testy: tests/test_trener_weather.py (10). Sprawdzone na zywo w transakcji z ROLLBACK (wymuszony prog): propozycja,
+  Zmien, Cofnij przywraca jazde.

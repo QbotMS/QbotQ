@@ -232,7 +232,7 @@ def adapt_text(res: dict) -> str:
 
 
 def handle_callback(cq: dict, answer, send_plain, clear_buttons, chat_ok: str) -> None:
-    """Przycisk z Telegrama: tr:rest|short|ill:<RRRR-MM-DD> albo tr:undo:<id zmiany>."""
+    """Przycisk z Telegrama: tr:rest|short|ill:<RRRR-MM-DD>, tr:undo:<id zmiany>, tr:wxok|wxno:<id sesji> (pogoda)."""
     import qbot_trener_ops as OPS
     data = cq.get("data") or ""
     m = cq.get("message") or {}
@@ -260,6 +260,22 @@ def handle_callback(cq: dict, answer, send_plain, clear_buttons, chat_ok: str) -
                 gc.close()
             answer(cq.get("id"), "Odhaczone")
             send_plain(f"✅ Rower gotowy — odhaczono {n_} zadań." if n_ else "Te zadania były już odhaczone.")
+        elif act in ("wxok", "wxno"):  # 2026-10-12: propozycja korekty z uwagi na pogode (qbot_trener_weather)
+            import qbot_trener_weather as W
+            if act == "wxno":
+                W.dismiss(c, int(arg)); conn.commit()
+                answer(cq.get("id"), "Zostaje bez zmian")
+                send_plain("👌 Jazda zostaje zgodnie z planem.")
+            else:
+                r = W.apply(c, user, int(arg))
+                conn.commit()
+                if r.get("ok"):
+                    answer(cq.get("id"), "Zmienione")
+                    send(f"🌦️ Plan zmieniony z uwagi na pogodę: {r['text']}.\n{URL}",
+                         [[{"text": "↩️ Cofnij", "callback_data": f"tr:undo:{r['change_id']}"}]])
+                else:
+                    answer(cq.get("id"), "Nie da się zmienić")
+                    send_plain(f"Nie zmieniłem planu: {r.get('error')}.")
         elif act in ("rest", "short", "ill"):
             d = date.fromisoformat(arg)
             if d < date.today():
@@ -440,13 +456,25 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
                     tl.append(_line(s, False))
                     if det.get(s.get("id")) and s["sport"] in ("sila", "wiosl"):  # zwiezle: 1. linia, cwiczenia na stronie Trening
                         tl.append(det[s["id"]].split("\n")[0][:110] + " · ćwiczenia: strona Trening")
+            _wxb = []  # 2026-10-12: pogoda w oknie dzisiejszych jazd -> propozycja (Zmien / Zostaw), reczne: ostrzezenie
+            if act:
+                try:
+                    import qbot_trener_weather as W
+                    c.execute("SELECT 1 FROM qbot_v2.trainer_notify_log WHERE key=%s", (f"day:{today.isoformat()}",))
+                    if not c.fetchone():
+                        _wx = W.morning_check(c, user, today, hm)
+                        tl += _wx["lines"]
+                        _wxb = W.buttons(_wx["proposal"])
+                        conn.rollback() if dry else conn.commit()
+                except Exception as e:
+                    conn.rollback(); log.append(f"pogoda: błąd {str(e)[:120]}")
             try:
                 import qbot_food_plan as _FP
                 _txt = _FP.morning_digest(today, tl)
             except Exception as e:
                 log.append(f"poranek: błąd {str(e)[:120]}")
                 _txt = text_day(today, tses, None)
-            log.append(_once(c, f"day:{today.isoformat()}", user, _txt, dry, day_buttons(today) if act else None))
+            log.append(_once(c, f"day:{today.isoformat()}", user, _txt, dry, (_wxb + day_buttons(today)) if act else None))
         if st["notify.day"] == 2:
             for s in _sessions(c, user, today, today):
                 if s["status"] != "plan" or not s.get("start_time"):

@@ -4,6 +4,11 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-12 -- DECYZJA: TRENER proponuje korekte jazdy z uwagi na pogode (rano, Zmien / Zostaw)
+Wczesniej pogoda liczyla sie tylko przy ukladaniu planu (srednia dnia 8-18); zmiana prognozy po ulozeniu planu nie byla
+wychwytywana. Teraz: poranna wiadomosc 7:00 sprawdza prognoze godzinowa w oknie dzisiejszych jazd; jazda auto -> propozycja
+(kolejnosc z wx.fallback) z przyciskami Zmien / Zostaw (+ Cofnij po zmianie); jazda reczna -> ostrzezenie. Szczegoly: docs/TRENER.md.
+
 ## 2026-10-12 -- DECYZJA: Serce -- cisnienie, EKG, tetno przy mocy (Forma > Serce, Albert heart_health)
 **Powod:** Michal zaniepokojony tetnem spoczynkowym (od polowy 09 ~48-49 vs norma ~46) i tetnem przy tej samej mocy.
 **Decyzje Michala:** cisnienie z Withings idzie TA SAMA droga co waga (Withings -> Garmin -> QBot), nie osobna sciezka;
