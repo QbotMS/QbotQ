@@ -118,11 +118,11 @@ def analysis(day: date) -> dict:
                   "sat_diet": round(sat, 1), "fuel_g": p["fuel_g"], "sessions": [s["name"] + " %d′" % (s["dur_min"] or 0) for s in p["sessions"]],
                   "recs": recs}
     # ---- tydzien
-    a = day - timedelta(days=6)
+    a = day - timedelta(days=day.weekday())  # tydzien = pn-nd (do dnia analizy), 2026-10-12
     rows = []
     with FP._conn() as c:
         cal, bal = FP.calibration(c), FP.target_balance(c)
-        for i in range(7):
+        for i in range((day - a).days + 1):
             d = a + timedelta(days=i)
             if d < S.START:
                 continue
@@ -142,7 +142,7 @@ def analysis(day: date) -> dict:
     cl = [r for r in rows if r["closed"]]
     def av(k, src):
         return round(sum(r[k] for r in src) / len(src)) if src else None
-    week = {"from": a.isoformat(), "to": day.isoformat(), "days": rows, "closed": len(cl), "n": len(rows),
+    week = {"from": a.isoformat(), "to": (a + timedelta(days=6)).isoformat(), "upto": day.isoformat(), "days": rows, "closed": len(cl), "n": len(rows),
             "avg": {k: av(k, cl) for k in ("kcal", "protein_g", "carbs_g", "fat_g", "target", "expend")},
             "avg_balance": round(sum(r["kcal"] - r["expend"] for r in cl) / len(cl)) if cl else None, "balance_target": bal,
             "sweets_days": sum(1 for r in rows if r["sweets"]), "window_ok": sum(1 for r in rows if r["window"] == "ok"),
@@ -160,7 +160,7 @@ def analysis(day: date) -> dict:
         elif diff < -300:
             wrec.append("Deficyt %+d kcal/dz – za mocny, grozi głodem i napadem na słodkie; jedz trochę więcej" % week["avg_balance"])
     if week["sweets_days"] >= 3:
-        wrec.append("Słodycze w %d dniach z 7 – przenieś je na rower (paliwo) albo zaplanuj 1–2 dni" % week["sweets_days"])
+        wrec.append("Słodycze w %d dniach tego tygodnia – przenieś je na rower (paliwo) albo zaplanuj 1–2 dni" % week["sweets_days"])
     if week["salt_diet_avg"] > FP.SALT_MAX:
         wrec.append("Sól z samej diety ~%.0f g/dz (norma 5) – resztę dnia bez słonego" % week["salt_diet_avg"])
     if week["window_broken"]:
