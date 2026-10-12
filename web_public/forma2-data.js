@@ -588,7 +588,7 @@ function renderTrendy(){
   var MON=["sty","lut","mar","kwi","maj","cze","lip","sie","wrz","paz","lis","gru"];
   SN.forEach(function(s2){
     var d=s2.day.slice(8);var m=parseInt(s2.day.slice(5,7))-1;
-    labels.push(d==="01"||d==="15"?MON[m]:"");
+    labels.push(d+"."+s2.day.slice(5,7));  /* 2026-10-12: daty na osi (wczesniej tylko nazwy miesiecy) */
     ctlD.push(s2.ctl_xss!=null?Math.round(s2.ctl_xss*10)/10:null);
     var _a2=s2.atl_plus!=null?s2.atl_plus:s2.atl_raw,_t2=s2.tsb_plus!=null?s2.tsb_plus:s2.tsb_raw;
     atlD.push(_a2!=null?Math.round(_a2*10)/10:null);
@@ -625,6 +625,7 @@ function renderTrendy(){
   function col(k){return SN.map(function(s2){var v=s2[k];return v!=null&&v!==""?Math.round(+v*100)/100:null;});}
   var DEFS=[
     {k:"ctl",lab:"forma",data:ctlD,c:"#e67e22",w:3,ax:"y",on:1,tip:"średnie obciążenie ~6 tygodni"},
+    {k:"rides",lab:"jazdy",data:ctlD.map(function(v,i){return xssD[i]>0?v:null;}),c:"#e67e22",ax:"y",on:1,points:true,tip:"dzień z jazdą – punkt na linii formy"},
     {k:"atlf",lab:"zmęczenie faktyczne",data:col("atl_real"),c:isDark?"#c9c9c9":"#666",w:2,ax:"y",on:1,fill:true,tip:"treningi + stan ciała + samopoczucie"},
     {k:"tsbf",lab:"świeżość faktyczna",data:col("tsb_real"),c:"#1a9a6a",w:2.2,ax:"y2",on:1,tip:"forma − zmęczenie faktyczne"},
     {k:"r3",lab:"gotowość (3 dni)",data:col("readiness_3d"),c:"#8b7cf6",w:2,ax:"yR",on:1,tip:"HRV, tętno, sen — średnia 3 dni"},
@@ -646,6 +647,7 @@ function renderTrendy(){
   var datasets=DEFS.filter(function(d){return !d.status;}).map(function(d){
     var o={label:d.lab,data:d.data,borderColor:d.c,borderWidth:d.w||1.5,pointRadius:0,pointHoverRadius:4,tension:0.35,fill:false,yAxisID:d.ax,hidden:!isOn(d),_k:d.k,spanGaps:true};
     if(d.dash)o.borderDash=d.dash;
+    if(d.points){o.showLine=false;o.pointRadius=3.5;o.pointHoverRadius=5.5;o.pointBackgroundColor=d.c;o.pointBorderColor=isDark?"#111":"#fff";o.pointBorderWidth=1;o.borderWidth=0;o.spanGaps=false;}
     if(d.step){o.stepped=true;o.tension=0;}
     if(d.fill){o.fill=true;o.backgroundColor=isDark?"rgba(200,200,200,0.08)":"rgba(100,100,100,0.08)";}
     if(d.bar){o.type="bar";o.backgroundColor=d.c;o.borderWidth=0;o.barPercentage=0.8;o.categoryPercentage=1;o.order=9;}
@@ -654,7 +656,7 @@ function renderTrendy(){
     plugins:{legend:{display:false},
       tooltip:{backgroundColor:isDark?"rgba(30,30,30,0.95)":"rgba(255,255,255,0.95)",titleColor:isDark?"#ddd":"#333",bodyColor:isDark?"#bbb":"#555",borderColor:isDark?"#444":"#ddd",borderWidth:1,padding:10,displayColors:true,
         callbacks:{title:function(items){if(!items.length)return "";var i=items[0].dataIndex;var s0=SN[i]||{};var L={przeciazenie:"przeciążenie",zmeczony:"zmęczony",uwaga:"uwaga",w_normie:"w normie"};return (s0.day||"")+(s0.day_status?"  ·  "+(L[s0.day_status]||s0.day_status):"");},
-          label:function(ctx){if(ctx.dataset._k==="xss"&&!ctx.parsed.y)return null;var v=ctx.parsed.y;if(v==null)return null;var d=["r3","r1","body","ramp"].indexOf(ctx.dataset._k)>=0?2:0;return ctx.dataset.label+": "+(Math.round(v*Math.pow(10,d))/Math.pow(10,d));},
+          label:function(ctx){if(ctx.dataset._k==="rides")return "jazda: XSS "+xssD[ctx.dataIndex];if(ctx.dataset._k==="xss"&&!ctx.parsed.y)return null;var v=ctx.parsed.y;if(v==null)return null;var d=["r3","r1","body","ramp"].indexOf(ctx.dataset._k)>=0?2:0;return ctx.dataset.label+": "+(Math.round(v*Math.pow(10,d))/Math.pow(10,d));},
           afterBody:function(items){if(!items.length)return "";var i=items[0].dataIndex;var s0=SN[i]||{};var out=[];if(s0.day_status_note)out.push(s0.day_status_note);return out;}}}},
     scales:{x:{ticks:{color:txtCol,font:{size:11},maxRotation:0,autoSkip:true,maxTicksLimit:10},grid:{display:false}},
       y:{position:"left",ticks:{color:"#e67e22",font:{size:11}},grid:{color:gridCol},title:{display:true,text:"forma / zmęczenie",color:txtCol,font:{size:11}}},
@@ -745,15 +747,16 @@ function renderTrendy(){
     if(show.hrv)ds.push({label:"HRV",data:hrvD,borderColor:"#9b59b6",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"yw"});
     if(show.rhr)ds.push({label:"RHR",data:rhrD,borderColor:"#e74c3c",borderWidth:1.5,borderDash:[4,3],pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"yw"});
     if(show.wt)ds.push({label:"waga (kg)",data:wtD,borderColor:"#e67e22",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"yw2"});
-    if(show.bal)ds.push({type:"bar",label:"bilans kcal (zjedzone − spalone)",data:balD,backgroundColor:balD.map(function(v){return v==null?"transparent":(v>0?"rgba(229,83,75,.55)":"rgba(63,160,106,.55)");}),borderWidth:0,yAxisID:"ybal",order:10});
+    if(show.bal)ds.push({label:"bilans skumulowany (kcal)",data:balD,borderColor:"#14b8a6",backgroundColor:"rgba(20,184,166,.10)",fill:"origin",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.2,spanGaps:true,yAxisID:"ybal"});
     if(show.rdy)ds.push({label:"gotowość",data:rdyD,borderColor:"#22c55e",borderWidth:2,borderDash:[6,3],pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"ywr"});
     var scalesW={x:{display:false},yw:{position:"left",ticks:{color:txtCol,font:{size:10}},grid:{color:gridCol}}};
     if(hasRight)scalesW.yw2={position:"right",ticks:{color:"#e67e22",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"kg",color:"#e67e22",font:{size:10}}};
-    if(show.bal)scalesW.ybal={position:"right",ticks:{color:txtCol,font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"bilans kcal",color:txtCol,font:{size:10}}};
+    if(show.bal)scalesW.ybal={position:"right",ticks:{color:"#14b8a6",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"bilans skum. kcal",color:"#14b8a6",font:{size:10}}};
     if(show.rdy)scalesW.ywr={position:"right",ticks:{color:"#22c55e",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"gotowość",color:"#22c55e",font:{size:10}}};
     window._wellChart=new Chart(wc,{type:"line",data:{labels:labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
       plugins:{legend:{display:true,position:"top",labels:{usePointStyle:true,pointStyle:"line",boxWidth:20,padding:10,color:txtCol,font:{size:11}}},
-        tooltip:{backgroundColor:isDark?"rgba(30,30,30,0.95)":"rgba(255,255,255,0.95)",titleColor:isDark?"#ddd":"#333",bodyColor:isDark?"#bbb":"#555",borderColor:isDark?"#444":"#ddd",borderWidth:1,padding:10,displayColors:true,callbacks:{title:function(items){if(!items.length)return "";var i=items[0].dataIndex;return SN[i]?SN[i].day:"";}}}},
+        tooltip:{backgroundColor:isDark?"rgba(30,30,30,0.95)":"rgba(255,255,255,0.95)",titleColor:isDark?"#ddd":"#333",bodyColor:isDark?"#bbb":"#555",borderColor:isDark?"#444":"#ddd",borderWidth:1,padding:10,displayColors:true,callbacks:{title:function(items){if(!items.length)return "";var i=items[0].dataIndex;return SN[i]?SN[i].day:"";},
+          label:function(c2){var v=c2.parsed.y;if(v==null)return null;if(c2.dataset.yAxisID==="ybal")return "bilans skumulowany: "+(v>0?"+":"")+Math.round(v)+" kcal (≈ "+(v>0?"+":"")+(v/7700).toFixed(2).replace(".",",")+" kg)";return c2.dataset.label+": "+(Math.round(v*10)/10);}}}},
       scales:scalesW}});
   }
   /* 2026-10-12: bilans kcal dnia (zjedzone - spalone) z /api/jedzenie/balance - tylko dni z wpisami jedzenia */
@@ -763,7 +766,8 @@ function renderTrendy(){
   if(SN.length){var d0=String(SN[0].day).slice(0,10),d1=String(SN[SN.length-1].day).slice(0,10);
     fetch("/api/jedzenie/balance?start="+d0+"&end="+d1,{credentials:"same-origin",cache:"no-store"}).then(function(r){return r.ok?r.json():null;}).then(function(b){
       if(!b||!b.series)return;var m={};b.series.forEach(function(x){if(x.intake!=null)m[x.day]=x.intake-x.expend;});
-      balD=SN.map(function(s2){var v=m[String(s2.day).slice(0,10)];return v==null?null:Math.round(v);});buildWellness();}).catch(function(){});}
+      /* skumulowany bilans: suma (zjedzone - spalone) od pierwszego dnia z wpisami w zakresie; dni bez wpisow nie zmieniaja sumy */
+      var acc=0,st0=false;balD=SN.map(function(s2){var v=m[String(s2.day).slice(0,10)];if(v!=null){acc+=v;st0=true;}return st0?Math.round(acc):null;});buildWellness();}).catch(function(){});}
   
   /* komentarz */
   var cEl=q$("trendy-comment");if(cEl){
@@ -875,4 +879,45 @@ load().catch(function(e){console.error("forma2:",e);});
   });
   document.addEventListener("dblclick",function(ev){if(ev.target&&IDS.indexOf(ev.target.id)>=0&&window._trZoom){window._trZoom=null;apply();}});
   document.addEventListener("click",function(ev){if(ev.target&&ev.target.id==="tr-zoomreset"){window._trZoom=null;apply();}});
+})();
+
+/* 2026-10-12: TRENDY - wspolny kursor (najechanie na jeden wykres podswietla ten sam dzien na pozostalych)
+   + uchwyty wysokosci wykresow (przeciagnij dolna krawedz; zapamietane w localStorage). */
+(function(){
+  var IDS=["trendy-canvas","trendy-pwr-canvas","trendy-well-canvas"];
+  window._trHover=null;
+  function charts(){return [window._trendyChart,window._pwrChart,window._wellChart].filter(Boolean);}
+  function reg(){
+    if(!window.Chart||!window.Chart.register){return setTimeout(reg,200);}
+    window.Chart.register({id:"qtrcross",afterDatasetsDraw:function(ch){
+      if(IDS.indexOf(ch.canvas&&ch.canvas.id)<0||window._trHover==null)return;var xA=ch.scales.x,a=ch.chartArea;if(!xA||!a)return;
+      var i=window._trHover;if(xA.min!=null&&(i<xA.min||i>xA.max))return;var x=xA.getPixelForValue(i);
+      var c=ch.ctx;c.save();c.strokeStyle="rgba(148,163,184,.7)";c.lineWidth=1;c.setLineDash([3,3]);c.beginPath();c.moveTo(x,a.top);c.lineTo(x,a.bottom);c.stroke();c.restore();}});
+  }
+  reg();
+  function hover(src,ev){
+    var ch=charts().filter(function(c){return c.canvas===src;})[0];if(!ch||!ch.scales.x)return;
+    var r=src.getBoundingClientRect(),i=Math.round(ch.scales.x.getValueForPixel(ev.clientX-r.left));
+    if(i===window._trHover)return;window._trHover=i;
+    charts().forEach(function(c){if(c===ch){c.draw();return;}
+      var els=[];c.data.datasets.forEach(function(ds,di){if(c.isDatasetVisible(di)&&ds.data[i]!=null)els.push({datasetIndex:di,index:i});});
+      try{c.setActiveElements(els);}catch(e){}c.draw();});
+  }
+  document.addEventListener("mousemove",function(ev){var t=ev.target;if(t&&IDS.indexOf(t.id)>=0)hover(t,ev);});
+  document.addEventListener("mouseout",function(ev){var t=ev.target;if(!t||IDS.indexOf(t.id)<0)return;window._trHover=null;
+    charts().forEach(function(c){try{c.setActiveElements([]);}catch(e){}c.draw();});});
+  /* uchwyty wysokosci */
+  function grips(){
+    document.querySelectorAll(".trrs").forEach(function(w){
+      if(w.querySelector(".trgrip"))return;var k="tr_h_"+w.dataset.rk;
+      try{var hh=+localStorage.getItem(k);if(hh>=80&&hh<=1200)w.style.height=hh+"px";}catch(e){}
+      var g=document.createElement("div");g.className="trgrip";g.title="Przeciągnij, aby zmienić wysokość wykresu";w.appendChild(g);
+      g.addEventListener("pointerdown",function(ev){ev.preventDefault();var y0=ev.clientY,h0=w.getBoundingClientRect().height;document.body.classList.add("tr-resizing");
+        function mv(e){w.style.height=Math.max(80,Math.min(1200,h0+e.clientY-y0))+"px";}
+        function up(){document.removeEventListener("pointermove",mv);document.removeEventListener("pointerup",up);document.body.classList.remove("tr-resizing");
+          try{localStorage.setItem(k,String(Math.round(w.getBoundingClientRect().height)));}catch(e){}charts().forEach(function(c){try{c.resize();}catch(e){}});}
+        document.addEventListener("pointermove",mv);document.addEventListener("pointerup",up);});
+    });
+  }
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",grips);else grips();
 })();

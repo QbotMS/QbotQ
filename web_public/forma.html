@@ -104,6 +104,10 @@ table.qs-table td.num,table.qs-table th.num{text-align:right;font-variant-numeri
 .tchip:not(.on) .tdot{filter:grayscale(1)}
 .tchip-tt{position:absolute;display:none;z-index:50;max-width:260px;background:var(--card);color:var(--ink);border:1px solid var(--line2,var(--line));border-radius:8px;padding:8px 10px;font-size:12.5px;line-height:1.4;box-shadow:0 6px 18px rgba(0,0,0,.3);pointer-events:none}
 .tchip-tt-h{margin-top:4px;font-size:11px;color:var(--muted)}
+/* 2026-10-12: Trendy - uchwyt wysokosci wykresu (jak Analiza trasy) */
+.trrs{margin-bottom:10px}.trgrip{position:absolute;left:0;right:0;bottom:-11px;height:14px;cursor:ns-resize;z-index:6;touch-action:none;display:flex;align-items:center;justify-content:center}
+.trgrip::after{content:"";width:46px;height:4px;border-radius:2px;background:var(--line2,var(--line))}.trgrip:hover::after{background:var(--accent)}
+body.tr-resizing{cursor:ns-resize;user-select:none}
 </style>
 </head>
 <body><div class="wrap">
@@ -185,7 +189,7 @@ table.qs-table td.num,table.qs-table th.num{text-align:right;font-variant-numeri
 </div>
 <div class="card" style="padding:14px 10px 8px">
   <div id="trendy-toggles" class="ttoggles"></div>
-  <div style="position:relative;width:100%;height:340px">
+  <div class="trrs" data-rk="main" style="position:relative;width:100%;height:340px">
     <canvas id="trendy-canvas"></canvas>
   </div>
 </div>
@@ -194,7 +198,7 @@ table.qs-table td.num,table.qs-table th.num{text-align:right;font-variant-numeri
     <div class="seg" id="pwr-seg"><button class="on" data-p="cp">CP</button><button data-p="ltp">LTP</button><button data-p="oba">CP + LTP</button></div>
     <span id="pwr-label" style="font-size:12px;color:var(--ink2)"></span>
   </div>
-  <div style="position:relative;width:100%;height:120px">
+  <div class="trrs" data-rk="pwr" style="position:relative;width:100%;height:120px">
     <canvas id="trendy-pwr-canvas"></canvas>
   </div>
 </div>
@@ -206,11 +210,11 @@ table.qs-table td.num,table.qs-table th.num{text-align:right;font-variant-numeri
       <label style="cursor:pointer"><input type="checkbox" data-w="hrv" checked style="margin-right:3px">HRV</label>
       <label style="cursor:pointer"><input type="checkbox" data-w="rhr" checked style="margin-right:3px">RHR</label>
       <label style="cursor:pointer"><input type="checkbox" data-w="wt" checked style="margin-right:3px">waga</label>
-      <label style="cursor:pointer"><input type="checkbox" data-w="bal" checked style="margin-right:3px">bilans kcal</label>
+      <label style="cursor:pointer"><input type="checkbox" data-w="bal" checked style="margin-right:3px">bilans skumulowany</label>
       <label style="cursor:pointer"><input type="checkbox" data-w="rdy" style="margin-right:3px">gotowość</label>
     </div>
   </div>
-  <div style="position:relative;width:100%;height:300px">
+  <div class="trrs" data-rk="well" style="position:relative;width:100%;height:300px">
     <canvas id="trendy-well-canvas"></canvas>
   </div>
 </div>
