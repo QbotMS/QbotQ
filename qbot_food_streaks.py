@@ -97,8 +97,9 @@ def set_window(day: date, ok: bool, now: datetime | None = None) -> str:
 # ======================================================================= pasy
 def _run(results: list[tuple[date, str]]) -> dict:
     """results: (dzien, 'ok'|'fail'|'neutral') rosnaco -> {n, freezes, since}."""
-    n, fr, since, used = 0, 0, None, 0
+    n, fr, since, used, days = 0, 0, None, 0, []
     for d, r in results:
+        out = r
         if r == "ok":
             if n == 0:
                 since = d
@@ -109,9 +110,11 @@ def _run(results: list[tuple[date, str]]) -> dict:
             if fr > 0:
                 fr -= 1
                 used += 1
+                out = "frozen"
             else:
                 n, since = 0, None
-    return {"n": n, "freezes": fr, "since": since, "used": used}
+        days.append([d.isoformat(), out])
+    return {"n": n, "freezes": fr, "since": since, "used": used, "days": days}
 
 
 def streaks(now: datetime | None = None) -> dict:

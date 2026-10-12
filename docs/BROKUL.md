@@ -93,6 +93,19 @@ Wiadomość aktualizuje się po każdej zmianie (także po wpisie z Telegrama).
 `qbot_trener_stats.weight_chart` → `status.chart` {plan, meas, forecast, band, today}; rysuje `trener.js` `wchart()`
 (SVG: plan z korytarzem ±1 kg, realne ważenia z `body_measurements`, prognoza wg tempa 30 dni, linia „dziś”).
 
+## Strona „Jedzenie” (https://albert.cytr.us/jedzenie.html, od 12.10.2026)
+Menu: pozycja „Jedzenie” (nav.js, po Treningu). Struktura `jedzenie.html`, logika `jedzenie.js`, dane i zapis
+`qbot_food_api.py` (`/api/jedzenie/*`, router w `qbot_web.py`). Odczyt: `_current_user` (też demo); zapis: `_owner_user`.
+- **Dni**: pasek dni (od 10.10 / 6 dni wstecz do końca zamówienia), karta dnia: Brokuł (✅/❌/📦 = ponowny klik cofa),
+  lodówka, wpisy poza dietą (tabela pozycji z ✔/~/?, −25%/+25%, poprawka słowami, przeniesienie dnia, usunięcie),
+  dodawanie tekstem (AI, historia + Open Food Facts; niejasna porcja → przyciski wariantów), szybkie przyciski,
+  podsumowanie (zjedzone vs cel, makra, spalanie, dokładka, treningi, co brakuje do zamknięcia), okno 10–20.
+- **Pasy**: 4 liczniki, postęp do kamienia milowego, mapa dni (tygodnie w kolumnach), tygodnie Redukcji + bieżący tydzień.
+- **Bilans i waga**: 42 dni (słupki zjedzone – pełne = dzień zamknięty, linia spalania, cel dnia), cel wagi z wykresem
+  (to samo co Trener → Cele), monitor rozbieżności, tygodnie.
+- **Menu Brokuła**: dni do przodu z kcal, B/W/cukry/T/nasycone/sól, skład i alergeny, lodówka, stan sesji.
+Każda zmiana ze strony odświeża też wiadomość dnia na Telegramie (`refresh_day`).
+
 ## Przyciski (telegram_reply_processor)
 `br:<e|s|p|f|d|w>:<id>[:RRRRMMDD]`, `br:<a|z>:RRRRMMDD` → qbot_brokul_meals.handle_callback;
 `fd:<o|m|p|k|b|x|r>:<id>[:n]`, `qk:RRRRMMDD:<none|snack|sweet|out_*|bf_*|ln_*|dn_*|win_ok|win_no>` → qbot_food_log.handle_callback.

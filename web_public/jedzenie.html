@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
+<script>try{if(localStorage.getItem("qtheme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
+<link rel="stylesheet" href="/ui2.css?v=10">
+<link rel="stylesheet" href="/nav.css?v=14">
+<title>QBot — Jedzenie</title>
+<!-- JEDZENIE (2026-10-12): dni (Brokul + wpisy poza dieta, okno, zamkniecie dnia), pasy, bilans i waga, menu Brokula.
+     Dane i zapis: /api/jedzenie/* (qbot_food_api.py). Rysowanie: jedzenie.js. Telegram i strona pokazuja to samo (baza).
+     Dok.: docs/BROKUL.md -->
+<style>
+.jt-bar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px;border-bottom:1px solid var(--line);padding-bottom:8px}
+.jt-bar button{appearance:none;border:0;background:transparent;color:var(--ink2);font:inherit;font-size:15px;padding:7px 12px;border-radius:999px;cursor:pointer}
+.jt-bar button[aria-selected=true]{background:var(--accent-bg);color:var(--accent-ink);font-weight:600}
+.jt-bar button:focus-visible,.btn:focus-visible,.seg button:focus-visible,.daychip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hdr-streaks{display:flex;gap:8px;flex-wrap:wrap}
+.hdr-streaks .pill b{color:var(--ink);font-variant-numeric:tabular-nums}
+.days{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 10px;margin-bottom:6px;scrollbar-width:thin}
+.daychip{appearance:none;flex:0 0 auto;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:6px 10px;font:inherit;font-size:13.5px;cursor:pointer;text-align:left;min-width:74px}
+.daychip small{display:block;color:var(--muted);font-size:11.5px}
+.daychip i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px;background:var(--line2)}
+.daychip i.ok{background:var(--good)}.daychip i.open{background:var(--accent)}.daychip i.fut{background:transparent;border:1px solid var(--line2)}
+.daychip[aria-current=true]{border:2px solid var(--accent);padding:5px 9px}
+.daychip.today{font-weight:700}
+.dgrid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:12px;align-items:start}
+@media(max-width:900px){.dgrid{grid-template-columns:1fr}.dgrid>.stack:last-child{order:-1}}
+@media(max-width:600px){.meal{grid-template-columns:1fr}.meal .seg{justify-self:start}.wrap{padding:16px 14px 90px}}
+.card h2{margin-bottom:8px}
+.ttl{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px}
+.ttl h2{margin:0}
+.meal{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.meal:first-of-type{border-top:0}
+.meal .nm{font-size:14.5px;line-height:1.35}
+.meal .nm b{font-weight:600}
+.meal .mx{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--card)}
+.seg button{appearance:none;border:0;border-left:1px solid var(--line);background:transparent;color:var(--ink2);font:inherit;font-size:13px;padding:5px 9px;cursor:pointer;white-space:nowrap}
+.seg button:first-child{border-left:0}
+.seg button.on{background:var(--accent-bg);color:var(--accent-ink);font-weight:600}
+.seg button.on.g{background:var(--good-bg);color:var(--good)}
+.seg button.on.b{background:var(--bad-bg);color:var(--bad)}
+.btn{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:9px;padding:6px 11px;font:inherit;font-size:13.5px;cursor:pointer}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.sm{padding:3px 8px;font-size:12.5px}
+.btn:disabled{opacity:.5;cursor:default}
+.ent{border-top:1px solid var(--line);padding:9px 0}
+.ent:first-of-type{border-top:0}
+.ent .eh{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.ent .eh .k{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ent .raw{font-size:13px;color:var(--ink2);white-space:pre-line;max-height:3.9em;overflow:hidden}
+.items{width:100%;border-collapse:collapse;margin:5px 0 6px;font-size:13px;font-variant-numeric:tabular-nums}
+.items td{padding:2px 4px;vertical-align:top}
+.items td.k{text-align:right;width:52px}
+.items td.c{width:16px;text-align:center;font-weight:700}
+.c-z{color:var(--bad)}.c-s{color:var(--warn)}.c-p{color:var(--good)}
+.acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.acts input{font:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:var(--well);color:var(--ink);min-width:0}
+.add textarea{display:block;width:100%;min-height:58px;font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--well);color:var(--ink);resize:vertical}
+.add .row{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.chips .lbl2{font-size:12.5px;color:var(--muted);width:100%}
+.big2{font-size:32px;font-weight:600;line-height:1.05;font-variant-numeric:tabular-nums}
+.meter{height:12px;border-radius:6px;background:var(--well);overflow:hidden;position:relative;margin:10px 0 4px}
+.meter i{position:absolute;left:0;top:0;bottom:0;background:var(--good);border-radius:6px}
+.meter i.over{background:var(--bad)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:14px;margin-top:8px}
+.kv span:nth-child(odd){color:var(--ink2)}
+.kv span:nth-child(even){text-align:right;font-variant-numeric:tabular-nums}
+.note{font-size:13px;color:var(--ink2);margin-top:6px}
+.state{font-size:14px;font-weight:600}
+.state.ok{color:var(--good)}.state.open{color:var(--accent-ink)}
+.msg{font-size:13px;margin-top:6px;color:var(--bad)}
+.msg.ok{color:var(--good)}
+.s4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media(max-width:900px){.s4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.sk .e{font-size:26px;line-height:1}
+.sk .n{font-size:40px;font-weight:600;line-height:1.05;font-variant-numeric:tabular-nums;margin-top:6px}
+.sk .n small{font-size:15px;font-weight:500;color:var(--muted);margin-left:4px}
+.sk .t{font-size:13px;color:var(--ink2);margin-top:4px;min-height:2.6em}
+.cal{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,14px);grid-auto-columns:14px;justify-content:start;gap:3px;margin-top:10px;overflow-x:auto;padding-bottom:4px}
+.cal i{width:14px;height:14px;border-radius:3px;background:var(--well);display:block}
+.cal i.ok{background:var(--good)}.cal i.fail{background:var(--bad)}.cal i.frozen{background:var(--blue)}.cal i.neutral{background:var(--line2)}
+.cal i.none{background:transparent}
+.wkrow{display:flex;gap:4px;margin-top:10px;flex-wrap:wrap}
+.wkrow i{width:22px;height:14px;border-radius:3px;display:block;background:var(--well)}
+.wkrow i.ok{background:var(--good)}.wkrow i.fail{background:var(--bad)}.wkrow i.frozen{background:var(--blue)}.wkrow i.neutral{background:var(--line2)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:10px}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+table.tb{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
+table.tb th{text-align:left;font-weight:500;color:var(--ink2);border-bottom:1px solid var(--line);padding:5px 6px}
+table.tb td{border-bottom:1px solid var(--line);padding:6px;vertical-align:top}
+table.tb td.r,table.tb th.r{text-align:right}
+details.sk2 summary{cursor:pointer;color:var(--accent-ink);font-size:12.5px;list-style:none}
+details.sk2 summary::-webkit-details-marker{display:none}
+details.sk2 p{font-size:12.5px;color:var(--ink2);margin:4px 0 0;line-height:1.45}
+.chartbox{width:100%;overflow-x:auto}
+.empty{color:var(--muted);font-size:14px;padding:6px 0}
+.busy{opacity:.55;pointer-events:none}
+@media (prefers-reduced-motion:no-preference){.daychip,.btn,.seg button{transition:background-color .15s}}
+</style>
+</head>
+<body><div class="wrap">
+<div class="head">
+  <h1>Jedzenie</h1>
+  <div class="hdr-streaks" id="hs"></div>
+</div>
+<div class="jt-bar" role="tablist" id="tabs">
+  <button role="tab" data-t="dni">Dni</button>
+  <button role="tab" data-t="pasy">Pasy</button>
+  <button role="tab" data-t="bilans">Bilans i waga</button>
+  <button role="tab" data-t="menu">Menu Brokuła</button>
+</div>
+<section id="t-dni" role="tabpanel"><div class="days" id="daystrip" role="list"></div><div id="dayview"><p class="empty">Wczytuję…</p></div></section>
+<section id="t-pasy" role="tabpanel" hidden><div id="pasy"><p class="empty">Wczytuję…</p></div></section>
+<section id="t-bilans" role="tabpanel" hidden><div id="bilans"><p class="empty">Wczytuję…</p></div></section>
+<section id="t-menu" role="tabpanel" hidden><div id="menu"><p class="empty">Wczytuję…</p></div></section>
+</div>
+<script src="/nav.js?v=15"></script>
+<script src="/jedzenie.js?v=1"></script>
+</body>
+</html>
