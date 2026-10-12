@@ -216,10 +216,10 @@ def _r(v, d=1):
 PROMPT = (
     "Jesteś trenerem kolarskim i fizjologiem. Zawodnik (kolarz gravel ~104 kg, redukcja) sam czyta wykresy – NIE opisuj trendów "
     "i NIE komentuj par z jednego modelu (forma/zmęczenie/świeżość/CP). Dostajesz policzone odkrycia względem jego normy z 28 dni. "
-    "Nie licz własnych liczb, nie wymyślaj danych. PISZ BARDZO KRÓTKO – jak SMS od trenera, bez wstępów, bez powtórzeń, bez teorii. "
-    "Twarde limity: naglowek maks. 15 słów; maks. 3 odkrycia, wyłącznie pewność średnia lub wysoka (niska tylko, gdy nic innego nie ma); "
-    "tytul maks. 8 słów; co = JEDNO zdanie maks. 20 słów z jedną-dwiema kluczowymi liczbami; znaczenie = polecenie maks. 12 słów; "
-    "eksperyment maks. 25 słów; brakuje maks. 12 słów albo pusty tekst. "
+    "Nie licz własnych liczb, nie wymyślaj danych. Pisz zwięźle i konkretnie – jak dobry trener na odprawie: bez wstępów i powtórzeń, ale z mechanizmem (dlaczego tak się dzieje). "
+    "Limity: naglowek maks. 20 słów; 3-4 odkrycia od najciekawszego, pewność średnia lub wysoka (maks. jedno o niskiej, jeśli naprawdę ciekawe); "
+    "tytul maks. 10 słów; co = maks. 2 krótkie zdania (maks. 35 słów): kluczowe liczby + mechanizm; znaczenie = konkretne polecenie maks. 20 słów; "
+    "eksperyment maks. 35 słów (co, jak długo, czym zmierzyć); brakuje maks. 15 słów albo pusty tekst. "
     "Zwróć WYŁĄCZNIE JSON: {\"naglowek\": \"...\", \"odkrycia\": [{\"tytul\": \"...\", \"co\": \"...\", \"znaczenie\": \"...\", "
     "\"pewnosc\": \"wysoka|średnia|niska\"}], \"eksperyment\": \"...\", \"brakuje\": \"...\"}.")
 
@@ -280,10 +280,10 @@ def build_router(current_user, owner_user):
             j = F._ai_json(PROMPT, [{"type": "text", "text": json.dumps(disc, ensure_ascii=False, default=lambda o: _r(o) if isinstance(o, float) else str(o))}])
         except Exception as ex:
             raise HTTPException(status_code=502, detail="AI niedostępne: %s" % type(ex).__name__)
-        LIM = {"tytul": 12, "co": 24, "znaczenie": 14, "pewnosc": 2}
+        LIM = {"tytul": 13, "co": 42, "znaczenie": 24, "pewnosc": 2}
         odk = [o for o in (j.get("odkrycia") or []) if isinstance(o, dict)]
-        odk = sorted(odk, key=lambda o: {"wysoka": 0, "średnia": 1}.get(str(o.get("pewnosc")), 2))[:3]
-        ai = {"naglowek": _words(j.get("naglowek"), 18), "eksperyment": _words(j.get("eksperyment"), 30), "brakuje": _words(j.get("brakuje"), 14),
+        odk = sorted(odk, key=lambda o: {"wysoka": 0, "średnia": 1}.get(str(o.get("pewnosc")), 2))[:4]
+        ai = {"naglowek": _words(j.get("naglowek"), 24), "eksperyment": _words(j.get("eksperyment"), 40), "brakuje": _words(j.get("brakuje"), 18),
               "odkrycia": [{k: _words(o.get(k), LIM[k]) for k in LIM} for o in odk]}
         return {"ai": ai, "policzone": json.loads(json.dumps(disc, default=lambda o: str(o)))}
 
