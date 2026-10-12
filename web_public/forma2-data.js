@@ -838,3 +838,41 @@ function wireButtons(){
 }
 load().catch(function(e){console.error("forma2:",e);});
 })();
+
+/* 2026-10-12: TRENDY - powiekszanie przeciagnieciem (forma, moc, wellness razem - wspolna os czasu);
+   dwuklik albo przycisk 'cala skala' = pelny zakres; zmiana zakresu 30/90/rok kasuje powiekszenie. */
+(function(){
+  var IDS=["trendy-canvas","trendy-pwr-canvas","trendy-well-canvas"];
+  window._trZoom=null;
+  function charts(){return [window._trendyChart,window._pwrChart,window._wellChart].filter(Boolean);}
+  function setX(ch){var x=ch.options.scales&&ch.options.scales.x;if(!x)return;var z=window._trZoom;
+    if(z&&ch.data.labels.length!==z.n){window._trZoom=z=null;}
+    if(z){x.min=z.min;x.max=z.max;}else{delete x.min;delete x.max;}}
+  function apply(){charts().forEach(function(c){try{setX(c);c.update("none");}catch(e){}});var b=document.getElementById("tr-zoomreset");if(b)b.hidden=!window._trZoom;}
+  function reg(){
+    if(!window.Chart||!window.Chart.register){return setTimeout(reg,200);}
+    /* nowe wykresy (zmiana zakresu, przelaczniki serii) od razu dostaja biezace powiekszenie */
+    window.Chart.register({id:"qtrzoom",beforeInit:function(ch){if(IDS.indexOf(ch.canvas&&ch.canvas.id)>=0)setX(ch);}});
+    apply();
+  }
+  reg();
+  var drag=null;
+  function chartOf(cv){return charts().filter(function(c){return c.canvas===cv;})[0];}
+  function idx(ch,ev){var r=ch.canvas.getBoundingClientRect();var v=ch.scales.x.getValueForPixel(ev.clientX-r.left);var n=ch.data.labels.length-1;return Math.max(0,Math.min(n,Math.round(v)));}
+  document.addEventListener("mousedown",function(ev){
+    var cv=ev.target;if(!cv||IDS.indexOf(cv.id)<0||ev.button!==0)return;var ch=chartOf(cv);if(!ch||!ch.scales||!ch.scales.x)return;
+    var box=document.createElement("div");box.style.cssText="position:absolute;top:0;bottom:0;left:0;width:0;background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.6);pointer-events:none;z-index:4";
+    cv.parentNode.appendChild(box);drag={ch:ch,cv:cv,x0:ev.clientX,i0:idx(ch,ev),box:box};ev.preventDefault();
+  });
+  document.addEventListener("mousemove",function(ev){
+    if(!drag)return;var r=drag.cv.getBoundingClientRect();var a=Math.max(0,Math.min(drag.x0,ev.clientX)-r.left),b=Math.min(r.width,Math.max(drag.x0,ev.clientX)-r.left);
+    drag.box.style.left=a+"px";drag.box.style.width=Math.max(0,b-a)+"px";
+  });
+  document.addEventListener("mouseup",function(ev){
+    if(!drag)return;var d=drag;drag=null;d.box.remove();
+    var i1=idx(d.ch,ev),a=Math.min(d.i0,i1),b=Math.max(d.i0,i1);
+    if(b-a>=2&&Math.abs(ev.clientX-d.x0)>8){window._trZoom={min:a,max:b,n:d.ch.data.labels.length};apply();}
+  });
+  document.addEventListener("dblclick",function(ev){if(ev.target&&IDS.indexOf(ev.target.id)>=0&&window._trZoom){window._trZoom=null;apply();}});
+  document.addEventListener("click",function(ev){if(ev.target&&ev.target.id==="tr-zoomreset"){window._trZoom=null;apply();}});
+})();
