@@ -157,6 +157,11 @@ def text_review(ws: date, sessions: list[dict], extra_h: float, tone: int, weigh
         verdict = ["Trudny tydzień — to się zdarza. Zacznij od małego kroku.",
                    "Plan w dużej części nie wyszedł. Zmniejsz budżet albo przesuń okna, żeby był realny.",
                    "Tydzień przegrany. Ustal jeden trening, którego NIE odpuścisz, i zrób go."][tone]
+    try:  # 2026-10-12: monitor rozbieznosci waga vs zalogowane jedzenie (qbot_food_streaks); bledy pomijane
+        import qbot_food_streaks as _FS
+        out.append(_FS.discrepancy_line())
+    except Exception:
+        pass
     out += ["", verdict, URL]
     return "\n".join(out)
 

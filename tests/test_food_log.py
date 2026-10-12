@@ -61,5 +61,53 @@ class TestDelivery(unittest.TestCase):
         self.assertEqual(M.parse_delivery_days(html), ["2026-10-05", "2026-10-06", "2026-10-12"])
 
 
+
+class TestStreaks(unittest.TestCase):
+    def _d(self, i):
+        return date(2026, 10, 1) + __import__("datetime").timedelta(days=i)
+
+    def test_run_basic(self):
+        import qbot_food_streaks as S
+        r = S._run([(self._d(i), "ok") for i in range(5)])
+        self.assertEqual((r["n"], r["freezes"]), (5, 0))
+
+    def test_neutral_keeps(self):
+        import qbot_food_streaks as S
+        r = S._run([(self._d(0), "ok"), (self._d(1), "neutral"), (self._d(2), "ok")])
+        self.assertEqual(r["n"], 2)
+
+    def test_fail_resets_without_freeze(self):
+        import qbot_food_streaks as S
+        r = S._run([(self._d(0), "ok"), (self._d(1), "fail"), (self._d(2), "ok")])
+        self.assertEqual((r["n"], r["since"]), (1, self._d(2)))
+
+    def test_freeze_saves(self):
+        import qbot_food_streaks as S
+        seq = [(self._d(i), "ok") for i in range(7)] + [(self._d(7), "fail"), (self._d(8), "ok")]
+        r = S._run(seq)
+        self.assertEqual((r["n"], r["freezes"], r["used"]), (8, 0, 1))
+
+    def test_freeze_max(self):
+        import qbot_food_streaks as S
+        r = S._run([(self._d(i), "ok") for i in range(30)])
+        self.assertEqual(r["freezes"], 2)
+
+
+class TestTime(unittest.TestCase):
+    def test_hhmm(self):
+        self.assertEqual(F._hhmm("21:30"), "21:30")
+        self.assertEqual(F._hhmm("9.05"), "09:05")
+        self.assertIsNone(F._hhmm(None))
+        self.assertIsNone(F._hhmm("25:00"))
+
+    def test_outside(self):
+        import qbot_food_streaks as S
+        from datetime import time as t
+        self.assertTrue(S._outside(t(9, 59)))
+        self.assertFalse(S._outside(t(10, 0)))
+        self.assertFalse(S._outside(t(19, 59)))
+        self.assertTrue(S._outside(t(20, 0)))
+        self.assertFalse(S._outside(None))
+
 if __name__ == "__main__":
     unittest.main()

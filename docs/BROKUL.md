@@ -47,9 +47,26 @@ stan zamknięcia. **Dzień zamknięty** (`food_day.closed_at`, pod pas Jedzenia)
 („Nic poza dietą” albo ≥1 wpis); dzień bez dostawy: ≥1 wpis (albo „Nic” + coś z lodówki).
 Wiadomość aktualizuje się po każdej zmianie (także po wpisie z Telegrama).
 
+## Pasy, okno żywieniowe, waga vs jedzenie (qbot_food_streaks.py, od 12.10.2026)
+- **🔥 Jedzenie**: dzień zamknięty (`food_day.closed_at`) do 12:00 następnego dnia. Przekroczenie kcal NIE zrywa.
+- **🕗 Okno 10:00–20:00** (przed 10 tylko czarna kawa, po 20 nic) – na zaufaniu: przycisk „🕗 Okno dotrzymane” /
+  „✖ Złamane” w wiadomości dnia, do 12:00 następnego dnia (`food_day.window_ok`). Wpis z porą podaną poza oknem
+  (AI wyciąga `time` → `food_entries.eaten_time`, np. „o 21:30”) = złamane, chyba że klikniesz inaczej.
+  **Zwolnione** (neutralne, nie rośnie i nie zrywa): trening ≥ 90 min (wykonany z `training_sessions` albo w planie
+  Trenera), `calendar_entry` event_type delegacja/urlop albo tytuł z „wyprawa” (decyzja Michała 12.10.2026).
+- **Mrożenie** ❄️: za każde 7 dni pasa +1 (max 2), osobno dla każdego pasa; dzień niezaliczony zużywa mrożenie.
+  Dni przed 13.10.2026 (LAUNCH) bez terminu. Kamienie milowe 3/7/14/30/50/100/150/200/365 → krótka wiadomość (raz).
+  Licznik w 2. linii wiadomości dnia.
+- **Waga vs jedzenie** (`discrepancy`): 14 dni do wczoraj; bilans z wpisów (zamknięte dni: intake − `energy_daily`)
+  vs bilans z trendu PRAWDZIWYCH ważeń (`body_measurements`, NIE `fitmodel_daily` – tam ostatni pomiar jest
+  przepisywany na kolejne dni). Rozbieżność = bilans z wagi − bilans z wpisów: 🟢 ≤150, 🟡 ≤400, 🔴 >400 kcal/dz.
+  Warunki: ≥80% zamkniętych dni, ≥4 ważenia rozłożone na ≥10 dni, pierwszy tydzień diety (woda) pomijany →
+  pierwszy wynik najwcześniej 31.10.2026. Linia w niedzielnym rozliczeniu Trenera (`text_review`).
+  Stan na 12.10.2026: tylko 5 realnych ważeń w 60 dniach – bez częstszego ważenia monitor nie ruszy.
+
 ## Przyciski (telegram_reply_processor)
 `br:<e|s|p|f|d|w>:<id>[:RRRRMMDD]`, `br:<a|z>:RRRRMMDD` → qbot_brokul_meals.handle_callback;
-`fd:<o|m|p|k|b|x|r>:<id>[:n]`, `qk:RRRRMMDD:<none|snack|sweet|out_s|out_m|out_l>` → qbot_food_log.handle_callback.
+`fd:<o|m|p|k|b|x|r>:<id>[:n]`, `qk:RRRRMMDD:<none|snack|sweet|out_*|bf_*|ln_*|dn_*|win_ok|win_no>` → qbot_food_log.handle_callback.
 Przyciski nie wygasają (stan w bazie).
 
 ## Pliki

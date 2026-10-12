@@ -187,9 +187,10 @@ def receipt_kb(eid: int) -> dict:
 # ======================================================================= AI
 _PROMPT = """Szacujesz wartości odżywcze jedzenia/napojów, które użytkownik (dorosły mężczyzna w Polsce) zjadł.
 Zwracasz WYŁĄCZNIE JSON, bez komentarza:
-{"not_food": false, "ambiguous": false, "items": [{"name": "...", "portion": "...", "kcal": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0, "conf": "pewne|średnie|zgrubne", "src": "...", "short": "..."}], "question": null, "options": null}
+{"not_food": false, "ambiguous": false, "time": null, "items": [{"name": "...", "portion": "...", "kcal": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0, "conf": "pewne|średnie|zgrubne", "src": "...", "short": "..."}], "question": null, "options": null}
 Zasady:
 - Pomiń słowa o czasie ("wczoraj", "w sobotę", "rano", daty) - opisują kiedy, nie co.
+- "time": godzina jedzenia "HH:MM", TYLKO gdy użytkownik ją podał (np. "11:10", "o 21", "o 21:30"); inaczej null.
 - "short": nazwa RAZEM z ilością, max 22 znaki (np. "Racuchy ×6", "Makaron Kojak ~400 g", "Chrupki HiProt. 60 g").
 - Każda pozycja: krótka polska nazwa, porcja słowami (np. "cała ~30 cm", "2 szt.", "0,5 l"), kcal i PEŁNE makra (liczby).
 - ZAWSZE odpowiadasz samym JSON-em. Nigdy tabel, list, pytań ani komentarzy tekstem.
@@ -294,11 +295,18 @@ def estimate(text: str | None, image: tuple[bytes, str] | None = None, refs: lis
             if it:
                 opts.append({"label": str(o.get("label") or "?")[:24], "items": it})
         if len(opts) >= 2:
-            return {"ambiguous": True, "question": str(j.get("question") or "Ile?")[:80], "options": opts}
+            return {"ambiguous": True, "question": str(j.get("question") or "Ile?")[:80], "options": opts, "time": _hhmm(j.get("time"))}
     it = clean_items(j.get("items"))
     if not it:
         raise ValueError("AI: brak pelnych wartosci (kcal + makra)")
-    return {"items": it}
+    return {"items": it, "time": _hhmm(j.get("time"))}
+
+
+def _hhmm(v):
+    m = re.fullmatch(r"\s*(\d{1,2})[:.](\d{2})\s*", str(v or ""))
+    if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+        return None
+    return "%02d:%02d" % (int(m.group(1)), int(m.group(2)))
 
 
 _FIX_PROMPT = """Poprawiasz wpis jedzenia użytkownika. Dostajesz pozycje (JSON) i poprawkę słowami.
@@ -451,8 +459,8 @@ def process_entry(eid: int, reply_to: int | None = None) -> str:
                     reply_to=reply_to)
             return "not_food"
         if res.get("ambiguous"):
-            c.execute("UPDATE qbot_v2.food_entries SET status='asking', question=%s, options=%s, updated_at=now() WHERE id=%s",
-                      (res["question"], json.dumps(res["options"], ensure_ascii=False), eid))
+            c.execute("UPDATE qbot_v2.food_entries SET status='asking', question=%s, options=%s, eaten_time=COALESCE(%s::time, eaten_time), "
+                      "updated_at=now() WHERE id=%s", (res["question"], json.dumps(res["options"], ensure_ascii=False), res.get("time"), eid))
             c.commit()
             d = e["day"]
             rows, row = [], []
@@ -468,8 +476,8 @@ def process_entry(eid: int, reply_to: int | None = None) -> str:
             c.execute("UPDATE qbot_v2.food_entries SET reply_message_id=%s WHERE id=%s", (mid, eid))
             c.commit()
             return "asking"
-        c.execute("UPDATE qbot_v2.food_entries SET items=%s, updated_at=now() WHERE id=%s",
-                  (json.dumps(res["items"], ensure_ascii=False), eid))
+        c.execute("UPDATE qbot_v2.food_entries SET items=%s, eaten_time=COALESCE(%s::time, eaten_time), updated_at=now() WHERE id=%s",
+                  (json.dumps(res["items"], ensure_ascii=False), res.get("time"), eid))
         e = _get(c, eid)
         _write_intake(c, e)
         c.commit()
@@ -635,6 +643,11 @@ def _quick(cq, p, msg, answer) -> None:
                           (day,)).fetchone()
             c.commit()
         answer(cq.get("id"), "Nic poza dietą" if r["extras_none"] else "Cofnięte")
+    elif code in ("win_ok", "win_no"):
+        import qbot_food_streaks as S
+        r = S.set_window(day, code == "win_ok")
+        answer(cq.get("id"), "Za późno – termin minął o 12:00 następnego dnia" if r == "late"
+               else ("Okno dotrzymane" if code == "win_ok" else "Zapisane: okno złamane"))
     elif code in QUICK:
         lab, k, pr, cb, ft = QUICK[code]
         items = [{"name": lab, "portion": "szacunek", "kcal": k, "protein_g": pr, "carbs_g": cb, "fat_g": ft}]
@@ -738,9 +751,11 @@ def build_day(day: date) -> tuple[str, dict]:
     if ents:
         for e in ents:
             if e["status"] == "logged":
-                L.append("✅ #%d %s · %s kcal" % (e["id"], (e["raw_text"] or e["kind"])[:50], _fmt(e["kcal"])))
+                desc = ", ".join(_short(i) for i in (e["items"] or [])) or (e["raw_text"] or e["kind"])
+                desc = re.sub(r"\s+", " ", desc)
+                L.append("✅ #%d %s · %s kcal" % (e["id"], desc[:70] + ("…" if len(desc) > 70 else ""), _fmt(e["kcal"])))
             else:
-                L.append("⏳ #%d %s · do dokończenia" % (e["id"], (e["raw_text"] or "zdjęcie")[:50]))
+                L.append("⏳ #%d %s · do dokończenia" % (e["id"], re.sub(r"\s+", " ", e["raw_text"] or "zdjęcie")[:50]))
     elif meals and cs["none"]:
         L.append("✔ nic")
     else:
@@ -758,6 +773,21 @@ def build_day(day: date) -> tuple[str, dict]:
         for em, code in (("🍳", "bf"), ("🍲", "ln"), ("🌙", "dn")):
             kb.append([{"text": "%s %s" % (em, sz), "callback_data": "qk:%s:%s_%s" % (md, code, sz.lower())} for sz in ("S", "M", "L")])
         kb.append([{"text": "🥨", "callback_data": "qk:%s:snack" % md}, {"text": "🍫", "callback_data": "qk:%s:sweet" % md}])
+    import qbot_food_streaks as S
+    with _conn() as c:
+        ws, wd = S.window_status(c, day)
+    if ws == "exempt":
+        L += ["", "🕗 Okno 10–20: dziś zwolnione (%s)" % wd]
+    else:
+        lab = {"ok": "✔ dotrzymane", "broken": "✖ złamane" + (" (%s)" % wd if wd else ""),
+               "pending": "do potwierdzenia" + (" (%s)" % wd if wd else " – kliknij do 12:00 jutro")}[ws]
+        L += ["", "🕗 Okno 10–20: " + lab]
+        kb.append([{"text": "🕗 Okno dotrzymane" + (" ✓" if ws == "ok" else ""), "callback_data": "qk:%s:win_ok" % md},
+                   {"text": "✖ Złamane" + (" ✓" if ws == "broken" else ""), "callback_data": "qk:%s:win_no" % md}])
+    try:
+        L.insert(1, S.header_line())
+    except Exception as ex:
+        _log("pasy: %s" % ex)
     t = day_totals(day)
     L += ["", "Razem: %s kcal · B %s · W %s · T %s g" % (_fmt(t["kcal"] or 0), _fmt(t["protein_g"] or 0),
                                                          _fmt(t["carbs_g"] or 0), _fmt(t["fat_g"] or 0))]
@@ -801,5 +831,7 @@ def refresh_day(day: date, chat_id: str | None = None, message_id: int | None = 
             message_id = r["message_id"]
         text, kb = build_day(day)
         tg_edit(message_id, text, kb)
+        import qbot_food_streaks as S
+        S.check_milestones()
     except Exception as e:
         _log("refresh_day %s: %s" % (day, e))
