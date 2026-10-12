@@ -22,7 +22,7 @@
   /* ------------------------------------------------------------ zakladki */
   function tab(t) {
     S.tab = t;
-    document.querySelectorAll("#tabs button").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.t === t ? "true" : "false"); });
+    document.querySelectorAll("#tabs button").forEach(function (b) { b.classList.toggle("on", b.dataset.t === t); b.setAttribute("aria-pressed", b.dataset.t === t ? "true" : "false"); });
     ["dni", "analiza", "pasy", "bilans", "menu"].forEach(function (k) { $("t-" + k).hidden = k !== t; });
     try { history.replaceState(null, "", "#" + t + (t === "dni" && S.sel ? "=" + S.sel : "")); } catch (e) {}
     if (t === "analiza") loadAnaliza();
@@ -38,8 +38,8 @@
       S.streaks = x;
       var s = x.streaks, fr = (s.food.freezes || 0) + (s.window.freezes || 0) + (s.train.freezes || 0);
       $("hs").innerHTML = [["🔥", "Jedzenie", s.food.n, "dni"], ["🕗", "Okno", s.window.n, "dni"], ["💪", "Trening", s.train.n, "dni"], ["📉", "Redukcja", s.reduce.n, "tyg."]]
-        .map(function (p) { return "<span class='pill' title='" + p[1] + "'>" + p[0] + " <b>" + p[2] + "</b> " + p[3] + "</span>"; }).join("") +
-        (fr ? "<span class='pill' title='Mrożenia ratujące passę'>❄️ <b>" + fr + "</b></span>" : "");
+        .map(function (p) { return "<span class='pill' title='Passa: " + p[1] + "'><span class='e'>" + p[0] + "</span><b>" + p[2] + "</b><span class='u'>" + p[3] + "</span></span>"; }).join("") +
+        (fr ? "<span class='pill' title='Mrożenia ratujące passę'><span class='e'>❄️</span><b>" + fr + "</b></span>" : "");
       if (S.tab === "pasy") renderPasy();
     }).catch(function () {});
   }
