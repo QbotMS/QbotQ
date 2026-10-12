@@ -279,159 +279,153 @@
       post("/api/jedzenie/analysis/ai", { day: A.day }).then(function () { loadAnaliza(A.day); }).catch(function (e) { $("aimsg").textContent = e.message; b.disabled = false; b.textContent = "Spróbuj ponownie"; }); };
   }
 
-  /* ------------------------------------------------------------ BILANS (interaktywny) */
-  var B = { range: 45, start: null, end: null, on: { intake: true, expend: true, target: true, weight: true }, data: null };
-  var BCOL = { intake: "var(--accent)", expend: "var(--blue)", target: "var(--good)", weight: "var(--purple)" };
-  var BLAB = { intake: "zjedzone", expend: "spalone", target: "cel dnia", weight: "waga" };
+  /* ------------------------------------------------------------ BILANS I WAGA: jeden wspolny wykres (2026-10-12) */
+  var DAYMS = 864e5;
+  var B = { range: 90, start: null, end: null, goal: false, zoom: null, data: null, body: null,
+    on: { intake: true, expend: true, target: true, weight: true, plan: true, forecast: true, fat: false, muscle: false } };
+  var BS = { intake: ["zjedzone", "var(--accent)"], expend: ["spalone", "var(--blue)"], target: ["cel dnia", "var(--good)"],
+    weight: ["waga", "var(--purple)"], plan: ["plan wagi", "var(--good)"], forecast: ["prognoza", "var(--warn)"],
+    fat: ["tłuszcz kg", "#e0a84f"], muscle: ["mięśnie kg", "#5fb3c9"] };
   function loadBilans() {
     S.loaded.bilans = true;
-    var q = B.start ? "start=" + B.start + "&end=" + (B.end || S.today || "") : "days=" + B.range;
+    var q = B.start ? "start=" + B.start + "&end=" + (B.end || S.today || "") : "days=" + (B.goal ? 60 : B.range);
     $("bilans").classList.add("busy");
-    j("/api/jedzenie/balance?" + q).then(function (x) { B.data = x; renderBilans(x); })
+    Promise.all([j("/api/jedzenie/balance?" + q), B.body ? Promise.resolve(B.body) : j("/api/jedzenie/body?days=730").catch(function () { return { points: [] }; })])
+      .then(function (r) { B.data = r[0]; B.body = r[1]; B.zoom = null; renderBilans(); })
       .catch(function (e) { S.loaded.bilans = false; $("bilans").innerHTML = "<p class='msg'>" + esc(e.message) + "</p>"; })
       .then(function () { $("bilans").classList.remove("busy"); });
   }
-  function balChart(x) {
-    var ser = x.series, n = ser.length, W = 900, H = 280, pl = 44, pr = 40, pt = 12, pb = 26;
-    var mx = Math.max.apply(null, ser.map(function (s) { return Math.max(B.on.expend ? s.expend || 0 : 0, B.on.intake ? s.intake || 0 : 0, B.on.target ? s.target || 0 : 0); }).concat([1000])) * 1.08;
-    var bw = (W - pl - pr) / n, idx = {};
-    ser.forEach(function (s, i) { idx[s.day] = i; });
-    function X(i) { return pl + i * bw; } function Y(v) { return pt + (1 - v / mx) * (H - pt - pb); }
-    var wts = (x.weights || []).filter(function (p) { return idx[p[0]] != null; });
-    var w0 = wts.length ? Math.min.apply(null, wts.map(function (p) { return p[1]; })) - 1 : 0, w1 = wts.length ? Math.max.apply(null, wts.map(function (p) { return p[1]; })) + 1 : 1;
-    function YW(v) { return pt + (w1 - v) / Math.max(0.5, w1 - w0) * (H - pt - pb); }
-    var s = "<svg id='balsvg' viewBox='0 0 " + W + " " + H + "' style='width:100%;min-width:620px;height:auto;display:block;color:inherit' role='img' aria-label='Bilans dzienny: zjedzone, spalone, cel, waga'>";
-    for (var v = 0; v <= mx; v += 1000) s += "<line x1='" + pl + "' x2='" + (W - pr) + "' y1='" + Y(v).toFixed(1) + "' y2='" + Y(v).toFixed(1) + "' stroke='var(--line)'/><text x='" + (pl - 5) + "' y='" + (Y(v) + 4).toFixed(1) + "' font-size='11' text-anchor='end' fill='var(--muted)'>" + v + "</text>";
-    var step = Math.max(1, Math.round(n / 9));
-    ser.forEach(function (x2, i) {
-      if (B.on.intake && x2.intake != null) s += "<rect x='" + (X(i) + bw * 0.15).toFixed(1) + "' y='" + Y(x2.intake).toFixed(1) + "' width='" + Math.max(1, bw * 0.7).toFixed(1) + "' height='" + (Y(0) - Y(x2.intake)).toFixed(1) + "' rx='1.5' fill='" + (x2.closed ? "var(--accent)" : "none") + "' stroke='var(--accent)' stroke-width='1'/>";
-      if (i % step === 0) s += "<text x='" + (X(i) + bw / 2).toFixed(1) + "' y='" + (H - 8) + "' font-size='11' text-anchor='middle' fill='var(--muted)'>" + dm(x2.day) + "</text>";
-    });
-    function ln(k, dash) { return "<path d='" + ser.map(function (x2, i) { return (i ? "L" : "M") + (X(i) + bw / 2).toFixed(1) + " " + Y(x2[k]).toFixed(1); }).join(" ") + "' fill='none' stroke='" + BCOL[k] + "' stroke-width='1.8'" + (dash ? " stroke-dasharray='" + dash + "'" : "") + "/>"; }
-    if (B.on.expend) s += ln("expend");
-    if (B.on.target) s += ln("target", "6 4");
-    if (B.on.weight && wts.length) {
-      s += "<path d='" + wts.map(function (p, i) { return (i ? "L" : "M") + (X(idx[p[0]]) + bw / 2).toFixed(1) + " " + YW(p[1]).toFixed(1); }).join(" ") + "' fill='none' stroke='" + BCOL.weight + "' stroke-width='1.6'/>";
-      wts.forEach(function (p) { s += "<circle cx='" + (X(idx[p[0]]) + bw / 2).toFixed(1) + "' cy='" + YW(p[1]).toFixed(1) + "' r='3' fill='" + BCOL.weight + "'/>"; });
-      [w0 + 0.5, (w0 + w1) / 2, w1 - 0.5].forEach(function (v) { s += "<text x='" + (W - pr + 4) + "' y='" + (YW(v) + 4).toFixed(1) + "' font-size='10.5' fill='" + BCOL.weight + "'>" + n1(v) + "</text>"; });
+  function T(iso) { return Date.parse(iso + "T12:00:00"); }
+  function domain() {
+    var x = B.data, ch = x.goal && x.goal.chart, a = T(x.start), b = T(x.end);
+    if (B.goal && ch) b = Math.max(b, T(ch.plan[ch.plan.length - 1][0]));
+    return B.zoom || [a - DAYMS / 2, b + DAYMS / 2];
+  }
+  function bchart() {
+    var x = B.data, ch = x.goal && x.goal.chart, dm0 = domain(), t0 = dm0[0], t1 = dm0[1];
+    var W = 980, H = 340, pl = 46, pr = B.on.fat || B.on.muscle ? 92 : 50, pt = 18, pb = 24;
+    function X(t) { return pl + (t - t0) / (t1 - t0) * (W - pl - pr); }
+    var vis = function (iso) { var t = T(iso); return t >= t0 && t <= t1; };
+    var ser = x.series.filter(function (d) { return vis(d.day); });
+    var body = (B.body.points || []).filter(function (p) { return vis(p.date); });
+    var kmax = 1000; ser.forEach(function (d) { ["intake", "expend", "target"].forEach(function (k) { if (B.on[k] && d[k] != null) kmax = Math.max(kmax, d[k]); }); });
+    kmax *= 1.08;
+    function YK(v) { return pt + (1 - v / kmax) * (H - pt - pb); }
+    var wv = [];
+    if (B.on.weight) body.forEach(function (p) { wv.push(p.weight); });
+    var planPts = ch ? ch.plan.map(function (p) { return [T(p[0]), p[1]]; }) : [];
+    function planAt(t) { for (var i = 1; i < planPts.length; i++) if (t <= planPts[i][0]) { var a = planPts[i - 1], b = planPts[i]; return a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]); } return null; }
+    if (B.on.plan && ch) [t0, t1].concat(planPts.map(function (p) { return p[0]; })).forEach(function (t) { if (t >= t0 && t <= t1) { var v = planAt(t); if (v != null) wv.push(v + 1, v - 1); } });
+    var fc = ch && ch.forecast ? ch.forecast.map(function (p) { return [T(p[0]), p[1]]; }) : null;
+    function fcAt(t) { if (!fc || t < fc[0][0] || t > fc[1][0]) return null; return fc[0][1] + (fc[1][1] - fc[0][1]) * (t - fc[0][0]) / (fc[1][0] - fc[0][0]); }
+    if (B.on.forecast && fc) [Math.max(t0, fc[0][0]), Math.min(t1, fc[1][0])].forEach(function (t) { var v = fcAt(t); if (v != null) wv.push(v); });
+    var w0 = wv.length ? Math.floor(Math.min.apply(null, wv) - 1) : 90, w1 = wv.length ? Math.ceil(Math.max.apply(null, wv) + 1) : 110;
+    function YW(v) { return pt + (w1 - v) / Math.max(1, w1 - w0) * (H - pt - pb); }
+    var cv = []; body.forEach(function (p) { if (B.on.fat && p.fat_kg != null) cv.push(p.fat_kg); if (B.on.muscle && p.muscle_kg != null) cv.push(p.muscle_kg); });
+    var c0 = cv.length ? Math.floor(Math.min.apply(null, cv) - 2) : 0, c1 = cv.length ? Math.ceil(Math.max.apply(null, cv) + 2) : 1;
+    function YC(v) { return pt + (c1 - v) / Math.max(1, c1 - c0) * (H - pt - pb); }
+    var s = "<svg id='bsvg' viewBox='0 0 " + W + " " + H + "' style='width:100%;min-width:640px;height:auto;display:block;color:inherit;user-select:none' role='img' aria-label='Bilans i waga'>";
+    for (var v = 0; v <= kmax; v += 1000) s += "<line x1='" + pl + "' x2='" + (W - pr) + "' y1='" + YK(v).toFixed(1) + "' y2='" + YK(v).toFixed(1) + "' stroke='var(--line)'/><text x='" + (pl - 5) + "' y='" + (YK(v) + 4).toFixed(1) + "' font-size='11' text-anchor='end' fill='var(--muted)'>" + v + "</text>";
+    var days = (t1 - t0) / DAYMS, step = Math.max(1, Math.round(days / 9)), first = new Date(t0 + DAYMS / 2); first.setHours(12, 0, 0, 0);
+    for (var t = first.getTime(), k = 0; t <= t1; t += DAYMS, k++) if (k % step === 0) { var dd = new Date(t), iso = dd.getFullYear() + "-" + ("0" + (dd.getMonth() + 1)).slice(-2) + "-" + ("0" + dd.getDate()).slice(-2);
+      s += "<text x='" + X(t).toFixed(1) + "' y='" + (H - 7) + "' font-size='11' text-anchor='middle' fill='var(--muted)'>" + dm(iso) + "</text>"; }
+    var bw = Math.max(1, (W - pl - pr) / days * 0.7);
+    if (B.on.intake) ser.forEach(function (d) { if (d.intake == null) return; var cx = X(T(d.day));
+      s += "<rect x='" + (cx - bw / 2).toFixed(1) + "' y='" + YK(d.intake).toFixed(1) + "' width='" + bw.toFixed(1) + "' height='" + (YK(0) - YK(d.intake)).toFixed(1) + "' rx='1.5' fill='" + (d.closed ? BS.intake[1] : "none") + "' stroke='" + BS.intake[1] + "' stroke-width='1'/>"; });
+    function path(pts, Y) { return pts.length > 1 ? "M" + pts.map(function (p) { return X(p[0]).toFixed(1) + " " + Y(p[1]).toFixed(1); }).join(" L") : ""; }
+    if (B.on.expend) s += "<path d='" + path(ser.map(function (d) { return [T(d.day), d.expend]; }), YK) + "' fill='none' stroke='" + BS.expend[1] + "' stroke-width='1.8'/>";
+    if (B.on.target) s += "<path d='" + path(ser.map(function (d) { return [T(d.day), d.target]; }), YK) + "' fill='none' stroke='" + BS.target[1] + "' stroke-width='1.6' stroke-dasharray='6 4'/>";
+    if (B.on.plan && ch) {
+      var pp = [], ts = [t0].concat(planPts.map(function (p) { return p[0]; })).concat([t1]).filter(function (t) { return t >= Math.max(t0, planPts[0][0]) && t <= t1; }).sort(function (a, b) { return a - b; });
+      ts.forEach(function (t) { var v = planAt(t); if (v != null) pp.push([t, v]); });
+      if (pp.length > 1) {
+        s += "<path d='" + path(pp.map(function (p) { return [p[0], p[1] + 1]; }), YW) + " L" + pp.slice().reverse().map(function (p) { return X(p[0]).toFixed(1) + " " + YW(p[1] - 1).toFixed(1); }).join(" L") + " Z' fill='var(--good)' opacity='.10'/>";
+        s += "<path d='" + path(pp, YW) + "' fill='none' stroke='" + BS.plan[1] + "' stroke-width='1.6' stroke-dasharray='3 4' opacity='.85'/>";
+      }
+      planPts.slice(1).forEach(function (p) { if (p[0] >= t0 && p[0] <= t1) s += "<circle cx='" + X(p[0]).toFixed(1) + "' cy='" + YW(p[1]).toFixed(1) + "' r='4' fill='var(--good)'><title>etap: " + p[1] + " kg</title></circle><text x='" + X(p[0]).toFixed(1) + "' y='" + (YW(p[1]) - 8).toFixed(1) + "' font-size='10' text-anchor='middle' fill='var(--muted)'>" + p[1] + " kg</text>"; });
     }
-    s += "<line id='balcur' x1='0' x2='0' y1='" + pt + "' y2='" + (H - pb) + "' stroke='var(--muted)' stroke-dasharray='2 3' visibility='hidden'/>";
-    s += "<rect id='balhit' x='" + pl + "' y='" + pt + "' width='" + (W - pl - pr) + "' height='" + (H - pt - pb) + "' fill='transparent'/></svg>";
-    B.geo = { W: W, pl: pl, pr: pr, bw: bw, n: n, wmap: (x.weights || []).reduce(function (a, p) { a[p[0]] = p[1]; return a; }, {}) };
+    if (B.on.forecast && fc) { var a = Math.max(t0, fc[0][0]), b = Math.min(t1, fc[1][0]); if (b > a) s += "<path d='" + path([[a, fcAt(a)], [b, fcAt(b)]], YW) + "' fill='none' stroke='" + BS.forecast[1] + "' stroke-width='1.6' stroke-dasharray='2 4'/>"; }
+    if (B.on.weight && body.length) {
+      s += "<path d='" + path(body.map(function (p) { return [T(p.date), p.weight]; }), YW) + "' fill='none' stroke='" + BS.weight[1] + "' stroke-width='1.8'/>";
+      body.forEach(function (p) { s += "<circle cx='" + X(T(p.date)).toFixed(1) + "' cy='" + YW(p.weight).toFixed(1) + "' r='3' fill='" + BS.weight[1] + "'/>"; });
+    }
+    ["fat", "muscle"].forEach(function (k) { if (!B.on[k]) return; var key = k === "fat" ? "fat_kg" : "muscle_kg";
+      ["normal", "athlete"].forEach(function (m) { var a2 = body.filter(function (p) { return p[key] != null && p.mode === m; }).map(function (p) { return [T(p.date), p[key]]; });
+        s += "<path d='" + path(a2, YC) + "' fill='none' stroke='" + BS[k][1] + "' stroke-width='1.6'/>"; });
+      body.forEach(function (p) { if (p[key] == null) return; s += "<circle cx='" + X(T(p.date)).toFixed(1) + "' cy='" + YC(p[key]).toFixed(1) + "' r='2.6' fill='" + (p.suspect.length ? "var(--card)" : BS[k][1]) + "' stroke='" + BS[k][1] + "'/>"; }); });
+    var wt = []; for (var q = w0; q <= w1; q += Math.max(1, Math.round((w1 - w0) / 5))) wt.push(q);
+    if (B.on.weight || B.on.plan || B.on.forecast) wt.forEach(function (q) { s += "<text x='" + (W - pr + 5) + "' y='" + (YW(q) + 3.5).toFixed(1) + "' font-size='10.5' fill='" + BS.weight[1] + "'>" + q + "</text>"; });
+    if (B.on.fat || B.on.muscle) [c0, (c0 + c1) / 2, c1].forEach(function (q) { s += "<text x='" + (W - pr + 44) + "' y='" + (YC(q) + 3.5).toFixed(1) + "' font-size='10.5' fill='#5fb3c9'>" + Math.round(q) + "</text>"; });
+    if ((B.on.fat || B.on.muscle) && B.body["break"] && T(B.body["break"]) >= t0 && T(B.body["break"]) <= t1) { var bx = X(T(B.body["break"])).toFixed(1); s += "<line x1='" + bx + "' x2='" + bx + "' y1='" + pt + "' y2='" + (H - pb) + "' stroke='var(--muted)' stroke-dasharray='3 3'/><text x='" + bx + "' y='" + (pt + 12) + "' font-size='10' text-anchor='end' fill='var(--muted)'>tryb sportowca →&#160;</text>"; }
+    var tt = T(S.today || x.end); if (tt >= t0 && tt <= t1) { var tx = X(tt).toFixed(1); s += "<line x1='" + tx + "' x2='" + tx + "' y1='" + pt + "' y2='" + (H - pb) + "' stroke='var(--muted)' stroke-dasharray='2 3'/><text x='" + tx + "' y='" + (pt - 5) + "' font-size='10' text-anchor='middle' fill='var(--muted)'>dziś</text>"; }
+    s += "<line id='bcur' x1='0' x2='0' y1='" + pt + "' y2='" + (H - pb) + "' stroke='var(--muted)' stroke-dasharray='2 3' visibility='hidden'/>";
+    s += "<rect id='bsel' x='0' y='" + pt + "' width='0' height='" + (H - pt - pb) + "' fill='rgba(59,130,246,.15)' stroke='rgba(59,130,246,.6)' visibility='hidden'/>";
+    s += "<rect id='bhit' x='" + pl + "' y='" + pt + "' width='" + (W - pl - pr) + "' height='" + (H - pt - pb) + "' fill='transparent' style='cursor:crosshair'/></svg>";
+    B.g = { W: W, pl: pl, pr: pr, t0: t0, t1: t1, planAt: planAt, fcAt: fcAt };
     return s;
   }
-  function wireBal() {
-    var svg = $("balsvg"), tip = $("baltip"), cur = $("balcur"), wrap = $("balwrap"); if (!svg) return;
+  function tAt(ev) { var svg = $("bsvg"), r = svg.getBoundingClientRect(), g = B.g, xv = (ev.clientX - r.left) / r.width * g.W; return g.t0 + (xv - g.pl) / (g.W - g.pl - g.pr) * (g.t1 - g.t0); }
+  function isoOf(t) { var d = new Date(t); d.setHours(12, 0, 0, 0); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
+  function wireB() {
+    var svg = $("bsvg"), tip = $("btip"), cur = $("bcur"), sel = $("bsel"), wrap = $("bwrap"); if (!svg) return;
+    var drag = null;
+    function pxOf(t) { var g = B.g; return g.pl + (t - g.t0) / (g.t1 - g.t0) * (g.W - g.pl - g.pr); }
     function hide() { tip.style.display = "none"; cur.setAttribute("visibility", "hidden"); }
-    svg.addEventListener("mouseleave", hide);
+    svg.addEventListener("mouseleave", function () { hide(); });
+    svg.addEventListener("mousedown", function (ev) { if (ev.button) return; drag = { t: tAt(ev), x: ev.clientX }; ev.preventDefault(); });
+    window.addEventListener("mouseup", function up(ev) {
+      if (!drag) return; var d = drag; drag = null; sel.setAttribute("visibility", "hidden");
+      if (Math.abs(ev.clientX - d.x) > 8) { var a = Math.min(d.t, tAt(ev)), b = Math.max(d.t, tAt(ev)); if (b - a >= 2 * DAYMS) { B.zoom = [a, b]; renderBilans(); } return; }
+      var iso = isoOf(tAt(ev)); if (iso >= "2026-10-10" && iso <= (S.today || iso)) { S.want = iso; tab("dni"); loadDays(true, iso < shiftDay(S.today, -6) ? iso : null); }
+    }, { once: false });
+    svg.addEventListener("dblclick", function () { if (B.zoom) { B.zoom = null; renderBilans(); } });
     svg.addEventListener("mousemove", function (ev) {
-      var r = svg.getBoundingClientRect(), g = B.geo, xv = (ev.clientX - r.left) / r.width * g.W, i = Math.floor((xv - g.pl) / g.bw);
-      if (i < 0 || i >= g.n) return hide();
-      var d = B.data.series[i], cx = g.pl + i * g.bw + g.bw / 2, bal = d.intake != null ? d.intake - d.expend : null, w = g.wmap[d.day];
-      cur.setAttribute("x1", cx); cur.setAttribute("x2", cx); cur.setAttribute("visibility", "visible");
-      tip.innerHTML = "<b>" + wd(d.day) + " " + dm(d.day) + "</b>" + (d.closed ? " 🔒" : "") +
-        "<br>zjedzone: " + (d.intake != null ? n0(d.intake) + " kcal" + (d.closed ? "" : " (otwarty)") : "brak wpisów") +
-        "<br>spalone: " + n0(d.expend) + (d.expend_src === "prognoza" ? " (prognoza)" : "") + "<br>cel: " + n0(d.target) +
-        (bal != null ? "<br>bilans: <b style='color:var(--" + (bal <= d.target - d.expend + 150 ? "good" : "bad") + ")'>" + (bal > 0 ? "+" : "") + n0(bal) + "</b>" : "") +
-        (w ? "<br>waga: " + n1(w) + " kg" : "");
-      var px = (cx / g.W) * r.width, left = px + 14; if (left + 190 > wrap.clientWidth) left = px - 200;
+      var t = tAt(ev), r = svg.getBoundingClientRect(), g = B.g;
+      if (drag) { var a = pxOf(Math.min(drag.t, t)), b = pxOf(Math.max(drag.t, t)); sel.setAttribute("x", a); sel.setAttribute("width", Math.max(0, b - a)); sel.setAttribute("visibility", "visible"); return; }
+      if (t < g.t0 || t > g.t1) return hide();
+      var iso = isoOf(t), d = B.data.series.filter(function (q) { return q.day === iso; })[0], p = (B.body.points || []).filter(function (q) { return q.date === iso; })[0];
+      var cx = pxOf(T(iso)); cur.setAttribute("x1", cx); cur.setAttribute("x2", cx); cur.setAttribute("visibility", "visible");
+      var L = ["<b>" + wd(iso) + " " + dm(iso) + "." + iso.slice(0, 4) + "</b>" + (d && d.closed ? " 🔒" : "")];
+      if (d) { L.push("zjedzone: " + (d.intake != null ? n0(d.intake) + " kcal" : "brak wpisów")); L.push("spalone: " + n0(d.expend) + (d.expend_src === "prognoza" ? " (prognoza)" : "") + " · cel " + n0(d.target));
+        if (d.intake != null) { var bl = d.intake - d.expend; L.push("bilans: <b style='color:var(--" + (d.intake > d.target + 150 ? "bad" : d.intake < d.target - 300 && d.expend_src === "realne" ? "warn" : "good") + ")'>" + (bl > 0 ? "+" : "") + n0(bl) + "</b>"); } }
+      if (p) { L.push("waga: <b>" + n1(p.weight) + " kg</b>"); if (p.fat_pct != null) L.push("tłuszcz " + n1(p.fat_pct) + "% (" + n1(p.fat_kg) + " kg) · mięśnie " + n1(p.muscle_kg) + " kg" + (p.suspect.length ? " ⚠️ " + p.suspect.join(", ") : "")); }
+      var pv = g.planAt(T(iso)); if (pv != null && B.on.plan) L.push("plan: " + n1(pv) + " kg");
+      var fv = g.fcAt(T(iso)); if (fv != null && B.on.forecast && iso > (S.today || "")) L.push("prognoza: " + n1(fv) + " kg");
+      tip.innerHTML = L.join("<br>");
+      var px = cx / g.W * r.width, left = px + 14; if (left + 230 > wrap.clientWidth) left = px - 240;
       tip.style.left = Math.max(0, left) + "px"; tip.style.top = "10px"; tip.style.display = "block";
     });
-    svg.addEventListener("click", function (ev) {
-      var r = svg.getBoundingClientRect(), g = B.geo, i = Math.floor(((ev.clientX - r.left) / r.width * g.W - g.pl) / g.bw);
-      var d = B.data.series[i]; if (d && d.day >= "2026-10-10") { S.want = d.day; tab("dni"); loadDays(true, d.day < shiftDay(S.today, -6) ? d.day : null); }
-    });
   }
-  function wchart(ch) {
-    var W = 640, H = 210, pl = 34, pr = 10, pt = 18, pb = 14;
-    var pts = ch.plan.concat(ch.meas).concat(ch.forecast || []);
-    var ts = pts.map(function (p) { return Date.parse(p[0]); }), t0 = Math.min.apply(null, ts), t1 = Math.max.apply(null, ts);
-    var ys = pts.map(function (p) { return p[1]; }), y0 = Math.floor(Math.min.apply(null, ys) - 1.5), y1 = Math.ceil(Math.max.apply(null, ys) + 1.5);
-    function X(d) { return pl + (Date.parse(d) - t0) / Math.max(1, t1 - t0) * (W - pl - pr); }
-    function Y(v) { return pt + (y1 - v) / Math.max(1, y1 - y0) * (H - pt - pb); }
-    function ln(a, off) { return a.map(function (p, i) { return (i ? "L" : "M") + X(p[0]).toFixed(1) + " " + Y(p[1] + (off || 0)).toFixed(1); }).join(" "); }
-    var band = ln(ch.plan, ch.band) + " " + ch.plan.slice().reverse().map(function (p) { return "L" + X(p[0]).toFixed(1) + " " + Y(p[1] - ch.band).toFixed(1); }).join(" ") + " Z";
-    var s = "<svg viewBox='0 0 " + W + " " + H + "' style='width:100%;max-width:760px;height:auto;display:block;color:inherit' role='img' aria-label='Waga: plan, ważenia, prognoza'>";
-    for (var v = y0 + (y0 % 2 ? 1 : 0); v <= y1; v += 2) s += "<line x1='" + pl + "' x2='" + (W - pr) + "' y1='" + Y(v).toFixed(1) + "' y2='" + Y(v).toFixed(1) + "' stroke='var(--line)'/><text x='" + (pl - 4) + "' y='" + (Y(v) + 3.5).toFixed(1) + "' font-size='10' text-anchor='end' fill='var(--muted)'>" + v + "</text>";
-    s += "<path d='" + band + "' fill='var(--good)' opacity='.13'/><path d='" + ln(ch.plan) + "' fill='none' stroke='var(--good)' stroke-width='2' stroke-dasharray='6 4'/>";
-    if (ch.forecast) s += "<path d='" + ln(ch.forecast) + "' fill='none' stroke='var(--warn)' stroke-width='1.6' stroke-dasharray='2 4'/>";
-    if (ch.meas.length > 1) s += "<path d='" + ln(ch.meas) + "' fill='none' stroke='currentColor' stroke-width='1.4' opacity='.8'/>";
-    ch.meas.forEach(function (p) { s += "<circle cx='" + X(p[0]).toFixed(1) + "' cy='" + Y(p[1]).toFixed(1) + "' r='2.6' fill='currentColor'><title>" + dm(p[0]) + ": " + n1(p[1]) + " kg</title></circle>"; });
-    ch.plan.slice(1).forEach(function (p, i, a) { var x = X(p[0]); s += "<circle cx='" + x.toFixed(1) + "' cy='" + Y(p[1]).toFixed(1) + "' r='4' fill='var(--good)'/><text x='" + x.toFixed(1) + "' y='" + (Y(p[1]) - 8).toFixed(1) + "' font-size='10' text-anchor='" + (i === a.length - 1 ? "end" : "middle") + "' fill='var(--muted)'>" + p[1] + " kg · " + dm(p[0]) + "</text>"; });
-    var tx = X(ch.today).toFixed(1);
-    s += "<line x1='" + tx + "' x2='" + tx + "' y1='" + pt + "' y2='" + (H - pb) + "' stroke='var(--muted)' stroke-dasharray='2 3'/><text x='" + tx + "' y='" + (pt - 6) + "' font-size='10' text-anchor='middle' fill='var(--muted)'>dziś</text>";
-    return s + "</svg><div class='legend'><span>– – plan z korytarzem ±1 kg</span><span>● ważenia</span><span>··· prognoza przy obecnym tempie</span></div>";
-  }
-  /* SKLAD CIALA (2026-10-12): kg tluszczu i miesni, % tluszczu, przelom 'Athlete mode', podejrzane pomiary */
-  function loadBody() {
-    j("/api/jedzenie/body?days=365").then(renderBody).catch(function (e) { var c = $("bodycard"); if (c) c.innerHTML += "<p class='msg'>" + esc(e.message) + "</p>"; });
-  }
-  function renderBody(x) {
-    var c = $("bodycard"); if (!c) return;
-    var pts = x.points.filter(function (p) { return p.fat_pct != null; });
-    if (!pts.length) { c.innerHTML = "<div class='ttl'><h2>Skład ciała</h2></div><p class='empty'>Brak pomiarów składu ciała.</p>"; return; }
-    var W = 760, H = 230, pl = 40, pr = 44, pt = 16, pb = 22;
-    var ts = pts.map(function (p) { return Date.parse(p.date); }), t0 = Math.min.apply(null, ts), t1 = Math.max.apply(null, ts.concat([Date.parse(x["break"])]));
-    var kg = []; pts.forEach(function (p) { if (p.fat_kg != null) kg.push(p.fat_kg); if (p.muscle_kg != null) kg.push(p.muscle_kg); });
-    var k0 = Math.floor(Math.min.apply(null, kg) - 2), k1 = Math.ceil(Math.max.apply(null, kg) + 2);
-    var f = pts.map(function (p) { return p.fat_pct; }), f0 = Math.floor(Math.min.apply(null, f) - 1), f1 = Math.ceil(Math.max.apply(null, f) + 1);
-    function X(d) { return pl + (Date.parse(d) - t0) / Math.max(1, t1 - t0) * (W - pl - pr); }
-    function YK(v) { return pt + (k1 - v) / Math.max(1, k1 - k0) * (H - pt - pb); }
-    function YF(v) { return pt + (f1 - v) / Math.max(1, f1 - f0) * (H - pt - pb); }
-    function ln(key, Y, mode) { var a = pts.filter(function (p) { return p[key] != null && p.mode === mode; }); return a.length > 1 ? "M" + a.map(function (p) { return X(p.date).toFixed(1) + " " + Y(p[key]).toFixed(1); }).join(" L") : ""; }
-    var s = "<svg viewBox='0 0 " + W + " " + H + "' style='width:100%;max-width:900px;height:auto;display:block;color:inherit' role='img' aria-label='Skład ciała: kg tłuszczu, kg mięśni, procent tłuszczu'>";
-    for (var v = k0; v <= k1; v += 5) s += "<line x1='" + pl + "' x2='" + (W - pr) + "' y1='" + YK(v).toFixed(1) + "' y2='" + YK(v).toFixed(1) + "' stroke='var(--line)'/><text x='" + (pl - 4) + "' y='" + (YK(v) + 3.5).toFixed(1) + "' font-size='10' text-anchor='end' fill='var(--muted)'>" + v + "</text>";
-    [f0, (f0 + f1) / 2, f1].forEach(function (v) { s += "<text x='" + (W - pr + 4) + "' y='" + (YF(v) + 3.5).toFixed(1) + "' font-size='10' fill='var(--purple)'>" + n1(v) + "%</text>"; });
-    ["normal", "athlete"].forEach(function (m) {
-      s += "<path d='" + ln("muscle_kg", YK, m) + "' fill='none' stroke='var(--blue)' stroke-width='2'/>" +
-           "<path d='" + ln("fat_kg", YK, m) + "' fill='none' stroke='var(--accent)' stroke-width='2'/>" +
-           "<path d='" + ln("fat_pct", YF, m) + "' fill='none' stroke='var(--purple)' stroke-width='1.4' stroke-dasharray='4 3'/>";
-    });
-    pts.forEach(function (p) {
-      var sus = p.suspect.length, tt = dm(p.date) + ": tłuszcz " + n1(p.fat_pct) + "% (" + n1(p.fat_kg) + " kg), mięśnie " + n1(p.muscle_kg) + " kg, waga " + n1(p.weight) + " kg" + (sus ? " – podejrzany: " + p.suspect.join(", ") : "") + (p.mode === "athlete" ? " · tryb sportowca" : "");
-      [["fat_kg", YK, "var(--accent)"], ["muscle_kg", YK, "var(--blue)"]].forEach(function (q) { if (p[q[0]] == null) return;
-        s += "<circle cx='" + X(p.date).toFixed(1) + "' cy='" + q[1](p[q[0]]).toFixed(1) + "' r='3.2' fill='" + (sus ? "var(--card)" : q[2]) + "' stroke='" + q[2] + "' stroke-width='1.5'><title>" + esc(tt) + "</title></circle>"; });
-    });
-    var bx = X(x["break"]).toFixed(1);
-    s += "<line x1='" + bx + "' x2='" + bx + "' y1='" + pt + "' y2='" + (H - pb) + "' stroke='var(--muted)' stroke-dasharray='3 3'/><text x='" + bx + "' y='" + (pt - 4) + "' font-size='10' text-anchor='end' fill='var(--muted)'>tryb sportowca →</text>";
-    s += "<text x='" + pl + "' y='" + (H - 6) + "' font-size='10' fill='var(--muted)'>" + dm(pts[0].date) + "." + pts[0].date.slice(0, 4) + "</text><text x='" + (W - pr) + "' y='" + (H - 6) + "' font-size='10' text-anchor='end' fill='var(--muted)'>" + dm(pts[pts.length - 1].date) + "</text></svg>";
-    var sm = x.summary, last = pts[pts.length - 1], cur = sm.athlete || sm.normal, h = "";
-    h += "<div class='ttl'><h2>Skład ciała</h2><span class='sub'>Withings · bioimpedancja · " + pts.length + " pomiarów</span></div>";
-    h += "<div class='kv' style='max-width:520px'><span>Ostatni pomiar (" + dm(last.date) + ")</span><span>tłuszcz " + n1(last.fat_pct) + "% · " + n1(last.fat_kg) + " kg · mięśnie " + n1(last.muscle_kg) + " kg</span>" +
-      (cur ? "<span>Średnia z 3 ost. (" + (sm.athlete ? "tryb sportowca" : "tryb zwykły") + ")</span><span>tłuszcz " + n1(cur.last3_fat_pct) + "% · " + n1(cur.last3_fat_kg) + " kg · mięśnie " + n1(cur.last3_muscle_kg) + " kg</span>" : "") +
-      (cur && cur.d_fat_kg != null ? "<span>Zmiana " + dm(cur.first) + "–" + dm(cur.last) + "</span><span>tłuszcz " + (cur.d_fat_kg > 0 ? "+" : "") + n1(cur.d_fat_kg) + " kg · mięśnie " + (cur.d_muscle_kg > 0 ? "+" : "") + n1(cur.d_muscle_kg) + " kg</span>" : "") + "</div>";
-    h += "<div class='chartbox' style='margin-top:8px'>" + s + "</div>";
-    h += "<div class='legend'><span><i style='background:var(--accent)'></i>tłuszcz kg</span><span><i style='background:var(--blue)'></i>mięśnie kg</span><span><i style='background:var(--purple)'></i>tłuszcz % (prawa oś)</span><span>○ pomiar podejrzany</span></div>";
-    h += "<p class='note'>Bioimpedancja: ufaj trendowi z 3–4 tygodni, nie pojedynczym odczytom (zmiany < 1–1,5 pkt to szum). Od 12.10.2026 waga liczy w trybie sportowca – trend liczony osobno przed i po zmianie.</p>";
-    c.innerHTML = h;
-  }
-
-  function renderBilans(x) {
-    var rb = "<div class='rng'>" + [45, 90, 180].map(function (d) { return "<button class='btn" + (!B.start && B.range === d ? " on" : "") + "' data-r='" + d + "'>" + d + " dni</button>"; }).join("") +
-      "<span class='sub' style='margin-left:6px'>od</span><input type='date' id='bfrom' value='" + (B.start || x.start) + "'><span class='sub'>do</span><input type='date' id='bto' value='" + (B.end || x.end) + "'><button class='btn" + (B.start ? " on" : "") + "' id='bgo'>Pokaż</button></div>";
-    var tg = "<div class='toggles'>" + Object.keys(BLAB).map(function (k) { return "<button class='tg" + (B.on[k] ? " on" : "") + "' data-s='" + k + "' aria-pressed='" + B.on[k] + "'><i style='background:" + BCOL[k] + "'></i>" + BLAB[k] + "</button>"; }).join("") + "</div>";
-    var h = "<div class='card'><div class='ttl'><h2>Bilans dzienny</h2><span class='sub'>" + dm(x.start) + "." + x.start.slice(0, 4) + " – " + dm(x.end) + " · cel bilansu " + n0(x.balance_target) + " kcal/dz" + (x.calib ? " · kalibracja " + n0(-x.calib) : "") + "</span></div>" + rb + tg +
-      "<div class='chwrap chartbox' id='balwrap'>" + balChart(x) + "<div class='tip2' id='baltip'></div></div>" +
-      "<div class='legend'><span><i style='background:var(--accent)'></i>zjedzone (pełne = dzień zamknięty)</span><span>najedź = szczegóły dnia · kliknij = otwórz dzień</span></div></div>";
-    var g = x.goal;
+  function renderBilans() {
+    var x = B.data, g = x.goal;
+    var rb = "<div class='rng'>" + [45, 90, 180, 365].map(function (d) { return "<button class='btn" + (!B.start && !B.goal && B.range === d ? " on" : "") + "' data-r='" + d + "'>" + (d === 365 ? "rok" : d + " dni") + "</button>"; }).join("") +
+      (g && g.chart ? "<button class='btn" + (B.goal ? " on" : "") + "' data-goal='1'>do celu (" + dm(g.chart.plan[g.chart.plan.length - 1][0]) + "." + g.chart.plan[g.chart.plan.length - 1][0].slice(0, 4) + ")</button>" : "") +
+      "<span class='sub' style='margin-left:6px'>od</span><input type='date' id='bfrom' value='" + (B.start || x.start) + "'><span class='sub'>do</span><input type='date' id='bto' value='" + (B.end || x.end) + "'><button class='btn" + (B.start ? " on" : "") + "' id='bgo'>Pokaż</button>" +
+      (B.zoom ? "<button class='btn' id='bunzoom'>↺ cała skala</button>" : "") + "</div>";
+    var tg = "<div class='toggles'>" + Object.keys(BS).map(function (k) { return "<button class='tg" + (B.on[k] ? " on" : "") + "' data-s='" + k + "' aria-pressed='" + B.on[k] + "'><i style='background:" + BS[k][1] + "'></i>" + BS[k][0] + "</button>"; }).join("") + "</div>";
+    var h = "<div class='card'><div class='ttl'><h2>Bilans i waga</h2><span class='sub'>cel bilansu wg budżetu tygodnia" + (x.calib ? " · kalibracja " + n0(-x.calib) : "") + "</span></div>" + rb + tg +
+      "<div class='chwrap chartbox' id='bwrap'>" + bchart() + "<div class='tip2' id='btip'></div></div>" +
+      "<div class='legend'><span>lewa oś: kcal · prawa: kg (waga, plan)" + (B.on.fat || B.on.muscle ? " · druga prawa: kg składu" : "") + "</span><span>pełny słupek = dzień zamknięty</span><span>przeciągnij = powiększ · dwuklik = cała skala · klik = otwórz dzień</span></div></div>";
+    var bs = B.body && B.body.summary, cur = bs && (bs.athlete || bs.normal), lastc = (B.body.points || []).filter(function (p) { return p.fat_pct != null; }).slice(-1)[0];
     h += "<div class='g2' style='margin-top:12px'><div class='card'><div class='ttl'><h2>⚖️ " + esc(g ? g.name : "Waga") + "</h2></div>" +
-      (g ? "<div class='state " + (g.level === "g" ? "ok" : "open") + "'>" + esc(g.text) + "</div>" + (g.chart ? wchart(g.chart) : "") +
-        "<div class='kv'>" + (g.rows || []).map(function (r) { return "<span>" + esc(r.k) + "</span><span>" + esc(r.have == null ? "" : r.have) + (r.need != null ? " / " + esc(r.need) : "") + "</span>"; }).join("") + "</div>"
-        : "<p class='empty'>Brak celu wagi w Trenerze.</p>") + "</div>";
+      (g ? "<div class='state " + (g.level === "g" ? "ok" : "open") + "'>" + esc(g.text) + "</div><div class='kv'>" + (g.rows || []).map(function (r) { return "<span>" + esc(r.k) + "</span><span>" + esc(r.have == null ? "" : r.have) + (r.need != null ? " / " + esc(r.need) : "") + "</span>"; }).join("") + "</div>" : "<p class='empty'>Brak celu wagi.</p>") +
+      "<p class='lbl' style='margin-top:12px'>Skład ciała (Withings)</p>" + (lastc ? "<div class='kv'><span>Ostatni (" + dm(lastc.date) + ")</span><span>" + n1(lastc.fat_pct) + "% · " + n1(lastc.fat_kg) + " kg tłuszczu · " + n1(lastc.muscle_kg) + " kg mięśni</span>" +
+        (cur ? "<span>Średnia z 3 (" + (bs.athlete ? "tryb sportowca" : "tryb zwykły") + ")</span><span>" + n1(cur.last3_fat_pct) + "% · " + n1(cur.last3_fat_kg) + " kg · " + n1(cur.last3_muscle_kg) + " kg</span>" : "") +
+        (cur && cur.d_fat_kg != null ? "<span>Zmiana " + dm(cur.first) + "–" + dm(cur.last) + "</span><span>tłuszcz " + (cur.d_fat_kg > 0 ? "+" : "") + n1(cur.d_fat_kg) + " kg · mięśnie " + (cur.d_muscle_kg > 0 ? "+" : "") + n1(cur.d_muscle_kg) + " kg</span>" : "") + "</div>" : "<p class='empty'>Brak pomiarów składu.</p>") +
+      "<p class='note'>Bioimpedancja: ufaj trendowi z 3–4 tygodni. Od 12.10.2026 tryb sportowca – osobna seria.</p></div>";
     var dsc = x.discrepancy || {};
     h += "<div class='stack'><div class='card'><div class='ttl'><h2>Waga vs jedzenie</h2></div><p class='note' style='margin-top:0'>" + esc(x.discrepancy_line) + "</p>" +
-      (dsc.ready ? "<div class='kv'><span>Bilans z wpisów</span><span>" + n0(dsc.logged_bal) + " kcal/dz</span><span>Bilans z wagi</span><span>" + n0(dsc.actual_bal) + " kcal/dz</span><span>Rozbieżność</span><span>" + n0(dsc.disc) + " kcal/dz</span></div>" : "") +
-      "<p class='note'>Porównuje to, co wynika z zapisanego jedzenia, z tym, co pokazuje waga (prawdziwe ważenia). QBot sam koryguje o rozbieżność cel dnia.</p></div>" +
-      "<div class='card'><div class='ttl'><h2>Tygodnie</h2></div>" + (x.weeks.length ? "<table class='tb'><tr><th>Tydzień od</th><th class='r'>Zamknięte dni</th><th class='r'>Śr. bilans</th></tr>" +
+      (dsc.ready ? "<div class='kv'><span>Bilans z wpisów</span><span>" + n0(dsc.logged_bal) + " kcal/dz</span><span>Bilans z wagi</span><span>" + n0(dsc.actual_bal) + " kcal/dz</span><span>Rozbieżność</span><span>" + n0(dsc.disc) + " kcal/dz</span></div>" : "") + "</div>" +
+      "<div class='card'><div class='ttl'><h2>Tygodnie (pn–nd)</h2></div>" + (x.weeks.length ? "<table class='tb'><tr><th>Tydzień od</th><th class='r'>Zamknięte dni</th><th class='r'>Śr. bilans</th></tr>" +
         x.weeks.slice().reverse().map(function (w) { var ok = w.avg_balance >= x.balance_target - 300 && w.avg_balance <= x.balance_target + 250; return "<tr><td>" + dm(w.week) + "</td><td class='r'>" + w.days + "</td><td class='r' style='color:var(--" + (ok ? "good" : "bad") + ")'>" + n0(w.avg_balance) + "</td></tr>"; }).join("") + "</table>"
         : "<p class='empty'>Jeszcze brak zamkniętych dni z pełnym spalaniem.</p>") + "</div></div></div>";
-    h += "<div class='card' style='margin-top:12px' id='bodycard'><div class='ttl'><h2>Skład ciała</h2><span class='sub'>Withings · bioimpedancja</span></div><p class='empty'>Wczytuję…</p></div>";
     $("bilans").innerHTML = h;
-    loadBody();
-    $("bilans").querySelectorAll("[data-r]").forEach(function (b) { b.onclick = function () { B.range = +b.dataset.r; B.start = B.end = null; loadBilans(); }; });
-    $("bgo").onclick = function () { var a = $("bfrom").value, b = $("bto").value; if (!a) return; B.start = a; B.end = b || null; loadBilans(); };
-    $("bilans").querySelectorAll("[data-s]").forEach(function (b) { b.onclick = function () { B.on[b.dataset.s] = !B.on[b.dataset.s]; renderBilans(B.data); }; });
-    wireBal();
+    $("bilans").querySelectorAll("[data-r]").forEach(function (b) { b.onclick = function () { B.range = +b.dataset.r; B.start = B.end = null; B.goal = false; loadBilans(); }; });
+    var gb = $("bilans").querySelector("[data-goal]"); if (gb) gb.onclick = function () { B.goal = !B.goal; B.start = B.end = null; loadBilans(); };
+    $("bgo").onclick = function () { var a = $("bfrom").value, b = $("bto").value; if (!a) return; B.start = a; B.end = b || null; B.goal = false; loadBilans(); };
+    var uz = $("bunzoom"); if (uz) uz.onclick = function () { B.zoom = null; renderBilans(); };
+    $("bilans").querySelectorAll("[data-s]").forEach(function (b) { b.onclick = function () { B.on[b.dataset.s] = !B.on[b.dataset.s]; renderBilans(); }; });
+    wireB();
   }
 
   /* ------------------------------------------------------------ MENU (tygodniami) */
