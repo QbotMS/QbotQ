@@ -110,9 +110,10 @@ Z harmonogramu tylko DWIE wiadomości dziennie, zwięzłe (~8 linijek), szczegó
 
 ## Obwody ciała (12.10.2026)
 - Tabela `qbot_v2.body_circumference` (sql/food_v4.sql): talia (wymagana), biodra, klatka, udo, ramię, szyja – cm, jeden wpis na dzień.
-- Wpis: Jedzenie → Bilans i waga → kafelek 📏 Obwody → „+ dodaj pomiar” (POST /api/jedzenie/circ; wszystkie puste = usunięcie dnia).
+- Wpis: Jedzenie → **Dni** → karta dnia „📏 Obwody” (od 12.10 wieczorem; wcześniej kafelek w Bilans i waga). POST /api/jedzenie/circ; „Usuń” = usunięcie dnia.
 - Widok: seria „talia cm” w wykresie Bilans i waga (grupa skład ciała, własna skala) i w Forma → Trendy → Wellness (oś cm). Wskaźnik talia/wzrost (177 cm), cel < 0,50.
 - Przypomnienie: linia w porannej wiadomości tylko w poniedziałek, gdy od ostatniej talii minęło ≥ 14 dni.
+- Wykres Bilans i waga: sekcje 50/50 (góra linie, dół kcal), oś kcal od 1500, trend spalania = średnia krocząca 7 dni, uchwyt wysokości (localStorage jedz_bil_h).
 - Gotowość usunięta z Wellness – jest na wykresie formy (gotowość 1 noc / 3 dni), gdzie koreluje z obciążeniem.
 
 ## Strona „Jedzenie” (https://albert.cytr.us/jedzenie.html, od 12.10.2026)
