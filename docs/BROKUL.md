@@ -65,9 +65,7 @@ Wiadomość aktualizuje się po każdej zmianie (także po wpisie z Telegrama).
   Stan na 12.10.2026: tylko 5 realnych ważeń w 60 dniach – bez częstszego ważenia monitor nie ruszy.
 
 ## Cel dnia, dokładka, weekend, 21:30 (qbot_food_plan.py, od 12.10.2026)
-- **Model spalania** (od 12.10.2026 popr.): dzień bez treningu = mediana `energy_daily` „bez wysiłku” z CAŁEJ historii Garmina (do 365 dni, od 28.02.2026; dzień z treningiem = całość − kcal treningów z Garmina) **wg dnia tygodnia** (17–27 próbek na dzień, ściąganie do średniej symboliczne: 2 pseudo-próbki); **dzień bieżący = Garmin do teraz (energy_daily partial) + reszta dnia** (baza × część doby, która została + niezrobiony trening); pierwotnie: dzień bez treningu = mediana `energy_daily` w dni bez treningu
-  (12.10: 2473 kcal), trening = mediana nadwyżki na godzinę (12.10: 467 kcal/h) × czas sesji Trenera × współczynnik
-  sportu (rower 1, wioślarz 0,9, siła 0,6, joga 0,3). Dzień miniony = realne `energy_daily`.
+- **Model spalania** (12.10.2026, wersja 3 – trzy osobne części): **spoczynek** = BMR Garmina (`resting_kcal`, mediana 14 ostatnich pełnych dni – spada razem z wagą) + **ruch codzienny** = aktywne kcal Garmina − kcal treningów (dzień z treningiem tylko gdy każda sesja ma kcal), mediana **wg dnia tygodnia** z całej historii (do 365 dni, od 28.02.2026; 17–27 próbek/dzień, ściąganie do średniej: 2 pseudo-próbki) + **trening** = plan × kcal/h (mediana z 90 dni: (całość − BMR − ruch dnia tygodnia)/h). **Dzień bieżący** = Garmin do teraz + reszta dnia (baza × pozostała część doby + niezrobiony trening). Dzień miniony = realne `energy_daily`. Strona pokazuje rozbicie „spoczynek + ruch + trening”.
 - **Cel dnia** = spalanie − kalibracja (rozbieżność waga vs wpisy, gdy gotowa, max ±500) + cel bilansu Trenera
   (aktywny etap, 12.10: −519). Min. 1800 kcal, zaokrąglenie do 50. **Dokładka** = cel − kcal Brokuła (≥150 kcal,
   inaczej „Brokuł wystarczy”). **Paliwo na rower**: trening ≥75 min → ~50 g węgli/h po pierwszych 45 min („tu jest

@@ -41,45 +41,52 @@ def _hm(t: dtime | None) -> str:
 
 
 # ======================================================================= model spalania
-SHRINK_N = 2   # symboliczne sciaganie mediany dnia tygodnia do sredniej (probki 17-27 na dzien)
+SHRINK_N = 2   # symboliczne sciaganie mediany dnia tygodnia do sredniej
 HIST_DAYS = 365
+BMR_DAYS = 14
 
 
 def model(c) -> dict:
-    """Spalanie 'bez wysilku' (bez treningow) WG DNIA TYGODNIA z calej historii Garmina (do 365 dni):
-    dzien bez treningu = cale energy_daily; dzien z treningiem = energy_daily - kcal treningow z Garmina (gdy kazda sesja ma kcal).
-    (2026-10-12: wczesniej tylko dni bez treningu z 182 dni -> 6-12 probek; Michal: dane sa od maja, uzyj ich.)
-    Trening = mediana nadwyzki na godzine ponad baze dnia tygodnia (90 dni). Liczone raz dziennie."""
+    """Spalanie dnia = SPOCZYNEK + RUCH CODZIENNY + TRENING (2026-10-12, uwaga Michala: nie mieszac aktywnych i spoczynkowych):
+    - spoczynek = BMR Garmina (resting_kcal), mediana z ostatnich 14 pelnych dni -> spada razem z waga,
+    - ruch codzienny = aktywne kcal Garmina - kcal treningow (dzien z treningiem: tylko gdy kazda sesja ma kcal),
+      mediana WG DNIA TYGODNIA z calej historii (do 365 dni), symbolicznie sciagana do sredniej,
+    - trening = mediana (calosc - spoczynek - ruch dnia tygodnia) / godzine treningu (90 dni)."""
     key = date.today().isoformat()
     if _MODEL.get("key") == key:
         return _MODEL["v"]
     rows = c.execute(
         "WITH t AS (SELECT date, sum(duration_s)/3600.0 h, sum(calories) cal, count(calories) n_cal, count(*) n "
         "FROM qbot_v2.training_sessions WHERE date >= current_date - %s GROUP BY date), "
-        "e AS (SELECT date, COALESCE(total_kcal_eff,total_kcal) tot FROM qbot_v2.energy_daily WHERE date >= current_date - %s "
-        "AND date < current_date AND quality_status<>'partial') "
-        "SELECT e.date, e.tot, COALESCE(t.h,0) h, t.cal, t.n_cal, t.n FROM e LEFT JOIN t USING (date)", (HIST_DAYS, HIST_DAYS)).fetchall()
-    ne = []
+        "e AS (SELECT date, COALESCE(total_kcal_eff,total_kcal) tot, resting_kcal rest, active_kcal act FROM qbot_v2.energy_daily "
+        "WHERE date >= current_date - %s AND date < current_date AND quality_status<>'partial') "
+        "SELECT e.date, e.tot, e.rest, e.act, COALESCE(t.h,0) h, t.cal, t.n_cal, t.n FROM e LEFT JOIN t USING (date) ORDER BY e.date",
+        (HIST_DAYS, HIST_DAYS)).fetchall()
+    rests = [float(r["rest"]) for r in rows if r["rest"]][-BMR_DAYS:]
+    bmr = st.median(rests) if rests else 2300.0
+    neat = []
     for r in rows:
-        if not r["tot"]:
+        if r["act"] is None:
             continue
         if r["h"] < 0.25:
-            ne.append((r["date"], float(r["tot"])))
+            neat.append((r["date"], float(r["act"])))
         elif r["n"] and r["n_cal"] == r["n"] and r["cal"] and float(r["cal"]) > 0:
-            ne.append((r["date"], float(r["tot"]) - float(r["cal"])))
-    base = st.median([v for _, v in ne]) if len(ne) >= 7 else 2450.0
+            neat.append((r["date"], max(0.0, float(r["act"]) - float(r["cal"]))))
+    nm = st.median([v for _, v in neat]) if len(neat) >= 7 else 150.0
     by_wd = {}
-    for d, v in ne:
+    for d, v in neat:
         by_wd.setdefault(d.weekday(), []).append(v)
-    base_wd = {}
+    neat_wd = {}
     for wd in range(7):
         xs = by_wd.get(wd, [])
-        base_wd[wd] = round((len(xs) * st.median(xs) + SHRINK_N * base) / (len(xs) + SHRINK_N)) if xs else round(base)
+        neat_wd[wd] = round((len(xs) * st.median(xs) + SHRINK_N * nm) / (len(xs) + SHRINK_N)) if xs else round(nm)
+    base_wd = {wd: round(bmr + neat_wd[wd]) for wd in range(7)}
     recent = [r for r in rows if r["date"] >= date.today() - timedelta(days=90)]
-    per_h = [(float(r["tot"]) - base_wd[r["date"].weekday()]) / float(r["h"]) for r in recent if r["h"] > 0.5 and r["tot"]]
-    v = {"base": round(base), "base_wd": base_wd, "n_wd": {k: len(x) for k, x in sorted(by_wd.items())},
-         "per_h": round(st.median(per_h)) if len(per_h) >= 7 else 480, "n_days": len(ne), "n_ride": len(per_h),
-         "since": min((d for d, _ in ne), default=None)}
+    per_h = [(float(r["tot"]) - float(r["rest"] or bmr) - neat_wd[r["date"].weekday()]) / float(r["h"])
+             for r in recent if r["h"] > 0.5 and r["tot"]]
+    v = {"bmr": round(bmr), "neat_wd": neat_wd, "base": round(bmr + nm), "base_wd": base_wd,
+         "n_wd": {k: len(x) for k, x in sorted(by_wd.items())}, "per_h": round(st.median(per_h)) if len(per_h) >= 7 else 480,
+         "n_days": len(neat), "n_ride": len(per_h), "since": min((d for d, _ in neat), default=None)}
     _MODEL.update(key=key, v=v)
     return v
 
@@ -108,10 +115,12 @@ def expend(c, day: date) -> dict:
             frac = min(1.0, max(0.0, (up.hour * 60 + up.minute) / 1440)) if up.date() == day else (1.0 if up.date() > day else 0.0)
             rest = base * (1 - frac) + m["per_h"] * plan_h
             return {"kcal": float(g["e"]) + rest, "src": "prognoza", "so_far": round(float(g["e"])),
-                    "so_far_at": up.strftime("%H:%M"), "train_h": round(plan_h, 2)}
+                    "so_far_at": up.strftime("%H:%M"), "train_h": round(plan_h, 2),
+                    "parts": {"bmr": m["bmr"], "neat": m["neat_wd"].get(day.weekday()), "train": round(m["per_h"] * plan_h)}}
     act = c.execute("SELECT COALESCE(sum(duration_s),0)/3600.0 h FROM qbot_v2.training_sessions WHERE date=%s", (day,)).fetchone()["h"]
     h = float(act) + plan_h
-    return {"kcal": base + m["per_h"] * h, "src": "prognoza", "train_h": round(h, 2)}
+    return {"kcal": base + m["per_h"] * h, "src": "prognoza", "train_h": round(h, 2),
+            "parts": {"bmr": m["bmr"], "neat": m["neat_wd"].get(day.weekday()), "train": round(m["per_h"] * h)}}
 
 
 def calibration(c) -> int:
