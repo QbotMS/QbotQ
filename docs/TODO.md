@@ -398,8 +398,9 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 
 ## [SERCE] Cisnienie, EKG, tetno przy mocy -- zakladka Serce + Albert [ZROBIONE 2026-10-12]
 Withings -> Garmin -> QBot (cisnienie), EKG z ghs.connect.garmin.com, hr_at_power, Forma > Serce, heart_health. docs/SERCE.md
-Do sprawdzenia: pierwszy NOWY pomiar cisnienia i nowe EKG przechodza automatem; wykres w zakladce (Chart.js z cdnjs
-nie wczytal sie w Chrome na Macu 12.10 -- sprawdzic na innym urzadzeniu).
+Do sprawdzenia: pierwszy NOWY pomiar cisnienia i nowe EKG przechodza automatem. Wykres zakladki zweryfikowany 12.10
+(piksele canvasu po czystym przeladowaniu). UWAGA dla testow: JS z AppleScript (Control Chrome) dziala w odizolowanym
+swiecie -- nie widzi window.Chart itp.; sprawdzac DOM/canvas, nie zmienne strony.
 - [2026-10-12] Jedzenie etapy 3-7 (calosc): przypomnienie 21:30, wykres celu wagi (plan+korytarz, wazenia, prognoza), model spalania + cel kcal dnia + dokladka do Brokula pod trening (7:00 i 20:00), pasy 💪 Trening i 📉 Redukcja, piatkowy plan weekendu (AI), podpowiedz lodowki przy delegacji, Open Food Facts jako podpowiedz dla AI. Kalibracja ruszy sama, gdy monitor rozbieznosci bedzie mial dane (najwczesniej 31.10). Dok.: docs/BROKUL.md
 - [2026-10-12] Etap 4 (czesc): cel wagi z etapami 99/95/90 kg (aktywny etap steruje statusem celu i celem bilansu, plan widoczny w Celach), przypomnienie o wazeniu 7:00 (co >=2 dni od realnego wazenia, nie w delegacji/urlopie/wyprawie, nie po jezdzie >=3 h). Dok.: docs/TRENER.md
 - [2026-10-12] Jedzenie: pasy 🔥 Jedzenie i 🕗 Okno 10-20 (zaufanie, przycisk do 12:00 nast. dnia, zwolnienia: trening >=90 min, delegacja/urlop/wyprawa), mrozenie, kamienie milowe; monitor waga vs jedzenie z realnych wazen (body_measurements) w niedzielnym rozliczeniu Trenera; historia Michala jako punkt odniesienia AI, pewnosc pozycji, poprawka odpowiedzia, czytelne potwierdzenie. Dok.: docs/BROKUL.md

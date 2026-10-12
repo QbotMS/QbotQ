@@ -1243,6 +1243,6 @@ Zweryfikowane na zywo. qbot-api zrestartowany. OTWARTE: retry przy 202 w QExt2 (
 Wdrozone: cisnienie Withings -> Garmin -> qbot_v2.blood_pressure, EKG -> qbot_v2.ecg_recording, tetno przy 140-180 W ->
 qbot_v2.hr_at_power, zakladka Forma > Serce (/api/forma/heart, forma-serce.js), Albert heart_health. Testy test_heart 7 OK.
 Sprawdzone na zywo: przeniesienie 4 pomiarow z 2023 (potwierdzone w Garminie), import EKG, odpowiedz Alberta,
-ciśnienie opon dalej idzie do tire_pressure. Otwarte: wykres w zakladce niezweryfikowany wizualnie (Chart.js nie
-wczytal sie w Chrome na Macu), pierwsza nowa seria cisnienia. docs/SERCE.md
+ciśnienie opon dalej idzie do tire_pressure. Wykres zakladki zweryfikowany (canvas narysowany po czystym przeladowaniu).
+Otwarte: pierwsza nowa seria cisnienia i nowe EKG przez automat. docs/SERCE.md
 
