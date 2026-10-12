@@ -315,6 +315,52 @@ def build_router(current_user, owner_user) -> APIRouter:
                 "order_end": _ser(M.delivery_end()), "session_alive": bool(st.get("alive")),
                 "last_import": st.get("last_import"), "access_url": "/brokul-dostep", "history_from": "2026-10-12"}
 
+    @r.get("/body")
+    def body_comp(request: Request, days: int = 365):
+        """Sklad ciala z Withings/Garmin (body_measurements): waga, % tluszczu, kg tluszczu, kg miesni, woda.
+        Przelom serii: 12.10.2026 Withings 'Athlete mode' (inny algorytm -> skok, nie zmiana ciala).
+        Podejrzane: dzien po jezdzie >= 3 h albo skok % tluszczu > 1,5 pkt wzgledem poprzedniego pomiaru w tym samym trybie."""
+        need_user(request)
+        import qbot_food_plan as FP
+        days = max(30, min(730, days))
+        BREAK = date(2026, 10, 12)
+        with FP._conn() as c:
+            rows = c.execute("SELECT date, weight_kg, body_fat_pct, muscle_mass_kg, body_water_pct, bone_mass_kg, source_type "
+                             "FROM qbot_v2.body_measurements WHERE weight_kg IS NOT NULL AND date >= current_date - %s ORDER BY date",
+                             (days,)).fetchall()
+            long_rides = {x["date"] for x in c.execute("SELECT date FROM qbot_v2.training_sessions WHERE date >= current_date - %s - 1 "
+                                                       "GROUP BY date HAVING max(duration_s) >= 10800", (days,)).fetchall()}
+        out, prev = [], {}
+        for r0 in rows:
+            mode = "athlete" if r0["date"] >= BREAK else "normal"
+            fp = float(r0["body_fat_pct"]) if r0["body_fat_pct"] is not None else None
+            w = float(r0["weight_kg"])
+            sus = []
+            if (r0["date"] - timedelta(days=1)) in long_rides:
+                sus.append("dzień po jeździe ≥3 h")
+            if fp is not None and prev.get(mode) is not None and abs(fp - prev[mode]) > 1.5:
+                sus.append("skok %+.1f pkt" % (fp - prev[mode]))
+            if fp is not None:
+                prev[mode] = fp
+            out.append({"date": r0["date"].isoformat(), "weight": round(w, 2), "fat_pct": fp,
+                        "fat_kg": round(w * fp / 100, 1) if fp is not None else None,
+                        "muscle_kg": round(float(r0["muscle_mass_kg"]), 1) if r0["muscle_mass_kg"] is not None else None,
+                        "water_pct": float(r0["body_water_pct"]) if r0["body_water_pct"] is not None else None,
+                        "mode": mode, "suspect": sus, "source": r0["source_type"]})
+        comp = [x for x in out if x["fat_pct"] is not None]
+        def avg(xs, k):
+            v = [x[k] for x in xs if x[k] is not None]
+            return round(sum(v) / len(v), 1) if v else None
+        summ = {}
+        for mode in ("normal", "athlete"):
+            xs = [x for x in comp if x["mode"] == mode and not x["suspect"]]
+            if xs:
+                summ[mode] = {"n": len(xs), "last3_fat_pct": avg(xs[-3:], "fat_pct"), "last3_fat_kg": avg(xs[-3:], "fat_kg"),
+                              "last3_muscle_kg": avg(xs[-3:], "muscle_kg"), "first": xs[0]["date"], "last": xs[-1]["date"],
+                              "d_fat_kg": round(xs[-1]["fat_kg"] - xs[0]["fat_kg"], 1) if len(xs) > 1 else None,
+                              "d_muscle_kg": round((xs[-1]["muscle_kg"] or 0) - (xs[0]["muscle_kg"] or 0), 1) if len(xs) > 1 else None}
+        return {"points": out, "break": BREAK.isoformat(), "summary": summ, "height_cm": 177}
+
     @r.get("/calendar")
     def calendar(request: Request, start: str, end: str):
         """Kafelki kalendarza Trenera: zjedzone vs cel i zamkniecie dnia (tylko dni od startu jedzenia)."""

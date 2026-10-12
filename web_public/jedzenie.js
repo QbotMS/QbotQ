@@ -362,6 +362,50 @@
     s += "<line x1='" + tx + "' x2='" + tx + "' y1='" + pt + "' y2='" + (H - pb) + "' stroke='var(--muted)' stroke-dasharray='2 3'/><text x='" + tx + "' y='" + (pt - 6) + "' font-size='10' text-anchor='middle' fill='var(--muted)'>dziś</text>";
     return s + "</svg><div class='legend'><span>– – plan z korytarzem ±1 kg</span><span>● ważenia</span><span>··· prognoza przy obecnym tempie</span></div>";
   }
+  /* SKLAD CIALA (2026-10-12): kg tluszczu i miesni, % tluszczu, przelom 'Athlete mode', podejrzane pomiary */
+  function loadBody() {
+    j("/api/jedzenie/body?days=365").then(renderBody).catch(function (e) { var c = $("bodycard"); if (c) c.innerHTML += "<p class='msg'>" + esc(e.message) + "</p>"; });
+  }
+  function renderBody(x) {
+    var c = $("bodycard"); if (!c) return;
+    var pts = x.points.filter(function (p) { return p.fat_pct != null; });
+    if (!pts.length) { c.innerHTML = "<div class='ttl'><h2>Skład ciała</h2></div><p class='empty'>Brak pomiarów składu ciała.</p>"; return; }
+    var W = 760, H = 230, pl = 40, pr = 44, pt = 16, pb = 22;
+    var ts = pts.map(function (p) { return Date.parse(p.date); }), t0 = Math.min.apply(null, ts), t1 = Math.max.apply(null, ts.concat([Date.parse(x["break"])]));
+    var kg = []; pts.forEach(function (p) { if (p.fat_kg != null) kg.push(p.fat_kg); if (p.muscle_kg != null) kg.push(p.muscle_kg); });
+    var k0 = Math.floor(Math.min.apply(null, kg) - 2), k1 = Math.ceil(Math.max.apply(null, kg) + 2);
+    var f = pts.map(function (p) { return p.fat_pct; }), f0 = Math.floor(Math.min.apply(null, f) - 1), f1 = Math.ceil(Math.max.apply(null, f) + 1);
+    function X(d) { return pl + (Date.parse(d) - t0) / Math.max(1, t1 - t0) * (W - pl - pr); }
+    function YK(v) { return pt + (k1 - v) / Math.max(1, k1 - k0) * (H - pt - pb); }
+    function YF(v) { return pt + (f1 - v) / Math.max(1, f1 - f0) * (H - pt - pb); }
+    function ln(key, Y, mode) { var a = pts.filter(function (p) { return p[key] != null && p.mode === mode; }); return a.length > 1 ? "M" + a.map(function (p) { return X(p.date).toFixed(1) + " " + Y(p[key]).toFixed(1); }).join(" L") : ""; }
+    var s = "<svg viewBox='0 0 " + W + " " + H + "' style='width:100%;max-width:900px;height:auto;display:block;color:inherit' role='img' aria-label='Skład ciała: kg tłuszczu, kg mięśni, procent tłuszczu'>";
+    for (var v = k0; v <= k1; v += 5) s += "<line x1='" + pl + "' x2='" + (W - pr) + "' y1='" + YK(v).toFixed(1) + "' y2='" + YK(v).toFixed(1) + "' stroke='var(--line)'/><text x='" + (pl - 4) + "' y='" + (YK(v) + 3.5).toFixed(1) + "' font-size='10' text-anchor='end' fill='var(--muted)'>" + v + "</text>";
+    [f0, (f0 + f1) / 2, f1].forEach(function (v) { s += "<text x='" + (W - pr + 4) + "' y='" + (YF(v) + 3.5).toFixed(1) + "' font-size='10' fill='var(--purple)'>" + n1(v) + "%</text>"; });
+    ["normal", "athlete"].forEach(function (m) {
+      s += "<path d='" + ln("muscle_kg", YK, m) + "' fill='none' stroke='var(--blue)' stroke-width='2'/>" +
+           "<path d='" + ln("fat_kg", YK, m) + "' fill='none' stroke='var(--accent)' stroke-width='2'/>" +
+           "<path d='" + ln("fat_pct", YF, m) + "' fill='none' stroke='var(--purple)' stroke-width='1.4' stroke-dasharray='4 3'/>";
+    });
+    pts.forEach(function (p) {
+      var sus = p.suspect.length, tt = dm(p.date) + ": tłuszcz " + n1(p.fat_pct) + "% (" + n1(p.fat_kg) + " kg), mięśnie " + n1(p.muscle_kg) + " kg, waga " + n1(p.weight) + " kg" + (sus ? " – podejrzany: " + p.suspect.join(", ") : "") + (p.mode === "athlete" ? " · tryb sportowca" : "");
+      [["fat_kg", YK, "var(--accent)"], ["muscle_kg", YK, "var(--blue)"]].forEach(function (q) { if (p[q[0]] == null) return;
+        s += "<circle cx='" + X(p.date).toFixed(1) + "' cy='" + q[1](p[q[0]]).toFixed(1) + "' r='3.2' fill='" + (sus ? "var(--card)" : q[2]) + "' stroke='" + q[2] + "' stroke-width='1.5'><title>" + esc(tt) + "</title></circle>"; });
+    });
+    var bx = X(x["break"]).toFixed(1);
+    s += "<line x1='" + bx + "' x2='" + bx + "' y1='" + pt + "' y2='" + (H - pb) + "' stroke='var(--muted)' stroke-dasharray='3 3'/><text x='" + bx + "' y='" + (pt - 4) + "' font-size='10' text-anchor='end' fill='var(--muted)'>tryb sportowca →</text>";
+    s += "<text x='" + pl + "' y='" + (H - 6) + "' font-size='10' fill='var(--muted)'>" + dm(pts[0].date) + "." + pts[0].date.slice(0, 4) + "</text><text x='" + (W - pr) + "' y='" + (H - 6) + "' font-size='10' text-anchor='end' fill='var(--muted)'>" + dm(pts[pts.length - 1].date) + "</text></svg>";
+    var sm = x.summary, last = pts[pts.length - 1], cur = sm.athlete || sm.normal, h = "";
+    h += "<div class='ttl'><h2>Skład ciała</h2><span class='sub'>Withings · bioimpedancja · " + pts.length + " pomiarów</span></div>";
+    h += "<div class='kv' style='max-width:520px'><span>Ostatni pomiar (" + dm(last.date) + ")</span><span>tłuszcz " + n1(last.fat_pct) + "% · " + n1(last.fat_kg) + " kg · mięśnie " + n1(last.muscle_kg) + " kg</span>" +
+      (cur ? "<span>Średnia z 3 ost. (" + (sm.athlete ? "tryb sportowca" : "tryb zwykły") + ")</span><span>tłuszcz " + n1(cur.last3_fat_pct) + "% · " + n1(cur.last3_fat_kg) + " kg · mięśnie " + n1(cur.last3_muscle_kg) + " kg</span>" : "") +
+      (cur && cur.d_fat_kg != null ? "<span>Zmiana " + dm(cur.first) + "–" + dm(cur.last) + "</span><span>tłuszcz " + (cur.d_fat_kg > 0 ? "+" : "") + n1(cur.d_fat_kg) + " kg · mięśnie " + (cur.d_muscle_kg > 0 ? "+" : "") + n1(cur.d_muscle_kg) + " kg</span>" : "") + "</div>";
+    h += "<div class='chartbox' style='margin-top:8px'>" + s + "</div>";
+    h += "<div class='legend'><span><i style='background:var(--accent)'></i>tłuszcz kg</span><span><i style='background:var(--blue)'></i>mięśnie kg</span><span><i style='background:var(--purple)'></i>tłuszcz % (prawa oś)</span><span>○ pomiar podejrzany</span></div>";
+    h += "<p class='note'>Bioimpedancja: ufaj trendowi z 3–4 tygodni, nie pojedynczym odczytom (zmiany < 1–1,5 pkt to szum). Od 12.10.2026 waga liczy w trybie sportowca – trend liczony osobno przed i po zmianie.</p>";
+    c.innerHTML = h;
+  }
+
   function renderBilans(x) {
     var rb = "<div class='rng'>" + [45, 90, 180].map(function (d) { return "<button class='btn" + (!B.start && B.range === d ? " on" : "") + "' data-r='" + d + "'>" + d + " dni</button>"; }).join("") +
       "<span class='sub' style='margin-left:6px'>od</span><input type='date' id='bfrom' value='" + (B.start || x.start) + "'><span class='sub'>do</span><input type='date' id='bto' value='" + (B.end || x.end) + "'><button class='btn" + (B.start ? " on" : "") + "' id='bgo'>Pokaż</button></div>";
@@ -381,7 +425,9 @@
       "<div class='card'><div class='ttl'><h2>Tygodnie</h2></div>" + (x.weeks.length ? "<table class='tb'><tr><th>Tydzień od</th><th class='r'>Zamknięte dni</th><th class='r'>Śr. bilans</th></tr>" +
         x.weeks.slice().reverse().map(function (w) { var ok = w.avg_balance >= x.balance_target - 300 && w.avg_balance <= x.balance_target + 250; return "<tr><td>" + dm(w.week) + "</td><td class='r'>" + w.days + "</td><td class='r' style='color:var(--" + (ok ? "good" : "bad") + ")'>" + n0(w.avg_balance) + "</td></tr>"; }).join("") + "</table>"
         : "<p class='empty'>Jeszcze brak zamkniętych dni z pełnym spalaniem.</p>") + "</div></div></div>";
+    h += "<div class='card' style='margin-top:12px' id='bodycard'><div class='ttl'><h2>Skład ciała</h2><span class='sub'>Withings · bioimpedancja</span></div><p class='empty'>Wczytuję…</p></div>";
     $("bilans").innerHTML = h;
+    loadBody();
     $("bilans").querySelectorAll("[data-r]").forEach(function (b) { b.onclick = function () { B.range = +b.dataset.r; B.start = B.end = null; loadBilans(); }; });
     $("bgo").onclick = function () { var a = $("bfrom").value, b = $("bto").value; if (!a) return; B.start = a; B.end = b || null; loadBilans(); };
     $("bilans").querySelectorAll("[data-s]").forEach(function (b) { b.onclick = function () { B.on[b.dataset.s] = !B.on[b.dataset.s]; renderBilans(B.data); }; });
