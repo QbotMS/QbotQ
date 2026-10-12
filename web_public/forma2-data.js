@@ -759,7 +759,7 @@ function renderTrendy(){
     if(show.wt)ds.push({label:"waga (kg)",data:wtD,borderColor:"#e67e22",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"yw2"});
     if(show.bal)ds.push({label:"waga z bilansu (kg)",_bal:true,data:balD,borderColor:"#14b8a6",borderWidth:2.2,borderDash:[5,3],pointRadius:0,pointHoverRadius:4,tension:0.2,spanGaps:false,fill:false,yAxisID:"yw2"});
     if(show.rdy)ds.push({label:"gotowość",data:rdyD,borderColor:"#22c55e",borderWidth:2,borderDash:[6,3],pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"ywr"});
-    var scalesW={x:{display:false},yw:{position:"left",ticks:{color:txtCol,font:{size:10}},grid:{color:gridCol}}};
+    var scalesW={x:{display:false},yw:{display:!!(show.sleep||show.hrv||show.rhr),position:"left",ticks:{color:txtCol,font:{size:10}},grid:{color:gridCol}}};
     if(hasRight)scalesW.yw2={position:"right",ticks:{color:"#e67e22",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"kg",color:"#e67e22",font:{size:10}}};
     /* bilans skumulowany rysowany jako 'waga z bilansu' na osi wagi (yw2) - bez osobnej osi kcal */
     if(show.rdy)scalesW.ywr={position:"right",ticks:{color:"#22c55e",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"gotowość",color:"#22c55e",font:{size:10}}};
