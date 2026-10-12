@@ -108,6 +108,14 @@ Z harmonogramu tylko DWIE wiadomości dziennie, zwięzłe (~8 linijek), szczegó
 - **Normy składników** (`qbot_food_plan.norms`): białko 160 g, tłuszcz min. 70 g, węgle = reszta kcal celu, cukry ≤10%
   energii, nasycone ≤10% energii, sól ≤5 g.
 
+## Analiza (12.10.2026 – przebudowa: tygodniami, wstecz i wzorce)
+- Zakładka Analiza = tydzień pn–nd (‹ ›), `GET /api/jedzenie/week?week=` (`qbot_food_api.week_analysis`):
+  budżet tygodnia (plan deficytu z `week_deficits` tylko dni ≥ 10.10 vs realizacja = spalone − zjedzone w dniach zamkniętych z realnym spalaniem; ile zostało na dzień; porównanie z poprzednim tygodniem),
+  dni pn–nd (plan / było / status: w planie, za mało deficytu, deficyt za mocny), składniki (białko z całego jedzenia; cukry i sól tylko z diety – jawnie),
+  wzorce z 4 tygodni (odchylenie od celu: dni robocze vs weekend, z jazdą vs bez, po dobrej vs słabej nocy z `qbot_sleep_daily`; min. 3 dni w grupie), złamane okno, top produkty spoza diety wg kcal.
+- Zalecenia AI tygodnia: `food_week_ai` (sql/food_v5.sql), same w ndz od 21:00 (tick Brokuła), przycisk „Przelicz”; bez wiadomości.
+- „🎯 Co jeszcze zjeść” przeniesione do karty dnia (zakładka Dni, tylko dziś) – `/api/jedzenie/analysis`.
+
 ## Obwody ciała (12.10.2026)
 - Tabela `qbot_v2.body_circumference` (sql/food_v4.sql): talia (wymagana), biodra, klatka, udo, ramię, szyja – cm, jeden wpis na dzień.
 - Wpis: Jedzenie → **Dni** → karta dnia „📏 Obwody” (od 12.10 wieczorem; wcześniej kafelek w Bilans i waga). POST /api/jedzenie/circ; „Usuń” = usunięcie dnia.

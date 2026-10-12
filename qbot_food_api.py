@@ -169,6 +169,138 @@ def analysis(day: date) -> dict:
     return {"today": today_part, "week": week, "generated_at": now.isoformat()}
 
 
+def _closed_real(c, FP, d):
+    """(zjedzone, spalone, cel) dla zamknietego dnia z realnym spalaniem, inaczej None."""
+    cl = c.execute("SELECT closed_at FROM qbot_v2.food_day WHERE day=%s", (d,)).fetchone()
+    if not (cl and cl["closed_at"]):
+        return None
+    ex = FP.expend(c, d)
+    if ex["src"] != "realne":
+        return None
+    k = c.execute("SELECT sum(i.kcal) k, sum(i.protein_g) p, sum(i.carbs_g) cb, sum(i.fat_g) f FROM qbot_v2.intake_logs l "
+                  "JOIN qbot_v2.intake_items i ON i.intake_log_id=l.id WHERE l.date=%s", (d,)).fetchone()
+    if not k or not k["k"]:
+        return None
+    return {"kcal": float(k["k"]), "protein_g": float(k["p"] or 0), "carbs_g": float(k["cb"] or 0), "fat_g": float(k["f"] or 0),
+            "expend": float(ex["kcal"]), "target": FP.target_for(ex, FP.calibration(c), FP.target_balance(c), d)}
+
+
+def week_analysis(ws: date) -> dict:
+    """Analiza tygodnia pn-nd: budzet deficytu (plan vs realizacja), skladniki, wzorce z 4 tygodni, top produkty spoza diety."""
+    import qbot_food_plan as FP
+    import qbot_food_streaks as S
+    today = datetime.now(TZ).date()
+    ws = ws - timedelta(days=ws.weekday())
+    we = ws + timedelta(days=6)
+    plan0 = FP.week_deficits(ws, actuals=False)
+    days, real_sum, left_days = [], 0.0, 0
+    with FP._conn() as c:
+        for i in range(7):
+            d = ws + timedelta(days=i)
+            pd = int(plan0.get(d, 0))
+            cr = _closed_real(c, FP, d) if d < today else None
+            st, ad = None, None
+            if cr:
+                ad = round(cr["expend"] - cr["kcal"])
+                real_sum += ad
+                st = "over" if ad < pd - 150 else ("under" if ad > pd + 300 else "ok")
+            elif d >= today or not c.execute("SELECT 1 FROM qbot_v2.food_day WHERE day=%s AND closed_at IS NOT NULL", (d,)).fetchone():
+                if d >= today:
+                    left_days += 1
+                st = "open" if d < today else "future"
+            sw = c.execute("SELECT count(*) n FROM qbot_v2.food_entries e WHERE e.day=%s AND e.status='logged' AND (e.raw_text ~* %s OR e.items::text ~* %s)",
+                           (d, SWEET_RE, SWEET_RE)).fetchone()["n"]
+            wsn, _ = S.window_status(c, d) if d >= S.START and d <= today else (None, None)
+            days.append({"day": d.isoformat(), "plan_def": pd, "act_def": ad, "status": st, "sweets": sw, "window": wsn,
+                         "protein_g": round(cr["protein_g"]) if cr else None, "kcal": round(cr["kcal"]) if cr else None,
+                         "carbs_g": round(cr["carbs_g"]) if cr else None, "fat_g": round(cr["fat_g"]) if cr else None})
+        plan_total = sum(v for k, v in plan0.items() if k >= S.START)   # dni sprzed startu logowania nie wchodza do budzetu
+        closed = [x for x in days if x["act_def"] is not None]
+        rem = plan_total - real_sum
+        # poprzedni tydzien (realizacja)
+        pws, prev_sum, prev_n = ws - timedelta(days=7), 0.0, 0
+        pplan = FP.week_deficits(pws, actuals=False)
+        for i in range(7):
+            cr = _closed_real(c, FP, pws + timedelta(days=i))
+            if cr:
+                prev_sum += cr["expend"] - cr["kcal"]
+                prev_n += 1
+        # skladniki z diety (cukry, sol) - tylko dni z Brokulem
+        bro = c.execute("SELECT COALESCE(eaten_day, day) d, sum(sugars_g) su, sum(salt_g) sl, sum(sat_fat_g) sa FROM qbot_v2.brokul_meals "
+                        "WHERE status='eaten' AND COALESCE(eaten_day, day) BETWEEN %s AND %s GROUP BY 1", (ws, we)).fetchall()
+        # wzorce: 28 dni do konca tygodnia (lub dzis)
+        pe = min(we, today - timedelta(days=1))
+        pa = pe - timedelta(days=27)
+        rows = []
+        d = max(pa, S.START)
+        while d <= pe:
+            cr = _closed_real(c, FP, d)
+            if cr:
+                mins, _ = FP._train_kcal(c, d, FP.model(c))
+                sl = c.execute("SELECT sleep_score FROM qbot_v2.qbot_sleep_daily WHERE date=%s AND sleep_score IS NOT NULL ORDER BY imported_at DESC LIMIT 1", (d,)).fetchone()
+                fd = c.execute("SELECT window_ok FROM qbot_v2.food_day WHERE day=%s", (d,)).fetchone()
+                rows.append({"day": d, "dev": cr["kcal"] - cr["target"], "ride": mins >= FP.TRAIN_MIN, "weekend": d.weekday() >= 5,
+                             "sleep": float(sl["sleep_score"]) if sl else None, "win_broken": bool(fd and fd["window_ok"] is False)})
+            d += timedelta(days=1)
+        ents = c.execute("SELECT items, scale FROM qbot_v2.food_entries WHERE status='logged' AND day BETWEEN %s AND %s", (pa, pe)).fetchall()
+    def grp(label_a, fa, label_b, fb):
+        A0 = [r["dev"] for r in rows if fa(r)]
+        B0 = [r["dev"] for r in rows if fb(r)]
+        ok = len(A0) >= 3 and len(B0) >= 3
+        return {"a": label_a, "b": label_b, "na": len(A0), "nb": len(B0), "ok": ok,
+                "dev_a": round(sum(A0) / len(A0)) if A0 else None, "dev_b": round(sum(B0) / len(B0)) if B0 else None}
+    patterns = [grp("dni robocze", lambda r: not r["weekend"], "weekend", lambda r: r["weekend"]),
+                grp("dni z jazdą", lambda r: r["ride"], "bez jazdy", lambda r: not r["ride"]),
+                grp("po dobrej nocy (sen ≥ 70)", lambda r: r["sleep"] is not None and r["sleep"] >= 70, "po słabej nocy (sen < 70)",
+                    lambda r: r["sleep"] is not None and r["sleep"] < 70)]
+    tops = {}
+    for e in ents:
+        sc = float(e["scale"] or 1)
+        for it in (e["items"] or []):
+            nm = (it.get("short") or it.get("name") or "?").strip().lower()[:40]
+            t = tops.setdefault(nm, {"name": it.get("short") or it.get("name") or "?", "kcal": 0.0, "n": 0})
+            t["kcal"] += float(it.get("kcal") or 0) * sc
+            t["n"] += 1
+    top = sorted(tops.values(), key=lambda x: -x["kcal"])[:6]
+    av = lambda k: round(sum(x[k] for x in closed) / len(closed)) if closed else None
+    return {"week": ws.isoformat(), "week_end": we.isoformat(), "today": today.isoformat(),
+            "prev": (ws - timedelta(days=7)).isoformat(), "next": (ws + timedelta(days=7)).isoformat() if ws + timedelta(days=7) <= today else None,
+            "budget": {"plan": int(plan_total), "real": round(real_sum), "remaining": round(rem), "left_days": left_days,
+                       "per_day": round(rem / left_days) if left_days else None, "closed": len(closed),
+                       "prev_real": round(prev_sum), "prev_plan": int(sum(v for k, v in pplan.items() if k >= S.START)), "prev_closed": prev_n},
+            "days": days,
+            "nutr": {"protein": av("protein_g"), "carbs": av("carbs_g"), "fat": av("fat_g"), "kcal": av("kcal"), "protein_target": FP.PROTEIN_TARGET,
+                     "diet_days": len(bro), "sugars_diet": round(sum(float(b["su"] or 0) for b in bro) / len(bro)) if bro else None,
+                     "salt_diet": round(sum(float(b["sl"] or 0) for b in bro) / len(bro), 1) if bro else None,
+                     "sweets_days": sum(1 for x in days if x["sweets"]), "window_ok": sum(1 for x in days if x["window"] == "ok"),
+                     "window_broken": sum(1 for x in days if x["window"] == "broken")},
+            "patterns": {"from": pa.isoformat(), "to": pe.isoformat(), "n_days": len(rows), "groups": patterns,
+                         "win_broken": sum(1 for r in rows if r["win_broken"]), "top": [{"name": t["name"], "kcal": round(t["kcal"]), "n": t["n"]} for t in top]}}
+
+
+def week_ai(ws: date, force: bool = False) -> dict | None:
+    """Zalecenia AI tygodnia (na policzonych liczbach). Zapis w food_week_ai; bez force zwraca istniejace."""
+    import qbot_food_log as F
+    ws = ws - timedelta(days=ws.weekday())
+    with F._conn() as c:
+        row = c.execute("SELECT payload, created_at FROM qbot_v2.food_week_ai WHERE week=%s", (ws,)).fetchone()
+    if row and not force:
+        return dict(row["payload"], created_at=row["created_at"].isoformat())
+    res = json.loads(json.dumps(week_analysis(ws), default=_ser))
+    prompt = ("Jesteś dietetykiem sportowym. Użytkownik: mężczyzna ~104 kg, redukcja do 90 kg (budżet tygodniowy deficytu), kolarz gravel, "
+              "catering Brokuł w dni robocze, weekend na mieście. Dostajesz POLICZONE dane tygodnia i wzorce z 4 tygodni (nie licz własnych liczb). "
+              "Zwróć WYŁĄCZNIE JSON: {\"tydzien\": [\"...\"], \"wzorce\": [\"...\"], \"nastepny\": [\"...\"]}. "
+              "tydzien: maks. 3 krótkie wnioski o tym tygodniu; wzorce: maks. 2 (tylko gdy dane wystarczają, inaczej pusta lista); "
+              "nastepny: maks. 3 konkretne działania na kolejny tydzień. Prosty język, bez moralizowania.")
+    j = F._ai_json(prompt, [{"type": "text", "text": json.dumps(res, ensure_ascii=False)}])
+    pay = {k: [str(x)[:300] for x in (j.get(k) or [])][:3] for k in ("tydzien", "wzorce", "nastepny")}
+    with F._conn() as c:
+        c.execute("INSERT INTO qbot_v2.food_week_ai (week, payload) VALUES (%s,%s) ON CONFLICT (week) DO UPDATE SET payload=EXCLUDED.payload, created_at=now()",
+                  (ws, json.dumps(pay, ensure_ascii=False)))
+        c.commit()
+    return dict(pay, created_at=datetime.now(TZ).isoformat())
+
+
 def plan_ctx() -> dict:
     import qbot_food_plan as FP
     with FP._conn() as c:
@@ -417,6 +549,31 @@ def build_router(current_user, owner_user) -> APIRouter:
                       (d, vals["waist_cm"], vals["hips_cm"], vals["chest_cm"], vals["thigh_cm"], vals["arm_cm"], vals["neck_cm"]))
             c.commit()
         return {"ok": True, "date": d.isoformat(), **vals}
+
+    @r.get("/week")
+    def week_get(request: Request, week: str | None = None):
+        """Analiza tygodnia (pn-nd) + zapisane zalecenia AI tygodnia."""
+        need_user(request)
+        ws = _d(week) if week else datetime.now(TZ).date()
+        res = week_analysis(ws)
+        try:
+            res["ai"] = week_ai(_d(res["week"]), force=False) if False else None
+            import qbot_food_log as F
+            with F._conn() as c:
+                row = c.execute("SELECT payload, created_at FROM qbot_v2.food_week_ai WHERE week=%s", (_d(res["week"]),)).fetchone()
+            res["ai"] = dict(row["payload"], created_at=row["created_at"].isoformat()) if row else None
+        except Exception:
+            res["ai"] = None
+        return json.loads(json.dumps(res, default=_ser))
+
+    @r.post("/week/ai")
+    async def week_ai_post(request: Request):
+        need_owner(request)
+        b = await body(request)
+        try:
+            return {"ok": True, "ai": week_ai(_d(b.get("week")) if b.get("week") else datetime.now(TZ).date(), force=True)}
+        except Exception as ex:
+            raise HTTPException(status_code=502, detail="AI niedostępne: %s" % type(ex).__name__)
 
     @r.get("/calendar")
     def calendar(request: Request, start: str, end: str):

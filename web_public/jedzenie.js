@@ -1,5 +1,5 @@
 /* JEDZENIE (2026-10-12) - strona /jedzenie.html. Dane i zapis: /api/jedzenie/* (qbot_food_api.py). Dok.: docs/BROKUL.md
-   Zakladki: Dni (karta dnia: Brokul, lodowka, wpisy poza dieta, okno, zamkniecie) | Pasy | Bilans i waga | Menu Brokula. */
+   Zakladki: Dni (karta dnia: Brokul, lodowka, wpisy, co jeszcze zjesc, okno, obwody) | Analiza (tydzien) | Passa | Bilans i waga | Menu Brokula. */
 (function () {
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
@@ -191,6 +191,7 @@
           "<button class='btn" + (w.state === "broken" ? " pri" : "") + "' data-a='win' data-v='0'" + (d.late ? " disabled" : "") + ">✖ Złamane</button></div>" +
           (d.late ? "<div class='note'>Termin minął (12:00 następnego dnia).</div>" : "<div class='note'>Przed 10:00 tylko czarna kawa, po 20:00 nic. Zwolnione: trening ≥1,5 h, delegacja, urlop, wyprawa.</div>") : "") + "</div>");
     }
+    if (d.day === S.today) R.splice(1, 0, "<div class='card' id='todo'><div class='ttl'><h2>🎯 Co jeszcze zjeść</h2></div><p class='empty'>Liczę…</p></div>");
     if (!fut) {  /* obwody: karta = dane dnia + zmiana od poprzedniego pomiaru; 'Zmierz' otwiera okno z pustymi polami */
       var cz = (S.circ || {})[d.day], cdates = Object.keys(S.circ || {}).sort();
       var prevD = cdates.filter(function (x) { return x < d.day; }).slice(-1)[0], prev = prevD ? S.circ[prevD] : null;
@@ -208,6 +209,7 @@
     }
     $("dayview").innerHTML = "<div class='dgrid'><div class='stack'>" + L.join("") + "</div><div class='stack'>" + R.join("") + "</div></div>";
     wireDay(d);
+    if (d.day === S.today) loadTodo(d.day);
   }
   function wireDay(d) {
     var V = $("dayview");
@@ -270,51 +272,71 @@
     $("pasy").innerHTML = html;
   }
 
-  /* ------------------------------------------------------------ ANALIZA */
-  var A = { day: null };
-  function loadAnaliza(day) {
-    var t = new Date(), loc = t.getFullYear() + "-" + ("0" + (t.getMonth() + 1)).slice(-2) + "-" + ("0" + t.getDate()).slice(-2);
-    A.day = day || A.day || S.sel || S.today || loc;  /* wejscie prosto w #analiza: dni jeszcze sie wczytuja */
+  /* ------------------------------------------------------------ ANALIZA (tygodniami, pn-nd) - 2026-10-12 */
+  var A = { week: null };
+  function shiftDay(iso, n) { var d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
+  function loadAnaliza(week) {
+    if (week) A.week = week;
     $("analiza").classList.add("busy");
-    j("/api/jedzenie/analysis?day=" + A.day).then(renderAnaliza).catch(function (e) { $("analiza").innerHTML = "<p class='msg'>" + esc(e.message) + "</p>"; })
+    j("/api/jedzenie/week" + (A.week ? "?week=" + A.week : "")).then(function (x) { A.week = x.week; renderAnaliza(x); })
+      .catch(function (e) { $("analiza").innerHTML = "<p class='msg'>" + esc(e.message) + "</p>"; })
       .then(function () { $("analiza").classList.remove("busy"); });
   }
-  function shiftDay(iso, n) { var d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
-  function jpill(ok, txt) { return "<span class='jg " + (ok ? "ok" : "high") + "'>" + txt + "</span>"; }
+  function sgn(v) { return v == null ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + n0(Math.abs(v)); }
   function renderAnaliza(x) {
-    var t = x.today, w = x.week, nm = t.norms, pr = t.projected;
-    var h = "<div class='wknav' style='margin-bottom:10px'><button class='btn' data-ad='-1' aria-label='Poprzedni dzień'>‹</button><b>" + wd(t.day) + " " + dm(t.day) +
-      (t.day === S.today ? " · dziś" : "") + "</b><button class='btn' data-ad='1' aria-label='Następny dzień'>›</button></div>";
-    var left = t.left_kcal;
-    h += "<div class='g2'><div class='card'><div class='ttl'><h2>Co jeszcze zjeść</h2><span class='sub'>cel ~" + n0(t.target) + " kcal</span></div>" +
-      "<div class='big2'>" + (left >= 0 ? "zostaje ~" + n0(left) : "ponad o ~" + n0(-left)) + " <span class='sub' style='font-size:15px'>kcal</span></div>" +
-      "<div class='note'>Liczone z tym, co już zjedzone (" + n0(t.eaten.kcal) + " kcal)" + (t.pending_meals.length ? " i z zaplanowanym Brokułem: " + esc(t.pending_meals.join(", ")) + " (" + n0(t.pending.kcal) + " kcal)" : "") + ".</div>" +
-      "<ul class='recs'>" + t.recs.map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>" +
-      "<table class='nt'><tr><td>Białko</td><td class='r'>" + n0(pr.protein_g) + " / " + nm.protein_g + " g</td><td class='r'>" + jpill(pr.protein_g >= nm.protein_g * 0.9, pr.protein_g >= nm.protein_g * 0.9 ? "ok" : "za mało") + "</td></tr>" +
-      "<tr><td>Węglowodany</td><td class='r'>" + n0(pr.carbs_g) + " / ~" + nm.carbs_g + " g</td><td class='r'><span class='muted'>reszta kcal</span></td></tr>" +
-      "<tr><td>Tłuszcz</td><td class='r'>" + n0(pr.fat_g) + " / min. " + nm.fat_min_g + " g</td><td class='r'>" + jpill(pr.fat_g >= nm.fat_min_g, pr.fat_g >= nm.fat_min_g ? "ok" : "za mało") + "</td></tr>" +
-      "<tr><td>Cukry (dieta)</td><td class='r'>" + n0(t.sugars_diet) + " / maks. " + nm.sugars_max_g + " g</td><td class='r'>" + jpill(t.sugars_diet < nm.sugars_max_g * 0.9, t.sugars_diet < nm.sugars_max_g * 0.9 ? "ok" : "limit") + "</td></tr>" +
-      "<tr><td>Nasycone (dieta)</td><td class='r'>" + n0(t.sat_diet) + " / maks. " + nm.sat_max_g + " g</td><td class='r'>" + jpill(t.sat_diet <= nm.sat_max_g, t.sat_diet <= nm.sat_max_g ? "ok" : "za dużo") + "</td></tr>" +
-      "<tr><td>Sól (dieta)</td><td class='r'>" + n1(t.salt_diet) + " / maks. 5 g</td><td class='r'>" + jpill(t.salt_diet <= 5, t.salt_diet <= 5 ? "ok" : "za dużo") + "</td></tr></table>" +
-      "<div class='note'>Cukry, sól i nasycone znamy tylko z Brokuła (jedzenie spoza diety ma kcal i makra).</div></div>";
-    var av = w.avg;
-    h += "<div class='card'><div class='ttl'><h2>Tydzień " + dm(w.from) + "–" + dm(w.to) + "</h2><span class='sub'>zamknięte " + w.closed + "/" + w.n + " dni</span></div>" +
-      (w.closed ? "<table class='nt'><tr><td>Średnio zjedzone</td><td class='r'>" + n0(av.kcal) + " kcal (cel ~" + n0(av.target) + ")</td></tr>" +
-        "<tr><td>Średni bilans</td><td class='r'>" + n0(w.avg_balance) + " kcal/dz (cel " + n0(w.balance_target) + ")</td></tr>" +
-        "<tr><td>Białko</td><td class='r'>" + n0(av.protein_g) + " g/dz (cel 160)</td></tr><tr><td>Węgle / tłuszcz</td><td class='r'>" + n0(av.carbs_g) + " / " + n0(av.fat_g) + " g/dz</td></tr>" +
-        "<tr><td>Dni ze słodyczami</td><td class='r'>" + w.sweets_days + "</td></tr><tr><td>Okno: dotrzymane / złamane</td><td class='r'>" + w.window_ok + " / " + w.window_broken + "</td></tr>" +
-        "<tr><td>Dni ponad cel</td><td class='r'>" + w.over_target_days + "</td></tr></table>" : "<p class='empty'>Brak zamkniętych dni w tym tygodniu.</p>") +
-      (w.recs.length ? "<ul class='recs'>" + w.recs.map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>" : "<p class='note'>Bez uwag na ten tydzień.</p>") + "</div></div>";
+    var b = x.budget, nu = x.nutr, pa = x.patterns, START = "2026-10-10";
+    var h = "<div class='wknav' style='margin-bottom:10px'><button class='btn' data-wk='" + x.prev + "' aria-label='Poprzedni tydzień'>‹</button><b>" + dm(x.week) + " – " + dm(x.week_end) + "</b>" +
+      "<button class='btn' data-wk='" + (x.next || "") + "'" + (x.next ? "" : " disabled") + " aria-label='Następny tydzień'>›</button><span class='sub'>tydzień pn–nd</span></div>";
+    /* 1. budzet tygodnia */
+    var pct = b.plan ? Math.max(0, Math.min(100, b.real / b.plan * 100)) : 0;
+    var ST = { ok: ["w planie", "var(--good)"], over: ["za mało deficytu", "var(--bad)"], under: ["deficyt za mocny", "var(--warn)"], open: ["otwarty", "var(--muted)"], future: ["", "var(--muted)"] };
+    h += "<div class='card'><div class='ttl'><h2>Budżet tygodnia</h2><span class='sub'>plan deficytu " + sgn(-b.plan) + " kcal</span></div>" +
+      "<div class='big2'>" + sgn(-b.real) + " <span class='sub' style='font-size:16px'>z " + sgn(-b.plan) + " kcal zrealizowane (" + b.closed + " zamkn. dni)</span></div>" +
+      "<div class='meter'><i style='width:" + pct.toFixed(1) + "%'></i></div>" +
+      "<div class='sub'>" + (b.left_days ? "zostało " + sgn(-b.remaining) + " na " + b.left_days + " dni (~" + sgn(-b.per_day) + " / dzień)" : (b.remaining > 0 ? "tydzień zamknięty – zabrakło " + n0(b.remaining) + " kcal deficytu" : "tydzień zamknięty – plan zrealizowany")) +
+        (b.prev_closed ? " · poprzedni tydzień: " + sgn(-b.prev_real) + " z " + sgn(-b.prev_plan) + " (" + b.prev_closed + " dni)" : "") + "</div>" +
+      "<div class='wkdays'>" + x.days.map(function (d) {
+        var pre = d.day < START, st = pre ? ["brak danych", "var(--muted)"] : (ST[d.status] || ["", "var(--muted)"]);
+        return "<div class='wkd' style='border-top-color:" + st[1] + "'><b>" + wd(d.day) + " " + dm(d.day) + "</b><span>plan " + sgn(-d.plan_def) + "</span>" +
+          (d.act_def != null ? "<span style='color:" + st[1] + "'>było " + sgn(-d.act_def) + "</span>" : "<span class='muted'>" + (pre ? "przed startem" : d.day >= x.today ? "przed nami" : "otwarty") + "</span>") +
+          "<small style='color:" + st[1] + "'>" + st[0] + (d.sweets ? " · 🍫" : "") + (d.window === "broken" ? " · okno ✖" : "") + "</small></div>"; }).join("") + "</div>" +
+      "<div class='note'>Deficyt = spalone − zjedzone (dni zamknięte, spalanie z Garmina). Plan dnia z budżetu: dni lekkie −300, dni z jazdą więcej, maks. −900.</div></div>";
+    /* 2. skladniki */
+    h += "<div class='g2' style='margin-top:12px'><div class='card'><div class='ttl'><h2>Składniki</h2><span class='sub'>średnio na zamknięty dzień</span></div>" +
+      (nu.kcal != null ? "<table class='nt'><tr><td>Białko (całe jedzenie)</td><td class='r'>" + n0(nu.protein) + " / " + nu.protein_target + " g</td><td class='r'>" + jpill(nu.protein >= nu.protein_target * 0.9, nu.protein >= nu.protein_target * 0.9 ? "ok" : "za mało") + "</td></tr>" +
+        "<tr><td>Węglowodany / tłuszcz</td><td class='r'>" + n0(nu.carbs) + " / " + n0(nu.fat) + " g</td><td></td></tr>" : "<p class='empty'>Brak zamkniętych dni w tym tygodniu.</p><table class='nt'>") +
+      (nu.diet_days ? "<tr><td>Cukry <span class='muted'>(z diety, " + nu.diet_days + " dni)</span></td><td class='r'>" + n0(nu.sugars_diet) + " g</td><td></td></tr><tr><td>Sól <span class='muted'>(z diety)</span></td><td class='r'>" + n1(nu.salt_diet) + " g</td><td class='r'>" + jpill(nu.salt_diet <= 5, nu.salt_diet <= 5 ? "ok" : "za dużo") + "</td></tr>" : "") +
+      "<tr><td>Dni ze słodyczami</td><td class='r'>" + nu.sweets_days + "</td><td></td></tr><tr><td>Okno: dotrzymane / złamane</td><td class='r'>" + nu.window_ok + " / " + nu.window_broken + "</td><td></td></tr></table>" +
+      "<div class='note'>Cukry i sól znamy tylko z Brokuła – dni na mieście ich nie mają.</div></div>";
+    /* 3. wzorce */
+    h += "<div class='card'><div class='ttl'><h2>Wzorce · 4 tygodnie</h2><span class='sub'>" + dm(pa.from) + "–" + dm(pa.to) + " · " + pa.n_days + " dni</span></div>" +
+      "<p class='note' style='margin-top:0'>Średnie odchylenie od celu jedzenia (+ = zjedzone ponad cel). Grupa potrzebuje min. 3 dni.</p><table class='nt'>" +
+      pa.groups.map(function (g2) { function cell(v, n) { return n >= 3 ? "<b style='color:var(--" + (v > 150 ? "bad" : v < -300 ? "warn" : "good") + ")'>" + sgn(v) + "</b> <span class='muted'>(" + n + ")</span>" : "<span class='muted'>za mało danych (" + n + ")</span>"; }
+        return "<tr><td>" + esc(g2.a) + "</td><td class='r'>" + cell(g2.dev_a, g2.na) + "</td></tr><tr><td>" + esc(g2.b) + "</td><td class='r'>" + cell(g2.dev_b, g2.nb) + "</td></tr>"; }).join("") +
+      "<tr><td>Złamane okno</td><td class='r'>" + pa.win_broken + " dni</td></tr></table>" +
+      "<p class='lbl' style='margin-top:10px'>Co kosztuje najwięcej (spoza diety)</p>" +
+      (pa.top.length ? "<table class='nt'>" + pa.top.map(function (t2) { return "<tr><td>" + esc(t2.name) + "</td><td class='r'>" + n0(t2.kcal) + " kcal" + (t2.n > 1 ? " <span class='muted'>(" + t2.n + "×)</span>" : "") + "</td></tr>"; }).join("") + "</table>" : "<p class='empty'>Brak wpisów.</p>") + "</div></div>";
+    /* 4. AI tygodnia */
     var ai = x.ai;
-    h += "<div class='card' style='margin-top:12px'><div class='ttl'><h2>Zalecenia AI</h2><span class='sub'>" + (ai ? "z " + dm(ai.created_at.slice(0, 10)) + " " + ai.created_at.slice(11, 16) : "") + "</span></div>" +
-      (ai ? [["dzis", "Dziś"], ["tydzien", "Tydzień"], ["weekend", "Weekend"]].filter(function (k) { return (ai[k[0]] || []).length; }).map(function (k) {
-        return "<p class='lbl' style='margin-top:6px'>" + k[1] + "</p><ul class='recs'>" + ai[k[0]].map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>"; }).join("")
-        : "<p class='note' style='margin-top:0'>AI pisze zalecenia na podstawie liczb powyżej (nie zmienia ich). Zapisuje się raz na dzień.</p>") +
-      "<button class='btn pri' id='aibtn'>" + (ai ? "Napisz od nowa" : "Napisz zalecenia AI") + "</button> <span id='aimsg' class='sub'></span></div>";
+    h += "<div class='card' style='margin-top:12px'><div class='ttl'><h2>Zalecenia na tydzień</h2><span class='sub'>" + (ai ? "AI · " + dm(ai.created_at.slice(0, 10)) + " " + ai.created_at.slice(11, 16) : "pojawią się same w niedzielę wieczorem") + "</span></div>" +
+      (ai ? [["tydzien", "Ten tydzień"], ["wzorce", "Wzorce"], ["nastepny", "Na kolejny tydzień"]].filter(function (k) { return (ai[k[0]] || []).length; }).map(function (k) {
+        return "<p class='lbl' style='margin-top:6px'>" + k[1] + "</p><ul class='recs'>" + ai[k[0]].map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>"; }).join("") :
+        "<p class='note' style='margin-top:0'>AI pisze je na podstawie liczb powyżej (nie zmienia ich), raz w tygodniu – w niedzielę od 21:00. Możesz też przeliczyć teraz.</p>") +
+      "<button class='btn' id='wkaibtn'>" + (ai ? "Przelicz" : "Napisz teraz") + "</button> <span id='wkaimsg' class='sub'></span></div>";
     $("analiza").innerHTML = h;
-    $("analiza").querySelectorAll("[data-ad]").forEach(function (b) { b.onclick = function () { loadAnaliza(shiftDay(A.day, +b.dataset.ad)); }; });
-    $("aibtn").onclick = function () { var b = $("aibtn"); b.disabled = true; b.textContent = "AI pisze… (kilka sekund)";
-      post("/api/jedzenie/analysis/ai", { day: A.day }).then(function () { loadAnaliza(A.day); }).catch(function (e) { $("aimsg").textContent = e.message; b.disabled = false; b.textContent = "Spróbuj ponownie"; }); };
+    $("analiza").querySelectorAll("[data-wk]").forEach(function (b2) { b2.onclick = function () { if (b2.dataset.wk) loadAnaliza(b2.dataset.wk); }; });
+    $("wkaibtn").onclick = function () { var b2 = $("wkaibtn"); b2.disabled = true; b2.textContent = "AI pisze…";
+      post("/api/jedzenie/week/ai", { week: A.week }).then(function () { loadAnaliza(A.week); }).catch(function (e) { $("wkaimsg").textContent = e.message; b2.disabled = false; b2.textContent = "Spróbuj ponownie"; }); };
+  }
+  function jpill(ok, txt) { return "<span class='jg " + (ok ? "ok" : "high") + "'>" + txt + "</span>"; }
+  /* 'co jeszcze zjesc' - w karcie dnia (tylko dzis) */
+  function loadTodo(day) {
+    j("/api/jedzenie/analysis?day=" + day).then(function (x) {
+      var el = $("todo"); if (!el) return; var t = x.today, pr = t.projected, nm = t.norms;
+      el.innerHTML = "<div class='ttl'><h2>🎯 Co jeszcze zjeść</h2><span class='sub'>" + (t.left_kcal >= 0 ? "zostaje ~" + n0(t.left_kcal) : "ponad o ~" + n0(-t.left_kcal)) + " kcal</span></div>" +
+        "<ul class='recs'>" + t.recs.map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>" +
+        "<div class='note'>Liczone z zjedzonym" + (t.pending_meals.length ? " i zaplanowanym Brokułem (" + esc(t.pending_meals.join(", ")) + ")" : "") + ". Białko " + n0(pr.protein_g) + "/" + nm.protein_g + " g · cukry z diety " + n0(t.sugars_diet) + "/" + nm.sugars_max_g + " g · sól " + n1(t.salt_diet) + "/5 g.</div>";
+    }).catch(function () { var el = $("todo"); if (el) el.remove(); });
   }
 
   /* ------------------------------------------------------------ BILANS I WAGA: jeden wspolny wykres (2026-10-12) */

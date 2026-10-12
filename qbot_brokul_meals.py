@@ -397,6 +397,12 @@ def tick(now: datetime | None = None) -> None:
     else:
         _log("brak sesji (.brokul_session)")
     # 2026-10-12: koniec diety -> linia w porannej wiadomosci (qbot_food_plan.morning_digest), bez osobnej wysylki
+    try:  # 2026-10-12: zalecenia AI tygodnia (Jedzenie -> Analiza) - same, w niedziele od 21:00, raz na tydzien, bez wiadomosci
+        if now.weekday() == 6 and now.hour >= 21:
+            import qbot_food_api as FA
+            FA.week_ai(now.date(), force=False)
+    except Exception as e:
+        _log("AI tygodnia: %s" % e)
     try:
         n = F.retry_pending()
         if n:
