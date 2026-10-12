@@ -116,6 +116,13 @@ Z harmonogramu tylko DWIE wiadomości dziennie, zwięzłe (~8 linijek), szczegó
 - Zalecenia AI tygodnia: `food_week_ai` (sql/food_v5.sql), same w ndz od 21:00 (tick Brokuła), przycisk „Przelicz”; bez wiadomości.
 - „🎯 Co jeszcze zjeść” przeniesione do karty dnia (zakładka Dni, tylko dziś) – `/api/jedzenie/analysis`.
 
+## Forma → Trendy → Analiza AI (12.10.2026, v2)
+- Przycisk „🤖 Analiza AI” → panel boczny (bez zapisu). Przeglądarka wysyła dane dzienne całego zakresu; analizowane okno = zakres albo powiększenie.
+- `qbot_trend_ai.discover` liczy względem osobistej normy z 28 dni: reakcja na ciężką jazdę (XSS ≥ q75) na +1..+3 dni vs dni wolne i dzień powrotu do normy;
+  zależności z opóźnieniem 0–3 dni tylko między rodzinami (trening/jedzenie ↔ wellness, sen ↔ HRV/RHR/gotowość), r + p + efekt w jednostkach;
+  ciężkie jazdy w dni niskiej gotowości; dawka-odpowiedź tygodniami; deficyt > 700 kcal → regeneracja następnego dnia (bilans z bazy QBota); trend formy vs HRV/RHR/sen/waga.
+- AI (POST /api/trendy/ai) dostaje tylko te wyniki: zakaz opisywania widocznych trendów i par definicyjnych; zwraca nagłówek, 3–5 odkryć (co / znaczenie / pewność), eksperyment, czego brakuje.
+
 ## Obwody ciała (12.10.2026)
 - Tabela `qbot_v2.body_circumference` (sql/food_v4.sql): talia (wymagana), biodra, klatka, udo, ramię, szyja – cm, jeden wpis na dzień.
 - Wpis: Jedzenie → **Dni** → karta dnia „📏 Obwody” (od 12.10 wieczorem; wcześniej kafelek w Bilans i waga). POST /api/jedzenie/circ; „Usuń” = usunięcie dnia.

@@ -607,7 +607,7 @@ function renderTrendy(){
   var illIdx={};(cal.entries||[]).forEach(function(e){if(e.kind!=="illness")return;var a0=e.day,b0=e.end_day||e.day;
     for(var j=0;j<N;j++){if(SN[j].day>=a0&&SN[j].day<=b0)illIdx[j]=1;}});
   var illR=[];Object.keys(illIdx).map(Number).sort(function(x,y){return x-y;}).forEach(function(i){var L=illR[illR.length-1];if(L&&i===L.b+1)L.b=i;else illR.push({a:i,b:i});});
-  illR.forEach(function(r){r.label="infekcja "+QD.dm(SN[r.a].day)+"–"+QD.dm(SN[r.b].day);});window._trIll=illR.map(function(r){return {from:SN[r.a].day,to:SN[r.b].day};});window._trSN=SN;
+  illR.forEach(function(r){r.label="infekcja "+QD.dm(SN[r.a].day)+"–"+QD.dm(SN[r.b].day);});window._trIll=illR.map(function(r){return {from:SN[r.a].day,to:SN[r.b].day};});window._trSN=SN;window._trXss=xssD;
   var vertPlugin={id:"illBands",beforeDatasetsDraw:function(chart){var ctx=chart.ctx,xA=chart.scales.x,yA=chart.scales.y,w=(xA.right-xA.left)/Math.max(1,N);
       illR.forEach(function(r){var x0=xA.getPixelForValue(r.a)-w/2,x1=xA.getPixelForValue(r.b)+w/2;ctx.save();
         ctx.fillStyle="rgba(229,83,75,0.22)";ctx.fillRect(x0,yA.top,x1-x0,yA.bottom-yA.top);
@@ -982,48 +982,52 @@ load().catch(function(e){console.error("forma2:",e);});
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",grips);else grips();
 })();
 
-/* 2026-10-12: TRENDY - ANALIZA AI zaznaczonych (widocznych) serii w zaznaczonym okresie (zakres 30/90/rok + powiekszenie).
-   Korelacje Pearsona (opoznienie 0-3 dni) liczy przegladarka; AI (/api/trendy/ai) tylko interpretuje. Wynik NIE jest zapisywany. */
+/* 2026-10-12: TRENDY - ANALIZA AI v2: przegladarka wysyla dane dzienne CALEGO zakresu (normy osobiste 28 dni),
+   analizowane jest okno = zakres albo powiekszenie. Serwer (qbot_trend_ai.discover) liczy odkrycia, AI tylko interpretuje. Bez zapisu. */
 (function(){
-  function charts(){return [["forma",window._trendyChart],["moc",window._pwrChart],["wellness",window._wellChart]].filter(function(x){return x[1];});}
-  /* usuniecie trendu liniowego (wzgledem dnia) - inaczej dwie serie, ktore po prostu spadaja w okresie, daja falszywe r~1 */
-  function detr(v){var pts=[];v.forEach(function(y,i){if(y!=null&&isFinite(y))pts.push([i,+y]);});if(pts.length<3)return v;var n=pts.length,mx=0,my=0;pts.forEach(function(p){mx+=p[0];my+=p[1];});mx/=n;my/=n;
-    var sxy=0,sxx=0;pts.forEach(function(p){sxy+=(p[0]-mx)*(p[1]-my);sxx+=(p[0]-mx)*(p[0]-mx);});var k=sxx?sxy/sxx:0;return v.map(function(y,i){return y==null||!isFinite(y)?null:y-(my+k*(i-mx));});}
-  function pearson(a,b,lag){var xs=[],ys=[];for(var i=0;i<a.length;i++){var j2=i+lag;if(j2>=b.length)break;var x=a[i],y=b[j2];if(x!=null&&y!=null&&isFinite(x)&&isFinite(y)){xs.push(+x);ys.push(+y);}}
-    var n=xs.length;if(n<8)return null;var mx=xs.reduce(function(s,v){return s+v;},0)/n,my=ys.reduce(function(s,v){return s+v;},0)/n,sxy=0,sx=0,sy=0;
-    for(var k=0;k<n;k++){var dx=xs[k]-mx,dy=ys[k]-my;sxy+=dx*dy;sx+=dx*dx;sy+=dy*dy;}if(!sx||!sy)return null;return {r:sxy/Math.sqrt(sx*sy),n:n};}
+  function charts(){return [window._trendyChart,window._pwrChart,window._wellChart].filter(Boolean);}
+  function num(v){return v==null||v===""||!isFinite(+v)?null:Math.round(+v*100)/100;}
   function collect(){
-    var SN=window._trSN||[];if(!SN.length)return null;var z=window._trZoom,a0=z?z.min:0,b0=z?z.max:SN.length-1;
-    var days=SN.slice(a0,b0+1).map(function(s){return String(s.day).slice(0,10);}),ser=[],seen={};
-    charts().forEach(function(x){var ch=x[1];ch.data.datasets.forEach(function(ds,di){if(!ch.isDatasetVisible(di))return;var nm=(ds.label||"").trim();if(!nm||seen[nm])return;
-      var v=(ds.data||[]).slice(a0,b0+1).map(function(q){return q==null||!isFinite(q)?null:Math.round(q*100)/100;});if(!v.some(function(q){return q!=null;}))return;
-      seen[nm]=1;ser.push({name:nm,chart:x[0],values:v});});});
-    var rd=ser.filter(function(s){return s.name==="jazdy";})[0],rides=[];if(rd)rd.values.forEach(function(v,i){if(v!=null)rides.push(days[i]);});
-    ser=ser.filter(function(s){return s.name!=="jazdy";});ser.forEach(function(s){s.dt=detr(s.values);});
-    var corr=[];for(var i=0;i<ser.length;i++)for(var k=i+1;k<ser.length;k++){var best=null;for(var lag=-3;lag<=3;lag++){var p=lag>=0?pearson(ser[i].dt,ser[k].dt,lag):pearson(ser[k].dt,ser[i].dt,-lag);
-      if(p&&(!best||Math.abs(p.r)>Math.abs(best.r)+0.05||(lag===0&&best&&Math.abs(p.r)>=Math.abs(best.r)-0.05&&best.lag!==0)))best={r:p.r,n:p.n,lag:lag};}
-      if(best)corr.push({a:ser[i].name,b:ser[k].name,r:Math.round(best.r*100)/100,lag:best.lag,n:best.n});}
-    corr.sort(function(p,q){return Math.abs(q.r)-Math.abs(p.r);});
-    var ill=(window._trIll||[]).filter(function(r){return r.to>=days[0]&&r.from<=days[days.length-1];});
-    return {from:days[0],to:days[days.length-1],days:days.length,dates:days,series:ser.map(function(s){return {name:s.name,chart:s.chart,values:s.values};}),corr:corr.slice(0,30),corr_note:"korelacje Pearsona po usunieciu trendu liniowego (zwiazek dzien do dnia, nie wspolny trend)",ill:ill,rides:rides};
+    var SN=window._trSN||[],X=window._trXss||[];if(SN.length<14)return null;var z=window._trZoom,a0=z?z.min:0,b0=z?z.max:SN.length-1;
+    var rows=SN.map(function(s,i){return {day:String(s.day).slice(0,10),xss:X[i]||0,ctl:num(s.ctl_xss),atl:num(s.atl_real),tsb:num(s.tsb_real),sleep:num(s.sleep_score),
+      hrv:num(s.hrv_night),rhr:num(s.rhr),rdy3:num(s.readiness_3d),rdy1:num(s.readiness_effective),weight:num(s.weight_kg),cp:num(s.ftp_est_w||s.ftp),ltp:num(s.ltp_modelq_w)};});
+    var focus=[];charts().forEach(function(ch){ch.data.datasets.forEach(function(ds,di){if(ch.isDatasetVisible(di)&&ds.label)focus.push(ds.label);});});
+    var ill=(window._trIll||[]).filter(function(r){return r.to>=rows[a0].day&&r.from<=rows[b0].day;});
+    return {rows:rows,from:rows[a0].day,to:rows[b0].day,focus:focus,ill:ill,n:b0-a0+1};
   }
   function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+  function f1(v,d){return v==null?"–":((v>0?"+":"")+(+v).toFixed(d==null?1:d)).replace(".",",");}
   function panel(){var p=document.getElementById("traip");if(p)return p;p=document.createElement("aside");p.id="traip";p.className="traip";p.setAttribute("aria-label","Analiza AI");
     p.innerHTML='<div class="h"><b>🤖 Analiza AI</b><button class="x" type="button" aria-label="Zamknij">✕</button></div><div class="b" id="traib"></div>';
     document.body.appendChild(p);p.querySelector(".x").onclick=function(){p.classList.remove("open");};
     document.addEventListener("keydown",function(e){if(e.key==="Escape")p.classList.remove("open");});return p;}
-  function rcol(r){var a=Math.abs(r);return a>=0.5?"var(--good)":a>=0.3?"var(--accent-ink,var(--accent))":"var(--muted)";}
+  var PC={wysoka:"var(--good)","średnia":"var(--accent-ink,var(--accent))",niska:"var(--muted)"};
+  function details(P){var h="";(P.odkrycia||[]).forEach(function(o){
+    if(o.type==="reakcja_na_ciezka_jazde"){h+='<h4>Reakcja na ciężką jazdę (XSS ≥ '+Math.round(o.prog_xss)+', n='+o.n_ciezkich+' vs '+o.n_wolnych+' wolnych)</h4><table class="corr"><tr><td></td><td>+1 d</td><td>+2 d</td><td>+3 d</td></tr>'+
+      Object.keys(o.wyniki).map(function(k){var w=o.wyniki[k];return '<tr><td>'+esc(w.name)+'</td>'+w.by_lag.map(function(x){return '<td>'+f1(x.hard)+' <span style="color:var(--muted)">('+f1(x.rest)+')</span></td>';}).join("")+'</tr>';}).join("")+
+      '</table><div style="color:var(--muted);font-size:12px">odchylenie od Twojej normy po ciężkiej jeździe (w nawiasie: po dniu wolnym)</div>';}
+    if(o.type==="zaleznosci_z_opoznieniem"&&o.wyniki.length){h+='<h4>Zależności (odchylenia od normy)</h4><table class="corr">'+o.wyniki.map(function(q){return '<tr><td>'+esc(q.x_nazwa)+' → '+esc(q.y_nazwa)+(q.lag?' <span style="color:var(--muted)">po '+q.lag+' d</span>':'')+'</td><td style="text-align:right">r '+f1(q.r,2)+'</td><td style="text-align:right;color:var(--muted)">p '+String(q.p).replace(".",",")+' · n '+q.n+'</td></tr>';}).join("")+'</table>';}
+    if(o.type==="sluchanie_sygnalow"){h+='<h4>Słuchanie sygnałów</h4><div>Dni niskiej gotowości: '+o.dni_niskiej_gotowosci+', w tym ciężkich jazd: '+o.ciezkie_w_niskiej+' (ciężkich w dobre dni: '+o.ciezkie_w_dobrej+')</div>';}
+    if(o.type==="dawka_odpowiedz_tygodnie"){h+='<h4>Dawka → odpowiedź (tygodnie)</h4><div>'+o.tygodni+' par tygodni · r '+f1(o.r,2)+' · HRV '+f1(o.hrv_ms_na_100_xss,2)+' ms na każde +100 XSS</div>';}
+    if(o.type==="deficyt_a_regeneracja"){h+='<h4>Deficyt → regeneracja</h4><div>'+(o.za_malo_danych?'za mało dni z bilansem ('+o.dni_z_bilansem+')':'dni z deficytem > 700: '+o.dni_duzy_deficyt)+'</div>';}
+    if(o.type==="trend_formy_vs_regeneracji"){h+='<h4>Forma vs regeneracja (na tydzień)</h4><div>forma '+f1(o.forma_na_tydz)+' · HRV '+f1(o.hrv_na_tydz)+' ms · RHR '+f1(o.rhr_na_tydz)+' bpm · sen '+f1(o.sen_na_tydz)+' · waga '+f1(o.waga_na_tydz,2)+' kg</div>';}
+  });return h;}
   function run(){
     var c=collect(),p=panel(),b=document.getElementById("traib");p.classList.add("open");
-    if(!c||!c.series.length){b.innerHTML='<p>Włącz na wykresach serie, które chcesz porównać (pigułki), i spróbuj ponownie.</p>';return;}
-    var sel='<div class="sel"><b>'+QD.dm(c.from)+'.'+c.from.slice(0,4)+' – '+QD.dm(c.to)+'</b> · '+c.days+' dni'+(window._trZoom?' (powiększenie)':'')+'<br>'+c.series.map(function(s){return esc(s.name);}).join(' · ')+(c.rides.length?' · jazdy ('+c.rides.length+')':'')+'</div>';
-    var ct=c.corr.length?'<h4>Korelacje (policzone, bez wspólnego trendu)</h4><table class="corr">'+c.corr.slice(0,8).map(function(q){return '<tr><td>'+esc(q.a)+' ↔ '+esc(q.b)+(q.lag?' <span style="color:var(--muted)">('+(q.lag>0?'+':'')+q.lag+' d)</span>':'')+'</td><td style="text-align:right;color:'+rcol(q.r)+';font-weight:700">'+(q.r>0?'+':'')+String(q.r).replace(".",",")+'</td><td style="text-align:right;color:var(--muted)">n='+q.n+'</td></tr>';}).join('')+'</table>':'';
-    b.innerHTML=sel+ct+'<p style="color:var(--muted);margin-top:12px">AI analizuje… (kilka sekund)</p>';
+    if(!c){b.innerHTML='<p>Za mało danych – wybierz zakres 90 dni albo rok.</p>';return;}
+    if(c.n<10){b.innerHTML='<p>Zaznacz co najmniej 10 dni.</p>';return;}
+    var sel='<div class="sel"><b>'+QD.dm(c.from)+'.'+c.from.slice(0,4)+' – '+QD.dm(c.to)+'</b> · '+c.n+' dni'+(window._trZoom?' (powiększenie)':'')+' · normy z '+c.rows.length+' dni</div>';
+    b.innerHTML=sel+'<p style="color:var(--muted);margin-top:12px">Liczę zależności i pytam AI… (ok. 30 s)</p>';
     fetch("/api/trendy/ai",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(c)}).then(function(r){return r.json().then(function(x){if(!r.ok)throw new Error(x.detail||("HTTP "+r.status));return x;});})
-      .then(function(x){var L=[["zaleznosci","Zależności"],["trendy","Trendy"],["wnioski","Wnioski"],["uwagi","Ograniczenia danych"]];
-        b.innerHTML=sel+(x.podsumowanie?'<p style="margin:12px 0 4px;font-size:15px">'+esc(x.podsumowanie)+'</p>':'')+L.filter(function(k){return (x[k[0]]||[]).length;}).map(function(k){return '<h4>'+k[1]+'</h4><ul>'+x[k[0]].map(function(t){return '<li>'+esc(t)+'</li>';}).join('')+'</ul>';}).join('')+ct+
-          '<p style="color:var(--muted);font-size:12px;margin-top:12px">Wynik nie jest zapisywany. Zmień serie lub okres i kliknij „Analiza AI” ponownie. Korelacja ≠ przyczyna.</p>';})
-      .catch(function(e){b.innerHTML=sel+ct+'<p style="color:var(--bad);margin-top:12px">'+esc(e.message)+'</p>';});
+      .then(function(x){var a=x.ai||{};
+        b.innerHTML=sel+(a.naglowek?'<p style="font-size:16px;font-weight:700;margin:12px 0 6px;line-height:1.4">'+esc(a.naglowek)+'</p>':'')+
+          (a.odkrycia||[]).map(function(o){return '<div style="border:1px solid var(--line);border-left:4px solid '+(PC[o.pewnosc]||"var(--muted)")+';border-radius:10px;padding:8px 10px;margin:8px 0">'+
+            '<div style="display:flex;justify-content:space-between;gap:8px"><b>'+esc(o.tytul)+'</b><span style="font-size:11.5px;color:'+(PC[o.pewnosc]||"var(--muted)")+';white-space:nowrap">pewność: '+esc(o.pewnosc)+'</span></div>'+
+            '<div style="margin-top:4px">'+esc(o.co)+'</div><div style="margin-top:4px;color:var(--ink2)">→ '+esc(o.znaczenie)+'</div></div>';}).join("")+
+          (a.eksperyment?'<h4>Eksperyment na 2 tygodnie</h4><div>'+esc(a.eksperyment)+'</div>':'')+(a.brakuje?'<h4>Czego brakuje</h4><div style="color:var(--ink2)">'+esc(a.brakuje)+'</div>':'')+
+          '<details style="margin-top:12px"><summary style="cursor:pointer;color:var(--muted)">Policzone dane (szczegóły)</summary>'+details(x.policzone||{})+'</details>'+
+          '<p style="color:var(--muted);font-size:12px;margin-top:12px">Liczone względem Twojej normy z 28 dni, bez par wynikających z tego samego modelu. Wynik nie jest zapisywany.</p>';})
+      .catch(function(e){b.innerHTML=sel+'<p style="color:var(--bad);margin-top:12px">'+esc(e.message)+'</p>';});
   }
   document.addEventListener("click",function(ev){if(ev.target&&ev.target.id==="tr-aibtn")run();});
 })();
