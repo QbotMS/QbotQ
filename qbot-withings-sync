@@ -147,11 +147,14 @@ def verify_in_garmin(client: Any, grp: dict[str, Any]) -> bool:
     for delay in (0, 3, 8):
         if delay:
             time.sleep(delay)
-        try:
-            data = client.get_body_composition(day, day)
+        try:  # 2026-10-12: get_weigh_ins (pelne dane); get_body_composition zwraca tylko wpisy z sama waga
+            raw = client.get_weigh_ins(day, day) or {}
         except Exception:
             continue
-        for item in (data or {}).get("dateWeightList", []) or []:
+        items = []
+        for d in raw.get("dailyWeightSummaries", []) or []:
+            items += ([d.get("latestWeight")] if d.get("latestWeight") else []) + list(d.get("allWeightMetrics") or [])
+        for item in items:
             weight_g = item.get("weight")
             if weight_g is None:
                 continue
