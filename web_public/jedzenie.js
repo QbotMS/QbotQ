@@ -165,7 +165,7 @@
     var t = d.totals.kcal || 0, pct = d.target ? Math.min(100, t / d.target * 100) : 0, diff = t - d.target, past = d.day < S.today;
     /* ocena symetryczna: za duzo = czerwony, za malo o >300 kcal (za mocny deficyt) = pomarancz, +-150 = w celu */
     var cls = diff > 150 ? "over" : (past && diff < -300 ? "under" : "");
-    var real = past && d.expend_src === "realne", bl = t - d.expend, plan = S.ctx.balance - (S.ctx.calib || 0);
+    var real = past && d.expend_src === "realne", bl = t - d.expend, plan = d.target - d.expend;   /* deficyt dnia z budzetu tygodnia */
     var verdict = real ? "bilans " + (bl > 0 ? "+" : "") + n0(bl) + " kcal (zjedzone " + n0(t) + " − spalone " + n0(d.expend) + ") · plan " + n0(plan) +
         (diff > 150 ? " → " + n0(diff) + " ponad plan" : diff < -300 ? " → deficyt za mocny o " + n0(-diff) : diff < -150 ? " → " + n0(-diff) + " poniżej planu" : " → w planie")
       : (diff > 150 ? "ponad cel o " + n0(diff) + " kcal" : "zostało " + n0(-diff) + " kcal");
@@ -176,10 +176,11 @@
       "<div class='big2'>" + n0(t) + " <span class='sub' style='font-size:16px'>/ " + n0(d.target) + " kcal" + (real ? " (cel = spalone " + n0(d.expend) + " " + n0(plan) + " plan)" : "") + "</span></div>" +
       "<div class='meter' role='progressbar' aria-valuenow='" + Math.round(t) + "' aria-valuemax='" + d.target + "' aria-label='Zjedzone względem celu'><i class='" + cls + "' style='width:" + pct.toFixed(1) + "%'></i></div>" +
       "<div class='sub' style='color:var(--" + (cls === "over" ? "bad" : cls === "under" ? "warn" : "ink2") + ")'>" + verdict + balTxt + "</div>" +
-      "<div class='kv'><span>Białko</span><span>" + n0(d.totals.protein_g) + " g</span><span>Węglowodany</span><span>" + n0(d.totals.carbs_g) + " g</span><span>Tłuszcz</span><span>" + n0(d.totals.fat_g) + " g</span>" +
+      "<div class='kv'><span>Białko</span><span id='mx-p'>" + n0(d.totals.protein_g) + " g</span><span>Węglowodany</span><span id='mx-c'>" + n0(d.totals.carbs_g) + " g</span><span>Tłuszcz</span><span id='mx-f'>" + n0(d.totals.fat_g) + " g</span>" +
       "<span>Spalanie</span><span>" + n0(d.expend) + " kcal" + (d.expend_src === "prognoza" ? " (prognoza" + (d.so_far != null ? "; Garmin do " + d.so_far_at + ": " + n0(d.so_far) : "") + ")" : "") + "</span>" +
-      (d.expend_parts ? "<span class='muted'>  w tym</span><span class='muted'>spoczynek " + n0(d.expend_parts.bmr) + " + ruch " + n0(d.expend_parts.neat) + " + trening " + n0(d.expend_parts.train) + "</span>" : "") + "<span>Cel bilansu</span><span>" + n0(S.ctx.balance) + " kcal</span>" +
+      (d.expend_parts ? "<span class='muted'>  w tym</span><span class='muted'>spoczynek " + n0(d.expend_parts.bmr) + " + ruch " + n0(d.expend_parts.neat) + " + trening " + n0(d.expend_parts.train) + "</span>" : "") + "<span>Deficyt w planie</span><span>" + n0(d.target - d.expend) + " kcal <span class='muted'>(budżet tygodnia)</span></span>" +
       (d.brokul_kcal ? "<span>Dokładka do Brokuła</span><span>" + (d.extra >= 150 ? n0(d.extra) + " kcal" : "nie trzeba") + "</span>" : "") + "</div>" +
+      "<div id='todo'></div>" +
       (d.sessions.length ? "<div class='note'>" + d.sessions.map(function (s) { return ({ rower: "🚲", sila: "🏋️", wiosl: "🚣", joga: "🧘" }[s.sport] || "•") + " " + esc(s.name) + " " + s.dur_min + "′" + (s.start_time ? " o " + s.start_time.slice(0, 5) : ""); }).join("; ") + "</div>" : "") +
       (!fut && !d.closed ? "<div class='note'>Do zamknięcia: " + [d.pending ? "potwierdź posiłki Brokuła" : "", (!d.entries.length && !d.none) ? (d.has_diet ? "dopisz jedzenie poza dietą albo kliknij „Nic poza dietą”" : "dopisz, co zjadłeś") : ""].filter(Boolean).join("; ") +
         ". Termin passy: " + dm(d.deadline.slice(0, 10)) + " 12:00.</div>" : "") + "</div>");
@@ -191,7 +192,6 @@
           "<button class='btn" + (w.state === "broken" ? " pri" : "") + "' data-a='win' data-v='0'" + (d.late ? " disabled" : "") + ">✖ Złamane</button></div>" +
           (d.late ? "<div class='note'>Termin minął (12:00 następnego dnia).</div>" : "<div class='note'>Przed 10:00 tylko czarna kawa, po 20:00 nic. Zwolnione: trening ≥1,5 h, delegacja, urlop, wyprawa.</div>") : "") + "</div>");
     }
-    if (d.day === S.today) R.splice(1, 0, "<div class='card' id='todo'><div class='ttl'><h2>🎯 Co jeszcze zjeść</h2></div><p class='empty'>Liczę…</p></div>");
     if (!fut) {  /* obwody: karta = dane dnia + zmiana od poprzedniego pomiaru; 'Zmierz' otwiera okno z pustymi polami */
       var cz = (S.circ || {})[d.day], cdates = Object.keys(S.circ || {}).sort();
       var prevD = cdates.filter(function (x) { return x < d.day; }).slice(-1)[0], prev = prevD ? S.circ[prevD] : null;
@@ -209,7 +209,7 @@
     }
     $("dayview").innerHTML = "<div class='dgrid'><div class='stack'>" + L.join("") + "</div><div class='stack'>" + R.join("") + "</div></div>";
     wireDay(d);
-    if (d.day === S.today) loadTodo(d.day);
+    if (d.day <= S.today) loadTodo(d.day, d.day === S.today);
   }
   function wireDay(d) {
     var V = $("dayview");
@@ -330,14 +330,23 @@
   }
   function jpill(ok, txt) { return "<span class='jg " + (ok ? "ok" : "high") + "'>" + txt + "</span>"; }
   /* 'co jeszcze zjesc' - w karcie dnia (tylko dzis) */
-  function loadTodo(day) {
+  function loadTodo(day, isToday) {
+    /* normy przy zjedzonych makrach + (dzis) podpowiedzi 'co jeszcze zjesc' - w tej samej karcie dnia */
     j("/api/jedzenie/analysis?day=" + day).then(function (x) {
-      var el = $("todo"); if (!el) return; var t = x.today, pr = t.projected, nm = t.norms;
-      el.innerHTML = "<div class='ttl'><h2>🎯 Co jeszcze zjeść</h2><span class='sub'>" + (t.left_kcal >= 0 ? "zostaje ~" + n0(t.left_kcal) : "ponad o ~" + n0(-t.left_kcal)) + " kcal</span></div>" +
-        "<ul class='recs'>" + t.recs.map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>" +
-        "<div class='note'>Liczone z zjedzonym" + (t.pending_meals.length ? " i zaplanowanym Brokułem (" + esc(t.pending_meals.join(", ")) + ")" : "") + ". Białko " + n0(pr.protein_g) + "/" + nm.protein_g + " g · cukry z diety " + n0(t.sugars_diet) + "/" + nm.sugars_max_g + " g · sól " + n1(t.salt_diet) + "/5 g.</div>";
-    }).catch(function () { var el = $("todo"); if (el) el.remove(); });
+      var t = x.today, nm = t.norms, e = t.eaten, pr = t.projected;
+      function setMx(id, html) { var el = $(id); if (el) el.innerHTML = html; }
+      function tag(ok, txt) { return " <span class='jg " + (ok ? "ok" : "high") + "'>" + txt + "</span>"; }
+      var pv = isToday ? pr.protein_g : e.protein_g;
+      setMx("mx-p", n0(e.protein_g) + " <span class='muted'>/ " + nm.protein_g + " g</span>" + (pv >= nm.protein_g * 0.9 ? tag(true, "ok") : tag(false, "brakuje " + n0(nm.protein_g - pv))));
+      setMx("mx-c", n0(e.carbs_g) + " <span class='muted'>/ ~" + n0(nm.carbs_g) + " g</span>");
+      setMx("mx-f", n0(e.fat_g) + " <span class='muted'>/ min. " + nm.fat_min_g + " g</span>" + ((isToday ? pr.fat_g : e.fat_g) >= nm.fat_min_g ? "" : tag(false, "mało")));
+      var el = $("todo"); if (!el) return;
+      el.innerHTML = (isToday ? "<p class='lbl' style='margin:12px 0 2px'>🎯 Co jeszcze zjeść</p><ul class='recs'>" + t.recs.map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>" : "") +
+        "<div class='note'>" + (isToday && t.pending_meals.length ? "Normy liczone z zjedzonym + zaplanowanym Brokułem (" + esc(t.pending_meals.join(", ")) + "). " : "") +
+        "Z diety: cukry " + n0(t.sugars_diet) + "/" + nm.sugars_max_g + " g · sól " + n1(t.salt_diet) + "/5 g · nasycone " + n0(t.sat_diet) + "/" + nm.sat_max_g + " g.</div>";
+    }).catch(function () {});
   }
+
 
   /* ------------------------------------------------------------ BILANS I WAGA: jeden wspolny wykres (2026-10-12) */
   var DAYMS = 864e5;
