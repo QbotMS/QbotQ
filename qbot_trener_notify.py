@@ -412,10 +412,24 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
             y2, w2, _ = send_plan.isocalendar()
             log.append(_once(c, f"plan:{y2}-W{w2:02d}", user, text_plan(send_plan, ses, res.get("phase_name"), res.get("target_h"), res.get("notes")) if ses else None, dry))
         # dzien
+        _wl = None  # 2026-10-12: przypomnienie o wazeniu (qbot_food_streaks.weigh_line) - w wiadomosci dnia albo osobno
+        if 7 * 60 <= hm < 8 * 60:
+            try:
+                import qbot_food_streaks as _FS
+                _wl = _FS.weigh_line(c, today)
+            except Exception as e:
+                log.append(f"wazenie: błąd {str(e)[:120]}")
+        _day_txt = None
         if st["notify.day"] == 1 and 7 * 60 <= hm < 8 * 60:
             tses = _sessions(c, user, today, today)
             ph = E.plan_week(E.build_context(c, user, ws))["phase"] if tses else None
-            log.append(_once(c, f"day:{today.isoformat()}", user, text_day(today, tses, session_details(c, user, tses, ph)), dry, day_buttons(today)))
+            _day_txt = text_day(today, tses, session_details(c, user, tses, ph))
+            if _day_txt and _wl:
+                _h, _, _r = _day_txt.partition("\n")
+                _day_txt = _h + "\n" + _wl + "\n" + _r
+            log.append(_once(c, f"day:{today.isoformat()}", user, _day_txt, dry, day_buttons(today)))
+        if _wl and not _day_txt:
+            log.append(_once(c, f"weigh:{today.isoformat()}", user, _wl, dry))
         if st["notify.day"] == 2:
             for s in _sessions(c, user, today, today):
                 if s["status"] != "plan" or not s.get("start_time"):

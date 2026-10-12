@@ -283,17 +283,36 @@ def status_trip(g: dict, hist: dict, ctl_now: float | None, ctl_max: float | Non
     return {"level": lvl, "text": txt, "rows": rows}
 
 
+def weight_stage(g: dict, cur: float | None) -> dict | None:
+    """Aktywny etap celu wagi: pierwszy nieosiagniety z target.stages [{kg, to}] (2026-10-12, cele kroczace).
+    Bez etapow: caly cel (target.weight_kg, date_to)."""
+    t = g.get("target") or {}
+    stg = t.get("stages") or []
+    if stg:
+        for i, x in enumerate(stg):
+            if cur is None or cur > float(x["kg"]):
+                return {"kg": float(x["kg"]), "due": E._d(x["to"]), "i": i, "n": len(stg), "done": False}
+        x = stg[-1]
+        return {"kg": float(x["kg"]), "due": E._d(x["to"]), "i": len(stg) - 1, "n": len(stg), "done": True}
+    if t.get("weight_kg"):
+        return {"kg": float(t["weight_kg"]), "due": E._d(g.get("date_to")) or E._d(g.get("date_from")), "i": None, "n": 0, "done": False}
+    return None
+
+
 def status_weight(g: dict, cur: float | None, start: float | None, slope_wk: float | None, today: date) -> dict:
-    t = (g.get("target") or {}).get("weight_kg")
-    if cur is None or not t:
+    stg = weight_stage(g, cur)
+    if cur is None or not stg:
         return {"level": "n", "text": "brak danych o wadze lub celu", "rows": []}
-    due = E._d(g.get("date_to")) or E._d(g.get("date_from"))
+    t, due = stg["kg"], stg["due"]
+    tg = g.get("target") or {}
     weeks = max(0.1, (due - today).days / 7) if due else None
     need = (t - cur) / weeks if weeks else None  # kg/tydz. (ujemne = spadek)
-    prog = None
-    if start and start != t:
-        prog = max(0.0, min(1.0, (start - cur) / (start - t)))
-    if slope_wk is None:
+    final = float(tg.get("weight_kg") or t)
+    start = float(tg.get("start_kg") or start or cur)
+    prog = max(0.0, min(1.0, (start - cur) / (start - final))) if start != final else None
+    if stg["done"]:
+        lvl = "g"
+    elif slope_wk is None:
         lvl = "n"
     elif (t - cur) * slope_wk <= 0 and abs(cur - t) > 0.3:
         lvl = "r"
@@ -302,9 +321,25 @@ def status_weight(g: dict, cur: float | None, start: float | None, slope_wk: flo
     else:
         lvl = "y"
     txt = {"g": "tempo wystarczające", "y": "w dobrą stronę, ale za wolno", "r": "trend w złą stronę", "n": "za mało pomiarów wagi"}[lvl]
-    rows = [{"k": "dziś (śr. 7 dni)", "have": round(cur, 1), "need": t, "note": f"start {round(start, 1) if start else '—'} kg"},
-            {"k": "tempo (30 dni)", "have": slope_wk, "need": None if need is None else round(need, 2), "note": "kg/tydz.; potrzebne do terminu"}]
+    if stg["done"]:
+        txt = "cel osiągnięty"
+    elif stg["i"] is not None:
+        txt = "etap %d z %d (%s kg do %s): %s" % (stg["i"] + 1, stg["n"], _num_pl(t), due.strftime("%d.%m.%Y"), txt)
+    rows = [{"k": "dziś (ostatnie ważenia)", "have": round(cur, 1), "need": t, "note": f"start {round(start, 1)} kg"},
+            {"k": "tempo (30 dni)", "have": slope_wk, "need": None if need is None else round(need, 2), "note": "kg/tydz.; potrzebne do terminu etapu"}]
+    if slope_wk and slope_wk < 0 and cur > t and not stg["done"]:
+        eta = today + timedelta(days=round((cur - t) / -slope_wk * 7))
+        rows.append({"k": "prognoza", "have": eta.strftime("%d.%m.%Y"), "need": None,
+                     "note": f"przy obecnym tempie {_num_pl(t)} kg" + (" – po terminie etapu" if due and eta > due else "")})
+    for i, x in enumerate(tg.get("stages") or []):
+        st_ = "✅ osiągnięty" if cur <= float(x["kg"]) else ("▶ aktualny" if i == stg["i"] else "⏳ następny")
+        rows.append({"k": f"etap {i + 1}: {_num_pl(x['kg'])} kg do {E._d(x['to']).strftime('%d.%m.%Y')}", "have": st_, "need": None, "note": None})
     return {"level": lvl, "text": txt, "rows": rows, "progress": None if prog is None else round(prog, 3)}
+
+
+def _num_pl(v) -> str:
+    v = float(v)
+    return ("%d" % v) if v == int(v) else ("%.1f" % v).replace(".", ",")
 
 
 def status_linear(have: float, target: float, elapsed: float, label: str, unit: str) -> dict:
@@ -376,10 +411,13 @@ def compute_balance(c, ov: dict, goals: list) -> dict:
     if wg and (wg.get("target") or {}).get("weight_kg"):
         ws = [d["weight"] for d in days[-7:] if d["weight"]]
         cur = st.mean(ws) if ws else None
-        due = E._d(wg.get("date_to")) or E._d(wg.get("date_from"))
-        if cur and due and due > date.today():
-            need = (cur - wg["target"]["weight_kg"]) / ((due - date.today()).days / 7)
-            loss = max(0.0, min(1.0, need)); tgt_src = f"cel „{wg['name']}”"
+        stg = weight_stage(wg, cur)  # 2026-10-12: cele kroczace - tempo wg aktywnego etapu
+        due = stg["due"] if stg else None
+        if cur and stg and due and due > date.today() and not stg["done"]:
+            need = (cur - stg["kg"]) / ((due - date.today()).days / 7)
+            loss = max(0.0, min(1.0, need))
+            tgt_src = (f"etap {stg['i'] + 1}: {_num_pl(stg['kg'])} kg do {due.strftime('%d.%m.%Y')}" if stg["i"] is not None
+                       else f"cel „{wg['name']}”")
     wv = [d["weight"] for d in days]
     return {"window": b, "trend30": {"weight_slope_kg_wk": b30["weight_slope_kg_wk"], "balance_weight": b30["balance_weight"]},
             "target_balance_kcal": round(-loss * KCAL_PER_KG / 7), "target_loss_kg_wk": round(loss, 2), "target_source": tgt_src,

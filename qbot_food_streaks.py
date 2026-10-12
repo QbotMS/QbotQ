@@ -208,3 +208,27 @@ def discrepancy_line(today: date | None = None) -> str:
     return ("🍽 Waga vs jedzenie (%s–%s): wpisy %+d kcal/dz → oczekiwane %+.1f kg, waga %+.1f kg → rozbieżność %+d kcal/dz %s%s"
             % (d["start"].strftime("%d.%m"), d["end"].strftime("%d.%m"), d["logged_bal"], d["kg_expected"], d["kg_actual"],
                x, lamp, why))
+
+
+# ======================================================================= wazenie (etap 4)
+WEIGH_EVERY_DAYS = 2          # ~3-4 wazenia w tygodniu
+LONG_RIDE_SKIP_MIN = 180      # dzien po jezdzie >= 3 h: waga zawyzona woda - bez przypomnienia
+
+
+def weigh_line(c, today: date) -> str | None:
+    """Linia '⚖️ zważ się' na 7:00 albo None. Bez dramatu: raz dziennie, tylko gdy od ostatniego PRAWDZIWEGO wazenia
+    (body_measurements) minely >= 2 dni; nie w delegacji/urlopie/wyprawie i nie dzien po dlugiej jezdzie."""
+    r = c.execute("SELECT max(date) d FROM qbot_v2.body_measurements WHERE weight_kg IS NOT NULL").fetchone()
+    last = r["d"] if r else None
+    if last and (today - last).days < WEIGH_EVERY_DAYS:
+        return None
+    if c.execute("SELECT 1 FROM qbot_v2.calendar_entry WHERE kind='event' AND %s BETWEEN day AND COALESCE(end_day, day) "
+                 "AND (event_type IN ('delegacja','urlop') OR title ~* 'wyprawa') LIMIT 1", (today,)).fetchone():
+        return None
+    y = c.execute("SELECT COALESCE(max(duration_s),0) m FROM qbot_v2.training_sessions WHERE date=%s",
+                  (today - timedelta(days=1),)).fetchone()
+    if y and y["m"] >= LONG_RIDE_SKIP_MIN * 60:
+        return None
+    lw = c.execute("SELECT weight_kg FROM qbot_v2.body_measurements WHERE date=%s AND weight_kg IS NOT NULL LIMIT 1", (last,)).fetchone() if last else None
+    tail = (" Ostatnie: %s (%s kg)." % (last.strftime("%d.%m"), ("%.1f" % lw["weight_kg"]).replace(".", ","))) if lw else ""
+    return "⚖️ Dziś ważenie – rano, po toalecie, przed jedzeniem." + tail

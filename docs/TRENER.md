@@ -441,3 +441,68 @@ Zakładki Treningu: **Kalendarz** · Czas · Cele · Dostępność · Sezon · U
 - `trener.js`: go("miesiac"|"tydzien") na stronie z `#p-kal` → "kalendarz"; go("kalendarz") woła `KAL3.refresh(true)`. rWeek zostaje
   dla `trener-fragment.html?sub=tydzien`. `trener-m.js`: zakładka startowa = Kalendarz, widok "home" (dawny Tydzień) nieużywany.
 - `kalendarz2-data.js` nie jest już ładowany przez żadną stronę (zostaje jako źródło portu). Kopie: `*.bak.20261008-kalendarz3`.
+
+## Zmiana ćwiczeń w treningu siłowym (2026-10-09)
+Problem: „Poproś Trenera o zmianę” umiało tylko dzień / godzinę / czas / partie — pojedynczych ćwiczeń nie zmieniało
+(dopisywało tylko notatkę). Teraz trzy drogi, wszystkie przez `qbot_trener_sila`:
+- **Ściąga** (`/sciaga.html?id=<id>`, link w treningu: „📄 Ściąga · zmień ćwiczenia”): przy ćwiczeniu „↻ Zamień na inne”
+  = wymiana TYLKO tego ćwiczenia na inne z tej samej partii (znaczek „↻ nowe”); „🔀 Inny zestaw” = całe nowe losowanie
+  (obecne ćwiczenia unikane, gdy jest zastępstwo). API `POST /api/trener/sessions/<id>/workout {action: reroll|swap, keys}`
+  → `qbot_trener_sila.modify`. Tylko zaplanowany trening od dziś, z zapisanym zestawem z bazy.
+- **Prośba do AI** (`qbot_trener_ask`): AI dostaje ćwiczenia sesji siłowych (`cwiczenia`: klucz, nazwa, partia) i ma op
+  `swap` (`zamien: [klucze]` albo `nowy_zestaw: true`). Następcę wybiera silnik, nie AI. Cofnij przywraca zapisany zestaw
+  (`payload.ai.workouts` → `qbot_trener_ops.undo`). Cała partia („bez brzucha”) nadal = `edit` ze `skip_groups`.
+- **Ocena „Pomijaj” (X)** na `/cwiczenia.html`: przy odczycie przyszłego zapisanego zestawu ćwiczenie X / bez grafiki jest
+  wymieniane samo (`_fix_excluded`), reszta zostaje.
+Stan zmian w `trainer_workout.data._mod = {ban: [klucze zakazane w tej sesji], reroll: N}`; przeżywa zmianę podpisu (np.
+czasu); bez `_mod` ziarno losowania jak dotąd (stare zestawy bez zmian). Wymiana (`replace_keys`): ta sama partia, najpierw
+ta sama klasa ciężaru, potem klasy już w treningu (maks. 2 bloki), brzuch tylko bez hantli; brak zastępstwa → ćwiczenie
+wypada (komunikat). Albert bez zmian (narzędzia nie ruszane).
+Testy: `tests/test_trener_sila_zmiany.py` (4), `tests/test_trener_ask_swap.py` (5). Sprawdzone na żywo (transakcje z
+ROLLBACK + Playwright na ściądze, zestaw 23.10 przywrócony).
+
+### Spójność zestawu + ocena AI (2026-10-09, po uwagach Michała)
+- **Rodziny ćwiczeń** (`qbot_trener_sila.FAMILY`: deska, pompki, wyciskanie leżąc / nad głowę, wiosłowanie, przysiad, wykrok,
+  martwy ciąg, most, …): w jednym treningu najwyżej jedna odmiana z rodziny (losowanie i zamiana; reguła luzowana tylko gdy
+  nie ma innego wyboru).
+- **Bez bloków z jednym ćwiczeniem**: klasa ciężaru z 1 ćwiczeniem → wymiana na ćwiczenie tej partii z klasy innego bloku albo
+  bez hantli; pojedynczy brzuch dołącza do bloku z ciężarem.
+- **Partie rozdzielone** w bloku (`_spread`): ta sama partia nie stoi jedna po drugiej, gdy da się to ułożyć.
+- **Ocena AI** po każdej zmianie (`review`, `GET /api/trener/sessions/<id>/workout/review`, cache `data._review` dopóki zestaw
+  ten sam): ściąga pokazuje ramkę 🤖 gdy zestaw był zmieniany (`_mod`). AI nie ocenia akcentu (oznaczone `akcent`), pominiętych
+  partii, rund ani czasu.
+- Zapisane wcześniej zestawy zostają jak były — nowe zasady przy nowym losowaniu / „Inny zestaw” / zamianie.
+  Testy: `tests/test_trener_sila_spojnosc.py` (5).
+
+### Spójność zestawu (2026-10-09, po uwagach użytkownika)
+- Rodziny ruchów (`FAMILY` w `qbot_trener_sila`): w treningu najwyżej jedna odmiana (np. jedna deska, jedno wyciskanie leżąc);
+  działa w losowaniu, „Inny zestaw” i „Zamień”. Ta sama partia nie pod rząd w bloku (`_spread`).
+- **Ćwiczenia bez hantli NIGDY w bloku z hantlami** (decyzja Michała 09.10 — zastępuje „bez hantli wpychane do bloków
+  z ciężarem” z 03.10): wszystkie w bloku „bez hantli” na końcu. Brak bloku z jednym ćwiczeniem: `fix_lone` (w `choose`
+  i po każdej zamianie w `_rebuild`) przestawia klasy ćwiczeń — samotne z hantlami → ta sama partia w klasie innego bloku
+  albo bez hantli; samotne bez hantli → ćwiczenie z liczniejszego bloku zamieniane na wersję bez hantli.
+- Ocena AI zestawu: `GET /api/trener/sessions/<id>/workout/review` (`SX.review`, cache w `data._review` wg klucza zestawu),
+  pokazywana na ściądze po Twojej zmianie. Testy: `tests/test_trener_sila_spojnosc.py`.
+- 09.10: trening 918 przełożony (te same ćwiczenia, nowe bloki) i druga deska zamieniona na unoszenie nóg.
+
+### Układ 3 rund (2026-10-09, decyzja Michała — zastępuje obwód „6 partii + akcent” z 03.10)
+Runda 1 = **ciężkie hantle** (klasa C, zapas S) 2–3 ćwiczenia → runda 2 = **lżejsze hantle** (L, zapas S, zawsze inna klasa
+niż runda 1) 2–3 → runda 3 = **bez hantli** 2–3. Nowe `choose` w `qbot_trener_sila`: (1) akcent dnia w swojej rundzie
+(`ACC_HOME`), (2) każda partia co najmniej raz wg ważności `COVER_PRIO` (plecy, klatka, nogi, tył, brzuch, barki) i rundy
+domowej `HOME`, (3) dopełnienie do 3 — najpierw partie najrzadsze (równowaga pchanie/ciągnięcie), (4) **dopasowanie do czasu**
+`est_minutes` = rozgrzewka 5′ + zmiany ciężaru 1′ + rundy × serie (1′, na stronę 1,5′) + przerwy między rundami (z DOSE):
+za długo → wypada dopełnienie, potem najmniej ważna partia (runda nie spada poniżej 2), w ostateczności mniej rund; zapas →
++1 runda (maks. 4). Rundy i „razem ok. N min” w tekście (`_src.rounds`, `_src.est_min`). Testy: `tests/test_trener_sila_uklad.py`.
+09.10: przełożone zestawy 918 (dziś, ocena AI ok), 1026, 1032.
+
+
+## Cel wagi z etapami (cele kroczące, od 12.10.2026)
+`trainer_goal.kind='weight'`, `target = {weight_kg: <cel końcowy>, start_kg, start_date, stages: [{kg, to}, ...]}`.
+`qbot_trener_stats.weight_stage()` wybiera AKTYWNY etap = pierwszy nieosiągnięty (waga > kg). Od niego liczą się
+status celu (`status_weight`: tekst „etap N z M…”, wiersze: dziś, tempo, prognoza, lista etapów ✅/▶/⏳) i cel
+bilansu (`compute_balance`: tempo = (waga − kg etapu) / tygodnie do terminu etapu, 0–1 kg/tydz.).
+Bez `stages` – stare zachowanie (cały cel). Edycja celu w UI kopiuje `target`, więc etapy zostają.
+Cel Michała (id 19): „Redukcja: 99 → 95 → 90 kg” – 99 do 31.12.2026, 95 do 31.03.2027, 90 do 30.06.2027 (start 104,3).
+**Ważenie** (poranek 7:00–7:59): `qbot_food_streaks.weigh_line` – linia „⚖️ Dziś ważenie…” wpięta w wiadomość dnia
+(2. linia), a w dni bez treningu osobna wiadomość (klucz `weigh:<dzień>`). Tylko gdy od ostatniego PRAWDZIWEGO ważenia
+(`body_measurements`) minęły ≥2 dni; nie w delegacji/urlopie/wyprawie (Kalendarz), nie dzień po jeździe ≥3 h.

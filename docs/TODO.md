@@ -393,13 +393,14 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 
 ## Jedzenie / redukcja (koncept uzgodniony 12.10.2026, dok. docs/BROKUL.md)
 - [~] Etap 3 (pas 🔥 Jedzenie + 🕗 Okno zrobione 12.10; brakuje: przypomnienie 21:30 gdy dzien otwarty): pas 🔥 Jedzenie (dzien zamkniety uczciwie, przekroczenie nie zrywa), mrozenie (1 za 7 dni, max 2), naprawa do 12:00 nastepnego dnia, kamienie milowe 3/7/14/30/50/100, licznik w wiadomosci 20:00
-- [ ] Etap 4: cele kroczace 99 kg do 31.12.2026 / 95 kg do 31.03.2027 / 90 kg do 30.06.2027 (zastepuja 'Redukcja kalduna' 89 kg), caly plan widoczny (wykres z korytarzem, etapy, prognoza); wazenie 3-4x/tydz. (dopisek 7:00, bez dramatu, pomijany po dlugiej jezdzie i na wyjazdach/delegacjach z Kalendarza)
+- [~] Etap 4 (12.10: cel z etapami w Trenerze + przypomnienie o wazeniu ZROBIONE; brakuje: wykres wagi z korytarzem planu i prognoza na wykresie): cele kroczace 99 kg do 31.12.2026 / 95 kg do 31.03.2027 / 90 kg do 30.06.2027 (zastepuja 'Redukcja kalduna' 89 kg), caly plan widoczny (wykres z korytarzem, etapy, prognoza); wazenie 3-4x/tydz. (dopisek 7:00, bez dramatu, pomijany po dlugiej jezdzie i na wyjazdach/delegacjach z Kalendarza)
 - [ ] Etap 5: kalibracja (wydatek + zanizanie porcji z realnej zmiany wagi), cel kcal dnia, tempo startowe 0,5 kg/tydz., dokladka do Brokula pod trening (7:00 w dni treningowe + 20:00), miejsce na slodkie w paliwie na rowerze
 - [ ] Etap 6: pasy 💪 Trening (zgodnie z planem, odpoczynek sie liczy, choroba zamraza) i 📉 Redukcja (tydzien w widelkach + wazenia)
 - [ ] Etap 7: piatek rano plan weekendu (co zamawiac na miescie, co w domu/na rower)
 - [ ] Delegacja w Kalendarzu -> o 20:00 domyslnie propozycja 'wszystko do lodowki'
 
 # ZROBIONE
+- [2026-10-12] Etap 4 (czesc): cel wagi z etapami 99/95/90 kg (aktywny etap steruje statusem celu i celem bilansu, plan widoczny w Celach), przypomnienie o wazeniu 7:00 (co >=2 dni od realnego wazenia, nie w delegacji/urlopie/wyprawie, nie po jezdzie >=3 h). Dok.: docs/TRENER.md
 - [2026-10-12] Jedzenie: pasy 🔥 Jedzenie i 🕗 Okno 10-20 (zaufanie, przycisk do 12:00 nast. dnia, zwolnienia: trening >=90 min, delegacja/urlop/wyprawa), mrozenie, kamienie milowe; monitor waga vs jedzenie z realnych wazen (body_measurements) w niedzielnym rozliczeniu Trenera; historia Michala jako punkt odniesienia AI, pewnosc pozycji, poprawka odpowiedzia, czytelne potwierdzenie. Dok.: docs/BROKUL.md
 - [2026-10-12] Jedzenie etap 1-2: harmonogram dostaw Brokula (odwolane dni, koniec zamowienia), lodowka (zjem pozniej), wiadomosc dnia 20:00 takze w dni bez diety, Telegram: kazdy tekst/zdjecie = jedzenie (zapis surowy najpierw, dzien z tekstu, AI kcal+makra, pytanie o porcje przyciskami, katalog porcji, mniej/OK/wiecej), szybkie przyciski. Dok.: docs/BROKUL.md
 - [2026-10-12] Diety od Brokula -> QBot: import menu (5 dni, pelne makra+sol+cukry+sklad) do qbot_v2.brokul_meals co 3 h, sesja wklejana na /brokul-dostep (logowanie haslem blokuje reCAPTCHA), podtrzymanie sesji co 20 min, Telegram od 20:00 z przyciskami Zjadlem/Pominalem/cofnij; do bilansu (intake_*) tylko po potwierdzeniu. Dok.: docs/BROKUL.md
