@@ -283,12 +283,12 @@
   var DAYMS = 864e5;
   var B = { range: 90, start: null, end: null, goal: false, zoom: null, data: null, body: null,
     on: { burn: true, intake: false, def: true, target: true, weight: true, plan: true, forecast: true,
-          fat: false, muscle: false, bone: false, fatp: false, water: false } };
+          fat: false, muscle: false, bone: false, fatp: false, water: false, waist: true } };
   /* kolory dobrane tak, zeby sie nie mylily: spalanie szarosci, zjedzone biala kreska, deficyt zielony / nadwyzka czerwony */
   var BS = { burn: ["spalone: spoczynek + aktywne", "#64748b"], intake: ["zjedzone (kreska)", "var(--ink)"], def: ["deficyt / nadwyżka", "#22c55e"],
     target: ["cel jedzenia", "#facc15"], weight: ["waga", "#a78bfa"], plan: ["plan redukcji 99→95→90", "#38bdf8"],
     forecast: ["prognoza przy obecnym tempie", "#f97316"], fat: ["tłuszcz kg", "#f472b6"], muscle: ["mięśnie kg", "#22d3ee"],
-    bone: ["kości kg", "#cbd5e1"], fatp: ["tłuszcz %", "#fb7185"], water: ["woda %", "#60a5fa"] };
+    bone: ["kości kg", "#cbd5e1"], waist: ["talia cm", "#a3e635"], fatp: ["tłuszcz %", "#fb7185"], water: ["woda %", "#60a5fa"] };
   var BTIP = { plan: "Planowana ścieżka wagi do celów 99 kg (31.12), 95 kg (31.03), 90 kg (30.06) z korytarzem ±1 kg – jeśli waga jest w pasie, idziesz zgodnie z planem.",
     forecast: "Gdzie będzie waga, jeśli utrzyma się tempo z ostatnich 30 dni.", burn: "Ciemna część: spoczynek (BMR, Garmin). Jaśniejsza: aktywne (ruch + treningi). Dziś i dni przyszłe: prognoza (jaśniejsze).",
     def: "Zielone = deficyt (część spalania niepokryta jedzeniem). Czerwone = nadwyżka (zjedzone ponad spalone).", intake: "Biała kreska = ile zjedzono (dni z wpisami)." };
@@ -391,6 +391,13 @@
       s += "<text x='" + (X(T(lp.date)) + 6).toFixed(1) + "' y='" + (Yo(lp[key]) + 4).toFixed(1) + "' font-size='11' font-weight='600' fill='" + BS[k][1] + "'>" + n1(lp[key]) + unit + "</text>"; }
     compSeries("fat", "fat_kg", false, " kg"); compSeries("muscle", "muscle_kg", false, " kg"); compSeries("bone", "bone_kg", false, " kg");
     compSeries("fatp", "fat_pct", true, "%"); compSeries("water", "water_pct", true, "%");
+    /* obwod talii (cm) - wlasna skala jak sklad ciala */
+    if (B.on.waist) { var wcs = (B.body.circ || []).filter(function (q) { return q.waist_cm != null && vis(q.date); });
+      if (wcs.length) { var wv2 = wcs.map(function (q) { return q.waist_cm; }), wl0 = Math.min.apply(null, wv2), wh0 = Math.max.apply(null, wv2), wp = Math.max(0.5, (wh0 - wl0) * 0.15); wl0 -= wp; wh0 += wp;
+        var YWc = function (v) { return pt + 10 + (wh0 - v) / (wh0 - wl0) * (topB - pt - 20); };
+        s += "<path d='" + path(wcs.map(function (q) { return [T(q.date), q.waist_cm]; }), YWc) + "' fill='none' stroke='" + BS.waist[1] + "' stroke-width='2.2'/>";
+        wcs.forEach(function (q) { s += "<circle cx='" + X(T(q.date)).toFixed(1) + "' cy='" + YWc(q.waist_cm).toFixed(1) + "' r='3.6' fill='" + BS.waist[1] + "'/>"; });
+        var lw = wcs[wcs.length - 1]; s += "<text x='" + (X(T(lw.date)) + 6).toFixed(1) + "' y='" + (YWc(lw.waist_cm) + 4).toFixed(1) + "' font-size='11' font-weight='600' fill='" + BS.waist[1] + "'>" + n1(lw.waist_cm) + " cm</text>"; } }
     var wt = []; for (var q = w0; q <= w1; q += Math.max(1, Math.round((w1 - w0) / 5))) wt.push(q);
     if (B.on.weight || B.on.plan || B.on.forecast) wt.forEach(function (q) { s += "<text x='" + (W - pr + 5) + "' y='" + (YW(q) + 3.5).toFixed(1) + "' font-size='10.5' fill='" + BS.weight[1] + "'>" + q + "</text>"; });
     if ((anyK || anyP) && B.body["break"] && T(B.body["break"]) >= t0 && T(B.body["break"]) <= t1) { var bx = X(T(B.body["break"])).toFixed(1); s += "<line x1='" + bx + "' x2='" + bx + "' y1='" + pt + "' y2='" + (H - pb) + "' stroke='var(--muted)' stroke-dasharray='3 3'/><text x='" + bx + "' y='" + (pt + 12) + "' font-size='10' text-anchor='end' fill='var(--muted)'>tryb sportowca →&#160;</text>"; }
@@ -430,6 +437,9 @@
         if (p.fat_pct != null) L.push("tłuszcz " + n1(p.fat_pct) + "% (" + n1(p.fat_kg) + " kg) · mięśnie " + n1(p.muscle_kg) + " kg");
         if (p.water_pct != null || p.bone_kg != null) L.push("woda " + n1(p.water_pct) + "% · kości " + n1(p.bone_kg) + " kg");
         if (p.suspect.length) L.push("⚠️ pomiar podejrzany: " + p.suspect.join(", ")); }
+      var cz = (B.body.circ || []).filter(function (q) { return q.date === iso; })[0];
+      if (cz) L.push("📏 talia <b>" + n1(cz.waist_cm) + " cm</b> (talia/wzrost " + (cz.waist_cm / 177).toFixed(2).replace(".", ",") + ")" +
+        [["hips_cm", "biodra"], ["chest_cm", "klatka"], ["thigh_cm", "udo"], ["arm_cm", "ramię"], ["neck_cm", "szyja"]].filter(function (f) { return cz[f[0]] != null; }).map(function (f) { return " · " + f[1] + " " + n1(cz[f[0]]); }).join(""));
       var pv = g.planAt(T(iso)); if (pv != null && B.on.plan) L.push("plan redukcji: " + n1(pv) + " kg (±1)");
       var fv = g.fcAt(T(iso)); if (fv != null && B.on.forecast && iso > (S.today || "")) L.push("prognoza: " + n1(fv) + " kg");
       tip.innerHTML = L.join("<br>");
@@ -443,7 +453,7 @@
       (g && g.chart ? "<button class='btn" + (B.goal ? " on" : "") + "' data-goal='1'>do celu (" + dm(g.chart.plan[g.chart.plan.length - 1][0]) + "." + g.chart.plan[g.chart.plan.length - 1][0].slice(0, 4) + ")</button>" : "") +
       "<span class='sub' style='margin-left:6px'>od</span><input type='date' id='bfrom' value='" + (B.start || x.start) + "'><span class='sub'>do</span><input type='date' id='bto' value='" + (B.end || x.end) + "'><button class='btn" + (B.start ? " on" : "") + "' id='bgo'>Pokaż</button>" +
       (B.zoom ? "<button class='btn' id='bunzoom'>↺ cała skala</button>" : "") + "</div>";
-    var grp = [["kcal", ["burn", "def", "target"]], ["waga", ["weight", "plan", "forecast"]], ["skład ciała", ["fat", "muscle", "bone", "fatp", "water"]]];
+    var grp = [["kcal", ["burn", "def", "target"]], ["waga", ["weight", "plan", "forecast"]], ["skład ciała", ["waist", "fat", "muscle", "bone", "fatp", "water"]]];
     var tg = "<div class='toggles'>" + grp.map(function (gg, gi) { return "<span class='sub' style='align-self:center;margin:0 2px 0 " + (gi ? 12 : 0) + "px'>" + gg[0] + ":</span>" + gg[1].map(function (k) {
       return "<button class='tg" + (B.on[k] ? " on" : "") + "' data-s='" + k + "' aria-pressed='" + B.on[k] + "'" + (BTIP[k] ? " title='" + BTIP[k] + "'" : "") + "><i style='background:" + BS[k][1] + "'></i>" + BS[k][0] + "</button>"; }).join(""); }).join("") + "</div>";
     var h = "<div class='card'><div class='ttl'><h2>Bilans i waga</h2><span class='sub'>cel bilansu wg budżetu tygodnia" + (x.calib ? " · kalibracja " + n0(-x.calib) : "") + "</span></div>" + rb + tg +
@@ -458,9 +468,23 @@
         "<span class='sub'>" + (rows ? "tempo 30 dni: " + esc(rows.have) + " kg/tydz. (potrzeba " + esc(rows.need) + ") · " : "") + "cel ustawiasz w <a href='/trening.html'>Trener → Cele</a></span></div>" +
       "<div class='bs'><span class='l'>Skład ciała · Withings</span><b>" + (lastc ? n1(lastc.fat_pct) + "% · " + n1(lastc.fat_kg) + " kg tłuszczu · " + n1(lastc.muscle_kg) + " kg mięśni" : "brak pomiarów") + "</b>" +
         "<span class='sub'>" + (lastc ? "ostatni " + dm(lastc.date) : "") + (cur && cur.d_fat_kg != null ? " · od " + dm(cur.first) + ": tłuszcz " + (cur.d_fat_kg > 0 ? "+" : "") + n1(cur.d_fat_kg) + " kg, mięśnie " + (cur.d_muscle_kg > 0 ? "+" : "") + n1(cur.d_muscle_kg) + " kg" : "") + " · ufaj trendowi z 3–4 tyg.</span></div>" +
+      (function () { var cc = (B.body.circ || []).filter(function (q) { return q.waist_cm != null; }), lc = cc[cc.length - 1], fc = cc[0];
+        return "<div class='bs'><span class='l'>📏 Obwody</span><b>" + (lc ? "talia " + n1(lc.waist_cm) + " cm · talia/wzrost " + (lc.waist_cm / 177).toFixed(2).replace(".", ",") : "brak pomiarów") + "</b>" +
+          "<span class='sub'>" + (lc ? "ostatni " + dm(lc.date) + (cc.length > 1 ? " · od " + dm(fc.date) + ": " + (lc.waist_cm - fc.waist_cm > 0 ? "+" : "") + n1(lc.waist_cm - fc.waist_cm) + " cm" : "") + " · cel < 0,50 (talia < 88 cm)" : "co 2 tygodnie: rano, na wysokości pępka, na wydechu") + "</span>" +
+          "<button class='btn' id='circbtn' style='margin-top:6px;align-self:flex-start'>+ dodaj pomiar</button><div id='circform' hidden style='margin-top:8px'></div></div>"; })() +
       "<div class='bs'><span class='l'>Waga vs jedzenie</span><b>" + (dsc.ready ? "rozbieżność " + n0(dsc.disc) + " kcal/dz" : "za mało danych") + "</b>" +
         "<span class='sub'>" + esc((x.discrepancy_line || "").replace(/^\S+\s*Waga vs jedzenie:\s*/, "")) + "</span></div></div>";
     $("bilans").innerHTML = h;
+    var cb = $("circbtn"); if (cb) cb.onclick = function () { var f = $("circform"); f.hidden = !f.hidden; if (f.hidden) return;
+      var t0 = new Date(), td = t0.getFullYear() + "-" + ("0" + (t0.getMonth() + 1)).slice(-2) + "-" + ("0" + t0.getDate()).slice(-2);
+      var F = [["waist_cm", "talia *"], ["hips_cm", "biodra"], ["chest_cm", "klatka"], ["thigh_cm", "udo"], ["arm_cm", "ramię"], ["neck_cm", "szyja"]];
+      f.innerHTML = "<div class='rng' style='margin:0 0 6px'><input type='date' id='cf_date' value='" + td + "'></div><div style='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px'>" +
+        F.map(function (x2) { return "<label class='sub' style='display:flex;flex-direction:column;gap:2px'>" + x2[1] + " (cm)<input inputmode='decimal' id='cf_" + x2[0] + "' style='padding:5px 7px;border:1px solid var(--line);border-radius:8px;background:var(--well);color:var(--ink);font:inherit'></label>"; }).join("") +
+        "</div><div style='margin-top:8px;display:flex;gap:8px;align-items:center'><button class='btn pri' id='cf_save'>Zapisz</button><span class='sub' id='cf_msg'>* talia wymagana · mierz rano, na wydechu, bez wciągania brzucha</span></div>";
+      $("cf_save").onclick = function () { var b2 = { date: $("cf_date").value }; F.forEach(function (x2) { b2[x2[0]] = $("cf_" + x2[0]).value; });
+        if (!b2.waist_cm) { $("cf_msg").textContent = "Wpisz talię."; return; }
+        post("/api/jedzenie/circ", b2).then(function () { B.body = null; loadBilans(); }).catch(function (e) { $("cf_msg").textContent = e.message; }); };
+    };
     $("bilans").querySelectorAll("[data-r]").forEach(function (b) { b.onclick = function () { B.range = +b.dataset.r; B.start = B.end = null; B.goal = false; loadBilans(); }; });
     var gb = $("bilans").querySelector("[data-goal]"); if (gb) gb.onclick = function () { B.goal = !B.goal; B.start = B.end = null; loadBilans(); };
     $("bgo").onclick = function () { var a = $("bfrom").value, b = $("bto").value; if (!a) return; B.start = a; B.end = b || null; B.goal = false; loadBilans(); };

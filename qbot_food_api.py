@@ -367,7 +367,56 @@ def build_router(current_user, owner_user) -> APIRouter:
                               "last3_muscle_kg": avg(xs[-3:], "muscle_kg"), "first": xs[0]["date"], "last": xs[-1]["date"],
                               "d_fat_kg": round(xs[-1]["fat_kg"] - xs[0]["fat_kg"], 1) if len(xs) > 1 else None,
                               "d_muscle_kg": round((xs[-1]["muscle_kg"] or 0) - (xs[0]["muscle_kg"] or 0), 1) if len(xs) > 1 else None}
-        return {"points": out, "break": BREAK.isoformat(), "summary": summ, "height_cm": 177}
+        with FP._conn() as c:
+          circ = [{k: (float(v) if k != "date" and v is not None else (v.isoformat() if k == "date" else None)) for k, v in x.items()}
+                    for x in c.execute("SELECT date, waist_cm, hips_cm, chest_cm, thigh_cm, arm_cm, neck_cm FROM qbot_v2.body_circumference "
+                                       "WHERE date >= current_date - %s ORDER BY date", (days,)).fetchall()]
+        return {"points": out, "break": BREAK.isoformat(), "summary": summ, "height_cm": 177, "circ": circ}
+
+    @r.get("/circ")
+    def circ_get(request: Request, days: int = 730):
+        """Obwody ciala (cm) do wykresow (Forma -> Trendy -> Wellness)."""
+        need_user(request)
+        import qbot_food_plan as FP
+        with FP._conn() as c:
+            rows = c.execute("SELECT date, waist_cm, hips_cm, chest_cm, thigh_cm, arm_cm, neck_cm FROM qbot_v2.body_circumference "
+                             "WHERE date >= current_date - %s ORDER BY date", (max(30, min(1500, days)),)).fetchall()
+        return {"circ": [{k: (float(v) if k != "date" and v is not None else (v.isoformat() if k == "date" else None)) for k, v in x.items()} for x in rows],
+                "height_cm": 177}
+
+    @r.post("/circ")
+    async def circ_post(request: Request):
+        """Zapis obwodow na dzien (nadpisuje). Talia wymagana; wszystkie puste = usuniecie wpisu z tego dnia."""
+        need_owner(request)
+        b = await body(request)
+        d = _d(b.get("date")) if b.get("date") else datetime.now(TZ).date()
+        vals = {}
+        for k in ("waist_cm", "hips_cm", "chest_cm", "thigh_cm", "arm_cm", "neck_cm"):
+            v = b.get(k)
+            if v in (None, ""):
+                vals[k] = None
+                continue
+            try:
+                v = round(float(str(v).replace(",", ".")), 1)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="%s: to nie liczba" % k)
+            if not 15 <= v <= 250:
+                raise HTTPException(status_code=400, detail="%s: poza zakresem 15-250 cm" % k)
+            vals[k] = v
+        import qbot_food_plan as FP
+        with FP._conn() as c:
+            if all(v is None for v in vals.values()):
+                c.execute("DELETE FROM qbot_v2.body_circumference WHERE date=%s", (d,))
+                c.commit()
+                return {"ok": True, "deleted": d.isoformat()}
+            if vals["waist_cm"] is None:
+                raise HTTPException(status_code=400, detail="talia jest wymagana")
+            c.execute("INSERT INTO qbot_v2.body_circumference (date, waist_cm, hips_cm, chest_cm, thigh_cm, arm_cm, neck_cm) "
+                      "VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (date) DO UPDATE SET waist_cm=EXCLUDED.waist_cm, hips_cm=EXCLUDED.hips_cm, "
+                      "chest_cm=EXCLUDED.chest_cm, thigh_cm=EXCLUDED.thigh_cm, arm_cm=EXCLUDED.arm_cm, neck_cm=EXCLUDED.neck_cm, updated_at=now()",
+                      (d, vals["waist_cm"], vals["hips_cm"], vals["chest_cm"], vals["thigh_cm"], vals["arm_cm"], vals["neck_cm"]))
+            c.commit()
+        return {"ok": True, "date": d.isoformat(), **vals}
 
     @r.get("/calendar")
     def calendar(request: Request, start: str, end: str):

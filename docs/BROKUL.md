@@ -108,6 +108,13 @@ Z harmonogramu tylko DWIE wiadomości dziennie, zwięzłe (~8 linijek), szczegó
 - **Normy składników** (`qbot_food_plan.norms`): białko 160 g, tłuszcz min. 70 g, węgle = reszta kcal celu, cukry ≤10%
   energii, nasycone ≤10% energii, sól ≤5 g.
 
+## Obwody ciała (12.10.2026)
+- Tabela `qbot_v2.body_circumference` (sql/food_v4.sql): talia (wymagana), biodra, klatka, udo, ramię, szyja – cm, jeden wpis na dzień.
+- Wpis: Jedzenie → Bilans i waga → kafelek 📏 Obwody → „+ dodaj pomiar” (POST /api/jedzenie/circ; wszystkie puste = usunięcie dnia).
+- Widok: seria „talia cm” w wykresie Bilans i waga (grupa skład ciała, własna skala) i w Forma → Trendy → Wellness (oś cm). Wskaźnik talia/wzrost (177 cm), cel < 0,50.
+- Przypomnienie: linia w porannej wiadomości tylko w poniedziałek, gdy od ostatniej talii minęło ≥ 14 dni.
+- Gotowość usunięta z Wellness – jest na wykresie formy (gotowość 1 noc / 3 dni), gdzie koreluje z obciążeniem.
+
 ## Strona „Jedzenie” (https://albert.cytr.us/jedzenie.html, od 12.10.2026)
 Menu: pozycja „Jedzenie” (nav.js, po Treningu). Struktura `jedzenie.html`, logika `jedzenie.js`, dane i zapis
 `qbot_food_api.py` (`/api/jedzenie/*`, router w `qbot_web.py`). Odczyt: `_current_user` (też demo); zapis: `_owner_user`.

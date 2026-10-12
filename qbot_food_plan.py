@@ -515,6 +515,14 @@ def morning_digest(day: date, train_lines: list[str] | None = None) -> str | Non
             L.append(wl)
     except Exception:
         pass
+    try:  # 2026-10-12: obwod talii co 2 tygodnie - przypomnienie tylko w poniedzialek, gdy minelo >= 14 dni
+        if day.weekday() == 0:
+            with _conn() as c:
+                r0 = c.execute("SELECT max(date) d FROM qbot_v2.body_circumference WHERE waist_cm IS NOT NULL").fetchone()
+            if not r0 or not r0["d"] or (day - r0["d"]).days >= 14:
+                L.append("📏 Obwód talii (pępek, na wydechu) – wpisz w Jedzenie → Bilans i waga")
+    except Exception:
+        pass
     try:
         with _conn() as c:
             if is_ill(c, day):
