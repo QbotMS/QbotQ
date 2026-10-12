@@ -128,6 +128,8 @@ details.sk2 p{font-size:12.5px;color:var(--ink2);margin:4px 0 0;line-height:1.45
 .bs{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:10px 14px;display:flex;flex-direction:column;gap:3px}
 .bs .l{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}.bs b{font-size:15px}.bs b.ok{color:var(--good)}.bs b.open{color:var(--warn)}
 .bs .sub a{color:var(--accent-ink,var(--accent))}
+.bgrip{position:absolute;left:0;right:0;bottom:-2px;height:14px;cursor:ns-resize;z-index:6;touch-action:none;display:flex;align-items:center;justify-content:center}
+.bgrip::after{content:"";width:46px;height:4px;border-radius:2px;background:var(--line2,var(--line))}.bgrip:hover::after{background:var(--accent)}
 /* telefon: na koncu, zeby wygrac z .meal wyzej */
 @media(max-width:600px){.meal{grid-template-columns:1fr}.meal .seg{justify-self:start}}
 </style>

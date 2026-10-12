@@ -282,6 +282,7 @@
   /* ------------------------------------------------------------ BILANS I WAGA: jeden wspolny wykres (2026-10-12) */
   var DAYMS = 864e5;
   var B = { range: 90, start: null, end: null, goal: false, zoom: null, data: null, body: null,
+    h: (function () { try { var v = +localStorage.getItem("jedz_bil_h"); return v >= 260 && v <= 1100 ? v : 440; } catch (e) { return 440; } })(),
     on: { burn: true, intake: false, def: true, target: true, weight: true, plan: true, forecast: true,
           fat: false, muscle: false, bone: false, fatp: false, water: false, waist: true } };
   /* kolory dobrane tak, zeby sie nie mylily: spalanie szarosci, zjedzone biala kreska, deficyt zielony / nadwyzka czerwony */
@@ -310,7 +311,7 @@
   function bchart() {
     var x = B.data, ch = x.goal && x.goal.chart, dm0 = domain(), t0 = dm0[0], t1 = dm0[1];
     var anyK0 = B.on.fat || B.on.muscle || B.on.bone, anyP0 = B.on.fatp || B.on.water;
-    var W = 980, H = 440, pl = 46, pr = 64, pt = 18, pb = 24;
+    var W = 980, H = B.h, pl = 46, pr = 64, pt = 18, pb = 24;
     /* dwie sekcje: gora = linie (waga, plan, prognoza, sklad), dol = slupki kcal - nic sie nie naklada */
     var topB = pt + (H - pt - pb) * 0.6, botA = topB + 20, botB = H - pb;
     function X(t) { return pl + (t - t0) / (t1 - t0) * (W - pl - pr); }
@@ -447,6 +448,19 @@
       tip.style.left = Math.max(0, left) + "px"; tip.style.top = "10px"; tip.style.display = "block";
     });
   }
+  /* uchwyt wysokosci (jak Forma -> Trendy): przeciaganie zmienia wysokosc wykresu, zapamietane */
+  function redrawB() { var w = $("bwrap"); if (!w) return; w.innerHTML = bchart() + "<div class='tip2' id='btip'></div><div class='bgrip' id='bgrip' title='Przeciągnij, aby zmienić wysokość wykresu'></div>"; wireB(); wireGrip(); }
+  function wireGrip() {
+    var g = $("bgrip"); if (!g) return;
+    g.addEventListener("pointerdown", function (ev) {
+      ev.preventDefault(); var y0 = ev.clientY, h0 = B.h, svg = $("bsvg"), sc = svg ? 980 / svg.getBoundingClientRect().width : 1, raf = 0;
+      document.body.style.cursor = "ns-resize"; document.body.style.userSelect = "none";
+      function mv(e) { B.h = Math.max(260, Math.min(1100, Math.round(h0 + (e.clientY - y0) * sc))); if (!raf) raf = requestAnimationFrame(function () { raf = 0; redrawB(); }); }
+      function up() { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); document.body.style.cursor = ""; document.body.style.userSelect = "";
+        try { localStorage.setItem("jedz_bil_h", String(B.h)); } catch (e) {} redrawB(); }
+      document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
+    });
+  }
   function renderBilans() {
     var x = B.data, g = x.goal;
     var rb = "<div class='rng'>" + [45, 90, 180, 365].map(function (d) { return "<button class='btn" + (!B.start && !B.goal && B.range === d ? " on" : "") + "' data-r='" + d + "'>" + (d === 365 ? "rok" : d + " dni") + "</button>"; }).join("") +
@@ -457,7 +471,7 @@
     var tg = "<div class='toggles'>" + grp.map(function (gg, gi) { return "<span class='sub' style='align-self:center;margin:0 2px 0 " + (gi ? 12 : 0) + "px'>" + gg[0] + ":</span>" + gg[1].map(function (k) {
       return "<button class='tg" + (B.on[k] ? " on" : "") + "' data-s='" + k + "' aria-pressed='" + B.on[k] + "'" + (BTIP[k] ? " title='" + BTIP[k] + "'" : "") + "><i style='background:" + BS[k][1] + "'></i>" + BS[k][0] + "</button>"; }).join(""); }).join("") + "</div>";
     var h = "<div class='card'><div class='ttl'><h2>Bilans i waga</h2><span class='sub'>cel bilansu wg budżetu tygodnia" + (x.calib ? " · kalibracja " + n0(-x.calib) : "") + "</span></div>" + rb + tg +
-      "<div class='chwrap chartbox' id='bwrap'>" + bchart() + "<div class='tip2' id='btip'></div></div>" +
+      "<div class='chwrap chartbox' id='bwrap' style='padding-bottom:12px'>" + bchart() + "<div class='tip2' id='btip'></div><div class='bgrip' id='bgrip' title='Przeciągnij, aby zmienić wysokość wykresu'></div></div>" +
       "<div class='legend'><span><i style='background:#334155'></i>spoczynek</span><span><i style='background:#64748b'></i>aktywne</span><span><i style='background:#22c55e'></i>deficyt</span><span><i style='background:#ef4444'></i>nadwyżka</span><span>jaśniejsze słupki = prognoza</span></div>" +
       "<div class='legend' style='margin-top:4px'><span>lewa oś: kcal (słupki w dolnej części) · prawa: kg wagi, planu i prognozy" + (B.on.fat || B.on.muscle || B.on.bone || B.on.fatp || B.on.water ? " · skład ciała: każda seria we własnej skali (kształt trendu), wartość na końcu linii i w dymku" : "") + "</span><span>przeciągnij = powiększ · dwuklik = cała skala · klik = otwórz dzień</span></div></div>";
     /* zwarty pasek statusu zamiast duzych kart (cel wagi edytuje sie w Trener -> Cele; tygodnie sa w zakladce Analiza) */
@@ -490,7 +504,7 @@
     $("bgo").onclick = function () { var a = $("bfrom").value, b = $("bto").value; if (!a) return; B.start = a; B.end = b || null; B.goal = false; loadBilans(); };
     var uz = $("bunzoom"); if (uz) uz.onclick = function () { B.zoom = null; renderBilans(); };
     $("bilans").querySelectorAll("[data-s]").forEach(function (b) { b.onclick = function () { B.on[b.dataset.s] = !B.on[b.dataset.s]; renderBilans(); }; });
-    wireB();
+    wireB(); wireGrip();
   }
 
   /* ------------------------------------------------------------ MENU (tygodniami) */
