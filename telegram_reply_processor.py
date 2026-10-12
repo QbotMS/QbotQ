@@ -413,6 +413,9 @@ def main():
                 elif (cq.get("data") or "").startswith("tr:"):
                     import qbot_trener_notify as _TRN   # TRENER: REST / brak czasu / choroba / cofnij
                     _TRN.handle_callback(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, CHAT_ID)
+                elif (cq.get("data") or "").startswith("br:"):
+                    import qbot_brokul_meals as _BRM   # Brokul: zjadlem / pominalem / cofnij
+                    _BRM.handle_callback(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, CHAT_ID)
                 else:
                     handle_komoot_callback(cq)
             except Exception as e:

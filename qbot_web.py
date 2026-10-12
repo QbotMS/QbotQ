@@ -1095,6 +1095,44 @@ btn.onclick=async()=>{
 </script></body></html>"""
 
 
+@app.get("/brokul-dostep", response_class=HTMLResponse)
+async def brokul_access_form(request: Request):
+    """2026-10-12: wklejanie sesji Diety od Brokula (logowanie chroni reCAPTCHA). qbot_brokul.py"""
+    if not _current_user(request):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    import qbot_brokul as _BR
+    return HTMLResponse(_BR.FORM_HTML)
+
+
+@app.get("/api/brokul/session/status")
+def api_brokul_session_status(request: Request):
+    """Stan sesji Brokula (test na zywo). Nie zwraca wartosci ciasteczek."""
+    if not _current_user(request):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    import qbot_brokul as _BR
+    return _BR.status(live=True)
+
+
+@app.post("/api/brokul/session")
+async def api_brokul_session_set(request: Request):
+    """Naglowek Cookie z przegladarki -> test u Brokula -> zapis dopiero po udanym tescie."""
+    if not _owner_user(request):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    body = await request.json()
+    raw = str((body or {}).get("cookie") or "")
+    if not (8 <= len(raw.strip()) <= 16384):
+        raise HTTPException(status_code=400, detail="zly format (za krotkie lub za dlugie)")
+    import qbot_brokul as _BR
+    try:
+        return _BR.store_session(raw)
+    except _BR.SessionInputError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except _BR.SessionExpired:
+        raise HTTPException(status_code=400, detail="Brokul nie przyjal tych ciasteczek (przekierowanie na logowanie) - skopiuj je po zalogowaniu")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="blad polaczenia z Brokulem: %s" % type(e).__name__)
+
+
 @app.get("/komoot-dostep", response_class=HTMLResponse)
 async def komoot_access_form(request: Request):
     user = _current_user(request)

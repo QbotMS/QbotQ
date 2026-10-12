@@ -1211,8 +1211,29 @@ Zweryfikowane na zywo. qbot-api zrestartowany. OTWARTE: retry przy 202 w QExt2 (
 - Jedna lista notatek z tagami rowerów (bike_notes w garage.db). Zweryfikowane Playwright: karta, tagi, tabela, okno edycji, bez błędów JS.
 - Albert nie czyta notatek (decyzja: pytania ida przez DEV). Dok.: docs/GARAZ.md sekcja Notatki.
 
+## 09.10.2026 – Siła: zamiana ćwiczeń [SILA-ZAMIANA]
+- Ściąga: „↻ Zamień na inne” + „🔀 Inny zestaw”; prośba do AI zmienia ćwiczenia; „Pomijaj” działa też na zaplanowane zestawy.
+- Statyki (sciaga.html, trener.js v36, trener-m.js v10, kalendarz3.js v6) żywe; repo: qbot_trener_sila/ask/ops/api, testy, docs.
+- Dopisane: rodziny ćwiczeń, bez bloków z 1 ćwiczeniem, rozdzielanie partii, ocena AI na ściądze [SILA-SPOJNOSC].
+
+## 2026-10-10 - Faworyci ubioru (commit be7808c, wypchniety)
+- Analiza trasy -> Sprzet: przycisk 'Faworyci' + okno Rodzaj|Rzecz; faworyci per trasa+data.
+- Dobor z faworytami: A z faworytami + B AI bez faworytow (to samo tempo) + 'Jak rozumiem Twoj wybor'. Dok.: docs/OUTFIT_FAVORITES.md
+- RYZYKO: dobor z faworytami = 2 wywolania AI po kolei, test 67 s (limit Cloudflare 100 s). Jesli bedzie sie zrywac -> przerobic na liczenie w tle + odpytywanie (jak pakiet dnia).
+
+## 2026-10-10 - Uwagi do AI (ubior)
+- Przycisk 'Uwagi do AI' w Sprzecie: uwaga poprawia biezacy zestaw od razu; wniosek na przyszlosc po zatwierdzeniu idzie do kazdego doboru (qbot_v2.outfit_lessons). Dok.: docs/OUTFIT_FAVORITES.md
+
+## 2026-10-10 - Sprzet: rower i akcesoria
+- Panel Sprzet: pogoda wstecz 7 dni/24 h (Open-Meteo) -> stan nawierzchni; rower (AI); lampki i blotniki (reguly). Szeroki panel, wieksza czcionka. Dok.: docs/OUTFIT_FAVORITES.md
+- Czeka na Michala: dopisanie blotnikow do Garazu.
+
 ## 2026-10-10 - Ubior i sprzet w Analizie trasy (sesja: faworyci / uwagi / sprzet)
 - Commity: be7808c (Faworyci), 49ad17e (Uwagi do AI), a6247bc (Sprzet: pogoda wstecz, rower, lampki, blotniki), 3e85390 (kategoria Blotniki), f42be4a (zasady roweru, reczny wybor, blotniki per rower). Dok.: docs/OUTFIT_FAVORITES.md
 - Zmiany danych Garazu (blotniki, widelec Grizla + RaceDay 2, Grail na 11.10) opisane w docs/OUTFIT_FAVORITES.md (garage.db poza repo).
 - RYZYKO: dobor ubioru z faworytami = 2 wywolania AI po kolei (test 67 s, limit Cloudflare 100 s). Jesli bedzie sie zrywac -> liczenie w tle + odpytywanie.
 - Otwarte: mocowanie blotnikow Ass Saver / SKS w Garazu (Michal); progi stanu nawierzchni (sucho/wilgotno/mokro/bloto) do kalibracji na jazdach.
+
+## 2026-10-12 Brokul (Diety od Brokula)
+- Wdrozone: docs/BROKUL.md. Cron root */15 brokul_tick.py (jako qbot). Sesja wklejona 12.10 08:50.
+- Obserwowac: zywotnosc sesji (data/brokul_state.json), pierwsze podsumowanie 20:00 (12.10 wyslane recznie jako test).
