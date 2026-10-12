@@ -88,34 +88,59 @@ def _fmt(v, d=1):
     return ("%+." + str(d) + "f") % v if v is not None else "–"
 
 
+def _r(v, d=1):
+    return None if v is None else round(v, d)
+
+def _conf(n, p, short=False):
+    """Pewnosc liczona przez QBota (AI jej nie zmienia)."""
+    if short or n is None or p is None:
+        return "niska"
+    if n >= 30 and p < 0.01:
+        return "wysoka"
+    if n >= 15 and p < 0.05:
+        return "średnia"
+    return "niska"
+
+
+def _deweek(series, days):
+    """Usuwa efekt dnia tygodnia: od wartosci odejmuje srednia dla danego dnia tygodnia (w calym zakresie)."""
+    by = {}
+    for v, d in zip(series, days):
+        if v is not None:
+            by.setdefault(d.weekday(), []).append(v)
+    mw = {k: sum(x) / len(x) for k, x in by.items() if len(x) >= 3}
+    return [None if v is None else v - mw.get(d.weekday(), 0.0) for v, d in zip(series, days)]
+
+
 def discover(rows: list[dict], a: int, b: int) -> dict:
-    """Silnik odkryc. rows = caly zakres (dla norm), [a, b] = analizowane okno (indeksy)."""
+    """Silnik odkryc v3. rows = caly zakres (normy osobiste 28 dni), [a, b] = analizowane okno (indeksy)."""
     N = len(rows)
+    days = [date.fromisoformat(r["day"][:10]) for r in rows]
     col = lambda k: [_num(r.get(k)) for r in rows]
-    C = {k: col(k) for k in ("xss", "ctl", "atl", "tsb", "sleep", "hrv", "rhr", "rdy3", "rdy1", "weight", "bal", "cp", "ltp")}
+    C = {k: col(k) for k in ("xss", "ctl", "atl", "sleep", "hrv", "rhr", "rdy3", "weight", "bal")}
     C["xss"] = [v if v is not None else 0.0 for v in C["xss"]]
-    # odchylenia od osobistej normy (delta w jednostkach i z)
+    short = (b - a + 1) < 28
     dlt, z = {}, {}
     for k in list(WELL) + ["xss", "atl", "bal"]:
-        dlt[k], z[k] = [None] * N, [None] * N
+        dlt[k], zz = [None] * N, [None] * N
         for i in range(N):
             v = C[k][i]
             if v is None:
                 continue
-            m, s = _baseline(C[k], i)
+            m, sd = _baseline(C[k], i)
             if m is None:
                 continue
             dlt[k][i] = v - m
-            z[k][i] = (v - m) / s if s else None
+            zz[i] = (v - m) / sd if sd else None
+        z[k] = _deweek(zz, days)          # bez efektu dnia tygodnia
     W = range(a, b + 1)
-    rides = [i for i in W if C["xss"][i] > 0]
     pos = sorted(C["xss"][i] for i in range(N) if C["xss"][i] > 0)
     q75 = pos[int(len(pos) * 0.75)] if len(pos) >= 4 else None
     hard = [i for i in W if q75 and C["xss"][i] >= q75]
     rest = [i for i in W if C["xss"][i] == 0]
-    F = []
+    F, CONF = [], {}
 
-    # 1. reakcja na ciezka jazde
+    # 1. reakcja na ciezka jazde: NASTEPNE noce (+1..+3) vs po dniu wolnym
     if q75 and len(hard) >= 3 and len(rest) >= 3:
         resp = {}
         for k, (nm, un, good) in WELL.items():
@@ -123,105 +148,91 @@ def discover(rows: list[dict], a: int, b: int) -> dict:
             for lag in (1, 2, 3):
                 h = _mean([dlt[k][i + lag] for i in hard if i + lag < N])
                 r0 = _mean([dlt[k][i + lag] for i in rest if i + lag < N])
-                nh = len([1 for i in hard if i + lag < N and dlt[k][i + lag] is not None])
-                row.append({"lag": lag, "hard": h, "rest": r0, "n_hard": nh})
+                row.append({"lag": lag, "po_ciezkiej": _r(h), "po_wolnym": _r(r0)})
             sd = _mean([_sd(C[k][max(0, i - 28):i]) for i in hard if i >= 10])
-            rec = next((x["lag"] for x in row if x["hard"] is not None and sd and abs(x["hard"]) < 0.3 * sd), None)
-            resp[k] = {"name": nm, "unit": un, "by_lag": row, "sd": sd, "recovery_day": rec}
-        F.append({"type": "reakcja_na_ciezka_jazde", "prog_xss": q75, "n_ciezkich": len(hard), "n_wolnych": len(rest), "wyniki": resp})
+            rec = next((x["lag"] for x in row if x["po_ciezkiej"] is not None and sd and abs(x["po_ciezkiej"]) < 0.3 * sd), None)
+            resp[k] = {"name": nm, "unit": un, "by_lag": row, "sd": _r(sd), "powrot_do_normy_dzien": rec}
+        cf = "niska" if short or len(hard) < 8 else ("wysoka" if len(hard) >= 20 else "średnia")
+        F.append({"id": "R1", "type": "reakcja_na_ciezka_jazde", "pewnosc": cf, "prog_xss": q75, "n_ciezkich": len(hard), "n_wolnych": len(rest), "wyniki": resp})
+        CONF["R1"] = cf
 
-    # 2. zaleznosci z opoznieniem, tylko miedzy rodzinami, na odchyleniach od normy
-    pairs = [(x, y) for x in ("xss", "atl", "bal") for y in WELL] + [("sleep", "hrv"), ("sleep", "rhr"), ("sleep", "rdy3"), ("hrv", "xss"), ("rdy3", "xss")]
+    # 2. fizjologia: przyczyna -> skutek w KOLEJNYCH nocach (lag 1-3), bez par definicyjnych, bez efektu dnia tygodnia
+    pairs = [(x, y) for x in ("xss", "atl", "bal") for y in WELL] + [("sleep", "hrv"), ("sleep", "rhr")]
+    names = {**{k: v[0] for k, v in WELL.items()}, "xss": "obciążenie dnia (XSS)", "atl": "zmęczenie z treningów (ATL+)", "bal": "bilans kcal dnia"}
+    units = {**{k: v[1] for k, v in WELL.items()}, "xss": "", "atl": "", "bal": "kcal"}
     cand = []
     for x, y in pairs:
         best = None
-        for lag in range(0, 4):
+        for lag in (1, 2, 3):
             xs = [z[x][i] for i in W if i + lag < N]
             ys = [z[y][i + lag] for i in W if i + lag < N]
             r, n = _pearson(xs, ys)
             if r is None:
                 continue
-            p = _pval(r, n)
             if best is None or abs(r) > abs(best["r"]) + 0.05:
-                # efekt w jednostkach: o ile zmienia sie y (w jedn.) przy +1 SD x
+                p = _pval(r, n)
                 ys_d = [dlt[y][i + lag] for i in W if i + lag < N and dlt[y][i + lag] is not None]
-                eff = r * (_sd(ys_d) or 0)
-                best = {"x": x, "y": y, "lag": lag, "r": round(r, 2), "n": n, "p": round(p, 3), "efekt": round(eff, 1)}
+                best = {"x": x, "y": y, "lag": lag, "r": round(r, 2), "n": n, "p": round(p, 3), "efekt": round(r * (_sd(ys_d) or 0), 1)}
         if best and abs(best["r"]) >= 0.25 and best["p"] < 0.1:
             cand.append(best)
-    cand.sort(key=lambda q: -abs(q["r"]))
-    names = {**{k: v[0] for k, v in WELL.items()}, **{k: v[0] for k, v in LOADF.items()}}
-    units = {**{k: v[1] for k, v in WELL.items()}, "xss": "", "atl": "", "bal": "kcal"}
-    for q in cand:
-        q["x_nazwa"], q["y_nazwa"], q["y_jedn"] = names.get(q["x"], q["x"]), names.get(q["y"], q["y"]), units.get(q["y"], "")
-    F.append({"type": "zaleznosci_z_opoznieniem", "uwaga": "r na odchyleniach od osobistej normy 28 dni; lag = o ile dni y jest po x; efekt = zmiana y w jednostkach przy x o 1 SD powyzej normy",
-              "wyniki": cand[:8]})
+    cand.sort(key=lambda q: (q["p"], -abs(q["r"])))
+    for k2, q in enumerate(cand[:6], 1):
+        q["id"] = "Z%d" % k2
+        q["pewnosc"] = _conf(q["n"], q["p"], short)
+        q["x_nazwa"], q["y_nazwa"], q["y_jedn"] = names[q["x"]], names[q["y"]], units[q["y"]]
+        CONF[q["id"]] = q["pewnosc"]
+    F.append({"type": "zaleznosci_fizjologiczne", "uwaga": "przyczyna dnia d -> skutek w nocy d+lag (lag 1-3); odchylenia od normy 28 dni, bez efektu dnia tygodnia; "
+              "obciazenie tylko treningowe; efekt = zmiana skutku w jednostkach przy przyczynie +1 SD", "wyniki": cand[:6]})
 
-    # 3. czy sluchasz sygnalow
-    low = [i for i in W if z["rdy3"][i] is not None and z["rdy3"][i] < -0.5]
-    good = [i for i in W if z["rdy3"][i] is not None and z["rdy3"][i] > 0.3]
-    if q75 and len(low) >= 3:
-        hard_low = [i for i in low if C["xss"][i] >= q75]
-        hard_good = [i for i in good if C["xss"][i] >= q75]
-        nxt = lambda idx: _mean([dlt["rdy3"][i + 1] - (dlt["rdy3"][i] or 0) for i in idx if i + 1 < N and dlt["rdy3"][i + 1] is not None and dlt["rdy3"][i] is not None])
-        F.append({"type": "sluchanie_sygnalow", "dni_niskiej_gotowosci": len(low), "ciezkie_w_niskiej": len(hard_low),
-                  "ciezkie_w_dobrej": len(hard_good), "zmiana_gotowosci_dzien_po_ciezkiej_w_niskiej": nxt(hard_low),
-                  "zmiana_gotowosci_dzien_po_ciezkiej_w_dobrej": nxt(hard_good)})
-
-    # 4. dawka-odpowiedz tygodniami
-    weeks = {}
-    for i in W:
-        d = date.fromisoformat(rows[i]["day"][:10])
-        wk = d - timedelta(days=d.weekday())
-        weeks.setdefault(wk, []).append(i)
-    wl = sorted(weeks)
-    if len(wl) >= 5:
-        xs, ys = [], []
-        for k in range(len(wl) - 1):
-            load = sum(C["xss"][i] for i in weeks[wl[k]])
-            nh = _mean([C["hrv"][i] for i in weeks[wl[k + 1]]])
-            th = _mean([C["hrv"][i] for i in weeks[wl[k]]])
-            if nh is not None and th is not None:
-                xs.append(load)
-                ys.append(nh - th)
-        r, n = _pearson(xs, ys) if len(xs) >= 5 else (None, len(xs))
+    # 3. ZACHOWANIE (nie fizjologia): czy jezdzisz mocniej w dni wysokiego HRV / gotowosci (ten sam dzien, HRV mierzone rano)
+    beh = []
+    for x in ("hrv", "rdy3"):
+        r, n = _pearson([z[x][i] for i in W], [z["xss"][i] for i in W])
         if r is not None:
-            sl = r * (_sd(ys) or 0) / (_sd(xs) or 1) * 100
-            F.append({"type": "dawka_odpowiedz_tygodnie", "tygodni": n, "r": round(r, 2), "hrv_ms_na_100_xss": round(sl, 2)})
+            p = _pval(r, n)
+            beh.append({"id": "B_" + x, "x": names[x], "r": round(r, 2), "n": n, "p": round(p, 3), "pewnosc": _conf(n, p, short)})
+            CONF["B_" + x] = beh[-1]["pewnosc"]
+    low = [i for i in W if z["rdy3"][i] is not None and z["rdy3"][i] < -0.5]
+    F.append({"type": "zachowanie_vs_sygnaly", "uwaga": "HRV/gotowosc mierzone rano PRZED jazda; to opis decyzji/planu (po usunieciu efektu dnia tygodnia), nie fizjologia",
+              "wyniki": beh, "dni_niskiej_gotowosci": len(low), "ciezkie_jazdy_w_niskiej": len([i for i in low if q75 and C["xss"][i] >= q75])})
 
-    # 5. deficyt -> regeneracja
+    # 4. deficyt -> regeneracja nastepnej nocy
     big = [i for i in W if C["bal"][i] is not None and C["bal"][i] < -700]
     oth = [i for i in W if C["bal"][i] is not None and C["bal"][i] >= -700]
     if len(big) >= 3 and len(oth) >= 3:
-        res = {}
-        for k, (nm, un, _) in WELL.items():
-            res[k] = {"name": nm, "unit": un, "po_duzym_deficycie": _mean([dlt[k][i + 1] for i in big if i + 1 < N]),
-                      "po_pozostalych": _mean([dlt[k][i + 1] for i in oth if i + 1 < N])}
-        F.append({"type": "deficyt_a_regeneracja", "dni_duzy_deficyt": len(big), "dni_pozostale": len(oth), "wyniki": res})
+        res = {k: {"name": nm, "unit": un, "po_duzym_deficycie": _r(_mean([dlt[k][i + 1] for i in big if i + 1 < N])),
+                   "po_pozostalych": _r(_mean([dlt[k][i + 1] for i in oth if i + 1 < N]))} for k, (nm, un, _) in WELL.items()}
+        cf = "niska" if short or len(big) < 10 else ("wysoka" if len(big) >= 20 else "średnia")
+        F.append({"id": "D1", "type": "deficyt_a_regeneracja", "pewnosc": cf, "dni_duzy_deficyt": len(big), "dni_pozostale": len(oth), "wyniki": res})
+        CONF["D1"] = cf
     else:
         F.append({"type": "deficyt_a_regeneracja", "za_malo_danych": True, "dni_z_bilansem": len(big) + len(oth)})
 
-    # 6. ukryte przeciazenie: trend formy vs trend norm HRV/RHR (srednie 7 dni)
+    # 5. trend formy vs regeneracji (srednie 7 dni)
     ma = lambda k: [_mean(C[k][max(0, i - 6):i + 1]) for i in W]
-    F.append({"type": "trend_formy_vs_regeneracji", "forma_na_tydz": _slope_per_week([C["ctl"][i] for i in W]),
-              "hrv_na_tydz": _slope_per_week(ma("hrv")), "rhr_na_tydz": _slope_per_week(ma("rhr")), "sen_na_tydz": _slope_per_week(ma("sleep")),
-              "waga_na_tydz": _slope_per_week([C["weight"][i] for i in W])})
-    return {"okno": [rows[a]["day"][:10], rows[b]["day"][:10]], "dni": b - a + 1, "jazdy": len(rides), "odkrycia": F}
+    F.append({"id": "T1", "type": "trend_formy_vs_regeneracji", "pewnosc": "niska" if short else "średnia",
+              "forma_na_tydz": _r(_slope_per_week([C["ctl"][i] for i in W]), 2), "hrv_na_tydz": _r(_slope_per_week(ma("hrv")), 2),
+              "rhr_na_tydz": _r(_slope_per_week(ma("rhr")), 2), "sen_na_tydz": _r(_slope_per_week(ma("sleep")), 2),
+              "waga_na_tydz": _r(_slope_per_week([C["weight"][i] for i in W]), 2)})
+    CONF["T1"] = "niska" if short else "średnia"
+    return {"okno": [rows[a]["day"][:10], rows[b]["day"][:10]], "dni": b - a + 1, "krotkie_okno": short,
+            "jazdy": len([i for i in W if C["xss"][i] > 0]), "odkrycia": F, "_conf": CONF}
 
-
-def _r(v, d=1):
-    return None if v is None else round(v, d)
 
 
 PROMPT = (
     "Jesteś trenerem kolarskim i fizjologiem. Zawodnik (kolarz gravel ~104 kg, redukcja) sam czyta wykresy – NIE opisuj trendów "
-    "i NIE komentuj par z jednego modelu (forma/zmęczenie/świeżość/CP). Dostajesz policzone odkrycia względem jego normy z 28 dni. "
-    "Nie licz własnych liczb, nie wymyślaj danych. Pisz zwięźle i konkretnie – jak dobry trener na odprawie: bez wstępów i powtórzeń, ale z mechanizmem (dlaczego tak się dzieje). "
-    "Limity: naglowek maks. 20 słów; 3-4 odkrycia od najciekawszego, pewność średnia lub wysoka (maks. jedno o niskiej, jeśli naprawdę ciekawe); "
-    "tytul maks. 10 słów; co = maks. 2 krótkie zdania (maks. 35 słów): kluczowe liczby + mechanizm; znaczenie = konkretne polecenie maks. 20 słów; "
-    "eksperyment maks. 35 słów (co, jak długo, czym zmierzyć); brakuje maks. 15 słów albo pusty tekst. "
-    "Zwróć WYŁĄCZNIE JSON: {\"naglowek\": \"...\", \"odkrycia\": [{\"tytul\": \"...\", \"co\": \"...\", \"znaczenie\": \"...\", "
-    "\"pewnosc\": \"wysoka|średnia|niska\"}], \"eksperyment\": \"...\", \"brakuje\": \"...\"}.")
+    "i NIE komentuj par z jednego modelu. Dostajesz policzone odkrycia względem jego normy z 28 dni, po usunięciu efektu dnia tygodnia. "
+    "Zasady: (1) nie licz własnych liczb, nie wymyślaj danych; (2) PEWNOŚĆ przepisz z pola 'pewnosc' i podaj 'zrodlo' = pole 'id' odkrycia – nie oceniaj jej sam; "
+    "(3) 'zachowanie_vs_sygnaly' to opis decyzji i planu (HRV mierzone rano przed jazdą), NIE fizjologia – nigdy nie pisz, że jazda podnosi HRV tego samego dnia; "
+    "(4) nie podawaj mechanizmów fizjologicznych, których nie ma w danych – najwyżej jedno 'możliwe wyjaśnienie' w trybie przypuszczającym; "
+    "(5) gdy 'krotkie_okno' = true, zacznij nagłówek od 'Krótki okres –' i traktuj wszystko jako orientacyjne; "
+    "(6) jeśli nic nie jest wiarygodne, powiedz to wprost zamiast na siłę szukać wniosków. "
+    "Pisz zwięźle i konkretnie, jak trener na odprawie. Limity: naglowek maks. 20 słów; 2-4 odkrycia od najpewniejszego; "
+    "tytul maks. 10 słów; co = maks. 2 krótkie zdania (maks. 35 słów) z kluczowymi liczbami; znaczenie = konkretne polecenie maks. 20 słów; "
+    "eksperyment maks. 35 słów; brakuje maks. 15 słów albo pusty tekst. "
+    "Zwróć WYŁĄCZNIE JSON: {\"naglowek\": \"...\", \"odkrycia\": [{\"zrodlo\": \"id\", \"tytul\": \"...\", \"co\": \"...\", \"znaczenie\": \"...\", "
+    "\"pewnosc\": \"...\"}], \"eksperyment\": \"...\", \"brakuje\": \"...\"}.")
 
 
 def _words(txt, n):
@@ -274,16 +285,23 @@ def build_router(current_user, owner_user):
         rows = _fill_food(rows)
         disc = discover(rows, a, e)
         disc["infekcje"] = b.get("ill") or []
+        if (e - a + 1) < 28:
+            disc["uwaga_okno"] = "okno krotsze niz 28 dni - wnioski tylko orientacyjne"
         disc["skupienie_uzytkownika"] = b.get("focus") or []
         import qbot_food_log as F
         try:
-            j = F._ai_json(PROMPT, [{"type": "text", "text": json.dumps(disc, ensure_ascii=False, default=lambda o: _r(o) if isinstance(o, float) else str(o))}])
+            j = F._ai_json(PROMPT, [{"type": "text", "text": json.dumps({k: v for k, v in disc.items() if k != "_conf"}, ensure_ascii=False, default=str)}])
         except Exception as ex:
             raise HTTPException(status_code=502, detail="AI niedostępne: %s" % type(ex).__name__)
         LIM = {"tytul": 13, "co": 42, "znaczenie": 24, "pewnosc": 2}
         odk = [o for o in (j.get("odkrycia") or []) if isinstance(o, dict)]
+        conf = disc.pop("_conf", {})
+        for o in odk:   # pewnosc zawsze z obliczen QBota (po 'zrodlo'); bez zrodla = niska
+            o["pewnosc"] = conf.get(str(o.get("zrodlo") or "").strip(), "niska")
         odk = sorted(odk, key=lambda o: {"wysoka": 0, "średnia": 1}.get(str(o.get("pewnosc")), 2))[:4]
-        ai = {"naglowek": _words(j.get("naglowek"), 24), "eksperyment": _words(j.get("eksperyment"), 40), "brakuje": _words(j.get("brakuje"), 18),
+        if disc.get("krotkie_okno") and not str(j.get("naglowek") or "").startswith("Krótki okres"):
+            j["naglowek"] = "Krótki okres – orientacyjnie. " + str(j.get("naglowek") or "")
+        ai = {"naglowek": _words(j.get("naglowek"), 26), "eksperyment": _words(j.get("eksperyment"), 40), "brakuje": _words(j.get("brakuje"), 18),
               "odkrycia": [{k: _words(o.get(k), LIM[k]) for k in LIM} for o in odk]}
         return {"ai": ai, "policzone": json.loads(json.dumps(disc, default=lambda o: str(o)))}
 

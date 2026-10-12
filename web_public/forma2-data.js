@@ -989,7 +989,7 @@ load().catch(function(e){console.error("forma2:",e);});
   function num(v){return v==null||v===""||!isFinite(+v)?null:Math.round(+v*100)/100;}
   function collect(){
     var SN=window._trSN||[],X=window._trXss||[];if(SN.length<14)return null;var z=window._trZoom,a0=z?z.min:0,b0=z?z.max:SN.length-1;
-    var rows=SN.map(function(s,i){return {day:String(s.day).slice(0,10),xss:X[i]||0,ctl:num(s.ctl_xss),atl:num(s.atl_real),tsb:num(s.tsb_real),sleep:num(s.sleep_score),
+    var rows=SN.map(function(s,i){return {day:String(s.day).slice(0,10),xss:X[i]||0,ctl:num(s.ctl_xss),atl:num(s.atl_plus!=null?s.atl_plus:s.atl_raw),tsb:num(s.tsb_real),sleep:num(s.sleep_score),
       hrv:num(s.hrv_night),rhr:num(s.rhr),rdy3:num(s.readiness_3d),rdy1:num(s.readiness_effective),weight:num(s.weight_kg),cp:num(s.ftp_est_w||s.ftp),ltp:num(s.ltp_modelq_w)};});
     var focus=[];charts().forEach(function(ch){ch.data.datasets.forEach(function(ds,di){if(ch.isDatasetVisible(di)&&ds.label)focus.push(ds.label);});});
     var ill=(window._trIll||[]).filter(function(r){return r.to>=rows[a0].day&&r.from<=rows[b0].day;});
@@ -1004,8 +1004,10 @@ load().catch(function(e){console.error("forma2:",e);});
   var PC={wysoka:"var(--good)","średnia":"var(--accent-ink,var(--accent))",niska:"var(--muted)"};
   function details(P){var h="";(P.odkrycia||[]).forEach(function(o){
     if(o.type==="reakcja_na_ciezka_jazde"){h+='<h4>Reakcja na ciężką jazdę (XSS ≥ '+Math.round(o.prog_xss)+', n='+o.n_ciezkich+' vs '+o.n_wolnych+' wolnych)</h4><table class="corr"><tr><td></td><td>+1 d</td><td>+2 d</td><td>+3 d</td></tr>'+
-      Object.keys(o.wyniki).map(function(k){var w=o.wyniki[k];return '<tr><td>'+esc(w.name)+'</td>'+w.by_lag.map(function(x){return '<td>'+f1(x.hard)+' <span style="color:var(--muted)">('+f1(x.rest)+')</span></td>';}).join("")+'</tr>';}).join("")+
+      Object.keys(o.wyniki).map(function(k){var w=o.wyniki[k];return '<tr><td>'+esc(w.name)+'</td>'+w.by_lag.map(function(x){return '<td>'+f1(x.po_ciezkiej)+' <span style="color:var(--muted)">('+f1(x.po_wolnym)+')</span></td>';}).join("")+'</tr>';}).join("")+
       '</table><div style="color:var(--muted);font-size:12px">odchylenie od Twojej normy po ciężkiej jeździe (w nawiasie: po dniu wolnym)</div>';}
+    if(o.type==="zaleznosci_fizjologiczne"&&o.wyniki.length){h+='<h4>Fizjologia (kolejne noce, bez efektu dnia tygodnia)</h4><table class="corr">'+o.wyniki.map(function(q){return '<tr><td>'+esc(q.x_nazwa)+' → '+esc(q.y_nazwa)+' <span style="color:var(--muted)">po '+q.lag+' d</span></td><td style="text-align:right">r '+f1(q.r,2)+'</td><td style="text-align:right;color:var(--muted)">'+esc(q.pewnosc)+' · n '+q.n+'</td></tr>';}).join("")+'</table>';}
+    if(o.type==="zachowanie_vs_sygnaly"){h+='<h4>Zachowanie (HRV rano → jazda tego dnia)</h4><div>'+o.wyniki.map(function(q){return esc(q.x)+': r '+f1(q.r,2)+' ('+esc(q.pewnosc)+', n '+q.n+')';}).join(" · ")+'</div><div style="color:var(--muted);font-size:12px">ciężkie jazdy w dni niskiej gotowości: '+o.ciezkie_jazdy_w_niskiej+' z '+o.dni_niskiej_gotowosci+'</div>';}
     if(o.type==="zaleznosci_z_opoznieniem"&&o.wyniki.length){h+='<h4>Zależności (odchylenia od normy)</h4><table class="corr">'+o.wyniki.map(function(q){return '<tr><td>'+esc(q.x_nazwa)+' → '+esc(q.y_nazwa)+(q.lag?' <span style="color:var(--muted)">po '+q.lag+' d</span>':'')+'</td><td style="text-align:right">r '+f1(q.r,2)+'</td><td style="text-align:right;color:var(--muted)">p '+String(q.p).replace(".",",")+' · n '+q.n+'</td></tr>';}).join("")+'</table>';}
     if(o.type==="sluchanie_sygnalow"){h+='<h4>Słuchanie sygnałów</h4><div>Dni niskiej gotowości: '+o.dni_niskiej_gotowosci+', w tym ciężkich jazd: '+o.ciezkie_w_niskiej+' (ciężkich w dobre dni: '+o.ciezkie_w_dobrej+')</div>';}
     if(o.type==="dawka_odpowiedz_tygodnie"){h+='<h4>Dawka → odpowiedź (tygodnie)</h4><div>'+o.tygodni+' par tygodni · r '+f1(o.r,2)+' · HRV '+f1(o.hrv_ms_na_100_xss,2)+' ms na każde +100 XSS</div>';}
@@ -1026,7 +1028,7 @@ load().catch(function(e){console.error("forma2:",e);});
             '<div style="margin-top:3px;color:var(--ink2)">'+esc(o.co)+'</div><div style="margin-top:3px;font-weight:600">→ '+esc(o.znaczenie)+'</div></div>';}).join("")+
           (a.eksperyment?'<div style="margin-top:10px"><b>🧪 Sprawdź:</b> '+esc(a.eksperyment)+'</div>':'')+(a.brakuje?'<div style="margin-top:6px;color:var(--muted);font-size:12.5px">Brakuje: '+esc(a.brakuje)+'</div>':'')+
           '<details style="margin-top:12px"><summary style="cursor:pointer;color:var(--muted)">Policzone dane (szczegóły)</summary>'+details(x.policzone||{})+'</details>'+
-          '<p style="color:var(--muted);font-size:12px;margin-top:12px">Liczone względem Twojej normy z 28 dni, bez par wynikających z tego samego modelu. Wynik nie jest zapisywany.</p>';})
+          '<p style="color:var(--muted);font-size:12px;margin-top:12px">Normy 28 dni, bez efektu dnia tygodnia, obciążenie tylko treningowe; pewność liczy QBot (n, p), nie AI. Okno &lt; 28 dni = orientacyjnie. Wynik nie jest zapisywany.</p>';})
       .catch(function(e){b.innerHTML=sel+'<p style="color:var(--bad);margin-top:12px">'+esc(e.message)+'</p>';});
   }
   document.addEventListener("click",function(ev){if(ev.target&&ev.target.id==="tr-aibtn")run();});
