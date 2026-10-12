@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import time
 import sys
 import unicodedata
 from datetime import date, datetime, time as dtime, timedelta
@@ -207,7 +208,9 @@ Zasady:
   wartości i wielkości porcji (przelicz, jeśli ilość inna); wtedy "src": "historia DD.MM", "conf": "pewne".
 - "conf": "pewne" = historia, etykieta ze zdjęcia albo dokładnie znana wartość producenta przy podanej ilości;
   "średnie" = znany produkt, ale ilość lub wariant zgadywane; "zgrubne" = porcja i skład zgadywane (dania domowe, restauracje).
-  Nie zawyżaj pewności. "src": krótko skąd wartości (np. "historia 27.06", "etykieta", "wartości producenta", "szacunek").
+  Nie zawyżaj pewności.
+- BAZA PRODUKTÓW (Open Food Facts, wartości na 100 g; wyniki wyszukiwania bywają nietrafione) -> użyj TYLKO, gdy to na pewno
+  ten sam produkt (marka i nazwa się zgadzają); przelicz na zjedzoną ilość; "src": "Open Food Facts". "src": krótko skąd wartości (np. "historia 27.06", "etykieta", "wartości producenta", "szacunek").
 """
 
 
@@ -273,7 +276,8 @@ def history_refs(text: str, limit: int = 8) -> list[dict]:
     return out
 
 
-def estimate(text: str | None, image: tuple[bytes, str] | None = None, refs: list | None = None) -> dict:
+def estimate(text: str | None, image: tuple[bytes, str] | None = None, refs: list | None = None,
+             off: list | None = None) -> dict:
     """AI -> {'not_food'|'ambiguous', items|options, question}. Rzuca przy bledzie."""
     content = []
     if image:
@@ -284,6 +288,10 @@ def estimate(text: str | None, image: tuple[bytes, str] | None = None, refs: lis
         msg += "\n\nHISTORIA użytkownika (podobne wcześniejsze wpisy):\n" + "\n".join(
             "- %s | %s | %s kcal, B %s, W %s, T %s" % (r["date"], r["name"], r["kcal"], r["protein_g"], r["carbs_g"], r["fat_g"])
             for r in refs)
+    if off:
+        msg += "\n\nBAZA PRODUKTÓW (Open Food Facts, na 100 g):\n" + "\n".join(
+            "- [%s] %s | %s | %s | %s kcal, B %s, W %s, T %s" % (o["q"], o["name"], o["brands"], o["quantity"] or "?",
+                                                               o["kcal"], o["p"], o["c"], o["f"]) for o in off)
     content.append({"type": "text", "text": msg})
     j = _ai_json(_PROMPT, content)
     if j.get("not_food"):
@@ -307,6 +315,43 @@ def _hhmm(v):
     if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
         return None
     return "%02d:%02d" % (int(m.group(1)), int(m.group(2)))
+
+
+_STORES = ("lidl", "biedronk", "żabk", "zabk", "auchan", "kaufland", "carrefour", "dino", "aldi", "netto", "stokrot", "rossmann")
+_STORE_RE = re.compile(r"(?i)\b(z\s+|ze\s+)?(lidla?|biedronki|biedronka|żabki|żabka|zabki|auchan|kaufland|carrefoura?|dino|aldi|netto|stokrotki|rossmanna?)\b")
+
+
+def off_refs(text: str, limit: int = 6, budget_s: float = 7.0) -> list[dict]:
+    """Open Food Facts dla fragmentow z marka/sklepem (search.openfoodfacts.org). Bledy i brak sieci = pusta lista."""
+    import httpx
+    t0 = time.time()
+    frags = [f.strip(" *-•\t") for f in re.split(r"[\n,;+]+", text or "") if f.strip(" *-•\t")]
+    frags = [f for f in frags if any(s in f.lower() for s in _STORES) or re.search(r"[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+[A-Z]|\b[A-Z]{3,}\b|\b\w+\s+[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]{3,}", f)][:4]
+    out = []
+    for f in frags:
+        if time.time() - t0 > budget_s:
+            break
+        q = _STORE_RE.sub(" ", f)
+        q = re.sub(r"(?i)\b\d+([.,]\d+)?\s*(szt\.?|g|kg|ml|l|kawałk\w*|kostek|kostki|opak\w*)\b", " ", q)
+        q = re.sub(r"\s+", " ", q).strip()
+        if len(q) < 4:
+            continue
+        try:
+            r = httpx.get("https://search.openfoodfacts.org/search",
+                          params={"q": q, "page_size": 3, "fields": "product_name,brands,quantity,nutriments"},
+                          headers={"User-Agent": "QBot/1.0 (osobisty asystent; albert.cytr.us)"}, timeout=3)
+            hits = r.json().get("hits") or [] if r.status_code == 200 else []
+        except Exception:
+            hits = []
+        for p in hits[:2]:
+            n = p.get("nutriments") or {}
+            if n.get("energy-kcal_100g") is None:
+                continue
+            b = p.get("brands")
+            out.append({"q": f[:40], "name": p.get("product_name"), "brands": ", ".join(b) if isinstance(b, list) else b,
+                        "quantity": p.get("quantity"), "kcal": n.get("energy-kcal_100g"), "p": n.get("proteins_100g"),
+                        "c": n.get("carbohydrates_100g"), "f": n.get("fat_100g")})
+    return out[:limit]
 
 
 _FIX_PROMPT = """Poprawiasz wpis jedzenia użytkownika. Dostajesz pozycje (JSON) i poprawkę słowami.
@@ -441,7 +486,7 @@ def process_entry(eid: int, reply_to: int | None = None) -> str:
                     res = {"items": cat["items"], "_from_catalog": True}
             if res is None:
                 img = _download_photo(e["photo_file_id"]) if e["photo_file_id"] else None
-                res = estimate(e["raw_text"], img, history_refs(e["raw_text"] or ""))
+                res = estimate(e["raw_text"], img, history_refs(e["raw_text"] or ""), off_refs(e["raw_text"] or ""))
         except Exception as ex:
             c.execute("UPDATE qbot_v2.food_entries SET status='failed', error=%s, updated_at=now() WHERE id=%s",
                       (("%s: %s" % (type(ex).__name__, ex))[:500], eid))
@@ -728,6 +773,11 @@ def build_day(day: date) -> tuple[str, dict]:
             else:
                 lab = {"eaten": "✔", "skipped": "✖", "fridge": "📦"}.get(m["status"], m["status"])
                 kb.append([{"text": "%s %s · cofnij" % (lab, t), "callback_data": "br:p:%d:%s" % (i, md)}])
+        with _conn() as c:
+            dl = c.execute("SELECT 1 FROM qbot_v2.calendar_entry WHERE kind='event' AND event_type='delegacja' "
+                           "AND %s BETWEEN day AND COALESCE(end_day, day) LIMIT 1", (day,)).fetchone()
+        if dl and any(m["status"] == "pending" for m in meals):
+            L.append("🧳 Delegacja – jeśli dieta czeka w domu, kliknij „📦 Wszystkie na później”.")
         if sum(1 for m in meals if m["status"] == "pending") >= 2:
             kb.append([{"text": "✅ Wszystkie zjedzone", "callback_data": "br:a:%s" % md},
                        {"text": "📦 Wszystkie na później", "callback_data": "br:z:%s" % md}])
@@ -791,6 +841,11 @@ def build_day(day: date) -> tuple[str, dict]:
     t = day_totals(day)
     L += ["", "Razem: %s kcal · B %s · W %s · T %s g" % (_fmt(t["kcal"] or 0), _fmt(t["protein_g"] or 0),
                                                          _fmt(t["carbs_g"] or 0), _fmt(t["fat_g"] or 0))]
+    try:
+        import qbot_food_plan as FP
+        L.append(FP.evening_line(day))
+    except Exception as ex:
+        _log("cel dnia: %s" % ex)
     if cs["closed"]:
         L.append("🔒 Dzień zamknięty")
     else:

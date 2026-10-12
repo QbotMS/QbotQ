@@ -325,7 +325,8 @@ def status_weight(g: dict, cur: float | None, start: float | None, slope_wk: flo
         txt = "cel osiągnięty"
     elif stg["i"] is not None:
         txt = "etap %d z %d (%s kg do %s): %s" % (stg["i"] + 1, stg["n"], _num_pl(t), due.strftime("%d.%m.%Y"), txt)
-    rows = [{"k": "dziś (ostatnie ważenia)", "have": round(cur, 1), "need": t, "note": f"start {round(start, 1)} kg"},
+    rows = [{"k": "dziś (ostatnie ważenia)", "have": "%s kg" % _num_pl(round(cur, 1)), "need": None,
+             "note": f"cel etapu {_num_pl(t)} kg · start {_num_pl(round(start, 1))} kg · zostało {_num_pl(round(cur - t, 1))} kg"},
             {"k": "tempo (30 dni)", "have": slope_wk, "need": None if need is None else round(need, 2), "note": "kg/tydz.; potrzebne do terminu etapu"}]
     if slope_wk and slope_wk < 0 and cur > t and not stg["done"]:
         eta = today + timedelta(days=round((cur - t) / -slope_wk * 7))
@@ -335,6 +336,23 @@ def status_weight(g: dict, cur: float | None, start: float | None, slope_wk: flo
         st_ = "✅ osiągnięty" if cur <= float(x["kg"]) else ("▶ aktualny" if i == stg["i"] else "⏳ następny")
         rows.append({"k": f"etap {i + 1}: {_num_pl(x['kg'])} kg do {E._d(x['to']).strftime('%d.%m.%Y')}", "have": st_, "need": None, "note": None})
     return {"level": lvl, "text": txt, "rows": rows, "progress": None if prog is None else round(prog, 3)}
+
+
+def weight_chart(c, g: dict, cur: float | None, slope_wk: float | None, today: date) -> dict:
+    """Wykres celu wagi: plan (start -> etapy) z korytarzem +-1 kg, PRAWDZIWE wazenia (body_measurements), prognoza wg tempa."""
+    t = g.get("target") or {}
+    sd = E._d(t.get("start_date")) or today
+    sk = float(t.get("start_kg") or cur or 0)
+    plan = [[sd.isoformat(), sk]] + [[E._d(x["to"]).isoformat(), float(x["kg"])] for x in t["stages"]]
+    c.execute("SELECT date, avg(weight_kg) w FROM qbot_v2.body_measurements WHERE weight_kg IS NOT NULL AND date >= %s "
+              "GROUP BY date ORDER BY date", (sd - timedelta(days=60),))
+    meas = [[r["date"].isoformat(), round(float(r["w"]), 2)] for r in c.fetchall()]
+    fc = None
+    if slope_wk is not None and meas:
+        ld, lw = date.fromisoformat(meas[-1][0]), meas[-1][1]
+        end = E._d(t["stages"][-1]["to"])
+        fc = [[ld.isoformat(), lw], [end.isoformat(), round(lw + slope_wk * (end - ld).days / 7, 1)]]
+    return {"plan": plan, "meas": meas, "forecast": fc, "band": 1.0, "today": today.isoformat()}
 
 
 def _num_pl(v) -> str:
@@ -542,6 +560,11 @@ def compute_goal_status(c, goals: list) -> dict:
                 c.execute("SELECT weight_kg FROM qbot_v2.fitmodel_daily WHERE weight_kg IS NOT NULL AND day >= %s ORDER BY day LIMIT 1", (g["created_at"].date() - timedelta(days=3),))
                 r = c.fetchone()
                 s = status_weight(g, cur_w, float(r["weight_kg"]) if r else cur_w, slope30, today)
+                if (g.get("target") or {}).get("stages"):
+                    try:
+                        s["chart"] = weight_chart(c, g, cur_w, slope30, today)
+                    except Exception:
+                        pass
             elif k == "volume":
                 a_ = E._d(g.get("date_from")) or date(today.year, 1, 1)
                 b_ = E._d(g.get("date_to")) or date(a_.year, 12, 31)

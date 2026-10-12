@@ -128,14 +128,89 @@ def streaks(now: datetime | None = None) -> dict:
             ws, _ = window_status(c, d)
             win.append((d, {"ok": "ok", "exempt": "neutral", "broken": "fail"}.get(ws, "fail" if _past(d, now) else "neutral")))
             d += timedelta(days=1)
-    return {"food": _run(food), "window": _run(win)}
+    return {"food": _run(food), "window": _run(win), "train": _run(train_results(now)), "reduce": reduce_streak(now)}
 
 
 def header_line(s: dict | None = None) -> str:
     s = s or streaks()
-    f, w = s["food"], s["window"]
-    return "🔥 Jedzenie %d · 🕗 Okno %d%s" % (f["n"], w["n"],
-                                           (" · ❄️ %d/%d" % (f["freezes"], w["freezes"])) if (f["freezes"] or w["freezes"]) else "")
+    f, w, t, r = s["food"], s["window"], s["train"], s["reduce"]
+    fr = sum(x["freezes"] for x in (f, w, t))
+    return "🔥 %d · 🕗 %d · 💪 %d · 📉 %d tyg.%s" % (f["n"], w["n"], t["n"], r["n"], (" · ❄️ %d" % fr) if fr else "")
+
+
+# ======================================================================= 💪 Trening (dzienny)
+def train_results(now: datetime) -> list[tuple[date, str]]:
+    """Dzien zgodny z planem Trenera: brak sesji 'plan' (wykonane, zmienione przyciskiem albo odpoczynek) = ok.
+    Choroba w Kalendarzu = neutralnie. Sesja 'plan' po terminie (12:00 nastepnego dnia) = niezaliczony."""
+    today = now.date()
+    out = []
+    with _conn() as c:
+        rows = c.execute("SELECT day, status FROM qbot_v2.trainer_session WHERE day BETWEEN %s AND %s AND username NOT LIKE '\\_%%'",
+                         (START, today)).fetchall()
+        ill = c.execute("SELECT day, COALESCE(end_day, day) e FROM qbot_v2.calendar_entry WHERE kind='illness' AND COALESCE(end_day, day) >= %s",
+                        (START,)).fetchall()
+    by = {}
+    for r in rows:
+        by.setdefault(r["day"], []).append(r["status"])
+    d = START
+    while d <= today:
+        if any(i["day"] <= d <= i["e"] for i in ill):
+            out.append((d, "neutral"))
+        elif "plan" in by.get(d, []):
+            out.append((d, "fail" if _past(d, now) else "neutral"))
+        else:
+            out.append((d, "ok" if (d < today or _past(d, now) or "done" in by.get(d, [])) else "neutral"))
+        d += timedelta(days=1)
+    return out
+
+
+# ======================================================================= 📉 Redukcja (tygodniowy)
+REDUCE_LOW, REDUCE_HIGH = 300, 250     # widelki wokol celu bilansu: [cel-300, cel+250] kcal/dz
+REDUCE_MIN_WEIGH, REDUCE_MIN_DAYS = 2, 5
+
+
+def week_eval(c, ws: date, tgt: int) -> dict:
+    we = ws + timedelta(days=6)
+    away = sum(1 for i in range(7) if c.execute(
+        "SELECT 1 FROM qbot_v2.calendar_entry WHERE kind='event' AND %s BETWEEN day AND COALESCE(end_day, day) "
+        "AND (event_type IN ('delegacja','urlop') OR title ~* 'wyprawa') LIMIT 1", (ws + timedelta(days=i),)).fetchone())
+    nw = c.execute("SELECT count(DISTINCT date) n FROM qbot_v2.body_measurements WHERE weight_kg IS NOT NULL AND date BETWEEN %s AND %s",
+                   (ws, we)).fetchone()["n"]
+    rows = c.execute(
+        "SELECT f.day, (SELECT sum(i.kcal) FROM qbot_v2.intake_logs l JOIN qbot_v2.intake_items i ON i.intake_log_id=l.id WHERE l.date=f.day) k, "
+        "(SELECT COALESCE(total_kcal_eff,total_kcal) FROM qbot_v2.energy_daily e WHERE e.date=f.day AND quality_status<>'partial') e "
+        "FROM qbot_v2.food_day f WHERE f.closed_at IS NOT NULL AND f.day BETWEEN %s AND %s", (ws, we)).fetchall()
+    bal = [float(r["k"]) - float(r["e"]) for r in rows if r["k"] and r["e"]]
+    avg = round(st.mean(bal)) if bal else None
+    if away >= 4:
+        res = "neutral"
+    elif nw >= REDUCE_MIN_WEIGH and len(bal) >= REDUCE_MIN_DAYS and tgt - REDUCE_LOW <= avg <= tgt + REDUCE_HIGH:
+        res = "ok"
+    else:
+        res = "fail"
+    return {"week": ws, "res": res, "weighings": nw, "days": len(bal), "avg_balance": avg, "target": tgt, "away": away}
+
+
+def reduce_streak(now: datetime) -> dict:
+    """Tygodnie (pn-nd) od tygodnia START; tydzien oceniany po terminie (pn 12:00). Biezacy = w toku."""
+    try:
+        import qbot_food_plan as FP
+        with _conn() as c:
+            tgt = FP.target_balance(c)
+            ws = START - timedelta(days=START.weekday())
+            res, cur = [], None
+            while ws <= now.date():
+                ev = week_eval(c, ws, tgt)
+                if now > deadline(ws + timedelta(days=6)):
+                    res.append((ws, ev["res"]))
+                else:
+                    cur = ev
+                ws += timedelta(days=7)
+        out = _run(res)
+        out["current"] = cur
+        return out
+    except Exception as e:
+        return {"n": 0, "freezes": 0, "since": None, "used": 0, "current": None, "error": str(e)[:120]}
 
 
 def check_milestones(s: dict | None = None) -> None:
@@ -145,7 +220,9 @@ def check_milestones(s: dict | None = None) -> None:
     s = s or streaks()
     st_ = B.state()
     for kind, emo, txt in (("food", "🔥", "dni z rzędu z uczciwie zamkniętym jedzeniem"),
-                           ("window", "🕗", "dni z rzędu w oknie 10–20")):
+                           ("window", "🕗", "dni z rzędu w oknie 10–20"),
+                           ("train", "💪", "dni z rzędu zgodnie z planem treningowym"),
+                           ("reduce", "📉", "tygodni z rzędu w celu redukcji")):
         x = s[kind]
         if x["n"] in MILESTONES and x["since"]:
             key = "ms_%s_%s_%d" % (kind, x["since"].isoformat(), x["n"])

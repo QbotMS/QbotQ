@@ -64,6 +64,35 @@ Wiadomość aktualizuje się po każdej zmianie (także po wpisie z Telegrama).
   pierwszy wynik najwcześniej 31.10.2026. Linia w niedzielnym rozliczeniu Trenera (`text_review`).
   Stan na 12.10.2026: tylko 5 realnych ważeń w 60 dniach – bez częstszego ważenia monitor nie ruszy.
 
+## Cel dnia, dokładka, weekend, 21:30 (qbot_food_plan.py, od 12.10.2026)
+- **Model spalania** (z historii, 90 dni, raz dziennie): dzień bez treningu = mediana `energy_daily` w dni bez treningu
+  (12.10: 2473 kcal), trening = mediana nadwyżki na godzinę (12.10: 467 kcal/h) × czas sesji Trenera × współczynnik
+  sportu (rower 1, wioślarz 0,9, siła 0,6, joga 0,3). Dzień miniony = realne `energy_daily`.
+- **Cel dnia** = spalanie − kalibracja (rozbieżność waga vs wpisy, gdy gotowa, max ±500) + cel bilansu Trenera
+  (aktywny etap, 12.10: −519). Min. 1800 kcal, zaokrąglenie do 50. **Dokładka** = cel − kcal Brokuła (≥150 kcal,
+  inaczej „Brokuł wystarczy”). **Paliwo na rower**: trening ≥75 min → ~50 g węgli/h po pierwszych 45 min („tu jest
+  miejsce na słodkie”). Pory posiłków Brokuła pod pierwszy trening z godziną, z oknem 10–20 (trening przed 10:00 i <90 min
+  → na czczo; ≥90 min → dzień zwolniony, lekko 1 h przed jazdą).
+- Gdzie: blok „🍽 Jedzenie” w porannej wiadomości Trenera (dni z treningiem); linia „🎯 Cel dnia · zjedzone · zostało”
+  w wiadomości dnia (20:00).
+- **Piątek 7:00–9:59** (raz): plan weekendu – cel kcal, białko ~150 g, treningi, paliwo na rower; AI dopisuje, co zamawiać
+  na mieście / czego unikać / co na rower + listę zakupów (liczby ustala QBot, AI ich nie zmienia).
+- **21:30–21:59**: jeśli dzień nie jest zamknięty – jedno przypomnienie z licznikiem pasa.
+- **Delegacja** w Kalendarzu + niepotwierdzony Brokuł → podpowiedź „📦 Wszystkie na później”.
+- **Open Food Facts** (`off_refs`, search.openfoodfacts.org, ≤4 zapytania, ≤7 s): dla fragmentów z marką/sklepem
+  kandydaci (na 100 g) trafiają do AI jako podpowiedź – wyniki bywają nietrafione, AI używa tylko przy zgodnej marce i nazwie.
+
+## Pasy 💪 Trening i 📉 Redukcja (qbot_food_streaks.py)
+- 💪 dzienny: brak sesji `plan` po terminie (wykonane, zmienione przyciskiem REST/brak czasu, odpoczynek) = zaliczony;
+  choroba w Kalendarzu = neutralnie; sesja `plan` po 12:00 następnego dnia = niezaliczony.
+- 📉 tygodniowy (pn–nd, ocena po pn 12:00): ≥2 realne ważenia, ≥5 zamkniętych dni, średni bilans w widełkach
+  [cel −300, cel +250] (za duży deficyt też nie jest sukcesem); ≥4 dni wyjazdu = neutralnie.
+- Nagłówek wiadomości dnia: `🔥 · 🕗 · 💪 · 📉 tyg. · ❄️`.
+
+## Wykres celu wagi (Trener → Cele)
+`qbot_trener_stats.weight_chart` → `status.chart` {plan, meas, forecast, band, today}; rysuje `trener.js` `wchart()`
+(SVG: plan z korytarzem ±1 kg, realne ważenia z `body_measurements`, prognoza wg tempa 30 dni, linia „dziś”).
+
 ## Przyciski (telegram_reply_processor)
 `br:<e|s|p|f|d|w>:<id>[:RRRRMMDD]`, `br:<a|z>:RRRRMMDD` → qbot_brokul_meals.handle_callback;
 `fd:<o|m|p|k|b|x|r>:<id>[:n]`, `qk:RRRRMMDD:<none|snack|sweet|out_*|bf_*|ln_*|dn_*|win_ok|win_no>` → qbot_food_log.handle_callback.

@@ -406,6 +406,12 @@ def tick(now: datetime | None = None) -> None:
             _log("dokonczono wpisow jedzenia: %d" % n)
     except Exception as e:
         _log("retry jedzenia: %s" % e)
+    try:
+        import qbot_food_plan as FP
+        for l in FP.tick(now):
+            _log(l)
+    except Exception as e:
+        _log("plan jedzenia: %s" % e)
     if now.hour >= NOTIFY_HOUR:
         try:
             if F.send_day(now.date()):

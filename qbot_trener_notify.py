@@ -427,6 +427,15 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
             if _day_txt and _wl:
                 _h, _, _r = _day_txt.partition("\n")
                 _day_txt = _h + "\n" + _wl + "\n" + _r
+            if _day_txt:  # 2026-10-12: cel kcal dnia + dokladka do Brokula pod trening (qbot_food_plan)
+                try:
+                    import qbot_food_plan as _FP
+                    _mt = _FP.morning_text(today)
+                    if _mt:
+                        _a, _sep, _b = _day_txt.partition("\n\nGorszy dzień?")
+                        _day_txt = _a + "\n\n" + _mt + (_sep + _b if _sep else "")
+                except Exception as e:
+                    log.append(f"jedzenie: błąd {str(e)[:120]}")
             log.append(_once(c, f"day:{today.isoformat()}", user, _day_txt, dry, day_buttons(today)))
         if _wl and not _day_txt:
             log.append(_once(c, f"weigh:{today.isoformat()}", user, _wl, dry))

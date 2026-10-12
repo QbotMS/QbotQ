@@ -194,7 +194,7 @@
         var hh = "<div class='tr-it plan tr-ses" + (x.status === "done" ? " done" : "") + "' data-sid='" + x.id + "' draggable='" + canEd + "' style='border-left-color:" + SCOL[x.sport] + (x.status === "skip" ? ";opacity:.5;text-decoration:line-through" : "") + (canEd ? ";cursor:grab" : "") + "'><div class='tr-sh' style='cursor:pointer'>" + (x.status === "done" ? "✓ " : (x.status === "skip" ? "✕ " : "")) + AIC[x.sport] + " " + esc(x.name) + "<br><span style='opacity:.8'>" + (x.start_time || "") + " · " + x.dur_min + "′" + (x.cut ? " min" : "") + ((x.note || "").indexOf("dodane przez Ciebie") === 0 ? " · ＋ Twoje" : (x.status === "skip" && (x.note || "").indexOf("usunięte przez Ciebie") === 0 ? " · usunięte" : (x.source === "manual" ? " · ✎" : ""))) + (x.rating ? " · <span style='color:var(--accent)' title='Twoja ocena planu'>" + "★".repeat(x.rating) + "</span>" : "") + "</span>" + realLine(x) + "</div>";
         if (op) {
           hh += "<div style='border-top:1px dashed var(--line);margin-top:4px;padding-top:4px;display:flex;flex-direction:column;gap:5px'><div style='white-space:pre-line'>" + esc(x.details && x.details.text ? x.details.text : sdesc(x, meta)) + (x.note ? "\n" + esc(x.note) : "") + "</div>" +
-            (x.sport === "sila" && x.details && x.details.engine ? "<a class='tr-btn sm' style='align-self:flex-start;text-decoration:none' href='/sciaga.html?id=" + x.id + "'>📄 Ściąga z grafikami</a>" : "");
+            (x.sport === "sila" && x.details && x.details.engine ? "<a class='tr-btn sm' style='align-self:flex-start;text-decoration:none' href='/sciaga.html?id=" + x.id + "'>📄 Ściąga · zmień ćwiczenia</a>" : "");
           if (canEd) hh += "<div class='tr-tog'><button data-sa='done'>✓ zrobione</button>" + (x.min_min && x.min_min < x.dur_min ? "<button data-sa='cut'>⏱ minimum " + x.min_min + "′</button>" : "") + "<button data-sa='skip'>✕ pomiń</button><button data-sa='del'>🗑 usuń</button></div><div class='tr-tt'>godz. <input type='time' data-st='1' value='" + (x.start_time || "") + "'> czas <input type='number' min='5' max='600' step='5' data-sd='1' value='" + x.dur_min + "' style='width:64px'>′ <select data-ss='1'><option value=''>zamień na…</option>" + ACT.filter(function (a) { return a[0] !== x.sport; }).map(function (a) { return "<option value='" + a[0] + "'>" + a[1] + " " + a[2] + "</option>"; }).join("") + "</select>" +
             "<select data-sm='1'><option value=''>przenieś na…</option>" + [0, 1, 2, 3, 4, 5, 6].map(function (k) { var m2 = S.wk + k * DAY, d2 = iso(m2); return (m2 < T0 || d2 === ds) ? "" : "<option value='" + d2 + "'>" + DN[k] + " " + pl(m2) + (m2 === T0 ? " (dziś)" : "") + "</option>"; }).join("") + "</select></div>";
           else if (fut && x.status !== "plan") hh += "<div class='tr-tog'><button data-sa='undo'>↺ przywróć do planu</button></div>";
@@ -426,6 +426,28 @@
     body.querySelectorAll("[data-gs]").forEach(function (b) { b.onclick = function () { api("PUT", "/goals/" + b.dataset.gs, { status: b.dataset.v }).then(function () { return loadGoals(); }).then(function () { rGoals(); toast("Zapisano"); }).catch(fail); }; });
     body.querySelectorAll("[data-gd]").forEach(function (b) { b.onclick = function () { var g = S.goals.filter(function (x) { return x.id === +b.dataset.gd; })[0]; if (!confirm("Usunąć cel „" + (g ? g.name : "") + "”? Tego nie da się cofnąć.")) return; api("DELETE", "/goals/" + b.dataset.gd).then(loadGoals).then(function () { rGoals(); toast("Usunięto"); }).catch(fail); }; });
     var f = document.getElementById("trg-f"); if (f) goalForm(f, editId === "new" ? null : S.goals.filter(function (x) { return x.id === editId; })[0]);
+    function wchart(ch) {  /* 2026-10-12: cel wagi z etapami - plan z korytarzem, pomiary, prognoza (qbot_trener_stats.weight_chart) */
+      var W = 640, H = 210, pl = 34, pr = 10, pt = 18, pb = 14;
+      var pts = ch.plan.concat(ch.meas).concat(ch.forecast || []);
+      var ts = pts.map(function (p) { return Date.parse(p[0]); }), t0 = Math.min.apply(null, ts), t1 = Math.max.apply(null, ts);
+      var ys = pts.map(function (p) { return p[1]; }), y0 = Math.floor(Math.min.apply(null, ys) - 1.5), y1 = Math.ceil(Math.max.apply(null, ys) + 1.5);
+      function X(d) { return pl + (Date.parse(d) - t0) / Math.max(1, t1 - t0) * (W - pl - pr); }
+      function Y(v) { return pt + (y1 - v) / Math.max(1, y1 - y0) * (H - pt - pb); }
+      function ln(a, off) { return a.map(function (p, i) { return (i ? "L" : "M") + X(p[0]).toFixed(1) + " " + Y(p[1] + (off || 0)).toFixed(1); }).join(" "); }
+      function dm(d) { return d.slice(8, 10) + "." + d.slice(5, 7); }
+      var band = ln(ch.plan, ch.band) + " " + ch.plan.slice().reverse().map(function (p) { return "L" + X(p[0]).toFixed(1) + " " + Y(p[1] - ch.band).toFixed(1); }).join(" ") + " Z";
+      var s = "<svg viewBox='0 0 " + W + " " + H + "' style='width:100%;max-width:760px;height:auto;margin-top:8px;color:inherit;display:block' role='img' aria-label='Waga: plan, pomiary i prognoza'>";
+      for (var v = y0 + (y0 % 2 ? 1 : 0); v <= y1; v += 2) s += "<line x1='" + pl + "' x2='" + (W - pr) + "' y1='" + Y(v).toFixed(1) + "' y2='" + Y(v).toFixed(1) + "' stroke='var(--line)' stroke-width='1'/><text x='" + (pl - 4) + "' y='" + (Y(v) + 3.5).toFixed(1) + "' font-size='10' text-anchor='end' fill='var(--muted)'>" + v + "</text>";
+      s += "<path d='" + band + "' fill='var(--good)' opacity='.13'/>";
+      s += "<path d='" + ln(ch.plan) + "' fill='none' stroke='var(--good)' stroke-width='2' stroke-dasharray='6 4'/>";
+      if (ch.forecast) s += "<path d='" + ln(ch.forecast) + "' fill='none' stroke='var(--warn)' stroke-width='1.6' stroke-dasharray='2 4'/>";
+      if (ch.meas.length > 1) s += "<path d='" + ln(ch.meas) + "' fill='none' stroke='currentColor' stroke-width='1.4' opacity='.8'/>";
+      ch.meas.forEach(function (p) { s += "<circle cx='" + X(p[0]).toFixed(1) + "' cy='" + Y(p[1]).toFixed(1) + "' r='2.6' fill='currentColor'><title>" + dm(p[0]) + ": " + p[1] + " kg</title></circle>"; });
+      ch.plan.slice(1).forEach(function (p, i, a) { var x = X(p[0]); s += "<circle cx='" + x.toFixed(1) + "' cy='" + Y(p[1]).toFixed(1) + "' r='4' fill='var(--good)'/><text x='" + x.toFixed(1) + "' y='" + (Y(p[1]) - 8).toFixed(1) + "' font-size='10' text-anchor='" + (i === a.length - 1 ? "end" : "middle") + "' fill='var(--muted)'>" + p[1] + " kg · " + dm(p[0]) + "</text>"; });
+      var tx = X(ch.today).toFixed(1);
+      s += "<line x1='" + tx + "' x2='" + tx + "' y1='" + pt + "' y2='" + (H - pb) + "' stroke='var(--muted)' stroke-dasharray='2 3'/><text x='" + tx + "' y='" + (pt - 6) + "' font-size='10' text-anchor='middle' fill='var(--muted)'>dziś</text>";
+      return s + "</svg><div style='font-size:11px;color:var(--muted)'>– – plan z korytarzem ±1 kg · ● ważenia · ··· prognoza przy obecnym tempie</div>";
+    }
     if (S.goals.length) api("GET", "/goals/status").then(function (st) {
       Object.keys(st).forEach(function (id) {
         var el = document.getElementById("gst-" + id), v = st[id]; if (!el || !v) return;
@@ -438,6 +460,7 @@
             (ratio != null ? "<div style='height:7px;border-radius:4px;background:var(--line);overflow:hidden'><i style='display:block;height:100%;width:" + Math.round(ratio * 100) + "%;background:" + (ratio >= 1 ? "var(--good)" : (ratio >= 0.5 ? "var(--warn)" : "var(--bad)")) + "'></i></div>" : "<span></span>") +
             "<b style='text-align:right'>" + esc(r.have) + (r.need != null ? " / " + esc(r.need) : "") + "</b>" + (r.note ? "<span style='grid-column:1/4;color:var(--muted);font-size:11px'>" + esc(r.note) + "</span>" : "") + "</div>";
         });
+        if (v.chart && v.chart.plan) h += wchart(v.chart);
         el.innerHTML = h;
       });
     }).catch(function () {});
