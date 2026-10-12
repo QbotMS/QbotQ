@@ -690,7 +690,7 @@ function renderTrendy(){
     if(PWRMODE==="cp"||PWRMODE==="oba")ds.push({label:"CP",data:cpD,borderColor:"#3b82f6",borderWidth:2.5,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false});
     if(PWRMODE==="ltp"||PWRMODE==="oba")ds.push({label:"LTP",data:ltpD,yAxisID:(PWRMODE==="oba"?"y2":"y"),borderColor:"#9b59b6",borderWidth:2,borderDash:[4,3],pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false});
     window._pwrChart=new Chart(pwrCanvas,{type:"line",data:{labels:labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
-      plugins:{legend:{display:ds.length>1,position:"top",labels:{usePointStyle:true,pointStyle:"line",boxWidth:20,padding:10,color:txtCol,font:{size:11}}},
+      plugins:{legend:{display:false,position:"top",labels:{usePointStyle:true,pointStyle:"line",boxWidth:20,padding:10,color:txtCol,font:{size:11}}},
         tooltip:{backgroundColor:isDark?"rgba(30,30,30,0.95)":"rgba(255,255,255,0.95)",titleColor:isDark?"#ddd":"#333",bodyColor:isDark?"#bbb":"#555",borderColor:isDark?"#444":"#ddd",borderWidth:1,padding:10,displayColors:true,callbacks:{title:function(items){if(!items.length)return "";var i=items[0].dataIndex;return SN[i]?SN[i].day:"";}}}},
       /* 2026-10-08: CP + LTP - kazda na wlasnej skali (CP lewa, LTP prawa, etykiety w kolorach linii); prawa os do srodka (mirror),
          szerokosc 0 - obszar wykresu zostaje rowny wykresowi powyzej (wspolny kursor) */
@@ -732,43 +732,57 @@ function renderTrendy(){
   q$("trendy-pwr-canvas").addEventListener("mouseleave",function(){var tip=document.getElementById("trendy-tip");if(tip)tip.style.display="none";});
   buildPwr();
   /* przelacznik CP/LTP */
-  q$("pwr-seg").querySelectorAll("button").forEach(function(b){b.addEventListener("click",function(){
-    q$("pwr-seg").querySelectorAll("button").forEach(function(x){x.classList.remove("on");});b.classList.add("on");PWRMODE=b.dataset.p;buildPwr();});});
+  /* 2026-10-12: CP / LTP jako pigulki (jak przelaczniki wykresu formy); oba wlaczone = tryb 'oba' */
+  function renderPwrChips(){var el=q$("pwr-chips");if(!el)return;var cp=PWRMODE!=="ltp",lt=PWRMODE!=="cp";
+    el.innerHTML='<button type="button" class="tchip'+(cp?' on':'')+'" data-p="cp"><span class="tdot" style="background:#3b82f6"></span>CP</button>'+
+      '<button type="button" class="tchip'+(lt?' on':'')+'" data-p="ltp"><span class="tdot" style="background:#9b59b6"></span>LTP</button>';
+    el.querySelectorAll("button").forEach(function(b){b.onclick=function(){var c2=PWRMODE!=="ltp",l2=PWRMODE!=="cp";if(b.dataset.p==="cp")c2=!c2;else l2=!l2;
+      if(!c2&&!l2)return;PWRMODE=c2&&l2?"oba":(c2?"cp":"ltp");renderPwrChips();buildPwr();};});}
+  renderPwrChips();
   /* WELLNESS CHART */
   var sleepD=[],hrvD=[],rhrD=[],wtD=[],rdyD=[];
   SN.forEach(function(s2){sleepD.push(s2.sleep_score||null);hrvD.push(s2.hrv_night||null);rhrD.push(s2.rhr||null);wtD.push(s2.weight_kg||null);rdyD.push(s2.readiness_effective!=null?s2.readiness_effective:(s2.readiness_score!=null?s2.readiness_score:null));});
+  /* 2026-10-12: przelaczniki Wellness jako pigulki (jak wykres formy), wybor zapamietany */
+  var WDEF=[["sleep","sen","#3b82f6",1],["hrv","HRV","#9b59b6",1],["rhr","RHR","#e74c3c",1],["wt","waga","#e67e22",1],["bal","waga z bilansu","#14b8a6",1],["rdy","gotowość","#22c55e",0]];
+  function wellState(){var o={};try{o=JSON.parse(localStorage.getItem("well_on")||"{}");}catch(e){o={};}var s={};WDEF.forEach(function(w){s[w[0]]=o[w[0]]!=null?!!o[w[0]]:!!w[3];});return s;}
+  function renderWellChips(){var el=q$("well-chips");if(!el)return;var st=wellState();
+    el.innerHTML=WDEF.map(function(w){return '<button type="button" class="tchip'+(st[w[0]]?' on':'')+'" data-w="'+w[0]+'"'+(w[0]==="bal"?' title="Waga startowa okresu logowania + skumulowany bilans (zjedzone − spalone) ÷ 7700. Jeśli linia wagi idzie razem z nią – wpisy są kompletne."':'')+'><span class="tdot" style="background:'+w[2]+'"></span>'+w[1]+'</button>';}).join("");
+    el.querySelectorAll("button").forEach(function(b){b.onclick=function(){var s2=wellState();s2[b.dataset.w]=!s2[b.dataset.w];try{localStorage.setItem("well_on",JSON.stringify(s2));}catch(e){}renderWellChips();buildWellness();};});}
   function buildWellness(){
     if(window._wellChart){window._wellChart.destroy();}
     var wc=q$("trendy-well-canvas");if(!wc)return;
-    var checks=q$("well-checks");var show={sleep:true,hrv:true,rhr:true,wt:true,rdy:false,bal:true};
-    if(checks)checks.querySelectorAll("input").forEach(function(cb){show[cb.dataset.w]=cb.checked;});
-    var ds=[],hasRight=show.wt;
+    var show=wellState();
+    var ds=[],hasRight=show.wt||show.bal;
     if(show.sleep)ds.push({label:"sen (score)",data:sleepD,borderColor:"#3b82f6",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"yw"});
     if(show.hrv)ds.push({label:"HRV",data:hrvD,borderColor:"#9b59b6",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"yw"});
     if(show.rhr)ds.push({label:"RHR",data:rhrD,borderColor:"#e74c3c",borderWidth:1.5,borderDash:[4,3],pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"yw"});
     if(show.wt)ds.push({label:"waga (kg)",data:wtD,borderColor:"#e67e22",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"yw2"});
-    if(show.bal)ds.push({label:"bilans skumulowany (kcal)",data:balD,borderColor:"#14b8a6",backgroundColor:"rgba(20,184,166,.10)",fill:"origin",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.2,spanGaps:false,yAxisID:"ybal"});
+    if(show.bal)ds.push({label:"waga z bilansu (kg)",_bal:true,data:balD,borderColor:"#14b8a6",borderWidth:2.2,borderDash:[5,3],pointRadius:0,pointHoverRadius:4,tension:0.2,spanGaps:false,fill:false,yAxisID:"yw2"});
     if(show.rdy)ds.push({label:"gotowość",data:rdyD,borderColor:"#22c55e",borderWidth:2,borderDash:[6,3],pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"ywr"});
     var scalesW={x:{display:false},yw:{position:"left",ticks:{color:txtCol,font:{size:10}},grid:{color:gridCol}}};
     if(hasRight)scalesW.yw2={position:"right",ticks:{color:"#e67e22",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"kg",color:"#e67e22",font:{size:10}}};
-    if(show.bal)scalesW.ybal={position:"right",ticks:{color:"#14b8a6",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"bilans skum. kcal",color:"#14b8a6",font:{size:10}}};
+    /* bilans skumulowany rysowany jako 'waga z bilansu' na osi wagi (yw2) - bez osobnej osi kcal */
     if(show.rdy)scalesW.ywr={position:"right",ticks:{color:"#22c55e",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"gotowość",color:"#22c55e",font:{size:10}}};
     window._wellChart=new Chart(wc,{type:"line",data:{labels:labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
-      plugins:{legend:{display:true,position:"top",labels:{usePointStyle:true,pointStyle:"line",boxWidth:20,padding:10,color:txtCol,font:{size:11}}},
+      plugins:{legend:{display:false},
         tooltip:{backgroundColor:isDark?"rgba(30,30,30,0.95)":"rgba(255,255,255,0.95)",titleColor:isDark?"#ddd":"#333",bodyColor:isDark?"#bbb":"#555",borderColor:isDark?"#444":"#ddd",borderWidth:1,padding:10,displayColors:true,callbacks:{title:function(items){if(!items.length)return "";var i=items[0].dataIndex;return SN[i]?SN[i].day:"";},
-          label:function(c2){var v=c2.parsed.y;if(v==null)return null;if(c2.dataset.yAxisID==="ybal")return "bilans skumulowany: "+(v>0?"+":"")+Math.round(v)+" kcal (≈ "+(v>0?"+":"")+(v/7700).toFixed(2).replace(".",",")+" kg)";return c2.dataset.label+": "+(Math.round(v*10)/10);}}}},
+          label:function(c2){var v=c2.parsed.y;if(v==null)return null;if(c2.dataset._bal){var k=balC[c2.dataIndex];return "waga z bilansu: "+v.toFixed(1).replace(".",",")+" kg (bilans "+(k>0?"+":"")+k+" kcal od "+balS[c2.dataIndex]+")";}return c2.dataset.label+": "+(Math.round(v*10)/10);}}}},
       scales:scalesW}});
   }
   /* 2026-10-12: bilans kcal dnia (zjedzone - spalone) z /api/jedzenie/balance - tylko dni z wpisami jedzenia */
-  var balD=SN.map(function(){return null;});
+  var balD=SN.map(function(){return null;}),balC=[],balS=[];
+  renderWellChips();
   buildWellness();
-  q$("well-checks").querySelectorAll("input").forEach(function(cb){cb.addEventListener("change",buildWellness);});
   if(SN.length){var d0=String(SN[0].day).slice(0,10),d1=String(SN[SN.length-1].day).slice(0,10);
     fetch("/api/jedzenie/balance?start="+d0+"&end="+d1,{credentials:"same-origin",cache:"no-store"}).then(function(r){return r.ok?r.json():null;}).then(function(b){
       if(!b||!b.series)return;var m={};b.series.forEach(function(x){if(x.intake!=null)m[x.day]=x.intake-x.expend;});
       /* skumulowany bilans TYLKO w okresach logowania: dzien bez wpisow = przerwa w linii; przerwa > 2 dni = nowa seria od 0
          (bez wpisow nie wiemy, ile zjedzono - linia plaska przez dziury bylaby nieprawda) */
-      var acc=0,gap=99;balD=SN.map(function(s2){var v=m[String(s2.day).slice(0,10)];if(v==null){gap++;return null;}if(gap>2)acc=0;gap=0;acc+=v;return Math.round(acc);});buildWellness();}).catch(function(){});}
+      /* jako 'waga z bilansu': start = waga z dnia rozpoczecia serii, dalej + bilans/7700 (ta sama os co waga) */
+      var acc=0,gap=99,base=null,since="";balC=[];balS=[];
+      balD=SN.map(function(s2,i){var v=m[String(s2.day).slice(0,10)];if(v==null){gap++;balC.push(null);balS.push(null);return null;}
+        if(gap>2||base==null){acc=0;base=wtD[i]!=null?wtD[i]:base;since=String(s2.day).slice(8,10)+"."+String(s2.day).slice(5,7);}gap=0;acc+=v;
+        balC.push(Math.round(acc));balS.push(since);return base!=null?Math.round((base+acc/7700)*100)/100:null;});buildWellness();}).catch(function(){});}
   
   /* komentarz */
   var cEl=q$("trendy-comment");if(cEl){
