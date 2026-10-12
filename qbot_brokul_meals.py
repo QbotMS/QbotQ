@@ -396,10 +396,7 @@ def tick(now: datetime | None = None) -> None:
             _log("blad importu: %s: %s" % (type(e).__name__, e))
     else:
         _log("brak sesji (.brokul_session)")
-    try:
-        _remind_end(now)
-    except Exception as e:
-        _log("przypomnienie o koncu diety: %s" % e)
+    # 2026-10-12: koniec diety -> linia w porannej wiadomosci (qbot_food_plan.morning_digest), bez osobnej wysylki
     try:
         n = F.retry_pending()
         if n:

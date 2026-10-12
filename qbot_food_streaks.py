@@ -228,6 +228,12 @@ def reduce_streak(now: datetime) -> dict:
         return {"n": 0, "freezes": 0, "since": None, "used": 0, "current": None, "error": str(e)[:120]}
 
 
+def milestone_lines(day: date) -> list[str]:
+    import qbot_brokul as B
+    st_ = B.state()
+    return ["🎉 " + v for k, v in st_.items() if k.endswith("_txt") and str(st_.get(k[:-4], "")).startswith(day.isoformat())]
+
+
 def check_milestones(s: dict | None = None) -> None:
     """Krotka wiadomosc przy 3/7/14/30/... dniach - raz na dany pas."""
     import qbot_brokul as B
@@ -242,9 +248,8 @@ def check_milestones(s: dict | None = None) -> None:
         if x["n"] in MILESTONES and x["since"]:
             key = "ms_%s_%s_%d" % (kind, x["since"].isoformat(), x["n"])
             if not st_.get(key):
-                nxt = next((m for m in MILESTONES if m > x["n"]), None)
-                F.tg_send("%s %d %s!%s" % (emo, x["n"], txt, (" Następny cel: %d." % nxt) if nxt else ""))
-                B._state_update(**{key: time.strftime("%Y-%m-%d %H:%M:%S")})
+                # 2026-10-12: bez osobnej wiadomosci - linia w wiadomosci dnia (milestone_lines)
+                B._state_update(**{key: time.strftime("%Y-%m-%d %H:%M:%S"), key + "_txt": "%s %d %s" % (emo, x["n"], txt)})
 
 
 # ======================================================================= waga vs jedzenie
@@ -322,5 +327,5 @@ def weigh_line(c, today: date) -> str | None:
     if y and y["m"] >= LONG_RIDE_SKIP_MIN * 60:
         return None
     lw = c.execute("SELECT weight_kg FROM qbot_v2.body_measurements WHERE date=%s AND weight_kg IS NOT NULL LIMIT 1", (last,)).fetchone() if last else None
-    tail = (" Ostatnie: %s (%s kg)." % (last.strftime("%d.%m"), ("%.1f" % lw["weight_kg"]).replace(".", ","))) if lw else ""
-    return "⚖️ Dziś ważenie – rano, po toalecie, przed jedzeniem." + tail
+    tail = (" (ostatnie %s · %s kg)" % (last.strftime("%d.%m"), ("%.1f" % lw["weight_kg"]).replace(".", ","))) if lw else ""
+    return "⚖️ Ważenie rano, przed jedzeniem" + tail

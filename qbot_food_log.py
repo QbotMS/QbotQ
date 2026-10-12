@@ -752,7 +752,9 @@ def close_state(day: date) -> dict:
 
 
 def build_day(day: date) -> tuple[str, dict]:
+    """Wiadomosc dnia (20:00) - ZWIEZLA (2026-10-12): naglowek z passa, posilki w 1 linii, cel, okno, stan."""
     from qbot_brokul_meals import day_meals, fridge_for
+    import qbot_food_streaks as S
     meals = day_meals(day)
     fridge = fridge_for(day)
     ents = day_entries(day)
@@ -760,101 +762,72 @@ def build_day(day: date) -> tuple[str, dict]:
     md = day.strftime("%Y%m%d")
     kb = []
     ic = {"eaten": "✅", "skipped": "❌", "pending": "⏳", "fridge": "📦", "discarded": "🗑"}
+    head = "🍽 %s %s" % (DNI[day.weekday()], day.strftime("%d.%m"))
+    try:
+        head += " · " + S.header_line().replace(" · ", " ")
+    except Exception as ex:
+        _log("passa: %s" % ex)
+    L = [head]
+    for m in meals:
+        L.append("%s %s · %s" % (ic.get(m["status"], "•"), m["meal_type"], _fmt(m["kcal"])))
+        t, i = m["meal_type"], m["id"]
+        if m["status"] == "pending":
+            kb.append([{"text": "✅ %s" % t, "callback_data": "br:e:%d:%s" % (i, md)},
+                       {"text": "❌", "callback_data": "br:s:%d:%s" % (i, md)},
+                       {"text": "📦", "callback_data": "br:f:%d:%s" % (i, md)}])
+        else:
+            kb.append([{"text": "%s %s · cofnij" % ({"eaten": "✔", "skipped": "✖", "fridge": "📦"}.get(m["status"], ""), t),
+                        "callback_data": "br:p:%d:%s" % (i, md)}])
+    if sum(1 for m in meals if m["status"] == "pending") >= 2:
+        kb.append([{"text": "✅ Wszystkie", "callback_data": "br:a:%s" % md},
+                   {"text": "📦 Wszystkie później", "callback_data": "br:z:%s" % md}])
+    for m in fridge:
+        L.append("%s z lodówki: %s %s · %s" % (ic.get(m["status"], "•"), m["meal_type"], m["day"].strftime("%d.%m"), _fmt(m["kcal"])))
+        t, i = "%s %s" % (m["meal_type"], m["day"].strftime("%d.%m")), m["id"]
+        if m["status"] == "fridge":
+            kb.append([{"text": "✅ Zjadłem: %s" % t, "callback_data": "br:d:%d:%s" % (i, md)},
+                       {"text": "🗑", "callback_data": "br:w:%d:%s" % (i, md)}])
+        else:
+            kb.append([{"text": "%s %s · cofnij" % ("✔" if m["status"] == "eaten" else "🗑", t), "callback_data": "br:f:%d:%s" % (i, md)}])
+    for e in ents:
+        if e["status"] == "logged":
+            desc = re.sub(r"\s+", " ", ", ".join(_short(i) for i in (e["items"] or [])) or (e["raw_text"] or e["kind"]))
+            L.append("✅ #%d %s · %s" % (e["id"], desc[:38] + ("…" if len(desc) > 38 else ""), _fmt(e["kcal"])))
+        else:
+            L.append("⏳ #%d %s – w toku" % (e["id"], re.sub(r"\s+", " ", e["raw_text"] or "zdjęcie")[:30]))
+    if meals and cs["none"] and not ents:
+        L.append("✔ nic poza dietą")
     if meals:
-        L = ["🍽 Dzień %s (%s) · dieta Brokuła" % (day.strftime("%d.%m"), DNI[day.weekday()]), ""]
-        L.append("🥦 Brokuł – potwierdź posiłki (📦 = zjem później):")
-        for m in meals:
-            L.append("%s %s: %s · %s kcal" % (ic.get(m["status"], "•"), m["meal_type"], m["name"][:70], _fmt(m["kcal"])))
-            t, i = m["meal_type"], m["id"]
-            if m["status"] == "pending":
-                kb.append([{"text": "✅ %s" % t, "callback_data": "br:e:%d:%s" % (i, md)},
-                           {"text": "❌", "callback_data": "br:s:%d:%s" % (i, md)},
-                           {"text": "📦", "callback_data": "br:f:%d:%s" % (i, md)}])
-            else:
-                lab = {"eaten": "✔", "skipped": "✖", "fridge": "📦"}.get(m["status"], m["status"])
-                kb.append([{"text": "%s %s · cofnij" % (lab, t), "callback_data": "br:p:%d:%s" % (i, md)}])
-        with _conn() as c:
-            dl = c.execute("SELECT 1 FROM qbot_v2.calendar_entry WHERE kind='event' AND event_type='delegacja' "
-                           "AND %s BETWEEN day AND COALESCE(end_day, day) LIMIT 1", (day,)).fetchone()
-        if dl and any(m["status"] == "pending" for m in meals):
-            L.append("🧳 Delegacja – jeśli dieta czeka w domu, kliknij „📦 Wszystkie na później”.")
-        if sum(1 for m in meals if m["status"] == "pending") >= 2:
-            kb.append([{"text": "✅ Wszystkie zjedzone", "callback_data": "br:a:%s" % md},
-                       {"text": "📦 Wszystkie na później", "callback_data": "br:z:%s" % md}])
-        L.append("")
-    else:
-        L = ["🍽 Dzień %s (%s) · bez diety" % (day.strftime("%d.%m"), DNI[day.weekday()]), ""]
-    if fridge:
-        L.append("📦 Z lodówki (dieta z wcześniejszych dni):")
-        for m in fridge:
-            L.append("%s %s z %s: %s · %s kcal" % (ic.get(m["status"], "•"), m["meal_type"], m["day"].strftime("%d.%m"),
-                                                  m["name"][:60], _fmt(m["kcal"])))
-            t, i = "%s %s" % (m["meal_type"], m["day"].strftime("%d.%m")), m["id"]
-            if m["status"] == "fridge":
-                kb.append([{"text": "✅ Zjadłem: %s" % t, "callback_data": "br:d:%d:%s" % (i, md)},
-                           {"text": "🗑", "callback_data": "br:w:%d:%s" % (i, md)}])
-            else:
-                kb.append([{"text": "%s %s · cofnij" % ("✔" if m["status"] == "eaten" else "🗑", t),
-                            "callback_data": "br:f:%d:%s" % (i, md)}])
-        L.append("")
-    L.append("🍴 Poza dietą:" if meals else "🍴 Zjedzone:")
-    if ents:
-        for e in ents:
-            if e["status"] == "logged":
-                desc = ", ".join(_short(i) for i in (e["items"] or [])) or (e["raw_text"] or e["kind"])
-                desc = re.sub(r"\s+", " ", desc)
-                L.append("✅ #%d %s · %s kcal" % (e["id"], desc[:70] + ("…" if len(desc) > 70 else ""), _fmt(e["kcal"])))
-            else:
-                L.append("⏳ #%d %s · do dokończenia" % (e["id"], re.sub(r"\s+", " ", e["raw_text"] or "zdjęcie")[:50]))
-    elif meals and cs["none"]:
-        L.append("✔ nic")
-    else:
-        L.append("– jeszcze nic")
-    L.append("")
-    L.append("Napisz albo wyślij zdjęcie, np. „2 pączki”, „w sobotę pizza”. Albo przyciski:")
-    if meals:
-        L.append("🥨 przekąska · 🍫 słodycze · 🍽 posiłek na mieście S/M/L")
-        kb.append([{"text": ("✔ Nic poza dietą ✓" if cs["none"] else "✔ Nic poza dietą"), "callback_data": "qk:%s:none" % md}])
-        kb.append([{"text": "🥨", "callback_data": "qk:%s:snack" % md}, {"text": "🍫", "callback_data": "qk:%s:sweet" % md}])
+        kb.append([{"text": ("✔ Nic poza dietą ✓" if cs["none"] else "✔ Nic poza dietą"), "callback_data": "qk:%s:none" % md},
+                   {"text": "🥨", "callback_data": "qk:%s:snack" % md}, {"text": "🍫", "callback_data": "qk:%s:sweet" % md}])
         kb.append([{"text": "🍽 S", "callback_data": "qk:%s:out_s" % md}, {"text": "🍽 M", "callback_data": "qk:%s:out_m" % md},
                    {"text": "🍽 L", "callback_data": "qk:%s:out_l" % md}])
     else:
-        L.append("🍳 śniadanie · 🍲 obiad · 🌙 kolacja – S/M/L = mała/średnia/duża porcja · 🥨 przekąska · 🍫 słodycze")
         for em, code in (("🍳", "bf"), ("🍲", "ln"), ("🌙", "dn")):
             kb.append([{"text": "%s %s" % (em, sz), "callback_data": "qk:%s:%s_%s" % (md, code, sz.lower())} for sz in ("S", "M", "L")])
         kb.append([{"text": "🥨", "callback_data": "qk:%s:snack" % md}, {"text": "🍫", "callback_data": "qk:%s:sweet" % md}])
-    import qbot_food_streaks as S
-    with _conn() as c:
-        ws, wd = S.window_status(c, day)
-    if ws == "exempt":
-        L += ["", "🕗 Okno 10–20: dziś zwolnione (%s)" % wd]
-    else:
-        lab = {"ok": "✔ dotrzymane", "broken": "✖ złamane" + (" (%s)" % wd if wd else ""),
-               "pending": "do potwierdzenia" + (" (%s)" % wd if wd else " – kliknij do 12:00 jutro")}[ws]
-        L += ["", "🕗 Okno 10–20: " + lab]
-        kb.append([{"text": "🕗 Okno dotrzymane" + (" ✓" if ws == "ok" else ""), "callback_data": "qk:%s:win_ok" % md},
-                   {"text": "✖ Złamane" + (" ✓" if ws == "broken" else ""), "callback_data": "qk:%s:win_no" % md}])
-    try:
-        L.insert(1, S.header_line())
-    except Exception as ex:
-        _log("pasy: %s" % ex)
-    t = day_totals(day)
-    L += ["", "Razem: %s kcal · B %s · W %s · T %s g" % (_fmt(t["kcal"] or 0), _fmt(t["protein_g"] or 0),
-                                                         _fmt(t["carbs_g"] or 0), _fmt(t["fat_g"] or 0))]
     try:
         import qbot_food_plan as FP
         L.append(FP.evening_line(day))
     except Exception as ex:
         _log("cel dnia: %s" % ex)
-    if cs["closed"]:
-        L.append("🔒 Dzień zamknięty")
+    with _conn() as c:
+        ws, wd = S.window_status(c, day)
+    if ws == "exempt":
+        L.append("🕗 okno zwolnione (%s)" % wd)
     else:
-        need = []
-        if cs["pending"]:
-            need.append("potwierdź posiłki Brokuła")
-        if not (cs["none"] or cs["entries"]):
-            need.append("dopisz, co zjadłeś poza dietą, albo kliknij „Nic poza dietą”" if cs["has_diet"] else "dopisz, co zjadłeś")
-        L.append("⏳ Do zamknięcia dnia: " + "; ".join(need))
+        L.append("🕗 okno: " + {"ok": "✔", "broken": "✖" + (" " + wd if wd else ""), "pending": "potwierdź"}[ws])
+        kb.append([{"text": "🕗 Dotrzymane" + (" ✓" if ws == "ok" else ""), "callback_data": "qk:%s:win_ok" % md},
+                   {"text": "✖ Złamane" + (" ✓" if ws == "broken" else ""), "callback_data": "qk:%s:win_no" % md}])
+    try:
+        L += S.milestone_lines(day)
+    except Exception:
+        pass
+    if cs["closed"]:
+        L.append("🔒 zamknięty")
+    else:
+        need = (["Brokuł"] if cs["pending"] else []) + ([] if (cs["none"] or cs["entries"]) else ["dopisz jedzenie"])
+        L.append("⏳ " + " · ".join(need) + ("" if ents or cs["none"] else " (tekst, zdjęcie lub przyciski" + (", 🍽 = na mieście)" if meals else ": 🍳🍲🌙 S/M/L)")))
     return "\n".join(L), {"inline_keyboard": kb}
 
 

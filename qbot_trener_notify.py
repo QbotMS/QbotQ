@@ -392,14 +392,20 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
         if E.season_weeks(_goals, _ov, ws, 1)[0]["ph"] == "lz":
             return log + [f"{now.strftime('%a %H:%M')}: totalny luz — bez wiadomości"]
         # rozliczenie: ndz 19:00-19:59
-        if st["notify.review"] == 1 and today.weekday() == 6 and 19 * 60 <= hm < 20 * 60:
+        _rev = None  # 2026-10-12: gdy plan tygodnia idzie w ndz 20:00, rozliczenie dolacza do niego (jedna wiadomosc)
+        _merge = st["notify.week_plan"] == 2
+        if st["notify.review"] == 1 and today.weekday() == 6 and ((20 * 60 <= hm < 21 * 60) if _merge else (19 * 60 <= hm < 20 * 60)):
             ses = _sessions(c, user, ws, ws + timedelta(days=6))
             linked = {s["training_session_id"] for s in ses if s.get("training_session_id")}
             c.execute("SELECT id, duration_s FROM qbot_v2.training_sessions WHERE date BETWEEN %s AND %s", (ws, ws + timedelta(days=6)))
             extra = sum((r["duration_s"] or 0) for r in c.fetchall() if r["id"] not in linked) / 3600
             import qbot_trener_stats as ST
             slope = ST.balance(ST.load_days(c, 45), 30, 2)["weight_slope_kg_wk"]
-            log.append(_once(c, f"review:{yr}-W{wk:02d}", user, text_review(ws, ses, extra, st["notify.tone"], slope) if ses else None, dry))
+            _rt = text_review(ws, ses, extra, st["notify.tone"], slope) if ses else None
+            if _merge and _rt:
+                _rev = (f"review:{yr}-W{wk:02d}", _rt)
+            else:
+                log.append(_once(c, f"review:{yr}-W{wk:02d}", user, _rt, dry))
         # plan tygodnia
         send_plan = None
         if st["notify.week_plan"] == 1 and today.weekday() == 0 and 7 * 60 <= hm < 8 * 60:
@@ -410,35 +416,35 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
             res = _ensure_plan(c, user, send_plan) if not dry else E.plan_week(E.build_context(c, user, send_plan))
             ses = _sessions(c, user, send_plan, send_plan + timedelta(days=6)) or [dict(s, day=date.fromisoformat(s["day"]), start_time=datetime.strptime(s["start_time"], "%H:%M").time() if s.get("start_time") else None) for s in res["sessions"]]
             y2, w2, _ = send_plan.isocalendar()
-            log.append(_once(c, f"plan:{y2}-W{w2:02d}", user, text_plan(send_plan, ses, res.get("phase_name"), res.get("target_h"), res.get("notes")) if ses else None, dry))
+            _pt = text_plan(send_plan, ses, res.get("phase_name"), res.get("target_h"), res.get("notes")) if ses else None
+            if _rev:
+                c.execute("SELECT 1 FROM qbot_v2.trainer_notify_log WHERE key=%s", (_rev[0],))
+                if not c.fetchone():
+                    _pt = _rev[1] + ("\n\n" + _pt if _pt else "")
+                    if not dry:
+                        c.execute("INSERT INTO qbot_v2.trainer_notify_log (key, username, ok, detail) VALUES (%s,%s,true,'scalone z planem tygodnia') "
+                                  "ON CONFLICT (key) DO NOTHING", (_rev[0], user))
+                _rev = None
+            log.append(_once(c, f"plan:{y2}-W{w2:02d}", user, _pt, dry))
         # dzien
-        _wl = None  # 2026-10-12: przypomnienie o wazeniu (qbot_food_streaks.weigh_line) - w wiadomosci dnia albo osobno
-        if 7 * 60 <= hm < 8 * 60:
+        if 7 * 60 <= hm < 8 * 60:  # 2026-10-12: JEDNA poranna wiadomosc: trening + wazenie + jedzenie + przypomnienia (zwiezle)
+            tses = _sessions(c, user, today, today) if st["notify.day"] == 1 else []
+            act = [s for s in tses if s["status"] == "plan"]
+            tl = []
+            if act:
+                ph = E.plan_week(E.build_context(c, user, ws))["phase"]
+                det = session_details(c, user, act, ph)
+                for s in act:
+                    tl.append(_line(s, False))
+                    if det.get(s.get("id")) and s["sport"] in ("sila", "wiosl"):  # zwiezle: 1. linia, cwiczenia na stronie Trening
+                        tl.append(det[s["id"]].split("\n")[0][:110] + " · ćwiczenia: strona Trening")
             try:
-                import qbot_food_streaks as _FS
-                _wl = _FS.weigh_line(c, today)
+                import qbot_food_plan as _FP
+                _txt = _FP.morning_digest(today, tl)
             except Exception as e:
-                log.append(f"wazenie: błąd {str(e)[:120]}")
-        _day_txt = None
-        if st["notify.day"] == 1 and 7 * 60 <= hm < 8 * 60:
-            tses = _sessions(c, user, today, today)
-            ph = E.plan_week(E.build_context(c, user, ws))["phase"] if tses else None
-            _day_txt = text_day(today, tses, session_details(c, user, tses, ph))
-            if _day_txt and _wl:
-                _h, _, _r = _day_txt.partition("\n")
-                _day_txt = _h + "\n" + _wl + "\n" + _r
-            if _day_txt:  # 2026-10-12: cel kcal dnia + dokladka do Brokula pod trening (qbot_food_plan)
-                try:
-                    import qbot_food_plan as _FP
-                    _mt = _FP.morning_text(today)
-                    if _mt:
-                        _a, _sep, _b = _day_txt.partition("\n\nGorszy dzień?")
-                        _day_txt = _a + "\n\n" + _mt + (_sep + _b if _sep else "")
-                except Exception as e:
-                    log.append(f"jedzenie: błąd {str(e)[:120]}")
-            log.append(_once(c, f"day:{today.isoformat()}", user, _day_txt, dry, day_buttons(today)))
-        if _wl and not _day_txt:
-            log.append(_once(c, f"weigh:{today.isoformat()}", user, _wl, dry))
+                log.append(f"poranek: błąd {str(e)[:120]}")
+                _txt = text_day(today, tses, None)
+            log.append(_once(c, f"day:{today.isoformat()}", user, _txt, dry, day_buttons(today) if act else None))
         if st["notify.day"] == 2:
             for s in _sessions(c, user, today, today):
                 if s["status"] != "plan" or not s.get("start_time"):
@@ -446,6 +452,8 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
                 t0 = s["start_time"].hour * 60 + s["start_time"].minute - 120
                 if t0 <= hm < t0 + 15:
                     log.append(_once(c, f"pre:{s['id']}", user, text_pre(s), dry, day_buttons(today)))
+        if _rev:  # plan nie poszedl (brak sesji) - samo rozliczenie
+            log.append(_once(c, _rev[0], user, _rev[1], dry))
         conn.commit()
     finally:
         conn.close()

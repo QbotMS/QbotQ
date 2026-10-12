@@ -94,6 +94,20 @@ Wiadomość aktualizuje się po każdej zmianie (także po wpisie z Telegrama).
 `qbot_trener_stats.weight_chart` → `status.chart` {plan, meas, forecast, band, today}; rysuje `trener.js` `wchart()`
 (SVG: plan z korytarzem ±1 kg, realne ważenia z `body_measurements`, prognoza wg tempa 30 dni, linia „dziś”).
 
+## Wiadomości Telegram – zasada (12.10.2026, prośba Michała: mniej i krócej)
+Z harmonogramu tylko DWIE wiadomości dziennie, zwięzłe (~8 linijek), szczegóły na stronie:
+- **☀️ Poranek 7:00** (`qbot_trener_notify.tick` → `qbot_food_plan.morning_digest`, klucz `day:<dzień>`): treningi
+  (siła/wioślarz: 1 linia + „ćwiczenia: strona Trening”), ⚖️ ważenie, 🍽 rekomendacja (cel kcal, Brokuł, dokładka,
+  białko vs norma + co dołożyć, ostrzeżenia: cukry ≥90% limitu, sól >5 g; paliwo na rower, pory posiłków),
+  „⏳ wczoraj otwarty”, „📅 Brokuł kończy się…” (≤2 dni), w piątek 1 linia weekendu. Przyciski Trenera tylko gdy jest trening.
+- **🌙 Wieczór 20:00**: wiadomość dnia (nagłówek z passą, posiłki w 1 linii, cel, okno, 🎉 kamienie milowe jako linia, stan).
+- **Niedziela 20:00**: rozliczenie tygodnia + plan tygodnia Trenera jako JEDNA wiadomość (gdy `notify.week_plan`=2).
+- Usunięte osobne wysyłki: osobne „zważ się”, przypomnienie 21:30, piątkowy plan weekendu, koniec diety, kamienie milowe.
+- Osobno zostają tylko reakcje i rzeczy „na teraz”: potwierdzenia wpisów, raport z jazdy, trasy, zmiany planu Trenera,
+  zadania przy rowerze 2 h przed jazdą, wygasła sesja Brokuła.
+- **Normy składników** (`qbot_food_plan.norms`): białko 160 g, tłuszcz min. 70 g, węgle = reszta kcal celu, cukry ≤10%
+  energii, nasycone ≤10% energii, sól ≤5 g.
+
 ## Strona „Jedzenie” (https://albert.cytr.us/jedzenie.html, od 12.10.2026)
 Menu: pozycja „Jedzenie” (nav.js, po Treningu). Struktura `jedzenie.html`, logika `jedzenie.js`, dane i zapis
 `qbot_food_api.py` (`/api/jedzenie/*`, router w `qbot_web.py`). Odczyt: `_current_user` (też demo); zapis: `_owner_user`.

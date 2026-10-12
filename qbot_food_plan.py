@@ -189,7 +189,7 @@ def evening_line(day: date) -> str:
     eaten = F.day_totals(day)["kcal"] or 0
     left = p["target"] - eaten
     tail = ("zostało ~%s" % _fmt(left)) if left > 0 else ("ponad cel o ~%s" % _fmt(-left))
-    return "🎯 Cel dnia ~%s kcal · zjedzone %s · %s" % (_fmt(p["target"]), _fmt(eaten), tail)
+    return "🎯 %s/%s kcal · %s" % (_fmt(eaten), _fmt(p["target"]), tail)
 
 
 # ======================================================================= weekend (piatek rano)
@@ -244,30 +244,133 @@ def weekend_text(friday: date) -> str | None:
     return "\n".join(L)
 
 
+# ======================================================================= normy skladnikow + rekomendacja poranna
+# Wegle NIE maja osobnej normy: wypelniaja kcal po bialku i minimum tluszczu (spojne z deficytem).
+PROTEIN_TARGET = 160          # g (1,8 g/kg wagi docelowej 90 kg)
+FAT_MIN = 70                  # g
+SUGAR_MAX_PCT = 0.10          # cukry maks. 10% energii (WHO)
+SAT_MAX_PCT = 0.10            # tluszcze nasycone maks. 10% energii
+SALT_MAX = 5.0                # g (WHO)
+
+
+def norms(target_kcal: float) -> dict:
+    carbs = max(0, (target_kcal - PROTEIN_TARGET * 4 - FAT_MIN * 9) / 4)
+    return {"kcal": target_kcal, "protein_g": PROTEIN_TARGET, "fat_min_g": FAT_MIN, "carbs_g": round(carbs),
+            "sugars_max_g": round(target_kcal * SUGAR_MAX_PCT / 4), "sat_max_g": round(target_kcal * SAT_MAX_PCT / 9),
+            "salt_max_g": SALT_MAX}
+
+
+def brokul_nutrients(c, day: date) -> dict | None:
+    r = c.execute("SELECT count(*) n, sum(kcal) kcal, sum(protein_g) p, sum(carbs_g) cb, sum(fat_g) f, sum(sugars_g) su, "
+                  "sum(sat_fat_g) sa, sum(salt_g) sl FROM qbot_v2.brokul_meals WHERE day=%s AND status<>'cancelled'", (day,)).fetchone()
+    if not r or not r["n"]:
+        return None
+    return {"kcal": float(r["kcal"] or 0), "protein_g": float(r["p"] or 0), "carbs_g": float(r["cb"] or 0), "fat_g": float(r["f"] or 0),
+            "sugars_g": float(r["su"] or 0), "sat_g": float(r["sa"] or 0), "salt_g": float(r["sl"] or 0)}
+
+
+def _protein_tip(gap: float) -> str:
+    if gap >= 35:
+        return "skyr 300 g + 2 jajka"
+    if gap >= 20:
+        return "skyr 300 g"
+    return "skyr 150 g"
+
+
+def food_lines(day: date) -> list[str]:
+    """Rekomendacja jedzenia na dzis - maks. 4 krotkie linie (rano: Brokul + plan treningu)."""
+    with _conn() as c:
+        p = day_plan(day, c)
+        bn = brokul_nutrients(c, day)
+    nm = norms(p["target"])
+    L = []
+    if bn:
+        ex = p["extra"] or 0
+        head = "🍽 Cel ~%s kcal · Brokuł %s" % (_fmt(p["target"]), _fmt(bn["kcal"]))
+        head += (" → dołóż ~%s" % _fmt(ex)) if ex >= SMALL_EXTRA else " – wystarczy"
+        L.append(head)
+        tips = []
+        pg = nm["protein_g"] - bn["protein_g"]
+        if pg >= 10:
+            tips.append("białko %s/%d g → %s" % (_fmt(bn["protein_g"]), nm["protein_g"], _protein_tip(pg)))
+        cg = nm["carbs_g"] - bn["carbs_g"]
+        if p["sessions"] and cg >= 30 and ex >= SMALL_EXTRA:
+            tips.append("węgle +%d g po treningu" % int(round(cg / 10) * 10))
+        if tips:
+            L.append("   " + " · ".join(tips))
+        warn = []
+        if bn["sugars_g"] >= 0.9 * nm["sugars_max_g"]:
+            warn.append("cukry %s/%d g" % (_fmt(bn["sugars_g"]), nm["sugars_max_g"]))
+        if bn["salt_g"] > SALT_MAX:
+            warn.append("sól %s g (norma 5)" % ("%.0f" % bn["salt_g"]))
+        if warn:
+            L.append("   ⚠️ " + ", ".join(warn) + " → " + ("bez słodkiego i słonego" if len(warn) == 2 else
+                                                         ("bez słodkiego" if warn[0].startswith("cukry") else "bez słonych przekąsek")))
+    else:
+        L.append("🍽 Cel ~%s kcal (bez diety) · białko ~%d g" % (_fmt(p["target"]), nm["protein_g"]))
+    extra = []
+    if p["fuel_g"]:
+        extra.append("na rower ~%d g węgli (słodkie OK)" % p["fuel_g"])
+    mt = _meal_times(p)
+    if mt:
+        extra.append(mt.replace("Przedtreningowy", "przedtr.").replace("Potreningowy", "potr."))
+    if extra:
+        L.append("   🚲 " + " · ".join(extra))
+    return L[:4]
+
+
+def weekend_lines(friday: date) -> list[str]:
+    out = []
+    with _conn() as c:
+        for d in (friday + timedelta(days=1), friday + timedelta(days=2)):
+            p = day_plan(d, c)
+            ses = [s for s in p["sessions"] if s["sport"] == "rower"]
+            t = "%s ~%s kcal" % (["pn", "wt", "śr", "cz", "pt", "sb", "nd"][d.weekday()], _fmt(p["target"]))
+            if ses:
+                t += " (jazda %d′%s)" % (ses[0]["dur_min"] or 0, (", ~%d g węgli na rower" % p["fuel_g"]) if p["fuel_g"] else "")
+            out.append(t)
+    return ["🗓 Weekend: " + " · ".join(out) + ". Co zamawiać: strona Jedzenie → Analiza."]
+
+
+def morning_digest(day: date, train_lines: list[str] | None = None) -> str | None:
+    """JEDNA poranna wiadomosc: trening, wazenie, jedzenie, przypomnienia. Zwiezle."""
+    import qbot_food_log as F
+    import qbot_food_streaks as S
+    import qbot_brokul_meals as M
+    L = ["☀️ %s %s" % (F.DNI[day.weekday()], day.strftime("%d.%m"))]
+    for t in train_lines or []:
+        L.append("💪 " + t)
+    try:
+        with _conn() as c:
+            wl = S.weigh_line(c, day)
+        if wl:
+            L.append(wl)
+    except Exception:
+        pass
+    try:
+        L += food_lines(day)
+    except Exception as e:
+        L.append("🍽 (rekomendacja niedostępna: %s)" % type(e).__name__)
+    y = day - timedelta(days=1)
+    if y >= S.START:
+        try:
+            if not F.close_state(y)["closed"]:
+                L.append("⏳ Wczoraj otwarty – zamknij do 12:00")
+        except Exception:
+            pass
+    end = M.delivery_end()
+    if end and 0 <= (end - day).days <= 2:
+        L.append("📅 Brokuł kończy się %s %s – przedłużone?" % (F.DNI[end.weekday()], end.strftime("%d.%m")))
+    if day.weekday() == 4:
+        try:
+            L += weekend_lines(day)
+        except Exception:
+            pass
+    return "\n".join(L) if len(L) > 1 else None
+
+
 # ======================================================================= tick (wolane z qbot_brokul_meals.tick)
 def tick(now: datetime) -> list[str]:
-    import qbot_brokul as B
-    import qbot_food_log as F
-    log = []
-    st_ = B.state()
-    # piatek 7:00-9:59: plan weekendu (raz)
-    if now.weekday() == 4 and 7 <= now.hour < 10:
-        key = "weekend_%s" % now.date().isoformat()
-        if not st_.get(key):
-            txt = weekend_text(now.date())
-            if txt and F.tg_send(txt):
-                B._state_update(**{key: time.strftime("%Y-%m-%d %H:%M:%S")})
-                log.append("plan weekendu wyslany")
-    # 21:30-21:59: dzien jeszcze otwarty -> jedno przypomnienie
-    if now.hour == 21 and now.minute >= 30:
-        key = "open_%s" % now.date().isoformat()
-        if not st_.get(key):
-            cs = F.close_state(now.date())
-            if not cs["closed"]:
-                import qbot_food_streaks as S
-                n = S.streaks(now)["food"]["n"]
-                F.tg_send("⏳ Dzień %s jeszcze otwarty%s. Zamknij go w wiadomości dnia (albo jutro do 12:00)."
-                          % (now.strftime("%d.%m"), (" – 🔥 passa %d dni" % n) if n else ""))
-                log.append("przypomnienie 21:30")
-            B._state_update(**{key: time.strftime("%Y-%m-%d %H:%M:%S")})
-    return log
+    """2026-10-12: brak wlasnych wysylek. Plan weekendu i koniec diety sa w porannej wiadomosci (morning_digest),
+    przypomnienie 21:30 zastapione linia 'Wczoraj otwarty' rano. Zostawione jako punkt zaczepienia."""
+    return []
