@@ -146,9 +146,66 @@ def brokul_kcal(c, day: date) -> float | None:
     return float(r["k"]) if r and r["n"] else None
 
 
-def target_for(ex: dict, cal: float, bal: float) -> int:
-    """Cel jedzenia dnia. Dzien miniony (realne spalanie): dokladnie spalone - kalibracja + plan bilansu (bez zaokraglen,
-    zeby 'bilans vs plan' zgadzal sie co do kcal). Prognoza: zaokraglenie do 50 kcal."""
+LIGHT_DEF = 300          # dzien lekki: deficyt (Brokul + przekaska ~200 kcal)
+TRAIN_DEF_MIN, TRAIN_DEF_MAX = 300, 900
+TRAIN_MIN = 45           # rower/wioslarz >= 45 min = dzien z jazda
+_WEEK: dict = {}
+
+
+def _train_kcal(c, d: date, m: dict) -> tuple[float, float]:
+    ses = sessions(c, d)
+    mins = sum((s["dur_min"] or 0) for s in ses if s["sport"] in ("rower", "wiosl"))
+    kc = sum((s["dur_min"] or 0) / 60 * SPORT_F.get(s["sport"], 0.8) for s in ses) * m["per_h"]
+    return mins, kc
+
+
+def week_deficits(ws: date, actuals: bool) -> dict:
+    """Deficyt kazdego dnia tygodnia pn-nd (kcal, dodatni). actuals=True: zamkniete dni minione licza sie realnie."""
+    key = (ws, date.today(), actuals)
+    hit = _WEEK.get(key)
+    if hit and hit[0] > time.time() - 120:
+        return hit[1]
+    today = date.today()
+    out, flex, fixed = {}, {}, 0.0
+    with _conn() as c:
+        m = model(c)
+        weekly = -target_balance(c) * 7
+        for i in range(7):
+            d = ws + timedelta(days=i)
+            mins, kc = _train_kcal(c, d, m)
+            if actuals and d < today:
+                cl = c.execute("SELECT closed_at FROM qbot_v2.food_day WHERE day=%s", (d,)).fetchone()
+                ex = expend(c, d)
+                if cl and cl["closed_at"] and ex["src"] == "realne":
+                    r = c.execute("SELECT sum(i.kcal) k FROM qbot_v2.intake_logs l JOIN qbot_v2.intake_items i ON i.intake_log_id=l.id "
+                                  "WHERE l.date=%s", (d,)).fetchone()
+                    if r and r["k"]:
+                        out[d] = round(ex["kcal"] - float(r["k"]))
+                        fixed += out[d]
+                        continue
+            if mins >= TRAIN_MIN:
+                flex[d] = max(1.0, kc)
+            else:
+                out[d] = LIGHT_DEF
+                fixed += LIGHT_DEF
+    rem = weekly - fixed
+    tot = sum(flex.values())
+    for d, w in flex.items():
+        out[d] = int(round(max(TRAIN_DEF_MIN, min(TRAIN_DEF_MAX, rem * w / tot)))) if tot else TRAIN_DEF_MIN
+    _WEEK[key] = (time.time(), out)
+    return out
+
+
+def day_deficit(day: date) -> int:
+    ws = day - timedelta(days=day.weekday())
+    return int(week_deficits(ws, actuals=day >= date.today()).get(day, LIGHT_DEF))
+
+
+def target_for(ex: dict, cal: float, bal: float, day: date | None = None) -> int:
+    """Cel jedzenia dnia. Z 'day': plan bilansu = -deficyt dnia z budzetu tygodniowego (day_deficit), inaczej stale 'bal'.
+    Dzien miniony (realne spalanie): bez zaokraglen; prognoza: zaokraglenie do 50 kcal."""
+    if day is not None:
+        bal = -day_deficit(day)
     v = ex["kcal"] - cal + bal
     return int(max(FLOOR_KCAL, round(v) if ex.get("src") == "realne" else round(v / 50) * 50))
 
@@ -159,7 +216,7 @@ def day_plan(day: date, c=None) -> dict:
     try:
         ex = expend(c, day)
         cal = calibration(c)
-        bal = target_balance(c)
+        bal = -day_deficit(day)          # 2026-10-12: budzet tygodniowy (dzien lekki -300, jazda: reszta tygodnia, maks. -900)
         tgt = target_for(ex, cal, bal)
         bk = brokul_kcal(c, day)
         extra = max(0, tgt - bk) if bk else None
@@ -169,7 +226,9 @@ def day_plan(day: date, c=None) -> dict:
             if s["sport"] == "rower" and (s["dur_min"] or 0) >= FUEL_MIN:
                 fuel_g += int(round(((s["dur_min"] - 45) / 60 * FUEL_G_H) / 10) * 10)
         onbike = min(extra if extra is not None else tgt, fuel_g * 4) if fuel_g else 0
+        mins, _ = _train_kcal(c, day, model(c))
         return {"day": day, "target": tgt, "expend": round(ex["kcal"]), "expend_src": ex["src"], "calib": cal, "balance": bal,
+                "train_day": mins >= TRAIN_MIN,
                 "brokul": bk, "extra": extra, "fuel_g": fuel_g, "onbike_kcal": onbike,
                 "post_kcal": max(0, (extra or 0) - onbike), "sessions": [dict(s) for s in ses]}
     finally:
@@ -344,14 +403,19 @@ def food_lines(day: date) -> list[str]:
     if bn:
         ex = p["extra"] or 0
         head = "🍽 Cel ~%s kcal · Brokuł %s" % (_fmt(p["target"]), _fmt(bn["kcal"]))
-        head += (" → dołóż ~%s" % _fmt(ex)) if ex >= SMALL_EXTRA else " – wystarczy"
+        light_snack = not p.get("train_day") and ex >= 80
+        if light_snack:
+            pg0 = nm["protein_g"] - bn["protein_g"]
+            head += " + 🍏 przekąska ~%s ok. 16:00 (%s)" % (_fmt(round(ex / 10) * 10), "skyr 150 g + owoc" if pg0 >= 10 else "owoc + garść orzechów")
+        else:
+            head += (" → dołóż ~%s po treningu" % _fmt(ex)) if ex >= SMALL_EXTRA else " – wystarczy"
         L.append(head)
         tips = []
         pg = nm["protein_g"] - bn["protein_g"]
-        if pg >= 10:
+        if pg >= 10 and not light_snack:
             tips.append("białko %s/%d g → %s" % (_fmt(bn["protein_g"]), nm["protein_g"], _protein_tip(pg)))
         cg = nm["carbs_g"] - bn["carbs_g"]
-        if p["sessions"] and cg >= 30 and ex >= SMALL_EXTRA:
+        if p.get("train_day") and cg >= 30 and ex >= SMALL_EXTRA:
             tips.append("węgle +%d g po treningu" % int(round(cg / 10) * 10))
         if tips:
             L.append("   " + " · ".join(tips))
@@ -364,7 +428,7 @@ def food_lines(day: date) -> list[str]:
             L.append("   ⚠️ " + ", ".join(warn) + " → " + ("bez słodkiego i słonego" if len(warn) == 2 else
                                                          ("bez słodkiego" if warn[0].startswith("cukry") else "bez słonych przekąsek")))
     else:
-        L.append("🍽 Cel ~%s kcal (bez diety) · białko ~%d g" % (_fmt(p["target"]), nm["protein_g"]))
+        L.append("🍽 Cel ~%s kcal (bez diety, deficyt %d) · białko ~%d g" % (_fmt(p["target"]), -p["balance"], nm["protein_g"]))
     extra = []
     if p["fuel_g"]:
         extra.append("na rower ~%d g węgli (słodkie OK)" % p["fuel_g"])

@@ -58,7 +58,7 @@ def day_card(day: date, plan_ctx: dict) -> dict:
         ses = [_row(s) for s in FP.sessions(c, day)]
     cs = F.close_state(day)
     tot = F.day_totals(day)
-    tgt = FP.target_for(ex, plan_ctx["calib"], plan_ctx["balance"])
+    tgt = FP.target_for(ex, plan_ctx["calib"], plan_ctx["balance"], day)
     bk = sum(m["kcal"] or 0 for m in meals) if meals else None
     return {"day": day.isoformat(), "weekday": F.DNI[day.weekday()], "has_diet": bool(meals), "meals": meals, "fridge": fridge,
             "entries": [_row(e, ENTRY_KEYS) for e in ents], "closed": cs["closed"], "none": cs["none"], "pending": cs["pending"],
@@ -136,7 +136,7 @@ def analysis(day: date) -> dict:
                            "(e.raw_text ~* %s OR e.items::text ~* %s)", (d, SWEET_RE, SWEET_RE)).fetchone()["n"]
             rows.append({"day": d.isoformat(), "closed": bool(fd and fd["closed_at"]), "kcal": round(float(t["kcal"] or 0)),
                          "protein_g": round(float(t["protein_g"] or 0)), "carbs_g": round(float(t["carbs_g"] or 0)), "fat_g": round(float(t["fat_g"] or 0)),
-                         "target": FP.target_for(ex, cal, bal), "expend": round(ex["kcal"]),
+                         "target": FP.target_for(ex, cal, bal, d), "expend": round(ex["kcal"]),
                          "window": ws_, "sweets": sw, "sugars_diet": round(float(b2["su"] or 0)), "salt_diet": round(float(b2["sl"] or 0), 1),
                          "sat_diet": round(float(b2["sa"] or 0))})
     cl = [r for r in rows if r["closed"]]
@@ -244,7 +244,7 @@ def build_router(current_user, owner_user) -> APIRouter:
                 ex = FP.expend(c, d)
                 series.append({"day": d.isoformat(), "intake": round(itk[d]) if d in itk else None, "expend": round(ex["kcal"]),
                                "expend_src": ex["src"], "closed": d in closed,
-                               "target": FP.target_for(ex, cal, bal)})
+                               "target": FP.target_for(ex, cal, bal, d)})
                 d += timedelta(days=1)
             cur = c.cursor()
             cur.execute("SELECT * FROM qbot_v2.trainer_goal WHERE kind='weight' AND status='active' AND username NOT LIKE '\\_%%' ORDER BY id LIMIT 1")
@@ -335,7 +335,7 @@ def build_router(current_user, owner_user) -> APIRouter:
             d = a
             while d <= b:
                 ex = FP.expend(c, d)
-                out[d.isoformat()] = {"kcal": round(itk.get(d, 0)), "target": FP.target_for(ex, cal, bal),
+                out[d.isoformat()] = {"kcal": round(itk.get(d, 0)), "target": FP.target_for(ex, cal, bal, d),
                                       "closed": d in closed, "expend": round(ex["kcal"]), "real": ex["src"] == "realne",
                                       "plan_balance": round(bal - cal)}
                 d += timedelta(days=1)
