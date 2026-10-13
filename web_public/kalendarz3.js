@@ -441,6 +441,9 @@ function ensureGroups() { if (MGROUPS) return Promise.resolve(MGROUPS); return g
 $("k3-bp").onclick = function () { M--; if (M < 0) { M = 11; Y--; } render(); };
 $("k3-bn").onclick = function () { M++; if (M > 11) { M = 0; Y++; } render(); };
 $("k3-bt").onclick = function () { Y = NOW.getFullYear(); M = NOW.getMonth(); SEL = today; render(); };
+/* 2026-10-13: klik w nazwe miesiaca = mini kalendarz (qpicker.js) - wybor miesiaca lub konkretnego dnia */
+function qpLoad(cb) { if (window.QPick) return cb(); var s = document.querySelector("script[data-qp]"); if (!s) { s = document.createElement("script"); s.src = "/qpicker.js?v=1"; s.dataset.qp = "1"; document.head.appendChild(s); } s.addEventListener("load", cb); }
+qpLoad(function () { QPick.attach($("k3-lbl"), function () { return { value: SEL ? P(SEL) : new Date(Y, M, 1), onPick: function (d) { Y = d.getFullYear(); M = d.getMonth(); SEL = iso(d); render(); } }; }); });
 $("km-scrim").addEventListener("click", closeEditor);
 document.addEventListener("keydown", function (e) { if (e.key !== "Escape") return; if ($("km").classList.contains("on")) closeEditor(); else if (PANEL && document.body.classList.contains("tr-month")) setPanel(false); });
 var started = false;

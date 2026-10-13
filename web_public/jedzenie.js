@@ -274,6 +274,9 @@
 
   /* ------------------------------------------------------------ ANALIZA (tygodniami, pn-nd) - 2026-10-12 */
   var A = { week: null };
+  /* 2026-10-13: mini kalendarz (qpicker.js) - klik w zakres tygodnia w Analizie i Brokule */
+  function qpLoad(cb) { if (window.QPick) return cb(); var s = document.querySelector("script[data-qp]"); if (!s) { s = document.createElement("script"); s.src = "/qpicker.js?v=1"; s.dataset.qp = "1"; document.head.appendChild(s); } s.addEventListener("load", cb); }
+  function isoD(d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
   function shiftDay(iso, n) { var d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
   function loadAnaliza(week) {
     if (week) A.week = week;
@@ -325,6 +328,7 @@
       "<button class='btn' id='wkaibtn'>" + (ai ? "Przelicz" : "Napisz teraz") + "</button> <span id='wkaimsg' class='sub'></span></div>";
     $("analiza").innerHTML = h;
     $("analiza").querySelectorAll("[data-wk]").forEach(function (b2) { b2.onclick = function () { if (b2.dataset.wk) loadAnaliza(b2.dataset.wk); }; });
+    qpLoad(function () { QPick.attach($("analiza").querySelector(".wknav b"), { value: new Date(x.week + "T12:00:00"), onPick: function (d) { loadAnaliza(isoD(d)); } }); });
     $("wkaibtn").onclick = function () { var b2 = $("wkaibtn"); b2.disabled = true; b2.textContent = "AI pisze…";
       post("/api/jedzenie/week/ai", { week: A.week }).then(function () { loadAnaliza(A.week); }).catch(function (e) { $("wkaimsg").textContent = e.message; b2.disabled = false; b2.textContent = "Spróbuj ponownie"; }); };
   }
@@ -610,6 +614,7 @@
     if (!x.meals.length) h += "<div class='card' style='margin-top:12px'><p class='empty'>Brak menu w tym tygodniu (QBot zapisuje menu od 12.10.2026; panel Brokuła nie udostępnia starszych).</p></div>";
     $("menu").innerHTML = h;
     $("menu").querySelectorAll("[data-w]").forEach(function (b) { b.onclick = function () { if (b.dataset.w) loadMenu(b.dataset.w); }; });
+    qpLoad(function () { QPick.attach($("menu").querySelector(".wknav b"), { value: new Date(x.week + "T12:00:00"), onPick: function (d) { loadMenu(isoD(d)); } }); });
   }
 
   /* ------------------------------------------------------------ start */
