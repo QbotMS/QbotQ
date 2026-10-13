@@ -156,3 +156,27 @@ Oceny oznaczone "kopia z ID x" traktuj jako mniej pewne niz wlasne.
 - Zwracasz sie do Michala na "ty".
 - Kazdy zestaw: jeden SLABY PUNKT i co z nim zrobic.
 - Gdy dane sa niepewne (nietestowane, kopia oceny, brak historii) - napisz to krotko.
+
+## 11. Uzupelnienie: zima 2025 (NISKI PRIORYTET)
+Dodane 2026-10-13 z raportu Michala (jazdy 18.11-06.12.2025, oceny 1-5 na strefe). To UZUPELNIENIE wiedzy, NIE
+determinant: przegrywa ze swiezymi jazdami, audytem i notatkami Garazu; uzywaj, gdy brak nowszych danych w podobnych
+warunkach albo do uzasadnienia przy rownych szansach. Temperatury = odczuwalna z Karoo/pogody (orientacyjnie
+jak temperatura do ubioru). Przewaznie jazdy ~1 h, RPE 4-6, Z2-Z3.
+- Glowny wzorzec: czesciej za cieplo i MOKRO na tulowiu niz za zimno. Przy Z2-Z3 ogranicz liczbe warstw izolacyjnych
+  na tulowiu: lekka baza + JEDNA izolacja + shell z mozliwoscia rozpiecia.
+- Brynje Mesh + PowerDry (6, 3) - dobra baza; problemem byla suma warstw nad nia, nie baza.
+- Albion Primaloft Active Hoodie (23) jako dodatkowa warstwa pod Trail Hoodie (39) przy Z2-Z3: za cieplo i mokro
+  (-4 i +2 st.). Castelli 2nd Layer (nowa) na Core Seamless pod Trail Hoodie przy +1 st.: za cieplo, mokre plecy.
+- Brubeck Active Wool LS (1) + sam Trail Hoodie przy -1,8 st.: tulow 2/5 - za slabo.
+- Najlepszy zestaw serii (5/5 wszystkie strefy, -1,6 st., wiatr 1 m/s, SPOKOJNIE): Brynje + PowerDry + Coefficient LT (16)
+  + Trail Hoodie; liner + Coefficient Pants (28) + Fernflow (235); MW701 (99) + Assos Ultraz P1 (96); Element Alpha (82);
+  Assos Face Mask (79). Przy wyzszym tempie lub wietrze mniej izolacji.
+- Komplet Odyssey Winter Jacket (30) + Odyssey Insulated Pants (46): 5/5 przy -5 st. w sniegu; przy -1 st. za cieplo.
+  Pelna izolacja nog ma sens od ok. -4 st. w dol.
+- Nogi: przy ok. 0 st. sama AM Cycling Ultra Cargo (53) za malo (uda); Fernflow + Brubeck DRY przy -4 st. chlodno w udach.
+  Uda wymagaja izolacji, nie tylko oslony od wiatru. Podwojne szelki (liner + Core Winter 56) przy +3/+4 st. zatrzymuja pot.
+- Stopy - najbardziej zmienna strefa: MW701 + PEdALED Primaloft (97) od 2/5 do 5/5 (gorzej przy mokrej skarpecie i ok. 0 st.),
+  MW701 + Thermolite (94) 2/5 przy +1 st. Najpewniejsze: MW701 + Assos Ultraz P1. Lake (105) bardzo cieple, ucisk przy kostkach.
+- Dlonie: Element Alpha (82) powtarzalnie 5/5. Sportful NoRain (88) przy +2 st. chlodno na starcie.
+- Glowa: czapka/kominiarka/komin dzialaja; zabudowany komin na twarz utrudnia picie i jedzenie.
+- Preferencja Michala: Rapha Peaked Merino Hat (65) - nie przepada, daszek opada na oczy; przy rownych szansach inna czapka.
