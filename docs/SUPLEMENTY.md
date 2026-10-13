@@ -22,3 +22,10 @@ poprawia recznie w Zdrowie > Suplementy; bez passy - tylko statystyka regularnos
 ## Pomysly na pozniej
 - Melatonina a sen/HRV (dni z i bez) po kilku tygodniach danych; witamina D - przy badaniach krwi oznaczyc 25(OH)D.
 - Albert: narzedzie do odczytu listy (wymaga aktualizacji promptu w tym samym commicie).
+
+## Wplyw na noc + Albert (2026-10-13)
+- `night_effects`: noc po dniu D = wellness z D+1; porownanie nocy po dniach "wziete" vs "pominiete" (tylko potwierdzone): sen (min),
+  jakosc snu, HRV nocne, tetno spoczynkowe, najnizsza SpO2. Wniosek od 7 nocy w kazdej grupie; sila efektu d Cohena (0,2 / 0,5 / 0,8).
+  Karta "Wplyw na noc" w Zdrowie > Suplementy. Przy "Wszystkie" codziennie nie bedzie nocy "bez" - trzeba odstawic i oznaczyc pominiecie.
+- Albert: narzedzie `supplements` (tylko odczyt: lista, wczoraj, regularnosc 35 dni, wplyw na noc) + linia w prompcie (bez zmian dawek,
+  zmiany na stronie). Sprawdzone na zywo: "jakie suplementy biore", "czy wczoraj wzialem" (12.10 poza lista -> "nie bylo w planie").

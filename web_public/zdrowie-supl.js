@@ -80,7 +80,7 @@
       ((reg.unconfirmed_days || []).length ? " · niepotwierdzone dni: " + reg.unconfirmed_days.length : "") + "</span></div>" +
       (days.length && act.length ? '<div style="overflow-x:auto"><table style="border-collapse:collapse">' + head + body + "</table></div>" +
         '<div class="muted" style="font-size:12px;margin-top:6px">✓ wzięte · ✗ pominięte · · niepotwierdzone. Kliknij kratkę: wzięte → pominięte → niepotwierdzone. Kliknij datę: wszystkie wzięte tego dnia.</div>'
-        : '<div class="muted">Brak dni do potwierdzenia – pierwszy pojawi się jutro (za dziś).</div>') + "</div>";
+        : '<div class="muted">Brak dni do potwierdzenia – pierwszy pojawi się jutro (za dziś).</div>') + "</div>" + nightCard();
 
     $("sp-add").onclick = function () { EDIT = null; $("sp-formbox").innerHTML = form(null); wireForm(); };
     root.querySelectorAll(".sp-ed").forEach(function (b) { b.onclick = function () { EDIT = D.items.filter(function (x) { return x.id === +b.dataset.id; })[0]; $("sp-formbox").innerHTML = form(EDIT); wireForm(); }; });
@@ -91,6 +91,28 @@
         api("POST", "/api/supl/log", {day: td.dataset.d, id: +td.dataset.id, status: nx}).then(load); };
     });
     root.querySelectorAll(".sp-day").forEach(function (th) { th.onclick = function () { api("POST", "/api/supl/log", {day: th.dataset.d, all: true}).then(load); }; });
+  }
+
+  /* wplyw na noc: noce po dniach "wziete" vs "pominiete" (qbot_supplements.night_effects) */
+  function nightCard() {
+    var ns = (D.night || []).filter(function (e) { var it = D.items.filter(function (x) { return x.id === e.id; })[0]; return it && it.active; });
+    if (!ns.length) return "";
+    var rows = ns.map(function (e) {
+      if (!e.enough) {
+        return '<div style="margin:6px 0"><b>' + esc(e.name) + '</b> <span class="muted">– zbieram dane: ' + e.n_taken + " nocy po wzięciu, " + e.n_skipped +
+          " po pominięciu (potrzeba po " + D.min_n + ")</span></div>";
+      }
+      var tr = e.metrics.filter(function (m) { return m.enough; }).map(function (m) {
+        var good = m.diff * m.better > 0, col = m.size === "brak" ? "var(--ink2)" : (good ? "var(--good)" : "var(--bad)");
+        return "<tr><td>" + esc(m.label) + '</td><td class="num">' + String(m.mean_taken).replace(".", ",") + '</td><td class="num">' + String(m.mean_skipped).replace(".", ",") +
+          '</td><td class="num" style="color:' + col + ';font-weight:600">' + (m.diff > 0 ? "+" : "") + String(m.diff).replace(".", ",") + " " + esc(m.unit) +
+          '</td><td style="color:' + col + '">' + esc(m.size) + "</td></tr>";
+      }).join("");
+      return '<div style="margin:8px 0"><b>' + esc(e.name) + '</b> <span class="muted">(' + e.n_taken + " nocy z, " + e.n_skipped + " bez)</span>" +
+        '<div style="overflow-x:auto"><table class="qs-table"><tr><th></th><th class="num">po wzięciu</th><th class="num">bez</th><th class="num">różnica</th><th>efekt</th></tr>' + tr + "</table></div></div>";
+    }).join("");
+    return '<div class="card"><div class="cardhead"><p class="lbl"><span class="tip" tabindex="0" data-tip="Noc po dniu przyjęcia (sen z zegarka zapisuje się pod dniem obudzenia) – porównanie nocy po dniach oznaczonych jako wzięte i pominięte. Liczą się tylko potwierdzone dni. Efekt (d Cohena): mały ≥ 0,2, umiarkowany ≥ 0,5, wyraźny ≥ 0,8. To korelacja – na noc wpływa też trening, kawa, stres.">Wpływ na noc</span></p></div>' +
+      rows + '<div class="muted" style="font-size:12.5px;margin-top:6px">Żeby porównać, potrzebne są też noce bez – jeśli chcesz to sprawdzić (np. melatoninę), odstaw ją co kilka dni i oznacz te dni jako pominięte.</div></div>';
   }
 
   function wireForm() {

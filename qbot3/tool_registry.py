@@ -2572,6 +2572,7 @@ def _init_registry():
         ("tire_pressure", _load_tire_pressure_tool),
         ("trainer_week", _load_trainer_week_tool),
         ("heart_health", _load_heart_health_tool),
+        ("supplements", _load_supplements_tool),
         ("route_fuel_plan", _load_route_fuel_plan_tool),
         ("route_time_estimate", _load_route_time_estimate_tool),
         ("route_wbgt", _load_route_wbgt_tool),
@@ -2943,6 +2944,31 @@ def _load_trainer_week_tool() -> dict[str, Any]:
             "Pokaz pole analysis w calosci."
         ),
         "args_schema": {"week_start": {"type": "string", "description": "Poniedzialek tygodnia RRRR-MM-DD (opcjonalne)"}},
+        "safety": "read",
+        "mode": "read_only",
+    }
+
+
+def _load_supplements_tool() -> dict[str, Any]:
+    """Suplementy i leki (2026-10-13): lista z dawkami, wczoraj, regularnosc 35 dni, wplyw na noc. docs/SUPLEMENTY.md"""
+    from qbot3.errors import error_result, success_result
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        try:
+            import qbot_supplements as _sp
+            return success_result(_sp.summary_for_albert())
+        except Exception as exc:
+            return error_result("SUPPLEMENTS_FAILED", f"blad danych suplementow: {type(exc).__name__}")
+
+    return {
+        "callable": _wrapper,
+        "category": "health",
+        "description": (
+            "SUPLEMENTY I LEKI: aktualna lista z dawkami i pora, historia dawek, czy wczoraj potwierdzone, regularnosc 35 dni, "
+            "wplyw na noc (sen, HRV, tetno spocz., SpO2: noce po wzieciu vs pominieciu). Tylko odczyt, bez parametrow. "
+            "Zmiany i poprawki: strona Zdrowie > Suplementy."
+        ),
+        "args_schema": {},
         "safety": "read",
         "mode": "read_only",
     }

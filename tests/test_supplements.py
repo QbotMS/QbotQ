@@ -39,5 +39,30 @@ class Regularnosc(unittest.TestCase):
         self.assertEqual(r["unconfirmed_days"], ["2026-10-12"])
 
 
+class WplywNaNoc(unittest.TestCase):
+    def test_za_malo_nocy(self):
+        e = S.effect([400.0] * 6, [380.0] * 10)
+        self.assertFalse(e["enough"])
+        self.assertEqual((e["n_taken"], e["n_skipped"]), (6, 10))
+
+    def test_roznica_i_sila(self):
+        e = S.effect([420, 430, 410, 425, 415, 435, 420], [380, 390, 370, 385, 375, 395, 380])
+        self.assertTrue(e["enough"])
+        self.assertEqual(e["diff"], 40.0)
+        self.assertEqual(e["size"], "wyraźny")
+
+    def test_brak_efektu(self):
+        e = S.effect([400, 410, 390, 405, 395, 400, 400], [401, 409, 391, 404, 396, 400, 399])
+        self.assertEqual(e["size"], "brak")
+
+
+class Albert(unittest.TestCase):
+    def test_narzedzie_i_prompt(self):
+        with open("/opt/qbot/app/qbot3/tool_registry.py", encoding="utf-8") as f:
+            self.assertIn('("supplements", _load_supplements_tool)', f.read())
+        with open("/opt/qbot/app/qbot3/llm/albert.py", encoding="utf-8") as f:
+            self.assertIn("→ supplements", f.read())
+
+
 if __name__ == "__main__":
     unittest.main()

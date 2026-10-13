@@ -179,7 +179,7 @@ def overview(days: int = 35, today: date | None = None) -> dict:
     reg = regularity(sched, log)
     return {"today": today.isoformat(), "from": d0.isoformat(), "items": its, "log": logd,
             "scheduled": {d.isoformat(): ids for d, ids in sched.items()}, "regularity": reg,
-            "slots": SLOTS, "kinds": list(KINDS)}
+            "slots": SLOTS, "kinds": list(KINDS), "min_n": MIN_N}
 
 
 # ---------------- Telegram (poranna wiadomosc 7:00) i raport ----------------
@@ -262,7 +262,9 @@ def build_router(current_user, owner_user):
     @r.get("")
     def get_all(request: Request, days: int = 35):
         _auth(request)
-        return overview(max(7, min(180, days)))
+        o = overview(max(7, min(180, days)))
+        o["night"] = night_effects()
+        return o
 
     @r.post("")
     async def post_item(request: Request):
@@ -303,3 +305,93 @@ def build_router(current_user, owner_user):
         return {"ok": True}
 
     return r
+
+
+# ---------------- wplyw na noc (2026-10-13) ----------------
+# Noc po dniu D = rekord wellness z dnia D+1 (Garmin zapisuje sen pod dniem obudzenia).
+# Porownanie nocy po dniach "wziete" vs "pominiete" (tylko potwierdzone wpisy; niepotwierdzone pomijane).
+
+MIN_N = 7
+METRICS = [("sen_min", "sen", "min", +1), ("sen_score", "jakość snu", "pkt", +1), ("hrv", "HRV nocne", "ms", +1),
+           ("rhr", "tętno spoczynkowe", "ud./min", -1), ("spo2_low", "najniższa SpO2", "%", +1)]
+
+
+def effect(taken: list[float], skipped: list[float]) -> dict:
+    """Czyste: srednie, roznica i sila efektu (d Cohena). Bez wniosku przy < MIN_N nocy w ktorejkolwiek grupie."""
+    t = [x for x in taken if x is not None]
+    k = [x for x in skipped if x is not None]
+    out = {"n_taken": len(t), "n_skipped": len(k)}
+    if len(t) < MIN_N or len(k) < MIN_N:
+        out["enough"] = False
+        return out
+    mt, mk = sum(t) / len(t), sum(k) / len(k)
+    vt = sum((x - mt) ** 2 for x in t) / (len(t) - 1)
+    vk = sum((x - mk) ** 2 for x in k) / (len(k) - 1)
+    sd = ((vt + vk) / 2) ** 0.5
+    d = (mt - mk) / sd if sd else 0.0
+    out.update(enough=True, mean_taken=round(mt, 1), mean_skipped=round(mk, 1), diff=round(mt - mk, 1), d=round(d, 2),
+               size="wyraźny" if abs(d) >= 0.8 else "umiarkowany" if abs(d) >= 0.5 else "mały" if abs(d) >= 0.2 else "brak")
+    return out
+
+
+def night_effects(today: date | None = None, days: int = 180) -> list[dict]:
+    """Dla kazdej pozycji: porownanie nocy po dniach wziete vs pominiete."""
+    today = today or date.today()
+    d0 = today - timedelta(days=days)
+    c = _conn()
+    try:
+        cur = c.cursor()
+        its = items(cur, include_inactive=True)
+        cur.execute("SELECT day, supplement_id, status FROM qbot_v2.supplement_log WHERE day >= %s", (d0,))
+        log = cur.fetchall()
+        cur.execute("""SELECT date, max(sleep_duration_min), max(sleep_score), max(hrv_ms),
+                              coalesce(max(resting_hr_bpm) FILTER (WHERE source='garmin'), max(resting_hr_bpm))
+                       FROM qbot_v2.qbot_wellness_daily WHERE date >= %s GROUP BY date""", (d0,))
+        well = {r[0]: {"sen_min": r[1], "sen_score": r[2], "hrv": r[3], "rhr": r[4]} for r in cur.fetchall()}
+        cur.execute("SELECT day, lowest_spo2 FROM qbot_v2.spo2_daily WHERE day >= %s", (d0,))
+        for dd_, lo in cur.fetchall():
+            well.setdefault(dd_, {})["spo2_low"] = lo
+    finally:
+        c.close()
+    out = []
+    for it in its:
+        rows = [(d, st) for d, sid, st in log if sid == it["id"]]
+        res = {"id": it["id"], "name": it["name"], "metrics": []}
+        for key, label, unit, better in METRICS:
+            tk = [float(well.get(d + timedelta(days=1), {}).get(key)) for d, st in rows if st == "taken" and well.get(d + timedelta(days=1), {}).get(key) is not None]
+            sk = [float(well.get(d + timedelta(days=1), {}).get(key)) for d, st in rows if st == "skipped" and well.get(d + timedelta(days=1), {}).get(key) is not None]
+            e = effect(tk, sk)
+            e.update(key=key, label=label, unit=unit, better=better)
+            res["metrics"].append(e)
+        res["n_taken"] = sum(1 for _, st in rows if st == "taken")
+        res["n_skipped"] = sum(1 for _, st in rows if st == "skipped")
+        res["enough"] = any(m.get("enough") for m in res["metrics"])
+        out.append(res)
+    return out
+
+
+def summary_for_albert(today: date | None = None) -> dict:
+    """Narzedzie Alberta 'supplements': lista, wczoraj, regularnosc 35 dni, wplyw na noc (gdy sa dane)."""
+    today = today or date.today()
+    ov = overview(35, today)
+    y = (today - timedelta(days=1)).isoformat()
+    per = (ov["regularity"] or {}).get("items") or {}
+    lst = []
+    for it in ov["items"]:
+        if not it["active"]:
+            continue
+        lg = ov["log"].get(f"{y}:{it['id']}")
+        lst.append({"nazwa": it["name"], "rodzaj": it["kind"], "dawka": fmt_dose(it["dose"], it["unit"]), "pora": SLOTS.get(it["slot"]),
+                    "dni": "codziennie" if not it["days"] else ", ".join(DN[d] for d in it["days"]),
+                    "wczoraj": ((lg or {}).get("status") or "niepotwierdzone") if it["id"] in (ov["scheduled"].get(y) or []) else "nie było w planie (lista od " + it["versions"][0]["from"] + ")",
+                    "regularnosc_35d_pct": (per.get(it["id"]) or {}).get("pct"),
+                    "historia_dawek": [f"{fmt_dose(v['dose'], v['unit'])} od {v['from']}" for v in it["versions"]]})
+    eff = []
+    for e in night_effects(today):
+        good = [m for m in e["metrics"] if m.get("enough")]
+        eff.append({"nazwa": e["name"], "nocy_wziete": e["n_taken"], "nocy_pominiete": e["n_skipped"],
+                    "wnioski": [f"{m['label']}: {m['mean_taken']} vs {m['mean_skipped']} {m['unit']} (efekt {m['size']})" for m in good]
+                    or [f"za mało danych (potrzeba po {MIN_N} nocy z i bez)"]})
+    return {"lista": lst, "regularnosc_35d_pct": (ov["regularity"] or {}).get("pct"),
+            "niepotwierdzone_dni": len((ov["regularity"] or {}).get("unconfirmed_days") or []), "wplyw_na_noc": eff,
+            "gdzie": "Zdrowie → Suplementy; potwierdzenie rano za wczoraj przyciskiem w Telegramie"}
