@@ -260,6 +260,11 @@ def handle_callback(cq: dict, answer, send_plain, clear_buttons, chat_ok: str) -
                 gc.close()
             answer(cq.get("id"), "Odhaczone")
             send_plain(f"✅ Rower gotowy — odhaczono {n_} zadań." if n_ else "Te zadania były już odhaczone.")
+        elif act == "supl":  # 2026-10-13: suplementy za wczoraj - "wszystkie"; pozostale przyciski wiadomosci zostaja
+            import qbot_supplements as SP
+            answer(cq.get("id"), "Zapisane")
+            send_plain(SP.tg_confirm(arg))
+            return
         elif act in ("wxok", "wxno"):  # 2026-10-12: propozycja korekty z uwagi na pogode (qbot_trener_weather)
             import qbot_trener_weather as W
             if act == "wxno":
@@ -480,6 +485,14 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
                 _kb = _kb + _FPb.morning_buttons(today)
             except Exception as e:
                 log.append(f"okno: błąd {str(e)[:80]}")
+            try:  # 2026-10-13: suplementy/leki - potwierdzenie RANO za wczoraj jednym przyciskiem (qbot_supplements)
+                import qbot_supplements as SP
+                _spl, _spb = SP.morning(today)
+                if _spl:
+                    _txt = (_txt or "").rstrip() + "\n" + _spl
+                _kb = _kb + _spb
+            except Exception as e:
+                log.append(f"suplementy: błąd {str(e)[:120]}")
             log.append(_once(c, f"day:{today.isoformat()}", user, _txt, dry, _kb or None))
         if st["notify.day"] == 2:
             for s in _sessions(c, user, today, today):

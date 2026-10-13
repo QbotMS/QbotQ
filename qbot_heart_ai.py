@@ -20,7 +20,7 @@ from typing import Any
 sys.path.insert(0, "/opt/qbot/app")
 os.environ.setdefault("QBOT3_ENABLED", "1")
 
-V_ECG, V_REP = 1, 2
+V_ECG, V_REP = 1, 3
 
 PROMPT_ECG = (
     "Jesteś lekarzem sportowym. Dostajesz policzone przez system dane jednego 30-sekundowego EKG z zegarka (jedno odprowadzenie) "
@@ -223,7 +223,16 @@ def series_facts(today: date | None = None) -> dict:
         "hrv_noc": {"sr_28d": round(sum(h28) / len(h28), 1) if h28 else None, "mediana_roku": hn[len(hn) // 2] if hn else None},
         "waga": {"start_28d": wts[0][1] if wts else None, "koniec": wts[-1][1] if wts else None},
         "trening_h_tydzien": weeks,
+        "leki_i_suplementy": _supl_lines(),
     }
+
+
+def _supl_lines() -> list[str]:
+    try:
+        import qbot_supplements as SP
+        return SP.report_lines()
+    except Exception:
+        return []
 
 
 def report_ai(facts: dict, compute: bool = True) -> dict | None:
@@ -266,8 +275,10 @@ def report_pdf(facts: dict, ai: dict | None) -> bytes:
     bp = facts.get("seria_cisnienia")
     span = f"{_d(bp['from'])}–{_d(bp['to'])}" if bp else "brak serii"
     dr.text((L, y), "Domowe pomiary: ciśnienie, EKG z zegarka, tętno", fill="black", font=f_h); y += 44
-    dr.text((L, y), f"Seria: {span} · wydruk {_d(facts['dzis'])} · Pacjent: ______________________   Leki: ______________________",
-            fill="black", font=f_t); y += 34
+    dr.text((L, y), f"Seria: {span} · wydruk {_d(facts['dzis'])} · Pacjent: ______________________", fill="black", font=f_t); y += 30
+    sup = facts.get("leki_i_suplementy") or []
+    para("Leki i suplementy: " + ("; ".join(sup) if sup else "brak wpisanych (uzupełnij: ______________________)"), f_t)
+    y += 4
     if ai:
         dr.text((L, y), "Podsumowanie", fill="black", font=f_b); y += 28
         para(ai.get("podsumowanie") or "")

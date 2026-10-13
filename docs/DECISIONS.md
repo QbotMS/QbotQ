@@ -4,6 +4,10 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-13 -- DECYZJA: suplementy i leki w Zdrowiu - potwierdzenie rano za wczoraj, "Wszystkie", bez passy
+Lista z wersjami dawek, dziennik przyjec, regularnosc; jeden przycisk w porannej wiadomosci 7:00, wyjatki recznie na stronie.
+Lista automatycznie w raporcie dla lekarza. Szczegoly: docs/SUPLEMENTY.md.
+
 ## 2026-10-13 -- DECYZJA: AI w Sercu tylko na faktach QBota - komentarz kontekstowy do EKG i raport dla lekarza
 Samo EKG oceniaja reguly (powtarzalne, sprawdzalne). AI: (1) 2-3 zdania kontekstu pod EKG, gdy cos odstaje; (2) podsumowanie
 w PDF dla lekarza po serii. Oceny przepisuje z regul, nie liczy wlasnych liczb, bez diagnozy. Szczegoly: docs/SERCE.md.
