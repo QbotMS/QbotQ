@@ -394,10 +394,11 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 ## Jedzenie / redukcja (koncept uzgodniony 12.10.2026, dok. docs/BROKUL.md)
 - [ ] ODLOZONE (Michal 12.10.2026: wrocic kiedys): nagrody za passe = Garaz -> Plan zakupow (lista upatrzonych produktow: nazwa, link, cena, zdjecie; status zablokowane/okno zakupu/kupione). Prog odblokowania wg ceny: do 200 zl 🔥14 dni; 200-500 🔥30 + 📉2 tyg.; 500-1500 📉4 tyg. + 🕗14 dni; wyzej etap wagi. Okno zakupu 14 dni (do decyzji), linijka w wiadomosci 20:00, "nastepna nagroda" w Jedzenie -> Passa. Zakladki Plan zakupow w Garazu jeszcze NIE ma (sprawdzone 12.10). Bez nagrod jedzeniowych.
 
-## [GARAZ-ZAKUPY] Zakupy w Garazu - etapy 2-4 (dodane 2026-10-13, dok. docs/ZAKUPY.md)
-- Etap 4: Gmail - auto Kupione z maili potwierdzenia zamowienia (wymaga dostepu do Gmaila na serwerze).
-
 # ZROBIONE
+
+## [GARAZ-ZAKUPY etap 4] Gmail -> auto Kupione [ODRZUCONE 2026-10-13]
+- Michal: zakupy potwierdza recznie (przycisk Kupione). Powod: dostep do Gmaila = odczyt calej skrzynki, klucz na VPS, tresc maili do AI.
+  Gdyby wrocil temat: wariant A (filtr Gmail -> przekierowanie na osobna skrzynke tylko dla QBota) albo B (skrypt Google -> okrojone dane).
 
 ## [GARAZ-ZAKUPY etap 3] Najnizsza cena [ZROBIONE 2026-10-13]
 - Szukaj ceny: AI web_search + Ceneo (przegladarka), kazda cena sprawdzona na stronie sklepu, zgodnosc wariantu, NBP, Dzwonek. qbot_zakupy_ceny.py, scripts/zakupy_ceny_worker.py. docs/ZAKUPY.md

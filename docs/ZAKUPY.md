@@ -9,13 +9,13 @@ Start: 2026-10-13. Zakładka „Zakupy” w Garażu (`/garaz.html#zakupy`): list
 - „Kupione” → pozycja przechodzi do listy Kupione (data + zapłacona cena). Przy rzeczy rowerowej QBot proponuje dodanie do Garażu: otwiera ISTNIEJĄCE okno (Odzież / Sprzęt / komponent Roweru) z linkiem, ceną, datą i odpala tam „Zaciągnij dane”.
 - Szukanie najniższej ceny (etap 3): najskuteczniej = AI z wyszukiwarką (cały internet) + Ceneo; każda oferta weryfikowana otwarciem strony sklepu; 3–5 ofert, na przycisk.
 - Przypomnienia o zużyciu (etap 2): Dzwonek + Telegram (jedna zbiorcza wiadomość, przyciski „Kup ponownie” / „Odłóż 7 dni”).
-- Gmail (etap 4): auto-oznaczanie „Kupione” z maili potwierdzenia zamówienia — wymaga podłączenia dostępu do Gmaila na serwerze.
+- Gmail (etap 4): odrzucony 13.10 — potwierdzanie zakupów ręcznie.
 
 ## Etapy
 1. [2026-10-13] Zakładka, okno z linkiem, priorytet, Kupione, propozycja dodania do Garażu.
 2. [2026-10-13] Zużycie i przypomnienia — ZROBIONE (opis niżej). UWAGA: suplementy — powiązać z modułem `qbot_supplements.py` (qbot_v2.supplement / supplement_log = rzeczywiste przyjęcia i dawki), zamiast liczyć z „dziennego zużycia” wpisanego ręcznie. Dla rzeczy spoza modułu suplementów (np. zatyczki) — opakowanie + zużycie dzienne.
 3. [2026-10-13] Najniższa cena — ZROBIONE (opis niżej).
-4. Gmail.
+4. Gmail — ODRZUCONE (2026-10-13): zakupy potwierdzane ręcznie przyciskiem „Kupione”. Ryzyka pełnego dostępu (cała skrzynka, klucz na serwerze, treść maili do AI) za duże. Jeśli wróci: tylko filtr + przekierowanie na osobną skrzynkę QBota albo skrypt Google wysyłający okrojone dane.
 
 ## Warstwy
 - DANE: `garage.db`, tabela `shop_items` (tworzona przez `qbot_zakupy_api.py`, IF NOT EXISTS).
