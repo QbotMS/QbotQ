@@ -367,7 +367,8 @@
     var q = B.start ? "start=" + B.start + "&end=" + (B.end || S.today || "") : "days=" + (B.goal ? 60 : B.range);
     $("bilans").classList.add("busy");
     Promise.all([j("/api/jedzenie/balance?" + q), B.body ? Promise.resolve(B.body) : j("/api/jedzenie/body?days=730").catch(function () { return { points: [] }; })])
-      .then(function (r) { B.data = r[0]; B.body = r[1]; B.zoom = null; renderBilans(); })
+      .then(function (r) { B.data = r[0]; B.body = r[1]; B.zoom = null; renderBilans();
+        j("/api/jedzenie/alcohol?start=" + r[0].start + "&end=" + r[0].end).then(function (al) { B.alc = al.days || []; if (B.alc.length) redrawB(); }).catch(function () {}); })
       .catch(function (e) { S.loaded.bilans = false; $("bilans").innerHTML = "<p class='msg'>" + esc(e.message) + "</p>"; })
       .then(function () { $("bilans").classList.remove("busy"); });
   }
@@ -475,6 +476,8 @@
     var wt = []; for (var q = w0; q <= w1; q += Math.max(1, Math.round((w1 - w0) / 5))) wt.push(q);
     if (B.on.weight || B.on.plan || B.on.forecast) wt.forEach(function (q) { s += "<text x='" + (W - pr + 5) + "' y='" + (YW(q) + 3.5).toFixed(1) + "' font-size='10.5' fill='" + BS.weight[1] + "'>" + q + "</text>"; });
     if ((anyK || anyP) && B.body["break"] && T(B.body["break"]) >= t0 && T(B.body["break"]) <= t1) { var bx = X(T(B.body["break"])).toFixed(1); s += "<line x1='" + bx + "' x2='" + bx + "' y1='" + pt + "' y2='" + (H - pb) + "' stroke='var(--muted)' stroke-dasharray='3 3'/><text x='" + bx + "' y='" + (pt + 12) + "' font-size='10' text-anchor='end' fill='var(--muted)'>tryb sportowca →&#160;</text>"; }
+    (B.alc || []).forEach(function (ad) { var ta = T(ad); if (ta < t0 || ta > t1) return; var ax = X(ta).toFixed(1);
+      s += "<text x='" + ax + "' y='" + (pt + 12) + "' font-size='12' text-anchor='middle'><title>alkohol " + dm(ad) + " – noc po nim zwykle obniża HRV</title>🍷</text>"; });
     var tt = T(S.today || x.end); if (tt >= t0 && tt <= t1) { var tx = X(tt).toFixed(1); s += "<line x1='" + tx + "' x2='" + tx + "' y1='" + pt + "' y2='" + (H - pb) + "' stroke='var(--muted)' stroke-dasharray='2 3'/><text x='" + tx + "' y='" + (pt - 5) + "' font-size='10' text-anchor='middle' fill='var(--muted)'>dziś</text>"; }
     s += "<line id='bcur' x1='0' x2='0' y1='" + pt + "' y2='" + (H - pb) + "' stroke='var(--muted)' stroke-dasharray='2 3' visibility='hidden'/>";
     s += "<rect id='bsel' x='0' y='" + pt + "' width='0' height='" + (H - pt - pb) + "' fill='rgba(59,130,246,.15)' stroke='rgba(59,130,246,.6)' visibility='hidden'/>";

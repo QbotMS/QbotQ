@@ -575,6 +575,17 @@ def build_router(current_user, owner_user) -> APIRouter:
         except Exception as ex:
             raise HTTPException(status_code=502, detail="AI niedostępne: %s" % type(ex).__name__)
 
+    @r.get("/alcohol")
+    def alcohol(request: Request, start: str, end: str):
+        """Dni z alkoholem (znaczniki 🍷 na wykresach)."""
+        need_user(request)
+        import qbot_food_plan as FP
+        a, b = _d(start), _d(end)
+        if (b - a).days > 800:
+            raise HTTPException(status_code=400, detail="maks. 800 dni")
+        with FP._conn() as c:
+            return {"days": sorted(d.isoformat() for d in FP.alcohol_days(c, a, b))}
+
     @r.get("/heart_plus")
     def heart_plus(request: Request):
         """Zdrowie -> Serce: HRV (norma z roku, ostatnie 28 dni) + serce a jedzenie/waga
@@ -614,7 +625,23 @@ def build_router(current_user, owner_user) -> APIRouter:
         big = [dev(d + timedelta(days=1)) for d, v in bal.items() if v < -700]
         oth = [dev(d + timedelta(days=1)) for d, v in bal.items() if v >= -700]
         big, oth = [x for x in big if x is not None], [x for x in oth if x is not None]
-        links = {"hrv_po_deficycie": {"n_duzy": len(big), "n_inne": len(oth),
+        with FP._conn() as c:
+            alc = FP.alcohol_days(c, today - timedelta(days=365), today)
+            rhr = {x["date"]: float(x["r"]) for x in c.execute("SELECT date, avg(resting_hr_bpm) r FROM qbot_v2.qbot_sleep_daily WHERE resting_hr_bpm IS NOT NULL "
+                                                                "AND date >= %s GROUP BY date", (today - timedelta(days=400),)).fetchall()}
+            slp = {x["date"]: float(x["s"]) for x in c.execute("SELECT date, avg(sleep_score) s FROM qbot_v2.qbot_sleep_daily WHERE sleep_score IS NOT NULL "
+                                                                "AND date >= %s GROUP BY date", (today - timedelta(days=400),)).fetchall()}
+        def devm(mp, d):
+            v = mp.get(d)
+            base = [mp[d - timedelta(days=k)] for k in range(1, 29) if (d - timedelta(days=k)) in mp and (d - timedelta(days=k + 1)) not in alc]
+            return v - stt.median(base) if v is not None and len(base) >= 8 else None
+        def avgl(xs):
+            xs = [x for x in xs if x is not None]
+            return round(sum(xs) / len(xs), 1) if xs else None
+        nights = [d + timedelta(days=1) for d in alc]
+        alc_stat = {"n": len(alc), "hrv": avgl([devm(hmap, d) for d in nights]), "rhr": avgl([devm(rhr, d) for d in nights]),
+                    "sen": avgl([devm(slp, d) for d in nights]), "ostatni": max(alc).isoformat() if alc else None}
+        links = {"alkohol": alc_stat, "hrv_po_deficycie": {"n_duzy": len(big), "n_inne": len(oth),
                                       "duzy": round(sum(big) / len(big), 1) if big else None, "inne": round(sum(oth) / len(oth), 1) if oth else None}}
         # cisnienie rano vs sol/deficyt dnia poprzedniego i waga
         mbp = []

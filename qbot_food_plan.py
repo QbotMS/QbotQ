@@ -200,6 +200,37 @@ def week_deficits(ws: date, actuals: bool) -> dict:
     return out
 
 
+# --------------------------------------------------------------------------- alkohol (2026-10-13)
+import re as _re
+ALCO_RE = _re.compile(
+    r"(?<![a-ząćęłńóśźż])(piw[a-ząćęłńóśźż]*|wino|wina|winem|winko|w[óo]dk[a-ząćęłńóśźż]*|prosecco|szampan[a-z]*|"
+    r"whisk[a-z]*|rum|gin|likier[a-z]*|nalewk[a-ząćęłńóśźż]*|aperol[a-z]*|cydr[a-z]*|tequil[a-z]*|brandy|koniak[a-z]*|"
+    r"spritz[a-z]*|grza[nń]c[a-z]*|beer|wine)(?![a-ząćęłńóśźż])", _re.I)
+# bez alkoholu: 0%, 0,0%, bezalkoholowe, 'piwo 0' itd. (Michal pije glownie piwo 0%) + napoje bialkowe typu 'Drink'
+NONALC_RE = _re.compile(r"(bezalkohol|0[,.]0\s*%|(?<![\d,.])0\s*%|\b0\s*,?\s*0\b|piw[a-ząćęłńóśźż]*\s+0(?![\d,.])|alcohol[- ]?free|0\.0)", _re.I)
+
+
+def _is_alcohol(txt: str) -> bool:
+    return bool(txt) and bool(ALCO_RE.search(txt)) and not NONALC_RE.search(txt)
+
+
+def alcohol_days(c, a: date, b: date) -> set:
+    """Dni z alkoholem rozpoznanym we wpisach jedzenia - KAZDA POZYCJA OSOBNO (pozycje food_entries, nazwy intake_items).
+    Piwo 0% / bezalkoholowe nie jest alkoholem. Rzadkie picie = odstajace noce (HRV w dol, RHR w gore, gorszy sen) -
+    analizy je wylaczaja zamiast mylic z treningiem."""
+    out = set()
+    for r in c.execute("SELECT day, raw_text, items FROM qbot_v2.food_entries WHERE status='logged' AND day BETWEEN %s AND %s", (a, b)).fetchall():
+        its = [i for i in (r["items"] or []) if isinstance(i, dict)]
+        names = [str(i.get("name") or "") + " " + str(i.get("short") or "") for i in its] if its else [r["raw_text"] or ""]
+        if any(_is_alcohol(t) for t in names):
+            out.add(r["day"])
+    for r in c.execute("SELECT l.date d, i.food_name t FROM qbot_v2.intake_logs l JOIN qbot_v2.intake_items i ON i.intake_log_id=l.id "
+                       "WHERE l.date BETWEEN %s AND %s", (a, b)).fetchall():
+        if _is_alcohol(r["t"] or ""):
+            out.add(r["d"])
+    return out
+
+
 def is_ill(c, day: date) -> bool:
     """Choroba w Kalendarzu (kind='illness') obejmujaca dzien."""
     return bool(c.execute("SELECT 1 FROM qbot_v2.calendar_entry WHERE kind='illness' AND %s BETWEEN day AND COALESCE(end_day, day) LIMIT 1",
@@ -513,6 +544,12 @@ def morning_digest(day: date, train_lines: list[str] | None = None) -> str | Non
             wl = S.weigh_line(c, day)
         if wl:
             L.append(wl)
+    except Exception:
+        pass
+    try:  # 2026-10-13: wczoraj alkohol -> nizsze HRV/gotowosc dzis to raczej alkohol, nie trening
+        with _conn() as c:
+            if (day - timedelta(days=1)) in alcohol_days(c, day - timedelta(days=1), day - timedelta(days=1)):
+                L.append("🍷 Wczoraj alkohol – niższe HRV/gotowość dziś to raczej to, nie trening")
     except Exception:
         pass
     try:  # 2026-10-12: obwod talii co 2 tygodnie - przypomnienie tylko w poniedzialek, gdy minelo >= 14 dni

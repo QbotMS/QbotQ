@@ -1033,3 +1033,17 @@ load().catch(function(e){console.error("forma2:",e);});
   }
   document.addEventListener("click",function(ev){if(ev.target&&ev.target.id==="tr-aibtn")run();});
 })();
+
+/* 2026-10-13: TRENDY - znacznik 🍷 (dzien z alkoholem z wpisow jedzenia) na wykresie wellness; noc po nim analizy AI wylaczaja. */
+(function(){
+  window._trAlc={};
+  function reg(){if(!window.Chart||!window.Chart.register){return setTimeout(reg,200);}
+    window.Chart.register({id:"qtralc",afterDatasetsDraw:function(ch){if(!ch.canvas||ch.canvas.id!=="trendy-well-canvas")return;var SN=window._trSN||[],xA=ch.scales.x,a=ch.chartArea;if(!xA||!a)return;
+      var c=ch.ctx;c.save();c.font="13px sans-serif";c.textAlign="center";SN.forEach(function(s,i){if(!window._trAlc[String(s.day).slice(0,10)])return;if(xA.min!=null&&(i<xA.min||i>xA.max))return;
+        var x=xA.getPixelForValue(i);c.fillText("🍷",x,a.top+12);c.strokeStyle="rgba(190,24,93,.45)";c.setLineDash([2,3]);c.beginPath();c.moveTo(x,a.top+16);c.lineTo(x,a.bottom);c.stroke();});c.restore();}});}
+  reg();
+  function load(){var SN=window._trSN||[];if(!SN.length){return setTimeout(load,800);}var a=String(SN[0].day).slice(0,10),b=String(SN[SN.length-1].day).slice(0,10);
+    fetch("/api/jedzenie/alcohol?start="+a+"&end="+b,{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null;}).then(function(x){if(!x)return;window._trAlc={};x.days.forEach(function(d){window._trAlc[d]=1;});if(window._wellChart)window._wellChart.draw();}).catch(function(){});}
+  document.addEventListener("click",function(ev){if(ev.target&&ev.target.closest&&ev.target.closest("#rng"))setTimeout(load,1500);});
+  load();
+})();

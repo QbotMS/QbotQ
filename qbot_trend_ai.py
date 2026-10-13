@@ -120,6 +120,12 @@ def discover(rows: list[dict], a: int, b: int) -> dict:
     C = {k: col(k) for k in ("xss", "ctl", "atl", "sleep", "hrv", "rhr", "rdy3", "weight", "bal")}
     C["xss"] = [v if v is not None else 0.0 for v in C["xss"]]
     short = (b - a + 1) < 28
+    # noc po alkoholu = odstajacy punkt: wylaczona z norm i korelacji (osobno liczony koszt wieczoru z alkoholem)
+    alc_n = [i for i in range(1, N) if rows[i - 1].get("alc")]
+    raw_well = {k: list(C[k]) for k in WELL}
+    for i in alc_n:
+        for k in WELL:
+            C[k][i] = None
     dlt, z = {}, {}
     for k in list(WELL) + ["xss", "atl", "bal"]:
         dlt[k], zz = [None] * N, [None] * N
@@ -208,6 +214,21 @@ def discover(rows: list[dict], a: int, b: int) -> dict:
     else:
         F.append({"type": "deficyt_a_regeneracja", "za_malo_danych": True, "dni_z_bilansem": len(big) + len(oth)})
 
+    # 4b. koszt wieczoru z alkoholem (noc po) vs norma
+    an = [i for i in alc_n if a <= i <= b + 1]
+    if an:
+        cost = {}
+        for k, (nm, un, _) in WELL.items():
+            vals = []
+            for i in an:
+                m, _sd0 = _baseline(C[k], i)
+                if m is not None and raw_well[k][i] is not None:
+                    vals.append(raw_well[k][i] - m)
+            cost[k] = {"name": nm, "unit": un, "noc_po_alkoholu": _r(_mean(vals))}
+        F.append({"id": "A1", "type": "alkohol", "pewnosc": "niska" if len(an) < 5 else "średnia", "wieczorow": len(an), "koszt": cost,
+                  "uwaga": "noce po alkoholu wylaczone z pozostalych analiz"})
+        CONF["A1"] = "niska" if len(an) < 5 else "średnia"
+
     # 5. trend formy vs regeneracji (srednie 7 dni)
     ma = lambda k: [_mean(C[k][max(0, i - 6):i + 1]) for i in W]
     F.append({"id": "T1", "type": "trend_formy_vs_regeneracji", "pewnosc": "niska" if short else "średnia",
@@ -256,6 +277,9 @@ def _fill_food(rows):
                     ex = FP.expend(c, date.fromisoformat(d))
                     if ex["src"] == "realne":
                         r["bal"] = itk[d] - ex["kcal"]
+            alc = FP.alcohol_days(c, date.fromisoformat(days[0]), date.fromisoformat(days[-1]))
+            for r in rows:
+                r["alc"] = date.fromisoformat(r["day"][:10]) in alc
     except Exception:
         pass
     return rows

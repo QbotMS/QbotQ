@@ -29,7 +29,9 @@
       var col = { good: "var(--good)", warn: "var(--accent)", bad: "var(--bad)" }[h.status] || "var(--muted)";
       var out = "<div class='card'><div class='cardhead'><p class='lbl'><span class='tip' tabindex='0' data-tip='HRV nocne z zegarka. Linia: średnia 7 dni; przerywana: Twoja norma z roku (mediana dni 29–365 wstecz). Spadek o ponad 7% = uwaga, ponad 12% = wyraźnie.'>HRV (zmienność rytmu serca)</span></p>" +
         "<span class='sub'>ostatnie 28 dni: <b style='color:" + col + "'>" + n1(h.recent) + " ms</b> · norma " + n1(h.norm) + " (" + sg(h.pct) + "%)</span></div>" + chart(h.series, h.norm) + "</div>";
-      var rows = [];
+      var rows = [], al = L.alkohol || {};
+      if (al.n) rows.push("🍷 Noc po alkoholu (" + al.n + " wieczorów w roku): HRV <b>" + sg(al.hrv) + " ms</b>, tętno spocz. <b>" + sg(al.rhr) + " bpm</b>, sen <b>" + sg(al.sen) + " pkt</b> vs Twoja norma" + (al.ostatni ? " <span class='muted'>(ostatnio " + dm(al.ostatni) + ")</span>" : "") + ". Te noce są wyłączone z analiz zależności.");
+      else rows.push("🍷 Alkohol: brak wpisów w ostatnim roku – gdy wpiszesz (np. „piwo 0,5”), QBot policzy koszt takiego wieczoru i wyłączy noc po nim z analiz.");
       if (hd.n_duzy >= 3) rows.push("Dzień po <b>dużym deficycie</b> (> 700 kcal) HRV średnio <b>" + sg(hd.duzy) + " ms</b> od Twojej normy, po pozostałych dniach " + sg(hd.inne) + " ms <span class='muted'>(n " + hd.n_duzy + " / " + hd.n_inne + ")</span>.");
       else rows.push("HRV a deficyt: za mało zamkniętych dni z dużym deficytem (" + hd.n_duzy + ").");
       if (cs.sol.n_a >= 3 && cs.sol.n_b >= 3) rows.push("Ciśnienie rano po dniu z <b>dużą ilością soli z diety</b> (≥ 8 g): skurczowe średnio <b>" + cs.sol.a + "</b> vs " + cs.sol.b + " po pozostałych.");
