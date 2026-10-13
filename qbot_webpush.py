@@ -154,15 +154,14 @@ def send_to_all(cur, payloads: list[dict]) -> dict:
 
 def build_payloads(items: list[dict]) -> list[dict]:
     """items: key, kind, title, body, url (kolejnosc = od najstarszej). Wiecej niz MAX_PER_TICK -> zbiorcze na koncu."""
-    import qbot_notif as NF
     out = []
     head = items if len(items) <= MAX_PER_TICK else items[:MAX_PER_TICK - 1]
     for it in head:
-        out.append({"title": f"{NF.KIND_ICON.get(it.get('kind'), '🔔')} {it['title']}", "body": it.get("body") or "",
+        out.append({"title": it["title"], "body": it.get("body") or "",
                     "url": it.get("url") or "/?notif=1", "tag": it["key"]})
     if len(items) > len(head):
         n = len(items) - len(head)
-        out.append({"title": f"🔔 QBot: jeszcze {n} nowych", "body": "; ".join(i["title"] for i in items[len(head):])[:200],
+        out.append({"title": f"Jeszcze {n} nowych w dzwonku", "body": "; ".join(i["title"] for i in items[len(head):])[:200],
                     "url": "/?notif=1", "tag": "qbot-zbiorcze"})
     return out
 
@@ -192,7 +191,7 @@ def send_pending(cur) -> dict:
 
 
 def send_test(cur) -> dict:
-    return send_to_all(cur, [{"title": "🔔 QBot: test powiadomień", "body": "Działa. Tak będą wyglądać powiadomienia z dzwonka.",
+    return send_to_all(cur, [{"title": "Test powiadomień", "body": "Działa – tak będą wyglądać powiadomienia z dzwonka QBota.",
                               "url": "/setup.html#powiadomienia", "tag": "qbot-test"}])
 
 

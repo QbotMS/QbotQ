@@ -159,7 +159,8 @@ async def _webauth_guard(request, call_next):
     Dane logowania: /opt/qbot/app/.env.webauth
     klucze: WEBAUTH_USERS=login:haslo,login2:haslo2 ; WEBAUTH_TOKEN=<wartosc do podpisu>
     """
-    if request.url.path in ("/healthz", "/login", "/favicon.ico", "/favicon.svg", "/wyprawa-rsvp", "/api/wyprawa/rsvp", "/sw-push.js"):
+    if request.url.path in ("/healthz", "/login", "/favicon.ico", "/favicon.svg", "/wyprawa-rsvp", "/api/wyprawa/rsvp", "/sw-push.js",
+                            "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"):
         return await call_next(request)
     # [G1] goscie jazdy: tylko z waznym tokenem (sprawdzane w endpointach), dane z bialej listy
     if request.url.path.startswith("/api/guest/") or request.url.path.startswith("/g/"):

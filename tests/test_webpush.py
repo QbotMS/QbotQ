@@ -17,14 +17,14 @@ class T(unittest.TestCase):
     def test_payloads_single(self):
         p = WP.build_payloads([_it(1)])
         self.assertEqual(len(p), 1)
-        self.assertTrue(p[0]["title"].endswith("T1"))
+        self.assertEqual(p[0]["title"], "T1")   # bez emoji - macOS dokleja ikone aplikacji
         self.assertEqual(p[0]["tag"], "jazda:1")
         self.assertEqual(p[0]["url"], "/r?1")
 
     def test_payloads_collapse(self):
         p = WP.build_payloads([_it(i) for i in range(8)])
         self.assertEqual(len(p), WP.MAX_PER_TICK)
-        self.assertIn("jeszcze 4", p[-1]["title"])
+        self.assertIn("Jeszcze 4", p[-1]["title"])
 
     def test_public_key_generated(self):
         with tempfile.TemporaryDirectory() as d:

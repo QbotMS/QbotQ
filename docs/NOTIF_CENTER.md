@@ -75,3 +75,13 @@ iPhone później — wymaga dodania strony do ekranu początkowego (iOS 16.4+); 
 - **Wygasłe subskrypcje** (404/410 z usługi push) usuwane automatycznie; inne błędy w `push_sub.last_err`.
 - **Zależność**: `pywebpush` w `.venv` (instalacja: `runuser -u qbot -- /opt/qbot/app/.venv/bin/pip install pywebpush`).
 - Testy: `tests/test_webpush.py` (5).
+
+### Wygląd + QBot jako aplikacja (2026-10-13, etap 1b)
+- Safari na Macu pokazuje w powiadomieniu ikonę Safari i adres strony — strona nie może tego zmienić. Zmienia to dopiero
+  **QBot jako aplikacja**: Safari > Plik > Dodaj do Docka (macOS 14+). Wtedy powiadomienia mają ikonę i nazwę QBot.
+  W aplikacji z Docka powiadomienia trzeba włączyć OSOBNO (Setup > Powiadomienia > Włącz) — to osobna „przeglądarka”.
+- Pliki: `manifest.webmanifest` (nazwa QBot, start /, standalone, ikony), `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`
+  (wyrenderowane z `favicon.svg`, 12% marginesu na czarnym tle). Linki do nich wstrzykuje `nav.js` w `<head>` każdej strony.
+  Wszystkie cztery są publiczne w bramce logowania (przeglądarka pobiera je bez ciasteczka).
+- Teksty: tytuł = tytuł pozycji dzwonka BEZ emoji (ikonę daje system), treść = opis pozycji. Ponad 5 naraz → „Jeszcze N nowych w dzwonku”.
+- Ten sam manifest i ikona posłużą do iPhone'a (TODO [WEBPUSH-IPHONE]).

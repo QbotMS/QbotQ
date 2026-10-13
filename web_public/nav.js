@@ -3,6 +3,14 @@
    Domyslnie waski rail (ikony). Rozsuniecie NACHODZI na tresc (nie przesuwa jej), stan nietrwaly.
    Menu podzielone: PRODUKCYJNE (gora) + TESTOWE (na dole, nad przelacznikiem motywu).
    Stopka: przelacznik motywu dzien/noc (klasa html.theme-dark, klucz qtheme). */
+/* 2026-10-13: QBot jako aplikacja (Safari: Plik > Dodaj do Docka; iPhone: Do ekranu poczatkowego) - manifest + ikona.
+   Powiadomienia z aplikacji maja wtedy ikone i nazwe QBot zamiast Safari i adresu. Dok.: docs/NOTIF_CENTER.md */
+(function () { try { var h = document.head; if (!h || h.querySelector('link[rel="manifest"]')) return;
+  [["link", {rel: "manifest", href: "/manifest.webmanifest"}], ["link", {rel: "apple-touch-icon", href: "/apple-touch-icon.png"}],
+   ["meta", {name: "apple-mobile-web-app-title", content: "QBot"}], ["meta", {name: "application-name", content: "QBot"}],
+   ["meta", {name: "apple-mobile-web-app-capable", content: "yes"}]].forEach(function (x) {
+    var e = document.createElement(x[0]); for (var k in x[1]) e.setAttribute(k, x[1][k]); h.appendChild(e); });
+} catch (e) {} })();
 (function () {
   var PROD = [
     { href: "/index.html", label: "Start", alt: ["/"],
