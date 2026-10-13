@@ -126,6 +126,11 @@ Z harmonogramu tylko DWIE wiadomości dziennie, zwięzłe (~8 linijek), szczegó
   ciężkie jazdy w dni niskiej gotowości; dawka-odpowiedź tygodniami; deficyt > 700 kcal → regeneracja następnego dnia (bilans z bazy QBota); trend formy vs HRV/RHR/sen/waga.
 - AI (POST /api/trendy/ai) dostaje tylko te wyniki: zakaz opisywania widocznych trendów i par definicyjnych; zwraca nagłówek, 3–5 odkryć (co / znaczenie / pewność), eksperyment, czego brakuje.
 
+## Dzwonek – powiadomienia Zdrowia (13.10.2026)
+- `qbot_food_log.notif_items` → `qbot_notif.sync_live` (stan na żywo, klucze live:jedzenie:*, znika sam po załatwieniu): wczoraj do 12:00 i dziś od 19:30 –
+  „Okno 10–20 … dotrzymane?” (akcja „Okno OK” → POST /api/jedzenie/window; złamane = link do dnia) oraz „Zamknij dzień …” (akcja „Brokuł zjedzony” → /api/jedzenie/brokul/all albo „Nic poza dietą” → /api/jedzenie/none; link do dnia).
+  Setup → Powiadomienia: grupa „Zdrowie” (jedz_okno, jedz_dzien). Telegram: przycisk „🕗 Okno OK” (krócej).
+
 ## Obwody ciała (12.10.2026)
 - Tabela `qbot_v2.body_circumference` (sql/food_v4.sql): talia (wymagana), biodra, klatka, udo, ramię, szyja – cm, jeden wpis na dzień.
 - Wpis: Jedzenie → **Dni** → karta dnia „📏 Obwody” (od 12.10 wieczorem; wcześniej kafelek w Bilans i waga). POST /api/jedzenie/circ; „Usuń” = usunięcie dnia.

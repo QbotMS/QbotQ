@@ -863,3 +863,46 @@ def refresh_day(day: date, chat_id: str | None = None, message_id: int | None = 
         S.check_milestones()
     except Exception as e:
         _log("refresh_day %s: %s" % (day, e))
+
+
+
+# --------------------------------------------------------------------------- dzwonek (2026-10-13)
+def notif_items(now) -> list[dict]:
+    """Pozycje 'stanu na zywo' do centrum powiadomien (qbot_notif.sync_live): wczoraj do 12:00 i dzis od 19:30 -
+    okno 10-20 do potwierdzenia oraz dzien do zamkniecia (Brokul / wpisy). Jedna akcja = jedno klikniecie, reszta przez link."""
+    import qbot_food_streaks as S
+    today = now.date()
+    days = [today - timedelta(days=1)] if now.hour < 12 else []
+    if now.hour * 60 + now.minute >= 19 * 60 + 30:
+        days.append(today)
+    out = []
+    for d in days:
+        if d < S.START:
+            continue
+        lbl = ("wczoraj " if d < today else "dziś ") + d.strftime("%d.%m")
+        term = "do 12:00 " + ("dziś" if d < today else "jutro")
+        url = "/zdrowie.html#dni=" + d.isoformat()
+        try:
+            with _conn() as c:
+                ws, _ = S.window_status(c, d)
+            if ws == "pending":
+                out.append({"key": "live:jedzenie:okno:%s" % d.isoformat(), "kind": "jedzenie", "title": "Okno 10–20 – %s: dotrzymane?" % lbl,
+                            "body": "potwierdź %s · złamane? otwórz dzień i kliknij „Złamane”" % term, "url": url,
+                            "action": {"label": "Okno OK", "post": "/api/jedzenie/window", "body": {"day": d.isoformat(), "ok": True}}})
+        except Exception as ex:
+            _log("notif okno: %s" % ex)
+        try:
+            cs = close_state(d)
+            if not cs["closed"]:
+                need = []
+                if cs["pending"]:
+                    need.append("Brokuł: %d do potwierdzenia" % cs["pending"])
+                if not (cs["none"] or cs["entries"]):
+                    need.append("jedzenie poza dietą albo „nic poza dietą”")
+                act = ({"label": "Brokuł zjedzony", "post": "/api/jedzenie/brokul/all", "body": {"day": d.isoformat(), "action": "eaten"}} if cs["pending"]
+                       else ({"label": "Nic poza dietą", "post": "/api/jedzenie/none", "body": {"day": d.isoformat()}} if not (cs["none"] or cs["entries"]) else None))
+                out.append({"key": "live:jedzenie:dzien:%s" % d.isoformat(), "kind": "jedzenie", "title": "Zamknij dzień – %s" % lbl,
+                            "body": " · ".join(need) + " · " + term + " (passa 🔥)", "url": url, "action": act})
+        except Exception as ex:
+            _log("notif dzien: %s" % ex)
+    return out

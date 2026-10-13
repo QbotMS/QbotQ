@@ -551,7 +551,7 @@ def morning_buttons(day: date) -> list:
     if not y:
         return []
     md = y.strftime("%Y%m%d")
-    return [[{"text": "🕗 Okno wczoraj dotrzymane", "callback_data": "qk:%s:win_ok" % md},
+    return [[{"text": "🕗 Okno OK", "callback_data": "qk:%s:win_ok" % md},
              {"text": "✖ Złamane", "callback_data": "qk:%s:win_no" % md}]]
 
 
