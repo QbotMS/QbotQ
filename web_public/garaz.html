@@ -269,6 +269,27 @@ body.svy-open .svy{display:block}
 .nt-tab th{background:var(--panel)}
 #notesModal .mbody{display:block}
 #n_body{min-height:320px;font-family:ui-monospace,Menlo,monospace;font-size:13.5px}
+/* zakladka ZAKUPY (2026-10-13) */
+.zk-row{display:grid;grid-template-columns:56px minmax(0,1fr) auto auto;gap:6px 14px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin:0 0 8px;cursor:pointer}
+.zk-row:hover{border-color:var(--accent)}
+.zk-row.done{cursor:default;opacity:.75}
+.zk-ph{width:56px;height:56px;object-fit:contain;border-radius:8px;background:#fff;border:1px solid var(--line)}
+.zk-noph{display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--panel)}
+.zk-t{font-weight:600;font-size:15px;line-height:1.3;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.zk-br{color:var(--ink2);font-weight:500}
+.zk-m{font-size:12.5px;color:var(--muted);margin-top:3px}
+.zk-m a{color:var(--accent);text-decoration:none}
+.zk-note{font-style:italic}
+.zk-right{text-align:right;white-space:nowrap}
+.zk-pr{font-weight:700;font-size:15px;font-variant-numeric:tabular-nums}
+.zk-sub{font-size:11.5px;color:var(--muted)}
+.zk-act{display:flex;gap:6px}
+.zk-act .btn{padding:6px 12px;font-size:13px}
+@media (max-width:760px){.zk-row{grid-template-columns:48px minmax(0,1fr) auto}.zk-ph{width:48px;height:48px}.zk-act{grid-column:1 / -1;justify-content:flex-end}}
+#zakupyModal .mbody{display:grid}
+#zakupyBuyModal{width:520px}
+#zakupyBuyModal .mbody{display:block}
+#zakupyBuyModal .mgrid{grid-template-columns:1fr 1fr}
 </style>
 </head>
 <body>
@@ -286,6 +307,7 @@ body.svy-open .svy{display:block}
   <button type="button" id="tabFit">Fitting</button>
   <button type="button" id="tabInstr">Instrukcje</button>
   <button type="button" id="tabNotes">Notatki</button>
+  <button type="button" id="tabZakupy">Zakupy</button>
   <span class="tabsearch" id="tabSearch">
     <input type="search" id="bsearch" placeholder="szukaj: nazwa, model, kategoria…" autocomplete="off" style="display:none">
     <input type="search" id="gsearch" placeholder="szukaj: marka, model, kolor, notatka…">
@@ -293,6 +315,7 @@ body.svy-open .svy{display:block}
     <input type="search" id="xsearch" placeholder="szukaj: marka, model, notatka…" style="display:none">
     <input type="search" id="isearch" placeholder="szukaj w instrukcjach&#8230;" style="display:none">
     <input type="search" id="nsearch" placeholder="szukaj w notatkach&#8230;" style="display:none">
+    <input type="search" id="zsearch" placeholder="szukaj: nazwa, marka, sklep&#8230;" style="display:none">
   </span>
 </div>
 
@@ -355,6 +378,12 @@ body.svy-open .svy{display:block}
   <span class="count" id="icount"></span>
 </div>
 
+<div class="toolbar" id="toolbarZakupy" style="display:none">
+  <select id="zfilterGroup"><option value="">rower i zdrowie</option><option value="Rower">tylko rower</option><option value="Zdrowie">tylko zdrowie</option><option value="Inne">inne</option></select>
+  <button type="button" class="btn" id="zadd">+ Dodaj do listy</button>
+  <span class="count" id="zcount"></span>
+</div>
+
 <div class="toolbar" id="toolbarNotes" style="display:none">
   <select id="nfilterBike"><option value="">wszystkie rowery</option></select>
   <button type="button" class="btn" id="nadd">+ Dodaj notatk&#281;</button>
@@ -369,6 +398,7 @@ body.svy-open .svy{display:block}
   <div class="view" id="viewInstr"><div id="instrBody"><div class="empty">&#322;adowanie&#8230;</div></div></div>
   <div class="view" id="viewFit"><div id="fitBody"><div class="empty">ładowanie…</div></div></div>
   <div class="view" id="viewNotes"><div id="notesBody"><div class="empty">&#322;adowanie&#8230;</div></div></div>
+  <div class="view" id="viewZakupy"><div id="zakupyBody"><div class="empty">&#322;adowanie&#8230;</div></div></div>
 </div>
 
 <div class="modal-back" id="mBack"></div>
@@ -751,6 +781,71 @@ body.svy-open .svy{display:block}
   </div>
 </div>
 
+<div class="modal" id="zakupyModal">
+  <div class="modal-head">
+    <div class="t" id="zTitle">Dodaj do listy zakup&#243;w</div>
+    <button type="button" class="modal-x" id="zCancelX" aria-label="zamknij">&times;</button>
+  </div>
+  <div class="mbody">
+    <input type="hidden" id="z_id"><input type="hidden" id="z_image_url">
+    <div class="murl">
+      <input id="z_url" placeholder="link do produktu (wklej i pobierz dane)">
+      <button type="button" class="btn" id="zScrape">Pobierz dane</button>
+    </div>
+    <div class="murlmsg" id="zUrlStatus"></div>
+    <div class="mgrid">
+      <div class="mf full"><label>Nazwa *</label><input id="z_name"></div>
+      <div class="mf"><label>Marka</label><input id="z_brand"></div>
+      <div class="mf"><label>Kategoria *</label><select id="z_category"></select></div>
+      <div class="mf" id="z_bike_box" style="display:none"><label>Do roweru</label><select id="z_bike_id"></select></div>
+      <div class="mf"><label>Cena (w sklepie)</label><input id="z_price" type="number" step="0.01"></div>
+      <div class="mf"><label>Waluta</label><input id="z_currency" placeholder="PLN"></div>
+      <div class="mf"><label>Ilo&#347;&#263;</label><input id="z_qty" type="number" step="1" min="1"></div>
+      <div class="mf full qgrp"><span>Priorytet</span>
+        <div class="qbtns" id="z_priority">
+          <button type="button" data-v="1">Pilne</button>
+          <button type="button" data-v="2">Wkr&#243;tce</button>
+          <button type="button" data-v="3">Kiedy&#347;</button>
+        </div>
+      </div>
+      <div class="mf full"><label>Notatka</label><textarea id="z_notes" placeholder="np. rozmiar, wariant, po co"></textarea></div>
+    </div>
+    <div class="mphoto">
+      <img id="zThumb" class="mthumb" alt="" style="display:none;object-fit:contain;background:#fff">
+      <div class="mphoto-ctrl"><button type="button" class="btn sec" id="zImgClr">Bez zdj&#281;cia</button></div>
+    </div>
+  </div>
+  <div class="mfoot">
+    <div class="msg" id="zStatus"></div>
+    <button type="button" class="btn danger" id="zDelete" style="display:none">Usu&#324;</button>
+    <button type="button" class="btn sec" id="zCancel">Anuluj</button>
+    <button type="button" class="btn" id="zSave">Zapisz</button>
+  </div>
+</div>
+
+<div class="modal" id="zakupyBuyModal">
+  <div class="modal-head">
+    <div class="t">Kupione</div>
+    <button type="button" class="modal-x" id="zbX" aria-label="zamknij">&times;</button>
+  </div>
+  <div class="mbody">
+    <div class="mmeta" id="zbName"></div>
+    <div id="zbStep1" class="mgrid">
+      <div class="mf"><label>Zap&#322;acona cena</label><input id="zb_price" type="number" step="0.01"></div>
+      <div class="mf"><label>Data zakupu</label><input id="zb_date" type="date"></div>
+    </div>
+    <div id="zbStep2" style="display:none">
+      <p style="margin:4px 0 12px">Przeniesione do &#8222;Kupione&#8221;. Doda&#263; t&#281; rzecz do Gara&#380;u &#8212; <b id="zbTarget"></b>? Otworz&#281; okno z ju&#380; wpisanym linkiem, cen&#261; i dat&#261;.</p>
+      <button type="button" class="btn" id="zbGarage">Dodaj do Gara&#380;u</button>
+    </div>
+  </div>
+  <div class="mfoot">
+    <div class="msg" id="zbStatus"></div>
+    <button type="button" class="btn sec" id="zbCancel">Anuluj</button>
+    <button type="button" class="btn" id="zbOk">Kupione</button>
+  </div>
+</div>
+
 <div class="lightbox" id="lightbox"><img id="lightboxImg" alt=""></div>
 <script src="/garaz-columns.js?v=2"></script>
 <script src="/garaz-render.js?v=25"></script>
@@ -762,6 +857,7 @@ body.svy-open .svy{display:block}
 <script>(function(){var b=document.getElementById("themebtn");if(!b)return;var SUN='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',MOON='<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';function paint(){b.querySelector("svg").innerHTML=document.documentElement.classList.contains("theme-dark")?SUN:MOON;}b.addEventListener("click",function(){var d=!document.documentElement.classList.contains("theme-dark");document.documentElement.classList.toggle("theme-dark",d);try{localStorage.setItem("qtheme",d?"dark":"light")}catch(e){}paint();});paint();})();</script>
 <script src="/garaz-exped.js?v=4"></script>
 <script src="/garaz-notatki.js?v=1"></script>
-<script src="/garaz-search.js?v=2"></script>
+<script src="/garaz-zakupy.js?v=3"></script>
+<script src="/garaz-search.js?v=3"></script>
 </body>
 </html>

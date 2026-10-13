@@ -13052,6 +13052,8 @@ from qbot_supplements import build_router as _supl_build_router   # 2026-10-13: 
 app.include_router(_supl_build_router(_current_user, _owner_user))
 from qbot_garage_audit_api import build_router as _gaudit_build_router
 app.include_router(_gaudit_build_router(_current_user))
+from qbot_zakupy_api import build_router as _zakupy_build_router   # 2026-10-13: Garaz > Zakupy. Dok.: docs/ZAKUPY.md
+app.include_router(_zakupy_build_router(_current_user, _owner_user))
 from qbot_strava import build_router as _strava_build_router   # 2026-09-28: Strava OAuth + zdjecia z jazd (START)
 app.include_router(_strava_build_router(_db_conn, _current_user))
 from qbot_start import build_router as _start_build_router   # 2026-09-28: START wizytowka

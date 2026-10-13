@@ -1255,3 +1255,8 @@ qbot_ecg.py (analiza + PDF), import przebiegu, /api/forma/ecg(.pdf), wykres w Zd
 sprawdzone w Chrome (wykres, zoom, klik w wiersz, linki PDF). PDF 200 application/pdf ~320 KB (wyglad nie ogladany w podgladzie).
 Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys wyrownac wersje).
 
+
+## 2026-10-13 -- Garaz > Zakupy (etap 1)
+- Nowa zakladka Zakupy (/garaz.html#zakupy): Do kupienia (priorytet Pilne/Wkrotce/Kiedys) + Kupione. Dodawanie z linku (Pobierz dane = /api/garage/scrape), miniatura JPEG w bazie. Po Kupione przy rzeczy rowerowej propozycja dodania do Garazu (otwiera istniejace okno Odziez/Sprzet/komponent z linkiem, cena, data).
+- Kategorie z separatorem ' / ' (nie polpauza) - AI przy zaciaganiu kopiuje je dokladnie.
+- Dalej: etapy 2-4 w docs/TODO.md [GARAZ-ZAKUPY]; dok. docs/ZAKUPY.md.
