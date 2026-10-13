@@ -139,6 +139,85 @@ def analyze(samples: list[float], fs: float) -> dict[str, Any]:
     return out
 
 
+# ---------------- interpretacja (krotko, regulowa - bez AI) ----------------
+
+def _pl(x, d=0) -> str:
+    return f"{x:.{d}f}".replace(".", ",")
+
+
+def interpret(rec: dict[str, Any], ctx: dict[str, Any] | None = None) -> list[dict[str, str]]:
+    """Kilka zdan: co wynik znaczy, czego nie widac na wykresie. status: good / warn / bad / info.
+
+    ctx: {"others": [{"local": datetime, "rmssd": float}], "bp": [{"local": datetime, "sys", "dia"}] w +-45 min,
+          "rhr_norm": float}"""
+    ctx = ctx or {}
+    an = rec.get("analysis") or {}
+    out: list[dict[str, str]] = []
+    code = rec.get("classification") or ""
+    if not an.get("ok"):
+        return [{"status": "info", "text": f"Analiza uderzeń niemożliwa ({an.get('error') or 'brak przebiegu'}). Powtórz nagranie: ręka oparta, palec na ramce bez ruchu."}]
+    sinus = code in ("SINUS_NORMAL", "SINUS_RHYTHM")
+    ni, nsh = int(an.get("n_irregular") or 0), int(an.get("n_shape") or 0)
+
+    # 1. rytm
+    if not sinus:
+        out.append({"status": "bad", "text": "Garmin nie potwierdził rytmu zatokowego. Zrób drugie nagranie; jeśli wynik się powtórzy albo masz objawy – lekarz (PDF poniżej)."})
+    elif ni == 0:
+        out.append({"status": "good", "text": f"Rytm zatokowy, wszystkie {an.get('n_beats')} uderzeń w regularnych odstępach – bez dodatkowych pobudzeń."})
+    else:
+        kinds = ", ".join(sorted({i["label"] for i in an.get("irregular") or [] if i.get("kind") != "ksztalt"}))
+        out.append({"status": "warn", "text": f"Rytm zatokowy, ale {ni} uderzenie(a) poza rytmem ({kinds}). Pojedyncze pobudzenia zdarzają się u zdrowych (kawa, zmęczenie); "
+                                                 "jeśli wracają w kolejnych nagraniach albo czujesz kołatanie – pokaż PDF lekarzowi."})
+
+    # 2. wahania tetna w rytmie oddechu
+    hmin, hmax, hmean = an.get("hr_min"), an.get("hr_max"), an.get("hr_mean")
+    if sinus and ni == 0 and hmin and hmax and hmax - hmin >= 8:
+        out.append({"status": "good", "text": f"Tętno faluje {_pl(hmin)}–{_pl(hmax)} w rytmie oddechu (niemiarowość oddechowa) – to prawidłowe i typowe przy dobrej kondycji w spoczynku, nie zaburzenie rytmu."})
+    if hmean and hmean < 50:
+        out.append({"status": "info", "text": f"Średnio {_pl(hmean)} ud./min – wolne tętno, typowe u trenujących. Niepokojące tylko z zawrotami głowy, omdleniami lub dużym osłabieniem."})
+    elif hmean and hmean > 90:
+        out.append({"status": "warn", "text": f"Średnio {_pl(hmean)} ud./min w spoczynku – wysoko. Sprawdź, czy odpocząłeś 5 min przed nagraniem."})
+
+    # 3. HRV na tle Twoich nagran (rano z rano, wieczor z wieczorem)
+    rm = an.get("rmssd")
+    when = rec.get("started_local")
+    others = [o for o in ctx.get("others") or [] if o.get("rmssd") is not None]
+    if rm is not None and when is not None:
+        same = [o for o in others if (o["local"].hour < 12) == (when.hour < 12)]
+        part = "porannych" if when.hour < 12 else "wieczornych"
+        if len(same) >= 3:
+            vals = sorted(o["rmssd"] for o in same)
+            medv = vals[len(vals) // 2]
+            d = rm - medv
+            st = "warn" if d < -0.25 * medv else "good"
+            txt = (f"HRV {_pl(rm)} ms vs Twoja mediana {part} nagrań {_pl(medv)} ms" +
+                   (" – wyraźnie niżej: zmęczenie, słaby sen, stres albo początek infekcji." if st == "warn" else " – w normie."))
+            out.append({"status": st, "text": txt})
+        elif others:
+            lo, hi = min(o["rmssd"] for o in others), max(o["rmssd"] for o in others)
+            out.append({"status": "info", "text": f"HRV {_pl(rm)} ms (inne nagrania: {_pl(lo)}–{_pl(hi)} ms). Porównuj rano z rano – wieczorem, po dniu i kawie, HRV jest zwykle niższe. "
+                                                   f"Ocena trendu od 3 nagrań z tej samej pory."})
+
+    # 4. cisnienie z tej samej sesji
+    bp = ctx.get("bp") or []
+    if bp:
+        s_ = round(sum(x["sys"] for x in bp) / len(bp)); d_ = round(sum(x["dia"] for x in bp) / len(bp))
+        if s_ >= 135 or d_ >= 85:
+            st, tx = "warn", " – powyżej progu dla pomiarów domowych (135/85). O wyniku zdecyduje średnia z 7-dniowej serii."
+        elif s_ >= 130 or d_ >= 80:
+            st, tx = "info", " – wysokie prawidłowe (granica 130/80), jeszcze nie nadciśnienie. O wyniku zdecyduje średnia z serii."
+        else:
+            st, tx = "good", " – prawidłowe."
+        out.append({"status": st, "text": f"Ciśnienie w tej samej sesji: {s_}/{d_}{tx}"})
+
+    # 5. jakosc
+    if nsh:
+        out.append({"status": "info", "text": f"{nsh} uderzenie(a) o innym kształcie przy normalnym rytmie – najpewniej ruch ręki albo słaby kontakt palca; nie wpływa na wynik."})
+    elif an.get("quality") != "dobra":
+        out.append({"status": "info", "text": "Słabszy sygnał – wynik orientacyjny. Przy następnym nagraniu oprzyj rękę i nie ruszaj palcem."})
+    return out
+
+
 # ---------------- PDF (dla lekarza) ----------------
 
 FONT = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
@@ -187,7 +266,7 @@ def pdf_bytes(rec: dict[str, Any]) -> bytes:
         dr.text((left, top + int(23 * mm)), txt, fill=(180, 0, 0), font=_font(19))
 
     # siatka + przebieg: 3 pasy po 10 s
-    strip_h = int(42 * mm)
+    strip_h = int(36 * mm)
     y0 = top + int(32 * mm)
     sec_px = 25 * mm
     mv_px = 10 * mm
@@ -220,6 +299,12 @@ def pdf_bytes(rec: dict[str, Any]) -> bytes:
                  (cx + 7 * mm, base_y), (cx + 9 * mm, base_y)], fill="black", width=2)
         dr.text((cx, base_y + 6), "1 mV", fill="black", font=_font(15))
 
+    yi = y0 + 3 * (strip_h + int(6 * mm)) - int(2 * mm)
+    for it in (rec.get("interpretation") or [])[:5]:
+        mark = {"good": "+", "warn": "!", "bad": "!!", "info": "-"}.get(it["status"], "·")
+        col = (180, 0, 0) if it["status"] in ("warn", "bad") else (30, 30, 30)
+        dr.text((left, yi), f"{mark} {it['text']}"[:230], fill=col, font=_font(16))
+        yi += int(5 * mm)
     foot = ("25 mm/s · 10 mm/mV. Zapis z zegarka: jedno odprowadzenie, 30 s. Nie wykrywa zawału, niedokrwienia ani zmian strukturalnych. "
             "Wynik rytmu: aplikacja EKG Garmin. Uderzenia, HRV i nieregularności: orientacyjna analiza QBot (trójkąty: wykryte uderzenia, czerwone: nieregularne).")
     dr.text((left, H - int(14 * mm)), foot, fill=(60, 60, 60), font=_font(15))

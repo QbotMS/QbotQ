@@ -149,6 +149,9 @@
             " · sygnał: " + esc(an.quality) : " · analiza: " + esc(an.error || "brak")) + "</div>" +
           '<div><button class="btn" id="hz-ezr" hidden style="font-size:12.5px;padding:3px 10px">Pokaż całość</button> ' +
           '<a class="btn" href="/api/forma/ecg.pdf?id=' + encodeURIComponent(d.detail_id) + '" download style="font-size:12.5px;padding:3px 10px">Pobierz PDF</a></div></div>' +
+          '<div style="margin-top:8px">' + (d.interpretation || []).map(function (p) {
+            return '<div class="s3row ' + p.status + '"><span class="i">' + ICON[p.status] + "</span><span>" + esc(p.text) + "</span></div>";
+          }).join("") + "</div>" +
           (irrTxt ? '<div style="font-size:13px;color:var(--bad);margin-top:4px">' + irrTxt + "</div>" : "") +
           '<div style="position:relative;width:100%;height:220px;margin-top:6px"><canvas id="hz-ecg"></canvas></div>' +
           '<div class="muted" style="font-size:12px">Przeciągnij, żeby powiększyć fragment (np. 3–4 uderzenia); dwuklik = całość. Najechanie na uderzenie pokazuje odstęp od poprzedniego.</div>';

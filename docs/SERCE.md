@@ -62,3 +62,8 @@ forma-serce.js bez zmian, osadzony w /zdrowie.html (#p-serce); obok zdrowie-serc
 - PDF: `GET /api/forma/ecg.pdf?id=<detailId>` (`qbot_ecg.pdf_bytes`, PIL, czcionka Liberation Sans): A4 poziomo, siatka 25 mm/s
   i 10 mm/mV, 3 pasy po 10 s, kalibracja 1 mV, podsumowanie i zastrzezenia. Dane: `GET /api/forma/ecg?id=`.
 - Testy: `tests/test_ecg.py` (syntetyczne EKG: rowny rytm, RMSSD, przedwczesne z pauza, brak sygnalu, PDF).
+
+- Interpretacja (2026-10-13, `qbot_ecg.interpret`, bez AI, regulowa): rytm (zatokowy / pobudzenia / brak potwierdzenia),
+  wahania tetna w rytmie oddechu (niemiarowosc oddechowa, prawidlowa), wolne/szybkie tetno, HRV na tle Twoich nagran z tej
+  samej pory dnia (mediana od 3 nagran; wczesniej tylko zakres), cisnienie z tej samej sesji (+-45 min; <130/80 prawidlowe,
+  130-134/80-84 wysokie prawidlowe, >=135/85 powyzej progu domowego), jakosc sygnalu. Na stronie pod przebiegiem i w PDF.

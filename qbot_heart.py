@@ -269,4 +269,29 @@ def ecg_record(detail_id: str) -> dict | None:
     keys = ["detail_id", "started_local", "classification", "hr_avg", "rmssd_hrv", "device", "lead", "sample_rate", "samples", "analysis"]
     d = dict(zip(keys, r))
     d["label"] = ecg_label(d["classification"])
+    try:
+        import qbot_ecg as Q
+        d["interpretation"] = Q.interpret(d, _ecg_ctx(d))
+    except Exception as exc:
+        d["interpretation"] = [{"status": "info", "text": f"Interpretacja niedostępna ({type(exc).__name__})."}]
     return d
+
+
+def _ecg_ctx(d: dict) -> dict:
+    """Inne nagrania (HRV z uderzen) i cisnienie +-45 min od nagrania."""
+    from datetime import timedelta as _td
+    when = d.get("started_local")
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute("""SELECT started_local, (analysis->>'rmssd')::float FROM qbot_v2.ecg_recording
+                       WHERE detail_id <> %s AND analysis->>'ok' = 'true'""", (d["detail_id"],))
+        others = [{"local": l, "rmssd": v} for l, v in cur.fetchall() if l]
+        bp = []
+        if when:
+            cur.execute("""SELECT measured_local, systolic, diastolic FROM qbot_v2.blood_pressure
+                           WHERE measured_local BETWEEN %s AND %s""", (when - _td(minutes=45), when + _td(minutes=45)))
+            bp = [{"local": l, "sys": s, "dia": di} for l, s, di in cur.fetchall()]
+    finally:
+        conn.close()
+    return {"others": others, "bp": bp}

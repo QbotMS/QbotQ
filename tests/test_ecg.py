@@ -65,6 +65,43 @@ class Uderzenia(unittest.TestCase):
         self.assertFalse(a["ok"])
 
 
+class Interpretacja(unittest.TestCase):
+    def rec(self, rr, code="SINUS_NORMAL", hour=7):
+        from datetime import datetime
+        x, _ = synth(rr)
+        return {"samples": x, "sample_rate": FS, "analysis": Q.analyze(x, FS), "classification": code,
+                "started_local": datetime(2026, 10, 14, hour, 30)}
+
+    def test_prawidlowy(self):
+        out = Q.interpret(self.rec([1000] * 40))
+        self.assertEqual(out[0]["status"], "good")
+        self.assertIn("bez dodatkowych", out[0]["text"])
+
+    def test_pobudzenie(self):
+        out = Q.interpret(self.rec([1000] * 12 + [650, 1350] + [1000] * 20))
+        self.assertEqual(out[0]["status"], "warn")
+        self.assertIn("przedwczesne", out[0]["text"])
+
+    def test_nie_zatokowy(self):
+        self.assertEqual(Q.interpret(self.rec([1000] * 40, code="ATRIAL_FIBRILLATION"))[0]["status"], "bad")
+
+    def test_cisnienie_kategorie(self):
+        from datetime import datetime
+        t = datetime(2026, 10, 14, 7, 25)
+        def bp(s, d):
+            return [x for x in Q.interpret(self.rec([1000] * 40), {"bp": [{"local": t, "sys": s, "dia": d}]}) if "Ciśnienie" in x["text"]][0]
+        self.assertEqual(bp(120, 75)["status"], "good")
+        self.assertEqual(bp(126, 84)["status"], "info")
+        self.assertEqual(bp(150, 95)["status"], "warn")
+
+    def test_hrv_trend_rano(self):
+        from datetime import datetime
+        others = [{"local": datetime(2026, 10, d, 7, 0), "rmssd": 80.0} for d in (10, 11, 12)]
+        out = Q.interpret(self.rec([1000] * 40), {"others": others})
+        hrv = [x for x in out if x["text"].startswith("HRV")][0]
+        self.assertEqual(hrv["status"], "warn")   # rowny rytm = HRV ~0 << 80
+
+
 class Pdf(unittest.TestCase):
     def test_pdf(self):
         x, _ = synth([900] * 40)
