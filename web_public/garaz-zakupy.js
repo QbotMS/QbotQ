@@ -82,6 +82,29 @@ function stockHtml(it){
   return "<div class=\"zk-stock\"><div class=\"zk-bar\"><i style=\"width:"+p+"%\""+(it.due?" class=\"low\"":"")+"></i></div>"+
     "<span>"+stockLine(it)+"</span></div>";
 }
+function pln(v){ return v==null ? "—" : money(v,"PLN"); }
+function offersHtml(it){
+  var o=it.offers, h="";
+  if(it.price_search_status==="running") return "<div class=\"zk-offers\"><i>Szukam cen w internecie i na Ceneo, sprawdzam każdą stronę… (ok. 1 min)</i></div>";
+  if(it.price_search_status==="error") return "<div class=\"zk-offers\"><i>Szukanie ceny nie udało się ("+esc(it.price_search_note||"")+")</i></div>";
+  if(!o || !o.run_at) return "";
+  if(!o.ok.length) h+="<div class=\"zk-off-none\">Brak sprawdzonych ofert.</div>";
+  o.ok.forEach(function(x,i){
+    var mine = it.url && x.url===it.url;
+    h+="<div class=\"zk-off"+(i===0?" best":"")+"\"><b>"+pln(x.price_pln)+"</b>"+
+      (x.currency && x.currency!=="PLN" ? " <span class=\"zk-sub\">("+esc(String(x.price).replace(".",","))+" "+esc(x.currency)+")</span>" : "")+
+      " <a href=\""+esc(x.url)+"\" target=\"_blank\" rel=\"noopener\" title=\""+esc(x.title||"")+"\">"+esc(x.shop)+" &#8599;</a>"+
+      (x.source==="ceneo" ? " <span class=\"chip-q t\">Ceneo</span>" : x.source==="link" ? " <span class=\"chip-q t\">Twój link</span>" : "")+
+      (mine||x.source==="ceneo" ? "" : " <button type=\"button\" class=\"zk-use\" data-i=\""+i+"\" title=\"Ustaw jako link i cenę pozycji\">wybierz</button>")+
+      "</div>";
+  });
+  if(o.blocked.length) h+="<div class=\"zk-off-bl\">Niesprawdzone (sklep blokuje QBota, cena wg AI): "+
+    o.blocked.map(function(x){ return "<a href=\""+esc(x.url)+"\" target=\"_blank\" rel=\"noopener\">"+esc(x.shop)+" ~"+pln(x.price_pln)+"</a>"; }).join(", ")+"</div>";
+  if(o.history && o.history.length>1) h+="<div class=\"zk-sub\">Najniżej wcześniej: "+
+    o.history.map(function(x){ return dd(x.run_at).slice(0,5)+" "+pln(x.min_pln); }).join(" → ")+"</div>";
+  return "<div class=\"zk-offers\"><div class=\"zk-sub\">Ceny sprawdzone "+dd(o.run_at)+" "+esc(o.run_at.slice(11,16))+
+    " (bez kosztu dostawy) · <a href=\"#\" data-a=\"price\">szukaj znowu</a></div>"+h+"</div>";
+}
 function rowHtml(it){
   var img = it.thumb ? "<img class=\"zk-ph\" src=\""+it.thumb+"\" alt=\"\">" : "<div class=\"zk-ph zk-noph\">&#128722;</div>";
   var title = (it.brand ? "<span class=\"zk-br\">"+esc(it.brand)+"</span> " : "")+esc(it.name);
@@ -91,12 +114,14 @@ function rowHtml(it){
   if(it.qty>1) meta.push(it.qty+" szt.");
   if(it.status==="planned" && it.refill_of) meta.push("<span class=\"chip-q w\">dokupienie</span>");
   if(it.notes) meta.push("<span class=\"zk-note\">"+esc(it.notes.slice(0,80))+"</span>");
-  var stock = stockHtml(it);
+  var stock = stockHtml(it) + (it.status==="planned" ? offersHtml(it) : "");
   var right, acts;
   if(it.status==="planned"){
     right = "<div class=\"zk-pr\">"+(it.price!=null ? money(it.price,it.currency) : "—")+"</div>"+
             (it.price_at ? "<div class=\"zk-sub\">cena z "+dd(it.price_at)+"</div>" : "");
     acts = "<button type=\"button\" class=\"btn\" data-a=\"buy\">Kupione</button>"+
+           (it.price_search_status==="running" ? "<button type=\"button\" class=\"btn sec\" disabled>szukam cen…</button>"
+             : "<button type=\"button\" class=\"btn sec\" data-a=\"price\" title=\"AI w internecie + Ceneo; każda cena sprawdzona na stronie sklepu (ok. 1 min)\">Szukaj ceny</button>")+
            "<button type=\"button\" class=\"btn sec\" data-a=\"edit\">Edytuj</button>";
   } else {
     right = "<div class=\"zk-pr\">"+(it.paid_price!=null ? money(it.paid_price,it.currency) : "—")+"</div>"+
@@ -124,10 +149,17 @@ function render(){
   h += "<div class=\"secttl\">Kupione</div>";
   h += done.length ? done.map(rowHtml).join("") : "<div class=\"empty\">Nic jeszcze nie kupione.</div>";
   var body=$("zakupyBody"); body.innerHTML=h;
+  clearTimeout(window._zkPoll);
+  if((D.items||[]).some(function(x){ return x.price_search_status==="running"; })) window._zkPoll=setTimeout(load, 8000);
   body.querySelectorAll(".zk-row").forEach(function(r){
     var it=byId(Number(r.dataset.id));
-    r.querySelectorAll("button[data-a]").forEach(function(b){
-      b.addEventListener("click",function(e){ e.stopPropagation(); act(b.dataset.a, it); });
+    r.querySelectorAll("button[data-a], a[data-a]").forEach(function(b){
+      b.addEventListener("click",function(e){ e.preventDefault(); e.stopPropagation(); act(b.dataset.a, it); });
+    });
+    r.querySelectorAll(".zk-use").forEach(function(b){
+      b.addEventListener("click",function(e){ e.stopPropagation(); var x=it.offers.ok[Number(b.dataset.i)];
+        postJSON("/api/zakupy/use-offer",{id:it.id, url:x.url, price:x.price, currency:x.currency, shop:x.shop}).then(load)
+          .catch(function(er){ alert("Błąd: "+er.message); }); });
     });
     r.addEventListener("click",function(e){ if(e.target.closest("a")) return; openModal(it); });
   });
@@ -138,6 +170,7 @@ function act(a, it){
   if(a==="edit") openModal(it);
   else if(a==="buy") openBuy(it);
   else if(a==="garage") toGarage(it);
+  else if(a==="price") postJSON("/api/zakupy/price-search",{id:it.id}).then(load).catch(function(e){ alert("Błąd: "+e.message); });
   else if(a==="rebuy") postJSON("/api/zakupy/rebuy",{id:it.id}).then(load).catch(function(e){ alert("Błąd: "+e.message); });
   else if(a==="snooze") postJSON("/api/zakupy/snooze",{id:it.id, days:7}).then(load).catch(function(e){ alert("Błąd: "+e.message); });
   else if(a==="back") postJSON("/api/zakupy/unbought",{id:it.id}).then(load).catch(function(e){ alert("Błąd: "+e.message); });

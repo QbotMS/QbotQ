@@ -1265,3 +1265,7 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
 - Zapas rzeczy zuzywalnych w Zakupach: opakowanie + zuzycie dzienne albo z Zdrowie > Suplementy (dni wg harmonogramu minus pominiete).
 - Konczy sie (<= N dni, domyslnie 10): Dzwonek (live:zakupy) + linia i przyciski w porannej wiadomosci (zk:r Kup ponownie, zk:z +7 dni).
 - Dalej: etap 3 (najnizsza cena), etap 4 (Gmail) -- docs/TODO.md [GARAZ-ZAKUPY].
+
+## 2026-10-13 -- Garaz > Zakupy (etap 3: najnizsza cena)
+- Przycisk Szukaj ceny: w tle AI z wyszukiwarka + Ceneo; kazda cena sprawdzona na stronie sklepu (przegladarka przy blokadzie), wariant musi sie zgadzac; do 5 ofert + niesprawdzone osobno; wybierz = link i cena pozycji; Dzwonek.
+- Zostaje etap 4 (Gmail).

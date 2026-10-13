@@ -22,6 +22,8 @@ POST /api/zakupy/unbought  <- {id}                               -> z powrotem d
 POST /api/zakupy/delete    <- {id}                               (miekko: deleted=1)
 POST /api/zakupy/rebuy     <- {id}                               -> nowa pozycja Do kupienia (kopia), idempotentnie
 POST /api/zakupy/snooze    <- {id, days=7}                       -> przypomnienie odlozone
+POST /api/zakupy/price-search <- {id}                            -> szukanie najnizszej ceny w tle (etap 3)
+POST /api/zakupy/use-offer <- {id, url, price, currency, shop}   -> oferta z wyniku jako link i cena pozycji
 Zapisy tylko dla wlasciciela (sesja demo = odczyt). Dok.: docs/ZAKUPY.md
 """
 from __future__ import annotations
@@ -87,7 +89,9 @@ CREATE INDEX IF NOT EXISTS idx_shop_items_status ON shop_items(status, deleted);
 # etap 2: kolumny dokladane do istniejacej tabeli
 EXTRA_COLS = [("pack_units", "REAL"), ("pack_unit", "TEXT"), ("per_day", "REAL"), ("supplement_id", "INTEGER"),
               ("per_intake", "REAL"), ("lead_days", "INTEGER"), ("opened_at", "TEXT"), ("snooze_until", "TEXT"),
-              ("refill_id", "INTEGER"), ("refill_of", "INTEGER")]
+              ("refill_id", "INTEGER"), ("refill_of", "INTEGER"),
+              # etap 3: szukanie najnizszej ceny (qbot_zakupy_ceny.py, scripts/zakupy_ceny_worker.py)
+              ("price_search_at", "TEXT"), ("price_search_status", "TEXT"), ("price_search_note", "TEXT")]
 
 COLS = ("id", "name", "brand", "url", "shop", "category", "priority", "qty", "price", "currency",
         "price_at", "image_url", "thumb", "bike_id", "notes", "status", "bought_at", "paid_price",
@@ -105,6 +109,8 @@ def _conn(path=None):
     for col, typ in EXTRA_COLS:
         if col not in have:
             c.execute("ALTER TABLE shop_items ADD COLUMN %s %s" % (col, typ))
+    import qbot_zakupy_ceny as _C
+    _C.ensure(c)
     return c
 
 
@@ -316,7 +322,11 @@ def list_items(c, today=None, supl=None):
         "ORDER BY CASE status WHEN 'planned' THEN 0 ELSE 1 END, "
         "CASE WHEN status='planned' THEN priority END, "
         "CASE WHEN status='bought' THEN bought_at END DESC, created_at DESC").fetchall()
-    return [_row(r, today, supl) for r in rows]
+    out = [_row(r, today, supl) for r in rows]
+    import qbot_zakupy_ceny as _C
+    for d in out:
+        d["offers"] = _C.latest_offers(c, d["id"]) if d.get("price_search_at") else None
+    return out
 
 
 def due_items(today=None, path=None, supl=None) -> list[dict]:
@@ -594,6 +604,63 @@ def build_router(current_user: Callable, owner_user: Callable) -> APIRouter:
         except KeyError:
             raise HTTPException(status_code=404, detail="brak pozycji")
         return dict(res, ok=True)
+
+    @r.post("/price-search")
+    async def zk_price_search(request: Request) -> Any:
+        """Start szukania ceny w tle (ok. 30-90 s). Wynik: price_search_* + shop_offers + Dzwonek."""
+        _auth(request, write=True)
+        iid = _id(await _body(request))
+        c = _conn()
+        try:
+            row = c.execute("SELECT price_search_status, price_search_at FROM shop_items WHERE id=? AND deleted=0",
+                            (iid,)).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="brak pozycji")
+            now = _dt.datetime.now()
+            if row["price_search_status"] == "running" and row["price_search_at"]:
+                try:
+                    age = (now - _dt.datetime.strptime(row["price_search_at"], "%Y-%m-%d %H:%M")).total_seconds()
+                except ValueError:
+                    age = 1e9
+                if age < 300:
+                    raise HTTPException(status_code=409, detail="szukanie już trwa")
+            c.execute("UPDATE shop_items SET price_search_status='running', price_search_note=NULL, price_search_at=? "
+                      "WHERE id=?", (now.strftime("%Y-%m-%d %H:%M"), iid))
+            c.commit()
+        finally:
+            c.close()
+        import subprocess
+        import sys as _sys
+        log = open("/opt/qbot/artifacts/zakupy_ceny.log", "ab")
+        subprocess.Popen([_sys.executable, "/opt/qbot/app/scripts/zakupy_ceny_worker.py", str(iid)],
+                         stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                         cwd="/opt/qbot/app", start_new_session=True)
+        log.close()   # dziecko ma wlasna kopie uchwytu
+        return {"ok": True, "status": "running"}
+
+    @r.post("/use-offer")
+    async def zk_use_offer(request: Request) -> Any:
+        """Ustaw znaleziona oferte jako link i cene pozycji."""
+        _auth(request, write=True)
+        b = await _body(request)
+        iid = _id(b)
+        url = _txt(b.get("url"), 1000)
+        if not url or not re.match(r"^https?://", url, re.I):
+            raise HTTPException(status_code=400, detail="zly link")
+        price = _num(b.get("price"))
+        cur_ = (_txt(b.get("currency"), 8) or "PLN").upper()
+        shop = _txt(b.get("shop"), 120) or shop_from_url(url)
+        c = _conn()
+        try:
+            n = c.execute("UPDATE shop_items SET url=?, shop=?, price=?, currency=?, price_at=?, updated_at=datetime('now') "
+                          "WHERE id=? AND deleted=0", (url, shop, price, cur_,
+                                                     _dt.datetime.now().strftime("%Y-%m-%d %H:%M"), iid)).rowcount
+            c.commit()
+        finally:
+            c.close()
+        if not n:
+            raise HTTPException(status_code=404, detail="brak pozycji")
+        return {"ok": True}
 
     @r.post("/snooze")
     async def zk_snooze(request: Request) -> Any:

@@ -14,7 +14,7 @@ Start: 2026-10-13. Zakładka „Zakupy” w Garażu (`/garaz.html#zakupy`): list
 ## Etapy
 1. [2026-10-13] Zakładka, okno z linkiem, priorytet, Kupione, propozycja dodania do Garażu.
 2. [2026-10-13] Zużycie i przypomnienia — ZROBIONE (opis niżej). UWAGA: suplementy — powiązać z modułem `qbot_supplements.py` (qbot_v2.supplement / supplement_log = rzeczywiste przyjęcia i dawki), zamiast liczyć z „dziennego zużycia” wpisanego ręcznie. Dla rzeczy spoza modułu suplementów (np. zatyczki) — opakowanie + zużycie dzienne.
-3. Najniższa cena.
+3. [2026-10-13] Najniższa cena — ZROBIONE (opis niżej).
 4. Gmail.
 
 ## Warstwy
@@ -59,3 +59,24 @@ Decyzja Michala: bez polsrodkow (odczyt z samego linku odrzucony) - przycisk w p
 - Sprawdzone: testy tests/test_gear_scrape_page.py (5); E2E Playwright na serwerze (odbior -> AI -> formularz: nazwa, marka,
   kategoria "Rower / wyposazenie", cena 129 PLN, zdjecie, link oferty). Klikniecie zakladki na prawdziwym Allegro - do potwierdzenia
   przez Michala (okno otwierane z JS bez klikniecia uzytkownika jest blokowane, wiec nie da sie tego zasymulowac).
+
+## Etap 3 — najniższa cena (2026-10-13)
+- Przycisk „Szukaj ceny” przy pozycji Do kupienia → `POST /api/zakupy/price-search` → w tle `scripts/zakupy_ceny_worker.py <id>`
+  (log: `/opt/qbot/artifacts/zakupy_ceny.log`, ok. 40–90 s). Strona odświeża się sama co 8 s, gdy coś szuka.
+- Logika: `qbot_zakupy_ceny.py`. Źródła równolegle:
+  1. AI z wyszukiwarką (Anthropic `web_search`, do 5 wyszukiwań, do 10 ofert; sklepy wysyłające do PL, ten sam wariant,
+     bez porównywarek). Cena AI NIE jest brana na wiarę: każdy link otwierany (przeglądarkowy User-Agent; przy blokadzie
+     albo braku ceny — prawdziwa przeglądarka) i cena czytana z danych strony (JSON-LD/meta/itemprop, bez AI).
+  2. Ceneo przez przeglądarkę (zwykłe pobranie dostaje stronę-zaporę): wyszukiwanie → pasujące produkty (bez reklam) →
+     oferty sklepów ze strony produktu (ceny Ceneo; link do produktu w Ceneo).
+  3. Link pozycji („Twój link”), też sprawdzany.
+- Zgodność produktu (`match_score`/`same_product`): EAN rozstrzyga, gdy jest; inaczej słowa nazwy. Liczba z nazwy pozycji
+  (126 ogniw, 90 kaps.) MUSI być na stronie; rdzeń nazwy (bez marki, jednostek, liczb) zgodny co najmniej w połowie;
+  łącznie ≥ 60%. Inaczej oferta odpada („inny produkt/wariant”).
+- Wynik: do 5 sprawdzonych ofert (najtańsza na sklep, sortowane w PLN; waluty obce po kursie NBP), do 3 „niesprawdzonych”
+  (sklep blokuje QBota — cena wg AI, wyraźnie oznaczona). Ceny bez kosztu dostawy. „wybierz” = ustaw ofertę jako link
+  i cenę pozycji (`/api/zakupy/use-offer`). Historia: najniższa cena z każdego przebiegu.
+- Dane: `shop_offers` (każdy przebieg), `shop_items.price_search_at/status/note`. Dzwonek: zdarzenie `zakupy:ceny:<id>:<czas>`
+  („Ceny: … — najtaniej X zł w …”), źródło w Ustawieniach: „Zakupy → Wynik szukania ceny”.
+- Koszt: jedno szukanie ≈ kilkadziesiąt groszy (wyszukiwania + tokeny AI); tylko na kliknięcie.
+- Testy: `tests/test_zakupy_ceny.py`.

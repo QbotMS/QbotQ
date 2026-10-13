@@ -395,10 +395,12 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] ODLOZONE (Michal 12.10.2026: wrocic kiedys): nagrody za passe = Garaz -> Plan zakupow (lista upatrzonych produktow: nazwa, link, cena, zdjecie; status zablokowane/okno zakupu/kupione). Prog odblokowania wg ceny: do 200 zl 🔥14 dni; 200-500 🔥30 + 📉2 tyg.; 500-1500 📉4 tyg. + 🕗14 dni; wyzej etap wagi. Okno zakupu 14 dni (do decyzji), linijka w wiadomosci 20:00, "nastepna nagroda" w Jedzenie -> Passa. Zakladki Plan zakupow w Garazu jeszcze NIE ma (sprawdzone 12.10). Bez nagrod jedzeniowych.
 
 ## [GARAZ-ZAKUPY] Zakupy w Garazu - etapy 2-4 (dodane 2026-10-13, dok. docs/ZAKUPY.md)
-- Etap 3: najnizsza cena (AI z wyszukiwarka + Ceneo, kazda oferta weryfikowana otwarciem strony, 3-5 ofert, na przycisk).
 - Etap 4: Gmail - auto Kupione z maili potwierdzenia zamowienia (wymaga dostepu do Gmaila na serwerze).
 
 # ZROBIONE
+
+## [GARAZ-ZAKUPY etap 3] Najnizsza cena [ZROBIONE 2026-10-13]
+- Szukaj ceny: AI web_search + Ceneo (przegladarka), kazda cena sprawdzona na stronie sklepu, zgodnosc wariantu, NBP, Dzwonek. qbot_zakupy_ceny.py, scripts/zakupy_ceny_worker.py. docs/ZAKUPY.md
 
 ## [GARAZ-ZAKUPY etap 2] Zapas + przypomnienia [ZROBIONE 2026-10-13]
 - Opakowanie + zuzycie (recznie albo z Zdrowie > Suplementy), Dzwonek live:zakupy, linia + przyciski w porannej wiadomosci (zk:r/zk:z), Kup ponownie / +7 dni. docs/ZAKUPY.md
