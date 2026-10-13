@@ -410,3 +410,50 @@ def report_pdf(facts: dict, ai: dict | None) -> bytes:
     buf = io.BytesIO()
     img.save(buf, "PDF", resolution=dpi, save_all=True, append_images=[img2] + pages)
     return buf.getvalue()
+
+
+# ---------------- laczna analiza (3 zdania) na gorze zakladki Serce (2026-10-13) ----------------
+
+V_SUM = 3
+PROMPT_SUM = (
+    "Jesteś lekarzem sportowym. Dostajesz policzone przez system dane serca i krążenia amatora-kolarza: ocenę reguł (ocena_qbot), "
+    "zestawienie ciśnienia z regeneracją (cisnienie_a_regeneracja), liczby (tętno spoczynkowe i przy mocy vs norma roku, seria ciśnienia, "
+    "ostatnie EKG z analizą uderzeń, sen, HRV nocne, saturacja nocna, talia, waga). Napisz DOKŁADNIE 3 krótkie zdania łącznej analizy (każde maks. 25 słów): "
+    "1) co jest najważniejsze teraz, 2) jak te dane się ze sobą łączą (czego nie widać, patrząc na każdą liczbę osobno), "
+    "3) jeden konkretny następny krok. Zasady: nie wyliczaj wszystkich liczb – użyj 2-4 kluczowych; oceny przepisuj z ocena_qbot, nie oceniaj sam; "
+    "nie licz nowych liczb; bez diagnozy i leków; tryb przypuszczający przy przyczynach; nie przesądzaj, czy czynniki są od siebie zależne. "
+    "Po polsku, zwykłym językiem. Zwróć WYŁĄCZNIE JSON: {\"zdania\": [\"...\", \"...\", \"...\"]}"
+)
+
+
+def summary_facts(data: dict) -> dict:
+    bp = data["bp"]["summary"] or {}
+    e = (data["ecg"]["last"] or {})
+    sl = data.get("sleep") or {}
+    return {
+        "dzis": data["today"],
+        "ocena_qbot": [p["text"] for p in data["points"]],
+        "cisnienie_a_regeneracja": [p["text"] for p in data.get("nexus") or []],
+        "tetno_spoczynkowe_ud_min": {k: data["rhr"].get(k) for k in ("recent", "norm", "delta")},
+        "tetno_przy_mocy_ud_min": {k: data["hrp"].get(k) for k in ("recent", "norm", "delta", "rides")},
+        "seria_cisnienia": {k: bp.get(k) for k in ("from", "to", "days", "sys", "dia", "morning", "evening", "label", "protocol_ok")} if bp else None,
+        "ekg_ostatnie": {"kiedy": e.get("local"), "wynik": e.get("label"), "analiza": e.get("an")} if e else None,
+        "sen": {k: sl.get(k) for k in ("sleep7_min", "sleep_norm_min", "hrv7", "hrv_median_year", "spo2_sleep_avg")},
+        "saturacja_nocna": {k: v for k, v in (sl.get("spo2") or {}).items() if k != "text"},
+        "cialo": data.get("body"),
+    }
+
+
+def summary_ai(data: dict, compute: bool = True) -> dict | None:
+    facts = summary_facts(data)
+    key = f"sum:v{V_SUM}:{_hash(facts)}"
+    got = _cache_get(key)
+    if got or not compute:
+        return got
+    j = _ai(PROMPT_SUM, facts)
+    z = [_words(x, 45) for x in (j.get("zdania") or []) if str(x).strip()][:3]
+    if not z:
+        raise ValueError("AI: brak zdan")
+    val = {"zdania": z, "at": datetime.now().strftime("%d.%m.%Y %H:%M")}
+    _cache_put(key, val)
+    return val

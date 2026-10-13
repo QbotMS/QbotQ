@@ -32,5 +32,16 @@ class Pomocnicze(unittest.TestCase):
         self.assertIn("nie oceniaj sam", A.PROMPT_REP)
 
 
+class Laczna(unittest.TestCase):
+    def test_fakty_bez_szeregow(self):
+        data = {"today": "2026-10-13", "points": [{"status": "bad", "text": "Ciśnienie 140/90"}], "nexus": [{"status": "warn", "text": "x"}],
+                "rhr": {"recent": 49, "norm": 46, "delta": 2.8, "series": [1] * 300}, "hrp": {"recent": 125, "norm": 124, "delta": 1, "rides": 10, "series": [1] * 300},
+                "bp": {"summary": None, "all": [1] * 50}, "ecg": {"last": None, "list": []}, "sleep": {"spo2": {"text": "t", "below90": 21}}, "body": {"waist_cm": 109}}
+        f = A.summary_facts(data)
+        self.assertNotIn("series", str(f))
+        self.assertEqual(f["saturacja_nocna"], {"below90": 21})
+        self.assertIn("DOKŁADNIE 3 zdania", A.PROMPT_SUM)
+
+
 if __name__ == "__main__":
     unittest.main()

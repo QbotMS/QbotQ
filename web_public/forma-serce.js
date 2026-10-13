@@ -92,7 +92,8 @@
     root.innerHTML =
       '<div class="card" style="border-left:5px solid ' + (bad ? "var(--bad)" : "var(--accent)") + '">' +
       '<div class="cardhead"><p class="lbl"><span class="tip" tabindex="0" data-tip="Porównanie ostatnich 28 dni z Twoją normą z roku (mediana dni 29–365 wstecz). Progi: tętno spoczynkowe +3 uwaga / +5 wyraźnie; tętno przy mocy +5 / +8. Ciśnienie oceniane dla pomiarów domowych (próg 135/85). To sygnały do obserwacji, nie diagnoza.">Serce — co mówią dane</span></p>' +
-      '<span class="sub">' + dd(d.today) + "</span></div>" + pts +
+      '<span class="sub">' + dd(d.today) + "</span></div>" +
+      '<div id="hz-sum" style="font-size:15px;line-height:1.55;margin:2px 0 10px"><span class="muted">Łączna analiza AI…</span></div>' + pts +
       (bad ? '<div style="font-size:13.5px;margin-top:8px;color:var(--ink2)">Coś odbiega od normy — pokaż lekarzowi serię ciśnienia i EKG.</div>' : "") +
       "</div>" +
       '<div class="s3grid">' + tiles + "</div>" +
@@ -144,6 +145,23 @@
       tr.addEventListener("click", function (ev) { if (ev.target.tagName === "A") return; drawEcg(tr.dataset.id); });
     });
     if (e.last && e.last.id) drawEcg(e.last.id);
+    loadSum();
+  }
+
+  /* laczna analiza AI (3 zdania) - zapamietana po stronie serwera; liczona tylko, gdy zmienily sie dane */
+  function showSum(a) {
+    var el = document.getElementById("hz-sum"); if (!el) return;
+    if (!a) { el.innerHTML = '<span class="muted">Łączna analiza AI niedostępna.</span>'; return; }
+    el.innerHTML = (a.zdania || []).map(function (z) { return esc(z); }).join(" ") +
+      ' <span class="muted" style="font-size:11.5px;white-space:nowrap">· AI na danych QBota, ' + esc(a.at || "") + ", nie diagnoza</span>";
+  }
+  function loadSum() {
+    fetch("/api/forma/heart/ai", {credentials: "same-origin"}).then(function (r) { return r.json(); }).then(function (j) {
+      if (j.ai) { showSum(j.ai); return; }
+      var el = document.getElementById("hz-sum"); if (el) el.innerHTML = '<span class="muted">Łączna analiza AI… kilka sekund</span>';
+      return fetch("/api/forma/heart/ai", {method: "POST", credentials: "same-origin"}).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (k) { showSum(k.ai); });
+    }).catch(function () { showSum(null); });
   }
 
   /* ---------- AI: kontekst do EKG (tylko gdy cos odstaje; liczone raz i pamietane) ---------- */

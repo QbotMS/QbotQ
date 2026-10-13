@@ -101,3 +101,7 @@ Zasada jak w Trendach: QBot liczy fakty, AI je opisuje; oceny (prawidlowe / podw
   Historia SpO2 w Garminie od 11.04.2026 (186 nocy zaladowanych; `import_garmin_heart --only spo2 --spo2-days N --spo2-skip M`).
 - Wszystkie wykresy Serca (tetno, cisnienie, SpO2, EKG): legendy Chart.js zastapione klikalnymi etykietami `tchip` jak w Trendach
   (opis po najechaniu, stan pamietany w localStorage `serce_on`, style wstrzykiwane, gdy strona ich nie ma).
+
+- Laczna analiza AI (2026-10-13): 3 krotkie zdania na gorze karty "Serce - co mowia dane" (najwazniejsze teraz / jak dane sie lacza /
+  nastepny krok). `qbot_heart_ai.summary_ai` na faktach `summary_facts` (oceny regul, cisnienie a regeneracja, liczby; bez szeregow),
+  pamiec `qbot_v2.heart_ai` klucz `sum:v<N>:<hash>` - nowe wywolanie tylko, gdy zmienia sie dane. `GET|POST /api/forma/heart/ai`.

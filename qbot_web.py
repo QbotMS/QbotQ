@@ -473,6 +473,21 @@ def api_forma_ecg_ai(request: Request, id: str = Query(...)):
         raise HTTPException(status_code=502, detail=f"AI niedostępne: {type(ex).__name__}")
 
 
+@app.api_route("/api/forma/heart/ai", methods=["GET", "POST"])
+def api_forma_heart_ai(request: Request):
+    """Serce: 3 zdania lacznej analizy AI (fakty QBota). GET = zapamietana (albo null), POST = policz (wlasciciel)."""
+    import qbot_heart as _heart
+    import qbot_heart_ai as _hai
+    data = _heart.build_heart_data(days=180)
+    post = request.method == "POST"
+    if post and not _owner_user(request):
+        raise HTTPException(status_code=403, detail="tylko odczyt (sesja demo)")
+    try:
+        return {"ai": _hai.summary_ai(data, compute=post)}
+    except Exception as ex:
+        raise HTTPException(status_code=502, detail=f"AI niedostępne: {type(ex).__name__}")
+
+
 @app.get("/api/forma/heart/report.pdf")
 def api_forma_heart_report(request: Request):
     """Raport dla lekarza po serii: podsumowanie (AI na faktach QBota) + tabele + strony EKG z serii. docs/SERCE.md"""
