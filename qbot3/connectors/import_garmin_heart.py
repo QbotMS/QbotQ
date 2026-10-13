@@ -194,6 +194,27 @@ def _ecg_details(g, conn) -> None:
     conn.commit()
 
 
+# ---------------------------------------------------------------- SpO2 nocne
+
+def import_spo2(g, conn, days: int = 3) -> int:
+    """Srednia i najnizsza saturacja nocy (Garmin get_spo2_data) -> qbot_v2.spo2_daily."""
+    n = 0
+    for k in range(days):
+        d = date.today() - timedelta(days=k)
+        j = g.get_spo2_data(d.isoformat()) or {}
+        if j.get("averageSpO2") is None and j.get("lowestSpO2") is None:
+            continue
+        keep = {kk: v for kk, v in j.items() if not isinstance(v, (list, dict))}
+        with conn.cursor() as cur:
+            cur.execute("""INSERT INTO qbot_v2.spo2_daily (day, avg_spo2, sleep_avg_spo2, lowest_spo2, raw_json)
+                           VALUES (%s,%s,%s,%s,%s::jsonb) ON CONFLICT (day) DO UPDATE SET avg_spo2=EXCLUDED.avg_spo2,
+                           sleep_avg_spo2=EXCLUDED.sleep_avg_spo2, lowest_spo2=EXCLUDED.lowest_spo2, raw_json=EXCLUDED.raw_json, imported_at=now()""",
+                        (d, j.get("averageSpO2"), j.get("avgSleepSpO2"), j.get("lowestSpO2"), json.dumps(keep, default=str)))
+        n += 1
+    conn.commit()
+    return n
+
+
 # ---------------------------------------------------------------- tetno przy mocy
 
 def compute_hr_at_power(conn, recompute: bool = False) -> int:
@@ -234,14 +255,15 @@ def compute_hr_at_power(conn, recompute: bool = False) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Serce: cisnienie + EKG z Garmina, tetno przy mocy")
     ap.add_argument("--days", type=int, default=30, help="ile dni cisnienia wstecz")
-    ap.add_argument("--only", choices=["bp", "ecg", "hrp"])
+    ap.add_argument("--only", choices=["bp", "ecg", "hrp", "spo2"])
+    ap.add_argument("--spo2-days", type=int, default=3)
     ap.add_argument("--recompute-hrp", action="store_true")
     args = ap.parse_args()
 
     fails = 0
     conn = _db()
     g = None
-    if args.only in (None, "bp", "ecg"):
+    if args.only in (None, "bp", "ecg", "spo2"):
         try:
             from garmin_auth import garmin_client
             g = garmin_client()
@@ -264,6 +286,14 @@ def main() -> int:
             conn.rollback()
             fails += 1
             log(f"EKG BLAD: {type(exc).__name__}: {str(exc)[:200]}")
+
+    if g is not None and args.only in (None, "spo2"):
+        try:
+            log(f"SpO2: {import_spo2(g, conn, args.spo2_days)} nocy")
+        except Exception as exc:
+            conn.rollback()
+            fails += 1
+            log(f"SpO2 BLAD: {type(exc).__name__}: {str(exc)[:200]}")
 
     if args.only in (None, "hrp"):
         try:

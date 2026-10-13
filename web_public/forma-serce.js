@@ -19,6 +19,25 @@
       '<div class="x">' + x + '</div>' + (n ? '<div class="n">' + n + "</div>" : "") + "</div>";
   }
 
+  /* 2026-10-13: cisnienie a regeneracja (reguly qbot_heart.nexus) + cialo i sen */
+  function nexusCard(d) {
+    var nx = d.nexus || [], b = d.body || {}, sl = d.sleep || {}, sp = sl.spo2 || null;
+    var t = "";
+    t += tile(b.whtr == null ? "info" : (b.waist_cm >= 102 || b.whtr >= 0.6 ? "bad" : (b.waist_cm >= 94 || b.whtr >= 0.5 ? "warn" : "good")),
+      "Talia", b.waist_cm == null ? "—" : num(b.waist_cm) + " <small>cm</small>",
+      "talia/wzrost " + (b.whtr == null ? "—" : num(b.whtr, 2)) + " · próg 0,5", b.waist_date ? dd(b.waist_date) : "");
+    t += tile(b.bmi == null ? "info" : (b.bmi >= 25 ? "warn" : "good"), "Waga", b.weight_kg == null ? "—" : num(b.weight_kg, 1) + " <small>kg</small>",
+      "BMI " + (b.bmi == null ? "—" : num(b.bmi, 1)) + (b.weight_28d_start ? " · 28 dni temu " + num(b.weight_28d_start, 1) : ""), "wzrost " + (b.height_cm ? num(b.height_cm) + " cm" : "—"));
+    t += tile("info", "Sen (7 dni)", sl.sleep7_min == null ? "—" : Math.floor(sl.sleep7_min / 60) + " h " + String(sl.sleep7_min % 60).padStart(2, "0") + " min",
+      "wcześniej " + (sl.sleep_norm_min == null ? "—" : Math.floor(sl.sleep_norm_min / 60) + " h " + String(sl.sleep_norm_min % 60).padStart(2, "0")),
+      "HRV nocne " + (sl.hrv7 == null ? "—" : num(sl.hrv7)) + " ms (rok " + (sl.hrv_median_year == null ? "—" : num(sl.hrv_median_year)) + ")");
+    t += tile(sp ? sp.status : "info", "Saturacja w nocy", sp ? num(sp.avg_low) + "% <small>najniższa</small>" : "—",
+      sp ? "poniżej 90%: " + sp.below90 + " z " + sp.nights + " nocy · min. " + num(sp.min_low) + "%" : "brak danych", "średnio we śnie " + (sl.spo2_sleep_avg == null ? "—" : num(sl.spo2_sleep_avg, 1)) + "%");
+    var rows = nx.map(function (p) { return '<div class="s3row ' + p.status + '"><span class="i">' + ICON[p.status] + "</span><span>" + esc(p.text) + "</span></div>"; }).join("");
+    return '<div class="card"><div class="cardhead"><p class="lbl"><span class="tip" tabindex="0" data-tip="Zestawienie ciśnienia z regeneracją (tętno spoczynkowe vs norma roku, HRV nocne 7 dni vs mediana roku, sen 7 dni vs wcześniej), różnica rano/wieczór, wcześniejsze pomiary i — od 5 dni serii — związek porannego ciśnienia ze snem, HRV i treningiem dnia przed. Reguły QBota, bez AI.">Ciśnienie a regeneracja</span></p></div>' +
+      (rows || '<div class="muted">Za mało danych – potrzebna seria ciśnienia.</div>') + '<div class="s3grid" style="margin-top:10px">' + t + "</div></div>";
+  }
+
   function render() {
     var d = DATA, r = d.rhr, h = d.hrp, bp = d.bp.summary, e = d.ecg;
     var pts = d.points.map(function (p) {
@@ -77,6 +96,7 @@
       (bad ? '<div style="font-size:13.5px;margin-top:8px;color:var(--ink2)">Coś odbiega od normy — pokaż lekarzowi serię ciśnienia i EKG.</div>' : "") +
       "</div>" +
       '<div class="s3grid">' + tiles + "</div>" +
+      nexusCard(d) +
       '<div class="card tight"><div class="cardhead"><p class="lbl"><span class="tip" tabindex="0" data-tip="Linia: tętno spoczynkowe z zegarka (dzień po dniu). Kropki: średnie tętno w jeździe przy mocy 140–180 W (od 15. do 120. minuty, min. 5 min w paśmie) — prawa oś. Przerywane linie: Twoja norma z roku.">Tętno spoczynkowe i tętno przy mocy</span></p>' +
       '<div class="seg" id="hz-rng"><button data-r="90">90 dni</button><button data-r="180" class="on">180 dni</button><button data-r="365">rok</button></div></div>' +
       '<div style="position:relative;width:100%;height:240px"><canvas id="hz-canvas"></canvas></div>' +

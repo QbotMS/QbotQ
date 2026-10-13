@@ -80,3 +80,16 @@ Zasada jak w Trendach: QBot liczy fakty, AI je opisuje; oceny (prawidlowe / podw
   Przycisk "Raport dla lekarza (PDF)" w karcie Cisnienie + licznik serii (dni z 7, rano/wieczor).
 - Pamiec: qbot_v2.heart_ai (sql/heart_v3.sql), klucz z hashem faktow (te same dane = bez ponownego wywolania AI).
   Model: qbot_food_log._ai_json (cfg.ANTHROPIC_MODEL, temperature 0). Bez Telegrama. Testy: tests/test_heart_ai.py.
+
+
+## Cisnienie a regeneracja, cialo, sen/SpO2 (2026-10-13)
+- `qbot_heart.nexus` (reguly): cisnienie serii vs regeneracja (tetno spocz. delta >= 3, HRV nocne 7 dni < 90% mediany roku, sen 7 dni
+  krotszy o > 45 min) -> "stala cecha" albo "czesc moze byc chwilowa"; roznica rano/wieczor >= 15 mmHg skurczowego; wczesniejsze
+  pomiary powyzej progu; od 5 dni serii korelacja porannego cisnienia ze snem, HRV i TSS dnia przed (|r| >= 0,6, ostroznie).
+- `extras`: wzrost (athlete_profile), waga (body_measurements; tkanka tluszczowa z wagi pominieta - skacze 22/32%), BMI, talia i
+  biodra (body_circumference), talia/wzrost (progi 0,5 / 0,6; talia 94 / 102 cm), sen 7 dni vs wczesniej, HRV nocne vs mediana roku,
+  SpO2 nocne: `qbot_v2.spo2_daily` (sql/heart_v4.sql; Garmin get_spo2_data: srednia, srednia we snie, NAJNIZSZA; import w
+  import_garmin_heart --only spo2, codziennie 3 noce, backfill 30 nocy 13.10). Prog: najnizsza < 90% w >= 30% nocy -> zapytac o bezdech.
+- Strona: karta "Cisnienie a regeneracja" (punkty + kafle: talia, waga/BMI, sen, saturacja). Raport PDF: strona 2 (regeneracja,
+  cialo, sen i saturacja, pytania, pola do uzupelnienia: badania krwi i moczu, palenie, alkohol, kawa, rodzina, chrapanie, objawy).
+- VO2max: Garmin get_max_metrics zwraca pusta liste (13.10) - nie dodane.

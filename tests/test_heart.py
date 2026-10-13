@@ -60,6 +60,37 @@ class Ecg(unittest.TestCase):
         self.assertIn("NOWY_KOD", h.ecg_label("NOWY_KOD"))
 
 
+class Regeneracja(unittest.TestCase):
+    BP = {"from": "2026-10-12", "to": "2026-10-18", "sys": 140, "dia": 90,
+          "morning": {"n": 6, "sys": 126, "dia": 84}, "evening": {"n": 6, "sys": 156, "dia": 95}}
+
+    def test_wysokie_przy_dobrej_regeneracji(self):
+        out = h.nexus(self.BP, [], {"delta": 1.0}, 78, 78, 410, 415, {})
+        self.assertIn("stała cecha", out[0]["text"])
+        self.assertTrue(any("Wieczorem średnio o 30/11" in p["text"] for p in out))
+
+    def test_wysokie_przy_zmeczeniu(self):
+        out = h.nexus(self.BP, [], {"delta": 4.0}, 60, 78, 330, 415, {})
+        self.assertIn("słabszej regeneracji", out[0]["text"])
+        self.assertIn("tętno spoczynkowe +4", out[0]["text"])
+
+    def test_dzien_po_dniu(self):
+        from datetime import date
+        daily = {date(2026, 10, 10 + k): {"bp_sys_rano": 120 + 3 * k, "sleep_min": 480 - 20 * k, "hrv": 80, "tss_dzien_przed": 50}
+                 for k in range(6)}
+        out = h.nexus(self.BP, [], {"delta": 0}, 78, 78, 410, 415, daily)
+        self.assertTrue(any("długość snu" in p["text"] for p in out))
+
+    def test_cialo_i_spo2(self):
+        b = h.body_status(109, 0.62, 33.9)
+        self.assertEqual(b[0]["status"], "bad")
+        self.assertIn("talia/wzrost 0,62", b[0]["text"])
+        sp = h.spo2_status([88] * 20 + [93] * 10)
+        self.assertEqual(sp["status"], "warn")
+        self.assertEqual(sp["below90"], 20)
+        self.assertIsNone(h.spo2_status([95] * 3))
+
+
 class Registry(unittest.TestCase):
     def test_narzedzie_i_prompt(self):
         src = open("/opt/qbot/app/qbot3/tool_registry.py", encoding="utf-8").read()

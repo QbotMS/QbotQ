@@ -20,7 +20,7 @@ from typing import Any
 sys.path.insert(0, "/opt/qbot/app")
 os.environ.setdefault("QBOT3_ENABLED", "1")
 
-V_ECG, V_REP = 1, 1
+V_ECG, V_REP = 1, 2
 
 PROMPT_ECG = (
     "Jesteś lekarzem sportowym. Dostajesz policzone przez system dane jednego 30-sekundowego EKG z zegarka (jedno odprowadzenie) "
@@ -35,7 +35,7 @@ PROMPT_ECG = (
 PROMPT_REP = (
     "Przygotowujesz stronę dla lekarza (internisty/kardiologa) z domowych pomiarów pacjenta: 7-dniowa seria ciśnienia "
     "(rano i wieczorem, po 2 pomiary), nagrania EKG z zegarka (jedno odprowadzenie, 30 s, analiza uderzeń systemu), tętno spoczynkowe "
-    "i HRV z zegarka na tle normy osobistej z roku, objętość treningu (pacjent jeździ amatorsko na rowerze). Wszystko jest już policzone – "
+    "i HRV z zegarka na tle normy osobistej z roku, sen i saturacja nocna (z nadgarstka), obwód talii, waga, BMI, zestawienie ciśnienia z regeneracją (cisnienie_a_regeneracja) i objętość treningu (pacjent jeździ amatorsko na rowerze). Wszystko jest już policzone – "
     "nie licz nowych liczb i nie wymyślaj danych. Oceny (w normie / podwyższone) przepisuj z pola ocena_qbot, nie oceniaj sam; jednostki z nazw pól. Zasady: rzeczowo, bez diagnozy i bez zaleceń leczenia; podawaj kluczowe liczby; "
     "zaznacz ograniczenia (zegarek, jedno odprowadzenie, niepełna seria). 'podsumowanie' = 4-6 zdań (maks. 110 słów); "
     "'pytania' = 2-4 krótkie pytania, które pacjent może zadać lekarzowi; 'uwagi_pomiarow' = maks. 1 zdanie o jakości/kompletności serii. "
@@ -215,6 +215,11 @@ def series_facts(today: date | None = None) -> dict:
         "tetno_przy_mocy_140_180W_ud_min": {"srednia_28_dni": data["hrp"].get("recent"), "norma_roku": data["hrp"].get("norm"),
                                             "roznica": data["hrp"].get("delta"), "jazd": data["hrp"].get("rides")},
         "ocena_qbot": [p["text"] for p in data["points"]],
+        "cisnienie_a_regeneracja": [p["text"] for p in data.get("nexus") or []],
+        "cialo": data.get("body"),
+        "sen_i_saturacja": {k: v for k, v in (data.get("sleep") or {}).items() if k != "spo2"} | {"spo2": {k: v for k, v in ((data.get("sleep") or {}).get("spo2") or {}).items() if k != "text"}},
+        "_nexus": data.get("nexus") or [],
+        "_body_points": data.get("body_points") or [],
         "hrv_noc": {"sr_28d": round(sum(h28) / len(h28), 1) if h28 else None, "mediana_roku": hn[len(hn) // 2] if hn else None},
         "waga": {"start_28d": wts[0][1] if wts else None, "koniec": wts[-1][1] if wts else None},
         "trening_h_tydzien": weeks,
@@ -226,7 +231,7 @@ def report_ai(facts: dict, compute: bool = True) -> dict | None:
     got = _cache_get(key)
     if got or not compute:
         return got
-    j = _ai(PROMPT_REP, facts)
+    j = _ai(PROMPT_REP, {k: v for k, v in facts.items() if not k.startswith("_")})
     val = {"podsumowanie": _words(j.get("podsumowanie"), 130), "pytania": [_words(q, 25) for q in (j.get("pytania") or [])][:4],
            "uwagi_pomiarow": _words(j.get("uwagi_pomiarow"), 30), "at": datetime.now().strftime("%d.%m.%Y %H:%M")}
     _cache_put(key, val)
@@ -326,12 +331,62 @@ def report_pdf(facts: dict, ai: dict | None) -> bytes:
     if wk:
         rline("Trening (h/tydz.): " + ", ".join(f"{_d(w['tydzien_od'])[:5]}: {w['h']:.1f}".replace(".", ",") for w in wk), f_s)
     y = max(y, yl) + 10
+    para("Ciąg dalej: ciśnienie a regeneracja, ciało, sen i saturacja, pytania, badania do uzupełnienia – strona 2.", f_s, (90, 90, 90))
+
+    # ---------- strona 2 ----------
+    img2 = Image.new("RGB", (W, Hh), "white")
+    dr = ImageDraw.Draw(img2)
+    y = int(12 * mm)
+    dr.text((L, y), "Domowe pomiary – ciąg dalszy", fill="black", font=f_h); y += 46
+    mark = {"good": "+", "warn": "!", "bad": "!!", "info": "-"}
+    def block(title, items):
+        nonlocal y
+        if not items:
+            return
+        dr.text((L, y), title, fill="black", font=f_b); y += 28
+        for it in items:
+            col = (180, 0, 0) if it["status"] in ("warn", "bad") else (30, 30, 30)
+            for k, ln in enumerate(Q.wrap(dr, f"{mark.get(it['status'], '-')} {it['text']}", f_t, R - L)):
+                dr.text((L, y), ln, fill=col, font=f_t); y += 22
+            y += 2
+        y += 8
+    block("Ciśnienie a regeneracja (reguły QBota)", facts.get("_nexus") or [])
+    bd = facts.get("cialo") or {}
+    body_line = []
+    if bd.get("height_cm"):
+        body_line.append(f"wzrost {bd['height_cm']:.0f} cm")
+    if bd.get("weight_kg"):
+        body_line.append(f"waga {bd['weight_kg']:.1f} kg".replace(".", ",") + (f" (28 dni temu {bd['weight_28d_start']:.1f})".replace(".", ",") if bd.get("weight_28d_start") else ""))
+    if bd.get("bmi"):
+        body_line.append(f"BMI {bd['bmi']:.1f}".replace(".", ","))
+    if bd.get("waist_cm"):
+        body_line.append(f"talia {bd['waist_cm']:.0f} cm, biodra {bd.get('hips_cm') or '—'} cm ({_d(bd.get('waist_date'))}), talia/wzrost {bd.get('whtr')}".replace(".", ","))
+    if body_line:
+        dr.text((L, y), "Ciało", fill="black", font=f_b); y += 28
+        para(" · ".join(body_line))
+        y += 4
+    block("", [])
+    pts = facts.get("_body_points") or []
+    if pts:
+        block("Ocena ciała i snu (reguły QBota)", pts)
+    sl = facts.get("sen_i_saturacja") or {}
+    if sl.get("sleep7_min"):
+        para(f"Sen: średnio {sl['sleep7_min'] // 60} h {sl['sleep7_min'] % 60:02d} min z 7 dni (wcześniej {sl.get('sleep_norm_min') or '—'} min) · "
+             f"HRV nocne 7 dni {sl.get('hrv7')} ms (mediana roku {sl.get('hrv_median_year')}) · SpO2 we śnie średnio {sl.get('spo2_sleep_avg')}%"
+             + (f", najniższa średnio {sl['spo2'].get('avg_low')}%, min. {sl['spo2'].get('min_low')}%, < 90% w {sl['spo2'].get('below90')} z {sl['spo2'].get('nights')} nocy" if (sl.get('spo2') or {}).get('nights') else ""), f_s)
+        y += 8
     if ai and ai.get("pytania"):
         dr.text((L, y), "Pytania do lekarza", fill="black", font=f_b); y += 28
         for q in ai["pytania"]:
             para("• " + q)
+        y += 6
+    dr.text((L, y), "Do uzupełnienia", fill="black", font=f_b); y += 28
+    for ln in ("Badania krwi (data): lipidogram ________  glukoza / HbA1c ________  kreatynina, eGFR ________  sód, potas ________  TSH ________",
+               "Mocz: albumina / kreatynina ________     Palenie: ____   Alkohol (ile/tydz.): ____   Kawa (ile/dzień, do której): ____",
+               "Choroby serca/ciśnienia w rodzinie: ______________________   Chrapanie, przerwy w oddychaniu, senność w dzień: ____________",
+               "Objawy (kołatanie, zawroty, ból w klatce, duszność): _______________________________________________________________"):
+        dr.text((L, y), ln, fill="black", font=f_t); y += 30
     y += 6
-    para("Objawy (kołatanie, zawroty, ból w klatce, duszność): _____________________________________________", f_t)
     para("Źródła: ciśnieniomierz Withings, zegarek Garmin (EKG: aplikacja Garmin; uderzenia, HRV i nieregularności – analiza QBot, orientacyjna). "
          "Podsumowanie napisane przez AI na podstawie policzonych danych; nie jest diagnozą.", f_s, (90, 90, 90))
 
@@ -353,5 +408,5 @@ def report_pdf(facts: dict, ai: dict | None) -> bytes:
         if rec and rec.get("samples"):
             pages.append(Q.page_image(rec))
     buf = io.BytesIO()
-    img.save(buf, "PDF", resolution=dpi, save_all=True, append_images=pages)
+    img.save(buf, "PDF", resolution=dpi, save_all=True, append_images=[img2] + pages)
     return buf.getvalue()

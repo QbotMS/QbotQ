@@ -185,7 +185,8 @@ def build_heart_data(days: int = 180, today: date | None = None) -> dict[str, An
                                        "dia": r["dia"], "pulse": r["pulse"]} for r in bp_rows]},
         "ecg": {"list": ecg, "last": last_ecg, "fresh": ecg_fresh},
     }
-    data["points"] = verdict_points(data)
+    data.update(extras(data, today))
+    data["points"] = verdict_points(data) + data["body_points"]
     data["analysis"] = analysis_text(data)
     return data
 
@@ -295,3 +296,151 @@ def _ecg_ctx(d: dict) -> dict:
     finally:
         conn.close()
     return {"others": others, "bp": bp}
+
+
+# ---------------- cialo, sen, cisnienie a regeneracja (2026-10-13) ----------------
+
+def _mean(a):
+    a = [x for x in a if x is not None]
+    return sum(a) / len(a) if a else None
+
+
+def _pearson(xs, ys):
+    p = [(x, y) for x, y in zip(xs, ys) if x is not None and y is not None]
+    n = len(p)
+    if n < 5:
+        return None, n
+    mx, my = sum(x for x, _ in p) / n, sum(y for _, y in p) / n
+    sxy = sum((x - mx) * (y - my) for x, y in p)
+    sx, sy = sum((x - mx) ** 2 for x, _ in p), sum((y - my) ** 2 for _, y in p)
+    return (sxy / (sx * sy) ** 0.5 if sx and sy else None), n
+
+
+def body_status(waist, whtr, bmi) -> list[dict]:
+    """Progi: talia u mezczyzn >= 94 podwyzszone, >= 102 duze ryzyko; talia/wzrost >= 0,5 / >= 0,6; BMI >= 25 / >= 30."""
+    out = []
+    if waist is not None and whtr is not None:
+        st = "bad" if waist >= 102 or whtr >= 0.6 else "warn" if waist >= 94 or whtr >= 0.5 else "good"
+        out.append({"status": st, "text": f"Talia {waist:.0f} cm, talia/wzrost {whtr:.2f}".replace(".", ",") +
+                    (" – tłuszcz brzuszny to jeden z najsilniejszych czynników ciśnienia; każdy centymetr mniej działa na plus." if st != "good" else " – w normie.")})
+    if bmi is not None:
+        st = "warn" if bmi >= 25 else "good"
+        out.append({"status": "info" if st == "good" else st, "text": f"BMI {bmi:.1f}".replace(".", ",") + (" (przy dużej masie mięśni u kolarza BMI zawyża – ważniejsza talia)." if bmi >= 25 else ".")})
+    return out
+
+
+def spo2_status(lows: list[float]) -> dict | None:
+    lows = [x for x in lows if x is not None]
+    if len(lows) < 7:
+        return None
+    b90 = sum(1 for x in lows if x < 90)
+    share = b90 / len(lows)
+    st = "warn" if share >= 0.3 else "good"
+    txt = (f"Saturacja w nocy: najniższa średnio {_mean(lows):.0f}%, poniżej 90% w {b90} z {len(lows)} nocy" +
+           (" – częste spadki to sygnał, by zapytać lekarza o bezdech senny (częsta przyczyna nadciśnienia). Pomiar z nadgarstka bywa zaniżony przez ułożenie ręki, więc to podpowiedź, nie diagnoza."
+            if st == "warn" else " – bez częstych spadków."))
+    return {"status": st, "text": txt, "below90": b90, "nights": len(lows), "avg_low": round(_mean(lows), 1), "min_low": min(lows)}
+
+
+def nexus(bp: dict | None, bp_rows: list[dict], rhr: dict, hrv7: float | None, hrv_med: float | None,
+          sleep7: float | None, sleep_norm: float | None, daily: dict) -> list[dict]:
+    """Cisnienie a regeneracja (reguly). daily: {dzien: {'bp_sys_rano', 'sleep_min', 'hrv', 'tss_dzien_przed'}}."""
+    out = []
+    tired = []
+    if rhr.get("delta") is not None and rhr["delta"] >= 3:
+        tired.append(f"tętno spoczynkowe +{rhr['delta']:.0f}".replace(".", ","))
+    if hrv7 is not None and hrv_med and hrv7 < 0.9 * hrv_med:
+        tired.append(f"HRV nocne {hrv7:.0f} ms vs zwykle {hrv_med:.0f}")
+    if sleep7 is not None and sleep_norm and sleep7 < sleep_norm - 45:
+        tired.append(f"sen krótszy o {sleep_norm - sleep7:.0f} min")
+    high = bool(bp) and (bp["sys"] >= 135 or bp["dia"] >= 85)
+    if bp:
+        if high and not tired:
+            out.append({"status": "warn", "text": "Ciśnienie podwyższone, a regeneracja w normie (tętno spoczynkowe, HRV, sen) – to raczej nie efekt zmęczenia czy stresu, "
+                                                   "tylko stała cecha (np. waga, sól, geny). Właśnie to warto pokazać lekarzowi."})
+        elif high and tired:
+            out.append({"status": "warn", "text": "Ciśnienie podwyższone przy słabszej regeneracji (" + ", ".join(tired) + "). Część może być chwilowa – "
+                                                   "powtórz pomiary po kilku spokojnych dniach, zanim wyciągniesz wnioski."})
+        elif tired:
+            out.append({"status": "info", "text": "Ciśnienie w normie, ale regeneracja słabsza (" + ", ".join(tired) + ") – to zmęczenie lub infekcja, nie ciśnienie."})
+        m, e = bp.get("morning") or {}, bp.get("evening") or {}
+        if m.get("n", 0) >= 2 and e.get("n", 0) >= 2 and m.get("sys") and e.get("sys"):
+            ds, dd_ = e["sys"] - m["sys"], e["dia"] - m["dia"]
+            if ds >= 15:
+                out.append({"status": "warn", "text": f"Wieczorem średnio o {ds}/{dd_} mmHg wyżej niż rano. Tak duża różnica często wynika z warunków pomiaru: "
+                                                       "kawa, posiłek, wysiłek, stres, za krótki odpoczynek. Mierz wieczorem min. 4–5 h po kawie, 2 h po treningu, 1 h po jedzeniu; "
+                                                       "jeśli różnica zostanie – to ważne dla lekarza."})
+            elif ds <= -15:
+                out.append({"status": "warn", "text": f"Rano średnio o {-ds}/{-dd_} mmHg wyżej niż wieczorem – poranny wzrost ciśnienia; pokaż to lekarzowi."})
+    old = [r for r in bp_rows if bp and r["local"][:10] < bp["from"]]
+    if old:
+        n_hi = sum(1 for r in old if r["sys"] >= 135 or r["dia"] >= 85)
+        if n_hi:
+            yrs = old[0]["local"][:4] if old[0]["local"][:4] == old[-1]["local"][:4] else f"{old[0]['local'][:4]}–{old[-1]['local'][:4]}"
+            out.append({"status": "info", "text": f"Wcześniejsze pomiary ({yrs}): {n_hi} z {len(old)} powyżej progu – podwyższenie nie jest nowe."})
+    # dzien po dniu (od 5 dni z porannym pomiarem)
+    days = sorted(k for k, v in daily.items() if v.get("bp_sys_rano") is not None)
+    if len(days) >= 5:
+        ys = [daily[k]["bp_sys_rano"] for k in days]
+        found = []
+        for key, nm, unit in (("sleep_min", "długość snu", "min"), ("hrv", "HRV nocne", "ms"), ("tss_dzien_przed", "obciążenie dnia przed", "TSS")):
+            r, n = _pearson([daily[k].get(key) for k in days], ys)
+            if r is not None and abs(r) >= 0.6:
+                found.append(f"{nm} (r = {r:.2f}, {n} dni)".replace(".", ","))
+        out.append({"status": "info", "text": ("Dzień po dniu: poranne ciśnienie szło w parze z: " + "; ".join(found) + " – mało danych, traktuj jako wskazówkę."
+                                               if found else f"Dzień po dniu ({len(days)} dni): brak wyraźnego związku porannego ciśnienia ze snem, HRV ani treningiem dnia przed.")})
+    return out
+
+
+def extras(data: dict, today: date) -> dict:
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT height_cm FROM qbot_v2.athlete_profile ORDER BY id LIMIT 1")
+        r = cur.fetchone(); height = float(r[0]) if r and r[0] else None
+        cur.execute("SELECT date, avg(weight_kg) FROM qbot_v2.body_measurements WHERE weight_kg IS NOT NULL AND date >= %s GROUP BY date ORDER BY date",
+                    (today - timedelta(days=60),))   # waga z wagi Withings (przez Garmina)
+        wts = [(d, float(w)) for d, w in cur.fetchall()]
+        cur.execute("SELECT date, waist_cm, hips_cm FROM qbot_v2.body_circumference WHERE waist_cm IS NOT NULL ORDER BY date DESC LIMIT 1")
+        wc = cur.fetchone()
+        cur.execute("""SELECT date, max(sleep_duration_min), max(sleep_score), max(hrv_ms) FROM qbot_v2.qbot_wellness_daily
+                       WHERE date BETWEEN %s AND %s GROUP BY date ORDER BY date""", (today - timedelta(days=365), today))
+        well = {d: (sm, ss, hv) for d, sm, ss, hv in cur.fetchall()}
+        cur.execute("SELECT day, lowest_spo2, sleep_avg_spo2 FROM qbot_v2.spo2_daily WHERE day > %s ORDER BY day", (today - timedelta(days=30),))
+        sp = cur.fetchall()
+        cur.execute("SELECT date, sum(tss) FROM qbot_v2.training_sessions WHERE date >= %s GROUP BY date", (today - timedelta(days=40),))
+        tss = {d: float(t) for d, t in cur.fetchall() if t is not None}
+    finally:
+        conn.close()
+    weight = wts[-1][1] if wts else None
+    w28 = [w for d, w in wts if d > today - timedelta(days=28)]
+    bmi = round(weight / (height / 100) ** 2, 1) if weight and height else None
+    waist = float(wc[1]) if wc else None
+    whtr = round(waist / height, 2) if waist and height else None
+    body = {"height_cm": height, "weight_kg": weight, "weight_28d_start": w28[0] if w28 else None, "bmi": bmi,
+            "waist_cm": waist, "hips_cm": float(wc[2]) if wc and wc[2] else None, "waist_date": wc[0].isoformat() if wc else None, "whtr": whtr}
+    d7 = [well[d][0] for d in well if d > today - timedelta(days=7) and well[d][0]]
+    d28 = [well[d][0] for d in well if today - timedelta(days=35) < d <= today - timedelta(days=7) and well[d][0]]
+    hrv7 = _mean([float(well[d][2]) for d in well if d > today - timedelta(days=7) and well[d][2]])
+    hv_all = sorted(float(well[d][2]) for d in well if d <= today - timedelta(days=28) and well[d][2])
+    hrv_med = hv_all[len(hv_all) // 2] if hv_all else None
+    sp_st = spo2_status([float(x[1]) for x in sp if x[1] is not None])
+    sleep = {"sleep7_min": round(_mean(d7)) if d7 else None, "sleep_norm_min": round(_mean(d28)) if d28 else None,
+             "hrv7": round(hrv7, 1) if hrv7 else None, "hrv_median_year": hrv_med,
+             "spo2": sp_st, "spo2_sleep_avg": round(_mean([float(x[2]) for x in sp if x[2] is not None]) or 0, 1) if sp else None}
+    # dzien po dniu dla serii
+    bp = data["bp"]["summary"]
+    daily: dict = {}
+    for m in data["bp"]["all"]:
+        if bp and m["local"][:10] >= bp["from"] and int(m["local"][11:13]) < 12:
+            d0 = date.fromisoformat(m["local"][:10])
+            daily.setdefault(d0, {"_s": []})["_s"].append(m["sys"])
+    for d0, v in daily.items():
+        v["bp_sys_rano"] = _mean(v.pop("_s"))
+        w = well.get(d0)
+        v["sleep_min"] = float(w[0]) if w and w[0] else None
+        v["hrv"] = float(w[2]) if w and w[2] else None
+        v["tss_dzien_przed"] = tss.get(d0 - timedelta(days=1), 0.0)
+    nx = nexus(bp, data["bp"]["all"], data["rhr"], sleep["hrv7"], hrv_med, sleep["sleep7_min"], sleep["sleep_norm_min"], daily)
+    bpts = body_status(waist, whtr, bmi) + ([{"status": sp_st["status"], "text": sp_st["text"]}] if sp_st else [])
+    return {"body": body, "sleep": sleep, "nexus": nx, "body_points": bpts}
