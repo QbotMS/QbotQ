@@ -7594,6 +7594,28 @@ async def garage_scrape(request: Request):
         raise HTTPException(status_code=502, detail="Nie udalo sie pobrac strony: %s" % e)
 
 
+@app.post("/api/garage/scrape-page")
+async def garage_scrape_page(request: Request):
+    """Dane strony przyslane z przegladarki uzytkownika (przycisk "Dodaj do QBota", qbot-dodaj.html) - dla sklepow
+    blokujacych serwer (Allegro 403). Ten sam potok co /api/garage/scrape. Nic nie zapisuje. docs/ZAKUPY.md"""
+    if not _owner_user(request):
+        raise HTTPException(status_code=403, detail="zaloguj się do QBota w tej przeglądarce")
+    try:
+        bd = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    page = bd.get("page") or {}
+    if not isinstance(page, dict):
+        raise HTTPException(status_code=400, detail="brak danych strony")
+    cats_in = bd.get("categories")
+    cats = [str(x)[:60] for x in cats_in][:40] if isinstance(cats_in, list) and cats_in else RIDE_GEAR_SLOTS
+    import qbot_gear_scrape as _scr
+    try:
+        return _scr.scrape_page(page, categories=cats)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.post("/api/garage/photo/from-url")
 async def garage_photo_from_url(request: Request):
     """Pobiera zdjecie z podanego URL i zapisuje jako foto+miniature rzeczy."""

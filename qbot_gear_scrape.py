@@ -181,7 +181,10 @@ def parse_structured(html, base_url):
         if isinstance(img, str):
             res["images"] = [img]
         elif isinstance(img, list):
-            res["images"] = [x for x in img if isinstance(x, str) and x]
+            res["images"] = [x if isinstance(x, str) else (x.get("url") or x.get("contentUrl")) for x in img
+                             if (isinstance(x, str) and x) or (isinstance(x, dict) and (x.get("url") or x.get("contentUrl")))]
+        elif isinstance(img, dict) and (img.get("url") or img.get("contentUrl")):
+            res["images"] = [img.get("url") or img.get("contentUrl")]
         res["image"] = res["images"][0] if res.get("images") else None
         offers = prod.get("offers")
         if isinstance(offers, list):
@@ -452,3 +455,93 @@ def scrape(url, use_llm=True, categories=None, render=False, pick_image=True):
             "llm_used": bool(llm), "llm_error": llm_error,
             "rendered": rendered, "render_error": render_error,
             "js_page": js_page, "text_len": len(text)}
+
+
+# ---------------- dane strony z przegladarki uzytkownika (2026-10-13) ----------------
+# Sklepy blokujace serwery (np. Allegro: 403 takze dla Playwright) - przycisk "Dodaj do QBota" w przegladarce
+# (qbot-dodaj.html) czyta strone u uzytkownika i przysyla: adres, JSON-LD, meta, tekst. Tu ten sam potok co scrape():
+# W1 dane strukturalne + W2 LLM (kategoria, brakujace pola) + wybor zdjecia (obrazki z CDN sklepu zwykle nie sa blokowane).
+
+PAGE_LIMITS = {"ld": 12, "ld_chars": 60000, "text": LLM_TEXT_CHARS, "meta": 60}
+
+
+def _esc_attr(v):
+    return str(v).replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
+
+
+def page_html(page):
+    """Minimalny HTML z przyslanych czesci strony - zeby uzyc tych samych parserow co scrape()."""
+    parts = ["<html><head>"]
+    if page.get("title"):
+        parts.append("<title>%s</title>" % _esc_attr(page["title"])[:300])
+    for k, v in list((page.get("meta") or {}).items())[:PAGE_LIMITS["meta"]]:
+        if isinstance(v, str) and len(k) < 80:
+            parts.append('<meta property="%s" content="%s">' % (_esc_attr(k), _esc_attr(v[:2000])))
+    tot = 0
+    for t in (page.get("ld") or [])[:PAGE_LIMITS["ld"]]:
+        if not isinstance(t, str):
+            continue
+        tot += len(t)
+        if tot > PAGE_LIMITS["ld_chars"]:
+            break
+        parts.append('<script type="application/ld+json">%s</script>' % t.replace("</", "<\\/"))
+    parts.append("</head><body></body></html>")
+    return "".join(parts)
+
+
+def pretty_name(name, brand=None):
+    """Nazwa WIELKIMI LITERAMI (czeste na Allegro) -> zdanie: 'Przymiar ... Bitul CH012'.
+    Slowa z cyframi zostaja wielkie (kody modeli), marka w zapisie marki."""
+    if not name or name != name.upper() or not re.search(r"[A-ZĄĆĘŁŃÓŚŹŻ]{3}", name):
+        return name
+    words = name.split()
+    out = []
+    for i, w in enumerate(words):
+        if re.search(r"\d", w):
+            out.append(w)
+        elif brand and w.lower() == str(brand).lower():
+            out.append(brand)
+        elif i == 0:
+            out.append(w[:1] + w[1:].lower())
+        else:
+            out.append(w.lower())
+    return " ".join(out)
+
+
+def scrape_page(page, use_llm=True, categories=None, pick_image=True):
+    url = str(page.get("url") or page.get("canonical") or "")   # link oferty, ktory uzytkownik ogladal
+    if not url.startswith(("http://", "https://")):
+        raise ValueError("brak adresu strony")
+    s1, _soup = parse_structured(page_html(page), url)
+    text = re.sub(r"\s{2,}", " ", str(page.get("text") or ""))[:PAGE_LIMITS["text"]]
+    fields = {k: s1.get(k) for k in FIELDS}
+    src = {k: ("struktura" if fields.get(k) not in (None, "") else None) for k in FIELDS}
+    llm, llm_error = {}, None
+    if use_llm and text:
+        try:
+            llm = llm_extract(text, url, categories)
+        except Exception as e:
+            llm_error = str(e)[:200]
+    for k, v in llm.items():
+        if k in FIELDS and fields.get(k) in (None, ""):
+            fields[k] = v
+            src[k] = "llm"
+    if not fields.get("category") and llm.get("category"):
+        fields["category"] = llm["category"]
+    if not fields.get("brand"):
+        fields["brand"] = _brand_from_host(url)
+        src["brand"] = "domena" if fields["brand"] else None
+    if fields.get("model"):
+        fields["model"] = pretty_name(fields["model"], fields.get("brand"))
+    if fields.get("brand") and fields.get("model"):
+        b = fields["brand"].lower()
+        if fields["model"].lower().startswith(b + " "):
+            fields["model"] = fields["model"][len(b):].strip()
+    images = s1.get("images") or ([fields["image"]] if fields.get("image") else [])
+    image_note = None
+    if pick_image and len(images) > 1:
+        best, image_note = pick_product_image(images)
+        fields["image"] = best
+        src["image"] = "packshot" if best else None
+    return {"url": url, "fields": fields, "sources": src, "images": images, "image_note": image_note,
+            "llm_used": bool(llm), "llm_error": llm_error, "from_browser": True, "text_len": len(text)}

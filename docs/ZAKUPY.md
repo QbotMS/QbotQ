@@ -42,3 +42,20 @@ Start: 2026-10-13. Zakładka „Zakupy” w Garażu (`/garaz.html#zakupy`): list
   Usunięcie kopii = oryginał znów przypomina. Zakup kopii: otwarcie = przewidywany koniec poprzedniego opakowania
   (jeśli później niż data zakupu).
 - Testy: `tests/test_zakupy.py` (9). Żywo sprawdzone: okno, pasek zapasu, Dzwonek, linia poranna, Kup ponownie.
+
+
+## Przycisk w przegladarce "Dodaj do QBota" (2026-10-13)
+Powod: Allegro blokuje serwer QBota (403 dla requests i dla Playwright z serwera) - "Pobierz dane" dawalo blad 502.
+Decyzja Michala: bez polsrodkow (odczyt z samego linku odrzucony) - przycisk w przegladarce (Safari Mac/iPhone, Chrome).
+- `qbot-dodaj.html`: instrukcja instalacji (Chrome: przeciagniecie; Safari Mac i iPhone: kopiuj kod -> edytuj adres zakladki)
+  + odbiornik `#odbior`. Link "Przycisk w przegladarce" w pasku Zakupow, podpowiedz przy bledzie 403/502 "Pobierz dane".
+- Zakladka (bookmarklet) na stronie produktu zbiera: adres, canonical, title, JSON-LD (max 12), meta og/product/twitter/price,
+  tekst strony (18 000 znakow) -> `window.open(qbot-dodaj.html?t=...#odbior)` + `postMessage` co 0,5 s do potwierdzenia 'qbot-ok'.
+- Odbiornik (domena QBota, zalogowany) -> `/api/zakupy/list` (kategorie) -> `POST /api/garage/scrape-page` (tylko wlasciciel)
+  -> `qbot_gear_scrape.scrape_page`: ten sam potok co "Pobierz dane" (dane strukturalne, AI: kategoria i brakujace pola, wybor
+  zdjecia - CDN Allegro nie blokuje) + `pretty_name` (nazwy WIELKIMI literami -> zdanie, kody modeli i marka zostaja)
+  -> sessionStorage `qbot_dodaj` -> `garaz.html#zakupy&dodaj` -> formularz wypelniony (`applyScrape`), uzytkownik zapisuje.
+- Przy okazji: JSON-LD `image` jako ImageObject ({url}) obslugiwane w parse_structured (wczesniej gubione).
+- Sprawdzone: testy tests/test_gear_scrape_page.py (5); E2E Playwright na serwerze (odbior -> AI -> formularz: nazwa, marka,
+  kategoria "Rower / wyposazenie", cena 129 PLN, zdjecie, link oferty). Klikniecie zakladki na prawdziwym Allegro - do potwierdzenia
+  przez Michala (okno otwierane z JS bez klikniecia uzytkownika jest blokowane, wiec nie da sie tego zasymulowac).

@@ -194,7 +194,14 @@ function scrape(){
   var u=$("z_url").value.trim();
   if(!/^https?:\/\//i.test(u)){ $("zUrlStatus").textContent="podaj adres zaczynający się od http(s)://"; return; }
   $("zUrlStatus").textContent="czytam stronę produktu… (kilka sekund)"; $("zScrape").disabled=true;
-  postJSON("/api/garage/scrape",{url:u, categories:D.categories}).then(function(d){
+  postJSON("/api/garage/scrape",{url:u, categories:D.categories}).then(function(d){ applyScrape(d, u); })
+  .catch(function(e){ $("zUrlStatus").innerHTML="nie udało się pobrać strony ("+esc(e.message)+")"+
+      (/403|502/.test(e.message) ? " – sklep blokuje QBota. Użyj przycisku <a href=\"/qbot-dodaj.html\" target=\"_blank\">„Dodaj do QBota” w przeglądarce</a>." : ""); })
+    .then(function(){ $("zScrape").disabled=false; });
+}
+
+/* wypelnienie formularza danymi produktu (z /api/garage/scrape albo z przycisku w przegladarce: /api/garage/scrape-page) */
+function applyScrape(d, u){
     var f=d.fields||{}, got=[];
     function setE(id,v){ if(v!==null && v!==undefined && v!=="" && !$(id).value){ $(id).value=v; return true; } return false; }
     if(d.url && d.url!==u) $("z_url").value=d.url;
@@ -207,9 +214,22 @@ function scrape(){
     if(f.currency && String(f.currency).toUpperCase()!=="PLN") msg+=" · cena w "+f.currency;
     if(d.js_page) msg+=" · strona ładowana skryptami (mniej danych)";
     if(d.llm_error) msg+=" · warstwa AI niedostępna";
+    if(d.from_browser) msg+=" · dane z Twojej przeglądarki – sprawdź i zapisz";
     $("zUrlStatus").textContent=msg;
-  }).catch(function(e){ $("zUrlStatus").textContent="nie udało się pobrać strony ("+e.message+")"; })
-    .then(function(){ $("zScrape").disabled=false; });
+}
+
+/* przycisk "Dodaj do QBota" w przegladarce: qbot-dodaj.html -> sessionStorage 'qbot_dodaj' -> #zakupy&dodaj */
+function fromBrowser(){
+  var raw=null; try{ raw=sessionStorage.getItem("qbot_dodaj"); sessionStorage.removeItem("qbot_dodaj"); }catch(e){}
+  try{ history.replaceState(null,"",location.pathname+"#zakupy"); }catch(e){}
+  if(!raw) return;
+  var d; try{ d=JSON.parse(raw); }catch(e){ return; }
+  show();
+  waitFor(function(){ return (D.categories||[]).length>0; }, 8000).then(function(){
+    openModal(null);
+    $("z_url").value=d.url||"";
+    applyScrape(d, d.url||"");
+  });
 }
 
 function save(){
@@ -308,6 +328,9 @@ document.addEventListener("DOMContentLoaded",function(){
   $("zbX").addEventListener("click", closeBuy);
   $("zbGarage").addEventListener("click", function(){ toGarage(BUY); });
   /* #zakupy w adresie: po starcie (garaz-search.js na starcie klika zakladke Rower) */
-  window.addEventListener("load", function(){ if(/[#&]zakupy\b/.test(location.hash)) setTimeout(show, 0); });
+  window.addEventListener("load", function(){
+    if(/[#&]dodaj\b/.test(location.hash)) setTimeout(fromBrowser, 0);
+    else if(/[#&]zakupy\b/.test(location.hash)) setTimeout(show, 0);
+  });
 });
 })();
