@@ -43,3 +43,22 @@ wieczorem (przed snem, >= 1 h po jedzeniu, >= 2 h po treningu). 5 min siedzenia,
 
 ## 12.10.2026: widok przeniesiony do Zdrowie → Serce
 forma-serce.js bez zmian, osadzony w /zdrowie.html (#p-serce); obok zdrowie-serce.js: HRV (norma z roku vs 28 dni) i serce a jedzenie/waga (/api/jedzenie/heart_plus). Forma nie ma już zakładki Serce (forma.html#serce przekierowuje).
+
+
+## EKG: przebieg, uderzenia, HRV, nieregularne, PDF (2026-10-13)
+- Szczegol nagrania: `https://ghs.connect.garmin.com/ghs/ecg/v1/ecg/<detailId>` (podejrzane na stronie Garmin Connect) ->
+  `reading.samples` (Lead I, 30 s, 3840 probek, 128 Hz; zegarek nagrywa 512 Hz), `summary` jak lista.
+  Import: `import_garmin_heart._ecg_details` (nagrania bez przebiegu; przy nowej wersji analizy przelicza z zapisanego przebiegu).
+  Kolumny `ecg_recording`: samples, sample_rate, lead, analysis (`sql/heart_v2.sql`).
+- Analiza `qbot_ecg.analyze` (wersja w `analysis.v`): zalamki R (filtr 5-18 Hz, energia, prog adaptacyjny, odstep min. 0,3 s),
+  polozenie R doprecyzowane do 1/4 probki (512 Hz), odstepy RR, tetno uderzenie po uderzeniu, HRV z czystych odstepow NN
+  (RMSSD, SDNN, pNN50). Nieregularne (rytm): przedwczesne (< 80% lokalnej normy RR, z pauza > 110%), wydluzona przerwa (> 125%).
+  Odmienny ksztalt przy normalnym rytmie (korelacja z typowym uderzeniem < 0,85) liczony osobno jako `n_shape`
+  ("prawdopodobnie zaklocenie"), nie jako nieregularne. Orientacyjnie: jedno odprowadzenie, nie diagnoza.
+- Porownanie z Garminem (13.10): tetno zgodne (52,3 vs 52; 59,8 vs 59; 77,6 vs 77). RMSSD rozne (75 vs 90; 50 vs 38; 21 vs 36) -
+  QBot liczy z wykrytych uderzen (sprawdzone recznie na liscie RR), Garmin wlasna metoda; na stronie oba.
+- Strona Zdrowie > Serce: tabela EKG (HRV z uderzen, liczba nieregularnych, PDF), klik w wiersz = przebieg (wykres interaktywny:
+  zoom przeciagnieciem, dwuklik = calosc, dymek na uderzeniu = odstep RR i tetno; trojkaty: uderzenia, czerwone: nieregularne).
+- PDF: `GET /api/forma/ecg.pdf?id=<detailId>` (`qbot_ecg.pdf_bytes`, PIL, czcionka Liberation Sans): A4 poziomo, siatka 25 mm/s
+  i 10 mm/mV, 3 pasy po 10 s, kalibracja 1 mV, podsumowanie i zastrzezenia. Dane: `GET /api/forma/ecg?id=`.
+- Testy: `tests/test_ecg.py` (syntetyczne EKG: rowny rytm, RMSSD, przedwczesne z pauza, brak sygnalu, PDF).

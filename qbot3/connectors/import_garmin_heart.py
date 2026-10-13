@@ -158,7 +158,40 @@ def import_ecg(g, conn) -> int:
             )
             n += 1
     conn.commit()
+    _ecg_details(g, conn)
     return n
+
+
+ECG_DETAIL_URL = "https://ghs.connect.garmin.com/ghs/ecg/v1/ecg/{}"
+
+
+def _ecg_details(g, conn) -> None:
+    """Przebieg (reading.samples) dla nagran bez niego + analiza uderzen (qbot_ecg); przeliczenie przy nowej wersji analizy."""
+    import qbot_ecg as Q
+    c = g.client
+    with conn.cursor() as cur:
+        cur.execute("SELECT detail_id FROM qbot_v2.ecg_recording WHERE samples IS NULL")
+        todo = [r[0] for r in cur.fetchall()]
+    for did in todo:
+        r = c._api_session.get(ECG_DETAIL_URL.format(did), headers=c.get_api_headers(), timeout=20)
+        if r.status_code != 200:
+            log(f"EKG {did[:8]}: szczegoly HTTP {r.status_code}")
+            continue
+        rd = (r.json() or {}).get("reading") or {}
+        smp, fs = rd.get("samples") or [], float(rd.get("sampleRate") or 0)
+        an = Q.analyze(smp, fs)
+        with conn.cursor() as cur:
+            cur.execute("UPDATE qbot_v2.ecg_recording SET samples=%s::jsonb, sample_rate=%s, lead=%s, analysis=%s::jsonb WHERE detail_id=%s",
+                        (json.dumps(smp), fs, rd.get("leadType"), json.dumps(an), did))
+        conn.commit()
+        log(f"EKG {did[:8]}: przebieg {len(smp)} probek, uderzen {an.get('n_beats')}, nieregularne {an.get('n_irregular', 0)}")
+    with conn.cursor() as cur:   # nowa wersja analizy -> przelicz z zapisanego przebiegu (bez pobierania)
+        cur.execute("SELECT detail_id, samples, sample_rate FROM qbot_v2.ecg_recording WHERE samples IS NOT NULL "
+                    "AND coalesce((analysis->>'v')::int, 0) <> %s", (Q.VERSION,))
+        for did, smp, fs in cur.fetchall():
+            cur.execute("UPDATE qbot_v2.ecg_recording SET analysis=%s::jsonb WHERE detail_id=%s",
+                        (json.dumps(Q.analyze(smp, fs)), did))
+    conn.commit()
 
 
 # ---------------------------------------------------------------- tetno przy mocy

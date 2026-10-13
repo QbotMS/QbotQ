@@ -1250,3 +1250,8 @@ Otwarte: pierwsza nowa seria cisnienia i nowe EKG przez automat. docs/SERCE.md
 qbot_trener_weather.py + qbot_trener_notify (poranna wiadomosc 7:00 i przyciski tr:wxok/wxno). Testy test_trener_weather 10 OK,
 test_trener_notify 3 OK, test na zywo z ROLLBACK. Pierwsze prawdziwe uzycie: najblizszy ranek z jazda i zla prognoza. docs/TRENER.md
 
+## 2026-10-13 EKG przebieg (claude-ekg)
+qbot_ecg.py (analiza + PDF), import przebiegu, /api/forma/ecg(.pdf), wykres w Zdrowie > Serce. 3 nagrania przeliczone; test_ecg 5 OK;
+sprawdzone w Chrome (wykres, zoom, klik w wiersz, linki PDF). PDF 200 application/pdf ~320 KB (wyglad nie ogladany w podgladzie).
+Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys wyrownac wersje).
+

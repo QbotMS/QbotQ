@@ -63,9 +63,12 @@
     var ecgRows = e.list.slice().reverse().map(function (x) {
       var c = x.ok ? "" : ' style="color:var(--bad);font-weight:600"';
       var sy = (x.symptoms || []).length ? esc(x.symptoms.join(", ")) : "—";
-      return "<tr><td>" + dd(x.local) + "</td><td>" + hm(x.local) + "</td><td" + c + ">" + esc(x.label) + '</td><td class="num">' +
-        (x.hr == null ? "—" : x.hr) + '</td><td class="num">' + (x.hrv == null ? "—" : x.hrv) + "</td><td>" + sy + "</td></tr>";
-    }).join("") || '<tr><td colspan="6" class="muted">brak nagrań</td></tr>';
+      var an = x.an || {}, ni = an.n_irregular || 0;
+      return '<tr class="hz-ecgrow" data-id="' + esc(x.id) + '" style="cursor:pointer"><td>' + dd(x.local) + "</td><td>" + hm(x.local) + "</td><td" + c + ">" + esc(x.label) + '</td><td class="num">' +
+        (x.hr == null ? "—" : x.hr) + '</td><td class="num">' + (an.rmssd == null ? (x.hrv == null ? "—" : x.hrv) : num(an.rmssd)) +
+        '</td><td class="num"' + (ni ? ' style="color:var(--bad);font-weight:600"' : "") + ">" + (x.an ? ni : "—") + "</td><td>" + sy +
+        '</td><td><a href="/api/forma/ecg.pdf?id=' + encodeURIComponent(x.id) + '" download>PDF</a></td></tr>';
+    }).join("") || '<tr><td colspan="8" class="muted">brak nagrań</td></tr>';
 
     root.innerHTML =
       '<div class="card" style="border-left:5px solid ' + (bad ? "var(--bad)" : "var(--accent)") + '">' +
@@ -86,8 +89,11 @@
       '<div style="overflow-x:auto"><table class="qs-table"><tr><th>Data</th><th>Godz.</th><th class="num">Ciśnienie</th><th class="num">Tętno</th></tr>' +
       bpRows + "</table></div>" + bpSum + "</div>" +
       '<div class="card"><div class="cardhead"><p class="lbl">EKG (zegarek)</p><span class="sub">' + e.list.length + " nagrań</span></div>" +
-      '<div style="overflow-x:auto"><table class="qs-table"><tr><th>Data</th><th>Godz.</th><th>Wynik</th><th class="num">Tętno</th><th class="num">HRV</th><th>Objawy</th></tr>' +
-      ecgRows + "</table></div></div>" +
+      '<div style="overflow-x:auto"><table class="qs-table"><tr><th>Data</th><th>Godz.</th><th>Wynik</th><th class="num">Tętno</th>' +
+      '<th class="num"><span class="tip" tabindex="0" data-tip="RMSSD policzone przez QBot z odstępów między uderzeniami w przebiegu EKG (bez uderzeń nieregularnych). Garmin podaje własną wartość – bywa inna.">HRV</span></th>' +
+      '<th class="num"><span class="tip" tabindex="0" data-tip="Uderzenia przedwczesne lub wydłużone przerwy wykryte przez QBot w przebiegu (orientacyjnie, jedno odprowadzenie).">Nieregularne</span></th><th>Objawy</th><th></th></tr>' +
+      ecgRows + "</table></div>" +
+      '<div id="hz-ecgbox" style="margin-top:12px"></div><div class="muted" style="font-size:12px;margin-top:4px">Kliknij wiersz, żeby zobaczyć przebieg. PDF: zapis do pokazania lekarzowi.</div></div>' +
       '<details class="card"><summary style="cursor:pointer;font-weight:600">Kiedy i jak mierzyć</summary>' +
       '<div style="font-size:14px;line-height:1.55;margin-top:8px">' +
       "<p><b>Seria 7 dni</b>, potem kontrolnie 1 dzień w tygodniu. Pierwszy dzień QBot pomija (przyzwyczajenie), liczy średnią z dni 2–7.</p>" +
@@ -108,6 +114,88 @@
     });
     root.querySelectorAll("#hz-rng button").forEach(function (x) { x.classList.toggle("on", +x.dataset.r === RANGE); });
     drawChart();
+    root.querySelectorAll(".hz-ecgrow").forEach(function (tr) {
+      tr.addEventListener("click", function (ev) { if (ev.target.tagName === "A") return; drawEcg(tr.dataset.id); });
+    });
+    if (e.last && e.last.id) drawEcg(e.last.id);
+  }
+
+  /* ---------- przebieg EKG (qbot_ecg): wykres interaktywny jak pozostale ---------- */
+  var ECH = null, EZ = null;
+  function drawEcg(id) {
+    var box = document.getElementById("hz-ecgbox"); if (!box) return;
+    root.querySelectorAll(".hz-ecgrow").forEach(function (tr) { tr.style.background = tr.dataset.id === id ? "var(--well)" : ""; });
+    box.innerHTML = '<div class="muted">ładuję przebieg…</div>';
+    fetch("/api/forma/ecg?id=" + encodeURIComponent(id), {credentials: "same-origin"})
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (d) {
+        var an = d.analysis || {}, fs = d.sample_rate || 128, smp = d.samples || [];
+        if (!smp.length) { box.innerHTML = '<div class="muted">Brak przebiegu dla tego nagrania.</div>'; return; }
+        var med = smp.slice().sort(function (a, b) { return a - b; })[Math.floor(smp.length / 2)];
+        var pts = smp.map(function (v, i) { return {x: i / fs, y: v - med}; });
+        function yAt(t) { var i = Math.max(0, Math.min(smp.length - 1, Math.round(t * fs))); return smp[i] - med; }
+        var irrT = (an.irregular || []).map(function (i) { return i.t_s; });
+        function isIrr(t) { return irrT.some(function (x) { return Math.abs(x - t) < 0.03; }); }
+        var rt = an.r_t || [];
+        var rr = an.rr_ms || [];
+        var norm = rt.filter(function (t) { return !isIrr(t); }).map(function (t) { return {x: t, y: yAt(t)}; });
+        var odd = rt.filter(isIrr).map(function (t) { return {x: t, y: yAt(t)}; });
+        var irrTxt = (an.irregular || []).map(function (i) { return num(i.t_s, 1) + " s: " + esc(i.label); }).join(" · ");
+        box.innerHTML =
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+          '<div style="font-size:13.5px"><b>' + dd(d.started_local) + " " + hm(d.started_local) + "</b> · " + esc(d.label) +
+          (an.ok ? " · " + an.n_beats + " uderzeń · tętno " + num(an.hr_min) + "–" + num(an.hr_max) + " (śr. " + num(an.hr_mean) + ")" +
+            " · HRV RMSSD " + num(an.rmssd) + " ms · SDNN " + num(an.sdnn) + " ms · pNN50 " + num(an.pnn50) + "%" +
+            " · sygnał: " + esc(an.quality) : " · analiza: " + esc(an.error || "brak")) + "</div>" +
+          '<div><button class="btn" id="hz-ezr" hidden style="font-size:12.5px;padding:3px 10px">Pokaż całość</button> ' +
+          '<a class="btn" href="/api/forma/ecg.pdf?id=' + encodeURIComponent(d.detail_id) + '" download style="font-size:12.5px;padding:3px 10px">Pobierz PDF</a></div></div>' +
+          (irrTxt ? '<div style="font-size:13px;color:var(--bad);margin-top:4px">' + irrTxt + "</div>" : "") +
+          '<div style="position:relative;width:100%;height:220px;margin-top:6px"><canvas id="hz-ecg"></canvas></div>' +
+          '<div class="muted" style="font-size:12px">Przeciągnij, żeby powiększyć fragment (np. 3–4 uderzenia); dwuklik = całość. Najechanie na uderzenie pokazuje odstęp od poprzedniego.</div>';
+        if (!window.Chart) return;
+        var ink2 = css("--ink2", "#888"), line = css("--line", "#ddd"), red = css("--bad", "#e5534b"), ink = css("--ink", "#ddd");
+        if (ECH) ECH.destroy(); EZ = null;
+        ECH = new Chart(document.getElementById("hz-ecg"), {
+          type: "line",
+          data: {datasets: [
+            {label: "EKG (mV)", data: pts, borderColor: ink, borderWidth: 1.2, pointRadius: 0, pointHitRadius: 0, parsing: false, order: 3},
+            {label: "uderzenie", data: norm, showLine: false, pointRadius: 3.5, pointStyle: "triangle", borderColor: ink2, backgroundColor: ink2, parsing: false, order: 1},
+            {label: "nieregularne", data: odd, showLine: false, pointRadius: 6, pointStyle: "triangle", borderColor: red, backgroundColor: red, parsing: false, order: 0}
+          ]},
+          options: {
+            responsive: true, maintainAspectRatio: false, animation: false,
+            interaction: {mode: "nearest", axis: "x", intersect: false},
+            plugins: {legend: {labels: {color: ink2, boxWidth: 12, font: {size: 11}}},
+              tooltip: {filter: function (it) { return it.datasetIndex > 0; },
+                callbacks: {title: function (it) { return it.length ? num(it[0].parsed.x, 2) + " s" : ""; },
+                  label: function (it) {
+                    var k = rt.findIndex(function (t) { return Math.abs(t - it.parsed.x) < 0.005; });
+                    var ir = (an.irregular || []).filter(function (i) { return Math.abs(i.t_s - it.parsed.x) < 0.03; })[0];
+                    var s1 = k > 0 && rr[k - 1] ? "odstęp " + rr[k - 1] + " ms (" + num(60000 / rr[k - 1]) + " ud./min)" : "pierwsze uderzenie";
+                    return ir ? [s1, ir.label] : s1;
+                  }}}},
+            scales: {
+              x: {type: "linear", min: 0, max: smp.length / fs, ticks: {color: ink2, stepSize: 1, callback: function (v) { return v + " s"; }}, grid: {color: line}},
+              y: {ticks: {color: ink2}, grid: {color: line}, title: {display: true, text: "mV", color: ink2}}
+            }
+          }
+        });
+        var cv = document.getElementById("hz-ecg"), drag = null, full = smp.length / fs;
+        function tv(ev) { var r = cv.getBoundingClientRect(); return Math.max(0, Math.min(full, ECH.scales.x.getValueForPixel(ev.clientX - r.left))); }
+        function zoom(a, b) { ECH.options.scales.x.min = a; ECH.options.scales.x.max = b; ECH.update("none"); document.getElementById("hz-ezr").hidden = (a === 0 && b === full); }
+        cv.addEventListener("mousedown", function (ev) { if (ev.button !== 0) return;
+          var bx = document.createElement("div"); bx.style.cssText = "position:absolute;top:0;bottom:0;left:0;width:0;background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.6);pointer-events:none;z-index:4";
+          cv.parentNode.appendChild(bx); drag = {x0: ev.clientX, t0: tv(ev), bx: bx}; ev.preventDefault(); });
+        document.addEventListener("mousemove", function (ev) { if (!drag) return; var r = cv.getBoundingClientRect();
+          var a = Math.max(0, Math.min(drag.x0, ev.clientX) - r.left), b = Math.min(r.width, Math.max(drag.x0, ev.clientX) - r.left);
+          drag.bx.style.left = a + "px"; drag.bx.style.width = Math.max(0, b - a) + "px"; });
+        document.addEventListener("mouseup", function (ev) { if (!drag) return; var d0 = drag; drag = null; d0.bx.remove();
+          var t1 = tv(ev), a = Math.min(d0.t0, t1), b = Math.max(d0.t0, t1);
+          if (b - a > 0.3 && Math.abs(ev.clientX - d0.x0) > 8) zoom(a, b); });
+        cv.addEventListener("dblclick", function () { zoom(0, full); });
+        document.getElementById("hz-ezr").addEventListener("click", function () { zoom(0, full); });
+      })
+      .catch(function (err) { box.innerHTML = '<div class="muted">Nie udało się wczytać przebiegu: ' + esc(err.message) + "</div>"; });
   }
 
   /* ---------- wykresy: wspolna os dni, zoom, kursor (wzor: Trendy w forma2-data.js) ---------- */

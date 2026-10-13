@@ -440,6 +440,30 @@ def api_forma_heart(days: int = Query(180)):
     return _heart.build_heart_data(days=max(30, min(730, days)))
 
 
+@app.get("/api/forma/ecg")
+def api_forma_ecg(id: str = Query(...)):
+    """EKG (2026-10-13): przebieg + analiza uderzen (qbot_ecg) jednego nagrania. docs/SERCE.md"""
+    import qbot_heart as _heart
+    d = _heart.ecg_record(id)
+    if not d:
+        raise HTTPException(status_code=404, detail="brak nagrania")
+    d["started_local"] = d["started_local"].isoformat(timespec="seconds") if d.get("started_local") else None
+    return d
+
+
+@app.get("/api/forma/ecg.pdf")
+def api_forma_ecg_pdf(id: str = Query(...)):
+    """EKG do pobrania (PDF dla lekarza): siatka 25 mm/s, 10 mm/mV, uderzenia i nieregularnosci (qbot_ecg.pdf_bytes)."""
+    import qbot_heart as _heart
+    import qbot_ecg as _ecg
+    d = _heart.ecg_record(id)
+    if not d or not d.get("samples"):
+        raise HTTPException(status_code=404, detail="brak przebiegu")
+    name = "EKG_" + (d["started_local"].strftime("%d.%m.%Y_%H%M") if d.get("started_local") else id[:8]) + ".pdf"
+    return Response(content=_ecg.pdf_bytes(d), media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
 @app.get("/api/forma/activity")
 def api_forma_activity(request: Request, external_id: str = Query(...)):
     conn = _db_conn()

@@ -149,11 +149,12 @@ def build_heart_data(days: int = 180, today: date | None = None) -> dict[str, An
                ORDER BY measured_local""")
         bp_rows = [{"local": l, "sys": s, "dia": d, "pulse": p} for l, s, d, p in cur.fetchall()]
         cur.execute(
-            """SELECT started_local, classification, hr_avg, rmssd_hrv, symptoms, device
+            """SELECT started_local, classification, hr_avg, rmssd_hrv, symptoms, device, detail_id,
+                      analysis - 'r_idx' - 'r_t' - 'rr_ms' AS an
                FROM qbot_v2.ecg_recording ORDER BY started_local""")
         ecg = [{"local": l.isoformat(timespec="minutes") if l else None, "code": c, "label": ecg_label(c),
                 "hr": h, "hrv": round(v) if v is not None else None, "symptoms": sy or [], "device": dv,
-                "ok": c in ECG_OK} for l, c, h, v, sy, dv in cur.fetchall()]
+                "ok": c in ECG_OK, "id": did, "an": _ecg_an(an)} for l, c, h, v, sy, dv, did, an in cur.fetchall()]
     finally:
         conn.close()
 
@@ -189,6 +190,15 @@ def build_heart_data(days: int = 180, today: date | None = None) -> dict[str, An
     return data
 
 
+def _ecg_an(an: dict | None) -> dict | None:
+    """Skrot analizy uderzen (qbot_ecg) do listy / Alberta."""
+    if not an or not an.get("ok"):
+        return None
+    return {k: an.get(k) for k in ("n_beats", "hr_mean", "hr_min", "hr_max", "rmssd", "sdnn", "pnn50",
+                                   "n_irregular", "n_shape", "quality")} | {
+        "irregular": [{"t_s": i["t_s"], "label": i["label"]} for i in an.get("irregular") or [] if i.get("kind") != "ksztalt"]}
+
+
 def verdict_points(d: dict[str, Any]) -> list[dict[str, str]]:
     pts: list[dict[str, str]] = []
     r = d["rhr"]
@@ -220,8 +230,15 @@ def verdict_points(d: dict[str, Any]) -> list[dict[str, str]]:
         st = "good" if e["last"]["ok"] else "bad"
         if not e["fresh"]:
             st = "info" if e["last"]["ok"] else "bad"
+        an = e["last"].get("an") or {}
+        extra = ""
+        if an.get("n_irregular"):
+            extra = f"; nieregularne uderzenia: {an['n_irregular']} ({', '.join(i['label'] for i in an['irregular'][:3])})"
+            st = "warn" if st == "good" else st
+        if an.get("rmssd") is not None:
+            extra += f"; HRV z uderzeń {an['rmssd']:.0f} ms"
         pts.append({"status": st, "text":
-                    f"EKG {fmt_d(e['last']['local'][:10])}: {e['last']['label']}, średnio {e['last']['hr']} ud./min"
+                    f"EKG {fmt_d(e['last']['local'][:10])}: {e['last']['label']}, średnio {e['last']['hr']} ud./min{extra}"
                     + ("" if e["fresh"] else " — nagranie stare, zrób nowe.")})
     return pts
 
@@ -235,3 +252,21 @@ def analysis_text(d: dict[str, Any]) -> str:
         lines.append("Coś odbiega od normy — warto skonsultować z lekarzem (najlepiej z wynikami serii ciśnienia i EKG).")
     lines.append("Szczegóły i wykresy: Forma → Serce.")
     return "\n".join(lines)
+
+
+def ecg_record(detail_id: str) -> dict | None:
+    """Pelne nagranie EKG (przebieg + analiza) dla wykresu i PDF."""
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute("""SELECT detail_id, started_local, classification, hr_avg, rmssd_hrv, device, lead, sample_rate,
+                              samples, analysis FROM qbot_v2.ecg_recording WHERE detail_id=%s""", (detail_id,))
+        r = cur.fetchone()
+    finally:
+        conn.close()
+    if not r:
+        return None
+    keys = ["detail_id", "started_local", "classification", "hr_avg", "rmssd_hrv", "device", "lead", "sample_rate", "samples", "analysis"]
+    d = dict(zip(keys, r))
+    d["label"] = ecg_label(d["classification"])
+    return d

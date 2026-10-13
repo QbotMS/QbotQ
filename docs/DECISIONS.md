@@ -4,6 +4,10 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-13 -- DECYZJA: EKG z pelnym przebiegiem - uderzenia, HRV, nieregularne, wykres, PDF do pobrania
+Michal wybral punkty 1-3 i 5: przebieg EKG z Garmina (GHS, 128 Hz) pobierany automatycznie, analiza uderzen (QBot), wykres
+interaktywny i PDF dla lekarza do pobrania z QBota. Bez odcinkow PR/QRS/QT (128 Hz za malo na pomiar). Szczegoly: docs/SERCE.md.
+
 ## 2026-10-12 -- DECYZJA: TRENER proponuje korekte jazdy z uwagi na pogode (rano, Zmien / Zostaw)
 Wczesniej pogoda liczyla sie tylko przy ukladaniu planu (srednia dnia 8-18); zmiana prognozy po ulozeniu planu nie byla
 wychwytywana. Teraz: poranna wiadomosc 7:00 sprawdza prognoze godzinowa w oknie dzisiejszych jazd; jazda auto -> propozycja
