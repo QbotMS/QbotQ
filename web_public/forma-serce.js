@@ -4,7 +4,7 @@
   "use strict";
   var root = document.getElementById("p-serce");
   if (!root) return;
-  var DATA = null, RANGE = 180, loading = false;
+  var DATA = null, RANGE = 180, CUSTOM = null, loading = false;  /* CUSTOM={a,b}: wlasny zakres (range-custom.js) */
 
   function css(v, fb) { var x = getComputedStyle(document.documentElement).getPropertyValue(v).trim(); return x || fb; }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]; }); }
@@ -136,10 +136,13 @@
     root.querySelectorAll("#hz-rng button").forEach(function (b) {
       b.addEventListener("click", function () {
         root.querySelectorAll("#hz-rng button").forEach(function (x) { x.classList.toggle("on", x === b); });
-        RANGE = +b.dataset.r; drawChart();
+        RANGE = +b.dataset.r; CUSTOM = null; drawChart();
       });
     });
-    root.querySelectorAll("#hz-rng button").forEach(function (x) { x.classList.toggle("on", +x.dataset.r === RANGE); });
+    if (window.qRangeCustom) qRangeCustom(root.querySelector("#hz-rng"), {cls: "on", active: !!CUSTOM,
+      init: function () { return CUSTOM ? [CUSTOM.a, CUSTOM.b] : [new Date(Date.now() - RANGE * 864e5).toISOString().slice(0, 10), DATA.today]; },
+      onApply: function (a, b) { CUSTOM = {a: a, b: b}; drawChart(); }});
+    root.querySelectorAll("#hz-rng button").forEach(function (x) { x.classList.toggle("on", !CUSTOM && +x.dataset.r === RANGE); });
     drawChart();
     root.querySelectorAll(".hz-ecgrow").forEach(function (tr) {
       tr.addEventListener("click", function (ev) { if (ev.target.tagName === "A") return; drawEcg(tr.dataset.id); });
@@ -287,11 +290,12 @@
     var cv = document.getElementById("hz-canvas"), cb = document.getElementById("hz-bp");
     if (!cv || !cb || !window.Chart) return;
     ZOOM = null; HOVER = null;
-    var cut = new Date(Date.now() - RANGE * 864e5).toISOString().slice(0, 10), todayIso = DATA.today;
-    var rhr = DATA.rhr.series.filter(function (x) { return x.date >= cut; });
-    var hrp = DATA.hrp.series.filter(function (x) { return x.date >= cut; });
-    var bpl = DATA.bp.all.filter(function (x) { return x.local.slice(0, 10) >= cut; });
-    var ecg = DATA.ecg.list.filter(function (x) { return x.local && x.local.slice(0, 10) >= cut; });
+    var cut = CUSTOM ? CUSTOM.a : new Date(Date.now() - RANGE * 864e5).toISOString().slice(0, 10),
+        todayIso = CUSTOM && CUSTOM.b < DATA.today ? CUSTOM.b : DATA.today;
+    var rhr = DATA.rhr.series.filter(function (x) { return x.date >= cut && x.date <= todayIso; });
+    var hrp = DATA.hrp.series.filter(function (x) { return x.date >= cut && x.date <= todayIso; });
+    var bpl = DATA.bp.all.filter(function (x) { var k = x.local.slice(0, 10); return k >= cut && k <= todayIso; });
+    var ecg = DATA.ecg.list.filter(function (x) { var k = x.local && x.local.slice(0, 10); return k && k >= cut && k <= todayIso; });
     /* ciagla os dni (bez dziur), zeby oba wykresy mialy ten sam dzien w tym samym miejscu */
     LABELS = [];
     for (var t = new Date(cut + "T12:00:00"); t.toISOString().slice(0, 10) <= todayIso; t = new Date(t.getTime() + 864e5)) LABELS.push(t.toISOString().slice(0, 10));

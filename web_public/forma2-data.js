@@ -5,7 +5,7 @@ var today=qToday();
 var d90=qLocalISO(new Date(Date.now()-90*864e5));
 var d30=qLocalISO(new Date(Date.now()-30*864e5));
 var forma,rides,cal,nutri,stats,nutToday;
-var RNG=90,GRP="moc",entMap={};
+var RNG=90,GRP="moc",entMap={},CUST=null;  /* CUST={a,b}: wlasny zakres Trendow (range-custom.js) */
 
 async function load(){
   [forma,rides,nutri,stats,nutToday]=await Promise.all([
@@ -55,6 +55,7 @@ function renderSezon(){
       var RNG="all",PIN=null;
       function draw(){
         var a=0,b=ALL.length-1;if(RNG==="q"){a=Math.max(0,cur-13);}else if(RNG==="f"){a=cur;}
+        else if(RNG&&RNG.a){a=Math.max(0,Math.min(ALL.length-1,wi(RNG.a)));b=Math.max(a,Math.min(ALL.length-1,wi(RNG.b)));}  /* wlasny zakres */
         var WK=ALL.slice(a,b+1),N=WK.length,ci=cur-a,W0=1000,G=150,pr=12,cw=(W0-G-pr)/N;
         function X(i){return G+i*cw;}function XC(i){return X(i)+cw/2;}
         var y=4,s="",P={};
@@ -153,7 +154,9 @@ function renderSezon(){
         var cs=q$("s4-chart-sub");if(cs)cs.textContent=dm(WK[0].week)+" – "+dm(WK[N-1].week);
       }
       draw();
-      var rg=q$("s4-rng");if(rg&&!rg._w){rg._w=1;rg.querySelectorAll("button").forEach(function(bb){bb.addEventListener("click",function(){rg.querySelectorAll("button").forEach(function(x){x.classList.remove("active");});bb.classList.add("active");RNG=bb.dataset.r;draw();});});}
+      var rg=q$("s4-rng");if(rg&&!rg._w){rg._w=1;rg.querySelectorAll("button").forEach(function(bb){bb.addEventListener("click",function(){rg.querySelectorAll("button").forEach(function(x){x.classList.remove("active");});bb.classList.add("active");RNG=bb.dataset.r;draw();});});
+        if(window.qRangeCustom)qRangeCustom(rg,{cls:"active",init:function(){return [ALL[0].week,ALL[ALL.length-1].week];},
+          onApply:function(a,b){RNG={a:a,b:b};draw();}});}
     })();
     /* ===== SEZON v3: co sie ze mna dzieje / jak prowadze sezon / na co moge liczyc ===== */
     (function(){var I=Z.insight||{};var hd=q$("s3-head");if(!hd)return;
@@ -583,7 +586,7 @@ var GROUPS={moc:{series:["ftp_est_w","ltp_modelq_w"],label:["Moc progowa","Próg
   cialo:{series:["weight_kg"],label:["Waga"],color:["var(--purple)"],unit:"kg"}};
 function renderTrendy(){
   var S=forma.series||[];if(!S.length)return;
-  var SN=S.slice(-RNG);var T=SN[SN.length-1]||{};var N=SN.length;if(N<2)return;
+  var SN=CUST?S.filter(function(r){var d=String(r.day).slice(0,10);return d>=CUST.a&&d<=CUST.b;}):S.slice(-RNG);var T=SN[SN.length-1]||{};var N=SN.length;if(N<2)return;
   var labels=[],ctlD=[],atlD=[],tsbD=[],xssD=[],cpD=[],ltpD=[];
   var MON=["sty","lut","mar","kwi","maj","cze","lip","sie","wrz","paz","lis","gru"];
   SN.forEach(function(s2){
@@ -870,7 +873,7 @@ function renderOdzywianie(){
 function wireButtons(){
   /* zakres: 7/30/90/rok */
   var rng=q$("rng");if(rng)rng.querySelectorAll("button").forEach(function(b){b.addEventListener("click",function(){
-    rng.querySelectorAll("button").forEach(function(x){x.classList.remove("on");});b.classList.add("on");
+    rng.querySelectorAll("button").forEach(function(x){x.classList.remove("on");});b.classList.add("on");CUST=null;
     var t=b.textContent.trim();RNG=t==="7 dni"?7:t==="30 dni"?30:t==="90 dni"?90:365;
     /* 2026-09-29: Forma laduje ~90 dni; dla "rok" doczytaj brakujace dane (seria konczy sie dzis, wiec podmiana jest bezpieczna) */
     var have=(forma.series||[]).length;
@@ -879,6 +882,13 @@ function wireButtons(){
       qJSON("/api/forma/data?start="+st0).then(function(F){if(F&&F.series&&F.series.length>have)forma.series=F.series;
         if(cv&&cv.parentNode)cv.parentNode.style.opacity="";renderTrendy();}).catch(function(){if(cv&&cv.parentNode)cv.parentNode.style.opacity="";renderTrendy();});}
     else renderTrendy();});});
+  /* 2026-10-13: wlasny zakres Trendow - doczytuje dane od poczatku zakresu, gdy go brak */
+  if(rng&&window.qRangeCustom)qRangeCustom(rng,{cls:"on",init:function(){return [qLocalISO(new Date(Date.now()-RNG*864e5)),today];},
+    onApply:function(a,b){CUST={a:a,b:b};var S0=forma.series||[];var f0=S0.length?String(S0[0].day).slice(0,10):"9999";
+      if(a<f0){var cv=q$("trendy-canvas");if(cv&&cv.parentNode)cv.parentNode.style.opacity=".5";
+        qJSON("/api/forma/data?start="+a).then(function(F){if(F&&F.series&&F.series.length>S0.length)forma.series=F.series;})
+          .catch(function(){}).then(function(){if(cv&&cv.parentNode)cv.parentNode.style.opacity="";renderTrendy();});}
+      else renderTrendy();}});
   /* grupa: Moc/Obc/Well/Cialo */
   var grp=q$("grp");if(grp)grp.querySelectorAll("button").forEach(function(b){b.addEventListener("click",function(){
     grp.querySelectorAll("button").forEach(function(x){x.classList.remove("on");});b.classList.add("on");

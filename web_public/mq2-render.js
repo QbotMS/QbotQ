@@ -217,6 +217,7 @@ document.querySelectorAll(".rng").forEach(b=>{
   };
 });
 document.getElementById("apply").onclick=()=>{
+  document.querySelectorAll(".rng").forEach(x=>x.classList.remove("active"));  /* wlasny zakres: zaden gotowy okres */
   const s=document.getElementById("start").value||isoAgo(180);
   const e=document.getElementById("end").value||isoToday();
   load(s,e);
