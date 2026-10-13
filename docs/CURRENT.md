@@ -1275,3 +1275,7 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
 ## 2026-10-13 -- Garaz > Zakupy (etap 3: najnizsza cena)
 - Przycisk Szukaj ceny: w tle AI z wyszukiwarka + Ceneo; kazda cena sprawdzona na stronie sklepu (przegladarka przy blokadzie), wariant musi sie zgadzac; do 5 ofert + niesprawdzone osobno; wybierz = link i cena pozycji; Dzwonek.
 - Zostaje etap 4 (Gmail).
+
+## 2026-10-13 -- Waga: cala historia z Garmina
+- body_measurements: 379 dni pomiarow od 2017-08-30 (bylo 51 od 12.2025), kopia body_measurements_backup_20261013; fitmodel_daily.weight_kg uzupelnione tylko w pustych dniach ostatnim pomiarem z maks. 14 dni (istniejace nietkniete), w_per_kg dla tych dni. scripts/waga_backfill_20261013.py.
+- Trendy/Wellness: waga = punkty w dni pomiaru (/api/forma/data -> weight_meas) + przerywana linia miedzy pomiarami (bez schodkow z przenoszenia).

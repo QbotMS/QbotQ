@@ -11372,6 +11372,17 @@ def _build_forma_data(conn, start_str, end_str):
         (start_str, end_str),
     ).fetchall()
     series = [_forma_row_out(r) for r in rows]
+    # 2026-10-13: waga ZMIERZONA danego dnia (body_measurements) - wykres rysuje punkty pomiarow i przerywana
+    # linie miedzy nimi; weight_kg w fitmodel_daily jest przeniesiona z ostatniego pomiaru (schodki).
+    try:
+        _wm = {str(r["date"]): float(r["weight_kg"]) for r in conn.execute(   # wiersze = slowniki
+            "SELECT DISTINCT ON (date) date, weight_kg FROM qbot_v2.body_measurements "
+            "WHERE weight_kg IS NOT NULL AND date BETWEEN %s AND %s "
+            "ORDER BY date, completeness_score DESC NULLS LAST", (start_str, end_str)).fetchall()}
+    except Exception:  # noqa: BLE001
+        _wm = {}
+    for _r in series:
+        _r["weight_meas"] = _wm.get(str(_r["day"])[:10])
 
     # "dzis" - ostatnia NIE-NULL wartosc kazdego pola, niezaleznie od wybranego zakresu
     # (zeby waskie okno w wykresie nie psulo kart z aktualna forma).
