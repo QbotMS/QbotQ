@@ -196,10 +196,10 @@ def _ecg_details(g, conn) -> None:
 
 # ---------------------------------------------------------------- SpO2 nocne
 
-def import_spo2(g, conn, days: int = 3) -> int:
+def import_spo2(g, conn, days: int = 3, skip: int = 0) -> int:
     """Srednia i najnizsza saturacja nocy (Garmin get_spo2_data) -> qbot_v2.spo2_daily."""
     n = 0
-    for k in range(days):
+    for k in range(skip, skip + days):
         d = date.today() - timedelta(days=k)
         j = g.get_spo2_data(d.isoformat()) or {}
         if j.get("averageSpO2") is None and j.get("lowestSpO2") is None:
@@ -257,6 +257,7 @@ def main() -> int:
     ap.add_argument("--days", type=int, default=30, help="ile dni cisnienia wstecz")
     ap.add_argument("--only", choices=["bp", "ecg", "hrp", "spo2"])
     ap.add_argument("--spo2-days", type=int, default=3)
+    ap.add_argument("--spo2-skip", type=int, default=0, help="pomin N ostatnich nocy (uzupelnianie historii partiami)")
     ap.add_argument("--recompute-hrp", action="store_true")
     args = ap.parse_args()
 
@@ -289,7 +290,7 @@ def main() -> int:
 
     if g is not None and args.only in (None, "spo2"):
         try:
-            log(f"SpO2: {import_spo2(g, conn, args.spo2_days)} nocy")
+            log(f"SpO2: {import_spo2(g, conn, args.spo2_days, args.spo2_skip)} nocy")
         except Exception as exc:
             conn.rollback()
             fails += 1

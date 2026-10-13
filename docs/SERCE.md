@@ -93,3 +93,11 @@ Zasada jak w Trendach: QBot liczy fakty, AI je opisuje; oceny (prawidlowe / podw
 - Strona: karta "Cisnienie a regeneracja" (punkty + kafle: talia, waga/BMI, sen, saturacja). Raport PDF: strona 2 (regeneracja,
   cialo, sen i saturacja, pytania, pola do uzupelnienia: badania krwi i moczu, palenie, alkohol, kawa, rodzina, chrapanie, objawy).
 - VO2max: Garmin get_max_metrics zwraca pusta liste (13.10) - nie dodane.
+
+
+## Wykres saturacji + etykiety jak w Trendach (2026-10-13)
+- Zdrowie > Serce: trzeci wykres na wspolnej osi dni (zoom, kursor, dymki jak pozostale): najnizsza SpO2 nocy, trend (srednia
+  najnizszej z 7 nocy), srednia we snie, srednia doby (domyslnie ukryta), prog 90%. Garmin nie podaje maksimum nocy.
+  Historia SpO2 w Garminie od 11.04.2026 (186 nocy zaladowanych; `import_garmin_heart --only spo2 --spo2-days N --spo2-skip M`).
+- Wszystkie wykresy Serca (tetno, cisnienie, SpO2, EKG): legendy Chart.js zastapione klikalnymi etykietami `tchip` jak w Trendach
+  (opis po najechaniu, stan pamietany w localStorage `serce_on`, style wstrzykiwane, gdy strona ich nie ma).

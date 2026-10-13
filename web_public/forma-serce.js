@@ -99,11 +99,13 @@
       nexusCard(d) +
       '<div class="card tight"><div class="cardhead"><p class="lbl"><span class="tip" tabindex="0" data-tip="Linia: tętno spoczynkowe z zegarka (dzień po dniu). Kropki: średnie tętno w jeździe przy mocy 140–180 W (od 15. do 120. minuty, min. 5 min w paśmie) — prawa oś. Przerywane linie: Twoja norma z roku.">Tętno spoczynkowe i tętno przy mocy</span></p>' +
       '<div class="seg" id="hz-rng"><button data-r="90">90 dni</button><button data-r="180" class="on">180 dni</button><button data-r="365">rok</button></div></div>' +
-      '<div style="position:relative;width:100%;height:240px"><canvas id="hz-canvas"></canvas></div>' +
+      '<div id="hz-chips-1" class="ttoggles"></div><div style="position:relative;width:100%;height:240px"><canvas id="hz-canvas"></canvas></div>' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin:10px 2px 2px">' +
       '<p class="lbl" style="margin:0"><span class="tip" tabindex="0" data-tip="Kropki: każdy pomiar ciśnienia (skurczowe i rozkurczowe), linia: średnia z dnia. Przerywane: próg dla pomiarów domowych 135/85. Znaczniki u góry: nagrania EKG (zielony = rytm zatokowy, czerwony = inny wynik).">Ciśnienie i EKG</span></p>' +
       '<button class="btn" id="hz-zoomreset" hidden style="font-size:12.5px;padding:3px 10px">Pokaż całość</button></div>' +
-      '<div style="position:relative;width:100%;height:200px"><canvas id="hz-bp"></canvas></div>' +
+      '<div id="hz-chips-2" class="ttoggles"></div><div style="position:relative;width:100%;height:200px"><canvas id="hz-bp"></canvas></div>' +
+      '<p class="lbl" style="margin:12px 2px 2px"><span class="tip" tabindex="0" data-tip="Saturacja krwi w nocy z zegarka (pomiar na nadgarstku): najniższa wartość nocy, średnia we śnie i średnia doby. Linia trendu: średnia najniższej z 7 nocy. Próg 90%: częste spadki poniżej warto omówić z lekarzem (bezdech senny). Garmin nie podaje maksimum nocy. Pomiar z nadgarstka bywa zaniżony przez ułożenie ręki.">Saturacja w nocy (SpO2)</span></p>' +
+      '<div id="hz-chips-3" class="ttoggles"></div><div style="position:relative;width:100%;height:200px"><canvas id="hz-spo2"></canvas></div>' +
       '<div class="muted" style="font-size:12px;margin-top:4px">Przeciągnij po wykresie, żeby powiększyć; dwuklik = całość.</div></div>' +
       '<div class="card"><div class="cardhead"><p class="lbl">Ciśnienie (Withings)</p><span class="sub">' + d.bp.all.length + " pomiarów</span></div>" +
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
@@ -194,7 +196,7 @@
           }).join("") + "</div>" +
           (irrTxt ? '<div style="font-size:13px;color:var(--bad);margin-top:4px">' + irrTxt + "</div>" : "") +
           (d.ai_needed ? '<div id="hz-ecgai" class="card tight" style="margin-top:8px;background:var(--well)"></div>' : "") +
-          '<div style="position:relative;width:100%;height:220px;margin-top:6px"><canvas id="hz-ecg"></canvas></div>' +
+          '<div id="hz-chips-e" class="ttoggles" style="margin-top:8px"></div><div style="position:relative;width:100%;height:220px"><canvas id="hz-ecg"></canvas></div>' +
           '<div class="muted" style="font-size:12px">Przeciągnij, żeby powiększyć fragment (np. 3–4 uderzenia); dwuklik = całość. Najechanie na uderzenie pokazuje odstęp od poprzedniego.</div>';
         if (d.ai_needed) showEcgAi(d.detail_id, d.ai);
         if (!window.Chart) return;
@@ -210,7 +212,7 @@
           options: {
             responsive: true, maintainAspectRatio: false, animation: false,
             interaction: {mode: "nearest", axis: "x", intersect: false},
-            plugins: {legend: {labels: {color: ink2, boxWidth: 12, font: {size: 11}}},
+            plugins: {legend: {display: false},
               tooltip: {filter: function (it) { return it.datasetIndex > 0; },
                 callbacks: {title: function (it) { return it.length ? num(it[0].parsed.x, 2) + " s" : ""; },
                   label: function (it) {
@@ -225,6 +227,10 @@
             }
           }
         });
+        ECH.data.datasets[0].desc = "Przebieg EKG (odprowadzenie I) w mV.";
+        ECH.data.datasets[1].desc = "Wykryte uderzenia (załamek R). Najedź, żeby zobaczyć odstęp od poprzedniego.";
+        ECH.data.datasets[2].desc = "Uderzenia poza rytmem albo o innym kształcie.";
+        chips("hz-chips-e", ECH);
         var cv = document.getElementById("hz-ecg"), drag = null, full = smp.length / fs;
         function tv(ev) { var r = cv.getBoundingClientRect(); return Math.max(0, Math.min(full, ECH.scales.x.getValueForPixel(ev.clientX - r.left))); }
         function zoom(a, b) { ECH.options.scales.x.min = a; ECH.options.scales.x.max = b; ECH.update("none"); document.getElementById("hz-ezr").hidden = (a === 0 && b === full); }
@@ -245,7 +251,7 @@
 
   /* ---------- wykresy: wspolna os dni, zoom, kursor (wzor: Trendy w forma2-data.js) ---------- */
   var CH = {}, ZOOM = null, HOVER = null, LABELS = [], BPDAY = {}, ECGDAY = {};
-  var IDS = ["hz-canvas", "hz-bp"];
+  var IDS = ["hz-canvas", "hz-bp", "hz-spo2"];
 
   function charts() { return IDS.map(function (k) { return CH[k]; }).filter(Boolean); }
   function setX(ch) {
@@ -284,7 +290,7 @@
       return {
         responsive: true, maintainAspectRatio: false, animation: false,
         interaction: {mode: "index", intersect: false},
-        plugins: {legend: {labels: {color: ink2, boxWidth: 12, font: {size: 11}}},
+        plugins: {legend: {display: false},
           tooltip: {filter: function (it) { return it.raw != null && !/^norma|^próg/.test(it.dataset.label); },
             callbacks: {title: function (it) { return it.length ? dd(it[0].label) : ""; }, afterBody: extraTip}}},
         scales: Object.assign({
@@ -305,9 +311,9 @@
       borderColor: red, borderDash: [4, 4], borderWidth: 1, pointRadius: 0, yAxisID: "y1"});
 
     var ds2 = [
-      {label: "skurczowe", data: L(function (l) { return BPDAY[l] ? avg(BPDAY[l].map(function (m) { return m.sys; })) : null; }),
+      {label: "skurczowe", desc: "Ciśnienie skurczowe – średnia z dnia (każdy pomiar w dymku).", data: L(function (l) { return BPDAY[l] ? avg(BPDAY[l].map(function (m) { return m.sys; })) : null; }),
        borderColor: red, backgroundColor: red, borderWidth: 1.5, pointRadius: 4, pointHoverRadius: 6, spanGaps: true},
-      {label: "rozkurczowe", data: L(function (l) { return BPDAY[l] ? avg(BPDAY[l].map(function (m) { return m.dia; })) : null; }),
+      {label: "rozkurczowe", desc: "Ciśnienie rozkurczowe – średnia z dnia.", data: L(function (l) { return BPDAY[l] ? avg(BPDAY[l].map(function (m) { return m.dia; })) : null; }),
        borderColor: purple, backgroundColor: purple, borderWidth: 1.5, pointRadius: 4, pointHoverRadius: 6, spanGaps: true},
       {label: "próg 135", data: L(function () { return 135; }), borderColor: red, borderDash: [4, 4], borderWidth: 1, pointRadius: 0},
       {label: "próg 85", data: L(function () { return 85; }), borderColor: purple, borderDash: [4, 4], borderWidth: 1, pointRadius: 0}
@@ -335,9 +341,75 @@
         (ECGDAY[l] || []).forEach(function (e) { out.push("EKG " + hm(e.local) + ": " + e.label + (e.hr ? ", " + e.hr + " ud./min" : "")); });
         return out;
       })});
+    /* saturacja nocna */
+    var cs = document.getElementById("hz-spo2");
+    if (cs) {
+      var sp = {}; ((DATA.spo2 || {}).series || []).forEach(function (x) { sp[x.date] = x; });
+      var low = L(function (l) { return sp[l] && sp[l].low != null ? sp[l].low : null; });
+      var trend = low.map(function (_, i) { var w = low.slice(Math.max(0, i - 6), i + 1).filter(function (v) { return v != null; }); return w.length >= 4 ? Math.round(w.reduce(function (a, b2) { return a + b2; }, 0) / w.length * 10) / 10 : null; });
+      var gray = css("--muted", "#888");
+      var ds3 = [
+        {label: "najniższa w nocy", desc: "Najniższa saturacja zmierzona w nocy (Garmin).", data: low, borderColor: red, backgroundColor: red, borderWidth: 1, pointRadius: 2.5, pointHoverRadius: 5, spanGaps: false},
+        {label: "trend najniższej (7 nocy)", desc: "Średnia najniższej saturacji z 7 ostatnich nocy – pokazuje kierunek bez szumu pojedynczych nocy.", data: trend, borderColor: red, borderWidth: 2.5, borderDash: [6, 3], pointRadius: 0, spanGaps: true, tension: .3},
+        {label: "średnia we śnie", desc: "Średnia saturacja w czasie snu.", data: L(function (l) { return sp[l] && sp[l].sleep != null ? sp[l].sleep : null; }), borderColor: blue, backgroundColor: blue, borderWidth: 1.6, pointRadius: 0, pointHitRadius: 6, spanGaps: true, tension: .25},
+        {label: "średnia doby", desc: "Średnia ze wszystkich pomiarów doby.", data: L(function (l) { return sp[l] && sp[l].avg != null ? sp[l].avg : null; }), borderColor: gray, borderWidth: 1.2, pointRadius: 0, spanGaps: true, tension: .25, hidden: true},
+        {label: "próg 90%", desc: "Spadki poniżej 90% w wielu nocach to sygnał do rozmowy z lekarzem o bezdechu sennym.", data: L(function () { return 90; }), borderColor: red, borderDash: [3, 3], borderWidth: 1, pointRadius: 0}
+      ];
+      CH["hz-spo2"] = new Chart(cs, {type: "line", data: {labels: LABELS.slice(), datasets: ds3},
+        options: common({
+          y: {position: "left", suggestedMin: 80, suggestedMax: 100, ticks: {color: ink2, callback: function (v) { return v + "%"; }}, grid: {color: line}, title: {display: true, text: "SpO2", color: ink2}},
+          y1: {position: "right", display: true, ticks: {display: false}, grid: {drawOnChartArea: false}, title: {display: true, text: " ", color: ink2}}
+        }, function (it) {
+          var l = it.length && it[0].label, x = sp[l];
+          return x && x.low != null && x.low < 90 ? "najniższa poniżej 90%" : "";
+        })});
+    }
+    ds1[0].desc = "Tętno spoczynkowe z zegarka, dzień po dniu (lewa oś).";
+    ds1[1].desc = "Średnie tętno w jeździe przy mocy 140–180 W (od 15. do 120. minuty, min. 5 min w paśmie) – prawa oś. Wyżej = gorsza wydolność albo zmęczenie/ciepło.";
+    chips("hz-chips-1", CH["hz-canvas"]); chips("hz-chips-2", CH["hz-bp"]); chips("hz-chips-3", CH["hz-spo2"]);
     var b = document.getElementById("hz-zoomreset"); if (b) b.hidden = true;
     alignSoon();
   }
+
+  /* klikalne etykiety jak w Trendach (tchip): stan pamietany w localStorage 'serce_on' */
+  function chipState() { try { return JSON.parse(localStorage.getItem("serce_on") || "{}"); } catch (e) { return {}; } }
+  function chips(elId, ch) {
+    var el = document.getElementById(elId); if (!el || !ch) return;
+    var st = chipState();
+    ch.data.datasets.forEach(function (d, i) { var k = elId + ":" + d.label; if (st[k] != null) ch.setDatasetVisibility(i, !!st[k]); });
+    ch.update("none");
+    el.innerHTML = ch.data.datasets.map(function (d, i) {
+      var col = d.borderColor || "#888", dash = d.borderDash ? "background:repeating-linear-gradient(90deg," + col + " 0 4px,transparent 4px 7px)" : "background:" + col;
+      return '<button type="button" class="tchip' + (ch.isDatasetVisible(i) ? " on" : "") + '" data-i="' + i + '" data-desc="' + esc(d.desc || "") + '"><span class="tdot" style="' + dash + '"></span>' + esc(d.label) + "</button>";
+    }).join("");
+    el.querySelectorAll("button").forEach(function (bt) {
+      bt.onclick = function () {
+        var i = +bt.dataset.i, on = !ch.isDatasetVisible(i), s2 = chipState();
+        ch.setDatasetVisibility(i, on); ch.update("none"); bt.classList.toggle("on", on);
+        s2[elId + ":" + ch.data.datasets[i].label] = on; try { localStorage.setItem("serce_on", JSON.stringify(s2)); } catch (e) {}
+      };
+      bt.onmouseenter = function () { showTT(bt); }; bt.onmouseleave = hideTT;
+    });
+  }
+  function showTT(bt) {
+    var tt = document.getElementById("tchip-tt"); if (!tt) { tt = document.createElement("div"); tt.id = "tchip-tt"; tt.className = "tchip-tt"; document.body.appendChild(tt); }
+    var r = bt.getBoundingClientRect();
+    tt.innerHTML = "<b>" + esc(bt.textContent) + "</b>" + (bt.dataset.desc ? "<br>" + esc(bt.dataset.desc) : "") +
+      "<div class='tchip-tt-h'>kliknij, żeby " + (bt.classList.contains("on") ? "ukryć" : "pokazać") + "</div>";
+    tt.style.display = "block"; tt.style.left = (r.left + window.scrollX) + "px"; tt.style.top = (r.bottom + window.scrollY + 6) + "px";
+  }
+  function hideTT() { var tt = document.getElementById("tchip-tt"); if (tt) tt.style.display = "none"; }
+  (function css0() {   /* style etykiet jak w forma.html (Trendy), gdy strona ich nie ma */
+    if (document.getElementById("serce-tchip-css")) return;
+    var st = document.createElement("style"); st.id = "serce-tchip-css";
+    st.textContent = ".ttoggles{display:flex;flex-wrap:wrap;gap:6px;margin:0 4px 10px}" +
+      ".tchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:999px;padding:4px 10px;font:inherit;font-size:12.5px;cursor:pointer;opacity:.6}" +
+      ".tchip.on{color:var(--ink);background:var(--well);opacity:1;border-color:var(--line2,var(--line))}" +
+      ".tchip .tdot{width:12px;height:4px;border-radius:2px;display:inline-block}.tchip:not(.on) .tdot{filter:grayscale(1)}" +
+      ".tchip-tt{position:absolute;display:none;z-index:50;max-width:260px;background:var(--card);color:var(--ink);border:1px solid var(--line2,var(--line));border-radius:8px;padding:8px 10px;font-size:12.5px;line-height:1.4;box-shadow:0 6px 18px rgba(0,0,0,.3);pointer-events:none}" +
+      ".tchip-tt-h{margin-top:4px;font-size:11px;color:var(--muted)}";
+    document.head.appendChild(st);
+  })();
 
   /* wyrownanie obszaru danych obu wykresow (rozne osie -> rozne marginesy) */
   var alT = null;

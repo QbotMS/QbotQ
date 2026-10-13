@@ -443,4 +443,12 @@ def extras(data: dict, today: date) -> dict:
         v["tss_dzien_przed"] = tss.get(d0 - timedelta(days=1), 0.0)
     nx = nexus(bp, data["bp"]["all"], data["rhr"], sleep["hrv7"], hrv_med, sleep["sleep7_min"], sleep["sleep_norm_min"], daily)
     bpts = body_status(waist, whtr, bmi) + ([{"status": sp_st["status"], "text": sp_st["text"]}] if sp_st else [])
-    return {"body": body, "sleep": sleep, "nexus": nx, "body_points": bpts}
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT day, lowest_spo2, sleep_avg_spo2, avg_spo2 FROM qbot_v2.spo2_daily WHERE day >= %s ORDER BY day",
+                    (today - timedelta(days=int(data.get("days") or 365)),))
+        spo2_series = [{"date": d0.isoformat(), "low": lo, "sleep": sa, "avg": av} for d0, lo, sa, av in cur.fetchall()]
+    finally:
+        conn.close()
+    return {"body": body, "sleep": sleep, "nexus": nx, "body_points": bpts, "spo2": {"series": spo2_series}}
