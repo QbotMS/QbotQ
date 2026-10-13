@@ -88,39 +88,60 @@ _UNITS = {"kaps", "kapsulek", "kapsulki", "tabl", "tabletek", "tabletki", "szt",
           "ogniw", "ogniwa", "link", "links", "par", "pary", "porcji", "cm", "mm", "rozmiar", "size", "kolor", "color"}
 
 
-def match_score(item_name: str, brand: str | None, page_name: str) -> float:
-    """Udzial slow z nazwy pozycji obecnych w nazwie strony. Liczba z pozycji, ktorej brak na stronie = 0 (inny wariant).
-    Rdzen nazwy (bez marki, jednostek i liczb) musi sie zgadzac co najmniej w polowie - inaczej 0
-    (np. 'Olimp Magnez 90 kaps.' vs 'Olimp Witamina C 90 kaps.')."""
+def variant_tokens(notes: str | None) -> list[str]:
+    """Wariant z notatki pozycji: slowa z cyframi (160mm, 42, xl? nie - tylko z cyframi), np. '160mm' -> ['160mm']."""
+    return [w for w in tokens(notes or "") if re.search(r"\d", w)][:6]
+
+
+def match_score(item_name: str, brand: str | None, page_name: str, required: list[str] | None = None) -> float:
+    """Udzial slow z nazwy pozycji obecnych w nazwie strony. 0 = inny produkt/wariant, gdy:
+    - brak na stronie liczby albo kodu z cyframi z nazwy pozycji (126, 90, ch012, e1, m8100),
+    - brak wariantu z notatki (required, np. 160mm; wystarczy sama liczba: '160 mm'),
+    - rdzen nazwy (bez marki, jednostek i liczb) zgodny w mniej niz polowie
+      (np. 'Olimp Magnez 90 kaps.' vs 'Olimp Witamina C 90 kaps.')."""
     want = tokens(" ".join(x for x in (brand, item_name) if x))
     if not want:
         return 0.0
     have = set(tokens(page_name))
     joined = "".join(sorted(have))
+    spaced = " ".join(sorted(have))
     bt = set(tokens(brand or ""))
 
-    spaced = " ".join(sorted(have))
+    def num_in(n):
+        return re.search(r"(?<!\d)%s(?!\d)" % n, spaced) is not None
 
     def has(w):
         if w.isdigit():   # '12' pasuje do '12rz', ale nie do '126'
-            return re.search(r"(?<!\d)%s(?!\d)" % w, spaced) is not None
+            return num_in(w)
         return w in have or (len(w) >= 4 and w in joined)
 
+    def has_code(w):      # kod z cyframi: cale slowo albo rozdzielone ('CH 012', '160 mm')
+        if has(w):
+            return True
+        nums = re.findall(r"\d+", w)
+        letters = re.sub(r"[\d]", "", w)
+        return all(num_in(n) for n in nums) and (not letters or letters in _UNITS or letters in have or letters in joined)
+
     for w in want:
-        if w.isdigit() and not has(w):
+        if re.search(r"\d", w) and not has_code(w):
+            # kod sklejony z innym ('cnm8100' z 'cn-m8100') wystarczy, gdy jest jego czesc z cyframi
+            if w.isdigit() or not (w.isalnum() and any(re.search(r"\d", x) and x in w and has_code(x) for x in want if x != w)):
+                return 0.0
+    for w in required or []:
+        if not has_code(w):
             return 0.0
-    core = [w for w in want if w not in bt and w not in _UNITS and not w.isdigit()]
+    core = [w for w in want if w not in bt and w not in _UNITS and not re.search(r"\d", w)]
     if core and sum(1 for w in core if has(w)) / len(core) < 0.5:
         return 0.0
-    return sum(1 for w in want if has(w)) / len(want)
+    return sum(1 for w in want if has(w) or (re.search(r"\d", w) and has_code(w))) / len(want)
 
 
 def same_product(item: dict, page: dict) -> tuple[bool, str]:
-    """page = {name, ean}. EAN zgodny = ten sam; EAN rozny = inny; inaczej po slowach."""
+    """page = {name, ean}. EAN zgodny = ten sam; EAN rozny = inny; inaczej po slowach (+ wariant z notatki)."""
     ie, pe = re.sub(r"\D", "", str(item.get("ean") or "")), re.sub(r"\D", "", str(page.get("ean") or ""))
     if ie and pe:
         return (ie == pe), ("EAN zgodny" if ie == pe else "inny EAN")
-    sc = match_score(item.get("name") or "", item.get("brand"), page.get("name") or "")
+    sc = match_score(item.get("name") or "", item.get("brand"), page.get("name") or "", variant_tokens(item.get("notes")))
     return sc >= MATCH_MIN, "zgodność nazwy %d%%" % round(sc * 100)
 
 
@@ -244,6 +265,8 @@ def search_ai(item: dict) -> tuple[list[dict], str]:
         extra.append("Kod producenta/SKU: %s" % item["sku"])
     if item.get("url"):
         extra.append("Przykładowa strona produktu (dla identyfikacji): %s" % item["url"])
+    if item.get("notes"):
+        extra.append("Wariant / uwagi (MUSI się zgadzać): %s" % str(item["notes"])[:200])
     prompt = _AI_PROMPT.format(name=item["name"], brand=item.get("brand") or "-", extra="\n".join(extra), n=AI_MAX_OFFERS)
     r = httpx.post("https://api.anthropic.com/v1/messages",
                    headers={"content-type": "application/json", "x-api-key": cfg.ANTHROPIC_API_KEY,
@@ -375,6 +398,7 @@ def search_ceneo(item: dict) -> tuple[list[dict], str]:
     if item.get("brand") and _fold(item["name"]).startswith(_fold(item["brand"])):
         q = item["name"]
     out = []
+    req = variant_tokens(item.get("notes"))
     with sync_playwright() as p:
         br = p.chromium.launch()
         try:
@@ -388,7 +412,7 @@ def search_ceneo(item: dict) -> tuple[list[dict], str]:
             for r in rows:
                 if "top30" in r["placement"] or "promotion" in r["placement"]:
                     continue
-                sc = match_score(item["name"], item.get("brand"), r["name"])
+                sc = match_score(item["name"], item.get("brand"), r["name"], req)
                 if sc >= MATCH_MIN:
                     cands.append((sc, r))
             cands.sort(key=lambda x: (-x[0], parse_price(x[1]["price"]) or 1e9))
@@ -396,16 +420,25 @@ def search_ceneo(item: dict) -> tuple[list[dict], str]:
                 purl = "https://www.ceneo.pl/%s" % r["id"]
                 pg.goto(purl, wait_until="domcontentloaded", timeout=25000)
                 pg.wait_for_timeout(3500)
+                # strona produktu Ceneo pokazuje TEZ oferty innych produktow (13.10: miernik Bitul -> BBB, Park Tool)
                 offs = pg.evaluate("""()=>[...document.querySelectorAll('.js_productOfferGroupItem[data-shopurl]')]
                     .filter(o=>!o.classList.contains('js_recom'))
-                    .map(o=>({shop:o.dataset.shopurl, price:o.dataset.price, name:o.dataset.productname||''}))""")
+                    .map(o=>({shop:o.dataset.shopurl, price:o.dataset.price, pid:o.dataset.productid||'',
+                              name:o.dataset.productname||'',
+                              go:((o.querySelector('a[href*="/Click/Offer/"]')||{}).getAttribute||(()=>null)).call(
+                                   o.querySelector('a[href*="/Click/Offer/"]'), 'href')}))""")
                 for o in offs:
                     pr = parse_price(o["price"])
-                    if not pr or not o["shop"] or o["shop"] == "red":
+                    if not pr or not o["shop"] or o["shop"] == "red" or str(o["pid"]) != str(r["id"]):
                         continue
-                    out.append({"shop": o["shop"], "url": purl, "price": pr, "currency": "PLN", "price_pln": pr,
-                                "title": r["name"], "source": "ceneo", "status": "ok",
-                                "note": "cena z Ceneo (zgodność nazwy %d%%)" % round(sc * 100)})
+                    sc2 = match_score(item["name"], item.get("brand"), o["name"] or r["name"], req)
+                    if sc2 < MATCH_MIN:
+                        continue
+                    go = o.get("go")
+                    url = ("https://www.ceneo.pl" + go) if go and go.startswith("/") else purl
+                    out.append({"shop": o["shop"], "url": url, "price": pr, "currency": "PLN", "price_pln": pr,
+                                "title": o["name"] or r["name"], "source": "ceneo", "status": "ok",
+                                "note": "cena z Ceneo (zgodność nazwy %d%%)" % round(sc2 * 100)})
         finally:
             br.close()
     return out, "Ceneo: %d ofert" % len(out)

@@ -80,3 +80,13 @@ Decyzja Michala: bez polsrodkow (odczyt z samego linku odrzucony) - przycisk w p
   („Ceny: … — najtaniej X zł w …”), źródło w Ustawieniach: „Zakupy → Wynik szukania ceny”.
 - Koszt: jedno szukanie ≈ kilkadziesiąt groszy (wyszukiwania + tokeny AI); tylko na kliknięcie.
 - Testy: `tests/test_zakupy_ceny.py`.
+
+### Poprawki po zgłoszeniu (13.10, „odnośniki do całkiem innych przedmiotów”)
+- Ceneo: strona produktu pokazuje też oferty INNYCH produktów (miernik Bitul CH012 → BBB BTL-125, Park Tool). Teraz tylko
+  oferty z `data-productid` = produkt + sprawdzenie nazwy oferty; link prowadzi do oferty sklepu (przekierowanie Ceneo
+  `/Click/Offer/…`), nie na stronę produktu w Ceneo.
+- Kody z cyframi z nazwy (CH012, E1, M8100) są obowiązkowe jak liczby (126, 90).
+- Wariant z notatki pozycji (słowa z cyframi, np. „160mm”) obowiązkowy dla ofert i przekazywany AI („MUSI się zgadzać”);
+  „160 mm” też pasuje. Bez notatki o wariancie QBot nie odróżni np. 160 od 165 mm — wpisz wariant w nazwę albo notatkę.
+- Uprawnienia: worker działa jako `qbot` — przeglądarka Playwright skopiowana do `/opt/qbot/.cache/ms-playwright`,
+  log `/opt/qbot/artifacts/zakupy_ceny.log` (właściciel qbot; brak logu nie blokuje szukania), nieudany start cofa „running”.

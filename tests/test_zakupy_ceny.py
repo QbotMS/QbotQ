@@ -26,6 +26,21 @@ class CzysteTest(unittest.TestCase):
         ok, why = C.same_product({"name": "x", "ean": "5901234567890"}, {"name": "x", "ean": "4000000000000"})
         self.assertFalse(ok)
 
+    def test_zgloszenie_1310(self):
+        # Ceneo pokazalo miernik BBB i Park Tool przy Bitul CH012 -> kod modelu obowiazkowy
+        b = "Przymiar trzypunktowy zużycia łańcucha Bitul CH012"
+        self.assertGreaterEqual(C.match_score(b, "Bitul", "MIERNIK TRZYPUNKTOWY ZUŻYCIA ŁAŃCUCHA CH012"), 0.6)
+        self.assertEqual(C.match_score(b, "Bitul", "Bbb Miernik Zużycia Łańcucha Btl-125 Silver"), 0.0)
+        self.assertEqual(C.match_score(b, "Bitul", "PARK TOOL Przyrząd do sprawdzania zużycia łańcucha"), 0.0)
+        # wariant z notatki (160mm) obowiazkowy: 165 mm odpada, '160 mm' i '160mm' przechodza
+        k, req = "Ramiona korby SRAM Force XPLR E1 DUB Wide", C.variant_tokens("160mm")
+        self.assertEqual(C.match_score(k, "Sram", "SRAM Ramiona korby SRAM FORCE XPLR DUB WIDE E1 165 mm", req), 0.0)
+        self.assertGreaterEqual(C.match_score(k, "Sram", "Ramiona korby SRAM Force XPLR E1 DUB Wide 160 mm", req), 0.6)
+        self.assertGreaterEqual(C.match_score(k, "Sram", "Sram Ramię Korby Quarq Force Xplr E1 160mm Dub Wid", req), 0.6)
+        ok, _ = C.same_product({"name": k, "brand": "Sram", "notes": "160mm"},
+                               {"name": "SRAM Ramiona korby SRAM FORCE XPLR DUB WIDE E1 165 mm"})
+        self.assertFalse(ok)
+
     def test_parse_price(self):
         for v, want in [("1 299,99 zł", 1299.99), ("129.90", 129.9), ("1.299,00", 1299.0), ("1,299.00", 1299.0),
                         (95, 95.0), ("2.289", 2289.0), ("od 45 zł", 45.0), ("", None), ("0", None)]:

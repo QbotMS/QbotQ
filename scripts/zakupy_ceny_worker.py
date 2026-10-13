@@ -51,7 +51,7 @@ def main(iid: int) -> int:
     if not r:
         C._log("brak pozycji %s" % iid)
         return 1
-    item = {"id": iid, "name": r["name"], "brand": r["brand"], "url": r["url"]}
+    item = {"id": iid, "name": r["name"], "brand": r["brand"], "url": r["url"], "notes": r["notes"]}
     run_at = time.strftime("%Y-%m-%d %H:%M")
     C._log("start #%d %s" % (iid, item["name"]))
     try:
