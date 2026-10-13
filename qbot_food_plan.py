@@ -531,6 +531,30 @@ def weekend_lines(friday: date) -> list[str]:
     return ["🗓 Weekend: " + " · ".join(out) + ". Co zamawiać: strona Zdrowie → Analiza."]
 
 
+def _window_pending(day: date) -> date | None:
+    """Wczorajsze okno 10-20 do potwierdzenia rano (niepotwierdzone, nie zwolnione, przed terminem 12:00)."""
+    import qbot_food_streaks as S
+    y = day - timedelta(days=1)
+    if y < S.START:
+        return None
+    try:
+        with _conn() as c:
+            ws, _ = S.window_status(c, y)
+        return y if ws == "pending" else None
+    except Exception:
+        return None
+
+
+def morning_buttons(day: date) -> list:
+    """Przyciski porannej wiadomosci: potwierdzenie wczorajszego okna (callback qk:<dzien>:win_ok/win_no - jak w wiadomosci dnia)."""
+    y = _window_pending(day)
+    if not y:
+        return []
+    md = y.strftime("%Y%m%d")
+    return [[{"text": "🕗 Okno wczoraj dotrzymane", "callback_data": "qk:%s:win_ok" % md},
+             {"text": "✖ Złamane", "callback_data": "qk:%s:win_no" % md}]]
+
+
 def morning_digest(day: date, train_lines: list[str] | None = None) -> str | None:
     """JEDNA poranna wiadomosc: trening, wazenie, jedzenie, przypomnienia. Zwiezle."""
     import qbot_food_log as F
@@ -579,6 +603,8 @@ def morning_digest(day: date, train_lines: list[str] | None = None) -> str | Non
                 L.append("⏳ Wczoraj otwarty – zamknij do 12:00")
         except Exception:
             pass
+    if _window_pending(day):   # 2026-10-13: potwierdzenie okna 10-20 z wczoraj (przyciski pod wiadomoscia)
+        L.append("🕗 Okno 10–20 wczoraj dotrzymane? (do 12:00)")
     end = M.delivery_end()
     if end and 0 <= (end - day).days <= 2:
         L.append("📅 Brokuł kończy się %s %s – przedłużone?" % (F.DNI[end.weekday()], end.strftime("%d.%m")))

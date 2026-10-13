@@ -474,7 +474,13 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
             except Exception as e:
                 log.append(f"poranek: błąd {str(e)[:120]}")
                 _txt = text_day(today, tses, None)
-            log.append(_once(c, f"day:{today.isoformat()}", user, _txt, dry, (_wxb + day_buttons(today)) if act else None))
+            _kb = (_wxb + day_buttons(today)) if act else []
+            try:  # 2026-10-13: przyciski potwierdzenia wczorajszego okna 10-20 (Zdrowie)
+                import qbot_food_plan as _FPb
+                _kb = _kb + _FPb.morning_buttons(today)
+            except Exception as e:
+                log.append(f"okno: błąd {str(e)[:80]}")
+            log.append(_once(c, f"day:{today.isoformat()}", user, _txt, dry, _kb or None))
         if st["notify.day"] == 2:
             for s in _sessions(c, user, today, today):
                 if s["status"] != "plan" or not s.get("start_time"):

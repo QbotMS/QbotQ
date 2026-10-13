@@ -100,6 +100,7 @@ Z harmonogramu tylko DWIE wiadomości dziennie, zwięzłe (~8 linijek), szczegó
   (siła/wioślarz: 1 linia + „ćwiczenia: strona Trening”), ⚖️ ważenie, 🍽 rekomendacja (cel kcal, Brokuł, dokładka,
   białko vs norma + co dołożyć, ostrzeżenia: cukry ≥90% limitu, sól >5 g; paliwo na rower, pory posiłków),
   „⏳ wczoraj otwarty”, „📅 Brokuł kończy się…” (≤2 dni), w piątek 1 linia weekendu. Przyciski Trenera tylko gdy jest trening.
+- Poranek (13.10.2026): jeśli wczorajsze okno 10–20 nie jest potwierdzone ani zwolnione – linia „🕗 Okno 10–20 wczoraj dotrzymane? (do 12:00)” i przyciski Dotrzymane / Złamane (callback qk:<dzień>:win_ok/win_no, `qbot_food_plan.morning_buttons`).
 - **🌙 Wieczór 20:00**: wiadomość dnia (nagłówek z passą, posiłki w 1 linii, cel, okno, 🎉 kamienie milowe jako linia, stan).
 - **Niedziela 20:00**: rozliczenie tygodnia + plan tygodnia Trenera jako JEDNA wiadomość (gdy `notify.week_plan`=2).
 - Usunięte osobne wysyłki: osobne „zważ się”, przypomnienie 21:30, piątkowy plan weekendu, koniec diety, kamienie milowe.
