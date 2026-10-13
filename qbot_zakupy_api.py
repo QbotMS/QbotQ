@@ -631,11 +631,26 @@ def build_router(current_user: Callable, owner_user: Callable) -> APIRouter:
             c.close()
         import subprocess
         import sys as _sys
-        log = open("/opt/qbot/artifacts/zakupy_ceny.log", "ab")
-        subprocess.Popen([_sys.executable, "/opt/qbot/app/scripts/zakupy_ceny_worker.py", str(iid)],
-                         stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                         cwd="/opt/qbot/app", start_new_session=True)
-        log.close()   # dziecko ma wlasna kopie uchwytu
+        try:   # log opcjonalny - brak uprawnien do pliku nie moze blokowac szukania (13.10: plik root -> blad 500)
+            log = open("/opt/qbot/artifacts/zakupy_ceny.log", "ab")
+        except OSError:
+            log = subprocess.DEVNULL
+        try:
+            subprocess.Popen([_sys.executable, "/opt/qbot/app/scripts/zakupy_ceny_worker.py", str(iid)],
+                             stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                             cwd="/opt/qbot/app", start_new_session=True)
+        except Exception as e:   # start nieudany -> cofnij 'running', zeby nie blokowac kolejnej proby
+            c = _conn()
+            try:
+                c.execute("UPDATE shop_items SET price_search_status='error', price_search_note=? WHERE id=?",
+                          ("nie udało się uruchomić: %s" % type(e).__name__, iid))
+                c.commit()
+            finally:
+                c.close()
+            raise HTTPException(status_code=500, detail="nie udało się uruchomić szukania")
+        finally:
+            if log is not subprocess.DEVNULL:
+                log.close()   # dziecko ma wlasna kopie uchwytu
         return {"ok": True, "status": "running"}
 
     @r.post("/use-offer")
