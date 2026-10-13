@@ -50,7 +50,7 @@ Garaż → Zakupy z wypełnioną nazwą, marką, ceną, zdjęciem, linkiem i pod
 </div>
 
 <div class="card"><p class="lbl">Kod przycisku</p><pre id="code"></pre>
-<div class="muted" style="font-size:12.5px">Kod tylko czyta otwartą stronę (nazwa, cena, zdjęcia, opis) i przekazuje ją do QBota. Nie wysyła niczego innego i nie loguje się nigdzie.</div></div>
+<div class="muted" style="font-size:12.5px">Kod tylko czyta otwartą stronę (nazwa, cena, główne zdjęcie, opis) i przekazuje ją do QBota. Nie wysyła niczego innego i nie loguje się nigdzie.</div></div>
 </div>
 
 <script>
@@ -66,8 +66,13 @@ Garaż → Zakupy z wypełnioną nazwą, marką, ceną, zdjęciem, linkiem i pod
     "var c=document.querySelector('link[rel=canonical]');" +
     "var d={url:location.href,canonical:c?c.href:null,title:document.title,ld:ld,meta:meta,text:(document.body.innerText||'').slice(0,18000)};" +
     "var w=window.open(Q+'/qbot-dodaj.html?t='+Date.now()+'#odbior','qbotdodaj');if(!w){alert('QBot: zezwól na nowe okno dla tej strony');return}" +
-    "var n=0,t=setInterval(function(){try{w.postMessage({type:'qbot-page',data:d},Q)}catch(e){}if(++n>60)clearInterval(t)},500);" +
-    "window.addEventListener('message',function(e){if(e.origin===Q&&e.data==='qbot-ok')clearInterval(t)})})();";
+    "var sent=0,go=function(){if(sent++)return;var n=0,t=setInterval(function(){try{w.postMessage({type:'qbot-page',data:d},Q)}catch(e){}if(++n>60)clearInterval(t)},500);" +
+    "window.addEventListener('message',function(e){if(e.origin===Q&&e.data==='qbot-ok')clearInterval(t)})};" +
+    /* glowne zdjecie pobiera przegladarka (sklepy/CDN czesto blokuja serwer QBota) */
+    "var src=meta['og:image']||meta['twitter:image'];if(!src||!window.fetch||!window.createImageBitmap){go();return}setTimeout(go,8000);" +
+    "fetch(src,{mode:'cors'}).then(function(r){return r.blob()}).then(function(b){return createImageBitmap(b)}).then(function(im){" +
+    "var k=Math.min(1,800/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);" +
+    "c.getContext('2d').drawImage(im,0,0,c.width,c.height);d.image_data=c.toDataURL('image/jpeg',0.85);go()}).catch(function(){go()})})();";
   var CODE = "javascript:" + encodeURIComponent(SRC).replace(/%27/g, "'").replace(/%28/g, "(").replace(/%29/g, ")");
 
   function copy(btn, st) {

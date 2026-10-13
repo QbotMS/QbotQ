@@ -48,5 +48,25 @@ class StronaZPrzegladarki(unittest.TestCase):
         self.assertEqual(h.count("</script>"), 1)
 
 
+class ZdjecieZPrzegladarki(unittest.TestCase):
+    def test_kopia_i_odczyt_z_dysku(self):
+        import base64, io
+        from PIL import Image
+        im = Image.new("RGB", (400, 300), (200, 30, 30))
+        b = io.BytesIO(); im.save(b, "JPEG")
+        data = "data:image/jpeg;base64," + base64.b64encode(b.getvalue()).decode()
+        r = S.scrape_page(dict(PAGE, image_data=data), use_llm=False, pick_image=False)
+        url = r["fields"]["image"]
+        self.assertTrue(url.startswith(S.QBOT_PUBLIC + "/gear/shop/"))
+        self.assertEqual(r["sources"]["image"], "przegladarka")
+        raw = S._fetch_image(url)                       # bez sieci: plik z dysku
+        self.assertEqual(Image.open(io.BytesIO(raw)).size, (400, 300))
+        os.remove(S._local_path(url))
+
+    def test_zle_dane_i_sciezka(self):
+        self.assertIsNone(S.store_image_data("data:text/html;base64,PGI+"))
+        self.assertIsNone(S._local_path(S.QBOT_PUBLIC + "/gear/../../etc/passwd"))
+
+
 if __name__ == "__main__":
     unittest.main()

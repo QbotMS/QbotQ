@@ -12,6 +12,7 @@ Zasada: brak danych => null. Nie zgadujemy po cichu.
 NIE renderuje JavaScriptu - strony ladowane dynamicznie dadza mniej.
 """
 import json
+import os
 import re
 from urllib.parse import urlparse, urljoin
 import requests
@@ -323,8 +324,60 @@ IMG_MAX_CHECK = 5
 IMG_MIN_PX = 200
 
 
+# Obrazki: naglowki zwyklej przegladarki. CDN Allegro (a.allegroimg.com) zawiesza zapytania z nietypowym User-Agentem
+# (timeout zamiast bledu) - z naglowkami przegladarki odpowiada w 0,1 s (sprawdzone 13.10.2026).
+IMG_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) "
+                             "Chrome/129.0 Safari/537.36",
+               "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8", "Accept-Language": "pl-PL,pl;q=0.9,en;q=0.8"}
+
+
+# Kopie zdjec produktow przyslanych z przegladarki uzytkownika (przycisk "Dodaj do QBota"): CDN Allegro nie odpowiada
+# serwerowi QBota (timeouty, 13.10.2026), a przegladarka uzytkownika pobiera je bez problemu.
+QBOT_PUBLIC = os.environ.get("QBOT_PUBLIC_URL", "https://albert.cytr.us").rstrip("/")
+WEB_PUBLIC = "/opt/qbot/web/public"
+SHOP_IMG_DIR = os.path.join(WEB_PUBLIC, "gear", "shop")
+
+
+def _local_path(url):
+    """Adres zdjecia hostowanego przez QBota (/gear/...) -> plik na dysku (bez wychodzenia poza katalog)."""
+    u = str(url or "")
+    for pref in (QBOT_PUBLIC + "/gear/", "/gear/"):
+        if u.startswith(pref):
+            rel = u[len(pref):].split("?")[0]
+            full = os.path.realpath(os.path.join(WEB_PUBLIC, "gear", rel))
+            if full.startswith(os.path.realpath(os.path.join(WEB_PUBLIC, "gear")) + os.sep) and os.path.isfile(full):
+                return full
+    return None
+
+
+def store_image_data(data_uri, max_bytes=3_000_000):
+    """data:image/...;base64 z przegladarki -> JPEG w gear/shop/<sha1>.jpg -> pelny adres QBota (albo None)."""
+    import base64, hashlib, io
+    from PIL import Image
+    m = re.match(r"^data:image/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=]+)$", str(data_uri or ""))
+    if not m:
+        return None
+    raw = base64.b64decode(m.group(2))
+    if not raw or len(raw) > max_bytes:
+        return None
+    im = Image.open(io.BytesIO(raw)).convert("RGB")
+    if min(im.size) < 120:
+        return None
+    im.thumbnail((1200, 1200))
+    os.makedirs(SHOP_IMG_DIR, exist_ok=True)
+    name = hashlib.sha1(raw).hexdigest()[:20] + ".jpg"
+    path = os.path.join(SHOP_IMG_DIR, name)
+    if not os.path.exists(path):
+        im.save(path, "JPEG", quality=85)
+    return QBOT_PUBLIC + "/gear/shop/" + name
+
+
 def _fetch_image(url, timeout=8, max_bytes=4_000_000):
-    r = requests.get(url, headers={"User-Agent": UA}, timeout=timeout, stream=True)
+    lp = _local_path(url)
+    if lp:
+        with open(lp, "rb") as f:
+            return f.read(max_bytes)
+    r = requests.get(url, headers=IMG_HEADERS, timeout=timeout, stream=True)
     r.raise_for_status()
     raw = b""
     for ch in r.iter_content(8192):
@@ -539,7 +592,16 @@ def scrape_page(page, use_llm=True, categories=None, pick_image=True):
             fields["model"] = fields["model"][len(b):].strip()
     images = s1.get("images") or ([fields["image"]] if fields.get("image") else [])
     image_note = None
-    if pick_image and len(images) > 1:
+    own = None
+    if page.get("image_data"):          # zdjecie pobrane przez przegladarke uzytkownika (glowne zdjecie oferty)
+        try:
+            own = store_image_data(page["image_data"])
+        except Exception as e:
+            image_note = "zdjęcie z przeglądarki nieczytelne (%s)" % str(e)[:60]
+    if own:
+        fields["image"], src["image"], images = own, "przegladarka", [own] + images
+        image_note = "zdjęcie z Twojej przeglądarki (kopia w QBocie)"
+    elif pick_image and len(images) > 1:
         best, image_note = pick_product_image(images)
         fields["image"] = best
         src["image"] = "packshot" if best else None
