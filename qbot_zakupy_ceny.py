@@ -93,6 +93,10 @@ def variant_tokens(notes: str | None) -> list[str]:
     return [w for w in tokens(notes or "") if re.search(r"\d", w)][:6]
 
 
+_VARIANT_WORDS = {"quarq", "pm", "powermeter", "pomiar", "pomiarem", "zestaw", "komplet", "kit", "set", "bundle",
+                  "uzywany", "uzywana", "uzywane", "outlet", "refurbished", "demo", "powystawowy", "zamiennik"}
+
+
 def match_score(item_name: str, brand: str | None, page_name: str, required: list[str] | None = None) -> float:
     """Udzial slow z nazwy pozycji obecnych w nazwie strony. 0 = inny produkt/wariant, gdy:
     - brak na stronie liczby albo kodu z cyframi z nazwy pozycji (126, 90, ch012, e1, m8100),
@@ -130,6 +134,11 @@ def match_score(item_name: str, brand: str | None, page_name: str, required: lis
     for w in required or []:
         if not has_code(w):
             return 0.0
+    # slowa zmieniajace produkt: sa na stronie, a nie ma ich w pozycji -> inny produkt (13.10: Quarq ... PM
+    # = ramiona z pomiarem mocy zamiast samych ramion)
+    mine = set(want) | set(tokens(" ".join(required or [])))
+    if any(v in have and v not in mine for v in _VARIANT_WORDS):
+        return 0.0
     core = [w for w in want if w not in bt and w not in _UNITS and not re.search(r"\d", w)]
     if core and sum(1 for w in core if has(w)) / len(core) < 0.5:
         return 0.0

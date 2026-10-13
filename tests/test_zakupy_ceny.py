@@ -36,7 +36,9 @@ class CzysteTest(unittest.TestCase):
         k, req = "Ramiona korby SRAM Force XPLR E1 DUB Wide", C.variant_tokens("160mm")
         self.assertEqual(C.match_score(k, "Sram", "SRAM Ramiona korby SRAM FORCE XPLR DUB WIDE E1 165 mm", req), 0.0)
         self.assertGreaterEqual(C.match_score(k, "Sram", "Ramiona korby SRAM Force XPLR E1 DUB Wide 160 mm", req), 0.6)
-        self.assertGreaterEqual(C.match_score(k, "Sram", "Sram Ramię Korby Quarq Force Xplr E1 160mm Dub Wid", req), 0.6)
+        self.assertEqual(C.match_score(k, "Sram", "Sram Ramię Korby Quarq Force Xplr E1 160mm Dub Wid", req), 0.0)  # Quarq = z pomiarem mocy
+        self.assertGreaterEqual(C.match_score(k, "Sram", "Ramiona SRAM Force XPLR E1 DUB Wide 160mm", req), 0.6)
+        self.assertEqual(C.match_score(k, "Sram", "Sram Ramię Korby Quarq Force Xplr E1 160mm Dub Wide Pm", req), 0.0)
         ok, _ = C.same_product({"name": k, "brand": "Sram", "notes": "160mm"},
                                {"name": "SRAM Ramiona korby SRAM FORCE XPLR DUB WIDE E1 165 mm"})
         self.assertFalse(ok)
