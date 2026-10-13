@@ -232,8 +232,8 @@ def _font(size: int, bold: bool = False):
         return ImageFont.load_default(size=size)
 
 
-def pdf_bytes(rec: dict[str, Any]) -> bytes:
-    """A4 poziomo, siatka EKG 25 mm/s i 10 mm/mV, 3 pasy po 10 s, oznaczone uderzenia + podsumowanie."""
+def page_image(rec: dict[str, Any]):
+    """Strona EKG (obraz PIL): A4 poziomo, siatka EKG 25 mm/s i 10 mm/mV, 3 pasy po 10 s, oznaczone uderzenia + podsumowanie."""
     from PIL import Image, ImageDraw
     dpi = 150
     mm = dpi / 25.4
@@ -308,6 +308,27 @@ def pdf_bytes(rec: dict[str, Any]) -> bytes:
     foot = ("25 mm/s · 10 mm/mV. Zapis z zegarka: jedno odprowadzenie, 30 s. Nie wykrywa zawału, niedokrwienia ani zmian strukturalnych. "
             "Wynik rytmu: aplikacja EKG Garmin. Uderzenia, HRV i nieregularności: orientacyjna analiza QBot (trójkąty: wykryte uderzenia, czerwone: nieregularne).")
     dr.text((left, H - int(14 * mm)), foot, fill=(60, 60, 60), font=_font(15))
+    return img
+
+
+def pdf_bytes(rec: dict[str, Any]) -> bytes:
+    """Jedno nagranie EKG jako PDF (A4 poziomo)."""
     buf = io.BytesIO()
-    img.save(buf, "PDF", resolution=dpi)
+    page_image(rec).save(buf, "PDF", resolution=150)
     return buf.getvalue()
+
+
+def wrap(draw, text: str, font, width: int) -> list[str]:
+    """Zawijanie tekstu do szerokosci w pikselach."""
+    out, line = [], ""
+    for w in str(text).split():
+        t = (line + " " + w).strip()
+        if draw.textlength(t, font=font) <= width:
+            line = t
+        else:
+            if line:
+                out.append(line)
+            line = w
+    if line:
+        out.append(line)
+    return out

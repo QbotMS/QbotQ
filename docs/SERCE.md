@@ -67,3 +67,16 @@ forma-serce.js bez zmian, osadzony w /zdrowie.html (#p-serce); obok zdrowie-serc
   wahania tetna w rytmie oddechu (niemiarowosc oddechowa, prawidlowa), wolne/szybkie tetno, HRV na tle Twoich nagran z tej
   samej pory dnia (mediana od 3 nagran; wczesniej tylko zakres), cisnienie z tej samej sesji (+-45 min; <130/80 prawidlowe,
   130-134/80-84 wysokie prawidlowe, >=135/85 powyzej progu domowego), jakosc sygnalu. Na stronie pod przebiegiem i w PDF.
+
+
+## AI (2026-10-13, qbot_heart_ai.py) - kontekst do EKG + raport dla lekarza
+Zasada jak w Trendach: QBot liczy fakty, AI je opisuje; oceny (prawidlowe / podwyzszone) AI przepisuje z regul QBota.
+- Komentarz do EKG: tylko gdy cos odstaje (regula warn/bad albo cisnienie z sesji >= 130/80). Fakty: nagranie, interpretacja
+  regul, inne nagrania (HRV), cisnienie z sesji, noc przed (sen, HRV nocne, tetno spocz., stres, body battery vs norma 28 dni),
+  trening z 2 dni przed nagraniem. 2-3 zdania. POST /api/forma/ecg/ai?id= (wlasciciel), GET /api/forma/ecg zwraca zapamietany.
+- Raport dla lekarza: GET /api/forma/heart/report.pdf - strona 1: podsumowanie AI, uwagi o serii, tabela cisnienia dzien po dniu
+  (rano/wieczor, czerwone >= 135/85), srednie serii, wczesniejsze pomiary, EKG z serii, tetno spoczynkowe / przy mocy / HRV nocne vs
+  norma, waga, godziny treningu, pytania do lekarza, puste pola: pacjent, leki, objawy; dalej strony EKG z serii (maks. 14).
+  Przycisk "Raport dla lekarza (PDF)" w karcie Cisnienie + licznik serii (dni z 7, rano/wieczor).
+- Pamiec: qbot_v2.heart_ai (sql/heart_v3.sql), klucz z hashem faktow (te same dane = bez ponownego wywolania AI).
+  Model: qbot_food_log._ai_json (cfg.ANTHROPIC_MODEL, temperature 0). Bez Telegrama. Testy: tests/test_heart_ai.py.

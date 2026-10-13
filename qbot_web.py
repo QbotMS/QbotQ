@@ -447,8 +447,45 @@ def api_forma_ecg(id: str = Query(...)):
     d = _heart.ecg_record(id)
     if not d:
         raise HTTPException(status_code=404, detail="brak nagrania")
+    try:
+        import qbot_heart_ai as _hai
+        d["ai_needed"] = _hai.ecg_needs_ai(d)
+        d["ai"] = _hai.ecg_comment(d, compute=False) if d["ai_needed"] else None
+    except Exception:
+        d["ai_needed"], d["ai"] = False, None
     d["started_local"] = d["started_local"].isoformat(timespec="seconds") if d.get("started_local") else None
     return d
+
+
+@app.post("/api/forma/ecg/ai")
+def api_forma_ecg_ai(request: Request, id: str = Query(...)):
+    """Komentarz AI do EKG (kontekst: sen, trening, cisnienie), tylko gdy cos odstaje; wynik pamietany (qbot_v2.heart_ai)."""
+    if not _owner_user(request):
+        raise HTTPException(status_code=403, detail="tylko odczyt (sesja demo)")
+    import qbot_heart as _heart
+    import qbot_heart_ai as _hai
+    d = _heart.ecg_record(id)
+    if not d:
+        raise HTTPException(status_code=404, detail="brak nagrania")
+    try:
+        return {"ai": _hai.ecg_comment(d, compute=True), "ai_needed": _hai.ecg_needs_ai(d)}
+    except Exception as ex:
+        raise HTTPException(status_code=502, detail=f"AI niedostępne: {type(ex).__name__}")
+
+
+@app.get("/api/forma/heart/report.pdf")
+def api_forma_heart_report(request: Request):
+    """Raport dla lekarza po serii: podsumowanie (AI na faktach QBota) + tabele + strony EKG z serii. docs/SERCE.md"""
+    import qbot_heart_ai as _hai
+    facts = _hai.series_facts()
+    try:
+        ai = _hai.report_ai(facts, compute=bool(_owner_user(request)))
+    except Exception:
+        ai = None
+    bp = facts.get("seria_cisnienia") or {}
+    name = "Serce_raport_" + (bp.get("to", "")[8:10] + "." + bp.get("to", "")[5:7] + "." + bp.get("to", "")[0:4] if bp else "brak") + ".pdf"
+    return Response(content=_hai.report_pdf(facts, ai), media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @app.get("/api/forma/ecg.pdf")

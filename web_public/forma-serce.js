@@ -86,6 +86,10 @@
       '<div style="position:relative;width:100%;height:200px"><canvas id="hz-bp"></canvas></div>' +
       '<div class="muted" style="font-size:12px;margin-top:4px">Przeciągnij po wykresie, żeby powiększyć; dwuklik = całość.</div></div>' +
       '<div class="card"><div class="cardhead"><p class="lbl">Ciśnienie (Withings)</p><span class="sub">' + d.bp.all.length + " pomiarów</span></div>" +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
+      '<div style="font-size:13.5px">' + (bp ? "Seria " + dd(bp.from) + (bp.to !== bp.from ? "–" + dd(bp.to) : "") + ": <b>" + bp.days + " z 7 dni</b>" +
+        " · rano " + bp.morning.n + " · wieczorem " + bp.evening.n + " pomiarów" + (bp.protocol_ok ? " · <b>seria pełna</b>" : " · seria w toku") : "Brak serii") + "</div>" +
+      '<a class="btn" href="/api/forma/heart/report.pdf" download style="font-size:12.5px;padding:3px 10px" title="Podsumowanie (AI na danych QBota), tabela ciśnienia dzień po dniu, liczby z zegarka i strony EKG z serii">Raport dla lekarza (PDF)</a></div>' +
       '<div style="overflow-x:auto"><table class="qs-table"><tr><th>Data</th><th>Godz.</th><th class="num">Ciśnienie</th><th class="num">Tętno</th></tr>' +
       bpRows + "</table></div>" + bpSum + "</div>" +
       '<div class="card"><div class="cardhead"><p class="lbl">EKG (zegarek)</p><span class="sub">' + e.list.length + " nagrań</span></div>" +
@@ -118,6 +122,22 @@
       tr.addEventListener("click", function (ev) { if (ev.target.tagName === "A") return; drawEcg(tr.dataset.id); });
     });
     if (e.last && e.last.id) drawEcg(e.last.id);
+  }
+
+  /* ---------- AI: kontekst do EKG (tylko gdy cos odstaje; liczone raz i pamietane) ---------- */
+  function aiBox(a) {
+    return '<div style="font-size:12px;font-weight:600;color:var(--ink2);margin-bottom:4px">Kontekst (AI na danych QBota: sen, trening, ciśnienie)</div>' +
+      '<div style="font-size:14px;line-height:1.5">' + esc(a.komentarz || "") + "</div>" +
+      '<div class="muted" style="font-size:11.5px;margin-top:4px">' + esc(a.at || "") + " · nie jest diagnozą</div>";
+  }
+  function showEcgAi(id, cached) {
+    var el = document.getElementById("hz-ecgai"); if (!el) return;
+    if (cached) { el.innerHTML = aiBox(cached); return; }
+    el.innerHTML = '<div class="muted">Analizuję kontekst (sen, trening, ciśnienie)… kilka sekund</div>';
+    fetch("/api/forma/ecg/ai?id=" + encodeURIComponent(id), {method: "POST", credentials: "same-origin"})
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (j) { var e2 = document.getElementById("hz-ecgai"); if (e2 && j.ai) e2.innerHTML = aiBox(j.ai); else if (e2) e2.remove(); })
+      .catch(function (err) { var e2 = document.getElementById("hz-ecgai"); if (e2) e2.innerHTML = '<div class="muted">Kontekst AI niedostępny (' + esc(err.message) + ").</div>"; });
   }
 
   /* ---------- przebieg EKG (qbot_ecg): wykres interaktywny jak pozostale ---------- */
@@ -153,8 +173,10 @@
             return '<div class="s3row ' + p.status + '"><span class="i">' + ICON[p.status] + "</span><span>" + esc(p.text) + "</span></div>";
           }).join("") + "</div>" +
           (irrTxt ? '<div style="font-size:13px;color:var(--bad);margin-top:4px">' + irrTxt + "</div>" : "") +
+          (d.ai_needed ? '<div id="hz-ecgai" class="card tight" style="margin-top:8px;background:var(--well)"></div>' : "") +
           '<div style="position:relative;width:100%;height:220px;margin-top:6px"><canvas id="hz-ecg"></canvas></div>' +
           '<div class="muted" style="font-size:12px">Przeciągnij, żeby powiększyć fragment (np. 3–4 uderzenia); dwuklik = całość. Najechanie na uderzenie pokazuje odstęp od poprzedniego.</div>';
+        if (d.ai_needed) showEcgAi(d.detail_id, d.ai);
         if (!window.Chart) return;
         var ink2 = css("--ink2", "#888"), line = css("--line", "#ddd"), red = css("--bad", "#e5534b"), ink = css("--ink", "#ddd");
         if (ECH) ECH.destroy(); EZ = null;

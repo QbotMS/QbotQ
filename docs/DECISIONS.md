@@ -4,6 +4,10 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-13 -- DECYZJA: AI w Sercu tylko na faktach QBota - komentarz kontekstowy do EKG i raport dla lekarza
+Samo EKG oceniaja reguly (powtarzalne, sprawdzalne). AI: (1) 2-3 zdania kontekstu pod EKG, gdy cos odstaje; (2) podsumowanie
+w PDF dla lekarza po serii. Oceny przepisuje z regul, nie liczy wlasnych liczb, bez diagnozy. Szczegoly: docs/SERCE.md.
+
 ## 2026-10-13 -- DECYZJA: EKG z pelnym przebiegiem - uderzenia, HRV, nieregularne, wykres, PDF do pobrania
 Michal wybral punkty 1-3 i 5: przebieg EKG z Garmina (GHS, 128 Hz) pobierany automatycznie, analiza uderzen (QBot), wykres
 interaktywny i PDF dla lekarza do pobrania z QBota. Bez odcinkow PR/QRS/QT (128 Hz za malo na pomiar). Szczegoly: docs/SERCE.md.
