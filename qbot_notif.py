@@ -35,7 +35,7 @@ DDL = """CREATE TABLE IF NOT EXISTS qbot_v2.notif (
 )"""
 
 KIND_ICON = {"rower": "🔧", "trasa": "🗺️", "trener": "🏋️", "dane": "📡", "system": "⚙️",
-             "jazda": "🚴", "ubior": "👕", "pogoda": "🌦️", "jedzenie": "🍽️"}
+             "jazda": "🚴", "ubior": "👕", "pogoda": "🌦️", "jedzenie": "🍽️", "zakupy": "🛒"}
 
 # krok 2 (2026-10-08)
 RIDE_DAYS = 3              # jazdy z ostatnich N dni -> "Nowa jazda" + "Uzupelnij, w czym jechales"
@@ -352,6 +352,16 @@ def sync_live(cur, garage_db: str | None = None, today: date | None = None) -> i
             cur.connection.rollback()
         except Exception:
             pass
+    # --- 2026-10-13: Garaz > Zakupy - konczy sie zapas (qbot_zakupy_api, przycisk Kup ponownie) ---
+    try:
+        import qbot_zakupy_api as _ZK
+        items += _ZK.notif_items(today)
+        ok_prefixes.append("live:zakupy:")
+    except Exception:
+        try:
+            cur.connection.rollback()
+        except Exception:
+            pass
     # --- krok 2: system (uslugi, dysk, wejscia demo) ---
     try:
         items += live_system(service_states(), disk_pct())
@@ -385,6 +395,7 @@ SOURCES = [
     ("rower", "Jazdy", "Rower po jeździe — do zrobienia", "zadania zaznaczone w oknie Ubiór / rower", ("live:rower:",)),
     ("jedz_okno", "Zdrowie", "Okno 10–20 do potwierdzenia", "wczoraj do 12:00 i dziś od 19:30 – przycisk „Okno OK”", ("live:jedzenie:okno:",)),
     ("jedz_dzien", "Zdrowie", "Dzień do zamknięcia", "Brokuł do potwierdzenia albo brak wpisów – przycisk + link do dnia", ("live:jedzenie:dzien:",)),
+    ("zakupy", "Zakupy", "Kończy się zapas", "suple i inne zużywalne z Garaż → Zakupy – przycisk „Kup ponownie”", ("live:zakupy:",)),
     ("pogoda", "Pogoda", "Pogoda przed zaplanowaną jazdą", "deszcz, wiatr, przymrozek, burza, śnieg — dziś i jutro", ("live:pogoda:",)),
     ("trasa", "Trasy", "Trasa czeka na potwierdzenie", "nowa trasa RWGPS / Komoot — odpowiedź w Telegramie", ("live:trasa:",)),
     ("trener_plan", "Trener", "Plan tygodnia", "kopia wiadomości z Telegrama", ("trener:plan:",)),

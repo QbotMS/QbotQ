@@ -13,7 +13,7 @@ Start: 2026-10-13. Zakładka „Zakupy” w Garażu (`/garaz.html#zakupy`): list
 
 ## Etapy
 1. [2026-10-13] Zakładka, okno z linkiem, priorytet, Kupione, propozycja dodania do Garażu.
-2. Zużycie i przypomnienia. UWAGA: suplementy — powiązać z modułem `qbot_supplements.py` (qbot_v2.supplement / supplement_log = rzeczywiste przyjęcia i dawki), zamiast liczyć z „dziennego zużycia” wpisanego ręcznie. Dla rzeczy spoza modułu suplementów (np. zatyczki) — opakowanie + zużycie dzienne.
+2. [2026-10-13] Zużycie i przypomnienia — ZROBIONE (opis niżej). UWAGA: suplementy — powiązać z modułem `qbot_supplements.py` (qbot_v2.supplement / supplement_log = rzeczywiste przyjęcia i dawki), zamiast liczyć z „dziennego zużycia” wpisanego ręcznie. Dla rzeczy spoza modułu suplementów (np. zatyczki) — opakowanie + zużycie dzienne.
 3. Najniższa cena.
 4. Gmail.
 
@@ -23,3 +23,22 @@ Start: 2026-10-13. Zakładka „Zakupy” w Garażu (`/garaz.html#zakupy`): list
 - FRONT (poza repo, żywe od razu): `garaz-zakupy.js` (samodzielna zakładka jak `garaz-notatki.js`), znaczniki i style w `garaz.html`, pole szukania w `garaz-search.js` (MAP `tabZakupy`).
 - Miniatura: przy zapisie z `image_url` serwer robi JPEG 320 px (data URI w `thumb`) — lista nie zależy od hotlinków sklepu.
 - Testy: `tests/test_zakupy.py` (tymczasowa baza).
+
+## Etap 2 — zapas i przypomnienia (2026-10-13)
+- Pola pozycji: `pack_units` (np. 90) × `qty`, `pack_unit` (kaps./szt./par…), `opened_at` (otwarte od; domyślnie data zakupu),
+  `lead_days` (przypomnij N dni przed końcem, domyślnie 10).
+- Zużycie — jedno z dwóch:
+  - ręczne `per_day` (np. 2 dziennie),
+  - powiązanie z Zdrowie → Suplementy (`supplement_id`, `per_intake` = jednostek na przyjęcie). Liczone dni wg harmonogramu
+    suplementu (dni tygodnia) od otwarcia do wczoraj MINUS dni oznaczone „pominięte”. Dzień niepotwierdzony liczy się jako
+    wzięty — przypomnienie raczej za wcześnie niż za późno. Suplement wyłączony = brak prognozy końca.
+- Przypomnienie (gdy zostało ≤ `lead_days` dni, pozycja nie odłożona i bez dokupienia):
+  - Dzwonek: `live:zakupy:<id>` (qbot_notif.sync_live → `qbot_zakupy_api.notif_items`), przycisk „Kup ponownie”;
+    w Ustawieniach powiadomień źródło „Zakupy → Kończy się zapas”.
+  - Telegram: linia „🛒 Kończy się: …” w PORANNEJ wiadomości (qbot_trener_notify, jak suplementy) + przyciski
+    „Kup ponownie” (`zk:r:<id>`) i „+7 dni” (`zk:z:<id>`), obsługa w telegram_reply_processor → `handle_callback`;
+    po kliknięciu znika tylko wiersz tej pozycji. Bez osobnej wiadomości.
+- „Kup ponownie” = kopia na listę Do kupienia (priorytet Pilne, `refill_of`), idempotentnie; oryginał przestaje przypominać.
+  Usunięcie kopii = oryginał znów przypomina. Zakup kopii: otwarcie = przewidywany koniec poprzedniego opakowania
+  (jeśli później niż data zakupu).
+- Testy: `tests/test_zakupy.py` (9). Żywo sprawdzone: okno, pasek zapasu, Dzwonek, linia poranna, Kup ponownie.

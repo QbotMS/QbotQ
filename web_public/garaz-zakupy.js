@@ -2,7 +2,9 @@
    Samodzielna zakladka (jak garaz-notatki.js): sama sie pokazuje i chowa.
    API: /api/zakupy/list|save|bought|unbought|delete; dane z linku: /api/garage/scrape (te same co reszta Garazu).
    Po "Kupione" przy rzeczy rowerowej: propozycja dodania do Garazu — otwiera ISTNIEJACE okno
-   (Odziez / Sprzet / komponent Roweru) z linkiem, cena i data, i odpala tam "Zaciagnij dane". Dok.: docs/ZAKUPY.md */
+   (Odziez / Sprzet / komponent Roweru) z linkiem, cena i data, i odpala tam "Zaciagnij dane".
+   Etap 2 (2026-10-13): zapas rzeczy zuzywalnych (opakowanie + zuzycie dzienne albo powiazanie z Zdrowie > Suplementy),
+   pasek zapasu, "Konczy sie", przyciski Kup ponownie (/rebuy) i +7 dni (/snooze). Dok.: docs/ZAKUPY.md */
 (function(){
 "use strict";
 var $ = function(id){ return document.getElementById(id); };
@@ -63,6 +65,23 @@ function filtered(){
   });
 }
 
+function nfmt(x){ return String(Math.round(Number(x)*10)/10).replace(".",","); }
+function stockLine(it){
+  var f=it.forecast; if(!f) return "";
+  var s="zostało ok. "+nfmt(f.remaining)+" z "+nfmt(f.pack)+" "+esc(f.unit);
+  if(f.days_left!=null) s+=" · starczy do "+dd(f.end)+" ("+f.days_left+" dni)"; else s+=" · brak zużycia (suplement wyłączony?)";
+  if(it.supplement_id){ var n=""; (D.supplements||[]).forEach(function(x){ if(x.id===it.supplement_id) n=x.name; });
+    s+=" · wg Zdrowie → Suplementy"+(n?" ("+esc(n)+")":""); }
+  if(it.snooze_until && it.snooze_until>today()) s+=" · przypomnienie od "+dd(it.snooze_until);
+  if(it.refill_id) s+=" · dokupienie na liście";
+  return s;
+}
+function stockHtml(it){
+  var f=it.forecast; if(!f || it.status!=="bought") return "";
+  var p=Math.max(0,Math.min(100,Math.round((f.pct||0)*100)));
+  return "<div class=\"zk-stock\"><div class=\"zk-bar\"><i style=\"width:"+p+"%\""+(it.due?" class=\"low\"":"")+"></i></div>"+
+    "<span>"+stockLine(it)+"</span></div>";
+}
 function rowHtml(it){
   var img = it.thumb ? "<img class=\"zk-ph\" src=\""+it.thumb+"\" alt=\"\">" : "<div class=\"zk-ph zk-noph\">&#128722;</div>";
   var title = (it.brand ? "<span class=\"zk-br\">"+esc(it.brand)+"</span> " : "")+esc(it.name);
@@ -70,7 +89,9 @@ function rowHtml(it){
   if(it.bike_id) meta.push("<span class=\"chip-q\">"+esc(bikeLabel(it.bike_id))+"</span>");
   if(it.shop) meta.push(it.url ? "<a href=\""+esc(it.url)+"\" target=\"_blank\" rel=\"noopener\">"+esc(it.shop)+" &#8599;</a>" : esc(it.shop));
   if(it.qty>1) meta.push(it.qty+" szt.");
+  if(it.status==="planned" && it.refill_of) meta.push("<span class=\"chip-q w\">dokupienie</span>");
   if(it.notes) meta.push("<span class=\"zk-note\">"+esc(it.notes.slice(0,80))+"</span>");
+  var stock = stockHtml(it);
   var right, acts;
   if(it.status==="planned"){
     right = "<div class=\"zk-pr\">"+(it.price!=null ? money(it.price,it.currency) : "—")+"</div>"+
@@ -80,12 +101,16 @@ function rowHtml(it){
   } else {
     right = "<div class=\"zk-pr\">"+(it.paid_price!=null ? money(it.paid_price,it.currency) : "—")+"</div>"+
             "<div class=\"zk-sub\">kupione "+dd(it.bought_at)+"</div>";
-    acts = (it.garage_target ? "<button type=\"button\" class=\"btn sec\" data-a=\"garage\">Do Garażu</button>" : "")+
+    acts = (it.due ? "<button type=\"button\" class=\"btn\" data-a=\"rebuy\">Kup ponownie</button>"+
+                     "<button type=\"button\" class=\"btn sec\" data-a=\"snooze\" title=\"Przypomnij za 7 dni\">+7 dni</button>"
+           : (it.pack_units && !it.refill_id ? "<button type=\"button\" class=\"btn sec\" data-a=\"rebuy\">Kup ponownie</button>" : ""))+
+           (it.garage_target ? "<button type=\"button\" class=\"btn sec\" data-a=\"garage\">Do Garażu</button>" : "")+
            "<button type=\"button\" class=\"btn sec\" data-a=\"back\" title=\"Wróć na listę do kupienia\">Cofnij</button>";
   }
   var pr = it.status==="planned" ? "<span class=\"prio p"+it.priority+"\">"+esc(it.priority_label)+"</span>" : "";
-  return "<div class=\"zk-row"+(it.status==="bought"?" done":"")+"\" data-id=\""+it.id+"\">"+img+
-    "<div class=\"zk-main\"><div class=\"zk-t\">"+pr+title+"</div><div class=\"zk-m\">"+meta.join(" · ")+"</div></div>"+
+  if(it.due) pr = "<span class=\"prio p1\">Kończy się</span>";
+  return "<div class=\"zk-row"+(it.status==="bought"?" done":"")+(it.due?" due":"")+"\" data-id=\""+it.id+"\">"+img+
+    "<div class=\"zk-main\"><div class=\"zk-t\">"+pr+title+"</div><div class=\"zk-m\">"+meta.join(" · ")+"</div>"+stock+"</div>"+
     "<div class=\"zk-right\">"+right+"</div><div class=\"zk-act\">"+acts+"</div></div>";
 }
 
@@ -104,7 +129,7 @@ function render(){
     r.querySelectorAll("button[data-a]").forEach(function(b){
       b.addEventListener("click",function(e){ e.stopPropagation(); act(b.dataset.a, it); });
     });
-    r.addEventListener("click",function(e){ if(e.target.closest("a")) return; if(it.status==="planned") openModal(it); });
+    r.addEventListener("click",function(e){ if(e.target.closest("a")) return; openModal(it); });
   });
 }
 function byId(id){ for(var i=0;i<D.items.length;i++) if(D.items[i].id===id) return D.items[i]; return null; }
@@ -113,6 +138,8 @@ function act(a, it){
   if(a==="edit") openModal(it);
   else if(a==="buy") openBuy(it);
   else if(a==="garage") toGarage(it);
+  else if(a==="rebuy") postJSON("/api/zakupy/rebuy",{id:it.id}).then(load).catch(function(e){ alert("Błąd: "+e.message); });
+  else if(a==="snooze") postJSON("/api/zakupy/snooze",{id:it.id, days:7}).then(load).catch(function(e){ alert("Błąd: "+e.message); });
   else if(a==="back") postJSON("/api/zakupy/unbought",{id:it.id}).then(load).catch(function(e){ alert("Błąd: "+e.message); });
 }
 
@@ -123,6 +150,13 @@ function fillSelects(){
   var b=$("z_bike_id"); b.innerHTML="<option value=\"\">— żaden —</option>"+
     (D.bikes||[]).map(function(x){ return "<option value=\""+x.id+"\">"+esc(x.nickname||x.name)+"</option>"; }).join("");
 }
+function fillSupl(){
+  var s=$("z_supplement_id"); s.innerHTML="<option value=\"\">— wybierz suplement —</option>"+
+    (D.supplements||[]).map(function(x){ return "<option value=\""+x.id+"\">"+esc(x.name)+(x.active?"":" (wyłączony)")+"</option>"; }).join("");
+}
+function syncMode(){ var supl=$("z_mode_supl").checked;
+  $("z_perday_box").style.display=supl?"none":""; $("z_supl_box").style.display=supl?"":"none";
+  $("z_perintake_box").style.display=supl?"":"none"; }
 function paintPrio(){ document.querySelectorAll("#z_priority button").forEach(function(b){ b.classList.toggle("on", Number(b.dataset.v)===PRIO); }); }
 function syncBike(){ $("z_bike_box").style.display = ($("z_category").value==="Rower / części") ? "" : "none"; }
 function setImg(url){
@@ -138,6 +172,15 @@ function openModal(it){
   $("z_price").value=(it.price!=null?it.price:""); $("z_currency").value=it.currency||"";
   $("z_bike_id").value=it.bike_id||""; $("z_notes").value=it.notes||"";
   PRIO=it.priority||2; paintPrio(); syncBike();
+  fillSupl();
+  $("z_pack_units").value=(it.pack_units!=null?it.pack_units:""); $("z_pack_unit").value=it.pack_unit||"";
+  $("z_per_day").value=(it.per_day!=null?it.per_day:""); $("z_per_intake").value=(it.per_intake!=null?it.per_intake:"");
+  $("z_supplement_id").value=it.supplement_id||""; $("z_lead_days").value=it.lead_days||"";
+  $("z_lead_days").placeholder=String(D.lead_days||10);
+  $("z_mode_supl").checked=!!it.supplement_id; $("z_mode_day").checked=!it.supplement_id; syncMode();
+  $("z_opened_box").style.display=(it.status==="bought")?"":"none";
+  $("z_opened_at").value=(it.status==="bought" ? (it.opened_at||it.bought_at||"") : "");
+  $("zStockInfo").innerHTML = it.forecast ? stockLine(it) : "";
   setImg(it.image_url||""); if(it.thumb && !it.image_url){ $("zThumb").src=it.thumb; $("zThumb").style.display=""; }
   $("zUrlStatus").textContent = it.id ? "" : "Wklej link do produktu i kliknij „Pobierz dane” — QBot sam uzupełni pola.";
   $("zStatus").textContent="";
@@ -173,7 +216,13 @@ function save(){
   var b={ id:$("z_id").value||null, url:$("z_url").value, name:$("z_name").value, brand:$("z_brand").value,
     category:$("z_category").value, priority:PRIO, qty:$("z_qty").value, price:$("z_price").value,
     currency:$("z_currency").value, image_url:$("z_image_url").value,
-    bike_id:($("z_category").value==="Rower / części" ? $("z_bike_id").value : null), notes:$("z_notes").value };
+    bike_id:($("z_category").value==="Rower / części" ? $("z_bike_id").value : null), notes:$("z_notes").value,
+    pack_units:$("z_pack_units").value, pack_unit:$("z_pack_unit").value, lead_days:$("z_lead_days").value,
+    supplement_id:($("z_mode_supl").checked ? $("z_supplement_id").value : null),
+    per_intake:($("z_mode_supl").checked ? $("z_per_intake").value : null),
+    per_day:($("z_mode_supl").checked ? null : $("z_per_day").value) };
+  if($("z_opened_box").style.display!=="none") b.opened_at=$("z_opened_at").value;
+  if($("z_mode_supl").checked && b.pack_units && !b.supplement_id){ $("zStatus").textContent="wybierz suplement albo przełącz na zużycie dzienne"; return; }
   if(!b.name.trim()){ $("zStatus").textContent="podaj nazwę"; return; }
   if(!b.category){ $("zStatus").textContent="wybierz kategorię"; return; }
   $("zStatus").textContent="zapis…";
@@ -245,6 +294,8 @@ document.addEventListener("DOMContentLoaded",function(){
   $("zScrape").addEventListener("click", scrape);
   $("z_url").addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); scrape(); } });
   $("z_category").addEventListener("change", syncBike);
+  $("z_mode_day").addEventListener("change", syncMode);
+  $("z_mode_supl").addEventListener("change", syncMode);
   document.querySelectorAll("#z_priority button").forEach(function(b){
     b.addEventListener("click", function(){ PRIO=Number(b.dataset.v); paintPrio(); }); });
   $("zSave").addEventListener("click", save);

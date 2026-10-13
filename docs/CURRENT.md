@@ -1260,3 +1260,8 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
 - Nowa zakladka Zakupy (/garaz.html#zakupy): Do kupienia (priorytet Pilne/Wkrotce/Kiedys) + Kupione. Dodawanie z linku (Pobierz dane = /api/garage/scrape), miniatura JPEG w bazie. Po Kupione przy rzeczy rowerowej propozycja dodania do Garazu (otwiera istniejace okno Odziez/Sprzet/komponent z linkiem, cena, data).
 - Kategorie z separatorem ' / ' (nie polpauza) - AI przy zaciaganiu kopiuje je dokladnie.
 - Dalej: etapy 2-4 w docs/TODO.md [GARAZ-ZAKUPY]; dok. docs/ZAKUPY.md.
+
+## 2026-10-13 -- Garaz > Zakupy (etap 2: zapas)
+- Zapas rzeczy zuzywalnych w Zakupach: opakowanie + zuzycie dzienne albo z Zdrowie > Suplementy (dni wg harmonogramu minus pominiete).
+- Konczy sie (<= N dni, domyslnie 10): Dzwonek (live:zakupy) + linia i przyciski w porannej wiadomosci (zk:r Kup ponownie, zk:z +7 dni).
+- Dalej: etap 3 (najnizsza cena), etap 4 (Gmail) -- docs/TODO.md [GARAZ-ZAKUPY].

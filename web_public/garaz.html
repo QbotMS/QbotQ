@@ -287,6 +287,16 @@ body.svy-open .svy{display:block}
 .zk-act .btn{padding:6px 12px;font-size:13px}
 @media (max-width:760px){.zk-row{grid-template-columns:48px minmax(0,1fr) auto}.zk-ph{width:48px;height:48px}.zk-act{grid-column:1 / -1;justify-content:flex-end}}
 #zakupyModal .mbody{display:grid}
+.zk-stock{display:flex;align-items:center;gap:8px;margin-top:5px;font-size:12.5px;color:var(--ink2)}
+.zk-bar{flex:0 0 90px;height:7px;border-radius:4px;background:var(--panel);overflow:hidden}
+.zk-bar i{display:block;height:100%;background:var(--good)}
+.zk-bar i.low{background:var(--bad)}
+.zk-row.due{border-color:var(--bad)}
+.zk-row.done.due{opacity:1}
+.zk-row.done{cursor:pointer}
+.zk-mode{display:flex;gap:14px;flex-wrap:wrap;font-size:13.5px;color:var(--ink)}
+.zk-mode label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.zk-stockinfo{font-size:12.5px;color:var(--ink2)}
 #zakupyBuyModal{width:520px}
 #zakupyBuyModal .mbody{display:block}
 #zakupyBuyModal .mgrid{grid-template-columns:1fr 1fr}
@@ -809,6 +819,19 @@ body.svy-open .svy{display:block}
         </div>
       </div>
       <div class="mf full"><label>Notatka</label><textarea id="z_notes" placeholder="np. rozmiar, wariant, po co"></textarea></div>
+      <div class="mf full"><div class="sechead" style="margin:6px 0 0">Zapas &#8212; dla rzeczy, kt&#243;re si&#281; zu&#380;ywaj&#261; (opcjonalnie)</div>
+        <div class="zk-stockinfo" id="zStockInfo"></div></div>
+      <div class="mf"><label>W opakowaniu</label><input id="z_pack_units" type="number" step="1" min="0" placeholder="np. 90"></div>
+      <div class="mf"><label>Jednostka</label><input id="z_pack_unit" list="zUnits" placeholder="kaps."><datalist id="zUnits"><option value="kaps."><option value="tabl."><option value="szt."><option value="par"><option value="porcji"><option value="ml"><option value="g"></datalist></div>
+      <div class="mf"><label>Przypomnij [dni przed ko&#324;cem]</label><input id="z_lead_days" type="number" step="1" min="1" max="90"></div>
+      <div class="mf full"><div class="zk-mode">
+        <label><input type="radio" name="z_mode" id="z_mode_day" checked> zu&#380;ycie dzienne (wpisuj&#281; r&#281;cznie)</label>
+        <label><input type="radio" name="z_mode" id="z_mode_supl"> licz z Zdrowie &#8594; Suplementy (wg potwierdze&#324;)</label>
+      </div></div>
+      <div class="mf" id="z_perday_box"><label>Zu&#380;ycie na dzie&#324;</label><input id="z_per_day" type="number" step="0.5" min="0" placeholder="np. 2"></div>
+      <div class="mf" id="z_supl_box" style="display:none"><label>Suplement</label><select id="z_supplement_id"></select></div>
+      <div class="mf" id="z_perintake_box" style="display:none"><label>Jednostek na jedno przyj&#281;cie</label><input id="z_per_intake" type="number" step="0.5" min="0" placeholder="1"></div>
+      <div class="mf" id="z_opened_box" style="display:none"><label>Otwarte od</label><input id="z_opened_at" type="date"></div>
     </div>
     <div class="mphoto">
       <img id="zThumb" class="mthumb" alt="" style="display:none;object-fit:contain;background:#fff">
@@ -857,7 +880,7 @@ body.svy-open .svy{display:block}
 <script>(function(){var b=document.getElementById("themebtn");if(!b)return;var SUN='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',MOON='<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';function paint(){b.querySelector("svg").innerHTML=document.documentElement.classList.contains("theme-dark")?SUN:MOON;}b.addEventListener("click",function(){var d=!document.documentElement.classList.contains("theme-dark");document.documentElement.classList.toggle("theme-dark",d);try{localStorage.setItem("qtheme",d?"dark":"light")}catch(e){}paint();});paint();})();</script>
 <script src="/garaz-exped.js?v=4"></script>
 <script src="/garaz-notatki.js?v=1"></script>
-<script src="/garaz-zakupy.js?v=3"></script>
+<script src="/garaz-zakupy.js?v=4"></script>
 <script src="/garaz-search.js?v=3"></script>
 </body>
 </html>

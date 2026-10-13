@@ -493,6 +493,14 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
                 _kb = _kb + _spb
             except Exception as e:
                 log.append(f"suplementy: błąd {str(e)[:120]}")
+            try:  # 2026-10-13: Garaz > Zakupy - konczy sie zapas (linia + Kup ponownie / +7 dni)
+                import qbot_zakupy_api as ZK
+                _zkl, _zkb = ZK.morning(today)
+                if _zkl:
+                    _txt = (_txt or "").rstrip() + "\n" + _zkl
+                _kb = _kb + _zkb
+            except Exception as e:
+                log.append(f"zakupy: błąd {str(e)[:120]}")
             log.append(_once(c, f"day:{today.isoformat()}", user, _txt, dry, _kb or None))
         if st["notify.day"] == 2:
             for s in _sessions(c, user, today, today):
