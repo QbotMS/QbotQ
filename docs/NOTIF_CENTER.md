@@ -55,3 +55,23 @@ Jazdy, pogoda przed jazdą, system — jak wyżej. Analiza AI jazdy nie jest oso
 
 ## Testy
 `tests/test_notif.py` (4), `tests/test_notif_step2.py` (4), `tests/test_notif_setup.py` (2).
+
+## Powiadomienia na komputerze — Web Push (2026-10-13)
+Pozycje dzwonka trafiają też jako powiadomienia systemowe (Centrum powiadomień na Macu; Safari / Chrome). Etap 1: komputer.
+iPhone później — wymaga dodania strony do ekranu początkowego (iOS 16.4+); wysyłka z serwera zostaje ta sama.
+- **Stan na żywo liczony w tle**: pętla w `qbot-web` (`_push_loop`, wątek startowany w `@app.on_event("startup")`) co 60 s robi
+  `qbot_webpush.tick()` = `sync_live()` + wysyłka. Wcześniej `sync_live` był wołany WYŁĄCZNIE przy otwarciu dzwonka (`GET /api/notif`).
+  Wspólna blokada `_NOTIF_LOCK` — pętla i odczyt dzwonka nie liczą naraz. Wyłączenie pętli: `QBOT_WEBPUSH_LOOP=0` (albo `QBOT_NOTIF_DISABLE=1`).
+- **Co idzie**: każda pozycja nowa albo ze zmienioną treścią (`notif.pushed_at < updated_at`), nieprzeczytana, niezamknięta, nieusunięta,
+  rodzaj włączony w SETUP > Powiadomienia. Raz na wszystkie zapisane urządzenia. Zdarzenia z innych procesów (Trener z crona) też — pętla czyta tabelę.
+  Więcej niż 5 naraz → 4 osobno + 1 zbiorcze. `tag` = klucz pozycji (nowa wersja zastępuje starą w Centrum powiadomień).
+- **Start bez zalewu**: przy pierwszym `ensure()` wszystkie istniejące pozycje dostały `pushed_at` (znacznik `app_settings` `webpush.init`).
+- **Ślad pracy pętli**: `app_settings` `webpush.tick` = {at, items, ...}; SETUP pokazuje „Serwer sprawdzał: HH:MM”.
+- **Pliki**: `qbot_webpush.py` (tabela `qbot_v2.push_sub`, kolumna `notif.pushed_at`, VAPID, wysyłka `pywebpush`),
+  `/opt/qbot/web/public/sw-push.js` (service worker; publiczny w bramce logowania — sam skrypt, bez danych), SETUP > Powiadomienia
+  (ramka „Powiadomienia na tym komputerze”: Włącz / Wyślij test / Wyłącz).
+- **API**: `GET /api/push/key` (klucz publiczny, urządzenia, ostatni obrót pętli), `POST /api/push/subscribe|unsubscribe|test` (tylko właściciel, nie demo).
+- **Klucz VAPID**: `/opt/qbot/app/.env.webpush.pem` (poza gitem, 600, tworzony przy pierwszym użyciu; `QBOT_VAPID_PEM` nadpisuje). Zmiana klucza = urządzenia trzeba włączyć ponownie.
+- **Wygasłe subskrypcje** (404/410 z usługi push) usuwane automatycznie; inne błędy w `push_sub.last_err`.
+- **Zależność**: `pywebpush` w `.venv` (instalacja: `runuser -u qbot -- /opt/qbot/app/.venv/bin/pip install pywebpush`).
+- Testy: `tests/test_webpush.py` (5).

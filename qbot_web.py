@@ -159,7 +159,7 @@ async def _webauth_guard(request, call_next):
     Dane logowania: /opt/qbot/app/.env.webauth
     klucze: WEBAUTH_USERS=login:haslo,login2:haslo2 ; WEBAUTH_TOKEN=<wartosc do podpisu>
     """
-    if request.url.path in ("/healthz", "/login", "/favicon.ico", "/favicon.svg", "/wyprawa-rsvp", "/api/wyprawa/rsvp"):
+    if request.url.path in ("/healthz", "/login", "/favicon.ico", "/favicon.svg", "/wyprawa-rsvp", "/api/wyprawa/rsvp", "/sw-push.js"):
         return await call_next(request)
     # [G1] goscie jazdy: tylko z waznym tokenem (sprawdzane w endpointach), dane z bialej listy
     if request.url.path.startswith("/api/guest/") or request.url.path.startswith("/g/"):
@@ -6901,6 +6901,120 @@ def ride_gear_options(ride: str = Query("")):
 
 
 _NOTIF_SYNC_TS = [0.0]
+import threading as _wp_threading
+_NOTIF_LOCK = _wp_threading.Lock()   # sync_live: petla w tle i odczyt dzwonka nie licza naraz
+
+
+def _push_loop():
+    """2026-10-13: petla w tle (co qbot_webpush.PUSH_EVERY_S): stan na zywo dzwonka liczony NIEZALEZNIE od otwarcia
+    strony + wysylka nowych pozycji jako powiadomienia systemowe (Web Push). Dok.: docs/NOTIF_CENTER.md"""
+    import sys as _sys
+    import time as _t
+    import qbot_webpush as WP
+    _t.sleep(15)
+    while True:
+        try:
+            with _NOTIF_LOCK:
+                conn = _db_conn()
+                try:
+                    st = WP.tick(conn.cursor(), GARAGE_DB)
+                    conn.commit()
+                    _NOTIF_SYNC_TS[0] = _t.time()
+                    if st.get("items"):
+                        print(f"[webpush] {st}", file=_sys.stderr, flush=True)
+                except Exception as e:
+                    conn.rollback()
+                    print(f"[webpush] blad: {e!r}", file=_sys.stderr, flush=True)
+                finally:
+                    conn.close()
+        except Exception as e:
+            print(f"[webpush] blad polaczenia: {e!r}", file=_sys.stderr, flush=True)
+        _t.sleep(WP.PUSH_EVERY_S)
+
+
+@app.on_event("startup")
+def _push_loop_start():
+    if os.getenv("QBOT_NOTIF_DISABLE") == "1" or os.getenv("QBOT_WEBPUSH_LOOP", "1") == "0":
+        return
+    _wp_threading.Thread(target=_push_loop, daemon=True, name="qbot-webpush").start()
+
+
+def _owner_only(request: Request):
+    if (request.scope.get("qbot_auth") or {}).get("kind") != "owner":
+        raise HTTPException(status_code=403, detail="tylko wlasciciel")
+
+
+@app.get("/api/push/key")
+def push_key():
+    """Klucz publiczny VAPID + liczba zapisanych urzadzen (SETUP > Powiadomienia > na tym komputerze)."""
+    import qbot_webpush as WP
+    conn = _db_conn()
+    try:
+        cur = conn.cursor()
+        WP.ensure(cur)
+        devs = WP.devices(cur)
+        conn.commit()
+        return {"key": WP.public_key(), "tick": WP.last_tick(cur), "devices": [{"id": d["id"], "device": d["device"], "endpoint": d["endpoint"],
+                "last_ok": d["last_ok_at"].strftime("%d.%m %H:%M") if d["last_ok_at"] else None, "err": d["last_err"]} for d in devs]}
+    finally:
+        conn.close()
+
+
+@app.post("/api/push/subscribe")
+async def push_subscribe(request: Request):
+    """Body: {subscription: PushSubscription.toJSON(), device: 'Mac · Safari'}."""
+    import qbot_webpush as WP
+    _owner_only(request)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bledny JSON")
+    conn = _db_conn()
+    try:
+        cur = conn.cursor()
+        WP.ensure(cur)
+        try:
+            sid = WP.subscribe(cur, body.get("subscription") or {}, body.get("device"))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        conn.commit()
+        return {"ok": True, "id": sid}
+    finally:
+        conn.close()
+
+
+@app.post("/api/push/unsubscribe")
+async def push_unsubscribe(request: Request):
+    import qbot_webpush as WP
+    _owner_only(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    conn = _db_conn()
+    try:
+        cur = conn.cursor()
+        WP.ensure(cur)
+        n = WP.unsubscribe(cur, body.get("endpoint") or "")
+        conn.commit()
+        return {"ok": True, "removed": n}
+    finally:
+        conn.close()
+
+
+@app.post("/api/push/test")
+def push_test(request: Request):
+    import qbot_webpush as WP
+    _owner_only(request)
+    conn = _db_conn()
+    try:
+        cur = conn.cursor()
+        WP.ensure(cur)
+        st = WP.send_test(cur)
+        conn.commit()
+        return {"ok": True, **st}
+    finally:
+        conn.close()
 
 
 @app.get("/api/notif")
@@ -6912,10 +7026,13 @@ def notif_list():
     conn = _db_conn()
     try:
         cur = conn.cursor()
-        if _t.time() - _NOTIF_SYNC_TS[0] > 60:
-            NF.sync_live(cur, GARAGE_DB)
-            conn.commit()
-            _NOTIF_SYNC_TS[0] = _t.time()
+        if _t.time() - _NOTIF_SYNC_TS[0] > 60 and _NOTIF_LOCK.acquire(blocking=False):
+            try:
+                NF.sync_live(cur, GARAGE_DB)
+                conn.commit()
+                _NOTIF_SYNC_TS[0] = _t.time()
+            finally:
+                _NOTIF_LOCK.release()
         return NF.listing(cur)
     finally:
         conn.close()

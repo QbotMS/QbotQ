@@ -13,6 +13,9 @@
 
 # OTWARTE
 
+## [WEBPUSH-IPHONE] Powiadomienia dzwonka na iPhonie (dodane 2026-10-13)
+- etap 2 po komputerze: manifest + ikona aplikacji, instrukcja „Do ekranu początkowego” (iOS 16.4+); serwer bez zmian (qbot_webpush).
+
 ## [CP-DYNAMICZNE] CP z wysilkow + przelomy (dodane 2026-10-08)
 **Decyzja Michala 08.10: wariant B (przelom -> Telegram pyta "zatwierdzic?" -> TAK tworzy kotwice).**
 WDROZONE 08.10: fitmodel/cp_breakthrough.py + krok daily_job + akcja Telegram confirm_cp_breakthrough (DECISIONS 2026-10-08).
@@ -395,6 +398,9 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] ODLOZONE (Michal 12.10.2026: wrocic kiedys): nagrody za passe = Garaz -> Plan zakupow (lista upatrzonych produktow: nazwa, link, cena, zdjecie; status zablokowane/okno zakupu/kupione). Prog odblokowania wg ceny: do 200 zl 🔥14 dni; 200-500 🔥30 + 📉2 tyg.; 500-1500 📉4 tyg. + 🕗14 dni; wyzej etap wagi. Okno zakupu 14 dni (do decyzji), linijka w wiadomosci 20:00, "nastepna nagroda" w Jedzenie -> Passa. Zakladki Plan zakupow w Garazu jeszcze NIE ma (sprawdzone 12.10). Bez nagrod jedzeniowych.
 
 # ZROBIONE
+
+## [WEBPUSH-KOMPUTER] Powiadomienia dzwonka na Macu + stan na zywo w tle [ZROBIONE 2026-10-13]
+- qbot_webpush.py + petla w qbot-web co 60 s (sync_live niezaleznie od otwarcia strony), SETUP > Powiadomienia: Wlacz/Test/Wylacz. Dok.: docs/NOTIF_CENTER.md
 
 ## [GARAZ-ZAKUPY etap 4] Gmail -> auto Kupione [ODRZUCONE 2026-10-13]
 - Michal: zakupy potwierdza recznie (przycisk Kupione). Powod: dostep do Gmaila = odczyt calej skrzynki, klucz na VPS, tresc maili do AI.

@@ -20,6 +20,7 @@
 .st-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start}
 .st-g h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
 .st-g h3 button{font:inherit;font-size:12px;text-transform:none;letter-spacing:0;background:none;border:0;color:var(--accent-ink,var(--accent));cursor:pointer;padding:2px 4px}
+.st-wp{max-width:760px;margin-bottom:12px}.st-wp>b{font-size:15px}.st-wpd{display:block;font-size:13px;color:var(--ink2);margin-top:3px;line-height:1.45}.st-wp .st-bar{margin-top:10px;flex-wrap:wrap}
 .st-row{display:flex;gap:12px;align-items:flex-start;padding:9px 2px;border-top:1px solid var(--line);cursor:pointer}
 .st-row:first-of-type{border-top:0}
 .st-row input{width:18px;height:18px;margin:2px 0 0;accent-color:#e8742a;flex:0 0 auto;cursor:pointer}
@@ -84,6 +85,11 @@
   <p class="st-intro">Zaznacz, co ma się pojawiać pod dzwonkiem w menu. Odznaczone nie pokazują się na liście ani w liczniku,
     ale dalej trafiają do Historii, a po ponownym zaznaczeniu od razu widać ich bieżący stan. Wiadomości na Telegramie działają niezależnie.
     Zmiany zapisują się od razu.</p>
+  <div class="card st-wp"><b>Powiadomienia na tym komputerze</b>
+    <span class="st-wpd">To samo co pod dzwonkiem, jako powiadomienie systemowe (Centrum powiadomień na Macu). Zaznaczenia niżej obowiązują też tutaj.
+      Kliknięcie otwiera właściwą stronę QBota. Serwer sprawdza nowości co minutę, także gdy strona jest zamknięta.</span>
+    <div class="st-bar"><button type="button" class="st-btn" id="wp-on">Włącz</button><button type="button" class="st-btn sec" id="wp-test" hidden>Wyślij test</button><button type="button" class="st-btn sec" id="wp-off" hidden>Wyłącz</button><span id="wp-state">sprawdzam…</span></div>
+  </div>
   <div class="st-grid" id="st-grid"><div class="card">wczytuję…</div></div>
   <div class="st-bar"><span id="st-msg"></span></div>
 </section>
@@ -188,6 +194,40 @@ function save(o){
 function load(){fetch("/api/setup/notif",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw r.status;return r.json();})
   .then(function(j){SRC=j.sources||[];render();}).catch(function(){$("st-grid").innerHTML='<div class="card">Nie udało się wczytać ustawień.</div>';});}
 load();
+
+/* Powiadomienia na tym komputerze (Web Push, 2026-10-13): sw-push.js + /api/push/* (qbot_webpush.py) */
+var WPK=null;
+function b64u(x){x=x.replace(/-/g,"+").replace(/_/g,"/");x+="===".slice((x.length+3)%4);var r=atob(x),a=new Uint8Array(r.length);for(var i=0;i<r.length;i++)a[i]=r.charCodeAt(i);return a;}
+function wpDev(){var u=navigator.userAgent,os=/iPhone|iPad/.test(u)?"iPhone/iPad":/Mac/.test(u)?"Mac":/Windows/.test(u)?"Windows":"komputer",
+  br=/Edg\//.test(u)?"Edge":/Chrome\//.test(u)?"Chrome":/Firefox\//.test(u)?"Firefox":/Safari\//.test(u)?"Safari":"przeglądarka";return os+" · "+br;}
+function wpSet(t,cls){var m=$("wp-state");m.className=cls||"";m.textContent=t;}
+function wpBtns(on){$("wp-on").hidden=on;$("wp-off").hidden=!on;$("wp-test").hidden=!on;}
+function wpReq(url,body){return fetch(url,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})})
+  .then(function(r){return r.json().catch(function(){return {};}).then(function(j){if(!r.ok)throw new Error(r.status===403?"tryb podglądu — bez zmian":(j.detail||("HTTP "+r.status)));return j;});});}
+function wpInit(){
+  if(!("serviceWorker" in navigator)||!("PushManager" in window)||!("Notification" in window)){wpBtns(false);$("wp-on").disabled=true;wpSet("Ta przeglądarka nie obsługuje powiadomień.","st-err");return;}
+  fetch("/api/push/key",{credentials:"same-origin",cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
+    .then(function(j){WPK=j;return navigator.serviceWorker.getRegistration("/").then(function(reg){return reg?reg.pushManager.getSubscription():null;});})
+    .then(function(sub){var n=WPK.devices.length,known=sub&&WPK.devices.some(function(d){return d.endpoint===sub.endpoint;});
+      if(Notification.permission==="denied"){wpBtns(false);wpSet("Zablokowane w ustawieniach przeglądarki dla tej strony — odblokuj i kliknij Włącz.","st-err");return;}
+      var tk=WPK.tick&&WPK.tick.at?" Serwer sprawdzał: "+String(WPK.tick.at).slice(11,16)+".":"";
+      if(known){wpBtns(true);wpSet("Włączone na tym komputerze."+(n>1?" Wszystkich urządzeń: "+n+".":"")+tk,"st-ok");return;}
+      wpBtns(false);wpSet("Wyłączone na tym komputerze."+(n?" Włączone na innych urządzeniach: "+n+".":"")+tk);})
+    .catch(function(e){wpSet("Nie udało się sprawdzić stanu ("+e.message+").","st-err");});}
+$("wp-on").onclick=function(){var b=this;b.disabled=true;wpSet("włączam…");
+  Notification.requestPermission().then(function(p){if(p!=="granted")throw new Error("Przeglądarka nie dostała zgody na powiadomienia.");
+      return navigator.serviceWorker.register("/sw-push.js",{scope:"/"});})
+    .then(function(){return navigator.serviceWorker.ready;})
+    .then(function(reg){return reg.pushManager.getSubscription().then(function(s){return s||reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(WPK.key)});});})
+    .then(function(sub){return wpReq("/api/push/subscribe",{subscription:sub.toJSON(),device:wpDev()});})
+    .then(function(){b.disabled=false;wpInit();})
+    .catch(function(e){b.disabled=false;wpSet(e.message||String(e),"st-err");});};
+$("wp-off").onclick=function(){wpSet("wyłączam…");navigator.serviceWorker.getRegistration("/").then(function(reg){return reg?reg.pushManager.getSubscription():null;})
+  .then(function(sub){if(!sub)return;var ep=sub.endpoint;return sub.unsubscribe().then(function(){return wpReq("/api/push/unsubscribe",{endpoint:ep});});})
+  .then(wpInit).catch(function(e){wpSet(e.message||String(e),"st-err");});};
+$("wp-test").onclick=function(){wpSet("wysyłam…");wpReq("/api/push/test").then(function(j){wpSet(j.sent?"Wysłano test ("+j.sent+" urządz.) — powinien pojawić się za chwilę.":"Nie wysłano: "+(j.err?"błąd usługi push":"brak urządzeń"),j.sent?"st-ok":"st-err");})
+  .catch(function(e){wpSet(e.message,"st-err");});};
+wpInit();
 
 /* Kontakty: grupy adresow (/api/mail-groups: GET lista, POST nowa, DELETE grupa, POST/DELETE czlonkowie, POST sync z wyprawy) */
 var KG=null;

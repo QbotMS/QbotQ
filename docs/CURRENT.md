@@ -1,5 +1,11 @@
 # QBot -- CURRENT (handoff sesji)
 
+## [2026-10-13] Powiadomienia dzwonka na komputerze (Web Push)
+- Stan na zywo dzwonka liczy sie teraz W TLE co 60 s (petla w qbot-web), nowe/zmienione pozycje ida jako powiadomienia systemowe (Safari/Chrome na Macu).
+- Wlaczenie: SETUP > Powiadomienia > Powiadomienia na tym komputerze > Wlacz. Slad pracy petli: app_settings webpush.tick.
+- Incydent: 17:02-17:03 qbot-web nie startowal (brak importu threading na poziomie modulu) - naprawione; przed restartem testuj import.
+- Czeka: test na Macu przez Michala; iPhone = TODO [WEBPUSH-IPHONE]; push na GitHub (root).
+
 ## [2026-10-08] Dzwonek obok Wyloguj + rzadsze menu
 - nav.js v14 / nav.css v13: dzwonek #qbell wstawiany przez qLogoutBtn tuz przed Wyloguj (naglowek / plywajacy / pasek menu na telefonie), panel rozwija sie POD dzwonkiem; menu: pozycje co 52 px (bylo 46), pierwsza ikona 110 px od gory (pod pasem naglowka 78-82 px). Zweryfikowane Playwright komputer + telefon.
 
