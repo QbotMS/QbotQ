@@ -12,6 +12,12 @@
 
 
 # OTWARTE
+## [QEXT2-DESZCZ-KOKPIT] Etap 3: QExt2 wysyla sygnal i pokazuje deszcz z radaru w KOKPICIE (dodane 2026-10-14)
+Decyzje 14.10 (Michal): jeden sygnal 'jestem tu' co ~5 min (takze w pauzie) na POST /qext2/ping (token jak /ride-readiness,
+naglowek X-QExt2-Token -- most na qbot.cytr.us wycina Authorization); odpowiedz `rain` (short/za_min/pada/sila/dur_min) ma
+pierwszenstwo przed lokalna prognoza Open-Meteo w KOKPICIE; lokalna prognoza zostaje jako zapas, gdy QBot nie odpowiada.
+Serwer gotowy (etap 2). Dok.: docs/POGODA_OSTRZEZENIE.md. Repo QExt2 osobne.
+
 ## [GARMIN-DANE] Pelne dane snu/HRV z Garmina + wlasne wyliczenia (dodane 2026-10-14)
 Decyzje 2026-10-14: HRV status/norma, aklimatyzacja do upalu i VO2max liczone W QBOCIE (VO2max Garmina zamrozony od 2025-03-08 = 46, bo jazdy z Karoo/plik jako Tacx -- Garmin liczy VO2max tylko na urzadzeniu w trakcie nagrania). Garmin liczy obciazenie/TE dla 340/342 plikow Tacx -> walidacja ModelQ w tle ma sens. Connect+ odrzucone (brak nowych danych).
 - [x] Etap 0 [2026-10-14]: scripts/debug_garmin_sleep_hrv_raw.py (tylko odczyt, JSON -> /opt/qbot/artifacts/garmin_sleep_hrv_raw_<data>.json). Potwierdzone pola: sleep.avgSkinTempDeviationC (+skinTempDataExists, skinTempCalibrationDays), sleep.dailySleepDTO.sleepNeed / nextSleepNeed (baseline, actual, feedback, trainingFeedback, sleepHistoryAdjustment, hrvAdjustment, napAdjustment, recommendedBedtimeStart/EndMins), sleep.hrvStatus, hrv.hrvSummary.weeklyAvg/baseline(lowUpper,balancedLow,balancedUpper,markerValue)/status. Dostepne co najmniej od 2025-11 (ten sam deviceId 3491367170); starsze dni maja mniej sekcji (brak epok oddechu/SpO2), pola kluczowe sa.
@@ -24,10 +30,14 @@ Decyzje 2026-10-14: HRV status/norma, aklimatyzacja do upalu i VO2max liczone W 
   - Forma > Trendy: pigulka VO2max na wykresie mocy rysuje linie + wartosc w podpisie (forma2-data.js v=64)
   - Zdrowie > Serce: karta HRV -- pas normy na wykresie, naglowek "7 nocy ... status"; karta snu -- status HRV (zdrowie-serce.js v=2, forma-serce.js v=11)
   - Zdrowie > Serce: karta snu -- "temp. skory" po HRV (forma-serce.js v=12)
+  - Raport jazdy: kafel "obciazenie" -- "· Garmin N" (+ ▲/▼ przy rozbieznosci), raport-jazdy2-ws.js v=47
+  - Niedzielne rozliczenie Trenera: linia "ModelQ vs Garmin"
   - (JS nie da sie sprawdzic na serwerze -- brak node; wizualnie w przegladarce)
 - [ ] Etap 3b (po ~4 tyg. obserwacji, od 2026-11-11): czy status HRV i sygnal temp. skory maja wchodzic do gotowosci ModelQ -- decyzja uzytkownika.
 - [x] Etap 4 [2026-10-14]: fitmodel/body_signal.py (temp >= +0,4 C + HRV -5 ms lub RHR +3) -> karta snu, punkt Serca, poranna wiadomosc; 16 nocy w historii; test_body_signal 8. Bylo: temp. skory jako odchylenie od normy -> warstwa L3 ukrytego zmeczenia.
-- [ ] Etap 6: walidacja ModelQ vs Garmin w tle (activityTrainingLoad juz w activity_fit_raw; dzienny import Training Status/Readiness/regeneracji tylko do porownan; raport rozbieznosci co tydzien).
+- [x] Etap 6 [2026-10-14]: fitmodel/garmin_load_check.py (norma ln(G/X)~ln(h), rozbieznosc >1.5 SD) -> raport jazdy (kafel obciazenie) + tygodniowe rozliczenie Trenera; test_garmin_load_check 6.
+- [ ] Etap 6b: import Training Status / Readiness / regeneracji Garmina -- najpierw test API (jak Etap 0), potem porownanie z gotowoscia ModelQ.
+  Bylo: walidacja ModelQ vs Garmin w tle (activityTrainingLoad juz w activity_fit_raw; dzienny import Training Status/Readiness/regeneracji tylko do porownan; raport rozbieznosci co tydzien).
 - [ ] Etap 5: potrzeba snu -> wieczorne zalecenie + analiza dlug snu -> HRV/RHR/gotowosc/HR przy mocy nastepnego dnia (odfiltrowac wplyw ciezkich treningow).
 - [ ] Etap 7: aklimatyzacja do upalu z activity_record (dryf HR przy tej samej mocy vs temperatura).
 
@@ -422,6 +432,8 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] ODLOZONE (Michal 12.10.2026: wrocic kiedys): nagrody za passe = Garaz -> Plan zakupow (lista upatrzonych produktow: nazwa, link, cena, zdjecie; status zablokowane/okno zakupu/kupione). Prog odblokowania wg ceny: do 200 zl 🔥14 dni; 200-500 🔥30 + 📉2 tyg.; 500-1500 📉4 tyg. + 🕗14 dni; wyzej etap wagi. Okno zakupu 14 dni (do decyzji), linijka w wiadomosci 20:00, "nastepna nagroda" w Jedzenie -> Passa. Zakladki Plan zakupow w Garazu jeszcze NIE ma (sprawdzone 12.10). Bez nagrod jedzeniowych.
 
 # ZROBIONE
+- [2026-10-14] [QEXT2-DESZCZ-SERWER] Etap 2: sygnal jazdy z Karoo -> ostrzezenie o deszczu z radaru w miejscu jazdy. POST /qext2/ping (mcp_server, token urzadzenia), qbot_karoo_live.py (ostatnia pozycja, koniec po 15 min ciszy, kasowanie po wczytaniu pliku jazdy / 24 h), qbot_pogoda_alert: jazda z Karoo ma pierwszenstwo przed planem Trenera, Telegram tylko 1. ostrzezenie na jazde, pogoda_alert.src/data. Testy tests/test_karoo_live.py 6. Dok.: docs/POGODA_OSTRZEZENIE.md
+- [2026-10-14] [QEXT2-DESZCZ-BEZ-TRASY] Etap 1 (repo QExt2, commit 1c3dae6): jazda bez trasy -- skan kwadransow prognozy do 2 h + punkt 10 km pod wiatr ('deszcz za X min' zamiast 'za 0'); poprawka kwadransa Open-Meteo.
 - [2026-10-14] [POGODA-RADAR-UI] Strona pogoda.html (krok 1 na zywo): mapa + lewy panel + dolny pasek, radar 2 h + prognoza radaru do 60 min na mapie, pozycja dom/przegladarka/klik, os punktu radar->model ICON, /api/pogoda/dom|model. Dok.: docs/POGODA_RADAR.md
 - [2026-10-14] [POGODA-RADAR] Pogoda krok 1 (backend): radar opadu EUMETNET OPERA (DBZH co 5 min, 1 km, 10 radarow IMGW, CC BY 4.0) -- qbot_radar.py, petla w tle qbot-web (2 h klatek, PNG pod Leaflet), ruch opadu (korelacja kafelkow + filtr zgodnosci; zgodny z wiatrem 700 hPa), prognoza punktowa 0-120 min + werdykt; /api/radar/meta|frame|punkt. Testy test_radar 5. Dok.: docs/POGODA_RADAR.md
 

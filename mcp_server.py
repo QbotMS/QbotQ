@@ -3056,6 +3056,45 @@ def _modelq_ctl_xss() -> float | None:
     return None
 
 
+@mcp.custom_route("/qext2/ping", methods=["POST"])
+async def qext2_ping(request):
+    """2026-10-14: sygnal jazdy z Karoo (QExt2): pozycja co ~5 min -> ostrzezenie o deszczu z radaru w miejscu jazdy.
+    Body: {"lat": .., "lon": ..}. Token urzadzenia jak /ride-readiness (WYMAGANY). Odpowiedz: {status, ride, new_ride, rain}
+    (rain = biezace ostrzezenie z radaru dla KOKPITU albo null). Logika: qbot_karoo_live.py. Dok.: docs/POGODA_OSTRZEZENIE.md"""
+    import asyncio
+    from starlette.responses import JSONResponse
+    _tok = os.getenv("QEXT_READINESS_TOKEN", "").strip()
+    if not _tok or not (request.headers.get("x-qext2-token", "") == _tok
+                        or request.headers.get("authorization", "") == f"Bearer {_tok}"):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    try:
+        _b = await request.json()
+        _lat, _lon = float(_b["lat"]), float(_b["lon"])
+        if not (-90.0 <= _lat <= 90.0 and -180.0 <= _lon <= 180.0) or (_lat == 0.0 and _lon == 0.0):
+            raise ValueError("lat/lon")
+    except Exception:
+        return JSONResponse({"error": "bad_request"}, status_code=400)
+
+    def _work():
+        import psycopg as _pg
+        from psycopg.rows import dict_row as _dr
+        import qbot_karoo_live as _KL
+        with _pg.connect(host=os.getenv("PGHOST", "localhost"), port=os.getenv("PGPORT", "5432"),
+                         dbname=os.getenv("PGDATABASE", "qbot"), user=os.getenv("PGUSER", "qbot"),
+                         password=os.getenv("PGPASSWORD", "")) as _c:
+            _r = _KL.ping(_c.cursor(row_factory=_dr), _lat, _lon)
+            _c.commit()
+            return _r
+
+    try:
+        _res = await asyncio.get_running_loop().run_in_executor(None, _work)
+    except Exception as exc:
+        print(f"⚠️  qext2/ping blad: {exc!r}", flush=True)
+        return JSONResponse({"error": "server"}, status_code=500)
+    print(f"📡 qext2/ping ride={_res.get('ride')} new={_res.get('new_ride')} rain={'tak' if _res.get('rain') else 'nie'}", flush=True)
+    return JSONResponse(_res)
+
+
 @mcp.custom_route("/ride-readiness", methods=["GET", "POST"])
 async def ride_readiness(request):
     """Return ride-readiness context for Karoo/QExt2.
