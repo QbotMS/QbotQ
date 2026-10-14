@@ -12,6 +12,8 @@
 
 
 # OTWARTE
+- [2026-10-14] [METEO-ICOND2] Open-Meteo models=icon_d2 zwraca 400 'No data is available for this location' (tez Warszawa). Sprawdzic qbot3/routes/route_weather_models.py (zestaw 0-2 dni z icon_d2) -- czy Planer/raport nie traci modelu; ewent. icon_seamless.
+- [2026-10-14] [POGODA-MENU] Strona pogoda.html poza menu (nav.js) -- dodac pozycje po akceptacji.
 - [2026-10-14] [POGODA-RADAR-UI] Strona Pogoda -> zakladka Radar: mapa Leaflet + animacja 2 h, strzalka ruchu, karta 'u Ciebie'; pozycja edytowalna: moja (dom) / przegladarka / zadana (klik, miejscowosc, start trasy z kalendarza). Dok.: docs/POGODA_RADAR.md
 - [2026-10-14] [POGODA-OS] Jedna os czasu dla punktu: radar 0-1 h (do 2-3 h przy froncie) -> ICON-D2, znacznik zrodla, ostrzezenie przy rozjezdzie. Potem: krok 2 okno jazdy, krok 3 mapa weekendu, krok 4 warstwy rowerowe (mgla, oblodzenie, wilgoc). Albert: narzedzie radaru + _SYSTEM.
 - [2026-10-14] Weryfikacja trafnosci radaru wstecz (prognoza z t-30 vs rzeczywista klatka t) gdy cache ma 2 h.
@@ -401,6 +403,7 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] ODLOZONE (Michal 12.10.2026: wrocic kiedys): nagrody za passe = Garaz -> Plan zakupow (lista upatrzonych produktow: nazwa, link, cena, zdjecie; status zablokowane/okno zakupu/kupione). Prog odblokowania wg ceny: do 200 zl 🔥14 dni; 200-500 🔥30 + 📉2 tyg.; 500-1500 📉4 tyg. + 🕗14 dni; wyzej etap wagi. Okno zakupu 14 dni (do decyzji), linijka w wiadomosci 20:00, "nastepna nagroda" w Jedzenie -> Passa. Zakladki Plan zakupow w Garazu jeszcze NIE ma (sprawdzone 12.10). Bez nagrod jedzeniowych.
 
 # ZROBIONE
+- [2026-10-14] [POGODA-RADAR-UI] Strona pogoda.html (krok 1 na zywo): mapa + lewy panel + dolny pasek, radar 2 h + prognoza radaru do 60 min na mapie, pozycja dom/przegladarka/klik, os punktu radar->model ICON, /api/pogoda/dom|model. Dok.: docs/POGODA_RADAR.md
 - [2026-10-14] [POGODA-RADAR] Pogoda krok 1 (backend): radar opadu EUMETNET OPERA (DBZH co 5 min, 1 km, 10 radarow IMGW, CC BY 4.0) -- qbot_radar.py, petla w tle qbot-web (2 h klatek, PNG pod Leaflet), ruch opadu (korelacja kafelkow + filtr zgodnosci; zgodny z wiatrem 700 hPa), prognoza punktowa 0-120 min + werdykt; /api/radar/meta|frame|punkt. Testy test_radar 5. Dok.: docs/POGODA_RADAR.md
 
 ## [WEBPUSH-KOMPUTER] Powiadomienia dzwonka na Macu + stan na zywo w tle [ZROBIONE 2026-10-13]

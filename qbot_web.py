@@ -6995,6 +6995,26 @@ def api_radar_punkt(lat: float, lon: float, horyzont: int = 120):
     return RAD.nowcast_point(lat, lon, lead_max=max(15, min(int(horyzont), 180)))
 
 
+@app.get("/api/pogoda/dom")
+def api_pogoda_dom():
+    """Punkt 'Moja' na stronie Pogoda: najczestszy start jazd (jak pogoda Trenera)."""
+    import qbot_pogoda as PG
+    from psycopg.rows import dict_row
+    conn = _db_conn()
+    try:
+        h = PG.home(conn.cursor(row_factory=dict_row))
+    finally:
+        conn.close()
+    return {"status": "OK", **h} if h else {"status": "BRAK_DANYCH", "error": "Brak jazd z GPS do ustalenia domu."}
+
+
+@app.get("/api/pogoda/model")
+def api_pogoda_model(lat: float, lon: float, godziny: int = 12):
+    """Opad z modelu ICON-D2 co 15 min dla punktu (dalsza czesc osi czasu po radarze)."""
+    import qbot_pogoda as PG
+    return PG.model_point(lat, lon, hours=max(1, min(int(godziny), 48)))
+
+
 def _owner_only(request: Request):
     if (request.scope.get("qbot_auth") or {}).get("kind") != "owner":
         raise HTTPException(status_code=403, detail="tylko wlasciciel")

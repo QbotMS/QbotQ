@@ -414,6 +414,10 @@ def nowcast_point(lat: float, lon: float, lead_max: int = 120, step: int = 5) ->
             "zrodlo": ATTR}
 
 
+def _pl(x) -> str:
+    return str(x).replace(".", ",")
+
+
 def _werdykt(hist: list, prog: list, lm: dict | None) -> str:
     teraz = hist[-1] if hist else {}
     if not teraz.get("pokrycie"):
@@ -422,11 +426,11 @@ def _werdykt(hist: list, prog: list, lm: dict | None) -> str:
     if pada:
         for p in prog:
             if (p.get("udzial") or 0) < 0.3:
-                return f"Pada teraz ({teraz.get('mmh')} mm/h). Wg radaru przestanie ok. {p['t']}."
+                return f"Pada teraz ({_pl(teraz.get('mmh'))} mm/h). Wg radaru przestanie ok. {p['t']}."
         return "Pada teraz i wg radaru potrwa dluzej niz horyzont prognozy radarowej -- sprawdz model."
     for p in prog:
         if (p.get("udzial") or 0) >= 0.5:
-            return f"Teraz sucho. Opad dojdzie ok. {p['t']} (ok. {p.get('mmh')} mm/h)."
+            return f"Teraz sucho. Opad dojdzie ok. {p['t']} (ok. {_pl(p.get('mmh'))} mm/h)."
     if not lm:
         return "Teraz sucho, w okolicy brak opadu do sledzenia."
     return "Teraz sucho. Wg radaru opad Cie omija w horyzoncie prognozy."

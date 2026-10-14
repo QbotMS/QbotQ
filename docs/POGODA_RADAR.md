@@ -55,3 +55,15 @@ Pokrycie Polski 100%. Pobranie+przeliczenie klatki < 1 s, PNG ≈ 100 kB, npz �
   Pozycja edytowalna: **moja (dom) / przeglądarka / zadana** (klik, miejscowość, start trasy z kalendarza).
 - Jedna oś czasu: radar 0–1 h (do 2–3 h przy froncie) → model ICON-D2, ze znacznikiem źródła i ostrzeżeniem przy rozjeździe.
 - Bez nowych wiadomości Telegram. Albert: narzędzie radaru osobno, z wpisem w `_SYSTEM`.
+
+## Strona `pogoda.html` (2026-10-14, krok 1 na żywo)
+Układ jak Analiza trasy (decyzja Michała po mockupie): mapa pod całą stroną; lewy panel z paskiem ikon (☂ U Ciebie — na żywo;
+◷ Okno jazdy, ★ Weekend, ≋ Warunki — „wkrótce”), rozwijany do pół ekranu; dolny pasek = warstwy mapy (Opad; reszta „wkrótce”)
++ oś czasu z odtwarzaniem: klatki radaru 2 h + prognoza radaru +10…+60 min (ostatni obraz przesunięty wzdłuż ruchu).
+Pozycja: Moja = `/api/pogoda/dom` (najczęstszy start jazd, jak pogoda Trenera) / Przeglądarka (geolokalizacja) / Klik na mapie;
+zapamiętywana w localStorage `qpogoda_pos`. Wykres osi punktu (Chart.js, dymki, klikalne etykiety): radar było / radar prognoza /
+model ICON / szansa %. Werdykt radaru + zdanie z modelu („kolejny opad ok. HH:MM” / „sucho do HH:MM”) + ostrzeżenie, gdy radar
+i model różnią się w najbliższej godzinie. Podkład: OSM + `qmap-tiles.js` (noc). Odświeżanie klatek co 2 min.
+- `GET /api/pogoda/dom`, `GET /api/pogoda/model?lat=&lon=&godziny=12` (`qbot_pogoda.py`, Open-Meteo `icon_seamless`,
+  minutely_15, cache 10 min). Samo `icon_d2` dawało 14.10.2026 HTTP 400 „No data is available for this location”.
+- Mockup kroków 1–4: `pogoda-mockup.html` (dane przykładowe oznaczone).
