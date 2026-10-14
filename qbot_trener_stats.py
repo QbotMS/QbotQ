@@ -702,9 +702,13 @@ def _weather_rides(c) -> list[dict]:
             ii = [i for i in ii if i is not None]
             if not ii:
                 continue
-            def vals(k):
-                return [j[k][i] for i in ii if j[k][i] is not None]
-            f_, w_, g_, p_, s_ = vals("apparent_temperature"), vals("wind_speed_10m"), vals("wind_gusts_10m"), vals("precipitation"), vals("snow_depth")
+            # 14.10.2026: opad i porywy = godzina POPRZEDZAJACA znacznik -> dla godzin jazdy bierzemy znaczniki +1 h (Dok.: docs/POGODA_SILNIK.md)
+            ip = [idx.get((s0 + timedelta(hours=k + 1)).strftime("%Y-%m-%dT%H:%M")) for k in range(hrs)]
+            ip = [i for i in ip if i is not None]
+
+            def vals(k, src=None):
+                return [j[k][i] for i in (ii if src is None else src) if j[k][i] is not None]
+            f_, w_, g_, p_, s_ = vals("apparent_temperature"), vals("wind_speed_10m"), vals("wind_gusts_10m", ip), vals("precipitation", ip), vals("snow_depth")
             out.append({"h": r["duration_s"] / 3600, "month": r["date"].month, "feel": st.mean(f_) if f_ else None, "feel_max": max(f_) if f_ else None,
                         "wind": st.mean(w_) if w_ else None, "gust": max(g_) if g_ else None, "rain": sum(p_) if p_ else 0, "snow_depth": max(s_) if s_ else 0})
         time.sleep(0.2)

@@ -17,7 +17,10 @@
   - silnik tras interpolował liniowo między pełnymi godzinami → opad ok. **30 min za wcześnie** (przejazd 14:30 dostawał pół deszczu z 13–14);
     teraz wartość godziny, w którą wypada przejazd (`_interval`, bez interpolacji) dla opadu, szansy opadu i porywów;
   - Pogoda: opad poprawiony wcześniej (b8ba5d4), porywy teraz też z T+1 dla godziny T..T+1.
-  - Do sprawdzenia w E4: Trener (`forecast`, `window_wx`), `live_weather`.
+  - Trener (sprawdzone i naprawione 14.10): `qbot_trener_engine.forecast` (okno 8–18 brało opad/szansę/porywy/kod z 7–17; z niego
+    korzystają powiadomienia `live_weather`), `qbot_trener_weather.window_wx` (poranna korekta: godzina jazdy H..H+1 brała znacznik H),
+    `qbot_trener_stats.weather_auto` (kalibracja progów z historii: opad/porywy w czasie jazd przesunięte o 1 h; przeliczy się przy
+    najbliższym odświeżeniu cache `trainer_auto_cache.weather`).
 
 ## Plan
 - **E1** — wydzielenie rdzenia (`qbot_wx`): pobieranie + cache + poprawne godziny + radar + zespół + ERA5; Pogoda pierwsza na rdzeniu.

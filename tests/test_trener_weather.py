@@ -46,7 +46,8 @@ class Propozycje(unittest.TestCase):
         h = hours(D, rain_hours=(15, 16, 17))
         c = W.candidates(ride(), h, {}, [ride()], {D: [ride()]}, now_min=7 * 60)
         self.assertEqual(c[0]["kind"], "hour")
-        self.assertEqual(c[0]["start_time"], "18:00")   # 18-20 sucho, blizej niz 12:30
+        # 14.10.2026: znaczniki 15,16,17 = opad 14-17 (Open-Meteo: godzina POPRZEDZAJACA) -> 17-19 sucho, najblizej (wczesniej test zakladal 18:00)
+        self.assertEqual(c[0]["start_time"], "17:00")
 
     def test_kolizja_z_inna_sesja(self):
         h = hours(D, rain_hours=(15, 16, 17))

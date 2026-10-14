@@ -887,11 +887,16 @@ def forecast(lat: float, lon: float) -> dict:
     T = j["time"]
     for i, t in enumerate(T):
         d, h = t[:10], int(t[11:13])
-        if not 8 <= h <= 18:
+        # 14.10.2026: opad, szansa, porywy i kod pogody z Open-Meteo dotycza GODZINY POPRZEDZAJACEJ -> okno 8-18 to dla nich
+        # znaczniki 9..19 (wczesniej bralo 7-17). Wielkosci chwilowe (wiatr, odczuwalna, snieg) -- znaczniki 8..18. Dok.: docs/POGODA_SILNIK.md
+        inst, intv = 8 <= h <= 18, 9 <= h <= 19
+        if not (inst or intv):
             continue
         o = out.setdefault(d, {"_w": [], "_g": [], "_f": [], "_r": [], "_p": [], "_s": [], "_c": []})
         for kk, src in (("_w", "wind_speed_10m"), ("_g", "wind_gusts_10m"), ("_f", "apparent_temperature"), ("_r", "precipitation"),
                         ("_p", "precipitation_probability"), ("_s", "snow_depth"), ("_c", "weather_code")):
+            if not (intv if kk in ("_g", "_r", "_p", "_c") else inst):
+                continue
             v = j[src][i]
             if v is not None:
                 o[kk].append(v)

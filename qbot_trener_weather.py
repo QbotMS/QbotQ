@@ -57,19 +57,25 @@ def hourly(lat: float, lon: float) -> dict[str, dict]:
 
 def window_wx(h: dict[str, dict], day: date, start_min: int, dur: int) -> dict | None:
     """Pogoda w oknie jazdy, w ksztalcie oczekiwanym przez E.wx_bad."""
-    hrs = []
+    # 14.10.2026: rain/prob/gust z Open-Meteo dotycza GODZINY POPRZEDZAJACEJ -> dla godziny jazdy H..H+1 bierzemy znacznik H+1
+    # (wczesniej H = godzina wczesniej). Wielkosci chwilowe (wind, feel, snow) ze znacznika H. Dok.: docs/POGODA_SILNIK.md
+    from datetime import datetime as _dtm, timedelta as _td
+    hrs, hrp = [], []
     m = (start_min // 60) * 60
     while m < start_min + dur:
         k = f"{day.isoformat()}T{m // 60:02d}"
         if m // 60 <= 23 and k in h:
             hrs.append(h[k])
+        k2 = (_dtm(day.year, day.month, day.day) + _td(hours=m // 60 + 1)).strftime("%Y-%m-%dT%H")
+        if k2 in h:
+            hrp.append(h[k2])
         m += 60
     if not hrs:
         return None
 
-    def vals(k):
-        return [x[k] for x in hrs if x.get(k) is not None]
-    w, g, f, r, p, s = vals("wind"), vals("gust"), vals("feel"), vals("rain"), vals("prob"), vals("snow")
+    def vals(k, src=None):
+        return [x[k] for x in (src if src is not None else hrs) if x.get(k) is not None]
+    w, g, f, r, p, s = vals("wind"), vals("gust", hrp), vals("feel"), vals("rain", hrp), vals("prob", hrp), vals("snow")
     return {"wind": round(sum(w) / len(w), 1) if w else None, "gust": round(max(g), 1) if g else None,
             "feel_min": round(min(f), 1) if f else None, "feel_max": round(max(f), 1) if f else None,
             "rain_mmh": round(max(r), 1) if r else 0, "rain_prob": max(p) if p else None,
