@@ -25,6 +25,8 @@
       icon: '<circle class="qi-f" cx="5.6" cy="16.4" r="3.9"/><circle class="qi-f" cx="18.4" cy="16.4" r="3.9"/><path d="M5.6 16.4 9 8.8l2.6 7.6H5.6"/><path d="M9 8.8h6.3M15.3 8.8l-3.7 7.6M15.3 8.8l3.1 7.6"/><path d="M7.4 7.3h3.2M14.4 6.3h2.2l-.9 2.5"/><circle class="qi-a" cx="11.6" cy="16.4" r="1.4"/>' },
     { href: "/raport-trasy.html", label: "Analiza trasy",
       icon: '<path class="qi-f" d="M3 6.2 8.6 4l6.8 2.2L21 4v13.8L15.4 20l-6.8-2.2L3 20z"/><path d="M8.6 4v13.8M15.4 6.2V20" stroke-opacity=".55"/><path d="M5.3 16.2c1.6-.4 2.3-2.6 4.3-3.1s2.8 1 4.6.2" stroke-dasharray="1.4 1.7"/><path class="qi-a" d="M17.6 6.6a2.3 2.3 0 0 1 2.3 2.3c0 1.7-2.3 4-2.3 4s-2.3-2.3-2.3-4a2.3 2.3 0 0 1 2.3-2.3z"/>' },
+    { href: "/pogoda.html", label: "Pogoda",
+      icon: '<path class="qi-f" d="M7 15.5h10.2a3.6 3.6 0 0 0 .5-7.2 5.2 5.2 0 0 0-10-1.1A4.2 4.2 0 0 0 7 15.5z"/><path d="M7 15.5h10.2a3.6 3.6 0 0 0 .5-7.2 5.2 5.2 0 0 0-10-1.1A4.2 4.2 0 0 0 7 15.5z"/><path class="qi-a" d="M8.5 18.2l-.9 2.3M12.3 18.2l-.9 2.3M16.1 18.2l-.9 2.3"/>' },
     { href: "/planer-wyprawy.html", label: "Planer wyprawy",
       icon: '<circle class="qi-f" cx="12" cy="12" r="9"/><path d="M12 3.6v1.7M12 18.7v1.7M3.6 12h1.7M18.7 12h1.7" stroke-opacity=".6"/><path class="qi-a" d="M16 8 13.3 13.3 10.7 10.7z"/><path d="M8 16 10.7 10.7 13.3 13.3z"/><circle cx="12" cy="12" r=".8"/>' },
     { href: "/garaz.html", label: "Garaż",
