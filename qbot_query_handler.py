@@ -396,6 +396,13 @@ def _envelope(
 # Intent router  (deterministic, keyword-based)
 # ---------------------------------------------------------------------------
 INTENT_KEYWORDS: list[tuple[list[str], str]] = [
+    # POGODA (2026-10-14) -> Albert (weather_now / ride_window / ride_where / weather_skill). MUSI byc przed garazem ("rower")
+    # i treningiem -- inaczej "czy przesunac dzisiejsza jazde na rowerze" trafialo do garage_status.
+    (["pogoda", "pogody", "pogodę", "pogode", "pogodzie", "deszcz", "czy pada", "pada?", "przestanie padać", "przestanie padac", "radar",
+      "opady", "opad ", "przesunąć jazd", "przesunac jazd", "przesunąć dzisiejsz", "przesunac dzisiejsz", "przesunąć trening", "przesunac trening",
+      "o której najlepiej jechać", "o ktorej najlepiej jechac", "kiedy najlepiej jechać", "kiedy najlepiej jechac", "gdzie jechać", "gdzie jechac",
+      "gdzie pojechać", "gdzie pojechac", "zdążę przed deszczem", "zdaze przed deszczem", "moknąć", "moknac", "sprawdzalność prognoz",
+      "sprawdzalnosc prognoz", "który model", "ktory model", "jaki wiatr", "wiatr teraz", "porywy", "mgła", "mgla", "oblodzen", "gołoledź", "gololedz"], "pogoda"),
     # TRENER (sekcja Formy) -> Albert (narzedzie trainer_week). MUSI byc przed "trening" (training_recent).
     (["plan treningowy", "plan treningów", "plan treningow", "planie treningowym", "trener", "trenera", "trenerze",
       "zaplanowane treningi", "zaplanowany trening", "co mam dziś trenować", "co mam dzis trenowac", "co mam dziś w planie",
@@ -579,6 +586,7 @@ OPEN_DOMAIN_INTENTS: set[str] = {
     "rwgps_recent_routes", "rwgps_poi_push",
     "trip_stages", "trip_summary", "trip_attractions", "trips_status",
     "trainer_week",  # TRENER -> Albert (trainer_week)
+    "pogoda",  # POGODA -> Albert (weather_now / ride_window / ride_where / weather_skill)
 }
 
 # Sygnały domeny otwartej — używane do wykrywania konfliktu
