@@ -116,5 +116,16 @@ Uwaga: dla starszych dni Garmin zwraca mniej sekcji (brak epok oddechu/SpO2), po
   do przygotowania wydarzenia (TODO Etap 7b).
 - Testy: `tests/test_heat_drift.py`.
 
+## Wspolny silnik oceny upalu (Etap 7b, 2026-10-14)
+- Decyzja Michala: ocena aklimatyzacji MUSI byc w 3 miejscach: Planer wyprawy, Trener (wydarzenie w kalendarzu),
+  Analiza trasy (gdy wykryje jazde w upale). Kafel "Najblizszy cel" (forma-render.js) nie jest ladowany przez zadna strone.
+- `fitmodel/heat_drift.heat_advice(cx, ride_date, hot_min=, tmax_c=, source=prognoza|klimat)`: upal gdy prognoza
+  >= 60 min jazdy przy >= 25 C albo klimat (srednia max dnia, ERA5 przez route_climate) >= 25 C. Zwraca lines[] / text:
+  warunki, aklimatyzacja (dryf goracych jazd z 4 tyg. vs norma w upale), roznica dryfu upal-chlod z Twoich danych
+  (dzis ~3,4 pkt %), rada (orientacyjna) albo "zrob 2-3 jazdy w cieple" gdy brak ostatnich goracych jazd.
+  Liczone NA BIEZACO (nie do cache pogody). `hot_min_from_windows()` dla okien 30-min.
+- Podpiecie w 3 miejscach NALEZY do wspolnego silnika POGODY (inna sesja, 14.10) -- notatka w dev exchange CURRENT.md.
+  Plikow pogody nie ruszalem.
+
 ## Plan dalej
 Etapy 2–7 w `docs/TODO.md` -> `[GARMIN-DANE]`.

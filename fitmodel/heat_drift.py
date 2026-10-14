@@ -176,3 +176,52 @@ def acclimation(cx, until: date, days: int = 28) -> dict[str, Any] | None:
 
 def _pl(x: float) -> str:
     return f"{x:.1f}".replace(".", ",")
+
+
+# ===================== 7b: WSPOLNY SILNIK OCENY UPALU (Planer wyprawy / Analiza trasy / Trener) =====================
+# Zrodlo temperatury podaje WOLAJACY (silnik pogody QBota): prognoza na trasie albo klimat ERA5 dla dalszych dat.
+#   prognoza: hot_min = minuty jazdy z temp >= 25 C (np. 30 x liczba okien 30-min z temp_c >= 25)
+#   klimat:   tmax_c  = srednia temperatura maksymalna dnia w tym miejscu i terminie (route_climate: temp.max_sr)
+# Upal spodziewany: hot_min >= 60  ALBO  tmax_c >= 25.
+HOT_EXPECT_MIN = 60
+CLIMATE_TMAX = 25.0
+
+
+def expected_heat(hot_min: float | None = None, tmax_c: float | None = None) -> bool:
+    return bool((hot_min is not None and hot_min >= HOT_EXPECT_MIN) or (tmax_c is not None and tmax_c >= CLIMATE_TMAX))
+
+
+def heat_advice(cx, ride_date: date, hot_min: float | None = None, tmax_c: float | None = None,
+                source: str = "prognoza", today: date | None = None) -> dict[str, Any] | None:
+    """Ocena aklimatyzacji + rada na planowana jazde/wyprawe w upale. None gdy upalu sie nie spodziewamy.
+    Zwraca {expected, source, hot_min, tmax_c, days_left, acclimation, extra_drift, lines[], text}.
+    Rada o mocy/piciu = ogolna zasada (orientacyjnie), roznica dryfu = z Twoich danych."""
+    if not expected_heat(hot_min, tmax_c):
+        return None
+    today = today or date.today()
+    acc = acclimation(cx, today, days=28)
+    hot_norm, cool_norm = typical(cx, today, 60), typical(cx, today, 0)
+    extra = round(hot_norm - cool_norm, 1) if hot_norm is not None and cool_norm is not None else None
+    days_left = (ride_date - today).days
+    if source == "klimat":
+        head = f"☀️ Upał: w tym miejscu i terminie średnio do {_pl(float(tmax_c))} °C (klimat z wielu lat)."
+    else:
+        head = f"☀️ Upał: prognoza ok. {_pl((hot_min or 0) / 60.0)} h jazdy przy ≥ 25 °C."
+    lines = [head]
+    if acc and acc.get("recent"):   # 7b-dedup
+        lines.append("Aklimatyzacja: " + acc["text"].removeprefix("Upał: "))
+    elif days_left >= 7:
+        lines.append(f"Brak jazd z ≥ 1 h w upale w ostatnich 4 tygodniach — do wyjazdu {days_left} dni, "
+                     "zdążysz zrobić 2–3 dłuższe jazdy w cieple.")
+    else:
+        lines.append("Brak jazd z ≥ 1 h w upale w ostatnich 4 tygodniach — pierwsze 2–3 dni w upale jedź spokojniej.")
+    if extra is not None and extra > 0:
+        lines.append(f"W upale tętno odpływa Ci o ~{_pl(extra)} pkt % bardziej niż zwykle — w gorących godzinach "
+                     "zejdź z mocy o kilka procent i pij regularnie (orientacyjnie co 15–20 min).")
+    return {"expected": True, "source": source, "hot_min": hot_min, "tmax_c": tmax_c, "days_left": days_left,
+            "acclimation": acc, "extra_drift": extra, "lines": lines, "text": " ".join(lines)}
+
+
+def hot_min_from_windows(rows: list[dict], key: str = "temp_c", step_min: int = 30) -> float:
+    """Pomocnik dla prognozy w oknach (np. tabela_30min silnika METEO): minuty z temperatura >= 25 C."""
+    return float(sum(step_min for r in rows or [] if r.get(key) is not None and float(r[key]) >= HOT_C))

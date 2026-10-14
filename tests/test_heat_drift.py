@@ -1,10 +1,10 @@
-"""[GARMIN-DANE] Etap 7: dryf tetna i czas w upale."""
+"""[GARMIN-DANE] Etap 7 + 7b: dryf tetna, czas w upale, wspolny silnik oceny upalu."""
 import sys
 import unittest
 
 sys.path.insert(0, "/opt/qbot/app")
 
-from fitmodel.heat_drift import _pl, bucket, drift_from_halves  # noqa: E402
+from fitmodel.heat_drift import _pl, bucket, drift_from_halves, expected_heat, hot_min_from_windows  # noqa: E402
 
 
 class TestHeatDrift(unittest.TestCase):
@@ -29,6 +29,23 @@ class TestHeatDrift(unittest.TestCase):
 
     def test_pl(self):
         self.assertEqual(_pl(8.75), "8,8")
+
+
+class TestHeatAdviceTrigger(unittest.TestCase):
+    def test_forecast_threshold(self):
+        self.assertFalse(expected_heat(hot_min=30))
+        self.assertTrue(expected_heat(hot_min=60))
+
+    def test_climate_threshold(self):
+        self.assertFalse(expected_heat(tmax_c=24.9))
+        self.assertTrue(expected_heat(tmax_c=25.0))
+
+    def test_nothing(self):
+        self.assertFalse(expected_heat())
+
+    def test_windows(self):
+        rows = [{"temp_c": 24.9}, {"temp_c": 25.0}, {"temp_c": 31}, {"temp_c": None}, {}]
+        self.assertEqual(hot_min_from_windows(rows), 60.0)
 
 
 if __name__ == "__main__":
