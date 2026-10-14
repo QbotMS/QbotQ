@@ -7029,9 +7029,12 @@ def api_pogoda_model(lat: float, lon: float, godziny: int = 12):
 
 
 @app.get("/api/pogoda/warunki")
-def api_pogoda_warunki(lat: float, lon: float, godziny: int = 24):
-    """Warunki dla roweru w punkcie, godzinowo: temp/odczuwalna, wiatr/porywy (m/s), mgla, oblodzenie, nawierzchnia, rosa."""
+def api_pogoda_warunki(lat: float, lon: float, godziny: int = 24, dzien: int = 0):
+    """Warunki dla roweru w punkcie, godzinowo: temp/odczuwalna, wiatr/porywy (m/s), mgla, oblodzenie, nawierzchnia, rosa.
+    dzien=0: najblizsze `godziny`; dzien=1..4: dzien kalendarzowy dzis+N, 06-22, z pewnoscia ze sprawdzalnosci."""
     import qbot_pogoda as PG
+    if int(dzien) > 0:
+        return PG.conditions_day(lat, lon, int(dzien))
     return PG.conditions_point(lat, lon, hours=max(6, min(int(godziny), 72)))
 
 

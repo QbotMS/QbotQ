@@ -220,3 +220,30 @@ def charakter_dni(lat: float, lon: float, dni: int = 3) -> dict:
     res = {"status": "OK", "dni": dd, "zrodlo": "Open-Meteo (CAPE, lifted index), godz. 8–20"}
     _CH[key] = (time.time(), res)
     return res
+
+
+# ---------------------------------------------------------------- warunki na kolejne dni (14.10.2026)
+DNI_MAX = 4          # dzis + 4 dni: zasieg ICON-EU (mapy) i zespolu ICON-EU-EPS; dalej tylko modele globalne -- falszywa precyzja
+
+
+def conditions_day(lat: float, lon: float, d: int, od: int = 6, do: int = 22) -> dict:
+    """Warunki godzinowe na dzien kalendarzowy dzis+d (1..DNI_MAX), godz. od..do, + pewnosc ze sprawdzalnosci (1-3 doba)."""
+    d = max(1, min(int(d), DNI_MAX))
+    w = conditions_point(lat, lon, hours=24 * (d + 1) + 2)
+    if w.get("status") != "OK":
+        return w
+    day = (_dtm.datetime.now(TZ) + _dtm.timedelta(days=d)).date().isoformat()
+    rows = [r for r in w["godziny"] if r["iso"][:10] == day and od <= int(r["iso"][11:13]) <= do]
+    asg = w.get("przydzial") or {}
+    ld = min(d, 3)
+    val = lambda p: ((asg.get(p) or {}).get(ld) or {}).get("wartosc")
+    t, wi, op = val("temp"), val("wiatr"), val("opad")
+    pl = lambda x, n=1: "–" if x is None else str(round(x, n)).replace(".", ",")
+    if d <= 3:
+        poziom = "wysoka" if d == 1 else "średnia"
+        opis = (f"wg sprawdzalności {ld}. doby u Ciebie: błąd temperatury ok. {pl(t)} °C, wiatru ok. {pl(wi)} m/s"
+                + (f", trafność opadu {round(op * 100)}%" if op is not None else ""))
+    else:
+        poziom = "orientacyjna"
+        opis = f"{d + 1}. dzień prognozy — pewność wyraźnie mniejsza; sprawdzalności tak dalekich prognoz jeszcze nie mierzymy"
+    return dict(w, godziny=rows, dzien=day, pewnosc={"poziom": poziom, "opis": opis, "temp_blad": t, "wiatr_blad": wi, "opad_trafnosc": op})

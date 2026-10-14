@@ -136,7 +136,7 @@ html.theme-dark{--d-blue2:#5d86b0;--d-blue3:#2b3c52;--d-green-l:#34401f;--d-gree
       <div class="note">Opad do 60 min przewiduje radar i to jest najpewniejsza część, od 60 do 120 min to orientacja. Pozostałe parametry pochodzą z modeli wybieranych automatycznie według sprawdzalności (ikona ✓): dla każdego parametru ten, który u Ciebie najlepiej trafia.
         Wykresy zobaczysz po rozciągnięciu dolnego paska uchwytem, a godziny dla każdego parametru pod ikoną ≋.</div>
     </div>
-    <div data-s="warunki" hidden><div id="wstrips">…</div>
+    <div data-s="warunki" hidden><div class="pos" id="wdays"></div><div class="poslab" id="wpew" style="margin:6px 0 10px"></div><div id="wstrips">…</div>
       <div class="note">Progi: mgła poniżej 1 km, ograniczona widoczność poniżej 4 km. Oblodzenie liczone z gruntu ≤ 0,5°C oraz opadu z ostatnich 12 h albo szronu (punkt rosy ≥ grunt).
         Nawierzchnia mokra przy ≥ 2 mm z 6 h, wilgotna przy ≥ 0,3 mm. Rosa, gdy temperatura jest bliżej niż 2°C od punktu rosy.</div></div>
     <div data-s="spr" hidden>
@@ -439,7 +439,8 @@ function renderWarunki(w){
     ["Mgła",hrs(function(h){return h.mgla===2;})||"nie"],["Oblodzenie",hrs(function(h){return h.lod>=2;})||"nie"],["Mokra nawierzchnia",hrs(function(h){return h.nawierzchnia===2;})||"nie"]];
   $("kv12").innerHTML=r12.map(function(x){return "<span>"+x[0]+"</span><b>"+x[1]+"</b>";}).join("");
   // 14.10: wizualizacja w stylu Analizy trasy (pogoda-punkt-viz.js) zamiast paskow kratek
-  $("wstrips").innerHTML=window.wxPointViz?(wxPointViz(fut.slice(0,24))||"Brak danych."):"Brak wizualizacji.";
+  if(WD===0){ $("wstrips").innerHTML=window.wxPointViz?(wxPointViz(fut.slice(0,24))||"Brak danych."):"Brak wizualizacji."; $("wpew").textContent=""; }
+  else setWD(WD);
 }
 
 /* ---- wykres w dolnym pasku: opad / temperatura i wiatr ---- */
@@ -510,6 +511,7 @@ function loadWeekend(day){ $("wklist").innerHTML='<div class="note">Liczę mapę
     $("wkd").querySelectorAll("button").forEach(function(b){b.addEventListener("click",function(){loadWeekend(b.dataset.d);});});
     $("wkinfo").innerHTML="Okno "+r.okno[0]+"–"+r.okno[1]+" · Polska średnio "+r.polska.srednia+"/100, dobre warunki na "+Math.round(r.polska.udzial_dobrych*100)+"% obszaru · przebieg "+r.run.slice(8,10)+" UTC<br>"+
       r.legenda.map(function(x){return '<i style="display:inline-block;width:14px;height:8px;border-radius:2px;background:'+x[0]+'"></i> '+x[1];}).join(" ");
+    var wdd=dayIdx(r.dzien); if(wdd>=0&&wdd<=4){ $("wkinfo").innerHTML+='<br><a href="#" id="wkwar">warunki godzina po godzinie na ten dzień (pozycja prognozy) →</a>'; $("wkwar").addEventListener("click",function(e){e.preventDefault();openWarunki(wdd);}); }
     ovs.forEach(function(o){o.setOpacity(0);}); if(mov)mov.setOpacity(0);
     if(WK.ov)map.removeLayer(WK.ov); WK.ov=L.imageOverlay("/api/pogoda/weekend/"+r.png+".png",r.bounds,{opacity:.5,interactive:false,pane:"radar"}).addTo(map);
     $("wklist").innerHTML=r.najlepsze.map(function(x,i){var c=x.ocena>=80?"good":x.ocena>=50?"warn":"bad";
@@ -549,6 +551,7 @@ function renderOkno(d){
   $("okd").value=d.dzien; $("oks").value=d.start; $("okt").value=String(d.czas_min);
   $("okinfo").innerHTML=okDay(d.dzien)+" · okna na rower (Trener): "+(d.okna_rower||[]).map(function(x){return x[0]+"–"+x[1];}).join(", ")+
     (d.zajete&&d.zajete.length?" · zajęte: "+d.zajete.map(function(x){return x[0]+"–"+x[1];}).join(", "):"")+(d.slonce?" · słońce "+d.slonce[0]+"–"+d.slonce[1]:"");
+  var odd=dayIdx(d.dzien); if(odd>=0&&odd<=4){ $("okinfo").innerHTML+=' · <a href="#" id="okwar">warunki tego dnia →</a>'; $("okwar").addEventListener("click",function(e){e.preventDefault();openWarunki(odd);}); }
   function card(t,x){ if(!x)return ""; var c=x.ocena>=80?"good":x.ocena>=50?"warn":"bad";
     return '<div class="rec '+c+'" data-s="'+x.start+'"><div class="t">'+t+'</div><div class="s">'+x.start+'–'+x.koniec+' · '+x.ocena+'/100</div><div class="l">'+x.uwagi.join(", ")+
       ' · '+(x.temp[0]!=null?pl(x.temp[0])+"–"+pl(x.temp[1])+"°C":"")+' · porywy '+pl(x.poryw)+' m/s'+(x.radar?" · <b>radar</b>":"")+'</div></div>'; }
@@ -603,6 +606,24 @@ function centerOn(ll){ if(!ll)return; var v=visBox(), p=map.latLngToContainerPoi
 var lastVC=null; map.on("moveend",function(){ lastVC=visCenter(); });
 var rsT=null; addEventListener("resize",function(){ var k=lastVC; clearTimeout(rsT); rsT=setTimeout(function(){ map.invalidateSize(); centerOn(pos?L.latLng(pos.lat,pos.lon):k); },150); });
 window.__map=map; window.__VC=visCenter;
+
+/* ---- Warunki na kolejne dni (dzis + 4) ---- */
+var WD=0;
+function dayIdx(iso){ return Math.round((new Date(iso+"T12:00")-new Date(new Date().toDateString()+" 12:00"))/864e5); }
+function wdLabel(i){ var d=new Date(); d.setDate(d.getDate()+i); var dm=("0"+d.getDate()).slice(-2)+"."+("0"+(d.getMonth()+1)).slice(-2);
+  return i===0?"najbliższe 24 h":(i===1?"jutro":i===2?"pojutrze":["nd","pn","wt","śr","cz","pt","sob"][d.getDay()])+" "+dm; }
+function drawWDays(){ $("wdays").innerHTML=[0,1,2,3,4].map(function(i){return '<button data-d="'+i+'" class="'+(i===WD?"on":"")+'">'+wdLabel(i)+'</button>';}).join("");
+  $("wdays").querySelectorAll("button").forEach(function(b){b.addEventListener("click",function(){ setWD(+b.dataset.d); });}); }
+function setWD(i){ WD=i; drawWDays();
+  if(i===0){ if(lastW)renderWarunki(lastW); $("wpew").textContent=""; return; }
+  if(!pos)return; $("wstrips").innerHTML='<div class="note">Liczę…</div>';
+  J("/api/pogoda/warunki?lat="+pos.lat.toFixed(4)+"&lon="+pos.lon.toFixed(4)+"&dzien="+i).then(function(w){ if(WD!==i)return;
+    if(w.status!=="OK"||!w.godziny.length){ $("wstrips").textContent=w.error||"Brak danych na ten dzień."; return; }
+    var p=w.pewnosc||{}, c=p.poziom==="wysoka"?"good":(p.poziom==="średnia"?"warn":"bad");
+    $("wpew").innerHTML='<b style="color:var(--'+c+')">Pewność: '+(p.poziom||"–")+'</b> · '+(p.opis||"")+' · godz. 06–22';
+    $("wstrips").innerHTML=window.wxPointViz?(wxPointViz(w.godziny)||"Brak danych."):""; }).catch(function(e){ $("wstrips").textContent="Błąd: "+e; }); }
+function openWarunki(i){ WD=i; var b=document.querySelector('#rail .rt[data-s="warunki"]'); if(b&&!b.classList.contains("on"))b.click(); setWD(i); }
+drawWDays();
 
 /* ---- start ---- */
 J("/api/pogoda/dom").then(function(h){ HOME=h.status==="OK"?h:null; var saved=null;

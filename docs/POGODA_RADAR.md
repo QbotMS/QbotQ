@@ -107,3 +107,9 @@ ikony nieba (noc: księżyc, `is_day`), temperatura + odczuwalna na tle stref ub
 (dokąd wieje, kolor wg porywów 8/13 m/s), ikonki ryzyka na drodze. `conditions_point` dostał `chmury`, `dzien`, `szansa` (zespół).
 NAPRAWA: commit b8ba5d4 (godzina opadu) przypadkowo wyciął pole `wiatr` z wiersza (komentarz w środku linii) — Okno jazdy i Warunki
 liczyły bez średniego wiatru od b8ba5d4 do tej poprawki.
+
+### Warunki na kolejne dni (2026-10-14)
+Przyciski: najbliższe 24 h / jutro / pojutrze / +3 / +4 (granica = zasięg ICON-EU i zespołu ICON-EU-EPS; dalej tylko modele globalne).
+Dzień kalendarzowy, godz. 06–22: `qbot_pogoda.conditions_day()` (filtr z `conditions_point` na 24·(d+1)+2 h), API `/api/pogoda/warunki?...&dzien=N`.
+Pewność ze sprawdzalności „u Ciebie”: doba 1 = wysoka, 2–3 = średnia (błąd temp./wiatru, trafność opadu z `przydzial`), 4–5 = orientacyjna
+(bez pomiarów). Szansa z zespołu: `forecast_days` 6. Linki „warunki tego dnia” z Okna jazdy i z „Gdzie jechać”.

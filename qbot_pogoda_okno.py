@@ -36,7 +36,7 @@ def _ens_prob(lat: float, lon: float) -> dict:
     if key in _C and _C[key][0] > time.time() - 900:
         return _C[key][1]
     q = urllib.parse.urlencode({"latitude": round(lat, 4), "longitude": round(lon, 4), "models": "icon_eu_eps", "hourly": "precipitation",
-                                "forecast_days": 4, "timezone": "Europe/Warsaw"})
+                                "forecast_days": 6, "timezone": "Europe/Warsaw"})   # 6: Warunki na dzis+4
     out = {}
     try:
         h = _get_json(ENS + "?" + q).get("hourly") or {}
