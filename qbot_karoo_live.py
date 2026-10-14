@@ -6,7 +6,7 @@ Decyzje Michala 14.10.2026 (dok.: docs/POGODA_OSTRZEZENIE.md):
   (training_sessions), awaryjnie po KEEP_H godzinach.
 - Ostrzezenie liczy petla radaru w qbot-web (qbot_pogoda_alert.check) dla miejsca z ostatniego sygnalu; jazda z Karoo
   ma pierwszenstwo przed planem z Trenera (bez dubli). Odpowiedz na sygnal = biezace ostrzezenie (rain_for) dla KOKPITU.
-Wywolanie: mcp_server.py POST /qext2/ping (token urzadzenia jak /ride-readiness).
+Wywolanie: mcp_server.py POST /ride-readiness z body {"ping": {lat, lon}} (_qext2_ping; token urzadzenia).
 """
 from __future__ import annotations
 

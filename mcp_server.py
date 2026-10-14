@@ -3056,19 +3056,14 @@ def _modelq_ctl_xss() -> float | None:
     return None
 
 
-@mcp.custom_route("/qext2/ping", methods=["POST"])
-async def qext2_ping(request):
+async def _qext2_ping(_b):
     """2026-10-14: sygnal jazdy z Karoo (QExt2): pozycja co ~5 min -> ostrzezenie o deszczu z radaru w miejscu jazdy.
-    Body: {"lat": .., "lon": ..}. Token urzadzenia jak /ride-readiness (WYMAGANY). Odpowiedz: {status, ride, new_ride, rain}
+    Wywolanie: POST /ride-readiness z body {"ping": {"lat": .., "lon": ..}} (token urzadzenia sprawdzony w ride_readiness;
+    publiczny most qbot.cytr.us przepuszcza tylko znane sciezki). Odpowiedz: {status, ride, new_ride, rain}
     (rain = biezace ostrzezenie z radaru dla KOKPITU albo null). Logika: qbot_karoo_live.py. Dok.: docs/POGODA_OSTRZEZENIE.md"""
     import asyncio
     from starlette.responses import JSONResponse
-    _tok = os.getenv("QEXT_READINESS_TOKEN", "").strip()
-    if not _tok or not (request.headers.get("x-qext2-token", "") == _tok
-                        or request.headers.get("authorization", "") == f"Bearer {_tok}"):
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
     try:
-        _b = await request.json()
         _lat, _lon = float(_b["lat"]), float(_b["lon"])
         if not (-90.0 <= _lat <= 90.0 and -180.0 <= _lon <= 180.0) or (_lat == 0.0 and _lon == 0.0):
             raise ValueError("lat/lon")
@@ -3089,9 +3084,9 @@ async def qext2_ping(request):
     try:
         _res = await asyncio.get_running_loop().run_in_executor(None, _work)
     except Exception as exc:
-        print(f"⚠️  qext2/ping blad: {exc!r}", flush=True)
+        print(f"⚠️  ride-readiness ping blad: {exc!r}", flush=True)
         return JSONResponse({"error": "server"}, status_code=500)
-    print(f"📡 qext2/ping ride={_res.get('ride')} new={_res.get('new_ride')} rain={'tak' if _res.get('rain') else 'nie'}", flush=True)
+    print(f"📡 ride-readiness ping ride={_res.get('ride')} new={_res.get('new_ride')} rain={'tak' if _res.get('rain') else 'nie'}", flush=True)
     return JSONResponse(_res)
 
 
@@ -3122,6 +3117,8 @@ async def ride_readiness(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         try:
             _b = await request.json()
+            if isinstance(_b.get("ping"), dict):
+                return await _qext2_ping(_b["ping"])
             if isinstance(_b.get("settings"), dict):
                 # E7.1: kopia ustawien SETUP z Karoo (odtwarzana po reinstalacji)
                 import psycopg as _pg, json as _json

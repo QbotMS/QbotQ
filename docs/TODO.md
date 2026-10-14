@@ -13,7 +13,7 @@
 
 # OTWARTE
 ## [QEXT2-DESZCZ-KOKPIT] Etap 3: QExt2 wysyla sygnal i pokazuje deszcz z radaru w KOKPICIE (dodane 2026-10-14)
-Decyzje 14.10 (Michal): jeden sygnal 'jestem tu' co ~5 min (takze w pauzie) na POST /qext2/ping (token jak /ride-readiness,
+Decyzje 14.10 (Michal): jeden sygnal 'jestem tu' co ~5 min (takze w pauzie) na POST /ride-readiness z body {"ping":{lat,lon}} (token jak odczyt formy,
 naglowek X-QExt2-Token -- most na qbot.cytr.us wycina Authorization); odpowiedz `rain` (short/za_min/pada/sila/dur_min) ma
 pierwszenstwo przed lokalna prognoza Open-Meteo w KOKPICIE; lokalna prognoza zostaje jako zapas, gdy QBot nie odpowiada.
 Serwer gotowy (etap 2). Dok.: docs/POGODA_OSTRZEZENIE.md. Repo QExt2 osobne.
@@ -432,7 +432,7 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] ODLOZONE (Michal 12.10.2026: wrocic kiedys): nagrody za passe = Garaz -> Plan zakupow (lista upatrzonych produktow: nazwa, link, cena, zdjecie; status zablokowane/okno zakupu/kupione). Prog odblokowania wg ceny: do 200 zl 🔥14 dni; 200-500 🔥30 + 📉2 tyg.; 500-1500 📉4 tyg. + 🕗14 dni; wyzej etap wagi. Okno zakupu 14 dni (do decyzji), linijka w wiadomosci 20:00, "nastepna nagroda" w Jedzenie -> Passa. Zakladki Plan zakupow w Garazu jeszcze NIE ma (sprawdzone 12.10). Bez nagrod jedzeniowych.
 
 # ZROBIONE
-- [2026-10-14] [QEXT2-DESZCZ-SERWER] Etap 2: sygnal jazdy z Karoo -> ostrzezenie o deszczu z radaru w miejscu jazdy. POST /qext2/ping (mcp_server, token urzadzenia), qbot_karoo_live.py (ostatnia pozycja, koniec po 15 min ciszy, kasowanie po wczytaniu pliku jazdy / 24 h), qbot_pogoda_alert: jazda z Karoo ma pierwszenstwo przed planem Trenera, Telegram tylko 1. ostrzezenie na jazde, pogoda_alert.src/data. Testy tests/test_karoo_live.py 6. Dok.: docs/POGODA_OSTRZEZENIE.md
+- [2026-10-14] [QEXT2-DESZCZ-SERWER] Etap 2: sygnal jazdy z Karoo -> ostrzezenie o deszczu z radaru w miejscu jazdy. POST /ride-readiness {"ping":{lat,lon}} (mcp_server _qext2_ping, token urzadzenia; osobny adres dawal 404 na publicznym moscie), qbot_karoo_live.py (ostatnia pozycja, koniec po 15 min ciszy, kasowanie po wczytaniu pliku jazdy / 24 h), qbot_pogoda_alert: jazda z Karoo ma pierwszenstwo przed planem Trenera, Telegram tylko 1. ostrzezenie na jazde, pogoda_alert.src/data. Testy tests/test_karoo_live.py 6. Dok.: docs/POGODA_OSTRZEZENIE.md
 - [2026-10-14] [QEXT2-DESZCZ-BEZ-TRASY] Etap 1 (repo QExt2, commit 1c3dae6): jazda bez trasy -- skan kwadransow prognozy do 2 h + punkt 10 km pod wiatr ('deszcz za X min' zamiast 'za 0'); poprawka kwadransa Open-Meteo.
 - [2026-10-14] [POGODA-RADAR-UI] Strona pogoda.html (krok 1 na zywo): mapa + lewy panel + dolny pasek, radar 2 h + prognoza radaru do 60 min na mapie, pozycja dom/przegladarka/klik, os punktu radar->model ICON, /api/pogoda/dom|model. Dok.: docs/POGODA_RADAR.md
 - [2026-10-14] [POGODA-RADAR] Pogoda krok 1 (backend): radar opadu EUMETNET OPERA (DBZH co 5 min, 1 km, 10 radarow IMGW, CC BY 4.0) -- qbot_radar.py, petla w tle qbot-web (2 h klatek, PNG pod Leaflet), ruch opadu (korelacja kafelkow + filtr zgodnosci; zgodny z wiatrem 700 hPa), prognoza punktowa 0-120 min + werdykt; /api/radar/meta|frame|punkt. Testy test_radar 5. Dok.: docs/POGODA_RADAR.md

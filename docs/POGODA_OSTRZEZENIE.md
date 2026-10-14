@@ -1,6 +1,6 @@
 # POGODA — ostrzeżenie o deszczu w czasie jazdy
 
-> Stan: 2026-10-14. Kod: `qbot_pogoda_alert.py`, `qbot_karoo_live.py`, endpoint `POST /qext2/ping` w `mcp_server.py`.
+> Stan: 2026-10-14. Kod: `qbot_pogoda_alert.py`, `qbot_karoo_live.py`, sygnał przez `POST /ride-readiness` (`mcp_server.py`, `_qext2_ping`).
 > Powód: 14.10 plan Trenera 13:00, faktyczny start 14:30, ulewa 14:50–15:15; radar przewidział ją już o 14:10–14:30
 > („ok. 15:00”), ale trzeba było zajrzeć na stronę, a pilnowanie wg planu objęło złe okno.
 
@@ -9,8 +9,9 @@ dla CAŁEJ długości jazdy.
 
 ## Skąd wiadomo, że jedziesz (od 14.10 wieczór)
 
-1. **Jazda z Karoo (pierwszeństwo).** QExt2 wysyła co ~5 min sygnał „jestem tu” (`POST /qext2/ping`, body `{"lat","lon"}`,
-   token urządzenia jak `/ride-readiness`, bez tokenu 401). Pierwszy sygnał = start jazdy, brak sygnału przez 15 min = koniec
+1. **Jazda z Karoo (pierwszeństwo).** QExt2 wysyła co ~5 min sygnał „jestem tu” (`POST /ride-readiness` z body `{"ping":{"lat","lon"}}`,
+   token urządzenia jak przy odczycie formy, bez tokenu 401; publiczny most qbot.cytr.us przepuszcza tylko znane ścieżki —
+   osobny adres `/qext2/ping` dawał 404). Pierwszy sygnał = start jazdy, brak sygnału przez 15 min = koniec
    (bez osobnych sygnałów start/stop — decyzja Michała). Zapisywana tylko OSTATNIA pozycja bieżącej jazdy (`qbot_v2.karoo_live`,
    1 wiersz na jazdę). Kasowanie: gdy QBot wczyta plik tej jazdy (`training_sessions.started_at` w oknie jazdy), awaryjnie po 24 h.
    Punkt radaru = ostatnia pozycja; jazda „otwarta” (koniec nieznany) → tylko radar, bez szansy z zespołu. Plany Trenera są wtedy
@@ -31,7 +32,7 @@ dla CAŁEJ długości jazdy.
 
 ## Odpowiedź dla Karoo (etap 3: wyświetlenie w KOKPICIE)
 
-`POST /qext2/ping` → `{"status":"OK","ride":id,"new_ride":bool,"rain":null|{...}}`. `rain` = bieżące ostrzeżenie z radaru dla tej
+`POST /ride-readiness` `{"ping":{...}}` → `{"status":"OK","ride":id,"new_ride":bool,"rain":null|{...}}`. `rain` = bieżące ostrzeżenie z radaru dla tej
 jazdy (dopóki epizod trwa, +5 min): `eta` (HH:MM), `za_min`, `pada`, `mmh`, `sila`, `dur_min`, `otwarte`, `short`
 (np. „deszcz za 12 min · umiarkowany · ~30 min” / „pada · ulewa · jeszcze ~20 min”). Ostrzeżenie liczy pętla radaru co nową klatkę,
 więc odpowiedź może się spóźniać do ~5 min względem sygnału. Ograniczenie: gdy radar „zgubi” zapowiedziany opad, ostatnie
