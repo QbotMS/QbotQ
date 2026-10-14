@@ -19,9 +19,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var
 html.theme-dark{--glass:rgba(13,16,22,.95)}
 #map{position:fixed;inset:0;z-index:1}
 .leaflet-bottom{bottom:calc(var(--dockh) + 18px)!important}
-#map.rfocus .leaflet-tile-pane{opacity:.55}
-.leaflet-radar-pane img{filter:saturate(1.7) contrast(1.25)}
-#map.rfocus .leaflet-radar-pane img{filter:saturate(2) contrast(1.4) brightness(1.05)}
+/* radar: mocniejsze kolory, ale polprzezroczysty -- podklad mapy zostaje w wersji QBota (bez przygaszania; 14.10 przygaszanie
+   przezroczystoscia odslanialo jasne tlo strony i kazda mapa robila sie mleczna) */
+.leaflet-radar-pane img{filter:saturate(1.45) contrast(1.15)}
 #lp{position:fixed;z-index:1100;top:12px;bottom:calc(var(--dockh) + 24px);left:var(--L);width:min(330px,72vw);background:var(--glass);
   border:1px solid var(--line);border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,.18);display:flex;transition:width .2s}
 #lp .body{flex:1;min-width:0;overflow:auto;padding:12px 14px}
@@ -89,7 +89,7 @@ body.dock-big .dchart{display:flex}
   <button type="button" id="mc-base">Mapa: …</button>
   <button type="button" id="mc-tiles">Kwadraty: wł</button>
   <span class="map-ctl-info" id="tiles-cnt"></span>
-  <button type="button" id="mc-radar">Radar: wyraźny</button>
+  <button type="button" id="mc-radar">Radar: mocny</button>
 </div>
 
 <div id="lp">
@@ -178,8 +178,9 @@ $("mc-base").addEventListener("click",function(){ if(!window.qTilesCycle)return;
 document.addEventListener("qmapchange",baseLabel);
 setTimeout(function(){ var want=LS("qpogoda_base"); if(want&&window.qTilesCycle){for(var i=0;i<4&&window.qTilesState(map)!==want;i++)window.qTilesCycle(map);} baseLabel(); },900);
 var rfocus=LS("qpogoda_rfocus")!=="0";
-function paintR(){ map.getContainer().classList.toggle("rfocus",rfocus); $("mc-radar").textContent="Radar: "+(rfocus?"wyraźny":"zwykły"); }
-$("mc-radar").addEventListener("click",function(){ rfocus=!rfocus; LS("qpogoda_rfocus",rfocus?"1":"0"); paintR(); }); paintR();
+function ROP(){ return rfocus?0.85:0.6; }
+function paintR(){ $("mc-radar").textContent="Radar: "+(rfocus?"mocny":"delikatny"); if(steps.length)show(cur); }
+$("mc-radar").addEventListener("click",function(){ rfocus=!rfocus; LS("qpogoda_rfocus",rfocus?"1":"0"); paintR(); });
 $("mc-fit").addEventListener("click",function(){ if(pos)map.setView([pos.lat,pos.lon],Math.max(map.getZoom(),9)); });
 
 /* ---- kwadraty (StatsHunters z14): wszystkie zdobyte w widoku ---- */
@@ -247,8 +248,8 @@ function buildSteps(){ stop(); steps=[]; if(!meta||!meta.klatki.length)return;
     var l=document.createElement("div");l.className="seglab";l.style.left=s[0]+"%";l.textContent=s[3];$("tl").appendChild(l);});
   show(nr-1); }
 function show(i){ cur=i; $("slider").value=i; var s=steps[i]; if(!s)return; ovs.forEach(function(o){o.setOpacity(0);});
-  if(s.k==="radar"){ovs[s.i].setBounds(L.latLngBounds(meta.bounds));ovs[s.i].setOpacity(1);}
-  else {var o=ovs[ovs.length-1];o.setBounds(L.latLngBounds(shiftBounds(meta.bounds,s.m)));o.setOpacity(s.k==="now"?.8:.5);}
+  if(s.k==="radar"){ovs[s.i].setBounds(L.latLngBounds(meta.bounds));ovs[s.i].setOpacity(ROP());}
+  else {var o=ovs[ovs.length-1];o.setBounds(L.latLngBounds(shiftBounds(meta.bounds,s.m)));o.setOpacity(ROP()*(s.k==="now"?.85:.55));}
   $("tm").innerHTML=hhmm(s.t)+(s.k==="radar"&&s.i===meta.klatki.length-1?" (teraz)":"")+"<small>"+(s.k==="radar"?"radar":s.k==="now"?"prognoza radaru +"+s.m+" min":"+"+s.m+" min · orientacyjnie")+"</small>"; }
 $("slider").addEventListener("input",function(){stop();show(+this.value);});
 function stop(){ if(timer){clearInterval(timer);timer=null;$("play").textContent="▶";} }
@@ -257,7 +258,7 @@ $("play").addEventListener("click",function(){ if(timer){stop();return;} $("play
 function loadFrames(m){ ovs.forEach(function(o){map.removeLayer(o);}); ovs=[]; meta=m;
   (m.klatki||[]).forEach(function(f){ovs.push(L.imageOverlay("/api/radar/frame/"+f.id+".png",m.bounds,{opacity:0,interactive:false,pane:"radar"}).addTo(map));});
   buildSteps(); if(!m.klatki.length)$("tm").textContent="brak klatek radaru"; }
-J("/api/radar/meta").then(function(m){ map.attributionControl.addAttribution(m.zrodlo); loadFrames(m); });
+J("/api/radar/meta").then(function(m){ map.attributionControl.addAttribution(m.zrodlo); loadFrames(m); paintR(); });
 
 /* ---- punkt: radar + model + warunki ---- */
 var chart=null, hid={}, cmode="opad", lastD=null, lastM=null, lastW=null;
