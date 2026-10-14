@@ -294,10 +294,13 @@ map.on("click",function(e){ if(pmode==="zadana")setPos(e.latlng.lat,e.latlng.lng
 var NOW_MAX=120, meta=null, ovs=[], steps=[], cur=0, timer=null;
 function shiftBounds(b,min){ if(!motion)return b; var dx=motion.vx*min*1500, dy=-motion.vy*min*1500;
   return b.map(function(c){var p=L.CRS.EPSG3857.project(L.latLng(c[0],c[1]));var q=L.CRS.EPSG3857.unproject(L.point(p.x+dx,p.y+dy));return [q.lat,q.lng];}); }
-var SEGS={radar:[0,0.28],now:[0.28,0.40],model:[0.40,1]};
+var SEGS={radar:[0,0.28],now:[0.28,0.40],model:[0.40,1]}, MT0=null;
 function posSteps(){ var g={radar:[],now:[],model:[]}; steps.forEach(function(s){ g[s.k==="now2"?"now":s.k].push(s); });
   Object.keys(g).forEach(function(k){ var L=g[k]; if(!L.length)return; var a=SEGS[k][0], b=SEGS[k][1];
-    var t0=(k==="now"&&g.radar.length)?g.radar[g.radar.length-1].t.getTime():L[0].t.getTime(), t1=L[L.length-1].t.getTime();
+    /* 14.10: model liczony od konca prognozy radaru -- inaczej 1. godzina modelu miala te sama pozycje co koniec radaru i byla nieosiagalna */
+    var prv=k==="model"?(g.now.length?g.now[g.now.length-1]:(g.radar.length?g.radar[g.radar.length-1]:null)):null;
+    var t0=(k==="now"&&g.radar.length)?g.radar[g.radar.length-1].t.getTime():(prv?prv.t.getTime():L[0].t.getTime()), t1=L[L.length-1].t.getTime();
+    if(k==="model")MT0=t0;
     L.forEach(function(s){ s.p=a+(b-a)*(t1>t0?(s.t.getTime()-t0)/(t1-t0):1); }); }); }
 function nearestStep(p){ var bi=cur, bd=9; steps.forEach(function(s,i){ var d=Math.abs((s.p||0)-p); if(d<bd){bd=d;bi=i;} }); return bi; }
 var KOR=null, LAYER="opad", MM=null, mov=null, mcache={}, RLEG=document.querySelector("#dock .legend").innerHTML;
@@ -325,7 +328,7 @@ function buildSteps(){ var keepT=(steps[cur]&&userMoved)?steps[cur].t.getTime():
     var lb=document.createElement("div");lb.className="seglab";lb.style.left=l+"%";lb.style.opacity=has[k]?1:.6;
     lb.textContent=has[k]?names[k]:(k==="model"?"prognoza — brak danych":"radar tylko na zakładce Opad");$("tl").appendChild(lb); });
   var ms=steps.filter(function(s){return s.k==="model";});
-  if(ms.length>1){ var mt0=ms[0].t.getTime(), mt1=ms[ms.length-1].t.getTime(), dd=new Date(mt0); dd.setHours(24,0,0,0);
+  if(ms.length>1){ var mt0=MT0||ms[0].t.getTime(), mt1=ms[ms.length-1].t.getTime(), dd=new Date(mt0); dd.setHours(24,0,0,0);
     while(dd.getTime()<mt1){ var pp=SEGS.model[0]+(SEGS.model[1]-SEGS.model[0])*(dd.getTime()-mt0)/(mt1-mt0);
       var tk=document.createElement("div"); tk.className="seglab dtick"; tk.style.left=(pp*100)+"%";
       tk.textContent=["nd","pn","wt","śr","cz","pt","sob"][dd.getDay()]+" "+("0"+dd.getDate()).slice(-2); $("tl").appendChild(tk); dd=new Date(dd.getTime()+864e5); } }
@@ -359,6 +362,8 @@ J("/api/pogoda/mapa/korekta").then(function(k){ KOR=k; window.__KOR=k; if(steps.
 J("/api/pogoda/mapa/meta").then(function(m){ MM=m; if(m.status==="OK"){map.attributionControl.addAttribution(m.zrodlo); if(m.eps)map.attributionControl.addAttribution(m.eps.zrodlo);} buildSteps(); });
 var userMoved=false;
 $("slider").addEventListener("input",function(){stop();userMoved=true;show(nearestStep(+this.value/1000));});
+$("slider").addEventListener("keydown",function(e){ if(e.key!=="ArrowRight"&&e.key!=="ArrowLeft")return; e.preventDefault(); stop(); userMoved=true;
+  show(Math.max(0,Math.min(steps.length-1,cur+(e.key==="ArrowRight"?1:-1)))); });   /* strzalki = dokladnie 1 krok */
 function stop(){ if(timer){clearInterval(timer);timer=null;$("play").textContent="▶";} }
 $("play").addEventListener("click",function(){ if(timer){stop();return;} $("play").textContent="❚❚"; var hold=0;
   timer=setInterval(function(){ if(cur>=steps.length-1){ if(++hold<4)return; hold=0; show(0);} else show(cur+1); },400); });
