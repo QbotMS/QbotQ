@@ -156,10 +156,12 @@ def window(cur, lat: float, lon: float, day: dt.date, start: str, dur: int, ride
         uw, kara = [], 0.0
         if rain >= 0.3:
             uw.append(f"deszcz ok. {rain:.1f} mm".replace(".", ",")); kara += rain * 3
+        # 14.10.2026 (decyzja Michala po ulewie 14:50 przy ocenie 85/100): szansa >= progu Trenera (40%) karze mocno -- 40% -> ok. 76,
+        # 75% -> ok. 55, 100% -> 40 (deterministyczne modele czesto nie widza przelotnych opadow, zespol tak)
         if pmax >= P("wx.rain_prob") / 100:
-            uw.append(f"szansa opadu {round(pmax * 100)}%"); kara += pmax * 2
+            uw.append(f"szansa opadu {round(pmax * 100)}%"); kara += pmax * 6
         elif pmax >= 0.2:
-            kara += pmax
+            kara += pmax * 2
         if gust >= P("wx.gust_ms"):
             uw.append(f"porywy do {gust:.0f} m/s"); kara += (gust - P("wx.gust_ms")) * 0.6 + 1
         elif wind >= P("wx.wind_ms"):

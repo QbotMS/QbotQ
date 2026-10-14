@@ -8,7 +8,7 @@ Pytanie: „przesunąć jazdę czy moknąć?”. Jazda z kalendarza Trenera (`tr
 - **Pogoda:** `qbot_pogoda.conditions_point` (modele wg sprawdzalności), szansa opadu z zespołu ICON-EU-EPS (Open-Meteo Ensemble,
   odsetek wariantów ≥ 0,2 mm/h), najbliższa godzina z radaru (`nowcast_point`, udział ≥ 0,5 → mm/h radaru), wschód/zachód (Open-Meteo daily).
 - **Progi = Trener** (`P(ov,'wx.*')`: wiatr 8, porywy 13 m/s, szansa 40%, chłód, upał) — obie części QBota mówią jednym głosem.
-- **Ocena 0–100** = 100 − 10 × kara: deszcz × 3, szansa, porywy ponad próg, oblodzenie 3, mgła 1,5, błoto 1, zmrok min/20, chłód/upał.
+- **Ocena 0–100** = 100 − 10 × kara: deszcz × 3, szansa (≥ progu Trenera 40%: × 6, 20–40%: × 2 — od 14.10.2026, po ulewie przy ocenie 85), porywy ponad próg, oblodzenie 3, mgła 1,5, błoto 1, zmrok min/20, chłód/upał.
 - Werdykt: „Lepiej przesunąć: HH:MM” gdy najlepszy start > plan + 10 pkt; karty Plan / Wcześniej / Później; siatka startów (klik = przelicz).
 - Bez nowych wiadomości Telegram (zasada Michała).
 
