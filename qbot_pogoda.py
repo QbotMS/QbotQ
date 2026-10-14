@@ -141,7 +141,7 @@ def conditions_point(lat: float, lon: float, hours: int = 24) -> dict:
         rows.append({"iso": t, "t": t[11:16], "przeszlosc": _dt.datetime.fromisoformat(t) < now,
                      "temp": T, "odcz": g("apparent_temperature", i), "rh": g("relative_humidity_2m", i), "rosa_pkt": Td,
                      "opad": g("precipitation", i + 1) if i + 1 < len(tt) else None, "snieg": g("snowfall", i + 1) if i + 1 < len(tt) else None, "wiatr": g("wind_speed_10m", i),   # opad/snieg: godzina T..T+1 (wartosc z T+1)
-                     "porywy": g("wind_gusts_10m", i), "kier": g("wind_direction_10m", i), "skad": _kier(g("wind_direction_10m", i)),
+                     "porywy": g("wind_gusts_10m", i + 1) if i + 1 < len(tt) else None,   # maks. z godziny T..T+1 (wartosc z T+1) "kier": g("wind_direction_10m", i), "skad": _kier(g("wind_direction_10m", i)),
                      "widocznosc": vis, "grunt": Ts, "kod": g("weather_code", i), "chmury": g("cloud_cover", i), "dzien": g("is_day", i),
                      "mgla": mgla, "lod": lod, "nawierzchnia": naw, "zapas_rosy": rosa})
     try:   # szansa opadu z zespolu ICON-EU-EPS dla godziny T..T+1 (do wizualizacji Warunkow)

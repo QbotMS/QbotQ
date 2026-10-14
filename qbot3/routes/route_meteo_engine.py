@@ -722,6 +722,9 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
             h = weather[wi]["h"]
             tms = weather[wi]["times"]
         when = s["eta_utc"]
+        # 14.10.2026: Open-Meteo podaje opad, szanse opadu i porywy jako wartosc z GODZINY POPRZEDZAJACEJ (T-1..T) -> srodek
+        # przedzialu to T-30 min; interpolacja po tych srodkach (wczesniej opad wychodzil ok. 30 min za wczesnie). Dok.: docs/POGODA_SILNIK.md
+        tms_c = [t - _dt.timedelta(minutes=30) for t in tms]
         ta = _interp(tms, h["temperature_2m"], when)
         rh = _interp(tms, h["relative_humidity_2m"], when)
         ws = _interp(tms, h["wind_speed_10m"], when)
@@ -729,13 +732,13 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         pres = _interp(tms, h["surface_pressure"], when)
         ghi = _interp(tms, h["shortwave_radiation_instant"], when)
         dir_ = _interp(tms, h["direct_radiation_instant"], when)
-        prec = _interp(tms, h["precipitation"], when) if "precipitation" in h else 0.0
-        prob = (_interp(tms, h["precipitation_probability"], when)
+        prec = _interp(tms_c, h["precipitation"], when) if "precipitation" in h else 0.0
+        prob = (_interp(tms_c, h["precipitation_probability"], when)
                 if h.get("precipitation_probability") else None)
         wcode_raw = _nearest(tms, h["weather_code"], when) if "weather_code" in h else None
         wcode = int(wcode_raw) if wcode_raw is not None else None
         cape = _interp(tms, h["cape"], when) if "cape" in h else None
-        gust = _interp(tms, h["wind_gusts_10m"], when) if "wind_gusts_10m" in h else None
+        gust = _interp(tms_c, h["wind_gusts_10m"], when) if "wind_gusts_10m" in h else None
         cc = _interp(tms, h["cloud_cover"], when) if "cloud_cover" in h else None
 
         cza = cos_solar_zenith(when, s["lat"], s["lon"])
