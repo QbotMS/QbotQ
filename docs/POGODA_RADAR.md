@@ -67,3 +67,13 @@ i model różnią się w najbliższej godzinie. Podkład: OSM + `qmap-tiles.js` 
 - `GET /api/pogoda/dom`, `GET /api/pogoda/model?lat=&lon=&godziny=12` (`qbot_pogoda.py`, Open-Meteo `icon_seamless`,
   minutely_15, cache 10 min). Samo `icon_d2` dawało 14.10.2026 HTTP 400 „No data is available for this location”.
 - Mockup kroków 1–4: `pogoda-mockup.html` (dane przykładowe oznaczone).
+
+## Mapa modelu (2026-10-14) — `qbot_pogoda_map.py`
+DWD **ICON-EU** (opendata.dwd.de, bez limitu; wybrany, bo wygrywa najwięcej parametrów w sprawdzalności). Przebiegi 00/12 UTC,
+kroki co 1 h do +24 i co 3 h do +60. Parametry: T_2M, TOT_PREC (opad godzinowy z różnicy), U/V_10M, VMAX_10M, T_G, TD_2M.
+Warstwy PNG (siatka Mercator 6 km, dwuliniowo): opad, temp, wiatr, porywy, lod (grunt ≤ 0,5°C i opad 6 h lub szron),
+mgla (przybliżenie T−Td i słaby wiatr — ICON-EU nie ma widzialności). Cache `/opt/qbot/artifacts/pogoda_model/<run>/`,
+2 ostatnie przebiegi. Pętla w qbot-web co 20 min (`QBOT_POGODA_MAP_LOOP=0` wyłącza). API: `/api/pogoda/mapa/meta`,
+`/api/pogoda/mapa/{warstwa}/{run}_{krok}.png`. Biblioteka: `eccodes` + `eccodeslib` (pip). DWD: długość 336,5 = −23,5.
+Strona: dolne zakładki Opad/Temperatura/Wiatr/Porywy/Mgła/Oblodzenie; oś Opadu: radar → radar +2 h → model do +60 h.
+Transfer ~260 MB na przebieg (~520 MB/dobę).

@@ -7069,6 +7069,51 @@ def api_pogoda_sprawdzalnosc(dni: int = 60, lat: float | None = None, lon: float
         conn.close()
 
 
+def _pogoda_map_loop():
+    """2026-10-14: mapy modelu ICON-EU (DWD) -- nowy przebieg 00/12 UTC pobierany i rysowany w tle (~260 MB, kilka minut)."""
+    import sys as _sys
+    import time as _t
+    import json
+    import subprocess
+    import sys
+    _t.sleep(120)
+    while True:
+        try:
+            # niski priorytet: osobny proces z nice 15 (1 dzielony rdzen Mikrusa -- strony i Albert maja pierwszenstwo)
+            out = subprocess.run(["nice", "-n", "15", sys.executable, "-c", "import json, qbot_pogoda_map as M; print(json.dumps(M.build()))"],
+                                 capture_output=True, text=True, timeout=3600, cwd="/opt/qbot/app")
+            r = json.loads(out.stdout.strip().splitlines()[-1]) if out.stdout.strip() else {"status": "BLAD", "err": out.stderr[-300:]}
+            if r.get("status") == "OK":
+                print(f"[pogoda-mapa] {r}", file=_sys.stderr, flush=True)
+        except Exception as e:
+            print(f"[pogoda-mapa] blad: {e!r}", file=_sys.stderr, flush=True)
+        _t.sleep(1200)
+
+
+@app.on_event("startup")
+def _pogoda_map_start():
+    if os.getenv("QBOT_POGODA_MAP_LOOP", "1") == "0":
+        return
+    _wp_threading.Thread(target=_pogoda_map_loop, daemon=True, name="qbot-pogoda-mapa").start()
+
+
+@app.get("/api/pogoda/mapa/meta")
+def api_pogoda_mapa_meta():
+    """Mapy modelu: przebieg, kroki (+1..60 h), warstwy, legendy, rogi warstwy."""
+    import qbot_pogoda_map as PM
+    return PM.meta()
+
+
+@app.get("/api/pogoda/mapa/{layer}/{rid}.png")
+def api_pogoda_mapa_png(layer: str, rid: str):
+    import qbot_pogoda_map as PM
+    run, _, sid = rid.partition("_")
+    p = PM.png_path(layer, run, sid)
+    if not p:
+        raise HTTPException(status_code=404, detail="brak warstwy")
+    return FileResponse(p, media_type="image/png", headers={"Cache-Control": "private, max-age=86400"})
+
+
 def _owner_only(request: Request):
     if (request.scope.get("qbot_auth") or {}).get("kind") != "owner":
         raise HTTPException(status_code=403, detail="tylko wlasciciel")
