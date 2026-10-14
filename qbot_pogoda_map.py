@@ -511,10 +511,12 @@ def rejony(day: dt.date, a_h: int, b_h: int, lat=None, lon=None, km_max=None, n:
     t_all = cKDTree(np.c_[P_["a"][:, 1] * kk, P_["a"][:, 0]]); t_big = cKDTree(np.c_[P_["a"][big, 1] * kk, P_["a"][big, 0]])
     bigrows = [x for x, f in zip(P_["rows"], big) if f]
     spacing = max(20.0, min(60.0, (km_max or 240) / 4))
-    sc = np.where(ok, oc, -1.0); order = np.argsort(-sc.ravel()); picked = []
+    # 14.10: przy podobnej pogodzie blizsze miejsce wygrywa (kara 3 pkt / 100 km), wyraznie lepsza pogoda dalej nadal przebija
+    rank = oc - (0.03 * D if D is not None else 0)
+    sc = np.where(ok, rank, -1e9); order = np.argsort(-sc.ravel()); picked = []
     for idx in order[:40000]:
         j, i = divmod(int(idx), W)
-        if sc[j, i] < 0:
+        if sc[j, i] < -1e8:
             break
         la, lo = float(LAT[j, i]), float(LON[j, i])
         if t_all.query([lo * kk, la])[0] * 111 > 15:
