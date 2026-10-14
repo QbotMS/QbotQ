@@ -39,5 +39,14 @@ Uwaga: dla starszych dni Garmin zwraca mniej sekcji (brak epok oddechu/SpO2), po
 - `scripts/debug_garmin_sleep_hrv_raw.py` — diagnostyka: pelna odpowiedz -> `/opt/qbot/artifacts/garmin_sleep_hrv_raw_<data>.json`.
 - Testy: `tests/test_garmin_extra.py`.
 
+## VO2max QBota (Etap 2, 2026-10-14)
+- `fitmodel/vo2max.py`: moc 5 min z krzywej ModelQ `P5 = CP + W'/300 s`, wzor ACSM `VO2max = 10.8 * P5 / waga + 7` [ml/kg/min].
+  Wartosc NA KG (decyzja uzytkownika: waga widoczna obok). Bez skalowania do Garmina (Garmin ~+5: luty 2025 QBot 40.6 vs Garmin 46).
+- Odrzucone: regresja HR<->moc z jazd (test na 23 jazdach: -100..400, teren/dryf tetna); surowe MMP 5 min (zaszumione, np. 384 W przy CP 241 we wrzesniu 2026).
+- Liczone w locie (bez kolumny w bazie): `add_vo2max()` w `/api/forma/data` (qbot_web: series + latest), przeniesienie CP/W'/wagi z ostatniego dnia.
+- UI: Forma > Trendy, wykres mocy -> pigulka "VO2max" (niezalezna od CP/LTP, os po lewej do srodka), wartosc w podpisie i dymku. forma2-data.js v=64.
+  UWAGA: strony zywe w /opt/qbot/web/public, `web_public/` w repo to lustro (scripts/web_mirror.py).
+- Testy: `tests/test_vo2max.py`.
+
 ## Plan dalej
 Etapy 2–7 w `docs/TODO.md` -> `[GARMIN-DANE]`.

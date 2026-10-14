@@ -11685,6 +11685,9 @@ def _build_forma_data(conn, start_str, end_str):
         (start_str, end_str),
     ).fetchall()
     series = [_forma_row_out(r) for r in rows]
+    # [GARMIN-DANE] 2026-10-14: VO2max QBota z krzywej ModelQ (na kg) -- docs/GARMIN_DANE.md
+    from fitmodel.vo2max import add_vo2max as _add_vo2
+    _add_vo2(series)
     # 2026-10-13: waga ZMIERZONA danego dnia (body_measurements) - wykres rysuje punkty pomiarow i przerywana
     # linie miedzy nimi; weight_kg w fitmodel_daily jest przeniesiona z ostatniego pomiaru (schodki).
     try:
@@ -11705,6 +11708,7 @@ def _build_forma_data(conn, start_str, end_str):
         ((_dt_date.fromisoformat(end_str) - _dt_timedelta(days=400)).isoformat(), end_str),
     ).fetchall()
     latest_series = [_forma_row_out(r) for r in latest_rows]
+    _add_vo2(latest_series)
     latest = {}
     for f in _FORMA_FIELDS:
         found = None
@@ -11713,6 +11717,11 @@ def _build_forma_data(conn, start_str, end_str):
                 found = {"value": r[f], "day": r["day"]}
                 break
         latest[f] = found or {"value": None, "day": None}
+
+    # [GARMIN-DANE] VO2max: ostatnia nie-NULL wartosc (jak pola powyzej)
+    latest["vo2max_ml_kg"] = next(({"value": r["vo2max_ml_kg"], "day": r["day"]}
+                                   for r in reversed(latest_series) if r.get("vo2max_ml_kg") is not None),
+                                  {"value": None, "day": None})
 
     # Glikogen: pokazuj stan DNIA KONCOWEGO (bez przenoszenia ostatniej niepustej w przod).
     # Brak wpisow zywienia => None => kafel "brak danych", nie mylace stare 0%/21%.

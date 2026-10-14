@@ -587,7 +587,7 @@ var GROUPS={moc:{series:["ftp_est_w","ltp_modelq_w"],label:["Moc progowa","Próg
 function renderTrendy(){
   var S=forma.series||[];if(!S.length)return;
   var SN=CUST?S.filter(function(r){var d=String(r.day).slice(0,10);return d>=CUST.a&&d<=CUST.b;}):S.slice(-RNG);var T=SN[SN.length-1]||{};var N=SN.length;if(N<2)return;
-  var labels=[],ctlD=[],atlD=[],tsbD=[],xssD=[],cpD=[],ltpD=[];
+  var labels=[],ctlD=[],atlD=[],tsbD=[],xssD=[],cpD=[],ltpD=[],vo2D=[];
   var MON=["sty","lut","mar","kwi","maj","cze","lip","sie","wrz","paz","lis","gru"];
   SN.forEach(function(s2){
     var d=s2.day.slice(8);var m=parseInt(s2.day.slice(5,7))-1;
@@ -601,6 +601,7 @@ function renderTrendy(){
     xssD.push(Math.round(_xd));
     cpD.push(s2.ftp_est_w||s2.ftp||null);
     ltpD.push(s2.ltp_modelq_w||null);
+    vo2D.push(s2.vo2max_ml_kg!=null?s2.vo2max_ml_kg:null);  /* 2026-10-14 [GARMIN-DANE] VO2max QBota (fitmodel/vo2max.py) */
   });
   var isDark=document.documentElement.classList.contains("theme-dark");
   var gridCol=isDark?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.06)";
@@ -689,25 +690,30 @@ function renderTrendy(){
       ch.data.datasets.forEach(function(ds){if(ds._k===k)ds.hidden=!ON[k];});ch.update("none");});});}
   /* DOLNY WYKRES (moc) */
   var PWRMODE="cp";
+  var VO2ON=false;  /* 2026-10-14: VO2max (ml/kg/min) jako niezalezna pigulka; wlasna os po lewej, do srodka */
   function buildPwr(){
     if(window._pwrChart){window._pwrChart.destroy();}
     var pwrCanvas=q$("trendy-pwr-canvas");if(!pwrCanvas)return;
     var ds=[];
     if(PWRMODE==="cp"||PWRMODE==="oba")ds.push({label:"CP",data:cpD,borderColor:"#3b82f6",borderWidth:2.5,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false});
     if(PWRMODE==="ltp"||PWRMODE==="oba")ds.push({label:"LTP",data:ltpD,yAxisID:(PWRMODE==="oba"?"y2":"y"),borderColor:"#9b59b6",borderWidth:2,borderDash:[4,3],pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false});
+    if(VO2ON)ds.push({label:"VO₂max",data:vo2D,yAxisID:"y3",borderColor:"#f59e0b",borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,spanGaps:true});
     window._pwrChart=new Chart(pwrCanvas,{type:"line",data:{labels:labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
       plugins:{legend:{display:false,position:"top",labels:{usePointStyle:true,pointStyle:"line",boxWidth:20,padding:10,color:txtCol,font:{size:11}}},
         tooltip:{backgroundColor:isDark?"rgba(30,30,30,0.95)":"rgba(255,255,255,0.95)",titleColor:isDark?"#ddd":"#333",bodyColor:isDark?"#bbb":"#555",borderColor:isDark?"#444":"#ddd",borderWidth:1,padding:10,displayColors:true,callbacks:{title:function(items){if(!items.length)return "";var i=items[0].dataIndex;return SN[i]?SN[i].day:"";}}}},
       /* 2026-10-08: CP + LTP - kazda na wlasnej skali (CP lewa, LTP prawa, etykiety w kolorach linii); prawa os do srodka (mirror),
          szerokosc 0 - obszar wykresu zostaje rowny wykresowi powyzej (wspolny kursor) */
       scales:{x:{display:false},y:{position:"left",ticks:{color:PWRMODE==="oba"?"#3b82f6":txtCol,font:{size:10}},grid:{color:gridCol}},
-        y2:{display:PWRMODE==="oba",position:"right",ticks:{color:"#9b59b6",font:{size:10},mirror:true,padding:4},grid:{drawOnChartArea:false},afterFit:function(a){a.width=0;}}}}});
+        y2:{display:PWRMODE==="oba",position:"right",ticks:{color:"#9b59b6",font:{size:10},mirror:true,padding:4},grid:{drawOnChartArea:false},afterFit:function(a){a.width=0;}},
+        y3:{display:VO2ON,position:"left",ticks:{color:"#f59e0b",font:{size:10},mirror:true,padding:4},grid:{drawOnChartArea:false},afterFit:function(a){a.width=0;}}}}});
     /* sync hover */
     canvas.addEventListener("mousemove",function(evt){syncHover(window._trendyChart,window._pwrChart,evt);});
     canvas.addEventListener("mouseleave",function(){clearSync(window._pwrChart);});
     pwrCanvas.addEventListener("mousemove",function(evt){syncHover(window._pwrChart,window._trendyChart,evt);});
     pwrCanvas.addEventListener("mouseleave",function(){clearSync(window._trendyChart);});
-    var pl=q$("pwr-label");if(pl){var cpNow=cpD[N-1],ltpNow=ltpD[N-1];pl.textContent=(cpNow?"CP "+Math.round(cpNow)+" W":"")+(cpNow&&ltpNow?" / ":"")+(ltpNow?"LTP "+Math.round(ltpNow)+" W":"");}
+    var pl=q$("pwr-label");if(pl){var cpNow=cpD[N-1],ltpNow=ltpD[N-1];pl.textContent=(cpNow?"CP "+Math.round(cpNow)+" W":"")+(cpNow&&ltpNow?" / ":"")+(ltpNow?"LTP "+Math.round(ltpNow)+" W":"");
+      var vNow=null;for(var vi=N-1;vi>=0;vi--){if(vo2D[vi]!=null){vNow=vo2D[vi];break;}}
+      if(vNow!=null)pl.textContent+=(pl.textContent?" · ":"")+"VO₂max "+vNow.toFixed(1).replace(".",",");}
   }
   function syncHover(src,dst,evt){
     var pts=src.getElementsAtEventForMode(evt,"index",{intersect:false},true);
@@ -728,6 +734,7 @@ function renderTrendy(){
     if(xssD[idx])html+='obc. dnia: '+Math.round(xssD[idx])+'<br>';
     html+='<span style="color:#3b82f6">CP: '+(cpD[idx]!=null?Math.round(cpD[idx])+" W":"—")+'</span>';
     if(ltpD[idx]!=null)html+=' <span style="color:#9b59b6">LTP: '+Math.round(ltpD[idx])+' W</span>';
+    if(vo2D[idx]!=null)html+=' <span style="color:#f59e0b">VO₂max: '+vo2D[idx].toFixed(1).replace(".",",")+'</span>';
     tip.innerHTML=html;tip.style.display="block";
     var ev=ctx.tooltip.caretX!=null?ctx.tooltip:ctx.tooltip;
     var rect=(topCtx?q$("trendy-canvas"):q$("trendy-pwr-canvas")).getBoundingClientRect();
@@ -741,8 +748,9 @@ function renderTrendy(){
   /* 2026-10-12: CP / LTP jako pigulki (jak przelaczniki wykresu formy); oba wlaczone = tryb 'oba' */
   function renderPwrChips(){var el=q$("pwr-chips");if(!el)return;var cp=PWRMODE!=="ltp",lt=PWRMODE!=="cp";
     el.innerHTML='<button type="button" class="tchip'+(cp?' on':'')+'" data-p="cp"><span class="tdot" style="background:#3b82f6"></span>CP</button>'+
-      '<button type="button" class="tchip'+(lt?' on':'')+'" data-p="ltp"><span class="tdot" style="background:#9b59b6"></span>LTP</button>';
-    el.querySelectorAll("button").forEach(function(b){b.onclick=function(){var c2=PWRMODE!=="ltp",l2=PWRMODE!=="cp";if(b.dataset.p==="cp")c2=!c2;else l2=!l2;
+      '<button type="button" class="tchip'+(lt?' on':'')+'" data-p="ltp"><span class="tdot" style="background:#9b59b6"></span>LTP</button>'+
+      '<button type="button" class="tchip'+(VO2ON?' on':'')+'" data-p="vo2" title="VO₂max QBota (ml/kg/min) z krzywej mocy ModelQ: moc 5 min = CP + W′/300 s, wzór ACSM. Garmin pokazywałby ok. 5 więcej."><span class="tdot" style="background:#f59e0b"></span>VO₂max</button>';
+    el.querySelectorAll("button").forEach(function(b){b.onclick=function(){if(b.dataset.p==="vo2"){VO2ON=!VO2ON;renderPwrChips();buildPwr();return;}var c2=PWRMODE!=="ltp",l2=PWRMODE!=="cp";if(b.dataset.p==="cp")c2=!c2;else l2=!l2;
       if(!c2&&!l2)return;PWRMODE=c2&&l2?"oba":(c2?"cp":"ltp");renderPwrChips();buildPwr();};});}
   renderPwrChips();
   /* WELLNESS CHART */
