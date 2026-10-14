@@ -99,3 +99,11 @@ powstawania chmur. `qbot_pogoda.charakter_dni()` — Open-Meteo CAPE + lifted in
 burzowe gdy CAPE ≥ 600 i LI ≤ −1 (kalibracja 11–16.10.2026: 14.10 CAPE 210 / LI 0,3; inne dni CAPE ≤ 80, LI ≥ 0,4). Okno godzin:
 CAPE ≥ 100 i LI ≤ 2. API `/api/pogoda/charakter?lat=&lon=`; chip w ☂ pod „Opad — radar” (dziś i jutro, tylko gdy niestabilnie);
 linia w `weather_now` (Albert). Progi do weryfikacji na kolejnych dniach.
+
+### Warunki godzina po godzinie — wizualizacja (2026-10-14)
+Zamiast 7 pasków kratek: `web/public/pogoda-punkt-viz.js` (`wxPointViz`) w języku Analizy trasy (`raport-pogoda-viz.js`, wspólne elementy
+przez `window.wxVizKit`): kafelki (temperatura/odczuwalna, niebo, wiatr/porywy, deszcz mm + szansa, „Uwaga” tylko przy mgle/lodzie/błocie),
+ikony nieba (noc: księżyc, `is_day`), temperatura + odczuwalna na tle stref ubioru, słupki szansy deszczu z zespołu, strzałki wiatru
+(dokąd wieje, kolor wg porywów 8/13 m/s), ikonki ryzyka na drodze. `conditions_point` dostał `chmury`, `dzien`, `szansa` (zespół).
+NAPRAWA: commit b8ba5d4 (godzina opadu) przypadkowo wyciął pole `wiatr` z wiersza (komentarz w środku linii) — Okno jazdy i Warunki
+liczyły bez średniego wiatru od b8ba5d4 do tej poprawki.

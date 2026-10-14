@@ -71,7 +71,7 @@ def home(cur) -> dict | None:
 
 # ---------------------------------------------------------------- warunki dla roweru (punkt, godzinowo)
 HOURLY = ("temperature_2m,apparent_temperature,relative_humidity_2m,dew_point_2m,precipitation,snowfall,"
-          "wind_speed_10m,wind_gusts_10m,wind_direction_10m,visibility,soil_temperature_0cm,weather_code")
+          "wind_speed_10m,wind_gusts_10m,wind_direction_10m,visibility,soil_temperature_0cm,weather_code,cloud_cover,is_day")
 _CC: dict = {}
 
 
@@ -140,10 +140,17 @@ def conditions_point(lat: float, lon: float, hours: int = 24) -> dict:
         rosa = None if (T is None or Td is None) else round(T - Td, 1)
         rows.append({"iso": t, "t": t[11:16], "przeszlosc": _dt.datetime.fromisoformat(t) < now,
                      "temp": T, "odcz": g("apparent_temperature", i), "rh": g("relative_humidity_2m", i), "rosa_pkt": Td,
-                     "opad": g("precipitation", i + 1) if i + 1 < len(tt) else None, "snieg": g("snowfall", i + 1) if i + 1 < len(tt) else None,   # godzina T..T+1 (wartosc z T+1) "wiatr": g("wind_speed_10m", i),
+                     "opad": g("precipitation", i + 1) if i + 1 < len(tt) else None, "snieg": g("snowfall", i + 1) if i + 1 < len(tt) else None, "wiatr": g("wind_speed_10m", i),   # opad/snieg: godzina T..T+1 (wartosc z T+1)
                      "porywy": g("wind_gusts_10m", i), "kier": g("wind_direction_10m", i), "skad": _kier(g("wind_direction_10m", i)),
-                     "widocznosc": vis, "grunt": Ts, "kod": g("weather_code", i),
+                     "widocznosc": vis, "grunt": Ts, "kod": g("weather_code", i), "chmury": g("cloud_cover", i), "dzien": g("is_day", i),
                      "mgla": mgla, "lod": lod, "nawierzchnia": naw, "zapas_rosy": rosa})
+    try:   # szansa opadu z zespolu ICON-EU-EPS dla godziny T..T+1 (do wizualizacji Warunkow)
+        import qbot_pogoda_okno as _PO
+        _pr = _PO._ens_prob(lat, lon)
+        for _r in rows:
+            _r["szansa"] = _pr.get(_r["iso"][:13])
+    except Exception:
+        pass
     res = {"status": "OK" if rows else "BRAK_DANYCH", "model": "przydzial automatyczny wg sprawdzalnosci", "godziny": rows,
            "zrodla": {p: asg[p][1] for p in asg}, "przydzial": asg}
     _CC[key] = (time.time(), res)

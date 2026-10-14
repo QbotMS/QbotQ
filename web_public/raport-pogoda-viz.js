@@ -140,4 +140,6 @@ window.wxDayViz = function(w, chart){
     esc(tk.kalibracja_jazd)+' jazd). Strefy ubioru są orientacyjne — dobór konkretnych rzeczy robi doradca.</div>':'';
   return '<div class="wx-day">'+head+lg+o.join("")+note+'</div>';
 };
+/* 14.10.2026: wspolne elementy dla wizualizacji punktu na stronie Pogoda (pogoda-punkt-viz.js) */
+window.wxVizKit={f:f,num:num,esc:esc,ZONES:ZONES,zoneOf:zoneOf,sunIcon:sunIcon,cloudIcon:cloudIcon,rainIcon:rainIcon};
 })();
