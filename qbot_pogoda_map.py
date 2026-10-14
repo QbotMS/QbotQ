@@ -393,8 +393,9 @@ def eps_build(run: dt.datetime, out: str) -> dict:
 PLACES = "/opt/qbot/artifacts/geonames/PL_places.tsv"
 PL_NAZWY = {"Warsaw": "Warszawa", "Cracow": "Kraków", "Krakow": "Kraków", "Wroclaw": "Wrocław", "Lodz": "Łódź", "Poznan": "Poznań",
             "Gdansk": "Gdańsk", "Szczecin": "Szczecin", "Bialystok": "Białystok", "Czestochowa": "Częstochowa", "Bydgoszcz": "Bydgoszcz"}
-PAL["ocena"] = _ramp([(0, (192, 57, 43, 150)), (35, (232, 116, 59, 140)), (50, (240, 196, 25, 130)), (65, (154, 205, 50, 130)), (80, (46, 139, 87, 140)), (100, (30, 120, 70, 150))])
-LEGENDA["ocena"] = [["#c0392b", "unikaj"], ["#e8743b", "słabo"], ["#f0c419", "tak sobie"], ["#9acd32", "dobrze"], ["#2e8b57", "jedź"]]
+# barwy ui2 (ui2-tokens.css): bad #a32d2d, accent #e8742a, amber #c8a24a, zielenie #8fae5a / #6b8f3d / #4f7a2a
+PAL["ocena"] = _ramp([(0, (163, 45, 45, 150)), (35, (232, 116, 42, 140)), (50, (200, 162, 74, 130)), (65, (143, 174, 90, 130)), (80, (107, 143, 61, 140)), (100, (79, 122, 42, 150))])
+LEGENDA["ocena"] = [["#a32d2d", "unikaj"], ["#e8742a", "słabo"], ["#c8a24a", "tak sobie"], ["#8fae5a", "dobrze"], ["#4f7a2a", "jedź"]]
 _PL: dict = {}
 
 

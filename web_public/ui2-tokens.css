@@ -1,0 +1,16 @@
+/* QBot UI2 -- TOKENY KOLOROW: jedyne zrodlo palety serwisu (jasny + ciemny). Uzywaj na KAZDEJ nowej/przerabianej stronie:
+   <link rel="stylesheet" href="/ui2-tokens.css?v=1"> (same zmienne, bez stylow) albo ui2.css (tokeny + komponenty). Dok.: docs/UI_PALETA.md */
+:root{
+  --bg:#f8f4ec;--card:#fffdf8;--well:#efe8da;--ink:#2a241c;--ink2:#6f6455;--muted:#9a9184;--line:#e6dfd0;--line2:#d3c9b5;
+  --accent:#e8742a;--accent-ink:#b3520f;--accent-bg:#fbe5d0;
+  --warn:#8a6d00;--warn-bg:#f7efc4;--bad:#a32d2d;--bad-bg:#fbe3e0;--good:#4f7a2a;--good-bg:#e9efd9;
+  --blue:#4a7fb5;--purple:#7d6fc4;--amber:#c8a24a;--green:#6b8f3d;
+  --r:12px;--r-sm:8px;
+  --paper:var(--bg);--panel:var(--well);
+}
+html.theme-dark{
+  --bg:#2a2a2a;--card:#0d1016;--well:#1f2631;--ink:#f3efe8;--ink2:#b9c0cc;--muted:#8792a4;--line:#5a3a20;--line2:#7a5030;
+  --accent:#e8742a;--accent-ink:#ff9c55;--accent-bg:#4a2a0a;
+  --warn:#e6c95a;--warn-bg:#3a3110;--bad:#f09595;--bad-bg:#3a1c1c;--good:#b7d38a;--good-bg:#25301a;
+  --blue:#7fb0e0;--purple:#aea3ea;--amber:#e6c95a;--green:#a4c56f;
+}
