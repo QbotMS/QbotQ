@@ -6940,6 +6940,61 @@ def _push_loop_start():
     _wp_threading.Thread(target=_push_loop, daemon=True, name="qbot-webpush").start()
 
 
+# ---- POGODA / RADAR opadu (EUMETNET OPERA, co 5 min). Logika: qbot_radar.py. Dok.: docs/POGODA_RADAR.md
+def _radar_loop():
+    """2026-10-14: petla w tle -- dociaga klatki radaru (ostatnie 2 h), kasuje stare, przelicza ruch opadu."""
+    import sys as _sys
+    import time as _t
+    import qbot_radar as RAD
+    _t.sleep(20)
+    while True:
+        try:
+            st = RAD.sync()
+            if st.get("nowe"):
+                print(f"[radar] {st}", file=_sys.stderr, flush=True)
+        except Exception as e:
+            print(f"[radar] blad: {e!r}", file=_sys.stderr, flush=True)
+        _t.sleep(RAD.EVERY_S)
+
+
+@app.on_event("startup")
+def _radar_loop_start():
+    if os.getenv("QBOT_RADAR_LOOP", "1") == "0":
+        return
+    _wp_threading.Thread(target=_radar_loop, daemon=True, name="qbot-radar").start()
+
+
+@app.get("/api/radar/meta")
+def api_radar_meta():
+    """Lista klatek (animacja), rogi warstwy dla mapy, podpis zrodla, stan pola ruchu."""
+    import qbot_radar as RAD
+    fr = RAD.frames()
+    mot = RAD._motion_cached() if fr else {}
+    return {"status": "OK" if fr else "BRAK_DANYCH", "bounds": RAD.bounds_latlon(), "zrodlo": RAD.ATTR,
+            "klatki": [{"id": f"{t:%Y%m%dT%H%M}", "t": t.astimezone(RAD.TZ).strftime("%H:%M"),
+                        "iso": t.isoformat()} for t in fr],
+            "ruch": {"status": mot.get("status"), "kafelkow": mot.get("n"), "t1": mot.get("t1")}}
+
+
+@app.get("/api/radar/frame/{fid}.png")
+def api_radar_frame(fid: str):
+    import re as _re
+    import qbot_radar as RAD
+    if not _re.fullmatch(r"\d{8}T\d{4}", fid):
+        raise HTTPException(status_code=404, detail="brak klatki")
+    p = os.path.join(RAD.CACHE, fid + ".png")
+    if not os.path.exists(p):
+        raise HTTPException(status_code=404, detail="brak klatki")
+    return FileResponse(p, media_type="image/png", headers={"Cache-Control": "private, max-age=86400"})
+
+
+@app.get("/api/radar/punkt")
+def api_radar_punkt(lat: float, lon: float, horyzont: int = 120):
+    """Os czasu opadu dla punktu: historia z radaru + przesuwanie obrazu (0-horyzont min) + werdykt."""
+    import qbot_radar as RAD
+    return RAD.nowcast_point(lat, lon, lead_max=max(15, min(int(horyzont), 180)))
+
+
 def _owner_only(request: Request):
     if (request.scope.get("qbot_auth") or {}).get("kind") != "owner":
         raise HTTPException(status_code=403, detail="tylko wlasciciel")

@@ -1282,3 +1282,6 @@ Uwaga srodowiska: SciPy 1.15.3 ostrzega o NumPy 2.5.0 (dziala, ale warto kiedys 
 
 ## 2026-10-13 -- Wlasny zakres dat
 - range-custom.js (qRangeCustom): przycisk "wlasny..." + od/do obok gotowych okresow. Wpiete: Forma Trendy (doczytuje dane od poczatku zakresu), Forma Sezon (tygodnie z zakresu), Zdrowie Serce (wykresy od-do). Jedzenie i ModelQ mialy juz od/do (ModelQ: Zastosuj odznacza gotowy okres). Zasada: kazdy nowy wybor okresu = gotowe okresy + wlasny.
+
+## 2026-10-14 -- Pogoda krok 1: radar (backend) [sesja claude-pogoda]
+- Gotowe i na zywo: qbot_radar.py + petla qbot-web + /api/radar/*. Cache /opt/qbot/artifacts/radar_cache. Dok.: docs/POGODA_RADAR.md. Nastepne: strona Pogoda/Radar (TODO [POGODA-RADAR-UI]), os radar->ICON-D2 ([POGODA-OS]).
