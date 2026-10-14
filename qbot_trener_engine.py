@@ -873,48 +873,43 @@ def home_point(c) -> tuple[float, float] | None:
     return p
 
 
+import datetime as dt  # E4.1
+
+
 def forecast(lat: float, lon: float) -> dict:
+    """Pogoda dnia (8-18) na 10 dni -- E4.1 (14.10.2026): Z RDZENIA POGODY (qbot_pogoda.conditions_point): modele wg sprawdzalnosci,
+    odczuwalna jak silnik tras, godziny opadu/porywow poprawne, szansa opadu z zespolu ICON-EU-EPS (do ~6 dni; dalej None).
+    Ksztalt wyniku bez zmian: {dzien: wind, gust, feel_min, feel_max, rain_mmh, rain_prob, snow_cm, wet24, storm, icon}. Dok.: docs/POGODA_SILNIK.md"""
     key = (lat, lon)
     if key in _WX_CACHE and _WX_CACHE[key][0] > time.time() - 3600:
         return _WX_CACHE[key][1]
-    q = urllib.parse.urlencode(dict(latitude=lat, longitude=lon, hourly="wind_speed_10m,wind_gusts_10m,apparent_temperature,precipitation,precipitation_probability,snow_depth,weather_code",
-                                    wind_speed_unit="ms", forecast_days=10, past_days=1, timezone="Europe/Warsaw"))
-    out = {}
-    try:
-        import qbot_wx as WX   # E4: wspolny transport/cache Open-Meteo
-        j = WX.get_url("https://api.open-meteo.com/v1/forecast?" + q, timeout=8, ttl=600)["hourly"]
-    except Exception:
+    import qbot_pogoda as PG
+    w = PG.conditions_point(lat, lon, hours=24 * 10)
+    if w.get("status") != "OK":
         return {}
-    T = j["time"]
-    for i, t in enumerate(T):
-        d, h = t[:10], int(t[11:13])
-        # 14.10.2026: opad, szansa, porywy i kod pogody z Open-Meteo dotycza GODZINY POPRZEDZAJACEJ -> okno 8-18 to dla nich
-        # znaczniki 9..19 (wczesniej bralo 7-17). Wielkosci chwilowe (wiatr, odczuwalna, snieg) -- znaczniki 8..18. Dok.: docs/POGODA_SILNIK.md
-        inst, intv = 8 <= h <= 18, 9 <= h <= 19
-        if not (inst or intv):
-            continue
-        o = out.setdefault(d, {"_w": [], "_g": [], "_f": [], "_r": [], "_p": [], "_s": [], "_c": []})
-        for kk, src in (("_w", "wind_speed_10m"), ("_g", "wind_gusts_10m"), ("_f", "apparent_temperature"), ("_r", "precipitation"),
-                        ("_p", "precipitation_probability"), ("_s", "snow_depth"), ("_c", "weather_code")):
-            if not (intv if kk in ("_g", "_r", "_p", "_c") else inst):
-                continue
-            v = j[src][i]
-            if v is not None:
-                o[kk].append(v)
+    rows = w["godziny"]
+    out = {}
+    for r in rows:
+        d, h = r["iso"][:10], int(r["iso"][11:13])
+        if 8 <= h <= 18:
+            out.setdefault(d, []).append(r)
     res = {}
-    for d, o in out.items():
-        if not o["_w"]:
+    for d, rs in out.items():
+        val = lambda k: [x[k] for x in rs if x.get(k) is not None]
+        wv, gv, fv, rv, sv = val("wiatr"), val("porywy"), val("odcz"), val("opad"), val("pokrywa_cm")
+        pv = [round(x["szansa"] * 100) for x in rs if x.get("szansa") is not None]
+        if not wv:
             continue
-        idx = T.index(d + "T10:00") if (d + "T10:00") in T else None
-        wet = round(sum(x or 0 for x in j["precipitation"][max(0, idx - 24):idx]), 1) if idx else None
-        rmax = max(o["_r"]) if o["_r"] else 0
-        storm = any(c_ >= 95 for c_ in o["_c"])
-        wind = round(sum(o["_w"]) / len(o["_w"]), 1)
-        icon = "⛈️" if storm else ("🌧️" if rmax > 0.5 else ("❄️" if (max(o["_s"]) if o["_s"] else 0) > 0.01 else ("💨" if wind > 7 else "⛅")))
-        res[d] = {"wind": wind, "gust": round(max(o["_g"]), 1) if o["_g"] else None,
-                  "feel_min": round(min(o["_f"]), 1) if o["_f"] else None, "feel_max": round(max(o["_f"]), 1) if o["_f"] else None,
-                  "rain_mmh": round(rmax, 1), "rain_prob": max(o["_p"]) if o["_p"] else None,
-                  "snow_cm": round(max(o["_s"]) * 100, 1) if o["_s"] else 0, "wet24": wet, "storm": storm, "icon": icon}
+        t10 = d + "T10:00"
+        prev = [x.get("opad") or 0 for x in rows if x["iso"] < t10 and x["iso"] >= (dt.datetime.fromisoformat(t10) - dt.timedelta(hours=24)).isoformat()[:16]]
+        wet = round(sum(prev), 1) if prev else None
+        rmax = max(rv) if rv else 0
+        storm = any((x.get("kod") or 0) >= 95 for x in rs)
+        wind = round(sum(wv) / len(wv), 1)
+        icon = "⛈️" if storm else ("🌧️" if rmax > 0.5 else ("❄️" if (max(sv) if sv else 0) > 1 else ("💨" if wind > 7 else "⛅")))
+        res[d] = {"wind": wind, "gust": round(max(gv), 1) if gv else None, "feel_min": round(min(fv), 1) if fv else None,
+                  "feel_max": round(max(fv), 1) if fv else None, "rain_mmh": round(rmax, 1), "rain_prob": max(pv) if pv else None,
+                  "snow_cm": round(max(sv), 1) if sv else 0, "wet24": wet, "storm": storm, "icon": icon}
     _WX_CACHE[key] = (time.time(), res)
     return res
 

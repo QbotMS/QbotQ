@@ -130,7 +130,7 @@ def window(cur, lat: float, lon: float, day: dt.date, start: str, dur: int, ride
             gust = max(gust, h.get("porywy") or 0); wind = max(wind, h.get("wiatr") or 0)
             if h.get("temp") is not None:
                 tmin, tmax = min(tmin, h["temp"]), max(tmax, h["temp"])
-            oc = h.get("odcz_om", h.get("odcz"))   # progi Trenera skalibrowane na odczuwalnej Open-Meteo (E3: 'odcz' = UTCI w jezdzie)
+            oc = h.get("odcz")   # E4.1: progi Trenera liczone ta sama odczuwalna (historia jazd przeliczona)
             if oc is not None:
                 omin = min(omin, oc)
             lod, mg, naw = max(lod, h.get("lod") or 0), max(mg, h.get("mgla") or 0), max(naw, h.get("nawierzchnia") or 0)

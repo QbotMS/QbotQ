@@ -76,3 +76,12 @@ przed/po identyczna) i silnik tras (`_road_at` dla każdego odcinka w chwili prz
 `per_segment`: `lod`, `mgla`, `nawierzchnia`; alerty `oblodzenie` (FLAGA/ALARM), `mgla`, `bloto` w tym samym formacie co deszcz/burza
 (Analiza trasy, Planer, Albert pokazują je bez zmian stron); `charakter` dnia (`charakter_dni`, CAPE + lifted index) w wyniku + alert
 (FLAGA przelotne / ALARM burzowy) dla jazd dziś–pojutrze. Pobierane dodatkowo: punkt rosy, widoczność, temp. gruntu, śnieg. Cache `e3c`.
+
+## E4.1 — Trener na wspólnym silniku (2026-10-14, decyzja Michała po porównaniu progów na 370 jazdach)
+- `qbot_pogoda.odczucie_calc()` — JEDNA funkcja odczucia (odczuwalna jak trasa, UTCI w jeździe, WBGT) dla Pogody, historii jazd Trenera i Trenera.
+- `qbot_trener_engine.forecast` (plan tygodnia + powiadomienia) i `qbot_trener_weather.hourly` (poranna korekta) budowane z
+  `qbot_pogoda.conditions_point` (modele wg sprawdzalności, poprawne godziny, szansa z zespołu). `hourly` zachowuje surowy format
+  Open-Meteo (gust/rain/prob = godzina poprzedzająca → wiersz T−1), więc `window_wx` i testy bez zmian. Do warunków doszła `pokrywa_cm`.
+- Progi z historii (`qbot_trener_stats._weather_rides` → `_feels_hours`): nowa odczuwalna dla godzin jazd (ERA5: temp., wilgotność, wiatr,
+  ciśnienie, promieniowanie). Porównanie 370 jazd: chłód długa 0 → −1 °C, upał 32 → 33 °C, reszta bez zmian. Cache progów przeliczony po wdrożeniu.
+- Okno jazdy porównuje progi z nową odczuwalną (`odcz`); `odcz_om` zostaje tylko informacyjnie.

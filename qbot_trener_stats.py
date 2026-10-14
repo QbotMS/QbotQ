@@ -688,7 +688,8 @@ def _weather_rides(c) -> list[dict]:
         if d1 < d0:
             continue
         q = urllib.parse.urlencode(dict(latitude=la, longitude=lo, start_date=str(d0), end_date=str(d1),
-                                        hourly="apparent_temperature,wind_speed_10m,wind_gusts_10m,precipitation,snow_depth", wind_speed_unit="ms", timezone="UTC"))
+                                        hourly="apparent_temperature,wind_speed_10m,wind_gusts_10m,precipitation,snow_depth,temperature_2m,relative_humidity_2m,surface_pressure,"
+                                               "shortwave_radiation,direct_radiation", wind_speed_unit="ms", timezone="UTC"))
         try:
             import qbot_wx as WX   # E4: wspolny transport/cache Open-Meteo (archiwum)
             j = WX.get_url("https://archive-api.open-meteo.com/v1/archive?" + q, timeout=40, ttl=86400)["hourly"]
@@ -708,10 +709,25 @@ def _weather_rides(c) -> list[dict]:
 
             def vals(k, src=None):
                 return [j[k][i] for i in (ii if src is None else src) if j[k][i] is not None]
-            f_, w_, g_, p_, s_ = vals("apparent_temperature"), vals("wind_speed_10m"), vals("wind_gusts_10m", ip), vals("precipitation", ip), vals("snow_depth")
+            f_, w_, g_, p_, s_ = _feels_hours(j, ii, la, lo), vals("wind_speed_10m"), vals("wind_gusts_10m", ip), vals("precipitation", ip), vals("snow_depth")
             out.append({"h": r["duration_s"] / 3600, "month": r["date"].month, "feel": st.mean(f_) if f_ else None, "feel_max": max(f_) if f_ else None,
                         "wind": st.mean(w_) if w_ else None, "gust": max(g_) if g_ else None, "rain": sum(p_) if p_ else 0, "snow_depth": max(s_) if s_ else 0})
         time.sleep(0.2)
+    return out
+
+
+def _feels_hours(j: dict, ii: list, la: float, lo: float) -> list:
+    """E4.1 (14.10.2026): odczuwalna w godzinach jazdy ta sama co Pogoda / silnik tras (qbot_pogoda.odczucie_calc) -- progi Trenera
+    w tej samej skali co prognoza. Brak danych promieniowania -> odczuwalna Open-Meteo (apparent_temperature) dla tej godziny."""
+    import qbot_pogoda as PG
+    from datetime import datetime as _d, timezone as _tz
+    h, out = j, []
+    for i in ii:
+        o = PG.odczucie_calc(h["temperature_2m"][i], h["relative_humidity_2m"][i], h["wind_speed_10m"][i], h["surface_pressure"][i],
+                             h["shortwave_radiation"][i], h["direct_radiation"][i], _d.fromisoformat(h["time"][i]).replace(tzinfo=_tz.utc), la, lo)
+        v = o["odcz"] if o["odcz"] is not None else h["apparent_temperature"][i]
+        if v is not None:
+            out.append(v)
     return out
 
 

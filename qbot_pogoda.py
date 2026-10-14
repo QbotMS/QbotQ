@@ -69,7 +69,7 @@ def home(cur) -> dict | None:
 
 # ---------------------------------------------------------------- warunki dla roweru (punkt, godzinowo)
 HOURLY = ("temperature_2m,apparent_temperature,relative_humidity_2m,dew_point_2m,precipitation,snowfall,"
-          "wind_speed_10m,wind_gusts_10m,wind_direction_10m,visibility,soil_temperature_0cm,weather_code,cloud_cover,is_day,surface_pressure,shortwave_radiation_instant,direct_radiation_instant")
+          "wind_speed_10m,wind_gusts_10m,wind_direction_10m,visibility,soil_temperature_0cm,weather_code,cloud_cover,is_day,surface_pressure,shortwave_radiation_instant,direct_radiation_instant,snow_depth")
 _CC: dict = {}
 
 
@@ -85,6 +85,25 @@ def road_flags(T, Td, Ts, vis, wet: bool, p6: float):
     naw = 2 if p6 >= 2 else 1 if p6 >= 0.3 else 0
     rosa = None if (T is None or Td is None) else round(T - Td, 1)
     return lod, mgla, naw, rosa
+
+
+def odczucie_calc(T, rh, ws, pres, ghi, dr, when_utc, lat: float, lon: float) -> dict:
+    """JEDNA funkcja odczucia (E4.1) -- Pogoda, historia jazd Trenera (progi), Trener: odcz = jak silnik tras (Steadman + slonce przez Tmrt
+    z route_meteo_engine._thermal_solve), utci = UTCI w jezdzie (wiatr + ped ~20 km/h), wbgt. Brak danych -> None."""
+    out = {"odcz": None, "utci": None, "wbgt": None}
+    if None in (T, rh, ws, pres, ghi, dr):
+        return out
+    try:
+        import qbot_wbgt_tools as WB
+        from qbot3.routes import route_meteo_engine as RM, route_utci as UT
+        cza = WB.cos_solar_zenith(when_utc, lat, lon)
+        wb, tm = RM._thermal_solve((T, rh, pres, ws, ghi, dr), cza, 1.0)
+        u = UT.utci_c(T, tm, min(17.0, max(0.5, (ws ** 2 + 5.6 ** 2) ** 0.5)), rh)
+        fe = UT.apparent_temp_steadman(T, rh, ws, tm)
+        out = {"odcz": round(fe, 1) if fe == fe else None, "utci": round(u, 1) if u == u else None, "wbgt": round(wb, 1) if wb == wb else None}
+    except Exception:
+        pass
+    return out
 
 
 def _personal_offset() -> float:
@@ -113,20 +132,10 @@ def _odczucie(r: dict, lat: float, lon: float, pres, ghi, dr, po: float) -> None
         pass
     if None in (rh, ws, pres, ghi, dr):
         return
-    try:
-        import qbot_wbgt_tools as WB
-        from qbot3.routes import route_meteo_engine as RM, route_utci as UT
-        cza = WB.cos_solar_zenith(d.replace(tzinfo=TZ).astimezone(_dtm.timezone.utc), lat, lon)
-        wb, tm = RM._thermal_solve((T, rh, pres, ws, ghi, dr), cza, 1.0)
-        v = min(17.0, max(0.5, (ws ** 2 + 5.6 ** 2) ** 0.5))
-        u = UT.utci_c(T, tm, v, rh)
-        r["utci"] = round(u, 1) if u == u else None
-        r["wbgt"] = round(wb, 1) if wb == wb else None
-        fe = UT.apparent_temp_steadman(T, rh, ws, tm)   # = per_segment["feels"] w silniku tras
-        if fe == fe and fe is not None:
-            r["odcz"] = round(fe, 1)
-    except Exception:
-        pass
+    o = odczucie_calc(T, rh, ws, pres, ghi, dr, d.replace(tzinfo=TZ).astimezone(_dtm.timezone.utc), lat, lon)
+    r["utci"], r["wbgt"] = o["utci"], o["wbgt"]
+    if o["odcz"] is not None:
+        r["odcz"] = o["odcz"]
 
 
 def _kier(deg):
@@ -192,6 +201,7 @@ def conditions_point(lat: float, lon: float, hours: int = 24) -> dict:
                      "widocznosc": vis, "grunt": Ts, "kod": g("weather_code", i), "chmury": g("cloud_cover", i), "dzien": g("is_day", i),
                      "mgla": mgla, "lod": lod, "nawierzchnia": naw, "zapas_rosy": rosa})
         _odczucie(rows[-1], lat, lon, g("surface_pressure", i), g("shortwave_radiation_instant", i), g("direct_radiation_instant", i), _po)
+        rows[-1]["pokrywa_cm"] = None if g("snow_depth", i) is None else round(g("snow_depth", i) * 100, 1)
     try:   # szansa opadu z zespolu ICON-EU-EPS dla godziny T..T+1 (do wizualizacji Warunkow)
         import qbot_pogoda_okno as _PO
         _pr = _PO._ens_prob(lat, lon)

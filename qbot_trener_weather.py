@@ -35,22 +35,24 @@ _HCACHE: dict = {}
 # ---------------- prognoza godzinowa ----------------
 
 def hourly(lat: float, lon: float) -> dict[str, dict]:
+    """Pogoda godzinowa (8 dni) -- E4.1 (14.10.2026): Z RDZENIA POGODY (qbot_pogoda.conditions_point). Format jak surowe Open-Meteo
+    (klucz = znacznik T; wind/feel/snow chwilowe w T; gust/rain/prob = godzina POPRZEDZAJACA T, tj. wiersz rdzenia T-1), wiec window_wx
+    i jego testy bez zmian. feel = odczuwalna jak silnik tras; prob = szansa z zespolu ICON-EU-EPS. Dok.: docs/POGODA_SILNIK.md"""
     key = (lat, lon)
     if key in _HCACHE and _HCACHE[key][0] > time.time() - 3600:
         return _HCACHE[key][1]
-    q = urllib.parse.urlencode(dict(latitude=lat, longitude=lon,
-                                    hourly="wind_speed_10m,wind_gusts_10m,apparent_temperature,precipitation,"
-                                           "precipitation_probability,snow_depth",
-                                    wind_speed_unit="ms", forecast_days=8, timezone="Europe/Warsaw"))
-    try:
-        import qbot_wx as WX   # E4: wspolny transport/cache Open-Meteo
-        j = WX.get_url("https://api.open-meteo.com/v1/forecast?" + q, timeout=8, ttl=600)["hourly"]
-    except Exception:
+    import qbot_pogoda as PG
+    w = PG.conditions_point(lat, lon, hours=24 * 8)
+    if w.get("status") != "OK":
         return {}
+    rows = w["godziny"]
     out = {}
-    for i, t in enumerate(j["time"]):
-        out[t[:13]] = {"wind": j["wind_speed_10m"][i], "gust": j["wind_gusts_10m"][i], "feel": j["apparent_temperature"][i],
-                       "rain": j["precipitation"][i], "prob": j["precipitation_probability"][i], "snow": j["snow_depth"][i]}
+    for i, r in enumerate(rows):
+        pr = rows[i - 1] if i > 0 else {}
+        out[r["iso"][:13]] = {"wind": r.get("wiatr"), "feel": r.get("odcz"),
+                              "snow": (r["pokrywa_cm"] / 100.0) if r.get("pokrywa_cm") is not None else None,
+                              "gust": pr.get("porywy"), "rain": pr.get("opad"),
+                              "prob": round(pr["szansa"] * 100) if pr.get("szansa") is not None else None}
     _HCACHE[key] = (time.time(), out)
     return out
 
