@@ -47,6 +47,15 @@ body.open .x{display:block}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:13px}.kv span{color:var(--muted)}
 .kv b.bad{color:var(--bad)}.kv b.wrn{color:var(--accent-ink,var(--accent))}
 .note{font-size:12px;color:var(--muted);line-height:1.45;margin-top:8px}
+.okin label{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:4px}
+.okin input,.okin select{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:3px 6px;font:inherit;font-size:12.5px}
+.recs{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:10px 0}
+.rec{border:1px solid var(--line);border-left:5px solid var(--muted);border-radius:11px;padding:8px 10px;background:var(--card);cursor:pointer}
+.rec.good{border-left-color:var(--good)}.rec.warn{border-left-color:var(--accent)}.rec.bad{border-left-color:var(--bad)}
+.rec .t{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase}.rec .s{font-size:17px;font-weight:700;margin:2px 0}.rec .l{font-size:12.5px;color:var(--ink2)}
+.okr{display:grid;grid-template-columns:52px 92px 1fr;gap:8px;align-items:center;font-size:12.5px;padding:4px 2px;border-top:1px solid var(--line);cursor:pointer}
+.okr.plan{background:var(--well);font-weight:700}.okr .bar{height:10px;border-radius:5px;background:var(--well);position:relative;overflow:hidden}
+.okr .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:5px}.okr .u{color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .soonbox{border:1px dashed var(--line);border-radius:10px;padding:10px 12px;font-size:13.5px;color:var(--ink2)}
 .wrow{margin:0 0 10px}.wrow .h{display:flex;justify-content:space-between;font-size:13px}.wrow .h b{font-size:13.5px}.wrow .h span{color:var(--muted);font-size:12px}
 .strip{display:flex;gap:1px;margin-top:3px}.strip span{flex:1;height:20px;border-radius:2px}
@@ -129,14 +138,25 @@ body.dock-big .dchart{display:flex}
         Trafność opadu = trafione / (trafione + fałszywe alarmy + przegapione). Najlepszy wynik w kolumnie jest wyróżniony.
         Modele HARMONIE (DMI, KNMI) prognozują tylko ok. 2,5 doby do przodu. Pomiary: IMGW-PIB (dane przetworzone).</div>
     </div>
-    <div data-s="okno" hidden><div class="soonbox"><b>Wkrótce (krok 2).</b> Odpowiedź na pytanie „przesunąć jazdę czy moknąć?” dla jazdy z kalendarza: porównanie startów godzina po godzinie, suma deszczu na jazdę, wiatr, zgodność modeli.</div></div>
+    <div data-s="okno" hidden>
+      <div class="pos" id="okj"></div>
+      <div class="pos okin" style="margin-top:8px"><label>Dzień <input type="date" id="okd"></label><label>Start <input type="time" id="oks" step="900"></label>
+        <label>Czas <select id="okt"><option>30</option><option>45</option><option selected>60</option><option>90</option><option>120</option><option>180</option><option>240</option><option>300</option></select> min</label>
+        <button id="okgo" type="button">Policz</button></div>
+      <div class="poslab" id="okinfo"></div>
+      <div class="recs" id="okrecs"></div>
+      <div id="okgrid"></div>
+      <div class="note">Starty co 30 min tylko w Twoich oknach na rower z Trenera, z pominięciem zajętych godzin. Ocena 0–100 uwzględnia deszcz na całą jazdę,
+        szansę opadu (zespół 40 wariantów), porywy powyżej progu Trenera, oblodzenie, mgłę, mokrą nawierzchnię, jazdę po zmroku i chłód.
+        Najbliższa godzina pochodzi z radaru. Pogoda liczona dla wybranej pozycji (u góry panelu).</div>
+    </div>
     <div data-s="weekend" hidden><div class="soonbox"><b>Wkrótce (krok 3).</b> Mapa oceny miejsc pod dłuższą jazdę w weekend: opad, wiatr, a zimą też temperatura.</div></div>
   </div>
   <div class="rail" id="rail">
     <button class="rt on" data-s="radar" style="--tc:#7fb3ec">☂<span class="lb">U Ciebie · teraz</span></button>
     <button class="rt" data-s="warunki" style="--tc:#c9a0f0">≋<span class="lb">Warunki godzina po godzinie</span></button>
     <button class="rt" data-s="spr" style="--tc:#e8b04a">✓<span class="lb">Sprawdzalność modeli</span></button>
-    <button class="rt soon" data-s="okno" style="--tc:#f0b84f">◷<span class="lb">Okno jazdy · wkrótce</span></button>
+    <button class="rt" data-s="okno" style="--tc:#f0b84f">◷<span class="lb">Okno jazdy — przesunąć czy moknąć?</span></button>
     <button class="rt soon" data-s="weekend" style="--tc:#7ccf8a">★<span class="lb">Gdzie w weekend · wkrótce</span></button>
   </div>
 </div>
@@ -229,7 +249,7 @@ window.addEventListener("resize",function(){ setDock($("dock").getBoundingClient
 var sec="radar", TTL={spr:"Sprawdzalność modeli",radar:"Pogoda · u Ciebie",warunki:"Warunki godzina po godzinie",okno:"Okno jazdy",weekend:"Gdzie w weekend"};
 function openSec(s){ sec=s; document.querySelectorAll("#rail .rt").forEach(function(b){b.classList.toggle("on",b.dataset.s===s);});
   document.querySelectorAll("#lp .body [data-s]").forEach(function(d){d.hidden=d.dataset.s!==s;}); $("sttl").textContent=TTL[s];
-  document.body.classList.toggle("open",s!=="radar"); if(s==="spr")loadSpr(); }
+  document.body.classList.toggle("open",s!=="radar"); if(s==="spr")loadSpr(); if(s==="okno"&&!OKL)loadOkno(""); }
 document.querySelectorAll("#rail .rt").forEach(function(b){b.addEventListener("click",function(){ openSec(b.dataset.s); });});
 $("close").addEventListener("click",function(){ openSec("radar"); });
 
@@ -437,6 +457,32 @@ function drawSpr(){ var d=spr.data; if(!d||d.status!=="OK")return; var R=d.wynik
       plugins:{title:{display:true,text:"Błąd temperatury wg wyprzedzenia (°C, mniej = lepiej)",color:css("--ink2")},legend:{labels:{color:css("--ink2"),boxWidth:12}},
         tooltip:{callbacks:{label:function(x){return x.parsed.y==null?null:x.dataset.label+": "+pl(x.parsed.y)+" °C";}}}},
       scales:{x:{ticks:{color:css("--muted")},grid:{display:false}},y:{beginAtZero:true,ticks:{color:css("--muted")}}}}}); }
+
+/* ---- okno jazdy ---- */
+var OKL=false;
+function okCol(o){return o>=80?"var(--good)":o>=50?"var(--accent)":"var(--bad)";}
+function okDay(s){var d=new Date(s+"T12:00"),t=new Date();t.setHours(12,0,0,0);var k=Math.round((d-t)/864e5);return k===0?"dziś":k===1?"jutro":k===2?"pojutrze":s.slice(8,10)+"."+s.slice(5,7);}
+function loadOkno(extra){ if(!pos){return;} OKL=true; $("okrecs").innerHTML='<div class="note">Liczę…</div>'; $("okgrid").innerHTML="";
+  J("/api/pogoda/okno?lat="+pos.lat.toFixed(4)+"&lon="+pos.lon.toFixed(4)+(extra||"")).then(renderOkno).catch(function(e){$("okrecs").textContent="Błąd: "+e;}); }
+function renderOkno(d){
+  if(d.status!=="OK"){$("okrecs").textContent=d.error||d.status;return;}
+  $("okj").innerHTML=(d.jazdy||[]).map(function(r){var on=d.jazda&&d.jazda.id===r.id;return '<button data-id="'+r.id+'" class="'+(on?"on":"")+'">'+okDay(r.dzien)+" "+r.start+" · "+r.czas_min+" min · "+r.nazwa+'</button>';}).join("")||'<span class="poslab">Brak zaplanowanych jazd w Trenerze na 3 dni. Wpisz dzień i godzinę poniżej.</span>';
+  $("okj").querySelectorAll("button").forEach(function(b){b.addEventListener("click",function(){loadOkno("&id="+b.dataset.id);});});
+  $("okd").value=d.dzien; $("oks").value=d.start; $("okt").value=String(d.czas_min);
+  $("okinfo").innerHTML=okDay(d.dzien)+" · okna na rower (Trener): "+(d.okna_rower||[]).map(function(x){return x[0]+"–"+x[1];}).join(", ")+
+    (d.zajete&&d.zajete.length?" · zajęte: "+d.zajete.map(function(x){return x[0]+"–"+x[1];}).join(", "):"")+(d.slonce?" · słońce "+d.slonce[0]+"–"+d.slonce[1]:"");
+  function card(t,x){ if(!x)return ""; var c=x.ocena>=80?"good":x.ocena>=50?"warn":"bad";
+    return '<div class="rec '+c+'" data-s="'+x.start+'"><div class="t">'+t+'</div><div class="s">'+x.start+'–'+x.koniec+' · '+x.ocena+'/100</div><div class="l">'+x.uwagi.join(", ")+
+      ' · '+(x.temp[0]!=null?pl(x.temp[0])+"–"+pl(x.temp[1])+"°C":"")+' · porywy '+pl(x.poryw)+' m/s'+(x.radar?" · <b>radar</b>":"")+'</div></div>'; }
+  var p=d.plan, bw=d.najlepszy_wczesniej, bp=d.najlepszy_pozniej, wer="";
+  if(p&&d.najlepszy&&d.najlepszy.ocena>p.ocena+10)wer='<div class="warn">Lepiej przesunąć: '+d.najlepszy.start+" ("+d.najlepszy.ocena+"/100 zamiast "+p.ocena+").</div>";
+  else if(p)wer='<div class="note">'+(p.ocena>=80?"Plan jest dobry, nie ma po co przesuwać.":"Żadna godzina w Twoich oknach nie jest wyraźnie lepsza.")+'</div>';
+  $("okrecs").innerHTML=wer+card(d.jazda?"Twój plan":"Wybrana godzina",p)+card("Wcześniej",bw)+card("Później",bp);
+  $("okgrid").innerHTML=d.starty.map(function(x){return '<div class="okr'+(x.plan?" plan":"")+'" title="'+x.uwagi.join(", ")+'"><span>'+x.start+'</span><span class="bar"><i style="width:'+x.ocena+'%;background:'+okCol(x.ocena)+'"></i></span>'+
+    '<span class="u">'+x.ocena+' · '+(x.deszcz_mm?pl(x.deszcz_mm)+" mm · ":"")+"opad "+Math.round(x.szansa*100)+'% · porywy '+pl(x.poryw)+' m/s · '+x.uwagi.join(", ")+'</span></div>';}).join("");
+  $("okgrid").querySelectorAll(".okr").forEach(function(el,i){el.addEventListener("click",function(){ $("oks").value=d.starty[i].start; loadOkno("&dzien="+d.dzien+"&start="+d.starty[i].start+"&dur="+d.czas_min); });});
+}
+$("okgo").addEventListener("click",function(){ if($("okd").value&&$("oks").value)loadOkno("&dzien="+$("okd").value+"&start="+$("oks").value+"&dur="+$("okt").value); });
 
 function loadSprRad(){ J("/api/pogoda/sprawdzalnosc-radar?dni=14").then(function(d){ var el=$("sprrad"); if(!el)return;
   var any=d.status==="OK"&&d.wyniki.some(function(w){return w.przypadkow_z_opadem>0;});

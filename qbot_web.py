@@ -7130,6 +7130,37 @@ def api_pogoda_mapa_korekta():
     return PM.korekta()
 
 
+@app.get("/api/pogoda/okno")
+def api_pogoda_okno(lat: float, lon: float, id: int | None = None, dzien: str | None = None, start: str | None = None, dur: int = 60):
+    """Okno jazdy: ocena startow w oknach Trenera (pogoda wg sprawdzalnosci + szansa z zespolu + radar). Dok.: docs/POGODA_OKNO.md"""
+    import datetime as _dt
+    import qbot_pogoda_okno as PO
+    from psycopg.rows import dict_row
+    conn = _db_conn()
+    try:
+        cur = conn.cursor(row_factory=dict_row)
+        jazdy = PO.rides(cur)
+        r, rid = None, None
+        if id is not None:
+            r = next((x for x in jazdy if x["id"] == id), None)
+        if r:
+            day, st, d, rid = _dt.date.fromisoformat(r["dzien"]), r["start"], r["czas_min"], r["id"]
+        elif dzien and start:
+            day, st, d = _dt.date.fromisoformat(dzien), start[:5], dur
+        elif jazdy:
+            r = jazdy[0]; day, st, d, rid = _dt.date.fromisoformat(r["dzien"]), r["start"], r["czas_min"], r["id"]
+        else:
+            n = _dt.datetime.now(PO.TZ) + _dt.timedelta(minutes=30)
+            day, st, d = n.date(), f"{n.hour:02d}:{(n.minute // 30) * 30:02d}", dur
+        res = PO.window(cur, lat, lon, day, st, max(15, min(int(d), 600)), ride_id=rid)
+        res["jazdy"], res["jazda"] = jazdy, r
+        return res
+    except Exception as e:
+        return {"status": "ERROR", "error": f"{type(e).__name__}: {e}"[:300]}
+    finally:
+        conn.close()
+
+
 @app.get("/api/pogoda/sprawdzalnosc-radar")
 def api_pogoda_spr_radar(dni: int = 7):
     """Sprawdzalnosc prognozy radaru (przesuniecie obrazu) vs bez przesuwania, wg wyprzedzenia; horyzont_min dla osi czasu."""
