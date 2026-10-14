@@ -212,6 +212,7 @@ def build(run: dt.datetime | None = None) -> dict:
         with open(os.path.join(out, "meta.json.tmp"), "w") as fh:
             json.dump(meta, fh)
         os.replace(os.path.join(out, "meta.json.tmp"), os.path.join(out, "meta.json"))
+        meta_eps = eps_build(run, out)   # szansa opadu z zespolu (warstwa 'szansa'); bez niej mapa dziala dalej
         # sprzatanie: zostaw 2 ostatnie kompletne przebiegi
         runs = sorted(d for d in os.listdir(CACHE) if re.fullmatch(r"\d{10}", d))
         for d in runs[:-2]:
@@ -292,3 +293,86 @@ def korekta() -> dict:
             r.update(dx_m=0, dy_m=0)
     _KOR.update(t=_t.time(), r=r)
     return r
+
+
+# ---------------------------------------------------------------- SZANSA opadu z zespolu ICON-EU-EPS (14.10.2026)
+# Decyzja Michala: zamiast "pada / nie pada" z jednego przebiegu (zgodnosc z radarem na teraz ~0,33) mapa szansy opadu:
+# odsetek z 40 wariantow modelu z opadem >= EPS_PROG mm/h. Siatka ikosaedryczna (~20 km) -> najblizsza komorka dla piksela
+# naszej siatki (cKDTree, indeks w CACHE/eps_idx.npz). Ok. 8 MB na krok (40 wariantow w jednym pliku).
+EPS_BASE = "https://opendata.dwd.de/weather/nwp/icon-eu-eps/grib/{run:02d}/{p}/"
+EPS_F = "icon-eu-eps_europe_icosahedral_single-level_{ymdh}_{step:03d}_tot_prec.grib2.bz2"
+EPS_TI = "icon-eu-eps_europe_icosahedral_time-invariant_{ymdh}_{p}.grib2.bz2"
+EPS_PROG = 0.2   # mm/h -- "pada" dla rowerzysty
+EPS_ATTR = "Szansa opadu: ICON-EU-EPS (40 wariantow), DWD (CC BY 4.0)"
+PAL["szansa"] = _ramp([(0.05, (120, 170, 235, 0)), (0.1, (120, 170, 235, 70)), (0.3, (70, 140, 230, 125)), (0.5, (40, 100, 215, 165)),
+                       (0.7, (95, 60, 200, 195)), (0.9, (150, 40, 160, 225)), (1.0, (170, 30, 140, 235))])
+LEGENDA["szansa"] = [["#78aaeb", "10%"], ["#468ce6", "30%"], ["#2864d7", "50%"], ["#5f3cc8", "70%"], ["#9628a0", "90%"]]
+
+
+def _decode_all(raw: bytes):
+    import eccodes
+    out = []
+    with tempfile.NamedTemporaryFile(suffix=".grib2") as tf:
+        tf.write(raw); tf.flush()
+        with open(tf.name, "rb") as fh:
+            while True:
+                g = eccodes.codes_grib_new_from_file(fh)
+                if g is None:
+                    break
+                try:
+                    out.append(eccodes.codes_get_values(g))
+                finally:
+                    eccodes.codes_release(g)
+    return out
+
+
+def _eps_index(run: dt.datetime):
+    p = os.path.join(CACHE, "eps_idx.npz")
+    if os.path.exists(p):
+        with np.load(p) as z:
+            return z["idx"]
+    from scipy.spatial import cKDTree
+    ymdh = run.strftime("%Y%m%d%H")
+    clat = _decode_all(bz2.decompress(_get(EPS_BASE.format(run=run.hour, p="clat") + EPS_TI.format(ymdh=ymdh, p="clat"))))[0]
+    clon = _decode_all(bz2.decompress(_get(EPS_BASE.format(run=run.hour, p="clon") + EPS_TI.format(ymdh=ymdh, p="clon"))))[0]
+    if np.nanmax(np.abs(clat)) < 4:            # radiany
+        clat, clon = np.degrees(clat), np.degrees(clon)
+    clon = np.where(clon > 180, clon - 360, clon)
+    xs = X0 + (np.arange(W) + 0.5) * PX_M; ys = Y1 - (np.arange(H) + 0.5) * PX_M
+    lon = np.degrees(xs / _R); lat = np.degrees(2 * np.arctan(np.exp(ys / _R)) - np.pi / 2)
+    LON, LAT = np.meshgrid(lon, lat)
+    k = math.cos(math.radians(52))
+    tree = cKDTree(np.c_[clon * k, clat])
+    _, idx = tree.query(np.c_[LON.ravel() * k, LAT.ravel()])
+    idx = idx.reshape(H, W).astype(np.int32)
+    np.savez_compressed(p, idx=idx)
+    return idx
+
+
+def eps_build(run: dt.datetime, out: str) -> dict:
+    """Dopisuje warstwe 'szansa' (PNG szansa_<krok>.png) do katalogu przebiegu i uzupelnia meta.json."""
+    ymdh = run.strftime("%Y%m%d%H")
+    try:
+        idx = _eps_index(run)
+        prev, prev_step, n = None, None, 0
+        for step in STEPS:
+            mem = _decode_all(bz2.decompress(_get(EPS_BASE.format(run=run.hour, p="tot_prec") + EPS_F.format(ymdh=ymdh, step=step))))
+            cur = np.stack([m[idx] for m in mem])          # (warianty, H, W)
+            if prev is not None:
+                rate = np.clip(cur - prev, 0, None) / (step - prev_step)
+                prob = (rate >= EPS_PROG).mean(axis=0)
+                _png(PAL["szansa"](prob), os.path.join(out, f"szansa_{step:03d}.png")); n += 1
+            prev, prev_step = cur, step
+        mp = os.path.join(out, "meta.json")
+        if os.path.exists(mp):
+            with open(mp) as fh:
+                m = json.load(fh)
+            if "szansa" not in m["warstwy"]:
+                m["warstwy"].append("szansa")
+            m["legenda"]["szansa"] = LEGENDA["szansa"]; m["eps"] = {"warianty": len(mem), "prog_mmh": EPS_PROG, "zrodlo": EPS_ATTR}
+            with open(mp + ".tmp", "w") as fh:
+                json.dump(m, fh)
+            os.replace(mp + ".tmp", mp)
+        return {"status": "OK", "krokow": n, "wariantow": len(mem)}
+    except Exception as e:
+        return {"status": "BLAD", "error": f"{type(e).__name__}: {e}"[:300]}

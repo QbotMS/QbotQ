@@ -85,3 +85,10 @@ Transfer ~260 MB na przebieg (~520 MB/dobę).
   (korelacja pól log(1+mm/h)) rośnie o ≥ 0,05, przesunięcie ≤ 200 km i opad ≥ 2% pola (test 14.10: 09:05 → 68 km, 09:10 → 4 km bez
   poprawy — bez bezpiecznika mapa by skakała). API `/api/pogoda/mapa/korekta`.
 - **Płynne przejście:** przez 2 h po końcu prognozy radaru jego obraz wygasa, a model narasta.
+
+### Szansa opadu z zespołu ICON-EU-EPS (2026-10-14)
+Powód: nawet świeży przebieg deterministyczny zgadzał się z radarem na „teraz” tylko w ~33% (06 UTC, 09:15) — ostre plamy opadu
+z jednego przebiegu sugerowały pewność, której nie ma. Decyzja Michała: na zakładce Opad po radarze pokazujemy **szansę opadu**:
+odsetek z 40 wariantów ICON-EU-EPS z opadem ≥ 0,2 mm/h (`qbot_pogoda_map.eps_build`, warstwa `szansa`, ~8 MB/krok, siatka
+ikosaedryczna ~20 km → najbliższa komórka, indeks `eps_idx.npz`). Bez korekty położenia i bez przygaszania (niepewność wyraża
+prawdopodobieństwo). Deterministyczne warstwy temp/wiatr/porywy/mgła/lód bez zmian. Do zrobienia: sprawdzalność szansy (czy 60% ≈ 6 na 10).
