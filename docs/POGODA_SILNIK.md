@@ -54,3 +54,11 @@ W `route_meteo_engine` (jedno miejsce dla Analizy trasy, Planera, raportu Albert
    zamiast 22%); promieniowanie, ciśnienie, chmury, CAPE i kod pogody z kanonu.
 Pole `model` w wyniku opisuje źródło każdej wielkości. Klucze cache z sufiksem `e3`.
 Porównanie przed wdrożeniem (jutro 10:00): różnice do ok. 1,3 °C (temp./odczuwalna), do 1,5 m/s (porywy), WBGT do −1 °C.
+
+**Uzupełnianie braków kanonu (2026-10-14):** HARMONIE KNMI jako model kanoniczny nie podaje ciśnienia, CAPE ani szansy opadu → WBGT wychodził
+NaN na całej trasie, a burze (CAPE) były niewykrywalne — błąd istniał w Planerze od wejścia HARMONIE do kanonu. `_fetch_point_raw` uzupełnia
+każdą wielkość z brakami z `best_match`; pole `model` wymienia uzupełnione wielkości.
+
+**Uzupełnianie braków kanonu (2026-10-14):** HARMONIE KNMI jako model kanoniczny nie podaje ciśnienia, CAPE ani szansy opadu → WBGT wychodził
+NaN na całej trasie, a burze (CAPE) były niewykrywalne — błąd istniał w Planerze od wejścia HARMONIE do kanonu. `_fetch_point_raw` uzupełnia
+każdą wielkość z brakami z `best_match`; pole `model` wymienia uzupełnione wielkości. Klucze cache punktów i tabeli cieplnej: sufiks `e3b`.

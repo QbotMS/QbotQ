@@ -387,7 +387,7 @@ def _meteo_cache_put(key: str, data: dict) -> None:
 
 def _fetch_point(lat: float, lon: float, date_str: str, timeout: float = 15.0,
                  model: Optional[str] = None) -> dict:
-    key = "%.3f,%.3f|%s|%s|e3" % (round(lat, 3), round(lon, 3), date_str, model or "best_match")
+    key = "%.3f,%.3f|%s|%s|e3b" % (round(lat, 3), round(lon, 3), date_str, model or "best_match")   # e3b: wersja reguly modelu + uzupelnien (unieważnia stary cache)
     data = _meteo_cache_get(key)
     if data is None:
         data = _fetch_point_raw(lat, lon, date_str, timeout=timeout, model=model)
@@ -457,6 +457,10 @@ def _merge_e3(data: dict, lat: float, lon: float, date_str: str, timeout: float)
 def _model_label(model: Optional[str]) -> str:
     k = _MODEL_INFO.get("kanon") or model or "best_match"
     pz = _MODEL_INFO.get("przydzial")
+    nazwy = {"surface_pressure": "ciśnienie", "cape": "CAPE", "precipitation_probability": "szansa opadu", "shortwave_radiation_instant": "promieniowanie",
+             "direct_radiation_instant": "promieniowanie bezp.", "cloud_cover": "chmury", "weather_code": "kod pogody"}
+    uz = sorted({nazwy.get(v, v) for v in (_MODEL_INFO.get("uzupelnione") or ())} - ({"szansa opadu"} if _MODEL_INFO.get("szansa") else set()))
+    k = k + (" (braki: %s z best_match)" % ", ".join(uz) if uz else "")
     if not pz:
         return k
     return ("wg sprawdzalności: temp. %s, wiatr %s, porywy %s, opad %s; szansa: %s; reszta: %s"
@@ -469,6 +473,19 @@ def _fetch_point_raw(lat: float, lon: float, date_str: str, timeout: float = 15.
     if model:
         _MODEL_INFO["kanon"] = model
     data = _fetch_point_raw_base(lat, lon, date_str, timeout=timeout, model=model)
+    # 14.10.2026: model kanoniczny moze NIE PODAWAC czesci wielkosci (HARMONIE KNMI: brak cisnienia, CAPE, szansy opadu) -> WBGT wychodzil
+    # NaN na calej trasie, a burze byly niewykrywalne (blad byl w Planerze od wejscia HARMONIE do kanonu). Braki uzupelniamy z best_match.
+    hb = data.get("hourly") or {}
+    gaps = [v for v, sr in hb.items() if v != "time" and isinstance(sr, list) and any(x is None for x in sr)]
+    if gaps and model:
+        try:
+            bm = (_fetch_point_raw_base(lat, lon, date_str, timeout=timeout, model=None).get("hourly") or {})
+            for v in gaps:
+                if bm.get(v) and len(bm[v]) == len(hb[v]):
+                    hb[v] = [x if x is not None else y for x, y in zip(hb[v], bm[v])]
+                    _MODEL_INFO.setdefault("uzupelnione", set()).add(v)
+        except Exception as e:
+            _MODEL_INFO["blad_uzup"] = f"{type(e).__name__}"[:60]
     try:
         _merge_e3(data, lat, lon, date_str, timeout)
     except Exception as e:      # bez E3 zostaje kanon -- silnik dziala dalej
@@ -559,7 +576,7 @@ def build_day_thermal(route_id: str, date_str: str, grid_pts: dict, weather_by_g
                       model: Optional[str] = None) -> DayThermal:
     """grid_pts: {km_siatki: (lat, lon)}; weather_by_g: {km_siatki: wynik _fetch_point}.
     Cache: pamiec procesu + meteo_point_cache (klucz 'thermal|...', TTL jak prognoza)."""
-    key = "thermal|%s|%s|%s|e3|%d|%.1f" % (route_id, date_str, model or "best_match", len(grid_pts), METEO_GRID_KM)
+    key = "thermal|%s|%s|%s|e3b|%d|%.1f" % (route_id, date_str, model or "best_match", len(grid_pts), METEO_GRID_KM)
     m = _THERMAL_MEMO.get(key)
     if m and (time.time() - m[0]) < METEO_CACHE_TTL_S:
         return m[1]
