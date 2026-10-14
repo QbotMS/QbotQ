@@ -12,7 +12,7 @@ os.environ.setdefault("QBOT3_ENABLED", "1")
 import qbot_pogoda as PG  # noqa: E402
 
 POLA = {"iso", "t", "przeszlosc", "temp", "odcz", "rh", "rosa_pkt", "opad", "snieg", "wiatr", "porywy", "kier", "skad", "widocznosc",
-        "grunt", "kod", "chmury", "dzien", "mgla", "lod", "nawierzchnia", "zapas_rosy", "szansa"}
+        "grunt", "kod", "chmury", "dzien", "mgla", "lod", "nawierzchnia", "zapas_rosy", "szansa", "odcz_om", "utci", "wbgt", "na_rowerze"}
 
 
 def _fake(n=30):

@@ -130,8 +130,9 @@ def window(cur, lat: float, lon: float, day: dt.date, start: str, dur: int, ride
             gust = max(gust, h.get("porywy") or 0); wind = max(wind, h.get("wiatr") or 0)
             if h.get("temp") is not None:
                 tmin, tmax = min(tmin, h["temp"]), max(tmax, h["temp"])
-            if h.get("odcz") is not None:
-                omin = min(omin, h["odcz"])
+            oc = h.get("odcz_om", h.get("odcz"))   # progi Trenera skalibrowane na odczuwalnej Open-Meteo (E3: 'odcz' = UTCI w jezdzie)
+            if oc is not None:
+                omin = min(omin, oc)
             lod, mg, naw = max(lod, h.get("lod") or 0), max(mg, h.get("mgla") or 0), max(naw, h.get("nawierzchnia") or 0)
             if sun:
                 t0 = dt.datetime.combine(day, dt.time(m // 60 % 24, m % 60))
