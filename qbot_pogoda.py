@@ -73,6 +73,20 @@ HOURLY = ("temperature_2m,apparent_temperature,relative_humidity_2m,dew_point_2m
 _CC: dict = {}
 
 
+def road_flags(T, Td, Ts, vis, wet: bool, p6: float):
+    """Reguly drogi -- JEDNO zrodlo dla Pogody i silnika tras (E3.2, 14.10.2026). Zwraca (lod 0-3, mgla 0-2|None, nawierzchnia 0-2, zapas_rosy).
+    lod: grunt <= 0,5 C i (wilgoc z 12 h lub szron: punkt rosy >= grunt); 3 = mokro i grunt <= -0,5 C. mgla: widocznosc < 1 km = 2, < 4 km = 1.
+    nawierzchnia: opad z ~6 h >= 2 mm = 2 (mokro/bloto), >= 0,3 mm = 1. zapas rosy = temp - punkt rosy."""
+    lod = 0
+    if Ts is not None and Ts <= 0.5:
+        frost = Td is not None and Td >= Ts
+        lod = 3 if (wet and Ts <= -0.5) else 2 if (wet or frost) else 1
+    mgla = None if vis is None else (2 if vis < 1000 else 1 if vis < 4000 else 0)
+    naw = 2 if p6 >= 2 else 1 if p6 >= 0.3 else 0
+    rosa = None if (T is None or Td is None) else round(T - Td, 1)
+    return lod, mgla, naw, rosa
+
+
 def _personal_offset() -> float:
     try:
         from qbot3.routes import ride_thermal as RT
@@ -168,14 +182,7 @@ def conditions_point(lat: float, lon: float, hours: int = 24) -> dict:
         snow = [g("snowfall", k) or 0 for k in range(max(0, i - 12), i)]
         p6 = sum((g("precipitation", k) or 0) for k in range(max(0, i - 6), i + 1))
         T, Td, Ts, vis = g("temperature_2m", i), g("dew_point_2m", i), g("soil_temperature_0cm", i), g("visibility", i)
-        lod = 0
-        if Ts is not None and Ts <= 0.5:
-            wet = sum(prec) > 0.1 or sum(snow) > 0 or (g("precipitation", i) or 0) > 0
-            frost = Td is not None and Td >= Ts
-            lod = 3 if (wet and Ts <= -0.5) else 2 if (wet or frost) else 1
-        mgla = None if vis is None else (2 if vis < 1000 else 1 if vis < 4000 else 0)
-        naw = 2 if p6 >= 2 else 1 if p6 >= 0.3 else 0
-        rosa = None if (T is None or Td is None) else round(T - Td, 1)
+        lod, mgla, naw, rosa = road_flags(T, Td, Ts, vis, sum(prec) > 0.1 or sum(snow) > 0 or (g("precipitation", i) or 0) > 0, p6)
         # opad, snieg i porywy z Open-Meteo dotycza GODZINY POPRZEDZAJACEJ (qbot_wx.PREV_HOUR) -> wiersz T (godzina T..T+1) bierze wartosc z T+1.
         # UWAGA: komentarzy NIE wstawiac w srodek tego slownika (14.10 dwa razy wyciely pola) -- pilnuje tests/test_pogoda_conditions.py
         rows.append({"iso": t, "t": t[11:16], "przeszlosc": _dt.datetime.fromisoformat(t) < now,

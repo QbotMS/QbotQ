@@ -387,7 +387,7 @@ def _meteo_cache_put(key: str, data: dict) -> None:
 
 def _fetch_point(lat: float, lon: float, date_str: str, timeout: float = 15.0,
                  model: Optional[str] = None) -> dict:
-    key = "%.3f,%.3f|%s|%s|e3b" % (round(lat, 3), round(lon, 3), date_str, model or "best_match")   # e3b: wersja reguly modelu + uzupelnien (unieważnia stary cache)
+    key = "%.3f,%.3f|%s|%s|e3c" % (round(lat, 3), round(lon, 3), date_str, model or "best_match")   # e3b: wersja reguly modelu + uzupelnien (unieważnia stary cache)
     data = _meteo_cache_get(key)
     if data is None:
         data = _fetch_point_raw(lat, lon, date_str, timeout=timeout, model=model)
@@ -498,7 +498,8 @@ def _fetch_point_raw_base(lat: float, lon: float, date_str: str, timeout: float 
     hourly = ["temperature_2m", "relative_humidity_2m", "cloud_cover",
               "wind_speed_10m", "wind_direction_10m",
               "surface_pressure", "shortwave_radiation_instant", "direct_radiation_instant",
-              "precipitation", "precipitation_probability", "weather_code", "cape", "wind_gusts_10m"]
+              "precipitation", "precipitation_probability", "weather_code", "cape", "wind_gusts_10m",
+              "dew_point_2m", "visibility", "soil_temperature_0cm", "snowfall"]   # E3.2: warunki drogi
     daily = ["sunrise", "sunset", "daylight_duration", "sunshine_duration", "uv_index_max"]
     # model=None -> Open-Meteo wybiera sam (best_match). Podanie modelu jest SWIADOMA
     # decyzja regulowa (route_weather_models.canonical_model), zeby wynik dalo sie odtworzyc.
@@ -576,7 +577,7 @@ def build_day_thermal(route_id: str, date_str: str, grid_pts: dict, weather_by_g
                       model: Optional[str] = None) -> DayThermal:
     """grid_pts: {km_siatki: (lat, lon)}; weather_by_g: {km_siatki: wynik _fetch_point}.
     Cache: pamiec procesu + meteo_point_cache (klucz 'thermal|...', TTL jak prognoza)."""
-    key = "thermal|%s|%s|%s|e3b|%d|%.1f" % (route_id, date_str, model or "best_match", len(grid_pts), METEO_GRID_KM)
+    key = "thermal|%s|%s|%s|e3c|%d|%.1f" % (route_id, date_str, model or "best_match", len(grid_pts), METEO_GRID_KM)
     m = _THERMAL_MEMO.get(key)
     if m and (time.time() - m[0]) < METEO_CACHE_TTL_S:
         return m[1]
@@ -886,7 +887,7 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         feels = apparent_temp_steadman(ta, rh, ws, tmrt)
 
         per_segment.append({
-            "km": round(s["km"], 2), "eta": s["eta_local"].strftime("%H:%M"),
+            **_road_at(h, tms, when, ta, s), "km": round(s["km"], 2), "eta": s["eta_local"].strftime("%H:%M"),
             "temp_c": round(ta, 1), "rh_pct": round(rh),
             "chmury_pct": (round(cc) if cc is not None else None),
             "grade_pct": round(s["grade_pct"], 1), "teren": _terrain_label(s["grade_pct"]),
@@ -933,7 +934,8 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         "n_segments": len(per_segment), "n_windows": n_win,
         "peak": {"wbgt_eff": peak["wbgt_eff"], "km": peak["km"], "eta": peak["eta"],
                  "alert_level": peak["alert_level"], "teren": peak["teren"]},
-        "alerts": alerts,
+        "alerts": alerts + _build_road_alerts(per_segment) + _charakter_alerts(per_segment, date_str),
+        "charakter": _charakter_info(per_segment, date_str),
         "tabela_30min": table,
         "per_segment": [{k: v for k, v in s.items() if not k.startswith("_")} for s in per_segment],
         "caveats": ["Limity ACGIH (upał) zakładają osobę zaaklimatyzowaną.",
@@ -986,6 +988,83 @@ def _build_alerts(per_segment: list[dict]) -> list[dict]:
             run = []
     flush(run)
     return alerts
+
+
+# ---------------------------------------------------------------- E3.2 (14.10.2026): WARUNKI DROGI i CHARAKTER DNIA na trasie
+# Te same reguly co Pogoda (qbot_pogoda.road_flags / charakter_dni) -- jeden silnik. Dok.: docs/POGODA_SILNIK.md
+def _interp_n(times, vals, when):
+    """Jak _interp, ale brak danych = None (nie 0): widocznosc 0 dawalaby falszywa mgle."""
+    if not vals:
+        return None
+    for i in range(1, len(times)):
+        if when <= times[i]:
+            v0, v1 = vals[i - 1], vals[i]
+            if v0 is None or v1 is None:
+                return v1 if v0 is None else v0
+            f = (when - times[i - 1]).total_seconds() / max((times[i] - times[i - 1]).total_seconds(), 1.0)
+            return v0 + f * (v1 - v0)
+    return vals[-1]
+
+
+def _road_at(h: dict, tms: list, when, ta, s: dict) -> dict:
+    import qbot_pogoda as PG
+    try:
+        Td = _interp_n(tms, h.get("dew_point_2m") or [], when)
+        Ts = _interp_n(tms, h.get("soil_temperature_0cm") or [], when)
+        vis = _interp_n(tms, h.get("visibility") or [], when)
+        lo, hi = when - _dt.timedelta(hours=12), when + _dt.timedelta(hours=1)
+        pr, sn = h.get("precipitation") or [], h.get("snowfall") or []
+        w12 = sum((v or 0) for t, v in zip(tms, pr) if lo < t <= hi)
+        s12 = sum((v or 0) for t, v in zip(tms, sn) if lo < t <= hi)
+        p6 = sum((v or 0) for t, v in zip(tms, pr) if when - _dt.timedelta(hours=6) < t <= hi)
+        lod, mgla, naw, _ = PG.road_flags(ta, Td, Ts, vis, w12 > 0.1 or s12 > 0, p6)
+    except Exception:
+        lod, mgla, naw = None, None, None
+    return {"lod": lod, "mgla": mgla, "nawierzchnia": naw, "_ll": (s.get("lat"), s.get("lon"))}
+
+
+def _build_road_alerts(per_segment: list[dict]) -> list[dict]:
+    """DROGA: ciagle okna oblodzenia (FLAGA; ALARM gdy mokro i grunt <= -0,5 C), mgly (< 1 km) i blota (>= 2 mm w ~6 h)."""
+    out = []
+    spec = (("oblodzenie", lambda x: (x.get("lod") or 0) >= 2, lambda r: "ALARM" if any((x.get("lod") or 0) >= 3 for x in r) else "FLAGA",
+             "ryzyko oblodzenia (grunt <= 0,5 °C i wilgoć albo szron)"),
+            ("mgla", lambda x: x.get("mgla") == 2, lambda r: "FLAGA", "mgła — widoczność poniżej 1 km"),
+            ("bloto", lambda x: x.get("nawierzchnia") == 2, lambda r: "FLAGA", "mokro / błoto (>= 2 mm opadu w ostatnich ~6 h)"))
+    for typ, cond, sev, opis in spec:
+        run = []
+        for x in per_segment + [{}]:
+            if x and cond(x):
+                run.append(x); continue
+            if run:
+                out.append({"typ": typ, "severity": sev(run), "km_od": run[0]["km"], "km_do": run[-1]["km"], "eta_od": run[0]["eta"],
+                            "eta_do": run[-1]["eta"], "minuty": round(sum(y.get("_dur_min", 0) for y in run)), "opis": opis})
+                run = []
+    return out
+
+
+def _charakter_info(per_segment: list[dict], date_str: str) -> dict | None:
+    if not per_segment:
+        return None
+    la, lo = (per_segment[0].get("_ll") or (None, None))
+    if la is None:
+        return None
+    try:
+        import qbot_pogoda as PG
+        days = (_dt.date.fromisoformat(date_str[:10]) - _dt.date.today()).days
+        if not 0 <= days <= 2:
+            return None
+        ch = PG.charakter_dni(la, lo, 3)
+        return next((d for d in ch.get("dni") or [] if d["dzien"] == date_str[:10]), None)
+    except Exception:
+        return None
+
+
+def _charakter_alerts(per_segment: list[dict], date_str: str) -> list[dict]:
+    c = _charakter_info(per_segment, date_str)
+    if not c or c.get("typ") == "stabilny" or not per_segment:
+        return []
+    return [{"typ": "charakter", "severity": "ALARM" if c["typ"] == "burzowy" else "FLAGA", "km_od": per_segment[0]["km"],
+             "km_do": per_segment[-1]["km"], "eta_od": per_segment[0]["eta"], "eta_do": per_segment[-1]["eta"], "minuty": None, "opis": c["opis"]}]
 
 
 def _build_rain_alerts(per_segment: list[dict]) -> list[dict]:

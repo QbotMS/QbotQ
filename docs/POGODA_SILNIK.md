@@ -69,3 +69,10 @@ każdą wielkość z brakami z `best_match`; pole `model` wymienia uzupełnione 
 temp. do ubioru (`ride_thermal.route_delta` — kalibracja na czujniku Karoo — + `personal_offset` z „W czym jechałem”), **`wbgt`**.
 Dawna odczuwalna Open-Meteo → `odcz_om`; Okno jazdy porównuje z progami Trenera właśnie ją (progi skalibrowane na niej — rekalibracja w E4).
 Warunki (viz v2): kafel temperatury „na rowerze … · strefa ubioru · w jeździe od …”, linia przerywana = odczuwalna (jak na trasie), UTCI w jeździe w dymku, WBGT w dymku ≥ 18 °C.
+
+## E3.2 — warunki drogi i charakter dnia na trasie (2026-10-14)
+Jedna funkcja reguł drogi `qbot_pogoda.road_flags()` (oblodzenie 0–3, mgła, mokro/błoto, zapas rosy) — Pogoda (`conditions_point`, zgodność
+przed/po identyczna) i silnik tras (`_road_at` dla każdego odcinka w chwili przejazdu; `_interp_n` — brak danych = None, nie 0). Nowe pola
+`per_segment`: `lod`, `mgla`, `nawierzchnia`; alerty `oblodzenie` (FLAGA/ALARM), `mgla`, `bloto` w tym samym formacie co deszcz/burza
+(Analiza trasy, Planer, Albert pokazują je bez zmian stron); `charakter` dnia (`charakter_dni`, CAPE + lifted index) w wyniku + alert
+(FLAGA przelotne / ALARM burzowy) dla jazd dziś–pojutrze. Pobierane dodatkowo: punkt rosy, widoczność, temp. gruntu, śnieg. Cache `e3c`.
