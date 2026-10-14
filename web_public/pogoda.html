@@ -276,7 +276,7 @@ window.addEventListener("resize",function(){ setDock($("dock").getBoundingClient
 var sec="radar", TTL={spr:"Sprawdzalność modeli",radar:"Pogoda · u Ciebie",warunki:"Warunki godzina po godzinie",okno:"Okno jazdy",weekend:"Gdzie w weekend"};
 function openSec(s){ sec=s; document.querySelectorAll("#rail .rt").forEach(function(b){b.classList.toggle("on",b.dataset.s===s);});
   document.querySelectorAll("#lp .body [data-s]").forEach(function(d){d.hidden=d.dataset.s!==s;}); $("sttl").textContent=TTL[s];
-  var vc=visCenter(); document.body.dataset.sec=s; document.body.classList.toggle("open",s!=="radar"); setTimeout(function(){centerOn(vc);},240); if(s==="spr")loadSpr(); if(s==="okno"&&!OKL)loadOkno(""); if(s==="weekend")loadWeekend(WK.day); else if(WK.ov)hideWeekend(); }
+  var vc=visCenter(); document.body.dataset.sec=s; document.body.classList.toggle("open",s!=="radar"); afterPanel(function(){centerOn(vc);}); if(s==="spr")loadSpr(); if(s==="okno"&&!OKL)loadOkno(""); if(s==="weekend")loadWeekend(WK.day); else if(WK.ov)hideWeekend(); }
 document.querySelectorAll("#rail .rt").forEach(function(b){b.addEventListener("click",function(){ openSec(b.dataset.s); });});
 $("close").addEventListener("click",function(){ openSec("radar"); });
 
@@ -597,6 +597,8 @@ loadAlert(); setInterval(loadAlert,120000);
 /* ---- centrowanie mapy na WIDOCZNEJ czesci (miedzy panelem a prawa krawedzia, nad dolnym paskiem) ---- */
 function visBox(){ var r=$("lp").getBoundingClientRect(), d=$("dock").getBoundingClientRect(); return {x:(r.right+innerWidth)/2, y:Math.max(60,d.top/2)}; }
 function visCenter(){ var v=visBox(); return map.containerPointToLatLng([v.x,v.y]); }
+function afterPanel(fn){ var lp=$("lp"), done=false, h=function(e){ if(done||(e&&e.propertyName!=="width"))return; done=true;
+  lp.removeEventListener("transitionend",h); fn(); }; lp.addEventListener("transitionend",h); setTimeout(h,500); }   /* po koncu animacji szerokosci panelu */
 function centerOn(ll){ if(!ll)return; var v=visBox(), p=map.latLngToContainerPoint(ll); map.panBy([p.x-v.x,p.y-v.y],{animate:true,duration:.25}); }
 var lastVC=null; map.on("moveend",function(){ lastVC=visCenter(); });
 var rsT=null; addEventListener("resize",function(){ var k=lastVC; clearTimeout(rsT); rsT=setTimeout(function(){ map.invalidateSize(); centerOn(k); },150); });
