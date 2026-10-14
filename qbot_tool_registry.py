@@ -699,7 +699,7 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "args_schema": {},
     },
     "qbot_weather_legacy_status": {
-        "description": "Read-only status legacy weather/OpenWeatherMap coverage and current weather parity",
+        "description": "Read-only status legacy weather coverage (wspolny silnik QBota)",
         "category": "legacy",
         "safe": True,
         "args_schema": {},
@@ -1422,7 +1422,7 @@ TOOLS_META: dict[str, dict[str, Any]] = {
         "args_schema": {"text": "jaka dziś jest pogoda?", "max_last_ride_age_hours": 18},
     },
     "qbot_weather_current": {
-        "description": "Aktualna pogoda — OpenWeatherMap primary, Open-Meteo fallback",
+        "description": "Aktualna pogoda — wspólny silnik QBota (Open-Meteo)",
         "category": "legacy",
         "safe": True,
         "args_schema": {"location": "Marki,PL", "units": "metric", "lang": "pl"},

@@ -49,16 +49,7 @@ LOCATION_LAT = env_float("LOCATION_LAT", 52.2297)
 LOCATION_LON = env_float("LOCATION_LON", 21.0122)
 LOCATION_NAME = env("LOCATION_NAME", "Warszawa")
 
-WEATHER_API_KEY_NAMES = (
-    "OPENWEATHERMAP_API_KEY",
-    "OWM_API_KEY",
-    "WEATHER_API_KEY",
-)
-OPENWEATHERMAP_API_KEY = (
-    env("OPENWEATHERMAP_API_KEY")
-    or env("OWM_API_KEY")
-    or env("WEATHER_API_KEY")
-)
+# E4.3 (14.10.2026): OpenWeatherMap usuniety -- pogoda wylacznie ze wspolnego silnika QBota (Open-Meteo bez klucza)
 
 MCP_URL = env("QBOT_MCP_URL", "http://127.0.0.1:8002/mcp/")
 

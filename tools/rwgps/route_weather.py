@@ -33,7 +33,6 @@ except ModuleNotFoundError:
 
 import httpx
 
-OWM_URL = "https://api.openweathermap.org/data/2.5/forecast"
 OM_URL = "https://api.open-meteo.com/v1/forecast"
 
 
@@ -64,36 +63,8 @@ def _db_connect():
     return psycopg2.connect(**kwargs)
 
 
-def _owm_key() -> str | None:
-    _load_env_local()
-    return (os.getenv("OPENWEATHERMAP_API_KEY") or os.getenv("OWM_API_KEY")
-            or os.getenv("OPENWEATHER_API_KEY") or None)
-
-
 def _local_hourkey(dt_local: datetime) -> str:
     return dt_local.strftime("%Y-%m-%dT%H")
-
-
-def _fetch_owm(lat, lon, key):
-    """OWM 3-godzinowa prognoza. Klucz mapy = lokalna godzina 'YYYY-MM-DDTHH'."""
-    params = {"lat": round(lat, 4), "lon": round(lon, 4), "appid": key,
-              "units": "metric", "lang": "pl"}
-    r = httpx.get(OWM_URL, params=params, timeout=20.0)
-    r.raise_for_status()
-    items = r.json().get("list", [])
-    out = {}
-    for it in items:
-        dt_utc = datetime.fromtimestamp(it["dt"], tz=timezone.utc)
-        dt_local = dt_utc.astimezone(_TZ) if _TZ else dt_utc
-        wind = it.get("wind", {})
-        rain = it.get("rain", {}) or {}
-        out[_local_hourkey(dt_local)] = {
-            "temp": (it.get("main") or {}).get("temp"),
-            "precip": rain.get("3h", 0.0),
-            "wspeed": wind.get("speed"),     # units=metric -> m/s
-            "wdir": wind.get("deg"),         # skad wieje
-        }
-    return out
 
 
 def _fetch_open_meteo(lat, lon, day: str, tz: str = "auto", end_day: str | None = None):
@@ -102,9 +73,9 @@ def _fetch_open_meteo(lat, lon, day: str, tz: str = "auto", end_day: str | None 
     params = {"latitude": round(lat, 4), "longitude": round(lon, 4),
               "hourly": "temperature_2m,precipitation,wind_speed_10m,wind_direction_10m,relative_humidity_2m,cloud_cover,surface_pressure,apparent_temperature,shortwave_radiation",
               "wind_speed_unit": "ms", "timezone": tz, "start_date": day, "end_date": end_day or day}
-    r = httpx.get(OM_URL, params=params, timeout=20.0)
-    r.raise_for_status()
-    h = r.json().get("hourly", {})
+    import urllib.parse as _up
+    import qbot_wx as WX   # E4.3: wspolny transport/cache Open-Meteo
+    h = WX.get_url(OM_URL + "?" + _up.urlencode(params), timeout=20.0, ttl=600).get("hourly", {})
     times = h.get("time", [])
     out = {}
     for i, ts in enumerate(times):
@@ -114,24 +85,15 @@ def _fetch_open_meteo(lat, lon, day: str, tz: str = "auto", end_day: str | None 
                         "pressure": h.get("surface_pressure", [None] * len(times))[i],
                         "apparent": h.get("apparent_temperature", [None] * len(times))[i],
                         "solar": h.get("shortwave_radiation", [None] * len(times))[i],
-                        "precip": h.get("precipitation", [None] * len(times))[i],
+                        # opad Open-Meteo o T = godzina PRZED T -> godzina T..T+1 bierze wartosc z T+1 (14.10.2026)
+                        "precip": (h.get("precipitation") or [None] * len(times))[i + 1] if i + 1 < len(times) else None,
                         "wspeed": h.get("wind_speed_10m", [None] * len(times))[i],
                         "wdir": h.get("wind_direction_10m", [None] * len(times))[i]}
     return out
 
 
 def _fetch_weather(lat, lon, dates):
-    """OWM primary; fallback Open-Meteo gdy brak klucza / blad / brak pokrycia dat."""
-    key = _owm_key()
-    if key:
-        try:
-            owm = _fetch_owm(lat, lon, key)
-            owm_dates = {k[:10] for k in owm}
-            if owm and all(d in owm_dates for d in dates):
-                return owm, "openweathermap"
-            # OWM nie pokrywa wszystkich dat (np. >5 dni) -> fallback
-        except Exception as e:
-            print(f"  (OWM nieudane: {e!r} -> fallback Open-Meteo)")
+    """Open-Meteo przez wspolny transport QBota (qbot_wx). E4.3 (14.10.2026): OpenWeatherMap usuniety. Dok.: docs/POGODA_SILNIK.md"""
     out = {}
     for d in dates:
         try:

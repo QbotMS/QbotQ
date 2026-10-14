@@ -929,7 +929,7 @@ def _tool_qbot_telegram_agent_chat(_args: dict | None = None) -> dict[str, Any]:
             "status": "WARN",
             "answer": (
                 f"Nie pobrałem pogody dla {loc}. "
-                f"OpenWeatherMap: {owm_err}. Open-Meteo fallback: {om_err or 'nie próbowano'}. "
+                f"Wspólny silnik pogody (Open-Meteo): {om_err or owm_err or 'brak danych'}. "
                 f"Spróbuj ponownie za chwilę.\n"
                 f"Źródło pogody: obie próby nieudane.\n"
                 f"Źródło lokalizacji: tekst wiadomości."

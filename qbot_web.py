@@ -9562,7 +9562,7 @@ def _wyposazenie_garage_categories():
 def api_wyposazenie_pogoda(route_id: str = Query(...), start: str = Query(...),
                            days: int = Query(1)):
     """Prognoza dla wyprawy: bierze punkt startu trasy i dni od 'start'.
-    Zrodlo: OWM (5 dni) -> Open-Meteo (16 dni), przez tools.rwgps.route_weather.
+    Zrodlo: Open-Meteo (16 dni) przez tools.rwgps.route_weather (wspolny transport qbot_wx; OWM usuniety 14.10.2026).
     Gdy prognoza nie siega (data w przeszlosci albo za daleko) -> ok=False i
     uczciwa informacja, zamiast zmyslania pogody."""
     import datetime as _dt

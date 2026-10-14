@@ -234,11 +234,11 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "limitations": ["Read-only", "No modification"],
     },
     {
-        "keywords": ["pogoda legacy", "openweathermap", "weather legacy", "weather status"],
+        "keywords": ["pogoda legacy", "weather legacy", "weather status"],
         "tool": "qbot_weather_legacy_status",
         "args": {},
         "confidence": "high",
-        "required_data": ["Legacy weather/OpenWeatherMap code scan", "current weather path"],
+        "required_data": ["Legacy weather code scan", "current weather path"],
         "limitations": ["Read-only audit", "No external weather API calls"],
     },
     {
@@ -1143,7 +1143,7 @@ _INTENT_MAP: list[dict[str, Any]] = [
         "limitations": ["Read-only status", "No login"],
     },
     {
-        "keywords": ["openweathermap", "weather config", "sprawdź pogodę"],
+        "keywords": ["weather config", "sprawdź pogodę", "silnik pogody"],
         "tool": "qbot_weather_config_status",
         "args": {},
         "confidence": "medium",

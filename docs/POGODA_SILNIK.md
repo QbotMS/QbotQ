@@ -98,3 +98,11 @@ i `_tool_qbot_weather_config_status` przepisane na `qbot_pogoda` (+ `_core_point
 TE SAME POLA co wcześniej (+ `na_rowerze_c`, `gusts_mps`); opis warunków z kodu WMO po polsku. Usunięte (decyzja Michała — artefakt z początków
 QBota, crony zakomentowane, ostatni log 28.06.2026): `daily_report.py`, `daily_report_adapter.py` (kopie w artifacts). Testy OWM w
 `test_qbot3_acceptance.py` zastąpione `PogodaWspolnySilnik` (format na atrapie rdzenia, bez sieci).
+
+## E4.3 — koniec OpenWeatherMap (2026-10-14)
+- `tools/rwgps/route_weather.py` (Planer → Wyposażenie → pogoda, pogoda per pudełko w `qbot_route_tools`): tylko Open-Meteo przez `qbot_wx.get_url`;
+  usunięte `_owm_key`, `_fetch_owm`, `OWM_URL`. **Poprawka godziny opadu** w `_fetch_open_meteo` (klucz godziny H = opad H..H+1, wartość z H+1) —
+  dotyczy też raportu z jazdy (`ride_report_builder` korzysta z tej funkcji).
+- `tools/feasibility.py` (`get_weather`): pogoda startu z `qbot_pogoda.conditions_point`, pola bez zmian.
+- `qbot_config`: usunięte `WEATHER_API_KEY_NAMES`, `OPENWEATHERMAP_API_KEY`; martwe `_owm_*` w `qbot_integration_tools`; opisy (Telegram, router,
+  rejestr v1, query_handler, qbot_web, Albert) bez OWM; usunięty ostatni test OWM. Zmienne środowiskowe OWM (jeśli są w .env) nic już nie robią.

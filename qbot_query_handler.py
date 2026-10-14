@@ -5440,7 +5440,7 @@ def _handle_route_feasibility(question):
         from tools.feasibility import check_feasibility,format_report
         r=check_feasibility(route_id=route_id,start_hour=start_hour)
         answer=format_report(r)
-        return _envelope("route_feasibility",answer,data=r,sources_used=["xert","rwgps","owm"])
+        return _envelope("route_feasibility",answer,data=r,sources_used=["xert","rwgps","open-meteo"])
     except Exception as exc:
         return _envelope("route_feasibility","Blad: {}".format(exc),status_override="ERROR")
 

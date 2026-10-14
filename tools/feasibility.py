@@ -3,7 +3,7 @@
 Wejscie:
 - forma: CTL/ATL/TSB z Xert + HRV/RHR z Garmin
 - trasa: GPX lub RWGPS route_id (dystans, D+, profil podjazdow)
-- pogoda: OWM (temp, wiatr kierunkowy, deszcz)
+- pogoda: wspolny silnik QBota (temp, odczuwalna, wiatr kierunkowy, deszcz)
 - godzina startu
 Wyjscie:
 - ocena: wykonalna / ryzykowna / odradzana
@@ -20,7 +20,6 @@ APP_DIR = Path("/opt/qbot/app")
 sys.path.insert(0, str(APP_DIR))
 
 # ── Stale ──────────────────────────────────────────────────────────────────
-OWM_KEY = os.environ.get("OWM_API_KEY") or os.environ.get("OPENWEATHER_API_KEY", "")
 
 # Progi oceny (TSB = Training Stress Balance = forma)
 TSB_GOOD    =  5   # powyzej: dobra forma
@@ -83,19 +82,6 @@ def _get_form_data(target_date: str | None = None) -> dict:
     except Exception as e:
         form["_error"] = str(e)
     return form
-
-def get_weather(lat: float, lon: float, start_hour: int = 8) -> dict:
-    """Pobierz prognozę pogody z OWM dla punktu startu."""
-    try:
-        url="https://api.openweathermap.org/data/2.5/forecast?lat={}&lon={}&appid={}&units=metric&cnt=8&lang=pl".format(lat,lon,OWM_KEY)
-        items=httpx.get(url,timeout=8.0).json().get("list",[])
-        best=next((i for i in items if datetime.fromtimestamp(i["dt"]).hour>=start_hour),items[0] if items else None)
-        if not best: return {"_error":"Brak prognozy"}
-        return {"temp_c":best["main"]["temp"],"feels_c":best["main"]["feels_like"],
-                "wind_kmh":round(best["wind"]["speed"]*3.6,1),"wind_deg":best["wind"].get("deg",0),
-                "desc":best["weather"][0]["description"],"rain_3h_mm":best.get("rain",{}).get("3h",0),
-                "humidity_pct":best["main"]["humidity"],"dt_local":datetime.fromtimestamp(best["dt"]).strftime("%H:%M")}
-    except Exception as exc: return {"_error":str(exc)}
 
 def assess_feasibility(form,route,weather,start_hour=8):
     issues=[]; bonuses=[]
@@ -251,3 +237,20 @@ def format_report(r):
     for ww in ns["windows_co_20km"][:6]: lines.append("  km{:.0f} (~{}): {} kcal".format(ww["km"],ww["time"],ww["kcal"]))
     lines.append("  Po: "+ns["po_trasie"])
     return chr(10).join(lines)
+
+
+def get_weather(lat: float, lon: float, start_hour: int = 8) -> dict:
+    """Pogoda startu (najblizsza godzina >= start_hour) -- E4.3 (14.10.2026): wspolny silnik QBota (qbot_pogoda), bylo OpenWeatherMap. Pola bez zmian."""
+    try:
+        import qbot_pogoda as PG
+        from qbot_integration_tools import _WMO
+        rows = [r for r in (PG.conditions_point(lat, lon, hours=36).get("godziny") or []) if not r.get("przeszlosc")]
+        i = next((k for k, r in enumerate(rows) if int(r["iso"][11:13]) >= start_hour), 0)
+        if not rows:
+            return {"_error": "Brak prognozy"}
+        b = rows[i]
+        return {"temp_c": b.get("temp"), "feels_c": b.get("odcz"), "wind_kmh": round((b.get("wiatr") or 0) * 3.6, 1), "wind_deg": b.get("kier") or 0,
+                "desc": _WMO.get(b.get("kod"), ""), "rain_3h_mm": round(sum((r.get("opad") or 0) for r in rows[i:i + 3]), 1),
+                "humidity_pct": b.get("rh"), "dt_local": b["iso"][11:16]}
+    except Exception as exc:
+        return {"_error": str(exc)}

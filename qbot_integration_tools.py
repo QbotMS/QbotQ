@@ -734,18 +734,6 @@ def _tool_qbot_cronometer_restore_plan(_args: dict | None = None) -> dict[str, A
 #  WEATHER TOOLS
 # ═══════════════════════════════════════════════════════════════════════
 
-def _owm_api_key() -> str:
-    return cfg.OPENWEATHERMAP_API_KEY or ""
-
-
-def _owm_local_dt(ts: int, tz_offset_seconds: int | None = None) -> str:
-    utc_dt = datetime.fromtimestamp(ts, tz=timezone.utc)
-    if tz_offset_seconds is None:
-        return utc_dt.astimezone().isoformat(timespec="minutes")
-    tz = timezone(timedelta(seconds=int(tz_offset_seconds)))
-    return utc_dt.astimezone(tz).isoformat(timespec="minutes")
-
-
 def _num(v: Any) -> float | None:
     if v is None:
         return None
