@@ -1615,6 +1615,11 @@ def apply_canonical_load(w1):
                 _gc = _gchk(conn.cursor(), w1["ride_key"])
             except Exception:
                 conn.rollback(); _gc = None
+            try:   # [GARMIN-DANE] Etap 7: dryf tetna + czas w upale (fitmodel/heat_drift.py; liczy i cache'uje gdy brak)
+                from fitmodel.heat_drift import ride_block as _hdb
+                _hd = _hdb(conn, w1["ride_key"]); conn.commit()
+            except Exception:
+                conn.rollback(); _hd = None
         finally:
             conn.close()
     except Exception:
@@ -1635,6 +1640,7 @@ def apply_canonical_load(w1):
         re_["xss"] = round(x); re_.pop("tss", None)
         v["_real"] = re_; pva["value"] = v; w1["plan_vs_actual"] = pva
     w1["garmin_check"] = _gc   # ModelQ (moc) vs Garmin (tetno): {garmin, xss, garmin_expected, dev_pct, flag, text}
+    w1["heat_drift"] = _hd     # {drift_pct, hot_min, temp_avg, typical} -- jazdy > 1,5 h
     return w1
 
 

@@ -33,6 +33,7 @@ Decyzje 2026-10-14: HRV status/norma, aklimatyzacja do upalu i VO2max liczone W 
   - Raport jazdy: kafel "obciazenie" -- "· Garmin N" (+ ▲/▼ przy rozbieznosci), raport-jazdy2-ws.js v=47
   - Niedzielne rozliczenie Trenera: linia "ModelQ vs Garmin"
   - Wiadomosc 20:00: linia "😴 Sen: cel ... → spać ok. ..."; poranna: przycisk "😳 Pobudka przed budzikiem" (kliknac raz na probe)
+  - Raport jazdy > 1,5 h: kafel "tetno" -- "· dryf X% (typowo Y%) · N min >25°C" (v=49); Trendy: pigulka "Dryf" (v=66)
   - (JS nie da sie sprawdzic na serwerze -- brak node; wizualnie w przegladarce)
 - [ ] Etap 3b (po ~4 tyg. obserwacji, od 2026-11-11): czy status HRV i sygnal temp. skory maja wchodzic do gotowosci ModelQ -- decyzja uzytkownika.
 - [x] Etap 4 [2026-10-14]: fitmodel/body_signal.py (temp >= +0,4 C + HRV -5 ms lub RHR +3) -> karta snu, punkt Serca, poranna wiadomosc; 16 nocy w historii; test_body_signal 8. Bylo: temp. skory jako odchylenie od normy -> warstwa L3 ukrytego zmeczenia.
@@ -42,7 +43,9 @@ Decyzje 2026-10-14: HRV status/norma, aklimatyzacja do upalu i VO2max liczone W 
 - [x] Etap 5 [2026-10-14]: fitmodel/sleep_target.py -- wlasny cel snu (baza z danych 7:45 + dodatki), linia 20:00, przycisk 'Pobudka przed budzikiem' (sleep_wake_label), sen tygodnia + miesieczna analiza pobudek w rozliczeniu; test_sleep_target 9.
 - [ ] Etap 5b (~04.2027): kalibracja dodatkow celu snu (+30 ciezki dzien / +30 obciazenie) na danych; przejscie analizy na same oznaczenia.
   Bylo: potrzeba snu -> wieczorne zalecenie + analiza dlug snu -> HRV/RHR/gotowosc/HR przy mocy nastepnego dnia (odfiltrowac wplyw ciezkich treningow).
-- [ ] Etap 7: aklimatyzacja do upalu z activity_record (dryf HR przy tej samej mocy vs temperatura).
+- [x] Etap 7 [2026-10-14]: fitmodel/heat_drift.py (dryf w pasmie 0,55-0,92 CP + minuty > 25 C) -> raport jazdy (kafel tetno) + Trendy (pigulka Dryf); cache ride_heat_drift; test_heat_drift 6.
+- [ ] Etap 7b: podpiac heat_drift.acclimation() do przygotowania wydarzenia (/api/forma/event-prep + UI) dla goracych wyjazdow.
+  Bylo: aklimatyzacja do upalu z activity_record (dryf HR przy tej samej mocy vs temperatura).
 
 - [2026-10-14] [METEO-ICOND2] Open-Meteo models=icon_d2 zwraca 400 'No data is available for this location' (tez Warszawa). Sprawdzic qbot3/routes/route_weather_models.py (zestaw 0-2 dni z icon_d2) -- czy Planer/raport nie traci modelu; ewent. icon_seamless.
 - [2026-10-14] [POGODA-MENU] Strona pogoda.html poza menu (nav.js) -- dodac pozycje po akceptacji.

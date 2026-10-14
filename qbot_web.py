@@ -11698,6 +11698,18 @@ def _build_forma_data(conn, start_str, end_str):
     # [GARMIN-DANE] 2026-10-14: VO2max QBota z krzywej ModelQ (na kg) -- docs/GARMIN_DANE.md
     from fitmodel.vo2max import add_vo2max as _add_vo2
     _add_vo2(series)
+    try:   # [GARMIN-DANE] Etap 7: dryf tetna jazd > 1,5 h (fitmodel/heat_drift.py); dolicza brakujace z 21 dni
+        import datetime as _dtm
+        from fitmodel.heat_drift import add_drift as _add_drift, ensure_rides as _ens_drift
+        _hc = _db_conn()
+        try:
+            _ens_drift(_hc, _dtm.date.today() - _dtm.timedelta(days=21), _dtm.date.today(), limit=10)
+            _hc.commit()
+            _add_drift(_hc, series)
+        finally:
+            _hc.close()
+    except Exception:
+        pass
     # 2026-10-13: waga ZMIERZONA danego dnia (body_measurements) - wykres rysuje punkty pomiarow i przerywana
     # linie miedzy nimi; weight_kg w fitmodel_daily jest przeniesiona z ostatniego pomiaru (schodki).
     try:

@@ -99,5 +99,22 @@ Uwaga: dla starszych dni Garmin zwraca mniej sekcji (brak epok oddechu/SpO2), po
   Sezonowosc = poranne jazdy latem (27/73 maj-lip), nie swiatlo (opaska + zatyczki od lat).
 - Testy: `tests/test_sleep_target.py`. Weryfikacja: /opt/qbot/artifacts/verify_sleep_target.py, preview_evening.py.
 
+## Dryf tetna i czas w upale (Etap 7, 2026-10-14)
+- Upal NIE podnosi Ci sredniego tetna przy tej samej mocy (latem lepsza forma) -> mierzymy DRYF na jazdach > 1,5 h.
+- `fitmodel/heat_drift.py`: EF = moc/tetno w polowach jazdy (bez 10 pierwszych min), TYLKO probki w pasmie 0,55-0,92 CP ModelQ
+  z dnia jazdy (bez pasma teren falszowal: Toskania -12..+21%). Upal = minuty z temp. Karoo >= 25 C z CALEJ jazdy
+  (nie srednia -- rano chlodno; czujnik na sloncu zawyza szczyty, np. 49 C). Cache `qbot_v2.ride_heat_drift` (sql/heat_drift_v1.sql),
+  historia: `scripts/heat_drift_backfill.py [--recompute]` (161 jazd od 2024).
+- Wyniki (mediana dryfu): bez upalu 0,9% (102), 10-60 min > 25 C 0,2% (20), >= 1 h > 25 C 3,0% (39, w tym 16 bez wyniku -- za malo mocy w pasmie).
+  Pierwsza wersja bez pasma (2,7 / 3,4 / 8,8%) zawyzona przez teren -- odrzucona.
+  Toskania 5-11.06.2026: dryf -2..+3% (upal nie obciazal). Sycylia 8-14.08: 8,7 / 11,3 / 2,0 / 3,4 / 7,2% (pierwsze dni ciezej).
+- Raport jazdy: `w1.heat_drift` {drift_pct, hot_min, temp_avg, typical} w apply_canonical_load (liczy i cache'uje gdy brak);
+  kafel "tetno": "· dryf 2,9% (typowo 3,0%) · 95 min >25°C" (raport-jazdy2-ws.js v=49).
+- Forma > Trendy: pigulka "Dryf" na wykresie mocy -- punkty jazd > 1,5 h (czerwone >= 1 h w upale, pomaranczowe 10-60 min),
+  os po prawej (forma2-data.js v=66). /api/forma/data: `drift_pct`, `drift_hot_min` w serii; dolicza brakujace jazdy z 21 dni.
+- `acclimation(cx, until, days=28)`: dryf goracych jazd z 4 tyg. vs norma w upale -- GOTOWE w module, NIE podpiete
+  do przygotowania wydarzenia (TODO Etap 7b).
+- Testy: `tests/test_heat_drift.py`.
+
 ## Plan dalej
 Etapy 2–7 w `docs/TODO.md` -> `[GARMIN-DANE]`.
