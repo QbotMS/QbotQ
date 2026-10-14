@@ -244,7 +244,7 @@ var rfocus=LS("qpogoda_rfocus")!=="0";
 function ROP(){ return rfocus?0.85:0.6; }
 function paintR(){ $("mc-radar").textContent="Radar: "+(rfocus?"mocny":"delikatny"); if(steps.length)show(cur); }
 $("mc-radar").addEventListener("click",function(){ rfocus=!rfocus; LS("qpogoda_rfocus",rfocus?"1":"0"); paintR(); });
-$("mc-fit").addEventListener("click",function(){ if(pos)map.setView([pos.lat,pos.lon],Math.max(map.getZoom(),9)); });
+$("mc-fit").addEventListener("click",function(){ if(pos){ map.setZoom(Math.max(map.getZoom(),9),{animate:false}); centerOn(L.latLng(pos.lat,pos.lon)); } });
 
 /* ---- kwadraty (StatsHunters z14): wszystkie zdobyte w widoku ---- */
 var KW=null, kwOn=LS("qpogoda_kw")!=="0", kwGrp=L.layerGroup(), kwRend=L.canvas({pane:"kw"});
@@ -276,7 +276,7 @@ window.addEventListener("resize",function(){ setDock($("dock").getBoundingClient
 var sec="radar", TTL={spr:"Sprawdzalność modeli",radar:"Pogoda · u Ciebie",warunki:"Warunki godzina po godzinie",okno:"Okno jazdy",weekend:"Gdzie w weekend"};
 function openSec(s){ sec=s; document.querySelectorAll("#rail .rt").forEach(function(b){b.classList.toggle("on",b.dataset.s===s);});
   document.querySelectorAll("#lp .body [data-s]").forEach(function(d){d.hidden=d.dataset.s!==s;}); $("sttl").textContent=TTL[s];
-  var vc=visCenter(); document.body.dataset.sec=s; document.body.classList.toggle("open",s!=="radar"); afterPanel(function(){centerOn(vc);}); if(s==="spr")loadSpr(); if(s==="okno"&&!OKL)loadOkno(""); if(s==="weekend")loadWeekend(WK.day); else if(WK.ov)hideWeekend(); }
+  var vc=visCenter(); document.body.dataset.sec=s; document.body.classList.toggle("open",s!=="radar"); if(s!=="weekend")afterPanel(function(){centerOn(pos?L.latLng(pos.lat,pos.lon):vc);});   /* srodek = pozycja prognozy */ if(s==="spr")loadSpr(); if(s==="okno"&&!OKL)loadOkno(""); if(s==="weekend")loadWeekend(WK.day); else if(WK.ov)hideWeekend(); }
 document.querySelectorAll("#rail .rt").forEach(function(b){b.addEventListener("click",function(){ openSec(b.dataset.s); });});
 $("close").addEventListener("click",function(){ openSec("radar"); });
 
@@ -521,7 +521,7 @@ function loadWeekend(day){ $("wklist").innerHTML='<div class="note">Liczę mapę
 
 function wkSelect(i,zoom){ WK.sel=i; wkDraw(WK.r,true);
   document.querySelectorAll("#wklist .rec").forEach(function(el){el.classList.toggle("sel",+el.dataset.i===i);});
-  var x=WK.r&&WK.r.najlepsze[i]; if(zoom&&x)map.setView([x.lat,x.lon],Math.max(map.getZoom(),8)); }
+  var x=WK.r&&WK.r.najlepsze[i]; if(zoom&&x){ map.setZoom(Math.max(map.getZoom(),8),{animate:false}); centerOn(L.latLng(x.lat,x.lon)); } }
 function wkDraw(r,keep){ if(!r)return; WK.r=r; if(WK.lg)map.removeLayer(WK.lg);
   if(!map.getPane("wk")){map.createPane("wk");map.getPane("wk").style.zIndex=440;map.getPane("wk").classList.add("leaflet-wk-pane");}
   WK.lg=L.layerGroup().addTo(map); var B=L.latLngBounds([]);
@@ -601,14 +601,14 @@ function afterPanel(fn){ var lp=$("lp"), done=false, h=function(e){ if(done||(e&
   lp.removeEventListener("transitionend",h); fn(); }; lp.addEventListener("transitionend",h); setTimeout(h,500); }   /* po koncu animacji szerokosci panelu */
 function centerOn(ll){ if(!ll)return; var v=visBox(), p=map.latLngToContainerPoint(ll); map.panBy([p.x-v.x,p.y-v.y],{animate:true,duration:.25}); }
 var lastVC=null; map.on("moveend",function(){ lastVC=visCenter(); });
-var rsT=null; addEventListener("resize",function(){ var k=lastVC; clearTimeout(rsT); rsT=setTimeout(function(){ map.invalidateSize(); centerOn(k); },150); });
+var rsT=null; addEventListener("resize",function(){ var k=lastVC; clearTimeout(rsT); rsT=setTimeout(function(){ map.invalidateSize(); centerOn(pos?L.latLng(pos.lat,pos.lon):k); },150); });
 window.__map=map; window.__VC=visCenter;
 
 /* ---- start ---- */
 J("/api/pogoda/dom").then(function(h){ HOME=h.status==="OK"?h:null; var saved=null;
   try{saved=JSON.parse(LS("qpogoda_pos")||"null");}catch(e){}
   if(saved&&saved.m==="zadana"){modeBtn("zadana");setPos(saved.lat,saved.lon,saved.label);} else goHome();
-  if(pos)map.setView([pos.lat,pos.lon],9); });
+  if(pos){ map.setView([pos.lat,pos.lon],9,{animate:false}); centerOn(L.latLng(pos.lat,pos.lon)); } });
 setInterval(function(){ if(document.hidden)return; J("/api/radar/meta").then(function(m){
   if(!meta||!m.klatki.length||m.klatki[m.klatki.length-1].id===meta.klatki[meta.klatki.length-1].id)return; loadFrames(m); if(pos)loadPoint(); }); },120000);
 })();
