@@ -32,13 +32,16 @@ Decyzje 2026-10-14: HRV status/norma, aklimatyzacja do upalu i VO2max liczone W 
   - Zdrowie > Serce: karta snu -- "temp. skory" po HRV (forma-serce.js v=12)
   - Raport jazdy: kafel "obciazenie" -- "· Garmin N" (+ ▲/▼ przy rozbieznosci), raport-jazdy2-ws.js v=47
   - Niedzielne rozliczenie Trenera: linia "ModelQ vs Garmin"
+  - Wiadomosc 20:00: linia "😴 Sen: cel ... → spać ok. ..."; poranna: przycisk "😳 Pobudka przed budzikiem" (kliknac raz na probe)
   - (JS nie da sie sprawdzic na serwerze -- brak node; wizualnie w przegladarce)
 - [ ] Etap 3b (po ~4 tyg. obserwacji, od 2026-11-11): czy status HRV i sygnal temp. skory maja wchodzic do gotowosci ModelQ -- decyzja uzytkownika.
 - [x] Etap 4 [2026-10-14]: fitmodel/body_signal.py (temp >= +0,4 C + HRV -5 ms lub RHR +3) -> karta snu, punkt Serca, poranna wiadomosc; 16 nocy w historii; test_body_signal 8. Bylo: temp. skory jako odchylenie od normy -> warstwa L3 ukrytego zmeczenia.
 - [x] Etap 6 [2026-10-14]: fitmodel/garmin_load_check.py (norma ln(G/X)~ln(h), rozbieznosc >1.5 SD) -> raport jazdy (kafel obciazenie) + tygodniowe rozliczenie Trenera; test_garmin_load_check 6.
 - [ ] Etap 6b: import Training Status / Readiness / regeneracji Garmina -- najpierw test API (jak Etap 0), potem porownanie z gotowoscia ModelQ.
   Bylo: walidacja ModelQ vs Garmin w tle (activityTrainingLoad juz w activity_fit_raw; dzienny import Training Status/Readiness/regeneracji tylko do porownan; raport rozbieznosci co tydzien).
-- [ ] Etap 5: potrzeba snu -> wieczorne zalecenie + analiza dlug snu -> HRV/RHR/gotowosc/HR przy mocy nastepnego dnia (odfiltrowac wplyw ciezkich treningow).
+- [x] Etap 5 [2026-10-14]: fitmodel/sleep_target.py -- wlasny cel snu (baza z danych 7:45 + dodatki), linia 20:00, przycisk 'Pobudka przed budzikiem' (sleep_wake_label), sen tygodnia + miesieczna analiza pobudek w rozliczeniu; test_sleep_target 9.
+- [ ] Etap 5b (~04.2027): kalibracja dodatkow celu snu (+30 ciezki dzien / +30 obciazenie) na danych; przejscie analizy na same oznaczenia.
+  Bylo: potrzeba snu -> wieczorne zalecenie + analiza dlug snu -> HRV/RHR/gotowosc/HR przy mocy nastepnego dnia (odfiltrowac wplyw ciezkich treningow).
 - [ ] Etap 7: aklimatyzacja do upalu z activity_record (dryf HR przy tej samej mocy vs temperatura).
 
 - [2026-10-14] [METEO-ICOND2] Open-Meteo models=icon_d2 zwraca 400 'No data is available for this location' (tez Warszawa). Sprawdzic qbot3/routes/route_weather_models.py (zestaw 0-2 dni z icon_d2) -- czy Planer/raport nie traci modelu; ewent. icon_seamless.

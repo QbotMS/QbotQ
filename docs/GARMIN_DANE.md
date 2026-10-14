@@ -79,5 +79,25 @@ Uwaga: dla starszych dni Garmin zwraca mniej sekcji (brak epok oddechu/SpO2), po
 - ModelQ = zrodlo decyzji; Garmin tylko porownanie. Etap 6b (import Training Status/Readiness Garmina) -- osobno, po tescie API.
 - Testy: `tests/test_garmin_load_check.py`. Weryfikacja: /opt/qbot/artifacts/verify_garmin_load_check.py.
 
+## Wlasny cel snu + pobudki przed budzikiem (Etap 5, 2026-10-14)
+- Potrzeba snu Garmina ODRZUCONA jako cel: regula (baza z wieku 7:50 -> 7:30 od 16.01.2026 + flagi +20..60 min),
+  dodatek "historia snu" dziala w kolko. Zostaje w danych do porownan (qbot_wellness_daily.sleep_need_*).
+- `fitmodel/sleep_target.py`:
+  - baza z Twoich danych: prog snu najmocniej rozdzielajacy HRV NASTEPNEJ nocy (zwykle dni, 365 dni, min. 25/25),
+    liczony na biezaco, przyciety 7:00..8:30; 14.10.2026 = 7 h 45 (>= 7:45: +3,6 ms; < 7:45: -0,5 ms).
+  - dodatki UMOWNE (kalibracja po ~6 mies.): +30 ciezki dzien (XSS ModelQ dzis >= 150), +30 HRV ponizej/nisko lub
+    sygnal temp. skory; max +60. Pora snu = budzik 07:10 - cel - 15 min.
+  - wiadomosc 20:00 (qbot_food_log.build_day): "😴 Sen: cel 7 h 45 → spać ok. 23:10 (budzik 07:10)".
+  - przycisk w porannej wiadomosci "😳 Pobudka przed budzikiem" (tr:wake:RRRRMMDD, ZAWSZE; klikam tylko gdy sam)
+    -> `qbot_v2.sleep_wake_label` (sql/sleep_v1.sql). Nieoznaczona noc = normalna (praca/delegacja/inny budzik).
+  - rozliczenie Trenera (niedziela): "Sen tygodnia: srednio X vs cel" + liczba pobudek; gdy tydzien obejmuje koniec
+    miesiaca -> analiza pobudek (12 mies.): oznaczone noce vs reszta; gdy oznaczen < 10 -> regula historyczna
+    (lokalna jazda < 25 km od domu rozpoczeta >= 7:30, pobudka < 6:50, sen < 7 h). Czynniki: XSS dnia przed, jazda po 18:30,
+    alkohol (qbot_food_plan.alcohol_days), stres, temp. skory, HRV, tetno spocz., pora zasniecia.
+- Analiza 14.10 (regula historyczna, 2025-2026): spontaniczne pobudki ~24% nocy w domu (55/231); ZADEN mierzony
+  czynnik ich nie wyroznia (temp., HRV, RHR, stres, obciazenie, wieczorna jazda, pora zasniecia); mniej REM = skutek.
+  Sezonowosc = poranne jazdy latem (27/73 maj-lip), nie swiatlo (opaska + zatyczki od lat).
+- Testy: `tests/test_sleep_target.py`. Weryfikacja: /opt/qbot/artifacts/verify_sleep_target.py, preview_evening.py.
+
 ## Plan dalej
 Etapy 2–7 w `docs/TODO.md` -> `[GARMIN-DANE]`.

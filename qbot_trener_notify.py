@@ -265,6 +265,12 @@ def handle_callback(cq: dict, answer, send_plain, clear_buttons, chat_ok: str) -
             answer(cq.get("id"), "Zapisane")
             send_plain(SP.tg_confirm(arg))
             return
+        elif act == "wake":  # [GARMIN-DANE] Etap 5: pobudka przed budzikiem (oznaczenie uzytkownika)
+            from fitmodel.sleep_target import mark_early_wake
+            _msg = mark_early_wake(c, arg); conn.commit()
+            answer(cq.get("id"), "Zapisane")
+            send_plain(_msg)
+            return
         elif act in ("wxok", "wxno"):  # 2026-10-12: propozycja korekty z uwagi na pogode (qbot_trener_weather)
             import qbot_trener_weather as W
             if act == "wxno":
@@ -442,6 +448,17 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
                         _rt += "\n" + _gl
                 except Exception as e:
                     conn.rollback(); log.append(f"garmin-check: błąd {str(e)[:120]}")
+                try:   # [GARMIN-DANE] Etap 5: sen tygodnia; miesieczna analiza pobudek gdy tydzien obejmuje koniec miesiaca
+                    from fitmodel import sleep_target as _ST
+                    _swl = _ST.week_line(c, ws, ws + timedelta(days=6))
+                    if _swl:
+                        _rt += "\n" + _swl
+                    if ws.month != (ws + timedelta(days=7)).month:
+                        _ml = _ST.month_line(c, ws.replace(day=1))
+                        if _ml:
+                            _rt += "\n" + _ml
+                except Exception as e:
+                    conn.rollback(); log.append(f"garmin-check: błąd {str(e)[:120]}")
             if _merge and _rt:
                 _rev = (f"review:{yr}-W{wk:02d}", _rt)
             else:
@@ -517,6 +534,11 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
                 _kb = _kb + _spb
             except Exception as e:
                 log.append(f"suplementy: błąd {str(e)[:120]}")
+            try:  # [GARMIN-DANE] Etap 5: przycisk 'Pobudka przed budzikiem' (zawsze; klikam tylko gdy sam sie obudzilem)
+                from fitmodel.sleep_target import wake_button as _wkb
+                _kb = _kb + _wkb(today)
+            except Exception as e:
+                log.append(f"pobudka: błąd {str(e)[:80]}")
             try:  # 2026-10-13: Garaz > Zakupy - konczy sie zapas (linia + Kup ponownie / +7 dni)
                 import qbot_zakupy_api as ZK
                 _zkl, _zkb = ZK.morning(today)

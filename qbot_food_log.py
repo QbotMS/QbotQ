@@ -811,6 +811,12 @@ def build_day(day: date) -> tuple[str, dict]:
         L.append(FP.evening_line(day))
     except Exception as ex:
         _log("cel dnia: %s" % ex)
+    try:   # [GARMIN-DANE] Etap 5 (2026-10-14): wlasny cel snu + pora snu (fitmodel/sleep_target.py)
+        from fitmodel.sleep_target import evening_line as _sleep_line
+        with _conn() as c:
+            L.append(_sleep_line(c, day))
+    except Exception as ex:
+        _log("sen: %s" % ex)
     with _conn() as c:
         ws, wd = S.window_status(c, day)
     if ws == "exempt":
