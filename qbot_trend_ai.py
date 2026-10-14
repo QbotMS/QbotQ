@@ -19,7 +19,8 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, HTTPException, Request
 
-WELL = {"hrv": ("HRV", "ms", +1), "rhr": ("tętno spoczynkowe", "bpm", -1), "sleep": ("sen (score)", "pkt", +1), "rdy3": ("gotowość 3 dni", "", +1)}
+WELL = {"hrv": ("HRV", "ms", +1), "rhr": ("tętno spoczynkowe", "bpm", -1), "sleep": ("sen (score)", "pkt", +1), "rdy3": ("gotowość 3 dni", "", +1),
+        "hrr": ("tętno odpoczynku po akcentach (HRR60)", "bpm", +1)}
 LOADF = {"xss": ("obciążenie dnia (XSS)", ""), "atl": ("zmęczenie faktyczne", ""), "bal": ("bilans kcal dnia", "kcal")}
 
 
@@ -117,7 +118,7 @@ def discover(rows: list[dict], a: int, b: int) -> dict:
     N = len(rows)
     days = [date.fromisoformat(r["day"][:10]) for r in rows]
     col = lambda k: [_num(r.get(k)) for r in rows]
-    C = {k: col(k) for k in ("xss", "ctl", "atl", "sleep", "hrv", "rhr", "rdy3", "weight", "bal")}
+    C = {k: col(k) for k in ("xss", "ctl", "atl", "sleep", "hrv", "rhr", "rdy3", "weight", "bal", "hrr")}
     C["xss"] = [v if v is not None else 0.0 for v in C["xss"]]
     short = (b - a + 1) < 28
     # noc po alkoholu = odstajacy punkt: wylaczona z norm i korelacji (osobno liczony koszt wieczoru z alkoholem)
@@ -277,6 +278,10 @@ def _fill_food(rows):
                     ex = FP.expend(c, date.fromisoformat(d))
                     if ex["src"] == "realne":
                         r["bal"] = itk[d] - ex["kcal"]
+            hm = {x["day"].isoformat(): float(x["h"]) for x in c.execute(
+                "SELECT day, avg(hrr60) h FROM qbot_v2.ride_hrr WHERE hrr60 IS NOT NULL AND day BETWEEN %s AND %s GROUP BY day", (days[0], days[-1])).fetchall()}
+            for r in rows:
+                r["hrr"] = hm.get(r["day"][:10])
             alc = FP.alcohol_days(c, date.fromisoformat(days[0]), date.fromisoformat(days[-1]))
             for r in rows:
                 r["alc"] = date.fromisoformat(r["day"][:10]) in alc

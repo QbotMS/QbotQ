@@ -177,7 +177,7 @@
       "<div class='meter' role='progressbar' aria-valuenow='" + Math.round(t) + "' aria-valuemax='" + d.target + "' aria-label='Zjedzone względem celu'><i class='" + cls + "' style='width:" + pct.toFixed(1) + "%'></i></div>" +
       "<div class='sub' style='color:var(--" + (cls === "over" ? "bad" : cls === "under" ? "warn" : "ink2") + ")'>" + verdict + balTxt + "</div>" +
       "<div class='kv'><span>Białko</span><span id='mx-p'>" + n0(d.totals.protein_g) + " g</span><span>Węglowodany</span><span id='mx-c'>" + n0(d.totals.carbs_g) + " g</span><span>Tłuszcz</span><span id='mx-f'>" + n0(d.totals.fat_g) + " g</span>" +
-      "<span>Spalanie</span><span>" + n0(d.expend) + " kcal" + (d.expend_src === "prognoza" ? " (prognoza" + (d.so_far != null ? "; Garmin do " + d.so_far_at + ": " + n0(d.so_far) : "") + ")" : "") + "</span>" +
+      "<span>Spalanie</span><span>" + n0(d.expend) + " kcal" + (d.expend_src === "prognoza" ? " (prognoza" + (d.so_far != null ? "; Garmin do " + d.so_far_at + ": " + n0(d.so_far) + (d.so_far_lag_h >= 1 ? ", dane opóźnione ~" + Math.round(d.so_far_lag_h) + " h – zsynchronizuj zegarek" : "") : "") + ")" : "") + "</span>" +
       (d.expend_parts ? "<span class='muted'>  w tym</span><span class='muted'>spoczynek " + n0(d.expend_parts.bmr) + " + ruch " + n0(d.expend_parts.neat) + " + trening " + n0(d.expend_parts.train) + "</span>" : "") + "<span>Deficyt w planie</span><span>" + n0(d.target - d.expend) + " kcal <span class='muted'>(budżet tygodnia)</span></span>" +
       (d.brokul_kcal ? "<span>Dokładka do Brokuła</span><span>" + (d.extra >= 150 ? n0(d.extra) + " kcal" : "nie trzeba") + "</span>" : "") + "</div>" +
       "<div id='todo'></div>" +

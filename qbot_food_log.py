@@ -823,6 +823,15 @@ def build_day(day: date) -> tuple[str, dict]:
         L += S.milestone_lines(day)
     except Exception:
         pass
+    try:  # 2026-10-14: seria cisnienia - wieczorny pomiar (tylko dzis i gdy jeszcze nie bylo)
+        import qbot_food_plan as _FP
+        if day == date.today():
+            with _conn() as c:
+                bs = _FP.bp_series(c, day)
+            if bs and not bs["evening"]:
+                L.append("🩺 Wieczorny pomiar ciśnienia (dzień %d/%d) – 2 pomiary" % (bs["n"], _FP.BP_SERIES_DAYS))
+    except Exception as ex:
+        _log("seria cisnienia: %s" % ex)
     if cs["closed"]:
         L.append("🔒 zamknięty")
     else:

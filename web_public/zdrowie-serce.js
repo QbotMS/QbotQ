@@ -38,7 +38,15 @@
       if (cs.deficyt.n_a >= 3 && cs.deficyt.n_b >= 3) rows.push("Ciśnienie rano po <b>deficycie</b> > 500 kcal: " + cs.deficyt.a + " vs " + cs.deficyt.b + ".");
       if (cs.pomiary_rano < 6) rows.push("Ciśnienie a sól, deficyt i wagę: za mało pomiarów (" + cs.pomiary_wszystkie + " w bazie, rano " + cs.pomiary_rano + "). Seria 7 dni ciśnienia rano da pierwszą odpowiedź – dieta daje ~10 g soli dziennie (norma 5 g).");
       out += "<div class='card'><div class='cardhead'><p class='lbl'>Serce a jedzenie i waga</p></div>" + rows.map(function (r) { return "<div class='s3row info'><span class='i'>·</span><span>" + r + "</span></div>"; }).join("") + "</div>";
-      root.innerHTML = out;
+      root.innerHTML = out + "<div class='card' id='hrr-card'><div class='muted'>ładuję tętno odpoczynku…</div></div>";
+      fetch("/api/jedzenie/hrr?days=365", { credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (hx) {
+        var el = document.getElementById("hrr-card"); if (!el || !hx) return;
+        var s = (hx.rides || []).map(function (q) { return [q.day, q.hrr60]; }), d = hx.recent != null && hx.norm != null ? hx.recent - hx.norm : null;
+        var col = d == null ? "var(--muted)" : d <= -4 ? "var(--bad)" : d <= -2 ? "var(--accent)" : "var(--good)";
+        el.innerHTML = "<div class='cardhead'><p class='lbl'><span class='tip' tabindex='0' data-tip='Spadek tętna w 60 s po mocnym akcencie w jeździe (podjazd, przyspieszenie), gdy potem jedziesz lekko. Liczone automatycznie z każdej jazdy (min. 3 takie momenty). Szybszy spadek = lepsza forma; wyraźnie wolniejszy niż Twoja norma = zmęczenie lub początek choroby.'>Tętno odpoczynku po akcentach (HRR60)</span></p>" +
+          "<span class='sub'>" + (hx.recent != null ? "ostatnie 28 dni: <b style='color:" + col + "'>" + n1(hx.recent) + " bpm</b> (" + hx.n_recent + " jazd)" : "za mało jazd w 28 dniach") + (hx.norm != null ? " · norma " + n1(hx.norm) + (d != null ? " (" + sg(d) + ")" : "") : "") + "</span></div>" +
+          (s.length >= 10 ? chart(s, hx.norm) : "<p class='muted'>Wykres pojawi się po co najmniej 10 jazdach z pomiarem (" + s.length + ").</p>");
+      }).catch(function () {});
     }).catch(function (e) { done = false; root.innerHTML = "<div class='card'>Nie udało się wczytać HRV: " + e.message + "</div>"; });
   }
   var btn = document.querySelector('#tabs button[data-t="serce"]'); if (btn) btn.addEventListener("click", load);

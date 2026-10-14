@@ -63,7 +63,7 @@ def day_card(day: date, plan_ctx: dict) -> dict:
     return {"day": day.isoformat(), "weekday": F.DNI[day.weekday()], "has_diet": bool(meals), "meals": meals, "fridge": fridge,
             "entries": [_row(e, ENTRY_KEYS) for e in ents], "closed": cs["closed"], "none": cs["none"], "pending": cs["pending"],
             "window": {"state": ws, "detail": wd}, "totals": {k: round(v or 0) for k, v in tot.items()},
-            "target": tgt, "expend": round(ex["kcal"]), "expend_src": ex["src"], "so_far": ex.get("so_far"), "so_far_at": ex.get("so_far_at"), "expend_parts": ex.get("parts"), "brokul_kcal": bk,
+            "target": tgt, "expend": round(ex["kcal"]), "expend_src": ex["src"], "so_far": ex.get("so_far"), "so_far_at": ex.get("so_far_at"), "so_far_lag_h": ex.get("so_far_lag_h"), "expend_parts": ex.get("parts"), "brokul_kcal": bk,
             "extra": max(0, tgt - bk) if bk else None, "sessions": ses,
             "deadline": S.deadline(day).isoformat(), "late": S._past(day, datetime.now(TZ))}
 
@@ -574,6 +574,13 @@ def build_router(current_user, owner_user) -> APIRouter:
             return {"ok": True, "ai": week_ai(_d(b.get("week")) if b.get("week") else datetime.now(TZ).date(), force=True)}
         except Exception as ex:
             raise HTTPException(status_code=502, detail="AI niedostępne: %s" % type(ex).__name__)
+
+    @r.get("/hrr")
+    def hrr(request: Request, days: int = 365):
+        """Tetno odpoczynku po akcentach (HRR60) z jazd: per jazda + norma roku + ostatnie 28 dni (qbot_hrr.py)."""
+        need_user(request)
+        import qbot_hrr as H
+        return H.summary(max(30, min(800, days)))
 
     @r.get("/alcohol")
     def alcohol(request: Request, start: str, end: str):

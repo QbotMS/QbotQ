@@ -126,6 +126,16 @@ Z harmonogramu tylko DWIE wiadomości dziennie, zwięzłe (~8 linijek), szczegó
   ciężkie jazdy w dni niskiej gotowości; dawka-odpowiedź tygodniami; deficyt > 700 kcal → regeneracja następnego dnia (bilans z bazy QBota); trend formy vs HRV/RHR/sen/waga.
 - AI (POST /api/trendy/ai) dostaje tylko te wyniki: zakaz opisywania widocznych trendów i par definicyjnych; zwraca nagłówek, 3–5 odkryć (co / znaczenie / pewność), eksperyment, czego brakuje.
 
+## HRR60 – tętno odpoczynku po akcentach (14.10.2026)
+- `qbot_hrr.py` + `sql/hrr_v1.sql` (qbot_v2.ride_hrr): z FIT każdej jazdy – akcent (30 s ≥ CP albo tętno ≥ 90% max jazdy), szczyt tętna w 20 s,
+  potem 60 s ciągłego zapisu z mocą < 40% CP → spadek po 60 s (HRR60) i 30 s; na jazdę mediana (min. 3 momenty). Bez testów i paska.
+- Nowe jazdy: tick Brokuła (co 15 min, maks. 2). Wstecz: `python qbot_hrr.py --days 365` (14.10: 189 jazd, wynik w 51, mediana 17 bpm).
+- Widok: Zdrowie → Serce (ostatnie 28 dni vs norma roku + wykres), Forma → Trendy → Wellness (pigułka „odpoczynek HR 60 s”), Analiza AI (wellness „hrr”). API: GET /api/jedzenie/hrr.
+
+## Serce – seria i tryb kontrolny (14.10.2026, decyzja Michała: EKG zawsze razem z ciśnieniem)
+- `qbot_food_plan.bp_series` + `heart_lines`: seria 7 dni – rano „2 pomiary + EKG”, wieczorem (20:00) „wieczorny pomiar”; po serii poniedziałkowa kontrola tygodniowa (2 pomiary + EKG) gdy brak pomiaru 7 dni;
+  nowa seria co 90 dni albo po −5 kg; średnia serii ≥ 135/85 → przez 3 dni linia o wizycie i raporcie PDF. Prognoza spalania dnia: część doby z resting_kcal/BMR (opóźniony Garmin).
+
 ## Dzwonek – powiadomienia Zdrowia (13.10.2026)
 - `qbot_food_log.notif_items` → `qbot_notif.sync_live` (stan na żywo, klucze live:jedzenie:*, znika sam po załatwieniu): wczoraj do 12:00 i dziś od 19:30 –
   „Okno 10–20 … dotrzymane?” (akcja „Okno OK” → POST /api/jedzenie/window; złamane = link do dnia) oraz „Zamknij dzień …” (akcja „Brokuł zjedzony” → /api/jedzenie/brokul/all albo „Nic poza dietą” → /api/jedzenie/none; link do dnia).

@@ -109,13 +109,17 @@ def expend(c, day: date) -> dict:
     ses = sessions(c, day)
     plan_h = sum((s["dur_min"] or 0) / 60 * SPORT_F.get(s["sport"], 0.8) for s in ses if s["status"] == "plan")
     if day == date.today():
-        g = c.execute("SELECT COALESCE(total_kcal_eff,total_kcal) e, updated_at FROM qbot_v2.energy_daily WHERE date=%s", (day,)).fetchone()
+        g = c.execute("SELECT COALESCE(total_kcal_eff,total_kcal) e, resting_kcal r, updated_at FROM qbot_v2.energy_daily WHERE date=%s", (day,)).fetchone()
         if g and g["e"] and g["updated_at"]:
             up = g["updated_at"].astimezone(TZ)
-            frac = min(1.0, max(0.0, (up.hour * 60 + up.minute) / 1440)) if up.date() == day else (1.0 if up.date() > day else 0.0)
+            frac_t = min(1.0, max(0.0, (up.hour * 60 + up.minute) / 1440)) if up.date() == day else (1.0 if up.date() > day else 0.0)
+            # 2026-10-13: Garmin bywa opozniony (zegarek nie zsynchronizowany) - ile doby jest juz w danych, mowi spalanie spoczynkowe
+            frac = min(1.0, float(g["r"]) / m["bmr"]) if g["r"] and m.get("bmr") else frac_t
+            frac = min(frac, frac_t) if frac_t > 0 else frac
             rest = base * (1 - frac) + m["per_h"] * plan_h
+            lag_h = max(0.0, (frac_t - frac) * 24)
             return {"kcal": float(g["e"]) + rest, "src": "prognoza", "so_far": round(float(g["e"])),
-                    "so_far_at": up.strftime("%H:%M"), "train_h": round(plan_h, 2),
+                    "so_far_at": up.strftime("%H:%M"), "so_far_lag_h": round(lag_h, 1), "train_h": round(plan_h, 2),
                     "parts": {"bmr": m["bmr"], "neat": m["neat_wd"].get(day.weekday()), "train": round(m["per_h"] * plan_h)}}
     act = c.execute("SELECT COALESCE(sum(duration_s),0)/3600.0 h FROM qbot_v2.training_sessions WHERE date=%s", (day,)).fetchone()["h"]
     h = float(act) + plan_h
@@ -531,6 +535,79 @@ def weekend_lines(friday: date) -> list[str]:
     return ["🗓 Weekend: " + " · ".join(out) + ". Co zamawiać: strona Zdrowie → Analiza."]
 
 
+BP_SERIES_DAYS = 7
+
+
+def bp_series(c, day: date) -> dict | None:
+    """Aktywna 7-dniowa seria cisnienia: start = pierwszy dzien pomiarow po przerwie >= 14 dni. None gdy brak serii albo skonczona.
+    Zwraca {'n': dzien serii 1..7, 'start', 'morning': czy dzis rano juz mierzone, 'evening': czy dzis wieczorem juz mierzone}."""
+    rows = c.execute("SELECT measured_local FROM qbot_v2.blood_pressure WHERE measured_local >= %s ORDER BY measured_local",
+                     (day - timedelta(days=60),)).fetchall()
+    days = sorted({r["measured_local"].date() for r in rows if r["measured_local"]})
+    if not days:
+        return None
+    start = days[0]
+    for a, b in zip(days, days[1:]):
+        if (b - a).days >= 14:
+            start = b
+    n = (day - start).days + 1
+    if n < 1 or n > BP_SERIES_DAYS or (day - days[-1]).days > 2:
+        return None
+    today = [r["measured_local"] for r in rows if r["measured_local"] and r["measured_local"].date() == day]
+    return {"n": n, "start": start, "morning": any(t.hour < 12 for t in today), "evening": any(t.hour >= 17 for t in today)}
+
+
+BP_HIGH = (135, 85)          # prog dla pomiarow domowych
+BP_SERIES_EVERY = 90         # dni miedzy seriami
+BP_SERIES_KG = 5.0           # albo po takim spadku wagi od startu poprzedniej serii
+
+
+def heart_lines(c, day: date) -> list[str]:
+    """Linie porannej wiadomosci o cisnieniu i EKG (EKG zawsze razem z cisnieniem). Pusta lista, gdy nic nie jest nalezne."""
+    out = []
+    ecg_today = c.execute("SELECT 1 FROM qbot_v2.ecg_recording WHERE started_local::date = %s LIMIT 1", (day,)).fetchone() is not None
+    ekg = "" if ecg_today else " + EKG"
+    bs = bp_series(c, day)
+    if bs:
+        if not bs["morning"]:
+            out.append("🩺 Ciśnienie: dzień %d/%d – teraz 2 pomiary%s (przed kawą, po 5 min siedzenia)" % (bs["n"], BP_SERIES_DAYS, ekg))
+        return out
+    rows = c.execute("SELECT measured_local, systolic, diastolic FROM qbot_v2.blood_pressure WHERE measured_local >= %s ORDER BY measured_local",
+                     (day - timedelta(days=400),)).fetchall()
+    days = sorted({r["measured_local"].date() for r in rows if r["measured_local"]})
+    # ostatnia seria: dni pomiarow po przerwie >= 14 dni
+    start = None
+    if days:
+        start = days[0]
+        for a, b in zip(days, days[1:]):
+            if (b - a).days >= 14:
+                start = b
+    # srednia ostatniej serii (pierwsze 7 dni od startu) - alarm przez 3 dni po jej koncu
+    if start:
+        ser = [r for r in rows if start <= r["measured_local"].date() < start + timedelta(days=BP_SERIES_DAYS)]
+        end = start + timedelta(days=BP_SERIES_DAYS - 1)
+        if len(ser) >= 8 and 0 < (day - end).days <= 3:
+            sa = round(sum(r["systolic"] for r in ser) / len(ser))
+            da = round(sum(r["diastolic"] for r in ser) / len(ser))
+            if sa >= BP_HIGH[0] or da >= BP_HIGH[1]:
+                out.append("🩺 Średnia serii %d/%d – powyżej %d/%d: umów wizytę, raport PDF w Zdrowie → Serce" % (sa, da, BP_HIGH[0], BP_HIGH[1]))
+    if day.weekday() != 0:
+        return out
+    # poniedzialek: nowa seria (co 90 dni albo po -5 kg) ma pierwszenstwo przed kontrola tygodniowa
+    need_series = start is None or (day - start).days >= BP_SERIES_EVERY
+    if not need_series and start:
+        w0 = c.execute("SELECT weight_kg FROM qbot_v2.body_measurements WHERE weight_kg IS NOT NULL AND date <= %s ORDER BY date DESC LIMIT 1", (start,)).fetchone()
+        w1 = c.execute("SELECT weight_kg FROM qbot_v2.body_measurements WHERE weight_kg IS NOT NULL ORDER BY date DESC LIMIT 1").fetchone()
+        need_series = bool(w0 and w1 and float(w0["weight_kg"]) - float(w1["weight_kg"]) >= BP_SERIES_KG)
+    if need_series:
+        out.append("🩺 Czas na 7-dniową serię ciśnienia: od dziś rano i wieczorem po 2 pomiary, rano też EKG")
+        return out
+    last = days[-1] if days else None
+    if not last or (day - last).days >= 7:
+        out.append("🩺 Ciśnienie: kontrola tygodniowa – 2 pomiary%s" % ekg)
+    return out
+
+
 def _window_pending(day: date) -> date | None:
     """Wczorajsze okno 10-20 do potwierdzenia rano (niepotwierdzone, nie zwolnione, przed terminem 12:00)."""
     import qbot_food_streaks as S
@@ -574,6 +651,11 @@ def morning_digest(day: date, train_lines: list[str] | None = None) -> str | Non
         with _conn() as c:
             if (day - timedelta(days=1)) in alcohol_days(c, day - timedelta(days=1), day - timedelta(days=1)):
                 L.append("🍷 Wczoraj alkohol – niższe HRV/gotowość dziś to raczej to, nie trening")
+    except Exception:
+        pass
+    try:  # 2026-10-14: serce - seria / kontrola tygodniowa / nowa seria / alarm sredniej; EKG zawsze razem z cisnieniem
+        with _conn() as c:
+            L += heart_lines(c, day)
     except Exception:
         pass
     try:  # 2026-10-12: obwod talii co 2 tygodnie - przypomnienie tylko w poniedzialek, gdy minelo >= 14 dni

@@ -397,6 +397,11 @@ def tick(now: datetime | None = None) -> None:
     else:
         _log("brak sesji (.brokul_session)")
     # 2026-10-12: koniec diety -> linia w porannej wiadomosci (qbot_food_plan.morning_digest), bez osobnej wysylki
+    try:  # 2026-10-14: HRR60 (tetno odpoczynku po akcentach) dla nowych jazd - maks. 2 na tick
+        import qbot_hrr as _H
+        _H.tick(2)
+    except Exception as e:
+        _log("HRR60: %s" % e)
     try:  # 2026-10-12: zalecenia AI tygodnia (Jedzenie -> Analiza) - same, w niedziele od 21:00, raz na tydzien, bez wiadomosci
         if now.weekday() == 6 and now.hour >= 21:
             import qbot_food_api as FA
