@@ -26,6 +26,8 @@ def _fake(n=30):
 class Warunki(unittest.TestCase):
     def setUp(self):
         PG._CC.clear()
+        import qbot_wx
+        qbot_wx._C.clear()
         asg = {p: {d: {"model": "best_match", "opis": "x", "wartosc": None, "zakres": "x"} for d in (1, 2, 3)}
                for p in ("temp", "wiatr", "poryw", "opad")}
         self.p = [mock.patch("qbot_pogoda_verif.przydzial", return_value=asg),

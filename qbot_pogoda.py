@@ -33,11 +33,9 @@ def model_point(lat: float, lon: float, hours: int = HOURS) -> dict:
     import qbot_pogoda_verif as PV
     asg = PV.przydzial(lat, lon)["opad"]
     mods = sorted({asg[d]["model"] for d in asg} | {"best_match"})
-    q = urllib.parse.urlencode({"latitude": round(lat, 4), "longitude": round(lon, 4), "models": ",".join(mods),
-                                "hourly": "precipitation", "forecast_hours": hours + 1, "timezone": "Europe/Warsaw"})
-    try:
-        with urllib.request.urlopen(URL + "?" + q, timeout=12) as r:
-            j = json.load(r)
+    try:   # E1: pobieranie przez rdzen danych qbot_wx (jeden klient Open-Meteo + cache)
+        import qbot_wx as WX
+        j = WX.forecast(lat, lon, "precipitation", models=mods, forecast_hours=hours + 1)
     except Exception as e:
         return {"status": "ERROR", "error": f"Model niedostepny: {type(e).__name__}"}
     h = j.get("hourly") or {}
@@ -98,12 +96,9 @@ def conditions_point(lat: float, lon: float, hours: int = 24) -> dict:
     import qbot_pogoda_verif as PV
     asg = PV.przydzial(lat, lon)
     mods = sorted({asg[p][d]["model"] for p in asg for d in asg[p]} | {"best_match"})
-    q = urllib.parse.urlencode({"latitude": round(lat, 4), "longitude": round(lon, 4), "hourly": HOURLY, "models": ",".join(mods),
-                                "past_hours": 12, "forecast_hours": hours + 1, "wind_speed_unit": "ms",
-                                "timezone": "Europe/Warsaw"})
-    try:
-        with urllib.request.urlopen(URL + "?" + q, timeout=12) as r:
-            j = json.load(r)
+    try:   # E1: pobieranie przez rdzen danych qbot_wx
+        import qbot_wx as WX
+        j = WX.forecast(lat, lon, HOURLY, models=mods, past_hours=12, forecast_hours=hours + 1)
     except Exception as e:
         return {"status": "ERROR", "error": f"Prognoza warunkow niedostepna: {type(e).__name__}"}
     hr = j.get("hourly") or {}
@@ -138,7 +133,7 @@ def conditions_point(lat: float, lon: float, hours: int = 24) -> dict:
         mgla = None if vis is None else (2 if vis < 1000 else 1 if vis < 4000 else 0)
         naw = 2 if p6 >= 2 else 1 if p6 >= 0.3 else 0
         rosa = None if (T is None or Td is None) else round(T - Td, 1)
-        # opad, snieg i porywy z Open-Meteo dotycza GODZINY POPRZEDZAJACEJ -> wiersz T (godzina T..T+1) bierze wartosc z T+1.
+        # opad, snieg i porywy z Open-Meteo dotycza GODZINY POPRZEDZAJACEJ (qbot_wx.PREV_HOUR) -> wiersz T (godzina T..T+1) bierze wartosc z T+1.
         # UWAGA: komentarzy NIE wstawiac w srodek tego slownika (14.10 dwa razy wyciely pola) -- pilnuje tests/test_pogoda_conditions.py
         rows.append({"iso": t, "t": t[11:16], "przeszlosc": _dt.datetime.fromisoformat(t) < now,
                      "temp": T, "odcz": g("apparent_temperature", i), "rh": g("relative_humidity_2m", i), "rosa_pkt": Td,
@@ -194,11 +189,9 @@ def charakter_dni(lat: float, lon: float, dni: int = 3) -> dict:
     hit = _CH.get(key)
     if hit and hit[0] > time.time() - 1800:
         return hit[1]
-    q = urllib.parse.urlencode({"latitude": round(lat, 3), "longitude": round(lon, 3), "hourly": "cape,lifted_index",
-                                "forecast_days": dni, "timezone": "Europe/Warsaw"})
-    try:
-        with urllib.request.urlopen(URL + "?" + q, timeout=12) as r:
-            h = json.load(r).get("hourly") or {}
+    try:   # E1: rdzen danych qbot_wx
+        import qbot_wx as WX
+        h = WX.forecast(lat, lon, "cape,lifted_index", forecast_days=dni).get("hourly") or {}
     except Exception as e:
         return {"status": "ERROR", "error": f"{type(e).__name__}"}
     out = {}

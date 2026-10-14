@@ -28,3 +28,10 @@
 - **E3** — wspólna fizyka odczucia: UTCI + „na rowerze” + WBGT (lato) także dla punktu (Pogoda, Okno jazdy); warunki drogi i charakter dnia
   także dla tras. Jedna reguła wyboru modelu: sprawdzalność, a gdzie jej brak (zagranica, daleko w przód) — najdrobniejsza siatka + rozrzut.
 - **E4** — Trener, powiadomienia, raport poranny, Albert na rdzeniu; usunięcie OpenWeatherMap.
+
+## E1 — rdzeń danych `qbot_wx.py` (2026-10-14, część 1)
+`qbot_wx`: `forecast()` (klient Open-Meteo /forecast, wiatr m/s, czas Europe/Warsaw, cache 10 min po pełnym zapytaniu), `PREV_HOUR`
+(wielkości z godziny poprzedzającej: opad, deszcz, przelotne, śnieg, szansa opadu, porywy, kod pogody), `next_hour()` (wartość dla godziny
+T..T+1), `ens_prob()` (szansa ≥ 0,2 mm/h z ICON-EU-EPS dla godziny HH..HH+1). Na rdzeniu: `qbot_pogoda.conditions_point`, `model_point`,
+`charakter_dni`, `qbot_pogoda_okno._ens_prob`. Zgodność przed/po sprawdzona na żywo (identyczne wyniki). Test bez sieci:
+`tests/test_pogoda_conditions.py`. Dalej: radar/mapy/ERA5 (część 2), silnik tras (E2), Trener i reszta (E4).

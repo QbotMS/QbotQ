@@ -32,24 +32,9 @@ def _get_json(url: str, t: float = 15):
 
 
 def _ens_prob(lat: float, lon: float) -> dict:
-    key = ("ens", round(lat, 2), round(lon, 2))
-    if key in _C and _C[key][0] > time.time() - 900:
-        return _C[key][1]
-    q = urllib.parse.urlencode({"latitude": round(lat, 4), "longitude": round(lon, 4), "models": "icon_eu_eps", "hourly": "precipitation",
-                                "forecast_days": 6, "timezone": "Europe/Warsaw"})   # 6: Warunki na dzis+4
-    out = {}
-    try:
-        h = _get_json(ENS + "?" + q).get("hourly") or {}
-        mem = [k for k in h if k.startswith("precipitation")]
-        for i, t in enumerate(h.get("time") or []):
-            v = [h[k][i] for k in mem if h[k][i] is not None]
-            if v:   # 14.10: wartosc o T = opad z godziny PRZED T -> przypisz do godziny T-1 (przedzial T-1..T)
-                k = (dt.datetime.fromisoformat(t) - dt.timedelta(hours=1)).isoformat()[:13]
-                out[k] = sum(1 for x in v if x >= EPS_PROG) / len(v)
-    except Exception:
-        pass
-    _C[key] = (time.time(), out)
-    return out
+    """Szansa opadu z zespolu ICON-EU-EPS dla godziny HH..HH+1 -- E1: z rdzenia danych qbot_wx (jedno zrodlo dla Pogody i Okna jazdy)."""
+    import qbot_wx as WX
+    return WX.ens_prob(lat, lon, prog=EPS_PROG)
 
 
 def _sun(lat: float, lon: float) -> dict:
