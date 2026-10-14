@@ -387,7 +387,7 @@ def _meteo_cache_put(key: str, data: dict) -> None:
 
 def _fetch_point(lat: float, lon: float, date_str: str, timeout: float = 15.0,
                  model: Optional[str] = None) -> dict:
-    key = "%.3f,%.3f|%s|%s" % (round(lat, 3), round(lon, 3), date_str, model or "best_match")
+    key = "%.3f,%.3f|%s|%s|e3" % (round(lat, 3), round(lon, 3), date_str, model or "best_match")
     data = _meteo_cache_get(key)
     if data is None:
         data = _fetch_point_raw(lat, lon, date_str, timeout=timeout, model=model)
@@ -397,8 +397,87 @@ def _fetch_point(lat: float, lon: float, date_str: str, timeout: float = 15.0,
     return {"times": times, "h": h, "daily": data.get("daily") or {}}
 
 
+# ---------------------------------------------------------------- E3 (14.10.2026): JEDNA REGULA MODELU (Dok.: docs/POGODA_SILNIK.md)
+# 1) brak modelu od wolajacego -> model KANONICZNY (route_weather_models.canonical_model: najdrobniejsza siatka siegajaca daty), nie best_match
+#    -- Analiza trasy, raport Alberta i raport z jazdy licza tak samo jak Planer;
+# 2) Polska i 1-3 dni: temperatura/wilgotnosc, wiatr, porywy i ilosc opadu z modeli wg SPRAWDZALNOSCI (qbot_pogoda_verif.przydzial),
+#    szansa opadu z ZESPOLU ICON-EU-EPS (qbot_wx.ens_prob); reszta (promieniowanie, cisnienie, chmury, CAPE, kod) z kanonu.
+E3_GR = {"temp": ["temperature_2m", "relative_humidity_2m"], "wiatr": ["wind_speed_10m", "wind_direction_10m"], "poryw": ["wind_gusts_10m"],
+         "opad": ["precipitation"]}
+E3_PL = (49.0, 54.9, 14.1, 24.2)
+_MODEL_INFO: dict = {}
+_CANON_MEMO: dict = {}
+
+
+def _canon(lat: float, lon: float, date_str: str) -> Optional[str]:
+    k = "%.1f,%.1f|%s" % (lat, lon, date_str)
+    if k not in _CANON_MEMO:
+        try:
+            from qbot3.routes.route_weather_models import canonical_model
+            _CANON_MEMO[k] = canonical_model(lat, lon, date_str).get("model")
+        except Exception:
+            _CANON_MEMO[k] = None
+    return _CANON_MEMO[k]
+
+
+def _merge_e3(data: dict, lat: float, lon: float, date_str: str, timeout: float) -> None:
+    days = (_dt.date.fromisoformat(date_str[:10]) - _dt.date.today()).days
+    if not (E3_PL[0] <= lat <= E3_PL[1] and E3_PL[2] <= lon <= E3_PL[3]) or not 0 <= days <= 3:
+        return
+    import qbot_pogoda_verif as PV
+    import qbot_wx as WX
+    from zoneinfo import ZoneInfo
+    lead = max(1, min(3, days or 1))
+    asg = PV.przydzial(lat, lon)
+    mods = sorted({asg[p][lead]["model"] for p in E3_GR})
+    p = {"latitude": round(lat, 3), "longitude": round(lon, 3), "hourly": ",".join(v for vs in E3_GR.values() for v in vs), "models": ",".join(mods),
+         "windspeed_unit": "ms", "timezone": "UTC", "start_date": date_str, "end_date": date_str}
+    hm = WX.get_url(OPEN_METEO_URL + "?" + urllib.parse.urlencode(p), timeout=timeout, ttl=600, ua="QBot-METEO/1.0").get("hourly") or {}
+    hb = data.get("hourly") or {}
+    n = len(hb.get("time") or [])
+    for par, vs in E3_GR.items():
+        m = asg[par][lead]["model"]
+        for v in vs:
+            ser = hm.get(f"{v}_{m}") or (hm.get(v) if len(mods) == 1 else None)
+            if ser and len(ser) == n and v in hb:
+                hb[v] = [x if x is not None else y for x, y in zip(ser, hb[v])]
+        _MODEL_INFO.setdefault("przydzial", {})[par] = asg[par][lead].get("opis") or m
+    pr = WX.ens_prob(round(lat, 1), round(lon, 1))
+    if pr and "precipitation_probability" in hb:
+        tz = ZoneInfo("Europe/Warsaw"); out = []
+        for t, old in zip(hb["time"], hb["precipitation_probability"]):
+            # znacznik T (UTC) = godzina T-1..T -> klucz zespolu = poczatek tej godziny w czasie lokalnym
+            k = (_dt.datetime.fromisoformat(t).replace(tzinfo=_dt.timezone.utc) - _dt.timedelta(hours=1)).astimezone(tz).strftime("%Y-%m-%dT%H")
+            v = pr.get(k)
+            out.append(round(v * 100) if v is not None else old)
+        hb["precipitation_probability"] = out
+        _MODEL_INFO["szansa"] = "zespół ICON-EU-EPS (40 wariantów)"
+
+
+def _model_label(model: Optional[str]) -> str:
+    k = _MODEL_INFO.get("kanon") or model or "best_match"
+    pz = _MODEL_INFO.get("przydzial")
+    if not pz:
+        return k
+    return ("wg sprawdzalności: temp. %s, wiatr %s, porywy %s, opad %s; szansa: %s; reszta: %s"
+            % (pz.get("temp"), pz.get("wiatr"), pz.get("poryw"), pz.get("opad"), _MODEL_INFO.get("szansa", k), k))
+
+
 def _fetch_point_raw(lat: float, lon: float, date_str: str, timeout: float = 15.0,
                      model: Optional[str] = None) -> dict:
+    model = model or _canon(lat, lon, date_str)
+    if model:
+        _MODEL_INFO["kanon"] = model
+    data = _fetch_point_raw_base(lat, lon, date_str, timeout=timeout, model=model)
+    try:
+        _merge_e3(data, lat, lon, date_str, timeout)
+    except Exception as e:      # bez E3 zostaje kanon -- silnik dziala dalej
+        _MODEL_INFO["blad_e3"] = f"{type(e).__name__}: {e}"[:120]
+    return data
+
+
+def _fetch_point_raw_base(lat: float, lon: float, date_str: str, timeout: float = 15.0,
+                          model: Optional[str] = None) -> dict:
     hourly = ["temperature_2m", "relative_humidity_2m", "cloud_cover",
               "wind_speed_10m", "wind_direction_10m",
               "surface_pressure", "shortwave_radiation_instant", "direct_radiation_instant",
@@ -480,7 +559,7 @@ def build_day_thermal(route_id: str, date_str: str, grid_pts: dict, weather_by_g
                       model: Optional[str] = None) -> DayThermal:
     """grid_pts: {km_siatki: (lat, lon)}; weather_by_g: {km_siatki: wynik _fetch_point}.
     Cache: pamiec procesu + meteo_point_cache (klucz 'thermal|...', TTL jak prognoza)."""
-    key = "thermal|%s|%s|%s|%d|%.1f" % (route_id, date_str, model or "best_match", len(grid_pts), METEO_GRID_KM)
+    key = "thermal|%s|%s|%s|e3|%d|%.1f" % (route_id, date_str, model or "best_match", len(grid_pts), METEO_GRID_KM)
     m = _THERMAL_MEMO.get(key)
     if m and (time.time() - m[0]) < METEO_CACHE_TTL_S:
         return m[1]
@@ -614,6 +693,7 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
     from tools.rwgps.route_weather import _rel_wind
 
     start_local = _start_local(date_str, start_time)
+    _MODEL_INFO.clear()   # E3: opis modeli tego przebiegu
     tt = estimate_route_time_v2(route_id=route_id, mode=mode,
                                 start_time=f"{date_str}T{start_time}")
     if tt.get("status") != "OK" or not tt.get("profile"):
@@ -823,7 +903,7 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
     return {
         "status": "OK",
         "route_id": route_id, "date": date_str, "start": start_time, "mode": mode,
-        "model": (model or "best_match"), "tabela_dnia": bool(dtab is not None),
+        "model": _model_label(model), "tabela_dnia": bool(dtab is not None),
         "postoje": {"liczba": len(postoje), "minut_kazdy": ((postoje[0]["minut"] if postoje else 0)),
                     "na_km": [p["km"] for p in postoje],
                     "minut_razem": round(sum(p["minut"] for p in postoje)),

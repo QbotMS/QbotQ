@@ -44,3 +44,13 @@ inne adresy odrzucane), cache po pełnym adresie (prognoza 10 min, archiwum 1 do
 Radar (`qbot_radar`) i mapy modelu (`qbot_pogoda_map`, DWD) są częścią silnika jako pojedyncze źródła (bez zmian).
 Zostało poza rdzeniem (E4): `qbot_wbgt_tools`, `gear_kit`, `qbot_pogoda_verif` (Previous Runs), `qbot_web` (archiwum, l. ~3214),
 `mcp_server`, `qbot_integration_tools`, OpenWeatherMap (raport poranny, stare narzędzia).
+
+## E3 — jedna reguła modelu w silniku tras (2026-10-14, decyzja Michała po porównaniu na 3 trasach)
+W `route_meteo_engine` (jedno miejsce dla Analizy trasy, Planera, raportu Alberta, raportu kanonicznego i raportu z jazdy):
+1. brak modelu od wołającego → **model kanoniczny** (`canonical_model`, najdrobniejsza siatka sięgająca daty), nie `best_match`
+   (wcześniej Planer liczył kanonem, a pozostałe moduły best_match — ta sama trasa miała różną pogodę);
+2. **Polska i 1–3 dni:** temperatura/wilgotność, wiatr, porywy i ilość opadu z modeli wg sprawdzalności (`qbot_pogoda_verif.przydzial`),
+   **szansa opadu z zespołu ICON-EU-EPS** (`qbot_wx.ens_prob`; pojedynczy model może nie podawać szansy — w porównaniu HARMONIE dało 0%
+   zamiast 22%); promieniowanie, ciśnienie, chmury, CAPE i kod pogody z kanonu.
+Pole `model` w wyniku opisuje źródło każdej wielkości. Klucze cache z sufiksem `e3`.
+Porównanie przed wdrożeniem (jutro 10:00): różnice do ok. 1,3 °C (temp./odczuwalna), do 1,5 m/s (porywy), WBGT do −1 °C.
