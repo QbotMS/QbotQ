@@ -771,13 +771,14 @@ def plan_week(ctx: dict) -> dict:
                                                                          sig.get("day_status_note") or ", ".join(why)))
         else:
             notes.append("Sezon: regeneracja niepełna (" + ", ".join(why) + ") — dziś wersje minimum")
+    low_rt = bool(low_today)   # 14.10.2026: minimum z powodu GOTOWOSCI DZIS (nie z sygnalow Sezonu) -- tylko wtedy notka o gotowosci
     low_today = bool(low_today or sez_low)
     for s in out:
         d = _d(s["day"])
         if infos[d]["type"] == "short" or (low_today and d == today and s["sport"] != "joga"):
             if s["min_min"] and s["min_min"] < s["dur_min"]:
                 s["dur_min"] = s["min_min"]; s["cut"] = True; s["xss"] = xss_of(s["sport"], s["zone"], s["dur_min"])
-    if low_today and today in infos:
+    if low_rt and today in infos and rt is not None and thr is not None:   # sez_low ma wlasna notke (regeneracja); rt moze byc puste
         notes.append(f"gotowość dziś {round(rt, 2)} < próg {round(thr, 2)} — dziś wersje minimum")
     total = sum(s["dur_min"] for s in out) + sum(int(s["dur_min"]) for s in keep)
     return {"sessions": out, "notes": notes, "phase": ph, "phase_name": PH_NAME.get(ph, ph), "light": bool(wk.get("lt")), "season": wk.get("season"),
