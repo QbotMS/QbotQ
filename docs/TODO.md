@@ -22,8 +22,9 @@ Serwer gotowy (etap 2). Dok.: docs/POGODA_OSTRZEZENIE.md. Repo QExt2 osobne.
 - [ ] Przeglad ModelQ od podstaw ZAMIAST kolejnych latek: co mierzy / co zaklada / co wylaczone / historia awarii -> plan naprawy do decyzji.
   - [x] Etap 1 inwentaryzacja [2026-10-14] -> docs/MODELQ_PRZEGLAD.md (5 kotwic z Xerta, 100% decay, HIE na ograniczniku, przelom CP 0/136, Xert skazony od 08.2026)
   - [x] Etap 3 czesc 1 [2026-10-14]: kotwica wlasna 14.10 (HIE 20 kJ) + czulosc HIE 0,11 (decay.py), test 4 jazd 6-9 %.
-  - [x] Regula TP [2026-10-14]: 0,45 W/CTL, CTL sprzed 14 dni (decay.py). Do oceny: LTHR 151 -> 148 (skutek uboczny).
-  - [ ] Etap 3 dalej: pytanie po jezdzie W'bal<=5 %; sprawdzian vs Xert co miesiac; bezpieczniki; usunac kotwice EF.
+  - [x] Regula TP [2026-10-14]: 0,45 W/CTL, CTL sprzed 14 dni (decay.py). LTHR 148 zaakceptowane; 19.09 potwierdza regule.
+  - [x] Pytanie po jezdzie W'bal<=5 % [2026-10-14]: fitmodel/wbal_feel.py (od jazd 15.10).
+  - [ ] Etap 3 dalej: sprawdzian vs Xert co miesiac; bezpieczniki tygodniowe; usunac kotwice EF; masy bagazu; dokument ModelQ.
   - [x] Etap 2 diagnoza [2026-10-14] (docs/MODELQ_PRZEGLAD.md): 0/266 jazd >= 95 % krzywej (sprawny miernik), W'bal=0 na 4 jazdach, HIE na ograniczniku 92 dni.
   - [ ] Naprawa Xerta (decyzja Michala: podmiana jazd na skorygowane, NIE wycinanie): zakres 01.07-20.08.2026, 26 jazd,
         tabela /opt/qbot/artifacts/xert_korekta_2026.csv (skrypt xert_korekta_tabela.py). Czerwiec czysty po poprawce bagazu.

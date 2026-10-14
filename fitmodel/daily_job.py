@@ -149,6 +149,13 @@ def main() -> None:
             return lg_run(conn)
         _step("load_guard", _load_guard)
 
+        # 2026-10-14 (MODELQ-PRZEGLAD): jazda z min W'bal <= 5 % -> pytanie o odczucie (Odcielo/Blisko/Zapas).
+        # Nic nie zmienia w ModelQ; seria 'zapas' -> notka o propozycji korekty HIE. fitmodel/wbal_feel.py
+        def _wbal_feel():
+            from fitmodel.wbal_feel import run as wf_run
+            return wf_run(conn)
+        _step("wbal_feel", _wbal_feel)
+
         # 2d3. Straznik korekty ciala (fitmodel/real_load_guard.py): TYLKO powiadomienie na Telegram, gdy faktyczne
         # zmeczenie/swiezosc moga sie rozjezdzac (sila, dane, dominacja jednego sygnalu, trwala rozbieznosc). Nic nie zmienia.
         def _rl_guard():
@@ -318,6 +325,13 @@ def run_after_ride(reason: str = "") -> None:
             from fitmodel.load_guard import run as lg_run
             return lg_run(conn)
         _step("load_guard", _load_guard)
+
+        # 2026-10-14 (MODELQ-PRZEGLAD): jazda z min W'bal <= 5 % -> pytanie o odczucie (Odcielo/Blisko/Zapas).
+        # Nic nie zmienia w ModelQ; seria 'zapas' -> notka o propozycji korekty HIE. fitmodel/wbal_feel.py
+        def _wbal_feel():
+            from fitmodel.wbal_feel import run as wf_run
+            return wf_run(conn)
+        _step("wbal_feel", _wbal_feel)
 
         def _glyco():
             from fitmodel.glycogen import update_glycogen_in_daily

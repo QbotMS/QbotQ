@@ -11,7 +11,9 @@ TP~CTL najlepsze przy opoznieniu 14 dni (r2 0,85), 0,45 W/CTL (bylo 0,66 bez opo
 TP_K_DRIFT=0.45, TP_LAG_DAYS=14 (CTL sprzed 14 dni dla dnia i kotwicy). Przeliczone 358 jazd od 2025 (scripts/mq2_recalc_tp_20261014.py,
 kopie bak_20261014c_*). Dzis TP 238,8 / FTP Karoo 239 bez zmian; TP 2025-09-01 269 -> 259, 30.08 250 -> 247, 27.09 240 -> 243.
 Kontrola 4 jazd W'bal: 3,6 / 18,4 / 12,6 / 6,3 % (19.09 wyzej przez wyzsze TP z opoznienia). Skutek uboczny: krok lthr przeliczyl LTHR
-151 -> 148 (z nowych XSS) i lthr_sync zapisal strefy HR do intervals.icu -- do oceny Michala.
+151 -> 148 (z nowych XSS) i lthr_sync zapisal strefy HR do intervals.icu -- **Michal: zostaje 148** (2026-10-14).
+Potwierdzenie bez dopasowania: Michal ocenia 19.09 jako lzejsza od 30.08/27.09/11.10 -- nowa regula daje 19.09 najwiekszy zapas
+(18 % vs 4-13 %), stara dawala wszystkim 6-9 %.
 
 ## 2026-10-14 -- DECYZJA: ModelQ -- wlasna kotwica 14.10 (HIE 20 kJ) + czulosc HIE 0.11 (MODELQ-PRZEGLAD)
 **Tlo:** przeglad ModelQ od podstaw (docs/MODELQ_PRZEGLAD.md): sygnatura = 5 kotwic z Xerta + dryf; HIE 92 dni na ograniczniku 18,16 kJ;
