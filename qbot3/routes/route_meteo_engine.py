@@ -530,6 +530,15 @@ def _long_stops_for_leg(leg_km: float, every_km: float = LONG_STOP_EVERY_KM,
     return [{"frakcja": (i + 1) / (n + 1.0), "minut": float(stop_min)} for i in range(n)]
 
 
+def _interval(times: list[_dt.datetime], vals: list, when: _dt.datetime) -> float:
+    """Wartosc dla wielkosci z GODZINY POPRZEDZAJACEJ (Open-Meteo: opad, szansa opadu, porywy): wartosc o czasie T opisuje
+    przedzial (T-1 h, T] -> zwraca wartosc pierwszego T >= when (godzina, w ktora wypada `when`)."""
+    for i, t in enumerate(times):
+        if when <= t:
+            return float(vals[i]) if vals[i] is not None else 0.0
+    return float(vals[-1]) if vals and vals[-1] is not None else 0.0
+
+
 def _interp(times: list[_dt.datetime], vals: list, when: _dt.datetime) -> float:
     def _v(x):
         return float(x) if x is not None else 0.0
@@ -722,9 +731,8 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
             h = weather[wi]["h"]
             tms = weather[wi]["times"]
         when = s["eta_utc"]
-        # 14.10.2026: Open-Meteo podaje opad, szanse opadu i porywy jako wartosc z GODZINY POPRZEDZAJACEJ (T-1..T) -> srodek
-        # przedzialu to T-30 min; interpolacja po tych srodkach (wczesniej opad wychodzil ok. 30 min za wczesnie). Dok.: docs/POGODA_SILNIK.md
-        tms_c = [t - _dt.timedelta(minutes=30) for t in tms]
+        # 14.10.2026: Open-Meteo podaje opad, szanse opadu i porywy jako wartosc z GODZINY POPRZEDZAJACEJ (T-1..T) -> bierzemy wartosc
+        # godziny, w ktora wypada przejazd (_interval), bez interpolacji (ta przesuwala opad ~30 min za wczesnie / rozmazywala). Dok.: docs/POGODA_SILNIK.md
         ta = _interp(tms, h["temperature_2m"], when)
         rh = _interp(tms, h["relative_humidity_2m"], when)
         ws = _interp(tms, h["wind_speed_10m"], when)
@@ -732,13 +740,13 @@ def run_meteo_engine(route_id: str, date_str: str, start_time: str = "08:00",
         pres = _interp(tms, h["surface_pressure"], when)
         ghi = _interp(tms, h["shortwave_radiation_instant"], when)
         dir_ = _interp(tms, h["direct_radiation_instant"], when)
-        prec = _interp(tms_c, h["precipitation"], when) if "precipitation" in h else 0.0
-        prob = (_interp(tms_c, h["precipitation_probability"], when)
+        prec = _interval(tms, h["precipitation"], when) if "precipitation" in h else 0.0
+        prob = (_interval(tms, h["precipitation_probability"], when)
                 if h.get("precipitation_probability") else None)
         wcode_raw = _nearest(tms, h["weather_code"], when) if "weather_code" in h else None
         wcode = int(wcode_raw) if wcode_raw is not None else None
         cape = _interp(tms, h["cape"], when) if "cape" in h else None
-        gust = _interp(tms_c, h["wind_gusts_10m"], when) if "wind_gusts_10m" in h else None
+        gust = _interval(tms, h["wind_gusts_10m"], when) if "wind_gusts_10m" in h else None
         cc = _interp(tms, h["cloud_cover"], when) if "cloud_cover" in h else None
 
         cza = cos_solar_zenith(when, s["lat"], s["lon"])

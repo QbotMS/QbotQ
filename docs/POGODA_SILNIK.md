@@ -15,7 +15,7 @@
 ## Znalezione i naprawione w E0
 - **Godziny wartości „z poprzedniej godziny”** (Open-Meteo: opad, szansa opadu, porywy = przedział T−1..T):
   - silnik tras interpolował liniowo między pełnymi godzinami → opad ok. **30 min za wcześnie** (przejazd 14:30 dostawał pół deszczu z 13–14);
-    teraz interpolacja po środkach przedziałów (T−30 min) dla opadu, szansy opadu i porywów;
+    teraz wartość godziny, w którą wypada przejazd (`_interval`, bez interpolacji) dla opadu, szansy opadu i porywów;
   - Pogoda: opad poprawiony wcześniej (b8ba5d4), porywy teraz też z T+1 dla godziny T..T+1.
   - Do sprawdzenia w E4: Trener (`forecast`, `window_wx`), `live_weather`.
 
