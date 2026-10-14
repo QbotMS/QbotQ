@@ -619,7 +619,7 @@ def build_router(current_user, owner_user) -> APIRouter:
         with FP._conn() as c:
             hrv = [(x["date"], float(x["h"])) for x in c.execute(
                 "SELECT date, avg(hrv_ms) h FROM qbot_v2.qbot_sleep_daily WHERE hrv_ms IS NOT NULL AND date >= %s GROUP BY date ORDER BY date",
-                (today - timedelta(days=365),)).fetchall()]
+                (today - timedelta(days=440),)).fetchall()]   # [GARMIN-DANE] +75 dni na norme 60 nocy
             bp = c.execute("SELECT measured_local, systolic, diastolic FROM qbot_v2.blood_pressure ORDER BY measured_local").fetchall()
             salt = {x["d"]: float(x["s"] or 0) for x in c.execute(
                 "SELECT COALESCE(eaten_day, day) d, sum(salt_g) s FROM qbot_v2.brokul_meals WHERE status='eaten' GROUP BY 1").fetchall()}
@@ -631,6 +631,14 @@ def build_router(current_user, owner_user) -> APIRouter:
                 ex = FP.expend(c, x["date"])
                 if x["k"] and ex["src"] == "realne":
                     bal[x["date"]] = float(x["k"]) - ex["kcal"]
+        # [GARMIN-DANE] Etap 3 (2026-10-14): status HRV QBota -- 7 nocy vs norma 60 nocy +-0.5 SD (fitmodel/hrv_status.py)
+        from fitmodel.hrv_status import compute_series as _hrv_cs, LABELS as _HL, LEVEL as _HV
+        _hs = _hrv_cs(hrv)
+        _cut = (today - timedelta(days=365)).isoformat()
+        hrv_band = [[r["date"], r["avg7"], r["lo"], r["hi"], r["status"]] for r in _hs if r["date"] >= _cut]
+        _last = next((r for r in reversed(_hs) if r["status"]), None)
+        hrv_status7 = {**_last, "label": _HL[_last["status"]], "level": _HV[_last["status"]]} if _last else None
+        hrv = [(d, h) for d, h in hrv if (today - d).days <= 365]
         old = [h for d, h in hrv if (today - d).days > 28]
         rec = [h for d, h in hrv if (today - d).days <= 28]
         norm = stt.median(old) if len(old) >= 30 else None
@@ -683,7 +691,8 @@ def build_router(current_user, owner_user) -> APIRouter:
                               "deficyt": grp(lambda x: None if x["bal_prev"] is None else x["bal_prev"] < -500)}
         return {"hrv": {"series": [[d.isoformat(), round(h, 1)] for d, h in hrv], "norm": round(norm, 1) if norm else None,
                         "recent": round(recent, 1) if recent is not None else None, "delta": round(delta, 1) if delta is not None else None,
-                        "pct": round(pct, 1) if pct is not None else None, "status": st_},
+                        "pct": round(pct, 1) if pct is not None else None, "status": st_,
+                        "status7": hrv_status7, "band": hrv_band},
                 "links": links}
 
     @r.get("/calendar")

@@ -48,5 +48,16 @@ Uwaga: dla starszych dni Garmin zwraca mniej sekcji (brak epok oddechu/SpO2), po
   UWAGA: strony zywe w /opt/qbot/web/public, `web_public/` w repo to lustro (scripts/web_mirror.py).
 - Testy: `tests/test_vo2max.py`.
 
+## Status HRV QBota (Etap 3, 2026-10-14)
+- `fitmodel/hrv_status.py`: na ln(HRV nocnego) srednia 7 nocy vs norma = 60 POPRZEDNICH nocy (min. 30).
+  Statusy: `norma` | `ponizej` (< norma - 0.5 SD, uwaga) | `nisko` (< norma - 1 SD) | `powyzej` (> norma + 0.5 SD, informacyjnie).
+- Walidacja (2024..2026, ~950 nocy vs Garmin): LOW -> ponizej 52/52; UNBALANCED -> ponizej 123/154; BALANCED -> norma 596, powyzej 196.
+  Srednia 7 nocy = weeklyAvg Garmina; nasza norma wezsza (np. 14.10: 75-82 vs Garmin 76-89).
+- Gdzie: `/api/jedzenie/heart_plus` -> `hrv.status7` + `hrv.band` [[dzien, avg7, lo, hi, status]] (karta HRV w Zdrowie > Serce:
+  pas normy, naglowek "7 nocy ... status"); `/api/forma/heart` -> `sleep.hrv_status` (karta snu) i regula "Cisnienie a regeneracja"
+  (`nexus(..., hrv_state=)`: zmeczenie gdy ponizej/nisko; stara regula 90% mediany roku tylko gdy brak statusu).
+- NIE wchodzi do gotowosci ModelQ (decyzja: najpierw obserwacja) -- TODO [GARMIN-DANE] Etap 3b.
+- Testy: `tests/test_hrv_status.py`.
+
 ## Plan dalej
 Etapy 2–7 w `docs/TODO.md` -> `[GARMIN-DANE]`.

@@ -105,3 +105,6 @@ Zasada jak w Trendach: QBot liczy fakty, AI je opisuje; oceny (prawidlowe / podw
 - Laczna analiza AI (2026-10-13): 3 krotkie zdania na gorze karty "Serce - co mowia dane" (najwazniejsze teraz / jak dane sie lacza /
   nastepny krok). `qbot_heart_ai.summary_ai` na faktach `summary_facts` (oceny regul, cisnienie a regeneracja, liczby; bez szeregow),
   pamiec `qbot_v2.heart_ai` klucz `sum:v<N>:<hash>` - nowe wywolanie tylko, gdy zmienia sie dane. `GET|POST /api/forma/heart/ai`.
+
+## 2026-10-14: status HRV QBota
+Karta HRV (zdrowie-serce.js v=2) i karta snu (forma-serce.js v=11) pokazuja status HRV QBota (`fitmodel/hrv_status.py`: 7 nocy vs norma 60 nocy +-0.5 SD; pas normy na wykresie). Regula "Cisnienie a regeneracja" uzywa tego statusu. Szczegoly: docs/GARMIN_DANE.md.

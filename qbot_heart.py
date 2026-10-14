@@ -343,13 +343,17 @@ def spo2_status(lows: list[float]) -> dict | None:
 
 
 def nexus(bp: dict | None, bp_rows: list[dict], rhr: dict, hrv7: float | None, hrv_med: float | None,
-          sleep7: float | None, sleep_norm: float | None, daily: dict) -> list[dict]:
+          sleep7: float | None, sleep_norm: float | None, daily: dict,
+          hrv_state: dict | None = None) -> list[dict]:
     """Cisnienie a regeneracja (reguly). daily: {dzien: {'bp_sys_rano', 'sleep_min', 'hrv', 'tss_dzien_przed'}}."""
     out = []
     tired = []
     if rhr.get("delta") is not None and rhr["delta"] >= 3:
         tired.append(f"tętno spoczynkowe +{rhr['delta']:.0f}".replace(".", ","))
-    if hrv7 is not None and hrv_med and hrv7 < 0.9 * hrv_med:
+    if hrv_state is not None:   # [GARMIN-DANE] Etap 3: status HRV QBota (fitmodel/hrv_status.py)
+        if hrv_state.get("status") in ("ponizej", "nisko"):
+            tired.append(f"HRV 7 nocy {hrv_state['avg7']:.0f} ms poniżej normy ({hrv_state['lo']:.0f}–{hrv_state['hi']:.0f})")
+    elif hrv7 is not None and hrv_med and hrv7 < 0.9 * hrv_med:
         tired.append(f"HRV nocne {hrv7:.0f} ms vs zwykle {hrv_med:.0f}")
     if sleep7 is not None and sleep_norm and sleep7 < sleep_norm - 45:
         tired.append(f"sen krótszy o {sleep_norm - sleep7:.0f} min")
@@ -424,9 +428,11 @@ def extras(data: dict, today: date) -> dict:
     hrv7 = _mean([float(well[d][2]) for d in well if d > today - timedelta(days=7) and well[d][2]])
     hv_all = sorted(float(well[d][2]) for d in well if d <= today - timedelta(days=28) and well[d][2])
     hrv_med = hv_all[len(hv_all) // 2] if hv_all else None
+    from fitmodel.hrv_status import current as _hrv_cur   # [GARMIN-DANE] Etap 3
+    hrv_state = _hrv_cur(sorted((d, float(v[2])) for d, v in well.items() if v[2]))
     sp_st = spo2_status([float(x[1]) for x in sp if x[1] is not None])
     sleep = {"sleep7_min": round(_mean(d7)) if d7 else None, "sleep_norm_min": round(_mean(d28)) if d28 else None,
-             "hrv7": round(hrv7, 1) if hrv7 else None, "hrv_median_year": hrv_med,
+             "hrv7": round(hrv7, 1) if hrv7 else None, "hrv_median_year": hrv_med, "hrv_status": hrv_state,
              "spo2": sp_st, "spo2_sleep_avg": round(_mean([float(x[2]) for x in sp if x[2] is not None]) or 0, 1) if sp else None}
     # dzien po dniu dla serii
     bp = data["bp"]["summary"]
@@ -441,7 +447,8 @@ def extras(data: dict, today: date) -> dict:
         v["sleep_min"] = float(w[0]) if w and w[0] else None
         v["hrv"] = float(w[2]) if w and w[2] else None
         v["tss_dzien_przed"] = tss.get(d0 - timedelta(days=1), 0.0)
-    nx = nexus(bp, data["bp"]["all"], data["rhr"], sleep["hrv7"], hrv_med, sleep["sleep7_min"], sleep["sleep_norm_min"], daily)
+    nx = nexus(bp, data["bp"]["all"], data["rhr"], sleep["hrv7"], hrv_med, sleep["sleep7_min"], sleep["sleep_norm_min"], daily,
+               hrv_state=hrv_state)
     bpts = body_status(waist, whtr, bmi) + ([{"status": sp_st["status"], "text": sp_st["text"]}] if sp_st else [])
     conn = _connect()
     try:
