@@ -1766,7 +1766,7 @@ def _tool_qbot_fitness_status(args: dict | None = None) -> dict[str, Any]:
         }
     cols = ("day, ftp_est_w, cp_modelq_w, ltp_modelq_w, wprime_modelq_kj, "
             "wprime_lo_kj, wprime_hi_kj, wprime_confidence, wprime_source, "
-            "ctl_xss, atl_plus, tsb_plus, readiness_score, readiness_label, "
+            "ctl_xss, COALESCE(atl_real, atl_plus), COALESCE(tsb_real, tsb_plus), readiness_score, readiness_label, "
             "load_ramp, readiness_effective, day_status, day_status_note, readiness_3d, early_warn, atl_real, tsb_real, body_load")
     try:
         with conn.cursor() as cur:

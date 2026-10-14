@@ -64,7 +64,7 @@ def build(conn, today: dt.date | None = None) -> dict:
            "SELECT ride_date, SUM(xss_total) AS x FROM qbot_v2.modelq2_ride WHERE ride_date BETWEEN %s AND %s "
            "GROUP BY ride_date", (w0, today))}
     fd = {r["day"]: r for r in _rows(conn,
-          "SELECT day, ctl_xss, readiness_effective, readiness_score, rhr, hrv_night, load_ramp, tsb_plus "
+          "SELECT day, ctl_xss, readiness_effective, readiness_score, rhr, hrv_night, load_ramp, COALESCE(tsb_real, tsb_plus) AS tsb_plus "
           "FROM qbot_v2.fitmodel_daily WHERE day BETWEEN %s AND %s", (w0, today))}
     ill = set()
     for r in _rows(conn, "SELECT day, COALESCE(end_day, day) AS e FROM qbot_v2.calendar_entry WHERE kind='illness' "

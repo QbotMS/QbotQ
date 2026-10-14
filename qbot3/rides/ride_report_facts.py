@@ -190,7 +190,7 @@ def execution_block(cur, ride_key, day, w1, plan, ses):
     if r:
         wej["gotowosc_rano"] = _f(r[0], 2)
         wej["gotowosc_opis"] = r[1]
-    cur.execute("SELECT day, COALESCE(tsb_plus, tsb_raw), ctl_xss, COALESCE(atl_plus, atl_raw) "   # kanon: z korekta
+    cur.execute("SELECT day, COALESCE(tsb_real, tsb_plus, tsb_raw), ctl_xss, COALESCE(atl_real, atl_plus, atl_raw) "   # kanon 14.10: faktyczne
                 "FROM qbot_v2.fitmodel_daily WHERE day<%s ORDER BY day DESC LIMIT 1", (day,))
     r = cur.fetchone()
     if r:
@@ -232,11 +232,14 @@ def execution_block(cur, ride_key, day, w1, plan, ses):
 # ---------------------------------------------------------------- 3) konsekwencje (na zywo)
 def live_consequences(cur, day):
     day = _d(day)
-    cur.execute("SELECT day, ctl_xss, COALESCE(atl_plus, atl_raw), COALESCE(tsb_plus, tsb_raw), "
-                "readiness_score, readiness_label FROM qbot_v2.fitmodel_daily "
+    # kanon 2026-10-14: zmeczenie/swiezosc FAKTYCZNE (treningi + stan ciala) - ta sama liczba co Forma, Start i Albert
+    cur.execute("SELECT day, ctl_xss, COALESCE(atl_real, atl_plus, atl_raw), COALESCE(tsb_real, tsb_plus, tsb_raw), "
+                "readiness_score, readiness_label, atl_raw FROM qbot_v2.fitmodel_daily "
                 "WHERE day BETWEEN %s AND %s ORDER BY day", (day - timedelta(days=1), day + timedelta(days=7)))
     rows = [{"dzien": str(r[0]), "forma": _f(r[1], 1), "zmeczenie": _f(r[2], 1), "swiezosc": _f(r[3], 1),
-             "gotowosc": _f(r[4], 2), "gotowosc_opis": r[5]} for r in cur.fetchall()]
+             "gotowosc": _f(r[4], 2), "gotowosc_opis": r[5], "zmeczenie_z_treningow": _f(r[6], 1),
+             "korekta_ciala": (round(float(r[2]) - float(r[6]), 1) if (r[2] is not None and r[6] is not None) else None)}
+            for r in cur.fetchall()]
     today = date.today()
     cur.execute("SELECT day, name, xss, zone, status FROM qbot_v2.trainer_session WHERE day>%s AND day<=%s "
                 "ORDER BY day, id", (day, day + timedelta(days=7)))
@@ -262,7 +265,7 @@ def live_consequences(cur, day):
     back = next((p["dzien"] for p in prog if p["swiezosc"] >= 0), None)
     return {"dni": rows, "nastepne_treningi": nxt, "prognoza_wg_planu": prog,
             "swiezosc_na_plusie_od": back,
-            "opis_pol": "forma=CTL (dlugi trend), zmeczenie=ATL (7 dni), swiezosc=TSB=forma-zmeczenie (ujemna=zmeczony), gotowosc=poranny wskaznik (ujemny=zmeczony)"}
+            "opis_pol": "forma=CTL (dlugi trend), zmeczenie=faktyczne: ATL z treningow (7 dni) + korekta stanu ciala (gotowosc, tetno spocz., Body Battery, infekcja, samopoczucie; zmeczenie_z_treningow + korekta_ciala), swiezosc=TSB=forma-zmeczenie (ujemna=zmeczony), gotowosc=poranny wskaznik (ujemny=zmeczony)"}
 
 
 # ---------------------------------------------------------------- jedzenie

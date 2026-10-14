@@ -310,7 +310,7 @@ function renderDziennik(){
   /* kanon 2026-09-28: Swiezosc/zmeczenie Z KOREKTA (tsb_plus/atl_plus: gotowosc, samopoczucie, choroba); surowe tylko gdy brak */
   /* 2026-09-29: licznik Swiezosci = FAKTYCZNA swiezosc (fitmodel/real_load.py): treningi + cialo + samopoczucie */
   var tsb=T.tsb_real!=null?+T.tsb_real:(T.tsb_plus!=null?+T.tsb_plus:(T.tsb_raw!=null?+T.tsb_raw:(T.tsb!=null?+T.tsb:null)));
-  var atlK=T.atl_plus!=null?+T.atl_plus:(T.atl_raw!=null?+T.atl_raw:T.atl);
+  var atlK=T.atl_real!=null?+T.atl_real:(T.atl_plus!=null?+T.atl_plus:(T.atl_raw!=null?+T.atl_raw:T.atl));
   var ramp=T.load_ramp!=null?+T.load_ramp:null;
   /* liczniki ze SKALA NA LUKU (koniec lewy/prawy + 0). Gotowosc = srednia wazona z-score (HRV/RHR/sen wobec normy 60 dni),
      progi jak w modelu fitmodel/readiness.py: >= +0.4 swiezy, <= -0.4 zmeczony. Swiezosc (TSB): progi w stylu TrainingPeaks. */
@@ -422,7 +422,7 @@ function renderDziennik(){
   (function(){var el=q$("dz-load");if(!el)return;var N=28,dl=[];for(var i=N-1;i>=0;i--)dl.push(qLocalISO(new Date(Date.now()-i*864e5)));
     var sm={};S.forEach(function(x){sm[x.day]=x;});
     var xs=dl.map(function(d){var t=0;(rmap[d]||[]).forEach(function(r){t+=(+r.xss||0);});return t;});
-    var ctl=dl.map(function(d){return sm[d]&&sm[d].ctl_xss!=null?+sm[d].ctl_xss:null;}),atl=dl.map(function(d){var o=sm[d];if(!o)return null;var v=o.atl_plus!=null?o.atl_plus:o.atl_raw;return v!=null?+v:null;});
+    var ctl=dl.map(function(d){return sm[d]&&sm[d].ctl_xss!=null?+sm[d].ctl_xss:null;}),atl=dl.map(function(d){var o=sm[d];if(!o)return null;var v=o.atl_real!=null?o.atl_real:(o.atl_plus!=null?o.atl_plus:o.atl_raw);return v!=null?+v:null;});
     function rng(v){var p=v.filter(function(x){return x!=null;});if(!p.length)return null;var lo=Math.min.apply(null,p),hi=Math.max.apply(null,p),sp=Math.max(4,hi-lo),pd=sp*0.12;return {lo:lo-pd,hi:hi+pd,min:lo,max:hi};}
     var RC=rng(ctl),RA=rng(atl);if(!RC||!RA){el.innerHTML='<div class="muted">brak danych</div>';return;}
     var bx=Math.max(80,Math.max.apply(null,xs));
@@ -593,7 +593,7 @@ function renderTrendy(){
     var d=s2.day.slice(8);var m=parseInt(s2.day.slice(5,7))-1;
     labels.push(d+"."+s2.day.slice(5,7));  /* 2026-10-12: daty na osi (wczesniej tylko nazwy miesiecy) */
     ctlD.push(s2.ctl_xss!=null?Math.round(s2.ctl_xss*10)/10:null);
-    var _a2=s2.atl_plus!=null?s2.atl_plus:s2.atl_raw,_t2=s2.tsb_plus!=null?s2.tsb_plus:s2.tsb_raw;
+    var _a2=s2.atl_real!=null?s2.atl_real:(s2.atl_plus!=null?s2.atl_plus:s2.atl_raw),_t2=s2.tsb_real!=null?s2.tsb_real:(s2.tsb_plus!=null?s2.tsb_plus:s2.tsb_raw);
     atlD.push(_a2!=null?Math.round(_a2*10)/10:null);
     tsbD.push(_t2!=null?Math.round(_t2*10)/10:null);
     var _xd=0;var _cr=(cal&&cal.rides&&cal.rides[s2.day])||null;
@@ -1016,7 +1016,7 @@ load().catch(function(e){console.error("forma2:",e);});
   function num(v){return v==null||v===""||!isFinite(+v)?null:Math.round(+v*100)/100;}
   function collect(){
     var SN=window._trSN||[],X=window._trXss||[];if(SN.length<14)return null;var z=window._trZoom,a0=z?z.min:0,b0=z?z.max:SN.length-1;
-    var rows=SN.map(function(s,i){return {day:String(s.day).slice(0,10),xss:X[i]||0,ctl:num(s.ctl_xss),atl:num(s.atl_plus!=null?s.atl_plus:s.atl_raw),tsb:num(s.tsb_real),sleep:num(s.sleep_score),
+    var rows=SN.map(function(s,i){return {day:String(s.day).slice(0,10),xss:X[i]||0,ctl:num(s.ctl_xss),atl:num(s.atl_real!=null?s.atl_real:(s.atl_plus!=null?s.atl_plus:s.atl_raw)),tsb:num(s.tsb_real),sleep:num(s.sleep_score),
       hrv:num(s.hrv_night),rhr:num(s.rhr),rdy3:num(s.readiness_3d),rdy1:num(s.readiness_effective),weight:num(s.weight_kg),cp:num(s.ftp_est_w||s.ftp),ltp:num(s.ltp_modelq_w)};});
     var focus=[];charts().forEach(function(ch){ch.data.datasets.forEach(function(ds,di){if(ch.isDatasetVisible(di)&&ds.label)focus.push(ds.label);});});
     var ill=(window._trIll||[]).filter(function(r){return r.to>=rows[a0].day&&r.from<=rows[b0].day;});

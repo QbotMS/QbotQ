@@ -1504,10 +1504,10 @@ def _modelq_block(cur, ride_date):
         "ef_28d": round(_ef28,3) if _ef28 else None,
         "ef_28d_stale": (cr.get("ef_med_28d") is None and _ef28 is not None),
         "ctl": round(f(cr.get("ctl_xss")),1) if cr.get("ctl_xss") is not None else None,
-        # kanon (2026-09-28): ATL/TSB z korekta zmeczenia (atl_plus/tsb_plus), surowe jako zapas
-        "atl": (round(f(cr.get("atl_plus") if cr.get("atl_plus") is not None else cr.get("atl_raw")),1)
+        # kanon (2026-10-14): ATL/TSB FAKTYCZNE (atl_real/tsb_real: treningi + stan ciala, jak Forma); dalej plus, surowe
+        "atl": (round(f(next((cr.get(k_) for k_ in ("atl_real", "atl_plus", "atl_raw") if cr.get(k_) is not None), None)),1)
                 if (cr.get("atl_plus") is not None or cr.get("atl_raw") is not None) else None),
-        "tsb": (round(f(cr.get("tsb_plus") if cr.get("tsb_plus") is not None else cr.get("tsb_raw")),1)
+        "tsb": (round(f(next((cr.get(k_) for k_ in ("tsb_real", "tsb_plus", "tsb_raw") if cr.get(k_) is not None), None)),1)
                 if (cr.get("tsb_plus") is not None or cr.get("tsb_raw") is not None) else None),
         "load_ramp": (round(f(cr.get("load_ramp")),2) if cr.get("load_ramp") is not None else None),
         "readiness": round(f(cr.get("readiness_score")),2) if cr.get("readiness_score") is not None else None,

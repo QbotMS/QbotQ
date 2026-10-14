@@ -34,12 +34,12 @@ Promise.all([
   q$("m-ftp-d").innerHTML=qDelta(T.ftp_est_w||T.ftp,prev.ftp_est_w||prev.ftp," W");
   q$("m-wkg-v").innerHTML=qN(T.w_per_kg||T.wkg,2)+' <small>W/kg</small>';
   q$("m-wkg-d").innerHTML=qDelta(T.w_per_kg||T.wkg,prev.w_per_kg||prev.wkg,"");
-  var tsb=T.tsb_plus!=null?T.tsb_plus:(T.tsb_raw!=null?T.tsb_raw:(T.tsb!=null?T.tsb:null));  /* kanon: z korekta */
+  var tsb=T.tsb_real!=null?T.tsb_real:(T.tsb_plus!=null?T.tsb_plus:(T.tsb_raw!=null?T.tsb_raw:(T.tsb!=null?T.tsb:null)));  /* kanon 14.10: faktyczna */
   q$("m-tsb-v").innerHTML=tsb!=null?(tsb>0?"+":"")+qN(tsb,1):"—";
-  q$("m-tsb-d").innerHTML=qDelta(tsb,prev.tsb_plus!=null?prev.tsb_plus:(prev.tsb_raw!=null?prev.tsb_raw:prev.tsb),"");
+  q$("m-tsb-d").innerHTML=qDelta(tsb,prev.tsb_real!=null?prev.tsb_real:(prev.tsb_plus!=null?prev.tsb_plus:(prev.tsb_raw!=null?prev.tsb_raw:prev.tsb)),"");
   var wt=T.weight_kg;if(!wt)for(var wi=S.length-1;wi>=0;wi--)if(S[wi].weight_kg){wt=S[wi].weight_kg;break;}
   q$("m-kg-v").innerHTML=wt?qN(wt,1)+' <small>kg</small>':"—";
-  q$("m-ftp-s").innerHTML='<small>forma '+qN(T.ctl_xss||T.ctl,0)+' · zmęcz. '+qN(T.atl_plus!=null?T.atl_plus:(T.atl_raw||T.atl),0)+'</small>';
+  q$("m-ftp-s").innerHTML='<small>forma '+qN(T.ctl_xss||T.ctl,0)+' · zmęcz. '+qN(T.atl_real!=null?T.atl_real:(T.atl_plus!=null?T.atl_plus:(T.atl_raw||T.atl)),0)+'</small>';
   /* tydzien */
   var days=cal.days||{};var entMap={};(cal.entries||[]).forEach(function(e){entMap[e.day]=entMap[e.day]||[];entMap[e.day].push(e);});var rmap={},seen={};
   (rides.rides||[]).forEach(function(ri){if(seen[ri.ride_key])return;seen[ri.ride_key]=1;rmap[ri.date]=rmap[ri.date]||[];rmap[ri.date].push(ri);});
@@ -127,7 +127,7 @@ Promise.all([
   /* werdykt */
   var verdictEl=q$("verdict");
   if(typeof r==="number"){
-    var tsb2=T.tsb_plus!=null?T.tsb_plus:(T.tsb_raw!=null?T.tsb_raw:(T.tsb||0));
+    var tsb2=T.tsb_real!=null?T.tsb_real:(T.tsb_plus!=null?T.tsb_plus:(T.tsb_raw!=null?T.tsb_raw:(T.tsb||0)));
     if(r>0.5&&tsb2>10)verdictEl.textContent="Świeży i wypoczęty — idealny dzień na mocny trening.";
     else if(r>0.3)verdictEl.textContent="Gotowy do jazdy — forma w normie, bez obciążenia.";
     else if(r>-0.3)verdictEl.textContent="Neutralny dzień — lżejsza jazda lub odpoczynek.";
