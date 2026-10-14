@@ -660,7 +660,9 @@ function renderTrendy(){
     plugins:{legend:{display:false},
       tooltip:{backgroundColor:isDark?"rgba(30,30,30,0.95)":"rgba(255,255,255,0.95)",titleColor:isDark?"#ddd":"#333",bodyColor:isDark?"#bbb":"#555",borderColor:isDark?"#444":"#ddd",borderWidth:1,padding:10,displayColors:true,
         callbacks:{title:function(items){if(!items.length)return "";var i=items[0].dataIndex;var s0=SN[i]||{};var L={przeciazenie:"przeciążenie",zmeczony:"zmęczony",uwaga:"uwaga",w_normie:"w normie"};return (s0.day||"")+(s0.day_status?"  ·  "+(L[s0.day_status]||s0.day_status):"");},
-          label:function(ctx){if(ctx.dataset._k==="rides")return "jazda: XSS "+xssD[ctx.dataIndex];if(ctx.dataset._k==="xss"&&!ctx.parsed.y)return null;var v=ctx.parsed.y;if(v==null)return null;var d=["r3","r1","body","ramp"].indexOf(ctx.dataset._k)>=0?2:0;return ctx.dataset.label+": "+(Math.round(v*Math.pow(10,d))/Math.pow(10,d));},
+          label:function(ctx){if(ctx.dataset._k==="rides"){var rd=(window._trRides||{})[String((SN[ctx.dataIndex]||{}).day||"").slice(0,10)];
+            if(!rd)return "jazda: XSS "+xssD[ctx.dataIndex];var hh=Math.floor(rd.h),mm=Math.round((rd.h-hh)*60);if(mm===60){hh++;mm=0;}
+            return "jazda: "+String(rd.km).replace(".",",")+" km · "+hh+":"+("0"+mm).slice(-2)+" h"+(rd.elev?" · ↑ "+rd.elev+" m":"")+" · XSS "+xssD[ctx.dataIndex]+(rd.n>1?" ("+rd.n+" jazdy)":"");}if(ctx.dataset._k==="xss"&&!ctx.parsed.y)return null;var v=ctx.parsed.y;if(v==null)return null;var d=["r3","r1","body","ramp"].indexOf(ctx.dataset._k)>=0?2:0;return ctx.dataset.label+": "+(Math.round(v*Math.pow(10,d))/Math.pow(10,d));},
           afterBody:function(items){if(!items.length)return "";var i=items[0].dataIndex;var s0=SN[i]||{};var out=[];if(s0.day_status_note)out.push(s0.day_status_note);return out;}}}},
     scales:{x:{ticks:{color:txtCol,font:{size:11},maxRotation:0,autoSkip:true,maxTicksLimit:10},grid:{display:false}},
       y:{position:"left",ticks:{color:"#e67e22",font:{size:11}},grid:{color:gridCol},title:{display:true,text:"forma / zmęczenie",color:txtCol,font:{size:11}}},
@@ -1061,6 +1063,15 @@ load().catch(function(e){console.error("forma2:",e);});
   reg();
   function load(){var SN=window._trSN||[];if(!SN.length){return setTimeout(load,800);}var a=String(SN[0].day).slice(0,10),b=String(SN[SN.length-1].day).slice(0,10);
     fetch("/api/jedzenie/alcohol?start="+a+"&end="+b,{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null;}).then(function(x){if(!x)return;window._trAlc={};x.days.forEach(function(d){window._trAlc[d]=1;});if(window._wellChart)window._wellChart.draw();}).catch(function(){});}
+  document.addEventListener("click",function(ev){if(ev.target&&ev.target.closest&&ev.target.closest("#rng"))setTimeout(load,1500);});
+  load();
+})();
+
+/* 2026-10-14: TRENDY - km / czas / przewyzszenie jazd do dymka (suma dnia, /api/jedzenie/rides_day) */
+(function(){
+  window._trRides={};
+  function load(){var SN=window._trSN||[];if(!SN.length){return setTimeout(load,800);}var a=String(SN[0].day).slice(0,10),b=String(SN[SN.length-1].day).slice(0,10);
+    fetch("/api/jedzenie/rides_day?start="+a+"&end="+b,{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null;}).then(function(x){if(x)window._trRides=x.days||{};}).catch(function(){});}
   document.addEventListener("click",function(ev){if(ev.target&&ev.target.closest&&ev.target.closest("#rng"))setTimeout(load,1500);});
   load();
 })();

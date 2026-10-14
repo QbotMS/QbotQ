@@ -575,6 +575,21 @@ def build_router(current_user, owner_user) -> APIRouter:
         except Exception as ex:
             raise HTTPException(status_code=502, detail="AI niedostępne: %s" % type(ex).__name__)
 
+    @r.get("/rides_day")
+    def rides_day(request: Request, start: str, end: str):
+        """Jazdy rowerowe dzien po dniu (suma): km, czas, przewyzszenie, liczba - do dymka w Forma -> Trendy."""
+        need_user(request)
+        import qbot_food_plan as FP
+        a, b = _d(start), _d(end)
+        if (b - a).days > 800:
+            raise HTTPException(status_code=400, detail="maks. 800 dni")
+        with FP._conn() as c:
+            rows = c.execute("SELECT date, count(*) n, sum(distance_m) m, sum(duration_s) s, sum(elevation_m) e FROM qbot_v2.training_sessions "
+                             "WHERE date BETWEEN %s AND %s AND sport_type IN ('cycling','gravel_cycling','road_biking','mountain_biking','indoor_cycling','virtual_ride') "
+                             "GROUP BY date", (a, b)).fetchall()
+        return {"days": {r["date"].isoformat(): {"n": r["n"], "km": round(float(r["m"] or 0) / 1000, 1), "h": round(float(r["s"] or 0) / 3600, 2),
+                                                  "elev": round(float(r["e"] or 0))} for r in rows}}
+
     @r.get("/hrr")
     def hrr(request: Request, days: int = 365):
         """Tetno odpoczynku po akcentach (HRR60) z jazd: per jazda + norma roku + ostatnie 28 dni (qbot_hrr.py)."""
