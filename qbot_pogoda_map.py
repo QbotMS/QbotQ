@@ -22,10 +22,12 @@ import urllib.request
 
 import numpy as np
 
+import qbot_radar as RAD
+
 BASE = "https://opendata.dwd.de/weather/nwp/icon-eu/grib/{run:02d}/{p}/"
 FNAME = "icon-eu_europe_regular-lat-lon_single-level_{ymdh}_{step:03d}_{P}.grib2.bz2"
 CACHE = os.getenv("QBOT_POGODA_MAP_CACHE", "/opt/qbot/artifacts/pogoda_model")
-RUNS = (0, 12)
+RUNS = (0, 6, 12, 18)   # 14.10: 4 przebiegi -- swiezszy model = mniejszy rozjazd z radarem
 STEPS = list(range(0, 25)) + list(range(27, 61, 3))
 PARAMS = ("t_2m", "tot_prec", "u_10m", "v_10m", "vmax_10m", "t_g", "td_2m")
 BBOX = (11.0, 47.5, 27.0, 56.5)
@@ -195,7 +197,10 @@ def build(run: dt.datetime | None = None) -> dict:
             lut_l = np.array([[0, 0, 0, 0], [207, 227, 248, 110], [127, 179, 236, 170], [40, 110, 210, 210]], np.uint8)
             lut_m = np.array([[0, 0, 0, 0], [196, 196, 196, 120], [125, 125, 125, 190]], np.uint8)
             sid = f"{step:03d}"
-            _png(PAL["opad"](mmh), os.path.join(out, f"opad_{sid}.png"))
+            # opad w SKALI RADARU: mm/h -> dBZ (Marshall-Palmer) -> ta sama paleta i prog co radar (spojny obraz na osi)
+            dbz = np.where(mmh > 0.05, 10 * np.log10(200 * np.power(np.maximum(mmh, 1e-3), 1.6)), -32.0)
+            _png(RAD._LUT[np.clip(np.round((dbz + 32) * 2), 1, 255).astype(np.uint8)], os.path.join(out, f"opad_{sid}.png"))
+            np.savez_compressed(os.path.join(out, f"opad_{sid}.npz"), r=mmh.astype(np.float16))
             _png(PAL["temp"](t), os.path.join(out, f"temp_{sid}.png"))
             _png(PAL["wiatr"](ws), os.path.join(out, f"wiatr_{sid}.png"))
             _png(PAL["porywy"](gust), os.path.join(out, f"porywy_{sid}.png"))
@@ -231,3 +236,59 @@ def png_path(layer: str, run: str, sid: str) -> str | None:
         return None
     p = os.path.join(CACHE, run, f"{layer}_{sid}.png")
     return p if os.path.exists(p) else None
+
+
+# ---------------------------------------------------------------- korekta polozenia modelu wg radaru (14.10.2026)
+_KOR = {"t": 0, "r": None}
+
+
+def korekta() -> dict:
+    """Przesuniecie [m merc] pola opadu modelu do zgodnosci z AKTUALNYM radarem (korelacja fazowa, czesciowo wybielona).
+    Strona przesuwa mape modelu o (dx, dy) * waga, waga maleje liniowo do 0 po 6 h od klatki radaru."""
+    import time as _t
+    if _KOR["r"] and _KOR["t"] > _t.time() - 300:
+        return _KOR["r"]
+    m = meta()
+    fr = RAD.frames()
+    if m.get("status") != "OK" or not fr:
+        return {"status": "BRAK_DANYCH"}
+    t = fr[-1]
+    kroki = [k for k in m["kroki"] if dt.datetime.fromisoformat(k["iso"]) >= t]
+    if not kroki:
+        return {"status": "BRAK_KROKU"}
+    k = kroki[0]
+    pz = os.path.join(CACHE, m["run"], f"opad_{k['id']}.npz")
+    if not os.path.exists(pz):
+        return {"status": "BRAK_POLA"}
+    a = RAD.load(t)
+    rr = np.where(np.isfinite(a) & (a >= RAD.DBZ_SHOW), (10 ** (a / 10.0) / 200.0) ** (1 / 1.6), 0.0)
+    f = int(round(PX_M / RAD.PX_M))
+    hh, ww = min(rr.shape[0] // f, H), min(rr.shape[1] // f, W)
+    rb = rr[:hh * f, :ww * f].reshape(hh, f, ww, f).mean(axis=(1, 3))
+    with np.load(pz) as z:
+        mm = z["r"].astype(np.float64)[:hh, :ww]
+    a1, b1 = np.log1p(mm), np.log1p(rb)
+    fa, fb = (a1 > 0.1).mean(), (b1 > 0.1).mean()
+    if fa < 0.02 or fb < 0.02:
+        r = {"status": "MALO_OPADU", "radar": t.isoformat(), "model_krok": k["id"]}
+    else:
+        hn = np.outer(np.hanning(hh), np.hanning(ww))
+        A, B = np.fft.fft2((a1 - a1.mean()) * hn), np.fft.fft2((b1 - b1.mean()) * hn)
+        x = B * np.conj(A)
+        c = np.fft.ifft2(x / (np.sqrt(np.abs(x)) + 1e-9)).real
+        iy, ix = np.unravel_index(int(np.argmax(c)), c.shape)
+        dy, dx = (iy - hh if iy > hh / 2 else iy), (ix - ww if ix > ww / 2 else ix)
+        km = math.hypot(dx, dy) * PX_M * math.cos(math.radians(52)) / 1000
+        deg = (math.degrees(math.atan2(dx, -dy)) + 360) % 360
+        def _zg(x, y):   # zgodnosc: korelacja pol log(1+mm/h)
+            x, y = x.ravel() - x.mean(), y.ravel() - y.mean()
+            return float((x * y).sum() / (math.sqrt((x * x).sum() * (y * y).sum()) + 1e-12))
+        przed, po = _zg(a1, b1), _zg(np.roll(a1, (dy, dx), axis=(0, 1)), b1)
+        stat = "ZA_DUZE" if km > 200 else ("BEZ_POPRAWY" if po < przed + 0.05 else "OK")
+        r = {"status": stat, "dx_m": float(dx * PX_M), "dy_m": float(-dy * PX_M), "km": round(km), "dokad_deg": round(deg),
+             "zgodnosc_przed": round(przed, 2), "zgodnosc_po": round(po, 2),
+             "radar": t.isoformat(), "model_krok": k["id"], "run": m["run"], "udzial_radar": round(float(fb), 3), "udzial_model": round(float(fa), 3)}
+        if r["status"] != "OK":
+            r.update(dx_m=0, dy_m=0)
+    _KOR.update(t=_t.time(), r=r)
+    return r

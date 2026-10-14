@@ -7123,6 +7123,13 @@ def api_pogoda_mapa_png(layer: str, rid: str):
     return FileResponse(p, media_type="image/png", headers={"Cache-Control": "private, max-age=86400"})
 
 
+@app.get("/api/pogoda/mapa/korekta")
+def api_pogoda_mapa_korekta():
+    """Przesuniecie mapy opadu modelu do zgodnosci z aktualnym radarem (dx_m, dy_m w metrach Mercatora, km, kierunek)."""
+    import qbot_pogoda_map as PM
+    return PM.korekta()
+
+
 @app.get("/api/pogoda/sprawdzalnosc-radar")
 def api_pogoda_spr_radar(dni: int = 7):
     """Sprawdzalnosc prognozy radaru (przesuniecie obrazu) vs bez przesuwania, wg wyprzedzenia; horyzont_min dla osi czasu."""

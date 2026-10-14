@@ -251,7 +251,8 @@ map.on("click",function(e){ if(pmode==="zadana")setPos(e.latlng.lat,e.latlng.lng
 var NOW_MAX=120, meta=null, ovs=[], steps=[], cur=0, timer=null;
 function shiftBounds(b,min){ if(!motion)return b; var dx=motion.vx*min*1500, dy=-motion.vy*min*1500;
   return b.map(function(c){var p=L.CRS.EPSG3857.project(L.latLng(c[0],c[1]));var q=L.CRS.EPSG3857.unproject(L.point(p.x+dx,p.y+dy));return [q.lat,q.lng];}); }
-var LAYER="opad", MM=null, mov=null, mcache={}, RLEG=document.querySelector("#dock .legend").innerHTML;
+var KOR=null, LAYER="opad", MM=null, mov=null, mcache={}, RLEG=document.querySelector("#dock .legend").innerHTML;
+function shiftM(b,dx,dy){ return b.map(function(c){var p=L.CRS.EPSG3857.project(L.latLng(c[0],c[1]));var q=L.CRS.EPSG3857.unproject(L.point(p.x+dx,p.y+dy));return [q.lat,q.lng];}); }
 function mUrl(l,s){return "/api/pogoda/mapa/"+l+"/"+MM.run+"_"+s.id+".png";}
 function preload(l){ if(!MM||MM.status!=="OK")return; MM.kroki.forEach(function(s){var u=mUrl(l,s); if(!mcache[u]){var im=new Image(); im.src=u; mcache[u]=im;}}); }
 function buildSteps(){ stop(); steps=[]; var now=Date.now(), lastT=null;
@@ -274,9 +275,16 @@ function buildSteps(){ stop(); steps=[]; var now=Date.now(), lastT=null;
   show(idx); legend(); preload(LAYER); }
 function show(i){ cur=i; $("slider").value=i; var s=steps[i]; if(!s)return; ovs.forEach(function(o){o.setOpacity(0);}); if(mov)mov.setOpacity(0);
   if(s.k==="radar"){ovs[s.i].setBounds(L.latLngBounds(meta.bounds));ovs[s.i].setOpacity(ROP());}
-  else if(s.k==="model"){ var u=mUrl(LAYER,s.s); if(!mov){mov=L.imageOverlay(u,MM.bounds,{opacity:0,interactive:false,pane:"radar"}).addTo(map);} else mov.setUrl(u); mov.setOpacity(LAYER==="opad"?ROP():0.8); }
+  else if(s.k==="model"){ var u=mUrl(LAYER,s.s); if(!mov){mov=L.imageOverlay(u,MM.bounds,{opacity:0,interactive:false,pane:"radar"}).addTo(map);} else mov.setUrl(u);
+    /* 14.10: korekta polozenia wg aktualnego radaru (maleje do 0 po 6 h) + plynne przejscie z radaru (2 h po koncu jego prognozy) */
+    var tR=meta&&meta.klatki.length?new Date(meta.klatki[meta.klatki.length-1].iso).getTime():Date.now(), hrs=(s.t.getTime()-tR)/3600e3;
+    var wk=(KOR&&KOR.status==="OK")?Math.max(0,1-hrs/6):0, bb=MM.bounds; if(wk>0)bb=shiftM(bb,KOR.dx_m*wk,KOR.dy_m*wk);
+    mov.setBounds(L.latLngBounds(bb)); var mo=LAYER==="opad"?ROP():0.8;
+    if(LAYER==="opad"&&motion&&meta&&meta.klatki.length){ var endNow=tR+NOW_MAX*60e3, fade=1-(s.t.getTime()-endNow)/(2*3600e3);
+      if(fade>0){ fade=Math.min(1,fade); var ro=ovs[ovs.length-1]; ro.setBounds(L.latLngBounds(shiftBounds(meta.bounds,(s.t.getTime()-tR)/60e3))); ro.setOpacity(ROP()*0.55*fade); mo=mo*(1-0.45*fade); } }
+    mov.setOpacity(mo); s.kor=wk>0?Math.round(KOR.km*wk):0; }
   else {var o=ovs[ovs.length-1];o.setBounds(L.latLngBounds(shiftBounds(meta.bounds,s.m)));o.setOpacity(ROP()*(s.k==="now"?.85:.55));}
-  var lab={radar:"radar",now:"prognoza radaru +"+s.m+" min",now2:"+"+s.m+" min · orientacyjnie",model:(MM?MM.model+" · przebieg "+MM.run.slice(8,10)+" UTC":"model")}[s.k];
+  var lab={radar:"radar",now:"prognoza radaru +"+s.m+" min",now2:"+"+s.m+" min · orientacyjnie",model:(MM?MM.model+" · przebieg "+MM.run.slice(8,10)+" UTC"+(s.kor?" · przesunięty o "+s.kor+" km wg radaru":""):"model")}[s.k];
   var dd=("0"+s.t.getDate()).slice(-2)+"."+("0"+(s.t.getMonth()+1)).slice(-2);
   $("tm").innerHTML=(s.t.toDateString()!==new Date().toDateString()?dd+" ":"")+hhmm(s.t)+(s.k==="radar"&&s.i===meta.klatki.length-1?" (teraz)":"")+"<small>"+lab+"</small>"; }
 function legend(){ var el=document.querySelector("#dock .legend"); if(!el)return;
@@ -284,6 +292,7 @@ function legend(){ var el=document.querySelector("#dock .legend"); if(!el)return
   var L2=(MM&&MM.legenda&&MM.legenda[LAYER])||[]; el.innerHTML=L2.map(function(x){return '<i style="background:'+x[0]+'"></i>'+x[1];}).join(" "); }
 document.querySelectorAll("#btabs .btab[data-l]").forEach(function(b){b.addEventListener("click",function(){ LAYER=b.dataset.l;
   document.querySelectorAll("#btabs .btab[data-l]").forEach(function(x){x.classList.toggle("on",x===b);}); buildSteps(); });});
+J("/api/pogoda/mapa/korekta").then(function(k){ KOR=k; window.__KOR=k; if(steps.length)show(cur); });
 J("/api/pogoda/mapa/meta").then(function(m){ MM=m; if(m.status==="OK")map.attributionControl.addAttribution(m.zrodlo); buildSteps(); });
 $("slider").addEventListener("input",function(){stop();show(+this.value);});
 function stop(){ if(timer){clearInterval(timer);timer=null;$("play").textContent="▶";} }

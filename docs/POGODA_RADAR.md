@@ -77,3 +77,11 @@ mgla (przybliżenie T−Td i słaby wiatr — ICON-EU nie ma widzialności). Cac
 `/api/pogoda/mapa/{warstwa}/{run}_{krok}.png`. Biblioteka: `eccodes` + `eccodeslib` (pip). DWD: długość 336,5 = −23,5.
 Strona: dolne zakładki Opad/Temperatura/Wiatr/Porywy/Mgła/Oblodzenie; oś Opadu: radar → radar +2 h → model do +60 h.
 Transfer ~260 MB na przebieg (~520 MB/dobę).
+
+### Spójność radar → model (2026-10-14, po zgłoszeniu Michała: duży rozjazd ostatniej klatki radaru i pierwszej modelu)
+- Przebiegi ICON-EU 00/06/12/18 UTC (świeższy model); opad modelu rysowany w **skali radaru** (mm/h → dBZ, ta sama paleta i próg).
+- **Korekta położenia** `qbot_pogoda_map.korekta()`: korelacja fazowa pola opadu modelu (krok z aktualną godziną) i aktualnego radaru
+  (siatka 6 km) → przesunięcie; strona przesuwa mapę modelu z wagą malejącą do 0 po 6 h. **Bezpiecznik:** korekta tylko gdy zgodność
+  (korelacja pól log(1+mm/h)) rośnie o ≥ 0,05, przesunięcie ≤ 200 km i opad ≥ 2% pola (test 14.10: 09:05 → 68 km, 09:10 → 4 km bez
+  poprawy — bez bezpiecznika mapa by skakała). API `/api/pogoda/mapa/korekta`.
+- **Płynne przejście:** przez 2 h po końcu prognozy radaru jego obraz wygasa, a model narasta.
