@@ -91,3 +91,10 @@ przed/po identyczna) i silnik tras (`_road_at` dla każdego odcinka w chwili prz
 dalej `conditions_point` (najbliższe godziny) / `conditions_day` (jutro…+4, godz. 6–22, pewność); odczuwalna, „na rowerze”, szansa z zespołu,
 warunki drogi, charakter dnia. Wpis w `_SYSTEM` Alberta. Zaproszenia gości: przed zmianą silnika sprawdzone — 0 aktywnych, brak ryzyka
 fałszywych maili. Usunięty martwy `event_morning_report.py` (OpenWeatherMap; brak timera, crona i importów; kopia w artifacts).
+
+## E4.2 krok 3 — stare narzędzia pogody na wspólnym silniku (2026-10-14)
+`qbot_integration_tools`: `_tool_qbot_weather_current`, `_tool_qbot_weather_daily_report` (z niego korzysta `_tool_qbot_weather_forecast`)
+i `_tool_qbot_weather_config_status` przepisane na `qbot_pogoda` (+ `_core_point`: lat/lon → geokodowanie → resolver lokalizacji QBota),
+TE SAME POLA co wcześniej (+ `na_rowerze_c`, `gusts_mps`); opis warunków z kodu WMO po polsku. Usunięte (decyzja Michała — artefakt z początków
+QBota, crony zakomentowane, ostatni log 28.06.2026): `daily_report.py`, `daily_report_adapter.py` (kopie w artifacts). Testy OWM w
+`test_qbot3_acceptance.py` zastąpione `PogodaWspolnySilnik` (format na atrapie rdzenia, bez sieci).

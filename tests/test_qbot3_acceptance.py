@@ -454,102 +454,7 @@ class TestWeatherProvider(unittest.TestCase):
             ),
         }
 
-    def test_config_loader_exposes_weather_key_names_without_leaking_value(self):
-        """Config loader knows OWM env names and config status does not leak secret values."""
-        import qbot_config as cfg
-        from qbot_integration_tools import _tool_qbot_weather_config_status
 
-        self.assertIn("OPENWEATHERMAP_API_KEY", cfg.WEATHER_API_KEY_NAMES)
-        self.assertIn("OWM_API_KEY", cfg.WEATHER_API_KEY_NAMES)
-        self.assertIn("WEATHER_API_KEY", cfg.WEATHER_API_KEY_NAMES)
-
-        with patch.dict(os.environ, {"OPENWEATHERMAP_API_KEY": "FAKE-OWM-SECRET"}, clear=False):
-            result = _tool_qbot_weather_config_status()
-            dumped = json.dumps(result, ensure_ascii=False)
-
-        self.assertTrue(result["openweathermap_key_present"])
-        self.assertIn("OPENWEATHERMAP_API_KEY", result["owm_envs_checked"])
-        self.assertNotIn("FAKE-OWM-SECRET", dumped)
-
-    @patch("qbot_integration_tools.httpx.Client")
-    def test_owm_provider_mocked_response(self, mock_client):
-        """OpenWeatherMap provider returns daily-report payload with structured fields."""
-        from qbot_integration_tools import _tool_qbot_weather_daily_report
-
-        mock_client.return_value = self._FakeClient(self._fake_payloads())
-        with patch("qbot_config.OPENWEATHERMAP_API_KEY", "FAKE-OWM-KEY"):
-            result = _tool_qbot_weather_daily_report({"location": "Marki", "days": 2})
-
-        self.assertEqual(result["status"], "OK")
-        self.assertEqual(result["source"], "OpenWeatherMap")
-        self.assertIn("teraz", result)
-        self.assertIn("hourly_forecast", result)
-        self.assertIn("prognoza", result)
-        self.assertGreater(len(result["hourly_forecast"]), 0)
-        self.assertGreater(len(result["prognoza"]), 0)
-        self.assertEqual(result["teraz"]["warunki"], "zachmurzenie umiarkowane")
-
-    def test_daily_report_adapter_uses_weather_payload(self):
-        """daily_report_adapter should accept the OWM payload without surfacing get_weather:error."""
-        from daily_report_adapter import get_weather
-
-        fake_payload = {
-            "status": "OK",
-            "source": "OpenWeatherMap",
-            "location_resolved": "Marki, PL",
-            "teraz": {
-                "temperatura": "18.2°C",
-                "odczuwalna": "17.6°C",
-                "warunki": "zachmurzenie umiarkowane",
-                "wiatr_ms": "4.2 m/s",
-                "zachmurzenie": "35%",
-                "wilgotnosc": "61%",
-                "opady_mm": 0.0,
-                "observed_at": "2026-05-29T12:00:00+02:00",
-            },
-            "hourly_forecast": [
-                {
-                    "czas": "2026-05-29T12:00:00+02:00",
-                    "temperatura": "18.2°C",
-                    "szansa_deszczu": "10%",
-                    "opady_mm": 0.0,
-                    "wiatr_ms": "4.2 m/s",
-                    "zachmurzenie": "35%",
-                    "warunki": "zachmurzenie umiarkowane",
-                }
-            ],
-            "prognoza": [
-                {
-                    "data": "2026-05-29",
-                    "warunki": "zachmurzenie umiarkowane",
-                    "temp_max": "19.1°C",
-                    "temp_min": "18.2°C",
-                    "szansa_deszcz": "20%",
-                    "opady_mm": 0.0,
-                    "max_wiatr_ms": "5.0 m/s",
-                    "zachmurzenie": "40%",
-                }
-            ],
-        }
-
-        with patch("qbot_integration_tools._tool_qbot_weather_daily_report", return_value=fake_payload):
-            result = get_weather(days=2, location="Marki")
-
-        self.assertNotIn("error", result)
-        self.assertEqual(result["source"], "OpenWeatherMap")
-        self.assertIn("hourly_forecast", result)
-        self.assertIn("prognoza", result)
-
-    def test_missing_weather_key_returns_controlled_error(self):
-        """No API key should return a controlled error, not a crash."""
-        from qbot_integration_tools import _tool_qbot_weather_daily_report
-
-        with patch("qbot_config.OPENWEATHERMAP_API_KEY", ""):
-            result = _tool_qbot_weather_daily_report({"location": "Marki", "days": 2})
-
-        self.assertEqual(result["status"], "ERROR")
-        self.assertIn("API key", result["error"])
-        self.assertEqual(result["source"], "OpenWeatherMap")
 
 
 class TestActionExecuteSemantics(unittest.TestCase):
@@ -1214,3 +1119,26 @@ class TestXertStatusEndToEnd(unittest.TestCase):
 if __name__ == "__main__":
     print("=== QBot3 Acceptance Tests ===")
     unittest.main(verbosity=2)
+
+
+class PogodaWspolnySilnik(unittest.TestCase):
+    """E4.2 (14.10.2026): stare narzedzia pogody na wspolnym silniku -- te same pola, bez OpenWeatherMap (bez sieci: atrapa rdzenia)."""
+
+    def _rows(self):
+        return {"status": "OK", "godziny": [{"iso": "2026-10-15T%02d:00" % h, "przeszlosc": False, "temp": 10.0 + h / 10, "odcz": 8.0, "na_rowerze": 9.0,
+                "wiatr": 3.0, "porywy": 7.0, "chmury": 50, "opad": 0.2, "snieg": 0, "kod": 61, "rh": 80, "szansa": 0.4} for h in range(24)]}
+
+    def test_formaty(self):
+        from unittest.mock import patch as _p
+        import qbot_integration_tools as IT
+        with _p("qbot_pogoda.conditions_point", return_value=self._rows()):
+            c = IT._tool_qbot_weather_current({"lat": 52.3, "lon": 21.1})
+            r = IT._tool_qbot_weather_daily_report({"lat": 52.3, "lon": 21.1, "days": 1})
+            f = IT._tool_qbot_weather_forecast({"lat": 52.3, "lon": 21.1, "hours": 12})
+        self.assertEqual(c["status"], "OK"); self.assertEqual(c["description"], "słaby deszcz"); self.assertNotIn("OpenWeatherMap", c["source"])
+        for k in ("teraz", "hourly_forecast", "prognoza"):
+            self.assertIn(k, r)
+        self.assertEqual(r["hourly_forecast"][0]["szansa_deszczu"], 40)
+        self.assertEqual(f["status"], "OK"); self.assertIn("temperatura", f["summary_text"])
+        cs = IT._tool_qbot_weather_config_status()
+        self.assertFalse(cs["openweathermap_key_present"])

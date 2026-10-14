@@ -764,238 +764,49 @@ def _num(v: Any) -> float | None:
 
 
 def _tool_qbot_weather_daily_report(_args: dict | None = None) -> dict[str, Any]:
-    """OpenWeatherMap-based weather payload for daily_report.py."""
+    """Raport pogody (teraz + godzinowo + dni) -- E4.2: wspolny silnik (bylo: OpenWeatherMap). Pola jak dawniej; uzywa go qbot_weather_forecast."""
     _args = _args or {}
-    location = str(_args.get("location", "") or cfg.LOCATION_NAME or "Marki").strip()
-    days = min(max(int(_args.get("days", 2)), 1), 7)
-    lat = _args.get("lat")
-    lon = _args.get("lon")
-    key = _owm_api_key()
+    days = max(1, min(int(_args.get("days", 2) or 2), 5))
+    lat, lon, name = _core_point(_args)
+    if lat is None:
+        return {"tool": "qbot_weather_daily_report", "status": "ERROR", "error": name, "source": CORE_SOURCE, "location_resolved": name}
+    import qbot_pogoda as _PG
+    w = _PG.conditions_point(lat, lon, hours=24 * days)
+    rows = [r for r in (w.get("godziny") or []) if not r.get("przeszlosc")]
+    if w.get("status") != "OK" or not rows:
+        return {"tool": "qbot_weather_daily_report", "status": "ERROR", "error": w.get("error") or "brak danych", "source": CORE_SOURCE, "location_resolved": name}
+    pct = lambda x: None if x is None else round(x * 100)
+    r0 = rows[0]
+    teraz = {"temperatura": r0.get("temp"), "odczuwalna": r0.get("odcz"), "na_rowerze": r0.get("na_rowerze"), "warunki": _WMO.get(r0.get("kod"), ""),
+             "wiatr_ms": r0.get("wiatr"), "porywy_ms": r0.get("porywy"), "zachmurzenie": r0.get("chmury"), "wilgotnosc": r0.get("rh"),
+             "opady_mm": r0.get("opad") or 0, "observed_at": r0.get("iso")}
+    hourly = [{"czas": r["iso"], "temperatura": r.get("temp"), "odczuwalna": r.get("odcz"), "szansa_deszczu": pct(r.get("szansa")), "opady_mm": r.get("opad") or 0,
+               "wiatr_ms": r.get("wiatr"), "porywy_ms": r.get("porywy"), "zachmurzenie": r.get("chmury"), "warunki": _WMO.get(r.get("kod"), "")} for r in rows]
+    dni = {}
+    for r in rows:
+        dni.setdefault(r["iso"][:10], []).append(r)
+    prognoza = []
+    for dd, rs in dni.items():
+        v = lambda k: [x[k] for x in rs if x.get(k) is not None]
+        sz = [pct(x["szansa"]) for x in rs if x.get("szansa") is not None]
+        kody = v("kod")
+        prognoza.append({"data": dd, "warunki": _WMO.get(max(kody) if kody else None, ""), "temp_max": max(v("temp")) if v("temp") else None,
+                         "temp_min": min(v("temp")) if v("temp") else None, "szansa_deszcz": max(sz) if sz else None,
+                         "opady_mm": round(sum(v("opad")), 1), "max_wiatr_ms": max(v("wiatr")) if v("wiatr") else None,
+                         "zachmurzenie": round(sum(v("chmury")) / len(v("chmury"))) if v("chmury") else None})
+    return {"tool": "qbot_weather_daily_report", "status": "OK", "source": CORE_SOURCE, "location_resolved": name,
+            "teraz": teraz, "hourly_forecast": hourly, "prognoza": prognoza}
 
-    if not key:
-        return {
-            "tool": "qbot_weather_daily_report",
-            "status": "ERROR",
-            "source": "OpenWeatherMap",
-            "error": "OpenWeatherMap API key not configured",
-            "openweathermap_attempted": False,
-            "openweathermap_status_code": None,
-            "location_resolved": location,
-        }
-
-    try:
-        with httpx.Client(timeout=10.0, trust_env=False) as c:
-            if not (lat and lon):
-                geo = c.get(
-                    "https://api.openweathermap.org/geo/1.0/direct",
-                    params={"q": location, "limit": 1, "appid": key},
-                )
-                if geo.status_code != 200:
-                    return {
-                        "tool": "qbot_weather_daily_report",
-                        "status": "ERROR",
-                        "source": "OpenWeatherMap",
-                        "error": f"OpenWeatherMap geocoding HTTP {geo.status_code}",
-                        "openweathermap_attempted": True,
-                        "openweathermap_status_code": geo.status_code,
-                        "location_resolved": location,
-                    }
-                geo_data = geo.json() or []
-                if not geo_data:
-                    return {
-                        "tool": "qbot_weather_daily_report",
-                        "status": "ERROR",
-                        "source": "OpenWeatherMap",
-                        "error": f"OpenWeatherMap geocoding returned no results for {location}",
-                        "openweathermap_attempted": True,
-                        "openweathermap_status_code": geo.status_code,
-                        "location_resolved": location,
-                    }
-                first = geo_data[0]
-                lat = first.get("lat")
-                lon = first.get("lon")
-                resolved_name = first.get("name") or location
-                country = first.get("country")
-                if country:
-                    location = f"{resolved_name}, {country}"
-                else:
-                    location = resolved_name
-
-            current_r = c.get(
-                "https://api.openweathermap.org/data/2.5/weather",
-                params={"lat": lat, "lon": lon, "appid": key, "units": "metric", "lang": "pl"},
-            )
-            forecast_r = c.get(
-                "https://api.openweathermap.org/data/2.5/forecast",
-                params={"lat": lat, "lon": lon, "appid": key, "units": "metric", "lang": "pl"},
-            )
-            if current_r.status_code != 200:
-                return {
-                    "tool": "qbot_weather_daily_report",
-                    "status": "ERROR",
-                    "source": "OpenWeatherMap",
-                    "error": f"OpenWeatherMap current HTTP {current_r.status_code}",
-                    "openweathermap_attempted": True,
-                    "openweathermap_status_code": current_r.status_code,
-                    "location_resolved": location,
-                }
-            if forecast_r.status_code != 200:
-                return {
-                    "tool": "qbot_weather_daily_report",
-                    "status": "ERROR",
-                    "source": "OpenWeatherMap",
-                    "error": f"OpenWeatherMap forecast HTTP {forecast_r.status_code}",
-                    "openweathermap_attempted": True,
-                    "openweathermap_status_code": forecast_r.status_code,
-                    "location_resolved": location,
-                }
-
-            current = current_r.json()
-            forecast = forecast_r.json()
-            tz_offset = (forecast.get("city") or {}).get("timezone", 0)
-            current_dt = _owm_local_dt(int(current.get("dt", 0)), tz_offset)
-            current_weather = (current.get("weather") or [{}])[0]
-            current_main = current.get("main") or {}
-            current_wind = current.get("wind") or {}
-            current_clouds = current.get("clouds") or {}
-
-            forecast_items = forecast.get("list") or []
-            selected = forecast_items[: min(len(forecast_items), days * 8)]
-            hourly_forecast: list[dict[str, Any]] = []
-            grouped: dict[str, list[dict[str, Any]]] = {}
-            for item in selected:
-                local_ts = _owm_local_dt(int(item.get("dt", 0)), tz_offset)
-                day_key = local_ts[:10]
-                grouped.setdefault(day_key, []).append(item)
-                weather = (item.get("weather") or [{}])[0]
-                main = item.get("main") or {}
-                wind = item.get("wind") or {}
-                clouds = item.get("clouds") or {}
-                pop = item.get("pop")
-                rain = item.get("rain") or {}
-                snow = item.get("snow") or {}
-                hourly_forecast.append({
-                    "czas": local_ts,
-                    "temperatura": f"{main.get('temp')}°C" if main.get("temp") is not None else None,
-                    "szansa_deszczu": f"{round(float(pop) * 100)}%" if pop is not None else "0%",
-                    "opady_mm": round(float(rain.get("3h") or 0) + float(snow.get("3h") or 0), 1),
-                    "wiatr_ms": f"{wind.get('speed', 0)} m/s",
-                    "zachmurzenie": f"{clouds.get('all', 0)}%",
-                    "warunki": weather.get("description") or "",
-                })
-
-            prognoza: list[dict[str, Any]] = []
-            for day_key, items in sorted(grouped.items()):
-                temps = [item.get("main", {}).get("temp") for item in items if item.get("main", {}).get("temp") is not None]
-                winds = [item.get("wind", {}).get("speed") for item in items if item.get("wind", {}).get("speed") is not None]
-                clouds_vals = [item.get("clouds", {}).get("all") for item in items if item.get("clouds", {}).get("all") is not None]
-                pops = [item.get("pop") for item in items if item.get("pop") is not None]
-                rain_mm = 0.0
-                for item in items:
-                    rain = item.get("rain") or {}
-                    snow = item.get("snow") or {}
-                    rain_mm += float(rain.get("3h") or 0) + float(snow.get("3h") or 0)
-                weather = (items[0].get("weather") or [{}])[0]
-                prognoza.append({
-                    "data": day_key,
-                    "warunki": weather.get("description") or "",
-                    "temp_max": f"{max(temps):.1f}°C" if temps else None,
-                    "temp_min": f"{min(temps):.1f}°C" if temps else None,
-                    "szansa_deszcz": f"{round(max(pops) * 100)}%" if pops else "0%",
-                    "opady_mm": round(rain_mm, 1),
-                    "max_wiatr_ms": f"{max(winds):.1f} m/s" if winds else None,
-                    "zachmurzenie": f"{round(sum(clouds_vals) / len(clouds_vals))}%" if clouds_vals else None,
-                })
-
-            return {
-                "tool": "qbot_weather_daily_report",
-                "status": "OK",
-                "source": "OpenWeatherMap",
-                "api_source": "openweathermap.org",
-                "location_resolved": location,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "teraz": {
-                    "temperatura": f"{current_main.get('temp')}°C" if current_main.get("temp") is not None else None,
-                    "odczuwalna": f"{current_main.get('feels_like')}°C" if current_main.get("feels_like") is not None else None,
-                    "warunki": current_weather.get("description") or "",
-                    "wiatr_ms": f"{current_wind.get('speed', 0)} m/s",
-                    "zachmurzenie": f"{current_clouds.get('all', 0)}%",
-                    "wilgotnosc": f"{current_main.get('humidity')}%" if current_main.get("humidity") is not None else None,
-                    "opady_mm": round(float((current.get("rain") or {}).get("1h") or 0) + float((current.get("snow") or {}).get("1h") or 0), 1),
-                    "observed_at": current_dt,
-                },
-                "hourly_forecast": hourly_forecast,
-                "prognoza": prognoza,
-                "openweathermap_attempted": True,
-                "openweathermap_status_code": 200,
-            }
-    except Exception as exc:
-        return {
-            "tool": "qbot_weather_daily_report",
-            "status": "ERROR",
-            "source": "OpenWeatherMap",
-            "error": f"OpenWeatherMap error: {str(exc)[:200]}",
-            "openweathermap_attempted": True,
-            "openweathermap_status_code": None,
-            "location_resolved": location,
-        }
 
 def _tool_qbot_weather_config_status(_args: dict | None = None) -> dict[str, Any]:
-    """Check weather configuration without exposing secrets."""
-    owm_names = list(cfg.WEATHER_API_KEY_NAMES)
-    location_names = ["LOCATION_LAT", "LOCATION_LON", "LOCATION_NAME"]
+    """Status konfiguracji pogody -- E4.2 (14.10.2026): jedno zrodlo = wspolny silnik QBota (Open-Meteo bez klucza, radar OPERA, mapy DWD).
+    OpenWeatherMap usuniety. Nie ujawnia sekretow."""
+    location_presence = _env_presence(["LOCATION_LAT", "LOCATION_LON", "LOCATION_NAME"])
+    return {"tool": "qbot_weather_config_status", "status": "OK", "safety_class": "READ_ONLY", "source": CORE_SOURCE,
+            "weather_restored_status": "RESTORED", "openweathermap": "usunięty 2026-10-14 (wspólny silnik QBota)",
+            "openweathermap_key_present": False, "location_envs": location_presence,
+            "notes": "Pogoda: jeden silnik QBota — Open-Meteo (bez klucza, modele wg sprawdzalności), zespół ICON-EU-EPS, radar EUMETNET OPERA, mapy DWD ICON-EU."}
 
-    owm_presence = _env_presence(owm_names)
-    location_presence = _env_presence(location_names)
-
-    any_owm_key = any(owm_presence.values())
-    location_ok = all(location_presence.values())
-    lat_ok = location_presence.get("LOCATION_LAT", False)
-    lon_ok = location_presence.get("LOCATION_LON", False)
-    name_ok = location_presence.get("LOCATION_NAME", False)
-
-    if any_owm_key and location_ok:
-        status = "OK"
-        notes = "OpenWeatherMap API key and location are fully configured. Primary: OWM, fallback: Open-Meteo."
-    elif any_owm_key:
-        status = "WARN"
-        notes = "OpenWeatherMap key present but location missing. Primary: OWM, fallback: Open-Meteo."
-    elif location_ok:
-        status = "OK"
-        notes = "Open-Meteo (free, no key) will be used. OpenWeatherMap not configured."
-    else:
-        status = "WARN"
-        notes = "No weather API key and no location configured."
-
-    if any_owm_key:
-        restored = "RESTORED"
-    elif location_ok:
-        restored = "RESTORED"
-    elif code_detected:
-        restored = "PARTIAL"
-    else:
-        restored = "MISSING"
-
-    return {
-        "tool": "qbot_weather_config_status",
-        "status": status,
-        "safety_class": "READ_ONLY",
-        "openweathermap_key_present": any_owm_key,
-        "default_location_present": location_ok,
-        "fallback_open_meteo_enabled": True,
-        "owm_envs_checked": owm_names,
-        "owm_env_presence": owm_presence,
-        "location_present": location_ok,
-        "primary_provider": "OpenWeatherMap" if any_owm_key else "Open-Meteo/ECMWF",
-        "notes": notes,
-        "restored_status": restored,
-        "missing": [n for n, p in owm_presence.items() if not p] if not any_owm_key else [],
-    }
-
-
-# ═══════════════════════════════════════════════════════════════════════
-#  OPENMAPS TOOLS
-# ═══════════════════════════════════════════════════════════════════════
 
 def _tool_qbot_openmaps_config_status(_args: dict | None = None) -> dict[str, Any]:
     """Check OpenMaps/OSM/Overpass configuration. Free service, no auth needed.
@@ -1373,158 +1184,51 @@ def _tool_qbot_resolve_user_location(_args: dict | None = None) -> dict[str, Any
     }
 
 
+# ---------------------------------------------------------------- E4.2 (14.10.2026): WSPOLNY SILNIK zamiast OpenWeatherMap
+# Stare narzedzia (qbot_weather_current / _forecast / _daily_report / _config_status) zwracaja TE SAME POLA co wczesniej,
+# ale dane z qbot_pogoda (modele wg sprawdzalnosci, odczuwalna jak trasa, szansa z zespolu ICON-EU-EPS). Dok.: docs/POGODA_SILNIK.md
+CORE_SOURCE = "QBot wspólny silnik (Open-Meteo, modele wg sprawdzalności, szansa: ICON-EU-EPS)"
+_WMO = {0: "bezchmurnie", 1: "przeważnie pogodnie", 2: "częściowe zachmurzenie", 3: "pochmurno", 45: "mgła", 48: "mgła szronowa", 51: "mżawka",
+        53: "mżawka", 55: "gęsta mżawka", 61: "słaby deszcz", 63: "deszcz", 65: "silny deszcz", 66: "marznący deszcz", 67: "marznący deszcz",
+        71: "słaby śnieg", 73: "śnieg", 75: "silny śnieg", 77: "ziarna śniegu", 80: "przelotny deszcz", 81: "przelotne opady", 82: "ulewa",
+        85: "przelotny śnieg", 86: "przelotny śnieg", 95: "burza", 96: "burza z gradem", 99: "burza z gradem"}
+
+
+def _core_point(_args: dict) -> tuple:
+    """(lat, lon, nazwa) albo (None, None, komunikat) -- lat/lon z argumentow, nazwa przez geokodowanie, inaczej resolver lokalizacji QBota."""
+    lat, lon, location = _args.get("lat"), _args.get("lon"), str(_args.get("location", "") or "")
+    if lat and lon:
+        return float(lat), float(lon), location or f"{float(lat):.3f}, {float(lon):.3f}"
+    if location:
+        import qbot_pogoda_albert as _pa
+        geo = _pa._geocode(location)
+        if geo:
+            return geo[0], geo[1], geo[2]
+        return None, None, f"Nie znaleziono miejscowości: {location}"
+    loc = _tool_qbot_resolve_weather_location({"text": str(_args.get("text", "")), "max_last_ride_age_hours": 18})
+    if loc.get("status") == "NEEDS_LOCATION" or not loc.get("lat"):
+        return None, None, loc.get("message") or "brak lokalizacji"
+    return float(loc["lat"]), float(loc["lon"]), loc.get("location_resolved", "")
+
+
 def _tool_qbot_weather_current(_args: dict | None = None) -> dict[str, Any]:
+    """Pogoda biezaca -- E4.2: wspolny silnik (bylo: OpenWeatherMap). Pola jak dawniej (+ na_rowerze_c, gusts_mps)."""
     _args = _args or {}
-    location = str(_args.get("location", "") or "")
-    lat = _args.get("lat")
-    lon = _args.get("lon")
-
-    owm_key = os.getenv("OPENWEATHERMAP_API_KEY") or os.getenv("OWM_API_KEY") or os.getenv("WEATHER_API_KEY")
-
-    owm_attempted = False
-    owm_status_code = None
-    owm_error_type = ""
-    om_attempted = False
-    om_status_code = None
-    om_error_type = ""
-
-    if not location and not (lat and lon):
-        loc = _tool_qbot_resolve_weather_location({"text": str(_args.get("text", "")), "max_last_ride_age_hours": 18})
-        if loc.get("status") == "NEEDS_LOCATION":
-            return {
-                "tool": "qbot_weather_current",
-                "status": "NEEDS_LOCATION",
-                "safety_class": "READ_ONLY",
-                "source": "none",
-                "fallback_used": False,
-                "location_source": "none",
-                "message": loc.get("message"),
-                "openweathermap_attempted": False,
-                "open_meteo_attempted": False,
-            }
-        location = loc.get("location_resolved", "")
-        lat = loc.get("lat")
-        lon = loc.get("lon")
-        location_source = loc.get("location_source", "")
-        last_ride_age = loc.get("last_ride_age_hours")
-
-    if owm_key:
-        owm_attempted = True
-        try:
-            import httpx
-            if lat and lon:
-                url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={owm_key}&units=metric&lang=pl"
-            else:
-                url = f"https://api.openweathermap.org/data/2.5/weather?q={location}&appid={owm_key}&units=metric&lang=pl"
-            with httpx.Client(timeout=10.0, trust_env=False) as c:
-                r = c.get(url)
-                owm_status_code = r.status_code
-                if r.status_code == 200:
-                    d = r.json()
-                    return {
-                        "tool": "qbot_weather_current",
-                        "status": "OK",
-                        "source": "OpenWeatherMap",
-                        "fallback_used": False,
-                        "location_resolved": location,
-                        "temperature_c": d["main"]["temp"],
-                        "feels_like_c": d["main"]["feels_like"],
-                        "wind_mps": d["wind"]["speed"],
-                        "wind_kmh": round(d["wind"]["speed"] * 3.6, 1),
-                        "clouds_percent": d["clouds"]["all"],
-                        "rain_1h_mm": d.get("rain", {}).get("1h", 0),
-                        "snow_1h_mm": d.get("snow", {}).get("1h", 0),
-                        "description": d["weather"][0]["description"],
-                        "humidity_percent": d["main"]["humidity"],
-                        "pressure_hpa": d["main"]["pressure"],
-                        "observed_at": datetime.fromtimestamp(d["dt"], tz=timezone.utc).isoformat(),
-                        "openweathermap_attempted": True,
-                        "openweathermap_status_code": owm_status_code,
-                        "open_meteo_attempted": False,
-                    }
-                elif r.status_code in (401, 403):
-                    owm_error_type = "auth_error"
-                elif r.status_code == 404:
-                    owm_error_type = "location_not_found"
-                elif r.status_code == 429:
-                    owm_error_type = "rate_limit"
-                else:
-                    owm_error_type = f"http_{r.status_code}"
-        except Exception as e:
-            owm_error_type = f"connection_error: {str(e)[:60]}"
-
-    om_attempted = True
-    import urllib.parse as _urlparse
-    geo_city = location.split(",")[0].strip() if "," in (location or "") else location
-    geo_city_encoded = _urlparse.quote(geo_city, safe="")
-    geo_url_preview = ""
-    try:
-        import httpx
-        with httpx.Client(timeout=10.0, trust_env=False) as c:
-            if lat and lon:
-                r = c.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code,precipitation,cloud_cover&timezone=auto")
-            else:
-                geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={geo_city_encoded}&count=1&language=pl"
-                geo_url_preview = f"geocoding-api.open-meteo.com/v1/search?name={geo_city_encoded}"
-                geo = c.get(geo_url)
-                om_status_code = geo.status_code if geo.status_code != 200 else None
-                if geo.status_code == 200 and geo.json().get("results"):
-                    res = geo.json()["results"][0]
-                    lat, lon = res["latitude"], res["longitude"]
-                    location = f"{res.get('name', geo_city)}, {res.get('country', '')}"
-                else:
-                    om_error_type = f"geocoding_http_{geo.status_code}"
-                r = c.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code,precipitation,cloud_cover&timezone=auto")
-            om_status_code = r.status_code
-            if r.status_code == 200:
-                d = r.json()
-                current = d["current"]
-                wmo_code = current.get("weather_code", 0)
-                wmo_map = {0: "bezchmurnie", 1: "prawie bezchmurnie", 2: "częściowe zachmurzenie", 3: "pochmurno", 45: "mgła", 51: "mżawka", 61: "deszcz", 71: "śnieg", 80: "przelotny deszcz", 95: "burza"}
-                return {
-                    "tool": "qbot_weather_current",
-                    "status": "OK",
-                    "source": "Open-Meteo/ECMWF fallback",
-                    "fallback_used": True,
-                    "location_resolved": location,
-                    "temperature_c": current["temperature_2m"],
-                    "feels_like_c": current["apparent_temperature"],
-                    "wind_mps": current["wind_speed_10m"],
-                    "wind_kmh": round(current["wind_speed_10m"] * 3.6, 1),
-                    "clouds_percent": current.get("cloud_cover", 0),
-                    "rain_1h_mm": current.get("precipitation", 0),
-                    "humidity_percent": current["relative_humidity_2m"],
-                    "description": wmo_map.get(wmo_code, f"kod {wmo_code}"),
-                    "observed_at": current["time"],
-                    "openweathermap_attempted": owm_attempted,
-                    "openweathermap_status_code": owm_status_code,
-                    "openweathermap_error_type": owm_error_type or None,
-                    "open_meteo_attempted": True,
-                    "open_meteo_status_code": om_status_code,
-                    "open_meteo_geocoding_url_preview": geo_url_preview,
-                    "open_meteo_geocoding_status_code": 200,
-                }
-            else:
-                om_error_type = f"http_{r.status_code}"
-    except Exception as e:
-        if not om_error_type:
-            om_error_type = f"connection_error: {str(e)[:60]}"
-
-    return {
-        "tool": "qbot_weather_current",
-        "status": "ERROR",
-        "source": "none",
-        "fallback_used": False,
-        "location_resolved": location,
-        "openweathermap_attempted": owm_attempted,
-        "openweathermap_status_code": owm_status_code,
-        "openweathermap_error_type": owm_error_type or None,
-        "open_meteo_attempted": om_attempted,
-        "open_meteo_status_code": om_status_code,
-        "open_meteo_error_type": om_error_type or None,
-        "openweathermap_error_message": f"HTTP {owm_status_code}: {owm_error_type}" if owm_status_code else (owm_error_type or "not configured"),
-        "open_meteo_error_message": f"HTTP {om_status_code}: {om_error_type}" if om_status_code else (om_error_type or None),
-    }
+    lat, lon, name = _core_point(_args)
+    base = {"tool": "qbot_weather_current", "source": CORE_SOURCE, "fallback_used": False, "location_resolved": name,
+            "openweathermap_attempted": False, "open_meteo_attempted": True}
+    if lat is None:
+        return dict(base, status="NEEDS_LOCATION", safety_class="READ_ONLY", message=name)
+    import qbot_pogoda as _PG
+    w = _PG.conditions_point(lat, lon, hours=6)
+    rows = [r for r in (w.get("godziny") or []) if not r.get("przeszlosc")]
+    if w.get("status") != "OK" or not rows:
+        return dict(base, status="ERROR", open_meteo_error_message=w.get("error") or "brak danych")
+    r = rows[0]
+    return dict(base, status="OK", temperature_c=r.get("temp"), feels_like_c=r.get("odcz"), na_rowerze_c=r.get("na_rowerze"),
+                wind_mps=r.get("wiatr"), wind_kmh=round((r.get("wiatr") or 0) * 3.6, 1), gusts_mps=r.get("porywy"),
+                clouds_percent=r.get("chmury"), rain_1h_mm=r.get("opad") or 0, snow_1h_mm=r.get("snieg") or 0,
+                description=_WMO.get(r.get("kod"), ""), humidity_percent=r.get("rh"), pressure_hpa=None, observed_at=r.get("iso"))
 
 
 def _tool_qbot_weather_forecast(_args: dict | None = None) -> dict[str, Any]:
