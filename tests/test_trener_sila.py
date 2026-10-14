@@ -33,7 +33,7 @@ class Choose(unittest.TestCase):
         for g in S.BASE_GROUPS:
             self.assertGreaterEqual(groups[g], 1, g)
         self.assertEqual(ch["accent"], "klatka + ramiona")
-        self.assertEqual(len(ch["chosen"]), 8)
+        self.assertTrue(6 <= len(ch["chosen"]) <= 9, len(ch["chosen"]))   # 2026-10-09: 3 rundy po 2-3 cwiczenia
 
     def test_max_two_weight_classes(self):
         for i in range(60):
@@ -59,7 +59,7 @@ class Choose(unittest.TestCase):
                 if x["grp"] == "klatka" and not x["accent"]:
                     chest += 1; bench += x["key"] == "bench_press_db"
         share = tiers["P"] / (tiers["P"] + tiers["R"])
-        self.assertTrue(0.6 < share < 0.8, share)
+        self.assertTrue(0.5 < share < 0.8, share)   # 2026-10-09: klasy rund ograniczaja wybor (np. lekkie = glownie rotacyjne)
         self.assertGreater(bench / chest, 0.25, bench / chest)
 
     def test_skip_and_excluded(self):
@@ -92,7 +92,9 @@ class Blocks(unittest.TestCase):
             self.assertLessEqual(len(w), 2)
             self.assertEqual(sum(len(b["items"]) for b in bl), len(ch["chosen"]))
             if cls[-1] == "0":
-                self.assertTrue(all(x["grp"] == "core" for x in bl[-1]["items"]))
+                self.assertTrue(all(x["wclass"] == "0" for x in bl[-1]["items"]))
+            for b in bl[:-1] if cls[-1] == "0" else bl:   # 2026-10-09: bez hantli nigdy w bloku z hantlami
+                self.assertTrue(all(x["wclass"] == b["wclass"] for x in b["items"]))
             d = S.render(ch, bl, [{"key": "cat_cow", "name": "Koci grzbiet", "dose": "8"}], "bz", False)
             self.assertEqual(len(d["exercises"]), len(ch["chosen"]))
             self.assertIn("BLOK A", d["text"]); self.assertNotIn("None", d["text"])

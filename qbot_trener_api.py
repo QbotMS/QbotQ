@@ -267,6 +267,16 @@ def clean_overrides(b: Any) -> dict:
     return b
 
 
+def _fill_xss(c, row: dict) -> dict:
+    """Planowane obciazenie z rodzaju, strefy i czasu (przelicznik silnika). Bez tego reczna sesja miala xss NULL,
+    a raport jazdy i bilans tygodnia liczyly ja jako 0 (2026-10-14). Jawnie podane xss nie jest ruszane."""
+    import qbot_trener_engine as E_
+    x = E_.xss_of(row["sport"], row.get("zone"), int(row.get("dur_min") or 0))
+    c.execute("UPDATE qbot_v2.trainer_session SET xss=%s WHERE id=%s", (x, row["id"]))
+    row["xss"] = x
+    return row
+
+
 def _jsonable(row: dict) -> dict:
     out = {}
     for k, v in row.items():
@@ -448,6 +458,8 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                 c.execute(f"INSERT INTO qbot_v2.{table} ({','.join(cols)}) VALUES ({','.join(['%s'] * len(cols))}) RETURNING *",
                           [u] + _vals(d))
                 row = _jsonable(c.fetchone())
+                if table == "trainer_session" and "xss" not in d:
+                    row = _fill_xss(c, row)
                 _after_change(c, u, table, [row.get("day")])
                 return row
             return run(go)
@@ -471,6 +483,8 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
                 if not row:
                     raise HTTPException(status_code=404, detail="nie znaleziono")
                 row = _jsonable(row)
+                if table == "trainer_session" and "xss" not in d and set(d) & {"sport", "dur_min", "zone"}:
+                    row = _fill_xss(c, row)
                 if not (table == "trainer_session" and not (set(d) - {"acks"})):
                     _after_change(c, u, table, [old_day, row.get("day")])
                 return row
@@ -994,6 +1008,32 @@ def build_router(db_conn: Callable, current_user: Callable) -> APIRouter:
             try:
                 return SH.set_block_kg(c, u, sid, str((b or {}).get("letter") or ""), float((b or {}).get("kg") or 0))
             except (SH.SheetError, ValueError) as e:
+                raise BadInput(str(e))
+        return run(go)
+
+    @r.post("/sessions/{sid}/workout")
+    async def session_workout_change(sid: int, request: Request):
+        """Zmiana zestawu silowego przez uzytkownika: {action:'reroll'} = inny zestaw, {action:'swap', keys:[...]} =
+        wymiana tych cwiczen na inne z tej samej partii (qbot_trener_sila.modify)."""
+        u = user_of(request)
+        b = await body_of(request)
+        import qbot_trener_sila as SX
+        def go(c):
+            try:
+                return SX.modify(c, u, sid, str((b or {}).get("action") or ""), list((b or {}).get("keys") or []))
+            except SX.ModifyError as e:
+                raise BadInput(str(e))
+        return run(go)
+
+    @r.get("/sessions/{sid}/workout/review")
+    def session_workout_review(sid: int, request: Request):
+        """Ocena AI spojnosci zapisanego zestawu silowego (cache w trainer_workout.data._review)."""
+        u = user_of(request)
+        import qbot_trener_sila as SX
+        def go(c):
+            try:
+                return SX.review(c, u, sid)
+            except SX.ModifyError as e:
                 raise BadInput(str(e))
         return run(go)
 

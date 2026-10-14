@@ -53,6 +53,20 @@ class AskValidate(unittest.TestCase):
         self.assertEqual(r["changes"][0]["name"], "Siła obwodowa")
 
 
+class SportChange(unittest.TestCase):
+    def test_rename_changes_sport(self):   # 14.10: joga -> rower sama nazwa
+        ses = SES + [{"id": 700, "day": "2026-10-03", "sport": "joga", "name": "Joga mobilność", "start_time": "09:00",
+                      "dur_min": 30, "status": "plan", "source": "auto", "note": "dzień bez treningu"}]
+        r = A.validate({"changes": [{"op": "edit", "id": 700, "name": "Rower spokojnie", "dur_min": 60}]}, WS, TODAY, ses)
+        self.assertEqual(r["changes"][0]["sport"], "rower")
+        r = A.validate({"changes": [{"op": "edit", "id": 643, "sport": "joga", "name": "Joga"}]}, WS, TODAY, ses)
+        self.assertEqual(r["changes"][0]["sport"], "joga")
+        r = A.validate({"changes": [{"op": "edit", "id": 642, "name": "Dłuższa jazda Grailem"}]}, WS, TODAY, ses)
+        self.assertNotIn("sport", r["changes"][0])
+        self.assertEqual(A.sport_of_name("Joga mobilność"), "joga")
+        self.assertIsNone(A.sport_of_name("Coś"))
+
+
 class StrengthSkip(unittest.TestCase):
     def test_no_legs(self):
         for n in range(8):

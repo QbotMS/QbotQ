@@ -82,8 +82,18 @@ def plan_block(cur, day, w1):
         out["zrodla"].append("planer")
     cur.execute("SELECT name, dur_min, zone, xss, status, note FROM qbot_v2.trainer_session "
                 "WHERE day=%s AND sport='rower' ORDER BY id", (day,))
-    tr = [{"nazwa": x[0], "czas_min": x[1], "strefa": x[2], "obciazenie": _f(x[3], 0), "status": x[4], "notatka": x[5]}
-          for x in cur.fetchall()]
+    tr = []
+    for x in cur.fetchall():
+        ob, est = _f(x[3], 0), False
+        if not ob and (x[1] or 0) > 0:   # jazda z czasem, a obciazenie puste / 0 -> szacunek z czasu (NIE 'plan 0')
+            try:
+                import qbot_trener_engine as _E
+                ob = _E.xss_of("rower", x[2] or 2, int(x[1]))
+            except Exception:
+                ob = round(0.75 * x[1])
+            est = True
+        tr.append({"nazwa": x[0], "czas_min": x[1], "strefa": x[2], "obciazenie": ob, "status": x[4], "notatka": x[5],
+                   **({"obciazenie_szacowane_z_czasu": True} if est else {})})
     if tr:
         out["trener"] = tr
         out["zrodla"].append("trener")

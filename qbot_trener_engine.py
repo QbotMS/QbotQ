@@ -999,7 +999,8 @@ def build_context(c, user: str, week_start: date, today: date | None = None, kee
         c.execute("SELECT day, sport, name, dur_min, xss, is_long FROM qbot_v2.trainer_session WHERE username=%s AND day BETWEEN %s AND %s "
                   "AND status IN ('plan','done') AND sport='rower'", (user, pa, pb))
         for r in c.fetchall():
-            carry.append({"day": r["day"], "name": r["name"], "xss": float(r["xss"] or 0), "is_long": bool(r["is_long"]), "src": "plan"})
+            carry.append({"day": r["day"], "name": r["name"], "is_long": bool(r["is_long"]), "src": "plan",
+                          "xss": float(r["xss"]) if r["xss"] else xss_of("rower", 2, int(r["dur_min"] or 0))})
         for rr in _route_days(pa, pb):
             if rr.get("absorbed_by"):
                 continue

@@ -6,7 +6,8 @@ apply(c, user, ws, text, changes) -> {change_id, lines, notes} - ponowna walidac
     TWOJE zmiany (source=manual, silnik ich nie rusza), zapis w trainer_change (action 'prosba_ai', Akceptuj / Cofnij),
     potem przeliczenie sesji trenera w tygodniu + rolowanie (dzieci z payload.parent - cofaja sie razem).
 Operacje: add (nowa sesja), edit (godzina / czas / dzien / nazwa / notatka / pominiete partie sily), remove (status skip
-    + "usunięte przez Ciebie", jak w UI). Bezpieczniki: maks. 6 operacji, tylko dni tego tygodnia od dzis, sesje z tego
+    + "usunięte przez Ciebie", jak w UI), swap (2026-10-09: sila - zamiana wskazanych cwiczen na inne z tej samej partii
+    albo caly nowy zestaw; qbot_trener_sila.modify; Cofnij przywraca zapisany zestaw z payload.ai.workouts). Bezpieczniki: maks. 6 operacji, tylko dni tego tygodnia od dzis, sesje z tego
     tygodnia i nie zrobione, sporty i partie z listy, kolizje z zajetosciami jako ostrzezenie.
 Cofanie: payload.ai = {created: [id], restore: [wiersze sprzed zmiany]} - obsluga w qbot_trener_ops.undo.
 Testy: tests/test_trener_ask.py (walidacja, bez LLM).
@@ -33,8 +34,14 @@ o zmianę planu tygodnia. Zamień ją na listę KONKRETNYCH operacji na planie. 
 zajętości, pogoda, sesje z \"id\"), gotowość i dozwolone wartości.
 OPERACJE:
 - {\"op\":\"add\",\"day\":\"RRRR-MM-DD\",\"sport\":\"rower|sila|wiosl|joga\",\"start\":\"HH:MM\",\"dur_min\":N,\"name\":\"krótko\",\"note\":\"krótko\",\"skip_groups\":[...]}
-- {\"op\":\"edit\",\"id\":ID,\"start\":\"HH:MM\",\"dur_min\":N,\"day\":\"RRRR-MM-DD\",\"name\":\"...\",\"note\":\"...\",\"skip_groups\":[...]} (podaj tylko pola do zmiany)
+- {\"op\":\"edit\",\"id\":ID,\"start\":\"HH:MM\",\"dur_min\":N,\"day\":\"RRRR-MM-DD\",\"name\":\"...\",\"sport\":\"rower|sila|wiosl|joga\",\"note\":\"...\",\"skip_groups\":[...]} (podaj tylko pola do zmiany;
+  zmiana RODZAJU treningu, np. joga → rower = edit z \"sport\" i nową nazwą)
 - {\"op\":\"remove\",\"id\":ID}
+- {\"op\":\"swap\",\"id\":ID,\"zamien\":[\"klucz\",...]} — TYLKO siła: wymień wskazane ćwiczenia na inne z tej samej partii
+  (klucze WYŁĄCZNIE z pola \"cwiczenia\" tej sesji; dopasuj po nazwie, np. \"bez mountain climbers\", \"zamień pullover\").
+  Nie wybierasz następcy — dobiera go silnik z Twojej bazy ćwiczeń.
+- {\"op\":\"swap\",\"id\":ID,\"nowy_zestaw\":true} — TYLKO siła: cały zestaw ćwiczeń od nowa (\"nie podoba mi się zestaw\").
+Pominięcie CAŁEJ partii (\"bez brzucha\") = edit z skip_groups; pojedyncze ćwiczenie = swap.
 skip_groups (tylko siła) = partie do POMINIĘCIA, z listy: nogi, klatka, ramiona, plecy, barki, brzuch. \"bez nóg\" = [\"nogi\"]
 (wypadają też ćwiczenia na tył ciała). Pusta lista [] = przywróć pełny obwód.
 ZASADY: rób DOKŁADNIE to, o co prosi użytkownik — nic ponad to (nie przestawiaj innych sesji, chyba że prosi albo jest
@@ -72,6 +79,18 @@ def _skip(v):
     if not isinstance(v, list):
         v = [v]
     return TW.clean_skip([str(x).strip().lower() for x in v])
+
+
+_NAME_SPORT = (("rower", ("rower", "jazda", "gravel", "szosa", "mtb")), ("joga", ("joga", "yoga", "mobilno")),
+               ("sila", ("siła", "sila", "siłow")), ("wiosl", ("wiosł", "wiosl")))
+
+
+def sport_of_name(name: str | None) -> str | None:
+    """Sport z nazwy sesji (jednoznacznie albo None). 14.10: AI zmienilo 'Joga mobilność' na 'Rower spokojnie' samą nazwą -
+    sport zostal joga, obciazenie 0, a raport jazdy pisal 'plan zakladal 0'."""
+    n = (name or "").lower()
+    hits = [sp for sp, keys in _NAME_SPORT if any(k in n for k in keys)]
+    return hits[0] if len(hits) == 1 else None
 
 
 def _desc(day, sport, name, start, dur) -> str:
@@ -115,6 +134,33 @@ def validate(resp, ws: date, today: date, sessions: list, busy: dict | None = No
             ch = {"op": "add", "day": day, "sport": sport, "start": start, "dur_min": dur, "name": name,
                   "note": _txt(it.get("note"), 120), "skip_groups": skip or None}
             ch["line"] = "+ " + _desc(day, sport, name, start, dur) + (f" · {ch['note']}" if ch["note"] else "")
+        elif op == "swap":
+            try:
+                sid = int(it.get("id"))
+            except (TypeError, ValueError):
+                rej.append("zamiana ćwiczeń: brak id sesji"); continue
+            s = by_id.get(sid)
+            if not s or s["sport"] != "sila":
+                rej.append(f"zamiana ćwiczeń: sesja {sid} to nie siła z tego tygodnia"); continue
+            if sid in used:
+                rej.append(f"zamiana ćwiczeń: sesja {sid} zmieniana dwa razy"); continue
+            if s["status"] != "plan" or E._d(s["day"]) < today:
+                rej.append(f"zamiana ćwiczeń: {s['name']} — zrobiona, pominięta albo z przeszłości"); continue
+            exm = {e["key"]: e["name"] for e in (s.get("_ex") or [])}
+            if not exm:
+                rej.append(f"zamiana ćwiczeń: {s['name']} nie ma jeszcze zestawu z bazy"); continue
+            old = _desc(s["day"], s["sport"], s["name"], str(s.get("start_time") or "")[:5] or None, s["dur_min"])
+            if it.get("nowy_zestaw") is True:
+                ch = {"op": "swap", "id": sid, "reroll": True, "line": "🔀 " + old + " · cały nowy zestaw ćwiczeń"}
+            else:
+                ks = [str(k) for k in (it.get("zamien") or []) if str(k) in exm]
+                if not ks:
+                    rej.append("zamiana ćwiczeń: nie rozpoznano ćwiczenia z tego treningu"); continue
+                ch = {"op": "swap", "id": sid, "keys": ks[:6],
+                      "line": "↻ " + old + " · zamiana: " + ", ".join(exm[k] for k in ks[:6])}
+            used.add(sid)
+            out.append(ch)
+            continue
         elif op in ("edit", "remove"):
             try:
                 sid = int(it.get("id"))
@@ -152,6 +198,14 @@ def validate(resp, ws: date, today: date, sessions: list, busy: dict | None = No
                     ch["dur_min"] = dur
                 if it.get("name") is not None and _txt(it.get("name"), 60):
                     ch["name"] = _txt(it.get("name"), 60)
+                if it.get("sport") is not None:
+                    sp = str(it.get("sport"))
+                    if sp not in SPORTS:
+                        rej.append(f"zmiana: nieznany sport {sp}"); continue
+                    if sp != s["sport"]:
+                        ch["sport"] = sp
+                elif ch.get("name") and sport_of_name(ch["name"]) not in (None, s["sport"]):
+                    ch["sport"] = sport_of_name(ch["name"])
                 if it.get("note") is not None:
                     ch["note"] = _txt(it.get("note"), 120)
                 if it.get("skip_groups") is not None:
@@ -162,7 +216,7 @@ def validate(resp, ws: date, today: date, sessions: list, busy: dict | None = No
                         ch["name"] = SNAME["sila"] + ((" (bez: " + ", ".join(ch["skip_groups"]) + ")") if ch["skip_groups"] else "")
                 if len(ch) <= 2:
                     rej.append(f"zmiana: nic do zmiany w {s['name']}"); continue
-                new = _desc(ch.get("day", s["day"]), s["sport"], ch.get("name", s["name"]),
+                new = _desc(ch.get("day", s["day"]), ch.get("sport", s["sport"]), ch.get("name", s["name"]),
                             ch.get("start", str(s.get("start_time") or "")[:5] or None), ch.get("dur_min", s["dur_min"]))
                 ch["line"] = "~ " + old + " → " + new + (f" · {ch['note']}" if ch.get("note") else "")
             used.add(sid)
@@ -198,6 +252,16 @@ def _load(c, user: str, ws: date):
     for s in sessions:
         if s.get("start_time"):
             s["start_time"] = s["start_time"].strftime("%H:%M")
+    c.execute("SELECT day, data FROM qbot_v2.trainer_workout WHERE username=%s AND sport='sila' AND day BETWEEN %s AND %s",
+              (user, ws, ws + timedelta(days=6)))
+    wk = {}
+    for r in c.fetchall():
+        d = r["data"] if not isinstance(r["data"], str) else json.loads(r["data"])
+        if d and "_src" in d:
+            wk[str(r["day"])[:10]] = [{"key": e["key"], "name": e["name"], "group": e.get("group")} for e in d.get("exercises", [])]
+    for s in sessions:
+        if s["sport"] == "sila":
+            s["_ex"] = wk.get(str(s["day"])[:10])
     busy = {}
     for i in range(7):
         d = ws + timedelta(days=i)
@@ -212,7 +276,9 @@ def build_input(ctx: dict, res: dict, sessions: list, text: str) -> dict:
         day["plan"] = [{"id": s["id"], "godz": s.get("start_time"), "sport": s["sport"], "nazwa": s["name"], "min": s["dur_min"],
                         "status": s["status"], "reczna": s.get("source") == "manual", "dluga": bool(s.get("is_long")),
                         "pominiete_partie": ((s.get("opts") or {}).get("skip_groups") if isinstance(s.get("opts"), dict) else None),
-                        "uwaga": (s.get("note") or "")[:120] or None}
+                        "uwaga": (s.get("note") or "")[:120] or None,
+                        **({"cwiczenia": [{"klucz": e["key"], "nazwa": e["name"], "partia": e["group"]} for e in s["_ex"]]}
+                           if s.get("_ex") else {})}
                        for s in sessions if str(s["day"])[:10] == day["data"]]
         day.pop("zrobione_z_garmina", None)
     for k in ("reguly", "oceny_uzytkownika", "suma_godzin", "widelki_godzin", "progi"):
@@ -255,16 +321,31 @@ def apply(c, user: str, ws: date, text: str, changes: list) -> dict:
     c.execute("SELECT * FROM qbot_v2.trainer_session WHERE username=%s AND day BETWEEN %s AND %s", (user, ws, ws + timedelta(days=6)))
     raw = {int(r["id"]): dict(r) for r in c.fetchall()}
     OPS._supersede_pending(c, user, ws)
-    created, restore = [], []
+    created, restore, workouts = [], [], []
+    import qbot_trener_sila as SX
     for ch in v["changes"]:
+        if ch["op"] == "swap":
+            prev = SX.saved(c, user, raw[ch["id"]]["day"])
+            try:
+                r0 = SX.modify(c, user, ch["id"], "reroll" if ch.get("reroll") else "swap", ch.get("keys"))
+            except SX.ModifyError as e:
+                v["rejected"].append(f"zamiana ćwiczeń: {e}"); continue
+            if prev:
+                workouts.append(prev)
+            if r0.get("pairs"):
+                ch["line"] = ch["line"].split(" · zamiana: ")[0] + " · zamiana: " + "; ".join(f"{x} → {y}" for x, y in r0["pairs"])
+            if r0.get("missing"):
+                ch["line"] += " (bez zastępstwa: " + ", ".join(r0["missing"]) + ")"
+            continue
         if ch["op"] == "add":
             sp = ch["sport"]
             note = "dodane przez Ciebie" + (" · " + ch["note"] if ch.get("note") else "") + " (prośba do AI)"
             opts = json.dumps({"skip_groups": ch["skip_groups"]}) if ch.get("skip_groups") else None
-            c.execute("INSERT INTO qbot_v2.trainer_session (username, day, sport, name, start_time, dur_min, min_min, zone, is_long, status, cut, source, note, opts) "
-                      "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,false,'plan',false,'manual',%s,%s::jsonb) RETURNING id",
+            zn = 2 if sp == "rower" else None
+            c.execute("INSERT INTO qbot_v2.trainer_session (username, day, sport, name, start_time, dur_min, min_min, zone, xss, is_long, status, cut, source, note, opts) "
+                      "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,false,'plan',false,'manual',%s,%s::jsonb) RETURNING id",
                       (user, ch["day"], sp, ch["name"], ch.get("start"), ch["dur_min"], min(MIN_MIN[sp], ch["dur_min"]),
-                       2 if sp == "rower" else None, note[:200], opts))
+                       zn, E.xss_of(sp, zn, ch["dur_min"]), note[:200], opts))
             created.append(c.fetchone()["id"])
             continue
         s = raw[ch["id"]]
@@ -274,19 +355,29 @@ def apply(c, user: str, ws: date, text: str, changes: list) -> dict:
                       (("usunięte przez Ciebie (prośba do AI)" + (" · " + s["note"] if s.get("note") else ""))[:200], ch["id"], user))
             continue
         sets, vals = ["source='manual'"], []
-        for k, col in (("day", "day"), ("start", "start_time"), ("dur_min", "dur_min"), ("name", "name")):
+        for k, col in (("day", "day"), ("start", "start_time"), ("dur_min", "dur_min"), ("name", "name"), ("sport", "sport")):
             if k in ch:
                 sets.append(f"{col}=%s"); vals.append(ch[k])
         if "dur_min" in ch:
             sets.append("min_min=LEAST(COALESCE(min_min, %s), %s)"); vals += [ch["dur_min"], ch["dur_min"]]
         if "skip_groups" in ch:
             sets.append("opts=%s::jsonb"); vals.append(json.dumps({"skip_groups": ch["skip_groups"]}) if ch["skip_groups"] else None)
+        # planowane obciazenie zawsze zgodne z rodzajem i czasem sesji (ten sam przelicznik co silnik)
+        sp_new = ch.get("sport", s["sport"])
+        zn_new = (s.get("zone") or 2) if sp_new == "rower" else None
+        if "sport" in ch:
+            sets.append("zone=%s"); vals.append(zn_new)
+            if sp_new != "sila" and "skip_groups" not in ch:
+                sets.append("opts=NULL")
+        if "sport" in ch or "dur_min" in ch or s.get("xss") is None:
+            sets.append("xss=%s"); vals.append(E.xss_of(sp_new, zn_new, int(ch.get("dur_min", s["dur_min"]) or 0)))
         note = ch.get("note") if "note" in ch else None
-        sets.append("note=%s"); vals.append((("zmienione na Twoją prośbę (AI)" + (" · " + note if note else "")) if note or not s.get("note")
-                                             else (s["note"] + " · zmienione na Twoją prośbę (AI)"))[:200])
+        old_note = None if "sport" in ch else s.get("note")   # inny trening = stara notatka (np. dzien bez treningu) nieaktualna
+        sets.append("note=%s"); vals.append((("zmienione na Twoją prośbę (AI)" + (" · " + note if note else "")) if note or not old_note
+                                             else (old_note + " · zmienione na Twoją prośbę (AI)"))[:200])
         c.execute(f"UPDATE qbot_v2.trainer_session SET {', '.join(sets)}, updated_at=now() WHERE id=%s AND username=%s", vals + [ch["id"], user])
     lines = [ch["line"] for ch in v["changes"]]
-    payload = {"ai": {"created": created, "restore": restore}, "request": _txt(text, 600), "lines": lines,
+    payload = {"ai": {"created": created, "restore": restore, "workouts": workouts}, "request": _txt(text, 600), "lines": lines,
                "notes": ["Prośba: " + (_txt(text, 200) or "")]}
     c.execute("INSERT INTO qbot_v2.trainer_change (username, week_start, action, payload, before, after, accepted) "
               "VALUES (%s,%s,'prosba_ai',%s::jsonb,'[]'::jsonb,%s::jsonb,NULL) RETURNING id",

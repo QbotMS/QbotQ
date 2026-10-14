@@ -266,6 +266,9 @@ def undo(c, u: str, cid: int) -> dict:
             vals = [json.dumps(s[k2]) if k2 == "opts" and s[k2] is not None else s[k2] for k2 in rc]
             c.execute(f"UPDATE qbot_v2.trainer_session SET {', '.join(k2 + ('=%s::jsonb' if k2 == 'opts' else '=%s') for k2 in rc)}, updated_at=now() "
                       "WHERE id=%s AND username=%s", vals + [s["id"], u])
+        for w in ai.get("workouts") or []:   # zamiana cwiczen sily (2026-10-09): zapisany zestaw sprzed zmiany
+            c.execute("UPDATE qbot_v2.trainer_workout SET sig=%s, data=%s::jsonb, updated_at=now() "
+                      "WHERE username=%s AND day=%s AND sport='sila'", (w["sig"], json.dumps(w["data"], ensure_ascii=False), u, w["day"]))
         if p.get("cal_ids"):
             c.execute("DELETE FROM qbot_v2.calendar_entry WHERE id = ANY(%s) AND note='[trener]'", (p["cal_ids"],))
         if p.get("day_state"):
