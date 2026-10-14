@@ -6957,6 +6957,8 @@ def _radar_loop():
                     _c = _db_conn()
                     try:
                         RV.evaluate_new(_c.cursor()); _c.commit()
+                        import qbot_eps_verif as EV   # sprawdzalnosc szansy z zespolu (co godzine)
+                        EV.tick(_c.cursor()); _c.commit()
                     finally:
                         _c.close()
                 except Exception as _e:
@@ -7222,6 +7224,17 @@ def api_pogoda_spr_radar(dni: int = 7):
     conn = _db_conn()
     try:
         r = RV.summary(conn.cursor(), dni=max(1, min(int(dni), 90))); conn.commit(); return r
+    finally:
+        conn.close()
+
+
+@app.get("/api/pogoda/sprawdzalnosc-szansa")
+def api_pogoda_spr_szansa(dni: int = 14):
+    """Wiarygodnosc szansy opadu z zespolu ICON-EU-EPS vs radar: krzywa (szansa vs czestosc), Brier/BSS wg wyprzedzenia."""
+    import qbot_eps_verif as EV
+    conn = _db_conn()
+    try:
+        r = EV.summary(conn.cursor(), dni=max(1, min(int(dni), 90))); conn.commit(); return r
     finally:
         conn.close()
 

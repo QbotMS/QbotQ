@@ -139,6 +139,8 @@ body.dock-big .dchart{display:flex}
       <div id="sprtab" style="margin-top:8px;overflow-x:auto"></div>
       <div class="cwrap" style="height:220px;margin-top:10px"><canvas id="sprch"></canvas></div>
       <div class="sec-h">Radar — prognoza przez przesunięcie obrazu</div><div id="sprrad">…</div>
+      <div class="sec-h">Szansa opadu (zespół 40 wariantów)</div><div id="sprsz">…</div>
+      <div class="cwrap" style="height:210px;margin-top:6px"><canvas id="sprszch"></canvas></div>
       <div class="sec-h">Modele</div>
       <div class="note">Porównanie prognoz wydanych 1, 2 i 3 doby wcześniej z pomiarami ze stacji IMGW (co godzinę).
         <b>Błąd</b> to średnia różnica, <b>znak</b> mówi, czy model zawyża (+) czy zaniża (−). <b>Opad</b> liczony w okresach 6 h (próg 0,5 mm).
@@ -463,7 +465,7 @@ function sprBtns(sel,attr,val){ document.querySelectorAll(sel+" button["+attr+"]
 document.querySelectorAll("#sprz button").forEach(function(b){b.addEventListener("click",function(){ if(b.dataset.z)spr.z=b.dataset.z; if(b.dataset.d)spr.d=+b.dataset.d;
   sprBtns("#sprz","data-z",spr.z); sprBtns("#sprz","data-d",spr.d); loadSpr(); });});
 document.querySelectorAll("#sprw button").forEach(function(b){b.addEventListener("click",function(){ spr.w=+b.dataset.w; sprBtns("#sprw","data-w",spr.w); drawSpr(); });});
-function loadSpr(){ loadSprRad(); $("sprtab").textContent="Liczę…"; var q="/api/pogoda/sprawdzalnosc?dni="+spr.d+(spr.z==="dom"&&pos?"&lat="+pos.lat.toFixed(3)+"&lon="+pos.lon.toFixed(3):"");
+function loadSpr(){ loadSprRad(); loadSprSz(); $("sprtab").textContent="Liczę…"; var q="/api/pogoda/sprawdzalnosc?dni="+spr.d+(spr.z==="dom"&&pos?"&lat="+pos.lat.toFixed(3)+"&lon="+pos.lon.toFixed(3):"");
   J(q).then(function(d){ spr.data=d; if(d.status!=="OK"){$("sprtab").textContent=d.status==="BRAK_STACJI"?"Brak stacji IMGW w promieniu 100 km od punktu.":(d.error||d.status);return;}
     var ok=function(s){return s?s.slice(8,10)+"."+s.slice(5,7):"–";};
     $("sprinfo").textContent=d.zakres+" · stacji: "+d.stacji+" · okres z danymi: "+(d.okres?ok(d.okres[0])+"–"+ok(d.okres[1]):"–"); drawSpr(); }); }
@@ -550,6 +552,19 @@ function renderOkno(d){
 }
 $("okgo").addEventListener("click",function(){ if($("okd").value&&$("oks").value)loadOkno("&dzien="+$("okd").value+"&start="+$("oks").value+"&dur="+$("okt").value); });
 
+var szCh=null;
+function loadSprSz(){ J("/api/pogoda/sprawdzalnosc-szansa?dni=14").then(function(d){ var el=$("sprsz"); if(!el)return;
+  if(d.status!=="OK"){ el.innerHTML='<div class="note">Zbieram dane: co godzinę porównuję szansę z zespołu z tym, co pokazał radar. Pierwsze wyniki po kilku godzinach (więcej, gdy zacznie padać).</div>'; if(szCh){szCh.destroy();szCh=null;} return; }
+  el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="color:var(--muted);font-size:11.5px;text-align:left"><th style="padding:4px 6px">Wyprzedzenie</th><th style="padding:4px 6px">Lepsza od średniej (BSS)</th><th style="padding:4px 6px">Faktycznie padało</th><th style="padding:4px 6px">Próbek</th></tr>'+
+    d.grupy.map(function(g){return '<tr style="border-top:1px solid var(--line)"><td style="padding:5px 6px;font-weight:600">'+g.wyprzedzenie_h+' h</td><td style="padding:5px 6px;'+(g.bss>0?"color:var(--good);font-weight:700":"color:var(--bad)")+'">'+(g.bss==null?"–":Math.round(g.bss*100)+"%")+'</td><td style="padding:5px 6px">'+Math.round(g.czestosc_opadu*100)+'% obszaru</td><td style="padding:5px 6px;color:var(--muted)">'+g.n.toLocaleString("pl-PL")+'</td></tr>';}).join("")+
+    '</table><div class="note">Wykres: jeśli prognoza mówi „X%”, to jak często faktycznie padało. Idealnie punkty leżą na przekątnej. Pod przekątną model straszy na wyrost, nad nią zaniża. BSS powyżej 0 oznacza, że szansa jest lepsza niż stała średnia. Godzin w ocenie: '+d.godzin+'.</div>';
+  var cols=["#286ed2","#2e8b57","#e8743b","#9628a0"], ds=d.grupy.map(function(g,i){return {type:"line",label:g.wyprzedzenie_h+" h",borderColor:cols[i%4],backgroundColor:cols[i%4],pointRadius:3,borderWidth:2,
+      data:g.krzywa.filter(function(k){return k.n>=200;}).map(function(k){return {x:Math.round(k.szansa_sr*100),y:Math.round(k.czestosc*100)};})};});
+  ds.push({type:"line",label:"ideał",data:[{x:0,y:0},{x:100,y:100}],borderColor:css("--muted"),borderDash:[5,5],pointRadius:0,borderWidth:1});
+  if(szCh)szCh.destroy();
+  szCh=new Chart($("sprszch"),{data:{datasets:ds},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:true,
+    plugins:{legend:{labels:{color:css("--ink2"),boxWidth:12}},tooltip:{callbacks:{label:function(c){return c.dataset.label+": prognoza "+c.parsed.x+"% → padało "+c.parsed.y+"%";}}}},
+    scales:{x:{type:"linear",min:0,max:100,title:{display:true,text:"prognozowana szansa %"},ticks:{color:css("--muted")}},y:{min:0,max:100,title:{display:true,text:"faktycznie padało %"},ticks:{color:css("--muted")}}}}}); }); }
 function loadSprRad(){ J("/api/pogoda/sprawdzalnosc-radar?dni=14").then(function(d){ var el=$("sprrad"); if(!el)return;
   var any=d.status==="OK"&&d.wyniki.some(function(w){return w.przypadkow_z_opadem>0;});
   if(!any){el.innerHTML='<div class="note">Zbieram dane: ocena liczy się przy każdej klatce radaru, gdy gdzieś pada. Pierwsze wyniki po kilku godzinach opadów.</div>';return;}

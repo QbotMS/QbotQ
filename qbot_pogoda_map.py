@@ -363,7 +363,13 @@ def eps_build(run: dt.datetime, out: str) -> dict:
                 rate = np.clip(cur - prev, 0, None) / (step - prev_step)
                 prob = (rate >= EPS_PROG).mean(axis=0)
                 _png(PAL["szansa"](prob), os.path.join(out, f"szansa_{step:03d}.png")); n += 1
+                ad = os.path.join(CACHE, "eps_arch", ymdh); os.makedirs(ad, exist_ok=True)      # archiwum do sprawdzalnosci (3 doby)
+                np.savez_compressed(os.path.join(ad, f"prob_{step:03d}.npz"), p=prob.astype(np.float16))
             prev, prev_step = cur, step
+        arch = os.path.join(CACHE, "eps_arch")
+        for d in os.listdir(arch):
+            if re.fullmatch(r"\d{10}", d) and dt.datetime.strptime(d, "%Y%m%d%H").replace(tzinfo=dt.timezone.utc) < run - dt.timedelta(hours=72):
+                shutil.rmtree(os.path.join(arch, d), ignore_errors=True)
         mp = os.path.join(out, "meta.json")
         if os.path.exists(mp):
             with open(mp) as fh:

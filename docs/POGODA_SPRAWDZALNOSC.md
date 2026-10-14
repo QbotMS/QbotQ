@@ -39,3 +39,11 @@ Odniesienie: bez przesuwania (persystencja). Miara CSI. Pola ruchu per klatka: `
 KEEP_MIN = 130. Tabela `qbot_v2.pogoda_radar_verif`. API `/api/pogoda/sprawdzalnosc-radar?dni=`. Horyzont osi radaru na stronie
 = najdłuższe L z CSI ≥ 0,3 i ≥ persystencja przy ≥ 300 przypadkach z opadem (inaczej domyślnie 120 min). Ocena w pętli radaru qbot-web.
 Pierwszy wynik (14.10 rano, ~2 h opadów): CSI 10/20/30/45/60/90 min = 68/55/45/36/33/23% vs bez przesuwania 34/21/14/9/8/6% → horyzont 60 min.
+
+## Szansa opadu z zespołu (2026-10-14) — `qbot_eps_verif.py`
+Co godzinę H (≥ 10 klatek radaru z [H−1 h, H]): obserwacja w pikselu 6 km = średnia intensywność z radaru (Marshall-Palmer, blok 4×4)
+≥ 0,2 mm/h; prognoza = szansa z archiwum zespołu (`pogoda_model/eps_arch/<przebieg>/prob_<krok>.npz`, 3 doby, zapis w `eps_build`)
+dla każdego przebiegu z krokiem o ważności H (wyprzedzenie = H − przebieg). Obszar PL z pokryciem radaru. Tabela `qbot_v2.pogoda_eps_verif`
+(liczebność i opady w przedziałach co 10%). Podsumowanie: krzywa wiarygodności (szansa vs częstość), Brier, BSS względem klimatologii próby,
+grupy 0–12 / 12–24 / 24–48 / 48–60 h. Wywołanie w pętli radaru qbot-web (`EV.tick`). API `/api/pogoda/sprawdzalnosc-szansa?dni=`.
+Strona: ✓ Sprawdzalność → „Szansa opadu” (tabela BSS + wykres wiarygodności z przekątną idealną). Dane od 14.10.2026 (brak archiwum wstecz).
