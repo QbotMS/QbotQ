@@ -57,6 +57,7 @@ body.open .x{display:block}
 .okr.plan{background:var(--well);font-weight:700}.okr .bar{height:10px;border-radius:5px;background:var(--well);position:relative;overflow:hidden}
 .okr .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:5px}.okr .u{color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rec.sel{outline:2px solid var(--accent);outline-offset:-1px}.wkgo{color:var(--accent-ink,var(--accent));font-weight:600;text-decoration:none;font-size:12px}
+.ralert{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:2000;max-width:min(760px,calc(100vw - 24px));background:var(--bad-bg);color:var(--bad);border:1px solid var(--bad);border-radius:12px;padding:9px 38px 9px 14px;font-size:14.5px;font-weight:600;box-shadow:0 4px 18px rgba(0,0,0,.25)}.ralert button{position:absolute;right:8px;top:6px;border:0;background:none;color:inherit;font-size:20px;cursor:pointer}
 .soonbox{border:1px dashed var(--line);border-radius:10px;padding:10px 12px;font-size:13.5px;color:var(--ink2)}
 .wrow{margin:0 0 10px}.wrow .h{display:flex;justify-content:space-between;font-size:13px}.wrow .h b{font-size:13.5px}.wrow .h span{color:var(--muted);font-size:12px}
 .strip{display:flex;gap:1px;margin-top:3px}.strip span{flex:1;height:20px;border-radius:2px}
@@ -103,6 +104,7 @@ html.theme-dark{--d-blue2:#5d86b0;--d-blue3:#2b3c52;--d-green-l:#34401f;--d-gree
 </style>
 </head>
 <body>
+<div id="ralert" class="ralert" hidden><span id="ralertT"></span><button id="ralertX" type="button" aria-label="zamknij">×</button></div>
 <div id="map"></div>
 <div class="map-ctl" id="mapctl">
   <button type="button" id="mc-fit">Wyśrodkuj</button>
@@ -580,6 +582,13 @@ function loadSprRad(){ J("/api/pogoda/sprawdzalnosc-radar?dni=14").then(function
     " Trafność = trafione / (trafione + fałszywe alarmy + przegapione), w ok. 1000 punktach nad Polską. „Bez przesuwania” to założenie, że pada tam, gdzie padało: tło porównania pokazujące, ile daje liczenie ruchu.</div>";
   el.innerHTML=h; }); }
 J("/api/pogoda/sprawdzalnosc-radar?dni=14").then(function(d){ if(d&&d.horyzont_min&&d.horyzont_min!==NOW_MAX){ NOW_MAX=d.horyzont_min; if(steps.length)buildSteps(); if(pos)loadPoint(); } });
+
+/* ---- ostrzezenie o deszczu w czasie jazdy (radar / prognoza) ---- */
+function loadAlert(){ J("/api/pogoda/ostrzezenie").then(function(d){ var el=$("ralert"); if(!el)return;
+  if(d.status!=="OK"||sessionStorage.getItem("qpogoda_ralert_x")===d.sent_at){ el.hidden=true; return; }
+  $("ralertT").textContent=d.text; el.dataset.k=d.sent_at; el.hidden=false; }).catch(function(){}); }
+$("ralertX").addEventListener("click",function(){ try{sessionStorage.setItem("qpogoda_ralert_x",$("ralert").dataset.k);}catch(e){} $("ralert").hidden=true; });
+loadAlert(); setInterval(loadAlert,120000);
 
 /* ---- start ---- */
 J("/api/pogoda/dom").then(function(h){ HOME=h.status==="OK"?h:null; var saved=null;

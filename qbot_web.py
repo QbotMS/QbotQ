@@ -6959,6 +6959,8 @@ def _radar_loop():
                         RV.evaluate_new(_c.cursor()); _c.commit()
                         import qbot_eps_verif as EV   # sprawdzalnosc szansy z zespolu (co godzine)
                         EV.tick(_c.cursor()); _c.commit()
+                        import qbot_pogoda_alert as RA   # ostrzezenie o deszczu w czasie jazdy (strona + Telegram)
+                        RA.check(_c); _c.commit()
                     finally:
                         _c.close()
                 except Exception as _e:
@@ -7130,6 +7132,18 @@ def api_pogoda_mapa_korekta():
     """Przesuniecie mapy opadu modelu do zgodnosci z aktualnym radarem (dx_m, dy_m w metrach Mercatora, km, kierunek)."""
     import qbot_pogoda_map as PM
     return PM.korekta()
+
+
+@app.get("/api/pogoda/ostrzezenie")
+def api_pogoda_ostrzezenie():
+    """Ostatnie ostrzezenie o deszczu dla jazdy trwajacej / zaczynajacej sie w ciagu 60 min (pasek na Pogodzie)."""
+    import qbot_pogoda_alert as RA
+    from psycopg.rows import dict_row
+    conn = _db_conn()
+    try:
+        r = RA.current(conn.cursor(row_factory=dict_row)); conn.commit(); return r
+    finally:
+        conn.close()
 
 
 @app.get("/api/pogoda/okno")

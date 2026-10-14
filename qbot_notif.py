@@ -397,6 +397,7 @@ SOURCES = [
     ("jedz_dzien", "Zdrowie", "Dzień do zamknięcia", "Brokuł do potwierdzenia albo brak wpisów – przycisk + link do dnia", ("live:jedzenie:dzien:",)),
     ("zakupy_ceny", "Zakupy", "Wynik szukania ceny", "po przycisku „Szukaj ceny” – najtańsza sprawdzona oferta", ("zakupy:ceny:",)),
     ("zakupy", "Zakupy", "Kończy się zapas", "suple i inne zużywalne z Garaż → Zakupy – przycisk „Kup ponownie”", ("live:zakupy:",)),
+    ("radar", "Pogoda", "Radar: deszcz w czasie jazdy", "radar / prognoza widzi deszcz w czasie zaplanowanej jazdy (też Telegram)", ("radar:",)),
     ("pogoda", "Pogoda", "Pogoda przed zaplanowaną jazdą", "deszcz, wiatr, przymrozek, burza, śnieg — dziś i jutro", ("live:pogoda:",)),
     ("trasa", "Trasy", "Trasa czeka na potwierdzenie", "nowa trasa RWGPS / Komoot — odpowiedź w Telegramie", ("live:trasa:",)),
     ("trener_plan", "Trener", "Plan tygodnia", "kopia wiadomości z Telegrama", ("trener:plan:",)),
