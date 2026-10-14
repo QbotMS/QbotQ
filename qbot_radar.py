@@ -32,7 +32,7 @@ BASE = "https://s3.waw3-1.cloudferro.com/openradar-24h"
 CACHE = os.getenv("QBOT_RADAR_CACHE", "/opt/qbot/artifacts/radar_cache")
 BBOX = (11.0, 47.5, 27.0, 56.5)       # lon_min, lat_min, lon_max, lat_max (Polska + sasiedzi = widac co nadchodzi)
 PX_M = 1500.0                          # piksel siatki Web Mercator [m merc] (~0,9 km w terenie na 52N)
-KEEP_MIN = 120                         # ile minut historii trzymamy (animacja)
+KEEP_MIN = 130                         # ile minut historii (animacja + ocena radaru z wyprzedzeniem do 120 min)
 EVERY_S = 300                          # co ile sekund petla w tle
 DBZ_SHOW = 12.0                        # ponizej nie rysujemy (mzawka/szum)
 DBZ_RAIN = 18.0                        # ~0,5 mm/h (Marshall-Palmer) = "pada"
@@ -284,9 +284,11 @@ def _nearest(fr: list, t1: dt.datetime, mins: float) -> dt.datetime:
     return min(fr, key=lambda t: abs((t1 - t).total_seconds() / 60 - mins))
 
 
-def motion() -> dict:
-    """Pole ruchu: wektory kafelkow [px/min] z klatek t0 (~-30), tm (~-15), t1 (najnowsza)."""
+def motion(t1=None) -> dict:
+    """Pole ruchu: wektory kafelkow [px/min] z klatek t0 (~-30), tm (~-15), t1 (najnowsza albo podana -- ocena wstecz)."""
     fr = frames()
+    if t1 is not None:
+        fr = [f for f in fr if f <= t1]
     if len(fr) < 3:
         return {"status": "BRAK_DANYCH", "n": 0, "vec": []}
     t1 = fr[-1]

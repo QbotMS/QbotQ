@@ -122,6 +122,8 @@ body.dock-big .dchart{display:flex}
       <div class="pos" id="sprw" style="margin-top:8px"><button data-w="1" class="on">Prognoza na jutro</button><button data-w="2">na pojutrze</button><button data-w="3">za 3 dni</button></div>
       <div id="sprtab" style="margin-top:8px;overflow-x:auto"></div>
       <div class="cwrap" style="height:220px;margin-top:10px"><canvas id="sprch"></canvas></div>
+      <div class="sec-h">Radar — prognoza przez przesunięcie obrazu</div><div id="sprrad">…</div>
+      <div class="sec-h">Modele</div>
       <div class="note">Porównanie prognoz wydanych 1, 2 i 3 doby wcześniej z pomiarami ze stacji IMGW (co godzinę).
         <b>Błąd</b> to średnia różnica, <b>znak</b> mówi, czy model zawyża (+) czy zaniża (−). <b>Opad</b> liczony w okresach 6 h (próg 0,5 mm).
         Trafność opadu = trafione / (trafione + fałszywe alarmy + przegapione). Najlepszy wynik w kolumnie jest wyróżniony.
@@ -396,7 +398,7 @@ function sprBtns(sel,attr,val){ document.querySelectorAll(sel+" button["+attr+"]
 document.querySelectorAll("#sprz button").forEach(function(b){b.addEventListener("click",function(){ if(b.dataset.z)spr.z=b.dataset.z; if(b.dataset.d)spr.d=+b.dataset.d;
   sprBtns("#sprz","data-z",spr.z); sprBtns("#sprz","data-d",spr.d); loadSpr(); });});
 document.querySelectorAll("#sprw button").forEach(function(b){b.addEventListener("click",function(){ spr.w=+b.dataset.w; sprBtns("#sprw","data-w",spr.w); drawSpr(); });});
-function loadSpr(){ $("sprtab").textContent="Liczę…"; var q="/api/pogoda/sprawdzalnosc?dni="+spr.d+(spr.z==="dom"&&pos?"&lat="+pos.lat.toFixed(3)+"&lon="+pos.lon.toFixed(3):"");
+function loadSpr(){ loadSprRad(); $("sprtab").textContent="Liczę…"; var q="/api/pogoda/sprawdzalnosc?dni="+spr.d+(spr.z==="dom"&&pos?"&lat="+pos.lat.toFixed(3)+"&lon="+pos.lon.toFixed(3):"");
   J(q).then(function(d){ spr.data=d; if(d.status!=="OK"){$("sprtab").textContent=d.status==="BRAK_STACJI"?"Brak stacji IMGW w promieniu 100 km od punktu.":(d.error||d.status);return;}
     var ok=function(s){return s?s.slice(8,10)+"."+s.slice(5,7):"–";};
     $("sprinfo").textContent=d.zakres+" · stacji: "+d.stacji+" · okres z danymi: "+(d.okres?ok(d.okres[0])+"–"+ok(d.okres[1]):"–"); drawSpr(); }); }
@@ -420,6 +422,18 @@ function drawSpr(){ var d=spr.data; if(!d||d.status!=="OK")return; var R=d.wynik
       plugins:{title:{display:true,text:"Błąd temperatury wg wyprzedzenia (°C, mniej = lepiej)",color:css("--ink2")},legend:{labels:{color:css("--ink2"),boxWidth:12}},
         tooltip:{callbacks:{label:function(x){return x.parsed.y==null?null:x.dataset.label+": "+pl(x.parsed.y)+" °C";}}}},
       scales:{x:{ticks:{color:css("--muted")},grid:{display:false}},y:{beginAtZero:true,ticks:{color:css("--muted")}}}}}); }
+
+function loadSprRad(){ J("/api/pogoda/sprawdzalnosc-radar?dni=14").then(function(d){ var el=$("sprrad"); if(!el)return;
+  var any=d.status==="OK"&&d.wyniki.some(function(w){return w.przypadkow_z_opadem>0;});
+  if(!any){el.innerHTML='<div class="note">Zbieram dane: ocena liczy się przy każdej klatce radaru, gdy gdzieś pada. Pierwsze wyniki po kilku godzinach opadów.</div>';return;}
+  var h='<table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="color:var(--muted);font-size:11.5px;text-align:left"><th style="padding:4px 6px">Wyprzedzenie</th><th style="padding:4px 6px">Radar (z ruchem)</th><th style="padding:4px 6px">Bez przesuwania</th><th style="padding:4px 6px">Przypadki z opadem</th></tr>';
+  d.wyniki.forEach(function(w){ var lep=w.csi!=null&&w.csi_bez_ruchu!=null&&w.csi>w.csi_bez_ruchu;
+    h+='<tr style="border-top:1px solid var(--line)"><td style="padding:5px 6px;font-weight:600">'+w.lead_min+' min</td><td style="padding:5px 6px;'+(lep?"color:var(--good);font-weight:700":"")+'">'+(w.csi==null?"–":Math.round(w.csi*100)+"%")+
+      '</td><td style="padding:5px 6px">'+(w.csi_bez_ruchu==null?"–":Math.round(w.csi_bez_ruchu*100)+"%")+'</td><td style="padding:5px 6px;color:var(--muted)">'+w.przypadkow_z_opadem+'</td></tr>'; });
+  h+='</table><div class="note">'+(d.horyzont_min?"Radar ma sens do ok. <b>"+d.horyzont_min+" min</b> i tyle pokazuje oś na mapie.":"Za mało danych do ustalenia horyzontu (potrzeba "+d.min_przypadkow+" przypadków z opadem na wyprzedzenie), więc oś pokazuje domyślne 120 min.")+
+    " Trafność = trafione / (trafione + fałszywe alarmy + przegapione), w ok. 1000 punktach nad Polską. „Bez przesuwania” to założenie, że pada tam, gdzie padało: tło porównania pokazujące, ile daje liczenie ruchu.</div>";
+  el.innerHTML=h; }); }
+J("/api/pogoda/sprawdzalnosc-radar?dni=14").then(function(d){ if(d&&d.horyzont_min&&d.horyzont_min!==NOW_MAX){ NOW_MAX=d.horyzont_min; if(steps.length)buildSteps(); if(pos)loadPoint(); } });
 
 /* ---- start ---- */
 J("/api/pogoda/dom").then(function(h){ HOME=h.status==="OK"?h:null; var saved=null;

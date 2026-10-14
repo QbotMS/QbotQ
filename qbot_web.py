@@ -6952,6 +6952,15 @@ def _radar_loop():
             st = RAD.sync()
             if st.get("nowe"):
                 print(f"[radar] {st}", file=_sys.stderr, flush=True)
+                try:   # 2026-10-14: sprawdzalnosc radaru przy kazdej nowej klatce (qbot_radar_verif)
+                    import qbot_radar_verif as RV
+                    _c = _db_conn()
+                    try:
+                        RV.evaluate_new(_c.cursor()); _c.commit()
+                    finally:
+                        _c.close()
+                except Exception as _e:
+                    print(f"[radar-verif] blad: {_e!r}", file=_sys.stderr, flush=True)
         except Exception as e:
             print(f"[radar] blad: {e!r}", file=_sys.stderr, flush=True)
         _t.sleep(RAD.EVERY_S)
@@ -7112,6 +7121,17 @@ def api_pogoda_mapa_png(layer: str, rid: str):
     if not p:
         raise HTTPException(status_code=404, detail="brak warstwy")
     return FileResponse(p, media_type="image/png", headers={"Cache-Control": "private, max-age=86400"})
+
+
+@app.get("/api/pogoda/sprawdzalnosc-radar")
+def api_pogoda_spr_radar(dni: int = 7):
+    """Sprawdzalnosc prognozy radaru (przesuniecie obrazu) vs bez przesuwania, wg wyprzedzenia; horyzont_min dla osi czasu."""
+    import qbot_radar_verif as RV
+    conn = _db_conn()
+    try:
+        r = RV.summary(conn.cursor(), dni=max(1, min(int(dni), 90))); conn.commit(); return r
+    finally:
+        conn.close()
 
 
 def _owner_only(request: Request):

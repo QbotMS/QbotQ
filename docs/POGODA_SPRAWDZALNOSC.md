@@ -31,3 +31,11 @@ z kodami 9-cyfrowymi i API z kodami WMO).
 - Archiwum IMGW pojawia się z opóźnieniem ok. miesiąca → bieżący miesiąc liczony z API (bez porywów/opadu).
 - Wiatr ze stacji to średnia 10-min na 10 m; modele podają godzinowo — porównanie przybliżone.
 - Radar (nowcast) — etap 2 (porównanie z mapą opadu OPERA).
+
+## Radar (etap 2, 2026-10-14) — `qbot_radar_verif.py`
+Przy każdej nowej klatce T: prognozy wydane o T−L (L = 10/20/30/45/60/90/120 min; obraz z T−L przesunięty wg pola ruchu z T−L,
+tak jak karta „u Ciebie”) porównane z klatką T w ~1000 punktach co 0,25° nad Polską. „Pada” = ≥ 50% koła ma ≥ 18 dBZ.
+Odniesienie: bez przesuwania (persystencja). Miara CSI. Pola ruchu per klatka: `radar_cache/motion_<ts>.json` (`qbot_radar.motion(t1)`),
+KEEP_MIN = 130. Tabela `qbot_v2.pogoda_radar_verif`. API `/api/pogoda/sprawdzalnosc-radar?dni=`. Horyzont osi radaru na stronie
+= najdłuższe L z CSI ≥ 0,3 i ≥ persystencja przy ≥ 300 przypadkach z opadem (inaczej domyślnie 120 min). Ocena w pętli radaru qbot-web.
+Pierwszy wynik (14.10 rano, ~2 h opadów): CSI 10/20/30/45/60/90 min = 68/55/45/36/33/23% vs bez przesuwania 34/21/14/9/8/6% → horyzont 60 min.
