@@ -27,6 +27,7 @@ html.theme-dark{--glass:rgba(13,16,22,.95)}
 #lp .body{flex:1;min-width:0;overflow:auto;padding:12px 14px}
 #lp .rail{flex:0 0 46px;display:flex;flex-direction:column;gap:6px;padding:10px 6px;border-left:1px solid var(--line);align-items:center}
 body.open #lp{width:min(46vw,700px);min-width:min(420px,calc(100vw - 80px))}
+body.open[data-sec="warunki"] #lp{width:min(80vw,1200px)}   /* 14.10: Warunki szerzej -- wykres skaluje sie z panelem */
 .rt{--tc:var(--blue);appearance:none;border:0;cursor:pointer;width:34px;height:34px;border-radius:10px;position:relative;display:flex;align-items:center;
   justify-content:center;color:var(--tc);background:color-mix(in srgb,var(--tc) 18%,transparent);font-size:17px}
 .rt.on{background:var(--tc);color:#fff}.rt.soon{opacity:.45}
@@ -275,7 +276,7 @@ window.addEventListener("resize",function(){ setDock($("dock").getBoundingClient
 var sec="radar", TTL={spr:"Sprawdzalność modeli",radar:"Pogoda · u Ciebie",warunki:"Warunki godzina po godzinie",okno:"Okno jazdy",weekend:"Gdzie w weekend"};
 function openSec(s){ sec=s; document.querySelectorAll("#rail .rt").forEach(function(b){b.classList.toggle("on",b.dataset.s===s);});
   document.querySelectorAll("#lp .body [data-s]").forEach(function(d){d.hidden=d.dataset.s!==s;}); $("sttl").textContent=TTL[s];
-  document.body.classList.toggle("open",s!=="radar"); if(s==="spr")loadSpr(); if(s==="okno"&&!OKL)loadOkno(""); if(s==="weekend")loadWeekend(WK.day); else if(WK.ov)hideWeekend(); }
+  var vc=visCenter(); document.body.dataset.sec=s; document.body.classList.toggle("open",s!=="radar"); setTimeout(function(){centerOn(vc);},240); if(s==="spr")loadSpr(); if(s==="okno"&&!OKL)loadOkno(""); if(s==="weekend")loadWeekend(WK.day); else if(WK.ov)hideWeekend(); }
 document.querySelectorAll("#rail .rt").forEach(function(b){b.addEventListener("click",function(){ openSec(b.dataset.s); });});
 $("close").addEventListener("click",function(){ openSec("radar"); });
 
@@ -531,7 +532,8 @@ function wkDraw(r,keep){ if(!r)return; WK.r=r; if(WK.lg)map.removeLayer(WK.lg);
     var mk=L.marker([x.lat,x.lon],{pane:"wk",zIndexOffset:sel?1000:0,icon:L.divIcon({className:"",iconSize:[0,0],html:'<div style="transform:translate(-50%,-50%);background:'+col+';color:#fff;font:700 12px -apple-system,system-ui,sans-serif;border-radius:12px;padding:2px 8px;white-space:nowrap;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.45);'+(sel?"outline:2px solid #fff;":"opacity:.92;")+'">'+(i+1)+". "+x.nazwa+" · "+x.ocena+'</div>'})}).addTo(WK.lg);
     mk.on("click",function(){ wkSelect(i,false); var el=document.querySelector('#wklist .rec[data-i="'+i+'"]'); if(el)el.scrollIntoView({block:"nearest"}); });
     if(!r.limit_km)B.extend(L.latLng(x.lat,x.lon)); });
-  if(!keep&&B.isValid())map.fitBounds(B,{padding:[40,40]}); }
+  if(!keep&&B.isValid()){ var lr=$("lp").getBoundingClientRect(), dk=$("dock").getBoundingClientRect();
+    map.fitBounds(B,{paddingTopLeft:[lr.right+20,30],paddingBottomRight:[30,innerHeight-dk.top+20]}); } }
 setTimeout(function(){ var s=$("wkkm"); if(!s)return; s.value=String(WK.km); s.addEventListener("change",function(){ WK.km=+this.value; LS("qpogoda_wkkm",String(WK.km)); loadWeekend(WK.day); }); },0);
 
 /* ---- okno jazdy ---- */
@@ -591,6 +593,14 @@ function loadAlert(){ J("/api/pogoda/ostrzezenie").then(function(d){ var el=$("r
   $("ralertT").textContent=d.text; el.dataset.k=d.sent_at; el.hidden=false; }).catch(function(){}); }
 $("ralertX").addEventListener("click",function(){ try{sessionStorage.setItem("qpogoda_ralert_x",$("ralert").dataset.k);}catch(e){} $("ralert").hidden=true; });
 loadAlert(); setInterval(loadAlert,120000);
+
+/* ---- centrowanie mapy na WIDOCZNEJ czesci (miedzy panelem a prawa krawedzia, nad dolnym paskiem) ---- */
+function visBox(){ var r=$("lp").getBoundingClientRect(), d=$("dock").getBoundingClientRect(); return {x:(r.right+innerWidth)/2, y:Math.max(60,d.top/2)}; }
+function visCenter(){ var v=visBox(); return map.containerPointToLatLng([v.x,v.y]); }
+function centerOn(ll){ if(!ll)return; var v=visBox(), p=map.latLngToContainerPoint(ll); map.panBy([p.x-v.x,p.y-v.y],{animate:true,duration:.25}); }
+var lastVC=null; map.on("moveend",function(){ lastVC=visCenter(); });
+var rsT=null; addEventListener("resize",function(){ var k=lastVC; clearTimeout(rsT); rsT=setTimeout(function(){ map.invalidateSize(); centerOn(k); },150); });
+window.__map=map; window.__VC=visCenter;
 
 /* ---- start ---- */
 J("/api/pogoda/dom").then(function(h){ HOME=h.status==="OK"?h:null; var saved=null;
