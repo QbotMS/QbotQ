@@ -134,6 +134,8 @@ Rozstrzyga odczucie Michała (pytanie otwarte).
 1. Kotwica wlasna 14.10: TP 238,8 / HIE 20,0 / PP 988,8 (HIE z replay 4 jazd W'bal=0 + odczucie; bez wartosci z Xerta).
 2. Czulosc HIE na TL_high 0,11 (z rocznych danych, fizjologia: pojemnosc beztlenowa zmienia sie wolno), granice +-10 %.
    Kontrola 4 jazd: 6,0 / 8,7 / 9,4 / 6,8 % (cel 5-15 %). Szczegoly: DECISIONS 2026-10-14.
+3. Regula TP 0,45 W/CTL z CTL sprzed 14 dni (dane roczne r2 0,85; test vs Xert >90 dni MAE 7,9 -> 3,6 W).
+   Skutek uboczny: LTHR 151 -> 148 i strefy HR w intervals.icu (krok lthr/lthr_sync). DECISIONS 2026-10-14.
 Pozostale punkty planu (TODO): pytanie po jezdzie z W'bal <= 5 % (Odcielo/Blisko/Zapas), miesieczny sprawdzian vs Xert
 (propozycja kotwicy tylko za zgoda), bezpieczniki tygodniowe, usuniecie kotwicy EF z kodu, masy bagazu w meter_physics,
 jeden dokument ModelQ; regula TP (0,66 W/CTL) do przegladu tym samym tokiem (fizjologia -> dane -> test).

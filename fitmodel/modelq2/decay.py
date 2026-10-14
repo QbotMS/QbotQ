@@ -48,7 +48,12 @@ HIE_DRIFT_MIN, HIE_DRIFT_MAX = 0.90, 1.10    # +-10% (bylo +-20% przy czulosci 1
 PP_DRIFT_MIN, PP_DRIFT_MAX = 0.93, 1.07      # miekki bezpiecznik (PP Xerta 984-1043)
 PP_K = 0.10                                   # tlumienie: PP dryfuje 10% amplitudy HIE (PP prawie stale, jak Xert sd~15)
 TP_DRIFT_MIN, TP_DRIFT_MAX = 0.90, 1.12
-TP_K_DRIFT = 0.66                             # W na 1 pkt CTL (dryf TP miedzy kotwicami, jak cp_v3)
+# 2026-10-14 (MODELQ-PRZEGLAD, decyzja Michala): prog tlenowy adaptuje sie do obciazenia z OPOZNIENIEM i umiarkowanie.
+# Dane Michala 06.2025-06.2026 (Xert TP, sprawny miernik): najlepsza zgodnosc TP~CTL przy opoznieniu 14 dni (r2 0.85),
+# nachylenie 0.45 W/CTL (bylo 0.66 bez opoznienia). Test na roku vs Xert TP: >90 dni od kotwicy MAE 7.9 -> 3.6 W,
+# max 14.2 -> 8.2 W; 31-90 dni 4.5 -> 3.0 W; do 30 dni 2.3 -> 2.8 W (szum). Dok.: docs/MODELQ_PRZEGLAD.md
+TP_K_DRIFT = 0.45                             # W na 1 pkt CTL (bylo 0.66)
+TP_LAG_DAYS = 14                              # CTL sprzed 14 dni (dla dnia i dla kotwicy)
 
 
 def _clamp(x, lo, hi):
@@ -56,7 +61,8 @@ def _clamp(x, lo, hi):
 
 
 def daily_signature(load: DayLoad, anchor: DecayAnchor,
-                    tp_override: float | None = None) -> Signature:
+                    tp_override: float | None = None,
+                    ctl_lag: float | None = None, anchor_ctl_lag: float | None = None) -> Signature:
     """Sygnatura na dany dzien z formy (Training Load) wzgledem kotwicy.
     tp_override: gdy podane (np. cp_v3 danego dnia), uzyj zamiast dryfu TP.
     """
@@ -85,7 +91,10 @@ def daily_signature(load: DayLoad, anchor: DecayAnchor,
         # a kara za wiek odejmowala go ponownie, bezwarunkowo i bez konca
         # (36 dni od kotwicy = -5.4 W niezaleznie od tego czy trenujesz).
         # Walidacja vs Xert na 42 dniach: MAE LTP 4.08 -> 2.97 W, MAE TP 5.20 -> 3.18 W.
-        tp = anchor.sig.tp_w + TP_K_DRIFT * (ctl_day - anchor.ctl)
+        if ctl_lag is not None and anchor_ctl_lag is not None:   # 2026-10-14: CTL sprzed TP_LAG_DAYS
+            tp = anchor.sig.tp_w + TP_K_DRIFT * (ctl_lag - anchor_ctl_lag)
+        else:                                                    # brak historii (poczatek danych) -> bez opoznienia
+            tp = anchor.sig.tp_w + TP_K_DRIFT * (ctl_day - anchor.ctl)
         tp = _clamp(tp, anchor.sig.tp_w * TP_DRIFT_MIN, anchor.sig.tp_w * TP_DRIFT_MAX)
 
     # PP musi byc > TP
@@ -128,6 +137,7 @@ def build_signature_series_multi(xss_by_day: dict, anchors: list,
     if not anchors:
         return {}
     loads = build_load_series(xss_by_day)
+    ctl_map = {x.day: x.low.tl + x.high.tl + x.peak.tl for x in loads}   # 2026-10-14: do opoznienia TP
     anchor_days = [a.day for a in anchors]
     out = {}
     for dl in loads:
@@ -139,5 +149,7 @@ def build_signature_series_multi(xss_by_day: dict, anchors: list,
             cand = [d for d in tp_by_day if d <= dl.day]
             if cand:
                 tp_ov = tp_by_day[max(cand)]
-        out[dl.day] = daily_signature(dl, anchor, tp_override=tp_ov)
+        lag = dt.timedelta(days=TP_LAG_DAYS)
+        out[dl.day] = daily_signature(dl, anchor, tp_override=tp_ov,
+                                      ctl_lag=ctl_map.get(dl.day - lag), anchor_ctl_lag=ctl_map.get(anchor.day - lag))
     return out
