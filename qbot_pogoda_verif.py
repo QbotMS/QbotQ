@@ -201,7 +201,8 @@ def score(cur, dni: int = 30, lat: float | None = None, lon: float | None = None
     if not wagi:
         return {"status": "BRAK_STACJI"}
     od = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=dni)
-    cur.execute("""SELECT p.stacja, p.model, p.wyprz, p.ts, p.temp, p.wiatr, p.poryw, p.opad, o.temp, o.wiatr, o.poryw, o.opad6
+    cur.execute("""SELECT p.stacja, p.model, p.wyprz, p.ts, p.temp AS pt, p.wiatr AS pw, p.poryw AS pg, p.opad AS pp,
+                          o.temp AS ot, o.wiatr AS ow, o.poryw AS og, o.opad6 AS oo
                    FROM qbot_v2.pogoda_prog p JOIN qbot_v2.pogoda_obs o ON o.stacja = p.stacja AND o.ts = p.ts
                    WHERE p.ts >= %s AND p.stacja = ANY(%s)""", (od, list(wagi)))
     rows = cur.fetchall()
