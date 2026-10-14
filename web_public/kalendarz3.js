@@ -77,7 +77,7 @@ function openSess(ds) { return sess(ds).filter(function (x) { return x.status !=
 /* wpis jazdy z Kalendarza, ktory Trener zamienil na trening (jak w trener-m.js: event z godzina / jazda / trasa dnia) */
 function inPlan(e, ds) { if (e.kind !== "event") return false; var rid = ((wk(ds).meta || {}).route_entry_ids || []);
   if (!(e.event_type === "jazda" || rid.indexOf(e.id) >= 0 || (e.at_time && !e.event_type))) return false;
-  return sess(ds).some(function (x) { return x.sport === "rower"; }); }
+  return sess(ds).some(function (x) { return x.sport === "rower" && x.status !== "skip"; }); }
 function gridEnts(ds) { return ents(ds).filter(function (e) { return !inPlan(e, ds); }); }
 function planEnts(ds) { return ents(ds).filter(function (e) { return inPlan(e, ds); }); }
 function isIll(ds) { return ents(ds).some(function (e) { return e.kind === "illness"; }); }
@@ -123,7 +123,7 @@ function cls(base, ds, inM) { return base + (inM ? "" : " off") + (ds === today 
 function compactCell(d, inM) {
   var ds = iso(d), h = '<div class="n"><b>' + d.getDate() + "</b>" + (inM ? rdHTML(ds) : "") + "</div>" + wxHTML(ds);
   var dp = dayPlan(ds);
-  dp.list.forEach(function (it) { var x = it.s, ic = AIC[x.sport] || "•";
+  dp.list.forEach(function (it) { if (it.st === "skip") return; var x = it.s, ic = AIC[x.sport] || "•";
     if (it.st === "done") h += '<div class="ln ok" data-sid="' + x.id + '" title="plan zrobiony: ' + qEsc(x.name) + '">✓' + ic + " " + realTxt(it) + "</div>";
     else if (it.st === "miss") h += '<div class="ln miss" data-sid="' + x.id + '" title="plan niezrobiony: ' + qEsc(x.name) + '">✗' + ic + " " + x.dur_min + "′</div>";
     else h += '<div class="ln ' + (it.st === "skip" ? "sk" : "p") + '" data-sid="' + x.id + '">' + ic + " " + (x.start_time ? x.start_time.slice(0, 5) + " " : "") + x.dur_min + "′</div>"; });
@@ -139,7 +139,7 @@ function bigCell(d, inM) {
     del: function (e) { return e.event_type === "delegacja"; }, urlop: function (e) { return e.event_type === "urlop"; } };
   if (DTYPE[dmeta.type] && !(TYSRC[dmeta.type] && ents(ds).some(TYSRC[dmeta.type]))) h += '<span class="ty">' + DTYPE[dmeta.type] + "</span>";
   var dp = dayPlan(ds), pe = planEnts(ds), peDone = false;
-  dp.list.forEach(function (it) { var x = it.s; n++;
+  dp.list.forEach(function (it) { if (it.st === "skip") return; var x = it.s; n++;
     var plan = (x.start_time ? x.start_time.slice(0, 5) + " · " : "") + x.dur_min + "′" + (x.cut ? " (minimum)" : "") + (x.xss ? " · ~" + Math.round(x.xss) + " XSS" : "");
     var mark = it.st === "done" ? "✓ " : it.st === "miss" ? "✗ " : "";
     var sub = it.st === "done" ? "plan " + x.dur_min + "′ → zrobione " + realTxt(it) : it.st === "miss" ? "plan " + plan + " — niezrobione" : it.st === "skip" ? "pominięte · " + plan : plan;
@@ -241,9 +241,9 @@ function showDay(ds) {
   var i = info(ds), d = P(ds), fut = ds >= today, h = '<div class="dph"><h3>' + DNL[d.getDay()] + ", " + d.getDate() + " " + MONG[d.getMonth()] + '</h3><button type="button" class="dpx" id="k3-dpx" aria-label="Zamknij panel dnia">✕</button></div>';
   h += '<div class="kv"><span>gotowość <b>' + (typeof i.readiness === "number" ? (i.readiness > 0 ? "+" : "") + qN(i.readiness, 2) : "—") + "</b></span><span>sen <b>" + (i.sleep_score || (i.sleep ? qN(i.sleep, 1) + "h" : "—")) + "</b></span><span>HRV <b>" + (i.hrv ? qN(i.hrv, 0) : "—") + "</b></span><span>waga <b>" + (i.weight_kg ? qN(i.weight_kg, 1) + " kg" : "—") + "</b></span></div>";
   h += wxHTML(ds, true);
-  h += '<div class="grp"><div class="sh">Plan Trenera</div>'; var ss = sess(ds);
+  h += '<div class="grp"><div class="sh">Plan Trenera</div>'; var ss = sess(ds).filter(function (x) { return x.status !== "skip"; });
   var dpl = dayPlan(ds);
-  if (ss.length) dpl.list.forEach(function (it) { var x = it.s, st = it.st === "done" ? "✓ zrobione " + realTxt(it) : it.st === "miss" ? "✗ niezrobione" : it.st === "skip" ? "pominięte" : ((x.start_time ? x.start_time.slice(0, 5) + " · " : "") + x.dur_min + "′");
+  if (ss.length) dpl.list.forEach(function (it) { if (it.st === "skip") return; var x = it.s, st = it.st === "done" ? "✓ zrobione " + realTxt(it) : it.st === "miss" ? "✗ niezrobione" : it.st === "skip" ? "pominięte" : ((x.start_time ? x.start_time.slice(0, 5) + " · " : "") + x.dur_min + "′");
     h += '<div class="row click st-' + it.st + '" data-sid="' + x.id + '"><span>' + (AIC[x.sport] || "") + " " + qEsc(x.name) + '</span><span class="s">' + st + " ›</span></div>"; });
   else h += '<div class="empty">brak zaplanowanych treningów</div>';
   h += '</div><div class="grp"><div class="sh">Wykonane</div>';
@@ -251,6 +251,9 @@ function showDay(ds) {
   else h += '<div class="empty">' + (fut ? "dzień jeszcze przed Tobą" : "bez treningu") + "</div>";
   h += '</div><div class="grp"><div class="sh">Kalendarz</div>';
   var es = ents(ds); if (es.length) es.forEach(function (e) { h += entLn(e, true).replace(/<\/div>$/, inPlan(e, ds) ? ' <small>· w planie Trenera</small></div>' : "</div>"); }); else h += '<div class="empty">brak wpisów</div>';
+  var sk = dpl.list.filter(function (it) { return it.st === "skip"; });  /* 2026-10-13: pominiete tylko tu, nie w siatce */
+  if (sk.length) { h += '</div><div class="grp"><div class="sh">Pominięte</div>';
+    sk.forEach(function (it) { var x = it.s; h += '<div class="row click st-skip" data-sid="' + x.id + '"><span>' + (AIC[x.sport] || "") + " " + qEsc(x.name) + '</span><span class="s">' + (x.start_time ? x.start_time.slice(0, 5) + " · " : "") + x.dur_min + "′" + (x.cut ? " (minimum)" : "") + " ›</span></div>"; }); }
   h += '</div><div class="acts"><button type="button" data-a="feel">😊 samopoczucie</button><button type="button" data-a="event">＋ wydarzenie</button><button type="button" data-a="illness">🤒 choroba</button><button type="button" data-a="reminder">🔔 przypomnij</button>' +
     (fut ? '<button type="button" data-a="add">＋ trening</button><button type="button" data-a="day">✎ ustaw dzień</button>' : "") + "</div>";
   var dp = $("k3-dp"); dp.innerHTML = h;
