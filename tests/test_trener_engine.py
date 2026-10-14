@@ -256,6 +256,15 @@ class TestSeasonModel(unittest.TestCase):
         self.assertEqual(r["sessions"], [])
 
 
+class XssCalib(unittest.TestCase):
+    def test_calib_k(self):   # 2026-10-14: przelicznik obciazenia z Twoich jazd (ModelQ)
+        self.assertIsNone(E.calib_k([0.9] * 9))                     # za malo jazd
+        self.assertEqual(E.calib_k([0.95] * 11), round(0.95 / 0.75, 3))
+        self.assertEqual(E.calib_k([0.8, 0.9, 1.0, 1.1] * 3), round(0.95 / 0.75, 3))   # mediana parzysta
+        self.assertEqual(E.calib_k([5.0] * 12), 1.6)
+        self.assertEqual(E.calib_k([0.1] * 12), 0.7)
+
+
 if __name__ == "__main__":
     unittest.main()
 

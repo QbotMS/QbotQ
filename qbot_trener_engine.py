@@ -324,9 +324,89 @@ def wx_bad(wx: dict | None, ov: dict, long: bool, forest: bool = True) -> str | 
     return None
 
 
+# 2026-10-14: XSS_PER_MIN to skala TSS; obciazenie liczy ModelQ, w ktorym Twoja godzina "spokojnie" to ~57, nie 45.
+# Mnoznik roweru uczony co noc z Twoich jazd (calibrate_xss, cron qbot_trener_notify 5:00): mediana XSS/min jazd
+# o NP / progu ModelQ w XSS_CALIB_BAND ("spokojnie") podzielona przez bazowe 0,75. Strefy 1 i 3 skalowane tym samym
+# mnoznikiem (w danych XSS/min nie rosnie monotonicznie z intensywnoscia - za malo jazd mocnych). Brak pliku = 1,0.
+XSS_CALIB_PATH = "/opt/qbot/app/state/trainer_xss_calib.json"
+XSS_CALIB_BAND = (0.65, 0.78)
+XSS_CALIB_DAYS = 90
+XSS_CALIB_MIN_N = 10
+_XC = {"t": 0.0, "k": None}
+
+
+def xss_scale() -> float:
+    if time.time() - _XC["t"] > 300:
+        _XC["t"] = time.time()
+        try:
+            with open(XSS_CALIB_PATH, encoding="utf-8") as h:
+                _XC["k"] = float(json.load(h).get("k") or 0) or None
+        except Exception:
+            _XC["k"] = None
+    return _XC["k"] or 1.0
+
+
 def xss_of(sport: str, zone: int | None, dur: int) -> float:
     k = (sport, zone) if sport == "rower" else (sport, None)
-    return round(XSS_PER_MIN.get(k, 0.5) * dur, 0)
+    base = XSS_PER_MIN.get(k, 0.5)
+    if sport == "rower":
+        base *= xss_scale()
+    return round(base * dur, 0)
+
+
+def calib_k(per_min: list, base: float = XSS_PER_MIN[("rower", 2)], min_n: int = XSS_CALIB_MIN_N) -> float | None:
+    """Czysta: mediana XSS/min jazd 'spokojnie' / przelicznik bazowy; za malo jazd -> None; granice 0,7-1,6."""
+    v = sorted(float(x) for x in per_min if x and float(x) > 0)
+    if len(v) < min_n:
+        return None
+    m = len(v) // 2
+    med = v[m] if len(v) % 2 else (v[m - 1] + v[m]) / 2
+    return round(max(0.7, min(1.6, med / base)), 3)
+
+
+def calibrate_xss(c, days: int = XSS_CALIB_DAYS) -> dict:
+    """Uczy mnoznik z jazd ostatnich `days` dni i zapisuje XSS_CALIB_PATH. Za malo jazd -> zostaje poprzedni."""
+    c.execute("SELECT m.xss_total * 60.0 / m.duration_s AS pm FROM qbot_v2.training_sessions t "
+              "JOIN qbot_v2.modelq2_ride m ON m.external_id = t.external_id "
+              "WHERE t.date >= CURRENT_DATE - %s AND m.duration_s >= 2400 AND m.xss_total > 0 AND t.normalized_power_w > 0 "
+              "AND m.sig_tp_w > 0 AND t.normalized_power_w / m.sig_tp_w >= %s AND t.normalized_power_w / m.sig_tp_w < %s",
+              (days, XSS_CALIB_BAND[0], XSS_CALIB_BAND[1]))
+    pm = [float(r["pm"] if isinstance(r, dict) else r[0]) for r in c.fetchall()]
+    try:
+        with open(XSS_CALIB_PATH, encoding="utf-8") as h:
+            old = json.load(h).get("k")
+    except Exception:
+        old = None
+    k = calib_k(pm)
+    base = XSS_PER_MIN[("rower", 2)]
+    out = {"k": k if k is not None else old, "n": len(pm), "days": days, "band_np_do_progu": list(XSS_CALIB_BAND),
+           "baza_z2_na_min": base, "z2_na_min": round((k or old or 1.0) * base, 3),
+           "computed_at": datetime.now().isoformat(timespec="seconds"),
+           "note": None if k is not None else "za mało jazd — zostaje poprzedni mnożnik"}
+    tmp = XSS_CALIB_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as h:
+        json.dump(out, h, ensure_ascii=False, indent=1)
+    import os as _os
+    _os.replace(tmp, XSS_CALIB_PATH)
+    _XC["t"] = 0.0
+    out["changed"] = abs(float(out["k"] or 1.0) - float(old or 1.0)) >= 0.01
+    return out
+
+
+def rescale_plan_xss(c, user: str, since: date) -> int:
+    """Planowane obciazenie rowerowych sesji od `since` (plan i zrobione) wg aktualnego przelicznika. Jazdy z Kalendarza
+    (trasa) maja XSS z podobnych jazd - zostaja."""
+    c.execute("SELECT id, zone, dur_min, xss FROM qbot_v2.trainer_session WHERE username=%s AND day >= %s AND sport='rower' "
+              "AND status IN ('plan','done') AND (note IS NULL OR note NOT LIKE 'jazda z Kalendarza%%')", (user, since))
+    cols = [d[0] for d in c.description]
+    rows = [r if isinstance(r, dict) else dict(zip(cols, r)) for r in c.fetchall()]
+    n = 0
+    for r in rows:
+        x = xss_of("rower", r["zone"], int(r["dur_min"] or 0))
+        if r["xss"] is None or float(r["xss"]) != x:
+            c.execute("UPDATE qbot_v2.trainer_session SET xss=%s WHERE id=%s", (x, r["id"]))
+            n += 1
+    return n
 
 
 # ---------------- planowanie ----------------
