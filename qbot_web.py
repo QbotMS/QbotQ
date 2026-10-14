@@ -7029,6 +7029,46 @@ def api_pogoda_kwadraty():
     return PG.kwadraty(os.getenv("STATSHUNTERS_SHARE_ID", _env().get("STATSHUNTERS_SHARE_ID", "")))
 
 
+def _pogoda_verif_loop():
+    """2026-10-14: sprawdzalnosc modeli w tle -- pomiary IMGW co godzine, prognozy (Previous Runs) raz na dobe, archiwum co miesiac."""
+    import sys as _sys
+    import time as _t
+    import qbot_pogoda_verif as PV
+    _t.sleep(60)
+    while True:
+        try:
+            conn = _db_conn()
+            try:
+                d = PV.tick(conn.cursor()); conn.commit()
+                if d:
+                    print(f"[pogoda-verif] {str(d)[:300]}", file=_sys.stderr, flush=True)
+            except Exception as e:
+                conn.rollback(); print(f"[pogoda-verif] blad: {e!r}", file=_sys.stderr, flush=True)
+            finally:
+                conn.close()
+        except Exception as e:
+            print(f"[pogoda-verif] blad polaczenia: {e!r}", file=_sys.stderr, flush=True)
+        _t.sleep(600)
+
+
+@app.on_event("startup")
+def _pogoda_verif_start():
+    if os.getenv("QBOT_POGODA_VERIF_LOOP", "1") == "0":
+        return
+    _wp_threading.Thread(target=_pogoda_verif_loop, daemon=True, name="qbot-pogoda-verif").start()
+
+
+@app.get("/api/pogoda/sprawdzalnosc")
+def api_pogoda_sprawdzalnosc(dni: int = 60, lat: float | None = None, lon: float | None = None):
+    """Sprawdzalnosc modeli vs stacje IMGW: MAE/bias temp, wiatr, poryw; opad 6 h trafione/falszywe/przegapione. lat/lon = 'u Ciebie'."""
+    import qbot_pogoda_verif as PV
+    conn = _db_conn()
+    try:
+        return PV.score_cached(conn.cursor(), dni=max(7, min(int(dni), 365)), lat=lat, lon=lon)
+    finally:
+        conn.close()
+
+
 def _owner_only(request: Request):
     if (request.scope.get("qbot_auth") or {}).get("kind") != "owner":
         raise HTTPException(status_code=403, detail="tylko wlasciciel")

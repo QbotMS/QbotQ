@@ -115,12 +115,25 @@ body.dock-big .dchart{display:flex}
     <div data-s="warunki" hidden><div id="wstrips">…</div>
       <div class="note">Progi: mgła poniżej 1 km, ograniczona widoczność poniżej 4 km. Oblodzenie liczone z gruntu ≤ 0,5°C oraz opadu z ostatnich 12 h albo szronu (punkt rosy ≥ grunt).
         Nawierzchnia mokra przy ≥ 2 mm z 6 h, wilgotna przy ≥ 0,3 mm. Rosa, gdy temperatura jest bliżej niż 2°C od punktu rosy.</div></div>
+    <div data-s="spr" hidden>
+      <div class="pos" id="sprz"><button data-z="dom" class="on">U Ciebie (do 100 km)</button><button data-z="pl">Polska</button>
+        <button data-d="30">30 dni</button><button data-d="60" class="on">60 dni</button><button data-d="90">90 dni</button></div>
+      <div class="poslab" id="sprinfo"></div>
+      <div class="pos" id="sprw" style="margin-top:8px"><button data-w="1" class="on">Prognoza na jutro</button><button data-w="2">na pojutrze</button><button data-w="3">za 3 dni</button></div>
+      <div id="sprtab" style="margin-top:8px;overflow-x:auto"></div>
+      <div class="cwrap" style="height:220px;margin-top:10px"><canvas id="sprch"></canvas></div>
+      <div class="note">Porównanie prognoz wydanych 1, 2 i 3 doby wcześniej z pomiarami ze stacji IMGW (co godzinę).
+        <b>Błąd</b> to średnia różnica, <b>znak</b> mówi, czy model zawyża (+) czy zaniża (−). <b>Opad</b> liczony w okresach 6 h (próg 0,5 mm).
+        Trafność opadu = trafione / (trafione + fałszywe alarmy + przegapione). Najlepszy wynik w kolumnie jest wyróżniony.
+        Modele HARMONIE (DMI, KNMI) prognozują tylko ok. 2,5 doby do przodu. Pomiary: IMGW-PIB (dane przetworzone).</div>
+    </div>
     <div data-s="okno" hidden><div class="soonbox"><b>Wkrótce (krok 2).</b> Odpowiedź na pytanie „przesunąć jazdę czy moknąć?” dla jazdy z kalendarza: porównanie startów godzina po godzinie, suma deszczu na jazdę, wiatr, zgodność modeli.</div></div>
     <div data-s="weekend" hidden><div class="soonbox"><b>Wkrótce (krok 3).</b> Mapa oceny miejsc pod dłuższą jazdę w weekend: opad, wiatr, a zimą też temperatura.</div></div>
   </div>
   <div class="rail" id="rail">
     <button class="rt on" data-s="radar" style="--tc:#7fb3ec">☂<span class="lb">U Ciebie · teraz</span></button>
     <button class="rt" data-s="warunki" style="--tc:#c9a0f0">≋<span class="lb">Warunki godzina po godzinie</span></button>
+    <button class="rt" data-s="spr" style="--tc:#e8b04a">✓<span class="lb">Sprawdzalność modeli</span></button>
     <button class="rt soon" data-s="okno" style="--tc:#f0b84f">◷<span class="lb">Okno jazdy · wkrótce</span></button>
     <button class="rt soon" data-s="weekend" style="--tc:#7ccf8a">★<span class="lb">Gdzie w weekend · wkrótce</span></button>
   </div>
@@ -210,10 +223,10 @@ setDock(+(LS("qpogoda_dockh")||DMIN));
 window.addEventListener("resize",function(){ setDock($("dock").getBoundingClientRect().height); });
 
 /* ---- lewe menu ---- */
-var sec="radar", TTL={radar:"Pogoda · u Ciebie",warunki:"Warunki godzina po godzinie",okno:"Okno jazdy",weekend:"Gdzie w weekend"};
+var sec="radar", TTL={spr:"Sprawdzalność modeli",radar:"Pogoda · u Ciebie",warunki:"Warunki godzina po godzinie",okno:"Okno jazdy",weekend:"Gdzie w weekend"};
 function openSec(s){ sec=s; document.querySelectorAll("#rail .rt").forEach(function(b){b.classList.toggle("on",b.dataset.s===s);});
   document.querySelectorAll("#lp .body [data-s]").forEach(function(d){d.hidden=d.dataset.s!==s;}); $("sttl").textContent=TTL[s];
-  document.body.classList.toggle("open",s!=="radar"); }
+  document.body.classList.toggle("open",s!=="radar"); if(s==="spr")loadSpr(); }
 document.querySelectorAll("#rail .rt").forEach(function(b){b.addEventListener("click",function(){ openSec(b.dataset.s); });});
 $("close").addEventListener("click",function(){ openSec("radar"); });
 
@@ -354,6 +367,37 @@ function drawChart(){ if(chart){chart.destroy();chart=null;} var lab=[], ds=[], 
   $("chips").innerHTML=SER.map(function(s){return '<span class="chip'+(hid[s.k]?" off":"")+'" data-k="'+s.k+'"><i style="background:'+s.col+'"></i>'+s.n+'</span>';}).join("");
   $("chips").querySelectorAll(".chip").forEach(function(e){e.addEventListener("click",function(){var k=e.dataset.k;hid[k]=!hid[k];e.classList.toggle("off");
     chart.data.datasets[SER.findIndex(function(s){return s.k===k;})].hidden=hid[k];chart.update();});}); }
+
+/* ---- sprawdzalnosc modeli ---- */
+var spr={z:"dom",d:60,w:1,data:null,ch:null};
+function sprBtns(sel,attr,val){ document.querySelectorAll(sel+" button["+attr+"]").forEach(function(b){b.classList.toggle("on",b.getAttribute(attr)==String(val));}); }
+document.querySelectorAll("#sprz button").forEach(function(b){b.addEventListener("click",function(){ if(b.dataset.z)spr.z=b.dataset.z; if(b.dataset.d)spr.d=+b.dataset.d;
+  sprBtns("#sprz","data-z",spr.z); sprBtns("#sprz","data-d",spr.d); loadSpr(); });});
+document.querySelectorAll("#sprw button").forEach(function(b){b.addEventListener("click",function(){ spr.w=+b.dataset.w; sprBtns("#sprw","data-w",spr.w); drawSpr(); });});
+function loadSpr(){ $("sprtab").textContent="Liczę…"; var q="/api/pogoda/sprawdzalnosc?dni="+spr.d+(spr.z==="dom"&&pos?"&lat="+pos.lat.toFixed(3)+"&lon="+pos.lon.toFixed(3):"");
+  J(q).then(function(d){ spr.data=d; if(d.status!=="OK"){$("sprtab").textContent=d.status==="BRAK_STACJI"?"Brak stacji IMGW w promieniu 100 km od punktu.":(d.error||d.status);return;}
+    var ok=function(s){return s?s.slice(8,10)+"."+s.slice(5,7):"–";};
+    $("sprinfo").textContent=d.zakres+" · stacji: "+d.stacji+" · okres z danymi: "+(d.okres?ok(d.okres[0])+"–"+ok(d.okres[1]):"–"); drawSpr(); }); }
+function drawSpr(){ var d=spr.data; if(!d||d.status!=="OK")return; var R=d.wyniki.filter(function(x){return x.wyprz_dni===spr.w;});
+  if(!R.length){$("sprtab").textContent="Brak prognoz na to wyprzedzenie.";return;}
+  var cols=[["temp_mae","temp_bias","Temperatura","°C",1],["wiatr_mae","wiatr_bias","Wiatr","m/s",1],["poryw_mae","poryw_bias","Porywy","m/s",1],["opad_trafnosc",null,"Opad · trafność","",-1]];
+  var best={}; cols.forEach(function(c){ var v=R.map(function(x){return x[c[0]];}).filter(function(x){return x!=null;}); if(v.length)best[c[0]]=c[4]>0?Math.min.apply(null,v):Math.max.apply(null,v); });
+  var sg=function(x){return x==null?"":" <small style='color:var(--muted)'>("+(x>0?"+":"")+pl(x)+")</small>";};
+  var html='<table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="color:var(--muted);font-size:11.5px;text-align:left"><th style="padding:4px 6px">Model</th>'+
+    cols.map(function(c){return '<th style="padding:4px 6px">'+c[2]+(c[3]?" ("+c[3]+")":"")+'</th>';}).join("")+'</tr>';
+  R.sort(function(a,b){return (a.temp_mae||9)-(b.temp_mae||9);}).forEach(function(x){ html+='<tr style="border-top:1px solid var(--line)"><td style="padding:5px 6px;font-weight:600">'+x.opis+'</td>'+
+    cols.map(function(c){ var v=x[c[0]], b=v!=null&&v===best[c[0]];
+      var t=v==null?"–":(c[0]==="opad_trafnosc"?Math.round(v*100)+"% <small style='color:var(--muted)'>("+x.opad_trafione+"/"+x.opad_falszywe+"/"+x.opad_przegapione+")</small>":pl(v)+sg(x[c[1]]));
+      return '<td style="padding:5px 6px;'+(b?"color:var(--good);font-weight:700":"")+'">'+t+'</td>'; }).join("")+'</tr>'; });
+  $("sprtab").innerHTML=html+'</table><div class="note">Opad: (trafione / fałszywe alarmy / przegapione).</div>';
+  var M=Array.from(new Set(d.wyniki.map(function(x){return x.opis;}))), cl=["#286ed2","#e8743b","#2e8b57","#a58f63","#c0392b"];
+  if(spr.ch)spr.ch.destroy();
+  spr.ch=new Chart($("sprch"),{type:"bar",data:{labels:["jutro","pojutrze","za 3 dni"],datasets:M.map(function(m,i){return {label:m,backgroundColor:cl[i%5],
+    data:[1,2,3].map(function(w){var r=d.wyniki.filter(function(x){return x.opis===m&&x.wyprz_dni===w;})[0];return r?r.temp_mae:null;})};})},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:"index",intersect:false},
+      plugins:{title:{display:true,text:"Błąd temperatury wg wyprzedzenia (°C, mniej = lepiej)",color:css("--ink2")},legend:{labels:{color:css("--ink2"),boxWidth:12}},
+        tooltip:{callbacks:{label:function(x){return x.parsed.y==null?null:x.dataset.label+": "+pl(x.parsed.y)+" °C";}}}},
+      scales:{x:{ticks:{color:css("--muted")},grid:{display:false}},y:{beginAtZero:true,ticks:{color:css("--muted")}}}}}); }
 
 /* ---- start ---- */
 J("/api/pogoda/dom").then(function(h){ HOME=h.status==="OK"?h:null; var saved=null;
