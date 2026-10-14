@@ -8,6 +8,12 @@ Co 20 min (6:00–23:59) pobiera aktywnosci Stravy z ostatnich 3 dni, a dla kazd
 - **gear_id** – rower z czujnikow (`qbot_v2.activity_device`): AXS 10625 = Grizl, AXS 27856 = Grail, brak AXS = Monster.
   Rower QBota -> rower Stravy: `qbot_v2.strava_gear_map`, uzupelniane samo z `GET /athlete` (nazwa zawiera grizl / grail / monster|grand canyon).
   Gdy dopasowanie niejednoznaczne – powiadomienie w dzwonku z lista rowerow ze Stravy.
+- **Sama glowica, zero czujnikow (2026-10-14)** – Karoo zamkniete zamiast zapisu, restart i zapis: czujniki sie nie
+  lacza, w FIT jest tylko `device_index 0`. Wtedy QBot NIE zgaduje Monstera (stara regula „brak AXS” dawala zly rower):
+  opis idzie od razu bez roweru, a na Telegram leci JEDNO pytanie z przyciskami Grizl / Grail / Monster
+  (`sb:<rower>:<strava_id>`). Klikniecie -> `handle_callback` w `qbot_strava_publish` (wolany z `telegram_reply_processor`)
+  -> `set_bike`: PUT gear_id + zapis w `strava_publish`; przyciski znikaja, w wiadomosci zostaje „✅ <rower> — ustawiony”.
+  Logika: `classify_bike()` (czysta, testy `tests/test_strava_publish.py`). Pierwszy przypadek: jazda 14.10 -> Grail.
 - **description** – ZAWSZE nadpisuje (decyzja Michala: nie prowadzi notatek na Stravie).
 Powiazanie jazda <-> aktywnosc Stravy: `qbot_v2.strava_activity.ride_key` (dopasowanie po czasie startu +-15 min, istniejacy mechanizm).
 Stan: `qbot_v2.strava_publish` (status ok / czeka / blad, opis, fakty, proby). Czeka maks. 24 przebiegi (~8 h) na czujniki,

@@ -2,7 +2,9 @@
 """Strava: automatyczny ROWER + OPIS-wizytowka "Albert . QBot" (2026-10-09, decyzje Michala).
 
 Po kazdej nowej jezdzie (od START_FROM) QBot jednym PUT /activities/{id} ustawia na Stravie:
-- gear_id  - rower rozpoznany po czujnikach: AXS 10625 = Grizl, AXS 27856 = Grail, brak AXS = Monster
+- gear_id  - rower rozpoznany po czujnikach: AXS 10625 = Grizl, AXS 27856 = Grail, brak AXS = Monster;
+             w FIT sama glowica (Karoo po restarcie, czujniki niepolaczone) -> NIE zgadujemy, pytanie na Telegramie
+             z przyciskami sb:<rower>:<strava_id> (handle_callback, telegram_reply_processor) - 2026-10-14
              (qbot_v2.activity_device; mapowanie rower -> gear_id Stravy w qbot_v2.strava_gear_map,
              uzupelniane samo z GET /athlete po nazwach rowerow),
 - description - ZAWSZE nadpisuje (Michal nie prowadzi notatek na Stravie).
@@ -284,10 +286,17 @@ def ensure(c):
     c.connection.commit()
 
 
-def bike_of(c, ride_key):
-    devs = _rows(c, "SELECT manufacturer, device_type, ant_device_number FROM qbot_v2.activity_device WHERE external_id=%s", (ride_key,))
+ASK_WHY = "tylko Karoo, czujniki niepołączone"
+BIKE_CHOICES = ("Grizl", "Grail", "Monster")
+
+
+def classify_bike(devs: list) -> tuple:
+    """(rower, powod). Pusta lista -> czekamy. Sama glowica (device_index 0, zero czujnikow) = Karoo po restarcie,
+    czujniki sie nie polaczyly -> roweru nie da sie poznac: NIE zgadujemy Monstera, powod ASK_WHY (pytanie na Telegramie)."""
     if not devs:
         return None, "brak listy czujnikow"
+    if not [d for d in devs if str(d.get("device_index")) not in ("0", "creator")]:
+        return None, ASK_WHY
     axs = [d for d in devs if d["manufacturer"] == "sram" and str(d["device_type"]) == "34"]
     if not axs:
         return NO_AXS_BIKE, "brak AXS"
@@ -295,6 +304,11 @@ def bike_of(c, ride_key):
         if d["ant_device_number"] in AXS_BIKE:
             return AXS_BIKE[d["ant_device_number"]], "AXS %s" % d["ant_device_number"]
     return None, "AXS o nieznanym numerze %s" % [d["ant_device_number"] for d in axs]
+
+
+def bike_of(c, ride_key):
+    return classify_bike(_rows(c, "SELECT device_index, manufacturer, device_type, ant_device_number "
+                                  "FROM qbot_v2.activity_device WHERE external_id=%s", (ride_key,)))
 
 
 def _track(c, ride_key):
@@ -744,7 +758,7 @@ def run_publish(db_conn=None) -> dict:
                 bike, why = bike_of(c, rk)
                 ready = _one(c, "SELECT (SELECT count(*) FROM qbot_v2.ride_report_data WHERE ride_key=%s) r, "
                                 "(SELECT count(*) FROM qbot_v2.fitmodel_wbal_ride WHERE external_id=%s) w", (rk, rk))
-                if (not bike or not ready["r"] or not ready["w"]) and not last:
+                if ((not bike and why != ASK_WHY) or not ready["r"] or not ready["w"]) and not last:
                     _save(c, sid, ride_key=rk, status="czeka", attempts=att, last_error="rower: %s; raport: %s; W'bal: %s" % (why, ready["r"], ready["w"]))
                     out["czeka"] += 1
                     continue
@@ -760,7 +774,7 @@ def run_publish(db_conn=None) -> dict:
                       published_at=datetime.now(timezone.utc))
                 _notif(c, "strava:%d" % sid, "Strava: opis%s ustawiony" % (" i rower (%s)" % bike if data.get("gear_id") else ""),
                        f["description"].split("\n")[0], kind="jazda", url="https://www.strava.com/activities/%d" % sid)
-                if not data.get("gear_id"):
+                if not data.get("gear_id") and not (why == ASK_WHY and ask_bike_telegram(sid, t.get("start_date"), f)):
                     _notif(c, "strava:bike:%d" % sid, "Strava: nie ustawiłem roweru", why, kind="rower",
                            url="https://www.strava.com/activities/%d" % sid)
                 out["ok"] += 1
@@ -772,6 +786,84 @@ def run_publish(db_conn=None) -> dict:
         return out
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------- pytanie o rower (Telegram, 2026-10-14)
+
+def _tg(method: str, payload: dict) -> dict:
+    import qbot_config as cfg
+    req = urllib.request.Request("https://api.telegram.org/bot%s/%s" % (cfg.TELEGRAM_TOKEN, method),
+                                 data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read().decode() or "{}")
+
+
+def ask_bike_telegram(sid: int, start_date, f: dict) -> bool:
+    """Jedno pytanie z przyciskami rowerow; odpowiedz obsluguje handle_callback (sb:<rower>:<strava_id>)."""
+    try:
+        import qbot_config as cfg
+        day = start_date.astimezone().strftime("%d.%m") if hasattr(start_date, "astimezone") else "?"
+        text = ("🚲 Jazda %s, %d km (%s): na którym rowerze?\n"
+                "Karoo nie połączyło czujników, więc sam nie rozpoznam. Ustawię go na Stravie."
+                % (day, round(f.get("km") or 0), f.get("region") or f.get("title") or "bez opisu"))
+        kb = {"inline_keyboard": [[{"text": b, "callback_data": "sb:%s:%d" % (b, sid)} for b in BIKE_CHOICES]]}
+        return bool(_tg("sendMessage", {"chat_id": str(cfg.TELEGRAM_CHAT_ID), "text": text, "reply_markup": kb}).get("ok"))
+    except Exception as e:
+        print("[strava publish] telegram pytanie o rower: %s" % e)
+        return False
+
+
+def set_bike(sid: int, bike: str) -> str:
+    """Ustawia rower na Stravie (PUT gear_id) i zapisuje go w strava_publish. Zwraca gear_id."""
+    import qbot_strava as S
+    if bike not in BIKE_CHOICES:
+        raise ValueError(bike)
+    conn = S._dict_conn()
+    try:
+        c = conn.cursor(); S.ensure_tables(c); ensure(c)
+        tok = S._token(c)
+        gid = gear_map(c, tok).get(bike)
+        if not gid:
+            raise RuntimeError("brak gear_id Stravy dla %s" % bike)
+        _put(tok, sid, {"gear_id": gid})
+        c.execute("UPDATE qbot_v2.strava_publish SET bike=%s, gear_id=%s, last_error=NULL, updated_at=now() WHERE strava_id=%s",
+                  (bike, gid, sid))
+        conn.commit()
+        _resolve(c, "strava:bike:%d" % sid)
+        return gid
+    finally:
+        conn.close()
+
+
+def handle_callback(cq, tg_answer_callback, tg_send_plain, tg_edit_markup, chat_id_allowed):
+    """sb:<Grizl|Grail|Monster>:<strava_id> - odpowiedz na pytanie o rower (jazda bez czujnikow)."""
+    msg = cq.get("message") or {}
+    chat = (msg.get("chat") or {}).get("id")
+    if str(chat) != str(chat_id_allowed):
+        tg_answer_callback(cq.get("id"), "Brak dostępu")
+        return
+    parts = (cq.get("data") or "").split(":")
+    try:
+        bike, sid = parts[1], int(parts[2])
+        if bike not in BIKE_CHOICES:
+            raise ValueError(bike)
+    except (IndexError, ValueError):
+        tg_answer_callback(cq.get("id"))
+        return
+    try:
+        set_bike(sid, bike)
+    except Exception as e:
+        tg_answer_callback(cq.get("id"), "Nie udało się ustawić roweru")
+        tg_send_plain("⚠️ Strava: nie ustawiłem roweru (%s: %s)." % (type(e).__name__, str(e)[:120]))
+        return
+    tg_answer_callback(cq.get("id"), "Strava: %s" % bike)
+    try:   # przyciski znikaja, w ich miejsce jedna linijka potwierdzenia
+        r = _tg("editMessageText", {"chat_id": chat, "message_id": msg.get("message_id"),
+                                    "text": (msg.get("text") or "") + "\n✅ %s — ustawiony na Stravie" % bike})
+        if not r.get("ok"):
+            raise RuntimeError(r)
+    except Exception:
+        tg_edit_markup(chat, msg.get("message_id"))
 
 
 _STARTED = [False]
