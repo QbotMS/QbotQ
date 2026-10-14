@@ -322,8 +322,22 @@ function sesModal(id) {
       '<label>Przenieś na</label><select id="k3-sm"><option value="">— wybierz dzień —</option>' + days + "</select>" +
       '<label>Zamień na</label><select id="k3-ss"><option value="">— wybierz —</option>' + ACT.filter(function (a) { return a[0] !== x.sport; }).map(function (a) { return '<option value="' + a[0] + '">' + a[1] + " " + a[2] + "</option>"; }).join("") + "</select>";
   } else if (fut && x.status !== "plan") h += '<div class="g2"><button type="button" data-sa="undo">↺ Przywróć do planu</button></div>';
+  /* 2026-10-14: ocena planu 1-5 + komentarz (POST /api/trener/rating) - Trener i Albert biora oceny z komentarzami do weryfikacji
+     planu, ocena silowego zestawu zmienia dobor cwiczen (qbot_trener_ratings.py). Bylo w widoku Tydzien, zniknelo 08.10. */
+  h += '<div class="k3-rate" style="margin-top:12px"><label>Oceń plan</label><div style="display:flex;gap:2px">' + [1, 2, 3, 4, 5].map(function (n) {
+      return '<button type="button" data-rt="' + n + '" title="' + ["", "zły plan", "słaby", "w porządku", "dobry", "świetny"][n] + '" style="border:0;background:none;cursor:pointer;font-size:24px;line-height:1;padding:0 2px;color:' +
+        ((x.rating || 0) >= n ? "var(--accent)" : "var(--line)") + '">★</button>'; }).join("") + "</div>" +
+    '<input type="text" id="k3-rn" maxlength="300" placeholder="komentarz — co było nie tak / co dobre (Trener to przeczyta)" value="' + qEsc(x.rating_note || "") + '"></div>';
   h += '<div class="km-err" id="km-err"></div></div><div class="km-foot"><button type="button" id="km-cancel">Zamknij</button></div>';
   mOpen(h);
+  (function () { var rn = $("k3-rn");
+    function paint() { $("km").querySelectorAll("[data-rt]").forEach(function (b) { b.style.color = (x.rating || 0) >= +b.dataset.rt ? "var(--accent)" : "var(--line)"; }); }
+    function rate(n) { api("POST", "/rating", { session_id: x.id, rating: n, note: (rn.value || "").trim() || null })
+      .then(function () { x.rating = n || null; x.rating_note = n ? (rn.value || "").trim() || null : null; if (!n) rn.value = ""; paint(); toast(n ? "Ocena zapisana — Trener ją uwzględni" : "Ocena usunięta"); invalidate(); })
+      .catch(function (e) { edErr(e.message); }); }
+    $("km").querySelectorAll("[data-rt]").forEach(function (b) { b.onclick = function () { var n = +b.dataset.rt; rate(x.rating === n ? 0 : n); }; });
+    rn.onchange = function () { if (x.rating) rate(x.rating); else { rn.value = ""; rn.placeholder = "najpierw kliknij gwiazdki"; } };
+  })();
   $("km-x").onclick = closeEditor; $("km-cancel").onclick = closeEditor;
   function put(b, msg) { api("PUT", "/sessions/" + x.id, b).then(function () { toast(msg || "Zapisano"); closeEditor(); refresh(true); }).catch(function (e) { edErr(e.message); }); }
   $("km").querySelectorAll("[data-sa]").forEach(function (b) { b.onclick = function () { var a = b.dataset.sa;
