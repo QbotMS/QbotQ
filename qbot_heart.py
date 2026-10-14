@@ -414,6 +414,10 @@ def extras(data: dict, today: date) -> dict:
         sp = cur.fetchall()
         cur.execute("SELECT date, sum(tss) FROM qbot_v2.training_sessions WHERE date >= %s GROUP BY date", (today - timedelta(days=40),))
         tss = {d: float(t) for d, t in cur.fetchall() if t is not None}
+        from fitmodel.body_signal import evaluate as _bs_eval, load_rows as _bs_rows   # [GARMIN-DANE] Etap 4
+        body_sig = _bs_eval(_bs_rows(cur, today))
+        if body_sig and body_sig["date"] < (today - timedelta(days=1)).isoformat():
+            body_sig = None   # nieswieze (zegarek nienoszony) -- nie pokazujemy
     finally:
         conn.close()
     weight = wts[-1][1] if wts else None
@@ -432,7 +436,7 @@ def extras(data: dict, today: date) -> dict:
     hrv_state = _hrv_cur(sorted((d, float(v[2])) for d, v in well.items() if v[2]))
     sp_st = spo2_status([float(x[1]) for x in sp if x[1] is not None])
     sleep = {"sleep7_min": round(_mean(d7)) if d7 else None, "sleep_norm_min": round(_mean(d28)) if d28 else None,
-             "hrv7": round(hrv7, 1) if hrv7 else None, "hrv_median_year": hrv_med, "hrv_status": hrv_state,
+             "hrv7": round(hrv7, 1) if hrv7 else None, "hrv_median_year": hrv_med, "hrv_status": hrv_state, "skin_temp": body_sig,
              "spo2": sp_st, "spo2_sleep_avg": round(_mean([float(x[2]) for x in sp if x[2] is not None]) or 0, 1) if sp else None}
     # dzien po dniu dla serii
     bp = data["bp"]["summary"]
@@ -450,6 +454,8 @@ def extras(data: dict, today: date) -> dict:
     nx = nexus(bp, data["bp"]["all"], data["rhr"], sleep["hrv7"], hrv_med, sleep["sleep7_min"], sleep["sleep_norm_min"], daily,
                hrv_state=hrv_state)
     bpts = body_status(waist, whtr, bmi) + ([{"status": sp_st["status"], "text": sp_st["text"]}] if sp_st else [])
+    if body_sig and body_sig["signal"]:
+        bpts.append({"status": "warn", "text": body_sig["text"]})
     conn = _connect()
     try:
         cur = conn.cursor()

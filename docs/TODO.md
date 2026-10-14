@@ -19,8 +19,14 @@ Decyzje 2026-10-14: HRV status/norma, aklimatyzacja do upalu i VO2max liczone W 
 - [x] Etap 1 backfill [2026-10-14]: 1746 dni, 0 bledow; temp. skory od 2025-05-26 (502 dni), potrzeba snu od 2024-03-06 (951), status HRV od 2022-06-23. Bylo: SSH nohup scripts/garmin_extra_backfill.py (od 2022-01-01, ~1748 dni, ~1.5 h, wznawialny) -> log /opt/qbot/artifacts/garmin_extra_backfill.txt; potem sprawdzic od kiedy jest temp. skory.
 - [x] Etap 2 [2026-10-14]: fitmodel/vo2max.py (P5 z ModelQ, ACSM, na kg; metoda B odrzucona) -> /api/forma/data + Trendy pigulka VO2max; test_vo2max 5; dok. GARMIN_DANE.md. Bylo: VO2max QBota -- A: MMP 5 min / waga; B: regresja HR<->moc na rownych odcinkach, ekstrapolacja do HRmax. Kalibracja na 23 jazdach 2025-01..03 z vO2MaxValue Garmina (activity_fit_raw.summary). Trend dzienny + pewnosc; Forma > Trendy.
 - [x] Etap 3 [2026-10-14]: fitmodel/hrv_status.py (7 nocy vs 60 nocy +-0.5 SD, 4 statusy) -> Zdrowie > Serce (pas normy, naglowek, karta snu, regula cisnienie-regeneracja); test_hrv_status 6. Bylo: HRV status wlasny (norma ~60 dni +- zmiennosc, srednia 7 dni) -> Zdrowie > Serce + wejscie do gotowosci. Garmina tylko do porownania.
-- [ ] Etap 3b (po ~4 tyg. obserwacji, od 2026-11-11): czy status HRV ma wchodzic do gotowosci ModelQ -- decyzja uzytkownika.
-- [ ] Etap 4: temp. skory jako odchylenie od normy -> warstwa L3 ukrytego zmeczenia.
+- [ ] DO SPRAWDZENIA NA KONIEC (uzytkownik, 2026-10-14):
+  - [x] commity: etap 2 = 7f9c6ad, etap 3 = baf7937 (sprawdzone 2026-10-14)
+  - Forma > Trendy: pigulka VO2max na wykresie mocy rysuje linie + wartosc w podpisie (forma2-data.js v=64)
+  - Zdrowie > Serce: karta HRV -- pas normy na wykresie, naglowek "7 nocy ... status"; karta snu -- status HRV (zdrowie-serce.js v=2, forma-serce.js v=11)
+  - Zdrowie > Serce: karta snu -- "temp. skory" po HRV (forma-serce.js v=12)
+  - (JS nie da sie sprawdzic na serwerze -- brak node; wizualnie w przegladarce)
+- [ ] Etap 3b (po ~4 tyg. obserwacji, od 2026-11-11): czy status HRV i sygnal temp. skory maja wchodzic do gotowosci ModelQ -- decyzja uzytkownika.
+- [x] Etap 4 [2026-10-14]: fitmodel/body_signal.py (temp >= +0,4 C + HRV -5 ms lub RHR +3) -> karta snu, punkt Serca, poranna wiadomosc; 16 nocy w historii; test_body_signal 8. Bylo: temp. skory jako odchylenie od normy -> warstwa L3 ukrytego zmeczenia.
 - [ ] Etap 6: walidacja ModelQ vs Garmin w tle (activityTrainingLoad juz w activity_fit_raw; dzienny import Training Status/Readiness/regeneracji tylko do porownan; raport rozbieznosci co tydzien).
 - [ ] Etap 5: potrzeba snu -> wieczorne zalecenie + analiza dlug snu -> HRV/RHR/gotowosc/HR przy mocy nastepnego dnia (odfiltrowac wplyw ciezkich treningow).
 - [ ] Etap 7: aklimatyzacja do upalu z activity_record (dryf HR przy tej samej mocy vs temperatura).

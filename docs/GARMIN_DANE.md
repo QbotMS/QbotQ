@@ -59,5 +59,14 @@ Uwaga: dla starszych dni Garmin zwraca mniej sekcji (brak epok oddechu/SpO2), po
 - NIE wchodzi do gotowosci ModelQ (decyzja: najpierw obserwacja) -- TODO [GARMIN-DANE] Etap 3b.
 - Testy: `tests/test_hrv_status.py`.
 
+## Temperatura skory: sygnal "Organizm pod obciazeniem" (Etap 4, 2026-10-14)
+- `fitmodel/body_signal.py`: temp. z Garmina to JUZ odchylenie od normy (srednia 0.0, +-0.25 C) -- bez wlasnej normy.
+  Sygnal LACZONY: temp >= +0.4 C ORAZ (HRV tej nocy >= 5 ms ponizej normy LUB tetno spocz. >= +3), norma = 60 poprzednich nocy (min. 30).
+- Dane (2025-05..2026-10): noc >= +0.4 -> spadek HRV w 42% nocy vs 21%; sama temp. bywa falszywym alarmem (ciepla sypialnia), niska nic nie znaczy.
+  Historycznie 16 nocy z sygnalem / ~500 (ok. 1x/mies.), czesto po ciezkich jazdach (31.08, 05.10.2026).
+- Gdzie: `/api/forma/heart` -> `sleep.skin_temp` (karta snu: "temp. skory +0,2 C", tylko gdy noc z dzis/wczoraj) + punkt Serca gdy sygnal;
+  poranna wiadomosc Telegram (qbot_trener_notify, 7-8): jedno zdanie TYLKO gdy sygnal dla dzisiejszej nocy.
+- NIE wchodzi do gotowosci ModelQ (TODO Etap 3b). Testy: `tests/test_body_signal.py`. Weryfikacja: /opt/qbot/artifacts/verify_body_signal.py.
+
 ## Plan dalej
 Etapy 2–7 w `docs/TODO.md` -> `[GARMIN-DANE]`.

@@ -473,6 +473,13 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
                         conn.rollback() if dry else conn.commit()
                 except Exception as e:
                     conn.rollback(); log.append(f"pogoda: błąd {str(e)[:120]}")
+            try:   # [GARMIN-DANE] Etap 4: temp. skory + HRV/tetno -> jedno zdanie, TYLKO gdy sygnal (fitmodel/body_signal.py)
+                from fitmodel.body_signal import today_signal as _bsig
+                _bs = _bsig(c, today)
+                if _bs and _bs["signal"]:
+                    tl.append("🌡️ " + _bs["text"])
+            except Exception as e:
+                conn.rollback(); log.append(f"temp. skory: błąd {str(e)[:120]}")
             try:
                 import qbot_food_plan as _FP
                 _txt = _FP.morning_digest(today, tl)

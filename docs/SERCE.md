@@ -108,3 +108,6 @@ Zasada jak w Trendach: QBot liczy fakty, AI je opisuje; oceny (prawidlowe / podw
 
 ## 2026-10-14: status HRV QBota
 Karta HRV (zdrowie-serce.js v=2) i karta snu (forma-serce.js v=11) pokazuja status HRV QBota (`fitmodel/hrv_status.py`: 7 nocy vs norma 60 nocy +-0.5 SD; pas normy na wykresie). Regula "Cisnienie a regeneracja" uzywa tego statusu. Szczegoly: docs/GARMIN_DANE.md.
+
+## 2026-10-14: temperatura skory
+Karta snu (forma-serce.js v=12): "temp. skory" z Garmina. Sygnal "Organizm pod obciazeniem" (`fitmodel/body_signal.py`: temp >= +0,4 C + HRV/tetno odchylone) jako punkt Serca i zdanie w porannej wiadomosci. Szczegoly: docs/GARMIN_DANE.md.

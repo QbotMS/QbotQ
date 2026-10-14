@@ -31,7 +31,8 @@
     t += tile("info", "Sen (7 dni)", sl.sleep7_min == null ? "—" : Math.floor(sl.sleep7_min / 60) + " h " + String(sl.sleep7_min % 60).padStart(2, "0") + " min",
       "wcześniej " + (sl.sleep_norm_min == null ? "—" : Math.floor(sl.sleep_norm_min / 60) + " h " + String(sl.sleep_norm_min % 60).padStart(2, "0")),
       "HRV nocne " + (sl.hrv_status ? num(sl.hrv_status.avg7) + " ms · " + sl.hrv_status.label + " (norma " + num(sl.hrv_status.lo) + "–" + num(sl.hrv_status.hi) + ")"   /* status HRV QBota 2026-10-14 */
-        : (sl.hrv7 == null ? "—" : num(sl.hrv7)) + " ms (rok " + (sl.hrv_median_year == null ? "—" : num(sl.hrv_median_year)) + ")"));
+        : (sl.hrv7 == null ? "—" : num(sl.hrv7)) + " ms (rok " + (sl.hrv_median_year == null ? "—" : num(sl.hrv_median_year)) + ")")
+      + (sl.skin_temp ? " · temp. skóry " + (sl.skin_temp.temp > 0 ? "+" : "") + num(sl.skin_temp.temp, 1) + " °C" : ""));   /* 2026-10-14 [GARMIN-DANE] Etap 4 */
     t += tile(sp ? sp.status : "info", "Saturacja w nocy", sp ? num(sp.avg_low) + "% <small>najniższa</small>" : "—",
       sp ? "poniżej 90%: " + sp.below90 + " z " + sp.nights + " nocy · min. " + num(sp.min_low) + "%" : "brak danych", "średnio we śnie " + (sl.spo2_sleep_avg == null ? "—" : num(sl.spo2_sleep_avg, 1)) + "%");
     var rows = nx.map(function (p) { return '<div class="s3row ' + p.status + '"><span class="i">' + ICON[p.status] + "</span><span>" + esc(p.text) + "</span></div>"; }).join("");
