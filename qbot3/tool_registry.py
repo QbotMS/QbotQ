@@ -2573,6 +2573,10 @@ def _init_registry():
         ("trainer_week", _load_trainer_week_tool),
         ("heart_health", _load_heart_health_tool),
         ("supplements", _load_supplements_tool),
+        ("weather_now", _load_weather_now_tool),
+        ("ride_window", _load_ride_window_tool),
+        ("ride_where", _load_ride_where_tool),
+        ("weather_skill", _load_weather_skill_tool),
         ("route_fuel_plan", _load_route_fuel_plan_tool),
         ("route_time_estimate", _load_route_time_estimate_tool),
         ("route_wbgt", _load_route_wbgt_tool),
@@ -3153,6 +3157,50 @@ def _load_route_analysis_tool() -> dict[str, Any]:
         "mode": "read_only",
     }
 
+
+
+# ---- POGODA (2026-10-14): modul strony Pogoda dla Alberta -- tylko odczyt. Logika: qbot_pogoda_albert.py
+def _pogoda_tool(fn_name: str, description: str, schema: dict) -> dict[str, Any]:
+    from qbot3.errors import error_result, success_result
+
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        import qbot_pogoda_albert as _pa
+        try:
+            out = getattr(_pa, fn_name)(**{k: v for k, v in (args or {}).items() if k in schema and v not in (None, "")})
+        except Exception as e:
+            return error_result("POGODA_FAILED", f"{type(e).__name__}: {e}"[:300])
+        return success_result({"analysis": out.get("analysis", "")})
+    return {"callable": _wrapper, "category": "weather", "description": description, "args_schema": schema, "safety": "read", "mode": "read_only"}
+
+
+def _load_weather_now_tool() -> dict[str, Any]:
+    return _pogoda_tool("weather_now", (
+        "POGODA TERAZ w punkcie (domyslnie dom): radar (czy pada, kiedy przestanie / dojdzie, skad idzie opad), dalej model, "
+        "warunki dla roweru (temp, odczuwalna, wiatr i porywy m/s, nawierzchnia, oblodzenie, mgla), 12 h. Param: lat, lon (opcjonalne). "
+        "Pokaz pole analysis w calosci."), {"lat": {"type": "number"}, "lon": {"type": "number"}})
+
+
+def _load_ride_window_tool() -> dict[str, Any]:
+    return _pogoda_tool("ride_window", (
+        "OKNO JAZDY: przesunac jazde czy moknac? Ocena startow co 30 min w oknach Trenera (deszcz na jazde, szansa opadu z zespolu, "
+        "porywy, zmrok, chlod; radar na najblizsza godzine). Domyslnie najblizsza jazda z Trenera. Param: ride_id albo dzien (RRRR-MM-DD) + "
+        "start (HH:MM) + dur (min); lat, lon opcjonalne. Pokaz analysis w calosci."),
+        {"ride_id": {"type": "integer"}, "dzien": {"type": "string"}, "start": {"type": "string"}, "dur": {"type": "integer"},
+         "lat": {"type": "number"}, "lon": {"type": "number"}})
+
+
+def _load_ride_where_tool() -> dict[str, Any]:
+    return _pogoda_tool("ride_where", (
+        "GDZIE JECHAC (weekend / dowolny dzien do ok. 5 dni): ocena miejsc w Polsce w oknie Trenera na rower (opad, wiatr, porywy, chlod), "
+        "najlepsze rejony z odlegloscia i zasiegiem podobnej pogody. Param: dzien (RRRR-MM-DD; domyslnie najblizsza sobota), km (limit od "
+        "domu, domyslnie 100; 0 = bez limitu), lat, lon. Pokaz analysis w calosci."),
+        {"dzien": {"type": "string"}, "km": {"type": "integer"}, "lat": {"type": "number"}, "lon": {"type": "number"}})
+
+
+def _load_weather_skill_tool() -> dict[str, Any]:
+    return _pogoda_tool("weather_skill", (
+        "SPRAWDZALNOSC PROGNOZ: ktory model najlepiej trafia temperature/wiatr/opad u uzytkownika (vs stacje IMGW), trafnosc radaru wg "
+        "wyprzedzenia i wiarygodnosc szansy opadu z zespolu. Bez parametrow. Pokaz analysis w calosci."), {})
 
 def lookup(name: str, allow_legacy: bool = False) -> dict[str, Any] | None:
     _init_registry()
