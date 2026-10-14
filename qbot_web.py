@@ -7134,6 +7134,13 @@ def api_pogoda_mapa_korekta():
     return PM.korekta()
 
 
+@app.get("/api/pogoda/charakter")
+def api_pogoda_charakter(lat: float, lon: float):
+    """Charakter dni (przelotne / burzowe / stabilnie) z CAPE + lifted index. Dok.: docs/POGODA_RADAR.md"""
+    import qbot_pogoda as PG
+    return PG.charakter_dni(lat, lon, 3)
+
+
 @app.get("/api/pogoda/ostrzezenie")
 def api_pogoda_ostrzezenie():
     """Ostatnie ostrzezenie o deszczu dla jazdy trwajacej / zaczynajacej sie w ciagu 60 min (pasek na Pogodzie)."""

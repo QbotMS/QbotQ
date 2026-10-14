@@ -169,3 +169,47 @@ def kwadraty(share: str = "") -> dict:
     owned = sorted(get_tile_set(td.get("tiles", [])))
     return {"status": "OK" if not td.get("_error") else "BLAD", "error": td.get("_error"), "zoom": 14,
             "kwadraty": [[x, y] for x, y in owned]}
+
+
+# ---------------------------------------------------------------- charakter dnia (14.10.2026, po ulewie z "niczego")
+# Chmury w niestabilnym powietrzu rosna na miejscu w 20-40 min -- radar ich wczesniej nie widzi, przesuwanie obrazu nie przewidzi.
+# Etykieta z prognozy chwiejnosci (Open-Meteo best_match, godz. 8-20): CAPE [J/kg] = energia wznoszenia, LI = lifted index
+# (< 0 = chwiejnie). Progi skalibrowane na 11-16.10.2026: 14.10 (ulewy 39 dBZ) CAPE 210 / LI 0,3; pozostale dni CAPE <= 80, LI >= 0,4.
+CH_PRZELOT = (150, 1.5)    # CAPE >= i LI <= -> przelotne opady
+CH_BURZA = (600, -1.0)     # CAPE >= i LI <= -> burzowo
+_CH: dict = {}
+
+
+def charakter_dni(lat: float, lon: float, dni: int = 3) -> dict:
+    key = (round(lat, 1), round(lon, 1))
+    hit = _CH.get(key)
+    if hit and hit[0] > time.time() - 1800:
+        return hit[1]
+    q = urllib.parse.urlencode({"latitude": round(lat, 3), "longitude": round(lon, 3), "hourly": "cape,lifted_index",
+                                "forecast_days": dni, "timezone": "Europe/Warsaw"})
+    try:
+        with urllib.request.urlopen(URL + "?" + q, timeout=12) as r:
+            h = json.load(r).get("hourly") or {}
+    except Exception as e:
+        return {"status": "ERROR", "error": f"{type(e).__name__}"}
+    out = {}
+    for i, t in enumerate(h.get("time") or []):
+        hh = int(t[11:13])
+        if not 8 <= hh <= 20:
+            continue
+        c, li = h["cape"][i] or 0, h["lifted_index"][i]
+        x = out.setdefault(t[:10], {"dzien": t[:10], "cape": 0, "li": 99.0, "godz": []})
+        x["cape"] = max(x["cape"], c); x["li"] = min(x["li"], li if li is not None else 99.0)
+        if c >= 100 and (li is None or li <= 2):
+            x["godz"].append(hh)
+    dd = []
+    for x in out.values():
+        typ = "burzowy" if x["cape"] >= CH_BURZA[0] and x["li"] <= CH_BURZA[1] else "przelotny" if x["cape"] >= CH_PRZELOT[0] and x["li"] <= CH_PRZELOT[1] else "stabilny"
+        okno = f"{min(x['godz']):02d}–{max(x['godz']) + 1:02d}" if x["godz"] else None
+        opis = {"burzowy": "⛈ Dzień burzowy", "przelotny": "🌦 Dzień przelotnych opadów", "stabilny": "Pogoda stabilna"}[typ] + (f" (najbardziej ok. {okno})" if okno and typ != "stabilny" else "")
+        if typ != "stabilny":
+            opis += ": chmury mogą wyrosnąć na miejscu w 20–40 min — czysty radar nie gwarantuje suchej jazdy" + ("; możliwe ulewy, grad, porywy." if typ == "burzowy" else ".")
+        dd.append({"dzien": x["dzien"], "typ": typ, "cape": round(x["cape"]), "li": round(x["li"], 1), "okno": okno, "opis": opis})
+    res = {"status": "OK", "dni": dd, "zrodlo": "Open-Meteo (CAPE, lifted index), godz. 8–20"}
+    _CH[key] = (time.time(), res)
+    return res

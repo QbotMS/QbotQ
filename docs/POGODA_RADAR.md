@@ -92,3 +92,10 @@ z jednego przebiegu sugerowały pewność, której nie ma. Decyzja Michała: na 
 odsetek z 40 wariantów ICON-EU-EPS z opadem ≥ 0,2 mm/h (`qbot_pogoda_map.eps_build`, warstwa `szansa`, ~8 MB/krok, siatka
 ikosaedryczna ~20 km → najbliższa komórka, indeks `eps_idx.npz`). Bez korekty położenia i bez przygaszania (niepewność wyraża
 prawdopodobieństwo). Deterministyczne warstwy temp/wiatr/porywy/mgła/lód bez zmian. Do zrobienia: sprawdzalność szansy (czy 60% ≈ 6 na 10).
+
+### Charakter dnia: przelotne / burzowe / stabilnie (2026-10-14)
+Powód: 14.10 ulewa (39 dBZ) z komórek, które wyrosły na miejscu — radar 50 min wcześniej czysty. Przesuwanie obrazu nie przewiduje
+powstawania chmur. `qbot_pogoda.charakter_dni()` — Open-Meteo CAPE + lifted index, godz. 8–20: przelotne gdy CAPE ≥ 150 J/kg i LI ≤ 1,5;
+burzowe gdy CAPE ≥ 600 i LI ≤ −1 (kalibracja 11–16.10.2026: 14.10 CAPE 210 / LI 0,3; inne dni CAPE ≤ 80, LI ≥ 0,4). Okno godzin:
+CAPE ≥ 100 i LI ≤ 2. API `/api/pogoda/charakter?lat=&lon=`; chip w ☂ pod „Opad — radar” (dziś i jutro, tylko gdy niestabilnie);
+linia w `weather_now` (Albert). Progi do weryfikacji na kolejnych dniach.

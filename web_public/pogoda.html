@@ -58,6 +58,7 @@ body.open .x{display:block}
 .okr .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:5px}.okr .u{color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rec.sel{outline:2px solid var(--accent);outline-offset:-1px}.wkgo{color:var(--accent-ink,var(--accent));font-weight:600;text-decoration:none;font-size:12px}
 .ralert{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:2000;max-width:min(760px,calc(100vw - 24px));background:var(--bad-bg);color:var(--bad);border:1px solid var(--bad);border-radius:12px;padding:9px 38px 9px 14px;font-size:14.5px;font-weight:600;box-shadow:0 4px 18px rgba(0,0,0,.25)}.ralert button{position:absolute;right:8px;top:6px;border:0;background:none;color:inherit;font-size:20px;cursor:pointer}
+.chchip{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:7px 10px;font-size:13.5px;line-height:1.4;margin:4px 0 8px}.chchip.burza{background:var(--bad-bg);color:var(--bad)}.chchip small{display:block;opacity:.85;margin-top:2px}
 .soonbox{border:1px dashed var(--line);border-radius:10px;padding:10px 12px;font-size:13.5px;color:var(--ink2)}
 .wrow{margin:0 0 10px}.wrow .h{display:flex;justify-content:space-between;font-size:13px}.wrow .h b{font-size:13.5px}.wrow .h span{color:var(--muted);font-size:12px}
 .strip{display:flex;gap:1px;margin-top:3px}.strip span{flex:1;height:20px;border-radius:2px}
@@ -122,7 +123,7 @@ html.theme-dark{--d-blue2:#5d86b0;--d-blue3:#2b3c52;--d-green-l:#34401f;--d-gree
     <div class="poslab" id="poslab"></div>
 
     <div data-s="radar">
-      <div class="sec-h">Opad — radar</div>
+      <div class="sec-h">Opad — radar</div><div id="charakter"></div>
       <div class="verd" id="verd">…</div>
       <div class="verd2" id="verd2"></div>
       <div id="warn"></div>
@@ -376,7 +377,12 @@ J("/api/radar/meta").then(function(m){ map.attributionControl.addAttribution(m.z
 var chart=null, hid={}, cmode="opad", lastD=null, lastM=null, lastW=null;
 var SER_O=[{k:"hist",n:"radar — było",col:css("--d-blue")},{k:"prog",n:"radar — prognoza",col:css("--d-blue2")},{k:"model",n:"model ICON",col:css("--d-model")},{k:"sz",n:"szansa (radar) %",col:css("--accent")}];
 var SER_T=[{k:"temp",n:"temperatura °C",col:css("--d-orange")},{k:"odcz",n:"odczuwalna °C",col:css("--d-red")},{k:"wiatr",n:"wiatr m/s",col:css("--d-green")},{k:"por",n:"porywy m/s",col:css("--d-green2")}];
-function loadPoint(){ $("verd").textContent="Liczę…"; $("verd2").textContent=""; $("warn").innerHTML=""; $("kvw").textContent="…"; $("kv12").textContent="…";
+function loadChar(){ if(!pos)return; J("/api/pogoda/charakter?lat="+pos.lat.toFixed(2)+"&lon="+pos.lon.toFixed(2)).then(function(d){ var el=$("charakter"); if(!el)return;
+  if(d.status!=="OK"){el.innerHTML="";return;} var t=d.dni[0], j=d.dni[1];
+  var dzis=t&&t.typ!=="stabilny"?'<div class="chchip'+(t.typ==="burzowy"?" burza":"")+'">'+t.opis+'</div>':"";
+  var jutro=j&&j.typ!=="stabilny"?'<div class="chchip'+(j.typ==="burzowy"?" burza":"")+'"><b>Jutro:</b> '+j.opis+'</div>':"";
+  el.innerHTML=dzis+jutro; }).catch(function(){}); }
+function loadPoint(){ loadChar(); $("verd").textContent="Liczę…"; $("verd2").textContent=""; $("warn").innerHTML=""; $("kvw").textContent="…"; $("kv12").textContent="…";
   var q="lat="+pos.lat.toFixed(4)+"&lon="+pos.lon.toFixed(4), fb=function(){return {status:"ERROR"};};
   Promise.all([J("/api/radar/punkt?"+q+"&horyzont="+NOW_MAX),J("/api/pogoda/model?"+q+"&godziny=12").catch(fb),J("/api/pogoda/warunki?"+q+"&godziny=24").catch(fb)]).then(function(r){
     var d=r[0], m=r[1], w=r[2]; lastD=d; lastM=m; lastW=w;

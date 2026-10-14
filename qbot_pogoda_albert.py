@@ -62,6 +62,9 @@ def weather_now(lat=None, lon=None) -> dict:
                          + (", ryzyko oblodzenia" if h["lod"] >= 2 else "") + (", mgła" if h["mgla"] == 2 else "") + ".")
             t = [x["temp"] for x in fut if x["temp"] is not None]; g = [x["porywy"] for x in fut if x["porywy"] is not None]
             lines.append(f"Najbliższe 12 h: {_pl(min(t))}…{_pl(max(t))}°C, porywy do {_pl(max(g))} m/s, opad {_pl(sum((x['opad'] or 0) for x in fut))} mm.")
+    ch = PG.charakter_dni(la, lo, 2)
+    if ch.get("status") == "OK" and ch["dni"] and ch["dni"][0]["typ"] != "stabilny":
+        lines.append("Dziś: " + ch["dni"][0]["opis"])
     lines.append(f"Mapa radaru i prognozy: {STRONA}")
     return {"status": "OK", "analysis": "\n".join(lines)}
 
