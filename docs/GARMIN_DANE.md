@@ -68,5 +68,16 @@ Uwaga: dla starszych dni Garmin zwraca mniej sekcji (brak epok oddechu/SpO2), po
   poranna wiadomosc Telegram (qbot_trener_notify, 7-8): jedno zdanie TYLKO gdy sygnal dla dzisiejszej nocy.
 - NIE wchodzi do gotowosci ModelQ (TODO Etap 3b). Testy: `tests/test_body_signal.py`. Weryfikacja: /opt/qbot/artifacts/verify_body_signal.py.
 
+## Walidacja ModelQ obciazeniem Garmina (Etap 6, 2026-10-14)
+- `fitmodel/garmin_load_check.py`: ModelQ `modelq2_ride.xss_total` (moc, kanoniczne) vs Garmin `training_sessions.activity_training_load` (tetno/EPOC).
+  Norma z 365 dni (xss_source='power', >15 min, xss>20): `ln(Garmin/ModelQ) = a + b*ln(godziny)`; rozbieznosc = |reszta| > 1.5 SD.
+  Dane 14.10: n=173, korelacja 0.87, mediana Garmin/ModelQ 0.91, b=-0.25 (Garmin zaniza dlugie jazdy), SD 0.29 -> 25/173 rozbieznych (~2/mies.).
+  Poprawka wzgledem pierwszej propozycji (+-40% od 0.75): tamta liczona na NIEAKTUALNYM `fitmodel_daily.xss_daily` (ostatni wpis 2026-07-06).
+- Raport jazdy: `w1.garmin_check` {garmin, xss, garmin_expected, dev_pct, flag wyzej|nizej, text} liczony w `apply_canonical_load`
+  (przy kazdym odczycie, takze starych raportow); kafel "obciazenie": "· Garmin N" + "▲ tetno wysoko" / "▼ tetno nisko" (raport-jazdy2-ws.js v=47).
+- Tygodniowe rozliczenie Trenera (qbot_trener_notify): linia "ModelQ vs Garmin" z sumami, spodziewana wartoscia Garmina i rozbieznymi jazdami.
+- ModelQ = zrodlo decyzji; Garmin tylko porownanie. Etap 6b (import Training Status/Readiness Garmina) -- osobno, po tescie API.
+- Testy: `tests/test_garmin_load_check.py`. Weryfikacja: /opt/qbot/artifacts/verify_garmin_load_check.py.
+
 ## Plan dalej
 Etapy 2–7 w `docs/TODO.md` -> `[GARMIN-DANE]`.

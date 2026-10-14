@@ -361,6 +361,15 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
         _goals = [dict(x) for x in c.fetchall()]
         c.execute("SELECT overrides FROM qbot_v2.trainer_settings WHERE username=%s", (user,))
         _r = c.fetchone(); _ov = dict(_r["overrides"]) if _r else {}
+        if 5 * 60 <= hm < 5 * 60 + 15 and not dry:  # 2026-10-14: przelicznik obciazenia planu z Twoich jazd (ModelQ)
+            try:
+                cal = E.calibrate_xss(c)
+                if cal.get("changed"):
+                    n_ = E.rescale_plan_xss(c, user, ws)
+                    log.append(f"kalibracja obciążenia: mnożnik {cal.get('k')} (jazd {cal['n']}), przeliczono {n_} sesji")
+                conn.commit()
+            except Exception as e:
+                conn.rollback(); log.append(f"kalibracja: błąd {str(e)[:120]}")
         if 5 * 60 <= hm < 5 * 60 + 15:  # co noc: biezacy tydzien + 2 kolejne maja plan (puste tygodnie planuja sie same)
             for k_ in range(3):
                 w_ = ws + timedelta(weeks=k_)
@@ -425,6 +434,14 @@ def tick(now: datetime | None = None, dry: bool = False) -> list[str]:
             import qbot_trener_stats as ST
             slope = ST.balance(ST.load_days(c, 45), 30, 2)["weight_slope_kg_wk"]
             _rt = text_review(ws, ses, extra, st["notify.tone"], slope) if ses else None
+            if _rt:
+                try:   # [GARMIN-DANE] Etap 6: ModelQ vs Garmin w rozliczanym tygodniu (fitmodel/garmin_load_check.py)
+                    from fitmodel.garmin_load_check import week_line as _gwl
+                    _gl = _gwl(c, ws, ws + timedelta(days=6))
+                    if _gl:
+                        _rt += "\n" + _gl
+                except Exception as e:
+                    conn.rollback(); log.append(f"garmin-check: błąd {str(e)[:120]}")
             if _merge and _rt:
                 _rev = (f"review:{yr}-W{wk:02d}", _rt)
             else:

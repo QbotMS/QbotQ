@@ -1610,6 +1610,11 @@ def apply_canonical_load(w1):
         conn = _connect()
         try:
             r = canonical_xss(conn.cursor(), w1["ride_key"])
+            try:   # [GARMIN-DANE] Etap 6 -- liczone przy kazdym odczycie (Garmin liczy obciazenie z opoznieniem); fitmodel/garmin_load_check.py
+                from fitmodel.garmin_load_check import check_ride as _gchk
+                _gc = _gchk(conn.cursor(), w1["ride_key"])
+            except Exception:
+                conn.rollback(); _gc = None
         finally:
             conn.close()
     except Exception:
@@ -1629,6 +1634,7 @@ def apply_canonical_load(w1):
         pva = dict(pva); v = dict(pva["value"]); re_ = dict(v["_real"])
         re_["xss"] = round(x); re_.pop("tss", None)
         v["_real"] = re_; pva["value"] = v; w1["plan_vs_actual"] = pva
+    w1["garmin_check"] = _gc   # ModelQ (moc) vs Garmin (tetno): {garmin, xss, garmin_expected, dev_pct, flag, text}
     return w1
 
 
