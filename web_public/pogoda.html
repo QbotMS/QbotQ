@@ -56,6 +56,7 @@ body.open .x{display:block}
 .okr{display:grid;grid-template-columns:52px 92px 1fr;gap:8px;align-items:center;font-size:12.5px;padding:4px 2px;border-top:1px solid var(--line);cursor:pointer}
 .okr.plan{background:var(--well);font-weight:700}.okr .bar{height:10px;border-radius:5px;background:var(--well);position:relative;overflow:hidden}
 .okr .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:5px}.okr .u{color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rec.sel{outline:2px solid #ff7a1a;outline-offset:-1px}.wkgo{color:var(--accent-ink,var(--accent));font-weight:600;text-decoration:none;font-size:12px}
 .soonbox{border:1px dashed var(--line);border-radius:10px;padding:10px 12px;font-size:13.5px;color:var(--ink2)}
 .wrow{margin:0 0 10px}.wrow .h{display:flex;justify-content:space-between;font-size:13px}.wrow .h b{font-size:13.5px}.wrow .h span{color:var(--muted);font-size:12px}
 .strip{display:flex;gap:1px;margin-top:3px}.strip span{flex:1;height:20px;border-radius:2px}
@@ -337,6 +338,7 @@ function show(i){ cur=i; $("slider").value=Math.round(((steps[i]&&steps[i].p)||0
   else {var o=ovs[ovs.length-1];o.setBounds(L.latLngBounds(shiftBounds(meta.bounds,s.m)));o.setOpacity(ROP()*(s.k==="now"?.85:.55));}
   var lab={radar:"radar",now:"prognoza radaru +"+s.m+" min",now2:"+"+s.m+" min · orientacyjnie",model:(MM?MM.model+" · przebieg "+MM.run.slice(8,10)+" UTC"+(s.eps?" · <b>szansa opadu</b> ≥ 0,2 mm/h ("+((MM.eps&&MM.eps.warianty)||40)+" wariantów)":"")+(s.kor?" · przesunięty o "+s.kor+" km wg radaru":"")+(s.zg!=null?" · <b style='color:var(--bad)'>rozbieżny z radarem (zgodność "+Math.round(s.zg*100)+"%)</b>":""):"model")}[s.k];
   var dd=("0"+s.t.getDate()).slice(-2)+"."+("0"+(s.t.getMonth()+1)).slice(-2);
+  if(sec==="weekend"){ ovs.forEach(function(o){o.setOpacity(0);}); if(mov)mov.setOpacity(0); }   /* panel ★: bez radaru i modelu na mapie */
   if(LAYER==="opad"){ var lg=document.querySelector("#dock .legend"), want=(s.k==="model"&&s.eps)?"eps":"rad";
     if(lg&&lg.dataset.k!==want){ lg.dataset.k=want; lg.innerHTML=want==="eps"?"szansa opadu: "+MM.legenda.szansa.map(function(x){return '<i style="background:'+x[0]+'"></i>'+x[1];}).join(" "):RLEG; } }
   $("tm").innerHTML=(s.t.toDateString()!==new Date().toDateString()?dd+" ":"")+hhmm(s.t)+(s.k==="radar"&&s.i===meta.klatki.length-1?" (teraz)":"")+"<small>"+lab+"</small>"; }
@@ -487,7 +489,7 @@ function drawSpr(){ var d=spr.data; if(!d||d.status!=="OK")return; var R=d.wynik
       scales:{x:{ticks:{color:css("--muted")},grid:{display:false}},y:{beginAtZero:true,ticks:{color:css("--muted")}}}}}); }
 
 /* ---- gdzie w weekend ---- */
-var WK={ov:null,day:null,lg:null,km:+(LS("qpogoda_wkkm")||100)};
+var WK={ov:null,day:null,lg:null,sel:0,r:null,km:+(LS("qpogoda_wkkm")||100)};
 function hideWeekend(){ if(WK.lg){map.removeLayer(WK.lg);WK.lg=null;} if(WK.ov){map.removeLayer(WK.ov);WK.ov=null;} if(steps.length)show(cur); }
 function loadWeekend(day){ $("wklist").innerHTML='<div class="note">Liczę mapę ocen (pierwszy raz dla dnia kilka sekund)…</div>';
   var q="/api/pogoda/weekend?"+(day?"dzien="+day+"&":"")+(pos?"lat="+pos.lat.toFixed(3)+"&lon="+pos.lon.toFixed(3):"")+"&km="+WK.km;
@@ -498,22 +500,28 @@ function loadWeekend(day){ $("wklist").innerHTML='<div class="note">Liczę mapę
     $("wkinfo").innerHTML="Okno "+r.okno[0]+"–"+r.okno[1]+" · Polska średnio "+r.polska.srednia+"/100, dobre warunki na "+Math.round(r.polska.udzial_dobrych*100)+"% obszaru · przebieg "+r.run.slice(8,10)+" UTC<br>"+
       r.legenda.map(function(x){return '<i style="display:inline-block;width:14px;height:8px;border-radius:2px;background:'+x[0]+'"></i> '+x[1];}).join(" ");
     ovs.forEach(function(o){o.setOpacity(0);}); if(mov)mov.setOpacity(0);
-    if(WK.ov)map.removeLayer(WK.ov); WK.ov=L.imageOverlay("/api/pogoda/weekend/"+r.png+".png",r.bounds,{opacity:.85,interactive:false,pane:"radar"}).addTo(map);
+    if(WK.ov)map.removeLayer(WK.ov); WK.ov=L.imageOverlay("/api/pogoda/weekend/"+r.png+".png",r.bounds,{opacity:.5,interactive:false,pane:"radar"}).addTo(map);
     $("wklist").innerHTML=r.najlepsze.map(function(x,i){var c=x.ocena>=80?"good":x.ocena>=50?"warn":"bad";
-      return '<div class="rec '+c+'" data-i="'+i+'" style="margin-bottom:6px"><div class="t">#'+(i+1)+(x.km!=null?" · "+x.km+" km od Ciebie":"")+(x.zasieg_km?" · podobnie w promieniu ok. "+x.zasieg_km+" km":"")+'</div><div class="s">'+x.nazwa+' · '+x.ocena+'/100</div><div class="l">opad '+pl(x.opad_mm)+' mm · wiatr '+pl(x.wiatr_ms)+' m/s, porywy '+pl(x.poryw_ms)+' m/s · '+pl(x.temp_sr)+'°C (max '+pl(x.temp_max)+')</div></div>';}).join("");
-    $("wklist").querySelectorAll(".rec").forEach(function(el){el.addEventListener("click",function(){var x=r.najlepsze[+el.dataset.i]; modeBtn("zadana"); setPos(x.lat,x.lon,x.nazwa+" (weekend)"); map.setView([x.lat,x.lon],9);});});
-    wkDraw(r);
+      return '<div class="rec '+c+'" data-i="'+i+'" style="margin-bottom:6px"><div class="t">#'+(i+1)+(x.km!=null?" · "+x.km+" km od Ciebie":"")+(x.zasieg_km?" · podobnie w promieniu ok. "+x.zasieg_km+" km":"")+'</div><div class="s">'+x.nazwa+' · '+x.ocena+'/100</div><div class="l">opad '+pl(x.opad_mm)+' mm · wiatr '+pl(x.wiatr_ms)+' m/s, porywy '+pl(x.poryw_ms)+' m/s · '+pl(x.temp_sr)+'°C (max '+pl(x.temp_max)+')</div><div class="l" style="margin-top:3px"><a class="wkgo" data-i="'+i+'" href="#">ustaw tu prognozę →</a></div></div>';}).join("");
+    $("wklist").querySelectorAll(".rec").forEach(function(el){el.addEventListener("click",function(){ wkSelect(+el.dataset.i,true); });});
+    $("wklist").querySelectorAll(".wkgo").forEach(function(a){a.addEventListener("click",function(ev){ ev.preventDefault(); ev.stopPropagation(); var x=r.najlepsze[+a.dataset.i]; modeBtn("zadana"); setPos(x.lat,x.lon,x.nazwa+" (weekend)"); });});
+    WK.sel=0; wkDraw(r); wkSelect(0,false);
   }).catch(function(e){$("wklist").textContent="Błąd: "+e;}); }
 
-function wkDraw(r){ if(WK.lg)map.removeLayer(WK.lg); if(!map.getPane("wk")){map.createPane("wk");map.getPane("wk").style.zIndex=440;map.getPane("wk").classList.add("leaflet-wk-pane");}
+function wkSelect(i,zoom){ WK.sel=i; wkDraw(WK.r,true);
+  document.querySelectorAll("#wklist .rec").forEach(function(el){el.classList.toggle("sel",+el.dataset.i===i);});
+  var x=WK.r&&WK.r.najlepsze[i]; if(zoom&&x)map.setView([x.lat,x.lon],Math.max(map.getZoom(),8)); }
+function wkDraw(r,keep){ if(!r)return; WK.r=r; if(WK.lg)map.removeLayer(WK.lg);
+  if(!map.getPane("wk")){map.createPane("wk");map.getPane("wk").style.zIndex=440;map.getPane("wk").classList.add("leaflet-wk-pane");}
   WK.lg=L.layerGroup().addTo(map); var B=L.latLngBounds([]);
   if(pos&&r.limit_km){ var c=L.circle([pos.lat,pos.lon],{radius:r.limit_km*1000,pane:"wk",color:css("--ink2"),weight:1.5,dashArray:"6 6",fill:false,interactive:false}).addTo(WK.lg); B.extend(c.getBounds()); }
-  (r.najlepsze||[]).forEach(function(x,i){ var col=x.ocena>=80?"#2e8b57":x.ocena>=50?"#d4a017":"#c0392b";
-    var cc=L.circle([x.lat,x.lon],{radius:(x.zasieg_km||10)*1000,pane:"wk",color:col,weight:2,fillColor:col,fillOpacity:.12})
-      .bindTooltip(x.nazwa+" · "+x.ocena+"/100 · podobna pogoda w promieniu ok. "+x.zasieg_km+" km").addTo(WK.lg);
-    L.marker([x.lat,x.lon],{pane:"wk",icon:L.divIcon({className:"",iconSize:[0,0],html:'<div style="transform:translate(-50%,-50%);background:'+col+';color:#fff;font:700 12px -apple-system,system-ui,sans-serif;border-radius:12px;padding:2px 8px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.45)">'+(i+1)+". "+x.nazwa+" · "+x.ocena+'</div>'})}).addTo(WK.lg);
-    if(!r.limit_km)B.extend(cc.getBounds()); });
-  if(B.isValid())map.fitBounds(B,{padding:[40,40]}); }
+  (r.najlepsze||[]).forEach(function(x,i){ var sel=i===WK.sel, col=sel?"#ff7a1a":(x.ocena>=80?"#2e8b57":x.ocena>=50?"#b8860b":"#c0392b");
+    if(sel)L.circle([x.lat,x.lon],{radius:(x.zasieg_km||10)*1000,pane:"wk",color:col,weight:3,fillColor:col,fillOpacity:.13})
+      .bindTooltip(x.nazwa+" · "+x.ocena+"/100 · podobna pogoda w promieniu "+(x.zasieg_km>=80?"ponad 80":"ok. "+x.zasieg_km)+" km").addTo(WK.lg);
+    var mk=L.marker([x.lat,x.lon],{pane:"wk",zIndexOffset:sel?1000:0,icon:L.divIcon({className:"",iconSize:[0,0],html:'<div style="transform:translate(-50%,-50%);background:'+col+';color:#fff;font:700 12px -apple-system,system-ui,sans-serif;border-radius:12px;padding:2px 8px;white-space:nowrap;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.45);'+(sel?"outline:2px solid #fff;":"opacity:.92;")+'">'+(i+1)+". "+x.nazwa+" · "+x.ocena+'</div>'})}).addTo(WK.lg);
+    mk.on("click",function(){ wkSelect(i,false); var el=document.querySelector('#wklist .rec[data-i="'+i+'"]'); if(el)el.scrollIntoView({block:"nearest"}); });
+    if(!r.limit_km)B.extend(L.latLng(x.lat,x.lon)); });
+  if(!keep&&B.isValid())map.fitBounds(B,{padding:[40,40]}); }
 setTimeout(function(){ var s=$("wkkm"); if(!s)return; s.value=String(WK.km); s.addEventListener("change",function(){ WK.km=+this.value; LS("qpogoda_wkkm",String(WK.km)); loadWeekend(WK.day); }); },0);
 
 /* ---- okno jazdy ---- */

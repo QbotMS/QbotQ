@@ -510,7 +510,7 @@ def rejony(day: dt.date, a_h: int, b_h: int, lat=None, lon=None, km_max=None, n:
     P_ = _places(); big = P_["pop"] >= 2000
     t_all = cKDTree(np.c_[P_["a"][:, 1] * kk, P_["a"][:, 0]]); t_big = cKDTree(np.c_[P_["a"][big, 1] * kk, P_["a"][big, 0]])
     bigrows = [x for x, f in zip(P_["rows"], big) if f]
-    spacing = max(20.0, min(60.0, (km_max or 240) / 4))
+    spacing = max(25.0, min(70.0, (km_max or 240) / 3))   # 14.10: wieksze odstepy -- etykiety nie nachodza
     # 14.10: przy podobnej pogodzie blizsze miejsce wygrywa (kara 3 pkt / 100 km), wyraznie lepsza pogoda dalej nadal przebija
     rank = oc - (0.03 * D if D is not None else 0)
     sc = np.where(ok, rank, -1e9); order = np.argsort(-sc.ravel()); picked = []
