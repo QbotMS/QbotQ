@@ -12,6 +12,18 @@
 
 
 # OTWARTE
+## [GARMIN-DANE] Pelne dane snu/HRV z Garmina + wlasne wyliczenia (dodane 2026-10-14)
+Decyzje 2026-10-14: HRV status/norma, aklimatyzacja do upalu i VO2max liczone W QBOCIE (VO2max Garmina zamrozony od 2025-03-08 = 46, bo jazdy z Karoo/plik jako Tacx -- Garmin liczy VO2max tylko na urzadzeniu w trakcie nagrania). Garmin liczy obciazenie/TE dla 340/342 plikow Tacx -> walidacja ModelQ w tle ma sens. Connect+ odrzucone (brak nowych danych).
+- [x] Etap 0 [2026-10-14]: scripts/debug_garmin_sleep_hrv_raw.py (tylko odczyt, JSON -> /opt/qbot/artifacts/garmin_sleep_hrv_raw_<data>.json). Potwierdzone pola: sleep.avgSkinTempDeviationC (+skinTempDataExists, skinTempCalibrationDays), sleep.dailySleepDTO.sleepNeed / nextSleepNeed (baseline, actual, feedback, trainingFeedback, sleepHistoryAdjustment, hrvAdjustment, napAdjustment, recommendedBedtimeStart/EndMins), sleep.hrvStatus, hrv.hrvSummary.weeklyAvg/baseline(lowUpper,balancedLow,balancedUpper,markerValue)/status. Dostepne co najmniej od 2025-11 (ten sam deviceId 3491367170); starsze dni maja mniej sekcji (brak epok oddechu/SpO2), pola kluczowe sa.
+- [x] Etap 1 kod [2026-10-14]: qbot_garmin_extra.py + sql/garmin_extra_v1.sql (tabela garmin_daily_raw + 10 kolumn w qbot_wellness_daily: skin_temp_dev_c, sleep_need_*, next_sleep_need_*, garmin_hrv_status, hrv_weekly_avg, hrv_balanced_low/high); importer zapisuje w savepoincie; test_garmin_extra 5; sprawdzone na 13-14.10. Dok.: docs/GARMIN_DANE.md
+- [ ] Etap 1 backfill: SSH nohup scripts/garmin_extra_backfill.py (od 2022-01-01, ~1748 dni, ~1.5 h, wznawialny) -> log /opt/qbot/artifacts/garmin_extra_backfill.txt; potem sprawdzic od kiedy jest temp. skory.
+- [ ] Etap 2: VO2max QBota -- A: MMP 5 min / waga; B: regresja HR<->moc na rownych odcinkach, ekstrapolacja do HRmax. Kalibracja na 23 jazdach 2025-01..03 z vO2MaxValue Garmina (activity_fit_raw.summary). Trend dzienny + pewnosc; Forma > Trendy.
+- [ ] Etap 3: HRV status wlasny (norma ~60 dni +- zmiennosc, srednia 7 dni) -> Zdrowie > Serce + wejscie do gotowosci. Garmina tylko do porownania.
+- [ ] Etap 4: temp. skory jako odchylenie od normy -> warstwa L3 ukrytego zmeczenia.
+- [ ] Etap 6: walidacja ModelQ vs Garmin w tle (activityTrainingLoad juz w activity_fit_raw; dzienny import Training Status/Readiness/regeneracji tylko do porownan; raport rozbieznosci co tydzien).
+- [ ] Etap 5: potrzeba snu -> wieczorne zalecenie + analiza dlug snu -> HRV/RHR/gotowosc/HR przy mocy nastepnego dnia (odfiltrowac wplyw ciezkich treningow).
+- [ ] Etap 7: aklimatyzacja do upalu z activity_record (dryf HR przy tej samej mocy vs temperatura).
+
 - [2026-10-14] [METEO-ICOND2] Open-Meteo models=icon_d2 zwraca 400 'No data is available for this location' (tez Warszawa). Sprawdzic qbot3/routes/route_weather_models.py (zestaw 0-2 dni z icon_d2) -- czy Planer/raport nie traci modelu; ewent. icon_seamless.
 - [2026-10-14] [POGODA-MENU] Strona pogoda.html poza menu (nav.js) -- dodac pozycje po akceptacji.
 - [2026-10-14] [POGODA-RADAR-UI] Strona Pogoda -> zakladka Radar: mapa Leaflet + animacja 2 h, strzalka ruchu, karta 'u Ciebie'; pozycja edytowalna: moja (dom) / przegladarka / zadana (klik, miejscowosc, start trasy z kalendarza). Dok.: docs/POGODA_RADAR.md

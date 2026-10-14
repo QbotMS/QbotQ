@@ -99,6 +99,7 @@ def _garmin_fetch_wellness(date_str: str) -> dict[str, Any]:
         # Sleep
         try:
             sleep_raw = g.get_sleep_data(date_str)
+            result["_raw_sleep"] = sleep_raw  # [GARMIN-DANE] pelna odpowiedz -> qbot_garmin_extra
             s = sleep_raw.get("dailySleepDTO", {})
             scores = s.get("sleepScores", {})
             result["sleep_duration_min"] = round(s.get("sleepTimeSeconds", 0) / 60)
@@ -142,6 +143,7 @@ def _garmin_fetch_wellness(date_str: str) -> dict[str, Any]:
         # HRV
         try:
             hrv_raw = g.get_hrv_data(date_str)
+            result["_raw_hrv"] = hrv_raw  # [GARMIN-DANE]
             h = hrv_raw.get("hrvSummary", {})
             result["hrv_ms"] = h.get("lastNightAvg")
         except Exception:
@@ -176,6 +178,9 @@ def _garmin_import_wellness(date_from: str, date_to: str, dry_run: bool) -> dict
         if "error" in raw:
             errors.append(f"{d}: {raw['error']}")
             continue
+        # [GARMIN-DANE] pelne odpowiedzi poza raw_json (sa duze) -> garmin_daily_raw
+        extra_sleep = raw.pop("_raw_sleep", None)
+        extra_hrv = raw.pop("_raw_hrv", None)
         raw_snapshots.append(raw)
 
         sleep_score = raw.get("sleep_score")
@@ -219,6 +224,16 @@ def _garmin_import_wellness(date_from: str, date_to: str, dry_run: bool) -> dict
                           hrv, rhr, bb_start, bb_end,
                           json.dumps(raw, ensure_ascii=False, default=str)))
                     rows_ins += 1
+
+                # [GARMIN-DANE] pelne dane snu/HRV + temp. skory, potrzeba snu, status HRV.
+                # Savepoint: blad tu NIE moze wywalic importu podstawowego.
+                if extra_sleep or extra_hrv:
+                    try:
+                        from qbot_garmin_extra import save_extra
+                        with conn.transaction():
+                            save_extra(cur, d, source, extra_sleep, extra_hrv)
+                    except Exception as _gx:  # noqa: BLE001
+                        warnings.append(f"{d}: garmin_extra {str(_gx)[:160]}")
 
                 if has_sleep_detail:
                     sleep_start_val = raw.get("sleep_start")
