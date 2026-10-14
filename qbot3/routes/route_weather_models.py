@@ -96,9 +96,8 @@ REACH_TTL_S = 6 * 3600.0
 
 
 def _get(url: str, timeout: float = 30.0):
-    req = urllib.request.Request(url, headers=UA)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+    import qbot_wx as WX   # E2: wspolny transport/cache Open-Meteo
+    return WX.get_url(url, timeout=timeout, ttl=600, ua=UA.get("User-Agent", "QBot/1.0"))
 
 
 def _as_list(payload):

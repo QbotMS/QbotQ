@@ -690,8 +690,8 @@ def _weather_rides(c) -> list[dict]:
         q = urllib.parse.urlencode(dict(latitude=la, longitude=lo, start_date=str(d0), end_date=str(d1),
                                         hourly="apparent_temperature,wind_speed_10m,wind_gusts_10m,precipitation,snow_depth", wind_speed_unit="ms", timezone="UTC"))
         try:
-            with urllib.request.urlopen("https://archive-api.open-meteo.com/v1/archive?" + q, timeout=40) as f:
-                j = json.load(f)["hourly"]
+            import qbot_wx as WX   # E4: wspolny transport/cache Open-Meteo (archiwum)
+            j = WX.get_url("https://archive-api.open-meteo.com/v1/archive?" + q, timeout=40, ttl=86400)["hourly"]
         except Exception:
             continue
         idx = {t: i for i, t in enumerate(j["time"])}

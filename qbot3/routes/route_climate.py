@@ -48,9 +48,8 @@ def _avg(vals: list[float]) -> Optional[float]:
 
 
 def _get(url: str, timeout: float) -> dict:
-    req = urllib.request.Request(url, headers={"User-Agent": "QBot-KLIMAT/1.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+    import qbot_wx as WX   # E2: wspolny transport/cache Open-Meteo (archiwum ERA5 -- cache 1 doba)
+    return WX.get_url(url, timeout=timeout, ttl=86400, ua="QBot-KLIMAT/1.0")
 
 
 def _target_in_year(year: int, month: int, day: int) -> _dt.date:

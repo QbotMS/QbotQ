@@ -41,9 +41,8 @@ def _wind_clim_for_route(conn, seg_in, month):
              "timezone": "UTC", "start_date": "%04d-%02d-01" % (y, month),
              "end_date": "%04d-%02d-%02d" % (y, month, last)}
         try:
-            req = _u.Request(ARCH + "?" + _up.urlencode(p), headers={"User-Agent": "QBot/1.0"})
-            with _u.urlopen(req, timeout=25) as rr:
-                d = _j.loads(rr.read().decode())
+            import qbot_wx as WX   # E2: wspolny transport/cache Open-Meteo (archiwum -- cache 1 doba)
+            d = WX.get_url(ARCH + "?" + _up.urlencode(p), timeout=25, ttl=86400)
             h = d["hourly"]
             for sp, dr in zip(h["wind_speed_10m"], h["wind_direction_10m"]):
                 if sp is None or dr is None:

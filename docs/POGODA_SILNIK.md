@@ -35,3 +35,12 @@
 T..T+1), `ens_prob()` (szansa ≥ 0,2 mm/h z ICON-EU-EPS dla godziny HH..HH+1). Na rdzeniu: `qbot_pogoda.conditions_point`, `model_point`,
 `charakter_dni`, `qbot_pogoda_okno._ens_prob`. Zgodność przed/po sprawdzona na żywo (identyczne wyniki). Test bez sieci:
 `tests/test_pogoda_conditions.py`. Dalej: radar/mapy/ERA5 (część 2), silnik tras (E2), Trener i reszta (E4).
+
+## E1 cz. 2 / E2 — wspólny transport (2026-10-14)
+`qbot_wx.get_url(url, timeout, ttl, ua)` — jedyna droga do Open-Meteo (prognoza, archiwum ERA5, zespół, poprzednie przebiegi, geokodowanie;
+inne adresy odrzucane), cache po pełnym adresie (prognoza 10 min, archiwum 1 doba). Przepięte BEZ zmiany parametrów zapytań
+(test zgodności przed/po: identyczne): silnik tras `route_meteo_engine._fetch_point_raw`, `route_weather_models._get` (6 modeli + ECMWF ENS),
+`route_climate._get` (klimat ERA5), `route_xss_phys` (klimat wiatru), Trener `forecast`, `qbot_trener_weather.hourly`, `qbot_trener_stats.weather_auto`.
+Radar (`qbot_radar`) i mapy modelu (`qbot_pogoda_map`, DWD) są częścią silnika jako pojedyncze źródła (bez zmian).
+Zostało poza rdzeniem (E4): `qbot_wbgt_tools`, `gear_kit`, `qbot_pogoda_verif` (Previous Runs), `qbot_web` (archiwum, l. ~3214),
+`mcp_server`, `qbot_integration_tools`, OpenWeatherMap (raport poranny, stare narzędzia).

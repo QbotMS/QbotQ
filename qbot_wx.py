@@ -23,15 +23,25 @@ _C: dict = {}           # (url, parametry) -> (czas, json)
 
 
 def _get(url: str, params: dict, ttl: int, timeout: float) -> dict:
-    q = urllib.parse.urlencode(params)
-    key = url + "?" + q
-    hit = _C.get(key)
+    return get_url(url + "?" + urllib.parse.urlencode(params), timeout=timeout, ttl=ttl)
+
+
+ALLOWED = ("https://api.open-meteo.com/", "https://archive-api.open-meteo.com/", "https://ensemble-api.open-meteo.com/",
+           "https://previous-runs-api.open-meteo.com/", "https://historical-forecast-api.open-meteo.com/", "https://geocoding-api.open-meteo.com/")
+
+
+def get_url(url: str, timeout: float = 15, ttl: int = 600, ua: str = "QBot/1.0") -> dict:
+    """Wspolny transport dla GOTOWYCH adresow Open-Meteo (moduly zachowuja swoje parametry -- E1/E2). Cache po pelnym adresie:
+    prognoza ~10 min, archiwum/klimat dluzej (ttl podaje wolajacy). Tylko adresy Open-Meteo (ALLOWED)."""
+    if not url.startswith(ALLOWED):
+        raise ValueError("qbot_wx.get_url: tylko adresy Open-Meteo")
+    hit = _C.get(url)
     if hit and hit[0] > time.time() - ttl:
         return hit[1]
-    with urllib.request.urlopen(urllib.request.Request(key, headers={"User-Agent": "QBot/1.0"}), timeout=timeout) as r:
-        j = json.load(r)
-    _C[key] = (time.time(), j)
-    if len(_C) > 400:                      # prosty limit pamieci
+    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": ua}), timeout=timeout) as r:
+        j = json.loads(r.read().decode("utf-8"))
+    _C[url] = (time.time(), j)
+    if len(_C) > 400:
         for k in sorted(_C, key=lambda k: _C[k][0])[:100]:
             _C.pop(k, None)
     return j

@@ -43,8 +43,8 @@ def hourly(lat: float, lon: float) -> dict[str, dict]:
                                            "precipitation_probability,snow_depth",
                                     wind_speed_unit="ms", forecast_days=8, timezone="Europe/Warsaw"))
     try:
-        with urllib.request.urlopen("https://api.open-meteo.com/v1/forecast?" + q, timeout=8) as f:
-            j = json.load(f)["hourly"]
+        import qbot_wx as WX   # E4: wspolny transport/cache Open-Meteo
+        j = WX.get_url("https://api.open-meteo.com/v1/forecast?" + q, timeout=8, ttl=600)["hourly"]
     except Exception:
         return {}
     out = {}

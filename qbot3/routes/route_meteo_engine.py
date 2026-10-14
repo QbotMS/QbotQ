@@ -412,9 +412,8 @@ def _fetch_point_raw(lat: float, lon: float, date_str: str, timeout: float = 15.
     if model:
         params["models"] = model
     url = OPEN_METEO_URL + "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={"User-Agent": "QBot-METEO/1.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+    import qbot_wx as WX   # E2: wspolny transport/cache Open-Meteo (parametry bez zmian). Dok.: docs/POGODA_SILNIK.md
+    return WX.get_url(url, timeout=timeout, ttl=600, ua="QBot-METEO/1.0")
 
 
 # [E2a warstwa dnia] Tabela cieplna dnia: WBGT i Tmrt dla punktow siatki (co METEO_GRID_KM)
