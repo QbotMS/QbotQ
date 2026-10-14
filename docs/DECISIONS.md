@@ -4,6 +4,18 @@
 > Konwencja: przed każdą edycją tego pliku → kopia `DECISIONS.md.bak.RRRRMMDD_GGMMSS`.
 
 ---
+## 2026-10-14 -- DECYZJA: ModelQ -- wlasna kotwica 14.10 (HIE 20 kJ) + czulosc HIE 0.11 (MODELQ-PRZEGLAD)
+**Tlo:** przeglad ModelQ od podstaw (docs/MODELQ_PRZEGLAD.md): sygnatura = 5 kotwic z Xerta + dryf; HIE 92 dni na ograniczniku 18,16 kJ;
+W'bal=0 na 4 jazdach (30.08, 19.09, 27.09, 11.10), odczucie Michala: "trudno, nie odcielo, ale niedaleko". Xert naprawiony (flagi 25 jazd
+01.07-20.08, reset od startu 2020, zanik None-TL Matched): TP 231 / HIE 24,2 (HIE zawyzone przez XSS z wadliwego miernika).
+**Decyzje Michala:** nie mieszac modeli -- TP 238,8 W i PP 988,8 W zostaja z ModelQ, nic z Xerta nie jest przenoszone (Xert = sprawdzian).
+HIE z wlasnych danych: replay_mpa 4 jazd -> przy 20 kJ min W'bal 6-11 % (zgodne z odczuciem). Kotwica 2026-10-14: TP 238,8 / HIE 20,0 / PP 988,8
+(scripts/mq2_add_anchor_20261014.py, kopie qbot_v2.bak_20261014_*). Model fizjologiczny, nie dopasowanie: dryf HIE 1:1 za TL_high (+-20 %)
+dawal hustawke 16-21 kJ; dane Michala 06.2025-06.2026: TL_high x4,3, HIE x1,17 => **czulosc HIE = 0,11, granice +-10 %**
+(fitmodel/modelq2/decay.py HIE_ELASTICITY; scripts/mq2_recalc_hie_20261014.py, kopie bak_20261014b_*).
+**Wynik:** test 4 jazd (bez dopasowania) min W'bal 6,0 / 8,7 / 9,4 / 6,8 %; HIE od 17.08 19,2-21,6 kJ; TP 238,8 i FTP na Karoo 239 bez zmian;
+LTP 193 -> 190 W. Testy test_modelq2 16/16. Regula TP (0,66 W/CTL) bez zmian -- osobny temat.
+
 ## 2026-10-13 -- DECYZJA: suplementy i leki w Zdrowiu - potwierdzenie rano za wczoraj, "Wszystkie", bez passy
 Lista z wersjami dawek, dziennik przyjec, regularnosc; jeden przycisk w porannej wiadomosci 7:00, wyjatki recznie na stronie.
 Lista automatycznie w raporcie dla lekarza. Szczegoly: docs/SUPLEMENTY.md.

@@ -18,6 +18,22 @@ naglowek X-QExt2-Token -- most na qbot.cytr.us wycina Authorization); odpowiedz 
 pierwszenstwo przed lokalna prognoza Open-Meteo w KOKPICIE; lokalna prognoza zostaje jako zapas, gdy QBot nie odpowiada.
 Serwer gotowy (etap 2). Dok.: docs/POGODA_OSTRZEZENIE.md. Repo QExt2 osobne.
 
+## [MODELQ-PRZEGLAD] (2026-10-14, decyzja Michala: "srednio raz w tygodniu wracamy i ciagle jest zle")
+- [ ] Przeglad ModelQ od podstaw ZAMIAST kolejnych latek: co mierzy / co zaklada / co wylaczone / historia awarii -> plan naprawy do decyzji.
+  - [x] Etap 1 inwentaryzacja [2026-10-14] -> docs/MODELQ_PRZEGLAD.md (5 kotwic z Xerta, 100% decay, HIE na ograniczniku, przelom CP 0/136, Xert skazony od 08.2026)
+  - [x] Etap 3 czesc 1 [2026-10-14]: kotwica wlasna 14.10 (HIE 20 kJ) + czulosc HIE 0,11 (decay.py), test 4 jazd 6-9 %.
+  - [ ] Etap 3 dalej: pytanie po jezdzie W'bal<=5 %; sprawdzian vs Xert co miesiac; bezpieczniki; usunac kotwice EF; regula TP.
+  - [x] Etap 2 diagnoza [2026-10-14] (docs/MODELQ_PRZEGLAD.md): 0/266 jazd >= 95 % krzywej (sprawny miernik), W'bal=0 na 4 jazdach, HIE na ograniczniku 92 dni.
+  - [ ] Naprawa Xerta (decyzja Michala: podmiana jazd na skorygowane, NIE wycinanie): zakres 01.07-20.08.2026, 26 jazd,
+        tabela /opt/qbot/artifacts/xert_korekta_2026.csv (skrypt xert_korekta_tabela.py). Czerwiec czysty po poprawce bagazu.
+  - [ ] Poprawic LUGGAGE w fitmodel/meter_physics.py: Toskania 05-11.06 ~16-18 kg (bylo 10), Opolskie 01-03.08 ~13,5 kg (bylo 6)
+        (Michal 14.10: torby przod+tyl ~10 kg + rama, pod suportem, kamizelka z buklakiem). Przeliczyc meter_phys dla tych jazd.
+  Fakty z 14.10: sygnatura TP/HIE/PP = 3 ZAMROZONE kotwice z Xerta (27.12.2025, 29.03, 20.06.2026) + dryf za obciazeniem
+  (TP za CTL, HIE za TL_high); modelq2_signature 100% source='decay'; kotwica EF (jedyny mechanizm 'w gore') WYLACZONA od 25.08
+  ('tymczasowo do ~5.09' -- nie wlaczona); kotwica EF 11.08 usunieta 08.10; prawdziwe CP z okien 120-600 s nieliczone (otwarte od 07.2026).
+- [~] VO2max ZAMROZONY (2026-10-14): fitmodel/vo2max.py + pigulka w Trendach zostaja jak sa, bez dalszych prac do czasu naprawy ModelQ
+  (wartosc = szacunek z dryfu sygnatury, nie pomiar). Garmin VO2max NIE jest zamrozony (47-50 na biezaco) -- poprawic GARMIN_DANE.md.
+
 ## [GARMIN-DANE] Pelne dane snu/HRV z Garmina + wlasne wyliczenia (dodane 2026-10-14)
 Decyzje 2026-10-14: HRV status/norma, aklimatyzacja do upalu i VO2max liczone W QBOCIE (VO2max Garmina zamrozony od 2025-03-08 = 46, bo jazdy z Karoo/plik jako Tacx -- Garmin liczy VO2max tylko na urzadzeniu w trakcie nagrania). Garmin liczy obciazenie/TE dla 340/342 plikow Tacx -> walidacja ModelQ w tle ma sens. Connect+ odrzucone (brak nowych danych).
 - [x] Etap 0 [2026-10-14]: scripts/debug_garmin_sleep_hrv_raw.py (tylko odczyt, JSON -> /opt/qbot/artifacts/garmin_sleep_hrv_raw_<data>.json). Potwierdzone pola: sleep.avgSkinTempDeviationC (+skinTempDataExists, skinTempCalibrationDays), sleep.dailySleepDTO.sleepNeed / nextSleepNeed (baseline, actual, feedback, trainingFeedback, sleepHistoryAdjustment, hrvAdjustment, napAdjustment, recommendedBedtimeStart/EndMins), sleep.hrvStatus, hrv.hrvSummary.weeklyAvg/baseline(lowUpper,balancedLow,balancedUpper,markerValue)/status. Dostepne co najmniej od 2025-11 (ten sam deviceId 3491367170); starsze dni maja mniej sekcji (brak epok oddechu/SpO2), pola kluczowe sa.

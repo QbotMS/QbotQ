@@ -38,7 +38,13 @@ class DecayAnchor:
 
 
 # ograniczniki dryfu (sygnatura nie moze odjechac za daleko od kotwicy bez przebic)
-HIE_DRIFT_MIN, HIE_DRIFT_MAX = 0.80, 1.20    # +-20% (HIE oddycha z forma)
+# 2026-10-14 (MODELQ-PRZEGLAD, decyzja Michala): HIE to pojemnosc beztlenowa -- fizjologicznie zmienia sie WOLNO i jest
+# MALO wrazliwa na biezaca ilosc intensywnej jazdy. Dane Michala 06.2025-06.2026 (Xert, sprawny miernik): TL_high 1.35-5.85
+# (x4.3), HIE p5-p95 20.2-23.7 kJ (x1.17) => czulosc ln(1.17)/ln(4.33) = 0.11. Wczesniej 1:1 (+-20 %) => hustawka 16-21 kJ
+# w kilka tygodni i HIE przyklejone do ogranicznika. Test (NIE dopasowanie) na 4 jazdach z W'bal~0 i odczuciem
+# "blisko odciecia": min W'bal 6-9 %. Dok.: docs/MODELQ_PRZEGLAD.md
+HIE_ELASTICITY = 0.11
+HIE_DRIFT_MIN, HIE_DRIFT_MAX = 0.90, 1.10    # +-10% (bylo +-20% przy czulosci 1:1)
 PP_DRIFT_MIN, PP_DRIFT_MAX = 0.93, 1.07      # miekki bezpiecznik (PP Xerta 984-1043)
 PP_K = 0.10                                   # tlumienie: PP dryfuje 10% amplitudy HIE (PP prawie stale, jak Xert sd~15)
 TP_DRIFT_MIN, TP_DRIFT_MAX = 0.90, 1.12
@@ -55,8 +61,8 @@ def daily_signature(load: DayLoad, anchor: DecayAnchor,
     tp_override: gdy podane (np. cp_v3 danego dnia), uzyj zamiast dryfu TP.
     """
     # HIE dryfuje za TL_high
-    if anchor.tl_high > 0.01:
-        hie_ratio = _clamp(load.high.tl / anchor.tl_high, HIE_DRIFT_MIN, HIE_DRIFT_MAX)
+    if anchor.tl_high > 0.01 and load.high.tl > 0:
+        hie_ratio = _clamp((load.high.tl / anchor.tl_high) ** HIE_ELASTICITY, HIE_DRIFT_MIN, HIE_DRIFT_MAX)
     else:
         hie_ratio = 1.0
     hie = anchor.sig.hie_j * hie_ratio
