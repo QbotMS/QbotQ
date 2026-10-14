@@ -43,8 +43,9 @@ def _ens_prob(lat: float, lon: float) -> dict:
         mem = [k for k in h if k.startswith("precipitation")]
         for i, t in enumerate(h.get("time") or []):
             v = [h[k][i] for k in mem if h[k][i] is not None]
-            if v:
-                out[t[:13]] = sum(1 for x in v if x >= EPS_PROG) / len(v)
+            if v:   # 14.10: wartosc o T = opad z godziny PRZED T -> przypisz do godziny T-1 (przedzial T-1..T)
+                k = (dt.datetime.fromisoformat(t) - dt.timedelta(hours=1)).isoformat()[:13]
+                out[k] = sum(1 for x in v if x >= EPS_PROG) / len(v)
     except Exception:
         pass
     _C[key] = (time.time(), out)

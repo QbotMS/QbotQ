@@ -25,3 +25,8 @@ Panel ★: limit 50/100/150/250 km / bez limitu od pozycji prognozy (domyślnie 
 miejsca tylko w promieniu (odstęp = limit/4, 20–60 km). Na mapie: przerywany okrąg limitu, etykiety „n. Nazwa · ocena” i **okrąg zasięgu
 pogody** = odległość do najbliższego piksela z oceną < max(65, ocena − 8) (max 80 km) — jak daleko od punktu warunki są podobne.
 Pola oceny zapisywane w `ocena_<dzien>_<okno>.npz`. API `/api/pogoda/weekend?...&km=`.
+
+### Poprawka godziny opadu (2026-10-14, po realnym przypadku: start 14:30, ulewa 14:50–15:15)
+Open-Meteo podaje `precipitation` o czasie T jako sumę z godziny PRZED T. Wcześniej `model_point`, `conditions_point` i szansa z zespołu
+w Oknie jazdy przypisywały ją do godziny T..T+1 — deszcz wychodził o godzinę za wcześnie (14:30–15:30 widziało 8% zamiast 75%).
+Teraz godzina T..T+1 bierze wartość z T+1 (zespół: wartość o T → godzina T−1). Dotyczy: Okno jazdy, paski Warunki, oś „u Ciebie”, Albert.

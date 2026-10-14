@@ -34,7 +34,7 @@ def model_point(lat: float, lon: float, hours: int = HOURS) -> dict:
     asg = PV.przydzial(lat, lon)["opad"]
     mods = sorted({asg[d]["model"] for d in asg} | {"best_match"})
     q = urllib.parse.urlencode({"latitude": round(lat, 4), "longitude": round(lon, 4), "models": ",".join(mods),
-                                "hourly": "precipitation", "forecast_hours": hours, "timezone": "Europe/Warsaw"})
+                                "hourly": "precipitation", "forecast_hours": hours + 1, "timezone": "Europe/Warsaw"})
     try:
         with urllib.request.urlopen(URL + "?" + q, timeout=12) as r:
             j = json.load(r)
@@ -45,9 +45,12 @@ def model_point(lat: float, lon: float, hours: int = HOURS) -> dict:
     pts = []
     for i, t in enumerate(h.get("time") or []):
         d = max(1, min(3, (_dtm.date.fromisoformat(t[:10]) - today).days or 1))
-        mm = (h.get(f"precipitation_{asg[d]['model']}") or [None] * (i + 1))[i]
+        # 14.10.2026: Open-Meteo 'precipitation' o czasie T = suma z godziny PRZED T -> punkt T (godzina T..T+1) bierze wartosc z T+1
+        ser = h.get(f"precipitation_{asg[d]['model']}") or []
+        mm = ser[i + 1] if i + 1 < len(ser) else None
         if mm is None:
-            mm = (h.get("precipitation_best_match") or [None] * (i + 1))[i]
+            sb = h.get("precipitation_best_match") or []
+            mm = sb[i + 1] if i + 1 < len(sb) else None
         if mm is None:
             continue
         pts.append({"iso": t, "t": t[11:16], "mm15": None, "mmh": round(mm, 1), "model": asg[d]["model"]})
@@ -96,7 +99,7 @@ def conditions_point(lat: float, lon: float, hours: int = 24) -> dict:
     asg = PV.przydzial(lat, lon)
     mods = sorted({asg[p][d]["model"] for p in asg for d in asg[p]} | {"best_match"})
     q = urllib.parse.urlencode({"latitude": round(lat, 4), "longitude": round(lon, 4), "hourly": HOURLY, "models": ",".join(mods),
-                                "past_hours": 12, "forecast_hours": hours, "wind_speed_unit": "ms",
+                                "past_hours": 12, "forecast_hours": hours + 1, "wind_speed_unit": "ms",
                                 "timezone": "Europe/Warsaw"})
     try:
         with urllib.request.urlopen(URL + "?" + q, timeout=12) as r:
@@ -137,7 +140,7 @@ def conditions_point(lat: float, lon: float, hours: int = 24) -> dict:
         rosa = None if (T is None or Td is None) else round(T - Td, 1)
         rows.append({"iso": t, "t": t[11:16], "przeszlosc": _dt.datetime.fromisoformat(t) < now,
                      "temp": T, "odcz": g("apparent_temperature", i), "rh": g("relative_humidity_2m", i), "rosa_pkt": Td,
-                     "opad": g("precipitation", i), "snieg": g("snowfall", i), "wiatr": g("wind_speed_10m", i),
+                     "opad": g("precipitation", i + 1) if i + 1 < len(tt) else None, "snieg": g("snowfall", i + 1) if i + 1 < len(tt) else None,   # godzina T..T+1 (wartosc z T+1) "wiatr": g("wind_speed_10m", i),
                      "porywy": g("wind_gusts_10m", i), "kier": g("wind_direction_10m", i), "skad": _kier(g("wind_direction_10m", i)),
                      "widocznosc": vis, "grunt": Ts, "kod": g("weather_code", i),
                      "mgla": mgla, "lod": lod, "nawierzchnia": naw, "zapas_rosy": rosa})
