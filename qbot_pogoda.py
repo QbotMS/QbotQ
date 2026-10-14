@@ -9,6 +9,7 @@ Dok.: docs/POGODA_RADAR.md
 """
 from __future__ import annotations
 
+import datetime as _dtm
 import json
 import time
 import urllib.parse
@@ -23,28 +24,38 @@ CACHE_S = 600
 
 
 def model_point(lat: float, lon: float, hours: int = HOURS) -> dict:
+    """Opad godzinowy z modelu przydzielonego do opadu (przydzial wg sprawdzalnosci; wyprzedzenie 1/2/3 doby).
+    14.10.2026: zastapil ICON seamless co 15 min -- os punktu korzysta z modelu, ktory u Ciebie najlepiej trafia opad."""
     key = (round(lat / 0.05) * 0.05, round(lon / 0.05) * 0.05, hours)
     hit = _CACHE.get(key)
     if hit and hit[0] > time.time() - CACHE_S:
         return hit[1]
-    q = urllib.parse.urlencode({"latitude": round(lat, 4), "longitude": round(lon, 4), "models": "icon_seamless",
-                                "minutely_15": "precipitation", "forecast_minutely_15": hours * 4,
-                                "timezone": "Europe/Warsaw"})
+    import qbot_pogoda_verif as PV
+    asg = PV.przydzial(lat, lon)["opad"]
+    mods = sorted({asg[d]["model"] for d in asg} | {"best_match"})
+    q = urllib.parse.urlencode({"latitude": round(lat, 4), "longitude": round(lon, 4), "models": ",".join(mods),
+                                "hourly": "precipitation", "forecast_hours": hours, "timezone": "Europe/Warsaw"})
     try:
         with urllib.request.urlopen(URL + "?" + q, timeout=12) as r:
             j = json.load(r)
-    except Exception as e:  # siec/serwis -- pokaz, nie zgaduj
-        return {"status": "ERROR", "error": f"Model ICON-D2 niedostepny: {type(e).__name__}"}
-    m = j.get("minutely_15") or {}
+    except Exception as e:
+        return {"status": "ERROR", "error": f"Model niedostepny: {type(e).__name__}"}
+    h = j.get("hourly") or {}
+    today = _dtm.datetime.now(TZ).date()
     pts = []
-    for t, mm in zip(m.get("time") or [], m.get("precipitation") or []):
+    for i, t in enumerate(h.get("time") or []):
+        d = max(1, min(3, (_dtm.date.fromisoformat(t[:10]) - today).days or 1))
+        mm = (h.get(f"precipitation_{asg[d]['model']}") or [None] * (i + 1))[i]
+        if mm is None:
+            mm = (h.get("precipitation_best_match") or [None] * (i + 1))[i]
         if mm is None:
             continue
-        pts.append({"iso": t, "t": t[11:16], "mm15": round(mm, 2), "mmh": round(mm * 4, 1)})
-    res = {"status": "OK" if pts else "BRAK_DANYCH", "model": "ICON (DWD): D2 2 km, dalej EU 7 km", "krok_min": 15, "punkty": pts}
+        pts.append({"iso": t, "t": t[11:16], "mm15": None, "mmh": round(mm, 1), "model": asg[d]["model"]})
+    z = asg[1]
+    opis = z["opis"] + (f" (trafnosc opadu {round(z['wartosc'] * 100)}%, {z['zakres']})" if z["wartosc"] is not None else "")
+    res = {"status": "OK" if pts else "BRAK_DANYCH", "model": opis, "krok_min": 60, "punkty": pts}
     _CACHE[key] = (time.time(), res)
     return res
-
 
 def home(cur) -> dict | None:
     """cur: kursor psycopg z wierszami jako dict."""
@@ -81,7 +92,10 @@ def conditions_point(lat: float, lon: float, hours: int = 24) -> dict:
     hit = _CC.get(key)
     if hit and hit[0] > time.time() - CACHE_S:
         return hit[1]
-    q = urllib.parse.urlencode({"latitude": round(lat, 4), "longitude": round(lon, 4), "hourly": HOURLY,
+    import qbot_pogoda_verif as PV
+    asg = PV.przydzial(lat, lon)
+    mods = sorted({asg[p][d]["model"] for p in asg for d in asg[p]} | {"best_match"})
+    q = urllib.parse.urlencode({"latitude": round(lat, 4), "longitude": round(lon, 4), "hourly": HOURLY, "models": ",".join(mods),
                                 "past_hours": 12, "forecast_hours": hours, "wind_speed_unit": "ms",
                                 "timezone": "Europe/Warsaw"})
     try:
@@ -89,8 +103,21 @@ def conditions_point(lat: float, lon: float, hours: int = 24) -> dict:
             j = json.load(r)
     except Exception as e:
         return {"status": "ERROR", "error": f"Prognoza warunkow niedostepna: {type(e).__name__}"}
-    h = j.get("hourly") or {}
-    tt = h.get("time") or []
+    hr = j.get("hourly") or {}
+    tt = hr.get("time") or []
+    today = _dtm.datetime.now(TZ).date()
+    lead = [max(1, min(3, (_dtm.date.fromisoformat(t[:10]) - today).days or 1)) for t in tt]
+    PMAP = {"temperature_2m": "temp", "apparent_temperature": "temp", "relative_humidity_2m": "temp", "dew_point_2m": "temp",
+            "wind_speed_10m": "wiatr", "wind_direction_10m": "wiatr", "wind_gusts_10m": "poryw", "precipitation": "opad", "snowfall": "opad"}
+    h = {}
+    for var in HOURLY.split(","):
+        bm = hr.get(f"{var}_best_match") or [None] * len(tt)
+        par = PMAP.get(var)
+        col = []
+        for i in range(len(tt)):
+            x = (hr.get(f"{var}_{asg[par][lead[i]]['model']}") or [None] * len(tt))[i] if par else None
+            col.append(x if x is not None else bm[i])
+        h[var] = col
     g = lambda k, i: (h.get(k) or [None] * len(tt))[i]
     import datetime as _dt
     now = _dt.datetime.now(TZ).replace(tzinfo=None, minute=0, second=0, microsecond=0)
@@ -114,7 +141,8 @@ def conditions_point(lat: float, lon: float, hours: int = 24) -> dict:
                      "porywy": g("wind_gusts_10m", i), "kier": g("wind_direction_10m", i), "skad": _kier(g("wind_direction_10m", i)),
                      "widocznosc": vis, "grunt": Ts, "kod": g("weather_code", i),
                      "mgla": mgla, "lod": lod, "nawierzchnia": naw, "zapas_rosy": rosa})
-    res = {"status": "OK" if rows else "BRAK_DANYCH", "model": "Open-Meteo (Europa: ICON DWD)", "godziny": rows}
+    res = {"status": "OK" if rows else "BRAK_DANYCH", "model": "przydzial automatyczny wg sprawdzalnosci", "godziny": rows,
+           "zrodla": {p: asg[p][1] for p in asg}, "przydzial": asg}
     _CC[key] = (time.time(), res)
     return res
 

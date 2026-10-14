@@ -278,6 +278,7 @@ def tick(cur) -> dict:
     if _STATE["prog_d"] != dkey and now.hour >= 3:
         done["prog"] = forecasts(cur, now.date() - dt.timedelta(days=3), now.date() - dt.timedelta(days=1))
         _STATE["prog_d"] = dkey; _SC.clear()
+        done["stats"] = build_stats(cur)
     pm = (now.replace(day=1) - dt.timedelta(days=1))
     mkey = pm.strftime("%Y-%m")
     if _STATE["arch_m"] != mkey and now.day >= 3:
@@ -293,3 +294,103 @@ def tick(cur) -> dict:
             except Exception as e:  # jeszcze nie opublikowane -- sprobuje jutro
                 done["archiwum"] = f"brak: {type(e).__name__}"
     return done
+
+
+# ---------------------------------------------------------------- automatyczny przydzial modeli (decyzja Michala 14.10.2026)
+# Raz na dobe build_stats() liczy bledy per stacja x model x wyprzedzenie (60 dni) i zapisuje do pliku; przydzial(lat, lon)
+# wybiera dla parametru i wyprzedzenia model z najmniejszym bledem "u Ciebie" (stacje <= 100 km, waga 1/(1+d/50)),
+# a gdy par jest za malo -- wg "Polska". Opad: najwyzsza trafnosc. Bez danych: DOMYSLNY.
+import os as _os
+STATS_FILE = "/opt/qbot/artifacts/pogoda_stats.json"
+PARAMS = ("temp", "wiatr", "poryw", "opad")
+MIN_N = {"temp": 500, "wiatr": 500, "poryw": 500, "opad": 150}
+DOMYSLNY = {"temp": "icon_eu", "wiatr": "icon_eu", "poryw": "knmi_harmonie_arome_europe", "opad": "ecmwf_ifs025"}
+_ST = {"data": None, "mtime": 0}
+
+
+def build_stats(cur, dni: int = 60) -> dict:
+    od = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=dni)
+    cur.execute("""SELECT p.stacja, p.model, p.wyprz, p.ts, p.temp AS pt, p.wiatr AS pw, p.poryw AS pg, o.temp AS ot,
+                          o.wiatr AS ow, o.poryw AS og, o.opad6 AS oo
+                   FROM qbot_v2.pogoda_prog p JOIN qbot_v2.pogoda_obs o ON o.stacja = p.stacja AND o.ts = p.ts WHERE p.ts >= %s""", (od,))
+    rows = [list(r.values()) if isinstance(r, dict) else list(r) for r in cur.fetchall()]
+    cur.execute("SELECT stacja, model, wyprz, ts, opad FROM qbot_v2.pogoda_prog WHERE ts >= %s", (od - dt.timedelta(hours=12),))
+    hop = {}
+    for r in cur.fetchall():
+        r = list(r.values()) if isinstance(r, dict) else r
+        hop[(r[0], r[1], r[2], r[3])] = r[4]
+    acc = {}
+    for s, m, d, ts, pt, pw, pg, ot, ow, og, oo in rows:
+        a = acc.setdefault((s, m, d), [0.0, 0, 0.0, 0, 0.0, 0, 0, 0, 0, 0])
+        for j, f, o in ((0, pt, ot), (2, pw, ow), (4, pg, og)):
+            if f is not None and o is not None:
+                a[j] += abs(f - o); a[j + 1] += 1
+        if oo is not None:
+            vals = [hop.get((s, m, d, ts - dt.timedelta(hours=k + OPAD_LAG_H))) for k in range(6)]
+            if all(x is not None for x in vals):
+                fw, ow6 = sum(vals) >= OPAD_PROG, oo >= OPAD_PROG
+                a[6 if fw and ow6 else 7 if fw else 8 if ow6 else 9] += 1
+    data = {"built": dt.datetime.now(dt.timezone.utc).isoformat(), "dni": dni,
+            "stacje": {s["klucz"]: [s["lat"], s["lon"]] for s in stations(cur)},
+            "rows": [[k[0], k[1], k[2]] + val for k, val in acc.items()]}
+    tmp = STATS_FILE + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(data, fh)
+    _os.replace(tmp, STATS_FILE)
+    _ST.update(data=data, mtime=_os.path.getmtime(STATS_FILE))
+    return {"wierszy": len(data["rows"]), "par": len(rows)}
+
+
+def _stats():
+    try:
+        mt = _os.path.getmtime(STATS_FILE)
+    except OSError:
+        return None
+    if _ST["data"] is None or mt != _ST["mtime"]:
+        with open(STATS_FILE) as fh:
+            _ST.update(data=json.load(fh), mtime=mt)
+    return _ST["data"]
+
+
+def przydzial(lat: float, lon: float, promien_km: float = 100) -> dict:
+    """{param: {wyprz: {model, opis, wartosc, zakres}}}; wartosc = blad (MAE) albo trafnosc opadu."""
+    data = _stats()
+    out = {p: {d: {"model": DOMYSLNY[p], "opis": MODELS[DOMYSLNY[p]], "wartosc": None, "zakres": "domyslny"} for d in DAYS} for p in PARAMS}
+    if not data:
+        return out
+    wl = {}
+    for k, (la, lo) in data["stacje"].items():
+        km = _km(lat, lon, la, lo)
+        if km <= promien_km:
+            wl[k] = 1 / (1 + km / 50)
+    for zakres, wagi in (("Polska", None), ("u Ciebie", wl)):
+        if zakres == "u Ciebie" and not wl:
+            continue
+        agg = {}
+        for r in data["rows"]:
+            s, m, d = r[0], r[1], r[2]
+            w = 1.0 if wagi is None else wagi.get(s)
+            if not w:
+                continue
+            a = agg.setdefault((m, d), [0.0] * 14)
+            for j in range(3):
+                a[j * 3] += w * r[3 + j * 2]; a[j * 3 + 1] += w * r[4 + j * 2]; a[j * 3 + 2] += r[4 + j * 2]
+            for j in range(4):
+                a[9 + j] += w * r[9 + j]
+            a[13] += r[9] + r[10] + r[11] + r[12]
+        for p_i, p in enumerate(("temp", "wiatr", "poryw")):
+            for d in DAYS:
+                c = [(a[p_i * 3] / a[p_i * 3 + 1], m) for (m, dd), a in agg.items() if dd == d and a[p_i * 3 + 2] >= MIN_N[p] and a[p_i * 3 + 1] > 0]
+                if c:
+                    val, m = min(c)
+                    out[p][d] = {"model": m, "opis": MODELS.get(m, m), "wartosc": round(val, 2), "zakres": zakres}
+        for d in DAYS:
+            c = []
+            for (m, dd), a in agg.items():
+                den = a[9] + a[10] + a[11]
+                if dd == d and a[13] >= MIN_N["opad"] and den > 0:
+                    c.append((a[9] / den, m))
+            if c:
+                val, m = max(c)
+                out["opad"][d] = {"model": m, "opis": MODELS.get(m, m), "wartosc": round(val, 2), "zakres": zakres}
+    return out

@@ -109,7 +109,7 @@ body.dock-big .dchart{display:flex}
       <div class="kv" id="kvw">…</div>
       <div class="sec-h">Najbliższe 12 h</div>
       <div class="kv" id="kv12">…</div>
-      <div class="note">Opad do 60 min przewiduje radar i to jest najpewniejsza część, od 60 do 120 min to orientacja. Pozostałe parametry pochodzą z modelu ICON (DWD).
+      <div class="note">Opad do 60 min przewiduje radar i to jest najpewniejsza część, od 60 do 120 min to orientacja. Pozostałe parametry pochodzą z modeli wybieranych automatycznie według sprawdzalności (ikona ✓): dla każdego parametru ten, który u Ciebie najlepiej trafia.
         Wykresy zobaczysz po rozciągnięciu dolnego paska uchwytem, a godziny dla każdego parametru pod ikoną ≋.</div>
     </div>
     <div data-s="warunki" hidden><div id="wstrips">…</div>
@@ -320,6 +320,9 @@ function renderWarunki(w){
     ["Nawierzchnia",NW[n.nawierzchnia],cl(n.nawierzchnia,1,2)],
     ["Wilgoć / rosa",n.zapas_rosy==null?"–":(n.zapas_rosy<2?"rosa, mokre liście, parują okulary":"sucho przy ziemi")+" (wilg. "+Math.round(n.rh||0)+"%)",n.zapas_rosy!=null&&n.zapas_rosy<2?"wrn":""]];
   $("kvw").innerHTML=rows.map(function(x){return "<span>"+x[0]+"</span><b class=\""+x[2]+"\">"+x[1]+"</b>";}).join("");
+  if(w.zrodla){ var Z={temp:"temperatura",wiatr:"wiatr",poryw:"porywy",opad:"opad"}, U={temp:"°C",wiatr:"m/s",poryw:"m/s"};
+    $("kvw").innerHTML+='<span>Modele</span><b style="font-weight:500;font-size:12.5px">'+Object.keys(Z).filter(function(k){return w.zrodla[k];}).map(function(k){var z=w.zrodla[k];
+      return Z[k]+": "+z.opis+(z.wartosc!=null?" ("+(k==="opad"?"trafność "+Math.round(z.wartosc*100)+"%":"błąd "+pl(z.wartosc)+" "+U[k])+(z.zakres==="Polska"?", wg Polski":"")+")":" (domyślny)");}).join("<br>")+'</b>'; }
   var f12=fut.slice(0,12), mx=function(k){return Math.max.apply(null,f12.map(function(h){return h[k]==null?-99:h[k];}));},
       mn=function(k){return Math.min.apply(null,f12.map(function(h){return h[k]==null?99:h[k];}));},
       hrs=function(fn){var a=f12.filter(fn).map(function(h){return h.t;});return a.length?a[0]+(a.length>1?"–"+a[a.length-1]:""):null;};
