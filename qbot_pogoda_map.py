@@ -28,7 +28,7 @@ BASE = "https://opendata.dwd.de/weather/nwp/icon-eu/grib/{run:02d}/{p}/"
 FNAME = "icon-eu_europe_regular-lat-lon_single-level_{ymdh}_{step:03d}_{P}.grib2.bz2"
 CACHE = os.getenv("QBOT_POGODA_MAP_CACHE", "/opt/qbot/artifacts/pogoda_model")
 RUNS = (0, 6, 12, 18)   # 14.10: 4 przebiegi -- swiezszy model = mniejszy rozjazd z radarem
-STEPS = list(range(0, 25)) + list(range(27, 61, 3))
+STEPS = list(range(0, 25)) + list(range(27, 121, 3))   # 14.10: do +120 h (weekend); ICON-EU co 1 h do +78, dalej co 3 h
 PARAMS = ("t_2m", "tot_prec", "u_10m", "v_10m", "vmax_10m", "t_g", "td_2m")
 BBOX = (11.0, 47.5, 27.0, 56.5)
 PX_M = 6000.0
@@ -201,6 +201,7 @@ def build(run: dt.datetime | None = None) -> dict:
             dbz = np.where(mmh > 0.05, 10 * np.log10(200 * np.power(np.maximum(mmh, 1e-3), 1.6)), -32.0)
             _png(RAD._LUT[np.clip(np.round((dbz + 32) * 2), 1, 255).astype(np.uint8)], os.path.join(out, f"opad_{sid}.png"))
             np.savez_compressed(os.path.join(out, f"opad_{sid}.npz"), r=mmh.astype(np.float16))
+            np.savez_compressed(os.path.join(out, f"pola_{sid}.npz"), t=t.astype(np.float16), w=ws.astype(np.float16), g=gust.astype(np.float16))
             _png(PAL["temp"](t), os.path.join(out, f"temp_{sid}.png"))
             _png(PAL["wiatr"](ws), os.path.join(out, f"wiatr_{sid}.png"))
             _png(PAL["porywy"](gust), os.path.join(out, f"porywy_{sid}.png"))
@@ -355,7 +356,7 @@ def eps_build(run: dt.datetime, out: str) -> dict:
     try:
         idx = _eps_index(run)
         prev, prev_step, n = None, None, 0
-        for step in STEPS:
+        for step in [x for x in STEPS if x <= 60]:   # zespol: szansa do +60 h
             mem = _decode_all(bz2.decompress(_get(EPS_BASE.format(run=run.hour, p="tot_prec") + EPS_F.format(ymdh=ymdh, step=step))))
             cur = np.stack([m[idx] for m in mem])          # (warianty, H, W)
             if prev is not None:
@@ -376,3 +377,110 @@ def eps_build(run: dt.datetime, out: str) -> dict:
         return {"status": "OK", "krokow": n, "wariantow": len(mem)}
     except Exception as e:
         return {"status": "BLAD", "error": f"{type(e).__name__}: {e}"[:300]}
+
+
+# ---------------------------------------------------------------- GDZIE W WEEKEND (krok 3, 14.10.2026)
+# Ocena 0-100 kazdego piksela (6 km) dla dnia i okna godzin (domyslnie okno Trenera na rower w tym dniu):
+# kara = opad[mm w oknie] x 1,5 + max(0, sredni wiatr - 5 m/s) + max(0, poryw - 12) x 0,4 + max(0, 4 - temp sr.) x 0,35
+#        + max(0, temp max - 28) x 0,5; ocena = 100 - 10 x kara. Najlepsze rejony: zachlannie co >= 60 km, nazwa = najblizsza
+# miejscowosc >= 2000 mieszk. (GeoNames PL), punkty bez miejscowosci w 15 km (morze, zagranica) pomijane.
+PLACES = "/opt/qbot/artifacts/geonames/PL_places.tsv"
+PL_NAZWY = {"Warsaw": "Warszawa", "Cracow": "Kraków", "Krakow": "Kraków", "Wroclaw": "Wrocław", "Lodz": "Łódź", "Poznan": "Poznań",
+            "Gdansk": "Gdańsk", "Szczecin": "Szczecin", "Bialystok": "Białystok", "Czestochowa": "Częstochowa", "Bydgoszcz": "Bydgoszcz"}
+PAL["ocena"] = _ramp([(0, (192, 57, 43, 150)), (35, (232, 116, 59, 140)), (50, (240, 196, 25, 130)), (65, (154, 205, 50, 130)), (80, (46, 139, 87, 140)), (100, (30, 120, 70, 150))])
+LEGENDA["ocena"] = [["#c0392b", "unikaj"], ["#e8743b", "słabo"], ["#f0c419", "tak sobie"], ["#9acd32", "dobrze"], ["#2e8b57", "jedź"]]
+_PL: dict = {}
+
+
+def _places():
+    if "a" not in _PL:
+        import csv
+        rows = []
+        with open(PLACES, encoding="utf-8") as fh:
+            for r in csv.DictReader(fh, delimiter="\t"):
+                try:
+                    rows.append((r["name"], float(r["lat"]), float(r["lon"]), int(r["population"] or 0)))
+                except ValueError:
+                    pass
+        a = np.array([(x[1], x[2]) for x in rows]); _PL.update(a=a, rows=rows, pop=np.array([x[3] for x in rows]))
+    return _PL
+
+
+def _pix_latlon():
+    xs = X0 + (np.arange(W) + 0.5) * PX_M; ys = Y1 - (np.arange(H) + 0.5) * PX_M
+    lon = np.degrees(xs / _R); lat = np.degrees(2 * np.arctan(np.exp(ys / _R)) - np.pi / 2)
+    return np.meshgrid(lon, lat)
+
+
+def ocena_dnia(day: dt.date, a_h: int = 8, b_h: int = 19) -> dict:
+    from zoneinfo import ZoneInfo
+    m = meta()
+    if m.get("status") != "OK":
+        return {"status": "BRAK_DANYCH"}
+    out = os.path.join(CACHE, m["run"]); tz = ZoneInfo("Europe/Warsaw")
+    key = f"ocena_{day:%Y%m%d}_{a_h:02d}{b_h:02d}"
+    jp = os.path.join(out, key + ".json")
+    if os.path.exists(jp):
+        with open(jp) as fh:
+            return json.load(fh)
+    a = dt.datetime(day.year, day.month, day.day, a_h, tzinfo=tz); b = dt.datetime(day.year, day.month, day.day, b_h, tzinfo=tz)
+    kroki = m["kroki"]; prev = None; rain = tsum = wsum = None; gmax = tmax = None; n = 0.0
+    for k in kroki:
+        t1 = dt.datetime.fromisoformat(k["iso"]); t0 = t1 - dt.timedelta(hours=(k["h"] - prev) if prev is not None else 1)
+        prev = k["h"]
+        ov = (min(t1, b) - max(t0, a)).total_seconds() / 3600
+        if ov <= 0:
+            continue
+        po, pp = os.path.join(out, f"opad_{k['id']}.npz"), os.path.join(out, f"pola_{k['id']}.npz")
+        if not (os.path.exists(po) and os.path.exists(pp)):
+            return {"status": "BRAK_POL", "error": "przebieg bez pol do oceny (przebuduj)"}
+        with np.load(po) as z:
+            r = z["r"].astype(np.float32)
+        with np.load(pp) as z:
+            t, w, g = z["t"].astype(np.float32), z["w"].astype(np.float32), z["g"].astype(np.float32)
+        rain = r * ov if rain is None else rain + r * ov
+        tsum = t * ov if tsum is None else tsum + t * ov
+        wsum = w * ov if wsum is None else wsum + w * ov
+        gmax = g if gmax is None else np.maximum(gmax, g)
+        tmax = t if tmax is None else np.maximum(tmax, t)
+        n += ov
+    if rain is None or n < (b_h - a_h) * 0.8:
+        return {"status": "POZA_PROGNOZA", "error": "dzien poza zasiegiem prognozy przebiegu"}
+    tm, wm = tsum / n, wsum / n
+    # + drobny komfort (rozroznia remisy przy dobrej pogodzie): slabszy wiatr, temperatura blizej ~16 C
+    kara = wm * 0.08 + np.abs(tm - 16) * 0.04 + rain * 1.5 + np.clip(wm - 5, 0, None) + np.clip(gmax - 12, 0, None) * 0.4 + np.clip(4 - tm, 0, None) * 0.35 + np.clip(tmax - 28, 0, None) * 0.5
+    oc = np.clip(100 - 10 * kara, 0, 100)
+    _png(PAL["ocena"](oc), os.path.join(out, key + ".png"))
+    LON, LAT = _pix_latlon()
+    P_ = _places(); big = P_["pop"] >= 2000
+    from scipy.spatial import cKDTree
+    kk = math.cos(math.radians(52))
+    t_all = cKDTree(np.c_[P_["a"][:, 1] * kk, P_["a"][:, 0]]); t_big = cKDTree(np.c_[P_["a"][big, 1] * kk, P_["a"][big, 0]])
+    bigrows = [x for x, f in zip(P_["rows"], big) if f]
+    order = np.argsort(-oc.ravel()); picked = []
+    for idx in order[:20000]:
+        j, i = divmod(int(idx), W)
+        la, lo = float(LAT[j, i]), float(LON[j, i])
+        if not (49.0 <= la <= 54.9 and 14.1 <= lo <= 24.2):
+            continue
+        d0, _ = t_all.query([lo * kk, la])
+        if d0 * 111 > 15:
+            continue
+        if any(math.hypot((la - p["lat"]) * 111, (lo - p["lon"]) * 111 * kk) < 60 for p in picked):
+            continue
+        db, ib = t_big.query([lo * kk, la])
+        nm = bigrows[ib][0] if db * 111 <= 30 else P_["rows"][t_all.query([lo * kk, la])[1]][0]
+        nm = PL_NAZWY.get(nm, nm)
+        picked.append({"lat": round(la, 3), "lon": round(lo, 3), "nazwa": nm, "ocena": int(oc[j, i]), "opad_mm": round(float(rain[j, i]), 1),
+                       "wiatr_ms": round(float(wm[j, i]), 1), "poryw_ms": round(float(gmax[j, i]), 1), "temp_sr": round(float(tm[j, i]), 1),
+                       "temp_max": round(float(tmax[j, i]), 1)})
+        if len(picked) >= 10:
+            break
+    pl_mask = (LAT >= 49.0) & (LAT <= 54.9) & (LON >= 14.1) & (LON <= 24.2)
+    res = {"status": "OK", "dzien": day.isoformat(), "okno": [f"{a_h:02d}:00", f"{b_h:02d}:00"], "run": m["run"], "model": MODEL,
+           "png": key, "bounds": m["bounds"], "legenda": LEGENDA["ocena"], "najlepsze": picked,
+           "polska": {"srednia": int(oc[pl_mask].mean()), "udzial_dobrych": round(float((oc[pl_mask] >= 65).mean()), 2)}}
+    with open(jp + ".tmp", "w") as fh:
+        json.dump(res, fh)
+    os.replace(jp + ".tmp", jp)
+    return res

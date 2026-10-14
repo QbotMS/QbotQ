@@ -156,14 +156,21 @@ body.dock-big .dchart{display:flex}
         szansę opadu (zespół 40 wariantów), porywy powyżej progu Trenera, oblodzenie, mgłę, mokrą nawierzchnię, jazdę po zmroku i chłód.
         Najbliższa godzina pochodzi z radaru. Pogoda liczona dla wybranej pozycji (u góry panelu).</div>
     </div>
-    <div data-s="weekend" hidden><div class="soonbox"><b>Wkrótce (krok 3).</b> Mapa oceny miejsc pod dłuższą jazdę w weekend: opad, wiatr, a zimą też temperatura.</div></div>
+    <div data-s="weekend" hidden>
+      <div class="pos" id="wkd"></div>
+      <div class="poslab" id="wkinfo"></div>
+      <div id="wklist" style="margin-top:8px"></div>
+      <div class="note">Ocena każdego miejsca (siatka ok. 6 km) w Twoim oknie na rower z Trenera. Kara za: opad w tym czasie, średni wiatr powyżej 5 m/s,
+        porywy powyżej 12 m/s, chłód (średnio poniżej 4°C) i upał (powyżej 28°C). Model ICON-EU (DWD). Prognoza na 3–5 dni ma wyraźnie mniejszą trafność
+        niż na jutro (patrz ✓ Sprawdzalność). Kliknięcie rejonu ustawia tam pozycję prognozy.</div>
+    </div>
   </div>
   <div class="rail" id="rail">
     <button class="rt on" data-s="radar" style="--tc:#7fb3ec">☂<span class="lb">U Ciebie · teraz</span></button>
     <button class="rt" data-s="warunki" style="--tc:#c9a0f0">≋<span class="lb">Warunki godzina po godzinie</span></button>
     <button class="rt" data-s="spr" style="--tc:#e8b04a">✓<span class="lb">Sprawdzalność modeli</span></button>
     <button class="rt" data-s="okno" style="--tc:#f0b84f">◷<span class="lb">Okno jazdy — przesunąć czy moknąć?</span></button>
-    <button class="rt soon" data-s="weekend" style="--tc:#7ccf8a">★<span class="lb">Gdzie w weekend · wkrótce</span></button>
+    <button class="rt" data-s="weekend" style="--tc:#7ccf8a">★<span class="lb">Gdzie jechać (weekend)</span></button>
   </div>
 </div>
 
@@ -255,7 +262,7 @@ window.addEventListener("resize",function(){ setDock($("dock").getBoundingClient
 var sec="radar", TTL={spr:"Sprawdzalność modeli",radar:"Pogoda · u Ciebie",warunki:"Warunki godzina po godzinie",okno:"Okno jazdy",weekend:"Gdzie w weekend"};
 function openSec(s){ sec=s; document.querySelectorAll("#rail .rt").forEach(function(b){b.classList.toggle("on",b.dataset.s===s);});
   document.querySelectorAll("#lp .body [data-s]").forEach(function(d){d.hidden=d.dataset.s!==s;}); $("sttl").textContent=TTL[s];
-  document.body.classList.toggle("open",s!=="radar"); if(s==="spr")loadSpr(); if(s==="okno"&&!OKL)loadOkno(""); }
+  document.body.classList.toggle("open",s!=="radar"); if(s==="spr")loadSpr(); if(s==="okno"&&!OKL)loadOkno(""); if(s==="weekend")loadWeekend(WK.day); else if(WK.ov)hideWeekend(); }
 document.querySelectorAll("#rail .rt").forEach(function(b){b.addEventListener("click",function(){ openSec(b.dataset.s); });});
 $("close").addEventListener("click",function(){ openSec("radar"); });
 
@@ -285,9 +292,9 @@ function posSteps(){ var g={radar:[],now:[],model:[]}; steps.forEach(function(s)
 function nearestStep(p){ var bi=cur, bd=9; steps.forEach(function(s,i){ var d=Math.abs((s.p||0)-p); if(d<bd){bd=d;bi=i;} }); return bi; }
 var KOR=null, LAYER="opad", MM=null, mov=null, mcache={}, RLEG=document.querySelector("#dock .legend").innerHTML;
 function shiftM(b,dx,dy){ return b.map(function(c){var p=L.CRS.EPSG3857.project(L.latLng(c[0],c[1]));var q=L.CRS.EPSG3857.unproject(L.point(p.x+dx,p.y+dy));return [q.lat,q.lng];}); }
-function mLayer(){ return (LAYER==="opad"&&MM&&MM.warstwy&&MM.warstwy.indexOf("szansa")>=0)?"szansa":LAYER; }
+function mLayer(k){ return (LAYER==="opad"&&MM&&MM.warstwy&&MM.warstwy.indexOf("szansa")>=0&&(!k||k.h<=((MM.eps&&MM.eps.max_h)||60)))?"szansa":LAYER; }  /* szansa z zespolu tylko do +60 h */
 function mUrl(l,s){return "/api/pogoda/mapa/"+l+"/"+MM.run+"_"+s.id+".png";}
-function preload(l){ if(!MM||MM.status!=="OK")return; MM.kroki.forEach(function(s){var u=mUrl(l,s); if(!mcache[u]){var im=new Image(); im.src=u; mcache[u]=im;}}); }
+function preload(l){ if(!MM||MM.status!=="OK")return; MM.kroki.forEach(function(s){var u=mUrl(l==="szansa"?mLayer(s):l,s); if(!mcache[u]){var im=new Image(); im.src=u; mcache[u]=im;}}); }
 function buildSteps(){ var keepT=(steps[cur]&&userMoved)?steps[cur].t.getTime():null, wasPlay=!!timer; stop(); steps=[]; var now=Date.now(), lastT=null;
   $("tl").querySelectorAll(".seg,.seglab").forEach(function(s){s.remove();});
   if(LAYER==="opad"&&meta&&meta.klatki.length){
@@ -316,7 +323,7 @@ function buildSteps(){ var keepT=(steps[cur]&&userMoved)?steps[cur].t.getTime():
   legend(); show(idx); preload(mLayer()); if(wasPlay)$("play").click(); }
 function show(i){ cur=i; $("slider").value=Math.round(((steps[i]&&steps[i].p)||0)*1000); var s=steps[i]; if(!s)return; ovs.forEach(function(o){o.setOpacity(0);}); if(mov)mov.setOpacity(0);
   if(s.k==="radar"){ovs[s.i].setBounds(L.latLngBounds(meta.bounds));ovs[s.i].setOpacity(ROP());}
-  else if(s.k==="model"){ var u=mUrl(mLayer(),s.s), eps=mLayer()==="szansa"; if(!mov){mov=L.imageOverlay(u,MM.bounds,{opacity:0,interactive:false,pane:"radar"}).addTo(map);} else mov.setUrl(u);
+  else if(s.k==="model"){ var u=mUrl(mLayer(s.s),s.s), eps=mLayer(s.s)==="szansa"; if(!mov){mov=L.imageOverlay(u,MM.bounds,{opacity:0,interactive:false,pane:"radar"}).addTo(map);} else mov.setUrl(u);
     /* 14.10: korekta polozenia wg aktualnego radaru (maleje do 0 po 6 h) + plynne przejscie z radaru (2 h po koncu jego prognozy) */
     var tR=meta&&meta.klatki.length?new Date(meta.klatki[meta.klatki.length-1].iso).getTime():Date.now(), hrs=(s.t.getTime()-tR)/3600e3;
     var wk=(!eps&&KOR&&KOR.status==="OK")?Math.max(0,1-hrs/6):0, bb=MM.bounds; if(wk>0)bb=shiftM(bb,KOR.dx_m*wk,KOR.dy_m*wk);
@@ -477,6 +484,24 @@ function drawSpr(){ var d=spr.data; if(!d||d.status!=="OK")return; var R=d.wynik
       plugins:{title:{display:true,text:"Błąd temperatury wg wyprzedzenia (°C, mniej = lepiej)",color:css("--ink2")},legend:{labels:{color:css("--ink2"),boxWidth:12}},
         tooltip:{callbacks:{label:function(x){return x.parsed.y==null?null:x.dataset.label+": "+pl(x.parsed.y)+" °C";}}}},
       scales:{x:{ticks:{color:css("--muted")},grid:{display:false}},y:{beginAtZero:true,ticks:{color:css("--muted")}}}}}); }
+
+/* ---- gdzie w weekend ---- */
+var WK={ov:null,day:null};
+function hideWeekend(){ if(WK.ov){map.removeLayer(WK.ov);WK.ov=null;} if(steps.length)show(cur); }
+function loadWeekend(day){ $("wklist").innerHTML='<div class="note">Liczę mapę ocen (pierwszy raz dla dnia kilka sekund)…</div>';
+  var q="/api/pogoda/weekend?"+(day?"dzien="+day+"&":"")+(pos?"lat="+pos.lat.toFixed(3)+"&lon="+pos.lon.toFixed(3):"");
+  J(q).then(function(r){ if(r.status!=="OK"){$("wklist").textContent=r.error||r.status;return;} WK.day=r.dzien;
+    $("wkd").innerHTML=(r.dni||[]).map(function(x){var d=new Date(x.dzien+"T12:00"),nm=["nd","pn","wt","śr","cz","pt","sob"][d.getDay()];
+      return '<button data-d="'+x.dzien+'" class="'+(x.dzien===r.dzien?"on":"")+'">'+nm+" "+x.dzien.slice(8,10)+"."+x.dzien.slice(5,7)+'</button>';}).join("");
+    $("wkd").querySelectorAll("button").forEach(function(b){b.addEventListener("click",function(){loadWeekend(b.dataset.d);});});
+    $("wkinfo").innerHTML="Okno "+r.okno[0]+"–"+r.okno[1]+" · Polska średnio "+r.polska.srednia+"/100, dobre warunki na "+Math.round(r.polska.udzial_dobrych*100)+"% obszaru · przebieg "+r.run.slice(8,10)+" UTC<br>"+
+      r.legenda.map(function(x){return '<i style="display:inline-block;width:14px;height:8px;border-radius:2px;background:'+x[0]+'"></i> '+x[1];}).join(" ");
+    ovs.forEach(function(o){o.setOpacity(0);}); if(mov)mov.setOpacity(0);
+    if(WK.ov)map.removeLayer(WK.ov); WK.ov=L.imageOverlay("/api/pogoda/weekend/"+r.png+".png",r.bounds,{opacity:.85,interactive:false,pane:"radar"}).addTo(map);
+    $("wklist").innerHTML=r.najlepsze.map(function(x,i){var c=x.ocena>=80?"good":x.ocena>=50?"warn":"bad";
+      return '<div class="rec '+c+'" data-i="'+i+'" style="margin-bottom:6px"><div class="t">#'+(i+1)+(x.km!=null?" · "+x.km+" km od Ciebie":"")+'</div><div class="s">'+x.nazwa+' · '+x.ocena+'/100</div><div class="l">opad '+pl(x.opad_mm)+' mm · wiatr '+pl(x.wiatr_ms)+' m/s, porywy '+pl(x.poryw_ms)+' m/s · '+pl(x.temp_sr)+'°C (max '+pl(x.temp_max)+')</div></div>';}).join("");
+    $("wklist").querySelectorAll(".rec").forEach(function(el){el.addEventListener("click",function(){var x=r.najlepsze[+el.dataset.i]; modeBtn("zadana"); setPos(x.lat,x.lon,x.nazwa+" (weekend)"); map.setView([x.lat,x.lon],9);});});
+  }).catch(function(e){$("wklist").textContent="Błąd: "+e;}); }
 
 /* ---- okno jazdy ---- */
 var OKL=false;

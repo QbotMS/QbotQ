@@ -7161,6 +7161,60 @@ def api_pogoda_okno(lat: float, lon: float, id: int | None = None, dzien: str | 
         conn.close()
 
 
+@app.get("/api/pogoda/weekend")
+def api_pogoda_weekend(dzien: str | None = None, lat: float | None = None, lon: float | None = None):
+    """Gdzie jechac: ocena 0-100 miejsc w PL na dzien (okno Trenera na rower), najlepsze rejony z odlegloscia. Dok.: docs/POGODA_OKNO.md"""
+    import datetime as _dt
+    import math as _m
+    from zoneinfo import ZoneInfo
+    import qbot_pogoda_map as PM
+    import qbot_trener_engine as E
+    from psycopg.rows import dict_row
+    m = PM.meta()
+    if m.get("status") != "OK":
+        return m
+    tz = ZoneInfo("Europe/Warsaw"); today = _dt.datetime.now(tz).date()
+    last = max(_dt.datetime.fromisoformat(k["iso"]) for k in m["kroki"]).astimezone(tz)
+    conn = _db_conn()
+    try:
+        cur = conn.cursor(row_factory=dict_row)
+        ctx = E.build_context(cur, "admin", E.monday(today), today)
+        dni = []
+        for i in range(0, 7):
+            d = today + _dt.timedelta(days=i)
+            if i < 7 and d < _dt.date(2100, 1, 1):
+                ctx_d = ctx if E.monday(d) == E.monday(today) else E.build_context(cur, "admin", E.monday(d), today)
+                win = E.day_info(ctx_d, d)["win"].get("rower") or [E.DEFAULT_WIN]
+                a_h = max(0, (min(x[0] for x in win) + 59) // 60); b_h = min(24, max(x[1] for x in win) // 60)
+                if _dt.datetime(d.year, d.month, d.day, b_h, tzinfo=tz) <= last:
+                    dni.append({"dzien": d.isoformat(), "a": a_h, "b": b_h, "weekend": d.weekday() >= 5})
+        if not dni:
+            return {"status": "POZA_PROGNOZA", "error": "brak dni w zasiegu prognozy"}
+        sel = next((x for x in dni if x["dzien"] == dzien), None) or next((x for x in dni if x["weekend"]), None) or dni[min(1, len(dni) - 1)]
+    finally:
+        conn.close()
+    r = PM.ocena_dnia(_dt.date.fromisoformat(sel["dzien"]), sel["a"], sel["b"])
+    r = dict(r); r["dni"] = dni
+    if lat is not None and lon is not None and r.get("najlepsze"):
+        k = _m.cos(_m.radians(52))
+        r["najlepsze"] = [dict(x, km=round(_m.hypot((x["lat"] - lat) * 111.2, (x["lon"] - lon) * 111.2 * k))) for x in r["najlepsze"]]
+        r["najlepsze"].sort(key=lambda x: (-x["ocena"], x["km"]))
+    return r
+
+
+@app.get("/api/pogoda/weekend/{key}.png")
+def api_pogoda_weekend_png(key: str):
+    import re as _re
+    import qbot_pogoda_map as PM
+    m = PM.meta()
+    if m.get("status") != "OK" or not _re.fullmatch(r"ocena_\d{8}_\d{4}", key):
+        raise HTTPException(status_code=404, detail="brak mapy")
+    p = os.path.join(PM.CACHE, m["run"], key + ".png")
+    if not os.path.exists(p):
+        raise HTTPException(status_code=404, detail="brak mapy")
+    return FileResponse(p, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
+
+
 @app.get("/api/pogoda/sprawdzalnosc-radar")
 def api_pogoda_spr_radar(dni: int = 7):
     """Sprawdzalnosc prognozy radaru (przesuniecie obrazu) vs bez przesuwania, wg wyprzedzenia; horyzont_min dla osi czasu."""

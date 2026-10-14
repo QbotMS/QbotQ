@@ -11,3 +11,11 @@ Pytanie: „przesunąć jazdę czy moknąć?”. Jazda z kalendarza Trenera (`tr
 - **Ocena 0–100** = 100 − 10 × kara: deszcz × 3, szansa, porywy ponad próg, oblodzenie 3, mgła 1,5, błoto 1, zmrok min/20, chłód/upał.
 - Werdykt: „Lepiej przesunąć: HH:MM” gdy najlepszy start > plan + 10 pkt; karty Plan / Wcześniej / Później; siatka startów (klik = przelicz).
 - Bez nowych wiadomości Telegram (zasada Michała).
+
+## Gdzie jechać / weekend (krok 3, 2026-10-14)
+`qbot_pogoda_map.ocena_dnia(dzien, a_h, b_h)` — ocena 0–100 każdego piksela 6 km w oknie godzin Trenera na rower (weekend 08–19):
+kara = 0,08·wiatr + 0,04·|temp−16| (komfort, rozróżnia remisy) + opad[mm]·1,5 + max(0, wiatr−5) + max(0, poryw−12)·0,4 + max(0, 4−temp)·0,35
++ max(0, tmax−28)·0,5. PNG + JSON w katalogu przebiegu. Rejony: co ≥ 60 km, nazwa = najbliższa miejscowość ≥ 2000 mieszk. (GeoNames PL,
+duże miasta po polsku), punkty > 15 km od miejscowości pomijane, sortowanie (ocena, odległość). Mapa modelu do +120 h, `pola_<krok>.npz`.
+API `/api/pogoda/weekend?dzien=&lat=&lon=`, `/api/pogoda/weekend/{key}.png`. Uwaga: katalogi `pogoda_model` muszą należeć do qbot
+(serwis zapisuje oceny dni) — ręczne przebudowy jako root psuły zapis (14.10). Szansa z zespołu tylko do +60 h, dalej mapa opadu.
