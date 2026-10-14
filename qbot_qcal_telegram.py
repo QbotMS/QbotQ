@@ -17,7 +17,7 @@ def _allowed() -> set[str]:
 def is_authorized(chat_id: str) -> bool:
     return str(chat_id).strip() in _allowed()
 
-_ALLOWED_ACTIONS = {"confirm_route_analysis", "confirm_komoot_analysis"}  # kalendarz qcal_* usuniety 2026-07-16; nutrition_log_add usuniete 2026-07-05
+_ALLOWED_ACTIONS = {"confirm_route_analysis", "confirm_komoot_analysis", "confirm_cp_breakthrough"}  # +przelom CP 2026-10-08  # kalendarz qcal_* usuniety 2026-07-16; nutrition_log_add usuniete 2026-07-05
 _CONFIRM_WORDS = {"tak", "yes", "ok", "potwierdzam", "zapisz", "dodaj", "confirm", "/confirm", "/yes", "t", "y"}
 _DECLINE_WORDS = {"nie", "no", "anuluj", "cancel", "/cancel", "/no", "n"}
 _CONFIRM_NUMERIC_RE = re.compile(r"^\s*#?\s*(\d+)\s+(.+?)\s*$", re.IGNORECASE)
@@ -388,6 +388,14 @@ def _handle_pending_confirmation(chat_id: str, text: str, dry_run: bool = False)
 
     if decision == "no":
         _pending_decline(chat_id, action_id)
+        if action_type == "confirm_cp_breakthrough":
+            try:
+                from fitmodel.cp_breakthrough import decline as _cp_decline
+                _p = target_row.get("payload_json")
+                _p = _p if isinstance(_p, dict) else json.loads(_p or "{}")
+                _cp_decline(int(_p.get("bt_id")))
+            except Exception:
+                pass
         _turn_add(chat_id, "inbound", text, intent="decline", action_id=action_id)
         msg = f"#{action_id} anulowano."
         _turn_add(chat_id, "outbound", text=msg, intent="decline_result", action_id=action_id)
@@ -399,6 +407,9 @@ def _handle_pending_confirmation(chat_id: str, text: str, dry_run: bool = False)
     if st in ("OK", "ok"):
         if action_type in ("confirm_route_analysis", "confirm_komoot_analysis"):
             msg = f"✓ Uruchomiłem analizę #{action_id}. Wynik zapisuję w DB i logach."
+        elif action_type == "confirm_cp_breakthrough":
+            msg = (f"✓ #{action_id}: nowy próg zapisany (kotwica {result.get('kotwica')}). CP dziś: {result.get('tp_dzis')} W. "
+                   "Karoo dostanie go przy najbliższej synchronizacji progu.")
         else:
             msg = f"✓ Wykonano #{action_id}."
     elif st == "expired":
@@ -413,6 +424,9 @@ def _execute_writer(atype: str, payload: dict, idem_key: str, chat_id: str | Non
     if atype not in _ALLOWED_ACTIONS:
         return {"status": "not_allowed", "action_type": atype, "allowlist": sorted(_ALLOWED_ACTIONS)}
     try:
+        if atype == "confirm_cp_breakthrough":   # 2026-10-08: przelom CP (fitmodel/cp_breakthrough.py), wariant B
+            from fitmodel.cp_breakthrough import approve
+            return approve(int(payload.get("bt_id")))
         if atype == "confirm_route_analysis":
             route_id = str(payload.get("route_id") or "").strip()
             if not route_id:

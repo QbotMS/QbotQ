@@ -91,6 +91,12 @@ def main() -> None:
             return run_daily_v2(conn)
         _step("modelq2_v2", _modelq2)
 
+        # 2026-10-08: przelom CP z krzywej moc-czas -> pytanie na Telegramie (fitmodel/cp_breakthrough.py, wariant B)
+        def _cp_bt():
+            from fitmodel.cp_breakthrough import run_daily as cpbt_run
+            return cpbt_run(conn)
+        _step("cp_breakthrough", _cp_bt)
+
         # 2026-09-28: kontrola spojnosci ModelQ (tylko odczyt): kazda jazda 1Hz ma XSS, obciazenie dnia
         # z przyrostu ATL == suma XSS jazd, brak duplikatow. Problem -> alert Telegram.
         def _mq2_integrity():
@@ -274,6 +280,12 @@ def run_after_ride(reason: str = "") -> None:
             from fitmodel.modelq2.publish import run_daily_v2
             return run_daily_v2(conn)
         _step("modelq2_v2", _modelq2)
+
+        # 2026-10-08: przelom CP z krzywej moc-czas -> pytanie na Telegramie (fitmodel/cp_breakthrough.py, wariant B)
+        def _cp_bt():
+            from fitmodel.cp_breakthrough import run_daily as cpbt_run
+            return cpbt_run(conn)
+        _step("cp_breakthrough", _cp_bt)
 
         def _hidden_fatigue():
             from fitmodel.modelq2.hidden_fatigue import apply_hidden_fatigue
