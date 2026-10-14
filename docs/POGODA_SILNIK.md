@@ -85,3 +85,9 @@ przed/po identyczna) i silnik tras (`_road_at` dla każdego odcinka w chwili prz
 - Progi z historii (`qbot_trener_stats._weather_rides` → `_feels_hours`): nowa odczuwalna dla godzin jazd (ERA5: temp., wilgotność, wiatr,
   ciśnienie, promieniowanie). Porównanie 370 jazd: chłód długa 0 → −1 °C, upał 32 → 33 °C, reszta bez zmian. Cache progów przeliczony po wdrożeniu.
 - Okno jazdy porównuje progi z nową odczuwalną (`odcz`); `odcz_om` zostaje tylko informacyjnie.
+
+## E4.2 — Albert „pogoda w mieście X” na wspólnym silniku (2026-10-14)
+`weather_forecast` (tool_registry) → `qbot_pogoda_albert.weather_city`: geokodowanie Open-Meteo przez `qbot_wx.get_url` (pierwszeństwo PL),
+dalej `conditions_point` (najbliższe godziny) / `conditions_day` (jutro…+4, godz. 6–22, pewność); odczuwalna, „na rowerze”, szansa z zespołu,
+warunki drogi, charakter dnia. Wpis w `_SYSTEM` Alberta. Zaproszenia gości: przed zmianą silnika sprawdzone — 0 aktywnych, brak ryzyka
+fałszywych maili. Usunięty martwy `event_morning_report.py` (OpenWeatherMap; brak timera, crona i importów; kopia w artifacts).

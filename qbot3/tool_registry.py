@@ -118,27 +118,27 @@ def _load_planning_facts_tool() -> dict[str, Any]:
 
 
 def _load_weather_forecast_tool() -> dict[str, Any]:
-    from qbot_integration_tools import _tool_qbot_weather_forecast
+    """E4.2 (14.10.2026): wspolny silnik pogody (qbot_pogoda_albert.weather_city) zamiast OpenWeatherMap."""
     def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        from qbot3.errors import error_result, success_result
+        import qbot_pogoda_albert as _pa
         q = args.get("_question", "")
         period = args.get("period", "")
         if not period:
             d, resolved = _resolve_date(q)
-            period = "jutro" if resolved == "tomorrow" else "today"
-        return _tool_qbot_weather_forecast({
-            "location": args.get("location", "Marki"),
-            "period": period,
-            "hours": args.get("hours", 48),
-        })
+            period = "jutro" if resolved == "tomorrow" else ""
+        try:
+            out = _pa.weather_city(location=args.get("location", ""), period=period, hours=args.get("hours", 24))
+        except Exception as e:
+            return error_result("POGODA_FAILED", f"{type(e).__name__}: {e}"[:300])
+        return success_result({"analysis": out.get("analysis", "")})
     return {
         "callable": _wrapper,
         "category": "weather",
         "description": (
-            "Live fetch prognozy pogody z OpenWeatherMap — pobiera bezpośrednio z API, "
-            "nie z cache DB. Używaj gdy użytkownik pyta o pogodę. "
-            "Zwraca: temperatura, opady, wiatr, ciśnienie. "
-            "Parametry: location (miasto, domyślnie Warszawa), period (today/jutro), "
-            "hours (1-48, domyślnie 24)."
+            "POGODA DLA MIEJSCOWOSCI (wspolny silnik QBota): location = nazwa miejscowosci (bez = dom), period = '' (najblizsze godziny) / "
+            "'jutro' / 'pojutrze' / 1-4 (dzien od dzis, godz. 6-22, z pewnoscia prognozy), hours 6-48. Zwraca: temperatura, odczuwalna, "
+            "'na rowerze' (do ubioru), wiatr i porywy m/s, opad i szansa deszczu (zespol), warunki drogi, charakter dnia. Pokaz analysis w calosci."
         ),
         "args_schema": {"location": {"type": "string"}, "period": {"type": "string"}, "hours": {"type": "integer"}},
         "safety": "read",

@@ -165,3 +165,60 @@ def weather_skill() -> dict:
         lines.append("Szansa opadu z zespołu: dane dopiero się zbierają.")
     lines.append(f"Modele do prognoz dobierane są automatycznie wg tych wyników. Tabele i wykresy: {STRONA} (✓).")
     return {"status": "OK", "analysis": "\n".join(lines)}
+
+
+def _geocode(name: str):
+    """Miejscowosc -> (lat, lon, opis). Geokodowanie Open-Meteo przez rdzen qbot_wx; pierwszenstwo dla Polski."""
+    import urllib.parse
+    import qbot_wx as WX
+    j = WX.get_url("https://geocoding-api.open-meteo.com/v1/search?" + urllib.parse.urlencode({"name": name, "count": 10, "language": "pl"}), timeout=10, ttl=86400)
+    res = j.get("results") or []
+    if not res:
+        return None
+    r = next((x for x in res if x.get("country_code") == "PL"), res[0])
+    return float(r["latitude"]), float(r["longitude"]), ", ".join(x for x in (r.get("name"), r.get("admin1"), r.get("country")) if x)
+
+
+def weather_city(location: str = "", period: str = "", hours: int = 24) -> dict:
+    """E4.2 (14.10.2026): 'pogoda w miescie X' na WSPOLNYM SILNIKU (zastepuje OpenWeatherMap): geokodowanie + qbot_pogoda.conditions_point /
+    conditions_day (modele wg sprawdzalnosci, odczuwalna jak trasa, 'na rowerze', szansa z zespolu, warunki drogi, charakter dnia)."""
+    import qbot_pogoda as PG
+    if location and location.strip().lower() not in ("dom", "u mnie", "home", "marki"):
+        geo = _geocode(location.strip())
+        if not geo:
+            return {"status": "OK", "analysis": f"Nie znalazłem miejscowości „{location}”. Podaj inną nazwę albo współrzędne."}
+        la, lo, gdzie = geo
+    else:
+        conn, cur = _cur()
+        try:
+            la, lo, gdzie = _point(cur, None, None)
+        finally:
+            conn.close()
+    p = (period or "").strip().lower()
+    dmap = {"jutro": 1, "pojutrze": 2, "tomorrow": 1}
+    dzien = dmap.get(p, int(p) if p.isdigit() and 0 < int(p) <= 4 else 0)
+    if dzien:
+        w = PG.conditions_day(la, lo, dzien); rows = w.get("godziny") or []; zakres = f"{_ddmm(w.get('dzien', ''))}, godz. 6–22"
+    else:
+        w = PG.conditions_point(la, lo, hours=max(6, min(int(hours or 24), 48))); rows = [r for r in (w.get("godziny") or []) if not r["przeszlosc"]]
+        zakres = f"najbliższe {len(rows)} h"
+    if w.get("status") != "OK" or not rows:
+        return {"status": "OK", "analysis": "Prognoza chwilowo niedostępna."}
+    v = lambda k: [r[k] for r in rows if r.get(k) is not None]
+    t, o, nr, ws, gs, op = v("temp"), v("odcz"), v("na_rowerze"), v("wiatr"), v("porywy"), v("opad")
+    sz = [round(r["szansa"] * 100) for r in rows if r.get("szansa") is not None]
+    lines = [f"Pogoda — {gdzie} ({zakres}):",
+             f"Temperatura {_pl(min(t))}…{_pl(max(t))} °C, odczuwalna {_pl(min(o))}…{_pl(max(o))} °C" + (f", na rowerze (do ubioru) {_pl(min(nr))}…{_pl(max(nr))} °C" if nr else "") + ".",
+             f"Wiatr do {_pl(max(ws))} m/s, porywy do {_pl(max(gs))} m/s." if ws else "",
+             (f"Opad łącznie {_pl(sum(op))} mm" if sum(op) >= 0.1 else "Bez opadu") + (f", szansa deszczu do {max(sz)}% (zespół 40 wariantów)." if sz else ".")]
+    dr = [n for k, n in (("lod", "oblodzenie"), ("mgla", "mgła"), ("nawierzchnia", "błoto")) if any((r.get(k) or 0) >= 2 for r in rows)]
+    if dr:
+        lines.append("Uwaga na drodze: " + ", ".join(dr) + ".")
+    if w.get("pewnosc"):
+        lines.append(f"Pewność: {w['pewnosc']['poziom']} — {w['pewnosc']['opis']}.")
+    ch = PG.charakter_dni(la, lo, 3)
+    cd = next((x for x in ch.get("dni") or [] if x["dzien"] == (w.get("dzien") or rows[0]["iso"][:10])), None)
+    if cd and cd["typ"] != "stabilny":
+        lines.append(cd["opis"])
+    lines.append(f"Szczegóły godzina po godzinie: {STRONA} (≋ Warunki).")
+    return {"status": "OK", "analysis": "\n".join(x for x in lines if x)}
