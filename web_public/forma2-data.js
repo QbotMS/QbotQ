@@ -747,7 +747,7 @@ function renderTrendy(){
   var sleepD=[],hrvD=[],rhrD=[],wtD=[],rdyD=[];
   SN.forEach(function(s2){sleepD.push(s2.sleep_score||null);hrvD.push(s2.hrv_night||null);rhrD.push(s2.rhr||null);wtD.push(s2.weight_meas!=null?s2.weight_meas:null);rdyD.push(s2.readiness_effective!=null?s2.readiness_effective:(s2.readiness_score!=null?s2.readiness_score:null));});
   /* 2026-10-12: przelaczniki Wellness jako pigulki (jak wykres formy), wybor zapamietany */
-  var WDEF=[["sleep","sen","#3b82f6",1],["hrv","HRV","#9b59b6",1],["rhr","RHR","#e74c3c",1],["wt","waga","#e67e22",1],["bal","waga z bilansu","#14b8a6",1],["waist","talia (cm)","#a3e635",1],["hrr","odpoczynek HR 60 s","#22d3ee",1]];  /* gotowosc tylko na wykresie formy (2026-10-12) */
+  var WDEF=[["sleep","sen","#3b82f6",1],["hrv","HRV","#9b59b6",1],["rhr","RHR","#e74c3c",1],["wt","waga","#e67e22",1],["bal","waga z bilansu","#14b8a6",1],["waist","talia (cm)","#a3e635",1],["hrr","odpoczynek HR 60 s","#facc15",1]];  /* gotowosc tylko na wykresie formy (2026-10-12) */
   function wellState(){var o={};try{o=JSON.parse(localStorage.getItem("well_on")||"{}");}catch(e){o={};}var s={};WDEF.forEach(function(w){s[w[0]]=o[w[0]]!=null?!!o[w[0]]:!!w[3];});return s;}
   function renderWellChips(){var el=q$("well-chips");if(!el)return;var st=wellState();
     el.innerHTML=WDEF.map(function(w){return '<button type="button" class="tchip'+(st[w[0]]?' on':'')+'" data-w="'+w[0]+'"'+(w[0]==="bal"?' title="Waga startowa okresu logowania + skumulowany bilans (zjedzone − spalone) ÷ 7700. Jeśli linia wagi idzie razem z nią – wpisy są kompletne."':'')+'><span class="tdot" style="background:'+w[2]+'"></span>'+w[1]+'</button>';}).join("");
@@ -762,14 +762,14 @@ function renderTrendy(){
     if(show.rhr)ds.push({label:"RHR",data:rhrD,borderColor:"#e74c3c",borderWidth:1.5,borderDash:[4,3],pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"yw"});
     /* 2026-10-13: waga = tylko dni POMIARU (punkty) + przerywana linia miedzy kolejnymi pomiarami (bez schodkow z przenoszenia) */
     if(show.wt)ds.push({label:"waga (kg)",data:wtD,borderColor:"#e67e22",backgroundColor:"#e67e22",borderWidth:1.6,borderDash:[5,4],spanGaps:true,pointRadius:3,pointHoverRadius:5,tension:0,fill:false,yAxisID:"yw2"});
-    if(show.hrr&&hrrD.some(function(v){return v!=null;}))ds.push({label:"odpoczynek HR 60 s (bpm)",data:hrrD,borderColor:"#22d3ee",backgroundColor:"#22d3ee",borderWidth:1.5,pointRadius:3.5,pointHoverRadius:5,showLine:true,borderDash:[2,3],tension:0.2,spanGaps:true,fill:false,yAxisID:"yhrr"});
+    if(show.hrr&&hrrD.some(function(v){return v!=null;}))ds.push({label:"odpoczynek HR 60 s (bpm)",data:hrrD,borderColor:"#facc15",backgroundColor:"#facc15",borderWidth:1.5,pointRadius:3.5,pointHoverRadius:5,showLine:true,borderDash:[2,3],tension:0.2,spanGaps:true,fill:false,yAxisID:"yhrr"});
     if(show.waist&&waistD.some(function(v){return v!=null;}))ds.push({label:"talia (cm)",data:waistD,borderColor:"#a3e635",backgroundColor:"#a3e635",borderWidth:2,pointRadius:3.5,pointHoverRadius:5,tension:0.2,spanGaps:true,fill:false,yAxisID:"ycm"});
     if(show.bal)ds.push({label:"waga z bilansu (kg)",_bal:true,data:balD,borderColor:"#14b8a6",borderWidth:2.2,borderDash:[5,3],pointRadius:0,pointHoverRadius:4,tension:0.2,spanGaps:false,fill:false,yAxisID:"yw2"});
     if(show.rdy)ds.push({label:"gotowość",data:rdyD,borderColor:"#22c55e",borderWidth:2,borderDash:[6,3],pointRadius:0,pointHoverRadius:4,tension:0.4,fill:false,yAxisID:"ywr"});
     var scalesW={x:{display:false},yw:{display:!!(show.sleep||show.hrv||show.rhr),position:"left",ticks:{color:txtCol,font:{size:10}},grid:{color:gridCol}}};
     if(hasRight)scalesW.yw2={position:"right",ticks:{color:"#e67e22",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"kg",color:"#e67e22",font:{size:10}}};
     /* bilans skumulowany rysowany jako 'waga z bilansu' na osi wagi (yw2) - bez osobnej osi kcal */
-    if(show.hrr&&hrrD.some(function(v){return v!=null;}))scalesW.yhrr={position:"right",ticks:{color:"#22d3ee",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"HRR bpm",color:"#22d3ee",font:{size:10}}};
+    if(show.hrr&&hrrD.some(function(v){return v!=null;}))scalesW.yhrr={position:"right",ticks:{color:"#facc15",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"HRR bpm",color:"#facc15",font:{size:10}}};
     if(show.waist&&waistD.some(function(v){return v!=null;}))scalesW.ycm={position:"right",ticks:{color:"#a3e635",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"cm",color:"#a3e635",font:{size:10}}};
     if(show.rdy)scalesW.ywr={position:"right",ticks:{color:"#22c55e",font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:"gotowość",color:"#22c55e",font:{size:10}}};
     window._wellChart=new Chart(wc,{type:"line",data:{labels:labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
