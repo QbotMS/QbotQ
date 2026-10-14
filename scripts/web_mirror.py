@@ -8,7 +8,7 @@ na GitHubie. Uruchom PRZED KAZDYM COMMITEM, potem dodaj web_public/ i web_landin
     .venv/bin/python3 scripts/web_mirror.py --check   # tylko sprawdzenie (kod 1, gdy lustro nieaktualne)
 Bierze: .html .js .css .svg .ico oraz male .json (< 200 KB). Pomija: katalogi danych i obrazow (data, reports, gear, strava,
 vendor, .git), grafiki i media (jpg/png/webp/pdf/mp4), kopie (*.bak*), pliki robocze (*.tmp_new, _*), wygenerowane mapy (map_*),
-pliki > 500 KB.
+pliki > 500 KB. Wyjatek (2026-10-14): ikony i manifest aplikacji na telefon w katalogu glownym (KEEP_ROOT).
 Plik usuniety ze stron -> usuwany z lustra. Odtworzenie: skopiuj plik z web_public/ (web_landing/) do /opt/qbot/web/public/ (landing/).
 Stare lokalne repo git z web/public (lipiec 2026) usuniete 2026-10-04, archiwum: /opt/qbot/data/archive/web_public_git_2026-07.tar.gz.
 """
@@ -26,11 +26,15 @@ EXT = {".html", ".js", ".css", ".svg", ".ico"}
 SKIP_DIRS = {".git", "data", "reports", "gear", "strava", "vendor"}
 MAX_BYTES = 500_000
 MAX_JSON = 200_000
+# 2026-10-14: pliki aplikacji na telefon (ikona na ekranie, manifest) - male, bez nich nie odtworzysz instalacji strony
+KEEP_ROOT = {"apple-touch-icon.png", "icon-192.png", "icon-512.png", "manifest.webmanifest"}
 
 
 def wanted(rel: str, size: int) -> bool:
     parts = rel.split("/")
     name = parts[-1]
+    if len(parts) == 1 and name in KEEP_ROOT:
+        return size < MAX_BYTES
     if parts[0] in SKIP_DIRS or name.startswith(("_", "map_")) or ".bak" in name or name.endswith(".tmp_new"):
         return False
     ext = os.path.splitext(name)[1].lower()
