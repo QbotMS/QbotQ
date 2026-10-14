@@ -79,10 +79,8 @@ def past_weather(coords, day: str, start: str, total_h: float | None = None) -> 
                ",".join("%.4f" % p[0] for p in pts), ",".join("%.4f" % p[1] for p in pts),
                (d0 - _dt.timedelta(days=7)).isoformat(), d0.isoformat()))
     try:
-        with httpx.Client(timeout=12.0) as c:
-            r = c.get(url)
-            r.raise_for_status()
-            js = r.json()
+        import qbot_wx as WX   # E4.4: wspolny transport/cache Open-Meteo
+        js = WX.get_url(url, timeout=12.0, ttl=600)
     except Exception as e:  # noqa
         return {"ok": False, "blad": "Open-Meteo: %s" % str(e)[:120]}
     if isinstance(js, dict):

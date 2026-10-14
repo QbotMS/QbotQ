@@ -3215,8 +3215,8 @@ def _fetch_precip_history(lat, lon, ride_date_str, days_back=10):
            "&start_date=%s&end_date=%s&daily=precipitation_sum&timezone=auto") % (
                lat, lon, start_d.isoformat(), end_d.isoformat())
     try:
-        with urllib.request.urlopen(url, timeout=12) as r:
-            j = json.loads(r.read().decode("utf-8"))
+        import qbot_wx as _WX   # E4.4: wspolny transport/cache Open-Meteo (archiwum)
+        j = _WX.get_url(url, timeout=12, ttl=86400)
         vals = (j.get("daily") or {}).get("precipitation_sum") or []
         vals = [float(v) for v in vals if v is not None]
         if not vals:

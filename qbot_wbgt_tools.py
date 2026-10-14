@@ -336,9 +336,8 @@ def _fetch_openmeteo(lat, lon, start_date, end_date, timeout=15.0) -> dict:
         params["start_date"] = start_date
         params["end_date"] = end_date or start_date
     url = OPEN_METEO_URL + "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={"User-Agent": "QBot-WBGT/1.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+    import qbot_wx as WX   # E4.4: wspolny transport/cache Open-Meteo
+    return WX.get_url(url, timeout=timeout, ttl=600, ua="QBot-WBGT/1.0")
 
 
 def compute_wbgt_series(lat, lon, start_date=None, end_date=None,

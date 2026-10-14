@@ -54,6 +54,9 @@ def norm(s: str) -> str:
 
 
 def _get(u: str, t: float = 60) -> bytes:
+    import qbot_wx as WX
+    if u.startswith(WX.ALLOWED):      # E4.4: zapytania Open-Meteo przez wspolny transport (archiwa IMGW -- bez zmian)
+        return json.dumps(WX.get_url(u, timeout=t, ttl=3600, ua=UA.get("User-Agent", "QBot/1.0"))).encode("utf-8")
     with urllib.request.urlopen(urllib.request.Request(u, headers=UA), timeout=t) as r:
         return r.read()
 

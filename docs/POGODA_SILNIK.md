@@ -106,3 +106,9 @@ QBota, crony zakomentowane, ostatni log 28.06.2026): `daily_report.py`, `daily_r
 - `tools/feasibility.py` (`get_weather`): pogoda startu z `qbot_pogoda.conditions_point`, pola bez zmian.
 - `qbot_config`: usunięte `WEATHER_API_KEY_NAMES`, `OPENWEATHERMAP_API_KEY`; martwe `_owm_*` w `qbot_integration_tools`; opisy (Telegram, router,
   rejestr v1, query_handler, qbot_web, Albert) bez OWM; usunięty ostatni test OWM. Zmienne środowiskowe OWM (jeśli są w .env) nic już nie robią.
+
+## E4.4 — ostatnie ścieżki na wspólny transport (2026-10-14)
+`qbot_wx.get_url`: `qbot_wbgt_tools._fetch_openmeteo` (WBGT, zgodność przed/po identyczna), `gear_kit` (zestaw na deszcz: opad i widoczność 7 dni),
+`qbot_pogoda_verif._get` (tylko adresy Open-Meteo; archiwa IMGW bez zmian), archiwum opadu w `qbot_web` (suma przed jazdą).
+Celowo poza rdzeniem: test łączności w `_tool_qbot_public_web_status` (pinguje Open-Meteo bezpośrednio). Stan: wszystkie moduły QBota biorą
+pogodę z jednego silnika (rdzeń `qbot_wx` + `qbot_pogoda` + silnik tras), OpenWeatherMap usunięty.
