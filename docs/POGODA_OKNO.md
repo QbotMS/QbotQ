@@ -19,3 +19,9 @@ kara = 0,08·wiatr + 0,04·|temp−16| (komfort, rozróżnia remisy) + opad[mm]�
 duże miasta po polsku), punkty > 15 km od miejscowości pomijane, sortowanie (ocena, odległość). Mapa modelu do +120 h, `pola_<krok>.npz`.
 API `/api/pogoda/weekend?dzien=&lat=&lon=`, `/api/pogoda/weekend/{key}.png`. Uwaga: katalogi `pogoda_model` muszą należeć do qbot
 (serwis zapisuje oceny dni) — ręczne przebudowy jako root psuły zapis (14.10). Szansa z zespołu tylko do +60 h, dalej mapa opadu.
+
+### Limit odległości i zasięg pogody (2026-10-14, prośba Michała)
+Panel ★: limit 50/100/150/250 km / bez limitu od pozycji prognozy (domyślnie 100, localStorage `qpogoda_wkkm`); `PM.rejony()` wybiera
+miejsca tylko w promieniu (odstęp = limit/4, 20–60 km). Na mapie: przerywany okrąg limitu, etykiety „n. Nazwa · ocena” i **okrąg zasięgu
+pogody** = odległość do najbliższego piksela z oceną < max(65, ocena − 8) (max 80 km) — jak daleko od punktu warunki są podobne.
+Pola oceny zapisywane w `ocena_<dzien>_<okno>.npz`. API `/api/pogoda/weekend?...&km=`.

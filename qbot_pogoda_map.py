@@ -450,6 +450,8 @@ def ocena_dnia(day: dt.date, a_h: int = 8, b_h: int = 19) -> dict:
     # + drobny komfort (rozroznia remisy przy dobrej pogodzie): slabszy wiatr, temperatura blizej ~16 C
     kara = wm * 0.08 + np.abs(tm - 16) * 0.04 + rain * 1.5 + np.clip(wm - 5, 0, None) + np.clip(gmax - 12, 0, None) * 0.4 + np.clip(4 - tm, 0, None) * 0.35 + np.clip(tmax - 28, 0, None) * 0.5
     oc = np.clip(100 - 10 * kara, 0, 100)
+    np.savez_compressed(os.path.join(out, key + ".npz"), oc=oc.astype(np.float16), rain=rain.astype(np.float16), wm=wm.astype(np.float16),
+                        g=gmax.astype(np.float16), tm=tm.astype(np.float16), tx=tmax.astype(np.float16))
     _png(PAL["ocena"](oc), os.path.join(out, key + ".png"))
     LON, LAT = _pix_latlon()
     P_ = _places(); big = P_["pop"] >= 2000
@@ -484,3 +486,51 @@ def ocena_dnia(day: dt.date, a_h: int = 8, b_h: int = 19) -> dict:
         json.dump(res, fh)
     os.replace(jp + ".tmp", jp)
     return res
+
+
+def rejony(day: dt.date, a_h: int, b_h: int, lat=None, lon=None, km_max=None, n: int = 8) -> list:
+    """Najlepsze miejsca w promieniu km_max od (lat, lon) + zasieg_km: promien, w ktorym ocena nie spada ponizej
+    max(65, ocena - 8) (podobna pogoda wokol punktu, max 80 km)."""
+    from scipy.spatial import cKDTree
+    m = meta(); out = os.path.join(CACHE, m["run"]); key = f"ocena_{day:%Y%m%d}_{a_h:02d}{b_h:02d}"
+    npz = os.path.join(out, key + ".npz")
+    if not os.path.exists(npz):
+        jp = os.path.join(out, key + ".json")
+        if os.path.exists(jp):
+            os.remove(jp)
+        if ocena_dnia(day, a_h, b_h).get("status") != "OK":
+            return []
+    with np.load(npz) as z:
+        oc, rain, wm, g, tm, tx = (z[k].astype(np.float32) for k in ("oc", "rain", "wm", "g", "tm", "tx"))
+    LON, LAT = _pix_latlon(); kk = math.cos(math.radians(52))
+    ok = (LAT >= 49.0) & (LAT <= 54.9) & (LON >= 14.1) & (LON <= 24.2)
+    D = np.hypot((LAT - lat) * 111.2, (LON - lon) * 111.2 * kk) if lat is not None and lon is not None else None
+    if km_max and D is not None:
+        ok &= D <= km_max
+    P_ = _places(); big = P_["pop"] >= 2000
+    t_all = cKDTree(np.c_[P_["a"][:, 1] * kk, P_["a"][:, 0]]); t_big = cKDTree(np.c_[P_["a"][big, 1] * kk, P_["a"][big, 0]])
+    bigrows = [x for x, f in zip(P_["rows"], big) if f]
+    spacing = max(20.0, min(60.0, (km_max or 240) / 4))
+    sc = np.where(ok, oc, -1.0); order = np.argsort(-sc.ravel()); picked = []
+    for idx in order[:40000]:
+        j, i = divmod(int(idx), W)
+        if sc[j, i] < 0:
+            break
+        la, lo = float(LAT[j, i]), float(LON[j, i])
+        if t_all.query([lo * kk, la])[0] * 111 > 15:
+            continue
+        if any(math.hypot((la - p["lat"]) * 111.2, (lo - p["lon"]) * 111.2 * kk) < spacing for p in picked):
+            continue
+        db, ib = t_big.query([lo * kk, la])
+        nm = bigrows[ib][0] if db * 111 <= 30 else P_["rows"][t_all.query([lo * kk, la])[1]][0]
+        thr = max(65.0, float(oc[j, i]) - 8)
+        dd = np.hypot((LAT - la) * 111.2, (LON - lo) * 111.2 * kk); badz = (dd <= 80) & (oc < thr)
+        x = {"lat": round(la, 3), "lon": round(lo, 3), "nazwa": PL_NAZWY.get(nm, nm), "ocena": int(oc[j, i]), "opad_mm": round(float(rain[j, i]), 1),
+             "wiatr_ms": round(float(wm[j, i]), 1), "poryw_ms": round(float(g[j, i]), 1), "temp_sr": round(float(tm[j, i]), 1),
+             "temp_max": round(float(tx[j, i]), 1), "zasieg_km": int(round(float(dd[badz].min()))) if badz.any() else 80}
+        if D is not None:
+            x["km"] = int(round(float(D[j, i])))
+        picked.append(x)
+        if len(picked) >= n:
+            break
+    return picked

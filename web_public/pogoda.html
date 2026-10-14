@@ -158,6 +158,7 @@ body.dock-big .dchart{display:flex}
     </div>
     <div data-s="weekend" hidden>
       <div class="pos" id="wkd"></div>
+      <div class="pos" style="margin-top:6px;align-items:center"><span class="poslab" style="margin:0">Zasięg od pozycji prognozy:</span><select id="wkkm"><option value="50">do 50 km</option><option value="100">do 100 km</option><option value="150">do 150 km</option><option value="250">do 250 km</option><option value="0">bez limitu</option></select></div>
       <div class="poslab" id="wkinfo"></div>
       <div id="wklist" style="margin-top:8px"></div>
       <div class="note">Ocena każdego miejsca (siatka ok. 6 km) w Twoim oknie na rower z Trenera. Kara za: opad w tym czasie, średni wiatr powyżej 5 m/s,
@@ -486,10 +487,10 @@ function drawSpr(){ var d=spr.data; if(!d||d.status!=="OK")return; var R=d.wynik
       scales:{x:{ticks:{color:css("--muted")},grid:{display:false}},y:{beginAtZero:true,ticks:{color:css("--muted")}}}}}); }
 
 /* ---- gdzie w weekend ---- */
-var WK={ov:null,day:null};
-function hideWeekend(){ if(WK.ov){map.removeLayer(WK.ov);WK.ov=null;} if(steps.length)show(cur); }
+var WK={ov:null,day:null,lg:null,km:+(LS("qpogoda_wkkm")||100)};
+function hideWeekend(){ if(WK.lg){map.removeLayer(WK.lg);WK.lg=null;} if(WK.ov){map.removeLayer(WK.ov);WK.ov=null;} if(steps.length)show(cur); }
 function loadWeekend(day){ $("wklist").innerHTML='<div class="note">Liczę mapę ocen (pierwszy raz dla dnia kilka sekund)…</div>';
-  var q="/api/pogoda/weekend?"+(day?"dzien="+day+"&":"")+(pos?"lat="+pos.lat.toFixed(3)+"&lon="+pos.lon.toFixed(3):"");
+  var q="/api/pogoda/weekend?"+(day?"dzien="+day+"&":"")+(pos?"lat="+pos.lat.toFixed(3)+"&lon="+pos.lon.toFixed(3):"")+"&km="+WK.km;
   J(q).then(function(r){ if(r.status!=="OK"){$("wklist").textContent=r.error||r.status;return;} WK.day=r.dzien;
     $("wkd").innerHTML=(r.dni||[]).map(function(x){var d=new Date(x.dzien+"T12:00"),nm=["nd","pn","wt","śr","cz","pt","sob"][d.getDay()];
       return '<button data-d="'+x.dzien+'" class="'+(x.dzien===r.dzien?"on":"")+'">'+nm+" "+x.dzien.slice(8,10)+"."+x.dzien.slice(5,7)+'</button>';}).join("");
@@ -499,9 +500,21 @@ function loadWeekend(day){ $("wklist").innerHTML='<div class="note">Liczę mapę
     ovs.forEach(function(o){o.setOpacity(0);}); if(mov)mov.setOpacity(0);
     if(WK.ov)map.removeLayer(WK.ov); WK.ov=L.imageOverlay("/api/pogoda/weekend/"+r.png+".png",r.bounds,{opacity:.85,interactive:false,pane:"radar"}).addTo(map);
     $("wklist").innerHTML=r.najlepsze.map(function(x,i){var c=x.ocena>=80?"good":x.ocena>=50?"warn":"bad";
-      return '<div class="rec '+c+'" data-i="'+i+'" style="margin-bottom:6px"><div class="t">#'+(i+1)+(x.km!=null?" · "+x.km+" km od Ciebie":"")+'</div><div class="s">'+x.nazwa+' · '+x.ocena+'/100</div><div class="l">opad '+pl(x.opad_mm)+' mm · wiatr '+pl(x.wiatr_ms)+' m/s, porywy '+pl(x.poryw_ms)+' m/s · '+pl(x.temp_sr)+'°C (max '+pl(x.temp_max)+')</div></div>';}).join("");
+      return '<div class="rec '+c+'" data-i="'+i+'" style="margin-bottom:6px"><div class="t">#'+(i+1)+(x.km!=null?" · "+x.km+" km od Ciebie":"")+(x.zasieg_km?" · podobnie w promieniu ok. "+x.zasieg_km+" km":"")+'</div><div class="s">'+x.nazwa+' · '+x.ocena+'/100</div><div class="l">opad '+pl(x.opad_mm)+' mm · wiatr '+pl(x.wiatr_ms)+' m/s, porywy '+pl(x.poryw_ms)+' m/s · '+pl(x.temp_sr)+'°C (max '+pl(x.temp_max)+')</div></div>';}).join("");
     $("wklist").querySelectorAll(".rec").forEach(function(el){el.addEventListener("click",function(){var x=r.najlepsze[+el.dataset.i]; modeBtn("zadana"); setPos(x.lat,x.lon,x.nazwa+" (weekend)"); map.setView([x.lat,x.lon],9);});});
+    wkDraw(r);
   }).catch(function(e){$("wklist").textContent="Błąd: "+e;}); }
+
+function wkDraw(r){ if(WK.lg)map.removeLayer(WK.lg); if(!map.getPane("wk")){map.createPane("wk");map.getPane("wk").style.zIndex=440;map.getPane("wk").classList.add("leaflet-wk-pane");}
+  WK.lg=L.layerGroup().addTo(map); var B=L.latLngBounds([]);
+  if(pos&&r.limit_km){ var c=L.circle([pos.lat,pos.lon],{radius:r.limit_km*1000,pane:"wk",color:css("--ink2"),weight:1.5,dashArray:"6 6",fill:false,interactive:false}).addTo(WK.lg); B.extend(c.getBounds()); }
+  (r.najlepsze||[]).forEach(function(x,i){ var col=x.ocena>=80?"#2e8b57":x.ocena>=50?"#d4a017":"#c0392b";
+    var cc=L.circle([x.lat,x.lon],{radius:(x.zasieg_km||10)*1000,pane:"wk",color:col,weight:2,fillColor:col,fillOpacity:.12})
+      .bindTooltip(x.nazwa+" · "+x.ocena+"/100 · podobna pogoda w promieniu ok. "+x.zasieg_km+" km").addTo(WK.lg);
+    L.marker([x.lat,x.lon],{pane:"wk",icon:L.divIcon({className:"",iconSize:[0,0],html:'<div style="transform:translate(-50%,-50%);background:'+col+';color:#fff;font:700 12px -apple-system,system-ui,sans-serif;border-radius:12px;padding:2px 8px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.45)">'+(i+1)+". "+x.nazwa+" · "+x.ocena+'</div>'})}).addTo(WK.lg);
+    if(!r.limit_km)B.extend(cc.getBounds()); });
+  if(B.isValid())map.fitBounds(B,{padding:[40,40]}); }
+setTimeout(function(){ var s=$("wkkm"); if(!s)return; s.value=String(WK.km); s.addEventListener("change",function(){ WK.km=+this.value; LS("qpogoda_wkkm",String(WK.km)); loadWeekend(WK.day); }); },0);
 
 /* ---- okno jazdy ---- */
 var OKL=false;

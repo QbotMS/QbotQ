@@ -7162,7 +7162,7 @@ def api_pogoda_okno(lat: float, lon: float, id: int | None = None, dzien: str | 
 
 
 @app.get("/api/pogoda/weekend")
-def api_pogoda_weekend(dzien: str | None = None, lat: float | None = None, lon: float | None = None):
+def api_pogoda_weekend(dzien: str | None = None, lat: float | None = None, lon: float | None = None, km: int = 100):
     """Gdzie jechac: ocena 0-100 miejsc w PL na dzien (okno Trenera na rower), najlepsze rejony z odlegloscia. Dok.: docs/POGODA_OKNO.md"""
     import datetime as _dt
     import math as _m
@@ -7193,12 +7193,12 @@ def api_pogoda_weekend(dzien: str | None = None, lat: float | None = None, lon: 
         sel = next((x for x in dni if x["dzien"] == dzien), None) or next((x for x in dni if x["weekend"]), None) or dni[min(1, len(dni) - 1)]
     finally:
         conn.close()
-    r = PM.ocena_dnia(_dt.date.fromisoformat(sel["dzien"]), sel["a"], sel["b"])
-    r = dict(r); r["dni"] = dni
-    if lat is not None and lon is not None and r.get("najlepsze"):
-        k = _m.cos(_m.radians(52))
-        r["najlepsze"] = [dict(x, km=round(_m.hypot((x["lat"] - lat) * 111.2, (x["lon"] - lon) * 111.2 * k))) for x in r["najlepsze"]]
-        r["najlepsze"].sort(key=lambda x: (-x["ocena"], x["km"]))
+    day = _dt.date.fromisoformat(sel["dzien"])
+    r = dict(PM.ocena_dnia(day, sel["a"], sel["b"]))
+    r["dni"] = dni
+    if r.get("status") == "OK":
+        r["limit_km"] = km if km and km > 0 else None
+        r["najlepsze"] = PM.rejony(day, sel["a"], sel["b"], lat, lon, r["limit_km"])
     return r
 
 
