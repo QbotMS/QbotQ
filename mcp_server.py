@@ -1,3 +1,4 @@
+import asyncio
 import os, json, base64
 from datetime import date
 from pathlib import Path, PurePosixPath
@@ -220,6 +221,26 @@ def _read_text_preview(path: Path, max_bytes: int, preview_lines: int) -> tuple[
             truncated = True
     return text, truncated
 
+
+
+# E4.5 (14.10.2026): zapytania Open-Meteo przez wspolny transport QBota (qbot_wx.get_url: cache, jedna droga). Ten sam interfejs co httpx
+# (.json(), .raise_for_status()) -- reszta narzedzi bez zmian. Dok.: docs/POGODA_SILNIK.md
+class _OMResp:
+    def __init__(self, j):
+        self._j = j
+
+    def json(self):
+        return self._j
+
+    def raise_for_status(self):
+        return None
+
+
+async def _om_get(url: str, params: dict | None = None):
+    import urllib.parse as _up
+    import qbot_wx as _WX
+    full = url + ("?" + _up.urlencode(params) if params else "")
+    return _OMResp(await asyncio.to_thread(_WX.get_url, full, 15, 600))
 
 @mcp.tool()
 def list_qbot_artifacts(limit: int = 200, prefix: str = None) -> str:
@@ -786,7 +807,7 @@ async def get_weather(days: int = 7, location: str = "Marki") -> str:
     try:
         async with httpx.AsyncClient(timeout=10) as c:
             if location and location != DEFAULT_LOCATION:
-                geo = await c.get("https://geocoding-api.open-meteo.com/v1/search",
+                geo = await _om_get("https://geocoding-api.open-meteo.com/v1/search",
                                   params={"name": location, "count": 1, "language": "pl"})
                 geo.raise_for_status()
                 results = geo.json().get("results")
@@ -796,7 +817,7 @@ async def get_weather(days: int = 7, location: str = "Marki") -> str:
                 lon      = results[0]["longitude"]
                 loc_name = results[0].get("name", location)
 
-            r = await c.get("https://api.open-meteo.com/v1/forecast", params={
+            r = await _om_get("https://api.open-meteo.com/v1/forecast", params={
                 "latitude":  lat, "longitude": lon,
                 "current":   "temperature_2m,apparent_temperature,precipitation,weathercode,"
                              "windspeed_10m,winddirection_10m,cloudcover,relativehumidity_2m",
@@ -3201,7 +3222,7 @@ async def ride_readiness(request):
     async def fetch_weather():
         from datetime import datetime, timezone as _tz
         async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.get("https://api.open-meteo.com/v1/forecast", params={
+            r = await _om_get("https://api.open-meteo.com/v1/forecast", params={
                 "latitude": LOC_LAT, "longitude": LOC_LON,
                 "current":  "relativehumidity_2m,surface_pressure",
                 "hourly":   "surface_pressure",

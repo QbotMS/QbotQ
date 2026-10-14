@@ -112,3 +112,8 @@ QBota, crony zakomentowane, ostatni log 28.06.2026): `daily_report.py`, `daily_r
 `qbot_pogoda_verif._get` (tylko adresy Open-Meteo; archiwa IMGW bez zmian), archiwum opadu w `qbot_web` (suma przed jazdą).
 Celowo poza rdzeniem: test łączności w `_tool_qbot_public_web_status` (pinguje Open-Meteo bezpośrednio). Stan: wszystkie moduły QBota biorą
 pogodę z jednego silnika (rdzeń `qbot_wx` + `qbot_pogoda` + silnik tras), OpenWeatherMap usunięty.
+
+## E4.5 — ostatnie własne pobieranie Open-Meteo (2026-10-14)
+`qbot_pogoda_okno._get_json` (wschód/zachód słońca), `tools/rwgps/ride_verdict._fetch_hourly` (werdykt pogodowy po jeździe; + poprawka godziny opadu:
+klucz H = opad H..H+1) i `mcp_server.py` (`get_weather`, ciśnienie w raporcie) — przez `qbot_wx.get_url` (w `mcp_server` pomocnik `_om_get` z interfejsem
+httpx: `.json()`, `.raise_for_status()`). Poza rdzeniem celowo: test łączności `_tool_qbot_public_web_status`, archiwa IMGW w `qbot_pogoda_verif`.

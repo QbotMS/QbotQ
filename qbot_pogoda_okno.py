@@ -27,8 +27,8 @@ _C: dict = {}
 
 
 def _get_json(url: str, t: float = 15):
-    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "QBot/1.0"}), timeout=t) as r:
-        return json.load(r)
+    import qbot_wx as WX   # E4.5: wspolny transport/cache Open-Meteo
+    return WX.get_url(url, timeout=t, ttl=3600)
 
 
 def _ens_prob(lat: float, lon: float) -> dict:

@@ -37,14 +37,15 @@ def _fetch_hourly(url, lat, lon, day):
     params = {"latitude": round(lat, 4), "longitude": round(lon, 4),
               "hourly": "temperature_2m,precipitation,wind_speed_10m,wind_direction_10m",
               "wind_speed_unit": "ms", "timezone": "auto", "start_date": day, "end_date": day}
-    r = httpx.get(url, params=params, timeout=25.0)
-    r.raise_for_status()
-    h = r.json().get("hourly", {})
+    import urllib.parse as _up
+    import qbot_wx as WX   # E4.5: wspolny transport/cache Open-Meteo
+    h = WX.get_url(url + "?" + _up.urlencode(params), timeout=25.0, ttl=600).get("hourly", {})
     times = h.get("time", [])
     out = {}
     for i, ts in enumerate(times):
         out[ts[:13]] = {"temp": h.get("temperature_2m", [None]*len(times))[i],
-                        "precip": h.get("precipitation", [None]*len(times))[i],
+                        # opad Open-Meteo o T = godzina PRZED T -> godzina T..T+1 bierze wartosc z T+1 (14.10.2026)
+                        "precip": (h.get("precipitation") or [None]*len(times))[i + 1] if i + 1 < len(times) else None,
                         "wspeed": h.get("wind_speed_10m", [None]*len(times))[i],
                         "wdir": h.get("wind_direction_10m", [None]*len(times))[i]}
     return out
