@@ -1,4 +1,4 @@
-/* pogoda-punkt-viz.js v2 (2026-10-14: UTCI w jezdzie + 'na rowerze' + WBGT jak w silniku tras) — „Warunki godzina po godzinie” dla PUNKTU (strona Pogoda), w jezyku wizualnym Analizy trasy
+/* pogoda-punkt-viz.js v3 (2026-10-14: odczuwalna, UTCI w jezdzie, 'na rowerze', WBGT -- jak w silniku tras) — „Warunki godzina po godzinie” dla PUNKTU (strona Pogoda), w jezyku wizualnym Analizy trasy
    (raport-pogoda-viz.js: kafelki, ikony nieba, temperatura na tle stref ubioru, slupki deszczu, wiatr). Wspolne elementy z window.wxVizKit.
    wxPointViz(godziny): godziny = /api/pogoda/warunki .godziny bez przeszlosci (t, iso, temp, odcz, wiatr, kier, skad, porywy, opad, szansa,
    chmury, dzien, mgla, lod, nawierzchnia, widocznosc, grunt). Wiatr: strzalka = dokad wieje; kolor wg porywow (progi Trenera 8 / 13 m/s). */
@@ -22,7 +22,7 @@ window.wxPointViz = function(G){
   var risk=[mg?"mgła "+mg:null, ld?"oblodzenie "+ld:null, bl?"błoto "+bl:null].filter(Boolean);
   var head='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:2px 0 12px">'+
     (function(){ var nr=vals("na_rowerze"), nmn=nr.length?Math.min.apply(null,nr):omn, nmx=nr.length?Math.max.apply(null,nr):omn;
-      return tile("&#127777;&#65039;","Temperatura",f(tmn)+" … "+f(tmx)+"°C","na rowerze "+f(nmn)+"…"+f(nmx)+"°C · "+zoneOf(nmn)[3]+" · w jeździe od "+f(omn)+"°C"); })()+
+      return tile("&#127777;&#65039;","Temperatura",f(tmn)+" … "+f(tmx)+"°C","na rowerze "+f(nmn)+"…"+f(nmx)+"°C · "+zoneOf(nmn)[3]+" · odczuwalna od "+f(omn)+"°C"); })()+
     tile("&#9728;&#65039;","Niebo",cAvg<20?"bezchmurnie":(cAvg<50?"przejaśnienia":(cAvg<80?"pochmurno":"zachmurzenie")),"średnio "+f(cAvg)+"% chmur")+
     tile("&#127788;&#65039;","Wiatr","do "+f(wmax,1)+" m/s","porywy do "+f(gmax,1)+" m/s",gmax>=13?"bad":(gmax>=8?"warn":null))+
     tile("&#9748;","Deszcz",(pmax<10&&mmSum<0.1)?"sucho":(f(mmSum,1)+" mm"),"maks. "+f(pmax)+"% szansy",pmax>=40?"warn":null)+
@@ -52,7 +52,7 @@ window.wxPointViz = function(G){
   [0,iMin,iMax,n-1].filter(function(v,i,a){ return a.indexOf(v)===i; }).forEach(function(i){ var t=num(G[i].temp); if(t==null) return;
     T('<circle cx="'+x(i)+'" cy="'+ty(t)+'" r="5" style="fill:var(--accent)"/><text x="'+x(i)+'" y="'+(ty(t)-11)+'" text-anchor="middle" '+ink+'>'+f(t,1)+'°</text>'); });
   G.forEach(function(h,i){ T('<rect x="'+(x(i)-st/2)+'" y="'+TY0+'" width="'+st+'" height="'+(TY1-TY0)+'" style="fill:transparent"><title>'+esc(h.t)+' · '+f(h.temp,1)+
-    '°C, w jeździe (UTCI) '+f(h.odcz,1)+'°C, na rowerze '+f(h.na_rowerze,1)+'°C ('+zoneOf(num(h.na_rowerze!=null?h.na_rowerze:h.odcz)||0)[3]+')'+(num(h.wbgt)!=null&&h.wbgt>=18?' · WBGT '+f(h.wbgt,1):'')+'</title></rect>'); });
+    '°C, odczuwalna '+f(h.odcz,1)+'°C, w jeździe (UTCI) '+f(h.utci,1)+'°C, na rowerze '+f(h.na_rowerze,1)+'°C ('+zoneOf(num(h.na_rowerze!=null?h.na_rowerze:h.odcz)||0)[3]+')'+(num(h.wbgt)!=null&&h.wbgt>=18?' · WBGT '+f(h.wbgt,1):'')+'</title></rect>'); });
   // deszcz: slupki szansy (zespol) + mm (model)
   var RY=272;
   T('<text x="0" y="'+(RY-6)+'" '+mut+'>deszcz</text>');
@@ -89,7 +89,7 @@ window.wxPointViz = function(G){
   T('</svg>');
   var lg='<div style="display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--ink2);margin:0 0 2px">'+
     '<span style="display:flex;align-items:center;gap:6px"><span style="width:18px;height:3px;background:var(--accent);border-radius:2px"></span>temperatura</span>'+
-    '<span style="display:flex;align-items:center;gap:6px"><span style="width:18px;border-top:2px dashed var(--muted)"></span>odczuwalna w jeździe (UTCI)</span>'+
+    '<span style="display:flex;align-items:center;gap:6px"><span style="width:18px;border-top:2px dashed var(--muted)"></span>odczuwalna (jak na trasie)</span>'+
     '<span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:10px;background:var(--blue);opacity:.6;border-radius:2px"></span>szansa deszczu (zespół)</span>'+
     '<span style="display:flex;align-items:center;gap:6px"><span style="color:var(--warn)">&#10148;</span>wiatr: dokąd wieje, liczba nad = porywy</span></div>';
   return '<div class="wx-day">'+head+lg+o.join("")+'</div>';

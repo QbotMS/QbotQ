@@ -82,8 +82,9 @@ def _personal_offset() -> float:
 
 
 def _odczucie(r: dict, lat: float, lon: float, pres, ghi, dr, po: float) -> None:
-    """E3 (14.10.2026) -- odczucie jak w silniku tras (jeden silnik): 'odcz' = UTCI W JEZDZIE (route_utci; temp. promieniowania z bilansu
-    slonca route_meteo_engine._thermal_solve, wiatr efektywny = wiatr 10 m + ped ~20 km/h), 'na_rowerze' = temp. do ubioru (ride_thermal:
+    """E3 (14.10.2026) -- odczucie jak w silniku tras (jeden silnik): 'odcz' = ODCZUWALNA JAK NA TRASIE (route_utci.apparent_temp_steadman:
+    temp., wilgotnosc, wiatr 10 m, slonce przez temp. promieniowania z route_meteo_engine._thermal_solve), 'utci' = UTCI W JEZDZIE (wiatr
+    efektywny = wiatr 10 m + ped ~20 km/h; na trasie tylko do flag zimna), 'na_rowerze' = temp. do ubioru (ride_thermal:
     kalibracja na czujniku Karoo + osobista korekta 'W czym jechalem'), 'wbgt' (pelne slonce). Poprzednia odczuwalna Open-Meteo -> 'odcz_om'
     (na niej sa skalibrowane progi Trenera -- Okno jazdy porownuje z progami wlasnie ja)."""
     r["odcz_om"] = r.get("odcz"); r["utci"] = r["wbgt"] = r["na_rowerze"] = None
@@ -107,8 +108,9 @@ def _odczucie(r: dict, lat: float, lon: float, pres, ghi, dr, po: float) -> None
         u = UT.utci_c(T, tm, v, rh)
         r["utci"] = round(u, 1) if u == u else None
         r["wbgt"] = round(wb, 1) if wb == wb else None
-        if r["utci"] is not None:
-            r["odcz"] = r["utci"]
+        fe = UT.apparent_temp_steadman(T, rh, ws, tm)   # = per_segment["feels"] w silniku tras
+        if fe == fe and fe is not None:
+            r["odcz"] = round(fe, 1)
     except Exception:
         pass
 

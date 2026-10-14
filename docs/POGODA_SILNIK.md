@@ -64,8 +64,8 @@ NaN na całej trasie, a burze (CAPE) były niewykrywalne — błąd istniał w P
 każdą wielkość z brakami z `best_match`; pole `model` wymienia uzupełnione wielkości. Klucze cache punktów i tabeli cieplnej: sufiks `e3b`.
 
 ## E3.1 — odczucie dla punktu jak w silniku tras (2026-10-14)
-`qbot_pogoda.conditions_point` → `_odczucie()`: **`odcz` = UTCI w jeździe** (`route_utci.utci_c`; temp. promieniowania z
+`qbot_pogoda.conditions_point` → `_odczucie()`: **`odcz` = odczuwalna jak na trasie** (`apparent_temp_steadman` z temp. promieniowania — to samo co `per_segment.feels`), **`utci` = UTCI w jeździe** (`route_utci.utci_c`; temp. promieniowania z
 `route_meteo_engine._thermal_solve` przy pełnym słońcu, wiatr efektywny = √(wiatr² + 5,6²) m/s, tj. pęd ~20 km/h), **`na_rowerze`** =
 temp. do ubioru (`ride_thermal.route_delta` — kalibracja na czujniku Karoo — + `personal_offset` z „W czym jechałem”), **`wbgt`**.
 Dawna odczuwalna Open-Meteo → `odcz_om`; Okno jazdy porównuje z progami Trenera właśnie ją (progi skalibrowane na niej — rekalibracja w E4).
-Warunki (viz v2): kafel temperatury „na rowerze … · strefa ubioru · w jeździe od …”, linia przerywana = UTCI w jeździe, WBGT w dymku ≥ 18 °C.
+Warunki (viz v2): kafel temperatury „na rowerze … · strefa ubioru · w jeździe od …”, linia przerywana = odczuwalna (jak na trasie), UTCI w jeździe w dymku, WBGT w dymku ≥ 18 °C.
