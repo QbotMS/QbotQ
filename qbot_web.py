@@ -7015,6 +7015,20 @@ def api_pogoda_model(lat: float, lon: float, godziny: int = 12):
     return PG.model_point(lat, lon, hours=max(1, min(int(godziny), 48)))
 
 
+@app.get("/api/pogoda/warunki")
+def api_pogoda_warunki(lat: float, lon: float, godziny: int = 24):
+    """Warunki dla roweru w punkcie, godzinowo: temp/odczuwalna, wiatr/porywy (m/s), mgla, oblodzenie, nawierzchnia, rosa."""
+    import qbot_pogoda as PG
+    return PG.conditions_point(lat, lon, hours=max(6, min(int(godziny), 72)))
+
+
+@app.get("/api/pogoda/kwadraty")
+def api_pogoda_kwadraty():
+    """Zdobyte kwadraty z14 (StatsHunters) do warstwy na mapie Pogody."""
+    import qbot_pogoda as PG
+    return PG.kwadraty(os.getenv("STATSHUNTERS_SHARE_ID", _env().get("STATSHUNTERS_SHARE_ID", "")))
+
+
 def _owner_only(request: Request):
     if (request.scope.get("qbot_auth") or {}).get("kind") != "owner":
         raise HTTPException(status_code=403, detail="tylko wlasciciel")

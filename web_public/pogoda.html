@@ -9,16 +9,20 @@
 <link rel="stylesheet" href="/nav.css?v=14">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <title>QBot — Pogoda</title>
-<!-- 2026-10-14 Pogoda krok 1 (radar). Uklad jak Analiza trasy: mapa pod cala strona, lewy panel z paskiem ikon (siega do dolnego paska),
-     dolny pasek rozciagany w pionie (warstwy + os czasu mapy; po rozciagnieciu wykres osi punktu), przycisk podkladu (qTilesCycle).
-     Dane: /api/radar/meta|frame|punkt, /api/pogoda/dom|model. Dok.: docs/POGODA_RADAR.md -->
+<!-- 2026-10-14 Pogoda. Uklad jak Analiza trasy: mapa pod cala strona, lewy panel z paskiem ikon (do dolnego paska), dolny pasek
+     rozciagany (warstwy + os czasu; po rozciagnieciu wykres punktu: opad / temperatura i wiatr). Menu mapy standardowe (qMapCtl):
+     Wysrodkuj, Mapa (qTilesCycle), Kwadraty (StatsHunters z14 w widoku), Radar wyrazny (przygaszony podklad).
+     Dane: /api/radar/meta|frame|punkt, /api/pogoda/dom|model|warunki|kwadraty. Dok.: docs/POGODA_RADAR.md -->
 <style>
 html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
 :root{--L:calc(var(--qnav-rail,56px) + 12px);--dockh:110px;--glass:rgba(250,247,238,.97)}
 html.theme-dark{--glass:rgba(13,16,22,.95)}
 #map{position:fixed;inset:0;z-index:1}
 .leaflet-bottom{bottom:calc(var(--dockh) + 18px)!important}
-#lp{position:fixed;z-index:1100;top:12px;bottom:calc(var(--dockh) + 24px);left:var(--L);width:min(310px,72vw);background:var(--glass);
+#map.rfocus .leaflet-tile-pane{opacity:.55}
+.leaflet-radar-pane img{filter:saturate(1.7) contrast(1.25)}
+#map.rfocus .leaflet-radar-pane img{filter:saturate(2) contrast(1.4) brightness(1.05)}
+#lp{position:fixed;z-index:1100;top:12px;bottom:calc(var(--dockh) + 24px);left:var(--L);width:min(330px,72vw);background:var(--glass);
   border:1px solid var(--line);border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,.18);display:flex;transition:width .2s}
 #lp .body{flex:1;min-width:0;overflow:auto;padding:12px 14px}
 #lp .rail{flex:0 0 46px;display:flex;flex-direction:column;gap:6px;padding:10px 6px;border-left:1px solid var(--line);align-items:center}
@@ -32,7 +36,7 @@ body.open #lp{width:min(46vw,700px);min-width:min(420px,calc(100vw - 80px))}
 .ttl{display:flex;align-items:center;gap:8px;margin:0 0 8px}.ttl h1{font-size:18px;margin:0;flex:1}
 .x{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink2);border-radius:8px;width:26px;height:26px;cursor:pointer;display:none}
 body.open .x{display:block}
-.sec-h{font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:12px 0 6px;font-weight:700}
+.sec-h{font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;font-weight:700}
 .pos{display:flex;flex-wrap:wrap;gap:5px}
 .pos button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:4px 9px;font:inherit;font-size:12.5px;cursor:pointer}
 .pos button.on{border-color:var(--accent);color:var(--accent-ink,var(--accent));font-weight:700}
@@ -41,17 +45,20 @@ body.open .x{display:block}
 .verd2{font-size:13.5px;color:var(--ink2);margin:0 0 8px}
 .warn{border-left:4px solid var(--accent);padding:4px 8px;font-size:12.5px;margin:6px 0;background:var(--well);border-radius:6px}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:13px}.kv span{color:var(--muted)}
+.kv b.bad{color:var(--bad)}.kv b.wrn{color:var(--accent-ink,var(--accent))}
 .note{font-size:12px;color:var(--muted);line-height:1.45;margin-top:8px}
 .soonbox{border:1px dashed var(--line);border-radius:10px;padding:10px 12px;font-size:13.5px;color:var(--ink2)}
+.wrow{margin:0 0 10px}.wrow .h{display:flex;justify-content:space-between;font-size:13px}.wrow .h b{font-size:13.5px}.wrow .h span{color:var(--muted);font-size:12px}
+.strip{display:flex;gap:1px;margin-top:3px}.strip span{flex:1;height:20px;border-radius:2px}
+.sx{display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
 /* dolny pasek */
 #dock{position:fixed;z-index:1100;left:var(--L);right:12px;bottom:12px;height:var(--dockh);box-sizing:border-box;background:var(--glass);
   border:1px solid var(--line);border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,.18);padding:10px 12px 8px;display:flex;flex-direction:column;gap:6px}
 .grip{position:absolute;top:-1px;left:50%;transform:translateX(-50%);width:120px;height:14px;cursor:ns-resize;display:flex;align-items:center;justify-content:center;touch-action:none}
-.grip::before{content:"";width:44px;height:4px;border-radius:2px;background:var(--line2,var(--muted));opacity:.8}
+.grip::before{content:"";width:44px;height:4px;border-radius:2px;background:var(--muted);opacity:.7}
 .btabs{display:flex;gap:4px;align-items:center;overflow-x:auto;scrollbar-width:none;flex:0 0 auto}
 .btab{appearance:none;border:0;background:transparent;color:var(--ink2);border-radius:9px;padding:5px 11px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;white-space:nowrap}
 .btab.on{background:var(--accent);color:#fff}.btab:disabled{opacity:.4;cursor:default}.btab small{font-weight:500;margin-left:4px}
-.basebtn{margin-left:auto;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:9px;padding:5px 11px;font:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
 .trow{display:flex;align-items:center;gap:10px;flex:0 0 auto}
 .trow button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;width:34px;height:30px;cursor:pointer}
 .tl{flex:1;position:relative;height:40px}.tl input{position:absolute;left:0;right:0;top:0;width:100%;margin:0}
@@ -62,18 +69,28 @@ body.open .x{display:block}
 .dchart{flex:1 1 auto;min-height:0;display:none;flex-direction:column;border-top:1px solid var(--line);padding-top:6px}
 body.dock-big .dchart{display:flex}
 .dhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px}
-.dhead b{font-size:13.5px}
+.seg2 button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:3px 10px;font:inherit;font-size:12.5px;cursor:pointer}
+.seg2 button.on{border-color:var(--accent);color:var(--accent-ink,var(--accent));font-weight:700}
 .chips{display:flex;flex-wrap:wrap;gap:5px}
 .chip{border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:12px;cursor:pointer;user-select:none;background:var(--card)}
 .chip.off{opacity:.4;text-decoration:line-through}.chip i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
 .cwrap{position:relative;flex:1 1 auto;min-height:0}
-.dhint{font-size:11.5px;color:var(--muted)}
-body.dock-big .dhint{display:none}
-@media(max-width:820px){:root{--L:8px}#lp{width:calc(100vw - 16px);bottom:auto;max-height:45vh}body.open #lp{width:calc(100vw - 16px);min-width:0}.tm{min-width:92px}.legend{display:none}}
+.dhint{font-size:11.5px;color:var(--muted)}body.dock-big .dhint{display:none}
+.map-ctl-info{font-size:12px;color:var(--ink2);background:var(--glass);border-radius:6px;padding:2px 6px}
+@media(max-width:820px){:root{--L:8px}#lp{width:calc(100vw - 16px);bottom:auto;max-height:45vh}body.open #lp{width:calc(100vw - 16px);min-width:0}.tm{min-width:92px}.legend{display:none}
+  .map-ctl.mob{position:fixed;z-index:1050;right:10px;top:calc(45vh + 24px);display:flex;flex-direction:column;gap:6px}
+  .map-ctl.mob button{background:var(--glass);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:6px 10px;font:inherit;font-size:13px}}
 </style>
 </head>
 <body>
 <div id="map"></div>
+<div class="map-ctl" id="mapctl">
+  <button type="button" id="mc-fit">Wyśrodkuj</button>
+  <button type="button" id="mc-base">Mapa: …</button>
+  <button type="button" id="mc-tiles">Kwadraty: wł</button>
+  <span class="map-ctl-info" id="tiles-cnt"></span>
+  <button type="button" id="mc-radar">Radar: wyraźny</button>
+</div>
 
 <div id="lp">
   <div class="body">
@@ -83,35 +100,40 @@ body.dock-big .dhint{display:none}
     <div class="poslab" id="poslab"></div>
 
     <div data-s="radar">
-      <div class="sec-h">U Ciebie</div>
+      <div class="sec-h">Opad — radar</div>
       <div class="verd" id="verd">…</div>
       <div class="verd2" id="verd2"></div>
       <div id="warn"></div>
       <div class="kv" id="kv"></div>
-      <div class="note">Opad do 60 min przewiduje radar i to jest najpewniejsza część. Od 60 do 120 min to orientacja, bo opad może urosnąć albo zaniknąć.
-        Dalej widać model ICON od DWD (siatka 2 km, a dalej 7 km). Oś czasu z wykresem zobaczysz po rozciągnięciu dolnego paska uchwytem.</div>
+      <div class="sec-h">Warunki teraz</div>
+      <div class="kv" id="kvw">…</div>
+      <div class="sec-h">Najbliższe 12 h</div>
+      <div class="kv" id="kv12">…</div>
+      <div class="note">Opad do 60 min przewiduje radar i to jest najpewniejsza część, od 60 do 120 min to orientacja. Pozostałe parametry pochodzą z modelu ICON (DWD).
+        Wykresy zobaczysz po rozciągnięciu dolnego paska uchwytem, a godziny dla każdego parametru pod ikoną ≋.</div>
     </div>
+    <div data-s="warunki" hidden><div id="wstrips">…</div>
+      <div class="note">Progi: mgła poniżej 1 km, ograniczona widoczność poniżej 4 km. Oblodzenie liczone z gruntu ≤ 0,5°C oraz opadu z ostatnich 12 h albo szronu (punkt rosy ≥ grunt).
+        Nawierzchnia mokra przy ≥ 2 mm z 6 h, wilgotna przy ≥ 0,3 mm. Rosa, gdy temperatura jest bliżej niż 2°C od punktu rosy.</div></div>
     <div data-s="okno" hidden><div class="soonbox"><b>Wkrótce (krok 2).</b> Odpowiedź na pytanie „przesunąć jazdę czy moknąć?” dla jazdy z kalendarza: porównanie startów godzina po godzinie, suma deszczu na jazdę, wiatr, zgodność modeli.</div></div>
     <div data-s="weekend" hidden><div class="soonbox"><b>Wkrótce (krok 3).</b> Mapa oceny miejsc pod dłuższą jazdę w weekend: opad, wiatr, a zimą też temperatura.</div></div>
-    <div data-s="warunki" hidden><div class="soonbox"><b>Wkrótce (krok 4).</b> Mgła, oblodzenie, stan nawierzchni i wilgoć przy ziemi godzina po godzinie.</div></div>
   </div>
   <div class="rail" id="rail">
-    <button class="rt on" data-s="radar" style="--tc:#7fb3ec">☂<span class="lb">U Ciebie · radar</span></button>
+    <button class="rt on" data-s="radar" style="--tc:#7fb3ec">☂<span class="lb">U Ciebie · teraz</span></button>
+    <button class="rt" data-s="warunki" style="--tc:#c9a0f0">≋<span class="lb">Warunki godzina po godzinie</span></button>
     <button class="rt soon" data-s="okno" style="--tc:#f0b84f">◷<span class="lb">Okno jazdy · wkrótce</span></button>
     <button class="rt soon" data-s="weekend" style="--tc:#7ccf8a">★<span class="lb">Gdzie w weekend · wkrótce</span></button>
-    <button class="rt soon" data-s="warunki" style="--tc:#c9a0f0">≋<span class="lb">Warunki dla roweru · wkrótce</span></button>
   </div>
 </div>
 
 <div id="dock">
-  <div class="grip" id="grip" title="Przeciągnij, aby zmienić wysokość"></div>
+  <div class="grip" id="grip" title="Przeciągnij, aby zmienić wysokość (podwójny klik: duży/mały)"></div>
   <div class="btabs" id="btabs">
     <button class="btab on" data-l="opad">Opad</button>
-    <button class="btab" disabled>Wiatr<small>wkrótce</small></button>
-    <button class="btab" disabled>Temperatura<small>wkrótce</small></button>
-    <button class="btab" disabled>Mgła<small>wkrótce</small></button>
-    <button class="btab" disabled>Oblodzenie<small>wkrótce</small></button>
-    <button class="basebtn" id="basebtn" type="button" title="Zmień podkład mapy">Podkład: …</button>
+    <button class="btab" disabled>Wiatr<small>mapa wkrótce</small></button>
+    <button class="btab" disabled>Temperatura<small>mapa wkrótce</small></button>
+    <button class="btab" disabled>Mgła<small>mapa wkrótce</small></button>
+    <button class="btab" disabled>Oblodzenie<small>mapa wkrótce</small></button>
   </div>
   <div class="trow">
     <button id="play" type="button" title="Odtwórz">▶</button>
@@ -120,9 +142,9 @@ body.dock-big .dhint{display:none}
     <div class="legend"><i style="background:#9bc8f5"></i>mżawka <i style="background:#286ed2"></i>słaby <i style="background:#28af46"></i>umiark.
       <i style="background:#f5dc28"></i><i style="background:#f59620"></i>silny <i style="background:#e63c28"></i><i style="background:#be1e78"></i>burza</div>
   </div>
-  <div class="dhint">↕ Przeciągnij uchwyt u góry paska, żeby zobaczyć oś czasu opadu u Ciebie (radar → model).</div>
+  <div class="dhint">↕ Przeciągnij uchwyt u góry paska: wykres opadu oraz temperatury i wiatru u Ciebie.</div>
   <div class="dchart">
-    <div class="dhead"><b>Opad u Ciebie</b><span class="chips" id="chips"></span></div>
+    <div class="dhead"><span class="seg2" id="cmode"><button data-c="opad" class="on">Opad</button> <button data-c="tw">Temperatura i wiatr</button></span><span class="chips" id="chips"></span></div>
     <div class="cwrap"><canvas id="tl1"></canvas></div>
   </div>
 </div>
@@ -136,23 +158,45 @@ body.dock-big .dhint{display:none}
 "use strict";
 function $(i){return document.getElementById(i);}
 function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()||"#888";}
-function pl(x){return String(x).replace(".",",");}
+function pl(x){return x==null?"–":String(x).replace(".",",");}
+function r1(x){return x==null?"–":pl(Math.round(x*10)/10);}
 function hhmm(d){return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2);}
 function J(u){return fetch(u,{credentials:"same-origin"}).then(function(r){return r.json();});}
 function LS(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v);}catch(e){return null;}}
 
-var map=L.map("map",{zoomControl:false}).setView([52.0,19.6],7);
-L.control.zoom({position:"topright"}).addTo(map);
+var map=L.map("map",{zoomControl:true,preferCanvas:false}).setView([52.0,19.6],7);
 var base=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:17,attribution:"&copy; OpenStreetMap"}).addTo(map);
 if(window.qTilesAttach)window.qTilesAttach(map,base,{dayGray:true});
+map.createPane("kw"); map.getPane("kw").style.zIndex=350;
+map.createPane("radar"); map.getPane("radar").style.zIndex=420; map.getPane("radar").classList.add("leaflet-radar-pane");
 
-/* ---- podklad: kolor / szara / ciemna / czarna (qmap-tiles), zapamietany ---- */
-var BNAME={kolor:"kolor",szara:"szara",ciemna:"ciemna",czarna:"czarna"};
-function baseLabel(){ var st=window.qTilesState?window.qTilesState(map):null; $("basebtn").textContent="Podkład: "+(BNAME[st]||"—"); }
-$("basebtn").addEventListener("click",function(){ if(!window.qTilesCycle)return; var st=window.qTilesCycle(map); LS("qpogoda_base",st); baseLabel(); });
-setTimeout(function(){ var want=LS("qpogoda_base"); if(want&&window.qTilesCycle){ for(var i=0;i<4&&window.qTilesState(map)!==want;i++)window.qTilesCycle(map); } baseLabel(); },900);
+/* ---- menu mapy (jak w innych serwisach: qMapCtl, prawy dolny rog; telefon: przyciski na boku) ---- */
+var mc=$("mapctl"); if(window.qMapCtl&&window.matchMedia("(min-width: 821px)").matches)window.qMapCtl(mc,map); else mc.classList.add("mob");
+var BN={kolor:"kolor",szara:"szara",ciemna:"ciemna",czarna:"czarna"};
+function baseLabel(){ var st=window.qTilesState?window.qTilesState(map):null; $("mc-base").textContent="Mapa: "+(BN[st]||"–"); }
+$("mc-base").addEventListener("click",function(){ if(!window.qTilesCycle)return; LS("qpogoda_base",window.qTilesCycle(map)); baseLabel(); });
+document.addEventListener("qmapchange",baseLabel);
+setTimeout(function(){ var want=LS("qpogoda_base"); if(want&&window.qTilesCycle){for(var i=0;i<4&&window.qTilesState(map)!==want;i++)window.qTilesCycle(map);} baseLabel(); },900);
+var rfocus=LS("qpogoda_rfocus")!=="0";
+function paintR(){ map.getContainer().classList.toggle("rfocus",rfocus); $("mc-radar").textContent="Radar: "+(rfocus?"wyraźny":"zwykły"); }
+$("mc-radar").addEventListener("click",function(){ rfocus=!rfocus; LS("qpogoda_rfocus",rfocus?"1":"0"); paintR(); }); paintR();
+$("mc-fit").addEventListener("click",function(){ if(pos)map.setView([pos.lat,pos.lon],Math.max(map.getZoom(),9)); });
 
-/* ---- dolny pasek: wysokosc z uchwytu, zapamietana ---- */
+/* ---- kwadraty (StatsHunters z14): wszystkie zdobyte w widoku ---- */
+var KW=null, kwOn=LS("qpogoda_kw")!=="0", kwGrp=L.layerGroup(), kwRend=L.canvas({pane:"kw"});
+function t2ll(x,y){ var n=Math.pow(2,14), lon=x/n*360-180, lat=Math.atan(Math.sinh(Math.PI*(1-2*y/n)))*180/Math.PI; return [lat,lon]; }
+function drawKw(){ kwGrp.clearLayers(); if(!kwOn||!KW)return; if(map.getZoom()<8){$("tiles-cnt").textContent="przybliż, by zobaczyć kwadraty";return;}
+  var b=map.getBounds().pad(0.1), n=0;
+  KW.forEach(function(k){ var a=t2ll(k[0],k[1]), c=t2ll(k[0]+1,k[1]+1);
+    if(c[0]>b.getNorth()||a[0]<b.getSouth()||c[1]<b.getWest()||a[1]>b.getEast())return;
+    L.rectangle([a,c],{renderer:kwRend,color:"#1f6feb",weight:.6,fillColor:"#388bfd",fillOpacity:.18,interactive:false}).addTo(kwGrp); n++; });
+  $("tiles-cnt").textContent=n+" w widoku · "+KW.length+" razem"; }
+function paintKw(){ $("mc-tiles").textContent="Kwadraty: "+(kwOn?"wł":"wył"); if(kwOn)kwGrp.addTo(map); else {map.removeLayer(kwGrp);$("tiles-cnt").textContent="";} drawKw(); }
+$("mc-tiles").addEventListener("click",function(){ kwOn=!kwOn; LS("qpogoda_kw",kwOn?"1":"0"); paintKw(); });
+map.on("moveend",drawKw);
+J("/api/pogoda/kwadraty").then(function(d){ if(d.status==="OK"||d.kwadraty.length){KW=d.kwadraty;paintKw();} else {$("tiles-cnt").textContent="kwadraty: "+(d.error||d.status);} });
+
+/* ---- dolny pasek ---- */
 var DMIN=110;
 function setDock(h){ h=Math.max(DMIN,Math.min(Math.round(window.innerHeight*0.6),h)); document.documentElement.style.setProperty("--dockh",h+"px");
   document.body.classList.toggle("dock-big",h>=200); LS("qpogoda_dockh",String(h)); if(chart)chart.resize(); }
@@ -160,13 +204,12 @@ function setDock(h){ h=Math.max(DMIN,Math.min(Math.round(window.innerHeight*0.6)
   g.addEventListener("pointerdown",function(e){on=true;y0=e.clientY;h0=$("dock").getBoundingClientRect().height;g.setPointerCapture(e.pointerId);e.preventDefault();});
   g.addEventListener("pointermove",function(e){ if(on)setDock(h0+(y0-e.clientY)); });
   g.addEventListener("pointerup",function(){on=false;});
-  g.addEventListener("dblclick",function(){ setDock($("dock").getBoundingClientRect().height>=200?DMIN:330); });
-})();
+  g.addEventListener("dblclick",function(){ setDock($("dock").getBoundingClientRect().height>=200?DMIN:330); }); })();
 setDock(+(LS("qpogoda_dockh")||DMIN));
 window.addEventListener("resize",function(){ setDock($("dock").getBoundingClientRect().height); });
 
 /* ---- lewe menu ---- */
-var sec="radar", TTL={radar:"Pogoda · u Ciebie",okno:"Okno jazdy",weekend:"Gdzie w weekend",warunki:"Warunki dla roweru"};
+var sec="radar", TTL={radar:"Pogoda · u Ciebie",warunki:"Warunki godzina po godzinie",okno:"Okno jazdy",weekend:"Gdzie w weekend"};
 function openSec(s){ sec=s; document.querySelectorAll("#rail .rt").forEach(function(b){b.classList.toggle("on",b.dataset.s===s);});
   document.querySelectorAll("#lp .body [data-s]").forEach(function(d){d.hidden=d.dataset.s!==s;}); $("sttl").textContent=TTL[s];
   document.body.classList.toggle("open",s!=="radar"); }
@@ -175,7 +218,7 @@ $("close").addEventListener("click",function(){ openSec("radar"); });
 
 /* ---- pozycja ---- */
 var HOME=null, pos=null, pmode="moja", arrow=null, motion=null;
-var marker=L.circleMarker([52.23,21.01],{radius:7,color:"#fff",weight:2,fillColor:"#d0602a",fillOpacity:1});
+var marker=L.circleMarker([52.23,21.01],{radius:7,color:"#fff",weight:2,fillColor:"#d0602a",fillOpacity:1,pane:"markerPane"});
 function setPos(lat,lon,label){ pos={lat:lat,lon:lon,label:label}; marker.setLatLng([lat,lon]).addTo(map);
   $("poslab").textContent=label+" · "+pl(lat.toFixed(2))+", "+pl(lon.toFixed(2)); LS("qpogoda_pos",JSON.stringify({m:pmode,lat:lat,lon:lon,label:label})); loadPoint(); }
 function modeBtn(m){ pmode=m; document.querySelectorAll("#pos button").forEach(function(x){x.classList.toggle("on",x.dataset.m===m);}); }
@@ -204,40 +247,41 @@ function buildSteps(){ stop(); steps=[]; if(!meta||!meta.klatki.length)return;
     var l=document.createElement("div");l.className="seglab";l.style.left=s[0]+"%";l.textContent=s[3];$("tl").appendChild(l);});
   show(nr-1); }
 function show(i){ cur=i; $("slider").value=i; var s=steps[i]; if(!s)return; ovs.forEach(function(o){o.setOpacity(0);});
-  if(s.k==="radar"){ovs[s.i].setBounds(L.latLngBounds(meta.bounds));ovs[s.i].setOpacity(.9);}
-  else {var o=ovs[ovs.length-1];o.setBounds(L.latLngBounds(shiftBounds(meta.bounds,s.m)));o.setOpacity(s.k==="now"?.7:.45);}
+  if(s.k==="radar"){ovs[s.i].setBounds(L.latLngBounds(meta.bounds));ovs[s.i].setOpacity(1);}
+  else {var o=ovs[ovs.length-1];o.setBounds(L.latLngBounds(shiftBounds(meta.bounds,s.m)));o.setOpacity(s.k==="now"?.8:.5);}
   $("tm").innerHTML=hhmm(s.t)+(s.k==="radar"&&s.i===meta.klatki.length-1?" (teraz)":"")+"<small>"+(s.k==="radar"?"radar":s.k==="now"?"prognoza radaru +"+s.m+" min":"+"+s.m+" min · orientacyjnie")+"</small>"; }
 $("slider").addEventListener("input",function(){stop();show(+this.value);});
 function stop(){ if(timer){clearInterval(timer);timer=null;$("play").textContent="▶";} }
 $("play").addEventListener("click",function(){ if(timer){stop();return;} $("play").textContent="❚❚"; var hold=0;
   timer=setInterval(function(){ if(cur>=steps.length-1){ if(++hold<4)return; hold=0; show(0);} else show(cur+1); },400); });
 function loadFrames(m){ ovs.forEach(function(o){map.removeLayer(o);}); ovs=[]; meta=m;
-  (m.klatki||[]).forEach(function(f){ovs.push(L.imageOverlay("/api/radar/frame/"+f.id+".png",m.bounds,{opacity:0,interactive:false}).addTo(map));});
+  (m.klatki||[]).forEach(function(f){ovs.push(L.imageOverlay("/api/radar/frame/"+f.id+".png",m.bounds,{opacity:0,interactive:false,pane:"radar"}).addTo(map));});
   buildSteps(); if(!m.klatki.length)$("tm").textContent="brak klatek radaru"; }
 J("/api/radar/meta").then(function(m){ map.attributionControl.addAttribution(m.zrodlo); loadFrames(m); });
 
-/* ---- punkt: radar + model ---- */
-var chart=null, hid={};
-var SER=[{k:"hist",n:"radar — było",col:"#286ed2"},{k:"prog",n:"radar — prognoza",col:"#7fb3ec"},{k:"model",n:"model ICON",col:"#a58f63"},{k:"sz",n:"szansa (radar) %",col:"#d0602a"}];
-function loadPoint(){ $("verd").textContent="Liczę…"; $("verd2").textContent=""; $("warn").innerHTML="";
-  var q="lat="+pos.lat.toFixed(4)+"&lon="+pos.lon.toFixed(4);
-  Promise.all([J("/api/radar/punkt?"+q+"&horyzont="+NOW_MAX),J("/api/pogoda/model?"+q+"&godziny=12").catch(function(){return {status:"ERROR"};})]).then(function(r){
-    var d=r[0], m=r[1];
-    if(d.status!=="OK"){$("verd").textContent=d.error||d.status;return;}
-    var prev=motion; motion=d.ruch; if(!!prev!==!!motion||!steps.length)buildSteps();
-    $("verd").textContent=d.werdykt;
-    var rr=d.ruch, now=d.historia[d.historia.length-1], rows=[];
-    rows.push(["Teraz",(now.udzial||0)>=0.5?"pada, "+pl(now.mmh)+" mm/h":(now.mmh>0?"sucho (obok do "+pl(now.mmh)+" mm/h)":"sucho")]);
-    rows.push(["Opad idzie",rr?Math.round(rr.kmh)+" km/h, z "+rr.skad+" na "+rr.dokad:"brak opadu w okolicy"]);
-    if(rr)rows.push(["Pewność ruchu",(rr.rozrzut_kmh<10?"dobra":"średnia")+" (rozrzut "+Math.round(rr.rozrzut_kmh)+" km/h)"]);
-    rows.push(["Radar z",d.najnowsza+" ("+d.opoznienie_min+" min temu)"]);
-    if(m.status==="OK")rows.push(["Model",m.model]);
-    $("kv").innerHTML=rows.map(function(x){return "<span>"+x[0]+"</span><b>"+x[1]+"</b>";}).join("");
-    modelVerdict(d,m);
-    if(arrow){map.removeLayer(arrow);arrow=null;}
-    if(rr)arrow=L.marker([pos.lat,pos.lon],{interactive:false,icon:L.divIcon({className:"",iconSize:[0,0],html:
-      '<svg width="44" height="44" viewBox="0 0 46 46" style="transform:translate(-22px,-22px) rotate('+rr.dokad_deg+'deg)"><path d="M23 4 L33 22 L26 22 L26 42 L20 42 L20 22 L13 22 Z" fill="#d0602a" stroke="#fff" stroke-width="2"/></svg>'})}).addTo(map);
-    drawChart(d,m);
+/* ---- punkt: radar + model + warunki ---- */
+var chart=null, hid={}, cmode="opad", lastD=null, lastM=null, lastW=null;
+var SER_O=[{k:"hist",n:"radar — było",col:"#286ed2"},{k:"prog",n:"radar — prognoza",col:"#7fb3ec"},{k:"model",n:"model ICON",col:"#a58f63"},{k:"sz",n:"szansa (radar) %",col:"#d0602a"}];
+var SER_T=[{k:"temp",n:"temperatura °C",col:"#e8743b"},{k:"odcz",n:"odczuwalna °C",col:"#c0392b"},{k:"wiatr",n:"wiatr m/s",col:"#2e8b57"},{k:"por",n:"porywy m/s",col:"#7ccf8a"}];
+function loadPoint(){ $("verd").textContent="Liczę…"; $("verd2").textContent=""; $("warn").innerHTML=""; $("kvw").textContent="…"; $("kv12").textContent="…";
+  var q="lat="+pos.lat.toFixed(4)+"&lon="+pos.lon.toFixed(4), fb=function(){return {status:"ERROR"};};
+  Promise.all([J("/api/radar/punkt?"+q+"&horyzont="+NOW_MAX),J("/api/pogoda/model?"+q+"&godziny=12").catch(fb),J("/api/pogoda/warunki?"+q+"&godziny=24").catch(fb)]).then(function(r){
+    var d=r[0], m=r[1], w=r[2]; lastD=d; lastM=m; lastW=w;
+    if(d.status==="OK"){
+      var prev=motion; motion=d.ruch; if(!!prev!==!!motion||!steps.length)buildSteps();
+      $("verd").textContent=d.werdykt;
+      var rr=d.ruch, now=d.historia[d.historia.length-1], rows=[];
+      rows.push(["Teraz",(now.udzial||0)>=0.5?"pada, "+pl(now.mmh)+" mm/h":(now.mmh>0?"sucho (obok do "+pl(now.mmh)+" mm/h)":"sucho")]);
+      rows.push(["Opad idzie",rr?Math.round(rr.kmh)+" km/h, z "+rr.skad+" na "+rr.dokad:"brak opadu w okolicy"]);
+      if(rr)rows.push(["Pewność ruchu",(rr.rozrzut_kmh<10?"dobra":"średnia")+" (rozrzut "+Math.round(rr.rozrzut_kmh)+" km/h)"]);
+      rows.push(["Radar z",d.najnowsza+" ("+d.opoznienie_min+" min temu)"]);
+      $("kv").innerHTML=rows.map(function(x){return "<span>"+x[0]+"</span><b>"+x[1]+"</b>";}).join("");
+      modelVerdict(d,m);
+      if(arrow){map.removeLayer(arrow);arrow=null;}
+      if(rr)arrow=L.marker([pos.lat,pos.lon],{interactive:false,icon:L.divIcon({className:"",iconSize:[0,0],html:
+        '<svg width="44" height="44" viewBox="0 0 46 46" style="transform:translate(-22px,-22px) rotate('+rr.dokad_deg+'deg)"><path d="M23 4 L33 22 L26 22 L26 42 L20 42 L20 22 L13 22 Z" fill="#d0602a" stroke="#fff" stroke-width="2"/></svg>'})}).addTo(map);
+    } else $("verd").textContent=d.error||d.status;
+    renderWarunki(w); drawChart();
   }).catch(function(e){$("verd").textContent="Błąd: "+e;}); }
 function modelVerdict(d,m){
   if(m.status!=="OK"){$("verd2").textContent="Model ICON chwilowo niedostępny — dalsza część osi tylko z radaru.";return;}
@@ -248,22 +292,64 @@ function modelVerdict(d,m){
   var rWet=d.prognoza.some(function(p){return p.min<=60&&(p.udzial||0)>=0.5;});
   var mWet=m.punkty.some(function(p){var t=new Date(p.iso);return t>now&&t<=new Date(now.getTime()+3600e3)&&p.mmh>=0.5;});
   if(d.ruch&&rWet!==mWet)$("warn").innerHTML='<div class="warn">Radar i model różnią się w najbliższej godzinie (radar: '+(rWet?"pada":"sucho")+', model: '+(mWet?"pada":"sucho")+'). Na najbliższą godzinę bardziej wiarygodny jest radar.</div>'; }
-function drawChart(d,m){ var lab=[],a=[],b=[],c=[],z=[];
-  d.historia.slice(-12).forEach(function(h){lab.push(h.t);a.push(h.mmh);b.push(null);c.push(null);z.push(h.udzial==null?null:Math.round(h.udzial*100));});
-  d.prognoza.forEach(function(p){lab.push(p.t);a.push(null);b.push(p.mmh);c.push(null);z.push(p.udzial==null?null:Math.round(p.udzial*100));});
-  var horizon=new Date(d.prognoza.length?d.prognoza[d.prognoza.length-1].iso:Date.now());
-  if(m.status==="OK")m.punkty.forEach(function(p){ if(new Date(p.iso)<=horizon)return; lab.push(p.t);a.push(null);b.push(null);c.push(p.mmh);z.push(null);});
-  if(chart)chart.destroy();
-  chart=new Chart($("tl1"),{data:{labels:lab,datasets:[
-    {type:"bar",label:SER[0].n,data:a,backgroundColor:SER[0].col,yAxisID:"y",hidden:!!hid.hist},
-    {type:"bar",label:SER[1].n,data:b,backgroundColor:SER[1].col,yAxisID:"y",hidden:!!hid.prog},
-    {type:"bar",label:SER[2].n,data:c,backgroundColor:SER[2].col,yAxisID:"y",hidden:!!hid.model},
-    {type:"line",label:SER[3].n,data:z,borderColor:SER[3].col,backgroundColor:SER[3].col,yAxisID:"y2",pointRadius:1.5,borderWidth:1.5,hidden:!!hid.sz}]},
-    options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:"index",intersect:false},
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(x){var v=x.parsed.y;if(v==null)return null;return x.dataset.label+": "+pl(v)+(x.dataset.yAxisID==="y2"?" %":" mm/h");}}}},
-      scales:{x:{stacked:true,grid:{display:false},ticks:{maxRotation:0,maxTicksLimit:14,color:css("--muted")}},
-        y:{stacked:true,beginAtZero:true,suggestedMax:2,ticks:{color:css("--muted")},title:{display:true,text:"mm/h"}},
-        y2:{position:"right",min:0,max:100,grid:{display:false},ticks:{color:css("--muted")},title:{display:true,text:"%"}}}}});
+
+/* ---- warunki: teraz, 12 h, paski godzinowe ---- */
+var MG=["dobra","ograniczona","MGŁA"], LD=["brak","niskie","możliwe","WYSOKIE"], NW=["sucha","wilgotna","mokra / błoto"];
+function renderWarunki(w){
+  if(!w||w.status!=="OK"){$("kvw").textContent="Parametry chwilowo niedostępne.";$("kv12").textContent="";$("wstrips").textContent="Brak danych.";return;}
+  var fut=w.godziny.filter(function(h){return !h.przeszlosc;}), n=fut[0]; if(!n){$("kvw").textContent="Brak danych.";return;}
+  var cl=function(v,a,b){return v>=b?"bad":v>=a?"wrn":"";};
+  var rows=[["Temperatura",r1(n.temp)+"°C (odczuwalna "+r1(n.odcz)+"°C)",""],
+    ["Wiatr",r1(n.wiatr)+" m/s z "+(n.skad||"–")+", porywy "+r1(n.porywy)+" m/s",cl(n.porywy||0,10,15)],
+    ["Widoczność",(n.widocznosc==null?"–":(n.widocznosc>=10000?"ponad 10 km":pl((n.widocznosc/1000).toFixed(1))+" km"))+" · "+(n.mgla==null?"–":MG[n.mgla]),cl(n.mgla||0,1,2)],
+    ["Oblodzenie",LD[n.lod]+" (grunt "+r1(n.grunt)+"°C)",cl(n.lod,2,3)],
+    ["Nawierzchnia",NW[n.nawierzchnia],cl(n.nawierzchnia,1,2)],
+    ["Wilgoć / rosa",n.zapas_rosy==null?"–":(n.zapas_rosy<2?"rosa, mokre liście, parują okulary":"sucho przy ziemi")+" (wilg. "+Math.round(n.rh||0)+"%)",n.zapas_rosy!=null&&n.zapas_rosy<2?"wrn":""]];
+  $("kvw").innerHTML=rows.map(function(x){return "<span>"+x[0]+"</span><b class=\""+x[2]+"\">"+x[1]+"</b>";}).join("");
+  var f12=fut.slice(0,12), mx=function(k){return Math.max.apply(null,f12.map(function(h){return h[k]==null?-99:h[k];}));},
+      mn=function(k){return Math.min.apply(null,f12.map(function(h){return h[k]==null?99:h[k];}));},
+      hrs=function(fn){var a=f12.filter(fn).map(function(h){return h.t;});return a.length?a[0]+(a.length>1?"–"+a[a.length-1]:""):null;};
+  var r12=[["Temperatura",r1(mn("temp"))+" … "+r1(mx("temp"))+"°C"],["Wiatr",
+    "do "+r1(mx("wiatr"))+" m/s, porywy do "+r1(mx("porywy"))+" m/s"],["Opad (model)",r1(f12.reduce(function(s,h){return s+(h.opad||0);},0))+" mm"],
+    ["Mgła",hrs(function(h){return h.mgla===2;})||"nie"],["Oblodzenie",hrs(function(h){return h.lod>=2;})||"nie"],["Mokra nawierzchnia",hrs(function(h){return h.nawierzchnia===2;})||"nie"]];
+  $("kv12").innerHTML=r12.map(function(x){return "<span>"+x[0]+"</span><b>"+x[1]+"</b>";}).join("");
+  // paski godzinowe (24 h)
+  function strip(title,unit,fn,col,tip){ return '<div class="wrow"><div class="h"><b>'+title+'</b><span>'+unit+'</span></div><div class="strip">'+
+    fut.map(function(h){return '<span style="background:'+col(fn(h))+'" title="'+h.t+' — '+tip(h)+'"></span>';}).join("")+'</div><div class="sx"><span>'+fut[0].t+'</span><span>'+fut[Math.floor(fut.length/2)].t+'</span><span>'+fut[fut.length-1].t+'</span></div></div>'; }
+  var tC=function(v){return v==null?"var(--well)":v<0?"#286ed2":v<5?"#7fb3ec":v<10?"#cfe3f8":v<16?"#d8ecc0":v<22?"#f0c419":v<28?"#e8743b":"#c0392b";};
+  var wC=function(v){return v==null?"var(--well)":v<3?"var(--well)":v<6?"#cfe3f8":v<9?"#f0c419":v<12?"#e8743b":"#c0392b";};
+  $("wstrips").innerHTML=
+    strip("Temperatura","°C · odczuwalna w dymku",function(h){return h.temp;},tC,function(h){return r1(h.temp)+"°C, odczuwalna "+r1(h.odcz)+"°C";})+
+    strip("Wiatr","porywy m/s",function(h){return h.porywy;},wC,function(h){return r1(h.wiatr)+" m/s z "+(h.skad||"–")+", porywy "+r1(h.porywy)+" m/s";})+
+    strip("Opad","mm/h (model)",function(h){return h.opad;},function(v){return !v?"var(--well)":v<0.3?"#cfe3f8":v<1?"#7fb3ec":v<2.5?"#286ed2":"#28af46";},function(h){return r1(h.opad)+" mm"+(h.snieg?", śnieg "+r1(h.snieg)+" cm":"");})+
+    strip("Mgła","widoczność",function(h){return h.mgla;},function(v){return v===2?"#7d7d7d":v===1?"#c4c4c4":"var(--well)";},function(h){return h.widocznosc==null?"–":pl((h.widocznosc/1000).toFixed(1))+" km";})+
+    strip("Oblodzenie","ryzyko",function(h){return h.lod;},function(v){return ["var(--well)","#cfe3f8","#7fb3ec","#286ed2"][v||0];},function(h){return LD[h.lod]+", grunt "+r1(h.grunt)+"°C";})+
+    strip("Nawierzchnia","sucha → błoto",function(h){return h.nawierzchnia;},function(v){return ["var(--well)","#e8dcc2","#a8804a"][v||0];},function(h){return NW[h.nawierzchnia];})+
+    strip("Wilgoć przy ziemi","temp. − punkt rosy",function(h){return h.zapas_rosy;},function(v){return v==null?"var(--well)":v<1?"#286ed2":v<2?"#7fb3ec":v<3?"#cfe3f8":"var(--well)";},function(h){return "różnica "+r1(h.zapas_rosy)+"°C, wilg. "+Math.round(h.rh||0)+"%";});
+}
+
+/* ---- wykres w dolnym pasku: opad / temperatura i wiatr ---- */
+document.querySelectorAll("#cmode button").forEach(function(b){b.addEventListener("click",function(){ cmode=b.dataset.c;
+  document.querySelectorAll("#cmode button").forEach(function(x){x.classList.toggle("on",x===b);}); drawChart(); });});
+function drawChart(){ if(chart){chart.destroy();chart=null;} var lab=[], ds=[], SER, ax;
+  if(cmode==="opad"){ var d=lastD, m=lastM; if(!d||d.status!=="OK")return; var a=[],b=[],c=[],z=[];
+    d.historia.slice(-12).forEach(function(h){lab.push(h.t);a.push(h.mmh);b.push(null);c.push(null);z.push(h.udzial==null?null:Math.round(h.udzial*100));});
+    d.prognoza.forEach(function(p){lab.push(p.t);a.push(null);b.push(p.mmh);c.push(null);z.push(p.udzial==null?null:Math.round(p.udzial*100));});
+    var hz=new Date(d.prognoza.length?d.prognoza[d.prognoza.length-1].iso:Date.now());
+    if(m&&m.status==="OK")m.punkty.forEach(function(p){ if(new Date(p.iso)<=hz)return; lab.push(p.t);a.push(null);b.push(null);c.push(p.mmh);z.push(null);});
+    SER=SER_O; ds=[{type:"bar",data:a,yAxisID:"y"},{type:"bar",data:b,yAxisID:"y"},{type:"bar",data:c,yAxisID:"y"},{type:"line",data:z,yAxisID:"y2",pointRadius:1.5,borderWidth:1.5}];
+    ax={y:{stacked:true,beginAtZero:true,suggestedMax:2,title:{display:true,text:"mm/h"}},y2:{position:"right",min:0,max:100,grid:{display:false},title:{display:true,text:"%"}}};
+  } else { var w=lastW; if(!w||w.status!=="OK")return; var f=w.godziny.filter(function(h){return !h.przeszlosc;});
+    f.forEach(function(h){lab.push(h.t);}); SER=SER_T;
+    ds=[{type:"line",data:f.map(function(h){return h.temp;}),yAxisID:"y",borderWidth:2,pointRadius:1.5},{type:"line",data:f.map(function(h){return h.odcz;}),yAxisID:"y",borderWidth:1.5,borderDash:[5,4],pointRadius:0},
+        {type:"bar",data:f.map(function(h){return h.wiatr;}),yAxisID:"y2"},{type:"line",data:f.map(function(h){return h.porywy;}),yAxisID:"y2",borderWidth:1.5,borderDash:[2,3],pointRadius:0}];
+    ax={y:{title:{display:true,text:"°C"}},y2:{position:"right",beginAtZero:true,grid:{display:false},title:{display:true,text:"m/s"}}}; }
+  ds.forEach(function(x,i){x.label=SER[i].n;x.backgroundColor=SER[i].col;x.borderColor=SER[i].col;x.hidden=!!hid[SER[i].k];});
+  Object.keys(ax).forEach(function(k){ax[k].ticks={color:css("--muted")};});
+  ax.x={stacked:cmode==="opad",grid:{display:false},ticks:{maxRotation:0,maxTicksLimit:14,color:css("--muted")}};
+  var unit=function(x){return cmode==="opad"?(x.dataset.yAxisID==="y2"?" %":" mm/h"):(x.dataset.yAxisID==="y2"?" m/s":" °C");};
+  chart=new Chart($("tl1"),{data:{labels:lab,datasets:ds},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:"index",intersect:false},
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:function(x){var v=x.parsed.y;if(v==null)return null;return x.dataset.label+": "+pl(v)+unit(x);}}}},scales:ax}});
   $("chips").innerHTML=SER.map(function(s){return '<span class="chip'+(hid[s.k]?" off":"")+'" data-k="'+s.k+'"><i style="background:'+s.col+'"></i>'+s.n+'</span>';}).join("");
   $("chips").querySelectorAll(".chip").forEach(function(e){e.addEventListener("click",function(){var k=e.dataset.k;hid[k]=!hid[k];e.classList.toggle("off");
     chart.data.datasets[SER.findIndex(function(s){return s.k===k;})].hidden=hid[k];chart.update();});}); }
@@ -272,7 +358,7 @@ function drawChart(d,m){ var lab=[],a=[],b=[],c=[],z=[];
 J("/api/pogoda/dom").then(function(h){ HOME=h.status==="OK"?h:null; var saved=null;
   try{saved=JSON.parse(LS("qpogoda_pos")||"null");}catch(e){}
   if(saved&&saved.m==="zadana"){modeBtn("zadana");setPos(saved.lat,saved.lon,saved.label);} else goHome();
-  if(pos)map.setView([pos.lat,pos.lon],8); });
+  if(pos)map.setView([pos.lat,pos.lon],9); });
 setInterval(function(){ if(document.hidden)return; J("/api/radar/meta").then(function(m){
   if(!meta||!m.klatki.length||m.klatki[m.klatki.length-1].id===meta.klatki[meta.klatki.length-1].id)return; loadFrames(m); if(pos)loadPoint(); }); },120000);
 })();
