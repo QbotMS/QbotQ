@@ -72,6 +72,7 @@ body.open .x{display:block}
 .trow button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;width:34px;height:30px;cursor:pointer}
 .tl{flex:1;position:relative;height:40px}.tl input{position:absolute;left:0;right:0;top:0;width:100%;margin:0}
 .tl .seg{position:absolute;top:24px;height:6px;border-radius:3px}
+.tl .dtick{top:21px!important;border-left:1px solid var(--muted);padding-left:3px;line-height:9px;font-size:9.5px;opacity:.85}
 .tl .seglab{position:absolute;top:32px;font-size:10px;color:var(--muted);white-space:nowrap}
 .tm{min-width:160px;font-weight:700;font-variant-numeric:tabular-nums;font-size:13.5px}.tm small{display:block;font-weight:500;color:var(--muted);font-size:11.5px}
 .legend{display:flex;align-items:center;gap:3px;font-size:10.5px;color:var(--muted);white-space:nowrap}.legend i{width:14px;height:8px;border-radius:2px;display:inline-block}
@@ -271,6 +272,12 @@ map.on("click",function(e){ if(pmode==="zadana")setPos(e.latlng.lat,e.latlng.lng
 var NOW_MAX=120, meta=null, ovs=[], steps=[], cur=0, timer=null;
 function shiftBounds(b,min){ if(!motion)return b; var dx=motion.vx*min*1500, dy=-motion.vy*min*1500;
   return b.map(function(c){var p=L.CRS.EPSG3857.project(L.latLng(c[0],c[1]));var q=L.CRS.EPSG3857.unproject(L.point(p.x+dx,p.y+dy));return [q.lat,q.lng];}); }
+var SEGS={radar:[0,0.28],now:[0.28,0.40],model:[0.40,1]};
+function posSteps(){ var g={radar:[],now:[],model:[]}; steps.forEach(function(s){ g[s.k==="now2"?"now":s.k].push(s); });
+  Object.keys(g).forEach(function(k){ var L=g[k]; if(!L.length)return; var a=SEGS[k][0], b=SEGS[k][1];
+    var t0=(k==="now"&&g.radar.length)?g.radar[g.radar.length-1].t.getTime():L[0].t.getTime(), t1=L[L.length-1].t.getTime();
+    L.forEach(function(s){ s.p=a+(b-a)*(t1>t0?(s.t.getTime()-t0)/(t1-t0):1); }); }); }
+function nearestStep(p){ var bi=cur, bd=9; steps.forEach(function(s,i){ var d=Math.abs((s.p||0)-p); if(d<bd){bd=d;bi=i;} }); return bi; }
 var KOR=null, LAYER="opad", MM=null, mov=null, mcache={}, RLEG=document.querySelector("#dock .legend").innerHTML;
 function shiftM(b,dx,dy){ return b.map(function(c){var p=L.CRS.EPSG3857.project(L.latLng(c[0],c[1]));var q=L.CRS.EPSG3857.unproject(L.point(p.x+dx,p.y+dy));return [q.lat,q.lng];}); }
 function mLayer(){ return (LAYER==="opad"&&MM&&MM.warstwy&&MM.warstwy.indexOf("szansa")>=0)?"szansa":LAYER; }
@@ -286,15 +293,23 @@ function buildSteps(){ var keepT=(steps[cur]&&userMoved)?steps[cur].t.getTime():
   if(MM&&MM.status==="OK"){ var from=lastT?lastT.getTime():now-3600e3;
     MM.kroki.forEach(function(s){var t=new Date(s.iso); if(t.getTime()>from)steps.push({t:t,k:"model",s:s});}); }
   if(!steps.length){$("tm").textContent="brak danych";return;}
-  $("slider").max=steps.length-1;
-  var n=steps.length, P=function(i){return i/Math.max(n-1,1)*100;}, cols={radar:"#286ed2",now:"#7fb3ec",now2:"#c4d9f0",model:"#a58f63"},
-      names={radar:"radar — było",now:"radar +1 h",now2:"+2 h orient.",model:"model "+(MM&&MM.model?MM.model:"")};
-  var st=0; for(var i=1;i<=n;i++){ if(i===n||steps[i].k!==steps[st].k){ var l=P(st), r=i<n?P(i):100;
-      var d=document.createElement("div");d.className="seg";d.style.cssText="left:"+l+"%;width:"+Math.max(r-l,0.8)+"%;background:"+cols[steps[st].k];$("tl").appendChild(d);
-      var lb=document.createElement("div");lb.className="seglab";lb.style.left=l+"%";lb.textContent=names[steps[st].k];$("tl").appendChild(lb); st=i; } }
-  var idx=0; for(var j=0;j<n;j++){ if(steps[j].t.getTime()<=(keepT||now+5*60e3))idx=j; }
-  show(idx); legend(); preload(mLayer()); if(wasPlay)$("play").click(); }
-function show(i){ cur=i; $("slider").value=i; var s=steps[i]; if(!s)return; ovs.forEach(function(o){o.setOpacity(0);}); if(mov)mov.setOpacity(0);
+  $("slider").max=1000;
+  /* 14.10: STALY pasek -- czesci o stalej szerokosci (SEGS), w kazdej pozycja proporcjonalna do czasu; brak danych = wyszarzona czesc */
+  posSteps();
+  var has={radar:steps.some(function(s){return s.k==="radar";}),now:steps.some(function(s){return s.k==="now"||s.k==="now2";}),model:steps.some(function(s){return s.k==="model";})};
+  var cols={radar:"#286ed2",now:"#7fb3ec",model:"#a58f63"}, names={radar:"radar — 2 h wstecz",now:"radar +"+NOW_MAX+" min",model:"prognoza"};
+  Object.keys(SEGS).forEach(function(k){ var l=SEGS[k][0]*100, r=SEGS[k][1]*100;
+    var d=document.createElement("div");d.className="seg";d.style.cssText="left:"+l+"%;width:"+(r-l-0.4)+"%;background:"+cols[k]+";opacity:"+(has[k]?1:.22);$("tl").appendChild(d);
+    var lb=document.createElement("div");lb.className="seglab";lb.style.left=l+"%";lb.style.opacity=has[k]?1:.6;
+    lb.textContent=has[k]?names[k]:(k==="model"?"prognoza — brak danych":"radar tylko na zakładce Opad");$("tl").appendChild(lb); });
+  var ms=steps.filter(function(s){return s.k==="model";});
+  if(ms.length>1){ var mt0=ms[0].t.getTime(), mt1=ms[ms.length-1].t.getTime(), dd=new Date(mt0); dd.setHours(24,0,0,0);
+    while(dd.getTime()<mt1){ var pp=SEGS.model[0]+(SEGS.model[1]-SEGS.model[0])*(dd.getTime()-mt0)/(mt1-mt0);
+      var tk=document.createElement("div"); tk.className="seglab dtick"; tk.style.left=(pp*100)+"%";
+      tk.textContent=["nd","pn","wt","śr","cz","pt","sob"][dd.getDay()]+" "+("0"+dd.getDate()).slice(-2); $("tl").appendChild(tk); dd=new Date(dd.getTime()+864e5); } }
+  var idx=0; for(var j=0;j<steps.length;j++){ if(steps[j].t.getTime()<=(keepT||now+5*60e3))idx=j; }
+  legend(); show(idx); preload(mLayer()); if(wasPlay)$("play").click(); }
+function show(i){ cur=i; $("slider").value=Math.round(((steps[i]&&steps[i].p)||0)*1000); var s=steps[i]; if(!s)return; ovs.forEach(function(o){o.setOpacity(0);}); if(mov)mov.setOpacity(0);
   if(s.k==="radar"){ovs[s.i].setBounds(L.latLngBounds(meta.bounds));ovs[s.i].setOpacity(ROP());}
   else if(s.k==="model"){ var u=mUrl(mLayer(),s.s), eps=mLayer()==="szansa"; if(!mov){mov=L.imageOverlay(u,MM.bounds,{opacity:0,interactive:false,pane:"radar"}).addTo(map);} else mov.setUrl(u);
     /* 14.10: korekta polozenia wg aktualnego radaru (maleje do 0 po 6 h) + plynne przejscie z radaru (2 h po koncu jego prognozy) */
@@ -320,7 +335,7 @@ document.querySelectorAll("#btabs .btab[data-l]").forEach(function(b){b.addEvent
 J("/api/pogoda/mapa/korekta").then(function(k){ KOR=k; window.__KOR=k; if(steps.length)show(cur); });
 J("/api/pogoda/mapa/meta").then(function(m){ MM=m; if(m.status==="OK"){map.attributionControl.addAttribution(m.zrodlo); if(m.eps)map.attributionControl.addAttribution(m.eps.zrodlo);} buildSteps(); });
 var userMoved=false;
-$("slider").addEventListener("input",function(){stop();userMoved=true;show(+this.value);});
+$("slider").addEventListener("input",function(){stop();userMoved=true;show(nearestStep(+this.value/1000));});
 function stop(){ if(timer){clearInterval(timer);timer=null;$("play").textContent="▶";} }
 $("play").addEventListener("click",function(){ if(timer){stop();return;} $("play").textContent="❚❚"; var hold=0;
   timer=setInterval(function(){ if(cur>=steps.length-1){ if(++hold<4)return; hold=0; show(0);} else show(cur+1); },400); });
