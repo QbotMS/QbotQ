@@ -23,7 +23,8 @@
   function tab(t) {
     S.tab = t;
     document.querySelectorAll("#tabs button").forEach(function (b) { b.classList.toggle("on", b.dataset.t === t); b.setAttribute("aria-pressed", b.dataset.t === t ? "true" : "false"); });
-    ["dni", "analiza", "bilans", "serce", "suple", "pasy", "menu"].forEach(function (k) { $("t-" + k).hidden = k !== t; });
+    ["dni", "analiza", "bilans", "serce", "suple", "pasy", "weekend", "menu"].forEach(function (k) { $("t-" + k).hidden = k !== t; });
+    if (t === "weekend" && window.qWeekendLoad) window.qWeekendLoad();   /* 2026-10-15: zdrowie-weekend.js */
     try { history.replaceState(null, "", "#" + t + (t === "dni" && S.sel ? "=" + S.sel : "")); } catch (e) {}
     if (t === "analiza") loadAnaliza();
     if (t === "pasy") loadPasy();
@@ -625,5 +626,5 @@
   loadCirc().then(function () { if (S.days) renderDay(); });
   var t0 = new Date(), lim = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() - 6, 12);
   loadDays(false, hd && new Date(hd + "T12:00:00") < lim ? hd : null);
-  tab(["dni", "analiza", "bilans", "serce", "suple", "pasy", "menu"].indexOf(h0) >= 0 ? h0 : "dni");
+  tab(["dni", "analiza", "bilans", "serce", "suple", "pasy", "weekend", "menu"].indexOf(h0) >= 0 ? h0 : "dni");
 })();

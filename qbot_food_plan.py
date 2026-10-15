@@ -532,7 +532,12 @@ def weekend_lines(friday: date) -> list[str]:
             if ses:
                 t += " (jazda %d′%s)" % (ses[0]["dur_min"] or 0, (", ~%d g węgli na rower" % p["fuel_g"]) if p["fuel_g"] else "")
             out.append(t)
-    return ["🗓 Weekend: " + " · ".join(out) + ". Co zamawiać: strona Zdrowie → Analiza."]
+    try:   # 2026-10-15: plan weekendu (zakupy + posilki) ukladany w tle, zeby strona otwierala sie od razu
+        import qbot_food_weekend as _FW
+        _FW.prebuild_async(friday)
+    except Exception:
+        pass
+    return ["🗓 Weekend: " + " · ".join(out) + ". Lista zakupów, posiłki do zrobienia i co zamawiać: https://albert.cytr.us/zdrowie.html#weekend"]
 
 
 BP_SERIES_DAYS = 7

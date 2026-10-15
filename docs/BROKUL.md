@@ -172,3 +172,12 @@ Przyciski nie wygasają (stan w bazie).
 `qbot_food_log.py` (wpisy, AI, katalog, wiadomość dnia), `scripts/brokul_tick.py` (`--init`, `--import`,
 `--send DD.MM.RRRR`), `sql/brokul_v1.sql`, `sql/food_v1.sql`, `tests/test_brokul.py`, `tests/test_food_log.py`,
 `qbot_web.py` (`/brokul-dostep`, `/api/brokul/session[/status]`).
+
+## Weekend bez diety: zakupy i posilki (2026-10-15)
+- Zdrowie > Weekend (zdrowie-weekend.js): plan sb-nd (cel kcal, bialko, paliwo na rower z day_plan; co zamawiac / czego unikac),
+  LISTA ZAKUPOW pogrupowana dzialami z odhaczaniem (zapis w bazie, dziala na telefonie w sklepie), 2-3 proste posilki do domu
+  (<= 25 min, kcal i bialko na porcje - szacunek AI, skladniki na wybrana liczbe osob 1/2/3), przycisk "Uloz od nowa".
+- qbot_food_weekend.py, tabela qbot_v2.food_weekend_plan (klucz = piatek). Piatek rano: linijka w porannej wiadomosci z linkiem,
+  plan ukladany w tle (prebuild_async) -> strona otwiera sie od razu. Albert: food_weekend_plan ("co kupic na weekend").
+- Wczesniej: funkcja weekend_text (z lista zakupow) istniala, ale od 12.10 nic jej nie wywolywalo.
+

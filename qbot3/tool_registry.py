@@ -1142,6 +1142,32 @@ def _load_withings_sync_status_tool() -> dict[str, Any]:
     }
 
 
+# ── Weekend bez diety: zakupy + posilki (15.10.2026, qbot_food_weekend.py) ──
+
+def _load_food_weekend_plan_tool() -> dict[str, Any]:
+    from qbot3.errors import TOOL_ERROR, error_result, success_result
+    def _wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        try:
+            from datetime import date, datetime
+            from zoneinfo import ZoneInfo
+            import qbot_food_weekend as FW
+            fr = FW.friday_for(datetime.now(ZoneInfo("Europe/Warsaw")).date())
+            txt = FW.summary_text(fr)
+            return success_result({"summary": txt, "url": "https://albert.cytr.us/zdrowie.html#weekend"}, summary=txt)
+        except Exception as exc:
+            return error_result(TOOL_ERROR, str(exc)[:200])
+    return {
+        "callable": _wrapper,
+        "category": "nutrition",
+        "description": "Plan jedzenia na najblizszy weekend bez diety (sb-nd): cel kcal dni, co zamawiac na miescie, LISTA ZAKUPOW i 2-3 proste posilki do zrobienia w domu (kcal, bialko, skladniki). Ten sam plan co Zdrowie > Weekend. Tylko odczyt.",
+        "args_schema": {},
+        "safety": "read",
+        "mode": "read_only",
+        "status": "implemented",
+        "notes": "qbot_food_weekend.summary_text",
+    }
+
+
 # ── Status wszystkich funkcji QBota (15.10.2026; to samo co SETUP > Polaczenia > Status) ──
 
 def _load_qbot_status_overview_tool() -> dict[str, Any]:
@@ -2569,6 +2595,7 @@ def _init_registry():
         ("mcp_tools_list", _load_mcp_tools_list_tool),
         ("withings_sync_status", _load_withings_sync_status_tool),
         ("qbot_status_overview", _load_qbot_status_overview_tool),
+        ("food_weekend_plan", _load_food_weekend_plan_tool),
         ("gate_status", _load_gate_status_tool),
         ("hammerhead_sync_status", _load_hammerhead_sync_status_tool),
         ("llm_status", _load_llm_status_tool),

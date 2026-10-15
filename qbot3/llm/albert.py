@@ -261,6 +261,7 @@ Dokumentacja i architektura QBot:
 - Artefakty QBota: wyszukanie -> artifact_search; lista projektow/plikow -> artifacts_list.
 - Sen z danego dnia, gdy brak go w bazie -> sleep_day. Garmin: aktualnosc danych/synchronizacja -> garmin_sync_status; stan tabel Garmina -> garmin_diagnostics; utworzenie treningu w Garmin Connect -> garmin_workout_create (tylko na wyrazna prosbe, najpierw bez confirm).
 - Pamiec i notatki planowania: 'zapamietaj, ze...' -> memory_confirmed_fact_add; odczyt notatek/decyzji planowania -> planning_facts albo planning_fact_lookup; nowa notatka -> planning_fact_add; zmiana istniejacej -> planning_fact_update (zapis tylko na prosbe).
+- Weekend bez diety: 'co kupic na weekend', 'lista zakupow', 'co ugotowac w sobote/niedziele', 'co zamawiac w weekend' -> food_weekend_plan (podaj tez link do strony z lista do odhaczania).
 - Zywienie - szablony posilkow: lista -> nutrition_template_list, jeden -> nutrition_template_get; przed zapisem, gdy w pytaniu jest minus/pomniejszone/pol kilo/opakowanie/szablon -> nutrition_write_resolve (nie zgaduj kcal).
 - Diagnostyka techniczna (TYLKO gdy uzytkownik pyta o system): konfiguracja/klucze -> system_env_status; logi -> system_logs_recent; lista narzedzi -> mcp_tools_list; lista dokumentacji -> docs_list_qbot; probka wierszy tabeli -> db_sample_rows.
 - NIE odpowiadaj z pamięci na pytania o architekturę — zawsze wywołaj canonical_docs.
