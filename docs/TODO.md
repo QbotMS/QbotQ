@@ -15,8 +15,8 @@
 ## [LEGACY-CIECIE] 22.10.2026: wyciac stary lacznik ChatGPT + nieuzywana stara warstwe wg licznika (docs/LEGACY_USAGE.md) (dodane 2026-10-15)
 
 ## [AUDYT-2026-10-15] Audyt kodu -- dalsze kroki (dodane 2026-10-15)
-- Etap 4: strona ModelQ pokazuje LTP surowe dzienne (189 W), reszta QBota wygladzone EMA28 (192 W) -- glowna = wygladzone, surowe jako podpisany drugi wiersz.
-- Etap 4: trend tetna (rhr_trend_note) jeszcze nie na stronie Forma.
+- [ZROBIONE 2026-10-15] Strona ModelQ: LTP wygladzone (jak reszta QBota) + dopisek 'dzienne'.
+- [ZROBIONE 2026-10-15] Trend tetna na stronie Forma (pod werdyktem dnia).
 - [ZROBIONE 2026-10-15] 30 nieuzywanych plikow (skrypty Toskanii, smoke_*, tmp_*, CLI qbot nutrition/health/planning/ask) -> _archiwum; raport docs/audit/martwy_kod_2026-10-15.md (scripts/audit_deadcode.py).
 - [ZROBIONE 2026-10-15] Status Garmin: straznik co 10 min vs import co 3 h (byl falszywy alarm).
 - Etap 3 (kod): ~100 modulow bez odwolan do przejrzenia (qbot_legacy_*, smoke_*, tmp_*, fetch_google_*, stary adapter ChatGPT qbot_mcp_adapter.py);
@@ -27,7 +27,7 @@
 - [DECYZJA 2026-10-15] qDateLocal/qTsLocal w 13 plikach: kopie identyczne co do znaku, jedna linijka -- zostaja (wspolny plik = 13 stron do przerobki dla zera zysku). Bezpiecznik etapu 5: test, ze kopie sa identyczne.
 - Etap 4 (dane): poprawnosc liczb strona vs baza (forma/TSB, ModelQ, kcal+makra, waga, Strava); intencje xert_* w szybkiej sciezce MCP.
 - Etap 4: ~30 kopii tabel bak_* w bazie (ModelQ) -- po zakonczeniu pracy sesji ModelQ.
-- Etap 5 (bezpieczniki): automatyczne czyszczenie .bak starszych niz 7 dni (dev_write_file robi kopie przy kazdym zapisie); naprawa sekcji 5 audit_inventory (narzedzia vs prompt).
+- [ZROBIONE 2026-10-15] Etap 5: audyt tygodniowy (scripts/weekly_audit.py + timer, docs/STATUS.md), test_qdate_copies, test_no_xert_basis. Zostaje: sekcja 5 audit_inventory (narzedzia vs prompt).
 ## [QEXT2-DESZCZ-KOKPIT] Etap 3: QExt2 wysyla sygnal i pokazuje deszcz z radaru w KOKPICIE (dodane 2026-10-14)
 Decyzje 14.10 (Michal): jeden sygnal 'jestem tu' co ~5 min (takze w pauzie) na POST /ride-readiness z body {"ping":{lat,lon}} (token jak odczyt formy,
 naglowek X-QExt2-Token -- most na qbot.cytr.us wycina Authorization); odpowiedz `rain` (short/za_min/pada/sila/dur_min) ma

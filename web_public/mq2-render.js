@@ -49,7 +49,7 @@ function renderToday(data){
     ["TP (próg)", l.tp, "W"],
     ["HIE (W')", l.hie, "kJ"],
     ["PP (moc szczyt.)", l.pp, "W"],
-    ["LTP", l.ltp, "W"],
+    ["LTP", l.ltp, "W" + (l.ltp_raw != null ? " · dzienne " + String(l.ltp_raw).replace(".", ",") + " W" : "")],   // 15.10.2026: wygladzone 28 dni + dzienne surowe
   ];
   for(const [k,v,u] of items){
     const m=el("div","metric");

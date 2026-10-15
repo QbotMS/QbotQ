@@ -2029,9 +2029,7 @@ def _load_route_poi_analyze_readonly_tool() -> dict[str, Any]:
         "callable": _wrapper,
         "category": "routes",
         "description": (
-            "[UŻYJ TEGO dla zapytań INFORMACYJNYCH typu 'co jest na etapie/trasie X', 'jakie POI na trasie', 'pokaż mi atrakcje/wodę/jedzenie na etapie' - zwraca wynik ANALIZY NATYCHMIAST, bez wymogu potwierdzenia. Dla zapisu/aktualizacji raportu POI w artefaktach projektu użyj route_poi_analyze.] "
-            "Analizuje POI trasy RWGPS na podstawie GPX lokalnie i zapisuje raport MD do artefaktów. "
-            "Parametry: project_id, route_id lub artifact_id lub path, albo merge_artifact_ids; km_from/km_to, buffers, output_format, focus, retry_chunk_id, retry_mode, timeout_sec."
+            "POI trasy/etapu dla pytan INFORMACYJNYCH ('co jest na etapie/trasie X', 'jakie POI', 'atrakcje/woda/jedzenie na etapie') - wynik od razu, bez potwierdzenia. Zapis raportu POI do artefaktow: route_poi_analyze. Parametry: project_id; route_id albo artifact_id albo path (albo merge_artifact_ids); km_from/km_to, buffers, output_format, focus, retry_chunk_id, retry_mode, timeout_sec."
         ),
         "args_schema": {
             "stage": {"type": "integer", "description": "Numer etapu z qbot_planning_facts.route_stages - jesli podany, route_id/km_from/km_to sa wyliczane automatycznie z planu etapow (nadpisuja inne podane wartosci)."},
@@ -2738,13 +2736,7 @@ def _load_route_recompute_tool() -> dict[str, Any]:
         "callable": _wrapper,
         "category": "routes",
         "description": (
-            "Recznie przelicza wskazana trase. scope='all' (domyslnie): PELNY przelicz aktywnej "
-            "(najnowszej) wersji — osie, nawierzchnia, POI (+ opcj. cien/wysokosci); uzyj gdy trasa "
-            "pobrana z RWGPS nie zostala jeszcze przeliczona albo po odmowie w Telegramie. "
-            "scope='poi': odswieza WYLACZNIE POI (sklepy/woda/godziny) istniejacej, JUZ przeliczonej "
-            "trasy, bez ruszania reszty warstw i bez przycinania wersji; uzyj gdy wracasz do "
-            "policzonej trasy po czasie i chcesz tylko aktualne POI. WYMAGA route_id. Ciezka i "
-            "zapisujaca; scope='all' zostawia 3 najnowsze wersje. Dok.: docs/ROUTE_STORE.md"
+            "Recznie przelicza trase (WYMAGA route_id; ciezkie, zapisuje). scope='all' (domyslnie): pelny przelicz aktywnej wersji - osie, nawierzchnia, POI (+opcj. cien/wysokosci); gdy trasa z RWGPS nie byla przeliczona albo po odmowie w Telegramie; zostawia 3 najnowsze wersje. scope='poi': tylko odswieza POI (sklepy/woda/godziny) juz przeliczonej trasy. Dok.: docs/ROUTE_STORE.md"
         ),
         "args_schema": {
             "route_id": {"type": "string", "description": "ID trasy RWGPS do przeliczenia (wymagane)"},
@@ -2856,14 +2848,7 @@ def _load_route_plan_analysis_tool() -> dict[str, Any]:
         "callable": _wrapper,
         "category": "routes",
         "description": (
-            "PELNA, gotowa analiza ZAPLANOWANEJ trasy (jeszcze nieprzejechanej; track z RWGPS). "
-            "To DOMYSLNE i jedyne narzedzie do ogolnej analizy/oceny/sprawdzenia trasy: "
-            "'przeanalizuj trase', 'pelna analiza trasy', 'analiza techniczna trasy', 'sprawdz trase', 'ocen trase', 'analiza planowanej trasy'. "
-            "Zwraca komplet w jednym tekscie (pole analysis): nawierzchnia, podjazdy i przewyzszenie (kanoniczna os 50 m: DEM + warstwa nawierzchni), "
-            "dopasowanie do aktualnej formy (FTP). POGODA/WIATR NIE sa w tym narzedziu - sa w route_report (silnik METEO). "
-            "NIE lacz tego z rwgps_route_fetch, rwgps_route_surface_analyze ani route_poi_analyze — to narzedzie juz zawiera nawierzchnie i przewyzszenie. "
-            "Dla JUZ PRZEJECHANEJ jazdy (plik FIT) uzyj ride_analysis, nie tego. "
-            "Bez route_id bierze najnowsza otrasowana trase. Pokaz uzytkownikowi pole analysis w calosci, bez przerabiania."
+            "PELNA analiza ZAPLANOWANEJ (nieprzejechanej) trasy z RWGPS - domyslne narzedzie do 'przeanalizuj/sprawdz/ocen trase', 'analiza techniczna/planowanej trasy'. W polu analysis: nawierzchnia, podjazdy i przewyzszenie (os 50 m: DEM + nawierzchnia), dopasowanie do formy (FTP). Pogoda/wiatr: route_report (METEO), nie tu. Nie lacz z rwgps_route_fetch, rwgps_route_surface_analyze ani route_poi_analyze. Przejechana jazda (FIT) -> ride_analysis. Bez route_id: najnowsza trasa. Pokaz analysis w calosci."
         ),
         "args_schema": {
             "route_id": {"type": "string", "description": "ID trasy RWGPS (opcjonalne; domyslnie najnowsza otrasowana)"},
@@ -2892,13 +2877,7 @@ def _load_ride_analysis_tool() -> dict[str, Any]:
         "callable": _wrapper,
         "category": "routes",
         "description": (
-            "Ocena JUZ PRZEJECHANEJ, WYKONANEJ jazdy na podstawie pliku FIT (Garmin/Hammerhead). "
-            "Uzyj zawsze gdy mowa o przejechanej jezdzie: 'dzisiejsza jazda', 'wczorajsza jazda', "
-            "'dzisiejsza trasa' / 'wczorajsza trasa' (czyli ta przejechana dzis/wczoraj), 'moja jazda', "
-            "'jak mi poszlo', 'ocen przejazd', 'analiza dzisiejszej jazdy', 'analiza trasy dzisiejszej', 'podsumuj jazde'. "
-            "Naklada FIT na plan (siatka 80 m), liczy roznice plan-wykonanie (moc/predkosc/wiatr) i werdykt wobec formy. "
-            "WAZNE: slowa 'dzisiejsza/wczorajsza' przy slowie trasa oznaczaja jazde WYKONANA -> uzyj TEGO narzedzia, NIE route_plan_analysis. "
-            "Bez argumentow bierze najnowszy FIT. Pokaz pole analysis w calosci."
+            "Ocena JUZ PRZEJECHANEJ jazdy z pliku FIT (Garmin/Hammerhead): 'dzisiejsza/wczorajsza jazda', 'dzisiejsza/wczorajsza trasa' (= przejechana), 'moja jazda', 'jak mi poszlo', 'ocen przejazd', 'podsumuj jazde'. Naklada FIT na plan (siatka 80 m): roznice plan-wykonanie (moc/predkosc/wiatr) i werdykt wobec formy. 'dzisiejsza/wczorajsza' + trasa = jazda WYKONANA -> to narzedzie, NIE route_plan_analysis. Bez argumentow: najnowszy FIT. Pokaz pole analysis w calosci."
         ),
         "args_schema": {
             "fit": {"type": "string", "description": "Sciezka do pliku FIT (opcjonalne; domyslnie najnowszy)"},

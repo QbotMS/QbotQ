@@ -27,3 +27,11 @@ Prosta informacja, czy dzialaja funkcje QBota. Jedno zrodlo prawdy dla strony i 
 - `llm_status` czyta przelacznik modelu Alberta (wczesniej stara konfiguracje QGPT/OpenRouter -> sprzeczne odpowiedzi).
 - Raport dzienny (`daily_report_status`) zaorany -- artefakt z poczatkow QBota.
 - Nowa funkcja do statusu = nowy check w `qbot_status_checks.CHECKS` (strona i Albert dostaja ja automatycznie).
+
+## Audyt tygodniowy (etap 5, 15.10.2026)
+- `scripts/weekly_audit.py`, timer `qbot-weekly-audit` (pon 02:30, pliki: deploy/systemd/). Sprzata kopie .bak/_tmp_ starsze niz 7 dni
+  (do _archiwum), puszcza wszystkie testy, liczy kandydatow na martwy kod, sprawdza status funkcji. Wynik: state/weekly_audit.json
+  -> pozycja "Audyt tygodniowy" w Status. Telegram: jedna wiadomosc tylko przy NOWYM problemie.
+- Instalacja (root): cp deploy/systemd/qbot-weekly-audit.* /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now qbot-weekly-audit.timer
+- Inne bezpieczniki (testy): test_no_xert_basis (Xert nie jest podstawa), test_qdate_copies (kopie funkcji dat identyczne), test_tz_display.
+

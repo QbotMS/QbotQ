@@ -5,7 +5,7 @@ _UWAGA: crontab roota jest niewidoczny dla kanalu DEV -- skrypty odpalane tylko 
 Punkty startowe uslug: garmin_auth, hammerhead_auth, komoot_watch, qbot3, qbot3.capabilities.reports, qbot3.connectors, qbot3.connectors.import_garmin_heart, qbot_activity_ingest, qbot_api, qbot_config, qbot_qlab_server, qbot_task_queue, qbot_web, tools, withings_auth
 Wykonywalne w katalogu glownym: qbot-qlab-server, qbot-hammerhead-sync, qbot-withings-sync, qbot-fit-rewrite, qbot-task
 
-Modulow rdzenia: 350 | osiagalne z produkcji: 326 | tylko z testow/skryptow: 12 | nieosiagalne: 12
+Modulow rdzenia: 351 | osiagalne z produkcji: 327 | tylko z testow/skryptow: 12 | nieosiagalne: 12
 
 ## A. Nieosiagalne z niczego (najmocniejsi kandydaci)
 | modul | linii | ostatni commit |

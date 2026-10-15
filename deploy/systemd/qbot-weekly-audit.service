@@ -1,0 +1,12 @@
+[Unit]
+Description=QBot - cotygodniowy audyt (sprzatanie kopii, testy, martwy kod, status) - scripts/weekly_audit.py
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/qbot/app
+EnvironmentFile=/opt/qbot/app/.env.local
+ExecStart=/opt/qbot/app/.venv/bin/python3 /opt/qbot/app/scripts/weekly_audit.py
+TimeoutStartSec=1800
+Nice=10

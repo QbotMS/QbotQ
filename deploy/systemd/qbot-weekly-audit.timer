@@ -1,0 +1,10 @@
+[Unit]
+Description=QBot - cotygodniowy audyt w nocy z niedzieli na poniedzialek (02:30 czasu polskiego)
+
+[Timer]
+OnCalendar=Mon *-*-* 02:30:00 Europe/Warsaw
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

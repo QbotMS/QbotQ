@@ -26,6 +26,10 @@ class WebDemoAuthTest(unittest.TestCase):
     def setUp(self):
         self._cfg = mock.patch.object(qbot_web, "_webauth_load", return_value=(dict(USERS), SIGN))
         self._cfg.start()
+        # 15.10.2026: bez prawdziwego powiadomienia na Telegram (bylo: kazdy przebieg testow wysylal
+        # "ktos prosi o dostep tymczasowy"; wysylka idzie w osobnym watku, wiec blokujemy ja u zrodla)
+        self._notify = mock.patch.object(wda, "_notify_request", lambda ua: None)
+        self._notify.start()
         wda.clear_demo_cache()
         wda._poll_last.clear()
         self.req_ids = []
@@ -33,6 +37,7 @@ class WebDemoAuthTest(unittest.TestCase):
 
     def tearDown(self):
         self._cfg.stop()
+        self._notify.stop()
         wda.clear_demo_cache()
         with qbot_web._db_conn() as conn:
             conn.execute("DELETE FROM qbot_v2.web_sessions WHERE owner=%s", (TEST_OWNER,))

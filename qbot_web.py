@@ -11632,7 +11632,7 @@ _FORMA_FIELDS = [
     "ctl_xss", "atl_raw", "tsb_raw",
     "atl_plus", "tsb_plus", "xss_hidden_subj", "atl_hidden_subj", "atl_plus_note",
     "load_ramp", "load_7d", "load_28d",
-    "readiness_3d", "day_status", "day_status_note", "early_warn",
+    "readiness_3d", "day_status", "day_status_note", "early_warn", "rhr_trend_note",
     "body_load", "body_load_parts", "atl_real", "tsb_real", "ctl_real",
 ]
 
@@ -11646,7 +11646,7 @@ def _forma_row_out(r):
     for f in _FORMA_FIELDS:
         v = r[f]
         out[f] = v if f in ("wprime_confidence", "readiness_label", "readiness_note", "readiness_effective_label", "readiness_effective_note", "atl_plus_note",
-                            "day_status", "day_status_note", "early_warn", "body_load_parts") else _forma_num(v)
+                            "day_status", "day_status_note", "early_warn", "body_load_parts", "rhr_trend_note") else _forma_num(v)
     return out
 
 
@@ -12474,13 +12474,14 @@ def modelq2_data(response: Response, start: str | None = Query(None), end: str |
         # kanon (2026-09-28): zmeczenie/swiezosc Z KOREKTA z fitmodel_daily (atl_plus/tsb_plus),
         # surowe z sygnatury MQ2 tylko jako atl_raw/tsb_raw - ta sama liczba co Forma i Albert.
         _fdk = {x["day"]: x for x in conn.execute(
-            "SELECT day, COALESCE(atl_real, atl_plus) AS atl_plus, COALESCE(tsb_real, tsb_plus) AS tsb_plus FROM qbot_v2.fitmodel_daily WHERE day BETWEEN %s AND %s",
+            "SELECT day, COALESCE(atl_real, atl_plus) AS atl_plus, COALESCE(tsb_real, tsb_plus) AS tsb_plus, ltp_modelq_w AS ltp_plus "   # 15.10.2026: LTP wygladzone
+            "FROM qbot_v2.fitmodel_daily WHERE day BETWEEN %s AND %s",
             (start_d.isoformat(), end_d.isoformat())).fetchall()}
         def _canon(r, k):
             v = (_fdk.get(r["day"]) or {}).get(k + "_plus")
             return _f(v) if v is not None else _f(r[k])
         mq_series = [{"day": r["day"].isoformat(), "tp": _f(r["tp_w"]), "hie": _f(r["hie_kj"]),
-                      "pp": _f(r["pp_w"]), "ltp": _f(r["ltp_w"]),
+                      "pp": _f(r["pp_w"]), "ltp": _canon(r, "ltp"), "ltp_raw": _f(r["ltp_w"]),   # 15.10.2026: ltp = wygladzone EMA28 (jak Forma/Albert/Karoo)
                       "ctl": _f(r["ctl"]), "atl": _canon(r, "atl"), "tsb": _canon(r, "tsb"),
                       "atl_raw": _f(r["atl"]), "tsb_raw": _f(r["tsb"]),
                       "tl_low": _f(r["tl_low"]), "tl_high": _f(r["tl_high"]), "tl_peak": _f(r["tl_peak"])}

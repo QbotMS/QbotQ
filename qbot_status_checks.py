@@ -258,9 +258,28 @@ def legacy_usage() -> dict[str, Any]:
               None, functions=s["functions"], http=s["http"])
 
 
+def weekly_audit() -> dict[str, Any]:
+    """Cotygodniowy audyt (scripts/weekly_audit.py, timer qbot-weekly-audit, pon 02:30). Wynik: state/weekly_audit.json."""
+    name = "Audyt tygodniowy"
+    try:
+        r = _json(APP / "state/weekly_audit.json")
+    except FileNotFoundError:
+        return _r("weekly", name, "warn", "Jeszcze się nie odbył (pierwszy w najbliższą noc z niedzieli na poniedziałek).")
+    except Exception as e:
+        return _r("weekly", name, "warn", f"Nie mogę odczytać wyniku ({type(e).__name__}).")
+    at = _dt(r.get("at"))
+    failed = int(r.get("tests_failed") or 0) + int(r.get("tests_errors") or 0)
+    txt = (f"{_fmt(at)}: testy {r.get('tests_passed')} OK" + (f", {failed} padło" if failed else "") +
+           (f"; sprzątnięto {r['cleanup_files']} starych kopii" if r.get("cleanup_files") else "") +
+           (f"; kandydaci na martwy kod: {r['dead_candidates']}" if r.get("dead_candidates") is not None else "") + ".")
+    if at is None or (_age_h(at) or 0) > 8 * 24:
+        return _r("weekly", name, "warn", "Nie odbył się od ponad tygodnia. Ostatni: " + txt, at)
+    return _r("weekly", name, "bad" if failed else "ok", txt, at, failed=r.get("tests_failed_list"), new=r.get("new_failures"))
+
+
 CHECKS: list[tuple[str, Callable[[], dict[str, Any]]]] = [
     ("services", services), ("garmin", garmin_import), ("hammerhead", hammerhead), ("withings", withings),
-    ("komoot", komoot), ("backup", backup), ("albert", albert_model), ("gate", gate), ("legacy", legacy_usage),
+    ("komoot", komoot), ("backup", backup), ("albert", albert_model), ("gate", gate), ("weekly", weekly_audit), ("legacy", legacy_usage),
 ]
 
 
