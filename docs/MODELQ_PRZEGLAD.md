@@ -139,6 +139,16 @@ Rozstrzyga odczucie Michała (pytanie otwarte).
 4. Pytanie o odczucie (fitmodel/wbal_feel.py, od jazd 15.10.2026): jazda z min W'bal <= 5 % -> Telegram "Odcielo / Blisko /
    Mialem zapas" (wf:cut|close|ok:<id>, tabela qbot_v2.wbal_feel). Krok wbal_feel w daily_job. Nic nie zmienia w ModelQ;
    3x z rzedu "mialem zapas" (90 dni) -> notka o propozycji korekty HIE, decyzja Michala. Testy test_wbal_feel 4.
+5. Bezpieczniki (fitmodel/modelq_guard.py, krok modelq_guard w daily_job, TYLKO Telegram): poniedzialki -- TP/HIE na granicy
+   dryfu >= 14 dni z rzedu, ostatnia kotwica > 90 dni; 1. poniedzialek miesiaca -- sprawdzian z Xertem: |TP| > 5 % -> propozycja
+   przegladu, HIE tylko informacyjnie (HIE Xerta zawyzone przez XSS 07-08.2026; HIE pilnuje wbal_feel). Dedup 7 dni
+   (qbot_v2.modelq_guard_log). Podglad bez wysylki: .venv/bin/python3 fitmodel/modelq_guard.py. Testy test_modelq_guard 4.
+   UWAGA: modelq2_xert_bench dla 07-10.2026 ma wartosci sprzed naprawy Xerta (np. 14.10 TP 307); nowe dni juz po naprawie.
+6. Masy bagazu w fitmodel/meter_physics.py (LUGGAGE): Toskania 17 kg, Opolskie 13,5 kg; meter_phys przeliczone:
+   Toskania 0,94-1,05 (srednio ~1,01 = czysto), Opolskie 1,14 / 1,21 (wadliwy miernik potwierdzony).
+7. Kotwica EF usunieta z fitmodel/modelq2/publish.py (wylaczona od 25.08; ~10 tys. znakow martwego kodu). run_daily_v2 zwraca
+   ef = 'usunieta'. Kopia przed zmiana: /opt/qbot/artifacts/publish_przed_usunieciem_EF_20261014.py. test_modelq2 16/16,
+   kontrolny przebieg run_daily_v2 OK (TP 238,9 / HIE 19,95 / LTP 191,7 na 15.10).
 Pozostale punkty planu (TODO): pytanie po jezdzie z W'bal <= 5 % (Odcielo/Blisko/Zapas), miesieczny sprawdzian vs Xert
 (propozycja kotwicy tylko za zgoda), bezpieczniki tygodniowe, usuniecie kotwicy EF z kodu, masy bagazu w meter_physics,
 jeden dokument ModelQ; regula TP (0,66 W/CTL) do przegladu tym samym tokiem (fizjologia -> dane -> test).

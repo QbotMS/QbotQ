@@ -1475,7 +1475,7 @@ def _modelq_block(cur, ride_date):
         cur_row = cur.fetchone()
     bench=None
     try:
-        cur.execute("SELECT day,tp_w,ltp_w,hie_kj,pp_w FROM qbot_v2.modelq2_xert_bench ORDER BY day DESC LIMIT 1"); bench=cur.fetchone()
+        cur.execute("SELECT day,tp_w,ltp_w,hie_kj,pp_w FROM qbot_v2.modelq2_xert_bench WHERE valid IS NOT FALSE ORDER BY day DESC LIMIT 1"); bench=cur.fetchone()
     except Exception: pass
     bucket=None
     try:

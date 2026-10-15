@@ -18,33 +18,17 @@ naglowek X-QExt2-Token -- most na qbot.cytr.us wycina Authorization); odpowiedz 
 pierwszenstwo przed lokalna prognoza Open-Meteo w KOKPICIE; lokalna prognoza zostaje jako zapas, gdy QBot nie odpowiada.
 Serwer gotowy (etap 2). Dok.: docs/POGODA_OSTRZEZENIE.md. Repo QExt2 osobne.
 
-## [MODELQ-PRZEGLAD] (2026-10-14, decyzja Michala: "srednio raz w tygodniu wracamy i ciagle jest zle")
-- [ ] Przeglad ModelQ od podstaw ZAMIAST kolejnych latek: co mierzy / co zaklada / co wylaczone / historia awarii -> plan naprawy do decyzji.
-  - [x] Etap 1 inwentaryzacja [2026-10-14] -> docs/MODELQ_PRZEGLAD.md (5 kotwic z Xerta, 100% decay, HIE na ograniczniku, przelom CP 0/136, Xert skazony od 08.2026)
-  - [x] Etap 3 czesc 1 [2026-10-14]: kotwica wlasna 14.10 (HIE 20 kJ) + czulosc HIE 0,11 (decay.py), test 4 jazd 6-9 %.
-  - [x] Regula TP [2026-10-14]: 0,45 W/CTL, CTL sprzed 14 dni (decay.py). LTHR 148 zaakceptowane; 19.09 potwierdza regule.
-  - [x] Pytanie po jezdzie W'bal<=5 % [2026-10-14]: fitmodel/wbal_feel.py (od jazd 15.10).
-  - [ ] Etap 3 dalej: sprawdzian vs Xert co miesiac; bezpieczniki tygodniowe; usunac kotwice EF; masy bagazu; dokument ModelQ.
-  - [x] Etap 2 diagnoza [2026-10-14] (docs/MODELQ_PRZEGLAD.md): 0/266 jazd >= 95 % krzywej (sprawny miernik), W'bal=0 na 4 jazdach, HIE na ograniczniku 92 dni.
-  - [ ] Naprawa Xerta (decyzja Michala: podmiana jazd na skorygowane, NIE wycinanie): zakres 01.07-20.08.2026, 26 jazd,
-        tabela /opt/qbot/artifacts/xert_korekta_2026.csv (skrypt xert_korekta_tabela.py). Czerwiec czysty po poprawce bagazu.
-  - [ ] Poprawic LUGGAGE w fitmodel/meter_physics.py: Toskania 05-11.06 ~16-18 kg (bylo 10), Opolskie 01-03.08 ~13,5 kg (bylo 6)
-        (Michal 14.10: torby przod+tyl ~10 kg + rama, pod suportem, kamizelka z buklakiem). Przeliczyc meter_phys dla tych jazd.
-  Fakty z 14.10: sygnatura TP/HIE/PP = 3 ZAMROZONE kotwice z Xerta (27.12.2025, 29.03, 20.06.2026) + dryf za obciazeniem
-  (TP za CTL, HIE za TL_high); modelq2_signature 100% source='decay'; kotwica EF (jedyny mechanizm 'w gore') WYLACZONA od 25.08
-  ('tymczasowo do ~5.09' -- nie wlaczona); kotwica EF 11.08 usunieta 08.10; prawdziwe CP z okien 120-600 s nieliczone (otwarte od 07.2026).
-- [~] VO2max ZAMROZONY (2026-10-14): fitmodel/vo2max.py + pigulka w Trendach zostaja jak sa, bez dalszych prac do czasu naprawy ModelQ
-  (wartosc = szacunek z dryfu sygnatury, nie pomiar). Garmin VO2max NIE jest zamrozony (47-50 na biezaco) -- poprawic GARMIN_DANE.md.
+## [MODELQ-PRZEGLAD] (2026-10-14) -- przeglad zrobiony; stan: docs/MODELQ.md, historia: docs/MODELQ_PRZEGLAD.md
+- [ ] 2026-11-02: decyzja o odmrozeniu VO2max (fitmodel/vo2max.py) po sprawdzianie z Xertem i pierwszych odpowiedziach wbal_feel
+      (rekomendacja 15.10: czekac, bo VO2max = f(TP, HIE), a oba zmienione 14.10).
+- [ ] Obserwacja: odpowiedzi wbal_feel (od jazd 15.10) i pierwszy sprawdzian z Xertem 02.11.2026 (modelq_guard).
+- [ ] Opcjonalnie: podmiana plikow jazd 07-08.2026 w Xercie na skorygowane moca (XSS tam zawyzony, HIE Xerta 24 kJ) --
+      tabela /opt/qbot/artifacts/xert_korekta_2026.csv; tylko jesli HIE Xerta dalej odstaje.
 
-## [GARMIN-DANE] Pelne dane snu/HRV z Garmina + wlasne wyliczenia (dodane 2026-10-14)
-Decyzje 2026-10-14: HRV status/norma, aklimatyzacja do upalu i VO2max liczone W QBOCIE (VO2max Garmina zamrozony od 2025-03-08 = 46, bo jazdy z Karoo/plik jako Tacx -- Garmin liczy VO2max tylko na urzadzeniu w trakcie nagrania). Garmin liczy obciazenie/TE dla 340/342 plikow Tacx -> walidacja ModelQ w tle ma sens. Connect+ odrzucone (brak nowych danych).
-- [x] Etap 0 [2026-10-14]: scripts/debug_garmin_sleep_hrv_raw.py (tylko odczyt, JSON -> /opt/qbot/artifacts/garmin_sleep_hrv_raw_<data>.json). Potwierdzone pola: sleep.avgSkinTempDeviationC (+skinTempDataExists, skinTempCalibrationDays), sleep.dailySleepDTO.sleepNeed / nextSleepNeed (baseline, actual, feedback, trainingFeedback, sleepHistoryAdjustment, hrvAdjustment, napAdjustment, recommendedBedtimeStart/EndMins), sleep.hrvStatus, hrv.hrvSummary.weeklyAvg/baseline(lowUpper,balancedLow,balancedUpper,markerValue)/status. Dostepne co najmniej od 2025-11 (ten sam deviceId 3491367170); starsze dni maja mniej sekcji (brak epok oddechu/SpO2), pola kluczowe sa.
-- [x] Etap 1 kod [2026-10-14]: qbot_garmin_extra.py + sql/garmin_extra_v1.sql (tabela garmin_daily_raw + 10 kolumn w qbot_wellness_daily: skin_temp_dev_c, sleep_need_*, next_sleep_need_*, garmin_hrv_status, hrv_weekly_avg, hrv_balanced_low/high); importer zapisuje w savepoincie; test_garmin_extra 5; sprawdzone na 13-14.10. Dok.: docs/GARMIN_DANE.md
-- [x] Etap 1 backfill [2026-10-14]: 1746 dni, 0 bledow; temp. skory od 2025-05-26 (502 dni), potrzeba snu od 2024-03-06 (951), status HRV od 2022-06-23. Bylo: SSH nohup scripts/garmin_extra_backfill.py (od 2022-01-01, ~1748 dni, ~1.5 h, wznawialny) -> log /opt/qbot/artifacts/garmin_extra_backfill.txt; potem sprawdzic od kiedy jest temp. skory.
-- [x] Etap 2 [2026-10-14]: fitmodel/vo2max.py (P5 z ModelQ, ACSM, na kg; metoda B odrzucona) -> /api/forma/data + Trendy pigulka VO2max; test_vo2max 5; dok. GARMIN_DANE.md. Bylo: VO2max QBota -- A: MMP 5 min / waga; B: regresja HR<->moc na rownych odcinkach, ekstrapolacja do HRmax. Kalibracja na 23 jazdach 2025-01..03 z vO2MaxValue Garmina (activity_fit_raw.summary). Trend dzienny + pewnosc; Forma > Trendy.
-- [x] Etap 3 [2026-10-14]: fitmodel/hrv_status.py (7 nocy vs 60 nocy +-0.5 SD, 4 statusy) -> Zdrowie > Serce (pas normy, naglowek, karta snu, regula cisnienie-regeneracja); test_hrv_status 6. Bylo: HRV status wlasny (norma ~60 dni +- zmiennosc, srednia 7 dni) -> Zdrowie > Serce + wejscie do gotowosci. Garmina tylko do porownania.
+## [GARMIN-DANE] (2026-10-14) -- dok.: docs/GARMIN_DANE.md
+Korekta 2026-10-14: VO2max rowerowy Garmina NIE jest zamrozony (liczony na biezaco, 47-50 w 2025-2026); wczesniejsze
+'zamrozony od 03.2025' = blad odczytu (patrzylem tylko w activity_fit_raw.summary). VO2max QBota zamrozony do decyzji (MODELQ-PRZEGLAD).
 - [ ] DO SPRAWDZENIA NA KONIEC (uzytkownik, 2026-10-14):
-  - [x] commity: etap 2 = 7f9c6ad, etap 3 = baf7937 (sprawdzone 2026-10-14)
   - Forma > Trendy: pigulka VO2max na wykresie mocy rysuje linie + wartosc w podpisie (forma2-data.js v=64)
   - Zdrowie > Serce: karta HRV -- pas normy na wykresie, naglowek "7 nocy ... status"; karta snu -- status HRV (zdrowie-serce.js v=2, forma-serce.js v=11)
   - Zdrowie > Serce: karta snu -- "temp. skory" po HRV (forma-serce.js v=12)
@@ -53,18 +37,14 @@ Decyzje 2026-10-14: HRV status/norma, aklimatyzacja do upalu i VO2max liczone W 
   - Wiadomosc 20:00: linia "😴 Sen: cel ... → spać ok. ..."; poranna: przycisk "😳 Pobudka przed budzikiem" (kliknac raz na probe)
   - Raport jazdy > 1,5 h: kafel "tetno" -- "· dryf X% (typowo Y%) · N min >25°C" (v=49); Trendy: pigulka "Dryf" (v=66)
   - (JS nie da sie sprawdzic na serwerze -- brak node; wizualnie w przegladarce)
-- [ ] Etap 3b (po ~4 tyg. obserwacji, od 2026-11-11): czy status HRV i sygnal temp. skory maja wchodzic do gotowosci ModelQ -- decyzja uzytkownika.
-- [x] Etap 4 [2026-10-14]: fitmodel/body_signal.py (temp >= +0,4 C + HRV -5 ms lub RHR +3) -> karta snu, punkt Serca, poranna wiadomosc; 16 nocy w historii; test_body_signal 8. Bylo: temp. skory jako odchylenie od normy -> warstwa L3 ukrytego zmeczenia.
-- [x] Etap 6 [2026-10-14]: fitmodel/garmin_load_check.py (norma ln(G/X)~ln(h), rozbieznosc >1.5 SD) -> raport jazdy (kafel obciazenie) + tygodniowe rozliczenie Trenera; test_garmin_load_check 6.
-- [ ] Etap 6b: import Training Status / Readiness / regeneracji Garmina -- najpierw test API (jak Etap 0), potem porownanie z gotowoscia ModelQ.
-  Bylo: walidacja ModelQ vs Garmin w tle (activityTrainingLoad juz w activity_fit_raw; dzienny import Training Status/Readiness/regeneracji tylko do porownan; raport rozbieznosci co tydzien).
-- [x] Etap 5 [2026-10-14]: fitmodel/sleep_target.py -- wlasny cel snu (baza z danych 7:45 + dodatki), linia 20:00, przycisk 'Pobudka przed budzikiem' (sleep_wake_label), sen tygodnia + miesieczna analiza pobudek w rozliczeniu; test_sleep_target 9.
-- [ ] Etap 5b (~04.2027): kalibracja dodatkow celu snu (+30 ciezki dzien / +30 obciazenie) na danych; przejscie analizy na same oznaczenia.
-  Bylo: potrzeba snu -> wieczorne zalecenie + analiza dlug snu -> HRV/RHR/gotowosc/HR przy mocy nastepnego dnia (odfiltrowac wplyw ciezkich treningow).
-- [x] Etap 7 [2026-10-14]: fitmodel/heat_drift.py (dryf w pasmie 0,55-0,92 CP + minuty > 25 C) -> raport jazdy (kafel tetno) + Trendy (pigulka Dryf); cache ride_heat_drift; test_heat_drift 6.
-- [~] Etap 7b [2026-10-14]: silnik heat_advice() GOTOWY (fitmodel/heat_drift.py, test 10). DO PODPIECIA w: Planer wyprawy, Trener (wydarzenie + niedziela <=21 dni), Analiza trasy -- razem ze wspolnym silnikiem POGODY (inna sesja; notatka w CURRENT.md).
+- [ ] Etap 3b (po ~4 tyg. obserwacji, od 2026-11-11): czy status HRV i sygnal temp. skory wchodza do gotowosci ModelQ -- decyzja Michala.
+- [ ] Etap 6b: import Training Status / Readiness / regeneracji Garmina do porownan -- test API zrobiony 14.10
+      (scripts/debug_garmin_training_raw.py: readiness 62 + skladniki, regeneracja, obciazenie ostre/przewlekle, status, bilans, endurance);
+      decyzja o imporcie czeka.
+- [ ] Etap 5b (~04.2027): kalibracja dodatkow celu snu (+30 ciezki dzien / +30 obciazenie); analiza pobudek na samych oznaczeniach.
+- [~] Etap 7b: silnik heat_advice() GOTOWY (fitmodel/heat_drift.py) -- DO PODPIECIA w Planerze wyprawy, Trenerze (wydarzenie
+      + niedziela <=21 dni) i Analizie trasy, razem ze wspolnym silnikiem POGODY (inna sesja; notatka w dev exchange CURRENT.md).
 - [ ] Do wyjasnienia: kafel 'Najblizszy cel' (forma-render.js + /api/forma/event-prep) nie jest ladowany przez zadna strone -- celowo?
-  Bylo: aklimatyzacja do upalu z activity_record (dryf HR przy tej samej mocy vs temperatura).
 
 - [2026-10-14] [METEO-ICOND2] Open-Meteo models=icon_d2 zwraca 400 'No data is available for this location' (tez Warszawa). Sprawdzic qbot3/routes/route_weather_models.py (zestaw 0-2 dni z icon_d2) -- czy Planer/raport nie traci modelu; ewent. icon_seamless.
 - [2026-10-14] [POGODA-MENU] Strona pogoda.html poza menu (nav.js) -- dodac pozycje po akceptacji.
@@ -457,6 +437,18 @@ na zywych jazdach (nie zgadywania) + ew. push QExt2. Osobny projekt (QExt2).
 - [ ] ODLOZONE (Michal 12.10.2026: wrocic kiedys): nagrody za passe = Garaz -> Plan zakupow (lista upatrzonych produktow: nazwa, link, cena, zdjecie; status zablokowane/okno zakupu/kupione). Prog odblokowania wg ceny: do 200 zl 🔥14 dni; 200-500 🔥30 + 📉2 tyg.; 500-1500 📉4 tyg. + 🕗14 dni; wyzej etap wagi. Okno zakupu 14 dni (do decyzji), linijka w wiadomosci 20:00, "nastepna nagroda" w Jedzenie -> Passa. Zakladki Plan zakupow w Garazu jeszcze NIE ma (sprawdzone 12.10). Bez nagrod jedzeniowych.
 
 # ZROBIONE
+- [2026-10-15] [MODELQ-PRZEGLAD] modelq2_xert_bench: kolumna valid, 07.07-14.10.2026 = false (Xert sprzed naprawy, 100 dni);
+  filtr w /api/modelq2/data (2 zapytania), modelq_guard, benchmark raportu jazdy. 15.10 = pierwszy dzien po naprawie (TP 231).
+- [2026-10-15] [MODELQ-PRZEGLAD] Jeden dokument docs/MODELQ.md (stan) + wskaznik w CONTEXT; kotwica EF usunieta z publish.py (martwa od 25.08);
+  LUGGAGE w meter_physics: Toskania 17 kg, Opolskie 13,5 kg (Toskania miernik/fizyka ~1,01 = czysto).
+- [2026-10-14] [MODELQ-PRZEGLAD] Przeglad ModelQ: inwentaryzacja i diagnoza (docs/MODELQ_PRZEGLAD.md); naprawa Xerta (flagi 25 jazd 01.07-20.08,
+  reset od startu 2020, zanik None-TL Matched -> TP 231); kotwica wlasna 14.10 (TP 238,8 / HIE 20,0 / PP 988,8); czulosc HIE 0,11 +-10 %;
+  regula TP 0,45 W/CTL z CTL sprzed 14 dni (LTHR 151 -> 148 zaakceptowane); wbal_feel (pytanie po jezdzie z W'bal <= 5 %);
+  modelq_guard (bezpieczniki + sprawdzian z Xertem). Testy: test_modelq2 16, test_wbal_feel 4, test_modelq_guard 4.
+- [2026-10-14] [GARMIN-DANE] Etapy 0-7: pelne dane snu/HRV (garmin_daily_raw + 10 kolumn, backfill 1746 dni), VO2max QBota (zamrozony),
+  status HRV QBota (Serce), temp. skory + sygnal 'Organizm pod obciazeniem', wlasny cel snu + przycisk 'Pobudka przed budzikiem',
+  walidacja ModelQ obciazeniem Garmina (raport jazdy + rozliczenie), dryf tetna i czas w upale (raport jazdy + Trendy), silnik heat_advice.
+  Testy: garmin_extra 5, vo2max 5, hrv_status 6, body_signal 8, garmin_load_check 6, sleep_target 9, heat_drift 10.
 - [2026-10-14] [QEXT2-DESZCZ-SERWER] Etap 2: sygnal jazdy z Karoo -> ostrzezenie o deszczu z radaru w miejscu jazdy. POST /ride-readiness {"ping":{lat,lon}} (mcp_server _qext2_ping, token urzadzenia; osobny adres dawal 404 na publicznym moscie), qbot_karoo_live.py (ostatnia pozycja, koniec po 15 min ciszy, kasowanie po wczytaniu pliku jazdy / 24 h), qbot_pogoda_alert: jazda z Karoo ma pierwszenstwo przed planem Trenera, Telegram tylko 1. ostrzezenie na jazde, pogoda_alert.src/data. Testy tests/test_karoo_live.py 6. Dok.: docs/POGODA_OSTRZEZENIE.md
 - [2026-10-14] [QEXT2-DESZCZ-BEZ-TRASY] Etap 1 (repo QExt2, commit 1c3dae6): jazda bez trasy -- skan kwadransow prognozy do 2 h + punkt 10 km pod wiatr ('deszcz za X min' zamiast 'za 0'); poprawka kwadransa Open-Meteo.
 - [2026-10-14] [POGODA-RADAR-UI] Strona pogoda.html (krok 1 na zywo): mapa + lewy panel + dolny pasek, radar 2 h + prognoza radaru do 60 min na mapie, pozycja dom/przegladarka/klik, os punktu radar->model ICON, /api/pogoda/dom|model. Dok.: docs/POGODA_RADAR.md

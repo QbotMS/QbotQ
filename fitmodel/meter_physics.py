@@ -22,8 +22,10 @@ WEAK_WINDOWS = 3           # 3-4 okna: wynik slabej pewnosci (ratio_weak) - tylk
 WEEK_CONF_WINDOWS = 20     # tydzien uznany za pewny od tylu okien (suma z jazd)
 HOT_C = 30.0               # dzien goracy: max temperatura jazdy >= HOT_C
 ACCURACY = 0.10
-# bagaz wg Michala (2026-09-28): Toskania ~10 kg, Opolszczyzna ~6 kg (nie wazone dokladnie)
-LUGGAGE = [(dt.date(2026, 6, 5), dt.date(2026, 6, 11), 10.0), (dt.date(2026, 8, 1), dt.date(2026, 8, 3), 6.0)]
+# bagaz wg Michala: 2026-09-28 Toskania ~10, Opolszczyzna ~6 (tylko torby przod/tyl); POPRAWKA 2026-10-14: torby przod+tyl ~10 kg
+# + torba w ramie, pod suportem z narzedziami, kamizelka z buklakiem => Toskania ~16-18 kg (17), Opolskie = Toskania - 3,5 kg (13,5).
+# Skutek: Toskania miernik/fizyka 1,07 -> ~1,01 (czerwiec czysty, kotwica 20.06 OK), Opolskie 1,20/1,28 -> ~1,13/1,21.
+LUGGAGE = [(dt.date(2026, 6, 5), dt.date(2026, 6, 11), 17.0), (dt.date(2026, 8, 1), dt.date(2026, 8, 3), 13.5)]
 
 DDL = """CREATE TABLE IF NOT EXISTS qbot_v2.meter_phys (
     external_id text PRIMARY KEY, ride_date date, n_windows integer, ratio real,

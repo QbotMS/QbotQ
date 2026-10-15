@@ -12455,7 +12455,7 @@ def modelq2_data(response: Response, start: str | None = Query(None), end: str |
         ).fetchall()
         xb = conn.execute(
             "SELECT day, tp_w, hie_kj, pp_w, ltp_w, max_effort FROM qbot_v2.modelq2_xert_bench "
-            "WHERE day BETWEEN %s AND %s ORDER BY day",
+            "WHERE day BETWEEN %s AND %s AND valid IS NOT FALSE ORDER BY day",   # 2026-10-15: bez Xerta sprzed naprawy
             (start_d.isoformat(), end_d.isoformat()),
         ).fetchall()
 
@@ -12516,7 +12516,7 @@ def modelq2_data(response: Response, start: str | None = Query(None), end: str |
         ).fetchall()
         _wxb = conn.execute(
             "SELECT day, tp_w, hie_kj, pp_w FROM qbot_v2.modelq2_xert_bench "
-            "WHERE day BETWEEN %s AND %s ORDER BY day",
+            "WHERE day BETWEEN %s AND %s AND valid IS NOT FALSE ORDER BY day",
             (_w90, _today.isoformat()),
         ).fetchall()
         _wxl = conn.execute(

@@ -1,8 +1,8 @@
 """VO2max QBota z krzywej mocy ModelQ ([GARMIN-DANE] Etap 2, decyzja 2026-10-14).
 
-Dlaczego nie Garmin: VO2max rowerowy Garmina zamrozony od 2025-03-08 (46) -- jazdy
-z Karoo trafiaja do Garmina jako plik "Tacx", a Garmin liczy VO2max tylko na urzadzeniu
-w trakcie nagrania. Dlaczego nie regresja HR<->moc z jazd: test 2026-10-14 na 23 jazdach
+KOREKTA 2026-10-14: VO2max rowerowy Garmina NIE jest zamrozony (47-50 na biezaco, get_max_metrics) --
+wczesniejsze 'zamrozony od 2025-03-08' bylo bledem odczytu. Garmin wyglada na bardzo wygladzony
+(korelacja z QBotem 0,01 na 12 parach). MODUL ZAMROZONY do decyzji (MODELQ-PRZEGLAD). Dlaczego nie regresja HR<->moc z jazd: test 2026-10-14 na 23 jazdach
 dal wyniki od -100 do 400 (teren: podjazdy, wiatr, dryf tetna) -- odrzucona.
 
 Metoda: moc 5-minutowa z krzywej ModelQ  P5 = CP + W'/300 s  (stabilna, nie wymaga

@@ -6,8 +6,8 @@ tylko wycinek. Przepadaly: temperatura skory, potrzeba snu, status i norma HRV. 
 
 ## Decyzje (2026-10-14)
 - Status/norma HRV: liczy **QBot sam** z `hrv_ms`. Wartosci Garmina (`garmin_hrv_status`, `hrv_balanced_*`) tylko do porownan.
-- VO2max: liczy **QBot sam**. VO2max Garmina zamrozony od 2025-03-08 (46) — jazdy z Karoo ida jako plik "Tacx",
-  a Garmin liczy VO2max tylko na urzadzeniu w trakcie nagrania. Obciazenie/TE Garmin liczy dla plikow Tacx (340/342) -> walidacja ModelQ ma sens.
+- VO2max: liczy **QBot sam** (zamrozony 14.10 do naprawy ModelQ). KOREKTA 14.10: VO2max rowerowy Garmina NIE jest zamrozony --
+  liczony na biezaco (47-50 w 2025-2026, get_max_metrics); blad z 14.10 wynikal z patrzenia tylko w activity_fit_raw.summary. Obciazenie/TE Garmin liczy dla plikow Tacx (340/342) -> walidacja ModelQ ma sens.
 - Aklimatyzacja do upalu: liczy QBot sam (activity_record: temperatura + HR + moc).
 - Potrzeba snu Garmina: uzywana jako zalecenie wieczorne + analiza wplywu (dlug snu -> nastepny dzien).
 - Connect+: nie (brak nowych danych).
