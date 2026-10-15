@@ -177,10 +177,13 @@ def _plan_vs_actual(cur, recs, ride_key):
     np_w = round(_np(P)) if P else None
     tss = None
     try:
-        cur.execute("SELECT tss FROM qbot_v2.training_sessions WHERE external_id=%s", (ride_key,))
+        cur.execute("SELECT tss, elevation_m FROM qbot_v2.training_sessions WHERE external_id=%s", (ride_key,))
         _t = cur.fetchone()
         if _t and _t.get("tss") is not None:
             tss = round(float(_t["tss"]))
+        # 15.10.2026: przewyzszenie = Garmin (to samo co Garmin Connect/Strava); suma z rekordow zanizala ~2x
+        if _t and _t.get("elevation_m") is not None:
+            asc = float(_t["elevation_m"])
     except Exception:
         pass
     real = {"dist_km": dist_km, "ascent_m": round(asc), "np_w": np_w, "tss": tss, "v_kmh": v_kmh}

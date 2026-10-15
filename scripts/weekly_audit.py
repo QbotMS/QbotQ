@@ -54,6 +54,20 @@ def main() -> int:
     res["tests_passed"], res["tests_failed"], res["tests_errors"] = num("passed"), num("failed"), num("error")
     res["tests_failed_list"] = sorted(set(re.findall(r"^(?:FAILED|ERROR) (\S+)", out, re.M)))[:30]
 
+    # 15.10.2026: testy i narzedzia dzialaja jako root -> pliki analiz w artifacts/analysis bywaja root-owned,
+    # a serwis www (qbot) nie moze ich potem nadpisac (blad 500 przy przebudowie raportu z jazdy). Oddajemy je qbotowi.
+    try:
+        import pwd, grp
+        uid, gid = pwd.getpwnam("qbot").pw_uid, grp.getgrnam("qbot").gr_gid
+        n = 0
+        for dp, dns, fns in os.walk("/opt/qbot/artifacts/analysis"):
+            for x in [dp] + [os.path.join(dp, f) for f in fns]:
+                if os.lstat(x).st_uid == 0:
+                    os.chown(x, uid, gid); n += 1
+        res["chown_fixed"] = n
+    except Exception as e:
+        res["chown_fixed"] = f"blad: {type(e).__name__}"
+
     rc, out = run([PY, "scripts/audit_deadcode.py"], 120)
     m = re.search(r"A: (\d+) \| B: (\d+)", out)
     res["dead_candidates"] = int(m.group(1)) if m else None

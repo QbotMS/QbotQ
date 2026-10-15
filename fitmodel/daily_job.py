@@ -251,6 +251,16 @@ def main() -> None:
             return {"week": p["week"], "mode": p["mode"],
                     "budget_h": p["time_budget_h"], "feasible": p["feasible"]}
         _step("week_planner", _plan)
+
+        # 8. 2026-10-15 (audyt): raporty z jazdy przeliczone przez ModelQ PO zbudowaniu raportu -> przebudowa W TLE
+        #    (scripts/ride_reports_rebuild.py; ~15 s/raport, nie blokuje daily_job). Bez tego raport pokazuje stare liczby.
+        def _rr_rebuild():
+            import subprocess
+            log = open("/opt/qbot/artifacts/ride_reports_rebuild.txt", "a")
+            subprocess.Popen(["/opt/qbot/app/.venv/bin/python3", "/opt/qbot/app/scripts/ride_reports_rebuild.py"],
+                             cwd="/opt/qbot/app", stdout=log, stderr=log, start_new_session=True)
+            return {"started": True}
+        _step("ride_reports_rebuild", _rr_rebuild)
     finally:
         conn.close()
     print("=== koniec ===")
